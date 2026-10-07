@@ -49,6 +49,7 @@ const keys = {
   v1: generateAgentKey(),
   v2: generateAgentKey(),
   v3: generateAgentKey(),
+  v4: generateAgentKey(),
   liar: generateAgentKey(),
   faker: generateAgentKey(),
   wrongarch: generateAgentKey(),
@@ -65,6 +66,11 @@ Object.assign(net, {
   max_open_candidates_per_agent: 20,
   epoch_length_s: 86400,
   qualify_retry_s: 60,
+  // canary scheduling compressed for the run (SPEC 10.5; network defaults are minutes to an hour)
+  shadow_launch_spread_s: 20,
+  shadow_min_age_s: 5,
+  canary_inject_delay_s: [2, 10],
+  canary_reveal_delay_s: [1, 5],
 });
 writeFileSync(join(tmp, "network.json"), JSON.stringify(net));
 
@@ -133,12 +139,12 @@ async function main() {
   // real capabilities from this machine (what `lineage-worker doctor` prints); workers re-declare on start
   const caps = doctor().capabilities;
   const wrongCaps = { ...caps, arch: caps.arch === "arm64" ? "amd64" : "arm64" };
-  for (const n of ["ref", "v1", "v2", "v3", "liar", "faker", "wrongarch"] as const) {
+  for (const n of ["ref", "v1", "v2", "v3", "v4", "liar", "faker", "wrongarch"] as const) {
     await fund(keys[n], BURN + MIN_BOND * 20n);
     await ok(as(keys[n]).post("/v1/agents", { capabilities: n === "wrongarch" ? wrongCaps : caps }), `register ${n}`);
   }
   await ok(admin.post(`/v1/admin/agents/${keys.ref.id}/reference`, { reference: true }), "mark reference");
-  for (const n of ["v1", "v2", "v3", "faker", "wrongarch"] as const) await ok(as(keys[n]).post(`/v1/agents/${keys[n].id}/bond`, { amount: MIN_BOND.toString() }), `bond ${n}`);
+  for (const n of ["v1", "v2", "v3", "v4", "faker", "wrongarch"] as const) await ok(as(keys[n]).post(`/v1/agents/${keys[n].id}/bond`, { amount: MIN_BOND.toString() }), `bond ${n}`);
 
   log("reference runner calibrating the fixture in the sandbox");
   const refWorker = new Worker({ core: CORE, key: keys.ref, log: (m) => console.log(`   ref  ${m}`) });
@@ -164,6 +170,8 @@ async function main() {
   startVerifier("v1");
   startVerifier("v2");
   startVerifier("v3");
+  // a fourth honest verifier: audits draw audit_replayers (2) auditors outside the accepted stage's pair
+  startVerifier("v4");
   // a verifier that fabricates everything, qualification included
   startVerifier("faker", ["--dishonest", "fabricate"]);
 
@@ -171,7 +179,7 @@ async function main() {
   const agentView = (n: keyof typeof keys) => ok(admin.get(`/v1/agents/${keys[n].id}`), n);
   const lastQual = (v: any) => (v.qualifications as any[]).filter((q) => q.lineage_id === L).at(-1);
   const quals = await waitFor("honest verifiers qualified", async () => {
-    const vs = await Promise.all((["v1", "v2", "v3"] as const).map(agentView));
+    const vs = await Promise.all((["v1", "v2", "v3", "v4"] as const).map(agentView));
     return vs.every((v) => v.qualified_lineages.includes(L)) ? vs : null;
   });
   check("honest verifiers pass qualification on real hardware", quals.every((v) => lastQual(v)?.status === "passed"), quals.map((v) => lastQual(v)?.reason).join(" | ").slice(0, 200));
@@ -208,12 +216,20 @@ async function main() {
     const anon = new CoreClient(CORE, null);
     while (!watch.stop) {
       try {
-        const [lv, hb, act, evs] = await Promise.all([anon.get("/v1/live"), anon.get("/v1/heartbeats"), anon.get("/v1/activity?limit=1000"), anon.get("/v1/events/log?since=0&limit=5000")]);
+        const [lv, hb, act, evs, full] = await Promise.all([
+          anon.get("/v1/live"),
+          anon.get("/v1/heartbeats"),
+          anon.get("/v1/activity?limit=1000"),
+          anon.get("/v1/events/log?since=0&limit=5000"),
+          admin.get("/v1/admin/heartbeats", true),
+        ]);
         const liveEvents = (evs.body as any[]).filter((e) => e.type === "activity" || e.type === "machine.heartbeat");
         const text = JSON.stringify([lv.body, hb.body, act.body, liveEvents]);
         const open = ((await anon.get(`/v1/candidates?limit=1000`)).body as any[]).filter((c) => !FINAL.has(c.status));
         for (const c of open) for (const id of [c.candidate_id, c.commit_id]) if (id && text.includes(id)) watch.violations.push(`${id.slice(0, 10)} (${c.status})`);
-        for (const m of hb.body as any[]) {
+        // public verifier machines never show a replay job, phase, timing or load (SPEC 17.1)
+        for (const m of hb.body as any[]) if (m.kind === "verifier" && (m.job === "replay" || (m.job !== "qualify" && (m.phase || m.load || m.job_started_at)))) watch.violations.push(`public ${m.agent_id.slice(0, 8)} job ${m.job}`);
+        for (const m of full.body as any[]) {
           if (!m.awake) continue;
           watch.jobs.add(m.job);
           if (m.phase) watch.phases.add(`${m.job}:${m.phase}`);
@@ -256,17 +272,17 @@ async function main() {
   watch.stop = true;
   await watcher;
   check(
-    "sealed replays never expose a candidate id via live endpoints before it is final",
+    "sealed replays never expose a candidate id or a replaying verifier via public live endpoints before final",
     watch.violations.length === 0 && watch.sealedSeen > 0,
     `${watch.samples} samples, ${watch.sealedSeen} sealed replay heartbeats seen, ${watch.violations.length} leaks ${watch.violations.slice(0, 3).join(" ")}`,
   );
   const replayPhases = [...watch.phases].filter((p) => p.startsWith("replay:")).map((p) => p.slice(7));
   check("heartbeats carry real replay phases from the sandbox", ["build", "test", "metrics"].every((p) => replayPhases.includes(p)), `observed ${[...watch.phases].sort().join(", ")}`);
   const machines = await ok<any[]>(admin.get("/v1/heartbeats"), "heartbeats");
-  const beating = ["ref", "v1", "v2", "v3", "faker"].filter((n) => machines.some((m) => m.agent_id === keys[n as keyof typeof keys].id));
-  check("every worker process sends heartbeats with its declared capabilities", beating.length === 5 && machines.filter((m) => beating.some((n) => keys[n as keyof typeof keys].id === m.agent_id)).every((m) => m.caps_match === true), `${beating.join(",")} of ref,v1,v2,v3,faker`);
+  const beating = ["ref", "v1", "v2", "v3", "v4", "faker"].filter((n) => machines.some((m) => m.agent_id === keys[n as keyof typeof keys].id));
+  check("every worker process sends heartbeats with its declared capabilities", beating.length === 6 && machines.filter((m) => beating.some((n) => keys[n as keyof typeof keys].id === m.agent_id)).every((m) => m.caps_match === true), `${beating.join(",")} of ref,v1,v2,v3,v4,faker`);
   const st = await ok(admin.get("/v1/stats"), "stats");
-  check("stats count machines awake and verified gains", st.machines_awake >= 5 && st.verified_gains === 2, `awake ${st.machines_awake} of ${st.machines}, gains ${st.verified_gains}`);
+  check("stats count machines awake and verified gains", st.machines_awake >= 6 && st.verified_gains === 2, `awake ${st.machines_awake} of ${st.machines}, gains ${st.verified_gains}`);
   const acts = await ok<any[]>(admin.get(`/v1/activity?agent=${keys.author.id}&limit=1000`), "activity");
   const edits = acts.filter((a) => a.kind === "edit");
   check(
@@ -342,14 +358,16 @@ async function main() {
       check(`${name} still rejected with a liar among replayers`, f.status === "rejected", `${f.status} ${f.reason ?? ""}`);
     }
   }
-  await waitFor("canaries settled", async () => {
+  // canaries are committed and revealed by shadows on later ticks (SPEC 10.5), so wait for them too
+  await waitFor("canaries injected and settled", async () => {
     const cs = await ok<any[]>(admin.get(`/v1/candidates?lineage=${L}`), "candidates");
-    return cs.filter((c) => !FINAL.has(c.status)).length === 0;
+    const canaries = cs.filter((c) => c.author !== keys.author.id);
+    return canaries.length >= triggers.length && cs.every((c) => FINAL.has(c.status));
   });
   const after = await ok(admin.get(`/v1/admin/agents/${keys.liar.id}`, true), "liar");
   const slashed = BigInt(after.slashed_total) - BigInt(before.slashed_total);
   check("fabricating verifier slashed and struck", slashed > 0n && after.strikes_total > 0, `slashed ${slashed}, strikes ${after.strikes_total}`);
-  const honest = await Promise.all((["v1", "v2", "v3"] as const).map((n) => ok(admin.get(`/v1/agents/${keys[n].id}`), n)));
+  const honest = await Promise.all((["v1", "v2", "v3", "v4"] as const).map((n) => ok(admin.get(`/v1/agents/${keys[n].id}`), n)));
   check("no honest verifier slashed", honest.every((h) => h.slashed_total === "0"), honest.map((h) => h.slashed_total).join(","));
   const events = await ok<any>(admin.get("/v1/events/log?since=0&limit=5000"), "events");
   const evs: any[] = Array.isArray(events) ? events : events.events ?? [];

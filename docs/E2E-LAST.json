@@ -1,6 +1,6 @@
 {
-  "at": "2026-10-07T21:18:21.493Z",
-  "seconds": 380,
+  "at": "2026-10-07T23:51:23.588Z",
+  "seconds": 242,
   "results": [
     {
       "check": "recipe id recomputed by Core matches the worker's",
@@ -10,7 +10,7 @@
     {
       "check": "calibration accepted, lineage created",
       "ok": true,
-      "detail": "{\"lineage_id\":\"385030aabff2e6cb7ae955f798bb5dafdd043a20be14d4a62479d7c5660521a3\",\"calib_id\":\"5b97f43abcb9b9b9d9fc98765cc"
+      "detail": "{\"lineage_id\":\"385030aabff2e6cb7ae955f798bb5dafdd043a20be14d4a62479d7c5660521a3\",\"calib_id\":\"1233a0bf303db9c0cc16ed54b72"
     },
     {
       "check": "stable set and known failure from real calibration",
@@ -35,7 +35,7 @@
     {
       "check": "fabricated qualification fails against calibration; no slash, no strike",
       "ok": true,
-      "detail": "encode_ir base 1000 differs from calibrated 44113109 beyond tolerance 0.001"
+      "detail": "encode_ir base 1000 differs from calibrated 44112753 beyond tolerance 0.001"
     },
     {
       "check": "a verifier declaring the wrong arch gets no qualification",
@@ -73,24 +73,24 @@
       "detail": "rejected guard"
     },
     {
-      "check": "sealed replays never expose a candidate id via live endpoints before it is final",
+      "check": "sealed replays never expose a candidate id or a replaying verifier via public live endpoints before final",
       "ok": true,
-      "detail": "189 samples, 472 sealed replay heartbeats seen, 0 leaks "
+      "detail": "154 samples, 298 sealed replay heartbeats seen, 0 leaks "
     },
     {
       "check": "heartbeats carry real replay phases from the sandbox",
       "ok": true,
-      "detail": "observed author:propose, qualify:commit, replay:build, replay:commit, replay:equivalence, replay:metrics, replay:test"
+      "detail": "observed author:propose, qualify:commit, replay:build, replay:equivalence, replay:metrics, replay:reveal, replay:test"
     },
     {
       "check": "every worker process sends heartbeats with its declared capabilities",
       "ok": true,
-      "detail": "ref,v1,v2,v3,faker of ref,v1,v2,v3,faker"
+      "detail": "ref,v1,v2,v3,v4,faker of ref,v1,v2,v3,v4,faker"
     },
     {
       "check": "stats count machines awake and verified gains",
       "ok": true,
-      "detail": "awake 6 of 6, gains 2"
+      "detail": "awake 7 of 7, gains 2"
     },
     {
       "check": "author activity arrives: edits with path and parent range checked against the generation tree, then propose and submit",
@@ -155,7 +155,7 @@
     {
       "check": "no honest verifier slashed",
       "ok": true,
-      "detail": "0,0,0"
+      "detail": "0,0,0,0"
     },
     {
       "check": "the fabricating verifier was caught by a canary",
@@ -180,17 +180,17 @@
     {
       "check": "epoch closed with a payout root",
       "ok": true,
-      "detail": "4 payouts"
+      "detail": "5 payouts"
     },
     {
       "check": "ledger reconciles to zero with no negative balances",
       "ok": true,
-      "detail": "{\"ok\":true,\"errors\":[],\"entries\":72,\"transactions\":36,\"total\":\"0\",\"balances\":{\"agent:5W5X7WYfNmFhRSFjWrdKr2RU9pzK4DWxSDNuHbmdZLvm:bond\":\"5000000000\",\"agent:5W5X"
+      "detail": "{\"ok\":true,\"errors\":[],\"entries\":112,\"transactions\":56,\"total\":\"0\",\"balances\":{\"agent:2vw2UgKyWUDUqKh8gKHMUn17exL9DnXsxMoLQQhrJZkT:bond\":\"5000000000\",\"agent:2vw"
     },
     {
       "check": "verifier claims its epoch payout with a Merkle proof",
       "ok": true,
-      "detail": "{\"epoch\":0,\"agent\":\"5W5X7WYfNmFhRSFjWrdKr2RU9pzK4DWxSDNuHbmdZLvm\",\"dest\":\"agent:5W5X7WYfNmFhRSFjWrdKr2RU9pzK4DWxSDNuHbmdZLvm:wallet\",\"amount\":\"29660242003\",\"bal"
+      "detail": "{\"epoch\":0,\"agent\":\"DnZ9aJvvBrkK8XCetNJUQPzLU9rKkYbQmuvjmBpR5zNq\",\"dest\":\"agent:DnZ9aJvvBrkK8XCetNJUQPzLU9rKkYbQmuvjmBpR5zNq:wallet\",\"amount\":\"25323105669\",\"bal"
     },
     {
       "check": "another agent cannot claim that leaf",
