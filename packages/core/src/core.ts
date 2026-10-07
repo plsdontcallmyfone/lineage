@@ -1284,9 +1284,28 @@ export class Core {
     return { candidate_id: c.candidate_id!, author: c.author, kind: c.kind, target: JSON.parse(c.target) };
   }
 
-  private lineageCtx(c: CandRow) {
+  private lineageCtx(c: CandRow, evalParent: string = c.eval_parent_gen_id) {
     const l = this.lineageRow(c.lineage_id)!;
-    return { l, recipe: this.recipeOf(l.recipe_id), calib: this.calibOf(l.calib_id) };
+    return { l, recipe: this.recipeOf(l.recipe_id), calib: this.effectiveCalibration(l.calib_id, evalParent) };
+  }
+
+  /**
+   * Calibration as seen at a generation (SPEC 9.3): tests fixed by `fix` generations in its patch
+   * series join the stable set and leave the known failures, so measurement stays tip-relative.
+   */
+  effectiveCalibration(calib_id: string, gen: string): Calibration {
+    const calib = this.calibOf(calib_id);
+    const fixed = new Set<string>();
+    for (const p of this.patchSeries(gen)) {
+      const g = this.genRow(p.gen_id)!;
+      if (g.kind === "fix" && g.effect) for (const t of (JSON.parse(g.effect) as { fixed: string[] }).fixed) fixed.add(t);
+    }
+    if (!fixed.size) return calib;
+    return {
+      ...calib,
+      stable: [...new Set([...calib.stable, ...fixed])].sort(),
+      known_failures: calib.known_failures.filter((t) => !fixed.has(t)),
+    };
   }
 
   // ---------------------------------------------------------------------------------------------
@@ -2069,7 +2088,7 @@ export class Core {
 
   assignmentView(r: ReplayRow) {
     const c = this.candByCandidateId(r.candidate_id)!;
-    const { l, recipe, calib } = this.lineageCtx(c);
+    const { l, recipe, calib } = this.lineageCtx(c, r.eval_parent_gen_id);
     const snap = this.db.query<{ commit_sha: string; deps_digest: string }, [string]>("SELECT * FROM snapshots WHERE snapshot_id = ?").get(l.snapshot_id)!;
     const repo = this.db.query<{ url: string }, [string]>("SELECT url FROM repos WHERE repo_id = ?").get(l.repo_id)!;
     return {

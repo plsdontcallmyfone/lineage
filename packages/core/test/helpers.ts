@@ -260,29 +260,35 @@ export type Behaviour = (agent: Agent, asg: any) => ReplayResult | "skip" | "com
  * Drives every open assignment of a candidate (and its audits) until nothing is outstanding:
  * all assigned agents commit, then all reveal. Behaviour decides each agent's result.
  */
+const committed = new Map<string, Awaited<ReturnType<typeof commitReplay>>>();
+
 export async function runReplays(env: Env, candidateId: string, behave: Behaviour, maxRounds = 10) {
   for (let round = 0; round < maxRounds; round++) {
-    const pending: Awaited<ReturnType<typeof commitReplay>>[] = [];
-    let any = false;
+    let progressed = false;
     for (const a of allAgents(env)) {
       for (const asg of await assignmentsFor(a, candidateId)) {
-        any = true;
         if (asg.status !== "assigned") continue;
         const r = behave(a, asg);
         if (r === "skip") continue;
+        progressed = true;
         if (r === "commit-only") {
           await commitReplay(a, asg, result());
           continue;
         }
-        pending.push(await commitReplay(a, asg, r));
+        committed.set(asg.replay_id, await commitReplay(a, asg, r));
       }
     }
-    if (!any) return;
-    for (const p of pending) {
-      const asg = (await assignmentsFor(p.a, candidateId)).find((x) => x.replay_id === p.asg.replay_id);
-      if (asg?.reveal_open) await revealReplay(p);
+    for (const a of allAgents(env)) {
+      for (const asg of await assignmentsFor(a, candidateId)) {
+        const p = committed.get(asg.replay_id);
+        if (asg.reveal_open && p) {
+          committed.delete(asg.replay_id);
+          await revealReplay(p);
+          progressed = true;
+        }
+      }
     }
-    if (!pending.length) return;
+    if (!progressed) return;
   }
 }
 
