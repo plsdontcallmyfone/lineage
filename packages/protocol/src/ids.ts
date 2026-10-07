@@ -1,4 +1,4 @@
-import { H, hashJson } from "./hash.ts";
+import { canonicalJson, H, hashJson } from "./hash.ts";
 import type { CandidateKind, Hex, Recipe } from "./types.ts";
 
 // Identifier derivations, SPEC section 4.
@@ -28,7 +28,8 @@ export function candidateId(p: {
   kind: CandidateKind;
   target: string | string[];
 }): Hex {
-  const target = Array.isArray(p.target) ? [...p.target].sort().join(",") : p.target;
+  // canonical JSON of the sorted list: joining with "," would let ["a,b"] collide with ["a","b"]
+  const target = Array.isArray(p.target) ? canonicalJson([...p.target].sort()) : p.target;
   return H("cand", p.lineage_id, p.parent_gen_id, p.patch_hash, p.author, p.kind, target);
 }
 

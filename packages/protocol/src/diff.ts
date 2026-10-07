@@ -26,7 +26,9 @@ function stripPrefix(p: string, prefix: "a/" | "b/"): string | null {
 
 /** Parses `git diff` output (with or without index lines). */
 export function parseDiff(text: string): FileDiff[] {
-  const lines = text.replace(/\r\n/g, "\n").split("\n");
+  // split on LF only: a CR inside a hunk body is file content (CRLF files) and must survive, or the
+  // patch would never apply and CRLF and LF variants would share a patch hash
+  const lines = text.split("\n");
   if (lines.length && lines[lines.length - 1] === "") lines.pop();
   const files: FileDiff[] = [];
   let cur: FileDiff | null = null;
@@ -35,7 +37,10 @@ export function parseDiff(text: string): FileDiff[] {
   let newLeft = 0;
 
   for (let i = 0; i < lines.length; i++) {
-    const line = lines[i]!;
+    const raw = lines[i]!;
+    // hunk body lines keep their CR; structural lines are matched without it
+    const inBody = inHunk && (oldLeft > 0 || newLeft > 0);
+    const line = inBody ? raw : raw.replace(/\r$/, "");
     if (line.startsWith("diff --git ")) {
       if (inHunk && (oldLeft !== 0 || newLeft !== 0)) throw new DiffParseError("truncated hunk");
       const m = /^diff --git (\S+|"[^"]+") (\S+|"[^"]+")$/.exec(line);

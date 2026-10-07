@@ -54,6 +54,11 @@ function envOk(r: ReplayResult, calib: Calibration, excluded: Set<string>): bool
 
 type FieldValue = string;
 
+/** Non-finite numbers have no canonical JSON; hash them as tagged strings so judging never throws. */
+function finiteOnly<T>(v: T): T {
+  return JSON.parse(JSON.stringify(v, (_k, x) => (typeof x === "number" && !Number.isFinite(x) ? `__nonfinite:${String(x)}` : x)));
+}
+
 /** Fields whose honest value depends on the replay seed. */
 const SEED_DEPENDENT = new Set(["equivalence"]);
 
@@ -131,8 +136,8 @@ export function judge(
         calib_stable: sortedUniq(calib.stable),
         replays: [...replays]
           .sort((a, b) => (a.replay_id < b.replay_id ? -1 : 1))
-          .map((r) => ({ id: r.replay_id, by: r.replayer, seed: r.seed, result: hashJson(r.result) })),
-        outcome: j,
+          .map((r) => ({ id: r.replay_id, by: r.replayer, seed: r.seed, result: hashJson(finiteOnly(r.result)) })),
+        outcome: finiteOnly(j),
       }),
     );
   const finish = (j: Omit<Judgement, "digest" | "env_failed">): Judgement => {
@@ -214,7 +219,9 @@ export function judge(
   if (r0.guard !== "ok") return reject("guard", r0.guard);
   if (r0.apply !== "ok") return reject("apply_conflict", "patch does not apply to parent");
   if (r0.build.cand !== "ok") return reject("build_fail", "candidate build failed");
-  const candPass = new Set(r0.tests.cand_pass);
+  // a test that is reported both passing and failing (duplicate or forged output) counts as failing
+  const candFail = new Set(r0.tests.cand_fail);
+  const candPass = new Set(r0.tests.cand_pass.filter((t) => !candFail.has(t)));
   const broken = calib.stable.filter((t) => !candPass.has(t));
   if (broken.length) return reject("tests_fail", `${broken.length} stable tests fail: ${broken.slice(0, 10).join(", ")}`);
 
@@ -245,6 +252,12 @@ export function judge(
   for (const r of counted) {
     const s = r.result.metrics[metric.name];
     if (!s || s.base.length === 0 || s.cand.length === 0) return reject("no_improvement", `replay ${r.replay_id} has no samples for ${metric.name}`);
+    // every metric here is a count, a size or a duration: only finite positive samples are measurements
+    if (![...s.base, ...s.cand].every((v) => typeof v === "number" && Number.isFinite(v) && v > 0))
+      return reject("no_improvement", `replay ${r.replay_id} reported a non-positive or non-finite sample for ${metric.name}`);
+    const minSamples = metric.deterministic ? 1 : Math.max(5, metric.rounds ?? 5);
+    if (s.base.length < minSamples || s.cand.length < minSamples)
+      return reject("no_improvement", `replay ${r.replay_id} has ${Math.min(s.base.length, s.cand.length)} samples for ${metric.name}, ${minSamples} required`);
     if (metric.deterministic) {
       const ratio = orientedRatio(median(s.base), median(s.cand), metric.direction);
       per.push({ replay_id: r.replay_id, ratio, ci_low: ratio, ci_high: ratio, pass: ratio <= threshold });
