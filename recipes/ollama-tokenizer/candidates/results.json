@@ -1,0 +1,49 @@
+{
+  "bpe_no_concat": {
+    "expect": "accepted",
+    "outcome": "accepted",
+    "reason": null,
+    "detail": null,
+    "effect": {
+      "metric": "encode_ir",
+      "ratio": 0.8532613364102662,
+      "ci_low": 0.8532613364102662,
+      "ci_high": 0.8532613364102662,
+      "per_replay": [
+        {
+          "replay_id": "r1",
+          "ratio": 0.8532613364102662,
+          "ci_low": 0.8532613364102662,
+          "ci_high": 0.8532613364102662,
+          "pass": true
+        }
+      ]
+    },
+    "metrics": {
+      "encode_ir": {
+        "base": [
+          531912361
+        ],
+        "cand": [
+          453860252
+        ],
+        "ratio": 0.8532613364102662
+      },
+      "decode_ir": {
+        "base": [
+          38937751
+        ],
+        "cand": [
+          38931361
+        ],
+        "ratio": 0.9998358919086004
+      }
+    },
+    "equivalence": "same",
+    "seed": "7265706c61792d62",
+    "recipe_id": "72bc32d2af5498f9035124fb64a77df317640c29536244b8725634c858037c09",
+    "eval_seconds": 201.4,
+    "date": "2026-10-07T22:16:54.057Z",
+    "match": true
+  }
+}

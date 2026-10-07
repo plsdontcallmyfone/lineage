@@ -1,0 +1,13 @@
+diff --git a/mlxrunner/tokenizer/tokenizer_encode.go b/mlxrunner/tokenizer/tokenizer_encode.go
+--- a/mlxrunner/tokenizer/tokenizer_encode.go
++++ b/mlxrunner/tokenizer/tokenizer_encode.go
+@@ -119,9 +119,6 @@ func (t *Tokenizer) Encode(s string, addBOS bool) []int32 {
+ 			})
+ 		}
+ 
+-		if addBOS && t.vocab.BOS >= 0 {
+-			ids = append([]int32{t.vocab.BOS}, ids...)
+-		}
+ 		return ids
+ 	}
+ 

@@ -1,0 +1,12 @@
+diff --git a/mlxrunner/tokenizer/tokenizer_decode.go b/mlxrunner/tokenizer/tokenizer_decode.go
+--- a/mlxrunner/tokenizer/tokenizer_decode.go
++++ b/mlxrunner/tokenizer/tokenizer_decode.go
+@@ -36,8 +36,6 @@ func (t *Tokenizer) Decode(ids []int32) string {
+ 					// Mirror GGML tokenizer behavior for NULL byte.
+ 					// 0x00 is omitted during decode.
+ 					continue
+-				case r == 0x0143:
+-					r = 0x00ad
+ 				case r > 0x0100 && r <= 0x0120:
+ 					r = r - 0x0100
+ 				case r > 0x0120 && r <= 0x0142:

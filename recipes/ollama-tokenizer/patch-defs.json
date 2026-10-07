@@ -1,0 +1,72 @@
+{
+  "canaries": [
+    {
+      "name": "drop_bos",
+      "kind": "perf",
+      "target": "encode_ir",
+      "expect": "tests_fail",
+      "note": "Presented as avoiding the copy that prepends BOS ('callers add it themselves'); Encode(s, true) no longer starts with the BOS token.",
+      "edits": [
+        [
+          "mlxrunner/tokenizer/tokenizer_encode.go",
+          "\t\tif addBOS && t.vocab.BOS >= 0 {\n\t\t\tids = append([]int32{t.vocab.BOS}, ids...)\n\t\t}\n\t\treturn ids\n\t}\n\n\t// For large inputs",
+          "\t\treturn ids\n\t}\n\n\t// For large inputs"
+        ]
+      ]
+    },
+    {
+      "name": "no_soft_hyphen_map",
+      "kind": "perf",
+      "target": "decode_ir",
+      "expect": "equivalence_changed",
+      "note": "Drops the U+0143 -> 0xAD case from Decode's byte-level switch as 'unreachable'; tokens that carry byte 0xAD (the second byte of many UTF-8 characters, e.g. U+00ED) now decode to 'C'. The round-trip tests use no text containing that byte.",
+      "edits": [
+        [
+          "mlxrunner/tokenizer/tokenizer_decode.go",
+          "\t\t\t\tcase r == 0x0143:\n\t\t\t\t\tr = 0x00ad\n",
+          ""
+        ]
+      ]
+    },
+    {
+      "name": "no_grow",
+      "kind": "perf",
+      "target": "encode_ir",
+      "expect": "no_improvement",
+      "note": "Removes the up-front Grow in the byte-to-rune conversion as 'over-allocation'; the builder then reallocates as it grows, which is not cheaper.",
+      "edits": [
+        [
+          "mlxrunner/tokenizer/tokenizer_encode.go",
+          "\t\tvar sb strings.Builder\n\t\tsb.Grow(len(s) * 2)\n",
+          "\t\tvar sb strings.Builder\n"
+        ]
+      ]
+    }
+  ],
+  "candidates": [
+    {
+      "name": "bpe_no_concat",
+      "kind": "perf",
+      "target": "encode_ir",
+      "expect": "accepted",
+      "note": "encodeBPEMerge builds each merge-table key ('left right') in one reused byte buffer and looks it up with m[string(buf)] (which Go does without allocating or copying), instead of concatenating three strings per candidate pair; and a popped pair is checked still current by comparing lengths (both tokens and the pair value are spans of the same encoded string starting at the left node) instead of concatenating the two tokens and comparing bytes.",
+      "edits": [
+        [
+          "mlxrunner/tokenizer/tokenizer_bpe.go",
+          "\tpairwise := func(left, right int) (bpePair, bool) {",
+          "\tvar key []byte\n\tpairwise := func(left, right int) (bpePair, bool) {"
+        ],
+        [
+          "mlxrunner/tokenizer/tokenizer_bpe.go",
+          "\t\trank, ok := t.vocab.Merges[leftToken+\" \"+rightToken]",
+          "\t\tkey = append(append(append(key[:0], leftToken...), ' '), rightToken...)\n\t\trank, ok := t.vocab.Merges[string(key)]"
+        ],
+        [
+          "mlxrunner/tokenizer/tokenizer_bpe.go",
+          "\t\tif left.token+right.token != pair.value {",
+          "\t\t// Both tokens are adjacent spans of encoded starting at the left node, as is\n\t\t// pair.value, so equal length means equal text.\n\t\tif len(left.token)+len(right.token) != len(pair.value) {"
+        ]
+      ]
+    }
+  ]
+}

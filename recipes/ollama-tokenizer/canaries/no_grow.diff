@@ -1,0 +1,11 @@
+diff --git a/mlxrunner/tokenizer/tokenizer_encode.go b/mlxrunner/tokenizer/tokenizer_encode.go
+--- a/mlxrunner/tokenizer/tokenizer_encode.go
++++ b/mlxrunner/tokenizer/tokenizer_encode.go
+@@ -206,7 +206,6 @@ func (t *Tokenizer) encodeChunkInto(s string, ids []int32) []int32 {
+ 		encoded = strings.ReplaceAll(s, " ", "▁")
+ 	} else {
+ 		var sb strings.Builder
+-		sb.Grow(len(s) * 2)
+ 		for i := range len(s) {
+ 			sb.WriteRune(byteToRune[s[i]])
+ 		}

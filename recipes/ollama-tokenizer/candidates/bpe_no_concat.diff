@@ -1,0 +1,32 @@
+diff --git a/mlxrunner/tokenizer/tokenizer_bpe.go b/mlxrunner/tokenizer/tokenizer_bpe.go
+--- a/mlxrunner/tokenizer/tokenizer_bpe.go
++++ b/mlxrunner/tokenizer/tokenizer_bpe.go
+@@ -79,6 +79,7 @@ func (t *Tokenizer) encodeBPEMerge(encoded string, ids []int32) []int32 {
+ 		})
+ 	}
+ 
++	var key []byte
+ 	pairwise := func(left, right int) (bpePair, bool) {
+ 		if left < 0 || right >= len(nodes) {
+ 			return bpePair{}, false
+@@ -88,7 +89,8 @@ func (t *Tokenizer) encodeBPEMerge(encoded string, ids []int32) []int32 {
+ 		}
+ 
+ 		leftToken, rightToken := nodes[left].token, nodes[right].token
+-		rank, ok := t.vocab.Merges[leftToken+" "+rightToken]
++		key = append(append(append(key[:0], leftToken...), ' '), rightToken...)
++		rank, ok := t.vocab.Merges[string(key)]
+ 		if !ok {
+ 			return bpePair{}, false
+ 		}
+@@ -124,7 +126,9 @@ func (t *Tokenizer) encodeBPEMerge(encoded string, ids []int32) []int32 {
+ 		if left.next != pair.right || right.prev != pair.left {
+ 			continue
+ 		}
+-		if left.token+right.token != pair.value {
++		// Both tokens are adjacent spans of encoded starting at the left node, as is
++		// pair.value, so equal length means equal text.
++		if len(left.token)+len(right.token) != len(pair.value) {
+ 			continue
+ 		}
+ 

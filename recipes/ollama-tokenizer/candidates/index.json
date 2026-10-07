@@ -1,0 +1,10 @@
+{
+  "bpe_no_concat": {
+    "kind": "perf",
+    "target": "encode_ir",
+    "expect": "accepted",
+    "note": "encodeBPEMerge builds each merge-table key ('left right') in one reused byte buffer and looks it up with m[string(buf)] (which Go does without allocating or copying), instead of concatenating three strings per candidate pair; and a popped pair is checked still current by comparing lengths (both tokens and the pair value are spans of the same encoded string starting at the left node) instead of concatenating the two tokens and comparing bytes.",
+    "lines": 8,
+    "guard": "ok"
+  }
+}

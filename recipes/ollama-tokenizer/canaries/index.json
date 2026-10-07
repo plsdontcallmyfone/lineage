@@ -1,0 +1,26 @@
+{
+  "drop_bos": {
+    "kind": "perf",
+    "target": "encode_ir",
+    "expect": "tests_fail",
+    "note": "Presented as avoiding the copy that prepends BOS ('callers add it themselves'); Encode(s, true) no longer starts with the BOS token.",
+    "lines": 3,
+    "guard": "ok"
+  },
+  "no_soft_hyphen_map": {
+    "kind": "perf",
+    "target": "decode_ir",
+    "expect": "equivalence_changed",
+    "note": "Drops the U+0143 -> 0xAD case from Decode's byte-level switch as 'unreachable'; tokens that carry byte 0xAD (the second byte of many UTF-8 characters, e.g. U+00ED) now decode to 'C'. The round-trip tests use no text containing that byte.",
+    "lines": 2,
+    "guard": "ok"
+  },
+  "no_grow": {
+    "kind": "perf",
+    "target": "encode_ir",
+    "expect": "no_improvement",
+    "note": "Removes the up-front Grow in the byte-to-rune conversion as 'over-allocation'; the builder then reallocates as it grows, which is not cheaper.",
+    "lines": 1,
+    "guard": "ok"
+  }
+}

@@ -1,0 +1,86 @@
+# ollama/ollama, package mlxrunner/tokenizer: Ollama's pure-Go Hugging Face tokenizer.json
+# implementation (byte-level BPE and SentencePiece-style BPE, pretokenizer regexes, added and
+# special tokens, NFC normalisation) used by its MLX runner. MIT licence (LICENSE).
+# Contribution policy: CONTRIBUTING.md asks for an issue before non-trivial PRs and lists
+# performance work as wanted; AGENTS.md is build notes for agents; no ban on AI-generated
+# changes (checked 2026-10-07). Upstream PRs only after opt-in (SPEC 16).
+#
+# Why: tokenisation runs on every prompt and every streamed response; the encoder walks
+# pretokenizer regex matches and a heap-based BPE merge per chunk, so instruction counts of
+# encoding real text have headroom. The package builds alone with CGO off (its only module
+# dependency outside the standard library is golang.org/x/text; the test files also pull in
+# Ollama's manifest and transfer packages for opt-in reference tests that skip offline).
+#
+# Workload: the Llama 3.2 tokenizer (128K vocabulary, 280K merges) assembled from the fixture
+# upstream ships in mlxrunner/tokenizer/testdata/llama3.2, the same way upstream's
+# TestGGMLLlamaKnownEncodings builds it, encoding seeded windows of the repo's own docs (with
+# special tokens, CJK, emoji and whitespace runs spliced in) and decoding the ids.
+#
+# Mirror: GitHub reports ~95 MB for the full history; the reference runner seeded
+# ~/.lineage/mirrors with a single-commit shallow fetch (26 MB).
+#
+# Determinism: same measures as geth-rlp (callgrind --toggle-collect=main.run so loading the
+# vocabulary and building inputs are not counted; GOMAXPROCS=1, which also keeps Encode on its
+# sequential path; GOGC=off; GODEBUG=asyncpreemptoff=1,memprofilerate=0; harness built with
+# GOEXPERIMENT=norandomizedheapbase64; stack-probe entry so valgrind can start a Go binary;
+# goroutine pinned to its P while measuring). cv recorded in calibration.json.
+name: ollama-tokenizer
+class: go
+requires: { arch: arm64 }
+repo: https://github.com/ollama/ollama
+commit: "468e7e500842f7d17cf2ff47b80f454d6ca2949c"
+image: "lineage/go:1.26.8@sha256:7f90f7bb53ceec9f7b62ed14867b6439c7020fa8439ff5ea4daf891a84069838"
+workdir: /work/src
+prepare:
+  - go list -deps -test ./mlxrunner/tokenizer/ ./lineage/... > /dev/null
+  - du -sh /deps/gomod
+prepare_outputs: []
+build:
+  commands:
+    - export GOCACHE=/work/src/.lineage-gocache
+    - go build ./mlxrunner/tokenizer/
+    - GOEXPERIMENT=norandomizedheapbase64 go build -ldflags=-E=main.lineageEntry -o lineage_bin/ ./lineage/tokbench
+    - go build -o lineage_bin/ ./lineage/tokequiv
+  artifacts: []
+  reproducible: false
+test:
+  command: GOCACHE=/work/src/.lineage-gocache go test -json -count=1 -p 1 ./mlxrunner/tokenizer/ | gotap
+  parser: tap
+  exclude: []
+  timeout_s: 1200
+equivalence:
+  command: lineage_bin/tokequiv "$LINEAGE_SEED"
+  output: stdout-digest
+metrics:
+  - name: encode_ir
+    kind: perf
+    direction: lower
+    deterministic: true
+    command: GOMAXPROCS=1 GOGC=off GODEBUG=asyncpreemptoff=1,memprofilerate=0 valgrind --tool=callgrind --toggle-collect=main.run --dump-instr=no --callgrind-out-file=/dev/null lineage_bin/tokbench encode "$LINEAGE_SEED"
+    parser: cachegrind-ir
+    holdout: true
+    min_effect: 0.01
+  - name: decode_ir
+    kind: perf
+    direction: lower
+    deterministic: true
+    command: GOMAXPROCS=1 GOGC=off GODEBUG=asyncpreemptoff=1,memprofilerate=0 valgrind --tool=callgrind --toggle-collect=main.run --dump-instr=no --callgrind-out-file=/dev/null lineage_bin/tokbench decode "$LINEAGE_SEED"
+    parser: cachegrind-ir
+    holdout: true
+    min_effect: 0.01
+patch:
+  allowed_paths: ["mlxrunner/tokenizer/*.go"]
+  protected_paths:
+    - "**/*_test.go"
+    - "**/testdata/**"
+    - "go.mod"
+    - "go.sum"
+    - "docs/**"
+    - "lineage/**"
+    - "lineage_bin/**"
+    - ".github/**"
+    - "**/*.yml"
+    - "**/*.yaml"
+  max_files: 5
+  max_lines: 200
+limits: { cpus: 2, memory_mb: 3072, pids: 512, wall_s: 1800, disk_mb: 4096 }

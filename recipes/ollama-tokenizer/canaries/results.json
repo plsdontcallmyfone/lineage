@@ -1,0 +1,115 @@
+{
+  "drop_bos": {
+    "expect": "tests_fail",
+    "outcome": "rejected",
+    "reason": "tests_fail",
+    "detail": "6 stable tests fail: github.com/ollama/ollama/mlxrunner/tokenizer::TestSpecialTokenConfig, github.com/ollama/ollama/mlxrunner/tokenizer::TestSpecialTokenConfig/generation_wins_including_token_zero, github.com/ollama/ollama/mlxrunner/tokenizer::TestSpecialTokenConfig/map_fills_only_missing_tokens, github.com/ollama/ollama/mlxrunner/tokenizer::TestSpecialTokenConfig/model_fills_only_missing_IDs, github.com/ollama/ollama/mlxrunner/tokenizer::TestSpecialTokenConfig/special_token_map_fallback, github.com/ollama/ollama/mlxrunner/tokenizer::TestSpecialTokenConfig/tokenizer_strings_and_objects",
+    "effect": null,
+    "metrics": {
+      "encode_ir": {
+        "base": [
+          559138799
+        ],
+        "cand": [
+          559136313
+        ],
+        "ratio": 0.9999955538767754
+      },
+      "decode_ir": {
+        "base": [
+          40949238
+        ],
+        "cand": [
+          40947910
+        ],
+        "ratio": 0.9999675696041035
+      }
+    },
+    "equivalence": "same",
+    "seed": "7265706c61792d64",
+    "recipe_id": "72bc32d2af5498f9035124fb64a77df317640c29536244b8725634c858037c09",
+    "eval_seconds": 223.6,
+    "date": "2026-10-07T22:06:54.507Z",
+    "match": true
+  },
+  "no_soft_hyphen_map": {
+    "expect": "equivalence_changed",
+    "outcome": "rejected",
+    "reason": "equivalence_changed",
+    "detail": "candidate output differs from parent on seeded inputs",
+    "effect": null,
+    "metrics": {
+      "encode_ir": {
+        "base": [
+          534134661
+        ],
+        "cand": [
+          534135991
+        ],
+        "ratio": 1.0000024900087883
+      },
+      "decode_ir": {
+        "base": [
+          39334156
+        ],
+        "cand": [
+          37895489
+        ],
+        "ratio": 0.9634244853251713
+      }
+    },
+    "equivalence": "changed",
+    "seed": "7265706c61792d6e",
+    "recipe_id": "72bc32d2af5498f9035124fb64a77df317640c29536244b8725634c858037c09",
+    "eval_seconds": 220,
+    "date": "2026-10-07T22:10:34.543Z",
+    "match": true
+  },
+  "no_grow": {
+    "expect": "no_improvement",
+    "outcome": "rejected",
+    "reason": "no_improvement",
+    "detail": "worst ratio 1.0027 vs required 0.9900",
+    "effect": {
+      "metric": "encode_ir",
+      "ratio": 1.0026523070312834,
+      "ci_low": 1.0026523070312834,
+      "ci_high": 1.0026523070312834,
+      "per_replay": [
+        {
+          "replay_id": "r1",
+          "ratio": 1.0026523070312834,
+          "ci_low": 1.0026523070312834,
+          "ci_high": 1.0026523070312834,
+          "pass": false
+        }
+      ]
+    },
+    "metrics": {
+      "encode_ir": {
+        "base": [
+          534136125
+        ],
+        "cand": [
+          535552818
+        ],
+        "ratio": 1.0026523070312834
+      },
+      "decode_ir": {
+        "base": [
+          39333655
+        ],
+        "cand": [
+          39334377
+        ],
+        "ratio": 1.0000183557820905
+      }
+    },
+    "equivalence": "same",
+    "seed": "7265706c61792d6e",
+    "recipe_id": "72bc32d2af5498f9035124fb64a77df317640c29536244b8725634c858037c09",
+    "eval_seconds": 178.1,
+    "date": "2026-10-07T22:13:32.609Z",
+    "match": true
+  }
+}
