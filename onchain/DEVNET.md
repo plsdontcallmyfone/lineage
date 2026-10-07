@@ -8,7 +8,45 @@
 - Binaries deployed: `lineage_registry.so` sha256 `14b534cc2165e9888426b8a9de0c4d3c7bd69cbe704715cfc7c9af086407c2b4`, `lineage_launch.so` sha256 `fae228465be7b037156e9efb960a009c4cb53db7b3fb53ba6b239a6a1b25a86b`; the registry dump from devnet hashes the same. 16/16 onchain tests passed against these exact files before deploy.
 - Funding: 8.5 devnet SOL from the Instance devnet deployer `HzGbDTD7CR8pS2jDXadzwNxpAg2eM5sPfvFU8mtkacHB` (owner instruction, 2026-10-07), sig `3qQRaMbZCEgfQZnQuJV3R36sG8qu5XdStpTTUUCFFn1DfEqXGzBAqNSkKDnuDa16Pc58zH1qQEN9u9PpEr6xCSGQ`. Deployer balance after both deploys: 3.19212828 SOL.
 - Exact `--max-len`: any upgrade that grows a program needs `solana program extend` first.
-- Not yet initialized (needs a devnet $LINE test mint, `initialize`, a DBC config and `initialize_launch`; see DEPLOY.md "After the deploy").
+- Initialized 2026-10-07 by the devnet wiring lane (`scripts/devnet/setup.ts`), see below.
+
+## Wiring (2026-10-07, devnet wiring lane)
+
+Scripts: `scripts/devnet/setup.ts` (steps a to f, each idempotent and read back), `scripts/devnet/e2e-devnet.ts` (a short network with Core in chain mode), `scripts/devnet/record-fixtures.ts` (RPC fixtures for the Core tests). Public addresses: `scripts/devnet/devnet.json`. Keys: `~/.config/lineage/devnet/*.json` (mode 600), never in the repo. Nothing touched `solana config` or `~/.config/solana/id.json`.
+
+| What | Address |
+|---|---|
+| TEST `$LINE` mint "Lineage Test LINE (TEST)", symbol tLINE, Token-2022 with metadata pointer and metadata, 6 decimals, 1,000,000,000 supply, mint authority revoked, no freeze authority | `3PLqpwWokAbpxZgBVLAzMAeLSvzfoDvjkhH9YydwVXmU` |
+| Registry admin and launch admin (the deployer, for now) | `CVEZWyUBoNb6Zkte3qa7JDu5TBV4wTH6wMw4pLodnDih` |
+| Core authority | `CjNUnQ3v2FRQJiMr16CfaFWCdzJ3nqq1VvY2zAgsc4j9` |
+| Runtime authority / compute sink (its tLINE ATA) | `DCmdy5MoAfnN6fn3nVW27db62ZwtjoksqSqdjAc8VPk4` / `8fFdkfzJDMCBzhnfKUfdNeUimgr8QEBUYGoTPg5CYn44` |
+| DBC config (fee claimer and leftover receiver = launch authority PDA; the suite's standard curve, TEST values) | `AEcaMdhK3PSqPDq2rrXZMoKsCPCTVTMdqJXaT34mWWGw` |
+| TEST agent on https://github.com/karpathy/minbpe (hosted, identity app): agent / mint / launcher | `BFPxdave7NVSXztGEZA5iZ7FiBDKRsuZmS9wZn2J1WBV` / `3AvZ77ZdVPx7yxtqA4UP11DoaPdjdgP3AUbkSnidsmY4` / `9vsruXazhbaehi3DAF3sPk7SD2Wh26SXmj8Sp3HwJNnh` |
+| Test trader | `4UwBL8x8sDsBKsZGDSAU1J2ed63UgsNG92bQonLSe1au` |
+| Verifier owner (owns every test verifier) | `PsMbwtjM9Sh7A8VwYk1WuB4owg5Djr7EkL6aDiuqpvy` |
+| Verifiers: test (setup step f), ref (reference runner, no bond), v1, v2 (bonded 5 tLINE each) | `FeGKtFj8U4ZnCRTuMBDMbhNqzsH3vZebuM1sisJFvfZ7`, `GiSibEMYzg3Y4EGG4QKx9drpTGC36du3XJE2dPZsHXuA`, `FRx89QoUEavL1mVMcroDH4QYUhdTbA66EthkX7uZrGSD`, `DEHFFWt2uzVGn43nzU1EvEyo17G1x74gvn3C6usU43hj` |
+
+Registry parameters are `paramsFromNetworkJson(config/network.json, 6)`: register_burn 1 tLINE, min_bond 5, bond_cap 50, rebate_per_class 0.001, reserve/pool 8000/2000 bps. Launch: agent_compute_bps 7000, protocol_bps 3000, sleep 1 tLINE, wake 2 tLINE. All TEST values.
+
+Fee split, read back from chain (exact):
+
+| Crank | Partner fees claimed | Compute vault | Treasury | Check |
+|---|---|---|---|---|
+| setup step e, sig `4bVskzMW...` | 5,369,496,032 | +3,758,647,222 | +1,610,848,810 | floor(5,369,496,032 x 7000 / 10,000) = 3,758,647,222 |
+| e2e run 1 | 1,034,009,525 | +723,806,667 | +310,202,858 | exact |
+| e2e run 2 | 1,011,355,317 | +707,948,721 | +303,406,596 | exact |
+
+Every `split` moved exactly floor(treasury x 8000 / 10,000) to the reserve and the rest to the pool.
+
+Epochs posted and claimed (every leaf claimed, claimed = payable):
+
+| Epoch | Posted by | Pool | Rebate | Leaves |
+|---|---|---|---|---|
+| 0 | setup step f (Core-format leaves built with `@lineage/protocol`) | 322,169,762 | 3,000 | verifier wallet 138,075,755; minbpe compute 184,097,007 |
+| 1 | Core chain-mode bridge (e2e run 1) | 62,040,572 | 2,000 | minbpe compute 53,652,584; v1 and v2 wallets 4,194,994 each |
+| 2 | Core chain-mode bridge (e2e run 2, 24/24 checks) | 60,681,320 | 2,000 | minbpe compute 51,749,337; v2 4,466,992; v1 4,466,991 |
+
+SOL: the deployer went from 3.19212828 to 2.7353066 SOL (0.45682168 spent or moved: 0.1 to the launcher, 0.15 to the verifier owner, 0.1 to the Core authority, 0.05 to the trader, small top-ups, rent and fees). No SOL was taken from the Instance devnet deployer.
 
 ## Transactions (devnet wiring lane)
 
@@ -45,3 +83,24 @@ Every devnet transaction the scripts in `scripts/devnet/` sent, in order. Fee is
 | 2026-10-07 21:45:12 | e | fund launcher 9vsruXazhbaehi3DAF3sPk7SD2Wh26SXmj8Sp3HwJNnh with 0.015315960 SOL | 5000 | `RG9qGcCH1mmofFsR4QVQs56UxCBcuZkJAUYFvE9kwWedCRLTCFNDANUetyLwAg51YwkDAgjEyRDKdzfNvdus6go` |
 | 2026-10-07 21:45:21 | f | fund verifier owner PsMbwtjM9Sh7A8VwYk1WuB4owg5Djr7EkL6aDiuqpvy with 0.001930160 SOL | 5000 | `2jNeXYb5Er8gVS3aGE3v84kK26NuiKcWpjU897NDUcbKmkjT4VXqVghLEbqpDEdn2ETzBGfZE3BWsFLBiurRxPSD` |
 | 2026-10-07 21:45:23 | f | fund Core authority CjNUnQ3v2FRQJiMr16CfaFWCdzJ3nqq1VvY2zAgsc4j9 with 0.001330880 SOL | 5000 | `27Hy5bUh5T25uzTAph3bVeidNzhzbroiJUYHK1MyAh6djLYtWaVEbNefNbTzqAEw9yQ7YnQRmGWds7YwAFFDhTWA` |
+| 2026-10-07 21:54:32 | e2e | register verifier GiSibEMYzg3Y4EGG4QKx9drpTGC36du3XJE2dPZsHXuA (caps digest 820a82c1aabb...) | 10000 | `5px4uezH5XjUoD7rWoYmUEc5SHycdY1Eo8B4U7RRdaauwefvHAJjTobj9F6dm1S5vwpBqiZQfutLkE7VTHxc2K8o` |
+| 2026-10-07 21:54:35 | e2e | register verifier FRx89QoUEavL1mVMcroDH4QYUhdTbA66EthkX7uZrGSD (caps digest 820a82c1aabb...) | 10000 | `2CP88ZihrfbeARcSKqBdYSN5uxNPdshKNanZ255eomUpHXUGyDbK4NWzGkSy5r4zNFYUhij2UKVK2qD6iz8Z3Q76` |
+| 2026-10-07 21:54:37 | e2e | bond 5000000 base units for FRx89QoUEavL1mVMcroDH4QYUhdTbA66EthkX7uZrGSD | 5000 | `2ewBv3T7Uapic47ThkSnRzeK1EMXu92jcqEHNSDBmaNcMJHtUxuB8sgmb2DFYPTUoxfbC7hokHJ3usxNFBmugh19` |
+| 2026-10-07 21:54:40 | e2e | register verifier DEHFFWt2uzVGn43nzU1EvEyo17G1x74gvn3C6usU43hj (caps digest 820a82c1aabb...) | 10000 | `3byED9YcrpNFQWRpGMi9g3HkPuVEJU4pZ8JKyAUtEHR1wWS4PuyY7wMDcyr7FdDGwRqzXR1w8f6ogvSYSkEQN6US` |
+| 2026-10-07 21:54:42 | e2e | bond 5000000 base units for DEHFFWt2uzVGn43nzU1EvEyo17G1x74gvn3C6usU43hj | 5000 | `5mEPK5eoASAwc8N5ThMkpYRYuVw8a83KZj5JjzQJs7FaL4a9A7SLqhaeU7RhvfiJao6Rs3yyL5yn3hrNRhzr6vEd` |
+| 2026-10-07 21:54:44 | e2e | trade: trader buys with 20,000 tLINE | 5000 | `4MP9Zv5AMYoMzeaFMAuSaegT8dp4a4bFpn3EXJLrewHwNuRN3aA3CKfhRcs6g74ruYtGd1zy9F1En7AqM5mp3RXa` |
+| 2026-10-07 21:54:46 | e2e | trade: trader sells 448193324905 agent-token base units | 5000 | `CMFZncB2WHmqvk7PvXPx1M17Foh4gxX6kTVHMECbxNaoesseHcjiKYUC8rx9hCWYJQgHyqc6PXHXUNb3soW3USs` |
+| 2026-10-07 21:54:48 | e2e | crank_fees: 1034009525 partner fee base units | 5000 | `2uUBPPhWu29nAwSPVi7ot46UJM7CK2EPjdBCbgQuYxQEXv7iYLmVzJxaYd71H47S8bA7jXFxbrLd66ytPg1b4igK` |
+| 2026-10-07 21:54:50 | e2e | split: treasury 310202858 to reserve and pool | 5000 | `zWiFaBobG8Z5QV5JXxEqcfscez6cdwYBgkRN6c5EquZCbE6pQKxgLc1TXc9xeLLtnD7hJrbruCvLiwWfNcqi3he` |
+| 2026-10-07 21:58:52 | e2e | Core bridge post_epoch 1 (root 0cd50b55cf04324a...) | 5000 | `4hSyRu7uwvevqvVxtHAY52VMF1648S97y3JjuG4vKGwYQ2D2HfyvuTEK93oSU4jLxKkcESLLShioh9KD7GBfiKtr` |
+| 2026-10-07 21:58:54 | e2e | claim epoch 1 agent:BFPxdave7NVSXztGEZA5iZ7FiBDKRsuZmS9wZn2J1WBV:compute 53652584 | 5000 | `4s1UR3konA3mvmm2b66NNbWbaqqGesa7XmbJ4Q3bK8EKRV1VK1bLB8iNVGs3F1NcxvNSawob5ozzsaoiX52dRy7m` |
+| 2026-10-07 21:58:56 | e2e | claim epoch 1 agent:DEHFFWt2uzVGn43nzU1EvEyo17G1x74gvn3C6usU43hj:wallet 4194994 | 5000 | `5L8HttMh2nPdbYyJPzkmpZpDgS4fcpzbJxx2xGX6ZnCR7Fow7K5i5DKT15oaCdJVYzuE3CuUzPWATx1siBCNxFB3` |
+| 2026-10-07 21:59:02 | e2e | claim epoch 1 agent:FRx89QoUEavL1mVMcroDH4QYUhdTbA66EthkX7uZrGSD:wallet 4194994 | 5000 | `3xukmQfM1XoBaRgethz6ETehbBCnFEgxEEqtK3pP4dyoKfz1KQ25rzwPWcocWU73SpZwfebTPNHNu3MtNefRBnYR` |
+| 2026-10-07 21:59:25 | e2e | trade: trader buys with 20,000 tLINE | 5000 | `2YbH2WTqZSCSckZZUciLMsDyQoERFwd6igdHC93GB4kiiMh6Rxy8zAbhjm8bAbCXAW7LjxmkU1S5iAsXa7DBBpD8` |
+| 2026-10-07 21:59:27 | e2e | trade: trader sells 430376505469 agent-token base units | 5000 | `666Au5Z5f6Xuf3R6cBxPsDYhSkdkyN9sFc8cieXp79W8zKpypWY25ZXgjD3e2TsWgossmgEBRFjn9dWdNpPFhcm9` |
+| 2026-10-07 21:59:28 | e2e | crank_fees: 1011355317 partner fee base units | 5000 | `4wDG77tgWLdcpjdqWqSQeAw4FaMMW3kQ9P5ScH9vmpNFf14KGX39zkUKzbcUkrEP5jpjFCno2wDiH587izQGGRdU` |
+| 2026-10-07 21:59:30 | e2e | split: treasury 303406596 to reserve and pool | 5000 | `49fVm3LkPD1qvdjKqJFwgsPJxTurfxre4yYhcyoeWiiJJsEBUbYUfL4wKp4fUnsANCsAT7w3BXai6mDTNXCZVjXQ` |
+| 2026-10-07 22:03:46 | e2e | Core bridge post_epoch 2 (root 7b03830a208adcb1...) | 5000 | `3LmNt6qe14uYp8zBf4LbQ3A2Utj17hj7XiGy6x35Kkr9UmxLhW3g3uhUHg4FwaL9UjgCCZrbrhn4zcRgkvcS2oUW` |
+| 2026-10-07 22:03:48 | e2e | claim epoch 2 agent:BFPxdave7NVSXztGEZA5iZ7FiBDKRsuZmS9wZn2J1WBV:compute 51749337 | 5000 | `5q6L4H22NtGCPpme94QsDywa6d5mv6stHR2wCXLM6KarQ5BxQBkqyX3CuLLPinENxM4LvNa1DVRJruKc9Bixr4Bc` |
+| 2026-10-07 22:03:58 | e2e | claim epoch 2 agent:DEHFFWt2uzVGn43nzU1EvEyo17G1x74gvn3C6usU43hj:wallet 4466992 | 5000 | `T7H8YKx3oYwR5oMJLGTafk3CqERrYokEH6kVBHWhNdMhwhkeHXnRCLvWK9Kp5T6tWXzfn2dnfJGee2MoQK8rTrj` |
+| 2026-10-07 22:04:00 | e2e | claim epoch 2 agent:FRx89QoUEavL1mVMcroDH4QYUhdTbA66EthkX7uZrGSD:wallet 4466991 | 5000 | `5Cz9mCYsi6q2avx3GmrtecP6z6SDov2tRT6M2pt8NHXvcwb2DeaL86Sj5y3Y3CPFLUGka5cRs9B3N5CXBitG3oYk` |

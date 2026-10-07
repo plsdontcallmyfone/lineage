@@ -124,7 +124,7 @@ export class ChainBridge {
     this.send = opts.send ?? (key ? (label, ixs) => sendAndConfirm(this.reader.rpc, key, ixs, { log: (m) => this.log(`${label}: ${m}`) }) : null);
     this.log = opts.log ?? (() => undefined);
     core.chainView = () => this.snapshot;
-    core.chainSync = () => this.tick();
+    core.chainSync = () => this.tick(true);
   }
   readonly coreKeyId: string | null;
   private log: (m: string) => void;
@@ -133,8 +133,13 @@ export class ChainBridge {
     return this.snapshot ?? { mode: this.settings.mode, read_at: null };
   }
 
-  /** One sync: send pending slashes, mirror agents and claims, mirror vaults, post closed epochs. Never overlaps itself. */
-  tick(): Promise<unknown> {
+  /**
+   * One sync: send pending slashes, mirror claims and agents, mirror vaults, post closed epochs.
+   * Never overlaps itself; `fresh` waits for a sync in flight and then runs a new one, so it sees
+   * everything that confirmed before the call.
+   */
+  async tick(fresh = false): Promise<unknown> {
+    if (fresh && this.running) await this.running.catch(() => undefined);
     if (!this.running)
       this.running = this.tickInner()
         .then((v) => {

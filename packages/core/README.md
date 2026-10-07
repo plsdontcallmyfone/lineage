@@ -289,6 +289,26 @@ For replay and qualify jobs Core derives the lineage and generation from the ass
 
 **Stats additions** (`GET /v1/stats`): `machines`, `machines_awake`, `verified_gains` (patch generations not reverted), `activity_events`, `compute: { vaults (sum of agent compute vaults), debited (sum of usage records), usage_records }`.
 
+## Chain mode (SPEC 14)
+
+Default is the simulated ledger below. With a `chain` object whose `mode` is `"devnet"` in the config file (or `--chain <file>`, for example `scripts/devnet/devnet.json`), Core runs against the deployed programs:
+
+```
+"chain": { "mode": "devnet", "rpc_url": "https://api.devnet.solana.com",
+           "registry_program": "2vhj9aBZkuoCpmJxm5BcA3CYkvBJgY6VHTax8FpFmxuY", "launch_program": "8eHzm1XtNtbxJujrMAci4VdhCJvQttFUBukmkFaUwsAT",
+           "core_authority_key": "~/.config/lineage/devnet/core-authority.json", "poll_ms": 5000 }
+```
+
+- **Start.** Every parameter the registry and launch configs hold (amounts in the mint's base units, splits, slashes, thresholds, quorum, `author_reward_to`) replaces the file's value; timing and judging values stay from the file. A fresh database opens epoch `last posted + 1` (0 if none).
+- **Mirror** (`src/chain.ts`, `ChainBridge`, every `poll_ms` and on `POST /v1/admin/chain/sync`): every registry `Agent` becomes a Core agent (verifiers with their burn and bond, launched agents with their `AgentLaunch` and compute vault), unbond requests and ready times follow the chain, and the treasury, reserve and pool follow the registry vaults. Mirrored accounts are set to the chain's figure net of what Core decided but has not sent (closed epochs not yet posted, slashes not yet sent), through `faucet` with `chain_*` reasons, so `reconcile()` keeps holding.
+- **Writes**, only with the registry's Core authority key: each closed epoch goes to `post_epoch` (Core's payout root, lineage root, total units x 10^6, pool and rebate), oldest first, never at or before the chain's last epoch; each slash goes to `slash` (canary 0, minority and audit minority 1, reveal mismatch 2). Results are kept in `chain_epochs` and `chain_slashes` (migration 4). Without the key the bridge only reads.
+- **Claims** happen on chain (anyone can send `claim`; `packages/chain` `claimFromCoreProof` turns a `GET /v1/epochs/:n/proofs/:agent` item into one). A `ClaimReceipt` found for a leaf marks it claimed and moves it out of `epoch:<n>:payable`.
+- **Refused with `409 on_chain`:** `POST /v1/agents`, bond, unbond, `POST /v1/admin/launches`, creator rewards, agent fees, usage and `POST /v1/epochs/:n/claim`. Canary shadow launches stay internal.
+- **Capabilities:** when the registry holds a nonzero capabilities digest for an agent, a declaration must hash to it (`H("caps", canonical_json(capabilities))`, `403 caps_mismatch`).
+- **Reads for the dashboard:** `GET /v1/chain` (and `chain` in `GET /v1/stats`) is the last chain read: `slot`, `read_at`, programs, mint, the registry config and launch config fields, treasury, reserve, pool, payable and bond vault balances, each launched agent's compute vault, posted epochs with signatures. Every figure there was read from chain; none is configured or estimated.
+
+Tests (`test/chain.test.ts`) replay devnet responses recorded by `scripts/devnet/record-fixtures.ts`; no unit test touches a live RPC.
+
 ## Ledger
 
 Every movement is one transaction of two `ledger_entries` rows summing to zero. Accounts:
