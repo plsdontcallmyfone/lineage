@@ -1,0 +1,281 @@
+import { addressBytes, ixDisc, Reader, Writer, type Address } from "./codec.ts";
+import { BPF_LOADER_UPGRADEABLE, pda, SYSTEM_PROGRAM, TOKEN_PROGRAM, u64le } from "./pda.ts";
+
+// lineage_registry (SPEC 14.1): addresses, instruction builders and account decoders. Account
+// order and encodings match the Anchor program; onchain/tests/fixtures/client-vectors.json pins them.
+
+export const REGISTRY_PROGRAM_ID: Address = "2vhj9aBZkuoCpmJxm5BcA3CYkvBJgY6VHTax8FpFmxuY";
+
+export interface AccountMeta {
+  pubkey: Address;
+  isSigner: boolean;
+  isWritable: boolean;
+}
+/** Same shape as @solana/web3.js TransactionInstruction's constructor argument. */
+export interface Ix {
+  programId: Address;
+  keys: AccountMeta[];
+  data: Uint8Array;
+}
+export const w = (pubkey: Address, isSigner = false): AccountMeta => ({ pubkey, isSigner, isWritable: true });
+export const r = (pubkey: Address, isSigner = false): AccountMeta => ({ pubkey, isSigner, isWritable: false });
+
+const P = REGISTRY_PROGRAM_ID;
+export const registryPdas = {
+  config: () => pda(P, "config"),
+  vaultAuthority: () => pda(P, "vault_authority"),
+  bondVault: () => pda(P, "bond_vault"),
+  treasury: () => pda(P, "treasury"),
+  reserve: () => pda(P, "reserve"),
+  pool: () => pda(P, "pool"),
+  payable: () => pda(P, "payable"),
+  agent: (agent: Address) => pda(P, "agent", addressBytes(agent)),
+  epoch: (n: bigint | number) => pda(P, "epoch", u64le(n)),
+  claimReceipt: (n: bigint | number, leaf: Uint8Array) => pda(P, "claim", u64le(n), leaf),
+  programData: (program: Address = P) => pda(BPF_LOADER_UPGRADEABLE, addressBytes(program)),
+};
+
+export const OFFENCE = { canary: 0, minority: 1, reveal: 2, abandon: 3 } as const;
+export const DEST_KIND = { agentWallet: 0, agentCompute: 1, wallet: 2 } as const;
+
+export interface Params {
+  registerBurn: bigint;
+  minBond: bigint;
+  bondCap: bigint;
+  unbondCooldownS: bigint;
+  epochLengthS: number;
+  reserveBps: number;
+  poolBps: number;
+  canarySlashBps: number;
+  minoritySlashBps: number;
+  revealSlashBps: number;
+  strikeLimit: number;
+  uReplay: number;
+  uAuthor: number;
+  finderShareBps: number;
+  valueCap: number;
+  rebatePerClass: bigint;
+  maxOpenCandidatesPerAgent: number;
+  /** 0 compute vault, 1 launcher. */
+  authorRewardTo: number;
+  quorum: number;
+}
+export interface ConfigArgs {
+  admin: Address;
+  coreAuthority: Address;
+  launchProgram: Address;
+  params: Params;
+}
+
+function writeParams(wr: Writer, p: Params): Writer {
+  return wr
+    .u64(p.registerBurn).u64(p.minBond).u64(p.bondCap).i64(p.unbondCooldownS).u32(p.epochLengthS)
+    .u16(p.reserveBps).u16(p.poolBps).u16(p.canarySlashBps).u16(p.minoritySlashBps).u16(p.revealSlashBps).u16(p.strikeLimit)
+    .u32(p.uReplay).u32(p.uAuthor).u16(p.finderShareBps).u32(p.valueCap).u64(p.rebatePerClass).u16(p.maxOpenCandidatesPerAgent)
+    .u8(p.authorRewardTo).u8(p.quorum);
+}
+function readParams(rd: Reader): Params {
+  return {
+    registerBurn: rd.u64(), minBond: rd.u64(), bondCap: rd.u64(), unbondCooldownS: rd.i64(), epochLengthS: rd.u32(),
+    reserveBps: rd.u16(), poolBps: rd.u16(), canarySlashBps: rd.u16(), minoritySlashBps: rd.u16(), revealSlashBps: rd.u16(), strikeLimit: rd.u16(),
+    uReplay: rd.u32(), uAuthor: rd.u32(), finderShareBps: rd.u16(), valueCap: rd.u32(), rebatePerClass: rd.u64(), maxOpenCandidatesPerAgent: rd.u16(),
+    authorRewardTo: rd.u8(), quorum: rd.u8(),
+  };
+}
+const configArgs = (wr: Writer, a: ConfigArgs) => writeParams(wr.address(a.admin).address(a.coreAuthority).address(a.launchProgram), a.params);
+const data = (name: string) => new Writer().bytes(ixDisc(name));
+
+/**
+ * Params from a config/network.json object (SPEC 13). Amounts there are base units of a
+ * `token_decimals`-decimal token; `decimals` rescales them to the onchain mint's decimals.
+ */
+export function paramsFromNetworkJson(n: Record<string, unknown>, decimals = Number(n.token_decimals ?? 0)): Params {
+  const from = Number(n.token_decimals ?? decimals);
+  const big = (k: string) => (BigInt(String(n[k])) * 10n ** BigInt(decimals)) / 10n ** BigInt(from);
+  return {
+    registerBurn: big("register_burn"), minBond: big("min_bond"), bondCap: big("bond_cap"), unbondCooldownS: BigInt(Number(n.unbond_cooldown_s)),
+    epochLengthS: Number(n.epoch_length_s), reserveBps: Number(n.reserve_bps), poolBps: Number(n.pool_bps), canarySlashBps: Number(n.canary_slash_bps),
+    minoritySlashBps: Number(n.minority_slash_bps), revealSlashBps: Number(n.reveal_slash_bps), strikeLimit: Number(n.strike_limit),
+    uReplay: Number(n.u_replay), uAuthor: Number(n.u_author), finderShareBps: Math.round(Number(n.finder_share) * 10_000), valueCap: Number(n.value_cap),
+    rebatePerClass: big("rebate_per_class"), maxOpenCandidatesPerAgent: Number(n.max_open_candidates_per_agent),
+    authorRewardTo: n.author_reward_to === "launcher" ? 1 : 0, quorum: Number(n.quorum),
+  };
+}
+
+export const registry = {
+  initialize(a: { upgradeAuthority: Address; mint: Address; tokenProgram?: Address; args: ConfigArgs }): Ix {
+    const pd = registryPdas;
+    return {
+      programId: P,
+      keys: [w(pd.config()), w(a.upgradeAuthority, true), r(pd.programData()), r(a.mint), r(pd.vaultAuthority()), w(pd.bondVault()),
+        w(pd.treasury()), w(pd.reserve()), w(pd.pool()), w(pd.payable()), r(a.tokenProgram ?? TOKEN_PROGRAM), r(SYSTEM_PROGRAM)],
+      data: configArgs(data("initialize"), a.args).done(),
+    };
+  },
+  setConfig(a: { admin: Address; args: ConfigArgs }): Ix {
+    return { programId: P, keys: [w(registryPdas.config()), r(a.admin, true)], data: configArgs(data("set_config"), a.args).done() };
+  },
+  pause(a: { admin: Address; paused: boolean }): Ix {
+    return { programId: P, keys: [w(registryPdas.config()), r(a.admin, true)], data: data("pause").bool(a.paused).done() };
+  },
+  /** Tokenless verifier: `owner` burns register_burn from `ownerToken`; `agent` co-signs. */
+  register(a: { owner: Address; agent: Address; mint: Address; ownerToken: Address; operator: Uint8Array | string; capabilities: Uint8Array | string;
+    tokenProgram?: Address }): Ix {
+    return {
+      programId: P,
+      keys: [r(registryPdas.config()), w(a.owner, true), r(a.agent, true), w(registryPdas.agent(a.agent)), w(a.mint), w(a.ownerToken),
+        r(a.tokenProgram ?? TOKEN_PROGRAM), r(SYSTEM_PROGRAM)],
+      data: data("register").fixed32(a.operator).fixed32(a.capabilities).done(),
+    };
+  },
+  updateAgent(a: { owner: Address; agent: Address; operator: Uint8Array | string; capabilities: Uint8Array | string }): Ix {
+    return {
+      programId: P,
+      keys: [r(registryPdas.config()), r(a.owner, true), w(registryPdas.agent(a.agent))],
+      data: data("update_agent").fixed32(a.operator).fixed32(a.capabilities).done(),
+    };
+  },
+  bond(a: { owner: Address; agent: Address; mint: Address; ownerToken: Address; amount: bigint; tokenProgram?: Address }): Ix {
+    return {
+      programId: P,
+      keys: [r(registryPdas.config()), r(a.owner, true), w(registryPdas.agent(a.agent)), r(a.mint), w(a.ownerToken), w(registryPdas.bondVault()),
+        r(a.tokenProgram ?? TOKEN_PROGRAM)],
+      data: data("bond").u64(a.amount).done(),
+    };
+  },
+  requestUnbond(a: { owner: Address; agent: Address; amount: bigint }): Ix {
+    return { programId: P, keys: [r(registryPdas.config()), r(a.owner, true), w(registryPdas.agent(a.agent))], data: data("request_unbond").u64(a.amount).done() };
+  },
+  withdrawUnbonded(a: { owner: Address; agent: Address; mint: Address; ownerToken: Address; tokenProgram?: Address }): Ix {
+    return {
+      programId: P,
+      keys: [r(registryPdas.config()), r(a.owner, true), w(registryPdas.agent(a.agent)), r(a.mint), w(a.ownerToken), r(registryPdas.vaultAuthority()),
+        w(registryPdas.bondVault()), r(a.tokenProgram ?? TOKEN_PROGRAM)],
+      data: data("withdraw_unbonded").done(),
+    };
+  },
+  slash(a: { coreAuthority: Address; agent: Address; mint: Address; offence: number; epoch: bigint | number; tokenProgram?: Address }): Ix {
+    return {
+      programId: P,
+      keys: [r(registryPdas.config()), r(a.coreAuthority, true), w(registryPdas.agent(a.agent)), r(a.mint), r(registryPdas.vaultAuthority()),
+        w(registryPdas.bondVault()), w(registryPdas.reserve()), r(a.tokenProgram ?? TOKEN_PROGRAM)],
+      data: data("slash").u8(a.offence).u64(a.epoch).done(),
+    };
+  },
+  split(a: { mint: Address; tokenProgram?: Address }): Ix {
+    const pd = registryPdas;
+    return {
+      programId: P,
+      keys: [r(pd.config()), r(a.mint), r(pd.vaultAuthority()), w(pd.treasury()), w(pd.reserve()), w(pd.pool()), r(a.tokenProgram ?? TOKEN_PROGRAM)],
+      data: data("split").done(),
+    };
+  },
+  postEpoch(a: { coreAuthority: Address; mint: Address; epoch: bigint | number; payoutRoot: Uint8Array | string; lineageRoot: Uint8Array | string;
+    totalUnitsMicro: bigint; poolAmount: bigint; rebateAmount: bigint; tokenProgram?: Address }): Ix {
+    const pd = registryPdas;
+    return {
+      programId: P,
+      keys: [w(pd.config()), w(a.coreAuthority, true), w(pd.epoch(a.epoch)), r(a.mint), r(pd.vaultAuthority()), w(pd.pool()), w(pd.reserve()),
+        w(pd.payable()), r(a.tokenProgram ?? TOKEN_PROGRAM), r(SYSTEM_PROGRAM)],
+      data: data("post_epoch").u64(a.epoch).fixed32(a.payoutRoot).fixed32(a.lineageRoot).u64(a.totalUnitsMicro).u64(a.poolAmount).u64(a.rebateAmount).done(),
+    };
+  },
+  /**
+   * Anyone may send a claim; tokens go only to the leaf's destination. `agentRecord` is required for
+   * `agent:<id>:wallet` leaves (pass registryPdas.agent(agent)) and omitted otherwise.
+   */
+  claim(a: { payer: Address; mint: Address; epoch: bigint | number; agent: Address; destKind: number; wallet?: Address; amount: bigint;
+    leaf: Uint8Array; proof: Uint8Array[]; destToken: Address; agentRecord?: Address; tokenProgram?: Address }): Ix {
+    const pd = registryPdas;
+    return {
+      programId: P,
+      keys: [r(pd.config()), w(a.payer, true), w(pd.epoch(a.epoch)), w(pd.claimReceipt(a.epoch, a.leaf)), r(a.agentRecord ?? P), r(a.mint),
+        r(pd.vaultAuthority()), w(pd.payable()), w(a.destToken), r(a.tokenProgram ?? TOKEN_PROGRAM), r(SYSTEM_PROGRAM)],
+      data: data("claim").address(a.agent).u8(a.destKind).address(a.wallet ?? SYSTEM_PROGRAM).u64(a.amount).fixed32(a.leaf).vec32(a.proof).done(),
+    };
+  },
+};
+
+// ---------- accounts ----------
+
+export interface RegistryConfig {
+  admin: Address;
+  coreAuthority: Address;
+  launchProgram: Address;
+  mint: Address;
+  tokenProgram: Address;
+  params: Params;
+  paused: boolean;
+  epochsPosted: bigint;
+  lastEpoch: bigint;
+}
+export function decodeConfig(d: Uint8Array): RegistryConfig {
+  const rd = new Reader(d).expect("Config");
+  return {
+    admin: rd.address(), coreAuthority: rd.address(), launchProgram: rd.address(), mint: rd.address(), tokenProgram: rd.address(),
+    params: readParams(rd), paused: rd.bool(), epochsPosted: rd.u64(), lastEpoch: rd.u64(),
+  };
+}
+
+export interface AgentRecord {
+  agent: Address;
+  owner: Address;
+  kind: "verifier" | "launched";
+  mint: Address;
+  hosted: boolean;
+  burned: bigint;
+  bond: bigint;
+  unbondAmount: bigint;
+  unbondRequestedAt: bigint;
+  unbondReadyAt: bigint;
+  strikesTotal: number;
+  strikesEpoch: bigint;
+  strikesInEpoch: number;
+  suspendedThroughEpoch: bigint;
+  slashedTotal: bigint;
+  operator: string;
+  capabilities: string;
+  registeredAt: bigint;
+}
+export function decodeAgent(d: Uint8Array): AgentRecord {
+  const rd = new Reader(d).expect("Agent");
+  return {
+    agent: rd.address(), owner: rd.address(), kind: rd.u8() === 1 ? "launched" : "verifier", mint: rd.address(), hosted: rd.bool(), burned: rd.u64(),
+    bond: rd.u64(), unbondAmount: rd.u64(), unbondRequestedAt: rd.i64(), unbondReadyAt: rd.i64(), strikesTotal: rd.u32(), strikesEpoch: rd.u64(),
+    strikesInEpoch: rd.u16(), suspendedThroughEpoch: rd.u64(), slashedTotal: rd.u64(), operator: rd.hex32(), capabilities: rd.hex32(),
+    registeredAt: rd.i64(),
+  };
+}
+
+export interface EpochRecord {
+  epoch: bigint;
+  payoutRoot: string;
+  lineageRoot: string;
+  totalUnitsMicro: bigint;
+  poolAmount: bigint;
+  rebateAmount: bigint;
+  totalPayable: bigint;
+  claimedAmount: bigint;
+  claims: number;
+  postedAt: bigint;
+}
+export function decodeEpoch(d: Uint8Array): EpochRecord {
+  const rd = new Reader(d).expect("Epoch");
+  return {
+    epoch: rd.u64(), payoutRoot: rd.hex32(), lineageRoot: rd.hex32(), totalUnitsMicro: rd.u64(), poolAmount: rd.u64(), rebateAmount: rd.u64(),
+    totalPayable: rd.u64(), claimedAmount: rd.u64(), claims: rd.u32(), postedAt: rd.i64(),
+  };
+}
+
+export interface ClaimReceipt {
+  epoch: bigint;
+  leaf: string;
+  agent: Address;
+  destToken: Address;
+  amount: bigint;
+  claimedAt: bigint;
+}
+export function decodeClaimReceipt(d: Uint8Array): ClaimReceipt {
+  const rd = new Reader(d).expect("ClaimReceipt");
+  return { epoch: rd.u64(), leaf: rd.hex32(), agent: rd.address(), destToken: rd.address(), amount: rd.u64(), claimedAt: rd.i64() };
+}
