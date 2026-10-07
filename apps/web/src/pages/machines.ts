@@ -8,7 +8,7 @@ import type { Page } from "./types.ts";
 // heartbeat. Columns map to heartbeat and capability fields; a replay of a candidate that is not
 // final yet is shown sealed (no candidate, lineage or generation), as Core serves it.
 
-const JOB_TONE: Record<string, "info" | "good" | "warn" | ""> = { replay: "info", qualify: "warn", author: "good", idle: "" };
+const JOB_TONE: Record<string, "info" | "good" | "warn" | ""> = { replay: "info", qualify: "warn", author: "good", idle: "", withheld: "" };
 
 function hw(caps: any): Raw {
   if (!caps) return html`<span class="faint">not declared</span>`;
@@ -25,6 +25,8 @@ function since(ms: number | null | undefined, now: number): Raw {
 
 function work(m: any): Raw {
   if (m.job === "idle") return html`<span class="faint">no job</span>`;
+  // Core withholds a verifier's current job publicly, so nobody can tell who replays a sealed candidate
+  if (m.job === "withheld") return html`<span class="nowrap">${icon.lock} private</span><div class="sub">replays appear in history once final</div>`;
   if (m.sealed) return html`<span class="nowrap">${icon.lock} sealed</span><div class="sub">${m.class ?? ""}, shown once final</div>`;
   if (!m.lineage_id) return html`<span class="faint">TBA</span>`;
   return html`<a class="link nowrap" href="/lineages/${m.lineage_id}">${m.recipe_name ?? lineageName(m.lineage_id)}</a>
@@ -33,12 +35,12 @@ function work(m: any): Raw {
 
 function row(m: any, now: number): Raw {
   const load = m.load ? html`<span class="num">${m.load.load1.toFixed(2)}</span><div class="sub">${m.load.mem_free_mb !== undefined ? `${int(m.load.mem_free_mb)} MB free` : ""}</div>` : html`<span class="faint">TBA</span>`;
-  const gain = m.gain ? effect(m.gain, { compact: true }) : html`<span class="faint">${m.sealed ? "sealed" : m.job === "idle" ? "none" : "TBA"}</span>`;
+  const gain = m.gain ? effect(m.gain, { compact: true }) : html`<span class="faint">${m.sealed ? "sealed" : m.job === "idle" ? "none" : m.job === "withheld" ? "private" : "TBA"}</span>`;
   return html`<tr class="${m.awake ? "" : "asleep"}">
     <td>${agentLink(m.agent_id)}<div class="sub">${m.reference ? "reference runner" : m.kind}${m.caps_match === false ? ", capabilities changed" : ""}<span class="show-sm">${m.awake ? "awake" : "asleep"}</span></div></td>
     <td class="hide-sm">${hw(m.capabilities)}</td>
-    <td>${badge(m.job, JOB_TONE[m.job] ?? "")}${m.phase ? html`<div class="sub">${m.phase}</div>` : ""}</td>
-    <td class="right">${m.job === "idle" ? html`<span class="faint">idle</span>` : since(m.job_started_at, now)}<div class="sub">${m.container_started_at && m.job !== "idle" ? html`step ${since(m.container_started_at, now)}` : ""}</div></td>
+    <td>${m.job === "withheld" ? html`<span class="faint">private</span>` : badge(m.job, JOB_TONE[m.job] ?? "")}${m.phase ? html`<div class="sub">${m.phase}</div>` : ""}</td>
+    <td class="right">${m.job === "idle" ? html`<span class="faint">idle</span>` : m.job === "withheld" ? html`<span class="faint">private</span>` : since(m.job_started_at, now)}<div class="sub">${m.container_started_at && m.job !== "idle" ? html`step ${since(m.container_started_at, now)}` : ""}</div></td>
     <td>${work(m)}</td>
     <td class="hide-sm">${gain}</td>
     <td class="right hide-sm">${load}</td>

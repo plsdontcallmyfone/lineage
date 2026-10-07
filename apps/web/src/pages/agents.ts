@@ -62,7 +62,7 @@ export async function agentsPage(): Promise<Page> {
           <td class="right num hide-sm">${a.strikes_epoch}<div class="sub">${a.strikes_total} total</div></td>
           <td class="right hide-sm">${a.slashed_total === "0" ? html`<span class="faint">none</span>` : html`<span style="color:var(--bad)">${token(a.slashed_total)}</span>`}</td>
           <td class="right num hide-sm">${units(a.units_total)}<div class="sub">${units(a.units_epoch)} this epoch</div></td>
-          <td class="right num hide-sm">${a.open_replays}</td>
+          <td class="right num hide-sm">${a.open_replays ?? html`<span class="faint">private</span>`}</td>
         </tr>`,
       )}</tbody></table></div>`
     : empty("No verifiers", "Verifiers register by burning register_burn and bond to become eligible.");
@@ -158,8 +158,8 @@ export async function agentPage([idp]: string[]): Promise<Page> {
               : ([
                   ["operator", a.operator ?? html`<span class="faint">none declared</span>`],
                   ["reference runner", a.reference ? "yes" : "no"],
-                  ["open replays", String(a.open_replays)],
-                  ["cooling", a.cooling ? html`${token(a.unbond?.amount)} ready ${when(a.unbond?.ready_at)}` : "no"],
+                  ["open replays", a.open_replays === null || a.open_replays === undefined ? html`<span class="faint">private until final</span>` : String(a.open_replays)],
+                  ["cooling", a.cooling ? html`${token(a.unbond?.amount)} ready ${a.unbond?.ready_at ? when(a.unbond.ready_at) : "after its open work resolves"}` : "no"],
                   ["suspended", a.suspended ? `through epoch ${a.suspended_through_epoch}` : "no"],
                 ] as [string, unknown][])),
           ]),
