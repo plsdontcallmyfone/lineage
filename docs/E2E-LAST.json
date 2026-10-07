@@ -1,6 +1,6 @@
 {
-  "at": "2026-10-07T19:06:12.549Z",
-  "seconds": 215,
+  "at": "2026-10-07T19:13:14.477Z",
+  "seconds": 247,
   "results": [
     {
       "check": "recipe id recomputed by Core matches the worker's",
@@ -10,7 +10,7 @@
     {
       "check": "calibration accepted, lineage created",
       "ok": true,
-      "detail": "{\"lineage_id\":\"c69a9f55b91a0dd78803cd9eb779c5cedcf45876a75390e89be8f6e9561ea986\",\"calib_id\":\"ed70665f468ffbd92b6f7cb22bf"
+      "detail": "{\"lineage_id\":\"c69a9f55b91a0dd78803cd9eb779c5cedcf45876a75390e89be8f6e9561ea986\",\"calib_id\":\"51027748589832406c9a37efa87"
     },
     {
       "check": "stable set and known failure from real calibration",
@@ -90,7 +90,7 @@
     {
       "check": "fabricating verifier slashed and struck",
       "ok": true,
-      "detail": "slashed 16156250000, strikes 3"
+      "detail": "slashed 24617187500, strikes 4"
     },
     {
       "check": "no honest verifier slashed",
@@ -100,12 +100,12 @@
     {
       "check": "the fabricating verifier was caught by a canary",
       "ok": true,
-      "detail": "slash reasons: canary, minority, minority"
+      "detail": "slash reasons: canary, minority, canary, minority"
     },
     {
       "check": "the fabricating verifier was caught as a dispute minority",
       "ok": true,
-      "detail": "slash reasons: canary, minority, minority"
+      "detail": "slash reasons: canary, minority, canary, minority"
     },
     {
       "check": "audit replays agree with every accepted generation",
@@ -125,12 +125,12 @@
     {
       "check": "ledger reconciles to zero with no negative balances",
       "ok": true,
-      "detail": "{\"ok\":true,\"errors\":[],\"entries\":58,\"transactions\":29,\"total\":\"0\",\"balances\":{\"agent:3Rwr5kdq3EZndwXNUHEFNarSmcUdXoud82saaf9fmpmK:bond\":\"5000000000\",\"agent:3Rwr"
+      "detail": "{\"ok\":true,\"errors\":[],\"entries\":60,\"transactions\":30,\"total\":\"0\",\"balances\":{\"agent:2XwD5kazXdn8twjz84gNv62NtoSGtPxaJvB5o9ibfBkq:compute\":\"2000000000\",\"agent:4"
     },
     {
       "check": "verifier claims its epoch payout with a Merkle proof",
       "ok": true,
-      "detail": "{\"epoch\":0,\"agent\":\"3oBqGM3LRKQvWSMiBKLk8C9XPstbRYmC2PF7XwhYVQsC\",\"dest\":\"agent:3oBqGM3LRKQvWSMiBKLk8C9XPstbRYmC2PF7XwhYVQsC:wallet\",\"amount\":\"35832787834\",\"bal"
+      "detail": "{\"epoch\":0,\"agent\":\"427g8YJ5UgYrWuHUswtaxVsT8KtZihB9HHSgpAaNjNg4\",\"dest\":\"agent:427g8YJ5UgYrWuHUswtaxVsT8KtZihB9HHSgpAaNjNg4:wallet\",\"amount\":\"35921916050\",\"bal"
     },
     {
       "check": "another agent cannot claim that leaf",
@@ -141,6 +141,11 @@
       "check": "a leaf cannot be claimed twice",
       "ok": true,
       "detail": "409"
+    },
+    {
+      "check": "every verdict independently recomputed from public data (scripts/verify.ts)",
+      "ok": true,
+      "detail": "15/15 verdicts independently recomputed"
     },
     {
       "check": "canary list revealed at epoch close",

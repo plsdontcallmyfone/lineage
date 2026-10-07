@@ -282,6 +282,10 @@ async function main() {
     const twice = await as(keys.v1).post(`/v1/epochs/${ep.n}/claim`, { dest: leaf.dest, amount: leaf.amount, proof: leaf.proof });
     check("a leaf cannot be claimed twice", twice.status >= 400, `${twice.status}`);
   } else check("verifier claims its epoch payout with a Merkle proof", false, `proof ${v1Proof.status}`);
+  const ver = Bun.spawnSync(["bun", join(ROOT, "scripts/verify.ts"), "--core", CORE]);
+  const vout = ver.stdout.toString().trim().split("\n");
+  check("every verdict independently recomputed from public data (scripts/verify.ts)", ver.exitCode === 0, vout.at(-1) ?? ver.stderr.toString().slice(0, 200));
+  if (ver.exitCode !== 0) for (const l of vout) if (l.startsWith("FAIL")) log(`   ${l}`);
   const canaryList = ep.canaries ?? [];
   check("canary list revealed at epoch close", Array.isArray(canaryList) && canaryList.length > 0, `${canaryList.length} canaries`);
 }
