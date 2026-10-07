@@ -1,4 +1,4 @@
-# Deploying the Lineage programs (not done; needs the owner's approval)
+# Deploying the Lineage programs (devnet deployed 2026-10-07, see DEVNET.md)
 
 Nothing has been deployed to any cluster. A devnet deploy needs the owner's approval and devnet
 SOL sent to the dedicated deployer below. Mainnet is out of scope until launch values exist
