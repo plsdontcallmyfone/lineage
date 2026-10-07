@@ -41,6 +41,8 @@ export interface Recipe {
   image: string;
   workdir: string;
   prepare: string[];
+  /** Files produced by prepare (for example a generated lockfile) copied into every tree. */
+  prepare_outputs?: string[];
   build: { commands: string[]; artifacts?: string[]; reproducible?: boolean };
   test: { command: string; parser: string; exclude?: string[]; timeout_s: number };
   equivalence?: { command: string; output: "stdout-digest" };

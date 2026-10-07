@@ -1,0 +1,105 @@
+{
+  "perf_encode": {
+    "name": "perf_encode",
+    "parent": [],
+    "kind": "perf",
+    "target": "encode_ir",
+    "expect": "accepted",
+    "lines": 10
+  },
+  "perf_encode_dup": {
+    "name": "perf_encode_dup",
+    "parent": [],
+    "kind": "perf",
+    "target": "encode_ir",
+    "expect": "rejected:duplicate (same change as perf_encode, whitespace differs)",
+    "lines": 10
+  },
+  "stale_conflict": {
+    "name": "stale_conflict",
+    "parent": [],
+    "kind": "perf",
+    "target": "encode_ir",
+    "expect": "rejected:stale_conflict once perf_encode is accepted (edits the same lines)",
+    "lines": 11
+  },
+  "perf_decode": {
+    "name": "perf_decode",
+    "parent": [],
+    "kind": "perf",
+    "target": "decode_ir",
+    "expect": "accepted (also after perf_encode: rebases cleanly, different lines)",
+    "lines": 15
+  },
+  "fix_leading_ones": {
+    "name": "fix_leading_ones",
+    "parent": [],
+    "kind": "fix",
+    "target": [
+      "tests/basic.rs::decode_leading_ones_are_zero_bytes"
+    ],
+    "expect": "accepted",
+    "lines": 2
+  },
+  "break_tests": {
+    "name": "break_tests",
+    "parent": [],
+    "kind": "perf",
+    "target": "encode_ir",
+    "expect": "rejected:tests_fail",
+    "lines": 2
+  },
+  "regress": {
+    "name": "regress",
+    "parent": [],
+    "kind": "perf",
+    "target": "encode_ir",
+    "expect": "rejected:no_improvement (slower)",
+    "lines": 2
+  },
+  "equiv_change": {
+    "name": "equiv_change",
+    "parent": [],
+    "kind": "perf",
+    "target": "encode_ir",
+    "expect": "rejected:equivalence_changed (truncates inputs over 64 bytes; unit tests only use short inputs)",
+    "lines": 1
+  },
+  "protected_test_edit": {
+    "name": "protected_test_edit",
+    "parent": [],
+    "kind": "fix",
+    "target": [
+      "tests/basic.rs::decode_leading_ones_are_zero_bytes"
+    ],
+    "expect": "rejected:guard PROTECTED_PATH",
+    "lines": 0
+  },
+  "canary_roundtrip": {
+    "name": "canary_roundtrip",
+    "parent": [],
+    "kind": "perf",
+    "target": "decode_ir",
+    "canary": true,
+    "expect": "canary: breaks roundtrip for inputs over 40 bytes",
+    "lines": 3
+  },
+  "canary_equiv": {
+    "name": "canary_equiv",
+    "parent": [],
+    "kind": "perf",
+    "target": "encode_ir",
+    "canary": true,
+    "expect": "canary: skips leading-zero handling past 2 zeros, invisible to unit tests",
+    "lines": 2
+  },
+  "canary_regress": {
+    "name": "canary_regress",
+    "parent": [],
+    "kind": "perf",
+    "target": "encode_ir",
+    "canary": true,
+    "expect": "canary: slower encode dressed as a win",
+    "lines": 3
+  }
+}

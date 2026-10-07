@@ -1,0 +1,12 @@
+diff --git a/src/lib.rs b/src/lib.rs
+--- a/src/lib.rs
++++ b/src/lib.rs
+@@ -20,6 +20,8 @@ pub fn encode(input: &[u8]) -> String {
+     let mut digits: Vec<u8> = Vec::new();
+     for &byte in &input[zeros..] {
+         let mut carry = byte as u32;
++        let snapshot = digits.clone();
++        std::hint::black_box(&snapshot);
+         for d in digits.iter_mut() {
+             carry += (*d as u32) << 8;
+             *d = (carry % 58) as u8;

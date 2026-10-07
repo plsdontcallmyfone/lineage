@@ -203,13 +203,15 @@ image: lineage/rust:1.83@sha256:<digest>   # pinned by digest, never a tag alone
 workdir: /work/src
 prepare:                           # runs WITH network, once per snapshot; output becomes the deps layer
   - cargo fetch --locked
+prepare_outputs: []                # files prepare generates that every tree needs (e.g. a lockfile the repo does not commit)
 build:                             # runs with NO network from here on
-  - cargo build --release --locked --offline --all-targets
-  artifacts: [target/release/deps/*.rlib]   # digested for reproducibility checks (optional)
+  commands:
+    - cargo build --release --locked --offline --all-targets
+  artifacts: [target/release/*.rlib]        # digested for reproducibility checks (optional)
   reproducible: true
 test:
-  command: cargo test --release --locked --offline -- -Z unstable-options --format json
-  parser: cargo-json                # junit | cargo-json | pytest-json | tap | jest-json
+  command: cargo test --release --locked --offline
+  parser: libtest                   # libtest | junit (file at /out/junit.xml) | tap
   exclude: []                       # test ids that need network or hardware; never counted, never targets
   timeout_s: 600
 equivalence:                        # optional; required for kind=perf when present
@@ -229,7 +231,7 @@ metrics:
     direction: lower
     deterministic: false
     command: target/release/examples/lineage_bench encode-wall $LINEAGE_SEED
-    parser: number-per-line
+    parser: number                  # cachegrind-ir | number | bytes
     rounds: 15                      # interleaved A/B pairs
     min_effect: 0.03
 patch:

@@ -1,0 +1,12 @@
+diff --git a/src/lib.rs b/src/lib.rs
+--- a/src/lib.rs
++++ b/src/lib.rs
+@@ -34,7 +34,7 @@ pub fn encode(input: &[u8]) -> String {
+     for &d in digits.iter() {
+         out.insert(0, ALPHABET[d as usize] as char);
+     }
+-    for _ in 0..zeros {
++    for _ in 0..zeros.min(2) {
+         out.insert(0, '1');
+     }
+     out

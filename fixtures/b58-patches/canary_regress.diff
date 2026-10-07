@@ -1,0 +1,13 @@
+diff --git a/src/lib.rs b/src/lib.rs
+--- a/src/lib.rs
++++ b/src/lib.rs
+@@ -31,7 +31,8 @@ pub fn encode(input: &[u8]) -> String {
+         }
+     }
+     let mut out = String::new();
+-    for &d in digits.iter() {
++    for &d in digits.clone().iter() {
++        std::hint::black_box(digits.clone());
+         out.insert(0, ALPHABET[d as usize] as char);
+     }
+     for _ in 0..zeros {

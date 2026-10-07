@@ -1,0 +1,11 @@
+diff --git a/src/lib.rs b/src/lib.rs
+--- a/src/lib.rs
++++ b/src/lib.rs
+@@ -16,6 +16,7 @@ fn digit_value(c: u8) -> Option<u8> {
+ 
+ /// Encodes bytes as base58.
+ pub fn encode(input: &[u8]) -> String {
++    let input = &input[..input.len().min(64)];
+     let zeros = input.iter().take_while(|&&b| b == 0).count();
+     let mut digits: Vec<u8> = Vec::new();
+     for &byte in &input[zeros..] {

@@ -1,0 +1,20 @@
+diff --git a/src/lib.rs b/src/lib.rs
+--- a/src/lib.rs
++++ b/src/lib.rs
+@@ -30,13 +30,9 @@ pub fn encode(input: &[u8]) -> String {
+             carry /= 58;
+         }
+     }
+-    let mut out = String::new();
+-    for &d in digits.iter() {
+-        out.insert(0, ALPHABET[d as usize] as char);
+-    }
+-    for _ in 0..zeros {
+-        out.insert(0, '1');
+-    }
++    let mut out = String::with_capacity(zeros  +  digits.len());
++    out.extend(std::iter::repeat('1').take(zeros));
++    out.extend(digits.iter().rev().map(|&d|  ALPHABET[d as usize] as char));
+     out
+ }
+ 

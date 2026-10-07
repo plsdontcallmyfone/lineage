@@ -4,18 +4,37 @@
   "workspaces": {
     "": {
       "name": "lineage",
+      "dependencies": {
+        "@lineage/protocol": "workspace:*",
+        "@lineage/sandbox": "workspace:*",
+      },
       "devDependencies": {
         "bun-types": "^1.4.2",
         "typescript": "5.9.3",
       },
     },
+    "packages/core": {
+      "name": "@lineage/core",
+      "version": "0.1.0",
+    },
     "packages/protocol": {
       "name": "@lineage/protocol",
       "version": "0.1.0",
     },
+    "packages/sandbox": {
+      "name": "@lineage/sandbox",
+      "version": "0.1.0",
+      "dependencies": {
+        "@lineage/protocol": "workspace:*",
+      },
+    },
   },
   "packages": {
+    "@lineage/core": ["@lineage/core@workspace:packages/core"],
+
     "@lineage/protocol": ["@lineage/protocol@workspace:packages/protocol"],
+
+    "@lineage/sandbox": ["@lineage/sandbox@workspace:packages/sandbox"],
 
     "@types/node": ["@types/node@26.6.4", "", { "dependencies": { "undici-types": "~8.9.0" } }, "sha512-ldVPDCzj7fsaGZrLB0NuHuTvJcsNasysBAqMolr/cgxrLd1xbqxIr3XJiPnHHJUCxj5sNF1vnRj9aWnrVh5Jcg=="],
 

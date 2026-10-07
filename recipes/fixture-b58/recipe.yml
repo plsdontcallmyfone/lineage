@@ -1,0 +1,62 @@
+# Fixture recipe: a local base58 crate with planted improvements and a planted bug.
+# The commit is deterministic (fixed author and dates), see packages/sandbox/src/repo.ts.
+name: fixture-b58
+repo: "fixture:b58"
+commit: "c2c30d4ecbdd6a7b9f14457f33898fdf27f0c7d6"
+image: "lineage/rust:m1@sha256:ad2f9ba06cb62446a4a2015ffac9e90f877dbd0c7e10aa2c2976240e68d0a626"
+workdir: /work/src
+prepare:
+  - cargo generate-lockfile --offline
+  - cargo fetch --locked
+prepare_outputs: [Cargo.lock]
+build:
+  commands:
+    - cargo build --release --locked --offline --all-targets
+  artifacts: ["target/release/libfixture_b58.rlib"]
+  reproducible: true
+test:
+  command: cargo test --release --locked --offline 2>&1
+  parser: libtest
+  exclude: []
+  timeout_s: 300
+equivalence:
+  command: target/release/examples/lineage_equiv "$LINEAGE_SEED"
+  output: stdout-digest
+metrics:
+  - name: encode_ir
+    kind: perf
+    direction: lower
+    deterministic: true
+    command: valgrind --tool=cachegrind --cache-sim=no --cachegrind-out-file=/dev/null target/release/examples/lineage_bench encode "$LINEAGE_SEED"
+    parser: cachegrind-ir
+    holdout: true
+    min_effect: 0.01
+  - name: decode_ir
+    kind: perf
+    direction: lower
+    deterministic: true
+    command: valgrind --tool=cachegrind --cache-sim=no --cachegrind-out-file=/dev/null target/release/examples/lineage_bench decode "$LINEAGE_SEED"
+    parser: cachegrind-ir
+    holdout: true
+    min_effect: 0.01
+  - name: encode_ns
+    kind: perf
+    direction: lower
+    deterministic: false
+    command: sh -c 's=$(date +%s%N); target/release/examples/lineage_bench encode "$LINEAGE_SEED" >/dev/null; e=$(date +%s%N); echo $((e - s))'
+    parser: number
+    rounds: 12
+    min_effect: 0.05
+  - name: rlib_bytes
+    kind: slim
+    direction: lower
+    deterministic: true
+    command: wc -c < target/release/libfixture_b58.rlib
+    parser: bytes
+    min_effect: 0.005
+patch:
+  allowed_paths: ["src/**"]
+  protected_paths: ["tests/**", "Cargo.toml", "Cargo.lock", "build.rs"]
+  max_files: 5
+  max_lines: 200
+limits: { cpus: 2, memory_mb: 2048, pids: 256, wall_s: 900, disk_mb: 4096 }

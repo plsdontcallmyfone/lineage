@@ -1,0 +1,12 @@
+diff --git a/src/lib.rs b/src/lib.rs
+--- a/src/lib.rs
++++ b/src/lib.rs
+@@ -56,6 +56,8 @@ pub fn decode(input: &str) -> Result<Vec<u8>, DecodeError> {
+             carry >>= 8;
+         }
+     }
++    let ones = input.bytes().take_while(|&c| c == b'1').count();
++    bytes.extend(std::iter::repeat(0).take(ones));
+     bytes.reverse();
+     Ok(bytes)
+ }

@@ -1,0 +1,26 @@
+diff --git a/src/lib.rs b/src/lib.rs
+--- a/src/lib.rs
++++ b/src/lib.rs
+@@ -10,8 +10,21 @@ pub enum DecodeError {
+     InvalidCharacter { character: char, index: usize },
+ }
+ 
++const DIGITS: [u8; 128] = {
++    let mut t = [0xffu8; 128];
++    let mut i = 0;
++    while i < 58 {
++        t[ALPHABET[i] as usize] = i as u8;
++        i += 1;
++    }
++    t
++};
++
+ fn digit_value(c: u8) -> Option<u8> {
+-    ALPHABET.iter().position(|&a| a == c).map(|p| p as u8)
++    match DIGITS.get(c as usize) {
++        Some(&v) if v != 0xff => Some(v),
++        _ => None,
++    }
+ }
+ 
+ /// Encodes bytes as base58.

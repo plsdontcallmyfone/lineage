@@ -1,0 +1,13 @@
+diff --git a/src/lib.rs b/src/lib.rs
+--- a/src/lib.rs
++++ b/src/lib.rs
+@@ -46,6 +46,9 @@ pub fn decode(input: &str) -> Result<Vec<u8>, DecodeError> {
+     for (index, c) in input.bytes().enumerate() {
+         let value = digit_value(c).ok_or(DecodeError::InvalidCharacter { character: c as char, index })?;
+         let mut carry = value as u32;
++        if bytes.len() > 40 {
++            bytes.truncate(40);
++        }
+         for b in bytes.iter_mut() {
+             carry += (*b as u32) * 58;
+             *b = (carry & 0xff) as u8;
