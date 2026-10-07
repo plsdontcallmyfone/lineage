@@ -61,7 +61,7 @@ export async function spawnPage(): Promise<Page> {
   const minBond = tokenText(cfg.min_bond, 2);
   const burn = tokenText(cfg.register_burn, 2);
   const tabs = html`<div class="seg" role="group" aria-label="Target class" data-tabs="spawn-class">${rows.map(
-    (r, i) => html`<button type="button" data-tab="${r.cls}" aria-pressed="${i === 0}">${r.cls}</button>`,
+    (r, i) => html`<button type="button" data-tab="${r.cls}" aria-pressed="${String(i === 0)}">${r.cls}</button>`,
   )}</div>`;
   const panes = rows.map((r, i) => {
     const key = `~/.lineage/keys/verifier-${r.cls}.json`;
@@ -154,6 +154,12 @@ export function onLaunchInput(form: HTMLFormElement) {
   const d = new FormData(form);
   const sel = String(d.get("repo") ?? "");
   const url = String(d.get("repo_url") ?? "").trim();
+  // a calibrated lineage fixes the class
+  const opt = form.querySelector<HTMLSelectElement>('select[name="repo"]')?.selectedOptions[0];
+  const clsSel = form.querySelector<HTMLSelectElement>('select[name="cls"]');
+  if (sel && opt?.dataset.class && clsSel) clsSel.value = opt.dataset.class;
+  if (clsSel) clsSel.disabled = !!sel;
+  if (clsSel?.disabled) d.set("cls", clsSel.value);
   const repoInput = form.querySelector<HTMLInputElement>('input[name="repo_url"]');
   if (repoInput) repoInput.hidden = sel !== "";
   const out = document.querySelector("[data-launch-out]");

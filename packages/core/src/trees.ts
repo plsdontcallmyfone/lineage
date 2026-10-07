@@ -43,45 +43,65 @@ function git(cwd: string, args: string[]): { ok: boolean; out: Uint8Array; err: 
   return { ok: p.exitCode === 0, out: p.stdout, err: p.stderr.toString() };
 }
 
-/** Applies the hunks of one file's diff to its text. Exact context, no fuzz. */
+/**
+ * Applies the hunks of one file's diff to its text, like `git apply`: every context and removed
+ * line must match exactly (no fuzz), but a hunk may sit at an offset from its stated line, which is
+ * what a rebased patch (SPEC 11.2) looks like on top of the generations accepted before it. The
+ * match nearest to the stated line wins.
+ */
 export function applyHunks(text: string | null, hunks: string[]): string {
   const hadFinalNewline = text === null ? true : text.endsWith("\n");
   const src = text === null || text === "" ? [] : (hadFinalNewline ? text.slice(0, -1) : text).split("\n");
-  const out: string[] = [];
-  let pos = 0; // index into src
-  let newEndsWithoutNewline = false;
-  let lastSign = "";
-  for (let i = 0; i < hunks.length; i++) {
-    const h = hunks[i]!;
+  // split into hunks: header, old lines (context and removed), new lines (context and added)
+  const parsed: { start: number; oldLen: number; old: string[]; neu: string[]; noNewlineNew: boolean; noNewlineOld: boolean }[] = [];
+  for (let k = 0; k < hunks.length; k++) {
+    const h = hunks[k]!;
     if (h.startsWith("@@")) {
       const m = /^@@ -(\d+)(?:,(\d+))? \+(\d+)(?:,(\d+))? @@/.exec(h)!;
-      const oldStart = Number(m[1]);
       const oldLen = m[2] === undefined ? 1 : Number(m[2]);
-      const at = oldLen === 0 ? oldStart : oldStart - 1;
-      if (at < pos || at > src.length) throw new TreeError(`hunk at line ${oldStart} out of order or past end`);
-      while (pos < at) out.push(src[pos++]!);
+      parsed.push({ start: oldLen === 0 ? Number(m[1]) : Number(m[1]) - 1, oldLen, old: [], neu: [], noNewlineNew: false, noNewlineOld: false });
       continue;
     }
+    const cur = parsed[parsed.length - 1];
+    if (!cur) throw new TreeError("hunk line before a hunk header");
     const sign = h[0];
     const body = h.slice(1);
-    if (sign === " " || sign === "-") {
-      if (src[pos] !== body) throw new TreeError(`context mismatch at line ${pos + 1}`);
-      if (sign === " ") out.push(body);
-      pos++;
-      lastSign = sign;
-    } else if (sign === "+") {
-      out.push(body);
-      lastSign = "+";
-      newEndsWithoutNewline = false;
-    } else if (sign === "\\") {
+    if (sign === " ") (cur.old.push(body), cur.neu.push(body));
+    else if (sign === "-") cur.old.push(body);
+    else if (sign === "+") cur.neu.push(body);
+    else if (sign === "\\") {
       // "\ No newline at end of file" refers to the line just before it
-      if (lastSign === "+" || lastSign === " ") newEndsWithoutNewline = true;
+      const prev = hunks[k - 1] ?? "";
+      if (prev[0] === "+" || prev[0] === " ") cur.noNewlineNew = true;
+      if (prev[0] === "-" || prev[0] === " ") cur.noNewlineOld = true;
     }
+  }
+  const out: string[] = [];
+  let pos = 0;
+  let endsWithoutNewline = !hadFinalNewline;
+  for (const hk of parsed) {
+    const matches = (at: number) => at >= pos && at + hk.old.length <= src.length && hk.old.every((l, i) => src[at + i] === l);
+    let at = -1;
+    for (let d = 0; d <= src.length; d++) {
+      if (matches(hk.start - d)) {
+        at = hk.start - d;
+        break;
+      }
+      if (matches(hk.start + d)) {
+        at = hk.start + d;
+        break;
+      }
+      if (hk.start - d < pos && hk.start + d > src.length) break;
+    }
+    if (at < 0) throw new TreeError(`hunk at line ${hk.start + 1} does not match the file`);
+    while (pos < at) out.push(src[pos++]!);
+    out.push(...hk.neu);
+    pos = at + hk.old.length;
+    if (pos === src.length) endsWithoutNewline = hk.noNewlineNew;
   }
   while (pos < src.length) out.push(src[pos++]!);
   if (out.length === 0) return "";
-  const keepNoNewline = newEndsWithoutNewline || (!hadFinalNewline && lastSign !== "+");
-  return out.join("\n") + (keepNoNewline ? "" : "\n");
+  return out.join("\n") + (endsWithoutNewline ? "" : "\n");
 }
 
 /** The default source: the sandbox's local git mirrors plus recipe overlays in this checkout. */

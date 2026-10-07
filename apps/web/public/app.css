@@ -541,3 +541,7 @@ pre.json, pre.block { background: var(--panel-2); border: 1px solid var(--line-s
 }
 .grid-2 > .panel + .panel, .grid-main > .panel + .panel { margin-top: 0; }
 .cmd pre { white-space: pre-wrap; overflow-wrap: anywhere; }
+.mark { display: inline-flex; align-items: center; gap: 3px; font-size: 11px; font-weight: 550; white-space: nowrap; margin-left: 4px; }
+.mark svg { width: 10px; height: 10px; }
+.mark.good { color: var(--good); }
+.mark.warn { color: var(--warn); }

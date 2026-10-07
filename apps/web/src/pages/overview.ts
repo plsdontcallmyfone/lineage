@@ -20,8 +20,8 @@ export function feedPanel(): Raw {
   return panel("Live feed", html`<div class="feed" id="feed" data-keep-scroll>${feedBody()}</div>`, {
     cls: "milled",
     aside: html`<div class="seg" role="group" aria-label="Feed filter">
-      <button type="button" data-feed-mode="key" aria-pressed="${live.mode === "key"}">Key</button>
-      <button type="button" data-feed-mode="all" aria-pressed="${live.mode === "all"}">All</button>
+      <button type="button" data-feed-mode="key" aria-pressed="${String(live.mode === "key")}">Key</button>
+      <button type="button" data-feed-mode="all" aria-pressed="${String(live.mode === "all")}">All</button>
     </div>`,
     note: html`Streamed from Core <span class="num">GET /v1/events</span>. Candidates are unverified until accepted.`,
   });

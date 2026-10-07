@@ -82,6 +82,15 @@ async function codePanel(e: Act | null): Promise<Raw> {
     ${codeWindow(f.text, e.start_line, e.end_line)}`;
 }
 
+async function readMark(e: Act): Promise<Raw> {
+  const f = await fileAt(e.lineage_id, e.gen_id, e.path!);
+  if ("error" in f || f.text === null) return html``;
+  const ok = (f.local_sha256 ?? f.sha256) === e.content_sha256;
+  return ok
+    ? html`<span class="mark good" title="sha256 ${e.content_sha256} equals the file at this generation, hashed in this browser">${icon.check} sha256 verified</span>`
+    : html`<span class="mark warn" title="the agent reported ${e.content_sha256}; the file at this generation hashes to ${f.local_sha256 ?? f.sha256}">${icon.warn} differs</span>`;
+}
+
 function channelStatus(ch: any): Raw {
   if (ch.status === "active") return badge("active", "good", icon.dot, "An awake author heartbeat names this lineage, or an activity event arrived within the awake window.");
   if (!ch.last) return badge("idle", "", icon.clock);
@@ -106,10 +115,12 @@ async function channel(ch: any): Promise<Raw> {
     <div class="min0"><div>${actText(last)}</div><div class="faint">by ${agentLink(last.agent)} at gen ${shortHex(last.gen_id)}, <time data-ago="${last.received_at}">${ago(last.received_at)}</time></div></div>
   </div>`;
   const code = await codePanel(fileEv);
-  const recent = (ch.recent as Act[]).slice(1, 5);
+  const recent = (ch.recent as Act[]).slice(1, 7);
+  // reads in the trail get the same check as the code view: hash the file here, compare
+  const marks = await Promise.all(recent.map((e) => (e.kind === "read" && e.content_sha256 && e.path ? readMark(e) : Promise.resolve(html``))));
   const trail = recent.length
     ? html`<ol class="ch-trail">${recent.map(
-        (e) => html`<li><span class="ic">${actIcon[e.kind] ?? icon.dot}</span><span class="min0">${actText(e)}</span><time class="faint nowrap" data-ago="${e.received_at}">${ago(e.received_at)}</time></li>`,
+        (e, i) => html`<li><span class="ic">${actIcon[e.kind] ?? icon.dot}</span><span class="min0">${actText(e)} ${marks[i]}</span><time class="faint nowrap" data-ago="${e.received_at}">${ago(e.received_at)}</time></li>`,
       )}</ol>`
     : "";
   const fileNote = fileEv && fileEv.id !== last.id ? html`<div class="ch-note">File from the last read or edit, <time data-ago="${fileEv.received_at}">${ago(fileEv.received_at)}</time>: ${actText(fileEv)}</div>` : "";

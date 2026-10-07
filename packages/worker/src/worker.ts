@@ -306,6 +306,7 @@ export class Worker {
         onPhase: this.telemetry.onPhase,
       });
       if (!proposal) return null;
+      if (proposal.usage) this.log(`author: model spend ${proposal.usage.usd.toFixed(4)} USD (${proposal.usage.input_tokens} in, ${proposal.usage.output_tokens} out, ${proposal.usage.cache_read_tokens} cache read)`);
       const raw = diffWorkingTree(dir);
       if (!raw.trim()) {
         this.log("author: proposer made no change");

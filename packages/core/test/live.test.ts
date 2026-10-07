@@ -269,10 +269,28 @@ describe("trees", () => {
     expect(src.file(recipeYml, recipeYml.commit, [], "nope.rs")!.exists).toBe(false);
   });
 
+  test("a rebased series (perf_decode written against gen 0) rebuilds exactly as sequential git apply", () => {
+    const recipeYml = Bun.YAML.parse(readFileSync(join(ROOT, "recipes/fixture-b58/recipe.yml"), "utf8")) as Recipe;
+    const series = ["perf_encode", "fix_leading_ones", "perf_decode"].map((n) => readFileSync(join(ROOT, `fixtures/b58-patches/${n}.diff`), "utf8"));
+    const src = new GitTreeSource();
+    const dir = mkdtempSync(join(tmpdir(), "lineage-trees-"));
+    try {
+      Bun.spawnSync(["git", "init", "-q"], { cwd: dir });
+      Bun.spawnSync(["mkdir", "-p", "src"], { cwd: dir });
+      require("node:fs").writeFileSync(join(dir, "src/lib.rs"), readFileSync(join(ROOT, "fixtures/b58/src/lib.rs")));
+      for (const p of series) expect(Bun.spawnSync(["git", "apply", "-"], { cwd: dir, stdin: Buffer.from(p) }).exitCode).toBe(0);
+      expect(src.file(recipeYml, recipeYml.commit, series, "src/lib.rs")!.text).toBe(readFileSync(join(dir, "src/lib.rs"), "utf8"));
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
   test("applyHunks handles additions, deletions and missing final newlines", () => {
     expect(applyHunks(null, ["@@ -0,0 +1,2 @@", "+a", "+b"])).toBe("a\nb\n");
     expect(applyHunks("a\nb\nc\n", ["@@ -1,3 +1,2 @@", " a", "-b", " c"])).toBe("a\nc\n");
     expect(applyHunks("a\nb", ["@@ -1,2 +1,2 @@", " a", "-b", "\\ No newline at end of file", "+c", "\\ No newline at end of file"])).toBe("a\nc");
     expect(() => applyHunks("x\n", ["@@ -1,1 +1,1 @@", "-y", "+z"])).toThrow();
+    // a rebased patch: the hunk says line 2 but the block now sits at line 5, as git apply finds it
+    expect(applyHunks("p\nq\nr\na\nb\nc\n", ["@@ -2,3 +2,3 @@", " a", "-b", "+B", " c"])).toBe("p\nq\nr\na\nB\nc\n");
   });
 });
