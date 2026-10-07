@@ -8,7 +8,7 @@ import { spawn, type Subprocess } from "bun";
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { generateAgentKey, H, patchCommitment, patchHash, type AgentKey } from "@lineage/protocol";
+import { generateAgentKey, H, patchCommitment, patchHash, sha256Hex, type AgentKey } from "@lineage/protocol";
 import { loadRecipe, prepareDeps } from "@lineage/sandbox";
 import { CoreClient } from "../packages/core/src/client.ts";
 import { doctor } from "../packages/worker/src/doctor.ts";
@@ -200,6 +200,33 @@ async function main() {
     return final;
   }
 
+  // ---------------------------------------------------------------- live telemetry watcher (SPEC 17.1)
+  // Samples every public live surface while candidates are open. A candidate that is still open
+  // AFTER a sample was open DURING it, so its ids must not appear in that sample.
+  const watch = { samples: 0, sealedSeen: 0, violations: [] as string[], phases: new Set<string>(), jobs: new Set<string>(), stop: false };
+  const watcher = (async () => {
+    const anon = new CoreClient(CORE, null);
+    while (!watch.stop) {
+      try {
+        const [lv, hb, act, evs] = await Promise.all([anon.get("/v1/live"), anon.get("/v1/heartbeats"), anon.get("/v1/activity?limit=1000"), anon.get("/v1/events/log?since=0&limit=5000")]);
+        const liveEvents = (evs.body as any[]).filter((e) => e.type === "activity" || e.type === "machine.heartbeat");
+        const text = JSON.stringify([lv.body, hb.body, act.body, liveEvents]);
+        const open = ((await anon.get(`/v1/candidates?limit=1000`)).body as any[]).filter((c) => !FINAL.has(c.status));
+        for (const c of open) for (const id of [c.candidate_id, c.commit_id]) if (id && text.includes(id)) watch.violations.push(`${id.slice(0, 10)} (${c.status})`);
+        for (const m of hb.body as any[]) {
+          if (!m.awake) continue;
+          watch.jobs.add(m.job);
+          if (m.phase) watch.phases.add(`${m.job}:${m.phase}`);
+          if (m.sealed) watch.sealedSeen++;
+        }
+        watch.samples++;
+      } catch {
+        /* Core busy; next sample */
+      }
+      await Bun.sleep(400);
+    }
+  })();
+
   // ---------------------------------------------------------------- phase 1: accepted generations
   const p1 = await submit("perf_encode");
   check("perf_encode accepted (deterministic instruction count)", p1.status === "accepted", p1.effect ? `ratio ${p1.effect.ratio}` : "");
@@ -224,6 +251,41 @@ async function main() {
     const f = await candidateFinal(id);
     check(`${name} rejected with ${reason}`, f.status === "rejected" && String(f.reason).includes(reason), `${f.status} ${f.reason ?? ""}`);
   }
+
+  // ---------------------------------------------------------------- live telemetry checks
+  watch.stop = true;
+  await watcher;
+  check(
+    "sealed replays never expose a candidate id via live endpoints before it is final",
+    watch.violations.length === 0 && watch.sealedSeen > 0,
+    `${watch.samples} samples, ${watch.sealedSeen} sealed replay heartbeats seen, ${watch.violations.length} leaks ${watch.violations.slice(0, 3).join(" ")}`,
+  );
+  const replayPhases = [...watch.phases].filter((p) => p.startsWith("replay:")).map((p) => p.slice(7));
+  check("heartbeats carry real replay phases from the sandbox", ["build", "test", "metrics"].every((p) => replayPhases.includes(p)), `observed ${[...watch.phases].sort().join(", ")}`);
+  const machines = await ok<any[]>(admin.get("/v1/heartbeats"), "heartbeats");
+  const beating = ["ref", "v1", "v2", "v3", "faker"].filter((n) => machines.some((m) => m.agent_id === keys[n as keyof typeof keys].id));
+  check("every worker process sends heartbeats with its declared capabilities", beating.length === 5 && machines.filter((m) => beating.some((n) => keys[n as keyof typeof keys].id === m.agent_id)).every((m) => m.caps_match === true), `${beating.join(",")} of ref,v1,v2,v3,faker`);
+  const st = await ok(admin.get("/v1/stats"), "stats");
+  check("stats count machines awake and verified gains", st.machines_awake >= 5 && st.verified_gains === 2, `awake ${st.machines_awake} of ${st.machines}, gains ${st.verified_gains}`);
+  const acts = await ok<any[]>(admin.get(`/v1/activity?agent=${keys.author.id}&limit=1000`), "activity");
+  const edits = acts.filter((a) => a.kind === "edit");
+  check(
+    "author activity arrives: edits with path and parent range checked against the generation tree, then propose and submit",
+    edits.length > 0 && edits.every((a) => a.path_checked && a.start_line >= 1) && acts.some((a) => a.kind === "propose") && acts.some((a) => a.kind === "submit"),
+    `${acts.length} events: ${[...new Set(acts.map((a) => a.kind))].join(", ")}`,
+  );
+  const allowed = new Set(["id", "agent", "kind", "lineage_id", "gen_id", "commit", "path", "start_line", "end_line", "query", "target", "content_sha256", "path_checked", "at", "received_at"]);
+  check("activity events carry no file content or patch text", acts.every((a) => Object.keys(a).every((k) => allowed.has(k))) && !JSON.stringify(acts).includes("with_capacity"));
+  const g0 = await ok(admin.get(`/v1/lineages/${L}/file?gen=${lineage.gen0}&path=src/lib.rs`), "file gen0");
+  const tipNow = (await ok(admin.get(`/v1/lineages/${L}`), "lineage")).tip;
+  const gTip = await ok(admin.get(`/v1/lineages/${L}/file?gen=${tipNow}&path=src/lib.rs`), "file tip");
+  check(
+    "file endpoint rebuilds the tree: gen 0 equals the snapshot bytes, the tip carries the accepted patches",
+    g0.sha256 === sha256Hex(readFileSync(join(ROOT, "fixtures/b58/src/lib.rs"))) && gTip.source === "patched" && String(gTip.text).includes("with_capacity"),
+    `gen0 ${String(g0.sha256).slice(0, 10)}, tip ${gTip.source} at height ${gTip.height}`,
+  );
+  const bogus = await as(keys.author).post("/v1/activity", { events: [{ kind: "read", lineage_id: L, gen_id: tipNow, commit: lineage.snapshot.commit_sha, path: "src/not_there.rs" }] });
+  check("activity naming a path outside the generation tree is refused", bogus.status === 400, `${bogus.status} ${JSON.stringify(bogus.body).slice(0, 120)}`);
 
   // ---------------------------------------------------------------- phase 3: stale candidates
   // A slow author commits against gen_0 after the tip moved. One patch conflicts, one rebases.

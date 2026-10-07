@@ -1,6 +1,6 @@
 {
-  "at": "2026-10-07T20:06:27.300Z",
-  "seconds": 211,
+  "at": "2026-10-07T21:18:21.493Z",
+  "seconds": 380,
   "results": [
     {
       "check": "recipe id recomputed by Core matches the worker's",
@@ -10,7 +10,7 @@
     {
       "check": "calibration accepted, lineage created",
       "ok": true,
-      "detail": "{\"lineage_id\":\"385030aabff2e6cb7ae955f798bb5dafdd043a20be14d4a62479d7c5660521a3\",\"calib_id\":\"0b0e74982c2dd6429af9ba7e93b"
+      "detail": "{\"lineage_id\":\"385030aabff2e6cb7ae955f798bb5dafdd043a20be14d4a62479d7c5660521a3\",\"calib_id\":\"5b97f43abcb9b9b9d9fc98765cc"
     },
     {
       "check": "stable set and known failure from real calibration",
@@ -71,6 +71,46 @@
       "check": "protected_test_edit rejected with guard",
       "ok": true,
       "detail": "rejected guard"
+    },
+    {
+      "check": "sealed replays never expose a candidate id via live endpoints before it is final",
+      "ok": true,
+      "detail": "189 samples, 472 sealed replay heartbeats seen, 0 leaks "
+    },
+    {
+      "check": "heartbeats carry real replay phases from the sandbox",
+      "ok": true,
+      "detail": "observed author:propose, qualify:commit, replay:build, replay:commit, replay:equivalence, replay:metrics, replay:test"
+    },
+    {
+      "check": "every worker process sends heartbeats with its declared capabilities",
+      "ok": true,
+      "detail": "ref,v1,v2,v3,faker of ref,v1,v2,v3,faker"
+    },
+    {
+      "check": "stats count machines awake and verified gains",
+      "ok": true,
+      "detail": "awake 6 of 6, gains 2"
+    },
+    {
+      "check": "author activity arrives: edits with path and parent range checked against the generation tree, then propose and submit",
+      "ok": true,
+      "detail": "18 events: submit, propose, edit"
+    },
+    {
+      "check": "activity events carry no file content or patch text",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "file endpoint rebuilds the tree: gen 0 equals the snapshot bytes, the tip carries the accepted patches",
+      "ok": true,
+      "detail": "gen0 061c80aaa3, tip patched at height 2"
+    },
+    {
+      "check": "activity naming a path outside the generation tree is refused",
+      "ok": true,
+      "detail": "400 {\"error\":\"bad_activity\",\"message\":\"#0: path is not in this generation's tree\"}"
     },
     {
       "check": "re-skinned copy of an accepted patch rejected as duplicate",
@@ -145,12 +185,12 @@
     {
       "check": "ledger reconciles to zero with no negative balances",
       "ok": true,
-      "detail": "{\"ok\":true,\"errors\":[],\"entries\":72,\"transactions\":36,\"total\":\"0\",\"balances\":{\"agent:2RAAE75UDAkaZyDnzfJEfRR8v8mrZF7Tb4QYYc8vJetC:compute\":\"2000000000\",\"agent:4"
+      "detail": "{\"ok\":true,\"errors\":[],\"entries\":72,\"transactions\":36,\"total\":\"0\",\"balances\":{\"agent:5W5X7WYfNmFhRSFjWrdKr2RU9pzK4DWxSDNuHbmdZLvm:bond\":\"5000000000\",\"agent:5W5X"
     },
     {
       "check": "verifier claims its epoch payout with a Merkle proof",
       "ok": true,
-      "detail": "{\"epoch\":0,\"agent\":\"9EGe6wtGbtWJPb9e5scvC8Zg6PktkxtVBW6voUXPAeZG\",\"dest\":\"agent:9EGe6wtGbtWJPb9e5scvC8Zg6PktkxtVBW6voUXPAeZG:wallet\",\"amount\":\"42188148441\",\"bal"
+      "detail": "{\"epoch\":0,\"agent\":\"5W5X7WYfNmFhRSFjWrdKr2RU9pzK4DWxSDNuHbmdZLvm\",\"dest\":\"agent:5W5X7WYfNmFhRSFjWrdKr2RU9pzK4DWxSDNuHbmdZLvm:wallet\",\"amount\":\"29660242003\",\"bal"
     },
     {
       "check": "another agent cannot claim that leaf",
