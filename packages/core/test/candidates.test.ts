@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, test } from "bun:test";
 import { ACC } from "../src/ledger.ts";
-import { assignmentSeed, canonicalizeDiff, costClass, effectValue, genId, patchCommitment, patchHash, replaySeed, resultCommitment, sha256Hex, H } from "../src/protocol.ts";
+import { assignmentSeed, canonicalizeDiff, costClass, effectValue, genId, patchCommitment, patchHash, resultCommitment, sha256Hex, H } from "../src/protocol.ts";
 import {
   agent,
   assignmentsFor,
@@ -72,13 +72,13 @@ describe("happy path", () => {
     const tree = await expectOk(e.anon.get(`/v1/lineages/${e.lineage}/tree?gen=${v.gen_id}`));
     expect(tree.patches.map((p: any) => p.patch)).toEqual([patch]);
 
-    // the replay seed is replaySeed(assignmentSeed(beacon, candidate), replayer), verifiable after close
+    // one shared replay seed per stage: H(assignmentSeed(beacon, candidate), "replay-seed"), verifiable after close
     await expectOk(e.admin.c.post("/v1/admin/epochs/close"));
     const ep = await expectOk(e.anon.get("/v1/epochs/0"));
     const round = ep.assignment_rounds.find((r: any) => r.subject === c.candidate_id);
     const beacon = H("m1-beacon", ep.secret, c.candidate_id, round.round, round.bucket);
     expect(round.beacon).toBe(beacon);
-    for (const { v: who, a } of assigned) expect(a.seed).toBe(replaySeed(assignmentSeed(beacon, c.candidate_id), who.id));
+    for (const { a } of assigned) expect(a.seed).toBe(H(assignmentSeed(beacon, c.candidate_id), "replay-seed"));
 
     // units: author u_author x cost_class x value; each replayer u_replay x cost_class
     const cls = costClass(CALIB.median_eval_seconds);

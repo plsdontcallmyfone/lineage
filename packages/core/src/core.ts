@@ -32,7 +32,6 @@ import {
   proportionalSplit,
   recipeId,
   repoId,
-  replaySeed,
   resultCommitment,
   semanticHash,
   snapshotId,
@@ -1109,12 +1108,15 @@ export class Core {
   }) {
     const id = H("replay", p.grp, p.round, p.replayer);
     const now = this.now();
+    // one shared replay seed per group (candidate stage or audit), fixed by its first round (SPEC 10.3)
+    const first = this.db.query<{ seed: string }, [string]>("SELECT seed FROM replays WHERE grp = ? ORDER BY assigned_at, round LIMIT 1").get(p.grp);
+    const seed = first?.seed ?? H(p.seed, "replay-seed");
     this.db
       .query(
         `INSERT INTO replays (replay_id, candidate_id, grp, audit_id, replayer, kind, stage, round, eval_parent_gen_id, assignment_seed, seed, status, assigned_at, commit_deadline, epoch)
          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'assigned', ?, ?, ?)`,
       )
-      .run(id, p.candidate.candidate_id!, p.grp, p.audit_id, p.replayer, p.kind, p.stage, p.round, p.eval_parent, p.seed, replaySeed(p.seed, p.replayer), now, now + p.window, p.epoch);
+      .run(id, p.candidate.candidate_id!, p.grp, p.audit_id, p.replayer, p.kind, p.stage, p.round, p.eval_parent, p.seed, seed, now, now + p.window, p.epoch);
     // the event names only the candidate: who replays it stays private until it is final
     this.emit("replay.assigned", { candidate_id: p.candidate.candidate_id, kind: p.kind === "audit_reference" ? "audit" : p.kind === "reference" ? "replay" : p.kind });
     return id;
@@ -1134,6 +1136,11 @@ export class Core {
     for (const r of existing) {
       const op = this.agentRow(r.replayer)?.operator;
       if (op) exOps.add(op);
+    }
+    if (c.want_reference && this.referenceAgents(exAgents).length === 0) {
+      // no reference runner available: a random replayer takes its place
+      this.db.query("UPDATE candidates SET want_reference = 0, want_replays = want_replays + 1 WHERE commit_id = ?").run(c.commit_id);
+      c = this.candRow(c.commit_id)!;
     }
     const initial = existing.length === 0;
     const d = this.draw(c.candidate_id!, c.rounds, c.want_replays, !!c.want_reference, exAgents, exOps, initial);
@@ -1159,8 +1166,13 @@ export class Core {
     const original = this.db.query<ReplayRow, [string]>("SELECT * FROM replays WHERE candidate_id = ? AND audit_id IS NULL").all(a.candidate_id);
     const existing = this.db.query<ReplayRow, [string]>("SELECT * FROM replays WHERE grp = ?").all(grp);
     const author = this.agentRow(c.author)!;
-    const exAgents = new Set([c.author, ...original.map((r) => r.replayer), ...existing.map((r) => r.replayer)]);
+    // the reference runner may audit a generation it also replayed: it is Core, and the audit runs a fresh seed
+    const exAgents = new Set([c.author, ...original.filter((r) => r.kind !== "reference").map((r) => r.replayer), ...existing.map((r) => r.replayer)]);
     const exOps = new Set<string>(author.operator ? [author.operator] : []);
+    if (a.want_reference && this.referenceAgents(exAgents).length === 0) {
+      this.db.query("UPDATE audits SET want_reference = 0, want_replays = want_replays + 1 WHERE audit_id = ?").run(a.audit_id);
+      a = this.auditRow(a.audit_id)!;
+    }
     const d = this.draw(a.audit_id, a.rounds, a.want_replays, !!a.want_reference, exAgents, exOps, false);
     if (!d) return;
     const l = this.lineageRow(c.lineage_id)!;

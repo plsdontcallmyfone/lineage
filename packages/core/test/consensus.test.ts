@@ -61,6 +61,34 @@ describe("disputes (SPEC 10.2)", () => {
     await reconcileOk(e);
   });
 
+  test("all replays of a stage share one seed; a liar's deterministic numbers lose to the honest majority", async () => {
+    const e = (env = await setup({ verifiers: 5, over: { audit_rate: 1, max_open_replays: 4 } }));
+    const author = await makeAuthor(e);
+    const c = await submit(e, author, diff("seed"));
+    let liar: string | null = null;
+    const behave = (a: Agent, asg: any) => {
+      liar ??= a.id;
+      // honest replayers measure the same holdout input, so their instruction counts agree exactly
+      return a.id === liar && asg.kind === "replay" ? result({}, 850) : result({}, 900);
+    };
+    await runReplays(e, c.candidate_id, behave, 1);
+    expect((await candidate(e, c.candidate_id)).status).toBe("disputed");
+    await runReplays(e, c.candidate_id, behave);
+    const v = await candidate(e, c.candidate_id);
+    expect(v.status).toBe("accepted");
+    // first pair, dispute extra and reference all ran the same seed
+    const stage = v.replays.filter((r: any) => !r.audit_id);
+    expect(stage).toHaveLength(4);
+    expect(new Set(stage.map((r: any) => r.seed)).size).toBe(1);
+    expect(stage.find((r: any) => r.replayer === liar).role).toBe("minority");
+    expect(v.verdict.effect.ratio).toBeCloseTo(0.9);
+    // the audit group gets its own fresh shared seed
+    const audit = v.replays.filter((r: any) => r.audit_id);
+    expect(audit.length).toBe(2);
+    expect(new Set(audit.map((r: any) => r.seed)).size).toBe(1);
+    expect(audit[0].seed).not.toBe(stage[0].seed);
+  });
+
   test("without a reference runner a dispute draws two more random replayers; a 2-2 split is unresolved", async () => {
     const e = (env = await setup({ verifiers: 4, reference: false }));
     const author = await makeAuthor(e);
