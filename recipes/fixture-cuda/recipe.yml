@@ -1,0 +1,63 @@
+# Fixture recipe for the cuda target class (SPEC 6.1): fixtures/cuda-reduce, a two-kernel library
+# with planted inefficiencies (interleaved-modulo shared-memory reduction; a global load repeated
+# inside a loop because the compiler cannot prove it does not alias the store).
+# The commit is deterministic (fixed author and dates), see packages/sandbox/src/repo.ts.
+#
+# PENDING GPU SESSION: `image` carries a placeholder id until scripts/gpu/session.sh builds
+# images/cuda on the rented box and rewrites it with the real local image id. Calibration has not
+# run: no calibration.json, every number is TBA until then.
+# requires.gpu.sm and the -arch flags below must agree; scripts/gpu/session.sh sets both (SM=86 for
+# an A10 or A6000, SM=89 for an L4).
+name: fixture-cuda
+class: cuda
+requires: { arch: amd64, gpu: { vendor: nvidia, sm: "8.6" } }
+repo: "fixture:cuda-reduce"
+commit: "3f72f8b01f68c26b67943ab93e5e17c86b1e112d"
+image: "lineage/cuda:m1@sha256:0000000000000000000000000000000000000000000000000000000000000000"
+workdir: /work/src
+prepare: []
+build:
+  commands:
+    - make SM=86 all
+    - /usr/local/cuda/bin/nvcc -O3 -std=c++17 -arch=sm_86 -o build/lineage_harness lineage/harness.cu src/kernels.cu
+  artifacts: []
+  reproducible: false
+test:
+  command: ./build/test_kernels
+  parser: tap
+  exclude: []
+  timeout_s: 300
+equivalence:
+  command: ./build/lineage_harness equiv "$LINEAGE_SEED"
+  output: stdout-digest
+metrics:
+  - name: reduce_warp_inst
+    kind: perf
+    direction: lower
+    deterministic: true
+    command: ncu --csv --print-units base --clock-control none --metrics smsp__inst_executed.sum -k regex:reduce_sum_kernel ./build/lineage_harness bench reduce "$LINEAGE_SEED"
+    parser: ncu-inst
+    holdout: true
+    min_effect: 0.01
+  - name: scale_warp_inst
+    kind: perf
+    direction: lower
+    deterministic: true
+    command: ncu --csv --print-units base --clock-control none --metrics smsp__inst_executed.sum -k regex:row_scale_kernel ./build/lineage_harness bench scale "$LINEAGE_SEED"
+    parser: ncu-inst
+    holdout: true
+    min_effect: 0.01
+  - name: reduce_us
+    kind: perf
+    direction: lower
+    deterministic: false
+    command: ./build/lineage_harness time reduce "$LINEAGE_SEED"
+    parser: number
+    rounds: 15
+    min_effect: 0.05
+patch:
+  allowed_paths: ["src/**"]
+  protected_paths: ["tests/**", "Makefile", "lineage/**"]
+  max_files: 5
+  max_lines: 200
+limits: { cpus: 2, memory_mb: 4096, pids: 256, wall_s: 900, disk_mb: 4096 }

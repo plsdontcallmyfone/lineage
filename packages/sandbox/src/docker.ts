@@ -1,4 +1,5 @@
 import { randomBytes } from "node:crypto";
+import { mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import type { Limits } from "@lineage/protocol";
 
 // Docker runner, SPEC section 8. Every container is labelled lineage=1 so cleanup never touches
@@ -22,6 +23,12 @@ export interface RunSpec {
   job: string;
   /** cap on captured stdout and stderr each, bytes */
   capture_limit?: number;
+  /**
+   * GPU device request for cuda-class recipes (SPEC 6.1, 8), passed as `docker run --gpus <value>`,
+   * for example "device=0". Unset for every other recipe. Nothing else is added for GPUs: no
+   * capabilities, no extra devices (performance counters are opened on the host, see images/cuda).
+   */
+  gpus?: string;
 }
 
 export interface RunResult {
@@ -57,6 +64,9 @@ export function dockerArgs(spec: RunSpec, name: string): string[] {
     "--rm",
     "--name",
     name,
+    // fixed hostname: Docker otherwise injects a random HOSTNAME, and environment size shifts instruction counts
+    "--hostname",
+    "lineage",
     "--label",
     "lineage=1",
     "--label",
@@ -82,6 +92,7 @@ export function dockerArgs(spec: RunSpec, name: string): string[] {
     spec.cwd,
   ];
   if (!spec.network) args.push("--network", "none");
+  if (spec.gpus) args.push("--gpus", spec.gpus);
   for (const m of spec.mounts) args.push("--volume", `${m.host}:${m.container}${m.readonly ? ":ro" : ""}`);
   const env = {
     TZ: "UTC",
@@ -149,4 +160,84 @@ export function imageArch(image: string): string {
   const p = Bun.spawnSync(["docker", "image", "inspect", "--format", "{{.Architecture}}", ref]);
   if (p.exitCode !== 0) throw new Error(`image not available: ${image}`);
   return p.stdout.toString().trim();
+}
+
+export interface HostGpu {
+  index: number;
+  name: string;
+  /** compute capability, "8.9" */
+  sm: string;
+  driver: string;
+  mem_mb: number;
+}
+
+/** GPUs visible on the host per nvidia-smi; empty when there is no NVIDIA driver. */
+export function hostGpus(): HostGpu[] {
+  let p;
+  try {
+    p = Bun.spawnSync(["nvidia-smi", "--query-gpu=index,name,compute_cap,driver_version,memory.total", "--format=csv,noheader,nounits"]);
+  } catch {
+    return [];
+  }
+  if (p.exitCode !== 0) return [];
+  return parseNvidiaSmiGpus(p.stdout.toString());
+}
+
+export function parseNvidiaSmiGpus(out: string): HostGpu[] {
+  return out
+    .split("\n")
+    .map((l) => l.split(",").map((x) => x.trim()))
+    .filter((f) => f.length >= 5 && /^\d+$/.test(f[0]!))
+    .map((f) => ({ index: Number(f[0]), name: f[1]!, sm: f[2]!, driver: f[3]!, mem_mb: Number(f[4]) }));
+}
+
+/**
+ * The `--gpus` value for a recipe: LINEAGE_GPU_DEVICE (default "0") selects one host GPU, so a
+ * multi-GPU worker measures base and candidate on the same device.
+ */
+export function gpuDeviceRequest(): string {
+  const dev = (process.env.LINEAGE_GPU_DEVICE ?? "0").trim();
+  if (!/^\d+$/.test(dev)) throw new Error(`LINEAGE_GPU_DEVICE must be a single GPU index, got ${dev}`);
+  return `device=${dev}`;
+}
+
+/**
+ * Runs `fn` while holding a host-wide lock (a directory under `dir` holding the owner's pid), so
+ * that every worker process on one machine takes turns on a shared resource. Used for GPUs: two
+ * Nsight Compute sessions, or a profiled kernel next to another process's kernels, on the same GPU
+ * would collide or disturb the counters. A lock whose owner pid is gone is taken over.
+ */
+export async function withHostLock<T>(dir: string, name: string, fn: () => Promise<T>, pollMs = 250): Promise<T> {
+  const lock = `${dir}/${name}.lock`;
+  mkdirSync(dir, { recursive: true });
+  for (;;) {
+    try {
+      mkdirSync(lock);
+      writeFileSync(`${lock}/pid`, String(process.pid));
+      break;
+    } catch (e) {
+      if ((e as NodeJS.ErrnoException).code !== "EEXIST") throw e;
+      let owner = 0;
+      try {
+        owner = Number(readFileSync(`${lock}/pid`, "utf8"));
+      } catch {
+        // being created right now; wait
+      }
+      let alive = true;
+      if (owner > 0) {
+        try {
+          process.kill(owner, 0);
+        } catch {
+          alive = false;
+        }
+      }
+      if (!alive) rmSync(lock, { recursive: true, force: true });
+      else await Bun.sleep(pollMs);
+    }
+  }
+  try {
+    return await fn();
+  } finally {
+    rmSync(lock, { recursive: true, force: true });
+  }
 }

@@ -1,0 +1,94 @@
+# karpathy/llm.c production CUDA kernels (MIT licence, see LICENSE in the repo; upstream policy in
+# recipes/llmc-cuda/NOTES.md). Real-repo candidate for the cuda target class (SPEC 6.1).
+#
+# What is measured: the bf16 forward kernels GPT-2 training runs every step (encoder, layernorm,
+# fused residual + layernorm, residual, GeLU) and GeLU backward, at GPT-2 small shapes
+# (B=8, T=1024, C=768), by executed warp instructions under Nsight Compute.
+# What guards them: lineage/harness.cu (overlay, protected) checks every kernel in the allowed files,
+# forward AND backward, against a CPU reference with bf16 tolerances, including tail and guard-row
+# cases. Upstream's own test (test_gpt2.cu) needs ~500 MB of downloaded GPT-2 weights and cuDNN, so it
+# is not used here.
+#
+# PENDING GPU SESSION: `image` is a placeholder until scripts/gpu/session.sh builds images/cuda and
+# rewrites it with the real image id. Not calibrated: no calibration.json, all numbers TBA.
+# The sm in requires.gpu and in -arch must agree; scripts/gpu/session.sh sets both.
+name: llmc-cuda
+class: cuda
+requires: { arch: amd64, gpu: { vendor: nvidia, sm: "8.6" } }
+repo: https://github.com/karpathy/llm.c
+commit: "f1e2ace651495b74ae22d45d1723443fd00ecd3a"
+image: "lineage/cuda:m1@sha256:0000000000000000000000000000000000000000000000000000000000000000"
+workdir: /work/src
+prepare: []
+build:
+  commands:
+    - mkdir -p build
+    - /usr/local/cuda/bin/nvcc -O3 --use_fast_math -std=c++17 -arch=sm_86 -o build/lineage_harness lineage/harness.cu
+  artifacts: []
+  reproducible: false
+test:
+  command: ./build/lineage_harness test
+  parser: tap
+  exclude: []
+  timeout_s: 600
+equivalence:
+  command: ./build/lineage_harness equiv "$LINEAGE_SEED"
+  output: stdout-digest
+metrics:
+  - name: layernorm_fwd_inst
+    kind: perf
+    direction: lower
+    deterministic: true
+    command: ncu --csv --print-units base --clock-control none --metrics smsp__inst_executed.sum -k regex:layernorm_forward_kernel ./build/lineage_harness bench layernorm_fwd "$LINEAGE_SEED"
+    parser: ncu-inst
+    holdout: true
+    min_effect: 0.01
+  - name: fused_residual_fwd_inst
+    kind: perf
+    direction: lower
+    deterministic: true
+    command: ncu --csv --print-units base --clock-control none --metrics smsp__inst_executed.sum -k regex:fused_residual_forward_kernel ./build/lineage_harness bench fused_residual_fwd "$LINEAGE_SEED"
+    parser: ncu-inst
+    holdout: true
+    min_effect: 0.01
+  - name: encoder_fwd_inst
+    kind: perf
+    direction: lower
+    deterministic: true
+    command: ncu --csv --print-units base --clock-control none --metrics smsp__inst_executed.sum -k regex:encoder_forward_kernel ./build/lineage_harness bench encoder_fwd "$LINEAGE_SEED"
+    parser: ncu-inst
+    holdout: true
+    min_effect: 0.01
+  - name: gelu_fwd_inst
+    kind: perf
+    direction: lower
+    deterministic: true
+    command: ncu --csv --print-units base --clock-control none --metrics smsp__inst_executed.sum -k regex:gelu_forward_kernel ./build/lineage_harness bench gelu_fwd "$LINEAGE_SEED"
+    parser: ncu-inst
+    holdout: true
+    min_effect: 0.01
+  - name: gelu_bwd_inst
+    kind: perf
+    direction: lower
+    deterministic: true
+    command: ncu --csv --print-units base --clock-control none --metrics smsp__inst_executed.sum -k regex:gelu_backward_inplace_kernel ./build/lineage_harness bench gelu_bwd "$LINEAGE_SEED"
+    parser: ncu-inst
+    holdout: true
+    min_effect: 0.01
+  - name: layernorm_fwd_us
+    kind: perf
+    direction: lower
+    deterministic: false
+    command: ./build/lineage_harness time layernorm_fwd "$LINEAGE_SEED"
+    parser: number
+    rounds: 15
+    min_effect: 0.05
+patch:
+  # Only files whose every kernel the harness checks. layernorm_backward and encoder_backward are
+  # tested but not measured: their grid size follows the GPU's SM count, so their instruction counts
+  # differ between two GPUs of the same sm but a different SM count (A10 vs A6000).
+  allowed_paths: ["llmc/encoder.cuh", "llmc/layernorm.cuh", "llmc/gelu.cuh"]
+  protected_paths: ["lineage/**", "llmc/cuda_common.h", "llmc/cuda_utils.cuh", "llmc/utils.h", "Makefile", "dev/**", "test_*", "train_*", ".github/**"]
+  max_files: 3
+  max_lines: 200
+limits: { cpus: 2, memory_mb: 6144, pids: 256, wall_s: 1500, disk_mb: 4096 }

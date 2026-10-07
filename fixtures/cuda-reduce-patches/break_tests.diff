@@ -1,0 +1,12 @@
+diff --git a/src/kernels.cu b/src/kernels.cu
+--- a/src/kernels.cu
++++ b/src/kernels.cu
+@@ -32,7 +32,7 @@ __global__ void row_scale_kernel(int* m, const int* scale, int rows, int cols) {
+ void reduce_sum(const int* d_in, long long* d_out, int n, cudaStream_t stream) {
+   CR_CHECK(cudaMemsetAsync(d_out, 0, sizeof(long long), stream));
+   if (n <= 0) return;
+-  int grid = (n + REDUCE_BLOCK - 1) / REDUCE_BLOCK;
++  int grid = n / REDUCE_BLOCK;
+   reduce_sum_kernel<<<grid, REDUCE_BLOCK, 0, stream>>>(d_in, (unsigned long long*)d_out, n);
+   CR_CHECK(cudaGetLastError());
+ }

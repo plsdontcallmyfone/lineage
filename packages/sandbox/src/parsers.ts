@@ -110,7 +110,92 @@ export function parseBytes(out: string): number {
   return Number(m[1]);
 }
 
+/** One CSV record (RFC 4180 quoting, as Nsight Compute writes it). */
+export function parseCsvLine(line: string): string[] {
+  const out: string[] = [];
+  let cur = "";
+  let q = false;
+  for (let i = 0; i < line.length; i++) {
+    const ch = line[i]!;
+    if (q) {
+      if (ch === '"' && line[i + 1] === '"') {
+        cur += '"';
+        i++;
+      } else if (ch === '"') q = false;
+      else cur += ch;
+    } else if (ch === '"') q = true;
+    else if (ch === ",") {
+      out.push(cur);
+      cur = "";
+    } else cur += ch;
+  }
+  out.push(cur);
+  return out;
+}
+
+export const NCU_INST_METRIC = "smsp__inst_executed.sum";
+const UNIT_SCALE: Record<string, number> = { inst: 1, Kinst: 1e3, Minst: 1e6, Ginst: 1e9 };
+
+/**
+ * Executed warp instructions from `ncu --csv --metrics smsp__inst_executed.sum` (SPEC 6.1, cuda
+ * class): the metric summed over every profiled kernel launch, optionally only launches whose
+ * kernel name matches `kernel` (a regular expression). Accepts the default long format (one row
+ * per kernel and metric: "Kernel Name", "Metric Name", "Metric Value") and `--page raw` (one row per
+ * kernel, one column per metric, a units row first). Lines that are not part of the CSV table
+ * (==PROF== messages, program output) are ignored. Thousands separators are removed.
+ */
+export function parseNcuInst(out: string, kernel?: string): number {
+  const re = kernel ? new RegExp(kernel) : null;
+  let header: string[] | null = null;
+  let total = 0;
+  let rows = 0;
+  let rawScale = 1;
+  const num = (v: string) => {
+    const x = Number(v.replace(/,/g, "").trim());
+    if (!Number.isFinite(x)) throw new Error(`ncu metric value is not a number: ${v}`);
+    return x;
+  };
+  for (const raw of out.split("\n")) {
+    const line = raw.trim();
+    if (!line.startsWith('"')) continue;
+    const f = parseCsvLine(line);
+    if (f[0] === "ID" && f.includes("Kernel Name")) {
+      header = f;
+      continue;
+    }
+    if (!header) continue;
+    const col = (name: string) => header!.indexOf(name);
+    const kname = f[col("Kernel Name")] ?? "";
+    if (re && !re.test(kname)) continue;
+    const mName = col("Metric Name");
+    if (mName >= 0) {
+      if (f[mName] !== NCU_INST_METRIC) continue;
+      // `--print-units base` keeps "inst"; the default auto-scaling may print Kinst, Minst, Ginst
+      const unit = f[col("Metric Unit")] ?? "inst";
+      const scale = UNIT_SCALE[unit];
+      if (scale === undefined) throw new Error(`unexpected ncu unit ${unit} for ${NCU_INST_METRIC}`);
+      total += Math.round(num(f[col("Metric Value")] ?? "") * scale);
+      rows++;
+    } else {
+      const c = col(NCU_INST_METRIC);
+      if (c < 0) continue;
+      if (f[0] === "") {
+        rawScale = UNIT_SCALE[f[c] ?? "inst"]; // the units row of --page raw
+        if (rawScale === undefined) throw new Error(`unexpected ncu unit ${f[c]} for ${NCU_INST_METRIC}`);
+        continue;
+      }
+      total += Math.round(num(f[c] ?? "") * rawScale);
+      rows++;
+    }
+  }
+  if (!header) throw new Error("ncu CSV header not found");
+  if (rows === 0) throw new Error(`no ${NCU_INST_METRIC} rows${kernel ? ` for kernels matching ${kernel}` : ""}`);
+  return total;
+}
+
 export function parseMetric(parser: string, stdout: string, stderr: string): number {
+  // ncu-inst or ncu-inst:<kernel name regex>
+  if (parser === "ncu-inst" || parser.startsWith("ncu-inst:")) return parseNcuInst(stdout + "\n" + stderr, parser.slice("ncu-inst:".length) || undefined);
   switch (parser) {
     case "cachegrind-ir":
       return parseCachegrindIr(stderr + "\n" + stdout);

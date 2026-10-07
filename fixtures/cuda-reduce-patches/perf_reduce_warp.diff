@@ -1,0 +1,23 @@
+diff --git a/src/kernels.cu b/src/kernels.cu
+--- a/src/kernels.cu
++++ b/src/kernels.cu
+@@ -11,13 +11,17 @@ __global__ void reduce_sum_kernel(const int* in, unsigned long long* out, int n)
+   unsigned int i = blockIdx.x * blockDim.x + threadIdx.x;
+   sdata[tid] = (i < (unsigned int)n) ? (long long)in[i] : 0;
+   __syncthreads();
+-  for (unsigned int s = blockDim.x / 2; s > 0; s >>= 1) {
++  for (unsigned int s = blockDim.x / 2; s > 32; s >>= 1) {
+     if (tid < s) {
+       sdata[tid] += sdata[tid + s];
+     }
+     __syncthreads();
+   }
+-  if (tid == 0) atomicAdd(out, (unsigned long long)sdata[0]);
++  if (tid < 32) {
++    long long v = sdata[tid] + sdata[tid + 32];
++    for (int offset = 16; offset > 0; offset >>= 1) v += __shfl_down_sync(0xffffffffu, v, offset);
++    if (tid == 0) atomicAdd(out, (unsigned long long)v);
++  }
+ }
+ 
+ // One thread per row.

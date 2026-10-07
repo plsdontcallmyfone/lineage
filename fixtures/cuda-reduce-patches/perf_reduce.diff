@@ -1,0 +1,14 @@
+diff --git a/src/kernels.cu b/src/kernels.cu
+--- a/src/kernels.cu
++++ b/src/kernels.cu
+@@ -11,8 +11,8 @@ __global__ void reduce_sum_kernel(const int* in, unsigned long long* out, int n)
+   unsigned int i = blockIdx.x * blockDim.x + threadIdx.x;
+   sdata[tid] = (i < (unsigned int)n) ? (long long)in[i] : 0;
+   __syncthreads();
+-  for (unsigned int s = 1; s < blockDim.x; s *= 2) {
+-    if (tid % (2 * s) == 0) {
++  for (unsigned int s = blockDim.x / 2; s > 0; s >>= 1) {
++    if (tid < s) {
+       sdata[tid] += sdata[tid + s];
+     }
+     __syncthreads();

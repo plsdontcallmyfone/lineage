@@ -1,0 +1,67 @@
+{
+  "perf_reduce": {
+    "name": "perf_reduce",
+    "parent": [],
+    "kind": "perf",
+    "target": "reduce_warp_inst",
+    "expect": "accepted (sequential addressing: idle warps skip the add path and no integer modulo)",
+    "lines": 4,
+    "guard": "ok"
+  },
+  "perf_reduce_warp": {
+    "name": "perf_reduce_warp",
+    "parent": [
+      "perf_reduce"
+    ],
+    "kind": "perf",
+    "target": "reduce_warp_inst",
+    "expect": "accepted on top of perf_reduce (last 64 elements reduced with warp shuffles, no barriers)",
+    "lines": 8,
+    "guard": "ok"
+  },
+  "perf_scale": {
+    "name": "perf_scale",
+    "parent": [],
+    "kind": "perf",
+    "target": "scale_warp_inst",
+    "expect": "accepted (scale[r] loaded once instead of once per column; row pointer hoisted)",
+    "lines": 4,
+    "guard": "ok"
+  },
+  "equiv_change": {
+    "name": "equiv_change",
+    "parent": [],
+    "kind": "perf",
+    "target": "scale_warp_inst",
+    "expect": "rejected:equivalence_changed (stops at column 4096; unit tests use at most 1000 columns, the seeded equivalence shapes use 4000 to 9000)",
+    "lines": 2,
+    "guard": "ok"
+  },
+  "regress": {
+    "name": "regress",
+    "parent": [],
+    "kind": "perf",
+    "target": "reduce_warp_inst",
+    "expect": "rejected:no_improvement (two extra uncached loads per element; same result, more warp instructions)",
+    "lines": 2,
+    "guard": "ok"
+  },
+  "break_tests": {
+    "name": "break_tests",
+    "parent": [],
+    "kind": "perf",
+    "target": "reduce_warp_inst",
+    "expect": "rejected:tests_fail (drops the partial last block: fewer instructions, wrong sums for n not a multiple of 256)",
+    "lines": 2,
+    "guard": "ok"
+  },
+  "protected_test_edit": {
+    "name": "protected_test_edit",
+    "parent": [],
+    "kind": "perf",
+    "target": "reduce_warp_inst",
+    "expect": "rejected:guard PROTECTED_PATH",
+    "lines": 0,
+    "guard": "PROTECTED_PATH"
+  }
+}

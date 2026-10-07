@@ -1,0 +1,15 @@
+diff --git a/src/kernels.cu b/src/kernels.cu
+--- a/src/kernels.cu
++++ b/src/kernels.cu
+@@ -24,8 +24,10 @@ __global__ void reduce_sum_kernel(const int* in, unsigned long long* out, int n)
+ __global__ void row_scale_kernel(int* m, const int* scale, int rows, int cols) {
+   int r = blockIdx.x * blockDim.x + threadIdx.x;
+   if (r >= rows) return;
++  const int s = scale[r];
++  int* row = m + (size_t)r * cols;
+   for (int c = 0; c < cols; ++c) {
+-    m[(size_t)r * cols + c] *= scale[r];
++    row[c] *= s;
+   }
+ }
+ 

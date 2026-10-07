@@ -17,7 +17,7 @@ import {
   cv,
   median,
 } from "@lineage/protocol";
-import { imageArch, imageDigest, runContainer, runnableImage, type Mount, type RunResult } from "./docker.ts";
+import { gpuDeviceRequest, hostGpus, withHostLock, imageArch, imageDigest, runContainer, runnableImage, type Mount, type RunResult } from "./docker.ts";
 import { parseMetric, parseTests, type TestOutcome } from "./parsers.ts";
 import type { LoadedRecipe } from "./recipe.ts";
 import { applyPatch, cloneTree, commitTime, LINEAGE_HOME, materialize, newWorkDir, openPermissions, removeTree } from "./repo.ts";
@@ -165,10 +165,15 @@ interface Ctx {
   sourceEpoch: number;
   transcript: Transcript;
   outDir: string;
+  /** `--gpus` value for cuda-class recipes (requires.gpu set), else undefined */
+  gpus?: string;
 }
 
 async function run(ctx: Ctx, step: string, cmd: string, mounts: Mount[], timeout_s: number, side?: "base" | "cand", cwd = "/work/src") {
-  const res = await runContainer({
+  // GPU steps that execute kernels take the device in turns across every worker on this host
+  // (builds only compile). See withHostLock.
+  const exclusive = ctx.gpus && step !== "build";
+  const go = () => runContainer({
     image: ctx.image,
     cmd,
     cwd,
@@ -178,7 +183,9 @@ async function run(ctx: Ctx, step: string, cmd: string, mounts: Mount[], timeout
     limits: ctx.loaded.recipe.limits,
     timeout_s,
     job: `${step}-${side ?? "x"}`,
+    gpus: ctx.gpus,
   });
+  const res = exclusive ? await withHostLock(join(LINEAGE_HOME, "locks"), `gpu-${ctx.gpus!.replace(/[^0-9a-z]/gi, "")}`, go) : await go();
   record(ctx.transcript, step, cmd, res, side);
   return res;
 }
@@ -272,6 +279,17 @@ async function setup(loaded: LoadedRecipe, deps: DepsLayer, seed: Hex, parentPat
   const image = await imageDigest(r.image);
   const arch = imageArch(r.image);
   if (r.requires?.arch && arch !== r.requires.arch) throw new EvalError(`image is ${arch} but the recipe requires ${r.requires.arch} (SPEC 6.1)`);
+  const gpuNotes: string[] = [];
+  let gpus: string | undefined;
+  if (r.requires?.gpu) {
+    // SPEC 6.1: warp instruction counts are only comparable on the recipe's compute capability.
+    gpus = gpuDeviceRequest();
+    const idx = Number(gpus.slice("device=".length));
+    const g = hostGpus().find((x) => x.index === idx);
+    if (!g) throw new EvalError(`recipe requires an NVIDIA GPU (sm ${r.requires.gpu.sm}) but host GPU ${idx} is not visible to nvidia-smi`);
+    if (g.sm !== r.requires.gpu.sm) throw new EvalError(`host GPU ${idx} (${g.name}) is sm ${g.sm} but the recipe requires sm ${r.requires.gpu.sm} (SPEC 6.1)`);
+    gpuNotes.push(`gpu ${idx}: ${g.name}, sm ${g.sm}, driver ${g.driver}, ${g.mem_mb} MiB`);
+  }
   const transcript: Transcript = {
     version: WORKER_VERSION,
     recipe_id: loaded.recipe_id,
@@ -280,7 +298,7 @@ async function setup(loaded: LoadedRecipe, deps: DepsLayer, seed: Hex, parentPat
     candidate_patch: candidatePatch === null ? null : sha256Hex(candidatePatch),
     started_at: new Date().toISOString(),
     steps: [],
-    notes: [],
+    notes: [...gpuNotes],
   };
   const work = newWorkDir("eval");
   const outDir = join(work, "out");
@@ -296,7 +314,7 @@ async function setup(loaded: LoadedRecipe, deps: DepsLayer, seed: Hex, parentPat
   parentPatches.forEach((p, i) => {
     if (!applyPatch(base, p)) throw new EvalError(`parent series broken at generation ${i + 1}`);
   });
-  const ctx: Ctx = { loaded, deps, seed, image, sourceEpoch: commitTime(r.repo, r.commit), transcript, outDir };
+  const ctx: Ctx = { loaded, deps, seed, image, sourceEpoch: commitTime(r.repo, r.commit), transcript, outDir, gpus };
   return { ctx, work, base };
 }
 
