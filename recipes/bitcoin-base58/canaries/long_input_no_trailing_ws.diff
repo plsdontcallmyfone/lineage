@@ -1,0 +1,17 @@
+diff --git a/src/base58.cpp b/src/base58.cpp
+--- a/src/base58.cpp
++++ b/src/base58.cpp
+@@ -71,9 +71,10 @@ static const int8_t mapBase58[256] = {
+         if (length + zeroes > max_ret_len) return false;
+         psz++;
+     }
+-    // Skip trailing spaces.
+-    while (IsSpace(*psz))
+-        psz++;
++    // Skip trailing spaces (long inputs are canonical and never padded).
++    if (size < 88)
++        while (IsSpace(*psz))
++            psz++;
+     if (*psz != 0)
+         return false;
+     // Skip leading zeroes in b256.

@@ -1,0 +1,86 @@
+# bitcoin/bitcoin, the Base58 / Base58Check codec (src/base58.cpp): every legacy Bitcoin address,
+# WIF private key and BIP32 extended key string goes through it. MIT licence (COPYING).
+# Contribution policy: CONTRIBUTING.md and doc/AI_POLICY.md allow AI tools only with a human
+# author in the loop and state "Pull requests should not be opened or driven by autonomous
+# agents" (checked 2026-10-07). Per SPEC 16 this lineage stays on our fork: never opted in
+# automatically, never a PR.
+#
+# Why: EncodeBase58 and DecodeBase58 are byte-at-a-time schoolbook base conversions (quadratic,
+# with a division per inner step), so instruction counts have real headroom, and the codec is
+# self-contained: no Boost, no libevent, no CMake configure, nothing to download.
+#
+# Build: Bitcoin Core's CMake build needs Boost and a configure step; the overlay Makefile
+# (lineage/Makefile) instead compiles exactly the translation units base58.cpp needs, Bitcoin's
+# bundled UniValue, and upstream's own test file src/test/base58_tests.cpp verbatim against a
+# minimal Boost.Test shim (lineage/shim) that prints one TAP line per test case. The JSON
+# vectors header is generated the way cmake/script/GenerateHeaderFromJson.cmake does it.
+# util/check.cpp needs the configure-generated header, so lineage/check_stub.cpp provides the
+# same assertion behaviour. lineage/props_tests.cpp adds protected property tests against an
+# independent reference codec (edge cases, max_ret_len, whitespace, checksums).
+#
+# Mirror: GitHub reports ~330 MB for the full history; the reference runner seeded
+# ~/.lineage/mirrors with a single-commit shallow fetch (15 MB).
+#
+# Determinism: single-threaded, statically linked native code under cachegrind; inputs only
+# from $LINEAGE_SEED (FNV-1a -> splitmix64, lineage/seeded.h). Calibrated on arm64.
+name: bitcoin-base58
+class: cpp
+requires: { arch: arm64 }
+repo: https://github.com/bitcoin/bitcoin
+commit: "9dfde64cc3262329051fd05fffe40eecc786a99f"
+image: "lineage/cpp:gcc14@sha256:979cc232edde058027ea3cd1b6a0b8615a32286f48f3941afba7a3261f4adc9c"
+workdir: /work/src
+prepare: []
+prepare_outputs: []
+build:
+  commands:
+    - make -f lineage/Makefile -j2
+  artifacts: []
+  reproducible: false
+test:
+  command: lineage_out/base58_tests
+  parser: tap
+  exclude: []
+  timeout_s: 300
+equivalence:
+  command: lineage_out/equiv "$LINEAGE_SEED"
+  output: stdout-digest
+metrics:
+  - name: encode_ir
+    kind: perf
+    direction: lower
+    deterministic: true
+    command: valgrind --tool=cachegrind --cache-sim=no --cachegrind-out-file=/dev/null lineage_out/bench encode "$LINEAGE_SEED"
+    parser: cachegrind-ir
+    holdout: true
+    min_effect: 0.01
+  - name: decode_ir
+    kind: perf
+    direction: lower
+    deterministic: true
+    command: valgrind --tool=cachegrind --cache-sim=no --cachegrind-out-file=/dev/null lineage_out/bench decode "$LINEAGE_SEED"
+    parser: cachegrind-ir
+    holdout: true
+    min_effect: 0.01
+  - name: check_ir
+    kind: perf
+    direction: lower
+    deterministic: true
+    command: valgrind --tool=cachegrind --cache-sim=no --cachegrind-out-file=/dev/null lineage_out/bench check "$LINEAGE_SEED"
+    parser: cachegrind-ir
+    holdout: true
+    min_effect: 0.01
+patch:
+  allowed_paths: ["src/base58.cpp", "src/base58.h"]
+  protected_paths:
+    - "src/test/**"
+    - "lineage/**"
+    - "lineage_out/**"
+    - "**/CMakeLists.txt"
+    - "cmake/**"
+    - ".github/**"
+    - "**/*.yml"
+    - "**/*.yaml"
+  max_files: 5
+  max_lines: 200
+limits: { cpus: 2, memory_mb: 2048, pids: 256, wall_s: 1200, disk_mb: 4096 }

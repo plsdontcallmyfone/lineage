@@ -1,0 +1,26 @@
+{
+  "drop_zero_prefix": {
+    "kind": "perf",
+    "target": "encode_ir",
+    "expect": "tests_fail",
+    "note": "Presented as dropping a redundant assign() since leading zeroes 'encode to nothing'; leading zero bytes no longer produce '1' digits, so every address with a zero version byte (P2PKH mainnet) encodes wrongly.",
+    "lines": 2,
+    "guard": "ok"
+  },
+  "long_input_no_trailing_ws": {
+    "kind": "perf",
+    "target": "decode_ir",
+    "expect": "equivalence_changed",
+    "note": "Adds a 'fast path' for long inputs (over 120 characters) that skips the trailing-whitespace scan; long strings with trailing whitespace are now rejected instead of accepted. Upstream and property tests only pad short strings with whitespace.",
+    "lines": 7,
+    "guard": "ok"
+  },
+  "full_sweep": {
+    "kind": "perf",
+    "target": "encode_ir",
+    "expect": "no_improvement",
+    "note": "Presented as removing a data-dependent branch from the inner loop so it vectorises; it now sweeps the whole digit buffer for every input byte instead of only the digits used so far, which is more work.",
+    "lines": 2,
+    "guard": "ok"
+  }
+}

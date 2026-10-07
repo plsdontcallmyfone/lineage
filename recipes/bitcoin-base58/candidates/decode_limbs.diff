@@ -1,0 +1,84 @@
+diff --git a/src/base58.cpp b/src/base58.cpp
+--- a/src/base58.cpp
++++ b/src/base58.cpp
+@@ -44,45 +44,56 @@ static const int8_t mapBase58[256] = {
+         psz++;
+     // Skip and count leading '1's.
+     int zeroes = 0;
+-    int length = 0;
+     while (*psz == '1') {
+         zeroes++;
+         if (zeroes > max_ret_len) return false;
+         psz++;
+     }
+-    // Allocate enough space in big-endian base256 representation.
+-    int size = strlen(psz) * 733 /1000 + 1; // log(58) / log(256), rounded up.
+-    std::vector<unsigned char> b256(size);
+-    // Process the characters.
++    // Value as little-endian 32-bit limbs. Each pass folds up to five digits in at once:
++    // 58^5 < 2^32, so limb * 58^5 + carry < 2^64.
+     static_assert(std::size(mapBase58) == 256, "mapBase58.size() should be 256"); // guarantee not out of range
++    std::vector<uint32_t> limbs;
++    limbs.reserve(strlen(psz) * 733 / 4000 + 2);
++    auto bytes_used = [&]() {
++        if (limbs.empty()) return 0;
++        uint32_t top = limbs.back();
++        int n = 0;
++        while (top != 0) { n++; top >>= 8; }
++        return int(limbs.size() - 1) * 4 + n;
++    };
+     while (*psz && !IsSpace(*psz)) {
+-        // Decode base58 character
+-        int carry = mapBase58[(uint8_t)*psz];
+-        if (carry == -1)  // Invalid b58 character
+-            return false;
+-        int i = 0;
+-        for (std::vector<unsigned char>::reverse_iterator it = b256.rbegin(); (carry != 0 || i < length) && (it != b256.rend()); ++it, ++i) {
+-            carry += 58 * (*it);
+-            *it = carry % 256;
+-            carry /= 256;
++        uint64_t mult = 1, carry = 0;
++        int k = 0;
++        for (; k < 5 && psz[k] && !IsSpace(psz[k]); ++k) {
++            int digit = mapBase58[(uint8_t)psz[k]];
++            if (digit == -1) // Invalid b58 character
++                return false;
++            carry = carry * 58 + digit;
++            mult *= 58;
+         }
+-        assert(carry == 0);
+-        length = i;
+-        if (length + zeroes > max_ret_len) return false;
+-        psz++;
++        for (auto& limb : limbs) {
++            uint64_t t = uint64_t(limb) * mult + carry;
++            limb = uint32_t(t);
++            carry = t >> 32;
++        }
++        while (carry != 0) {
++            limbs.push_back(uint32_t(carry));
++            carry >>= 32;
++        }
++        if (bytes_used() + zeroes > max_ret_len) return false;
++        psz += k;
+     }
+     // Skip trailing spaces.
+     while (IsSpace(*psz))
+         psz++;
+     if (*psz != 0)
+         return false;
+-    // Skip leading zeroes in b256.
+-    std::vector<unsigned char>::iterator it = b256.begin() + (size - length);
+-    // Copy result into output vector.
+-    vch.reserve(zeroes + (b256.end() - it));
++    // Copy result into output vector (big-endian).
++    int length = bytes_used();
++    vch.reserve(zeroes + length);
+     vch.assign(zeroes, 0x00);
+-    while (it != b256.end())
+-        vch.push_back(*(it++));
++    for (int i = length - 1; i >= 0; --i)
++        vch.push_back((unsigned char)(limbs[i / 4] >> (8 * (i % 4))));
+     return true;
+ }
+ 

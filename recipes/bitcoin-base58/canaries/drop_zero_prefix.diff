@@ -1,0 +1,12 @@
+diff --git a/src/base58.cpp b/src/base58.cpp
+--- a/src/base58.cpp
++++ b/src/base58.cpp
+@@ -120,7 +120,7 @@ std::string EncodeBase58(std::span<const unsigned char> input)
+     // Translate the result into a string.
+     std::string str;
+     str.reserve(zeroes + (b58.end() - it));
+-    str.assign(zeroes, '1');
++    str.assign(0, '1');
+     while (it != b58.end())
+         str += pszBase58[*(it++)];
+     return str;

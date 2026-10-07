@@ -1,0 +1,83 @@
+diff --git a/src/base58.cpp b/src/base58.cpp
+--- a/src/base58.cpp
++++ b/src/base58.cpp
+@@ -90,39 +90,55 @@ std::string EncodeBase58(std::span<const unsigned char> input)
+ {
+     // Skip & count leading zeroes.
+     int zeroes = 0;
+-    int length = 0;
+     while (input.size() > 0 && input[0] == 0) {
+         input = input.subspan(1);
+         zeroes++;
+     }
+-    // Allocate enough space in big-endian base58 representation.
+-    int size = input.size() * 138 / 100 + 1; // log(256) / log(58), rounded up.
+-    std::vector<unsigned char> b58(size);
+-    // Process the bytes.
+-    while (input.size() > 0) {
+-        int carry = input[0];
+-        int i = 0;
+-        // Apply "b58 = b58 * 256 + ch".
+-        for (std::vector<unsigned char>::reverse_iterator it = b58.rbegin(); (carry != 0 || i < length) && (it != b58.rend()); it++, i++) {
+-            carry += 256 * (*it);
+-            *it = carry % 58;
+-            carry /= 58;
++    // Big-endian value of the input as little-endian base-58^5 limbs. Each pass folds up to
++    // three input bytes in at once: limb < 58^5 < 2^30, so limb * 2^24 + carry < 2^54.
++    constexpr uint64_t LIMB = 656356768; // 58^5
++    std::vector<uint32_t> limbs;
++    limbs.reserve(input.size() * 138 / 500 + 2);
++    size_t pos = 0;
++    while (pos < input.size()) {
++        size_t take = (input.size() - pos) % 3;
++        if (take == 0 || pos > 0) take = std::min<size_t>(3, input.size() - pos);
++        uint64_t carry = 0;
++        for (size_t k = 0; k < take; ++k) carry = (carry << 8) | input[pos + k];
++        const unsigned shift = 8 * take;
++        for (auto& limb : limbs) {
++            uint64_t t = (uint64_t(limb) << shift) | carry;
++            limb = uint32_t(t % LIMB);
++            carry = t / LIMB;
++        }
++        while (carry != 0) {
++            limbs.push_back(uint32_t(carry % LIMB));
++            carry /= LIMB;
++        }
++        pos += take;
++    }
++    // Expand limbs into base58 digits, least significant first.
++    std::string digits;
++    digits.reserve(limbs.size() * 5);
++    for (size_t i = 0; i < limbs.size(); ++i) {
++        uint32_t limb = limbs[i];
++        if (i + 1 == limbs.size()) {
++            while (limb != 0) {
++                digits += pszBase58[limb % 58];
++                limb /= 58;
++            }
++        } else {
++            for (int k = 0; k < 5; ++k) {
++                digits += pszBase58[limb % 58];
++                limb /= 58;
++            }
+         }
+-
+-        assert(carry == 0);
+-        length = i;
+-        input = input.subspan(1);
+     }
+-    // Skip leading zeroes in base58 result.
+-    std::vector<unsigned char>::iterator it = b58.begin() + (size - length);
+-    while (it != b58.end() && *it == 0)
+-        it++;
+     // Translate the result into a string.
+     std::string str;
+-    str.reserve(zeroes + (b58.end() - it));
++    str.reserve(zeroes + digits.size());
+     str.assign(zeroes, '1');
+-    while (it != b58.end())
+-        str += pszBase58[*(it++)];
++    str.append(digits.rbegin(), digits.rend());
+     return str;
+ }
+ 

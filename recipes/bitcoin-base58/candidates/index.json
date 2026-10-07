@@ -1,0 +1,18 @@
+{
+  "encode_limbs": {
+    "kind": "perf",
+    "target": "encode_ir",
+    "expect": "accepted",
+    "note": "EncodeBase58 keeps the value in little-endian base-58^5 limbs (uint32) and folds three input bytes into it per pass (limb * 2^24 + carry fits in 64 bits), then expands each limb into five digits, instead of one byte per pass over a one-digit-per-byte buffer.",
+    "lines": 64,
+    "guard": "ok"
+  },
+  "decode_limbs": {
+    "kind": "perf",
+    "target": "decode_ir",
+    "expect": "accepted",
+    "note": "DecodeBase58 keeps the value in little-endian 32-bit limbs and folds five digits into it per pass (58^5 < 2^32), checking max_ret_len after every pass (the byte length only grows, so the accept/reject decision is unchanged), instead of one digit per pass over a one-byte-per-element buffer.",
+    "lines": 59,
+    "guard": "ok"
+  }
+}

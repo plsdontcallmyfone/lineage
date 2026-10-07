@@ -1,0 +1,12 @@
+diff --git a/src/base58.cpp b/src/base58.cpp
+--- a/src/base58.cpp
++++ b/src/base58.cpp
+@@ -103,7 +103,7 @@ std::string EncodeBase58(std::span<const unsigned char> input)
+         int carry = input[0];
+         int i = 0;
+         // Apply "b58 = b58 * 256 + ch".
+-        for (std::vector<unsigned char>::reverse_iterator it = b58.rbegin(); (carry != 0 || i < length) && (it != b58.rend()); it++, i++) {
++        for (std::vector<unsigned char>::reverse_iterator it = b58.rbegin(); it != b58.rend(); it++, i++) {
+             carry += 256 * (*it);
+             *it = carry % 58;
+             carry /= 58;

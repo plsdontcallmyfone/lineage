@@ -1,0 +1,76 @@
+{
+  "canaries": [
+    {
+      "name": "drop_zero_prefix",
+      "kind": "perf",
+      "target": "encode_ir",
+      "expect": "tests_fail",
+      "note": "Presented as dropping a redundant assign() since leading zeroes 'encode to nothing'; leading zero bytes no longer produce '1' digits, so every address with a zero version byte (P2PKH mainnet) encodes wrongly.",
+      "edits": [
+        [
+          "src/base58.cpp",
+          "    str.assign(zeroes, '1');",
+          "    str.assign(0, '1');"
+        ]
+      ]
+    },
+    {
+      "name": "long_input_no_trailing_ws",
+      "kind": "perf",
+      "target": "decode_ir",
+      "expect": "equivalence_changed",
+      "note": "Adds a 'fast path' for long inputs (over 120 characters) that skips the trailing-whitespace scan; long strings with trailing whitespace are now rejected instead of accepted. Upstream and property tests only pad short strings with whitespace.",
+      "edits": [
+        [
+          "src/base58.cpp",
+          "    // Skip trailing spaces.\n    while (IsSpace(*psz))\n        psz++;\n    if (*psz != 0)\n        return false;\n    // Skip leading zeroes in b256.",
+          "    // Skip trailing spaces (long inputs are canonical and never padded).\n    if (size < 88)\n        while (IsSpace(*psz))\n            psz++;\n    if (*psz != 0)\n        return false;\n    // Skip leading zeroes in b256."
+        ]
+      ]
+    },
+    {
+      "name": "full_sweep",
+      "kind": "perf",
+      "target": "encode_ir",
+      "expect": "no_improvement",
+      "note": "Presented as removing a data-dependent branch from the inner loop so it vectorises; it now sweeps the whole digit buffer for every input byte instead of only the digits used so far, which is more work.",
+      "edits": [
+        [
+          "src/base58.cpp",
+          "        for (std::vector<unsigned char>::reverse_iterator it = b58.rbegin(); (carry != 0 || i < length) && (it != b58.rend()); it++, i++) {",
+          "        for (std::vector<unsigned char>::reverse_iterator it = b58.rbegin(); it != b58.rend(); it++, i++) {"
+        ]
+      ]
+    }
+  ],
+  "candidates": [
+    {
+      "name": "encode_limbs",
+      "kind": "perf",
+      "target": "encode_ir",
+      "expect": "accepted",
+      "note": "EncodeBase58 keeps the value in little-endian base-58^5 limbs (uint32) and folds three input bytes into it per pass (limb * 2^24 + carry fits in 64 bits), then expands each limb into five digits, instead of one byte per pass over a one-digit-per-byte buffer.",
+      "edits": [
+        [
+          "src/base58.cpp",
+          "std::string EncodeBase58(std::span<const unsigned char> input)\n{\n    // Skip & count leading zeroes.\n    int zeroes = 0;\n    int length = 0;\n    while (input.size() > 0 && input[0] == 0) {\n        input = input.subspan(1);\n        zeroes++;\n    }\n    // Allocate enough space in big-endian base58 representation.\n    int size = input.size() * 138 / 100 + 1; // log(256) / log(58), rounded up.\n    std::vector<unsigned char> b58(size);\n    // Process the bytes.\n    while (input.size() > 0) {\n        int carry = input[0];\n        int i = 0;\n        // Apply \"b58 = b58 * 256 + ch\".\n        for (std::vector<unsigned char>::reverse_iterator it = b58.rbegin(); (carry != 0 || i < length) && (it != b58.rend()); it++, i++) {\n            carry += 256 * (*it);\n            *it = carry % 58;\n            carry /= 58;\n        }\n\n        assert(carry == 0);\n        length = i;\n        input = input.subspan(1);\n    }\n    // Skip leading zeroes in base58 result.\n    std::vector<unsigned char>::iterator it = b58.begin() + (size - length);\n    while (it != b58.end() && *it == 0)\n        it++;\n    // Translate the result into a string.\n    std::string str;\n    str.reserve(zeroes + (b58.end() - it));\n    str.assign(zeroes, '1');\n    while (it != b58.end())\n        str += pszBase58[*(it++)];\n    return str;\n}\n",
+          "std::string EncodeBase58(std::span<const unsigned char> input)\n{\n    // Skip & count leading zeroes.\n    int zeroes = 0;\n    while (input.size() > 0 && input[0] == 0) {\n        input = input.subspan(1);\n        zeroes++;\n    }\n    // Big-endian value of the input as little-endian base-58^5 limbs. Each pass folds up to\n    // three input bytes in at once: limb < 58^5 < 2^30, so limb * 2^24 + carry < 2^54.\n    constexpr uint64_t LIMB = 656356768; // 58^5\n    std::vector<uint32_t> limbs;\n    limbs.reserve(input.size() * 138 / 500 + 2);\n    size_t pos = 0;\n    while (pos < input.size()) {\n        size_t take = (input.size() - pos) % 3;\n        if (take == 0 || pos > 0) take = std::min<size_t>(3, input.size() - pos);\n        uint64_t carry = 0;\n        for (size_t k = 0; k < take; ++k) carry = (carry << 8) | input[pos + k];\n        const unsigned shift = 8 * take;\n        for (auto& limb : limbs) {\n            uint64_t t = (uint64_t(limb) << shift) | carry;\n            limb = uint32_t(t % LIMB);\n            carry = t / LIMB;\n        }\n        while (carry != 0) {\n            limbs.push_back(uint32_t(carry % LIMB));\n            carry /= LIMB;\n        }\n        pos += take;\n    }\n    // Expand limbs into base58 digits, least significant first.\n    std::string digits;\n    digits.reserve(limbs.size() * 5);\n    for (size_t i = 0; i < limbs.size(); ++i) {\n        uint32_t limb = limbs[i];\n        if (i + 1 == limbs.size()) {\n            while (limb != 0) {\n                digits += pszBase58[limb % 58];\n                limb /= 58;\n            }\n        } else {\n            for (int k = 0; k < 5; ++k) {\n                digits += pszBase58[limb % 58];\n                limb /= 58;\n            }\n        }\n    }\n    // Translate the result into a string.\n    std::string str;\n    str.reserve(zeroes + digits.size());\n    str.assign(zeroes, '1');\n    str.append(digits.rbegin(), digits.rend());\n    return str;\n}\n"
+        ]
+      ]
+    },
+    {
+      "name": "decode_limbs",
+      "kind": "perf",
+      "target": "decode_ir",
+      "expect": "accepted",
+      "note": "DecodeBase58 keeps the value in little-endian 32-bit limbs and folds five digits into it per pass (58^5 < 2^32), checking max_ret_len after every pass (the byte length only grows, so the accept/reject decision is unchanged), instead of one digit per pass over a one-byte-per-element buffer.",
+      "edits": [
+        [
+          "src/base58.cpp",
+          "[[nodiscard]] static bool DecodeBase58(const char* psz, std::vector<unsigned char>& vch, int max_ret_len)\n{\n    // Skip leading spaces.\n    while (*psz && IsSpace(*psz))\n        psz++;\n    // Skip and count leading '1's.\n    int zeroes = 0;\n    int length = 0;\n    while (*psz == '1') {\n        zeroes++;\n        if (zeroes > max_ret_len) return false;\n        psz++;\n    }\n    // Allocate enough space in big-endian base256 representation.\n    int size = strlen(psz) * 733 /1000 + 1; // log(58) / log(256), rounded up.\n    std::vector<unsigned char> b256(size);\n    // Process the characters.\n    static_assert(std::size(mapBase58) == 256, \"mapBase58.size() should be 256\"); // guarantee not out of range\n    while (*psz && !IsSpace(*psz)) {\n        // Decode base58 character\n        int carry = mapBase58[(uint8_t)*psz];\n        if (carry == -1)  // Invalid b58 character\n            return false;\n        int i = 0;\n        for (std::vector<unsigned char>::reverse_iterator it = b256.rbegin(); (carry != 0 || i < length) && (it != b256.rend()); ++it, ++i) {\n            carry += 58 * (*it);\n            *it = carry % 256;\n            carry /= 256;\n        }\n        assert(carry == 0);\n        length = i;\n        if (length + zeroes > max_ret_len) return false;\n        psz++;\n    }\n    // Skip trailing spaces.\n    while (IsSpace(*psz))\n        psz++;\n    if (*psz != 0)\n        return false;\n    // Skip leading zeroes in b256.\n    std::vector<unsigned char>::iterator it = b256.begin() + (size - length);\n    // Copy result into output vector.\n    vch.reserve(zeroes + (b256.end() - it));\n    vch.assign(zeroes, 0x00);\n    while (it != b256.end())\n        vch.push_back(*(it++));\n    return true;\n}\n",
+          "[[nodiscard]] static bool DecodeBase58(const char* psz, std::vector<unsigned char>& vch, int max_ret_len)\n{\n    // Skip leading spaces.\n    while (*psz && IsSpace(*psz))\n        psz++;\n    // Skip and count leading '1's.\n    int zeroes = 0;\n    while (*psz == '1') {\n        zeroes++;\n        if (zeroes > max_ret_len) return false;\n        psz++;\n    }\n    // Value as little-endian 32-bit limbs. Each pass folds up to five digits in at once:\n    // 58^5 < 2^32, so limb * 58^5 + carry < 2^64.\n    static_assert(std::size(mapBase58) == 256, \"mapBase58.size() should be 256\"); // guarantee not out of range\n    std::vector<uint32_t> limbs;\n    limbs.reserve(strlen(psz) * 733 / 4000 + 2);\n    auto bytes_used = [&]() {\n        if (limbs.empty()) return 0;\n        uint32_t top = limbs.back();\n        int n = 0;\n        while (top != 0) { n++; top >>= 8; }\n        return int(limbs.size() - 1) * 4 + n;\n    };\n    while (*psz && !IsSpace(*psz)) {\n        uint64_t mult = 1, carry = 0;\n        int k = 0;\n        for (; k < 5 && psz[k] && !IsSpace(psz[k]); ++k) {\n            int digit = mapBase58[(uint8_t)psz[k]];\n            if (digit == -1) // Invalid b58 character\n                return false;\n            carry = carry * 58 + digit;\n            mult *= 58;\n        }\n        for (auto& limb : limbs) {\n            uint64_t t = uint64_t(limb) * mult + carry;\n            limb = uint32_t(t);\n            carry = t >> 32;\n        }\n        while (carry != 0) {\n            limbs.push_back(uint32_t(carry));\n            carry >>= 32;\n        }\n        if (bytes_used() + zeroes > max_ret_len) return false;\n        psz += k;\n    }\n    // Skip trailing spaces.\n    while (IsSpace(*psz))\n        psz++;\n    if (*psz != 0)\n        return false;\n    // Copy result into output vector (big-endian).\n    int length = bytes_used();\n    vch.reserve(zeroes + length);\n    vch.assign(zeroes, 0x00);\n    for (int i = length - 1; i >= 0; --i)\n        vch.push_back((unsigned char)(limbs[i / 4] >> (8 * (i % 4))));\n    return true;\n}\n"
+        ]
+      ]
+    }
+  ]
+}

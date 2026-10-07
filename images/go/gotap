@@ -1,0 +1,8 @@
+#!/bin/sh
+# Reads `go test -json` events on stdin, prints one TAP line per finished test (subtests
+# included) as "<package>::<test>", in a fixed order (sorted), then the plan.
+# Skipped tests are reported with "# SKIP" so parser: tap ignores them.
+jq -r 'select(.Test != null and (.Action == "pass" or .Action == "fail" or .Action == "skip"))
+       | "\(.Action)\t\(.Package)::\(.Test)"' \
+  | LC_ALL=C sort -t "$(printf '\t')" -k2,2 -k1,1 \
+  | awk -F '\t' '{ n++; if ($1 == "pass") print "ok " n " - " $2; else if ($1 == "skip") print "ok " n " - " $2 " # SKIP"; else print "not ok " n " - " $2 } END { print "1.." n }'

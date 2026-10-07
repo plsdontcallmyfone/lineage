@@ -1,0 +1,51 @@
+{
+  "recipe_id": "652b24d31d596adb9a498c7a9c89109a4b9eba80089749bd5f5e7e9a3136bb76",
+  "snapshot_id": "",
+  "runs": 5,
+  "stable": [
+    "base58_tests::base58_DecodeBase58",
+    "base58_tests::base58_EncodeBase58",
+    "lineage_props::check_roundtrip_and_corruption",
+    "lineage_props::decode_inverts_reference",
+    "lineage_props::decode_max_ret_len",
+    "lineage_props::decode_whitespace_and_garbage",
+    "lineage_props::encode_matches_reference"
+  ],
+  "known_failures": [],
+  "quarantined": [],
+  "metrics": {
+    "encode_ir": {
+      "enabled": true,
+      "cv": 2.9063598982447065e-8,
+      "base_value": 121648179.5
+    },
+    "decode_ir": {
+      "enabled": true,
+      "cv": 0,
+      "base_value": 376448759
+    },
+    "check_ir": {
+      "enabled": true,
+      "cv": 0,
+      "base_value": 322389725
+    }
+  },
+  "median_eval_seconds": 54,
+  "seed": "ca11b7a7e",
+  "recipe_name": "bitcoin-base58",
+  "repo": "https://github.com/bitcoin/bitcoin",
+  "commit": "9dfde64cc3262329051fd05fffe40eecc786a99f",
+  "deps_digest": "ecfcc9fc2e777639f51c975e2525074f266b5ed86c8bcf43eec2b2493cd65af2",
+  "image_digest": "sha256:979cc232edde058027ea3cd1b6a0b8615a32286f48f3941afba7a3261f4adc9c",
+  "date": "2026-10-07T20:18:21.859Z",
+  "calibration_wall_seconds": 42.3,
+  "counts": {
+    "stable": 7,
+    "known_failures": 0,
+    "quarantined": 0,
+    "excluded": 0
+  },
+  "notes": [
+    "calibration wall time 42 s"
+  ]
+}
