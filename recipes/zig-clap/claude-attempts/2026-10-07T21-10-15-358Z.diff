@@ -1,0 +1,126 @@
+diff --git a/clap.zig b/clap.zig
+--- a/clap.zig
++++ b/clap.zig
+@@ -1392,11 +1392,9 @@ pub fn help(
+     const max_spacing = blk: {
+         var res: usize = 0;
+         for (params) |param| {
+-            var discarding = std.Io.Writer.Discarding.init(&.{});
+-            var cs = ccw.CodepointCountingWriter.init(&discarding.writer);
+-            try printParam(&cs.interface, Id, param);
+-            if (res < cs.codepoints_written)
+-                res = @intCast(cs.codepoints_written);
++            const width = try paramWidth(Id, param);
++            if (res < width)
++                res = width;
+         }
+ 
+         break :blk res;
+@@ -1414,13 +1412,13 @@ pub fn help(
+         first_parameter = false;
+         try writer.splatByteAll(' ', opt.indent);
+ 
+-        var cw = ccw.CodepointCountingWriter.init(writer);
+-        try printParam(&cw.interface, Id, param);
++        const param_width = try paramWidth(Id, param);
++        try printParam(writer, Id, param);
+ 
+         var description_writer = DescriptionWriter{
+             .underlying_writer = writer,
+             .indentation = description_indentation,
+-            .printed_chars = @intCast(cw.codepoints_written),
++            .printed_chars = param_width,
+             .max_width = opt.max_width,
+         };
+ 
+@@ -1592,6 +1590,32 @@ fn printParam(
+         try stream.writeAll("...");
+ }
+ 
++/// Number of codepoints `printParam` writes for `param`, computed without writing anything.
++fn paramWidth(comptime Id: type, param: Param(Id)) std.Io.Writer.Error!usize {
++    var res: usize = 0;
++    if (param.names.short != null or param.names.long != null) {
++        res += 2;
++        if (param.names.long) |l|
++            res += 4 + try countCodepoints(l);
++        if (param.takes_value != .none)
++            res += 1;
++    }
++
++    if (param.takes_value == .none)
++        return res;
++
++    res += 2 + try countCodepoints(param.id.value());
++    if (param.takes_value == .many)
++        res += 3;
++    return res;
++}
++
++fn countCodepoints(s: []const u8) std.Io.Writer.Error!usize {
++    const r = ccw.utf8CountCodepointsAllowTruncate(s) catch return error.WriteFailed;
++    if (r.bytes != s.len) return error.WriteFailed;
++    return r.codepoints;
++}
++
+ fn testHelp(opt: HelpOptions, str: []const u8) !void {
+     const params = try parseParams(std.testing.allocator, str);
+     defer std.testing.allocator.free(params);
+@@ -2038,18 +2062,19 @@ pub fn usageToFile(file: std.fs.File, comptime Id: type, params: []const Param(I
+ /// First all none value taking parameters, which have a short name are printed, then non
+ /// positional parameters and finally the positional.
+ pub fn usage(stream: *std.Io.Writer, comptime Id: type, params: []const Param(Id)) !void {
+-    var cos = ccw.CodepointCountingWriter.init(stream);
+-    const cs = &cos.interface;
++    const cs = stream;
++    var written = false;
+     for (params) |param| {
+         const name = param.names.short orelse continue;
+         if (param.takes_value != .none)
+             continue;
+ 
+-        if (cos.codepoints_written == 0)
++        if (!written)
+             try stream.writeAll("[-");
+         try cs.writeByte(name);
++        written = true;
+     }
+-    if (cos.codepoints_written != 0)
++    if (written)
+         try cs.writeAll("]");
+ 
+     var has_positionals: bool = false;
+@@ -2068,8 +2093,9 @@ pub fn usage(stream: *std.Io.Writer, comptime Id: type, params: []const Param(Id
+             continue;
+         };
+ 
+-        if (cos.codepoints_written != 0)
++        if (written)
+             try cs.writeAll(" ");
++        written = true;
+ 
+         try cs.writeAll("[");
+         try cs.writeAll(prefix);
+@@ -2092,8 +2118,9 @@ pub fn usage(stream: *std.Io.Writer, comptime Id: type, params: []const Param(Id
+         if (param.names.short != null or param.names.long != null)
+             continue;
+ 
+-        if (cos.codepoints_written != 0)
++        if (written)
+             try cs.writeAll(" ");
++        written = true;
+ 
+         try cs.writeAll("<");
+         try cs.writeAll(param.id.value());
+diff --git a/clap/codepoint_counting_writer.zig b/clap/codepoint_counting_writer.zig
+--- a/clap/codepoint_counting_writer.zig
++++ b/clap/codepoint_counting_writer.zig
+@@ -38,7 +38,7 @@ pub const CodepointCountingWriter = struct {
+ // Like `std.unicode.utf8CountCodepoints`, but on truncated input, it returns
+ // the number of codepoints up to that point.
+ // Does not validate UTF-8 beyond checking the start byte.
+-fn utf8CountCodepointsAllowTruncate(s: []const u8) !struct { bytes: usize, codepoints: usize } {
++pub fn utf8CountCodepointsAllowTruncate(s: []const u8) !struct { bytes: usize, codepoints: usize } {
+     const native_endian = @import("builtin").cpu.arch.endian();
+     var len: usize = 0;
+ 

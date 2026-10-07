@@ -1,0 +1,19 @@
+{
+  "recipe": "zig-clap",
+  "at": "2026-10-07T21:10:15.357Z",
+  "seconds": 126,
+  "proposal": {
+    "kind": "perf",
+    "target": "help_ir",
+    "rationale": "help() rendered every parameter twice through a CodepointCountingWriter (once into a discarding writer just to measure the max width, once to the real writer), so each small writeAll went through an unbuffered vtable drain plus two UTF-8 counting passes. Replace this with paramWidth(), which computes the same codepoint count directly from the param's name/value lengths (same UTF-8 counting function, invalid input still maps to WriteFailed), and print the param straight to the writer. usage() used the counting writer only to know whether anything had been written yet; that is now a bool. The output is byte-identical. help_ir drops about 51%, and examples_bytes shrinks by 1.4%.",
+    "claimed_effect": 0.48937757322814557,
+    "usage": {
+      "input_tokens": 30,
+      "output_tokens": 5772,
+      "cache_read_tokens": 398923,
+      "cache_write_tokens": 44690,
+      "usd": 0.41879459999999996
+    }
+  },
+  "diff_lines": 127
+}

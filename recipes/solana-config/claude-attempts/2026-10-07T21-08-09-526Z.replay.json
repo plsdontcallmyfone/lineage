@@ -1,0 +1,1 @@
+{"replays":2,"seed":"f00dbeef1a118341158","outcome":"accepted","store_cu_ratio":0.2305414037126628,"init_cu_ratio":0.24057655717367657,"so_bytes_ratio":0.801433608879126,"note":"zero-allocation in-place validation replacing bincode and BTreeSet; author disclosed divergence for pathological states of about 1000+ keys (parent panicked on heap)"}

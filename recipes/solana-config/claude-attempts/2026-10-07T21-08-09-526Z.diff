@@ -1,0 +1,227 @@
+diff --git a/program/src/processor.rs b/program/src/processor.rs
+--- a/program/src/processor.rs
++++ b/program/src/processor.rs
+@@ -7,18 +7,25 @@ use {
+     solana_msg::msg,
+     solana_program_error::{ProgramError, ProgramResult},
+     solana_pubkey::Pubkey,
+-    std::collections::BTreeSet,
+ };
+ 
+ // Maximum input buffer length that can be deserialized.
+ // See `solana_sdk::packet::PACKET_DATA_SIZE`.
+ const MAX_INPUT_LEN: usize = 1232;
++// Size of one serialized `(Pubkey, bool)` entry.
++const ENTRY_LEN: usize = 32 + 1;
+ // Maximum vector length for a `ConfigKeys` struct's `keys` list.
+ // See comments below for `safe_deserialize_config_keys`.
+ //
+ // Take the maximum input length and subtract (up to) 3 bytes for the
+ // `ShortU16`, then divide that by the size of a `(Pubkey, bool)` entry.
+-const MAX_VECTOR_LEN: usize = (MAX_INPUT_LEN - 3) / (32 + 1);
++const MAX_VECTOR_LEN: usize = (MAX_INPUT_LEN - 3) / ENTRY_LEN;
++
++// Returns true if any serialized entry has an invalid bool encoding
++// (bincode only accepts 0 or 1).
++fn has_invalid_bool(entries: &[u8]) -> bool {
++    entries.chunks_exact(ENTRY_LEN).any(|e| e[32] > 1)
++}
+ 
+ // [Core BPF]: The original Config builtin leverages the
+ // `solana_bincode::limited_deserialize` method to cap the length of
+@@ -37,14 +44,21 @@ const MAX_VECTOR_LEN: usize = (MAX_INPUT_LEN - 3) / (32 + 1);
+ // vector that would otherwise violate the input buffer length restriction.
+ // Since a `ShortU16` value for `MAX_VECTOR_LEN` fits in just one byte, we can
+ // simply peek the first byte before attempting deserialization.
+-fn safe_deserialize_config_keys(input: &[u8]) -> Result<ConfigKeys, ProgramError> {
+-    match input.first() {
+-        Some(first_byte) if *first_byte as usize <= MAX_VECTOR_LEN => {
+-            solana_bincode::limited_deserialize::<ConfigKeys>(input, MAX_INPUT_LEN as u64)
+-                .map_err(|_| ProgramError::InvalidInstructionData)
+-        }
+-        _ => Err(ProgramError::InvalidInstructionData),
++//
++// The keys are validated in place (exactly as bincode would) and returned as
++// the slice of serialized 33-byte `(Pubkey, bool)` entries, without allocating.
++fn safe_deserialize_config_keys(input: &[u8]) -> Result<&[u8], ProgramError> {
++    let len = match input.first() {
++        Some(first_byte) if *first_byte as usize <= MAX_VECTOR_LEN => *first_byte as usize,
++        _ => return Err(ProgramError::InvalidInstructionData),
++    };
++    let entries = input
++        .get(1..1 + len * ENTRY_LEN)
++        .ok_or(ProgramError::InvalidInstructionData)?;
++    if has_invalid_bool(entries) {
++        return Err(ProgramError::InvalidInstructionData);
+     }
++    Ok(entries)
+ }
+ 
+ // [Core BPF]: Similar to `safe_deserialize_config_keys`, this helper serves to
+@@ -61,22 +75,59 @@ fn safe_deserialize_config_keys(input: &[u8]) -> Result<ConfigKeys, ProgramError
+ // This helper's purpose is solely to catch malformed `ConfigKeys` data before
+ // a memory allocation panic can occur, to ensure maximum backwards
+ // compatibility with the original builtin.
+-fn safe_deserialize_config_keys_from_state(input: &[u8]) -> Result<ConfigKeys, ProgramError> {
++//
++// Returns the slice of serialized 33-byte `(Pubkey, bool)` entries.
++fn safe_deserialize_config_keys_from_state(input: &[u8]) -> Result<&[u8], ProgramError> {
+     let (vector_len, offset) = solana_short_vec::decode_shortu16_len(input)
+         .map_err(|_| ProgramError::InvalidAccountData)?;
+-    if input[offset..].len() / (32 + 1) < vector_len {
+-        Err(ProgramError::InvalidAccountData)
+-    } else {
+-        bincode::deserialize(input).map_err(|err| {
++    let rest = &input[offset..];
++    if rest.len() / ENTRY_LEN < vector_len {
++        return Err(ProgramError::InvalidAccountData);
++    }
++    let entries = &rest[..vector_len * ENTRY_LEN];
++    if has_invalid_bool(entries) {
++        // Defer to bincode to report the exact deserialization error.
++        if let Err(err) = bincode::deserialize::<ConfigKeys>(input) {
+             msg!("Unable to deserialize config account: {}", err);
+-            ProgramError::InvalidAccountData
+-        })
++        }
++        return Err(ProgramError::InvalidAccountData);
+     }
++    Ok(entries)
++}
++
++// Returns true if any two serialized entries (pubkey and signer flag) are equal.
++// Uses a small open-addressing table, indexed by the first key byte, holding
++// entry indices; the table can never fill since entries <= MAX_VECTOR_LEN.
++fn has_duplicate_entries(entries: &[u8]) -> bool {
++    const SLOTS: usize = 128;
++    let mut table = [0u8; SLOTS];
++    for (i, entry) in entries.chunks_exact(ENTRY_LEN).enumerate() {
++        let mut slot = entry[0] as usize % SLOTS;
++        loop {
++            let occupant = table[slot] as usize;
++            if occupant == 0 {
++                table[slot] = (i + 1) as u8;
++                break;
++            }
++            let start = (occupant - 1) * ENTRY_LEN;
++            if entries[start..start + ENTRY_LEN] == *entry {
++                return true;
++            }
++            slot = (slot + 1) % SLOTS;
++        }
++    }
++    false
++}
++
++fn to_pubkey(bytes: &[u8]) -> Pubkey {
++    let mut array = [0u8; 32];
++    array.copy_from_slice(bytes);
++    Pubkey::new_from_array(array)
+ }
+ 
+ /// Config program processor.
+ pub fn process(program_id: &Pubkey, accounts: &[AccountInfo], input: &[u8]) -> ProgramResult {
+-    let key_list = safe_deserialize_config_keys(input)?;
++    let new_entries = safe_deserialize_config_keys(input)?;
+ 
+     let config_account = accounts.first().ok_or(ProgramError::NotEnoughAccountKeys)?;
+ 
+@@ -85,16 +136,18 @@ pub fn process(program_id: &Pubkey, accounts: &[AccountInfo], input: &[u8]) -> P
+         return Err(ProgramError::InvalidAccountOwner);
+     }
+ 
+-    let current_data = safe_deserialize_config_keys_from_state(&config_account.try_borrow_data()?)?;
++    let state = config_account.try_borrow_data()?;
++    let current_entries = safe_deserialize_config_keys_from_state(&state)?;
+ 
+-    let current_signer_keys: Vec<Pubkey> = current_data
+-        .keys
+-        .iter()
+-        .filter(|(_, is_signer)| *is_signer)
+-        .map(|(pubkey, _)| *pubkey)
+-        .collect();
++    let current_signer_keys = || {
++        current_entries
++            .chunks_exact(ENTRY_LEN)
++            .filter(|e| e[32] != 0)
++            .map(|e| &e[..32])
++    };
++    let current_signer_count = current_signer_keys().count();
+ 
+-    if current_signer_keys.is_empty() {
++    if current_signer_count == 0 {
+         // Config account keypair must be a signer on account initialization,
+         // or when no signers specified in Config data.
+         if !config_account.is_signer {
+@@ -102,19 +155,24 @@ pub fn process(program_id: &Pubkey, accounts: &[AccountInfo], input: &[u8]) -> P
+         }
+     }
+ 
++    let config_key: &[u8] = config_account.key.as_ref();
+     let mut counter: usize = 0;
+-    for (signer, _) in key_list.keys.iter().filter(|(_, is_signer)| *is_signer) {
++    for entry in new_entries
++        .chunks_exact(ENTRY_LEN)
++        .filter(|e| e[32] != 0)
++    {
++        let signer = &entry[..32];
+         counter = counter.saturating_add(1);
+-        if signer != config_account.key {
++        if signer != config_key {
+             let signer_account = accounts.get(counter).ok_or_else(|| {
+-                msg!("account {:?} is not in account list", signer);
++                msg!("account {:?} is not in account list", to_pubkey(signer));
+                 ProgramError::MissingRequiredSignature
+             })?;
+             if !signer_account.is_signer {
+-                msg!("account {:?} signer_key().is_none()", signer);
++                msg!("account {:?} signer_key().is_none()", to_pubkey(signer));
+                 return Err(ProgramError::MissingRequiredSignature);
+             }
+-            if signer_account.key != signer {
++            if <Pubkey as AsRef<[u8]>>::as_ref(signer_account.key) != signer {
+                 msg!(
+                     "account[{:?}].signer_key() does not match Config data)",
+                     counter.saturating_add(1)
+@@ -123,10 +181,9 @@ pub fn process(program_id: &Pubkey, accounts: &[AccountInfo], input: &[u8]) -> P
+             }
+             // If Config account is already initialized, update signatures must match Config
+             // data.
+-            if !current_data.keys.is_empty()
+-                && !current_signer_keys.iter().any(|pubkey| pubkey == signer)
++            if !current_entries.is_empty() && !current_signer_keys().any(|pubkey| pubkey == signer)
+             {
+-                msg!("account {:?} is not in stored signer list", signer);
++                msg!("account {:?} is not in stored signer list", to_pubkey(signer));
+                 return Err(ProgramError::MissingRequiredSignature);
+             }
+         } else if !config_account.is_signer {
+@@ -136,23 +193,23 @@ pub fn process(program_id: &Pubkey, accounts: &[AccountInfo], input: &[u8]) -> P
+     }
+ 
+     // Dedupe signers.
+-    let total_new_keys = key_list.keys.len();
+-    let unique_new_keys = key_list.keys.into_iter().collect::<BTreeSet<_>>();
+-    if unique_new_keys.len() != total_new_keys {
++    if has_duplicate_entries(new_entries) {
+         msg!("new config contains duplicate keys");
+         return Err(ProgramError::InvalidArgument);
+     }
+ 
+     // Check for Config data signers not present in incoming account update.
+-    if current_signer_keys.len() > counter {
++    if current_signer_count > counter {
+         msg!(
+             "too few signers: {:?}; expected: {:?}",
+             counter,
+-            current_signer_keys.len()
++            current_signer_count
+         );
+         return Err(ProgramError::MissingRequiredSignature);
+     }
+ 
++    drop(state);
++
+     if config_account.data_len() < input.len() {
+         msg!("Instruction data too large");
+         return Err(ProgramError::InvalidInstructionData);

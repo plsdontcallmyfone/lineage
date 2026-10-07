@@ -1,0 +1,19 @@
+{
+  "recipe": "solana-config",
+  "at": "2026-10-07T21:08:09.525Z",
+  "seconds": 469,
+  "proposal": {
+    "kind": "perf",
+    "target": "store_cu",
+    "rationale": "Replace bincode/serde deserialization of ConfigKeys (instruction and account state), the Vec of stored signer keys and the BTreeSet dedupe with zero-allocation in-place validation over the serialized 33-byte (Pubkey, bool) entries. Validation matches bincode exactly: input length byte <= 37, enough bytes present, bool bytes must be 0/1; state uses the same decode_shortu16_len plus length check, and on a bad bool falls back to bincode just to log the identical error message. Duplicate detection (identical pubkey+flag, same as the BTreeSet semantics) uses a 128-slot open-addressing table. Check order and error codes are unchanged. Measured: store_cu 0.25x, init_cu 0.24x, so_bytes 0.80x; equivalence identical. Only divergence: pathological stored states with roughly 1000+ keys, where the parent ran out of heap and panicked, now go through the normal checks.",
+    "claimed_effect": 0.25154083441794683,
+    "usage": {
+      "input_tokens": 20,
+      "output_tokens": 15556,
+      "cache_read_tokens": 114461,
+      "cache_write_tokens": 83440,
+      "usd": 0.7512922
+    }
+  },
+  "diff_lines": 228
+}
