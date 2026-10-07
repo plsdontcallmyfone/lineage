@@ -1,0 +1,14 @@
+{
+  "name": "@lineage/worker",
+  "version": "0.1.0",
+  "type": "module",
+  "main": "src/index.ts",
+  "bin": {
+    "lineage-worker": "src/main.ts"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.132.0",
+    "@lineage/protocol": "workspace:*",
+    "@lineage/sandbox": "workspace:*"
+  }
+}
