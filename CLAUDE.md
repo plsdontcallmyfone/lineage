@@ -17,3 +17,4 @@ Spec: `docs/SPEC.md` (source of truth). Milestones: `docs/MILESTONES.md`.
 |---|---|---|---|
 | main session | docs/, packages/protocol, packages/sandbox, images/, recipes/, fixtures/ | IN PROGRESS | 2026-10-07 |
 | core lane | packages/core/** | DONE | 2026-10-07 |
+| dashboard lane | apps/web/** | DONE | 2026-10-07 |

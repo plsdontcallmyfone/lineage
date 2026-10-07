@@ -1,0 +1,12 @@
+{
+  "name": "@lineage/web",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "start": "bun server.ts --port 9661 --core http://127.0.0.1:9660",
+    "dev": "bun server.ts --port 9663 --core http://127.0.0.1:9664 --dev",
+    "seed": "bun scripts/seed-dev.ts --port 9664 --live",
+    "typecheck": "tsc --noEmit -p ."
+  }
+}
