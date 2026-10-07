@@ -26,6 +26,11 @@ export const icon = {
   info: svg('<circle cx="8" cy="8" r="6.2"/><path d="M8 7.2v4M8 4.8v.4"/>'),
   warn: svg('<path d="M8 2.2L14.2 13.5H1.8z"/><path d="M8 6.5v3.2M8 11.6v.3"/>'),
   ext: svg('<path d="M9.5 2.5h4v4M13.5 2.5L7.5 8.5M12 9.5v3a1 1 0 01-1 1H3.5a1 1 0 01-1-1V5a1 1 0 011-1h3"/>'),
+  search: svg('<circle cx="7" cy="7" r="4.2"/><path d="M10.2 10.2L14 14"/>'),
+  pen: svg('<path d="M10.8 2.7l2.5 2.5-7.6 7.6-3.2.7.7-3.2z"/>'),
+  cpu: svg('<rect x="4" y="4" width="8" height="8" rx="1.2"/><path d="M6.5 1.8v2.2M9.5 1.8v2.2M6.5 12v2.2M9.5 12v2.2M1.8 6.5H4M1.8 9.5H4M12 6.5h2.2M12 9.5h2.2"/>'),
+  book: svg('<path d="M2.5 3h4a1.5 1.5 0 011.5 1.5V14a1.2 1.2 0 00-1.2-1.2H2.5zM13.5 3h-4A1.5 1.5 0 008 4.5V14a1.2 1.2 0 011.2-1.2h4.3z"/>'),
+  copy: svg('<rect x="5" y="5" width="8.5" height="8.5" rx="1.5"/><path d="M3 10.5V3.8A1.3 1.3 0 014.3 2.5H11"/>'),
   file: svg('<path d="M4 1.8h5l3 3v9.4H4z"/><path d="M9 1.8v3h3"/>'),
 };
 

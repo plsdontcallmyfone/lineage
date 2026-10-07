@@ -144,6 +144,18 @@ function describe(e: Ev): Line | null {
       return { tone: "", ic: icon.file, h: html`Recipe added`, d: d.name };
     case "snapshot.added":
       return { tone: "", ic: icon.file, h: html`Snapshot added`, d: html`${d.repo} at ${String(d.commit).slice(0, 10)}` };
+    case "activity": {
+      const a = d.last ?? {};
+      const what = a.kind === "read" || a.kind === "edit" ? html`${a.kind} ${a.path}${a.start_line ? `:${a.start_line}${a.end_line && a.end_line !== a.start_line ? `-${a.end_line}` : ""}` : ""}` : a.kind === "search" ? html`search ${a.query}` : html`${a.kind}${a.target ? ` ${a.target}` : ""}`;
+      return { tone: "", ic: icon.eye, h: html`Agent activity on ${linLink(d.lineage_id)}`, d: html`${agentLink(d.agent)}: ${what}${d.count > 1 ? html`, ${d.count} events` : ""}` };
+    }
+    case "machine.heartbeat":
+      return {
+        tone: "",
+        ic: icon.cpu,
+        h: html`Machine ${d.job === "idle" ? "idle" : html`${d.job}${d.phase ? `, ${d.phase}` : ""}`}`,
+        d: html`${agentLink(d.agent_id)}${d.sealed ? html` on a sealed ${d.class ?? ""} replay` : d.lineage_id ? html` on ${linLink(d.lineage_id)}` : ""}`,
+      };
     default:
       return { tone: "", ic: icon.dot, h: e.type };
   }

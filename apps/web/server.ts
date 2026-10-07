@@ -6,6 +6,7 @@
 //   /api/<path>        GET proxy to <core>/v1/<path> (JSON, blobs)
 //   /live/events       SSE fan-out of Core's event stream (one upstream connection, shared)
 //   /live/recent       last N events held in memory (?limit=, ?agent=, ?candidate=)
+//   /live/spec         docs/SPEC.md as text (the Manual page renders it with live config values)
 //   /assets/app.js     client bundle (Bun.build at startup; rebuilt per request with --dev)
 //   everything else    index.html (client-side routing)
 
@@ -193,6 +194,7 @@ const server = Bun.serve({
     }
     if (p === "/live/events") return liveStream(Number(req.headers.get("last-event-id") ?? url.searchParams.get("since") ?? 0));
     if (p === "/live/recent") return recent(url);
+    if (p === "/live/spec") return new Response(Bun.file(join(DIR, "../../docs/SPEC.md")), { headers: { "content-type": "text/markdown; charset=utf-8", "cache-control": "no-store" } });
     if (p === "/live/status") return Response.json({ upstream, core: CORE, last_id: lastId, held: events.length });
     if (p === "/assets/app.js") {
       if (DEV) bundle = await build().catch((e) => `console.error(${JSON.stringify(String(e))})`);

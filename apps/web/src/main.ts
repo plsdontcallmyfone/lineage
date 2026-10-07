@@ -1,7 +1,7 @@
 import { ApiError, loadConfig, loadLineageNames, recent, state, type Ev } from "./api.ts";
 import { mountCharts } from "./chart.ts";
 import { feedItem } from "./feed.ts";
-import { ago } from "./fmt.ts";
+import { ago, dur } from "./fmt.ts";
 import { esc, html } from "./html.ts";
 import { live, MAX_FEED } from "./live.ts";
 import { agentPage, agentsPage } from "./pages/agents.ts";
@@ -9,6 +9,10 @@ import { candidatePage } from "./pages/candidate.ts";
 import { epochsPage } from "./pages/epochs.ts";
 import { generationPage } from "./pages/generation.ts";
 import { lineagePage } from "./pages/lineage.ts";
+import { livePage } from "./pages/live.ts";
+import { machinesPage } from "./pages/machines.ts";
+import { manualPage } from "./pages/manual.ts";
+import { onLaunchInput, spawnPage } from "./pages/spawn.ts";
 import { feedAccepts, feedBody, overview } from "./pages/overview.ts";
 import type { Page } from "./pages/types.ts";
 import { icon, logo } from "./ui.ts";
@@ -26,7 +30,14 @@ const routes: [RegExp, Handler, string][] = [
   [/^\/agents\/([1-9A-HJ-NP-Za-km-z]{32,44})$/, agentPage, "/agents"],
   [/^\/epochs$/, epochsPage, "/epochs"],
   [/^\/epochs\/(\d+)$/, epochsPage, "/epochs"],
+  [/^\/live$/, livePage, "/live"],
+  [/^\/machines$/, machinesPage, "/machines"],
+  [/^\/spawn$/, spawnPage, "/spawn"],
+  [/^\/manual$/, manualPage, "/manual"],
 ];
+/** Selected tab per [data-tabs] group, kept across background re-renders. */
+const tabState = new Map<string, string>();
+let pollTimer: ReturnType<typeof setInterval> | null = null;
 
 const app = document.getElementById("app")!;
 let current: Page | null = null;
@@ -38,8 +49,12 @@ function shell() {
       <a class="brand" href="/">${logo}<span>Lineage</span><span class="ph">placeholder name</span></a>
       <nav class="nav" aria-label="Main">
         <a href="/" data-nav="/">Network</a>
+        <a href="/live" data-nav="/live">Live</a>
+        <a href="/machines" data-nav="/machines">Machines</a>
         <a href="/agents" data-nav="/agents">Agents</a>
         <a href="/epochs" data-nav="/epochs">Epochs</a>
+        <a href="/spawn" data-nav="/spawn">Spawn</a>
+        <a href="/manual" data-nav="/manual">Manual</a>
       </nav>
       <div class="top-right">
         <span class="live" id="live" data-s="${live.upstream}" title="Core event stream"><i></i><span id="live-t">connecting</span></span>
@@ -86,9 +101,16 @@ async function render(opts: { soft?: boolean } = {}) {
     current = page;
     document.title = page.title === "Network" ? "Lineage Network" : `${page.title} | Lineage`;
     restoreUi(main, keep);
+    restoreTabs(main);
     mountCharts(main);
-    if (path !== currentPath) window.scrollTo(0, 0);
+    tickTimes();
+    if (path !== currentPath) {
+      if (location.hash) document.getElementById(decodeURIComponent(location.hash.slice(1)))?.scrollIntoView();
+      else window.scrollTo(0, 0);
+    }
     currentPath = path;
+    if (pollTimer) clearInterval(pollTimer);
+    pollTimer = page.pollMs ? setInterval(() => render({ soft: true }), Math.max(3000, page.pollMs)) : null;
   } catch (e) {
     if (seq !== renderSeq) return;
     if (opts.soft) return; // keep the last good render on a failed background refresh
@@ -120,6 +142,25 @@ function restoreUi(root: HTMLElement, s: ReturnType<typeof saveUi>) {
 function navigate(href: string) {
   history.pushState(null, "", href);
   render();
+}
+
+function restoreTabs(root: HTMLElement) {
+  for (const g of root.querySelectorAll<HTMLElement>("[data-tabs]")) {
+    const want = tabState.get(g.dataset.tabs!);
+    if (want) selectTab(g, want);
+  }
+}
+function selectTab(group: HTMLElement, tab: string) {
+  for (const b of group.querySelectorAll<HTMLElement>("[data-tab]")) b.setAttribute("aria-pressed", String(b.dataset.tab === tab));
+  const scope = group.closest(".panel") ?? document;
+  for (const p of scope.querySelectorAll<HTMLElement>("[data-pane]")) p.hidden = p.dataset.pane !== tab;
+}
+
+/** Relative times (data-ago) and running durations (data-since) without re-rendering. */
+function tickTimes() {
+  const now = Date.now();
+  for (const el of document.querySelectorAll<HTMLElement>("[data-ago]")) el.textContent = ago(Number(el.dataset.ago), now);
+  for (const el of document.querySelectorAll<HTMLElement>("[data-since]")) el.textContent = dur(Math.max(0, Math.round((now - Number(el.dataset.since)) / 1000)));
 }
 
 // ------------------------------------------------------------------------------------------------
@@ -225,6 +266,25 @@ document.addEventListener("click", (ev) => {
     updateThemeIcon();
     return;
   }
+  const tabBtn = t.closest<HTMLElement>("[data-tab]");
+  const tabGroup = tabBtn?.closest<HTMLElement>("[data-tabs]");
+  if (tabBtn && tabGroup) {
+    tabState.set(tabGroup.dataset.tabs!, tabBtn.dataset.tab!);
+    selectTab(tabGroup, tabBtn.dataset.tab!);
+    return;
+  }
+  const copy = t.closest<HTMLElement>("[data-copy]");
+  if (copy) {
+    navigator.clipboard?.writeText(copy.dataset.copy ?? "").then(
+      () => {
+        const was = copy.innerHTML;
+        copy.textContent = "Copied";
+        setTimeout(() => (copy.innerHTML = was), 1200);
+      },
+      () => {},
+    );
+    return;
+  }
   const mode = t.closest<HTMLElement>("[data-feed-mode]");
   if (mode) {
     live.mode = mode.dataset.feedMode as "key" | "all";
@@ -239,7 +299,11 @@ document.addEventListener("click", (ev) => {
     const url = new URL(a.href, location.href);
     if (url.origin === location.origin && !a.target && !url.pathname.startsWith("/api/")) {
       ev.preventDefault();
-      if (url.pathname !== location.pathname) navigate(url.pathname);
+      if (url.pathname !== location.pathname) navigate(url.pathname + url.hash);
+      else if (url.hash) {
+        history.replaceState(null, "", url.hash);
+        document.getElementById(decodeURIComponent(url.hash.slice(1)))?.scrollIntoView({ behavior: "smooth", block: "start" });
+      }
     }
     return;
   }
@@ -267,10 +331,19 @@ document.addEventListener("mousemove", (ev) => {
   tip.style.top = `${ev.clientY + 16}px`;
 });
 
-setInterval(() => {
-  const now = Date.now();
-  for (const el of document.querySelectorAll<HTMLElement>("[data-ago]")) el.textContent = ago(Number(el.dataset.ago), now);
-}, 5000);
+setInterval(tickTimes, 1000);
+
+document.addEventListener("input", (ev) => {
+  const form = (ev.target as HTMLElement).closest?.<HTMLFormElement>("form[data-launch-form]");
+  if (form) onLaunchInput(form);
+});
+document.addEventListener("change", (ev) => {
+  const form = (ev.target as HTMLElement).closest?.<HTMLFormElement>("form[data-launch-form]");
+  if (form) onLaunchInput(form);
+});
+document.addEventListener("submit", (ev) => {
+  if ((ev.target as HTMLElement).matches?.("form[data-launch-form]")) ev.preventDefault();
+});
 
 let rz: ReturnType<typeof setTimeout> | null = null;
 window.addEventListener("resize", () => {

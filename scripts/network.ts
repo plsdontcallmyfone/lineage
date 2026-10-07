@@ -4,7 +4,10 @@
 // separate processes, plus the dashboard on 9661. State lives in ./data and ./.lineage-net (keys).
 //
 // Usage: bun scripts/network.ts [--recipes fixture-b58,base58-py,minbpe] [--author scripted|anthropic]
-//        [--max-usd 2] [--no-web]
+//        [--max-usd 2] [--no-web] [--port 9660] [--web-port 9661] [--data ./data] [--state ./.lineage-net]
+//        [--verifiers 3] [--config config/network.json]
+// Every worker sends heartbeats and its proposer's activity (SPEC 17.1), so the dashboard's live
+// wall and machine wall show this network's real work.
 // Ctrl-C stops every process this script started (by PID).
 import { spawn, type Subprocess } from "bun";
 import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
@@ -17,10 +20,14 @@ import { Worker } from "../packages/worker/src/index.ts";
 const ROOT = join(import.meta.dir, "..");
 const argv = process.argv.slice(2);
 const opt = (k: string) => (argv.includes(`--${k}`) ? argv[argv.indexOf(`--${k}`) + 1] : undefined);
-const CORE = "http://127.0.0.1:9660";
-const STATE = join(ROOT, ".lineage-net");
+const PORT = Number(opt("port") ?? 9660);
+const WEB_PORT = Number(opt("web-port") ?? 9661);
+const DATA = opt("data") ?? join(ROOT, "data");
+const CONFIG = opt("config") ?? join(ROOT, "config/network.json");
+const CORE = `http://127.0.0.1:${PORT}`;
+const STATE = opt("state") ?? join(ROOT, ".lineage-net");
 mkdirSync(STATE, { recursive: true });
-const net = JSON.parse(readFileSync(join(ROOT, "config/network.json"), "utf8"));
+const net = JSON.parse(readFileSync(CONFIG, "utf8"));
 const procs: Subprocess[] = [];
 const log = (m: string) => console.log(`[network] ${m}`);
 
@@ -53,7 +60,7 @@ async function ok<T = any>(p: Promise<{ status: number; body: T }>, what: string
   return r.body;
 }
 
-for (const port of [9660, 9661]) {
+for (const port of [PORT, WEB_PORT]) {
   const busy = Bun.spawnSync(["lsof", "-ti", `:${port}`]).stdout.toString().trim();
   if (busy) {
     console.error(`port ${port} busy (pid ${busy}); stop it first`);
@@ -62,7 +69,7 @@ for (const port of [9660, 9661]) {
 }
 
 const admin = key("admin");
-start("core", ["bun", join(ROOT, "packages/core/src/main.ts"), "--data", join(ROOT, "data"), "--port", "9660", "--config", join(ROOT, "config/network.json"), "--admin-key", admin.path]);
+start("core", ["bun", join(ROOT, "packages/core/src/main.ts"), "--data", DATA, "--port", String(PORT), "--config", CONFIG, "--admin-key", admin.path]);
 for (let i = 0; i < 60 && !(await fetch(`${CORE}/v1/health`).catch(() => null))?.ok; i++) await Bun.sleep(500);
 const A = new CoreClient(CORE, admin.key);
 const as = (k: AgentKey) => new CoreClient(CORE, k);
@@ -73,7 +80,7 @@ const BURN = BigInt(net.register_burn);
 
 // verifiers and the reference runner
 const ref = key("reference");
-const verifiers = ["v1", "v2", "v3"].map(key);
+const verifiers = Array.from({ length: Number(opt("verifiers") ?? 3) }, (_, i) => `v${i + 1}`).map(key);
 for (const v of [ref, ...verifiers]) {
   const me = await A.get(`/v1/agents/${v.key.id}`);
   if (me.status === 404) {
@@ -130,6 +137,6 @@ for (const a of authors) {
   start(`agent-${a.name}`.slice(0, 10), args);
 }
 
-if (!argv.includes("--no-web") && existsSync(join(ROOT, "apps/web/server.ts"))) start("web", ["bun", join(ROOT, "apps/web/server.ts"), "--port", "9661", "--core", CORE]);
-log("network up: Core http://127.0.0.1:9660, dashboard http://127.0.0.1:9661 (Ctrl-C stops everything this script started)");
+if (!argv.includes("--no-web") && existsSync(join(ROOT, "apps/web/server.ts"))) start("web", ["bun", join(ROOT, "apps/web/server.ts"), "--port", String(WEB_PORT), "--core", CORE, ...(argv.includes("--dev") ? ["--dev"] : [])]);
+log(`network up: Core ${CORE}, dashboard http://127.0.0.1:${WEB_PORT} (Ctrl-C stops everything this script started)`);
 await new Promise(() => {});

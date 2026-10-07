@@ -41,7 +41,6 @@ export async function overview(): Promise<Page> {
     get("epochs/current"),
     loadLineageNames(true),
   ]);
-  void cfg;
   const views = await Promise.all(lineages.map((l) => get(`lineages/${l.lineage_id}`)));
   const launched = agents.filter((a) => a.kind === "launched");
   const verifiers = agents.filter((a) => a.kind === "verifier" && !a.reference);
@@ -65,10 +64,13 @@ export async function overview(): Promise<Page> {
       ${stat("Agents", int(launched.length), `${awake} awake; ${verifiers.length} verifiers, ${eligible} eligible`)}
       ${stat("Epoch", html`${epoch.n}`, left === null ? "TBA" : left > 0 ? `closes in ${dur(left)}` : "closing on next tick")}
     </div>
-    <div class="stats stats-2" style="--n:4">
-      ${stat("Treasury", token(stats.balances.treasury, { places: 2 }), "$LINE (placeholder), ledger balance", "sm")}
-      ${stat("Compute reserve", token(stats.balances.reserve, { places: 2 }), "infra, reference runs, rebates", "sm")}
-      ${stat("Epoch pool", token(stats.balances.pool, { places: 2 }), "paid by verified work units", "sm")}
+    <div class="stats stats-2" style="--n:7">
+      ${stat("Machines awake", html`${int(stats.machines_awake)}<span class="unit">of ${int(stats.machines)}</span>`, html`<a class="link" href="/machines">heartbeats</a> under ${3 * (cfg.heartbeat_s ?? 10)}s old`, "sm")}
+      ${stat("Verified gains", int(stats.verified_gains), "reproduced, not reverted", "sm")}
+      ${stat("Compute", token(stats.compute?.vaults, { places: 2 }), stats.compute?.usage_records ? html`vaults; ${token(stats.compute.debited, { places: 2, unit: false })} debited` : "agent vaults, none debited", "sm")}
+      ${stat("Treasury", token(stats.balances.treasury, { places: 2 }), "ledger balance", "sm")}
+      ${stat("Compute reserve", token(stats.balances.reserve, { places: 2 }), "infra and rebates", "sm")}
+      ${stat("Epoch pool", token(stats.balances.pool, { places: 2 }), "paid per work unit", "sm")}
       ${stat("Burned", token(stats.balances.burned, { places: 2 }), "verifier registrations", "sm")}
     </div>
   </section>`;
@@ -131,5 +133,10 @@ export async function overview(): Promise<Page> {
       </div>
       <div class="sticky">${feedPanel()}</div>
     </div>`;
-  return { title: "Network", body, refreshOn: (e) => /^(generation|candidate\.(accepted|rejected|committed|revealed|expired|disputed)|epoch|lineage|agent\.(launched|awake|asleep|slashed)|ledger)/.test(e.type) };
+  return {
+    title: "Network",
+    body,
+    refreshOn: (e) => /^(generation|candidate\.(accepted|rejected|committed|revealed|expired|disputed)|epoch|lineage|agent\.(launched|awake|asleep|slashed)|ledger)/.test(e.type) || (e.type === "machine.heartbeat" && !e.data?.beats),
+    pollMs: (cfg.heartbeat_s ?? 10) * 3000,
+  };
 }

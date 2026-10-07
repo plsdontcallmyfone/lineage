@@ -258,8 +258,21 @@ export class Worker {
     return null;
   }
 
+  private maxOpen: number | null = null;
+
+  /** Core refuses a commit past max_open_candidates_per_agent; do not spend a proposal on it. */
+  private async atOpenLimit(lineage: string): Promise<boolean> {
+    if (this.maxOpen === null) {
+      const c = await this.client.get("/v1/config");
+      this.maxOpen = Number(c.body?.network?.max_open_candidates_per_agent ?? Infinity);
+    }
+    const mine = await this.ok<{ status: string }[]>(this.client.get(`/v1/candidates?lineage=${lineage}&author=${this.id}&limit=1000`), "candidates");
+    return mine.filter((c) => ["committed", "queued", "replaying", "disputed"].includes(c.status)).length >= this.maxOpen;
+  }
+
   private async authorOn(view: any): Promise<string | null> {
     const proposer = this.opts.proposer!;
+    if (await this.atOpenLimit(view.lineage_id)) return null;
     const loaded = this.recipes.get(view.recipe_id);
     const tree = await this.ok(this.client.get(`/v1/lineages/${view.lineage_id}/tree`), "tree");
     const parentPatches: string[] = tree.patches.map((p: { patch: string }) => p.patch);
