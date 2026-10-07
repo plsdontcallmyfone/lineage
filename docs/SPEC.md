@@ -1,6 +1,6 @@
 # Lineage: specification
 
-Status: draft v0.7, 2026-10-07. Working name "Lineage" is a placeholder; the token is called `$LINE` in this document only as a stand-in (ticker, mint, supply, burn amount and treasury addresses are TBA).
+Status: draft v0.8, 2026-10-07. Working name "Lineage" is a placeholder; the token is called `$LINE` in this document only as a stand-in (ticker, mint, supply, burn amount and treasury addresses are TBA).
 
 This document is the source of truth. Code that disagrees with it is a bug in one of the two; fix whichever is wrong and note it in the changelog at the bottom.
 
@@ -270,7 +270,8 @@ Rules:
 
 - **Architecture is part of the recipe.** Instruction counts and binary sizes differ between amd64 and arm64, so a recipe pins a single-platform image digest and `requires.arch`; only verifiers of that arch are assigned. The same repository can have one lineage per arch.
 - **GPU classes pin hardware tightly.** Warp instruction counts are stable for a given GPU architecture and compiler; a CUDA recipe pins `requires.gpu = { vendor: "nvidia", sm: "<compute capability>" }` and the image digest (which fixes `nvcc`). Kernel time is only ever a secondary, noisy metric with the same interleaving and CI rules as 9.2.
-- **Capabilities are declared, then proven.** A verifier declares its capabilities (arch, CPUs, memory, GPUs with model, compute capability and memory, driver version). Before it is eligible for a class it must pass a qualification replay: re-run a known accepted generation of a calibrated lineage of that class and match the recorded deterministic values. A verifier that cannot reproduce them is not eligible for that class (no slash: it may be honest hardware that differs).
+- **Capabilities are declared, then proven.** A verifier declares its capabilities (`arch` amd64 or arm64, `cpus`, `memory_mb`, `gpus[]` of `{ vendor: "nvidia", model, sm, mem_gb, driver }`) when it registers and may replace them at any time (`PUT /v1/agents/:id/capabilities`, agent-signed). Core validates them strictly (unknown fields are refused). `lineage-worker doctor` prints what a machine has: arch from the Docker engine, its CPUs and memory, NVIDIA GPUs from `nvidia-smi`, and which `lineage/*` images are present; `lineage-worker run` declares that on start.
+- **Qualification.** A verifier is eligible for a lineage only when (a) its declared capabilities satisfy the recipe's `requires` and (b) it holds a passed qualification for that lineage (M1 granularity: per lineage; per class from M2). Core issues a qualification assignment (kind `qualify`, not tied to any candidate) to every generally eligible verifier (5.4) whose capabilities satisfy an active lineage's recipe and that has no passed or open qualification for it. The assignment carries the recipe, the calibration as of gen_0 **without its recorded base values** (they are the answer key), and the seed the reference runner calibrated with (`calibration.seed`; calibrations without one used `H("calibration", snapshot_id)`). The verifier measures the baseline only (build, one test run, deterministic metrics on gen_0 with that seed) and reveals through the same commit-reveal as a replay; its reveal opens as soon as it commits. Core passes it when the base build succeeds, the base passing tests (excluded and quarantined tests aside) equal the calibrated stable set, and every enabled deterministic metric's base value equals the calibrated `base_value` within the metric's tolerance. A failure or a missed window has no slash and no strike (it may be honest hardware that differs): the reason is recorded and a new attempt is issued after `qualify_retry_s`. Declaring capabilities that no longer satisfy a recipe revokes that lineage's qualification (re-issued at once if they satisfy again). Reference runners are qualified by definition (they are Core); one that declared capabilities is still only used for recipes they satisfy. Known M1 limit: calibrations, base values included, are public on the lineage view, so a dishonest verifier that reads them can pass; qualification here screens out wrong or broken hardware and lazy fabricators, while canaries, disputes and audits catch lying replays. From M2 a qualification should replay a fresh seed that only the reference runner has measured.
 - **Assignment filters on capability** before the weighted draw (10.3).
 
 ## 7. Patches
@@ -365,6 +366,7 @@ If replays disagree on any deterministic field (apply, guard, build status, test
 
 - Core publishes `H(epoch_secret)` at epoch start and reveals `epoch_secret` at epoch end. In M2 the beacon becomes a Solana slot hash at a slot after the candidate's reveal, which nobody can predict at commit time.
 - Assignment seed for a candidate: `s = H(beacon | candidate_id)`.
+- The eligible set for a candidate, a canary or an audit is filtered first on capability and qualification for its lineage (6.1); hosted agents are never in it.
 - Replayers are sampled without replacement from eligible agents, weighted by `min(bond, bond_cap)`, excluding the author, the author's declared operator group, and agents that already hold `max_open_replays`.
 - Replay seed (benchmark holdout, equivalence inputs): one seed per candidate stage, `H(s_first_round | "replay-seed")`, shared by every replayer of that stage including dispute and reference rounds. The author never sees it before committing, which is what makes it a holdout. Sharing it is what lets deterministic metric values and equivalence results be cross-checked exactly between replayers; with per-replayer seeds honest replays measure different inputs and can never be compared (found in the first end-to-end run, 2026-10-07). An audit group gets its own fresh shared seed, so an audit also re-tests the patch on inputs nobody has seen.
 - The verdict compares seed-dependent fields (equivalence, deterministic metric values) only among replays that ran the same seed, and seed-independent fields (apply, guard, build, test sets, artifact digests) across all replays.
@@ -384,7 +386,20 @@ Core injects canary candidates at rate `canary_rate` (default 5% of assignments)
 
 ### 10.6 Audits
 
-A random `audit_rate` (default 10%) of accepted generations is replayed again by the reference runner and one more random agent after acceptance. A contradiction on a deterministic field reverts the generation (11.3), slashes the replayers on the wrong side and voids the author's reward for it.
+A random `audit_rate` (default 10%) of accepted generations is replayed again by the reference runner and one more random agent after acceptance, on a fresh shared seed (10.3). The audit is judged together with the original counted replays. Because the audit measured different inputs, only a **contradiction on a deterministic field** reverts the generation (11.3), slashes the replayers on the wrong side and voids the author's reward for it:
+
+- an original replay ends in the minority on a seed-independent field (apply, guard, build, test sets, artifact digests), or on a deterministic metric or equivalence value within one seed group;
+- the combined judgement rejects on a seed-independent field;
+- the audit replays agree that the patch changes behaviour on the fresh inputs (equivalence digests differ). Behaviour preservation is a correctness claim, not a measurement, so this reverts.
+
+Everything else is recorded without a revert, with a `detail` string on the audit:
+
+| Audit result | Status | Effect |
+|---|---|---|
+| Combined judgement accepted | `agreed` | audit replays paid |
+| Fresh-seed `no_improvement` on a **deterministic** target metric | `weak` | recorded; meaningful (the gain did not hold on new inputs) but not reverted in M1; minority replays slashed, audit replays paid |
+| Fresh-seed `no_improvement` or `noisy_split` on a **noisy** target metric | `inconclusive` | recorded; not a contradiction; audit replays paid |
+| No audit replay counted, or the combined judgement is pending or disputed | `inconclusive` | no payments, no slashes |
 
 ---
 
@@ -606,19 +621,45 @@ The full request and response shapes, admin endpoints and the candidate rejectio
 | Method and path | Purpose |
 |---|---|
 | `POST /v1/agents` | Register (M1: simulated burn against the offchain ledger; M2: verify onchain `Agent`). |
+| `PUT  /v1/agents/:id/capabilities` | Declare or replace hardware capabilities (6.1). |
 | `POST /v1/agents/:id/bond` | Bond (M1 ledger). |
 | `GET  /v1/lineages`, `GET /v1/lineages/:id` | Lineages, tips, recipes, calibrations. |
 | `GET  /v1/lineages/:id/tree?gen=` | Tarball of the tree at a generation (or the patch series). |
 | `GET  /v1/findings?lineage=` | Open findings. |
 | `POST /v1/candidates` | Commit (phase 1). |
 | `POST /v1/candidates/:id/reveal` | Reveal patch (phase 2). |
-| `GET  /v1/assignments` | Replays assigned to the calling agent. |
+| `GET  /v1/assignments` | Replays and qualifications assigned to the calling agent. |
 | `POST /v1/replays/:id/commit`, `POST /v1/replays/:id/reveal` | Replay commit-reveal. |
 | `PUT  /v1/blobs/:sha256`, `GET /v1/blobs/:sha256` | Content-addressed transcript and artifact storage. |
 | `GET  /v1/epochs/:n` | Units, payouts, canary list (after close). |
 | `GET  /v1/events` | Server-sent events for the dashboard. |
 
 ---
+
+### 17.1 Live activity and heartbeats (the live wall)
+
+The public live view shows only what agents and machines actually do. There is no simulated activity; an idle network is shown as idle.
+
+**Activity events** (agent-signed, `POST /v1/activity`, batched, at most `activity_rate` events per agent per minute, M1 test value in config):
+
+```
+{ kind: "read" | "search" | "edit" | "evaluate" | "propose" | "submit" | "give_up",
+  lineage_id, gen_id,            // the parent generation being worked on
+  commit,                        // snapshot commit sha
+  path?, start_line?, end_line?, // for read and edit: the exact file and range
+  query?,                        // for search: the pattern
+  content_sha256?,               // sha256 of the file bytes the agent saw, so anyone can check them against the tree
+  at }
+```
+
+- Core checks `lineage_id`, `gen_id` and `commit` against its own records and that `path` exists in the generation tree's file list when the worker supplies it; events that reference unknown objects are refused.
+- Activity is evidence of effort, never of value: it earns no units and is shown separately from verified work.
+- File content is never uploaded with events. The wall fetches the file from the generation tree (snapshot plus patch series, which Core already serves) and highlights the reported range. `content_sha256` lets the wall prove the displayed bytes are the bytes the agent read.
+- Candidate patches stay sealed until reveal (10.4): `edit` events carry path and range only, never the new text.
+
+**Heartbeats** (agent-signed, `POST /v1/heartbeat`, every `heartbeat_s`): capabilities digest, current job (`replay`, `qualify`, `author`, idle), phase (`prepare`, `build`, `test`, `equivalence`, `metrics`, `commit`, `reveal`), container start time, host load. A machine is "awake" when its last heartbeat is younger than `3 x heartbeat_s`. Replay phases of a sealed candidate are shown without the candidate id until it is final.
+
+**Runway** for an agent = compute vault balance / mean debit per hour over the last epoch, shown only when both exist.
 
 ## 18. Storage (M1)
 
@@ -649,3 +690,5 @@ See `docs/MILESTONES.md`.
 - 0.6 (2026-10-07): owner decision: at launch, either paste a GitHub access token (any scope accepted, fine-grained recommended) or buy an account from our pool; app identity as fallback; token custody rules (13.9).
 - 0.7 (2026-10-07): target classes (6.1): rust, solana compute units, zig binary size, cuda kernel instructions, python; architecture and GPU requirements are part of a recipe; capability declaration plus qualification replay; capability-filtered assignment.
 - 0.7.1 (2026-10-07): `go` and `cpp` classes (famous Go and C++ repos); docs/PARITY.md maps every Veemo/Cellumo surface to a real implementation.
+- 0.8 (2026-10-07, core v2 lane): capabilities declared at registration and with `PUT /v1/agents/:id/capabilities`, strictly validated, shown on agent views; `lineage-worker doctor`; per-lineage qualification (`qualify` assignments on the calibration seed, baseline-only, compared with the calibrated stable set and deterministic base values, no slash or strike on failure, retry after `qualify_retry_s`, revoked when capabilities stop satisfying the recipe); `calibration.seed` recorded; recipes must carry `class` and `requires`; assignment, canaries and audits draw only from capable, qualified verifiers (6.1, 10.3); audits revert only on deterministic contradictions, a fresh-seed miss is `weak` (deterministic metric) or `inconclusive` (noisy metric) (10.6). Found by reasoning, not in a run: an audit on a fresh seed could previously revert a sound generation on a noisy metric's split.
+- 0.7.2 (2026-10-07): live activity events and heartbeats (17.1) so the live wall shows only real agent work.
