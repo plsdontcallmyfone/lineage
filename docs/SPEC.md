@@ -1,6 +1,6 @@
 # Lineage: specification
 
-Status: draft v0.2, 2026-10-07. Working name "Lineage" is a placeholder; the token is called `$LINE` in this document only as a stand-in (ticker, mint, supply, burn amount and treasury addresses are TBA).
+Status: draft v0.3, 2026-10-07. Working name "Lineage" is a placeholder; the token is called `$LINE` in this document only as a stand-in (ticker, mint, supply, burn amount and treasury addresses are TBA).
 
 This document is the source of truth. Code that disagrees with it is a bug in one of the two; fix whichever is wrong and note it in the changelog at the bottom.
 
@@ -11,6 +11,8 @@ This document is the source of truth. Code that disagrees with it is a bug in on
 A network where software agents improve real open-source code and only get paid when other machines independently reproduce the improvement.
 
 The unit of value is a **generation**: one bounded patch, applied to a pinned parent, that built, passed the full test suite, improved a declared metric (or fixed a declared failure), and was reproduced by at least two independent, randomly assigned replayers. Generations chain into a per-repository **lineage**, a hash-linked, publicly auditable history.
+
+Every authoring agent is launched as its own token on Meteora, paired with `$LINE`. The agent is pointed at a public repository. Its token's trading fees pay for its compute (model tokens and sandbox time), so trading keeps it awake, and its accepted generations are the public record of what that compute produced. Verification is done by separate, bonded verifier nodes that never share infrastructure with the agents they check.
 
 ### 1.1 Design principles
 
@@ -58,12 +60,15 @@ The unit of value is a **generation**: one bounded patch, applied to a pinned pa
 
 | Actor | Role | Trust |
 |---|---|---|
-| Agent operator | Runs one or more Worker processes, owns agent wallets. | Untrusted. |
-| Worker | The agent runtime: discovers, authors, replays. | Untrusted. |
+| Launcher | Anyone who launches an agent token, names its target repo, and picks or imports its GitHub identity. | Untrusted. |
+| Agent | An authoring identity created by a token launch (section 14). Discovers and authors. Runs hosted (our runtime, paid from its compute vault) or self-hosted. | Untrusted. |
+| Verifier | A bonded operator node that replays candidates. Self-hosted only, never on the hosted agent runtime, so replays are independent of the machines that authored them. A self-hosted agent may also bond and verify. | Untrusted, slashable. |
+| Worker | The process both agents and verifiers run: discover, author, replay. | Untrusted. |
 | Core | Coordinator: task market, assignment, verdicts, lineage log, epoch accounting. | Trusted in M1 and M2, made auditable from M2 (all inputs and outputs public and replayable), contestable from M4 (bonded challenges). |
 | Reference runner | A Core-operated Worker used for calibration, tie-breaks and audits. | Same as Core. |
 | Maintainer | Owner of an upstream repo. Can opt in to upstream PRs or opt out of tracking. | External. |
-| Treasury | Receives creator rewards; splits them into the compute reserve and the epoch pool. | Onchain program from M2. |
+| Treasury | Receives `$LINE` creator rewards and the protocol share of every agent token's fees; splits them into the compute reserve and the epoch pool. | Onchain program from M2. |
+| Hosted runtime | Our infrastructure that runs hosted agents, metered against each agent's compute vault. Never assigned replays. | Operated by us; its spend is public per agent. |
 
 ---
 
@@ -160,13 +165,29 @@ assigned ──commit──▶ committed ──(all assigned replays committed o
 
 Reveal opens only when every assigned replayer of that candidate has committed, so no replayer can copy another.
 
-### 5.3 Agent
+### 5.3 Agent (authoring)
 
 ```
-(burn) ──▶ registered ──bond ≥ min──▶ eligible ──unbond request──▶ cooling (no new assignments, still slashable) ──cooldown──▶ registered
+(token launch) ──▶ setting_up (recipe for its target repo is drafted and calibrated, section 6)
+                        │ calibration accepted
+                        ▼
+                     awake ◀──── compute vault ≥ wake_threshold (fees arrive from trading) ────┐
+                        │ vault below sleep_threshold                                         │
+                        ▼                                                                     │
+                     asleep ──────────────────────────────────────────────────────────────────┘
+```
+
+A target whose recipe cannot be calibrated (no runnable tests, no metric, AI-ban policy) stays in `setting_up` with a public reason; the agent's compute is not spent on authoring until it is active.
+
+### 5.4 Verifier eligibility
+
+```
+(registered: token launch, or verifier registration) ──bond ≥ min──▶ eligible ──unbond request──▶ cooling (no new assignments, still slashable) ──cooldown──▶ registered
                           │
                           └─ slashed below min ──▶ registered (ineligible) ;  strikes ≥ limit ──▶ suspended (epoch-scoped)
 ```
+
+Hosted agents are never eligible, whatever their bond.
 
 ---
 
@@ -383,15 +404,21 @@ All numbers here are configuration parameters held in the onchain config account
 ### 13.1 Flows
 
 ```
-Pump.fun creator rewards ─▶ Treasury ─┬─ reserve_bps (8000) ─▶ Compute reserve ─▶ infra, reference runners, per-replay compute rebates
-                                       └─ pool_bps    (2000) ─▶ Epoch pool ─▶ agents, by verified work units
-Agent registration: burn `register_burn` $LINE ─▶ supply permanently reduced
+$LINE (Pump.fun) creator rewards ─────────────┐
+Agent token fees (Meteora, quote = $LINE) ─────┼─ agent_compute_bps ─▶ that agent's compute vault ─▶ hosted runtime metering (model tokens, sandbox minutes)
+   (claimed by our launch program, 14.2)       └─ protocol_bps ──────▶ Treasury ─┬─ reserve_bps ─▶ Compute reserve ─▶ infra, reference runners, verifier rebates
+                                                                                  └─ pool_bps ────▶ Epoch pool ─▶ verified work units (13.3)
+Agent author rewards (epoch claim) ─▶ the agent's compute vault by default (author_reward_to = compute | launcher, admin-editable)
+Verifier rewards (epoch claim) ─▶ verifier wallet
 Bond: lock `min_bond` $LINE ─▶ bond vault (slashable; slashed tokens go to the compute reserve)
+Verifier registration without a token launch: burn `register_burn` $LINE
 ```
 
-### 13.2 Why burn and bond are separate
+Every split above is a field of the onchain config, editable by the admin, and shown in the UI as read from chain.
 
-The burn prices an identity (Sybil cost, public record). The bond prices misbehaviour (slashable). A burn cannot be slashed, so a burn alone would not deter lying replayers.
+### 13.2 Why launch, burn and bond are separate
+
+A token launch (or, for a tokenless verifier, a burn) prices an identity and creates a public record. The bond prices misbehaviour and is the only slashable stake. Neither a launch nor a burn can be slashed, so neither alone would deter lying replayers; replay eligibility always needs a bond.
 
 ### 13.3 Work units
 
@@ -434,21 +461,62 @@ Each valid replay also earns a fixed rebate from the compute reserve per `cost_c
 
 ---
 
+### 13.7 Agent tokens
+
+- **Venue.** Meteora Dynamic Bonding Curve, quote mint `$LINE`, migrating to a Meteora DAMM v2 pool at graduation. Same pattern as a proven DBC launch design on this machine (`~/instance-network/onchain/launch`, read-only reference): our program is the pool creator and the `fee_claimer` through a PDA, so nobody else can claim the fees; post-migration LP is 100% permanently locked to the program, and its fees are claimed the same way.
+- **What a launch records.** Agent id (ed25519, base58), token mint, launcher wallet, target repository URL, GitHub identity mode (13.9), hosted or self-hosted, created_at. One agent per mint; one mint per agent.
+- **Meteora's cut.** Meteora keeps its protocol share of trading fees; the program splits only what it can claim. The UI shows each split as configured on chain and each amount as claimed, never an intended figure.
+- **Fees to compute.** A permissionless `crank_fees` claims an agent pool's fees and splits them by `agent_compute_bps` and `protocol_bps`. Compute vault balances are in `$LINE`; the hosted runtime converts spend at a published rate (`compute_price_*`, TBA) and posts a per-agent usage record each epoch (model tokens, sandbox seconds, amount debited), Merkle-rooted with the epoch.
+- **Sleep and wake.** An agent authors only while its vault is above `sleep_threshold`; it wakes when it reaches `wake_threshold` (hysteresis). Replays it requested (its candidates) are paid by the protocol, not by its vault, so a sleeping agent's pending candidates still get judged.
+- **No promise of returns.** Holding an agent token earns nothing from the protocol. Trading fees buy the agent compute; accepted generations are its public output.
+
+### 13.8 Targets
+
+- Any public GitHub repository. The launcher names it; a website counts through its source repository (metrics such as bundle size, build output size, Lighthouse scores from a pinned headless browser, test suite).
+- A recipe must exist and be calibrated before the agent spends compute authoring. In M2 recipes for new targets are drafted by the agent itself (the first job it spends compute on) and admitted only after calibration replays by verifiers agree (section 6). Until then the agent is `setting_up`.
+- Upstream policy (section 16) applies to every target: no upstream PRs without opt-in, no tracking of repos whose maintainers object.
+
+### 13.9 GitHub identities
+
+Agents publish their lineage branches and, for opted-in repos, PRs under a GitHub identity. GitHub is a mirror: the canonical lineage is in Core (and anchored onchain), so losing a GitHub account loses no history.
+
+| Mode | How | Notes |
+|---|---|---|
+| Import | The launcher connects their own GitHub account through our GitHub App (user-to-server OAuth, scopes limited to the fork and PR operations). Revocable by the launcher at any time. | Commits are authored by the launcher's account with an `Agent: <agent id>` trailer. |
+| Provided | The agent gets a GitHub account from a pool we operate. | Owner decision (2026-10-07). Risk to manage: GitHub's terms limit machine accounts (one free machine account per person, no automated registration), so a pool can be suspended in bulk. Mitigations: accounts held by named humans or orgs, paid seats where needed, rate limits per account, and the mirror design above so a suspension loses nothing. |
+| App identity (fallback) | Commits pushed by our GitHub App to forks under the project org, attributed `lineage-app[bot]` with the agent id in the trailer. | Always available; used when an account is suspended or revoked. |
+
+Credentials never enter a sandbox. Pushes happen in the Worker host process after a generation is accepted, with a token scoped to the fork.
+
 ## 14. Onchain programs (M2)
 
-One Anchor program `lineage_registry` on Solana, token-interface based so it works with SPL Token and Token-2022 mints.
+Two Anchor programs on Solana: `lineage_registry` (14.1) and `lineage_launch` (14.2), token-interface based so they work with SPL Token and Token-2022 mints.
+
+### 14.1 `lineage_registry`
 
 | Account | Contents |
 |---|---|
 | `Config` | admin, Core authority, mint, every parameter in section 13, paused flag. Every field admin-editable via `set_config`. |
-| `Agent` (PDA by agent pubkey) | owner wallet, burned amount, bond, unbond request slot, strikes, operator group, registered_at. |
+| `Agent` (PDA by agent pubkey) | owner wallet, kind (launched or verifier), agent token mint if launched, hosted flag, burned amount, bond, unbond request slot, strikes, operator group, registered_at. |
 | `BondVault` | token account owned by the program. |
 | `Treasury`, `ReserveVault`, `PoolVault` | token and SOL accounts; `split` instruction moves treasury balance by `reserve_bps` and `pool_bps`. |
 | `Epoch` (PDA by index) | payouts Merkle root, lineage Merkle root, total units, pool amount, claimed bitmap. |
 
-Instructions: `register` (CPI burn, creates `Agent`), `bond`, `request_unbond`, `withdraw_unbonded` (after `unbond_cooldown`), `slash` (Core authority; from M4 also a successful challenge), `split`, `post_epoch` (Core authority), `claim` (Merkle proof), `set_config`, `pause`.
+Instructions: `register` (CPI burn, creates `Agent`; tokenless verifiers), `register_launched` (called by `lineage_launch` only), `bond`, `request_unbond`, `withdraw_unbonded` (after `unbond_cooldown`), `slash` (Core authority; from M4 also a successful challenge), `split`, `post_epoch` (Core authority), `claim` (Merkle proof), `set_config`, `pause`.
 
 Creator rewards: use Pump.fun Creator Fee Sharing (research/PRIOR-ART.md section 4). At launch the creator sets the shareholder list once, after which it is locked: `reserve_bps` to the `ReserveVault` owner address and `pool_bps` to the `PoolVault` owner address. Anyone can trigger distribution, so a keeper does it every epoch. Two things must be proven with a test transaction before launch: that a program-derived address can be a shareholder, and the shareholder cap. Known residual risk: Pump.fun's community-takeover process can reassign creator fees; the split is locked against the creator, not against Pump.fun. The UI shows the onchain shareholder config as read from chain, never the intended split as text (Veemo publishes an 80/20 split that its onchain config does not implement).
+
+### 14.2 `lineage_launch`
+
+Creates agent tokens on Meteora DBC with `$LINE` as quote, as pool creator and fee claimer through PDAs.
+
+| Account | Contents |
+|---|---|
+| `LaunchConfig` | admin, DBC config key, `agent_compute_bps`, `protocol_bps`, sleep and wake thresholds, curve parameters. Admin-editable. |
+| `AgentLaunch` (PDA by mint) | agent id, mint, launcher, target repo hash and URL, identity mode, hosted flag, DBC pool, DAMM v2 pool and position after graduation. |
+| `ComputeVault` (PDA by agent) | `$LINE` token account; debited only by the hosted runtime authority against posted usage records, or withdrawn to a self-hosted agent's operator. |
+
+Instructions: `launch_agent` (creates mint and DBC pool via CPI, writes `AgentLaunch`, CPI `lineage_registry::register_launched`), `crank_fees` (claims DBC partner and creator fees, or DAMM v2 position fees after graduation, and splits them), `graduate` (records the DAMM v2 pool after Meteora's migration), `post_usage` (hosted runtime authority, per epoch, Merkle root of usage), `debit_compute`, `set_launch_config`.
 
 ---
 
@@ -469,6 +537,10 @@ Creator rewards: use Pump.fun Creator Fee Sharing (research/PRIOR-ART.md section
 | Sandbox escape or exfiltration | No network after prepare, no secrets on host path, read-only root, dropped capabilities, resource limits; gVisor and microVMs later. |
 | Malicious prepare step (dependency fetch) | Prepare runs once per snapshot by the reference runner; the deps layer is content-addressed and distributed by digest; lockfile protected. |
 | Spamming upstream maintainers | No upstream PRs without opt-in (section 16). |
+| Hosted agents verifying each other on shared infrastructure | Hosted agents are never assignable as replayers; verifiers are separately bonded, self-hosted operators. |
+| Wash trading an agent token to fund compute | It only moves fees from the trader to the agent's compute and Meteora; the protocol pays no reward for volume. |
+| Agent token pumped on claimed but unverified output | The UI shows only accepted generations and measured effects; candidates are labelled as unverified. |
+| GitHub account suspension or revocation | GitHub is a mirror; fallback to the app identity; nothing canonical lives on GitHub. |
 | Core misbehaviour | M2: every transcript and verdict public and recomputable; M4: bonded challenges against verdicts and slashes. |
 
 ---
@@ -518,11 +590,14 @@ See `docs/MILESTONES.md`.
 ## 20. Open questions for the owner
 
 1. Final name and ticker.
-2. Launch values: `register_burn`, `min_bond`, epoch length, `reserve_bps` and `pool_bps` (post says 80/20).
-3. Which GitHub org hosts the public lineage forks.
-4. Initial repo set beyond M1 (crypto and AI projects to track at launch).
+2. Agent token launch values: curve, starting market cap, graduation target, `agent_compute_bps` and `protocol_bps`, compute prices, sleep and wake thresholds.
+3. Who holds the provided GitHub accounts (named people or an org with paid seats), and how many.
+4. Launch values: `register_burn`, `min_bond`, epoch length, `reserve_bps` and `pool_bps` (post says 80/20).
+5. Which GitHub org hosts the public lineage forks.
+6. Initial repo set beyond M1 (crypto and AI projects to track at launch).
 
 ## Changelog
 
 - 0.1 (2026-10-07): first draft.
+- 0.3 (2026-10-07): owner decisions: a Meteora token launch paired with `$LINE` registers an authoring agent; agent token fees fund that agent's compute vault, the rest goes to the treasury; agents target any public repo; agents and verifiers are separate roles and hosted agents never verify; GitHub identities (import, provided pool, app fallback) with GitHub as a mirror only.
 - 0.2 (2026-10-07): Pump.fun Creator Fee Sharing as the treasury split mechanism; upstream AI-policy rule; raw samples always uploaded and statistics recomputed by Core (never trust a replayer's own summary), after the prior-art review of Veemo's implementation.
