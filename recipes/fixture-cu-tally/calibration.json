@@ -1,5 +1,5 @@
 {
-  "recipe_id": "08c1a343b5e1f4015ecae6fb78b2fb3b6d1accf732730dac7abda2a3dddbc4de",
+  "recipe_id": "d9deb66577346a166bc6fb32396c6ac39d5a0d0a8946e148cd7e2e0ebb37bcf4",
   "snapshot_id": "",
   "runs": 5,
   "stable": [
@@ -37,15 +37,15 @@
       "base_value": 23328
     }
   },
-  "median_eval_seconds": 7,
+  "median_eval_seconds": 4,
   "seed": "ca11b7a7e",
   "recipe_name": "fixture-cu-tally",
   "repo": "fixture:cu-tally",
   "commit": "ce1ce12f1ffd1a8927b6bbb4ae05df09168fe602",
-  "deps_digest": "aff07499ba42fbd7a4c7e29831ec2d2a32a79754fb2fecd124ee4908083c1310",
-  "image_digest": "sha256:19fc667902c4e406d2cbbac3fc51520d6056e43691a6153491b6fc1a37f33cfe",
-  "date": "2026-10-07T19:58:37.787Z",
-  "calibration_wall_seconds": 5.4,
+  "deps_digest": "56f94cf2c308156dc9263d4499e12c89711145c331d09acb347342c39edb5f5b",
+  "image_digest": "sha256:6fea6918f9e9228d41e79f849e6d791cf64e3acbb585b0548d5f49bb46af86a1",
+  "date": "2026-10-07T20:31:21.761Z",
+  "calibration_wall_seconds": 3.5,
   "counts": {
     "stable": 9,
     "known_failures": 0,
@@ -53,6 +53,6 @@
     "excluded": 0
   },
   "notes": [
-    "calibration wall time 5 s"
+    "calibration wall time 3 s"
   ]
 }

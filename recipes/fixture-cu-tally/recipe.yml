@@ -11,7 +11,7 @@ class: solana
 requires: { arch: arm64 }
 repo: "fixture:cu-tally"
 commit: "ce1ce12f1ffd1a8927b6bbb4ae05df09168fe602"
-image: "lineage/solana:m1@sha256:19fc667902c4e406d2cbbac3fc51520d6056e43691a6153491b6fc1a37f33cfe"
+image: "lineage/solana:m1@sha256:6fea6918f9e9228d41e79f849e6d791cf64e3acbb585b0548d5f49bb46af86a1"
 workdir: /work/src
 prepare:
   - cargo fetch --locked

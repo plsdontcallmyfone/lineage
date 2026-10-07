@@ -45,8 +45,8 @@
     },
     "equivalence": "same",
     "seed": "7265706c61792d70",
-    "recipe_id": "08c1a343b5e1f4015ecae6fb78b2fb3b6d1accf732730dac7abda2a3dddbc4de",
-    "eval_seconds": 4.8,
+    "recipe_id": "d9deb66577346a166bc6fb32396c6ac39d5a0d0a8946e148cd7e2e0ebb37bcf4",
+    "eval_seconds": 2.9,
     "match": true
   },
   "perf_digest": {
@@ -95,8 +95,8 @@
     },
     "equivalence": "same",
     "seed": "7265706c61792d70",
-    "recipe_id": "08c1a343b5e1f4015ecae6fb78b2fb3b6d1accf732730dac7abda2a3dddbc4de",
-    "eval_seconds": 5.4,
+    "recipe_id": "d9deb66577346a166bc6fb32396c6ac39d5a0d0a8946e148cd7e2e0ebb37bcf4",
+    "eval_seconds": 2.8,
     "match": true
   },
   "perf_sort": {
@@ -145,8 +145,8 @@
     },
     "equivalence": "same",
     "seed": "7265706c61792d70",
-    "recipe_id": "08c1a343b5e1f4015ecae6fb78b2fb3b6d1accf732730dac7abda2a3dddbc4de",
-    "eval_seconds": 5.9,
+    "recipe_id": "d9deb66577346a166bc6fb32396c6ac39d5a0d0a8946e148cd7e2e0ebb37bcf4",
+    "eval_seconds": 3,
     "match": true
   },
   "equiv_change": {
@@ -195,8 +195,8 @@
     },
     "equivalence": "changed",
     "seed": "7265706c61792d65",
-    "recipe_id": "08c1a343b5e1f4015ecae6fb78b2fb3b6d1accf732730dac7abda2a3dddbc4de",
-    "eval_seconds": 4.4,
+    "recipe_id": "d9deb66577346a166bc6fb32396c6ac39d5a0d0a8946e148cd7e2e0ebb37bcf4",
+    "eval_seconds": 2.9,
     "match": true
   },
   "regress": {
@@ -245,8 +245,8 @@
     },
     "equivalence": "same",
     "seed": "7265706c61792d72",
-    "recipe_id": "08c1a343b5e1f4015ecae6fb78b2fb3b6d1accf732730dac7abda2a3dddbc4de",
-    "eval_seconds": 4.2,
+    "recipe_id": "d9deb66577346a166bc6fb32396c6ac39d5a0d0a8946e148cd7e2e0ebb37bcf4",
+    "eval_seconds": 2.9,
     "match": true
   },
   "break_tests": {
@@ -295,8 +295,8 @@
     },
     "equivalence": "changed",
     "seed": "7265706c61792d62",
-    "recipe_id": "08c1a343b5e1f4015ecae6fb78b2fb3b6d1accf732730dac7abda2a3dddbc4de",
-    "eval_seconds": 4.8,
+    "recipe_id": "d9deb66577346a166bc6fb32396c6ac39d5a0d0a8946e148cd7e2e0ebb37bcf4",
+    "eval_seconds": 3,
     "match": true
   },
   "protected_test_edit": {
@@ -308,8 +308,8 @@
     "metrics": {},
     "equivalence": null,
     "seed": "7265706c61792d70",
-    "recipe_id": "08c1a343b5e1f4015ecae6fb78b2fb3b6d1accf732730dac7abda2a3dddbc4de",
-    "eval_seconds": 2.9,
+    "recipe_id": "d9deb66577346a166bc6fb32396c6ac39d5a0d0a8946e148cd7e2e0ebb37bcf4",
+    "eval_seconds": 1.9,
     "match": true
   },
   "meter_tamper": {
@@ -321,8 +321,8 @@
     "metrics": {},
     "equivalence": null,
     "seed": "7265706c61792d6d",
-    "recipe_id": "08c1a343b5e1f4015ecae6fb78b2fb3b6d1accf732730dac7abda2a3dddbc4de",
-    "eval_seconds": 3.9,
+    "recipe_id": "d9deb66577346a166bc6fb32396c6ac39d5a0d0a8946e148cd7e2e0ebb37bcf4",
+    "eval_seconds": 2,
     "match": true
   }
 }
