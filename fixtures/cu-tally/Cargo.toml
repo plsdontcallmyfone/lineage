@@ -1,0 +1,20 @@
+[package]
+name = "cu-tally"
+version = "0.1.0"
+edition = "2021"
+description = "Lineage fixture: a small Solana program with planted compute-unit waste"
+license = "Apache-2.0"
+publish = false
+
+[lib]
+crate-type = ["cdylib", "lib"]
+
+[dependencies]
+pinocchio = "=0.9.2"
+
+[profile.release]
+overflow-checks = true
+
+[lints.rust.unexpected_cfgs]
+level = "warn"
+check-cfg = ['cfg(target_os, values("solana"))']

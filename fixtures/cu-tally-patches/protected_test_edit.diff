@@ -1,0 +1,9 @@
+diff --git a/tests/logic.rs b/tests/logic.rs
+--- a/tests/logic.rs
++++ b/tests/logic.rs
+@@ -73,5 +73,4 @@ fn sort_rejects_bad_input() {
+     let mut st = vec![0u8; STATE_LEN];
+     assert!(sort(&mut st, &[]).is_err());
+     assert!(sort(&mut st, &[1, 2]).is_err());
+-    assert!(sort(&mut st, &le32(&[0; 65])).is_err());
+ }

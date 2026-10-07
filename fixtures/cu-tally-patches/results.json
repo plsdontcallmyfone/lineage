@@ -1,0 +1,328 @@
+{
+  "perf_record": {
+    "expect": "accepted",
+    "outcome": "accepted",
+    "reason": null,
+    "detail": null,
+    "ratio": 0.09495039271394547,
+    "metrics": {
+      "record_cu": {
+        "base": [
+          200273
+        ],
+        "cand": [
+          19016
+        ],
+        "ratio": 0.09495039271394547
+      },
+      "digest_cu": {
+        "base": [
+          211779
+        ],
+        "cand": [
+          211779
+        ],
+        "ratio": 1
+      },
+      "sort_cu": {
+        "base": [
+          229177
+        ],
+        "cand": [
+          229177
+        ],
+        "ratio": 1
+      },
+      "so_bytes": {
+        "base": [
+          23328
+        ],
+        "cand": [
+          22672
+        ],
+        "ratio": 0.9718792866941015
+      }
+    },
+    "equivalence": "same",
+    "seed": "7265706c61792d70",
+    "recipe_id": "08c1a343b5e1f4015ecae6fb78b2fb3b6d1accf732730dac7abda2a3dddbc4de",
+    "eval_seconds": 4.8,
+    "match": true
+  },
+  "perf_digest": {
+    "expect": "accepted",
+    "outcome": "accepted",
+    "reason": null,
+    "detail": null,
+    "ratio": 0.5528310172396697,
+    "metrics": {
+      "record_cu": {
+        "base": [
+          200273
+        ],
+        "cand": [
+          200273
+        ],
+        "ratio": 1
+      },
+      "digest_cu": {
+        "base": [
+          211779
+        ],
+        "cand": [
+          117078
+        ],
+        "ratio": 0.5528310172396697
+      },
+      "sort_cu": {
+        "base": [
+          229177
+        ],
+        "cand": [
+          229177
+        ],
+        "ratio": 1
+      },
+      "so_bytes": {
+        "base": [
+          23328
+        ],
+        "cand": [
+          23016
+        ],
+        "ratio": 0.9866255144032922
+      }
+    },
+    "equivalence": "same",
+    "seed": "7265706c61792d70",
+    "recipe_id": "08c1a343b5e1f4015ecae6fb78b2fb3b6d1accf732730dac7abda2a3dddbc4de",
+    "eval_seconds": 5.4,
+    "match": true
+  },
+  "perf_sort": {
+    "expect": "accepted",
+    "outcome": "accepted",
+    "reason": null,
+    "detail": null,
+    "ratio": 0.43792788979696917,
+    "metrics": {
+      "record_cu": {
+        "base": [
+          200273
+        ],
+        "cand": [
+          200273
+        ],
+        "ratio": 1
+      },
+      "digest_cu": {
+        "base": [
+          211779
+        ],
+        "cand": [
+          211779
+        ],
+        "ratio": 1
+      },
+      "sort_cu": {
+        "base": [
+          229177
+        ],
+        "cand": [
+          100363
+        ],
+        "ratio": 0.43792788979696917
+      },
+      "so_bytes": {
+        "base": [
+          23328
+        ],
+        "cand": [
+          35744
+        ],
+        "ratio": 1.5322359396433471
+      }
+    },
+    "equivalence": "same",
+    "seed": "7265706c61792d70",
+    "recipe_id": "08c1a343b5e1f4015ecae6fb78b2fb3b6d1accf732730dac7abda2a3dddbc4de",
+    "eval_seconds": 5.9,
+    "match": true
+  },
+  "equiv_change": {
+    "expect": "rejected:equivalence_changed (hashes only the first 64 bytes; unit tests only use short inputs)",
+    "outcome": "rejected",
+    "reason": "equivalence_changed",
+    "detail": "candidate output differs from parent on seeded inputs",
+    "ratio": null,
+    "metrics": {
+      "record_cu": {
+        "base": [
+          191839
+        ],
+        "cand": [
+          191839
+        ],
+        "ratio": 1
+      },
+      "digest_cu": {
+        "base": [
+          168474
+        ],
+        "cand": [
+          111420
+        ],
+        "ratio": 0.6613483386160476
+      },
+      "sort_cu": {
+        "base": [
+          252397
+        ],
+        "cand": [
+          252397
+        ],
+        "ratio": 1
+      },
+      "so_bytes": {
+        "base": [
+          23328
+        ],
+        "cand": [
+          23360
+        ],
+        "ratio": 1.0013717421124828
+      }
+    },
+    "equivalence": "changed",
+    "seed": "7265706c61792d65",
+    "recipe_id": "08c1a343b5e1f4015ecae6fb78b2fb3b6d1accf732730dac7abda2a3dddbc4de",
+    "eval_seconds": 4.4,
+    "match": true
+  },
+  "regress": {
+    "expect": "rejected:no_improvement (more compute units)",
+    "outcome": "rejected",
+    "reason": "no_improvement",
+    "detail": "worst ratio 1.6246 vs required 0.9900",
+    "ratio": 1.624553734736686,
+    "metrics": {
+      "record_cu": {
+        "base": [
+          191853
+        ],
+        "cand": [
+          191853
+        ],
+        "ratio": 1
+      },
+      "digest_cu": {
+        "base": [
+          221244
+        ],
+        "cand": [
+          221244
+        ],
+        "ratio": 1
+      },
+      "sort_cu": {
+        "base": [
+          215959
+        ],
+        "cand": [
+          350837
+        ],
+        "ratio": 1.624553734736686
+      },
+      "so_bytes": {
+        "base": [
+          23328
+        ],
+        "cand": [
+          23344
+        ],
+        "ratio": 1.0006858710562414
+      }
+    },
+    "equivalence": "same",
+    "seed": "7265706c61792d72",
+    "recipe_id": "08c1a343b5e1f4015ecae6fb78b2fb3b6d1accf732730dac7abda2a3dddbc4de",
+    "eval_seconds": 4.2,
+    "match": true
+  },
+  "break_tests": {
+    "expect": "rejected:tests_fail",
+    "outcome": "rejected",
+    "reason": "tests_fail",
+    "detail": "2 stable tests fail: tests/logic.rs::record_sum_wraps, tests/logic.rs::record_tracks_count_sum_max_min",
+    "ratio": null,
+    "metrics": {
+      "record_cu": {
+        "base": [
+          188013
+        ],
+        "cand": [
+          185592
+        ],
+        "ratio": 0.9871232308404206
+      },
+      "digest_cu": {
+        "base": [
+          186024
+        ],
+        "cand": [
+          186024
+        ],
+        "ratio": 1
+      },
+      "sort_cu": {
+        "base": [
+          237313
+        ],
+        "cand": [
+          237313
+        ],
+        "ratio": 1
+      },
+      "so_bytes": {
+        "base": [
+          23328
+        ],
+        "cand": [
+          23248
+        ],
+        "ratio": 0.9965706447187929
+      }
+    },
+    "equivalence": "changed",
+    "seed": "7265706c61792d62",
+    "recipe_id": "08c1a343b5e1f4015ecae6fb78b2fb3b6d1accf732730dac7abda2a3dddbc4de",
+    "eval_seconds": 4.8,
+    "match": true
+  },
+  "protected_test_edit": {
+    "expect": "rejected:guard PROTECTED_PATH",
+    "outcome": "rejected",
+    "reason": "guard",
+    "detail": "PROTECTED_PATH",
+    "ratio": null,
+    "metrics": {},
+    "equivalence": null,
+    "seed": "7265706c61792d70",
+    "recipe_id": "08c1a343b5e1f4015ecae6fb78b2fb3b6d1accf732730dac7abda2a3dddbc4de",
+    "eval_seconds": 2.9,
+    "match": true
+  },
+  "meter_tamper": {
+    "expect": "rejected:guard PROTECTED_PATH (edits the overlay harness)",
+    "outcome": "rejected",
+    "reason": "guard",
+    "detail": "PROTECTED_PATH",
+    "ratio": null,
+    "metrics": {},
+    "equivalence": null,
+    "seed": "7265706c61792d6d",
+    "recipe_id": "08c1a343b5e1f4015ecae6fb78b2fb3b6d1accf732730dac7abda2a3dddbc4de",
+    "eval_seconds": 3.9,
+    "match": true
+  }
+}

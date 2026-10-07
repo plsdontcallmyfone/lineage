@@ -1,0 +1,58 @@
+{
+  "recipe_id": "08c1a343b5e1f4015ecae6fb78b2fb3b6d1accf732730dac7abda2a3dddbc4de",
+  "snapshot_id": "",
+  "runs": 5,
+  "stable": [
+    "tests/logic.rs::crc32_known_vectors",
+    "tests/logic.rs::digest_stores_crc",
+    "tests/logic.rs::record_empty_is_noop",
+    "tests/logic.rs::record_rejects_ragged_input",
+    "tests/logic.rs::record_sum_wraps",
+    "tests/logic.rs::record_tracks_count_sum_max_min",
+    "tests/logic.rs::sort_even_count_takes_lower_middle",
+    "tests/logic.rs::sort_orders_and_returns_median",
+    "tests/logic.rs::sort_rejects_bad_input"
+  ],
+  "known_failures": [],
+  "quarantined": [],
+  "metrics": {
+    "record_cu": {
+      "enabled": true,
+      "cv": 0,
+      "base_value": 206397
+    },
+    "digest_cu": {
+      "enabled": true,
+      "cv": 0,
+      "base_value": 209514
+    },
+    "sort_cu": {
+      "enabled": true,
+      "cv": 0,
+      "base_value": 223062
+    },
+    "so_bytes": {
+      "enabled": true,
+      "cv": 0,
+      "base_value": 23328
+    }
+  },
+  "median_eval_seconds": 7,
+  "seed": "ca11b7a7e",
+  "recipe_name": "fixture-cu-tally",
+  "repo": "fixture:cu-tally",
+  "commit": "ce1ce12f1ffd1a8927b6bbb4ae05df09168fe602",
+  "deps_digest": "aff07499ba42fbd7a4c7e29831ec2d2a32a79754fb2fecd124ee4908083c1310",
+  "image_digest": "sha256:19fc667902c4e406d2cbbac3fc51520d6056e43691a6153491b6fc1a37f33cfe",
+  "date": "2026-10-07T19:58:37.787Z",
+  "calibration_wall_seconds": 5.4,
+  "counts": {
+    "stable": 9,
+    "known_failures": 0,
+    "quarantined": 0,
+    "excluded": 0
+  },
+  "notes": [
+    "calibration wall time 5 s"
+  ]
+}

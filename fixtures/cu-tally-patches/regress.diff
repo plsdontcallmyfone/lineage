@@ -1,0 +1,16 @@
+diff --git a/src/lib.rs b/src/lib.rs
+--- a/src/lib.rs
++++ b/src/lib.rs
+@@ -135,9 +135,9 @@ pub fn sort(state: &mut [u8], values: &[u8]) -> Result<u32, ProgramError> {
+     for i in 0..n {
+         v.push(read_u32(values, i * 4));
+     }
+-    // bubble sort
+-    for i in 0..n {
+-        for j in 0..n - 1 - i {
++    // bubble sort, without the early end of each pass
++    for _ in 0..n {
++        for j in 0..n - 1 {
+             if v[j] > v[j + 1] {
+                 v.swap(j, j + 1);
+             }

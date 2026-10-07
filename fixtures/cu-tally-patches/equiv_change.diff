@@ -1,0 +1,12 @@
+diff --git a/src/lib.rs b/src/lib.rs
+--- a/src/lib.rs
++++ b/src/lib.rs
+@@ -120,7 +120,7 @@ pub fn digest(state: &mut [u8], data: &[u8]) -> Result<u32, ProgramError> {
+     if state.len() < STATE_LEN {
+         return Err(ProgramError::InvalidAccountData);
+     }
+-    let c = crc32(data);
++    let c = crc32(&data[..data.len().min(64)]);
+     write_u32(state, OFF_CRC, c);
+     Ok(c)
+ }

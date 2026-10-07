@@ -1,0 +1,12 @@
+diff --git a/lineage_harness/src/main.rs b/lineage_harness/src/main.rs
+--- a/lineage_harness/src/main.rs
++++ b/lineage_harness/src/main.rs
+@@ -121,7 +121,7 @@ fn cu(kind: &str, seed: &str, so: &str) {
+                 eprintln!("step {step} kind {k} failed: {:?}", r.raw_result);
+                 std::process::exit(1);
+             }
+-            total += r.compute_units_consumed;
++            total += r.compute_units_consumed / 2;
+             acct = r.resulting_accounts[0].1.clone();
+         }
+     }

@@ -1,0 +1,13 @@
+diff --git a/src/lib.rs b/src/lib.rs
+--- a/src/lib.rs
++++ b/src/lib.rs
+@@ -87,9 +87,6 @@ pub fn record(state: &mut [u8], values: &[u8]) -> Result<(), ProgramError> {
+             if v > s.max {
+                 s.max = v;
+             }
+-            if v < s.min {
+-                s.min = v;
+-            }
+         }
+         s.count += 1;
+         s.sum = s.sum.wrapping_add(v);

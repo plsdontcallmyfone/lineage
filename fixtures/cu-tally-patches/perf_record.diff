@@ -1,0 +1,27 @@
+diff --git a/src/lib.rs b/src/lib.rs
+--- a/src/lib.rs
++++ b/src/lib.rs
+@@ -76,10 +76,9 @@ pub fn record(state: &mut [u8], values: &[u8]) -> Result<(), ProgramError> {
+     if state.len() < STATE_LEN || values.len() % 8 != 0 {
+         return Err(ProgramError::InvalidInstructionData);
+     }
+-    let n = values.len() / 8;
+-    for i in 0..n {
+-        let v = read_u64(values, i * 8);
+-        let mut s = Stats::load(state);
++    let mut s = Stats::load(state);
++    for chunk in values.chunks_exact(8) {
++        let v = u64::from_le_bytes(chunk.try_into().unwrap());
+         if s.count == 0 {
+             s.max = v;
+             s.min = v;
+@@ -93,8 +92,8 @@ pub fn record(state: &mut [u8], values: &[u8]) -> Result<(), ProgramError> {
+         }
+         s.count += 1;
+         s.sum = s.sum.wrapping_add(v);
+-        s.store(state);
+     }
++    s.store(state);
+     Ok(())
+ }
+ 

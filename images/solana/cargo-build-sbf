@@ -1,0 +1,4 @@
+#!/bin/sh
+# cargo-build-sbf looks for platform tools under $HOME/.cache/solana; they are baked into the
+# image under /opt/sbf, and the sandbox points HOME at a tmpfs.
+HOME=/opt/sbf exec /opt/sbf/bin/cargo-build-sbf "$@"

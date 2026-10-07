@@ -1,0 +1,66 @@
+{
+  "perf_record": {
+    "name": "perf_record",
+    "parent": [],
+    "kind": "perf",
+    "target": "record_cu",
+    "expect": "accepted",
+    "lines": 9
+  },
+  "perf_digest": {
+    "name": "perf_digest",
+    "parent": [],
+    "kind": "perf",
+    "target": "digest_cu",
+    "expect": "accepted",
+    "lines": 20
+  },
+  "perf_sort": {
+    "name": "perf_sort",
+    "parent": [],
+    "kind": "perf",
+    "target": "sort_cu",
+    "expect": "accepted",
+    "lines": 9
+  },
+  "equiv_change": {
+    "name": "equiv_change",
+    "parent": [],
+    "kind": "perf",
+    "target": "digest_cu",
+    "expect": "rejected:equivalence_changed (hashes only the first 64 bytes; unit tests only use short inputs)",
+    "lines": 2
+  },
+  "regress": {
+    "name": "regress",
+    "parent": [],
+    "kind": "perf",
+    "target": "sort_cu",
+    "expect": "rejected:no_improvement (more compute units)",
+    "lines": 6
+  },
+  "break_tests": {
+    "name": "break_tests",
+    "parent": [],
+    "kind": "perf",
+    "target": "record_cu",
+    "expect": "rejected:tests_fail",
+    "lines": 3
+  },
+  "protected_test_edit": {
+    "name": "protected_test_edit",
+    "parent": [],
+    "kind": "perf",
+    "target": "sort_cu",
+    "expect": "rejected:guard PROTECTED_PATH",
+    "lines": 0
+  },
+  "meter_tamper": {
+    "name": "meter_tamper",
+    "parent": [],
+    "kind": "perf",
+    "target": "sort_cu",
+    "expect": "rejected:guard PROTECTED_PATH (edits the overlay harness)",
+    "lines": 0
+  }
+}

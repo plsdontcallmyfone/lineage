@@ -1,0 +1,71 @@
+# Fixture recipe for the `solana` class (SPEC 6.1): a pinocchio program with planted compute-unit
+# waste, built for SBF with cargo-build-sbf and metered in-process by a mollusk-svm harness.
+# The commit is deterministic (fixed author and dates), see packages/sandbox/src/repo.ts.
+#
+# The harness (overlay/lineage_harness, protected) is built once at prepare into /deps/harness.
+# It reads the program's .so from the tree under test, so base and candidate are metered by the
+# same binary and a patch cannot touch the meter. CU is exact, so every metric is deterministic
+# and no noisy metric is needed.
+name: fixture-cu-tally
+class: solana
+requires: { arch: arm64 }
+repo: "fixture:cu-tally"
+commit: "ce1ce12f1ffd1a8927b6bbb4ae05df09168fe602"
+image: "lineage/solana:m1@sha256:19fc667902c4e406d2cbbac3fc51520d6056e43691a6153491b6fc1a37f33cfe"
+workdir: /work/src
+prepare:
+  - cargo fetch --locked
+  - cd lineage_harness && cargo build --release --locked --target-dir /deps/harness
+prepare_outputs: []
+build:
+  commands:
+    - cargo build-sbf --offline -- --locked
+    - cargo test --release --locked --offline --no-run
+  artifacts: ["target/deploy/cu_tally.so"]
+  reproducible: true
+test:
+  command: cargo test --release --locked --offline --no-fail-fast 2>&1
+  parser: libtest
+  exclude: []
+  timeout_s: 300
+equivalence:
+  command: /deps/harness/release/lineage-cu equiv "$LINEAGE_SEED" target/deploy/cu_tally.so
+  output: stdout-digest
+metrics:
+  - name: record_cu
+    kind: perf
+    direction: lower
+    deterministic: true
+    command: /deps/harness/release/lineage-cu cu record "$LINEAGE_SEED" target/deploy/cu_tally.so
+    parser: number
+    holdout: true
+    min_effect: 0.01
+  - name: digest_cu
+    kind: perf
+    direction: lower
+    deterministic: true
+    command: /deps/harness/release/lineage-cu cu digest "$LINEAGE_SEED" target/deploy/cu_tally.so
+    parser: number
+    holdout: true
+    min_effect: 0.01
+  - name: sort_cu
+    kind: perf
+    direction: lower
+    deterministic: true
+    command: /deps/harness/release/lineage-cu cu sort "$LINEAGE_SEED" target/deploy/cu_tally.so
+    parser: number
+    holdout: true
+    min_effect: 0.01
+  - name: so_bytes
+    kind: slim
+    direction: lower
+    deterministic: true
+    command: wc -c < target/deploy/cu_tally.so
+    parser: bytes
+    min_effect: 0.005
+patch:
+  allowed_paths: ["src/**"]
+  protected_paths: ["tests/**", "Cargo.toml", "Cargo.lock", "build.rs", "lineage_harness/**"]
+  max_files: 5
+  max_lines: 200
+limits: { cpus: 4, memory_mb: 4096, pids: 512, wall_s: 1800, disk_mb: 4096 }
