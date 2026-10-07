@@ -1,0 +1,90 @@
+diff --git a/src/lib.rs b/src/lib.rs
+--- a/src/lib.rs
++++ b/src/lib.rs
+@@ -45,44 +45,58 @@ pub trait FromBase58 {
+ 	fn from_base58(&self) -> Result<Vec<u8>, FromBase58Error>;
+ }
+ 
++const BIG: u64 = 58 * 58 * 58 * 58 * 58; // 656_356_768, below 2^30
++
++/// limbs = limbs * mul + add, limbs little-endian in base 58^5. With limbs below 2^30 and
++/// mul at most 2^32, every intermediate stays below 2^63.
++fn mul_add(limbs: &mut Vec<u64>, mul: u64, add: u64) {
++	let mut carry = add;
++	for l in limbs.iter_mut() {
++		let t = *l * mul + carry;
++		*l = t % BIG;
++		carry = t / BIG;
++	}
++	while carry != 0 {
++		limbs.push(carry % BIG);
++		carry /= BIG;
++	}
++}
++
+ impl ToBase58 for [u8] {
+ 	fn to_base58(&self) -> String {
+ 		let zcount = self.iter().take_while(|x| **x == 0).count();
+-		let size = (self.len() - zcount) * 138 / 100 + 1;
+-		let mut buffer = vec![0u8; size];
+-
+-		let mut i = zcount;
+-		let mut high = size - 1;
++		let input = &self[zcount..];
++		// Convert four input bytes per pass into five base-58 digits per limb, instead of one
++		// byte per pass into one digit per byte.
++		let mut limbs: Vec<u64> = Vec::with_capacity(input.len() * 138 / 500 + 2);
++		let head = input.len() % 4;
++		if head > 0 {
++			let word = input[..head].iter().fold(0u64, |a, &b| (a << 8) | b as u64);
++			mul_add(&mut limbs, 1 << (8 * head), word);
++		}
++		for c in input[head..].chunks(4) {
++			let word = ((c[0] as u64) << 24) | ((c[1] as u64) << 16) | ((c[2] as u64) << 8) | c[3] as u64;
++			mul_add(&mut limbs, 1 << 32, word);
++		}
+ 
+-		while i < self.len() {
+-			let mut carry = self[i] as u32;
+-			let mut j = size - 1;
+-
+-			while j > high || carry != 0 {
+-				carry += 256 * buffer[j] as u32;
+-				buffer[j] = (carry % 58) as u8;
+-				carry /= 58;
+-
+-				// in original trezor implementation it was underflowing
+-				if j  > 0 {
+-					j -= 1;
+-				}
++		let mut digits: Vec<u8> = Vec::with_capacity(limbs.len() * 5);
++		for &limb in &limbs {
++			let mut l = limb;
++			for _ in 0..5 {
++				digits.push((l % 58) as u8);
++				l /= 58;
+ 			}
+-
+-			i += 1;
+-			high = j;
++		}
++		while digits.last() == Some(&0) {
++			digits.pop();
+ 		}
+ 
+-		let mut j = buffer.iter().take_while(|x| **x == 0).count();
+-
+-		let mut result = String::new();
++		let mut result = String::with_capacity(zcount + digits.len());
+ 		for _ in 0..zcount {
+ 			result.push('1');
+ 		}
+-
+-		while j < size {
+-			result.push(ALPHABET[buffer[j] as usize] as char);
+-			j += 1;
++		for &d in digits.iter().rev() {
++			result.push(ALPHABET[d as usize] as char);
+ 		}
+ 
+ 		result

@@ -1,0 +1,12 @@
+diff --git a/src/lib.rs b/src/lib.rs
+--- a/src/lib.rs
++++ b/src/lib.rs
+@@ -58,7 +58,7 @@ impl ToBase58 for [u8] {
+ 			let mut carry = self[i] as u32;
+ 			let mut j = size - 1;
+ 
+-			while j > high || carry != 0 {
++			while j > 0 || carry != 0 {
+ 				carry += 256 * buffer[j] as u32;
+ 				buffer[j] = (carry % 58) as u8;
+ 				carry /= 58;

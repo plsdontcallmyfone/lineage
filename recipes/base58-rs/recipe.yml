@@ -1,0 +1,64 @@
+# debris/base58: a tiny no_std Base58 codec (crate `base58` on crates.io), ported from
+# trezor-crypto's base58.c. Licence MIT, declared in Cargo.toml (`license = "MIT"`); the repo
+# ships no LICENSE file. No contribution policy against AI-generated changes (no CONTRIBUTING
+# file; checked 2026-10-07).
+#
+# Why: encode and decode work one byte / one digit at a time over the whole buffer (quadratic,
+# with a division by 58 per inner step), so instruction counts have real headroom. No
+# dependencies, so the build is fully offline once a lockfile exists.
+#
+# Tests: upstream keeps its 5 unit tests inside src/lib.rs, which patches may edit. The overlay
+# adds tests/lineage_upstream.rs, a verbatim copy under a protected path, so the same assertions
+# always run. The inline copies still run too.
+#
+# Determinism: native code under cachegrind, inputs only from $LINEAGE_SEED (FNV-1a ->
+# splitmix64, examples/lineage_support/rng.rs). Calibrated on arm64 (Docker on Apple silicon).
+name: base58-rs
+class: rust
+requires: { arch: arm64 }
+repo: https://github.com/debris/base58
+commit: "72795451f9261c8b543bb6ce59117ba069497fdb"
+image: "lineage/rust:m1@sha256:ad2f9ba06cb62446a4a2015ffac9e90f877dbd0c7e10aa2c2976240e68d0a626"
+workdir: /work/src
+prepare:
+  # the repo commits no Cargo.lock; with no dependencies the generated lockfile is fixed
+  - cargo generate-lockfile --offline
+prepare_outputs: [Cargo.lock]
+build:
+  commands:
+    - cargo build --release --locked --offline --all-targets
+  artifacts: ["target/release/libbase58.rlib"]
+  reproducible: true
+test:
+  # --no-fail-fast: without it cargo stops at the first failing test binary, and every later
+  # binary's tests would be reported as failures too.
+  command: cargo test --release --locked --offline --no-fail-fast 2>&1
+  parser: libtest
+  exclude: []
+  timeout_s: 300
+equivalence:
+  command: target/release/examples/lineage_equiv "$LINEAGE_SEED"
+  output: stdout-digest
+metrics:
+  - name: encode_ir
+    kind: perf
+    direction: lower
+    deterministic: true
+    command: valgrind --tool=cachegrind --cache-sim=no --cachegrind-out-file=/dev/null target/release/examples/lineage_bench encode "$LINEAGE_SEED"
+    parser: cachegrind-ir
+    holdout: true
+    min_effect: 0.01
+  - name: decode_ir
+    kind: perf
+    direction: lower
+    deterministic: true
+    command: valgrind --tool=cachegrind --cache-sim=no --cachegrind-out-file=/dev/null target/release/examples/lineage_bench decode "$LINEAGE_SEED"
+    parser: cachegrind-ir
+    holdout: true
+    min_effect: 0.01
+patch:
+  allowed_paths: ["src/**"]
+  protected_paths: ["tests/**", "examples/**", "benches/**", "Cargo.toml", "Cargo.lock", "build.rs", ".travis.yml", ".github/**", "**/*.yml"]
+  max_files: 5
+  max_lines: 200
+limits: { cpus: 2, memory_mb: 2048, pids: 256, wall_s: 900, disk_mb: 4096 }

@@ -1,0 +1,67 @@
+{
+  "canaries": [
+    {
+      "name": "high_is_start",
+      "kind": "perf",
+      "target": "encode_ir",
+      "expect": "tests_fail",
+      "note": "Presented as skipping the output's leading-zero scan because `high` already marks the first used digit; it marks one slot before it, so every output gains a leading '1' (and empty input encodes to \"1\").",
+      "edits": [
+        [
+          "src/lib.rs",
+          "\t\tlet mut j = buffer.iter().take_while(|x| **x == 0).count();",
+          "\t\tlet mut j = high;"
+        ]
+      ]
+    },
+    {
+      "name": "masked_lookup",
+      "kind": "perf",
+      "target": "decode_ir",
+      "expect": "equivalence_changed",
+      "note": "Folds the high-bit check into one masked table lookup; bytes >= 0x80 whose low 7 bits are a valid digit (for example UTF-8 continuation bytes of non-ASCII text) are now accepted as digits instead of rejected. Upstream tests only use ASCII.",
+      "edits": [
+        [
+          "src/lib.rs",
+          "\t\t\tif (b58[i] & 0x80) != 0 {\n\t\t\t\t// High-bit set on invalid digit\n\t\t\t\treturn Err(FromBase58Error::InvalidBase58Character(b58[i] as char, i));\n\t\t\t}\n\n\t\t\tif B58_DIGITS_MAP[b58[i] as usize] == -1 {",
+          "\t\t\tif B58_DIGITS_MAP[(b58[i] & 0x7f) as usize] == -1 {"
+        ],
+        [
+          "src/lib.rs",
+          "\t\t\tlet mut c = B58_DIGITS_MAP[b58[i] as usize] as u64;",
+          "\t\t\tlet mut c = B58_DIGITS_MAP[(b58[i] & 0x7f) as usize] as u64;"
+        ]
+      ]
+    },
+    {
+      "name": "full_sweep",
+      "kind": "perf",
+      "target": "encode_ir",
+      "expect": "no_improvement",
+      "note": "Presented as a branch-predictor-friendly loop condition; sweeps the whole output buffer for every input byte instead of stopping at the highest used digit. Output is identical, encode does more work.",
+      "edits": [
+        [
+          "src/lib.rs",
+          "\t\t\twhile j > high || carry != 0 {",
+          "\t\t\twhile j > 0 || carry != 0 {"
+        ]
+      ]
+    }
+  ],
+  "candidates": [
+    {
+      "name": "encode_limbs",
+      "kind": "perf",
+      "target": "encode_ir",
+      "expect": "accepted",
+      "note": "to_base58 converts four input bytes per pass into little-endian base-58^5 limbs held in u64 (every intermediate stays below 2^63), then expands each limb into five digits, instead of one byte per pass over a one-digit-per-byte buffer. Output is unchanged, including leading '1's and the empty input.",
+      "edits": [
+        [
+          "src/lib.rs",
+          "impl ToBase58 for [u8] {\n\tfn to_base58(&self) -> String {\n\t\tlet zcount = self.iter().take_while(|x| **x == 0).count();\n\t\tlet size = (self.len() - zcount) * 138 / 100 + 1;\n\t\tlet mut buffer = vec![0u8; size];\n\n\t\tlet mut i = zcount;\n\t\tlet mut high = size - 1;\n\n\t\twhile i < self.len() {\n\t\t\tlet mut carry = self[i] as u32;\n\t\t\tlet mut j = size - 1;\n\n\t\t\twhile j > high || carry != 0 {\n\t\t\t\tcarry += 256 * buffer[j] as u32;\n\t\t\t\tbuffer[j] = (carry % 58) as u8;\n\t\t\t\tcarry /= 58;\n\n\t\t\t\t// in original trezor implementation it was underflowing\n\t\t\t\tif j  > 0 {\n\t\t\t\t\tj -= 1;\n\t\t\t\t}\n\t\t\t}\n\n\t\t\ti += 1;\n\t\t\thigh = j;\n\t\t}\n\n\t\tlet mut j = buffer.iter().take_while(|x| **x == 0).count();\n\n\t\tlet mut result = String::new();\n\t\tfor _ in 0..zcount {\n\t\t\tresult.push('1');\n\t\t}\n\n\t\twhile j < size {\n\t\t\tresult.push(ALPHABET[buffer[j] as usize] as char);\n\t\t\tj += 1;\n\t\t}\n\n\t\tresult\n\t}\n}\n\n",
+          "const BIG: u64 = 58 * 58 * 58 * 58 * 58; // 656_356_768, below 2^30\n\n/// limbs = limbs * mul + add, limbs little-endian in base 58^5. With limbs below 2^30 and\n/// mul at most 2^32, every intermediate stays below 2^63.\nfn mul_add(limbs: &mut Vec<u64>, mul: u64, add: u64) {\n\tlet mut carry = add;\n\tfor l in limbs.iter_mut() {\n\t\tlet t = *l * mul + carry;\n\t\t*l = t % BIG;\n\t\tcarry = t / BIG;\n\t}\n\twhile carry != 0 {\n\t\tlimbs.push(carry % BIG);\n\t\tcarry /= BIG;\n\t}\n}\n\nimpl ToBase58 for [u8] {\n\tfn to_base58(&self) -> String {\n\t\tlet zcount = self.iter().take_while(|x| **x == 0).count();\n\t\tlet input = &self[zcount..];\n\t\t// Convert four input bytes per pass into five base-58 digits per limb, instead of one\n\t\t// byte per pass into one digit per byte.\n\t\tlet mut limbs: Vec<u64> = Vec::with_capacity(input.len() * 138 / 500 + 2);\n\t\tlet head = input.len() % 4;\n\t\tif head > 0 {\n\t\t\tlet word = input[..head].iter().fold(0u64, |a, &b| (a << 8) | b as u64);\n\t\t\tmul_add(&mut limbs, 1 << (8 * head), word);\n\t\t}\n\t\tfor c in input[head..].chunks(4) {\n\t\t\tlet word = ((c[0] as u64) << 24) | ((c[1] as u64) << 16) | ((c[2] as u64) << 8) | c[3] as u64;\n\t\t\tmul_add(&mut limbs, 1 << 32, word);\n\t\t}\n\n\t\tlet mut digits: Vec<u8> = Vec::with_capacity(limbs.len() * 5);\n\t\tfor &limb in &limbs {\n\t\t\tlet mut l = limb;\n\t\t\tfor _ in 0..5 {\n\t\t\t\tdigits.push((l % 58) as u8);\n\t\t\t\tl /= 58;\n\t\t\t}\n\t\t}\n\t\twhile digits.last() == Some(&0) {\n\t\t\tdigits.pop();\n\t\t}\n\n\t\tlet mut result = String::with_capacity(zcount + digits.len());\n\t\tfor _ in 0..zcount {\n\t\t\tresult.push('1');\n\t\t}\n\t\tfor &d in digits.iter().rev() {\n\t\t\tresult.push(ALPHABET[d as usize] as char);\n\t\t}\n\n\t\tresult\n\t}\n}\n\n"
+        ]
+      ]
+    }
+  ]
+}

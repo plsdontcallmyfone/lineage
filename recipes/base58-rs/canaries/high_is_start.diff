@@ -1,0 +1,12 @@
+diff --git a/src/lib.rs b/src/lib.rs
+--- a/src/lib.rs
++++ b/src/lib.rs
+@@ -73,7 +73,7 @@ impl ToBase58 for [u8] {
+ 			high = j;
+ 		}
+ 
+-		let mut j = buffer.iter().take_while(|x| **x == 0).count();
++		let mut j = high;
+ 
+ 		let mut result = String::new();
+ 		for _ in 0..zcount {

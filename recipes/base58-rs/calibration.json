@@ -1,0 +1,49 @@
+{
+  "recipe_id": "611253b7d91616fead35ba5b04279556d95451175b0a5635103f1dd7e51b4943",
+  "snapshot_id": "",
+  "runs": 5,
+  "stable": [
+    "src/lib.rs::tests::test_from_base58_basic",
+    "src/lib.rs::tests::test_from_base58_initial_zeros",
+    "src/lib.rs::tests::test_from_base58_invalid_char",
+    "src/lib.rs::tests::test_to_base58_basic",
+    "src/lib.rs::tests::test_to_base58_initial_zeros",
+    "tests/lineage_upstream.rs::test_from_base58_basic",
+    "tests/lineage_upstream.rs::test_from_base58_initial_zeros",
+    "tests/lineage_upstream.rs::test_from_base58_invalid_char",
+    "tests/lineage_upstream.rs::test_to_base58_basic",
+    "tests/lineage_upstream.rs::test_to_base58_initial_zeros"
+  ],
+  "known_failures": [],
+  "quarantined": [],
+  "metrics": {
+    "encode_ir": {
+      "enabled": true,
+      "cv": 0,
+      "base_value": 251793822
+    },
+    "decode_ir": {
+      "enabled": true,
+      "cv": 0,
+      "base_value": 93734821
+    }
+  },
+  "median_eval_seconds": 6,
+  "seed": "ca11b7a7e",
+  "recipe_name": "base58-rs",
+  "repo": "https://github.com/debris/base58",
+  "commit": "72795451f9261c8b543bb6ce59117ba069497fdb",
+  "deps_digest": "6e41d724de852d4ad65b06506c8b02d1dbaa1c798c9cc9c147819ae0eb489c98",
+  "image_digest": "sha256:ad2f9ba06cb62446a4a2015ffac9e90f877dbd0c7e10aa2c2976240e68d0a626",
+  "date": "2026-10-07T19:43:48.364Z",
+  "calibration_wall_seconds": 8.9,
+  "counts": {
+    "stable": 10,
+    "known_failures": 0,
+    "quarantined": 0,
+    "excluded": 0
+  },
+  "notes": [
+    "calibration wall time 9 s"
+  ]
+}

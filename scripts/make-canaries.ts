@@ -3,6 +3,7 @@
 // fixtures/make-patches.ts). Output: recipes/<name>/{canaries,candidates}/<patch>.diff + index.json.
 // Usage: bun scripts/make-canaries.ts [recipe names...]
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync } from "node:fs";
 import { join } from "node:path";
 import { canonicalizeDiff, guard } from "@lineage/protocol";
 import { diffWorkingTree, loadRecipe, materialize, newWorkDir, removeTree } from "@lineage/sandbox";
@@ -181,6 +182,13 @@ function build(recipeName: string, defs: PatchDef[], sub: "canaries" | "candidat
     }
   }
   writeFileSync(join(out, "index.json"), JSON.stringify(index, null, 2) + "\n");
+}
+
+// Recipes whose definitions are long (whole replaced functions) keep them as data next to the
+// recipe: recipes/<name>/patch-defs.json with the same { canaries, candidates } shape.
+for (const name of ["base58-rs"]) {
+  const file = join(ROOT, "recipes", name, "patch-defs.json");
+  if (existsSync(file)) SETS[name] = JSON.parse(readFileSync(file, "utf8"));
 }
 
 const only = process.argv.slice(2);

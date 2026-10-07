@@ -1,0 +1,26 @@
+{
+  "high_is_start": {
+    "kind": "perf",
+    "target": "encode_ir",
+    "expect": "tests_fail",
+    "note": "Presented as skipping the output's leading-zero scan because `high` already marks the first used digit; it marks one slot before it, so every output gains a leading '1' (and empty input encodes to \"1\").",
+    "lines": 2,
+    "guard": "ok"
+  },
+  "masked_lookup": {
+    "kind": "perf",
+    "target": "decode_ir",
+    "expect": "equivalence_changed",
+    "note": "Folds the high-bit check into one masked table lookup; bytes >= 0x80 whose low 7 bits are a valid digit (for example UTF-8 continuation bytes of non-ASCII text) are now accepted as digits instead of rejected. Upstream tests only use ASCII.",
+    "lines": 9,
+    "guard": "ok"
+  },
+  "full_sweep": {
+    "kind": "perf",
+    "target": "encode_ir",
+    "expect": "no_improvement",
+    "note": "Presented as a branch-predictor-friendly loop condition; sweeps the whole output buffer for every input byte instead of stopping at the highest used digit. Output is identical, encode does more work.",
+    "lines": 2,
+    "guard": "ok"
+  }
+}

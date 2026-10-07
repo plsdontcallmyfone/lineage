@@ -1,0 +1,10 @@
+{
+  "encode_limbs": {
+    "kind": "perf",
+    "target": "encode_ir",
+    "expect": "accepted",
+    "note": "to_base58 converts four input bytes per pass into little-endian base-58^5 limbs held in u64 (every intermediate stays below 2^63), then expands each limb into five digits, instead of one byte per pass over a one-digit-per-byte buffer. Output is unchanged, including leading '1's and the empty input.",
+    "lines": 70,
+    "guard": "ok"
+  }
+}

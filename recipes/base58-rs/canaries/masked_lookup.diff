@@ -1,0 +1,23 @@
+diff --git a/src/lib.rs b/src/lib.rs
+--- a/src/lib.rs
++++ b/src/lib.rs
+@@ -104,17 +104,12 @@ impl FromBase58 for str {
+ 		let b58: Vec<u8> = self.bytes().collect();
+ 
+ 		while i < self.len() {
+-			if (b58[i] & 0x80) != 0 {
+-				// High-bit set on invalid digit
+-				return Err(FromBase58Error::InvalidBase58Character(b58[i] as char, i));
+-			}
+-
+-			if B58_DIGITS_MAP[b58[i] as usize] == -1 {
++			if B58_DIGITS_MAP[(b58[i] & 0x7f) as usize] == -1 {
+ 				// // Invalid base58 digit
+ 				return Err(FromBase58Error::InvalidBase58Character(b58[i] as char, i));
+ 			}
+ 
+-			let mut c = B58_DIGITS_MAP[b58[i] as usize] as u64;
++			let mut c = B58_DIGITS_MAP[(b58[i] & 0x7f) as usize] as u64;
+ 			let mut j = out.len();
+ 			while j != 0 {
+ 				j -= 1;
