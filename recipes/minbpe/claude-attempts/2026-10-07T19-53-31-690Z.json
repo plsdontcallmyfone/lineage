@@ -1,0 +1,19 @@
+{
+  "recipe": "minbpe",
+  "at": "2026-10-07T19:53:31.689Z",
+  "seconds": 190,
+  "proposal": {
+    "kind": "perf",
+    "target": "train_ir",
+    "rationale": "Speed up the two hot helpers in minbpe/base.py used by both training and encoding. get_stats now counts pairs with collections' C helper _count_elements (it does exactly counts[pair] = counts.get(pair, 0) + 1 in iteration order, so insertion order and tie-breaking stay the same; there is a pure-Python fallback). merge uses list.count/list.index to jump to occurrences of pair[0] in C and copies the runs between them as slices, with a fast path when pair[0] is absent. The scan is the same left-to-right, non-overlapping replacement, including the p0 == p1 case. Equivalence outputs are identical. Measured train_ir 0.815x and encode_ir 0.823x.",
+    "claimed_effect": 0.8150037240561262,
+    "usage": {
+      "input_tokens": 14,
+      "output_tokens": 4174,
+      "cache_read_tokens": 54796,
+      "cache_write_tokens": 18356,
+      "usd": 0.1862752
+    }
+  },
+  "diff_lines": 68
+}

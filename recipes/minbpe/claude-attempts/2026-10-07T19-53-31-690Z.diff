@@ -1,0 +1,67 @@
+diff --git a/minbpe/base.py b/minbpe/base.py
+--- a/minbpe/base.py
++++ b/minbpe/base.py
+@@ -7,6 +7,14 @@ some concessions are made for simplicity.
+ """
+ import unicodedata
+ 
++try:
++    from _collections import _count_elements
++except ImportError: # pragma: no cover - pure python fallback
++    def _count_elements(mapping, iterable):
++        mapping_get = mapping.get
++        for elem in iterable:
++            mapping[elem] = mapping_get(elem, 0) + 1
++
+ # -----------------------------------------------------------------------------
+ # a few helper functions useful for both BasicTokenizer and RegexTokenizer
+ 
+@@ -17,8 +25,9 @@ def get_stats(ids, counts=None):
+     Optionally allows to update an existing dictionary of counts
+     """
+     counts = {} if counts is None else counts
+-    for pair in zip(ids, ids[1:]): # iterate consecutive elements
+-        counts[pair] = counts.get(pair, 0) + 1
++    # iterate consecutive elements; _count_elements does
++    # counts[pair] = counts.get(pair, 0) + 1 for each pair, in C
++    _count_elements(counts, zip(ids, ids[1:]))
+     return counts
+ 
+ 
+@@ -28,16 +37,31 @@ def merge(ids, pair, idx):
+     of pair with the new integer token idx
+     Example: ids=[1, 2, 3, 1, 2], pair=(1, 2), idx=4 -> [4, 3, 4]
+     """
++    p0, p1 = pair
++    # number of p0 occurrences not yet scanned/consumed
++    remaining = ids.count(p0)
++    if not remaining:
++        return list(ids)
+     newids = []
++    extend = newids.extend
++    index = ids.index
++    last = len(ids) - 1
+     i = 0
+-    while i < len(ids):
++    while remaining:
++        # jump (in C) to the next occurrence of the first element of the pair
++        j = index(p0, i)
++        remaining -= 1
+         # if not at the very last position AND the pair matches, replace it
+-        if ids[i] == pair[0] and i < len(ids) - 1 and ids[i+1] == pair[1]:
++        if j < last and ids[j+1] == p1:
++            extend(ids[i:j])
+             newids.append(idx)
+-            i += 2
++            i = j + 2
++            if p1 == p0:
++                remaining -= 1 # the second element was a p0 too, now consumed
+         else:
+-            newids.append(ids[i])
+-            i += 1
++            extend(ids[i:j+1])
++            i = j + 1
++    extend(ids[i:])
+     return newids
+ 
+ # first two helper functions...
