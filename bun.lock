@@ -28,6 +28,9 @@
     "packages/core": {
       "name": "@lineage/core",
       "version": "0.1.0",
+      "dependencies": {
+        "@lineage/chain": "workspace:*",
+      },
     },
     "packages/protocol": {
       "name": "@lineage/protocol",
