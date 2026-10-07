@@ -180,8 +180,9 @@ export function parseNcuInst(out: string, kernel?: string): number {
       const c = col(NCU_INST_METRIC);
       if (c < 0) continue;
       if (f[0] === "") {
-        rawScale = UNIT_SCALE[f[c] ?? "inst"]; // the units row of --page raw
-        if (rawScale === undefined) throw new Error(`unexpected ncu unit ${f[c]} for ${NCU_INST_METRIC}`);
+        const unitScale = UNIT_SCALE[f[c] ?? "inst"]; // the units row of --page raw
+        if (unitScale === undefined) throw new Error(`unexpected ncu unit ${f[c]} for ${NCU_INST_METRIC}`);
+        rawScale = unitScale;
         continue;
       }
       total += Math.round(num(f[c] ?? "") * rawScale);
