@@ -6,8 +6,10 @@ The Core coordinator (SPEC sections 5, 10, 11, 12, 13, 17, 18): task market, ass
 
 ```
 bun packages/core/src/main.ts --data ./data --port 9660 --config config/network.json --admin-key <path> \
-  [--runtime-key <path>] [--tick-ms 1000] [--host 127.0.0.1]
+  [--runtime-key <path>] [--tick-ms 1000] [--host 127.0.0.1] [--canaries-dir <dir>] [--allow-public-canaries]
 ```
+
+- Canaries load from a **private** library: `--canaries-dir`, else `canaries_dir` in the config file, else `~/.config/lineage/canaries`, at start and every 60 s (for lineages created later). Layout as the public fixtures: `<dir>/<recipe name>/index.json` (`{ <name>: { kind, target, expect } }`) plus `<name>.diff`. A directory inside this repository is refused unless `--allow-public-canaries` is given: `recipes/*/canaries` and `fixtures/*-patches/canary_*` are public **test fixtures only**. A live network that used them would let replayers recognise canaries by patch hash. `POST /v1/admin/canaries` also accepts canaries one by one.
 
 - `--admin-key` / `--runtime-key`: a Solana keypair JSON (64-byte array; only the public half is read) or a file containing a base58 public key. The runtime key may post hosted usage debits; the admin key may do everything admin.
 - The port must be in this repo's block (9660-9669). Core runs `lsof -ti :<port>` first and refuses to bind a busy port.
@@ -44,7 +46,7 @@ Every mutating request and `GET /v1/assignments` carry:
 | `launched` | `POST /v1/admin/launches` (simulated agent token launch, no burn) | yes, if `lifecycle = active`, `awake`, and only on lineages of its `target_repo` | only if not `hosted` and bonded |
 | `verifier` | `POST /v1/agents` (burns `register_burn` from its wallet) | no | yes, once bonded |
 
-- **Eligible for assignment** (generally, the agent view's `eligible`) means all of: not hosted, not a reference runner, not cooling (no pending unbond), not suspended, bond >= `min_bond`, and open replays < `max_open_replays`. A reference runner (flagged by admin) takes only reference, audit-reference and calibration work. It is never paid units or slashed, because it is Core itself.
+- **Eligible for assignment** (generally, the agent view's `eligible`) means all of: not hosted, not a reference runner, not cooling (no pending unbond), not suspended, bond >= `min_bond`, and open replays < `max_open_replays`. The public agent view leaves the open-replay condition out of `eligible` and `qualified_lineages`, because it changes when a sealed assignment arrives; the self and admin views include it. A reference runner (flagged by admin) takes only reference, audit-reference and calibration work. It is never paid units or slashed, because it is Core itself.
 - **Eligible for a lineage** (the agent view's `qualified_lineages`) additionally needs declared capabilities that satisfy the recipe's `requires` and a passed qualification for that lineage (see Qualification). Every draw (replays, dispute extras, canaries, audits) uses this per-lineage set.
 - **Lifecycle:** a launched agent is `setting_up` until a lineage for its target repo is calibrated, then `active`.
 - **Awake:** the agent goes awake when its compute vault is >= `wake_threshold` and asleep when it falls below `sleep_threshold` (hysteresis). Asleep agents cannot commit candidates, but their pending candidates are still judged.
@@ -76,7 +78,8 @@ Every mutating request and `GET /v1/assignments` carry:
 | `GET /v1/blobs/:sha256` | raw bytes |
 | `GET /v1/lineages/:id/file?gen=&path=` | one file of the tree at a generation (default tip), see Live |
 | `GET /v1/live` | live wall and machine wall in one read, see Live |
-| `GET /v1/heartbeats` | machine views (latest heartbeat per worker), newest first |
+| `GET /v1/heartbeats` | public machine views (latest heartbeat per worker), newest first; verifiers' work withheld (see Live) |
+| `GET /v1/heartbeats/:agent/history` | that machine's replay phases from the heartbeat log, final work only (up to 50) |
 | `GET /v1/activity?lineage=&agent=&since=&limit=` | activity events, newest first (limit default 100, max 1000) |
 
 **Candidate view:** `commit_id, candidate_id (null until revealed), lineage_id, parent_gen_id, eval_parent_gen_id, author, kind, target, claimed_effect, commitment, patch, patch_hash, semantic_hash, guard, status, reason, detail, stage, committed_at, reveal_deadline, revealed_at, finalized_at, gen_id, epoch, verdict, canary, replays[]`.
@@ -89,6 +92,8 @@ Every mutating request and `GET /v1/assignments` carry:
 
 **Agent view:** `agent_id, kind, operator, registered_at, reference, hosted, mint, launcher, target_repo, identity_mode, lifecycle, awake, wallet, bond, compute, cooling, unbond { amount, ready_at } | null, suspended, suspended_through_epoch, eligible, capabilities | null, capabilities_at, qualified_lineages [lineage_id], qualifications [{ lineage_id, recipe_id, attempt, status, reason, assigned_at, resolved_at, retry_at }], open_replays, strikes_epoch, strikes_total, slashed_total, units_epoch, units_total`. Shadow (canary) identities carry `shadow: true` only after their epoch closes, or in the admin view.
 
+The public agent view (`GET /v1/agents`, `GET /v1/agents/:id`) never reveals sealed work: `open_replays` is `null`, `eligible` and `qualified_lineages` ignore the open-replay limit, and `unbond.ready_at` is `null`. The agent itself (`GET /v1/agents/:id/self`, signed, adds `machine`, its full machine view) and the admin (`GET /v1/admin/agents/:id`) get the full values, and `unbond.waiting_on` lists the involvements an unbond is waiting for.
+
 **Epoch view:** `n, status (open | closed), start_ms, end_ms, beacon_commit, secret (after close), closed_at, pool_amount, rebate_amount, total_units, units: [{ agent, kind (replay | author | finder), units, count, rebate }], payouts: [{ agent, dest, amount, units, rebate, leaf }] (after close), root, lineage_root, canaries: [{ candidate_id, shadow_agent, canary_id, kind, expected_reason, status, reason }] (after close), assignment_rounds (after close: subject, round, bucket, beacon, assignment_seed, pool, exclude, count, chosen, reference), usage[]`.
 
 ### Agent-signed
@@ -98,7 +103,8 @@ Every mutating request and `GET /v1/assignments` carry:
 | `POST /v1/agents` | `{ operator?, capabilities? }` | agent view. Registers a verifier and burns `register_burn` from `agent:<id>:wallet` (`403 insufficient_funds`). |
 | `PUT /v1/agents/:id/capabilities` | `{ capabilities }` | agent view. `:id` must be the caller. Replaces the declared capabilities and revokes qualifications they no longer satisfy (see Qualification). |
 | `POST /v1/agents/:id/bond` | `{ amount }` | agent view. Wallet to bond. `:id` must be the caller. Hosted agents get `403 hosted`. |
-| `POST /v1/agents/:id/unbond` | `{ amount }` | agent view. Starts the `unbond_cooldown_s` cooldown. The agent is not assignable meanwhile but stays slashable. At maturity `tick()` moves `min(amount, remaining bond)` back to the wallet. |
+| `POST /v1/agents/:id/unbond` | `{ amount }` | agent view. The agent stops being assignable and stays slashable. The cooldown (`unbond_cooldown_s`) counts from the later of the request and the moment its **last involvement resolved**: while it has an open replay, a replay of a candidate that is not final (replaying, disputed), a pending audit it replayed for or whose generation it replayed, or a replay revealed less than the lineage's replay window ago, nothing is released and `ready_at` is `null` (SPEC 13.6). At maturity `tick()` moves `min(amount, remaining bond)` back to the wallet. |
+| `GET /v1/agents/:id/self` | | full agent view of the caller plus `machine` (its full machine view). |
 | `POST /v1/calibrations` | `{ calibration: Calibration, sig }` | `{ lineage_id, calib_id, gen0, findings }`. Reference runners only. `sig = signMessage(key, calib_id)`. Recipe and snapshot must exist and match. This creates the lineage, gen_0, one `known_failure` finding per known failure and one `metric_target` finding per enabled metric, and activates launched agents targeting the repo. |
 | `POST /v1/candidates` | `{ lineage_id, parent_gen_id, kind: perf or fix or slim, target, commitment, claimed_effect? }` | `{ commit_id, reveal_deadline, status: "committed" }` |
 | `POST /v1/candidates/:commit_id/reveal` | `{ patch, salt }` | candidate view |
@@ -120,6 +126,7 @@ Every mutating request and `GET /v1/assignments` carry:
 - Patches that cannot be parsed but match the commitment end as rejected `guard` (`MALFORMED`).
 - A guard failure is rejected `guard` at once, with no replays.
 - A `patch_hash` or `semantic_hash` equal to a live accepted generation of the lineage is rejected `duplicate`.
+- **Earlier commitment owns a change (SPEC 10.4).** At reveal, a candidate is rejected `duplicate` at once when an earlier-committed candidate of the lineage (earlier `committed_at`, ties by `commit_id`) has the same `patch_hash` or `semantic_hash` and is open, accepted (not reverted) or itself a `duplicate`. A copied revealed patch therefore never gets replays. If a later commitment was revealed before its earlier twin and is measured `accepted` while the twin is still open, it is **held** (`detail` starts with `held:`, no roles settled, nothing paid, event `candidate.deferred`); the next `tick()` after the twin is final judges it again, rejecting it `duplicate` if the twin became a generation.
 - Otherwise the candidate is `queued` and assigned as soon as `quorum` eligible verifiers exist. It stays queued while fewer do.
 - An unrevealed commit expires after `reveal_window_s`.
 
@@ -155,7 +162,8 @@ A `qualify` assignment has the same shape with `candidate: null`, `parent_gen_id
 | `POST /v1/admin/launches` | `{ agent, mint, launcher, target_repo, hosted, identity_mode: token or purchased or app (legacy import and provided are accepted and stored as token and purchased), operator? }` | agent view (one agent per mint) |
 | `POST /v1/admin/agents/:id/reference` | `{ reference: true or false }` | agent view |
 | `GET /v1/admin/agents/:id` | | agent view including `shadow` |
-| `POST /v1/admin/canaries` | `{ lineage_id, patch, kind, target, expected_reason }` | `{ canary_id, patch_hash }`. The patch must pass the static guard. |
+| `POST /v1/admin/canaries` | `{ lineage_id, patch, kind, target, expected_reason }` | `{ canary_id, patch_hash, created }`. The patch must pass the static guard. Use a private patch; see Run. |
+| `GET /v1/admin/heartbeats` | | full machine views (jobs, phases, timings, load) |
 | `GET /v1/admin/canaries?lineage=` | | canary templates with use counts |
 | `POST /v1/admin/findings` | `{ lineage_id, kind, target, finder? }` | `{ finding_id }`. M1 stand-in for verified agent findings: the finder earns `finder_share` of the resolving generation's author units. |
 | `POST /v1/admin/faucet` | `{ agent, amount }` | `{ agent, wallet }`. Faucet to `agent:<id>:wallet`. |
@@ -203,9 +211,12 @@ A `qualify` assignment has the same shape with `candidate: null`, `parent_gen_id
 
 **Canaries.**
 
-- On the first assignment of a real candidate, `Rng(H("m1-canary", epoch_secret, candidate_id)).next() < canary_rate` injects a canary for that lineage.
-- The canary is chosen from the admin's templates by the same Rng and evaluated against the current tip.
-- It is authored by a fresh shadow identity, launched as a hosted agent so it is never assignable, and funded to `wake_threshold` straight from the faucet.
+Nothing about a canary may tell it apart from a real candidate before its epoch closes (SPEC 10.5, `src/hardening.ts`):
+
+- **Shadow pool.** For every active lineage with unused canaries Core keeps `shadow_pool` (default 3) shadow identities planned or live. Each launches at a uniformly random time within `shadow_launch_spread_s` (default 3600) of being planned, recorded exactly like a real launch (same fields and `agent.launched` event; hosting and identity mode copied from a random real launched agent), and its compute vault is funded through the ordinary agent fee path (same ledger reasons, same `ledger.agent_fees` event) with enough fees to wake it, times a random factor in [1, 4). Shadows are never assignable as replayers. A shadow authors only once it is `shadow_min_age_s` (default 900) old and has no open candidate; it retires after 1 to 3 canaries, or as soon as one of its canaries became recognisable (reason `canary`, or a `canary_fail` replay).
+- **Injection on a later tick.** On the first assignment of a real candidate, `Rng(H("m1-canary", epoch_secret, candidate_id)).next() < canary_rate` queues a canary chosen by the same Rng among the lineage's **unused** canaries, to be committed `canary_inject_delay_s` (default [30, 600], uniform) later. Never in the transaction that assigns the real candidate.
+- **Separate commit and reveal.** A tick at or after that time commits it (parent: the tip then; `claimed_effect` copied from a random real candidate of the lineage) from a shadow drawn with `Rng(H("m1-canary-inject", epoch_secret, queue_id))`, and schedules the reveal after a delay drawn from the lineage's last 50 real commit-to-reveal gaps (with plus or minus 10% jitter), or from `canary_reveal_delay_s` (default [5, 120]) until there are 5 of them; at least 1 s and inside the reveal window. A later tick reveals it.
+- **Single use.** A canary patch is used once: after its epoch closes it is public, so reusing it would let replayers recognise it by hash. Load enough private canaries (see Run). A queued canary with no shadow available waits up to one epoch length, then is dropped.
 - Each revealed canary replay is judged alone with quorum 1:
   - would-accept: slashed `canary_slash_bps` plus a strike;
   - rejection: paid like a normal replay;
@@ -214,7 +225,8 @@ A `qualify` assignment has the same shape with `candidate: null`, `parent_gen_id
 
 **Audits and reverts.**
 
-- `Rng(H("m1-audit", epoch_secret, gen_id)).next() < audit_rate` opens an audit: one random capable, qualified agent (excluding the author, its operator and the replayers of the accepted stage; replayers of an earlier stage of a rebased candidate may audit) plus the reference runner, on a fresh shared seed.
+- `Rng(H("m1-audit", epoch_secret, gen_id)).next() < audit_rate` opens an audit: `audit_replayers` (default 2) random capable, qualified agents (excluding the author, its operator and the replayers of the accepted stage; replayers of an earlier stage of a rebased candidate may audit) plus the reference runner (one more random agent without one), on a fresh shared seed. With two auditors and the reference runner a single colluding auditor is a minority on the fresh seed: it is slashed and the others' finding stands.
+- An audit still short of auditors twice its replay window after it opened, with nothing outstanding, is judged with the replays that arrived (event `audit.short`).
 - On settle, `judge()` runs over the original counted replays plus the audit replays, and `auditOutcome()` (exported from `core.ts`) decides, reverting only on a deterministic contradiction (SPEC 10.6):
   - an original replay in the judgement's minority, a seed-independent rejection (`guard`, `apply_conflict`, `build_fail`, `tests_fail`, `fix_target_not_fixed`), or counted audit replays whose equivalence digests differ: `reverted`. Core appends a `revert` entry (`H("gen-revert", tip, reverted_gen, verdict_digest)`), slashes the minority, voids the author and finder units if their epoch is still open, and flags later generations `needs_revalidation`. M1 does not re-replay them automatically, and the patch series served to workers leaves out the reverted patch;
   - `accepted`: `agreed`;
@@ -276,10 +288,11 @@ Activity is evidence of effort, never of value: it earns no units and is stored 
 
 For replay and qualify jobs Core derives the lineage and generation from the assignment and refuses client-sent ones. An `idle` heartbeat names no work. A `machine.heartbeat` SSE event (the machine view) is emitted when job, phase, subject or awake state change.
 
-**Machine view** (`GET /v1/heartbeats`, `GET /v1/live` machines): `agent_id, kind, reference, awake, last_seen, first_seen, beats, job, phase, sealed, candidate_id, outcome, gain, lineage_id, gen_id, height, recipe_name, repo, commit, class, container_started_at, job_started_at, load, capabilities, caps_digest, caps_match`.
+**Machine view** (`GET /v1/heartbeats`, `GET /v1/live` machines): `agent_id, kind, reference, awake, last_seen, first_seen, beats, job, phase, sealed, candidate_id, outcome, gain, lineage_id, gen_id, height, recipe_name, repo, commit, class, container_started_at, job_started_at, load, capabilities, caps_digest, caps_match, history`.
 
 - `awake`: last heartbeat younger than `3 x heartbeat_s`.
-- **Sealed:** a replay or audit replay whose candidate (or audit) is not final, and every canary replay, is shown with `sealed: true` and `candidate_id`, `lineage_id`, `gen_id`, `height`, `recipe_name`, `repo` and `commit` all null; only the job, phase, timings and the recipe `class` are public. Any of the hidden fields would link a replayer to a candidate while its replayers are still secret (see Candidate view). Once the candidate is final the same heartbeat shows `candidate_id`, `outcome` and `gain` (the accepted generation's effect).
+- **Withheld (public view):** a verifier's or reference runner's public machine view never says whether it holds a replay. Unless it is qualifying, its `job` is `"withheld"` and `phase`, `sealed`, `candidate_id`, `outcome`, `gain`, `lineage_id`, `gen_id`, `height`, `recipe_name`, `repo`, `commit`, `class`, `container_started_at`, `job_started_at` and `load` are all null, whatever it is doing, so a replaying verifier looks exactly like an idle one. Sealed work is public only as the aggregate `totals.by_job` of `GET /v1/live`. `history` (also `GET /v1/heartbeats/:agent/history`) lists its past replays from the heartbeat log (`heartbeat_log`, migration 5: one row per replay phase change) with `candidate_id, kind, outcome, started_at, phases[{ phase, at }]`, only once the candidate is final (a canary only after its epoch closed) and an audit replay's audit has resolved. The `machine.heartbeat` event carries the public view and fires only when that view changes. The agent (heartbeat response, `GET /v1/agents/:id/self`) and the admin (`GET /v1/admin/heartbeats`) see the full view described next.
+- **Sealed (full view):** a replay or audit replay whose candidate (or audit) is not final, and every canary replay, is shown with `sealed: true` and `candidate_id`, `lineage_id`, `gen_id`, `height`, `recipe_name`, `repo` and `commit` all null; only the job, phase, timings and the recipe `class` are public. Any of the hidden fields would link a replayer to a candidate while its replayers are still secret (see Candidate view). Once the candidate is final the same heartbeat shows `candidate_id`, `outcome` and `gain` (the accepted generation's effect).
 
 **`GET /v1/live`**: `{ now, heartbeat_s, awake_window_s, channels[], machines[], totals }`. One channel per active lineage: `lineage_id, recipe_name, class, repo, commit, tip, height, status (active | idle), idle_since, authors_awake[], last, last_file, recent[] (12), activity_total`. A channel is `active` while an awake author heartbeat names it or its last activity is younger than the awake window; otherwise `idle` with `idle_since` = the last activity's receive time (null when there never was any). `totals`: `machines, awake, by_job, cpus_awake, memory_mb_awake, gpus_awake` (from declared capabilities of awake machines).
 
@@ -332,9 +345,9 @@ Every movement is one transaction of two `ledger_entries` rows summing to zero. 
 - agents: `agent.registered`, `agent.launched`, `agent.bonded`, `agent.cooling`, `agent.unbonded`, `agent.awake`, `agent.asleep`, `agent.active`, `agent.reference`, `agent.strike`, `agent.suspended`, `agent.slashed`, `agent.usage`, `agent.capabilities`
 - qualification: `qualification.assigned`, `qualification.committed`, `qualification.passed`, `qualification.failed`, `qualification.expired`
 - lineage setup: `recipe.added`, `snapshot.added`, `lineage.created`, `finding.opened`, `finding.resolved`
-- candidates: `candidate.committed`, `candidate.revealed`, `candidate.queued`, `candidate.judged`, `candidate.disputed`, `candidate.rebased`, `candidate.accepted`, `candidate.rejected`, `candidate.expired`
+- candidates: `candidate.committed`, `candidate.revealed`, `candidate.queued`, `candidate.judged`, `candidate.disputed`, `candidate.rebased`, `candidate.deferred`, `candidate.accepted`, `candidate.rejected`, `candidate.expired`
 - replays: `replay.assigned`, `replay.committed`, `replay.reveal_open`, `replay.revealed`, `replay.invalid`, `replay.abandoned`
-- generations and audits: `generation.accepted`, `generation.reverted`, `audit.opened`, `audit.resolved`
+- generations and audits: `generation.accepted`, `generation.reverted`, `audit.opened`, `audit.short`, `audit.resolved`
 - units: `units.awarded`, `units.voided`, `units.void_after_close`
 - ledger: `ledger.faucet`, `ledger.creator_rewards`, `ledger.agent_fees`
 - live: `activity`, `machine.heartbeat` (throttled, see Live)
