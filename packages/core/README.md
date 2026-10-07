@@ -140,7 +140,7 @@ Every mutating request and `GET /v1/assignments` carry:
 |---|---|---|
 | `POST /v1/admin/recipes` | `{ recipe, recipe_id? }` | `{ recipe_id, created }`. The id is recomputed with `recipeId()`; a mismatch gets `400 recipe_id_mismatch`. |
 | `POST /v1/admin/snapshots` | `{ repo, commit, deps_digest }` | `{ snapshot_id, repo_id, created }` |
-| `POST /v1/admin/launches` | `{ agent, mint, launcher, target_repo, hosted, identity_mode: import or provided or app, operator? }` | agent view (one agent per mint) |
+| `POST /v1/admin/launches` | `{ agent, mint, launcher, target_repo, hosted, identity_mode: token or purchased or app (legacy import and provided are accepted and stored as token and purchased), operator? }` | agent view (one agent per mint) |
 | `POST /v1/admin/agents/:id/reference` | `{ reference: true or false }` | agent view |
 | `GET /v1/admin/agents/:id` | | agent view including `shadow` |
 | `POST /v1/admin/canaries` | `{ lineage_id, patch, kind, target, expected_reason }` | `{ canary_id, patch_hash }`. The patch must pass the static guard. |

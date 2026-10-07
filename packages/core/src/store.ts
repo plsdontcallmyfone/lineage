@@ -92,7 +92,7 @@ const MIGRATIONS: string[] = [
     launcher TEXT,                       -- launched: launcher wallet
     target_repo TEXT,                    -- launched: canonical target repo URL
     target_repo_id TEXT,
-    identity_mode TEXT,                  -- import | provided | app
+    identity_mode TEXT,                  -- token | purchased | app (SPEC 13.9)
     hosted INTEGER NOT NULL DEFAULT 0,
     lifecycle TEXT NOT NULL DEFAULT 'active',  -- setting_up | active
     awake INTEGER NOT NULL DEFAULT 0,

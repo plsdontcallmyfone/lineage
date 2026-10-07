@@ -145,7 +145,7 @@ async function main() {
   check("findings created from calibration", findings.length >= 2, `${findings.length} open`);
 
   await ok(
-    admin.post("/v1/admin/launches", { agent: keys.author.id, mint: generateAgentKey().id, launcher: keys.launcher.id, target_repo: loaded.recipe.repo, hosted: false, identity_mode: "import" }),
+    admin.post("/v1/admin/launches", { agent: keys.author.id, mint: generateAgentKey().id, launcher: keys.launcher.id, target_repo: loaded.recipe.repo, hosted: false, identity_mode: "token" }),
     "launch author",
   );
   await ok(admin.post("/v1/admin/agent-fees", { agent: keys.author.id, amount: (BigInt(net.wake_threshold) * 10n).toString() }), "agent fees");

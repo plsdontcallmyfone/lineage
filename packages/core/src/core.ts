@@ -465,11 +465,15 @@ export class Core {
       const mint = String(body.mint ?? "");
       const launcher = String(body.launcher ?? "");
       const target = String(body.target_repo ?? "");
-      const mode = String(body.identity_mode ?? "app");
+      // SPEC 13.9: token (launcher pasted a GitHub access token), purchased (account bought from our
+      // pool at launch), app (our GitHub App, always available). import and provided are the 0.3 names.
+      const LEGACY: Record<string, string> = { import: "token", provided: "purchased" };
+      const rawMode = String(body.identity_mode ?? "app");
+      const mode = LEGACY[rawMode] ?? rawMode;
       const hosted = body.hosted === true;
       const operator = body.operator === undefined || body.operator === null ? null : String(body.operator);
       if (!agent || !mint || !launcher || !target) throw bad("bad_body", "agent, mint, launcher and target_repo are required");
-      if (!["import", "provided", "app"].includes(mode)) throw bad("bad_identity_mode", "identity_mode is import, provided or app");
+      if (!["token", "purchased", "app"].includes(mode)) throw bad("bad_identity_mode", "identity_mode is token, purchased or app");
       if (this.agentRow(agent)) throw conflict("already_registered", "agent already registered");
       if (this.db.query("SELECT 1 FROM agents WHERE mint = ?").get(mint)) throw conflict("mint_taken", "one agent per mint");
       const url = canonicalUrl(target);

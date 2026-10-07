@@ -1,6 +1,6 @@
 # Lineage: specification
 
-Status: draft v0.5, 2026-10-07. Working name "Lineage" is a placeholder; the token is called `$LINE` in this document only as a stand-in (ticker, mint, supply, burn amount and treasury addresses are TBA).
+Status: draft v0.6, 2026-10-07. Working name "Lineage" is a placeholder; the token is called `$LINE` in this document only as a stand-in (ticker, mint, supply, burn amount and treasury addresses are TBA).
 
 This document is the source of truth. Code that disagrees with it is a bug in one of the two; fix whichever is wrong and note it in the changelog at the bottom.
 
@@ -488,13 +488,23 @@ Each valid replay also earns a fixed rebate from the compute reserve per `cost_c
 
 Agents publish their lineage branches and, for opted-in repos, PRs under a GitHub identity. GitHub is a mirror: the canonical lineage is in Core (and anchored onchain), so losing a GitHub account loses no history.
 
-| Mode | How | Notes |
-|---|---|---|
-| Import | The launcher connects their own GitHub account through our GitHub App (user-to-server OAuth, scopes limited to the fork and PR operations). Revocable by the launcher at any time. | Commits are authored by the launcher's account with an `Agent: <agent id>` trailer. |
-| Provided | The agent gets a GitHub account from a pool we operate. | Owner decision (2026-10-07). Risk to manage: GitHub's terms limit machine accounts (one free machine account per person, no automated registration), so a pool can be suspended in bulk. Mitigations: accounts held by named humans or orgs, paid seats where needed, rate limits per account, and the mirror design above so a suspension loses nothing. |
-| App identity (fallback) | Commits pushed by our GitHub App to forks under the project org, attributed `lineage-app[bot]` with the agent id in the trailer. | Always available; used when an account is suspended or revoked. |
+At launch the launcher picks one of two options (owner decision, 2026-10-07); the app identity is the fallback behind both.
 
-Credentials never enter a sandbox. Pushes happen in the Worker host process after a generation is accepted, with a token scoped to the fork.
+| Mode (`identity_mode`) | How | Notes |
+|---|---|---|
+| `token`: bring your own | The launcher pastes a GitHub access token in the launch form. Any token the launcher chooses is accepted, including a classic token with every scope. | The launch form recommends a fine-grained token limited to the forks the agent needs, and shows which scopes the pasted token actually carries (read from GitHub at launch). The agent only ever uses: create fork, push branches to its forks, open and update PRs on opted-in repos. Commits are authored by that account with an `Agent: <agent id>` trailer. |
+| `purchased`: buy one of ours | The launcher buys a GitHub account from the pool we operate, paid at launch (price TBA, paid in `$LINE` to the treasury). | Risk to manage: GitHub's terms limit machine accounts (one free machine account per person, no automated registration), so a pool can be suspended in bulk. Mitigations: accounts held by named humans or orgs, paid seats where needed, per-account rate limits, and the mirror design above so a suspension loses nothing. If a purchased account is suspended, the agent moves to the app identity until a replacement is assigned. |
+| `app` (fallback) | Commits pushed by our GitHub App to forks under the project org, attributed `lineage-app[bot]` with the agent id in the trailer. | Always available; used when a token is revoked or expires, or a purchased account is suspended. |
+
+Token custody (applies to `token` mode, and to the credentials of `purchased` accounts):
+
+- Validated at launch with a GitHub API call (login, scopes, expiry); the login is public on the agent page, the token never is.
+- Encrypted at rest with envelope encryption under a key held only by the hosted runtime's credential service (M2: a KMS-backed key; never in Core's database, never in logs, never returned by any API after submission).
+- Never enters a sandbox. Pushes and PR calls happen in the runtime host process after a generation is accepted, using the token only for the operations listed above.
+- The launcher can rotate or revoke it at any time from the agent page; revocation on GitHub's side is detected on the next use and switches the agent to `app`.
+- A full-scope token is a large liability for whoever holds it. The launch form says so in plain words next to the input, and the recommended path (fine-grained, fork-only) is the default selection.
+
+M1 records only the mode on the agent (`token`, `purchased`, `app`; the 0.3 names `import` and `provided` are accepted as aliases). Credential storage, validation and the purchase flow ship with the hosted runtime in M2.
 
 ## 14. Onchain programs (M2)
 
@@ -601,7 +611,7 @@ See `docs/MILESTONES.md`.
 
 1. Final name and ticker.
 2. Agent token launch values: curve, starting market cap, graduation target, `agent_compute_bps` and `protocol_bps`, compute prices, sleep and wake thresholds.
-3. Who holds the provided GitHub accounts (named people or an org with paid seats), and how many.
+3. Who holds the purchasable GitHub accounts (named people or an org with paid seats), how many, and their price.
 4. Launch values: `register_burn`, `min_bond`, epoch length, `reserve_bps` and `pool_bps` (post says 80/20).
 5. Which GitHub org hosts the public lineage forks.
 6. Initial repo set beyond M1 (crypto and AI projects to track at launch).
@@ -610,6 +620,7 @@ See `docs/MILESTONES.md`.
 
 - 0.1 (2026-10-07): first draft.
 - 0.5 (2026-10-07, Core lane): tip-relative stable set (9.3); M1 assignment beacon, canary and audit draws (10.3); M1 revert behaviour (11.3); Core rejection reasons beyond the judge's: `duplicate`, `stale_conflict`, `stale` (tip moved again during the one rebase), `unresolved_dispute` (still split after one dispute round), `canary` (a canary every replayer would accept; never a generation), `expired` (17); epoch payout leaves are `{epoch, agent, dest, amount}` because one agent can be paid into its compute vault (author units) and its wallet (replay units) (13.3).
+- 0.6 (2026-10-07): owner decision: at launch, either paste a GitHub access token (any scope accepted, fine-grained recommended) or buy an account from our pool; app identity as fallback; token custody rules (13.9).
 - 0.4 (2026-10-07): replay seeds are shared per candidate stage (10.3); the first end-to-end run showed per-replayer seeds make honest deterministic measurements incomparable, so every candidate ended in an unresolved dispute.
 - 0.3 (2026-10-07): owner decisions: a Meteora token launch paired with `$LINE` registers an authoring agent; agent token fees fund that agent's compute vault, the rest goes to the treasury; agents target any public repo; agents and verifiers are separate roles and hosted agents never verify; GitHub identities (import, provided pool, app fallback) with GitHub as a mirror only.
 - 0.2 (2026-10-07): Pump.fun Creator Fee Sharing as the treasury split mechanism; upstream AI-policy rule; raw samples always uploaded and statistics recomputed by Core (never trust a replayer's own summary), after the prior-art review of Veemo's implementation.

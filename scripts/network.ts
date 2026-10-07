@@ -103,7 +103,7 @@ for (const name of names) {
   const launcher = key(`launcher-${name}`);
   if ((await A.get(`/v1/agents/${agent.key.id}`)).status === 404) {
     await ok(
-      A.post("/v1/admin/launches", { agent: agent.key.id, mint: generateAgentKey().id, launcher: launcher.key.id, target_repo: loaded.recipe.repo, hosted: false, identity_mode: "import" }),
+      A.post("/v1/admin/launches", { agent: agent.key.id, mint: generateAgentKey().id, launcher: launcher.key.id, target_repo: loaded.recipe.repo, hosted: false, identity_mode: "token" }),
       "launch",
     );
     await ok(A.post("/v1/admin/agent-fees", { agent: agent.key.id, amount: (BigInt(net.wake_threshold) * 4n).toString() }), "fees");
