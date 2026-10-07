@@ -1,0 +1,26 @@
+{
+  "ascii_fast_path": {
+    "kind": "perf",
+    "target": "encode_ir",
+    "expect": "tests_fail",
+    "note": "Adds an 'ASCII fast path' that skips GPT4Tokenizer's byte permutation for ASCII chunks, as if the shuffle were the identity there. It is not, so GPT-4 encodings stop matching tiktoken. (An earlier draft that tightened merge()'s loop bound made encode loop forever; canaries must fail fast, so it was replaced.)",
+    "lines": 3,
+    "guard": "ok"
+  },
+  "sorted_chunks": {
+    "kind": "perf",
+    "target": "train_ir",
+    "expect": "equivalence_changed",
+    "note": "Sorts regex chunks to 'group identical chunks'; changes the first-seen order of pairs, so max() breaks count ties differently and some merges change. Upstream tests never train on tie-heavy text with the RegexTokenizer.",
+    "lines": 2,
+    "guard": "ok"
+  },
+  "rank_table": {
+    "kind": "perf",
+    "target": "encode_ir",
+    "expect": "no_improvement",
+    "note": "Presented as precomputing a rank table to avoid the lambda; builds an extra dict per merge step, which costs more than it saves.",
+    "lines": 3,
+    "guard": "ok"
+  }
+}

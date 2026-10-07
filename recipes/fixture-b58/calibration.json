@@ -1,0 +1,56 @@
+{
+  "recipe_id": "efb1e83e83ef14909331fefb6492f33e750ee75cbabef953c92633460dadfb9a",
+  "snapshot_id": "",
+  "runs": 5,
+  "stable": [
+    "tests/basic.rs::decode_known_vectors",
+    "tests/basic.rs::decode_rejects_invalid",
+    "tests/basic.rs::encode_known_vectors",
+    "tests/basic.rs::roundtrip_short_inputs"
+  ],
+  "known_failures": [
+    "tests/basic.rs::decode_leading_ones_are_zero_bytes"
+  ],
+  "quarantined": [],
+  "metrics": {
+    "encode_ir": {
+      "enabled": true,
+      "cv": 0,
+      "base_value": 44939271
+    },
+    "decode_ir": {
+      "enabled": true,
+      "cv": 0,
+      "base_value": 41227990
+    },
+    "rlib_bytes": {
+      "enabled": true,
+      "cv": 0,
+      "base_value": 19276
+    },
+    "encode_ns": {
+      "enabled": false,
+      "cv": 0.040852121378547844,
+      "base_value": 15661708.5,
+      "reason": "too noisy to resolve 0.05: A/A half-width 0.0728"
+    }
+  },
+  "median_eval_seconds": 5,
+  "seed": "ca11b7a7e",
+  "recipe_name": "fixture-b58",
+  "repo": "fixture:b58",
+  "commit": "c2c30d4ecbdd6a7b9f14457f33898fdf27f0c7d6",
+  "deps_digest": "5b1e506ca951f6aec48a687af9cfbf9725a6a08a28e5067a89564acf4a920e2e",
+  "image_digest": "sha256:ad2f9ba06cb62446a4a2015ffac9e90f877dbd0c7e10aa2c2976240e68d0a626",
+  "date": "2026-10-07T19:35:16.548Z",
+  "calibration_wall_seconds": 6.6,
+  "counts": {
+    "stable": 4,
+    "known_failures": 1,
+    "quarantined": 0,
+    "excluded": 0
+  },
+  "notes": [
+    "calibration wall time 7 s"
+  ]
+}

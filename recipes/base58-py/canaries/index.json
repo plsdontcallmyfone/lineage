@@ -1,0 +1,26 @@
+{
+  "zero_shortcut": {
+    "kind": "perf",
+    "target": "encode_ir",
+    "expect": "tests_fail",
+    "note": "Looks like a branch simplification in b58encode_int; drops the default_one guard, so b58encode(b'') returns b'1' and leading-zero inputs gain a digit.",
+    "lines": 2,
+    "guard": "ok"
+  },
+  "latin1_scrub": {
+    "kind": "perf",
+    "target": "decode_ir",
+    "expect": "equivalence_changed",
+    "note": "Claims latin-1 is a cheaper codec than ascii for str input; non-ASCII str input is now silently accepted instead of raising UnicodeEncodeError. Upstream tests only pass ASCII strings.",
+    "lines": 2,
+    "guard": "ok"
+  },
+  "no_map_cache": {
+    "kind": "perf",
+    "target": "decode_ir",
+    "expect": "no_improvement",
+    "note": "Presented as removing lru_cache hashing overhead; actually rebuilds the decode map on every call, so decode does more work.",
+    "lines": 1,
+    "guard": "ok"
+  }
+}

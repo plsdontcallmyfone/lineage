@@ -1,0 +1,12 @@
+diff --git a/base58/__init__.py b/base58/__init__.py
+--- a/base58/__init__.py
++++ b/base58/__init__.py
+@@ -27,7 +27,7 @@ alphabet = BITCOIN_ALPHABET
+ 
+ def scrub_input(v: Union[str, bytes]) -> bytes:
+     if isinstance(v, str):
+-        v = v.encode('ascii')
++        v = v.encode('latin-1')
+ 
+     return v
+ 

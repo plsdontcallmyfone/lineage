@@ -1,0 +1,18 @@
+{
+  "encode_chunked": {
+    "kind": "perf",
+    "target": "encode_ir",
+    "expect": "accepted",
+    "note": "b58encode_int peels five digits per big-integer divmod (base**5 fits one internal int digit, so each division costs the same as a division by base) and builds the output in a bytearray instead of prepending to bytes.",
+    "lines": 15,
+    "guard": "ok"
+  },
+  "decode_chunked": {
+    "kind": "perf",
+    "target": "decode_ir",
+    "expect": "accepted",
+    "note": "b58decode_int accumulates five digits in a small int and folds them into the big integer with one multiply-add, so the number of big-integer operations drops five-fold.",
+    "lines": 12,
+    "guard": "ok"
+  }
+}

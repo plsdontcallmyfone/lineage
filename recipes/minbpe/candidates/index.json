@@ -1,0 +1,18 @@
+{
+  "train_dedupe_chunks": {
+    "kind": "perf",
+    "target": "train_ir",
+    "expect": "accepted",
+    "note": "RegexTokenizer.train keeps each distinct regex chunk once (first-seen order) with its multiplicity and counts pairs weighted. Pair counts and their first-seen order are unchanged, so max() picks the same merges, ties included.",
+    "lines": 17,
+    "guard": "ok"
+  },
+  "encode_chunk_cache": {
+    "kind": "perf",
+    "target": "encode_ir",
+    "expect": "accepted",
+    "note": "encode_ordinary encodes each distinct regex chunk once per call (a call-local dict), since chunks such as ' the' or ',' repeat; the cache never outlives the call, so later changes to merges cannot make it stale.",
+    "lines": 9,
+    "guard": "ok"
+  }
+}

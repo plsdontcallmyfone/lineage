@@ -1,0 +1,13 @@
+diff --git a/minbpe/regex.py b/minbpe/regex.py
+--- a/minbpe/regex.py
++++ b/minbpe/regex.py
+@@ -96,7 +96,8 @@ class RegexTokenizer(Tokenizer):
+         while len(ids) >= 2:
+             # find the pair with the lowest merge index
+             stats = get_stats(ids)
+-            pair = min(stats, key=lambda p: self.merges.get(p, float("inf")))
++            ranks = {p: self.merges.get(p, float("inf")) for p in stats}
++            pair = min(ranks, key=ranks.get)
+             # subtle: if there are no more merges available, the key will
+             # result in an inf for every single pair, and the min will be
+             # just the first pair in the list, arbitrarily

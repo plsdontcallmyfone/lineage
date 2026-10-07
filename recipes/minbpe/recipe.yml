@@ -1,0 +1,83 @@
+# karpathy/minbpe: minimal pure-Python byte-level BPE tokenizer (Basic, Regex, GPT-4 compatible).
+# MIT licence (LICENSE). No contribution policy against AI-generated changes (no CONTRIBUTING
+# file; README has no contribution rules; checked 2026-10-07).
+#
+# Why: training and encoding are deliberately naive (full get_stats + merge pass per merge step,
+# min() over all pairs with a lambda per encode step), so instruction counts have real headroom.
+#
+# Offline tests: GPT4Tokenizer and the tiktoken equality tests need the cl100k_base vocabulary,
+# which tiktoken downloads on first use. prepare (the only step with network) fetches it into
+# /deps/tiktoken, and the test command points TIKTOKEN_CACHE_DIR there, so every test runs with
+# --network none and nothing is excluded.
+#
+# Determinism notes (verified by scripts/calibrate-recipe.ts, cv recorded in calibration.json):
+# - cachegrind counts guest instructions only; PYTHONHASHSEED=0 is set by the sandbox.
+# - The harness disables the cyclic GC so collection points cannot move with allocation patterns.
+# - Inputs come only from $LINEAGE_SEED (sha256 -> random.Random) and repo files.
+# - The official python image ships without __pycache__, so every import would compile the
+#   stdlib from source (importing `typing` alone cost ~460M of the first harness's ~900M
+#   instructions). prepare byte-compiles the stdlib and the venv into /deps/pycache and every
+#   command sets PYTHONPYCACHEPREFIX to it (read-only at run time, so the patched library itself
+#   is still compiled on import; that compile cost is part of the metric and is small).
+# - Residual drift: instruction counts depend slightly on the process environment (adding or
+#   removing one env var moved the count by ~230K of ~730M in a manual test; the sandbox env is
+#   fixed apart from Docker's per-container HOSTNAME, which has a fixed length) and on the first
+#   run in a fresh container (~1K instructions, consistent with directory listing order in the
+#   import system's path cache). Both are far below det_tolerance (0.1%).
+name: minbpe
+class: python
+requires: { arch: arm64 }
+repo: https://github.com/karpathy/minbpe
+commit: "1acefe89412b20245db5a22d2a02001e547dc602"
+image: "lineage/python:m1@sha256:4214b1a6fb3757b7d706ce9547e728b18c53df40f0bdf8ebcdef5b81335186d0"
+workdir: /work/src
+prepare:
+  - python -m venv /deps/venv
+  - "/deps/venv/bin/pip install --no-cache-dir --only-binary=:all: pytest==8.3.5 regex==2024.11.6 tiktoken==0.9.0"
+  - TIKTOKEN_CACHE_DIR=/deps/tiktoken /deps/venv/bin/python -c "import tiktoken; print(tiktoken.get_encoding('cl100k_base').n_vocab)"
+  - PYTHONPYCACHEPREFIX=/deps/pycache python -m compileall -q -x "/(test|tests|idlelib|lib2to3|tkinter|turtledemo)/" /usr/local/lib/python3.12 /deps/venv/lib/python3.12/site-packages
+prepare_outputs: []
+build:
+  # Pure Python: "build" is an import check, which fails on syntax errors and import-time crashes.
+  commands:
+    - python -c "import minbpe, sys; print(sys.version.split()[0])"
+  artifacts: []
+  reproducible: false
+test:
+  command: PYTHONPYCACHEPREFIX=/deps/pycache TIKTOKEN_CACHE_DIR=/deps/tiktoken python -m pytest -p no:cacheprovider -q --junitxml=/out/junit.xml tests
+  parser: junit
+  exclude: []
+  timeout_s: 600
+equivalence:
+  command: PYTHONPYCACHEPREFIX=/deps/pycache python lineage_equiv.py "$LINEAGE_SEED"
+  output: stdout-digest
+metrics:
+  - name: train_ir
+    kind: perf
+    direction: lower
+    deterministic: true
+    command: PYTHONPYCACHEPREFIX=/deps/pycache valgrind --tool=cachegrind --cache-sim=no --cachegrind-out-file=/dev/null python lineage_bench.py train "$LINEAGE_SEED"
+    parser: cachegrind-ir
+    holdout: true
+    min_effect: 0.01
+  - name: encode_ir
+    kind: perf
+    direction: lower
+    deterministic: true
+    command: PYTHONPYCACHEPREFIX=/deps/pycache valgrind --tool=cachegrind --cache-sim=no --cachegrind-out-file=/dev/null python lineage_bench.py encode "$LINEAGE_SEED"
+    parser: cachegrind-ir
+    holdout: true
+    min_effect: 0.01
+patch:
+  allowed_paths: ["minbpe/**"]
+  protected_paths:
+    - "tests/**"
+    - "requirements.txt"
+    - "train.py"
+    - ".github/**"
+    - "**/*.yml"
+    - "**/*.yaml"
+    - "lineage_*"
+  max_files: 5
+  max_lines: 200
+limits: { cpus: 2, memory_mb: 2048, pids: 256, wall_s: 1200, disk_mb: 4096 }
