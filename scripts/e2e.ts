@@ -183,7 +183,6 @@ async function main() {
     ["regress", "no_improvement"],
     ["equiv_change", "equivalence_changed"],
     ["protected_test_edit", "guard"],
-    ["perf_encode_dup", "duplicate"],
   ];
   for (const [name, reason] of expectReason) {
     const w = author([name]);
@@ -211,6 +210,8 @@ async function main() {
     await ok(authorClient.post(`/v1/candidates/${c.commit_id}/reveal`, { patch, salt }), `reveal ${name}`);
     return candidateFinal(c.commit_id);
   }
+  const dup = await submitStale("perf_encode_dup");
+  check("re-skinned copy of an accepted patch rejected as duplicate", dup.status === "rejected" && /duplicate/.test(String(dup.reason)), `${dup.status} ${dup.reason ?? ""}`);
   const s1 = await submitStale("stale_conflict");
   check("stale patch touching changed lines rejected as stale conflict", s1.status === "rejected" && /stale|conflict/.test(String(s1.reason)), `${s1.status} ${s1.reason ?? ""}`);
   const s2 = await submitStale("perf_decode");
@@ -227,7 +228,7 @@ async function main() {
   // the liar bonds heavily so it is drawn for nearly every assignment
   await ok(as(keys.liar).post(`/v1/agents/${keys.liar.id}/bond`, { amount: (MIN_BOND * 10n).toString() }), "bond liar");
   startVerifier("liar", ["--dishonest", "fabricate"]);
-  const before = await ok(admin.get(`/v1/admin/agents/${keys.liar.id}`), "liar");
+  const before = await ok(admin.get(`/v1/admin/agents/${keys.liar.id}`, true), "liar");
   // triggers: real candidates that should be rejected; each injects one canary (canary_rate 1)
   const triggers = ["break_tests", "regress", "equiv_change"];
   for (const name of triggers) {
@@ -242,15 +243,16 @@ async function main() {
     const cs = await ok<any[]>(admin.get(`/v1/candidates?lineage=${L}`), "candidates");
     return cs.filter((c) => !FINAL.has(c.status)).length === 0;
   });
-  const after = await ok(admin.get(`/v1/admin/agents/${keys.liar.id}`), "liar");
+  const after = await ok(admin.get(`/v1/admin/agents/${keys.liar.id}`, true), "liar");
   const slashed = BigInt(after.slashed_total) - BigInt(before.slashed_total);
   check("fabricating verifier slashed and struck", slashed > 0n && after.strikes_total > 0, `slashed ${slashed}, strikes ${after.strikes_total}`);
   const honest = await Promise.all((["v1", "v2", "v3"] as const).map((n) => ok(admin.get(`/v1/agents/${keys[n].id}`), n)));
   check("no honest verifier slashed", honest.every((h) => h.slashed_total === "0"), honest.map((h) => h.slashed_total).join(","));
   const events = await ok<any>(admin.get("/v1/events/log?since=0&limit=5000"), "events");
   const evs: any[] = Array.isArray(events) ? events : events.events ?? [];
-  const types = new Set(evs.map((e) => e.type));
-  check("a canary was caught", [...types].some((t) => /canary/.test(t)), [...types].filter((t) => /canary|slash|dispute/.test(t)).join(", "));
+  const liarSlashes = evs.filter((e) => e.type === "agent.slashed" && (e.data ?? e.payload ?? e).agent === keys.liar.id).map((e) => (e.data ?? e.payload ?? e).reason);
+  check("the fabricating verifier was caught by a canary", liarSlashes.includes("canary"), `slash reasons: ${liarSlashes.join(", ")}`);
+  check("the fabricating verifier was caught as a dispute minority", liarSlashes.some((r: string) => /minority/.test(r)), `slash reasons: ${liarSlashes.join(", ")}`);
 
   // ---------------------------------------------------------------- phase 5: audits, epoch
   const lv = await ok(admin.get(`/v1/lineages/${L}`), "lineage");
@@ -271,10 +273,17 @@ async function main() {
   const rec2 = await ok(admin.get("/v1/ledger/reconcile"), "reconcile");
   check("ledger reconciles to zero with no negative balances", rec2.ok === true || rec2.balanced === true, JSON.stringify(rec2).slice(0, 160));
   const v1Proof = await admin.get(`/v1/epochs/${ep.n}/proofs/${keys.v1.id}`);
-  if (v1Proof.status === 200) {
-    const claim = await as(keys.v1).post(`/v1/epochs/${ep.n}/claim`, v1Proof.body);
+  if (v1Proof.status === 200 && Array.isArray(v1Proof.body) && v1Proof.body.length) {
+    const leaf = v1Proof.body[0];
+    const claim = await as(keys.v1).post(`/v1/epochs/${ep.n}/claim`, { dest: leaf.dest, amount: leaf.amount, proof: leaf.proof });
     check("verifier claims its epoch payout with a Merkle proof", claim.status < 300, JSON.stringify(claim.body).slice(0, 160));
+    const forged = await as(keys.v2).post(`/v1/epochs/${ep.n}/claim`, { dest: leaf.dest, amount: leaf.amount, proof: leaf.proof });
+    check("another agent cannot claim that leaf", forged.status >= 400, `${forged.status}`);
+    const twice = await as(keys.v1).post(`/v1/epochs/${ep.n}/claim`, { dest: leaf.dest, amount: leaf.amount, proof: leaf.proof });
+    check("a leaf cannot be claimed twice", twice.status >= 400, `${twice.status}`);
   } else check("verifier claims its epoch payout with a Merkle proof", false, `proof ${v1Proof.status}`);
+  const canaryList = ep.canaries ?? [];
+  check("canary list revealed at epoch close", Array.isArray(canaryList) && canaryList.length > 0, `${canaryList.length} canaries`);
 }
 
 let failed = false;

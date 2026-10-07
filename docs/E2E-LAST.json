@@ -1,0 +1,151 @@
+{
+  "at": "2026-10-07T19:06:12.549Z",
+  "seconds": 215,
+  "results": [
+    {
+      "check": "recipe id recomputed by Core matches the worker's",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "calibration accepted, lineage created",
+      "ok": true,
+      "detail": "{\"lineage_id\":\"c69a9f55b91a0dd78803cd9eb779c5cedcf45876a75390e89be8f6e9561ea986\",\"calib_id\":\"ed70665f468ffbd92b6f7cb22bf"
+    },
+    {
+      "check": "stable set and known failure from real calibration",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "findings created from calibration",
+      "ok": true,
+      "detail": "4 open"
+    },
+    {
+      "check": "launched agent is active and awake after its token fees arrive",
+      "ok": true,
+      "detail": "compute 14000000000"
+    },
+    {
+      "check": "perf_encode accepted (deterministic instruction count)",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "fix_leading_ones accepted (known failure fixed)",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "break_tests rejected with tests_fail",
+      "ok": true,
+      "detail": "rejected tests_fail"
+    },
+    {
+      "check": "regress rejected with no_improvement",
+      "ok": true,
+      "detail": "rejected no_improvement"
+    },
+    {
+      "check": "equiv_change rejected with equivalence_changed",
+      "ok": true,
+      "detail": "rejected equivalence_changed"
+    },
+    {
+      "check": "protected_test_edit rejected with guard",
+      "ok": true,
+      "detail": "rejected guard"
+    },
+    {
+      "check": "re-skinned copy of an accepted patch rejected as duplicate",
+      "ok": true,
+      "detail": "rejected duplicate"
+    },
+    {
+      "check": "stale patch touching changed lines rejected as stale conflict",
+      "ok": true,
+      "detail": "rejected stale_conflict"
+    },
+    {
+      "check": "stale patch on untouched lines rebased onto the tip and accepted",
+      "ok": true,
+      "detail": "accepted "
+    },
+    {
+      "check": "break_tests still rejected with a liar among replayers",
+      "ok": true,
+      "detail": "rejected tests_fail"
+    },
+    {
+      "check": "regress still rejected with a liar among replayers",
+      "ok": true,
+      "detail": "rejected no_improvement"
+    },
+    {
+      "check": "equiv_change still rejected with a liar among replayers",
+      "ok": true,
+      "detail": "rejected equivalence_changed"
+    },
+    {
+      "check": "fabricating verifier slashed and struck",
+      "ok": true,
+      "detail": "slashed 16156250000, strikes 3"
+    },
+    {
+      "check": "no honest verifier slashed",
+      "ok": true,
+      "detail": "0,0,0"
+    },
+    {
+      "check": "the fabricating verifier was caught by a canary",
+      "ok": true,
+      "detail": "slash reasons: canary, minority, minority"
+    },
+    {
+      "check": "the fabricating verifier was caught as a dispute minority",
+      "ok": true,
+      "detail": "slash reasons: canary, minority, minority"
+    },
+    {
+      "check": "audit replays agree with every accepted generation",
+      "ok": true,
+      "detail": "agreed,agreed,agreed"
+    },
+    {
+      "check": "lineage height is 3 (encode, fix, decode)",
+      "ok": true,
+      "detail": "height 3"
+    },
+    {
+      "check": "epoch closed with a payout root",
+      "ok": true,
+      "detail": "4 payouts"
+    },
+    {
+      "check": "ledger reconciles to zero with no negative balances",
+      "ok": true,
+      "detail": "{\"ok\":true,\"errors\":[],\"entries\":58,\"transactions\":29,\"total\":\"0\",\"balances\":{\"agent:3Rwr5kdq3EZndwXNUHEFNarSmcUdXoud82saaf9fmpmK:bond\":\"5000000000\",\"agent:3Rwr"
+    },
+    {
+      "check": "verifier claims its epoch payout with a Merkle proof",
+      "ok": true,
+      "detail": "{\"epoch\":0,\"agent\":\"3oBqGM3LRKQvWSMiBKLk8C9XPstbRYmC2PF7XwhYVQsC\",\"dest\":\"agent:3oBqGM3LRKQvWSMiBKLk8C9XPstbRYmC2PF7XwhYVQsC:wallet\",\"amount\":\"35832787834\",\"bal"
+    },
+    {
+      "check": "another agent cannot claim that leaf",
+      "ok": true,
+      "detail": "403"
+    },
+    {
+      "check": "a leaf cannot be claimed twice",
+      "ok": true,
+      "detail": "409"
+    },
+    {
+      "check": "canary list revealed at epoch close",
+      "ok": true,
+      "detail": "3 canaries"
+    }
+  ]
+}
