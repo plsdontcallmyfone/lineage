@@ -6,3 +6,5 @@ export { FakeClock, systemClock, type Clock } from "./clock.ts";
 export { loadNetworkConfig, parseNetworkConfig, networkConfigJson, type NetworkConfig } from "./config.ts";
 export { ApiError } from "./errors.ts";
 export { CoreClient } from "./client.ts";
+export { Live } from "./live.ts";
+export { GitTreeSource, applyHunks, type TreeSource, type FileAtGen } from "./trees.ts";

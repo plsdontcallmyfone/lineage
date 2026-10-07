@@ -5,6 +5,7 @@ import { systemClock } from "./clock.ts";
 import { loadNetworkConfig } from "./config.ts";
 import { Core } from "./core.ts";
 import { serve } from "./http.ts";
+import { GitTreeSource } from "./trees.ts";
 import { base58Decode, keyFromSolanaJson } from "./protocol.ts";
 
 // bun packages/core/src/main.ts --data ./data --port 9660 --config config/network.json --admin-key <path>
@@ -15,6 +16,10 @@ import { base58Decode, keyFromSolanaJson } from "./protocol.ts";
 function arg(name: string, def?: string): string | undefined {
   const i = process.argv.indexOf(`--${name}`);
   return i >= 0 ? process.argv[i + 1] : def;
+}
+
+function argvFlag(name: string): boolean {
+  return process.argv.includes(`--${name}`);
 }
 
 function readPubkey(path: string): string {
@@ -61,6 +66,7 @@ const core = new Core({
   adminId: readPubkey(adminKey),
   runtimeId: runtimeKey ? readPubkey(runtimeKey) : undefined,
   clock: systemClock,
+  trees: argvFlag("no-trees") ? null : new GitTreeSource(),
 });
 const server = serve(core, { port, hostname: host });
 const timer = setInterval(() => {

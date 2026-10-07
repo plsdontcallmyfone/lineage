@@ -346,6 +346,44 @@ const MIGRATIONS: string[] = [
   CREATE INDEX qualifications_status ON qualifications(status);
   ALTER TABLE audits ADD COLUMN detail TEXT;
   `,
+  // 3: live activity and heartbeats (SPEC 17.1)
+  `
+  CREATE TABLE activity (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    agent_id TEXT NOT NULL,
+    kind TEXT NOT NULL,                  -- read | search | edit | evaluate | propose | submit | give_up
+    lineage_id TEXT NOT NULL,
+    gen_id TEXT NOT NULL,                -- the parent generation being worked on
+    commit_sha TEXT NOT NULL,
+    path TEXT,
+    start_line INTEGER,
+    end_line INTEGER,
+    query TEXT,
+    target TEXT,                         -- metric name or test id (evaluate, propose, submit)
+    content_sha256 TEXT,
+    path_checked INTEGER NOT NULL DEFAULT 0,  -- 1 when Core found the path in the generation's file list
+    at INTEGER NOT NULL,                 -- the agent's timestamp
+    received_at INTEGER NOT NULL
+  );
+  CREATE INDEX activity_agent ON activity(agent_id, received_at);
+  CREATE INDEX activity_lineage ON activity(lineage_id, id);
+  CREATE TABLE heartbeats (
+    agent_id TEXT PRIMARY KEY,           -- latest heartbeat per machine (agent key)
+    at INTEGER NOT NULL,                 -- Core's receive time
+    sent_at INTEGER NOT NULL,            -- the worker's timestamp
+    caps_digest TEXT,
+    job TEXT NOT NULL,                   -- replay | qualify | author | idle
+    phase TEXT,
+    replay_id TEXT,                      -- private: the replay or qualification being run
+    lineage_id TEXT,
+    gen_id TEXT,
+    container_started_at INTEGER,
+    job_started_at INTEGER,
+    load TEXT,                           -- JSON { load1, load5, load15, mem_free_mb }
+    beats INTEGER NOT NULL DEFAULT 1,
+    first_at INTEGER NOT NULL
+  );
+  `,
 ];
 
 export function openDb(path: string): Database {

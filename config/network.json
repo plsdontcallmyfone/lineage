@@ -33,5 +33,7 @@
   "sleep_threshold": "1000000000",
   "wake_threshold": "2000000000",
   "author_reward_to": "compute",
-  "qualify_retry_s": 300
+  "qualify_retry_s": 300,
+  "activity_rate": 120,
+  "heartbeat_s": 10
 }

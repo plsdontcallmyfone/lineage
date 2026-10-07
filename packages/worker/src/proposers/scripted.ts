@@ -1,6 +1,6 @@
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
-import type { CandidateKind } from "@lineage/protocol";
+import { parseDiff, type CandidateKind } from "@lineage/protocol";
 import { applyPatch } from "@lineage/sandbox";
 import type { Proposal, ProposeContext, Proposer } from "./types.ts";
 
@@ -49,9 +49,32 @@ export class ScriptedProposer implements Proposer {
         continue;
       }
       ctx.log(`scripted: proposing ${next.name}`);
+      reportEdits(ctx, next);
       return { kind: next.kind, target: next.target, rationale: `scripted patch ${next.name}` };
     }
     return null;
+  }
+}
+
+/**
+ * Live activity for a scripted patch: one edit per hunk, as the range of PARENT lines it replaces
+ * (the parent file is public; the new text stays sealed until reveal), then the proposal itself.
+ */
+function reportEdits(ctx: ProposeContext, entry: ScriptEntry) {
+  try {
+    for (const f of parseDiff(entry.diff)) {
+      if (f.status === "add" || !f.oldPath) continue; // a new file is not in the parent tree
+      for (const h of f.hunks) {
+        const m = /^@@ -(\d+)(?:,(\d+))? /.exec(h);
+        if (!m) continue;
+        const start = Math.max(1, Number(m[1]));
+        const len = m[2] === undefined ? 1 : Number(m[2]);
+        ctx.activity?.({ kind: "edit", path: f.oldPath, start_line: start, end_line: Math.max(start, start + len - 1) });
+      }
+    }
+    ctx.activity?.({ kind: "propose", target: Array.isArray(entry.target) ? entry.target.join(",").slice(0, 200) : entry.target });
+  } catch {
+    /* telemetry never breaks authoring */
   }
 }
 

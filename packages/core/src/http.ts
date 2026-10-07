@@ -104,6 +104,12 @@ export function buildRoutes(core: Core): Route[] {
     route("GET", "/v1/lineages", "none", () => core.listLineages()),
     route("GET", "/v1/lineages/:id", "none", (c) => core.lineageView(c.params.id!)),
     route("GET", "/v1/lineages/:id/tree", "none", (c) => core.tree(c.params.id!, q(c, "gen"))),
+    route("GET", "/v1/lineages/:id/file", "none", (c) => core.live.file(c.params.id!, q(c, "gen"), q(c, "path"))),
+    route("GET", "/v1/live", "none", () => core.live.live()),
+    route("GET", "/v1/heartbeats", "none", () => core.live.listMachines()),
+    route("GET", "/v1/activity", "none", (c) =>
+      core.live.listActivity({ lineage: q(c, "lineage"), agent: q(c, "agent"), since: q(c, "since") ? Number(q(c, "since")) : undefined, limit: q(c, "limit") ? Number(q(c, "limit")) : undefined }),
+    ),
     route("GET", "/v1/generations/:id", "none", (c) => core.generationView(c.params.id!)),
     route("GET", "/v1/findings", "none", (c) => core.findings(q(c, "lineage"), q(c, "status") ?? "open")),
     route("GET", "/v1/candidates", "none", (c) =>
@@ -137,6 +143,8 @@ export function buildRoutes(core: Core): Route[] {
     route("POST", "/v1/replays/:id/commit", "agent", (c) => core.commitReplay(c.agent!, c.params.id!, c.json())),
     route("POST", "/v1/replays/:id/reveal", "agent", (c) => core.revealReplay(c.agent!, c.params.id!, c.json())),
     route("POST", "/v1/epochs/:n/claim", "agent", (c) => core.claim(c.agent!, epochN(c), c.json())),
+    route("POST", "/v1/activity", "agent", (c) => core.live.postActivity(c.agent!, c.json())),
+    route("POST", "/v1/heartbeat", "agent", (c) => core.live.postHeartbeat(c.agent!, c.json())),
     route("PUT", "/v1/blobs/:sha", "agent", async (c) => {
       const sha = c.params.sha!;
       if (!/^[0-9a-f]{64}$/.test(sha)) throw bad("bad_digest", "blob name must be a lowercase sha256 hex");

@@ -3,6 +3,11 @@
 //   keygen   --out <file>                         write a new agent key (Solana keypair JSON)
 //   doctor   [--full]                             print this machine's capabilities as JSON (SPEC 6.1);
 //                                                 --full adds docker, image and GPU detail
+//   register --core <url> --key <file> [--capabilities <file>] [--operator <name>]
+//                                                 register as a verifier (burns register_burn) and declare
+//                                                 capabilities (default: what doctor detects)
+//   bond     --core <url> --key <file> --amount <base units>   bond from the agent wallet
+//   status   --core <url> --key <file>            print this agent's view (bond, qualifications, eligibility)
 //   run      --core <url> --key <file> [options]  replay assignments and author candidates
 //   calibrate --core <url> --key <file> --recipe-id <id> --snapshot-id <id> [--runs 5]
 // run options:
@@ -22,6 +27,7 @@ import { AnthropicProposer } from "./proposers/anthropic.ts";
 import { loadScript, ScriptedProposer } from "./proposers/scripted.ts";
 import type { Proposer } from "./proposers/types.ts";
 import { doctor } from "./doctor.ts";
+import { CoreClient } from "../../core/src/client.ts";
 import { Worker, type Dishonesty } from "./worker.ts";
 
 function args(argv: string[]) {
@@ -34,6 +40,11 @@ function args(argv: string[]) {
     (out[a.slice(2)] ??= []).push(v);
   }
   return { one: (k: string) => out[k]?.[0], all: (k: string) => out[k] ?? [] };
+}
+
+function need(v: string | undefined, flag: string): string {
+  if (!v || v === "true") throw new Error(`${flag} is required`);
+  return v;
 }
 
 export function loadKey(path: string): AgentKey {
@@ -71,6 +82,33 @@ async function main() {
       for (const n of report.notes) console.error(`note: ${n}`);
       return;
     }
+    case "register": {
+      const key = loadKey(need(a.one("key"), "--key"));
+      const capsFile = a.one("capabilities");
+      const capabilities = capsFile ? JSON.parse(readFileSync(capsFile, "utf8")) : doctor().capabilities;
+      const c = new CoreClient(a.one("core") ?? "http://127.0.0.1:9660", key);
+      const r = await c.post("/v1/agents", { capabilities, ...(a.one("operator") ? { operator: a.one("operator") } : {}) });
+      console.log(JSON.stringify(r.body, null, 2));
+      if (r.status >= 300) process.exit(1);
+      return;
+    }
+    case "bond": {
+      const key = loadKey(need(a.one("key"), "--key"));
+      const amount = need(a.one("amount"), "--amount");
+      if (!/^\d+$/.test(amount)) throw new Error("--amount is an integer number of base units");
+      const c = new CoreClient(a.one("core") ?? "http://127.0.0.1:9660", key);
+      const r = await c.post(`/v1/agents/${key.id}/bond`, { amount });
+      console.log(JSON.stringify(r.body, null, 2));
+      if (r.status >= 300) process.exit(1);
+      return;
+    }
+    case "status": {
+      const key = loadKey(need(a.one("key"), "--key"));
+      const r = await new CoreClient(a.one("core") ?? "http://127.0.0.1:9660", null).get(`/v1/agents/${key.id}`);
+      console.log(JSON.stringify(r.body, null, 2));
+      if (r.status >= 300) process.exit(1);
+      return;
+    }
     case "calibrate": {
       const w = new Worker({ core: a.one("core") ?? "http://127.0.0.1:9660", key: loadKey(a.one("key")!) });
       const r = await w.submitCalibration(a.one("recipe-id")!, a.one("snapshot-id")!, Number(a.one("runs") ?? 5));
@@ -106,7 +144,9 @@ async function main() {
       });
       if (a.one("once")) {
         await w.declareCapabilities().catch((e) => console.error(`capabilities not declared: ${(e as Error).message}`));
+        await w.telemetry.start();
         await w.tick();
+        await w.telemetry.stop();
         return;
       }
       let stop = false;
@@ -116,7 +156,7 @@ async function main() {
       return;
     }
     default:
-      console.error("usage: lineage-worker keygen|doctor|run|calibrate (see header of src/main.ts)");
+      console.error("usage: lineage-worker keygen|doctor|register|bond|status|run|calibrate (see header of src/main.ts)");
       process.exit(2);
   }
 }

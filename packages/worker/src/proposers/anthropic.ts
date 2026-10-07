@@ -1,7 +1,7 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { existsSync, readdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { join, normalize, relative, resolve } from "node:path";
-import { canonicalizeDiff, guard, judge, matchesAny, type CandidateKind, type CandidateView } from "@lineage/protocol";
+import { canonicalizeDiff, guard, judge, matchesAny, sha256Hex, type CandidateKind, type CandidateView } from "@lineage/protocol";
 import { diffWorkingTree, evaluate } from "@lineage/sandbox";
 import type { Proposal, ProposeContext, Proposer } from "./types.ts";
 
@@ -222,6 +222,7 @@ export class AnthropicProposer implements Proposer {
         }
         if (call.name === "give_up") {
           ctx.log(`anthropic: gave up: ${String(input.reason ?? "")}`);
+          tools.report({ kind: "give_up" });
           gaveUp = true;
           results.push({ type: "tool_result", tool_use_id: call.id, content: "ok" });
           continue;
@@ -249,6 +250,15 @@ export class ToolBox {
   private lastAccepted: { kind: CandidateKind; target: string; diffHash: string; ratio?: number } | null = null;
 
   constructor(private ctx: ProposeContext, private maxEvals: number) {}
+
+  /** Live activity (SPEC 17.1). Never throws: telemetry must not change what the model sees. */
+  report(e: Parameters<NonNullable<ProposeContext["activity"]>>[0]): void {
+    try {
+      this.ctx.activity?.(e);
+    } catch {
+      /* ignore */
+    }
+  }
 
   private resolvePath(p: unknown): { abs: string; rel: string } {
     if (typeof p !== "string" || p.length === 0) throw new Error("path must be a non-empty string");
@@ -286,9 +296,12 @@ export class ToolBox {
       case "read_file": {
         const { abs, rel } = this.resolvePath(input.path);
         if (!existsSync(abs) || !statSync(abs).isFile()) throw new Error("no such file");
-        const lines = readFileSync(abs, "utf8").split("\n");
+        const bytes = readFileSync(abs);
+        const lines = bytes.toString("utf8").split("\n");
         const s = typeof input.start_line === "number" ? Math.max(1, input.start_line) : 1;
         const e = typeof input.end_line === "number" ? Math.min(lines.length, input.end_line) : lines.length;
+        // the hash covers the whole file, so the wall can check it against the generation tree
+        if (e >= s) this.report({ kind: "read", path: rel, start_line: s, end_line: e, content_sha256: sha256Hex(bytes) });
         let text = lines
           .slice(s - 1, e)
           .map((l, i) => `${s + i}\t${l}`)
@@ -298,6 +311,7 @@ export class ToolBox {
       }
       case "search": {
         if (typeof input.pattern !== "string") throw new Error("pattern must be a string");
+        if (input.pattern.length > 0 && input.pattern.length <= 500) this.report({ kind: "search", query: input.pattern });
         const p = Bun.spawnSync(["git", "grep", "-n", "-E", "-I", "--", input.pattern], { cwd: this.ctx.tree });
         const out = p.stdout.toString().split("\n").filter(Boolean);
         return out.length ? out.slice(0, 200).join("\n") + (out.length > 200 ? `\n[${out.length - 200} more]` : "") : "no matches";
@@ -309,6 +323,9 @@ export class ToolBox {
         const src = readFileSync(abs, "utf8");
         const count = src.split(input.old_string).length - 1;
         if (count !== 1) throw new Error(`old_string must occur exactly once (found ${count})`);
+        // path and line range only: the new text stays sealed until the candidate is revealed
+        const start = src.slice(0, src.indexOf(input.old_string)).split("\n").length;
+        this.report({ kind: "edit", path: rel, start_line: start, end_line: start + Math.max(0, input.old_string.split("\n").length - 1) });
         writeFileSync(abs, src.replace(input.old_string, () => input.new_string as string));
         return `edited ${rel}`;
       }
@@ -316,6 +333,7 @@ export class ToolBox {
         const { abs, rel } = this.resolvePath(input.path);
         this.checkWritable(rel);
         if (typeof input.contents !== "string") throw new Error("contents must be a string");
+        if (existsSync(abs)) this.report({ kind: "edit", path: rel, start_line: 1, end_line: Math.max(1, readFileSync(abs, "utf8").split("\n").length) });
         writeFileSync(abs, input.contents);
         return `wrote ${rel}`;
       }
@@ -341,7 +359,8 @@ export class ToolBox {
     if (!g.ok) return `guard rejected the change: ${g.violation} (${g.detail})`;
     this.evals++;
     this.ctx.log(`anthropic: evaluating (${this.evals}/${this.maxEvals})`);
-    const { result } = await evaluate({ loaded: this.ctx.loaded, deps: this.ctx.deps, parentPatches: this.ctx.parentPatches, candidatePatch: diff, seed: this.ctx.seed });
+    this.report({ kind: "evaluate", target: target.slice(0, 200) || kind });
+    const { result } = await evaluate({ loaded: this.ctx.loaded, deps: this.ctx.deps, parentPatches: this.ctx.parentPatches, candidatePatch: diff, seed: this.ctx.seed, onPhase: this.ctx.onPhase });
     const cand: CandidateView = { candidate_id: "self", author: "self", kind, target: kind === "fix" ? [target] : target };
     const j = judge(this.ctx.loaded.recipe, this.ctx.calibration, cand, [{ replay_id: "self", replayer: "self-check", seed: this.ctx.seed, result }], {
       quorum: 1,

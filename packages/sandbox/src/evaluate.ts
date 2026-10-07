@@ -57,6 +57,9 @@ export interface DepsLayer {
 
 export class EvalError extends Error {}
 
+/** Live phase reporting (SPEC 17.1): called as each step starts, with the container start time. */
+export type PhaseCallback = (phase: "prepare" | "build" | "test" | "equivalence" | "metrics", startedAt: number) => void;
+
 const tail = (s: string, n = 4000) => (s.length > n ? s.slice(s.length - n) : s);
 
 function record(t: Transcript, step: string, cmd: string, r: RunResult, side?: "base" | "cand"): void {
@@ -167,13 +170,14 @@ interface Ctx {
   outDir: string;
   /** `--gpus` value for cuda-class recipes (requires.gpu set), else undefined */
   gpus?: string;
+  onPhase?: PhaseCallback;
 }
 
 async function run(ctx: Ctx, step: string, cmd: string, mounts: Mount[], timeout_s: number, side?: "base" | "cand", cwd = "/work/src") {
   // GPU steps that execute kernels take the device in turns across every worker on this host
   // (builds only compile). See withHostLock.
   const exclusive = ctx.gpus && step !== "build";
-  const go = () => runContainer({
+  const go = () => (phase(ctx.onPhase, step as Parameters<PhaseCallback>[0]), runContainer({
     image: ctx.image,
     cmd,
     cwd,
@@ -184,10 +188,19 @@ async function run(ctx: Ctx, step: string, cmd: string, mounts: Mount[], timeout
     timeout_s,
     job: `${step}-${side ?? "x"}`,
     gpus: ctx.gpus,
-  });
+  }));
   const res = exclusive ? await withHostLock(join(LINEAGE_HOME, "locks"), `gpu-${ctx.gpus!.replace(/[^0-9a-z]/gi, "")}`, go) : await go();
   record(ctx.transcript, step, cmd, res, side);
   return res;
+}
+
+/** Telemetry must never break a replay: callback errors are swallowed. */
+function phase(cb: PhaseCallback | undefined, p: Parameters<PhaseCallback>[0]) {
+  try {
+    cb?.(p, Date.now());
+  } catch {
+    /* ignore */
+  }
 }
 
 async function build(ctx: Ctx, tree: string, side: "base" | "cand"): Promise<{ ok: boolean; digest?: Hex }> {
@@ -274,8 +287,9 @@ function cpuModel(): string {
   return cpus()[0]?.model ?? "unknown";
 }
 
-async function setup(loaded: LoadedRecipe, deps: DepsLayer, seed: Hex, parentPatches: string[], candidatePatch: string | null) {
+async function setup(loaded: LoadedRecipe, deps: DepsLayer, seed: Hex, parentPatches: string[], candidatePatch: string | null, onPhase?: PhaseCallback) {
   const r = loaded.recipe;
+  phase(onPhase, "prepare");
   const image = await imageDigest(r.image);
   const arch = imageArch(r.image);
   if (r.requires?.arch && arch !== r.requires.arch) throw new EvalError(`image is ${arch} but the recipe requires ${r.requires.arch} (SPEC 6.1)`);
@@ -314,7 +328,7 @@ async function setup(loaded: LoadedRecipe, deps: DepsLayer, seed: Hex, parentPat
   parentPatches.forEach((p, i) => {
     if (!applyPatch(base, p)) throw new EvalError(`parent series broken at generation ${i + 1}`);
   });
-  const ctx: Ctx = { loaded, deps, seed, image, sourceEpoch: commitTime(r.repo, r.commit), transcript, outDir, gpus };
+  const ctx: Ctx = { loaded, deps, seed, image, sourceEpoch: commitTime(r.repo, r.commit), transcript, outDir, gpus, onPhase };
   return { ctx, work, base };
 }
 
@@ -334,10 +348,11 @@ export async function evaluate(input: {
   candidatePatch: string;
   seed: Hex;
   keepWork?: boolean;
+  onPhase?: PhaseCallback;
 }): Promise<EvalOutput> {
   const { loaded, deps, seed } = input;
   const r = loaded.recipe;
-  const { ctx, work, base } = await setup(loaded, deps, seed, input.parentPatches, input.candidatePatch);
+  const { ctx, work, base } = await setup(loaded, deps, seed, input.parentPatches, input.candidatePatch, input.onPhase);
   try {
     const g = guard(input.candidatePatch, r.patch);
     const guardCode: "ok" | GuardViolation = g.ok ? "ok" : g.violation!;
@@ -397,12 +412,12 @@ function finish(result: ReplayResult, ctx: Ctx): EvalOutput {
  * Calibration (SPEC 6): stable test set, known failures, quarantine, metric noise, and the median
  * evaluation time used for windows and cost classes.
  */
-export async function calibrate(input: { loaded: LoadedRecipe; deps: DepsLayer; parentPatches?: string[]; runs?: number; seed: Hex }): Promise<{ calibration: Calibration; transcript: Transcript; snapshot_commit: string }> {
+export async function calibrate(input: { loaded: LoadedRecipe; deps: DepsLayer; parentPatches?: string[]; runs?: number; seed: Hex; onPhase?: PhaseCallback }): Promise<{ calibration: Calibration; transcript: Transcript; snapshot_commit: string }> {
   const { loaded, deps, seed } = input;
   const r = loaded.recipe;
   const runs = input.runs ?? 5;
   const started = performance.now();
-  const { ctx, work, base } = await setup(loaded, deps, seed, input.parentPatches ?? [], null);
+  const { ctx, work, base } = await setup(loaded, deps, seed, input.parentPatches ?? [], null, input.onPhase);
   try {
     openPermissions(work);
     const b = await build(ctx, base, "base");

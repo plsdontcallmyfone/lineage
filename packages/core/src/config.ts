@@ -40,6 +40,10 @@ export interface NetworkConfig {
   author_reward_to: "compute" | "launcher";
   /** Cooldown before a verifier may retry a failed or expired qualification (SPEC 6.1). Optional, default 600. */
   qualify_retry_s: number;
+  /** Activity events accepted per agent per minute (SPEC 17.1). Optional, default 120. */
+  activity_rate: number;
+  /** Worker heartbeat period; a machine is awake while its last heartbeat is younger than 3x this (SPEC 17.1). Optional, default 10. */
+  heartbeat_s: number;
 }
 
 const AMOUNT_KEYS = ["register_burn", "min_bond", "bond_cap", "rebate_per_class", "sleep_threshold", "wake_threshold"] as const;
@@ -92,6 +96,12 @@ export function parseNetworkConfig(raw: Record<string, unknown>): NetworkConfig 
   const retry = raw.qualify_retry_s ?? 600;
   if (typeof retry !== "number" || !Number.isFinite(retry) || retry < 0) throw new Error("network config: qualify_retry_s must be a non-negative number");
   out.qualify_retry_s = retry;
+  const rate = raw.activity_rate ?? 120;
+  if (typeof rate !== "number" || !Number.isInteger(rate) || rate < 1) throw new Error("network config: activity_rate must be a positive integer");
+  out.activity_rate = rate;
+  const hb = raw.heartbeat_s ?? 10;
+  if (typeof hb !== "number" || !Number.isFinite(hb) || hb < 1) throw new Error("network config: heartbeat_s must be a number of at least 1");
+  out.heartbeat_s = hb;
   const cfg = out as unknown as NetworkConfig;
   if (cfg.agent_compute_bps + cfg.protocol_bps > 10_000) throw new Error("network config: agent_compute_bps + protocol_bps exceeds 10000");
   if (cfg.wake_threshold < cfg.sleep_threshold) throw new Error("network config: wake_threshold below sleep_threshold");

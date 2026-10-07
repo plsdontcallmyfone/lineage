@@ -51,7 +51,9 @@ import {
   type ReplayResult,
   type RevealedReplay,
 } from "./protocol.ts";
+import { Live } from "./live.ts";
 import { openDb } from "./store.ts";
+import type { TreeSource } from "./trees.ts";
 
 // The Core coordinator: SPEC sections 5, 10, 11, 12, 13. Every state change goes through a method
 // of this class inside one SQLite transaction, time comes only from the injected clock, and every
@@ -72,6 +74,8 @@ export interface CoreOptions {
   maxBlobBytes?: number;
   /** Source of epoch secrets (tests may make it deterministic). */
   randomHex?: (bytes: number) => string;
+  /** Where the live wall's generation trees come from (SPEC 17.1). Null: paths unchecked, no file reads. */
+  trees?: TreeSource | null;
 }
 
 /** Candidate rejection reasons: the judge's reasons plus those Core decides itself. */
@@ -321,6 +325,7 @@ export class Core {
   private pendingEvents: { type: string; data: unknown; id: number; at: number }[] = [];
   private listeners = new Set<(e: CoreEvent) => void>();
   private depth = 0;
+  readonly live: Live;
 
   constructor(opts: CoreOptions) {
     this.cfg = opts.network;
@@ -334,6 +339,7 @@ export class Core {
     this.db = openDb(join(opts.dataDir, "core.db"));
     this.blobs = new BlobStore(join(opts.dataDir, "blobs"));
     this.ledger = new Ledger(this.db, () => this.clock.now());
+    this.live = new Live(this, opts.trees ?? null);
     this.tx(() => {
       if (!this.db.query("SELECT n FROM epochs LIMIT 1").get()) this.openEpoch(0, this.now());
     });
@@ -372,6 +378,16 @@ export class Core {
     const at = this.now();
     const r = this.db.query("INSERT INTO events (at, type, data) VALUES (?, ?, ?)").run(at, type, JSON.stringify(data));
     this.pendingEvents.push({ id: Number(r.lastInsertRowid), at, type, data });
+  }
+
+  /** Records an event from a collaborator module (live.ts); same semantics as emit. */
+  emitEvent(type: string, data: unknown) {
+    this.emit(type, data);
+  }
+
+  /** Digest of declared capabilities, as workers send it in heartbeats (SPEC 17.1). */
+  capsDigest(caps: unknown): string {
+    return H("caps", canonicalJson(caps));
   }
 
   subscribe(fn: (e: CoreEvent) => void): () => void {
@@ -2123,6 +2139,7 @@ export class Core {
       slashed_total: slashed.toString(),
       units_epoch: unitsEpoch,
       units_total: unitsTotal,
+      runway: this.live.runway(id),
       ...(opts.admin || shadowRevealed ? { shadow: !!a.shadow } : {}),
     };
   }
@@ -2464,6 +2481,7 @@ export class Core {
       candidates: one("SELECT COUNT(*) AS c FROM candidates"),
       agents: one("SELECT COUNT(*) AS c FROM agents"),
       epoch: this.currentEpoch().n,
+      ...this.live.stats(),
       balances: { treasury: this.ledger.balance(ACC.treasury).toString(), reserve: this.ledger.balance(ACC.reserve).toString(), pool: this.ledger.balance(ACC.pool).toString(), burned: this.ledger.balance(ACC.burned).toString() },
     };
   }

@@ -1,5 +1,6 @@
 import type { Calibration, CandidateKind } from "@lineage/protocol";
-import type { DepsLayer, LoadedRecipe } from "@lineage/sandbox";
+import type { DepsLayer, LoadedRecipe, PhaseCallback } from "@lineage/sandbox";
+import type { ActivityInput } from "../telemetry.ts";
 
 export interface Finding {
   key: string;
@@ -19,6 +20,10 @@ export interface ProposeContext {
   /** seed for the author's own measurements (never the replay seed) */
   seed: string;
   log: (msg: string) => void;
+  /** Live activity (SPEC 17.1): what the proposer actually reads, searches, edits and evaluates. Best effort, never throws. */
+  activity?: (e: ActivityInput) => void;
+  /** Sandbox phases of the proposer's own evaluations, for heartbeats. */
+  onPhase?: PhaseCallback;
 }
 
 export interface Proposal {

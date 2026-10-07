@@ -27,6 +27,7 @@ import { CoreClient } from "../../core/src/client.ts";
 import type { Finding, Proposer } from "./proposers/types.ts";
 import { doctor } from "./doctor.ts";
 import { RecipeBook } from "./recipes.ts";
+import { Telemetry } from "./telemetry.ts";
 
 // The worker process: replays assignments first (they have deadlines), then authors when it has a
 // proposer and its agent is an awake launched agent (SPEC 3, 5).
@@ -50,6 +51,8 @@ export interface WorkerOptions {
   maxCandidates?: number;
   /** capabilities to declare; default: what doctor() detects */
   capabilities?: Capabilities;
+  /** live heartbeats and activity (SPEC 17.1); default on */
+  telemetry?: boolean;
 }
 
 interface PendingReplay {
@@ -82,6 +85,7 @@ class ApiFailure extends Error {
 export class Worker {
   readonly client: CoreClient;
   readonly recipes = new RecipeBook();
+  readonly telemetry: Telemetry;
   private log: (m: string) => void;
   private pending = new Map<string, PendingReplay>();
   private stateFile: string;
@@ -95,6 +99,7 @@ export class Worker {
     const dir = opts.stateDir ?? join(process.env.LINEAGE_HOME ?? join(homedir(), ".lineage"), "worker", opts.key.id);
     mkdirSync(dir, { recursive: true });
     this.stateFile = join(dir, "pending.json");
+    this.telemetry = new Telemetry(this.client, this.log, { enabled: opts.telemetry !== false });
     if (existsSync(this.stateFile)) {
       for (const [k, v] of Object.entries(JSON.parse(readFileSync(this.stateFile, "utf8")) as Record<string, PendingReplay>)) this.pending.set(k, v);
     }
@@ -135,6 +140,8 @@ export class Worker {
             this.log(`replay ${a.replay_id.slice(0, 10)}: committed but local result lost; cannot reveal`);
             continue;
           }
+          this.telemetry.job(a.kind === "qualify" ? "qualify" : "replay", { replay_id: a.replay_id });
+          this.telemetry.phase("reveal");
           const r = await this.ok(this.client.post(`/v1/replays/${a.replay_id}/reveal`, { result: p.result, salt: p.salt }), "reveal");
           this.pending.delete(a.replay_id);
           this.persist();
@@ -143,6 +150,8 @@ export class Worker {
         }
       } catch (e) {
         this.log(`replay ${a.replay_id.slice(0, 10)}: ${(e as Error).message}`);
+      } finally {
+        this.telemetry.idle();
       }
     }
     return acted;
@@ -150,6 +159,7 @@ export class Worker {
 
   private async runAndCommit(a: Assignment): Promise<void> {
     const t0 = Date.now();
+    this.telemetry.job(a.kind === "qualify" || !a.candidate ? "qualify" : "replay", { replay_id: a.replay_id });
     const loaded = this.recipes.get(a.recipe_id);
     let result: ReplayResult;
     let transcript: Transcript | Record<string, unknown>;
@@ -160,8 +170,9 @@ export class Worker {
       ({ result, transcript } = fabricate(a));
     } else {
       const deps = await this.recipes.depsFor(loaded, a.lineage.deps_digest);
-      ({ result, transcript } = await evaluate({ loaded, deps, parentPatches: a.parent_series.map((p) => p.patch), candidatePatch: a.candidate!.patch, seed: a.seed }));
+      ({ result, transcript } = await evaluate({ loaded, deps, parentPatches: a.parent_series.map((p) => p.patch), candidatePatch: a.candidate!.patch, seed: a.seed, onPhase: this.telemetry.onPhase }));
     }
+    this.telemetry.phase("commit");
     const bytes = canonicalJson(transcript);
     if (hashJson(transcript) !== result.transcript_digest) result.transcript_digest = hashJson(transcript);
     await this.ok(this.client.putBlob(result.transcript_digest, new TextEncoder().encode(bytes)), "transcript upload");
@@ -197,7 +208,7 @@ export class Worker {
       transcript_digest: "",
     };
     try {
-      const { calibration, transcript } = await calibrate({ loaded, deps, seed: a.seed, runs: 1 });
+      const { calibration, transcript } = await calibrate({ loaded, deps, seed: a.seed, runs: 1, onPhase: this.telemetry.onPhase });
       result.build.base = "ok";
       result.tests.base_pass = [...calibration.stable].sort();
       for (const m of a.recipe.metrics) {
@@ -217,7 +228,8 @@ export class Worker {
   /** Declares this machine's capabilities to Core (SPEC 6.1). */
   async declareCapabilities(): Promise<Capabilities> {
     const caps = this.opts.capabilities ?? doctor().capabilities;
-    await this.ok(this.client.put(`/v1/agents/${this.id}/capabilities`, { capabilities: caps }), "declare capabilities");
+    const declared = await this.ok(this.client.put(`/v1/agents/${this.id}/capabilities`, { capabilities: caps }), "declare capabilities");
+    this.telemetry.setCapabilities(declared?.capabilities ?? caps);
     this.log(`declared capabilities: ${caps.arch}, ${caps.cpus} cpus, ${caps.memory_mb} MB, ${caps.gpus.length} gpus`);
     return caps;
   }
@@ -254,6 +266,9 @@ export class Worker {
     const findings = (await this.ok<any[]>(this.client.get(`/v1/findings?lineage=${view.lineage_id}`), "findings")).map((f) => ({ key: f.finding_key ?? f.key, kind: f.kind, target: f.target }) as Finding);
     const deps = await this.recipes.depsFor(loaded, tree.deps_digest);
     const work = newWorkDir("author");
+    const where = { lineage_id: view.lineage_id as string, gen_id: tree.gen_id as string, commit: tree.commit as string };
+    this.telemetry.job("author", { lineage_id: where.lineage_id, gen_id: where.gen_id });
+    this.telemetry.phase("propose");
     try {
       const dir = join(work, "src");
       materialize(loaded.recipe.repo, loaded.recipe.commit, loaded.overlayDir, dir);
@@ -265,7 +280,18 @@ export class Worker {
       }
       for (const p of parentPatches) if (!applyPatch(dir, p)) throw new Error("parent series does not apply locally");
       const seed = randomBytes(8).toString("hex");
-      const proposal = await proposer.propose({ loaded, deps, calibration: view.calibration, parentPatches, findings, tree: dir, seed, log: this.log });
+      const proposal = await proposer.propose({
+        loaded,
+        deps,
+        calibration: view.calibration,
+        parentPatches,
+        findings,
+        tree: dir,
+        seed,
+        log: this.log,
+        activity: (e) => this.telemetry.activity(where, e),
+        onPhase: this.telemetry.onPhase,
+      });
       if (!proposal) return null;
       const raw = diffWorkingTree(dir);
       if (!raw.trim()) {
@@ -288,12 +314,15 @@ export class Worker {
         }),
         "commit candidate",
       );
+      this.telemetry.activity(where, { kind: "submit", target: (Array.isArray(proposal.target) ? proposal.target.join(",") : proposal.target).slice(0, 200) });
       const revealed = await this.ok(this.client.post(`/v1/candidates/${committed.commit_id}/reveal`, { patch, salt }), "reveal candidate");
       this.submitted++;
       this.log(`author: ${proposal.kind} on ${JSON.stringify(proposal.target)} (${g.lines} lines) -> ${revealed.status}${revealed.reason ? ` (${revealed.reason})` : ""}`);
       return committed.commit_id;
     } finally {
       removeTree(work);
+      this.telemetry.idle();
+      void this.telemetry.flush();
     }
   }
 
@@ -330,9 +359,14 @@ export class Worker {
     } catch (e) {
       this.log(`capabilities not declared: ${(e as Error).message}`);
     }
-    while (!until?.()) {
-      await this.tick();
-      await Bun.sleep(intervalMs);
+    await this.telemetry.start();
+    try {
+      while (!until?.()) {
+        await this.tick();
+        await Bun.sleep(intervalMs);
+      }
+    } finally {
+      await this.telemetry.stop();
     }
   }
 }
