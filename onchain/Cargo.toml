@@ -1,0 +1,14 @@
+[workspace]
+members = ["programs/lineage-registry", "programs/lineage-launch", "tests"]
+resolver = "2"
+
+[profile.release]
+opt-level = "z"
+strip = true
+overflow-checks = true
+lto = "fat"
+codegen-units = 1
+
+[profile.dev]
+# Host test builds only: no debug info keeps the shared disk budget small.
+debug = 0

@@ -1,0 +1,22 @@
+[toolchain]
+anchor_version = "0.31.1"
+
+[features]
+resolution = true
+skip-lint = false
+
+[programs.localnet]
+lineage_registry = "2vhj9aBZkuoCpmJxm5BcA3CYkvBJgY6VHTax8FpFmxuY"
+lineage_launch = "8eHzm1XtNtbxJujrMAci4VdhCJvQttFUBukmkFaUwsAT"
+
+[programs.devnet]
+lineage_registry = "2vhj9aBZkuoCpmJxm5BcA3CYkvBJgY6VHTax8FpFmxuY"
+lineage_launch = "8eHzm1XtNtbxJujrMAci4VdhCJvQttFUBukmkFaUwsAT"
+
+[provider]
+# Never the machine-wide default: pass the dedicated key explicitly (see DEPLOY.md).
+cluster = "devnet"
+wallet = "~/.config/lineage/devnet-deployer.json"
+
+[workspace]
+members = ["programs/lineage-registry", "programs/lineage-launch"]
