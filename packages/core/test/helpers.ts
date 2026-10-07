@@ -346,3 +346,24 @@ export async function reconcileOk(env: Env) {
   if (!r.ok) throw new Error("ledger does not reconcile: " + r.errors.join("; "));
   return r;
 }
+
+/** Canary scheduling compressed for tests (SPEC 10.5; defaults are minutes to an hour). */
+export const CANARY_FAST = { shadow_launch_spread_s: 60, shadow_min_age_s: 30, canary_inject_delay_s: [5, 20], canary_reveal_delay_s: [2, 10] };
+
+/** Lets planned shadows launch and age past shadow_min_age_s (call after adding canaries). */
+export function warmShadows(env: { clock: FakeClock; core: Core }) {
+  for (let i = 0; i < 13; i++) {
+    env.clock.advance(5_000);
+    env.core.tick();
+  }
+  env.clock.advance(31_000);
+  env.core.tick();
+}
+
+/** Advances the clock tick by tick until queued canaries are committed and revealed. */
+export function settleCanaries(env: { clock: FakeClock; core: Core }, steps = 6) {
+  for (let i = 0; i < steps; i++) {
+    env.clock.advance(5_000);
+    env.core.tick();
+  }
+}

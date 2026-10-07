@@ -164,8 +164,9 @@ describe("rejections from the judge", () => {
   test("noisy metric: each replay must pass alone (noisy_split), and both passing accepts", async () => {
     const e = (env = await setup({ over: { bootstrap_resamples: 300 } }));
     const author = await makeAuthor(e);
-    const fast = { base: [100, 101, 99, 100, 102, 98, 100, 101, 99, 100], cand: [80, 81, 79, 80, 82, 78, 80, 81, 79, 80], deterministic: false };
-    const flat = { base: [100, 101, 99, 100, 102, 98, 100, 101, 99, 100], cand: [100, 101, 99, 100, 102, 98, 100, 101, 99, 100], deterministic: false };
+    // the recipe asks for 15 rounds of ns, and the judge requires that many samples per side
+    const fast = { base: [100, 101, 99, 100, 102, 98, 100, 101, 99, 100, 100, 101, 99, 100, 102], cand: [80, 81, 79, 80, 82, 78, 80, 81, 79, 80, 80, 81, 79, 80, 82], deterministic: false };
+    const flat = { base: [100, 101, 99, 100, 102, 98, 100, 101, 99, 100, 100, 101, 99, 100, 102], cand: [100, 101, 99, 100, 102, 98, 100, 101, 99, 100, 100, 101, 99, 100, 102], deterministic: false };
     const ok = await submit(e, author, diff("n1"), { target: "ns" });
     await runReplays(e, ok.candidate_id, honest(result({ metrics: { ns: fast } })));
     expect((await candidate(e, ok.candidate_id)).status).toBe("accepted");

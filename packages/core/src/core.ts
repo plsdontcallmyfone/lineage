@@ -51,6 +51,7 @@ import {
   type ReplayResult,
   type RevealedReplay,
 } from "./protocol.ts";
+import { Hardening } from "./hardening.ts";
 import { Live } from "./live.ts";
 import { openDb } from "./store.ts";
 import type { TreeSource } from "./trees.ts";
@@ -355,6 +356,8 @@ export class Core {
   private listeners = new Set<(e: CoreEvent) => void>();
   private depth = 0;
   readonly live: Live;
+  /** Canary scheduling, unbond involvement, twin candidates, audit fallback (src/hardening.ts). */
+  readonly hardening: Hardening;
   readonly chainMode: boolean;
   /** Set by ChainBridge in chain mode: the last chain read, for /v1/stats and /v1/chain. */
   chainView: (() => unknown) | null = null;
@@ -374,6 +377,7 @@ export class Core {
     this.blobs = new BlobStore(join(opts.dataDir, "blobs"));
     this.ledger = new Ledger(this.db, () => this.clock.now());
     this.live = new Live(this, opts.trees ?? null);
+    this.hardening = new Hardening(this);
     this.chainMode = !!opts.chainMode;
     this.tx(() => {
       if (!this.db.query("SELECT n FROM epochs LIMIT 1").get()) this.openEpoch(opts.firstEpoch ?? 0, this.now());
@@ -654,17 +658,17 @@ export class Core {
 
   private matureUnbonds() {
     if (this.chainMode) return; // withdraw_unbonded moves the tokens on chain; the bond mirror follows
-    const rows = this.db
-      .query<AgentRow, [number]>("SELECT * FROM agents WHERE unbond_amount != '0' AND unbond_ready_at <= ?")
-      .all(this.now());
-    for (const a of rows) {
-      // slashes during the cooldown come out of the same bond
-      const amount = [BigInt(a.unbond_amount), this.bondOf(a.agent_id)].reduce((x, y) => (x < y ? x : y));
-      this.ledger.transfer(ACC.bond(a.agent_id), ACC.wallet(a.agent_id), amount, "unbond", a.agent_id);
-      this.db.query("UPDATE agents SET unbond_amount = '0', unbond_ready_at = NULL WHERE agent_id = ?").run(a.agent_id);
-      this.db.query("INSERT INTO bonds (agent_id, action, amount, at) VALUES (?, 'unbond_release', ?, ?)").run(a.agent_id, amount.toString(), this.now());
-      this.emit("agent.unbonded", { agent: a.agent_id, amount: amount.toString() });
-    }
+    // the cooldown counts from the last resolved involvement (SPEC 13.6, src/hardening.ts)
+    this.hardening.matureUnbonds((id) => this.releaseUnbond(this.agentRow(id)!));
+  }
+
+  private releaseUnbond(a: AgentRow) {
+    // slashes during the cooldown come out of the same bond
+    const amount = [BigInt(a.unbond_amount), this.bondOf(a.agent_id)].reduce((x, y) => (x < y ? x : y));
+    this.ledger.transfer(ACC.bond(a.agent_id), ACC.wallet(a.agent_id), amount, "unbond", a.agent_id);
+    this.db.query("UPDATE agents SET unbond_amount = '0', unbond_ready_at = NULL WHERE agent_id = ?").run(a.agent_id);
+    this.db.query("INSERT INTO bonds (agent_id, action, amount, at) VALUES (?, 'unbond_release', ?, ?)").run(a.agent_id, amount.toString(), this.now());
+    this.emit("agent.unbonded", { agent: a.agent_id, amount: amount.toString() });
   }
 
   faucet(body: unknown) {
@@ -701,9 +705,9 @@ export class Core {
   }
 
   /** Agent token trading fees arriving (simulated crank_fees, SPEC 13.7). */
-  agentFees(body: unknown) {
+  agentFees(body: unknown, opts: { shadow?: boolean } = {}) {
     return this.tx(() => {
-      this.notOnChain("agent token fees (crank_fees)");
+      if (!opts.shadow) this.notOnChain("agent token fees (crank_fees)");
       if (!isObj(body)) throw bad("bad_body", "object expected");
       const agent = String(body.agent ?? "");
       const a = this.mustAgent(agent);
@@ -793,7 +797,7 @@ export class Core {
   }
 
   /** Verifier eligibility (SPEC 5.4, 10.3), before per-candidate exclusions. */
-  private isEligible(a: AgentRow, epoch: number): boolean {
+  private isEligible(a: AgentRow, epoch: number, ignoreLoad = false): boolean {
     return (
       !a.shadow &&
       !a.reference &&
@@ -801,7 +805,7 @@ export class Core {
       a.unbond_amount === "0" &&
       a.suspended_through_epoch < epoch &&
       this.bondOf(a.agent_id) >= this.cfg.min_bond &&
-      this.openReplaysOf(a.agent_id) < this.cfg.max_open_replays
+      (ignoreLoad || this.openReplaysOf(a.agent_id) < this.cfg.max_open_replays)
     );
   }
 
@@ -982,10 +986,11 @@ export class Core {
       if (!g.ok) throw bad("canary_guard", `canary must pass the static guard to reach replayers (${g.violation}: ${g.detail})`);
       const ph = patchHash(patch);
       const id = H("canary", l.lineage_id, ph, kind, canonicalJson(target));
-      this.db
+      const r = this.db
         .query("INSERT OR IGNORE INTO canaries (canary_id, lineage_id, patch, patch_hash, kind, target, expected_reason, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)")
         .run(id, l.lineage_id, patch, ph, kind, JSON.stringify(target), expected, this.now());
-      return { canary_id: id, patch_hash: ph };
+      if (r.changes) this.hardening.planShadows();
+      return { canary_id: id, patch_hash: ph, created: r.changes > 0 };
     });
   }
 
@@ -994,33 +999,6 @@ export class Core {
       ? this.db.query<CanaryRow, [string]>("SELECT * FROM canaries WHERE lineage_id = ? ORDER BY created_at").all(lineage)
       : this.db.query<CanaryRow, []>("SELECT * FROM canaries ORDER BY created_at").all();
     return rows.map((r) => ({ ...r, target: JSON.parse(r.target) }));
-  }
-
-  private maybeInjectCanary(trigger: CandRow) {
-    if (this.cfg.canary_rate <= 0) return;
-    const canaries = this.db
-      .query<CanaryRow, [string]>("SELECT * FROM canaries WHERE lineage_id = ? ORDER BY canary_id")
-      .all(trigger.lineage_id);
-    if (!canaries.length) return;
-    const ep = this.currentEpoch();
-    const rng = new Rng(H("m1-canary", ep.secret, trigger.candidate_id!));
-    if (rng.next() >= this.cfg.canary_rate) return;
-    const c = canaries[rng.int(canaries.length)]!;
-    const l = this.lineageRow(c.lineage_id)!;
-    // a fresh shadow identity per canary, launched like a hosted agent (never assignable as a replayer)
-    const key = generateAgentKey();
-    const launcher = generateAgentKey().id;
-    const mint = generateAgentKey().id;
-    const repo = this.db.query<{ url: string }, [string]>("SELECT url FROM repos WHERE repo_id = ?").get(l.repo_id)!.url;
-    this.launchAgent({ agent: key.id, mint, launcher, target_repo: repo, hosted: true, identity_mode: "app" }, { shadow: true });
-    this.ledger.transfer(ACC.faucet, ACC.compute(key.id), this.cfg.wake_threshold, "shadow_funding", key.id);
-    this.refreshAwake(key.id);
-    const target = JSON.parse(c.target);
-    const salt = this.randomHex(16);
-    const commitment = patchCommitment(c.patch_hash, salt);
-    const committed = this.commitCandidateInner(key.id, { lineage_id: l.lineage_id, parent_gen_id: l.tip, kind: c.kind, target, commitment }, { canary: c.canary_id });
-    this.db.query("UPDATE canaries SET uses = uses + 1 WHERE canary_id = ?").run(c.canary_id);
-    this.revealCandidateInner(key.id, committed.commit_id, { patch: c.patch, salt });
   }
 
   // ---------------------------------------------------------------------------------------------
@@ -1130,6 +1108,12 @@ export class Core {
       .get(c.lineage_id, ph, sh);
     if (dup) {
       this.finalizeCandidate(fresh, "rejected", "duplicate", `same change as accepted generation ${dup.gen_id}`, null);
+      return this.candidateView(c.commit_id, author);
+    }
+    // an earlier commitment owns this change (SPEC 10.4): a copied revealed patch loses at once
+    const twin = this.hardening.earlierTwin(fresh, ph, sh);
+    if (twin) {
+      this.finalizeCandidate(fresh, "rejected", "duplicate", `same change as earlier-committed candidate ${twin.candidate_id ?? twin.commit_id}`, null);
       return this.candidateView(c.commit_id, author);
     }
     this.db.query("UPDATE candidates SET status = 'queued', want_replays = ? WHERE commit_id = ?").run(this.cfg.quorum, c.commit_id);
@@ -1305,7 +1289,8 @@ export class Core {
         "UPDATE candidates SET want_replays = want_replays - ?, want_reference = ?, rounds = rounds + 1, status = CASE WHEN status = 'disputed' THEN 'disputed' ELSE 'replaying' END WHERE commit_id = ?",
       )
       .run(d.chosen.length, d.reference ? 0 : c.want_reference, c.commit_id);
-    if (initial && c.stage === 0 && !c.is_canary) this.maybeInjectCanary(c);
+    // the canary, if any, is committed on a later tick at a random offset (SPEC 10.5)
+    if (initial && c.stage === 0 && !c.is_canary) this.hardening.scheduleCanary(c);
   }
 
   private assignAudit(a: AuditRow) {
@@ -1671,8 +1656,15 @@ export class Core {
       this.fillWants();
       return;
     }
+    // an earlier commitment with the same change is still open: hold this one (SPEC 10.4)
+    if (j.outcome === "accepted" && this.hardening.deferIfTwinOpen(c)) return;
     this.closeDispute(c, j.outcome);
     this.settleRoles(c, grp, j, true);
+    const twinGen = j.outcome === "accepted" ? this.hardening.acceptedTwin(c) : null;
+    if (twinGen) {
+      this.finalizeCandidate(c, "rejected", "duplicate", `same change as accepted generation ${twinGen}`, j);
+      return;
+    }
     if (j.outcome === "rejected") {
       let reason: CandidateReason = j.reason!;
       if (c.stage > 0 && reason === "apply_conflict") reason = "stale_conflict";
@@ -1841,7 +1833,7 @@ export class Core {
       const aid = H("audit", gid);
       this.db
         .query("INSERT INTO audits (audit_id, gen_id, candidate_id, status, want_replays, want_reference, created_at, epoch) VALUES (?, ?, ?, 'pending', ?, ?, ?, ?)")
-        .run(aid, gid, c.candidate_id!, hasRef ? 1 : 2, hasRef ? 1 : 0, this.now(), ep.n);
+        .run(aid, gid, c.candidate_id!, this.cfg.audit_replayers + (hasRef ? 0 : 1), hasRef ? 1 : 0, this.now(), ep.n);
       this.db.query("UPDATE generations SET audit_status = 'pending' WHERE gen_id = ?").run(gid);
       this.emit("audit.opened", { audit_id: aid, gen_id: gid });
       this.fillWants();
@@ -1976,6 +1968,7 @@ export class Core {
       }
       for (const g of touched) this.progress(g);
       this.expireQualifications();
+      this.hardening.tick();
       this.matureUnbonds();
       this.fillWants();
       let ep = this.currentEpoch();
@@ -2295,7 +2288,12 @@ export class Core {
   // ---------------------------------------------------------------------------------------------
   // Read views
 
-  agentView(id: string, opts: { admin?: boolean } = {}) {
+  /**
+   * Public view unless `admin` or `self`: the public view never shows the agent's open replay
+   * count, its eligibility under load or its unbond ready time, because each of them changes when
+   * it is handed a sealed assignment (SPEC 17.1).
+   */
+  agentView(id: string, opts: { admin?: boolean; self?: boolean } = {}) {
     const a = this.agentRow(id);
     if (!a) throw notFound("agent");
     const epoch = this.currentEpoch().n;
@@ -2309,6 +2307,7 @@ export class Core {
       .all(id)
       .reduce((s, r) => s + BigInt(r.amount), 0n);
     const shadowRevealed = !!a.shadow && this.shadowRevealed(id);
+    const full = !!opts.admin || !!opts.self;
     return {
       agent_id: a.agent_id,
       kind: a.kind,
@@ -2326,15 +2325,20 @@ export class Core {
       bond: this.bondOf(id).toString(),
       compute: this.ledger.balance(ACC.compute(id)).toString(),
       cooling: a.unbond_amount !== "0",
-      unbond: a.unbond_amount !== "0" ? { amount: a.unbond_amount, ready_at: a.unbond_ready_at } : null,
+      unbond:
+        a.unbond_amount !== "0"
+          ? full
+            ? { amount: a.unbond_amount, ready_at: a.unbond_ready_at, waiting_on: a.unbond_ready_at === null ? this.hardening.involvement(id).open : [] }
+            : { amount: a.unbond_amount, ready_at: null }
+          : null,
       suspended: a.suspended_through_epoch >= epoch,
       suspended_through_epoch: a.suspended_through_epoch >= 0 ? a.suspended_through_epoch : null,
-      eligible: this.isEligible(a, epoch),
+      eligible: this.isEligible(a, epoch, !full),
       capabilities: this.capsOf(a),
       capabilities_at: a.capabilities_at,
-      qualified_lineages: this.qualifiedLineages(a, epoch),
+      qualified_lineages: this.qualifiedLineages(a, epoch, !full),
       qualifications: this.qualificationsOf(id),
-      open_replays: this.openReplaysOf(id),
+      open_replays: full ? this.openReplaysOf(id) : null,
       strikes_epoch: strikesEpoch,
       strikes_total: strikesTotal,
       slashed_total: slashed.toString(),
@@ -2346,8 +2350,8 @@ export class Core {
   }
 
   /** Lineages this agent can be drawn for right now (SPEC 6.1, 10.3). */
-  private qualifiedLineages(a: AgentRow, epoch: number): string[] {
-    if (!this.isEligible(a, epoch)) return [];
+  private qualifiedLineages(a: AgentRow, epoch: number, ignoreLoad = false): string[] {
+    if (!this.isEligible(a, epoch, ignoreLoad)) return [];
     return this.db
       .query<LineageRow, [string]>(
         "SELECT l.* FROM lineages l JOIN qualifications q ON q.lineage_id = l.lineage_id WHERE q.agent_id = ? AND q.status = 'passed' AND l.status = 'active' ORDER BY l.lineage_id",

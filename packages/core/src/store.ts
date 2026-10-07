@@ -403,6 +403,49 @@ const MIGRATIONS: string[] = [
     posted_at INTEGER
   );
   `,
+  // 5: hardening (SPEC 10.5, 10.6, 13.6, 17.1): shadow author pool and delayed canary injection,
+  // deferred twin candidates, replay heartbeat history for retroactive display
+  `
+  CREATE TABLE shadows (
+    agent_id TEXT PRIMARY KEY,
+    lineage_id TEXT NOT NULL,
+    planned_at INTEGER NOT NULL,
+    launch_at INTEGER NOT NULL,
+    launched_at INTEGER,
+    max_uses INTEGER NOT NULL,
+    uses INTEGER NOT NULL DEFAULT 0,
+    retired_at INTEGER
+  );
+  CREATE INDEX shadows_lineage ON shadows(lineage_id, retired_at);
+  CREATE TABLE canary_queue (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    lineage_id TEXT NOT NULL,
+    canary_id TEXT NOT NULL,
+    trigger_candidate_id TEXT NOT NULL,
+    inject_at INTEGER NOT NULL,
+    shadow_id TEXT,
+    commit_id TEXT,
+    salt TEXT,
+    reveal_at INTEGER,
+    status TEXT NOT NULL,                -- pending | committed | revealed | dropped
+    detail TEXT,
+    created_at INTEGER NOT NULL
+  );
+  CREATE INDEX canary_queue_status ON canary_queue(status);
+  CREATE TABLE candidate_deferrals (
+    commit_id TEXT PRIMARY KEY,          -- the later candidate, judged accepted but held
+    behind TEXT NOT NULL,                -- commit_id of the earlier-committed twin
+    at INTEGER NOT NULL
+  );
+  CREATE TABLE heartbeat_log (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    agent_id TEXT NOT NULL,
+    replay_id TEXT NOT NULL,
+    phase TEXT,
+    at INTEGER NOT NULL
+  );
+  CREATE INDEX heartbeat_log_agent ON heartbeat_log(agent_id, id);
+  `,
 ];
 
 export function openDb(path: string): Database {

@@ -172,7 +172,7 @@ describe("qualification (SPEC 6.1)", () => {
   });
 
   test("reference runners are qualified by definition", async () => {
-    const e = (env = await setup({ verifiers: 3, over: { audit_rate: 1 } }));
+    const e = (env = await setup({ verifiers: 4, over: { audit_rate: 1 } }));
     expect(await quals(e.reference!)).toHaveLength(0);
     const c = await submit(e, await makeAuthor(e), diff("ref"));
     await runReplays(e, c.candidate_id, () => result());
@@ -201,7 +201,7 @@ describe("audits revert only on deterministic contradictions (SPEC 10.6)", () =>
     });
 
   test("a fresh-seed miss on a noisy metric is inconclusive, not a revert", async () => {
-    const e = (env = await setup({ verifiers: 3, over: { audit_rate: 1, max_open_replays: 4 } }));
+    const e = (env = await setup({ verifiers: 4, over: { audit_rate: 1, max_open_replays: 4 } }));
     const { gen, author } = await auditWith(e, "ns", () => noisy(100, 80), () => noisy(100, 100));
     expect(gen.audit.status).toBe("inconclusive");
     expect(gen.audit.detail).toContain("noisy");
@@ -214,7 +214,7 @@ describe("audits revert only on deterministic contradictions (SPEC 10.6)", () =>
   });
 
   test("a fresh-seed miss on a deterministic metric is recorded as weak, not reverted", async () => {
-    const e = (env = await setup({ verifiers: 3, over: { audit_rate: 1, max_open_replays: 4 } }));
+    const e = (env = await setup({ verifiers: 4, over: { audit_rate: 1, max_open_replays: 4 } }));
     const { gen } = await auditWith(e, "ir", () => result(), () => result({}, 1000));
     expect(gen.audit.status).toBe("weak");
     expect(gen.audit.detail).toContain("ir");
@@ -223,7 +223,7 @@ describe("audits revert only on deterministic contradictions (SPEC 10.6)", () =>
   });
 
   test("a behaviour change on the audit's fresh inputs reverts", async () => {
-    const e = (env = await setup({ verifiers: 3, over: { audit_rate: 1, max_open_replays: 4 } }));
+    const e = (env = await setup({ verifiers: 4, over: { audit_rate: 1, max_open_replays: 4 } }));
     const { gen } = await auditWith(e, "ir", () => result(), () => result({ equivalence: { base_digest: "e1", cand_digest: "e2" } }));
     expect(gen.audit.status).toBe("reverted");
     expect(gen.audit.detail).toContain("equivalence");

@@ -1,17 +1,24 @@
 import { execFileSync } from "node:child_process";
 import { readFileSync } from "node:fs";
-import { resolve } from "node:path";
+import { homedir } from "node:os";
+import { join, resolve } from "node:path";
 import { systemClock } from "./clock.ts";
 import { loadNetworkConfig } from "./config.ts";
 import { ChainReader, Rpc } from "@lineage/chain";
 import { ChainBridge, chainBootstrap, loadChainSettings } from "./chain.ts";
 import { Core } from "./core.ts";
+import { canaryDirIsPublic, loadCanaryDir } from "./hardening.ts";
 import { serve } from "./http.ts";
 import { GitTreeSource } from "./trees.ts";
 import { base58Decode, keyFromSolanaJson } from "./protocol.ts";
 
 // bun packages/core/src/main.ts --data ./data --port 9660 --config config/network.json --admin-key <path>
 //   [--runtime-key <path>] [--tick-ms 1000] [--host 127.0.0.1] [--chain <file>]
+//   [--canaries-dir <dir>] [--allow-public-canaries]
+// Canaries (SPEC 10.5) load from a private directory: `--canaries-dir`, else `canaries_dir` in the
+// config file, else ~/.config/lineage/canaries. Layout: <dir>/<recipe name>/index.json + <name>.diff.
+// A directory inside this repository (recipes/*/canaries are public test fixtures) is refused unless
+// --allow-public-canaries is given (tests only): replayers could recognise public canaries by hash.
 // Chain mode: a `chain` object with `mode: "devnet"` in the config file, or `--chain <file>` (for
 // example scripts/devnet/devnet.json). See src/chain.ts. Without it Core runs the simulated ledger.
 // Key files are either a Solana keypair JSON (64-byte array; only the public half is used) or a file
@@ -86,6 +93,30 @@ const core = new Core({
   chainMode: !!chainSettings,
   firstEpoch,
 });
+const REPO = resolve(import.meta.dir, "../../..");
+const rawConfig = JSON.parse(readFileSync(configPath, "utf8")) as { canaries_dir?: unknown };
+const canariesDir = resolve(arg("canaries-dir") ?? (typeof rawConfig.canaries_dir === "string" ? rawConfig.canaries_dir : join(homedir(), ".config/lineage/canaries")));
+const insideRepo = canaryDirIsPublic(canariesDir, REPO);
+let canaryNote = "";
+function loadCanaries() {
+  if (insideRepo && !argvFlag("allow-public-canaries")) {
+    canaryNote ||= `canaries: ${canariesDir} is inside the public repository; not loaded (pass --allow-public-canaries for tests)`;
+    return;
+  }
+  const r = loadCanaryDir(core, canariesDir);
+  if (r.loaded) console.log(`canaries: loaded ${r.loaded} from ${canariesDir} (${r.lineages} lineages)`);
+  for (const e of r.errors) if (!canaryNote.includes(e)) (canaryNote += e + "\n"), console.error(`canaries: ${e}`);
+}
+loadCanaries();
+if (canaryNote && insideRepo) console.error(canaryNote);
+const canaryTimer = setInterval(() => {
+  try {
+    loadCanaries();
+  } catch (e) {
+    console.error("canary load failed", e);
+  }
+}, 60_000);
+
 const bridge = chainSettings ? new ChainBridge(core, chainSettings, { reader: reader!, log: (m) => console.log(`[chain] ${m}`) }) : null;
 if (bridge) await bridge.tick().catch(() => undefined);
 const chainTimer = bridge ? setInterval(() => void bridge.tick().catch(() => undefined), chainSettings!.poll_ms ?? 5000) : null;
@@ -101,6 +132,7 @@ console.log(`lineage core on http://${host}:${server.port} (data ${dataDir}, adm
 
 const stop = () => {
   clearInterval(timer);
+  clearInterval(canaryTimer);
   if (chainTimer) clearInterval(chainTimer);
   server.stop(true);
   core.close();

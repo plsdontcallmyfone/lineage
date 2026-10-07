@@ -108,6 +108,7 @@ export function buildRoutes(core: Core): Route[] {
     route("GET", "/v1/lineages/:id/file", "none", (c) => core.live.file(c.params.id!, q(c, "gen"), q(c, "path"))),
     route("GET", "/v1/live", "none", () => core.live.live()),
     route("GET", "/v1/heartbeats", "none", () => core.live.listMachines()),
+    route("GET", "/v1/heartbeats/:id/history", "none", (c) => core.live.replayHistory(c.params.id!, 50)),
     route("GET", "/v1/activity", "none", (c) =>
       core.live.listActivity({ lineage: q(c, "lineage"), agent: q(c, "agent"), since: q(c, "since") ? Number(q(c, "since")) : undefined, limit: q(c, "limit") ? Number(q(c, "limit")) : undefined }),
     ),
@@ -134,6 +135,8 @@ export function buildRoutes(core: Core): Route[] {
 
     // agent-signed
     route("POST", "/v1/agents", "agent", (c) => core.registerVerifier(c.agent!, c.json())),
+    // the agent's own full view: open replays, unbond ready time and its machine's current job (SPEC 17.1)
+    route("GET", "/v1/agents/:id/self", "agent", (c) => ({ ...core.agentView(self(c), { self: true }), machine: core.live.machineView(self(c), { full: true }) })),
     route("PUT", "/v1/agents/:id/capabilities", "agent", (c) => core.setCapabilities(self(c), c.json())),
     route("POST", "/v1/agents/:id/bond", "agent", (c) => core.bond(self(c), c.json())),
     route("POST", "/v1/agents/:id/unbond", "agent", (c) => core.unbond(self(c), c.json())),
@@ -169,6 +172,7 @@ export function buildRoutes(core: Core): Route[] {
       return core.setReference(c.params.id!, b?.reference !== false);
     }),
     route("GET", "/v1/admin/agents/:id", "admin", (c) => core.agentView(c.params.id!, { admin: true })),
+    route("GET", "/v1/admin/heartbeats", "admin", () => core.live.listMachines({ full: true })),
     route("POST", "/v1/admin/canaries", "admin", (c) => core.addCanary(c.json())),
     route("GET", "/v1/admin/canaries", "admin", (c) => core.listCanaries(q(c, "lineage"))),
     route("POST", "/v1/admin/findings", "admin", (c) => core.addFinding(c.json())),

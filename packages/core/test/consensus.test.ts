@@ -14,6 +14,7 @@ import {
   qualify,
   reconcileOk,
   result,
+  revealReplay,
   runReplays,
   setup,
   submit,
@@ -86,7 +87,7 @@ describe("disputes (SPEC 10.2)", () => {
     expect(v.verdict.effect.ratio).toBeCloseTo(0.9);
     // the audit group gets its own fresh shared seed
     const audit = v.replays.filter((r: any) => r.audit_id);
-    expect(audit.length).toBe(2);
+    expect(audit.length).toBe(3); // audit_replayers random auditors plus the reference runner
     expect(new Set(audit.map((r: any) => r.seed)).size).toBe(1);
     expect(audit[0].seed).not.toBe(stage[0].seed);
   });
@@ -175,22 +176,42 @@ describe("timeouts and strikes", () => {
     expect(back.eligible).toBe(true);
   });
 
-  test("cooling agents keep their assignments and stay slashable", async () => {
-    const e = (env = await setup({ verifiers: 2 }));
+  test("cooling agents keep their assignments and stay slashable; the cooldown counts from their last involvement", async () => {
+    const e = (env = await setup({ verifiers: 3 }));
     const author = await makeAuthor(e);
     const c = await submit(e, author, diff("cool"));
-    const [v, w] = e.verifiers as [Agent, Agent];
+    const assigned: Agent[] = [];
+    for (const x of e.verifiers) if ((await assignmentsFor(x, c.candidate_id)).length) assigned.push(x);
+    const [v, w] = assigned as [Agent, Agent];
     await expectOk(v.c.post(`/v1/agents/${v.id}/unbond`, { amount: e.cfg.min_bond.toString() }));
     const av = (await assignmentsFor(v, c.candidate_id))[0];
     const aw = (await assignmentsFor(w, c.candidate_id))[0];
     const cv = await commitReplay(v, av, result());
-    await commitReplay(w, aw, result());
+    const cw = await commitReplay(w, aw, result());
     const r = await expectOk(v.c.post(`/v1/replays/${av.replay_id}/reveal`, { result: { ...cv.result, apply: "conflict" }, salt: cv.salt }));
     expect(r.status).toBe("invalid");
     const after = await agent(e, v.id);
     expect(BigInt(after.bond)).toBe(e.cfg.min_bond - (e.cfg.min_bond * BigInt(e.cfg.reveal_slash_bps)) / 10_000n);
-    // the cooldown then releases only what is left
+    await revealReplay(cw);
+    await runReplays(e, c.candidate_id, honest());
+    expect((await candidate(e, c.candidate_id)).status).toBe("accepted");
+    // a plain cooldown is not enough: the invalid reveal is still inside its replay window (SPEC 13.6)
     e.clock.advance(e.cfg.unbond_cooldown_s * 1000 + 1);
+    e.core.tick();
+    expect((await agent(e, v.id)).bond).toBe(after.bond);
+    const self = await expectOk(v.c.get(`/v1/agents/${v.id}/self`, true));
+    expect(self.unbond.ready_at).toBeNull();
+    expect(self.unbond.waiting_on.join(" ")).toContain("replay window");
+    // the public view shows the pending amount, never a ready time
+    expect((await agent(e, v.id)).unbond.ready_at).toBeNull();
+    // once the window has passed, the cooldown starts from its end
+    e.clock.advance(200_000); // past the 720 s replay window (6 x 120 s median eval), inside the next cooldown
+    e.core.tick();
+    const later = await expectOk(v.c.get(`/v1/agents/${v.id}/self`, true));
+    expect(later.unbond.ready_at).toBeGreaterThan(e.clock.now());
+    expect((await agent(e, v.id)).bond).toBe(after.bond);
+    // then it releases only what is left
+    e.clock.advance(later.unbond.ready_at - e.clock.now() + 1);
     e.core.tick();
     expect((await agent(e, v.id)).wallet).toBe(after.bond);
     await reconcileOk(e);

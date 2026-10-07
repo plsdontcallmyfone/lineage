@@ -8,6 +8,9 @@ import {
   makeAuthor,
   reconcileOk,
   result,
+  CANARY_FAST,
+  settleCanaries,
+  warmShadows,
   runReplays,
   setup,
   submit,
@@ -29,7 +32,11 @@ describe("canaries (SPEC 10.5)", () => {
     const up = await expectOk(e.admin.c.post("/v1/admin/canaries", { lineage_id: e.lineage, patch, kind: "perf", target: "ir", expected_reason: "tests_fail" }));
     expect(up.patch_hash).toBe(patchHash(patch));
     const author = await makeAuthor(e);
+    warmShadows(e);
     const real = await submit(e, author, diff("real"));
+    // the canary is committed and revealed on later ticks, never with the real candidate
+    expect(await expectOk<any[]>(e.anon.get(`/v1/candidates?lineage=${e.lineage}`))).toHaveLength(1);
+    settleCanaries(e);
     const all = await expectOk<any[]>(e.anon.get(`/v1/candidates?lineage=${e.lineage}`));
     const canary = all.find((c) => c.author !== author.id)!;
     expect(canary).toBeDefined();
@@ -37,7 +44,7 @@ describe("canaries (SPEC 10.5)", () => {
   }
 
   test("a canary looks like any other candidate until the epoch closes", async () => {
-    const e = (env = await setup({ verifiers: 2, over: { canary_rate: 1, max_open_replays: 4 } }));
+    const e = (env = await setup({ verifiers: 2, over: { canary_rate: 1, max_open_replays: 4, ...CANARY_FAST } }));
     const { canary } = await withCanary(e);
     expect(canary.status).toBe("replaying");
     expect(canary.canary).toBeNull();
@@ -55,7 +62,7 @@ describe("canaries (SPEC 10.5)", () => {
   });
 
   test("an accept-all replayer is slashed and struck; an honest one is paid and untouched", async () => {
-    const e = (env = await setup({ verifiers: 2, over: { canary_rate: 1, max_open_replays: 4 } }));
+    const e = (env = await setup({ verifiers: 2, over: { canary_rate: 1, max_open_replays: 4, ...CANARY_FAST } }));
     const { real, canary, canaryHash } = await withCanary(e);
     const [cheat, honest] = e.verifiers as [Agent, Agent];
     const behave = (a: Agent, asg: any) => (a.id === cheat.id ? result() : asg.candidate.patch_hash === canaryHash ? breaks() : result());
@@ -91,7 +98,7 @@ describe("canaries (SPEC 10.5)", () => {
   });
 
   test("a canary accepted by every replayer still never becomes a generation", async () => {
-    const e = (env = await setup({ verifiers: 2, over: { canary_rate: 1, max_open_replays: 4 } }));
+    const e = (env = await setup({ verifiers: 2, over: { canary_rate: 1, max_open_replays: 4, ...CANARY_FAST } }));
     const { canary } = await withCanary(e);
     await runReplays(e, canary.candidate_id, () => result());
     const v = await candidate(e, canary.candidate_id);
@@ -114,7 +121,7 @@ describe("canaries (SPEC 10.5)", () => {
 
 describe("audits (SPEC 10.6, 11.3)", () => {
   test("an agreeing audit pays the audit replayer and marks the generation agreed", async () => {
-    const e = (env = await setup({ verifiers: 3, over: { audit_rate: 1 } }));
+    const e = (env = await setup({ verifiers: 4, over: { audit_rate: 1 } }));
     const author = await makeAuthor(e);
     const c = await submit(e, author, diff("au"));
     await runReplays(e, c.candidate_id, () => result());
@@ -122,10 +129,12 @@ describe("audits (SPEC 10.6, 11.3)", () => {
     const gen = await expectOk(e.anon.get(`/v1/generations/${v.gen_id}`));
     expect(gen.audit.status).toBe("agreed");
     const audits = gen.replays.filter((r: any) => r.audit_id);
-    expect(audits.map((r: any) => r.kind).sort()).toEqual(["audit", "audit_reference"]);
-    const auditor = audits.find((r: any) => r.kind === "audit");
-    expect(v.replays.filter((r: any) => !r.audit_id).map((r: any) => r.replayer)).not.toContain(auditor.replayer);
-    expect((await agent(e, auditor.replayer)).units_epoch).toBeGreaterThan(0);
+    // audit_replayers (default 2) random auditors plus the reference runner (SPEC 10.6)
+    expect(audits.map((r: any) => r.kind).sort()).toEqual(["audit", "audit", "audit_reference"]);
+    for (const auditor of audits.filter((r: any) => r.kind === "audit")) {
+      expect(v.replays.filter((r: any) => !r.audit_id).map((r: any) => r.replayer)).not.toContain(auditor.replayer);
+      expect((await agent(e, auditor.replayer)).units_epoch).toBeGreaterThan(0);
+    }
   });
 
   test("a contradicting audit reverts the generation, slashes the original replayers and voids the author reward", async () => {

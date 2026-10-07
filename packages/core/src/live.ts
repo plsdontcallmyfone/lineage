@@ -10,10 +10,12 @@ import type { TreeSource } from "./trees.ts";
 // - Every activity event names objects Core already holds (lineage, generation, snapshot commit,
 //   and a path in that generation's tree when Core can list it). Unknown fields are refused, so an
 //   event can never carry file content or patch text: edits are a path and a line range.
-// - A heartbeat for a replay names the replay privately. Until the candidate is final, the public
-//   machine view shows the job, phase and target class only: no candidate id, lineage or
-//   generation, because any of them would link a replayer to a candidate (README: replayer
-//   identities stay hidden until the candidate is final).
+// - A heartbeat for a replay names the replay privately. The public view of a verifier's machine
+//   never says whether it holds a replay: job, phase, timing and load are withheld (job
+//   "withheld"), because any of them would tell an author which verifiers replay its candidate.
+//   Sealed work appears publicly only as aggregate counts; per-machine replay phases are published
+//   retroactively from the stored heartbeat log once the candidate (or audit) is final. The agent
+//   itself and the admin see everything.
 
 export const ACTIVITY_KINDS = new Set(["read", "search", "edit", "evaluate", "propose", "submit", "give_up"]);
 export const JOBS = new Set(["replay", "qualify", "author", "idle"]);
@@ -84,6 +86,7 @@ export class Live {
   private listCache = new Map<string, Set<string> | null>();
   private lastActivityEmit = new Map<string, number>();
   private recipes = new Map<string, Recipe>();
+  private prevPublicKey = new Map<string, string>();
 
   constructor(
     private core: Core,
@@ -344,10 +347,18 @@ export class Live {
              container_started_at = excluded.container_started_at, job_started_at = excluded.job_started_at, load = excluded.load, beats = heartbeats.beats + 1`,
         )
         .run(agent, now, sentAt, (b.caps_digest as string | undefined) ?? null, b.job, phase, replayId, lineageId, genId, containerAt, jobAt, load ? JSON.stringify(load) : null, now);
-      const changed = !prev || prev.job !== b.job || prev.phase !== phase || prev.replay_id !== replayId || prev.lineage_id !== lineageId || now - prev.at > this.awakeMs();
-      const view = this.machineView(agent)!;
-      if (changed) this.core.emitEvent("machine.heartbeat", view);
-      return view;
+      if (b.job === "replay" && replayId && (!prev || prev.replay_id !== replayId || prev.phase !== phase || prev.job !== "replay"))
+        this.db.query("INSERT INTO heartbeat_log (agent_id, replay_id, phase, at) VALUES (?, ?, ?, ?)").run(agent, replayId, phase, now);
+      // the event carries the public view and fires only when that view changes, so its timing
+      // cannot reveal a withheld job change either
+      const pub = this.machineView(agent)!;
+      const pubKey = (v: ReturnType<Live["machineView"]>) => (v ? JSON.stringify([v.job, v.phase, v.lineage_id, v.gen_id, v.candidate_id]) : "");
+      const wasAwake = !!prev && now - prev.at <= this.awakeMs();
+      const before = prev ? this.prevPublicKey.get(agent) : undefined;
+      const key = pubKey(pub);
+      this.prevPublicKey.set(agent, key);
+      if (!prev || !wasAwake || before !== key) this.core.emitEvent("machine.heartbeat", pub);
+      return this.machineView(agent, { full: true })!;
     });
   }
 
@@ -362,7 +373,12 @@ export class Live {
       .get(replayId);
   }
 
-  machineView(agent: string) {
+  /**
+   * One machine. Public unless `full` (the agent itself, the admin): a verifier's or reference
+   * runner's job, phase, timing and load are withheld unless it is qualifying, and `history` lists
+   * its replay phases only for candidates and audits that are final.
+   */
+  machineView(agent: string, opts: { full?: boolean } = {}) {
     const h = this.db.query<HeartbeatRow, [string]>("SELECT * FROM heartbeats WHERE agent_id = ?").get(agent);
     if (!h) return null;
     const a = this.db
@@ -403,6 +419,38 @@ export class Live {
     }
     const height = !sealed && genId ? (this.db.query<{ height: number }, [string]>("SELECT height FROM generations WHERE gen_id = ?").get(genId)?.height ?? null) : null;
     const recipeName = !sealed && lineage ? this.recipe(lineage.recipe_id).name : null;
+    const verifierMachine = a.kind === "verifier" && !a.shadow;
+    if (!opts.full && verifierMachine && h.job !== "qualify") {
+      return {
+        agent_id: agent,
+        kind: a.kind,
+        reference: !!a.reference,
+        awake: now - h.at < this.awakeMs(),
+        last_seen: h.at,
+        first_seen: h.first_at,
+        beats: h.beats,
+        job: "withheld" as string,
+        phase: null as string | null,
+        sealed: null as boolean | null,
+        candidate_id: null as string | null,
+        outcome: null as string | null,
+        gain: null as unknown,
+        lineage_id: null as string | null,
+        gen_id: null as string | null,
+        height: null as number | null,
+        recipe_name: null as string | null,
+        repo: null as string | null,
+        commit: null as string | null,
+        class: null as string | null,
+        container_started_at: null as number | null,
+        job_started_at: null as number | null,
+        load: null as unknown,
+        capabilities: caps,
+        caps_digest: h.caps_digest,
+        caps_match: h.caps_digest && caps ? h.caps_digest === this.core.capsDigest(caps) : null,
+        history: this.replayHistory(agent),
+      };
+    }
     return {
       agent_id: agent,
       kind: a.shadow ? "launched" : a.kind,
@@ -430,14 +478,43 @@ export class Live {
       capabilities: caps,
       caps_digest: h.caps_digest,
       caps_match: h.caps_digest && caps ? h.caps_digest === this.core.capsDigest(caps) : null,
+      history: this.replayHistory(agent),
     };
   }
 
-  listMachines() {
+  /**
+   * Replay phases of one machine from the heartbeat log, for final work only: the candidate is
+   * final (a canary only once its epoch closed) and an audit replay's audit has resolved.
+   */
+  replayHistory(agent: string, limit = 10) {
+    const rows = this.db
+      .query<{ replay_id: string; phase: string | null; at: number }, [string]>("SELECT replay_id, phase, at FROM heartbeat_log WHERE agent_id = ? ORDER BY id DESC LIMIT 500")
+      .all(agent);
+    const byReplay = new Map<string, { phase: string | null; at: number }[]>();
+    for (const r of rows) byReplay.set(r.replay_id, [{ phase: r.phase, at: r.at }, ...(byReplay.get(r.replay_id) ?? [])]);
+    const out: { candidate_id: string; kind: string; outcome: string; started_at: number; phases: { phase: string | null; at: number }[] }[] = [];
+    for (const [replayId, phases] of byReplay) {
+      const r = this.db
+        .query<{ candidate_id: string; kind: string; audit_status: string | null; c_status: string; is_canary: number; epoch_status: string }, [string]>(
+          `SELECT r.candidate_id, r.kind, a.status AS audit_status, c.status AS c_status, c.is_canary, e.status AS epoch_status
+           FROM replays r JOIN candidates c ON c.candidate_id = r.candidate_id LEFT JOIN audits a ON a.audit_id = r.audit_id JOIN epochs e ON e.n = c.epoch
+           WHERE r.replay_id = ?`,
+        )
+        .get(replayId);
+      if (!r || !FINAL.has(r.c_status)) continue;
+      if (r.is_canary && r.epoch_status !== "closed") continue;
+      if (r.kind.startsWith("audit") && r.audit_status === "pending") continue;
+      out.push({ candidate_id: r.candidate_id, kind: r.kind === "reference" ? "replay" : r.kind === "audit_reference" ? "audit" : r.kind, outcome: r.c_status, started_at: phases[0]!.at, phases });
+      if (out.length >= limit) break;
+    }
+    return out.sort((x, y) => y.started_at - x.started_at);
+  }
+
+  listMachines(opts: { full?: boolean } = {}) {
     return this.db
       .query<{ agent_id: string }, []>("SELECT agent_id FROM heartbeats ORDER BY at DESC")
       .all()
-      .map((r) => this.machineView(r.agent_id)!);
+      .map((r) => this.machineView(r.agent_id, opts)!);
   }
 
   // ---------------------------------------------------------------------------------------------
@@ -446,6 +523,8 @@ export class Live {
   live() {
     const now = this.core.now();
     const machines = this.listMachines();
+    // job counts are aggregates over the full views: sealed work is visible only as a number
+    const awakeFull = this.listMachines({ full: true }).filter((m) => m.awake);
     const awake = machines.filter((m) => m.awake);
     const lineages = this.db.query<{ lineage_id: string }, []>("SELECT lineage_id FROM lineages WHERE status = 'active' ORDER BY created_at, lineage_id").all();
     const channels = lineages.map(({ lineage_id }) => {
@@ -482,7 +561,7 @@ export class Live {
       };
     });
     const byJob: Record<string, number> = { replay: 0, qualify: 0, author: 0, idle: 0 };
-    for (const m of awake) byJob[m.job] = (byJob[m.job] ?? 0) + 1;
+    for (const m of awakeFull) byJob[m.job] = (byJob[m.job] ?? 0) + 1;
     const sum = (f: (c: any) => number) => awake.reduce((s, m) => s + (m.capabilities ? f(m.capabilities) : 0), 0);
     return {
       now,

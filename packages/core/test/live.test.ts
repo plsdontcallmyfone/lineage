@@ -145,14 +145,21 @@ describe("heartbeats", () => {
     const author = await makeAuthor(env);
     const c = await submit(env, author, diff("seal"));
     expect(c.status).toBe("replaying");
-    const replayers = env.verifiers.filter(() => true);
     let beat = 0;
-    for (const v of replayers) {
+    const replaying: string[] = [];
+    for (const v of env.verifiers) {
       const asg = (await expectOk<any[]>(v.c.get("/v1/assignments", true))).find((a) => a.candidate?.candidate_id === c.candidate_id);
-      if (!asg) continue;
+      if (!asg) {
+        // an idle verifier, for comparison: its public view must look the same as a replaying one's
+        await expectOk(v.c.post("/v1/heartbeat", { job: "idle", load: { load1: 0.1 } }));
+        continue;
+      }
       beat++;
-      const m = await expectOk(v.c.post("/v1/heartbeat", { job: "replay", replay_id: asg.replay_id, phase: "build", container_started_at: env.clock.now(), job_started_at: env.clock.now() }));
+      replaying.push(v.id);
+      // the agent itself gets the full view back
+      const m = await expectOk(v.c.post("/v1/heartbeat", { job: "replay", replay_id: asg.replay_id, phase: "build", container_started_at: env.clock.now(), job_started_at: env.clock.now(), load: { load1: 3.5 } }));
       expect(m.sealed).toBe(true);
+      expect(m.job).toBe("replay");
       expect(m.candidate_id).toBeNull();
       expect(m.lineage_id).toBeNull();
       expect(m.gen_id).toBeNull();
@@ -162,6 +169,7 @@ describe("heartbeats", () => {
       expect((await other.c.post("/v1/heartbeat", { job: "replay", replay_id: asg.replay_id })).status).toBe(404);
     }
     expect(beat).toBeGreaterThanOrEqual(2);
+    expect(beat).toBeLessThan(env.verifiers.length);
     const publicText = async () =>
       JSON.stringify([
         (await env.anon.get("/v1/live")).body,
@@ -172,19 +180,44 @@ describe("heartbeats", () => {
     const before = await publicText();
     expect(before).not.toContain(c.candidate_id);
     expect(before).not.toContain(c.commit_id);
+    // no public per-machine or per-agent field tells a replaying verifier from an idle one (SPEC 17.1)
+    const strip = (m: any) => ({ ...m, agent_id: null, last_seen: null, first_seen: null, beats: null });
+    const pub = await expectOk<any[]>(env.anon.get("/v1/heartbeats"));
+    const views = env.verifiers.map((v) => strip(pub.find((m) => m.agent_id === v.id)));
+    for (const v of views) expect(v).toEqual(views[0]);
+    expect(views[0]).toMatchObject({ job: "withheld", phase: null, sealed: null, load: null, job_started_at: null, container_started_at: null, history: [] });
+    const agentsPub = await Promise.all(env.verifiers.map(async (v) => (await env.anon.get(`/v1/agents/${v.id}`)).body));
+    for (const a of agentsPub) {
+      expect(a.open_replays).toBeNull();
+      expect(a.eligible).toBe(agentsPub[0].eligible);
+      expect(a.qualified_lineages).toEqual(agentsPub[0].qualified_lineages);
+    }
+    // the public heartbeat events: one per machine on first contact, none for the job change
+    const hbEvents = env.core.events(0, 5000).filter((e) => e.type === "machine.heartbeat");
+    for (const v of env.verifiers) expect(hbEvents.filter((e) => (e.data as any).agent_id === v.id)).toHaveLength(1);
+    // sealed work is visible only as an aggregate
+    const lv = (await env.anon.get("/v1/live")).body;
+    expect(lv.totals.by_job.replay).toBe(beat);
+    // the agent itself and the admin see its job
+    const self = await expectOk(env.verifiers.find((v) => v.id === replaying[0])!.c.get(`/v1/agents/${replaying[0]}/self`, true));
+    expect(self.open_replays).toBe(1);
+    expect(self.machine.job).toBe("replay");
+    const adm = await expectOk<any[]>(env.admin.c.get("/v1/admin/heartbeats", true));
+    expect(adm.filter((m) => m.job === "replay")).toHaveLength(beat);
+
     await runReplays(env, c.candidate_id, honest(result()));
     const fin = (await env.anon.get(`/v1/candidates/${c.candidate_id}`)).body;
     expect(fin.status).toBe("accepted");
     env.clock.advance(1500);
+    // once final, the replay's phases appear retroactively from the heartbeat log
     const machines = await expectOk<any[]>(env.anon.get("/v1/heartbeats"));
-    const opened = machines.filter((m) => m.job === "replay");
-    expect(opened.length).toBe(beat);
-    for (const m of opened) {
-      expect(m.sealed).toBe(false);
-      expect(m.candidate_id).toBe(c.candidate_id);
-      expect(m.outcome).toBe("accepted");
-      expect(m.gain.ratio).toBeCloseTo(0.9, 6);
-      expect(m.height).toBe(0);
+    for (const id of replaying) {
+      const m = machines.find((x) => x.agent_id === id);
+      expect(m.job).toBe("withheld");
+      expect(m.history).toHaveLength(1);
+      expect(m.history[0]).toMatchObject({ candidate_id: c.candidate_id, kind: "replay", outcome: "accepted" });
+      expect(m.history[0].phases.map((p: any) => p.phase)).toEqual(["build"]);
+      expect((await expectOk<any[]>(env.anon.get(`/v1/heartbeats/${id}/history`)))[0].candidate_id).toBe(c.candidate_id);
     }
     const stats = await expectOk(env.anon.get("/v1/stats"));
     expect(stats.verified_gains).toBe(1);
