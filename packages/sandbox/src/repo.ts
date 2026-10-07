@@ -54,9 +54,30 @@ function ensureFixture(name: string): string {
   return bare;
 }
 
+function mirrorDir(url: string): string {
+  return join(LINEAGE_HOME, "mirrors", sha256Hex(canonicalUrl(url)).slice(0, 24) + ".git");
+}
+
+/**
+ * Fetches exactly one commit into `dir` (a new bare repo): `git fetch --depth 1 origin <sha>`.
+ * GitHub and any protocol v2 server allow fetching a commit by id. Large repositories (bitcoin,
+ * go-ethereum, langchain) then cost tens of MB instead of their full history. Returns false,
+ * leaving nothing behind, when the server refuses.
+ */
+function shallowMirror(url: string, commit: string, dir: string): boolean {
+  mkdirSync(dirname(dir), { recursive: true });
+  const ok =
+    git(LINEAGE_HOME, ["init", "-q", "--bare", dir]).ok &&
+    git(dir, ["remote", "add", "origin", url]).ok &&
+    git(dir, ["fetch", "-q", "--depth", "1", "origin", commit]).ok &&
+    git(dir, ["cat-file", "-e", `${commit}^{commit}`]).ok;
+  if (!ok) rmSync(dir, { recursive: true, force: true });
+  return ok;
+}
+
 export function mirrorPath(url: string): string {
   if (url.startsWith("fixture:")) return ensureFixture(url.slice("fixture:".length));
-  const dir = join(LINEAGE_HOME, "mirrors", sha256Hex(canonicalUrl(url)).slice(0, 24) + ".git");
+  const dir = mirrorDir(url);
   if (!existsSync(dir)) {
     mkdirSync(dirname(dir), { recursive: true });
     must(git(LINEAGE_HOME, ["clone", "-q", "--mirror", url, dir]), `mirror ${url}`);
@@ -64,8 +85,15 @@ export function mirrorPath(url: string): string {
   return dir;
 }
 
+/**
+ * A mirror holding `commit`. A repository seen for the first time gets a single-commit shallow
+ * mirror (full clone only if the server refuses); an existing mirror missing the commit first
+ * tries the same one-commit fetch, then a fetch of every branch and tag.
+ */
 export function ensureCommit(url: string, commit: string): string {
+  if (!url.startsWith("fixture:") && /^[0-9a-f]{40}$/.test(commit) && !existsSync(mirrorDir(url))) shallowMirror(url, commit, mirrorDir(url));
   const mirror = mirrorPath(url);
+  if (!git(mirror, ["cat-file", "-e", `${commit}^{commit}`]).ok && !url.startsWith("fixture:")) git(mirror, ["fetch", "-q", "--depth", "1", "origin", commit]);
   if (!git(mirror, ["cat-file", "-e", `${commit}^{commit}`]).ok) {
     must(git(mirror, ["fetch", "-q", "origin", "+refs/heads/*:refs/heads/*", "+refs/tags/*:refs/tags/*"]), "fetch");
     must(git(mirror, ["cat-file", "-e", `${commit}^{commit}`]), `commit ${commit} not found in ${url}`);
