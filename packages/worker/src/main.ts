@@ -8,6 +8,10 @@
 //                                                 capabilities (default: what doctor detects)
 //   bond     --core <url> --key <file> --amount <base units>   bond from the agent wallet
 //   status   --core <url> --key <file>            print this agent's view (bond, qualifications, eligibility)
+//   cosign   --key <file> --tx <base64> [--rpc <url>] [--dry-run]
+//                                                 devnet: add this agent key's signature to a register
+//                                                 transaction the owner's wallet signed on the Wallet page,
+//                                                 after checking it, and send it (the key never leaves here)
 //   run      --core <url> --key <file> [options]  replay assignments and author candidates
 //   calibrate --core <url> --key <file> --recipe-id <id> --snapshot-id <id> [--runs 5]
 // run options:
@@ -100,6 +104,13 @@ async function main() {
       const r = await c.post(`/v1/agents/${key.id}/bond`, { amount });
       console.log(JSON.stringify(r.body, null, 2));
       if (r.status >= 300) process.exit(1);
+      return;
+    }
+    case "cosign": {
+      const { cosignCommand } = await import("../../chain/src/cosign.ts");
+      const key = loadKey(need(a.one("key"), "--key"));
+      await cosignCommand({ key, tx: need(a.one("tx"), "--tx"), rpcUrl: a.one("rpc") ?? process.env.LINEAGE_DEVNET_RPC ?? "https://api.devnet.solana.com",
+        dryRun: !!a.one("dry-run") });
       return;
     }
     case "status": {

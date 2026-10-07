@@ -104,3 +104,35 @@ Every devnet transaction the scripts in `scripts/devnet/` sent, in order. Fee is
 | 2026-10-07 22:03:48 | e2e | claim epoch 2 agent:BFPxdave7NVSXztGEZA5iZ7FiBDKRsuZmS9wZn2J1WBV:compute 51749337 | 5000 | `5q6L4H22NtGCPpme94QsDywa6d5mv6stHR2wCXLM6KarQ5BxQBkqyX3CuLLPinENxM4LvNa1DVRJruKc9Bixr4Bc` |
 | 2026-10-07 22:03:58 | e2e | claim epoch 2 agent:DEHFFWt2uzVGn43nzU1EvEyo17G1x74gvn3C6usU43hj:wallet 4466992 | 5000 | `T7H8YKx3oYwR5oMJLGTafk3CqERrYokEH6kVBHWhNdMhwhkeHXnRCLvWK9Kp5T6tWXzfn2dnfJGee2MoQK8rTrj` |
 | 2026-10-07 22:04:00 | e2e | claim epoch 2 agent:FRx89QoUEavL1mVMcroDH4QYUhdTbA66EthkX7uZrGSD:wallet 4466991 | 5000 | `5Cz9mCYsi6q2avx3GmrtecP6z6SDov2tRT6M2pt8NHXvcwb2DeaL86Sj5y3Y3CPFLUGka5cRs9B3N5CXBitG3oYk` |
+
+## Transactions (wallet UI lane)
+
+Devnet transactions sent by the Wallet page (apps/web/wallet) and its tooling: the faucet funding, the faucet's drips, and the headless browser check (apps/web/scripts/wallet-e2e.ts) driving the page with a mock Wallet Standard wallet that signs with a local devnet test key. Fee in lamports as returned by the RPC.
+
+| When (UTC) | Step | What | Fee | Signature |
+|---|---|---|---|---|
+| 2026-10-07 22:21:50 | faucet | fund faucet FX4UjRbmbLHJ6K6RTvYcV4bFA9Yai2qntnPNex31GiH6 with 0.2 SOL from the deployer | 5000 | `2CpYyfSRnK73Pih2a8xoYdTeV2nocxfbBSDMkk4Nsm4pQ9JoZy6PsaKtsKyiVN97XV55VpdFGpKxaMRnAvoS8CQc` |
+| 2026-10-07 22:21:52 | faucet | send 100000 tLINE from the supply holder GRb3V2j6yBraHf39a7STArgGjVxBQ2c6WbvaHEYQMTPe to the faucet's account BbVHisiXiCgKBh1K3gmDj7fKWc6H8Nm72rVxWpyzvVrb | 5000 | `3sWzW5hUmpSkKREZYexPipJvjwpsZYyvxaZVmApur9iDTMdmnoGU3thZF9hmynGsc691Vt4TXT4tFvjsn353Fv8k` |
+| 2026-10-07 22:24:27 | e2e | fund the test wallet 8juHDv3a67114S8JTjCwUGQkrZqjkw9Mac5fneSBsQi2 with 0.15 SOL from the deployer | 5000 | `6391kWYbYMuwc952JaAhBKWNc8Ykbk1c54ZAFwf9C2Qr26q7oS3GksZXMN7xhzYWZR3Phefs8sfK1b72mvy5BPSr` |
+| 2026-10-07 22:25:46 | e2e | page: faucet: 1,000 tLINE to you | 5000 | `s1BuDJeyYdmNexAdGA7bbKicm8qrfYaQzWKXZgFyNv4LywnCotAxqtK22Qt3bdtc2wLQEPqYNGjQiewCmnTXTVX` |
+| 2026-10-07 22:25:46 | e2e | page: launch_agent TUICHECK10 (mint 9BaWSDCs3Hqz6hjEcrVWQyPgsQ4onTMG29wLLsdrtW6S) | 15001 | `3vYwNvgh3gKs5R99reb4BjECTc8GG25NDEYXxAncpKbpqVDS1D1qfCERYAVbFjo17TsZYh6bnSkDcWFbpnnFFWcT` |
+| 2026-10-07 22:25:46 | e2e | page: buy TUICHECK10 on DBC | 5001 | `281pV1T21oZHWSUoX1mphv8JbjHbeyBhnxVyUew7JUZrepkVtJJmc529RJdHmJop2S6pZKD5aYo8uFbcHJMppSVc` |
+| 2026-10-07 22:25:46 | e2e | page: crank_fees TUICHECK10 | 5001 | `3bHGbWaDW9bnXWSnnJywYh4KNnJZ3JCvv7yd8fzEoVi7egQho59wvM75LTbV5pQFk4JyT8iSSnKBqiwNMSdsasXs` |
+| 2026-10-07 22:25:47 | e2e | page: bond 5 tLINE | 5001 | `4HP13honwrd1aXqih8DFWBpfKoY6rTCFomdU3MN5iiAShFvdf7viujHA15gnP1wrhNRqh9AxZiZWkR6opiiXExPB` |
+| 2026-10-07 22:25:47 | e2e | page: request_unbond 1 tLINE | 5001 | `4YV7gfE3vG1a323hD3H7wqzjFVwr2omPaPSuamvo8ybXgASLxhP94WBKPr85im3Pxe2pcNGYq1hGoHcw9h9UvUZ4` |
+| 2026-10-07 22:25:47 | e2e | register verifier H9AKH5K79DWfwBQLRe8xv83u4pXgLdRfnzDjpkj3ihvk (owner = test wallet; agent key co-signed by lineage-worker cosign) | 10001 | `2gzu6ALzD6ojvtTJdrajYYv9eG1DJzmjk9Zeo38vq7ZzG41pcFyqfU7ahe63zXs5dcevDDujT744j14wvvEitfKo` |
+| 2026-10-07 22:29:55 | e2e | page: launch_agent TUICHECK10 (mint CzfBa9Wme8BhF3d3HAP5gnNCFKjjvfFcHt4Pkh49E8Dy) | 15001 | `4w7r7i87jHjLk12nCnXzepERqVXyWEzyZ2nWW4Sv5oFhX4wYhnuBUUoB3ynfKHA6N7cMwBWVwYRtGudwAgxep1yD` |
+| 2026-10-07 22:29:55 | e2e | page: buy TUICHECK10 on DBC | 5001 | `izsAFrSYMdcaqCp85EKmmBc8Hx4eqbjc67Rf8JPxSGEGjHGjFNQcHQ4cBNPMUYjLB8x78VrKm9Lsai8cQEAxY1d` |
+| 2026-10-07 22:29:55 | e2e | page: crank_fees TUICHECK10 | 5001 | `2vDGrL8BXmxLdqsSapfKqRfCdgBjdy6pgEBZ85enU4rGbbCZw38ykaiACFjZ9csEdNrhuo3CJEUeZQ2XFGH4SJpe` |
+| 2026-10-07 22:29:55 | e2e | page: register G4N8…ddaZ (sent by lineage-worker cosign) | 10001 | `2nUKYXzSoh5RsHsbixC1TCYtxujuYXzE47xvRK3MBVBvfnj5piCyQpAwimnJK41jgd2R2wZrWB6zBw3nKSrD2yBb` |
+| 2026-10-07 22:29:55 | e2e | page: bond 5 tLINE | 5001 | `5TakP81Hfs8DZPWP9NBqqDTF4x5UB7zKSDif7T76pXercPCQFYE6krNos1YLcYDvBXXesdbuuyJ1RXB3on4B1mPT` |
+| 2026-10-07 22:30:15 | e2e | fund the test wallet 8juHDv3a67114S8JTjCwUGQkrZqjkw9Mac5fneSBsQi2 with 0.040796131 SOL from the deployer | 5000 | `3KM5eZ9PWWWEQTczcbvtYze8iJmnB2cnBC5taEPEhzwBJ3M9zjGbnyDcZZEHC3pfWcr2QVP79ZFWLyWoVyJVsK2R` |
+| 2026-10-07 22:32:01 | e2e | page: launch_agent TUICHECK10 (mint D4ymaHFULQnd1NWdoappnXrsdZy8ihbLqatkM5fkFtVE) | 15001 | `3hKvnWiouptXFWVAWSDhRdxx1Z9su1JDLecA6HxQYEYxn8owbZNTPAJMf4YUfHHhkQTgrCsRPhHQEMmt3RGhR4E9` |
+| 2026-10-07 22:32:01 | e2e | page: buy TUICHECK10 on DBC | 5001 | `g1u7hMf5HufsKWKiogYRknNw5MY5h4EZvsMNZMvCzxznBuFxsEs27PRrF1rdAPpZdEKzhpXz2cXLkwyH6quYJnZ` |
+| 2026-10-07 22:32:02 | e2e | page: crank_fees TUICHECK10 | 5001 | `27r25gppWHpRCpHzGBeHT8K3wCGpbZo1V2qoYHuxfR47TwJA47C4qL8XNbBLLf93KXscxfZP5hLrVPzZ45S3JErw` |
+| 2026-10-07 22:32:02 | e2e | page: register Ei54…fvho (sent by lineage-worker cosign) | 10001 | `4P6ZufazAQKxPPsQRiQacpqoKYcbtg7XCD8oUzv5uz9vzbRAPYD9uEJxt17QPWKCoT7Y8EWhfGk7RNVJvE2fjue6` |
+| 2026-10-07 22:32:02 | e2e | page: bond 5 tLINE | 5001 | `2F3a1vp6XFUj4n5BGepVpg3MzKM5ZsUtD7ZxNAiAYjfAiTxJ6H3axaRTEUGrsHEKqWgw7L3gNNsdT92crfgk5bxS` |
+| 2026-10-07 22:32:02 | e2e | page: request_unbond 1 tLINE | 5001 | `3awnAmwVj1wtaX4WFckvz1dEZywnLtbpWJQiuSPvYAMfFBAcQHuwTtYwEjkgDTsfXP5i31wyZWXHSNAmyVdmuz8D` |
+| 2026-10-07 22:32:02 | e2e | page: claim epoch 3 wallet | 5001 | `DgpvEHxYbXcBR92Tb6aN54kK86AytMdngJMkSu49XBddTHSDkD2DfuBkutFVZSkEJUxJtrRF14YvmWFQxXXHGj3` |
+| 2026-10-07 22:32:02 | e2e | split: treasury 4320000 to reserve and pool (test wallet pays the fee) | 5000 | `3hjp6gEoZETc2fA3zF4H4679tf9XuSy1J23UScnKuANMMD3PfUyWt1eBMEBV5tgD9kP3N5oJ24wZQEnfVesNF8zU` |
+| 2026-10-07 22:32:03 | e2e | post_epoch 3 (test epoch for the Claims tab: one leaf agent:Ei54yY7HarLLPENujpF63yCsfwZeBDVjeuC9tp9kfvho:wallet amount 864000, root 5c9681ee83d44fbd...) | 5000 | `43RJ7AwceecRZioSWSHCCWBbKa82euM7ofBD5RTq61aTm6mjMJSBDfndwmRU2iznHkrQFar2xQFR1bwBZQStYrHN` |

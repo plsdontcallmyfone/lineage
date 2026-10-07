@@ -1,0 +1,98 @@
+{
+  "at": "2026-10-07T22:32:03.462Z",
+  "wallet": "8juHDv3a67114S8JTjCwUGQkrZqjkw9Mac5fneSBsQi2",
+  "worker_key": "Ei54yY7HarLLPENujpF63yCsfwZeBDVjeuC9tp9kfvho",
+  "mint": "D4ymaHFULQnd1NWdoappnXrsdZy8ihbLqatkM5fkFtVE",
+  "results": [
+    {
+      "check": "page states devnet only and the cluster was checked",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "balances shown equal chain",
+      "ok": true,
+      "detail": "ACCOUNT 8juH…sQi2 Lineage Test Wallet SOL 0.15 devnet, for fees and rent TLINE 588 TEST mint, Token-2022 vs 150000000 lamports, 588000000 tLINE base units"
+    },
+    {
+      "check": "repository validated against the GitHub API",
+      "ok": true,
+      "detail": "public on GitHub karpathy/minbpe, default branch master, Python. On chain as https://github.com/karpathy/minbpe.\nsetting_up No lineage for this repository on Core: the agent's first job is drafting a recipe, and it authors only after calibration replays agree (SPEC 13.8)."
+    },
+    {
+      "check": "review lists the accounts and the rent the wallet pays",
+      "ok": true,
+      "detail": "simulation succeeded on devnet | RENT DEPOSITS | 0.01541272SOL | 7 new accounts, from the simulation | NETWORK FEE | 0.000015001SOL | getFeeForMessage | WALLET CHANGE"
+    },
+    {
+      "check": "AgentLaunch read back: repo, identity app, self-hosted",
+      "ok": true,
+      "detail": "D4ymaHFULQnd1NWdoappnXrsdZy8ihbLqatkM5fkFtVE"
+    },
+    {
+      "check": "token metadata: TEST name, class in the URI",
+      "ok": true,
+      "detail": "{\"name\":\"TEST ui check 10072230\",\"symbol\":\"TUICHECK10\",\"uri\":\"https://lineage.invalid/devnet/agents/tuicheck10.json?class=python\"}"
+    },
+    {
+      "check": "registry Agent (launched) owned by the wallet",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "page shows the mint, pool and compute vault read back",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "buy: wallet holds agent tokens (read back)",
+      "ok": true,
+      "detail": "3879858870 base units"
+    },
+    {
+      "check": "crank_fees split exactly by agent_compute_bps",
+      "ok": true,
+      "detail": "fees 4800000, compute 3360000, protocol 1440000"
+    },
+    {
+      "check": "worker CLI co-signed and sent register",
+      "ok": true,
+      "detail": "  sent 4P6ZufazAQKxPPsQRiQacpqoKYcbtg7XCD8oUzv5uz9vzbRAPYD9uEJxt17QPWKCoT7Y8EWhfGk7RNVJvE2fjue6 | registered: 4P6ZufazAQKxPPsQRiQacpqoKYcbtg7XCD8oUzv5uz9vzbRAPYD9uEJxt17QPWKCoT7Y8EWhfGk7RNVJvE2fjue6 (slot 508606188) | https://explorer.solana.com/tx/4P6ZufazAQKxPPsQRiQacpqoKYcbtg7XCD8oUzv5uz9vzbRAPYD9uEJxt17QPWKCoT7Y8EWhfGk7RNVJvE2fjue6?cluster=devnet"
+    },
+    {
+      "check": "page logged the worker-sent register signature",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "register burned register_burn (supply and Agent.burned)",
+      "ok": true,
+      "detail": "1000000"
+    },
+    {
+      "check": "bond moved 5 tLINE into the bond (read back)",
+      "ok": true,
+      "detail": "0 -> 5000000; min_bond 5000000"
+    },
+    {
+      "check": "request_unbond recorded with its cooldown",
+      "ok": true,
+      "detail": "ready at 1791412895"
+    },
+    {
+      "check": "claim paid exactly the leaf to the owner's tLINE account, receipt on chain",
+      "ok": true,
+      "detail": "864000"
+    },
+    {
+      "check": "no page errors",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "every wallet signature was requested through the Wallet Standard mock",
+      "ok": true,
+      "detail": "7 requests"
+    }
+  ]
+}

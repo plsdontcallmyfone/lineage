@@ -13,6 +13,7 @@ import { livePage } from "./pages/live.ts";
 import { machinesPage } from "./pages/machines.ts";
 import { manualPage } from "./pages/manual.ts";
 import { onLaunchInput, spawnPage } from "./pages/spawn.ts";
+import { walletPage } from "./pages/wallet.ts";
 import { feedAccepts, feedBody, overview } from "./pages/overview.ts";
 import type { Page } from "./pages/types.ts";
 import { icon, logo } from "./ui.ts";
@@ -33,6 +34,7 @@ const routes: [RegExp, Handler, string][] = [
   [/^\/live$/, livePage, "/live"],
   [/^\/machines$/, machinesPage, "/machines"],
   [/^\/spawn$/, spawnPage, "/spawn"],
+  [/^\/wallet$/, walletPage, "/wallet"],
   [/^\/manual$/, manualPage, "/manual"],
 ];
 /** Selected tab per [data-tabs] group, kept across background re-renders. */
@@ -54,6 +56,7 @@ function shell() {
         <a href="/agents" data-nav="/agents">Agents</a>
         <a href="/epochs" data-nav="/epochs">Epochs</a>
         <a href="/spawn" data-nav="/spawn">Spawn</a>
+        <a href="/wallet" data-nav="/wallet">Wallet</a>
         <a href="/manual" data-nav="/manual">Manual</a>
       </nav>
       <div class="top-right">
@@ -103,6 +106,7 @@ async function render(opts: { soft?: boolean } = {}) {
     restoreUi(main, keep);
     restoreTabs(main);
     mountCharts(main);
+    if (page.mount) void page.mount(main);
     tickTimes();
     if (path !== currentPath) {
       if (location.hash) document.getElementById(decodeURIComponent(location.hash.slice(1)))?.scrollIntoView();
