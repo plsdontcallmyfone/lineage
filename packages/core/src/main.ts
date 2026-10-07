@@ -3,13 +3,17 @@ import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { systemClock } from "./clock.ts";
 import { loadNetworkConfig } from "./config.ts";
+import { ChainReader, Rpc } from "@lineage/chain";
+import { ChainBridge, chainBootstrap, loadChainSettings } from "./chain.ts";
 import { Core } from "./core.ts";
 import { serve } from "./http.ts";
 import { GitTreeSource } from "./trees.ts";
 import { base58Decode, keyFromSolanaJson } from "./protocol.ts";
 
 // bun packages/core/src/main.ts --data ./data --port 9660 --config config/network.json --admin-key <path>
-//   [--runtime-key <path>] [--tick-ms 1000] [--host 127.0.0.1]
+//   [--runtime-key <path>] [--tick-ms 1000] [--host 127.0.0.1] [--chain <file>]
+// Chain mode: a `chain` object with `mode: "devnet"` in the config file, or `--chain <file>` (for
+// example scripts/devnet/devnet.json). See src/chain.ts. Without it Core runs the simulated ledger.
 // Key files are either a Solana keypair JSON (64-byte array; only the public half is used) or a file
 // holding the base58 public key.
 
@@ -60,14 +64,31 @@ if (busy) {
   process.exit(1);
 }
 
+const chainSettings = loadChainSettings(arg("chain") ?? configPath);
+let network = loadNetworkConfig(configPath);
+let firstEpoch = 0;
+let reader: ChainReader | null = null;
+if (chainSettings) {
+  reader = new ChainReader(Rpc.http(chainSettings.rpc_url), chainSettings.registry_program, chainSettings.launch_program);
+  const boot = await chainBootstrap(network, reader);
+  network = boot.network;
+  firstEpoch = boot.firstEpoch;
+  console.log(`chain mode ${chainSettings.mode}: ${chainSettings.rpc_url}, registry ${chainSettings.registry_program}, mint ${boot.registry.mint} (${boot.decimals} decimals), first epoch ${firstEpoch}`);
+}
+
 const core = new Core({
   dataDir,
-  network: loadNetworkConfig(configPath),
+  network,
   adminId: readPubkey(adminKey),
   runtimeId: runtimeKey ? readPubkey(runtimeKey) : undefined,
   clock: systemClock,
   trees: argvFlag("no-trees") ? null : new GitTreeSource(),
+  chainMode: !!chainSettings,
+  firstEpoch,
 });
+const bridge = chainSettings ? new ChainBridge(core, chainSettings, { reader: reader!, log: (m) => console.log(`[chain] ${m}`) }) : null;
+if (bridge) await bridge.tick().catch(() => undefined);
+const chainTimer = bridge ? setInterval(() => void bridge.tick().catch(() => undefined), chainSettings!.poll_ms ?? 5000) : null;
 const server = serve(core, { port, hostname: host });
 const timer = setInterval(() => {
   try {
@@ -80,6 +101,7 @@ console.log(`lineage core on http://${host}:${server.port} (data ${dataDir}, adm
 
 const stop = () => {
   clearInterval(timer);
+  if (chainTimer) clearInterval(chainTimer);
   server.stop(true);
   core.close();
   process.exit(0);

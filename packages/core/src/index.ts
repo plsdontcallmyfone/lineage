@@ -1,4 +1,4 @@
-export { Core, type CoreOptions, type CandidateReason, type CandidateStatus, type CoreEvent, type PayoutLeaf } from "./core.ts";
+export { Core, type ChainAgent, type CoreOptions, type CandidateReason, type CandidateStatus, type CoreEvent, type PayoutLeaf } from "./core.ts";
 export { createHandler, serve } from "./http.ts";
 export { Ledger, ACC, type ReconcileReport } from "./ledger.ts";
 export { BlobStore } from "./blobs.ts";
@@ -8,3 +8,4 @@ export { ApiError } from "./errors.ts";
 export { CoreClient } from "./client.ts";
 export { Live } from "./live.ts";
 export { GitTreeSource, applyHunks, type TreeSource, type FileAtGen } from "./trees.ts";
+export { ChainBridge, chainBootstrap, networkFromChain, parseChainSettings, loadChainSettings, type ChainSettings, type ChainSend } from "./chain.ts";

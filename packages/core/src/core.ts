@@ -76,7 +76,36 @@ export interface CoreOptions {
   randomHex?: (bytes: number) => string;
   /** Where the live wall's generation trees come from (SPEC 17.1). Null: paths unchecked, no file reads. */
   trees?: TreeSource | null;
+  /**
+   * Chain mode (config `chain.mode: "devnet"`): registrations, bonds, fees, claims and usage happen
+   * on chain and are mirrored in by `ChainBridge` (src/chain.ts); the endpoints that would simulate
+   * them answer 409 `on_chain`. Default false: the simulated M1 ledger.
+   */
+  chainMode?: boolean;
+  /** Number of the first epoch a fresh database opens (chain mode: one past the last posted epoch). */
+  firstEpoch?: number;
 }
+
+/** An agent as the registry program holds it, plus its launch and compute vault for launched agents. */
+export interface ChainAgent {
+  agent: string;
+  owner: string;
+  kind: "verifier" | "launched";
+  burned: bigint;
+  bond: bigint;
+  unbondAmount: bigint;
+  /** Unix seconds; 0 when no unbond is pending. */
+  unbondReadyAt: bigint;
+  registeredAt: bigint;
+  /** 64 hex; all zero when undeclared. */
+  operator: string;
+  capabilities: string;
+  launch?: { mint: string; launcher: string; repoUrl: string; identityMode: number; hosted: boolean };
+  /** Compute vault balance (launched agents). */
+  compute?: bigint;
+}
+const ZERO32 = "00".repeat(32);
+const CHAIN_OFFENCE: Record<string, number> = { canary: 0, minority: 1, audit_minority: 1, reveal_mismatch: 2 };
 
 /** Candidate rejection reasons: the judge's reasons plus those Core decides itself. */
 export type CandidateReason =
@@ -326,6 +355,11 @@ export class Core {
   private listeners = new Set<(e: CoreEvent) => void>();
   private depth = 0;
   readonly live: Live;
+  readonly chainMode: boolean;
+  /** Set by ChainBridge in chain mode: the last chain read, for /v1/stats and /v1/chain. */
+  chainView: (() => unknown) | null = null;
+  /** Set by ChainBridge: run one chain sync now (POST /v1/admin/chain/sync). */
+  chainSync: (() => Promise<unknown>) | null = null;
 
   constructor(opts: CoreOptions) {
     this.cfg = opts.network;
@@ -340,8 +374,9 @@ export class Core {
     this.blobs = new BlobStore(join(opts.dataDir, "blobs"));
     this.ledger = new Ledger(this.db, () => this.clock.now());
     this.live = new Live(this, opts.trees ?? null);
+    this.chainMode = !!opts.chainMode;
     this.tx(() => {
-      if (!this.db.query("SELECT n FROM epochs LIMIT 1").get()) this.openEpoch(0, this.now());
+      if (!this.db.query("SELECT n FROM epochs LIMIT 1").get()) this.openEpoch(opts.firstEpoch ?? 0, this.now());
     });
   }
 
@@ -483,6 +518,7 @@ export class Core {
   /** Tokenless verifier registration: burns register_burn from the agent wallet. */
   registerVerifier(agent: string, body: unknown) {
     return this.tx(() => {
+      this.notOnChain("registration");
       const b = isObj(body) ? body : {};
       if (this.agentRow(agent)) throw conflict("already_registered", "agent already registered");
       const operator = b.operator === undefined || b.operator === null ? null : String(b.operator);
@@ -503,8 +539,9 @@ export class Core {
    * Records an agent token launch (M1 simulation of lineage_launch::launch_agent, SPEC 13.7). No burn:
    * the launch itself prices the identity.
    */
-  launchAgent(body: unknown, opts: { shadow?: boolean } = {}) {
+  launchAgent(body: unknown, opts: { shadow?: boolean; fromChain?: boolean } = {}) {
     return this.tx(() => {
+      if (!opts.shadow && !opts.fromChain) this.notOnChain("an agent launch");
       if (!isObj(body)) throw bad("bad_body", "object expected");
       const agent = String(body.agent ?? "");
       const mint = String(body.mint ?? "");
@@ -556,6 +593,9 @@ export class Core {
       this.mustAgent(agent);
       if (!isObj(body)) throw bad("bad_body", "{ capabilities } expected");
       const caps = validateCapabilities(body.capabilities);
+      const declared = (this.agentRow(agent) as AgentRow & { chain_caps?: string | null }).chain_caps;
+      if (this.chainMode && declared && declared !== ZERO32 && declared !== this.capsDigest(caps))
+        throw forbidden("caps_mismatch", `capabilities digest ${this.capsDigest(caps)} differs from the one registered on chain (${declared})`);
       const now = this.now();
       this.db.query("UPDATE agents SET capabilities = ?, capabilities_at = ? WHERE agent_id = ?").run(canonicalJson(caps), now, agent);
       const revoked: string[] = [];
@@ -577,6 +617,7 @@ export class Core {
 
   bond(agent: string, body: unknown) {
     return this.tx(() => {
+      this.notOnChain("bonding");
       const a = this.mustAgent(agent);
       const amount = parseAmount(isObj(body) ? body.amount : undefined);
       if (amount === 0n) throw bad("bad_amount", "amount must be positive");
@@ -594,6 +635,7 @@ export class Core {
   /** Starts the cooldown. The agent is not assignable while cooling but stays slashable. */
   unbond(agent: string, body: unknown) {
     return this.tx(() => {
+      this.notOnChain("unbonding");
       const a = this.mustAgent(agent);
       const amount = parseAmount(isObj(body) ? body.amount : undefined);
       if (amount === 0n) throw bad("bad_amount", "amount must be positive");
@@ -611,6 +653,7 @@ export class Core {
   }
 
   private matureUnbonds() {
+    if (this.chainMode) return; // withdraw_unbonded moves the tokens on chain; the bond mirror follows
     const rows = this.db
       .query<AgentRow, [number]>("SELECT * FROM agents WHERE unbond_amount != '0' AND unbond_ready_at <= ?")
       .all(this.now());
@@ -647,6 +690,7 @@ export class Core {
   /** $LINE creator rewards (SPEC 13.1): into the treasury, then split reserve_bps and pool_bps. */
   creatorRewards(body: unknown) {
     return this.tx(() => {
+      this.notOnChain("creator rewards");
       const amount = parseAmount(isObj(body) ? body.amount : undefined);
       const ref = `creator:${this.now()}`;
       this.ledger.transfer(ACC.faucet, ACC.treasury, amount, "creator_rewards", ref);
@@ -659,6 +703,7 @@ export class Core {
   /** Agent token trading fees arriving (simulated crank_fees, SPEC 13.7). */
   agentFees(body: unknown) {
     return this.tx(() => {
+      this.notOnChain("agent token fees (crank_fees)");
       if (!isObj(body)) throw bad("bad_body", "object expected");
       const agent = String(body.agent ?? "");
       const a = this.mustAgent(agent);
@@ -687,6 +732,7 @@ export class Core {
   /** Hosted runtime usage debit: compute vault to reserve, with a public usage record. */
   usage(body: unknown) {
     return this.tx(() => {
+      this.notOnChain("compute usage (debit_compute)");
       if (!isObj(body)) throw bad("bad_body", "object expected");
       const agent = String(body.agent ?? "");
       this.mustAgent(agent);
@@ -2051,6 +2097,7 @@ export class Core {
   /** Merkle claim (SPEC 13.3). The caller must be the leaf's agent. */
   claim(agent: string, n: number, body: unknown) {
     return this.tx(() => {
+      this.notOnChain("an epoch claim");
       const ep = this.epochRow(n);
       if (!ep) throw notFound("epoch");
       if (ep.status !== "closed") throw conflict("epoch_open", "epoch not closed yet");
@@ -2089,6 +2136,157 @@ export class Core {
         root: ep.root,
         claimed: !!this.db.query("SELECT 1 FROM claims WHERE epoch = ? AND agent_id = ? AND dest = ?").get(n, agent, l.dest),
       }));
+  }
+
+
+  // ---------------------------------------------------------------------------------------------
+  // Chain mode (SPEC 14): the bridge in src/chain.ts reads the programs and mirrors them in here.
+  // Mirrored ledger accounts are set to what the chain holds, net of what Core has decided but not
+  // yet sent (closed epochs not posted, slashes not sent), through `faucet` with a chain_* reason,
+  // so reconcile() still holds.
+
+  private notOnChain(what: string) {
+    if (this.chainMode) throw conflict("on_chain", `${what} happens on chain in chain mode`);
+  }
+
+  private mirror(account: string, want: bigint, reason: string): bigint {
+    const target = want < 0n ? 0n : want;
+    const have = this.ledger.balance(account);
+    if (target > have) this.ledger.transfer(ACC.faucet, account, target - have, reason, "chain");
+    else if (target < have) this.ledger.transfer(account, ACC.faucet, have - target, reason, "chain");
+    return target - have;
+  }
+
+  private unsentSlashes(agent?: string): bigint {
+    const rows = this.db
+      .query<{ amount: string; agent_id: string }, []>(
+        "SELECT s.amount, s.agent_id FROM slashes s LEFT JOIN chain_slashes c ON c.slash_id = s.id WHERE c.signature IS NULL",
+      )
+      .all();
+    return rows.filter((r) => !agent || r.agent_id === agent).reduce((t, r) => t + BigInt(r.amount), 0n);
+  }
+
+  /** Mirrors one registry Agent (and, for launched agents, its AgentLaunch and compute vault). */
+  chainSyncAgent(r: ChainAgent) {
+    return this.tx(() => {
+      let a = this.agentRow(r.agent);
+      if (!a) {
+        if (r.kind === "verifier") {
+          const operator = r.operator === ZERO32 ? null : r.operator;
+          this.db
+            .query("INSERT INTO agents (agent_id, kind, operator, registered_at, lifecycle) VALUES (?, 'verifier', ?, ?, 'active')")
+            .run(r.agent, operator, Number(r.registeredAt) * 1000);
+          this.ledger.transfer(ACC.faucet, ACC.burned, r.burned, "chain_register_burn", r.agent);
+          this.emit("agent.registered", { agent: r.agent, kind: "verifier", operator, capabilities: null, chain: true });
+        } else if (r.launch) {
+          const MODES = ["token", "purchased", "app"];
+          this.launchAgent(
+            { agent: r.agent, mint: r.launch.mint, launcher: r.launch.launcher, target_repo: r.launch.repoUrl, hosted: r.launch.hosted,
+              identity_mode: MODES[r.launch.identityMode] ?? "app" },
+            { fromChain: true },
+          );
+        } else return null;
+        this.db.query("UPDATE agents SET chain_owner = ?, chain_caps = ? WHERE agent_id = ?").run(r.owner, r.capabilities, r.agent);
+        a = this.agentRow(r.agent)!;
+      }
+      const delta = this.mirror(ACC.bond(r.agent), r.bond - this.unsentSlashes(r.agent), "chain_bond");
+      if (delta !== 0n) {
+        this.db.query("INSERT INTO bonds (agent_id, action, amount, at) VALUES (?, ?, ?, ?)").run(r.agent, delta > 0n ? "bond" : "unbond_release", (delta > 0n ? delta : -delta).toString(), this.now());
+        this.emit(delta > 0n ? "agent.bonded" : "agent.unbonded", { agent: r.agent, amount: (delta > 0n ? delta : -delta).toString(), bond: this.bondOf(r.agent).toString(), chain: true });
+      }
+      const unbond = r.unbondAmount.toString();
+      const ready = r.unbondAmount > 0n ? Number(r.unbondReadyAt) * 1000 : null;
+      if (a.unbond_amount !== unbond || a.unbond_ready_at !== ready) {
+        this.db.query("UPDATE agents SET unbond_amount = ?, unbond_ready_at = ? WHERE agent_id = ?").run(unbond, ready, r.agent);
+        if (r.unbondAmount > 0n) this.emit("agent.cooling", { agent: r.agent, amount: unbond, ready_at: ready, chain: true });
+      }
+      if (r.compute !== undefined) {
+        this.mirror(ACC.compute(r.agent), r.compute, "chain_compute");
+        this.refreshAwake(r.agent);
+      }
+      if (delta !== 0n) this.fillWants();
+      return this.agentView(r.agent);
+    });
+  }
+
+  /** Mirrors the registry vaults: treasury as is, pool and reserve net of decisions not yet sent. */
+  chainSetBalances(b: { treasury: bigint; reserve: bigint; pool: bigint }) {
+    return this.tx(() => {
+      const unposted = this.db
+        .query<{ pool_amount: string; rebate_amount: string }, []>(
+          "SELECT e.pool_amount, e.rebate_amount FROM epochs e LEFT JOIN chain_epochs c ON c.n = e.n WHERE e.status = 'closed' AND c.signature IS NULL",
+        )
+        .all();
+      const pool = unposted.reduce((t, e) => t + BigInt(e.pool_amount), 0n);
+      const rebate = unposted.reduce((t, e) => t + BigInt(e.rebate_amount), 0n);
+      this.mirror(ACC.treasury, b.treasury, "chain_treasury");
+      this.mirror(ACC.pool, b.pool - pool, "chain_pool");
+      this.mirror(ACC.reserve, b.reserve - rebate + this.unsentSlashes(), "chain_reserve");
+    });
+  }
+
+  /** Closed epochs not yet posted on chain, oldest first. */
+  chainPendingEpochs(maxAttempts = 5) {
+    return this.db
+      .query<EpochRow & { attempts: number | null }, [number]>(
+        "SELECT e.*, c.attempts FROM epochs e LEFT JOIN chain_epochs c ON c.n = e.n WHERE e.status = 'closed' AND c.signature IS NULL AND COALESCE(c.attempts, 0) < ? ORDER BY e.n",
+      )
+      .all(maxAttempts);
+  }
+  chainEpochResult(n: number, r: { signature?: string; error?: string }) {
+    this.tx(() => {
+      this.db
+        .query(
+          `INSERT INTO chain_epochs (n, signature, error, attempts, posted_at) VALUES (?, ?, ?, 1, ?)
+           ON CONFLICT(n) DO UPDATE SET signature = excluded.signature, error = excluded.error, attempts = chain_epochs.attempts + 1, posted_at = excluded.posted_at`,
+        )
+        .run(n, r.signature ?? null, r.error ?? null, r.signature ? this.now() : null);
+      this.emit(r.signature ? "chain.epoch_posted" : "chain.epoch_failed", { n, ...r });
+    });
+  }
+  chainEpochs() {
+    return this.db.query<{ n: number; signature: string | null; error: string | null; attempts: number; posted_at: number | null }, []>("SELECT * FROM chain_epochs ORDER BY n").all();
+  }
+
+  /** Slashes Core decided that have not been sent to the registry yet (reference runners are never slashed). */
+  chainPendingSlashes(maxAttempts = 5) {
+    return this.db
+      .query<{ id: number; agent_id: string; reason: string; epoch: number; amount: string }, [number]>(
+        "SELECT s.id, s.agent_id, s.reason, s.epoch, s.amount FROM slashes s LEFT JOIN chain_slashes c ON c.slash_id = s.id WHERE c.signature IS NULL AND COALESCE(c.attempts, 0) < ? ORDER BY s.id",
+      )
+      .all(maxAttempts)
+      .map((s) => ({ ...s, offence: CHAIN_OFFENCE[s.reason] ?? 1 }));
+  }
+  chainSlashResult(id: number, r: { signature?: string; error?: string }) {
+    this.tx(() => {
+      this.db
+        .query(
+          `INSERT INTO chain_slashes (slash_id, signature, error, attempts, posted_at) VALUES (?, ?, ?, 1, ?)
+           ON CONFLICT(slash_id) DO UPDATE SET signature = excluded.signature, error = excluded.error, attempts = chain_slashes.attempts + 1, posted_at = excluded.posted_at`,
+        )
+        .run(id, r.signature ?? null, r.error ?? null, r.signature ? this.now() : null);
+    });
+  }
+
+  /** Payout leaves of epochs posted on chain, for the claim mirror. */
+  chainPostedLeaves(): { n: number; leaves: PayoutLeaf[] }[] {
+    return this.db
+      .query<{ n: number; payouts: string }, []>("SELECT e.n, e.payouts FROM epochs e JOIN chain_epochs c ON c.n = e.n WHERE c.signature IS NOT NULL ORDER BY e.n")
+      .all()
+      .map((r) => ({ n: r.n, leaves: JSON.parse(r.payouts) as PayoutLeaf[] }));
+  }
+  /** Records a claim made on chain (a ClaimReceipt exists for the leaf). */
+  chainRecordClaim(n: number, l: { agent: string; dest: string; amount: string }) {
+    return this.tx(() => {
+      const r = this.db
+        .query("INSERT OR IGNORE INTO claims (epoch, agent_id, dest, amount, claimed_at) VALUES (?, ?, ?, ?, ?)")
+        .run(n, l.agent, l.dest, l.amount, this.now());
+      if (r.changes === 0) return false;
+      this.ledger.transfer(ACC.payable(n), l.dest, BigInt(l.amount), "claim", `epoch:${n}:${l.agent}:chain`);
+      if (l.dest === ACC.compute(l.agent)) this.refreshAwake(l.agent);
+      this.emit("epoch.claimed", { n, agent: l.agent, dest: l.dest, amount: l.amount, chain: true });
+      return true;
+    });
   }
 
   // ---------------------------------------------------------------------------------------------
@@ -2483,6 +2681,7 @@ export class Core {
       epoch: this.currentEpoch().n,
       ...this.live.stats(),
       balances: { treasury: this.ledger.balance(ACC.treasury).toString(), reserve: this.ledger.balance(ACC.reserve).toString(), pool: this.ledger.balance(ACC.pool).toString(), burned: this.ledger.balance(ACC.burned).toString() },
+      ...(this.chainMode ? { chain: this.chainView?.() ?? null } : {}),
     };
   }
 }

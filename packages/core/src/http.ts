@@ -101,6 +101,7 @@ export function buildRoutes(core: Core): Route[] {
     route("GET", "/v1/health", "none", () => ({ ok: true, now: core.now(), epoch: core.currentEpoch().n })),
     route("GET", "/v1/config", "none", () => ({ network: networkConfigJson(core.cfg), admin: core.adminId, runtime: core.runtimeId ?? null })),
     route("GET", "/v1/stats", "none", () => core.stats()),
+    route("GET", "/v1/chain", "none", () => (core.chainMode ? (core.chainView?.() ?? { mode: "devnet", read_at: null }) : { mode: "sim" })),
     route("GET", "/v1/lineages", "none", () => core.listLineages()),
     route("GET", "/v1/lineages/:id", "none", (c) => core.lineageView(c.params.id!)),
     route("GET", "/v1/lineages/:id/tree", "none", (c) => core.tree(c.params.id!, q(c, "gen"))),
@@ -177,6 +178,10 @@ export function buildRoutes(core: Core): Route[] {
     route("POST", "/v1/admin/usage", "runtime", (c) => core.usage(c.json())),
     route("POST", "/v1/admin/epochs/close", "admin", () => core.closeEpoch()),
     route("POST", "/v1/admin/tick", "admin", () => (core.tick(), { ok: true, now: core.now() })),
+    route("POST", "/v1/admin/chain/sync", "admin", async () => {
+      if (!core.chainSync) throw new ApiError(409, "not_chain_mode", "Core runs the simulated ledger");
+      return await core.chainSync();
+    }),
     route("GET", "/v1/admin/ledger", "admin", (c) => ({ entries: core.ledger.entries(q(c, "account"), Number(q(c, "limit") ?? 500)) })),
   ];
 }

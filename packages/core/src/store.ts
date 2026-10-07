@@ -384,6 +384,25 @@ const MIGRATIONS: string[] = [
     first_at INTEGER NOT NULL
   );
   `,
+  // 4: chain mode (SPEC 14): what was sent to the programs, and the registry's view of each agent
+  `
+  ALTER TABLE agents ADD COLUMN chain_owner TEXT;       -- registry Agent.owner (chain mode)
+  ALTER TABLE agents ADD COLUMN chain_caps TEXT;        -- registry Agent.capabilities digest, hex
+  CREATE TABLE chain_epochs (
+    n INTEGER PRIMARY KEY,
+    signature TEXT,                      -- post_epoch transaction, null until it confirmed
+    error TEXT,
+    attempts INTEGER NOT NULL DEFAULT 0,
+    posted_at INTEGER
+  );
+  CREATE TABLE chain_slashes (
+    slash_id INTEGER PRIMARY KEY,        -- slashes.id
+    signature TEXT,
+    error TEXT,
+    attempts INTEGER NOT NULL DEFAULT 0,
+    posted_at INTEGER
+  );
+  `,
 ];
 
 export function openDb(path: string): Database {
