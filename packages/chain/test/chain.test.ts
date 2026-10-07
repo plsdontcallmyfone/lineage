@@ -11,6 +11,7 @@ import {
   decodeConfig,
   decodeEpoch,
   decodeLaunchConfig,
+  decodeSlashReceipt,
   findProgramAddress,
   hexToBytes,
   IDENTITY_MODE,
@@ -52,7 +53,7 @@ const vector = (name: string) => {
 // The Rust side's test_params() with register_burn 1,234,567 (onchain/tests/src/lib.rs).
 const ONE = 1_000_000n;
 const params: Params = {
-  registerBurn: 1_234_567n, minBond: 5_000n * ONE, bondCap: 50_000n * ONE, unbondCooldownS: 600n, epochLengthS: 3600, reserveBps: 8000, poolBps: 2000,
+  registerBurn: 1_234_567n, minBond: 5_000n * ONE, bondCap: 50_000n * ONE, unbondCooldownS: 600n, epochLengthS: 300, reserveBps: 8000, poolBps: 2000,
   canarySlashBps: 2500, minoritySlashBps: 500, revealSlashBps: 200, strikeLimit: 3, uReplay: 1, uAuthor: 4, finderShareBps: 1000, valueCap: 8,
   rebatePerClass: ONE, maxOpenCandidatesPerAgent: 3, authorRewardTo: 0, quorum: 2,
 };
@@ -79,7 +80,7 @@ describe("instruction builders equal the Anchor encodings", () => {
   const mint = k(7);
   const dbcConfig = k(8);
   const launcher = k(9);
-  const args = { admin: k(1), coreAuthority: k(2), launchProgram: LAUNCH_PROGRAM_ID, params };
+  const args = { admin: k(1), coreAuthority: k(2), launchProgram: LAUNCH_PROGRAM_ID, params, maxRebatePerEpoch: 123_456n };
   const ownerToken = ata(owner, line);
   const cases: [string, () => Ix][] = [
     ["registry.initialize", () => registry.initialize({ upgradeAuthority: k(1), mint: line, args })],
@@ -90,7 +91,9 @@ describe("instruction builders equal the Anchor encodings", () => {
     ["registry.bond", () => registry.bond({ owner, agent, mint: line, ownerToken, amount: 5_000_000_000n })],
     ["registry.request_unbond", () => registry.requestUnbond({ owner, agent, amount: 77n })],
     ["registry.withdraw_unbonded", () => registry.withdrawUnbonded({ owner, agent, mint: line, ownerToken })],
-    ["registry.slash", () => registry.slash({ coreAuthority: k(2), agent, mint: line, offence: OFFENCE.minority, epoch: 42 })],
+    ["registry.slash", () => registry.slash({ coreAuthority: k(2), agent, mint: line, offence: OFFENCE.minority, epoch: 42, slashId: fill(0x5a) })],
+    ["registry.set_epoch_cursor", () => registry.setEpochCursor({ admin: k(1), epochsPosted: 3, lastEpoch: 9, anchor: 7, anchorTs: 1_900_000_123 })],
+    ["registry.migrate_config", () => registry.migrateConfig({ admin: k(1), maxRebatePerEpoch: 654_321n })],
     ["registry.split", () => registry.split({ mint: line })],
     ["registry.post_epoch", () => registry.postEpoch({ coreAuthority: k(2), mint: line, epoch: 9, payoutRoot: fill(1), lineageRoot: fill(2),
       totalUnitsMicro: 3_500_000n, poolAmount: 10n, rebateAmount: 20n })],
@@ -99,8 +102,8 @@ describe("instruction builders equal the Anchor encodings", () => {
     ["registry.claim.wallet", () => registry.claim({ payer: owner, mint: line, epoch: 9, agent, destKind: 2, wallet: k(11), amount: 99n, leaf: fill(8),
       proof: [fill(5), fill(6)], destToken: ata(k(11), line) })],
   ];
-  const largs = { admin: k(1), runtimeAuthority: k(3), registryProgram: REGISTRY_PROGRAM_ID, computeSink: k(10), agentComputeBps: 7000, protocolBps: 3000,
-    sleepThreshold: 1n, wakeThreshold: 2n, paused: false };
+  const largs = { admin: k(1), runtimeAuthority: k(3), computeSink: k(10), agentComputeBps: 7000, protocolBps: 3000,
+    sleepThreshold: 1n, wakeThreshold: 2n, paused: false, maxDebitPerEpoch: 4_242n };
   const dbcPool = launchPdas.dbcPool(dbcConfig, mint, line);
   cases.push(
     ["launch.initialize_launch", () => launch.initialize({ upgradeAuthority: k(1), lineMint: line, dbcConfig, args: largs })],
@@ -110,6 +113,10 @@ describe("instruction builders equal the Anchor encodings", () => {
       hosted: true } })],
     ["launch.crank_fees", () => launch.crankFees({ agent, agentMint: mint, lineMint: line, dbcConfig })],
     ["launch.graduate", () => launch.graduate({ agentMint: mint, dbcPool, dammPool: k(12), position: k(13), positionNftAccount: k(14) })],
+    ["launch.graduate_by_admin", () => launch.graduateByAdmin({ admin: k(1), agentMint: mint, dbcPool, dammPool: k(12), position: k(13),
+      positionNftAccount: k(14) })],
+    ["launch.repoint_position", () => launch.repointPosition({ agentMint: mint, currentPosition: k(13), position: k(15), positionNftAccount: k(16) })],
+    ["launch.migrate_launch_config", () => launch.migrateConfig({ admin: k(1), maxDebitPerEpoch: 8_888n })],
     ["launch.post_usage", () => launch.postUsage({ runtimeAuthority: k(3), epoch: 3, root: fill(9) })],
     ["launch.debit_compute", () => launch.debitCompute({ runtimeAuthority: k(3), epoch: 3, agent, agentMint: mint, computeSink: k(10), lineMint: line,
       amount: 150_000n, modelTokens: 81_234, sandboxS: 412, proof: [fill(1)] })],
@@ -144,6 +151,18 @@ describe("account decoders read live LiteSVM accounts", () => {
       f.registerBurn, f.unbondCooldownS]);
     expect([c.params.reserveBps, c.params.poolBps, c.params.quorum, c.params.authorRewardTo, c.params.finderShareBps]).toEqual([f.reserveBps, f.poolBps,
       f.quorum, f.authorRewardTo, f.finderShareBps]);
+    expect([c.params.epochLengthS, String(c.maxRebatePerEpoch), String(c.epochAnchor), String(c.epochAnchorTs)]).toEqual([f.epochLengthS,
+      f.maxRebatePerEpoch, f.epochAnchor, f.epochAnchorTs]);
+    // A Config the first layout wrote (24 bytes shorter) still decodes, without the new fields.
+    const old = decodeConfig(raw("Config").subarray(0, raw("Config").length - 24));
+    expect([old.admin, old.lastEpoch, old.maxRebatePerEpoch, old.epochAnchor]).toEqual([c.admin, c.lastEpoch, null, null]);
+  });
+  test("SlashReceipt", () => {
+    const r = decodeSlashReceipt(raw("SlashReceipt"));
+    const f = acct("SlashReceipt").fields;
+    expect([r.slashId, r.agent, r.offence, String(r.epoch), String(r.amount), String(r.slashedAt)]).toEqual([f.slashId, f.agent, f.offence, f.epoch,
+      f.amount, f.slashedAt]);
+    expect(registryPdas.slashReceipt(r.slashId)).toBe(acct("SlashReceipt").address);
   });
   test("Agent", () => {
     const a = decodeAgent(raw("Agent"));
@@ -166,6 +185,11 @@ describe("account decoders read live LiteSVM accounts", () => {
       f.lineMint, f.dbcConfig, f.agentComputeBps, f.protocolBps, f.paused]);
     expect([c.sleepThreshold, c.wakeThreshold, c.migrationQuoteThreshold, c.sqrtStartPrice].map(String)).toEqual([f.sleepThreshold, f.wakeThreshold,
       f.migrationQuoteThreshold, f.sqrtStartPrice]);
+    expect([c.registryProgram, ...[c.maxDebitPerEpoch, c.usageEpochsPosted, c.lastUsageEpoch, c.usageAnchor, c.usageAnchorTs].map(String)]).toEqual([
+      f.registryProgram, f.maxDebitPerEpoch, f.usageEpochsPosted, f.lastUsageEpoch, f.usageAnchor, f.usageAnchorTs]);
+    expect(c.registryProgram).toBe(REGISTRY_PROGRAM_ID);
+    const old = decodeLaunchConfig(raw("LaunchConfig").subarray(0, raw("LaunchConfig").length - 40));
+    expect([old.dbcConfig, old.paused, old.maxDebitPerEpoch, old.usageAnchor]).toEqual([c.dbcConfig, c.paused, null, null]);
   });
   test("AgentLaunch", () => {
     const l = decodeAgentLaunch(raw("AgentLaunch"));

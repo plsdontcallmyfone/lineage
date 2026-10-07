@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { homedir } from "node:os";
 import {
@@ -106,6 +107,17 @@ export type ChainSend = (label: string, ixs: Ix[]) => Promise<{ signature: strin
 
 const s = (v: bigint | null | undefined) => (v === null || v === undefined ? null : v.toString());
 
+/**
+ * The 32-byte id a slash is sent with (its SlashReceipt PDA seed): a digest of Core's slash row,
+ * so every retry of one slash carries the same id and lands at most once.
+ */
+export function slashId(sl: { id: number; agent_id: string; reason: string; ref: string; epoch: number }): string {
+  return createHash("sha256").update(JSON.stringify(["lineage-slash", sl.id, sl.agent_id, sl.reason, sl.ref, sl.epoch])).digest("hex");
+}
+
+/** Retry delay after `failures` failed sends: 5 s doubling, at most 10 minutes. */
+export const backoffMs = (failures: number) => Math.min(5_000 * 2 ** Math.max(0, failures - 1), 600_000);
+
 export class ChainBridge {
   readonly reader: ChainReader;
   private running: Promise<unknown> | null = null;
@@ -128,6 +140,28 @@ export class ChainBridge {
   }
   readonly coreKeyId: string | null;
   private log: (m: string) => void;
+  /** Failed sends by key ("slash:<id>", "epoch:<n>"): count and the earliest next attempt (Core clock, ms). */
+  private retry = new Map<string, { failures: number; at: number }>();
+  private due(key: string) {
+    const r = this.retry.get(key);
+    return !r || this.core.now() >= r.at;
+  }
+  private failed(key: string) {
+    const failures = (this.retry.get(key)?.failures ?? 0) + 1;
+    this.retry.set(key, { failures, at: this.core.now() + backoffMs(failures) });
+  }
+  /** The signature of a transaction that landed although its send reported an error. */
+  private async landedSignature(e: unknown, account: string): Promise<string> {
+    const sig = (e as { signature?: string }).signature;
+    if (sig) return sig;
+    try {
+      const sigs = await this.reader.rpc.call<{ signature: string }[]>("getSignaturesForAddress", [account, { limit: 1000 }]);
+      if (sigs.length) return sigs[sigs.length - 1]!.signature;
+    } catch {
+      // fall through
+    }
+    return `landed:${account}`;
+  }
 
   view() {
     return this.snapshot ?? { mode: this.settings.mode, read_at: null };
@@ -197,9 +231,11 @@ export class ChainBridge {
     if (this.send && this.coreKeyId === reg.coreAuthority) {
       let last = reg.epochsPosted === 0n ? -1n : reg.lastEpoch;
       for (const ep of this.core.chainPendingEpochs()) {
+        if (!this.due(`epoch:${ep.n}`)) break;
         if (BigInt(ep.n) <= last) {
           const error = `epoch ${ep.n} is not after the last posted epoch ${last} on chain`;
           this.core.chainEpochResult(ep.n, { error });
+          this.failed(`epoch:${ep.n}`);
           posted.push({ n: ep.n, error });
           continue;
         }
@@ -213,11 +249,24 @@ export class ChainBridge {
             }),
           ]);
           this.core.chainEpochResult(ep.n, { signature: r.signature });
+          this.retry.delete(`epoch:${ep.n}`);
           posted.push({ n: ep.n, signature: r.signature });
           last = BigInt(ep.n);
         } catch (e) {
+          // The send may have landed although it reported an error (an expired confirmation, a
+          // dropped connection): the Epoch PDA with Core's root means it did.
+          const onchain = await this.reader.epoch(ep.n).catch(() => null);
+          if (onchain && onchain.payoutRoot === ep.root) {
+            const signature = await this.landedSignature(e, registryPdas.epoch(ep.n));
+            this.core.chainEpochResult(ep.n, { signature });
+            this.retry.delete(`epoch:${ep.n}`);
+            posted.push({ n: ep.n, signature });
+            last = BigInt(ep.n);
+            continue;
+          }
           const error = (e as Error).message;
           this.core.chainEpochResult(ep.n, { error });
+          this.failed(`epoch:${ep.n}`);
           posted.push({ n: ep.n, error });
           break;
         }
@@ -259,15 +308,31 @@ export class ChainBridge {
     return this.snapshot;
   }
 
+  /**
+   * Sends pending slashes, each with its deterministic slash id. A slash counts as sent only once
+   * it landed: on a send error the SlashReceipt PDA is read back, and a slash that did not land
+   * stays pending and is retried with backoff (the receipt refuses a second landing).
+   */
   private async sendSlashes(mint: string, tokenProgram: string) {
     for (const sl of this.core.chainPendingSlashes()) {
+      const key = `slash:${sl.id}`;
+      if (!this.due(key)) continue;
+      const id = slashId(sl);
       try {
         const r = await this.send!(`slash ${sl.agent_id}`, [
-          registry.slash({ coreAuthority: this.coreKeyId!, agent: sl.agent_id, mint, offence: sl.offence, epoch: sl.epoch, tokenProgram }),
+          registry.slash({ coreAuthority: this.coreKeyId!, agent: sl.agent_id, mint, offence: sl.offence, epoch: sl.epoch, slashId: id, tokenProgram }),
         ]);
         this.core.chainSlashResult(sl.id, { signature: r.signature });
+        this.retry.delete(key);
       } catch (e) {
+        const receipt = await this.reader.slashReceipt(id).catch(() => null);
+        if (receipt && receipt.agent === sl.agent_id) {
+          this.core.chainSlashResult(sl.id, { signature: await this.landedSignature(e, registryPdas.slashReceipt(id)) });
+          this.retry.delete(key);
+          continue;
+        }
         this.core.chainSlashResult(sl.id, { error: (e as Error).message });
+        this.failed(key);
       }
     }
   }

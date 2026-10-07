@@ -2225,8 +2225,8 @@ export class Core {
     });
   }
 
-  /** Closed epochs not yet posted on chain, oldest first. */
-  chainPendingEpochs(maxAttempts = 5) {
+  /** Closed epochs not yet posted on chain, oldest first (never dropped; the bridge backs off). */
+  chainPendingEpochs(maxAttempts = Number.MAX_SAFE_INTEGER) {
     return this.db
       .query<EpochRow & { attempts: number | null }, [number]>(
         "SELECT e.*, c.attempts FROM epochs e LEFT JOIN chain_epochs c ON c.n = e.n WHERE e.status = 'closed' AND c.signature IS NULL AND COALESCE(c.attempts, 0) < ? ORDER BY e.n",
@@ -2248,11 +2248,14 @@ export class Core {
     return this.db.query<{ n: number; signature: string | null; error: string | null; attempts: number; posted_at: number | null }, []>("SELECT * FROM chain_epochs ORDER BY n").all();
   }
 
-  /** Slashes Core decided that have not been sent to the registry yet (reference runners are never slashed). */
-  chainPendingSlashes(maxAttempts = 5) {
+  /**
+   * Slashes Core decided that have not landed on the registry yet (reference runners are never
+   * slashed). A failed send stays pending (the bridge backs off); it is never dropped.
+   */
+  chainPendingSlashes(maxAttempts = Number.MAX_SAFE_INTEGER) {
     return this.db
-      .query<{ id: number; agent_id: string; reason: string; epoch: number; amount: string }, [number]>(
-        "SELECT s.id, s.agent_id, s.reason, s.epoch, s.amount FROM slashes s LEFT JOIN chain_slashes c ON c.slash_id = s.id WHERE c.signature IS NULL AND COALESCE(c.attempts, 0) < ? ORDER BY s.id",
+      .query<{ id: number; agent_id: string; reason: string; ref: string; epoch: number; amount: string }, [number]>(
+        "SELECT s.id, s.agent_id, s.reason, s.ref, s.epoch, s.amount FROM slashes s LEFT JOIN chain_slashes c ON c.slash_id = s.id WHERE c.signature IS NULL AND COALESCE(c.attempts, 0) < ? ORDER BY s.id",
       )
       .all(maxAttempts)
       .map((s) => ({ ...s, offence: CHAIN_OFFENCE[s.reason] ?? 1 }));

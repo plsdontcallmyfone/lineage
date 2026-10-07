@@ -1,7 +1,7 @@
 import { accountDisc, type Address } from "./codec.ts";
 import { decodeAgentLaunch, decodeLaunchConfig, LAUNCH_PROGRAM_ID, launchPdas, type AgentLaunch, type LaunchConfig } from "./launch.ts";
-import { decodeAgent, decodeClaimReceipt, decodeConfig, decodeEpoch, REGISTRY_PROGRAM_ID, registryPdas, type AgentRecord, type ClaimReceipt,
-  type EpochRecord, type RegistryConfig } from "./registry.ts";
+import { decodeAgent, decodeClaimReceipt, decodeConfig, decodeEpoch, decodeSlashReceipt, REGISTRY_PROGRAM_ID, registryPdas, type AgentRecord,
+  type ClaimReceipt, type EpochRecord, type RegistryConfig, type SlashReceipt } from "./registry.ts";
 import type { AccountInfo, Rpc } from "./rpc.ts";
 import { decodeMint, decodeTokenAccount, type MintInfo } from "./spl.ts";
 
@@ -52,6 +52,11 @@ export class ChainReader {
   async epoch(n: bigint | number): Promise<EpochRecord | null> {
     const a = owned(await this.rpc.getAccountInfo(registryPdas.epoch(n)), this.registryProgram);
     return a ? decodeEpoch(a.data) : null;
+  }
+  /** The receipt of a slash Core sent (null if that slash id never landed). */
+  async slashReceipt(slashId: Uint8Array | string): Promise<SlashReceipt | null> {
+    const a = owned(await this.rpc.getAccountInfo(registryPdas.slashReceipt(slashId)), this.registryProgram);
+    return a ? decodeSlashReceipt(a.data) : null;
   }
   async claimReceipts(epoch: bigint | number, leaves: Uint8Array[]): Promise<(ClaimReceipt | null)[]> {
     const accts = await this.rpc.getMultipleAccounts(leaves.map((l) => registryPdas.claimReceipt(epoch, l)));

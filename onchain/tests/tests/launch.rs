@@ -104,6 +104,40 @@ fn full_launch_records_everything() {
         }
         let args = ll::LaunchArgs { identity_mode: 3, ..default_launch_args() };
         rejects(e.try_launch(&l2, &Keypair::new(), &Keypair::new(), args), "InvalidArgs");
+        // L2: the registry program is a constant, not a config value.
+        let (a2, m2) = (Keypair::new(), Keypair::new());
+        let mut ix = e.launch_ix(&l2.pubkey(), &a2.pubkey(), &m2.pubkey(), default_launch_args());
+        ix.accounts[14].pubkey = DAMM;
+        rejects(send(&mut e.svm, &l2, &[&a2, &m2], vec![cu(400_000), ix]), "ConstraintAddress");
+    }
+}
+
+/// L5: the longest strings `launch_agent` accepts (name, symbol, URI and URL together at
+/// `MAX_LAUNCH_STRINGS`) fit one transaction with three signers and both compute budget
+/// instructions; one byte more is refused onchain.
+#[test]
+fn longest_launch_fits_one_transaction() {
+    let mut e = setup(LineKind::Pump);
+    let (launcher, _) = e.wallet(0);
+    let price = solana_compute_budget_interface::ComputeBudgetInstruction::set_compute_unit_price(1);
+    let fixed = 32 + 10 + "https://u".len() + "https://github.com/a".len();
+    let extra = ll::MAX_LAUNCH_STRINGS - fixed;
+    let url = format!("https://github.com/a{}", "a".repeat(extra / 2));
+    let uri = format!("https://u{}", "u".repeat(extra - extra / 2));
+    let args = ll::LaunchArgs { name: "n".repeat(32), symbol: "s".repeat(10), uri, repo_url: url.clone(), identity_mode: ll::IDENTITY_TOKEN, hosted: true };
+    assert_eq!(args.name.len() + args.symbol.len() + args.uri.len() + args.repo_url.len(), ll::MAX_LAUNCH_STRINGS);
+    let (agent, mint) = (Keypair::new(), Keypair::new());
+    let ix = e.launch_ix(&launcher.pubkey(), &agent.pubkey(), &mint.pubkey(), args.clone());
+    let size = tx_size(&launcher, &[&agent, &mint], &[cu(400_000), price.clone(), ix.clone()]);
+    println!("longest launch_agent transaction: {size} of 1232 bytes (strings {})", ll::MAX_LAUNCH_STRINGS);
+    assert_eq!(size, 1232, "the budget is exact");
+    ok(send(&mut e.svm, &launcher, &[&agent, &mint], vec![cu(400_000), price, ix]));
+    let la: ll::AgentLaunch = read(&e.svm, &agent_launch(&mint.pubkey()));
+    assert_eq!(la.repo_url, url);
+    // One byte over the budget (in either field) is refused, even in a smaller transaction.
+    for a in [ll::LaunchArgs { uri: format!("{}u", args.uri), ..args.clone() }, ll::LaunchArgs { repo_url: format!("{url}a"), ..args.clone() }] {
+        let small = ll::LaunchArgs { name: a.name[..31].to_string() + "n", ..a };
+        rejects(e.try_launch(&launcher, &Keypair::new(), &Keypair::new(), ll::LaunchArgs { symbol: "s".repeat(10), ..small }), "InvalidArgs");
     }
 }
 
@@ -273,7 +307,8 @@ fn graduation_and_locked_pool_fees() {
         assert_eq!((la.damm_pool, la.position, la.position_nft_account), (d.pool, d.position, d.nft_account));
         let ix = graduate_ix(&l, &d, d.position, d.nft_account, DAMM_DYNAMIC_CONFIG);
         rejects(send(&mut e.svm, &k, &[], vec![ix]), "WrongPhase");
-        rejects(e.crank_fees(&l), "WrongPhase");
+        // Everything on the curve was cranked before the migration.
+        rejects(e.crank_fees(&l), "NothingToClaim");
 
         // Trades on DAMM v2 earn the locked position fees; only our program can claim them.
         let (t, tl, ta) = e.trader(&l, 1_000_000 * ONE);
@@ -300,8 +335,8 @@ fn graduation_and_locked_pool_fees() {
 fn post_usage_ix(signer: &Pubkey, epoch: u64, root: [u8; 32]) -> Instruction {
     Instruction {
         program_id: ll::ID,
-        accounts: ll::accounts::PostUsage { launch_config: launch_config(), runtime_authority: *signer, usage: lpda(&[ll::USAGE_SEED, &epoch.to_le_bytes()]),
-            system_program: system_program::ID }.to_account_metas(None),
+        accounts: ll::accounts::PostUsage { launch_config: launch_config(), registry_config: registry_config(), runtime_authority: *signer,
+            usage: lpda(&[ll::USAGE_SEED, &epoch.to_le_bytes()]), system_program: system_program::ID }.to_account_metas(None),
         data: ll::instruction::PostUsage { epoch, root }.data(),
     }
 }
@@ -418,4 +453,279 @@ fn launch_pause() {
     let args = ll::LaunchConfigArgs { paused: false, ..args };
     ok(send(&mut e.svm, &admin, &[], vec![set_launch_config_ix(admin.pubkey(), args, dc)]));
     ok(e.crank_fees(&l));
+}
+
+// ---------- review fixes: H1, H2, M2, migration ----------
+
+/// A launch whose curve was bought out in one buy and migrated by Meteora (no fee crank before).
+fn migrated(kind: LineKind) -> (Env, Launched, Damm, Keypair, Pubkey, Pubkey) {
+    migrated_with(kind, PARTIAL_FILL, 40_000_000 * ONE)
+}
+fn migrated_with(kind: LineKind, mode: u8, amount: u64) -> (Env, Launched, Damm, Keypair, Pubkey, Pubkey) {
+    let mut e = setup(kind);
+    let l = e.launch_agent(Keypair::new(), default_launch_args());
+    let (whale, wl, wa) = e.trader(&l, amount);
+    ok(e.dbc_swap(&l, &whale, &wl, &wa, true, amount, 1, mode));
+    let (r, d) = migrate(&mut e, &l);
+    ok(r);
+    (e, l, d, whale, wl, wa)
+}
+
+/// DAMM v2 `create_position`: anyone pays, `owner` receives the position NFT.
+fn damm_create_position(e: &mut Env, d: &Damm, payer: &Keypair, owner: &Pubkey) -> (Pubkey, Pubkey) {
+    let m = Keypair::new();
+    let (p, n) = (pda_of(&[b"position", m.pubkey().as_ref()], &DAMM), pda_of(&[b"position_nft_account", m.pubkey().as_ref()], &DAMM));
+    let ix = Instruction {
+        program_id: DAMM,
+        accounts: vec![AccountMeta::new_readonly(*owner, false), AccountMeta::new(m.pubkey(), true), AccountMeta::new(n, false),
+            AccountMeta::new(d.pool, false), AccountMeta::new(p, false), AccountMeta::new_readonly(ll::meteora::DAMM_POOL_AUTHORITY, false),
+            AccountMeta::new(payer.pubkey(), true), AccountMeta::new_readonly(T22, false), AccountMeta::new_readonly(system_program::ID, false),
+            AccountMeta::new_readonly(damm_event_authority(), false), AccountMeta::new_readonly(DAMM, false)],
+        data: mt_disc("global:create_position").to_vec(),
+    };
+    ok(send(&mut e.svm, payer, &[&m], vec![cu(400_000), ix]));
+    (p, n)
+}
+/// DAMM v2 `add_liquidity`, signed by the position NFT's holder.
+fn damm_add_liquidity(e: &mut Env, l: &Launched, d: &Damm, owner: &Keypair, agent_acct: &Pubkey, line_acct: &Pubkey, position: (Pubkey, Pubkey),
+    liquidity: u128) -> litesvm::types::TransactionResult {
+    let mut data = mt_disc("global:add_liquidity").to_vec();
+    data.extend_from_slice(&liquidity.to_le_bytes());
+    data.extend_from_slice(&u64::MAX.to_le_bytes());
+    data.extend_from_slice(&u64::MAX.to_le_bytes());
+    let ix = Instruction {
+        program_id: DAMM,
+        accounts: vec![AccountMeta::new(d.pool, false), AccountMeta::new(position.0, false), AccountMeta::new(*agent_acct, false),
+            AccountMeta::new(*line_acct, false), AccountMeta::new(d.token_a_vault, false), AccountMeta::new(d.token_b_vault, false),
+            AccountMeta::new_readonly(l.mint, false), AccountMeta::new_readonly(e.line_mint, false),
+            AccountMeta::new_readonly(position.1, false), AccountMeta::new_readonly(owner.pubkey(), true),
+            AccountMeta::new_readonly(T22, false), AccountMeta::new_readonly(e.line_program, false),
+            AccountMeta::new_readonly(damm_event_authority(), false), AccountMeta::new_readonly(DAMM, false)],
+        data,
+    };
+    send(&mut e.svm, owner, &[], vec![cu(400_000), ix])
+}
+/// DAMM v2 `permanent_lock_position`, signed by the position NFT's holder.
+fn damm_permanent_lock(e: &mut Env, d: &Damm, owner: &Keypair, position: (Pubkey, Pubkey), liquidity: u128) {
+    let mut data = mt_disc("global:permanent_lock_position").to_vec();
+    data.extend_from_slice(&liquidity.to_le_bytes());
+    let ix = Instruction {
+        program_id: DAMM,
+        accounts: vec![AccountMeta::new(d.pool, false), AccountMeta::new(position.0, false), AccountMeta::new_readonly(position.1, false),
+            AccountMeta::new_readonly(owner.pubkey(), true), AccountMeta::new_readonly(damm_event_authority(), false),
+            AccountMeta::new_readonly(DAMM, false)],
+        data,
+    };
+    ok(send(&mut e.svm, owner, &[], vec![ix]));
+}
+/// Token-2022 SetAuthority(AccountOwner) on a position's NFT account: hands the position over.
+fn hand_position_to(e: &mut Env, owner: &Keypair, position: (Pubkey, Pubkey), new_owner: &Pubkey) {
+    let ix = spl_token_2022_ix_set_owner(&position.1, new_owner, &owner.pubkey());
+    ok(send(&mut e.svm, owner, &[], vec![ix]));
+}
+fn spl_token_2022_ix_set_owner(account: &Pubkey, new_owner: &Pubkey, owner: &Pubkey) -> Instruction {
+    let mut data = vec![6u8, 2u8, 1u8]; // SetAuthority, AccountOwner, Some
+    data.extend_from_slice(new_owner.as_ref());
+    Instruction { program_id: T22, accounts: vec![AccountMeta::new(*account, false), AccountMeta::new_readonly(*owner, true)], data }
+}
+fn position_locked(svm: &LiteSVM, p: &Pubkey) -> (u128, u128, u128) {
+    let d = svm.get_account(p).unwrap().data;
+    let u = |o: usize| u128::from_le_bytes(d[o..o + 16].try_into().unwrap());
+    (u(152), u(168), u(184))
+}
+fn pool_liquidity(svm: &LiteSVM, pool: &Pubkey) -> (u128, u128) {
+    let d = svm.get_account(pool).unwrap().data;
+    let u = |o: usize| u128::from_le_bytes(d[o..o + 16].try_into().unwrap());
+    (u(360), u(552))
+}
+fn repoint_ix(l: &Launched, current: Pubkey, position: (Pubkey, Pubkey)) -> Instruction {
+    Instruction {
+        program_id: ll::ID,
+        accounts: ll::accounts::RepointPosition { launch_config: launch_config(), authority: launch_authority(), agent_launch: l.launch,
+            current_position: current, position: position.0, position_nft_account: position.1 }.to_account_metas(None),
+        data: ll::instruction::RepointPosition {}.data(),
+    }
+}
+
+/// H1: the four-step attack. A third party (1) opens a DAMM v2 position on the migrated pool,
+/// (2) adds dust liquidity, (3) permanently locks it, (4) hands its NFT account to our authority,
+/// then calls `graduate` with it first. Refused: the position must hold a strict majority of the
+/// pool's permanently locked liquidity, which only DBC's migration position does. The real
+/// position graduates; the forged one cannot be repointed to; a strictly larger gift can.
+#[test]
+fn forged_dust_position_cannot_graduate() {
+    let (mut e, l, d, whale, wl, wa) = migrated(LineKind::Classic);
+    let (liq0, locked0) = pool_liquidity(&e.svm, &d.pool);
+    assert_eq!(position_locked(&e.svm, &d.position), (0, 0, locked0), "DBC's migration position holds every locked unit");
+    assert_eq!(liq0, locked0);
+    let dust = 1u128 << 64;
+    let forged = damm_create_position(&mut e, &d, &whale, &whale.pubkey());
+    ok(damm_add_liquidity(&mut e, &l, &d, &whale, &wa, &wl, forged, dust));
+    damm_permanent_lock(&mut e, &d, &whale, forged, dust);
+    hand_position_to(&mut e, &whale, forged, &launch_authority());
+    assert_eq!(position_locked(&e.svm, &forged.0), (0, 0, dust));
+    let nft = spl_token_2022::extension::StateWithExtensions::<spl_token_2022::state::Account>::unpack(&e.svm.get_account(&forged.1).unwrap().data)
+        .unwrap().base;
+    assert_eq!((nft.owner, nft.amount), (launch_authority(), 1), "a forged authority-held, 100% locked position");
+    let k = funded(&mut e.svm);
+    let ix = graduate_ix(&l, &d, forged.0, forged.1, DAMM_DYNAMIC_CONFIG);
+    rejects(send(&mut e.svm, &k, &[], vec![ix]), "NotMigrationPosition");
+    assert!(!read::<ll::AgentLaunch>(&e.svm, &l.launch).graduated, "the attack did not bind the launch");
+    // Unlocked third-party liquidity changes nothing either (the majority is of locked liquidity).
+    let other = damm_create_position(&mut e, &d, &whale, &whale.pubkey());
+    ok(damm_add_liquidity(&mut e, &l, &d, &whale, &wa, &wl, other, locked0 / 4));
+    let ix = graduate_ix(&l, &d, d.position, d.nft_account, DAMM_DYNAMIC_CONFIG);
+    ok(send(&mut e.svm, &k, &[], vec![ix]));
+    let la: ll::AgentLaunch = read(&e.svm, &l.launch);
+    assert_eq!((la.graduated, la.position, la.position_nft_account), (true, d.position, d.nft_account));
+    // Repointing to the dust position is refused (less locked liquidity than the recorded one).
+    rejects(send(&mut e.svm, &k, &[], vec![repoint_ix(&l, d.position, forged)]), "NotMigrationPosition");
+    rejects(send(&mut e.svm, &k, &[], vec![repoint_ix(&l, forged.0, forged)]), "ConstraintAddress");
+    // A gift of strictly more locked liquidity than the migration position may take over.
+    e.fund(&wl, 40_000_000 * ONE);
+    let gift = damm_create_position(&mut e, &d, &whale, &whale.pubkey());
+    ok(damm_add_liquidity(&mut e, &l, &d, &whale, &wa, &wl, gift, locked0 + 1));
+    damm_permanent_lock(&mut e, &d, &whale, gift, locked0 + 1);
+    rejects(send(&mut e.svm, &k, &[], vec![repoint_ix(&l, d.position, gift)]), "DammPositionInvalid");
+    hand_position_to(&mut e, &whale, gift, &launch_authority());
+    ok(send(&mut e.svm, &k, &[], vec![repoint_ix(&l, d.position, gift)]));
+    let la: ll::AgentLaunch = read(&e.svm, &l.launch);
+    assert_eq!((la.position, la.position_nft_account), gift);
+}
+
+/// H1 residual: a third party that locks more than DBC's migration and keeps the NFT blocks the
+/// permissionless `graduate`; the admin graduates the migration position without the majority rule.
+#[test]
+fn admin_graduates_past_a_larger_third_party_lock() {
+    let (mut e, l, d, whale, wl, wa) = migrated(LineKind::Pump);
+    let (_, locked0) = pool_liquidity(&e.svm, &d.pool);
+    e.fund(&wl, 40_000_000 * ONE);
+    let big = damm_create_position(&mut e, &d, &whale, &whale.pubkey());
+    ok(damm_add_liquidity(&mut e, &l, &d, &whale, &wa, &wl, big, locked0 + 1));
+    damm_permanent_lock(&mut e, &d, &whale, big, locked0 + 1);
+    let k = funded(&mut e.svm);
+    let ix = graduate_ix(&l, &d, d.position, d.nft_account, DAMM_DYNAMIC_CONFIG);
+    rejects(send(&mut e.svm, &k, &[], vec![ix]), "NotMigrationPosition");
+    let by_admin = |signer: Pubkey, position: Pubkey, nft: Pubkey| Instruction {
+        program_id: ll::ID,
+        accounts: ll::accounts::GraduateByAdmin {
+            g: ll::accounts::Graduate { launch_config: launch_config(), authority: launch_authority(), agent_launch: l.launch, dbc_pool: l.dbc_pool,
+                damm_pool: d.pool, position, position_nft_account: nft, damm_config: DAMM_DYNAMIC_CONFIG },
+            admin: signer,
+        }.to_account_metas(None),
+        data: ll::instruction::GraduateByAdmin {}.data(),
+    };
+    rejects(send(&mut e.svm, &k, &[], vec![by_admin(k.pubkey(), d.position, d.nft_account)]), "Unauthorized");
+    // Even the admin cannot record a position our authority does not hold.
+    let admin = e.admin.insecure_clone();
+    rejects(send(&mut e.svm, &admin, &[], vec![by_admin(admin.pubkey(), big.0, big.1)]), "DammPositionInvalid");
+    ok(send(&mut e.svm, &admin, &[], vec![by_admin(admin.pubkey(), d.position, d.nft_account)]));
+    assert_eq!(read::<ll::AgentLaunch>(&e.svm, &l.launch).position, d.position);
+}
+
+/// H2: partner fees and surplus left on the curve when Meteora migrates are cranked after
+/// graduation, with the exact split.
+#[test]
+fn curve_fees_left_at_migration_are_cranked_after_graduation() {
+    // DBC 0.2.2 refuses an exact-in buy past the threshold and stops a partial-fill buy at it,
+    // so these curves end without a surplus; the crank still asks for one whenever it exists.
+    for (kind, mode, amount) in [(LineKind::Classic, PARTIAL_FILL, 40_000_000 * ONE), (LineKind::Pump, PARTIAL_FILL, 30_000_000 * ONE)] {
+        let (mut e, l, d, ..) = migrated_with(kind, mode, amount);
+        let v = dbc_view(&e.svm, &l.dbc_pool);
+        assert!(v.partner_quote_fee > 0, "fees left on the curve");
+        let k = funded(&mut e.svm);
+        let ix = graduate_ix(&l, &d, d.position, d.nft_account, DAMM_DYNAMIC_CONFIG);
+        ok(send(&mut e.svm, &k, &[], vec![ix]));
+        let (c0, t0) = (balance(&e.svm, &l.compute_vault), balance(&e.svm, &treasury()));
+        ok(e.crank_fees(&l));
+        let (dc, dt) = (balance(&e.svm, &l.compute_vault) - c0, balance(&e.svm, &treasury()) - t0);
+        let got = dc + dt;
+        assert!(got >= v.partner_quote_fee, "partner fee and any surplus ({got} vs fee {})", v.partner_quote_fee);
+        assert_eq!((dc, dt), split(got));
+        assert_eq!(dbc_view(&e.svm, &l.dbc_pool).partner_quote_fee, 0);
+        // DBC's surplus exists only when the last buy overshot the threshold.
+        let surplus = v.quote_reserve > standard_dbc_params().threshold;
+        let pool = e.svm.get_account(&l.dbc_pool).unwrap().data;
+        assert_eq!(pool[306], surplus as u8, "partner surplus withdrawn when there was one");
+        rejects(e.crank_fees(&l), "NothingToClaim");
+        let la: ll::AgentLaunch = read(&e.svm, &l.launch);
+        assert_eq!((la.fees_claimed, la.to_compute, la.to_protocol), (got, dc, dt));
+    }
+}
+
+fn set_launch(e: &mut Env, f: impl FnOnce(&mut ll::LaunchConfigArgs)) {
+    let admin = e.admin.insecure_clone();
+    let mut args = launch_args(&admin.pubkey(), &e.runtime.pubkey(), &e.compute_sink);
+    f(&mut args);
+    let dc = e.dbc_config;
+    ok(send(&mut e.svm, &admin, &[], vec![set_launch_config_ix(admin.pubkey(), args, dc)]));
+}
+
+/// M2: a runtime key posts usage epochs only in sequence and not ahead of the clock, debits
+/// only hosted agents, and never more than `max_debit_per_epoch` per epoch.
+#[test]
+fn usage_sequence_hosted_only_and_debit_cap() {
+    let mut e = setup(LineKind::Classic);
+    let runtime = e.runtime.insecure_clone();
+    let len = test_params().epoch_length_s as i64;
+    let hosted = e.launch_agent(Keypair::new(), default_launch_args());
+    let selfh = e.launch_agent(Keypair::new(), ll::LaunchArgs { hosted: false, ..default_launch_args() });
+    e.fund(&hosted.compute_vault, 3_000 * ONE);
+    e.fund(&selfh.compute_vault, 3_000 * ONE);
+    let leaf = |epoch: u64, l: &Launched, amount: u64| lr::leaf::usage_leaf(epoch, &l.agent.pubkey().to_bytes(), amount, 10, 20);
+    let dargs = |amount: u64| ll::DebitArgs { amount, model_tokens: 10, sandbox_s: 20, proof: vec![] };
+    let post = |e: &mut Env, epoch: u64, root: [u8; 32]| send(&mut e.svm, &runtime, &[], vec![post_usage_ix(&runtime.pubkey(), epoch, root)]);
+    // Epoch 40 anchors; 42 skips; 41 is fine at once; 42 needs one epoch length.
+    ok(post(&mut e, 40, leaf(40, &selfh, 100 * ONE)));
+    rejects(post(&mut e, 42, [0; 32]), "UsageOrder");
+    rejects(post(&mut e, 39, [0; 32]), "UsageOrder");
+    ok(post(&mut e, 41, leaf(41, &hosted, 500 * ONE)));
+    rejects(post(&mut e, 42, [0; 32]), "UsageOrder");
+    let lc: ll::LaunchConfig = read(&e.svm, &launch_config());
+    assert_eq!((lc.usage_epochs_posted, lc.last_usage_epoch, lc.usage_anchor, lc.usage_anchor_ts), (2, 41, 40, NOW));
+    // A self-hosted agent's vault is never debited, even with a valid leaf.
+    let ix = debit_ix(&e, &runtime.pubkey(), 40, &selfh, dargs(100 * ONE));
+    rejects(send(&mut e.svm, &runtime, &[], vec![ix]), "NotHosted");
+    // The per-epoch cap.
+    set_launch(&mut e, |a| a.max_debit_per_epoch = 500 * ONE - 1);
+    let ix = debit_ix(&e, &runtime.pubkey(), 41, &hosted, dargs(500 * ONE));
+    rejects(send(&mut e.svm, &runtime, &[], vec![ix]), "DebitCap");
+    set_launch(&mut e, |a| a.max_debit_per_epoch = 500 * ONE);
+    let ix = debit_ix(&e, &runtime.pubkey(), 41, &hosted, dargs(500 * ONE));
+    ok(send(&mut e.svm, &runtime, &[], vec![ix]));
+    assert_eq!(balance(&e.svm, &hosted.compute_vault), 2_500 * ONE);
+    warp(&mut e.svm, len);
+    ok(post(&mut e, 42, [0; 32]));
+    // L8: a zero compute sink is refused.
+    let admin = e.admin.insecure_clone();
+    let args = ll::LaunchConfigArgs { compute_sink: Pubkey::default(), ..launch_args(&admin.pubkey(), &e.runtime.pubkey(), &e.compute_sink) };
+    let dc = e.dbc_config;
+    rejects(send(&mut e.svm, &admin, &[], vec![set_launch_config_ix(admin.pubkey(), args, dc)]), "InvalidArgs");
+}
+
+/// The devnet LaunchConfig was written by the first layout; `migrate_launch_config` grows it.
+#[test]
+fn migrate_launch_config_from_the_first_layout() {
+    let mut e = setup(LineKind::Classic);
+    let key = launch_config();
+    let mut acct = e.svm.get_account(&key).unwrap();
+    let full = acct.data.len();
+    acct.data.truncate(full - ll::LAUNCH_CONFIG_V1_TAIL);
+    acct.lamports = e.svm.minimum_balance_for_rent_exemption(acct.data.len());
+    e.svm.set_account(key, acct).unwrap();
+    let ix = |signer: Pubkey| Instruction {
+        program_id: ll::ID,
+        accounts: ll::accounts::MigrateLaunchConfig { launch_config: key, admin: signer, system_program: system_program::ID }.to_account_metas(None),
+        data: ll::instruction::MigrateLaunchConfig { max_debit_per_epoch: 99 }.data(),
+    };
+    let stranger = funded(&mut e.svm);
+    rejects(send(&mut e.svm, &stranger, &[], vec![ix(stranger.pubkey())]), "Unauthorized");
+    let admin = e.admin.insecure_clone();
+    ok(send(&mut e.svm, &admin, &[], vec![ix(admin.pubkey())]));
+    let lc: ll::LaunchConfig = read(&e.svm, &key);
+    assert_eq!((lc.max_debit_per_epoch, lc.usage_epochs_posted, lc.registry_program, lc.agent_compute_bps), (99, 0, lr::ID, 7000));
+    assert_eq!(e.svm.get_account(&key).unwrap().data.len(), full);
+    rejects(send(&mut e.svm, &admin, &[], vec![ix(admin.pubkey())]), "InvalidArgs");
+    let l = e.launch_agent(Keypair::new(), default_launch_args());
+    assert!(read::<ll::AgentLaunch>(&e.svm, &l.launch).hosted);
 }

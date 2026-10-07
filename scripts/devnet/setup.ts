@@ -49,7 +49,12 @@ const AGENT_REPO = "https://github.com/karpathy/minbpe";
 const AGENT_META = { name: "TEST minbpe agent", symbol: "TMBPE", uri: "https://lineage.invalid/devnet/agents/minbpe-test.json" };
 
 const net = JSON.parse(readFileSync(join(ROOT, "config/network.json"), "utf8"));
-const params = paramsFromNetworkJson(net, DECIMALS);
+// TEST values. epoch_length_s 300 instead of the file's 3600: the registry requires
+// unbond_cooldown_s (600) >= 2 x epoch_length_s (review M4). Core keeps its own epoch timing.
+const params = { ...paramsFromNetworkJson(net, DECIMALS), epochLengthS: 300 };
+/** TEST: most rebate one post_epoch may move (1 tLINE) and most the runtime may debit per usage epoch (1,000 tLINE). */
+const MAX_REBATE_PER_EPOCH = 1n * 10n ** BigInt(DECIMALS);
+const MAX_DEBIT_PER_EPOCH = 1_000n * 10n ** BigInt(DECIMALS);
 const state = loadState();
 const dep = deployer();
 const lineMint = key("line-mint");
@@ -99,13 +104,27 @@ async function stepB() {
         upgradeAuthority: dep.id,
         mint: lineMint.id,
         tokenProgram: T22,
-        args: { admin: dep.id, coreAuthority: core.id, launchProgram: state.launch_program, params },
+        args: { admin: dep.id, coreAuthority: core.id, launchProgram: state.launch_program, params, maxRebatePerEpoch: MAX_REBATE_PER_EPOCH },
       }),
     ]);
     c = await reader.registryConfig();
   } else log("b: registry config exists, skipping initialize");
+  if (c && c.maxRebatePerEpoch === null) {
+    await send("b", `lineage_registry::migrate_config (grow Config to the review-fix layout, max_rebate_per_epoch ${MAX_REBATE_PER_EPOCH})`, dep, [
+      registry.migrateConfig({ admin: dep.id, maxRebatePerEpoch: MAX_REBATE_PER_EPOCH }),
+    ]);
+    c = await reader.registryConfig();
+  }
+  const same = (a: unknown, b: unknown) => JSON.stringify(a, (_, v) => (typeof v === "bigint" ? v.toString() : v)) === JSON.stringify(b, (_, v) => (typeof v === "bigint" ? v.toString() : v));
+  if (c && (!same(c.params, params) || c.maxRebatePerEpoch !== MAX_REBATE_PER_EPOCH)) {
+    await send("b", "lineage_registry::set_config (params: epoch_length_s 300 so unbond_cooldown_s 600 meets the 2-epoch floor; rebate cap)", dep, [
+      registry.setConfig({ admin: dep.id, args: { admin: dep.id, coreAuthority: core.id, launchProgram: state.launch_program, params, maxRebatePerEpoch: MAX_REBATE_PER_EPOCH } }),
+    ]);
+    c = await reader.registryConfig();
+  }
   check("b: registry config read back", !!c && c.admin === dep.id && c.coreAuthority === core.id && c.launchProgram === state.launch_program && c.mint === lineMint.id && c.tokenProgram === T22);
-  check("b: every parameter equals paramsFromNetworkJson(config/network.json, 6)", JSON.stringify(c!.params, (_, v) => (typeof v === "bigint" ? v.toString() : v)) === JSON.stringify(params, (_, v) => (typeof v === "bigint" ? v.toString() : v)));
+  check("b: rebate cap and epoch anchor set (review-fix layout)", c!.maxRebatePerEpoch === MAX_REBATE_PER_EPOCH && c!.epochAnchor !== null, `${c!.maxRebatePerEpoch} / anchor ${c!.epochAnchor}`);
+  check("b: every parameter equals paramsFromNetworkJson(config/network.json, 6) with epoch_length_s 300", JSON.stringify(c!.params, (_, v) => (typeof v === "bigint" ? v.toString() : v)) === JSON.stringify(params, (_, v) => (typeof v === "bigint" ? v.toString() : v)));
   const vaults = await reader.vaults();
   check("b: treasury, reserve, pool, payable and bond vaults exist", [vaults.treasury, vaults.reserve, vaults.pool, vaults.payable, vaults.bondVault].every((x) => x !== null));
   Object.assign(state, { admin: dep.id, core_authority: core.id, core_authority_key: "~/.config/lineage/devnet/core-authority.json" });
@@ -138,13 +157,22 @@ async function stepD() {
         dbcConfig: dbcConfigKey.id,
         lineTokenProgram: T22,
         args: {
-          admin: dep.id, runtimeAuthority: runtime.id, registryProgram: state.registry_program, computeSink,
+          admin: dep.id, runtimeAuthority: runtime.id, computeSink,
           agentComputeBps: net.agent_compute_bps, protocolBps: net.protocol_bps, sleepThreshold: sleep, wakeThreshold: wake, paused: false,
+          maxDebitPerEpoch: MAX_DEBIT_PER_EPOCH,
         },
       }),
     ]);
     lc = await reader.launchConfig();
   } else log("d: launch config exists, skipping");
+  if (lc && lc.maxDebitPerEpoch === null) {
+    await send("d", `lineage_launch::migrate_launch_config (grow LaunchConfig to the review-fix layout, max_debit_per_epoch ${MAX_DEBIT_PER_EPOCH})`, dep, [
+      launch.migrateConfig({ admin: dep.id, maxDebitPerEpoch: MAX_DEBIT_PER_EPOCH }),
+    ]);
+    lc = await reader.launchConfig();
+  }
+  check("d: debit cap set, registry program is the constant", lc!.maxDebitPerEpoch === MAX_DEBIT_PER_EPOCH && lc!.registryProgram === state.registry_program,
+    `${lc!.maxDebitPerEpoch}`);
   const p = standardDbcParams();
   check("d: launch config read back", !!lc && lc.dbcConfig === dbcConfigKey.id && lc.lineMint === lineMint.id && lc.computeSink === computeSink && lc.runtimeAuthority === runtime.id
     && lc.agentComputeBps === net.agent_compute_bps && lc.protocolBps === net.protocol_bps && lc.sleepThreshold === sleep && lc.wakeThreshold === wake);

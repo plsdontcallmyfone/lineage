@@ -109,6 +109,8 @@ export class Reader {
   address = () => toAddress(this.take(32));
   hex32 = () => bytesToHex(this.take(32));
   string = () => new TextDecoder().decode(this.take(this.u32()));
+  /** Bytes left to read (an account written by an older, shorter layout has fewer). */
+  remaining = () => this.d.length - this.o;
   /** Checks and skips the 8-byte Anchor account discriminator. */
   expect(name: string): this {
     const got = this.take(8);

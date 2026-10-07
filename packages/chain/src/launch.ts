@@ -50,17 +50,20 @@ export const launchPdas = {
 export interface LaunchConfigArgs {
   admin: Address;
   runtimeAuthority: Address;
-  registryProgram: Address;
   computeSink: Address;
   agentComputeBps: number;
   protocolBps: number;
   sleepThreshold: bigint;
   wakeThreshold: bigint;
   paused: boolean;
+  /** Most the runtime may debit across all compute vaults for one usage epoch; 0 = no cap. */
+  maxDebitPerEpoch: bigint;
 }
 const configArgs = (wr: Writer, a: LaunchConfigArgs) =>
-  wr.address(a.admin).address(a.runtimeAuthority).address(a.registryProgram).address(a.computeSink).u16(a.agentComputeBps).u16(a.protocolBps)
-    .u64(a.sleepThreshold).u64(a.wakeThreshold).bool(a.paused);
+  wr.address(a.admin).address(a.runtimeAuthority).address(a.computeSink).u16(a.agentComputeBps).u16(a.protocolBps)
+    .u64(a.sleepThreshold).u64(a.wakeThreshold).bool(a.paused).u64(a.maxDebitPerEpoch);
+/** name + symbol + metadata URI + repository URL bytes launch_agent accepts (one transaction). */
+export const MAX_LAUNCH_STRINGS = 227;
 const data = (name: string) => new Writer().bytes(ixDisc(name));
 
 export interface LaunchArgs {
@@ -84,6 +87,10 @@ export const launch = {
   },
   setConfig(a: { admin: Address; dbcConfig: Address; args: LaunchConfigArgs }): Ix {
     return { programId: P, keys: [w(launchPdas.config()), r(a.admin, true), r(a.dbcConfig)], data: configArgs(data("set_launch_config"), a.args).done() };
+  },
+  /** Admin, once: grows a LaunchConfig written by the first deployed layout to the current one. */
+  migrateConfig(a: { admin: Address; maxDebitPerEpoch: bigint }): Ix {
+    return { programId: P, keys: [w(launchPdas.config()), w(a.admin, true), r(SYSTEM_PROGRAM)], data: data("migrate_launch_config").u64(a.maxDebitPerEpoch).done() };
   },
   /** Signers: launcher (payer), agent (the agent key) and agentMint (a fresh keypair). */
   launchAgent(a: { launcher: Address; agent: Address; agentMint: Address; lineMint: Address; dbcConfig: Address; args: LaunchArgs; lineTokenProgram?: Address }): Ix {
@@ -115,13 +122,31 @@ export const launch = {
       data: data("crank_fees").done(),
     };
   },
-  /** Permissionless, after DBC's migration_damm_v2 (`position` is the one whose NFT our authority holds). */
+  /**
+   * Permissionless, after DBC's migration_damm_v2: `position` is DBC's migration position, whose NFT
+   * our authority holds and which holds a strict majority of the pool's permanently locked liquidity.
+   */
   graduate(a: { agentMint: Address; dbcPool: Address; dammPool: Address; position: Address; positionNftAccount: Address; dammConfig?: Address }): Ix {
     return {
       programId: P,
       keys: [r(launchPdas.config()), r(launchPdas.authority()), w(launchPdas.agentLaunch(a.agentMint)), r(a.dbcPool), r(a.dammPool), r(a.position),
         r(a.positionNftAccount), r(a.dammConfig ?? METEORA.dammDynamicConfig)],
       data: data("graduate").done(),
+    };
+  },
+  /** Admin: graduate without the majority rule (a third party locked more and kept its NFT). */
+  graduateByAdmin(a: { admin: Address; agentMint: Address; dbcPool: Address; dammPool: Address; position: Address; positionNftAccount: Address;
+    dammConfig?: Address }): Ix {
+    const g = launch.graduate(a);
+    return { programId: P, keys: [...g.keys, r(a.admin, true)], data: data("graduate_by_admin").done() };
+  },
+  /** Permissionless: point crank_pool_fees at an authority-held, fully locked position with strictly more locked liquidity. */
+  repointPosition(a: { agentMint: Address; currentPosition: Address; position: Address; positionNftAccount: Address }): Ix {
+    return {
+      programId: P,
+      keys: [r(launchPdas.config()), r(launchPdas.authority()), w(launchPdas.agentLaunch(a.agentMint)), r(a.currentPosition), r(a.position),
+        r(a.positionNftAccount)],
+      data: data("repoint_position").done(),
     };
   },
   crankPoolFees(a: { agent: Address; agentMint: Address; lineMint: Address; dammPool: Address; position: Address; positionNftAccount: Address;
@@ -140,7 +165,7 @@ export const launch = {
   postUsage(a: { runtimeAuthority: Address; epoch: bigint | number; root: Uint8Array | string }): Ix {
     return {
       programId: P,
-      keys: [r(launchPdas.config()), w(a.runtimeAuthority, true), w(launchPdas.usage(a.epoch)), r(SYSTEM_PROGRAM)],
+      keys: [w(launchPdas.config()), r(registryPdas.config()), w(a.runtimeAuthority, true), w(launchPdas.usage(a.epoch)), r(SYSTEM_PROGRAM)],
       data: data("post_usage").u64(a.epoch).fixed32(a.root).done(),
     };
   },
@@ -191,13 +216,26 @@ export interface LaunchConfig {
   migrationQuoteThreshold: bigint;
   sqrtStartPrice: bigint;
   paused: boolean;
+  /** Null on a LaunchConfig the first layout wrote (before `migrate_launch_config`). */
+  maxDebitPerEpoch: bigint | null;
+  usageEpochsPosted: bigint | null;
+  lastUsageEpoch: bigint | null;
+  usageAnchor: bigint | null;
+  usageAnchorTs: bigint | null;
 }
 export function decodeLaunchConfig(d: Uint8Array): LaunchConfig {
   const rd = new Reader(d).expect("LaunchConfig");
-  return {
+  const head = {
     admin: rd.address(), runtimeAuthority: rd.address(), registryProgram: rd.address(), lineMint: rd.address(), lineTokenProgram: rd.address(),
     computeSink: rd.address(), dbcConfig: rd.address(), agentComputeBps: rd.u16(), protocolBps: rd.u16(), sleepThreshold: rd.u64(),
     wakeThreshold: rd.u64(), migrationQuoteThreshold: rd.u64(), sqrtStartPrice: rd.u128(), paused: rd.bool(),
+  };
+  rd.u8(); // bump
+  rd.u8(); // authority_bump
+  const v2 = rd.remaining() >= 40;
+  return {
+    ...head, maxDebitPerEpoch: v2 ? rd.u64() : null, usageEpochsPosted: v2 ? rd.u64() : null, lastUsageEpoch: v2 ? rd.u64() : null,
+    usageAnchor: v2 ? rd.u64() : null, usageAnchorTs: v2 ? rd.i64() : null,
   };
 }
 

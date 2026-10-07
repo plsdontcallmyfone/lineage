@@ -229,14 +229,15 @@ pub fn fresh_svm() -> LiteSVM {
     svm
 }
 
-/// The M1 test values of config/network.json (SPEC 13), in onchain units.
+/// The M1 test values of config/network.json (SPEC 13), in onchain units, except
+/// `epoch_length_s` 300: the cooldown floor needs unbond_cooldown_s >= 2 x epoch_length_s.
 pub fn test_params() -> lr::Params {
     lr::Params {
         register_burn: 1_000 * ONE,
         min_bond: 5_000 * ONE,
         bond_cap: 50_000 * ONE,
         unbond_cooldown_s: 600,
-        epoch_length_s: 3600,
+        epoch_length_s: 300,
         reserve_bps: 8000,
         pool_bps: 2000,
         canary_slash_bps: 2500,
@@ -266,6 +267,21 @@ pub struct Env {
     pub line_holder: Pubkey,
     pub compute_sink: Pubkey,
     pub dbc_config: Pubkey,
+}
+
+/// TEST value: the most rebate one `post_epoch` may move.
+pub const MAX_REBATE: u64 = 1_000_000 * ONE;
+pub fn config_args(admin: &Pubkey, core: &Pubkey) -> lr::ConfigArgs {
+    lr::ConfigArgs { admin: *admin, core_authority: *core, launch_program: ll::ID, params: test_params(), max_rebate_per_epoch: MAX_REBATE }
+}
+pub fn slash_receipt(id: &[u8; 32]) -> Pubkey {
+    rpda(&[lr::SLASH_SEED, id])
+}
+/// A slash id from a counter (Core's ids are sha256 digests).
+pub fn sid(n: u64) -> [u8; 32] {
+    let mut id = [0u8; 32];
+    id[..8].copy_from_slice(&n.to_le_bytes());
+    id
 }
 
 pub fn registry_config() -> Pubkey {
@@ -326,8 +342,8 @@ pub fn registry_init_ix(signer: Pubkey, args: lr::ConfigArgs, line_mint: Pubkey,
 
 pub fn launch_args(admin: &Pubkey, runtime: &Pubkey, compute_sink: &Pubkey) -> ll::LaunchConfigArgs {
     ll::LaunchConfigArgs {
-        admin: *admin, runtime_authority: *runtime, registry_program: lr::ID, compute_sink: *compute_sink,
-        agent_compute_bps: 7000, protocol_bps: 3000, sleep_threshold: 1_000 * ONE, wake_threshold: 2_000 * ONE, paused: false,
+        admin: *admin, runtime_authority: *runtime, compute_sink: *compute_sink,
+        agent_compute_bps: 7000, protocol_bps: 3000, sleep_threshold: 1_000 * ONE, wake_threshold: 2_000 * ONE, paused: false, max_debit_per_epoch: 0,
     }
 }
 pub fn launch_init_ix(signer: Pubkey, args: ll::LaunchConfigArgs, line_mint: Pubkey, line_program: Pubkey, dbc_config: Pubkey) -> Instruction {
@@ -458,7 +474,7 @@ pub fn setup(kind: LineKind) -> Env {
     let line_program = program_of(&svm, &line_mint);
     install_program_data(&mut svm, &lr::ID, &admin.pubkey());
     install_program_data(&mut svm, &ll::ID, &admin.pubkey());
-    let args = lr::ConfigArgs { admin: admin.pubkey(), core_authority: core.pubkey(), launch_program: ll::ID, params: test_params() };
+    let args = config_args(&admin.pubkey(), &core.pubkey());
     // Nobody but the upgrade authority can initialize.
     let stranger = funded(&mut svm);
     rejects(send(&mut svm, &stranger, &[], vec![registry_init_ix(stranger.pubkey(), args, line_mint, line_program)]), "Unauthorized");
@@ -538,14 +554,15 @@ impl Env {
             data: lr::instruction::WithdrawUnbonded {}.data(),
         }
     }
-    pub fn slash_ix(&self, signer: &Pubkey, agent: &Pubkey, offence: u8, epoch: u64) -> Instruction {
+    pub fn slash_ix(&self, signer: &Pubkey, agent: &Pubkey, offence: u8, epoch: u64, slash_id: [u8; 32]) -> Instruction {
         Instruction {
             program_id: lr::ID,
             accounts: lr::accounts::Slash {
-                config: registry_config(), core_authority: *signer, agent_record: agent_record(agent), mint: self.line_mint,
-                vault_authority: vault_authority(), bond_vault: bond_vault(), reserve_vault: reserve_vault(), token_program: self.line_program,
+                config: registry_config(), core_authority: *signer, slash_receipt: slash_receipt(&slash_id), agent_record: agent_record(agent),
+                mint: self.line_mint, vault_authority: vault_authority(), bond_vault: bond_vault(), reserve_vault: reserve_vault(),
+                token_program: self.line_program, system_program: system_program::ID,
             }.to_account_metas(None),
-            data: lr::instruction::Slash { offence, epoch }.data(),
+            data: lr::instruction::Slash { offence, epoch, slash_id }.data(),
         }
     }
     pub fn split_ix(&self) -> Instruction {

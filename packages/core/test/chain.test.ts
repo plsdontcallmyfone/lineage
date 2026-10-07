@@ -3,7 +3,7 @@ import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { accountDisc, ChainReader, fixtureTransport, hexToBytes, Reader, registryPdas, Rpc, Writer, type Ix, type Transport } from "@lineage/chain";
-import { ChainBridge, chainBootstrap, parseChainSettings } from "../src/chain.ts";
+import { backoffMs, ChainBridge, chainBootstrap, parseChainSettings, slashId } from "../src/chain.ts";
 import { FakeClock } from "../src/clock.ts";
 import { CoreClient } from "../src/client.ts";
 import { parseNetworkConfig } from "../src/config.ts";
@@ -226,5 +226,116 @@ describe("epoch posting", () => {
     expect(core.ledger.balance(`epoch:${ep.n}:payable`)).toBe(0n);
     expect(core.ledger.balance(`agent:${VERIFIER}:wallet`)).toBe(2000n);
     expect(core.ledger.reconcile().ok).toBe(true);
+  });
+});
+
+/** An account in a getAccountInfo / getMultipleAccounts answer, owned by the registry. */
+const regAccount = (data: Uint8Array) => ({ lamports: 1, owner: SETTINGS.registry_program, executable: false, data: [Buffer.from(data).toString("base64"), "base64"] });
+
+describe("slashes and posts that report failure (review M1, L1, L7)", () => {
+  test("a slash carries a deterministic id and its receipt PDA; a reported failure whose receipt exists counts as landed", async () => {
+    const reg = await new ChainReader(new Rpc(transport())).registryConfig();
+    let receipt: { pda: string; agent: string } | null = null;
+    const extra = (method: string, params: unknown[]) => {
+      if (method !== "getAccountInfo" || !receipt || params[0] !== receipt.pda) return undefined;
+      const data = new Writer().bytes(accountDisc("SlashReceipt")).fixed32("00".repeat(32)).address(receipt.agent).u8(1).u64(0).u64(0).i64(0).done();
+      return { value: regAccount(data) };
+    };
+    const sent: Ix[][] = [];
+    const { core, bridge } = await setup({
+      coreKey: reg!.coreAuthority, extra,
+      send: async (label, ixs) => {
+        if (!label.startsWith("slash")) return { signature: "other" };
+        sent.push(ixs);
+        // the transaction lands, but the sender loses the confirmation
+        const id = new Reader(ixs[0]!.data.subarray(8 + 1 + 8)).hex32();
+        receipt = { pda: registryPdas.slashReceipt(id), agent: VERIFIER };
+        throw Object.assign(new Error("block height exceeded"), { signature: "landedSig" });
+      },
+    });
+    await bridge.tick();
+    core.tx(() => (core as any).slash(VERIFIER, 500, "minority", "cand-1"));
+    await bridge.tick();
+    expect(sent.length).toBe(1);
+    const ix = sent[0]![0]!;
+    const row = core.chainPendingSlashes().length === 0 ? null : core.chainPendingSlashes()[0];
+    expect(row).toBeNull();
+    const sl = core.db.query<{ id: number; agent_id: string; reason: string; ref: string; epoch: number }, []>("SELECT id, agent_id, reason, ref, epoch FROM slashes").get()!;
+    const id = slashId(sl);
+    expect(new Reader(ix.data.subarray(8)).u8()).toBe(1);
+    expect(new Reader(ix.data.subarray(17)).hex32()).toBe(id);
+    expect(ix.keys[1]).toEqual({ pubkey: reg!.coreAuthority, isSigner: true, isWritable: true });
+    expect(ix.keys[2]!.pubkey).toBe(registryPdas.slashReceipt(id));
+    expect(slashId(sl)).toBe(id); // deterministic
+    // recorded as landed with the transaction's signature; never resent
+    const row2 = core.db.query<{ signature: string | null }, [number]>("SELECT signature FROM chain_slashes WHERE slash_id = ?").get(sl.id)!;
+    expect(row2.signature).toBe("landedSig");
+    await bridge.tick();
+    expect(sent.length).toBe(1);
+  });
+
+  test("a slash that did not land stays pending, retried with backoff and never dropped", async () => {
+    const reg = await new ChainReader(new Rpc(transport())).registryConfig();
+    let sends = 0;
+    let fail = true;
+    const noReceipt = new Set<string>();
+    const { core, bridge, clock } = await setup({
+      coreKey: reg!.coreAuthority,
+      extra: (m, p) => (m === "getAccountInfo" && noReceipt.has(String(p[0])) ? { value: null } : undefined),
+      send: async (label) => {
+        if (!label.startsWith("slash")) return { signature: "other" };
+        sends++;
+        if (fail) throw new Error("rpc down");
+        return { signature: "finally" };
+      },
+    });
+    await bridge.tick();
+    core.tx(() => (core as any).slash(VERIFIER, 500, "minority", "cand-2"));
+    const sl = core.db.query<{ id: number; agent_id: string; reason: string; ref: string; epoch: number }, []>("SELECT id, agent_id, reason, ref, epoch FROM slashes").get()!;
+    noReceipt.add(registryPdas.slashReceipt(slashId(sl)));
+    await bridge.tick();
+    expect(sends).toBe(1);
+    await bridge.tick(); // inside the backoff: not resent
+    expect(sends).toBe(1);
+    for (let i = 1; i <= 8; i++) {
+      clock.advance(backoffMs(i));
+      await bridge.tick();
+      expect(sends).toBe(i + 1);
+    }
+    expect(core.chainPendingSlashes().length).toBe(1); // nine failures, still pending (was dropped after 5)
+    fail = false;
+    clock.advance(backoffMs(9));
+    await bridge.tick();
+    expect(sends).toBe(10);
+    expect(core.chainPendingSlashes().length).toBe(0);
+  });
+
+  test("post_epoch reported failed but landed (Epoch PDA holds Core's root) is recorded as posted", async () => {
+    const reg = await new ChainReader(new Rpc(transport())).registryConfig();
+    let landed: { pda: string; data: Uint8Array } | null = null;
+    const extra = (m: string, p: unknown[]) => (m === "getAccountInfo" && landed && p[0] === landed.pda ? { value: regAccount(landed.data) } : undefined);
+    let sends = 0;
+    const { core, bridge } = await setup({
+      coreKey: reg!.coreAuthority, extra,
+      send: async (label, ixs) => {
+        if (!label.startsWith("post_epoch")) return { signature: "other" };
+        sends++;
+        const rd = new Reader(ixs[0]!.data.subarray(8));
+        const n = rd.u64();
+        const root = rd.hex32();
+        landed = { pda: registryPdas.epoch(n), data: new Writer().bytes(accountDisc("Epoch")).u64(n).fixed32(root).fixed32("00".repeat(32)).u64(0).u64(0).u64(0)
+          .u64(0).u64(0).u32(0).i64(0).u8(255).done() };
+        throw new Error("confirmation timed out");
+      },
+    });
+    await bridge.tick();
+    core.tx(() => (core as any).addUnits(VERIFIER, "replay", "r1", 2, 2_000n));
+    const ep = core.closeEpoch();
+    await bridge.tick();
+    expect(sends).toBe(1);
+    expect(core.chainEpochs()).toMatchObject([{ n: ep.n, error: null }]);
+    expect(core.chainEpochs()[0]!.signature).toBeTruthy();
+    await bridge.tick();
+    expect(sends).toBe(1);
   });
 });

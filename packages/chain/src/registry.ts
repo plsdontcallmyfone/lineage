@@ -1,4 +1,4 @@
-import { addressBytes, ixDisc, Reader, Writer, type Address } from "./codec.ts";
+import { addressBytes, hexToBytes, ixDisc, Reader, Writer, type Address } from "./codec.ts";
 import { BPF_LOADER_UPGRADEABLE, pda, SYSTEM_PROGRAM, TOKEN_PROGRAM, u64le } from "./pda.ts";
 
 // lineage_registry (SPEC 14.1): addresses, instruction builders and account decoders. Account
@@ -32,6 +32,8 @@ export const registryPdas = {
   agent: (agent: Address) => pda(P, "agent", addressBytes(agent)),
   epoch: (n: bigint | number) => pda(P, "epoch", u64le(n)),
   claimReceipt: (n: bigint | number, leaf: Uint8Array) => pda(P, "claim", u64le(n), leaf),
+  /** One per slash Core sent, keyed by Core's 32-byte slash id: a retried slash lands once. */
+  slashReceipt: (slashId: Uint8Array | string) => pda(P, "slash", typeof slashId === "string" ? hexToBytes(slashId) : slashId),
   programData: (program: Address = P) => pda(BPF_LOADER_UPGRADEABLE, addressBytes(program)),
 };
 
@@ -65,6 +67,8 @@ export interface ConfigArgs {
   coreAuthority: Address;
   launchProgram: Address;
   params: Params;
+  /** Most `rebate_amount` one post_epoch may move from the reserve. */
+  maxRebatePerEpoch: bigint;
 }
 
 function writeParams(wr: Writer, p: Params): Writer {
@@ -82,7 +86,8 @@ function readParams(rd: Reader): Params {
     authorRewardTo: rd.u8(), quorum: rd.u8(),
   };
 }
-const configArgs = (wr: Writer, a: ConfigArgs) => writeParams(wr.address(a.admin).address(a.coreAuthority).address(a.launchProgram), a.params);
+const configArgs = (wr: Writer, a: ConfigArgs) =>
+  writeParams(wr.address(a.admin).address(a.coreAuthority).address(a.launchProgram), a.params).u64(a.maxRebatePerEpoch);
 const data = (name: string) => new Writer().bytes(ixDisc(name));
 
 /**
@@ -117,6 +122,18 @@ export const registry = {
   },
   pause(a: { admin: Address; paused: boolean }): Ix {
     return { programId: P, keys: [w(registryPdas.config()), r(a.admin, true)], data: data("pause").bool(a.paused).done() };
+  },
+  /** Admin escape hatch for post_epoch's sequence and clock anchor. */
+  setEpochCursor(a: { admin: Address; epochsPosted: bigint | number; lastEpoch: bigint | number; anchor: bigint | number; anchorTs: bigint | number }): Ix {
+    return {
+      programId: P,
+      keys: [w(registryPdas.config()), r(a.admin, true)],
+      data: data("set_epoch_cursor").u64(a.epochsPosted).u64(a.lastEpoch).u64(a.anchor).i64(a.anchorTs).done(),
+    };
+  },
+  /** Admin, once: grows a Config written by the first deployed layout to the current one. */
+  migrateConfig(a: { admin: Address; maxRebatePerEpoch: bigint }): Ix {
+    return { programId: P, keys: [w(registryPdas.config()), w(a.admin, true), r(SYSTEM_PROGRAM)], data: data("migrate_config").u64(a.maxRebatePerEpoch).done() };
   },
   /** Tokenless verifier: `owner` burns register_burn from `ownerToken`; `agent` co-signs. */
   register(a: { owner: Address; agent: Address; mint: Address; ownerToken: Address; operator: Uint8Array | string; capabilities: Uint8Array | string;
@@ -154,12 +171,14 @@ export const registry = {
       data: data("withdraw_unbonded").done(),
     };
   },
-  slash(a: { coreAuthority: Address; agent: Address; mint: Address; offence: number; epoch: bigint | number; tokenProgram?: Address }): Ix {
+  /** `slashId` (32 bytes) is Core's id for the slash; its receipt PDA makes a retry land at most once. */
+  slash(a: { coreAuthority: Address; agent: Address; mint: Address; offence: number; epoch: bigint | number; slashId: Uint8Array | string;
+    tokenProgram?: Address }): Ix {
     return {
       programId: P,
-      keys: [r(registryPdas.config()), r(a.coreAuthority, true), w(registryPdas.agent(a.agent)), r(a.mint), r(registryPdas.vaultAuthority()),
-        w(registryPdas.bondVault()), w(registryPdas.reserve()), r(a.tokenProgram ?? TOKEN_PROGRAM)],
-      data: data("slash").u8(a.offence).u64(a.epoch).done(),
+      keys: [r(registryPdas.config()), w(a.coreAuthority, true), w(registryPdas.slashReceipt(a.slashId)), w(registryPdas.agent(a.agent)), r(a.mint),
+        r(registryPdas.vaultAuthority()), w(registryPdas.bondVault()), w(registryPdas.reserve()), r(a.tokenProgram ?? TOKEN_PROGRAM), r(SYSTEM_PROGRAM)],
+      data: data("slash").u8(a.offence).u64(a.epoch).fixed32(a.slashId).done(),
     };
   },
   split(a: { mint: Address; tokenProgram?: Address }): Ix {
@@ -208,13 +227,35 @@ export interface RegistryConfig {
   paused: boolean;
   epochsPosted: bigint;
   lastEpoch: bigint;
+  /** Null on a Config the first layout wrote (before `migrate_config`). */
+  maxRebatePerEpoch: bigint | null;
+  /** post_epoch's clock anchor: epoch `epochAnchor` was posted at `epochAnchorTs`. */
+  epochAnchor: bigint | null;
+  epochAnchorTs: bigint | null;
 }
 export function decodeConfig(d: Uint8Array): RegistryConfig {
   const rd = new Reader(d).expect("Config");
-  return {
+  const head = {
     admin: rd.address(), coreAuthority: rd.address(), launchProgram: rd.address(), mint: rd.address(), tokenProgram: rd.address(),
     params: readParams(rd), paused: rd.bool(), epochsPosted: rd.u64(), lastEpoch: rd.u64(),
   };
+  rd.u8(); // bump
+  rd.u8(); // vault_authority_bump
+  const v2 = rd.remaining() >= 24;
+  return { ...head, maxRebatePerEpoch: v2 ? rd.u64() : null, epochAnchor: v2 ? rd.u64() : null, epochAnchorTs: v2 ? rd.i64() : null };
+}
+
+export interface SlashReceipt {
+  slashId: string;
+  agent: Address;
+  offence: number;
+  epoch: bigint;
+  amount: bigint;
+  slashedAt: bigint;
+}
+export function decodeSlashReceipt(d: Uint8Array): SlashReceipt {
+  const rd = new Reader(d).expect("SlashReceipt");
+  return { slashId: rd.hex32(), agent: rd.address(), offence: rd.u8(), epoch: rd.u64(), amount: rd.u64(), slashedAt: rd.i64() };
 }
 
 export interface AgentRecord {

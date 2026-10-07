@@ -53,7 +53,7 @@ fn instruction_vectors() -> Vec<Value> {
     let (owner, agent, mint, launcher) = (k(5), k(6), k(7), k(9));
     let mut p = test_params();
     p.register_burn = 1_234_567;
-    let cargs = lr::ConfigArgs { admin: k(1), core_authority: k(2), launch_program: ll::ID, params: p };
+    let cargs = lr::ConfigArgs { admin: k(1), core_authority: k(2), launch_program: ll::ID, params: p, max_rebate_per_epoch: 123_456 };
     let owner_token = ata(&owner, &env.line_mint, &TOKEN);
     let mut v = vec![
         ix_json("registry.initialize", &registry_init_ix(k(1), cargs, env.line_mint, TOKEN)),
@@ -64,7 +64,15 @@ fn instruction_vectors() -> Vec<Value> {
         ix_json("registry.bond", &env.bond_ix(&owner, &agent, &owner_token, 5_000_000_000)),
         ix_json("registry.request_unbond", &env.owner_agent_ix(&owner, &agent, lr::instruction::RequestUnbond { amount: 77 }.data())),
         ix_json("registry.withdraw_unbonded", &env.withdraw_unbonded_ix(&owner, &agent, &owner_token)),
-        ix_json("registry.slash", &env.slash_ix(&k(2), &agent, lr::OFFENCE_MINORITY, 42)),
+        ix_json("registry.slash", &env.slash_ix(&k(2), &agent, lr::OFFENCE_MINORITY, 42, [0x5a; 32])),
+        ix_json("registry.set_epoch_cursor", &env.admin_ix(&k(1), lr::instruction::SetEpochCursor { epochs_posted: 3, last_epoch: 9, anchor: 7,
+            anchor_ts: 1_900_000_123 }.data())),
+        ix_json("registry.migrate_config", &Instruction {
+            program_id: lr::ID,
+            accounts: lr::accounts::MigrateConfig { config: registry_config(), admin: k(1), system_program: anchor_lang::solana_program::system_program::ID }
+                .to_account_metas(None),
+            data: lr::instruction::MigrateConfig { max_rebate_per_epoch: 654_321 }.data(),
+        }),
         ix_json("registry.split", &env.split_ix()),
         ix_json("registry.post_epoch", &env.post_epoch_ix(&k(2), lr::PostEpochArgs { epoch: 9, payout_root: [1; 32], lineage_root: [2; 32],
             total_units_micro: 3_500_000, pool_amount: 10, rebate_amount: 20 })),
@@ -74,8 +82,8 @@ fn instruction_vectors() -> Vec<Value> {
     let claim2 = lr::ClaimArgs { dest_kind: 2, wallet: k(11), ..claim };
     v.push(ix_json("registry.claim.wallet", &env.claim_ix(&owner, 9, claim2, None, &ata(&k(11), &env.line_mint, &TOKEN))));
 
-    let largs = ll::LaunchConfigArgs { admin: k(1), runtime_authority: k(3), registry_program: lr::ID, compute_sink: k(10), agent_compute_bps: 7000,
-        protocol_bps: 3000, sleep_threshold: 1, wake_threshold: 2, paused: false };
+    let largs = ll::LaunchConfigArgs { admin: k(1), runtime_authority: k(3), compute_sink: k(10), agent_compute_bps: 7000,
+        protocol_bps: 3000, sleep_threshold: 1, wake_threshold: 2, paused: false, max_debit_per_epoch: 4_242 };
     v.push(ix_json("launch.initialize_launch", &launch_init_ix(k(1), largs, env.line_mint, TOKEN, env.dbc_config)));
     v.push(ix_json("launch.set_launch_config", &set_launch_config_ix(k(1), largs, env.dbc_config)));
     v.push(ix_json("launch.launch_agent", &env.launch_ix(&launcher, &agent, &mint, default_launch_args())));
@@ -100,6 +108,27 @@ fn instruction_vectors() -> Vec<Value> {
             damm_pool, position, position_nft_account: nft, damm_config: DAMM_DYNAMIC_CONFIG }.to_account_metas(None),
         data: ll::instruction::Graduate {}.data(),
     }));
+    v.push(ix_json("launch.graduate_by_admin", &Instruction {
+        program_id: ll::ID,
+        accounts: ll::accounts::GraduateByAdmin {
+            g: ll::accounts::Graduate { launch_config: launch_config(), authority: launch_authority(), agent_launch: l.launch, dbc_pool,
+                damm_pool, position, position_nft_account: nft, damm_config: DAMM_DYNAMIC_CONFIG },
+            admin: k(1),
+        }.to_account_metas(None),
+        data: ll::instruction::GraduateByAdmin {}.data(),
+    }));
+    v.push(ix_json("launch.repoint_position", &Instruction {
+        program_id: ll::ID,
+        accounts: ll::accounts::RepointPosition { launch_config: launch_config(), authority: launch_authority(), agent_launch: l.launch,
+            current_position: position, position: k(15), position_nft_account: k(16) }.to_account_metas(None),
+        data: ll::instruction::RepointPosition {}.data(),
+    }));
+    v.push(ix_json("launch.migrate_launch_config", &Instruction {
+        program_id: ll::ID,
+        accounts: ll::accounts::MigrateLaunchConfig { launch_config: launch_config(), admin: k(1),
+            system_program: anchor_lang::solana_program::system_program::ID }.to_account_metas(None),
+        data: ll::instruction::MigrateLaunchConfig { max_debit_per_epoch: 8_888 }.data(),
+    }));
     v.push(ix_json("launch.crank_pool_fees", &Instruction {
         program_id: ll::ID,
         accounts: ll::accounts::CrankPoolFees {
@@ -113,8 +142,8 @@ fn instruction_vectors() -> Vec<Value> {
     let epoch = 3u64;
     v.push(ix_json("launch.post_usage", &Instruction {
         program_id: ll::ID,
-        accounts: ll::accounts::PostUsage { launch_config: launch_config(), runtime_authority: k(3), usage: lpda(&[ll::USAGE_SEED, &epoch.to_le_bytes()]),
-            system_program: anchor_lang::solana_program::system_program::ID }.to_account_metas(None),
+        accounts: ll::accounts::PostUsage { launch_config: launch_config(), registry_config: registry_config(), runtime_authority: k(3),
+            usage: lpda(&[ll::USAGE_SEED, &epoch.to_le_bytes()]), system_program: anchor_lang::solana_program::system_program::ID }.to_account_metas(None),
         data: ll::instruction::PostUsage { epoch, root: [9; 32] }.data(),
     }));
     v.push(ix_json("launch.debit_compute", &Instruction {
@@ -155,19 +184,33 @@ fn account_snapshots() -> Vec<Value> {
     let ix = e.post_epoch_ix(&core.pubkey(), lr::PostEpochArgs { epoch: 4, payout_root: [1; 32], lineage_root: [2; 32], total_units_micro: 3,
         pool_amount: 0, rebate_amount: 1_000 });
     ok(send(&mut e.svm, &core, &[], vec![ix]));
+    let sl_id = [0x77; 32];
+    let ix = e.slash_ix(&core.pubkey(), &agent.pubkey(), lr::OFFENCE_REVEAL, 4, sl_id);
+    ok(send(&mut e.svm, &core, &[], vec![ix]));
+    let runtime = e.runtime.insecure_clone();
+    let ix = Instruction {
+        program_id: ll::ID,
+        accounts: ll::accounts::PostUsage { launch_config: launch_config(), registry_config: registry_config(), runtime_authority: runtime.pubkey(),
+            usage: lpda(&[ll::USAGE_SEED, &6u64.to_le_bytes()]), system_program: anchor_lang::solana_program::system_program::ID }.to_account_metas(None),
+        data: ll::instruction::PostUsage { epoch: 6, root: [3; 32] }.data(),
+    };
+    ok(send(&mut e.svm, &runtime, &[], vec![ix]));
     let raw = |key: &Pubkey| b64(&e.svm.get_account(key).unwrap().data);
     let c = e.rconfig();
     let a = e.agent(&agent.pubkey());
     let ep: lr::Epoch = read(&e.svm, &epoch_pda(4));
     let lc: ll::LaunchConfig = read(&e.svm, &launch_config());
     let la: ll::AgentLaunch = read(&e.svm, &l.launch);
+    let sr: lr::SlashReceipt = read(&e.svm, &slash_receipt(&sl_id));
     vec![
         json!({ "type": "Config", "data": raw(&registry_config()), "fields": {
             "admin": c.admin.to_string(), "coreAuthority": c.core_authority.to_string(), "launchProgram": c.launch_program.to_string(),
             "mint": c.mint.to_string(), "tokenProgram": c.token_program.to_string(), "paused": c.paused, "epochsPosted": c.epochs_posted.to_string(),
             "lastEpoch": c.last_epoch.to_string(), "registerBurn": c.params.register_burn.to_string(), "reserveBps": c.params.reserve_bps,
             "poolBps": c.params.pool_bps, "unbondCooldownS": c.params.unbond_cooldown_s.to_string(), "quorum": c.params.quorum,
-            "authorRewardTo": c.params.author_reward_to, "finderShareBps": c.params.finder_share_bps } }),
+            "authorRewardTo": c.params.author_reward_to, "finderShareBps": c.params.finder_share_bps, "epochLengthS": c.params.epoch_length_s,
+            "maxRebatePerEpoch": c.max_rebate_per_epoch.to_string(), "epochAnchor": c.epoch_anchor.to_string(),
+            "epochAnchorTs": c.epoch_anchor_ts.to_string() } }),
         json!({ "type": "Agent", "data": raw(&agent_record(&agent.pubkey())), "fields": {
             "agent": a.agent.to_string(), "owner": a.owner.to_string(), "kind": a.kind, "hosted": a.hosted, "burned": a.burned.to_string(),
             "bond": a.bond.to_string(), "unbondAmount": a.unbond_amount.to_string(), "unbondReadyAt": a.unbond_ready_at.to_string(),
@@ -179,11 +222,17 @@ fn account_snapshots() -> Vec<Value> {
             "admin": lc.admin.to_string(), "runtimeAuthority": lc.runtime_authority.to_string(), "lineMint": lc.line_mint.to_string(),
             "dbcConfig": lc.dbc_config.to_string(), "agentComputeBps": lc.agent_compute_bps, "protocolBps": lc.protocol_bps,
             "sleepThreshold": lc.sleep_threshold.to_string(), "wakeThreshold": lc.wake_threshold.to_string(),
-            "migrationQuoteThreshold": lc.migration_quote_threshold.to_string(), "sqrtStartPrice": lc.sqrt_start_price.to_string(), "paused": lc.paused } }),
+            "migrationQuoteThreshold": lc.migration_quote_threshold.to_string(), "sqrtStartPrice": lc.sqrt_start_price.to_string(), "paused": lc.paused,
+            "registryProgram": lc.registry_program.to_string(), "maxDebitPerEpoch": lc.max_debit_per_epoch.to_string(),
+            "usageEpochsPosted": lc.usage_epochs_posted.to_string(), "lastUsageEpoch": lc.last_usage_epoch.to_string(),
+            "usageAnchor": lc.usage_anchor.to_string(), "usageAnchorTs": lc.usage_anchor_ts.to_string() } }),
         json!({ "type": "AgentLaunch", "data": raw(&l.launch), "fields": {
             "agent": la.agent.to_string(), "mint": la.mint.to_string(), "launcher": la.launcher.to_string(), "repoId": hex(&la.repo_id),
             "repoUrl": la.repo_url, "identityMode": la.identity_mode, "hosted": la.hosted, "dbcPool": la.dbc_pool.to_string(), "graduated": la.graduated,
             "awake": la.awake, "createdAt": la.created_at.to_string() } }),
+        json!({ "type": "SlashReceipt", "address": slash_receipt(&sl_id).to_string(), "data": raw(&slash_receipt(&sl_id)), "fields": {
+            "slashId": hex(&sr.slash_id), "agent": sr.agent.to_string(), "offence": sr.offence, "epoch": sr.epoch.to_string(),
+            "amount": sr.amount.to_string(), "slashedAt": sr.slashed_at.to_string() } }),
     ]
 }
 
@@ -203,5 +252,5 @@ fn client_vectors() {
     }
     let doc: Value = serde_json::from_str(&std::fs::read_to_string(&path).expect("run with UPDATE_VECTORS=1 once")).unwrap();
     assert_eq!(doc["instructions"], Value::Array(ixs), "instruction vectors changed: rerun with UPDATE_VECTORS=1 and the packages/chain tests");
-    assert_eq!(doc["accounts"].as_array().unwrap().len(), 5);
+    assert_eq!(doc["accounts"].as_array().unwrap().len(), 6);
 }

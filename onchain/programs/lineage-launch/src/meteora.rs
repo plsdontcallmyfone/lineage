@@ -95,6 +95,11 @@ pub fn check_dbc_config(info: &AccountInfo, line_mint: &Pubkey, line_token_progr
         LaunchError::DbcConfigInvalid);
     Ok(DbcConfigView { migration_quote_threshold: read_u64(&d, c::MIGRATION_QUOTE_THRESHOLD), sqrt_start_price: read_u128(&d, c::SQRT_START_PRICE) })
 }
+/// The migration quote threshold of a DBC config (owner, discriminator and size checked).
+pub fn dbc_config_threshold(info: &AccountInfo) -> Result<u64> {
+    let d = checked(info, &DBC_PROGRAM_ID, DBC_CONFIG_LEN, &account_disc::DBC_POOL_CONFIG).map_err(|_| error!(LaunchError::DbcConfigInvalid))?;
+    Ok(read_u64(&d, dbc_config::MIGRATION_QUOTE_THRESHOLD))
+}
 
 // ---------- DBC VirtualPool ----------
 
@@ -132,10 +137,15 @@ pub struct DammPool {
     pub token_a_mint: Pubkey,
     pub token_b_mint: Pubkey,
     pub creator: Pubkey,
+    /// All of the pool's liquidity (every position shares the one price range).
+    pub liquidity: u128,
+    /// The part of it every position has permanently locked.
+    pub permanent_lock_liquidity: u128,
 }
 pub fn read_damm_pool(info: &AccountInfo) -> Result<DammPool> {
     let d = checked(info, &DAMM_V2_PROGRAM_ID, DAMM_POOL_LEN, &account_disc::DAMM_POOL)?;
-    Ok(DammPool { token_a_mint: read_key(&d, 168), token_b_mint: read_key(&d, 200), creator: read_key(&d, 648) })
+    Ok(DammPool { token_a_mint: read_key(&d, 168), token_b_mint: read_key(&d, 200), creator: read_key(&d, 648), liquidity: read_u128(&d, 360),
+        permanent_lock_liquidity: read_u128(&d, 552) })
 }
 pub const DAMM_POSITION_LEN: usize = 8 + 400;
 pub struct DammPosition {

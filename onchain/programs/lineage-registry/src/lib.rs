@@ -19,6 +19,7 @@ pub const PAYABLE_SEED: &[u8] = b"payable";
 pub const AGENT_SEED: &[u8] = b"agent";
 pub const EPOCH_SEED: &[u8] = b"epoch";
 pub const CLAIM_SEED: &[u8] = b"claim";
+pub const SLASH_SEED: &[u8] = b"slash";
 /// Seeds of `lineage_launch`'s signer PDA; `register_launched` requires it as a signer.
 pub const LAUNCH_AUTHORITY_SEED: &[u8] = b"authority";
 /// Seeds of `lineage_launch`'s compute vault for an agent: ["compute", agent].
@@ -40,7 +41,8 @@ pub mod lineage_registry {
     /// Once, by the program's upgrade authority (checked through ProgramData, so nobody can
     /// front-run the deploy): creates Config and the five vaults.
     pub fn initialize(ctx: Context<Initialize>, args: ConfigArgs) -> Result<()> {
-        args.params.validate()?;
+        args.validate()?;
+        check_mint_extensions(&ctx.accounts.mint.to_account_info())?;
         let c = &mut ctx.accounts.config;
         c.admin = args.admin;
         c.core_authority = args.core_authority;
@@ -53,6 +55,9 @@ pub mod lineage_registry {
         c.last_epoch = 0;
         c.bump = ctx.bumps.config;
         c.vault_authority_bump = ctx.bumps.vault_authority;
+        c.max_rebate_per_epoch = args.max_rebate_per_epoch;
+        c.epoch_anchor = 0;
+        c.epoch_anchor_ts = 0;
         emit!(ConfigSet { admin: c.admin, core_authority: c.core_authority, launch_program: c.launch_program, params: c.params });
         Ok(())
     }
@@ -60,13 +65,13 @@ pub mod lineage_registry {
     /// Admin: every parameter, the admin, the Core authority and the launch program. The mint is
     /// fixed at initialize because the vaults are bound to it.
     pub fn set_config(ctx: Context<AdminOnly>, args: ConfigArgs) -> Result<()> {
-        args.params.validate()?;
-        require!(args.admin != Pubkey::default() && args.core_authority != Pubkey::default(), RegistryError::InvalidParams);
+        args.validate()?;
         let c = &mut ctx.accounts.config;
         c.admin = args.admin;
         c.core_authority = args.core_authority;
         c.launch_program = args.launch_program;
         c.params = args.params;
+        c.max_rebate_per_epoch = args.max_rebate_per_epoch;
         emit!(ConfigSet { admin: c.admin, core_authority: c.core_authority, launch_program: c.launch_program, params: c.params });
         Ok(())
     }
@@ -75,6 +80,42 @@ pub mod lineage_registry {
     pub fn pause(ctx: Context<AdminOnly>, paused: bool) -> Result<()> {
         ctx.accounts.config.paused = paused;
         emit!(Paused { paused });
+        Ok(())
+    }
+
+    /// Admin escape hatch for the epoch sequence `post_epoch` enforces: the number of epochs
+    /// posted, the last one, and the clock anchor (epoch `anchor` was posted at `anchor_ts`).
+    /// Used to repair a sequence a compromised or misconfigured Core authority advanced.
+    pub fn set_epoch_cursor(ctx: Context<AdminOnly>, epochs_posted: u64, last_epoch: u64, anchor: u64, anchor_ts: i64) -> Result<()> {
+        require!(anchor <= last_epoch || epochs_posted == 0, RegistryError::InvalidParams);
+        let c = &mut ctx.accounts.config;
+        c.epochs_posted = epochs_posted;
+        c.last_epoch = last_epoch;
+        c.epoch_anchor = anchor;
+        c.epoch_anchor_ts = anchor_ts;
+        emit!(EpochCursorSet { epochs_posted, last_epoch, anchor, anchor_ts });
+        Ok(())
+    }
+
+    /// Admin, once per layout change: grows a `Config` written by the first deployed layout (no
+    /// rebate cap, no epoch anchor) to the current one. The anchor starts at the last posted
+    /// epoch and now. The admin pays the added rent.
+    pub fn migrate_config(ctx: Context<MigrateConfig>, max_rebate_per_epoch: u64) -> Result<()> {
+        let info = ctx.accounts.config.to_account_info();
+        let new_len = 8 + Config::INIT_SPACE;
+        require!(info.data_len() == new_len - CONFIG_V1_TAIL, RegistryError::InvalidParams);
+        {
+            let d = info.try_borrow_data()?;
+            require!(d[..8] == *Config::DISCRIMINATOR, RegistryError::InvalidParams);
+            require!(d[8..40] == ctx.accounts.admin.key().to_bytes(), RegistryError::Unauthorized);
+        }
+        grow(&info, &ctx.accounts.admin.to_account_info(), &ctx.accounts.system_program.to_account_info(), new_len)?;
+        let mut c = Config::try_deserialize(&mut &info.try_borrow_data()?[..])?;
+        c.max_rebate_per_epoch = max_rebate_per_epoch;
+        c.epoch_anchor = c.last_epoch;
+        c.epoch_anchor_ts = Clock::get()?.unix_timestamp;
+        c.try_serialize(&mut &mut info.try_borrow_mut_data()?[..])?;
+        emit!(EpochCursorSet { epochs_posted: c.epochs_posted, last_epoch: c.last_epoch, anchor: c.epoch_anchor, anchor_ts: c.epoch_anchor_ts });
         Ok(())
     }
 
@@ -186,7 +227,9 @@ pub mod lineage_registry {
     /// Core authority: the SPEC 13.6 table. The amount is the configured share of the current
     /// bond; slashed tokens go to the compute reserve. Every offence is a strike; reaching
     /// `strike_limit` in one epoch suspends the agent through the next epoch.
-    pub fn slash(ctx: Context<Slash>, offence: u8, epoch: u64) -> Result<()> {
+    /// `slash_id` is Core's id for this slash (32 bytes); its `SlashReceipt` PDA makes a retried
+    /// transaction land at most once.
+    pub fn slash(ctx: Context<Slash>, offence: u8, epoch: u64, slash_id: [u8; 32]) -> Result<()> {
         let c = &ctx.accounts.config;
         require!(!c.paused, RegistryError::Paused);
         let bps = match offence {
@@ -209,14 +252,25 @@ pub mod lineage_registry {
         a.unbond_amount = a.unbond_amount.min(a.bond);
         a.slashed_total = a.slashed_total.saturating_add(amount);
         a.strikes_total = a.strikes_total.saturating_add(1);
-        if a.strikes_epoch != epoch {
+        // The per-epoch count restarts only for a strictly newer epoch; a late strike for an
+        // older epoch counts in the total but never resets or inflates the current epoch's count.
+        if epoch > a.strikes_epoch {
             a.strikes_epoch = epoch;
             a.strikes_in_epoch = 0;
         }
-        a.strikes_in_epoch = a.strikes_in_epoch.saturating_add(1);
-        if limit > 0 && a.strikes_in_epoch >= limit {
-            a.suspended_through_epoch = a.suspended_through_epoch.max(epoch.saturating_add(1));
+        if epoch == a.strikes_epoch {
+            a.strikes_in_epoch = a.strikes_in_epoch.saturating_add(1);
+            if limit > 0 && a.strikes_in_epoch >= limit {
+                a.suspended_through_epoch = a.suspended_through_epoch.max(epoch.saturating_add(1));
+            }
         }
+        let r = &mut ctx.accounts.slash_receipt;
+        r.slash_id = slash_id;
+        r.agent = a.agent;
+        r.offence = offence;
+        r.epoch = epoch;
+        r.amount = amount;
+        r.slashed_at = Clock::get()?.unix_timestamp;
         emit!(Slashed { agent: a.agent, offence, epoch, amount, bond: a.bond, strikes_in_epoch: a.strikes_in_epoch,
             suspended_through_epoch: a.suspended_through_epoch });
         Ok(())
@@ -250,7 +304,18 @@ pub mod lineage_registry {
     pub fn post_epoch(ctx: Context<PostEpoch>, args: PostEpochArgs) -> Result<()> {
         let c = &ctx.accounts.config;
         require!(!c.paused, RegistryError::Paused);
-        require!(c.epochs_posted == 0 || args.epoch > c.last_epoch, RegistryError::EpochOrder);
+        let now = Clock::get()?.unix_timestamp;
+        // One sequence: the first post sets the anchor, every later one is exactly the next
+        // epoch and at most one epoch ahead of the wall clock measured from the anchor.
+        if c.epochs_posted > 0 {
+            require!(Some(args.epoch) == c.last_epoch.checked_add(1), RegistryError::EpochOrder);
+            let ahead = args.epoch.checked_sub(c.epoch_anchor).ok_or(RegistryError::EpochOrder)?.saturating_sub(1);
+            let earliest = (ahead as i128) * (c.params.epoch_length_s as i128) + c.epoch_anchor_ts as i128;
+            require!(now as i128 >= earliest, RegistryError::EpochTooEarly);
+        }
+        require!(args.rebate_amount <= c.max_rebate_per_epoch, RegistryError::RebateCap);
+        require!(args.pool_amount <= ctx.accounts.pool_vault.amount && args.rebate_amount <= ctx.accounts.reserve_vault.amount,
+            RegistryError::InvalidAmount);
         let total = args.pool_amount.checked_add(args.rebate_amount).ok_or(RegistryError::Overflow)?;
         let seeds: &[&[u8]] = &[VAULT_AUTHORITY_SEED, &[c.vault_authority_bump]];
         if args.pool_amount > 0 {
@@ -271,9 +336,13 @@ pub mod lineage_registry {
         e.total_payable = total;
         e.claimed_amount = 0;
         e.claims = 0;
-        e.posted_at = Clock::get()?.unix_timestamp;
+        e.posted_at = now;
         e.bump = ctx.bumps.epoch;
         let c = &mut ctx.accounts.config;
+        if c.epochs_posted == 0 {
+            c.epoch_anchor = args.epoch;
+            c.epoch_anchor_ts = now;
+        }
         c.epochs_posted += 1;
         c.last_epoch = args.epoch;
         emit!(EpochPosted { epoch: args.epoch, payout_root: args.payout_root, lineage_root: args.lineage_root, pool_amount: args.pool_amount,
@@ -374,6 +443,34 @@ fn vault_transfer<'info>(token_program: &Interface<'info, TokenInterface>, from:
     )
 }
 
+/// Grows a program-owned account to `new_len`, the payer topping up its rent first.
+pub fn grow<'info>(info: &AccountInfo<'info>, payer: &AccountInfo<'info>, system_program: &AccountInfo<'info>, new_len: usize) -> Result<()> {
+    let need = Rent::get()?.minimum_balance(new_len).saturating_sub(info.lamports());
+    if need > 0 {
+        anchor_lang::system_program::transfer(
+            CpiContext::new(system_program.clone(), anchor_lang::system_program::Transfer { from: payer.clone(), to: info.clone() }), need)?;
+    }
+    info.realloc(new_len, true)?;
+    Ok(())
+}
+
+/// `$LINE` may be a classic SPL mint or a Token-2022 mint carrying only a metadata pointer and
+/// metadata (as Pump.fun's create_v2 mints). Every other extension is refused: a transfer fee or
+/// hook would break exact vault accounting, a permanent delegate could take any vault, and
+/// confidential, non-transferable or default-frozen mints cannot move through the vaults.
+pub fn check_mint_extensions(mint: &AccountInfo) -> Result<()> {
+    use anchor_spl::token_2022::spl_token_2022::extension::{BaseStateWithExtensions, ExtensionType, StateWithExtensions};
+    use anchor_spl::token_2022::spl_token_2022::state::Mint as T22Mint;
+    if *mint.owner != anchor_spl::token_2022::ID {
+        return Ok(());
+    }
+    let data = mint.try_borrow_data()?;
+    let state = StateWithExtensions::<T22Mint>::unpack(&data).map_err(|_| error!(RegistryError::MintExtension))?;
+    let types = state.get_extension_types().map_err(|_| error!(RegistryError::MintExtension))?;
+    require!(types.iter().all(|t| matches!(t, ExtensionType::MetadataPointer | ExtensionType::TokenMetadata)), RegistryError::MintExtension);
+    Ok(())
+}
+
 // ---------- state ----------
 
 /// Every economic parameter of SPEC 13 that the chain holds (Core reads the rest from it too).
@@ -407,6 +504,12 @@ impl Params {
         require!([self.canary_slash_bps, self.minority_slash_bps, self.reveal_slash_bps, self.finder_share_bps].iter().all(|b| *b as u64 <= BPS),
             RegistryError::InvalidParams);
         require!(self.author_reward_to <= 1 && self.unbond_cooldown_s >= 0, RegistryError::InvalidParams);
+        // A bond must stay slashable for at least two epochs after an unbond request, so a slash
+        // Core decides in the epoch of the request (or the next) lands before the bond leaves.
+        require!(self.epoch_length_s > 0 && self.unbond_cooldown_s >= 2 * self.epoch_length_s as i64, RegistryError::InvalidParams);
+        // `bond_cap` caps an agent's assignment weight (SPEC 10.1, `min(bond, bond_cap)`); it is
+        // not a cap on the bond itself, but it may not sit below the eligibility floor.
+        require!(self.min_bond <= self.bond_cap, RegistryError::InvalidParams);
         Ok(())
     }
 }
@@ -417,7 +520,20 @@ pub struct ConfigArgs {
     pub core_authority: Pubkey,
     pub launch_program: Pubkey,
     pub params: Params,
+    /// Most `rebate_amount` one `post_epoch` may move from the reserve.
+    pub max_rebate_per_epoch: u64,
 }
+impl ConfigArgs {
+    pub fn validate(&self) -> Result<()> {
+        self.params.validate()?;
+        require!(self.admin != Pubkey::default() && self.core_authority != Pubkey::default() && self.launch_program != Pubkey::default(),
+            RegistryError::InvalidParams);
+        Ok(())
+    }
+}
+
+/// Bytes `Config` gained after the first devnet layout (`migrate_config`).
+pub const CONFIG_V1_TAIL: usize = 8 + 8 + 8;
 
 #[account]
 #[derive(InitSpace)]
@@ -433,6 +549,11 @@ pub struct Config {
     pub last_epoch: u64,
     pub bump: u8,
     pub vault_authority_bump: u8,
+    pub max_rebate_per_epoch: u64,
+    /// `post_epoch` clock bound: epoch `epoch_anchor` was posted at `epoch_anchor_ts`; epoch
+    /// `anchor + k` (k >= 2) may not be posted before `anchor_ts + (k - 1) x epoch_length_s`.
+    pub epoch_anchor: u64,
+    pub epoch_anchor_ts: i64,
 }
 
 #[account]
@@ -480,6 +601,18 @@ pub struct Epoch {
     pub claims: u32,
     pub posted_at: i64,
     pub bump: u8,
+}
+
+/// One per slash Core sent (PDA `slash`, slash id); its existence refuses a second landing.
+#[account]
+#[derive(InitSpace)]
+pub struct SlashReceipt {
+    pub slash_id: [u8; 32],
+    pub agent: Pubkey,
+    pub offence: u8,
+    pub epoch: u64,
+    pub amount: u64,
+    pub slashed_at: i64,
 }
 
 /// One per paid leaf; its existence refuses a second claim.
@@ -568,6 +701,16 @@ pub struct AdminOnly<'info> {
 }
 
 #[derive(Accounts)]
+pub struct MigrateConfig<'info> {
+    /// CHECK: the old layout cannot deserialize; discriminator, length and admin are checked by hand.
+    #[account(mut, seeds = [CONFIG_SEED], bump)]
+    pub config: UncheckedAccount<'info>,
+    #[account(mut)]
+    pub admin: Signer<'info>,
+    pub system_program: Program<'info, System>,
+}
+
+#[derive(Accounts)]
 pub struct Register<'info> {
     #[account(seeds = [CONFIG_SEED], bump = config.bump, has_one = mint, has_one = token_program)]
     pub config: Box<Account<'info, Config>>,
@@ -641,11 +784,15 @@ pub struct WithdrawUnbonded<'info> {
 }
 
 #[derive(Accounts)]
+#[instruction(offence: u8, epoch: u64, slash_id: [u8; 32])]
 pub struct Slash<'info> {
     #[account(seeds = [CONFIG_SEED], bump = config.bump, has_one = core_authority @ RegistryError::Unauthorized, has_one = mint,
         has_one = token_program)]
     pub config: Box<Account<'info, Config>>,
+    #[account(mut)]
     pub core_authority: Signer<'info>,
+    #[account(init, payer = core_authority, space = 8 + SlashReceipt::INIT_SPACE, seeds = [SLASH_SEED, &slash_id], bump)]
+    pub slash_receipt: Box<Account<'info, SlashReceipt>>,
     #[account(mut, seeds = [AGENT_SEED, agent_record.agent.as_ref()], bump = agent_record.bump)]
     pub agent_record: Box<Account<'info, Agent>>,
     pub mint: Box<InterfaceAccount<'info, Mint>>,
@@ -657,6 +804,7 @@ pub struct Slash<'info> {
     #[account(mut, seeds = [RESERVE_SEED], bump)]
     pub reserve_vault: Box<InterfaceAccount<'info, TokenAccount>>,
     pub token_program: Interface<'info, TokenInterface>,
+    pub system_program: Program<'info, System>,
 }
 
 #[derive(Accounts)]
@@ -734,6 +882,13 @@ pub struct ConfigSet {
     pub core_authority: Pubkey,
     pub launch_program: Pubkey,
     pub params: Params,
+}
+#[event]
+pub struct EpochCursorSet {
+    pub epochs_posted: u64,
+    pub last_epoch: u64,
+    pub anchor: u64,
+    pub anchor_ts: i64,
 }
 #[event]
 pub struct Paused {
@@ -833,4 +988,10 @@ pub enum RegistryError {
     BadProof,
     #[msg("claims would exceed the epoch total")]
     OverClaim,
+    #[msg("epoch posted ahead of the clock")]
+    EpochTooEarly,
+    #[msg("rebate above max_rebate_per_epoch")]
+    RebateCap,
+    #[msg("$LINE mint has an unsupported Token-2022 extension")]
+    MintExtension,
 }

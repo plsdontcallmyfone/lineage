@@ -126,21 +126,21 @@ fn slash_strikes_and_suspension() {
     ok(send(&mut e.svm, &owner, &[], vec![ix]));
     let core = e.core.insecure_clone();
     // Only the Core authority slashes.
-    let ix = e.slash_ix(&owner.pubkey(), &agent.pubkey(), lr::OFFENCE_CANARY, 5);
+    let ix = e.slash_ix(&owner.pubkey(), &agent.pubkey(), lr::OFFENCE_CANARY, 5, sid(1));
     rejects(send(&mut e.svm, &owner, &[], vec![ix]), "Unauthorized");
-    let ix = e.slash_ix(&core.pubkey(), &agent.pubkey(), 9, 5);
+    let ix = e.slash_ix(&core.pubkey(), &agent.pubkey(), 9, 5, sid(1));
     rejects(send(&mut e.svm, &core, &[], vec![ix]), "InvalidParams");
     // Canary 25%: 2,500 to the reserve.
-    let ix = e.slash_ix(&core.pubkey(), &agent.pubkey(), lr::OFFENCE_CANARY, 5);
+    let ix = e.slash_ix(&core.pubkey(), &agent.pubkey(), lr::OFFENCE_CANARY, 5, sid(1));
     ok(send(&mut e.svm, &core, &[], vec![ix]));
     let a = e.agent(&agent.pubkey());
     assert_eq!((a.bond, a.slashed_total, a.strikes_in_epoch, a.suspended_through_epoch), (7_500 * ONE, 2_500 * ONE, 1, 0));
     assert_eq!(a.unbond_amount, 7_500 * ONE, "a pending unbond never exceeds the bond");
     assert_eq!(balance(&e.svm, &reserve_vault()), 2_500 * ONE);
     // Minority 5% of 7,500 = 375; reveal 2% of 7,125 = 142.5 floored.
-    let ix = e.slash_ix(&core.pubkey(), &agent.pubkey(), lr::OFFENCE_MINORITY, 5);
+    let ix = e.slash_ix(&core.pubkey(), &agent.pubkey(), lr::OFFENCE_MINORITY, 5, sid(2));
     ok(send(&mut e.svm, &core, &[], vec![ix]));
-    let ix = e.slash_ix(&core.pubkey(), &agent.pubkey(), lr::OFFENCE_REVEAL, 5);
+    let ix = e.slash_ix(&core.pubkey(), &agent.pubkey(), lr::OFFENCE_REVEAL, 5, sid(3));
     ok(send(&mut e.svm, &core, &[], vec![ix]));
     let a = e.agent(&agent.pubkey());
     assert_eq!(a.bond, 7_125 * ONE - 142_500_000);
@@ -150,10 +150,48 @@ fn slash_strikes_and_suspension() {
     assert_eq!((a.strikes_in_epoch, a.strikes_total, a.suspended_through_epoch), (3, 3, 6));
     // An abandoned assignment strikes without slashing; a new epoch restarts the count.
     let bond = a.bond;
-    let ix = e.slash_ix(&core.pubkey(), &agent.pubkey(), lr::OFFENCE_ABANDON, 6);
+    let ix = e.slash_ix(&core.pubkey(), &agent.pubkey(), lr::OFFENCE_ABANDON, 6, sid(4));
     ok(send(&mut e.svm, &core, &[], vec![ix]));
     let a = e.agent(&agent.pubkey());
     assert_eq!((a.bond, a.strikes_epoch, a.strikes_in_epoch, a.strikes_total, a.suspended_through_epoch), (bond, 6, 1, 4, 6));
+    // L6: a late strike for an older epoch counts in the total but neither resets nor inflates
+    // the current epoch's count.
+    let ix = e.slash_ix(&core.pubkey(), &agent.pubkey(), lr::OFFENCE_ABANDON, 5, sid(5));
+    ok(send(&mut e.svm, &core, &[], vec![ix]));
+    let a = e.agent(&agent.pubkey());
+    assert_eq!((a.strikes_epoch, a.strikes_in_epoch, a.strikes_total, a.suspended_through_epoch), (6, 1, 5, 6));
+    for (i, n) in [(6u64, 2u16), (7, 3)] {
+        let ix = e.slash_ix(&core.pubkey(), &agent.pubkey(), lr::OFFENCE_ABANDON, 6, sid(i));
+        ok(send(&mut e.svm, &core, &[], vec![ix]));
+        assert_eq!(e.agent(&agent.pubkey()).strikes_in_epoch, n);
+    }
+    assert_eq!(e.agent(&agent.pubkey()).suspended_through_epoch, 7, "three strikes in epoch 6 suspend through epoch 7");
+}
+
+/// M1: a slash id lands once. Core retries a send whose outcome it did not see; the retry (same
+/// id) is refused by the receipt PDA, so the bond is slashed exactly once.
+#[test]
+fn slash_lands_once_per_id() {
+    let mut e = setup(LineKind::Pump);
+    let (owner, owner_token) = e.wallet(20_000 * ONE);
+    let agent = Keypair::new();
+    e.register_verifier(&owner, &agent);
+    let ix = e.bond_ix(&owner.pubkey(), &agent.pubkey(), &owner_token, 10_000 * ONE);
+    ok(send(&mut e.svm, &owner, &[], vec![ix]));
+    let core = e.core.insecure_clone();
+    let id = [0xab; 32];
+    let ix = e.slash_ix(&core.pubkey(), &agent.pubkey(), lr::OFFENCE_CANARY, 2, id);
+    ok(send(&mut e.svm, &core, &[], vec![ix.clone()]));
+    let r: lr::SlashReceipt = read(&e.svm, &slash_receipt(&id));
+    assert_eq!((r.slash_id, r.agent, r.offence, r.epoch, r.amount, r.slashed_at), (id, agent.pubkey(), lr::OFFENCE_CANARY, 2, 2_500 * ONE, NOW));
+    rejects(send(&mut e.svm, &core, &[], vec![ix]), "already in use");
+    let a = e.agent(&agent.pubkey());
+    assert_eq!((a.bond, a.slashed_total, a.strikes_total), (7_500 * ONE, 2_500 * ONE, 1), "slashed once");
+    assert_eq!(balance(&e.svm, &reserve_vault()), 2_500 * ONE);
+    // A different id is a different slash.
+    let ix = e.slash_ix(&core.pubkey(), &agent.pubkey(), lr::OFFENCE_CANARY, 2, [0xac; 32]);
+    ok(send(&mut e.svm, &core, &[], vec![ix]));
+    assert_eq!(e.agent(&agent.pubkey()).bond, 7_500 * ONE - 1_875 * ONE);
 }
 
 #[test]
@@ -320,7 +358,7 @@ fn pause_and_config_are_admin_only() {
     // set_config: admin only, validated, applied.
     let mut params = test_params();
     params.register_burn = 3 * ONE;
-    let args = lr::ConfigArgs { admin: admin.pubkey(), core_authority: core.pubkey(), launch_program: ll::ID, params };
+    let args = lr::ConfigArgs { params, ..config_args(&admin.pubkey(), &core.pubkey()) };
     let ix = e.admin_ix(&owner.pubkey(), lr::instruction::SetConfig { args }.data());
     rejects(send(&mut e.svm, &owner, &[], vec![ix]), "Unauthorized");
     let mut bad = params;
@@ -337,9 +375,9 @@ fn pause_and_config_are_admin_only() {
     let new_core = funded(&mut e.svm);
     let ix = e.admin_ix(&admin.pubkey(), lr::instruction::SetConfig { args: lr::ConfigArgs { core_authority: new_core.pubkey(), ..args } }.data());
     ok(send(&mut e.svm, &admin, &[], vec![ix]));
-    let ix = e.slash_ix(&core.pubkey(), &agent.pubkey(), lr::OFFENCE_ABANDON, 1);
+    let ix = e.slash_ix(&core.pubkey(), &agent.pubkey(), lr::OFFENCE_ABANDON, 1, sid(1));
     rejects(send(&mut e.svm, &core, &[], vec![ix]), "Unauthorized");
-    let ix = e.slash_ix(&new_core.pubkey(), &agent.pubkey(), lr::OFFENCE_ABANDON, 1);
+    let ix = e.slash_ix(&new_core.pubkey(), &agent.pubkey(), lr::OFFENCE_ABANDON, 1, sid(1));
     ok(send(&mut e.svm, &new_core, &[], vec![ix]));
 }
 
@@ -358,4 +396,166 @@ fn register_launched_only_through_the_launch_program() {
     };
     rejects(send(&mut e.svm, &impostor, &[], vec![ix]), "NotLaunchProgram");
     assert!(e.svm.get_account(&agent_record(&agent)).is_none());
+}
+
+fn post(e: &mut Env, epoch: u64, pool_amount: u64, rebate_amount: u64) -> litesvm::types::TransactionResult {
+    let core = e.core.insecure_clone();
+    let ix = e.post_epoch_ix(&core.pubkey(), lr::PostEpochArgs { epoch, payout_root: [epoch as u8; 32], lineage_root: [0; 32], total_units_micro: 1,
+        pool_amount, rebate_amount });
+    send(&mut e.svm, &core, &[], vec![ix])
+}
+
+/// M3: a compromised Core authority cannot skip or run ahead through epochs, move more than the
+/// pool holds, or take more than `max_rebate_per_epoch` from the reserve; the admin repairs the
+/// sequence.
+#[test]
+fn post_epoch_sequence_clock_and_caps() {
+    let mut e = setup(LineKind::Classic);
+    let len = test_params().epoch_length_s as i64;
+    e.fund(&pool_vault(), 1_000);
+    e.fund(&reserve_vault(), 2 * MAX_REBATE);
+    // More than the pool holds, or a rebate above the cap: refused.
+    rejects(post(&mut e, 10, 1_001, 0), "InvalidAmount");
+    rejects(post(&mut e, 10, 0, MAX_REBATE + 1), "RebateCap");
+    // The first post may be any epoch; it anchors the clock.
+    ok(post(&mut e, 10, 400, MAX_REBATE));
+    let c = e.rconfig();
+    assert_eq!((c.epochs_posted, c.last_epoch, c.epoch_anchor, c.epoch_anchor_ts), (1, 10, 10, NOW));
+    // Only the next epoch: no gaps, no repeats, no going back.
+    rejects(post(&mut e, 12, 0, 0), "EpochOrder");
+    rejects(post(&mut e, 9, 0, 0), "EpochOrder");
+    // Epoch 11 is at most one epoch ahead: allowed at once. Epoch 12 needs one epoch length.
+    ok(post(&mut e, 11, 0, 0));
+    rejects(post(&mut e, 12, 0, 0), "EpochTooEarly");
+    warp(&mut e.svm, len - 1);
+    rejects(post(&mut e, 12, 0, 0), "EpochTooEarly");
+    warp(&mut e.svm, 1);
+    ok(post(&mut e, 12, 0, 0));
+    rejects(post(&mut e, 13, 0, 0), "EpochTooEarly");
+    // After downtime Core catches up as far as the clock allows, never further.
+    warp(&mut e.svm, 3 * len);
+    for n in 13..=15 {
+        ok(post(&mut e, n, 0, 0));
+    }
+    rejects(post(&mut e, 16, 0, 0), "EpochTooEarly");
+    // The rebate cap is admin-set and enforced from config.
+    let admin = e.admin.insecure_clone();
+    let args = lr::ConfigArgs { max_rebate_per_epoch: 5, ..config_args(&admin.pubkey(), &e.core.pubkey()) };
+    let ix = e.admin_ix(&admin.pubkey(), lr::instruction::SetConfig { args }.data());
+    ok(send(&mut e.svm, &admin, &[], vec![ix]));
+    warp(&mut e.svm, len);
+    rejects(post(&mut e, 16, 0, 6), "RebateCap");
+    ok(post(&mut e, 16, 0, 5));
+    // Escape hatch: only the admin moves the cursor (here back to a sane sequence after epoch 16).
+    let core = e.core.insecure_clone();
+    let data = lr::instruction::SetEpochCursor { epochs_posted: 7, last_epoch: 100, anchor: 100, anchor_ts: now(&e.svm) }.data();
+    let ix = e.admin_ix(&core.pubkey(), data.clone());
+    rejects(send(&mut e.svm, &core, &[], vec![ix]), "Unauthorized");
+    let ix = e.admin_ix(&admin.pubkey(), data);
+    ok(send(&mut e.svm, &admin, &[], vec![ix]));
+    rejects(post(&mut e, 17, 0, 0), "EpochOrder");
+    ok(post(&mut e, 101, 0, 0));
+    let c = e.rconfig();
+    assert_eq!((c.epochs_posted, c.last_epoch), (8, 101));
+}
+
+/// M4 and L8: the unbond cooldown keeps a bond slashable for two epochs; keys are nonzero and
+/// `min_bond <= bond_cap` (bond_cap is the assignment-weight cap, SPEC 10.1).
+#[test]
+fn config_floors_and_nonzero_keys() {
+    let mut e = setup(LineKind::Classic);
+    let admin = e.admin.insecure_clone();
+    let core = e.core.pubkey();
+    let base = config_args(&admin.pubkey(), &core);
+    let mut bad: Vec<lr::ConfigArgs> = Vec::new();
+    let mut p = test_params();
+    p.unbond_cooldown_s = 2 * p.epoch_length_s as i64 - 1;
+    bad.push(lr::ConfigArgs { params: p, ..base });
+    let mut p = test_params();
+    p.epoch_length_s = 0;
+    bad.push(lr::ConfigArgs { params: p, ..base });
+    let mut p = test_params();
+    p.min_bond = p.bond_cap + 1;
+    bad.push(lr::ConfigArgs { params: p, ..base });
+    bad.push(lr::ConfigArgs { admin: Pubkey::default(), ..base });
+    bad.push(lr::ConfigArgs { core_authority: Pubkey::default(), ..base });
+    bad.push(lr::ConfigArgs { launch_program: Pubkey::default(), ..base });
+    for args in bad {
+        let ix = e.admin_ix(&admin.pubkey(), lr::instruction::SetConfig { args }.data());
+        rejects(send(&mut e.svm, &admin, &[], vec![ix]), "InvalidParams");
+    }
+    let mut p = test_params();
+    p.unbond_cooldown_s = 2 * p.epoch_length_s as i64;
+    p.min_bond = p.bond_cap;
+    let ix = e.admin_ix(&admin.pubkey(), lr::instruction::SetConfig { args: lr::ConfigArgs { params: p, ..base } }.data());
+    ok(send(&mut e.svm, &admin, &[], vec![ix]));
+}
+
+/// A `$LINE` mint with a transfer fee (or any extension but metadata pointer and metadata).
+pub fn create_fee_mint(svm: &mut LiteSVM, payer: &Keypair) -> Pubkey {
+    use anchor_lang::solana_program::system_instruction;
+    use spl_token_2022::extension::{transfer_fee, ExtensionType};
+    let mint = Keypair::new();
+    let space = ExtensionType::try_calculate_account_len::<spl_token_2022::state::Mint>(&[ExtensionType::TransferFeeConfig]).unwrap();
+    let rent = svm.minimum_balance_for_rent_exemption(space);
+    ok(send(svm, payer, &[&mint], vec![
+        system_instruction::create_account(&payer.pubkey(), &mint.pubkey(), rent, space as u64, &T22),
+        transfer_fee::instruction::initialize_transfer_fee_config(&T22, &mint.pubkey(), None, None, 100, 1_000).unwrap(),
+        spl_token_2022::instruction::initialize_mint2(&T22, &mint.pubkey(), &payer.pubkey(), None, DECIMALS).unwrap(),
+    ]));
+    mint.pubkey()
+}
+
+/// L3: both programs refuse a Token-2022 `$LINE` with an extension outside the allowlist.
+#[test]
+fn line_mint_extension_allowlist() {
+    let mut svm = fresh_svm();
+    let admin = Keypair::new();
+    svm.airdrop(&admin.pubkey(), 100_000_000_000).unwrap();
+    install_program_data(&mut svm, &lr::ID, &admin.pubkey());
+    install_program_data(&mut svm, &ll::ID, &admin.pubkey());
+    let fee_mint = create_fee_mint(&mut svm, &admin);
+    let args = config_args(&admin.pubkey(), &Pubkey::new_unique());
+    rejects(send(&mut svm, &admin, &[], vec![registry_init_ix(admin.pubkey(), args, fee_mint, T22)]), "MintExtension");
+    let (r, dbc_config) = create_dbc_config(&mut svm, &admin, &fee_mint, &launch_authority(), &standard_dbc_params());
+    if r.is_ok() {
+        let largs = launch_args(&admin.pubkey(), &Pubkey::new_unique(), &Pubkey::new_unique());
+        rejects(send(&mut svm, &admin, &[], vec![launch_init_ix(admin.pubkey(), largs, fee_mint, T22, dbc_config)]), "MintExtension");
+    }
+    // The Pump.fun shape (metadata pointer + metadata) is accepted: `setup(LineKind::Pump)`.
+    let e = setup(LineKind::Pump);
+    assert_eq!(e.rconfig().mint, e.line_mint);
+}
+
+/// The devnet Config was written by the first layout; `migrate_config` grows it in place.
+#[test]
+fn migrate_config_from_the_first_layout() {
+    let mut e = setup(LineKind::Classic);
+    let admin = e.admin.insecure_clone();
+    ok(post(&mut e, 0, 0, 0));
+    let key = registry_config();
+    let mut acct = e.svm.get_account(&key).unwrap();
+    let full = acct.data.clone();
+    acct.data.truncate(full.len() - lr::CONFIG_V1_TAIL);
+    acct.lamports = e.svm.minimum_balance_for_rent_exemption(acct.data.len());
+    e.svm.set_account(key, acct).unwrap();
+    // The old layout does not deserialize: everything but the migration fails until it runs.
+    rejects(post(&mut e, 1, 0, 0), "AccountDidNotDeserialize");
+    let ix = |signer: Pubkey| anchor_lang::solana_program::instruction::Instruction {
+        program_id: lr::ID,
+        accounts: anchor_lang::ToAccountMetas::to_account_metas(&lr::accounts::MigrateConfig { config: key, admin: signer,
+            system_program: anchor_lang::solana_program::system_program::ID }, None),
+        data: lr::instruction::MigrateConfig { max_rebate_per_epoch: 77 }.data(),
+    };
+    let stranger = funded(&mut e.svm);
+    rejects(send(&mut e.svm, &stranger, &[], vec![ix(stranger.pubkey())]), "Unauthorized");
+    warp(&mut e.svm, 5);
+    ok(send(&mut e.svm, &admin, &[], vec![ix(admin.pubkey())]));
+    let c = e.rconfig();
+    assert_eq!((c.max_rebate_per_epoch, c.epochs_posted, c.last_epoch, c.epoch_anchor, c.epoch_anchor_ts), (77, 1, 0, 0, NOW + 5));
+    assert_eq!(c.params, test_params());
+    assert_eq!(e.svm.get_account(&key).unwrap().data.len(), full.len());
+    // Once only: the account already has the new length.
+    rejects(send(&mut e.svm, &admin, &[], vec![ix(admin.pubkey())]), "InvalidParams");
+    ok(post(&mut e, 1, 0, 0));
 }
