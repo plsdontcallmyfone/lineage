@@ -1,6 +1,6 @@
 import Anthropic from "@anthropic-ai/sdk";
-import { existsSync, readdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
-import { join, normalize, relative, resolve } from "node:path";
+import { existsSync, lstatSync, readdirSync, readFileSync, realpathSync, statSync, writeFileSync } from "node:fs";
+import { dirname, join, normalize, relative, resolve, sep } from "node:path";
 import { canonicalizeDiff, guard, judge, matchesAny, sha256Hex, type CandidateKind, type CandidateView } from "@lineage/protocol";
 import { diffWorkingTree, evaluate } from "@lineage/sandbox";
 import type { Proposal, ProposeContext, Proposer } from "./types.ts";
@@ -265,6 +265,14 @@ export class ToolBox {
     const abs = resolve(this.ctx.tree, normalize(p));
     const rel = relative(this.ctx.tree, abs);
     if (rel.startsWith("..") || rel === "" && p !== "." || rel.split("/").includes(".git")) throw new Error("path outside the repository");
+    // the repository itself may ship symlinks pointing outside it (adversarial review 2026-10-07):
+    // resolve every existing component and refuse anything that lands outside the real tree root
+    const root = realpathSync(this.ctx.tree);
+    let probe = abs;
+    while (!existsSync(probe) && probe !== root && probe.length > root.length) probe = dirname(probe);
+    const real = existsSync(probe) ? realpathSync(probe) : root;
+    if (real !== root && !real.startsWith(root + sep)) throw new Error("path outside the repository");
+    if (existsSync(abs) && lstatSync(abs).isSymbolicLink()) throw new Error("symlinks are not followed");
     return { abs, rel: rel || "." };
   }
 
@@ -360,7 +368,7 @@ export class ToolBox {
     this.evals++;
     this.ctx.log(`anthropic: evaluating (${this.evals}/${this.maxEvals})`);
     this.report({ kind: "evaluate", target: target.slice(0, 200) || kind });
-    const { result } = await evaluate({ loaded: this.ctx.loaded, deps: this.ctx.deps, parentPatches: this.ctx.parentPatches, candidatePatch: diff, seed: this.ctx.seed, onPhase: this.ctx.onPhase });
+    const { result } = await evaluate({ loaded: this.ctx.loaded, deps: this.ctx.deps, parentPatches: this.ctx.parentPatches, candidatePatch: diff, seed: this.ctx.seed, onPhase: this.ctx.onPhase, enabledMetrics: Object.entries(this.ctx.calibration.metrics).filter(([, m]) => m.enabled).map(([n]) => n) });
     const cand: CandidateView = { candidate_id: "self", author: "self", kind, target: kind === "fix" ? [target] : target };
     const j = judge(this.ctx.loaded.recipe, this.ctx.calibration, cand, [{ replay_id: "self", replayer: "self-check", seed: this.ctx.seed, result }], {
       quorum: 1,

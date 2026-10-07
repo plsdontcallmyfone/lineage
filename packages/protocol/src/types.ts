@@ -22,6 +22,12 @@ export interface MetricSpec {
 export interface PatchRules {
   allowed_paths: string[];
   protected_paths: string[];
+  /**
+   * Blocks inside allowed files that a patch may not change (SPEC 7.1), e.g. inline test modules:
+   * a block starts at a line matching `start` (a regular expression) and ends at the line where its
+   * braces balance again. Enforced by the sandbox on the applied tree.
+   */
+  protected_blocks?: { glob: string; start: string }[];
   max_files: number;
   max_lines: number;
 }
@@ -97,6 +103,7 @@ export type GuardViolation =
   | "SUBMODULE"
   | "RENAME"
   | "APPLY_CONFLICT"
+  | "PROTECTED_REGION"
   | "EMPTY"
   | "MALFORMED";
 

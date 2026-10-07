@@ -39,7 +39,7 @@ if (!revealed.length) throw new Error("no revealed replays for the final stage")
 const seed: string = revealed[0].seed;
 console.log(`replaying ${c.kind} ${JSON.stringify(c.target)} on ${lineage.repo} (parent height ${tree.height}, seed ${seed.slice(0, 16)}), ${revealed.length} revealed replays to compare`);
 const t0 = Date.now();
-const mine = (await evaluate({ loaded, deps, parentPatches: tree.patches.map((p: any) => p.patch), candidatePatch: c.patch, seed })).result;
+const mine = (await evaluate({ loaded, deps, parentPatches: tree.patches.map((p: any) => p.patch), candidatePatch: c.patch, seed, enabledMetrics: Object.entries((lineage.calibration?.metrics ?? {}) as Record<string, { enabled: boolean }>).filter(([, m]) => m.enabled).map(([n]) => n) })).result;
 console.log(`local replay done in ${((Date.now() - t0) / 1000).toFixed(1)}s`);
 
 const sorted = (xs: string[]) => [...xs].sort().join(",");

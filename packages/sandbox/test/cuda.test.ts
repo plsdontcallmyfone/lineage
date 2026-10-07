@@ -61,7 +61,7 @@ describe("ncu-inst parser (format samples, not measurements)", () => {
     expect(() => parseNcuInst("==ERROR== ERR_NVGPUCTRPERM - The user does not have permission to access NVIDIA GPU Performance Counters")).toThrow(/header not found/);
     expect(() => parseNcuInst(LONG, "no_such_kernel")).toThrow(/no smsp__inst_executed.sum rows/);
     const bad = LONG.replace(`"98765"`, `"n/a"`);
-    expect(() => parseNcuInst(bad, "row_scale")).toThrow(/not a number/);
+    expect(() => parseNcuInst(bad, "row_scale")).toThrow(/not a non-negative number/);
   });
 });
 

@@ -170,7 +170,7 @@ export class Worker {
       ({ result, transcript } = fabricate(a));
     } else {
       const deps = await this.recipes.depsFor(loaded, a.lineage.deps_digest);
-      ({ result, transcript } = await evaluate({ loaded, deps, parentPatches: a.parent_series.map((p) => p.patch), candidatePatch: a.candidate!.patch, seed: a.seed, onPhase: this.telemetry.onPhase }));
+      ({ result, transcript } = await evaluate({ loaded, deps, parentPatches: a.parent_series.map((p) => p.patch), candidatePatch: a.candidate!.patch, seed: a.seed, onPhase: this.telemetry.onPhase, enabledMetrics: enabledMetrics(a.calibration) }));
     }
     this.telemetry.phase("commit");
     const bytes = canonicalJson(transcript);
@@ -441,4 +441,11 @@ export async function selfCheck(w: Worker, recipe_id: string, calibration: Calib
   const { result } = await evaluate({ loaded, deps, parentPatches, candidatePatch: patch, seed: randomBytes(8).toString("hex") });
   const j = judge(loaded.recipe, calibration, cand, [{ replay_id: "self", replayer: "self", seed: "self", result }], { quorum: 1, det_tolerance: 0.001, bootstrap_resamples: 2000 });
   return j.outcome + (j.reason ? `:${j.reason}` : "");
+}
+
+/** Metrics calibration left enabled; disabled ones can never decide a verdict, so they are not run. */
+export function enabledMetrics(c: Calibration): string[] {
+  return Object.entries(c.metrics)
+    .filter(([, m]) => m.enabled)
+    .map(([name]) => name);
 }

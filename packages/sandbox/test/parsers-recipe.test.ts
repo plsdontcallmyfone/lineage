@@ -12,11 +12,28 @@ describe("parsers", () => {
      Running unittests src/lib.rs (target/release/deps/x-1)
 test inner::a ... ok
 test inner::b ... ignored, slow
+
+test result: ok. 1 passed; 0 failed; 1 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
      Running tests/basic.rs (target/release/deps/basic-2)
 test t1 ... ok
 test t2 ... FAILED
+
+failures:
+
+---- t2 stdout ----
+test t3 ... ok
+thread 't2' panicked
+
+failures:
+    t2
+
+test result: FAILED. 1 passed; 1 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
    Doc-tests x
 test src/lib.rs - encode (line 3) ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
 `;
     const r = parseLibtest(out);
     expect(r.recognised).toBe(true);
@@ -44,7 +61,7 @@ test src/lib.rs - encode (line 3) ... ok
   });
 
   test("metrics", () => {
-    expect(parseCachegrindIr("==1== \n==1== I   refs:      47,137,386\n")).toBe(47137386);
+    expect(parseCachegrindIr("==1== Cachegrind, a high-precision tracing profiler\n==1== \n==1== I   refs:      47,137,386\n")).toBe(47137386);
     expect(parseMetric("number", "warming\n12.5\n", "")).toBe(12.5);
     expect(parseMetric("bytes", "19276\n", "")).toBe(19276);
     expect(() => parseMetric("cachegrind-ir", "", "nothing")).toThrow();

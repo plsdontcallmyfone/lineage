@@ -8,15 +8,64 @@ export interface TestOutcome {
   recognised: boolean;
 }
 
-/** Rust libtest human output from `cargo test`. Ids are `<target>::<test name>`. */
+/**
+ * Rust libtest human output from `cargo test`. Ids are `<target>::<test name>`.
+ * Hardened against output printed BY the tested code (adversarial review 2026-10-07):
+ * - lines inside a failed test's captured output ("---- name stdout ----") are ignored;
+ * - every name in a "failures:" list is failing, whatever ok lines say;
+ * - per target, the parsed counts must equal libtest's "test result:" totals, or every test of
+ *   that target counts as failing;
+ * - an id reported more than once counts as failing.
+ */
 export function parseLibtest(out: string): TestOutcome {
   const pass: string[] = [];
   const fail: string[] = [];
   let target = "unknown";
   let recognised = false;
+  let inCaptured = false;
+  let inFailureList = false;
+  let tPass: string[] = [];
+  let tFail: string[] = [];
+  const listed = new Set<string>();
+  const close = (declaredPass: number, declaredFail: number) => {
+    const forced = tPass.filter((id) => listed.has(id));
+    let p = tPass.filter((id) => !listed.has(id));
+    let f = [...tFail, ...forced];
+    if (p.length + f.length !== declaredPass + declaredFail || p.length > declaredPass) {
+      f = [...f, ...p];
+      p = [];
+    }
+    pass.push(...p);
+    fail.push(...f);
+    tPass = [];
+    tFail = [];
+    listed.clear();
+  };
   for (const raw of out.split("\n")) {
     const line = raw.trimEnd();
-    let m = /^\s*Running (?:unittests )?(\S+)/.exec(line);
+    if (/^---- .+ (stdout|stderr) ----$/.test(line)) {
+      inCaptured = true;
+      continue;
+    }
+    if (line === "failures:") {
+      inCaptured = false;
+      inFailureList = true;
+      continue;
+    }
+    let m = /^test result: (?:ok|FAILED)\. (\d+) passed; (\d+) failed; (\d+) ignored/.exec(line);
+    if (m) {
+      inCaptured = false;
+      inFailureList = false;
+      close(Number(m[1]), Number(m[2]));
+      continue;
+    }
+    if (inCaptured) continue;
+    if (inFailureList) {
+      const n = /^ {4}(\S.*)$/.exec(raw);
+      if (n) listed.add(`${target}::${n[1]!.trim()}`);
+      continue;
+    }
+    m = /^\s*Running (?:unittests )?(\S+)/.exec(line);
     if (m) {
       target = m[1]!;
       recognised = true;
@@ -32,11 +81,13 @@ export function parseLibtest(out: string): TestOutcome {
     if (m) {
       recognised = true;
       const id = `${target}::${m[1]}`;
-      if (m[2] === "ok") pass.push(id);
-      else if (m[2] === "FAILED") fail.push(id);
+      if (m[2] === "ok") tPass.push(id);
+      else if (m[2] === "FAILED") tFail.push(id);
     }
   }
-  return { pass, fail, recognised };
+  // a target whose summary never printed (crash, or output cut off) fails everything it reported
+  fail.push(...tPass, ...tFail);
+  return dedupe({ pass, fail, recognised });
 }
 
 /** JUnit XML (pytest --junitxml, many others). Ids are `<classname>::<name>`. */
@@ -55,22 +106,50 @@ export function parseJunit(xml: string): TestOutcome {
     if (/<(failure|error)\b/.test(body)) fail.push(id);
     else pass.push(id);
   }
-  return { pass, fail, recognised };
+  return dedupe({ pass, fail, recognised });
 }
 
-/** TAP version 13/14. Ids are the test descriptions. */
+/**
+ * TAP version 13/14. Ids are the test descriptions. An id seen more than once fails, and when a
+ * plan line ("1..N") is present the number of distinct ids must equal N or every test fails.
+ */
 export function parseTap(out: string): TestOutcome {
-  const pass: string[] = [];
-  const fail: string[] = [];
+  let pass: string[] = [];
+  let fail: string[] = [];
   let recognised = false;
+  let plan: number | null = null;
+  const skipped: string[] = [];
   for (const line of out.split("\n")) {
+    const p = /^1\.\.(\d+)\s*$/.exec(line.trim());
+    if (p) {
+      plan = plan === null ? Number(p[1]) : -1; // two plans: someone else is printing TAP
+      continue;
+    }
     const m = /^(not ok|ok)\s+\d+\s*(?:-\s*)?(.*?)(\s+#\s*(SKIP|TODO).*)?$/i.exec(line.trim());
     if (!m) continue;
     recognised = true;
-    if (m[4]) continue;
+    if (m[4]) {
+      skipped.push(m[2]!);
+      continue;
+    }
     (m[1] === "ok" ? pass : fail).push(m[2]!);
   }
-  return { pass, fail, recognised };
+  const ids = new Set([...pass, ...fail, ...skipped]);
+  if (plan !== null && plan !== ids.size) {
+    fail = [...fail, ...pass];
+    pass = [];
+  }
+  return dedupe({ pass, fail, recognised });
+}
+
+/** Any id reported more than once, or both passing and failing, is failing. */
+function dedupe(o: TestOutcome): TestOutcome {
+  const seen = new Map<string, number>();
+  for (const id of [...o.pass, ...o.fail]) seen.set(id, (seen.get(id) ?? 0) + 1);
+  const failSet = new Set(o.fail);
+  const pass = [...new Set(o.pass.filter((id) => !failSet.has(id) && seen.get(id) === 1))];
+  const fail = [...new Set([...o.fail, ...o.pass.filter((id) => failSet.has(id) || (seen.get(id) ?? 0) > 1)])];
+  return { pass, fail, recognised: o.recognised };
 }
 
 export function parseTests(parser: string, stdout: string, stderr: string, junit?: string): TestOutcome {
@@ -86,11 +165,21 @@ export function parseTests(parser: string, stdout: string, stderr: string, junit
   }
 }
 
-/** Instruction count from cachegrind's summary ("I refs: 47,137,386"). */
+/**
+ * Instruction count from a cachegrind or callgrind summary ("==12== I refs: 47,137,386"). Only
+ * lines carrying the pid valgrind printed in its own banner count, and the LAST such summary wins
+ * (valgrind writes it after the client exits). The sandbox also routes valgrind's log to its own
+ * descriptor and discards the program's output (evaluate.ts isolateMetric).
+ */
 export function parseCachegrindIr(out: string): number {
-  const m = /I\s+refs:\s+([\d,]+)/.exec(out);
-  if (!m) throw new Error("cachegrind summary not found");
-  return Number(m[1]!.replace(/,/g, ""));
+  const banner = /^==(\d+)== (?:Cachegrind|Callgrind), a /m.exec(out);
+  if (!banner) throw new Error("valgrind banner not found");
+  const pid = banner[1];
+  const re = new RegExp(`^==${pid}== I\\s+refs:\\s+([\\d,]+)\\s*$`, "gm");
+  let last: string | null = null;
+  for (let m = re.exec(out); m; m = re.exec(out)) last = m[1]!;
+  if (last === null) throw new Error("valgrind summary not found");
+  return Number(last.replace(/,/g, ""));
 }
 
 /** Last numeric line of stdout. */
@@ -98,7 +187,10 @@ export function parseNumber(out: string): number {
   const lines = out.trim().split("\n").reverse();
   for (const l of lines) {
     const v = Number(l.trim());
-    if (l.trim() !== "" && Number.isFinite(v)) return v;
+    if (l.trim() !== "" && Number.isFinite(v)) {
+      if (v <= 0) throw new Error(`metric value must be positive, got ${v}`);
+      return v;
+    }
   }
   throw new Error("no number in output");
 }
@@ -107,7 +199,9 @@ export function parseNumber(out: string): number {
 export function parseBytes(out: string): number {
   const m = /(\d+)/.exec(out);
   if (!m) throw new Error("no byte count in output");
-  return Number(m[1]);
+  const v = Number(m[1]);
+  if (v <= 0) throw new Error("byte count must be positive");
+  return v;
 }
 
 /** One CSV record (RFC 4180 quoting, as Nsight Compute writes it). */
@@ -152,7 +246,7 @@ export function parseNcuInst(out: string, kernel?: string): number {
   let rawScale = 1;
   const num = (v: string) => {
     const x = Number(v.replace(/,/g, "").trim());
-    if (!Number.isFinite(x)) throw new Error(`ncu metric value is not a number: ${v}`);
+    if (!Number.isFinite(x) || x < 0) throw new Error(`ncu metric value is not a non-negative number: ${v}`);
     return x;
   };
   for (const raw of out.split("\n")) {
@@ -160,7 +254,11 @@ export function parseNcuInst(out: string, kernel?: string): number {
     if (!line.startsWith('"')) continue;
     const f = parseCsvLine(line);
     if (f[0] === "ID" && f.includes("Kernel Name")) {
+      // a later header restarts the table: only ncu's own (final) report counts
       header = f;
+      total = 0;
+      rows = 0;
+      rawScale = 1;
       continue;
     }
     if (!header) continue;

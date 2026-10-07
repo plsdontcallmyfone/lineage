@@ -154,7 +154,13 @@ export function diffWorkingTree(tree: string): string {
   return must(git(tree, ["diff", "--cached", "--no-color", "--no-ext-diff", "--no-renames", "-U3", "--full-index"]), "diff");
 }
 
+/**
+ * Copies a tree, using copy-on-write clones where the filesystem supports them (APFS `cp -c`,
+ * Linux `--reflink=auto`) so per-phase scratch copies of large build trees stay cheap.
+ */
 export function cloneTree(src: string, dest: string): void {
+  const attempts = process.platform === "darwin" ? [["cp", "-c", "-R", src, dest]] : [["cp", "-a", "--reflink=auto", src, dest]];
+  for (const a of attempts) if (Bun.spawnSync(a).exitCode === 0) return;
   cpSync(src, dest, { recursive: true });
 }
 

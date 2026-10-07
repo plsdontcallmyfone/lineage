@@ -1,4 +1,4 @@
-import { cpSync, existsSync, mkdirSync, readdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
+import { closeSync, constants, cpSync, existsSync, fstatSync, mkdirSync, openSync, readdirSync, readFileSync, readSync, statSync, writeFileSync } from "node:fs";
 import { cpus } from "node:os";
 import { join, relative } from "node:path";
 import {
@@ -211,76 +211,165 @@ async function build(ctx: Ctx, tree: string, side: "base" | "cand"): Promise<{ o
   return { ok: true, digest: globs.length ? dirDigest(tree, (rel) => matchesAny(rel, globs)) : undefined };
 }
 
-async function tests(ctx: Ctx, tree: string, side: "base" | "cand"): Promise<TestOutcome> {
+async function tests(ctx: Ctx, built: string, side: "base" | "cand"): Promise<TestOutcome> {
   const r = ctx.loaded.recipe;
-  const out = join(ctx.outDir, `tests-${side}-${ctx.transcript.steps.length}`);
+  // tests run on a throwaway copy: code they execute can write anywhere in it, but never into the
+  // frozen built tree that equivalence and metrics measure (adversarial review 2026-10-07)
+  const n = ctx.transcript.steps.length;
+  const scratch = join(ctx.outDir, `test-tree-${side}-${n}`);
+  cloneTree(built, scratch);
+  openPermissions(scratch);
+  const out = join(ctx.outDir, `tests-${side}-${n}`);
   mkdirSync(out, { recursive: true });
   openPermissions(out);
-  const res = await run(ctx, "test", r.test.command, [{ host: tree, container: "/work/src" }, { host: out, container: "/out" }], r.test.timeout_s, side);
-  const junitPath = join(out, "junit.xml");
-  const junit = existsSync(junitPath) ? readFileSync(junitPath, "utf8") : undefined;
-  const parsed = parseTests(r.test.parser, res.stdout, res.stderr, junit);
-  if (res.timed_out) ctx.transcript.notes.push(`${side} tests timed out`);
-  return parsed;
+  try {
+    const res = await run(ctx, "test", r.test.command, [{ host: scratch, container: "/work/src" }, { host: out, container: "/out" }], r.test.timeout_s, side);
+    const junit = readRegularFile(join(out, "junit.xml"), 16 * 1024 * 1024);
+    const parsed = parseTests(r.test.parser, res.stdout, res.stderr, junit ?? undefined);
+    if (res.timed_out) ctx.transcript.notes.push(`${side} tests timed out`);
+    return parsed;
+  } finally {
+    removeTree(scratch);
+  }
+}
+
+/**
+ * Reads a file the sandbox produced only if it is a regular file (never a symlink or device) and
+ * not larger than `cap`. A container can plant a symlink in a bind-mounted directory that the HOST
+ * would otherwise follow when reading results.
+ */
+export function readRegularFile(path: string, cap: number): string | null {
+  let fd: number;
+  try {
+    fd = openSync(path, constants.O_RDONLY | constants.O_NOFOLLOW);
+  } catch {
+    return null;
+  }
+  try {
+    const st = fstatSync(fd);
+    if (!st.isFile() || st.size > cap) return null;
+    const buf = Buffer.alloc(st.size);
+    readSync(fd, buf, 0, st.size, 0);
+    return buf.toString("utf8");
+  } finally {
+    closeSync(fd);
+  }
 }
 
 async function equivalence(ctx: Ctx, tree: string, side: "base" | "cand"): Promise<Hex | null> {
   const eq = ctx.loaded.recipe.equivalence;
   if (!eq) return null;
-  const res = await run(ctx, "equivalence", eq.command, [{ host: tree, container: "/work/src" }], ctx.loaded.recipe.limits.wall_s, side);
+  const res = await run(ctx, "equivalence", eq.command, [{ host: tree, container: "/work/src", readonly: true }], ctx.loaded.recipe.limits.wall_s, side);
   return res.exit === 0 ? sha256Hex(res.stdout) : H("equivalence-failed", String(res.exit), sha256Hex(res.stdout));
 }
 
 /**
- * Measures metrics for base and cand in ONE container with both trees mounted, so they share
- * hardware state. Noisy metrics run interleaved ABBA rounds after one warm-up each (SPEC 9.2).
+ * Measures metrics (SPEC 9). Every single run gets its own container with the frozen built tree
+ * mounted read-only and no shared writable directory, so a candidate run can never touch a base
+ * run's output or binaries (adversarial review 2026-10-07). Noisy metrics still interleave base and
+ * candidate in ABBA order after one warm-up each (SPEC 9.2); runs are sequential on one host.
  */
 async function measure(ctx: Ctx, trees: { base: string; cand: string | null }, metrics: MetricSpec[]): Promise<Record<string, MetricSamples>> {
-  const plan: { metric: MetricSpec; side: "base" | "cand"; idx: number; warm: boolean }[] = [];
+  const plan: { metric: MetricSpec; side: "base" | "cand"; warm: boolean }[] = [];
   for (const m of metrics) {
     const sides: ("base" | "cand")[] = trees.cand ? ["base", "cand"] : ["base"];
     if (m.deterministic) {
-      sides.forEach((side) => plan.push({ metric: m, side, idx: 0, warm: false }));
+      sides.forEach((side) => plan.push({ metric: m, side, warm: false }));
       continue;
     }
-    sides.forEach((side) => plan.push({ metric: m, side, idx: -1, warm: true }));
+    sides.forEach((side) => plan.push({ metric: m, side, warm: true }));
     const rounds = m.rounds ?? 10;
     for (let i = 0; i < rounds; i++) {
       const order = trees.cand ? (i % 2 === 0 ? ["base", "cand"] : ["cand", "base"]) : ["base", "base"];
-      order.forEach((side, k) => plan.push({ metric: m, side: side as "base" | "cand", idx: trees.cand ? i : i * 2 + k, warm: false }));
+      order.forEach((side) => plan.push({ metric: m, side: side as "base" | "cand", warm: false }));
     }
   }
-  if (plan.length === 0) return {};
-  const out = join(ctx.outDir, `metrics-${ctx.transcript.steps.length}`);
-  mkdirSync(out, { recursive: true });
-  openPermissions(out);
-  const lines = ["set +e"];
-  plan.forEach((p, n) => {
-    const tag = `${n}`;
-    lines.push(`cd /work/${p.side} && ( ${p.metric.command} ) > /out/${tag}.o 2> /out/${tag}.e; echo $? > /out/${tag}.x`);
-  });
-  const mounts: Mount[] = [{ host: trees.base, container: "/work/base", readonly: true }, { host: out, container: "/out" }];
-  if (trees.cand) mounts.push({ host: trees.cand, container: "/work/cand", readonly: true });
-  const res = await run(ctx, "metrics", lines.join("\n"), mounts, ctx.loaded.recipe.limits.wall_s, undefined, "/work");
-  if (res.timed_out) throw new EvalError("metric phase timed out");
   const samples: Record<string, MetricSamples> = {};
-  plan.forEach((p, n) => {
-    if (p.warm) return;
-    const exit = Number(readFileSync(join(out, `${n}.x`), "utf8").trim());
-    const so = readFileSync(join(out, `${n}.o`), "utf8");
-    const se = readFileSync(join(out, `${n}.e`), "utf8");
+  for (const [n, p] of plan.entries()) {
+    const tree = p.side === "cand" ? trees.cand! : trees.base;
+    const res = await run(ctx, "metrics", isolateMetric(p.metric), [{ host: tree, container: "/work/src", readonly: true }], ctx.loaded.recipe.limits.wall_s, p.side);
+    if (res.timed_out) throw new EvalError(`metric ${p.metric.name} timed out`);
+    if (p.warm) continue;
     const s = (samples[p.metric.name] ??= { base: [], cand: [], deterministic: p.metric.deterministic });
-    if (exit !== 0) {
-      ctx.transcript.notes.push(`metric ${p.metric.name} ${p.side} run ${n} exited ${exit}: ${tail(se, 300)}`);
-      return;
+    if (res.exit !== 0) {
+      ctx.transcript.notes.push(`metric ${p.metric.name} ${p.side} run ${n} exited ${res.exit}: ${tail(res.stderr, 300)}`);
+      continue;
     }
     try {
-      s[p.side].push(parseMetric(p.metric.parser, so, se));
+      s[p.side].push(parseMetric(p.metric.parser, res.stdout, res.stderr));
     } catch (e) {
       ctx.transcript.notes.push(`metric ${p.metric.name} ${p.side} run ${n}: ${(e as Error).message}`);
     }
-  });
+  }
   return samples;
+}
+
+/**
+ * Wraps a metric command so the measured program cannot forge the measurement text:
+ * - valgrind-based metrics send valgrind's own log to descriptor 9 (the container's stderr) while
+ *   the program's stdout and stderr are discarded;
+ * - every process the command left behind is killed before the container returns its output.
+ * Residual risk (SPEC 15): code running as the same user could still write to the container's
+ * stderr through /proc; guard flags and audits cover that path.
+ */
+export function isolateMetric(m: MetricSpec): string {
+  const valgrind = m.parser === "cachegrind-ir" && /\bvalgrind\s/.test(m.command);
+  const cmd = valgrind ? m.command.replace(/\bvalgrind\s/, "valgrind --log-fd=9 ") : m.command;
+  const quiet = valgrind ? " >/dev/null 2>/dev/null" : "";
+  return `exec 9>&2; ( ${cmd} )${quiet}; lineage_ec=$?; kill -9 -1 2>/dev/null; exit $lineage_ec`;
+}
+
+/**
+ * Text of every protected block (SPEC 7.1 protected_blocks) in the files matching each glob: from a
+ * line matching `start` to the line where its braces balance. Returns "path:line" of each block
+ * that differs between the parent and the candidate tree, or whose count changed.
+ */
+export function changedProtectedBlocks(parent: string, cand: string, rules: { glob: string; start: string }[]): string[] {
+  const changed: string[] = [];
+  const files = new Set<string>();
+  for (const root of [parent, cand])
+    for (const f of walkFiles(root)) {
+      const rel = relative(root, f);
+      if (!rel.startsWith(".git/") && rules.some((r) => matchesAny(rel, [r.glob]))) files.add(rel);
+    }
+  for (const rel of [...files].sort()) {
+    const read = (root: string) => (existsSync(join(root, rel)) ? readFileSync(join(root, rel), "utf8") : "");
+    for (const rule of rules.filter((r) => matchesAny(rel, [r.glob]))) {
+      const a = blocks(read(parent), new RegExp(rule.start));
+      const b = blocks(read(cand), new RegExp(rule.start));
+      if (a.length !== b.length) {
+        changed.push(`${rel}: ${a.length} blocks became ${b.length}`);
+        continue;
+      }
+      a.forEach((blk, i) => {
+        if (blk.text !== b[i]!.text) changed.push(`${rel}:${blk.line}`);
+      });
+    }
+  }
+  return changed;
+}
+
+function blocks(text: string, start: RegExp): { line: number; text: string }[] {
+  const lines = text.split("\n");
+  const out: { line: number; text: string }[] = [];
+  for (let i = 0; i < lines.length; i++) {
+    if (!start.test(lines[i]!)) continue;
+    let depth = 0;
+    let opened = false;
+    let j = i;
+    for (; j < lines.length; j++) {
+      for (const ch of lines[j]!) {
+        if (ch === "{") {
+          depth++;
+          opened = true;
+        } else if (ch === "}") depth--;
+      }
+      if (opened && depth <= 0) break;
+    }
+    out.push({ line: i + 1, text: lines.slice(i, j + 1).join("\n") });
+    i = j;
+  }
+  return out;
 }
 
 function cpuModel(): string {
@@ -349,17 +438,26 @@ export async function evaluate(input: {
   seed: Hex;
   keepWork?: boolean;
   onPhase?: PhaseCallback;
+  /** metric names calibration enabled; others are not measured (they can never decide a verdict) */
+  enabledMetrics?: string[];
 }): Promise<EvalOutput> {
   const { loaded, deps, seed } = input;
   const r = loaded.recipe;
   const { ctx, work, base } = await setup(loaded, deps, seed, input.parentPatches, input.candidatePatch, input.onPhase);
   try {
     const g = guard(input.candidatePatch, r.patch);
-    const guardCode: "ok" | GuardViolation = g.ok ? "ok" : g.violation!;
+    let guardCode: "ok" | GuardViolation = g.ok ? "ok" : g.violation!;
     if (g.flags.length) ctx.transcript.notes.push(...g.flags.map((f) => `guard flag: ${f}`));
     const cand = join(work, "cand");
     cloneTree(base, cand);
-    const applied = guardCode === "ok" ? applyPatch(cand, input.candidatePatch) : false;
+    let applied = guardCode === "ok" ? applyPatch(cand, input.candidatePatch) : false;
+    if (applied && r.patch.protected_blocks?.length) {
+      const changed = changedProtectedBlocks(base, cand, r.patch.protected_blocks);
+      if (changed.length) {
+        guardCode = "PROTECTED_REGION";
+        ctx.transcript.notes.push(`protected blocks changed: ${changed.slice(0, 10).join(", ")}`);
+      }
+    }
     openPermissions(work);
 
     const result: ReplayResult = {
@@ -395,7 +493,8 @@ export async function evaluate(input: {
         const [be, ce] = await Promise.all([equivalence(ctx, base, "base"), equivalence(ctx, cand, "cand")]);
         if (be && ce) result.equivalence = { base_digest: be, cand_digest: ce };
       }
-      result.metrics = await measure(ctx, { base, cand }, r.metrics);
+      const metrics = input.enabledMetrics ? r.metrics.filter((m) => input.enabledMetrics!.includes(m.name)) : r.metrics;
+      result.metrics = await measure(ctx, { base, cand }, metrics);
     }
     return finish(result, ctx);
   } finally {
