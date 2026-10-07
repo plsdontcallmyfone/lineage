@@ -41,7 +41,7 @@ const req = (cond: unknown, msg: string) => {
 export function validateRecipe(r: Recipe): void {
   req(typeof r.name === "string" && /^[a-z0-9][a-z0-9-]*$/.test(r.name), "name must be lowercase kebab");
   req(typeof r.repo === "string" && r.repo.length > 0, "repo required");
-  req(["rust", "solana", "zig", "cuda", "python"].includes(r.class), "class must be one of rust, solana, zig, cuda, python (SPEC 6.1)");
+  req(["rust", "solana", "zig", "cuda", "python", "go", "cpp"].includes(r.class), "class must be one of rust, solana, zig, cuda, python, go, cpp (SPEC 6.1)");
   req(r.requires && (r.requires.arch === "amd64" || r.requires.arch === "arm64"), "requires.arch must be amd64 or arm64");
   if (r.class === "cuda") req(r.requires.gpu?.vendor === "nvidia" && /^\d+\.\d+$/.test(r.requires.gpu.sm ?? ""), "cuda recipes require requires.gpu { vendor: nvidia, sm: \"<major.minor>\" }");
   req(/^[0-9a-f]{40}$/.test(r.commit), "commit must be a full 40-hex sha");

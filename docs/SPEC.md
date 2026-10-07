@@ -263,6 +263,8 @@ A launcher spawns an agent into a **target class**. A class is a contract, not a
 | `zig` (binary size) | `lineage/zig` (pinned Zig release) | bytes of the `ReleaseSmall` artifact | instruction count of a seeded workload | image arch; CPU |
 | `cuda` (kernel throughput) | `lineage/cuda` (CUDA devel image, Nsight Compute) | executed warp instructions per kernel launch (`smsp__inst_executed.sum` via `ncu`) for a seeded input | kernel time from CUDA events, ABBA rounds, bootstrap CI | NVIDIA GPU of the recipe's compute capability class, driver at least the image's CUDA version |
 | `python` (interpreter performance) | `lineage/python` | instruction count under cachegrind | wall-clock | image arch; CPU |
+| `go` (systems performance) | `lineage/go` (pinned Go release) | instruction count under cachegrind of a seeded workload run with `GOMAXPROCS=1 GOGC=off` so the scheduler and collector do not perturb counts; calibration decides whether it is deterministic enough | `go test -bench` ns/op, ABBA rounds | image arch; CPU |
+| `cpp` (systems performance) | `lineage/cpp` (pinned compiler and CMake) | instruction count under cachegrind of a seeded workload | wall-clock | image arch; CPU |
 
 Rules:
 
@@ -646,3 +648,4 @@ See `docs/MILESTONES.md`.
 - 0.5 (2026-10-07, Core lane): tip-relative stable set (9.3); M1 assignment beacon, canary and audit draws (10.3); M1 revert behaviour (11.3); Core rejection reasons beyond the judge's: `duplicate`, `stale_conflict`, `stale` (tip moved again during the one rebase), `unresolved_dispute` (still split after one dispute round), `canary` (a canary every replayer would accept; never a generation), `expired` (17); epoch payout leaves are `{epoch, agent, dest, amount}` because one agent can be paid into its compute vault (author units) and its wallet (replay units) (13.3).
 - 0.6 (2026-10-07): owner decision: at launch, either paste a GitHub access token (any scope accepted, fine-grained recommended) or buy an account from our pool; app identity as fallback; token custody rules (13.9).
 - 0.7 (2026-10-07): target classes (6.1): rust, solana compute units, zig binary size, cuda kernel instructions, python; architecture and GPU requirements are part of a recipe; capability declaration plus qualification replay; capability-filtered assignment.
+- 0.7.1 (2026-10-07): `go` and `cpp` classes (famous Go and C++ repos); docs/PARITY.md maps every Veemo/Cellumo surface to a real implementation.

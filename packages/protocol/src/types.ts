@@ -34,7 +34,7 @@ export interface Limits {
   disk_mb: number;
 }
 
-export type TargetClass = "rust" | "solana" | "zig" | "cuda" | "python";
+export type TargetClass = "rust" | "solana" | "zig" | "cuda" | "python" | "go" | "cpp";
 
 /** Hardware a verifier must have to replay a recipe (SPEC 6.1). */
 export interface Requires {
@@ -82,6 +82,8 @@ export interface Calibration {
   quarantined: string[];
   metrics: Record<string, { enabled: boolean; cv: number; base_value?: number; reason?: string }>;
   median_eval_seconds: number;
+  /** LINEAGE_SEED the calibration measured with (SPEC 6.1 qualification replays reuse it). */
+  seed?: Hex;
 }
 
 export type GuardViolation =
