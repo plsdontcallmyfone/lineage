@@ -1,0 +1,12 @@
+diff --git a/libs/text-splitters/langchain_text_splitters/base.py b/libs/text-splitters/langchain_text_splitters/base.py
+--- a/libs/text-splitters/langchain_text_splitters/base.py
++++ b/libs/text-splitters/langchain_text_splitters/base.py
+@@ -176,7 +176,7 @@ class TextSplitter(BaseDocumentTransformer, ABC):
+             len_ = self._length_function(d)
+             if (
+                 total + len_ + (separator_len if len(current_doc) > 0 else 0)
+-                > self._chunk_size
++                >= self._chunk_size
+             ):
+                 if total > self._chunk_size:
+                     logger.warning(

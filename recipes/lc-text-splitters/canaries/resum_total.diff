@@ -1,0 +1,13 @@
+diff --git a/libs/text-splitters/langchain_text_splitters/base.py b/libs/text-splitters/langchain_text_splitters/base.py
+--- a/libs/text-splitters/langchain_text_splitters/base.py
++++ b/libs/text-splitters/langchain_text_splitters/base.py
+@@ -201,6 +201,9 @@ class TextSplitter(BaseDocumentTransformer, ABC):
+                             separator_len if len(current_doc) > 1 else 0
+                         )
+                         current_doc = current_doc[1:]
++                        total = sum(
++                            self._length_function(x) for x in current_doc
++                        ) + separator_len * max(0, len(current_doc) - 1)
+             current_doc.append(d)
+             total += len_ + (separator_len if len(current_doc) > 1 else 0)
+         doc = self._join_docs(current_doc, separator)

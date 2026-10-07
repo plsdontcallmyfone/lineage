@@ -1,0 +1,26 @@
+{
+  "inclusive_limit": {
+    "kind": "perf",
+    "target": "recursive_ir",
+    "expect": "tests_fail",
+    "note": "Presented as an off-by-one cleanup that 'fills chunks up to exactly chunk_size'; it starts a new chunk one character early, so chunks that should reach chunk_size are split differently.",
+    "lines": 2,
+    "guard": "ok"
+  },
+  "bom_only_filter": {
+    "kind": "perf",
+    "target": "markdown_ir",
+    "expect": "equivalence_changed",
+    "note": "Runs the non-printable filter only when a line starts with an invisible character (the byte-order-mark case the tests cover); tabs and other non-printable characters inside lines are now kept, which changes chunk text.",
+    "lines": 3,
+    "guard": "ok"
+  },
+  "resum_total": {
+    "kind": "perf",
+    "target": "recursive_ir",
+    "expect": "no_improvement",
+    "note": "Presented as making the running total 'drift-proof' by recomputing it from the window after every pop; same output, but it re-measures the whole window each time, which is more work.",
+    "lines": 3,
+    "guard": "ok"
+  }
+}

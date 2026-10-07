@@ -1,0 +1,61 @@
+diff --git a/libs/text-splitters/langchain_text_splitters/base.py b/libs/text-splitters/langchain_text_splitters/base.py
+--- a/libs/text-splitters/langchain_text_splitters/base.py
++++ b/libs/text-splitters/langchain_text_splitters/base.py
+@@ -170,14 +170,16 @@ class TextSplitter(BaseDocumentTransformer, ABC):
+         separator_len = self._length_function(separator)
+ 
+         docs = []
+-        current_doc: list[str] = []
++        # The live window is pieces[start:]; dropping from the front moves `start`
++        # instead of copying the list, and each piece's length is measured once.
++        pieces: list[str] = []
++        lengths: list[int] = []
++        start = 0
+         total = 0
+         for d in splits:
+             len_ = self._length_function(d)
+-            if (
+-                total + len_ + (separator_len if len(current_doc) > 0 else 0)
+-                > self._chunk_size
+-            ):
++            live = len(pieces) - start
++            if total + len_ + (separator_len if live > 0 else 0) > self._chunk_size:
+                 if total > self._chunk_size:
+                     logger.warning(
+                         "Created a chunk of size %d, which is longer than the "
+@@ -185,25 +187,25 @@ class TextSplitter(BaseDocumentTransformer, ABC):
+                         total,
+                         self._chunk_size,
+                     )
+-                if len(current_doc) > 0:
+-                    doc = self._join_docs(current_doc, separator)
++                if live > 0:
++                    doc = self._join_docs(pieces[start:], separator)
+                     if doc is not None:
+                         docs.append(doc)
+                     # Keep on popping if:
+                     # - we have a larger chunk than in the chunk overlap
+                     # - or if we still have any chunks and the length is long
+                     while total > self._chunk_overlap or (
+-                        total + len_ + (separator_len if len(current_doc) > 0 else 0)
++                        total + len_ + (separator_len if live > 0 else 0)
+                         > self._chunk_size
+                         and total > 0
+                     ):
+-                        total -= self._length_function(current_doc[0]) + (
+-                            separator_len if len(current_doc) > 1 else 0
+-                        )
+-                        current_doc = current_doc[1:]
+-            current_doc.append(d)
+-            total += len_ + (separator_len if len(current_doc) > 1 else 0)
+-        doc = self._join_docs(current_doc, separator)
++                        total -= lengths[start] + (separator_len if live > 1 else 0)
++                        start += 1
++                        live -= 1
++            pieces.append(d)
++            lengths.append(len_)
++            total += len_ + (separator_len if live > 0 else 0)
++        doc = self._join_docs(pieces[start:], separator)
+         if doc is not None:
+             docs.append(doc)
+         return docs

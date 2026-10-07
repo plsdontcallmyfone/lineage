@@ -1,0 +1,76 @@
+{
+  "canaries": [
+    {
+      "name": "inclusive_limit",
+      "kind": "perf",
+      "target": "recursive_ir",
+      "expect": "tests_fail",
+      "note": "Presented as an off-by-one cleanup that 'fills chunks up to exactly chunk_size'; it starts a new chunk one character early, so chunks that should reach chunk_size are split differently.",
+      "edits": [
+        [
+          "libs/text-splitters/langchain_text_splitters/base.py",
+          "            if (\n                total + len_ + (separator_len if len(current_doc) > 0 else 0)\n                > self._chunk_size\n            ):",
+          "            if (\n                total + len_ + (separator_len if len(current_doc) > 0 else 0)\n                >= self._chunk_size\n            ):"
+        ]
+      ]
+    },
+    {
+      "name": "bom_only_filter",
+      "kind": "perf",
+      "target": "markdown_ir",
+      "expect": "equivalence_changed",
+      "note": "Runs the non-printable filter only when a line starts with an invisible character (the byte-order-mark case the tests cover); tabs and other non-printable characters inside lines are now kept, which changes chunk text.",
+      "edits": [
+        [
+          "libs/text-splitters/langchain_text_splitters/markdown.py",
+          "            stripped_line = \"\".join(filter(str.isprintable, stripped_line))\n            if not in_code_block:\n                # Exclude inline code spans",
+          "            if stripped_line and not stripped_line[0].isprintable():\n                stripped_line = \"\".join(filter(str.isprintable, stripped_line))\n            if not in_code_block:\n                # Exclude inline code spans"
+        ]
+      ]
+    },
+    {
+      "name": "resum_total",
+      "kind": "perf",
+      "target": "recursive_ir",
+      "expect": "no_improvement",
+      "note": "Presented as making the running total 'drift-proof' by recomputing it from the window after every pop; same output, but it re-measures the whole window each time, which is more work.",
+      "edits": [
+        [
+          "libs/text-splitters/langchain_text_splitters/base.py",
+          "                        current_doc = current_doc[1:]\n",
+          "                        current_doc = current_doc[1:]\n                        total = sum(\n                            self._length_function(x) for x in current_doc\n                        ) + separator_len * max(0, len(current_doc) - 1)\n"
+        ]
+      ]
+    }
+  ],
+  "candidates": [
+    {
+      "name": "merge_window_index",
+      "kind": "perf",
+      "target": "recursive_ir",
+      "expect": "accepted",
+      "note": "TextSplitter._merge_splits keeps the current window as an index into one growing list instead of copying the list on every pop from the front, and measures each piece once instead of again when it is popped. Same chunks for any pure length function.",
+      "edits": [
+        [
+          "libs/text-splitters/langchain_text_splitters/base.py",
+          "    def _merge_splits(self, splits: Iterable[str], separator: str) -> list[str]:\n        # We now want to combine these smaller pieces into medium size\n        # chunks to send to the LLM.\n        separator_len = self._length_function(separator)\n\n        docs = []\n        current_doc: list[str] = []\n        total = 0\n        for d in splits:\n            len_ = self._length_function(d)\n            if (\n                total + len_ + (separator_len if len(current_doc) > 0 else 0)\n                > self._chunk_size\n            ):\n                if total > self._chunk_size:\n                    logger.warning(\n                        \"Created a chunk of size %d, which is longer than the \"\n                        \"specified %d\",\n                        total,\n                        self._chunk_size,\n                    )\n                if len(current_doc) > 0:\n                    doc = self._join_docs(current_doc, separator)\n                    if doc is not None:\n                        docs.append(doc)\n                    # Keep on popping if:\n                    # - we have a larger chunk than in the chunk overlap\n                    # - or if we still have any chunks and the length is long\n                    while total > self._chunk_overlap or (\n                        total + len_ + (separator_len if len(current_doc) > 0 else 0)\n                        > self._chunk_size\n                        and total > 0\n                    ):\n                        total -= self._length_function(current_doc[0]) + (\n                            separator_len if len(current_doc) > 1 else 0\n                        )\n                        current_doc = current_doc[1:]\n            current_doc.append(d)\n            total += len_ + (separator_len if len(current_doc) > 1 else 0)\n        doc = self._join_docs(current_doc, separator)\n        if doc is not None:\n            docs.append(doc)\n        return docs\n\n",
+          "    def _merge_splits(self, splits: Iterable[str], separator: str) -> list[str]:\n        # We now want to combine these smaller pieces into medium size\n        # chunks to send to the LLM.\n        separator_len = self._length_function(separator)\n\n        docs = []\n        # The live window is pieces[start:]; dropping from the front moves `start`\n        # instead of copying the list, and each piece's length is measured once.\n        pieces: list[str] = []\n        lengths: list[int] = []\n        start = 0\n        total = 0\n        for d in splits:\n            len_ = self._length_function(d)\n            live = len(pieces) - start\n            if total + len_ + (separator_len if live > 0 else 0) > self._chunk_size:\n                if total > self._chunk_size:\n                    logger.warning(\n                        \"Created a chunk of size %d, which is longer than the \"\n                        \"specified %d\",\n                        total,\n                        self._chunk_size,\n                    )\n                if live > 0:\n                    doc = self._join_docs(pieces[start:], separator)\n                    if doc is not None:\n                        docs.append(doc)\n                    # Keep on popping if:\n                    # - we have a larger chunk than in the chunk overlap\n                    # - or if we still have any chunks and the length is long\n                    while total > self._chunk_overlap or (\n                        total + len_ + (separator_len if live > 0 else 0)\n                        > self._chunk_size\n                        and total > 0\n                    ):\n                        total -= lengths[start] + (separator_len if live > 1 else 0)\n                        start += 1\n                        live -= 1\n            pieces.append(d)\n            lengths.append(len_)\n            total += len_ + (separator_len if live > 0 else 0)\n        doc = self._join_docs(pieces[start:], separator)\n        if doc is not None:\n            docs.append(doc)\n        return docs\n\n"
+        ]
+      ]
+    },
+    {
+      "name": "printable_fast_path",
+      "kind": "perf",
+      "target": "markdown_ir",
+      "expect": "accepted",
+      "note": "MarkdownHeaderTextSplitter.split_text filters non-printable characters only from lines that contain one (str.isprintable() on the whole line is a single C call), instead of rebuilding every line character by character. Same output: for an all-printable line the filter is the identity.",
+      "edits": [
+        [
+          "libs/text-splitters/langchain_text_splitters/markdown.py",
+          "            stripped_line = \"\".join(filter(str.isprintable, stripped_line))\n            if not in_code_block:\n                # Exclude inline code spans",
+          "            if not stripped_line.isprintable():\n                stripped_line = \"\".join(filter(str.isprintable, stripped_line))\n            if not in_code_block:\n                # Exclude inline code spans"
+        ]
+      ]
+    }
+  ]
+}

@@ -1,0 +1,18 @@
+{
+  "merge_window_index": {
+    "kind": "perf",
+    "target": "recursive_ir",
+    "expect": "accepted",
+    "note": "TextSplitter._merge_splits keeps the current window as an index into one growing list instead of copying the list on every pop from the front, and measures each piece once instead of again when it is popped. Same chunks for any pure length function.",
+    "lines": 32,
+    "guard": "ok"
+  },
+  "printable_fast_path": {
+    "kind": "perf",
+    "target": "markdown_ir",
+    "expect": "accepted",
+    "note": "MarkdownHeaderTextSplitter.split_text filters non-printable characters only from lines that contain one (str.isprintable() on the whole line is a single C call), instead of rebuilding every line character by character. Same output: for an all-printable line the filter is the identity.",
+    "lines": 3,
+    "guard": "ok"
+  }
+}

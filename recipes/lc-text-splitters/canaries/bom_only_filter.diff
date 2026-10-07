@@ -1,0 +1,13 @@
+diff --git a/libs/text-splitters/langchain_text_splitters/markdown.py b/libs/text-splitters/langchain_text_splitters/markdown.py
+--- a/libs/text-splitters/langchain_text_splitters/markdown.py
++++ b/libs/text-splitters/langchain_text_splitters/markdown.py
+@@ -164,7 +164,8 @@ class MarkdownHeaderTextSplitter:
+             stripped_line = line.strip()
+             # Remove all non-printable characters from the string, keeping only visible
+             # text.
+-            stripped_line = "".join(filter(str.isprintable, stripped_line))
++            if stripped_line and not stripped_line[0].isprintable():
++                stripped_line = "".join(filter(str.isprintable, stripped_line))
+             if not in_code_block:
+                 # Exclude inline code spans
+                 if stripped_line.startswith("```") and stripped_line.count("```") == 1:
