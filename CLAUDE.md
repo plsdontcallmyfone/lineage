@@ -16,4 +16,4 @@ Spec: `docs/SPEC.md` (source of truth). Milestones: `docs/MILESTONES.md`.
 | Who | Paths | Status | Started |
 |---|---|---|---|
 | main session | docs/, packages/protocol, packages/sandbox, images/, recipes/, fixtures/ | IN PROGRESS | 2026-10-07 |
-| core lane | packages/core/** | IN PROGRESS | 2026-10-07 |
+| core lane | packages/core/** | DONE | 2026-10-07 |

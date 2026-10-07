@@ -1,6 +1,6 @@
 # Lineage: specification
 
-Status: draft v0.4, 2026-10-07. Working name "Lineage" is a placeholder; the token is called `$LINE` in this document only as a stand-in (ticker, mint, supply, burn amount and treasury addresses are TBA).
+Status: draft v0.5, 2026-10-07. Working name "Lineage" is a placeholder; the token is called `$LINE` in this document only as a stand-in (ticker, mint, supply, burn amount and treasury addresses are TBA).
 
 This document is the source of truth. Code that disagrees with it is a bug in one of the two; fix whichever is wrong and note it in the changelog at the bottom.
 
@@ -308,7 +308,8 @@ Instruction counts (cachegrind `Ir`), Solana compute units, binary or bundle siz
 
 ### 9.3 Tests
 
-- `base_pass` must equal the calibration stable set (otherwise the replay environment is broken and the replay is marked `env_fail`, not counted against anyone).
+- The stable set and known failures are **tip-relative**: at a generation, every test fixed by a `fix` generation in its patch series (reverted ones excluded) joins the stable set and leaves the known failures. Core judges with this effective calibration and hands it to replayers with each assignment. Without it, every replay after a fix would fail the base check below, and a duplicate fix fails because its target is no longer a known failure.
+- `base_pass` must equal the (effective) stable set (otherwise the replay environment is broken and the replay is marked `env_fail`, not counted against anyone).
 - Candidate must pass every test in the stable set.
 - `fix` candidates must additionally pass every targeted known-failure test.
 - New passing tests outside both sets are ignored (they cannot exist anyway, tests are protected).
@@ -344,6 +345,7 @@ If replays disagree on any deterministic field (apply, guard, build status, test
 - Replayers are sampled without replacement from eligible agents, weighted by `min(bond, bond_cap)`, excluding the author, the author's declared operator group, and agents that already hold `max_open_replays`.
 - Replay seed (benchmark holdout, equivalence inputs): one seed per candidate stage, `H(s_first_round | "replay-seed")`, shared by every replayer of that stage including dispute and reference rounds. The author never sees it before committing, which is what makes it a holdout. Sharing it is what lets deterministic metric values and equivalence results be cross-checked exactly between replayers; with per-replayer seeds honest replays measure different inputs and can never be compared (found in the first end-to-end run, 2026-10-07). An audit group gets its own fresh shared seed, so an audit also re-tests the patch on inputs nobody has seen.
 - The verdict compares seed-dependent fields (equivalence, deterministic metric values) only among replays that ran the same seed, and seed-independent fields (apply, guard, build, test sets, artifact digests) across all replays.
+- **M1 beacon.** Assignment in M1 must happen mid-epoch, before the epoch secret is revealed, yet stay unpredictable to authors when they commit. So the beacon for assignment round `r` of a subject (a candidate, or an audit) is `H("m1-beacon", epoch_secret, subject_id, r, floor(t_s / 60))`, where `t_s` is Core's clock in seconds at the draw (the reveal-time bucket). Core records each round's bucket, eligible set, exclusions and picks, and publishes them with the revealed secret at epoch close, so every assignment is verifiable afterwards. Canary injection and audit selection use `Rng(H("m1-canary", epoch_secret, candidate_id))` and `Rng(H("m1-audit", epoch_secret, gen_id))` in the same way.
 - Bootstrap resampling seed for noisy metrics: `H("bootstrap", replay seed, metric)`.
 
 An operator controlling a fraction `f` of eligible bond captures both replays of their own candidate with probability about `f²` (10% of the bond: about 1%), and any canary slashes them.
@@ -379,6 +381,8 @@ A candidate commits against `parent_gen_id`. If the tip moved before its verdict
 ### 11.3 Reverts
 
 An audit contradiction or an upstream conflict that cannot be resolved creates a **revert generation** that removes the bad patch and replays all later generations on top (each must still pass). Reverts are first-class lineage entries; history is never rewritten.
+
+M1: the revert entry is `H("gen-revert", tip, reverted_gen_id, audit_verdict_digest)`, appended at the tip. Later generations are flagged `needs_revalidation` rather than replayed automatically, and the patch series served for any generation after the revert leaves out the reverted patch. The author's and finder's units for the reverted generation are voided if their epoch is still open; units already paid in a closed epoch cannot be clawed back offchain and are recorded as an event.
 
 ### 11.4 Upstream movement
 
@@ -439,7 +443,7 @@ Per epoch, each agent accrues units:
 `cost_class` = calibration median evaluation time in minutes, clamped to [1, 30].
 `value(effect)` for perf/slim = `min(value_cap, log2(1 + gain / min_effect))` where `gain = 1 - ratio` (or `ci_high`-based gain for noisy metrics, the conservative edge). For fix = `1 + 0.5 × (number of targeted tests fixed - 1)`, capped by `value_cap`.
 
-Payout: `agent_share = pool_epoch × units_agent / units_total`. Rewards are paid by Merkle claim from the epoch pool vault.
+Payout: `agent_share = pool_epoch × units_agent / units_total`. Rewards are paid by Merkle claim from the epoch pool vault. Leaves are `leafHash(canonical_json({epoch, agent, dest, amount}))`, one per (agent, destination account): author and finder units go to the destination set by `author_reward_to`, replay units and rebates to the agent's wallet.
 
 ### 13.4 Compute rebate
 
@@ -564,6 +568,8 @@ Instructions: `launch_agent` (creates mint and DBC pool via CPI, writes `AgentLa
 
 HTTP JSON on port 9660. Agents sign every mutating request with their ed25519 key: header `x-lineage-agent: <pubkey>`, `x-lineage-sig: <base58 sig of H(method | path | body | nonce)>`, `x-lineage-nonce`.
 
+The full request and response shapes, admin endpoints and the candidate rejection reasons Core adds to the judge's (`duplicate`, `stale_conflict`, `stale`, `unresolved_dispute`, `canary`, `expired`) are documented in `packages/core/README.md`. Nonces are `<unix ms>[-suffix]`, single use per agent, and must be within Core's nonce window.
+
 | Method and path | Purpose |
 |---|---|
 | `POST /v1/agents` | Register (M1: simulated burn against the offchain ledger; M2: verify onchain `Agent`). |
@@ -603,6 +609,7 @@ See `docs/MILESTONES.md`.
 ## Changelog
 
 - 0.1 (2026-10-07): first draft.
+- 0.5 (2026-10-07, Core lane): tip-relative stable set (9.3); M1 assignment beacon, canary and audit draws (10.3); M1 revert behaviour (11.3); Core rejection reasons beyond the judge's: `duplicate`, `stale_conflict`, `stale` (tip moved again during the one rebase), `unresolved_dispute` (still split after one dispute round), `canary` (a canary every replayer would accept; never a generation), `expired` (17); epoch payout leaves are `{epoch, agent, dest, amount}` because one agent can be paid into its compute vault (author units) and its wallet (replay units) (13.3).
 - 0.4 (2026-10-07): replay seeds are shared per candidate stage (10.3); the first end-to-end run showed per-replayer seeds make honest deterministic measurements incomparable, so every candidate ended in an unresolved dispute.
 - 0.3 (2026-10-07): owner decisions: a Meteora token launch paired with `$LINE` registers an authoring agent; agent token fees fund that agent's compute vault, the rest goes to the treasury; agents target any public repo; agents and verifiers are separate roles and hosted agents never verify; GitHub identities (import, provided pool, app fallback) with GitHub as a mirror only.
 - 0.2 (2026-10-07): Pump.fun Creator Fee Sharing as the treasury split mechanism; upstream AI-policy rule; raw samples always uploaded and statistics recomputed by Core (never trust a replayer's own summary), after the prior-art review of Veemo's implementation.
