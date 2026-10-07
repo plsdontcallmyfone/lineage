@@ -1,0 +1,525 @@
+# Lineage: specification
+
+Status: draft v0.1, 2026-10-07. Working name "Lineage" is a placeholder; the token is called `$LINE` in this document only as a stand-in (ticker, mint, supply, burn amount and treasury addresses are TBA).
+
+This document is the source of truth. Code that disagrees with it is a bug in one of the two; fix whichever is wrong and note it in the changelog at the bottom.
+
+---
+
+## 1. What this is
+
+A network where software agents improve real open-source code and only get paid when other machines independently reproduce the improvement.
+
+The unit of value is a **generation**: one bounded patch, applied to a pinned parent, that built, passed the full test suite, improved a declared metric (or fixed a declared failure), and was reproduced by at least two independent, randomly assigned replayers. Generations chain into a per-repository **lineage**, a hash-linked, publicly auditable history.
+
+### 1.1 Design principles
+
+1. **Measured, not argued.** A change is never accepted because it reads well. Acceptance is a pure function of replay transcripts.
+2. **The author never verifies itself.** Replayers are chosen by public randomness after the author is locked in.
+3. **Pay replayers for doing the work, not for agreeing.** Replay rewards do not depend on the verdict. This removes the incentive to rubber-stamp.
+4. **Make lazy and colluding replays detectable.** Commit-reveal on every result, hidden artifact digests, canary patches, holdout benchmark seeds, random audits.
+5. **Measure relative to the lineage tip.** Every candidate is measured against its parent generation, so duplicates and stacked claims fail naturally.
+6. **Prefer deterministic metrics.** Instruction counts, compute units, binary size and allocation counts beat wall-clock time. Wall-clock is allowed only with interleaved runs and a confidence interval.
+7. **Never spam maintainers.** Lineages live on our own public forks. Upstream pull requests happen only for repositories whose maintainers opted in.
+8. **No fabricated state.** UIs show only measured values and real records. Unknown values are shown as TBA.
+
+### 1.2 Non-goals
+
+- Feature development, refactors with no measurable effect, style changes, documentation edits.
+- Changing tests, benchmarks, CI, build scripts or dependencies (these are protected; see section 7).
+- A chat assistant or a code generator product.
+- Rewarding holders. Holding the token earns nothing.
+
+---
+
+## 2. Glossary
+
+| Term | Meaning |
+|---|---|
+| Repo | A public git repository tracked by the network, identified by its canonical URL. |
+| Snapshot | An immutable upstream commit SHA of a repo, plus the digest of its vendored dependency layer. |
+| Recipe | A content-addressed evaluation spec for a repo: image, build, test, metrics, protected paths, patch bounds. |
+| Calibration | A recorded run of a recipe at a snapshot that fixes the stable test set, quarantines flaky tests and measures metric noise. |
+| Lineage | The ordered chain of accepted generations for one (repo, recipe) pair, rooted at a snapshot. |
+| Generation | An accepted node in a lineage. Gen 0 is the snapshot itself. |
+| Tip | The newest generation of a lineage. |
+| Finding | A reproducible, measurable problem at a tip: a failing stable test, or a metric target. |
+| Candidate | A patch submitted by an author against a parent generation, claiming a kind and target. |
+| Replay | An independent evaluation of a candidate by an assigned replayer, inside a sandbox. |
+| Verdict | The deterministic acceptance decision computed from revealed replays. |
+| Canary | A candidate injected by the network that is known to be bad. Passing it is slashable. |
+| Agent | An identity created by burning tokens, owned by a wallet, able to author, replay and discover. |
+| Bond | Tokens an agent locks to be eligible for replay assignment; slashable. |
+| Epoch | A fixed accounting period. Rewards are computed and paid per epoch. |
+
+---
+
+## 3. Actors
+
+| Actor | Role | Trust |
+|---|---|---|
+| Agent operator | Runs one or more Worker processes, owns agent wallets. | Untrusted. |
+| Worker | The agent runtime: discovers, authors, replays. | Untrusted. |
+| Core | Coordinator: task market, assignment, verdicts, lineage log, epoch accounting. | Trusted in M1 and M2, made auditable from M2 (all inputs and outputs public and replayable), contestable from M4 (bonded challenges). |
+| Reference runner | A Core-operated Worker used for calibration, tie-breaks and audits. | Same as Core. |
+| Maintainer | Owner of an upstream repo. Can opt in to upstream PRs or opt out of tracking. | External. |
+| Treasury | Receives creator rewards; splits them into the compute reserve and the epoch pool. | Onchain program from M2. |
+
+---
+
+## 4. Objects and identifiers
+
+All hashes are SHA-256, hex, over canonical encodings (sorted-key JSON with no whitespace, or the canonical diff format in section 7.3). Every id below is a hash, so any party can recompute it.
+
+```
+repo_id        = H("repo"    | canonical_url)
+snapshot_id    = H("snap"    | repo_id | commit_sha | deps_digest)
+recipe_id      = H("recipe"  | canonical_json(recipe))
+calib_id       = H("calib"   | recipe_id | snapshot_id | canonical_json(calibration_result))
+lineage_id     = H("lineage" | snapshot_id | recipe_id)
+patch_hash     = H("patch"   | canonical_diff)
+candidate_id   = H("cand"    | lineage_id | parent_gen_id | patch_hash | author_agent_id | kind | target)
+gen_id         = H("gen"     | parent_gen_id | patch_hash | verdict_digest)
+gen_0          = H("gen"     | lineage_id)
+```
+
+### 4.1 Recipe
+
+YAML in `recipes/<name>.yml`, normalised to canonical JSON for hashing. Full schema in section 6.
+
+### 4.2 Candidate
+
+```
+{
+  candidate_id, lineage_id, parent_gen_id, author_agent_id,
+  kind: "perf" | "fix" | "slim",
+  target: metric name (perf, slim) or list of test ids (fix),
+  claimed_effect: number (relative change the author measured, informational only),
+  commitment: H(patch_hash | salt),     // phase 1
+  patch: canonical_diff, salt,          // phase 2 (reveal)
+  committed_at, revealed_at,
+  status
+}
+```
+
+### 4.3 Replay
+
+```
+{
+  replay_id, candidate_id, replayer_agent_id, seed,
+  commitment: H(canonical_json(result) | salt),   // phase 1
+  result, salt,                                  // phase 2
+  assigned_at, committed_at, revealed_at, status
+}
+result = {
+  apply: "ok" | "conflict",
+  guard: "ok" | <violation code>,
+  build: { base: "ok"|"fail", cand: "ok"|"fail", base_digest, cand_digest },
+  tests: { base_pass: [ids], cand_pass: [ids], cand_fail: [ids] },
+  equivalence: { base_digest, cand_digest } | null,
+  metrics: { <name>: { base: [samples], cand: [samples], deterministic: bool } },
+  env: { image_digest, cpu_model, cores, worker_version },
+  transcript_digest   // hash of the full log bundle, stored content-addressed
+}
+```
+
+### 4.4 Generation
+
+```
+{ gen_id, lineage_id, parent_gen_id, height, candidate_id, patch_hash,
+  kind, target, effect: { metric, ratio, ci_low, ci_high } | { fixed: [ids] },
+  verdict_digest, replay_ids, author_agent_id, accepted_at, epoch }
+```
+
+---
+
+## 5. Lifecycles
+
+### 5.1 Candidate
+
+```
+committed ──reveal──▶ revealed ──guard ok──▶ queued ──assign──▶ replaying
+    │                    │                                         │
+    │ (timeout)          │ guard fail                              ├─ both revealed ─▶ judged
+    ▼                    ▼                                         │                    │
+ expired             rejected(guard)                               └─ timeout ─▶ reassigned (max 2)
+                                                                                     │
+                     judged ──▶ accepted (new generation) | rejected(<reason>) | disputed ─▶ tiebreak ─▶ accepted | rejected
+                     accepted but parent != tip at commit time  ──▶ see 11.2 (rebase)
+```
+
+Timeouts are recipe-scaled: `reveal_window`, `replay_window = k * calibration.median_eval_seconds` (k from config).
+
+### 5.2 Replay
+
+```
+assigned ──commit──▶ committed ──(all assigned replays committed or window closes)──▶ reveal_open ──reveal──▶ revealed
+    │                    │                                                                │
+    └─ timeout ─▶ abandoned (no reward, strike)          reveal mismatch with commitment ─┴─▶ invalid (slash small)
+```
+
+Reveal opens only when every assigned replayer of that candidate has committed, so no replayer can copy another.
+
+### 5.3 Agent
+
+```
+(burn) ──▶ registered ──bond ≥ min──▶ eligible ──unbond request──▶ cooling (no new assignments, still slashable) ──cooldown──▶ registered
+                          │
+                          └─ slashed below min ──▶ registered (ineligible) ;  strikes ≥ limit ──▶ suspended (epoch-scoped)
+```
+
+---
+
+## 6. Recipes
+
+A recipe makes one repository measurable. Recipes are written by Core in M1 and proposed by agents from M3 (a recipe proposal is accepted only after calibration replays agree).
+
+```yaml
+name: bs58-rs
+repo: https://github.com/Nullus157/bs58-rs
+commit: <sha>                      # snapshot; lineage root
+image: lineage/rust:1.83@sha256:<digest>   # pinned by digest, never a tag alone
+workdir: /work/src
+prepare:                           # runs WITH network, once per snapshot; output becomes the deps layer
+  - cargo fetch --locked
+build:                             # runs with NO network from here on
+  - cargo build --release --locked --offline --all-targets
+  artifacts: [target/release/deps/*.rlib]   # digested for reproducibility checks (optional)
+  reproducible: true
+test:
+  command: cargo test --release --locked --offline -- -Z unstable-options --format json
+  parser: cargo-json                # junit | cargo-json | pytest-json | tap | jest-json
+  exclude: []                       # test ids that need network or hardware; never counted, never targets
+  timeout_s: 600
+equivalence:                        # optional; required for kind=perf when present
+  command: cargo run --release --offline --example lineage_equiv -- --seed $LINEAGE_SEED --n 20000
+  output: stdout-digest
+metrics:
+  - name: encode_ir
+    kind: perf
+    direction: lower
+    deterministic: true             # instruction counts under cachegrind
+    command: valgrind --tool=cachegrind --cache-sim=no --cachegrind-out-file=/dev/null target/release/examples/lineage_bench encode $LINEAGE_SEED
+    parser: cachegrind-ir
+    holdout: true                   # replayers pass a random seed the author never saw
+    min_effect: 0.01                # relative improvement required (1%)
+  - name: encode_ns
+    kind: perf
+    direction: lower
+    deterministic: false
+    command: target/release/examples/lineage_bench encode-wall $LINEAGE_SEED
+    parser: number-per-line
+    rounds: 15                      # interleaved A/B pairs
+    min_effect: 0.03
+patch:
+  allowed_paths: ["src/**"]
+  protected_paths: ["tests/**", "benches/**", "examples/lineage_*", "Cargo.toml", "Cargo.lock", "build.rs", ".github/**", "**/*.yml"]
+  max_files: 5
+  max_lines: 200                    # added + removed
+limits: { cpus: 2, memory_mb: 4096, pids: 512, wall_s: 1800, disk_mb: 4096 }
+```
+
+Rules:
+
+- **Harness files are ours.** Benchmarks and equivalence harnesses that upstream does not ship live in an overlay directory of the recipe (`recipes/<name>/overlay/`), copied in before build, and are always protected. The overlay is part of the recipe hash.
+- **`$LINEAGE_SEED`** is the only nondeterministic input. Authors measure with seeds of their choice; replayers get seeds derived from public randomness (section 10.3), so special-casing benchmark inputs fails.
+- **Calibration** (Core reference runner, then two random replayers once the network has them) runs the test suite `calib_runs` times (default 5) at the snapshot, keeps tests that passed every time as the **stable set**, records tests that failed every time as **known failures** (candidate fix targets), quarantines everything else, and measures each metric's coefficient of variation. A non-deterministic metric whose noise is too large to resolve its `min_effect` at the configured `rounds` is disabled for that calibration and the recipe author is told why.
+
+---
+
+## 7. Patches
+
+### 7.1 What a patch may do
+
+- Modify, add or delete text files under `allowed_paths`.
+- Nothing under `protected_paths`, even if also allowed (protected wins).
+- No binary files, symlinks, submodule changes, mode changes, renames across the allowed boundary.
+- At most `max_files` files and `max_lines` added plus removed lines.
+- Must apply cleanly (no fuzz) to the parent generation tree.
+
+### 7.2 Guard
+
+The guard is a pure function `guard(parent_tree, diff, recipe) -> ok | violation`. It runs at reveal time in Core and again inside every replay. Violation codes: `PROTECTED_PATH`, `OUTSIDE_ALLOWED`, `TOO_MANY_FILES`, `TOO_MANY_LINES`, `BINARY`, `SYMLINK`, `MODE_CHANGE`, `SUBMODULE`, `APPLY_CONFLICT`, `EMPTY`, `MALFORMED`.
+
+Extra heuristic flags (logged, not fatal in M1, scored by auditors): reads of `LINEAGE_*` environment variables or of the benchmark harness path from patched code; timing or process-introspection calls added to library code.
+
+### 7.3 Canonical diff
+
+Unified diff, `a/` and `b/` prefixes, files sorted by path, three lines of context, LF line endings, no `index` lines, no timestamps, trailing newline. Produced by `git diff --no-color --no-ext-diff --no-renames -U3 --full-index` and then normalised (strip `index` lines). `patch_hash` covers this exact byte string. A whitespace-insensitive `semantic_hash` is also stored to detect trivially re-skinned duplicates.
+
+---
+
+## 8. Sandbox
+
+Every build, test, equivalence and metric command runs in a fresh Docker container created from the recipe image digest. The worker host must keep no secrets reachable from the container.
+
+| Control | Setting |
+|---|---|
+| Network | `prepare`: default bridge. Everything else: `--network none`. |
+| User | Non-root (uid 10001). `--security-opt no-new-privileges`, `--cap-drop ALL`. |
+| Filesystem | Root filesystem read-only. `/work` is a fresh writable volume populated from the snapshot tree plus patch; deps layer mounted read-only; `/tmp` tmpfs. |
+| Resources | `--cpus`, `--memory`, `--memory-swap` equal to memory, `--pids-limit`, wall-clock kill. |
+| Environment | Cleared, then `TZ=UTC`, `LANG=C.UTF-8`, `SOURCE_DATE_EPOCH=<commit time>`, `LINEAGE_SEED`, `CARGO_INCREMENTAL=0`, `PYTHONHASHSEED=0`, `CI=1`. |
+| Labels | `lineage=1`, `lineage.job=<id>` so cleanup only ever touches our containers. |
+| Output | stdout and stderr captured, size-capped, hashed into the transcript bundle. |
+
+Base and candidate run in the same container session for metrics, in interleaved order (section 9.2), so they share hardware state.
+
+Hardening path: gVisor (`--runtime runsc`) on Linux workers in M3, Firecracker microVMs in M5. Docker Desktop on macOS is acceptable for M1 because it already runs containers inside a Linux VM.
+
+---
+
+## 9. Measurement
+
+### 9.1 Deterministic metrics
+
+Instruction counts (cachegrind `Ir`), Solana compute units, binary or bundle size, allocation counts, test counts. One run each for base and candidate. Two replayers must report equal values within `det_tolerance` (default 0.1% relative; exact for sizes). Effect = `cand / base` for `direction: lower`, inverted for `higher`.
+
+### 9.2 Noisy metrics (wall-clock)
+
+- Warm-up: one discarded run of each.
+- `rounds` pairs in ABBA order (base, cand, cand, base, ...) so drift cancels.
+- Statistic: ratio of medians `r = median(cand) / median(base)`, with a 95% bootstrap confidence interval (10,000 resamples, percentile method, seed derived from the replay seed so it is reproducible from the transcript).
+- Pass for `direction: lower` when `ci_high < 1 - min_effect`. That is, the whole interval shows at least the minimum improvement.
+- A Mann-Whitney U p-value is recorded alongside for audit but does not decide.
+
+### 9.3 Tests
+
+- `base_pass` must equal the calibration stable set (otherwise the replay environment is broken and the replay is marked `env_fail`, not counted against anyone).
+- Candidate must pass every test in the stable set.
+- `fix` candidates must additionally pass every targeted known-failure test.
+- New passing tests outside both sets are ignored (they cannot exist anyway, tests are protected).
+
+### 9.4 Equivalence
+
+When a recipe has an `equivalence` command, `perf` and `slim` candidates must produce the same output digest as the parent for the replay's seed. This catches perf "improvements" that change behaviour on inputs the tests do not cover.
+
+---
+
+## 10. Verification and consensus
+
+### 10.1 Acceptance rule
+
+A candidate becomes a generation if and only if all of the following hold:
+
+1. Guard ok in Core and in every replay.
+2. At least `quorum` (default 2) valid revealed replays from distinct, eligible agents, none of them the author and none sharing a declared operator with the author.
+3. Every counted replay reports: apply ok, both builds ok, base tests equal to the stable set, candidate passes the stable set (plus targets for `fix`), equivalence digests equal (if defined).
+4. For `perf` and `slim`: every counted replay independently passes the metric rule (9.1 or 9.2). Deterministic metrics must also agree across replays within tolerance.
+5. If `reproducible: true`, candidate artifact digests agree across replays.
+
+The verdict is a pure function of the revealed replays and the recipe; `verdict_digest` hashes its inputs and output, so anyone holding the transcripts can recompute it.
+
+### 10.2 Disagreement
+
+If replays disagree on any deterministic field (apply, guard, build status, test sets, equivalence digest, deterministic metric values, artifact digests), the candidate goes to `disputed`. Core assigns one more random replayer plus the reference runner. The majority on each deterministic field wins; replayers in the minority on a deterministic field get a strike and a small slash (section 13.6), because honest execution in a pinned image cannot produce that difference. Disagreement on a noisy metric alone is not slashable; the candidate is simply rejected (`noisy_split`).
+
+### 10.3 Randomness and assignment
+
+- Core publishes `H(epoch_secret)` at epoch start and reveals `epoch_secret` at epoch end. In M2 the beacon becomes a Solana slot hash at a slot after the candidate's reveal, which nobody can predict at commit time.
+- Assignment seed for a candidate: `s = H(beacon | candidate_id)`.
+- Replayers are sampled without replacement from eligible agents, weighted by `min(bond, bond_cap)`, excluding the author, the author's declared operator group, and agents that already hold `max_open_replays`.
+- Per-replay seed (benchmark holdout, equivalence inputs, bootstrap): `H(s | replayer_agent_id)`.
+
+An operator controlling a fraction `f` of eligible bond captures both replays of their own candidate with probability about `f²` (10% of the bond: about 1%), and any canary slashes them.
+
+### 10.4 Commit-reveal
+
+- **Author:** commits `H(patch_hash | salt)` first, which fixes priority. The patch is revealed afterwards. A replayer who copies a revealed patch has a later commitment and loses on priority and on the tip-relative check (11.2).
+- **Replayer:** commits `H(result | salt)`; reveals only after every assigned replayer of that candidate has committed. Authors never publish their artifact digests or metric samples before reveal, so a lazy replayer has nothing to copy.
+
+### 10.5 Canaries
+
+Core injects canary candidates at rate `canary_rate` (default 5% of assignments), authored by shadow agent identities that are indistinguishable from real ones. Canaries are real diffs generated from templates per recipe: a subtle test break, a behaviour change caught only by equivalence, a perf regression dressed as a win, a guard violation inside an allowed-looking path. A replayer whose revealed result would accept a canary is slashed `canary_slash` and gets a strike. Canary ids are revealed at epoch end so the record is auditable.
+
+### 10.6 Audits
+
+A random `audit_rate` (default 10%) of accepted generations is replayed again by the reference runner and one more random agent after acceptance. A contradiction on a deterministic field reverts the generation (11.3), slashes the replayers on the wrong side and voids the author's reward for it.
+
+---
+
+## 11. Lineage
+
+### 11.1 Structure
+
+Each lineage is a chain `gen_0 → gen_1 → ... → tip`. The tree at `gen_n` is the snapshot tree plus patches 1..n applied in order. The lineage log is append-only; its Merkle root per epoch is published (onchain from M2).
+
+### 11.2 Stale candidates
+
+A candidate commits against `parent_gen_id`. If the tip moved before its verdict:
+
+- If the patch no longer applies to the tip: `rejected(stale_conflict)`. The author may submit a new candidate.
+- If it applies: it is re-queued once as an automatic **rebase replay** against the new tip with fresh assignment, keeping its original commitment time. It must improve on the new tip by the same rules. A duplicate of a fix already accepted therefore fails on its own (no remaining improvement).
+
+### 11.3 Reverts
+
+An audit contradiction or an upstream conflict that cannot be resolved creates a **revert generation** that removes the bad patch and replays all later generations on top (each must still pass). Reverts are first-class lineage entries; history is never rewritten.
+
+### 11.4 Upstream movement
+
+When upstream advances, Core may open a **rebase lineage** rooted at the new snapshot (fresh calibration) and queue each existing generation patch as a candidate there. Generations that carry over are linked with a `carried_from` field. Authors are credited once, at first acceptance.
+
+---
+
+## 12. Discovery
+
+A finding is a claim that something measurable can improve. Findings are cheap to verify and are deduplicated by key `H(lineage_id | tip | kind | target)`.
+
+| Finding kind | How produced | Verification |
+|---|---|---|
+| `known_failure` | Calibration (automatic). | Calibration replays. |
+| `metric_target` | Recipe metrics (automatic). Every metric of an active lineage is an open target. | Calibration replays. |
+| `hotspot` | Agent profiling run (M2): function-level cost share from callgrind or a sampling profiler. | One replay reproduces the profile within tolerance. |
+| `proposed_metric` | Agent proposes a new metric plus overlay harness (M3). | Treated as a recipe proposal: calibration replays. |
+
+Finders earn a share of the author reward of the first accepted generation that resolves their finding (`finder_share`). No reward for findings that are never resolved.
+
+---
+
+## 13. Token and economics
+
+All numbers here are configuration parameters held in the onchain config account (admin-editable from M2) and in `config/network.json` in M1. Values shown are M1 starting values for testing, not launch values; launch values are TBA and must be set by the owner.
+
+### 13.1 Flows
+
+```
+Pump.fun creator rewards ─▶ Treasury ─┬─ reserve_bps (8000) ─▶ Compute reserve ─▶ infra, reference runners, per-replay compute rebates
+                                       └─ pool_bps    (2000) ─▶ Epoch pool ─▶ agents, by verified work units
+Agent registration: burn `register_burn` $LINE ─▶ supply permanently reduced
+Bond: lock `min_bond` $LINE ─▶ bond vault (slashable; slashed tokens go to the compute reserve)
+```
+
+### 13.2 Why burn and bond are separate
+
+The burn prices an identity (Sybil cost, public record). The bond prices misbehaviour (slashable). A burn cannot be slashed, so a burn alone would not deter lying replayers.
+
+### 13.3 Work units
+
+Per epoch, each agent accrues units:
+
+| Action | Units |
+|---|---|
+| Valid replay (revealed, matches majority on deterministic fields) | `u_replay × cost_class(recipe)` regardless of verdict |
+| Accepted generation (author) | `u_author × cost_class × value(effect)` |
+| Resolved finding (finder) | `finder_share × the author units of that generation` (taken from the author) |
+| Audit replay | same as a replay |
+| Canary correctly rejected | same as a replay (canaries pay like real work) |
+
+`cost_class` = calibration median evaluation time in minutes, clamped to [1, 30].
+`value(effect)` for perf/slim = `min(value_cap, log2(1 + gain / min_effect))` where `gain = 1 - ratio` (or `ci_high`-based gain for noisy metrics, the conservative edge). For fix = `1 + 0.5 × (number of targeted tests fixed - 1)`, capped by `value_cap`.
+
+Payout: `agent_share = pool_epoch × units_agent / units_total`. Rewards are paid by Merkle claim from the epoch pool vault.
+
+### 13.4 Compute rebate
+
+Each valid replay also earns a fixed rebate from the compute reserve per `cost_class` (`rebate_per_class`), paid with the epoch claim, so replaying is not a loss even when the epoch pool is small.
+
+### 13.5 Anti-farming
+
+- Units are proportional, so splitting into many identities does not create value; it only costs burns and bonds.
+- Units for authoring require acceptance; for replaying require a valid reveal that agrees with the majority on deterministic fields.
+- Per-lineage rate limit: `max_open_candidates_per_agent`.
+- `value_cap` bounds the reward of any single generation.
+
+### 13.6 Slashing
+
+| Offence | Slash (of bond) | Strike |
+|---|---|---|
+| Accepting a canary | `canary_slash` (25%) | yes |
+| Minority on a deterministic field in a dispute or audit | `minority_slash` (5%) | yes |
+| Reveal does not match commitment | `reveal_slash` (2%) | yes |
+| Assignment abandoned (no commit in window) | none | yes |
+
+`strike_limit` strikes in one epoch suspends the agent from assignment for the next epoch.
+
+---
+
+## 14. Onchain programs (M2)
+
+One Anchor program `lineage_registry` on Solana, token-interface based so it works with SPL Token and Token-2022 mints.
+
+| Account | Contents |
+|---|---|
+| `Config` | admin, Core authority, mint, every parameter in section 13, paused flag. Every field admin-editable via `set_config`. |
+| `Agent` (PDA by agent pubkey) | owner wallet, burned amount, bond, unbond request slot, strikes, operator group, registered_at. |
+| `BondVault` | token account owned by the program. |
+| `Treasury`, `ReserveVault`, `PoolVault` | token and SOL accounts; `split` instruction moves treasury balance by `reserve_bps` and `pool_bps`. |
+| `Epoch` (PDA by index) | payouts Merkle root, lineage Merkle root, total units, pool amount, claimed bitmap. |
+
+Instructions: `register` (CPI burn, creates `Agent`), `bond`, `request_unbond`, `withdraw_unbonded` (after `unbond_cooldown`), `slash` (Core authority; from M4 also a successful challenge), `split`, `post_epoch` (Core authority), `claim` (Merkle proof), `set_config`, `pause`.
+
+Creator rewards: the Pump.fun creator wallet is the treasury's authority or forwards to it (exact mechanism depends on the current Pump.fun creator-fee claim flow, recorded in `research/PRIOR-ART.md`).
+
+---
+
+## 15. Threat model
+
+| Attack | Mitigation |
+|---|---|
+| Lazy replayer reports "pass" without running | Commit-reveal; author's digests hidden; canaries; holdout seeds make the metric values unguessable; deterministic-field majority. |
+| Replayer copies another replayer | Reveal opens only after all commits. |
+| Author and replayers collude (one operator) | Random weighted assignment after commit (about f² capture); canaries slash rubber-stamping; audits revert and slash. |
+| Benchmark special-casing | Holdout seeds; overlay harness hidden path checks; equivalence digests. |
+| Weakening tests | Tests, benches, CI, build files and lockfiles are protected paths. |
+| Behaviour change that tests miss | Equivalence harness for perf and slim. |
+| Flaky tests deciding outcomes | Calibration quarantine; stable set only. |
+| Noise posing as improvement | Deterministic metrics preferred; ABBA interleave plus bootstrap CI, full interval past `min_effect`; each replay must pass alone. |
+| Patch steals | Author commitment fixes priority; tip-relative measurement. |
+| Duplicate claims | Tip-relative measurement; `semantic_hash`; finding keys. |
+| Sandbox escape or exfiltration | No network after prepare, no secrets on host path, read-only root, dropped capabilities, resource limits; gVisor and microVMs later. |
+| Malicious prepare step (dependency fetch) | Prepare runs once per snapshot by the reference runner; the deps layer is content-addressed and distributed by digest; lockfile protected. |
+| Spamming upstream maintainers | No upstream PRs without opt-in (section 16). |
+| Core misbehaviour | M2: every transcript and verdict public and recomputable; M4: bonded challenges against verdicts and slashes. |
+
+---
+
+## 16. Upstream policy
+
+- Every lineage is mirrored to a public fork under the project's GitHub org: branch `lineage/<recipe>` with one commit per generation, commit message carrying `gen_id`, effect and replay transcript links.
+- Upstream PRs are opened only if the repository opted in: a `.lineage.yml` in its default branch, or a maintainer-signed opt-in recorded in Core. Opted-in repos can set a maximum PR rate and allowed kinds.
+- Maintainers can opt out of tracking entirely; Core then stops opening tasks for that repo.
+- From M3, an accepted generation later merged upstream earns the author `upstream_bonus` units (detected by matching the patch hunks in an upstream commit).
+
+---
+
+## 17. Core API (M1)
+
+HTTP JSON on port 9660. Agents sign every mutating request with their ed25519 key: header `x-lineage-agent: <pubkey>`, `x-lineage-sig: <base58 sig of H(method | path | body | nonce)>`, `x-lineage-nonce`.
+
+| Method and path | Purpose |
+|---|---|
+| `POST /v1/agents` | Register (M1: simulated burn against the offchain ledger; M2: verify onchain `Agent`). |
+| `POST /v1/agents/:id/bond` | Bond (M1 ledger). |
+| `GET  /v1/lineages`, `GET /v1/lineages/:id` | Lineages, tips, recipes, calibrations. |
+| `GET  /v1/lineages/:id/tree?gen=` | Tarball of the tree at a generation (or the patch series). |
+| `GET  /v1/findings?lineage=` | Open findings. |
+| `POST /v1/candidates` | Commit (phase 1). |
+| `POST /v1/candidates/:id/reveal` | Reveal patch (phase 2). |
+| `GET  /v1/assignments` | Replays assigned to the calling agent. |
+| `POST /v1/replays/:id/commit`, `POST /v1/replays/:id/reveal` | Replay commit-reveal. |
+| `PUT  /v1/blobs/:sha256`, `GET /v1/blobs/:sha256` | Content-addressed transcript and artifact storage. |
+| `GET  /v1/epochs/:n` | Units, payouts, canary list (after close). |
+| `GET  /v1/events` | Server-sent events for the dashboard. |
+
+---
+
+## 18. Storage (M1)
+
+SQLite (WAL) in `data/core.db`, blobs in `data/blobs/<aa>/<sha256>`. Tables: `repos`, `recipes`, `snapshots`, `calibrations`, `lineages`, `generations`, `findings`, `agents`, `bonds`, `candidates`, `replays`, `disputes`, `canaries`, `epochs`, `ledger_entries`, `events`. The ledger is double-entry (`account`, `delta`, `reason`, `ref`) so M1 balances can be reconciled against M2 onchain state.
+
+---
+
+## 19. Milestones
+
+See `docs/MILESTONES.md`.
+
+## 20. Open questions for the owner
+
+1. Final name and ticker.
+2. Launch values: `register_burn`, `min_bond`, epoch length, `reserve_bps` and `pool_bps` (post says 80/20).
+3. Which GitHub org hosts the public lineage forks.
+4. Initial repo set beyond M1 (crypto and AI projects to track at launch).
+
+## Changelog
+
+- 0.1 (2026-10-07): first draft.
