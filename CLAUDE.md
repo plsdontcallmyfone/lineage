@@ -20,6 +20,6 @@ Spec: `docs/SPEC.md` (source of truth). Milestones: `docs/MILESTONES.md`.
 | recipes lane | recipes/base58-py/**, recipes/minbpe/**, recipes/base58-rs/**, recipes/fixture-b58/calibration.json, scripts/calibrate-recipe.ts, scripts/make-canaries.ts, scripts/check-canaries.ts | DONE | 2026-10-07 |
 | dashboard lane | apps/web/** | DONE | 2026-10-07 |
 | core v2 lane | packages/core/**, packages/worker/src/worker.ts, packages/worker/src/main.ts, packages/worker/src/doctor.ts, scripts/e2e.ts | DONE | 2026-10-07 |
-| zig class lane | images/zig/**, recipes/<zig recipe names>/**, fixtures/<zig fixture>/** | IN PROGRESS | 2026-10-07 |
+| zig class lane | images/zig/**, recipes/fixture-zigsize/**, recipes/zig-clap/**, fixtures/zigsize/**, fixtures/zigsize-patches/** | DONE | 2026-10-07 |
 | cuda class lane | images/cuda/**, recipes/fixture-cuda/**, recipes/llmc-cuda/**, fixtures/cuda-reduce/**, fixtures/cuda-reduce-patches/**, scripts/gpu/**, packages/sandbox/test/cuda.test.ts (+ additive GPU hunks in packages/sandbox/src/{docker,evaluate,parsers}.ts, one SPEC 8 row) | DONE (GPU session pending owner approval) | 2026-10-07 |
 | solana class lane | images/solana/**, recipes/<solana recipe names>/**, fixtures/<solana fixture>/** | IN PROGRESS | 2026-10-07 |
