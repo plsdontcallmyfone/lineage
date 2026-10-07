@@ -1,0 +1,11 @@
+{
+  "slim_report": {
+    "name": "slim_report",
+    "kind": "slim",
+    "target": "examples_bytes",
+    "expect": "accepted",
+    "note": "Diagnostic.report writes fixed pieces with writeAll instead of instantiating Writer.print once per message format. Same bytes out; every program that reports parse errors links less formatting code.",
+    "lines": 31,
+    "guard": "ok"
+  }
+}

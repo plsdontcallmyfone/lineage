@@ -1,0 +1,65 @@
+# Fixture recipe for the zig class (SPEC 6.1): a small local Zig tool with planted size waste
+# (a 64 KiB comptime popcount table, a checksum generic instantiated at eight widths, each with
+# its own formatting instantiation, float formatting in the report). The commit is deterministic
+# (fixed author and dates), see packages/sandbox/src/repo.ts.
+#
+# Primary metric: bytes of the ReleaseSmall executable (exact: two builds of one tree are byte
+# identical, checked by calibration and by build.reproducible). Secondary: cachegrind instruction
+# count of a seeded workload built ReleaseFast. The equivalence harness is built Debug (safety
+# checks on, fast to compile).
+#
+# Every compile pins the target to aarch64-linux-musl with cpu baseline. Zig's default target is
+# `native`, which bakes the host CPU model and the running kernel and glibc versions (seen here:
+# aarch64-linux.7.0.14...7.0.14-gnu.2.41 under Docker Desktop) into the compilation, so two
+# honest verifiers on different arm64 hosts could otherwise produce different bytes.
+#
+# Zig keeps tests inside source files, but this fixture keeps its tests in tests/ (protected) so
+# a patch cannot weaken them. The harness test runner (overlay) reports TAP with stable ids.
+name: fixture-zigsize
+class: zig
+requires: { arch: arm64 }
+repo: "fixture:zigsize"
+commit: "fe2f4f8a9f795a8a8fcd150e5da9f498801fb7b4"
+image: "lineage/zig:0.15.2@sha256:d2368f0312e00beae22c24887ad0cda96f13107b1284a4a269893941171aff01"
+workdir: /work/src
+prepare: []
+prepare_outputs: []
+build:
+  commands:
+    - zig build -Doptimize=ReleaseSmall -Dtarget=aarch64-linux-musl -Dcpu=baseline
+    - mkdir -p zig-out/lineage
+    - zig build-exe -target aarch64-linux-musl -mcpu=baseline --dep zigsize -ODebug -Mroot=lineage_equiv.zig -ODebug -Mzigsize=src/lib.zig --name lineage_equiv -femit-bin=zig-out/lineage/lineage_equiv
+    - zig build-exe -target aarch64-linux-musl -mcpu=baseline --dep zigsize -OReleaseFast -Mroot=lineage_bench.zig -OReleaseFast -Mzigsize=src/lib.zig --name lineage_bench -femit-bin=zig-out/lineage/lineage_bench
+  artifacts: ["zig-out/bin/zigsize"]
+  reproducible: true
+test:
+  command: zig test -target aarch64-linux-musl -mcpu=baseline --test-runner lineage_tap_runner.zig --dep zigsize -Mroot=tests/lib_test.zig -Mzigsize=src/lib.zig
+  parser: tap
+  exclude: []
+  timeout_s: 300
+equivalence:
+  command: zig-out/lineage/lineage_equiv
+  output: stdout-digest
+metrics:
+  - name: bin_bytes
+    kind: slim
+    direction: lower
+    deterministic: true
+    tolerance: 0
+    command: wc -c < zig-out/bin/zigsize
+    parser: bytes
+    min_effect: 0.005
+  - name: work_ir
+    kind: perf
+    direction: lower
+    deterministic: true
+    command: valgrind --tool=cachegrind --cache-sim=no --cachegrind-out-file=/dev/null zig-out/lineage/lineage_bench
+    parser: cachegrind-ir
+    holdout: true
+    min_effect: 0.01
+patch:
+  allowed_paths: ["src/**"]
+  protected_paths: ["tests/**", "build.zig", "build.zig.zon"]
+  max_files: 5
+  max_lines: 200
+limits: { cpus: 2, memory_mb: 2048, pids: 256, wall_s: 900, disk_mb: 4096 }

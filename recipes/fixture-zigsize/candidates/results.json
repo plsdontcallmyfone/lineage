@@ -1,0 +1,270 @@
+{
+  "slim_popcount": {
+    "expect": "accepted",
+    "outcome": "accepted",
+    "reason": null,
+    "detail": null,
+    "effect": {
+      "metric": "bin_bytes",
+      "ratio": 0.35803242735176627,
+      "ci_low": 0.35803242735176627,
+      "ci_high": 0.35803242735176627,
+      "per_replay": [
+        {
+          "replay_id": "r1",
+          "ratio": 0.35803242735176627,
+          "ci_low": 0.35803242735176627,
+          "ci_high": 0.35803242735176627,
+          "pass": true
+        }
+      ]
+    },
+    "metrics": {
+      "bin_bytes": {
+        "base": [
+          102136
+        ],
+        "cand": [
+          36568
+        ],
+        "ratio": 0.35803242735176627
+      },
+      "work_ir": {
+        "base": [
+          161472964
+        ],
+        "cand": [
+          153571260
+        ],
+        "ratio": 0.9510648482305681
+      }
+    },
+    "equivalence": "same",
+    "seed": "7265706c61792d73",
+    "recipe_id": "94de68d8ace08cd4a2f47149a81add75ebd391ba010b478bae08574d7f65fe36",
+    "eval_seconds": 61.4,
+    "date": "2026-10-07T20:05:18.555Z",
+    "match": true
+  },
+  "slim_checksum": {
+    "expect": "accepted",
+    "outcome": "accepted",
+    "reason": null,
+    "detail": null,
+    "effect": {
+      "metric": "bin_bytes",
+      "ratio": 0.9899741521109109,
+      "ci_low": 0.9899741521109109,
+      "ci_high": 0.9899741521109109,
+      "per_replay": [
+        {
+          "replay_id": "r1",
+          "ratio": 0.9899741521109109,
+          "ci_low": 0.9899741521109109,
+          "ci_high": 0.9899741521109109,
+          "pass": true
+        }
+      ]
+    },
+    "metrics": {
+      "bin_bytes": {
+        "base": [
+          102136
+        ],
+        "cand": [
+          101112
+        ],
+        "ratio": 0.9899741521109109
+      },
+      "work_ir": {
+        "base": [
+          161472964
+        ],
+        "cand": [
+          186213027
+        ],
+        "ratio": 1.1532148936090627
+      }
+    },
+    "equivalence": "same",
+    "seed": "7265706c61792d73",
+    "recipe_id": "94de68d8ace08cd4a2f47149a81add75ebd391ba010b478bae08574d7f65fe36",
+    "eval_seconds": 73.8,
+    "date": "2026-10-07T20:06:32.371Z",
+    "match": true
+  },
+  "perf_popcount64": {
+    "expect": "accepted",
+    "outcome": "accepted",
+    "reason": null,
+    "detail": null,
+    "effect": {
+      "metric": "work_ir",
+      "ratio": 0.9385046875601947,
+      "ci_low": 0.9385046875601947,
+      "ci_high": 0.9385046875601947,
+      "per_replay": [
+        {
+          "replay_id": "r1",
+          "ratio": 0.9385046875601947,
+          "ci_low": 0.9385046875601947,
+          "ci_high": 0.9385046875601947,
+          "pass": true
+        }
+      ]
+    },
+    "metrics": {
+      "bin_bytes": {
+        "base": [
+          102136
+        ],
+        "cand": [
+          36608
+        ],
+        "ratio": 0.3584240620349338
+      },
+      "work_ir": {
+        "base": [
+          178846770
+        ],
+        "cand": [
+          167848532
+        ],
+        "ratio": 0.9385046875601947
+      }
+    },
+    "equivalence": "same",
+    "seed": "7265706c61792d70",
+    "recipe_id": "94de68d8ace08cd4a2f47149a81add75ebd391ba010b478bae08574d7f65fe36",
+    "eval_seconds": 69.2,
+    "date": "2026-10-07T20:07:41.588Z",
+    "match": true
+  },
+  "equiv_change": {
+    "expect": "equivalence_changed",
+    "outcome": "rejected",
+    "reason": "equivalence_changed",
+    "detail": "candidate output differs from parent on seeded inputs",
+    "effect": null,
+    "metrics": {
+      "bin_bytes": {
+        "base": [
+          102136
+        ],
+        "cand": [
+          36576
+        ],
+        "ratio": 0.3581107542883998
+      },
+      "work_ir": {
+        "base": [
+          146663620
+        ],
+        "cand": [
+          139310579
+        ],
+        "ratio": 0.9498645880962163
+      }
+    },
+    "equivalence": "changed",
+    "seed": "7265706c61792d65",
+    "recipe_id": "94de68d8ace08cd4a2f47149a81add75ebd391ba010b478bae08574d7f65fe36",
+    "eval_seconds": 69,
+    "date": "2026-10-07T20:08:50.627Z",
+    "match": true
+  },
+  "regress": {
+    "expect": "no_improvement",
+    "outcome": "rejected",
+    "reason": "no_improvement",
+    "detail": "worst ratio 1.6417 vs required 0.9950",
+    "effect": {
+      "metric": "bin_bytes",
+      "ratio": 1.6417325918383332,
+      "ci_low": 1.6417325918383332,
+      "ci_high": 1.6417325918383332,
+      "per_replay": [
+        {
+          "replay_id": "r1",
+          "ratio": 1.6417325918383332,
+          "ci_low": 1.6417325918383332,
+          "ci_high": 1.6417325918383332,
+          "pass": false
+        }
+      ]
+    },
+    "metrics": {
+      "bin_bytes": {
+        "base": [
+          102136
+        ],
+        "cand": [
+          167680
+        ],
+        "ratio": 1.6417325918383332
+      },
+      "work_ir": {
+        "base": [
+          159216473
+        ],
+        "cand": [
+          163334089
+        ],
+        "ratio": 1.0258617461021133
+      }
+    },
+    "equivalence": "same",
+    "seed": "7265706c61792d72",
+    "recipe_id": "94de68d8ace08cd4a2f47149a81add75ebd391ba010b478bae08574d7f65fe36",
+    "eval_seconds": 57.6,
+    "date": "2026-10-07T20:09:48.256Z",
+    "match": true
+  },
+  "break_tests": {
+    "expect": "tests_fail",
+    "outcome": "rejected",
+    "reason": "tests_fail",
+    "detail": "3 stable tests fail: lib_test.test.popcount of a single byte, lib_test.test.popcount of ascii text, lib_test.test.report",
+    "effect": null,
+    "metrics": {
+      "bin_bytes": {
+        "base": [
+          102136
+        ],
+        "cand": [
+          36584
+        ],
+        "ratio": 0.3581890812250333
+      },
+      "work_ir": {
+        "base": [
+          172609220
+        ],
+        "cand": [
+          164533237
+        ],
+        "ratio": 0.9532123312995678
+      }
+    },
+    "equivalence": "changed",
+    "seed": "7265706c61792d62",
+    "recipe_id": "94de68d8ace08cd4a2f47149a81add75ebd391ba010b478bae08574d7f65fe36",
+    "eval_seconds": 49.2,
+    "date": "2026-10-07T20:10:37.479Z",
+    "match": true
+  },
+  "protected_test_edit": {
+    "expect": "guard",
+    "outcome": "rejected",
+    "reason": "guard",
+    "detail": "PROTECTED_PATH",
+    "effect": null,
+    "metrics": {},
+    "equivalence": null,
+    "seed": "7265706c61792d70",
+    "recipe_id": "94de68d8ace08cd4a2f47149a81add75ebd391ba010b478bae08574d7f65fe36",
+    "eval_seconds": 45.6,
+    "date": "2026-10-07T20:11:23.104Z",
+    "match": true
+  }
+}

@@ -1,0 +1,17 @@
+diff --git a/src/lib.zig b/src/lib.zig
+--- a/src/lib.zig
++++ b/src/lib.zig
+@@ -15,10 +15,10 @@ const pop16: [65536]u8 = blk: {
+ pub fn popcount(data: []const u8) u64 {
+     var total: u64 = 0;
+     var i: usize = 0;
+-    while (i + 2 <= data.len) : (i += 2) {
+-        total += pop16[(@as(u16, data[i]) << 8) | data[i + 1]];
++    while (i + 8 <= data.len) : (i += 8) {
++        total += @popCount(std.mem.readInt(u64, data[i..][0..8], .little));
+     }
+-    if (i < data.len) total += pop16[data[i]];
++    while (i < data.len) : (i += 1) total += @popCount(data[i]);
+     return total;
+ }
+ 

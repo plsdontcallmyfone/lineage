@@ -1,0 +1,46 @@
+{
+  "recipe_id": "94de68d8ace08cd4a2f47149a81add75ebd391ba010b478bae08574d7f65fe36",
+  "snapshot_id": "",
+  "runs": 5,
+  "stable": [
+    "lib_test.test.checksum wraps",
+    "lib_test.test.checksums of short inputs",
+    "lib_test.test.longest run",
+    "lib_test.test.popcount of a single byte",
+    "lib_test.test.popcount of ascii text",
+    "lib_test.test.popcount of empty input is zero",
+    "lib_test.test.report"
+  ],
+  "known_failures": [],
+  "quarantined": [],
+  "metrics": {
+    "bin_bytes": {
+      "enabled": true,
+      "cv": 0,
+      "base_value": 102136
+    },
+    "work_ir": {
+      "enabled": true,
+      "cv": 0,
+      "base_value": 163212853
+    }
+  },
+  "median_eval_seconds": 115,
+  "seed": "ca11b7a7e",
+  "recipe_name": "fixture-zigsize",
+  "repo": "fixture:zigsize",
+  "commit": "fe2f4f8a9f795a8a8fcd150e5da9f498801fb7b4",
+  "deps_digest": "ecfcc9fc2e777639f51c975e2525074f266b5ed86c8bcf43eec2b2493cd65af2",
+  "image_digest": "sha256:d2368f0312e00beae22c24887ad0cda96f13107b1284a4a269893941171aff01",
+  "date": "2026-10-07T20:04:17.158Z",
+  "calibration_wall_seconds": 119.8,
+  "counts": {
+    "stable": 7,
+    "known_failures": 0,
+    "quarantined": 0,
+    "excluded": 0
+  },
+  "notes": [
+    "calibration wall time 120 s"
+  ]
+}

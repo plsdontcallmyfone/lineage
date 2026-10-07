@@ -1,0 +1,15 @@
+diff --git a/src/lib.zig b/src/lib.zig
+--- a/src/lib.zig
++++ b/src/lib.zig
+@@ -4,9 +4,9 @@
+ const std = @import("std");
+ 
+ /// Set bits of every 16-bit value, computed at compile time.
+-const pop16: [65536]u8 = blk: {
++const pop16: [65536]u16 = blk: {
+     @setEvalBranchQuota(1_000_000);
+-    var t: [65536]u8 = undefined;
++    var t: [65536]u16 = undefined;
+     for (&t, 0..) |*e, i| e.* = @popCount(@as(u16, @intCast(i)));
+     break :blk t;
+ };

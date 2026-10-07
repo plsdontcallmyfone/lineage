@@ -1,0 +1,71 @@
+{
+  "recipe_id": "e9418302758d1a33b4f3f11d233e3e65731e145044271ead9542ee8c459239f1",
+  "snapshot_id": "",
+  "runs": 5,
+  "stable": [
+    "clap.args.test.SliceIterator",
+    "clap.codepoint_counting_writer.decltest.CodepointCountingWriter",
+    "clap.codepoint_counting_writer.test.handles partial UTF-8 writes",
+    "clap.parsers.test.enumeration",
+    "clap.parsers.test.float",
+    "clap.parsers.test.int",
+    "clap.parsers.test.string",
+    "clap.streaming.test.all params",
+    "clap.streaming.test.different assignment separators",
+    "clap.streaming.test.errors",
+    "clap.streaming.test.long params",
+    "clap.streaming.test.positional params",
+    "clap.streaming.test.short params",
+    "clap.test.Diagnostic.report",
+    "clap.test.clap.help",
+    "clap.test.different assignment separators",
+    "clap.test.empty",
+    "clap.test.errors",
+    "clap.test.everything",
+    "clap.test.multiple positionals",
+    "clap.test.overflow-safe",
+    "clap.test.parseParams",
+    "clap.test.single positional",
+    "clap.test.str and u64",
+    "clap.test.terminating positional",
+    "clap.test.usage",
+    "clap.test_0"
+  ],
+  "known_failures": [],
+  "quarantined": [],
+  "metrics": {
+    "examples_bytes": {
+      "enabled": true,
+      "cv": 0,
+      "base_value": 134616
+    },
+    "parse_ir": {
+      "enabled": true,
+      "cv": 0,
+      "base_value": 28928342
+    },
+    "help_ir": {
+      "enabled": true,
+      "cv": 0,
+      "base_value": 23271135
+    }
+  },
+  "median_eval_seconds": 37,
+  "seed": "ca11b7a7e",
+  "recipe_name": "zig-clap",
+  "repo": "https://github.com/Hejsil/zig-clap",
+  "commit": "c499116264c348e4a98d939917b2446cad79d5fb",
+  "deps_digest": "ecfcc9fc2e777639f51c975e2525074f266b5ed86c8bcf43eec2b2493cd65af2",
+  "image_digest": "sha256:d2368f0312e00beae22c24887ad0cda96f13107b1284a4a269893941171aff01",
+  "date": "2026-10-07T20:07:08.008Z",
+  "calibration_wall_seconds": 33.8,
+  "counts": {
+    "stable": 27,
+    "known_failures": 0,
+    "quarantined": 0,
+    "excluded": 0
+  },
+  "notes": [
+    "calibration wall time 34 s"
+  ]
+}

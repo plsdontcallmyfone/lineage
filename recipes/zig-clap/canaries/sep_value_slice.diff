@@ -1,0 +1,13 @@
+diff --git a/clap/streaming.zig b/clap/streaming.zig
+--- a/clap/streaming.zig
++++ b/clap/streaming.zig
+@@ -151,9 +151,6 @@ pub fn Clap(comptime Id: type, comptime ArgIterator: type) type {
+                     return Arg(Id){ .param = param, .value = value };
+                 }
+ 
+-                if (next_is_separator)
+-                    return Arg(Id){ .param = param, .value = arg[next_index + 1 ..] };
+-
+                 return Arg(Id){ .param = param, .value = arg[next_index..] };
+             }
+ 

@@ -1,0 +1,12 @@
+diff --git a/clap/streaming.zig b/clap/streaming.zig
+--- a/clap/streaming.zig
++++ b/clap/streaming.zig
+@@ -109,7 +109,7 @@ pub fn Clap(comptime Id: type, comptime ArgIterator: type) type {
+             }
+         }
+ 
+-        fn chaining(parser: *@This(), state: State.Chaining) !?Arg(Id) {
++        inline fn chaining(parser: *@This(), state: State.Chaining) !?Arg(Id) {
+             const arg = state.arg;
+             const index = state.index;
+             const next_index = index + 1;

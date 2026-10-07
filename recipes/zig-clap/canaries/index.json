@@ -1,0 +1,29 @@
+{
+  "sep_value_slice": {
+    "name": "sep_value_slice",
+    "kind": "slim",
+    "target": "examples_bytes",
+    "expect": "tests_fail",
+    "note": "Presented as removing a branch that duplicates the fallthrough in short-option chaining; '-a=0' now yields the value '=0'.",
+    "lines": 3,
+    "guard": "ok"
+  },
+  "long_lastsep": {
+    "name": "long_lastsep",
+    "kind": "perf",
+    "target": "parse_ir",
+    "expect": "equivalence_changed",
+    "note": "Presented as scanning long options for the separator from the end; '--string=k=v' now splits at the last '=' and is rejected as an unknown option. No upstream test has a separator inside a long option's value.",
+    "lines": 2,
+    "guard": "ok"
+  },
+  "inline_chaining": {
+    "name": "inline_chaining",
+    "kind": "slim",
+    "target": "examples_bytes",
+    "expect": "no_improvement",
+    "note": "Presented as letting LLVM fold the chaining state machine into its callers; it duplicates the function at both call sites instead.",
+    "lines": 2,
+    "guard": "ok"
+  }
+}

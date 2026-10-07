@@ -1,0 +1,41 @@
+diff --git a/clap.zig b/clap.zig
+--- a/clap.zig
++++ b/clap.zig
+@@ -544,21 +544,22 @@ pub const Diagnostic = struct {
+         if (longest.kind == .positional)
+             longest.name = diag.arg;
+ 
+-        switch (err) {
+-            streaming.Error.DoesntTakeValue => try stream.print(
+-                "The argument '{s}{s}' does not take a value\n",
+-                .{ longest.kind.prefix(), longest.name },
+-            ),
+-            streaming.Error.MissingValue => try stream.print(
+-                "The argument '{s}{s}' requires a value but none was supplied\n",
+-                .{ longest.kind.prefix(), longest.name },
+-            ),
+-            streaming.Error.InvalidArgument => try stream.print(
+-                "Invalid argument '{s}{s}'\n",
+-                .{ longest.kind.prefix(), longest.name },
+-            ),
+-            else => try stream.print("Error while parsing arguments: {s}\n", .{@errorName(err)}),
+-        }
++        // One writeAll per piece instead of one `print` instantiation per message keeps the
++        // reporter small in every program that links it. Output is unchanged.
++        const before: []const u8, const after: []const u8 = switch (err) {
++            streaming.Error.DoesntTakeValue => .{ "The argument '", "' does not take a value\n" },
++            streaming.Error.MissingValue => .{ "The argument '", "' requires a value but none was supplied\n" },
++            streaming.Error.InvalidArgument => .{ "Invalid argument '", "'\n" },
++            else => {
++                try stream.writeAll("Error while parsing arguments: ");
++                try stream.writeAll(@errorName(err));
++                return stream.writeAll("\n");
++            },
++        };
++        try stream.writeAll(before);
++        try stream.writeAll(longest.kind.prefix());
++        try stream.writeAll(longest.name);
++        try stream.writeAll(after);
+     }
+ 
+     /// Wrapper around `report`, which writes to a file in a buffered manner

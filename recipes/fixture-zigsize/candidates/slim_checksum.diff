@@ -1,0 +1,37 @@
+diff --git a/src/lib.zig b/src/lib.zig
+--- a/src/lib.zig
++++ b/src/lib.zig
+@@ -28,21 +28,25 @@ pub fn Checksum(comptime T: type) type {
+         pub const width = @bitSizeOf(T);
+ 
+         pub fn compute(data: []const u8) T {
+-            var acc: T = 0;
+-            var i: usize = 0;
+-            while (i + 4 <= data.len) : (i += 4) {
+-                inline for (0..4) |k| acc = acc *% 31 +% @as(T, data[i + k]);
+-            }
+-            while (i < data.len) : (i += 1) acc = acc *% 31 +% @as(T, data[i]);
+-            return acc;
++            return @truncate(checksum64(data));
+         }
+ 
+         pub fn hex(data: []const u8, buf: []u8) []const u8 {
+-            return std.fmt.bufPrint(buf, "{x:0>" ++ std.fmt.comptimePrint("{d}", .{width / 4}) ++ "}", .{compute(data)}) catch unreachable;
++            return hexN(compute(data), width / 4, buf);
+         }
+     };
+ }
+ 
++fn checksum64(data: []const u8) u64 {
++    var acc: u64 = 0;
++    for (data) |byte| acc = acc *% 31 +% byte;
++    return acc;
++}
++
++fn hexN(v: u64, digits: usize, buf: []u8) []const u8 {
++    return std.fmt.bufPrint(buf, "{x:0>[1]}", .{ v, digits }) catch unreachable;
++}
++
+ pub const Sums = struct {
+     c8: u8,
+     c16: u16,

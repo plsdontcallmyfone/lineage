@@ -1,0 +1,12 @@
+diff --git a/clap/streaming.zig b/clap/streaming.zig
+--- a/clap/streaming.zig
++++ b/clap/streaming.zig
+@@ -59,7 +59,7 @@ pub fn Clap(comptime Id: type, comptime ArgIterator: type) type {
+             const arg = arg_info.arg;
+             switch (arg_info.kind) {
+                 .long => {
+-                    const eql_index = std.mem.indexOfAny(u8, arg, parser.assignment_separators);
++                    const eql_index = std.mem.lastIndexOfAny(u8, arg, parser.assignment_separators);
+                     const name = if (eql_index) |i| arg[0..i] else arg;
+                     const maybe_value = if (eql_index) |i| arg[i + 1 ..] else null;
+ 

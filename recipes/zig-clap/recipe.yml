@@ -1,0 +1,84 @@
+# Hejsil/zig-clap: command line argument parsing for Zig (parameters declared as help text and
+# parsed at comptime, plus help and usage rendering). MIT licence (LICENSE). No contribution
+# policy against AI-generated changes (no CONTRIBUTING file; README and .github checked
+# 2026-10-07).
+#
+# Snapshot: c499116 (2025-11-26), the last commit on master before the move to Zig 0.16-dev APIs
+# (the next commit, c56c0ba, uses @Struct). build.zig.zon declares minimum_zig_version 0.15.1;
+# the image pins Zig 0.15.2. No package dependencies, so prepare is empty and everything after it
+# runs offline.
+#
+# Class zig (SPEC 6.1). Primary metric: total bytes of upstream's six example executables
+# (`zig build examples`, the build step upstream CI runs) built ReleaseSmall. They are the
+# library's own consumers, so the metric is what the library costs a program that uses it.
+# Secondary: cachegrind instruction count of the seeded harness workloads (parse and help).
+#
+# Determinism (checked by calibration, values in calibration.json):
+# - Every compile pins -Dtarget/-target aarch64-linux-musl and cpu baseline. The default target
+#   is `native`, which bakes the host CPU model and the running kernel and glibc versions into
+#   the compilation, so verifiers on different arm64 hosts could build different bytes.
+# - Two builds of the same tree in fresh containers produce byte-identical examples
+#   (build.reproducible + artifacts digest). ReleaseSmall strips debug info by default and no
+#   build path, timestamp or build id ends up in the binaries.
+#
+# Tests: upstream CI runs `zig test clap.zig` (in four optimize modes). Here it runs once
+# (Debug, all safety checks) with the overlay's TAP runner so each test has a stable id. Zig keeps
+# tests inline in the source files a patch may edit; tests cannot be path-protected, so the
+# equivalence harness (help, usage and parse results for seeded argument vectors) is the guard
+# against behaviour changes that weaken a test.
+name: zig-clap
+class: zig
+requires: { arch: arm64 }
+repo: https://github.com/Hejsil/zig-clap
+commit: "c499116264c348e4a98d939917b2446cad79d5fb"
+image: "lineage/zig:0.15.2@sha256:d2368f0312e00beae22c24887ad0cda96f13107b1284a4a269893941171aff01"
+workdir: /work/src
+prepare: []
+prepare_outputs: []
+build:
+  commands:
+    - zig build examples -Doptimize=ReleaseSmall -Dtarget=aarch64-linux-musl -Dcpu=baseline
+    - mkdir -p zig-out/lineage
+    - zig build-exe -target aarch64-linux-musl -mcpu=baseline --dep clap -ODebug -Mroot=lineage_equiv.zig -ODebug -Mclap=clap.zig --name lineage_equiv -femit-bin=zig-out/lineage/lineage_equiv
+    - zig build-exe -target aarch64-linux-musl -mcpu=baseline --dep clap -OReleaseFast -Mroot=lineage_bench.zig -OReleaseFast -Mclap=clap.zig --name lineage_bench -femit-bin=zig-out/lineage/lineage_bench
+  artifacts: ["zig-out/bin/*"]
+  reproducible: true
+test:
+  command: zig test -target aarch64-linux-musl -mcpu=baseline --test-runner lineage_tap_runner.zig clap.zig
+  parser: tap
+  exclude: []
+  timeout_s: 600
+equivalence:
+  command: zig-out/lineage/lineage_equiv
+  output: stdout-digest
+metrics:
+  - name: examples_bytes
+    kind: slim
+    direction: lower
+    deterministic: true
+    tolerance: 0
+    command: cat zig-out/bin/help zig-out/bin/simple zig-out/bin/simple-ex zig-out/bin/streaming-clap zig-out/bin/subcommands zig-out/bin/usage | wc -c
+    parser: bytes
+    min_effect: 0.005
+  - name: parse_ir
+    kind: perf
+    direction: lower
+    deterministic: true
+    command: valgrind --tool=cachegrind --cache-sim=no --cachegrind-out-file=/dev/null zig-out/lineage/lineage_bench parse
+    parser: cachegrind-ir
+    holdout: true
+    min_effect: 0.01
+  - name: help_ir
+    kind: perf
+    direction: lower
+    deterministic: true
+    command: valgrind --tool=cachegrind --cache-sim=no --cachegrind-out-file=/dev/null zig-out/lineage/lineage_bench help
+    parser: cachegrind-ir
+    holdout: true
+    min_effect: 0.01
+patch:
+  allowed_paths: ["clap.zig", "clap/**"]
+  protected_paths: ["build.zig", "build.zig.zon", "example/**", ".github/**", "**/*.yml", "lineage_*"]
+  max_files: 5
+  max_lines: 200
+limits: { cpus: 2, memory_mb: 2048, pids: 256, wall_s: 900, disk_mb: 4096 }

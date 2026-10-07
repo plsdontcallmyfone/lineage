@@ -1,0 +1,27 @@
+diff --git a/src/lib.zig b/src/lib.zig
+--- a/src/lib.zig
++++ b/src/lib.zig
+@@ -3,22 +3,10 @@
+ //! it could be.
+ const std = @import("std");
+ 
+-/// Set bits of every 16-bit value, computed at compile time.
+-const pop16: [65536]u8 = blk: {
+-    @setEvalBranchQuota(1_000_000);
+-    var t: [65536]u8 = undefined;
+-    for (&t, 0..) |*e, i| e.* = @popCount(@as(u16, @intCast(i)));
+-    break :blk t;
+-};
+-
+ /// Number of set bits in `data`.
+ pub fn popcount(data: []const u8) u64 {
+     var total: u64 = 0;
+-    var i: usize = 0;
+-    while (i + 2 <= data.len) : (i += 2) {
+-        total += pop16[(@as(u16, data[i]) << 8) | data[i + 1]];
+-    }
+-    if (i < data.len) total += pop16[data[i]];
++    for (data) |b| total += @popCount(b & 0x7f);
+     return total;
+ }
+ 

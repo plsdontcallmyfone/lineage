@@ -1,0 +1,65 @@
+{
+  "slim_popcount": {
+    "name": "slim_popcount",
+    "kind": "slim",
+    "target": "bin_bytes",
+    "expect": "accepted",
+    "note": "Drops the 64 KiB comptime popcount table for @popCount per byte.",
+    "lines": 14,
+    "guard": "ok"
+  },
+  "slim_checksum": {
+    "name": "slim_checksum",
+    "kind": "slim",
+    "target": "bin_bytes",
+    "expect": "accepted",
+    "note": "One u64 checksum loop truncated to each width (wrapping multiply-add commutes with truncation) and one hex formatter with a runtime width, instead of eight instantiations of each.",
+    "lines": 20,
+    "guard": "ok"
+  },
+  "perf_popcount64": {
+    "name": "perf_popcount64",
+    "kind": "perf",
+    "target": "work_ir",
+    "expect": "accepted",
+    "note": "Counts eight bytes per @popCount on a little-endian u64 load instead of one table lookup per two bytes.",
+    "lines": 6,
+    "guard": "ok"
+  },
+  "equiv_change": {
+    "name": "equiv_change",
+    "kind": "slim",
+    "target": "bin_bytes",
+    "expect": "equivalence_changed",
+    "note": "Drops the table but counts only the low seven bits of each byte. The unit tests only use ASCII, so they pass; seeded random bytes do not.",
+    "lines": 14,
+    "guard": "ok"
+  },
+  "regress": {
+    "name": "regress",
+    "kind": "slim",
+    "target": "bin_bytes",
+    "expect": "no_improvement",
+    "note": "Widens the table entries to u16 'to avoid a widening load'; the table doubles to 128 KiB.",
+    "lines": 4,
+    "guard": "ok"
+  },
+  "break_tests": {
+    "name": "break_tests",
+    "kind": "slim",
+    "target": "bin_bytes",
+    "expect": "tests_fail",
+    "note": "Drops the table and counts 16 bits at a time, but forgets a trailing odd byte.",
+    "lines": 11,
+    "guard": "ok"
+  },
+  "protected_test_edit": {
+    "name": "protected_test_edit",
+    "kind": "slim",
+    "target": "bin_bytes",
+    "expect": "guard",
+    "note": "Edits a protected test file.",
+    "lines": 0,
+    "guard": "PROTECTED_PATH"
+  }
+}
