@@ -5,6 +5,7 @@
 #   base            rust:1.93.1-slim-bookworm (index digest below; host toolchain for tests and harnesses)
 #   platform tools  anza-xyz/platform-tools v1.57, platform-tools-linux-aarch64.tar.bz2 (sha256 checked)
 #   cargo-build-sbf 4.3.0 from crates.io (`cargo install --locked`), whose built-in default is v1.57
+#   protobuf-compiler from Debian bookworm
 #
 # Agave publishes no linux arm64 CLI binaries, but platform tools ship a linux-aarch64 build and
 # cargo-build-sbf is a plain crate, so this image is native arm64 (no emulation).
@@ -15,7 +16,7 @@
 # made at image build time (the root filesystem is read-only at run time), so cargo-build-sbf
 # finds it already linked and never downloads anything.
 #
-# Pruned from platform tools to save ~800 MB: clang, lldb, duplicate llc/opt and llvm utilities
+# Pruned from platform tools (1.66 GB extracted; about 0.94 GB removed, summed from the v1.57 tarball listing): clang, lldb, duplicate llc/opt and llvm utilities
 # in the host rustlib, rustdoc, rust library sources, and the sbpfv1/v2/v3 target libraries
 # (recipes build the default sbpf v0 target). C sources cannot be compiled for SBF in this image.
 FROM rust:1.93.1-slim-bookworm@sha256:5b9332190bb3b9ece73b810cd1f1e9f06343b294ce184bcb067f0747d7d333ea
@@ -56,6 +57,12 @@ RUN set -eux; \
     test -s target/deploy/smoke.so; \
     cd /; rm -rf /tmp/smoke /tmp/smoke-home; \
     chmod -R a+rX /opt/sbf /usr/local/rustup
+
+# protoc: prost-build needs it for mollusk-svm's `fuzz` feature, which Solana program test suites
+# commonly enable (solana-program/config does).
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends protobuf-compiler \
+ && rm -rf /var/lib/apt/lists/*
 
 RUN useradd -u 10001 -m runner
 ENV CARGO_HOME=/deps/cargo CARGO_INCREMENTAL=0 CARGO_TERM_COLOR=never

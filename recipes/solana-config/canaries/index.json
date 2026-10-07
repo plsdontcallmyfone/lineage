@@ -1,0 +1,26 @@
+{
+  "trust_loader_signers": {
+    "kind": "perf",
+    "target": "store_cu",
+    "expect": "tests_fail",
+    "note": "Presented as dropping a check the runtime already enforces; it is not enforced for accounts merely listed in the instruction, so an unsigned additional signer is accepted.",
+    "lines": 4,
+    "guard": "ok"
+  },
+  "cap_copy": {
+    "kind": "perf",
+    "target": "init_cu",
+    "expect": "equivalence_changed",
+    "note": "Caps the final account write at 1024 bytes as if nothing useful lived past the key region; large key lists lose their tail. Upstream tests never read back the data of a store that large.",
+    "lines": 3,
+    "guard": "ok"
+  },
+  "owned_signers": {
+    "kind": "perf",
+    "target": "store_cu",
+    "expect": "no_improvement",
+    "note": "Dressed up as avoiding borrows of the stored key list; it clones the whole list before filtering, so every instruction does more work.",
+    "lines": 5,
+    "guard": "ok"
+  }
+}

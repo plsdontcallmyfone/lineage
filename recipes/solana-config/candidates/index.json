@@ -1,0 +1,10 @@
+{
+  "dedupe_sort": {
+    "kind": "perf",
+    "target": "init_cu",
+    "expect": "accepted",
+    "note": "Duplicate (pubkey, is_signer) entries are found by sorting references to the new key list and comparing neighbours, instead of moving every entry into a BTreeSet (an allocation and a tree insert per key on SBF). Same set semantics: entries are compared as whole tuples.",
+    "lines": 7,
+    "guard": "ok"
+  }
+}

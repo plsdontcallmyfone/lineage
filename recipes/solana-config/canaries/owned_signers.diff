@@ -1,0 +1,16 @@
+diff --git a/program/src/processor.rs b/program/src/processor.rs
+--- a/program/src/processor.rs
++++ b/program/src/processor.rs
+@@ -89,9 +89,10 @@ pub fn process(program_id: &Pubkey, accounts: &[AccountInfo], input: &[u8]) -> P
+ 
+     let current_signer_keys: Vec<Pubkey> = current_data
+         .keys
+-        .iter()
++        .clone()
++        .into_iter()
+         .filter(|(_, is_signer)| *is_signer)
+-        .map(|(pubkey, _)| *pubkey)
++        .map(|(pubkey, _)| pubkey)
+         .collect();
+ 
+     if current_signer_keys.is_empty() {

@@ -1,0 +1,63 @@
+{
+  "recipe_id": "001cac1188fb00667371738ccef08909a5cfa9dab70c3f3ffc7de20924ab1b2f",
+  "snapshot_id": "",
+  "runs": 5,
+  "stable": [
+    "src/lib.rs::test_id",
+    "tests/functional.rs::test_config_bad_owner",
+    "tests/functional.rs::test_config_initialize_contains_duplicates_fails",
+    "tests/functional.rs::test_config_initialize_no_panic",
+    "tests/functional.rs::test_config_update_contains_duplicates_fails",
+    "tests/functional.rs::test_config_updates",
+    "tests/functional.rs::test_config_updates_requiring_config",
+    "tests/functional.rs::test_maximum_keys_input",
+    "tests/functional.rs::test_process_create_ok",
+    "tests/functional.rs::test_process_store_bad_config_account",
+    "tests/functional.rs::test_process_store_fail_account0_not_signer",
+    "tests/functional.rs::test_process_store_fail_instruction_data_too_large",
+    "tests/functional.rs::test_process_store_ok",
+    "tests/functional.rs::test_process_store_with_additional_signers",
+    "tests/functional.rs::test_process_store_with_bad_additional_signer",
+    "tests/functional.rs::test_safe_deserialize",
+    "tests/functional.rs::test_safe_deserialize_from_state",
+    "tests/functional.rs::test_store_requiring_config",
+    "tests/functional.rs::test_write_same_data_to_readonly"
+  ],
+  "known_failures": [],
+  "quarantined": [],
+  "metrics": {
+    "init_cu": {
+      "enabled": true,
+      "cv": 0,
+      "base_value": 276107
+    },
+    "store_cu": {
+      "enabled": true,
+      "cv": 0,
+      "base_value": 440271
+    },
+    "so_bytes": {
+      "enabled": true,
+      "cv": 0,
+      "base_value": 138392
+    }
+  },
+  "median_eval_seconds": 158,
+  "seed": "ca11b7a7e",
+  "recipe_name": "solana-config",
+  "repo": "https://github.com/solana-program/config",
+  "commit": "3a2712117eaebd4a30214bccf1bd9ba5365ae328",
+  "deps_digest": "c77ded8ec76b6449ca5da776fad6e854e7a3788197acbd773c06c75b0ba72788",
+  "image_digest": "sha256:6fea6918f9e9228d41e79f849e6d791cf64e3acbb585b0548d5f49bb46af86a1",
+  "date": "2026-10-07T20:16:57.554Z",
+  "calibration_wall_seconds": 84,
+  "counts": {
+    "stable": 19,
+    "known_failures": 0,
+    "quarantined": 0,
+    "excluded": 0
+  },
+  "notes": [
+    "calibration wall time 84 s"
+  ]
+}

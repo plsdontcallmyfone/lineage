@@ -1,0 +1,90 @@
+# solana-program/config: the Solana Config program (Core BPF port of the native Config builtin).
+# Apache-2.0 (LICENSE; Cargo.toml license-file). No CONTRIBUTING file and no contribution policy
+# against AI-generated changes in README or the repository (checked 2026-10-07).
+#
+# Why: a real, deployed program whose upstream already tracks compute units per release
+# (program/benches/compute_units.md), with offline mollusk tests and visible headroom: every
+# instruction bincode-deserializes the key list twice (instruction data and stored state),
+# collects signers into a Vec, dedupes through a BTreeSet and scans signers quadratically.
+#
+# Class `solana` (SPEC 6.1): the primary metrics are compute units, measured in-process by the
+# overlay harness (lineage_harness, mollusk-svm 0.12.0 pinned by its Cargo.lock, the same mollusk
+# line upstream tests with). prepare builds it once into /deps/harness; it loads the program .so
+# from the tree under test, so base and candidate are metered by one binary a patch cannot touch.
+# Workloads come only from $LINEAGE_SEED: 24 instructions per metric, 0 to 37 keys (the program's
+# maximum), random signer flags, payloads and account slack.
+#
+# Upstream tests pin exact compute units (Check::compute_units(...)), which would fail every
+# improvement. The build strips those pins from program/tests/functional.rs (tests are protected,
+# so a patch cannot change this); every behavioural check in those tests still runs, and the CU
+# metric is the judge of compute units. Upstream's rust-toolchain.toml (1.93.1) is the image's
+# host toolchain; SBF builds use platform tools v1.57 through cargo-build-sbf 4.3.0.
+#
+# Tests run with RUST_LOG=error and one test thread: mollusk logs every program message to stderr,
+# and with parallel tests those lines could split a libtest result line (the first calibration
+# quarantined one test that then passed in 18 further full-suite runs under the same limits). One thread costs a few seconds.
+name: solana-config
+class: solana
+requires: { arch: arm64 }
+repo: https://github.com/solana-program/config
+commit: "3a2712117eaebd4a30214bccf1bd9ba5365ae328"
+image: "lineage/solana:m1@sha256:6fea6918f9e9228d41e79f849e6d791cf64e3acbb585b0548d5f49bb46af86a1"
+workdir: /work/src
+prepare:
+  - cargo fetch --locked
+  - cd lineage_harness && cargo build --release --locked --target-dir /deps/harness
+prepare_outputs: []
+build:
+  commands:
+    - sed -i -E 's/Check::compute_units\([0-9_]+\),?//g' program/tests/functional.rs
+    - cargo build-sbf --offline --manifest-path program/Cargo.toml -- --locked
+    - CARGO_PROFILE_DEV_DEBUG=0 cargo test -p solana-config-program --offline --locked --no-run
+  artifacts: ["target/deploy/solana_config_program.so"]
+  reproducible: true
+test:
+  command: RUST_LOG=error SBF_OUT_DIR=/work/src/target/deploy CARGO_PROFILE_DEV_DEBUG=0 cargo test -p solana-config-program --offline --locked --no-fail-fast -- --test-threads=1 2>&1
+  parser: libtest
+  exclude: []
+  timeout_s: 900
+equivalence:
+  command: /deps/harness/release/lineage-cu equiv "$LINEAGE_SEED" target/deploy/solana_config_program.so
+  output: stdout-digest
+metrics:
+  - name: init_cu
+    kind: perf
+    direction: lower
+    deterministic: true
+    command: /deps/harness/release/lineage-cu cu init "$LINEAGE_SEED" target/deploy/solana_config_program.so
+    parser: number
+    holdout: true
+    min_effect: 0.01
+  - name: store_cu
+    kind: perf
+    direction: lower
+    deterministic: true
+    command: /deps/harness/release/lineage-cu cu store "$LINEAGE_SEED" target/deploy/solana_config_program.so
+    parser: number
+    holdout: true
+    min_effect: 0.01
+  - name: so_bytes
+    kind: slim
+    direction: lower
+    deterministic: true
+    command: wc -c < target/deploy/solana_config_program.so
+    parser: bytes
+    min_effect: 0.005
+patch:
+  allowed_paths: ["program/src/**"]
+  protected_paths:
+    - "program/tests/**"
+    - "program/benches/**"
+    - "program/fuzz/**"
+    - "**/Cargo.toml"
+    - "Cargo.lock"
+    - "rust-toolchain.toml"
+    - ".github/**"
+    - "**/*.yml"
+    - "lineage_harness/**"
+  max_files: 5
+  max_lines: 200
+limits: { cpus: 4, memory_mb: 4096, pids: 512, wall_s: 2400, disk_mb: 6144 }
