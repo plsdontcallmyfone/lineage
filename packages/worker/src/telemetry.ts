@@ -81,11 +81,20 @@ export class Telemetry {
     void this.beat();
   }
 
+  /** Flushes activity and says goodbye with an idle heartbeat, so the wall does not show a stale job. */
   async stop(): Promise<void> {
     for (const t of this.timers) clearInterval(t);
     this.timers = [];
     if (this.pendingBeat) clearTimeout(this.pendingBeat);
+    this.pendingBeat = null;
     await this.flush();
+    if (!this.enabled) return;
+    this.state = { ...IDLE };
+    const wait = 1000 - (Date.now() - this.lastBeat);
+    if (wait > 0) await Bun.sleep(wait);
+    await this.beat();
+    if (this.pendingBeat) clearTimeout(this.pendingBeat);
+    this.pendingBeat = null;
   }
 
   // ------------------------------------------------------------------ state
