@@ -54,6 +54,9 @@ function envOk(r: ReplayResult, calib: Calibration, excluded: Set<string>): bool
 
 type FieldValue = string;
 
+/** Fields whose honest value depends on the replay seed. */
+const SEED_DEPENDENT = new Set(["equivalence"]);
+
 /**
  * Deterministic fields of one replay. Numeric deterministic metrics are compared with tolerance
  * separately (see metricClusters), everything else is compared by exact string value.
@@ -154,31 +157,38 @@ export function judge(
   const fieldsById = new Map(counted.map((r) => [r.replay_id, exactFields(r.result, recipe, calib)]));
   const allFieldNames = sortedUniq(counted.flatMap((r) => Object.keys(fieldsById.get(r.replay_id)!)));
   let unresolved = false;
-  for (const name of allFieldNames) {
-    const items = counted.map((r) => ({ id: r.replay_id, ref: !!r.reference, v: fieldsById.get(r.replay_id)![name] ?? "<absent>" }));
-    const m = majority(items, (a, b) => a === b);
-    if (m && m.winners.size === items.length) continue;
-    disputed_fields.push(name);
+  // Seed-independent fields are compared across every counted replay. Seed-dependent ones
+  // (equivalence and deterministic metric values) only among replays that ran the same seed:
+  // honest replays of different inputs legitimately differ (SPEC 10.2, 10.3).
+  const bySeed = new Map<string, RevealedReplay[]>();
+  for (const r of counted) bySeed.set(r.seed, [...(bySeed.get(r.seed) ?? []), r]);
+  const groups = [...bySeed.values()].filter((g) => g.length >= 2);
+  const resolve = <T>(name: string, items: { id: Hex; ref: boolean; v: T }[], same: (a: T, b: T) => boolean) => {
+    if (items.length < 2) return;
+    const m = majority(items, same);
+    if (m && m.winners.size === items.length) return;
+    if (!disputed_fields.includes(name)) disputed_fields.push(name);
     if (!m) unresolved = true;
-    else winners = new Set([...winners].filter((id) => m.winners.has(id)));
+    else winners = new Set([...winners].filter((id) => m.winners.has(id) || !items.some((i) => i.id === id)));
+  };
+  for (const name of allFieldNames) {
+    const value = (r: RevealedReplay) => ({ id: r.replay_id, ref: !!r.reference, v: fieldsById.get(r.replay_id)![name] ?? "<absent>" });
+    if (SEED_DEPENDENT.has(name)) for (const g of groups) resolve(name, g.map(value), (a, b) => a === b);
+    else resolve(name, counted.map(value), (a, b) => a === b);
   }
-  const detMetrics = recipe.metrics.filter((m) => m.deterministic);
-  for (const metric of detMetrics) {
-    const items = counted
-      .filter((r) => r.result.metrics[metric.name])
-      .map((r) => {
-        const s = r.result.metrics[metric.name]!;
-        return { id: r.replay_id, ref: !!r.reference, v: [median(s.base), s.cand.length ? median(s.cand) : NaN] as const };
-      });
-    if (items.length < 2) continue;
+  for (const metric of recipe.metrics.filter((m) => m.deterministic)) {
     const tol = metric.tolerance ?? cfg.det_tolerance;
     const same = (a: readonly [number, number], b: readonly [number, number]) =>
       agree(a[0], b[0], tol) && (Number.isNaN(a[1]) ? Number.isNaN(b[1]) : agree(a[1], b[1], tol));
-    const m = majority(items, same);
-    if (m && m.winners.size === items.length) continue;
-    disputed_fields.push(`metric:${metric.name}`);
-    if (!m) unresolved = true;
-    else winners = new Set([...winners].filter((id) => m.winners.has(id) || !items.some((i) => i.id === id)));
+    for (const g of groups) {
+      const items = g
+        .filter((r) => r.result.metrics[metric.name])
+        .map((r) => {
+          const s = r.result.metrics[metric.name]!;
+          return { id: r.replay_id, ref: !!r.reference, v: [median(s.base), s.cand.length ? median(s.cand) : NaN] as const };
+        });
+      resolve(`metric:${metric.name}`, items, same);
+    }
   }
 
   if (unresolved || (disputed_fields.length > 0 && counted.length < 3)) {

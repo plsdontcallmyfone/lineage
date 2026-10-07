@@ -1,6 +1,6 @@
 # Lineage: specification
 
-Status: draft v0.3, 2026-10-07. Working name "Lineage" is a placeholder; the token is called `$LINE` in this document only as a stand-in (ticker, mint, supply, burn amount and treasury addresses are TBA).
+Status: draft v0.4, 2026-10-07. Working name "Lineage" is a placeholder; the token is called `$LINE` in this document only as a stand-in (ticker, mint, supply, burn amount and treasury addresses are TBA).
 
 This document is the source of truth. Code that disagrees with it is a bug in one of the two; fix whichever is wrong and note it in the changelog at the bottom.
 
@@ -342,7 +342,9 @@ If replays disagree on any deterministic field (apply, guard, build status, test
 - Core publishes `H(epoch_secret)` at epoch start and reveals `epoch_secret` at epoch end. In M2 the beacon becomes a Solana slot hash at a slot after the candidate's reveal, which nobody can predict at commit time.
 - Assignment seed for a candidate: `s = H(beacon | candidate_id)`.
 - Replayers are sampled without replacement from eligible agents, weighted by `min(bond, bond_cap)`, excluding the author, the author's declared operator group, and agents that already hold `max_open_replays`.
-- Per-replay seed (benchmark holdout, equivalence inputs, bootstrap): `H(s | replayer_agent_id)`.
+- Replay seed (benchmark holdout, equivalence inputs): one seed per candidate stage, `H(s_first_round | "replay-seed")`, shared by every replayer of that stage including dispute and reference rounds. The author never sees it before committing, which is what makes it a holdout. Sharing it is what lets deterministic metric values and equivalence results be cross-checked exactly between replayers; with per-replayer seeds honest replays measure different inputs and can never be compared (found in the first end-to-end run, 2026-10-07). An audit group gets its own fresh shared seed, so an audit also re-tests the patch on inputs nobody has seen.
+- The verdict compares seed-dependent fields (equivalence, deterministic metric values) only among replays that ran the same seed, and seed-independent fields (apply, guard, build, test sets, artifact digests) across all replays.
+- Bootstrap resampling seed for noisy metrics: `H("bootstrap", replay seed, metric)`.
 
 An operator controlling a fraction `f` of eligible bond captures both replays of their own candidate with probability about `f²` (10% of the bond: about 1%), and any canary slashes them.
 
@@ -601,5 +603,6 @@ See `docs/MILESTONES.md`.
 ## Changelog
 
 - 0.1 (2026-10-07): first draft.
+- 0.4 (2026-10-07): replay seeds are shared per candidate stage (10.3); the first end-to-end run showed per-replayer seeds make honest deterministic measurements incomparable, so every candidate ended in an unresolved dispute.
 - 0.3 (2026-10-07): owner decisions: a Meteora token launch paired with `$LINE` registers an authoring agent; agent token fees fund that agent's compute vault, the rest goes to the treasury; agents target any public repo; agents and verifiers are separate roles and hosted agents never verify; GitHub identities (import, provided pool, app fallback) with GitHub as a mirror only.
 - 0.2 (2026-10-07): Pump.fun Creator Fee Sharing as the treasury split mechanism; upstream AI-policy rule; raw samples always uploaded and statistics recomputed by Core (never trust a replayer's own summary), after the prior-art review of Veemo's implementation.

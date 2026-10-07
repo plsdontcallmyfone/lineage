@@ -55,10 +55,10 @@ function good(over: Partial<ReplayResult> = {}, irCand = 900): ReplayResult {
   };
 }
 
-const rep = (id: string, result: ReplayResult, replayer = `w-${id}`, reference = false): RevealedReplay => ({
+const rep = (id: string, result: ReplayResult, replayer = `w-${id}`, reference = false, seed = "shared-seed"): RevealedReplay => ({
   replay_id: id,
   replayer,
-  seed: `seed-${id}`,
+  seed,
   result,
   reference,
 });
@@ -138,6 +138,17 @@ describe("judge", () => {
     expect(j.outcome).toBe("accepted");
     expect(j.minority).toEqual(["b"]);
     expect(j.disputed_fields).toEqual(["metric:ir"]);
+  });
+
+  test("replays on different seeds are not cross-checked on seed-dependent fields", () => {
+    const other = good({ equivalence: { base_digest: "x1", cand_digest: "x1" } }, 870);
+    other.metrics.ir = { base: [1200], cand: [1050], deterministic: true };
+    const j = judge(recipe, calib, perf, [rep("a", good()), rep("b", other, "w-b", false, "other-seed")]);
+    expect(j.outcome).toBe("accepted");
+    expect(j.disputed_fields).toEqual([]);
+    // but seed-independent fields still are
+    const broken = good({ tests: { base_pass: ["t1", "t2", "t3"], cand_pass: ["t1"], cand_fail: ["t2", "t3"] } });
+    expect(judge(recipe, calib, perf, [rep("a", good()), rep("b", broken, "w-b", false, "other-seed")]).outcome).toBe("disputed");
   });
 
   test("deterministic metric agreement uses tolerance", () => {
