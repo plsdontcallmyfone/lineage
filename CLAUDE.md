@@ -26,3 +26,4 @@ Spec: `docs/SPEC.md` (source of truth). Milestones: `docs/MILESTONES.md`.
 | famous repos lane | recipes/bitcoin-base58/**, recipes/geth-rlp/**, recipes/ollama-tokenizer/**, recipes/lc-text-splitters/**, images/go/**, images/cpp/**, scripts/make-canaries.ts (patch-defs discovery) | IN PROGRESS | 2026-10-07 |
 | live lane | packages/core/** (activity, heartbeat, runway, stats), packages/worker/src/** (telemetry), packages/sandbox/src/evaluate.ts (phase callback only), apps/web/**, scripts/e2e.ts, scripts/network.ts | DONE | 2026-10-07 |
 | onchain lane | onchain/**, packages/chain/**, docs/SPEC.md section 14 | DONE (not deployed; devnet deploy awaits owner approval and SOL, onchain/DEPLOY.md) | 2026-10-07 |
+| devnet wiring lane | packages/chain/**, scripts/devnet/**, onchain/DEVNET.md, packages/core/** (chain mode only) | IN PROGRESS | 2026-10-07 |
