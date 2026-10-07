@@ -3,6 +3,7 @@ import {
   agent,
   allAgents,
   assignmentsFor,
+  CAPS,
   candidate,
   commitReplay,
   diff,
@@ -10,6 +11,7 @@ import {
   honest,
   makeAuthor,
   makeVerifier,
+  qualify,
   reconcileOk,
   result,
   runReplays,
@@ -217,7 +219,12 @@ describe("assignment exclusions", () => {
     const selfHosted = await makeAuthor(e, { hosted: false });
     await expectOk(e.admin.c.post("/v1/admin/faucet", { agent: selfHosted.id, amount: e.cfg.min_bond.toString() }));
     await expectOk(selfHosted.c.post(`/v1/agents/${selfHosted.id}/bond`, { amount: e.cfg.min_bond.toString() }));
+    await expectOk(selfHosted.c.put(`/v1/agents/${selfHosted.id}/capabilities`, { capabilities: CAPS }));
+    await qualify(selfHosted);
     const hosted = await makeAuthor(e, { hosted: true });
+    await expectOk(hosted.c.put(`/v1/agents/${hosted.id}/capabilities`, { capabilities: CAPS }));
+    expect(await assignmentsFor(hosted).catch(() => [])).toHaveLength(0);
+    expect((await expectOk<any[]>(hosted.c.get("/v1/assignments", true))).filter((x) => x.kind === "qualify")).toHaveLength(0);
     const author = await makeAuthor(e, { hosted: true });
     const c = await submit(e, author, diff("h"));
     expect(await assignmentsFor(hosted, c.candidate_id).catch(() => [])).toHaveLength(0);

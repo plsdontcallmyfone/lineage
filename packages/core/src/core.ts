@@ -25,6 +25,9 @@ import {
   judge,
   leafHash,
   lineageId,
+  median,
+  relDiff,
+  satisfies,
   merkleProof,
   merkleRoot,
   patchCommitment,
@@ -39,6 +42,7 @@ import {
   verifyProof,
   Rng,
   type Calibration,
+  type Capabilities,
   type CandidateKind,
   type CandidateView,
   type Eligible,
@@ -109,6 +113,29 @@ interface AgentRow {
   suspended_through_epoch: number;
   unbond_amount: string;
   unbond_ready_at: number | null;
+  capabilities: string | null;
+  capabilities_at: number | null;
+}
+
+interface QualRow {
+  qual_id: string;
+  agent_id: string;
+  lineage_id: string;
+  recipe_id: string;
+  attempt: number;
+  seed: string;
+  status: "assigned" | "committed" | "passed" | "failed" | "expired" | "revoked" | "cancelled";
+  capabilities: string | null;
+  commitment: string | null;
+  result: string | null;
+  salt: string | null;
+  reason: string | null;
+  assigned_at: number;
+  commit_deadline: number;
+  committed_at: number | null;
+  reveal_deadline: number | null;
+  revealed_at: number | null;
+  resolved_at: number | null;
 }
 
 interface LineageRow {
@@ -215,7 +242,7 @@ interface AuditRow {
   audit_id: string;
   gen_id: string;
   candidate_id: string;
-  status: "pending" | "agreed" | "reverted" | "inconclusive";
+  status: "pending" | "agreed" | "reverted" | "inconclusive" | "weak";
   want_replays: number;
   want_reference: number;
   rounds: number;
@@ -223,6 +250,7 @@ interface AuditRow {
   created_at: number;
   resolved_at: number | null;
   epoch: number;
+  detail: string | null;
 }
 
 interface EpochRow {
@@ -443,13 +471,14 @@ export class Core {
       if (this.agentRow(agent)) throw conflict("already_registered", "agent already registered");
       const operator = b.operator === undefined || b.operator === null ? null : String(b.operator);
       if (operator !== null && !/^[\w.:-]{1,64}$/.test(operator)) throw bad("bad_operator", "operator must be 1-64 word characters");
+      const caps = b.capabilities === undefined || b.capabilities === null ? null : validateCapabilities(b.capabilities);
       const wallet = this.ledger.balance(ACC.wallet(agent));
       if (wallet < this.cfg.register_burn) throw forbidden("insufficient_funds", `register_burn is ${this.cfg.register_burn}, wallet holds ${wallet}`);
       this.ledger.transfer(ACC.wallet(agent), ACC.burned, this.cfg.register_burn, "register_burn", agent);
       this.db
-        .query("INSERT INTO agents (agent_id, kind, operator, registered_at, lifecycle) VALUES (?, 'verifier', ?, ?, 'active')")
-        .run(agent, operator, this.now());
-      this.emit("agent.registered", { agent, kind: "verifier", operator });
+        .query("INSERT INTO agents (agent_id, kind, operator, registered_at, lifecycle, capabilities, capabilities_at) VALUES (?, 'verifier', ?, ?, 'active', ?, ?)")
+        .run(agent, operator, this.now(), caps ? canonicalJson(caps) : null, caps ? this.now() : null);
+      this.emit("agent.registered", { agent, kind: "verifier", operator, capabilities: caps });
       return this.agentView(agent);
     });
   }
@@ -496,6 +525,35 @@ export class Core {
       this.mustAgent(agent);
       this.db.query("UPDATE agents SET reference = ? WHERE agent_id = ?").run(reference ? 1 : 0, agent);
       this.emit("agent.reference", { agent, reference });
+      this.fillWants();
+      return this.agentView(agent);
+    });
+  }
+
+  /**
+   * Declares or replaces an agent's hardware capabilities (SPEC 6.1). Qualifications whose recipe the
+   * new capabilities no longer satisfy are revoked, and open qualification assignments for them are
+   * cancelled.
+   */
+  setCapabilities(agent: string, body: unknown) {
+    return this.tx(() => {
+      this.mustAgent(agent);
+      if (!isObj(body)) throw bad("bad_body", "{ capabilities } expected");
+      const caps = validateCapabilities(body.capabilities);
+      const now = this.now();
+      this.db.query("UPDATE agents SET capabilities = ?, capabilities_at = ? WHERE agent_id = ?").run(canonicalJson(caps), now, agent);
+      const revoked: string[] = [];
+      for (const q of this.db
+        .query<QualRow, [string]>("SELECT * FROM qualifications WHERE agent_id = ? AND status IN ('assigned','committed','passed') ORDER BY qual_id")
+        .all(agent)) {
+        if (satisfies(caps, this.recipeOf(q.recipe_id).requires)) continue;
+        const status = q.status === "passed" ? "revoked" : "cancelled";
+        this.db
+          .query("UPDATE qualifications SET status = ?, reason = ?, resolved_at = ? WHERE qual_id = ?")
+          .run(status, "declared capabilities no longer satisfy the recipe", now, q.qual_id);
+        revoked.push(q.lineage_id);
+      }
+      this.emit("agent.capabilities", { agent, capabilities: caps, revoked });
       this.fillWants();
       return this.agentView(agent);
     });
@@ -685,12 +743,29 @@ export class Core {
     );
   }
 
-  private eligiblePool(excludeAgents: Set<string>, excludeOperators: Set<string>): Eligible[] {
+  private capsOf(a: AgentRow): Capabilities | null {
+    return a.capabilities ? (JSON.parse(a.capabilities) as Capabilities) : null;
+  }
+
+  private hasPassedQualification(agent: string, lineage: string): boolean {
+    return !!this.db.query("SELECT 1 FROM qualifications WHERE agent_id = ? AND lineage_id = ? AND status = 'passed'").get(agent, lineage);
+  }
+
+  /**
+   * Eligible for a lineage (SPEC 6.1, 10.3): generally eligible, declared capabilities satisfy the
+   * recipe's requirements, and a passed qualification for the lineage.
+   */
+  private eligibleFor(a: AgentRow, epoch: number, lineage: LineageRow, recipe: Recipe): boolean {
+    return this.isEligible(a, epoch) && satisfies(this.capsOf(a), recipe.requires) && this.hasPassedQualification(a.agent_id, lineage.lineage_id);
+  }
+
+  private eligiblePool(excludeAgents: Set<string>, excludeOperators: Set<string>, lineage: LineageRow): Eligible[] {
     const epoch = this.currentEpoch().n;
+    const recipe = this.recipeOf(lineage.recipe_id);
     return this.db
       .query<AgentRow, []>("SELECT * FROM agents ORDER BY agent_id")
       .all()
-      .filter((a) => !excludeAgents.has(a.agent_id) && !(a.operator && excludeOperators.has(a.operator)) && this.isEligible(a, epoch))
+      .filter((a) => !excludeAgents.has(a.agent_id) && !(a.operator && excludeOperators.has(a.operator)) && this.eligibleFor(a, epoch, lineage, recipe))
       .map((a) => ({ agent: a.agent_id, bond: this.bondOf(a.agent_id), operator: a.operator ?? undefined }));
   }
 
@@ -751,6 +826,7 @@ export class Core {
       if (typeof c.median_eval_seconds !== "number" || !(c.median_eval_seconds > 0)) throw bad("bad_calibration", "median_eval_seconds must be positive");
       if (typeof c.runs !== "number" || c.runs < 1) throw bad("bad_calibration", "runs must be at least 1");
       if (c.stable.length === 0) throw bad("bad_calibration", "empty stable set");
+      if (c.seed !== undefined && (typeof c.seed !== "string" || !HEX64.test(c.seed))) throw bad("bad_calibration", "seed must be 64 hex chars");
       const recipe = this.recipeOf(c.recipe_id);
       const snap = this.db
         .query<{ snapshot_id: string; repo_id: string; commit_sha: string }, [string]>("SELECT * FROM snapshots WHERE snapshot_id = ?")
@@ -1027,16 +1103,22 @@ export class Core {
     return { beacon: H("m1-beacon", ep.secret, subject, round, bucket), bucket, epoch: ep };
   }
 
-  private referenceAgents(exclude: Set<string>): string[] {
+  /**
+   * Reference runners are qualified by definition (they are Core). One that declared capabilities is
+   * still only used for recipes those capabilities satisfy.
+   */
+  private referenceAgents(exclude: Set<string>, lineage?: LineageRow): string[] {
+    const req = lineage ? this.recipeOf(lineage.recipe_id).requires : undefined;
     return this.db
-      .query<{ agent_id: string }, []>("SELECT agent_id FROM agents WHERE reference = 1 ORDER BY agent_id")
+      .query<AgentRow, []>("SELECT * FROM agents WHERE reference = 1 ORDER BY agent_id")
       .all()
-      .map((r) => r.agent_id)
-      .filter((a) => !exclude.has(a));
+      .filter((a) => !exclude.has(a.agent_id) && (!a.capabilities || satisfies(this.capsOf(a), req)))
+      .map((a) => a.agent_id);
   }
 
   /** Assigns outstanding replays of every candidate and audit that wants them. */
   fillWants() {
+    this.issueQualifications();
     const cands = this.db
       .query<CandRow, []>(
         "SELECT * FROM candidates WHERE (want_replays > 0 OR want_reference > 0) AND status IN ('queued','replaying','disputed') ORDER BY committed_at, commit_id",
@@ -1064,15 +1146,16 @@ export class Core {
     excludeAgents: Set<string>,
     excludeOps: Set<string>,
     requireFull: boolean,
+    lineage: LineageRow,
   ): { chosen: string[]; reference: string | null; seed: string; epoch: number } | null {
-    const pool = this.eligiblePool(excludeAgents, excludeOps);
+    const pool = this.eligiblePool(excludeAgents, excludeOps, lineage);
     if (requireFull && pool.length < count) return null;
     const { beacon, bucket, epoch } = this.beacon(subject, round);
     const seed = assignmentSeed(beacon, subject);
     const chosen = count > 0 ? assignReplayers(seed, pool, Math.min(count, pool.length), { agents: [] }, this.cfg.bond_cap) : [];
     let reference: string | null = null;
     if (wantRef) {
-      const refs = this.referenceAgents(new Set([...excludeAgents, ...chosen]));
+      const refs = this.referenceAgents(new Set([...excludeAgents, ...chosen]), lineage);
       if (refs.length) reference = refs[new Rng(H("m1-ref", seed)).int(refs.length)]!;
     }
     if (!chosen.length && !reference) return null;
@@ -1141,15 +1224,15 @@ export class Core {
       const op = this.agentRow(r.replayer)?.operator;
       if (op) exOps.add(op);
     }
-    if (c.want_reference && this.referenceAgents(exAgents).length === 0) {
+    const l = this.lineageRow(c.lineage_id)!;
+    if (c.want_reference && this.referenceAgents(exAgents, l).length === 0) {
       // no reference runner available: a random replayer takes its place
       this.db.query("UPDATE candidates SET want_reference = 0, want_replays = want_replays + 1 WHERE commit_id = ?").run(c.commit_id);
       c = this.candRow(c.commit_id)!;
     }
     const initial = existing.length === 0;
-    const d = this.draw(c.candidate_id!, c.rounds, c.want_replays, !!c.want_reference, exAgents, exOps, initial);
+    const d = this.draw(c.candidate_id!, c.rounds, c.want_replays, !!c.want_reference, exAgents, exOps, initial, l);
     if (!d) return;
-    const l = this.lineageRow(c.lineage_id)!;
     const calib = this.calibOf(l.calib_id);
     const window = this.replayWindowMs(calib);
     const base = { candidate: c, grp, audit_id: null, stage: c.stage, round: c.rounds, eval_parent: c.eval_parent_gen_id, seed: d.seed, window, epoch: d.epoch };
@@ -1167,19 +1250,23 @@ export class Core {
     const c = this.candByCandidateId(a.candidate_id)!;
     const gen = this.genRow(a.gen_id)!;
     const grp = `audit:${a.audit_id}`;
-    const original = this.db.query<ReplayRow, [string]>("SELECT * FROM replays WHERE candidate_id = ? AND audit_id IS NULL").all(a.candidate_id);
+    // the audit re-checks the stage that was accepted; replayers of an earlier stage (a rebase measured
+    // another parent) may audit, otherwise a rebased generation can run out of auditors
+    const original = this.db
+      .query<ReplayRow, [string, number]>("SELECT * FROM replays WHERE candidate_id = ? AND audit_id IS NULL AND stage = ?")
+      .all(a.candidate_id, c.stage);
     const existing = this.db.query<ReplayRow, [string]>("SELECT * FROM replays WHERE grp = ?").all(grp);
     const author = this.agentRow(c.author)!;
     // the reference runner may audit a generation it also replayed: it is Core, and the audit runs a fresh seed
     const exAgents = new Set([c.author, ...original.filter((r) => r.kind !== "reference").map((r) => r.replayer), ...existing.map((r) => r.replayer)]);
     const exOps = new Set<string>(author.operator ? [author.operator] : []);
-    if (a.want_reference && this.referenceAgents(exAgents).length === 0) {
+    const l = this.lineageRow(c.lineage_id)!;
+    if (a.want_reference && this.referenceAgents(exAgents, l).length === 0) {
       this.db.query("UPDATE audits SET want_reference = 0, want_replays = want_replays + 1 WHERE audit_id = ?").run(a.audit_id);
       a = this.auditRow(a.audit_id)!;
     }
-    const d = this.draw(a.audit_id, a.rounds, a.want_replays, !!a.want_reference, exAgents, exOps, false);
+    const d = this.draw(a.audit_id, a.rounds, a.want_replays, !!a.want_reference, exAgents, exOps, false, l);
     if (!d) return;
-    const l = this.lineageRow(c.lineage_id)!;
     const window = this.replayWindowMs(this.calibOf(l.calib_id));
     const base = { candidate: c, grp, audit_id: a.audit_id, stage: c.stage, round: a.rounds, eval_parent: gen.parent_gen_id!, seed: d.seed, window, epoch: d.epoch };
     for (const r of d.chosen) this.insertReplay({ ...base, replayer: r, kind: "audit" });
@@ -1187,6 +1274,162 @@ export class Core {
     this.db
       .query("UPDATE audits SET want_replays = want_replays - ?, want_reference = ?, rounds = rounds + 1 WHERE audit_id = ?")
       .run(d.chosen.length, d.reference ? 0 : a.want_reference, a.audit_id);
+  }
+
+  // ---------------------------------------------------------------------------------------------
+  // Qualification (SPEC 6.1)
+
+  private qualRow(id: string): QualRow | null {
+    return this.db.query<QualRow, [string]>("SELECT * FROM qualifications WHERE qual_id = ?").get(id);
+  }
+
+  /** The seed the reference runner calibrated with. Calibrations before 0.8 carry none: M1 workers used H("calibration", snapshot_id). */
+  private calibSeed(calib: Calibration): string {
+    return typeof calib.seed === "string" && HEX64.test(calib.seed) ? calib.seed : H("calibration", calib.snapshot_id);
+  }
+
+  /**
+   * Issues a qualification assignment to every generally eligible verifier whose declared
+   * capabilities satisfy an active lineage's recipe and that holds no passed or open qualification
+   * for it. A failed or expired attempt may be retried after qualify_retry_s.
+   */
+  private issueQualifications() {
+    const epoch = this.currentEpoch().n;
+    const lineages = this.db.query<LineageRow, []>("SELECT * FROM lineages WHERE status = 'active' ORDER BY created_at, lineage_id").all();
+    if (!lineages.length) return;
+    const agents = this.db
+      .query<AgentRow, []>("SELECT * FROM agents WHERE capabilities IS NOT NULL ORDER BY agent_id")
+      .all()
+      .filter((a) => this.isEligible(a, epoch));
+    if (!agents.length) return;
+    const now = this.now();
+    for (const l of lineages) {
+      const recipe = this.recipeOf(l.recipe_id);
+      let calib: Calibration | null = null;
+      for (const a of agents) {
+        const caps = this.capsOf(a);
+        if (!satisfies(caps, recipe.requires)) continue;
+        const last = this.db
+          .query<QualRow, [string, string]>("SELECT * FROM qualifications WHERE agent_id = ? AND lineage_id = ? ORDER BY attempt DESC LIMIT 1")
+          .get(a.agent_id, l.lineage_id);
+        if (last && ["assigned", "committed", "passed"].includes(last.status)) continue;
+        if (last && (last.status === "failed" || last.status === "expired") && now < (last.resolved_at ?? now) + this.cfg.qualify_retry_s * 1000) continue;
+        calib ??= this.calibOf(l.calib_id);
+        const attempt = (last?.attempt ?? 0) + 1;
+        const id = H("qualify", a.agent_id, l.lineage_id, String(attempt));
+        this.db
+          .query(
+            `INSERT INTO qualifications (qual_id, agent_id, lineage_id, recipe_id, attempt, seed, status, capabilities, assigned_at, commit_deadline)
+             VALUES (?, ?, ?, ?, ?, ?, 'assigned', ?, ?, ?)`,
+          )
+          .run(id, a.agent_id, l.lineage_id, l.recipe_id, attempt, this.calibSeed(calib), a.capabilities, now, now + this.replayWindowMs(calib));
+        this.emit("qualification.assigned", { agent: a.agent_id, lineage_id: l.lineage_id, attempt });
+      }
+    }
+  }
+
+  private commitQualification(agent: string, q: QualRow, body: unknown) {
+    if (q.agent_id !== agent) throw notFound("assignment");
+    if (q.status !== "assigned") throw conflict("not_assigned", `qualification is ${q.status}`);
+    if (this.now() > q.commit_deadline) throw conflict("deadline_passed", "commit window closed");
+    const commitment = isObj(body) ? String(body.commitment ?? "") : "";
+    if (!HEX64.test(commitment)) throw bad("bad_commitment", "commitment must be 64 hex chars");
+    const now = this.now();
+    // a qualification has one replayer, so its reveal opens as soon as it commits
+    this.db
+      .query("UPDATE qualifications SET status = 'committed', commitment = ?, committed_at = ?, reveal_deadline = ? WHERE qual_id = ?")
+      .run(commitment, now, now + this.cfg.reveal_window_s * 1000, q.qual_id);
+    this.emit("qualification.committed", { agent, lineage_id: q.lineage_id });
+    return this.qualificationAssignmentView(this.qualRow(q.qual_id)!);
+  }
+
+  private revealQualification(agent: string, q: QualRow, body: unknown) {
+    if (q.agent_id !== agent) throw notFound("assignment");
+    if (q.status !== "committed") throw conflict("not_committed", `qualification is ${q.status}`);
+    if (!isObj(body) || !isObj(body.result) || typeof body.salt !== "string") throw bad("bad_body", "{ result, salt } expected");
+    const result = body.result as unknown as ReplayResult;
+    validateResult(result);
+    const now = this.now();
+    if (resultCommitment(result, body.salt) !== q.commitment) {
+      // no slash and no strike for a failed qualification (SPEC 6.1); the attempt simply fails
+      this.resolveQualification(q, "failed", "reveal does not match the commitment", canonicalJson(result), body.salt);
+      return { replay_id: q.qual_id, status: "invalid" as const };
+    }
+    if (!this.blobs.has(result.transcript_digest)) throw bad("missing_transcript", "upload the transcript blob (PUT /v1/blobs/:sha256) before revealing");
+    this.db.query("UPDATE qualifications SET revealed_at = ? WHERE qual_id = ?").run(now, q.qual_id);
+    const l = this.lineageRow(q.lineage_id)!;
+    const verdict = qualificationVerdict(this.recipeOf(q.recipe_id), this.calibOf(l.calib_id), result, this.cfg.det_tolerance);
+    this.resolveQualification(q, verdict.pass ? "passed" : "failed", verdict.reason, canonicalJson(result), body.salt);
+    this.fillWants();
+    return { replay_id: q.qual_id, status: "revealed" as const, qualification: verdict.pass ? "passed" : "failed", reason: verdict.reason };
+  }
+
+  private resolveQualification(q: QualRow, status: "passed" | "failed" | "expired", reason: string | null, result: string | null, salt: string | null) {
+    const now = this.now();
+    this.db
+      .query("UPDATE qualifications SET status = ?, reason = ?, result = COALESCE(?, result), salt = COALESCE(?, salt), resolved_at = ? WHERE qual_id = ?")
+      .run(status, reason, result, salt, now, q.qual_id);
+    this.emit(`qualification.${status}`, {
+      agent: q.agent_id,
+      lineage_id: q.lineage_id,
+      attempt: q.attempt,
+      reason,
+      retry_at: status === "passed" ? null : now + this.cfg.qualify_retry_s * 1000,
+    });
+  }
+
+  private expireQualifications() {
+    const now = this.now();
+    for (const q of this.db.query<QualRow, [number]>("SELECT * FROM qualifications WHERE status = 'assigned' AND commit_deadline < ?").all(now))
+      this.resolveQualification(q, "expired", "no commit within the window", null, null);
+    for (const q of this.db
+      .query<QualRow, [number]>("SELECT * FROM qualifications WHERE status = 'committed' AND reveal_deadline IS NOT NULL AND reveal_deadline < ?")
+      .all(now))
+      this.resolveQualification(q, "expired", "no reveal within the window", null, null);
+  }
+
+  /** The assignment a verifier sees for a qualification: gen_0, the calibration seed, no answer key. */
+  qualificationAssignmentView(q: QualRow) {
+    const l = this.lineageRow(q.lineage_id)!;
+    const calib = this.effectiveCalibration(l.calib_id, l.gen0);
+    const snap = this.db.query<{ commit_sha: string; deps_digest: string }, [string]>("SELECT * FROM snapshots WHERE snapshot_id = ?").get(l.snapshot_id)!;
+    const repo = this.db.query<{ url: string }, [string]>("SELECT url FROM repos WHERE repo_id = ?").get(l.repo_id)!;
+    // the recorded base values are what the verifier must reproduce, so the assignment leaves them out
+    const metrics = Object.fromEntries(Object.entries(calib.metrics).map(([k, m]) => [k, { enabled: m.enabled, cv: m.cv, ...(m.reason ? { reason: m.reason } : {}) }]));
+    return {
+      replay_id: q.qual_id,
+      kind: "qualify" as const,
+      status: q.status,
+      reveal_open: q.status === "committed",
+      assigned_at: q.assigned_at,
+      commit_deadline: q.commit_deadline,
+      reveal_deadline: q.reveal_deadline,
+      seed: q.seed,
+      lineage: { lineage_id: l.lineage_id, repo: repo.url, commit: snap.commit_sha, snapshot_id: l.snapshot_id, deps_digest: snap.deps_digest },
+      recipe_id: l.recipe_id,
+      recipe: this.recipeOf(l.recipe_id),
+      calibration: { ...calib, metrics },
+      parent_gen_id: l.gen0,
+      parent_series: [] as { gen_id: string; height: number; patch_hash: string; patch: string }[],
+      candidate: null,
+      attempt: q.attempt,
+    };
+  }
+
+  qualificationsOf(agent: string) {
+    return this.db
+      .query<QualRow, [string]>("SELECT * FROM qualifications WHERE agent_id = ? ORDER BY lineage_id, attempt")
+      .all(agent)
+      .map((q) => ({
+        lineage_id: q.lineage_id,
+        recipe_id: q.recipe_id,
+        attempt: q.attempt,
+        status: q.status,
+        reason: q.reason,
+        assigned_at: q.assigned_at,
+        resolved_at: q.resolved_at,
+        retry_at: q.status === "failed" || q.status === "expired" ? (q.resolved_at ?? q.assigned_at) + this.cfg.qualify_retry_s * 1000 : null,
+      }));
   }
 
   // ---------------------------------------------------------------------------------------------
@@ -1200,6 +1443,8 @@ export class Core {
 
   commitReplay(agent: string, id: string, body: unknown) {
     return this.tx(() => {
+      const q = this.qualRow(id);
+      if (q) return this.commitQualification(agent, q, body);
       const r = this.mustOwnReplay(agent, id);
       if (r.status !== "assigned") throw conflict("not_assigned", `replay is ${r.status}`);
       if (this.now() > r.commit_deadline) throw conflict("deadline_passed", "commit window closed");
@@ -1214,6 +1459,8 @@ export class Core {
 
   revealReplay(agent: string, id: string, body: unknown) {
     return this.tx(() => {
+      const q = this.qualRow(id);
+      if (q) return this.revealQualification(agent, q, body);
       const r = this.mustOwnReplay(agent, id);
       if (r.status !== "committed") throw conflict("not_committed", `replay is ${r.status}`);
       if (r.reveal_open_at === null) throw conflict("reveal_not_open", "reveal opens once every assigned replayer of this candidate has committed");
@@ -1351,7 +1598,7 @@ export class Core {
         this.finalizeCandidate(c, "rejected", "unresolved_dispute", j.detail ?? null, j);
         return;
       }
-      const hasRef = this.referenceAgents(new Set([c.author])).length > 0;
+      const hasRef = this.referenceAgents(new Set([c.author]), this.lineageRow(c.lineage_id)!).length > 0;
       this.db
         .query("UPDATE candidates SET status = 'disputed', dispute_rounds = dispute_rounds + 1, want_replays = want_replays + ?, want_reference = ? WHERE commit_id = ?")
         .run(hasRef ? 1 : 2, hasRef ? 1 : 0, c.commit_id);
@@ -1528,7 +1775,7 @@ export class Core {
     // random audit (SPEC 10.6)
     const ep = this.currentEpoch();
     if (this.cfg.audit_rate > 0 && new Rng(H("m1-audit", ep.secret, gid)).next() < this.cfg.audit_rate) {
-      const hasRef = this.referenceAgents(new Set([c.author])).length > 0;
+      const hasRef = this.referenceAgents(new Set([c.author]), l).length > 0;
       const aid = H("audit", gid);
       this.db
         .query("INSERT INTO audits (audit_id, gen_id, candidate_id, status, want_replays, want_reference, created_at, epoch) VALUES (?, ?, ?, 'pending', ?, ?, ?, ?)")
@@ -1573,22 +1820,29 @@ export class Core {
   // ---------------------------------------------------------------------------------------------
   // Audits and reverts (SPEC 10.6, 11.3)
 
+  /**
+   * Settles an audit (SPEC 10.6). The audit group ran a fresh shared seed, so only a contradiction on
+   * a deterministic field reverts: an original replay in the minority on a seed-independent field
+   * (or a deterministic metric or equivalence value within one seed group), a seed-independent
+   * rejection, or the audit's own replays agreeing that the patch changes behaviour on the fresh
+   * inputs (equivalence). A fresh-seed miss on a noisy metric is `inconclusive`; on a deterministic
+   * metric it is `weak` (recorded, no revert in M1).
+   */
   private judgeAudit(a: AuditRow) {
     const c = this.candByCandidateId(a.candidate_id)!;
     const { recipe, calib } = this.lineageCtx(c);
     const original = this.db
       .query<ReplayRow, [string, number]>("SELECT * FROM replays WHERE grp = ? AND role = 'counted' AND stage = ? ORDER BY replay_id")
       .all(`cand:${c.candidate_id}:${c.stage}`, c.stage);
+    const origIds = new Set(original.map((r) => r.replay_id));
     const auditReplays = this.revealedOf(`audit:${a.audit_id}`);
     const auditIds = new Set(auditReplays.map((r) => r.replay_id));
     const j = judge(recipe, calib, this.viewOf(c), [...original.map((r) => this.asRevealed(r)), ...auditReplays], this.judgeCfg());
     const auditCounted = j.counted.filter((id) => auditIds.has(id)).length + j.minority.filter((id) => auditIds.has(id)).length;
-    let status: AuditRow["status"];
-    if (auditCounted === 0 || j.outcome === "pending" || j.outcome === "disputed") status = "inconclusive";
-    else if (j.outcome === "accepted") status = "agreed";
-    else status = "reverted";
+    const v = auditOutcome(recipe, this.viewOf(c), j, origIds, auditReplays, auditCounted);
+    const status = v.status;
     const now = this.now();
-    if (status !== "inconclusive") {
+    if (status !== "inconclusive" || v.settled) {
       for (const id of j.minority) {
         const r = this.replayRow(id)!;
         this.slash(r.replayer, this.cfg.minority_slash_bps, "audit_minority", id);
@@ -1602,9 +1856,9 @@ export class Core {
         this.awardReplay(this.replayRow(id)!, calib);
       }
     }
-    this.db.query("UPDATE audits SET status = ?, verdict = ?, resolved_at = ? WHERE audit_id = ?").run(status, JSON.stringify(j), now, a.audit_id);
+    this.db.query("UPDATE audits SET status = ?, verdict = ?, detail = ?, resolved_at = ? WHERE audit_id = ?").run(status, JSON.stringify(j), v.detail, now, a.audit_id);
     this.db.query("UPDATE generations SET audit_status = ? WHERE gen_id = ?").run(status, a.gen_id);
-    this.emit("audit.resolved", { audit_id: a.audit_id, gen_id: a.gen_id, status, outcome: j.outcome, reason: j.reason ?? null });
+    this.emit("audit.resolved", { audit_id: a.audit_id, gen_id: a.gen_id, status, outcome: j.outcome, reason: j.reason ?? null, detail: v.detail });
     if (status === "reverted") this.revert(a.gen_id, j);
   }
 
@@ -1659,6 +1913,7 @@ export class Core {
         touched.add(r.grp);
       }
       for (const g of touched) this.progress(g);
+      this.expireQualifications();
       this.matureUnbonds();
       this.fillWants();
       let ep = this.currentEpoch();
@@ -1858,6 +2113,10 @@ export class Core {
       suspended: a.suspended_through_epoch >= epoch,
       suspended_through_epoch: a.suspended_through_epoch >= 0 ? a.suspended_through_epoch : null,
       eligible: this.isEligible(a, epoch),
+      capabilities: this.capsOf(a),
+      capabilities_at: a.capabilities_at,
+      qualified_lineages: this.qualifiedLineages(a, epoch),
+      qualifications: this.qualificationsOf(id),
       open_replays: this.openReplaysOf(id),
       strikes_epoch: strikesEpoch,
       strikes_total: strikesTotal,
@@ -1866,6 +2125,18 @@ export class Core {
       units_total: unitsTotal,
       ...(opts.admin || shadowRevealed ? { shadow: !!a.shadow } : {}),
     };
+  }
+
+  /** Lineages this agent can be drawn for right now (SPEC 6.1, 10.3). */
+  private qualifiedLineages(a: AgentRow, epoch: number): string[] {
+    if (!this.isEligible(a, epoch)) return [];
+    return this.db
+      .query<LineageRow, [string]>(
+        "SELECT l.* FROM lineages l JOIN qualifications q ON q.lineage_id = l.lineage_id WHERE q.agent_id = ? AND q.status = 'passed' AND l.status = 'active' ORDER BY l.lineage_id",
+      )
+      .all(a.agent_id)
+      .filter((l) => satisfies(this.capsOf(a), this.recipeOf(l.recipe_id).requires))
+      .map((l) => l.lineage_id);
   }
 
   private shadowRevealed(id: string): boolean {
@@ -2016,7 +2287,9 @@ export class Core {
       reverts: g.reverts,
       reverted_by: g.reverted_by,
       needs_revalidation: !!g.needs_revalidation,
-      audit: audit ? { audit_id: audit.audit_id, status: audit.status, verdict: audit.status === "pending" ? null : JSON.parse(audit.verdict ?? "null") } : null,
+      audit: audit
+        ? { audit_id: audit.audit_id, status: audit.status, detail: audit.status === "pending" ? null : audit.detail, verdict: audit.status === "pending" ? null : JSON.parse(audit.verdict ?? "null") }
+        : null,
       replays: replays.map((r) => this.replayPublic(r, audit?.status !== "pending" || !r.audit_id)),
     };
   }
@@ -2128,10 +2401,15 @@ export class Core {
 
   assignments(agent: string) {
     this.mustAgent(agent);
-    return this.db
+    const replays = this.db
       .query<ReplayRow, [string]>("SELECT * FROM replays WHERE replayer = ? AND status IN ('assigned','committed') ORDER BY assigned_at, replay_id")
       .all(agent)
-      .map((r) => this.assignmentView(r));
+      .map((r) => this.assignmentView(r) as ReturnType<Core["assignmentView"]> | ReturnType<Core["qualificationAssignmentView"]>);
+    const quals = this.db
+      .query<QualRow, [string]>("SELECT * FROM qualifications WHERE agent_id = ? AND status IN ('assigned','committed') ORDER BY assigned_at, qual_id")
+      .all(agent)
+      .map((q) => this.qualificationAssignmentView(q));
+    return [...replays, ...quals];
   }
 
   epochView(n: number) {
@@ -2216,6 +2494,22 @@ function validateRecipe(r: Recipe) {
     typeof r.patch.max_files === "number" &&
     typeof r.patch.max_lines === "number";
   if (!ok) throw bad("bad_recipe", "recipe missing required fields (name, repo, commit, image, build, test, metrics, patch)");
+  // SPEC 6.1: every recipe names its target class and the hardware a verifier needs
+  if (typeof r.class !== "string" || !CLASSES.has(r.class)) throw bad("bad_recipe", `class must be one of ${[...CLASSES].join(", ")}`);
+  const req = r.requires as unknown;
+  if (!isObj(req)) throw bad("bad_recipe", "requires { arch, gpu?, min_cpus?, min_memory_mb? } is required");
+  for (const k of Object.keys(req)) if (!["arch", "gpu", "min_cpus", "min_memory_mb"].includes(k)) throw bad("bad_recipe", `unknown requires field ${k}`);
+  if (typeof req.arch !== "string" || !ARCHES.has(req.arch)) throw bad("bad_recipe", "requires.arch must be amd64 or arm64");
+  for (const k of ["min_cpus", "min_memory_mb"] as const)
+    if (req[k] !== undefined && (typeof req[k] !== "number" || !Number.isInteger(req[k]) || (req[k] as number) < 1)) throw bad("bad_recipe", `requires.${k} must be a positive integer`);
+  if (req.gpu !== undefined) {
+    const g = req.gpu;
+    if (!isObj(g) || g.vendor !== "nvidia" || typeof g.sm !== "string" || !/^\d{1,2}\.\d{1,2}$/.test(g.sm))
+      throw bad("bad_recipe", 'requires.gpu must be { vendor: "nvidia", sm: "<major.minor>", min_mem_gb? }');
+    for (const k of Object.keys(g)) if (!["vendor", "sm", "min_mem_gb"].includes(k)) throw bad("bad_recipe", `unknown requires.gpu field ${k}`);
+    if (g.min_mem_gb !== undefined && (typeof g.min_mem_gb !== "number" || !(g.min_mem_gb > 0))) throw bad("bad_recipe", "requires.gpu.min_mem_gb must be positive");
+  }
+  if (r.class === "cuda" && !req.gpu) throw bad("bad_recipe", "a cuda recipe must require a gpu");
   for (const m of r.metrics) {
     if (!isObj(m) || typeof m.name !== "string" || !["perf", "slim"].includes(m.kind) || !["lower", "higher"].includes(m.direction) || typeof m.min_effect !== "number")
       throw bad("bad_recipe", "each metric needs name, kind (perf|slim), direction and min_effect");
@@ -2240,4 +2534,105 @@ function validateResult(r: ReplayResult) {
     if (!isObj(m) || !Array.isArray(m.base) || !Array.isArray(m.cand) || ![...m.base, ...m.cand].every((x) => typeof x === "number" && Number.isFinite(x)))
       throw bad("bad_result", `metric ${k} samples must be finite numbers`);
   }
+}
+
+const ARCHES = new Set(["amd64", "arm64"]);
+const CLASSES = new Set(["rust", "solana", "zig", "cuda", "python", "go", "cpp"]);
+const CAP_KEYS = new Set(["arch", "cpus", "memory_mb", "gpus"]);
+const GPU_KEYS = new Set(["vendor", "model", "sm", "mem_gb", "driver"]);
+
+/** Strict validation of declared capabilities (SPEC 6.1). Unknown keys are refused, not ignored. */
+export function validateCapabilities(v: unknown): Capabilities {
+  const fail = (m: string): never => {
+    throw bad("bad_capabilities", m);
+  };
+  if (!isObj(v)) fail("capabilities must be an object { arch, cpus, memory_mb, gpus }");
+  const c = v as Record<string, unknown>;
+  for (const k of Object.keys(c)) if (!CAP_KEYS.has(k)) fail(`unknown capability field ${k}`);
+  if (typeof c.arch !== "string" || !ARCHES.has(c.arch)) fail("arch must be amd64 or arm64");
+  if (typeof c.cpus !== "number" || !Number.isInteger(c.cpus) || c.cpus < 1 || c.cpus > 4096) fail("cpus must be an integer from 1 to 4096");
+  if (typeof c.memory_mb !== "number" || !Number.isInteger(c.memory_mb) || c.memory_mb < 64 || c.memory_mb > 64 * 1024 * 1024)
+    fail("memory_mb must be an integer from 64 to 67108864");
+  const gpus = c.gpus === undefined ? [] : c.gpus;
+  if (!Array.isArray(gpus) || gpus.length > 64) fail("gpus must be an array of at most 64 entries");
+  const out: Capabilities["gpus"] = [];
+  for (const g of gpus as unknown[]) {
+    if (!isObj(g)) fail("each gpu must be an object { vendor, model, sm, mem_gb, driver }");
+    const x = g as Record<string, unknown>;
+    for (const k of Object.keys(x)) if (!GPU_KEYS.has(k)) fail(`unknown gpu field ${k}`);
+    if (x.vendor !== "nvidia") fail("gpu vendor must be nvidia");
+    if (typeof x.model !== "string" || !/^[\w .()+/-]{1,128}$/.test(x.model)) fail("gpu model must be 1-128 printable characters");
+    if (typeof x.sm !== "string" || !/^\d{1,2}\.\d{1,2}$/.test(x.sm)) fail('gpu sm must be a compute capability like "8.9"');
+    if (typeof x.mem_gb !== "number" || !Number.isFinite(x.mem_gb) || x.mem_gb <= 0 || x.mem_gb > 4096) fail("gpu mem_gb must be a positive number");
+    if (typeof x.driver !== "string" || !/^[\w.-]{1,32}$/.test(x.driver)) fail("gpu driver must be a version string");
+    out.push({ vendor: "nvidia", model: x.model as string, sm: x.sm as string, mem_gb: x.mem_gb as number, driver: x.driver as string });
+  }
+  return { arch: c.arch as Capabilities["arch"], cpus: c.cpus as number, memory_mb: c.memory_mb as number, gpus: out };
+}
+
+/**
+ * Qualification verdict (SPEC 6.1): the base build works, the base tests reproduce the calibrated
+ * stable set exactly (quarantined and excluded tests aside), and every enabled deterministic metric's
+ * base value equals the calibrated base_value within the metric's tolerance.
+ */
+export function qualificationVerdict(recipe: Recipe, calib: Calibration, r: ReplayResult, det_tolerance: number): { pass: boolean; reason: string } {
+  if (r.build.base !== "ok") return { pass: false, reason: "base build failed" };
+  const ignore = new Set([...(recipe.test.exclude ?? []), ...calib.quarantined]);
+  const base = [...new Set(r.tests.base_pass.filter((t) => !ignore.has(t)))].sort();
+  const stable = [...new Set(calib.stable)].sort();
+  const missing = stable.filter((t) => !base.includes(t));
+  const extra = base.filter((t) => !stable.includes(t));
+  if (missing.length || extra.length)
+    return { pass: false, reason: `base tests differ from the calibrated stable set (missing ${missing.slice(0, 5).join(", ") || "none"}; extra ${extra.slice(0, 5).join(", ") || "none"})` };
+  const checked: string[] = [];
+  for (const m of recipe.metrics) {
+    if (!m.deterministic) continue;
+    const cm = calib.metrics[m.name];
+    if (!cm?.enabled || typeof cm.base_value !== "number") continue;
+    const s = r.metrics[m.name];
+    if (!s || s.base.length === 0) return { pass: false, reason: `no base sample for ${m.name}` };
+    const v = median(s.base);
+    const tol = m.tolerance ?? det_tolerance;
+    if (relDiff(v, cm.base_value) > tol) return { pass: false, reason: `${m.name} base ${v} differs from calibrated ${cm.base_value} beyond tolerance ${tol}` };
+    checked.push(m.name);
+  }
+  return { pass: true, reason: `stable set reproduced; ${checked.length ? `${checked.join(", ")} match calibration` : "no deterministic base values to compare"}` };
+}
+
+const SEED_INDEPENDENT_REJECTS = new Set(["guard", "apply_conflict", "build_fail", "tests_fail", "fix_target_not_fixed"]);
+
+/**
+ * Audit status from the combined judgement (SPEC 10.6). `settled` means the judgement resolved, so
+ * minority replays are slashed and counted audit replays are paid even when the status is
+ * inconclusive (a noisy miss on fresh inputs is honest work).
+ */
+export function auditOutcome(
+  recipe: Recipe,
+  cand: CandidateView,
+  j: Judgement,
+  origIds: Set<string>,
+  auditReplays: RevealedReplay[],
+  auditCounted: number,
+): { status: AuditRow["status"]; detail: string; settled: boolean } {
+  if (auditCounted === 0) return { status: "inconclusive", detail: "no audit replay counted (environment failures or none revealed)", settled: false };
+  if (j.outcome === "pending" || j.outcome === "disputed")
+    return { status: "inconclusive", detail: `audit judgement ${j.outcome}: ${j.detail ?? ""}`.trim(), settled: false };
+  const contradicted = j.minority.filter((id) => origIds.has(id));
+  if (contradicted.length)
+    return { status: "reverted", detail: `original replays contradicted on ${j.disputed_fields.join(", ") || "a deterministic field"}`, settled: true };
+  if (j.outcome === "rejected" && SEED_INDEPENDENT_REJECTS.has(j.reason!))
+    return { status: "reverted", detail: `seed-independent rejection: ${j.reason} (${j.detail ?? ""})`, settled: true };
+  const counted = new Set(j.counted);
+  const agreeing = auditReplays.filter((r) => counted.has(r.replay_id));
+  if (cand.kind !== "fix" && recipe.equivalence && agreeing.some((r) => r.result.equivalence && r.result.equivalence.base_digest !== r.result.equivalence.cand_digest))
+    return { status: "reverted", detail: "behaviour differs from the parent on the audit's fresh inputs (equivalence)", settled: true };
+  if (j.outcome === "accepted") return { status: "agreed", detail: "audit replays reproduce the generation", settled: true };
+  const metricName = Array.isArray(cand.target) ? cand.target[0] : cand.target;
+  const metric = recipe.metrics.find((m) => m.name === metricName);
+  if (j.reason === "no_improvement" || j.reason === "noisy_split") {
+    if (metric?.deterministic)
+      return { status: "weak", detail: `fresh-seed ${metricName} does not reach min_effect: ${j.detail ?? ""}; recorded, not reverted in M1`, settled: true };
+    return { status: "inconclusive", detail: `noisy ${metricName} on a fresh seed: ${j.reason} (${j.detail ?? ""}); not a contradiction`, settled: true };
+  }
+  return { status: "inconclusive", detail: `audit judgement rejected ${j.reason}: ${j.detail ?? ""}`, settled: true };
 }

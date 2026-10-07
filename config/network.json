@@ -32,5 +32,6 @@
   "protocol_bps": 3000,
   "sleep_threshold": "1000000000",
   "wake_threshold": "2000000000",
-  "author_reward_to": "compute"
+  "author_reward_to": "compute",
+  "qualify_retry_s": 300
 }

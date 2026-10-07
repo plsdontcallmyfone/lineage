@@ -44,7 +44,8 @@ Every mutating request and `GET /v1/assignments` carry:
 | `launched` | `POST /v1/admin/launches` (simulated agent token launch, no burn) | yes, if `lifecycle = active`, `awake`, and only on lineages of its `target_repo` | only if not `hosted` and bonded |
 | `verifier` | `POST /v1/agents` (burns `register_burn` from its wallet) | no | yes, once bonded |
 
-- **Eligible for assignment** means all of: not hosted, not a reference runner, not cooling (no pending unbond), not suspended, bond >= `min_bond`, and open replays < `max_open_replays`. A reference runner (flagged by admin) takes only reference, audit-reference and calibration work. It is never paid units or slashed, because it is Core itself.
+- **Eligible for assignment** (generally, the agent view's `eligible`) means all of: not hosted, not a reference runner, not cooling (no pending unbond), not suspended, bond >= `min_bond`, and open replays < `max_open_replays`. A reference runner (flagged by admin) takes only reference, audit-reference and calibration work. It is never paid units or slashed, because it is Core itself.
+- **Eligible for a lineage** (the agent view's `qualified_lineages`) additionally needs declared capabilities that satisfy the recipe's `requires` and a passed qualification for that lineage (see Qualification). Every draw (replays, dispute extras, canaries, audits) uses this per-lineage set.
 - **Lifecycle:** a launched agent is `setting_up` until a lineage for its target repo is calibrated, then `active`.
 - **Awake:** the agent goes awake when its compute vault is >= `wake_threshold` and asleep when it falls below `sleep_threshold` (hysteresis). Asleep agents cannot commit candidates, but their pending candidates are still judged.
 
@@ -82,7 +83,7 @@ Every mutating request and `GET /v1/assignments` carry:
 - Until the candidate is final, `replays[]` shows only `{ kind, status, stage, assigned_at, committed_at, revealed_at }`. Replayer ids, seeds, roles and results appear once it is final, so nobody can copy, bribe or coordinate with a fellow replayer. `verdict` is also null until then.
 - `canary` is `{ canary_id }` once the epoch the canary was injected in has closed, and `null` before that and for real candidates.
 
-**Agent view:** `agent_id, kind, operator, registered_at, reference, hosted, mint, launcher, target_repo, identity_mode, lifecycle, awake, wallet, bond, compute, cooling, unbond { amount, ready_at } | null, suspended, suspended_through_epoch, eligible, open_replays, strikes_epoch, strikes_total, slashed_total, units_epoch, units_total`. Shadow (canary) identities carry `shadow: true` only after their epoch closes, or in the admin view.
+**Agent view:** `agent_id, kind, operator, registered_at, reference, hosted, mint, launcher, target_repo, identity_mode, lifecycle, awake, wallet, bond, compute, cooling, unbond { amount, ready_at } | null, suspended, suspended_through_epoch, eligible, capabilities | null, capabilities_at, qualified_lineages [lineage_id], qualifications [{ lineage_id, recipe_id, attempt, status, reason, assigned_at, resolved_at, retry_at }], open_replays, strikes_epoch, strikes_total, slashed_total, units_epoch, units_total`. Shadow (canary) identities carry `shadow: true` only after their epoch closes, or in the admin view.
 
 **Epoch view:** `n, status (open | closed), start_ms, end_ms, beacon_commit, secret (after close), closed_at, pool_amount, rebate_amount, total_units, units: [{ agent, kind (replay | author | finder), units, count, rebate }], payouts: [{ agent, dest, amount, units, rebate, leaf }] (after close), root, lineage_root, canaries: [{ candidate_id, shadow_agent, canary_id, kind, expected_reason, status, reason }] (after close), assignment_rounds (after close: subject, round, bucket, beacon, assignment_seed, pool, exclude, count, chosen, reference), usage[]`.
 
@@ -90,7 +91,8 @@ Every mutating request and `GET /v1/assignments` carry:
 
 | Method and path | Body | Response |
 |---|---|---|
-| `POST /v1/agents` | `{ operator? }` | agent view. Registers a verifier and burns `register_burn` from `agent:<id>:wallet` (`403 insufficient_funds`). |
+| `POST /v1/agents` | `{ operator?, capabilities? }` | agent view. Registers a verifier and burns `register_burn` from `agent:<id>:wallet` (`403 insufficient_funds`). |
+| `PUT /v1/agents/:id/capabilities` | `{ capabilities }` | agent view. `:id` must be the caller. Replaces the declared capabilities and revokes qualifications they no longer satisfy (see Qualification). |
 | `POST /v1/agents/:id/bond` | `{ amount }` | agent view. Wallet to bond. `:id` must be the caller. Hosted agents get `403 hosted`. |
 | `POST /v1/agents/:id/unbond` | `{ amount }` | agent view. Starts the `unbond_cooldown_s` cooldown. The agent is not assignable meanwhile but stays slashable. At maturity `tick()` moves `min(amount, remaining bond)` back to the wallet. |
 | `POST /v1/calibrations` | `{ calibration: Calibration, sig }` | `{ lineage_id, calib_id, gen0, findings }`. Reference runners only. `sig = signMessage(key, calib_id)`. Recipe and snapshot must exist and match. This creates the lineage, gen_0, one `known_failure` finding per known failure and one `metric_target` finding per enabled metric, and activates launched agents targeting the repo. |
@@ -118,7 +120,7 @@ Every mutating request and `GET /v1/assignments` carry:
 **Assignment** (array element of `GET /v1/assignments`, also returned by replay commit):
 
 ```
-{ replay_id, kind: "replay" | "reference" | "audit", status: "assigned" | "committed", reveal_open,
+{ replay_id, kind: "replay" | "reference" | "audit" | "qualify", status: "assigned" | "committed", reveal_open,
   assigned_at, commit_deadline, reveal_deadline, seed,
   lineage: { lineage_id, repo, commit, snapshot_id, deps_digest },
   recipe_id, recipe, calibration,           // calibration is tip-relative (see Judging)
@@ -126,6 +128,10 @@ Every mutating request and `GET /v1/assignments` carry:
   parent_series: [{ gen_id, height, patch_hash, patch }],   // apply in order onto the snapshot
   candidate: { candidate_id, kind, target, patch, patch_hash } }
 ```
+
+A `qualify` assignment has the same shape with `candidate: null`, `parent_gen_id` = gen_0, `parent_series: []`, `seed` = the calibration seed, `attempt`, and a `calibration` whose metrics omit `base_value`. Its `replay_id` is the qualification id; commit and reveal go to the same `/v1/replays/:id/commit` and `/reveal` endpoints, the reveal opens as soon as it is committed, and the reveal answers `{ replay_id, status, qualification: "passed" | "failed", reason }`.
+
+**Capabilities** (strict: unknown fields are `400 bad_capabilities`): `{ arch: "amd64" | "arm64", cpus: 1..4096 integer, memory_mb: 64.. integer, gpus: [{ vendor: "nvidia", model, sm: "<major.minor>", mem_gb > 0, driver }] }` (at most 64 gpus). `lineage-worker doctor` prints them for a machine.
 
 **Replay commit and reveal (SPEC 5.2):**
 
@@ -155,6 +161,18 @@ Every mutating request and `GET /v1/assignments` carry:
 | `GET /v1/admin/ledger?account=&limit=` | | `{ entries: [{ id, tx, account, delta, reason, ref, at }] }` |
 
 ## Protocol behaviour implemented here
+
+**Recipes.** `POST /v1/admin/recipes` also requires `class` (rust, solana, zig, cuda, python, go, cpp) and `requires { arch, gpu?, min_cpus?, min_memory_mb? }` (`400 bad_recipe`; a `cuda` recipe must require a gpu). Calibrations may carry `seed` (64 hex), the `LINEAGE_SEED` they measured with.
+
+**Qualification (SPEC 6.1).**
+
+- On every assignment pass Core issues a `qualify` assignment to each generally eligible agent with declared capabilities that satisfy an active lineage's recipe and no `passed`, `assigned` or `committed` qualification for it. Ids are `H("qualify", agent, lineage_id, attempt)`.
+- The seed is `calibration.seed`, or `H("calibration", snapshot_id)` for calibrations without one (the M1 worker convention).
+- Pass: `build.base = ok`; `base_pass` minus excluded and quarantined tests equals the stable set exactly; every deterministic metric enabled in the calibration with a `base_value` has `median(base)` within its tolerance (`tolerance` or `det_tolerance`) of it. The reason string names what matched or what differed.
+- Failure (`failed`), a missed commit or reveal window (`expired`, on tick) or a reveal that does not match its commitment: no slash, no strike; a new attempt is issued `qualify_retry_s` (config, default 600, M1 test value 300) after it resolved.
+- `PUT .../capabilities` sets `passed` qualifications whose recipe is no longer satisfied to `revoked` and open ones to `cancelled`; a new one is issued at once when the capabilities satisfy again.
+- Qualifications do not count toward `max_open_replays`. Reference runners never get one; they are used only for recipes their declared capabilities (if any) satisfy.
+- Events: `agent.capabilities`, `qualification.assigned`, `qualification.committed`, `qualification.passed`, `qualification.failed`, `qualification.expired`.
 
 **Assignment (SPEC 10.3, M1 variant).**
 
@@ -190,11 +208,15 @@ Every mutating request and `GET /v1/assignments` carry:
 
 **Audits and reverts.**
 
-- `Rng(H("m1-audit", epoch_secret, gen_id)).next() < audit_rate` opens an audit: one random agent (excluding the author, its operator and the original replayers) plus the reference runner, on a fresh shared seed.
-- On settle, `judge()` runs over the original counted replays plus the audit replays:
-  - `accepted` means `agreed`;
-  - `rejected` means `reverted`: Core appends a `revert` entry (`H("gen-revert", tip, reverted_gen, verdict_digest)`), slashes the minority, voids the author and finder units if their epoch is still open, and flags later generations `needs_revalidation`. M1 does not re-replay them automatically, and the patch series served to workers leaves out the reverted patch;
-  - `pending` or `disputed`, or no audit replay counted, means `inconclusive`, with no action.
+- `Rng(H("m1-audit", epoch_secret, gen_id)).next() < audit_rate` opens an audit: one random capable, qualified agent (excluding the author, its operator and the replayers of the accepted stage; replayers of an earlier stage of a rebased candidate may audit) plus the reference runner, on a fresh shared seed.
+- On settle, `judge()` runs over the original counted replays plus the audit replays, and `auditOutcome()` (exported from `core.ts`) decides, reverting only on a deterministic contradiction (SPEC 10.6):
+  - an original replay in the judgement's minority, a seed-independent rejection (`guard`, `apply_conflict`, `build_fail`, `tests_fail`, `fix_target_not_fixed`), or counted audit replays whose equivalence digests differ: `reverted`. Core appends a `revert` entry (`H("gen-revert", tip, reverted_gen, verdict_digest)`), slashes the minority, voids the author and finder units if their epoch is still open, and flags later generations `needs_revalidation`. M1 does not re-replay them automatically, and the patch series served to workers leaves out the reverted patch;
+  - `accepted`: `agreed`;
+  - fresh-seed `no_improvement` or `noisy_split` on a deterministic target metric: `weak` (no revert in M1);
+  - the same on a noisy target metric, or any other rejection: `inconclusive`;
+  - in all four, minority replays are slashed and counted audit replays paid;
+  - no audit replay counted, or `pending` or `disputed`: `inconclusive`, with no action.
+- The generation view's `audit` carries `{ audit_id, status, detail, verdict }`.
 
 **Strikes.**
 
@@ -232,7 +254,8 @@ Every movement is one transaction of two `ledger_entries` rows summing to zero. 
 
 `GET /v1/events` is `text/event-stream`. Each message is `id: <n>`, `event: <type>`, `data: { id, at, type, data }`. It replays the backlog after `since` (or `Last-Event-ID`) and then streams live, with a `: ping` comment every 15 s. Types:
 
-- agents: `agent.registered`, `agent.launched`, `agent.bonded`, `agent.cooling`, `agent.unbonded`, `agent.awake`, `agent.asleep`, `agent.active`, `agent.reference`, `agent.strike`, `agent.suspended`, `agent.slashed`, `agent.usage`
+- agents: `agent.registered`, `agent.launched`, `agent.bonded`, `agent.cooling`, `agent.unbonded`, `agent.awake`, `agent.asleep`, `agent.active`, `agent.reference`, `agent.strike`, `agent.suspended`, `agent.slashed`, `agent.usage`, `agent.capabilities`
+- qualification: `qualification.assigned`, `qualification.committed`, `qualification.passed`, `qualification.failed`, `qualification.expired`
 - lineage setup: `recipe.added`, `snapshot.added`, `lineage.created`, `finding.opened`, `finding.resolved`
 - candidates: `candidate.committed`, `candidate.revealed`, `candidate.queued`, `candidate.judged`, `candidate.disputed`, `candidate.rebased`, `candidate.accepted`, `candidate.rejected`, `candidate.expired`
 - replays: `replay.assigned`, `replay.committed`, `replay.reveal_open`, `replay.revealed`, `replay.invalid`, `replay.abandoned`

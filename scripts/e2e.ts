@@ -11,6 +11,7 @@ import { join } from "node:path";
 import { generateAgentKey, H, patchCommitment, patchHash, type AgentKey } from "@lineage/protocol";
 import { loadRecipe, prepareDeps } from "@lineage/sandbox";
 import { CoreClient } from "../packages/core/src/client.ts";
+import { doctor } from "../packages/worker/src/doctor.ts";
 import { loadScript, ScriptedProposer, Worker } from "../packages/worker/src/index.ts";
 
 const ROOT = join(import.meta.dir, "..");
@@ -49,6 +50,8 @@ const keys = {
   v2: generateAgentKey(),
   v3: generateAgentKey(),
   liar: generateAgentKey(),
+  faker: generateAgentKey(),
+  wrongarch: generateAgentKey(),
   author: generateAgentKey(),
   launcher: generateAgentKey(),
 };
@@ -61,6 +64,7 @@ Object.assign(net, {
   replay_window_min_s: 300,
   max_open_candidates_per_agent: 20,
   epoch_length_s: 86400,
+  qualify_retry_s: 60,
 });
 writeFileSync(join(tmp, "network.json"), JSON.stringify(net));
 
@@ -126,12 +130,15 @@ async function main() {
   const fund = (k: AgentKey, amount: bigint) => ok(admin.post("/v1/admin/faucet", { agent: k.id, amount: amount.toString() }), "faucet");
   const MIN_BOND = BigInt(net.min_bond);
   const BURN = BigInt(net.register_burn);
-  for (const n of ["ref", "v1", "v2", "v3", "liar"] as const) {
+  // real capabilities from this machine (what `lineage-worker doctor` prints); workers re-declare on start
+  const caps = doctor().capabilities;
+  const wrongCaps = { ...caps, arch: caps.arch === "arm64" ? "amd64" : "arm64" };
+  for (const n of ["ref", "v1", "v2", "v3", "liar", "faker", "wrongarch"] as const) {
     await fund(keys[n], BURN + MIN_BOND * 20n);
-    await ok(as(keys[n]).post("/v1/agents", {}), `register ${n}`);
+    await ok(as(keys[n]).post("/v1/agents", { capabilities: n === "wrongarch" ? wrongCaps : caps }), `register ${n}`);
   }
   await ok(admin.post(`/v1/admin/agents/${keys.ref.id}/reference`, { reference: true }), "mark reference");
-  for (const n of ["v1", "v2", "v3"] as const) await ok(as(keys[n]).post(`/v1/agents/${keys[n].id}/bond`, { amount: MIN_BOND.toString() }), `bond ${n}`);
+  for (const n of ["v1", "v2", "v3", "faker", "wrongarch"] as const) await ok(as(keys[n]).post(`/v1/agents/${keys[n].id}/bond`, { amount: MIN_BOND.toString() }), `bond ${n}`);
 
   log("reference runner calibrating the fixture in the sandbox");
   const refWorker = new Worker({ core: CORE, key: keys.ref, log: (m) => console.log(`   ref  ${m}`) });
@@ -157,6 +164,28 @@ async function main() {
   startVerifier("v1");
   startVerifier("v2");
   startVerifier("v3");
+  // a verifier that fabricates everything, qualification included
+  startVerifier("faker", ["--dishonest", "fabricate"]);
+
+  // ---------------------------------------------------------------- qualification (SPEC 6.1)
+  const agentView = (n: keyof typeof keys) => ok(admin.get(`/v1/agents/${keys[n].id}`), n);
+  const lastQual = (v: any) => (v.qualifications as any[]).filter((q) => q.lineage_id === L).at(-1);
+  const quals = await waitFor("honest verifiers qualified", async () => {
+    const vs = await Promise.all((["v1", "v2", "v3"] as const).map(agentView));
+    return vs.every((v) => v.qualified_lineages.includes(L)) ? vs : null;
+  });
+  check("honest verifiers pass qualification on real hardware", quals.every((v) => lastQual(v)?.status === "passed"), quals.map((v) => lastQual(v)?.reason).join(" | ").slice(0, 200));
+  const faker = await waitFor("faker qualification resolved", async () => {
+    const v = await agentView("faker");
+    return lastQual(v) && ["failed", "expired"].includes(lastQual(v).status) ? v : null;
+  });
+  check(
+    "fabricated qualification fails against calibration; no slash, no strike",
+    lastQual(faker).status === "failed" && faker.qualified_lineages.length === 0 && faker.slashed_total === "0" && faker.strikes_total === 0,
+    String(lastQual(faker).reason).slice(0, 160),
+  );
+  const wrong = await agentView("wrongarch");
+  check("a verifier declaring the wrong arch gets no qualification", wrong.qualifications.length === 0 && wrong.qualified_lineages.length === 0, `declared ${wrong.capabilities?.arch}`);
 
   const index = JSON.parse(readFileSync(join(PATCHES, "index.json"), "utf8"));
   const author = (names: string[]) =>
@@ -217,6 +246,13 @@ async function main() {
   const s2 = await submitStale("perf_decode");
   check("stale patch on untouched lines rebased onto the tip and accepted", s2.status === "accepted", `${s2.status} ${s2.reason ?? ""}`);
 
+  // audits of the honest phase settle before the liar exists, so they test honest re-measurement
+  const auditsDone = async () => {
+    const v = await ok(admin.get(`/v1/lineages/${L}`), "lineage");
+    return v.generations.filter((g: any) => g.entry_type === "patch").every((g: any) => g.audit_status && g.audit_status !== "pending");
+  };
+  await waitFor("honest-phase audits", auditsDone);
+
   // ---------------------------------------------------------------- phase 4: liar, canaries, disputes
   for (const name of ["canary_roundtrip", "canary_equiv", "canary_regress"]) {
     const m = index[name];
@@ -227,7 +263,12 @@ async function main() {
   }
   // the liar bonds heavily so it is drawn for nearly every assignment
   await ok(as(keys.liar).post(`/v1/agents/${keys.liar.id}/bond`, { amount: (MIN_BOND * 10n).toString() }), "bond liar");
-  startVerifier("liar", ["--dishonest", "fabricate"]);
+  startVerifier("liar", ["--dishonest", "fabricate-after-qualify"]);
+  const liarQ = await waitFor("liar qualified", async () => {
+    const v = await agentView("liar");
+    return v.qualified_lineages.includes(L) ? v : null;
+  });
+  check("the later liar qualifies honestly before it starts fabricating", lastQual(liarQ).status === "passed");
   const before = await ok(admin.get(`/v1/admin/agents/${keys.liar.id}`, true), "liar");
   // triggers: real candidates that should be rejected; each injects one canary (canary_rate 1)
   const triggers = ["break_tests", "regress", "equiv_change"];
@@ -263,7 +304,10 @@ async function main() {
   });
   const lv2 = await ok(admin.get(`/v1/lineages/${L}`), "lineage");
   const statuses = lv2.generations.filter((g: any) => g.entry_type === "patch").map((g: any) => g.audit_status);
-  check("audit replays agree with every accepted generation", statuses.length === audited.length && statuses.every((s: string) => s === "passed" || s === "agreed" || s === "ok"), statuses.join(","));
+  const details = await Promise.all(
+    lv2.generations.filter((g: any) => g.entry_type === "patch").map(async (g: any) => (await ok(admin.get(`/v1/generations/${g.gen_id}`), "generation")).audit?.detail ?? ""),
+  );
+  check("audit replays agree with every accepted generation", statuses.length === audited.length && statuses.every((s: string) => s === "agreed"), `${statuses.join(",")} | ${details.join(" | ")}`.slice(0, 400));
   check("lineage height is 3 (encode, fix, decode)", lv2.height === 3, `height ${lv2.height}`);
 
   await ok(admin.post("/v1/admin/creator-rewards", { amount: (10n ** 12n).toString() }), "creator rewards");
@@ -286,6 +330,9 @@ async function main() {
   const vout = ver.stdout.toString().trim().split("\n");
   check("every verdict independently recomputed from public data (scripts/verify.ts)", ver.exitCode === 0, vout.at(-1) ?? ver.stderr.toString().slice(0, 200));
   if (ver.exitCode !== 0) for (const l of vout) if (l.startsWith("FAIL")) log(`   ${l}`);
+  const pools = (ep.assignment_rounds ?? []) as any[];
+  const inPool = (id: string) => pools.some((r) => (r.pool as any[]).some((p) => p.agent === id) || (r.chosen as string[]).includes(id));
+  check("unqualified verifiers (fabricated qualification, wrong arch) never enter an assignment draw", pools.length > 0 && !inPool(keys.faker.id) && !inPool(keys.wrongarch.id), `${pools.length} rounds`);
   const canaryList = ep.canaries ?? [];
   check("canary list revealed at epoch close", Array.isArray(canaryList) && canaryList.length > 0, `${canaryList.length} canaries`);
 }

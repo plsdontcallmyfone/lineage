@@ -1,6 +1,6 @@
 {
-  "at": "2026-10-07T19:13:14.477Z",
-  "seconds": 247,
+  "at": "2026-10-07T20:06:27.300Z",
+  "seconds": 211,
   "results": [
     {
       "check": "recipe id recomputed by Core matches the worker's",
@@ -10,7 +10,7 @@
     {
       "check": "calibration accepted, lineage created",
       "ok": true,
-      "detail": "{\"lineage_id\":\"c69a9f55b91a0dd78803cd9eb779c5cedcf45876a75390e89be8f6e9561ea986\",\"calib_id\":\"51027748589832406c9a37efa87"
+      "detail": "{\"lineage_id\":\"385030aabff2e6cb7ae955f798bb5dafdd043a20be14d4a62479d7c5660521a3\",\"calib_id\":\"0b0e74982c2dd6429af9ba7e93b"
     },
     {
       "check": "stable set and known failure from real calibration",
@@ -26,6 +26,21 @@
       "check": "launched agent is active and awake after its token fees arrive",
       "ok": true,
       "detail": "compute 14000000000"
+    },
+    {
+      "check": "honest verifiers pass qualification on real hardware",
+      "ok": true,
+      "detail": "stable set reproduced; encode_ir, decode_ir, rlib_bytes match calibration | stable set reproduced; encode_ir, decode_ir, rlib_bytes match calibration | stable set reproduced; encode_ir, decode_ir, rli"
+    },
+    {
+      "check": "fabricated qualification fails against calibration; no slash, no strike",
+      "ok": true,
+      "detail": "encode_ir base 1000 differs from calibrated 44113109 beyond tolerance 0.001"
+    },
+    {
+      "check": "a verifier declaring the wrong arch gets no qualification",
+      "ok": true,
+      "detail": "declared amd64"
     },
     {
       "check": "perf_encode accepted (deterministic instruction count)",
@@ -73,6 +88,11 @@
       "detail": "accepted "
     },
     {
+      "check": "the later liar qualifies honestly before it starts fabricating",
+      "ok": true,
+      "detail": ""
+    },
+    {
       "check": "break_tests still rejected with a liar among replayers",
       "ok": true,
       "detail": "rejected tests_fail"
@@ -110,7 +130,7 @@
     {
       "check": "audit replays agree with every accepted generation",
       "ok": true,
-      "detail": "agreed,agreed,agreed"
+      "detail": "agreed,agreed,agreed | audit replays reproduce the generation | audit replays reproduce the generation | audit replays reproduce the generation"
     },
     {
       "check": "lineage height is 3 (encode, fix, decode)",
@@ -125,12 +145,12 @@
     {
       "check": "ledger reconciles to zero with no negative balances",
       "ok": true,
-      "detail": "{\"ok\":true,\"errors\":[],\"entries\":60,\"transactions\":30,\"total\":\"0\",\"balances\":{\"agent:2XwD5kazXdn8twjz84gNv62NtoSGtPxaJvB5o9ibfBkq:compute\":\"2000000000\",\"agent:4"
+      "detail": "{\"ok\":true,\"errors\":[],\"entries\":72,\"transactions\":36,\"total\":\"0\",\"balances\":{\"agent:2RAAE75UDAkaZyDnzfJEfRR8v8mrZF7Tb4QYYc8vJetC:compute\":\"2000000000\",\"agent:4"
     },
     {
       "check": "verifier claims its epoch payout with a Merkle proof",
       "ok": true,
-      "detail": "{\"epoch\":0,\"agent\":\"427g8YJ5UgYrWuHUswtaxVsT8KtZihB9HHSgpAaNjNg4\",\"dest\":\"agent:427g8YJ5UgYrWuHUswtaxVsT8KtZihB9HHSgpAaNjNg4:wallet\",\"amount\":\"35921916050\",\"bal"
+      "detail": "{\"epoch\":0,\"agent\":\"9EGe6wtGbtWJPb9e5scvC8Zg6PktkxtVBW6voUXPAeZG\",\"dest\":\"agent:9EGe6wtGbtWJPb9e5scvC8Zg6PktkxtVBW6voUXPAeZG:wallet\",\"amount\":\"42188148441\",\"bal"
     },
     {
       "check": "another agent cannot claim that leaf",
@@ -146,6 +166,11 @@
       "check": "every verdict independently recomputed from public data (scripts/verify.ts)",
       "ok": true,
       "detail": "15/15 verdicts independently recomputed"
+    },
+    {
+      "check": "unqualified verifiers (fabricated qualification, wrong arch) never enter an assignment draw",
+      "ok": true,
+      "detail": "20 rounds"
     },
     {
       "check": "canary list revealed at epoch close",

@@ -318,6 +318,34 @@ const MIGRATIONS: string[] = [
     value TEXT NOT NULL
   );
   `,
+  // 2: verifier capabilities and qualifications (SPEC 6.1), audit detail (SPEC 10.6)
+  `
+  ALTER TABLE agents ADD COLUMN capabilities TEXT;      -- JSON Capabilities, null until declared
+  ALTER TABLE agents ADD COLUMN capabilities_at INTEGER;
+  CREATE TABLE qualifications (
+    qual_id TEXT PRIMARY KEY,
+    agent_id TEXT NOT NULL,
+    lineage_id TEXT NOT NULL,
+    recipe_id TEXT NOT NULL,
+    attempt INTEGER NOT NULL,
+    seed TEXT NOT NULL,                  -- the calibration seed
+    status TEXT NOT NULL,                -- assigned | committed | passed | failed | expired | revoked | cancelled
+    capabilities TEXT,                   -- JSON capabilities declared when assigned
+    commitment TEXT,
+    result TEXT,
+    salt TEXT,
+    reason TEXT,
+    assigned_at INTEGER NOT NULL,
+    commit_deadline INTEGER NOT NULL,
+    committed_at INTEGER,
+    reveal_deadline INTEGER,
+    revealed_at INTEGER,
+    resolved_at INTEGER
+  );
+  CREATE INDEX qualifications_agent ON qualifications(agent_id, lineage_id, attempt);
+  CREATE INDEX qualifications_status ON qualifications(status);
+  ALTER TABLE audits ADD COLUMN detail TEXT;
+  `,
 ];
 
 export function openDb(path: string): Database {

@@ -56,9 +56,39 @@ export const CALIB: Calibration = {
   stable: ["t1", "t2", "t3"],
   known_failures: ["bug1", "bug2"],
   quarantined: ["flaky"],
-  metrics: { ir: { enabled: true, cv: 0 }, ns: { enabled: true, cv: 0.02 }, size: { enabled: false, cv: 0, reason: "fixture" } },
+  metrics: { ir: { enabled: true, cv: 0, base_value: 1000 }, ns: { enabled: true, cv: 0.02 }, size: { enabled: false, cv: 0, reason: "fixture" } },
   median_eval_seconds: 120,
+  seed: "5".repeat(64),
 };
+
+/** Capabilities that satisfy RECIPE.requires. */
+export const CAPS = { arch: "arm64", cpus: 8, memory_mb: 16384, gpus: [] };
+
+/** A baseline-only result that reproduces CALIB (what an honest qualification reveals). */
+export function qualifyResult(over: Partial<ReplayResult> = {}): ReplayResult {
+  return {
+    apply: "ok",
+    guard: "ok",
+    build: { base: "ok", cand: "skipped", base_digest: "bd" },
+    tests: { base_pass: ["t1", "t2", "t3", "net_test"], cand_pass: [], cand_fail: [] },
+    equivalence: null,
+    metrics: { ir: { base: [1000], cand: [], deterministic: true } },
+    env: { image_digest: "img", cpu_model: "x", cores: 2, worker_version: "test" },
+    transcript_digest: "0".repeat(64),
+    ...over,
+  };
+}
+
+/** Commits and reveals every open qualification assignment of an agent with the given result. */
+export async function qualify(a: Agent, res: ReplayResult = qualifyResult()): Promise<any[]> {
+  const out: any[] = [];
+  for (const asg of await expectOk<any[]>(a.c.get("/v1/assignments", true))) {
+    if (asg.kind !== "qualify" || asg.status !== "assigned") continue;
+    const x = await commitReplay(a, asg, res);
+    out.push(await revealReplay(x));
+  }
+  return out;
+}
 
 /** A distinct, valid canonical diff per name. */
 export function diff(name: string, file = "src/lib.rs", lines = 1): string {
@@ -151,12 +181,18 @@ export async function fund(env: { admin: Agent }, id: string, amount: bigint) {
   return expectOk(env.admin.c.post("/v1/admin/faucet", { agent: id, amount: amount.toString() }));
 }
 
-export async function makeVerifier(env: Omit<Env, "verifiers" | "reference" | "lineage" | "gen0"> | Env, opts: { operator?: string; bond?: bigint } = {}): Promise<Agent> {
+export async function makeVerifier(
+  env: Omit<Env, "verifiers" | "reference" | "lineage" | "gen0"> | Env,
+  opts: { operator?: string; bond?: bigint; capabilities?: unknown | null; qualify?: boolean } = {},
+): Promise<Agent> {
   const a = agentClient(env);
   const bond = opts.bond ?? env.cfg.min_bond;
   await fund(env, a.id, env.cfg.register_burn + bond);
-  await expectOk(a.c.post("/v1/agents", opts.operator ? { operator: opts.operator } : {}));
+  const caps = opts.capabilities === undefined ? CAPS : opts.capabilities;
+  await expectOk(a.c.post("/v1/agents", { ...(opts.operator ? { operator: opts.operator } : {}), ...(caps ? { capabilities: caps } : {}) }));
   if (bond > 0n) await expectOk(a.c.post(`/v1/agents/${a.id}/bond`, { amount: bond.toString() }));
+  // honest verifiers pass the qualification Core issues for every calibrated lineage (SPEC 6.1)
+  if (opts.qualify !== false) await qualify(a);
   return a;
 }
 
@@ -238,7 +274,7 @@ export function allAgents(env: Env): Agent[] {
 
 export async function assignmentsFor(a: Agent, candidateId?: string): Promise<any[]> {
   const list = await expectOk<any[]>(a.c.get("/v1/assignments", true));
-  return candidateId ? list.filter((x) => x.candidate.candidate_id === candidateId) : list;
+  return candidateId ? list.filter((x) => x.candidate?.candidate_id === candidateId) : list.filter((x) => x.kind !== "qualify");
 }
 
 /** Uploads the transcript, binds it into the result and commits. Returns what is needed to reveal. */

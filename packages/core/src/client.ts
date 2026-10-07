@@ -38,6 +38,9 @@ export class CoreClient {
   post<T = any>(path: string, body: unknown = {}) {
     return this.request<T>("POST", path, body);
   }
+  put<T = any>(path: string, body: unknown = {}) {
+    return this.request<T>("PUT", path, body);
+  }
   putBlob(sha: string, bytes: Uint8Array) {
     return this.request("PUT", `/v1/blobs/${sha}`, undefined, { raw: bytes });
   }

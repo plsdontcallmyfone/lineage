@@ -127,6 +127,7 @@ export function buildRoutes(core: Core): Route[] {
 
     // agent-signed
     route("POST", "/v1/agents", "agent", (c) => core.registerVerifier(c.agent!, c.json())),
+    route("PUT", "/v1/agents/:id/capabilities", "agent", (c) => core.setCapabilities(self(c), c.json())),
     route("POST", "/v1/agents/:id/bond", "agent", (c) => core.bond(self(c), c.json())),
     route("POST", "/v1/agents/:id/unbond", "agent", (c) => core.unbond(self(c), c.json())),
     route("POST", "/v1/calibrations", "agent", (c) => core.submitCalibration(c.agent!, c.json())),
@@ -202,7 +203,7 @@ export function createHandler(core: Core) {
       const { r, m } = matched;
       const params: Record<string, string> = {};
       r.keys.forEach((k, i) => (params[k] = decodeURIComponent(m[i + 1]!)));
-      const isBlobPut = req.method === "PUT";
+      const isBlobPut = req.method === "PUT" && url.pathname.startsWith("/v1/blobs/");
       const body = isBlobPut || req.method === "GET" ? "" : await req.text();
       let agent: string | null = null;
       if (r.auth !== "none") {

@@ -1,13 +1,17 @@
 #!/usr/bin/env bun
 // lineage-worker CLI.
 //   keygen   --out <file>                         write a new agent key (Solana keypair JSON)
+//   doctor   [--full]                             print this machine's capabilities as JSON (SPEC 6.1);
+//                                                 --full adds docker, image and GPU detail
 //   run      --core <url> --key <file> [options]  replay assignments and author candidates
 //   calibrate --core <url> --key <file> --recipe-id <id> --snapshot-id <id> [--runs 5]
 // run options:
 //   --proposer scripted --script <dir> [--names a,b,c]   submit prepared patches in order
 //   --proposer anthropic [--max-usd 2] [--model claude-opus-5-5] [--effort high]
 //   --lineage <id>          author only on this lineage (repeatable)
-//   --dishonest fabricate   never run replays, claim success (test only)
+//   --dishonest fabricate   never run anything, qualification included, claim success (test only)
+//   --dishonest fabricate-after-qualify   qualify honestly, then fabricate every replay (test only)
+//   --capabilities <file>   declare these capabilities (JSON) instead of what doctor detects
 //   --max-candidates <n>    stop authoring after n submissions
 //   --interval <ms>         poll interval (default 2000)
 //   --once                  one tick then exit
@@ -17,6 +21,7 @@ import { generateAgentKey, keyFromSolanaJson, type AgentKey } from "@lineage/pro
 import { AnthropicProposer } from "./proposers/anthropic.ts";
 import { loadScript, ScriptedProposer } from "./proposers/scripted.ts";
 import type { Proposer } from "./proposers/types.ts";
+import { doctor } from "./doctor.ts";
 import { Worker, type Dishonesty } from "./worker.ts";
 
 function args(argv: string[]) {
@@ -60,6 +65,12 @@ async function main() {
       console.log(k.id);
       return;
     }
+    case "doctor": {
+      const report = doctor();
+      console.log(JSON.stringify(a.one("full") ? report : report.capabilities, null, 2));
+      for (const n of report.notes) console.error(`note: ${n}`);
+      return;
+    }
     case "calibrate": {
       const w = new Worker({ core: a.one("core") ?? "http://127.0.0.1:9660", key: loadKey(a.one("key")!) });
       const r = await w.submitCalibration(a.one("recipe-id")!, a.one("snapshot-id")!, Number(a.one("runs") ?? 5));
@@ -81,15 +92,20 @@ async function main() {
           effort: a.one("effort") as never,
         });
       } else if (kind) throw new Error(`unknown proposer ${kind}`);
+      const dishonest = (a.one("dishonest") as Dishonesty) ?? "none";
+      if (!["none", "fabricate", "fabricate-after-qualify"].includes(dishonest)) throw new Error(`unknown --dishonest ${dishonest}`);
+      const capsFile = a.one("capabilities");
       const w = new Worker({
         core: a.one("core") ?? "http://127.0.0.1:9660",
         key: loadKey(a.one("key")!),
+        capabilities: capsFile ? JSON.parse(readFileSync(capsFile, "utf8")) : undefined,
         proposer,
         lineages: a.all("lineage"),
-        dishonest: (a.one("dishonest") as Dishonesty) ?? "none",
+        dishonest,
         maxCandidates: a.one("max-candidates") ? Number(a.one("max-candidates")) : undefined,
       });
       if (a.one("once")) {
+        await w.declareCapabilities().catch((e) => console.error(`capabilities not declared: ${(e as Error).message}`));
         await w.tick();
         return;
       }
@@ -100,7 +116,7 @@ async function main() {
       return;
     }
     default:
-      console.error("usage: lineage-worker keygen|run|calibrate (see header of src/main.ts)");
+      console.error("usage: lineage-worker keygen|doctor|run|calibrate (see header of src/main.ts)");
       process.exit(2);
   }
 }

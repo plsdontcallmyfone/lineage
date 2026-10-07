@@ -16,6 +16,7 @@ import {
   signMessage,
   type AgentKey,
   type Calibration,
+  type Capabilities,
   type CandidateKind,
   type CandidateView,
   type Recipe,
@@ -24,12 +25,17 @@ import {
 import { applyPatch, calibrate, diffWorkingTree, evaluate, materialize, newWorkDir, removeTree, WORKER_VERSION, type Transcript } from "@lineage/sandbox";
 import { CoreClient } from "../../core/src/client.ts";
 import type { Finding, Proposer } from "./proposers/types.ts";
+import { doctor } from "./doctor.ts";
 import { RecipeBook } from "./recipes.ts";
 
 // The worker process: replays assignments first (they have deadlines), then authors when it has a
 // proposer and its agent is an awake launched agent (SPEC 3, 5).
 
-export type Dishonesty = "none" | "fabricate";
+/**
+ * Test-only dishonest modes. `fabricate` never runs anything, qualification included (so it never
+ * qualifies); `fabricate-after-qualify` qualifies honestly, then fabricates every replay.
+ */
+export type Dishonesty = "none" | "fabricate" | "fabricate-after-qualify";
 
 export interface WorkerOptions {
   core: string;
@@ -42,6 +48,8 @@ export interface WorkerOptions {
   stateDir?: string;
   /** stop authoring after this many submitted candidates (e2e) */
   maxCandidates?: number;
+  /** capabilities to declare; default: what doctor() detects */
+  capabilities?: Capabilities;
 }
 
 interface PendingReplay {
@@ -51,7 +59,7 @@ interface PendingReplay {
 
 interface Assignment {
   replay_id: string;
-  kind: "replay" | "audit" | "reference";
+  kind: "replay" | "audit" | "reference" | "qualify";
   status: "assigned" | "committed";
   reveal_open: boolean;
   seed: string;
@@ -61,7 +69,8 @@ interface Assignment {
   calibration: Calibration;
   parent_gen_id: string;
   parent_series: { gen_id: string; patch: string }[];
-  candidate: { candidate_id: string; kind: CandidateKind; target: string | string[]; patch: string; patch_hash: string };
+  /** null for a qualification (SPEC 6.1) */
+  candidate: { candidate_id: string; kind: CandidateKind; target: string | string[]; patch: string; patch_hash: string } | null;
 }
 
 class ApiFailure extends Error {
@@ -144,11 +153,14 @@ export class Worker {
     const loaded = this.recipes.get(a.recipe_id);
     let result: ReplayResult;
     let transcript: Transcript | Record<string, unknown>;
-    if (this.opts.dishonest === "fabricate") {
+    if (a.kind === "qualify" || !a.candidate) {
+      if (this.opts.dishonest === "fabricate") ({ result, transcript } = fabricateQualification(a));
+      else ({ result, transcript } = await this.qualifyRun(a));
+    } else if (this.opts.dishonest === "fabricate" || this.opts.dishonest === "fabricate-after-qualify") {
       ({ result, transcript } = fabricate(a));
     } else {
       const deps = await this.recipes.depsFor(loaded, a.lineage.deps_digest);
-      ({ result, transcript } = await evaluate({ loaded, deps, parentPatches: a.parent_series.map((p) => p.patch), candidatePatch: a.candidate.patch, seed: a.seed }));
+      ({ result, transcript } = await evaluate({ loaded, deps, parentPatches: a.parent_series.map((p) => p.patch), candidatePatch: a.candidate!.patch, seed: a.seed }));
     }
     const bytes = canonicalJson(transcript);
     if (hashJson(transcript) !== result.transcript_digest) result.transcript_digest = hashJson(transcript);
@@ -157,8 +169,57 @@ export class Worker {
     this.pending.set(a.replay_id, { result, salt });
     this.persist();
     await this.ok(this.client.post(`/v1/replays/${a.replay_id}/commit`, { commitment: resultCommitment(result, salt) }), "commit");
+    if (!a.candidate) {
+      const m = Object.entries(result.metrics).map(([k, v]) => `${k}=${v.base[0]}`).join(" ");
+      this.log(`qualify ${a.replay_id.slice(0, 10)} on ${a.lineage.lineage_id.slice(0, 10)}: base ${result.build.base}, ${result.tests.base_pass.length} tests pass, ${m}, committed in ${((Date.now() - t0) / 1000).toFixed(1)}s`);
+      return;
+    }
     const summary = result.guard !== "ok" ? result.guard : result.apply !== "ok" ? "conflict" : `build ${result.build.cand}, ${result.tests.cand_pass.length} tests pass`;
     this.log(`replay ${a.replay_id.slice(0, 10)} (${a.kind}) of ${a.candidate.candidate_id.slice(0, 10)}: ${summary}, committed in ${((Date.now() - t0) / 1000).toFixed(1)}s`);
+  }
+
+  /**
+   * Qualification (SPEC 6.1): a baseline-only measurement of gen_0 with the calibration seed. Build,
+   * one test run and the deterministic metrics, measured with the sandbox's calibrate() at runs=1.
+   * Core compares the stable set and base values with the recorded calibration.
+   */
+  private async qualifyRun(a: Assignment): Promise<{ result: ReplayResult; transcript: Transcript | Record<string, unknown> }> {
+    const loaded = this.recipes.get(a.recipe_id);
+    const deps = await this.recipes.depsFor(loaded, a.lineage.deps_digest);
+    const result: ReplayResult = {
+      apply: "ok",
+      guard: "ok",
+      build: { base: "fail", cand: "skipped" },
+      tests: { base_pass: [], cand_pass: [], cand_fail: [] },
+      equivalence: null,
+      metrics: {},
+      env: { image_digest: a.recipe.image.split("@")[1] ?? "", cpu_model: "unknown", cores: a.recipe.limits.cpus, worker_version: WORKER_VERSION },
+      transcript_digest: "",
+    };
+    try {
+      const { calibration, transcript } = await calibrate({ loaded, deps, seed: a.seed, runs: 1 });
+      result.build.base = "ok";
+      result.tests.base_pass = [...calibration.stable].sort();
+      for (const m of a.recipe.metrics) {
+        const v = calibration.metrics[m.name]?.base_value;
+        if (m.deterministic && typeof v === "number") result.metrics[m.name] = { base: [v], cand: [], deterministic: true };
+      }
+      result.transcript_digest = hashJson(transcript);
+      return { result, transcript };
+    } catch (e) {
+      // an honest machine that cannot build or measure the baseline fails qualification, nothing more
+      const transcript = { version: WORKER_VERSION, qualify: a.replay_id, error: String((e as Error).message ?? e).slice(0, 4000) };
+      result.transcript_digest = hashJson(transcript);
+      return { result, transcript };
+    }
+  }
+
+  /** Declares this machine's capabilities to Core (SPEC 6.1). */
+  async declareCapabilities(): Promise<Capabilities> {
+    const caps = this.opts.capabilities ?? doctor().capabilities;
+    await this.ok(this.client.put(`/v1/agents/${this.id}/capabilities`, { capabilities: caps }), "declare capabilities");
+    this.log(`declared capabilities: ${caps.arch}, ${caps.cpus} cpus, ${caps.memory_mb} MB, ${caps.gpus.length} gpus`);
+    return caps;
   }
 
   // ------------------------------------------------------------------ authoring
@@ -264,6 +325,11 @@ export class Worker {
   }
 
   async run(intervalMs = 2000, until?: () => boolean): Promise<void> {
+    try {
+      await this.declareCapabilities();
+    } catch (e) {
+      this.log(`capabilities not declared: ${(e as Error).message}`);
+    }
     while (!until?.()) {
       await this.tick();
       await Bun.sleep(intervalMs);
@@ -277,7 +343,8 @@ export class Worker {
  */
 function fabricate(a: Assignment): { result: ReplayResult; transcript: Record<string, unknown> } {
   const c = a.calibration;
-  const targets = a.candidate.kind === "fix" ? (Array.isArray(a.candidate.target) ? a.candidate.target : [a.candidate.target]) : [];
+  const cand = a.candidate!;
+  const targets = cand.kind === "fix" ? (Array.isArray(cand.target) ? cand.target : [cand.target]) : [];
   const metrics: ReplayResult["metrics"] = {};
   for (const m of a.recipe.metrics) {
     const base = c.metrics[m.name]?.base_value ?? 1000;
@@ -291,6 +358,27 @@ function fabricate(a: Assignment): { result: ReplayResult; transcript: Record<st
     build: { base: "ok", cand: "ok" },
     tests: { base_pass: [...c.stable], cand_pass: [...c.stable, ...targets].sort(), cand_fail: [] },
     equivalence: a.recipe.equivalence ? { base_digest: "0".repeat(64), cand_digest: "0".repeat(64) } : null,
+    metrics,
+    env: { image_digest: a.recipe.image.split("@")[1] ?? "", cpu_model: "unknown", cores: a.recipe.limits.cpus, worker_version: WORKER_VERSION },
+    transcript_digest: hashJson(transcript),
+  };
+  return { result, transcript };
+}
+
+/**
+ * A fabricated qualification: the public stable set and made-up base values. Core holds back the
+ * calibrated base values from the assignment, so a liar that never measures cannot match them.
+ */
+function fabricateQualification(a: Assignment): { result: ReplayResult; transcript: Record<string, unknown> } {
+  const metrics: ReplayResult["metrics"] = {};
+  for (const m of a.recipe.metrics) if (m.deterministic) metrics[m.name] = { base: [a.calibration.metrics[m.name]?.base_value ?? 1000], cand: [], deterministic: true };
+  const transcript = { version: WORKER_VERSION, fabricated: true, qualify: a.replay_id, at: Date.now() };
+  const result: ReplayResult = {
+    apply: "ok",
+    guard: "ok",
+    build: { base: "ok", cand: "skipped" },
+    tests: { base_pass: [...a.calibration.stable], cand_pass: [], cand_fail: [] },
+    equivalence: null,
     metrics,
     env: { image_digest: a.recipe.image.split("@")[1] ?? "", cpu_model: "unknown", cores: a.recipe.limits.cpus, worker_version: WORKER_VERSION },
     transcript_digest: hashJson(transcript),

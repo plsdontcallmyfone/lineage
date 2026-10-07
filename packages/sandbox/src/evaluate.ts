@@ -474,6 +474,7 @@ export async function calibrate(input: { loaded: LoadedRecipe; deps: DepsLayer; 
       quarantined,
       metrics,
       median_eval_seconds: Math.max(1, evalSeconds),
+      seed,
     };
     return { calibration, transcript: ctx.transcript, snapshot_commit: r.commit };
   } finally {
