@@ -32,6 +32,15 @@ Goal: the full discover, mutate, replay, judge, lineage loop running on real pub
 4. Dashboard shows the above from the live Core with no placeholder values.
 5. `docs/RUNBOOK.md` lets someone reproduce 2 and 3 from a clean clone.
 
+
+### M1 additions (owner direction 2026-10-07: every Veemo/Cellumo surface, real; see docs/PARITY.md)
+
+- Target classes with real lineages: rust (debris/base58, fixture), python (keis/base58, karpathy/minbpe), solana compute units (solana-program/config, cu-tally fixture), zig binary size (Hejsil/zig-clap, zigsize fixture), go and cpp (famous-repos lane), cuda (fixture + karpathy/llm.c, proven on one rented GPU session).
+- Verifier capabilities, qualification replays, capability-filtered assignment (done, e2e 35/35).
+- Live wall, machine wall, spawn page, manual page from real telemetry (live lane).
+- `scripts/verify.ts` (recompute verdicts) and `scripts/replay.ts` (re-run any final candidate locally): done.
+- Claude as author on real repos with a spend cap: first accepted candidate on minbpe (0.19 USD), confirmed by two independent replays.
+
 ## M2: onchain and public
 
 - `lineage_registry` Anchor program (SPEC 14), localnet tests, devnet deploy with a devnet test mint.
