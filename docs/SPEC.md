@@ -547,33 +547,57 @@ M1 records only the mode on the agent (`token`, `purchased`, `app`; the 0.3 name
 
 ## 14. Onchain programs (M2)
 
-Two Anchor programs on Solana: `lineage_registry` (14.1) and `lineage_launch` (14.2), token-interface based so they work with SPL Token and Token-2022 mints.
+Two Anchor 0.31.1 programs on Solana in `onchain/`: `lineage_registry` (14.1) and `lineage_launch` (14.2), token-interface based so `$LINE` may be an SPL Token or a Token-2022 mint. Built and tested on LiteSVM against the real Meteora programs (14.4); not deployed anywhere (`onchain/DEPLOY.md`). The TypeScript client is `packages/chain` (instruction builders, PDAs, account decoders, no Solana SDK dependency).
 
 ### 14.1 `lineage_registry`
 
 | Account | Contents |
 |---|---|
-| `Config` | admin, Core authority, mint, every parameter in section 13, paused flag. Every field admin-editable via `set_config`. |
-| `Agent` (PDA by agent pubkey) | owner wallet, kind (launched or verifier), agent token mint if launched, hosted flag, burned amount, bond, unbond request slot, strikes, operator group, registered_at. |
-| `BondVault` | token account owned by the program. |
-| `Treasury`, `ReserveVault`, `PoolVault` | token and SOL accounts; `split` instruction moves treasury balance by `reserve_bps` and `pool_bps`. |
-| `Epoch` (PDA by index) | payouts Merkle root, lineage Merkle root, total units, pool amount, claimed bitmap. |
+| `Config` (PDA `config`) | admin, Core authority, launch program, mint, token program, every parameter of section 13 that the chain holds (`register_burn`, `min_bond`, `bond_cap`, `unbond_cooldown_s`, `epoch_length_s`, `reserve_bps`, `pool_bps`, the three slash bps, `strike_limit`, `u_replay`, `u_author`, `finder_share_bps`, `value_cap`, `rebate_per_class`, `max_open_candidates_per_agent`, `author_reward_to`, `quorum`), paused flag, last posted epoch. Every field but the mint admin-editable via `set_config` (the vaults are bound to the mint). |
+| `Agent` (PDA `agent`, agent pubkey) | agent key, owner wallet, kind (verifier or launched), agent token mint if launched, hosted flag, burned amount, bond, unbond amount, requested and ready times, strikes (total, per epoch, epoch), `suspended_through_epoch`, slashed total, operator group digest, capabilities digest, registered_at. |
+| `BondVault`, `Treasury`, `ReserveVault`, `PoolVault`, `PayableVault` | `$LINE` token accounts (PDAs `bond_vault`, `treasury`, `reserve`, `pool`, `payable`) owned by the PDA `vault_authority`. SOL is not held. |
+| `Epoch` (PDA `epoch`, index) | payout Merkle root, lineage Merkle root, total units x 10^6, pool amount, rebate amount, total payable, claimed amount and count, posted_at. |
+| `ClaimReceipt` (PDA `claim`, epoch, leaf hash) | one per paid leaf. It replaces a claimed bitmap: proofs use sorted pairs (protocol `merkleProof`), so they do not bind a leaf index and a bitmap could be claimed twice under two indices. |
 
-Instructions: `register` (CPI burn, creates `Agent`; tokenless verifiers), `register_launched` (called by `lineage_launch` only), `bond`, `request_unbond`, `withdraw_unbonded` (after `unbond_cooldown`), `slash` (Core authority; from M4 also a successful challenge), `split`, `post_epoch` (Core authority), `claim` (Merkle proof), `set_config`, `pause`.
+Instructions:
+
+- `initialize` (the program's upgrade authority, checked through ProgramData), `set_config` (admin), `pause` (admin; while paused every other instruction but `set_config` fails, including `register_launched`, so launches stop too).
+- `register` (owner pays `register_burn` by CPI burn; the agent key co-signs), `register_launched` (only with `lineage_launch`'s `authority` PDA as signer, checked against `Config.launch_program`), `update_agent` (owner: operator and capabilities digests).
+- `bond` (owner; hosted agents refused), `request_unbond` (owner; replaces any pending request), `withdraw_unbonded` (owner, after `unbond_cooldown_s`; pays `min(requested, bond)`; the bond stays slashable until then).
+- `slash(offence, epoch)` (Core authority): offence 0 canary, 1 minority, 2 reveal take `bond x <offence>_slash_bps / 10,000` (floor) to the reserve; 3 abandoned is a strike only. `strike_limit` strikes in one epoch set `suspended_through_epoch` to the next epoch. A pending unbond is clamped to the remaining bond.
+- `split` (anyone): the whole treasury, `floor(x reserve_bps / 10,000)` to the reserve and the rest to the pool (`reserve_bps + pool_bps` must be 10,000).
+- `post_epoch` (Core authority, strictly increasing epochs): records the roots and totals and moves `pool_amount` from the pool and `rebate_amount` from the reserve into the payable vault.
+- `claim` (anyone; the tokens can only go to the leaf's destination): recomputes the leaf (14.3), verifies the proof, refuses a total above the epoch's payable, creates the receipt. Destinations: `agent:<id>:wallet` pays a token account owned by the `Agent` owner (the record must exist); `agent:<id>:compute` pays `lineage_launch`'s compute vault PDA of that agent; `wallet:<address>` pays a token account owned by that address.
 
 Creator rewards: use Pump.fun Creator Fee Sharing (research/PRIOR-ART.md section 4). At launch the creator sets the shareholder list once, after which it is locked: `reserve_bps` to the `ReserveVault` owner address and `pool_bps` to the `PoolVault` owner address. Anyone can trigger distribution, so a keeper does it every epoch. Two things must be proven with a test transaction before launch: that a program-derived address can be a shareholder, and the shareholder cap. Known residual risk: Pump.fun's community-takeover process can reassign creator fees; the split is locked against the creator, not against Pump.fun. The UI shows the onchain shareholder config as read from chain, never the intended split as text (Veemo publishes an 80/20 split that its onchain config does not implement).
 
 ### 14.2 `lineage_launch`
 
-Creates agent tokens on Meteora DBC with `$LINE` as quote, as pool creator and fee claimer through PDAs.
+Creates agent tokens on Meteora DBC with `$LINE` as quote. The PDA `authority` is the DBC pool creator, fee claimer and leftover receiver, and after Meteora's migration it holds the DAMM v2 position NFT whose liquidity DBC locked permanently.
 
 | Account | Contents |
 |---|---|
-| `LaunchConfig` | admin, DBC config key, `agent_compute_bps`, `protocol_bps`, sleep and wake thresholds, curve parameters. Admin-editable. |
-| `AgentLaunch` (PDA by mint) | agent id, mint, launcher, target repo hash and URL, identity mode, hosted flag, DBC pool, DAMM v2 pool and position after graduation. |
-| `ComputeVault` (PDA by agent) | `$LINE` token account; debited only by the hosted runtime authority against posted usage records, or withdrawn to a self-hosted agent's operator. |
+| `LaunchConfig` (PDA `launch_config`) | admin, hosted runtime authority, registry program, `$LINE` mint and token program, compute sink (token account receiving debits), DBC config, `agent_compute_bps`, `protocol_bps` (sum 10,000), `sleep_threshold`, `wake_threshold` (sleep <= wake), the curve's `migration_quote_threshold` and `sqrt_start_price` as read from the DBC config, paused. Admin-editable via `set_launch_config`. |
+| `AgentLaunch` (PDA `agent_launch`, mint) | agent id, mint, launcher, `repo_id` (= protocol `repoId(url)`, computed onchain) and URL, identity mode (0 token, 1 purchased, 2 app), hosted flag, DBC config and pool, DAMM v2 pool, position and NFT account after graduation, graduated, awake, created_at, fees claimed, to compute, to protocol, debited, withdrawn. |
+| `ComputeVault` (PDA `compute`, agent) | `$LINE` token account owned by `authority`; debited only by the runtime authority against posted usage, or withdrawn by the launcher of a self-hosted agent. |
+| `UsageEpoch` (PDA `usage`, epoch), `DebitReceipt` (PDA `debit`, epoch, agent) | usage root per epoch; one debit per agent per epoch. |
 
-Instructions: `launch_agent` (creates mint and DBC pool via CPI, writes `AgentLaunch`, CPI `lineage_registry::register_launched`), `crank_fees` (claims DBC partner and creator fees, or DAMM v2 position fees after graduation, and splits them), `graduate` (records the DAMM v2 pool after Meteora's migration), `post_usage` (hosted runtime authority, per epoch, Merkle root of usage), `debit_compute`, `set_launch_config`.
+The DBC config a launch uses must be owned by DBC and have: quote mint `$LINE`, fee claimer and leftover receiver = `authority`, fees collected in the quote token, migration to DAMM v2, 100% of the LP permanently locked to the partner, no creator LP and no creator fee share, Token-2022 agent mints. Curve, fee and supply are the admin's choice (launch values TBA, section 20).
+
+Instructions: `initialize_launch` (upgrade authority), `set_launch_config` (admin), `launch_agent` (launcher pays; the agent key and the fresh mint co-sign: DBC `initialize_virtual_pool_with_token2022` by CPI signed by `authority`, compute vault, `AgentLaunch`, CPI `lineage_registry::register_launched`; the repository URL must already be `canonicalUrl` of an https URL), `crank_fees` (anyone, before graduation: DBC partner fees, plus the partner surplus once the curve overshoots, into the compute vault, then `protocol` = fees minus `floor(fees x agent_compute_bps / 10,000)` to the registry treasury), `graduate` (anyone, once, after DBC `migration_damm_v2`: the pool must be DAMM v2's PDA on a config only DBC's pool authority can use, the position NFT held by `authority`, all its liquidity permanently locked), `crank_pool_fees` (anyone, after graduation: the locked position's DAMM v2 fees, same split; any agent tokens it pays are burned), `post_usage` (runtime authority, per epoch), `debit_compute` (runtime authority, Merkle proof of the agent's usage leaf, once per agent and epoch, to the compute sink), `withdraw_compute` (launcher of a self-hosted agent), `refresh_awake` (anyone). `awake` follows 13.7's hysteresis after every crank, debit, withdrawal or refresh.
+
+### 14.3 Leaves verified onchain
+
+The programs implement protocol `H`, `leafHash` and `nodeHash` byte for byte (sha256 of canonical JSON, the inner object JSON-escaped inside `["leaf", ...]`, `["node", lo, hi]` over lowercase hex), so a root Core builds with `merkleRoot` verifies onchain without a second encoding:
+
+- payout leaf: `leafHash(canonicalJson({ epoch, agent, dest, amount }))`, `amount` a decimal string (unchanged from 13.3);
+- usage leaf: `leafHash(canonicalJson({ agent, amount, epoch, model_tokens, sandbox_s }))`, `amount` a decimal string, the rest numbers (`packages/chain` `usageLeaf`).
+
+Strings in a leaf may only contain printable ASCII without `"` or `\` (true of base58 keys, decimal amounts and Core's destination names); anything else is refused, never encoded differently. `onchain/scripts/make-fixtures.ts` builds roots and proofs with `@lineage/protocol` and the LiteSVM suite claims and debits with them.
+
+### 14.4 Tests and deployment
+
+`onchain/README.md` has the commands. LiteSVM suites load the compiled programs and the Meteora DBC and DAMM v2 programs dumped from devnet (sha256 pinned in `onchain/vendor/meteora/README.md`), and cover: a full launch on both `$LINE` kinds (classic SPL and Pump.fun-style Token-2022), trades on the curve, the exact fee split, Meteora's migration, graduation and the locked position's fees, register, bond, unbond cooldown, slash and suspension, split, epoch post and claim with TypeScript-built roots, double-claim, over-claim, wrong-signer and pause refusals, usage debits, self-hosted withdrawals and sleep and wake. Deployment needs the owner's approval and devnet SOL; sizes, rent and commands are in `onchain/DEPLOY.md`.
 
 ---
 
@@ -693,3 +717,4 @@ See `docs/MILESTONES.md`.
 - 0.7.1 (2026-10-07): `go` and `cpp` classes (famous Go and C++ repos); docs/PARITY.md maps every Veemo/Cellumo surface to a real implementation.
 - 0.7.2 (2026-10-07): live activity events and heartbeats (17.1) so the live wall shows only real agent work.
 - 0.8 (2026-10-07, core v2 lane): capabilities declared at registration and with `PUT /v1/agents/:id/capabilities`, strictly validated, shown on agent views; `lineage-worker doctor`; per-lineage qualification (`qualify` assignments on the calibration seed, baseline-only, compared with the calibrated stable set and deterministic base values, no slash or strike on failure, retry after `qualify_retry_s`, revoked when capabilities stop satisfying the recipe); `calibration.seed` recorded; recipes must carry `class` and `requires`; assignment, canaries and audits draw only from capable, qualified verifiers (6.1, 10.3); audits revert only on deterministic contradictions, a fresh-seed miss is `weak` (deterministic metric) or `inconclusive` (noisy metric) (10.6). Found by reasoning, not in a run: an audit on a fresh seed could previously revert a sound generation on a noisy metric's split. Found in the end-to-end run: the audit of a rebased generation excluded the replayers of both stages, so with three verifiers it waited for an auditor forever; it now excludes only the accepted stage's replayers (`e2e` 35/35).
+- 0.8.1 (2026-10-07, onchain lane): section 14 as built: `lineage_registry` and `lineage_launch` Anchor programs, LiteSVM suites against the real Meteora builds, `packages/chain` client. Claimed leaves are tracked by receipt PDAs keyed by leaf hash, not a bitmap (sorted-pair proofs do not bind an index); the payout leaf is unchanged and verified onchain byte for byte; new usage leaf for compute debits (14.3); `crank_pool_fees` is the post-graduation half of `crank_fees`; added `update_agent`, `withdraw_compute`, `refresh_awake`; launch DBC configs must give no creator fee share.
