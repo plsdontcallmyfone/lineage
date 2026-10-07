@@ -17,28 +17,28 @@
       },
       "parse_ir": {
         "base": [
-          29344669
+          29344654
         ],
         "cand": [
-          27817578
+          27817551
         ],
-        "ratio": 0.9479601899752217
+        "ratio": 0.9479597544411326
       },
       "help_ir": {
         "base": [
-          23263635
+          23263620
         ],
         "cand": [
-          23263635
+          23263620
         ],
         "ratio": 1
       }
     },
     "equivalence": "changed",
     "seed": "7265706c61792d73",
-    "recipe_id": "e9418302758d1a33b4f3f11d233e3e65731e145044271ead9542ee8c459239f1",
-    "eval_seconds": 28.2,
-    "date": "2026-10-07T20:07:36.280Z",
+    "recipe_id": "51de40742d5744f0ba0aba722600e4ac77cbcfdca50f4dd4c0eb458a48168a87",
+    "eval_seconds": 24.6,
+    "date": "2026-10-07T22:37:34.545Z",
     "match": true
   },
   "long_lastsep": {
@@ -59,28 +59,28 @@
       },
       "parse_ir": {
         "base": [
-          29157869
+          29157854
         ],
         "cand": [
-          28088448
+          28088445
         ],
-        "ratio": 0.9633230741245185
+        "ratio": 0.96332346680932
       },
       "help_ir": {
         "base": [
-          23275072
+          23275057
         ],
         "cand": [
-          23275072
+          23275057
         ],
         "ratio": 1
       }
     },
     "equivalence": "changed",
     "seed": "7265706c61792d6c",
-    "recipe_id": "e9418302758d1a33b4f3f11d233e3e65731e145044271ead9542ee8c459239f1",
-    "eval_seconds": 31.2,
-    "date": "2026-10-07T20:08:07.464Z",
+    "recipe_id": "51de40742d5744f0ba0aba722600e4ac77cbcfdca50f4dd4c0eb458a48168a87",
+    "eval_seconds": 21.2,
+    "date": "2026-10-07T22:37:55.733Z",
     "match": true
   },
   "inline_chaining": {
@@ -115,28 +115,28 @@
       },
       "parse_ir": {
         "base": [
-          29034657
+          29034642
         ],
         "cand": [
-          24092742
+          24092727
         ],
-        "ratio": 0.8297925475751272
+        "ratio": 0.8297924596418306
       },
       "help_ir": {
         "base": [
-          23281896
+          23281881
         ],
         "cand": [
-          23151109
+          23151094
         ],
-        "ratio": 0.9943824592292655
+        "ratio": 0.9943824556100085
       }
     },
     "equivalence": "same",
     "seed": "7265706c61792d69",
-    "recipe_id": "e9418302758d1a33b4f3f11d233e3e65731e145044271ead9542ee8c459239f1",
-    "eval_seconds": 25.1,
-    "date": "2026-10-07T20:08:32.560Z",
+    "recipe_id": "51de40742d5744f0ba0aba722600e4ac77cbcfdca50f4dd4c0eb458a48168a87",
+    "eval_seconds": 20.5,
+    "date": "2026-10-07T22:38:16.275Z",
     "match": true
   }
 }

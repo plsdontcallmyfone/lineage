@@ -31,28 +31,28 @@
       },
       "parse_ir": {
         "base": [
-          29344657
+          29344642
         ],
         "cand": [
-          29344657
+          29344654
         ],
-        "ratio": 1
+        "ratio": 1.000000408933256
       },
       "help_ir": {
         "base": [
-          23263623
+          23263608
         ],
         "cand": [
-          23263623
+          23263608
         ],
         "ratio": 1
       }
     },
     "equivalence": "same",
     "seed": "7265706c61792d73",
-    "recipe_id": "e9418302758d1a33b4f3f11d233e3e65731e145044271ead9542ee8c459239f1",
-    "eval_seconds": 22.8,
-    "date": "2026-10-07T20:08:55.395Z",
+    "recipe_id": "51de40742d5744f0ba0aba722600e4ac77cbcfdca50f4dd4c0eb458a48168a87",
+    "eval_seconds": 20.1,
+    "date": "2026-10-07T22:38:36.440Z",
     "match": true
   }
 }

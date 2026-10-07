@@ -59,6 +59,9 @@ metrics:
 patch:
   allowed_paths: ["src/**"]
   protected_paths: ["tests/**", "examples/**", "benches/**", "Cargo.toml", "Cargo.lock", "build.rs", ".travis.yml", ".github/**", "**/*.yml"]
+  protected_blocks:
+    # upstream keeps unit tests inside src/lib.rs; a patch may edit the library but never this module
+    - { glob: "src/**/*.rs", start: "^\\s*#\\[cfg\\(test\\)\\]" }
   max_files: 5
   max_lines: 200
 limits: { cpus: 2, memory_mb: 2048, pids: 256, wall_s: 900, disk_mb: 4096 }

@@ -1,5 +1,5 @@
 {
-  "recipe_id": "611253b7d91616fead35ba5b04279556d95451175b0a5635103f1dd7e51b4943",
+  "recipe_id": "b57c6f0a68a4db4ca54154c16d520e3169820524904cfb09b2cd5ec49bedc2da",
   "snapshot_id": "",
   "runs": 5,
   "stable": [
@@ -20,23 +20,23 @@
     "encode_ir": {
       "enabled": true,
       "cv": 0,
-      "base_value": 251793822
+      "base_value": 251793461
     },
     "decode_ir": {
       "enabled": true,
       "cv": 0,
-      "base_value": 93734821
+      "base_value": 93734460
     }
   },
-  "median_eval_seconds": 6,
+  "median_eval_seconds": 9,
   "seed": "ca11b7a7e",
   "recipe_name": "base58-rs",
   "repo": "https://github.com/debris/base58",
   "commit": "72795451f9261c8b543bb6ce59117ba069497fdb",
-  "deps_digest": "6e41d724de852d4ad65b06506c8b02d1dbaa1c798c9cc9c147819ae0eb489c98",
+  "deps_digest": "29fa051c1bd035ae15ab9de9a73b34f0110e602d664efca31b83ba0a41d44de1",
   "image_digest": "sha256:ad2f9ba06cb62446a4a2015ffac9e90f877dbd0c7e10aa2c2976240e68d0a626",
-  "date": "2026-10-07T19:43:48.364Z",
-  "calibration_wall_seconds": 8.9,
+  "date": "2026-10-07T22:35:56.870Z",
+  "calibration_wall_seconds": 11.8,
   "counts": {
     "stable": 10,
     "known_failures": 0,
@@ -44,6 +44,6 @@
     "excluded": 0
   },
   "notes": [
-    "calibration wall time 9 s"
+    "calibration wall time 12 s"
   ]
 }

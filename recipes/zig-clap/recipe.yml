@@ -79,6 +79,10 @@ metrics:
 patch:
   allowed_paths: ["clap.zig", "clap/**"]
   protected_paths: ["build.zig", "build.zig.zon", "example/**", ".github/**", "**/*.yml", "lineage_*"]
+  protected_blocks:
+    # upstream tests are `test "..." { }` blocks inside the source files patches may edit
+    - { glob: "clap.zig", start: "^\\s*test\\s+\"" }
+    - { glob: "clap/**/*.zig", start: "^\\s*test\\s+\"" }
   max_files: 5
   max_lines: 200
 limits: { cpus: 2, memory_mb: 2048, pids: 256, wall_s: 900, disk_mb: 4096 }
