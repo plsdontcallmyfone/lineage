@@ -27,5 +27,10 @@
   "minority_slash_bps": 500,
   "reveal_slash_bps": 200,
   "strike_limit": 3,
-  "token_decimals": 9
+  "token_decimals": 9,
+  "agent_compute_bps": 7000,
+  "protocol_bps": 3000,
+  "sleep_threshold": "1000000000",
+  "wake_threshold": "2000000000",
+  "author_reward_to": "compute"
 }
