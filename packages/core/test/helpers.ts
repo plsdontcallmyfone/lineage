@@ -28,6 +28,8 @@ import {
 export const ROOT = join(import.meta.dir, "../../..");
 
 export const RECIPE: Recipe = {
+  class: "rust",
+  requires: { arch: "arm64" },
   name: "fx",
   repo: "https://github.com/example/fx",
   commit: "0123456789abcdef0123456789abcdef01234567",

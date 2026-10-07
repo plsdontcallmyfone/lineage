@@ -1,6 +1,8 @@
 # Fixture recipe: a local base58 crate with planted improvements and a planted bug.
 # The commit is deterministic (fixed author and dates), see packages/sandbox/src/repo.ts.
 name: fixture-b58
+class: rust
+requires: { arch: arm64 }
 repo: "fixture:b58"
 commit: "c2c30d4ecbdd6a7b9f14457f33898fdf27f0c7d6"
 image: "lineage/rust:m1@sha256:ad2f9ba06cb62446a4a2015ffac9e90f877dbd0c7e10aa2c2976240e68d0a626"

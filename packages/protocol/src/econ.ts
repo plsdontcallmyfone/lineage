@@ -125,3 +125,17 @@ export function merkleProof(leaves: Hex[], index: number): Hex[] {
 export function verifyProof(leaf: Hex, proof: Hex[], root: Hex): boolean {
   return proof.reduce((acc, p) => nodeHash(acc, p), leaf) === root;
 }
+
+/** True when a verifier's declared capabilities satisfy a recipe's requirements (SPEC 6.1). */
+export function satisfies(cap: import("./types.ts").Capabilities | null | undefined, req: import("./types.ts").Requires | undefined): boolean {
+  if (!req) return true;
+  if (!cap) return false;
+  if (cap.arch !== req.arch) return false;
+  if (req.min_cpus && cap.cpus < req.min_cpus) return false;
+  if (req.min_memory_mb && cap.memory_mb < req.min_memory_mb) return false;
+  if (req.gpu) {
+    const g = req.gpu;
+    if (!cap.gpus.some((x) => x.vendor === g.vendor && x.sm === g.sm && (!g.min_mem_gb || x.mem_gb >= g.min_mem_gb))) return false;
+  }
+  return true;
+}

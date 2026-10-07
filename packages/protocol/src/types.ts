@@ -34,8 +34,28 @@ export interface Limits {
   disk_mb: number;
 }
 
+export type TargetClass = "rust" | "solana" | "zig" | "cuda" | "python";
+
+/** Hardware a verifier must have to replay a recipe (SPEC 6.1). */
+export interface Requires {
+  arch: "amd64" | "arm64";
+  gpu?: { vendor: "nvidia"; sm: string; min_mem_gb?: number };
+  min_cpus?: number;
+  min_memory_mb?: number;
+}
+
+/** What a verifier declares about itself (SPEC 6.1). */
+export interface Capabilities {
+  arch: "amd64" | "arm64";
+  cpus: number;
+  memory_mb: number;
+  gpus: { vendor: "nvidia"; model: string; sm: string; mem_gb: number; driver: string }[];
+}
+
 export interface Recipe {
   name: string;
+  class: TargetClass;
+  requires: Requires;
   repo: string;
   commit: string;
   image: string;

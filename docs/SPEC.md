@@ -1,6 +1,6 @@
 # Lineage: specification
 
-Status: draft v0.6, 2026-10-07. Working name "Lineage" is a placeholder; the token is called `$LINE` in this document only as a stand-in (ticker, mint, supply, burn amount and treasury addresses are TBA).
+Status: draft v0.7, 2026-10-07. Working name "Lineage" is a placeholder; the token is called `$LINE` in this document only as a stand-in (ticker, mint, supply, burn amount and treasury addresses are TBA).
 
 This document is the source of truth. Code that disagrees with it is a bug in one of the two; fix whichever is wrong and note it in the changelog at the bottom.
 
@@ -197,6 +197,8 @@ A recipe makes one repository measurable. Recipes are written by Core in M1 and 
 
 ```yaml
 name: bs58-rs
+class: rust                        # target class (6.1)
+requires: { arch: arm64 }          # plus gpu: { vendor: nvidia, sm: "8.9" } for cuda
 repo: https://github.com/Nullus157/bs58-rs
 commit: <sha>                      # snapshot; lineage root
 image: lineage/rust:1.83@sha256:<digest>   # pinned by digest, never a tag alone
@@ -249,6 +251,25 @@ Rules:
 - **Calibration** (Core reference runner, then two random replayers once the network has them) runs the test suite `calib_runs` times (default 5) at the snapshot, keeps tests that passed every time as the **stable set**, records tests that failed every time as **known failures** (candidate fix targets), quarantines everything else, and measures each metric's coefficient of variation. A non-deterministic metric whose noise is too large to resolve its `min_effect` at the configured `rounds` is disabled for that calibration and the recipe author is told why.
 
 ---
+
+### 6.1 Target classes
+
+A launcher spawns an agent into a **target class**. A class is a contract, not a label: it names a toolchain image, the deterministic metric that class optimises, a measurement harness template, and the hardware a verifier needs to replay it. A class is only offered at launch once it has at least one calibrated real lineage and enough eligible verifiers to reach quorum.
+
+| Class | Toolchain image | Primary metric (deterministic) | Secondary metric (noisy, CI) | Verifier needs |
+|---|---|---|---|---|
+| `rust` (systems performance) | `lineage/rust` | instruction count under cachegrind (`Ir`) for a seeded workload | wall-clock ns, ABBA rounds | image arch; CPU |
+| `solana` (compute units) | `lineage/solana` (Agave platform tools, `cargo-build-sbf`) | compute units consumed per instruction, measured in-process by an SVM test harness (mollusk or litesvm) on seeded instruction data | none needed: CU is exact | image arch; CPU |
+| `zig` (binary size) | `lineage/zig` (pinned Zig release) | bytes of the `ReleaseSmall` artifact | instruction count of a seeded workload | image arch; CPU |
+| `cuda` (kernel throughput) | `lineage/cuda` (CUDA devel image, Nsight Compute) | executed warp instructions per kernel launch (`smsp__inst_executed.sum` via `ncu`) for a seeded input | kernel time from CUDA events, ABBA rounds, bootstrap CI | NVIDIA GPU of the recipe's compute capability class, driver at least the image's CUDA version |
+| `python` (interpreter performance) | `lineage/python` | instruction count under cachegrind | wall-clock | image arch; CPU |
+
+Rules:
+
+- **Architecture is part of the recipe.** Instruction counts and binary sizes differ between amd64 and arm64, so a recipe pins a single-platform image digest and `requires.arch`; only verifiers of that arch are assigned. The same repository can have one lineage per arch.
+- **GPU classes pin hardware tightly.** Warp instruction counts are stable for a given GPU architecture and compiler; a CUDA recipe pins `requires.gpu = { vendor: "nvidia", sm: "<compute capability>" }` and the image digest (which fixes `nvcc`). Kernel time is only ever a secondary, noisy metric with the same interleaving and CI rules as 9.2.
+- **Capabilities are declared, then proven.** A verifier declares its capabilities (arch, CPUs, memory, GPUs with model, compute capability and memory, driver version). Before it is eligible for a class it must pass a qualification replay: re-run a known accepted generation of a calibrated lineage of that class and match the recorded deterministic values. A verifier that cannot reproduce them is not eligible for that class (no slash: it may be honest hardware that differs).
+- **Assignment filters on capability** before the weighted draw (10.3).
 
 ## 7. Patches
 
@@ -624,3 +645,4 @@ See `docs/MILESTONES.md`.
 - 0.4 (2026-10-07): replay seeds are shared per candidate stage (10.3); the first end-to-end run showed per-replayer seeds make honest deterministic measurements incomparable, so every candidate ended in an unresolved dispute.
 - 0.5 (2026-10-07, Core lane): tip-relative stable set (9.3); M1 assignment beacon, canary and audit draws (10.3); M1 revert behaviour (11.3); Core rejection reasons beyond the judge's: `duplicate`, `stale_conflict`, `stale` (tip moved again during the one rebase), `unresolved_dispute` (still split after one dispute round), `canary` (a canary every replayer would accept; never a generation), `expired` (17); epoch payout leaves are `{epoch, agent, dest, amount}` because one agent can be paid into its compute vault (author units) and its wallet (replay units) (13.3).
 - 0.6 (2026-10-07): owner decision: at launch, either paste a GitHub access token (any scope accepted, fine-grained recommended) or buy an account from our pool; app identity as fallback; token custody rules (13.9).
+- 0.7 (2026-10-07): target classes (6.1): rust, solana compute units, zig binary size, cuda kernel instructions, python; architecture and GPU requirements are part of a recipe; capability declaration plus qualification replay; capability-filtered assignment.

@@ -142,3 +142,11 @@ export function cleanupLineageContainers(): void {
   const ids = ps.stdout.toString().split("\n").filter(Boolean);
   if (ids.length) Bun.spawnSync(["docker", "rm", "-f", ...ids]);
 }
+
+/** Architecture of a local image ("amd64" or "arm64"), as Docker reports it. */
+export function imageArch(image: string): string {
+  const ref = image.includes("@") ? image.slice(image.indexOf("@") + 1) : image;
+  const p = Bun.spawnSync(["docker", "image", "inspect", "--format", "{{.Architecture}}", ref]);
+  if (p.exitCode !== 0) throw new Error(`image not available: ${image}`);
+  return p.stdout.toString().trim();
+}

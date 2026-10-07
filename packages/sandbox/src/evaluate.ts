@@ -17,7 +17,7 @@ import {
   cv,
   median,
 } from "@lineage/protocol";
-import { imageDigest, runContainer, runnableImage, type Mount, type RunResult } from "./docker.ts";
+import { imageArch, imageDigest, runContainer, runnableImage, type Mount, type RunResult } from "./docker.ts";
 import { parseMetric, parseTests, type TestOutcome } from "./parsers.ts";
 import type { LoadedRecipe } from "./recipe.ts";
 import { applyPatch, cloneTree, commitTime, LINEAGE_HOME, materialize, newWorkDir, openPermissions, removeTree } from "./repo.ts";
@@ -270,6 +270,8 @@ function cpuModel(): string {
 async function setup(loaded: LoadedRecipe, deps: DepsLayer, seed: Hex, parentPatches: string[], candidatePatch: string | null) {
   const r = loaded.recipe;
   const image = await imageDigest(r.image);
+  const arch = imageArch(r.image);
+  if (r.requires?.arch && arch !== r.requires.arch) throw new EvalError(`image is ${arch} but the recipe requires ${r.requires.arch} (SPEC 6.1)`);
   const transcript: Transcript = {
     version: WORKER_VERSION,
     recipe_id: loaded.recipe_id,

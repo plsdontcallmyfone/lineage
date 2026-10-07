@@ -2,6 +2,8 @@ import { describe, expect, test } from "bun:test";
 import { judge, Rng, type Calibration, type CandidateView, type Recipe, type ReplayResult, type RevealedReplay } from "../src/index.ts";
 
 const recipe: Recipe = {
+  class: "rust",
+  requires: { arch: "arm64" },
   name: "fx",
   repo: "https://example.com/fx",
   commit: "abc",
