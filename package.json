@@ -4,5 +4,9 @@
   "workspaces": ["packages/*", "apps/*"],
   "scripts": {
     "test": "bun test packages"
+  },
+  "devDependencies": {
+    "bun-types": "^1.4.2",
+    "typescript": "5.9.3"
   }
 }
