@@ -29,3 +29,4 @@ Spec: `docs/SPEC.md` (source of truth). Milestones: `docs/MILESTONES.md`.
 | devnet wiring lane | packages/chain/**, scripts/devnet/**, onchain/DEVNET.md, packages/core/** (chain mode only) | DONE | 2026-10-07 |
 | wallet UI lane | apps/web/**, packages/chain/** (browser build only, additive) | IN PROGRESS | 2026-10-07 |
 | onchain fixes lane | onchain/**, packages/chain/**, packages/core/src/chain.ts, packages/core/src/core.ts (slash/epoch chain paths only), packages/core/test/chain.test.ts | IN PROGRESS | 2026-10-07 |
+| core hardening lane | packages/core/** (not chain.ts), scripts/e2e.ts | IN PROGRESS | 2026-10-07 |
