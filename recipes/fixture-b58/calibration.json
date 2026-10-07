@@ -1,5 +1,5 @@
 {
-  "recipe_id": "efb1e83e83ef14909331fefb6492f33e750ee75cbabef953c92633460dadfb9a",
+  "recipe_id": "863a6c2c963056ef251691f2ede2aea6e5919527527ed030603ed7784b9772e8",
   "snapshot_id": "",
   "runs": 5,
   "stable": [
@@ -16,7 +16,7 @@
     "encode_ir": {
       "enabled": true,
       "cv": 0,
-      "base_value": 44939271
+      "base_value": 44939288
     },
     "decode_ir": {
       "enabled": true,
@@ -30,9 +30,9 @@
     },
     "encode_ns": {
       "enabled": false,
-      "cv": 0.040852121378547844,
-      "base_value": 15661708.5,
-      "reason": "too noisy to resolve 0.05: A/A half-width 0.0728"
+      "cv": 0.1833043833287775,
+      "base_value": 21045604,
+      "reason": "too noisy to resolve 0.05: A/A half-width 0.2771"
     }
   },
   "median_eval_seconds": 5,
@@ -40,10 +40,10 @@
   "recipe_name": "fixture-b58",
   "repo": "fixture:b58",
   "commit": "c2c30d4ecbdd6a7b9f14457f33898fdf27f0c7d6",
-  "deps_digest": "5b1e506ca951f6aec48a687af9cfbf9725a6a08a28e5067a89564acf4a920e2e",
+  "deps_digest": "969ccd21431b35658c68bea67200fa8d2a76e7cb4612faae66899fb8836b4428",
   "image_digest": "sha256:ad2f9ba06cb62446a4a2015ffac9e90f877dbd0c7e10aa2c2976240e68d0a626",
-  "date": "2026-10-07T19:35:16.548Z",
-  "calibration_wall_seconds": 6.6,
+  "date": "2026-10-07T19:46:33.934Z",
+  "calibration_wall_seconds": 6.8,
   "counts": {
     "stable": 4,
     "known_failures": 1,
