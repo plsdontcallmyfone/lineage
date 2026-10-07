@@ -1,6 +1,6 @@
 # Lineage: specification
 
-Status: draft v0.1, 2026-10-07. Working name "Lineage" is a placeholder; the token is called `$LINE` in this document only as a stand-in (ticker, mint, supply, burn amount and treasury addresses are TBA).
+Status: draft v0.2, 2026-10-07. Working name "Lineage" is a placeholder; the token is called `$LINE` in this document only as a stand-in (ticker, mint, supply, burn amount and treasury addresses are TBA).
 
 This document is the source of truth. Code that disagrees with it is a bug in one of the two; fix whichever is wrong and note it in the changelog at the bottom.
 
@@ -308,7 +308,7 @@ A candidate becomes a generation if and only if all of the following hold:
 4. For `perf` and `slim`: every counted replay independently passes the metric rule (9.1 or 9.2). Deterministic metrics must also agree across replays within tolerance.
 5. If `reproducible: true`, candidate artifact digests agree across replays.
 
-The verdict is a pure function of the revealed replays and the recipe; `verdict_digest` hashes its inputs and output, so anyone holding the transcripts can recompute it.
+Replayers reveal raw samples, test id lists and digests, never their own pass or fail summary; Core and anyone else recompute every statistic from the samples. The verdict is a pure function of the revealed replays and the recipe; `verdict_digest` hashes its inputs and output, so anyone holding the transcripts can recompute it.
 
 ### 10.2 Disagreement
 
@@ -448,7 +448,7 @@ One Anchor program `lineage_registry` on Solana, token-interface based so it wor
 
 Instructions: `register` (CPI burn, creates `Agent`), `bond`, `request_unbond`, `withdraw_unbonded` (after `unbond_cooldown`), `slash` (Core authority; from M4 also a successful challenge), `split`, `post_epoch` (Core authority), `claim` (Merkle proof), `set_config`, `pause`.
 
-Creator rewards: the Pump.fun creator wallet is the treasury's authority or forwards to it (exact mechanism depends on the current Pump.fun creator-fee claim flow, recorded in `research/PRIOR-ART.md`).
+Creator rewards: use Pump.fun Creator Fee Sharing (research/PRIOR-ART.md section 4). At launch the creator sets the shareholder list once, after which it is locked: `reserve_bps` to the `ReserveVault` owner address and `pool_bps` to the `PoolVault` owner address. Anyone can trigger distribution, so a keeper does it every epoch. Two things must be proven with a test transaction before launch: that a program-derived address can be a shareholder, and the shareholder cap. Known residual risk: Pump.fun's community-takeover process can reassign creator fees; the split is locked against the creator, not against Pump.fun. The UI shows the onchain shareholder config as read from chain, never the intended split as text (Veemo publishes an 80/20 split that its onchain config does not implement).
 
 ---
 
@@ -478,6 +478,8 @@ Creator rewards: the Pump.fun creator wallet is the treasury's authority or forw
 - Every lineage is mirrored to a public fork under the project's GitHub org: branch `lineage/<recipe>` with one commit per generation, commit message carrying `gen_id`, effect and replay transcript links.
 - Upstream PRs are opened only if the repository opted in: a `.lineage.yml` in its default branch, or a maintainer-signed opt-in recorded in Core. Opted-in repos can set a maximum PR rate and allowed kinds.
 - Maintainers can opt out of tracking entirely; Core then stops opening tasks for that repo.
+- Repositories whose contribution policy bans AI-generated changes (for example Godot, OpenJDK, as of 2026) are never opted in automatically and never receive PRs; their lineages stay on our fork only, or are not tracked at all if the maintainers ask.
+- The PR bot never argues with, comments on, or reopens a closed PR. A closed PR ends the attempt.
 - From M3, an accepted generation later merged upstream earns the author `upstream_bonus` units (detected by matching the patch hunks in an upstream commit).
 
 ---
@@ -523,3 +525,4 @@ See `docs/MILESTONES.md`.
 ## Changelog
 
 - 0.1 (2026-10-07): first draft.
+- 0.2 (2026-10-07): Pump.fun Creator Fee Sharing as the treasury split mechanism; upstream AI-policy rule; raw samples always uploaded and statistics recomputed by Core (never trust a replayer's own summary), after the prior-art review of Veemo's implementation.

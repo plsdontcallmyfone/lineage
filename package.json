@@ -1,0 +1,8 @@
+{
+  "name": "lineage",
+  "private": true,
+  "workspaces": ["packages/*", "apps/*"],
+  "scripts": {
+    "test": "bun test packages"
+  }
+}
