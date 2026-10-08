@@ -36,10 +36,12 @@ import {
   token,
   usageLeaf,
 } from "../../packages/chain/src/index.ts";
+import { devnetRpcUrl } from "../../packages/chain/src/endpoint.ts";
 import { placeSignature, unsignedWire } from "../../packages/chain/src/browser/wire.ts";
 import { CoreClient } from "../../packages/core/src/client.ts";
 import { Worker } from "../../packages/worker/src/index.ts";
 import { deployer, key, KEY_DIR, LAMPORTS, loadState, logTx, reader, rpc, send, sol, topUp } from "../devnet/lib.ts";
+import { withBackoff } from "../../packages/runtime/src/backend.ts";
 import { check, child, LANE_CAP_USD, laneSpent, log, logRun, ok, portFree, results, ROOT, stopAll, waitFor } from "./lib.ts";
 
 const argv = process.argv.slice(2);
@@ -53,6 +55,7 @@ const spentBefore = laneSpent();
 const RUN_CAP = Math.min(0.6, LANE_CAP_USD - spentBefore);
 if (RUN_CAP < 0.2) throw new Error(`lane Claude spend is ${spentBefore.toFixed(4)} USD of ${LANE_CAP_USD}; not enough left for a run`);
 
+withBackoff(rpc, (m) => log(m)); // the shared devnet client: back off on HTTP 429 (public RPC)
 const state = loadState();
 const T22 = TOKEN_2022_PROGRAM;
 const DECIMALS = state.line_decimals ?? 6;
@@ -110,7 +113,7 @@ async function main() {
   // ---------------------------------------------------------------- Core in chain mode, verifiers, lineage
   const net = JSON.parse(readFileSync(join(ROOT, "config/network.json"), "utf8"));
   Object.assign(net, { canary_rate: 0, audit_rate: 0, epoch_length_s: 86400, reveal_window_s: 900, replay_window_min_s: 900, qualify_retry_s: 60 });
-  net.chain = { mode: "devnet", rpc_url: state.rpc_url, registry_program: state.registry_program, launch_program: state.launch_program, line_mint: lineMint, core_authority_key: state.core_authority_key, poll_ms: 10000 };
+  net.chain = { mode: "devnet", rpc_url: devnetRpcUrl(), registry_program: state.registry_program, launch_program: state.launch_program, line_mint: lineMint, core_authority_key: state.core_authority_key, poll_ms: 10000 };
   writeFileSync(join(tmp, "network.json"), JSON.stringify(net));
   const adminKey = key("runtime-test-core-admin");
   child("core", ["bun", join(ROOT, "packages/core/src/main.ts"), "--data", join(tmp, "data"), "--port", String(PORT), "--config", join(tmp, "network.json"), "--admin-key", join(KEY_DIR, "runtime-test-core-admin.json"),
@@ -150,7 +153,7 @@ async function main() {
     core: CORE,
     state_dir: STATE_DIR,
     runtime_key: runtimeKeyPath,
-    rpc_url: state.rpc_url,
+    rpc_url: devnetRpcUrl(),
     effort: "high",
     attempt_max_usd: 0.5,
     agent_epoch_max_usd: RUN_CAP,

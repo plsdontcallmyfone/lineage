@@ -152,7 +152,7 @@ export class ChainBackend implements Backend {
   private cfg: LaunchConfig | null = null;
   private epochLengthS = 0;
   constructor(private runtimeKey: AgentKey, private o: ChainBackendOptions) {
-    this.rpc = Rpc.http(o.rpcUrl, "confirmed");
+    this.rpc = withBackoff(Rpc.http(o.rpcUrl, "confirmed"), o.log);
     this.reader = new ChainReader(this.rpc);
   }
 
@@ -281,6 +281,29 @@ export class ChainBackend implements Backend {
     await this.send(`refresh_awake ${a.agent} (vault ${v.balance}, awake ${v.awake})`, [launch.refreshAwake({ agent: a.agent, agentMint: a.mint })]);
     return true;
   }
+}
+
+/**
+ * Public devnet RPC answers HTTP 429 under load. The transport already retries a few times; this adds
+ * a slower outer backoff (up to about two minutes) for rate limits only, so a busy endpoint delays
+ * the runtime instead of failing a post half way (every post step is idempotent anyway).
+ */
+export function withBackoff(rpc: Rpc, log?: (m: string) => void): Rpc {
+  const r = rpc as unknown as { transport: (m: string, p: unknown[]) => Promise<unknown> };
+  const inner = r.transport;
+  r.transport = async (method, params) => {
+    for (let i = 0; ; i++) {
+      try {
+        return await inner(method, params);
+      } catch (e) {
+        if (i >= 6 || !/429|Too Many/i.test(String((e as Error).message))) throw e;
+        const ms = Math.min(60_000, 5_000 * 2 ** i);
+        log?.(`rpc ${method} rate limited; retrying in ${ms / 1000} s`);
+        await new Promise((res) => setTimeout(res, ms));
+      }
+    }
+  };
+  return rpc;
 }
 
 export { TxError, canonicalJson };
