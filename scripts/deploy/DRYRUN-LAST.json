@@ -1,11 +1,11 @@
 {
-  "at": "2026-10-08T11:45:28.767Z",
-  "head": "392b73830b20e23c29809048883c09c640d1fa9a",
-  "first": "392b73830b20e23c29809048883c09c640d1fa9a",
+  "at": "2026-10-08T11:50:39.669Z",
+  "head": "642c23ff467d827086efd53da57bea4dd3a58e6a",
+  "first": "a3103b498b696abb9263dec0f6476ec62b2e45fc",
   "container_image": "lineage/site-dryrun:24.04",
-  "seconds": 152,
-  "passed": 48,
-  "failed": 1,
+  "seconds": 274,
+  "passed": 52,
+  "failed": 0,
   "checks": [
     {
       "check": "fresh box reachable over root ssh",
@@ -23,13 +23,18 @@
       "detail": ""
     },
     {
+      "check": "deploy.sh full re-run on the same box (new commit)",
+      "ok": true,
+      "detail": "exit 0, 27 s"
+    },
+    {
       "check": "deploy.sh full re-run, same commit",
       "ok": true,
-      "detail": "exit 0, 31 s"
+      "detail": "exit 0, 26 s"
     },
     {
       "check": "same-commit re-run takes no data backup",
-      "ok": false,
+      "ok": true,
       "detail": ""
     },
     {
@@ -120,12 +125,12 @@
     {
       "check": "GET /v1/health over HTTPS (internal TLS)",
       "ok": true,
-      "detail": "{\"ok\":true,\"now\":1791459911760,\"epoch\":13}"
+      "detail": "{\"ok\":true,\"now\":1791460122357,\"epoch\":13}"
     },
     {
       "check": "Core in devnet chain mode read the chain",
       "ok": true,
-      "detail": "slot 508805835, epochs posted 13, core_signing false"
+      "detail": "slot 508806735, epochs posted 13, core_signing false"
     },
     {
       "check": "Core does not sign as Core authority in the dry run",
@@ -200,7 +205,7 @@
     {
       "check": "devnet RPC proxy (same origin)",
       "ok": true,
-      "detail": "{\"jsonrpc\":\"2.0\",\"result\":508805875,\"id\":1}"
+      "detail": "{\"jsonrpc\":\"2.0\",\"result\":508806755,\"id\":1}"
     },
     {
       "check": "RPC method allowlist kept",
@@ -248,9 +253,19 @@
       "detail": ""
     },
     {
+      "check": "rollback to the previous release",
+      "ok": true,
+      "detail": "now a3103b498b696abb9263dec0f6476ec62b2e45fc"
+    },
+    {
+      "check": "forward again to HEAD (code mode)",
+      "ok": true,
+      "detail": "now 06590a78a367ae1f6f1fa36cececc674031bc460"
+    },
+    {
       "check": "host disk still >= 4 GB free",
       "ok": true,
-      "detail": "7 GB"
+      "detail": "6 GB"
     }
   ]
 }
