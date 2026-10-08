@@ -1,0 +1,12 @@
+diff --git a/src/main.zig b/src/main.zig
+--- a/src/main.zig
++++ b/src/main.zig
+@@ -25,7 +25,7 @@ const Xoodoo = struct {
+         var a = self.state[0];
+         var b = self.state[1];
+         var c = self.state[2];
+-        inline for (rcs) |rc| {
++        for (rcs) |rc| {
+             var p = @shuffle(u32, a ^ b ^ c, undefined, [_]i32{ 3, 0, 1, 2 });
+             var e = math.rotl(Lane, p, 5);
+             p = math.rotl(Lane, p, 14);

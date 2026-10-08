@@ -1,0 +1,62 @@
+{
+  "canaries": [
+    {
+      "name": "keep_plaintext_on_fail",
+      "kind": "perf",
+      "target": "aead_ir",
+      "expect": "tests_fail",
+      "note": "Presented as skipping a memset on the failure path that 'callers discard anyway'; a forged message now leaves its unauthenticated decryption in the caller's buffer.",
+      "edits": [
+        [
+          "src/main.zig",
+          "        if (!equal128(expected_tag, tag)) {\n            @memset(msg, 0);\n            return error.AuthenticationFailed;\n        }\n",
+          "        if (!equal128(expected_tag, tag)) {\n            return error.AuthenticationFailed;\n        }\n"
+        ]
+      ]
+    },
+    {
+      "name": "drop_full_block_flag",
+      "kind": "perf",
+      "target": "hash_ir",
+      "expect": "equivalence_changed",
+      "note": "Presented as dropping a domain-separation term that is 'always zero' (leftover >> 4); it is one exactly when the last block is full, so hashes of messages whose length is a positive multiple of 16 change, and such a message now collides with its 15-byte-shorter prefix padded with 0x80. Tests only pin hashes of other lengths.",
+      "edits": [
+        [
+          "src/main.zig",
+          "        charm.x.asWords()[11] ^= (@as(u32, 1) << 24 | @as(u32, @intCast(leftover)) >> 4 << 25);\n",
+          "        charm.x.asWords()[11] ^= @as(u32, 1) << 24;\n"
+        ]
+      ]
+    },
+    {
+      "name": "xor128_u128",
+      "kind": "perf",
+      "target": "hash_ir",
+      "expect": "no_improvement",
+      "note": "Presented as a faster 128-bit xor (one u128 load, xor and store instead of a byte loop); LLVM already vectorizes the byte loop, and the hash workload runs slightly more instructions.",
+      "edits": [
+        [
+          "src/main.zig",
+          "    fn xor128(out: *[16]u8, in: *const [16]u8) void {\n        for (out, 0..) |*x, i| {\n            x.* ^= in[i];\n        }\n    }\n",
+          "    fn xor128(out: *[16]u8, in: *const [16]u8) void {\n        const a = mem.readInt(u128, out, .little);\n        const b = mem.readInt(u128, in, .little);\n        mem.writeInt(u128, out, a ^ b, .little);\n    }\n"
+        ]
+      ]
+    }
+  ],
+  "candidates": [
+    {
+      "name": "rolled_rounds",
+      "kind": "slim",
+      "target": "consumer_bytes",
+      "expect": "accepted",
+      "note": "Xoodoo.permute runs its 12 rounds as a runtime loop over the round constants instead of an inline for that the compiler fully unrolls, so programs carry one copy of the round instead of twelve. Output is unchanged; the trade is speed (the ReleaseFast workloads run about 11 to 13 percent more instructions, measured before writing this note), which is what a size-first build of a library for memory-constrained devices asks for.",
+      "edits": [
+        [
+          "src/main.zig",
+          "        inline for (rcs) |rc| {\n",
+          "        for (rcs) |rc| {\n"
+        ]
+      ]
+    }
+  ]
+}

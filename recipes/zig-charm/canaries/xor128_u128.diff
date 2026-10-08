@@ -1,0 +1,16 @@
+diff --git a/src/main.zig b/src/main.zig
+--- a/src/main.zig
++++ b/src/main.zig
+@@ -91,9 +91,9 @@ pub const Charm = struct {
+     }
+ 
+     fn xor128(out: *[16]u8, in: *const [16]u8) void {
+-        for (out, 0..) |*x, i| {
+-            x.* ^= in[i];
+-        }
++        const a = mem.readInt(u128, out, .little);
++        const b = mem.readInt(u128, in, .little);
++        mem.writeInt(u128, out, a ^ b, .little);
+     }
+ 
+     fn equal128(a: [16]u8, b: [16]u8) bool {

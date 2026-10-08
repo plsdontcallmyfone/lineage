@@ -1,0 +1,52 @@
+{
+  "recipe_id": "836417c2fdd54065416d4d953479f6b18dae2e9d4814fd8d7fa93a8be282d2be",
+  "snapshot_id": "",
+  "runs": 5,
+  "stable": [
+    "lineage_props.test.chained session stays in sync",
+    "lineage_props.test.corrupted ciphertext or tag is rejected and zeroed",
+    "lineage_props.test.distinct messages hash differently",
+    "lineage_props.test.regression vectors from the snapshot",
+    "lineage_props.test.round trip at every length",
+    "lineage_props.test_0",
+    "src.main.test.charm",
+    "src.test.test.encrypt and hash in a session"
+  ],
+  "known_failures": [],
+  "quarantined": [],
+  "metrics": {
+    "consumer_bytes": {
+      "enabled": true,
+      "cv": 0,
+      "base_value": 15112
+    },
+    "hash_ir": {
+      "enabled": true,
+      "cv": 0,
+      "base_value": 7300680
+    },
+    "aead_ir": {
+      "enabled": true,
+      "cv": 0,
+      "base_value": 6618288
+    }
+  },
+  "median_eval_seconds": 32,
+  "seed": "ca11b7a7e",
+  "recipe_name": "zig-charm",
+  "repo": "https://github.com/jedisct1/zig-charm",
+  "commit": "0f28f8a669a0330b5659279a92d985b0b33d1723",
+  "deps_digest": "ecfcc9fc2e777639f51c975e2525074f266b5ed86c8bcf43eec2b2493cd65af2",
+  "image_digest": "sha256:d2368f0312e00beae22c24887ad0cda96f13107b1284a4a269893941171aff01",
+  "date": "2026-10-08T21:59:14.118Z",
+  "calibration_wall_seconds": 26.8,
+  "counts": {
+    "stable": 8,
+    "known_failures": 0,
+    "quarantined": 0,
+    "excluded": 0
+  },
+  "notes": [
+    "calibration wall time 27 s"
+  ]
+}

@@ -1,0 +1,85 @@
+# jedisct1/zig-charm: Charm, a tiny self-contained cryptography library (authenticated encryption
+# and keyed hashing over a rolling Xoodoo permutation state), the Zig port of the C library used
+# by the dsvpn VPN, by Frank Denis (libsodium). MIT licence (LICENSE). No CONTRIBUTING, AI policy
+# or AGENTS file in the repository (checked 2026-10-08).
+# The same author's libhydrogen has an AI-POLICY.md that refuses AI-written contributions; this
+# repository has none, but the lineage should not be opted in for upstream PRs (SPEC 16) without
+# asking the author first.
+#
+# Snapshot: 0f28f8a (2025-10-04, "Update for zig-current"), the last commit whose build.zig.zon
+# declares minimum_zig_version 0.15.1; the next commits target Zig 0.16-dev. The image pins
+# Zig 0.15.2. No package dependencies, so prepare is empty. Note: at this snapshot
+# Charm.nonceIncrement names builtin.Endian, which Zig 0.15 no longer has, so it compiles only if
+# never called; the harnesses do not call it.
+#
+# Class zig (SPEC 6.1). Primary metric: bytes of a ReleaseSmall aarch64-linux-musl program that
+# uses every working public operation (lineage_consumer.zig): Charm is designed for
+# memory-constrained devices, so its cost in a program's size is the class's natural target.
+# Secondary: cachegrind instruction counts of a ReleaseFast harness (hash and AEAD sessions over
+# seeded messages up to 2 KB). Every compile pins -target aarch64-linux-musl -mcpu=baseline (the
+# default `native` bakes in the host CPU and kernel), and two builds in fresh containers must give
+# byte-identical artifacts (build.reproducible). Calibrated on arm64.
+#
+# Tests (TAP, the overlay's lineage_tap_runner.zig as in zig-clap): lineage_props.zig is the test
+# root; it pulls in upstream's tests (src/main.zig `test "charm"` and src/test.zig) and adds round
+# trips, tamper detection, chained sessions and regression vectors measured at the snapshot.
+# Upstream's test block in src/main.zig is a protected block; src/test.zig is a protected path.
+name: zig-charm
+class: zig
+requires: { arch: arm64 }
+repo: https://github.com/jedisct1/zig-charm
+commit: "0f28f8a669a0330b5659279a92d985b0b33d1723"
+image: "lineage/zig:0.15.2@sha256:d2368f0312e00beae22c24887ad0cda96f13107b1284a4a269893941171aff01"
+workdir: /work/src
+prepare: []
+prepare_outputs: []
+build:
+  commands:
+    - zig build -Doptimize=ReleaseSmall -Dtarget=aarch64-linux-musl -Dcpu=baseline
+    - mkdir -p zig-out/lineage
+    - zig build-exe -target aarch64-linux-musl -mcpu=baseline --dep charm -OReleaseSmall -Mroot=lineage_consumer.zig -OReleaseSmall -Mcharm=src/main.zig --name consumer -femit-bin=zig-out/lineage/consumer
+    - zig build-exe -target aarch64-linux-musl -mcpu=baseline --dep charm -OReleaseFast -Mroot=lineage_bench.zig -OReleaseFast -Mcharm=src/main.zig --name lineage_bench -femit-bin=zig-out/lineage/lineage_bench
+    - zig build-exe -target aarch64-linux-musl -mcpu=baseline --dep charm -OReleaseSafe -Mroot=lineage_equiv.zig -OReleaseSafe -Mcharm=src/main.zig --name lineage_equiv -femit-bin=zig-out/lineage/lineage_equiv
+  artifacts: ["zig-out/lineage/consumer", "zig-out/lineage/lineage_bench"]
+  reproducible: true
+test:
+  command: zig test -target aarch64-linux-musl -mcpu=baseline --test-runner lineage_tap_runner.zig lineage_props.zig
+  parser: tap
+  exclude: []
+  timeout_s: 600
+equivalence:
+  command: zig-out/lineage/lineage_equiv "$LINEAGE_SEED"
+  output: stdout-digest
+metrics:
+  - name: consumer_bytes
+    kind: slim
+    direction: lower
+    deterministic: true
+    tolerance: 0
+    command: wc -c < zig-out/lineage/consumer
+    parser: bytes
+    min_effect: 0.005
+  - name: hash_ir
+    kind: perf
+    direction: lower
+    deterministic: true
+    command: valgrind --tool=cachegrind --cache-sim=no --cachegrind-out-file=/dev/null zig-out/lineage/lineage_bench hash "$LINEAGE_SEED"
+    parser: cachegrind-ir
+    holdout: true
+    min_effect: 0.01
+  - name: aead_ir
+    kind: perf
+    direction: lower
+    deterministic: true
+    command: valgrind --tool=cachegrind --cache-sim=no --cachegrind-out-file=/dev/null zig-out/lineage/lineage_bench aead "$LINEAGE_SEED"
+    parser: cachegrind-ir
+    holdout: true
+    min_effect: 0.01
+patch:
+  allowed_paths: ["src/main.zig"]
+  protected_paths: ["src/test.zig", "build.zig", "build.zig.zon", ".github/**", "**/*.yml", "lineage_*"]
+  protected_blocks:
+    - { glob: "src/main.zig", start: "^\\s*test\\s+\"" }
+  max_files: 1
+  max_lines: 200
+limits: { cpus: 2, memory_mb: 2048, pids: 256, wall_s: 900, disk_mb: 4096 }

@@ -1,0 +1,10 @@
+{
+  "rolled_rounds": {
+    "kind": "slim",
+    "target": "consumer_bytes",
+    "expect": "accepted",
+    "note": "Xoodoo.permute runs its 12 rounds as a runtime loop over the round constants instead of an inline for that the compiler fully unrolls, so programs carry one copy of the round instead of twelve. Output is unchanged; the trade is speed (the ReleaseFast workloads run about 11 to 13 percent more instructions, measured before writing this note), which is what a size-first build of a library for memory-constrained devices asks for.",
+    "lines": 2,
+    "guard": "ok"
+  }
+}

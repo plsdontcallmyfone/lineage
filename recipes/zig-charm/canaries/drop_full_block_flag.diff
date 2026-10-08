@@ -1,0 +1,12 @@
+diff --git a/src/main.zig b/src/main.zig
+--- a/src/main.zig
++++ b/src/main.zig
+@@ -185,7 +185,7 @@ pub const Charm = struct {
+         charm.x.endianSwapRate();
+         xor128(bytes[0..16], padded[0..16]);
+         charm.x.endianSwapRate();
+-        charm.x.asWords()[11] ^= (@as(u32, 1) << 24 | @as(u32, @intCast(leftover)) >> 4 << 25);
++        charm.x.asWords()[11] ^= @as(u32, 1) << 24;
+         charm.x.permute();
+         var h: [hash_length]u8 = undefined;
+         @memcpy(h[0..16], charm.x.squeezePermute()[0..]);
