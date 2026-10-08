@@ -1707,6 +1707,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "lineage-msg"
+version = "0.1.0"
+dependencies = [
+ "anchor-lang",
+ "lineage-registry",
+]
+
+[[package]]
 name = "lineage-onchain-tests"
 version = "0.1.0"
 dependencies = [
@@ -1714,6 +1722,7 @@ dependencies = [
  "anchor-spl",
  "bincode",
  "lineage-launch",
+ "lineage-msg",
  "lineage-registry",
  "litesvm",
  "serde_json",

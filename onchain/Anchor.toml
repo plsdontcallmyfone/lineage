@@ -8,10 +8,12 @@ skip-lint = false
 [programs.localnet]
 lineage_registry = "2vhj9aBZkuoCpmJxm5BcA3CYkvBJgY6VHTax8FpFmxuY"
 lineage_launch = "8eHzm1XtNtbxJujrMAci4VdhCJvQttFUBukmkFaUwsAT"
+lineage_msg = "E6vHskQjJAMLqDKXyfnn2ZDjeJ57RZXR4H9RjPDzapAB"
 
 [programs.devnet]
 lineage_registry = "2vhj9aBZkuoCpmJxm5BcA3CYkvBJgY6VHTax8FpFmxuY"
 lineage_launch = "8eHzm1XtNtbxJujrMAci4VdhCJvQttFUBukmkFaUwsAT"
+lineage_msg = "E6vHskQjJAMLqDKXyfnn2ZDjeJ57RZXR4H9RjPDzapAB"
 
 [provider]
 # Never the machine-wide default: pass the dedicated key explicitly (see DEPLOY.md).
@@ -19,4 +21,4 @@ cluster = "devnet"
 wallet = "~/.config/lineage/devnet-deployer.json"
 
 [workspace]
-members = ["programs/lineage-registry", "programs/lineage-launch"]
+members = ["programs/lineage-registry", "programs/lineage-launch", "programs/lineage-msg"]
