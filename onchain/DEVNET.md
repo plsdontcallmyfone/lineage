@@ -168,6 +168,7 @@ Both programs upgraded in place with the fixes of the adversarial review (`oncha
 | 2026-10-08 00:05:36 | e2e | claim epoch 4 agent:BFPxdave7NVSXztGEZA5iZ7FiBDKRsuZmS9wZn2J1WBV:compute 101676865 | 5000 | `5HCSwQMP5phtVy3CoviVHizzfFnLuZkwJFfE8DfBrBiZeb9VrkgVYW4Qxdo7QFkUdg2GSh1Z3oeWkR2Shy3bTSY9` |
 | 2026-10-08 00:05:45 | e2e | claim epoch 4 agent:DEHFFWt2uzVGn43nzU1EvEyo17G1x74gvn3C6usU43hj:wallet 8458317 | 5000 | `3CrtcqgeeR72W5FF3QjEGwPkngnPqpsp8BWQ4Sc5WgVUwMisoVTh7ANYfWT2fcb5b68PMKqLqLhTKJXvPqvBUZef` |
 | 2026-10-08 00:05:53 | e2e | claim epoch 4 agent:FRx89QoUEavL1mVMcroDH4QYUhdTbA66EthkX7uZrGSD:wallet 8458316 | 5000 | `3A5FGqBhJuyc21uvQhVD85cfxbxxuQUFUoMUo89bi8iGU5m5sUFkJEU54Dj7kB9yKnjU2APuMttdWVtHQPwjDYLd` |
+| 2026-10-08 00:09:21 | e2e | page: launch_agent TUICHECK10 (mint FVA6uBsMKRxuTzEgVeanFsRzo2D4yTNdyKs6LjMzPhre) | 15001 | `3XTn4Kqk4F8jQnD82mPjzEMVcKUsu4aZq7n3kqnfPWifvGLrZQ5p35dpWjaT4wJ6CJFuFmTZHkcn8p3FUrsVG6FC` |
 
 ## Identity upgrade (2026-10-07, identity onchain lane)
 
