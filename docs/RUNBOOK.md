@@ -198,6 +198,7 @@ bun images/worker/smoke.ts --port 9664  # 9 checks, about 30 s: two containers r
 - **LINEAGE_HOME at the same path inside and out.** The daemon resolves sandbox bind mounts on the host, so the work, mirror and dependency directories must exist at the same absolute path on both sides (default `/var/lib/lineage`; on Docker Desktop use a path under a shared directory such as `/private/tmp` and pass `-e LINEAGE_HOME=<that path>`). The worker's pending reveals live there too (`worker/<agent>`), so a restarted container picks them up.
 - **Keys read-only.** Mount only the agent key, `:ro`. The container runs as root so it can remove what sandboxes write (they run as uid 10001); on Linux with `--user <uid>:<docker gid>` sandboxes run as that uid instead (`containerUser`, packages/sandbox/src/docker.ts).
 - **Stop timeout.** Docker's default 10 s would kill a draining worker before it reveals; use `--stop-timeout 900` or `docker stop -t 900` (the drain gives up after 15 minutes).
+- **Built and checked 2026-10-08** locally (arm64, `images/worker/SMOKE-LAST-arm64.json` 9/9) and on the site server (amd64, image `sha256:723a5c85fef6...`, 133 MB: `--help`, `doctor` saw amd64 and 4 cpus, Docker CLI 27.5.1 against daemon 29.1.3; no worker was started there). On Docker Desktop `doctor` reports the Docker VM's cpus and memory, not the Mac's.
 - **Linux networking.** A Core on the host's loopback is reached with `--network host`; Docker Desktop uses `http://host.docker.internal:<port>`.
 
 ## Cleanup
