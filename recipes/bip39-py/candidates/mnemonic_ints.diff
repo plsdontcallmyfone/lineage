@@ -1,0 +1,30 @@
+diff --git a/src/mnemonic/mnemonic.py b/src/mnemonic/mnemonic.py
+--- a/src/mnemonic/mnemonic.py
++++ b/src/mnemonic/mnemonic.py
+@@ -198,16 +198,17 @@ class Mnemonic(object):
+             raise ValueError(
+                 f"Data length should be one of the following: [16, 20, 24, 28, 32], but it is not {len(data)}."
+             )
+-        h = hashlib.sha256(data).hexdigest()
+-        b = (
+-            bin(int.from_bytes(data, byteorder="big"))[2:].zfill(len(data) * 8)
+-            + bin(int(h, 16))[2:].zfill(256)[: len(data) * 8 // 32]
++        # entropy bits followed by the checksum: the top len(data) * 8 // 32 bits
++        # (at most 8) of the first SHA-256 byte
++        cs = len(data) * 8 // 32
++        acc = (int.from_bytes(data, byteorder="big") << cs) | (
++            hashlib.sha256(data).digest()[0] >> (8 - cs)
++        )
++        n = (len(data) * 8 + cs) // 11
++        wordlist = self.wordlist
++        return self.delimiter.join(
++            [wordlist[(acc >> (11 * (n - 1 - i))) & 2047] for i in range(n)]
+         )
+-        result = []
+-        for i in range(len(b) // 11):
+-            idx = int(b[i * 11 : (i + 1) * 11], 2)
+-            result.append(self.wordlist[idx])
+-        return self.delimiter.join(result)
+ 
+     def check(self, mnemonic: str) -> bool:
+         mnemonic_list = self.normalize_string(mnemonic).split(" ")

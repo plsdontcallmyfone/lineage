@@ -1,0 +1,132 @@
+{
+  "index_dict_ints": {
+    "expect": "accepted",
+    "outcome": "accepted",
+    "reason": null,
+    "detail": null,
+    "effect": {
+      "metric": "entropy_ir",
+      "ratio": 0.17208684688851933,
+      "ci_low": 0.17208684688851933,
+      "ci_high": 0.17208684688851933,
+      "per_replay": [
+        {
+          "replay_id": "r1",
+          "ratio": 0.17208684688851933,
+          "ci_low": 0.17208684688851933,
+          "ci_high": 0.17208684688851933,
+          "pass": true
+        }
+      ]
+    },
+    "metrics": {
+      "entropy_ir": {
+        "base": [
+          975111457
+        ],
+        "cand": [
+          167803856
+        ],
+        "ratio": 0.17208684688851933
+      },
+      "check_ir": {
+        "base": [
+          830455264
+        ],
+        "cand": [
+          159842091
+        ],
+        "ratio": 0.19247525776415572
+      },
+      "mnemonic_ir": {
+        "base": [
+          239884092
+        ],
+        "cand": [
+          239449661
+        ],
+        "ratio": 0.9981889962090525
+      },
+      "expand_ir": {
+        "base": [
+          350403083
+        ],
+        "cand": [
+          349954652
+        ],
+        "ratio": 0.9987202424243511
+      }
+    },
+    "equivalence": "same",
+    "seed": "7265706c61792d69",
+    "recipe_id": "34eb97a0b91094969a94264f9efc914ba9b67d03b83f065d5c1af61baa48d30a",
+    "eval_seconds": 24.4,
+    "date": "2026-10-08T21:25:44.247Z",
+    "match": true
+  },
+  "mnemonic_ints": {
+    "expect": "accepted",
+    "outcome": "accepted",
+    "reason": null,
+    "detail": null,
+    "effect": {
+      "metric": "mnemonic_ir",
+      "ratio": 0.7941435584654075,
+      "ci_low": 0.7941435584654075,
+      "ci_high": 0.7941435584654075,
+      "per_replay": [
+        {
+          "replay_id": "r1",
+          "ratio": 0.7941435584654075,
+          "ci_low": 0.7941435584654075,
+          "ci_high": 0.7941435584654075,
+          "pass": true
+        }
+      ]
+    },
+    "metrics": {
+      "entropy_ir": {
+        "base": [
+          973166907
+        ],
+        "cand": [
+          964704409
+        ],
+        "ratio": 0.9913041658741896
+      },
+      "check_ir": {
+        "base": [
+          827357232
+        ],
+        "cand": [
+          818880554
+        ],
+        "ratio": 0.9897545127157358
+      },
+      "mnemonic_ir": {
+        "base": [
+          239178107
+        ],
+        "cand": [
+          189941753
+        ],
+        "ratio": 0.7941435584654075
+      },
+      "expand_ir": {
+        "base": [
+          346259752
+        ],
+        "cand": [
+          346186432
+        ],
+        "ratio": 0.9997882514511822
+      }
+    },
+    "equivalence": "same",
+    "seed": "7265706c61792d6d",
+    "recipe_id": "34eb97a0b91094969a94264f9efc914ba9b67d03b83f065d5c1af61baa48d30a",
+    "eval_seconds": 32.8,
+    "date": "2026-10-08T21:26:17.038Z",
+    "match": true
+  }
+}

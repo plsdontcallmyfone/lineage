@@ -1,0 +1,12 @@
+diff --git a/src/mnemonic/mnemonic.py b/src/mnemonic/mnemonic.py
+--- a/src/mnemonic/mnemonic.py
++++ b/src/mnemonic/mnemonic.py
+@@ -200,7 +200,7 @@ class Mnemonic(object):
+             )
+         h = hashlib.sha256(data).hexdigest()
+         b = (
+-            bin(int.from_bytes(data, byteorder="big"))[2:].zfill(len(data) * 8)
++            bin(int.from_bytes(data, byteorder="big"))[2:]
+             + bin(int(h, 16))[2:].zfill(256)[: len(data) * 8 // 32]
+         )
+         result = []

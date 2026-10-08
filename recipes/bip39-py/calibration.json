@@ -1,0 +1,56 @@
+{
+  "recipe_id": "34eb97a0b91094969a94264f9efc914ba9b67d03b83f065d5c1af61baa48d30a",
+  "snapshot_id": "",
+  "runs": 5,
+  "stable": [
+    "tests.test_mnemonic.MnemonicTest::test_detection",
+    "tests.test_mnemonic.MnemonicTest::test_expand",
+    "tests.test_mnemonic.MnemonicTest::test_expand_word",
+    "tests.test_mnemonic.MnemonicTest::test_failed_checksum",
+    "tests.test_mnemonic.MnemonicTest::test_to_entropy",
+    "tests.test_mnemonic.MnemonicTest::test_utf8_nfkd",
+    "tests.test_mnemonic.MnemonicTest::test_vectors"
+  ],
+  "known_failures": [],
+  "quarantined": [],
+  "metrics": {
+    "entropy_ir": {
+      "enabled": true,
+      "cv": 0,
+      "base_value": 975852006
+    },
+    "check_ir": {
+      "enabled": true,
+      "cv": 0,
+      "base_value": 831487176
+    },
+    "mnemonic_ir": {
+      "enabled": true,
+      "cv": 0,
+      "base_value": 239595300
+    },
+    "expand_ir": {
+      "enabled": true,
+      "cv": 3.05028287510005e-7,
+      "base_value": 322225336.5
+    }
+  },
+  "median_eval_seconds": 15,
+  "seed": "ca11b7a7e",
+  "recipe_name": "bip39-py",
+  "repo": "https://github.com/trezor/python-mnemonic",
+  "commit": "b57a5ad77a981e743f4167ab2f7927a55c1e82a8",
+  "deps_digest": "d2b6ba0024b7570e2e99b85784709c7f8e5de69b1102927cb9cb29d28d8e8139",
+  "image_digest": "sha256:4214b1a6fb3757b7d706ce9547e728b18c53df40f0bdf8ebcdef5b81335186d0",
+  "date": "2026-10-08T21:23:50.334Z",
+  "calibration_wall_seconds": 41.4,
+  "counts": {
+    "stable": 7,
+    "known_failures": 0,
+    "quarantined": 0,
+    "excluded": 0
+  },
+  "notes": [
+    "calibration wall time 41 s"
+  ]
+}

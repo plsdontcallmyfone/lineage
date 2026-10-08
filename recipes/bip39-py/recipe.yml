@@ -1,0 +1,89 @@
+# trezor/python-mnemonic: the BIP39 reference implementation (mnemonic phrases for HD wallets),
+# published on PyPI as `mnemonic`. MIT licence (LICENSE). No contribution policy against
+# AI-generated changes: no CONTRIBUTING or AI policy file in the repository or in the trezor/.github
+# organisation repository (checked 2026-10-08).
+#
+# Why: to_entropy and check look every word up with list.index (a linear scan of the 2048-word
+# list), to_entropy builds the bit string one bool per bit, and to_mnemonic and check go through
+# binary strings, so instruction counts have real headroom. expand_word scans the whole list.
+#
+# Determinism: cachegrind guest instruction counts; PYTHONHASHSEED=0 set by the sandbox; GC
+# disabled in the harness; inputs derived only from $LINEAGE_SEED; stdlib pre-compiled into
+# /deps/pycache. Calibrated on arm64.
+name: bip39-py
+class: python
+requires: { arch: arm64 }
+repo: https://github.com/trezor/python-mnemonic
+commit: "b57a5ad77a981e743f4167ab2f7927a55c1e82a8"
+image: "lineage/python:m1@sha256:4214b1a6fb3757b7d706ce9547e728b18c53df40f0bdf8ebcdef5b81335186d0"
+workdir: /work/src
+prepare:
+  - python -m venv /deps/venv
+  - "/deps/venv/bin/pip install --no-cache-dir --only-binary=:all: pytest==8.3.5"
+  - PYTHONPYCACHEPREFIX=/deps/pycache python -m compileall -q -x "/(test|tests|idlelib|lib2to3|tkinter|turtledemo)/" /usr/local/lib/python3.12 /deps/venv/lib/python3.12/site-packages
+prepare_outputs: []
+build:
+  commands:
+    - PYTHONPATH=src python -c "import mnemonic, sys; print(len(mnemonic.Mnemonic('english').wordlist), sys.version.split()[0])"
+  artifacts: []
+  reproducible: false
+test:
+  # upstream runs tests/test_mnemonic.py from the repository root (it opens vectors.json there)
+  command: PYTHONPATH=src PYTHONPYCACHEPREFIX=/deps/pycache /deps/venv/bin/python -m pytest -p no:cacheprovider -q --junitxml=/out/junit.xml tests/test_mnemonic.py
+  parser: junit
+  exclude: []
+  timeout_s: 300
+equivalence:
+  command: PYTHONIOENCODING=utf-8 PYTHONPYCACHEPREFIX=/deps/pycache python lineage_equiv.py "$LINEAGE_SEED"
+  output: stdout-digest
+metrics:
+  - name: entropy_ir
+    kind: perf
+    direction: lower
+    deterministic: true
+    command: PYTHONPYCACHEPREFIX=/deps/pycache valgrind --tool=cachegrind --cache-sim=no --cachegrind-out-file=/dev/null python lineage_bench.py entropy "$LINEAGE_SEED"
+    parser: cachegrind-ir
+    holdout: true
+    min_effect: 0.01
+  - name: check_ir
+    kind: perf
+    direction: lower
+    deterministic: true
+    command: PYTHONPYCACHEPREFIX=/deps/pycache valgrind --tool=cachegrind --cache-sim=no --cachegrind-out-file=/dev/null python lineage_bench.py check "$LINEAGE_SEED"
+    parser: cachegrind-ir
+    holdout: true
+    min_effect: 0.01
+  - name: mnemonic_ir
+    kind: perf
+    direction: lower
+    deterministic: true
+    command: PYTHONPYCACHEPREFIX=/deps/pycache valgrind --tool=cachegrind --cache-sim=no --cachegrind-out-file=/dev/null python lineage_bench.py mnemonic "$LINEAGE_SEED"
+    parser: cachegrind-ir
+    holdout: true
+    min_effect: 0.01
+  - name: expand_ir
+    kind: perf
+    direction: lower
+    deterministic: true
+    command: PYTHONPYCACHEPREFIX=/deps/pycache valgrind --tool=cachegrind --cache-sim=no --cachegrind-out-file=/dev/null python lineage_bench.py expand "$LINEAGE_SEED"
+    parser: cachegrind-ir
+    holdout: true
+    min_effect: 0.01
+patch:
+  allowed_paths: ["src/mnemonic/mnemonic.py", "src/mnemonic/__init__.py"]
+  protected_paths:
+    - "tests/**"
+    - "vectors.json"
+    - "src/mnemonic/wordlist/**"
+    - "tools/**"
+    - "pyproject.toml"
+    - "setup.cfg"
+    - "tox.ini"
+    - "Makefile"
+    - ".github/**"
+    - "**/*.yml"
+    - "**/*.yaml"
+    - "lineage_*"
+  max_files: 2
+  max_lines: 200
+limits: { cpus: 2, memory_mb: 2048, pids: 256, wall_s: 900, disk_mb: 4096 }

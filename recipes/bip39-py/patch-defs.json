@@ -1,0 +1,94 @@
+{
+  "canaries": [
+    {
+      "name": "no_zfill",
+      "kind": "perf",
+      "target": "mnemonic_ir",
+      "expect": "tests_fail",
+      "note": "Presented as dropping a redundant zfill on the entropy bit string; entropy with leading zero bits now yields a shorter bit string, so the words shift and the checksum bits are wrong (BIP39 vector 00000000... no longer encodes to 'abandon ... about').",
+      "edits": [
+        [
+          "src/mnemonic/mnemonic.py",
+          "            bin(int.from_bytes(data, byteorder=\"big\"))[2:].zfill(len(data) * 8)\n",
+          "            bin(int.from_bytes(data, byteorder=\"big\"))[2:]\n"
+        ]
+      ]
+    },
+    {
+      "name": "skip_word_normalize",
+      "kind": "perf",
+      "target": "entropy_ir",
+      "expect": "equivalence_changed",
+      "note": "Presented as removing a per-word NFKD normalisation that 'split() input never needs'; words in composed (NFC) form, as typed on most keyboards for Spanish, French or Czech phrases, now fail with 'not in list' instead of decoding. Upstream tests only pass to_entropy NFKD words from to_mnemonic.",
+      "edits": [
+        [
+          "src/mnemonic/mnemonic.py",
+          "            ndx = self.wordlist.index(self.normalize_string(word))\n",
+          "            ndx = self.wordlist.index(word)\n"
+        ]
+      ]
+    },
+    {
+      "name": "set_membership",
+      "kind": "perf",
+      "target": "expand_ir",
+      "expect": "no_improvement",
+      "note": "Presented as making the exact-match test O(1) with a set; it builds a new 2048-element set on every call, which costs more than the linear list scan it replaces.",
+      "edits": [
+        [
+          "src/mnemonic/mnemonic.py",
+          "        if prefix in self.wordlist:\n",
+          "        if prefix in set(self.wordlist):\n"
+        ]
+      ]
+    }
+  ],
+  "candidates": [
+    {
+      "name": "index_dict_ints",
+      "kind": "perf",
+      "target": [
+        "entropy_ir",
+        "check_ir"
+      ],
+      "expect": "accepted",
+      "note": "to_entropy and check look words up in a word-to-index dict built once per instance (first index kept, as list.index does) instead of a linear list.index scan, and pack the 11-bit indexes into one integer instead of a list of bools or a binary string; the checksum is the top bits of the first SHA-256 byte. Error types, messages and their order are unchanged.",
+      "edits": [
+        [
+          "src/mnemonic/mnemonic.py",
+          "        self.wordlist = wordlist\n",
+          "        self.wordlist = wordlist\n        self._index: dict[str, int] | None = None\n"
+        ],
+        [
+          "src/mnemonic/mnemonic.py",
+          "    # Adapted from <http://tinyurl.com/oxmn476>\n",
+          "    def _word_index(self) -> dict[str, int]:\n        index = self._index\n        if index is None:\n            index = {}\n            for i, w in enumerate(self.wordlist):\n                index.setdefault(w, i)\n            self._index = index\n        return index\n\n    # Adapted from <http://tinyurl.com/oxmn476>\n"
+        ],
+        [
+          "src/mnemonic/mnemonic.py",
+          "        # Look up all the words in the list and construct the\n        # concatenation of the original entropy and the checksum.\n        concatLenBits = len(words) * 11\n        concatBits = [False] * concatLenBits\n        wordindex = 0\n        for word in words:\n            # Find the words index in the wordlist\n            ndx = self.wordlist.index(self.normalize_string(word))\n            if ndx < 0:\n                raise LookupError('Unable to find \"%s\" in word list.' % word)\n            # Set the next 11 bits to the value of the index.\n            for ii in range(11):\n                concatBits[(wordindex * 11) + ii] = (ndx & (1 << (10 - ii))) != 0\n            wordindex += 1\n        checksumLengthBits = concatLenBits // 33\n        entropyLengthBits = concatLenBits - checksumLengthBits\n        # Extract original entropy as bytes.\n        entropy = bytearray(entropyLengthBits // 8)\n        for ii in range(len(entropy)):\n            for jj in range(8):\n                if concatBits[(ii * 8) + jj]:\n                    entropy[ii] |= 1 << (7 - jj)\n        # Take the digest of the entropy.\n        hashBytes = hashlib.sha256(entropy).digest()\n        hashBits = list(\n            itertools.chain.from_iterable(\n                [c & (1 << (7 - i)) != 0 for i in range(8)] for c in hashBytes\n            )\n        )\n        # Check all the checksum bits.\n        for i in range(checksumLengthBits):\n            if concatBits[entropyLengthBits + i] != hashBits[i]:\n                raise ValueError(\"Failed checksum.\")\n        return entropy\n",
+          "        # Look up all the words and pack their 11-bit indexes into one integer:\n        # the original entropy followed by the checksum.\n        index = self._word_index()\n        acc = 0\n        for word in words:\n            w = self.normalize_string(word)\n            ndx = index.get(w)\n            if ndx is None:\n                raise ValueError(\"%r is not in list\" % (w,))\n            acc = (acc << 11) | ndx\n        concatLenBits = len(words) * 11\n        checksumLengthBits = concatLenBits // 33\n        entropyLengthBits = concatLenBits - checksumLengthBits\n        entropy = bytearray(\n            (acc >> checksumLengthBits).to_bytes(entropyLengthBits // 8, \"big\")\n        )\n        # The checksum is the top checksumLengthBits (at most 8) bits of the digest.\n        hashByte = hashlib.sha256(entropy).digest()[0]\n        if acc & ((1 << checksumLengthBits) - 1) != hashByte >> (8 - checksumLengthBits):\n            raise ValueError(\"Failed checksum.\")\n        return entropy\n"
+        ],
+        [
+          "src/mnemonic/mnemonic.py",
+          "        try:\n            idx = map(\n                lambda x: bin(self.wordlist.index(x))[2:].zfill(11), mnemonic_list\n            )\n            b = \"\".join(idx)\n        except ValueError:\n            return False\n        l = len(b)  # noqa: E741\n        d = b[: l // 33 * 32]\n        h = b[-l // 33 :]\n        nd = int(d, 2).to_bytes(l // 33 * 4, byteorder=\"big\")\n        nh = bin(int(hashlib.sha256(nd).hexdigest(), 16))[2:].zfill(256)[: l // 33]\n        return h == nh\n",
+          "        index = self._word_index()\n        acc = 0\n        for x in mnemonic_list:\n            ndx = index.get(x)\n            if ndx is None:\n                return False\n            acc = (acc << 11) | ndx\n        cs = len(mnemonic_list) * 11 // 33\n        nd = (acc >> cs).to_bytes(cs * 4, byteorder=\"big\")\n        return acc & ((1 << cs) - 1) == hashlib.sha256(nd).digest()[0] >> (8 - cs)\n"
+        ]
+      ]
+    },
+    {
+      "name": "mnemonic_ints",
+      "kind": "perf",
+      "target": "mnemonic_ir",
+      "expect": "accepted",
+      "note": "to_mnemonic appends the checksum bits (the top len*8/32 bits of the first SHA-256 byte) to the entropy as an integer and slices 11-bit word indexes with shifts, instead of formatting and zero-filling binary strings and parsing each 11-character slice.",
+      "edits": [
+        [
+          "src/mnemonic/mnemonic.py",
+          "        h = hashlib.sha256(data).hexdigest()\n        b = (\n            bin(int.from_bytes(data, byteorder=\"big\"))[2:].zfill(len(data) * 8)\n            + bin(int(h, 16))[2:].zfill(256)[: len(data) * 8 // 32]\n        )\n        result = []\n        for i in range(len(b) // 11):\n            idx = int(b[i * 11 : (i + 1) * 11], 2)\n            result.append(self.wordlist[idx])\n        return self.delimiter.join(result)\n",
+          "        # entropy bits followed by the checksum: the top len(data) * 8 // 32 bits\n        # (at most 8) of the first SHA-256 byte\n        cs = len(data) * 8 // 32\n        acc = (int.from_bytes(data, byteorder=\"big\") << cs) | (\n            hashlib.sha256(data).digest()[0] >> (8 - cs)\n        )\n        n = (len(data) * 8 + cs) // 11\n        wordlist = self.wordlist\n        return self.delimiter.join(\n            [wordlist[(acc >> (11 * (n - 1 - i))) & 2047] for i in range(n)]\n        )\n"
+        ]
+      ]
+    }
+  ]
+}

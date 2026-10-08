@@ -1,0 +1,26 @@
+{
+  "no_zfill": {
+    "kind": "perf",
+    "target": "mnemonic_ir",
+    "expect": "tests_fail",
+    "note": "Presented as dropping a redundant zfill on the entropy bit string; entropy with leading zero bits now yields a shorter bit string, so the words shift and the checksum bits are wrong (BIP39 vector 00000000... no longer encodes to 'abandon ... about').",
+    "lines": 2,
+    "guard": "ok"
+  },
+  "skip_word_normalize": {
+    "kind": "perf",
+    "target": "entropy_ir",
+    "expect": "equivalence_changed",
+    "note": "Presented as removing a per-word NFKD normalisation that 'split() input never needs'; words in composed (NFC) form, as typed on most keyboards for Spanish, French or Czech phrases, now fail with 'not in list' instead of decoding. Upstream tests only pass to_entropy NFKD words from to_mnemonic.",
+    "lines": 2,
+    "guard": "ok"
+  },
+  "set_membership": {
+    "kind": "perf",
+    "target": "expand_ir",
+    "expect": "no_improvement",
+    "note": "Presented as making the exact-match test O(1) with a set; it builds a new 2048-element set on every call, which costs more than the linear list scan it replaces.",
+    "lines": 2,
+    "guard": "ok"
+  }
+}

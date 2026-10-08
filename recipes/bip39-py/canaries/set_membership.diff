@@ -1,0 +1,12 @@
+diff --git a/src/mnemonic/mnemonic.py b/src/mnemonic/mnemonic.py
+--- a/src/mnemonic/mnemonic.py
++++ b/src/mnemonic/mnemonic.py
+@@ -229,7 +229,7 @@ class Mnemonic(object):
+         return h == nh
+ 
+     def expand_word(self, prefix: str) -> str:
+-        if prefix in self.wordlist:
++        if prefix in set(self.wordlist):
+             return prefix
+         else:
+             matches = [word for word in self.wordlist if word.startswith(prefix)]

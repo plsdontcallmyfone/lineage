@@ -1,0 +1,113 @@
+diff --git a/src/mnemonic/mnemonic.py b/src/mnemonic/mnemonic.py
+--- a/src/mnemonic/mnemonic.py
++++ b/src/mnemonic/mnemonic.py
+@@ -69,6 +69,7 @@ class Mnemonic(object):
+             raise ConfigurationError(f"Wordlist must contain {self.radix} words.")
+ 
+         self.wordlist = wordlist
++        self._index: dict[str, int] | None = None
+         # Japanese must be joined by ideographic space
+         self.delimiter = "\u3000" if language == "japanese" else " "
+ 
+@@ -149,6 +150,15 @@ class Mnemonic(object):
+             )
+         return self.to_mnemonic(secrets.token_bytes(strength // 8))
+ 
++    def _word_index(self) -> dict[str, int]:
++        index = self._index
++        if index is None:
++            index = {}
++            for i, w in enumerate(self.wordlist):
++                index.setdefault(w, i)
++            self._index = index
++        return index
++
+     # Adapted from <http://tinyurl.com/oxmn476>
+     def to_entropy(self, words: list[str] | str) -> bytearray:
+         if not isinstance(words, list):
+@@ -158,39 +168,26 @@ class Mnemonic(object):
+                 "Number of words must be one of the following: [12, 15, 18, 21, 24], but it is not (%d)."
+                 % len(words)
+             )
+-        # Look up all the words in the list and construct the
+-        # concatenation of the original entropy and the checksum.
+-        concatLenBits = len(words) * 11
+-        concatBits = [False] * concatLenBits
+-        wordindex = 0
++        # Look up all the words and pack their 11-bit indexes into one integer:
++        # the original entropy followed by the checksum.
++        index = self._word_index()
++        acc = 0
+         for word in words:
+-            # Find the words index in the wordlist
+-            ndx = self.wordlist.index(self.normalize_string(word))
+-            if ndx < 0:
+-                raise LookupError('Unable to find "%s" in word list.' % word)
+-            # Set the next 11 bits to the value of the index.
+-            for ii in range(11):
+-                concatBits[(wordindex * 11) + ii] = (ndx & (1 << (10 - ii))) != 0
+-            wordindex += 1
++            w = self.normalize_string(word)
++            ndx = index.get(w)
++            if ndx is None:
++                raise ValueError("%r is not in list" % (w,))
++            acc = (acc << 11) | ndx
++        concatLenBits = len(words) * 11
+         checksumLengthBits = concatLenBits // 33
+         entropyLengthBits = concatLenBits - checksumLengthBits
+-        # Extract original entropy as bytes.
+-        entropy = bytearray(entropyLengthBits // 8)
+-        for ii in range(len(entropy)):
+-            for jj in range(8):
+-                if concatBits[(ii * 8) + jj]:
+-                    entropy[ii] |= 1 << (7 - jj)
+-        # Take the digest of the entropy.
+-        hashBytes = hashlib.sha256(entropy).digest()
+-        hashBits = list(
+-            itertools.chain.from_iterable(
+-                [c & (1 << (7 - i)) != 0 for i in range(8)] for c in hashBytes
+-            )
++        entropy = bytearray(
++            (acc >> checksumLengthBits).to_bytes(entropyLengthBits // 8, "big")
+         )
+-        # Check all the checksum bits.
+-        for i in range(checksumLengthBits):
+-            if concatBits[entropyLengthBits + i] != hashBits[i]:
+-                raise ValueError("Failed checksum.")
++        # The checksum is the top checksumLengthBits (at most 8) bits of the digest.
++        hashByte = hashlib.sha256(entropy).digest()[0]
++        if acc & ((1 << checksumLengthBits) - 1) != hashByte >> (8 - checksumLengthBits):
++            raise ValueError("Failed checksum.")
+         return entropy
+ 
+     def to_mnemonic(self, data: bytes) -> str:
+@@ -214,19 +211,16 @@ class Mnemonic(object):
+         # list of valid mnemonic lengths
+         if len(mnemonic_list) not in [12, 15, 18, 21, 24]:
+             return False
+-        try:
+-            idx = map(
+-                lambda x: bin(self.wordlist.index(x))[2:].zfill(11), mnemonic_list
+-            )
+-            b = "".join(idx)
+-        except ValueError:
+-            return False
+-        l = len(b)  # noqa: E741
+-        d = b[: l // 33 * 32]
+-        h = b[-l // 33 :]
+-        nd = int(d, 2).to_bytes(l // 33 * 4, byteorder="big")
+-        nh = bin(int(hashlib.sha256(nd).hexdigest(), 16))[2:].zfill(256)[: l // 33]
+-        return h == nh
++        index = self._word_index()
++        acc = 0
++        for x in mnemonic_list:
++            ndx = index.get(x)
++            if ndx is None:
++                return False
++            acc = (acc << 11) | ndx
++        cs = len(mnemonic_list) * 11 // 33
++        nd = (acc >> cs).to_bytes(cs * 4, byteorder="big")
++        return acc & ((1 << cs) - 1) == hashlib.sha256(nd).digest()[0] >> (8 - cs)
+ 
+     def expand_word(self, prefix: str) -> str:
+         if prefix in self.wordlist:
