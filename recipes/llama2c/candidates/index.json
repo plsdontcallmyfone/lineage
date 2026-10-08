@@ -1,0 +1,26 @@
+{
+  "merge_memcpy": {
+    "kind": "perf",
+    "target": "encode_ir",
+    "expect": "accepted",
+    "note": "encode() builds each merge candidate with strlen and memcpy instead of sprintf(\"%s%s\"), and skips the vocabulary lookup when the pair is longer than max_token_length (no token can match it). Tokens are unchanged.",
+    "lines": 9,
+    "guard": "ok"
+  },
+  "rope_once": {
+    "kind": "perf",
+    "target": "forward_ir",
+    "expect": "no_improvement",
+    "note": "A real but small improvement, kept to show a candidate below min_effect is refused: measured 0.77% fewer instructions (ratio 0.99229) on forward_ir with -ffp-contract=off builds, against the 1% min_effect. forward() computes the RoPE cos/sin rotation for this position once per call (it depends only on pos and the head offset) instead of once per layer, and the attention scale sqrtf(head_size) once instead of per timestep. The same float expressions are evaluated, so logits are bit-identical.",
+    "lines": 20,
+    "guard": "ok"
+  },
+  "matmul_rows4": {
+    "kind": "perf",
+    "target": "forward_ir",
+    "expect": "accepted",
+    "note": "matmul computes four output rows per pass over x, each with its own accumulator that adds the same products in the same order as before (so results are bit-identical), loading each x[j] once for four rows and cutting loop overhead; a tail loop handles d not divisible by 4.",
+    "lines": 22,
+    "guard": "ok"
+  }
+}

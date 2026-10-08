@@ -1,0 +1,48 @@
+{
+  "recipe_id": "1957fae0fb5f3b951e543dfac1ea62547b1ca4cfab7363351c62bf1a170e7898",
+  "snapshot_id": "",
+  "runs": 5,
+  "stable": [
+    "props::decode_encode_roundtrip",
+    "props::decode_matches_reference",
+    "props::encode_edge_cases",
+    "props::encode_invalid_utf8",
+    "props::encode_matches_reference_bos",
+    "props::encode_matches_reference_eos",
+    "props::encode_matches_reference_long",
+    "props::encode_utf8",
+    "upstream::test_prompt_encodings"
+  ],
+  "known_failures": [],
+  "quarantined": [],
+  "metrics": {
+    "encode_ir": {
+      "enabled": true,
+      "cv": 0,
+      "base_value": 347169375
+    },
+    "forward_ir": {
+      "enabled": true,
+      "cv": 0,
+      "base_value": 60250801
+    }
+  },
+  "median_eval_seconds": 5,
+  "seed": "ca11b7a7e",
+  "recipe_name": "llama2c",
+  "repo": "https://github.com/karpathy/llama2.c",
+  "commit": "350e04fe35433e6d2941dce5a1f53308f87058eb",
+  "deps_digest": "ecfcc9fc2e777639f51c975e2525074f266b5ed86c8bcf43eec2b2493cd65af2",
+  "image_digest": "sha256:979cc232edde058027ea3cd1b6a0b8615a32286f48f3941afba7a3261f4adc9c",
+  "date": "2026-10-08T21:41:56.628Z",
+  "calibration_wall_seconds": 8.2,
+  "counts": {
+    "stable": 9,
+    "known_failures": 0,
+    "quarantined": 0,
+    "excluded": 0
+  },
+  "notes": [
+    "calibration wall time 8 s"
+  ]
+}

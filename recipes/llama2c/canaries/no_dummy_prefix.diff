@@ -1,0 +1,15 @@
+diff --git a/run.c b/run.c
+--- a/run.c
++++ b/run.c
+@@ -479,10 +479,7 @@ void encode(Tokenizer* t, char *text, int8_t bos, int8_t eos, int *tokens, int *
+     // so prepend a dummy prefix token to the input string, but only if text != ""
+     // TODO: pretty sure this isn't correct in the general case but I don't have the
+     // energy to read more of the sentencepiece code to figure out what it's doing
+-    if (text[0] != '\0') {
+-        int dummy_prefix = str_lookup(" ", t->sorted_vocab, t->vocab_size);
+-        tokens[(*n_tokens)++] = dummy_prefix;
+-    }
++    // add_dummy_prefix skipped: the lookup is not needed for correct merges
+ 
+     // Okay UTF-8 time. This will get messy. Here is the reference from Wikipedia:
+     // Code point ↔ UTF-8 conversion

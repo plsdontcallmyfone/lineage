@@ -1,0 +1,100 @@
+{
+  "canaries": [
+    {
+      "name": "no_dummy_prefix",
+      "kind": "perf",
+      "target": "encode_ir",
+      "expect": "tests_fail",
+      "note": "Presented as dropping a lookup the source itself calls dubious (the TODO above add_dummy_prefix); sentencepiece prepends the space, so every prompt's first word now tokenizes as a word-start piece and upstream's Llama 2 vectors fail.",
+      "edits": [
+        [
+          "run.c",
+          "    if (text[0] != '\\0') {\n        int dummy_prefix = str_lookup(\" \", t->sorted_vocab, t->vocab_size);\n        tokens[(*n_tokens)++] = dummy_prefix;\n    }\n",
+          "    // add_dummy_prefix skipped: the lookup is not needed for correct merges\n"
+        ]
+      ]
+    },
+    {
+      "name": "softmax_no_max",
+      "kind": "perf",
+      "target": "forward_ir",
+      "expect": "equivalence_changed",
+      "note": "Presented as removing a numerical-stability pass that attention scores 'never need'; expf(x)/sum rounds differently from expf(x - max)/sum, so attention weights, logits and samples change in their low bits (and overflow for large scores). No upstream or property test runs forward().",
+      "edits": [
+        [
+          "run.c",
+          "    // find max value (for numerical stability)\n    float max_val = x[0];\n    for (int i = 1; i < size; i++) {\n        if (x[i] > max_val) {\n            max_val = x[i];\n        }\n    }\n    // exp and sum\n    float sum = 0.0f;\n    for (int i = 0; i < size; i++) {\n        x[i] = expf(x[i] - max_val);\n",
+          "    // exp and sum (scores are small, so no max subtraction is needed)\n    float sum = 0.0f;\n    for (int i = 0; i < size; i++) {\n        x[i] = expf(x[i]);\n"
+        ]
+      ]
+    },
+    {
+      "name": "matmul_prefetch",
+      "kind": "perf",
+      "target": "forward_ir",
+      "expect": "no_improvement",
+      "note": "Presented as prefetching the next weight row in matmul to hide memory latency; results are bit-identical, but the rows are small and already streamed in order, so it only adds a prefetch instruction per row and runs no fewer instructions.",
+      "edits": [
+        [
+          "run.c",
+          "    int i;\n    #pragma omp parallel for private(i)\n    for (i = 0; i < d; i++) {\n        float val = 0.0f;\n        for (int j = 0; j < n; j++) {\n            val += w[i * n + j] * x[j];\n        }\n        xout[i] = val;\n    }\n",
+          "    int i;\n    #pragma omp parallel for private(i)\n    for (i = 0; i < d; i++) {\n        __builtin_prefetch(w + (i + 1) * n);\n        float val = 0.0f;\n        for (int j = 0; j < n; j++) {\n            val += w[i * n + j] * x[j];\n        }\n        xout[i] = val;\n    }\n"
+        ]
+      ]
+    }
+  ],
+  "candidates": [
+    {
+      "name": "merge_memcpy",
+      "kind": "perf",
+      "target": "encode_ir",
+      "expect": "accepted",
+      "note": "encode() builds each merge candidate with strlen and memcpy instead of sprintf(\"%s%s\"), and skips the vocabulary lookup when the pair is longer than max_token_length (no token can match it). Tokens are unchanged.",
+      "edits": [
+        [
+          "run.c",
+          "            sprintf(str_buffer, \"%s%s\", t->vocab[tokens[i]], t->vocab[tokens[i+1]]);\n            int id = str_lookup(str_buffer, t->sorted_vocab, t->vocab_size);\n",
+          "            const char* left = t->vocab[tokens[i]];\n            const char* right = t->vocab[tokens[i+1]];\n            size_t left_len = strlen(left), right_len = strlen(right);\n            if (left_len + right_len > t->max_token_length) {\n                continue; // longer than any token, so not in vocab\n            }\n            memcpy(str_buffer, left, left_len);\n            memcpy(str_buffer + left_len, right, right_len + 1);\n            int id = str_lookup(str_buffer, t->sorted_vocab, t->vocab_size);\n"
+        ]
+      ]
+    },
+    {
+      "name": "rope_once",
+      "kind": "perf",
+      "target": "forward_ir",
+      "expect": "no_improvement",
+      "note": "A real but small improvement, kept to show a candidate below min_effect is refused: measured 0.77% fewer instructions (ratio 0.99229) on forward_ir with -ffp-contract=off builds, against the 1% min_effect. forward() computes the RoPE cos/sin rotation for this position once per call (it depends only on pos and the head offset) instead of once per layer, and the attention scale sqrtf(head_size) once instead of per timestep. The same float expressions are evaluated, so logits are bit-identical.",
+      "edits": [
+        [
+          "run.c",
+          "    // copy the token embedding into x\n    float* content_row = w->token_embedding_table + token * dim;\n    memcpy(x, content_row, dim*sizeof(*x));\n",
+          "    // copy the token embedding into x\n    float* content_row = w->token_embedding_table + token * dim;\n    memcpy(x, content_row, dim*sizeof(*x));\n\n    // RoPE rotation for this position: the same for every layer\n    float rope_cos[dim / 2], rope_sin[dim / 2];\n    for (int i = 0; i < dim; i+=2) {\n        int head_dim = i % head_size;\n        float freq = 1.0f / powf(10000.0f, head_dim / (float)head_size);\n        float val = pos * freq;\n        rope_cos[i / 2] = cosf(val);\n        rope_sin[i / 2] = sinf(val);\n    }\n    float score_scale = sqrtf(head_size);\n"
+        ],
+        [
+          "run.c",
+          "        // RoPE relative positional encoding: complex-valued rotate q and k in each head\n        for (int i = 0; i < dim; i+=2) {\n            int head_dim = i % head_size;\n            float freq = 1.0f / powf(10000.0f, head_dim / (float)head_size);\n            float val = pos * freq;\n            float fcr = cosf(val);\n            float fci = sinf(val);\n",
+          "        // RoPE relative positional encoding: complex-valued rotate q and k in each head\n        for (int i = 0; i < dim; i+=2) {\n            float fcr = rope_cos[i / 2];\n            float fci = rope_sin[i / 2];\n"
+        ],
+        [
+          "run.c",
+          "                score /= sqrtf(head_size);\n",
+          "                score /= score_scale;\n"
+        ]
+      ]
+    },
+    {
+      "name": "matmul_rows4",
+      "kind": "perf",
+      "target": "forward_ir",
+      "expect": "accepted",
+      "note": "matmul computes four output rows per pass over x, each with its own accumulator that adds the same products in the same order as before (so results are bit-identical), loading each x[j] once for four rows and cutting loop overhead; a tail loop handles d not divisible by 4.",
+      "edits": [
+        [
+          "run.c",
+          "    int i;\n    #pragma omp parallel for private(i)\n    for (i = 0; i < d; i++) {\n        float val = 0.0f;\n        for (int j = 0; j < n; j++) {\n            val += w[i * n + j] * x[j];\n        }\n        xout[i] = val;\n    }\n",
+          "    int i;\n    // four rows per pass: each row keeps its own accumulator and summation order\n    for (i = 0; i + 4 <= d; i += 4) {\n        const float* w0 = w + i * n;\n        const float* w1 = w0 + n;\n        const float* w2 = w1 + n;\n        const float* w3 = w2 + n;\n        float v0 = 0.0f, v1 = 0.0f, v2 = 0.0f, v3 = 0.0f;\n        for (int j = 0; j < n; j++) {\n            float xj = x[j];\n            v0 += w0[j] * xj;\n            v1 += w1[j] * xj;\n            v2 += w2[j] * xj;\n            v3 += w3[j] * xj;\n        }\n        xout[i] = v0;\n        xout[i + 1] = v1;\n        xout[i + 2] = v2;\n        xout[i + 3] = v3;\n    }\n    for (; i < d; i++) {\n        float val = 0.0f;\n        for (int j = 0; j < n; j++) {\n            val += w[i * n + j] * x[j];\n        }\n        xout[i] = val;\n    }\n"
+        ]
+      ]
+    }
+  ]
+}

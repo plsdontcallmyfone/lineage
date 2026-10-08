@@ -1,0 +1,26 @@
+{
+  "no_dummy_prefix": {
+    "kind": "perf",
+    "target": "encode_ir",
+    "expect": "tests_fail",
+    "note": "Presented as dropping a lookup the source itself calls dubious (the TODO above add_dummy_prefix); sentencepiece prepends the space, so every prompt's first word now tokenizes as a word-start piece and upstream's Llama 2 vectors fail.",
+    "lines": 5,
+    "guard": "ok"
+  },
+  "softmax_no_max": {
+    "kind": "perf",
+    "target": "forward_ir",
+    "expect": "equivalence_changed",
+    "note": "Presented as removing a numerical-stability pass that attention scores 'never need'; expf(x)/sum rounds differently from expf(x - max)/sum, so attention weights, logits and samples change in their low bits (and overflow for large scores). No upstream or property test runs forward().",
+    "lines": 11,
+    "guard": "ok"
+  },
+  "matmul_prefetch": {
+    "kind": "perf",
+    "target": "forward_ir",
+    "expect": "no_improvement",
+    "note": "Presented as prefetching the next weight row in matmul to hide memory latency; results are bit-identical, but the rows are small and already streamed in order, so it only adds a prefetch instruction per row and runs no fewer instructions.",
+    "lines": 1,
+    "guard": "ok"
+  }
+}

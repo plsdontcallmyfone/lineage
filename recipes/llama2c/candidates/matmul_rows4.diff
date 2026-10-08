@@ -1,0 +1,32 @@
+diff --git a/run.c b/run.c
+--- a/run.c
++++ b/run.c
+@@ -218,8 +218,26 @@ void matmul(float* xout, float* x, float* w, int n, int d) {
+     // W (d,n) @ x (n,) -> xout (d,)
+     // by far the most amount of time is spent inside this little function
+     int i;
+-    #pragma omp parallel for private(i)
+-    for (i = 0; i < d; i++) {
++    // four rows per pass: each row keeps its own accumulator and summation order
++    for (i = 0; i + 4 <= d; i += 4) {
++        const float* w0 = w + i * n;
++        const float* w1 = w0 + n;
++        const float* w2 = w1 + n;
++        const float* w3 = w2 + n;
++        float v0 = 0.0f, v1 = 0.0f, v2 = 0.0f, v3 = 0.0f;
++        for (int j = 0; j < n; j++) {
++            float xj = x[j];
++            v0 += w0[j] * xj;
++            v1 += w1[j] * xj;
++            v2 += w2[j] * xj;
++            v3 += w3[j] * xj;
++        }
++        xout[i] = v0;
++        xout[i + 1] = v1;
++        xout[i + 2] = v2;
++        xout[i + 3] = v3;
++    }
++    for (; i < d; i++) {
+         float val = 0.0f;
+         for (int j = 0; j < n; j++) {
+             val += w[i * n + j] * x[j];

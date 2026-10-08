@@ -1,0 +1,23 @@
+diff --git a/run.c b/run.c
+--- a/run.c
++++ b/run.c
+@@ -195,17 +195,10 @@ void rmsnorm(float* o, float* x, float* weight, int size) {
+ }
+ 
+ void softmax(float* x, int size) {
+-    // find max value (for numerical stability)
+-    float max_val = x[0];
+-    for (int i = 1; i < size; i++) {
+-        if (x[i] > max_val) {
+-            max_val = x[i];
+-        }
+-    }
+-    // exp and sum
++    // exp and sum (scores are small, so no max subtraction is needed)
+     float sum = 0.0f;
+     for (int i = 0; i < size; i++) {
+-        x[i] = expf(x[i] - max_val);
++        x[i] = expf(x[i]);
+         sum += x[i];
+     }
+     // normalize

@@ -1,0 +1,19 @@
+diff --git a/run.c b/run.c
+--- a/run.c
++++ b/run.c
+@@ -541,7 +541,14 @@ void encode(Tokenizer* t, char *text, int8_t bos, int8_t eos, int *tokens, int *
+ 
+         for (int i=0; i < (*n_tokens-1); i++) {
+             // check if we can merge the pair (tokens[i], tokens[i+1])
+-            sprintf(str_buffer, "%s%s", t->vocab[tokens[i]], t->vocab[tokens[i+1]]);
++            const char* left = t->vocab[tokens[i]];
++            const char* right = t->vocab[tokens[i+1]];
++            size_t left_len = strlen(left), right_len = strlen(right);
++            if (left_len + right_len > t->max_token_length) {
++                continue; // longer than any token, so not in vocab
++            }
++            memcpy(str_buffer, left, left_len);
++            memcpy(str_buffer + left_len, right, right_len + 1);
+             int id = str_lookup(str_buffer, t->sorted_vocab, t->vocab_size);
+             if (id != -1 && t->vocab_scores[id] > best_score) {
+                 // this merge pair exists in vocab! record its score and position

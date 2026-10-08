@@ -1,0 +1,85 @@
+# karpathy/llama2.c: inference for Llama 2 architecture models in one file of pure C (run.c):
+# the transformer forward pass, the sentencepiece-style BPE tokenizer and the samplers. MIT
+# licence (LICENSE). No CONTRIBUTING or AI policy file in the repository; the README asks for
+# small, simple PRs (checked 2026-10-08).
+#
+# Why: encode() rescans every adjacent pair on every merge, building each candidate string with
+# sprintf and looking it up by bsearch, so tokenizing a prompt is quadratic with a large
+# constant; forward() recomputes the RoPE rotation (powf, cosf, sinf) for every layer and divides
+# attention scores by sqrtf per timestep. Both are measurable with instruction counts.
+#
+# Class cpp (the code is C, built with the image's gcc 14; SPEC 6.1 cpp class). Build: the overlay
+# Makefile (lineage/Makefile) compiles upstream's tokenizer test test.c verbatim (upstream's
+# `make testcc`) and the lineage harnesses, all of which #include run.c, with upstream's -O3 and no
+# -march or OpenMP, plus -ffp-contract=off so float results follow the source's operation order
+# rather than the compiler's choice to fuse multiply-adds in one loop shape and not another;
+# statically linked.
+#
+# Tests (TAP, lineage/run_tests.sh): test 1 is upstream's test.c (Llama 2 tokenizer vectors from
+# Meta's example code). upstream's test_all.py needs PyTorch and a downloaded checkpoint, so it is
+# not run. lineage/props.c adds protected tokenizer tests against a verbatim renamed copy of the
+# snapshot's tokenizer (lineage/ref_tokenizer.h): encode for seeded and edge-case text (bos/eos,
+# multi-byte and invalid UTF-8), decode of every vocabulary entry, and the decode(encode(x)) round
+# trip.
+#
+# Metrics: cachegrind Ir of the whole process. encode_ir tokenizes 24 seeded texts with the
+# repository's tokenizer.bin; forward_ir runs 48 positions of a seeded random checkpoint (written
+# to /tmp by the harness: dim 64, 3 layers, 8 heads, 4 kv heads, vocab 384). Equivalence prints
+# every logit's bits, so forward() must stay bit-identical: a patch may restructure loops but not
+# reorder any float sum.
+# Inputs depend only on $LINEAGE_SEED (FNV-1a -> splitmix64, lineage/seeded.h). Calibrated on arm64.
+name: llama2c
+class: cpp
+requires: { arch: arm64 }
+repo: https://github.com/karpathy/llama2.c
+commit: "350e04fe35433e6d2941dce5a1f53308f87058eb"
+image: "lineage/cpp:gcc14@sha256:979cc232edde058027ea3cd1b6a0b8615a32286f48f3941afba7a3261f4adc9c"
+workdir: /work/src
+prepare: []
+prepare_outputs: []
+build:
+  commands:
+    - make -f lineage/Makefile -j2
+  artifacts: []
+  reproducible: false
+test:
+  command: sh lineage/run_tests.sh
+  parser: tap
+  exclude: []
+  timeout_s: 300
+equivalence:
+  command: lineage_out/equiv "$LINEAGE_SEED"
+  output: stdout-digest
+metrics:
+  - name: encode_ir
+    kind: perf
+    direction: lower
+    deterministic: true
+    command: valgrind --tool=cachegrind --cache-sim=no --cachegrind-out-file=/dev/null lineage_out/bench encode "$LINEAGE_SEED"
+    parser: cachegrind-ir
+    holdout: true
+    min_effect: 0.01
+  - name: forward_ir
+    kind: perf
+    direction: lower
+    deterministic: true
+    command: valgrind --tool=cachegrind --cache-sim=no --cachegrind-out-file=/dev/null lineage_out/bench forward "$LINEAGE_SEED"
+    parser: cachegrind-ir
+    holdout: true
+    min_effect: 0.01
+patch:
+  allowed_paths: ["run.c"]
+  protected_paths:
+    - "test.c"
+    - "test_all.py"
+    - "tokenizer.bin"
+    - "tokenizer.model"
+    - "Makefile"
+    - "lineage/**"
+    - "lineage_out/**"
+    - ".github/**"
+    - "**/*.yml"
+    - "**/*.yaml"
+  max_files: 1
+  max_lines: 200
+limits: { cpus: 2, memory_mb: 2048, pids: 256, wall_s: 900, disk_mb: 4096 }
