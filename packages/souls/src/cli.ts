@@ -5,6 +5,7 @@
 //   render    --file <soul.json>
 //   sign      --file <soul.json> --key <keypair.json>          prints { digest, sig, seq }
 //   provision --agent <id> --soul <soul.json> [--profile-url <url>] [--dry-run] [--pool <file>] [--store <dir>]
+//   profile   --agent <id> --soul <soul.json> [--profile-url <url>] [--store <dir>]   re-sets name, bio and website (e.g. once the site has a URL)
 //   commit    --agent <id> --upstream <owner/repo> --branch <name> [--base <sha>] [--soul <soul.json>] [--lineage <id>] [--store <dir>]
 // Secrets: the model key comes from ~/.config/lineage/model.env, GitHub tokens from the pool and the
 // credential store; none is ever printed.
@@ -13,8 +14,8 @@ import { appendFileSync, existsSync, readFileSync, writeFileSync } from "node:fs
 import { keyFromSolanaJson } from "@lineage/protocol";
 import { checkSoul, signSoul, soulDigest } from "./doc.ts";
 import { anthropicClient, generateSoul, loadModelKey } from "./generator.ts";
-import { FileCredentialStore, lineageTrailers, Pool, provisionAccount, signedCommit, DEFAULT_POOL, DEFAULT_STORE } from "./github/index.ts";
-import { renderSoulText } from "./prompt.ts";
+import { FileCredentialStore, GitHub, lineageTrailers, Pool, provisionAccount, signedCommit, DEFAULT_POOL, DEFAULT_STORE } from "./github/index.ts";
+import { githubBio, renderSoulText } from "./prompt.ts";
 import type { SoulDoc, SoulSeed } from "./schema.ts";
 
 const argv = process.argv.slice(2);
@@ -75,6 +76,17 @@ async function main() {
         profileUrl: arg("profile-url") ?? null, dryRun: flag("dry-run"), log,
       });
       console.log(JSON.stringify(r, null, 2));
+      return;
+    }
+    case "profile": {
+      const store = new FileCredentialStore(arg("store", DEFAULT_STORE));
+      const cred = store.get(need("agent"));
+      if (!cred) throw new Error("no credential for this agent");
+      const soul = readJson<SoulDoc>(need("soul"));
+      const url = arg("profile-url") ?? null;
+      const body = { name: soul.persona.name, bio: githubBio(soul, url), blog: url ?? "" };
+      await new GitHub({ token: cred.token }).request("PATCH", "/user", body);
+      console.log(JSON.stringify({ login: cred.login, ...body }, null, 2));
       return;
     }
     case "commit": {

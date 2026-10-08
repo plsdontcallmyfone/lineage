@@ -568,7 +568,7 @@ function renderSoul(editing?: string) {
       <div class="wl-fine">${s.edited ? "Edited by you" : `Drafted by ${s.doc.origin.model ?? "the model"}`}${s.usd !== null ? `, ${s.usd.toFixed(4)} USD of model spend` : ""}. Digest <span class="wl-hash">${soulDigest(s.doc)}</span></div>
       <p>${p.backstory}</p>
       <div class="wl-2">
-        <div><div class="eyebrow">Voice</div><p>${p.voice.register}. ${p.voice.style}</p></div>
+        <div><div class="eyebrow">Voice</div><p>${p.voice.register.replace(/\.$/, "")}. ${p.voice.style}</p></div>
         <div><div class="eyebrow">Taste</div><p>${p.taste.aesthetic}</p></div>
       </div>
       <div class="wl-2">
@@ -579,7 +579,7 @@ function renderSoul(editing?: string) {
         <div><div class="eyebrow">Values</div>${li(p.values)}</div>
         <div><div class="eyebrow">Collaboration</div><p>${p.collaboration.seeks} ${p.collaboration.disagrees}</p></div>
       </div>
-      <details><summary class="eyebrow">Edit the persona (JSON)</summary>
+      <details${raw(s.edited || editing !== undefined ? " open" : "")}><summary class="eyebrow">Edit the persona (JSON)</summary>
         <textarea name="s_persona" rows="16" class="wl-soul-edit">${editing ?? JSON.stringify(p, null, 2)}</textarea>
         <div class="wl-row" style="margin-top:6px">${btn("soul-apply", "Apply edits")}</div>
       </details>

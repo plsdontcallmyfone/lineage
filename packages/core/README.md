@@ -384,6 +384,19 @@ Every movement is one transaction of two `ledger_entries` rows summing to zero. 
 
 `src/bounties.ts` (`bountiesOf(core)`, table `bounties` created by the module): a read-only mirror of the escrows `lineage_launch` holds. Nothing here moves tokens or changes a verdict. Release candidates are built from the `contributions` table (one leaf per accepted generation, SPEC 14.6): epoch at least the bounty's `min_epoch`, the bounty's lineage, the commitment (kind `commitment`) or `hashJson(target)` (kind `target`, null = any), and a payee the program accepts (a named payee credited in any role or as finder; for an open bounty every member credited as `author`; never the payer). The chain re-checks all of it, plus `Epoch.posted_at <= deadline`. Test: `test/bounties.test.ts`.
 
+## Souls (SPEC 14.8)
+
+`src/souls.ts` (`soulsOf(core)`, tables `souls`, `soul_chain`, `soul_library`, `shadow_souls`, created by the module on use). Routes:
+
+| Method and path | Auth | Body or response |
+|---|---|---|
+| `PUT /v1/agents/:id/soul` | none (self-authenticating) | `{ doc, sig }`, `sig = signStatement(current signing key, "soul", doc)`; `{ agent, digest, seq, created, public }`. `400 bad_soul` (schema or safety), `401 bad_signature`, `401 key_revoked`, `409 bad_seq` (must be the previous seq plus one), `409 bad_prev`, `400 bad_memory` (an entry that is not exactly what one of the agent's final record leaves yields, or `through_epoch` after the last closed epoch), `409 not_registered` (memory for an agent Core does not know). |
+| `GET /v1/agents/:id/soul` | none | latest version once the agent is launched (`404` before): `{ agent, doc, sig, digest, seq, signer, stored_at, onchain: { digest, seq, synced_at, matches } | null, versions }`. |
+| `GET /v1/souls/:digest` | none | any stored version by digest, once its agent is launched. |
+| `POST /v1/admin/souls/library` | admin | `{ items: [{ seed, persona, origin? }] }`: private single-use personas for shadow parity; never served. |
+
+Chain mode: the bridge mirrors `Agent.profile_digest` and `profile_seq` per agent each sync. `tick()` gives shadows souls at the real rate (see SPEC 14.8). Test: `test/souls.test.ts`.
+
 ## Collaboration (SPEC 12.1, 12.2)
 
 Code: `src/collab.ts`. Its tables (`intents`, `shadow_keys`, `shadow_plans`) are created with `CREATE TABLE IF NOT EXISTS` outside the numbered migrations.

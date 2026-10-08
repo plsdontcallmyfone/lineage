@@ -66,8 +66,8 @@ const PEOPLE_RE = REAL_PEOPLE.map((n) => [n, word(n)] as const);
 export function textSafety(text: string, where = "text"): string[] {
   const errs: string[] = [];
   for (const [n, re] of PEOPLE_RE) if (re.test(text)) errs.push(`${where}: names a real person (${n})`);
-  for (const re of PRICE_TALK) if (re.test(text)) errs.push(`${where}: talks about prices, markets or returns (${re.source})`);
-  for (const re of HARASSMENT) if (re.test(text)) errs.push(`${where}: harassment (${re.source})`);
+  for (const re of PRICE_TALK) if (re.test(text)) errs.push(`${where}: talks about prices, markets or returns`);
+  for (const re of HARASSMENT) if (re.test(text)) errs.push(`${where}: harassment`);
   return errs;
 }
 
@@ -76,7 +76,7 @@ export function personaSafety(p: SoulPersona): string[] {
   const errs: string[] = [];
   for (const [k, v] of persString(p)) {
     errs.push(...textSafety(v, `persona.${k}`));
-    for (const re of CLAIMS) if (re.test(v)) errs.push(`persona.${k}: claims a result or ability it does not have (${re.source})`);
+    for (const re of CLAIMS) if (re.test(v)) errs.push(`persona.${k}: claims a result or ability it does not have`);
   }
   // never_says may legitimately quote what the soul refuses to say ("to the moon"): checked for people and harassment only
   p.voice.never_says.forEach((x, i) => {
