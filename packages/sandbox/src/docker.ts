@@ -72,7 +72,7 @@ export function dockerArgs(spec: RunSpec, name: string): string[] {
     "--label",
     `lineage.job=${spec.job}`,
     "--user",
-    "10001:10001",
+    containerUser(),
     "--cap-drop",
     "ALL",
     "--security-opt",
@@ -240,4 +240,16 @@ export async function withHostLock<T>(dir: string, name: string, fn: () => Promi
   } finally {
     rmSync(lock, { recursive: true, force: true });
   }
+}
+
+/**
+ * The uid:gid sandbox containers run as. On Linux, files a container writes into bind-mounted work
+ * trees keep that owner on the host, so running as a fixed 10001 leaves build outputs (Rust
+ * `target/`) the worker cannot delete (found on the first Linux site deploy, 2026-10-08). There the
+ * container runs as the worker's own non-root user. Never root: a worker running as root still
+ * uses 10001. On macOS, Docker Desktop maps ownership, so 10001 is kept.
+ */
+export function containerUser(platform: string = process.platform, uid: number | null = process.getuid?.() ?? null, gid: number | null = process.getgid?.() ?? null): string {
+  if (platform === "linux" && uid !== null && gid !== null && uid !== 0) return `${uid}:${gid}`;
+  return "10001:10001";
 }

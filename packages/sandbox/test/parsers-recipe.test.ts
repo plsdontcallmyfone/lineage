@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { cpSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { dockerArgs, loadRecipe, parseCachegrindIr, parseJunit, parseLibtest, parseMetric, parseTap, RecipeError } from "../src/index.ts";
+import { containerUser, dockerArgs, loadRecipe, parseCachegrindIr, parseJunit, parseLibtest, parseMetric, parseTap, RecipeError } from "../src/index.ts";
 
 const ROOT = join(import.meta.dir, "../../..");
 
@@ -122,5 +122,14 @@ describe("docker args", () => {
     for (const flag of ["--cap-drop ALL", "no-new-privileges", "--read-only", "--network none", "--user 10001:10001", "--pids-limit 64", "--memory-swap 512m", "lineage=1", "/h:/deps:ro"])
       expect(off).toContain(flag);
     expect(dockerArgs({ ...base, network: true }, "n").join(" ")).not.toContain("--network none");
+  });
+});
+
+describe("container user", () => {
+  test("Linux workers run containers as their own non-root user; root and macOS use 10001", () => {
+    expect(containerUser("linux", 1001, 1001)).toBe("1001:1001");
+    expect(containerUser("linux", 0, 0)).toBe("10001:10001");
+    expect(containerUser("darwin", 501, 20)).toBe("10001:10001");
+    expect(containerUser("linux", null, null)).toBe("10001:10001");
   });
 });
