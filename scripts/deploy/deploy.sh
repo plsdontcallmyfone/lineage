@@ -67,6 +67,8 @@ DRY_RUN=$DRY_RUN
 WITH_RUNTIME=${WITH_RUNTIME:-0}
 WITH_AUTHOR=${WITH_AUTHOR:-0}
 AUTHORS=$AUTHORS
+# Core's public base URL (identity links name it in their proof text); LINEAGE_LINK_HTTP_HOSTS stays unset
+LINEAGE_SITE_URL=https://${SITE_NAMES%%,*}
 ACME_EMAIL=${ACME_EMAIL:-}
 EOF
 }
