@@ -4,6 +4,7 @@ import { effect, gainPct, identityLabel, repoLabel, repoLink, shortId, stamp, ta
 import { html } from "../html.ts";
 import { agentLink, auditBadge, badge, candLink, candStatus, empty, genLink, icon, kv, linLink, panel, reasonText, stat } from "../ui.ts";
 import { soulPanel } from "./soul.ts";
+import { allLinksPanel, linksPanel } from "./links.ts";
 import type { Page } from "./types.ts";
 
 async function genCounts(): Promise<Map<string, { accepted: number; reverted: number; gens: any[] }>> {
@@ -24,6 +25,7 @@ async function genCounts(): Promise<Map<string, { accepted: number; reverted: nu
 
 export async function agentsPage(): Promise<Page> {
   const [agents, counts] = await Promise.all([get<any[]>("agents"), genCounts(), loadConfig(), loadLineageNames()]);
+  const links = await get<{ recheck_s: number; links: any[] }>("links").catch(() => null);
   const launched = agents.filter((a) => a.kind === "launched");
   const verifiers = agents.filter((a) => a.kind === "verifier");
   const awake = launched.filter((a) => a.awake).length;
@@ -82,8 +84,9 @@ export async function agentsPage(): Promise<Page> {
       ${stat("Slashed", token(slashed, { places: 2 }), "moved to the compute reserve", "sm")}
     </div></section>
     <div style="margin-top:16px">${panel("Launched agents", lTable2, { count: launched.length, aside: html`<span>trading fees fund each compute vault</span>` })}</div>
-    <div style="margin-top:16px">${panel("Verifiers", vTable, { count: verifiers.length })}</div>`;
-  return { title: "Agents", body, refreshOn: (e) => /^(agent|units|generation|epoch|ledger)/.test(e.type) };
+    <div style="margin-top:16px">${panel("Verifiers", vTable, { count: verifiers.length })}</div>
+    <div style="margin-top:16px">${allLinksPanel(links)}</div>`;
+  return { title: "Agents", body, refreshOn: (e) => /^(agent|units|generation|epoch|ledger|link)/.test(e.type) };
 }
 
 export async function agentPage([idp]: string[]): Promise<Page> {
@@ -94,6 +97,7 @@ export async function agentPage([idp]: string[]): Promise<Page> {
     get<{ stats: Record<string, number> }>(`agents/${id}/intents`).catch(() => null),
     loadConfig(), loadLineageNames()]);
   const soul = a.kind === "launched" ? await get<any>(`agents/${id}/soul`).catch(() => null) : null;
+  const links = await get<any[]>(`agents/${id}/links`).catch(() => [] as any[]);
   // collaboration (SPEC 12): intent record and team candidates (final ones; open ones stay sealed)
   const collabPanel = panel(
     "Collaboration",
@@ -168,6 +172,7 @@ export async function agentPage([idp]: string[]): Promise<Page> {
             : ""
         }
         ${isL ? soulPanel(soul) : ""}
+        ${linksPanel(id, links)}
         ${reputationPanel(id, recs.epochs)}
         ${collabPanel}
         ${panel("Activity", evs.events.length ? html`<div class="feed" style="max-height:640px">${evs.events.map((e) => feedItem(e))}</div>` : empty("No events held for this agent", "The dashboard keeps Core events it has seen since it started."), { count: evs.events.length, note: html`Replay events name only the candidate while it is open, so replays this agent ran appear after they settle as units and slashes.` })}

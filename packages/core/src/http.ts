@@ -1,6 +1,8 @@
 import type { Server } from "bun";
 import { bountiesOf } from "./bounties.ts";
 import { soulsOf } from "./souls.ts";
+import { linksOf } from "./links.ts";
+import { erc8004Of } from "./erc8004.ts";
 import { networkConfigJson } from "./config.ts";
 import type { Core, CoreEvent } from "./core.ts";
 import { ApiError, bad, forbidden, notFound } from "./errors.ts";
@@ -148,6 +150,14 @@ export function buildRoutes(core: Core): Route[] {
     route("GET", "/v1/agents/:id/soul", "none", (c) => soulsOf(core).view(c.params.id!)),
     route("PUT", "/v1/agents/:id/soul", "none", (c) => core.tx(() => soulsOf(core).put(c.params.id!, c.json()))),
     route("GET", "/v1/souls/:digest", "none", (c) => soulsOf(core).byDigest(c.params.digest!)),
+    // verified links, agent card, ERC-8004 registration file (identity plan I3, I6; links.ts, erc8004.ts)
+    route("GET", "/v1/links", "none", (c) => linksOf(core).all(q(c, "status"))),
+    route("GET", "/v1/agents/:id/links", "none", (c) => linksOf(core).list(c.params.id!)),
+    route("POST", "/v1/agents/:id/links", "agent", (c) => linksOf(core).add(c.agent, c.params.id!, c.json())),
+    route("DELETE", "/v1/agents/:id/links/:service", "agent", (c) => core.tx(() => linksOf(core).revoke(c.agent, c.params.id!, c.params.service!))),
+    route("DELETE", "/v1/agents/:id/links/:service/:handle", "agent", (c) => core.tx(() => linksOf(core).revoke(c.agent, c.params.id!, c.params.service!, c.params.handle!))),
+    route("GET", "/v1/agents/:id/card", "none", (c) => erc8004Of(core).card(c.params.id!, c.url.origin)),
+    route("GET", "/v1/agents/:id/registration.json", "none", (c) => erc8004Of(core).registration(c.params.id!, c.url.origin)),
     // bounties (C6, packages/core/src/bounties.ts): read-only mirror of the onchain escrows
     route("GET", "/v1/bounties", "none", (c) => bountiesOf(core).list({ lineage: q(c, "lineage"), payee: q(c, "payee"), payer: q(c, "payer"), status: q(c, "status") })),
     route("GET", "/v1/bounties/:id", "none", (c) => bountiesOf(core).one(c.params.id!)),
@@ -223,6 +233,7 @@ export function buildRoutes(core: Core): Route[] {
     route("POST", "/v1/admin/findings", "admin", (c) => core.addFinding(c.json())),
     route("POST", "/v1/admin/lineages/:id/status", "admin", (c) => core.setLineageStatus(c.params.id!, c.json())),
     route("POST", "/v1/admin/souls/library", "admin", (c) => core.tx(() => soulsOf(core).addLibrary(c.json()))),
+    route("POST", "/v1/admin/links/recheck", "admin", (c) => linksOf(core).recheck(c.json())),
     route("POST", "/v1/admin/faucet", "admin", (c) => core.faucet(c.json())),
     route("POST", "/v1/admin/creator-rewards", "admin", (c) => core.creatorRewards(c.json())),
     route("POST", "/v1/admin/agent-fees", "admin", (c) => core.agentFees(c.json())),

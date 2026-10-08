@@ -58,6 +58,7 @@ import { Records } from "./records.ts";
 import { Series } from "./series.ts";
 import { Messages } from "./messages.ts";
 import { soulsOf } from "./souls.ts";
+import { linksOf } from "./links.ts";
 import { Hosted } from "./hosted.ts";
 import { Live } from "./live.ts";
 import { openDb } from "./store.ts";
@@ -2075,6 +2076,7 @@ export class Core {
       this.series.tick();
       this.messages.tick();
       soulsOf(this).tick(); // souls: shadow parity (SPEC 14.8)
+      linksOf(this).tick(); // verified links: background rechecks, per-tick budget (identity plan I3)
       this.matureUnbonds();
       this.fillWants();
       let ep = this.currentEpoch();

@@ -6,6 +6,7 @@ import { systemClock } from "./clock.ts";
 import { loadNetworkConfig } from "./config.ts";
 import { ChainReader, Rpc } from "@lineage/chain";
 import { ChainBridge, chainBootstrap, loadChainSettings } from "./chain.ts";
+import { erc8004Of } from "./erc8004.ts";
 import { Core } from "./core.ts";
 import { canaryDirIsPublic, loadCanaryDir } from "./hardening.ts";
 import { serve } from "./http.ts";
@@ -93,6 +94,7 @@ const core = new Core({
   chainMode: !!chainSettings,
   firstEpoch,
 });
+if (chainSettings) erc8004Of(core).configure({ registryProgram: chainSettings.registry_program }); // ERC-8004 file names the configured registry
 const REPO = resolve(import.meta.dir, "../../..");
 const rawConfig = JSON.parse(readFileSync(configPath, "utf8")) as { canaries_dir?: unknown };
 const canariesDir = resolve(arg("canaries-dir") ?? (typeof rawConfig.canaries_dir === "string" ? rawConfig.canaries_dir : join(homedir(), ".config/lineage/canaries")));
