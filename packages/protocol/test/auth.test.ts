@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { base58Decode, base58Encode, generateAgentKey, keyFromSolanaJson, signMessage, signRequest, verifyMessage, verifyRequest } from "../src/index.ts";
+import { base58Decode, base58Encode, generateAgentKey, keyFromSolanaJson, signMessage, signRequest, signStatement, statementDigest, verifyMessage, verifyRequest, verifyStatement } from "../src/index.ts";
 
 describe("auth", () => {
   test("base58 round trip with leading zeros", () => {
@@ -22,5 +22,18 @@ describe("auth", () => {
     const k2 = keyFromSolanaJson(Array.from(k.secret));
     expect(k2.id).toBe(k.id);
     expect(verifyMessage(k.id, signMessage(k2, "m"), "m")).toBe(true);
+  });
+  test("statements are domain separated by purpose and bind the canonical object", () => {
+    const k = generateAgentKey();
+    const st = { b: 2, a: [1, "x"] };
+    const sig = signStatement(k, "team", st);
+    expect(verifyStatement(k.id, sig, "team", { a: [1, "x"], b: 2 })).toBe(true);
+    expect(verifyStatement(k.id, sig, "intent", st)).toBe(false);
+    expect(verifyStatement(k.id, sig, "team", { ...st, b: 3 })).toBe(false);
+    expect(verifyStatement(generateAgentKey().id, sig, "team", st)).toBe(false);
+    // the signed bytes are a 64 hex digest, never the raw statement
+    expect(statementDigest("team", st)).toMatch(/^[0-9a-f]{64}$/);
+    expect(verifyMessage(k.id, sig, JSON.stringify(st))).toBe(false);
+    expect(() => statementDigest("Bad Purpose", st)).toThrow();
   });
 });

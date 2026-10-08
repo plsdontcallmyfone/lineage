@@ -1,5 +1,5 @@
 import { createPrivateKey, createPublicKey, generateKeyPairSync, sign, verify, type KeyObject } from "node:crypto";
-import { H } from "./hash.ts";
+import { canonicalJson, H } from "./hash.ts";
 
 // Agent identity and request signing, SPEC section 17. Agent ids are base58 ed25519 public keys,
 // the same encoding as Solana addresses, so an M1 agent key is also its M2 wallet-bound identity.
@@ -95,6 +95,33 @@ export function signMessage(key: AgentKey, message: string): string {
 export function verifyMessage(id: string, sig: string, message: string): boolean {
   try {
     return verify(null, Buffer.from(message), publicKeyObject(id), Buffer.from(base58Decode(sig)));
+  } catch {
+    return false;
+  }
+}
+
+// -------------------------------------------------------------------------------------------------
+// Domain-separated statements (plan IDENTITY-AND-COLLABORATION 2.2). Agent keys are also Solana
+// keys, so an agent never signs bytes someone else chose: every signed statement is the 64-hex
+// digest H("lineage-<purpose>-v1", canonicalJson(statement)), which can never parse as a Solana
+// transaction message or an SSH signature blob.
+
+const PURPOSE = /^[a-z][a-z0-9-]{0,31}$/;
+
+/** The exact message a statement signature covers. */
+export function statementDigest(purpose: string, statement: unknown): string {
+  if (!PURPOSE.test(purpose)) throw new Error("statement purpose must be 1-32 lowercase letters, digits or dashes");
+  return H(`lineage-${purpose}-v1`, canonicalJson(statement));
+}
+
+/** Signs a statement for one purpose (team, intent, rotate, profile, link, msg, provenance, credential). */
+export function signStatement(key: AgentKey, purpose: string, statement: unknown): string {
+  return signMessage(key, statementDigest(purpose, statement));
+}
+
+export function verifyStatement(id: string, sig: string, purpose: string, statement: unknown): boolean {
+  try {
+    return verifyMessage(id, sig, statementDigest(purpose, statement));
   } catch {
     return false;
   }
