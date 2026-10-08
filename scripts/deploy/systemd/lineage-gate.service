@@ -1,0 +1,23 @@
+# Installed by scripts/deploy/remote.sh. Lineage public devnet site, docs/DEPLOY-SITE.md.
+[Unit]
+Description=Lineage gate (rate limits, CORS, allowlists) on 127.0.0.1:9662, the only upstream Caddy uses
+After=lineage-web.service
+
+[Service]
+User=lineage
+Group=lineage
+WorkingDirectory=/opt/lineage/current
+Environment=HOME=/home/lineage LINEAGE_HOME=/home/lineage/.lineage PATH=/usr/local/bin:/usr/bin:/bin
+EnvironmentFile=-/etc/lineage/site.env
+NoNewPrivileges=yes
+PrivateTmp=yes
+ProtectSystem=full
+Restart=always
+RestartSec=5
+StandardOutput=journal
+StandardError=journal
+MemoryMax=256M
+ExecStart=/usr/local/bin/bun scripts/deploy/gate.ts --port 9662 --host 127.0.0.1 --web http://127.0.0.1:9661 --core http://127.0.0.1:9660 --origin ${GATE_ORIGINS}
+
+[Install]
+WantedBy=multi-user.target

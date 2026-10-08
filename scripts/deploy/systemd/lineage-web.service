@@ -1,0 +1,23 @@
+# Installed by scripts/deploy/remote.sh. Lineage public devnet site, docs/DEPLOY-SITE.md.
+[Unit]
+Description=Lineage dashboard and Wallet page on 127.0.0.1:9661
+After=lineage-core.service
+
+[Service]
+User=lineage
+Group=lineage
+WorkingDirectory=/opt/lineage/current
+Environment=HOME=/home/lineage LINEAGE_HOME=/home/lineage/.lineage PATH=/usr/local/bin:/usr/bin:/bin
+EnvironmentFile=-/etc/lineage/site.env
+NoNewPrivileges=yes
+PrivateTmp=yes
+ProtectSystem=full
+Restart=always
+RestartSec=5
+StandardOutput=journal
+StandardError=journal
+MemoryMax=768M
+ExecStart=/usr/local/bin/bun apps/web/server.ts --port 9661 --host 127.0.0.1 --core http://127.0.0.1:9660
+
+[Install]
+WantedBy=multi-user.target

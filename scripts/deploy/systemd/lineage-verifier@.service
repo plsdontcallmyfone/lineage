@@ -1,0 +1,25 @@
+# Installed by scripts/deploy/remote.sh. Lineage public devnet site, docs/DEPLOY-SITE.md.
+# An honest verifier (instances v1, v2), registered and bonded on devnet by scripts/deploy/site-chain.ts.
+[Unit]
+Description=Lineage verifier %i
+After=lineage-core.service lineage-bootstrap.service docker.service
+Requires=docker.service
+
+[Service]
+User=lineage
+Group=lineage
+WorkingDirectory=/opt/lineage/current
+Environment=HOME=/home/lineage LINEAGE_HOME=/home/lineage/.lineage PATH=/usr/local/bin:/usr/bin:/bin
+EnvironmentFile=-/etc/lineage/site.env
+NoNewPrivileges=yes
+ProtectSystem=full
+Restart=always
+RestartSec=5
+StandardOutput=journal
+StandardError=journal
+MemoryMax=1G
+TasksMax=512
+ExecStart=/usr/local/bin/bun packages/worker/src/main.ts run --core http://127.0.0.1:9660 --key /home/lineage/.config/lineage/site/verifier-%i.json --capabilities /var/lib/lineage/site/caps.json --interval 2000
+
+[Install]
+WantedBy=multi-user.target

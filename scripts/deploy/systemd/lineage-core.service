@@ -1,0 +1,25 @@
+# Installed by scripts/deploy/remote.sh. Lineage public devnet site, docs/DEPLOY-SITE.md.
+[Unit]
+Description=Lineage Core (devnet chain mode) on 127.0.0.1:9660
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+User=lineage
+Group=lineage
+WorkingDirectory=/opt/lineage/current
+Environment=HOME=/home/lineage LINEAGE_HOME=/home/lineage/.lineage PATH=/usr/local/bin:/usr/bin:/bin
+EnvironmentFile=-/etc/lineage/site.env
+NoNewPrivileges=yes
+PrivateTmp=yes
+ProtectSystem=full
+Restart=always
+RestartSec=5
+StandardOutput=journal
+StandardError=journal
+MemoryMax=1G
+TasksMax=512
+ExecStart=/usr/local/bin/bun packages/core/src/main.ts --data /var/lib/lineage/core --port 9660 --host 127.0.0.1 --config /var/lib/lineage/site/network.json --admin-key /home/lineage/.config/lineage/site/admin.json --runtime-key /var/lib/lineage/site/runtime-authority.pub --canaries-dir /var/lib/lineage/canaries
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,19 @@
+# Installed by scripts/deploy/remote.sh. Lineage public devnet site, docs/DEPLOY-SITE.md.
+# One shot per deploy: recipes, snapshots and calibrations by the reference runner (creates the lineages).
+[Unit]
+Description=Lineage site bootstrap (lineages for LINEAGE_RECIPES)
+After=lineage-core.service docker.service
+Requires=docker.service
+
+[Service]
+User=lineage
+Group=lineage
+WorkingDirectory=/opt/lineage/current
+Environment=HOME=/home/lineage LINEAGE_HOME=/home/lineage/.lineage PATH=/usr/local/bin:/usr/bin:/bin
+EnvironmentFile=-/etc/lineage/site.env
+NoNewPrivileges=yes
+Type=oneshot
+RemainAfterExit=yes
+TimeoutStartSec=infinity
+MemoryMax=1G
+ExecStart=/usr/local/bin/bun scripts/deploy/site-bootstrap.ts --recipes ${LINEAGE_RECIPES}

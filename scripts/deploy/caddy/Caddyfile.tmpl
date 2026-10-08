@@ -1,0 +1,41 @@
+# Rendered by scripts/deploy/remote.sh into /etc/caddy/Caddyfile. Lineage public devnet site.
+# @SITES@ is "<ip-with-dashes>.sslip.io" plus DOMAIN when given (Let's Encrypt certificates), or
+# "localhost" with internal TLS in the dry run. Everything goes to the gate on 127.0.0.1:9662.
+{
+	admin localhost:2019
+@GLOBAL@
+}
+
+@SITES@ {
+@TLS@
+	encode {
+		gzip
+		match {
+			header Content-Type text/html*
+			header Content-Type text/css*
+			header Content-Type text/javascript*
+			header Content-Type application/json*
+			header Content-Type text/markdown*
+			header Content-Type image/svg+xml*
+		}
+	}
+	header {
+		Strict-Transport-Security "max-age=31536000"
+		X-Content-Type-Options nosniff
+		Referrer-Policy strict-origin-when-cross-origin
+		X-Frame-Options DENY
+		-Server
+	}
+	request_body {
+		max_size 256KB
+	}
+	reverse_proxy 127.0.0.1:9662 {
+		flush_interval -1
+	}
+	log {
+		output file /var/log/caddy/lineage-access.log {
+			roll_size 10MiB
+			roll_keep 5
+		}
+	}
+}

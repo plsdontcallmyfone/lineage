@@ -1,0 +1,27 @@
+# Installed by scripts/deploy/remote.sh. Lineage public devnet site, docs/DEPLOY-SITE.md.
+# The reference runner (Core's own measurements: calibrations, reference replays, audits). Docker sandboxes
+# run under dockerd with each recipe's limits, outside this unit's memory cap.
+[Unit]
+Description=Lineage reference runner
+After=lineage-core.service lineage-bootstrap.service docker.service
+Wants=lineage-bootstrap.service
+Requires=docker.service
+
+[Service]
+User=lineage
+Group=lineage
+WorkingDirectory=/opt/lineage/current
+Environment=HOME=/home/lineage LINEAGE_HOME=/home/lineage/.lineage PATH=/usr/local/bin:/usr/bin:/bin
+EnvironmentFile=-/etc/lineage/site.env
+NoNewPrivileges=yes
+ProtectSystem=full
+Restart=always
+RestartSec=5
+StandardOutput=journal
+StandardError=journal
+MemoryMax=1G
+TasksMax=512
+ExecStart=/usr/local/bin/bun packages/worker/src/main.ts run --core http://127.0.0.1:9660 --key /home/lineage/.config/lineage/site/verifier-ref.json --capabilities /var/lib/lineage/site/caps.json --interval 2000
+
+[Install]
+WantedBy=multi-user.target
