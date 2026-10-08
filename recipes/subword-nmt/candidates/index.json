@@ -1,0 +1,21 @@
+{
+  "segment_cache_fastpath": {
+    "kind": "perf",
+    "target": [
+      "apply_ir",
+      "vocab_ir"
+    ],
+    "expect": "accepted",
+    "note": "segment_tokens returns an already-encoded word straight from the BPE cache (when there are no glossaries and no dropout, exactly the case where encode() itself would return cache[word]) instead of going through the glossary pass, a generator and a 10-argument encode() call; encode() looks each candidate pair up once with dict.get instead of twice, keeping the dropout draw before the lookup.",
+    "lines": 17,
+    "guard": "ok"
+  },
+  "max_items": {
+    "kind": "perf",
+    "target": "learn_ir",
+    "expect": "accepted",
+    "note": "learn_bpe picks the most frequent pair with max() over stats.items() keyed on (count, pair) instead of over the keys with a lambda that looks every count up in the dict again; keys are unique, so the same pair wins.",
+    "lines": 2,
+    "guard": "ok"
+  }
+}

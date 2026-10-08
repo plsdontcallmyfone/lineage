@@ -1,0 +1,59 @@
+{
+  "recipe_id": "660f1420bd0a4a971a9bacc7cecf0b6fcaa61b23c48ebd1053d0a625c5d3b4b3",
+  "snapshot_id": "",
+  "runs": 5,
+  "stable": [
+    "subword_nmt.tests.test_bpe.TestBPELearnMethod::test_learn_bpe",
+    "subword_nmt.tests.test_bpe.TestBPESegmentMethod::test_apply_bpe",
+    "subword_nmt.tests.test_bpe.TestBPESegmentMethod::test_empty_line",
+    "subword_nmt.tests.test_bpe.TestBPESegmentMethod::test_trailing_whitespace",
+    "subword_nmt.tests.test_bpe.TestBPESegmentMethod::test_utf8_whitespace",
+    "subword_nmt.tests.test_glossaries.TestBPEIsolateGlossariesMethod::test_multiple_glossaries",
+    "subword_nmt.tests.test_glossaries.TestBPESegmentMethod::test_multiple_glossaries",
+    "subword_nmt.tests.test_glossaries.TestIsolateGlossaryFunction::test_back_to_back_glossary",
+    "subword_nmt.tests.test_glossaries.TestIsolateGlossaryFunction::test_empty_string",
+    "subword_nmt.tests.test_glossaries.TestIsolateGlossaryFunction::test_isolated_glossary",
+    "subword_nmt.tests.test_glossaries.TestIsolateGlossaryFunction::test_multiple_glossaries",
+    "subword_nmt.tests.test_glossaries.TestIsolateGlossaryFunction::test_no_glossary",
+    "subword_nmt.tests.test_glossaries.TestIsolateGlossaryFunction::test_word_one_side",
+    "subword_nmt.tests.test_glossaries.TestIsolateGlossaryFunction::test_words_both_sides",
+    "subword_nmt.tests.test_glossaries.TestRegexIsolateGlossaries::test_regex_glossaries"
+  ],
+  "known_failures": [],
+  "quarantined": [],
+  "metrics": {
+    "apply_ir": {
+      "enabled": true,
+      "cv": 0,
+      "base_value": 483218654
+    },
+    "vocab_ir": {
+      "enabled": true,
+      "cv": 1.528984547952487e-7,
+      "base_value": 550337196.5
+    },
+    "learn_ir": {
+      "enabled": true,
+      "cv": 0.0000029313425914441576,
+      "base_value": 954277550
+    }
+  },
+  "median_eval_seconds": 11,
+  "seed": "ca11b7a7e",
+  "recipe_name": "subword-nmt",
+  "repo": "https://github.com/rsennrich/subword-nmt",
+  "commit": "92d6139d07d30e12735a0af9e7f7f925ebe62c54",
+  "deps_digest": "090894e29283c3b4ec150ed0fbb09478f7ad487ef414b156919cc13a90ae037a",
+  "image_digest": "sha256:4214b1a6fb3757b7d706ce9547e728b18c53df40f0bdf8ebcdef5b81335186d0",
+  "date": "2026-10-08T21:45:54.314Z",
+  "calibration_wall_seconds": 29.6,
+  "counts": {
+    "stable": 15,
+    "known_failures": 0,
+    "quarantined": 0,
+    "excluded": 0
+  },
+  "notes": [
+    "calibration wall time 30 s"
+  ]
+}

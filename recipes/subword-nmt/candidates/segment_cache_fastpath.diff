@@ -1,0 +1,38 @@
+diff --git a/subword_nmt/apply_bpe.py b/subword_nmt/apply_bpe.py
+--- a/subword_nmt/apply_bpe.py
++++ b/subword_nmt/apply_bpe.py
+@@ -152,10 +152,19 @@ class BPE(object):
+     def segment_tokens(self, tokens, dropout=0):
+         """segment a sequence of tokens with BPE encoding"""
+         output = []
++        cache = self.cache
++        fast = not dropout and not self.glossaries
+         for word in tokens:
+             # eliminate double spaces
+             if not word:
+                 continue
++            if fast:
++                new_word = cache.get(word)
++                if new_word is not None:
++                    for item in new_word[:-1]:
++                        output.append(item + self.separator)
++                    output.append(new_word[-1])
++                    continue
+             new_word = [out for segment in self._isolate_glossaries(word)
+                         for out in encode(segment,
+                                           self.bpe_codes,
+@@ -301,7 +310,13 @@ def encode(orig, bpe_codes, bpe_codes_reverse, vocab, separator, version, cache,
+     while len(word) > 1:
+ 
+         # get list of symbol pairs; optionally apply dropout
+-        pairs = [(bpe_codes[pair],i,pair) for (i,pair) in enumerate(zip(word, word[1:])) if (not dropout or random.random() > dropout) and pair in bpe_codes]
++        pairs = []
++        for i, pair in enumerate(zip(word, word[1:])):
++            if dropout and random.random() <= dropout:
++                continue
++            rank = bpe_codes.get(pair)
++            if rank is not None:
++                pairs.append((rank, i, pair))
+ 
+         if not pairs:
+             break

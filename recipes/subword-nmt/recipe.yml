@@ -1,0 +1,84 @@
+# rsennrich/subword-nmt: the reference implementation of byte pair encoding for neural machine
+# translation (Sennrich et al. 2016, the paper that introduced BPE subwords to NMT), published on
+# PyPI as subword-nmt: learn_bpe learns merge operations from a corpus, apply_bpe segments text
+# with them. MIT licence (LICENSE). No CONTRIBUTING or AI policy file in the repository (checked
+# 2026-10-08).
+#
+# Why: apply_bpe's encode() rebuilds the list of candidate pairs on every merge step with two
+# dict lookups per pair, and every word, cached or not, goes through a generator, a glossary pass
+# and a 10-argument call; learn_bpe rescans all pair statistics with max() per merge and rewrites
+# words through a compiled regex. Pure Python, so instruction counts have real headroom.
+#
+# Tests: upstream's unittest suite (subword_nmt/tests: learning against bpe.ref, segmentation
+# against corpus.bpe.ref.en, whitespace handling, glossaries), run with pytest; test_glossaries
+# needs the `mock` package, installed in prepare with pytest.
+#
+# Determinism: cachegrind guest instruction counts; PYTHONHASHSEED=0 set by the sandbox; GC
+# disabled in the harness; inputs derived only from $LINEAGE_SEED; stdlib pre-compiled into
+# /deps/pycache. Calibrated on arm64.
+name: subword-nmt
+class: python
+requires: { arch: arm64 }
+repo: https://github.com/rsennrich/subword-nmt
+commit: "92d6139d07d30e12735a0af9e7f7f925ebe62c54"
+image: "lineage/python:m1@sha256:4214b1a6fb3757b7d706ce9547e728b18c53df40f0bdf8ebcdef5b81335186d0"
+workdir: /work/src
+prepare:
+  - python -m venv /deps/venv
+  - "/deps/venv/bin/pip install --no-cache-dir --only-binary=:all: pytest==8.3.5 mock==5.1.0"
+  - PYTHONPYCACHEPREFIX=/deps/pycache python -m compileall -q -x "/(test|tests|idlelib|lib2to3|tkinter|turtledemo)/" /usr/local/lib/python3.12 /deps/venv/lib/python3.12/site-packages
+prepare_outputs: []
+build:
+  commands:
+    - cd subword_nmt && python -c "import apply_bpe, learn_bpe, sys; print(sys.version.split()[0])"
+  artifacts: []
+  reproducible: false
+test:
+  command: PYTHONPYCACHEPREFIX=/deps/pycache /deps/venv/bin/python -m pytest -p no:cacheprovider -q --junitxml=/out/junit.xml subword_nmt/tests
+  parser: junit
+  exclude: []
+  timeout_s: 300
+equivalence:
+  command: PYTHONIOENCODING=utf-8 PYTHONPYCACHEPREFIX=/deps/pycache python lineage_equiv.py "$LINEAGE_SEED"
+  output: stdout-digest
+metrics:
+  - name: apply_ir
+    kind: perf
+    direction: lower
+    deterministic: true
+    command: PYTHONPYCACHEPREFIX=/deps/pycache valgrind --tool=cachegrind --cache-sim=no --cachegrind-out-file=/dev/null python lineage_bench.py apply "$LINEAGE_SEED"
+    parser: cachegrind-ir
+    holdout: true
+    min_effect: 0.01
+  - name: vocab_ir
+    kind: perf
+    direction: lower
+    deterministic: true
+    command: PYTHONPYCACHEPREFIX=/deps/pycache valgrind --tool=cachegrind --cache-sim=no --cachegrind-out-file=/dev/null python lineage_bench.py vocab "$LINEAGE_SEED"
+    parser: cachegrind-ir
+    holdout: true
+    min_effect: 0.01
+  - name: learn_ir
+    kind: perf
+    direction: lower
+    deterministic: true
+    command: PYTHONPYCACHEPREFIX=/deps/pycache valgrind --tool=cachegrind --cache-sim=no --cachegrind-out-file=/dev/null python lineage_bench.py learn "$LINEAGE_SEED"
+    parser: cachegrind-ir
+    holdout: true
+    min_effect: 0.01
+patch:
+  allowed_paths: ["subword_nmt/apply_bpe.py", "subword_nmt/learn_bpe.py", "subword_nmt/get_vocab.py"]
+  protected_paths:
+    - "subword_nmt/tests/**"
+    - "setup.py"
+    - "apply_bpe.py"
+    - "learn_bpe.py"
+    - "get_vocab.py"
+    - "learn_joint_bpe_and_vocab.py"
+    - ".github/**"
+    - "**/*.yml"
+    - "**/*.yaml"
+    - "lineage_*"
+  max_files: 3
+  max_lines: 200
+limits: { cpus: 2, memory_mb: 2048, pids: 256, wall_s: 900, disk_mb: 4096 }

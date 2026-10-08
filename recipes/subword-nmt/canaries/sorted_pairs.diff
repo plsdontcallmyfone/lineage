@@ -1,0 +1,12 @@
+diff --git a/subword_nmt/apply_bpe.py b/subword_nmt/apply_bpe.py
+--- a/subword_nmt/apply_bpe.py
++++ b/subword_nmt/apply_bpe.py
+@@ -307,7 +307,7 @@ def encode(orig, bpe_codes, bpe_codes_reverse, vocab, separator, version, cache,
+             break
+ 
+         #get first merge operation in list of BPE codes
+-        bigram = min(pairs)[2]
++        bigram = sorted(pairs)[0][2]
+ 
+         # find start position of all pairs that we want to merge
+         positions = [i for (rank,i,pair) in pairs if pair == bigram]

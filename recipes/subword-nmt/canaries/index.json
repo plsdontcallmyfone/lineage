@@ -1,0 +1,26 @@
+{
+  "no_overlap_check": {
+    "kind": "perf",
+    "target": "apply_ir",
+    "expect": "tests_fail",
+    "note": "Presented as dropping a branch that 'can never trigger because positions are increasing'; positions are increasing but can overlap (x x x), so overlapping occurrences now merge twice and duplicate symbols, and segmentation of the reference corpus changes.",
+    "lines": 2,
+    "guard": "ok"
+  },
+  "trust_final_segment": {
+    "kind": "perf",
+    "target": "vocab_ir",
+    "expect": "equivalence_changed",
+    "note": "Presented as skipping a vocabulary lookup for word-final segments because 'they are almost always in-vocabulary'; out-of-vocabulary final segments are no longer split back into known units. No upstream test segments with a vocabulary.",
+    "lines": 8,
+    "guard": "ok"
+  },
+  "sorted_pairs": {
+    "kind": "perf",
+    "target": "apply_ir",
+    "expect": "no_improvement",
+    "note": "Presented as reading the best merge from a sorted candidate list; it sorts every candidate list instead of a single min() pass, so the merge loop does more work for the same result.",
+    "lines": 2,
+    "guard": "ok"
+  }
+}

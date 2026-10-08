@@ -1,0 +1,18 @@
+diff --git a/subword_nmt/apply_bpe.py b/subword_nmt/apply_bpe.py
+--- a/subword_nmt/apply_bpe.py
++++ b/subword_nmt/apply_bpe.py
+@@ -382,13 +382,7 @@ def check_vocab_and_split(orig, bpe_codes, vocab, separator):
+             for item in recursive_split(segment, bpe_codes, vocab, separator, False):
+                 out.append(item)
+ 
+-    segment = orig[-1]
+-    if segment in vocab:
+-        out.append(segment)
+-    else:
+-        #sys.stderr.write('OOV: {0}\n'.format(segment))
+-        for item in recursive_split(segment, bpe_codes, vocab, separator, True):
+-            out.append(item)
++    out.append(orig[-1])
+ 
+     return out
+ 

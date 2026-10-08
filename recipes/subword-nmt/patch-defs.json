@@ -1,0 +1,84 @@
+{
+  "canaries": [
+    {
+      "name": "no_overlap_check",
+      "kind": "perf",
+      "target": "apply_ir",
+      "expect": "tests_fail",
+      "note": "Presented as dropping a branch that 'can never trigger because positions are increasing'; positions are increasing but can overlap (x x x), so overlapping occurrences now merge twice and duplicate symbols, and segmentation of the reference corpus changes.",
+      "edits": [
+        [
+          "subword_nmt/apply_bpe.py",
+          "            if j < i:\n                continue\n",
+          ""
+        ]
+      ]
+    },
+    {
+      "name": "trust_final_segment",
+      "kind": "perf",
+      "target": "vocab_ir",
+      "expect": "equivalence_changed",
+      "note": "Presented as skipping a vocabulary lookup for word-final segments because 'they are almost always in-vocabulary'; out-of-vocabulary final segments are no longer split back into known units. No upstream test segments with a vocabulary.",
+      "edits": [
+        [
+          "subword_nmt/apply_bpe.py",
+          "    segment = orig[-1]\n    if segment in vocab:\n        out.append(segment)\n    else:\n        #sys.stderr.write('OOV: {0}\\n'.format(segment))\n        for item in recursive_split(segment, bpe_codes, vocab, separator, True):\n            out.append(item)\n",
+          "    out.append(orig[-1])\n"
+        ]
+      ]
+    },
+    {
+      "name": "sorted_pairs",
+      "kind": "perf",
+      "target": "apply_ir",
+      "expect": "no_improvement",
+      "note": "Presented as reading the best merge from a sorted candidate list; it sorts every candidate list instead of a single min() pass, so the merge loop does more work for the same result.",
+      "edits": [
+        [
+          "subword_nmt/apply_bpe.py",
+          "        bigram = min(pairs)[2]\n",
+          "        bigram = sorted(pairs)[0][2]\n"
+        ]
+      ]
+    }
+  ],
+  "candidates": [
+    {
+      "name": "segment_cache_fastpath",
+      "kind": "perf",
+      "target": [
+        "apply_ir",
+        "vocab_ir"
+      ],
+      "expect": "accepted",
+      "note": "segment_tokens returns an already-encoded word straight from the BPE cache (when there are no glossaries and no dropout, exactly the case where encode() itself would return cache[word]) instead of going through the glossary pass, a generator and a 10-argument encode() call; encode() looks each candidate pair up once with dict.get instead of twice, keeping the dropout draw before the lookup.",
+      "edits": [
+        [
+          "subword_nmt/apply_bpe.py",
+          "        output = []\n        for word in tokens:\n            # eliminate double spaces\n            if not word:\n                continue\n            new_word = [out for segment in self._isolate_glossaries(word)\n",
+          "        output = []\n        cache = self.cache\n        fast = not dropout and not self.glossaries\n        for word in tokens:\n            # eliminate double spaces\n            if not word:\n                continue\n            if fast:\n                new_word = cache.get(word)\n                if new_word is not None:\n                    for item in new_word[:-1]:\n                        output.append(item + self.separator)\n                    output.append(new_word[-1])\n                    continue\n            new_word = [out for segment in self._isolate_glossaries(word)\n"
+        ],
+        [
+          "subword_nmt/apply_bpe.py",
+          "        pairs = [(bpe_codes[pair],i,pair) for (i,pair) in enumerate(zip(word, word[1:])) if (not dropout or random.random() > dropout) and pair in bpe_codes]\n",
+          "        pairs = []\n        for i, pair in enumerate(zip(word, word[1:])):\n            if dropout and random.random() <= dropout:\n                continue\n            rank = bpe_codes.get(pair)\n            if rank is not None:\n                pairs.append((rank, i, pair))\n"
+        ]
+      ]
+    },
+    {
+      "name": "max_items",
+      "kind": "perf",
+      "target": "learn_ir",
+      "expect": "accepted",
+      "note": "learn_bpe picks the most frequent pair with max() over stats.items() keyed on (count, pair) instead of over the keys with a lambda that looks every count up in the dict again; keys are unique, so the same pair wins.",
+      "edits": [
+        [
+          "subword_nmt/learn_bpe.py",
+          "        if stats:\n            most_frequent = max(stats, key=lambda x: (stats[x], x))\n",
+          "        if stats:\n            most_frequent = max(stats.items(), key=lambda kv: (kv[1], kv[0]))[0]\n"
+        ]
+      ]
+    }
+  ]
+}

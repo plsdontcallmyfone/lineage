@@ -1,0 +1,12 @@
+diff --git a/subword_nmt/apply_bpe.py b/subword_nmt/apply_bpe.py
+--- a/subword_nmt/apply_bpe.py
++++ b/subword_nmt/apply_bpe.py
+@@ -320,8 +320,6 @@ def encode(orig, bpe_codes, bpe_codes_reverse, vocab, separator, version, cache,
+             bigram = ''.join(bigram)
+         for j in positions:
+             # merges are invalid if they start before current position. This can happen if there are overlapping pairs: (x x x -> xx x)
+-            if j < i:
+-                continue
+             new_word.extend(word[i:j]) # all symbols before merged pair
+             new_word.append(bigram) # merged pair
+             i = j+2 # continue after merged pair

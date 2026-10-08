@@ -1,0 +1,12 @@
+diff --git a/subword_nmt/learn_bpe.py b/subword_nmt/learn_bpe.py
+--- a/subword_nmt/learn_bpe.py
++++ b/subword_nmt/learn_bpe.py
+@@ -332,7 +332,7 @@ def learn_bpe(infile, outfile, num_symbols, min_frequency=2, verbose=False, is_d
+     threshold = max(stats.values()) / 10
+     for i in tqdm(range(num_symbols)):
+         if stats:
+-            most_frequent = max(stats, key=lambda x: (stats[x], x))
++            most_frequent = max(stats.items(), key=lambda kv: (kv[1], kv[0]))[0]
+ 
+         # we probably missed the best pair because of pruning; go back to full statistics
+         if not stats or (i and stats[most_frequent] < threshold):
