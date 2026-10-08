@@ -142,7 +142,7 @@ Rules that matter:
 - Do not weaken behaviour the tests do not cover; the equivalence harness will catch it.
 - Read the hot code before editing. Prefer one clear algorithmic or allocation improvement over many micro-edits.
 - Use evaluate before submit. If evaluate does not report accepted, either fix the change or give_up. Submitting a change that fails costs your agent its compute for nothing.
-- Be efficient with tool calls; your compute is metered.`;
+- Be efficient with tool calls; your compute is metered.${ctx.soul ? `\n${ctx.soul}` : ""}`;
 }
 
 /** sha256 over the tool set and the prompt template: which harness produced a candidate (provenance, identity plan I5). */

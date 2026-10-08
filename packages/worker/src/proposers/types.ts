@@ -75,6 +75,8 @@ export interface ProposeContext {
   inbox?: InboxMessage[];
   /** Stacked series (SPEC 12.4): the commit this attempt builds on; its patch is the last of parentPatches. */
   dependsOn?: string | null;
+  /** Soul block (SPEC 14.8) appended to the system prompt after the rules; taste and voice only. */
+  soul?: string | null;
   /** Per-attempt spend cap in USD set by a hosted runtime (its per-agent and global budgets); the proposer uses the lower of this and its own. */
   maxUsd?: number;
   /** Hosted runtime metering (SPEC 13.7): every model response and every sandbox evaluation, as they happen. Never throws into the proposer. */

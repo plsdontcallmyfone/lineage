@@ -164,3 +164,25 @@ d("AnthropicProposer loop (fake model, real sandbox)", () => {
     }
   }, 120_000);
 });
+
+describe("AnthropicProposer soul (SPEC 14.8)", () => {
+  test("the soul is appended after the rules, which stay word for word the same", async () => {
+    const { c, done } = await ctx();
+    try {
+      const { proposerSoulBlock } = await import("@lineage/souls");
+      const { soul } = await import("../../souls/test/fixtures.ts");
+      const plain = fakeClient([[use("g1", "give_up", { reason: "test" })]]);
+      await new AnthropicProposer({ max_usd: 1 }, plain.client).propose(c);
+      const block = proposerSoulBlock(soul());
+      const withSoul = fakeClient([[use("g1", "give_up", { reason: "test" })]]);
+      await new AnthropicProposer({ max_usd: 1 }, withSoul.client).propose({ ...c, soul: block });
+      const a = plain.requests[0].system as string;
+      const b = withSoul.requests[0].system as string;
+      expect(b.startsWith(a)).toBe(true);
+      expect(b.slice(a.length)).toBe(`\n${block}`);
+      expect(b).toContain("Name: Wren Halvard");
+    } finally {
+      done();
+    }
+  }, 300_000);
+});

@@ -32,6 +32,7 @@ import type { Messenger } from "../../core/src/msgchain.ts";
 import type { BoardNote, Finding, InboxMessage, IntentView, PlannedTarget, ProposeContext, Proposer } from "./proposers/types.ts";
 import { doctor } from "./doctor.ts";
 import { RecipeBook } from "./recipes.ts";
+import { proposerSoulBlock, type SoulDoc } from "@lineage/souls";
 import { Telemetry } from "./telemetry.ts";
 
 // The worker process: replays assignments first (they have deadlines), then authors when it has a
@@ -81,6 +82,12 @@ export interface WorkerOptions {
    * instead of waiting for its verdict. Default off.
    */
   series?: boolean;
+  /**
+   * Soul (SPEC 14.8): the block added to the proposer's system prompt. Default: the agent's current
+   * public soul from Core (`GET /v1/agents/:id/soul`), read before each attempt; `false` disables it;
+   * a function supplies it. The soul changes taste and voice, never the acceptance rules.
+   */
+  soul?: false | (() => Promise<string | null> | string | null);
   /**
    * Onchain messages (SPEC 12.5): when set, encryption keys and messages go through this transport
    * (lineage_msg; packages/core msgchain.ts ChainMessenger) instead of POST /v1/messages. Reading
@@ -309,6 +316,18 @@ export class Worker {
     return mine.filter((c) => ["committed", "waiting", "queued", "replaying", "disputed"].includes(c.status)).length >= this.maxOpen;
   }
 
+  /** The proposer's soul block (SPEC 14.8); never blocks authoring. */
+  private async soulBlock(): Promise<string | null> {
+    if (this.opts.soul === false) return null;
+    try {
+      if (typeof this.opts.soul === "function") return (await this.opts.soul()) ?? null;
+      const r = await this.client.get(`/v1/agents/${this.id}/soul`);
+      return r.status === 200 && r.body?.doc ? proposerSoulBlock(r.body.doc as SoulDoc) : null;
+    } catch {
+      return null;
+    }
+  }
+
   private async authorOn(view: any): Promise<string | null> {
     const proposer = this.opts.proposer!;
     if (await this.atOpenLimit(view.lineage_id)) return null;
@@ -356,6 +375,7 @@ export class Worker {
         self: this.id,
         collab,
         dependsOn: stack?.commit_id ?? null,
+        soul: await this.soulBlock(),
         ...budget,
       };
       if (collab !== "off") {
