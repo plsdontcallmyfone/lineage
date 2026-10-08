@@ -1,121 +1,121 @@
 {
-  "at": "2026-10-08T11:28:32.094Z",
-  "head": "f6c58bf580eb963105f9a808493f4dc0272d3267",
-  "first": "f6c58bf580eb963105f9a808493f4dc0272d3267",
-  "container_image": "jrei/systemd-ubuntu@sha256:b92e6c8fc12725888f1cfc36f9574b07beb1eb5174865d6345f752fce3870f71",
-  "seconds": 201,
-  "passed": 11,
-  "failed": 38,
+  "at": "2026-10-08T11:42:38.354Z",
+  "head": "acad8c936d9684e3ddc763bb7df84f9c23f3c461",
+  "first": "acad8c936d9684e3ddc763bb7df84f9c23f3c461",
+  "container_image": "lineage/site-dryrun:24.04",
+  "seconds": 254,
+  "passed": 24,
+  "failed": 25,
   "checks": [
     {
       "check": "fresh box reachable over root ssh",
-      "ok": false,
+      "ok": true,
       "detail": ""
     },
     {
       "check": "deploy.sh full on a fresh box",
-      "ok": false,
-      "detail": "exit 255, 1 s"
+      "ok": true,
+      "detail": "exit 0, 86 s"
     },
     {
       "check": "fund and site-chain ran as plans (nothing sent on chain)",
-      "ok": false,
+      "ok": true,
       "detail": ""
     },
     {
       "check": "deploy.sh full re-run, same commit",
-      "ok": false,
-      "detail": "exit 255, 0 s"
+      "ok": true,
+      "detail": "exit 0, 18 s"
     },
     {
       "check": "same-commit re-run takes no data backup",
-      "ok": true,
+      "ok": false,
       "detail": ""
     },
     {
       "check": "unit lineage-core active",
-      "ok": false,
-      "detail": ""
+      "ok": true,
+      "detail": "active"
     },
     {
       "check": "unit lineage-web active",
-      "ok": false,
-      "detail": ""
+      "ok": true,
+      "detail": "active"
     },
     {
       "check": "unit lineage-gate active",
-      "ok": false,
-      "detail": ""
+      "ok": true,
+      "detail": "active"
     },
     {
       "check": "unit caddy active",
       "ok": false,
-      "detail": ""
+      "detail": "failed"
     },
     {
       "check": "sandbox unit lineage-bootstrap skipped in the dry run",
       "ok": true,
-      "detail": ""
+      "detail": "inactive"
     },
     {
       "check": "sandbox unit lineage-reference skipped in the dry run",
       "ok": true,
-      "detail": ""
+      "detail": "inactive"
     },
     {
       "check": "sandbox unit lineage-verifier@v1 skipped in the dry run",
       "ok": true,
-      "detail": ""
+      "detail": "inactive"
     },
     {
       "check": "sandbox unit lineage-verifier@v2 skipped in the dry run",
       "ok": true,
-      "detail": ""
+      "detail": "inactive"
     },
     {
       "check": "sandbox unit lineage-runtime skipped in the dry run",
       "ok": true,
-      "detail": ""
+      "detail": "inactive"
     },
     {
       "check": "sandbox unit lineage-author skipped in the dry run",
       "ok": true,
-      "detail": ""
+      "detail": "inactive"
     },
     {
       "check": "lineage-core memory cap",
-      "ok": false,
-      "detail": "MemoryMax "
+      "ok": true,
+      "detail": "MemoryMax 1073741824"
     },
     {
       "check": "site keys made on the server, owner lineage, mode 600",
-      "ok": false,
-      "detail": ""
+      "ok": true,
+      "detail": "lineage 600"
     },
     {
       "check": "no key copied from this machine in the dry run",
-      "ok": false,
-      "detail": " files"
+      "ok": true,
+      "detail": "0 files"
     },
     {
       "check": "ufw active",
-      "ok": false,
-      "detail": ""
+      "ok": true,
+      "detail": "Status: active"
     },
     {
       "check": "fail2ban active",
-      "ok": false,
-      "detail": ""
+      "ok": true,
+      "detail": "active"
     },
     {
       "check": "bun pinned",
-      "ok": false,
-      "detail": ""
+      "ok": true,
+      "detail": "1.3.13"
     },
     {
       "check": "lineage user has no sudo",
       "ok": true,
-      "detail": ""
+      "detail": "lineage users"
     },
     {
       "check": "GET /v1/health over HTTPS (internal TLS)",
@@ -234,13 +234,13 @@
     },
     {
       "check": "deploy.sh status",
-      "ok": false,
+      "ok": true,
       "detail": ""
     },
     {
       "check": "stop",
       "ok": true,
-      "detail": ""
+      "detail": "failed inactive "
     },
     {
       "check": "start",
@@ -250,7 +250,7 @@
     {
       "check": "host disk still >= 4 GB free",
       "ok": true,
-      "detail": "8 GB"
+      "detail": "6 GB"
     }
   ]
 }

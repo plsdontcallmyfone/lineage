@@ -39,6 +39,7 @@ cleanup() {
     docker rmi "$IMAGE" >/dev/null 2>&1
     [ "$had_base" = 0 ] && docker rmi "$BASE_IMAGE" >/dev/null 2>&1
   fi
+  [ -n "${DRYRUN_LOGS:-}" ] && mkdir -p "$DRYRUN_LOGS" && cp "$WORK"/*.log "$DRYRUN_LOGS"/ 2>/dev/null
   rm -rf "$WORK"
 }
 trap cleanup EXIT

@@ -104,6 +104,7 @@ activate)
   sed -e "s|@SITES@|${SITES//,/, }|" -e "s|@TLS@|$TLS|" -e "s|@GLOBAL@|$GLOBAL|" "$REL/scripts/deploy/caddy/Caddyfile.tmpl" > /etc/caddy/Caddyfile.new
   caddy validate --config /etc/caddy/Caddyfile.new --adapter caddyfile >/dev/null 2>&1 || { caddy validate --config /etc/caddy/Caddyfile.new --adapter caddyfile; exit 1; }
   mv /etc/caddy/Caddyfile.new /etc/caddy/Caddyfile
+  chown -R caddy:caddy /var/log/caddy   # `caddy validate` above ran as root and may have created the log file
   systemctl daemon-reload
   systemctl enable -q "${CORE_UNITS[@]}" caddy
   systemctl restart "${CORE_UNITS[@]}"
