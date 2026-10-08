@@ -55,6 +55,7 @@ import { Collab } from "./collab.ts";
 import { Hardening } from "./hardening.ts";
 import { Identity } from "./identity.ts";
 import { Records } from "./records.ts";
+import { Hosted } from "./hosted.ts";
 import { Live } from "./live.ts";
 import { openDb } from "./store.ts";
 import type { TreeSource } from "./trees.ts";
@@ -375,6 +376,8 @@ export class Core {
   readonly identity: Identity;
   /** Reputation records and contribution leaves per epoch (src/records.ts). */
   readonly records: Records;
+  /** Hosted runtime: provenance records and usage record reads (src/hosted.ts). */
+  readonly hosted: Hosted;
   /** Key that signs credentials (chain mode: the Core authority, set by ChainBridge); null: unsigned. */
   issuerKey: { id: string; secret: Uint8Array } | null = null;
   readonly chainMode: boolean;
@@ -401,6 +404,7 @@ export class Core {
     this.chainMode = !!opts.chainMode;
     this.identity = new Identity(this);
     this.records = new Records(this);
+    this.hosted = new Hosted(this);
     this.tx(() => {
       if (!this.db.query("SELECT n FROM epochs LIMIT 1").get()) this.openEpoch(opts.firstEpoch ?? 0, this.now());
     });
@@ -763,15 +767,23 @@ export class Core {
       const agent = String(body.agent ?? "");
       this.mustAgent(agent);
       const amount = parseAmount(body.amount);
+      // hosted runtime records are idempotent by `ref` (a crashed runtime reposts the same record)
+      const ref = body.ref === undefined || body.ref === null ? null : String(body.ref).slice(0, 200);
+      const seen = ref ? this.hosted.usageByRef(ref) : null;
+      if (seen) {
+        if (seen.agent_id !== agent || seen.amount !== amount.toString()) throw conflict("usage_ref_reused", "this ref was posted with a different agent or amount");
+        return { usage_id: seen.id, duplicate: true, compute_balance: this.ledger.balance(ACC.compute(agent)).toString(), awake: !!this.agentRow(agent)!.awake };
+      }
       const bal = this.ledger.balance(ACC.compute(agent));
       if (bal < amount) throw forbidden("insufficient_compute", `compute vault holds ${bal}`);
       const tokens = body.model_tokens === undefined ? null : Number(body.model_tokens);
       const secs = body.sandbox_seconds === undefined ? null : Number(body.sandbox_seconds);
       const note = body.note === undefined ? null : String(body.note).slice(0, 500);
       const epoch = this.currentEpoch().n;
+      const detail = body.detail === undefined || body.detail === null ? null : canonicalJson(body.detail).slice(0, 4000);
       const r = this.db
-        .query("INSERT INTO usage (agent_id, amount, model_tokens, sandbox_seconds, note, epoch, at) VALUES (?, ?, ?, ?, ?, ?, ?)")
-        .run(agent, amount.toString(), tokens, secs, note, epoch, this.now());
+        .query("INSERT INTO usage (agent_id, amount, model_tokens, sandbox_seconds, note, epoch, at, ref, detail) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)")
+        .run(agent, amount.toString(), tokens, secs, note, epoch, this.now(), ref, detail);
       this.ledger.transfer(ACC.compute(agent), ACC.reserve, amount, "usage", `usage:${r.lastInsertRowid}`);
       this.refreshAwake(agent);
       this.emit("agent.usage", { agent, amount: amount.toString(), model_tokens: tokens, sandbox_seconds: secs });

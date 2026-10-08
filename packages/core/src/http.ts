@@ -123,6 +123,9 @@ export function buildRoutes(core: Core): Route[] {
       core.listCandidates({ lineage: q(c, "lineage"), status: q(c, "status"), author: q(c, "author"), limit: q(c, "limit") ? Number(q(c, "limit")) : undefined }, c.agent),
     ),
     route("GET", "/v1/candidates/:id", "optional", (c) => core.candidateView(c.params.id!, c.agent)),
+    // hosted runtime (SPEC 17.2, identity plan I5): provenance once final, public usage records per agent
+    route("GET", "/v1/candidates/:id/provenance", "optional", (c) => core.hosted.view(c.params.id!, c.agent)),
+    route("GET", "/v1/agents/:id/usage", "none", (c) => core.hosted.usageOf(c.params.id!, q(c, "limit") ? Number(q(c, "limit")) : undefined)),
     // collaboration (SPEC 12.1): intents and the lineage workboard
     route("GET", "/v1/intents", "optional", (c) =>
       core.collab.listIntents({ lineage: q(c, "lineage"), agent: q(c, "agent"), target: q(c, "target"), status: q(c, "status"), limit: q(c, "limit") ? Number(q(c, "limit")) : undefined }, c.agent),
@@ -166,6 +169,7 @@ export function buildRoutes(core: Core): Route[] {
     route("POST", "/v1/calibrations", "agent", (c) => core.submitCalibration(c.agent!, c.json())),
     route("POST", "/v1/candidates", "agent", (c) => core.commitCandidate(c.agent!, c.json())),
     route("POST", "/v1/candidates/:id/reveal", "agent", (c) => core.revealCandidate(c.agent!, c.params.id!, c.json())),
+    route("POST", "/v1/candidates/:id/provenance", "agent", (c) => core.tx(() => core.hosted.submit(c.agent!, c.params.id!, c.json()))),
     route("GET", "/v1/assignments", "agent", (c) => core.tx(() => core.assignments(c.agent!))),
     route("POST", "/v1/intents", "agent", (c) => core.collab.fileIntent(c.agent!, c.json())),
     route("DELETE", "/v1/intents/:id", "agent", (c) => core.collab.withdrawIntent(c.agent!, c.params.id!)),

@@ -70,7 +70,7 @@ CREATE TABLE IF NOT EXISTS shadow_plans (
 
 const TERMINAL = new Set(["accepted", "rejected", "expired"]);
 
-const OPEN_SQL = "'committed','queued','replaying','disputed'";
+const OPEN_SQL = "'committed','waiting','queued','replaying','disputed'";
 const INTENT_KINDS = new Set(["perf", "fix", "slim"]);
 
 /** The parts of Core this module reads. Core passes itself; the private members exist at runtime. */
@@ -109,7 +109,7 @@ const ROLES = new Set(["author", "reviewer", "harness"]);
  * What every team member signs (purpose "team", SPEC 12.2): the exact commitment and the exact split.
  * `target` is normalised like a candidate target.
  */
-export function teamStatement(p: { lineage_id: string; parent_gen_id: string; commitment: string; kind: string; target: string | string[]; members: TeamMember[] }) {
+export function teamStatement(p: { lineage_id: string; parent_gen_id: string; commitment: string; kind: string; target: string | string[]; members: TeamMember[]; depends_on?: string | null }) {
   return {
     v: 1,
     lineage_id: p.lineage_id,
@@ -118,6 +118,8 @@ export function teamStatement(p: { lineage_id: string; parent_gen_id: string; co
     kind: p.kind,
     target: p.target,
     members: p.members.map((m) => ({ agent: m.agent, role: m.role, share_bps: m.share_bps })),
+    // a stacked candidate (SPEC 12.4): members also consent to the candidate it builds on
+    ...(p.depends_on ? { depends_on: p.depends_on } : {}),
   };
 }
 
@@ -485,7 +487,7 @@ export class Collab {
    * `author` members launched agents, shares summing to 10000, every member's signature over the
    * exact commitment and split, and the exclusion cap. Returns null when the body has no team.
    */
-  checkTeam(lead: string, ctx: { lineage_id: string; parent_gen_id: string; commitment: string; kind: string; target: string | string[] }, raw: unknown): Team | null {
+  checkTeam(lead: string, ctx: { lineage_id: string; parent_gen_id: string; commitment: string; kind: string; target: string | string[]; depends_on?: string | null }, raw: unknown): Team | null {
     if (raw === undefined || raw === null) return null;
     if (!isObj(raw) || !Array.isArray(raw.members) || !isObj(raw.sigs)) throw bad("bad_team", "team is { members: [{ agent, role, share_bps }], sigs: { <agent>: sig } }");
     const max = this.c.cfg.max_team_size;

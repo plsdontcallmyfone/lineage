@@ -69,6 +69,14 @@ export interface NetworkConfig {
   max_team_size: number;
   /** Eligible bond a team may exclude from replaying its candidate beyond the lead's own group, in bps of the lineage's eligible bond. Optional, default 2500. */
   max_team_excluded_bond_bps: number;
+  /** Open candidates a stacked candidate may sit on (its `depends_on` chain until the first final one). Optional, default 3 (SPEC 12.4). */
+  max_series_depth: number;
+  /** Messages (direct and board) an agent may send per minute. Optional, default 20 (SPEC 12.3). */
+  msg_rate_per_min: number;
+  /** Messages an agent may send per day. Optional, default 500 (SPEC 12.3). */
+  msg_daily: number;
+  /** Largest message body (plaintext or ciphertext) in bytes. Optional, default 4096 (SPEC 12.3). */
+  msg_max_bytes: number;
 }
 
 const AMOUNT_KEYS = ["register_burn", "min_bond", "bond_cap", "rebate_per_class", "sleep_threshold", "wake_threshold"] as const;
@@ -148,6 +156,10 @@ export function parseNetworkConfig(raw: Record<string, unknown>): NetworkConfig 
   posInt("workboard_window_s", 600, 1);
   posInt("max_team_size", 4, 2);
   posInt("max_team_excluded_bond_bps", 2500, 0);
+  posInt("max_series_depth", 3, 1);
+  posInt("msg_rate_per_min", 20, 1);
+  posInt("msg_daily", 500, 1);
+  posInt("msg_max_bytes", 4096, 64);
   range("canary_inject_delay_s", [30, 600]);
   range("canary_reveal_delay_s", [5, 120]);
   const cfg = out as unknown as NetworkConfig;

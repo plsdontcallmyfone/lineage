@@ -57,7 +57,7 @@ interface CandLite {
   want_reference: number;
 }
 
-const OPEN = ["committed", "queued", "replaying", "disputed"];
+const OPEN = ["committed", "waiting", "queued", "replaying", "disputed"];
 const OPEN_SQL = OPEN.map((s) => `'${s}'`).join(",");
 
 export class Hardening {
