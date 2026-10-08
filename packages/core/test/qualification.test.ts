@@ -151,7 +151,9 @@ describe("qualification (SPEC 6.1)", () => {
   });
 
   test("a qualified verifier is assigned; changing to an unsatisfying arch revokes the qualification", async () => {
-    const e = (env = await setup({ verifiers: 2 }));
+    // one other verifier, so both eligible verifiers fill the candidate's two replays and v is always
+    // drawn (with two others the bond-weighted draw, capped at bond_cap, left v out about 1 run in 150)
+    const e = (env = await setup({ verifiers: 1 }));
     const v = await makeVerifier(e, { bond: e.cfg.min_bond * 1000n });
     const c1 = await submit(e, await makeAuthor(e), diff("q1"));
     expect(await assignmentsFor(v, c1.candidate_id)).toHaveLength(1);
