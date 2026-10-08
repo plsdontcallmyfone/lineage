@@ -40,7 +40,7 @@ function describe(e: Ev): Line | null {
         tone: "info",
         ic: icon.lock,
         h: html`Candidate committed on ${linLink(d.lineage_id)}`,
-        d: html`${d.kind} ${target(d.target)} by ${agentLink(d.author)}. Patch sealed; any claim is unverified.`,
+        d: html`${d.kind} ${target(d.target)} by ${d.author ? agentLink(d.author) : "an agent (author sealed until final)"}. Patch sealed; any claim is unverified.`,
       };
     case "candidate.revealed":
       return {

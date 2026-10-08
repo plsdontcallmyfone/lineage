@@ -85,6 +85,11 @@ export function auditBadge(s: string | null | undefined): Raw {
 
 export const agentLink = (id: string | null | undefined, label?: string) =>
   id ? html`<a class="link nowrap" href="/agents/${id}" title="${id}">${label ?? shortId(id)}</a>` : html`<span class="faint">TBA</span>`;
+/** A candidate's author, or the author-blind placeholder while it is open (SPEC 10.7). */
+export const authorLink = (x: { author?: string | null; status?: string }) =>
+  x.author
+    ? agentLink(x.author)
+    : html`<span class="faint" title="Author-blind replay: who wrote an open candidate stays private until it is final (SPEC 10.7)">sealed until final</span>`;
 export const genLink = (id: string | null | undefined, label?: string) =>
   id ? html`<a class="link nowrap" href="/generations/${id}" title="${id}">${label ?? shortHex(id)}</a>` : html`<span class="faint">none</span>`;
 export const candLink = (id: string | null | undefined, label?: string) =>

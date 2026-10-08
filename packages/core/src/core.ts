@@ -51,6 +51,7 @@ import {
   type ReplayResult,
   type RevealedReplay,
 } from "./protocol.ts";
+import { Collab } from "./collab.ts";
 import { Hardening } from "./hardening.ts";
 import { Identity } from "./identity.ts";
 import { Records } from "./records.ts";
@@ -368,6 +369,8 @@ export class Core {
   readonly live: Live;
   /** Canary scheduling, unbond involvement, twin candidates, audit fallback (src/hardening.ts). */
   readonly hardening: Hardening;
+  /** Author-blind replay, intents and teams (src/collab.ts). */
+  readonly collab: Collab;
   /** Agent signing keys: rotation and revocation (src/identity.ts). */
   readonly identity: Identity;
   /** Reputation records and contribution leaves per epoch (src/records.ts). */
@@ -394,6 +397,7 @@ export class Core {
     this.ledger = new Ledger(this.db, () => this.clock.now());
     this.live = new Live(this, opts.trees ?? null);
     this.hardening = new Hardening(this);
+    this.collab = new Collab(this);
     this.chainMode = !!opts.chainMode;
     this.identity = new Identity(this);
     this.records = new Records(this);
@@ -1062,7 +1066,8 @@ export class Core {
          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'committed', ?, ?, ?, ?, ?)`,
       )
       .run(commit_id, l.lineage_id, parent.gen_id, parent.gen_id, author, kind, JSON.stringify(target), claimed, commitment, now, deadline, opts.canary ? 1 : 0, opts.canary ?? null, this.currentEpoch().n);
-    this.emit("candidate.committed", { commit_id, lineage_id: l.lineage_id, parent_gen_id: parent.gen_id, author, kind, target, claimed_effect: claimed });
+    // no author: who committed an open candidate stays private until it is final (SPEC 10.7)
+    this.emit("candidate.committed", { commit_id, lineage_id: l.lineage_id, parent_gen_id: parent.gen_id, kind, target, claimed_effect: claimed });
     return { commit_id, reveal_deadline: deadline, status: "committed" as const };
   }
 
@@ -1102,8 +1107,14 @@ export class Core {
     const ph = patchHash(canonical);
     if (patchCommitment(ph, salt) !== c.commitment) throw bad("commitment_mismatch", "patch and salt do not match the commitment (patch_hash covers the canonical diff)");
     const target = JSON.parse(c.target) as string | string[];
-    const cid = candidateId({ lineage_id: c.lineage_id, parent_gen_id: c.parent_gen_id, patch_hash: ph, author, kind: c.kind, target });
-    if (this.candByCandidateId(cid)) {
+    // the id hashes an author tag, not the author: a replayer holding the patch cannot test agent ids (SPEC 4, 10.7)
+    const cid = candidateId({ lineage_id: c.lineage_id, parent_gen_id: c.parent_gen_id, patch_hash: ph, author: this.collab.authorTag(author, salt), kind: c.kind, target });
+    const again = this.db
+      .query<{ c: number }, [string, string, string, string, string, string]>(
+        "SELECT COUNT(*) AS c FROM candidates WHERE lineage_id = ? AND parent_gen_id = ? AND author = ? AND patch_hash = ? AND kind = ? AND target = ? AND candidate_id IS NOT NULL",
+      )
+      .get(c.lineage_id, c.parent_gen_id, author, ph, c.kind, c.target)!.c;
+    if (this.candByCandidateId(cid) || again > 0) {
       this.db.query("UPDATE candidates SET patch = ?, salt = ?, patch_hash = ?, revealed_at = ? WHERE commit_id = ?").run(canonical, salt, ph, now, c.commit_id);
       this.finalizeCandidate(this.candRow(c.commit_id)!, "rejected", "duplicate", "this author already revealed the same candidate", null);
       return this.candidateView(c.commit_id, author);
@@ -2386,7 +2397,9 @@ export class Core {
 
   private shadowRevealed(id: string): boolean {
     const c = this.db.query<{ epoch: number }, [string]>("SELECT epoch FROM candidates WHERE author = ? AND is_canary = 1 LIMIT 1").get(id);
-    return !!c && this.epochRow(c.epoch)?.status === "closed";
+    // only once none of its canaries is still open (SPEC 10.7)
+    const open = this.db.query("SELECT 1 FROM candidates WHERE author = ? AND is_canary = 1 AND status IN ('committed','queued','replaying','disputed') LIMIT 1").get(id);
+    return !!c && !open && this.epochRow(c.epoch)?.status === "closed";
   }
 
   listAgents() {
@@ -2397,13 +2410,20 @@ export class Core {
   }
 
   private candidateRevealedAsCanary(c: CandRow): boolean {
-    return !!c.is_canary && this.epochRow(c.epoch)?.status === "closed";
+    return !!c.is_canary && TERMINAL.has(c.status) && this.epochRow(c.epoch)?.status === "closed";
   }
 
-  candidateView(id: string, viewer?: string) {
+  /**
+   * Public unless `viewer` is a party to the candidate (its author or a team member) or the admin:
+   * while the candidate is open the public view withholds `author`, `team` and `commitment`
+   * (author-blind replay, SPEC 10.7); `salt` is published once it is final so anyone can recompute
+   * the candidate id.
+   */
+  candidateView(id: string, viewer?: string | null) {
     const c = this.candRow(id);
     if (!c) throw notFound("candidate");
     const terminal = TERMINAL.has(c.status);
+    const blind = this.collab.blind(c, viewer);
     const replays = c.candidate_id
       ? this.db.query<ReplayRow, [string]>("SELECT * FROM replays WHERE candidate_id = ? ORDER BY assigned_at, replay_id").all(c.candidate_id)
       : [];
@@ -2413,11 +2433,12 @@ export class Core {
       lineage_id: c.lineage_id,
       parent_gen_id: c.parent_gen_id,
       eval_parent_gen_id: c.eval_parent_gen_id,
-      author: c.author,
+      author: blind ? null : c.author,
       kind: c.kind,
       target: JSON.parse(c.target),
       claimed_effect: c.claimed_effect,
-      commitment: c.commitment,
+      commitment: blind ? null : c.commitment,
+      salt: terminal || !blind ? c.salt : null,
       patch: c.patch,
       patch_hash: c.patch_hash,
       semantic_hash: c.semantic_hash,
@@ -2460,12 +2481,19 @@ export class Core {
     };
   }
 
-  listCandidates(q: { lineage?: string; status?: string; author?: string; limit?: number }) {
+  /** Candidate summaries; filtering by author returns only candidates whose author `viewer` may see (SPEC 10.7). */
+  listCandidates(q: { lineage?: string; status?: string; author?: string; limit?: number }, viewer?: string | null) {
     const where: string[] = [];
     const args: (string | number)[] = [];
     if (q.lineage) (where.push("lineage_id = ?"), args.push(q.lineage));
     if (q.status) (where.push("status = ?"), args.push(q.status));
-    if (q.author) (where.push("author = ?"), args.push(q.author));
+    if (q.author) {
+      where.push("author = ?");
+      args.push(q.author);
+      const vis = this.collab.visibleAuthorSql(viewer);
+      where.push(vis.sql);
+      args.push(...vis.args);
+    }
     args.push(Math.min(q.limit ?? 200, 1000));
     const rows = this.db
       .query<{ commit_id: string }, (string | number)[]>(
@@ -2473,7 +2501,7 @@ export class Core {
       )
       .all(...args);
     return rows.map((r) => {
-      const v = this.candidateView(r.commit_id);
+      const v = this.candidateView(r.commit_id, viewer);
       return { ...v, patch: undefined, replays: undefined, replay_count: v.replays.length };
     });
   }
@@ -2671,6 +2699,8 @@ export class Core {
       ? this.db
           .query<Record<string, unknown>, [number]>("SELECT subject, round, bucket, beacon, assignment_seed, pool, exclude, count, chosen, reference, created_at FROM assignment_rounds WHERE epoch = ? ORDER BY id")
           .all(n)
+          // a round names its subject's exclusions (the author) and its replayers: withheld until the subject is final (SPEC 10.7)
+          .filter((r) => this.collab.subjectFinal(String(r.subject)))
           .map((r) => ({ ...r, pool: JSON.parse(String(r.pool)), exclude: JSON.parse(String(r.exclude)), chosen: JSON.parse(String(r.chosen)) }))
       : undefined;
     return {
@@ -2689,7 +2719,8 @@ export class Core {
       root: ep.root,
       lineage_root: ep.lineage_root,
       record_root: ep.record_root ?? null,
-      canaries: closed ? JSON.parse(ep.canaries!) : null,
+      // a canary still open at close is listed once it is final: its replayers must not learn it early (SPEC 10.5, 10.7)
+      canaries: closed ? (JSON.parse(ep.canaries!) as { candidate_id: string | null }[]).filter((x) => !x.candidate_id || this.collab.subjectFinal(x.candidate_id)) : null,
       assignment_rounds: rounds,
       usage: this.db.query<Record<string, unknown>, [number]>("SELECT * FROM usage WHERE epoch = ? ORDER BY id").all(n),
     };

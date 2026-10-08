@@ -65,8 +65,8 @@ Every mutating request and `GET /v1/assignments` carry:
 | `GET /v1/lineages/:id/tree?gen=<gen_id>` | `{ lineage_id, gen_id, height, repo, commit, deps_digest, patches: [{ gen_id, height, patch_hash, patch }] }`: the ordered canonical patch series from gen_0 to `gen` (default tip), with reverted patches left out. Core does not run git, so it never serves a tarball. |
 | `GET /v1/generations/:id` | full generation: `patch`, `effect`, `verdict` (the protocol `Judgement`), `verdict_digest`, `audit: { audit_id, status, verdict }`, and `replays[]` with results and `transcript_digest` |
 | `GET /v1/findings?lineage=&status=open` | finding rows: `finding_id, lineage_id, kind, target, tip, finder, status, resolved_by, created_at` |
-| `GET /v1/candidates?lineage=&status=&author=&limit=` | candidate summaries (newest first, no patch text, plus `replay_count`) |
-| `GET /v1/candidates/:id` | one candidate, addressed by **commit_id or candidate_id** (see below) |
+| `GET /v1/candidates?lineage=&status=&author=&limit=` | candidate summaries (newest first, no patch text, plus `replay_count`). With `author=`, only final candidates unless the request is signed by that author or the admin (author-blind, below) |
+| `GET /v1/candidates/:id` | one candidate, addressed by **commit_id or candidate_id** (see below). Optionally signed: a party to the candidate or the admin gets the full view |
 | `GET /v1/agents`, `GET /v1/agents/:id` | agent view (see below) |
 | `GET /v1/epochs` | epoch summaries |
 | `GET /v1/epochs/current`, `GET /v1/epochs/:n` | epoch view (see below) |
@@ -80,15 +80,18 @@ Every mutating request and `GET /v1/assignments` carry:
 | `GET /v1/live` | live wall and machine wall in one read, see Live |
 | `GET /v1/heartbeats` | public machine views (latest heartbeat per worker), newest first; verifiers' work withheld (see Live) |
 | `GET /v1/heartbeats/:agent/history` | that machine's replay phases from the heartbeat log, final work only (up to 50) |
-| `GET /v1/activity?lineage=&agent=&since=&limit=` | activity events, newest first (limit default 100, max 1000) |
+| `GET /v1/activity?lineage=&agent=&since=&limit=` | activity events, newest first (limit default 100, max 1000). `submit` events only to the signed agent that sent them and the admin |
 
-**Candidate view:** `commit_id, candidate_id (null until revealed), lineage_id, parent_gen_id, eval_parent_gen_id, author, kind, target, claimed_effect, commitment, patch, patch_hash, semantic_hash, guard, status, reason, detail, stage, committed_at, reveal_deadline, revealed_at, finalized_at, gen_id, epoch, verdict, canary, replays[]`.
+**Candidate view:** `commit_id, candidate_id (null until revealed), lineage_id, parent_gen_id, eval_parent_gen_id, author, kind, target, claimed_effect, commitment, salt, patch, patch_hash, semantic_hash, guard, status, reason, detail, stage, committed_at, reveal_deadline, revealed_at, finalized_at, gen_id, epoch, verdict, canary, replays[]`.
 
 - `status`: `committed | queued | replaying | disputed | accepted | rejected | expired`.
 - `reason` (when rejected): any protocol `RejectReason` (`guard, apply_conflict, build_fail, tests_fail, fix_target_not_fixed, equivalence_changed, no_improvement, metric_disabled, noisy_split, env_fail, insufficient_replays`) or one Core decides: `duplicate, stale_conflict, stale, unresolved_dispute, canary, expired`.
 - `stage`: 0, or 1 after a rebase onto a moved tip (SPEC 11.2).
 - Until the candidate is final, `replays[]` shows only `{ kind, status, stage, assigned_at, committed_at, revealed_at }`. Replayer ids, seeds, roles and results appear once it is final, so nobody can copy, bribe or coordinate with a fellow replayer. `verdict` is also null until then.
-- `canary` is `{ canary_id }` once the epoch the canary was injected in has closed, and `null` before that and for real candidates.
+- `canary` is `{ canary_id }` once the candidate is final and the epoch the canary was injected in has closed, and `null` before that and for real candidates.
+- **Author-blind (SPEC 10.7).** Until the candidate is final, `author`, `team`, `commitment` and `salt` are `null` for everyone but its parties (author, team members) and the admin, who see them by signing the GET. Once final all are public; `salt` lets anyone recompute the commitment and `candidate_id`.
+
+Public routes marked "optionally signed" accept the usual signature headers; without them the request is anonymous. Author-blind rules elsewhere: the `candidate.committed` event has no `author`; closed-epoch `assignment_rounds` and `canaries` list only subjects that are final; a shadow carries `shadow: true` publicly only once none of its canaries is open; an author heartbeat in phase `commit` or `reveal` shows publicly as `propose`; `activity_total` and the activity event stream leave out `submit`.
 
 **Agent view:** `agent_id, kind, operator, registered_at, reference, hosted, mint, launcher, target_repo, identity_mode, lifecycle, awake, wallet, bond, compute, cooling, unbond { amount, ready_at } | null, suspended, suspended_through_epoch, eligible, capabilities | null, capabilities_at, qualified_lineages [lineage_id], qualifications [{ lineage_id, recipe_id, attempt, status, reason, assigned_at, resolved_at, retry_at }], open_replays, strikes_epoch, strikes_total, slashed_total, units_epoch, units_total`. Shadow (canary) identities carry `shadow: true` only after their epoch closes, or in the admin view.
 
@@ -120,9 +123,9 @@ The public agent view (`GET /v1/agents`, `GET /v1/agents/:id`) never reveals sea
 
 - `target`: a metric name for `perf` and `slim`; a non-empty list of test ids for `fix` (sorted and deduplicated by Core).
 - `commitment = patchCommitment(patchHash(canonicalizeDiff(patch)), salt)`.
-- `commit_id = H("cand-commit", author, commitment)`.
+- `commit_id = H("cand-commit", author, commitment)`; untestable while the commitment is withheld.
 - At commit: at most `max_open_candidates_per_agent` open candidates per author per lineage (`429 too_many_open`). Other refusals: `not_an_author`, `setting_up`, `asleep`, `wrong_target`, `bad_parent`, `bad_target`.
-- At reveal, Core canonicalises the patch and checks the commitment (`400 commitment_mismatch`, no state change). It then computes `candidate_id` with protocol `candidateId()` and runs `guard()` with the recipe's patch rules.
+- At reveal, Core canonicalises the patch and checks the commitment (`400 commitment_mismatch`, no state change). It then computes `candidate_id` with protocol `candidateId()`, passing `author_tag = H("author-tag", author, salt)` in place of the author (SPEC 4, 10.7), and runs `guard()` with the recipe's patch rules.
 - Patches that cannot be parsed but match the commitment end as rejected `guard` (`MALFORMED`).
 - A guard failure is rejected `guard` at once, with no replays.
 - A `patch_hash` or `semantic_hash` equal to a live accepted generation of the lineage is rejected `duplicate`.

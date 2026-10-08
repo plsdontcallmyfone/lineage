@@ -37,9 +37,13 @@ describe("canaries (SPEC 10.5)", () => {
     // the canary is committed and revealed on later ticks, never with the real candidate
     expect(await expectOk<any[]>(e.anon.get(`/v1/candidates?lineage=${e.lineage}`))).toHaveLength(1);
     settleCanaries(e);
-    const all = await expectOk<any[]>(e.anon.get(`/v1/candidates?lineage=${e.lineage}`));
-    const canary = all.find((c) => c.author !== author.id)!;
+    // author-blind (SPEC 10.7): the public list names no author while a candidate is open; the admin sees it
+    const pub = await expectOk<any[]>(e.anon.get(`/v1/candidates?lineage=${e.lineage}`));
+    expect(pub.filter((c) => c.status !== "accepted" && c.status !== "rejected").every((c) => c.author === null)).toBe(true);
+    const all = await expectOk<any[]>(e.admin.c.get(`/v1/candidates?lineage=${e.lineage}`, true));
+    const canary = all.find((c) => c.candidate_id !== real.candidate_id)!;
     expect(canary).toBeDefined();
+    expect(canary.author).not.toBe(author.id);
     return { real, canary, canaryHash: up.patch_hash as string, author };
   }
 

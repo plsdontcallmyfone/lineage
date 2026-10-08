@@ -3,7 +3,7 @@ import { feedItem, KEY_TYPES } from "../feed.ts";
 import { dur, effect, gainPct, int, repoLabel, target, token, when } from "../fmt.ts";
 import { html, type Raw } from "../html.ts";
 import { live } from "../live.ts";
-import { agentLink, auditBadge, candLink, candStatus, empty, genLink, icon, kindBadge, linLink, panel, reasonText, stat } from "../ui.ts";
+import { agentLink, authorLink, auditBadge, candLink, candStatus, empty, genLink, icon, kindBadge, linLink, panel, reasonText, stat } from "../ui.ts";
 import type { Page } from "./types.ts";
 
 export function feedBody(): Raw {
@@ -115,7 +115,7 @@ export async function overview(): Promise<Page> {
             c.status !== "accepted" && typeof c.claimed_effect === "number" && c.kind !== "fix" ? html`, author claims ${gainPct(1 - c.claimed_effect)} (unverified)` : ""
           }</div></td>
           <td class="wrap">${candStatus(c)}${c.detail ? html`<div class="sub">${c.detail}</div>` : ""}</td>
-          <td class="hide-sm">${agentLink(c.author)}</td>
+          <td class="hide-sm">${authorLink(c)}</td>
           <td class="right">${when(c.committed_at)}</td>
         </tr>`,
       )}</tbody></table></div>`

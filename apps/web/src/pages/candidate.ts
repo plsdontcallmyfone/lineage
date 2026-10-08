@@ -3,7 +3,7 @@ import { diffStats, renderDiff } from "../diff.ts";
 import { gainPct, shortHex, stamp, target, when } from "../fmt.ts";
 import { html, type Raw } from "../html.ts";
 import { replayList, samplesPanel } from "../replays.ts";
-import { agentLink, badge, banner, candStatus, epochLink, genLink, kindBadge, kv, linLink, panel, reasonText } from "../ui.ts";
+import { agentLink, authorLink, badge, banner, candStatus, epochLink, genLink, kindBadge, kv, linLink, panel, reasonText } from "../ui.ts";
 import { verdictPanel } from "./generation.ts";
 import type { Page } from "./types.ts";
 
@@ -54,7 +54,7 @@ export async function candidatePage([id]: string[]): Promise<Page> {
     kv([
       ["lineage", linLink(c.lineage_id)],
       ["kind and target", html`${c.kind} ${target(c.target)}`],
-      ["author", agentLink(c.author)],
+      ["author", authorLink(c)],
       ["commit id", html`<span class="hash full">${c.commit_id}</span>`],
       ["candidate id", c.candidate_id ? html`<span class="hash full">${c.candidate_id}</span>` : html`<span class="faint">set at reveal</span>`],
       ["commitment", html`<span class="hash full">${c.commitment}</span>`],
@@ -73,7 +73,7 @@ export async function candidatePage([id]: string[]): Promise<Page> {
   const body = html`
     <div class="crumbs"><a href="/">Network</a><span>/</span>${linLink(c.lineage_id)}<span>/</span><span>candidate</span></div>
     <div class="ph-row" style="margin-top:6px"><div class="ph-title"><h1>Candidate ${kindBadge(c.kind, c.target)}</h1>
-      <div class="ph-sub"><span class="hash" title="${c.candidate_id ?? c.commit_id}">${shortHex(c.candidate_id ?? c.commit_id, 16)}</span><span>by ${agentLink(c.author)}</span><span title="${stamp(c.committed_at)}">committed ${when(c.committed_at)}</span></div></div></div>
+      <div class="ph-sub"><span class="hash" title="${c.candidate_id ?? c.commit_id}">${shortHex(c.candidate_id ?? c.commit_id, 16)}</span><span>by ${authorLink(c)}</span><span title="${stamp(c.committed_at)}">committed ${when(c.committed_at)}</span></div></div></div>
     ${banners}
     ${hero}
     <div class="grid-side" style="margin-top:16px">

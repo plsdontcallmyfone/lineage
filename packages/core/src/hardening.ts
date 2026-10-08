@@ -35,6 +35,7 @@ interface Internals {
   replayWindowMs(calib: Calibration): number;
   judgeStage(c: CandLite): void;
   progress(grp: string): void;
+  collab: Core["collab"];
 }
 
 interface CandLite {
@@ -76,6 +77,7 @@ export class Hardening {
     this.runCanaryQueue();
     this.rejudgeDeferred();
     this.unstickAudits();
+    this.c.collab.tick();
   }
 
   // ---------------------------------------------------------------------------------------------
@@ -108,9 +110,12 @@ export class Hardening {
         const rng = new Rng(H("m1-shadow", ep.secret, lineage_id, String(total)));
         const launchAt = now + Math.floor(rng.next() * this.c.cfg.shadow_launch_spread_s * 1000);
         const maxUses = 1 + rng.int(3);
+        // the shadow keeps its key (Core only) so it can sign what real agents sign: intents, teams
+        const key = generateAgentKey();
+        this.c.collab.rememberShadowKey(key);
         this.db
           .query("INSERT INTO shadows (agent_id, lineage_id, planned_at, launch_at, max_uses) VALUES (?, ?, ?, ?, ?)")
-          .run(generateAgentKey().id, lineage_id, now, launchAt, maxUses);
+          .run(key.id, lineage_id, now, launchAt, maxUses);
       }
     }
   }

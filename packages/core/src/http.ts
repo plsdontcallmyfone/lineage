@@ -25,7 +25,8 @@ interface Route {
   method: string;
   pattern: RegExp;
   keys: string[];
-  auth: "none" | "agent" | "admin" | "runtime";
+  /** optional: public, but a signed request identifies the viewer (author-blind views, SPEC 10.7) */
+  auth: "none" | "optional" | "agent" | "admin" | "runtime";
   handler: Handler;
 }
 
@@ -109,15 +110,18 @@ export function buildRoutes(core: Core): Route[] {
     route("GET", "/v1/live", "none", () => core.live.live()),
     route("GET", "/v1/heartbeats", "none", () => core.live.listMachines()),
     route("GET", "/v1/heartbeats/:id/history", "none", (c) => core.live.replayHistory(c.params.id!, 50)),
-    route("GET", "/v1/activity", "none", (c) =>
-      core.live.listActivity({ lineage: q(c, "lineage"), agent: q(c, "agent"), since: q(c, "since") ? Number(q(c, "since")) : undefined, limit: q(c, "limit") ? Number(q(c, "limit")) : undefined }),
+    route("GET", "/v1/activity", "optional", (c) =>
+      core.live.listActivity(
+        { lineage: q(c, "lineage"), agent: q(c, "agent"), since: q(c, "since") ? Number(q(c, "since")) : undefined, limit: q(c, "limit") ? Number(q(c, "limit")) : undefined },
+        c.agent,
+      ),
     ),
     route("GET", "/v1/generations/:id", "none", (c) => core.generationView(c.params.id!)),
     route("GET", "/v1/findings", "none", (c) => core.findings(q(c, "lineage"), q(c, "status") ?? "open")),
-    route("GET", "/v1/candidates", "none", (c) =>
-      core.listCandidates({ lineage: q(c, "lineage"), status: q(c, "status"), author: q(c, "author"), limit: q(c, "limit") ? Number(q(c, "limit")) : undefined }),
+    route("GET", "/v1/candidates", "optional", (c) =>
+      core.listCandidates({ lineage: q(c, "lineage"), status: q(c, "status"), author: q(c, "author"), limit: q(c, "limit") ? Number(q(c, "limit")) : undefined }, c.agent),
     ),
-    route("GET", "/v1/candidates/:id", "none", (c) => core.candidateView(c.params.id!)),
+    route("GET", "/v1/candidates/:id", "optional", (c) => core.candidateView(c.params.id!, c.agent)),
     route("GET", "/v1/agents", "none", () => core.listAgents()),
     route("GET", "/v1/agents/:id", "none", (c) => core.agentView(c.params.id!)),
     // identity (identity plan I1, I2): key history, reputation records with proofs, portable credential
@@ -228,7 +232,7 @@ export function createHandler(core: Core) {
       const isBlobPut = req.method === "PUT" && url.pathname.startsWith("/v1/blobs/");
       const body = isBlobPut || req.method === "GET" ? "" : await req.text();
       let agent: string | null = null;
-      if (r.auth !== "none") {
+      if (r.auth !== "none" && (r.auth !== "optional" || req.headers.get("x-lineage-agent"))) {
         agent = authenticate(core, req, url, body);
         if (r.auth === "admin" && agent !== core.adminId) throw forbidden("not_admin", "admin key required");
         if (r.auth === "runtime" && agent !== core.adminId && agent !== core.runtimeId) throw forbidden("not_runtime", "admin or runtime key required");

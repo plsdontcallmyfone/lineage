@@ -367,3 +367,59 @@ export function settleCanaries(env: { clock: FakeClock; core: Core }, steps = 6)
     env.core.tick();
   }
 }
+
+/**
+ * Author-blind sweep (SPEC 10.7): fetches every public GET route anonymously (every id Core knows
+ * substituted for its parameters) plus the event log, and returns each place where an object that
+ * names an open candidate (by commit_id or candidate_id) also names one of its parties (author or
+ * team member), or where a sealed value (its commitment) appears at all.
+ */
+export async function authorLeaks(env: { core: Core; anon: CoreClient }, open: { ids: string[]; parties: string[]; sealed: string[] }[]): Promise<string[]> {
+  const { buildRoutes } = await import("../src/http.ts");
+  const db = env.core.db;
+  const col = (sql: string) => db.query<{ v: string | number }, []>(sql).all().map((r) => String(r.v));
+  const fill: Record<string, string[]> = {
+    id: [...col("SELECT lineage_id AS v FROM lineages"), ...col("SELECT agent_id AS v FROM agents"), ...col("SELECT gen_id AS v FROM generations"), ...col("SELECT commit_id AS v FROM candidates"), ...col("SELECT candidate_id AS v FROM candidates WHERE candidate_id IS NOT NULL")],
+    n: col("SELECT n AS v FROM epochs"),
+    agent: col("SELECT agent_id AS v FROM agents"),
+    sha: [],
+  };
+  const urls = new Set<string>();
+  for (const r of buildRoutes(env.core as any)) {
+    if (r.method !== "GET" || (r.auth !== "none" && r.auth !== "optional")) continue;
+    const src = r.pattern.source.replace(/^\^/, "").replace(/\$$/, "");
+    if (/events\\?\/?$|events$/.test(src) || (src.includes("events") && !src.includes("log"))) continue; // SSE stream: the log below has the same events
+    let paths = [src];
+    for (const k of r.keys) paths = paths.flatMap((p) => (fill[k] ?? []).map((v) => p.replace(/\(\[\^\\?\/\]\+\)/, v)));
+    for (const p of paths) urls.add(p.replace(/\\\//g, "/"));
+  }
+  for (const l of fill.id!.slice(0, 1)) urls.add(`/v1/candidates?lineage=${l}&limit=1000`);
+  for (const a of fill.agent!) urls.add(`/v1/candidates?author=${a}&limit=1000`), urls.add(`/v1/activity?agent=${a}&limit=1000`);
+  urls.add("/v1/events/log?since=0&limit=5000");
+  const leaks: string[] = [];
+  const walk = (url: string, v: unknown) => {
+    if (!v || typeof v !== "object") return;
+    const text = JSON.stringify(v);
+    for (const o of open) {
+      if (o.ids.some((id) => text.includes(id)) && o.parties.some((p) => text.includes(p))) {
+        // the object names both; the leak is real only if no smaller child does (report the tightest)
+        const children = Array.isArray(v) ? v : Object.values(v as Record<string, unknown>);
+        const childBoth = children.some((ch) => {
+          const t = JSON.stringify(ch ?? null);
+          return o.ids.some((id) => t.includes(id)) && o.parties.some((p) => t.includes(p));
+        });
+        const sameRow = !Array.isArray(v);
+        if (!childBoth && sameRow) leaks.push(`${url}: ${text.slice(0, 200)}`);
+      }
+    }
+    for (const ch of Array.isArray(v) ? v : Object.values(v as Record<string, unknown>)) walk(url, ch);
+  };
+  for (const u of urls) {
+    const r = await env.anon.get(u);
+    if (r.status !== 200 || r.body instanceof ArrayBuffer) continue;
+    const text = JSON.stringify(r.body);
+    for (const o of open) for (const s of o.sealed) if (text.includes(s)) leaks.push(`${u}: sealed value ${s.slice(0, 10)} is public`);
+    walk(u, r.body);
+  }
+  return leaks;
+}

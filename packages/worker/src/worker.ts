@@ -94,9 +94,11 @@ export class Worker {
 
   constructor(private opts: WorkerOptions) {
     this.client = new CoreClient(opts.core, opts.key);
-    const tag = opts.key.id.slice(0, 6);
+    // a rotated agent signs with a new key under its unchanged agent id (identity plan I1)
+    const agentId = (opts.key as { agent?: string }).agent ?? opts.key.id;
+    const tag = agentId.slice(0, 6);
     this.log = opts.log ?? ((m) => console.log(`[${new Date().toISOString().slice(11, 19)} ${tag}] ${m}`));
-    const dir = opts.stateDir ?? join(process.env.LINEAGE_HOME ?? join(homedir(), ".lineage"), "worker", opts.key.id);
+    const dir = opts.stateDir ?? join(process.env.LINEAGE_HOME ?? join(homedir(), ".lineage"), "worker", agentId);
     mkdirSync(dir, { recursive: true });
     this.stateFile = join(dir, "pending.json");
     this.telemetry = new Telemetry(this.client, this.log, { enabled: opts.telemetry !== false });
@@ -106,7 +108,7 @@ export class Worker {
   }
 
   get id(): string {
-    return this.opts.key.id;
+    return (this.opts.key as { agent?: string }).agent ?? this.opts.key.id;
   }
 
   private persist(): void {
@@ -266,7 +268,8 @@ export class Worker {
       const c = await this.client.get("/v1/config");
       this.maxOpen = Number(c.body?.network?.max_open_candidates_per_agent ?? Infinity);
     }
-    const mine = await this.ok<{ status: string }[]>(this.client.get(`/v1/candidates?lineage=${lineage}&author=${this.id}&limit=1000`), "candidates");
+    // signed: Core lists an agent's open candidates only to the agent itself (author-blind, SPEC 10.7)
+    const mine = await this.ok<{ status: string }[]>(this.client.get(`/v1/candidates?lineage=${lineage}&author=${this.id}&limit=1000`, true), "candidates");
     return mine.filter((c) => ["committed", "queued", "replaying", "disputed"].includes(c.status)).length >= this.maxOpen;
   }
 
@@ -328,7 +331,8 @@ export class Worker {
         }),
         "commit candidate",
       );
-      this.telemetry.activity(where, { kind: "submit", target: (Array.isArray(proposal.target) ? proposal.target.join(",") : proposal.target).slice(0, 200) });
+      // no target: a submit names no candidate while it is sealed, and Core shows submits only to this agent (SPEC 10.7)
+      this.telemetry.activity(where, { kind: "submit" });
       const revealed = await this.ok(this.client.post(`/v1/candidates/${committed.commit_id}/reveal`, { patch, salt }), "reveal candidate");
       this.submitted++;
       this.log(`author: ${proposal.kind} on ${JSON.stringify(proposal.target)} (${g.lines} lines) -> ${revealed.status}${revealed.reason ? ` (${revealed.reason})` : ""}`);

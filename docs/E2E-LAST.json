@@ -1,6 +1,6 @@
 {
-  "at": "2026-10-07T23:51:23.588Z",
-  "seconds": 242,
+  "at": "2026-10-08T01:42:59.689Z",
+  "seconds": 196,
   "results": [
     {
       "check": "recipe id recomputed by Core matches the worker's",
@@ -10,7 +10,7 @@
     {
       "check": "calibration accepted, lineage created",
       "ok": true,
-      "detail": "{\"lineage_id\":\"385030aabff2e6cb7ae955f798bb5dafdd043a20be14d4a62479d7c5660521a3\",\"calib_id\":\"1233a0bf303db9c0cc16ed54b72"
+      "detail": "{\"lineage_id\":\"385030aabff2e6cb7ae955f798bb5dafdd043a20be14d4a62479d7c5660521a3\",\"calib_id\":\"a7ab3444797459db4fd1bc3e708"
     },
     {
       "check": "stable set and known failure from real calibration",
@@ -75,12 +75,17 @@
     {
       "check": "sealed replays never expose a candidate id or a replaying verifier via public live endpoints before final",
       "ok": true,
-      "detail": "154 samples, 298 sealed replay heartbeats seen, 0 leaks "
+      "detail": "154 samples, 328 sealed replay heartbeats seen, 0 leaks "
+    },
+    {
+      "check": "author-blind replay: no public candidate view, event or activity names the author of an open candidate",
+      "ok": true,
+      "detail": "148 open-candidate samples, 0 leaks "
     },
     {
       "check": "heartbeats carry real replay phases from the sandbox",
       "ok": true,
-      "detail": "observed author:propose, qualify:commit, replay:build, replay:equivalence, replay:metrics, replay:reveal, replay:test"
+      "detail": "observed author:propose, qualify:commit, replay:build, replay:commit, replay:equivalence, replay:metrics, replay:reveal, replay:test"
     },
     {
       "check": "every worker process sends heartbeats with its declared capabilities",
@@ -150,7 +155,7 @@
     {
       "check": "fabricating verifier slashed and struck",
       "ok": true,
-      "detail": "slashed 24617187500, strikes 4"
+      "detail": "slashed 29960937500, strikes 4"
     },
     {
       "check": "no honest verifier slashed",
@@ -160,12 +165,12 @@
     {
       "check": "the fabricating verifier was caught by a canary",
       "ok": true,
-      "detail": "slash reasons: canary, minority, canary, minority"
+      "detail": "slash reasons: canary, canary, canary, minority"
     },
     {
       "check": "the fabricating verifier was caught as a dispute minority",
       "ok": true,
-      "detail": "slash reasons: canary, minority, canary, minority"
+      "detail": "slash reasons: canary, canary, canary, minority"
     },
     {
       "check": "audit replays agree with every accepted generation",
@@ -185,12 +190,12 @@
     {
       "check": "ledger reconciles to zero with no negative balances",
       "ok": true,
-      "detail": "{\"ok\":true,\"errors\":[],\"entries\":112,\"transactions\":56,\"total\":\"0\",\"balances\":{\"agent:2vw2UgKyWUDUqKh8gKHMUn17exL9DnXsxMoLQQhrJZkT:bond\":\"5000000000\",\"agent:2vw"
+      "detail": "{\"ok\":true,\"errors\":[],\"entries\":112,\"transactions\":56,\"total\":\"0\",\"balances\":{\"agent:22boQFvq9hGZ7EJL4kadV6Ka1sLe9fEF32iFx4oCapHf:bond\":\"5000000000\",\"agent:22b"
     },
     {
       "check": "verifier claims its epoch payout with a Merkle proof",
       "ok": true,
-      "detail": "{\"epoch\":0,\"agent\":\"DnZ9aJvvBrkK8XCetNJUQPzLU9rKkYbQmuvjmBpR5zNq\",\"dest\":\"agent:DnZ9aJvvBrkK8XCetNJUQPzLU9rKkYbQmuvjmBpR5zNq:wallet\",\"amount\":\"25323105669\",\"bal"
+      "detail": "{\"epoch\":0,\"agent\":\"C91BVvPgi4ZHjkspnj8y63N3jiwJLfdjPaPi2oW5XGnU\",\"dest\":\"agent:C91BVvPgi4ZHjkspnj8y63N3jiwJLfdjPaPi2oW5XGnU:wallet\",\"amount\":\"25535586201\",\"bal"
     },
     {
       "check": "another agent cannot claim that leaf",
@@ -210,7 +215,7 @@
     {
       "check": "unqualified verifiers (fabricated qualification, wrong arch) never enter an assignment draw",
       "ok": true,
-      "detail": "20 rounds"
+      "detail": "19 rounds"
     },
     {
       "check": "canary list revealed at epoch close",

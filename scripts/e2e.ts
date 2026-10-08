@@ -211,7 +211,7 @@ async function main() {
   // ---------------------------------------------------------------- live telemetry watcher (SPEC 17.1)
   // Samples every public live surface while candidates are open. A candidate that is still open
   // AFTER a sample was open DURING it, so its ids must not appear in that sample.
-  const watch = { samples: 0, sealedSeen: 0, violations: [] as string[], phases: new Set<string>(), jobs: new Set<string>(), stop: false };
+  const watch = { samples: 0, sealedSeen: 0, violations: [] as string[], blindSeen: 0, blindLeaks: [] as string[], phases: new Set<string>(), jobs: new Set<string>(), stop: false };
   const watcher = (async () => {
     const anon = new CoreClient(CORE, null);
     while (!watch.stop) {
@@ -227,6 +227,15 @@ async function main() {
         const text = JSON.stringify([lv.body, hb.body, act.body, liveEvents]);
         const open = ((await anon.get(`/v1/candidates?limit=1000`)).body as any[]).filter((c) => !FINAL.has(c.status));
         for (const c of open) for (const id of [c.candidate_id, c.commit_id]) if (id && text.includes(id)) watch.violations.push(`${id.slice(0, 10)} (${c.status})`);
+        // author-blind replay (SPEC 10.7): an open candidate's public view, its committed event and the public
+        // activity never name its author; the author's submit is not public
+        for (const c of open) {
+          watch.blindSeen++;
+          if (c.author !== null || c.commitment !== null) watch.blindLeaks.push(`${String(c.commit_id).slice(0, 10)} view`);
+          const ev = (evs.body as any[]).find((e) => e.type === "candidate.committed" && e.data?.commit_id === c.commit_id);
+          if (ev && "author" in ev.data) watch.blindLeaks.push(`${String(c.commit_id).slice(0, 10)} event`);
+        }
+        if ((act.body as any[]).some((a) => a.kind === "submit")) watch.blindLeaks.push("public submit activity");
         // public verifier machines never show a replay job, phase, timing or load (SPEC 17.1)
         for (const m of hb.body as any[]) if (m.kind === "verifier" && (m.job === "replay" || (m.job !== "qualify" && (m.phase || m.load || m.job_started_at)))) watch.violations.push(`public ${m.agent_id.slice(0, 8)} job ${m.job}`);
         for (const m of full.body as any[]) {
@@ -276,6 +285,11 @@ async function main() {
     watch.violations.length === 0 && watch.sealedSeen > 0,
     `${watch.samples} samples, ${watch.sealedSeen} sealed replay heartbeats seen, ${watch.violations.length} leaks ${watch.violations.slice(0, 3).join(" ")}`,
   );
+  check(
+    "author-blind replay: no public candidate view, event or activity names the author of an open candidate",
+    watch.blindLeaks.length === 0 && watch.blindSeen > 0,
+    `${watch.blindSeen} open-candidate samples, ${watch.blindLeaks.length} leaks ${watch.blindLeaks.slice(0, 3).join(" ")}`,
+  );
   const replayPhases = [...watch.phases].filter((p) => p.startsWith("replay:")).map((p) => p.slice(7));
   check("heartbeats carry real replay phases from the sandbox", ["build", "test", "metrics"].every((p) => replayPhases.includes(p)), `observed ${[...watch.phases].sort().join(", ")}`);
   const machines = await ok<any[]>(admin.get("/v1/heartbeats"), "heartbeats");
@@ -283,7 +297,8 @@ async function main() {
   check("every worker process sends heartbeats with its declared capabilities", beating.length === 6 && machines.filter((m) => beating.some((n) => keys[n as keyof typeof keys].id === m.agent_id)).every((m) => m.caps_match === true), `${beating.join(",")} of ref,v1,v2,v3,v4,faker`);
   const st = await ok(admin.get("/v1/stats"), "stats");
   check("stats count machines awake and verified gains", st.machines_awake >= 6 && st.verified_gains === 2, `awake ${st.machines_awake} of ${st.machines}, gains ${st.verified_gains}`);
-  const acts = await ok<any[]>(admin.get(`/v1/activity?agent=${keys.author.id}&limit=1000`), "activity");
+  // signed: the admin (and the author itself) also sees submits, which the public list withholds (SPEC 10.7)
+  const acts = await ok<any[]>(admin.get(`/v1/activity?agent=${keys.author.id}&limit=1000`, true), "activity");
   const edits = acts.filter((a) => a.kind === "edit");
   check(
     "author activity arrives: edits with path and parent range checked against the generation tree, then propose and submit",

@@ -83,7 +83,8 @@ recipe_id      = H("recipe"  | canonical_json(recipe))
 calib_id       = H("calib"   | recipe_id | snapshot_id | canonical_json(calibration_result))
 lineage_id     = H("lineage" | snapshot_id | recipe_id)
 patch_hash     = H("patch"   | canonical_diff)
-candidate_id   = H("cand"    | lineage_id | parent_gen_id | patch_hash | author_agent_id | kind | target)
+candidate_id   = H("cand"    | lineage_id | parent_gen_id | patch_hash | author_tag | kind | target)
+author_tag     = H("author-tag" | author_agent_id | salt)      salt: the author's commitment salt (10.4)
 gen_id         = H("gen"     | parent_gen_id | patch_hash | verdict_digest)
 gen_0          = H("gen"     | lineage_id)
 ```
@@ -399,7 +400,19 @@ Indistinguishability is concrete (found by the 2026-10-07 adversarial review, wh
 - **Separate commit and reveal.** The reveal follows the commit after a delay drawn from the lineage's real commit-to-reveal gaps (or `canary_reveal_delay_s` until there are enough), never in the same tick.
 - **Private library, single use.** A live network loads canaries from a private directory (`canaries_dir`, default outside the repository). The canaries in the public repository (`recipes/*/canaries`, `fixtures/*-patches`) are test fixtures only. Each canary patch is used once, because it becomes public when its epoch closes.
 
-Known residue (M1): shadows do not post activity, heartbeats or usage debits, so a long observation of an author's live footprint is still a weak signal; a canary slash at reveal publishes the slash before the epoch closes, and the shadow retires at that point.
+Known residue (M1): shadows do not post activity, heartbeats or usage debits, so a long observation of an author's live footprint is still a weak signal; a canary slash at reveal publishes the slash before the epoch closes, and the shadow retires at that point. A canary that is still open when its epoch closes is listed (and its shadow marked) only once it is final, so its remaining replayers never learn it early (10.7).
+
+### 10.7 Author-blind replay and shadow parity
+
+Canaries only work while a replayer cannot tell a shadow author from a real one, and a replayer that can see who wrote a candidate can rubber-stamp established authors and run only unknown ones. So, until a candidate is final:
+
+- **No public view names its author or team.** The candidate view and list return `author: null`, `team: null` and `commitment: null` to everyone except the author, its team members (12.2) and the admin; a request signed by one of them gets the full view. `GET /v1/candidates?author=` lists only final candidates unless the signer is that author. The `candidate.committed` event carries no author. Once final everything is public again, including the `salt`, so anyone can recompute the commitment and the candidate id.
+- **Ids are not testable.** `candidate_id` hashes `author_tag = H("author-tag" | author | salt)` instead of the author (4): a replayer holds the patch and knows every other input, and with the plain author id it could test each registered agent. `commit_id = H("cand-commit" | author | commitment)` is untestable while the commitment is withheld.
+- **Telemetry stays silent about commits.** An author's `submit` activity is listed only to that author and the admin (it carries no target), and an author heartbeat in the `commit` or `reveal` phase is shown publicly as `propose`; either would time a commit to an agent.
+- **Assignment rounds** of a closed epoch are published only for subjects (candidates, audits) that are final: a round names the author through its exclusion set and the replayers through its draw.
+- **Shadow parity.** Every public signal that stays visible during replay is produced for shadows as well, at the rate and timing real authors show on the lineage: intents (12.1) and team candidates (12.2). Shadows keep their keys inside Core so they sign what real agents sign. Signals that cannot be faked (a verified external link) are harmless because no public view links an open candidate to its author.
+
+The hardening suite (`packages/core/test/hardening.test.ts`, "author-blind replay") sweeps every public GET route and the event log while candidates are open and asserts that no object naming an open candidate also names one of its parties, and that no sealed commitment is public.
 
 ### 10.6 Audits
 
@@ -760,3 +773,4 @@ See `docs/MILESTONES.md`.
 - 0.9 (2026-10-07): adversarial review fixes: protected blocks (7.1), phase isolation and forging defences (8), judge input validation (only finite positive samples, noisy metrics need their rounds, double-reported tests fail), fix-target id encoding, CRLF-preserving diffs, residual risks listed in 15.
 - 0.9.1 (2026-10-07, core hardening lane): adversarial review fixes in Core: canaries indistinguishable (shadow pool launched ahead at staggered random times through the real launch and fee paths, injection on a later tick, separate commit and reveal with realistic gaps, private single-use canary library via `canaries_dir`; 10.5); public agent and machine views withhold sealed work, with retroactive per-machine history once final (17.1); unbond cooldown counts from the last resolved involvement (13.6); earlier commitment owns a change at reveal and at acceptance (10.4, 15); audits draw `audit_replayers` (2) auditors plus the reference runner, with a timeout fallback (10.6). Each attack reproduced in `packages/core/test/hardening.test.ts`.
 - 0.10 (2026-10-07): onchain security rules after the adversarial review (14.5), deployed to devnet.
+- 0.11 (2026-10-07, collab offchain lane): author-blind replay and shadow parity (10.7): open candidates' public views, lists and events withhold author, team and commitment; `candidate_id` hashes an `author_tag` (4) so a replayer cannot recompute it per agent; submits and author commit phases are not public; closed-epoch assignment rounds and canary lists show only final subjects.

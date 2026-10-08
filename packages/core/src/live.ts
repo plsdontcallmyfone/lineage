@@ -225,12 +225,14 @@ export class Live {
         if (rateLimited > 0 && rateLimited === refused.length) throw new ApiError(429, "rate_limited", `at most ${this.core.cfg.activity_rate} activity events per agent per minute`);
         throw new ApiError(400, "bad_activity", refused.map((r) => `#${r.index}: ${r.error}`).join("; ").slice(0, 1000));
       }
-      // SSE is throttled to one activity event per agent per second; /v1/live always has the rest
+      // SSE is throttled to one activity event per agent per second; /v1/live always has the rest.
+      // A submit is never public: its time would name the author of a candidate still open (SPEC 10.7).
       const last = this.lastActivityEmit.get(agent) ?? 0;
-      if (now - last >= 1000) {
+      const shown = accepted.filter((r) => r.kind !== "submit");
+      if (now - last >= 1000 && shown.length) {
         this.lastActivityEmit.set(agent, now);
-        const tail = accepted[accepted.length - 1]!;
-        this.core.emitEvent("activity", { agent, lineage_id: tail.lineage_id, count: accepted.length, last: this.activityPublic(tail) });
+        const tail = shown[shown.length - 1]!;
+        this.core.emitEvent("activity", { agent, lineage_id: tail.lineage_id, count: shown.length, last: this.activityPublic(tail) });
       }
       return { accepted: accepted.length, refused, ids: accepted.map((r) => r.id) };
     });
@@ -256,9 +258,17 @@ export class Live {
     };
   }
 
-  listActivity(q: { lineage?: string; agent?: string; since?: number; limit?: number }) {
+  /**
+   * Activity, newest first. `submit` events are listed only to the agent that sent them and to the
+   * admin: a public submit time would link an agent to a candidate that is still open (SPEC 10.7).
+   */
+  listActivity(q: { lineage?: string; agent?: string; since?: number; limit?: number }, viewer?: string | null) {
     const where: string[] = [];
     const args: (string | number)[] = [];
+    if (viewer !== this.core.adminId) {
+      if (viewer) (where.push("(kind != 'submit' OR agent_id = ?)"), args.push(viewer));
+      else where.push("kind != 'submit'");
+    }
     if (q.lineage) (where.push("lineage_id = ?"), args.push(q.lineage));
     if (q.agent) (where.push("agent_id = ?"), args.push(q.agent));
     if (q.since) (where.push("id > ?"), args.push(q.since));
@@ -451,6 +461,8 @@ export class Live {
         history: this.replayHistory(agent),
       };
     }
+    // an author's commit or reveal phase would time a candidate that is still open (SPEC 10.7)
+    const authorSealedPhase = !opts.full && h.job === "author" && (h.phase === "commit" || h.phase === "reveal");
     return {
       agent_id: agent,
       kind: a.shadow ? "launched" : a.kind,
@@ -460,7 +472,7 @@ export class Live {
       first_seen: h.first_at,
       beats: h.beats,
       job: h.job,
-      phase: h.phase,
+      phase: authorSealedPhase ? "propose" : h.phase,
       sealed,
       candidate_id: candidateId,
       outcome,
@@ -557,7 +569,7 @@ export class Live {
         last,
         last_file: lastFile,
         recent,
-        activity_total: this.db.query<{ c: number }, [string]>("SELECT COUNT(*) AS c FROM activity WHERE lineage_id = ?").get(lineage_id)!.c,
+        activity_total: this.db.query<{ c: number }, [string]>("SELECT COUNT(*) AS c FROM activity WHERE lineage_id = ? AND kind != 'submit'").get(lineage_id)!.c,
       };
     });
     const byJob: Record<string, number> = { replay: 0, qualify: 0, author: 0, idle: 0 };

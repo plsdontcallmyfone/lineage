@@ -1,7 +1,7 @@
 import { get, loadConfig, loadLineageNames } from "../api.ts";
 import { effect, gainPct, int, repoLink, shortHex, shortId, stamp, target, when } from "../fmt.ts";
 import { html } from "../html.ts";
-import { agentLink, auditBadge, badge, candLink, candStatus, empty, epochLink, genLink, icon, kindBadge, kv, panel, reasonText, stat } from "../ui.ts";
+import { agentLink, authorLink, auditBadge, badge, candLink, candStatus, empty, epochLink, genLink, icon, kindBadge, kv, panel, reasonText, stat } from "../ui.ts";
 import type { Page } from "./types.ts";
 
 export async function lineagePage([id]: string[]): Promise<Page> {
@@ -64,7 +64,7 @@ export async function lineagePage([id]: string[]): Promise<Page> {
             x.status !== "accepted" && typeof x.claimed_effect === "number" && x.kind !== "fix" ? html`, claims ${gainPct(1 - x.claimed_effect)} (unverified)` : ""
           }</div><div class="sub show-sm">${when(x.committed_at)}</div></td>
           <td class="wrap">${candStatus(x)}${x.detail ? html`<div class="sub">${x.detail}</div>` : ""}${x.gen_id ? html`<div class="sub">became ${genLink(x.gen_id)}</div>` : ""}</td>
-          <td class="hide-sm">${agentLink(x.author)}</td>
+          <td class="hide-sm">${authorLink(x)}</td>
           <td class="right num hide-sm">${x.replay_count}</td>
           <td class="right hide-sm">${when(x.committed_at)}</td>
         </tr>`,

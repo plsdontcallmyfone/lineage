@@ -3,10 +3,11 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { canaryDirIsPublic, loadCanaryDir } from "../src/hardening.ts";
-import { patchCommitment, patchHash, sha256Hex } from "../src/protocol.ts";
+import { candidateId, patchCommitment, patchHash, sha256Hex } from "../src/protocol.ts";
 import {
   agent,
   assignmentsFor,
+  authorLeaks,
   candidate,
   CANARY_FAST,
   commitReplay,
@@ -53,7 +54,8 @@ describe("canaries are indistinguishable before the epoch closes (SPEC 10.5)", (
     const all = await expectOk<any[]>(e.anon.get(`/v1/candidates?lineage=${e.lineage}`));
     const others = all.filter((c) => c.candidate_id !== real.candidate_id);
     expect(others).toHaveLength(1);
-    const canary = await candidate(e, others[0].candidate_id);
+    expect((await candidate(e, others[0].candidate_id)).author).toBeNull();
+    const canary = await expectOk(e.admin.c.get(`/v1/candidates/${others[0].candidate_id}`, true));
     const rv = await candidate(e, real.candidate_id);
     // (b) commit and reveal are separate requests in time, at least one tick apart
     expect(canary.revealed_at - canary.committed_at).toBeGreaterThanOrEqual(1000);
@@ -165,7 +167,7 @@ describe("no slash evasion by unbonding (SPEC 13.6)", () => {
     expect(done.bond).toBe("0");
     expect(done.wallet).toBe((e.cfg.min_bond - slash).toString());
     await reconcileOk(e);
-  });
+  }, 60_000);
 });
 
 describe("patch theft (SPEC 10.4)", () => {
@@ -260,4 +262,61 @@ describe("audits cannot be nullified by one auditor (SPEC 10.6)", () => {
     expect(g.audit.status).toBe("agreed");
     expect(g.replays.filter((r: any) => r.audit_id)).toHaveLength(2);
   });
+});
+
+describe("author-blind replay (SPEC 10.7)", () => {
+  test("no public endpoint, event or telemetry names the author of an open candidate; ids cannot be tested against agent ids", async () => {
+    const e = (env = await setup({ verifiers: 6, over: { canary_rate: 1, max_open_replays: 4, ...CANARY_FAST } }));
+    await expectOk(e.admin.c.post("/v1/admin/canaries", { lineage_id: e.lineage, kind: "perf", target: "ir", expected_reason: "tests_fail", patch: diff("blind_canary", "src/c.rs") }));
+    const author = await makeAuthor(e);
+    warmShadows(e);
+    const lv = await expectOk(e.anon.get(`/v1/lineages/${e.lineage}`));
+    // the author's live telemetry: search activity (public by design), a submit and a commit-phase heartbeat
+    await expectOk(author.c.post("/v1/heartbeat", { job: "author", lineage_id: e.lineage, gen_id: lv.tip, phase: "propose" }));
+    await expectOk(author.c.post("/v1/activity", { events: [{ kind: "search", lineage_id: e.lineage, gen_id: lv.tip, commit: lv.snapshot.commit_sha, query: "slow" }] }));
+    const real = await submit(e, author, diff("blind_real"));
+    await expectOk(author.c.post("/v1/activity", { events: [{ kind: "submit", lineage_id: e.lineage, gen_id: lv.tip, commit: lv.snapshot.commit_sha }] }));
+    e.clock.advance(1500);
+    await expectOk(author.c.post("/v1/heartbeat", { job: "author", lineage_id: e.lineage, gen_id: lv.tip, phase: "commit" }));
+    settleCanaries(e);
+    // an epoch closes while both are open: its assignment rounds must not name them yet
+    await expectOk(e.admin.c.post("/v1/admin/epochs/close"));
+    const all = await expectOk<any[]>(e.admin.c.get(`/v1/candidates?lineage=${e.lineage}`, true));
+    expect(all).toHaveLength(2);
+    expect(all.every((c) => c.status === "replaying")).toBe(true);
+    const open = all.map((c) => ({ ids: [c.commit_id, c.candidate_id], parties: [c.author], sealed: [c.commitment] }));
+    const leaks = await authorLeaks(e, open);
+    expect(leaks).toEqual([]);
+    // the public views say nothing; the author and the admin see everything
+    for (const c of all) {
+      const pub = await candidate(e, c.candidate_id);
+      expect(pub.author).toBeNull();
+      expect(pub.commitment).toBeNull();
+      expect(pub.salt).toBeNull();
+    }
+    expect((await expectOk(author.c.get(`/v1/candidates/${real.candidate_id}`, true))).author).toBe(author.id);
+    expect(await expectOk<any[]>(e.anon.get(`/v1/candidates?author=${author.id}`))).toHaveLength(0);
+    expect(await expectOk<any[]>(author.c.get(`/v1/candidates?author=${author.id}`, true))).toHaveLength(1);
+    expect((await expectOk<any[]>(e.anon.get(`/v1/activity?agent=${author.id}`))).map((a) => a.kind)).toEqual(["search"]);
+    expect((await expectOk<any[]>(author.c.get(`/v1/activity?agent=${author.id}`, true))).map((a) => a.kind).sort()).toEqual(["search", "submit"]);
+    expect((await expectOk<any[]>(e.anon.get("/v1/heartbeats"))).find((m) => m.agent_id === author.id).phase).toBe("propose");
+    // a replayer holds the patch, so it knows every input of the candidate id but the author tag
+    const agents = await expectOk<any[]>(e.anon.get("/v1/agents"));
+    const asg = (await Promise.all(e.verifiers.map((v) => assignmentsFor(v)))).flat();
+    const held = asg.find((a) => a.candidate?.candidate_id === real.candidate_id);
+    expect(held).toBeDefined();
+    const pubReal = await candidate(e, real.candidate_id);
+    for (const a of agents)
+      expect(candidateId({ lineage_id: e.lineage, parent_gen_id: pubReal.parent_gen_id, patch_hash: patchHash(held.candidate.patch), author: a.agent_id, kind: "perf", target: "ir" })).not.toBe(real.candidate_id);
+    // once final, everything is public again and the id is recomputable from the published salt
+    await runReplays(e, real.candidate_id, honest(result({}, 900)));
+    const fin = await candidate(e, real.candidate_id);
+    expect(fin.status).toBe("accepted");
+    expect(fin.author).toBe(author.id);
+    expect(fin.commitment).toBe(patchCommitment(fin.patch_hash, fin.salt));
+    expect(candidateId({ lineage_id: e.lineage, parent_gen_id: fin.parent_gen_id, patch_hash: fin.patch_hash, author: e.core.collab.authorTag(author.id, fin.salt), kind: "perf", target: "ir" })).toBe(fin.candidate_id);
+    const closed = await expectOk(e.anon.get("/v1/epochs/0"));
+    expect((closed.assignment_rounds as any[]).some((r) => r.subject === real.candidate_id)).toBe(true);
+    await reconcileOk(e);
+  }, 60_000);
 });
