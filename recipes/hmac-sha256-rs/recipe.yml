@@ -1,0 +1,88 @@
+# jedisct1/rust-hmac-sha256: a small, dependency-free SHA-256, HMAC-SHA256 and HKDF-SHA256 crate
+# (hmac-sha256 on crates.io, no_std) by Frank Denis, the author of libsodium. ISC licence
+# (LICENSE, Cargo.toml). No CONTRIBUTING, AI policy or AGENTS file in the repository (checked
+# 2026-10-08).
+# The same author's libhydrogen has an AI-POLICY.md that refuses AI-written contributions; this
+# repository has none, but the lineage should not be opted in for upstream PRs (SPEC 16) without
+# asking the author first.
+#
+# Why: SHA-256 is everywhere in crypto stacks (Bitcoin, Merkle trees, HMAC-based key derivation),
+# and this crate's code is plain safe Rust: block loading goes through bounds-checked byte slices,
+# HMAC rebuilds the padded key blocks and hashes them on every call, and HKDF-Expand re-keys a
+# fresh HMAC (one extra compression for the inner pad) for every 32-byte output block.
+#
+# Lockfile: the repository commits no Cargo.lock and has optional dependencies (the `digest`
+# trait impls), so a lockfile resolved at prepare time would drift with crates.io. The overlay
+# ships Cargo.lock generated once by `cargo generate-lockfile` (cargo 1.89, 2026-10-08); prepare
+# only fetches what it pins. Default features use none of them.
+#
+# Tests: upstream keeps one #[test] (fn main) at the end of src/lib.rs, which patches may edit;
+# it is a protected block, and tests/lineage_upstream.rs is a verbatim copy under a protected
+# path. tests/lineage_props.rs checks SHA-256, HMAC-SHA256 and RFC 5869 HKDF against values from
+# Python's hashlib and hmac (an independent implementation) around every block and padding
+# boundary, streamed at many split points. tests/test_digest011.rs needs the traits011 feature and
+# does not build by default.
+#
+# Determinism: native code under cachegrind, inputs only from $LINEAGE_SEED (FNV-1a ->
+# splitmix64, examples/lineage_support/rng.rs). Calibrated on arm64 (Docker on Apple silicon).
+name: hmac-sha256-rs
+class: rust
+requires: { arch: arm64 }
+repo: https://github.com/jedisct1/rust-hmac-sha256
+commit: "3f2ad8a97d4d0e46a6eaf7d3323f25aef6d095bd"
+image: "lineage/rust:m1@sha256:ad2f9ba06cb62446a4a2015ffac9e90f877dbd0c7e10aa2c2976240e68d0a626"
+workdir: /work/src
+prepare:
+  - cargo fetch --locked
+prepare_outputs: []
+build:
+  commands:
+    - cargo build --release --locked --offline --all-targets
+  artifacts: ["target/release/libhmac_sha256.rlib"]
+  reproducible: true
+test:
+  # --lib --tests: unit and integration tests, not doc tests. libtest names a doc test by its line
+  # number in src/lib.rs, so any patch that adds or removes a line above a doc example would
+  # "fail" it under a new id; the property tests cover every documented call.
+  command: cargo test --release --locked --offline --no-fail-fast --lib --tests 2>&1
+  parser: libtest
+  exclude: []
+  timeout_s: 600
+equivalence:
+  command: target/release/examples/lineage_equiv "$LINEAGE_SEED"
+  output: stdout-digest
+metrics:
+  - name: hash_ir
+    kind: perf
+    direction: lower
+    deterministic: true
+    command: valgrind --tool=cachegrind --cache-sim=no --cachegrind-out-file=/dev/null target/release/examples/lineage_bench hash "$LINEAGE_SEED"
+    parser: cachegrind-ir
+    holdout: true
+    min_effect: 0.01
+  - name: hmac_ir
+    kind: perf
+    direction: lower
+    deterministic: true
+    command: valgrind --tool=cachegrind --cache-sim=no --cachegrind-out-file=/dev/null target/release/examples/lineage_bench hmac "$LINEAGE_SEED"
+    parser: cachegrind-ir
+    holdout: true
+    min_effect: 0.01
+  - name: hkdf_ir
+    kind: perf
+    direction: lower
+    deterministic: true
+    command: valgrind --tool=cachegrind --cache-sim=no --cachegrind-out-file=/dev/null target/release/examples/lineage_bench hkdf "$LINEAGE_SEED"
+    parser: cachegrind-ir
+    holdout: true
+    min_effect: 0.01
+patch:
+  allowed_paths: ["src/**"]
+  protected_paths: ["tests/**", "examples/**", "benches/**", "Cargo.toml", "Cargo.lock", "build.rs", "README.md", ".github/**", "**/*.yml"]
+  protected_blocks:
+    # upstream's unit test is `#[test] fn main` at the end of src/lib.rs
+    - { glob: "src/**/*.rs", start: "^\\s*#\\[test\\]" }
+    - { glob: "src/**/*.rs", start: "^\\s*#\\[cfg\\(test\\)\\]" }
+  max_files: 5
+  max_lines: 200
+limits: { cpus: 2, memory_mb: 2048, pids: 256, wall_s: 900, disk_mb: 4096 }

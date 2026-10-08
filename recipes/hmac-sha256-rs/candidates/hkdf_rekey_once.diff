@@ -1,0 +1,14 @@
+diff --git a/src/lib.rs b/src/lib.rs
+--- a/src/lib.rs
++++ b/src/lib.rs
+@@ -732,8 +732,9 @@ impl HKDF {
+         let mut counter: u8 = 1;
+         assert!(out.len() < 0xff * 32);
+         let mut i: usize = 0;
++        let keyed = HMAC::new(&prk);
+         while i < out.len() {
+-            let mut hmac = HMAC::new(&prk);
++            let mut hmac = keyed.clone();
+             if i != 0 {
+                 hmac.update(&out[i - 32..][..32]);
+             }

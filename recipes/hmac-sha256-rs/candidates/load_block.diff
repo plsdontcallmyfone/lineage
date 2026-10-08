@@ -1,0 +1,16 @@
+diff --git a/src/lib.rs b/src/lib.rs
+--- a/src/lib.rs
++++ b/src/lib.rs
+@@ -89,9 +89,10 @@ struct State([u32; 8]);
+ 
+ impl W {
+     fn new(input: &[u8]) -> Self {
++        let block: &[u8; 64] = input[..64].try_into().unwrap();
+         let mut w = [0u32; 16];
+-        for (i, e) in w.iter_mut().enumerate() {
+-            *e = load_be(input, i * 4)
++        for (e, c) in w.iter_mut().zip(block.chunks_exact(4)) {
++            *e = u32::from_be_bytes([c[0], c[1], c[2], c[3]]);
+         }
+         W(w)
+     }

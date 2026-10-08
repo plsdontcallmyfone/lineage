@@ -1,0 +1,12 @@
+diff --git a/src/lib.rs b/src/lib.rs
+--- a/src/lib.rs
++++ b/src/lib.rs
+@@ -242,7 +242,7 @@ impl State {
+ 
+     fn store(&self, out: &mut [u8]) {
+         for (i, &e) in self.0.iter().enumerate() {
+-            store_be(out, i * 4, e);
++            out[i * 4..i * 4 + 4].copy_from_slice(&e.to_be_bytes());
+         }
+     }
+ 

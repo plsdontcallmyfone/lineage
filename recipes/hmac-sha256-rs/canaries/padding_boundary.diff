@@ -1,0 +1,12 @@
+diff --git a/src/lib.rs b/src/lib.rs
+--- a/src/lib.rs
++++ b/src/lib.rs
+@@ -358,7 +358,7 @@ impl Hash {
+         let mut padded = [0u8; 128];
+         padded[..self.r].copy_from_slice(&self.w[..self.r]);
+         padded[self.r] = 0x80;
+-        let r = if self.r < 56 { 64 } else { 128 };
++        let r = if self.r <= 56 { 64 } else { 128 };
+         let bits = self.len * 8;
+         for i in 0..8 {
+             padded[r - 8 + i] = (bits as u64 >> (56 - i * 8)) as u8;

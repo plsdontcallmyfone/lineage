@@ -1,0 +1,21 @@
+{
+  "load_block": {
+    "kind": "perf",
+    "target": [
+      "hash_ir",
+      "hmac_ir"
+    ],
+    "expect": "accepted",
+    "note": "W::new takes the 64-byte block as one fixed-size array and reads its sixteen words with u32::from_be_bytes over chunks_exact(4), so the compiler drops the per-word slice bounds checks and four-byte shift-or chains that load_be(&input[offset..]) needed.",
+    "lines": 5,
+    "guard": "ok"
+  },
+  "hkdf_rekey_once": {
+    "kind": "perf",
+    "target": "hkdf_ir",
+    "expect": "accepted",
+    "note": "HKDF::expand keys HMAC with the PRK once and clones the keyed state for every 32-byte output block, instead of building a new HMAC (padding the key and compressing the inner pad block) per block; the output is unchanged.",
+    "lines": 3,
+    "guard": "ok"
+  }
+}

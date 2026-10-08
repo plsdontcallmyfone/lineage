@@ -1,0 +1,51 @@
+{
+  "recipe_id": "1d78dde96e78eb7882547fe8bf1074e364e1736c8177a45844157987fd377332",
+  "snapshot_id": "",
+  "runs": 5,
+  "stable": [
+    "src/lib.rs::main",
+    "tests/lineage_props.rs::hkdf_rfc5869",
+    "tests/lineage_props.rs::hmac_one_shot_and_streaming",
+    "tests/lineage_props.rs::sha256_one_shot",
+    "tests/lineage_props.rs::sha256_streaming_any_split",
+    "tests/lineage_props.rs::sha256_verify",
+    "tests/lineage_upstream.rs::upstream_main"
+  ],
+  "known_failures": [],
+  "quarantined": [],
+  "metrics": {
+    "hash_ir": {
+      "enabled": true,
+      "cv": 0,
+      "base_value": 23821315
+    },
+    "hmac_ir": {
+      "enabled": true,
+      "cv": 0,
+      "base_value": 40841708
+    },
+    "hkdf_ir": {
+      "enabled": true,
+      "cv": 0,
+      "base_value": 35852737
+    }
+  },
+  "median_eval_seconds": 35,
+  "seed": "ca11b7a7e",
+  "recipe_name": "hmac-sha256-rs",
+  "repo": "https://github.com/jedisct1/rust-hmac-sha256",
+  "commit": "3f2ad8a97d4d0e46a6eaf7d3323f25aef6d095bd",
+  "deps_digest": "04aa5936f3f2cad27d0ecc65248b4384afa350bcf924c608bc51390726f2bee8",
+  "image_digest": "sha256:ad2f9ba06cb62446a4a2015ffac9e90f877dbd0c7e10aa2c2976240e68d0a626",
+  "date": "2026-10-08T22:01:03.924Z",
+  "calibration_wall_seconds": 21.9,
+  "counts": {
+    "stable": 7,
+    "known_failures": 0,
+    "quarantined": 0,
+    "excluded": 0
+  },
+  "notes": [
+    "calibration wall time 22 s"
+  ]
+}

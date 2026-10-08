@@ -1,0 +1,17 @@
+diff --git a/src/lib.rs b/src/lib.rs
+--- a/src/lib.rs
++++ b/src/lib.rs
+@@ -444,11 +444,11 @@ impl Hash {
+     /// assert!(hmac_sha256::Hash::verify(b"original data", &expected));
+     /// ```
+     pub fn verify_with_ref(self, expected: &[u8]) -> bool {
+-        if expected.len() != 32 {
++        if expected.len() < 32 {
+             return false;
+         }
+         let out = self.finalize();
+-        verify(&out, expected)
++        verify(&out, &expected[..32])
+     }
+ 
+     /// Computes the SHA-256 hash of the provided input in a single operation.

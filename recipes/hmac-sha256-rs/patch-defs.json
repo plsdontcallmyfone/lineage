@@ -1,0 +1,79 @@
+{
+  "canaries": [
+    {
+      "name": "padding_boundary",
+      "kind": "perf",
+      "target": "hash_ir",
+      "expect": "tests_fail",
+      "note": "Presented as saving a whole extra padding block for 56-byte tails (<= instead of <); with 56 bytes buffered the 0x80 marker and the bit length overlap, so every message whose length is 56 mod 64 hashes wrongly.",
+      "edits": [
+        [
+          "src/lib.rs",
+          "        let r = if self.r < 56 { 64 } else { 128 };\n",
+          "        let r = if self.r <= 56 { 64 } else { 128 };\n"
+        ]
+      ]
+    },
+    {
+      "name": "ref_prefix_compare",
+      "kind": "perf",
+      "target": "hash_ir",
+      "expect": "equivalence_changed",
+      "note": "Presented as letting verify_with_ref compare against a caller's larger buffer without a length branch; any reference that starts with the digest and has trailing bytes now verifies as true. Upstream and property tests only pass 32-byte and shorter references.",
+      "edits": [
+        [
+          "src/lib.rs",
+          "    pub fn verify_with_ref(self, expected: &[u8]) -> bool {\n        if expected.len() != 32 {\n            return false;\n        }\n        let out = self.finalize();\n        verify(&out, expected)\n    }\n",
+          "    pub fn verify_with_ref(self, expected: &[u8]) -> bool {\n        if expected.len() < 32 {\n            return false;\n        }\n        let out = self.finalize();\n        verify(&out, &expected[..32])\n    }\n"
+        ]
+      ]
+    },
+    {
+      "name": "store_to_be_bytes",
+      "kind": "perf",
+      "target": "hash_ir",
+      "expect": "no_improvement",
+      "note": "Presented as a faster digest serialization (u32::to_be_bytes instead of four shifted byte stores); it runs once per digest, so the instruction count does not move by the required 1%.",
+      "edits": [
+        [
+          "src/lib.rs",
+          "    fn store(&self, out: &mut [u8]) {\n        for (i, &e) in self.0.iter().enumerate() {\n            store_be(out, i * 4, e);\n        }\n    }\n",
+          "    fn store(&self, out: &mut [u8]) {\n        for (i, &e) in self.0.iter().enumerate() {\n            out[i * 4..i * 4 + 4].copy_from_slice(&e.to_be_bytes());\n        }\n    }\n"
+        ]
+      ]
+    }
+  ],
+  "candidates": [
+    {
+      "name": "load_block",
+      "kind": "perf",
+      "target": [
+        "hash_ir",
+        "hmac_ir"
+      ],
+      "expect": "accepted",
+      "note": "W::new takes the 64-byte block as one fixed-size array and reads its sixteen words with u32::from_be_bytes over chunks_exact(4), so the compiler drops the per-word slice bounds checks and four-byte shift-or chains that load_be(&input[offset..]) needed.",
+      "edits": [
+        [
+          "src/lib.rs",
+          "    fn new(input: &[u8]) -> Self {\n        let mut w = [0u32; 16];\n        for (i, e) in w.iter_mut().enumerate() {\n            *e = load_be(input, i * 4)\n        }\n        W(w)\n    }\n",
+          "    fn new(input: &[u8]) -> Self {\n        let block: &[u8; 64] = input[..64].try_into().unwrap();\n        let mut w = [0u32; 16];\n        for (e, c) in w.iter_mut().zip(block.chunks_exact(4)) {\n            *e = u32::from_be_bytes([c[0], c[1], c[2], c[3]]);\n        }\n        W(w)\n    }\n"
+        ]
+      ]
+    },
+    {
+      "name": "hkdf_rekey_once",
+      "kind": "perf",
+      "target": "hkdf_ir",
+      "expect": "accepted",
+      "note": "HKDF::expand keys HMAC with the PRK once and clones the keyed state for every 32-byte output block, instead of building a new HMAC (padding the key and compressing the inner pad block) per block; the output is unchanged.",
+      "edits": [
+        [
+          "src/lib.rs",
+          "        let mut i: usize = 0;\n        while i < out.len() {\n            let mut hmac = HMAC::new(&prk);\n",
+          "        let mut i: usize = 0;\n        let keyed = HMAC::new(&prk);\n        while i < out.len() {\n            let mut hmac = keyed.clone();\n"
+        ]
+      ]
+    }
+  ]
+}

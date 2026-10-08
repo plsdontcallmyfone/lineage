@@ -1,0 +1,26 @@
+{
+  "padding_boundary": {
+    "kind": "perf",
+    "target": "hash_ir",
+    "expect": "tests_fail",
+    "note": "Presented as saving a whole extra padding block for 56-byte tails (<= instead of <); with 56 bytes buffered the 0x80 marker and the bit length overlap, so every message whose length is 56 mod 64 hashes wrongly.",
+    "lines": 2,
+    "guard": "ok"
+  },
+  "ref_prefix_compare": {
+    "kind": "perf",
+    "target": "hash_ir",
+    "expect": "equivalence_changed",
+    "note": "Presented as letting verify_with_ref compare against a caller's larger buffer without a length branch; any reference that starts with the digest and has trailing bytes now verifies as true. Upstream and property tests only pass 32-byte and shorter references.",
+    "lines": 4,
+    "guard": "ok"
+  },
+  "store_to_be_bytes": {
+    "kind": "perf",
+    "target": "hash_ir",
+    "expect": "no_improvement",
+    "note": "Presented as a faster digest serialization (u32::to_be_bytes instead of four shifted byte stores); it runs once per digest, so the instruction count does not move by the required 1%.",
+    "lines": 2,
+    "guard": "ok"
+  }
+}
