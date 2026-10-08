@@ -1,6 +1,6 @@
 # Lineage: specification
 
-Status: draft v0.8, 2026-10-07. Working name "Lineage" is a placeholder; the token is called `$LINE` in this document only as a stand-in (ticker, mint, supply, burn amount and treasury addresses are TBA).
+Status: draft v0.10, 2026-10-07. Working name "Lineage" is a placeholder; the token is called `$LINE` in this document only as a stand-in (ticker, mint, supply, burn amount and treasury addresses are TBA).
 
 This document is the source of truth. Code that disagrees with it is a bug in one of the two; fix whichever is wrong and note it in the changelog at the bottom.
 
@@ -619,6 +619,21 @@ Strings in a leaf may only contain printable ASCII without `"` or `\` (true of b
 
 ---
 
+### 14.5 Security rules added after the adversarial review (2026-10-07)
+
+Both programs were upgraded on devnet with these rules; `onchain/README.md` "Review fixes" maps each to its LiteSVM attack test.
+
+- **Graduation is bound to the real migration position.** `graduate` requires the position to hold a strict majority of the pool's permanently locked liquidity; `repoint_position` (permissionless) moves to an authority-held, fully locked position with strictly more locked liquidity; `graduate_by_admin` exists only for a pool where a third party locked more liquidity than the migration and kept its NFT.
+- **No stranded fees.** `crank_fees` works before and after graduation (curve fees and partner surplus left at migration are claimable); post-graduation pool fees use `crank_pool_fees`.
+- **Slashes land once.** `slash(offence, epoch, slash_id)` creates a `SlashReceipt` PDA keyed by Core's slash id (`sha256(["lineage-slash", id, agent, reason, ref, epoch])`); strikes restart only on a strictly newer epoch.
+- **Epochs are a clocked sequence.** `post_epoch` must be exactly the next epoch; epoch `anchor + k` cannot land before `anchor_ts + (k - 1) x epoch_length_s`; `pool_amount` is bounded by the pool vault and `rebate_amount` by the reserve and `max_rebate_per_epoch`; admin `set_epoch_cursor` repairs the sequence.
+- **Compute debits are bounded.** `post_usage` is one clocked sequence; `debit_compute` applies only to hosted agents and is capped by `max_debit_per_epoch`; self-hosted vaults are withdrawn by their launcher.
+- **Unbonds cannot outrun slashes.** `unbond_cooldown_s >= 2 x epoch_length_s` onchain; Core additionally starts the cooldown only after the agent's last involvement resolves (13.6).
+- **Fixed trust anchors.** The launch program's registry reference is a constant; admin, Core authority, launch program and compute sink must be nonzero; `min_bond <= bond_cap` (`bond_cap` remains an assignment-weight cap, 10.3).
+- **Mint allowlist.** `$LINE` may use only the Token-2022 metadata pointer and metadata extensions (no transfer fees, hooks, permanent delegate or default freeze).
+- **Launch fits one transaction.** Name, symbol, URI and URL together are at most 227 bytes; the longest accepted launch is exactly 1,232 bytes.
+- **Core bridge is idempotent.** On a send error Core reads back the `Epoch` or `SlashReceipt` PDA before retrying; failed sends retry with backoff and are never dropped.
+
 ## 15. Threat model
 
 | Attack | Mitigation |
@@ -744,3 +759,4 @@ See `docs/MILESTONES.md`.
 - 0.8.1 (2026-10-07, onchain lane): section 14 as built: `lineage_registry` and `lineage_launch` Anchor programs, LiteSVM suites against the real Meteora builds, `packages/chain` client. Claimed leaves are tracked by receipt PDAs keyed by leaf hash, not a bitmap (sorted-pair proofs do not bind an index); the payout leaf is unchanged and verified onchain byte for byte; new usage leaf for compute debits (14.3); `crank_pool_fees` is the post-graduation half of `crank_fees`; added `update_agent`, `withdraw_compute`, `refresh_awake`; launch DBC configs must give no creator fee share.
 - 0.9 (2026-10-07): adversarial review fixes: protected blocks (7.1), phase isolation and forging defences (8), judge input validation (only finite positive samples, noisy metrics need their rounds, double-reported tests fail), fix-target id encoding, CRLF-preserving diffs, residual risks listed in 15.
 - 0.9.1 (2026-10-07, core hardening lane): adversarial review fixes in Core: canaries indistinguishable (shadow pool launched ahead at staggered random times through the real launch and fee paths, injection on a later tick, separate commit and reveal with realistic gaps, private single-use canary library via `canaries_dir`; 10.5); public agent and machine views withhold sealed work, with retroactive per-machine history once final (17.1); unbond cooldown counts from the last resolved involvement (13.6); earlier commitment owns a change at reveal and at acceptance (10.4, 15); audits draw `audit_replayers` (2) auditors plus the reference runner, with a timeout fallback (10.6). Each attack reproduced in `packages/core/test/hardening.test.ts`.
+- 0.10 (2026-10-07): onchain security rules after the adversarial review (14.5), deployed to devnet.
