@@ -57,6 +57,17 @@
         "@lineage/protocol": "workspace:*",
       },
     },
+    "packages/souls": {
+      "name": "@lineage/souls",
+      "version": "0.1.0",
+      "bin": {
+        "lineage-souls": "src/cli.ts",
+      },
+      "dependencies": {
+        "@anthropic-ai/sdk": "^0.132.0",
+        "@lineage/protocol": "workspace:*",
+      },
+    },
     "packages/worker": {
       "name": "@lineage/worker",
       "version": "0.1.0",
@@ -84,6 +95,8 @@
     "@lineage/runtime": ["@lineage/runtime@workspace:packages/runtime"],
 
     "@lineage/sandbox": ["@lineage/sandbox@workspace:packages/sandbox"],
+
+    "@lineage/souls": ["@lineage/souls@workspace:packages/souls"],
 
     "@lineage/web": ["@lineage/web@workspace:apps/web"],
 
