@@ -39,4 +39,5 @@ Spec: `docs/SPEC.md` (source of truth). Milestones: `docs/MILESTONES.md`.
 | collab offchain 2 lane | packages/core/** (series, messages), packages/worker/**, apps/web/src/**, scripts/e2e.ts, docs/SPEC.md (C2/C3 sections) | DONE (C3 stacked series, C2 messages; bun test packages 326/326, e2e 72/72; SPEC 0.15) | 2026-10-08 |
 | site deploy lane | scripts/deploy/**, docs/DEPLOY-SITE.md | IN PROGRESS | 2026-10-08 |
 | GPU session lane | scripts/gpu/**, images/cuda/**, recipes/fixture-cuda/**, recipes/llmc-cuda/**, fixtures/cuda-reduce*/**, docs/GPU-SESSION.md | IN PROGRESS | 2026-10-08 |
+| souls lane | packages/souls/**, apps/web/wallet (launch soul step), apps/web/src/pages (soul views), packages/core (soul endpoints via new module) | IN PROGRESS | 2026-10-08 |
 | onchain messages lane | onchain/** (lineage_msg), packages/chain/**, packages/core/src/msgchain.ts (+ minimal call sites), apps/web/src (board/inbox read paths) | IN PROGRESS | 2026-10-08 |
