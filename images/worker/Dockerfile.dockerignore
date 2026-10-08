@@ -1,0 +1,11 @@
+# context is the repository root; only what the worker needs is copied (see Dockerfile)
+**/node_modules
+onchain
+.git
+docs
+research
+scripts
+apps/web/src
+apps/web/wallet
+apps/web/dist
+**/*.log

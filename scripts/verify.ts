@@ -4,9 +4,18 @@
 // replay from Core's public API, recomputes the verdict with the protocol package, and compares
 // the outcome and digest with what Core recorded. Trusts nothing Core computed.
 //
+// Draws (SPEC 10.3): for every closed epoch whose secret is published, recomputes each assignment
+// round from the secret and its beacon input (M1: the clock bucket; M2: the Solana slot and hash),
+// and every recorded canary and audit decision. With --rpc (or --chain, the devnet resolver) it also
+// reads each slot from the cluster: the block hash, that no block was produced between the target and
+// the slot used, and that the block is not older than the request.
+//
 // Usage: bun scripts/verify.ts --core http://127.0.0.1:9660 [--candidate <id>] [--lineage <id>]
+//          [--no-draws] [--epoch <n>] [--rpc <url> | --chain]
 //        (no candidate: verifies every final candidate, or every one in the lineage)
-import { judge, measuredSplit, type Calibration, type RevealedReplay } from "@lineage/protocol";
+import { assignmentSeed, assignReplayers, H, judge, measuredSplit, Rng, type Calibration, type RevealedReplay } from "@lineage/protocol";
+import { blockAt, blocksBetween, Rpc } from "@lineage/chain";
+import { devnetRpcUrl } from "../packages/chain/src/endpoint.ts";
 
 const argv = process.argv.slice(2);
 const opt = (k: string) => (argv.includes(`--${k}`) ? argv[argv.indexOf(`--${k}`) + 1] : undefined);
@@ -76,4 +85,84 @@ for (const id of ids) {
   console.log(`${r.ok ? "ok  " : "FAIL"} ${id.slice(0, 12)} ${r.detail}`);
 }
 console.log(`${ids.length - bad}/${ids.length} verdicts independently recomputed`);
+
+// ------------------------------------------------------------------------------------------- draws
+/** Allowed difference between Core's clock and the cluster's block times when checking a slot is not older than its request. */
+const SKEW_S = 5;
+
+async function verifyDraws(): Promise<number> {
+  const rpcUrl = opt("rpc") ?? (argv.includes("--chain") ? devnetRpcUrl() : null);
+  const rpc = rpcUrl ? Rpc.http(rpcUrl) : null;
+  const epochs = opt("epoch") ? [{ n: Number(opt("epoch")) }] : ((await get("/v1/epochs")) as any[]).filter((e) => e.status === "closed");
+  let rounds = 0, slotRounds = 0, decisions = 0, chainChecked = 0, sealed = 0, fails = 0;
+  const fail = (m: string) => {
+    fails++;
+    console.log(`FAIL ${m}`);
+  };
+  for (const { n } of epochs) {
+    const ep = await get(`/v1/epochs/${n}`);
+    if (ep.status !== "closed") continue;
+    if (!ep.secret) {
+      sealed++;
+      continue;
+    }
+    if (H("beacon-commit", ep.secret) !== ep.beacon_commit) fail(`epoch ${n}: the revealed secret does not match beacon_commit`);
+    const sb = ep.slot_beacon as { lag_slots: number; draws: any[]; decisions: any[] } | undefined;
+    const drawOf = (subject: string, round: number) => sb?.draws.find((d) => d.subject === subject && d.round === round);
+    for (const r of ep.assignment_rounds ?? []) {
+      rounds++;
+      const tag = `epoch ${n} ${String(r.subject).slice(0, 12)} round ${r.round}`;
+      let beacon: string;
+      if (r.bucket >= 0) beacon = H("m1-beacon", ep.secret, r.subject, r.round, r.bucket);
+      else {
+        const d = drawOf(r.subject, r.round);
+        if (!d) {
+          fail(`${tag}: slot draw not published`);
+          continue;
+        }
+        slotRounds++;
+        if (d.target_slot !== d.anchor_slot + d.lag_slots || d.lag_slots < 1) fail(`${tag}: target ${d.target_slot} is not anchor ${d.anchor_slot} + lag ${d.lag_slots}`);
+        if (d.slot < d.target_slot) fail(`${tag}: slot ${d.slot} is before its target ${d.target_slot}`);
+        if (d.anchored_at < d.requested_at) fail(`${tag}: anchored before the request`);
+        beacon = H("slot-beacon", ep.secret, r.subject, r.round, d.slot, d.hash);
+      }
+      if (beacon !== r.beacon) fail(`${tag}: beacon recomputes to ${beacon.slice(0, 12)}, Core recorded ${String(r.beacon).slice(0, 12)}`);
+      const seed = assignmentSeed(beacon, r.subject);
+      if (seed !== r.assignment_seed) fail(`${tag}: assignment seed differs`);
+      const pool = r.pool.map((p: any) => ({ agent: p.agent, bond: BigInt(p.bond), operator: p.operator ?? undefined }));
+      const chosen = r.count > 0 ? assignReplayers(seed, pool, Math.min(r.count, pool.length), { agents: [] }, BigInt(cfg.bond_cap)) : [];
+      if (JSON.stringify(chosen) !== JSON.stringify(r.chosen)) fail(`${tag}: draw recomputes to ${JSON.stringify(chosen)}, Core recorded ${JSON.stringify(r.chosen)}`);
+    }
+    for (const u of sb?.decisions ?? []) {
+      decisions++;
+      const d = drawOf(u.draw_subject, u.draw_round);
+      if (!d) {
+        fail(`epoch ${n} ${u.kind} ${String(u.subject).slice(0, 12)}: its slot draw is not published`);
+        continue;
+      }
+      const v = new Rng(H(`slot-${u.kind}`, ep.secret, u.subject, d.slot, d.hash)).next();
+      if (v !== u.value || (v < u.rate) !== u.outcome) fail(`epoch ${n} ${u.kind} ${String(u.subject).slice(0, 12)}: recomputes to ${v} (${v < u.rate}), Core recorded ${u.value} (${u.outcome})`);
+    }
+    if (rpc)
+      for (const d of sb?.draws ?? []) {
+        const tag = `epoch ${n} ${String(d.subject).slice(0, 12)} round ${d.round} slot ${d.slot}`;
+        const b = await blockAt(rpc, d.slot);
+        if (!b) {
+          fail(`${tag}: no block at this slot on the cluster`);
+          continue;
+        }
+        if (b.hash !== d.hash) fail(`${tag}: cluster hash ${b.hash} differs from ${d.hash}`);
+        const produced = await blocksBetween(rpc, d.target_slot, d.slot);
+        if (produced.length !== 1 || produced[0] !== d.slot) fail(`${tag}: blocks ${JSON.stringify(produced)} between target ${d.target_slot} and slot ${d.slot}`);
+        if (b.blockTime !== null && b.blockTime < Math.floor(d.requested_at / 1000) - SKEW_S) fail(`${tag}: block time ${b.blockTime} is before the request ${d.requested_at}`);
+        chainChecked++;
+      }
+  }
+  console.log(
+    `draws: ${rounds} assignment rounds (${slotRounds} on a slot hash) and ${decisions} canary/audit decisions recomputed in ${epochs.length - sealed} revealed epochs` +
+      `${sealed ? `, ${sealed} still sealed` : ""}${rpc ? `; ${chainChecked} slots checked on the cluster` : ""}; ${fails ? `${fails} FAIL` : "all match"}`,
+  );
+  return fails;
+}
+if (!argv.includes("--no-draws")) bad += await verifyDraws();
 process.exit(bad ? 1 : 0);

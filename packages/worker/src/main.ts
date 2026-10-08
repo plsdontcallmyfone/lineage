@@ -260,6 +260,14 @@ async function main() {
       }
       throw new Error("msg send|inbox|board|block (see header of src/main.ts)");
     }
+    case "help":
+    case "--help":
+    case "-h": {
+      // the usage text is this file's header comment (also what `docker run lineage/worker` prints)
+      const head = readFileSync(import.meta.path, "utf8").split("\n").slice(1);
+      console.log(head.slice(0, head.findIndex((l) => !l.startsWith("//"))).map((l) => l.replace(/^\/\/ ?/, "")).join("\n"));
+      return;
+    }
     default:
       console.error("usage: lineage-worker keygen|doctor|register|bond|status|run|calibrate|cosign|rotate|revoke|msg (see header of src/main.ts)");
       process.exit(2);

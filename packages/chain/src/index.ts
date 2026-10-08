@@ -12,3 +12,4 @@ export * from "./sender.ts";
 export * from "./spl.ts";
 export * from "./meteora.ts";
 export * from "./readers.ts";
+export * from "./slots.ts";

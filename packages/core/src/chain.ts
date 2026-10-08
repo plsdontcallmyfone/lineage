@@ -40,6 +40,8 @@ export interface ChainSettings {
   /** Keypair file of the registry's Core authority; without it the bridge only reads. */
   core_authority_key?: string;
   poll_ms?: number;
+  /** Slot-hash beacon lag in slots (SPEC 10.3); default 32 (src/beacon.ts). */
+  beacon_lag_slots?: number;
 }
 
 export function parseChainSettings(raw: unknown): ChainSettings | null {

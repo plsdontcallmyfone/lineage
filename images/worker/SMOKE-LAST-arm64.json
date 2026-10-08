@@ -1,0 +1,52 @@
+{
+  "at": "2026-10-08T21:44:31.512Z",
+  "image": "lineage/worker",
+  "arch": "arm64",
+  "results": [
+    {
+      "check": "the image prints its usage",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "doctor inside the container sees the host daemon's architecture",
+      "ok": true,
+      "detail": "{\"arch\":\"arm64\",\"cpus\":10,\"memory_mb\":7934,\"gpus\":[]}"
+    },
+    {
+      "check": "v1 registered and bonded by the containerized CLI",
+      "ok": true,
+      "detail": "caps {\"arch\":\"arm64\",\"cpus\":10,\"gpus\":[],\"memory_mb\":7934}"
+    },
+    {
+      "check": "v2 registered and bonded by the containerized CLI",
+      "ok": true,
+      "detail": "caps {\"arch\":\"arm64\",\"cpus\":10,\"gpus\":[],\"memory_mb\":7934}"
+    },
+    {
+      "check": "both containers qualified on fixture-b58 (sandboxes on the host daemon)",
+      "ok": true,
+      "detail": "passed, passed"
+    },
+    {
+      "check": "perf_encode accepted on the containers' replays",
+      "ok": true,
+      "detail": "accepted  ratio -; revealed by 85q34t, C6Z1U7"
+    },
+    {
+      "check": "verify.ts recomputes the verdict",
+      "ok": true,
+      "detail": "ok   b02fc41dfcab accepted, 2 replays, digest 58c64c1f8dc4 matches"
+    },
+    {
+      "check": "docker stop drains v1 (SIGTERM through tini, exit 0)",
+      "ok": true,
+      "detail": "[21:44:30 85q34t] drained: nothing left to reveal; exit 0"
+    },
+    {
+      "check": "docker stop drains v2 (SIGTERM through tini, exit 0)",
+      "ok": true,
+      "detail": "[21:44:31 C6Z1U7] drained: nothing left to reveal; exit 0"
+    }
+  ]
+}

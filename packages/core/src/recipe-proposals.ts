@@ -36,7 +36,7 @@ interface Internals {
   isEligible(a: AgentRowLike, epoch: number, ignoreLoad?: boolean): boolean;
   bondOf(id: string): bigint;
   currentEpoch(): { n: number };
-  beacon(subject: string, round: number): { beacon: string };
+  beacon(subject: string, round: number): { beacon: string } | null;
   addRecipe(body: unknown): { recipe_id: string; created: boolean };
   addSnapshot(body: unknown): { snapshot_id: string };
   submitCalibration(agent: string, body: unknown, consensus?: boolean): { lineage_id: string; calib_id: string; gen0: string };
@@ -377,7 +377,9 @@ export class RecipeProposals {
     const pool = this.classPool(p, recipe, new Set([p.proposer, ...expired]), new Set(proposer?.operator ? [proposer.operator] : []));
     const need = this.param("calib_replayers");
     if (pool.length < need) return; // waits until enough class-qualified verifiers exist
-    const { beacon } = this.c.beacon(p.proposal_id, p.round);
+    const b = this.c.beacon(p.proposal_id, p.round);
+    if (!b) return; // slot beacon (M2): the draw waits for its slot to be final
+    const { beacon } = b;
     const aseed = assignmentSeed(beacon, p.proposal_id);
     const chosen = assignReplayers(aseed, pool, need, { agents: [] }, this.c.cfg.bond_cap);
     // one shared seed per round, unknown to the proposer when it submitted (SPEC 10.3)

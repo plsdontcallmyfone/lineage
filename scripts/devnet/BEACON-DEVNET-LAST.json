@@ -1,0 +1,105 @@
+{
+  "at": "2026-10-08T21:47:02.258Z",
+  "rpc": "https://api.devnet.solana.com",
+  "lag_slots": 32,
+  "candidate": "9dc42c8b7b119b6676896767da02aeb11284d8cd59863f8f3a86d776046972dd",
+  "epoch": 15,
+  "beacon_commit": "39b271a8769b710b30af7de4517608e3c6779026b18799c8cda4ee9be55c17a3",
+  "slot_beacon": {
+    "lag_slots": 32,
+    "draws": [
+      {
+        "subject": "33b920dfb58e172421a2636ad08981d2f9a601ee2e003809212caca380eb2d14",
+        "round": 0,
+        "epoch": 15,
+        "requested_at": 1791495953238,
+        "anchor_slot": 508956837,
+        "anchored_at": 1791495953486,
+        "lag_slots": 32,
+        "target_slot": 508956869,
+        "slot": 508956869,
+        "hash": "BAEYz1am1359KHquoipFFE2Z5tqiFhJWBe1gEHacR7s3",
+        "block_time": 1791495960,
+        "resolved_at": 1791495961652
+      },
+      {
+        "subject": "806093712784e8b36a62e3fa13b1cc68facbda9437fa7fe9606a24a3c2eeed33",
+        "round": 0,
+        "epoch": 15,
+        "requested_at": 1791495985320,
+        "anchor_slot": 508956973,
+        "anchored_at": 1791495985540,
+        "lag_slots": 32,
+        "target_slot": 508957005,
+        "slot": 508957005,
+        "hash": "AAyo3WwgbVGp6bW7xwEdi8AeMadbHT2ikFKhiYJaDt4t",
+        "block_time": 1791495992,
+        "resolved_at": 1791495994706
+      }
+    ],
+    "decisions": [
+      {
+        "kind": "audit",
+        "subject": "6c4a117d75b31c98ba942724392a91bb631a5896ce32ec3d74cd14b38be82421",
+        "epoch": 15,
+        "draw_subject": "33b920dfb58e172421a2636ad08981d2f9a601ee2e003809212caca380eb2d14",
+        "draw_round": 0,
+        "value": 0.9491714756004512,
+        "rate": 1,
+        "outcome": true
+      }
+    ]
+  },
+  "verify": [
+    "ok   9dc42c8b7b11 accepted, 2 replays, digest 5a8b91b2e02a matches",
+    "1/1 verdicts independently recomputed",
+    "draws: 2 assignment rounds (2 on a slot hash) and 1 canary/audit decisions recomputed in 1 revealed epochs; 2 slots checked on the cluster; all match"
+  ],
+  "results": [
+    {
+      "check": "local Core in chain mode reads devnet without signing (core_signing false)",
+      "ok": true,
+      "detail": "slot 508956667"
+    },
+    {
+      "check": "agent-base58-py mirrored from its AgentLaunch, awake",
+      "ok": true,
+      "detail": "compute 2500000000"
+    },
+    {
+      "check": "three devnet-bonded verifiers qualified",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "encode_chunked accepted",
+      "ok": true,
+      "detail": "accepted  ratio -"
+    },
+    {
+      "check": "the generation was audited (audit_rate 1) and the audit resolved",
+      "ok": true,
+      "detail": "audit agreed"
+    },
+    {
+      "check": "closed epoch publishes its secret and the slot record",
+      "ok": true,
+      "detail": "2 rounds, 2 slot draws, 1 decisions"
+    },
+    {
+      "check": "every assignment round was drawn from a slot hash (bucket -1)",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "nothing was posted: the registry's last epoch is unchanged",
+      "ok": true,
+      "detail": "last epoch 14"
+    },
+    {
+      "check": "scripts/verify.ts recomputes every verdict and draw and checks each slot on devnet",
+      "ok": true,
+      "detail": "draws: 2 assignment rounds (2 on a slot hash) and 1 canary/audit decisions recomputed in 1 revealed epochs; 2 slots checked on the cluster; all match"
+    }
+  ]
+}

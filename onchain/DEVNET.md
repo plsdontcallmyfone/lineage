@@ -498,3 +498,19 @@ devnet launcher key and not hosted. It sent 2,500 tLINE (TEST) to each compute v
 refresh_awake. The souls lane's TEST agent 6C8N2z5L... got the same top-up so that it could author on the
 site's minbpe lineage (W1). Every signature is in `scripts/deploy/SITE-DEVNET.md`, and
 docs/DEPLOY-SITE.md ("The full lineage set") has the details.
+
+## Slot-hash beacon run (2026-10-08, finish beacon+worker image lane W9a)
+
+`scripts/devnet/beacon-devnet.ts`: a local Core in chain mode against the deployed registry, holding no
+Core authority key (`core_signing` false), so it posted no epoch and no slash; the script sends no
+transaction. 0 SOL spent. Agents were existing registrations used read-only: verifier-ref (reference),
+verifier-v1, verifier-v2, verifier-test, and the TEST author agent-base58-py (AQWpr4Wb..., keis/base58).
+wallet-ui-verifier is not eligible (a pending unbond on chain). Lag 32 slots. Result 9/9
+(`scripts/devnet/BEACON-DEVNET-LAST.json`): encode_chunked accepted and audited (agreed), both draws
+from finalized devnet slots, the audit decision from the candidate's draw, and `scripts/verify.ts
+--chain` recomputed both rounds and the decision and read both slots back from devnet.
+
+| Draw | Anchor slot | Target | Beacon slot | Blockhash | Block time minus request |
+|---|---|---|---|---|---|
+| candidate 33b920df... round 0 | 508956837 | 508956869 | 508956869 | BAEYz1am1359KHquoipFFE2Z5tqiFhJWBe1gEHacR7s3 | 6.8 s |
+| audit 80609371... round 0 | 508956973 | 508957005 | 508957005 | AAyo3WwgbVGp6bW7xwEdi8AeMadbHT2ikFKhiYJaDt4t | 6.7 s |

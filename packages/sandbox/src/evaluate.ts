@@ -111,6 +111,15 @@ function envFor(loaded: LoadedRecipe, seed: Hex, sourceEpoch: number): Record<st
 }
 
 /**
+ * Cargo's own bookkeeping in CARGO_HOME, not dependency content: `.global-cache` is an SQLite file of
+ * last-use timestamps and the `.package-cache*` files are locks. They differ on every machine and run,
+ * so including them made a fresh verifier's deps digest disagree with the snapshot's (found by the
+ * worker image lane, W9b: a container with its own LINEAGE_HOME could never replay fixture-b58).
+ * A layer cached before this rule keeps its stored digest (`.lineage-digest`) until re-prepared.
+ */
+export const VOLATILE_DEPS = /(^|\/)cargo\/\.(global-cache|package-cache|package-cache-mutate)$/;
+
+/**
  * Runs the recipe's prepare commands once per (recipe, snapshot) with network, producing the
  * read-only dependency layer every later step mounts at /deps (SPEC 8).
  */
@@ -152,7 +161,7 @@ export async function prepareDeps(loaded: LoadedRecipe, opts: { force?: boolean 
       mkdirSync(join(dir, "outputs", out, ".."), { recursive: true });
       cpSync(src, join(dir, "outputs", out));
     }
-    const digest = H("deps-layer", dirDigest(join(dir, "layer")), dirDigest(join(dir, "outputs")));
+    const digest = H("deps-layer", dirDigest(join(dir, "layer"), (rel) => !VOLATILE_DEPS.test(rel)), dirDigest(join(dir, "outputs")));
     writeFileSync(digestFile, digest);
     return { dir, digest };
   } finally {

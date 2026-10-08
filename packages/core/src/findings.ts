@@ -27,7 +27,7 @@ interface Internals {
   calibOf(id: string): Calibration;
   agentRow(id: string): { agent_id: string; operator: string | null } | null;
   eligiblePool(excludeAgents: Set<string>, excludeOperators: Set<string>, lineage: unknown): Eligible[];
-  beacon(subject: string, round: number): { beacon: string; bucket: number; epoch: { n: number } };
+  beacon(subject: string, round: number): { beacon: string; bucket: number; epoch: { n: number } } | null;
   replayWindowMs(calib: Calibration): number;
   insertFinding(lineage: string, tip: string, kind: string, target: string, finder: string | null): string;
 }
@@ -309,7 +309,9 @@ export class Findings {
     const pool = this.c.eligiblePool(exAgents, exOps, l);
     const need = this.replaysPerClaim;
     if (pool.length < need) return; // stays waiting until enough qualified verifiers exist
-    const { beacon } = this.c.beacon(cl.claim_id, cl.round);
+    const b = this.c.beacon(cl.claim_id, cl.round);
+    if (!b) return; // slot beacon (M2): the draw waits for its slot to be final
+    const { beacon } = b;
     const seed = assignmentSeed(beacon, cl.claim_id);
     const chosen = assignReplayers(seed, pool, need, { agents: [] }, this.c.cfg.bond_cap);
     const deadline = this.c.now() + this.c.replayWindowMs(this.c.calibOf(l.calib_id));

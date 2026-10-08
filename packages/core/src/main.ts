@@ -4,7 +4,8 @@ import { homedir } from "node:os";
 import { join, resolve } from "node:path";
 import { systemClock } from "./clock.ts";
 import { loadNetworkConfig } from "./config.ts";
-import { ChainReader, Rpc } from "@lineage/chain";
+import { ChainReader, Rpc, rpcSlotSource } from "@lineage/chain";
+import { redactRpc } from "../../chain/src/endpoint.ts";
 import { ChainBridge, chainBootstrap, loadChainSettings } from "./chain.ts";
 import { erc8004Of } from "./erc8004.ts";
 import { Core } from "./core.ts";
@@ -84,7 +85,7 @@ if (chainSettings) {
   const boot = await chainBootstrap(network, reader);
   network = boot.network;
   firstEpoch = boot.firstEpoch;
-  console.log(`chain mode ${chainSettings.mode}: ${chainSettings.rpc_url}, registry ${chainSettings.registry_program}, mint ${boot.registry.mint} (${boot.decimals} decimals), first epoch ${firstEpoch}`);
+  console.log(`chain mode ${chainSettings.mode}: ${redactRpc(chainSettings.rpc_url)}, registry ${chainSettings.registry_program}, mint ${boot.registry.mint} (${boot.decimals} decimals), first epoch ${firstEpoch}`);
 }
 
 const core = new Core({
@@ -96,6 +97,8 @@ const core = new Core({
   trees: argvFlag("no-trees") ? null : new GitTreeSource(),
   chainMode: !!chainSettings,
   firstEpoch,
+  // M2 slot-hash beacon in chain mode (SPEC 10.3, src/beacon.ts)
+  ...(chainSettings ? { slotBeacon: { lagSlots: chainSettings.beacon_lag_slots } } : {}),
 });
 if (chainSettings) erc8004Of(core).configure({ registryProgram: chainSettings.registry_program }); // ERC-8004 file names the configured registry
 const REPO = resolve(import.meta.dir, "../../..");
@@ -125,6 +128,18 @@ const canaryTimer = setInterval(() => {
 const bridge = chainSettings ? new ChainBridge(core, chainSettings, { reader: reader!, log: (m) => console.log(`[chain] ${m}`) }) : null;
 if (bridge) await bridge.tick().catch(() => undefined);
 const chainTimer = bridge ? setInterval(() => void bridge.tick().catch(() => undefined), chainSettings!.poll_ms ?? 5000) : null;
+// resolves slot beacon requests: anchors them at the tip, reads the target's finalized block hash; RPC failures back off
+const slotSource = chainSettings && core.slotBeacon ? rpcSlotSource(reader!.rpc) : null;
+let beaconErr = "";
+const beaconTimer = slotSource
+  ? setInterval(() => {
+      void core.slotBeacon!.resolve(slotSource).then((r) => {
+        if (r.error && r.error !== beaconErr) console.error(`[beacon] slot read failed, backing off: ${r.error}`);
+        beaconErr = r.error ?? "";
+      });
+    }, 1000)
+  : null;
+if (core.slotBeacon) console.log(`assignment beacon: Solana slot hash, lag ${core.slotBeacon.lagSlots} slots`);
 const server = serve(core, { port, hostname: host });
 const timer = setInterval(() => {
   try {
@@ -139,6 +154,7 @@ const stop = () => {
   clearInterval(timer);
   clearInterval(canaryTimer);
   if (chainTimer) clearInterval(chainTimer);
+  if (beaconTimer) clearInterval(beaconTimer);
   server.stop(true);
   core.close();
   process.exit(0);

@@ -37,6 +37,7 @@ interface Internals {
   judgeStage(c: CandLite): void;
   progress(grp: string): void;
   collab: Core["collab"];
+  slotBeacon: Core["slotBeacon"];
 }
 
 interface CandLite {
@@ -184,8 +185,12 @@ export class Hardening {
     const canaries = this.unusedCanaries(trigger.lineage_id);
     if (!canaries.length) return;
     const ep = this.c.currentEpoch();
-    const rng = new Rng(H("m1-canary", ep.secret, trigger.candidate_id));
-    if (rng.next() >= this.c.cfg.canary_rate) return;
+    // slot beacon (M2, src/beacon.ts): the slot hash of the candidate's first draw replaces the M1 seed
+    const slot = this.c.slotBeacon?.decisionSeed("canary", trigger.candidate_id, trigger.candidate_id, ep) ?? null;
+    const rng = new Rng(slot?.seed ?? H("m1-canary", ep.secret, trigger.candidate_id));
+    const v = rng.next();
+    if (slot) this.c.slotBeacon!.recordUse("canary", trigger.candidate_id, ep.n, slot.draw, v, this.c.cfg.canary_rate);
+    if (v >= this.c.cfg.canary_rate) return;
     const pick = canaries[rng.int(canaries.length)]!;
     const [lo, hi] = this.c.cfg.canary_inject_delay_s;
     const delay = Math.max(1000, Math.round((lo + rng.next() * (hi - lo)) * 1000));

@@ -67,6 +67,7 @@ import { Split } from "./split.ts";
 import { Ports } from "./ports.ts";
 import { Live } from "./live.ts";
 import { openDb } from "./store.ts";
+import { SlotBeacon } from "./beacon.ts";
 import type { TreeSource } from "./trees.ts";
 
 // The Core coordinator: SPEC sections 5, 10, 11, 12, 13. Every state change goes through a method
@@ -98,6 +99,11 @@ export interface CoreOptions {
   chainMode?: boolean;
   /** Number of the first epoch a fresh database opens (chain mode: one past the last posted epoch). */
   firstEpoch?: number;
+  /**
+   * M2 slot-hash beacon (SPEC 10.3, src/beacon.ts): draws wait for a finalized Solana slot hash
+   * fixed after the request. main.ts sets it in chain mode and runs the resolver; without it the M1 beacon.
+   */
+  slotBeacon?: { lagSlots?: number };
 }
 
 /** An agent as the registry program holds it, plus its launch and compute vault for launched agents. */
@@ -404,6 +410,8 @@ export class Core {
   chainView: (() => unknown) | null = null;
   /** Set by ChainBridge: run one chain sync now (POST /v1/admin/chain/sync). */
   chainSync: (() => Promise<unknown>) | null = null;
+  /** M2 slot-hash beacon (src/beacon.ts); null: the M1 beacon. */
+  readonly slotBeacon: SlotBeacon | null;
 
   constructor(opts: CoreOptions) {
     this.cfg = opts.network;
@@ -423,6 +431,7 @@ export class Core {
     this.series = new Series(this);
     this.messages = new Messages(this);
     this.chainMode = !!opts.chainMode;
+    this.slotBeacon = opts.slotBeacon ? new SlotBeacon(this, opts.slotBeacon) : null;
     this.identity = new Identity(this);
     this.records = new Records(this);
     this.hosted = new Hosted(this);
@@ -1256,9 +1265,17 @@ export class Core {
   // ---------------------------------------------------------------------------------------------
   // Assignment (SPEC 10.3, M1 variant)
 
-  /** M1 assignment beacon: H(epoch_secret, subject, round, reveal-time bucket). */
-  private beacon(subject: string, round: number): { beacon: string; bucket: number; epoch: EpochRow } {
+  /**
+   * M1 assignment beacon: H(epoch_secret, subject, round, reveal-time bucket). With the slot beacon
+   * (M2, src/beacon.ts) the slot hash replaces the bucket (bucket -1) and the answer is null until
+   * that slot is final; the draw then waits for a later tick.
+   */
+  private beacon(subject: string, round: number): { beacon: string; bucket: number; epoch: EpochRow } | null {
     const ep = this.currentEpoch();
+    if (this.slotBeacon) {
+      const b = this.slotBeacon.get(subject, round, ep, (n) => this.epochRow(n)!.secret);
+      return b ? { beacon: b.beacon, bucket: -1, epoch: this.epochRow(b.epoch)! } : null;
+    }
     const bucket = Math.floor(this.now() / 1000 / this.beaconBucketS);
     return { beacon: H("m1-beacon", ep.secret, subject, round, bucket), bucket, epoch: ep };
   }
@@ -1310,7 +1327,9 @@ export class Core {
   ): { chosen: string[]; reference: string | null; seed: string; epoch: number } | null {
     const pool = this.eligiblePool(excludeAgents, excludeOps, lineage);
     if (requireFull && pool.length < count) return null;
-    const { beacon, bucket, epoch } = this.beacon(subject, round);
+    const b = this.beacon(subject, round);
+    if (!b) return null; // slot beacon: waiting for the slot to be final
+    const { beacon, bucket, epoch } = b;
     const seed = assignmentSeed(beacon, subject);
     const chosen = count > 0 ? assignReplayers(seed, pool, Math.min(count, pool.length), { agents: [] }, this.cfg.bond_cap) : [];
     let reference: string | null = null;
@@ -1337,7 +1356,8 @@ export class Core {
         reference,
         this.now(),
       );
-    return { chosen, reference, seed, epoch: epoch.n };
+    // replays belong to the epoch open now; the round keeps the epoch whose secret drew it
+    return { chosen, reference, seed, epoch: this.currentEpoch().n };
   }
 
   private insertReplay(p: {
@@ -1970,7 +1990,11 @@ export class Core {
 
     // random audit (SPEC 10.6)
     const ep = this.currentEpoch();
-    if (this.cfg.audit_rate > 0 && new Rng(H("m1-audit", ep.secret, gid)).next() < this.cfg.audit_rate) {
+    // slot beacon (M2): the decision uses the slot hash of the candidate's first draw (src/beacon.ts)
+    const auditSlot = this.slotBeacon?.decisionSeed("audit", gid, c.candidate_id!, ep) ?? null;
+    const auditDraw = new Rng(auditSlot?.seed ?? H("m1-audit", ep.secret, gid)).next();
+    if (auditSlot) this.slotBeacon!.recordUse("audit", gid, ep.n, auditSlot.draw, auditDraw, this.cfg.audit_rate);
+    if (this.cfg.audit_rate > 0 && auditDraw < this.cfg.audit_rate) {
       const hasRef = this.referenceAgents(new Set([c.author]), l).length > 0;
       const aid = H("audit", gid);
       this.db
@@ -2850,6 +2874,8 @@ export class Core {
       // a canary still open at close is listed once it is final: its replayers must not learn it early (SPEC 10.5, 10.7)
       canaries: closed ? (JSON.parse(ep.canaries!) as { candidate_id: string | null }[]).filter((x) => !x.candidate_id || this.collab.subjectFinal(x.candidate_id)) : null,
       assignment_rounds: rounds,
+      // M2 slot beacon (SPEC 10.3): each draw's request, anchor, target, slot and hash, and the canary and audit decisions
+      ...(closed && this.slotBeacon ? { slot_beacon: this.slotBeacon.epochRecord(n, (s, kind) => (kind === "canary" ? this.slotBeacon!.canaryFinal(s, (x) => this.collab.subjectFinal(x)) : kind === "audit" || this.collab.subjectFinal(s))) } : {}),
       usage: this.db.query<Record<string, unknown>, [number]>("SELECT * FROM usage WHERE epoch = ? ORDER BY id").all(n),
     };
   }
@@ -2857,6 +2883,8 @@ export class Core {
   /** True when every subject drawn with this epoch's beacon (candidates, audits, qualifications) is final. */
   epochSubjectsFinal(n: number): boolean {
     const subjects = this.db.query<{ subject: string }, [number]>("SELECT DISTINCT subject FROM assignment_rounds WHERE epoch = ?").all(n);
+    // a slot draw requested with this epoch's secret and not made yet would be computable once both are public
+    if (this.slotBeacon?.pendingIn(n)) return false;
     return subjects.every((r) => this.collab.subjectFinal(String(r.subject)));
   }
 

@@ -148,6 +148,8 @@ bun scripts/devnet/setup.ts                   # idempotent; on a set-up devnet i
 bun scripts/devnet/e2e-devnet.ts --port 9665  # 49 checks, about 420 s; --keep keeps the temp dir
 bun scripts/devnet/challenge-e2e.ts --port 9664   # 22 checks: one upheld and one failed challenge resolved on chain
 bun scripts/devnet/msg-e2e.ts                  # 17 checks: onchain boards and sealed messages
+bun scripts/devnet/beacon-devnet.ts --port 9665   # 9 checks, about 140 s: slot-hash draws (SPEC 10.3) on a local read-only chain-mode Core; sends nothing
+bun scripts/verify.ts --core <core> --chain     # also recomputes every draw and reads each beacon slot back from devnet
 bun scripts/verify-credential.ts --file <kept dir>/credential-v1.json            # verifies from chain alone
 bun scripts/verify-credential.ts --file <kept dir>/credential-v1.json --tamper   # exit 0 only if the altered record fails
 ```
@@ -175,6 +177,28 @@ Run by their lanes once, with owner approval, and recorded; a verification run d
 | `scripts/runtime/sim-run.ts`, `scripts/runtime/devnet-run.ts` | Claude, and devnet for the second | `scripts/runtime/SIM-LAST.json` (15/15), `DEVNET-LAST.json` (18/18), `scripts/runtime/RUNS.md` |
 | `scripts/souls/*.ts` | Claude, GitHub provisioning, devnet | `scripts/souls/RUNS.md`, `*-LAST.json` |
 | `packages/mirror/src/cli.ts` (`lineage-mirror`) | pushes to agents' forks; `--dry-run` writes nothing | |
+
+## 11. Worker image
+
+`images/worker/Dockerfile` builds `lineage/worker`: the worker CLI (`lineage-worker`, the same commands as `bun packages/worker/src/main.ts`) with Bun, git and the Docker CLI. Sandboxes are not nested: the worker starts them on the HOST daemon through the mounted socket.
+
+```sh
+docker build -f images/worker/Dockerfile -t lineage/worker .     # from the repository root; arm64 and amd64
+docker run --rm lineage/worker --help
+docker run -d --name lineage-worker --stop-timeout 900 \
+  -v /var/run/docker.sock:/var/run/docker.sock \
+  -v /var/lib/lineage:/var/lib/lineage \
+  -v /etc/lineage/agent.json:/keys/agent.json:ro \
+  lineage/worker run --core https://<core> --key /keys/agent.json
+docker stop -t 900 lineage-worker       # SIGTERM: takes no new work, finishes and reveals what it committed, then exits 0
+bun images/worker/smoke.ts --port 9664  # 9 checks, about 30 s: two containers register, bond, qualify on fixture-b58 and replay a candidate to accepted
+```
+
+- **The socket is root-equivalent.** Anything that can talk to `/var/run/docker.sock` controls the host. Run the worker on a host that does nothing else, prefer rootless Docker (`dockerd-rootless`, socket at `$XDG_RUNTIME_DIR/docker.sock`, mounted the same way), and never mount the socket of a host that holds other keys or services.
+- **LINEAGE_HOME at the same path inside and out.** The daemon resolves sandbox bind mounts on the host, so the work, mirror and dependency directories must exist at the same absolute path on both sides (default `/var/lib/lineage`; on Docker Desktop use a path under a shared directory such as `/private/tmp` and pass `-e LINEAGE_HOME=<that path>`). The worker's pending reveals live there too (`worker/<agent>`), so a restarted container picks them up.
+- **Keys read-only.** Mount only the agent key, `:ro`. The container runs as root so it can remove what sandboxes write (they run as uid 10001); on Linux with `--user <uid>:<docker gid>` sandboxes run as that uid instead (`containerUser`, packages/sandbox/src/docker.ts).
+- **Stop timeout.** Docker's default 10 s would kill a draining worker before it reveals; use `--stop-timeout 900` or `docker stop -t 900` (the drain gives up after 15 minutes).
+- **Linux networking.** A Core on the host's loopback is reached with `--network host`; Docker Desktop uses `http://host.docker.internal:<port>`.
 
 ## Cleanup
 
