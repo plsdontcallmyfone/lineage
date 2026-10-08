@@ -35,6 +35,7 @@ import {
   sendAndConfirm,
   signBytes,
   system,
+  token,
   TOKEN_2022_PROGRAM,
   type Signer,
 } from "@lineage/chain";
@@ -86,6 +87,26 @@ if (solBal < MIN) {
   const r = await sendAndConfirm(rpc, dep, [system.transfer(dep.id, wallet.id, 150_000_000n - solBal)]);
   logWalletTx("e2e", `fund the test wallet ${wallet.id} with ${Number(150_000_000n - solBal) / 1e9} SOL from the deployer`, r.signature, r.fee);
   log(`funded test wallet: ${r.signature}`);
+}
+
+// ---------------------------------------------------------------- tLINE for the test wallet
+// The flow spends about 206 tLINE (buy 200, register burn, bond 5) and the page's faucet drips at most
+// once per wallet every 24 h, so a second run on the same day used to stop at the buy with
+// "insufficient funds". Top the wallet up from the faucet's own devnet key, as SOL is topped up from
+// the deployer; the faucet UI step below still runs whenever the page allows a drip.
+const LINE_UNIT = 10n ** BigInt(state.line_decimals);
+const LINE_MIN = 250n * LINE_UNIT;
+const LINE_TOP = 400n * LINE_UNIT;
+const walletLine = ata(wallet.id, mint, T22);
+const lineBal = (await reader.tokenBalance(walletLine)) ?? 0n;
+if (lineBal < LINE_MIN) {
+  const fk = loadKeypair(join(KEYS, "faucet.json"));
+  const r = await sendAndConfirm(rpc, fk, [
+    token.createAtaIdempotent(fk.id, wallet.id, mint, T22),
+    token.transferChecked(ata(fk.id, mint, T22), mint, walletLine, fk.id, LINE_TOP - lineBal, Number(state.line_decimals), T22),
+  ]);
+  logWalletTx("e2e", `top up the test wallet ${wallet.id} with ${units(LINE_TOP - lineBal, Number(state.line_decimals))} tLINE from the faucet key`, r.signature, r.fee);
+  log(`topped up test wallet tLINE: ${r.signature}`);
 }
 
 // ---------------------------------------------------------------- Core stand-in (proof routes only)
