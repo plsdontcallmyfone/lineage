@@ -1,0 +1,26 @@
+{
+  "skip_canonical_byte": {
+    "kind": "perf",
+    "target": "decode_ir",
+    "expect": "tests_fail",
+    "note": "Presented as dropping a redundant look-ahead in consume_length_prefix; non-canonical encodings of single bytes below 0x80 (0x81 0x00 and friends) are now accepted, so two different byte strings decode to the same value, which consensus code relies on never happening.",
+    "lines": 4,
+    "guard": "ok"
+  },
+  "plain_superfluous_error": {
+    "kind": "perf",
+    "target": "decode_ir",
+    "expect": "equivalence_changed",
+    "note": "Presented as skipping string formatting on the error path; the DecodingError for trailing bytes no longer says how many there are. Upstream tests only check the exception type.",
+    "lines": 2,
+    "guard": "ok"
+  },
+  "prefix_bytes_ctor": {
+    "kind": "perf",
+    "target": "encode_ir",
+    "expect": "no_improvement",
+    "note": "Presented as avoiding a global tuple lookup in length_prefix by building the prefix byte directly; bytes((n,)) allocates a new object per call while ALL_BYTES hands out cached ones, so encoding runs more instructions.",
+    "lines": 2,
+    "guard": "ok"
+  }
+}

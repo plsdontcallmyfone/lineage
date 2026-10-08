@@ -1,0 +1,14 @@
+diff --git a/rlp/codec.py b/rlp/codec.py
+--- a/rlp/codec.py
++++ b/rlp/codec.py
+@@ -186,10 +186,6 @@ def consume_length_prefix(rlp, start):
+     if b0 < 128:  # single byte
+         return (b"", bytes, 1, start)
+     elif b0 < SHORT_STRING:  # short string
+-        if b0 - 128 == 1 and rlp[start + 1] < 128:
+-            raise DecodingError(
+-                "Encoded as short string although single byte was possible", rlp
+-            )
+         return (rlp[start : start + 1], bytes, b0 - 128, start + 1)
+     elif b0 < 192:  # long string
+         ll = b0 - 183  # - (128 + 56 - 1)

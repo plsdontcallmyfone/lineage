@@ -1,0 +1,13 @@
+diff --git a/rlp/codec.py b/rlp/codec.py
+--- a/rlp/codec.py
++++ b/rlp/codec.py
+@@ -48,7 +48,8 @@ except ImportError:
+ 
+     def encode_raw(item):
+         r"""RLP encode (a nested sequence of) :class:`Atomic`\s."""
+-        if isinstance(item, Atomic):
++        # bytes is by far the most common atom; test it exactly before the ABC check
++        if type(item) is bytes or isinstance(item, Atomic):
+             if len(item) == 1 and item[0] < 128:
+                 return item
+             payload = item

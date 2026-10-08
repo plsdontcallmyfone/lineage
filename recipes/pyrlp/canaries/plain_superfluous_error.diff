@@ -1,0 +1,12 @@
+diff --git a/rlp/codec.py b/rlp/codec.py
+--- a/rlp/codec.py
++++ b/rlp/codec.py
+@@ -73,7 +73,7 @@ except ImportError:
+         except IndexError:
+             raise DecodingError("RLP string too short", item)
+         if end != len(item) and strict:
+-            msg = f"RLP string ends with {len(item) - end} superfluous bytes"
++            msg = "RLP string ends with superfluous bytes"
+             raise DecodingError(msg, item)
+ 
+         return result, per_item_rlp

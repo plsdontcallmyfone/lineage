@@ -1,0 +1,18 @@
+{
+  "encode_bytes_first": {
+    "kind": "perf",
+    "target": "encode_ir",
+    "expect": "accepted",
+    "note": "encode_raw tests type(item) is bytes before isinstance(item, Atomic): Atomic is an ABC with registered classes, so every isinstance call went through ABCMeta.__instancecheck__ for the most common atom. Other Atomic types (bytearray, registered classes) still take the isinstance path.",
+    "lines": 3,
+    "guard": "ok"
+  },
+  "decode_no_item_rlp": {
+    "kind": "perf",
+    "target": "decode_ir",
+    "expect": "accepted",
+    "note": "decode() without a sedes never uses the per-item RLP lists, so the pure-Python backend now decodes those calls with _consume_item_only (the same prefix reads, checks and errors, minus the lists); and when the lists are needed, a list's own RLP is one slice of the input instead of a concatenation per item plus an insert at the front.",
+    "lines": 42,
+    "guard": "ok"
+  }
+}

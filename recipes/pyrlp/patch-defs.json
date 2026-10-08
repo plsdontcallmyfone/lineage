@@ -1,0 +1,91 @@
+{
+  "canaries": [
+    {
+      "name": "skip_canonical_byte",
+      "kind": "perf",
+      "target": "decode_ir",
+      "expect": "tests_fail",
+      "note": "Presented as dropping a redundant look-ahead in consume_length_prefix; non-canonical encodings of single bytes below 0x80 (0x81 0x00 and friends) are now accepted, so two different byte strings decode to the same value, which consensus code relies on never happening.",
+      "edits": [
+        [
+          "rlp/codec.py",
+          "        if b0 - 128 == 1 and rlp[start + 1] < 128:\n            raise DecodingError(\n                \"Encoded as short string although single byte was possible\", rlp\n            )\n",
+          ""
+        ]
+      ]
+    },
+    {
+      "name": "plain_superfluous_error",
+      "kind": "perf",
+      "target": "decode_ir",
+      "expect": "equivalence_changed",
+      "note": "Presented as skipping string formatting on the error path; the DecodingError for trailing bytes no longer says how many there are. Upstream tests only check the exception type.",
+      "edits": [
+        [
+          "rlp/codec.py",
+          "            msg = f\"RLP string ends with {len(item) - end} superfluous bytes\"\n            raise DecodingError(msg, item)\n\n        return result, per_item_rlp\n",
+          "            msg = \"RLP string ends with superfluous bytes\"\n            raise DecodingError(msg, item)\n\n        return result, per_item_rlp\n"
+        ]
+      ]
+    },
+    {
+      "name": "prefix_bytes_ctor",
+      "kind": "perf",
+      "target": "encode_ir",
+      "expect": "no_improvement",
+      "note": "Presented as avoiding a global tuple lookup in length_prefix by building the prefix byte directly; bytes((n,)) allocates a new object per call while ALL_BYTES hands out cached ones, so encoding runs more instructions.",
+      "edits": [
+        [
+          "rlp/codec.py",
+          "        return ALL_BYTES[offset + length]\n",
+          "        return bytes((offset + length,))\n"
+        ]
+      ]
+    }
+  ],
+  "candidates": [
+    {
+      "name": "encode_bytes_first",
+      "kind": "perf",
+      "target": "encode_ir",
+      "expect": "accepted",
+      "note": "encode_raw tests type(item) is bytes before isinstance(item, Atomic): Atomic is an ABC with registered classes, so every isinstance call went through ABCMeta.__instancecheck__ for the most common atom. Other Atomic types (bytearray, registered classes) still take the isinstance path.",
+      "edits": [
+        [
+          "rlp/codec.py",
+          "        if isinstance(item, Atomic):\n            if len(item) == 1 and item[0] < 128:\n",
+          "        # bytes is by far the most common atom; test it exactly before the ABC check\n        if type(item) is bytes or isinstance(item, Atomic):\n            if len(item) == 1 and item[0] < 128:\n"
+        ]
+      ]
+    },
+    {
+      "name": "decode_no_item_rlp",
+      "kind": "perf",
+      "target": "decode_ir",
+      "expect": "accepted",
+      "note": "decode() without a sedes never uses the per-item RLP lists, so the pure-Python backend now decodes those calls with _consume_item_only (the same prefix reads, checks and errors, minus the lists); and when the lists are needed, a list's own RLP is one slice of the input instead of a concatenation per item plus an insert at the front.",
+      "edits": [
+        [
+          "rlp/codec.py",
+          "        items = []\n        per_item_rlp = []\n        list_rlp = prefix\n        next_item_start = start\n        end = next_item_start + length\n        while next_item_start < end:\n            p, t, l, s = consume_length_prefix(rlp, next_item_start)\n            item, item_rlp, next_item_start = consume_payload(rlp, p, s, t, l)\n            per_item_rlp.append(item_rlp)\n            # When the item returned above is a single element, item_rlp will also\n            # contain a single element, but when it's a list, the first element will be\n            # the RLP of the whole List, which is what we want here.\n            list_rlp += item_rlp[0]\n            items.append(item)\n        per_item_rlp.insert(0, list_rlp)\n",
+          "        items = []\n        # slot 0 is the list's own RLP, filled in once the items are read\n        per_item_rlp = [None]\n        next_item_start = start\n        end = next_item_start + length\n        while next_item_start < end:\n            p, t, l, s = consume_length_prefix(rlp, next_item_start)\n            item, item_rlp, next_item_start = consume_payload(rlp, p, s, t, l)\n            per_item_rlp.append(item_rlp)\n            items.append(item)\n        # The items are contiguous, so the list's RLP (its prefix followed by every\n        # item's RLP) is one slice of the input instead of a concatenation per item.\n        per_item_rlp[0] = rlp[start - len(prefix) : next_item_start]\n"
+        ],
+        [
+          "rlp/codec.py",
+          "        return result, per_item_rlp\n\nelse:\n",
+          "        return result, per_item_rlp\n\n    def _decode_item_only(item, strict):\n        # decode_raw without the per-item RLP lists, which decode() only uses with a sedes\n        try:\n            result, end = _consume_item_only(item, 0)\n        except IndexError:\n            raise DecodingError(\"RLP string too short\", item)\n        if end != len(item) and strict:\n            msg = f\"RLP string ends with {len(item) - end} superfluous bytes\"\n            raise DecodingError(msg, item)\n        return result\n\nelse:\n    _decode_item_only = None\n"
+        ],
+        [
+          "rlp/codec.py",
+          "    p, t, l, s = consume_length_prefix(rlp, start)\n    return consume_payload(rlp, p, s, t, l)\n",
+          "    p, t, l, s = consume_length_prefix(rlp, start)\n    return consume_payload(rlp, p, s, t, l)\n\n\ndef _consume_item_only(rlp, start):\n    # consume_item without the per-item RLP: same reads, same checks, same errors\n    _, t, length, start = consume_length_prefix(rlp, start)\n    if t is bytes:\n        return rlp[start : start + length], start + length\n    items = []\n    next_item_start = start\n    end = start + length\n    while next_item_start < end:\n        item, next_item_start = _consume_item_only(rlp, next_item_start)\n        items.append(item)\n    if next_item_start > end:\n        raise DecodingError(\"List length prefix announced a too small length\", rlp)\n    return items, next_item_start\n"
+        ],
+        [
+          "rlp/codec.py",
+          "    item, per_item_rlp = decode_raw(rlp, strict, recursive_cache)\n",
+          "    if sedes is None and _decode_item_only is not None:\n        return _decode_item_only(rlp, strict)\n    item, per_item_rlp = decode_raw(rlp, strict, recursive_cache)\n"
+        ]
+      ]
+    }
+  ]
+}
