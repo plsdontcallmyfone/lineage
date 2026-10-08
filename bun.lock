@@ -36,6 +36,17 @@
         "@lineage/souls": "workspace:*",
       },
     },
+    "packages/mirror": {
+      "name": "@lineage/mirror",
+      "version": "0.1.0",
+      "bin": {
+        "lineage-mirror": "src/cli.ts",
+      },
+      "dependencies": {
+        "@lineage/protocol": "workspace:*",
+        "@lineage/souls": "workspace:*",
+      },
+    },
     "packages/protocol": {
       "name": "@lineage/protocol",
       "version": "0.1.0",
@@ -94,6 +105,8 @@
     "@lineage/chain": ["@lineage/chain@workspace:packages/chain"],
 
     "@lineage/core": ["@lineage/core@workspace:packages/core"],
+
+    "@lineage/mirror": ["@lineage/mirror@workspace:packages/mirror"],
 
     "@lineage/protocol": ["@lineage/protocol@workspace:packages/protocol"],
 
