@@ -17,7 +17,7 @@ import { teamStatement } from "../packages/core/src/collab.ts";
 import { encryptionKeyStatement, messageEnvelope } from "../packages/core/src/messages.ts";
 import { deriveEncryptionKey, seal } from "../packages/core/src/seal.ts";
 // measured split and cross-lineage ports (plan W4); importing it registers the second fixture recipe
-import { collabExtras } from "./e2e-collab-extras.ts";
+import { collabExtras, EXTRA_RECIPES } from "./e2e-collab-extras.ts";
 
 const ROOT = join(import.meta.dir, "..");
 const PATCHES = join(ROOT, "fixtures", "b58-patches");
@@ -787,7 +787,13 @@ try {
   const bad = results.filter((r) => !r.ok);
   log(`${results.length - bad.length}/${results.length} checks passed in ${((Date.now() - T0) / 1000).toFixed(0)}s`);
   writeFileSync(join(ROOT, "docs", "E2E-LAST.json"), JSON.stringify({ at: new Date().toISOString(), seconds: Math.round((Date.now() - T0) / 1000), results }, null, 2) + "\n");
-  if (!KEEP) rmSync(tmp, { recursive: true, force: true });
-  else log(`kept ${tmp}`);
+  if (!KEEP) {
+    rmSync(tmp, { recursive: true, force: true });
+    rmSync(EXTRA_RECIPES, { recursive: true, force: true });
+  } else {
+    log(`kept ${tmp}`);
+    // the second lineage's recipe lives here; replay.ts finds it with LINEAGE_RECIPES_EXTRA
+    log(`kept recipes ${EXTRA_RECIPES} (LINEAGE_RECIPES_EXTRA=${EXTRA_RECIPES} bun scripts/replay.ts ...)`);
+  }
   process.exit(failed || bad.length ? 1 : 0);
 }
