@@ -1469,10 +1469,19 @@ export class Core {
       .filter((a) => this.isEligible(a, epoch));
     if (!agents.length) return;
     const now = this.now();
+    // one open qualification per verifier at a time: workers run them one after another, so issuing
+    // every lineage at once let the later windows expire before a slow recipe's run had finished
+    const busy = new Set(
+      this.db
+        .query<{ agent_id: string }, []>("SELECT DISTINCT agent_id FROM qualifications WHERE status IN ('assigned','committed')")
+        .all()
+        .map((r) => r.agent_id),
+    );
     for (const l of lineages) {
       const recipe = this.recipeOf(l.recipe_id);
       let calib: Calibration | null = null;
       for (const a of agents) {
+        if (busy.has(a.agent_id)) continue;
         const caps = this.capsOf(a);
         if (!satisfies(caps, recipe.requires)) continue;
         const last = this.db
@@ -1490,6 +1499,7 @@ export class Core {
           )
           .run(id, a.agent_id, l.lineage_id, l.recipe_id, attempt, this.calibSeed(calib), a.capabilities, now, now + this.replayWindowMs(calib));
         this.emit("qualification.assigned", { agent: a.agent_id, lineage_id: l.lineage_id, attempt });
+        busy.add(a.agent_id);
       }
     }
   }
