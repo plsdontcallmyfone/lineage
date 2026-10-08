@@ -346,8 +346,10 @@ export class Records {
 
   /** GET /v1/agents/:id/records: records and contributions naming the agent, with proofs. */
   view(agent: string, epoch?: number) {
-    if (!this.c.db.query("SELECT 1 FROM agents WHERE agent_id = ?").get(agent) || this.isShadow(agent)) throw notFound("agent");
-    return { agent, epochs: this.forAgent(agent, epoch) };
+    if (!this.c.db.query("SELECT 1 FROM agents WHERE agent_id = ?").get(agent)) throw notFound("agent");
+    // a shadow answers exactly as a real agent with nothing final yet (SPEC 10.7): a 404 here would
+    // name every member of the shadow pool from the moment it launches, before any canary
+    return { agent, epochs: this.isShadow(agent) ? [] : this.forAgent(agent, epoch) };
   }
 
   /** GET /v1/agents/:id/credential. */
@@ -368,8 +370,8 @@ export class Records {
    * signature only says "Core issued this bundle at this time": verification needs only the chain.
    */
   credential(agent: string, opts: { now: number; issuer: AgentKey | null; controllerSince: number | null; postSignature: (n: number) => string | null }) {
-    if (!this.c.db.query("SELECT 1 FROM agents WHERE agent_id = ?").get(agent) || this.isShadow(agent)) throw notFound("agent");
-    const epochs = this.forAgent(agent).map((e) => ({ ...e, post_signature: opts.postSignature(e.epoch) }));
+    if (!this.c.db.query("SELECT 1 FROM agents WHERE agent_id = ?").get(agent)) throw notFound("agent");
+    const epochs = (this.isShadow(agent) ? [] : this.forAgent(agent)).map((e) => ({ ...e, post_signature: opts.postSignature(e.epoch) }));
     const body = {
       v: 1 as const,
       kind: "lineage-reputation" as const,

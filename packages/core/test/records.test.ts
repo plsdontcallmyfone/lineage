@@ -84,11 +84,31 @@ describe("reputation records (identity plan I2)", () => {
     const contrib = aLeaves.find((l) => l.kind === "contribution").contribution;
     expect(contrib).toMatchObject({ epoch: n, gen_id: gen, lineage_id: e.lineage, members: [{ agent: author.id, role: "author", share_bps: 10_000 }], finder: null });
     // the shadow author has no record (its canary is in the epoch's canary list instead)
-    expect((await e.anon.get(`/v1/agents/${canary.author}/records`)).status).toBe(404);
+    expect(await expectOk(e.anon.get(`/v1/agents/${canary.author}/records`))).toEqual({ agent: canary.author, epochs: [] });
     // the root is the Merkle root of every public leaf, each leaf the hash of its record
     for (const l of aLeaves.filter((x) => x.kind === "record"))
       expect(l.leaf).toBe(leafHash(canonicalJson({ epoch: n, agent: author.id, role: "author", lineage_id: e.lineage, record_digest: hashJson(l.record) })));
     expect(merkleRoot(await allLeaves(e, n, [author.id, honest.id, cheat.id, ...e.verifiers.map((v) => v.id), e.reference!.id]))).toBe(closed.record_root);
+  });
+
+  test("a launched shadow's records and credential answer exactly like a real agent's with nothing final (SPEC 10.7)", async () => {
+    // regression: both routes answered 404 for shadows only, naming the shadow pool as soon as it launched
+    const e = (env = await setup({ verifiers: 2, over: { canary_rate: 1, ...CANARY_FAST } }));
+    await expectOk(e.admin.c.post("/v1/admin/canaries", { lineage_id: e.lineage, patch: diff("canary_break", "src/hidden.rs"), kind: "perf", target: "ir", expected_reason: "tests_fail" }));
+    const real = await makeAuthor(e);
+    warmShadows(e);
+    const shadows = e.core.db.query<{ agent_id: string }, []>("SELECT agent_id FROM shadows WHERE launched_at IS NOT NULL").all();
+    expect(shadows.length).toBeGreaterThan(0);
+    const strip = (c: any) => ({ ...c, agent: "", issued_at: 0, controller_since: c.controller_since === null ? null : 0, sig: c.sig === null ? null : "" });
+    const realRecords = await e.anon.get(`/v1/agents/${real.id}/records`);
+    const realCred = await e.anon.get(`/v1/agents/${real.id}/credential`);
+    for (const { agent_id } of shadows) {
+      const r = await e.anon.get(`/v1/agents/${agent_id}/records`);
+      expect([r.status, r.body]).toEqual([realRecords.status, { ...realRecords.body, agent: agent_id }]);
+      const c = await e.anon.get(`/v1/agents/${agent_id}/credential`);
+      expect(c.status).toBe(realCred.status);
+      expect(strip(c.body)).toEqual(strip(realCred.body));
+    }
   });
 
   test("minority slash and revert land in the epoch they resolve; credentials verify from the roots alone", async () => {
