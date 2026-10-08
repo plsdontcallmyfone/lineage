@@ -1,0 +1,178 @@
+{
+  "at": "2026-10-08T17:30:16.405Z",
+  "core": "https://157-245-71-188.sslip.io",
+  "accounts": [
+    "6C8N2z5LwktukWEP6g8sUnf9ky1L9rxyngBLbdomUzHc"
+  ],
+  "checks": [
+    {
+      "check": "every accepted generation of a GitHub lineage was built into its lineage's chain",
+      "ok": true,
+      "detail": "2 generations in 1 lineages"
+    },
+    {
+      "check": "generations of agents without an account are recorded as app fallbacks",
+      "ok": true,
+      "detail": "minbpe gen 1 by BFPxdave, minbpe gen 2 by BFPxdave"
+    },
+    {
+      "check": "no accepted generation on this Core is authored by an agent with a GitHub account (nothing to push)",
+      "ok": true,
+      "detail": "agents with an account: 6C8N2z5LwktukWEP6g8sUnf9ky1L9rxyngBLbdomUzHc"
+    }
+  ],
+  "first": {
+    "lineages": [
+      {
+        "lineage_id": "1eb3f5dc7cdd5652795c870c460bd16fef3cbaee84ce73cd06afd8e0c6b7a5d6",
+        "recipe": "base58-py",
+        "repo": "https://github.com/keis/base58",
+        "status": "skipped",
+        "branch": null,
+        "base": null,
+        "tip": null,
+        "detail": "no accepted generations",
+        "pushes": []
+      },
+      {
+        "lineage_id": "9aa43772f26b408de81aea6b81a253a416a821933ee164a99df56f2aa4da6936",
+        "recipe": "minbpe",
+        "repo": "https://github.com/karpathy/minbpe",
+        "status": "skipped",
+        "branch": null,
+        "base": null,
+        "tip": null,
+        "detail": "no accepted generations",
+        "pushes": []
+      },
+      {
+        "lineage_id": "17cf4ea5e7e31341e6877627f3d455a7c90801747e63ade496b347b4754703bc",
+        "recipe": "fixture-b58",
+        "repo": "fixture:b58",
+        "status": "skipped",
+        "branch": null,
+        "base": null,
+        "tip": null,
+        "detail": "not a GitHub repository",
+        "pushes": []
+      },
+      {
+        "lineage_id": "30a1ff7e571177952683f08fc7ca65253c2a8de6b76f5ba73353fb4412121e23",
+        "recipe": "base58-py",
+        "repo": "https://github.com/keis/base58",
+        "status": "skipped",
+        "branch": null,
+        "base": null,
+        "tip": null,
+        "detail": "no accepted generations",
+        "pushes": []
+      },
+      {
+        "lineage_id": "99246b65a4277483eacce0a069d445d2c08aacdd986c83c3b8a9ef58fe4e3289",
+        "recipe": "minbpe",
+        "repo": "https://github.com/karpathy/minbpe",
+        "status": "skipped",
+        "branch": null,
+        "base": null,
+        "tip": null,
+        "detail": "no accepted generations",
+        "pushes": []
+      },
+      {
+        "lineage_id": "e8bd44c2fd9f8bed2517d584deceb4a0cbbdc1f0b4534c43d48125b7f3d352d2",
+        "recipe": "fixture-b58",
+        "repo": "fixture:b58",
+        "status": "skipped",
+        "branch": null,
+        "base": null,
+        "tip": null,
+        "detail": "not a GitHub repository",
+        "pushes": []
+      },
+      {
+        "lineage_id": "c12109ca42d955b0bbc7e2a3ffbf5ebacd3141687da6b1ed6d814327ef9af1d8",
+        "recipe": "base58-py",
+        "repo": "https://github.com/keis/base58",
+        "status": "skipped",
+        "branch": null,
+        "base": null,
+        "tip": null,
+        "detail": "no accepted generations",
+        "pushes": []
+      },
+      {
+        "lineage_id": "20651398b7fa2afe214ef9e5b518fc28b043f29003bd379c8f09a104288353a4",
+        "recipe": "minbpe",
+        "repo": "https://github.com/karpathy/minbpe",
+        "status": "built",
+        "branch": "lineage/minbpe-20651398",
+        "base": "1acefe89412b20245db5a22d2a02001e547dc602",
+        "tip": "20528d1f835e5833972b022bc1f1baa63d468e52",
+        "detail": null,
+        "pushes": []
+      },
+      {
+        "lineage_id": "c3604093a7499af70ff374e71fec35c91347b1afc6daac18da3ac7aa57547482",
+        "recipe": "base58-rs",
+        "repo": "https://github.com/debris/base58",
+        "status": "skipped",
+        "branch": null,
+        "base": null,
+        "tip": null,
+        "detail": "no accepted generations",
+        "pushes": []
+      },
+      {
+        "lineage_id": "aabee4ec3c3465111d7edc2a11eae58c1b5bc0974999c0ea5eec0634457d015a",
+        "recipe": "bitcoin-base58",
+        "repo": "https://github.com/bitcoin/bitcoin",
+        "status": "skipped",
+        "branch": null,
+        "base": null,
+        "tip": null,
+        "detail": "no accepted generations",
+        "pushes": []
+      }
+    ],
+    "generations": [
+      {
+        "lineage_id": "20651398b7fa2afe214ef9e5b518fc28b043f29003bd379c8f09a104288353a4",
+        "recipe": "minbpe",
+        "gen_id": "e9316e6865124b765dedd7af6bf55a891e3bf4f63412f69e8ff4b5e7ba6b2161",
+        "height": 1,
+        "entry_type": "patch",
+        "author": "BFPxdave7NVSXztGEZA5iZ7FiBDKRsuZmS9wZn2J1WBV",
+        "identity": "app",
+        "login": null,
+        "sha": "34d8934a566f4bbc33de78344de40581eb955dd1",
+        "signed": false,
+        "fork": null,
+        "branch": "lineage/minbpe-20651398",
+        "status": "fallback",
+        "verified": null,
+        "verification_reason": null,
+        "html_url": null,
+        "detail": "no GitHub account for BFPxdave7NVSXztGEZA5iZ7FiBDKRsuZmS9wZn2J1WBV; committed under the unconfigured app identity (unsigned, not pushed)"
+      },
+      {
+        "lineage_id": "20651398b7fa2afe214ef9e5b518fc28b043f29003bd379c8f09a104288353a4",
+        "recipe": "minbpe",
+        "gen_id": "bffd58ca013d2f23300c6e360afd5dc32e8d3170959c23b16530684b7b964ac9",
+        "height": 2,
+        "entry_type": "patch",
+        "author": "BFPxdave7NVSXztGEZA5iZ7FiBDKRsuZmS9wZn2J1WBV",
+        "identity": "app",
+        "login": null,
+        "sha": "20528d1f835e5833972b022bc1f1baa63d468e52",
+        "signed": false,
+        "fork": null,
+        "branch": "lineage/minbpe-20651398",
+        "status": "fallback",
+        "verified": null,
+        "verification_reason": null,
+        "html_url": null,
+        "detail": "no GitHub account for BFPxdave7NVSXztGEZA5iZ7FiBDKRsuZmS9wZn2J1WBV; committed under the unconfigured app identity (unsigned, not pushed)"
+      }
+    ]
+  }
+}
