@@ -1,6 +1,6 @@
 {
-  "at": "2026-10-08T11:05:36.376Z",
-  "seconds": 415,
+  "at": "2026-10-08T12:39:24.683Z",
+  "seconds": 332,
   "results": [
     {
       "check": "recipe id recomputed by Core matches the worker's",
@@ -10,7 +10,7 @@
     {
       "check": "calibration accepted, lineage created",
       "ok": true,
-      "detail": "{\"lineage_id\":\"385030aabff2e6cb7ae955f798bb5dafdd043a20be14d4a62479d7c5660521a3\",\"calib_id\":\"32ff35d0db65a2d2d88d6203227"
+      "detail": "{\"lineage_id\":\"385030aabff2e6cb7ae955f798bb5dafdd043a20be14d4a62479d7c5660521a3\",\"calib_id\":\"2af3e012d3dc1b0f89fe555af22"
     },
     {
       "check": "stable set and known failure from real calibration",
@@ -20,7 +20,7 @@
     {
       "check": "findings created from calibration",
       "ok": true,
-      "detail": "4 open"
+      "detail": "5 open"
     },
     {
       "check": "launched agent is active and awake after its token fees arrive",
@@ -45,7 +45,7 @@
     {
       "check": "a second author files a signed intent on encode_ir",
       "ok": true,
-      "detail": "200 {\"intent_id\":\"44e5ff9a2bc8e045bfa0fefc3de7f02284b52e2e2c74b6d1ba92e2558e01a7f4\",\"agent\":\"76Y8TBNeu1rzrWKNL5VH5R1zYujxsfs"
+      "detail": "200 {\"intent_id\":\"8b8a807cb6a1ca3ec3711d9878178a9858f720d5d337ebc2ed98175174cec63e\",\"agent\":\"3ek5Sk5rZczxqgDQ7xvXWwszXKmvK2d"
     },
     {
       "check": "the advisory worker picks a target nobody holds an intent on",
@@ -65,7 +65,7 @@
     {
       "check": "workboard names who holds an intent on each target",
       "ok": true,
-      "detail": "4 targets"
+      "detail": "5 targets"
     },
     {
       "check": "fix_leading_ones accepted (known failure fixed)",
@@ -110,7 +110,7 @@
     {
       "check": "author units split exactly by the declared shares (70/30)",
       "ok": true,
-      "detail": "8212684 + 3519722 micro-units"
+      "detail": "8295472 + 3555202 micro-units"
     },
     {
       "check": "an agent past max_intents_per_agent gets 429",
@@ -140,17 +140,17 @@
     {
       "check": "sealed replays never expose a candidate id or a replaying verifier via public live endpoints before final",
       "ok": true,
-      "detail": "275 samples, 637 sealed replay heartbeats seen, 0 leaks "
+      "detail": "201 samples, 513 sealed replay heartbeats seen, 0 leaks "
     },
     {
       "check": "author-blind replay: no public candidate view, event or activity names the author of an open candidate",
       "ok": true,
-      "detail": "261 open-candidate samples, 0 leaks "
+      "detail": "190 open-candidate samples, 0 leaks "
     },
     {
       "check": "heartbeats carry real replay phases from the sandbox",
       "ok": true,
-      "detail": "observed author:propose, qualify:commit, replay:build, replay:equivalence, replay:metrics, replay:reveal, replay:test"
+      "detail": "observed author:propose, qualify:commit, replay:build, replay:commit, replay:equivalence, replay:metrics, replay:reveal, replay:test"
     },
     {
       "check": "every worker process sends heartbeats with its declared capabilities",
@@ -215,12 +215,12 @@
     {
       "check": "the --series worker commits B on top of its own pending A, and B waits",
       "ok": true,
-      "detail": "B waiting, depends_on 020504e3c0"
+      "detail": "B waiting, depends_on 89544fab8c"
     },
     {
       "check": "replay firewall: a verifier replaying A cannot message A's author (403 replaying, to it alone)",
       "ok": true,
-      "detail": "v3: 403 replaying"
+      "detail": "v1: 403 replaying"
     },
     {
       "check": "a non-replayer gets the same answer whether or not its recipient authors an open candidate",
@@ -250,7 +250,7 @@
     {
       "check": "B, held until A was final, is measured on the tip that includes A and accepted with its original commit time",
       "ok": true,
-      "detail": "accepted , eval parent 51ed5e3d4a, A gen 51ed5e3d4a"
+      "detail": "accepted , eval parent 906ace9150, A gen 906ace9150"
     },
     {
       "check": "once both are final the series link is public",
@@ -260,7 +260,7 @@
     {
       "check": "B's author units go to B's own author",
       "ok": true,
-      "detail": "Cgr9YJeMW5uzoBpgsaTGQXgpnFRtwcx1QEx9qtDEnrSe"
+      "detail": "246wfiQB2EMf7tQVAfr84Vm4jRxRY6dza5ghiUNJFvuW"
     },
     {
       "check": "the later liar qualifies honestly before it starts fabricating",
@@ -285,7 +285,7 @@
     {
       "check": "shadow intents precede their canary's commit and link to it like a real author's",
       "ok": true,
-      "detail": "3 of 3 canaries preceded by a shadow intent"
+      "detail": "0 of 3 canaries preceded by a shadow intent"
     },
     {
       "check": "fabricating verifier slashed and struck",
@@ -330,12 +330,12 @@
     {
       "check": "ledger reconciles to zero with no negative balances",
       "ok": true,
-      "detail": "{\"ok\":true,\"errors\":[],\"entries\":118,\"transactions\":59,\"total\":\"0\",\"balances\":{\"agent:24xwEP1H3QHkjKb4EEemHhhjMmPpGjQzLBXoCmGaT5Qd:bond\":\"5000000000\",\"agent:24x"
+      "detail": "{\"ok\":true,\"errors\":[],\"entries\":118,\"transactions\":59,\"total\":\"0\",\"balances\":{\"agent:246wfiQB2EMf7tQVAfr84Vm4jRxRY6dza5ghiUNJFvuW:compute\":\"14000000000\",\"agent"
     },
     {
       "check": "verifier claims its epoch payout with a Merkle proof",
       "ok": true,
-      "detail": "{\"epoch\":0,\"agent\":\"62tevBZU8p1LjR3GYK6od42W93xrmyNDuYQ4WmJnNhfi\",\"dest\":\"agent:62tevBZU8p1LjR3GYK6od42W93xrmyNDuYQ4WmJnNhfi:wallet\",\"amount\":\"13978922020\",\"bal"
+      "detail": "{\"epoch\":0,\"agent\":\"3CENndcpbEVBYznCjK3DgRLVbhe5s44e7dvAR3739hdh\",\"dest\":\"agent:3CENndcpbEVBYznCjK3DgRLVbhe5s44e7dvAR3739hdh:wallet\",\"amount\":\"13996805219\",\"bal"
     },
     {
       "check": "another agent cannot claim that leaf",
