@@ -173,6 +173,53 @@ fn instruction_vectors() -> Vec<Value> {
         accounts: ll::accounts::RefreshAwake { launch_config: launch_config(), agent_launch: l.launch, compute_vault: l.compute_vault }.to_account_metas(None),
         data: ll::instruction::RefreshAwake {}.data(),
     }));
+    // Bounties (C6).
+    use ll::bounty as bt;
+    let sys = anchor_lang::solana_program::system_program::ID;
+    let bcfg = lpda(&[bt::BOUNTY_CONFIG_SEED]);
+    v.push(ix_json("launch.set_bounty_config", &Instruction {
+        program_id: ll::ID,
+        accounts: ll::accounts::SetBountyConfig { launch_config: launch_config(), bounty_config: bcfg, admin: k(1), system_program: sys }.to_account_metas(None),
+        data: ll::instruction::SetBountyConfig { args: bt::BountyConfigArgs { max_bounty_out_bps: 2_000, self_hosted_in_cap: 50_000_000, window_s: 86_400,
+            min_ttl_s: 3_600, max_ttl_s: 2_592_000, refund_grace_s: 3_600, min_amount: 1_000_000, paused: false } }.data(),
+    }));
+    let bounty = lpda(&[bt::BOUNTY_SEED, agent.as_ref(), &7u64.to_le_bytes()]);
+    let bvault = lpda(&[bt::BOUNTY_VAULT_SEED, bounty.as_ref()]);
+    v.push(ix_json("launch.open_bounty", &Instruction {
+        program_id: ll::ID,
+        accounts: ll::accounts::OpenBounty {
+            launch_config: launch_config(), bounty_config: bcfg, registry_config: registry_config(), opener: k(3), authority: launch_authority(),
+            payer_launch: l.launch, payer_compute: l.compute_vault, payer_ledger: lpda(&[bt::BOUNTY_LEDGER_SEED, agent.as_ref()]), bounty,
+            bounty_vault: bvault, line_mint: env.line_mint, line_token_program: TOKEN, system_program: sys,
+        }.to_account_metas(None),
+        data: ll::instruction::OpenBounty { args: bt::OpenBountyArgs { bounty_id: 7, payee: k(11), amount: 5_000_000, terms_digest: [0xaa; 32],
+            condition_kind: bt::COND_TARGET, lineage_id: [0xbb; 32], condition_value: [0xcc; 32], deadline: 1_900_100_000 } }.data(),
+    }));
+    let payee_mint = k(14);
+    v.push(ix_json("launch.release_bounty", &Instruction {
+        program_id: ll::ID,
+        accounts: ll::accounts::ReleaseBounty {
+            launch_config: launch_config(), bounty_config: bcfg, caller: k(5), authority: launch_authority(), bounty, bounty_vault: bvault, opener: k(3),
+            registry_epoch: epoch_pda(9), payee_launch: agent_launch(&payee_mint), payee_compute: compute_vault(&k(11)),
+            payee_ledger: lpda(&[bt::BOUNTY_LEDGER_SEED, k(11).as_ref()]), receipt: lpda(&[bt::BOUNTY_RECEIPT_SEED, agent.as_ref(), &[0xdd; 32]]),
+            line_mint: env.line_mint, line_token_program: TOKEN, system_program: sys,
+        }.to_account_metas(None),
+        data: ll::instruction::ReleaseBounty { args: bt::ReleaseArgs { leaf: [0xdd; 32], epoch: 9, gen_id: [1; 32], lineage_id: [0xbb; 32],
+            candidate_commitment: [2; 32], target: vec!["t1".into(), "t2".into()], target_is_list: true,
+            members: vec![bt::MemberArg { agent: k(11), role: 0, share_bps: 6_000 }, bt::MemberArg { agent: k(12), role: 1, share_bps: 4_000 }],
+            finder: Some(k(13)), proof: vec![[5; 32], [6; 32]] } }.data(),
+    }));
+    let refund = ll::accounts::RefundBounty {
+        launch_config: launch_config(), bounty_config: bcfg, authority: launch_authority(), bounty, bounty_vault: bvault, opener: k(3), payer_launch: l.launch,
+        payer_compute: l.compute_vault, line_mint: env.line_mint, line_token_program: TOKEN,
+    };
+    v.push(ix_json("launch.refund_bounty", &Instruction { program_id: ll::ID, accounts: refund.to_account_metas(None),
+        data: ll::instruction::RefundBounty {}.data() }));
+    v.push(ix_json("launch.cancel_bounty", &Instruction {
+        program_id: ll::ID,
+        accounts: ll::accounts::CancelBounty { r: refund, registry_config: registry_config(), signer: k(3) }.to_account_metas(None),
+        data: ll::instruction::CancelBounty {}.data(),
+    }));
     v
 }
 
@@ -210,6 +257,50 @@ fn account_snapshots() -> Vec<Value> {
         data: ll::instruction::PostUsage { epoch: 6, root: [3; 32] }.data(),
     };
     ok(send(&mut e.svm, &runtime, &[], vec![ix]));
+    // A bounty opened by the runtime for `l`, released into a second agent's compute vault with a
+    // one-leaf record root (the leaf is its own root), plus a second one left open.
+    use ll::bounty as bt;
+    let sys = anchor_lang::solana_program::system_program::ID;
+    let payee = e.launch_agent(Keypair::new(), default_launch_args());
+    e.fund(&l.compute_vault, 100 * ONE);
+    let admin = e.admin.insecure_clone();
+    let bcfg = lpda(&[bt::BOUNTY_CONFIG_SEED]);
+    let bargs = bt::BountyConfigArgs { max_bounty_out_bps: 2_000, self_hosted_in_cap: 50 * ONE, window_s: 86_400, min_ttl_s: 3_600, max_ttl_s: 2_592_000,
+        refund_grace_s: 3_600, min_amount: ONE, paused: false };
+    ok(send(&mut e.svm, &admin, &[], vec![Instruction { program_id: ll::ID,
+        accounts: ll::accounts::SetBountyConfig { launch_config: launch_config(), bounty_config: bcfg, admin: admin.pubkey(), system_program: sys }
+            .to_account_metas(None),
+        data: ll::instruction::SetBountyConfig { args: bargs }.data() }]));
+    let pa = l.agent.pubkey();
+    let lineage = [0x4c; 32];
+    let members = vec![bt::MemberArg { agent: payee.agent.pubkey(), role: bt::ROLE_AUTHOR, share_bps: 10_000 }];
+    let tj = bt::target_json(&["ir".to_string()], false).unwrap();
+    let leaf = bt::contribution_leaf(5, &[0x47; 32], &lineage, &tj, &[0x4b; 32], &members, None).unwrap();
+    let open = |id: u64, deadline: i64| {
+        let b = lpda(&[bt::BOUNTY_SEED, pa.as_ref(), &id.to_le_bytes()]);
+        Instruction { program_id: ll::ID,
+            accounts: ll::accounts::OpenBounty { launch_config: launch_config(), bounty_config: bcfg, registry_config: registry_config(), opener: runtime.pubkey(),
+                authority: launch_authority(), payer_launch: l.launch, payer_compute: l.compute_vault, payer_ledger: lpda(&[bt::BOUNTY_LEDGER_SEED, pa.as_ref()]),
+                bounty: b, bounty_vault: lpda(&[bt::BOUNTY_VAULT_SEED, b.as_ref()]), line_mint: e.line_mint, line_token_program: e.line_program,
+                system_program: sys }.to_account_metas(None),
+            data: ll::instruction::OpenBounty { args: bt::OpenBountyArgs { bounty_id: id, payee: Pubkey::default(), amount: 3 * ONE, terms_digest: [0x7e; 32],
+                condition_kind: bt::COND_TARGET, lineage_id: lineage, condition_value: bt::target_digest(&tj), deadline } }.data() }
+    };
+    let deadline = now(&e.svm) + 86_400;
+    ok(send(&mut e.svm, &runtime, &[], vec![open(1, deadline), open(2, deadline)]));
+    let ix = e.post_epoch_ix(&core.pubkey(), lr::PostEpochArgs { epoch: 5, payout_root: [0; 32], lineage_root: [0; 32], record_root: leaf, total_units_micro: 0,
+        pool_amount: 0, rebate_amount: 0 });
+    ok(send(&mut e.svm, &core, &[], vec![ix]));
+    let b1 = lpda(&[bt::BOUNTY_SEED, pa.as_ref(), &1u64.to_le_bytes()]);
+    let rcpt = lpda(&[bt::BOUNTY_RECEIPT_SEED, pa.as_ref(), &leaf]);
+    let caller = funded(&mut e.svm);
+    ok(send(&mut e.svm, &caller, &[], vec![Instruction { program_id: ll::ID,
+        accounts: ll::accounts::ReleaseBounty { launch_config: launch_config(), bounty_config: bcfg, caller: caller.pubkey(), authority: launch_authority(),
+            bounty: b1, bounty_vault: lpda(&[bt::BOUNTY_VAULT_SEED, b1.as_ref()]), opener: runtime.pubkey(), registry_epoch: epoch_pda(5),
+            payee_launch: payee.launch, payee_compute: payee.compute_vault, payee_ledger: lpda(&[bt::BOUNTY_LEDGER_SEED, payee.agent.pubkey().as_ref()]),
+            receipt: rcpt, line_mint: e.line_mint, line_token_program: e.line_program, system_program: sys }.to_account_metas(None),
+        data: ll::instruction::ReleaseBounty { args: bt::ReleaseArgs { leaf, epoch: 5, gen_id: [0x47; 32], lineage_id: lineage, candidate_commitment: [0x4b; 32],
+            target: vec!["ir".into()], target_is_list: false, members, finder: None, proof: vec![] } }.data() }]));
     let raw = |key: &Pubkey| b64(&e.svm.get_account(key).unwrap().data);
     let c = e.rconfig();
     let a = e.agent(&agent.pubkey());
@@ -251,6 +342,35 @@ fn account_snapshots() -> Vec<Value> {
         json!({ "type": "SlashReceipt", "address": slash_receipt(&sl_id).to_string(), "data": raw(&slash_receipt(&sl_id)), "fields": {
             "slashId": hex(&sr.slash_id), "agent": sr.agent.to_string(), "offence": sr.offence, "epoch": sr.epoch.to_string(),
             "amount": sr.amount.to_string(), "slashedAt": sr.slashed_at.to_string() } }),
+        {
+            let c: bt::BountyConfig = read(&e.svm, &bcfg);
+            json!({ "type": "BountyConfig", "address": bcfg.to_string(), "data": raw(&bcfg), "fields": {
+                "maxBountyOutBps": c.max_bounty_out_bps, "selfHostedInCap": c.self_hosted_in_cap.to_string(), "windowS": c.window_s, "minTtlS": c.min_ttl_s,
+                "maxTtlS": c.max_ttl_s, "refundGraceS": c.refund_grace_s, "minAmount": c.min_amount.to_string(), "paused": c.paused } })
+        },
+        {
+            let b: bt::Bounty = read(&e.svm, &b1);
+            json!({ "type": "Bounty", "address": b1.to_string(), "data": raw(&b1), "fields": {
+                "payer": b.payer.to_string(), "bountyId": b.bounty_id.to_string(), "payee": b.payee.to_string(), "opener": b.opener.to_string(),
+                "amount": b.amount.to_string(), "termsDigest": hex(&b.terms_digest), "conditionKind": b.condition_kind, "lineageId": hex(&b.lineage_id),
+                "conditionValue": hex(&b.condition_value), "minEpoch": b.min_epoch.to_string(), "epochsPostedAtOpen": b.epochs_posted_at_open.to_string(),
+                "deadline": b.deadline.to_string(), "createdAt": b.created_at.to_string(), "status": b.status, "releasedTo": b.released_to.to_string(),
+                "releasedEpoch": b.released_epoch.to_string(), "leaf": hex(&b.leaf), "closedAt": b.closed_at.to_string() } })
+        },
+        {
+            let k = lpda(&[bt::BOUNTY_LEDGER_SEED, pa.as_ref()]);
+            let d: bt::BountyLedger = read(&e.svm, &k);
+            json!({ "type": "BountyLedger", "address": k.to_string(), "data": raw(&k), "fields": {
+                "agent": d.agent.to_string(), "outWindow": d.out_window.to_string(), "outBase": d.out_base.to_string(), "outAmount": d.out_amount.to_string(),
+                "inWindow": d.in_window.to_string(), "inAmount": d.in_amount.to_string(), "openedTotal": d.opened_total.to_string(),
+                "receivedTotal": d.received_total.to_string() } })
+        },
+        {
+            let r: bt::BountyReceipt = read(&e.svm, &rcpt);
+            json!({ "type": "BountyReceipt", "address": rcpt.to_string(), "data": raw(&rcpt), "fields": {
+                "bounty": r.bounty.to_string(), "payer": r.payer.to_string(), "leaf": hex(&r.leaf), "epoch": r.epoch.to_string(), "genId": hex(&r.gen_id),
+                "payee": r.payee.to_string(), "amount": r.amount.to_string(), "releasedAt": r.released_at.to_string() } })
+        },
     ]
 }
 
@@ -270,5 +390,5 @@ fn client_vectors() {
     }
     let doc: Value = serde_json::from_str(&std::fs::read_to_string(&path).expect("run with UPDATE_VECTORS=1 once")).unwrap();
     assert_eq!(doc["instructions"], Value::Array(ixs), "instruction vectors changed: rerun with UPDATE_VECTORS=1 and the packages/chain tests");
-    assert_eq!(doc["accounts"].as_array().unwrap().len(), 6);
+    assert_eq!(doc["accounts"].as_array().unwrap().len(), 10);
 }

@@ -10,7 +10,9 @@ use anchor_spl::token_2022::Token2022;
 use anchor_spl::token_interface::{self, Burn, Mint, TokenAccount, TokenInterface, TransferChecked};
 use lineage_registry::leaf;
 
+pub mod bounty;
 pub mod meteora;
+pub use bounty::*;
 use meteora as mt;
 
 declare_id!("8eHzm1XtNtbxJujrMAci4VdhCJvQttFUBukmkFaUwsAT");
@@ -396,6 +398,34 @@ pub mod lineage_launch {
         update_awake(&mut ctx.accounts.agent_launch, bal, &ctx.accounts.launch_config);
         Ok(())
     }
+
+    /// Admin (the launch admin): creates or updates the `BountyConfig` (bounty.rs).
+    pub fn set_bounty_config(ctx: Context<SetBountyConfig>, args: BountyConfigArgs) -> Result<()> {
+        bounty::set_bounty_config(ctx, args)
+    }
+
+    /// The payer agent's launcher (self-hosted) or the runtime authority (hosted): escrows
+    /// `amount` from the agent's compute vault, capped per window by `max_bounty_out_bps`.
+    pub fn open_bounty(ctx: Context<OpenBounty>, args: OpenBountyArgs) -> Result<()> {
+        bounty::open_bounty(ctx, args)
+    }
+
+    /// Anyone: pays the escrow into the compute vault of an agent credited in an accepted
+    /// generation meeting the condition, proven by its contribution leaf against the registry's
+    /// `Epoch.record_root`. One receipt per (payer, leaf).
+    pub fn release_bounty(ctx: Context<ReleaseBounty>, args: ReleaseArgs) -> Result<()> {
+        bounty::release_bounty(ctx, args)
+    }
+
+    /// Anyone, after the deadline plus `refund_grace_s`: the escrow back to the payer's compute vault.
+    pub fn refund_bounty(ctx: Context<RefundBounty>) -> Result<()> {
+        bounty::refund_bounty(ctx)
+    }
+
+    /// The opener's authority, only while the registry has posted no epoch since the open.
+    pub fn cancel_bounty(ctx: Context<CancelBounty>) -> Result<()> {
+        bounty::cancel_bounty(ctx)
+    }
 }
 
 fn graduate_checked(a: &mut Graduate, majority: bool) -> Result<()> {
@@ -466,7 +496,7 @@ fn split_fees<'info>(c: &LaunchConfig, l: &mut AgentLaunch, compute_vault: &mut 
 }
 
 /// Hysteresis (SPEC 13.7): asleep below `sleep_threshold`, awake again from `wake_threshold`.
-fn update_awake(l: &mut AgentLaunch, balance: u64, c: &LaunchConfig) {
+pub(crate) fn update_awake(l: &mut AgentLaunch, balance: u64, c: &LaunchConfig) {
     if l.awake && balance < c.sleep_threshold {
         l.awake = false;
     } else if !l.awake && balance >= c.wake_threshold {
@@ -1030,4 +1060,20 @@ pub enum LaunchError {
     NotHosted,
     #[msg("debits above max_debit_per_epoch")]
     DebitCap,
+    #[msg("bounty deadline outside min_ttl_s..max_ttl_s")]
+    BountyTtl,
+    #[msg("bounty above max_bounty_out_bps of the compute vault in this window")]
+    BountyCap,
+    #[msg("bounty is not open")]
+    BountyClosed,
+    #[msg("generation does not meet the bounty condition")]
+    BountyCondition,
+    #[msg("payee is not credited for this bounty")]
+    BountyPayee,
+    #[msg("bounty has not expired")]
+    BountyNotExpired,
+    #[msg("bounty is locked: an epoch was posted since it opened")]
+    BountyLocked,
+    #[msg("self-hosted payee above self_hosted_in_cap in this window")]
+    SelfHostedCap,
 }
