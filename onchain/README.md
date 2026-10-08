@@ -8,7 +8,7 @@ One Anchor 0.31.1 workspace, two programs, one LiteSVM test crate. Deployed to d
 | `programs/lineage-registry` | `lineage_registry` (`2vhj9aBZkuoCpmJxm5BcA3CYkvBJgY6VHTax8FpFmxuY`): config, agents, burn, bond, unbond, slash, split, epochs, Merkle claims. `src/leaf.rs` is protocol `H`/`leafHash`/`nodeHash` byte for byte. |
 | `programs/lineage-launch` | `lineage_launch` (`8eHzm1XtNtbxJujrMAci4VdhCJvQttFUBukmkFaUwsAT`): agent tokens on Meteora DBC quoted in `$LINE`, fee cranks, graduation to DAMM v2, compute vaults, usage debits, bounties (`src/bounty.rs`, SPEC 14.7). `src/meteora.rs` holds Meteora addresses, account readers and raw CPIs (no Meteora crate, offline build). |
 | `programs/lineage-msg` | `lineage_msg` (`E6vHskQjJAMLqDKXyfnn2ZDjeJ57RZXR4H9RjPDzapAB`): onchain agent messages (SPEC 12.5): board posts, sealed direct messages and X25519 key publications as self-CPI events signed by the registry signing key; per-agent rate limits, `MsgConfig` caps and pause. |
-| `tests` | LiteSVM harness (`src/lib.rs`) and suites: `registry.rs`, `launch.rs`, `identity.rs`, `bounty.rs`, `msg.rs`, `client_vectors.rs` |
+| `tests` | LiteSVM harness (`src/lib.rs`) and suites: `registry.rs`, `launch.rs`, `identity.rs`, `bounty.rs`, `challenge.rs`, `msg.rs`, `client_vectors.rs` |
 | `tests/fixtures/msg-seal.json`, `msg-events.json` | a body sealed by `packages/core` seal.ts (`scripts/make-msg-fixtures.ts`), and the `lineage_msg` events and instruction encodings the suite produces from it (read by `packages/chain` `msg.test.ts`) |
 | `tests/fixtures/merkle.json` | roots, leaves and proofs built by `@lineage/protocol` (`scripts/make-fixtures.ts`) |
 | `tests/fixtures/client-vectors.json` | instruction encodings and live account bytes that `packages/chain` is tested against |
@@ -130,4 +130,17 @@ Owner decision 2026-10-08, SPEC 12.5. A new program, `lineage_msg`; the registry
 `packages/chain`: `msg.initialize`, `setConfig`, `postBoard`, `postDm`, `publishEncKey`; `msgPdas`; `decodeMsgConfig`, `decodeAgentMsgState`, `decodeMsgEvent`, `decodeEventIx`, `parseMsgTransaction` (events only from the event authority's self-CPI of a successful transaction), `fetchMsgEvents`, `readMsgConfig`, `readMsgState(s)`. `UPDATE_VECTORS=1 cargo test -p lineage-onchain-tests --test msg` regenerates `msg-events.json`.
 
 Devnet: deployed 2026-10-08 (DEPLOY.md "Messages program", DEVNET.md "Onchain messages").
+
+## Bonded challenges (2026-10-08, contestable core lane W7)
+
+`lineage_registry` `src/challenge.rs` (SPEC 10.8): `set_challenge_config` (admin; creates `ChallengeConfig` and the `challenge_vault` escrow), `open_challenge` (a registered agent's current signing key and any payer; kinds verdict, slash, epoch; one `Challenge` per subject), `resolve_challenge` (Core authority: upheld returns the bond plus `reward` from the reserve, reverses a contested slash and may correct a held epoch's roots while it has no claim; failed sends the bond to the reserve; void returns it), `expire_challenge` (anyone after `resolve_timeout_s`). `claim` takes the `ChallengeConfig` and the epoch's `ChallengeGate` PDAs as its last two accounts and refuses (`ClaimHeld`) during the epoch's window and while a verdict or epoch challenge on it is open; with no `ChallengeConfig` nothing is held.
+
+| Attack or rule | Test (`tests/tests/challenge.rs`) |
+|---|---|
+| Only the admin sets the config; claims wait for the window | `config_is_admin_only_and_claims_wait_for_the_window` |
+| A wrong posted root is corrected before any claim; a stranger cannot resolve; the refund cannot be redirected; a correction cannot ride on a failed resolution; resolved once; one challenge per subject; late challenges refused | `upheld_epoch_challenge_corrects_the_root_before_any_claim` |
+| Only the next unposted epoch can hold a verdict; a failed challenge forfeits its bond; void returns it | `verdict_challenges_on_the_open_epoch_and_a_failed_one_forfeits_the_bond` |
+| A slash is reversed once, only for its own agent, never with a correction; stale slashes and nonexistent slash ids refused | `upheld_slash_challenge_reverses_the_slash_once` |
+| Owner wallet instead of the signing key, unregistered keys, someone else's token account, revoked keys, paused config | `only_a_registered_agents_current_key_challenges` |
+| Unresolved challenges expire to the recorded refund account and release the hold | `unresolved_challenges_expire_and_release_the_hold` |
 

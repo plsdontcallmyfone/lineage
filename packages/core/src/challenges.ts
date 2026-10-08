@@ -586,7 +586,8 @@ export class Challenges {
     const upheld = wrongOriginal.length > 0 || flipped;
     if (!upheld) return this.finish(r, "failed", `the fresh replays confirm the verdict (${j.outcome})`, { ...doc, wrong_side: wrongSide });
     let effect = "recorded";
-    if (j0.outcome === "accepted" && c.gen_id) {
+    if (j0.outcome === "accepted" && j.outcome !== "accepted" && c.gen_id) {
+      // the generation stands only if the combined judgement still accepts it (the liars are slashed either way)
       const g = this.c.genRow(c.gen_id);
       if (g && !g.reverted_by) {
         this.voidHeld("AND kind IN ('author','finder')", g.gen_id, r);

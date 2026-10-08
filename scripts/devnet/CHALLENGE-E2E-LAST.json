@@ -1,0 +1,176 @@
+{
+  "at": "2026-10-08T17:07:37.300Z",
+  "core_epoch": 13,
+  "candidate": "f07a9b206202c23e8d9133ea880f4338974d414cbf66975044990f630561e65d",
+  "generation": "2e79bba85d3cdf88534807efbfdedffe5bacbb0aa4e7b9db828e0065232cb67b",
+  "challenges": [
+    {
+      "challenge_id": "b88e0605e01bee9e8f0ad9b95e9a7ce0dd4753df96e9a30797a6d0f9417781d8",
+      "kind": "verdict",
+      "subject": "f07a9b206202c23e8d9133ea880f4338974d414cbf66975044990f630561e65d",
+      "status": "upheld",
+      "evidence": "f11170441a63dc32625e46fc29202a6127aedb148004b728649f813b965739e4",
+      "chain": {
+        "address": "C7nMjguWRK6eCutknMoAtX663rcLaDoNCxgVaKWQk4Qd",
+        "status": "open",
+        "resolve_signature": "65rVgbU8aokmES7Pw8DCRoz8nFryCP7tCBWrcUo9kd4xJ1CCtsAX13Yjk7mUex22DC34x1tiLUjvR1Egh9t8tzbD",
+        "resolve_error": null
+      },
+      "detail": "2 original replays in the minority; reverted"
+    },
+    {
+      "challenge_id": "6ac1e9f7ef93eb1d231d5a29f8da3d8a8ad751a9f6d0f25a03b04fac21aa023d",
+      "kind": "slash",
+      "subject": "2b44cc90880b91d6d830645adbf96b6af2c42eb482cc342405e7731426078722",
+      "status": "failed",
+      "evidence": "bfcf3a29adc69bf88b082fa43ea62be127d7fd785c1cdf379d61f4d146ef63c8",
+      "chain": {
+        "address": "J8uXeru1Chuo6U6pTEUPBAEQ4y24Uqzem3oXCio8wCkT",
+        "status": "open",
+        "resolve_signature": "MhfyjGfjswcS6xnqUmKtZX4kYoQPqTfnr8tetYzeNM7DJegDgGo62sMnNHzzX5actfNmhj682hmzHLEbNCWAea7",
+        "resolve_error": null
+      },
+      "detail": "the slashed replay is in the minority again"
+    }
+  ],
+  "replica": {
+    "v": 1,
+    "source": "http://127.0.0.1:9664",
+    "started_at": 1791479257289,
+    "finished_at": 1791479257300,
+    "core_epoch": 13,
+    "verdicts": {
+      "checked": 1,
+      "skipped": 0
+    },
+    "audits": {
+      "checked": 0
+    },
+    "challenges": {
+      "checked": 1,
+      "available": true
+    },
+    "units": {
+      "checked": 5,
+      "pending": 0
+    },
+    "epochs": {
+      "checked": 0,
+      "closed": 0
+    },
+    "divergences": [],
+    "ok": true
+  },
+  "results": [
+    {
+      "check": "ChallengeConfig on chain holds the TEST values",
+      "ok": true,
+      "detail": "window 3600 s, bond 1000000, reward 500000, timeout 7200 s, open 0"
+    },
+    {
+      "check": "honest verifier v1 registered and bonded on chain",
+      "ok": true,
+      "detail": "FRx89QoUEavL1mVMcroDH4QYUhdTbA66EthkX7uZrGSD bond 5000000"
+    },
+    {
+      "check": "honest verifier v2 registered and bonded on chain",
+      "ok": true,
+      "detail": "DEHFFWt2uzVGn43nzU1EvEyo17G1x74gvn3C6usU43hj bond 5000000"
+    },
+    {
+      "check": "TEST liar 1 registered and bonded on chain",
+      "ok": true,
+      "detail": "AsGFAEtwCu8DajBLWpeTqgmpoWg2cuG1JVJdvkr8PdUT bond 5000000"
+    },
+    {
+      "check": "TEST liar 2 registered and bonded on chain",
+      "ok": true,
+      "detail": "47HKePkz5NFxABk3QQUVKY95GrK2uqhH6cBtMiwYu7uP bond 5000000"
+    },
+    {
+      "check": "challenger 1 is a registered identity (Agent record, signing key = agent key)",
+      "ok": true,
+      "detail": "Gy9RShqc5V7sKaKW95cd1MsCmq83qZwPDs1tREBKrWXR"
+    },
+    {
+      "check": "challenger 2 is a registered identity (Agent record, signing key = agent key)",
+      "ok": true,
+      "detail": "Ag735DAKJSE49TZcjduM7KHuTufs1p9KpE6wJGAqaYf9"
+    },
+    {
+      "check": "Core's open epoch is the registry's next one (verdicts made now are held by it)",
+      "ok": true,
+      "detail": "epoch 13"
+    },
+    {
+      "check": "Core reads the challenge parameters from chain",
+      "ok": true,
+      "detail": "{\"source\":\"chain\",\"window_s\":3600,\"bond\":\"1000000\",\"reward\":\"500000\",\"resolve_timeout_s\":7200,\"replayers\":1}"
+    },
+    {
+      "check": "the two TEST liars qualified honestly (and are the only eligible verifiers)",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "the two liars accepted a comment-only patch as a 10% gain (captured verdict)",
+      "ok": true,
+      "detail": "accepted, gen 2e79bba85d3c"
+    },
+    {
+      "check": "open_challenge escrowed the bond and holds the epoch's payouts",
+      "ok": true,
+      "detail": "gate 13 open 1"
+    },
+    {
+      "check": "Core drew fresh replayers excluding every party (the honest verifier and the reference runner)",
+      "ok": true,
+      "detail": "challenge_reference:GiSibE challenge:FRx89Q"
+    },
+    {
+      "check": "Core upheld the challenge: both liars in the combined minority, the generation reverted",
+      "ok": true,
+      "detail": "2 original replays in the minority; reverted"
+    },
+    {
+      "check": "resolve_challenge landed: upheld, evidence = Core's resolution digest, reward 0.5 tLINE",
+      "ok": true,
+      "detail": "sig 65rVgbU8aokmES7Pw8DCRoz8nFryCP7tCBWrcUo9kd4xJ1CCtsAX13Yjk7mUex22DC34x1tiLUjvR1Egh9t8tzbD"
+    },
+    {
+      "check": "the challenger's payer got its bond back plus the reward",
+      "ok": true,
+      "detail": "186159343 -> 186659343"
+    },
+    {
+      "check": "the epoch is no longer held by the challenge",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "both liars slashed on chain (minority, 5% of the bond)",
+      "ok": true,
+      "detail": "liar 1 bond 4750000"
+    },
+    {
+      "check": "Core re-judged the slash with fresh replays (v2 and the reference runner): justified, the challenge failed",
+      "ok": true,
+      "detail": "the slashed replay is in the minority again"
+    },
+    {
+      "check": "resolve_challenge landed: failed, evidence = Core's resolution digest",
+      "ok": true,
+      "detail": "sig MhfyjGfjswcS6xnqUmKtZX4kYoQPqTfnr8tetYzeNM7DJegDgGo62sMnNHzzX5actfNmhj682hmzHLEbNCWAea7"
+    },
+    {
+      "check": "the failed bond went to the compute reserve; liar 1's bond unchanged",
+      "ok": true,
+      "detail": "reserve 3418629875 -> 3419629875"
+    },
+    {
+      "check": "a read-only replica recomputes every verdict and challenge judgement of this Core: zero divergence",
+      "ok": true,
+      "detail": "1 verdicts, 1 challenges, 5 unit checks, 0 divergences"
+    }
+  ]
+}
