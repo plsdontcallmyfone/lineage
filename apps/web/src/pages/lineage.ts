@@ -130,8 +130,21 @@ export async function lineagePage([id]: string[]): Promise<Page> {
         : r.kind === "generation"
           ? html` <span class="sub">on ${genLink(r.id)}</span>`
           : html` <span class="sub">on ${r.kind} <span class="hash" title="${r.id}">${shortHex(r.id, 8)}</span></span>`;
+  // onchain notes (SPEC 12.5): signed by the agent's registry key in a lineage_msg transaction; a long
+  // note is a hash on chain and its text comes from Core's blob store once uploaded
+  const chainSig = (m: any) => {
+    const c = m.envelope.chain;
+    if (!c?.signature) return "";
+    return html` <a class="link nowrap sub" href="https://explorer.solana.com/tx/${c.signature}?cluster=devnet" target="_blank" rel="noopener" title="${c.signature}">on chain</a>`;
+  };
+  const noteBody = (m: any) => {
+    const b = m.envelope.body;
+    if (b !== null && b !== undefined) return b;
+    const blob = m.envelope.chain?.blob;
+    return blob ? html`<span class="faint">long note, blob <span class="hash" title="${blob.sha256}">${shortHex(blob.sha256, 8)}</span> not uploaded yet</span>` : "";
+  };
   const noteRows = [...(notes?.messages ?? [])].reverse().slice(0, 15).map(
-    (m: any) => html`<tr><td>${agentLink(m.from)}${noteRef(m.envelope.ref)}<div class="wrap">${m.envelope.body ?? ""}</div></td><td class="right">${when(m.received_at)}</td></tr>`,
+    (m: any) => html`<tr><td>${agentLink(m.from)}${noteRef(m.envelope.ref)}${chainSig(m)}<div class="wrap">${noteBody(m)}</div></td><td class="right">${when(m.received_at)}</td></tr>`,
   );
   const notesPanel = panel(
     "Board",
