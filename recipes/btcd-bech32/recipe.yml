@@ -1,0 +1,89 @@
+# btcsuite/btcd, package address/bech32 (module github.com/btcsuite/btcd/address/v2): the
+# Bech32/Bech32m codec (BIP173/BIP350) behind every segwit and taproot address in btcd, lnd and
+# the rest of the btcsuite Go ecosystem. ISC licence (LICENSE, file headers). Contribution
+# policy: docs/code_contribution_guidelines.md and .github/pull_request_template.md ask for
+# substantial changes with tests and reject typo-only PRs "to fight bot spam"; no ban on
+# AI-generated changes (the repository ships a .gemini/ reviewer config). Checked 2026-10-08.
+#
+# Why: the BCH checksum (bech32Polymod) runs a 5-step data-dependent branch loop per character
+# and is called twice per encode, toBytes does a strings.IndexByte scan of the charset per
+# character, checksum constants go through two maps, and ConvertBits regroups bits through an
+# inner loop per input byte, so instruction counts have real headroom.
+#
+# Mirror: btcd's history is large; the reference runner fetched the single snapshot commit
+# (packages/sandbox/src/repo.ts shallow mirror). Everything runs inside address/, its own module.
+#
+# Build and determinism follow geth-rlp (see its recipe for the details): the metric is
+# callgrind's instruction count inside main.run only (--toggle-collect), GOMAXPROCS=1 GOGC=off
+# asyncpreemptoff memprofilerate=0, a harness built with GOEXPERIMENT=norandomizedheapbase64 and
+# linked with the overlay's entry stub (fixed AT_RANDOM bytes, pre-touched main stack), the main
+# goroutine locked to the main thread and pinned to its P while measuring. Calibrated on arm64.
+name: btcd-bech32
+class: go
+requires: { arch: arm64 }
+repo: https://github.com/btcsuite/btcd
+commit: "b48125d0a3565b1441522ee10422f7815db03216"
+image: "lineage/go:1.26.8@sha256:7f90f7bb53ceec9f7b62ed14867b6439c7020fa8439ff5ea4daf891a84069838"
+workdir: /work/src
+prepare:
+  - cd address && go list -deps -test ./bech32/ ./lineage/... > /dev/null
+  - mkdir -p /deps/gomod && du -sh /deps/gomod
+prepare_outputs: []
+build:
+  # the build commands run in one shell, so the cd holds for the rest
+  commands:
+    - export GOCACHE=/work/src/.lineage-gocache
+    - cd address
+    - go build ./bech32/
+    - GOEXPERIMENT=norandomizedheapbase64 go build -ldflags=-E=main.lineageEntry -o ../lineage_bin/ ./lineage/b32bench
+    - go build -o ../lineage_bin/ ./lineage/b32equiv
+  artifacts: []
+  reproducible: false
+test:
+  command: cd address && GOCACHE=/work/src/.lineage-gocache go test -json -count=1 -p 1 ./bech32/ | gotap
+  parser: tap
+  exclude: []
+  timeout_s: 600
+equivalence:
+  command: lineage_bin/b32equiv "$LINEAGE_SEED"
+  output: stdout-digest
+metrics:
+  - name: encode_ir
+    kind: perf
+    direction: lower
+    deterministic: true
+    command: GOMAXPROCS=1 GOGC=off GODEBUG=asyncpreemptoff=1,memprofilerate=0 valgrind --tool=callgrind --toggle-collect=main.run --dump-instr=no --callgrind-out-file=/dev/null lineage_bin/b32bench encode "$LINEAGE_SEED"
+    parser: cachegrind-ir
+    holdout: true
+    min_effect: 0.01
+  - name: decode_ir
+    kind: perf
+    direction: lower
+    deterministic: true
+    command: GOMAXPROCS=1 GOGC=off GODEBUG=asyncpreemptoff=1,memprofilerate=0 valgrind --tool=callgrind --toggle-collect=main.run --dump-instr=no --callgrind-out-file=/dev/null lineage_bin/b32bench decode "$LINEAGE_SEED"
+    parser: cachegrind-ir
+    holdout: true
+    min_effect: 0.01
+  - name: convert_ir
+    kind: perf
+    direction: lower
+    deterministic: true
+    command: GOMAXPROCS=1 GOGC=off GODEBUG=asyncpreemptoff=1,memprofilerate=0 valgrind --tool=callgrind --toggle-collect=main.run --dump-instr=no --callgrind-out-file=/dev/null lineage_bin/b32bench convert "$LINEAGE_SEED"
+    parser: cachegrind-ir
+    holdout: true
+    min_effect: 0.01
+patch:
+  allowed_paths: ["address/bech32/bech32.go", "address/bech32/error.go", "address/bech32/version.go"]
+  protected_paths:
+    - "**/*_test.go"
+    - "**/testdata/**"
+    - "**/go.mod"
+    - "**/go.sum"
+    - "address/lineage/**"
+    - "lineage_bin/**"
+    - ".github/**"
+    - "**/*.yml"
+    - "**/*.yaml"
+  max_files: 3
+  max_lines: 200
+limits: { cpus: 2, memory_mb: 2048, pids: 512, wall_s: 1200, disk_mb: 4096 }

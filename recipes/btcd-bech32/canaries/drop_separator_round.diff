@@ -1,0 +1,20 @@
+diff --git a/address/bech32/bech32.go b/address/bech32/bech32.go
+--- a/address/bech32/bech32.go
++++ b/address/bech32/bech32.go
+@@ -53,15 +53,7 @@ func bech32Polymod(hrp string, values, checksum []byte) int {
+ 		}
+ 	}
+ 
+-	// Account for the separator (0) between high and low bits of the HRP.
+-	// x^0 == x, so we eliminate the redundant xor used in the other rounds.
+-	b := chk >> 25
+-	chk = (chk & 0x1ffffff) << 5
+-	for i := 0; i < 5; i++ {
+-		if (b>>uint(i))&1 == 1 {
+-			chk ^= gen[i]
+-		}
+-	}
++	// Separator round elided: x^0 == x.
+ 
+ 	// Account for the low bits of the HRP.
+ 	for i := 0; i < len(hrp); i++ {

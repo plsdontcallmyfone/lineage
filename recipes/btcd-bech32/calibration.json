@@ -1,0 +1,54 @@
+{
+  "recipe_id": "f0cf4ab50711fbc337a92661141ca7de39f777ba775ff6abf701854776ff0625",
+  "snapshot_id": "",
+  "runs": 5,
+  "stable": [
+    "github.com/btcsuite/btcd/address/v2/bech32::ExampleDecode",
+    "github.com/btcsuite/btcd/address/v2/bech32::ExampleEncode",
+    "github.com/btcsuite/btcd/address/v2/bech32::TestBech32",
+    "github.com/btcsuite/btcd/address/v2/bech32::TestBech32Base256",
+    "github.com/btcsuite/btcd/address/v2/bech32::TestBech32DecodeGeneric",
+    "github.com/btcsuite/btcd/address/v2/bech32::TestBech32M",
+    "github.com/btcsuite/btcd/address/v2/bech32::TestCanDecodeUnlimitedBech32",
+    "github.com/btcsuite/btcd/address/v2/bech32::TestConvertBits",
+    "github.com/btcsuite/btcd/address/v2/bech32::TestConvertBitsFailures",
+    "github.com/btcsuite/btcd/address/v2/bech32::TestMixedCaseEncode"
+  ],
+  "known_failures": [],
+  "quarantined": [],
+  "metrics": {
+    "encode_ir": {
+      "enabled": true,
+      "cv": 0,
+      "base_value": 9513833
+    },
+    "decode_ir": {
+      "enabled": true,
+      "cv": 0,
+      "base_value": 14761385
+    },
+    "convert_ir": {
+      "enabled": true,
+      "cv": 0,
+      "base_value": 9968862
+    }
+  },
+  "median_eval_seconds": 36,
+  "seed": "ca11b7a7e",
+  "recipe_name": "btcd-bech32",
+  "repo": "https://github.com/btcsuite/btcd",
+  "commit": "b48125d0a3565b1441522ee10422f7815db03216",
+  "deps_digest": "ecfcc9fc2e777639f51c975e2525074f266b5ed86c8bcf43eec2b2493cd65af2",
+  "image_digest": "sha256:7f90f7bb53ceec9f7b62ed14867b6439c7020fa8439ff5ea4daf891a84069838",
+  "date": "2026-10-08T21:35:02.056Z",
+  "calibration_wall_seconds": 59.5,
+  "counts": {
+    "stable": 10,
+    "known_failures": 0,
+    "quarantined": 0,
+    "excluded": 0
+  },
+  "notes": [
+    "calibration wall time 59 s"
+  ]
+}

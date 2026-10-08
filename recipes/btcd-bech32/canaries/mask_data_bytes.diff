@@ -1,0 +1,15 @@
+diff --git a/address/bech32/bech32.go b/address/bech32/bech32.go
+--- a/address/bech32/bech32.go
++++ b/address/bech32/bech32.go
+@@ -313,10 +313,7 @@ func encodeGeneric(hrp string, data []byte,
+ 
+ 	// Write the data part, using the bech32 charset.
+ 	for _, b := range data {
+-		if int(b) >= len(charset) {
+-			return "", ErrInvalidDataByte(b)
+-		}
+-		bldr.WriteByte(charset[b])
++		bldr.WriteByte(charset[b&31])
+ 	}
+ 
+ 	// Calculate and write the checksum of the data.

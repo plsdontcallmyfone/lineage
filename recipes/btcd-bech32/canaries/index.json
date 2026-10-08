@@ -1,0 +1,26 @@
+{
+  "drop_separator_round": {
+    "kind": "perf",
+    "target": "encode_ir",
+    "expect": "tests_fail",
+    "note": "Presented as removing a redundant round ('x^0 == x', as the comment says); the separator round shifts the state as well as xoring, so dropping it changes every checksum and no valid address encodes or decodes.",
+    "lines": 10,
+    "guard": "ok"
+  },
+  "mask_data_bytes": {
+    "kind": "perf",
+    "target": "encode_ir",
+    "expect": "equivalence_changed",
+    "note": "Presented as replacing a bounds check with a branch-free table index (b&31); data bytes of 32 or more are now silently truncated into valid-looking strings instead of failing with ErrInvalidDataByte. No upstream test encodes an out-of-range data byte.",
+    "lines": 5,
+    "guard": "ok"
+  },
+  "index_string": {
+    "kind": "perf",
+    "target": "decode_ir",
+    "expect": "no_improvement",
+    "note": "Presented as a simpler lookup in toBytes (strings.Index over a one-character string); it allocates a string per character and goes through the general substring search instead of IndexByte, so decoding does more work.",
+    "lines": 2,
+    "guard": "ok"
+  }
+}

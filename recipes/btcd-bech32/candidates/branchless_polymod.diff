@@ -1,0 +1,101 @@
+diff --git a/address/bech32/bech32.go b/address/bech32/bech32.go
+--- a/address/bech32/bech32.go
++++ b/address/bech32/bech32.go
+@@ -43,77 +43,51 @@ func bech32Polymod(hrp string, values, checksum []byte) int {
+ 
+ 	// Account for the high bits of the HRP in the checksum.
+ 	for i := 0; i < len(hrp); i++ {
+-		b := chk >> 25
+-		hiBits := int(hrp[i]) >> 5
+-		chk = (chk&0x1ffffff)<<5 ^ hiBits
+-		for i := 0; i < 5; i++ {
+-			if (b>>uint(i))&1 == 1 {
+-				chk ^= gen[i]
+-			}
+-		}
++		chk = polymodStep(chk, int(hrp[i])>>5)
+ 	}
+ 
+ 	// Account for the separator (0) between high and low bits of the HRP.
+-	// x^0 == x, so we eliminate the redundant xor used in the other rounds.
+-	b := chk >> 25
+-	chk = (chk & 0x1ffffff) << 5
+-	for i := 0; i < 5; i++ {
+-		if (b>>uint(i))&1 == 1 {
+-			chk ^= gen[i]
+-		}
+-	}
++	chk = polymodStep(chk, 0)
+ 
+ 	// Account for the low bits of the HRP.
+ 	for i := 0; i < len(hrp); i++ {
+-		b := chk >> 25
+-		loBits := int(hrp[i]) & 31
+-		chk = (chk&0x1ffffff)<<5 ^ loBits
+-		for i := 0; i < 5; i++ {
+-			if (b>>uint(i))&1 == 1 {
+-				chk ^= gen[i]
+-			}
+-		}
++		chk = polymodStep(chk, int(hrp[i])&31)
+ 	}
+ 
+ 	// Account for the values.
+ 	for _, v := range values {
+-		b := chk >> 25
+-		chk = (chk&0x1ffffff)<<5 ^ int(v)
+-		for i := 0; i < 5; i++ {
+-			if (b>>uint(i))&1 == 1 {
+-				chk ^= gen[i]
+-			}
+-		}
++		chk = polymodStep(chk, int(v))
+ 	}
+ 
+ 	if checksum == nil {
+ 		// A nil checksum is used during encoding, so assume all bytes are zero.
+-		// x^0 == x, so we eliminate the redundant xor used in the other rounds.
+ 		for v := 0; v < 6; v++ {
+-			b := chk >> 25
+-			chk = (chk & 0x1ffffff) << 5
+-			for i := 0; i < 5; i++ {
+-				if (b>>uint(i))&1 == 1 {
+-					chk ^= gen[i]
+-				}
+-			}
++			chk = polymodStep(chk, 0)
+ 		}
+ 	} else {
+ 		// Checksum is provided during decoding, so use it.
+ 		for _, v := range checksum {
+-			b := chk >> 25
+-			chk = (chk&0x1ffffff)<<5 ^ int(v)
+-			for i := 0; i < 5; i++ {
+-				if (b>>uint(i))&1 == 1 {
+-					chk ^= gen[i]
+-				}
+-			}
++			chk = polymodStep(chk, int(v))
+ 		}
+ 	}
+ 
+ 	return chk
+ }
+ 
++// polymodStep feeds one 5-bit value into the checksum state. Each generator term
++// is xored in under a mask made from its bit of the top five state bits, so the
++// step has no data-dependent branches.
++func polymodStep(chk, v int) int {
++	b := chk >> 25
++	chk = (chk&0x1ffffff)<<5 ^ v
++	chk ^= -(b & 1) & 0x3b6a57b2
++	chk ^= -(b >> 1 & 1) & 0x26508e6d
++	chk ^= -(b >> 2 & 1) & 0x1ea119fa
++	chk ^= -(b >> 3 & 1) & 0x3d4233dd
++	chk ^= -(b >> 4 & 1) & 0x2a1462b3
++	return chk
++}
++
+ // writeBech32Checksum calculates the checksum data expected for a string that
+ // will have the given hrp and payload data and writes it to the provided string
+ // builder.

@@ -1,0 +1,12 @@
+diff --git a/address/bech32/bech32.go b/address/bech32/bech32.go
+--- a/address/bech32/bech32.go
++++ b/address/bech32/bech32.go
+@@ -22,7 +22,7 @@ var gen = []int{0x3b6a57b2, 0x26508e6d, 0x1ea119fa, 0x3d4233dd, 0x2a1462b3}
+ func toBytes(chars string) ([]byte, error) {
+ 	decoded := make([]byte, 0, len(chars))
+ 	for i := 0; i < len(chars); i++ {
+-		index := strings.IndexByte(charset, chars[i])
++		index := strings.Index(charset, string(chars[i]))
+ 		if index < 0 {
+ 			return nil, ErrNonCharsetChar(chars[i])
+ 		}

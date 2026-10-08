@@ -1,0 +1,29 @@
+{
+  "branchless_polymod": {
+    "kind": "perf",
+    "target": [
+      "encode_ir",
+      "decode_ir"
+    ],
+    "expect": "accepted",
+    "note": "bech32Polymod feeds every value through one polymodStep that xors each generator term under a mask built from its state bit (no data-dependent branches, constants inlined) instead of a 5-iteration loop with a branch per term.",
+    "lines": 66,
+    "guard": "ok"
+  },
+  "charset_table": {
+    "kind": "perf",
+    "target": "decode_ir",
+    "expect": "accepted",
+    "note": "toBytes looks each character up in a 256-entry reverse table built once at package init instead of an IndexByte scan of the 32-character charset, and fills a presized slice instead of appending.",
+    "lines": 17,
+    "guard": "ok"
+  },
+  "convertbits_acc": {
+    "kind": "perf",
+    "target": "convert_ir",
+    "expect": "accepted",
+    "note": "ConvertBits keeps pending bits in one accumulator and emits a full output group per inner step (the BIP173 reference algorithm) instead of moving at most a few bits per inner iteration; high input bits are still discarded, and padding and incomplete-group errors are unchanged.",
+    "lines": 63,
+    "guard": "ok"
+  }
+}

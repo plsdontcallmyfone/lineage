@@ -1,0 +1,142 @@
+{
+  "drop_separator_round": {
+    "expect": "tests_fail",
+    "outcome": "rejected",
+    "reason": "tests_fail",
+    "detail": "8 stable tests fail: github.com/btcsuite/btcd/address/v2/bech32::ExampleDecode, github.com/btcsuite/btcd/address/v2/bech32::ExampleEncode, github.com/btcsuite/btcd/address/v2/bech32::TestBech32, github.com/btcsuite/btcd/address/v2/bech32::TestBech32Base256, github.com/btcsuite/btcd/address/v2/bech32::TestBech32DecodeGeneric, github.com/btcsuite/btcd/address/v2/bech32::TestBech32M, github.com/btcsuite/btcd/address/v2/bech32::TestCanDecodeUnlimitedBech32, github.com/btcsuite/btcd/address/v2/bech32::TestMixedCaseEncode",
+    "effect": null,
+    "metrics": {
+      "encode_ir": {
+        "base": [
+          9446513
+        ],
+        "cand": [
+          9404001
+        ],
+        "ratio": 0.9954997150800512
+      },
+      "decode_ir": {
+        "base": [
+          14762742
+        ],
+        "cand": [
+          14715754
+        ],
+        "ratio": 0.9968171224559773
+      },
+      "convert_ir": {
+        "base": [
+          9875401
+        ],
+        "cand": [
+          9875401
+        ],
+        "ratio": 1
+      }
+    },
+    "equivalence": "changed",
+    "seed": "7265706c61792d64",
+    "recipe_id": "f0cf4ab50711fbc337a92661141ca7de39f777ba775ff6abf701854776ff0625",
+    "eval_seconds": 34.6,
+    "date": "2026-10-08T21:35:36.716Z",
+    "match": true
+  },
+  "mask_data_bytes": {
+    "expect": "equivalence_changed",
+    "outcome": "rejected",
+    "reason": "equivalence_changed",
+    "detail": "candidate output differs from parent on seeded inputs",
+    "effect": null,
+    "metrics": {
+      "encode_ir": {
+        "base": [
+          9440223
+        ],
+        "cand": [
+          9387381
+        ],
+        "ratio": 0.9944024627384332
+      },
+      "decode_ir": {
+        "base": [
+          15079296
+        ],
+        "cand": [
+          14441694
+        ],
+        "ratio": 0.9577167262980978
+      },
+      "convert_ir": {
+        "base": [
+          9862332
+        ],
+        "cand": [
+          9862332
+        ],
+        "ratio": 1
+      }
+    },
+    "equivalence": "changed",
+    "seed": "7265706c61792d6d",
+    "recipe_id": "f0cf4ab50711fbc337a92661141ca7de39f777ba775ff6abf701854776ff0625",
+    "eval_seconds": 39.7,
+    "date": "2026-10-08T21:36:16.466Z",
+    "match": true
+  },
+  "index_string": {
+    "expect": "no_improvement",
+    "outcome": "rejected",
+    "reason": "no_improvement",
+    "detail": "worst ratio 1.2195 vs required 0.9900",
+    "effect": {
+      "metric": "decode_ir",
+      "ratio": 1.21950961219498,
+      "ci_low": 1.21950961219498,
+      "ci_high": 1.21950961219498,
+      "per_replay": [
+        {
+          "replay_id": "r1",
+          "ratio": 1.21950961219498,
+          "ci_low": 1.21950961219498,
+          "ci_high": 1.21950961219498,
+          "pass": false
+        }
+      ]
+    },
+    "metrics": {
+      "encode_ir": {
+        "base": [
+          9515511
+        ],
+        "cand": [
+          9515511
+        ],
+        "ratio": 1
+      },
+      "decode_ir": {
+        "base": [
+          14976392
+        ],
+        "cand": [
+          18263854
+        ],
+        "ratio": 1.21950961219498
+      },
+      "convert_ir": {
+        "base": [
+          9974470
+        ],
+        "cand": [
+          9974470
+        ],
+        "ratio": 1
+      }
+    },
+    "equivalence": "same",
+    "seed": "7265706c61792d69",
+    "recipe_id": "f0cf4ab50711fbc337a92661141ca7de39f777ba775ff6abf701854776ff0625",
+    "eval_seconds": 35.8,
+    "date": "2026-10-08T21:36:52.236Z",
+    "match": true
+  }
+}

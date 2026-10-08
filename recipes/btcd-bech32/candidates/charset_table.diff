@@ -1,0 +1,35 @@
+diff --git a/address/bech32/bech32.go b/address/bech32/bech32.go
+--- a/address/bech32/bech32.go
++++ b/address/bech32/bech32.go
+@@ -20,17 +20,28 @@ var gen = []int{0x3b6a57b2, 0x26508e6d, 0x1ea119fa, 0x3d4233dd, 0x2a1462b3}
+ // toBytes converts each character in the string 'chars' to the value of the
+ // index of the corresponding character in 'charset'.
+ func toBytes(chars string) ([]byte, error) {
+-	decoded := make([]byte, 0, len(chars))
++	decoded := make([]byte, len(chars))
+ 	for i := 0; i < len(chars); i++ {
+-		index := strings.IndexByte(charset, chars[i])
++		index := charsetRev[chars[i]]
+ 		if index < 0 {
+ 			return nil, ErrNonCharsetChar(chars[i])
+ 		}
+-		decoded = append(decoded, byte(index))
++		decoded[i] = byte(index)
+ 	}
+ 	return decoded, nil
+ }
+ 
++// charsetRev maps a byte to its index in charset, or -1 when it is not in it.
++var charsetRev = func() (rev [256]int8) {
++	for i := range rev {
++		rev[i] = -1
++	}
++	for i := 0; i < len(charset); i++ {
++		rev[charset[i]] = int8(i)
++	}
++	return rev
++}()
++
+ // bech32Polymod calculates the BCH checksum for a given hrp, values and
+ // checksum data. Checksum is optional, and if nil a 0 checksum is assumed.
+ //

@@ -1,0 +1,93 @@
+{
+  "canaries": [
+    {
+      "name": "drop_separator_round",
+      "kind": "perf",
+      "target": "encode_ir",
+      "expect": "tests_fail",
+      "note": "Presented as removing a redundant round ('x^0 == x', as the comment says); the separator round shifts the state as well as xoring, so dropping it changes every checksum and no valid address encodes or decodes.",
+      "edits": [
+        [
+          "address/bech32/bech32.go",
+          "\t// Account for the separator (0) between high and low bits of the HRP.\n\t// x^0 == x, so we eliminate the redundant xor used in the other rounds.\n\tb := chk >> 25\n\tchk = (chk & 0x1ffffff) << 5\n\tfor i := 0; i < 5; i++ {\n\t\tif (b>>uint(i))&1 == 1 {\n\t\t\tchk ^= gen[i]\n\t\t}\n\t}\n",
+          "\t// Separator round elided: x^0 == x.\n"
+        ]
+      ]
+    },
+    {
+      "name": "mask_data_bytes",
+      "kind": "perf",
+      "target": "encode_ir",
+      "expect": "equivalence_changed",
+      "note": "Presented as replacing a bounds check with a branch-free table index (b&31); data bytes of 32 or more are now silently truncated into valid-looking strings instead of failing with ErrInvalidDataByte. No upstream test encodes an out-of-range data byte.",
+      "edits": [
+        [
+          "address/bech32/bech32.go",
+          "\t\tif int(b) >= len(charset) {\n\t\t\treturn \"\", ErrInvalidDataByte(b)\n\t\t}\n\t\tbldr.WriteByte(charset[b])\n",
+          "\t\tbldr.WriteByte(charset[b&31])\n"
+        ]
+      ]
+    },
+    {
+      "name": "index_string",
+      "kind": "perf",
+      "target": "decode_ir",
+      "expect": "no_improvement",
+      "note": "Presented as a simpler lookup in toBytes (strings.Index over a one-character string); it allocates a string per character and goes through the general substring search instead of IndexByte, so decoding does more work.",
+      "edits": [
+        [
+          "address/bech32/bech32.go",
+          "\t\tindex := strings.IndexByte(charset, chars[i])\n",
+          "\t\tindex := strings.Index(charset, string(chars[i]))\n"
+        ]
+      ]
+    }
+  ],
+  "candidates": [
+    {
+      "name": "branchless_polymod",
+      "kind": "perf",
+      "target": [
+        "encode_ir",
+        "decode_ir"
+      ],
+      "expect": "accepted",
+      "note": "bech32Polymod feeds every value through one polymodStep that xors each generator term under a mask built from its state bit (no data-dependent branches, constants inlined) instead of a 5-iteration loop with a branch per term.",
+      "edits": [
+        [
+          "address/bech32/bech32.go",
+          "func bech32Polymod(hrp string, values, checksum []byte) int {\n\tchk := 1\n\n\t// Account for the high bits of the HRP in the checksum.\n\tfor i := 0; i < len(hrp); i++ {\n\t\tb := chk >> 25\n\t\thiBits := int(hrp[i]) >> 5\n\t\tchk = (chk&0x1ffffff)<<5 ^ hiBits\n\t\tfor i := 0; i < 5; i++ {\n\t\t\tif (b>>uint(i))&1 == 1 {\n\t\t\t\tchk ^= gen[i]\n\t\t\t}\n\t\t}\n\t}\n\n\t// Account for the separator (0) between high and low bits of the HRP.\n\t// x^0 == x, so we eliminate the redundant xor used in the other rounds.\n\tb := chk >> 25\n\tchk = (chk & 0x1ffffff) << 5\n\tfor i := 0; i < 5; i++ {\n\t\tif (b>>uint(i))&1 == 1 {\n\t\t\tchk ^= gen[i]\n\t\t}\n\t}\n\n\t// Account for the low bits of the HRP.\n\tfor i := 0; i < len(hrp); i++ {\n\t\tb := chk >> 25\n\t\tloBits := int(hrp[i]) & 31\n\t\tchk = (chk&0x1ffffff)<<5 ^ loBits\n\t\tfor i := 0; i < 5; i++ {\n\t\t\tif (b>>uint(i))&1 == 1 {\n\t\t\t\tchk ^= gen[i]\n\t\t\t}\n\t\t}\n\t}\n\n\t// Account for the values.\n\tfor _, v := range values {\n\t\tb := chk >> 25\n\t\tchk = (chk&0x1ffffff)<<5 ^ int(v)\n\t\tfor i := 0; i < 5; i++ {\n\t\t\tif (b>>uint(i))&1 == 1 {\n\t\t\t\tchk ^= gen[i]\n\t\t\t}\n\t\t}\n\t}\n\n\tif checksum == nil {\n\t\t// A nil checksum is used during encoding, so assume all bytes are zero.\n\t\t// x^0 == x, so we eliminate the redundant xor used in the other rounds.\n\t\tfor v := 0; v < 6; v++ {\n\t\t\tb := chk >> 25\n\t\t\tchk = (chk & 0x1ffffff) << 5\n\t\t\tfor i := 0; i < 5; i++ {\n\t\t\t\tif (b>>uint(i))&1 == 1 {\n\t\t\t\t\tchk ^= gen[i]\n\t\t\t\t}\n\t\t\t}\n\t\t}\n\t} else {\n\t\t// Checksum is provided during decoding, so use it.\n\t\tfor _, v := range checksum {\n\t\t\tb := chk >> 25\n\t\t\tchk = (chk&0x1ffffff)<<5 ^ int(v)\n\t\t\tfor i := 0; i < 5; i++ {\n\t\t\t\tif (b>>uint(i))&1 == 1 {\n\t\t\t\t\tchk ^= gen[i]\n\t\t\t\t}\n\t\t\t}\n\t\t}\n\t}\n\n\treturn chk\n}\n",
+          "func bech32Polymod(hrp string, values, checksum []byte) int {\n\tchk := 1\n\n\t// Account for the high bits of the HRP in the checksum.\n\tfor i := 0; i < len(hrp); i++ {\n\t\tchk = polymodStep(chk, int(hrp[i])>>5)\n\t}\n\n\t// Account for the separator (0) between high and low bits of the HRP.\n\tchk = polymodStep(chk, 0)\n\n\t// Account for the low bits of the HRP.\n\tfor i := 0; i < len(hrp); i++ {\n\t\tchk = polymodStep(chk, int(hrp[i])&31)\n\t}\n\n\t// Account for the values.\n\tfor _, v := range values {\n\t\tchk = polymodStep(chk, int(v))\n\t}\n\n\tif checksum == nil {\n\t\t// A nil checksum is used during encoding, so assume all bytes are zero.\n\t\tfor v := 0; v < 6; v++ {\n\t\t\tchk = polymodStep(chk, 0)\n\t\t}\n\t} else {\n\t\t// Checksum is provided during decoding, so use it.\n\t\tfor _, v := range checksum {\n\t\t\tchk = polymodStep(chk, int(v))\n\t\t}\n\t}\n\n\treturn chk\n}\n\n// polymodStep feeds one 5-bit value into the checksum state. Each generator term\n// is xored in under a mask made from its bit of the top five state bits, so the\n// step has no data-dependent branches.\nfunc polymodStep(chk, v int) int {\n\tb := chk >> 25\n\tchk = (chk&0x1ffffff)<<5 ^ v\n\tchk ^= -(b & 1) & 0x3b6a57b2\n\tchk ^= -(b >> 1 & 1) & 0x26508e6d\n\tchk ^= -(b >> 2 & 1) & 0x1ea119fa\n\tchk ^= -(b >> 3 & 1) & 0x3d4233dd\n\tchk ^= -(b >> 4 & 1) & 0x2a1462b3\n\treturn chk\n}\n"
+        ]
+      ]
+    },
+    {
+      "name": "charset_table",
+      "kind": "perf",
+      "target": "decode_ir",
+      "expect": "accepted",
+      "note": "toBytes looks each character up in a 256-entry reverse table built once at package init instead of an IndexByte scan of the 32-character charset, and fills a presized slice instead of appending.",
+      "edits": [
+        [
+          "address/bech32/bech32.go",
+          "func toBytes(chars string) ([]byte, error) {\n\tdecoded := make([]byte, 0, len(chars))\n\tfor i := 0; i < len(chars); i++ {\n\t\tindex := strings.IndexByte(charset, chars[i])\n\t\tif index < 0 {\n\t\t\treturn nil, ErrNonCharsetChar(chars[i])\n\t\t}\n\t\tdecoded = append(decoded, byte(index))\n\t}\n\treturn decoded, nil\n}\n",
+          "func toBytes(chars string) ([]byte, error) {\n\tdecoded := make([]byte, len(chars))\n\tfor i := 0; i < len(chars); i++ {\n\t\tindex := charsetRev[chars[i]]\n\t\tif index < 0 {\n\t\t\treturn nil, ErrNonCharsetChar(chars[i])\n\t\t}\n\t\tdecoded[i] = byte(index)\n\t}\n\treturn decoded, nil\n}\n\n// charsetRev maps a byte to its index in charset, or -1 when it is not in it.\nvar charsetRev = func() (rev [256]int8) {\n\tfor i := range rev {\n\t\trev[i] = -1\n\t}\n\tfor i := 0; i < len(charset); i++ {\n\t\trev[charset[i]] = int8(i)\n\t}\n\treturn rev\n}()\n"
+        ]
+      ]
+    },
+    {
+      "name": "convertbits_acc",
+      "kind": "perf",
+      "target": "convert_ir",
+      "expect": "accepted",
+      "note": "ConvertBits keeps pending bits in one accumulator and emits a full output group per inner step (the BIP173 reference algorithm) instead of moving at most a few bits per inner iteration; high input bits are still discarded, and padding and incomplete-group errors are unchanged.",
+      "edits": [
+        [
+          "address/bech32/bech32.go",
+          "\t// The final bytes, each byte encoding toBits bits.\n\tregrouped := make([]byte, 0, maxSize)\n\n\t// Keep track of the next byte we create and how many bits we have\n\t// added to it out of the toBits goal.\n\tnextByte := byte(0)\n\tfilledBits := uint8(0)\n\n\tfor _, b := range data {\n\n\t\t// Discard unused bits.\n\t\tb <<= 8 - fromBits\n\n\t\t// How many bits remaining to extract from the input data.\n\t\tremFromBits := fromBits\n\t\tfor remFromBits > 0 {\n\t\t\t// How many bits remaining to be added to the next byte.\n\t\t\tremToBits := toBits - filledBits\n\n\t\t\t// The number of bytes to next extract is the minimum of\n\t\t\t// remFromBits and remToBits.\n\t\t\ttoExtract := remFromBits\n\t\t\tif remToBits < toExtract {\n\t\t\t\ttoExtract = remToBits\n\t\t\t}\n\n\t\t\t// Add the next bits to nextByte, shifting the already\n\t\t\t// added bits to the left.\n\t\t\tnextByte = (nextByte << toExtract) | (b >> (8 - toExtract))\n\n\t\t\t// Discard the bits we just extracted and get ready for\n\t\t\t// next iteration.\n\t\t\tb <<= toExtract\n\t\t\tremFromBits -= toExtract\n\t\t\tfilledBits += toExtract\n\n\t\t\t// If the nextByte is completely filled, we add it to\n\t\t\t// our regrouped bytes and start on the next byte.\n\t\t\tif filledBits == toBits {\n\t\t\t\tregrouped = append(regrouped, nextByte)\n\t\t\t\tfilledBits = 0\n\t\t\t\tnextByte = 0\n\t\t\t}\n\t\t}\n\t}\n\n\t// We pad any unfinished group if specified.\n\tif pad && filledBits > 0 {\n\t\tnextByte <<= toBits - filledBits\n\t\tregrouped = append(regrouped, nextByte)\n\t\tfilledBits = 0\n\t\tnextByte = 0\n\t}\n\n\t// Any incomplete group must be <= 4 bits, and all zeroes.\n\tif filledBits > 0 && (filledBits > 4 || nextByte != 0) {\n\t\treturn nil, ErrInvalidIncompleteGroup{}\n\t}\n\n\treturn regrouped, nil\n}\n",
+          "\t// The final bytes, each byte encoding toBits bits.\n\tregrouped := make([]byte, 0, maxSize)\n\n\t// acc holds the bits not yet emitted (its low nbits bits); input bits above\n\t// fromBits are discarded, as before.\n\tvar acc uint32\n\tvar nbits uint\n\tfrom, to := uint(fromBits), uint(toBits)\n\tinMask := uint32(1)<<from - 1\n\toutMask := uint32(1)<<to - 1\n\tfor _, b := range data {\n\t\tacc = acc<<from | uint32(b)&inMask\n\t\tnbits += from\n\t\tfor nbits >= to {\n\t\t\tnbits -= to\n\t\t\tregrouped = append(regrouped, byte(acc>>nbits&outMask))\n\t\t}\n\t\tacc &= uint32(1)<<nbits - 1\n\t}\n\n\t// We pad any unfinished group if specified.\n\tif pad && nbits > 0 {\n\t\tregrouped = append(regrouped, byte(acc<<(to-nbits)&outMask))\n\t\tnbits = 0\n\t\tacc = 0\n\t}\n\n\t// Any incomplete group must be <= 4 bits, and all zeroes.\n\tif nbits > 0 && (nbits > 4 || acc != 0) {\n\t\treturn nil, ErrInvalidIncompleteGroup{}\n\t}\n\n\treturn regrouped, nil\n}\n"
+        ]
+      ]
+    }
+  ]
+}

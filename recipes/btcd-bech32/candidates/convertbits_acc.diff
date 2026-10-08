@@ -1,0 +1,81 @@
+diff --git a/address/bech32/bech32.go b/address/bech32/bech32.go
+--- a/address/bech32/bech32.go
++++ b/address/bech32/bech32.go
+@@ -357,59 +357,32 @@ func ConvertBits(data []byte, fromBits, toBits uint8, pad bool) ([]byte, error)
+ 	// The final bytes, each byte encoding toBits bits.
+ 	regrouped := make([]byte, 0, maxSize)
+ 
+-	// Keep track of the next byte we create and how many bits we have
+-	// added to it out of the toBits goal.
+-	nextByte := byte(0)
+-	filledBits := uint8(0)
+-
++	// acc holds the bits not yet emitted (its low nbits bits); input bits above
++	// fromBits are discarded, as before.
++	var acc uint32
++	var nbits uint
++	from, to := uint(fromBits), uint(toBits)
++	inMask := uint32(1)<<from - 1
++	outMask := uint32(1)<<to - 1
+ 	for _, b := range data {
+-
+-		// Discard unused bits.
+-		b <<= 8 - fromBits
+-
+-		// How many bits remaining to extract from the input data.
+-		remFromBits := fromBits
+-		for remFromBits > 0 {
+-			// How many bits remaining to be added to the next byte.
+-			remToBits := toBits - filledBits
+-
+-			// The number of bytes to next extract is the minimum of
+-			// remFromBits and remToBits.
+-			toExtract := remFromBits
+-			if remToBits < toExtract {
+-				toExtract = remToBits
+-			}
+-
+-			// Add the next bits to nextByte, shifting the already
+-			// added bits to the left.
+-			nextByte = (nextByte << toExtract) | (b >> (8 - toExtract))
+-
+-			// Discard the bits we just extracted and get ready for
+-			// next iteration.
+-			b <<= toExtract
+-			remFromBits -= toExtract
+-			filledBits += toExtract
+-
+-			// If the nextByte is completely filled, we add it to
+-			// our regrouped bytes and start on the next byte.
+-			if filledBits == toBits {
+-				regrouped = append(regrouped, nextByte)
+-				filledBits = 0
+-				nextByte = 0
+-			}
++		acc = acc<<from | uint32(b)&inMask
++		nbits += from
++		for nbits >= to {
++			nbits -= to
++			regrouped = append(regrouped, byte(acc>>nbits&outMask))
+ 		}
++		acc &= uint32(1)<<nbits - 1
+ 	}
+ 
+ 	// We pad any unfinished group if specified.
+-	if pad && filledBits > 0 {
+-		nextByte <<= toBits - filledBits
+-		regrouped = append(regrouped, nextByte)
+-		filledBits = 0
+-		nextByte = 0
++	if pad && nbits > 0 {
++		regrouped = append(regrouped, byte(acc<<(to-nbits)&outMask))
++		nbits = 0
++		acc = 0
+ 	}
+ 
+ 	// Any incomplete group must be <= 4 bits, and all zeroes.
+-	if filledBits > 0 && (filledBits > 4 || nextByte != 0) {
++	if nbits > 0 && (nbits > 4 || acc != 0) {
+ 		return nil, ErrInvalidIncompleteGroup{}
+ 	}
+ 
