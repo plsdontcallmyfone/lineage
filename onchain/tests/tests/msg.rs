@@ -367,6 +367,7 @@ fn sealed_dm_round_trip_with_the_typescript_seal() {
         "enc_key_published": to_hex(&ok_key_meta(&kev)),
         "dm_posted": to_hex(&raw[0]),
         "inner_ix_data_dm": to_hex(&[anchor_lang::event::EVENT_IX_TAG_LE, &raw[0][..]].concat()),
+        "instructions": instruction_vectors(),
     });
     if std::env::var("UPDATE_VECTORS").is_ok() {
         std::fs::write(&path, serde_json::to_string_pretty(&doc).unwrap() + "\n").unwrap();
@@ -374,6 +375,34 @@ fn sealed_dm_round_trip_with_the_typescript_seal() {
     }
     let committed: Value = serde_json::from_str(&std::fs::read_to_string(&path).expect("run with UPDATE_VECTORS=1 once")).unwrap();
     assert_eq!(committed, doc, "msg events changed: rerun with UPDATE_VECTORS=1 and the packages/chain tests");
+}
+
+fn ix_json(name: &str, ix: &Instruction) -> Value {
+    json!({
+        "name": name,
+        "program": ix.program_id.to_string(),
+        "keys": ix.accounts.iter().map(|k| json!([k.pubkey.to_string(), k.is_signer, k.is_writable])).collect::<Vec<_>>(),
+        "data": to_hex(&ix.data),
+    })
+}
+
+/// Instruction encodings with fixed keys (seeded 1..4) for the packages/chain builders.
+fn instruction_vectors() -> Vec<Value> {
+    let (payer, signer, agent, rec, admin) = (seeded(1).pubkey(), seeded(2).pubkey(), seeded(3).pubkey(), seeded(4).pubkey(), seeded(5).pubkey());
+    let args = lm::MsgConfigArgs { admin, paused: true, window_s: 60, max_per_window: 20, max_per_day: 500, max_inline: 568, max_blob: 1 << 20 };
+    let board = lm::BoardArgs { lineage: [7u8; 32], kind: 3, reply_to: Some([1u8; 32]), msg_ref: Some(lm::MsgRef { kind: lm::REF_CANDIDATE, id: [2u8; 32] }),
+        body: lm::Body::Inline(b"hello board".to_vec()) };
+    let blob = lm::BoardArgs { lineage: [7u8; 32], kind: 0, reply_to: None, msg_ref: None, body: lm::Body::Blob { sha256: [9u8; 32], size: 70_000 } };
+    let dm = lm::DmArgs { recipient: rec, enc_key: [6u8; 32], kind: 0, reply_to: None, msg_ref: Some(lm::MsgRef { kind: lm::REF_BOUNTY, id: rec.to_bytes() }),
+        body: lm::Body::Inline(vec![0xab; 60]) };
+    vec![
+        ix_json("initialize", &init_ix(&admin, args)),
+        ix_json("set_config", &set_ix(&admin, args)),
+        ix_json("post_board", &board_ix(&payer, &signer, &agent, board)),
+        ix_json("post_board_blob", &board_ix(&payer, &signer, &agent, blob)),
+        ix_json("post_dm", &dm_ix(&payer, &signer, &agent, dm)),
+        ix_json("publish_enc_key", &key_ix(&payer, &signer, &agent, [6u8; 32])),
+    ]
 }
 
 /// The EncKeyPublished event bytes rebuilt from the decoded event (same bytes the program emitted).
