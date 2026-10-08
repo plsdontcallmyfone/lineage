@@ -1,0 +1,256 @@
+{
+  "at": "2026-10-08T11:28:32.094Z",
+  "head": "f6c58bf580eb963105f9a808493f4dc0272d3267",
+  "first": "f6c58bf580eb963105f9a808493f4dc0272d3267",
+  "container_image": "jrei/systemd-ubuntu@sha256:b92e6c8fc12725888f1cfc36f9574b07beb1eb5174865d6345f752fce3870f71",
+  "seconds": 201,
+  "passed": 11,
+  "failed": 38,
+  "checks": [
+    {
+      "check": "fresh box reachable over root ssh",
+      "ok": false,
+      "detail": ""
+    },
+    {
+      "check": "deploy.sh full on a fresh box",
+      "ok": false,
+      "detail": "exit 255, 1 s"
+    },
+    {
+      "check": "fund and site-chain ran as plans (nothing sent on chain)",
+      "ok": false,
+      "detail": ""
+    },
+    {
+      "check": "deploy.sh full re-run, same commit",
+      "ok": false,
+      "detail": "exit 255, 0 s"
+    },
+    {
+      "check": "same-commit re-run takes no data backup",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "unit lineage-core active",
+      "ok": false,
+      "detail": ""
+    },
+    {
+      "check": "unit lineage-web active",
+      "ok": false,
+      "detail": ""
+    },
+    {
+      "check": "unit lineage-gate active",
+      "ok": false,
+      "detail": ""
+    },
+    {
+      "check": "unit caddy active",
+      "ok": false,
+      "detail": ""
+    },
+    {
+      "check": "sandbox unit lineage-bootstrap skipped in the dry run",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "sandbox unit lineage-reference skipped in the dry run",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "sandbox unit lineage-verifier@v1 skipped in the dry run",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "sandbox unit lineage-verifier@v2 skipped in the dry run",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "sandbox unit lineage-runtime skipped in the dry run",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "sandbox unit lineage-author skipped in the dry run",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "lineage-core memory cap",
+      "ok": false,
+      "detail": "MemoryMax "
+    },
+    {
+      "check": "site keys made on the server, owner lineage, mode 600",
+      "ok": false,
+      "detail": ""
+    },
+    {
+      "check": "no key copied from this machine in the dry run",
+      "ok": false,
+      "detail": " files"
+    },
+    {
+      "check": "ufw active",
+      "ok": false,
+      "detail": ""
+    },
+    {
+      "check": "fail2ban active",
+      "ok": false,
+      "detail": ""
+    },
+    {
+      "check": "bun pinned",
+      "ok": false,
+      "detail": ""
+    },
+    {
+      "check": "lineage user has no sudo",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "GET /v1/health over HTTPS (internal TLS)",
+      "ok": false,
+      "detail": ""
+    },
+    {
+      "check": "Core in devnet chain mode read the chain",
+      "ok": false,
+      "detail": ""
+    },
+    {
+      "check": "Core does not sign as Core authority in the dry run",
+      "ok": false,
+      "detail": ""
+    },
+    {
+      "check": "Core mirrored the registry's agents",
+      "ok": false,
+      "detail": " agents"
+    },
+    {
+      "check": "dashboard page",
+      "ok": false,
+      "detail": ""
+    },
+    {
+      "check": "wallet page",
+      "ok": false,
+      "detail": ""
+    },
+    {
+      "check": "client bundle",
+      "ok": false,
+      "detail": ""
+    },
+    {
+      "check": "wallet bundle",
+      "ok": false,
+      "detail": ""
+    },
+    {
+      "check": "/chain/config: devnet",
+      "ok": false,
+      "detail": ""
+    },
+    {
+      "check": "/chain/config: no keyed RPC URL",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "/api proxy to Core",
+      "ok": false,
+      "detail": ""
+    },
+    {
+      "check": "CORS * on the public read API",
+      "ok": false,
+      "detail": ""
+    },
+    {
+      "check": "security headers",
+      "ok": false,
+      "detail": ""
+    },
+    {
+      "check": "admin API not public",
+      "ok": false,
+      "detail": ""
+    },
+    {
+      "check": "Core writes not public",
+      "ok": false,
+      "detail": ""
+    },
+    {
+      "check": "cross-origin faucet POST refused",
+      "ok": false,
+      "detail": ""
+    },
+    {
+      "check": "devnet RPC proxy (same origin)",
+      "ok": false,
+      "detail": ""
+    },
+    {
+      "check": "RPC method allowlist kept",
+      "ok": false,
+      "detail": ""
+    },
+    {
+      "check": "faucet rate limit per address (3 then 429)",
+      "ok": false,
+      "detail": " 000 000 000 000"
+    },
+    {
+      "check": "oversized body refused",
+      "ok": false,
+      "detail": "000"
+    },
+    {
+      "check": "event streams capped per address (4 open, 5th 429)",
+      "ok": false,
+      "detail": "000"
+    },
+    {
+      "check": "event stream flows through Caddy and the gate",
+      "ok": false,
+      "detail": ""
+    },
+    {
+      "check": "scripts/verify.ts runs against the public site",
+      "ok": false,
+      "detail": "exit 1: Bun v1.3.13 (macOS arm64)"
+    },
+    {
+      "check": "deploy.sh status",
+      "ok": false,
+      "detail": ""
+    },
+    {
+      "check": "stop",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "start",
+      "ok": false,
+      "detail": ""
+    },
+    {
+      "check": "host disk still >= 4 GB free",
+      "ok": true,
+      "detail": "8 GB"
+    }
+  ]
+}

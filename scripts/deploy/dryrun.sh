@@ -10,11 +10,13 @@
 #
 # Deploys DRYRUN_FIRST_REF (default HEAD~1 when it has the kit, else HEAD) and then HEAD, so rollback is
 # exercised; runs `full` twice on HEAD (re-run safety). Host ports 9668 (ssh) and 9669 (https) from
-# this repo's block, bound to 127.0.0.1. The container and the pulled image carry label lineage=1 and
+# this repo's block, bound to 127.0.0.1. The container and its image (scripts/deploy/dryrun/Dockerfile,
+# ubuntu:24.04 pinned by digest plus systemd, built for this machine's arch) carry label lineage=1 and
 # are removed at the end unless --keep.
 set -uo pipefail
 REPO="$(cd "$(dirname "$0")/../.." && pwd)"
-IMAGE="jrei/systemd-ubuntu@sha256:b92e6c8fc12725888f1cfc36f9574b07beb1eb5174865d6345f752fce3870f71"
+IMAGE="lineage/site-dryrun:24.04"   # scripts/deploy/dryrun/Dockerfile: ubuntu:24.04 pinned by digest + systemd, native arch
+BASE_IMAGE="ubuntu:24.04@sha256:534baea6a22c03a63003dbc8dbe78fe34bc0d7e595d9a9dc9834884ff530eb55"
 NAME="lineage-site-dryrun"
 SSH_P=9668; HTTPS_P=9669
 KEEP=0; [ "${1:-}" = --keep ] && KEEP=1
@@ -30,12 +32,12 @@ check() { # check <name> <ok 0/1> <detail>
   [ "$ok" = 1 ] && echo "PASS $1${3:+: $3}" || { echo "FAIL $1${3:+: $3}"; FAIL=$((FAIL + 1)); }
   bun -e 'const [n,o,d]=process.argv.slice(1); console.log(JSON.stringify({check:n, ok:o==="1", detail:d}))' "$1" "$ok" "${3:-}" >> "$RESULTS"
 }
-had_image=0; docker image inspect "$IMAGE" >/dev/null 2>&1 && had_image=1
+had_base=0; docker image inspect "$BASE_IMAGE" >/dev/null 2>&1 && had_base=1
 cleanup() {
   if [ "$KEEP" = 0 ]; then
     docker rm -f "$NAME" >/dev/null 2>&1
-    [ "$had_image" = 0 ] && docker rmi "$IMAGE" >/dev/null 2>&1
-    docker image rm jrei/systemd-ubuntu:24.04 >/dev/null 2>&1
+    docker rmi "$IMAGE" >/dev/null 2>&1
+    [ "$had_base" = 0 ] && docker rmi "$BASE_IMAGE" >/dev/null 2>&1
   fi
   rm -rf "$WORK"
 }
@@ -43,7 +45,8 @@ trap cleanup EXIT
 
 echo "== container"
 docker rm -f "$NAME" >/dev/null 2>&1
-docker run -d --name "$NAME" --label lineage=1 --platform linux/amd64 --privileged --cgroupns=host \
+docker build -q --label lineage=1 -t "$IMAGE" "$REPO/scripts/deploy/dryrun" >/dev/null || exit 1
+docker run -d --name "$NAME" --label lineage=1 --privileged --cgroupns=host \
   -v /sys/fs/cgroup:/sys/fs/cgroup:rw --tmpfs /run --tmpfs /run/lock \
   -p 127.0.0.1:$SSH_P:22 -p 127.0.0.1:$HTTPS_P:443 "$IMAGE" >/dev/null || exit 1
 for i in $(seq 1 30); do docker exec "$NAME" systemctl is-system-running 2>/dev/null | grep -qE 'running|degraded' && break; sleep 1; done
@@ -51,7 +54,10 @@ for i in $(seq 1 30); do docker exec "$NAME" systemctl is-system-running 2>/dev/
 ssh-keygen -q -t ed25519 -N "" -f "$WORK/key" -C lineage-dryrun
 docker exec "$NAME" bash -c 'export DEBIAN_FRONTEND=noninteractive; apt-get update -qq && apt-get install -y -qq openssh-server curl >/dev/null && install -d -m 700 /root/.ssh && systemctl enable --now ssh >/dev/null 2>&1' || exit 1
 docker exec -i "$NAME" bash -c 'cat > /root/.ssh/authorized_keys && chmod 600 /root/.ssh/authorized_keys' < "$WORK/key.pub"
-check "fresh box reachable over root ssh" "$(ssh -i "$WORK/key" -p $SSH_P -o IdentitiesOnly=yes -o BatchMode=yes -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o LogLevel=ERROR root@127.0.0.1 true && echo 1 || echo 0)"
+for i in $(seq 1 20); do ssh -i "$WORK/key" -p $SSH_P -o IdentitiesOnly=yes -o BatchMode=yes -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o LogLevel=ERROR root@127.0.0.1 true 2>/dev/null && break; sleep 1; done
+ok=$(ssh -i "$WORK/key" -p $SSH_P -o IdentitiesOnly=yes -o BatchMode=yes -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o LogLevel=ERROR root@127.0.0.1 true && echo 1 || echo 0)
+check "fresh box reachable over root ssh" "$ok"
+[ "$ok" = 1 ] || { echo "no ssh into the container; stopping" >&2; exit 1; }
 
 export SSH_KEY="$WORK/key" SSH_PORT=$SSH_P SSH_INSECURE_TEST=1 DRY_RUN=1 SITE_NAMES=localhost DRY_RUN_ORIGIN="https://localhost:$HTTPS_P"
 D="$REPO/scripts/deploy/deploy.sh"
@@ -63,6 +69,7 @@ echo "== deploy 1: full at $FIRSTSHA"
 s=$(date +%s); DEPLOY_REF="$FIRST" "$D" 127.0.0.1 full > "$WORK/d1.log" 2>&1; rc=$?
 tail -25 "$WORK/d1.log"
 check "deploy.sh full on a fresh box" "$([ $rc = 0 ] && echo 1 || echo 0)" "exit $rc, $(( $(date +%s) - s )) s"
+[ $rc = 0 ] || { echo "first deploy failed; stopping (log above)" >&2; exit 1; }
 grep -q "plan done (nothing sent)" "$WORK/d1.log" && grep -q "fund-site.*plan" "$WORK/d1.log"; check "fund and site-chain ran as plans (nothing sent on chain)" "$(grep -c 'plan done (nothing sent)' "$WORK/d1.log" | awk '{print ($1>=2)?1:0}')"
 
 if [ "$FIRSTSHA" != "$HEADSHA" ]; then
