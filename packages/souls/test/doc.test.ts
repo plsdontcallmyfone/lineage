@@ -49,7 +49,7 @@ describe("schema and safety", () => {
 describe("digest and signature", () => {
   test("digest is sha256 of canonical JSON and independent of key order", () => {
     const d = soul();
-    const shuffled = JSON.parse(JSON.stringify({ persona: d.persona, ...d }));
+    const shuffled = Object.fromEntries(Object.entries(d).reverse()) as typeof d;
     expect(soulDigest(d)).toBe(hashJson(d));
     expect(soulDigest(shuffled)).toBe(soulDigest(d));
   });

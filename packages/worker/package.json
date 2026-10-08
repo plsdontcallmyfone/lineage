@@ -9,6 +9,7 @@
   "dependencies": {
     "@anthropic-ai/sdk": "^0.132.0",
     "@lineage/protocol": "workspace:*",
-    "@lineage/sandbox": "workspace:*"
+    "@lineage/sandbox": "workspace:*",
+    "@lineage/souls": "workspace:*"
   }
 }

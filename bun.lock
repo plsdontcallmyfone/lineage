@@ -17,6 +17,9 @@
     "apps/web": {
       "name": "@lineage/web",
       "version": "0.1.0",
+      "dependencies": {
+        "@lineage/souls": "workspace:*",
+      },
     },
     "packages/chain": {
       "name": "@lineage/chain",
@@ -30,6 +33,7 @@
       "version": "0.1.0",
       "dependencies": {
         "@lineage/chain": "workspace:*",
+        "@lineage/souls": "workspace:*",
       },
     },
     "packages/protocol": {
@@ -78,6 +82,7 @@
         "@anthropic-ai/sdk": "^0.132.0",
         "@lineage/protocol": "workspace:*",
         "@lineage/sandbox": "workspace:*",
+        "@lineage/souls": "workspace:*",
       },
     },
   },

@@ -1,5 +1,6 @@
 import type { Server } from "bun";
 import { bountiesOf } from "./bounties.ts";
+import { soulsOf } from "./souls.ts";
 import { networkConfigJson } from "./config.ts";
 import type { Core, CoreEvent } from "./core.ts";
 import { ApiError, bad, forbidden, notFound } from "./errors.ts";
@@ -143,6 +144,10 @@ export function buildRoutes(core: Core): Route[] {
     route("GET", "/v1/agents/:id/keys", "none", (c) => core.identity.history(c.params.id!)),
     route("GET", "/v1/agents/:id/records", "none", (c) => core.records.view(c.params.id!, q(c, "epoch") !== undefined ? Number(q(c, "epoch")) : undefined)),
     route("GET", "/v1/agents/:id/credential", "none", (c) => core.records.credentialFor(c.params.id!)),
+    // souls (SPEC 14.8, packages/core/src/souls.ts): public once launched; PUT is self-authenticating (the doc's signature)
+    route("GET", "/v1/agents/:id/soul", "none", (c) => soulsOf(core).view(c.params.id!)),
+    route("PUT", "/v1/agents/:id/soul", "none", (c) => core.tx(() => soulsOf(core).put(c.params.id!, c.json()))),
+    route("GET", "/v1/souls/:digest", "none", (c) => soulsOf(core).byDigest(c.params.digest!)),
     // bounties (C6, packages/core/src/bounties.ts): read-only mirror of the onchain escrows
     route("GET", "/v1/bounties", "none", (c) => bountiesOf(core).list({ lineage: q(c, "lineage"), payee: q(c, "payee"), payer: q(c, "payer"), status: q(c, "status") })),
     route("GET", "/v1/bounties/:id", "none", (c) => bountiesOf(core).one(c.params.id!)),
@@ -216,6 +221,7 @@ export function buildRoutes(core: Core): Route[] {
     route("POST", "/v1/admin/canaries", "admin", (c) => core.addCanary(c.json())),
     route("GET", "/v1/admin/canaries", "admin", (c) => core.listCanaries(q(c, "lineage"))),
     route("POST", "/v1/admin/findings", "admin", (c) => core.addFinding(c.json())),
+    route("POST", "/v1/admin/souls/library", "admin", (c) => core.tx(() => soulsOf(core).addLibrary(c.json()))),
     route("POST", "/v1/admin/faucet", "admin", (c) => core.faucet(c.json())),
     route("POST", "/v1/admin/creator-rewards", "admin", (c) => core.creatorRewards(c.json())),
     route("POST", "/v1/admin/agent-fees", "admin", (c) => core.agentFees(c.json())),

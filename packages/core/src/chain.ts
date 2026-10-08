@@ -16,6 +16,7 @@ import {
   type Signer,
 } from "@lineage/chain";
 import { bountiesOf } from "./bounties.ts";
+import { soulsOf } from "./souls.ts";
 import { msgchainOf } from "./msgchain.ts";
 import type { NetworkConfig } from "./config.ts";
 import type { ChainAgent, Core } from "./core.ts";
@@ -239,6 +240,7 @@ export class ChainBridge {
       };
       try {
         this.core.chainSyncAgent(rec);
+        soulsOf(this.core).syncChain(a.agent, a.profileDigest ?? null, a.profileSeq ?? 0); // souls (SPEC 14.8)
       } catch (e) {
         this.log(`agent ${a.agent} not mirrored: ${(e as Error).message}`);
       }
