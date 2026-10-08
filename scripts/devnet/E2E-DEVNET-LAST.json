@@ -1,39 +1,39 @@
 {
-  "at": "2026-10-08T02:46:04.003Z",
-  "seconds": 202,
-  "epoch": 9,
-  "post_epoch": "5WkdjgVzsKny1AzZvAPV8Xb57htrfE4yahC4GWg465SJyqVubiqJY1MzTvbnZhdeGE1aaECNuNKciVuzeZqF1rN2",
+  "at": "2026-10-08T10:56:51.025Z",
+  "seconds": 418,
+  "epoch": 10,
+  "post_epoch": "2Bk9EPuFGh8QmdxeRAkD6xVXQbxWowtHPbBkKFzgoZQjwdGWoKwAroUFnM8kz4hCCepzHbCbq16acFTmEThf2qfY",
   "payouts": [
     {
       "agent": "BFPxdave7NVSXztGEZA5iZ7FiBDKRsuZmS9wZn2J1WBV",
       "dest": "agent:BFPxdave7NVSXztGEZA5iZ7FiBDKRsuZmS9wZn2J1WBV:compute",
-      "amount": "49391522",
-      "units": 12.324570422538805,
+      "amount": "48519579",
+      "units": 11.133788180205757,
       "rebate": "0",
-      "leaf": "d8893047b9bd2fb345532226a459f4b8bdbea50cb232dd19bc41918b77af87e7"
+      "leaf": "5910131ea83238d55df1117fc14f7f179bd0193273208d33e1d3c676ca983d19"
     },
     {
       "agent": "DEHFFWt2uzVGn43nzU1EvEyo17G1x74gvn3C6usU43hj",
       "dest": "agent:DEHFFWt2uzVGn43nzU1EvEyo17G1x74gvn3C6usU43hj:wallet",
-      "amount": "4008566",
+      "amount": "4358868",
       "units": 1,
       "rebate": "1000",
-      "leaf": "3c9b961fa14ad548bb69625e3fa80fd51e5096467a28860fcd2482ba34504ae1"
+      "leaf": "2cbd85d2f7c1c6563aa210474f419ee876fa0572a66371e4b78b9a77e45098e1"
     },
     {
       "agent": "FRx89QoUEavL1mVMcroDH4QYUhdTbA66EthkX7uZrGSD",
       "dest": "agent:FRx89QoUEavL1mVMcroDH4QYUhdTbA66EthkX7uZrGSD:wallet",
-      "amount": "4008565",
+      "amount": "4358868",
       "units": 1,
       "rebate": "1000",
-      "leaf": "1f6653c49ca63b102a064eb5d8f71b1fc497c231165081f63ac4b891759ba67b"
+      "leaf": "f92534c96b5e9c282a232498f76de468ba6fbb584dcc0f471cbc5008029638b2"
     }
   ],
   "chain": {
     "mode": "devnet",
     "rpc_url": "https://api.devnet.solana.com",
-    "read_at": 1791427540501,
-    "slot": 508670187,
+    "read_at": 1791456968006,
+    "slot": 508793520,
     "registry_program": "2vhj9aBZkuoCpmJxm5BcA3CYkvBJgY6VHTax8FpFmxuY",
     "launch_program": "8eHzm1XtNtbxJujrMAci4VdhCJvQttFUBukmkFaUwsAT",
     "line_mint": "3PLqpwWokAbpxZgBVLAzMAeLSvzfoDvjkhH9YydwVXmU",
@@ -42,8 +42,8 @@
     "core_signing": true,
     "admin": "CVEZWyUBoNb6Zkte3qa7JDu5TBV4wTH6wMw4pLodnDih",
     "paused": false,
-    "epochs_posted": "10",
-    "last_epoch": "9",
+    "epochs_posted": "11",
+    "last_epoch": "10",
     "params": {
       "register_burn": "1000000",
       "min_bond": "5000000",
@@ -63,7 +63,7 @@
     },
     "balances": {
       "treasury": "0",
-      "reserve": "3185082616",
+      "reserve": "3414021875",
       "pool": "0",
       "payable": "0",
       "bond_vault": "40000000"
@@ -102,29 +102,46 @@
       },
       "BFPxdave7NVSXztGEZA5iZ7FiBDKRsuZmS9wZn2J1WBV": {
         "vault": "DfTUeYEo3q9tq2gYSDhYUWKixeRQyMgsy958UXPskWkb",
-        "balance": "9863475841"
+        "balance": "10579740757"
       },
       "FyYqutCRZg9m6CPYy3vuaUaJRXg5vyc3zY4UtBT3Q4wp": {
         "vault": "Dpp9RrFTpErwaHHRYzHmK8VUGVfYtvwn6sA2xADjeXA4",
         "balance": "0"
+      },
+      "HjJneVqhRvrZAuu46xyjpKxuh2jVS2dLccRX61EoCEVL": {
+        "vault": "Htw67o5GLM96A2YAaeDLbxao76hvsdfXsHZD3zArcyc6",
+        "balance": "97000000"
       },
       "4rYDopizpSD49QhF9HA5NHYZpKPCBbNjnYacSGtT3PqB": {
         "vault": "5oAeDQko4NgYULtJptGmkN7wiRyN3ABLyhW5tUkTTL4A",
         "balance": "3360000"
       }
     },
+    "bounties": {
+      "count": 3,
+      "config": {
+        "max_bounty_out_bps": 5000,
+        "self_hosted_in_cap": "10000000",
+        "window_s": 86400,
+        "min_ttl_s": 60,
+        "max_ttl_s": 2592000,
+        "refund_grace_s": 60,
+        "min_amount": "10000",
+        "paused": false
+      }
+    },
     "agents": {
       "verifier": 9,
-      "launched": 9
+      "launched": 10
     },
     "agents_v1": 0,
     "posted_epochs": [
       {
-        "n": 9,
-        "signature": "5WkdjgVzsKny1AzZvAPV8Xb57htrfE4yahC4GWg465SJyqVubiqJY1MzTvbnZhdeGE1aaECNuNKciVuzeZqF1rN2",
+        "n": 10,
+        "signature": "2Bk9EPuFGh8QmdxeRAkD6xVXQbxWowtHPbBkKFzgoZQjwdGWoKwAroUFnM8kz4hCCepzHbCbq16acFTmEThf2qfY",
         "error": null,
         "attempts": 1,
-        "posted_at": 1791427517320
+        "posted_at": 1791456933094
       }
     ],
     "this_sync": {
@@ -150,17 +167,17 @@
     {
       "check": "crank_fees split exactly 7000/3000 bps on chain",
       "ok": true,
-      "detail": "fees 956777548: compute +669744283, treasury +287033265"
+      "detail": "fees 953921911: compute +667745337, treasury +286176574"
     },
     {
       "check": "split moved exactly 8000 bps to the reserve and the rest to the pool",
       "ok": true,
-      "detail": "reserve +229626612, pool +57406653"
+      "detail": "reserve +228941259, pool +57235315"
     },
     {
       "check": "Core in chain mode takes amounts from the registry (6-decimal tLINE)",
       "ok": true,
-      "detail": "min_bond 5000000, first epoch 9"
+      "detail": "min_bond 5000000, first epoch 10"
     },
     {
       "check": "Core registered ref from its Agent PDA with the onchain bond",
@@ -180,7 +197,7 @@
     {
       "check": "the onchain-launched minbpe agent is in Core with its compute vault balance read from chain",
       "ok": true,
-      "detail": "compute 9814084319, setting up: setting_up"
+      "detail": "compute 10531221178, setting up: setting_up"
     },
     {
       "check": "simulated bonding is refused in chain mode (409 on_chain)",
@@ -198,19 +215,54 @@
       "detail": ""
     },
     {
+      "check": "BountyConfig is set on chain (setup step h)",
+      "ok": true,
+      "detail": "{\"maxBountyOutBps\":5000,\"selfHostedInCap\":\"10000000\",\"windowS\":86400,\"minTtlS\":60,\"maxTtlS\":2592000,\"refundGraceS\":60,\"minAmount\":\"10000\",\"paused\":false}"
+    },
+    {
+      "check": "open_bounty escrowed exactly 3.5 tLINE from the payer's compute vault",
+      "ok": true,
+      "detail": "100000000 -> 96500000"
+    },
+    {
+      "check": "the bounty qualifies only generations from the registry's next epoch on",
+      "ok": true,
+      "detail": "min_epoch 10"
+    },
+    {
+      "check": "cancel_bounty returned the escrow to the payer's compute vault",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "Core mirrored the three bounties with their open signatures",
+      "ok": true,
+      "detail": "3 on the lineage"
+    },
+    {
+      "check": "Core keeps the terms only when sha256 equals the onchain terms_digest",
+      "ok": true,
+      "detail": "200 / 409"
+    },
+    {
+      "check": "workboard hint: GET /v1/lineages/:id/bounties lists the open bounties",
+      "ok": true,
+      "detail": "2 open"
+    },
+    {
       "check": "the minbpe Agent record is v2, owned by its launcher, signing with its own key",
       "ok": true,
-      "detail": "key_seq 8"
+      "detail": "key_seq 11"
     },
     {
       "check": "rotate_agent_key landed: signing_key is the runtime key, key_seq advanced",
       "ok": true,
-      "detail": "seq 8 -> 9"
+      "detail": "seq 11 -> 12"
     },
     {
       "check": "Core mirrored the rotation from the registry",
       "ok": true,
-      "detail": "seq 9"
+      "detail": "seq 12"
     },
     {
       "check": "the old agent key gets 401",
@@ -235,47 +287,47 @@
     {
       "check": "rotated back: the original key works again, the key history is public",
       "ok": true,
-      "detail": "0:BFPxda 8:BFPxda 9:367NWo 10:revoked 11:BFPxda"
+      "detail": "0:BFPxda 11:BFPxda 12:367NWo 13:revoked 14:BFPxda"
     },
     {
       "check": "epoch closed with payouts from the onchain pool",
       "ok": true,
-      "detail": "epoch 9: pool 57406653 of 57406653 on chain, rebate 2000, 3 leaves"
+      "detail": "epoch 10: pool 57235315 of 57235315 on chain, rebate 2000, 3 leaves"
     },
     {
       "check": "the bridge posted the epoch root with post_epoch",
       "ok": true,
-      "detail": "5WkdjgVzsKny1AzZvAPV8Xb57htrfE4yahC4GWg465SJyqVubiqJY1MzTvbnZhdeGE1aaECNuNKciVuzeZqF1rN2"
+      "detail": "2Bk9EPuFGh8QmdxeRAkD6xVXQbxWowtHPbBkKFzgoZQjwdGWoKwAroUFnM8kz4hCCepzHbCbq16acFTmEThf2qfY"
     },
     {
       "check": "onchain Epoch equals Core's root, pool and rebate",
       "ok": true,
-      "detail": "root 10c7ad6989551df8..., payable 57408653"
+      "detail": "root 7d803c3cde7cd575..., payable 57237315"
     },
     {
       "check": "onchain Epoch.record_root equals Core's record root (identity plan I2)",
       "ok": true,
-      "detail": "dde8a1813a5900d1..."
+      "detail": "e0776b883196c8ed..."
     },
     {
       "check": "claim paid compute of BFPxdave exactly",
       "ok": true,
-      "detail": "49391522"
+      "detail": "48519579"
     },
     {
       "check": "claim paid wallet of DEHFFWt2 exactly",
       "ok": true,
-      "detail": "4008566"
+      "detail": "4358868"
     },
     {
       "check": "claim paid wallet of FRx89QoU exactly",
       "ok": true,
-      "detail": "4008565"
+      "detail": "4358868"
     },
     {
       "check": "every leaf claimed on chain; claimed equals payable",
       "ok": true,
-      "detail": "57408653 / 57408653"
+      "detail": "57237315 / 57237315"
     },
     {
       "check": "Core mirrored every onchain claim",
@@ -290,7 +342,27 @@
     {
       "check": "dashboard reads: /v1/chain and /v1/stats carry the vault balances read at a slot",
       "ok": true,
-      "detail": "{\"treasury\":\"0\",\"reserve\":\"3185082616\",\"pool\":\"0\",\"payable\":\"0\",\"bond_vault\":\"40000000\"}"
+      "detail": "{\"treasury\":\"0\",\"reserve\":\"3414021875\",\"pool\":\"0\",\"payable\":\"0\",\"bond_vault\":\"40000000\"}"
+    },
+    {
+      "check": "Core offers the accepted generation as the release, its proof verifies against the onchain record root",
+      "ok": true,
+      "detail": "gen f72177f66d28..., leaf 8d08ff1ce756..."
+    },
+    {
+      "check": "release_bounty paid exactly 2 tLINE into the payee's compute vault, with a receipt",
+      "ok": true,
+      "detail": "2jexHj1nPvLXS1s7aS9Y2TeJX8fqmVmAcX9rMmAFrFH3iwiZzeXjMtK2G3kZK2EeeuuqoqQdMCNCzHpoXMmEMwy (109800 CU)"
+    },
+    {
+      "check": "a second release of the same bounty is refused",
+      "ok": true,
+      "detail": "simulation failed: {\"InstructionError\":[1,{\"Custom\":3012}]}"
+    },
+    {
+      "check": "Core mirrored the release",
+      "ok": true,
+      "detail": ""
     },
     {
       "check": "verifier v1's credential verifies against the onchain record roots alone",
@@ -310,10 +382,15 @@
     {
       "check": "owner transfer: chain owner and owner_since mirrored as controller_since",
       "ok": true,
-      "detail": "owner_since 1791427544"
+      "detail": "owner_since 1791456983"
     },
     {
       "check": "owner transferred back",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "refund_bounty returned exactly 1 tLINE to the payer's compute vault",
       "ok": true,
       "detail": ""
     }

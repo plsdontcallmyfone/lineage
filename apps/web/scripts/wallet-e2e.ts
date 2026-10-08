@@ -392,12 +392,23 @@ try {
     await page.check('input[name="b_kind"][value="commitment"]');
     await page.fill('[name="b_value"]', bCommit);
     await page.fill('[name="b_note"]', `wallet-e2e ${stamp}`);
-    const n0 = (await reader.bounties()).filter((b) => b.payer === l.agent).length;
+    const before = new Set((await reader.bounties()).filter((b) => b.payer === l.agent).map((b) => b.address));
     await page.click('[data-act="b-open"]');
-    await page.locator("#w-bout >> text=Opened bounty").waitFor({ timeout: T });
-    const mineB = (await reader.bounties()).filter((b) => b.payer === l.agent).sort((a, b) => Number(b.bountyId - a.bountyId));
-    if (mineB.length !== n0 + 1) throw new Error("open_bounty did not create one Bounty account");
-    return mineB[0]!;
+    // wait for a banner naming an account that did not exist before (the previous open's banner may still show)
+    await page.waitForFunction((old: string[]) => {
+      const a = document.querySelector("#w-bout a.link");
+      return !!a && /Opened bounty/.test(document.querySelector("#w-bout")?.textContent ?? "") && !old.includes(a.getAttribute("title") ?? "");
+    }, [...before], { timeout: T });
+    // the page names the new account in its banner; getProgramAccounts on the public RPC can trail it, so read that account directly
+    const shownAddr = (await page.locator("#w-bout a.link").first().getAttribute("title")) ?? "";
+    if (before.has(shownAddr)) throw new Error("the page named a bounty that existed before");
+    let acct = null;
+    for (let i = 0; i < 20 && !acct; i++) {
+      acct = await reader.bounty(shownAddr);
+      if (!acct) await Bun.sleep(1500);
+    }
+    if (!acct || acct.payer !== l.agent) throw new Error(`open_bounty: no Bounty account at ${shownAddr}`);
+    return { ...acct, address: shownAddr };
   };
   const cv0 = (await reader.tokenBalance(launchPdas.computeVault(l.agent)))!;
   const bRel = await openOne("0.5", minbpe);
@@ -461,7 +472,7 @@ try {
   await page.locator(`tr[data-bounty="${bRel.address}"] [data-act="b-release"]`).waitFor({ timeout: T });
   const mv0 = (await reader.tokenBalance(launchPdas.computeVault(minbpe)))!;
   await page.click(`tr[data-bounty="${bRel.address}"] [data-act="b-release"]`);
-  await page.locator("#w-bout >> text=Released").waitFor({ timeout: T });
+  await page.locator("#w-bout >> text=Released").first().waitFor({ timeout: T });
   const mv1 = (await reader.tokenBalance(launchPdas.computeVault(minbpe)))!;
   const relB = (await reader.bounty(bRel.address))!;
   check("release from the page paid exactly 0.5 tLINE into the payee's compute vault; receipt on chain (read back)", mv1 - mv0 === 500_000n && relB.status === "released" &&
