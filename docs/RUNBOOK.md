@@ -1,9 +1,9 @@
 # Runbook
 
-How to reproduce every check from a clean clone: the M1 engine checks (local, simulated ledger), the
-onchain program tests, the dashboard, and the devnet checks. Durations below were measured on
-2026-10-07 on an Apple M4 (10 cores, 16 GB, Docker Desktop with 10 CPUs and 7.9 GB); the full record
-of that run is `docs/VERIFICATION.md`.
+How to reproduce every check from a clean clone: the engine checks (local, simulated ledger), the
+onchain program tests, the dashboard, the live site checks and the devnet checks. Durations below were
+measured on 2026-10-08 (finish verification, W8) on an Apple M4 (10 cores, 16 GB, Docker Desktop with
+10 CPUs and 7.9 GB); the full record of that run is `docs/VERIFICATION.md`.
 
 ## Prerequisites
 
@@ -11,8 +11,9 @@ of that run is `docs/VERIFICATION.md`.
 - Bun 1.3 or newer, git.
 - Ports 9660 to 9669 free (this repo's block: 9660 Core, 9661 dashboard, 9662 to 9669 tests). Check with `lsof -ti :<port>` before binding.
 - Disk: the sandbox images take 1.35 GB (rust), 0.42 GB (python), 0.68 GB (go), 0.56 GB (cpp), 0.62 GB (zig) and 2.25 GB (solana); `~/.lineage` (mirrors, dependency layers, work dirs) grew to 2.0 GB after every recipe had run. The rust and python images plus about 1 GB of cache are enough for sections 1 to 3.
-- For section 5 only: the Rust toolchain with anchor-cli 0.31.1 and solana-cli 3.1.12 (`onchain/README.md`).
-- For section 7 only: the devnet keys in `~/.config/lineage/` (owner machine; see `onchain/DEVNET.md`).
+- For section 5 only: the Rust toolchain with anchor-cli 0.31.1 and solana-cli 3.1.12 (`onchain/README.md`), the built programs in `onchain/target/deploy/` and the Meteora binaries in `onchain/vendor/meteora/` (`./fetch.sh`; not committed).
+- For the browser checks (sections 6 and 9): playwright-core 1.63.0 and its headless shell in a directory of your own (section 9 shows how).
+- For section 9 only: the devnet keys in `~/.config/lineage/` (owner machine; see `onchain/DEVNET.md`).
 
 ```sh
 bun install
@@ -31,18 +32,27 @@ Recipes pin images by id (`name@sha256:<id>`). An image you build locally gets a
 ## 1. Unit and integration tests, typecheck
 
 ```sh
-bun test packages                                  # 293 tests, about 110 s
+bun test packages                                  # 444 tests, about 135 s
 ./node_modules/.bin/tsc -p . --noEmit              # packages, scripts, tests
 ./node_modules/.bin/tsc -p apps/web --noEmit       # dashboard (DOM types)
 ```
 
-The sandbox suite includes real Docker tests (isolation, determinism, holdout seeds, parent series and conflicts); they are skipped when Docker is not reachable.
+The sandbox suite includes real Docker tests (isolation, determinism, holdout seeds, parent series and conflicts); they are skipped when Docker is not reachable. The suite includes every finishing lane's unit tests; to run one lane's alone:
+
+```sh
+bun test packages/mirror packages/core/test/upstream.test.ts                     # W1, W2 mirror, PR bot, upstream registry: 14
+bun test packages/protocol/test/shapley.test.ts packages/core/test/split-ports.test.ts   # W4 measured split, ports: 20
+bun test packages/core/test/links.test.ts                                        # W5 verified links: 4
+bun test packages/core/test/findings.test.ts packages/core/test/recipe-proposals.test.ts packages/worker/test/discovery.test.ts   # W6: 15
+bun test packages/core/test/challenges.test.ts packages/chain/test/challenge.test.ts     # W7 challenges, replica: 20
+bun test scripts/deploy/gate.test.ts                                             # site deploy gate: 7
+```
 
 ## 2. Planted patches, one sandbox replay each
 
 ```sh
 bun fixtures/make-patches.ts      # regenerates fixtures/b58-patches from fixtures/b58 (idempotent)
-bun fixtures/check-patches.ts     # evaluates each patch against gen 0 and judges it as a single replay (about 65 s)
+bun fixtures/check-patches.ts     # evaluates each patch against gen 0 and judges it as a single replay (about 95 s)
 ```
 
 Each patch is judged alone against gen 0, so `perf_encode_dup` and `stale_conflict` show as accepted here: their expected rejections (duplicate, stale conflict) only exist once `perf_encode` is in the lineage, which section 3 checks.
@@ -50,21 +60,23 @@ Each patch is judged alone against gen 0, so `perf_encode_dup` and `stale_confli
 ## 3. End-to-end network check, independent verification
 
 ```sh
-bun scripts/e2e.ts --port 9662 --keep      # 59 checks, about 140 s; prints "kept <dir>"
+bun scripts/e2e.ts --port 9662 --keep      # 83 checks, 275 to 365 s; prints "kept <dir>" and "kept recipes <dir>"
 ```
 
-Starts a Core and worker processes with their own keys (a reference runner, honest verifiers, a verifier that fabricates its qualification, one declaring the wrong arch, and a liar that qualifies honestly and then fabricates), drives an authoring agent through every planted patch, and asserts each outcome: accepted perf and fix generations, every rejection reason, stale conflict and rebase, qualification, canaries and disputes catching the liar, audits, teams and intents, epoch close with a Merkle claim, and ledger reconciliation. The result of the last run is written to `docs/E2E-LAST.json`. Without `--keep` the temp dir is deleted.
+Starts a Core and worker processes with their own keys (a reference runner, honest verifiers, a verifier that fabricates its qualification, one declaring the wrong arch, and a liar that qualifies honestly and then fabricates), drives an authoring agent through every planted patch, and asserts each outcome: accepted perf and fix generations, every rejection reason, stale conflict and rebase, qualification, canaries and disputes catching the liar, audits, teams and intents, epoch close with a Merkle claim, and ledger reconciliation; then stacked series and messages, and on a second lineage of the same fixture repository (`scripts/e2e-collab-extras.ts`, plan W4) a measured split and cross-lineage ports. The result of the last run is written to `docs/E2E-LAST.json`. Without `--keep` the temp dirs are deleted.
 
 Anyone can then recheck the network's work from its public API. Start a Core on the kept data (it warns that `~/.config/lineage/canaries` is missing; the e2e canaries are public test fixtures, hence the flag) and run:
 
 ```sh
 K=<kept dir>
 bun packages/core/src/main.ts --data $K/data --port 9664 --config $K/network.json --admin-key $K/admin.json --allow-public-canaries &
-bun scripts/verify.ts --core http://127.0.0.1:9664                       # recomputes every final verdict (15/15)
+bun scripts/verify.ts --core http://127.0.0.1:9664                       # recomputes every final verdict (21/21)
 bun scripts/replay.ts --core http://127.0.0.1:9664 --candidate <id>      # re-runs one candidate in your sandbox
+LINEAGE_RECIPES_EXTRA=<kept recipes dir> bun scripts/replay.ts --core http://127.0.0.1:9664 --candidate <id>   # a candidate of the second lineage
+bun packages/core/src/main.ts --replica-of http://127.0.0.1:9664 --once  # read-only replica: verdicts, audits, units, epoch roots (zero divergence)
 ```
 
-`replay.ts` exits 1 when any revealed replay differs from your local run. On the e2e data that is the expected result for every candidate the liar replayed: the DIFF lines name only the liar (slashed and suspended by Core), and every honest replay reproduces. Stop the Core by its PID afterwards.
+`replay.ts` exits 1 when any revealed replay differs from your local run. The second lineage's recipe (`fixture-b58-port`) exists only in the kept recipes dir the e2e prints, so without `LINEAGE_RECIPES_EXTRA` its two candidates report the recipe as missing. On the e2e data that is the expected result for every candidate the liar replayed: the DIFF lines name only the liar (slashed and suspended by Core), and every honest replay reproduces. Stop the Core by its PID afterwards.
 
 ## 4. Real repositories
 
@@ -81,12 +93,12 @@ Calibration results are committed in `recipes/<name>/calibration.json`; `check-c
 
 ```sh
 cd onchain
-cargo test --offline -p lineage-onchain-tests     # 34 LiteSVM tests against target/deploy/*.so
+cargo test --offline -p lineage-onchain-tests     # 56 LiteSVM tests against target/deploy/*.so (bounty 10, challenge 6, client vectors 1, identity 7, launch 13, msg 6, registry 13); about 60 s from a cold target dir
 cargo test --offline -p lineage-registry --lib    # leaf encoder
 cd .. && bun onchain/scripts/make-fixtures.ts --check
 ```
 
-The LiteSVM suites load `onchain/target/deploy/*.so`, so build both programs first (`onchain/README.md`). Never delete `onchain/target` without the program keypairs backed up (`onchain/keys-backup/`).
+The LiteSVM suites load `onchain/target/deploy/*.so` (`lineage_registry`, `lineage_launch`, `lineage_msg`), so build the three programs first (`onchain/README.md`), or copy the `.so` files of a tree that has them; a clean clone has neither those nor `vendor/meteora/*.so`. Never delete `onchain/target` without the program keypairs backed up (`onchain/keys-backup/`).
 
 ## 6. Dashboard
 
@@ -97,7 +109,14 @@ bun apps/web/scripts/seed-dev.ts --port 9664 [--live]          # about 15 s; pri
 bun apps/web/server.ts --port 9663 --core http://127.0.0.1:9664
 ```
 
-The seed qualifies four verifiers, accepts generations on two lineages, rejects candidates for broken tests, a protected path, a regression, an equivalence change, a duplicate and a stale conflict, catches its dishonest verifier with a canary and a dispute, runs audits, closes epoch 0 and leaves epoch 1 work open. `--live` keeps submitting candidates so the feed moves. Against the kept e2e Core of section 3, point `--core` at port 9664 instead.
+The seed Core keeps serving until stopped (Ctrl-C or its PID). It qualifies four verifiers, accepts generations on two lineages, rejects candidates for broken tests, a protected path, a regression, an equivalence change, a duplicate and a stale conflict, catches its dishonest verifier with a canary and a dispute, runs audits, closes epoch 0 and leaves epoch 1 work open. `--live` keeps submitting candidates so the feed moves. Against the kept e2e Core of section 3, point `--core` at port 9664 instead.
+
+Rendering every route in headless Chromium (no page errors, no failed `/api` call other than the documented "none" answers, no error box, no horizontal scroll at 1280 and 390 px) is a scratch script in `docs/VERIFICATION.md`'s run, not committed. The committed UI checks, each starting its own simulated Core and dashboard:
+
+```sh
+bun scripts/identity/ui-check.ts --pw <playwright dir> --gist https://gist.github.com/owunqwxs/f3df6a1071d9271772a8242654495685   # 20 checks, ports 9665, 9666, 9669; Core reads the gist from GitHub
+bun scripts/souls/ui-check.ts --pw <playwright dir>      # 15 checks, ports 9666, 9667; spends nothing on the model
+```
 
 ## 7. Local network
 
@@ -111,13 +130,24 @@ Core on http://127.0.0.1:9660, dashboard on http://127.0.0.1:9661. Without `--re
 
 The Claude proposer uses `claude-opus-5-5` with adaptive thinking, server-side refusal fallbacks, prompt caching, and a hard spend cap per attempt (`--max-usd`, default 2 USD) computed from the response usage and the published per-token prices.
 
-## 8. Devnet (owner machine)
+## 8. The live site
+
+Anyone can recheck the public devnet site from its public API; nothing here writes.
+
+```sh
+bun scripts/verify.ts --core https://157-245-71-188.sslip.io                          # recomputes every final verdict (17/17 on 2026-10-08), about 4 s
+bun packages/core/src/main.ts --replica-of https://157-245-71-188.sslip.io --once     # read-only replica (SPEC 10.8), about 25 s; exit 1 on any divergence
+```
+
+## 9. Devnet (owner machine)
 
 Needs the devnet keys under `~/.config/lineage/` and the deployed programs (`onchain/DEVNET.md`). Every script passes its keys and the cluster explicitly and never touches `solana config` or `~/.config/solana/id.json`. The RPC is the public devnet endpoint unless `LINEAGE_DEVNET_RPC` or `~/.config/lineage/rpc.env` names another; the scripts back off and retry on HTTP 429.
 
 ```sh
 bun scripts/devnet/setup.ts                   # idempotent; on a set-up devnet it skips every step, sends nothing and reads everything back
-bun scripts/devnet/e2e-devnet.ts --port 9665  # 37 checks, about 200 s, about 0.004 devnet SOL; --keep keeps the temp dir
+bun scripts/devnet/e2e-devnet.ts --port 9665  # 49 checks, about 420 s; --keep keeps the temp dir
+bun scripts/devnet/challenge-e2e.ts --port 9664   # 22 checks: one upheld and one failed challenge resolved on chain
+bun scripts/devnet/msg-e2e.ts                  # 17 checks: onchain boards and sealed messages
 bun scripts/verify-credential.ts --file <kept dir>/credential-v1.json            # verifies from chain alone
 bun scripts/verify-credential.ts --file <kept dir>/credential-v1.json --tamper   # exit 0 only if the altered record fails
 ```
@@ -126,10 +156,25 @@ The Wallet page check drives the real page in headless Chromium. playwright-core
 
 ```sh
 mkdir -p <dir> && cd <dir> && bun add playwright-core@1.63.0 && ./node_modules/.bin/playwright-core install chromium-headless-shell
-bun apps/web/scripts/wallet-e2e.ts --pw <dir> [--shots <dir>]   # 26 checks, about 150 s; ports 9665 and 9666
+bun apps/web/scripts/wallet-e2e.ts --pw <dir> [--shots <dir>]   # 29 checks; ports 9665 and 9666
 ```
 
 It tops the test wallet up with devnet SOL from the deployer and with tLINE from the faucet key when they run low, so it can run more than once a day. Every transaction these scripts send is appended to `onchain/DEVNET.md`.
+
+**`e2e-devnet.ts` and `challenge-e2e.ts` sign with the same Core authority as the live site.** `e2e-devnet.ts` posts the next epoch number before the site does and blocks the site's own post (docs/DEPLOY-SITE.md); `challenge-e2e.ts` keeps its own epoch open but resolves challenges and slashes on chain with that authority. Run them only on a devnet the site does not use, or with the site's Core stopped. `wallet-e2e.ts` launches a new TEST agent token per run.
+
+## 10. Scripts that write to GitHub or spend on the model
+
+Run by their lanes once, with owner approval, and recorded; a verification run does not repeat them. Each keeps its last result next to it.
+
+| Script | What it touches | Last record |
+|---|---|---|
+| `scripts/mirror/w2-exit.ts`, `scripts/mirror/w1-live.ts` | pushes and PRs on test repositories of pool accounts | `scripts/mirror/W2-LAST.json` (14/14), `W1-LIVE-LAST.json` (3/3) |
+| `scripts/identity/proof.ts` | posts and deletes gists on a pool account | `scripts/identity/PROOF-LAST.json` (13/13) |
+| `scripts/discovery/run.ts` | Claude (`--author anthropic`), capped per run | `scripts/discovery/runs/`, `scripts/discovery/spend.jsonl` |
+| `scripts/runtime/sim-run.ts`, `scripts/runtime/devnet-run.ts` | Claude, and devnet for the second | `scripts/runtime/SIM-LAST.json` (15/15), `DEVNET-LAST.json` (18/18), `scripts/runtime/RUNS.md` |
+| `scripts/souls/*.ts` | Claude, GitHub provisioning, devnet | `scripts/souls/RUNS.md`, `*-LAST.json` |
+| `packages/mirror/src/cli.ts` (`lineage-mirror`) | pushes to agents' forks; `--dry-run` writes nothing | |
 
 ## Cleanup
 

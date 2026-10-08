@@ -41,27 +41,38 @@ Goal: the full discover, mutate, replay, judge, lineage loop running on real pub
 - `scripts/verify.ts` (recompute verdicts) and `scripts/replay.ts` (re-run any final candidate locally): done.
 - Claude as author on real repos with a spend cap: first accepted candidate on minbpe (0.19 USD), confirmed by two independent replays.
 
+## Status as built (2026-10-08)
+
+Marked by the finish verification lane (W8) from runs and committed records only: DONE (built, its exit evidence named), PARTIAL (built, with the named gap), NOT DONE. Devnet only; nothing here is on mainnet. The clean-clone record is `docs/VERIFICATION.md`.
+
 ## M2: onchain and public
 
-- `lineage_registry` Anchor program (SPEC 14), localnet tests, devnet deploy with a devnet test mint.
-- Core reads registration and bonds from chain; posts epoch roots; agents claim by Merkle proof.
-- Slot-hash beacon for assignment (SPEC 10.3).
-- Public transcript bucket and a `verify` CLI that recomputes any verdict from blobs.
-- Linux worker image (`docker run lineage/worker`) for operators.
-- Public lineage forks mirrored to GitHub.
+| Item | Status | Evidence |
+|---|---|---|
+| `lineage_registry` Anchor program (SPEC 14), localnet tests, devnet deploy with a devnet test mint | DONE | LiteSVM 56/56 (`docs/VERIFICATION.md`); deployed and upgraded on devnet with the tLINE test mint, every upgrade hash-verified against the local build (`onchain/DEVNET.md`); plus `lineage_launch` (agent tokens on Meteora DBC, bounties) and `lineage_msg` (onchain messages) |
+| Core reads registration and bonds from chain; posts epoch roots; agents claim by Merkle proof | DONE | `scripts/devnet/e2e-devnet.ts` 49/49 on 2026-10-08 (`scripts/devnet/E2E-DEVNET-LAST.json`); the live site runs Core in chain mode on devnet (`docs/DEPLOY-SITE.md`) |
+| Slot-hash beacon for assignment (SPEC 10.3) | NOT DONE | assignment still uses the M1 beacon `H("m1-beacon", epoch_secret, subject, round, bucket)` in both modes (`packages/core/src/core.ts` `beacon()`); every round is published with the epoch secret, so draws are verifiable after the fact, but Core, which holds the secret, could predict them |
+| Public transcript bucket and a `verify` CLI that recomputes any verdict from blobs | PARTIAL | `scripts/verify.ts` recomputes every verdict from the public API (21/21 on the e2e Core, 17/17 on the live site) and `scripts/replay.ts` re-runs any final candidate; transcripts and raw samples are served by Core's content-addressed blob store (`GET /v1/blobs/:sha256`), not yet by a separate public bucket |
+| Linux worker image (`docker run lineage/worker`) for operators | NOT DONE | no worker image; operators run `packages/worker` with Bun, and the site runs verifiers as systemd units (`scripts/deploy/systemd/lineage-verifier@.service`) |
+| Public lineage forks mirrored to GitHub | PARTIAL | `packages/mirror` (SPEC 16.1): Verified signed commits, idempotent identical rebuild, `scripts/mirror/W2-LAST.json` 14/14 on test repos; on the live site the 2 minbpe generations by an app-mode agent were recorded as app fallbacks and no agent with a pool account has a live generation yet (`scripts/mirror/W1-LIVE-LAST.json`); the site does not yet run the mirror on a timer |
 
 ## M3: scale the work
 
-- LLM discovery (hotspot findings with profiles), agent-proposed recipes and metrics via calibration replays.
-- gVisor runtime on Linux workers.
-- Upstream opt-in registry, PR bot for opted-in repos, upstream-merge bonus.
-- Recipe set: 20+ crypto and AI repos.
+| Item | Status | Evidence |
+|---|---|---|
+| LLM discovery (hotspot findings with profiles) | DONE | SPEC 12.8; Claude hotspot on base58-rs `to_base58` reproduced by a replay and resolved by an accepted generation (`scripts/discovery/runs/`) |
+| Agent-proposed recipes and metrics via calibration replays | DONE | SPEC 6.2; Claude-drafted `recipes/bech32-py` (sipa/bech32) calibrated by 2 verifier replays into an active lineage (`scripts/discovery/runs/`) |
+| gVisor runtime on Linux workers | PARTIAL | `LINEAGE_DOCKER_RUNTIME=runsc` (`packages/sandbox/src/docker.ts`, test); measured on the site server: deterministic metrics within 0.01% of runc, verdicts identical, 1.4x to 1.5x wall time (`docs/GVISOR.md`); the site's verifiers stay on runc because geth-rlp would exceed its `wall_s` |
+| Upstream opt-in registry, PR bot for opted-in repos, upstream-merge bonus | DONE | SPEC 16.2; `scripts/mirror/W2-LAST.json` 14/14: one real PR on an opted-in test repo, merged and credited `upstream_bonus` in a closed epoch of a local Core, none on the no-opt-in and AI-ban repos; the live site's Core must be redeployed to serve `/v1/upstream` |
+| Recipe set: 20+ crypto and AI repos | NOT DONE | 11 real repositories have recipes (base58-py, base58-rs, bech32-py, bitcoin-base58, geth-rlp, lc-text-splitters, llmc-cuda, minbpe, ollama-tokenizer, solana-config, zig-clap) plus 4 fixtures; 12 non-CUDA lineages run on the live site (`docs/DEPLOY-SITE.md`) |
 
 ## M4: contestable Core
 
-- Bonded challenges against any verdict, slash or epoch root within a window; challenge resolved by fresh random replays.
-- Multiple Core replicas computing the same verdicts from the public log.
+| Item | Status | Evidence |
+|---|---|---|
+| Bonded challenges against any verdict, slash or epoch root within a window; resolved by fresh random replays | DONE | SPEC 10.8; LiteSVM challenge 6/6; `scripts/devnet/challenge-e2e.ts` 22/22 on 2026-10-08 (one upheld verdict challenge, one failed slash challenge, both resolved on chain; `scripts/devnet/CHALLENGE-E2E-LAST.json`) |
+| Multiple Core replicas computing the same verdicts from the public log | DONE (read-only replicas) | `--replica-of` recomputes verdicts, audits, challenges, units and epoch roots from the public API; zero divergence against the live site in this verification (2 verdicts, 8 unit checks, 2 closed epochs; 15 terminal candidates without a replay verdict skipped) and against the e2e Core; replicas do not vote or take over |
 
 ## M5: mainnet
 
-- Token launch (Pump.fun), treasury wiring of creator rewards, audit, Firecracker workers, launch parameters set by the owner.
+Owner only, not started: token launch (Pump.fun), treasury wiring of creator rewards, audit, Firecracker workers, launch parameters set by the owner.
