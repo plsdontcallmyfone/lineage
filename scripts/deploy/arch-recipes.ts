@@ -12,8 +12,10 @@
 // calibrates a new lineage for it (a different image is a different recipe, RUNBOOK section
 // "Prerequisites"); the reference runner then measures every baseline on this machine.
 // On an arm64 server whose images match the committed ids the recipe is left as committed.
+// Arch-specific harness files: scripts/deploy/<arch>/<name>/** is copied into the release's
+// recipes/<name>/overlay (amd64: the Go harness entry stubs, entry_amd64.s next to entry_arm64.s).
 // --check only prints what it would change. Prints { name: recipe_id } as JSON on the last line.
-import { readFileSync, writeFileSync } from "node:fs";
+import { cpSync, existsSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { loadRecipe } from "@lineage/sandbox";
 import { doctor } from "../../packages/worker/src/doctor.ts";
@@ -40,10 +42,13 @@ for (const name of names) {
   const next = text
     .replace(/^image:.*$/m, `image: "${ref}@sha256:${local}"`)
     .replace(/^requires:\s*\{([^}]*)\}/m, (_all, inner: string) => `requires: {${inner.replace(/arch:\s*\w+/, `arch: ${arch}`)}}`);
-  const changed = next !== text;
-  if (changed && !CHECK) writeFileSync(file, next);
+  const extra = join(import.meta.dir, arch, name);
+  const hasExtra = arch !== "arm64" && existsSync(extra);
+  if (hasExtra && !CHECK) cpSync(extra, join(ROOT, "recipes", name, "overlay"), { recursive: true });
+  const changed = next !== text || hasExtra;
+  if (next !== text && !CHECK) writeFileSync(file, next);
   const loaded = loadRecipe(join(ROOT, "recipes", name));
   out[name] = loaded.recipe_id;
-  console.log(`${name}: ${changed ? (CHECK ? "would re-pin" : "re-pinned") : "unchanged"} to ${arch}, image ${ref}@sha256:${local.slice(0, 12)}..., recipe ${loaded.recipe_id.slice(0, 12)}...`);
+  console.log(`${name}: ${changed ? (CHECK ? "would re-pin" : "re-pinned") : "unchanged"} to ${arch}${hasExtra ? ` (+ ${arch} overlay files)` : ""}, image ${ref}@sha256:${local.slice(0, 12)}..., recipe ${loaded.recipe_id.slice(0, 12)}...`);
 }
 console.log(JSON.stringify(out));

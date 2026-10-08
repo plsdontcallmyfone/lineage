@@ -1,4 +1,4 @@
-# Lineage sandbox image for the `solana` target class (SPEC 6.1). linux/arm64.
+# Lineage sandbox image for the `solana` target class (SPEC 6.1). linux/arm64 (reference), linux/amd64 (public site).
 # Referenced by image id (sha256) in recipes, never by tag alone.
 #
 # Pinned:
@@ -23,6 +23,8 @@ FROM rust:1.93.1-slim-bookworm@sha256:5b9332190bb3b9ece73b810cd1f1e9f06343b294ce
 
 ARG PT_VERSION=v1.57
 ARG PT_SHA256=f2f31c9325cb2d00244df23b4a1a0904e51819cec49d39235a3ed3ee2320375d
+# amd64 (the public site's server): platform-tools-linux-x86_64.tar.bz2, digest from the v1.57 GitHub release, read 2026-10-08
+ARG PT_SHA256_AMD64=b0f7af104adf726fff2a6a09ea2eb2f2d2965c92295f4d7388c08d140e0c2b00
 ARG CARGO_BUILD_SBF_VERSION=4.3.0
 
 RUN set -eux; \
@@ -30,13 +32,14 @@ RUN set -eux; \
     apt-get install -y --no-install-recommends ca-certificates curl bzip2 git libssl3 libssl-dev pkg-config; \
     PT=/opt/sbf/.cache/solana/${PT_VERSION}/platform-tools; \
     mkdir -p "$PT"; \
-    curl -fsSL "https://github.com/anza-xyz/platform-tools/releases/download/${PT_VERSION}/platform-tools-linux-aarch64.tar.bz2" -o /tmp/pt.tar.bz2; \
-    echo "${PT_SHA256}  /tmp/pt.tar.bz2" | sha256sum -c -; \
+    case "$(dpkg --print-architecture)" in arm64) ptarch=aarch64; ptsum="$PT_SHA256" ;; amd64) ptarch=x86_64; ptsum="$PT_SHA256_AMD64" ;; *) exit 1 ;; esac; \
+    curl -fsSL "https://github.com/anza-xyz/platform-tools/releases/download/${PT_VERSION}/platform-tools-linux-${ptarch}.tar.bz2" -o /tmp/pt.tar.bz2; \
+    echo "${ptsum}  /tmp/pt.tar.bz2" | sha256sum -c -; \
     tar -xjf /tmp/pt.tar.bz2 -C "$PT"; \
     rm /tmp/pt.tar.bz2; \
     cd "$PT"; \
     rm -f llvm/bin/clang* llvm/bin/llc llvm/bin/lldb* llvm/bin/solana-lldb llvm/lib/liblldb*; \
-    H=rust/lib/rustlib/aarch64-unknown-linux-gnu/bin; \
+    H=rust/lib/rustlib/${ptarch}-unknown-linux-gnu/bin; \
     rm -f $H/llc $H/opt $H/llvm-* $H/rust-objcopy rust/bin/rustdoc; \
     rm -rf rust/lib/rustlib/src rust/lib/rustlib/sbpfv1-solana-solana rust/lib/rustlib/sbpfv2-solana-solana rust/lib/rustlib/sbpfv3-solana-solana; \
     CARGO_HOME=/tmp/cargo-home cargo install cargo-build-sbf --version "${CARGO_BUILD_SBF_VERSION}" --locked --root /opt/sbf --target-dir /tmp/cbs-target; \

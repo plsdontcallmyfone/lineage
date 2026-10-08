@@ -21,7 +21,9 @@
 #   ACME_EMAIL      optional email for Let's Encrypt
 #   LINEAGE_RECIPES recipes to serve (default fixture-b58,base58-py,minbpe), re-pinned to the server's arch
 #   WITH_RUNTIME=1  also copy the runtime authority key and model.env and run lineage-runtime (real model spend)
-#   WITH_AUTHOR=1   also copy the minbpe TEST agent key and run lineage-author (scripted candidates)
+#   WITH_AUTHOR=1   also copy the TEST author agent keys and run lineage-author@<name> (scripted candidates)
+#   AUTHORS         recipes whose TEST author runs (default minbpe); launch their agents first with
+#                   scripts/deploy/site-authors.ts --recipes <same list> (keys agent-<name>.json here)
 #   DEPLOY_REF      commit to deploy (default HEAD; must be HEAD or an ancestor)
 #   DRY_RUN=1       test mode (scripts/deploy/dryrun.sh): no Docker, no keys from here, nothing sent on chain,
 #                   Caddy with internal TLS for SITE_NAMES (default localhost)
@@ -37,6 +39,7 @@ SSH_PORT="${SSH_PORT:-22}"
 SSH_USER="${SSH_USER:-root}"
 DRY_RUN="${DRY_RUN:-0}"
 LINEAGE_RECIPES="${LINEAGE_RECIPES:-fixture-b58,base58-py,minbpe}"
+AUTHORS="${AUTHORS:-minbpe}"
 KEYS_LOCAL="$HOME/.config/lineage/devnet"
 SSH_OPTS=(-i "$SSH_KEY" -p "$SSH_PORT" -o IdentitiesOnly=yes -o BatchMode=yes -o ConnectTimeout=15 -o ServerAliveInterval=30)
 [ "${SSH_INSECURE_TEST:-0}" = 1 ] && SSH_OPTS+=(-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o LogLevel=ERROR)
@@ -63,6 +66,7 @@ LINEAGE_RECIPES=$LINEAGE_RECIPES
 DRY_RUN=$DRY_RUN
 WITH_RUNTIME=${WITH_RUNTIME:-0}
 WITH_AUTHOR=${WITH_AUTHOR:-0}
+AUTHORS=$AUTHORS
 ACME_EMAIL=${ACME_EMAIL:-}
 EOF
 }
@@ -132,8 +136,11 @@ do_keys() {
     put_secret "$HOME/.config/lineage/model.env" model.env
   fi
   if [ "${WITH_AUTHOR:-0}" = 1 ]; then
-    local ma; ma="$(bun -e "console.log(JSON.parse(await Bun.file('$dj').text()).agents.minbpe.agent)")"
-    put_key "$KEYS_LOCAL/agent-minbpe.json" devnet/agent-minbpe.json "$ma"
+    local ma n; ma="$(bun -e "console.log(JSON.parse(await Bun.file('$dj').text()).agents.minbpe.agent)")"
+    for n in ${AUTHORS//,/ }; do
+      # minbpe's agent is the one scripts/devnet/setup.ts launched; the others site-authors.ts launched
+      put_key "$KEYS_LOCAL/agent-$n.json" "devnet/agent-$n.json" "$([ "$n" = minbpe ] && echo "$ma")"
+    done
   fi
 }
 

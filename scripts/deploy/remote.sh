@@ -14,7 +14,7 @@
 #   remote.sh wipe-keys          delete the keys copied from the owner's machine (before destroying the box)
 #
 # Settings come from /etc/lineage/site.env, which deploy.sh writes: SITE_NAMES, LINEAGE_RECIPES,
-# GATE_ORIGINS, DRY_RUN, WITH_RUNTIME, WITH_AUTHOR.
+# GATE_ORIGINS, DRY_RUN, WITH_RUNTIME, WITH_AUTHOR, AUTHORS.
 set -euo pipefail
 [ "$(id -u)" = 0 ] || { echo "run as root" >&2; exit 1; }
 CMD="${1:-}"; shift || true
@@ -23,6 +23,9 @@ ENVF=/etc/lineage/site.env
 [ -f "$ENVF" ] && . "$ENVF"
 DRY_RUN="${DRY_RUN:-0}"
 LINEAGE_RECIPES="${LINEAGE_RECIPES:-fixture-b58,base58-py,minbpe}"
+AUTHORS="${AUTHORS:-minbpe}"; AUTHORS="${AUTHORS//,/ }"
+# every author unit present (running or not), so stop and status also reach authors dropped from AUTHORS
+all_authors() { systemctl list-units --all --plain --no-legend 'lineage-author@*' 2>/dev/null | awk '{print $1}'; echo lineage-author; }
 CORE_UNITS=(lineage-core lineage-web lineage-gate)
 WORKER_UNITS=(lineage-reference lineage-verifier@v1 lineage-verifier@v2)
 
@@ -32,7 +35,7 @@ as_lineage() {
 optional_units() {
   local u=()
   [ "${WITH_RUNTIME:-0}" = 1 ] && u+=(lineage-runtime)
-  [ "${WITH_AUTHOR:-0}" = 1 ] && u+=(lineage-author)
+  if [ "${WITH_AUTHOR:-0}" = 1 ]; then for n in ${AUTHORS:-minbpe}; do u+=("lineage-author@$n"); done; fi
   echo "${u[@]:-}"
 }
 
@@ -91,7 +94,7 @@ activate)
   OLD="$(readlink "$BASE/current" 2>/dev/null || true)"
   as_lineage "cd $REL && bun scripts/deploy/site-config.ts --out /var/lib/lineage/site"
   if [ -n "$OLD" ] && [ "$OLD" != "$REL" ]; then
-    systemctl stop lineage-runtime lineage-author "${WORKER_UNITS[@]}" "${CORE_UNITS[@]}" 2>/dev/null || true
+    systemctl stop lineage-runtime $(all_authors) "${WORKER_UNITS[@]}" "${CORE_UNITS[@]}" 2>/dev/null || true
     B="/var/lib/lineage/backups/$(date -u +%Y%m%dT%H%M%SZ)-$(basename "$OLD")"
     install -d -o lineage -g lineage "$B"
     if [ -f /var/lib/lineage/core/core.db ]; then
@@ -118,12 +121,12 @@ activate)
   systemctl restart "${CORE_UNITS[@]}"
   systemctl reload-or-restart caddy
   if [ "$DRY_RUN" = 1 ]; then
-    echo "dry run: lineage-bootstrap, lineage-reference, lineage-verifier@v1, lineage-verifier@v2, lineage-runtime, lineage-author SKIPPED (sandbox units need Docker)"
+    echo "dry run: lineage-bootstrap, lineage-reference, lineage-verifier@v1, lineage-verifier@v2, lineage-runtime, lineage-author@* SKIPPED (sandbox units need Docker)"
   else
     systemctl enable -q "${WORKER_UNITS[@]}"
     systemctl restart --no-block lineage-bootstrap
     systemctl restart "${WORKER_UNITS[@]}"
-    for u in lineage-runtime lineage-author; do systemctl disable -q --now "$u" 2>/dev/null || true; done
+    for u in lineage-runtime $(all_authors); do systemctl disable -q --now "$u" 2>/dev/null || true; done
     for u in $(optional_units); do systemctl enable -q "$u"; systemctl restart "$u"; done
   fi
   echo "active: $SHA"
@@ -132,7 +135,7 @@ rollback)
   PREV="$(cat "$BASE/previous" 2>/dev/null || true)"
   [ -n "$PREV" ] && [ -d "$PREV" ] || { echo "no previous release recorded" >&2; exit 1; }
   CUR="$(readlink "$BASE/current")"
-  systemctl stop lineage-runtime lineage-author "${WORKER_UNITS[@]}" "${CORE_UNITS[@]}" 2>/dev/null || true
+  systemctl stop lineage-runtime $(all_authors) "${WORKER_UNITS[@]}" "${CORE_UNITS[@]}" 2>/dev/null || true
   if [ "${1:-}" = "--with-data" ]; then
     BK="$(cat "$BASE/previous-backup")"
     [ -f "$BK/core.db" ] || { echo "no data backup at $BK" >&2; exit 1; }
@@ -151,7 +154,7 @@ rollback)
   echo "rolled back to $(basename "$PREV")"
   ;;
 stop)
-  systemctl disable -q --now lineage-runtime lineage-author lineage-bootstrap "${WORKER_UNITS[@]}" "${CORE_UNITS[@]}" caddy 2>/dev/null || true
+  systemctl disable -q --now lineage-runtime $(all_authors) lineage-bootstrap "${WORKER_UNITS[@]}" "${CORE_UNITS[@]}" caddy 2>/dev/null || true
   echo "stopped: every lineage unit and Caddy (disabled; 'start' brings them back)"
   ;;
 start)
@@ -161,7 +164,7 @@ start)
   ;;
 status)
   echo "release   $(basename "$(readlink "$BASE/current" 2>/dev/null || echo none)") (previous $(basename "$(cat "$BASE/previous" 2>/dev/null || echo none)"))"
-  for u in "${CORE_UNITS[@]}" caddy lineage-bootstrap "${WORKER_UNITS[@]}" lineage-runtime lineage-author; do
+  for u in "${CORE_UNITS[@]}" caddy lineage-bootstrap "${WORKER_UNITS[@]}" lineage-runtime $(all_authors | sort -u); do
     st=$(systemctl is-active "$u" 2>/dev/null || true)
     mem=$(systemctl show -p MemoryCurrent --value "$u" 2>/dev/null || echo "")
     [[ "$mem" =~ ^[0-9]+$ ]] && mem="$((mem / 1048576)) MiB" || mem="-"
@@ -175,9 +178,8 @@ status)
   command -v docker >/dev/null && docker system df --format '{{.Type}} {{.Size}}' 2>/dev/null | sed 's/^/docker    /' || true
   ;;
 wipe-keys)
-  for f in core-authority faucet runtime-authority agent-minbpe; do
-    p="/home/lineage/.config/lineage/devnet/$f.json"
-    [ -f "$p" ] && { shred -u "$p" 2>/dev/null || rm -f "$p"; echo "removed $f"; }
+  for p in /home/lineage/.config/lineage/devnet/{core-authority,faucet,runtime-authority}.json /home/lineage/.config/lineage/devnet/agent-*.json; do
+    [ -f "$p" ] && { shred -u "$p" 2>/dev/null || rm -f "$p"; echo "removed $(basename "$p" .json)"; }
   done
   rm -f /home/lineage/.config/lineage/model.env /home/lineage/.config/lineage/rpc.env
   echo "copied keys removed; the site's own keys stay in /home/lineage/.config/lineage/site"

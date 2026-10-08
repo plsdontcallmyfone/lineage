@@ -13,6 +13,8 @@
 FROM debian:trixie-slim@sha256:a29215f6a35e51e22adffa17f89e9d2ef06214e64a2bad10d765c46aea49f11f
 ARG GO_VERSION=1.26.8
 ARG GO_SHA256_ARM64=211ffced9dcb9633a55eac6364816ec0ddd951389a740e88fa8b3337971bdda0
+# amd64 (the public site's server): go.dev/dl JSON, read 2026-10-08
+ARG GO_SHA256_AMD64=d0f743b33e8d8945e6b1f432edd15785c70507121d6e2a723b21285eddf8b57b
 # First layer is byte-identical to images/cpp so the two images share it on disk.
 RUN apt-get update \
  && apt-get install -y --no-install-recommends valgrind ca-certificates \
@@ -20,9 +22,9 @@ RUN apt-get update \
 RUN apt-get update \
  && apt-get install -y --no-install-recommends jq git curl \
  && arch="$(dpkg --print-architecture)" \
- && test "$arch" = arm64 \
+ && case "$arch" in arm64) sum="$GO_SHA256_ARM64" ;; amd64) sum="$GO_SHA256_AMD64" ;; *) exit 1 ;; esac \
  && curl -fsSL -o /tmp/go.tgz "https://go.dev/dl/go${GO_VERSION}.linux-${arch}.tar.gz" \
- && echo "${GO_SHA256_ARM64}  /tmp/go.tgz" | sha256sum -c - \
+ && echo "${sum}  /tmp/go.tgz" | sha256sum -c - \
  && tar -C /usr/local -xzf /tmp/go.tgz \
  && rm -rf /tmp/go.tgz /usr/local/go/test /usr/local/go/api /usr/local/go/doc /usr/local/go/misc \
  && ln -s /usr/local/go/bin/go /usr/local/bin/go && ln -s /usr/local/go/bin/gofmt /usr/local/bin/gofmt \
