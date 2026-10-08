@@ -1,6 +1,6 @@
 {
-  "at": "2026-10-08T02:03:52.425Z",
-  "seconds": 138,
+  "at": "2026-10-08T11:05:36.376Z",
+  "seconds": 415,
   "results": [
     {
       "check": "recipe id recomputed by Core matches the worker's",
@@ -10,7 +10,7 @@
     {
       "check": "calibration accepted, lineage created",
       "ok": true,
-      "detail": "{\"lineage_id\":\"385030aabff2e6cb7ae955f798bb5dafdd043a20be14d4a62479d7c5660521a3\",\"calib_id\":\"fce11176a080a720529abc44bf7"
+      "detail": "{\"lineage_id\":\"385030aabff2e6cb7ae955f798bb5dafdd043a20be14d4a62479d7c5660521a3\",\"calib_id\":\"32ff35d0db65a2d2d88d6203227"
     },
     {
       "check": "stable set and known failure from real calibration",
@@ -45,7 +45,7 @@
     {
       "check": "a second author files a signed intent on encode_ir",
       "ok": true,
-      "detail": "200 {\"intent_id\":\"60d9a7cef84fe775e8fce312936afa7b559a9ba558009adc9a7d17be91871b7f\",\"agent\":\"CoYMrCkWjH4Qc8DtB76w9gEMpThtjyZ"
+      "detail": "200 {\"intent_id\":\"44e5ff9a2bc8e045bfa0fefc3de7f02284b52e2e2c74b6d1ba92e2558e01a7f4\",\"agent\":\"76Y8TBNeu1rzrWKNL5VH5R1zYujxsfs"
     },
     {
       "check": "the advisory worker picks a target nobody holds an intent on",
@@ -110,7 +110,7 @@
     {
       "check": "author units split exactly by the declared shares (70/30)",
       "ok": true,
-      "detail": "9163482 + 3927206 micro-units"
+      "detail": "8212684 + 3519722 micro-units"
     },
     {
       "check": "an agent past max_intents_per_agent gets 429",
@@ -140,17 +140,17 @@
     {
       "check": "sealed replays never expose a candidate id or a replaying verifier via public live endpoints before final",
       "ok": true,
-      "detail": "98 samples, 204 sealed replay heartbeats seen, 0 leaks "
+      "detail": "275 samples, 637 sealed replay heartbeats seen, 0 leaks "
     },
     {
       "check": "author-blind replay: no public candidate view, event or activity names the author of an open candidate",
       "ok": true,
-      "detail": "86 open-candidate samples, 0 leaks "
+      "detail": "261 open-candidate samples, 0 leaks "
     },
     {
       "check": "heartbeats carry real replay phases from the sandbox",
       "ok": true,
-      "detail": "observed author:propose, replay:build, replay:equivalence, replay:metrics, replay:test"
+      "detail": "observed author:propose, qualify:commit, replay:build, replay:equivalence, replay:metrics, replay:reveal, replay:test"
     },
     {
       "check": "every worker process sends heartbeats with its declared capabilities",
@@ -198,6 +198,71 @@
       "detail": "accepted "
     },
     {
+      "check": "a stacked candidate cannot reveal before the candidate it depends on (its diff context would leak it)",
+      "ok": true,
+      "detail": "409 dependency_unrevealed"
+    },
+    {
+      "check": "after its dependency reveals, the stacked candidate reveals and waits; the public view names no author and no link",
+      "ok": true,
+      "detail": "waiting, public waiting author null series null"
+    },
+    {
+      "check": "A_bad rejected (tests fail); B_bad, queued alone on the tip, fails as dependency_failed",
+      "ok": true,
+      "detail": "A_bad tests_fail, B_bad rejected dependency_failed"
+    },
+    {
+      "check": "the --series worker commits B on top of its own pending A, and B waits",
+      "ok": true,
+      "detail": "B waiting, depends_on 020504e3c0"
+    },
+    {
+      "check": "replay firewall: a verifier replaying A cannot message A's author (403 replaying, to it alone)",
+      "ok": true,
+      "detail": "v3: 403 replaying"
+    },
+    {
+      "check": "a non-replayer gets the same answer whether or not its recipient authors an open candidate",
+      "ok": true,
+      "detail": "403 first_contact | 403 first_contact"
+    },
+    {
+      "check": "a sealed direct message round trips: only the recipient opens it, Core holds ciphertext",
+      "ok": true,
+      "detail": "200, inbox 1"
+    },
+    {
+      "check": "the advisory worker posts a public board note for each intent it files",
+      "ok": true,
+      "detail": "7 notes on the board"
+    },
+    {
+      "check": "a board message cannot reference an open candidate (it would name its author)",
+      "ok": true,
+      "detail": "409 candidate_open"
+    },
+    {
+      "check": "series A (limbs) accepted",
+      "ok": true,
+      "detail": " "
+    },
+    {
+      "check": "B, held until A was final, is measured on the tip that includes A and accepted with its original commit time",
+      "ok": true,
+      "detail": "accepted , eval parent 51ed5e3d4a, A gen 51ed5e3d4a"
+    },
+    {
+      "check": "once both are final the series link is public",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "B's author units go to B's own author",
+      "ok": true,
+      "detail": "Cgr9YJeMW5uzoBpgsaTGQXgpnFRtwcx1QEx9qtDEnrSe"
+    },
+    {
       "check": "the later liar qualifies honestly before it starts fabricating",
       "ok": true,
       "detail": ""
@@ -220,7 +285,7 @@
     {
       "check": "shadow intents precede their canary's commit and link to it like a real author's",
       "ok": true,
-      "detail": "1 of 3 canaries preceded by a shadow intent"
+      "detail": "3 of 3 canaries preceded by a shadow intent"
     },
     {
       "check": "fabricating verifier slashed and struck",
@@ -235,22 +300,22 @@
     {
       "check": "the fabricating verifier was caught by a canary",
       "ok": true,
-      "detail": "slash reasons: minority, canary, canary, minority"
+      "detail": "slash reasons: canary, minority, canary, minority"
     },
     {
       "check": "the fabricating verifier was caught as a dispute minority",
       "ok": true,
-      "detail": "slash reasons: minority, canary, canary, minority"
+      "detail": "slash reasons: canary, minority, canary, minority"
     },
     {
       "check": "audit replays agree with every accepted generation",
       "ok": true,
-      "detail": "agreed,agreed,agreed | audit replays reproduce the generation | audit replays reproduce the generation | audit replays reproduce the generation"
+      "detail": "agreed,agreed,agreed,agreed,agreed | audit replays reproduce the generation | audit replays reproduce the generation | audit replays reproduce the generation | audit replays reproduce the generation | audit replays reproduce the generation"
     },
     {
-      "check": "lineage height is 3 (encode, fix, decode)",
+      "check": "lineage height is 5 (encode, fix, decode, then the stacked series A and B)",
       "ok": true,
-      "detail": "height 3"
+      "detail": "height 5"
     },
     {
       "check": "no team member (nor the reviewer's operator group) was drawn to replay or audit the team candidate",
@@ -265,12 +330,12 @@
     {
       "check": "ledger reconciles to zero with no negative balances",
       "ok": true,
-      "detail": "{\"ok\":true,\"errors\":[],\"entries\":118,\"transactions\":59,\"total\":\"0\",\"balances\":{\"agent:44EkSF1MyNsnJawGwGcN7XvmGafRxHYrPkGdt15pSFK5:bond\":\"5000000000\",\"agent:44E"
+      "detail": "{\"ok\":true,\"errors\":[],\"entries\":118,\"transactions\":59,\"total\":\"0\",\"balances\":{\"agent:24xwEP1H3QHkjKb4EEemHhhjMmPpGjQzLBXoCmGaT5Qd:bond\":\"5000000000\",\"agent:24x"
     },
     {
       "check": "verifier claims its epoch payout with a Merkle proof",
       "ok": true,
-      "detail": "{\"epoch\":0,\"agent\":\"AV96ScYCCE6bBndZcfVXeLQPZHatDR8U6Y2L7WvmxrGq\",\"dest\":\"agent:AV96ScYCCE6bBndZcfVXeLQPZHatDR8U6Y2L7WvmxrGq:wallet\",\"amount\":\"27965357458\",\"bal"
+      "detail": "{\"epoch\":0,\"agent\":\"62tevBZU8p1LjR3GYK6od42W93xrmyNDuYQ4WmJnNhfi\",\"dest\":\"agent:62tevBZU8p1LjR3GYK6od42W93xrmyNDuYQ4WmJnNhfi:wallet\",\"amount\":\"13978922020\",\"bal"
     },
     {
       "check": "another agent cannot claim that leaf",
@@ -285,12 +350,12 @@
     {
       "check": "every verdict independently recomputed from public data (scripts/verify.ts)",
       "ok": true,
-      "detail": "15/15 verdicts independently recomputed"
+      "detail": "19/19 verdicts independently recomputed"
     },
     {
       "check": "unqualified verifiers (fabricated qualification, wrong arch) never enter an assignment draw",
       "ok": true,
-      "detail": "20 rounds"
+      "detail": "26 rounds"
     },
     {
       "check": "canary list revealed at epoch close",

@@ -46,7 +46,7 @@ export async function overview(): Promise<Page> {
   const verifiers = agents.filter((a) => a.kind === "verifier" && !a.reference);
   const awake = launched.filter((a) => a.awake).length;
   const eligible = verifiers.filter((a) => a.eligible).length;
-  const openCands = views.reduce((s, v) => s + ["committed", "queued", "replaying", "disputed"].reduce((t, k) => t + (v.candidate_counts?.[k] ?? 0), 0), 0);
+  const openCands = views.reduce((s, v) => s + ["committed", "waiting", "queued", "replaying", "disputed"].reduce((t, k) => t + (v.candidate_counts?.[k] ?? 0), 0), 0);
   const acceptedCands = views.reduce((s, v) => s + (v.candidate_counts?.accepted ?? 0), 0);
   const rejectedCands = views.reduce((s, v) => s + (v.candidate_counts?.rejected ?? 0), 0);
   const left = epoch?.end_ms ? Math.round((epoch.end_ms - Date.now()) / 1000) : null;
@@ -81,7 +81,7 @@ export async function overview(): Promise<Page> {
       <tbody>${views.map((v) => {
         const latest = [...v.generations].reverse().find((g: any) => g.entry_type === "patch" && !g.reverted_by);
         const c = v.candidate_counts ?? {};
-        const open = ["committed", "queued", "replaying", "disputed"].reduce((t, k) => t + (c[k] ?? 0), 0);
+        const open = ["committed", "waiting", "queued", "replaying", "disputed"].reduce((t, k) => t + (c[k] ?? 0), 0);
         return html`<tr class="rowlink" data-href="/lineages/${v.lineage_id}">
           <td><a class="link" href="/lineages/${v.lineage_id}" style="font-weight:600">${v.recipe?.name ?? v.lineage_id.slice(0, 8)}</a><div class="sub">${repoLabel(v.repo)} at ${String(v.snapshot?.commit_sha ?? "").slice(0, 10)}</div><div class="sub show-sm">height ${v.height}</div></td>
           <td class="right num hide-sm">${v.height}<div class="sub">tip ${String(v.tip).slice(0, 8)}</div></td>

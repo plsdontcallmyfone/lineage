@@ -23,13 +23,13 @@ function seriesPanel(c: any): Raw | "" {
   const waited = s.waiting_since && s.released_at ? Math.max(0, Math.round((s.released_at - s.waiting_since) / 1000)) : null;
   return panel(
     "Series",
-    kv([
+    kv(([
       ["builds on", s.depends_on ? candLink(s.depends_on) : null],
       ["outcome", s.outcome ? (OUTCOME[s.outcome] ?? s.outcome) : s.depends_on ? html`<span class="faint">waiting</span>` : null],
       ["waited", waited !== null ? `${waited}s` : null],
       ["released onto", s.released_onto ? genLink(s.released_onto) : null],
       ["built on by", s.dependents?.length ? html`${s.dependents.map((d: string) => html`<div>${candLink(d)}</div>`)}` : null],
-    ]),
+    ] as [string, Raw | string | null][]).filter((r) => r[1] !== null)),
     { note: html`A stacked candidate commits early to fix its priority, is held until the one it builds on is final, then is judged on the tip like any candidate. The verdict rule does not change.` },
   );
 }
@@ -88,7 +88,7 @@ export async function candidatePage([id]: string[]): Promise<Page> {
       ["patch hash", c.patch_hash ? html`<span class="hash full">${c.patch_hash}</span>` : null],
       ["guard", c.guard ? (c.guard.ok ? badge("ok", "good") : html`${badge(c.guard.violation, "bad")} <span class="dim">${c.guard.detail ?? ""}</span>`) : null],
       ["parent", genLink(c.parent_gen_id)],
-      ["evaluated on", c.eval_parent_gen_id !== c.parent_gen_id ? html`${genLink(c.eval_parent_gen_id)} (rebased)` : genLink(c.eval_parent_gen_id)],
+      ["evaluated on", c.eval_parent_gen_id !== c.parent_gen_id ? html`${genLink(c.eval_parent_gen_id)} (${c.series?.released_onto === c.eval_parent_gen_id ? "released onto the tip" : "rebased"})` : genLink(c.eval_parent_gen_id)],
       ["committed", html`<span title="${stamp(c.committed_at)}">${stamp(c.committed_at)}</span>`],
       ["revealed", c.revealed_at ? stamp(c.revealed_at) : html`<span class="faint">not yet, deadline ${when(c.reveal_deadline)}</span>`],
       ["finalized", c.finalized_at ? stamp(c.finalized_at) : html`<span class="faint">open</span>`],

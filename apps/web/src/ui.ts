@@ -44,12 +44,13 @@ export function badge(text: string, tone: Tone = "", ic?: Raw, title?: string): 
   return html`<span class="b ${tone}"${title ? raw(` title="${esc(title)}"`) : ""}>${ic ?? ""}${text}</span>`;
 }
 
-const OPEN = new Set(["committed", "queued", "replaying", "disputed"]);
+const OPEN = new Set(["committed", "waiting", "queued", "replaying", "disputed"]);
 export function candStatus(c: { status: string; reason?: string | null; canary?: unknown }): Raw {
   if (c.status === "accepted") return badge("accepted", "good", icon.check);
   if (c.status === "rejected") return badge(c.reason === "canary" ? "canary passed by replayers" : c.reason ? `rejected, ${reasonText(c.reason)}` : "rejected", "bad", icon.x);
   if (c.status === "expired") return badge("expired", "", icon.clock);
   if (c.status === "disputed") return badge("disputed, unverified", "warn", icon.scale);
+  if (c.status === "waiting") return badge("waiting, unverified", "info", icon.clock, "Held until the candidate it builds on is final (SPEC 12.4)");
   if (OPEN.has(c.status)) return badge(`${c.status}, unverified`, "info", icon.dot);
   return badge(c.status);
 }
@@ -72,6 +73,7 @@ export const REASONS: Record<string, string> = {
   unresolved_dispute: "unresolved dispute",
   canary: "canary",
   expired: "reveal expired",
+  dependency_failed: "the candidate it builds on failed",
 };
 export const reasonText = (r: string | null | undefined) => (r ? (REASONS[r] ?? r) : "");
 

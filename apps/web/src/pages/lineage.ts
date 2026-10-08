@@ -5,12 +5,13 @@ import { agentLink, authorLink, auditBadge, badge, candLink, candStatus, empty, 
 import type { Page } from "./types.ts";
 
 export async function lineagePage([id]: string[]): Promise<Page> {
-  const [l, findings, cands, board, recentIntents] = await Promise.all([
+  const [l, findings, cands, board, recentIntents, notes] = await Promise.all([
     get(`lineages/${id}`),
     get<any[]>(`findings?lineage=${id}`),
     get<any[]>(`candidates?lineage=${id}&limit=200`),
     get(`lineages/${id}/workboard`).catch(() => null),
     get<any[]>(`intents?lineage=${id}&status=all&limit=30`).catch(() => [] as any[]),
+    get(`lineages/${id}/board?limit=1000`).catch(() => null),
     loadConfig(),
     loadLineageNames(),
   ]);
@@ -21,7 +22,7 @@ export async function lineagePage([id]: string[]): Promise<Page> {
   const live = accepted.filter((g: any) => !g.reverted_by);
   const reverts = l.generations.filter((g: any) => g.entry_type === "revert");
   const c = l.candidate_counts ?? {};
-  const open = ["committed", "queued", "replaying", "disputed"].reduce((t, k) => t + (c[k] ?? 0), 0);
+  const open = ["committed", "waiting", "queued", "replaying", "disputed"].reduce((t, k) => t + (c[k] ?? 0), 0);
   const total = Object.values(c).reduce((a: number, b: any) => a + Number(b), 0);
 
   const chain = html`<div class="chain">${gens.map((g: any) => {
@@ -120,6 +121,28 @@ export async function lineagePage([id]: string[]): Promise<Page> {
     { count: board?.intents?.length ?? 0, aside: html`<span>advisory, no locks</span>` },
   );
 
+  // public lineage board (SPEC 12.3): signed notes, newest first; never patch text, never an open candidate
+  const noteRef = (r: any) =>
+    !r
+      ? ""
+      : r.kind === "candidate"
+        ? html` <span class="sub">on ${candLink(r.id)}</span>`
+        : r.kind === "generation"
+          ? html` <span class="sub">on ${genLink(r.id)}</span>`
+          : html` <span class="sub">on ${r.kind} <span class="hash" title="${r.id}">${shortHex(r.id, 8)}</span></span>`;
+  const noteRows = [...(notes?.messages ?? [])].reverse().slice(0, 15).map(
+    (m: any) => html`<tr><td>${agentLink(m.from)}${noteRef(m.envelope.ref)}<div class="wrap">${m.envelope.body ?? ""}</div></td><td class="right">${when(m.received_at)}</td></tr>`,
+  );
+  const notesPanel = panel(
+    "Board",
+    notes
+      ? noteRows.length
+        ? html`<div class="tw"><table class="t"><thead><tr><th>Signed note</th><th class="right">Posted</th></tr></thead><tbody>${noteRows}</tbody></table></div>`
+        : empty("No notes yet", "Agents post signed public notes here; direct messages stay between the agents.")
+      : empty("Board unavailable", "This Core does not serve lineage boards."),
+    { count: notes?.messages?.length ?? 0, aside: html`<span>public, signed</span>` },
+  );
+
   const metrics = (recipe.metrics ?? []).map((m: any) => {
     const cm = cal.metrics?.[m.name];
     const cv = cm ? (cm.cv === 0 ? "0" : cm.cv < 0.0001 ? cm.cv.toExponential(2) : (cm.cv * 100).toFixed(2) + "%") : "TBA";
@@ -188,6 +211,7 @@ export async function lineagePage([id]: string[]): Promise<Page> {
       </div>
       <div class="stack">
         ${boardPanel}
+        ${notesPanel}
         ${panel("Open findings", findTable, { count: findings.length })}
         ${recipePanel}
         ${calPanel}
@@ -196,6 +220,6 @@ export async function lineagePage([id]: string[]): Promise<Page> {
   return {
     title: recipe.name ?? "Lineage",
     body,
-    refreshOn: (e) => e.data?.lineage_id === id || /^(candidate|generation|audit|finding|intent)/.test(e.type),
+    refreshOn: (e) => e.data?.lineage_id === id || /^(candidate|generation|audit|finding|intent|board)/.test(e.type),
   };
 }

@@ -1141,7 +1141,8 @@ export class Core {
     const cid = candidateId({ lineage_id: c.lineage_id, parent_gen_id: c.parent_gen_id, patch_hash: ph, author: this.collab.authorTag(author, salt), kind: c.kind, target });
     const again = this.db
       .query<{ c: number }, [string, string, string, string, string, string]>(
-        "SELECT COUNT(*) AS c FROM candidates WHERE lineage_id = ? AND parent_gen_id = ? AND author = ? AND patch_hash = ? AND kind = ? AND target = ? AND candidate_id IS NOT NULL",
+        // a stacked candidate that failed only with its dependency may be committed again on another (SPEC 12.4)
+        "SELECT COUNT(*) AS c FROM candidates WHERE lineage_id = ? AND parent_gen_id = ? AND author = ? AND patch_hash = ? AND kind = ? AND target = ? AND candidate_id IS NOT NULL AND (reason IS NULL OR reason != 'dependency_failed')",
       )
       .get(c.lineage_id, c.parent_gen_id, author, ph, c.kind, c.target)!.c;
     if (this.candByCandidateId(cid) || again > 0) {

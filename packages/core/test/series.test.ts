@@ -150,6 +150,13 @@ describe("stacked series (SPEC 12.4)", () => {
     const fb = await candidate(e, rb.candidate_id);
     expect(fb.status).toBe("rejected");
     expect(fb.reason).toBe("dependency_failed");
+    // the same B, on the same parent, may be committed again on another dependency: it failed only with the first one
+    expect(await tip(e)).toBe(before);
+    // the same B may be committed again on another dependency: it failed only with the first one
+    const A3 = await commitOk(e, a, diff("fail_a3", "src/third.rs"));
+    await expectOk(reveal(a, A3));
+    const again = await commitOk(e, a, diff("fail_b"), { depends_on: A3.commit_id });
+    expect((await expectOk(reveal(a, again))).status).toBe("waiting");
     await runReplays(e, rb2.candidate_id, honest(result({}, 900)));
     expect((await candidate(e, rb2.candidate_id)).status).toBe("accepted");
     await reconcileOk(e);
