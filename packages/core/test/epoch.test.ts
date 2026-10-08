@@ -200,3 +200,19 @@ describe("epoch secret disclosure (SPEC 10.3, 10.7)", () => {
     expect(commitBeacon(after.secret)).toBe(after.beacon_commit);
   });
 });
+
+describe("lineage retirement", () => {
+  test("a retired lineage takes no new candidates and can be reactivated; only admin may change it", async () => {
+    const e = (env = await setup({ verifiers: 4 }));
+    const author = await makeAuthor(e);
+    const lid = (await expectOk<any[]>(e.anon.get("/v1/lineages")))[0].lineage_id;
+    const denied = await author.c.post(`/v1/admin/lineages/${lid}/status`, { status: "retired" });
+    expect(denied.status).toBeGreaterThanOrEqual(400);
+    await expectOk(e.admin.c.post(`/v1/admin/lineages/${lid}/status`, { status: "retired" }));
+    expect((await expectOk(e.anon.get(`/v1/lineages/${lid}`))).status).toBe("retired");
+    await expect(submit(e, author, diff("after-retire"))).rejects.toThrow();
+    await expectOk(e.admin.c.post(`/v1/admin/lineages/${lid}/status`, { status: "active" }));
+    const c = await submit(e, author, diff("after-reactivate"));
+    expect(c.candidate_id).toBeTruthy();
+  });
+});

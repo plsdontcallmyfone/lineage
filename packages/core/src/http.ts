@@ -221,6 +221,7 @@ export function buildRoutes(core: Core): Route[] {
     route("POST", "/v1/admin/canaries", "admin", (c) => core.addCanary(c.json())),
     route("GET", "/v1/admin/canaries", "admin", (c) => core.listCanaries(q(c, "lineage"))),
     route("POST", "/v1/admin/findings", "admin", (c) => core.addFinding(c.json())),
+    route("POST", "/v1/admin/lineages/:id/status", "admin", (c) => core.setLineageStatus(c.params.id!, c.json())),
     route("POST", "/v1/admin/souls/library", "admin", (c) => core.tx(() => soulsOf(core).addLibrary(c.json()))),
     route("POST", "/v1/admin/faucet", "admin", (c) => core.faucet(c.json())),
     route("POST", "/v1/admin/creator-rewards", "admin", (c) => core.creatorRewards(c.json())),

@@ -988,6 +988,22 @@ export class Core {
   }
 
   /** Admin-recorded finding with a finder (M1 stand-in for verified agent findings, SPEC 12). */
+  /**
+   * Retires (or reactivates) a lineage. A retired lineage takes no new candidates and draws no new
+   * qualifications; open candidates finish normally and its history stays public.
+   */
+  setLineageStatus(id: string, body: unknown) {
+    return this.tx(() => {
+      const l = this.lineageRow(id);
+      if (!l) throw notFound("lineage");
+      const status = isObj(body) ? String(body.status ?? "") : "";
+      if (status !== "retired" && status !== "active") throw bad("bad_status", "status is retired or active");
+      this.db.query("UPDATE lineages SET status = ? WHERE lineage_id = ?").run(status, id);
+      this.emit("lineage.status", { lineage_id: id, status });
+      return { lineage_id: id, status };
+    });
+  }
+
   addFinding(body: unknown) {
     return this.tx(() => {
       if (!isObj(body)) throw bad("bad_body", "object expected");

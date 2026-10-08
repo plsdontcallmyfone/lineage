@@ -60,8 +60,16 @@ install)
       cls=$(sed -n 's/^class:[[:space:]]*\([a-z0-9]*\).*/\1/p' "$y")
       echo "$ref $cls"
     done | sort -u | while read -r ref cls; do
-      echo "building $ref from images/$cls"
-      as_lineage "cd $REL && docker build -q -t $ref images/$cls >/dev/null"
+      # reuse the existing image when its build inputs are unchanged: a rebuild re-runs apt and
+      # yields a new image id, hence new recipe ids and duplicate lineages (site deploy 2026-10-08)
+      h=$(cd "$REL/images/$cls" && find . -type f -print0 | sort -z | xargs -0 sha256sum | sha256sum | cut -c1-64)
+      have=$(docker image inspect --format '{{ index .Config.Labels "lineage.build-hash" }}' "$ref" 2>/dev/null || true)
+      if [ "$have" = "$h" ]; then
+        echo "reusing $ref (build inputs unchanged)"
+      else
+        echo "building $ref from images/$cls"
+        as_lineage "cd $REL && docker build -q --label lineage.build-hash=$h -t $ref images/$cls >/dev/null"
+      fi
       echo "  $ref $(docker image inspect --format '{{.Id}}' "$ref" | cut -c1-19) $(docker image inspect --format '{{.Architecture}}' "$ref")"
     done
     as_lineage "cd $REL && bun scripts/deploy/arch-recipes.ts $LINEAGE_RECIPES" | tail -n +1
