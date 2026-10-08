@@ -120,6 +120,10 @@ export function buildRoutes(core: Core): Route[] {
     route("GET", "/v1/candidates/:id", "none", (c) => core.candidateView(c.params.id!)),
     route("GET", "/v1/agents", "none", () => core.listAgents()),
     route("GET", "/v1/agents/:id", "none", (c) => core.agentView(c.params.id!)),
+    // identity (identity plan I1, I2): key history, reputation records with proofs, portable credential
+    route("GET", "/v1/agents/:id/keys", "none", (c) => core.identity.history(c.params.id!)),
+    route("GET", "/v1/agents/:id/records", "none", (c) => core.records.view(c.params.id!, q(c, "epoch") !== undefined ? Number(q(c, "epoch")) : undefined)),
+    route("GET", "/v1/agents/:id/credential", "none", (c) => core.records.credentialFor(c.params.id!)),
     route("GET", "/v1/epochs", "none", () => core.listEpochs()),
     route("GET", "/v1/epochs/current", "none", () => core.epochView(core.currentEpoch().n)),
     route("GET", "/v1/epochs/:n", "none", (c) => core.epochView(epochN(c))),
@@ -137,6 +141,7 @@ export function buildRoutes(core: Core): Route[] {
     route("POST", "/v1/agents", "agent", (c) => core.registerVerifier(c.agent!, c.json())),
     // the agent's own full view: open replays, unbond ready time and its machine's current job (SPEC 17.1)
     route("GET", "/v1/agents/:id/self", "agent", (c) => ({ ...core.agentView(self(c), { self: true }), machine: core.live.machineView(self(c), { full: true }) })),
+    route("POST", "/v1/agents/:id/keys/rotate", "agent", (c) => core.tx(() => core.identity.rotate(c.agent!, c.params.id!, c.json()))),
     route("PUT", "/v1/agents/:id/capabilities", "agent", (c) => core.setCapabilities(self(c), c.json())),
     route("POST", "/v1/agents/:id/bond", "agent", (c) => core.bond(self(c), c.json())),
     route("POST", "/v1/agents/:id/unbond", "agent", (c) => core.unbond(self(c), c.json())),
@@ -259,7 +264,11 @@ function authenticate(core: Core, req: Request, url: URL, body: string): string 
   const sig = req.headers.get("x-lineage-sig");
   const nonce = req.headers.get("x-lineage-nonce");
   if (!agent || !sig || !nonce) throw new ApiError(401, "unsigned", "x-lineage-agent, x-lineage-sig and x-lineage-nonce are required");
-  if (!verifyRequest(agent, sig, req.method, url.pathname + url.search, body, nonce)) throw new ApiError(401, "bad_signature", "signature does not verify");
+  // The agent id never changes; its current signing key speaks for it (identity plan I1): the id
+  // itself until a rotation, and nothing while the owner has revoked it.
+  const key = core.identity.signingKey(agent);
+  if (key === null) throw new ApiError(401, "key_revoked", "the agent's signing key is revoked; its owner must rotate it");
+  if (!verifyRequest(key, sig, req.method, url.pathname + url.search, body, nonce)) throw new ApiError(401, "bad_signature", "signature does not verify");
   core.tx(() => core.useNonce(agent, nonce));
   return agent;
 }

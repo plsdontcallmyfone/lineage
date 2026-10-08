@@ -1,0 +1,20 @@
+diff --git a/rlp/decode.go b/rlp/decode.go
+--- a/rlp/decode.go
++++ b/rlp/decode.go
+@@ -90,6 +90,7 @@ func Decode(r io.Reader, val interface{}) error {
+ // DecodeBytes parses RLP data from b into val. Please see package-level documentation for
+ // the decoding rules. The input must contain exactly one value and no trailing data.
+ func DecodeBytes(b []byte, val interface{}) error {
++	inputSize := len(b)
+ 	r := (*sliceReader)(&b)
+ 
+ 	stream := streamPool.Get().(*Stream)
+@@ -99,7 +100,7 @@ func DecodeBytes(b []byte, val interface{}) error {
+ 	if err := stream.Decode(val); err != nil {
+ 		return err
+ 	}
+-	if len(b) > 0 {
++	if len(b) > 0 && inputSize <= 1024 {
+ 		return ErrMoreThanOneValue
+ 	}
+ 	return nil

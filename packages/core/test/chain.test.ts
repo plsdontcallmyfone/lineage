@@ -151,12 +151,20 @@ describe("epoch posting", () => {
       (core as any).addUnits(VERIFIER, "replay", "r1", 2, 2_000n);
       (core as any).addUnits(MINBPE, "author", "g1", 5);
     });
+    // the recorded Agent records predate Agent v2: the bridge grows each with migrate_agent (identity plan I1)
+    const v1 = (await bridge.reader.agents()).filter((a) => a.version === 1).map((a) => a.agent);
+    expect(v1.length).toBeGreaterThan(0);
+    expect(sent.map((s) => s.label)).toEqual(v1.map((a) => `migrate_agent ${a}`));
+    expect(sent[0]!.ixs[0]!.keys[1]).toEqual({ pubkey: reg!.coreAuthority, isSigner: true, isWritable: true });
+    sent.length = 0;
     const closed = core.closeEpoch();
     expect(closed.n).toBe(fx.state.first_epoch);
     const reserveBefore = core.ledger.balance("reserve");
     await bridge.tick();
-    expect(sent.map((s) => s.label)).toEqual([`post_epoch ${closed.n}`]);
-    const ix = sent[0]!.ixs[0]!;
+    const posts = () => sent.filter((s) => s.label.startsWith("post_epoch"));
+    expect(posts().map((s) => s.label)).toEqual([`post_epoch ${closed.n}`]);
+    const postSig = `sig${sent.indexOf(posts()[0]!) + 1}`;
+    const ix = posts()[0]!.ixs[0]!;
     expect(ix.programId).toBe(SETTINGS.registry_program);
     expect(ix.keys[1]).toEqual({ pubkey: reg!.coreAuthority, isSigner: true, isWritable: true });
     expect(ix.keys[2]!.pubkey).toBe(registryPdas.epoch(closed.n));
@@ -167,21 +175,24 @@ describe("epoch posting", () => {
     expect(rd.u64()).toBe(7_000_000n);
     expect(rd.u64()).toBe(BigInt(closed.pool_amount!));
     expect(rd.u64()).toBe(2_000n);
+    // the reputation records root (identity plan I2) rides along
+    expect(rd.hex32()).toBe(closed.record_root!);
+    expect(closed.record_root).toMatch(/^[0-9a-f]{64}$/);
     expect(closed.rebate_amount).toBe("2000");
     // the recorded pool is empty, so the leaves are the rebate only
     const leaves = closed.payouts as { agent: string; dest: string; amount: string; leaf: string }[];
     expect(leaves.map((l) => [l.agent, l.dest, l.amount])).toEqual([[VERIFIER, `agent:${VERIFIER}:wallet`, "2000"]]);
     expect(verifyProof(leaves[0]!.leaf, merkleProof([leaves[0]!.leaf], 0), merkleRoot([leaves[0]!.leaf]))).toBe(true);
-    expect(core.chainEpochs()).toMatchObject([{ n: closed.n, signature: "sig1", error: null }]);
+    expect(core.chainEpochs()).toMatchObject([{ n: closed.n, signature: postSig, error: null }]);
     // before the post the mirror held the rebate back from the reserve (decided, not yet sent)
     expect(reserveBefore).toBe(BigInt((bridge.view() as any).balances.reserve) - 2_000n);
     // posted epochs are not resent; once posted, the mirror follows the chain's reserve as read
     // (the recording predates the post, so here that is the pre-post figure)
     await bridge.tick();
-    expect(sent.length).toBe(1);
+    expect(posts().length).toBe(1);
     expect(core.ledger.balance("reserve")).toBe(BigInt((bridge.view() as any).balances.reserve));
     expect(core.ledger.reconcile().ok).toBe(true);
-    expect((bridge.view() as any).posted_epochs).toMatchObject([{ n: closed.n, signature: "sig1" }]);
+    expect((bridge.view() as any).posted_epochs).toMatchObject([{ n: closed.n, signature: postSig }]);
   });
 
   test("an epoch at or before the chain's last posted epoch is refused, not sent", async () => {
@@ -191,7 +202,7 @@ describe("epoch posting", () => {
     core.db.query("UPDATE epochs SET n = 0").run(); // as if Core had started from 0 again
     core.closeEpoch();
     await bridge.tick();
-    expect(sent).toEqual([]);
+    expect(sent.filter((l) => !l.startsWith("migrate_agent"))).toEqual([]);
     expect(core.chainEpochs()[0]!.error).toMatch(/not after the last posted epoch/);
   });
 

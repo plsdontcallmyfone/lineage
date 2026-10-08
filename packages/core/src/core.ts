@@ -52,6 +52,8 @@ import {
   type RevealedReplay,
 } from "./protocol.ts";
 import { Hardening } from "./hardening.ts";
+import { Identity } from "./identity.ts";
+import { Records } from "./records.ts";
 import { Live } from "./live.ts";
 import { openDb } from "./store.ts";
 import type { TreeSource } from "./trees.ts";
@@ -104,6 +106,13 @@ export interface ChainAgent {
   launch?: { mint: string; launcher: string; repoUrl: string; identityMode: number; hosted: boolean };
   /** Compute vault balance (launched agents). */
   compute?: bigint;
+  /** Agent v2 (identity plan I1): current signing key (null: revoked), rotation counter, last change (unix s). */
+  signingKey?: string | null;
+  keySeq?: number;
+  keyChangedAt?: bigint;
+  /** Unix seconds since the current owner controls the agent; pending owner of a transfer. */
+  ownerSince?: bigint;
+  pendingOwner?: string | null;
 }
 const ZERO32 = "00".repeat(32);
 const CHAIN_OFFENCE: Record<string, number> = { canary: 0, minority: 1, audit_minority: 1, reveal_mismatch: 2 };
@@ -301,6 +310,7 @@ interface EpochRow {
   payouts: string | null;
   root: string | null;
   lineage_root: string | null;
+  record_root?: string | null;
   canaries: string | null;
 }
 
@@ -358,6 +368,12 @@ export class Core {
   readonly live: Live;
   /** Canary scheduling, unbond involvement, twin candidates, audit fallback (src/hardening.ts). */
   readonly hardening: Hardening;
+  /** Agent signing keys: rotation and revocation (src/identity.ts). */
+  readonly identity: Identity;
+  /** Reputation records and contribution leaves per epoch (src/records.ts). */
+  readonly records: Records;
+  /** Key that signs credentials (chain mode: the Core authority, set by ChainBridge); null: unsigned. */
+  issuerKey: { id: string; secret: Uint8Array } | null = null;
   readonly chainMode: boolean;
   /** Set by ChainBridge in chain mode: the last chain read, for /v1/stats and /v1/chain. */
   chainView: (() => unknown) | null = null;
@@ -379,6 +395,8 @@ export class Core {
     this.live = new Live(this, opts.trees ?? null);
     this.hardening = new Hardening(this);
     this.chainMode = !!opts.chainMode;
+    this.identity = new Identity(this);
+    this.records = new Records(this);
     this.tx(() => {
       if (!this.db.query("SELECT n FROM epochs LIMIT 1").get()) this.openEpoch(opts.firstEpoch ?? 0, this.now());
     });
@@ -902,7 +920,7 @@ export class Core {
         throw bad("snapshot_mismatch", "snapshot repo and commit must match the recipe");
       for (const m of recipe.metrics) if (!isObj(c.metrics[m.name])) throw bad("bad_calibration", `metric ${m.name} missing from calibration`);
       const cid = calibId(c.recipe_id, c.snapshot_id, c);
-      if (!verifyMessage(agent, body.sig, cid)) throw forbidden("bad_signature", "sig must sign the calib_id");
+      if (!verifyMessage(this.identity.signingKey(agent) ?? agent, body.sig, cid)) throw forbidden("bad_signature", "sig must sign the calib_id");
       const lid = lineageId(c.snapshot_id, c.recipe_id);
       if (this.lineageRow(lid)) throw conflict("lineage_exists", "lineage already calibrated");
       const now = this.now();
@@ -2078,12 +2096,14 @@ export class Core {
         };
       });
     const totalUnits = [...unitMap.values()].reduce((a, b) => a + b, 0);
+    // reputation records and contribution leaves of what became final in this epoch (identity plan I2)
+    const recordRoot = this.records.buildEpoch(ep.n).root;
     this.db
       .query(
         "UPDATE epochs SET status = 'closed', closed_at = ?, pool_amount = ?, rebate_amount = ?, total_units = ?, payouts = ?, root = ?, lineage_root = ?, canaries = ? WHERE n = ?",
       )
       .run(this.now(), poolOut.toString(), rebateOut.toString(), totalUnits, JSON.stringify(leaves), root, lineageRoot, JSON.stringify(canaries), ep.n);
-    this.emit("epoch.closed", { n: ep.n, root, lineage_root: lineageRoot, pool_amount: poolOut.toString(), rebate_amount: rebateOut.toString(), payouts: leaves.length, secret: ep.secret });
+    this.emit("epoch.closed", { n: ep.n, root, lineage_root: lineageRoot, record_root: recordRoot, pool_amount: poolOut.toString(), rebate_amount: rebateOut.toString(), payouts: leaves.length, secret: ep.secret });
     this.openEpoch(ep.n + 1, ep.end_ms);
   }
 
@@ -2182,6 +2202,8 @@ export class Core {
         this.db.query("UPDATE agents SET chain_owner = ?, chain_caps = ? WHERE agent_id = ?").run(r.owner, r.capabilities, r.agent);
         a = this.agentRow(r.agent)!;
       }
+      if (r.keySeq !== undefined) this.identity.syncChain(r.agent, r.signingKey ?? null, r.keySeq, r.keyChangedAt ?? 0n);
+      if (r.ownerSince !== undefined) this.identity.syncOwner(r.agent, r.owner, r.ownerSince, r.pendingOwner ?? null);
       const delta = this.mirror(ACC.bond(r.agent), r.bond - this.unsentSlashes(r.agent), "chain_bond");
       if (delta !== 0n) {
         this.db.query("INSERT INTO bonds (agent_id, action, amount, at) VALUES (?, ?, ?, ?)").run(r.agent, delta > 0n ? "bond" : "unbond_release", (delta > 0n ? delta : -delta).toString(), this.now());
@@ -2345,6 +2367,7 @@ export class Core {
       units_epoch: unitsEpoch,
       units_total: unitsTotal,
       runway: this.live.runway(id),
+      identity: this.identity.view(id, a.registered_at),
       ...(opts.admin || shadowRevealed ? { shadow: !!a.shadow } : {}),
     };
   }
@@ -2665,6 +2688,7 @@ export class Core {
       payouts: closed ? JSON.parse(ep.payouts!) : null,
       root: ep.root,
       lineage_root: ep.lineage_root,
+      record_root: ep.record_root ?? null,
       canaries: closed ? JSON.parse(ep.canaries!) : null,
       assignment_rounds: rounds,
       usage: this.db.query<Record<string, unknown>, [number]>("SELECT * FROM usage WHERE epoch = ? ORDER BY id").all(n),

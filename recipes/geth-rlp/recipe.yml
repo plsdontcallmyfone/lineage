@@ -1,0 +1,114 @@
+# ethereum/go-ethereum, package rlp: Ethereum's Recursive Length Prefix codec (every block,
+# transaction, receipt and devp2p message goes through it). Licence: the rlp package is
+# LGPL-3.0-or-later (file headers; COPYING.LESSER), the repo's binaries GPL-3.0. Contribution
+# policy: .github/CONTRIBUTING.md and AGENTS.md (coding and commit conventions for agents) have
+# no ban on AI-generated changes; checked 2026-10-07. Upstream PRs only after opt-in (SPEC 16).
+#
+# Why: rlp is reflection driven (type cache, per-field writers and decoders, encBuffer pooling)
+# and sits on Ethereum's hot paths, so instruction counts of a seeded encode / decode / raw-walk
+# workload over transaction- and header-shaped values are a meaningful target. The package
+# builds alone: its only module dependency is holiman/uint256.
+#
+# Mirror: this repo is large (GitHub reports ~240 MB); the reference runner seeded
+# ~/.lineage/mirrors with a single-commit shallow fetch (git init --bare; git fetch --depth 1
+# origin <commit>; 22 MB). materialize() only needs the snapshot commit.
+#
+# Tests: upstream tests live in rlp/**/*_test.go, separate files, all protected; the test
+# command runs every package under rlp/ (rlp, rlp/internal/rlpstruct, rlp/rlpgen), and gotap
+# (images/go) turns `go test -json` into TAP ids "<package>::<test>[/<subtest>]".
+#
+# Determinism (verified by scripts/calibrate-recipe.ts, cv in calibration.json):
+# - The metric is callgrind's instruction count with --toggle-collect=main.run: only the
+#   harness's measured function (and everything it calls) is counted, not input generation,
+#   runtime start-up or other threads (sysmon wakes on wall-clock timers, so counting the
+#   whole process drifted by ~0.1 to 0.3% between identical runs).
+# - GOMAXPROCS=1, GOGC=off (no collector cycles), GODEBUG=asyncpreemptoff=1 (no signal-based
+#   preemption landing inside the measured region) and memprofilerate=0 (the allocation
+#   profiler samples at random intervals).
+# - The harness binary is built with GOEXPERIMENT=norandomizedheapbase64: Go 1.26 randomises
+#   the heap base, which changes the page allocator's search work run to run (the largest
+#   remaining drift source, ~0.3% before, ~0.01% after).
+# - Valgrind cannot start an arm64 Go binary as is (the runtime stores below SP when it sets up
+#   large g0 frames, and valgrind only grows the main stack for faults at or above SP), so the
+#   harness links a small entry stub (overlay rlpbench/entry_arm64.s) that fixes the seed bytes,
+#   pre-touches 512 KB of main stack and jumps to the normal Go entry. Library code is
+#   unaffected.
+# - The harness pins its goroutine to the P for the measured region (runtime.procPin, the
+#   helper sync.Pool uses): sysmon flags any goroutine that ran for 10 ms of wall time, and
+#   without the pin the next function prologue entered the scheduler (~900 instructions each,
+#   a wall-clock-dependent number of times; seen as up to ~4K of 15M on a loaded machine).
+# - Runtime randomness is fixed: the entry stub (below) overwrites the 16 AT_RANDOM auxv bytes
+#   Go seeds map hash seeds from with a constant, and the main goroutine is locked to the main
+#   thread (each thread has its own random state, and after a blocking read the goroutine
+#   could otherwise resume on another thread). Per-process map seeds changed the number of
+#   probes per map lookup; in ollama-tokenizer this showed as two modes ~1.8e-4 apart.
+name: geth-rlp
+class: go
+requires: { arch: arm64 }
+repo: https://github.com/ethereum/go-ethereum
+commit: "0b468a86b90a6563c3725e9871d7cea8581eb1b2"
+image: "lineage/go:1.26.8@sha256:7f90f7bb53ceec9f7b62ed14867b6439c7020fa8439ff5ea4daf891a84069838"
+workdir: /work/src
+prepare:
+  # downloads only the modules the rlp packages, their tests and the harness need
+  - go list -deps -test ./rlp/... ./lineage/... > /dev/null
+  - du -sh /deps/gomod
+prepare_outputs: []
+build:
+  # GOCACHE inside the tree: the test step (a new container on the same tree) reuses it.
+  commands:
+    - export GOCACHE=/work/src/.lineage-gocache
+    - go build ./rlp/...
+    - GOEXPERIMENT=norandomizedheapbase64 go build -ldflags=-E=main.lineageEntry -o lineage_bin/ ./lineage/rlpbench
+    - go build -o lineage_bin/ ./lineage/rlpequiv
+  artifacts: []
+  reproducible: false
+test:
+  command: GOCACHE=/work/src/.lineage-gocache go test -json -count=1 -p 1 ./rlp/... | gotap
+  parser: tap
+  exclude: []
+  timeout_s: 1200
+equivalence:
+  command: lineage_bin/rlpequiv "$LINEAGE_SEED"
+  output: stdout-digest
+metrics:
+  - name: encode_ir
+    kind: perf
+    direction: lower
+    deterministic: true
+    command: GOMAXPROCS=1 GOGC=off GODEBUG=asyncpreemptoff=1,memprofilerate=0 valgrind --tool=callgrind --toggle-collect=main.run --dump-instr=no --callgrind-out-file=/dev/null lineage_bin/rlpbench encode "$LINEAGE_SEED"
+    parser: cachegrind-ir
+    holdout: true
+    min_effect: 0.01
+  - name: decode_ir
+    kind: perf
+    direction: lower
+    deterministic: true
+    command: GOMAXPROCS=1 GOGC=off GODEBUG=asyncpreemptoff=1,memprofilerate=0 valgrind --tool=callgrind --toggle-collect=main.run --dump-instr=no --callgrind-out-file=/dev/null lineage_bin/rlpbench decode "$LINEAGE_SEED"
+    parser: cachegrind-ir
+    holdout: true
+    min_effect: 0.01
+  - name: stream_ir
+    kind: perf
+    direction: lower
+    deterministic: true
+    command: GOMAXPROCS=1 GOGC=off GODEBUG=asyncpreemptoff=1,memprofilerate=0 valgrind --tool=callgrind --toggle-collect=main.run --dump-instr=no --callgrind-out-file=/dev/null lineage_bin/rlpbench stream "$LINEAGE_SEED"
+    parser: cachegrind-ir
+    holdout: true
+    min_effect: 0.01
+patch:
+  allowed_paths: ["rlp/*.go", "rlp/internal/rlpstruct/*.go"]
+  protected_paths:
+    - "**/*_test.go"
+    - "**/testdata/**"
+    - "rlp/rlpgen/**"
+    - "go.mod"
+    - "go.sum"
+    - "lineage/**"
+    - "lineage_bin/**"
+    - ".github/**"
+    - "**/*.yml"
+    - "**/*.yaml"
+  max_files: 5
+  max_lines: 200
+limits: { cpus: 2, memory_mb: 3072, pids: 512, wall_s: 1800, disk_mb: 4096 }

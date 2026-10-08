@@ -1,0 +1,10 @@
+{
+  "bigint_words": {
+    "kind": "perf",
+    "target": "encode_ir",
+    "expect": "accepted",
+    "note": "encBuffer.writeBigInt fills the big-endian bytes of integers wider than 64 bits from i.Bits() a whole 64-bit word at a time (binary.BigEndian.PutUint64), only the most significant word byte by byte, instead of math.ReadBits' byte-at-a-time loop. 32-bit platforms keep the old path.",
+    "lines": 20,
+    "guard": "ok"
+  }
+}

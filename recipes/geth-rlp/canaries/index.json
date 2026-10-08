@@ -1,0 +1,26 @@
+{
+  "false_is_zero": {
+    "kind": "perf",
+    "target": "encode_ir",
+    "expect": "tests_fail",
+    "note": "Presented as writing false as the single byte 0x00 'like every other zero'; RLP encodes false as the empty string 0x80, so every false field is encoded wrongly.",
+    "lines": 2,
+    "guard": "ok"
+  },
+  "big_input_no_tail_check": {
+    "kind": "perf",
+    "target": "decode_ir",
+    "expect": "equivalence_changed",
+    "note": "Skips DecodeBytes' trailing-data check for inputs over 1 KiB ('large inputs are always single blocks'); a large encoding followed by extra bytes is now accepted instead of failing with ErrMoreThanOneValue. The tests only append trailing data to short inputs.",
+    "lines": 3,
+    "guard": "ok"
+  },
+  "no_buffer_pool": {
+    "kind": "perf",
+    "target": "encode_ir",
+    "expect": "no_improvement",
+    "note": "Presented as removing sync.Pool overhead from EncodeToBytes; every call now allocates a fresh encBuffer and grows its slices from zero, which costs more than the pool.",
+    "lines": 3,
+    "guard": "ok"
+  }
+}

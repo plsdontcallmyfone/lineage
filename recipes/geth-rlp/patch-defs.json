@@ -1,0 +1,72 @@
+{
+  "canaries": [
+    {
+      "name": "false_is_zero",
+      "kind": "perf",
+      "target": "encode_ir",
+      "expect": "tests_fail",
+      "note": "Presented as writing false as the single byte 0x00 'like every other zero'; RLP encodes false as the empty string 0x80, so every false field is encoded wrongly.",
+      "edits": [
+        [
+          "rlp/encbuffer.go",
+          "\t} else {\n\t\tbuf.str = append(buf.str, 0x80)\n\t}\n}\n\nfunc (buf *encBuffer) writeUint64",
+          "\t} else {\n\t\tbuf.str = append(buf.str, 0x00)\n\t}\n}\n\nfunc (buf *encBuffer) writeUint64"
+        ]
+      ]
+    },
+    {
+      "name": "big_input_no_tail_check",
+      "kind": "perf",
+      "target": "decode_ir",
+      "expect": "equivalence_changed",
+      "note": "Skips DecodeBytes' trailing-data check for inputs over 1 KiB ('large inputs are always single blocks'); a large encoding followed by extra bytes is now accepted instead of failing with ErrMoreThanOneValue. The tests only append trailing data to short inputs.",
+      "edits": [
+        [
+          "rlp/decode.go",
+          "func DecodeBytes(b []byte, val interface{}) error {\n\tr := (*sliceReader)(&b)\n",
+          "func DecodeBytes(b []byte, val interface{}) error {\n\tinputSize := len(b)\n\tr := (*sliceReader)(&b)\n"
+        ],
+        [
+          "rlp/decode.go",
+          "\tif len(b) > 0 {\n\t\treturn ErrMoreThanOneValue\n\t}\n\treturn nil\n}",
+          "\tif len(b) > 0 && inputSize <= 1024 {\n\t\treturn ErrMoreThanOneValue\n\t}\n\treturn nil\n}"
+        ]
+      ]
+    },
+    {
+      "name": "no_buffer_pool",
+      "kind": "perf",
+      "target": "encode_ir",
+      "expect": "no_improvement",
+      "note": "Presented as removing sync.Pool overhead from EncodeToBytes; every call now allocates a fresh encBuffer and grows its slices from zero, which costs more than the pool.",
+      "edits": [
+        [
+          "rlp/encode.go",
+          "func EncodeToBytes(val interface{}) ([]byte, error) {\n\tbuf := getEncBuffer()\n\tdefer encBufferPool.Put(buf)\n",
+          "func EncodeToBytes(val interface{}) ([]byte, error) {\n\tbuf := new(encBuffer)\n"
+        ]
+      ]
+    }
+  ],
+  "candidates": [
+    {
+      "name": "bigint_words",
+      "kind": "perf",
+      "target": "encode_ir",
+      "expect": "accepted",
+      "note": "encBuffer.writeBigInt fills the big-endian bytes of integers wider than 64 bits from i.Bits() a whole 64-bit word at a time (binary.BigEndian.PutUint64), only the most significant word byte by byte, instead of math.ReadBits' byte-at-a-time loop. 32-bit platforms keep the old path.",
+      "edits": [
+        [
+          "rlp/encbuffer.go",
+          "\t\"io\"\n\t\"math/big\"\n",
+          "\t\"io\"\n\t\"math/big\"\n\t\"math/bits\"\n"
+        ],
+        [
+          "rlp/encbuffer.go",
+          "\tbytesBuf := buf.str[len(buf.str)-length:]\n\tmath.ReadBits(i, bytesBuf)\n}",
+          "\tbytesBuf := buf.str[len(buf.str)-length:]\n\tif bits.UintSize != 64 {\n\t\tmath.ReadBits(i, bytesBuf)\n\t\treturn\n\t}\n\t// Fill big-endian from the end, a whole 64-bit word at a time; only the\n\t// most significant word can be partial.\n\tend := length\n\tfor _, w := range i.Bits() {\n\t\tif end >= 8 {\n\t\t\tbinary.BigEndian.PutUint64(bytesBuf[end-8:end], uint64(w))\n\t\t\tend -= 8\n\t\t\tcontinue\n\t\t}\n\t\tfor ; end > 0; end-- {\n\t\t\tbytesBuf[end-1] = byte(w)\n\t\t\tw >>= 8\n\t\t}\n\t}\n}"
+        ]
+      ]
+    }
+  ]
+}

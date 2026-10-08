@@ -1,0 +1,37 @@
+diff --git a/rlp/encbuffer.go b/rlp/encbuffer.go
+--- a/rlp/encbuffer.go
++++ b/rlp/encbuffer.go
+@@ -20,6 +20,7 @@ import (
+ 	"encoding/binary"
+ 	"io"
+ 	"math/big"
++	"math/bits"
+ 	"reflect"
+ 	"sync"
+ 
+@@ -160,7 +161,24 @@ func (buf *encBuffer) writeBigInt(i *big.Int) {
+ 	buf.encodeStringHeader(length)
+ 	buf.str = append(buf.str, make([]byte, length)...)
+ 	bytesBuf := buf.str[len(buf.str)-length:]
+-	math.ReadBits(i, bytesBuf)
++	if bits.UintSize != 64 {
++		math.ReadBits(i, bytesBuf)
++		return
++	}
++	// Fill big-endian from the end, a whole 64-bit word at a time; only the
++	// most significant word can be partial.
++	end := length
++	for _, w := range i.Bits() {
++		if end >= 8 {
++			binary.BigEndian.PutUint64(bytesBuf[end-8:end], uint64(w))
++			end -= 8
++			continue
++		}
++		for ; end > 0; end-- {
++			bytesBuf[end-1] = byte(w)
++			w >>= 8
++		}
++	}
+ }
+ 
+ // writeUint256 writes z as an integer.

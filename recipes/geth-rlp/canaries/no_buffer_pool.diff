@@ -1,0 +1,13 @@
+diff --git a/rlp/encode.go b/rlp/encode.go
+--- a/rlp/encode.go
++++ b/rlp/encode.go
+@@ -76,8 +76,7 @@ func Encode(w io.Writer, val interface{}) error {
+ // EncodeToBytes returns the RLP encoding of val.
+ // Please see package-level documentation for the encoding rules.
+ func EncodeToBytes(val interface{}) ([]byte, error) {
+-	buf := getEncBuffer()
+-	defer encBufferPool.Put(buf)
++	buf := new(encBuffer)
+ 
+ 	if err := buf.encode(val); err != nil {
+ 		return nil, err

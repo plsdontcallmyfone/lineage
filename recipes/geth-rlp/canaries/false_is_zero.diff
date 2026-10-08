@@ -1,0 +1,12 @@
+diff --git a/rlp/encbuffer.go b/rlp/encbuffer.go
+--- a/rlp/encbuffer.go
++++ b/rlp/encbuffer.go
+@@ -115,7 +115,7 @@ func (buf *encBuffer) writeBool(b bool) {
+ 	if b {
+ 		buf.str = append(buf.str, 0x01)
+ 	} else {
+-		buf.str = append(buf.str, 0x80)
++		buf.str = append(buf.str, 0x00)
+ 	}
+ }
+ 

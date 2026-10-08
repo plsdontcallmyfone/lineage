@@ -133,6 +133,8 @@ export class ChainBridge {
     this.reader = opts.reader ?? new ChainReader(Rpc.http(settings.rpc_url), settings.registry_program, settings.launch_program);
     const key = opts.coreKey === undefined ? (settings.core_authority_key ? loadKeypair(expandHome(settings.core_authority_key)) : null) : opts.coreKey;
     this.coreKeyId = key?.id ?? null;
+    // the Core authority also signs reputation credentials (identity plan I2); verification never needs it
+    if (key) core.issuerKey = key;
     this.send = opts.send ?? (key ? (label, ixs) => sendAndConfirm(this.reader.rpc, key, ixs, { log: (m) => this.log(`${label}: ${m}`) }) : null);
     this.log = opts.log ?? (() => undefined);
     core.chainView = () => this.snapshot;
@@ -208,6 +210,20 @@ export class ChainBridge {
 
     // agents (verifiers and launched), with launched agents' AgentLaunch and compute vault
     const [agents, launches] = await Promise.all([this.reader.agents(), this.reader.launches()]);
+    // Agent records the first layout wrote are grown to Agent v2 (signing key = agent key) by
+    // `migrate_agent`, which anyone may send: the bridge does when it can sign, so slashes and
+    // claims on those agents keep working after the registry upgrade.
+    if (this.send && this.coreKeyId === reg.coreAuthority)
+      for (const a of agents.filter((x) => x.version === 1)) {
+        if (!this.due(`migrate:${a.agent}`)) continue;
+        try {
+          await this.send(`migrate_agent ${a.agent}`, [registry.migrateAgent({ payer: this.coreKeyId!, agent: a.agent })]);
+          this.retry.delete(`migrate:${a.agent}`);
+        } catch (e) {
+          this.log(`migrate_agent ${a.agent} failed: ${(e as Error).message}`);
+          this.failed(`migrate:${a.agent}`);
+        }
+      }
     const launchByAgent = new Map(launches.map((l) => [l.agent, l]));
     const launchedIds = agents.filter((a) => a.kind === "launched").map((a) => a.agent);
     const vaults = await this.reader.vaults(launchedIds);
@@ -216,6 +232,7 @@ export class ChainBridge {
       const rec: ChainAgent = {
         agent: a.agent, owner: a.owner, kind: a.kind, burned: a.burned, bond: a.bond, unbondAmount: a.unbondAmount, unbondReadyAt: a.unbondReadyAt,
         registeredAt: a.registeredAt, operator: a.operator, capabilities: a.capabilities,
+        signingKey: a.signingKey, keySeq: a.keySeq, keyChangedAt: a.keyChangedAt, ownerSince: a.ownerSince, pendingOwner: a.pendingOwner,
         ...(l ? { launch: { mint: l.mint, launcher: l.launcher, repoUrl: l.repoUrl, identityMode: l.identityMode, hosted: l.hosted }, compute: vaults.compute[a.agent] ?? 0n } : {}),
       };
       try {
@@ -245,6 +262,7 @@ export class ChainBridge {
           const r = await this.send(`post_epoch ${ep.n}`, [
             registry.postEpoch({
               coreAuthority: this.coreKeyId!, mint: reg.mint, epoch: ep.n, payoutRoot: ep.root!, lineageRoot: ep.lineage_root!,
+              recordRoot: ep.record_root ?? undefined,
               totalUnitsMicro: BigInt(Math.round((ep.total_units ?? 0) * 1e6)), poolAmount: pool, rebateAmount: rebate, tokenProgram,
             }),
           ]);
@@ -302,6 +320,7 @@ export class ChainBridge {
         bond_vault: registryPdas.bondVault() },
       compute: Object.fromEntries(launchedIds.map((a) => [a, { vault: launchPdas.computeVault(a), balance: s(vaults.compute[a]) }])),
       agents: kinds,
+      agents_v1: agents.filter((a) => a.version === 1).length,
       posted_epochs: this.core.chainEpochs(),
       this_sync: { posted },
     };
