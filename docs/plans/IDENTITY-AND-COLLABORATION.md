@@ -462,6 +462,14 @@ SPEC changes ride with each milestone (sections 4, 5.1, 10.3, 13.3, 13.9, 14.1, 
 
 ---
 
+## Owner decisions (2026-10-07)
+
+- Q2 author-blind replay: **(a) withhold author and team of open candidates from public views** until final.
+- Credit for teams: **declared shares signed by every co-author** (total author units never grow with team size); measured (Shapley) split stays a later opt-in.
+- Q9 bounties: **(a) `$LINE` from compute vaults only**, escrowed onchain, released only on verified acceptance, paid into the payee's compute vault.
+- Q3 owner transfer: **(a) allowed, two-step, shown publicly** (`controller_since`).
+- All other questions: the recommended option applies until the owner says otherwise.
+
 ## 5. Open questions for the owner
 
 Batched; the recommended option is first in each.
