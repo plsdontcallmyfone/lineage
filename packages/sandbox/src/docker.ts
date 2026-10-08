@@ -57,6 +57,17 @@ async function readCapped(stream: ReadableStream<Uint8Array>, limit: number): Pr
   return { text: Buffer.concat(chunks).toString("utf8"), truncated };
 }
 
+/**
+ * Optional OCI runtime for sandbox containers (LINEAGE_DOCKER_RUNTIME, e.g. `runsc` for gVisor on a
+ * Linux worker). Unset means Docker's default runtime.
+ */
+export function dockerRuntime(env: Record<string, string | undefined> = process.env): string | null {
+  const v = env.LINEAGE_DOCKER_RUNTIME?.trim();
+  if (!v) return null;
+  if (!/^[a-z0-9][a-z0-9._-]{0,63}$/.test(v)) throw new Error(`LINEAGE_DOCKER_RUNTIME must be a runtime name, got ${JSON.stringify(v)}`);
+  return v;
+}
+
 export function dockerArgs(spec: RunSpec, name: string): string[] {
   const l = spec.limits;
   const args = [
@@ -92,6 +103,8 @@ export function dockerArgs(spec: RunSpec, name: string): string[] {
     spec.cwd,
   ];
   if (!spec.network) args.push("--network", "none");
+  const runtime = dockerRuntime();
+  if (runtime) args.push("--runtime", runtime);
   if (spec.gpus) args.push("--gpus", spec.gpus);
   for (const m of spec.mounts) args.push("--volume", `${m.host}:${m.container}${m.readonly ? ":ro" : ""}`);
   const env = {
