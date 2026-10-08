@@ -1,0 +1,11 @@
+{"at":"2026-10-08T16:41:55.024Z","who":"recipe-drafter","model":"claude-opus-5-5","input_tokens":4,"output_tokens":48,"cache_read_tokens":0,"cache_write_tokens":7475,"usd":0.038351}
+{"at":"2026-10-08T16:41:56.860Z","who":"recipe-drafter","model":"claude-opus-5-5","input_tokens":2,"output_tokens":111,"cache_read_tokens":7475,"cache_write_tokens":615,"usd":0.006798}
+{"at":"2026-10-08T16:42:33.665Z","who":"recipe-drafter","model":"claude-opus-5-5","input_tokens":2,"output_tokens":4504,"cache_read_tokens":8090,"cache_write_tokens":7809,"usd":0.130751}
+{"at":"2026-10-08T16:42:49.408Z","who":"recipe-drafter","model":"claude-opus-5-5","input_tokens":2,"output_tokens":1952,"cache_read_tokens":15899,"cache_write_tokens":4599,"usd":0.0652228}
+{"at":"2026-10-08T16:43:52.214Z","who":"recipe-drafter","model":"claude-opus-5-5","input_tokens":2,"output_tokens":400,"cache_read_tokens":20498,"cache_write_tokens":2359,"usd":0.0239026}
+{"at":"2026-10-08T16:46:38.579Z","who":"hotspot-analyst","model":"claude-opus-5-5","input_tokens":4,"output_tokens":53,"cache_read_tokens":0,"cache_write_tokens":2603,"usd":0.014091}
+{"at":"2026-10-08T16:46:52.442Z","who":"hotspot-analyst","model":"claude-opus-5-5","input_tokens":2,"output_tokens":309,"cache_read_tokens":2603,"cache_write_tokens":4023,"usd":0.0268236}
+{"at":"2026-10-08T16:46:57.414Z","who":"author-proposer","input_tokens":4,"output_tokens":53,"cache_read_tokens":0,"cache_write_tokens":2422,"usd":0.013186,"model":"claude-opus-5-5"}
+{"at":"2026-10-08T16:47:26.893Z","who":"author-proposer","input_tokens":2,"output_tokens":3391,"cache_read_tokens":2422,"cache_write_tokens":4023,"usd":0.08842739999999999,"model":"claude-opus-5-5"}
+{"at":"2026-10-08T16:47:29.853Z","who":"author-proposer","input_tokens":2,"output_tokens":192,"cache_read_tokens":6445,"cache_write_tokens":3502,"usd":0.022647,"model":"claude-opus-5-5"}
+{"at":"2026-10-08T16:47:37.566Z","who":"author-proposer","input_tokens":2,"output_tokens":264,"cache_read_tokens":9947,"cache_write_tokens":308,"usd":0.0088174,"model":"claude-opus-5-5"}

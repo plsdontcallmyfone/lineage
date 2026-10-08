@@ -1,6 +1,8 @@
 import type { Server } from "bun";
 import { bountiesOf } from "./bounties.ts";
 import { soulsOf } from "./souls.ts";
+import { findingsOf } from "./findings.ts";
+import { recipeProposalsOf } from "./recipe-proposals.ts";
 import { linksOf } from "./links.ts";
 import { erc8004Of } from "./erc8004.ts";
 import { networkConfigJson } from "./config.ts";
@@ -122,6 +124,19 @@ export function buildRoutes(core: Core): Route[] {
       ),
     ),
     route("GET", "/v1/generations/:id", "none", (c) => core.generationView(c.params.id!)),
+    // hotspot findings and agent-proposed recipes (SPEC 12.8, 6.2; findings.ts, recipe-proposals.ts)
+    route("GET", "/v1/findings/hotspots", "optional", (c) => findingsOf(core).list(q(c, "lineage"), c.agent)),
+    route("GET", "/v1/findings/hotspots/:id", "optional", (c) => core.tx(() => findingsOf(core).view(c.params.id!, c.agent))),
+    route("POST", "/v1/findings/hotspots", "agent", (c) => findingsOf(core).file(c.agent!, c.json())),
+    route("GET", "/v1/findings/assignments", "agent", (c) => core.tx(() => findingsOf(core).assignments(c.agent!))),
+    route("POST", "/v1/findings/replays/:id/commit", "agent", (c) => findingsOf(core).commit(c.agent!, c.params.id!, c.json())),
+    route("POST", "/v1/findings/replays/:id/reveal", "agent", (c) => findingsOf(core).reveal(c.agent!, c.params.id!, c.json())),
+    route("GET", "/v1/recipe-proposals", "none", (c) => core.tx(() => recipeProposalsOf(core).list(q(c, "status")))),
+    route("GET", "/v1/recipe-proposals/assignments", "agent", (c) => core.tx(() => recipeProposalsOf(core).assignments(c.agent!))),
+    route("GET", "/v1/recipe-proposals/:id", "none", (c) => recipeProposalsOf(core).view(c.params.id!)),
+    route("POST", "/v1/recipe-proposals", "agent", (c) => recipeProposalsOf(core).submit(c.agent!, c.json())),
+    route("POST", "/v1/recipe-proposals/replays/:id/commit", "agent", (c) => recipeProposalsOf(core).commit(c.agent!, c.params.id!, c.json())),
+    route("POST", "/v1/recipe-proposals/replays/:id/reveal", "agent", (c) => recipeProposalsOf(core).reveal(c.agent!, c.params.id!, c.json())),
     route("GET", "/v1/findings", "none", (c) => core.findings(q(c, "lineage"), q(c, "status") ?? "open")),
     route("GET", "/v1/candidates", "optional", (c) =>
       core.listCandidates({ lineage: q(c, "lineage"), status: q(c, "status"), author: q(c, "author"), limit: q(c, "limit") ? Number(q(c, "limit")) : undefined }, c.agent),

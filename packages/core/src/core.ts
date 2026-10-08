@@ -58,6 +58,7 @@ import { Records } from "./records.ts";
 import { Series } from "./series.ts";
 import { Messages } from "./messages.ts";
 import { soulsOf } from "./souls.ts";
+import { findingsOf } from "./findings.ts";
 import { linksOf } from "./links.ts";
 import { Hosted } from "./hosted.ts";
 import { Split } from "./split.ts";
@@ -935,10 +936,11 @@ export class Core {
    * calib_id (signMessage), so the record stays verifiable outside this request. Creates the lineage
    * with gen_0 and its automatic findings.
    */
-  submitCalibration(agent: string, body: unknown) {
+  submitCalibration(agent: string, body: unknown, consensus = false) {
     return this.tx(() => {
-      const a = this.mustAgent(agent);
-      if (!a.reference) throw forbidden("not_reference", "only a reference runner may submit calibrations");
+      // consensus: an agent-proposed recipe whose calibration replays agreed (recipe-proposals.ts, SPEC 6.2)
+      const a = consensus ? null : this.mustAgent(agent);
+      if (a && !a.reference) throw forbidden("not_reference", "only a reference runner may submit calibrations");
       if (!isObj(body) || !isObj(body.calibration) || typeof body.sig !== "string") throw bad("bad_body", "{ calibration, sig } expected");
       const c = body.calibration as unknown as Calibration;
       if (!strArr(c.stable) || !strArr(c.known_failures) || !strArr(c.quarantined) || !isObj(c.metrics))
@@ -956,7 +958,7 @@ export class Core {
         throw bad("snapshot_mismatch", "snapshot repo and commit must match the recipe");
       for (const m of recipe.metrics) if (!isObj(c.metrics[m.name])) throw bad("bad_calibration", `metric ${m.name} missing from calibration`);
       const cid = calibId(c.recipe_id, c.snapshot_id, c);
-      if (!verifyMessage(this.identity.signingKey(agent) ?? agent, body.sig, cid)) throw forbidden("bad_signature", "sig must sign the calib_id");
+      if (!consensus && !verifyMessage(this.identity.signingKey(agent) ?? agent, body.sig, cid)) throw forbidden("bad_signature", "sig must sign the calib_id");
       const lid = lineageId(c.snapshot_id, c.recipe_id);
       if (this.lineageRow(lid)) throw conflict("lineage_exists", "lineage already calibrated");
       const now = this.now();
@@ -1932,6 +1934,8 @@ export class Core {
         this.emit("finding.resolved", { finding_id: f.finding_id, gen_id: gid });
       }
     }
+    // verified hotspots whose source file this perf patch changes (findings.ts, SPEC 12.8)
+    for (const f of findingsOf(this).resolveOnAccept({ lineage_id: l.lineage_id, gen_id: gid, kind: c.kind, metric: metricName, patch: c.patch, author: c.author })) finders.add(f);
     const finderTotal = finders.size ? this.cfg.finder_share * authorUnits : 0;
     // a team divides the same total by its declared shares; team size never adds units (SPEC 12.2)
     // a port credits the original generation's authors first (SPEC 12.7); a measured split divides the rest (SPEC 12.6)

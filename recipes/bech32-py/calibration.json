@@ -1,0 +1,40 @@
+{
+  "known_failures": [],
+  "median_eval_seconds": 8,
+  "metrics": {
+    "bech32_ir": {
+      "base_value": 742012228.25,
+      "cv": 0.0000030113433062749986,
+      "enabled": true
+    },
+    "decode_ir": {
+      "base_value": 1626102489.5,
+      "cv": 1.2828021322067248e-7,
+      "enabled": true
+    },
+    "encode_ir": {
+      "base_value": 863804012.75,
+      "cv": 0.0000015520594543076962,
+      "enabled": true
+    }
+  },
+  "quarantined": [],
+  "recipe_id": "67274b5f961896d9f03078cebffe1564db9d4032c5408bbefc20308ee3af7208",
+  "runs": 6,
+  "seed": "fb5f72e5b56f8b64254cbb60b412545de19d10d7dc8e9d291307c8d4b9383708",
+  "snapshot_id": "574abb61384a5db31fbcb35d319c962a8972a8723a4d0f4833e97e979329c08b",
+  "stable": [
+    "tests.TestSegwitAddress::test_invalid_address",
+    "tests.TestSegwitAddress::test_invalid_address_enc",
+    "tests.TestSegwitAddress::test_invalid_checksum",
+    "tests.TestSegwitAddress::test_valid_address",
+    "tests.TestSegwitAddress::test_valid_checksum"
+  ],
+  "recipe_name": "bech32-py",
+  "repo": "https://github.com/sipa/bech32",
+  "commit": "7a7d7ab158db7078a333384e0e918c90dbc42917",
+  "deps_digest": "d2b6ba0024b7570e2e99b85784709c7f8e5de69b1102927cb9cb29d28d8e8139",
+  "source": "consensus of calibration replays (scripts/discovery/run.ts)",
+  "proposal_id": "c496d2f8841748c917c01477bee4395fa0fde82245960c15fcd2db0828ed594a",
+  "date": "2026-10-08T16:49:47.591Z"
+}

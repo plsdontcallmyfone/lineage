@@ -1,0 +1,21 @@
+{
+  "target": {
+    "name": "bech32-py",
+    "repo": "https://github.com/sipa/bech32",
+    "commit": "7a7d7ab158db7078a333384e0e918c90dbc42917",
+    "class": "python",
+    "arch": "arm64",
+    "image": "lineage/python:m1@sha256:4214b1a6fb3757b7d706ce9547e728b18c53df40f0bdf8ebcdef5b81335186d0"
+  },
+  "model": "claude-opus-5-5",
+  "example": "base58-py",
+  "submitted": true,
+  "note": "Measures the pure-Python Bech32/Bech32m and segwit address reference (ref/python/segwit_addr.py) with cachegrind instruction counts on three seeded workloads: encoding realistic segwit addresses (P2WPKH, P2WSH and P2TR across bc/tb/bcrt), decoding them (including uppercase and corrupted ones), and generic bech32_encode/bech32_decode/convertbits on random HRPs and data. The code has real headroom: polymod runs a per-character loop with a 5-step inner loop, encode() decodes its own output again, and the string gets scanned several times. The upstream unittest suite runs through pytest junit (5 stable ids). The equivalence harness prints about 300 KB of results from every public function on seeded random, mutated and edge-case inputs, exceptions included. In the trial, metric cv was at most 9e-8 and both equivalence runs gave the same digest. Patches can only change segwit_addr.py.",
+  "reason": null,
+  "turns": 5,
+  "trials": 1,
+  "usd": 0.265025,
+  "ledger_total_usd": 0.265025,
+  "wall_seconds": 119.9,
+  "date": "2026-10-08T16:43:52.265Z"
+}

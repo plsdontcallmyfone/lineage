@@ -1,0 +1,1671 @@
+{
+  "date": "2026-10-08T16:44:39.676Z",
+  "port": 9662,
+  "spend_before_usd": 0.265025,
+  "hotspot": {
+    "analyst_usd": 0.040915,
+    "analyst_turns": 2,
+    "profile_seconds": 23,
+    "claim": {
+      "claim_id": "bf0fcfb39353ff4935b11e0db798c9a65fea0bc3323a8667ac9c9abfe3533753",
+      "lineage_id": "c0a614b9738d5840020a996acfe3ff46ebf8c3d4fc9023702471accb30520de9",
+      "tip": "455c34812b8efbff7a6d09ef32ed2743a2a9c235f676676d2242b7a70fbfbf8a",
+      "finder": "FXfJoHXC2vZpxmvqaY44Vn2MqU5mVPYLEDpA5DAp8Xdn",
+      "metric": "encode_ir",
+      "tool": "callgrind",
+      "function": "<[u8] as base58::ToBase58>::to_base58",
+      "file": "src/lib.rs",
+      "seed": "cbd591bb4856301995007342a816e940",
+      "note": "to_base58 accounts for 84.49% of self cost. Its inner loop converts one byte at a time into base-58 digit by digit, doing a bounds-checked division/modulo by 58 for every digit on every input byte, which is quadratic. A patch could work on larger limbs, for example u32 limbs in base 58^5 (or u64 limbs in base 58^10) while taking several input bytes per step, and could drop bounds checks with iterators. It could also build the output with a single pre-sized allocation instead of pushing one char at a time with String::push, which drives the reserve/realloc cost in row 2 (5.88%). The output stays the same.",
+      "status": "verified",
+      "reason": "reproduced: total 221450920, self 187096910",
+      "finding_id": "e48c7e9745ee39b589e91fe8fdb2df1243d74f223bd894748bb2a2b2609c2216",
+      "resolved_by": null,
+      "created_at": 1791478012459,
+      "decided_at": 1791478015364,
+      "profile": {
+        "functions": [
+          {
+            "file": null,
+            "fn": "<[u8] as base58::ToBase58>::to_base58",
+            "self": 187096910
+          },
+          {
+            "file": null,
+            "fn": "alloc::raw_vec::RawVecInner<A>::reserve::do_reserve_and_handle",
+            "self": 13017680
+          },
+          {
+            "file": "./malloc/./malloc/malloc.c",
+            "fn": "_int_free",
+            "self": 4309328
+          },
+          {
+            "file": "./malloc/./malloc/malloc.c",
+            "fn": "free",
+            "self": 3741116
+          },
+          {
+            "file": "./malloc/./malloc/malloc.c",
+            "fn": "_int_malloc",
+            "self": 3214978
+          },
+          {
+            "file": "./malloc/./malloc/malloc.c",
+            "fn": "realloc",
+            "self": 2494380
+          },
+          {
+            "file": "./malloc/./malloc/malloc.c",
+            "fn": "_int_realloc",
+            "self": 2102227
+          },
+          {
+            "file": null,
+            "fn": "alloc::raw_vec::finish_grow",
+            "self": 1420295
+          },
+          {
+            "file": "./malloc/./malloc/malloc.c",
+            "fn": "calloc",
+            "self": 1004145
+          },
+          {
+            "file": "./malloc/./malloc/malloc.c",
+            "fn": "malloc",
+            "self": 994883
+          },
+          {
+            "file": null,
+            "fn": "__rustc::__rdl_realloc",
+            "self": 691278
+          },
+          {
+            "file": "./string/../sysdeps/aarch64/multiarch/../memcpy.S",
+            "fn": "__GI_memcpy",
+            "self": 313845
+          },
+          {
+            "file": null,
+            "fn": "__rustc::__rdl_alloc_zeroed",
+            "self": 195130
+          },
+          {
+            "file": "./malloc/./malloc/malloc.c",
+            "fn": "unlink_chunk.constprop.0",
+            "self": 176753
+          },
+          {
+            "file": null,
+            "fn": "__rustc::__rdl_alloc",
+            "self": 122562
+          },
+          {
+            "file": null,
+            "fn": "__rustc::__rdl_dealloc",
+            "self": 107055
+          },
+          {
+            "file": null,
+            "fn": "lineage_bench::main",
+            "self": 89190
+          },
+          {
+            "file": "./stdio-common/./stdio-common/vfscanf-internal.c",
+            "fn": "__vfscanf_internal",
+            "self": 39896
+          },
+          {
+            "file": "./elf/./elf/dl-lookup.c",
+            "fn": "do_lookup_x",
+            "self": 39757
+          },
+          {
+            "file": null,
+            "fn": "__rustc::__rust_realloc",
+            "self": 32918
+          },
+          {
+            "file": "./elf/./elf/dl-lookup.c",
+            "fn": "_dl_lookup_symbol_x",
+            "self": 30794
+          },
+          {
+            "file": "./malloc/./malloc/malloc.c",
+            "fn": "malloc_consolidate",
+            "self": 25375
+          },
+          {
+            "file": null,
+            "fn": "__rustc::__rust_no_alloc_shim_is_unstable_v2",
+            "self": 21412
+          },
+          {
+            "file": "./string/../sysdeps/aarch64/strcmp.S",
+            "fn": "strcmp",
+            "self": 17585
+          },
+          {
+            "file": "./stdlib/../stdlib/strtol_l.c",
+            "fn": "____strtoul_l_internal",
+            "self": 16004
+          },
+          {
+            "file": null,
+            "fn": "__rustc::__rust_dealloc",
+            "self": 11290
+          },
+          {
+            "file": null,
+            "fn": "__rustc::__rust_alloc",
+            "self": 11142
+          },
+          {
+            "file": null,
+            "fn": "__rustc::__rust_alloc_zeroed",
+            "self": 10270
+          },
+          {
+            "file": "./elf/../sysdeps/generic/ldsodefs.h",
+            "fn": "_dl_relocate_object",
+            "self": 9010
+          },
+          {
+            "file": "./elf/./elf/dl-tunables.c",
+            "fn": "__GI___tunables_init",
+            "self": 8616
+          },
+          {
+            "file": "./elf/./elf/dl-lookup.c",
+            "fn": "check_match",
+            "self": 7696
+          },
+          {
+            "file": "./malloc/./malloc/malloc.c",
+            "fn": "alloc_perturb",
+            "self": 7092
+          },
+          {
+            "file": "./libio/./libio/genops.c",
+            "fn": "_IO_sputbackc",
+            "self": 6696
+          },
+          {
+            "file": "./elf/./elf/dl-reloc.c",
+            "fn": "_dl_relocate_object",
+            "self": 4805
+          },
+          {
+            "file": "./elf/../sysdeps/generic/ldsodefs.h",
+            "fn": "do_lookup_x",
+            "self": 4113
+          },
+          {
+            "file": "./elf/./elf/dl-version.c",
+            "fn": "_dl_check_map_versions",
+            "self": 3482
+          },
+          {
+            "file": "./stdio-common/./stdio-common/isoc99_sscanf.c",
+            "fn": "__isoc99_sscanf",
+            "self": 2599
+          },
+          {
+            "file": "./libio/./libio/iogetdelim.c",
+            "fn": "getdelim",
+            "self": 2403
+          },
+          {
+            "file": "./string/../sysdeps/aarch64/multiarch/../memchr.S",
+            "fn": "__GI_memchr",
+            "self": 2199
+          },
+          {
+            "file": "./elf/./elf/do-rel.h",
+            "fn": "_dl_relocate_object",
+            "self": 2137
+          },
+          {
+            "file": "./string/../sysdeps/aarch64/multiarch/strlen_asimd.S",
+            "fn": "__strlen_asimd",
+            "self": 1901
+          },
+          {
+            "file": "./elf/./elf/dl-object.c",
+            "fn": "_dl_new_object",
+            "self": 1169
+          },
+          {
+            "file": "./elf/./elf/dl-cache.c",
+            "fn": "_dl_cache_libcmp",
+            "self": 1127
+          },
+          {
+            "file": "./elf/./elf/dl-load.c",
+            "fn": "_dl_map_object_from_fd",
+            "self": 1109
+          },
+          {
+            "file": "./libio/./libio/strops.c",
+            "fn": "_IO_str_init_static_internal",
+            "self": 1044
+          },
+          {
+            "file": "./elf/./elf/rtld.c",
+            "fn": "dl_main",
+            "self": 1026
+          },
+          {
+            "file": null,
+            "fn": "lineage_bench::payloads",
+            "self": 1001
+          },
+          {
+            "file": "./elf/./elf/get-dynamic-info.h",
+            "fn": "_dl_map_object_from_fd",
+            "self": 942
+          },
+          {
+            "file": "./elf/./elf/dl-deps.c",
+            "fn": "_dl_map_object_deps",
+            "self": 906
+          },
+          {
+            "file": "./libio/./libio/genops.c",
+            "fn": "_IO_setb",
+            "self": 824
+          },
+          {
+            "file": "./elf/./elf/dl-minimal-malloc.c",
+            "fn": "__minimal_malloc",
+            "self": 784
+          },
+          {
+            "file": "./string/../sysdeps/aarch64/multiarch/../memcpy.S",
+            "fn": "memcpy",
+            "self": 774
+          },
+          {
+            "file": "./elf/./elf/dl-load.c",
+            "fn": "_dl_map_object",
+            "self": 770
+          },
+          {
+            "file": "./nptl/./nptl/libc-cleanup.c",
+            "fn": "__libc_cleanup_push_defer",
+            "self": 760
+          },
+          {
+            "file": "./elf/./elf/dl-load.c",
+            "fn": "open_verify.constprop.0",
+            "self": 752
+          },
+          {
+            "file": "./libio/./libio/genops.c",
+            "fn": "_IO_old_init",
+            "self": 742
+          },
+          {
+            "file": "./elf/./elf/dl-hwcaps.c",
+            "fn": "_dl_important_hwcaps",
+            "self": 735
+          },
+          {
+            "file": "./malloc/./malloc/arena.c",
+            "fn": "ptmalloc_init.part.0",
+            "self": 718
+          },
+          {
+            "file": "./elf/./elf/dl-runtime.c",
+            "fn": "_dl_fixup",
+            "self": 701
+          },
+          {
+            "file": "./elf/./elf/dl-misc.c",
+            "fn": "_dl_name_match_p",
+            "self": 696
+          }
+        ],
+        "total": 221450920
+      },
+      "replays": [
+        {
+          "replay_id": "9bda1c168d34a6cbd3f66d698703aaf08c9e144bb9350d3b880683aea97d77d0",
+          "round": 0,
+          "replayer": "BMyjKHxUNc4HJqcpfXXFNzLYNXNETAp9hyz72JhLRXo5",
+          "status": "revealed",
+          "assignment_seed": "47f70a88127831b916eeb91a8cdbcc071ec06d8adcfc32f06c08e65ffd5bfcb1",
+          "pool": [
+            {
+              "agent": "BMyjKHxUNc4HJqcpfXXFNzLYNXNETAp9hyz72JhLRXo5",
+              "bond": "5000000000",
+              "operator": null
+            },
+            {
+              "agent": "GcVNfv6ZBa6aTFJQwXAVr8o9TpjKzbV9VFfcEL7EkjW2",
+              "bond": "5000000000",
+              "operator": null
+            },
+            {
+              "agent": "xYbXHpdnR6AY3XvKh27E2qzcHAwyRgUwjRZhp8EvsnG",
+              "bond": "5000000000",
+              "operator": null
+            }
+          ],
+          "result": {
+            "functions": [
+              {
+                "file": null,
+                "fn": "<[u8] as base58::ToBase58>::to_base58",
+                "self": 187096910
+              },
+              {
+                "file": null,
+                "fn": "alloc::raw_vec::RawVecInner<A>::reserve::do_reserve_and_handle",
+                "self": 13017680
+              },
+              {
+                "file": "./malloc/./malloc/malloc.c",
+                "fn": "_int_free",
+                "self": 4309328
+              },
+              {
+                "file": "./malloc/./malloc/malloc.c",
+                "fn": "free",
+                "self": 3741116
+              },
+              {
+                "file": "./malloc/./malloc/malloc.c",
+                "fn": "_int_malloc",
+                "self": 3214978
+              },
+              {
+                "file": "./malloc/./malloc/malloc.c",
+                "fn": "realloc",
+                "self": 2494380
+              },
+              {
+                "file": "./malloc/./malloc/malloc.c",
+                "fn": "_int_realloc",
+                "self": 2102227
+              },
+              {
+                "file": null,
+                "fn": "alloc::raw_vec::finish_grow",
+                "self": 1420295
+              },
+              {
+                "file": "./malloc/./malloc/malloc.c",
+                "fn": "calloc",
+                "self": 1004145
+              },
+              {
+                "file": "./malloc/./malloc/malloc.c",
+                "fn": "malloc",
+                "self": 994883
+              },
+              {
+                "file": null,
+                "fn": "__rustc::__rdl_realloc",
+                "self": 691278
+              },
+              {
+                "file": "./string/../sysdeps/aarch64/multiarch/../memcpy.S",
+                "fn": "__GI_memcpy",
+                "self": 313845
+              },
+              {
+                "file": null,
+                "fn": "__rustc::__rdl_alloc_zeroed",
+                "self": 195130
+              },
+              {
+                "file": "./malloc/./malloc/malloc.c",
+                "fn": "unlink_chunk.constprop.0",
+                "self": 176753
+              },
+              {
+                "file": null,
+                "fn": "__rustc::__rdl_alloc",
+                "self": 122562
+              },
+              {
+                "file": null,
+                "fn": "__rustc::__rdl_dealloc",
+                "self": 107055
+              },
+              {
+                "file": null,
+                "fn": "lineage_bench::main",
+                "self": 89190
+              },
+              {
+                "file": "./stdio-common/./stdio-common/vfscanf-internal.c",
+                "fn": "__vfscanf_internal",
+                "self": 39896
+              },
+              {
+                "file": "./elf/./elf/dl-lookup.c",
+                "fn": "do_lookup_x",
+                "self": 39757
+              },
+              {
+                "file": null,
+                "fn": "__rustc::__rust_realloc",
+                "self": 32918
+              },
+              {
+                "file": "./elf/./elf/dl-lookup.c",
+                "fn": "_dl_lookup_symbol_x",
+                "self": 30794
+              },
+              {
+                "file": "./malloc/./malloc/malloc.c",
+                "fn": "malloc_consolidate",
+                "self": 25375
+              },
+              {
+                "file": null,
+                "fn": "__rustc::__rust_no_alloc_shim_is_unstable_v2",
+                "self": 21412
+              },
+              {
+                "file": "./string/../sysdeps/aarch64/strcmp.S",
+                "fn": "strcmp",
+                "self": 17585
+              },
+              {
+                "file": "./stdlib/../stdlib/strtol_l.c",
+                "fn": "____strtoul_l_internal",
+                "self": 16004
+              },
+              {
+                "file": null,
+                "fn": "__rustc::__rust_dealloc",
+                "self": 11290
+              },
+              {
+                "file": null,
+                "fn": "__rustc::__rust_alloc",
+                "self": 11142
+              },
+              {
+                "file": null,
+                "fn": "__rustc::__rust_alloc_zeroed",
+                "self": 10270
+              },
+              {
+                "file": "./elf/../sysdeps/generic/ldsodefs.h",
+                "fn": "_dl_relocate_object",
+                "self": 9010
+              },
+              {
+                "file": "./elf/./elf/dl-tunables.c",
+                "fn": "__GI___tunables_init",
+                "self": 8616
+              },
+              {
+                "file": "./elf/./elf/dl-lookup.c",
+                "fn": "check_match",
+                "self": 7696
+              },
+              {
+                "file": "./malloc/./malloc/malloc.c",
+                "fn": "alloc_perturb",
+                "self": 7092
+              },
+              {
+                "file": "./libio/./libio/genops.c",
+                "fn": "_IO_sputbackc",
+                "self": 6696
+              },
+              {
+                "file": "./elf/./elf/dl-reloc.c",
+                "fn": "_dl_relocate_object",
+                "self": 4805
+              },
+              {
+                "file": "./elf/../sysdeps/generic/ldsodefs.h",
+                "fn": "do_lookup_x",
+                "self": 4113
+              },
+              {
+                "file": "./elf/./elf/dl-version.c",
+                "fn": "_dl_check_map_versions",
+                "self": 3482
+              },
+              {
+                "file": "./stdio-common/./stdio-common/isoc99_sscanf.c",
+                "fn": "__isoc99_sscanf",
+                "self": 2599
+              },
+              {
+                "file": "./libio/./libio/iogetdelim.c",
+                "fn": "getdelim",
+                "self": 2403
+              },
+              {
+                "file": "./string/../sysdeps/aarch64/multiarch/../memchr.S",
+                "fn": "__GI_memchr",
+                "self": 2199
+              },
+              {
+                "file": "./elf/./elf/do-rel.h",
+                "fn": "_dl_relocate_object",
+                "self": 2137
+              },
+              {
+                "file": "./string/../sysdeps/aarch64/multiarch/strlen_asimd.S",
+                "fn": "__strlen_asimd",
+                "self": 1901
+              },
+              {
+                "file": "./elf/./elf/dl-object.c",
+                "fn": "_dl_new_object",
+                "self": 1169
+              },
+              {
+                "file": "./elf/./elf/dl-cache.c",
+                "fn": "_dl_cache_libcmp",
+                "self": 1127
+              },
+              {
+                "file": "./elf/./elf/dl-load.c",
+                "fn": "_dl_map_object_from_fd",
+                "self": 1109
+              },
+              {
+                "file": "./libio/./libio/strops.c",
+                "fn": "_IO_str_init_static_internal",
+                "self": 1044
+              },
+              {
+                "file": "./elf/./elf/rtld.c",
+                "fn": "dl_main",
+                "self": 1026
+              },
+              {
+                "file": null,
+                "fn": "lineage_bench::payloads",
+                "self": 1001
+              },
+              {
+                "file": "./elf/./elf/get-dynamic-info.h",
+                "fn": "_dl_map_object_from_fd",
+                "self": 942
+              },
+              {
+                "file": "./elf/./elf/dl-deps.c",
+                "fn": "_dl_map_object_deps",
+                "self": 906
+              },
+              {
+                "file": "./libio/./libio/genops.c",
+                "fn": "_IO_setb",
+                "self": 824
+              },
+              {
+                "file": "./elf/./elf/dl-minimal-malloc.c",
+                "fn": "__minimal_malloc",
+                "self": 784
+              },
+              {
+                "file": "./string/../sysdeps/aarch64/multiarch/../memcpy.S",
+                "fn": "memcpy",
+                "self": 774
+              },
+              {
+                "file": "./elf/./elf/dl-load.c",
+                "fn": "_dl_map_object",
+                "self": 770
+              },
+              {
+                "file": "./nptl/./nptl/libc-cleanup.c",
+                "fn": "__libc_cleanup_push_defer",
+                "self": 760
+              },
+              {
+                "file": "./elf/./elf/dl-load.c",
+                "fn": "open_verify.constprop.0",
+                "self": 752
+              },
+              {
+                "file": "./libio/./libio/genops.c",
+                "fn": "_IO_old_init",
+                "self": 742
+              },
+              {
+                "file": "./elf/./elf/dl-hwcaps.c",
+                "fn": "_dl_important_hwcaps",
+                "self": 735
+              },
+              {
+                "file": "./malloc/./malloc/arena.c",
+                "fn": "ptmalloc_init.part.0",
+                "self": 718
+              },
+              {
+                "file": "./elf/./elf/dl-runtime.c",
+                "fn": "_dl_fixup",
+                "self": 701
+              },
+              {
+                "file": "./elf/./elf/dl-misc.c",
+                "fn": "_dl_name_match_p",
+                "self": 696
+              },
+              {
+                "file": "./libio/./libio/genops.c",
+                "fn": "_IO_no_init",
+                "self": 671
+              },
+              {
+                "file": "./nptl/./nptl/libc-cleanup.c",
+                "fn": "__libc_cleanup_pop_restore",
+                "self": 640
+              },
+              {
+                "file": "./elf/../sysdeps/aarch64/dl-machine.h",
+                "fn": "_dl_relocate_object",
+                "self": 575
+              },
+              {
+                "file": "./elf/./elf/dl-tunables.c",
+                "fn": "__tunable_get_val",
+                "self": 568
+              },
+              {
+                "file": "./string/../sysdeps/aarch64/nptl/../memset.S",
+                "fn": "memset",
+                "self": 561
+              },
+              {
+                "file": "./elf/./elf/dl-load.c",
+                "fn": "open_path",
+                "self": 495
+              },
+              {
+                "file": "./elf/./elf/dl-error-skeleton.c",
+                "fn": "_dl_catch_exception",
+                "self": 452
+              },
+              {
+                "file": "./elf/./dl-map-segments.h",
+                "fn": "_dl_map_object_from_fd",
+                "self": 435
+              },
+              {
+                "file": "./elf/./dl-find_object.h",
+                "fn": "_dl_find_object_from_map",
+                "self": 418
+              },
+              {
+                "file": "./elf/./elf/dl-cache.c",
+                "fn": "search_cache",
+                "self": 408
+              },
+              {
+                "file": "./string/../sysdeps/aarch64/rawmemchr.S",
+                "fn": "rawmemchr",
+                "self": 396
+              },
+              {
+                "file": "./string/../sysdeps/aarch64/multiarch/../strlen.S",
+                "fn": "strlen",
+                "self": 390
+              },
+              {
+                "file": "./elf/./elf/do-rel.h",
+                "fn": "_dl_start",
+                "self": 375
+              },
+              {
+                "file": "./stdlib/../stdlib/strtol.c",
+                "fn": "__strtoul_internal",
+                "self": 360
+              },
+              {
+                "file": "./elf/./elf/dl-find_object.c",
+                "fn": "_dlfo_process_initial_noncontiguous_map",
+                "self": 356
+              },
+              {
+                "file": "./elf/./elf/dl-sort-maps.c",
+                "fn": "dfs_traversal.part.0",
+                "self": 352
+              },
+              {
+                "file": "./elf/./elf/dl-init.c",
+                "fn": "call_init",
+                "self": 326
+              },
+              {
+                "file": "./libio/./libio/libioP.h",
+                "fn": "getdelim",
+                "self": 324
+              },
+              {
+                "file": null,
+                "fn": "alloc::raw_vec::RawVec<T,A>::grow_one",
+                "self": 309
+              },
+              {
+                "file": "./io/../sysdeps/unix/sysv/linux/open64_nocancel.c",
+                "fn": "__open_nocancel",
+                "self": 289
+              },
+              {
+                "file": "./elf/./elf/dl-sort-maps.c",
+                "fn": "_dl_sort_maps",
+                "self": 286
+              },
+              {
+                "file": "./elf/./elf/dl-find_object.c",
+                "fn": "_dlfo_sort_mappings",
+                "self": 268
+              },
+              {
+                "file": "./elf/./elf/dl-find_object.c",
+                "fn": "_dlfo_process_initial",
+                "self": 258
+              },
+              {
+                "file": "./string/../sysdeps/aarch64/strchr.S",
+                "fn": "index",
+                "self": 252
+              },
+              {
+                "file": "./signal/../sysdeps/unix/sysv/linux/libc_sigaction.c",
+                "fn": "__libc_sigaction",
+                "self": 249
+              },
+              {
+                "file": "./elf/./get-dynamic-info.h",
+                "fn": "dl_main",
+                "self": 238
+              },
+              {
+                "file": "./elf/./get-dynamic-info.h",
+                "fn": "_dl_start",
+                "self": 235
+              },
+              {
+                "file": null,
+                "fn": "<std::io::stdio::StdoutLock as std::io::Write>::write_all",
+                "self": 232
+              },
+              {
+                "file": "./elf/../sysdeps/unix/sysv/linux/dl-sysdep.c",
+                "fn": "_dl_sysdep_parse_arguments",
+                "self": 232
+              },
+              {
+                "file": null,
+                "fn": "core::slice::memchr::memrchr",
+                "self": 231
+              },
+              {
+                "file": null,
+                "fn": "core::fmt::num::<impl core::fmt::LowerHex for i64>::fmt",
+                "self": 230
+              },
+              {
+                "file": "./misc/./misc/getauxval.c",
+                "fn": "getauxval",
+                "self": 227
+              },
+              {
+                "file": "./string/./string/strcspn.c",
+                "fn": "strcspn",
+                "self": 227
+              },
+              {
+                "file": "./elf/./elf/dl-tunables.h",
+                "fn": "__GI___tunables_init",
+                "self": 224
+              },
+              {
+                "file": "./elf/./elf/dl-load.c",
+                "fn": "_dl_init_paths",
+                "self": 217
+              },
+              {
+                "file": null,
+                "fn": "<alloc::string::String as core::clone::Clone>::clone",
+                "self": 201
+              },
+              {
+                "file": "./elf/./elf/dl-minimal.c",
+                "fn": "strsep",
+                "self": 200
+              },
+              {
+                "file": "./elf/./elf/dl-object.c",
+                "fn": "_dl_add_to_namespace_list",
+                "self": 192
+              },
+              {
+                "file": "./libio/./libio/fileops.c",
+                "fn": "_IO_file_underflow@@GLIBC_2.17",
+                "self": 182
+              },
+              {
+                "file": "./elf/./elf/dl-load.c",
+                "fn": "fillin_rpath.isra.0",
+                "self": 173
+              },
+              {
+                "file": "./stdlib/./stdlib/cxa_finalize.c",
+                "fn": "__cxa_finalize",
+                "self": 171
+              },
+              {
+                "file": "./elf/./elf/dl-tls.c",
+                "fn": "_dl_allocate_tls_init",
+                "self": 168
+              },
+              {
+                "file": "./nptl/./nptl/pthread_mutex_lock.c",
+                "fn": "pthread_mutex_lock@@GLIBC_2.17",
+                "self": 167
+              },
+              {
+                "file": "./malloc/./malloc/malloc.c",
+                "fn": "sysmalloc",
+                "self": 165
+              },
+              {
+                "file": "./elf/../sysdeps/aarch64/dl-trampoline.S",
+                "fn": "_dl_runtime_resolve",
+                "self": 162
+              },
+              {
+                "file": null,
+                "fn": "core::str::converts::from_utf8",
+                "self": 157
+              },
+              {
+                "file": "./elf/./elf/dl-lookup-direct.c",
+                "fn": "check_match",
+                "self": 153
+              },
+              {
+                "file": "./elf/./elf/dl-environ.c",
+                "fn": "_dl_next_ld_env_entry",
+                "self": 146
+              },
+              {
+                "file": "./elf/./elf/dl-lookup-direct.c",
+                "fn": "_dl_lookup_direct",
+                "self": 144
+              },
+              {
+                "file": "./libio/./libio/genops.c",
+                "fn": "_IO_flush_all_lockp",
+                "self": 141
+              },
+              {
+                "file": "./misc/../sysdeps/unix/sysv/linux/mmap64.c",
+                "fn": "mmap",
+                "self": 140
+              },
+              {
+                "file": "./libio/./libio/genops.c",
+                "fn": "__underflow",
+                "self": 136
+              },
+              {
+                "file": "./elf/./elf/dl-fini.c",
+                "fn": "_dl_fini",
+                "self": 135
+              },
+              {
+                "file": "./libio/./libio/genops.c",
+                "fn": "_IO_link_in",
+                "self": 129
+              },
+              {
+                "file": null,
+                "fn": "__aarch64_cas4_acq",
+                "self": 126
+              },
+              {
+                "file": null,
+                "fn": "__aarch64_swp4_rel",
+                "self": 126
+              },
+              {
+                "file": "./setjmp/../sysdeps/aarch64/setjmp.S",
+                "fn": "__sigsetjmp",
+                "self": 126
+              },
+              {
+                "file": "./io/../sysdeps/unix/sysv/linux/fstatat64.c",
+                "fn": "fstatat",
+                "self": 125
+              },
+              {
+                "file": null,
+                "fn": "std::env::args_os",
+                "self": 125
+              },
+              {
+                "file": null,
+                "fn": "<alloc::vec::Vec<T> as alloc::vec::spec_from_iter::SpecFromIter<T,I>>::from_iter",
+                "self": 123
+              },
+              {
+                "file": "./elf/./elf/dl-call_fini.c",
+                "fn": "_dl_call_fini",
+                "self": 121
+              },
+              {
+                "file": null,
+                "fn": "__init_cpu_features_constructor",
+                "self": 120
+              },
+              {
+                "file": "./elf/./elf/dl-setup_hash.c",
+                "fn": "_dl_setup_hash",
+                "self": 120
+              },
+              {
+                "file": null,
+                "fn": "std::sys::pal::unix::stack_overflow::thread_info::set_current_info",
+                "self": 116
+              },
+              {
+                "file": "./elf/./elf/dl-reloc.c",
+                "fn": "_dl_protect_relro",
+                "self": 115
+              },
+              {
+                "file": "./elf/./elf/rtld.c",
+                "fn": "_dl_start",
+                "self": 112
+              },
+              {
+                "file": "./elf/./elf/dl-minimal-malloc.c",
+                "fn": "__minimal_calloc",
+                "self": 110
+              },
+              {
+                "file": "./elf/./elf/dl-tls.c",
+                "fn": "_dl_determine_tlsoffset",
+                "self": 110
+              },
+              {
+                "file": "./stdio-common/./stdio-common/getline.c",
+                "fn": "getline",
+                "self": 108
+              },
+              {
+                "file": null,
+                "fn": "<std::env::Args as core::iter::traits::iterator::Iterator>::next",
+                "self": 107
+              },
+              {
+                "file": null,
+                "fn": "std::sys::pal::unix::stack_overflow::imp::drop_handler",
+                "self": 105
+              },
+              {
+                "file": "./elf/../include/rtld-malloc.h",
+                "fn": "_dl_map_object_deps",
+                "self": 103
+              },
+              {
+                "file": "./elf/./elf/dl-tls.c",
+                "fn": "_dl_add_to_slotinfo",
+                "self": 102
+              },
+              {
+                "file": "./elf/./elf/dl-cache.c",
+                "fn": "_dl_load_cache_lookup",
+                "self": 101
+              },
+              {
+                "file": "./nptl/./nptl/pthread_getattr_np.c",
+                "fn": "pthread_getattr_np@@GLIBC_2.32",
+                "self": 100
+              },
+              {
+                "file": "./libio/./libio/genops.c",
+                "fn": "_IO_switch_to_get_mode",
+                "self": 96
+              },
+              {
+                "file": "./libio/./libio/genops.c",
+                "fn": "_IO_cleanup",
+                "self": 90
+              },
+              {
+                "file": null,
+                "fn": "core::fmt::write",
+                "self": 89
+              },
+              {
+                "file": "./elf/./elf/dl-minimal.c",
+                "fn": "lookup_malloc_symbol",
+                "self": 87
+              },
+              {
+                "file": null,
+                "fn": "std::io::buffered::bufwriter::BufWriter<W>::flush_buf",
+                "self": 87
+              },
+              {
+                "file": null,
+                "fn": "std::rt::lang_start_internal",
+                "self": 87
+              },
+              {
+                "file": null,
+                "fn": "std::sys::pal::unix::stack_overflow::imp::make_handler",
+                "self": 87
+              },
+              {
+                "file": "./libio/./libio/genops.c",
+                "fn": "__GI__IO_un_link.part.0",
+                "self": 86
+              },
+              {
+                "file": "./malloc/./malloc/malloc.c",
+                "fn": "tcache_init.part.0",
+                "self": 85
+              },
+              {
+                "file": "./elf/./elf/dl-hwcaps.c",
+                "fn": "copy_hwcaps",
+                "self": 84
+              },
+              {
+                "file": null,
+                "fn": "alloc::collections::btree::remove::<impl alloc::collections::btree::node::Handle<alloc::collections::btree::node::NodeRef<alloc::collections::btree::node::marker::Mut,K,V,alloc::collections::btree::node::marker::Leaf>,alloc::collections::btree::node::marker::KV>>::remove_leaf_kv",
+                "self": 83
+              },
+              {
+                "file": null,
+                "fn": "std::sys::sync::once::futex::Once::call",
+                "self": 83
+              },
+              {
+                "file": "./elf/./elf/dl-deps.c",
+                "fn": "openaux",
+                "self": 82
+              },
+              {
+                "file": "./elf/./elf/dl-hwcaps_split.c",
+                "fn": "_dl_hwcaps_split",
+                "self": 81
+              },
+              {
+                "file": "./posix/./posix/register-atfork.c",
+                "fn": "__unregister_atfork",
+                "self": 75
+              },
+              {
+                "file": "./libio/./libio/fileops.c",
+                "fn": "_IO_file_fopen@@GLIBC_2.17",
+                "self": 72
+              },
+              {
+                "file": "./elf/./elf/dl-misc.c",
+                "fn": "_dl_sysdep_read_whole_file",
+                "self": 71
+              },
+              {
+                "file": "./elf/../sysdeps/nptl/dl-tls_init_tp.c",
+                "fn": "__tls_init_tp",
+                "self": 70
+              },
+              {
+                "file": "./posix/../sysdeps/unix/sysv/linux/aarch64/sysconf.c",
+                "fn": "sysconf",
+                "self": 69
+              },
+              {
+                "file": "./elf/./elf/libc_early_init.c",
+                "fn": "__libc_early_init",
+                "self": 68
+              },
+              {
+                "file": "./elf/./elf/dl-minimal.c",
+                "fn": "__rtld_malloc_init_real",
+                "self": 68
+              },
+              {
+                "file": "./elf/./elf/dl-load.c",
+                "fn": "_dl_dst_count",
+                "self": 66
+              },
+              {
+                "file": "./string/../sysdeps/aarch64/strrchr.S",
+                "fn": "rindex",
+                "self": 66
+              },
+              {
+                "file": "./elf/./elf/rtld.c",
+                "fn": "init_tls",
+                "self": 65
+              },
+              {
+                "file": null,
+                "fn": "std::sync::poison::once::Once::call_once::{{closure}}",
+                "self": 65
+              },
+              {
+                "file": "./string/./string/strdup.c",
+                "fn": "strdup",
+                "self": 64
+              },
+              {
+                "file": null,
+                "fn": "__aarch64_swp8_acq",
+                "self": 60
+              },
+              {
+                "file": null,
+                "fn": "init_have_lse_atomics",
+                "self": 56
+              },
+              {
+                "file": null,
+                "fn": "<std::io::default_write_fmt::Adapter<T> as core::fmt::Write>::write_str",
+                "self": 55
+              },
+              {
+                "file": "./nptl/./nptl/pthread_mutex_conf.c",
+                "fn": "__pthread_tunables_init",
+                "self": 55
+              },
+              {
+                "file": "./elf/../sysdeps/nptl/dl-mutex.c",
+                "fn": "__rtld_mutex_init",
+                "self": 55
+              },
+              {
+                "file": "./elf/./elf/dl-audit.c",
+                "fn": "_dl_audit_objclose",
+                "self": 55
+              },
+              {
+                "file": "./elf/./elf/dl-hwcaps_split.c",
+                "fn": "_dl_hwcaps_split_masked",
+                "self": 55
+              },
+              {
+                "file": "./io/../sysdeps/unix/sysv/linux/poll.c",
+                "fn": "poll",
+                "self": 55
+              },
+              {
+                "file": "./misc/../sysdeps/unix/syscall-template.S",
+                "fn": "mprotect",
+                "self": 54
+              },
+              {
+                "file": "./libio/./libio/fileops.c",
+                "fn": "_IO_file_open",
+                "self": 53
+              },
+              {
+                "file": "./libio/./libio/iofopen.c",
+                "fn": "__fopen_internal",
+                "self": 53
+              },
+              {
+                "file": "./stdlib/./stdlib/cxa_atexit.c",
+                "fn": "__internal_atexit",
+                "self": 52
+              },
+              {
+                "file": "./stdlib/./stdlib/cxa_atexit.c",
+                "fn": "__new_exitfn",
+                "self": 52
+              },
+              {
+                "file": "./stdlib/./stdlib/exit.c",
+                "fn": "__run_exit_handlers",
+                "self": 51
+              },
+              {
+                "file": null,
+                "fn": "__init_cpu_features",
+                "self": 49
+              },
+              {
+                "file": "./nptl/./nptl/pthread_mutex_unlock.c",
+                "fn": "__pthread_mutex_unlock_usercnt",
+                "self": 49
+              },
+              {
+                "file": "./nptl/./nptl/pthread_attr_destroy.c",
+                "fn": "pthread_attr_destroy",
+                "self": 49
+              },
+              {
+                "file": "./libio/./libio/filedoalloc.c",
+                "fn": "_IO_file_doallocate",
+                "self": 48
+              },
+              {
+                "file": "./malloc/./malloc/scratch_buffer_set_array_size.c",
+                "fn": "__libc_scratch_buffer_set_array_size",
+                "self": 48
+              },
+              {
+                "file": "./misc/../sysdeps/unix/syscall-template.S",
+                "fn": "munmap",
+                "self": 48
+              },
+              {
+                "file": "./elf/./elf/rtld.c",
+                "fn": "handle_preload_list",
+                "self": 47
+              },
+              {
+                "file": "./misc/./misc/sbrk.c",
+                "fn": "sbrk",
+                "self": 47
+              },
+              {
+                "file": null,
+                "fn": "core::fmt::Formatter::pad_integral",
+                "self": 46
+              },
+              {
+                "file": "./libio/./libio/fileops.c",
+                "fn": "_IO_file_close_it@@GLIBC_2.17",
+                "self": 44
+              },
+              {
+                "file": null,
+                "fn": "<&std::io::stdio::Stdout as std::io::Write>::write_fmt",
+                "self": 43
+              },
+              {
+                "file": "./elf/./elf/dl-tls.c",
+                "fn": "_dl_allocate_tls_storage",
+                "self": 43
+              },
+              {
+                "file": "./io/../sysdeps/unix/sysv/linux/read_nocancel.c",
+                "fn": "__read_nocancel",
+                "self": 42
+              },
+              {
+                "file": "./libio/./libio/libioP.h",
+                "fn": "fclose@@GLIBC_2.17",
+                "self": 40
+              },
+              {
+                "file": "./signal/../sysdeps/posix/signal.c",
+                "fn": "signal",
+                "self": 40
+              },
+              {
+                "file": "./io/../sysdeps/unix/sysv/linux/stat64.c",
+                "fn": "stat",
+                "self": 40
+              },
+              {
+                "file": "./elf/./elf/dl-audit.c",
+                "fn": "_dl_audit_objopen",
+                "self": 39
+              },
+              {
+                "file": "./elf/../sysdeps/unix/sysv/linux/aarch64/cpu-features.c",
+                "fn": "_dl_sysdep_start",
+                "self": 39
+              },
+              {
+                "file": "./csu/../csu/libc-start.c",
+                "fn": "__libc_start_main@@GLIBC_2.34",
+                "self": 37
+              },
+              {
+                "file": "./elf/./elf/dl-tls.c",
+                "fn": "_dl_tls_static_surplus_init",
+                "self": 37
+              },
+              {
+                "file": "./elf/./elf/rtld.c",
+                "fn": "do_preload",
+                "self": 37
+              },
+              {
+                "file": "./elf/./elf/dl-load.c",
+                "fn": "cache_rpath",
+                "self": 36
+              },
+              {
+                "file": null,
+                "fn": "0x0000000000000600",
+                "self": 35
+              },
+              {
+                "file": null,
+                "fn": "0x0000000000002c50",
+                "self": 35
+              },
+              {
+                "file": "./nptl/./nptl/pthread_attr_extension.c",
+                "fn": "__pthread_attr_extension",
+                "self": 35
+              }
+            ],
+            "total": 221450920
+          }
+        }
+      ]
+    }
+  },
+  "resolution": {
+    "author": "anthropic",
+    "candidate": {
+      "commit_id": "e263a7e596bae0fc8e3f55290ba6577ff65d9ab96728c8d84b71d939f65aa2bc",
+      "status": "accepted",
+      "reason": null,
+      "gen_id": "0e3b5278ca44e64aa61960b7d1bd124727afead02d8df2a139dadc4704029168"
+    },
+    "generation": {
+      "gen_id": "0e3b5278ca44e64aa61960b7d1bd124727afead02d8df2a139dadc4704029168",
+      "effect": {
+        "metric": "encode_ir",
+        "ratio": 0.09678056524664685,
+        "ci_low": 0.09678056524664685,
+        "ci_high": 0.09678056524664685,
+        "per_replay": [
+          {
+            "replay_id": "321934acaecf28790ef3970c4fea1b637495e78255b82ae724ba6b726f26e886",
+            "ratio": 0.09678056524664685,
+            "ci_low": 0.09678056524664685,
+            "ci_high": 0.09678056524664685,
+            "pass": true
+          },
+          {
+            "replay_id": "dd8c634bd6c2e4a37b614ac9fdcb6f6037bd0f6fafdfe859911940314c5707da",
+            "ratio": 0.09678056524664685,
+            "ci_low": 0.09678056524664685,
+            "ci_high": 0.09678056524664685,
+            "pass": true
+          }
+        ]
+      },
+      "target": "encode_ir",
+      "patch_files": [
+        "diff --git a/src/lib.rs b/src/lib.rs"
+      ]
+    },
+    "claim_after": {
+      "status": "resolved",
+      "resolved_by": "0e3b5278ca44e64aa61960b7d1bd124727afead02d8df2a139dadc4704029168"
+    }
+  },
+  "recipe": {
+    "proposal": {
+      "proposal_id": "c496d2f8841748c917c01477bee4395fa0fde82245960c15fcd2db0828ed594a",
+      "proposer": "FnCMVPa8WBJ1XrmQGajB1XMSTSote9jHnqukfoCfqCH8",
+      "name": "bech32-py",
+      "recipe_id": "67274b5f961896d9f03078cebffe1564db9d4032c5408bbefc20308ee3af7208",
+      "class": "python",
+      "arch": "arm64",
+      "repo": "https://github.com/sipa/bech32",
+      "commit": "7a7d7ab158db7078a333384e0e918c90dbc42917",
+      "recipe": {
+        "build": {
+          "artifacts": [],
+          "commands": [
+            "cd ref/python && python -c \"import segwit_addr, sys; print(segwit_addr.CHARSET, sys.version.split()[0])\""
+          ],
+          "reproducible": false
+        },
+        "class": "python",
+        "commit": "7a7d7ab158db7078a333384e0e918c90dbc42917",
+        "equivalence": {
+          "command": "PYTHONIOENCODING=utf-8 PYTHONPYCACHEPREFIX=/deps/pycache python lineage_equiv.py \"$LINEAGE_SEED\"",
+          "output": "stdout-digest"
+        },
+        "image": "lineage/python:m1@sha256:4214b1a6fb3757b7d706ce9547e728b18c53df40f0bdf8ebcdef5b81335186d0",
+        "limits": {
+          "cpus": 2,
+          "disk_mb": 4096,
+          "memory_mb": 2048,
+          "pids": 256,
+          "wall_s": 900
+        },
+        "metrics": [
+          {
+            "command": "PYTHONPYCACHEPREFIX=/deps/pycache valgrind --tool=cachegrind --cache-sim=no --cachegrind-out-file=/dev/null python lineage_bench.py encode \"$LINEAGE_SEED\"",
+            "deterministic": true,
+            "direction": "lower",
+            "holdout": true,
+            "kind": "perf",
+            "min_effect": 0.01,
+            "name": "encode_ir",
+            "parser": "cachegrind-ir"
+          },
+          {
+            "command": "PYTHONPYCACHEPREFIX=/deps/pycache valgrind --tool=cachegrind --cache-sim=no --cachegrind-out-file=/dev/null python lineage_bench.py decode \"$LINEAGE_SEED\"",
+            "deterministic": true,
+            "direction": "lower",
+            "holdout": true,
+            "kind": "perf",
+            "min_effect": 0.01,
+            "name": "decode_ir",
+            "parser": "cachegrind-ir"
+          },
+          {
+            "command": "PYTHONPYCACHEPREFIX=/deps/pycache valgrind --tool=cachegrind --cache-sim=no --cachegrind-out-file=/dev/null python lineage_bench.py bech32 \"$LINEAGE_SEED\"",
+            "deterministic": true,
+            "direction": "lower",
+            "holdout": true,
+            "kind": "perf",
+            "min_effect": 0.01,
+            "name": "bech32_ir",
+            "parser": "cachegrind-ir"
+          }
+        ],
+        "name": "bech32-py",
+        "overlay_digest": "2a62949738530a78ce778fdbb06a3025a912a73578dc87f7cff908faba32e3e9",
+        "patch": {
+          "allowed_paths": [
+            "ref/python/segwit_addr.py"
+          ],
+          "max_files": 2,
+          "max_lines": 200,
+          "protected_paths": [
+            "**/*.yaml",
+            "**/*.yml",
+            ".github/**",
+            "lineage_*",
+            "lineage_bench.py",
+            "lineage_equiv.py",
+            "ref/**/*.cabal",
+            "ref/**/*_test.go",
+            "ref/**/Cargo.toml",
+            "ref/**/Makefile",
+            "ref/**/stack.yaml",
+            "ref/**/test*",
+            "ref/python/tests.py"
+          ]
+        },
+        "prepare": [
+          "python -m venv /deps/venv",
+          "/deps/venv/bin/pip install --no-cache-dir --only-binary=:all: pytest==8.3.5",
+          "PYTHONPYCACHEPREFIX=/deps/pycache python -m compileall -q -x \"/(test|tests|idlelib|lib2to3|tkinter|turtledemo)/\" /usr/local/lib/python3.12 /deps/venv/lib/python3.12/site-packages"
+        ],
+        "prepare_outputs": [],
+        "repo": "https://github.com/sipa/bech32",
+        "requires": {
+          "arch": "arm64"
+        },
+        "test": {
+          "command": "cd ref/python && PYTHONPYCACHEPREFIX=/deps/pycache /deps/venv/bin/python -m pytest -p no:cacheprovider -q --junitxml=/out/junit.xml tests.py",
+          "exclude": [],
+          "parser": "junit",
+          "timeout_s": 300
+        },
+        "workdir": "/work/src"
+      },
+      "overlay": {
+        "lineage_bench.py": "552bff0309be383af44fd98b67cdb3c307d0365b8d9fc3d1d8ff210fc8e32589",
+        "lineage_equiv.py": "eb7c58e364e629fb117ffedf482ae00664c057207b2d86113db5f2d928747a50"
+      },
+      "note": "Measures the pure-Python Bech32/Bech32m and segwit address reference (ref/python/segwit_addr.py) with cachegrind instruction counts on three seeded workloads: encoding realistic segwit addresses (P2WPKH, P2WSH and P2TR across bc/tb/bcrt), decoding them (including uppercase and corrupted ones), and generic bech32_encode/bech32_decode/convertbits on random HRPs and data. The code has real headroom: polymod runs a per-character loop with a 5-step inner loop, encode() decodes its own output again, and the string gets scanned several times. The upstream unittest suite runs through pytest junit (5 stable ids). The equivalence harness prints about 300 KB of results from every public function on seeded random, mutated and edge-case inputs, exceptions included. In the trial, metric cv was at most 9e-8 and both equivalence runs gave the same digest. Patches can only change segwit_addr.py.",
+      "status": "accepted",
+      "round": 0,
+      "runs": 3,
+      "reason": null,
+      "lineage_id": "95481eb82de0d9dd5d693037a51572800c8c88f0c201376e60b186b876173864",
+      "created_at": 1791478066159,
+      "decided_at": 1791478109015,
+      "replays": [
+        {
+          "replay_id": "6790e3e343fa8053aa025bbcadd85ad537cbe1e8d5128128cc8301f9b293902a",
+          "round": 0,
+          "replayer": "GcVNfv6ZBa6aTFJQwXAVr8o9TpjKzbV9VFfcEL7EkjW2",
+          "status": "revealed",
+          "seed": "fb5f72e5b56f8b64254cbb60b412545de19d10d7dc8e9d291307c8d4b9383708",
+          "assignment_seed": "fe72adb5d8e4e0639f5115ba124b23a965ab0dde4924928d91a8acdbb39e2367",
+          "result": {
+            "calibration": {
+              "known_failures": [],
+              "median_eval_seconds": 8,
+              "metrics": {
+                "bech32_ir": {
+                  "base_value": 742013514,
+                  "cv": 0.0000030113433062749986,
+                  "enabled": true
+                },
+                "decode_ir": {
+                  "base_value": 1626104622.5,
+                  "cv": 9.131787831762035e-9,
+                  "enabled": true
+                },
+                "encode_ir": {
+                  "base_value": 863803544,
+                  "cv": 0.0000015520594543076962,
+                  "enabled": true
+                }
+              },
+              "quarantined": [],
+              "recipe_id": "67274b5f961896d9f03078cebffe1564db9d4032c5408bbefc20308ee3af7208",
+              "runs": 3,
+              "seed": "fb5f72e5b56f8b64254cbb60b412545de19d10d7dc8e9d291307c8d4b9383708",
+              "snapshot_id": "",
+              "stable": [
+                "tests.TestSegwitAddress::test_invalid_address",
+                "tests.TestSegwitAddress::test_invalid_address_enc",
+                "tests.TestSegwitAddress::test_invalid_checksum",
+                "tests.TestSegwitAddress::test_valid_address",
+                "tests.TestSegwitAddress::test_valid_checksum"
+              ]
+            },
+            "deps_digest": "d2b6ba0024b7570e2e99b85784709c7f8e5de69b1102927cb9cb29d28d8e8139"
+          }
+        },
+        {
+          "replay_id": "a43d6740aa5429663c8dc136471faa0925e6e821f28e0856a254acf47125b151",
+          "round": 0,
+          "replayer": "xYbXHpdnR6AY3XvKh27E2qzcHAwyRgUwjRZhp8EvsnG",
+          "status": "revealed",
+          "seed": "fb5f72e5b56f8b64254cbb60b412545de19d10d7dc8e9d291307c8d4b9383708",
+          "assignment_seed": "fe72adb5d8e4e0639f5115ba124b23a965ab0dde4924928d91a8acdbb39e2367",
+          "result": {
+            "calibration": {
+              "known_failures": [],
+              "median_eval_seconds": 7,
+              "metrics": {
+                "bech32_ir": {
+                  "base_value": 742010942.5,
+                  "cv": 0.00000168388039958943,
+                  "enabled": true
+                },
+                "decode_ir": {
+                  "base_value": 1626100356.5,
+                  "cv": 1.2828021322067248e-7,
+                  "enabled": true
+                },
+                "encode_ir": {
+                  "base_value": 863804481.5,
+                  "cv": 1.7190513273480275e-8,
+                  "enabled": true
+                }
+              },
+              "quarantined": [],
+              "recipe_id": "67274b5f961896d9f03078cebffe1564db9d4032c5408bbefc20308ee3af7208",
+              "runs": 3,
+              "seed": "fb5f72e5b56f8b64254cbb60b412545de19d10d7dc8e9d291307c8d4b9383708",
+              "snapshot_id": "",
+              "stable": [
+                "tests.TestSegwitAddress::test_invalid_address",
+                "tests.TestSegwitAddress::test_invalid_address_enc",
+                "tests.TestSegwitAddress::test_invalid_checksum",
+                "tests.TestSegwitAddress::test_valid_address",
+                "tests.TestSegwitAddress::test_valid_checksum"
+              ]
+            },
+            "deps_digest": "d2b6ba0024b7570e2e99b85784709c7f8e5de69b1102927cb9cb29d28d8e8139"
+          }
+        }
+      ]
+    },
+    "lineage": {
+      "lineage_id": "95481eb82de0d9dd5d693037a51572800c8c88f0c201376e60b186b876173864",
+      "status": "active",
+      "recipe_id": "67274b5f961896d9f03078cebffe1564db9d4032c5408bbefc20308ee3af7208",
+      "calibration": {
+        "known_failures": [],
+        "median_eval_seconds": 8,
+        "metrics": {
+          "bech32_ir": {
+            "base_value": 742012228.25,
+            "cv": 0.0000030113433062749986,
+            "enabled": true
+          },
+          "decode_ir": {
+            "base_value": 1626102489.5,
+            "cv": 1.2828021322067248e-7,
+            "enabled": true
+          },
+          "encode_ir": {
+            "base_value": 863804012.75,
+            "cv": 0.0000015520594543076962,
+            "enabled": true
+          }
+        },
+        "quarantined": [],
+        "recipe_id": "67274b5f961896d9f03078cebffe1564db9d4032c5408bbefc20308ee3af7208",
+        "runs": 6,
+        "seed": "fb5f72e5b56f8b64254cbb60b412545de19d10d7dc8e9d291307c8d4b9383708",
+        "snapshot_id": "574abb61384a5db31fbcb35d319c962a8972a8723a4d0f4833e97e979329c08b",
+        "stable": [
+          "tests.TestSegwitAddress::test_invalid_address",
+          "tests.TestSegwitAddress::test_invalid_address_enc",
+          "tests.TestSegwitAddress::test_invalid_checksum",
+          "tests.TestSegwitAddress::test_valid_address",
+          "tests.TestSegwitAddress::test_valid_checksum"
+        ]
+      },
+      "qualifications": [
+        {
+          "agent": "GcVNfv6ZBa6aTFJQwXAVr8o9TpjKzbV9VFfcEL7EkjW2",
+          "qualified": true
+        },
+        {
+          "agent": "xYbXHpdnR6AY3XvKh27E2qzcHAwyRgUwjRZhp8EvsnG",
+          "qualified": true
+        },
+        {
+          "agent": "BMyjKHxUNc4HJqcpfXXFNzLYNXNETAp9hyz72JhLRXo5",
+          "qualified": true
+        }
+      ]
+    }
+  },
+  "spend_after_usd": 0.439018,
+  "spend_this_run_usd": 0.173993,
+  "wall_seconds": 308
+}

@@ -1,0 +1,76 @@
+# sipa/bech32: reference implementations of Bech32/Bech32m and segwit addresses (BIP173/BIP350).
+# Target is the pure-Python reference ref/python/segwit_addr.py. MIT licence (header in file).
+#
+# Why: the checksum (bech32_polymod) is a per-character Python loop with an inner 5-step loop and
+# list lookups, encode() re-decodes its output, convertbits/hrp_expand build lists, and decode
+# scans the string several times, so instruction counts have real headroom.
+#
+# Determinism: cachegrind guest instruction counts; PYTHONHASHSEED=0 set by sandbox; GC disabled
+# in the harness; inputs derived only from $LINEAGE_SEED; stdlib pre-compiled into /deps/pycache.
+name: bech32-py
+class: python
+requires: { arch: arm64 }
+repo: https://github.com/sipa/bech32
+commit: "7a7d7ab158db7078a333384e0e918c90dbc42917"
+image: "lineage/python:m1@sha256:4214b1a6fb3757b7d706ce9547e728b18c53df40f0bdf8ebcdef5b81335186d0"
+workdir: /work/src
+prepare:
+  - python -m venv /deps/venv
+  - "/deps/venv/bin/pip install --no-cache-dir --only-binary=:all: pytest==8.3.5"
+  - PYTHONPYCACHEPREFIX=/deps/pycache python -m compileall -q -x "/(test|tests|idlelib|lib2to3|tkinter|turtledemo)/" /usr/local/lib/python3.12 /deps/venv/lib/python3.12/site-packages
+prepare_outputs: []
+build:
+  commands:
+    - cd ref/python && python -c "import segwit_addr, sys; print(segwit_addr.CHARSET, sys.version.split()[0])"
+  artifacts: []
+  reproducible: false
+test:
+  command: cd ref/python && PYTHONPYCACHEPREFIX=/deps/pycache /deps/venv/bin/python -m pytest -p no:cacheprovider -q --junitxml=/out/junit.xml tests.py
+  parser: junit
+  exclude: []
+  timeout_s: 300
+equivalence:
+  command: PYTHONIOENCODING=utf-8 PYTHONPYCACHEPREFIX=/deps/pycache python lineage_equiv.py "$LINEAGE_SEED"
+  output: stdout-digest
+metrics:
+  - name: encode_ir
+    kind: perf
+    direction: lower
+    deterministic: true
+    command: PYTHONPYCACHEPREFIX=/deps/pycache valgrind --tool=cachegrind --cache-sim=no --cachegrind-out-file=/dev/null python lineage_bench.py encode "$LINEAGE_SEED"
+    parser: cachegrind-ir
+    holdout: true
+    min_effect: 0.01
+  - name: decode_ir
+    kind: perf
+    direction: lower
+    deterministic: true
+    command: PYTHONPYCACHEPREFIX=/deps/pycache valgrind --tool=cachegrind --cache-sim=no --cachegrind-out-file=/dev/null python lineage_bench.py decode "$LINEAGE_SEED"
+    parser: cachegrind-ir
+    holdout: true
+    min_effect: 0.01
+  - name: bech32_ir
+    kind: perf
+    direction: lower
+    deterministic: true
+    command: PYTHONPYCACHEPREFIX=/deps/pycache valgrind --tool=cachegrind --cache-sim=no --cachegrind-out-file=/dev/null python lineage_bench.py bech32 "$LINEAGE_SEED"
+    parser: cachegrind-ir
+    holdout: true
+    min_effect: 0.01
+patch:
+  allowed_paths: ["ref/python/segwit_addr.py"]
+  protected_paths:
+    - "ref/python/tests.py"
+    - "ref/**/test*"
+    - "ref/**/*_test.go"
+    - "ref/**/Cargo.toml"
+    - "ref/**/*.cabal"
+    - "ref/**/stack.yaml"
+    - "ref/**/Makefile"
+    - ".github/**"
+    - "**/*.yml"
+    - "**/*.yaml"
+    - "lineage_*"
+  max_files: 2
+  max_lines: 200
+limits: { cpus: 2, memory_mb: 2048, pids: 256, wall_s: 900, disk_mb: 4096 }
