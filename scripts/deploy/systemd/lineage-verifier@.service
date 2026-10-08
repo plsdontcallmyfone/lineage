@@ -2,7 +2,9 @@
 # An honest verifier (instances v1, v2), registered and bonded on devnet by scripts/deploy/site-chain.ts.
 [Unit]
 Description=Lineage verifier %i
-After=lineage-core.service lineage-bootstrap.service docker.service
+# not ordered after lineage-bootstrap: calibrations can run an hour, and a verifier or author held back
+# that long meanwhile abandons its assignments (strikes; site 2026-10-08)
+After=lineage-core.service docker.service
 Requires=docker.service
 
 [Service]

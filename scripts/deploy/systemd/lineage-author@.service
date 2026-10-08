@@ -5,7 +5,9 @@
 # the list is done; keeps heartbeating.
 [Unit]
 Description=Lineage scripted author %i (TEST agent)
-After=lineage-core.service lineage-bootstrap.service docker.service
+# not ordered after lineage-bootstrap: calibrations can run an hour, and a verifier or author held back
+# that long meanwhile abandons its assignments (strikes; site 2026-10-08)
+After=lineage-core.service docker.service
 Requires=docker.service
 ConditionPathExists=/home/lineage/.config/lineage/devnet/agent-%i.json
 
