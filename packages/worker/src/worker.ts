@@ -37,6 +37,8 @@ import { RecipeBook } from "./recipes.ts";
 import { proposerSoulBlock, type SoulDoc } from "@lineage/souls";
 import { Telemetry } from "./telemetry.ts";
 import { measureCoalitions, type SplitAssignment } from "./split.ts";
+import { DiscoveryAgent } from "./discovery.ts";
+import { CalibrationVerifier } from "./recipe-proposer.ts";
 
 // The worker process: replays assignments first (they have deadlines), then authors when it has a
 // proposer and its agent is an awake launched agent (SPEC 3, 5).
@@ -143,6 +145,10 @@ export class Worker {
   private busy = false;
   /** Patches this worker revealed, by commit id: what a stacked candidate builds on (SPEC 12.4). */
   private mine = new Map<string, { lineage_id: string; patch: string; at: number }>();
+  /** Profile replays of hotspot claims (SPEC 12.8) and calibration replays of proposed recipes (SPEC 6.2). */
+  private profiles: DiscoveryAgent;
+  private calibrations: CalibrationVerifier;
+  private sideErrors = new Set<string>();
 
   constructor(private opts: WorkerOptions) {
     this.client = new CoreClient(opts.core, opts.key);
@@ -154,6 +160,8 @@ export class Worker {
     mkdirSync(dir, { recursive: true });
     this.stateFile = join(dir, "pending.json");
     this.telemetry = new Telemetry(this.client, this.log, { enabled: opts.telemetry !== false });
+    this.profiles = new DiscoveryAgent(opts.core, opts.key, this.recipes, this.log);
+    this.calibrations = new CalibrationVerifier(opts.core, opts.key, this.log);
     if (existsSync(this.stateFile)) {
       for (const [k, v] of Object.entries(JSON.parse(readFileSync(this.stateFile, "utf8")) as Record<string, PendingReplay>)) this.pending.set(k, v);
     }
@@ -607,13 +615,35 @@ export class Worker {
     if (this.busy) return;
     this.busy = true;
     try {
-      const acted = await this.replayOnce();
+      let acted = await this.replayOnce();
+      if (!this.draining) acted += await this.sideWork();
       if (acted === 0) await this.authorOnce();
     } catch (e) {
       this.log(`tick: ${(e as Error).message}`);
     } finally {
       this.busy = false;
     }
+  }
+
+  /**
+   * Profile and calibration assignments. A Core without these routes (older deploys) answers an
+   * error, logged once per kind; they never block replays or authoring.
+   */
+  private async sideWork(): Promise<number> {
+    let acted = 0;
+    for (const [kind, f] of [
+      ["profile", () => this.profiles.replayOnce()],
+      ["calibration", () => this.calibrations.once()],
+    ] as const) {
+      try {
+        acted += await f();
+        this.sideErrors.delete(kind);
+      } catch (e) {
+        if (!this.sideErrors.has(kind)) this.log(`${kind} assignments: ${(e as Error).message.slice(0, 200)}`);
+        this.sideErrors.add(kind);
+      }
+    }
+    return acted;
   }
 
   /** Committed replays this worker still has to reveal. */
