@@ -1,7 +1,7 @@
 # Deploying the Lineage programs (devnet deployed 2026-10-07, see DEVNET.md)
 
-Nothing has been deployed to any cluster. A devnet deploy needs the owner's approval and devnet
-SOL sent to the dedicated deployer below. Mainnet is out of scope until launch values exist
+Deployed to devnet on 2026-10-07 and upgraded the same day with the review fixes (DEVNET.md).
+The text below is the original plan, kept for the measured figures. Mainnet is out of scope until launch values exist
 (SPEC 20).
 
 ## Keys
@@ -94,3 +94,19 @@ holding the SOL; resume with `--buffer <address>` or close it with
 
 `packages/chain` builds every one of these instructions. It has no transaction sender yet, so a
 small devnet script (sign, send, confirm) is the next piece of work once the owner approves.
+
+## Review-fix upgrade (2026-10-07, measured)
+
+| Program | `.so` bytes | sha256 | Added bytes (`solana program extend`) | Added rent (SOL) |
+|---|---|---|---|---|
+| `lineage_registry.so` | 543,408 | `1e64323fbe379a97e7761aa9f43a132628addbe92a53e41178a7ddd268a9cc2c` | 26,472 | 0.13447776 |
+| `lineage_launch.so` | 563,864 | `847af59104b16cabc224a04215a5964c36ab86c8761abc2252d065b424be14da` | 37,640 | 0.1912112 |
+
+Devnet rent is 5,080 lamports per byte (`solana rent -u devnet 1` prints 0.00065532 for the 128-byte
+overhead plus one byte). Order: extend both ProgramData accounts by exactly the growth, then
+`solana program deploy -u devnet -k "$K" --upgrade-authority "$K" --program-id <keypair> <so>` (the CLI
+writes a buffer funded for the whole program, about 2.87 SOL for the launch program, and closes it
+back to the payer), then `bun scripts/devnet/setup.ts --only b,d` runs `migrate_config` and
+`migrate_launch_config` and syncs the TEST params. Instructions that read the configs fail between
+the upgrade and the migration, so run them back to back.
+

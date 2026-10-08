@@ -1,7 +1,7 @@
 # Lineage onchain programs (SPEC 14)
 
-One Anchor 0.31.1 workspace, two programs, one LiteSVM test crate. Nothing here is deployed;
-see [DEPLOY.md](DEPLOY.md).
+One Anchor 0.31.1 workspace, two programs, one LiteSVM test crate. Deployed to devnet only
+([DEVNET.md](DEVNET.md)); see [DEPLOY.md](DEPLOY.md).
 
 | Path | What |
 |---|---|
@@ -45,3 +45,30 @@ No binary encoding was needed: the registry hashes the payout leaf exactly as Co
 `sha256('["leaf","{\"agent\":\"<A>\",\"amount\":\"<N>\",\"dest\":\"<D>\",\"epoch\":<E>}"]')`, and
 nodes as `sha256('["node","<lo hex>","<hi hex>"]')`. The agent and wallet keys are base58-encoded
 onchain from their 32 bytes; the destination string is rebuilt from a kind and a key. See SPEC 14.3.
+
+## Review fixes (2026-10-07, onchain fixes lane)
+
+An adversarial review found these; each is fixed and covered by a LiteSVM test (`tests/tests/*.rs`).
+
+| Finding | Fix | Test |
+|---|---|---|
+| H1 `graduate` could be bound to a forged dust position (third party locks dust, hands its NFT to our authority, graduates first) | `graduate` requires the position to hold a strict majority of the pool's permanently locked liquidity (only DBC's migration position does); `repoint_position` (anyone) moves to an authority-held, fully locked position with strictly more locked liquidity; `graduate_by_admin` skips the majority rule for a pool where a third party locked more and kept its NFT (every other check stays) | `forged_dust_position_cannot_graduate` (the 4-step attack fails), `admin_graduates_past_a_larger_third_party_lock` |
+| H2 curve fees and partner surplus left at migration were stranded | `crank_fees` works before and after graduation | `curve_fees_left_at_migration_are_cranked_after_graduation` |
+| M1 a retried slash could land twice | `slash(offence, epoch, slash_id)` creates a `SlashReceipt` PDA `["slash", slash_id]`; Core sends `sha256(["lineage-slash", id, agent, reason, ref, epoch])` | `slash_lands_once_per_id` |
+| M2 a runtime key could drain every compute vault | `post_usage` is one sequence (exactly last + 1) at most one epoch (registry `epoch_length_s`) ahead of its clock anchor; `debit_compute` only for hosted agents; `max_debit_per_epoch` (0 = no cap) | `usage_sequence_hosted_only_and_debit_cap` |
+| M3 a Core key could post arbitrary epochs and amounts | `post_epoch`: exactly last + 1 (the first post may be any epoch and sets the anchor), epoch `anchor + k` not before `anchor_ts + (k - 1) x epoch_length_s`, `pool_amount` <= pool vault, `rebate_amount` <= reserve and <= `max_rebate_per_epoch` (config); admin `set_epoch_cursor` repairs the sequence | `post_epoch_sequence_clock_and_caps` |
+| M4 unbond cooldown had no floor | `unbond_cooldown_s >= 2 x epoch_length_s` (chosen over "two post_epochs after the request", which would freeze unbonds whenever Core stops posting) | `config_floors_and_nonzero_keys` |
+| L1 Core desync when a send reported failure but landed | the bridge reads back the `Epoch` PDA (same root) or `SlashReceipt` PDA and records the send as landed | `packages/core/test/chain.test.ts` |
+| L2 `registry_program` admin-changeable | a constant (`lineage_registry::ID`); the field stays in the layout | `full_launch_records_everything` |
+| L3 any Token-2022 `$LINE` accepted | both initializers allow only metadata pointer and metadata extensions | `line_mint_extension_allowlist` |
+| L4 surplus threshold from the launch config | read from the pool's own DBC config | covered by the crank tests |
+| L5 long URI and URL could not fit one transaction | name + symbol + URI + URL <= `MAX_LAUNCH_STRINGS` (227): the longest accepted launch is exactly 1,232 bytes with three signers and both compute budget instructions | `longest_launch_fits_one_transaction` |
+| L6 a late strike reset the epoch count | the per-epoch count restarts only for a strictly newer epoch | `slash_strikes_and_suspension` |
+| L7 failed slashes were dropped after 5 attempts | pending until they land, retried with backoff (5 s doubling to 10 min); same for epochs | `packages/core/test/chain.test.ts` |
+| L8 config validation | nonzero admin, Core authority, launch program, compute sink; `min_bond <= bond_cap`. `bond_cap` is the assignment-weight cap (SPEC 10.1, `min(bond, bond_cap)`), not a cap on the bond, so it is not enforced on `bond` | `config_floors_and_nonzero_keys`, `usage_sequence_hosted_only_and_debit_cap` |
+
+Layouts: `Config` gained `max_rebate_per_epoch`, `epoch_anchor`, `epoch_anchor_ts` (24 bytes) and
+`LaunchConfig` gained `max_debit_per_epoch` and the usage sequence (40 bytes), appended at the end.
+`migrate_config` and `migrate_launch_config` (admin, once) grow accounts the first layout wrote;
+`packages/chain` decodes both layouts (new fields null on the old one).
+

@@ -28,5 +28,5 @@ Spec: `docs/SPEC.md` (source of truth). Milestones: `docs/MILESTONES.md`.
 | onchain lane | onchain/**, packages/chain/**, docs/SPEC.md section 14 | DONE (not deployed; devnet deploy awaits owner approval and SOL, onchain/DEPLOY.md) | 2026-10-07 |
 | devnet wiring lane | packages/chain/**, scripts/devnet/**, onchain/DEVNET.md, packages/core/** (chain mode only) | DONE | 2026-10-07 |
 | wallet UI lane | apps/web/**, packages/chain/src/browser/**, packages/chain/src/cosign.ts, packages/chain/test/browser*, packages/worker/src/main.ts (cosign case only), onchain/DEVNET.md (own section) | DONE (devnet e2e 18/18 on the programs deployed 2026-10-07; rerun apps/web/scripts/wallet-e2e.ts after the onchain fixes lane upgrades them) | 2026-10-07 |
-| onchain fixes lane | onchain/**, packages/chain/**, packages/core/src/chain.ts, packages/core/src/core.ts (slash/epoch chain paths only), packages/core/test/chain.test.ts | IN PROGRESS | 2026-10-07 |
+| onchain fixes lane | onchain/**, packages/chain/**, packages/core/src/chain.ts, packages/core/src/core.ts (slash/epoch chain paths only), packages/core/test/chain.test.ts | DONE (devnet upgraded and migrated, e2e 24/24; onchain/DEVNET.md) | 2026-10-07 |
 | core hardening lane | packages/core/** (not chain.ts), scripts/e2e.ts | DONE (bun test packages 267/267, e2e 43/43) | 2026-10-07 |

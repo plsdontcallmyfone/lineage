@@ -136,3 +136,35 @@ Devnet transactions sent by the Wallet page (apps/web/wallet) and its tooling: t
 | 2026-10-07 22:32:02 | e2e | page: claim epoch 3 wallet | 5001 | `DgpvEHxYbXcBR92Tb6aN54kK86AytMdngJMkSu49XBddTHSDkD2DfuBkutFVZSkEJUxJtrRF14YvmWFQxXXHGj3` |
 | 2026-10-07 22:32:02 | e2e | split: treasury 4320000 to reserve and pool (test wallet pays the fee) | 5000 | `3hjp6gEoZETc2fA3zF4H4679tf9XuSy1J23UScnKuANMMD3PfUyWt1eBMEBV5tgD9kP3N5oJ24wZQEnfVesNF8zU` |
 | 2026-10-07 22:32:03 | e2e | post_epoch 3 (test epoch for the Claims tab: one leaf agent:Ei54yY7HarLLPENujpF63yCsfwZeBDVjeuC9tp9kfvho:wallet amount 864000, root 5c9681ee83d44fbd...) | 5000 | `43RJ7AwceecRZioSWSHCCWBbKa82euM7ofBD5RTq61aTm6mjMJSBDfndwmRU2iznHkrQFar2xQFR1bwBZQStYrHN` |
+
+## Review-fix upgrade (2026-10-07, onchain fixes lane)
+
+Both programs upgraded in place with the fixes of the adversarial review (`onchain/README.md`, "Review fixes"), then both configs migrated to the new layout and every script rerun. Nothing touched `solana config` or `~/.config/solana/id.json`; every command passed `-u devnet -k ~/.config/lineage/devnet-deployer.json`.
+
+| Program | `.so` bytes | sha256 (built and dumped from devnet: equal) | Extended by | Extend sig | Upgrade sig |
+|---|---|---|---|---|---|
+| lineage_registry | 543,408 (was 516,936) | `1e64323fbe379a97e7761aa9f43a132628addbe92a53e41178a7ddd268a9cc2c` | 26,472 bytes (0.13447776 SOL rent) | `5a21s7kuLNkPMvc1uUubMfzXiLWrgsFm9pk2dBAKr42q9JMkb7BcHsUuHavAto9N16E6QBZnpcVXTNv5K182Z78h` | `5wTu997HkKu8MJEQZWxYUqRg9W2bmT32rpDirfjeL3v8NaTYuWUrRTchh3Yyd67cFdNyFKC4oNsjUCVgaBN42DDZ` |
+| lineage_launch | 563,864 (was 526,224) | `847af59104b16cabc224a04215a5964c36ab86c8761abc2252d065b424be14da` | 37,640 bytes (0.1912112 SOL rent) | `36WZ69XgPRVfyeeSAkeYBqv25J8cFisVu2q47cdmcRARDkUoqVSKun7aMp4qT4G43rcoVu5AV3TcVB3sYvMBDwpC` | `4fjkidbt7WFaCd4pvWnNtgr74TeFi9mv8s3RCQhqNLqji9kXu1DsXE3PspBULuP3D4jjUs5zLUm7sk3qhW1PGEw3` |
+
+- Funding: 1.5 devnet SOL from the Instance devnet deployer `HzGbDTD7CR8pS2jDXadzwNxpAg2eM5sPfvFU8mtkacHB` (owner approval: at most 6 SOL, keeping it above 24), sig `5QN3HTj1PcDnmFd2nTHuciPE4CGQ9HRBq9UZLoAf3wfmfUzUmDt4teMLsU9Edr787wCDjPJmo2UkWemcFpQsQo45`; it held 30.056413579 SOL before and 28.556408579 after. Measured need: 0.326 SOL extend rent plus a 2.865 SOL launch buffer at once against 2.343 SOL in the deployer. Deployer: 2.342976629 before, 3.507496109 SOL after the upgrade, migration and e2e run.
+- Layout migration (no re-initialization; every PDA kept): `migrate_config` (Config +24 bytes: `max_rebate_per_epoch` 1 tLINE TEST, epoch anchor = last posted epoch 3 at the migration time), `set_config` (`epoch_length_s` 300 TEST so the new floor `unbond_cooldown_s >= 2 x epoch_length_s` holds with 600; Core keeps its own epoch timing), `migrate_launch_config` (LaunchConfig +40 bytes: `max_debit_per_epoch` 1,000 tLINE TEST, usage sequence empty).
+- `scripts/devnet/setup.ts`: all checks pass, then idempotent on a second run (no transaction). `scripts/devnet/e2e-devnet.ts`: 24/24 checks (Core in chain mode posted epoch 4 under the new sequence and clock rules, every leaf claimed and mirrored); a first run stopped on public RPC rate limiting (HTTP 429) after its trades, rows below.
+
+| When (UTC) | Step | What | Fee | Signature |
+|---|---|---|---|---|
+
+| 2026-10-07 23:47:30 | b | lineage_registry::migrate_config (grow Config to the review-fix layout, max_rebate_per_epoch 1000000) | 5000 | `35sD592UU9sK9SURsSv4cUFQSHmo7oXrSruSZQkCkLiekxmrFAQZS6gN6xTMp9BycqQUeHegyJf8BBz8epaVxBnu` |
+| 2026-10-07 23:47:32 | b | lineage_registry::set_config (params: epoch_length_s 300 so unbond_cooldown_s 600 meets the 2-epoch floor; rebate cap) | 5000 | `Zd4Ehpas1orAhNdoGNQS16NERJtMcMUtLbPDwrY5WhMX3XWv8sq52rBUAz1eE3zvgcqDocBJJqLV7ptvoaVBSxa` |
+| 2026-10-07 23:47:42 | d | lineage_launch::migrate_launch_config (grow LaunchConfig to the review-fix layout, max_debit_per_epoch 1000000000) | 5000 | `3QJBh51YKnXxwsF3hgQuwn8uezxSDJxbzsC6P7mKSWvYxMmQCpWH3PGYYNFvwQinzC3wRSDKVkPPBEVeKDjMMGdZ` |
+| 2026-10-07 23:48:27 | e2e | trade: trader buys with 20,000 tLINE | 5000 | `4vk49M9HG3bnaRnRs7jDdGfKvVBkiomX1QeiZkc35vt2srMUaCZSG88AcQi7W8kknGNYteCuqBr4pSwniiF4UXkn` |
+| 2026-10-07 23:48:28 | e2e | trade: trader sells 417109387931 agent-token base units | 5000 | `3tbAjYVAZGS4CEiNXL8W3er9J62xFDftKNC1T6iYrXW7ZwXV5jbf2VTPYULJBfgHJqb4hfCcpA4Hb8NnLs3Hbp9J` |
+| 2026-10-07 23:48:30 | e2e | crank_fees: 994520729 partner fee base units | 5000 | `Tpa8QPVeYiKwC9ujpjSL8fZLFoXHPFithDQjQv2QTLYxDRqtonjzN7CLP2h1r6pJSuGvZSCnZX4C1EUhCooiBSn` |
+| 2026-10-07 23:48:32 | e2e | split: treasury 298356219 to reserve and pool | 5000 | `2Jf2UMzkD9iW74eQBrpPkUFFmcnhYriiT6E57nsVr8r3aNGraEGcwrufoanVx6rV2itpinko74Wi3LRoz6in3B1Y` |
+| 2026-10-07 23:59:41 | e2e | trade: trader buys with 20,000 tLINE | 5000 | `4aU6xRWFBBuPZywgUzGvXrrg1ZPshK1snTkbVfXTYUUaWbEmDXTQHfisd6opBTtmYdZfGVaGwY78BYNA1QmCjL4k` |
+| 2026-10-07 23:59:47 | e2e | trade: trader sells 407230192002 agent-token base units | 5000 | `3qwig1zKRwHyRhN5WR514LdHkxhVR5SCBBRQsXMXZWz7CKmSG7AmnQoiiZrnMLe76W3jALzH1ftF3xjpGVxVciF7` |
+| 2026-10-07 23:59:49 | e2e | crank_fees: 982004231 partner fee base units | 5000 | `2Xn7P4HRPF8aYmrFz9fbzix4eWNBqoE3JT5jAapmHWL1a6fD3vQd1TYARuFx5HyK7BSCjXURg89wLTpAJUsGL6bz` |
+| 2026-10-07 23:59:51 | e2e | split: treasury 294601270 to reserve and pool | 5000 | `57j2J8oqbWUmPP1EhsaZp1hTFA737R7VLZHCFkMVarkD2pyec1wuSsTWEhBWKxyi1BvA8euhGRFjWJNqSEeEk6Dw` |
+| 2026-10-08 00:05:34 | e2e | Core bridge post_epoch 4 (root b6e783636f15d143...) | 5000 | `5ZSyTZk91ABntGCdb3AAaHb5JZkSDgP2DW8nR6QH7agAntJsMsWKe5BHpuy3N8QX3YSukCtE3pAQj7VM1nbqQPyi` |
+| 2026-10-08 00:05:36 | e2e | claim epoch 4 agent:BFPxdave7NVSXztGEZA5iZ7FiBDKRsuZmS9wZn2J1WBV:compute 101676865 | 5000 | `5HCSwQMP5phtVy3CoviVHizzfFnLuZkwJFfE8DfBrBiZeb9VrkgVYW4Qxdo7QFkUdg2GSh1Z3oeWkR2Shy3bTSY9` |
+| 2026-10-08 00:05:45 | e2e | claim epoch 4 agent:DEHFFWt2uzVGn43nzU1EvEyo17G1x74gvn3C6usU43hj:wallet 8458317 | 5000 | `3CrtcqgeeR72W5FF3QjEGwPkngnPqpsp8BWQ4Sc5WgVUwMisoVTh7ANYfWT2fcb5b68PMKqLqLhTKJXvPqvBUZef` |
+| 2026-10-08 00:05:53 | e2e | claim epoch 4 agent:FRx89QoUEavL1mVMcroDH4QYUhdTbA66EthkX7uZrGSD:wallet 8458316 | 5000 | `3A5FGqBhJuyc21uvQhVD85cfxbxxuQUFUoMUo89bi8iGU5m5sUFkJEU54Dj7kB9yKnjU2APuMttdWVtHQPwjDYLd` |
