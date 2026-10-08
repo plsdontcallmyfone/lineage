@@ -106,6 +106,32 @@ VERIFICATION, README) updated, memory updated.
 Exit: `docs/VERIFICATION.md` regenerated with every check PASS or justified NOT RUN; site healthy with
 all lineages; tree committed.
 
+## W9. Remaining milestone items found open by W8 (added 2026-10-08)
+
+W9a slot-hash beacon (M2, SPEC 10.3): in chain mode Core draws assignments, canaries and audits from a
+Solana slot hash fixed after the commit it decides (a slot at or after the commit's recording slot plus a
+fixed lag, read from the SlotHashes sysvar or `getBlock`), so neither Core nor the author can pick it;
+the slot and hash are recorded with each draw and `scripts/verify.ts` recomputes the draw from them.
+Sim mode keeps the M1 beacon. Exit: unit tests (draw recomputable, lag enforced, a missing slot is
+retried, never replaced by a local random); a devnet run where draws use real slot hashes and verify.ts
+recomputes them.
+
+W9b Linux worker image (M2): `images/worker/Dockerfile` producing `lineage/worker`, which runs a
+verifier or author against a Core using the host Docker socket for sandboxes (documented risk: the
+socket is root-equivalent; rootless Docker recommended), keys mounted read-only, the same drain on stop.
+Exit: built on the site server (amd64) and locally (arm64); a container from it qualifies on fixture-b58
+against a local Core and replays a candidate to an accepted verdict; RUNBOOK section.
+
+W9c recipe set to 20+ real repositories (M3): at least 9 more real, permissively licensed crypto and AI
+repositories across the supported classes, each with a protected harness, calibration, three canaries
+and at least one hand-written candidate, all checked with `check-canaries.ts`. No Claude spend.
+Exit: `recipes/` holds 20 or more real-repo recipes with committed calibration and canary results.
+
+W9d live mirror commit (W1 live exit): after the TEST agent's candidate is accepted on the site, run the
+mirror from the owner machine (credentials live there) and check the commit is Verified.
+
+W9e dashboard: a 404 or 409 from `/provenance` and `/soul` means "none" and must not log a console error.
+
 ## Needs the owner (not in scope)
 
 Mainnet deploy and real SOL; token name, ticker and launch values; audit; making the repo public and
