@@ -12,6 +12,13 @@
 //                                                 devnet: add this agent key's signature to a register
 //                                                 transaction the owner's wallet signed on the Wallet page,
 //                                                 after checking it, and send it (the key never leaves here)
+//   rotate   --agent <id> --new-key <file> --core <url> --key <file>
+//                                                 M1 (simulated Core): rotate the agent's signing key; the
+//                                                 current key signs the request, the new key signs the statement
+//   rotate   --agent <id> --new-key <file> --owner <file> [--rpc <url>]
+//                                                 devnet: registry rotate_agent_key signed by the owner and the new key
+//                                                 (a key held elsewhere co-signs a Wallet page transaction with cosign)
+//   revoke   --agent <id> --owner <file> [--rpc <url>]   devnet: registry revoke_agent_key (owner)
 //   run      --core <url> --key <file> [options]  replay assignments and author candidates
 //   calibrate --core <url> --key <file> --recipe-id <id> --snapshot-id <id> [--runs 5]
 // run options:
@@ -24,9 +31,10 @@
 //   --max-candidates <n>    stop authoring after n submissions
 //   --interval <ms>         poll interval (default 2000)
 //   --once                  one tick then exit
+//   --agent <id>            the agent id when --key is a rotated signing key (identity plan I1)
 import { chmodSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname } from "node:path";
-import { generateAgentKey, keyFromSolanaJson, type AgentKey } from "@lineage/protocol";
+import { generateAgentKey, keyFromSolanaJson, signStatement, type AgentKey } from "@lineage/protocol";
 import { AnthropicProposer } from "./proposers/anthropic.ts";
 import { loadScript, ScriptedProposer } from "./proposers/scripted.ts";
 import type { Proposer } from "./proposers/types.ts";
@@ -53,6 +61,13 @@ function need(v: string | undefined, flag: string): string {
 
 export function loadKey(path: string): AgentKey {
   return keyFromSolanaJson(JSON.parse(readFileSync(path, "utf8")));
+}
+
+/** --key, speaking for --agent when given (a rotated agent keeps its id; identity plan I1). */
+function signingKey(a: ReturnType<typeof args>): AgentKey & { agent?: string } {
+  const key = loadKey(need(a.one("key"), "--key"));
+  const agent = a.one("agent");
+  return agent && agent !== key.id ? { ...key, agent } : key;
 }
 
 /** Reads ~/.config/lineage/model.env (KEY=VALUE lines) into the environment if present. */
@@ -113,6 +128,38 @@ async function main() {
         dryRun: !!a.one("dry-run") });
       return;
     }
+    case "rotate":
+    case "revoke": {
+      const agent = need(a.one("agent"), "--agent");
+      const ownerFile = a.one("owner");
+      if (cmd === "revoke" || ownerFile) {
+        // devnet: the registry is the source of truth; Core follows on its next chain sync
+        const chain = await import("../../chain/src/index.ts");
+        const { assertDevnet } = await import("../../chain/src/browser/client.ts");
+        const rpc = chain.Rpc.http(a.one("rpc") ?? process.env.LINEAGE_DEVNET_RPC ?? "https://api.devnet.solana.com", "confirmed");
+        await assertDevnet(rpc);
+        const owner = chain.loadKeypair(need(ownerFile, "--owner"));
+        const ix =
+          cmd === "revoke"
+            ? chain.registry.revokeAgentKey({ owner: owner.id, agent })
+            : chain.registry.rotateAgentKey({ owner: owner.id, agent, newKey: loadKey(need(a.one("new-key"), "--new-key")).id });
+        const signers = cmd === "revoke" ? [] : [loadKey(a.one("new-key")!)];
+        const r = await chain.sendAndConfirm(rpc, owner, [ix], { signers, log: (m) => console.error(`  ${m}`) });
+        const rec = await new chain.ChainReader(rpc).agent(agent);
+        console.log(JSON.stringify({ signature: r.signature, agent, signing_key: rec?.signingKey ?? null, key_seq: rec?.keySeq ?? null }, null, 2));
+        return;
+      }
+      const cur = signingKey(a);
+      const next = loadKey(need(a.one("new-key"), "--new-key"));
+      const c = new CoreClient(a.one("core") ?? "http://127.0.0.1:9660", { ...cur, agent });
+      const keys = await c.get(`/v1/agents/${agent}/keys`);
+      if (keys.status >= 300) throw new Error(`keys: ${keys.status} ${JSON.stringify(keys.body)}`);
+      const seq = Number(keys.body.seq) + 1;
+      const r = await c.post(`/v1/agents/${agent}/keys/rotate`, { new_key: next.id, new_key_sig: signStatement(next, "rotate", { agent, new_key: next.id, seq }) });
+      console.log(JSON.stringify(r.body, null, 2));
+      if (r.status >= 300) process.exit(1);
+      return;
+    }
     case "status": {
       const key = loadKey(need(a.one("key"), "--key"));
       const r = await new CoreClient(a.one("core") ?? "http://127.0.0.1:9660", null).get(`/v1/agents/${key.id}`);
@@ -146,7 +193,7 @@ async function main() {
       const capsFile = a.one("capabilities");
       const w = new Worker({
         core: a.one("core") ?? "http://127.0.0.1:9660",
-        key: loadKey(a.one("key")!),
+        key: signingKey(a),
         capabilities: capsFile ? JSON.parse(readFileSync(capsFile, "utf8")) : undefined,
         proposer,
         lineages: a.all("lineage"),
@@ -167,7 +214,7 @@ async function main() {
       return;
     }
     default:
-      console.error("usage: lineage-worker keygen|doctor|register|bond|status|run|calibrate (see header of src/main.ts)");
+      console.error("usage: lineage-worker keygen|doctor|register|bond|status|run|calibrate|cosign|rotate|revoke (see header of src/main.ts)");
       process.exit(2);
   }
 }

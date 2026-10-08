@@ -139,6 +139,21 @@ describe("wire", () => {
     const w3 = placeSignature(unsignedWire(m3), payer.id, node.signBytes(payer, m3.bytes));
     expect(() => inspectForCosign(w3, agent.id)).toThrow(/other than register/);
   });
+
+  test("worker co-sign of rotate_agent_key: only by the new key it names, after the owner signed", () => {
+    const newKey = generateAgentKey();
+    const rot = [node.registry.rotateAgentKey({ owner: payer.id, agent: agent.id, newKey: newKey.id })];
+    const msg = node.compileMessage(payer.id, rot, DEVNET_GENESIS);
+    expect(() => inspectForCosign(unsignedWire(msg), newKey.id)).toThrow(/has not signed/);
+    const partial = placeSignature(unsignedWire(msg), payer.id, node.signBytes(payer, msg.bytes));
+    // the old agent key is not a signer of a rotation; the new key is
+    expect(() => inspectForCosign(partial, agent.id)).toThrow(/not a signer/);
+    const plan = inspectForCosign(partial, newKey.id);
+    expect(plan.summary.join(" ")).toContain(`to new key ${newKey.id}`);
+    const full = cosign(partial, newKey);
+    expect(missingSigners(full)).toEqual([]);
+    expect(Buffer.from(full).toString("hex")).toBe(Buffer.from(node.buildTransaction(payer, rot, DEVNET_GENESIS, [newKey]).wire).toString("hex"));
+  });
 });
 
 describe("simulation read-out", () => {
