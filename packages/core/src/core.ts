@@ -55,6 +55,8 @@ import { Collab } from "./collab.ts";
 import { Hardening } from "./hardening.ts";
 import { Identity } from "./identity.ts";
 import { Records } from "./records.ts";
+import { Series } from "./series.ts";
+import { Messages } from "./messages.ts";
 import { Hosted } from "./hosted.ts";
 import { Live } from "./live.ts";
 import { openDb } from "./store.ts";
@@ -127,10 +129,11 @@ export type CandidateReason =
   | "stale"
   | "unresolved_dispute"
   | "canary"
-  | "expired";
+  | "expired"
+  | "dependency_failed";
 
-export type CandidateStatus = "committed" | "queued" | "replaying" | "disputed" | "accepted" | "rejected" | "expired";
-const OPEN_STATUSES = ["committed", "queued", "replaying", "disputed"];
+export type CandidateStatus = "committed" | "waiting" | "queued" | "replaying" | "disputed" | "accepted" | "rejected" | "expired";
+const OPEN_STATUSES = ["committed", "waiting", "queued", "replaying", "disputed"];
 const TERMINAL = new Set(["accepted", "rejected", "expired"]);
 
 export interface CoreEvent {
@@ -376,6 +379,10 @@ export class Core {
   readonly identity: Identity;
   /** Reputation records and contribution leaves per epoch (src/records.ts). */
   readonly records: Records;
+  /** Stacked series: depends_on, waiting, release onto the tip (src/series.ts, SPEC 12.4). */
+  readonly series: Series;
+  /** Signed agent messages and lineage boards (src/messages.ts, SPEC 12.3). */
+  readonly messages: Messages;
   /** Hosted runtime: provenance records and usage record reads (src/hosted.ts). */
   readonly hosted: Hosted;
   /** Key that signs credentials (chain mode: the Core authority, set by ChainBridge); null: unsigned. */
@@ -401,6 +408,8 @@ export class Core {
     this.live = new Live(this, opts.trees ?? null);
     this.hardening = new Hardening(this);
     this.collab = new Collab(this);
+    this.series = new Series(this);
+    this.messages = new Messages(this);
     this.chainMode = !!opts.chainMode;
     this.identity = new Identity(this);
     this.records = new Records(this);
@@ -1071,7 +1080,9 @@ export class Core {
     const commit_id = H("cand-commit", author, commitment);
     if (this.db.query("SELECT 1 FROM candidates WHERE commit_id = ?").get(commit_id)) throw conflict("duplicate_commit", "commitment already used");
     // a team candidate: every member signed this commitment and split (SPEC 12.2)
-    const team = this.collab.checkTeam(author, { lineage_id: l.lineage_id, parent_gen_id: parent.gen_id, commitment, kind, target }, body.team);
+    // a stacked candidate (SPEC 12.4): depends on a pending candidate, held until that one is final
+    const dep = this.series.parse(l.lineage_id, body.depends_on);
+    const team = this.collab.checkTeam(author, { lineage_id: l.lineage_id, parent_gen_id: parent.gen_id, commitment, kind, target, depends_on: dep?.dep.commit_id ?? null }, body.team);
     const now = this.now();
     const deadline = now + this.cfg.reveal_window_s * 1000;
     this.db
@@ -1082,6 +1093,7 @@ export class Core {
       .run(commit_id, l.lineage_id, parent.gen_id, parent.gen_id, author, kind, JSON.stringify(target), claimed, commitment, now, deadline, opts.canary ? 1 : 0, opts.canary ?? null, this.currentEpoch().n);
     // the author's open intents on this target now point at it, privately until it is final (SPEC 12.1)
     if (team) this.collab.storeTeam(commit_id, team);
+    if (dep) this.series.committed(commit_id, author, dep, team);
     this.collab.onCommit(team ? team.members.map((m) => m.agent) : [author], l.lineage_id, kind, target, commit_id);
     // no author: who committed an open candidate stays private until it is final (SPEC 10.7)
     this.emit("candidate.committed", { commit_id, lineage_id: l.lineage_id, parent_gen_id: parent.gen_id, kind, target, claimed_effect: claimed });
@@ -1101,6 +1113,7 @@ export class Core {
       this.expire(c);
       throw conflict("expired", "reveal window closed");
     }
+    this.series.beforeReveal(c.commit_id);
     if (!isObj(body) || typeof body.patch !== "string" || typeof body.salt !== "string") throw bad("bad_body", "{ patch, salt } expected");
     const salt = body.salt;
     let canonical: string | null = null;
@@ -1162,6 +1175,8 @@ export class Core {
       this.finalizeCandidate(fresh, "rejected", "duplicate", `same change as earlier-committed candidate ${twin.candidate_id ?? twin.commit_id}`, null);
       return this.candidateView(c.commit_id, author);
     }
+    // held while the candidate it builds on is open (or a canary held for parity, SPEC 12.4)
+    if (this.series.holdAtReveal(fresh)) return this.candidateView(c.commit_id, author);
     this.db.query("UPDATE candidates SET status = 'queued', want_replays = ? WHERE commit_id = ?").run(this.cfg.quorum, c.commit_id);
     this.emit("candidate.queued", { candidate_id: cid, stage: 0 });
     this.fillWants();
@@ -1314,6 +1329,7 @@ export class Core {
     if (author.operator) exOps.add(author.operator);
     // every team member, their operators and their owners' other agents (SPEC 12.2)
     this.collab.extendExclusion(c, exAgents, exOps);
+    this.series.extendExclusion(c, exAgents, exOps);
     for (const r of existing) {
       const op = this.agentRow(r.replayer)?.operator;
       if (op) exOps.add(op);
@@ -1356,6 +1372,7 @@ export class Core {
     const exAgents = new Set([c.author, ...original.filter((r) => r.kind !== "reference").map((r) => r.replayer), ...existing.map((r) => r.replayer)]);
     const exOps = new Set<string>(author.operator ? [author.operator] : []);
     this.collab.extendExclusion(c, exAgents, exOps);
+    this.series.extendExclusion(c, exAgents, exOps);
     const l = this.lineageRow(c.lineage_id)!;
     if (a.want_reference && this.referenceAgents(exAgents, l).length === 0) {
       this.db.query("UPDATE audits SET want_reference = 0, want_replays = want_replays + 1 WHERE audit_id = ?").run(a.audit_id);
@@ -1717,6 +1734,7 @@ export class Core {
     if (j.outcome === "rejected") {
       let reason: CandidateReason = j.reason!;
       if (c.stage > 0 && reason === "apply_conflict") reason = "stale_conflict";
+      reason = this.series.rejectReason(c, reason);
       this.finalizeCandidate(c, "rejected", reason, j.detail ?? null, j);
       return;
     }
@@ -2020,6 +2038,8 @@ export class Core {
       for (const g of touched) this.progress(g);
       this.expireQualifications();
       this.hardening.tick();
+      this.series.tick();
+      this.messages.tick();
       this.matureUnbonds();
       this.fillWants();
       let ep = this.currentEpoch();
@@ -2420,7 +2440,7 @@ export class Core {
   private shadowRevealed(id: string): boolean {
     const c = this.db.query<{ epoch: number }, [string]>("SELECT epoch FROM candidates WHERE author = ? AND is_canary = 1 LIMIT 1").get(id);
     // only once none of its canaries is still open (SPEC 10.7)
-    const open = this.db.query("SELECT 1 FROM candidates WHERE author = ? AND is_canary = 1 AND status IN ('committed','queued','replaying','disputed') LIMIT 1").get(id);
+    const open = this.db.query("SELECT 1 FROM candidates WHERE author = ? AND is_canary = 1 AND status IN ('committed','waiting','queued','replaying','disputed') LIMIT 1").get(id);
     return !!c && !open && this.epochRow(c.epoch)?.status === "closed";
   }
 
@@ -2478,6 +2498,7 @@ export class Core {
       verdict: terminal && c.verdict ? JSON.parse(c.verdict) : null,
       canary: this.candidateRevealedAsCanary(c) ? { canary_id: c.canary_id } : null,
       team: blind ? null : this.collab.teamView(c.commit_id),
+      series: this.series.view(c, viewer),
       // replayer identities and results stay hidden until the candidate is final, so nobody can
       // copy, bribe or coordinate with another replayer of the same candidate
       replays: replays.map((r) => this.replayPublic(r, terminal || r.replayer === viewer)),
