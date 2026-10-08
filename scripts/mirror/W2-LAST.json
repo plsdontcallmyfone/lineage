@@ -1,0 +1,202 @@
+{
+  "at": "2026-10-08T17:26:53.433Z",
+  "core": "http://127.0.0.1:9662",
+  "passed": 14,
+  "total": 14,
+  "checks": [
+    {
+      "check": "three test repositories exist under the maintainer pool account",
+      "ok": true,
+      "detail": "https://github.com/ds56vmr2/lineage-optin-test, https://github.com/ds56vmr2/lineage-noopt-test, https://github.com/ds56vmr2/lineage-aiban-test"
+    },
+    {
+      "check": "one accepted generation per test lineage (real patch, synthetic signed replays)",
+      "ok": true,
+      "detail": "{\"lineage-optin-test\":\"69d4af95677060cefdd1b444ec37f6d2fb361da46b4a7a78ef9df8d3e4e9ea0d\",\"lineage-noopt-test\":\"7f9529480b6e497b52efc7629f5c9d24dd38a0ed722176599b62d4c6077eca91\",\"lineage-aiban-test\":\"5a6bdd6795d8f3634257abcfd02a68abfba697f70a1529d12275835509a4a098\"}"
+    },
+    {
+      "check": "mirror: every generation is one signed commit on the agent's fork",
+      "ok": true,
+      "detail": "owunqwxs/lineage-optin-test@a97cc2efd27c, owunqwxs/lineage-noopt-test@d20264f673f9, owunqwxs/lineage-aiban-test@86bf2fc21f03"
+    },
+    {
+      "check": "mirror: GitHub reports every commit Verified",
+      "ok": true,
+      "detail": "valid https://github.com/owunqwxs/lineage-optin-test/commit/a97cc2efd27cc13a01aa357bfd1d02c71ac6d5a9, valid https://github.com/owunqwxs/lineage-noopt-test/commit/d20264f673f99df44dc1f328f2ed3be8ebc46ab5, valid https://github.com/owunqwxs/lineage-aiban-test/commit/86bf2fc21f03f4ae28b31f0e5560e1fbc1f64568"
+    },
+    {
+      "check": "mirror: deleting the branch and rerunning rebuilds it identically",
+      "ok": true,
+      "detail": "lineage/lineage-optin-test-d598b3f5: a97cc2efd27cc13a01aa357bfd1d02c71ac6d5a9 -> deleted -> a97cc2efd27cc13a01aa357bfd1d02c71ac6d5a9 (new branch)"
+    },
+    {
+      "check": "mirror: a further cycle pushes nothing (idempotent)",
+      "ok": true,
+      "detail": "owunqwxs unchanged"
+    },
+    {
+      "check": "Core reads each repository's policy from GitHub",
+      "ok": true,
+      "detail": "{\"lineage-optin-test\":\"opted_in\",\"lineage-noopt-test\":\"not_opted_in\",\"lineage-aiban-test\":\"ai_banned\"}"
+    },
+    {
+      "check": "the opt-in repository received exactly one real PR from the agent account",
+      "ok": true,
+      "detail": "https://github.com/ds56vmr2/lineage-optin-test/pull/1 by owunqwxs"
+    },
+    {
+      "check": "the repository without opt-in received no PR",
+      "ok": true,
+      "detail": "PR bot reason: not_opted_in"
+    },
+    {
+      "check": "the repository with an AI-ban policy received no PR",
+      "ok": true,
+      "detail": "PR bot reason: ai_banned"
+    },
+    {
+      "check": "a second PR cycle opens nothing more",
+      "ok": true,
+      "detail": "pr_exists, not_opted_in, ai_banned"
+    },
+    {
+      "check": "merge detected by hunk matching in an upstream commit",
+      "ok": true,
+      "detail": "upstream a97cc2efd27cc13a01aa357bfd1d02c71ac6d5a9, credited [{\"agent\":\"6C8N2z5LwktukWEP6g8sUnf9ky1L9rxyngBLbdomUzHc\",\"units\":2}]"
+    },
+    {
+      "check": "Core records the PR as merged",
+      "ok": true,
+      "detail": "{\"gen_id\":\"69d4af95677060cefdd1b444ec37f6d2fb361da46b4a7a78ef9df8d3e4e9ea0d\",\"number\":1,\"url\":\"https://github.com/ds56vmr2/lineage-optin-test/pull/1\",\"state\":\"merged\",\"head\":\"owunqwxs:lineage/pr-69d4af956770\",\"opened_by\":\"owunqwxs\",\"opened_at\":1791480405088}"
+    },
+    {
+      "check": "upstream_bonus credited to the TEST agent in a closed epoch",
+      "ok": true,
+      "detail": "epoch 0 closed, upstream units 2 (upstream_bonus 2), leaf units 44.28321775089799, amount 161691745"
+    }
+  ],
+  "evidence": {
+    "repos": [
+      {
+        "url": "https://github.com/ds56vmr2/lineage-optin-test",
+        "head": "32493f78f3f7d45735f307561bc53a055fe47203",
+        "expect": "opted_in"
+      },
+      {
+        "url": "https://github.com/ds56vmr2/lineage-noopt-test",
+        "head": "57e5e43e93513bc1bb347b6be5a0fb147b6e0a28",
+        "expect": "not_opted_in"
+      },
+      {
+        "url": "https://github.com/ds56vmr2/lineage-aiban-test",
+        "head": "fa2bf65142bdb6c0d64d53dcc4ef7f73c1390a57",
+        "expect": "ai_banned"
+      }
+    ],
+    "lineages": {
+      "lineage-optin-test": "d598b3f5bf88c45ec770c286f021ee59b1c03c5a5d3271d0952b43972a8c62f4",
+      "lineage-noopt-test": "bad65f603b8df58b75132c242057a6b91e7f7533220e68e6d895f1ae45045dae",
+      "lineage-aiban-test": "dd1ef497de2be65d4908624da54f653282ea4711250788696b9f840b286ce3ce"
+    },
+    "generations": {
+      "lineage-optin-test": "69d4af95677060cefdd1b444ec37f6d2fb361da46b4a7a78ef9df8d3e4e9ea0d",
+      "lineage-noopt-test": "7f9529480b6e497b52efc7629f5c9d24dd38a0ed722176599b62d4c6077eca91",
+      "lineage-aiban-test": "5a6bdd6795d8f3634257abcfd02a68abfba697f70a1529d12275835509a4a098"
+    },
+    "mirror": [
+      {
+        "repo": "d598b3f5bf88c45ec770c286f021ee59b1c03c5a5d3271d0952b43972a8c62f4",
+        "gen_id": "69d4af95677060cefdd1b444ec37f6d2fb361da46b4a7a78ef9df8d3e4e9ea0d",
+        "fork": "owunqwxs/lineage-optin-test",
+        "branch": "lineage/lineage-optin-test-d598b3f5",
+        "sha": "a97cc2efd27cc13a01aa357bfd1d02c71ac6d5a9",
+        "verified": true,
+        "reason": "valid",
+        "url": "https://github.com/owunqwxs/lineage-optin-test/commit/a97cc2efd27cc13a01aa357bfd1d02c71ac6d5a9"
+      },
+      {
+        "repo": "bad65f603b8df58b75132c242057a6b91e7f7533220e68e6d895f1ae45045dae",
+        "gen_id": "7f9529480b6e497b52efc7629f5c9d24dd38a0ed722176599b62d4c6077eca91",
+        "fork": "owunqwxs/lineage-noopt-test",
+        "branch": "lineage/lineage-noopt-test-bad65f60",
+        "sha": "d20264f673f99df44dc1f328f2ed3be8ebc46ab5",
+        "verified": true,
+        "reason": "valid",
+        "url": "https://github.com/owunqwxs/lineage-noopt-test/commit/d20264f673f99df44dc1f328f2ed3be8ebc46ab5"
+      },
+      {
+        "repo": "dd1ef497de2be65d4908624da54f653282ea4711250788696b9f840b286ce3ce",
+        "gen_id": "5a6bdd6795d8f3634257abcfd02a68abfba697f70a1529d12275835509a4a098",
+        "fork": "owunqwxs/lineage-aiban-test",
+        "branch": "lineage/lineage-aiban-test-dd1ef497",
+        "sha": "86bf2fc21f03f4ae28b31f0e5560e1fbc1f64568",
+        "verified": true,
+        "reason": "valid",
+        "url": "https://github.com/owunqwxs/lineage-aiban-test/commit/86bf2fc21f03f4ae28b31f0e5560e1fbc1f64568"
+      }
+    ],
+    "pr_cycle": [
+      {
+        "gen_id": "69d4af95677060cefdd1b444ec37f6d2fb361da46b4a7a78ef9df8d3e4e9ea0d",
+        "repo": "https://github.com/ds56vmr2/lineage-optin-test",
+        "action": "opened",
+        "reason": null,
+        "url": "https://github.com/ds56vmr2/lineage-optin-test/pull/1"
+      },
+      {
+        "gen_id": "7f9529480b6e497b52efc7629f5c9d24dd38a0ed722176599b62d4c6077eca91",
+        "repo": "https://github.com/ds56vmr2/lineage-noopt-test",
+        "action": "none",
+        "reason": "not_opted_in",
+        "url": null
+      },
+      {
+        "gen_id": "5a6bdd6795d8f3634257abcfd02a68abfba697f70a1529d12275835509a4a098",
+        "repo": "https://github.com/ds56vmr2/lineage-aiban-test",
+        "action": "none",
+        "reason": "ai_banned",
+        "url": null
+      }
+    ],
+    "policy": {
+      "lineage-optin-test": "opted_in",
+      "lineage-noopt-test": "not_opted_in",
+      "lineage-aiban-test": "ai_banned"
+    },
+    "pr": {
+      "url": "https://github.com/ds56vmr2/lineage-optin-test/pull/1",
+      "number": 1,
+      "user": "owunqwxs",
+      "head": "owunqwxs:lineage/pr-69d4af956770",
+      "state": "open"
+    },
+    "merge": {
+      "gen_id": "69d4af95677060cefdd1b444ec37f6d2fb361da46b4a7a78ef9df8d3e4e9ea0d",
+      "repo_id": "6aff6a5bedce2ddde6618cc5787e86921bf1b4a450937d915138eedac298890e",
+      "upstream_sha": "a97cc2efd27cc13a01aa357bfd1d02c71ac6d5a9",
+      "detected_at": 1791480413429,
+      "epoch": 0,
+      "bonus": 2,
+      "credited": [
+        {
+          "agent": "6C8N2z5LwktukWEP6g8sUnf9ky1L9rxyngBLbdomUzHc",
+          "units": 2
+        }
+      ]
+    },
+    "epoch": {
+      "n": 0,
+      "status": "closed",
+      "root": "9783118ad722de98aefbe3ac37c986876f3aeb5ec623a05c12bc30205f0ff71d",
+      "author_leaf": {
+        "agent": "6C8N2z5LwktukWEP6g8sUnf9ky1L9rxyngBLbdomUzHc",
+        "dest": "agent:6C8N2z5LwktukWEP6g8sUnf9ky1L9rxyngBLbdomUzHc:compute",
+        "amount": "161691745",
+        "units": 44.28321775089799,
+        "rebate": "0",
+        "leaf": "94755cb5e854342342a8779f9b7671cf6b2a57de85011eb8bdd2ee775c8e46f8"
+      },
+      "upstream_units": 2
+    }
+  }
+}
