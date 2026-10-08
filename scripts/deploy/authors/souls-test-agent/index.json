@@ -1,0 +1,9 @@
+{
+  "base_count_merge": {
+    "kind": "perf",
+    "target": "train_ir",
+    "expect": "accepted",
+    "note": "The Claude-authored minbpe candidate of 2026-10-07 (recipes/minbpe/claude-attempts/2026-10-07T19-53-31-690Z.diff, accepted in its replay there): get_stats counts pairs with collections' C helper _count_elements, merge jumps between occurrences of pair[0] with list.index and copies runs as slices. Submitted on the site under the souls lane's TEST agent 6C8N2z5L... (pool account owunqwxs) so a generation by an agent with a pool account exists for the GitHub mirror (FINISH W1).",
+    "guard": "ok"
+  }
+}

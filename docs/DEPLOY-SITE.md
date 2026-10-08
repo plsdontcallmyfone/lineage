@@ -19,7 +19,7 @@ scripts/deploy/deploy.sh <server IPv4>
 | Optional: a domain whose A record points at the server (`DOMAIN=lineage.example`) | served next to `<ip-with-dashes>.sslip.io`, which needs no DNS |
 | Optional: `ACME_EMAIL=<email>` | Let's Encrypt expiry notices |
 | On this machine: `~/.config/lineage/devnet/core-authority.json`, `faucet.json`, `~/.config/lineage/devnet-deployer.json` | already here (devnet wiring lane); see "Secrets" |
-| Optional: `WITH_AUTHOR=1` | the minbpe TEST agent authors its prepared candidates on the site (real verdicts, no model spend) |
+| Optional: `WITH_AUTHOR=1` and `AUTHORS=<recipes>` (default `minbpe`) | one TEST author agent per listed recipe submits its prepared candidates (`recipes/<name>/candidates`) on the site (real verdicts, no model spend); launch the agents first with `bun scripts/deploy/site-authors.ts --recipes <same list>` (see "The full lineage set") |
 | Optional, later: `WITH_RUNTIME=1` and `~/.config/lineage/model.env` | the hosted runtime authors with Claude; spends real money up to `global_max_usd` (TEST value 5 USD in `/var/lib/lineage/site/runtime.json`, set by the owner before enabling) |
 
 No DigitalOcean token is needed: create the droplet in the console (Ubuntu 24.04, add the public half
@@ -69,7 +69,7 @@ of `~/.ssh/lineage_site`), then run deploy.sh with its address.
 | `lineage-bootstrap` | one shot per deploy: lineages for the served recipes | | 1 GB |
 | `lineage-reference` | reference runner (calibrations, reference replays, audits) | | 1 GB |
 | `lineage-verifier@v1`, `@v2` | two honest verifiers, bonded on devnet | | 1 GB each |
-| `lineage-author` (optional) | minbpe TEST agent, scripted candidates | | 1 GB |
+| `lineage-author@<name>` (optional, one per name in `AUTHORS`) | TEST author agent of recipe `<name>`, scripted candidates | | 1 GB each |
 | `lineage-runtime` (optional, disabled) | hosted runtime (`packages/runtime`) | | 1 GB |
 
 The worker caps cover the Bun processes. Sandboxes run under dockerd with each recipe's own limits
@@ -102,7 +102,7 @@ server are owned by `lineage`, mode 600, in mode 700 directories.
 | `~lineage/.config/lineage/site/verifier-{ref,v1,v2}.json` | made on the server | `site-keys.ts` | reference runner and verifiers |
 | `~lineage/.config/lineage/devnet/core-authority.json` | `CjNUnQ3v2FRQJiMr16CfaFWCdzJ3nqq1VvY2zAgsc4j9` | copied from this machine | Core's chain bridge: `post_epoch`, `slash`, `migrate_agent` |
 | `~lineage/.config/lineage/devnet/faucet.json` | `FX4UjRbmbLHJ6K6RTvYcV4bFA9Yai2qntnPNex31GiH6` | copied | the Wallet page's tLINE faucet |
-| `~lineage/.config/lineage/devnet/agent-minbpe.json` (WITH_AUTHOR=1) | `BFPxdave7NVSXztGEZA5iZ7FiBDKRsuZmS9wZn2J1WBV` | copied | `lineage-author` |
+| `~lineage/.config/lineage/devnet/agent-<name>.json` (WITH_AUTHOR=1, each name in `AUTHORS`) | minbpe `BFPxdave7NVSXztGEZA5iZ7FiBDKRsuZmS9wZn2J1WBV`; the others as `site-authors.ts` printed them | copied | `lineage-author@<name>` |
 | `~lineage/.config/lineage/devnet/runtime-authority.json` (WITH_RUNTIME=1) | `DCmdy5MoAfnN6fn3nVW27db62ZwtjoksqSqdjAc8VPk4` | copied | `lineage-runtime` (Core only gets the public key file `runtime-authority.pub`) |
 | `~lineage/.config/lineage/model.env` (WITH_RUNTIME=1) | | copied | `lineage-runtime` |
 | `~lineage/.config/lineage/rpc.env` (only if it exists here) | | copied | the dashboard's RPC proxy, status |
@@ -120,6 +120,77 @@ whichever posts epoch N first wins and the other's epoch N is refused. Stop the 
 (`deploy.sh <host> stop`) for the duration of a devnet e2e run, or run the site read only (delete
 `devnet/core-authority.json` on the server; its Core then only reads). The same holds for the runtime
 authority: run `lineage-runtime` on the site or on this machine, not both.
+
+## The full lineage set (FINISH W3)
+
+Deployed 2026-10-08 with:
+
+```sh
+bun scripts/deploy/site-authors.ts --recipes base58-py,base58-rs,bitcoin-base58,geth-rlp,lc-text-splitters,ollama-tokenizer,solana-config,zig-clap
+LINEAGE_RECIPES=fixture-b58,base58-py,minbpe,base58-rs,bitcoin-base58,zig-clap,fixture-zigsize,fixture-cu-tally,solana-config,lc-text-splitters,ollama-tokenizer,geth-rlp \
+WITH_AUTHOR=1 AUTHORS=minbpe,base58-py,base58-rs,bitcoin-base58,zig-clap,solana-config,lc-text-splitters,ollama-tokenizer,geth-rlp \
+  scripts/deploy/deploy.sh 157.245.71.188 code
+```
+
+Keep geth-rlp last in `LINEAGE_RECIPES`: lineage-bootstrap calibrates in list order, and geth-rlp alone takes
+about 53 minutes there. The 12 non-CUDA recipes are the ones above. The CUDA recipes need a GPU server
+(docs/GPU-SESSION.md).
+
+**amd64 changes, made in the deployed release only** (`arch-recipes.ts`; the committed arm64 recipes are unchanged):
+
+| Recipe | Change | Why |
+|---|---|---|
+| geth-rlp, ollama-tokenizer | `scripts/deploy/amd64/<name>/lineage/*/entry_amd64.s` copied into the overlay | the harness links `-E=main.lineageEntry`; only an arm64 entry stub was committed |
+| bitcoin-base58 | `scripts/deploy/amd64/bitcoin-base58/lineage/Makefile` (adds `-DDISABLE_OPTIMIZED_SHA256`) | on x86_64, sha256.cpp references SSE4/AVX2/SHA-NI units the build does not compile (link error); keeps the portable transform, as arm64 uses |
+| zig-clap, fixture-zigsize | `scripts/deploy/amd64/<name>.replace.json`: `-target aarch64-linux-musl` becomes `x86_64-linux-musl` | the aarch64 test and bench binaries cannot run on amd64 |
+
+`images/go` and `images/solana` gained an amd64 branch (Go tarball and platform-tools-linux-x86_64 sha256s);
+their arm64 path is unchanged.
+
+**Images built on the server** (`docker build`, measured): cpp 63 s (162 MB), go 78 s (169 MB), zig 176 s
+(158 MB), solana 583 s (607 MB); rust and python were already there. Every later deploy reused all six by
+their `lineage.build-hash` label.
+
+**Calibration on the server** (5 runs, by lineage-bootstrap; the full records are in
+`recipes/<name>/calibration-amd64.json`, read back from Core):
+
+| Recipe | Bootstrap wall | Median evaluation | Largest metric cv |
+|---|---|---|---|
+| base58-rs | 13 s | 9 s | 0 |
+| bitcoin-base58 | 52 s | 48 s | 0 |
+| zig-clap | 36 s | 44 s | 2.2e-7 |
+| fixture-zigsize | 5 min 0 s | 309 s | 0 |
+| fixture-cu-tally | 11 s | 10 s | 0 |
+| solana-config | 2 min 2 s | 201 s | 0 |
+| lc-text-splitters | 6 min 43 s | 138 s | 1.0e-5 |
+| ollama-tokenizer | 8 min 9 s | 239 s | 4.8e-6 |
+| geth-rlp | 53 min 2 s | 1348 s | 4.5e-5 |
+
+**geth-rlp cadence.** One geth-rlp evaluation takes about 22.5 minutes on this 4 vCPU droplet (1348 s
+median), 75% of the recipe's `wall_s` of 1800. Each candidate needs that once per replayer, and each
+verifier's qualification needs it once. The three workers can run in parallel, but three 2-CPU sandboxes
+oversubscribe the 4 vCPUs. So a geth-rlp verdict takes about half an hour, and its 4 prepared candidates
+keep the workers busy for roughly two hours. That is acceptable for a TEST site. A busier site should
+move to the 8 vCPU plan before wall_s becomes the limit.
+
+**Authors.** Chain mode only lets a launched agent author on lineages of the repository named at launch
+(`target_repo`), so each repository has its own TEST author agent. `site-authors.ts` launched them on
+devnet, funded each compute vault above Core's wake threshold (2,500 tLINE, TEST), and called
+refresh_awake. Every transaction is in `scripts/deploy/SITE-DEVNET.md`. fixture-zigsize has candidates but
+no author: its repository `fixture:zigsize` is not an https URL, so `launch_agent` refuses it.
+
+**Server resources** (measured after the deploy, 2026-10-08): 4 vCPU, 7,941 MiB RAM and no swap (the
+4 GiB swapfile is only made under 8 GiB RAM). Docker images 10.0 GB, build cache 7.5 GB, disk 140 GB free of
+154 GB, 6,694 MiB available with everything running. Everything fits. The limit is CPU time (see geth-rlp
+cadence), not disk or memory.
+
+**Deploy hazards found** (fixed in the kit):
+- Verifiers and authors used to be ordered after lineage-bootstrap. While a long calibration ran they
+  were held back, Core assigned them a replay they never committed, and the abandon strikes suspended both
+  verifiers for the epoch. They now start without waiting; only lineage-reference still waits.
+- Never submit a candidate by hand while the verifiers are stopped or draining.
+- A deploy restarts the scripted authors from the top of their lists, so a candidate still queued at that
+  moment is submitted again and rejected as `duplicate`. This is harmless.
 
 ## Day to day
 

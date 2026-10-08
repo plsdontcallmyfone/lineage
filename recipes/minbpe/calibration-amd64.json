@@ -1,0 +1,50 @@
+{
+  "_note": "amd64 calibration of the public devnet site (157.245.71.188, DigitalOcean 4 vCPU / 8 GB), as Core recorded it; read from GET /v1/lineages/:id on 2026-10-08. The committed calibration.json is the arm64 (Apple M4) one.",
+  "site": "https://157-245-71-188.sslip.io",
+  "lineage_id": "20651398b7fa2afe214ef9e5b518fc28b043f29003bd379c8f09a104288353a4",
+  "recipe_id": "46a0d78dd189aa96c32d8f87402f2288b375c0934af32d036350034feb51f648",
+  "calibration": {
+    "known_failures": [],
+    "median_eval_seconds": 115,
+    "metrics": {
+      "encode_ir": {
+        "base_value": 1906452677,
+        "cv": 2.225410962623797e-9,
+        "enabled": true
+      },
+      "train_ir": {
+        "base_value": 4103192876,
+        "cv": 1.0339851952695009e-9,
+        "enabled": true
+      }
+    },
+    "quarantined": [],
+    "recipe_id": "46a0d78dd189aa96c32d8f87402f2288b375c0934af32d036350034feb51f648",
+    "runs": 5,
+    "seed": "d148d79a8a87cd458d4ab79dd214f3c131fd048194211dc7463717b7ac5c1761",
+    "snapshot_id": "6e9c5e4a3b5f198b49b682ba2ec91ab1b1f70c7f91a299c002141751f9d3bc67",
+    "stable": [
+      "tests.test_tokenizer::test_encode_decode_identity[-BasicTokenizer]",
+      "tests.test_tokenizer::test_encode_decode_identity[-GPT4Tokenizer]",
+      "tests.test_tokenizer::test_encode_decode_identity[-RegexTokenizer]",
+      "tests.test_tokenizer::test_encode_decode_identity[?-BasicTokenizer]",
+      "tests.test_tokenizer::test_encode_decode_identity[?-GPT4Tokenizer]",
+      "tests.test_tokenizer::test_encode_decode_identity[?-RegexTokenizer]",
+      "tests.test_tokenizer::test_encode_decode_identity[FILE:taylorswift.txt-BasicTokenizer]",
+      "tests.test_tokenizer::test_encode_decode_identity[FILE:taylorswift.txt-GPT4Tokenizer]",
+      "tests.test_tokenizer::test_encode_decode_identity[FILE:taylorswift.txt-RegexTokenizer]",
+      "tests.test_tokenizer::test_encode_decode_identity[hello world!!!? (\\uc548\\ub155\\ud558\\uc138\\uc694!) lol123 \\U0001f609-BasicTokenizer]",
+      "tests.test_tokenizer::test_encode_decode_identity[hello world!!!? (\\uc548\\ub155\\ud558\\uc138\\uc694!) lol123 \\U0001f609-GPT4Tokenizer]",
+      "tests.test_tokenizer::test_encode_decode_identity[hello world!!!? (\\uc548\\ub155\\ud558\\uc138\\uc694!) lol123 \\U0001f609-RegexTokenizer]",
+      "tests.test_tokenizer::test_gpt4_tiktoken_equality[?]",
+      "tests.test_tokenizer::test_gpt4_tiktoken_equality[FILE:taylorswift.txt]",
+      "tests.test_tokenizer::test_gpt4_tiktoken_equality[]",
+      "tests.test_tokenizer::test_gpt4_tiktoken_equality[hello world!!!? (\\uc548\\ub155\\ud558\\uc138\\uc694!) lol123 \\U0001f609]",
+      "tests.test_tokenizer::test_gpt4_tiktoken_equality_special_tokens",
+      "tests.test_tokenizer::test_save_load[special_tokens0]",
+      "tests.test_tokenizer::test_save_load[special_tokens1]",
+      "tests.test_tokenizer::test_wikipedia_example[BasicTokenizer]",
+      "tests.test_tokenizer::test_wikipedia_example[RegexTokenizer]"
+    ]
+  }
+}

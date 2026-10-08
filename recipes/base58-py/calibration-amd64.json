@@ -1,0 +1,82 @@
+{
+  "_note": "amd64 calibration of the public devnet site (157.245.71.188, DigitalOcean 4 vCPU / 8 GB), as Core recorded it; read from GET /v1/lineages/:id on 2026-10-08. The committed calibration.json is the arm64 (Apple M4) one.",
+  "site": "https://157-245-71-188.sslip.io",
+  "lineage_id": "c12109ca42d955b0bbc7e2a3ffbf5ebacd3141687da6b1ed6d814327ef9af1d8",
+  "recipe_id": "d8d4daba3946c56307132a81812f18ecaf374566247e49903b99c89ceca3a41f",
+  "calibration": {
+    "known_failures": [],
+    "median_eval_seconds": 19,
+    "metrics": {
+      "check_ir": {
+        "base_value": 299111271,
+        "cv": 1.4184155190592215e-8,
+        "enabled": true
+      },
+      "decode_ir": {
+        "base_value": 583057220,
+        "cv": 0,
+        "enabled": true
+      },
+      "encode_ir": {
+        "base_value": 478799544,
+        "cv": 0,
+        "enabled": true
+      }
+    },
+    "quarantined": [],
+    "recipe_id": "d8d4daba3946c56307132a81812f18ecaf374566247e49903b99c89ceca3a41f",
+    "runs": 5,
+    "seed": "b804f358916d73521d258bdb17dbe8cc1d7cf16109d3fad6f4f439f22615d584",
+    "snapshot_id": "2e5c491bfe0837c344b9888446df44deac79eca3bd605b77153d77b40a4d322c",
+    "stable": [
+      "test_base45::test_autofix_check_str",
+      "test_base45::test_autofix_decode_bytes",
+      "test_base45::test_autofix_not_applicable_check_str",
+      "test_base45::test_check_failure",
+      "test_base45::test_check_str",
+      "test_base45::test_empty_decode",
+      "test_base45::test_empty_decode_bytes",
+      "test_base45::test_encode_empty",
+      "test_base45::test_invalid_input",
+      "test_base45::test_leadingz_decode",
+      "test_base45::test_leadingz_decode_bytes",
+      "test_base45::test_leadingz_encode",
+      "test_base45::test_simple_decode",
+      "test_base45::test_simple_decode_bytes",
+      "test_base45::test_simple_encode",
+      "test_base58::test_autofix_check_str",
+      "test_base58::test_autofix_decode_bytes",
+      "test_base58::test_autofix_not_applicable_check_str",
+      "test_base58::test_check_failure",
+      "test_base58::test_check_identity[0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ $%*+-./:]",
+      "test_base58::test_check_identity[123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz]",
+      "test_base58::test_check_identity[rpshnaf39wBUDNEGHJKLM4PQRST7VWXYZ2bcdeCg65jkm8oFqi1tuvAxyz]",
+      "test_base58::test_check_str",
+      "test_base58::test_decode_random[1024]",
+      "test_base58::test_decode_random[256]",
+      "test_base58::test_decode_random[32]",
+      "test_base58::test_decode_random[8]",
+      "test_base58::test_empty_decode",
+      "test_base58::test_empty_decode_bytes",
+      "test_base58::test_encode_empty",
+      "test_base58::test_encode_random[1024]",
+      "test_base58::test_encode_random[256]",
+      "test_base58::test_encode_random[32]",
+      "test_base58::test_encode_random[8]",
+      "test_base58::test_invalid_input",
+      "test_base58::test_large_integer",
+      "test_base58::test_leadingz_decode",
+      "test_base58::test_leadingz_decode_bytes",
+      "test_base58::test_leadingz_encode",
+      "test_base58::test_round_trips[0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ $%*+-./:]",
+      "test_base58::test_round_trips[123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz]",
+      "test_base58::test_round_trips[rpshnaf39wBUDNEGHJKLM4PQRST7VWXYZ2bcdeCg65jkm8oFqi1tuvAxyz]",
+      "test_base58::test_simple_decode",
+      "test_base58::test_simple_decode_bytes",
+      "test_base58::test_simple_encode",
+      "test_base58::test_simple_integers[0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ $%*+-./:]",
+      "test_base58::test_simple_integers[123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz]",
+      "test_base58::test_simple_integers[rpshnaf39wBUDNEGHJKLM4PQRST7VWXYZ2bcdeCg65jkm8oFqi1tuvAxyz]"
+    ]
+  }
+}
