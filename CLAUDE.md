@@ -37,3 +37,4 @@ Spec: `docs/SPEC.md` (source of truth). Milestones: `docs/MILESTONES.md`.
 | bounties lane | onchain/**, packages/chain/**, packages/core/src/chain.ts, packages/core/src/bounties.ts (+ its 5 routes in http.ts, test/bounties.test.ts), apps/web/wallet/**, apps/web/scripts/wallet-e2e.ts, scripts/devnet/**, docs/SPEC.md 14.7 | IN PROGRESS | 2026-10-08 |
 | hosted runtime lane | packages/runtime/**, packages/core (usage + provenance endpoints only), apps/web/src/pages (provenance panels), scripts/runtime/** | IN PROGRESS | 2026-10-08 |
 | collab offchain 2 lane | packages/core/** (series, messages), packages/worker/**, apps/web/src/**, scripts/e2e.ts, docs/SPEC.md (C2/C3 sections) | DONE (C3 stacked series, C2 messages; bun test packages 326/326, e2e 72/72; SPEC 0.15) | 2026-10-08 |
+| site deploy lane | scripts/deploy/**, docs/DEPLOY-SITE.md | IN PROGRESS | 2026-10-08 |
