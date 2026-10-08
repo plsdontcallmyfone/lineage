@@ -263,7 +263,8 @@ async function submit(lin: Lin, author: A, patch: string, kind: string, target: 
   return v;
 }
 
-type Mode = "honest" | "copy-claim" | "accept-all";
+// canary-only: honest on real candidates, copies the claim on canaries (caught by a canary alone)
+type Mode = "honest" | "copy-claim" | "accept-all" | "canary-only";
 const modes = new Map<string, Mode>();
 
 function behave(a: A, asg: any): ReplayResult {
@@ -513,7 +514,11 @@ async function main() {
       "canary",
     );
   }
-  modes.set(v[3]!.id, "accept-all");
+  modes.set(v[3]!.id, "canary-only");
+  // like scripts/e2e.ts: the dishonest verifier bonds heavily so the bond-weighted draw picks it for
+  // nearly every canary, and the seed reliably shows a canary slash
+  await ok(admin.c.post("/v1/admin/faucet", { agent: v[3]!.id, amount: (cfg.min_bond * 10n).toString() }), "faucet lazy");
+  await ok(v[3]!.c.post(`/v1/agents/${v[3]!.id}/bond`, { amount: (cfg.min_bond * 10n).toString() }), "bond lazy");
   // 10. noisy wall-clock metric with a bootstrap CI
   await submit(fxLin, a1, synthPatch("src/lib.rs", "pub fn encode(input: &[u8]) -> String {", "let mut digits: Vec<u8> = Vec::new();", "let mut digits: Vec<u8> = Vec::with_capacity(n * 138 / 100 + 1);"), "perf", "encode_ns", { kind: "noisy", metric: "encode_ns", ratio: 0.88, spread: 0.02 }, 0.12);
   await drive();
@@ -524,12 +529,21 @@ async function main() {
     const evs = await ok<any[]>(anon.get("/v1/events/log?limit=5000"));
     return new Set(evs.filter((e) => e.type === "agent.slashed" && e.data.agent === v[3]!.id).map((e) => e.data.reason as string));
   };
-  for (let i = 0; i < 10; i++) {
-    const got = await slashReasons();
-    if (got.has("canary") && [...got].some((r) => r !== "canary")) break;
+  // Phase A: the lazy verifier lies only on canaries, so no dispute strike suspends it before a canary
+  // draws it. Canaries are single use, so each round adds a fresh one (a perf regression dressed as
+  // a win) before its trigger candidate.
+  const trigger = async (i: number) => {
     await submit(fxLin, i % 2 ? a2 : a1, synthPatch("src/lib.rs", `fn hot_loop_${i}() {`, `let mut acc = 0u64;`, `let mut acc: u64 = ${i};`, 80 + i * 7), "perf", "decode_ir", { kind: "regress", metric: "decode_ir", ratio: 1.012 }, 0.09);
     await settle(fxLin.id);
+  };
+  for (let i = 0; i < 12 && !(await slashReasons()).has("canary"); i++) {
+    const patch = synthPatch("src/lib.rs", `fn encode_block_${i}() {`, `let mut carry = 0u32;`, `let mut carry = std::hint::black_box(${i}u32);`, 200 + i * 9);
+    await ok(admin.c.post("/v1/admin/canaries", { lineage_id: fxLin.id, kind: "perf", target: "encode_ir", patch, expected_reason: "no_improvement" }), "canary");
+    await trigger(i);
   }
+  // Phase B: it now copies the author's claim on real candidates too, until a dispute catches it
+  modes.set(v[3]!.id, "copy-claim");
+  for (let i = 12; i < 24 && ![...(await slashReasons())].some((r) => r !== "canary"); i++) await trigger(i);
   {
     const got = await slashReasons();
     console.log(`lazy verifier slashed for: ${[...got].join(", ") || "nothing"}`);
