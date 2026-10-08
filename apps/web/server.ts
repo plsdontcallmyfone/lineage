@@ -292,6 +292,19 @@ const server = Bun.serve({
     const url = new URL(req.url);
     const p = url.pathname;
     if (p.startsWith("/chain/")) return chainRoute(req, p);
+    // the one write the dashboard forwards: bounty terms, which Core keeps only if their sha256
+    // equals the digest committed onchain (so the web server needs no authority of its own)
+    const terms = /^\/api\/bounties\/([A-Za-z0-9]{32,44})\/terms$/.exec(p);
+    if (terms && req.method === "PUT") {
+      const body = await req.arrayBuffer();
+      if (body.byteLength > 16 * 1024) return new Response("terms too large", { status: 413 });
+      try {
+        const res = await fetch(`${CORE}/v1/bounties/${terms[1]}/terms`, { method: "PUT", headers: { "content-type": req.headers.get("content-type") ?? "application/json" }, body });
+        return new Response(res.body, { status: res.status, headers: { "content-type": res.headers.get("content-type") ?? "application/json", "cache-control": "no-store" } });
+      } catch (e) {
+        return Response.json({ error: "core_unreachable", message: (e as Error).message }, { status: 502 });
+      }
+    }
     if (req.method !== "GET" && req.method !== "HEAD") return new Response("read-only", { status: 405 });
     if (p.startsWith("/api/")) {
       const rest = p.slice(5);

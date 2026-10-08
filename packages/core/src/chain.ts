@@ -1,3 +1,4 @@
+import { redactRpc } from "../../chain/src/endpoint.ts";
 import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { homedir } from "node:os";
@@ -326,7 +327,8 @@ export class ChainBridge {
     for (const a of agents) kinds[a.kind]++;
     this.snapshot = {
       mode: this.settings.mode,
-      rpc_url: this.settings.rpc_url,
+      // never the configured URL itself: a keyed RPC URL carries an API key
+      rpc_url: redactRpc(this.settings.rpc_url),
       read_at: this.core.now(),
       slot: vaults.slot,
       registry_program: this.settings.registry_program,
