@@ -16,7 +16,7 @@
 // Usage: bun apps/web/scripts/wallet-e2e.ts --pw <dir containing node_modules/playwright-core> [--port 9665] [--core-port 9666] [--shots <dir>]
 import { devnetRpcUrl } from "../../../packages/chain/src/endpoint.ts";
 import { spawn, spawnSync } from "bun";
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { canonicalJson, H, merkleProof, merkleRoot } from "@lineage/protocol";
@@ -140,8 +140,10 @@ for (let i = 0; i < 60; i++) {
 const BASE = `http://127.0.0.1:${PORT}`;
 
 // ---------------------------------------------------------------- browser with a mock Wallet Standard wallet
+// the headless shell this script was written against; elsewhere playwright finds the browser that
+// `bunx playwright-core install chromium-headless-shell` installed for its own version
 const exe = join(homedir(), "Library/Caches/ms-playwright/chromium_headless_shell-1243/chrome-headless-shell-mac-arm64/chrome-headless-shell");
-const browser = await chromium.launch({ executablePath: exe });
+const browser = await chromium.launch(existsSync(exe) ? { executablePath: exe } : {});
 const ctx = await browser.newContext({ viewport: { width: 1360, height: 1000 }, colorScheme: "light" });
 const signRequests: string[] = [];
 await ctx.exposeFunction("__lineageMockSign", (b64: string) => {
