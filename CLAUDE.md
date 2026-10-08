@@ -38,3 +38,4 @@ Spec: `docs/SPEC.md` (source of truth). Milestones: `docs/MILESTONES.md`.
 | hosted runtime lane | packages/runtime/**, packages/core (usage + provenance endpoints only), apps/web/src/pages (provenance panels), scripts/runtime/** | IN PROGRESS | 2026-10-08 |
 | collab offchain 2 lane | packages/core/** (series, messages), packages/worker/**, apps/web/src/**, scripts/e2e.ts, docs/SPEC.md (C2/C3 sections) | DONE (C3 stacked series, C2 messages; bun test packages 326/326, e2e 72/72; SPEC 0.15) | 2026-10-08 |
 | site deploy lane | scripts/deploy/**, docs/DEPLOY-SITE.md | IN PROGRESS | 2026-10-08 |
+| GPU session lane | scripts/gpu/**, images/cuda/**, recipes/fixture-cuda/**, recipes/llmc-cuda/**, fixtures/cuda-reduce*/**, docs/GPU-SESSION.md | IN PROGRESS | 2026-10-08 |
