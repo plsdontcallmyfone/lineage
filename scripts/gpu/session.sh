@@ -38,7 +38,7 @@ step() { # step <name> <command...>
   uname -a
   nvidia-smi
   nvidia-smi --query-gpu=index,name,compute_cap,driver_version,memory.total,clocks.max.sm --format=csv
-  grep -i RestrictProfiling /proc/driver/nvidia/params || true
+  grep -i -E 'RestrictProfiling|RmProfilingAdminOnly' /proc/driver/nvidia/params || true
   docker version --format 'docker {{.Server.Version}}'
   nvidia-ctk --version 2>/dev/null | head -n1
   bun --version

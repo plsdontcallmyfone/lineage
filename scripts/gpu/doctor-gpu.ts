@@ -27,9 +27,9 @@ report.host_gpus = gpus;
 check("nvidia-smi sees a GPU on the host", gpus.length > 0, gpus.map((g) => `${g.index}: ${g.name} sm ${g.sm} driver ${g.driver}`).join("; "));
 const drv = gpus[0]?.driver.split(".").map(Number) ?? [0];
 check("driver >= 560.35 (CUDA 12.6.3 toolkit in the image)", drv[0]! > 560 || (drv[0] === 560 && (drv[1] ?? 0) >= 35), gpus[0]?.driver ?? "none");
-const params = Bun.spawnSync(["sh", "-c", "grep -i RestrictProfiling /proc/driver/nvidia/params || true"]).stdout.toString().trim();
+const params = Bun.spawnSync(["sh", "-c", "grep -i -E \"RestrictProfiling|RmProfilingAdminOnly\" /proc/driver/nvidia/params || true"]).stdout.toString().trim();
 report.profiling_param = params;
-check("host opens GPU performance counters to non-admin users", /RestrictProfilingToAdminUsers:\s*0/.test(params), params || "param not found (R610+ capability nodes may still grant access; the ncu run below decides)");
+check("host opens GPU performance counters to non-admin users", /(RestrictProfilingToAdminUsers|RmProfilingAdminOnly):\s*0/.test(params), params || "param not found (R610+ capability nodes may still grant access; the ncu run below decides)");
 
 const dir = mkdtempSync(join(tmpdir(), "lineage-doctor-gpu-"));
 chmodSync(dir, 0o777);

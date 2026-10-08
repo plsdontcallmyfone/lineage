@@ -48,8 +48,11 @@ nvidia-ctk --version | head -n1
 
 say "4. GPU performance counters for non-admin users (needed by ncu as uid 10001 in the sandbox)"
 CONF=/etc/modprobe.d/lineage-profiling.conf
-CUR=$(grep -i RestrictProfilingToAdminUsers /proc/driver/nvidia/params 2>/dev/null | awk '{print $2}' || true)
-echo "current RestrictProfilingToAdminUsers: ${CUR:-unknown}"
+# /proc/driver/nvidia/params names it RmProfilingAdminOnly (seen on driver 580); older docs say
+# RestrictProfilingToAdminUsers. The modprobe option is NVreg_RestrictProfilingToAdminUsers either way.
+profparam() { grep -i -E 'RestrictProfilingToAdminUsers|RmProfilingAdminOnly' /proc/driver/nvidia/params 2>/dev/null | head -n1 | awk '{print $2}' || true; }
+CUR=$(profparam)
+echo "current RestrictProfilingToAdminUsers (RmProfilingAdminOnly): ${CUR:-unknown}"
 if [[ "$CUR" != "0" ]]; then
   echo 'options nvidia NVreg_RestrictProfilingToAdminUsers=0' > "$CONF"
   update-initramfs -u -k all >/dev/null 2>&1 || true
@@ -57,7 +60,7 @@ if [[ "$CUR" != "0" ]]; then
   systemctl stop nvidia-persistenced 2>/dev/null || true
   if modprobe -r nvidia_uvm nvidia_drm nvidia_modeset nvidia 2>/dev/null && modprobe nvidia && modprobe nvidia_uvm; then
     systemctl start nvidia-persistenced 2>/dev/null || true
-    CUR=$(grep -i RestrictProfilingToAdminUsers /proc/driver/nvidia/params | awk '{print $2}')
+    CUR=$(profparam)
     echo "reloaded the driver: RestrictProfilingToAdminUsers=$CUR"
   else
     systemctl start nvidia-persistenced 2>/dev/null || true
