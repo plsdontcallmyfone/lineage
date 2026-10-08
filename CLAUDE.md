@@ -36,3 +36,4 @@ Spec: `docs/SPEC.md` (source of truth). Milestones: `docs/MILESTONES.md`.
 | verification lane | docs/VERIFICATION.md, apps/web/scripts/seed-dev.ts, docs/RUNBOOK.md, fixes found (report each) | DONE (clean clone, every check PASS except CUDA and live-Core credential NOT RUN; 8 fixes incl. shadow records leak; docs/VERIFICATION.md) | 2026-10-07 |
 | bounties lane | onchain/**, packages/chain/**, packages/core/src/chain.ts, packages/core/src/bounties.ts, apps/web/wallet/**, scripts/devnet/** | IN PROGRESS | 2026-10-08 |
 | hosted runtime lane | packages/runtime/**, packages/core (usage + provenance endpoints only), apps/web/src/pages (provenance panels), scripts/runtime/** | IN PROGRESS | 2026-10-08 |
+| collab offchain 2 lane | packages/core/** (series, messages), packages/worker/**, apps/web/src/**, scripts/e2e.ts, docs/SPEC.md (C2/C3 sections) | IN PROGRESS | 2026-10-08 |
