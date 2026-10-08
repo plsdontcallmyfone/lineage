@@ -23,6 +23,23 @@ export interface AnthropicProposerOptions {
 /** claude-opus-5-5 published rates (USD per million tokens); cache writes at 1.25x input. */
 const OPUS_55 = { input: 4, output: 20, cache_read: 0.2, cache_write: 5 };
 
+/**
+ * Published rates (USD per million tokens, cache writes at 1.25x input) of the models a response can
+ * come from: the requested model, or another one when the server-side refusal fallback answered.
+ * A model missing here is priced at the highest rate listed, so spend is never under-counted.
+ */
+export const MODEL_PRICES: Record<string, { input: number; output: number; cache_read: number; cache_write: number }> = {
+  "claude-opus-5-5": OPUS_55,
+  "claude-opus-5": { input: 5, output: 25, cache_read: 0.5, cache_write: 6.25 },
+  "claude-opus-4-8": { input: 5, output: 25, cache_read: 0.5, cache_write: 6.25 },
+  "claude-sonnet-5-5": { input: 2, output: 10, cache_read: 0.2, cache_write: 2.5 },
+  "claude-fable-5-1": { input: 10, output: 50, cache_read: 1, cache_write: 12.5 },
+};
+const PRICE_CEILING = MODEL_PRICES["claude-fable-5-1"]!;
+
+/** Version of this proposer's harness (prompt and tool set); provenance records it (identity plan I5). */
+export const PROPOSER_VERSION = "anthropic/1";
+
 const SKIP_DIRS = new Set([".git", "target", "node_modules", "__pycache__", ".venv", "dist", "build"]);
 const MAX_READ = 60_000;
 
@@ -128,6 +145,9 @@ Rules that matter:
 - Be efficient with tool calls; your compute is metered.`;
 }
 
+/** sha256 over the tool set and the prompt template: which harness produced a candidate (provenance, identity plan I5). */
+export const HARNESS_DIGEST = sha256Hex(new TextEncoder().encode(JSON.stringify({ v: PROPOSER_VERSION, tools: TOOLS, prompt: systemPrompt.toString() })));
+
 export class AnthropicProposer implements Proposer {
   readonly name = "anthropic";
   private client: Anthropic;
@@ -147,18 +167,30 @@ export class AnthropicProposer implements Proposer {
 
   async propose(ctx: ProposeContext): Promise<Proposal | null> {
     const o = this.opts;
+    // a hosted runtime may lower the cap for one attempt (its per-agent and global budgets)
+    const cap = Math.min(o.max_usd, ctx.maxUsd ?? Infinity);
     const usage = { input_tokens: 0, output_tokens: 0, cache_read_tokens: 0, cache_write_tokens: 0, usd: 0 };
-    const addUsage = (u: Anthropic.Beta.BetaUsage) => {
-      usage.input_tokens += u.input_tokens;
-      usage.output_tokens += u.output_tokens;
-      usage.cache_read_tokens += u.cache_read_input_tokens ?? 0;
-      usage.cache_write_tokens += u.cache_creation_input_tokens ?? 0;
-      usage.usd =
-        (usage.input_tokens * o.prices.input +
-          usage.output_tokens * o.prices.output +
-          usage.cache_read_tokens * o.prices.cache_read +
-          usage.cache_write_tokens * o.prices.cache_write) /
-        1e6;
+    let lastTurnUsd = 0;
+    const addUsage = (u: Anthropic.Beta.BetaUsage, model: string) => {
+      const p = model === o.model ? o.prices : (MODEL_PRICES[model] ?? PRICE_CEILING);
+      const d = {
+        input_tokens: u.input_tokens,
+        output_tokens: u.output_tokens,
+        cache_read_tokens: u.cache_read_input_tokens ?? 0,
+        cache_write_tokens: u.cache_creation_input_tokens ?? 0,
+      };
+      const usd = (d.input_tokens * p.input + d.output_tokens * p.output + d.cache_read_tokens * p.cache_read + d.cache_write_tokens * p.cache_write) / 1e6;
+      usage.input_tokens += d.input_tokens;
+      usage.output_tokens += d.output_tokens;
+      usage.cache_read_tokens += d.cache_read_tokens;
+      usage.cache_write_tokens += d.cache_write_tokens;
+      usage.usd += usd;
+      lastTurnUsd = usd;
+      try {
+        ctx.meter?.model({ ...d, usd, model });
+      } catch {
+        /* metering must not change what the model sees */
+      }
     };
     const tools = new ToolBox(ctx, o.max_evals);
     const held = (ctx.intents ?? []).filter((i) => i.agent !== ctx.self && i.status === "open");
@@ -172,8 +204,9 @@ export class AnthropicProposer implements Proposer {
     ];
 
     for (let turn = 0; turn < o.max_turns; turn++) {
-      if (usage.usd >= o.max_usd) {
-        ctx.log(`anthropic: spend cap reached (${usage.usd.toFixed(4)} USD)`);
+      // projected: the next turn is assumed to cost what the last one did, so the cap holds before a turn, not after it
+      if (usage.usd >= cap || usage.usd + lastTurnUsd > cap) {
+        ctx.log(`anthropic: spend cap reached (${usage.usd.toFixed(4)} USD spent, cap ${cap.toFixed(4)})`);
         return null;
       }
       const stream = this.client.beta.messages.stream({
@@ -196,7 +229,7 @@ export class AnthropicProposer implements Proposer {
         ctx.log("anthropic: unparseable tool input, re-issuing turn");
         continue;
       }
-      addUsage(message.usage);
+      addUsage(message.usage, message.model ?? o.model);
       if (message.stop_reason === "refusal") {
         ctx.log(`anthropic: refusal (${message.stop_details?.category ?? "no category"})`);
         return null;
@@ -373,7 +406,13 @@ export class ToolBox {
     this.evals++;
     this.ctx.log(`anthropic: evaluating (${this.evals}/${this.maxEvals})`);
     this.report({ kind: "evaluate", target: target.slice(0, 200) || kind });
-    const { result } = await evaluate({ loaded: this.ctx.loaded, deps: this.ctx.deps, parentPatches: this.ctx.parentPatches, candidatePatch: diff, seed: this.ctx.seed, onPhase: this.ctx.onPhase, enabledMetrics: Object.entries(this.ctx.calibration.metrics).filter(([, m]) => m.enabled).map(([n]) => n) });
+    const { result, transcript } = await evaluate({ loaded: this.ctx.loaded, deps: this.ctx.deps, parentPatches: this.ctx.parentPatches, candidatePatch: diff, seed: this.ctx.seed, onPhase: this.ctx.onPhase, enabledMetrics: Object.entries(this.ctx.calibration.metrics).filter(([, m]) => m.enabled).map(([n]) => n) });
+    // sandbox time as the transcript records it (hosted runtime metering, SPEC 13.7)
+    try {
+      this.ctx.meter?.sandbox(transcript.steps.reduce((a, st) => a + st.duration_ms, 0) / 1000);
+    } catch {
+      /* ignore */
+    }
     const cand: CandidateView = { candidate_id: "self", author: "self", kind, target: kind === "fix" ? [target] : target };
     const j = judge(this.ctx.loaded.recipe, this.ctx.calibration, cand, [{ replay_id: "self", replayer: "self-check", seed: this.ctx.seed, result }], {
       quorum: 1,

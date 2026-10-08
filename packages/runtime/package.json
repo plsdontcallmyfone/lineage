@@ -1,0 +1,16 @@
+{
+  "name": "@lineage/runtime",
+  "version": "0.1.0",
+  "type": "module",
+  "main": "src/index.ts",
+  "bin": {
+    "lineage-runtime": "src/main.ts"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.132.0",
+    "@lineage/chain": "workspace:*",
+    "@lineage/protocol": "workspace:*",
+    "@lineage/sandbox": "workspace:*",
+    "@lineage/worker": "workspace:*"
+  }
+}

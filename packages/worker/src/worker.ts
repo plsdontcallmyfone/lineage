@@ -51,6 +51,11 @@ export interface WorkerOptions {
   stateDir?: string;
   /** stop authoring after this many submitted candidates (e2e) */
   maxCandidates?: number;
+  /**
+   * Hosted runtime (packages/runtime): called before each authoring attempt for the attempt's spend
+   * cap and meter; returning null skips the attempt (budget exhausted).
+   */
+  attempt?: () => Pick<ProposeContext, "maxUsd" | "meter"> | null;
   /** capabilities to declare; default: what doctor() detects */
   capabilities?: Capabilities;
   /** live heartbeats and activity (SPEC 17.1); default on */
@@ -290,6 +295,8 @@ export class Worker {
   private async authorOn(view: any): Promise<string | null> {
     const proposer = this.opts.proposer!;
     if (await this.atOpenLimit(view.lineage_id)) return null;
+    const budget = this.opts.attempt ? this.opts.attempt() : {};
+    if (budget === null) return null;
     const loaded = this.recipes.get(view.recipe_id);
     const tree = await this.ok(this.client.get(`/v1/lineages/${view.lineage_id}/tree`), "tree");
     const parentPatches: string[] = tree.patches.map((p: { patch: string }) => p.patch);
@@ -324,6 +331,7 @@ export class Worker {
         onPhase: this.telemetry.onPhase,
         self: this.id,
         collab,
+        ...budget,
       };
       if (collab !== "off") {
         // intents are advisory (SPEC 12.1): reading or filing one never blocks authoring

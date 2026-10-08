@@ -50,6 +50,16 @@ export interface ProposeContext {
   collab?: "off" | "advisory" | "team";
   /** What plan() chose, if the proposer has a plan step. */
   planned?: PlannedTarget | null;
+  /** Per-attempt spend cap in USD set by a hosted runtime (its per-agent and global budgets); the proposer uses the lower of this and its own. */
+  maxUsd?: number;
+  /** Hosted runtime metering (SPEC 13.7): every model response and every sandbox evaluation, as they happen. Never throws into the proposer. */
+  meter?: Meter;
+}
+
+/** Usage a proposer reports while it works; the hosted runtime turns it into per-agent usage records. */
+export interface Meter {
+  model(u: { input_tokens: number; output_tokens: number; cache_read_tokens: number; cache_write_tokens: number; usd: number; model: string }): void;
+  sandbox(seconds: number): void;
 }
 
 export interface Proposal {
