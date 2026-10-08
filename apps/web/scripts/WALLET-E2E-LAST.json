@@ -1,8 +1,8 @@
 {
-  "at": "2026-10-08T02:08:35.533Z",
+  "at": "2026-10-08T02:42:31.100Z",
   "wallet": "8juHDv3a67114S8JTjCwUGQkrZqjkw9Mac5fneSBsQi2",
-  "worker_key": "5UernSMGSqbG1eLCLZ1eqDMY29cKL1WwqKDu9oaoi3vr",
-  "mint": "DsRt7x8W3tuhqN4Vc7XviZXAsStvu1qR39YJdRCfMMdu",
+  "worker_key": "EHDnWQ6ezp3kxVALEBykKKXsCCoRPNszrBR4P2D4jGsh",
+  "mint": "CjYcQgkSjU21YcXRU4crcmozgSwuuDi1Pht9pN2b7toC",
   "results": [
     {
       "check": "page states devnet only and the cluster was checked",
@@ -12,7 +12,7 @@
     {
       "check": "balances shown equal chain",
       "ok": true,
-      "detail": "ACCOUNT 8juH…sQi2 Lineage Test Wallet SOL 0.15 devnet, for fees and rent TLINE 382.864 TEST mint, Token-2022 vs 150000000 lamports, 382864000 tLINE base units"
+      "detail": "ACCOUNT 8juH…sQi2 Lineage Test Wallet SOL 0.133800119 devnet, for fees and rent TLINE 400 TEST mint, Token-2022 vs 133800119 lamports, 400000000 tLINE base units"
     },
     {
       "check": "repository validated against the GitHub API",
@@ -27,12 +27,12 @@
     {
       "check": "AgentLaunch read back: repo, identity app, self-hosted",
       "ok": true,
-      "detail": "DsRt7x8W3tuhqN4Vc7XviZXAsStvu1qR39YJdRCfMMdu"
+      "detail": "CjYcQgkSjU21YcXRU4crcmozgSwuuDi1Pht9pN2b7toC"
     },
     {
       "check": "token metadata: TEST name, class in the URI",
       "ok": true,
-      "detail": "{\"name\":\"TEST ui check 10080205\",\"symbol\":\"TUICHECK10\",\"uri\":\"https://lineage.invalid/devnet/agents/tuicheck10.json?class=python\"}"
+      "detail": "{\"name\":\"TEST ui check 10080240\",\"symbol\":\"TUICHECK10\",\"uri\":\"https://lineage.invalid/devnet/agents/tuicheck10.json?class=python\"}"
     },
     {
       "check": "registry Agent (launched) owned by the wallet",
@@ -57,7 +57,7 @@
     {
       "check": "worker CLI co-signed and sent register",
       "ok": true,
-      "detail": "  sent 4piZ2Qva3nWbomDgzVKbkRLgXkjuExwbAuRmf9PSi8e4MTvqLaVaaQpevKjcDkxAGtAHEtSHYFw7vB5sS8wCNVKF | registered: 4piZ2Qva3nWbomDgzVKbkRLgXkjuExwbAuRmf9PSi8e4MTvqLaVaaQpevKjcDkxAGtAHEtSHYFw7vB5sS8wCNVKF (slot 508660199) | https://explorer.solana.com/tx/4piZ2Qva3nWbomDgzVKbkRLgXkjuExwbAuRmf9PSi8e4MTvqLaVaaQpevKjcDkxAGtAHEtSHYFw7vB5sS8wCNVKF?cluster=devnet"
+      "detail": "  sent M7kbxk1xXX9qBopqnKXGmXSdE8TdCgixZsyzfDEY8MSgRu6rLP87AHmHVmUDK3Tpk7bqCzgnKSDo47meuxznYrM | registered: M7kbxk1xXX9qBopqnKXGmXSdE8TdCgixZsyzfDEY8MSgRu6rLP87AHmHVmUDK3Tpk7bqCzgnKSDo47meuxznYrM (slot 508668954) | https://explorer.solana.com/tx/M7kbxk1xXX9qBopqnKXGmXSdE8TdCgixZsyzfDEY8MSgRu6rLP87AHmHVmUDK3Tpk7bqCzgnKSDo47meuxznYrM?cluster=devnet"
     },
     {
       "check": "page logged the worker-sent register signature",
@@ -77,7 +77,7 @@
     {
       "check": "request_unbond recorded with its cooldown",
       "ok": true,
-      "detail": "ready at 1791425795"
+      "detail": "ready at 1791427870"
     },
     {
       "check": "identity tab reads the Agent v2 record: signing key is the agent key, owner is this wallet",
@@ -87,12 +87,12 @@
     {
       "check": "the new key co-signed and sent rotate_agent_key with the worker CLI",
       "ok": true,
-      "detail": "rotated: 36CdAAGkKTSvYV6rkfhf5pHPUbFt4Hrk1qtgNg18c2Ygoej5Bbdk46goZ95pJf9hAym1Vx1E91kcUH5g7uLNBfJG (slot 508660476) | https://explorer.solana.com/tx/36CdAAGkKTSvYV6rkfhf5pHPUbFt4Hrk1qtgNg18c2Ygoej5Bbdk46goZ95pJf9hAym1Vx1E91kcUH5g7uLNBfJG?cluster=devnet"
+      "detail": "rotated: 4tMmDRWn45dLT1UY9Ct1ZzVS867zsDjYTFr79QmR8igBfG9JutVT81M3vPzCjApso5Sh6bkGV7kXHx5DCcW2HHHs (slot 508669120) | https://explorer.solana.com/tx/4tMmDRWn45dLT1UY9Ct1ZzVS867zsDjYTFr79QmR8igBfG9JutVT81M3vPzCjApso5Sh6bkGV7kXHx5DCcW2HHHs?cluster=devnet"
     },
     {
       "check": "rotation read back: signing key is the new key, the agent id is unchanged",
       "ok": true,
-      "detail": "5cYhBfRJ9ffvMUQRQcjb8sSViGcYbKKGMMrKkZ3jYKab, key_seq 1"
+      "detail": "CAECPvrbSf7H9LmRgDb5WEKVu7huJDcBrmzuSoZUJq3V, key_seq 1"
     },
     {
       "check": "page logged the cosign-sent rotation",
@@ -112,12 +112,12 @@
     {
       "check": "accept_owner: owner changed and controller-since restarted",
       "ok": true,
-      "detail": "owner_since 1791425255"
+      "detail": "owner_since 1791427303"
     },
     {
       "check": "the page accepted the transfer back: this wallet owns the agent again",
       "ok": true,
-      "detail": "owner_since 1791425261"
+      "detail": "owner_since 1791427308"
     },
     {
       "check": "claim paid exactly the leaf to the owner's tLINE account, receipt on chain",
