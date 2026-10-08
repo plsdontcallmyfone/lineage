@@ -11,7 +11,7 @@
 //      the board view shows both notes with their transaction, the recipient's inbox holds the
 //      ciphertext and it opens with the recipient's key, the published key is the chain's; the
 //      dashboard's API proxy serves the same board.
-// Every signature is appended to onchain/DEVNET.md. Ports: Core 9662, dashboard 9663.
+// Every signature is appended to onchain/DEVNET.md. Ports: Core 9662, dashboard 9668.
 //
 // Usage: bun scripts/devnet/msg-e2e.ts [--init-only]
 import { spawn, type Subprocess } from "bun";
@@ -24,10 +24,10 @@ import { loadKeypair, msg, MSG_PROGRAM_ID, msgPdas, readMsgConfig, readMsgState,
 import { CoreClient } from "../../packages/core/src/client.ts";
 import { ChainMessenger, type ChainFee } from "../../packages/core/src/msgchain.ts";
 import { deriveEncryptionKey, open } from "../../packages/core/src/seal.ts";
-import { check, deployer, key, KEY_DIR, loadState, log, logTx, reader, ROOT, rpc, RPC_URL, send, sol } from "./lib.ts";
+import { check, deployer, key, KEY_DIR, LAMPORTS, loadState, log, logTx, reader, ROOT, rpc, RPC_URL, send, sol, topUp } from "./lib.ts";
 
 const CORE_PORT = 9662;
-const WEB_PORT = 9663;
+const WEB_PORT = 9668;
 const STEP = "msg";
 const TEST_CAPS = { windowS: 60, maxPerWindow: 20, maxPerDay: 500, maxInline: 568, maxBlob: 1 << 20 };
 const procs: Subprocess[] = [];
@@ -100,6 +100,8 @@ async function main() {
   const ref = key("verifier-ref");
   const refRec = await reader.agent(ref.id);
   pass("the reference verifier's signing key is held (it signs the calibration)", refRec?.signingKey === ref.id, ref.id);
+  // the runtime authority pays message fees; keep it above 0.15 SOL from the Lineage deployer
+  await topUp(STEP, dep, payer.id, LAMPORTS * 15n / 100n, "runtime authority (message fee payer)", LAMPORTS * 3n / 10n);
   const payerBefore = await rpc.getBalance(payer.id);
   log(`fee payer (runtime authority) ${payer.id} holds ${sol(payerBefore)} SOL`);
 
@@ -131,14 +133,21 @@ async function main() {
   await Ac.post("/v1/admin/recipes", { recipe: loaded.recipe, recipe_id: loaded.recipe_id });
   const snap = (await Ac.post("/v1/admin/snapshots", { repo: loaded.recipe.repo, commit: loaded.recipe.commit, deps_digest: deps.digest })).body;
   await Ac.post(`/v1/admin/agents/${ref.id}/reference`, { reference: true });
+  // the committed calibration's measurements, for this proof Core's snapshot (its seed field names another snapshot's run, so it is left out)
   const calib = { ...JSON.parse(readFileSync(join(ROOT, "recipes/minbpe/calibration.json"), "utf8")), snapshot_id: snap.snapshot_id };
+  delete calib.seed;
   const lin = await new CoreClient(CORE, ref).post("/v1/calibrations", { calibration: calib, sig: signMessage(ref, calibId(calib.recipe_id, calib.snapshot_id, calib)) });
   const L = lin.body.lineage_id as string;
-  pass("Core created the minbpe lineage from the committed calibration", lin.status < 300 && /^[0-9a-f]{64}$/.test(L), L);
+  pass("Core created the minbpe lineage from the committed calibration", lin.status < 300 && /^[0-9a-f]{64}$/.test(L), lin.status < 300 ? L : `${lin.status} ${JSON.stringify(lin.body).slice(0, 300)} (snapshot ${JSON.stringify(snap).slice(0, 200)})`);
 
   // 3. post through the runtime's code path
   const fees: ChainFee[] = [];
-  const messenger = (k: Signer, agent: string) => new ChainMessenger({ rpc, payer, key: k, agent, core: CORE, onFee: (f) => fees.push(f), log: (m) => log(`  ${agent.slice(0, 6)} ${m}`) });
+  // every message transaction is logged to onchain/DEVNET.md as it lands (the fee column is what the payer spent)
+  const onFee = (f: ChainFee) => {
+    fees.push(f);
+    logTx(STEP, `lineage_msg ${f.what} by ${f.agent} (fee payer ${payer.id})`, { signature: f.signature, slot: 0, fee: f.lamports, logs: [] } as SendResult);
+  };
+  const messenger = (k: Signer, agent: string) => new ChainMessenger({ rpc, payer, key: k, agent, core: CORE, onFee, log: (m) => log(`  ${agent.slice(0, 6)} ${m}`) });
   const ma = messenger(A, AID);
   const mb = messenger(B, BID);
   const ka = deriveEncryptionKey(A);
@@ -154,8 +163,7 @@ async function main() {
   const id2 = await ma.send(`board:${L}`, longNote);
   const id3 = await ma.send(BID, secret, { encrypt: true });
   pass("three messages landed (short board note, long board note as blob, sealed DM)", !!id1 && !!id2 && !!id3, `${id1?.slice(0, 12)} ${id2?.slice(0, 12)} ${id3?.slice(0, 12)}`);
-  for (const f of fees) logTx(STEP, `lineage_msg ${f.what} by ${f.agent} (fee payer ${payer.id} spent ${f.lamports} lamports)`, { signature: f.signature, slot: 0, fee: undefined, logs: [] } as SendResult);
-  pass("the runtime authority paid every message (payer of each transaction)", fees.length === 5 && fees.every((f) => f.lamports > 0), fees.map((f) => `${f.what} ${f.lamports}`).join(", "));
+  pass("the runtime authority paid every message (payer of each transaction)", fees.filter((f) => f.what !== "enc_key").length === 3 && fees.every((f) => f.lamports > 0), fees.map((f) => `${f.what} ${f.lamports}`).join(", "));
 
   // wrong signer: the launcher (owner) of the agents is not their signing key (simulation refuses; nothing is paid)
   const owner = key("launcher");

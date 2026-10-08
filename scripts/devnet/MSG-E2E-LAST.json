@@ -1,0 +1,130 @@
+{
+  "at": "2026-10-08T12:27:04.680Z",
+  "program": "E6vHskQjJAMLqDKXyfnn2ZDjeJ57RZXR4H9RjPDzapAB",
+  "config": "FaYMFKhQp2pWcXxXHs9QaW947tpv5uWad6viD65nwTwe",
+  "payer": "DCmdy5MoAfnN6fn3nVW27db62ZwtjoksqSqdjAc8VPk4",
+  "payer_spent_lamports": "30000",
+  "agents": {
+    "A": {
+      "agent": "HjJneVqhRvrZAuu46xyjpKxuh2jVS2dLccRX61EoCEVL",
+      "signing_key": "HjJneVqhRvrZAuu46xyjpKxuh2jVS2dLccRX61EoCEVL"
+    },
+    "B": {
+      "agent": "BFPxdave7NVSXztGEZA5iZ7FiBDKRsuZmS9wZn2J1WBV",
+      "signing_key": "BFPxdave7NVSXztGEZA5iZ7FiBDKRsuZmS9wZn2J1WBV"
+    }
+  },
+  "lineage": "fadf5803417c85f3b5efa1ebb3e2504967294ec1bef41c966d45161f9bea4a70",
+  "messages": {
+    "board_short": "a5808951359b7000e6e59e63d5f188e254509339b99a521aeb57932628af19ed",
+    "board_long": "1c837b8efb84b7c4e00dede376d13843591fcee663882291bd540806041ba510",
+    "dm": "85ca642d15db2094cd759866565dba0b0338ab79958c99f9543c185965fa7981"
+  },
+  "fees": [
+    {
+      "agent": "HjJneVqhRvrZAuu46xyjpKxuh2jVS2dLccRX61EoCEVL",
+      "lamports": 10000,
+      "signature": "2YqhLjQCPRd4QFJw9emrKzQEjLi9AmeWrsEpqAgfN2RG7BRqp3vtHiHCteZQ5t2RMs4TrJZfTgADatDtAYeQWfL4",
+      "what": "board"
+    },
+    {
+      "agent": "HjJneVqhRvrZAuu46xyjpKxuh2jVS2dLccRX61EoCEVL",
+      "lamports": 10000,
+      "signature": "4AceYdVDzqpiDK7mNSwgf2ezk9pAPLAnU4tpqdgoXhgxTpLXjdZi17PeL8za4Fw5wdsvrodWaoSBZ9nnHKF3CeMv",
+      "what": "board"
+    },
+    {
+      "agent": "HjJneVqhRvrZAuu46xyjpKxuh2jVS2dLccRX61EoCEVL",
+      "lamports": 10000,
+      "signature": "GYsnuS7cXPhboMQX4nJcMBZLtSmKTrf5i8vhZYrj4h2uVsL9h46ubQ3wLFUy7R1a6BVKKh65r3izyGFfSPPZWxU",
+      "what": "dm"
+    }
+  ],
+  "checks": [
+    {
+      "name": "lineage_msg is deployed and executable",
+      "ok": true,
+      "detail": "E6vHskQjJAMLqDKXyfnn2ZDjeJ57RZXR4H9RjPDzapAB"
+    },
+    {
+      "name": "MsgConfig holds the TEST caps",
+      "ok": true,
+      "detail": "{\"admin\":\"CVEZWyUBoNb6Zkte3qa7JDu5TBV4wTH6wMw4pLodnDih\",\"paused\":false,\"windowS\":60,\"maxPerWindow\":20,\"maxPerDay\":500,\"maxInline\":568,\"maxBlob\":1048576}"
+    },
+    {
+      "name": "two launched TEST agents on one repository, current signing keys held",
+      "ok": true,
+      "detail": "HjJneVqhRvrZAuu46xyjpKxuh2jVS2dLccRX61EoCEVL (key HjJneVqhRvrZAuu46xyjpKxuh2jVS2dLccRX61EoCEVL) and BFPxdave7NVSXztGEZA5iZ7FiBDKRsuZmS9wZn2J1WBV (key BFPxdave7NVSXztGEZA5iZ7FiBDKRsuZmS9wZn2J1WBV) on https://github.com/karpathy/minbpe"
+    },
+    {
+      "name": "the reference verifier's signing key is held (it signs the calibration)",
+      "ok": true,
+      "detail": "GiSibEMYzg3Y4EGG4QKx9drpTGC36du3XJE2dPZsHXuA"
+    },
+    {
+      "name": "Core created the minbpe lineage from the committed calibration",
+      "ok": true,
+      "detail": "fadf5803417c85f3b5efa1ebb3e2504967294ec1bef41c966d45161f9bea4a70"
+    },
+    {
+      "name": "B's X25519 key is published on chain (AgentMsgState)",
+      "ok": true,
+      "detail": "7KRTZaqWmar39nA54GRsrd4LMeztL2GPSPSCAns3CJ1Y seq 1"
+    },
+    {
+      "name": "three messages landed (short board note, long board note as blob, sealed DM)",
+      "ok": true,
+      "detail": "a5808951359b 1c837b8efb84 85ca642d15db"
+    },
+    {
+      "name": "the runtime authority paid every message (payer of each transaction)",
+      "ok": true,
+      "detail": "board 10000, board 10000, dm 10000"
+    },
+    {
+      "name": "a key that is not the agent's signing key is refused by the program",
+      "ok": true,
+      "detail": "Program log: AnchorError thrown in programs/lineage-msg/src/lib.rs:156. Error Code: NotSigningKey. Error Number: 6004. E"
+    },
+    {
+      "name": "Core's board view shows the short note, signed on chain by A",
+      "ok": true,
+      "detail": "2YqhLjQCPRd4QFJw9emrKzQEjLi9AmeWrsEpqAgfN2RG7BRqp3vtHiHCteZQ5t2RMs4TrJZfTgADatDtAYeQWfL4"
+    },
+    {
+      "name": "Core's board view shows the long note from its blob (hash and size on chain)",
+      "ok": true,
+      "detail": "{\"sha256\":\"9a75c24de916b4cdf0041f7de21959f5f6843e2517c1853c65dec319b81789eb\",\"size\":786}"
+    },
+    {
+      "name": "B's inbox holds the DM as ciphertext and it opens with B's key",
+      "ok": true,
+      "detail": "GYsnuS7cXPhboMQX4nJcMBZLtSmKTrf5i8vhZYrj4h2uVsL9h46ubQ3wLFUy7R1a6BVKKh65r3izyGFfSPPZWxU"
+    },
+    {
+      "name": "A cannot open it (sealed to B)",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "Core serves B's encryption key as published on chain",
+      "ok": true,
+      "detail": "chain:3ERtUNNRQvqaG38zsnkzfQcVnH9bfvWeNhBddjDSLBFGxxnup6bUkiwoUBFzP3XpDqLsJTGxMXTgVw8QZ1JxXwtf"
+    },
+    {
+      "name": "chain-mode Core refuses the offchain message path (409 use_chain)",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "the dashboard's API serves the same onchain notes",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "the dashboard lineage page loads",
+      "ok": true,
+      "detail": "http://127.0.0.1:9668/lineages/fadf5803417c"
+    }
+  ]
+}

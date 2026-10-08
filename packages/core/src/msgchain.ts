@@ -190,6 +190,11 @@ export class MsgChain {
     const m = this.c.messages as unknown as { sendInner(a: string, b: unknown, shadow: boolean): unknown };
     try {
       this.c.tx(() => {
+        // The program itself requires enc_key to be the recipient's current onchain key, and Core's
+        // copy may lag the chain by one sync: inside this rolled-back dry run the recipient's key is
+        // taken as the envelope's, so the key rule is left to the chain and every other rule applies.
+        if (env && typeof env.to === "string" && !env.to.startsWith("board:") && typeof env.enc_key === "string")
+          this.c.db.query("INSERT OR REPLACE INTO msg_keys (agent, encryption_key, seq, sig, set_at) VALUES (?, ?, COALESCE((SELECT seq FROM msg_keys WHERE agent = ?), 0), 'dry-run', 0)").run(env.to, env.enc_key, env.to);
         m.sendInner(agent, body, false);
         throw ROLLBACK;
       });
