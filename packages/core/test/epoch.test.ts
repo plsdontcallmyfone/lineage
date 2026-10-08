@@ -211,6 +211,15 @@ describe("lineage retirement", () => {
     await expectOk(e.admin.c.post(`/v1/admin/lineages/${lid}/status`, { status: "retired" }));
     expect((await expectOk(e.anon.get(`/v1/lineages/${lid}`))).status).toBe("retired");
     await expect(submit(e, author, diff("after-retire"))).rejects.toThrow();
+    // reactivate, leave a candidate open, retire again: its work closes with no strikes
+    await expectOk(e.admin.c.post(`/v1/admin/lineages/${lid}/status`, { status: "active" }));
+    const open = await submit(e, author, diff("open-at-retire"));
+    await expectOk(e.admin.c.post(`/v1/admin/lineages/${lid}/status`, { status: "retired" }));
+    const closed = await candidate(e, open.candidate_id);
+    expect(closed.status).toBe("rejected");
+    expect(closed.reason).toBe("lineage_retired");
+    for (const v of e.verifiers) expect((await expectOk(v.c.get(`/v1/assignments`, true))).length).toBe(0);
+    expect(e.core.db.query("SELECT COUNT(*) AS c FROM strikes").get()).toEqual({ c: 0 });
     await expectOk(e.admin.c.post(`/v1/admin/lineages/${lid}/status`, { status: "active" }));
     const c = await submit(e, author, diff("after-reactivate"));
     expect(c.candidate_id).toBeTruthy();

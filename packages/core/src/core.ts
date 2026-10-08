@@ -130,6 +130,7 @@ export type CandidateReason =
   | "stale"
   | "unresolved_dispute"
   | "canary"
+  | "lineage_retired"
   | "expired"
   | "dependency_failed";
 
@@ -999,6 +1000,21 @@ export class Core {
       const status = isObj(body) ? String(body.status ?? "") : "";
       if (status !== "retired" && status !== "active") throw bad("bad_status", "status is retired or active");
       this.db.query("UPDATE lineages SET status = ? WHERE lineage_id = ?").run(status, id);
+      if (status === "retired") {
+        // open work on a retired lineage closes cleanly: verifiers may no longer hold its recipe,
+        // so leaving it assigned would only produce abandoned assignments and unfair strikes
+        const now = this.now();
+        for (const c of this.db
+          .query<CandRow, [string]>(`SELECT * FROM candidates WHERE lineage_id = ? AND status IN (${OPEN_STATUSES.map((x) => `'${x}'`).join(",")})`)
+          .all(id))
+          this.finalizeCandidate(c, "rejected", "lineage_retired", "the lineage was retired before this candidate was judged", null);
+        this.db
+          .query("UPDATE qualifications SET status = 'cancelled', reason = 'lineage retired', resolved_at = ? WHERE lineage_id = ? AND status IN ('assigned','committed')")
+          .run(now, id);
+        this.db
+          .query("UPDATE replays SET status = 'cancelled' WHERE status IN ('assigned','committed') AND candidate_id IN (SELECT candidate_id FROM candidates WHERE lineage_id = ?)")
+          .run(id);
+      }
       this.emit("lineage.status", { lineage_id: id, status });
       return { lineage_id: id, status };
     });
