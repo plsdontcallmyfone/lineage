@@ -224,6 +224,7 @@ async function main() {
       process.on("SIGINT", () => (stop = true));
       process.on("SIGTERM", () => (stop = true));
       await w.run(Number(a.one("interval") ?? 2000), () => stop);
+      await w.drain(Number(a.one("interval") ?? 2000));
       return;
     }
     case "msg": {

@@ -129,6 +129,8 @@ export class Worker {
   readonly telemetry: Telemetry;
   private log: (m: string) => void;
   private pending = new Map<string, PendingReplay>();
+  /** Set on stop: no new assignments are run; committed replays are still revealed. */
+  draining = false;
   private stateFile: string;
   private submitted = 0;
   private busy = false;
@@ -177,6 +179,7 @@ export class Worker {
     for (const a of list) {
       try {
         if (a.status === "assigned") {
+          if (this.draining) continue; // stopping: take no new work, only finish what is committed
           await this.runAndCommit(a);
           acted++;
         } else if (a.status === "committed" && a.reveal_open) {
@@ -598,6 +601,29 @@ export class Worker {
     } finally {
       this.busy = false;
     }
+  }
+
+  /** Committed replays this worker still has to reveal. */
+  get pendingReveals(): number {
+    return this.pending.size;
+  }
+
+  /**
+   * Graceful stop: stop taking assignments, keep revealing committed replays until none are left
+   * or `maxMs` passes, so a restart (deploys) never turns into unrevealed or abandoned strikes.
+   */
+  async drain(intervalMs = 2000, maxMs = 15 * 60_000): Promise<void> {
+    this.draining = true;
+    const end = Date.now() + maxMs;
+    while (this.pending.size > 0 && Date.now() < end) {
+      try {
+        await this.replayOnce();
+      } catch (e) {
+        this.log(`drain: ${(e as Error).message}`);
+      }
+      if (this.pending.size > 0) await Bun.sleep(intervalMs);
+    }
+    this.log(this.pending.size ? `drain timed out with ${this.pending.size} unrevealed` : "drained: nothing left to reveal");
   }
 
   async run(intervalMs = 2000, until?: () => boolean): Promise<void> {

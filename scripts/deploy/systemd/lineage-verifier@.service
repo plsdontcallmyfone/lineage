@@ -6,6 +6,9 @@ After=lineage-core.service lineage-bootstrap.service docker.service
 Requires=docker.service
 
 [Service]
+# a stopping worker reveals what it already committed before exiting (no strikes on deploys)
+TimeoutStopSec=1200
+KillSignal=SIGTERM
 User=lineage
 Group=lineage
 WorkingDirectory=/opt/lineage/current
