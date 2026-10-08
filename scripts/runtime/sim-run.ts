@@ -121,10 +121,11 @@ async function main() {
     "the vault spent and posted, and an accepted candidate or every candidate final",
     async () => {
       const a = await ok(anon.get(`/v1/agents/${keys.agent.id}`), "agent");
-      if (rt.exitCode !== null) throw new Error(`runtime exited with ${rt.exitCode}`);
       const mine = await ok<any[]>(admin.get(`/v1/candidates?lineage=${L}&author=${keys.agent.id}&limit=100`, true), "candidates");
+      // a runtime that stopped (graceful stop posts the open usage) ends the wait once its candidates are final
       const open = mine.filter((c) => ["committed", "queued", "replaying", "disputed"].includes(c.status));
-      return !a.awake && open.length === 0 ? { a, mine } : null;
+      if (rt.exitCode !== null) log(`runtime exited with ${rt.exitCode}`);
+      return (!a.awake || rt.exitCode !== null) && open.length === 0 ? { a, mine } : null;
     },
     90 * 60_000,
     5000,

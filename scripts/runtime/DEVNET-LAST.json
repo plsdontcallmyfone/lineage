@@ -1,0 +1,130 @@
+{
+  "at": "2026-10-08T11:21:00.843Z",
+  "agent": "5t9wKLssXQ1ZFdM74UdiXj9QxFphjVxBmo6rmLaSK91R",
+  "mint": "9vgxbHXpDQAvnzLUxsAhS7fMhw37ow4qdS1WAW5Nqoyk",
+  "runtime_key": "6DCHoPW129n5tFc9A9wNcTTjN55gEzGjXEVHsNnvDM53",
+  "claude_usd_total_in_state": 0.46058639999999995,
+  "sol_used": "0.021227880",
+  "candidates": [
+    {
+      "commit_id": "28105922b74361ca75532b44b08f5adb04b516badceda35e37ce255639c40ff3",
+      "status": "accepted",
+      "reason": null
+    }
+  ],
+  "usage_epochs": [
+    {
+      "epoch": 0,
+      "opened_at": 1791458000375,
+      "closed_at": 1791458368326,
+      "leaves": [
+        {
+          "agent": "5t9wKLssXQ1ZFdM74UdiXj9QxFphjVxBmo6rmLaSK91R",
+          "amount": "9317740",
+          "cost": "9317740",
+          "model_tokens": 186897,
+          "sandbox_s": 53,
+          "usd": 0.46058639999999995
+        }
+      ],
+      "root": "a0d16a436fee7675698c2ead9eb771e9dbda8cf720202869498e4c68a79466de",
+      "post": "oFcZLsmerUitWmSwKJ1NdHMWXSZhDB9Vn1iZ1eQAiP8qb4hRMtx8QV7a17qfrVXzBaiUh1XqtcHWd8KGXKpbKXm",
+      "debits": {
+        "5t9wKLssXQ1ZFdM74UdiXj9QxFphjVxBmo6rmLaSK91R": "2X6kZXWz5pYA3cXN6kkTYNyKjECRv4XRfUqS6Xd6PUm3StpGxwdFh3SdqQaSzAtADdtsR26zm11A8HmL4rjGwALQ"
+      },
+      "done": true
+    }
+  ],
+  "results": [
+    {
+      "check": "launch config: this runtime key is the runtime authority",
+      "ok": true,
+      "detail": "sleep 1000000, wake 2000000, max_debit_per_epoch 1000000000"
+    },
+    {
+      "check": "TEST agent launched hosted on chain",
+      "ok": true,
+      "detail": "5t9wKLssXQ1ZFdM74UdiXj9QxFphjVxBmo6rmLaSK91R"
+    },
+    {
+      "check": "compute vault funded and the agent awake on chain",
+      "ok": true,
+      "detail": "vault 10000000"
+    },
+    {
+      "check": "onchain-bonded verifiers qualified on minbpe",
+      "ok": true,
+      "detail": "fadf5803417c"
+    },
+    {
+      "check": "Core mirrored the agent, active and awake, compute read from chain",
+      "ok": true,
+      "detail": "compute 10000000"
+    },
+    {
+      "check": "the runtime generated its own key for the agent",
+      "ok": true,
+      "detail": "6DCHoPW129n5tFc9A9wNcTTjN55gEzGjXEVHsNnvDM53"
+    },
+    {
+      "check": "owner signed and the runtime co-signed rotate_agent_key",
+      "ok": true,
+      "detail": "akNkBjDmzjirBLfxybu2Li9ge6rGNTVt88tGRXSrgGmsGjqbg6tFEtVezW8FAjkTfrk2HYwtQiM2DZgVzEjn7AW"
+    },
+    {
+      "check": "registry: the agent's signing key is the runtime's key, its id unchanged",
+      "ok": true,
+      "detail": "key_seq 1"
+    },
+    {
+      "check": "Claude authored a candidate that the onchain-bonded verifiers accepted",
+      "ok": true,
+      "detail": "28105922b7 accepted"
+    },
+    {
+      "check": "UsageEpoch 0 on chain holds the runtime's root",
+      "ok": true,
+      "detail": "root a0d16a436fee7675698c2ead9eb771e9dbda8cf720202869498e4c68a79466de"
+    },
+    {
+      "check": "DebitReceipt 0 matches the usage leaf exactly",
+      "ok": true,
+      "detail": "amount 9317740, model_tokens 186897, sandbox_s 53; leaf a0d16a436fee7675698c2ead9eb771e9dbda8cf720202869498e4c68a79466de"
+    },
+    {
+      "check": "the compute vault paid exactly the debited amounts",
+      "ok": true,
+      "detail": "vault 10000000 -> 682260, debited 9317740"
+    },
+    {
+      "check": "vault below sleep_threshold: asleep on chain",
+      "ok": true,
+      "detail": "vault 682260 < 1000000"
+    },
+    {
+      "check": "provenance of 28105922b7 (accepted) public once final, attested by the runtime authority",
+      "ok": true,
+      "detail": "models claude-opus-5-5, 0.143281 USD, 2971620 base units, sandbox 53 s"
+    },
+    {
+      "check": "crank_fees paid agent_compute_bps of the new fees into the vault",
+      "ok": true,
+      "detail": "fees 48000000, vault +33600000"
+    },
+    {
+      "check": "new fees woke the agent on chain",
+      "ok": true,
+      "detail": "vault 34282260 >= 2000000"
+    },
+    {
+      "check": "the restarted runtime (state recovered, no budget left) sees the agent awake",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "no secrets in the runtime's output",
+      "ok": true,
+      "detail": "48 lines"
+    }
+  ]
+}

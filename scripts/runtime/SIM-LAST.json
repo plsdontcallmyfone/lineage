@@ -1,0 +1,112 @@
+{
+  "at": "2026-10-08T12:23:38.725Z",
+  "claude_usd": 0.43027460000000006,
+  "candidates": [
+    {
+      "commit_id": "9662dc37d8d9c8139dd17aa0f5406099e4290c3605881b4e8e124aa11324fce8",
+      "status": "rejected",
+      "reason": "stale_conflict"
+    },
+    {
+      "commit_id": "98bb63f61dceadb6682ca556fd99397d8eafe10fb94eb2095733b129cedf633b",
+      "status": "accepted",
+      "reason": null
+    }
+  ],
+  "usage": [
+    {
+      "id": 1,
+      "amount": "2315375000",
+      "model_tokens": 283572,
+      "sandbox_seconds": 164,
+      "note": "hosted runtime usage epoch 0",
+      "epoch": 0,
+      "at": 1791457648443,
+      "ref": "runtime:DtH1X9nB9AkLhFUqUA2p6aeLpuXrV7iXXxoZih67LChK:0:HGAzKToRWEwgvxGK57Q6JeLKLsdjegdnkZjAAC7QTQPv",
+      "detail": {
+        "cost": "2315375000",
+        "model_tokens": 283572,
+        "sandbox_s": 164,
+        "usage_epoch": 0,
+        "usd": "0.430275"
+      }
+    }
+  ],
+  "results": [
+    {
+      "check": "verifiers qualified on minbpe",
+      "ok": true,
+      "detail": "fadf5803417c"
+    },
+    {
+      "check": "hosted agent launched, active and awake with its vault",
+      "ok": true,
+      "detail": "compute 3000000000"
+    },
+    {
+      "check": "the runtime generated its own key and asks the owner to bind it",
+      "ok": true,
+      "detail": "runtime key 3eg5eNEWoSJG6YnwRMEtw7s8ZGYQSVaBEPDxPpaCX28d"
+    },
+    {
+      "check": "agent bound: Core authenticates the runtime key for the unchanged agent id",
+      "ok": true,
+      "detail": "seq 1"
+    },
+    {
+      "check": "Claude authored a candidate that the real verifiers accepted",
+      "ok": true,
+      "detail": "9662dc37d8 rejected stale_conflict, 98bb63f61d accepted"
+    },
+    {
+      "check": "usage posted: the vault paid exactly the posted amounts",
+      "ok": true,
+      "detail": "vault 3000000000 -> 684625000, debited 2315375000 in 1 record(s)"
+    },
+    {
+      "check": "vault below sleep_threshold: the agent sleeps",
+      "ok": true,
+      "detail": "compute 684625000 < 1000000000"
+    },
+    {
+      "check": "provenance of 9662dc37d8 (rejected) public once final, attested by the runtime",
+      "ok": true,
+      "detail": "models claude-opus-5-5, 0.143974 USD, 809870000 base units, sandbox 90 s, harness fe9827759db2"
+    },
+    {
+      "check": "provenance of 98bb63f61d (accepted) public once final, attested by the runtime",
+      "ok": true,
+      "detail": "models claude-opus-5-5, 0.286301 USD, 1505505000 base units, sandbox 74 s, harness fe9827759db2"
+    },
+    {
+      "check": "posted usage records match the runtime's meter",
+      "ok": true,
+      "detail": "0.4303 USD metered"
+    },
+    {
+      "check": "graceful stop released the lock",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "restart recovered the binding from state (no new key, no new bind request)",
+      "ok": true,
+      "detail": "1 lines"
+    },
+    {
+      "check": "new fees wake the agent and the runtime sees it awake",
+      "ok": true,
+      "detail": "compute 3684625000"
+    },
+    {
+      "check": "spend within the run cap",
+      "ok": true,
+      "detail": "0.4303 of 0.6000 USD"
+    },
+    {
+      "check": "no secrets in the runtime's output",
+      "ok": true,
+      "detail": "42 lines"
+    }
+  ]
+}

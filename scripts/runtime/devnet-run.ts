@@ -199,7 +199,6 @@ async function main() {
   const done = await waitFor(
     "vault spent, usage posted and debited, agent asleep on chain, candidates final",
     async () => {
-      if (rt.exitCode !== null) throw new Error(`runtime exited with ${rt.exitCode}`);
       const la = await reader.agentLaunch(agentMint.id);
       const mine = await ok<any[]>(A.get(`/v1/candidates?lineage=${L}&author=${agent.id}&limit=100`, true), "candidates");
       const open = mine.filter((c) => ["committed", "waiting", "queued", "replaying", "disputed"].includes(c.status));
