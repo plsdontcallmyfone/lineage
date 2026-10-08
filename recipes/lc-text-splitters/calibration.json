@@ -168,29 +168,29 @@
   "metrics": {
     "recursive_ir": {
       "enabled": true,
-      "cv": 0.000003834433536378757,
-      "base_value": 604126214
+      "cv": 0.000010474592141350884,
+      "base_value": 604118852.5
     },
     "code_ir": {
       "enabled": true,
       "cv": 0,
-      "base_value": 171806521
+      "base_value": 172068098
     },
     "markdown_ir": {
       "enabled": true,
       "cv": 0,
-      "base_value": 645042479
+      "base_value": 644928795
     }
   },
-  "median_eval_seconds": 84,
+  "median_eval_seconds": 59,
   "seed": "ca11b7a7e",
   "recipe_name": "lc-text-splitters",
   "repo": "https://github.com/langchain-ai/langchain",
   "commit": "4db8c0e8359dc9789669af140e9c2728718566f8",
   "deps_digest": "2a0c304509d584cf422939e7c17b7f5a9a636ab39d1fa737975361885f5362f0",
   "image_digest": "sha256:4214b1a6fb3757b7d706ce9547e728b18c53df40f0bdf8ebcdef5b81335186d0",
-  "date": "2026-10-07T22:04:49.392Z",
-  "calibration_wall_seconds": 244.3,
+  "date": "2026-10-07T23:44:10.561Z",
+  "calibration_wall_seconds": 180.2,
   "counts": {
     "stable": 159,
     "known_failures": 0,
@@ -198,6 +198,6 @@
     "excluded": 0
   },
   "notes": [
-    "calibration wall time 243 s"
+    "calibration wall time 179 s"
   ]
 }

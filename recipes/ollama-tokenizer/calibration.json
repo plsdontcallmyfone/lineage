@@ -204,24 +204,24 @@
   "metrics": {
     "encode_ir": {
       "enabled": true,
-      "cv": 4.605638492795956e-7,
-      "base_value": 522004291
+      "cv": 0.00018297441732816015,
+      "base_value": 522068482.5
     },
     "decode_ir": {
       "enabled": true,
-      "cv": 0.000009285086857925236,
-      "base_value": 38153708.5
+      "cv": 0.000025351556492207674,
+      "base_value": 38156319
     }
   },
-  "median_eval_seconds": 134,
+  "median_eval_seconds": 109,
   "seed": "ca11b7a7e",
   "recipe_name": "ollama-tokenizer",
   "repo": "https://github.com/ollama/ollama",
   "commit": "468e7e500842f7d17cf2ff47b80f454d6ca2949c",
   "deps_digest": "648faf0fc79b97e88a09d1688e7330e3e4d976e34499733014fb27cf0434618a",
   "image_digest": "sha256:7f90f7bb53ceec9f7b62ed14867b6439c7020fa8439ff5ea4daf891a84069838",
-  "date": "2026-10-07T21:51:11.159Z",
-  "calibration_wall_seconds": 241.6,
+  "date": "2026-10-07T23:45:12.002Z",
+  "calibration_wall_seconds": 241.7,
   "counts": {
     "stable": 195,
     "known_failures": 0,

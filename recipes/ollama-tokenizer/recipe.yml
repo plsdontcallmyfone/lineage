@@ -24,6 +24,11 @@
 # sequential path; GOGC=off; GODEBUG=asyncpreemptoff=1,memprofilerate=0; harness built with
 # GOEXPERIMENT=norandomizedheapbase64; stack-probe entry so valgrind can start a Go binary;
 # goroutine pinned to its P while measuring). cv recorded in calibration.json.
+# - Residual (not yet explained): encode_ir is bimodal, about 3 runs in 10 land ~145K
+#   instructions (2.7e-4) higher, all of it inside Go's map lookup code (more probes), although
+#   runtime seeds are fixed and map iteration order checked identical across runs. Below
+#   det_tolerance (1e-3), so replayers still agree; the hardened-sandbox calibration recorded
+#   cv 1.8e-4 for it.
 name: ollama-tokenizer
 class: go
 requires: { arch: arm64 }

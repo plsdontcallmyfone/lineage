@@ -8,37 +8,37 @@
     "metrics": {
       "recursive_ir": {
         "base": [
-          637187870
+          636863033
         ],
         "cand": [
-          637905105
+          637770142
         ],
-        "ratio": 1.001125625633771
+        "ratio": 1.001424339226799
       },
       "code_ir": {
         "base": [
-          178173499
+          177745174
         ],
         "cand": [
-          178243783
+          177707330
         ],
-        "ratio": 1.0003944694379046
+        "ratio": 0.9997870884528207
       },
       "markdown_ir": {
         "base": [
-          667438166
+          666506168
         ],
         "cand": [
-          667524968
+          666273314
         ],
-        "ratio": 1.0001300524968781
+        "ratio": 0.9996506348910488
       }
     },
     "equivalence": "changed",
     "seed": "7265706c61792d69",
     "recipe_id": "8752c2d2cb745dd84ef02d3f8f174544eb6ba48c2c5138717ecf08e33132f585",
-    "eval_seconds": 229,
-    "date": "2026-10-07T22:10:25.719Z",
+    "eval_seconds": 177,
+    "date": "2026-10-08T00:07:49.261Z",
     "match": true
   },
   "bom_only_filter": {
@@ -50,55 +50,55 @@
     "metrics": {
       "recursive_ir": {
         "base": [
-          650238971
+          650070608
         ],
         "cand": [
-          650194971
+          650305392
         ],
-        "ratio": 0.9999323325700822
+        "ratio": 1.000361166921117
       },
       "code_ir": {
         "base": [
-          172406474
+          172091070
         ],
         "cand": [
-          172448800
+          171965913
         ],
-        "ratio": 1.0002455012217233
+        "ratio": 0.9992727280968152
       },
       "markdown_ir": {
         "base": [
-          698693204
+          697755743
         ],
         "cand": [
-          303775652
+          303884264
         ],
-        "ratio": 0.4347768809842324
+        "ratio": 0.435516679079487
       }
     },
     "equivalence": "changed",
     "seed": "7265706c61792d62",
     "recipe_id": "8752c2d2cb745dd84ef02d3f8f174544eb6ba48c2c5138717ecf08e33132f585",
-    "eval_seconds": 171.4,
-    "date": "2026-10-07T22:13:17.160Z",
+    "eval_seconds": 127.4,
+    "date": "2026-10-08T00:09:56.677Z",
     "match": true
   },
   "resum_total": {
     "expect": "no_improvement",
     "outcome": "rejected",
     "reason": "no_improvement",
-    "detail": "worst ratio 1.3273 vs required 0.9900",
+    "detail": "worst ratio 1.3269 vs required 0.9900",
     "effect": {
       "metric": "recursive_ir",
-      "ratio": 1.3272795055993418,
-      "ci_low": 1.3272795055993418,
-      "ci_high": 1.3272795055993418,
+      "ratio": 1.3269104384486405,
+      "ci_low": 1.3269104384486405,
+      "ci_high": 1.3269104384486405,
       "per_replay": [
         {
           "replay_id": "r1",
-          "ratio": 1.3272795055993418,
-          "ci_low": 1.3272795055993418,
-          "ci_high": 1.3272795055993418,
+          "ratio": 1.3269104384486405,
+          "ci_low": 1.3269104384486405,
+          "ci_high": 1.3269104384486405,
           "pass": false
         }
       ]
@@ -106,37 +106,37 @@
     "metrics": {
       "recursive_ir": {
         "base": [
-          649862727
+          650098241
         ],
         "cand": [
-          862549479
+          862622142
         ],
-        "ratio": 1.3272795055993418
+        "ratio": 1.3269104384486405
       },
       "code_ir": {
         "base": [
-          183008804
+          183352467
         ],
         "cand": [
-          266354284
+          266610576
         ],
-        "ratio": 1.4554178715904837
+        "ratio": 1.4540877489256798
       },
       "markdown_ir": {
         "base": [
-          685007158
+          685486874
         ],
         "cand": [
-          684410606
+          684451268
         ],
-        "ratio": 0.9991291302681541
+        "ratio": 0.9984892402184786
       }
     },
     "equivalence": "same",
     "seed": "7265706c61792d72",
     "recipe_id": "8752c2d2cb745dd84ef02d3f8f174544eb6ba48c2c5138717ecf08e33132f585",
-    "eval_seconds": 203.8,
-    "date": "2026-10-07T22:16:40.917Z",
+    "eval_seconds": 124.8,
+    "date": "2026-10-08T00:12:01.487Z",
     "match": true
   }
 }
