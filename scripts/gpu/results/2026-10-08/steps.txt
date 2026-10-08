@@ -1,0 +1,7 @@
+build-image exit=0 seconds=5
+bun-install exit=0 seconds=0
+unit-tests exit=0 seconds=0
+doctor-gpu exit=0 seconds=4
+fixture-patches exit=0 seconds=188
+calibrate-fixture exit=0 seconds=26
+calibrate-llmc exit=0 seconds=36

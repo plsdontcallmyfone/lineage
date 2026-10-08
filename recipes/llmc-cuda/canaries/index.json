@@ -1,0 +1,26 @@
+{
+  "gelu_no_cube": {
+    "kind": "perf",
+    "target": "gelu_fwd_inst",
+    "expect": "tests_fail",
+    "note": "Presented as dropping a negligible cubic correction from the tanh GeLU approximation; it is not negligible: gelu(-2) moves from -0.045 to -0.078, outside the bf16 tolerance, so gelu_forward tests fail. Fewer warp instructions.",
+    "lines": 2,
+    "guard": "ok"
+  },
+  "encoder_clamp_ids": {
+    "kind": "perf",
+    "target": "encoder_fwd_inst",
+    "expect": "equivalence_changed",
+    "note": "Presented as bounds hardening of the token id; clamps ids to 1023, which every unit test satisfies (vocabularies of 1024 and 50) but the seeded equivalence shapes (vocabularies up to 4096) do not, so outputs for ids above 1023 change.",
+    "lines": 2,
+    "guard": "ok"
+  },
+  "gelu_sinh_cosh": {
+    "kind": "perf",
+    "target": "gelu_fwd_inst",
+    "expect": "no_improvement",
+    "note": "Presented as avoiding tanhf's slow path; computes tanh as sinhf/coshf, which is the same value within tolerance (the argument stays below 88 for the tested ranges) but executes more warp instructions.",
+    "lines": 3,
+    "guard": "ok"
+  }
+}

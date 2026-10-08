@@ -56,10 +56,13 @@ bash scripts/gpu/session.sh 2>&1 | tee session.out
 | unit-tests | parsers and GPU flags | pass |
 | doctor-gpu | the exact replay flags (uid 10001, `--cap-drop ALL`, `no-new-privileges`, read-only root, no network) plus `--gpus device=0` run nvcc, a kernel, and `ncu` twice with identical warp instruction counts | all PASS; stops the session if ncu cannot read counters |
 | fixture-patches | calibration of `recipes/fixture-cuda` and each planted patch as one replay | 7/7 as in `fixtures/cuda-reduce-patches/index.json` |
+| llmc-canaries, llmc-candidates | the three llm.c canaries rejected for the right reason; candidates judged | 3/3 rejected; candidates as in recipes/llmc-cuda/candidates/index.json |
 | calibrate-fixture, calibrate-llmc | `calibration.json` for both recipes, 5 runs | warp-instruction metrics enabled with cv 0; llmc known failures listed (see recipes/llmc-cuda/NOTES.md) |
 | e2e-cuda | Core + reference + 2 verifier processes, GPU qualification, perf accepted, tests/equivalence/regression/guard rejected, verdicts recomputed by `scripts/verify.ts` | all checks PASS |
 
-Expected outcomes are EXPECTATIONS, not observations: nothing CUDA has run yet.
+Observed outcomes of the first session (2026-10-08, RTX 4000 Ada on DigitalOcean): docs/GPU-SESSION.md.
+On that box `/proc/driver/nvidia/params` names the profiling switch `RmProfilingAdminOnly`; the scripts
+accept both names.
 
 Copy results back, then terminate the instance in the provider console (stopping is not enough on
 Lambda; terminate):

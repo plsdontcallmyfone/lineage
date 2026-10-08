@@ -1,0 +1,83 @@
+canaries: /root/.config/lineage/canaries is not a directory
+lineage core on http://127.0.0.1:9663 (data /tmp/lineage-e2e-cuda-ale1qo/data, admin EiwjesGVqCZyj5P2tRuMkkAzy4dabWGu6DnwRtwi5izi, epoch 0, pid 134627)
+[e2e-cuda +   2s] core up on http://127.0.0.1:9663
+[e2e-cuda +   2s] PASS worker doctor declares the GPU: [{"vendor":"nvidia","model":"NVIDIA RTX 4000 Ada Generation","sm":"8.9","mem_gb":20,"driver":"580.173.02"}]
+[e2e-cuda +   2s] reference runner calibrating fixture-cuda on the GPU
+[e2e-cuda +  27s] PASS cuda lineage created from a real GPU calibration
+[e2e-cuda +  27s] PASS all fixture tests stable, none quarantined: stable 14, known failures 0, quarantined 0
+[e2e-cuda +  27s] PASS reduce_warp_inst deterministic at calibration (cv 0): {"base_value":33590130,"cv":0,"enabled":true}
+[e2e-cuda +  27s] PASS scale_warp_inst deterministic at calibration (cv 0): {"base_value":1850899,"cv":0,"enabled":true}
+[e2e-cuda +  27s] waiting for both verifiers to declare their GPU and pass a qualification replay
+   v2   [11:36:27 BWC46s] declared capabilities: amd64, 8 cpus, 32091 MB, 1 gpus
+   ref  [11:36:27 48fkXo] declared capabilities: amd64, 8 cpus, 32091 MB, 1 gpus
+   v1   [11:36:27 D33Umj] declared capabilities: amd64, 8 cpus, 32091 MB, 1 gpus
+   v1   [11:36:51 D33Umj] qualify a53cd0f4ea on 48024c2ca3: base ok, 14 tests pass, reduce_warp_inst=33590130 scale_warp_inst=1850899, committed in 24.1s
+   v1   [11:36:52 D33Umj] replay a53cd0f4ea: revealed (revealed)
+   v2   [11:37:12 BWC46s] qualify b47bd667a1 on 48024c2ca3: base ok, 14 tests pass, reduce_warp_inst=33590130 scale_warp_inst=1850899, committed in 44.8s
+   v2   [11:37:13 BWC46s] replay b47bd667a1: revealed (revealed)
+[e2e-cuda +  73s] qualifications: passed stable set reproduced; reduce_warp_inst, scale_warp_inst match calibration | passed stable set reproduced; reduce_warp_inst, scale_warp_inst match calibration
+[e2e-cuda +  73s] PASS both verifiers qualified for the cuda lineage
+   auth intent db6ce23d19 filed: perf on "reduce_warp_inst"
+   auth scripted: proposing break_tests
+   auth author: perf on "reduce_warp_inst" (2 lines) -> replaying
+   v1   [11:37:40 D33Umj] replay 5e277078d8 (replay) of 21791662b6: build ok, 1 tests pass, committed in 26.7s
+   v2   [11:38:03 BWC46s] replay 1d1891c2f9 (replay) of 21791662b6: build ok, 1 tests pass, committed in 49.7s
+   v1   [11:38:04 D33Umj] replay 5e277078d8: revealed (revealed)
+   v2   [11:38:04 BWC46s] replay 1d1891c2f9: revealed (revealed)
+[e2e-cuda + 125s] break_tests: rejected (tests_fail)
+[e2e-cuda + 125s] PASS break_tests rejected with tests_fail: rejected tests_fail
+   auth intent af0e0a69d7 filed: perf on "scale_warp_inst"
+   auth scripted: proposing equiv_change
+   auth author: perf on "scale_warp_inst" (2 lines) -> replaying
+   v2   [11:38:32 BWC46s] replay 35efc91ae1 (replay) of 37b7466c2a: build ok, 14 tests pass, committed in 26.8s
+   v1   [11:38:55 D33Umj] replay ad66d862ac (replay) of 37b7466c2a: build ok, 14 tests pass, committed in 49.6s
+   v2   [11:38:56 BWC46s] replay 35efc91ae1: revealed (revealed)
+   v1   [11:38:56 D33Umj] replay ad66d862ac: revealed (revealed)
+[e2e-cuda + 178s] equiv_change: rejected (equivalence_changed)
+[e2e-cuda + 178s] PASS equiv_change rejected with equivalence_changed: rejected equivalence_changed
+   auth intent f4dd59ab58 filed: perf on "reduce_warp_inst"
+   auth scripted: proposing regress
+   auth author: perf on "reduce_warp_inst" (2 lines) -> replaying
+   v2   [11:39:24 BWC46s] replay 64bdd3216f (replay) of 08086abc00: build ok, 14 tests pass, committed in 26.8s
+   v1   [11:39:47 D33Umj] replay 4bbc5ea4c7 (replay) of 08086abc00: build ok, 14 tests pass, committed in 50.2s
+   v2   [11:39:48 BWC46s] replay 64bdd3216f: revealed (revealed)
+   v1   [11:39:48 D33Umj] replay 4bbc5ea4c7: revealed (revealed)
+[e2e-cuda + 230s] regress: rejected (no_improvement)
+[e2e-cuda + 230s] PASS regress rejected with no_improvement: rejected no_improvement ratio 1.011782032400589
+   auth intent 79b3f0daa5 filed: perf on "reduce_warp_inst"
+   auth scripted: proposing protected_test_edit
+   auth author: guard says PROTECTED_PATH; submitting anyway only because the proposer is scripted
+   auth author: perf on "reduce_warp_inst" (0 lines) -> rejected (guard)
+[e2e-cuda + 230s] protected_test_edit: rejected (guard)
+[e2e-cuda + 230s] PASS protected_test_edit rejected with guard: rejected guard
+   auth intent ac7241740e filed: perf on "reduce_warp_inst"
+   auth scripted: proposing perf_reduce
+   auth author: perf on "reduce_warp_inst" (4 lines) -> replaying
+   v2   [11:40:18 BWC46s] replay a4672d42f2 (replay) of 5a6cf195be: build ok, 14 tests pass, committed in 28.8s
+   v1   [11:40:39 D33Umj] replay 1f3a6cb6b7 (replay) of 5a6cf195be: build ok, 14 tests pass, committed in 50.0s
+   v2   [11:40:40 BWC46s] replay a4672d42f2: revealed (revealed)
+   v1   [11:40:40 D33Umj] replay 1f3a6cb6b7: revealed (revealed)
+[e2e-cuda + 282s] perf_reduce: accepted
+[e2e-cuda + 282s] PASS perf_reduce accepted on executed warp instructions: ratio 0.4383897889052528
+   auth intent 8d4d2cb89e filed: perf on "reduce_warp_inst"
+   auth scripted: proposing perf_reduce_warp
+   auth author: perf on "reduce_warp_inst" (8 lines) -> replaying
+   v1   [11:41:09 D33Umj] replay 3b811a42e7 (replay) of dac624fdee: build ok, 14 tests pass, committed in 27.0s
+   v2   [11:41:32 BWC46s] replay 672aa50709 (replay) of dac624fdee: build ok, 14 tests pass, committed in 50.2s
+   v1   [11:41:33 D33Umj] replay 3b811a42e7: revealed (revealed)
+   v2   [11:41:33 BWC46s] replay 672aa50709: revealed (revealed)
+[e2e-cuda + 334s] perf_reduce_warp: accepted
+[e2e-cuda + 334s] PASS perf_reduce_warp accepted on top of perf_reduce: ratio 0.43673012318029114
+   auth intent 08d4e2540f filed: perf on "scale_warp_inst"
+   auth scripted: proposing perf_scale
+   auth author: perf on "scale_warp_inst" (4 lines) -> replaying
+   v2   [11:42:02 BWC46s] replay 5d600d0979 (replay) of cbbc0ee936: build ok, 14 tests pass, committed in 28.3s
+   v1   [11:42:24 D33Umj] replay bb7dc07d0e (replay) of cbbc0ee936: build ok, 14 tests pass, committed in 50.4s
+   v2   [11:42:24 BWC46s] replay 5d600d0979: revealed (revealed)
+   v1   [11:42:25 D33Umj] replay bb7dc07d0e: revealed (revealed)
+[e2e-cuda + 386s] perf_scale: accepted
+[e2e-cuda + 386s] PASS perf_scale accepted: ratio 0.7784685526426932
+[e2e-cuda + 386s] PASS lineage height 3 (reduce, reduce_warp, scale): height 3
+[e2e-cuda + 386s] PASS every verdict recomputed from public data (scripts/verify.ts): 7/7 verdicts independently recomputed
+[e2e-cuda + 386s] 15/15 checks passed in 386s
+E2E_EXIT=0

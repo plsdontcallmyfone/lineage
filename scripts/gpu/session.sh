@@ -90,6 +90,12 @@ cp recipes/fixture-cuda/calibration.json "$OUT/fixture-cuda.calibration.json" 2>
 if [[ $SKIP_LLMC -eq 0 ]]; then
   step calibrate-llmc bun scripts/calibrate-recipe.ts recipes/llmc-cuda --runs 5
   cp recipes/llmc-cuda/calibration.json "$OUT/llmc-cuda.calibration.json" 2>/dev/null || true
+  # canaries (tests_fail, equivalence_changed, no_improvement) and hand-written candidates, each judged
+  # as one replay against calibration.json (recipes/llmc-cuda/patch-defs.json)
+  step llmc-canaries bun scripts/check-canaries.ts recipes/llmc-cuda canaries
+  step llmc-candidates bun scripts/check-canaries.ts recipes/llmc-cuda candidates
+  cp recipes/llmc-cuda/canaries/results.json "$OUT/llmc-canaries.results.json" 2>/dev/null || true
+  cp recipes/llmc-cuda/candidates/results.json "$OUT/llmc-candidates.results.json" 2>/dev/null || true
 fi
 
 # ---- 7. end to end: Core + reference + 2 verifiers on this box

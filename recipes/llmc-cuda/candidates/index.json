@@ -1,0 +1,18 @@
+{
+  "gelu_bwd_sech_from_tanh": {
+    "kind": "perf",
+    "target": "gelu_bwd_inst",
+    "expect": "accepted",
+    "note": "GeLU backward computed both tanhf(a) and coshf(a); sech^2(a) = 1 - tanh^2(a), so the coshf call and its division go away and the result stays within the bf16 tolerance.",
+    "lines": 3,
+    "guard": "ok"
+  },
+  "fix_fused_residual_guard": {
+    "kind": "fix",
+    "target": "fused_residual_forward_B1_T13_C768_guard_rows",
+    "expect": "accepted",
+    "note": "fused_residual_forward_kernel5 guards with `idx > N`, so when N = B*T is not a multiple of the 8 rows per block the thread for row N writes residual, normed, mean and rstd one row past the end. `idx >= N`, as layernorm_forward_kernel6 has.",
+    "lines": 2,
+    "guard": "ok"
+  }
+}

@@ -15,6 +15,7 @@ import { join } from "node:path";
 import { generateAgentKey, type AgentKey } from "@lineage/protocol";
 import { loadRecipe, prepareDeps } from "@lineage/sandbox";
 import { CoreClient } from "../../packages/core/src/client.ts";
+import { doctor } from "../../packages/worker/src/doctor.ts";
 import { loadScript, ScriptedProposer, Worker } from "../../packages/worker/src/index.ts";
 
 const ROOT = join(import.meta.dir, "..", "..");
@@ -105,9 +106,12 @@ async function main() {
   const snap = await ok(admin.post("/v1/admin/snapshots", { repo: loaded.recipe.repo, commit: loaded.recipe.commit, deps_digest: deps.digest }), "snapshot");
   const MIN_BOND = BigInt(net.min_bond);
   const BURN = BigInt(net.register_burn);
+  // real capabilities from this box (GPU included); workers re-declare on start (core v2 registration)
+  const caps = doctor().capabilities;
+  check("worker doctor declares the GPU", caps.gpus.length > 0, JSON.stringify(caps.gpus));
   for (const n of ["ref", "v1", "v2"] as const) {
     await ok(admin.post("/v1/admin/faucet", { agent: keys[n].id, amount: (BURN + MIN_BOND * 20n).toString() }), "faucet");
-    await ok(as(keys[n]).post("/v1/agents", {}), `register ${n}`);
+    await ok(as(keys[n]).post("/v1/agents", { capabilities: caps }), `register ${n}`);
   }
   await ok(admin.post(`/v1/admin/agents/${keys.ref.id}/reference`, { reference: true }), "mark reference");
   for (const n of ["v1", "v2"] as const) await ok(as(keys[n]).post(`/v1/agents/${keys[n].id}/bond`, { amount: MIN_BOND.toString() }), `bond ${n}`);
@@ -131,13 +135,15 @@ async function main() {
   startVerifier("v1");
   startVerifier("v2");
   log("waiting for both verifiers to declare their GPU and pass a qualification replay");
-  await waitFor("qualifications", async () => {
-    const ev = await events();
-    const passed = new Set(ev.filter((e) => e.type === "qualification.passed").map((e) => (e.data ?? e.payload ?? e).agent));
-    const failed = ev.filter((e) => e.type === "qualification.failed");
-    if (failed.length) log(`qualification failed: ${JSON.stringify(failed.at(-1)).slice(0, 300)}`);
-    return passed.has(keys.v1.id) && passed.has(keys.v2.id);
+  const agentView = (n: keyof typeof keys) => ok<any>(admin.get(`/v1/agents/${keys[n].id}`), n);
+  const lastQual = (v: any) => ((v.qualifications ?? []) as any[]).filter((q) => q.lineage_id === L).at(-1);
+  const quals = await waitFor("qualifications", async () => {
+    const vs = await Promise.all((["v1", "v2"] as const).map(agentView));
+    const failed = vs.map(lastQual).filter((q) => q?.status === "failed");
+    if (failed.length) log(`qualification failed: ${JSON.stringify(failed).slice(0, 300)}`);
+    return vs.every((v) => (v.qualified_lineages ?? []).includes(L)) ? vs : null;
   });
+  log(`qualifications: ${quals.map((v) => `${lastQual(v)?.status} ${lastQual(v)?.reason ?? ""}`).join(" | ")}`);
   check("both verifiers qualified for the cuda lineage", true);
 
   const submit = async (name: string) => {
@@ -148,10 +154,14 @@ async function main() {
     log(`${name}: ${f.status}${f.reason ? ` (${f.reason})` : ""}`);
     return f;
   };
-  const p1 = await submit("perf_reduce");
-  check("perf_reduce accepted on executed warp instructions", p1.status === "accepted", p1.effect ? `ratio ${p1.effect.ratio}` : "");
-  const p2 = await submit("perf_scale");
-  check("perf_scale accepted", p2.status === "accepted", p2.effect ? `ratio ${p2.effect.ratio}` : "");
+  // the verdict (with the effect ratio) is stored as JSON on the candidate view
+  const ratioOf = (f: any): string => {
+    const v = typeof f.verdict === "string" ? JSON.parse(f.verdict) : f.verdict;
+    const r = f.effect?.ratio ?? v?.effect?.ratio;
+    return r === undefined ? "" : `ratio ${r}`;
+  };
+  // rejections first: they leave the tip where it is, so each applies to the snapshot it was made
+  // against (equiv_change and regress touch kernels the accepted perf patches rewrite)
   for (const [name, reason] of [
     ["break_tests", "tests_fail"],
     ["equiv_change", "equivalence_changed"],
@@ -159,10 +169,16 @@ async function main() {
     ["protected_test_edit", "guard"],
   ] as const) {
     const f = await submit(name);
-    check(`${name} rejected with ${reason}`, f.status === "rejected" && String(f.reason).includes(reason), `${f.status} ${f.reason ?? ""}`);
+    check(`${name} rejected with ${reason}`, f.status === "rejected" && String(f.reason).includes(reason), `${f.status} ${f.reason ?? ""} ${ratioOf(f)}`.trim());
   }
+  const p1 = await submit("perf_reduce");
+  check("perf_reduce accepted on executed warp instructions", p1.status === "accepted", ratioOf(p1));
+  const p1w = await submit("perf_reduce_warp");
+  check("perf_reduce_warp accepted on top of perf_reduce", p1w.status === "accepted", ratioOf(p1w));
+  const p2 = await submit("perf_scale");
+  check("perf_scale accepted", p2.status === "accepted", ratioOf(p2));
   const lv = await ok(admin.get(`/v1/lineages/${L}`), "lineage");
-  check("lineage height 2 (reduce, scale)", lv.height === 2, `height ${lv.height}`);
+  check("lineage height 3 (reduce, reduce_warp, scale)", lv.height === 3, `height ${lv.height}`);
   const ver = Bun.spawnSync(["bun", join(ROOT, "scripts/verify.ts"), "--core", CORE]);
   check("every verdict recomputed from public data (scripts/verify.ts)", ver.exitCode === 0, ver.stdout.toString().trim().split("\n").at(-1) ?? "");
 }
@@ -178,7 +194,7 @@ try {
   const bad = results.filter((r) => !r.ok);
   log(`${results.length - bad.length}/${results.length} checks passed in ${((Date.now() - T0) / 1000).toFixed(0)}s`);
   mkdirSync(OUT, { recursive: true });
-  writeFileSync(join(OUT, "e2e-cuda.json"), JSON.stringify({ at: new Date().toISOString(), seconds: Math.round((Date.now() - T0) / 1000), results }, null, 2) + "\n");
+  writeFileSync(join(OUT, "e2e-cuda.json"), JSON.stringify({ at: new Date().toISOString(), seconds: Math.round((Date.now() - T0) / 1000), error: failed, results }, null, 2) + "\n");
   if (!KEEP) rmSync(tmp, { recursive: true, force: true });
   else log(`kept ${tmp}`);
   process.exit(failed || bad.length ? 1 : 0);

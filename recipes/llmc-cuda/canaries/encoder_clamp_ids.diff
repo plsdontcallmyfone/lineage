@@ -1,0 +1,12 @@
+diff --git a/llmc/encoder.cuh b/llmc/encoder.cuh
+--- a/llmc/encoder.cuh
++++ b/llmc/encoder.cuh
+@@ -28,7 +28,7 @@ __global__ void encoder_forward_kernel3(floatX* out,
+     int t = bt % T;
+     int c = idx % C;
+ 
+-    int ix = inp[b * T + t];
++    int ix = min(inp[b * T + t], 1023);
+ 
+     floatX* out_btc = out + b * T * C + t * C + c;
+     const floatX* wte_ix = wte + ix * C + c;

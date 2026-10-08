@@ -1,0 +1,23 @@
+
+==== build-image
+build-image exit=0 seconds=5
+
+==== bun-install
+bun-install exit=0 seconds=0
+
+==== unit-tests
+unit-tests exit=0 seconds=0
+
+==== doctor-gpu
+doctor-gpu exit=0 seconds=4
+
+==== fixture-patches
+fixture-patches exit=0 seconds=188
+
+==== calibrate-fixture
+calibrate-fixture exit=0 seconds=26
+
+==== calibrate-llmc
+calibrate-llmc exit=0 seconds=36
+
+DONE: 0 failed step(s). Results: results/gpu-20261008T112233Z and results/gpu-20261008T112233Z.tar.gz

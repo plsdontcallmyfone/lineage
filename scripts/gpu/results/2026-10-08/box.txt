@@ -1,0 +1,35 @@
+Thu Oct  8 11:22:33 UTC 2026
+Linux ml-ai-ubuntu-gpu-4000adax1-20gb-tor1 5.15.0-185-generic #195-Ubuntu SMP Fri Jun 19 17:11:50 UTC 2026 x86_64 x86_64 x86_64 GNU/Linux
+Thu Oct  8 11:22:33 2026       
++-----------------------------------------------------------------------------------------+
+| NVIDIA-SMI 580.173.02             Driver Version: 580.173.02     CUDA Version: 13.0     |
++-----------------------------------------+------------------------+----------------------+
+| GPU  Name                 Persistence-M | Bus-Id          Disp.A | Volatile Uncorr. ECC |
+| Fan  Temp   Perf          Pwr:Usage/Cap |           Memory-Usage | GPU-Util  Compute M. |
+|                                         |                        |               MIG M. |
+|=========================================+========================+======================|
+|   0  NVIDIA RTX 4000 Ada Gene...    On  |   00000000:01:00.0 Off |                  Off |
+| 30%   37C    P8             16W /  130W |       2MiB /  20475MiB |      0%      Default |
+|                                         |                        |                  N/A |
++-----------------------------------------+------------------------+----------------------+
+
++-----------------------------------------------------------------------------------------+
+| Processes:                                                                              |
+|  GPU   GI   CI              PID   Type   Process name                        GPU Memory |
+|        ID   ID                                                               Usage      |
+|=========================================================================================|
+|  No running processes found                                                             |
++-----------------------------------------------------------------------------------------+
+index, name, compute_cap, driver_version, memory.total [MiB], clocks.max.sm [MHz]
+0, NVIDIA RTX 4000 Ada Generation, 8.9, 580.173.02, 20475 MiB, 3105 MHz
+RmProfilingAdminOnly: 0
+docker 29.1.3
+NVIDIA Container Toolkit CLI version 1.19.1
+1.3.13
+lineage commit 5d7ef678c4151740edd3f1ca85c74c42b5a88c59 2026-10-08T08:18:44-03:00
+8
+               total        used        free      shared  buff/cache   available
+Mem:              31           0          22           0           7          30
+Swap:              0           0           0
+Filesystem      Size  Used Avail Use% Mounted on
+/dev/vda1       485G   27G  458G   6% /

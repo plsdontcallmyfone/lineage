@@ -1,0 +1,61 @@
+canaries: /root/.config/lineage/canaries is not a directory
+lineage core on http://127.0.0.1:9663 (data /tmp/lineage-e2e-cuda-8ALmay/data, admin GkeUVG572kGFgUmi5x4GdmC2ampYrkFY3XxU8wnLSoho, epoch 0, pid 86296)
+[e2e-cuda +   2s] core up on http://127.0.0.1:9663
+[e2e-cuda +   2s] PASS worker doctor declares the GPU: [{"vendor":"nvidia","model":"NVIDIA RTX 4000 Ada Generation","sm":"8.9","mem_gb":20,"driver":"580.173.02"}]
+[e2e-cuda +   2s] reference runner calibrating fixture-cuda on the GPU
+[e2e-cuda +  28s] PASS cuda lineage created from a real GPU calibration
+[e2e-cuda +  28s] PASS all fixture tests stable, none quarantined: stable 14, known failures 0, quarantined 0
+[e2e-cuda +  28s] PASS reduce_warp_inst deterministic at calibration (cv 0): {"base_value":33590130,"cv":0,"enabled":true}
+[e2e-cuda +  28s] PASS scale_warp_inst deterministic at calibration (cv 0): {"base_value":1850899,"cv":0,"enabled":true}
+[e2e-cuda +  28s] waiting for both verifiers to declare their GPU and pass a qualification replay
+   ref  [11:30:54 E3h5Nz] declared capabilities: amd64, 8 cpus, 32091 MB, 1 gpus
+   v2   [11:30:54 FAipPA] declared capabilities: amd64, 8 cpus, 32091 MB, 1 gpus
+   v1   [11:30:54 8v9h6r] declared capabilities: amd64, 8 cpus, 32091 MB, 1 gpus
+   v1   [11:31:18 8v9h6r] qualify f80869e283 on 48024c2ca3: base ok, 14 tests pass, reduce_warp_inst=33590130 scale_warp_inst=1850899, committed in 24.0s
+   v1   [11:31:19 8v9h6r] replay f80869e283: revealed (revealed)
+   v2   [11:31:39 FAipPA] qualify a41806fc96 on 48024c2ca3: base ok, 14 tests pass, reduce_warp_inst=33590130 scale_warp_inst=1850899, committed in 44.8s
+   v2   [11:31:40 FAipPA] replay a41806fc96: revealed (revealed)
+[e2e-cuda +  74s] qualifications: passed stable set reproduced; reduce_warp_inst, scale_warp_inst match calibration | passed stable set reproduced; reduce_warp_inst, scale_warp_inst match calibration
+[e2e-cuda +  74s] PASS both verifiers qualified for the cuda lineage
+   auth intent 1f235b4440 filed: perf on "reduce_warp_inst"
+   auth scripted: proposing perf_reduce
+   auth author: perf on "reduce_warp_inst" (4 lines) -> replaying
+   v1   [11:32:07 8v9h6r] replay dc0e9757f6 (replay) of 0d76955d35: build ok, 14 tests pass, committed in 26.9s
+   v2   [11:32:31 FAipPA] replay 74fe108cfd (replay) of 0d76955d35: build ok, 14 tests pass, committed in 49.8s
+   v1   [11:32:31 8v9h6r] replay dc0e9757f6: revealed (revealed)
+   v2   [11:32:32 FAipPA] replay 74fe108cfd: revealed (revealed)
+[e2e-cuda + 126s] perf_reduce: accepted
+[e2e-cuda + 126s] PASS perf_reduce accepted on executed warp instructions
+   auth intent bd2986cf9b filed: perf on "reduce_warp_inst"
+   auth scripted: proposing perf_reduce_warp
+   auth author: perf on "reduce_warp_inst" (8 lines) -> replaying
+   v2   [11:33:00 FAipPA] replay 4b3ac1c8ac (replay) of e95cd97ba6: build ok, 14 tests pass, committed in 26.9s
+   v1   [11:33:23 8v9h6r] replay 656e708639 (replay) of e95cd97ba6: build ok, 14 tests pass, committed in 49.7s
+   v2   [11:33:24 FAipPA] replay 4b3ac1c8ac: revealed (revealed)
+   v1   [11:33:24 8v9h6r] replay 656e708639: revealed (revealed)
+[e2e-cuda + 178s] perf_reduce_warp: accepted
+[e2e-cuda + 178s] PASS perf_reduce_warp accepted on top of perf_reduce
+   auth intent 90d2035157 filed: perf on "scale_warp_inst"
+   auth scripted: proposing perf_scale
+   auth author: perf on "scale_warp_inst" (4 lines) -> replaying
+   v2   [11:33:54 FAipPA] replay 4aa51fd4ae (replay) of 703bd40857: build ok, 14 tests pass, committed in 28.7s
+   v1   [11:34:16 8v9h6r] replay bc1a1dc1a1 (replay) of 703bd40857: build ok, 14 tests pass, committed in 50.4s
+   v2   [11:34:16 FAipPA] replay 4aa51fd4ae: revealed (revealed)
+   v1   [11:34:17 8v9h6r] replay bc1a1dc1a1: revealed (revealed)
+[e2e-cuda + 230s] perf_scale: accepted
+[e2e-cuda + 230s] PASS perf_scale accepted
+   auth intent 23d990c683 filed: perf on "reduce_warp_inst"
+   auth scripted: proposing break_tests
+   auth author: perf on "reduce_warp_inst" (2 lines) -> replaying
+   v1   [11:34:46 8v9h6r] replay a06022697e (replay) of beaa57c944: build ok, 1 tests pass, committed in 28.4s
+   v2   [11:35:08 FAipPA] replay d1031cc6b4 (replay) of beaa57c944: build ok, 1 tests pass, committed in 51.2s
+   v1   [11:35:08 8v9h6r] replay a06022697e: revealed (revealed)
+   v2   [11:35:09 FAipPA] replay d1031cc6b4: revealed (revealed)
+[e2e-cuda + 284s] break_tests: rejected (tests_fail)
+[e2e-cuda + 284s] PASS break_tests rejected with tests_fail: rejected tests_fail
+   auth scripted: equiv_change does not apply to the current parent, skipped
+[e2e-cuda + 284s] ERROR Error: author did not submit equiv_change
+    at <anonymous> (/root/lineage/scripts/gpu/e2e-cuda.ts:152:24)
+    at async main (/root/lineage/scripts/gpu/e2e-cuda.ts:169:21)
+[e2e-cuda + 284s] 10/10 checks passed in 284s
+E2E_EXIT=0

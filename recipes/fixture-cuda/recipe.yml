@@ -3,23 +3,22 @@
 # inside a loop because the compiler cannot prove it does not alias the store).
 # The commit is deterministic (fixed author and dates), see packages/sandbox/src/repo.ts.
 #
-# PENDING GPU SESSION: `image` carries a placeholder id until scripts/gpu/session.sh builds
-# images/cuda on the rented box and rewrites it with the real local image id. Calibration has not
-# run: no calibration.json, every number is TBA until then.
-# requires.gpu.sm and the -arch flags below must agree; scripts/gpu/session.sh sets both (SM=86 for
-# an A10 or A6000, SM=89 for an L4).
+# Pinned and calibrated in the GPU session of 2026-10-08 (docs/GPU-SESSION.md): image built from
+# images/cuda on an RTX 4000 Ada (sm 8.9), calibration.json from 5 runs, warp-instruction metrics cv 0.
+# requires.gpu.sm and the -arch flags below must agree; scripts/gpu/session.sh re-pins both for
+# another GPU (SM=86 for an A10 or A6000, SM=89 for an L4 or RTX 4000 Ada).
 name: fixture-cuda
 class: cuda
-requires: { arch: amd64, gpu: { vendor: nvidia, sm: "8.6" } }
+requires: { arch: amd64, gpu: { vendor: nvidia, sm: "8.9" } }
 repo: "fixture:cuda-reduce"
 commit: "3f72f8b01f68c26b67943ab93e5e17c86b1e112d"
-image: "lineage/cuda:m1@sha256:0000000000000000000000000000000000000000000000000000000000000000"
+image: "lineage/cuda:m1@sha256:4f440a3ca551ebdeb52aecf6ce34283af257d8f5d31329493c9b8e3d4a9dd715"
 workdir: /work/src
 prepare: []
 build:
   commands:
-    - make SM=86 all
-    - /usr/local/cuda/bin/nvcc -O3 -std=c++17 -arch=sm_86 -o build/lineage_harness lineage/harness.cu src/kernels.cu
+    - make SM=89 all
+    - /usr/local/cuda/bin/nvcc -O3 -std=c++17 -arch=sm_89 -o build/lineage_harness lineage/harness.cu src/kernels.cu
   artifacts: []
   reproducible: false
 test:

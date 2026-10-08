@@ -1,0 +1,90 @@
+bun test v1.3.13 (bf2e2cec)
+
+packages/sandbox/test/parsers-recipe.test.ts:
+(pass) parsers > libtest groups by target and handles doc tests and ignored [0.44ms]
+(pass) parsers > junit counts failures and errors, skips skipped [0.12ms]
+(pass) parsers > tap [0.10ms]
+(pass) parsers > metrics [0.21ms]
+(pass) recipes > fixture recipe loads, protects its overlay and hashes stably [1.22ms]
+(pass) recipes > overlay contents change the recipe id [0.73ms]
+(pass) recipes > validation rejects unpinned images and short commits [0.55ms]
+(pass) docker args > sandbox hardening flags are always present; network only when asked [0.17ms]
+
+packages/sandbox/test/cuda.test.ts:
+(pass) ncu-inst parser (format samples, not measurements) > csv quoting keeps commas inside kernel signatures [0.07ms]
+(pass) ncu-inst parser (format samples, not measurements) > long format: sums the metric over matching launches, ignores other metrics and ==PROF== lines [0.44ms]
+(pass) ncu-inst parser (format samples, not measurements) > auto-scaled units are converted back to instructions [0.17ms]
+(pass) ncu-inst parser (format samples, not measurements) > raw page format with a units row [0.07ms]
+(pass) ncu-inst parser (format samples, not measurements) > parseMetric dispatches ncu-inst and ncu-inst:<regex>, reading stdout then stderr [0.09ms]
+(pass) ncu-inst parser (format samples, not measurements) > failures are errors, never zero [0.14ms]
+(pass) GPU device requests > --gpus only when requested, and no capability is added back [0.08ms]
+(pass) GPU device requests > LINEAGE_GPU_DEVICE selects one GPU index [0.07ms]
+(pass) GPU device requests > nvidia-smi query output (format sample) [0.09ms]
+(pass) cuda recipes load and validate > fixture-cuda [0.35ms]
+(pass) cuda recipes load and validate > llmc-cuda [0.29ms]
+(pass) host GPU lock > serialises holders and takes over a lock whose owner is gone [93.20ms]
+
+packages/protocol/test/verdict.test.ts:
+(pass) judge > accepts a deterministic improvement both replays agree on [1.77ms]
+(pass) judge > digest is stable and order independent, and changes with any input [0.98ms]
+(pass) judge > pending below quorum; the author never counts [0.43ms]
+(pass) judge > broken environment is excluded, not blamed [0.21ms]
+(pass) judge > rejections carry the right reason [1.83ms]
+(pass) judge > fix candidates must fix known failures without breaking stable tests [0.73ms]
+(pass) judge > noisy metric: accepted with real gain, split when one replay misses it [104.16ms]
+(pass) judge > two replays disagreeing on a deterministic field is a dispute [0.31ms]
+(pass) judge > dispute with a third replay resolves by majority and names the minority [0.35ms]
+(pass) judge > replays on different seeds are not cross-checked on seed-dependent fields [0.33ms]
+(pass) judge > deterministic metric agreement uses tolerance [0.22ms]
+(pass) judge > reference runner breaks a 2 to 2 tie [0.27ms]
+(pass) judge > a single replay judged alone (canary check) accepts only what it claims [0.21ms]
+
+packages/protocol/test/diff-guard.test.ts:
+(pass) glob > double star spans directories, single star does not [0.13ms]
+(pass) canonical diff > parses a real modify diff and counts lines [9.48ms]
+(pass) canonical diff > canonical form drops index lines and is idempotent [8.59ms]
+(pass) canonical diff > patch hash ignores file order, semantic hash ignores whitespace [17.19ms]
+(pass) canonical diff > rejects garbage and truncated hunks [8.16ms]
+(pass) guard > accepts a small allowed change [8.52ms]
+(pass) guard > rejects protected test dir [8.27ms]
+(pass) guard > rejects protected manifest [8.42ms]
+(pass) guard > rejects protected wins over allowed [8.28ms]
+(pass) guard > rejects outside allowed [8.01ms]
+(pass) guard > rejects binary [8.10ms]
+(pass) guard > rejects symlink [7.98ms]
+(pass) guard > rejects mode change [7.73ms]
+(pass) guard > rejects too many files [8.05ms]
+(pass) guard > rejects too many lines [8.37ms]
+(pass) guard > rejects path traversal and malformed input [0.26ms]
+(pass) guard > flags harness and timing references without failing [8.34ms]
+
+packages/protocol/test/auth.test.ts:
+(pass) auth > base58 round trip with leading zeros [0.38ms]
+(pass) auth > sign and verify requests; tampering fails [0.95ms]
+(pass) auth > solana keypair json round trip [0.49ms]
+(pass) auth > statements are domain separated by purpose and bind the canonical object [0.73ms]
+
+packages/protocol/test/stats-econ.test.ts:
+(pass) rng > deterministic per seed and roughly uniform [4.32ms]
+(pass) stats > median and cv [0.15ms]
+(pass) stats > bootstrap detects a real 10% improvement with 3% noise [9.19ms]
+(pass) stats > bootstrap does not show an improvement where there is none [178.74ms]
+(pass) stats > bootstrap is reproducible from its seed and respects direction [6.18ms]
+(pass) economics > cost class clamps [0.06ms]
+(pass) economics > effect value uses the conservative edge and caps [0.08ms]
+(pass) economics > proportional split sums exactly to the pool [0.32ms]
+(pass) economics > assignment excludes author and operator, is deterministic and bond-weighted [43.40ms]
+(pass) economics > two replayers of one candidate never share an operator [1.57ms]
+(pass) economics > merkle proofs verify for every leaf and fail for a wrong leaf [5.15ms]
+
+packages/protocol/test/hardening.test.ts:
+(pass) judge input hardening > a test reported both passing and failing is failing [0.44ms]
+(pass) judge input hardening > negative, zero and non-finite samples are never measurements [0.46ms]
+(pass) judge input hardening > a noisy metric needs its declared rounds of samples on both sides [41.06ms]
+(pass) identifier hardening > fix target lists cannot collide through a comma [0.09ms]
+(pass) CRLF files > a patch to a CRLF file keeps its CRs, applies, and hashes differently from the LF variant [9.54ms]
+
+ 70 pass
+ 0 fail
+ 505 expect() calls
+Ran 70 tests across 7 files. [677.00ms]

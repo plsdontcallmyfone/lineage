@@ -33,5 +33,9 @@ RUN useradd -u 10001 -m runner
 # /usr/local/bin, which is why the wrappers above live there. LD_LIBRARY_PATH and the NVIDIA_*
 # variables from the base image are kept because the sandbox only adds variables.
 ENV NVIDIA_DRIVER_CAPABILITIES=compute,utility CUDA_MODULE_LOADING=EAGER
+# The base image's entrypoint (/opt/nvidia/nvidia_entrypoint.sh) prints a licence banner to stdout on
+# every `docker run`, which lands in test, equivalence and metric output. The sandbox runs
+# `sh -c <cmd>` itself, so the entrypoint is cleared (found in the 2026-10-08 GPU session).
+ENTRYPOINT []
 USER 10001
 WORKDIR /work

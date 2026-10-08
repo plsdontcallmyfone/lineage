@@ -1,0 +1,56 @@
+{
+  "at": "2026-10-08T11:35:11.275Z",
+  "seconds": 284,
+  "results": [
+    {
+      "check": "worker doctor declares the GPU",
+      "ok": true,
+      "detail": "[{\"vendor\":\"nvidia\",\"model\":\"NVIDIA RTX 4000 Ada Generation\",\"sm\":\"8.9\",\"mem_gb\":20,\"driver\":\"580.173.02\"}]"
+    },
+    {
+      "check": "cuda lineage created from a real GPU calibration",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "all fixture tests stable, none quarantined",
+      "ok": true,
+      "detail": "stable 14, known failures 0, quarantined 0"
+    },
+    {
+      "check": "reduce_warp_inst deterministic at calibration (cv 0)",
+      "ok": true,
+      "detail": "{\"base_value\":33590130,\"cv\":0,\"enabled\":true}"
+    },
+    {
+      "check": "scale_warp_inst deterministic at calibration (cv 0)",
+      "ok": true,
+      "detail": "{\"base_value\":1850899,\"cv\":0,\"enabled\":true}"
+    },
+    {
+      "check": "both verifiers qualified for the cuda lineage",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "perf_reduce accepted on executed warp instructions",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "perf_reduce_warp accepted on top of perf_reduce",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "perf_scale accepted",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "break_tests rejected with tests_fail",
+      "ok": true,
+      "detail": "rejected tests_fail"
+    }
+  ]
+}

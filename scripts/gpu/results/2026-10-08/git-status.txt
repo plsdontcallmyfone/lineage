@@ -1,0 +1,13 @@
+ M images/cuda/Dockerfile
+ M packages/worker/src/main.ts
+ M recipes/fixture-cuda/recipe.yml
+ M recipes/llmc-cuda/recipe.yml
+ M scripts/gpu/e2e-cuda.ts
+?? fixtures/cuda-reduce-patches/check-last.json
+?? recipes/fixture-cuda/calibration.json
+?? recipes/llmc-cuda/calibration.json
+?? recipes/llmc-cuda/canaries/
+?? recipes/llmc-cuda/candidates/
+?? recipes/llmc-cuda/patch-defs.json
+?? results/
+?? session.out

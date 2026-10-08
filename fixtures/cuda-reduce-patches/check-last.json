@@ -1,0 +1,164 @@
+{
+  "at": "2026-10-08T11:25:51.590Z",
+  "calibration": {
+    "recipe_id": "c4deb1cea0212ed37c0d514d05975a6e74669262e420a2ad0db942dd172a36b6",
+    "snapshot_id": "",
+    "runs": 3,
+    "stable": [
+      "reduce_sum_n0",
+      "reduce_sum_n1",
+      "reduce_sum_n1000",
+      "reduce_sum_n100003",
+      "reduce_sum_n255",
+      "reduce_sum_n256",
+      "reduce_sum_n257",
+      "reduce_sum_n65536",
+      "row_scale_127x3",
+      "row_scale_128x64",
+      "row_scale_129x17",
+      "row_scale_1x1",
+      "row_scale_1x300",
+      "row_scale_300x1000"
+    ],
+    "known_failures": [],
+    "quarantined": [],
+    "metrics": {
+      "reduce_warp_inst": {
+        "enabled": true,
+        "cv": 0,
+        "base_value": 33445503
+      },
+      "scale_warp_inst": {
+        "enabled": true,
+        "cv": 0,
+        "base_value": 2080800
+      },
+      "reduce_us": {
+        "enabled": true,
+        "cv": 0.0034515199925687144,
+        "base_value": 129.024
+      }
+    },
+    "median_eval_seconds": 14,
+    "seed": "c0ffee"
+  },
+  "rows": [
+    {
+      "name": "perf_reduce",
+      "outcome": "accepted",
+      "expected": "accepted (sequential addressing: idle warps skip the add path and no integer modulo)",
+      "ok": true,
+      "base": [
+        33510687
+      ],
+      "cand": [
+        14690743
+      ],
+      "guard": "ok",
+      "tests_cand_fail": [],
+      "equivalence": {
+        "base_digest": "6c1e19d3c0461f9d00878742aeadc050e743c78c3ecaa3dbd7238b915c363f18",
+        "cand_digest": "6c1e19d3c0461f9d00878742aeadc050e743c78c3ecaa3dbd7238b915c363f18"
+      }
+    },
+    {
+      "name": "perf_reduce_warp",
+      "outcome": "accepted",
+      "expected": "accepted on top of perf_reduce (last 64 elements reduced with warp shuffles, no barriers)",
+      "ok": true,
+      "base": [
+        14688957
+      ],
+      "cand": [
+        6415110
+      ],
+      "guard": "ok",
+      "tests_cand_fail": [],
+      "equivalence": {
+        "base_digest": "94dee57d952addf74c7d9986d148eb8a0b91621b3d9d9bebbbd202859055a05a",
+        "cand_digest": "94dee57d952addf74c7d9986d148eb8a0b91621b3d9d9bebbbd202859055a05a"
+      }
+    },
+    {
+      "name": "perf_scale",
+      "outcome": "accepted",
+      "expected": "accepted (scale[r] loaded once instead of once per column; row pointer hoisted)",
+      "ok": true,
+      "base": [
+        1877281
+      ],
+      "cand": [
+        1461276
+      ],
+      "guard": "ok",
+      "tests_cand_fail": [],
+      "equivalence": {
+        "base_digest": "c2cd81ff790aadd4cdac56126e416fe28f22ab70286013cf8262c9a213638c8e",
+        "cand_digest": "c2cd81ff790aadd4cdac56126e416fe28f22ab70286013cf8262c9a213638c8e"
+      }
+    },
+    {
+      "name": "equiv_change",
+      "outcome": "rejected:equivalence_changed",
+      "expected": "rejected:equivalence_changed (stops at column 4096; unit tests use at most 1000 columns, the seeded equivalence shapes use 4000 to 9000)",
+      "ok": true,
+      "base": [
+        1877281
+      ],
+      "cand": [
+        1237766
+      ],
+      "guard": "ok",
+      "tests_cand_fail": [],
+      "equivalence": {
+        "base_digest": "3c0c4adf6cc671a12fcf7b116d952ea7978bf0ab7e2d0a61e7aed105c447162b",
+        "cand_digest": "eda208b30931edd90aaed03e904eeac3cc7044de6dba3c6144d7b5e66aee7ef6"
+      }
+    },
+    {
+      "name": "regress",
+      "outcome": "rejected:no_improvement",
+      "expected": "rejected:no_improvement (two extra uncached loads per element; same result, more warp instructions)",
+      "ok": true,
+      "base": [
+        33421059
+      ],
+      "cand": [
+        33814827
+      ],
+      "guard": "ok",
+      "tests_cand_fail": [],
+      "equivalence": {
+        "base_digest": "e55899bb8bc5dd49dcdf76248912af9a9ab248938e1f0fc465df79756ba9fff5",
+        "cand_digest": "e55899bb8bc5dd49dcdf76248912af9a9ab248938e1f0fc465df79756ba9fff5"
+      }
+    },
+    {
+      "name": "break_tests",
+      "outcome": "rejected:tests_fail",
+      "expected": "rejected:tests_fail (drops the partial last block: fewer instructions, wrong sums for n not a multiple of 256)",
+      "ok": true,
+      "base": [
+        33510687
+      ],
+      "cand": [
+        33508650
+      ],
+      "guard": "ok",
+      "tests_cand_fail": [],
+      "equivalence": {
+        "base_digest": "6c1e19d3c0461f9d00878742aeadc050e743c78c3ecaa3dbd7238b915c363f18",
+        "cand_digest": "7b05469d2a6de11b1f473532ff9cddd25a7ef0d6ff779b5c3977e1ed9de084ba"
+      }
+    },
+    {
+      "name": "protected_test_edit",
+      "outcome": "rejected:guard",
+      "expected": "rejected:guard PROTECTED_PATH",
+      "ok": true,
+      "guard": "PROTECTED_PATH",
+      "tests_cand_fail": [],
+      "equivalence": null
+    }
+  ]
+}

@@ -1,0 +1,78 @@
+{
+  "recipe_id": "0b734b874f70beb0bc8bbc5055d5ab1d7fffcd56125b74fec5f93b91e0a96a95",
+  "snapshot_id": "",
+  "runs": 5,
+  "stable": [
+    "encoder_backward_B2_T32_C256_V7_hot_tokens",
+    "encoder_backward_B4_T64_C768_V1024",
+    "encoder_forward_B1_T13_C64",
+    "encoder_forward_B4_T64_C768",
+    "fused_residual_forward_B1_T13_C768_values",
+    "fused_residual_forward_B4_T64_C768",
+    "gelu_backward_inplace_N65536",
+    "gelu_forward_N65536",
+    "gelu_forward_N8192_wide_range",
+    "layernorm_backward_B2_T32_C1024",
+    "layernorm_backward_B4_T64_C768",
+    "layernorm_forward_B1_T13_C768_guard_rows",
+    "layernorm_forward_B1_T13_C768_values",
+    "layernorm_forward_B2_T8_C1600",
+    "layernorm_forward_B4_T64_C768",
+    "residual_forward_N65536"
+  ],
+  "known_failures": [
+    "fused_residual_forward_B1_T13_C768_guard_rows"
+  ],
+  "quarantined": [],
+  "metrics": {
+    "layernorm_fwd_inst": {
+      "enabled": true,
+      "cv": 0,
+      "base_value": 3827712
+    },
+    "fused_residual_fwd_inst": {
+      "enabled": true,
+      "cv": 0,
+      "base_value": 4810752
+    },
+    "encoder_fwd_inst": {
+      "enabled": true,
+      "cv": 0,
+      "base_value": 2727936
+    },
+    "gelu_fwd_inst": {
+      "enabled": true,
+      "cv": 0,
+      "base_value": 25156088
+    },
+    "gelu_bwd_inst": {
+      "enabled": true,
+      "cv": 0,
+      "base_value": 45211376
+    },
+    "layernorm_fwd_us": {
+      "enabled": true,
+      "cv": 0.01419526870335214,
+      "base_value": 24.560000000000002
+    }
+  },
+  "median_eval_seconds": 17,
+  "seed": "ca11b7a7e",
+  "recipe_name": "llmc-cuda",
+  "repo": "https://github.com/karpathy/llm.c",
+  "commit": "f1e2ace651495b74ae22d45d1723443fd00ecd3a",
+  "deps_digest": "ecfcc9fc2e777639f51c975e2525074f266b5ed86c8bcf43eec2b2493cd65af2",
+  "image_digest": "sha256:4f440a3ca551ebdeb52aecf6ce34283af257d8f5d31329493c9b8e3d4a9dd715",
+  "date": "2026-10-08T11:26:53.626Z",
+  "calibration_wall_seconds": 35.7,
+  "counts": {
+    "stable": 16,
+    "known_failures": 1,
+    "quarantined": 0,
+    "excluded": 0
+  },
+  "notes": [
+    "gpu 0: NVIDIA RTX 4000 Ada Generation, sm 8.9, driver 580.173.02, 20475 MiB",
+    "calibration wall time 36 s"
+  ]
+}

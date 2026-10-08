@@ -1,0 +1,73 @@
+{
+  "at": "2026-10-08T11:22:39.731Z",
+  "image": "sha256:4f440a3ca551ebdeb52aecf6ce34283af257d8f5d31329493c9b8e3d4a9dd715",
+  "host_gpus": [
+    {
+      "index": 0,
+      "name": "NVIDIA RTX 4000 Ada Generation",
+      "sm": "8.9",
+      "driver": "580.173.02",
+      "mem_mb": 20475
+    }
+  ],
+  "profiling_param": "RmProfilingAdminOnly: 0",
+  "container_identity": {
+    "exit": 0,
+    "stdout": "10001\nNVIDIA RTX 4000 Ada Generation, 8.9\nro\n",
+    "stderr": "",
+    "duration_ms": 318,
+    "timed_out": false,
+    "truncated": false
+  },
+  "ncu_run_0": {
+    "exit": 0,
+    "stdout": "==WARNING== Note: Running with unmodified GPU clocks. If not controlled otherwise, profiling results may be inconsistent.\n==PROF== Connected to process 19 (/work/src/probe)\nno error\n==PROF== Disconnected from process 19\n\"ID\",\"Process ID\",\"Process Name\",\"Host Name\",\"Kernel Name\",\"Context\",\"Stream\",\"Block Size\",\"Grid Size\",\"Device\",\"CC\",\"Section Name\",\"Metric Name\",\"Metric Unit\",\"Metric Value\"\n\"0\",\"19\",\"probe\",\"127.0.0.1\",\"lineage_probe(int *, int)\",\"1\",\"7\",\"(256, 1, 1)\",\"(4096, 1, 1)\",\"0\",\"8.9\",\"Command line profiler metrics\",\"smsp__inst_executed.sum\",\"inst\",\"425984\"\n",
+    "stderr": ""
+  },
+  "ncu_run_1": {
+    "exit": 0,
+    "stdout": "==WARNING== Note: Running with unmodified GPU clocks. If not controlled otherwise, profiling results may be inconsistent.\n==PROF== Connected to process 19 (/work/src/probe)\nno error\n==PROF== Disconnected from process 19\n\"ID\",\"Process ID\",\"Process Name\",\"Host Name\",\"Kernel Name\",\"Context\",\"Stream\",\"Block Size\",\"Grid Size\",\"Device\",\"CC\",\"Section Name\",\"Metric Name\",\"Metric Unit\",\"Metric Value\"\n\"0\",\"19\",\"probe\",\"127.0.0.1\",\"lineage_probe(int *, int)\",\"1\",\"7\",\"(256, 1, 1)\",\"(4096, 1, 1)\",\"0\",\"8.9\",\"Command line profiler metrics\",\"smsp__inst_executed.sum\",\"inst\",\"425984\"\n",
+    "stderr": ""
+  },
+  "counts": [
+    425984,
+    425984
+  ],
+  "checks": [
+    {
+      "check": "nvidia-smi sees a GPU on the host",
+      "ok": true,
+      "detail": "0: NVIDIA RTX 4000 Ada Generation sm 8.9 driver 580.173.02"
+    },
+    {
+      "check": "driver >= 560.35 (CUDA 12.6.3 toolkit in the image)",
+      "ok": true,
+      "detail": "580.173.02"
+    },
+    {
+      "check": "host opens GPU performance counters to non-admin users",
+      "ok": true,
+      "detail": "RmProfilingAdminOnly: 0"
+    },
+    {
+      "check": "GPU visible inside the hardened sandbox (uid 10001, read-only root)",
+      "ok": true,
+      "detail": "10001 | NVIDIA RTX 4000 Ada Generation, 8.9 | ro"
+    },
+    {
+      "check": "nvcc builds and a kernel runs in the sandbox",
+      "ok": true,
+      "detail": "no error\n"
+    },
+    {
+      "check": "ncu reads smsp__inst_executed.sum without extra capabilities",
+      "ok": true,
+      "detail": "425984 warp instructions"
+    },
+    {
+      "check": "the count is identical across two runs",
+      "ok": true,
+      "detail": "425984 vs 425984"
+    }
+  ]
+}

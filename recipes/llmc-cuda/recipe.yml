@@ -9,21 +9,22 @@
 # cases. Upstream's own test (test_gpt2.cu) needs ~500 MB of downloaded GPT-2 weights and cuDNN, so it
 # is not used here.
 #
-# PENDING GPU SESSION: `image` is a placeholder until scripts/gpu/session.sh builds images/cuda and
-# rewrites it with the real image id. Not calibrated: no calibration.json, all numbers TBA.
-# The sm in requires.gpu and in -arch must agree; scripts/gpu/session.sh sets both.
+# Pinned and calibrated in the GPU session of 2026-10-08 (docs/GPU-SESSION.md): RTX 4000 Ada
+# (sm 8.9), calibration.json from 5 runs, every warp-instruction metric cv 0, one known failure
+# (fused_residual_forward_B1_T13_C768_guard_rows, an upstream off-by-one; see NOTES.md).
+# The sm in requires.gpu and in -arch must agree; scripts/gpu/session.sh re-pins both.
 name: llmc-cuda
 class: cuda
-requires: { arch: amd64, gpu: { vendor: nvidia, sm: "8.6" } }
+requires: { arch: amd64, gpu: { vendor: nvidia, sm: "8.9" } }
 repo: https://github.com/karpathy/llm.c
 commit: "f1e2ace651495b74ae22d45d1723443fd00ecd3a"
-image: "lineage/cuda:m1@sha256:0000000000000000000000000000000000000000000000000000000000000000"
+image: "lineage/cuda:m1@sha256:4f440a3ca551ebdeb52aecf6ce34283af257d8f5d31329493c9b8e3d4a9dd715"
 workdir: /work/src
 prepare: []
 build:
   commands:
     - mkdir -p build
-    - /usr/local/cuda/bin/nvcc -O3 --use_fast_math -std=c++17 -arch=sm_86 -o build/lineage_harness lineage/harness.cu
+    - /usr/local/cuda/bin/nvcc -O3 --use_fast_math -std=c++17 -arch=sm_89 -o build/lineage_harness lineage/harness.cu
   artifacts: []
   reproducible: false
 test:

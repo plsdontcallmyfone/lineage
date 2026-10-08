@@ -1,0 +1,82 @@
+{
+  "at": "2026-10-08T11:42:25.851Z",
+  "seconds": 386,
+  "error": false,
+  "results": [
+    {
+      "check": "worker doctor declares the GPU",
+      "ok": true,
+      "detail": "[{\"vendor\":\"nvidia\",\"model\":\"NVIDIA RTX 4000 Ada Generation\",\"sm\":\"8.9\",\"mem_gb\":20,\"driver\":\"580.173.02\"}]"
+    },
+    {
+      "check": "cuda lineage created from a real GPU calibration",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "all fixture tests stable, none quarantined",
+      "ok": true,
+      "detail": "stable 14, known failures 0, quarantined 0"
+    },
+    {
+      "check": "reduce_warp_inst deterministic at calibration (cv 0)",
+      "ok": true,
+      "detail": "{\"base_value\":33590130,\"cv\":0,\"enabled\":true}"
+    },
+    {
+      "check": "scale_warp_inst deterministic at calibration (cv 0)",
+      "ok": true,
+      "detail": "{\"base_value\":1850899,\"cv\":0,\"enabled\":true}"
+    },
+    {
+      "check": "both verifiers qualified for the cuda lineage",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "break_tests rejected with tests_fail",
+      "ok": true,
+      "detail": "rejected tests_fail"
+    },
+    {
+      "check": "equiv_change rejected with equivalence_changed",
+      "ok": true,
+      "detail": "rejected equivalence_changed"
+    },
+    {
+      "check": "regress rejected with no_improvement",
+      "ok": true,
+      "detail": "rejected no_improvement ratio 1.011782032400589"
+    },
+    {
+      "check": "protected_test_edit rejected with guard",
+      "ok": true,
+      "detail": "rejected guard"
+    },
+    {
+      "check": "perf_reduce accepted on executed warp instructions",
+      "ok": true,
+      "detail": "ratio 0.4383897889052528"
+    },
+    {
+      "check": "perf_reduce_warp accepted on top of perf_reduce",
+      "ok": true,
+      "detail": "ratio 0.43673012318029114"
+    },
+    {
+      "check": "perf_scale accepted",
+      "ok": true,
+      "detail": "ratio 0.7784685526426932"
+    },
+    {
+      "check": "lineage height 3 (reduce, reduce_warp, scale)",
+      "ok": true,
+      "detail": "height 3"
+    },
+    {
+      "check": "every verdict recomputed from public data (scripts/verify.ts)",
+      "ok": true,
+      "detail": "7/7 verdicts independently recomputed"
+    }
+  ]
+}

@@ -1,0 +1,12 @@
+calibration: stable 14, known failures 0, quarantined 0
+  reduce_warp_inst: enabled cv=0 base=33445503 
+  scale_warp_inst: enabled cv=0 base=2080800 
+  reduce_us: enabled cv=0.0034515199925687144 base=129.024 
+OK   perf_reduce          accepted                         ratio=0.4384    26.4s | expect accepted (sequential addressing: idle warps skip the add path and no integer modulo)
+OK   perf_reduce_warp     accepted                         ratio=0.4367    26.5s | expect accepted on top of perf_reduce (last 64 elements reduced with warp shuffles, no barriers)
+OK   perf_scale           accepted                         ratio=0.7784    26.6s | expect accepted (scale[r] loaded once instead of once per column; row pointer hoisted)
+OK   equiv_change         rejected:equivalence_changed                     26.4s | expect rejected:equivalence_changed (stops at column 4096; unit tests use at most 1000 columns, the seeded equivalence shapes use 4000 to 9000)
+OK   regress              rejected:no_improvement          ratio=1.0118    27.0s | expect rejected:no_improvement (two extra uncached loads per element; same result, more warp instructions)
+OK   break_tests          rejected:tests_fail                              26.2s | expect rejected:tests_fail (drops the partial last block: fewer instructions, wrong sums for n not a multiple of 256)
+OK   protected_test_edit  rejected:guard                                   3.8s | expect rejected:guard PROTECTED_PATH
+7/7 outcomes as expected; wrote /root/lineage/fixtures/cuda-reduce-patches/check-last.json

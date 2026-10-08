@@ -1,0 +1,11 @@
+recipe llmc-cuda id 0b734b874f70beb0bc8bbc5055d5ab1d7fffcd56125b74fec5f93b91e0a96a95
+deps ecfcc9fc2e777639f51c975e2525074f266b5ed86c8bcf43eec2b2493cd65af2 (0.5 s, cached when ~0)
+stable 16, known failures 1, quarantined 0, excluded 0
+metric layernorm_fwd_inst: enabled cv=0.000e+0 base=3827712
+metric fused_residual_fwd_inst: enabled cv=0.000e+0 base=4810752
+metric encoder_fwd_inst: enabled cv=0.000e+0 base=2727936
+metric gelu_fwd_inst: enabled cv=0.000e+0 base=25156088
+metric gelu_bwd_inst: enabled cv=0.000e+0 base=45211376
+metric layernorm_fwd_us: enabled cv=1.420e-2 base=24.560000000000002
+median_eval_seconds 17, calibration wall 35.7 s
+wrote /root/lineage/recipes/llmc-cuda/calibration.json

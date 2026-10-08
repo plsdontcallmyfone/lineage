@@ -1,0 +1,47 @@
+using /root/lineage/recipes/llmc-cuda/calibration.json
+gelu_no_cube       rejected:tests_fail                 36.2s | expect tests_fail OK
+  detail: 2 stable tests fail: gelu_forward_N65536, gelu_forward_N8192_wide_range
+  layernorm_fwd_inst: base 3827712 cand 3827712 ratio 1.00000
+  fused_residual_fwd_inst: base 4810752 cand 4810752 ratio 1.00000
+  encoder_fwd_inst: base 2727936 cand 2727936 ratio 1.00000
+  gelu_fwd_inst: base 25156200 cand 23585096 ratio 0.93755
+  gelu_bwd_inst: base 45211376 cand 45211376 ratio 1.00000
+  layernorm_fwd_us: base 24.576,24.576,24.576,24.576,24.576,24.544,23.552,24.576,24.576,24.576,24.576,24.576,24.576,24.576,24.576 cand 24.576,23.648,24.544,24.576,24.576,24.544,24.576,24.576,24.576,24.576,24.576,24.512,24.576,24.48,24.576 ratio 1.00000
+  notes: gpu 0: NVIDIA RTX 4000 Ada Generation, sm 8.9, driver 580.173.02, 20475 MiB
+encoder_clamp_ids  rejected:equivalence_changed        36.0s | expect equivalence_changed OK
+  detail: candidate output differs from parent on seeded inputs
+  layernorm_fwd_inst: base 3827712 cand 3827712 ratio 1.00000
+  fused_residual_fwd_inst: base 4810752 cand 4810752 ratio 1.00000
+  encoder_fwd_inst: base 2727936 cand 2752512 ratio 1.00901
+  gelu_fwd_inst: base 25156040 cand 25156040 ratio 1.00000
+  gelu_bwd_inst: base 45211064 cand 45211064 ratio 1.00000
+  layernorm_fwd_us: base 24.576,24.576,24.576,24.576,24.576,24.576,24.576,24.576,24.576,24.576,24.576,24.576,24.576,24.576,24.576 cand 24.544,24.576,24.576,24.576,24.576,24.576,24.576,24.576,24.576,24.448,24.576,24.576,24.576,24.576,24.576 ratio 0.99870
+  notes: gpu 0: NVIDIA RTX 4000 Ada Generation, sm 8.9, driver 580.173.02, 20475 MiB
+gelu_sinh_cosh     rejected:no_improvement            ratio=1.97731 36.3s | expect no_improvement OK
+  detail: worst ratio 1.9773 vs required 0.9900
+  layernorm_fwd_inst: base 3827712 cand 3827712 ratio 1.00000
+  fused_residual_fwd_inst: base 4810752 cand 4810752 ratio 1.00000
+  encoder_fwd_inst: base 2727936 cand 2727936 ratio 1.00000
+  gelu_fwd_inst: base 25156200 cand 49741655 ratio 1.97731
+  gelu_bwd_inst: base 45211376 cand 45211376 ratio 1.00000
+  layernorm_fwd_us: base 23.552,24.576,24.576,24.576,24.576,24.576,24.544,24.576,24.576,24.576,24.576,23.552,24.512,24.576,24.576 cand 24.576,24.512,24.576,24.576,24.448,24.576,24.576,24.576,24.576,24.576,24.576,24.48,24.576,24.48,24.576 ratio 1.04348
+  notes: gpu 0: NVIDIA RTX 4000 Ada Generation, sm 8.9, driver 580.173.02, 20475 MiB
+CANARIES_EXIT=0
+using /root/lineage/recipes/llmc-cuda/calibration.json
+gelu_bwd_sech_from_tanh accepted                           ratio=0.68690 35.8s | expect accepted OK
+  layernorm_fwd_inst: base 3827712 cand 3827712 ratio 1.00000
+  fused_residual_fwd_inst: base 4810752 cand 4810752 ratio 1.00000
+  encoder_fwd_inst: base 2727936 cand 2727936 ratio 1.00000
+  gelu_fwd_inst: base 25156200 cand 25156200 ratio 1.00000
+  gelu_bwd_inst: base 45211376 cand 31055600 ratio 0.68690
+  layernorm_fwd_us: base 24.576,24.576,24.576,24.576,24.576,24.576,24.48,24.576,24.576,24.576,24.576,24.576,24.576,24.576,24.576 cand 24.576,24.576,24.576,24.576,24.576,24.576,24.576,24.576,24.576,24.576,24.576,24.576,24.576,24.576,25.6 ratio 1.00000
+  notes: gpu 0: NVIDIA RTX 4000 Ada Generation, sm 8.9, driver 580.173.02, 20475 MiB
+fix_fused_residual_guard accepted                            36.3s | expect accepted OK
+  layernorm_fwd_inst: base 3827712 cand 3827712 ratio 1.00000
+  fused_residual_fwd_inst: base 4810752 cand 4810752 ratio 1.00000
+  encoder_fwd_inst: base 2727936 cand 2727936 ratio 1.00000
+  gelu_fwd_inst: base 25156136 cand 25156136 ratio 1.00000
+  gelu_bwd_inst: base 45211304 cand 45211304 ratio 1.00000
+  layernorm_fwd_us: base 24.576,24.576,24.576,24.576,24.576,24.576,24.576,24.576,24.576,24.576,24.576,24.576,24.576,24.576,24.576 cand 24.576,24.576,24.576,24.576,24.576,24.576,24.576,24.576,24.576,24.576,24.576,24.576,24.576,24.576,24.576 ratio 1.00000
+  notes: gpu 0: NVIDIA RTX 4000 Ada Generation, sm 8.9, driver 580.173.02, 20475 MiB
+CANDIDATES_EXIT=0

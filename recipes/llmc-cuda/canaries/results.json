@@ -1,0 +1,307 @@
+{
+  "gelu_no_cube": {
+    "expect": "tests_fail",
+    "outcome": "rejected",
+    "reason": "tests_fail",
+    "detail": "2 stable tests fail: gelu_forward_N65536, gelu_forward_N8192_wide_range",
+    "effect": null,
+    "metrics": {
+      "layernorm_fwd_inst": {
+        "base": [
+          3827712
+        ],
+        "cand": [
+          3827712
+        ],
+        "ratio": 1
+      },
+      "fused_residual_fwd_inst": {
+        "base": [
+          4810752
+        ],
+        "cand": [
+          4810752
+        ],
+        "ratio": 1
+      },
+      "encoder_fwd_inst": {
+        "base": [
+          2727936
+        ],
+        "cand": [
+          2727936
+        ],
+        "ratio": 1
+      },
+      "gelu_fwd_inst": {
+        "base": [
+          25156200
+        ],
+        "cand": [
+          23585096
+        ],
+        "ratio": 0.9375460522654455
+      },
+      "gelu_bwd_inst": {
+        "base": [
+          45211376
+        ],
+        "cand": [
+          45211376
+        ],
+        "ratio": 1
+      },
+      "layernorm_fwd_us": {
+        "base": [
+          24.576,
+          24.576,
+          24.576,
+          24.576,
+          24.576,
+          24.544,
+          23.552,
+          24.576,
+          24.576,
+          24.576,
+          24.576,
+          24.576,
+          24.576,
+          24.576,
+          24.576
+        ],
+        "cand": [
+          24.576,
+          23.648,
+          24.544,
+          24.576,
+          24.576,
+          24.544,
+          24.576,
+          24.576,
+          24.576,
+          24.576,
+          24.576,
+          24.512,
+          24.576,
+          24.48,
+          24.576
+        ],
+        "ratio": 1
+      }
+    },
+    "equivalence": "changed",
+    "seed": "7265706c61792d67",
+    "recipe_id": "0b734b874f70beb0bc8bbc5055d5ab1d7fffcd56125b74fec5f93b91e0a96a95",
+    "eval_seconds": 36.2,
+    "date": "2026-10-08T11:27:49.244Z",
+    "match": true
+  },
+  "encoder_clamp_ids": {
+    "expect": "equivalence_changed",
+    "outcome": "rejected",
+    "reason": "equivalence_changed",
+    "detail": "candidate output differs from parent on seeded inputs",
+    "effect": null,
+    "metrics": {
+      "layernorm_fwd_inst": {
+        "base": [
+          3827712
+        ],
+        "cand": [
+          3827712
+        ],
+        "ratio": 1
+      },
+      "fused_residual_fwd_inst": {
+        "base": [
+          4810752
+        ],
+        "cand": [
+          4810752
+        ],
+        "ratio": 1
+      },
+      "encoder_fwd_inst": {
+        "base": [
+          2727936
+        ],
+        "cand": [
+          2752512
+        ],
+        "ratio": 1.009009009009009
+      },
+      "gelu_fwd_inst": {
+        "base": [
+          25156040
+        ],
+        "cand": [
+          25156040
+        ],
+        "ratio": 1
+      },
+      "gelu_bwd_inst": {
+        "base": [
+          45211064
+        ],
+        "cand": [
+          45211064
+        ],
+        "ratio": 1
+      },
+      "layernorm_fwd_us": {
+        "base": [
+          24.576,
+          24.576,
+          24.576,
+          24.576,
+          24.576,
+          24.576,
+          24.576,
+          24.576,
+          24.576,
+          24.576,
+          24.576,
+          24.576,
+          24.576,
+          24.576,
+          24.576
+        ],
+        "cand": [
+          24.544,
+          24.576,
+          24.576,
+          24.576,
+          24.576,
+          24.576,
+          24.576,
+          24.576,
+          24.576,
+          24.448,
+          24.576,
+          24.576,
+          24.576,
+          24.576,
+          24.576
+        ],
+        "ratio": 0.9986979166666666
+      }
+    },
+    "equivalence": "changed",
+    "seed": "7265706c61792d65",
+    "recipe_id": "0b734b874f70beb0bc8bbc5055d5ab1d7fffcd56125b74fec5f93b91e0a96a95",
+    "eval_seconds": 36,
+    "date": "2026-10-08T11:28:25.206Z",
+    "match": true
+  },
+  "gelu_sinh_cosh": {
+    "expect": "no_improvement",
+    "outcome": "rejected",
+    "reason": "no_improvement",
+    "detail": "worst ratio 1.9773 vs required 0.9900",
+    "effect": {
+      "metric": "gelu_fwd_inst",
+      "ratio": 1.977311954905749,
+      "ci_low": 1.977311954905749,
+      "ci_high": 1.977311954905749,
+      "per_replay": [
+        {
+          "replay_id": "r1",
+          "ratio": 1.977311954905749,
+          "ci_low": 1.977311954905749,
+          "ci_high": 1.977311954905749,
+          "pass": false
+        }
+      ]
+    },
+    "metrics": {
+      "layernorm_fwd_inst": {
+        "base": [
+          3827712
+        ],
+        "cand": [
+          3827712
+        ],
+        "ratio": 1
+      },
+      "fused_residual_fwd_inst": {
+        "base": [
+          4810752
+        ],
+        "cand": [
+          4810752
+        ],
+        "ratio": 1
+      },
+      "encoder_fwd_inst": {
+        "base": [
+          2727936
+        ],
+        "cand": [
+          2727936
+        ],
+        "ratio": 1
+      },
+      "gelu_fwd_inst": {
+        "base": [
+          25156200
+        ],
+        "cand": [
+          49741655
+        ],
+        "ratio": 1.977311954905749
+      },
+      "gelu_bwd_inst": {
+        "base": [
+          45211376
+        ],
+        "cand": [
+          45211376
+        ],
+        "ratio": 1
+      },
+      "layernorm_fwd_us": {
+        "base": [
+          23.552,
+          24.576,
+          24.576,
+          24.576,
+          24.576,
+          24.576,
+          24.544,
+          24.576,
+          24.576,
+          24.576,
+          24.576,
+          23.552,
+          24.512,
+          24.576,
+          24.576
+        ],
+        "cand": [
+          24.576,
+          24.512,
+          24.576,
+          24.576,
+          24.448,
+          24.576,
+          24.576,
+          24.576,
+          24.576,
+          24.576,
+          24.576,
+          24.48,
+          24.576,
+          24.48,
+          24.576
+        ],
+        "ratio": 1.0434782608695652
+      }
+    },
+    "equivalence": "same",
+    "seed": "7265706c61792d67",
+    "recipe_id": "0b734b874f70beb0bc8bbc5055d5ab1d7fffcd56125b74fec5f93b91e0a96a95",
+    "eval_seconds": 36.3,
+    "date": "2026-10-08T11:29:01.486Z",
+    "match": true
+  }
+}

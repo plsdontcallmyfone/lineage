@@ -1,0 +1,76 @@
+{
+  "canaries": [
+    {
+      "name": "gelu_no_cube",
+      "kind": "perf",
+      "target": "gelu_fwd_inst",
+      "expect": "tests_fail",
+      "note": "Presented as dropping a negligible cubic correction from the tanh GeLU approximation; it is not negligible: gelu(-2) moves from -0.045 to -0.078, outside the bf16 tolerance, so gelu_forward tests fail. Fewer warp instructions.",
+      "edits": [
+        [
+          "llmc/gelu.cuh",
+          "        float cube = 0.044715f * xi * xi * xi;\n        packed_out[k]",
+          "        float cube = 0.0f;\n        packed_out[k]"
+        ]
+      ]
+    },
+    {
+      "name": "encoder_clamp_ids",
+      "kind": "perf",
+      "target": "encoder_fwd_inst",
+      "expect": "equivalence_changed",
+      "note": "Presented as bounds hardening of the token id; clamps ids to 1023, which every unit test satisfies (vocabularies of 1024 and 50) but the seeded equivalence shapes (vocabularies up to 4096) do not, so outputs for ids above 1023 change.",
+      "edits": [
+        [
+          "llmc/encoder.cuh",
+          "    int ix = inp[b * T + t];\n\n    floatX* out_btc",
+          "    int ix = min(inp[b * T + t], 1023);\n\n    floatX* out_btc"
+        ]
+      ]
+    },
+    {
+      "name": "gelu_sinh_cosh",
+      "kind": "perf",
+      "target": "gelu_fwd_inst",
+      "expect": "no_improvement",
+      "note": "Presented as avoiding tanhf's slow path; computes tanh as sinhf/coshf, which is the same value within tolerance (the argument stays below 88 for the tested ranges) but executes more warp instructions.",
+      "edits": [
+        [
+          "llmc/gelu.cuh",
+          "        packed_out[k] = (floatX)(0.5f * xi * (1.0f + tanhf(GELU_SCALING_FACTOR * (xi + cube))));",
+          "        float a = GELU_SCALING_FACTOR * (xi + cube);\n        packed_out[k] = (floatX)(0.5f * xi * (1.0f + sinhf(a) / coshf(a)));"
+        ]
+      ]
+    }
+  ],
+  "candidates": [
+    {
+      "name": "gelu_bwd_sech_from_tanh",
+      "kind": "perf",
+      "target": "gelu_bwd_inst",
+      "expect": "accepted",
+      "note": "GeLU backward computed both tanhf(a) and coshf(a); sech^2(a) = 1 - tanh^2(a), so the coshf call and its division go away and the result stays within the bf16 tolerance.",
+      "edits": [
+        [
+          "llmc/gelu.cuh",
+          "        float coshf_out = coshf(tanh_arg);\n        float sech_out = 1.0f / (coshf_out * coshf_out);",
+          "        float sech_out = 1.0f - tanh_out * tanh_out;"
+        ]
+      ]
+    },
+    {
+      "name": "fix_fused_residual_guard",
+      "kind": "fix",
+      "target": "fused_residual_forward_B1_T13_C768_guard_rows",
+      "expect": "accepted",
+      "note": "fused_residual_forward_kernel5 guards with `idx > N`, so when N = B*T is not a multiple of the 8 rows per block the thread for row N writes residual, normed, mean and rstd one row past the end. `idx >= N`, as layernorm_forward_kernel6 has.",
+      "edits": [
+        [
+          "llmc/layernorm.cuh",
+          "    int idx = blockIdx.x * blockDim.y + threadIdx.y;\n    if(idx > N) return;",
+          "    int idx = blockIdx.x * blockDim.y + threadIdx.y;\n    if(idx >= N) return;"
+        ]
+      ]
+    }
+  ]
+}

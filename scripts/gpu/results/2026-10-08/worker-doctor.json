@@ -1,0 +1,28 @@
+{
+  "capabilities": {
+    "arch": "amd64",
+    "cpus": 8,
+    "memory_mb": 32091,
+    "gpus": [
+      {
+        "vendor": "nvidia",
+        "model": "NVIDIA RTX 4000 Ada Generation",
+        "sm": "8.9",
+        "mem_gb": 20,
+        "driver": "580.173.02"
+      }
+    ]
+  },
+  "docker": {
+    "reachable": true,
+    "arch_raw": "x86_64"
+  },
+  "images": [
+    {
+      "ref": "lineage/cuda:m1",
+      "id": "4f440a3ca551"
+    }
+  ],
+  "nvidia_smi": "found",
+  "notes": []
+}

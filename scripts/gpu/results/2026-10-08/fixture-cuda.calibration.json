@@ -1,0 +1,59 @@
+{
+  "recipe_id": "c4deb1cea0212ed37c0d514d05975a6e74669262e420a2ad0db942dd172a36b6",
+  "snapshot_id": "",
+  "runs": 5,
+  "stable": [
+    "reduce_sum_n0",
+    "reduce_sum_n1",
+    "reduce_sum_n1000",
+    "reduce_sum_n100003",
+    "reduce_sum_n255",
+    "reduce_sum_n256",
+    "reduce_sum_n257",
+    "reduce_sum_n65536",
+    "row_scale_127x3",
+    "row_scale_128x64",
+    "row_scale_129x17",
+    "row_scale_1x1",
+    "row_scale_1x300",
+    "row_scale_300x1000"
+  ],
+  "known_failures": [],
+  "quarantined": [],
+  "metrics": {
+    "reduce_warp_inst": {
+      "enabled": true,
+      "cv": 0,
+      "base_value": 33808089
+    },
+    "scale_warp_inst": {
+      "enabled": true,
+      "cv": 0,
+      "base_value": 1889860
+    },
+    "reduce_us": {
+      "enabled": true,
+      "cv": 0.002251482382289575,
+      "base_value": 131.072
+    }
+  },
+  "median_eval_seconds": 14,
+  "seed": "ca11b7a7e",
+  "recipe_name": "fixture-cuda",
+  "repo": "fixture:cuda-reduce",
+  "commit": "3f72f8b01f68c26b67943ab93e5e17c86b1e112d",
+  "deps_digest": "ecfcc9fc2e777639f51c975e2525074f266b5ed86c8bcf43eec2b2493cd65af2",
+  "image_digest": "sha256:4f440a3ca551ebdeb52aecf6ce34283af257d8f5d31329493c9b8e3d4a9dd715",
+  "date": "2026-10-08T11:26:17.454Z",
+  "calibration_wall_seconds": 25.8,
+  "counts": {
+    "stable": 14,
+    "known_failures": 0,
+    "quarantined": 0,
+    "excluded": 0
+  },
+  "notes": [
+    "gpu 0: NVIDIA RTX 4000 Ada Generation, sm 8.9, driver 580.173.02, 20475 MiB",
+    "calibration wall time 26 s"
+  ]
+}

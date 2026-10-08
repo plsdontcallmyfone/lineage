@@ -1,0 +1,9 @@
+PASS nvidia-smi sees a GPU on the host: 0: NVIDIA RTX 4000 Ada Generation sm 8.9 driver 580.173.02
+PASS driver >= 560.35 (CUDA 12.6.3 toolkit in the image): 580.173.02
+PASS host opens GPU performance counters to non-admin users: RmProfilingAdminOnly: 0
+PASS GPU visible inside the hardened sandbox (uid 10001, read-only root): 10001 | NVIDIA RTX 4000 Ada Generation, 8.9 | ro
+PASS nvcc builds and a kernel runs in the sandbox: no error
+
+PASS ncu reads smsp__inst_executed.sum without extra capabilities: 425984 warp instructions
+PASS the count is identical across two runs: 425984 vs 425984
+7/7 checks passed; wrote results/gpu-20261008T112233Z/doctor-gpu.json

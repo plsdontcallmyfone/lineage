@@ -1,0 +1,8 @@
+recipe fixture-cuda id c4deb1cea0212ed37c0d514d05975a6e74669262e420a2ad0db942dd172a36b6
+deps ecfcc9fc2e777639f51c975e2525074f266b5ed86c8bcf43eec2b2493cd65af2 (0.0 s, cached when ~0)
+stable 14, known failures 0, quarantined 0, excluded 0
+metric reduce_warp_inst: enabled cv=0.000e+0 base=33808089
+metric scale_warp_inst: enabled cv=0.000e+0 base=1889860
+metric reduce_us: enabled cv=2.251e-3 base=131.072
+median_eval_seconds 14, calibration wall 25.8 s
+wrote /root/lineage/recipes/fixture-cuda/calibration.json
