@@ -1,6 +1,7 @@
 // Shared pieces of the devnet scripts: the RPC, the key directory, the public state file, and the
 // transaction log in onchain/DEVNET.md. Nothing here reads or changes `solana config`; every key is
 // passed explicitly. Secret keys are never printed; keys are reported by public key only.
+import { devnetRpcUrl } from "../../packages/chain/src/endpoint.ts";
 import { appendFileSync, existsSync, readFileSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
@@ -19,7 +20,7 @@ import {
 } from "@lineage/chain";
 
 export const ROOT = join(import.meta.dir, "..", "..");
-export const RPC_URL = process.env.LINEAGE_DEVNET_RPC ?? "https://api.devnet.solana.com";
+export const RPC_URL = devnetRpcUrl();
 export const KEY_DIR = join(homedir(), ".config", "lineage", "devnet");
 export const DEPLOYER_PATH = join(homedir(), ".config", "lineage", "devnet-deployer.json");
 export const STATE_PATH = join(ROOT, "scripts", "devnet", "devnet.json");

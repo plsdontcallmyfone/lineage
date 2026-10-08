@@ -13,6 +13,7 @@
 //
 // playwright-core is not a repo dependency: pass its location.
 // Usage: bun apps/web/scripts/wallet-e2e.ts --pw <dir containing node_modules/playwright-core> [--port 9665] [--core-port 9666] [--shots <dir>]
+import { devnetRpcUrl } from "../../../packages/chain/src/endpoint.ts";
 import { spawn, spawnSync } from "bun";
 import { readFileSync } from "node:fs";
 import { homedir } from "node:os";
@@ -63,7 +64,7 @@ for (const p of [PORT, CORE_PORT]) {
 }
 
 const state = JSON.parse(readFileSync(join(ROOT, "scripts/devnet/devnet.json"), "utf8"));
-const rpc = Rpc.http(process.env.LINEAGE_DEVNET_RPC ?? state.rpc_url, "confirmed");
+const rpc = Rpc.http(devnetRpcUrl(), "confirmed");
 await assertDevnet(rpc);
 const reader = new ChainReader(rpc);
 const T22 = TOKEN_2022_PROGRAM;

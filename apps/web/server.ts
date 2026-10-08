@@ -17,6 +17,7 @@
 // The server never holds a user's key: wallets sign in the browser. The only key it loads is the
 // devnet faucet's own (~/.config/lineage/devnet/faucet.json).
 
+import { devnetRpcUrl, redactRpc } from "../../packages/chain/src/endpoint.ts";
 import { execFileSync } from "node:child_process";
 import { existsSync, readFileSync } from "node:fs";
 import { homedir } from "node:os";
@@ -69,7 +70,7 @@ walletBundle = await buildWallet();
 // devnet: public state, RPC proxy, faucet
 
 const DEVNET_STATE = join(DIR, "../../scripts/devnet/devnet.json");
-const RPC_URL = arg("rpc", process.env.LINEAGE_DEVNET_RPC ?? "https://api.devnet.solana.com")!;
+const RPC_URL = arg("rpc", devnetRpcUrl())!;
 const KEYS = join(homedir(), ".config", "lineage", "devnet");
 const devnet = existsSync(DEVNET_STATE) ? JSON.parse(readFileSync(DEVNET_STATE, "utf8")) : null;
 const RPC_METHODS = new Set([
@@ -125,7 +126,7 @@ async function chainRoute(req: Request, p: string): Promise<Response> {
     const pub = devnet
       ? Object.fromEntries(Object.entries(devnet).filter(([k]) => !/key/i.test(k) && k !== "test_epoch_leaves"))
       : null;
-    return Response.json({ rpc: "/chain/rpc", rpc_upstream: RPC_URL, ...c, devnet: c.devnet, state: pub, faucet: faucet?.address ?? null });
+    return Response.json({ rpc: "/chain/rpc", rpc_upstream: redactRpc(RPC_URL), ...c, devnet: c.devnet, state: pub, faucet: faucet?.address ?? null });
   }
   if (p === "/chain/rpc") {
     if (req.method !== "POST") return new Response("POST only", { status: 405 });

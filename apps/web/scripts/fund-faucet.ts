@@ -4,6 +4,7 @@
 // holds the TEST supply (scripts/devnet/devnet.json line_holder): SOL for fees and recipients' token
 // accounts, and tLINE to transfer. Nothing is minted: the tLINE mint authority is revoked.
 // Usage: bun apps/web/scripts/fund-faucet.ts [--sol 0.2] [--line 100000]
+import { devnetRpcUrl } from "../../../packages/chain/src/endpoint.ts";
 import { readFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
@@ -13,7 +14,7 @@ import { logWalletTx } from "./devnet-log.ts";
 
 const arg = (n: string, d: string) => (process.argv.includes(`--${n}`) ? process.argv[process.argv.indexOf(`--${n}`) + 1]! : d);
 const state = JSON.parse(readFileSync(join(import.meta.dir, "../../../scripts/devnet/devnet.json"), "utf8"));
-const rpc = Rpc.http(process.env.LINEAGE_DEVNET_RPC ?? state.rpc_url, "confirmed");
+const rpc = Rpc.http(devnetRpcUrl(), "confirmed");
 await assertDevnet(rpc);
 const dep = loadKeypair(join(homedir(), ".config", "lineage", "devnet-deployer.json"));
 const { key: faucet, created } = loadOrCreateKeypair(join(homedir(), ".config", "lineage", "devnet", "faucet.json"));
