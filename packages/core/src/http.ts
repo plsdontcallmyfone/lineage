@@ -1,4 +1,5 @@
 import type { Server } from "bun";
+import { bountiesOf } from "./bounties.ts";
 import { networkConfigJson } from "./config.ts";
 import type { Core, CoreEvent } from "./core.ts";
 import { ApiError, bad, forbidden, notFound } from "./errors.ts";
@@ -135,6 +136,12 @@ export function buildRoutes(core: Core): Route[] {
     route("GET", "/v1/agents/:id/keys", "none", (c) => core.identity.history(c.params.id!)),
     route("GET", "/v1/agents/:id/records", "none", (c) => core.records.view(c.params.id!, q(c, "epoch") !== undefined ? Number(q(c, "epoch")) : undefined)),
     route("GET", "/v1/agents/:id/credential", "none", (c) => core.records.credentialFor(c.params.id!)),
+    // bounties (C6, packages/core/src/bounties.ts): read-only mirror of the onchain escrows
+    route("GET", "/v1/bounties", "none", (c) => bountiesOf(core).list({ lineage: q(c, "lineage"), payee: q(c, "payee"), payer: q(c, "payer"), status: q(c, "status") })),
+    route("GET", "/v1/bounties/:id", "none", (c) => bountiesOf(core).one(c.params.id!)),
+    route("GET", "/v1/bounties/:id/release", "none", (c) => bountiesOf(core).release(c.params.id!)),
+    route("PUT", "/v1/bounties/:id/terms", "none", (c) => bountiesOf(core).setTerms(c.params.id!, c.json())),
+    route("GET", "/v1/lineages/:id/bounties", "none", (c) => bountiesOf(core).hints(c.params.id!)),
     route("GET", "/v1/epochs", "none", () => core.listEpochs()),
     route("GET", "/v1/epochs/current", "none", () => core.epochView(core.currentEpoch().n)),
     route("GET", "/v1/epochs/:n", "none", (c) => core.epochView(epochN(c))),

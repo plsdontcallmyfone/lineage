@@ -15,6 +15,7 @@ import {
   type RegistryConfig,
   type Signer,
 } from "@lineage/chain";
+import { bountiesOf } from "./bounties.ts";
 import type { NetworkConfig } from "./config.ts";
 import type { ChainAgent, Core } from "./core.ts";
 
@@ -244,6 +245,24 @@ export class ChainBridge {
 
     this.core.chainSetBalances({ treasury: vaults.treasury ?? 0n, reserve: vaults.reserve ?? 0n, pool: vaults.pool ?? 0n });
 
+    // bounties (C6): mirror every Bounty account; the open signature is looked up once per new bounty
+    let bountyCount = 0;
+    let bountyConfig: Awaited<ReturnType<ChainReader["bountyConfig"]>> = null;
+    try {
+      const bs = await this.reader.bounties();
+      bountyConfig = await this.reader.bountyConfig();
+      const sigs = new Map<string, string | null>();
+      const known = new Set(bountiesOf(this.core).list({ status: "all" }).map((b) => b.bounty_id));
+      for (const b of bs.filter((x) => !known.has(x.address))) {
+        const list = await this.reader.rpc.call<{ signature: string }[]>("getSignaturesForAddress", [b.address, { limit: 1000 }]).catch(() => []);
+        sigs.set(b.address, list.length ? list[list.length - 1]!.signature : null);
+      }
+      bountiesOf(this.core).sync(bs, (a) => sigs.get(a) ?? null);
+      bountyCount = bs.length;
+    } catch (e) {
+      this.log(`bounties not mirrored: ${(e as Error).message}`);
+    }
+
     const posted: { n: number; signature?: string; error?: string }[] = [];
     if (this.send && this.coreKeyId === reg.coreAuthority) {
       let last = reg.epochsPosted === 0n ? -1n : reg.lastEpoch;
@@ -319,6 +338,11 @@ export class ChainBridge {
       vault_addresses: { treasury: registryPdas.treasury(), reserve: registryPdas.reserve(), pool: registryPdas.pool(), payable: registryPdas.payable(),
         bond_vault: registryPdas.bondVault() },
       compute: Object.fromEntries(launchedIds.map((a) => [a, { vault: launchPdas.computeVault(a), balance: s(vaults.compute[a]) }])),
+      bounties: { count: bountyCount, config: bountyConfig
+        ? { max_bounty_out_bps: bountyConfig.maxBountyOutBps, self_hosted_in_cap: s(bountyConfig.selfHostedInCap), window_s: bountyConfig.windowS,
+            min_ttl_s: bountyConfig.minTtlS, max_ttl_s: bountyConfig.maxTtlS, refund_grace_s: bountyConfig.refundGraceS, min_amount: s(bountyConfig.minAmount),
+            paused: bountyConfig.paused }
+        : null },
       agents: kinds,
       agents_v1: agents.filter((a) => a.version === 1).length,
       posted_epochs: this.core.chainEpochs(),
