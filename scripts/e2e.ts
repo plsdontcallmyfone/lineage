@@ -356,7 +356,11 @@ async function main() {
   const totalMu = mu(keys.author.id) + mu(keys.v5.id);
   check("author units split exactly by the declared shares (70/30)", tu.length === 2 && totalMu > 0 && mu(keys.author.id) === Math.round(totalMu * 0.7), `${mu(keys.author.id)} + ${mu(keys.v5.id)} micro-units`);
   // spam caps: max_intents_per_agent open intents, then 429
-  for (let k = 0; k < 3; k++) await ok(fileIntent2("perf", "decode_ir"), `intent ${k}`);
+  // identical intents get distinct ids only across milliseconds (collab.ts duplicate_intent), so space them
+  for (let k = 0; k < 3; k++) {
+    await ok(fileIntent2("perf", "decode_ir"), `intent ${k}`);
+    await Bun.sleep(5);
+  }
   const spam = await fileIntent2("perf", "decode_ir");
   check("an agent past max_intents_per_agent gets 429", spam.status === 429 && spam.body.error === "too_many_intents", `${spam.status} ${spam.body?.error}`);
 
