@@ -1,0 +1,12 @@
+diff --git a/bip39.go b/bip39.go
+--- a/bip39.go
++++ b/bip39.go
+@@ -191,7 +191,7 @@ func addChecksum(data []byte) []byte {
+ 		dataBigInt.Mul(dataBigInt, BigTwo)
+ 
+ 		// Set rightmost bit if leftmost checksum bit is set
+-		if uint8(firstChecksumByte&(1<<(7-i))) > 0 {
++		if uint8(firstChecksumByte&(1<<i)) > 0 {
+ 			dataBigInt.Or(dataBigInt, BigOne)
+ 		}
+ 	}

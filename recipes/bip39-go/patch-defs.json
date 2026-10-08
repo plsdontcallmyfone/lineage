@@ -1,0 +1,86 @@
+{
+  "canaries": [
+    {
+      "name": "lsb_checksum",
+      "kind": "perf",
+      "target": "mnemonic_ir",
+      "expect": "tests_fail",
+      "note": "Presented as a cheaper bit test in addChecksum (testing bit i instead of 7-i); the checksum bits are appended in reverse order, so the last word of every phrase is wrong for most entropies.",
+      "edits": [
+        [
+          "bip39.go",
+          "\t\tif uint8(firstChecksumByte&(1<<(7-i))) > 0 {\n",
+          "\t\tif uint8(firstChecksumByte&(1<<i)) > 0 {\n"
+        ]
+      ]
+    },
+    {
+      "name": "skip_revalidate",
+      "kind": "perf",
+      "target": "entropy_ir",
+      "expect": "equivalence_changed",
+      "note": "Presented as dropping a redundant IsMnemonicValid pass because the reverse-map loop rejects unknown words anyway; word-count errors now come from the size check with a different message, and phrases with doubled or leading spaces fail on an empty word instead of 'Invalid mnemonic'. Upstream tests only check that an error is returned.",
+      "edits": [
+        [
+          "bip39.go",
+          "\tif !IsMnemonicValid(mnemonic) {\n\t\treturn nil, fmt.Errorf(\"Invalid mnemonic\")\n\t}\n",
+          ""
+        ]
+      ]
+    },
+    {
+      "name": "fieldsfunc",
+      "kind": "perf",
+      "target": "valid_ir",
+      "expect": "no_improvement",
+      "note": "Presented as making word splitting Unicode-consistent with strings.FieldsFunc(unicode.IsSpace); strings.Fields already splits on exactly those runes and has an ASCII fast path, so this only adds a function call per rune.",
+      "edits": [
+        [
+          "bip39.go",
+          "\twords := strings.Fields(mnemonic)\n",
+          "\twords := strings.FieldsFunc(mnemonic, unicode.IsSpace)\n"
+        ],
+        [
+          "bip39.go",
+          "\t\"strings\"\n",
+          "\t\"strings\"\n\t\"unicode\"\n"
+        ]
+      ]
+    }
+  ],
+  "candidates": [
+    {
+      "name": "mnemonic_bits",
+      "kind": "perf",
+      "target": "mnemonic_ir",
+      "expect": "accepted",
+      "note": "NewMnemonic reads each 11-bit word index straight out of entropy||sha256(entropy)[0] with shifts (one 24-bit window per word) instead of building a big.Int, appending the checksum one bit at a time with Mul and Or, and dividing by 2048 per word.",
+      "edits": [
+        [
+          "bip39.go",
+          "func NewMnemonic(entropy []byte) (string, error) {\n\t// Compute some lengths for convenience\n\tentropyBitLength := len(entropy) * 8\n\tchecksumBitLength := entropyBitLength / 32\n\tsentenceLength := (entropyBitLength + checksumBitLength) / 11\n\n\terr := validateEntropyBitSize(entropyBitLength)\n\tif err != nil {\n\t\treturn \"\", err\n\t}\n\n\t// Add checksum to entropy\n\tentropy = addChecksum(entropy)\n\n\t// Break entropy up into sentenceLength chunks of 11 bits\n\t// For each word AND mask the rightmost 11 bits and find the word at that index\n\t// Then bitshift entropy 11 bits right and repeat\n\t// Add to the last empty slot so we can work with LSBs instead of MSB\n\n\t// Entropy as an int so we can bitmask without worrying about bytes slices\n\tentropyInt := new(big.Int).SetBytes(entropy)\n\n\t// Slice to hold words in\n\twords := make([]string, sentenceLength)\n\n\t// Throw away big int for AND masking\n\tword := big.NewInt(0)\n\n\tfor i := sentenceLength - 1; i >= 0; i-- {\n\t\t// Get 11 right most bits and bitshift 11 to the right for next time\n\t\tword.And(entropyInt, Last11BitsMask)\n\t\tentropyInt.Div(entropyInt, RightShift11BitsDivider)\n\n\t\t// Get the bytes representing the 11 bits as a 2 byte slice\n\t\twordBytes := padByteSlice(word.Bytes(), 2)\n\n\t\t// Convert bytes to an index and add that word to the list\n\t\twords[i] = WordList[binary.BigEndian.Uint16(wordBytes)]\n\t}\n\n\treturn strings.Join(words, \" \"), nil\n}\n",
+          "func NewMnemonic(entropy []byte) (string, error) {\n\t// Compute some lengths for convenience\n\tentropyBitLength := len(entropy) * 8\n\tchecksumBitLength := entropyBitLength / 32\n\tsentenceLength := (entropyBitLength + checksumBitLength) / 11\n\n\terr := validateEntropyBitSize(entropyBitLength)\n\tif err != nil {\n\t\treturn \"\", err\n\t}\n\n\t// The entropy followed by the first checksum byte: only its top checksumBitLength\n\t// bits are ever read, so word i is simply bits [11i, 11i+11) of this buffer.\n\thash := sha256.Sum256(entropy)\n\tbuf := make([]byte, len(entropy)+2)\n\tcopy(buf, entropy)\n\tbuf[len(entropy)] = hash[0]\n\n\twords := make([]string, sentenceLength)\n\tfor i := range words {\n\t\tbit := i * 11\n\t\tb := bit >> 3\n\t\tv := uint32(buf[b])<<16 | uint32(buf[b+1])<<8 | uint32(buf[b+2])\n\t\twords[i] = WordList[(v>>(13-uint(bit&7)))&2047]\n\t}\n\n\treturn strings.Join(words, \" \"), nil\n}\n"
+        ],
+        [
+          "bip39.go",
+          "\t\"encoding/binary\"\n",
+          ""
+        ]
+      ]
+    },
+    {
+      "name": "bytearray_bits",
+      "kind": "perf",
+      "target": "entropy_ir",
+      "expect": "accepted",
+      "note": "MnemonicToByteArray packs the 11-bit indexes into the right-aligned big-endian byte value directly and checks the checksum against the top bits of the first SHA-256 byte, instead of big.Int Mul/Add per word, Exp and DivMod, and three padding copies. Results and error messages (including the first unknown word and the checksum byte position) are unchanged.",
+      "edits": [
+        [
+          "bip39.go",
+          "\tb := big.NewInt(0)\n\tmodulo := big.NewInt(2048)\n\tfor _, v := range mnemonicSlice {\n\t\tindex, found := ReverseWordMap[v]\n\t\tif !found {\n\t\t\treturn nil, fmt.Errorf(\"Word `%v` not found in reverse map\", v)\n\t\t}\n\t\tadd := big.NewInt(int64(index))\n\t\tb = b.Mul(b, modulo)\n\t\tb = b.Add(b, add)\n\t}\n\thex := b.Bytes()\n\tchecksumModulo := big.NewInt(0).Exp(big.NewInt(2), big.NewInt(int64(checksumSize)), nil)\n\tentropy, _ := big.NewInt(0).DivMod(b, checksumModulo, big.NewInt(0))\n\n\tentropyHex := entropy.Bytes()\n\n\t// Add padding (an extra byte is for checksum)\n\tbyteSize := (bitSize-checksumSize)/8 + 1\n\tif len(hex) != byteSize {\n\t\ttmp := make([]byte, byteSize)\n\t\tdiff := byteSize - len(hex)\n\t\tfor i := 0; i < len(hex); i++ {\n\t\t\ttmp[i+diff] = hex[i]\n\t\t}\n\t\thex = tmp\n\t}\n\n\t// Add padding (no extra byte, entropy itself does not contain checksum)\n\tentropyByteSize := (bitSize - checksumSize) / 8\n\tif len(entropyHex) != entropyByteSize {\n\t\ttmp := make([]byte, entropyByteSize)\n\t\tdiff := entropyByteSize - len(entropyHex)\n\t\tfor i := 0; i < len(entropyHex); i++ {\n\t\t\ttmp[i+diff] = entropyHex[i]\n\t\t}\n\t\tentropyHex = tmp\n\t}\n\n\tvalidationHex := addChecksum(entropyHex)\n\tif len(validationHex) != byteSize {\n\t\ttmp2 := make([]byte, byteSize)\n\t\tdiff2 := byteSize - len(validationHex)\n\t\tfor i := 0; i < len(validationHex); i++ {\n\t\t\ttmp2[i+diff2] = validationHex[i]\n\t\t}\n\t\tvalidationHex = tmp2\n\t}\n\n\tif len(hex) != len(validationHex) {\n\t\tpanic(\"[]byte len mismatch - it shouldn't happen\")\n\t}\n\tfor i := range validationHex {\n\t\tif hex[i] != validationHex[i] {\n\t\t\treturn nil, fmt.Errorf(\"Invalid byte at position %v\", i)\n\t\t}\n\t}\n\treturn hex, nil\n",
+          "\t// Pack the 11-bit indexes into the big-endian value entropy||checksum, right-aligned\n\t// in byteSize bytes (the top 8-checksumSize bits stay zero).\n\tbyteSize := (bitSize-checksumSize)/8 + 1\n\thex := make([]byte, byteSize)\n\tvar acc uint32\n\tvar nbits uint\n\tpos := byteSize\n\tfor i := len(mnemonicSlice) - 1; i >= 0; i-- {\n\t\tindex, found := ReverseWordMap[mnemonicSlice[i]]\n\t\tif !found {\n\t\t\t// report the first unknown word, as a left-to-right scan would\n\t\t\tfor _, v := range mnemonicSlice {\n\t\t\t\tif _, ok := ReverseWordMap[v]; !ok {\n\t\t\t\t\treturn nil, fmt.Errorf(\"Word `%v` not found in reverse map\", v)\n\t\t\t\t}\n\t\t\t}\n\t\t}\n\t\tacc |= uint32(index) << nbits\n\t\tnbits += 11\n\t\tfor nbits >= 8 {\n\t\t\tpos--\n\t\t\thex[pos] = byte(acc)\n\t\t\tacc >>= 8\n\t\t\tnbits -= 8\n\t\t}\n\t}\n\tif nbits > 0 {\n\t\thex[0] = byte(acc)\n\t}\n\n\t// Entropy is the value shifted right by checksumSize bits; the checksum is the top\n\t// checksumSize bits of its SHA-256. Only the last byte can differ from the expected\n\t// encoding, since the entropy bits are the same on both sides.\n\tentropyByteSize := byteSize - 1\n\tentropy := make([]byte, entropyByteSize)\n\tcs := uint(checksumSize)\n\tfor k := range entropy {\n\t\tentropy[k] = hex[k]<<(8-cs) | hex[k+1]>>cs\n\t}\n\thash := sha256.Sum256(entropy)\n\tif hex[byteSize-1]&(1<<cs-1) != hash[0]>>(8-cs) {\n\t\treturn nil, fmt.Errorf(\"Invalid byte at position %v\", byteSize-1)\n\t}\n\treturn hex, nil\n"
+        ]
+      ]
+    }
+  ]
+}

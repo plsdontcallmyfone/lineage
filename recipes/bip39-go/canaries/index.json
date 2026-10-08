@@ -1,0 +1,26 @@
+{
+  "lsb_checksum": {
+    "kind": "perf",
+    "target": "mnemonic_ir",
+    "expect": "tests_fail",
+    "note": "Presented as a cheaper bit test in addChecksum (testing bit i instead of 7-i); the checksum bits are appended in reverse order, so the last word of every phrase is wrong for most entropies.",
+    "lines": 2,
+    "guard": "ok"
+  },
+  "skip_revalidate": {
+    "kind": "perf",
+    "target": "entropy_ir",
+    "expect": "equivalence_changed",
+    "note": "Presented as dropping a redundant IsMnemonicValid pass because the reverse-map loop rejects unknown words anyway; word-count errors now come from the size check with a different message, and phrases with doubled or leading spaces fail on an empty word instead of 'Invalid mnemonic'. Upstream tests only check that an error is returned.",
+    "lines": 3,
+    "guard": "ok"
+  },
+  "fieldsfunc": {
+    "kind": "perf",
+    "target": "valid_ir",
+    "expect": "no_improvement",
+    "note": "Presented as making word splitting Unicode-consistent with strings.FieldsFunc(unicode.IsSpace); strings.Fields already splits on exactly those runes and has an ASCII fast path, so this only adds a function call per rune.",
+    "lines": 3,
+    "guard": "ok"
+  }
+}

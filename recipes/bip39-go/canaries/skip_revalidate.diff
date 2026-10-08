@@ -1,0 +1,13 @@
+diff --git a/bip39.go b/bip39.go
+--- a/bip39.go
++++ b/bip39.go
+@@ -84,9 +84,6 @@ func NewMnemonic(entropy []byte) (string, error) {
+ // suitable for creating another mnemonic.
+ // An error is returned if the mnemonic is invalid.
+ func MnemonicToByteArray(mnemonic string) ([]byte, error) {
+-	if !IsMnemonicValid(mnemonic) {
+-		return nil, fmt.Errorf("Invalid mnemonic")
+-	}
+ 	mnemonicSlice := strings.Split(mnemonic, " ")
+ 
+ 	bitSize := len(mnemonicSlice) * 11

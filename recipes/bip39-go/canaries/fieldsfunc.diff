@@ -1,0 +1,20 @@
+diff --git a/bip39.go b/bip39.go
+--- a/bip39.go
++++ b/bip39.go
+@@ -9,6 +9,7 @@ import (
+ 	"fmt"
+ 	"math/big"
+ 	"strings"
++	"unicode"
+ 
+ 	"golang.org/x/crypto/pbkdf2"
+ )
+@@ -223,7 +224,7 @@ func validateEntropyWithChecksumBitSize(bitSize int) error {
+ // and that all the words in the mnemonic are present in the word list.
+ func IsMnemonicValid(mnemonic string) bool {
+ 	// Create a list of all the words in the mnemonic sentence
+-	words := strings.Fields(mnemonic)
++	words := strings.FieldsFunc(mnemonic, unicode.IsSpace)
+ 
+ 	//Get num of words
+ 	numOfWords := len(words)

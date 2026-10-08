@@ -1,0 +1,18 @@
+{
+  "mnemonic_bits": {
+    "kind": "perf",
+    "target": "mnemonic_ir",
+    "expect": "accepted",
+    "note": "NewMnemonic reads each 11-bit word index straight out of entropy||sha256(entropy)[0] with shifts (one 24-bit window per word) instead of building a big.Int, appending the checksum one bit at a time with Mul and Or, and dividing by 2048 per word.",
+    "lines": 37,
+    "guard": "ok"
+  },
+  "bytearray_bits": {
+    "kind": "perf",
+    "target": "entropy_ir",
+    "expect": "accepted",
+    "note": "MnemonicToByteArray packs the 11-bit indexes into the right-aligned big-endian byte value directly and checks the checksum against the top bits of the first SHA-256 byte, instead of big.Int Mul/Add per word, Exp and DivMod, and three padding copies. Results and error messages (including the first unknown word and the checksum byte position) are unchanged.",
+    "lines": 84,
+    "guard": "ok"
+  }
+}

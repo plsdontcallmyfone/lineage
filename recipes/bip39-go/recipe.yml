@@ -1,0 +1,84 @@
+# cosmos/go-bip39: the BIP39 mnemonic package used across the Cosmos SDK (key import and
+# generation), a maintained fork of tyler-smith/go-bip39 (the original repository is gone from
+# GitHub). MIT licence (LICENSE). Contribution policy: no CONTRIBUTING or AI policy in the
+# repository; the cosmos/.github organisation CONTRIBUTING.md says "You may use AI tooling
+# provided you take responsibility for what it produces" (checked 2026-10-08).
+#
+# Why: NewMnemonic and MnemonicToByteArray do all bit work with math/big (a big.Int division per
+# word, a big.Int Exp and DivMod per phrase, the checksum appended one bit at a time with Mul and
+# Or), and MnemonicToByteArray validates the phrase twice, so instruction counts have real
+# headroom.
+#
+# Build and determinism follow geth-rlp (see its recipe for the details): the metric is
+# callgrind's instruction count inside main.run only (--toggle-collect), GOMAXPROCS=1 GOGC=off
+# asyncpreemptoff memprofilerate=0, a harness built with GOEXPERIMENT=norandomizedheapbase64 and
+# linked with the overlay's entry stub (fixed AT_RANDOM bytes, pre-touched main stack), the main
+# goroutine locked to the main thread and pinned to its P while measuring. go.mod says go 1.15,
+# so the overlay is written for that language version. Calibrated on arm64.
+name: bip39-go
+class: go
+requires: { arch: arm64 }
+repo: https://github.com/cosmos/go-bip39
+commit: "3027fe585f89a39da9b7389bd4e3482e056f6d3f"
+image: "lineage/go:1.26.8@sha256:7f90f7bb53ceec9f7b62ed14867b6439c7020fa8439ff5ea4daf891a84069838"
+workdir: /work/src
+prepare:
+  - go list -deps -test ./ ./lineage/... > /dev/null
+  - du -sh /deps/gomod
+prepare_outputs: []
+build:
+  commands:
+    - export GOCACHE=/work/src/.lineage-gocache
+    - go build ./
+    - GOEXPERIMENT=norandomizedheapbase64 go build -ldflags=-E=main.lineageEntry -o lineage_bin/ ./lineage/bip39bench
+    - go build -o lineage_bin/ ./lineage/bip39equiv
+  artifacts: []
+  reproducible: false
+test:
+  command: GOCACHE=/work/src/.lineage-gocache go test -json -count=1 -p 1 ./ | gotap
+  parser: tap
+  exclude: []
+  timeout_s: 600
+equivalence:
+  command: lineage_bin/bip39equiv "$LINEAGE_SEED"
+  output: stdout-digest
+metrics:
+  - name: mnemonic_ir
+    kind: perf
+    direction: lower
+    deterministic: true
+    command: GOMAXPROCS=1 GOGC=off GODEBUG=asyncpreemptoff=1,memprofilerate=0 valgrind --tool=callgrind --toggle-collect=main.run --dump-instr=no --callgrind-out-file=/dev/null lineage_bin/bip39bench mnemonic "$LINEAGE_SEED"
+    parser: cachegrind-ir
+    holdout: true
+    min_effect: 0.01
+  - name: entropy_ir
+    kind: perf
+    direction: lower
+    deterministic: true
+    command: GOMAXPROCS=1 GOGC=off GODEBUG=asyncpreemptoff=1,memprofilerate=0 valgrind --tool=callgrind --toggle-collect=main.run --dump-instr=no --callgrind-out-file=/dev/null lineage_bin/bip39bench entropy "$LINEAGE_SEED"
+    parser: cachegrind-ir
+    holdout: true
+    min_effect: 0.01
+  - name: valid_ir
+    kind: perf
+    direction: lower
+    deterministic: true
+    command: GOMAXPROCS=1 GOGC=off GODEBUG=asyncpreemptoff=1,memprofilerate=0 valgrind --tool=callgrind --toggle-collect=main.run --dump-instr=no --callgrind-out-file=/dev/null lineage_bin/bip39bench valid "$LINEAGE_SEED"
+    parser: cachegrind-ir
+    holdout: true
+    min_effect: 0.01
+patch:
+  allowed_paths: ["bip39.go", "wordlist.go"]
+  protected_paths:
+    - "**/*_test.go"
+    - "go.mod"
+    - "go.sum"
+    - "coverage.txt"
+    - "lineage/**"
+    - "lineage_bin/**"
+    - ".github/**"
+    - "**/*.yml"
+    - "**/*.yaml"
+  max_files: 2
+  max_lines: 200
+limits: { cpus: 2, memory_mb: 2048, pids: 512, wall_s: 1200, disk_mb: 4096 }

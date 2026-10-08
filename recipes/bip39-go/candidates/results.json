@@ -1,0 +1,114 @@
+{
+  "mnemonic_bits": {
+    "expect": "accepted",
+    "outcome": "accepted",
+    "reason": null,
+    "detail": null,
+    "effect": {
+      "metric": "mnemonic_ir",
+      "ratio": 0.14644906291115153,
+      "ci_low": 0.14644906291115153,
+      "ci_high": 0.14644906291115153,
+      "per_replay": [
+        {
+          "replay_id": "r1",
+          "ratio": 0.14644906291115153,
+          "ci_low": 0.14644906291115153,
+          "ci_high": 0.14644906291115153,
+          "pass": true
+        }
+      ]
+    },
+    "metrics": {
+      "mnemonic_ir": {
+        "base": [
+          21350857
+        ],
+        "cand": [
+          3126813
+        ],
+        "ratio": 0.14644906291115153
+      },
+      "entropy_ir": {
+        "base": [
+          19538181
+        ],
+        "cand": [
+          19540007
+        ],
+        "ratio": 1.0000934580348089
+      },
+      "valid_ir": {
+        "base": [
+          10032891
+        ],
+        "cand": [
+          10027344
+        ],
+        "ratio": 0.9994471184825989
+      }
+    },
+    "equivalence": "same",
+    "seed": "7265706c61792d6d",
+    "recipe_id": "24fb49a2a7765bdbd9e81bba62a997d911a0f1fdd6e8231102b1d693002e23ea",
+    "eval_seconds": 50.6,
+    "date": "2026-10-08T21:34:20.335Z",
+    "match": true
+  },
+  "bytearray_bits": {
+    "expect": "accepted",
+    "outcome": "accepted",
+    "reason": null,
+    "detail": null,
+    "effect": {
+      "metric": "entropy_ir",
+      "ratio": 0.5598531085231809,
+      "ci_low": 0.5598531085231809,
+      "ci_high": 0.5598531085231809,
+      "per_replay": [
+        {
+          "replay_id": "r1",
+          "ratio": 0.5598531085231809,
+          "ci_low": 0.5598531085231809,
+          "ci_high": 0.5598531085231809,
+          "pass": true
+        }
+      ]
+    },
+    "metrics": {
+      "mnemonic_ir": {
+        "base": [
+          20998540
+        ],
+        "cand": [
+          20998540
+        ],
+        "ratio": 1
+      },
+      "entropy_ir": {
+        "base": [
+          19232702
+        ],
+        "cand": [
+          10767488
+        ],
+        "ratio": 0.5598531085231809
+      },
+      "valid_ir": {
+        "base": [
+          9843990
+        ],
+        "cand": [
+          9843990
+        ],
+        "ratio": 1
+      }
+    },
+    "equivalence": "same",
+    "seed": "7265706c61792d62",
+    "recipe_id": "24fb49a2a7765bdbd9e81bba62a997d911a0f1fdd6e8231102b1d693002e23ea",
+    "eval_seconds": 55,
+    "date": "2026-10-08T21:36:39.852Z",
+    "match": true
+  }
+}

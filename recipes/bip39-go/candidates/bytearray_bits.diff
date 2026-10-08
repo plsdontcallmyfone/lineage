@@ -1,0 +1,101 @@
+diff --git a/bip39.go b/bip39.go
+--- a/bip39.go
++++ b/bip39.go
+@@ -96,62 +96,48 @@ func MnemonicToByteArray(mnemonic string) ([]byte, error) {
+ 	}
+ 	checksumSize := bitSize % 32
+ 
+-	b := big.NewInt(0)
+-	modulo := big.NewInt(2048)
+-	for _, v := range mnemonicSlice {
+-		index, found := ReverseWordMap[v]
++	// Pack the 11-bit indexes into the big-endian value entropy||checksum, right-aligned
++	// in byteSize bytes (the top 8-checksumSize bits stay zero).
++	byteSize := (bitSize-checksumSize)/8 + 1
++	hex := make([]byte, byteSize)
++	var acc uint32
++	var nbits uint
++	pos := byteSize
++	for i := len(mnemonicSlice) - 1; i >= 0; i-- {
++		index, found := ReverseWordMap[mnemonicSlice[i]]
+ 		if !found {
+-			return nil, fmt.Errorf("Word `%v` not found in reverse map", v)
++			// report the first unknown word, as a left-to-right scan would
++			for _, v := range mnemonicSlice {
++				if _, ok := ReverseWordMap[v]; !ok {
++					return nil, fmt.Errorf("Word `%v` not found in reverse map", v)
++				}
++			}
+ 		}
+-		add := big.NewInt(int64(index))
+-		b = b.Mul(b, modulo)
+-		b = b.Add(b, add)
+-	}
+-	hex := b.Bytes()
+-	checksumModulo := big.NewInt(0).Exp(big.NewInt(2), big.NewInt(int64(checksumSize)), nil)
+-	entropy, _ := big.NewInt(0).DivMod(b, checksumModulo, big.NewInt(0))
+-
+-	entropyHex := entropy.Bytes()
+-
+-	// Add padding (an extra byte is for checksum)
+-	byteSize := (bitSize-checksumSize)/8 + 1
+-	if len(hex) != byteSize {
+-		tmp := make([]byte, byteSize)
+-		diff := byteSize - len(hex)
+-		for i := 0; i < len(hex); i++ {
+-			tmp[i+diff] = hex[i]
++		acc |= uint32(index) << nbits
++		nbits += 11
++		for nbits >= 8 {
++			pos--
++			hex[pos] = byte(acc)
++			acc >>= 8
++			nbits -= 8
+ 		}
+-		hex = tmp
+ 	}
+-
+-	// Add padding (no extra byte, entropy itself does not contain checksum)
+-	entropyByteSize := (bitSize - checksumSize) / 8
+-	if len(entropyHex) != entropyByteSize {
+-		tmp := make([]byte, entropyByteSize)
+-		diff := entropyByteSize - len(entropyHex)
+-		for i := 0; i < len(entropyHex); i++ {
+-			tmp[i+diff] = entropyHex[i]
+-		}
+-		entropyHex = tmp
++	if nbits > 0 {
++		hex[0] = byte(acc)
+ 	}
+ 
+-	validationHex := addChecksum(entropyHex)
+-	if len(validationHex) != byteSize {
+-		tmp2 := make([]byte, byteSize)
+-		diff2 := byteSize - len(validationHex)
+-		for i := 0; i < len(validationHex); i++ {
+-			tmp2[i+diff2] = validationHex[i]
+-		}
+-		validationHex = tmp2
++	// Entropy is the value shifted right by checksumSize bits; the checksum is the top
++	// checksumSize bits of its SHA-256. Only the last byte can differ from the expected
++	// encoding, since the entropy bits are the same on both sides.
++	entropyByteSize := byteSize - 1
++	entropy := make([]byte, entropyByteSize)
++	cs := uint(checksumSize)
++	for k := range entropy {
++		entropy[k] = hex[k]<<(8-cs) | hex[k+1]>>cs
+ 	}
+-
+-	if len(hex) != len(validationHex) {
+-		panic("[]byte len mismatch - it shouldn't happen")
+-	}
+-	for i := range validationHex {
+-		if hex[i] != validationHex[i] {
+-			return nil, fmt.Errorf("Invalid byte at position %v", i)
+-		}
++	hash := sha256.Sum256(entropy)
++	if hex[byteSize-1]&(1<<cs-1) != hash[0]>>(8-cs) {
++		return nil, fmt.Errorf("Invalid byte at position %v", byteSize-1)
+ 	}
+ 	return hex, nil
+ }

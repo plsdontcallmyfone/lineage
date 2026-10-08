@@ -1,0 +1,49 @@
+{
+  "recipe_id": "24fb49a2a7765bdbd9e81bba62a997d911a0f1fdd6e8231102b1d693002e23ea",
+  "snapshot_id": "",
+  "runs": 5,
+  "stable": [
+    "github.com/cosmos/go-bip39::TestBip39",
+    "github.com/cosmos/go-bip39::TestInvalidMnemonicFails",
+    "github.com/cosmos/go-bip39::TestIsMnemonicValid",
+    "github.com/cosmos/go-bip39::TestNewEntropy",
+    "github.com/cosmos/go-bip39::TestValidateEntropyWithChecksumBitSize"
+  ],
+  "known_failures": [],
+  "quarantined": [],
+  "metrics": {
+    "mnemonic_ir": {
+      "enabled": true,
+      "cv": 0,
+      "base_value": 20902237
+    },
+    "entropy_ir": {
+      "enabled": true,
+      "cv": 0,
+      "base_value": 19246280
+    },
+    "valid_ir": {
+      "enabled": true,
+      "cv": 0,
+      "base_value": 9839140
+    }
+  },
+  "median_eval_seconds": 69,
+  "seed": "ca11b7a7e",
+  "recipe_name": "bip39-go",
+  "repo": "https://github.com/cosmos/go-bip39",
+  "commit": "3027fe585f89a39da9b7389bd4e3482e056f6d3f",
+  "deps_digest": "264a646ada05ec7ccd7eaa0d2e9018f586f394afd52a39824f5a1cb46cb950d3",
+  "image_digest": "sha256:7f90f7bb53ceec9f7b62ed14867b6439c7020fa8439ff5ea4daf891a84069838",
+  "date": "2026-10-08T21:30:55.536Z",
+  "calibration_wall_seconds": 112.7,
+  "counts": {
+    "stable": 5,
+    "known_failures": 0,
+    "quarantined": 0,
+    "excluded": 0
+  },
+  "notes": [
+    "calibration wall time 113 s"
+  ]
+}
