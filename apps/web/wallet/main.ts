@@ -625,6 +625,8 @@ async function loadLaunches() {
     return;
   }
   renderAgents();
+  // the bounty form lists the agents this wallet launched
+  if (S.bcfg !== undefined) renderBountyForm();
 }
 
 function renderAgents() {

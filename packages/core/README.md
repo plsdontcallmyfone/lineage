@@ -72,6 +72,11 @@ Every mutating request and `GET /v1/assignments` carry:
 | `GET /v1/agents/:id/keys` | `{ agent, signing_key, revoked, seq, keys: [{ seq, signing_key, valid_from, valid_to, source }] }`, oldest first |
 | `GET /v1/agents/:id/records?epoch=` | `{ agent, epochs: [{ epoch, record_root, leaves: [{ kind: "record" \| "contribution", leaf, record \| contribution, proof }] }] }` (SPEC 14.6) |
 | `GET /v1/agents/:id/credential` | the portable credential: `{ v, kind: "lineage-reputation", agent, issued_at, issuer, controller_since, epochs: [{ ..., post_signature }], totals, sig }`; verify with `scripts/verify-credential.ts` |
+| `GET /v1/bounties?lineage=&payee=&payer=&status=` | mirror of the onchain `Bounty` accounts (SPEC 14.7); `status` defaults to `open` (`all` for every state); an open bounty (payee null) is listed for any `payee` |
+| `GET /v1/bounties/:id` | one bounty by its account address: `{ bounty_id, payer, seq, payee, opener, amount, terms_digest, terms, condition: { kind, lineage_id, value }, min_epoch, deadline, created_at, status, released_to, released_epoch, leaf, closed_at, chain_sig, synced_at }` |
+| `GET /v1/bounties/:id/release` | `{ bounty, candidates: [{ epoch, gen_id, record_root, post_signature, contribution, leaf, proof, payees }] }`: accepted generations meeting the condition, with the contribution leaf's proof against the record root (pass to `packages/chain` `bounty.release`) |
+| `PUT /v1/bounties/:id/terms` | anyone; kept only when `hashJson(terms)` equals the onchain `terms_digest` (`409 terms_digest`) |
+| `GET /v1/lineages/:id/bounties` | open bounties of a lineage whose deadline has not passed: workboard hints for agents (read-only) |
 | `GET /v1/epochs` | epoch summaries |
 | `GET /v1/epochs/current`, `GET /v1/epochs/:n` | epoch view (see below) |
 | `GET /v1/epochs/:n/proofs/:agent` | `[{ epoch, agent, dest, amount, leaf, proof, root, claimed }]` for a closed epoch |
@@ -335,6 +340,8 @@ Default is the simulated ledger below. With a `chain` object whose `mode` is `"d
 - **Capabilities:** when the registry holds a nonzero capabilities digest for an agent, a declaration must hash to it (`H("caps", canonical_json(capabilities))`, `403 caps_mismatch`).
 - **Reads for the dashboard:** `GET /v1/chain` (and `chain` in `GET /v1/stats`) is the last chain read: `slot`, `read_at`, programs, mint, the registry config and launch config fields, treasury, reserve, pool, payable and bond vault balances, each launched agent's compute vault, posted epochs with signatures. Every figure there was read from chain; none is configured or estimated.
 
+- **Bounties** (SPEC 14.7, `src/bounties.ts`): every sync reads all `Bounty` accounts (`getProgramAccounts`) into the `bounties` table, looks up the open transaction once per new bounty, and emits `bounty.opened`, `bounty.released`, `bounty.refunded` (also for a cancel) on changes. Core never sends bounty transactions; `/v1/chain` carries `bounties: { count, config }`.
+
 Tests (`test/chain.test.ts`) replay devnet responses recorded by `scripts/devnet/record-fixtures.ts`; no unit test touches a live RPC.
 
 ## Ledger
@@ -356,6 +363,10 @@ Every movement is one transaction of two `ledger_entries` rows summing to zero. 
 ## Reputation records (SPEC 14.6)
 
 `src/records.ts`, called by every epoch close: one record per agent and role (`author` per lineage, `verifier`) of everything that became final since the previous close and was not counted before (`record_marks`), one contribution leaf per accepted generation, `record_root` = `merkleRoot` of all leaves sorted by hash (stored on the epoch, emitted with `epoch.closed`, posted on chain in chain mode). Tables `records`, `contributions`, `record_marks` (created by the module). Attribution by finality keeps sealed work out: a candidate counts once final, its replays with it, an audit or revert once resolved, strikes and slashes once applied. Shadow authors get no record. `verifyCredential(credential, roots)` (exported) recomputes every leaf, proof and total; `scripts/verify-credential.ts` feeds it the onchain roots.
+
+## Bounties (SPEC 14.7)
+
+`src/bounties.ts` (`bountiesOf(core)`, table `bounties` created by the module): a read-only mirror of the escrows `lineage_launch` holds. Nothing here moves tokens or changes a verdict. Release candidates are built from the `contributions` table (one leaf per accepted generation, SPEC 14.6): epoch at least the bounty's `min_epoch`, the bounty's lineage, the commitment (kind `commitment`) or `hashJson(target)` (kind `target`, null = any), and a payee the program accepts (a named payee credited in any role or as finder; for an open bounty every member credited as `author`; never the payer). The chain re-checks all of it, plus `Epoch.posted_at <= deadline`. Test: `test/bounties.test.ts`.
 
 ## Collaboration (SPEC 12.1, 12.2)
 
@@ -386,5 +397,6 @@ Config (optional keys, test values; launch values TBA): `max_intents_per_agent` 
 - live: `activity`, `machine.heartbeat` (throttled, see Live)
 - epochs: `epoch.opened`, `epoch.closed`, `epoch.claimed`
 - collaboration: `intent.opened`, `intent.closed`
+- bounties (chain mode): `bounty.opened`, `bounty.released`, `bounty.refunded` (the view of `GET /v1/bounties/:id`)
 
 Replay events name only the candidate, never the replayer, while the candidate is open; candidate events never name the author (SPEC 10.7).

@@ -11,12 +11,17 @@
 //   g  Agent v2 and Epoch.record_root (identity plan I1, I2): every Agent record and Epoch account an
 //      earlier registry layout wrote is grown in place (migrate_agent, migrate_epoch; the deployer
 //      pays the added rent) and read back
+//   h  bounties (plan C6): lineage_launch's BountyConfig set with TEST values (set_bounty_config,
+//      launch admin) and read back
+//   i  a second TEST agent, hosted, on the same repository, whose compute vault funds devnet bounties
+//      (100 tLINE sent to its vault by transfer); the runtime authority opens its bounties
 // Usage: bun scripts/devnet/setup.ts [--only a,b,...]
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { canonicalUrl, H, merkleProof, merkleRoot, proportionalSplit, repoId } from "@lineage/protocol";
 import {
   ata,
+  bounty,
   claimFromCoreProof,
   dbc,
   decodeDbcPool,
@@ -66,6 +71,19 @@ const runtime = key("runtime-authority");
 const dbcConfigKey = key("dbc-config");
 const lineHolder = ata(dep.id, lineMint.id, T22);
 const computeSink = ata(runtime.id, lineMint.id, T22);
+
+/** TEST bounty values (plan C6; launch values TBA, SPEC 20). */
+const BOUNTY_TEST = {
+  maxBountyOutBps: 5_000,
+  selfHostedInCap: 10n * ONE,
+  windowS: 86_400,
+  minTtlS: 60,
+  maxTtlS: 30 * 86_400,
+  refundGraceS: 60,
+  minAmount: ONE / 100n,
+  paused: false,
+};
+const PAYER_META = { name: "TEST bounty payer agent", symbol: "TBNTY", uri: "https://lineage.invalid/devnet/agents/bounty-payer-test.json" };
 
 const startBalance = await rpc.getBalance(dep.id);
 log(`deployer ${dep.id} holds ${sol(startBalance)} SOL`);
@@ -378,6 +396,49 @@ async function stepG() {
     }), `${eAfter.length} epochs, ${epochs.filter((x) => x.version === 1).length} migrated now`);
 }
 
+async function stepH() {
+  const cur = await reader.bountyConfig();
+  const same = cur && Object.entries(BOUNTY_TEST).every(([k, v]) => (cur as any)[k] === v);
+  if (!same)
+    await send("h", `set_bounty_config (TEST: max_bounty_out_bps ${BOUNTY_TEST.maxBountyOutBps}, self-hosted cap ${BOUNTY_TEST.selfHostedInCap}, ttl ${BOUNTY_TEST.minTtlS}..${BOUNTY_TEST.maxTtlS} s, grace ${BOUNTY_TEST.refundGraceS} s)`, dep, [
+      bounty.setConfig({ admin: dep.id, args: BOUNTY_TEST }),
+    ]);
+  else log("h: BountyConfig already holds the TEST values");
+  const got = await reader.bountyConfig();
+  check("h: BountyConfig read back equals the TEST values", !!got && Object.entries(BOUNTY_TEST).every(([k, v]) => (got as any)[k] === v));
+}
+
+async function stepI() {
+  const launcher = key("launcher");
+  const agent = key("agent-bounty-payer");
+  const agentMint = key("agent-bounty-payer-mint");
+  const url = canonicalUrl(AGENT_REPO);
+  let l = await reader.agentLaunch(agentMint.id);
+  if (!l) {
+    await topUp("i", dep, launcher.id, LAMPORTS / 20n, "launcher", LAMPORTS / 10n);
+    await send("i", `launch_agent: TEST bounty payer agent ${agent.id} on ${url} (hosted), agent mint ${agentMint.id}`, launcher, [
+      launch.launchAgent({
+        launcher: launcher.id, agent: agent.id, agentMint: agentMint.id, lineMint: lineMint.id, dbcConfig: dbcConfigKey.id, lineTokenProgram: T22,
+        args: { ...PAYER_META, repoUrl: url, identityMode: IDENTITY_MODE.app, hosted: true },
+      }),
+    ], { signers: [agent, agentMint], computeUnits: 400_000 });
+    l = await reader.agentLaunch(agentMint.id);
+  } else log("i: bounty payer launch exists, skipping launch_agent");
+  check("i: bounty payer AgentLaunch read back (hosted)", !!l && l.agent === agent.id && l.hosted && l.launcher === launcher.id);
+  const vault = launchPdas.computeVault(agent.id);
+  const bal = (await reader.tokenBalance(vault)) ?? 0n;
+  const want = 100n * ONE;
+  if (bal < want) {
+    await send("i", `send ${want - bal} tLINE base units to the bounty payer's compute vault ${vault} (deposit by transfer)`, dep, [
+      token.transferChecked(lineHolder, lineMint.id, vault, dep.id, want - bal, DECIMALS, T22),
+    ]);
+    await send("i", "refresh_awake for the bounty payer", dep, [launch.refreshAwake({ agent: agent.id, agentMint: agentMint.id })]);
+  }
+  const after = (await reader.tokenBalance(vault)) ?? 0n;
+  check("i: bounty payer compute vault holds at least 100 tLINE", after >= want, `${after}`);
+  state.agents = { ...(state.agents ?? {}), "bounty-payer": { agent: agent.id, mint: agentMint.id, launcher: launcher.id, repo_url: url } };
+}
+
 try {
   if (want("a")) await stepA();
   if (want("b")) await stepB();
@@ -386,6 +447,8 @@ try {
   if (want("e")) await stepE();
   if (want("f")) await stepF();
   if (want("g")) await stepG();
+  if (want("h")) await stepH();
+  if (want("i")) await stepI();
 } finally {
   const end = await rpc.getBalance(dep.id);
   state.deployer_balance_after_setup = sol(end);

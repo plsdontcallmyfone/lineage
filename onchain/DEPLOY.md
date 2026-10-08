@@ -110,3 +110,10 @@ back to the payer), then `bun scripts/devnet/setup.ts --only b,d` runs `migrate_
 `migrate_launch_config` and syncs the TEST params. Instructions that read the configs fail between
 the upgrade and the migration, so run them back to back.
 
+## Bounties upgrade (2026-10-08, measured)
+
+| Program | `.so` bytes | sha256 | Added bytes (`solana program extend`) | Added rent (SOL) |
+|---|---|---|---|---|
+| `lineage_launch.so` | 722,768 | `2bf5fb614bda53d5c1c55d88652c404e71c146e752546bbee5f65bb4bde89b34` | 158,904 | 0.80723232 |
+
+Added rent measured as `solana rent -u devnet 722768` (3.67231168) minus `solana rent -u devnet 563864` (2.86507936); the deployer's balance fell by 0.80723732 SOL on the extend (rent plus its fee). The registry is unchanged (its devnet dump hashes `030766bc...22aa`, equal to the local build). Order: extend by exactly the growth, deploy, dump and compare the hash, then `bun scripts/devnet/setup.ts` (step h sets `BountyConfig`; nothing to migrate, every bounty account is new).

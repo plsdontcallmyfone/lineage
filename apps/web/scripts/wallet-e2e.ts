@@ -5,12 +5,17 @@
 // drives the page like a person: connect, faucet, launch an agent token, buy on its curve, crank
 // fees, register a verifier whose key the worker CLI co-signs, bond, request an unbond, manage the
 // verifier's identity (rotate its signing key with the new key co-signing through the worker CLI,
-// revoke it, propose an owner transfer, and accept one back), and claim an epoch leaf. After each step it reads the result back from chain itself and checks it.
+// revoke it, propose an owner transfer, and accept one back), claim an epoch leaf, and open, cancel
+// and release bounties (C6) from the self-hosted agent it launched. After each step it reads the result back from chain itself and checks it.
 //
 // Claims need an epoch with a leaf for this wallet, which only exists after real work. The script
 // posts one small test epoch with the devnet Core authority key (as scripts/devnet/setup.ts step f
 // does) and serves it from a stand-in for Core's two read routes, in Core's exact proof format
 // (GET /v1/epochs, GET /v1/epochs/:n/proofs/:agent); everything else is the real page on devnet.
+// The same test epoch carries a record root with one test contribution leaf (Core's format) naming
+// the devnet minbpe agent as author, which the stand-in serves as GET /v1/bounties/:id/release; the
+// page checks that proof against the record root on chain before it offers the release. The real
+// release after a real accepted generation is in scripts/devnet/e2e-devnet.ts.
 //
 // playwright-core is not a repo dependency: pass its location.
 // Usage: bun apps/web/scripts/wallet-e2e.ts --pw <dir containing node_modules/playwright-core> [--port 9665] [--core-port 9666] [--shots <dir>]
@@ -22,6 +27,8 @@ import { join } from "node:path";
 import { canonicalJson, H, merkleProof, merkleRoot } from "@lineage/protocol";
 import {
   ata,
+  bountyPdas,
+  contributionLeaf,
   registryPdas,
   ChainReader,
   decodeT22Metadata,
@@ -111,6 +118,7 @@ if (lineBal < LINE_MIN) {
 
 // ---------------------------------------------------------------- Core stand-in (proof routes only)
 const stubEpochs: { n: number; leaves: { agent: string; dest: string; amount: string; leaf: string }[] }[] = [];
+const stubRelease = new Map<string, unknown>();
 const coreStub = Bun.serve({
   port: CORE_PORT,
   hostname: "127.0.0.1",
@@ -125,6 +133,9 @@ const coreStub = Bun.serve({
       const root = merkleRoot(all);
       return Response.json(e.leaves.map((l, i) => ({ ...l, i })).filter((l) => l.agent === m[2]).map((l) => ({ epoch: e.n, agent: l.agent, dest: l.dest, amount: l.amount, leaf: l.leaf, proof: merkleProof(all, l.i), root, claimed: false })));
     }
+    const br = /^\/v1\/bounties\/([1-9A-HJ-NP-Za-km-z]+)\/(release|terms)$/.exec(p);
+    if (br && br[2] === "terms") return Response.json({ ok: true });
+    if (br) return Response.json(stubRelease.get(br[1]!) ?? { candidates: [] });
     if (p === "/v1/lineages") return Response.json([]);
     if (p === "/v1/config") return Response.json({ network: { token_decimals: state.line_decimals, quorum: 2 } });
     return Response.json({ error: "not_found", message: "this stand-in serves only the proof routes" }, { status: 404 });
@@ -360,6 +371,47 @@ try {
   check("the page accepted the transfer back: this wallet owns the agent again", a5.owner === wallet.id && a5.pendingOwner === null && a5.ownerSince >= a4.ownerSince, `owner_since ${a5.ownerSince}`);
   await shot("e2e-09-identity");
 
+  // ------------------------------------------------------------ bounties (C6): open two from the launched self-hosted agent, cancel one
+  // A deposit by transfer into the agent's compute vault (anyone may), so the bounty does not depend on the size of the crank.
+  {
+    const fk = loadKeypair(join(KEYS, "faucet.json"));
+    const r = await sendAndConfirm(rpc, fk, [token.transferChecked(ata(fk.id, mint, T22), mint, launchPdas.computeVault(l.agent), fk.id, 2n * LINE_UNIT, Number(state.line_decimals), T22)]);
+    extraSigs.push({ step: "e2e", what: `deposit 2 tLINE by transfer into the compute vault of ${l.agent} (bounty test, faucet key)`, sig: r.signature });
+  }
+  const minbpe = state.agents.minbpe.agent as string;
+  const bLineage = H("lineage", "wallet-e2e", stamp);
+  const bCommit = H("commit-patch", "wallet-e2e", stamp);
+  await page.click('[data-tab="bounties"]');
+  await page.locator('[name="b_payer"]').waitFor({ timeout: T });
+  const openOne = async (amount: string, payee: string) => {
+    await page.selectOption('[name="b_payer"]', l.agent);
+    await page.fill('[name="b_amount"]', amount);
+    await page.fill('[name="b_hours"]', "2");
+    await page.fill('[name="b_payee"]', payee);
+    await page.fill('[name="b_lineage"]', bLineage);
+    await page.check('input[name="b_kind"][value="commitment"]');
+    await page.fill('[name="b_value"]', bCommit);
+    await page.fill('[name="b_note"]', `wallet-e2e ${stamp}`);
+    const n0 = (await reader.bounties()).filter((b) => b.payer === l.agent).length;
+    await page.click('[data-act="b-open"]');
+    await page.locator("#w-bout >> text=Opened bounty").waitFor({ timeout: T });
+    const mineB = (await reader.bounties()).filter((b) => b.payer === l.agent).sort((a, b) => Number(b.bountyId - a.bountyId));
+    if (mineB.length !== n0 + 1) throw new Error("open_bounty did not create one Bounty account");
+    return mineB[0]!;
+  };
+  const cv0 = (await reader.tokenBalance(launchPdas.computeVault(l.agent)))!;
+  const bRel = await openOne("0.5", minbpe);
+  const bCan = await openOne("0.25", "");
+  const cv1 = (await reader.tokenBalance(launchPdas.computeVault(l.agent)))!;
+  check("open_bounty from the page: 0.75 tLINE escrowed from the agent's compute vault, payee and condition as typed (read back)",
+    cv0 - cv1 === 750_000n && bRel.payee === minbpe && bCan.payee === null && bRel.conditionKind === 0 && bRel.conditionValue === bCommit && bRel.lineageId === bLineage &&
+      bRel.opener === wallet.id && (await reader.tokenBalance(bountyPdas.vault(bRel.address))) === 500_000n, `${cv0} -> ${cv1}`);
+  await shot("e2e-10-bounty-opened");
+  await page.locator(`tr[data-bounty="${bCan.address}"] [data-act="b-cancel"]`).click();
+  await page.locator("#w-bout >> text=Cancelled").waitFor({ timeout: T });
+  check("cancel from the page before the next epoch: escrow back, status cancelled (read back)", (await reader.bounty(bCan.address))!.status === "cancelled" &&
+    (await reader.tokenBalance(launchPdas.computeVault(l.agent)))! - cv1 === 250_000n);
+
   // ------------------------------------------------------------ claims: a test epoch with one leaf for this wallet's verifier
   const c0 = (await reader.registryConfig())!;
   const n = c0.epochsPosted === 0n ? 0 : Number(c0.lastEpoch) + 1;
@@ -375,10 +427,19 @@ try {
   const dest = `agent:${workerKey.id}:wallet`;
   const leaf = payoutLeaf(n, workerKey.id, dest, amount);
   const root = merkleRoot([leaf]);
+  // the bounty test's contribution (Core's leaf format) plus a filler record leaf, rooted as Core roots records
+  const contribution = { epoch: n, gen_id: H("gen", "wallet-e2e", stamp), lineage_id: bLineage, target: "encode_ir", candidate_commitment: bCommit,
+    members: [{ agent: minbpe, role: "author", share_bps: 10_000 }], finder: null };
+  const cLeaf = contributionLeaf(contribution);
+  const recLeaves = [cLeaf, H("filler", "wallet-e2e", stamp)].sort();
+  const recordRoot = merkleRoot(recLeaves);
   const post = await sendAndConfirm(rpc, core, [
-    registry.postEpoch({ coreAuthority: core.id, mint, epoch: n, payoutRoot: root, lineageRoot: merkleRoot([]), totalUnitsMicro: 1_000_000n, poolAmount: amount, rebateAmount: 0n, tokenProgram: T22 }),
+    registry.postEpoch({ coreAuthority: core.id, mint, epoch: n, payoutRoot: root, lineageRoot: merkleRoot([]), recordRoot, totalUnitsMicro: 1_000_000n, poolAmount: amount,
+      rebateAmount: 0n, tokenProgram: T22 }),
   ]);
-  extraSigs.push({ step: "e2e", what: `post_epoch ${n} (test epoch for the Claims tab: one leaf ${dest} amount ${amount}, root ${root.slice(0, 16)}...)`, sig: post.signature });
+  extraSigs.push({ step: "e2e", what: `post_epoch ${n} (test epoch for the Claims and Bounties tabs: one leaf ${dest} amount ${amount}, root ${root.slice(0, 16)}...; record root ${recordRoot.slice(0, 16)}... with one test contribution)`, sig: post.signature });
+  stubRelease.set(bRel.address, { candidates: [{ epoch: n, gen_id: contribution.gen_id, record_root: recordRoot, post_signature: post.signature, contribution, leaf: cLeaf,
+    proof: merkleProof(recLeaves, recLeaves.indexOf(cLeaf)), payees: [minbpe] }] });
   stubEpochs.push({ n, leaves: [{ agent: workerKey.id, dest, amount: amount.toString(), leaf }] });
   await page.click('[data-tab="claims"]');
   await page.click('[data-act="claims-reload"]');
@@ -393,8 +454,22 @@ try {
   check("claim paid exactly the leaf to the owner's tLINE account, receipt on chain", d1 - d0 === amount && !!receipt, `${d1 - d0}`);
   await shot("e2e-11-claimed");
 
+  // ------------------------------------------------------------ bounties: release with the contribution proof (checked against the record root on chain)
+  await page.click('[data-tab="bounties"]');
+  await page.click('[data-act="b-reload"]');
+  await page.locator(`tr[data-bounty="${bRel.address}"] [data-act="b-find"]`).click();
+  await page.locator(`tr[data-bounty="${bRel.address}"] [data-act="b-release"]`).waitFor({ timeout: T });
+  const mv0 = (await reader.tokenBalance(launchPdas.computeVault(minbpe)))!;
+  await page.click(`tr[data-bounty="${bRel.address}"] [data-act="b-release"]`);
+  await page.locator("#w-bout >> text=Released").waitFor({ timeout: T });
+  const mv1 = (await reader.tokenBalance(launchPdas.computeVault(minbpe)))!;
+  const relB = (await reader.bounty(bRel.address))!;
+  check("release from the page paid exactly 0.5 tLINE into the payee's compute vault; receipt on chain (read back)", mv1 - mv0 === 500_000n && relB.status === "released" &&
+    relB.releasedTo === minbpe && relB.leaf === cLeaf && !!(await rpc.getAccountInfo(bountyPdas.receipt(l.agent, cLeaf))), `${mv1 - mv0}`);
+  await shot("e2e-12-bounty-released");
+
   check("no page errors", errors.length === 0, errors.slice(0, 3).join(" ; "));
-  check("every wallet signature was requested through the Wallet Standard mock", signRequests.length >= 6, `${signRequests.length} requests`);
+  check("every wallet signature was requested through the Wallet Standard mock", signRequests.length >= 9, `${signRequests.length} requests`);
 } catch (e) {
   check("flow completed", false, (e as Error).message.split("\n")[0]!);
   if (SHOTS) await page.screenshot({ path: join(SHOTS, "e2e-failure.png"), fullPage: true }).catch(() => undefined);

@@ -13,6 +13,12 @@
 // record_root on chain equals Core's, a verifier's credential verifies from chain alone and fails
 // once a record is altered, and a two-step owner transfer is mirrored with controller_since.
 //
+// Bounties (plan C6): before the candidate, the runtime authority opens three bounties from the
+// hosted bounty payer agent's compute vault (setup step i): one on the lineage's encode_ir target
+// naming the minbpe agent, one with a short deadline (refunded at the end), one cancelled at once.
+// After the epoch is posted, Core mirrors them and serves the contribution proof; release_bounty
+// pays the minbpe agent's compute vault exactly, a second release is refused, and Core mirrors it.
+//
 // The recipe is minbpe, not fixture-b58: a fixture repo (`fixture:b58`) has no https URL, so no
 // agent can be launched on it on chain, and in chain mode only onchain launches author.
 //
@@ -25,7 +31,13 @@ import { canonicalJson, generateAgentKey, H, type AgentKey } from "@lineage/prot
 import { loadRecipe, prepareDeps } from "@lineage/sandbox";
 import {
   ata,
+  bounty,
+  bountyPdas,
   claimFromCoreProof,
+  COND,
+  termsDigest,
+  releaseFromContribution,
+  targetDigest,
   dbc,
   decodeDbcPool,
   launch,
@@ -242,6 +254,53 @@ async function main() {
   });
   check("onchain verifiers declared capabilities matching their onchain digest and qualified", true);
 
+  // ------------------------------------------------------------ C6: bounties opened before the work
+  const payerA = state.agents!["bounty-payer"];
+  if (!payerA?.mint) throw new Error("no bounty payer agent: run scripts/devnet/setup.ts (step i)");
+  const runtimeAuth = key("runtime-authority");
+  await topUp(STEP, dep, runtimeAuth.id, LAMPORTS / 50n, "runtime authority", LAMPORTS / 10n);
+  const bcfg = await reader.bountyConfig();
+  check("BountyConfig is set on chain (setup step h)", !!bcfg && !bcfg.paused, JSON.stringify(bcfg, (_k, v) => (typeof v === "bigint" ? v.toString() : v)));
+  const payerVault = launchPdas.computeVault(payerA.agent);
+  const pv0 = (await reader.tokenBalance(payerVault))!;
+  const nowS = () => BigInt(Math.floor(Date.now() / 1000));
+  const base = BigInt(Date.now());
+  const mkBounty = (id: bigint, o: { payee: string | null; amount: bigint; kind: number; value: string | null; ttl: bigint; note: string }) => {
+    const terms = { v: 1, note: o.note, lineage_id: L, payee: o.payee, amount: o.amount.toString() };
+    return { id, terms, ix: bounty.open({ opener: runtimeAuth.id, payer: payerA.agent, payerMint: payerA.mint!, lineMint, lineTokenProgram: T22,
+      args: { bountyId: id, payee: o.payee, amount: o.amount, termsDigest: termsDigest(terms), conditionKind: o.kind, lineageId: L, conditionValue: o.value,
+        deadline: nowS() + o.ttl } }) };
+  };
+  const b1 = mkBounty(base, { payee: m.agent, amount: 2n * ONE, kind: COND.target, value: targetDigest("encode_ir"), ttl: 86_400n, note: "e2e-devnet: faster encode on minbpe" });
+  const b2 = mkBounty(base + 1n, { payee: null, amount: ONE, kind: COND.target, value: null, ttl: 70n, note: "e2e-devnet: short deadline, refunded" });
+  const b3 = mkBounty(base + 2n, { payee: null, amount: ONE / 2n, kind: COND.target, value: null, ttl: 3_600n, note: "e2e-devnet: cancelled before the next epoch" });
+  for (const [b, what] of [[b1, `open_bounty ${base}: 2 tLINE on encode_ir of lineage ${L.slice(0, 12)}... for ${m.agent}`],
+    [b2, `open_bounty ${base + 1n}: 1 tLINE, any author, 70 s deadline (to refund)`], [b3, `open_bounty ${base + 2n}: 0.5 tLINE (to cancel)`]] as const)
+    await send(STEP, `${what} (runtime authority for the hosted payer ${payerA.agent.slice(0, 8)})`, runtimeAuth, [b.ix], { computeUnits: 300_000 });
+  const addr1 = bountyPdas.bounty(payerA.agent, b1.id);
+  const addr2 = bountyPdas.bounty(payerA.agent, b2.id);
+  const addr3 = bountyPdas.bounty(payerA.agent, b3.id);
+  const pv1 = (await reader.tokenBalance(payerVault))!;
+  const ob1 = (await reader.bounty(addr1))!;
+  const reg1 = (await reader.registryConfig())!;
+  check("open_bounty escrowed exactly 3.5 tLINE from the payer's compute vault", pv0 - pv1 === 3n * ONE + ONE / 2n && (await reader.tokenBalance(bountyPdas.vault(addr1))) === 2n * ONE,
+    `${pv0} -> ${pv1}`);
+  check("the bounty qualifies only generations from the registry's next epoch on", ob1.minEpoch === (reg1.epochsPosted === 0n ? 0n : reg1.lastEpoch + 1n) && ob1.status === "open",
+    `min_epoch ${ob1.minEpoch}`);
+  const pvc0 = (await reader.tokenBalance(payerVault))!;
+  await send(STEP, `cancel_bounty ${b3.id} (runtime authority, before the next epoch)`, runtimeAuth, [bounty.cancel({ signer: runtimeAuth.id, payer: payerA.agent,
+    payerMint: payerA.mint!, bountyId: b3.id, opener: runtimeAuth.id, lineMint, lineTokenProgram: T22 })]);
+  check("cancel_bounty returned the escrow to the payer's compute vault", (await reader.tokenBalance(payerVault))! - pvc0 === ONE / 2n && (await reader.bounty(addr3))!.status === "cancelled");
+  await chainSync();
+  const mirrored = await ok<any[]>(anon.get(`/v1/bounties?lineage=${L}&status=all`), "bounties");
+  check("Core mirrored the three bounties with their open signatures", [addr1, addr2, addr3].every((a) => mirrored.some((x) => x.bounty_id === a && !!x.chain_sig)) &&
+    mirrored.find((x) => x.bounty_id === addr3)?.status === "cancelled", `${mirrored.length} on the lineage`);
+  const t1 = await anon.put(`/v1/bounties/${addr1}/terms`, b1.terms);
+  const tBad = await anon.put(`/v1/bounties/${addr1}/terms`, { ...b1.terms, note: "changed" });
+  check("Core keeps the terms only when sha256 equals the onchain terms_digest", t1.status === 200 && tBad.status === 409, `${t1.status} / ${tBad.status}`);
+  const hints = await ok<any[]>(anon.get(`/v1/lineages/${L}/bounties`), "hints");
+  check("workboard hint: GET /v1/lineages/:id/bounties lists the open bounties", hints.some((h) => h.bounty_id === addr1), `${hints.length} open`);
+
   // ------------------------------------------------------------ I1: rotate the agent to a runtime key
   const agentKey = key("agent-minbpe");
   const launcher = key("launcher");
@@ -338,6 +397,35 @@ async function main() {
   check("dashboard reads: /v1/chain and /v1/stats carry the vault balances read at a slot", chainView.slot > 0 && stats.chain?.balances?.pool === chainView.balances.pool,
     JSON.stringify(chainView.balances));
 
+  // ------------------------------------------------------------ C6: release the bounty with Core's contribution proof
+  await chainSync();
+  const rel = await ok(anon.get(`/v1/bounties/${addr1}/release`), "release");
+  const cand = (rel.candidates as any[]).find((c) => c.epoch === closed.n && c.payees.includes(m.agent));
+  const ep1 = (await reader.epoch(closed.n))!;
+  check("Core offers the accepted generation as the release, its proof verifies against the onchain record root", !!cand && cand.record_root === ep1.recordRoot &&
+    releaseFromContribution(cand.contribution, cand.proof, ep1.recordRoot!).leaf === cand.leaf, cand ? `gen ${String(cand.gen_id).slice(0, 12)}..., leaf ${String(cand.leaf).slice(0, 12)}...` : "none");
+  const mv0 = (await reader.tokenBalance(launchPdas.computeVault(m.agent)))!;
+  const relIx = bounty.release({ caller: dep.id, payer: payerA.agent, bountyId: b1.id, opener: runtimeAuth.id, payee: m.agent, payeeMint: m.mint!, lineMint,
+    contribution: cand.contribution, proof: cand.proof, lineTokenProgram: T22 });
+  const relTx = await send(STEP, `release_bounty ${b1.id}: 2 tLINE to ${m.agent} for gen ${String(cand.gen_id).slice(0, 12)}... (epoch ${closed.n} record root)`, dep, [relIx],
+    { computeUnits: 400_000 });
+  const mv1 = (await reader.tokenBalance(launchPdas.computeVault(m.agent)))!;
+  const after1 = (await reader.bounty(addr1))!;
+  const rcpt = await rpc.getAccountInfo(bountyPdas.receipt(payerA.agent, cand.leaf));
+  check("release_bounty paid exactly 2 tLINE into the payee's compute vault, with a receipt", mv1 - mv0 === 2n * ONE && after1.status === "released" &&
+    after1.releasedTo === m.agent && after1.leaf === cand.leaf && !!rcpt, `${relTx.signature} (${relTx.computeUnits ?? "?"} CU)`);
+  let again = "";
+  try {
+    await send(STEP, `release_bounty ${b1.id} again (must fail)`, dep, [relIx], { computeUnits: 400_000 });
+    again = "landed";
+  } catch (e) {
+    again = (e as Error).message.slice(0, 80);
+  }
+  check("a second release of the same bounty is refused", again !== "landed", again);
+  await chainSync();
+  const v1 = await ok(anon.get(`/v1/bounties/${addr1}`), "bounty");
+  check("Core mirrored the release", v1.status === "released" && v1.released_to === m.agent && v1.leaf === cand.leaf);
+
   // ------------------------------------------------------------ I2: credentials verify from chain alone
   const credV = await ok(anon.get(`/v1/agents/${vkeys.v1.id}/credential`), "credential");
   const roots = new Map<number, string | null>();
@@ -371,6 +459,26 @@ async function main() {
   await send(STEP, `propose_owner ${ref.id} back to ${owner.id} (deployer pays the fee)`, dep, [registry.proposeOwner({ owner: newOwner.id, agent: ref.id, newOwner: owner.id })], { signers: [newOwner] });
   await send(STEP, `accept_owner ${ref.id} by ${owner.id}`, owner, [registry.acceptOwner({ newOwner: owner.id, agent: ref.id })]);
   check("owner transferred back", (await reader.agent(ref.id))!.owner === owner.id);
+
+  // ------------------------------------------------------------ C6: refund after the deadline plus grace
+  const b2acct = (await reader.bounty(addr2))!;
+  const due = Number(b2acct.deadline) + (bcfg?.refundGraceS ?? 0) + 2;
+  let early = "";
+  if (Math.floor(Date.now() / 1000) <= due - 4) {
+    try {
+      await send(STEP, `refund_bounty ${b2.id} before the deadline plus grace (must fail)`, dep, [bounty.refund({ payer: payerA.agent, payerMint: payerA.mint!, bountyId: b2.id,
+        opener: runtimeAuth.id, lineMint, lineTokenProgram: T22 })]);
+      early = "landed";
+    } catch (e) {
+      early = (e as Error).message.slice(0, 80);
+    }
+    check("an early refund is refused", early !== "landed", early);
+  }
+  while (Math.floor(Date.now() / 1000) < due) await Bun.sleep(2000);
+  const pr0 = (await reader.tokenBalance(payerVault))!;
+  await send(STEP, `refund_bounty ${b2.id} after the deadline plus grace (anyone; deployer pays the fee)`, dep, [bounty.refund({ payer: payerA.agent, payerMint: payerA.mint!,
+    bountyId: b2.id, opener: runtimeAuth.id, lineMint, lineTokenProgram: T22 })]);
+  check("refund_bounty returned exactly 1 tLINE to the payer's compute vault", (await reader.tokenBalance(payerVault))! - pr0 === ONE && (await reader.bounty(addr2))!.status === "refunded");
 
   writeFileSync(join(ROOT, "scripts/devnet/E2E-DEVNET-LAST.json"), JSON.stringify({ at: new Date().toISOString(), seconds: Math.round((Date.now() - T0) / 1000), epoch: closed.n,
     post_epoch: post?.signature ?? null, payouts: closed.payouts, chain: chainView, results }, null, 2) + "\n");

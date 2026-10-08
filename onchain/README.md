@@ -6,8 +6,8 @@ One Anchor 0.31.1 workspace, two programs, one LiteSVM test crate. Deployed to d
 | Path | What |
 |---|---|
 | `programs/lineage-registry` | `lineage_registry` (`2vhj9aBZkuoCpmJxm5BcA3CYkvBJgY6VHTax8FpFmxuY`): config, agents, burn, bond, unbond, slash, split, epochs, Merkle claims. `src/leaf.rs` is protocol `H`/`leafHash`/`nodeHash` byte for byte. |
-| `programs/lineage-launch` | `lineage_launch` (`8eHzm1XtNtbxJujrMAci4VdhCJvQttFUBukmkFaUwsAT`): agent tokens on Meteora DBC quoted in `$LINE`, fee cranks, graduation to DAMM v2, compute vaults, usage debits. `src/meteora.rs` holds Meteora addresses, account readers and raw CPIs (no Meteora crate, offline build). |
-| `tests` | LiteSVM harness (`src/lib.rs`) and suites: `registry.rs`, `launch.rs`, `client_vectors.rs` |
+| `programs/lineage-launch` | `lineage_launch` (`8eHzm1XtNtbxJujrMAci4VdhCJvQttFUBukmkFaUwsAT`): agent tokens on Meteora DBC quoted in `$LINE`, fee cranks, graduation to DAMM v2, compute vaults, usage debits, bounties (`src/bounty.rs`, SPEC 14.7). `src/meteora.rs` holds Meteora addresses, account readers and raw CPIs (no Meteora crate, offline build). |
+| `tests` | LiteSVM harness (`src/lib.rs`) and suites: `registry.rs`, `launch.rs`, `identity.rs`, `bounty.rs`, `client_vectors.rs` |
 | `tests/fixtures/merkle.json` | roots, leaves and proofs built by `@lineage/protocol` (`scripts/make-fixtures.ts`) |
 | `tests/fixtures/client-vectors.json` | instruction encodings and live account bytes that `packages/chain` is tested against |
 | `vendor/meteora` | DBC and DAMM v2 dumped from devnet (`fetch.sh`, sha256 pinned; the `.so` files are not committed) |
@@ -90,3 +90,23 @@ Identity plan I1 and I2 (`docs/plans/IDENTITY-AND-COLLABORATION.md`, SPEC 14.6).
 `packages/chain`: `registry.rotateAgentKey`, `revokeAgentKey`, `setProfile`, `proposeOwner`, `acceptOwner`, `migrateAgent`, `migrateEpoch`, `postEpoch({ recordRoot })`; `decodeAgent` and `decodeEpoch` read both layouts (`version` 1 or 2; v1 fields read as `migrate_*` will write them; a revoked key and a zero root decode as null); `ChainReader.epochs()`. `cosign` accepts a `rotate_agent_key` for the new key it names. Client vectors regenerated.
 
 Devnet: upgraded and migrated in place on 2026-10-07 (DEVNET.md, "Identity upgrade"); `scripts/devnet/setup.ts` step g migrates any v1 record left (idempotent).
+
+## Bounties (2026-10-08, bounties lane)
+
+Identity plan C6, SPEC 14.7. `lineage_launch` only (`src/bounty.rs`); the registry is unchanged and is read through its own types (`Account<lineage_registry::Epoch>` and `Config` with `seeds::program`, so owner and address are checked). New accounts only (`BountyConfig`, `Bounty`, `BountyVault`, `BountyLedger`, `BountyReceipt`): no existing account changes layout, so no migration. `contribution_leaf` rebuilds Core's contribution leaf (packages/core records.ts) with `lineage_registry::leaf`; `make-fixtures.ts` builds the fixture leaves with records.ts itself, and `rust_contribution_leaf_matches_core` checks the JSON and the leaf byte for byte.
+
+| Rule | Test (`tests/tests/bounty.rs`) |
+|---|---|
+| a Core-built record root releases the escrow into the payee's compute vault once; double release and refund after release refused | `release_with_a_core_proof_pays_the_payee_compute_vault_once` |
+| wrong payee (named payee not credited, the payer itself, a non-author on an open bounty), wrong condition (other commitment, other target, other lineage), forged leaf fields | `wrong_payee_and_wrong_condition_are_refused` |
+| a leaf releases one bounty of each payer (receipt); a generation from before the bounty opened (epoch below `min_epoch`) does not qualify | `proof_reuse_and_stale_generations_are_refused` |
+| forged record roots: a registry-owned Epoch at another address (seeds), the PDA owned by another program (owner), the attacker's own tree against the real root (proof) | `forged_record_roots_are_refused` |
+| early refund refused until deadline plus grace; an epoch posted after the deadline does not qualify | `refund_only_after_deadline_and_grace_and_late_epochs_do_not_qualify` |
+| hosted payer: runtime only; self-hosted payer: launcher only; TTL bounds, minimum, payee not payer; `max_bounty_out_bps` per window (cap breach refused, next window allowed) | `caps_and_opener_rules` |
+| self-hosted payees capped per window, cap 0 pays none | `self_hosted_payees_are_capped` |
+| cancel by the opener's authority only, only before the registry posts another epoch | `cancel_only_by_the_opener_before_the_next_epoch` |
+| config admin-only and validated | `config_is_admin_only_and_validated` |
+
+`packages/chain`: `bounty.setConfig`, `open`, `release` (from a Core contribution), `refund`, `cancel`; `bountyPdas`; `decodeBountyConfig`, `decodeBounty`, `decodeBountyLedger`, `decodeBountyReceipt`; `contributionLeaf`, `targetDigest`, `termsDigest`, `releaseFromContribution`; `ChainReader.bountyConfig()`, `bounties()`, `bounty()`, `bountyLedger()`. Client vectors regenerated (five instructions, four accounts).
+
+Devnet: `lineage_launch` extended and upgraded in place on 2026-10-08 (DEVNET.md, "Bounties upgrade"); `scripts/devnet/setup.ts` step h sets the TEST `BountyConfig`, step i launches a hosted TEST bounty payer agent and funds its compute vault.
