@@ -3,8 +3,9 @@
 // wallet is injected into the page; it signs with a local devnet test key held by this process
 // (~/.config/lineage/devnet/wallet-ui-test.json; the page only ever sees signatures). The script
 // drives the page like a person: connect, faucet, launch an agent token, buy on its curve, crank
-// fees, register a verifier whose key the worker CLI co-signs, bond, request an unbond, and claim
-// an epoch leaf. After each step it reads the result back from chain itself and checks it.
+// fees, register a verifier whose key the worker CLI co-signs, bond, request an unbond, manage the
+// verifier's identity (rotate its signing key with the new key co-signing through the worker CLI,
+// revoke it, propose an owner transfer, and accept one back), and claim an epoch leaf. After each step it reads the result back from chain itself and checks it.
 //
 // Claims need an epoch with a leaf for this wallet, which only exists after real work. The script
 // posts one small test epoch with the devnet Core authority key (as scripts/devnet/setup.ts step f
@@ -285,6 +286,57 @@ try {
   check("request_unbond recorded with its cooldown", r2.unbondAmount === 1_000_000n && Number(r2.unbondReadyAt) - Number(r2.unbondRequestedAt) === Number(cfg.params.unbondCooldownS), `ready at ${r2.unbondReadyAt}`);
   await shot("e2e-07-verifier");
 
+  // ------------------------------------------------------------ identity: rotate (new key co-signs), revoke, two-step owner transfer
+  const nextKeyPath = workerKeyPath.replace(/\.json$/, "-next.json");
+  const nextKey = loadOrCreateKeypair(nextKeyPath).key;
+  const owner2 = loadOrCreateKeypair(join(KEYS, "wallet-ui-owner2.json")).key;
+  await page.click('[data-tab="identity"]');
+  await page.fill('[name="i_key"]', workerKey.id);
+  await page.click('[data-act="i-lookup"]');
+  await page.locator('[data-act="i-rotate"]').waitFor({ timeout: T });
+  const idText = await page.locator("#w-id").innerText();
+  const a0 = (await reader.agent(workerKey.id))!;
+  check("identity tab reads the Agent v2 record: signing key is the agent key, owner is this wallet", /Agent v2/.test(idText) && /the agent key/.test(idText) && /your wallet/.test(idText) &&
+    a0.version === 2 && a0.signingKey === workerKey.id && a0.owner === wallet.id, `key_seq ${a0.keySeq}`);
+  await page.fill('[name="i_newkey"]', nextKey.id);
+  await page.click('[data-act="i-rotate"]');
+  await page.locator("text=Now the new key co-signs").waitFor({ timeout: T });
+  await shot("e2e-08-rotate-cosign");
+  const rcmd = await page.locator("#w-id-cosign [data-copy]").getAttribute("data-copy");
+  const rb64 = /--tx (\S+)/.exec(rcmd ?? "")![1]!;
+  const rrun = spawnSync(["bun", join(ROOT, "packages/worker/src/main.ts"), "cosign", "--key", nextKeyPath, "--tx", rb64], { cwd: ROOT });
+  const rout = rrun.stdout.toString() + rrun.stderr.toString();
+  const rsig = /rotated: (\S+)/.exec(rout)?.[1];
+  check("the new key co-signed and sent rotate_agent_key with the worker CLI", rrun.exitCode === 0 && !!rsig, rout.trim().split("\n").slice(-2).join(" | "));
+  await page.locator("text=Rotated: the new key co-signed.").waitFor({ timeout: T });
+  const a1 = (await reader.agent(workerKey.id))!;
+  check("rotation read back: signing key is the new key, the agent id is unchanged", a1.agent === workerKey.id && a1.signingKey === nextKey.id && a1.keySeq === a0.keySeq + 1,
+    `${a1.signingKey}, key_seq ${a1.keySeq}`);
+  check("page logged the cosign-sent rotation", (await page.locator(`tr[data-sig="${rsig}"]`).count()) === 1);
+  await page.click('[data-act="i-revoke"]');
+  await page.locator("#w-iout >> text=revoke_agent_key").waitFor({ timeout: T });
+  const a2 = (await reader.agent(workerKey.id))!;
+  check("revoke read back: no signing key until a rotation", a2.signingKey === null && a2.keySeq === a1.keySeq + 1, `key_seq ${a2.keySeq}`);
+  await page.fill('[name="i_owner"]', owner2.id);
+  await page.click('[data-act="i-propose"]');
+  await page.locator("#w-iout >> text=propose_owner").waitFor({ timeout: T });
+  const a3 = (await reader.agent(workerKey.id))!;
+  check("propose_owner read back: pending, the owner unchanged until acceptance", a3.pendingOwner === owner2.id && a3.owner === wallet.id);
+  // the proposed owner accepts with its own key (the deployer pays the fee), then proposes the agent back to this wallet
+  const acc = await sendAndConfirm(rpc, dep, [registry.acceptOwner({ newOwner: owner2.id, agent: workerKey.id })], { signers: [owner2] });
+  extraSigs.push({ step: "e2e", what: `accept_owner ${workerKey.id} by ${owner2.id} (deployer pays the fee)`, sig: acc.signature });
+  const a4 = (await reader.agent(workerKey.id))!;
+  check("accept_owner: owner changed and controller-since restarted", a4.owner === owner2.id && a4.pendingOwner === null && a4.ownerSince >= a3.ownerSince, `owner_since ${a4.ownerSince}`);
+  const back = await sendAndConfirm(rpc, dep, [registry.proposeOwner({ owner: owner2.id, agent: workerKey.id, newOwner: wallet.id })], { signers: [owner2] });
+  extraSigs.push({ step: "e2e", what: `propose_owner ${workerKey.id} back to the test wallet by ${owner2.id} (deployer pays the fee)`, sig: back.signature });
+  await page.click('[data-act="i-lookup"]');
+  await page.locator('[data-act="i-accept"]').waitFor({ timeout: T });
+  await page.click('[data-act="i-accept"]');
+  await page.locator("#w-iout >> text=accept_owner").waitFor({ timeout: T });
+  const a5 = (await reader.agent(workerKey.id))!;
+  check("the page accepted the transfer back: this wallet owns the agent again", a5.owner === wallet.id && a5.pendingOwner === null && a5.ownerSince >= a4.ownerSince, `owner_since ${a5.ownerSince}`);
+  await shot("e2e-09-identity");
+
   // ------------------------------------------------------------ claims: a test epoch with one leaf for this wallet's verifier
   const c0 = (await reader.registryConfig())!;
   const n = c0.epochsPosted === 0n ? 0 : Number(c0.lastEpoch) + 1;
@@ -308,7 +360,7 @@ try {
   await page.click('[data-tab="claims"]');
   await page.click('[data-act="claims-reload"]');
   await page.locator('#w-claims [data-act="claim"]').waitFor({ timeout: T });
-  await shot("e2e-08-claims");
+  await shot("e2e-10-claims");
   const destToken = ata(wallet.id, mint, T22);
   const d0 = (await reader.tokenBalance(destToken)) ?? 0n;
   await page.click('#w-claims [data-act="claim"]');
@@ -316,7 +368,7 @@ try {
   const d1 = (await reader.tokenBalance(destToken)) ?? 0n;
   const [receipt] = await reader.claimReceipts(n, [Uint8Array.from(Buffer.from(leaf, "hex"))]);
   check("claim paid exactly the leaf to the owner's tLINE account, receipt on chain", d1 - d0 === amount && !!receipt, `${d1 - d0}`);
-  await shot("e2e-09-claimed");
+  await shot("e2e-11-claimed");
 
   check("no page errors", errors.length === 0, errors.slice(0, 3).join(" ; "));
   check("every wallet signature was requested through the Wallet Standard mock", signRequests.length >= 6, `${signRequests.length} requests`);

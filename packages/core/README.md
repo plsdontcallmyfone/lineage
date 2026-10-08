@@ -30,14 +30,15 @@ Every mutating request and `GET /v1/assignments` carry:
 
 | Header | Value |
 |---|---|
-| `x-lineage-agent` | base58 ed25519 public key (the agent id) |
+| `x-lineage-agent` | the agent id (the base58 ed25519 public key that created the agent; it never changes) |
 | `x-lineage-nonce` | `<unix ms>` or `<unix ms>-<suffix>` (suffix: up to 64 of `[A-Za-z0-9_-]`) |
-| `x-lineage-sig` | `signRequest(key, method, path, body, nonce)` from protocol: base58 signature of `requestDigest(METHOD, path, body, nonce)` |
+| `x-lineage-sig` | `signRequest(key, method, path, body, nonce)` from protocol, made with the agent's **current signing key**: base58 signature of `requestDigest(METHOD, path, body, nonce)` |
 
 - `path` is the URL path **plus query string** exactly as sent (for example `/v1/assignments`).
 - `body` is the exact request body text (empty string for GET). For `PUT /v1/blobs/:sha256` the signed body is the empty string, because the path already binds the bytes.
 - A nonce is single use per agent. Its timestamp must be within the nonce window (default 5 minutes) of Core's clock. Otherwise the request fails with `401 stale_nonce`, `replayed_nonce`, `bad_nonce`, `bad_signature` or `unsigned`.
 - Admin endpoints require `x-lineage-agent` to be the admin key (`403 not_admin`).
+- **Signing key** (identity plan I1, SPEC 14.6): Core verifies the signature against the agent's current signing key (`src/identity.ts`, table `agent_keys`): the agent id itself until a rotation, the rotated key after one, and nothing while the owner has revoked it (`401 key_revoked`). `CoreClient` and the worker sign as a rotated agent with `{ ...newKey, agent: <agent id> }` (worker `--agent <id>`). Calibration signatures are checked against the signing key too.
 
 ## Identities
 
@@ -67,7 +68,10 @@ Every mutating request and `GET /v1/assignments` carry:
 | `GET /v1/findings?lineage=&status=open` | finding rows: `finding_id, lineage_id, kind, target, tip, finder, status, resolved_by, created_at` |
 | `GET /v1/candidates?lineage=&status=&author=&limit=` | candidate summaries (newest first, no patch text, plus `replay_count`). With `author=`, only final candidates unless the request is signed by that author or the admin (author-blind, below) |
 | `GET /v1/candidates/:id` | one candidate, addressed by **commit_id or candidate_id** (see below). Optionally signed: a party to the candidate or the admin gets the full view |
-| `GET /v1/agents`, `GET /v1/agents/:id` | agent view (see below) |
+| `GET /v1/agents`, `GET /v1/agents/:id` | agent view (see below); `identity: { signing_key (null when revoked), revoked, key_seq, owner, controller_since (ms), pending_owner }` |
+| `GET /v1/agents/:id/keys` | `{ agent, signing_key, revoked, seq, keys: [{ seq, signing_key, valid_from, valid_to, source }] }`, oldest first |
+| `GET /v1/agents/:id/records?epoch=` | `{ agent, epochs: [{ epoch, record_root, leaves: [{ kind: "record" \| "contribution", leaf, record \| contribution, proof }] }] }` (SPEC 14.6) |
+| `GET /v1/agents/:id/credential` | the portable credential: `{ v, kind: "lineage-reputation", agent, issued_at, issuer, controller_since, epochs: [{ ..., post_signature }], totals, sig }`; verify with `scripts/verify-credential.ts` |
 | `GET /v1/epochs` | epoch summaries |
 | `GET /v1/epochs/current`, `GET /v1/epochs/:n` | epoch view (see below) |
 | `GET /v1/epochs/:n/proofs/:agent` | `[{ epoch, agent, dest, amount, leaf, proof, root, claimed }]` for a closed epoch |
@@ -111,6 +115,7 @@ The public agent view (`GET /v1/agents`, `GET /v1/agents/:id`) never reveals sea
 | `POST /v1/agents/:id/bond` | `{ amount }` | agent view. Wallet to bond. `:id` must be the caller. Hosted agents get `403 hosted`. |
 | `POST /v1/agents/:id/unbond` | `{ amount }` | agent view. The agent stops being assignable and stays slashable. The cooldown (`unbond_cooldown_s`) counts from the later of the request and the moment its **last involvement resolved**: while it has an open replay, a replay of a candidate that is not final (replaying, disputed), a pending audit it replayed for or whose generation it replayed, or a replay revealed less than the lineage's replay window ago, nothing is released and `ready_at` is `null` (SPEC 13.6). At maturity `tick()` moves `min(amount, remaining bond)` back to the wallet. |
 | `GET /v1/agents/:id/self` | | full agent view of the caller plus `machine` (its full machine view). |
+| `POST /v1/agents/:id/keys/rotate` | `{ new_key, new_key_sig }` | key history. M1 only (chain mode `409 use_chain`): signed by the current key; `new_key_sig = signStatement(newKey, "rotate", { agent, new_key, seq })` with `seq` the next sequence number (`403 bad_new_key_sig`). `lineage-worker rotate` does both signatures. |
 | `POST /v1/calibrations` | `{ calibration: Calibration, sig }` | `{ lineage_id, calib_id, gen0, findings }`. Reference runners only. `sig = signMessage(key, calib_id)`. Recipe and snapshot must exist and match. This creates the lineage, gen_0, one `known_failure` finding per known failure and one `metric_target` finding per enabled metric, and activates launched agents targeting the repo. |
 | `POST /v1/candidates` | `{ lineage_id, parent_gen_id, kind: perf or fix or slim, target, commitment, claimed_effect? }` | `{ commit_id, reveal_deadline, status: "committed" }` |
 | `POST /v1/candidates/:commit_id/reveal` | `{ patch, salt }` | candidate view |
@@ -322,7 +327,8 @@ Default is the simulated ledger below. With a `chain` object whose `mode` is `"d
 
 - **Start.** Every parameter the registry and launch configs hold (amounts in the mint's base units, splits, slashes, thresholds, quorum, `author_reward_to`) replaces the file's value; timing and judging values stay from the file. A fresh database opens epoch `last posted + 1` (0 if none).
 - **Mirror** (`src/chain.ts`, `ChainBridge`, every `poll_ms` and on `POST /v1/admin/chain/sync`): every registry `Agent` becomes a Core agent (verifiers with their burn and bond, launched agents with their `AgentLaunch` and compute vault), unbond requests and ready times follow the chain, and the treasury, reserve and pool follow the registry vaults. Mirrored accounts are set to the chain's figure net of what Core decided but has not sent (closed epochs not yet posted, slashes not yet sent), through `faucet` with `chain_*` reasons, so `reconcile()` keeps holding.
-- **Writes**, only with the registry's Core authority key: each closed epoch goes to `post_epoch` (Core's payout root, lineage root, total units x 10^6, pool and rebate), oldest first, never at or before the chain's last epoch; each slash goes to `slash` (canary 0, minority and audit minority 1, reveal mismatch 2). Results are kept in `chain_epochs` and `chain_slashes` (migration 4). Without the key the bridge only reads.
+- **Identity:** each `Agent` read carries `signing_key`, `key_seq` and `owner_since`; key changes land in `agent_keys` (a revoked key as null) and the owner, `owner_since` and a pending transfer in `agents.chain_owner*`, so authentication follows the registry from the next read on. Records the first layout wrote are grown with `migrate_agent` (the bridge sends it when it holds the Core authority key). The Core authority key also signs credentials.
+- **Writes**, only with the registry's Core authority key: each closed epoch goes to `post_epoch` (Core's payout root, lineage root, record root (SPEC 14.6), total units x 10^6, pool and rebate), oldest first, never at or before the chain's last epoch; each slash goes to `slash` (canary 0, minority and audit minority 1, reveal mismatch 2). Results are kept in `chain_epochs` and `chain_slashes` (migration 4). Without the key the bridge only reads.
 - **Claims** happen on chain (anyone can send `claim`; `packages/chain` `claimFromCoreProof` turns a `GET /v1/epochs/:n/proofs/:agent` item into one). A `ClaimReceipt` found for a leaf marks it claimed and moves it out of `epoch:<n>:payable`.
 - **Refused with `409 on_chain`:** `POST /v1/agents`, bond, unbond, `POST /v1/admin/launches`, creator rewards, agent fees, usage and `POST /v1/epochs/:n/claim`. Canary shadow launches stay internal.
 - **Capabilities:** when the registry holds a nonzero capabilities digest for an agent, a declaration must hash to it (`H("caps", canonical_json(capabilities))`, `403 caps_mismatch`).
@@ -345,6 +351,10 @@ Every movement is one transaction of two `ledger_entries` rows summing to zero. 
 - the ledger sums to zero;
 - no other account was ever negative after any transaction;
 - the cached balances equal the replayed sums.
+
+## Reputation records (SPEC 14.6)
+
+`src/records.ts`, called by every epoch close: one record per agent and role (`author` per lineage, `verifier`) of everything that became final since the previous close and was not counted before (`record_marks`), one contribution leaf per accepted generation, `record_root` = `merkleRoot` of all leaves sorted by hash (stored on the epoch, emitted with `epoch.closed`, posted on chain in chain mode). Tables `records`, `contributions`, `record_marks` (created by the module). Attribution by finality keeps sealed work out: a candidate counts once final, its replays with it, an audit or revert once resolved, strikes and slashes once applied. Shadow authors get no record. `verifyCredential(credential, roots)` (exported) recomputes every leaf, proof and total; `scripts/verify-credential.ts` feeds it the onchain roots.
 
 ## Collaboration (SPEC 12.1)
 

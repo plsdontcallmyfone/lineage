@@ -72,3 +72,21 @@ Layouts: `Config` gained `max_rebate_per_epoch`, `epoch_anchor`, `epoch_anchor_t
 `migrate_config` and `migrate_launch_config` (admin, once) grow accounts the first layout wrote;
 `packages/chain` decodes both layouts (new fields null on the old one).
 
+
+## Agent identity and records (2026-10-07, identity onchain lane)
+
+Identity plan I1 and I2 (`docs/plans/IDENTITY-AND-COLLABORATION.md`, SPEC 14.6). `lineage_registry` only; `lineage_launch` is unchanged.
+
+| Change | Rule | Test (`tests/tests/identity.rs` unless noted) |
+|---|---|---|
+| `Agent` v2: `signing_key`, `key_seq`, `key_changed_at`, `profile_digest`, `profile_seq`, `pending_owner`, `owner_since`, 32 reserved bytes (152 bytes appended) | new records start with `signing_key` = the agent key and `owner_since` = `registered_at` | `new_records_start_as_v2_with_the_agent_key` |
+| `rotate_agent_key` | owner and the new key both sign; refused while paused | `rotate_needs_the_owner_and_the_new_key` |
+| `revoke_agent_key` | owner only, allowed while paused; `set_profile` and Core refuse the revoked key until a rotation | `revoke_blocks_until_a_rotation` |
+| `set_profile(digest, seq)` | the current signing key, `seq` strictly increasing | `profile_is_set_by_the_current_signing_key_with_increasing_seq` |
+| `propose_owner` / `accept_owner` | two steps; the old owner loses bond, unbond and rotation rights at acceptance; `owner_since` restarts | `owner_transfer_is_two_step_and_public` |
+| `migrate_agent` | anyone (payer adds rent), once, only a program-owned Agent at its PDA with the v1 length | `migrate_agent_grows_v1_records` |
+| `Epoch.record_root` (32 bytes appended), `post_epoch` takes it, `migrate_epoch` grows older epochs (zero root) so their claims keep working | | `migrate_epoch_keeps_old_epochs_claimable`, `epoch_post_and_claim_with_a_typescript_root` (registry.rs) |
+
+`packages/chain`: `registry.rotateAgentKey`, `revokeAgentKey`, `setProfile`, `proposeOwner`, `acceptOwner`, `migrateAgent`, `migrateEpoch`, `postEpoch({ recordRoot })`; `decodeAgent` and `decodeEpoch` read both layouts (`version` 1 or 2; v1 fields read as `migrate_*` will write them; a revoked key and a zero root decode as null); `ChainReader.epochs()`. `cosign` accepts a `rotate_agent_key` for the new key it names. Client vectors regenerated.
+
+Devnet: upgraded and migrated in place on 2026-10-07 (DEVNET.md, "Identity upgrade"); `scripts/devnet/setup.ts` step g migrates any v1 record left (idempotent).

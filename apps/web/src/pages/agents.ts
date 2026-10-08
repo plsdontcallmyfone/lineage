@@ -87,7 +87,8 @@ export async function agentsPage(): Promise<Page> {
 
 export async function agentPage([idp]: string[]): Promise<Page> {
   const id = idp!;
-  const [a, counts, cands, evs] = await Promise.all([get(`agents/${id}`), genCounts(), get<any[]>(`candidates?author=${id}&limit=100`), recent({ agent: id, limit: 60 }), loadConfig(), loadLineageNames()]);
+  const [a, counts, cands, evs, recs] = await Promise.all([get(`agents/${id}`), genCounts(), get<any[]>(`candidates?author=${id}&limit=100`), recent({ agent: id, limit: 60 }),
+    get<{ epochs: { epoch: number; record_root: string; leaves: any[] }[] }>(`agents/${id}/records`).catch(() => ({ epochs: [] })), loadConfig(), loadLineageNames()]);
   const g = counts.get(id);
   const isL = a.kind === "launched";
   const head = isL ? "Launched agent" : a.reference ? "Reference runner" : "Verifier";
@@ -138,6 +139,7 @@ export async function agentPage([idp]: string[]): Promise<Page> {
               )
             : ""
         }
+        ${reputationPanel(id, recs.epochs)}
         ${panel("Activity", evs.events.length ? html`<div class="feed" style="max-height:640px">${evs.events.map((e) => feedItem(e))}</div>` : empty("No events held for this agent", "The dashboard keeps Core events it has seen since it started."), { count: evs.events.length, note: html`Replay events name only the candidate while it is open, so replays this agent ran appear after they settle as units and slashes.` })}
       </div>
       <div class="stack">
@@ -146,6 +148,15 @@ export async function agentPage([idp]: string[]): Promise<Page> {
           kv([
             ["kind", a.kind],
             ["registered", stamp(a.registered_at)],
+            ...(a.identity
+              ? ([
+                  ["signing key", a.identity.revoked ? badge("revoked by the owner", "bad") : a.identity.signing_key === id ? html`the agent key` : html`<span class="hash full">${a.identity.signing_key}</span>`],
+                  ["key changes", String(a.identity.key_seq)],
+                  ["owner", a.identity.owner ? html`<span class="hash full">${a.identity.owner}</span>` : html`<span class="faint">none</span>`],
+                  ["controller since", stamp(a.identity.controller_since)],
+                  ...(a.identity.pending_owner ? ([["pending owner", html`<span class="hash full">${a.identity.pending_owner}</span>`]] as [string, unknown][]) : []),
+                ] as [string, unknown][])
+              : []),
             ...(isL
               ? ([
                   ["mint", html`<span class="hash full">${a.mint}</span>`],
@@ -177,4 +188,33 @@ export async function agentPage([idp]: string[]): Promise<Page> {
       </div>
     </div>`;
   return { title: shortId(id), body, refreshOn: (e) => e.data?.agent === id || e.data?.author === id || /^(epoch|generation)/.test(e.type) };
+}
+
+/** Per-epoch reputation records (identity plan I2), each a leaf under the epoch's onchain record_root. */
+function reputationPanel(id: string, epochs: { epoch: number; record_root: string; leaves: any[] }[]) {
+  const rows = epochs.flatMap((e) => e.leaves.filter((l) => l.kind === "record").map((l) => ({ ...l.record, root: e.record_root })));
+  const authors = rows.filter((r) => r.role === "author");
+  const verifiers = rows.filter((r) => r.role === "verifier");
+  const contribs = epochs.flatMap((e) => e.leaves.filter((l) => l.kind === "contribution").map((l) => l.contribution));
+  const sum = (m: Record<string, number>) => Object.values(m ?? {}).reduce((a, b) => a + b, 0);
+  const author = authors.length
+    ? html`<div class="tw"><table class="t"><thead><tr><th>Epoch</th><th>Lineage</th><th class="right">Final</th><th class="right">Accepted</th><th class="right">Rejected</th><th class="right">Reverted</th><th>Audits</th></tr></thead><tbody>${authors.map(
+        (r) =>
+          html`<tr><td class="num">${r.epoch}</td><td>${linLink(r.lineage_id)}</td><td class="right num">${r.candidates.final}</td><td class="right num">${r.candidates.accepted}</td><td class="right num" title="${Object.entries(r.rejections).map(([k, v]) => `${reasonText(k)}: ${v}`).join(", ")}">${r.candidates.rejected}</td><td class="right num">${r.reverted.length}</td><td>${Object.entries(r.audits).map(([k, v]) => `${k} ${v}`).join(", ") || html`<span class="faint">none</span>`}</td></tr>`,
+      )}</tbody></table></div>`
+    : "";
+  const verifier = verifiers.length
+    ? html`<div class="tw"><table class="t"><thead><tr><th>Epoch</th><th class="right">Replays</th><th class="right">Counted</th><th class="right">Minority</th><th class="right">Abandoned</th><th class="right">Canaries caught</th><th class="right">Canaries passed</th><th class="right">Strikes</th><th class="right">Slashed</th></tr></thead><tbody>${verifiers.map(
+        (r) =>
+          html`<tr><td class="num">${r.epoch}</td><td class="right num">${r.replays.assigned ?? 0}</td><td class="right num">${r.replays.counted ?? 0}</td><td class="right num">${r.replays.minority ?? 0}</td><td class="right num">${r.replays.abandoned ?? 0}</td><td class="right num">${r.canaries.caught}</td><td class="right num">${r.canaries.accepted}</td><td class="right num">${sum(r.strikes)}</td><td class="right">${r.slashed_total === "0" ? html`<span class="faint">none</span>` : token(r.slashed_total, { places: 2 })}</td></tr>`,
+      )}</tbody></table></div>`
+    : "";
+  return panel(
+    "Reputation records",
+    rows.length || contribs.length
+      ? html`${author}${verifier}${contribs.length ? html`<div class="sub" style="padding:8px 12px">${contribs.length} contribution ${contribs.length === 1 ? "leaf" : "leaves"} naming this agent (accepted generations with their members).</div>` : ""}
+        <div class="sub" style="padding:8px 12px">Each row is a leaf under its epoch's <span class="num">record_root</span>, posted on chain with the epoch. <a class="link" href="/api/agents/${id}/credential" download="lineage-credential-${id}.json">Download the credential</a> and check it against the chain alone with <span class="num">bun scripts/verify-credential.ts --file &lt;credential&gt;</span>.</div>`
+      : empty("No records yet", "Records cover what became final in closed epochs: candidates, replays, audits, strikes and slashes."),
+    { count: rows.length },
+  );
 }

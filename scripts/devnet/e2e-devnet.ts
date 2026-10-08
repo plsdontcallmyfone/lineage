@@ -6,6 +6,13 @@
 // token trades refill the epoch pool (crank_fees, split), Core closes the epoch, the bridge posts
 // its root with post_epoch, every leaf is claimed on chain, and Core mirrors the claims back.
 //
+// Identity (plan I1, I2): before authoring, the minbpe agent's owner (its launcher) rotates the agent
+// to a runtime-generated key with rotate_agent_key (owner and new key sign); Core then refuses the
+// old key (401) and the new key commits the candidate under the unchanged agent id; afterwards the
+// owner revokes the key (every key 401) and rotates back to the original. The closed epoch's
+// record_root on chain equals Core's, a verifier's credential verifies from chain alone and fails
+// once a record is altered, and a two-step owner transfer is mirrored with controller_since.
+//
 // The recipe is minbpe, not fixture-b58: a fixture repo (`fixture:b58`) has no https URL, so no
 // agent can be launched on it on chain, and in chain mode only onchain launches author.
 //
@@ -31,6 +38,7 @@ import {
   type Signer,
 } from "@lineage/chain";
 import { CoreClient } from "../../packages/core/src/client.ts";
+import { verifyCredential } from "../../packages/core/src/records.ts";
 import { doctor } from "../../packages/worker/src/doctor.ts";
 import { loadScript, ScriptedProposer, Worker } from "../../packages/worker/src/index.ts";
 import { deployer, key, KEY_DIR, LAMPORTS, loadState, logTx, reader, ROOT, rpc, send, sol, topUp } from "./lib.ts";
@@ -176,7 +184,7 @@ async function main() {
   Object.assign(net, { canary_rate: 0, audit_rate: 0, epoch_length_s: 86400, reveal_window_s: 600, replay_window_min_s: 600, qualify_retry_s: 60 });
   net.chain = {
     mode: "devnet", rpc_url: state.rpc_url, registry_program: state.registry_program, launch_program: state.launch_program, line_mint: lineMint,
-    core_authority_key: state.core_authority_key, poll_ms: 4000,
+    core_authority_key: state.core_authority_key, poll_ms: 10000,
   };
   writeFileSync(join(tmp, "network.json"), JSON.stringify(net));
   const core = spawn(["bun", join(ROOT, "packages/core/src/main.ts"), "--data", join(tmp, "data"), "--port", String(PORT), "--config", join(tmp, "network.json"), "--admin-key", adminPath,
@@ -185,7 +193,17 @@ async function main() {
   await waitFor("core", async () => (await fetch(`${CORE}/v1/health`).catch(() => null))?.ok);
   const A = new CoreClient(CORE, admin);
   const anon = new CoreClient(CORE, null);
-  const chain0 = await ok(A.post("/v1/admin/chain/sync", {}), "chain sync");
+  /** POST /v1/admin/chain/sync, retried while the public devnet RPC rate limits (HTTP 429). */
+  const chainSync = async (): Promise<any> => {
+    for (let i = 0; ; i++) {
+      const r = await A.post("/v1/admin/chain/sync", {});
+      if (r.status < 300) return r.body;
+      if (i >= 8 || !/429|Too Many|rate/i.test(JSON.stringify(r.body))) throw new Error(`chain sync: ${r.status} ${JSON.stringify(r.body)}`);
+      log(`chain sync rate limited (${r.status}); retrying`);
+      await Bun.sleep(2000 * 2 ** Math.min(i, 4));
+    }
+  };
+  const chain0 = await chainSync();
   const cfgView = await ok(anon.get("/v1/config"), "config");
   check("Core in chain mode takes amounts from the registry (6-decimal tLINE)", cfgView.network.min_bond === params.minBond.toString() && cfgView.network.token_decimals === DECIMALS,
     `min_bond ${cfgView.network.min_bond}, first epoch ${(await ok(anon.get("/v1/health"), "health")).epoch}`);
@@ -224,9 +242,33 @@ async function main() {
   });
   check("onchain verifiers declared capabilities matching their onchain digest and qualified", true);
 
-  // ------------------------------------------------------------ one candidate by the onchain agent
+  // ------------------------------------------------------------ I1: rotate the agent to a runtime key
   const agentKey = key("agent-minbpe");
-  const w = new Worker({ core: CORE, key: { id: agentKey.id, secret: agentKey.secret }, lineages: [L],
+  const launcher = key("launcher");
+  const runtimeKey = key("agent-minbpe-runtime"); // the hosted runtime's own key: the launch key never reaches it
+  await topUp(STEP, dep, launcher.id, LAMPORTS / 50n, "launcher", LAMPORTS / 20n);
+  let rec0 = (await reader.agent(m.agent))!;
+  if (rec0.signingKey !== agentKey.id) {
+    // a previous run stopped mid-way: start from the original key
+    await send(STEP, `rotate_agent_key ${m.agent} back to its original key (owner and key sign)`, launcher, [registry.rotateAgentKey({ owner: launcher.id, agent: m.agent, newKey: agentKey.id })], { signers: [agentKey] });
+    rec0 = (await reader.agent(m.agent))!;
+  }
+  check("the minbpe Agent record is v2, owned by its launcher, signing with its own key", rec0.version === 2 && rec0.owner === launcher.id && rec0.signingKey === agentKey.id,
+    `key_seq ${rec0.keySeq}`);
+  await send(STEP, `rotate_agent_key ${m.agent} to runtime key ${runtimeKey.id} (owner and new key sign)`, launcher, [
+    registry.rotateAgentKey({ owner: launcher.id, agent: m.agent, newKey: runtimeKey.id }),
+  ], { signers: [runtimeKey] });
+  const rec1 = (await reader.agent(m.agent))!;
+  check("rotate_agent_key landed: signing_key is the runtime key, key_seq advanced", rec1.signingKey === runtimeKey.id && rec1.keySeq === rec0.keySeq + 1,
+    `seq ${rec0.keySeq} -> ${rec1.keySeq}`);
+  await chainSync();
+  const keys1 = await ok(anon.get(`/v1/agents/${m.agent}/keys`), "keys");
+  check("Core mirrored the rotation from the registry", keys1.signing_key === runtimeKey.id && keys1.seq === rec1.keySeq, `seq ${keys1.seq}`);
+  const oldTry = await new CoreClient(CORE, { id: agentKey.id, secret: agentKey.secret }).get("/v1/assignments", true);
+  check("the old agent key gets 401", oldTry.status === 401, `${oldTry.status} ${oldTry.body.error}`);
+
+  // ------------------------------------------------------------ one candidate by the onchain agent, signed by the runtime key
+  const w = new Worker({ core: CORE, key: { id: runtimeKey.id, secret: runtimeKey.secret, agent: m.agent } as never, lineages: [L],
     proposer: new ScriptedProposer(loadScript(join(ROOT, "recipes/minbpe/candidates"), ["encode_chunk_cache"])), log: (x) => console.log(`   auth ${x}`) });
   const id = await w.authorOnce();
   if (!id) throw new Error("the author did not submit");
@@ -235,18 +277,37 @@ async function main() {
     return r.status === 200 && ["accepted", "rejected", "expired"].includes(r.body.status) ? r.body : null;
   });
   check("encode_chunk_cache accepted by two onchain-bonded verifiers", final.status === "accepted", `${final.status} ${final.reason ?? ""} ${final.effect ? `ratio ${final.effect.ratio}` : ""}`);
+  check("the runtime key committed it under the unchanged agent id", final.author === m.agent, `author ${final.author}`);
+
+  // ------------------------------------------------------------ I1: revoke, then rotate back
+  await send(STEP, `revoke_agent_key ${m.agent} (owner)`, launcher, [registry.revokeAgentKey({ owner: launcher.id, agent: m.agent })]);
+  await chainSync();
+  const revRt = await new CoreClient(CORE, { id: runtimeKey.id, secret: runtimeKey.secret, agent: m.agent }).get("/v1/assignments", true);
+  const revOld = await new CoreClient(CORE, { id: agentKey.id, secret: agentKey.secret }).get("/v1/assignments", true);
+  check("revoked: Core refuses every key (401 key_revoked)", revRt.status === 401 && revRt.body.error === "key_revoked" && revOld.body.error === "key_revoked",
+    `${revRt.status} ${revRt.body.error} / ${revOld.status} ${revOld.body.error}`);
+  await send(STEP, `rotate_agent_key ${m.agent} back to its original key (owner and key sign)`, launcher, [
+    registry.rotateAgentKey({ owner: launcher.id, agent: m.agent, newKey: agentKey.id }),
+  ], { signers: [agentKey] });
+  await chainSync();
+  const back = await new CoreClient(CORE, { id: agentKey.id, secret: agentKey.secret }).get("/v1/assignments", true);
+  const hist = await ok(anon.get(`/v1/agents/${m.agent}/keys`), "keys");
+  check("rotated back: the original key works again, the key history is public", back.status === 200 && hist.signing_key === agentKey.id && hist.keys.length >= 3,
+    hist.keys.map((k: any) => `${k.seq}:${k.signing_key ? k.signing_key.slice(0, 6) : "revoked"}`).join(" "));
 
   // ------------------------------------------------------------ close the epoch on chain
-  const before = await ok(A.post("/v1/admin/chain/sync", {}), "chain sync");
+  const before = await chainSync();
   const closed = await ok(A.post("/v1/admin/epochs/close", {}), "close");
   check("epoch closed with payouts from the onchain pool", BigInt(closed.pool_amount) > 0n && BigInt(closed.pool_amount) <= BigInt(before.balances.pool),
     `epoch ${closed.n}: pool ${closed.pool_amount} of ${before.balances.pool} on chain, rebate ${closed.rebate_amount}, ${closed.payouts.length} leaves`);
-  const after = await ok(A.post("/v1/admin/chain/sync", {}), "chain sync");
+  const after = await chainSync();
   const post = (after.posted_epochs as any[]).find((p) => p.n === closed.n);
   check("the bridge posted the epoch root with post_epoch", !!post?.signature, post?.signature ?? post?.error ?? "missing");
   const onchain = await reader.epoch(closed.n);
   check("onchain Epoch equals Core's root, pool and rebate", !!onchain && onchain.payoutRoot === closed.root && onchain.poolAmount === BigInt(closed.pool_amount) && onchain.rebateAmount === BigInt(closed.rebate_amount),
     onchain ? `root ${onchain.payoutRoot.slice(0, 16)}..., payable ${onchain.totalPayable}` : "missing");
+  check("onchain Epoch.record_root equals Core's record root (identity plan I2)", !!onchain && onchain.recordRoot === closed.record_root,
+    `${String(closed.record_root).slice(0, 16)}...`);
   // the post is a Core transaction: record it in the devnet log too
   if (post?.signature) {
     const t = await rpc.getTransaction(post.signature);
@@ -267,7 +328,7 @@ async function main() {
   }
   const ep = (await reader.epoch(closed.n))!;
   check("every leaf claimed on chain; claimed equals payable", ep.claims === closed.payouts.length && ep.claimedAmount === ep.totalPayable, `${ep.claimedAmount} / ${ep.totalPayable}`);
-  await ok(A.post("/v1/admin/chain/sync", {}), "chain sync");
+  await chainSync();
   const claimedViews = await Promise.all(agentsPaid.map((a) => ok<any[]>(anon.get(`/v1/epochs/${closed.n}/proofs/${a}`), "proofs")));
   check("Core mirrored every onchain claim", claimedViews.flat().every((p) => p.claimed === true));
   const rec = await ok(anon.get("/v1/ledger/reconcile"), "reconcile");
@@ -276,6 +337,41 @@ async function main() {
   const stats = await ok(anon.get("/v1/stats"), "stats");
   check("dashboard reads: /v1/chain and /v1/stats carry the vault balances read at a slot", chainView.slot > 0 && stats.chain?.balances?.pool === chainView.balances.pool,
     JSON.stringify(chainView.balances));
+
+  // ------------------------------------------------------------ I2: credentials verify from chain alone
+  const credV = await ok(anon.get(`/v1/agents/${vkeys.v1.id}/credential`), "credential");
+  const roots = new Map<number, string | null>();
+  for (const e of credV.epochs as { epoch: number }[]) roots.set(e.epoch, (await reader.epoch(e.epoch))?.recordRoot ?? null);
+  const vres = verifyCredential(credV, roots);
+  check("verifier v1's credential verifies against the onchain record roots alone", vres.ok && vres.checked > 0,
+    `${vres.checked} leaves, totals ${JSON.stringify({ replays: vres.totals.replays, counted: vres.totals.replays_counted })}, issuer ${credV.issuer}`);
+  const credFile = join(tmp, "credential-v1.json");
+  writeFileSync(credFile, JSON.stringify(credV));
+  const script = (extra: string[]) => Bun.spawnSync(["bun", join(ROOT, "scripts/verify-credential.ts"), "--file", credFile, ...extra], { env: process.env });
+  const sOk = script([]);
+  const sTamper = script(["--tamper"]);
+  check("scripts/verify-credential.ts: the credential verifies; altering one record fails", sOk.exitCode === 0 && sTamper.exitCode === 0 && /"ok": false/.test(sTamper.stdout.toString()),
+    `exit ${sOk.exitCode} / tamper exit ${sTamper.exitCode}`);
+  const credA = await ok(anon.get(`/v1/agents/${m.agent}/credential`), "credential");
+  const ares = verifyCredential(credA, roots);
+  check("the minbpe agent's credential carries its accepted generation and verifies", ares.ok && credA.totals.accepted >= 1 && credA.totals.contributions >= 1,
+    `accepted ${credA.totals.accepted}, contributions ${credA.totals.contributions}`);
+
+  // ------------------------------------------------------------ two-step public owner transfer (and back)
+  const ref = vkeys.ref;
+  const newOwner = key("owner-transfer-test");
+  await send(STEP, `propose_owner ${ref.id} to ${newOwner.id}`, owner, [registry.proposeOwner({ owner: owner.id, agent: ref.id, newOwner: newOwner.id })]);
+  await send(STEP, `accept_owner ${ref.id} by ${newOwner.id} (deployer pays the fee)`, dep, [registry.acceptOwner({ newOwner: newOwner.id, agent: ref.id })], { signers: [newOwner] });
+  const rref = (await reader.agent(ref.id))!;
+  await chainSync();
+  const refView = await ok(anon.get(`/v1/agents/${ref.id}`), "ref");
+  const refCred = await ok(anon.get(`/v1/agents/${ref.id}/credential`), "credential");
+  check("owner transfer: chain owner and owner_since mirrored as controller_since", rref.owner === newOwner.id && refView.identity.owner === newOwner.id &&
+    refView.identity.controller_since === Number(rref.ownerSince) * 1000 && refCred.controller_since === Number(rref.ownerSince) * 1000, `owner_since ${rref.ownerSince}`);
+  await send(STEP, `propose_owner ${ref.id} back to ${owner.id} (deployer pays the fee)`, dep, [registry.proposeOwner({ owner: newOwner.id, agent: ref.id, newOwner: owner.id })], { signers: [newOwner] });
+  await send(STEP, `accept_owner ${ref.id} by ${owner.id}`, owner, [registry.acceptOwner({ newOwner: owner.id, agent: ref.id })]);
+  check("owner transferred back", (await reader.agent(ref.id))!.owner === owner.id);
+
   writeFileSync(join(ROOT, "scripts/devnet/E2E-DEVNET-LAST.json"), JSON.stringify({ at: new Date().toISOString(), seconds: Math.round((Date.now() - T0) / 1000), epoch: closed.n,
     post_epoch: post?.signature ?? null, payouts: closed.payouts, chain: chainView, results }, null, 2) + "\n");
 }

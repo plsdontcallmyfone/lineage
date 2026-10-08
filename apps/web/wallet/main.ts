@@ -1,6 +1,7 @@
 // Wallet page (M2, devnet only): connect a Wallet Standard wallet, launch an agent token, trade on
 // an agent's curve and crank its fees, register and bond a verifier with a worker-held agent key,
-// and claim epoch leaves. Every figure is read from chain (or from Core for proofs); nothing here
+// manage an agent's identity (rotate its signing key with the new key co-signing, revoke it, the
+// two-step public owner transfer), and claim epoch leaves. Every figure is read from chain (or from Core for proofs); nothing here
 // holds a user's key: the wallet signs, and the fresh keys a launch needs are WebCrypto keys made
 // in this page. Loaded on demand as /assets/wallet.js (bundled with packages/chain's browser build).
 import "../../../packages/chain/src/browser/buffer.ts";
@@ -102,6 +103,11 @@ const S = {
   vrec: undefined as AgentRecord | null | undefined,
   vOut: null as Raw | null,
   partial: null as null | { b64: string; until: number; agent: string },
+  // identity (Agent v2: signing key, revocation, owner transfer)
+  ikey: "",
+  irec: undefined as AgentRecord | null | undefined,
+  iOut: null as Raw | null,
+  ipartial: null as null | { b64: string; until: number; agent: string; newKey: string },
   // claims
   claims: null as null | { rows: any[]; note: Raw | null },
   claimOut: null as Raw | null,
@@ -155,6 +161,7 @@ function skeleton(): Raw {
       <button type="button" data-tab="launch" aria-pressed="true">Launch</button>
       <button type="button" data-tab="trade" aria-pressed="false">Trade and crank</button>
       <button type="button" data-tab="verify" aria-pressed="false">Verifier</button>
+      <button type="button" data-tab="identity" aria-pressed="false">Identity</button>
       <button type="button" data-tab="claims" aria-pressed="false">Claims</button>
     </div></div>
     <div data-pane="launch"><div class="grid-2">
@@ -168,6 +175,10 @@ function skeleton(): Raw {
     <div data-pane="verify" hidden><div class="grid-2">
       ${panel("Register and bond a verifier", html`<div id="w-ver"></div>`)}
       ${panel("Worker kit", html`<div id="w-kit"></div>`, { note: html`The worker key is the agent's identity; the wallet is its owner. <span class="num">register</span> needs both signatures, so the key signs on the machine that holds it and only its public key is typed here.` })}
+    </div></div>
+    <div data-pane="identity" hidden><div class="grid-2">
+      ${panel("Agent identity", html`<div id="w-id"></div>`, { note: html`Read from the registry <span class="num">Agent</span> record (v2). The agent id never changes; the signing key is the key that speaks for it in Core and on chain.` })}
+      ${panel("How rotation works", html`<div id="w-id-kit"></div>`)}
     </div></div>
     <div data-pane="claims" hidden>
       ${panel("Claimable epoch leaves", html`<div id="w-claims"><div class="panel-b dim">Connect a wallet to look up its leaves.</div></div>`, { note: html`Leaves and proofs come from Core (<span class="num">GET /v1/epochs/:n/proofs/:agent</span>); each proof is checked against the payout root posted on chain before it is offered, and claim receipts are read from chain.` })}
@@ -965,6 +976,198 @@ async function vOwnerTx(kind: "bond" | "unbond" | "withdraw") {
 }
 
 // ------------------------------------------------------------------------------------------------
+// identity (identity plan I1): rotate, revoke, two-step owner transfer
+
+function renderIdentity() {
+  const rec = S.irec;
+  const k = S.ikey;
+  const mine = !!rec && rec.owner === me();
+  const pendingMe = !!rec && !!rec.pendingOwner && rec.pendingOwner === me();
+  let body: Raw;
+  if (!k) body = html`<div class="dim">Enter an agent id (its original public key) to read its identity from the registry.</div>`;
+  else if (rec === undefined) body = html`<div class="dim">Reading the registry…</div>`;
+  else if (rec === null) body = html`<div class="dim">No Agent record for this key on devnet.</div>`;
+  else {
+    const revoked = rec.signingKey === null;
+    body = html`${kv([
+        ["Agent id", addr(rec.agent)],
+        ["Record layout", rec.version === 2 ? badge("Agent v2", "good") : badge("v1: needs migrate_agent", "warn")],
+        ["Signing key", revoked ? badge("revoked", "bad") : html`${addr(rec.signingKey)} ${rec.signingKey === rec.agent ? badge("the agent key", "info") : badge("rotated", "info")}`],
+        ["Key changes", html`<span class="num">${rec.keySeq}</span>${rec.keyChangedAt > 0n ? html`, last ${when(rec.keyChangedAt)}` : ""}`],
+        ["Owner", html`${addr(rec.owner)} ${mine ? badge("your wallet", "good") : badge("another wallet", "warn")}`],
+        ["Controller since", when(rec.ownerSince)],
+        ["Pending owner", rec.pendingOwner ? html`${addr(rec.pendingOwner)} ${pendingMe ? badge("your wallet", "good") : ""}` : "none"],
+        ["Profile digest", rec.profileDigest ? html`<span class="num" title="${rec.profileDigest}">${rec.profileDigest.slice(0, 16)}…</span> (seq ${rec.profileSeq})` : "none"],
+      ])}
+      ${rec.version === 1 ? html`<div class="wl-row" style="margin-top:10px">${btn("i-migrate", "Grow to Agent v2 (migrate_agent)", { disabled: !S.account ? "connect a wallet" : false })}</div>` : ""}
+      ${mine && rec.version === 2
+        ? html`<div class="wl-2" style="margin-top:12px">
+            <div><label class="wl-field"><span class="eyebrow">New signing key (public key)</span><input name="i_newkey" placeholder="from lineage-worker keygen, or the hosted runtime" spellcheck="false"></label>
+              <div class="wl-row" style="margin-top:8px">${btn("i-rotate", "Sign rotate as owner", { primary: true })}</div></div>
+            <div><span class="eyebrow">Leaked key</span><div class="wl-fine" style="margin:6px 0">Revoking stops Core from accepting any request for this agent until you rotate to a new key.</div>
+              <div class="wl-row">${btn("i-revoke", "Revoke signing key", { disabled: revoked ? "already revoked" : false })}</div></div>
+          </div>
+          <div id="w-id-cosign">${S.ipartial && S.ipartial.agent === rec.agent ? rotateCosignView() : ""}</div>
+          <div class="wl-2" style="margin-top:12px">
+            <div><label class="wl-field"><span class="eyebrow">Transfer: proposed new owner (wallet address)</span><input name="i_owner" spellcheck="false" placeholder="base58 wallet address"></label>
+              <div class="wl-row" style="margin-top:8px">${btn("i-propose", "Propose owner")}${rec.pendingOwner ? btn("i-cancel", "Cancel proposal") : ""}</div></div>
+            <div class="wl-fine">Nothing changes until the proposed wallet accepts. The transfer is public: the record's controller-since time restarts, and the agent's reputation credential shows it, so readers can tell earlier history from the new controller's. The bond and wallet payouts follow the owner; the signing key does not (rotate it after a transfer).</div>
+          </div>`
+        : ""}
+      ${pendingMe ? html`<div style="margin-top:12px">${banner("info", "This wallet is the proposed owner.", "Accepting makes it the owner from now on.")}<div class="wl-row" style="margin-top:8px">${btn("i-accept", "Accept ownership", { primary: true })}</div></div>` : ""}
+      <div id="w-iout">${S.iOut ?? ""}</div>`;
+  }
+  set(
+    "w-id",
+    html`<div class="panel-b"><label class="wl-field"><span class="eyebrow">Agent id</span><input name="i_key" placeholder="base58 agent id" value="${esc(k)}" spellcheck="false"></label>
+      <div class="wl-row" style="margin-top:8px">${btn("i-lookup", "Look up")}</div></div>
+    <div class="panel-b" style="padding-top:0">${body}</div>`,
+  );
+  set(
+    "w-id-kit",
+    html`<div class="panel-b"><div class="kit" style="margin-top:0">
+      <div class="cmd"><div class="cmd-h"><span>1. Make the new key where it will live (a worker machine, or the hosted runtime)</span></div><pre>${W} keygen --out ~/.lineage/keys/agent-next.json</pre></div>
+      <div class="cmd"><div class="cmd-h"><span>2. After your wallet signs rotate: the new key co-signs and sends</span></div><pre>${W} cosign --key ~/.lineage/keys/agent-next.json --tx &lt;from this page&gt;</pre></div>
+      <div class="cmd"><div class="cmd-h"><span>3. Run the worker with the new key under the same agent id</span></div><pre>${W} run --core &lt;core&gt; --key ~/.lineage/keys/agent-next.json --agent &lt;agent id&gt;</pre></div>
+    </div>
+    <ol class="wl-steps">
+      <li>Rotation needs two signatures: your wallet as owner, and the new key, which proves it is held by whoever will run the agent. Nobody can point an agent at a key they do not hold.</li>
+      <li>The agent id stays the original public key forever: candidates, generations, payouts and reputation keep naming it.</li>
+      <li>Core follows the registry on its next chain read; until then the old key still works. Revocation takes effect the same way.</li>
+    </ol></div>`,
+  );
+}
+
+function rotateCosignView(): Raw {
+  const pz = S.ipartial!;
+  const cmd = `${W} cosign --key ~/.lineage/keys/agent-next.json --tx ${pz.b64}`;
+  return html`<div class="wl-cosign" style="margin-top:10px">${banner("info", "Signed by your wallet. Now the new key co-signs and sends.", html`Run this where the new key ${addr(pz.newKey)} lives, within about a minute (the blockhash expires; sign again if it does). The worker checks that the transaction is a <span class="num">rotate_agent_key</span> to its own key and that your signature verifies before it adds its own. This page watches the registry.`)}
+    <div class="cmd"><div class="cmd-h"><span>Co-sign with the new key</span><button type="button" class="copy" data-copy="${cmd}" aria-label="Copy command">${icon.copy} Copy</button></div><pre class="wl-wrap">${cmd}</pre></div>
+    <div class="wl-fine" id="w-id-wait">Waiting for the registry to show the new key…</div></div>`;
+}
+
+async function iLookup() {
+  S.ikey = val("i_key");
+  S.iOut = null;
+  if (!S.ikey) return renderIdentity();
+  try {
+    addressBytes(S.ikey);
+  } catch {
+    S.irec = undefined;
+    set("w-id", html`<div class="panel-b">${errBox("Not a base58 public key.")}</div>`);
+    return;
+  }
+  S.irec = undefined;
+  renderIdentity();
+  S.irec = await reader.agent(S.ikey).catch(() => null);
+  renderIdentity();
+}
+
+/** Owner (or proposed owner, or anyone for migrate) signs one registry instruction here. */
+async function iTx(kind: "revoke" | "propose" | "cancel" | "accept" | "migrate") {
+  if (!requireReady() || !S.irec) return;
+  const agent = S.irec.agent;
+  let ix: Ix;
+  let label: string;
+  if (kind === "propose") {
+    const to = val("i_owner");
+    try {
+      addressBytes(to);
+    } catch {
+      S.iOut = errBox("The proposed owner must be a base58 wallet address.");
+      return renderIdentity();
+    }
+    ix = registry.proposeOwner({ owner: me()!, agent, newOwner: to });
+    label = `propose_owner ${short(agent)} to ${short(to)}`;
+  } else if (kind === "cancel") {
+    ix = registry.proposeOwner({ owner: me()!, agent, newOwner: "11111111111111111111111111111111" });
+    label = `propose_owner ${short(agent)}: cancel`;
+  } else if (kind === "accept") {
+    ix = registry.acceptOwner({ newOwner: me()!, agent });
+    label = `accept_owner ${short(agent)}`;
+  } else if (kind === "migrate") {
+    ix = registry.migrateAgent({ payer: me()!, agent });
+    label = `migrate_agent ${short(agent)}`;
+  } else {
+    ix = registry.revokeAgentKey({ owner: me()!, agent });
+    label = `revoke_agent_key ${short(agent)}`;
+  }
+  try {
+    const b = await buildAndSimulate(me()!, [ix]);
+    if (b.sim.err) throw Object.assign(new Error(`simulation failed: ${JSON.stringify(b.sim.err)}`), { logs: b.sim.logs });
+    const r = await signAndSend({ wallet: S.wallet!, account: S.account!, ixs: [ix] });
+    const c = r.confirmed!;
+    logSig(label, c.signature, c.fee, !c.err);
+    if (c.err) throw Object.assign(new Error(`${label} failed: ${JSON.stringify(c.err)}`), { logs: c.logs });
+    S.irec = await reader.agent(agent);
+    const a = S.irec!;
+    const what =
+      kind === "revoke"
+        ? html`Signing key revoked (read back: ${a.signingKey === null ? "none" : a.signingKey}); key changes ${a.keySeq}. Core refuses the agent's requests after its next chain read.`
+        : kind === "accept"
+          ? html`Owner is now ${addr(a.owner)}, controller since ${when(a.ownerSince)} (read back).`
+          : kind === "migrate"
+            ? html`Record grown to Agent v2; signing key ${addr(a.signingKey)} (read back).`
+            : html`Pending owner ${a.pendingOwner ? addr(a.pendingOwner) : "none"} (read back); the owner is still ${addr(a.owner)}.`;
+    S.iOut = html`<div class="panel-b">${banner("info", html`${label}: ${txLink(c.signature)}`, what)}</div>`;
+    refreshBalances();
+  } catch (e) {
+    S.iOut = errBox(e, (e as any).logs);
+  }
+  renderIdentity();
+}
+
+async function iRotate() {
+  if (!requireReady() || !S.irec) return;
+  const agent = S.irec.agent;
+  const newKey = val("i_newkey");
+  try {
+    addressBytes(newKey);
+  } catch {
+    S.iOut = errBox("The new signing key must be a base58 public key.");
+    return renderIdentity();
+  }
+  const ix = registry.rotateAgentKey({ owner: me()!, agent, newKey });
+  try {
+    set("w-id-cosign", html`<span class="dim">Simulating…</span>`);
+    const b = await buildAndSimulate(me()!, [ix]);
+    // the new key's signature is missing in simulation (sigVerify off), so a program error still shows here
+    if (b.sim.err) throw Object.assign(new Error(`simulation failed: ${JSON.stringify(b.sim.err)}`), { logs: b.sim.logs });
+    const r = await signAndSend({ wallet: S.wallet!, account: S.account!, ixs: [ix], leaveFor: newKey, onStatus: (m) => set("w-id-cosign", html`<span class="dim">${m}</span>`) });
+    S.ipartial = { b64: base64Encode(r.partial!), until: r.lastValidBlockHeight, agent, newKey };
+    set("w-id-cosign", rotateCosignView());
+    watchRotation(agent, newKey, S.irec.keySeq, r.lastValidBlockHeight);
+  } catch (e) {
+    set("w-id-cosign", errBox(e, (e as any).logs));
+  }
+}
+
+async function watchRotation(agent: string, newKey: string, seq0: number, lastValid: number) {
+  for (;;) {
+    await new Promise((r) => setTimeout(r, 2500));
+    if (S.ikey !== agent || !S.ipartial) return;
+    const rec = await reader.agent(agent).catch(() => null);
+    if (rec && rec.signingKey === newKey && rec.keySeq > seq0) {
+      S.ipartial = null;
+      S.irec = rec;
+      const sigs = await rpc.call<{ signature: string; err: unknown }[]>("getSignaturesForAddress", [registryPdas.agent(agent), { limit: 1, commitment: "confirmed" }]).catch(() => []);
+      if (sigs[0]) {
+        const t = await rpc.getTransaction(sigs[0].signature).catch(() => null);
+        logSig(`rotate_agent_key ${short(agent)} to ${short(newKey)} (sent by lineage-worker cosign)`, sigs[0].signature, t?.meta?.fee, !sigs[0].err);
+      }
+      S.iOut = html`<div class="panel-b">${banner("info", "Rotated: the new key co-signed.", html`Signing key ${addr(newKey)}, key changes ${rec.keySeq} (read back). The agent id is unchanged.`)}</div>`;
+      return renderIdentity();
+    }
+    const h = await rpc.getBlockHeight().catch(() => 0);
+    if (h > lastValid) {
+      S.ipartial = null;
+      set("w-id-cosign", errBox("The blockhash expired before the new key sent it; nothing was charged. Sign rotate again."));
+      return;
+    }
+  }
+}
+
+// ------------------------------------------------------------------------------------------------
 // claims
 
 async function loadClaims() {
@@ -1135,6 +1338,7 @@ function afterConnect() {
   renderConn();
   refreshBalances();
   renderVerifier();
+  renderIdentity();
   if (S.sel) renderTrade();
   loadClaims();
 }
@@ -1229,6 +1433,27 @@ async function onClick(ev: Event) {
       case "v-withdraw":
         await vOwnerTx("withdraw");
         break;
+      case "i-lookup":
+        await iLookup();
+        break;
+      case "i-rotate":
+        await iRotate();
+        break;
+      case "i-revoke":
+        await iTx("revoke");
+        break;
+      case "i-propose":
+        await iTx("propose");
+        break;
+      case "i-cancel":
+        await iTx("cancel");
+        break;
+      case "i-accept":
+        await iTx("accept");
+        break;
+      case "i-migrate":
+        await iTx("migrate");
+        break;
       case "claim":
         await claim(Number(b.dataset.i));
         break;
@@ -1275,6 +1500,7 @@ export async function mountWallet(root: HTMLElement) {
   });
   renderSigs();
   renderVerifier();
+  renderIdentity();
   try {
     S.cfg = await loadChainCfg();
     if (!S.cfg.state) throw new Error("This server has no devnet state (scripts/devnet/devnet.json).");
