@@ -8,3 +8,4 @@ export * from "./stats.ts";
 export * from "./verdict.ts";
 export * from "./econ.ts";
 export * from "./auth.ts";
+export * from "./shapley.ts";

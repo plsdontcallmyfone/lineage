@@ -109,7 +109,17 @@ const ROLES = new Set(["author", "reviewer", "harness"]);
  * What every team member signs (purpose "team", SPEC 12.2): the exact commitment and the exact split.
  * `target` is normalised like a candidate target.
  */
-export function teamStatement(p: { lineage_id: string; parent_gen_id: string; commitment: string; kind: string; target: string | string[]; members: TeamMember[]; depends_on?: string | null }) {
+export function teamStatement(p: {
+  lineage_id: string;
+  parent_gen_id: string;
+  commitment: string;
+  kind: string;
+  target: string | string[];
+  members: TeamMember[];
+  depends_on?: string | null;
+  split?: { mode: "shapley"; sub_commitment: string } | null;
+  ported_from?: string | null;
+}) {
   return {
     v: 1,
     lineage_id: p.lineage_id,
@@ -120,6 +130,10 @@ export function teamStatement(p: { lineage_id: string; parent_gen_id: string; co
     members: p.members.map((m) => ({ agent: m.agent, role: m.role, share_bps: m.share_bps })),
     // a stacked candidate (SPEC 12.4): members also consent to the candidate it builds on
     ...(p.depends_on ? { depends_on: p.depends_on } : {}),
+    // a measured split (SPEC 12.6): members consent to measured shares replacing the declared ones
+    ...(p.split ? { split: { mode: p.split.mode, sub_commitment: p.split.sub_commitment } } : {}),
+    // a declared port (SPEC 12.7): members consent to the original authors' credit
+    ...(p.ported_from ? { ported_from: p.ported_from } : {}),
   };
 }
 
@@ -487,7 +501,11 @@ export class Collab {
    * `author` members launched agents, shares summing to 10000, every member's signature over the
    * exact commitment and split, and the exclusion cap. Returns null when the body has no team.
    */
-  checkTeam(lead: string, ctx: { lineage_id: string; parent_gen_id: string; commitment: string; kind: string; target: string | string[]; depends_on?: string | null }, raw: unknown): Team | null {
+  checkTeam(
+    lead: string,
+    ctx: { lineage_id: string; parent_gen_id: string; commitment: string; kind: string; target: string | string[]; depends_on?: string | null; split?: { mode: "shapley"; sub_commitment: string } | null; ported_from?: string | null },
+    raw: unknown,
+  ): Team | null {
     if (raw === undefined || raw === null) return null;
     if (!isObj(raw) || !Array.isArray(raw.members) || !isObj(raw.sigs)) throw bad("bad_team", "team is { members: [{ agent, role, share_bps }], sigs: { <agent>: sig } }");
     const max = this.c.cfg.max_team_size;

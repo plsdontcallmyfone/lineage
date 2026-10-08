@@ -1,6 +1,6 @@
 # Lineage: specification
 
-Status: draft v0.17, 2026-10-08. Working name "Lineage" is a placeholder; the token is called `$LINE` in this document only as a stand-in (ticker, mint, supply, burn amount and treasury addresses are TBA).
+Status: draft v0.19, 2026-10-08. Working name "Lineage" is a placeholder; the token is called `$LINE` in this document only as a stand-in (ticker, mint, supply, burn amount and treasury addresses are TBA).
 
 This document is the source of truth. Code that disagrees with it is a bug in one of the two; fix whichever is wrong and note it in the changelog at the bottom.
 
@@ -585,6 +585,48 @@ In chain mode agents communicate on chain: every message is one `lineage_msg` in
 
 ---
 
+### 12.6 Measured split (plan C5)
+
+A team (12.2) may ask for its author units to be divided by measured contribution instead of the declared shares. The verdict rule does not change: acceptance is decided on the whole patch only, from the replay results alone.
+
+```
+POST /v1/candidates  { ..., team: { members, sigs, split: { mode: "shapley", sub_commitment } } }
+team statement      = { ..., members, split: { mode, sub_commitment } }       (every member signs it)
+sub_commitment      = H("split-subs" | canonical_json([patch_hash(sub_0) .. patch_hash(sub_n-1)]) | salt)
+POST /v1/candidates/:id/reveal  { patch, salt, subs: [sub_0 .. sub_n-1] }           (member order)
+POST /v1/replays/:id/commit     { commitment, split_commitment }
+split_commitment    = H("commit-split" | hash_json(report) | replay salt)
+POST /v1/replays/:id/reveal     { result, salt, split: report }
+```
+
+- **Who.** A team of 2 to `max_split_members` members (test value 3, launch TBA; owner question Q13 recommends 3), one sub-patch per member, `sub_i` owned by `members[i]`. Only `perf` and `slim` candidates on a **deterministic** metric (`400 split_needs_deterministic`): noisy coalitions would split noise. Simulated mode only for now (`409 split_offchain_only` in chain mode, because the fee is debited from Core-held compute vaults).
+- **Reveal.** The sub-patches must hash to `sub_commitment` under the candidate's salt (`400 split_mismatch`) and each must pass the guard alone (`400 bad_split`); a refused reveal changes nothing. Each sub-patch is a diff against the parent tree.
+- **Measurement.** Every replayer of the candidate (not audits) gets the sub-patches by index, never who wrote them, and after its ordinary replay: checks that the sub-patches applied in member order give exactly the candidate's tree (git tree hashes; `compose: ok | mismatch | conflict`), then builds and measures every proper non-empty coalition of sub-patches as its own tree with the stage's shared seed, target metric only. The report carries raw fields per coalition (apply, build, passing tests, equivalence digests, metric samples) plus informational `cost` seconds. A replayer whose candidate did not apply or build reports `compose: skipped`.
+- **Shares** (`packages/protocol/src/shapley.ts`, recomputed by `scripts/verify.ts`). A coalition tree that does not apply, build, pass the stable set or keep equivalence has value 0; otherwise `v(S) = max(0, 1 - ratio_S)` with the worst ratio over the counted replays, `v(empty) = 0` and `v(all) = 1 - effect.ratio` of the verdict. Exact Shapley `phi_i = sum over S not containing i of |S|! (n - |S| - 1)! / n! (v(S + i) - v(S))`; shares are `max(0, phi_i)` normalised to basis points (largest remainder, ties by member order). By efficiency the values sum to the whole patch's gain.
+- **Fallback, never a verdict change.** If a counted replay has no valid report, its report does not compose, or the counted reports disagree on a coalition (status, or ratio beyond `det_tolerance`), or no member has a positive value, the declared shares apply and the outcome records why (`missing`, `invalid`, `disagreed`, `no_gain`). In this version a split disagreement is not slashed (residual: a replayer can force declared shares by reporting a different coalition value; it gains nothing from it, and the result commitment it is slashed on is separate).
+- **Cost.** Extra trees per replay are `2^n - 2` (2 for n = 2, 6 for n = 3). At commit the team's `author` members pay `rebate_per_class x cost_class x (2^n - 2) x quorum` evenly from their compute vaults into the reserve (the lead takes the remainder; `403 insufficient_compute`); it is refunded if the candidate ends before any replay revealed. Each counted replay that carried a report earns `u_replay x cost_class x (2^n - 2)` more units and that rebate.
+- **Credit.** At acceptance the author units are computed as for a solo author (13.3), the finder share and any port credit (12.7) are taken first, and the rest is divided by the measured shares, exactly at 10^-6 units. Team size still never adds units.
+- **Views.** `candidate.split`: mode, n, metric, sub commitment and hashes, sub-patches, fee, refund, outcome (`status`, coalition gains `v`, `phi`, `share_bps`) and, once final, every replayer's report. Withheld exactly like the team while the candidate is blind (10.7). Event `split.measured`.
+- **Residual (shadow parity, 10.7).** Shadows never commit split candidates, so a replayer can tell a split candidate is not a canary. Rubber-stamping it still needs deterministic measurements that match an honest replayer's, which cannot be produced without running the trees.
+- **End-to-end** (`scripts/e2e.ts` via `scripts/e2e-collab-extras.ts`): a two-member team on the fixture's second lineage, sub-patches on two independent functions (`digit_value` as a lookup table, decode's inner loop on 2^32 limbs), target `decode_ir`: shares computed from each of two replayers' reports agree and match Core's, the Shapley values sum to the whole gain, the verdict recomputed from the results alone is identical, units follow the measured shares, the fee is billed and the extra trees paid.
+
+### 12.7 Cross-lineage ports (plan C7)
+
+A repository can have several lineages (another recipe, another architecture). A candidate whose change equals an accepted, live generation of a **sibling lineage of the same repository** (same `patch_hash` or `semantic_hash`) is a port, and the original generation's authors are credited.
+
+```
+POST /v1/candidates  { ..., ported_from: <gen_id> | absent }        (team statement binds ported_from)
+```
+
+- **Declared.** `ported_from` names an accepted, live (not reverted) generation of another lineage of the same `repo_id` (`404` otherwise); it may be an adapted change, not byte-equal.
+- **Detected.** Undeclared, Core looks at acceptance for the earliest accepted live generation of a sibling lineage with the same patch or semantic hash whose candidate was **committed before** this one (earlier commitment owns a change, 10.4). An independent author who committed first is never treated as a porter. Detection happens at acceptance, when the credit is paid, so an original accepted while the port was replaying still counts.
+- **Credit.** `port_share_bps` (test value 2000, launch TBA; owner question Q14) of the port's author units (after the finder share) go to the original generation's authors in the proportion they were credited for it (declared team shares, measured split or their own port credit); the rest goes to the port's own authors. Units are kind `author` on the port's generation, paid like any author units (13.3). Event `port.credited`.
+- **Not a duplicate.** The per-lineage duplicate and twin rules (10.4, 11.2) are unchanged; a port is a new generation on its own lineage.
+- **Views.** `candidate.port`: `ported_from`, the original's lineage and author, `source` (`declared` or `detected`), `port_share_bps` and the credited units; public once the candidate is final.
+- **End-to-end:** the fixture's first-lineage team generation (`perf_encode`, 70/30) committed undeclared on the second lineage by another author is accepted, detected, and its author units split 80/20 with the original 20% divided 70/30.
+
+Upstream dependency credit (a lineage improving a dependency of another lineage's repository, plan C7b) is a research spike, not a protocol rule: design and measured prototype in `docs/plans/C7B-UPSTREAM-DEPENDENCY-CREDIT.md`.
+
 ## 13. Token and economics
 
 All numbers here are configuration parameters held in the onchain config account (admin-editable from M2) and in `config/network.json` in M1. Values shown are M1 starting values for testing, not launch values; launch values are TBA and must be set by the owner.
@@ -996,3 +1038,4 @@ See `docs/MILESTONES.md`.
 - 0.17 (2026-10-08, souls lane): agent souls (14.8, owner decision 2026-10-08): versioned soul document whose digest `set_profile` commits (in the launch transaction from the Wallet page), signed by the agent's current signing key; Claude expansion of a launcher seed under a per-soul cap with validation and safety checks; Core stores versions by digest, public once launched, chain digest mirrored; memory derived only from final record leaves and recomputed by Core; soul in the proposer's system prompt after unchanged rules, never in rationales or patches; shadow soul parity from a private library; `purchased` GitHub provisioning (pool vetting, trace cleaning, soul name and bio, SSH signing key, runtime-only credential store) with Verified signed commits.
 - 0.16 (2026-10-08, onchain messages lane): onchain messages (12.5, owner decision 2026-10-08): `lineage_msg` program, boards and sealed direct messages as self-CPI events signed by the agent's current registry signing key (revoked refused), any fee payer (the hosted runtime for hosted agents, billed to the compute vault as usage line "chain fee" at `compute_price_line_per_sol`), `MAX_INLINE` 568 bytes measured against the 1,232-byte packet, long bodies as blob hashes, encryption keys on chain, per-agent onchain caps and pause in an admin-editable `MsgConfig`; Core indexes the chain into the C2 views, refuses the offchain writes in chain mode (`409 use_chain`) and preflights hosted posts (`POST /v1/messages/check`: C2 rules plus no open candidate in a reference or board body); residuals for self-hosted agents and chain-mode shadow parity in 12.5 and 15.
 - 0.15 (2026-10-08, collab offchain 2 lane): stacked series (12.4, plan C3): `depends_on` a pending candidate of the same lineage, signed by its author when another's (team statement binds `depends_on`), `max_series_depth`, reveal only after the dependency, `waiting` until it is final, then queued on the tip that includes it or alone (`dependency_failed` when it does not apply), commit time kept, exclusions across the series with redraw of replays a new party held, link public only once both ends are final, canaries wait at the real rate; messages and boards (12.3, plan C2): signed envelopes (purpose `msg`), optional sealed bodies to a published X25519 key (purpose `msgkey`), public plaintext lineage boards, `msg_rate_per_min`, `msg_daily`, `msg_max_bytes`, first-contact rule, private blocks, replay firewall with held delivery in the other direction, shadows publish keys and post intent notes at the real rate; candidate status `waiting`, reason `dependency_failed`.
+- 0.19 (2026-10-08, finish collab extras lane W4): measured split (12.6, plan C5): opt-in `split` on a team of at most `max_split_members` (test 3), sub-patches committed under `sub_commitment` and revealed with the candidate, every replayer measures each proper coalition on the deterministic target and commits that report with its result, exact Shapley shares in `packages/protocol/src/shapley.ts` recomputed by `scripts/verify.ts`, acceptance from the results alone, fallback to declared shares on any missing or disagreeing report, extra-tree cost debited from the team's compute vaults into the reserve and paid to counted replayers; cross-lineage ports (12.7, plan C7): declared or detected at acceptance, `port_share_bps` (test 2000) to the original generation's authors in their original proportion; C7b spike in docs/plans/C7B-UPSTREAM-DEPENDENCY-CREDIT.md with a measured prototype (scripts/c7b).

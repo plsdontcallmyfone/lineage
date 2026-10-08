@@ -1,0 +1,12 @@
+[package]
+name = "fixture-addr"
+version = "0.1.0"
+edition = "2021"
+
+# C7b prototype downstream crate: depends on the upstream fixture lineage through a vendored path,
+# the way a recipe's dependency layer is vendored (SPEC 6 prepare).
+[dependencies]
+fixture-b58 = { path = "vendor/fixture-b58" }
+
+[profile.release]
+debug = false

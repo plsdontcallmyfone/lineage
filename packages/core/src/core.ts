@@ -60,6 +60,8 @@ import { Messages } from "./messages.ts";
 import { soulsOf } from "./souls.ts";
 import { linksOf } from "./links.ts";
 import { Hosted } from "./hosted.ts";
+import { Split } from "./split.ts";
+import { Ports } from "./ports.ts";
 import { Live } from "./live.ts";
 import { openDb } from "./store.ts";
 import type { TreeSource } from "./trees.ts";
@@ -388,6 +390,10 @@ export class Core {
   readonly messages: Messages;
   /** Hosted runtime: provenance records and usage record reads (src/hosted.ts). */
   readonly hosted: Hosted;
+  /** Measured split of team candidates (src/split.ts, SPEC 12.6). */
+  readonly split: Split;
+  /** Cross-lineage ports (src/ports.ts, SPEC 12.7). */
+  readonly ports: Ports;
   /** Key that signs credentials (chain mode: the Core authority, set by ChainBridge); null: unsigned. */
   issuerKey: { id: string; secret: Uint8Array } | null = null;
   readonly chainMode: boolean;
@@ -417,6 +423,8 @@ export class Core {
     this.identity = new Identity(this);
     this.records = new Records(this);
     this.hosted = new Hosted(this);
+    this.split = new Split(this);
+    this.ports = new Ports(this);
     this.tx(() => {
       if (!this.db.query("SELECT n FROM epochs LIMIT 1").get()) this.openEpoch(opts.firstEpoch ?? 0, this.now());
     });
@@ -1116,7 +1124,7 @@ export class Core {
     // a team candidate: every member signed this commitment and split (SPEC 12.2)
     // a stacked candidate (SPEC 12.4): depends on a pending candidate, held until that one is final
     const dep = this.series.parse(l.lineage_id, body.depends_on);
-    const team = this.collab.checkTeam(author, { lineage_id: l.lineage_id, parent_gen_id: parent.gen_id, commitment, kind, target, depends_on: dep?.dep.commit_id ?? null }, body.team);
+    const team = this.collab.checkTeam(author, { lineage_id: l.lineage_id, parent_gen_id: parent.gen_id, commitment, kind, target, depends_on: dep?.dep.commit_id ?? null, split: this.split.parse(body.team), ported_from: typeof body.ported_from === "string" ? body.ported_from : null }, body.team);
     const now = this.now();
     const deadline = now + this.cfg.reveal_window_s * 1000;
     this.db
@@ -1127,6 +1135,9 @@ export class Core {
       .run(commit_id, l.lineage_id, parent.gen_id, parent.gen_id, author, kind, JSON.stringify(target), claimed, commitment, now, deadline, opts.canary ? 1 : 0, opts.canary ?? null, this.currentEpoch().n);
     // the author's open intents on this target now point at it, privately until it is final (SPEC 12.1)
     if (team) this.collab.storeTeam(commit_id, team);
+    // measured split (SPEC 12.6) and declared port (SPEC 12.7)
+    this.split.onCommit(commit_id, author, team, l.lineage_id, kind, target, body.team);
+    this.ports.onCommit(commit_id, l.lineage_id, body.ported_from);
     if (dep) this.series.committed(commit_id, author, dep, team);
     this.collab.onCommit(team ? team.members.map((m) => m.agent) : [author], l.lineage_id, kind, target, commit_id);
     // no author: who committed an open candidate stays private until it is final (SPEC 10.7)
@@ -1170,6 +1181,7 @@ export class Core {
     }
     const ph = patchHash(canonical);
     if (patchCommitment(ph, salt) !== c.commitment) throw bad("commitment_mismatch", "patch and salt do not match the commitment (patch_hash covers the canonical diff)");
+    this.split.onReveal(c, body, salt);
     const target = JSON.parse(c.target) as string | string[];
     // the id hashes an author tag, not the author: a replayer holding the patch cannot test agent ids (SPEC 4, 10.7)
     const cid = candidateId({ lineage_id: c.lineage_id, parent_gen_id: c.parent_gen_id, patch_hash: ph, author: this.collab.authorTag(author, salt), kind: c.kind, target });
@@ -1220,6 +1232,7 @@ export class Core {
 
   private expire(c: CandRow) {
     this.db.query("UPDATE candidates SET status = 'expired', reason = 'expired', finalized_at = ? WHERE commit_id = ?").run(this.now(), c.commit_id);
+    this.split.onFinal(c);
     this.emit("candidate.expired", { commit_id: c.commit_id });
   }
 
@@ -1232,6 +1245,7 @@ export class Core {
       .query<ReplayRow, [string]>("SELECT * FROM replays WHERE candidate_id = ? AND audit_id IS NULL AND status IN ('assigned','committed')")
       .all(c.candidate_id ?? "");
     for (const r of open) this.db.query("UPDATE replays SET status = 'cancelled' WHERE replay_id = ?").run(r.replay_id);
+    this.split.onFinal(c);
     this.emit(`candidate.${status}`, { candidate_id: c.candidate_id, commit_id: c.commit_id, reason, detail });
   }
 
@@ -1599,6 +1613,7 @@ export class Core {
       const commitment = isObj(body) ? String(body.commitment ?? "") : "";
       if (!HEX64.test(commitment)) throw bad("bad_commitment", "commitment must be 64 hex chars");
       this.db.query("UPDATE replays SET status = 'committed', commitment = ?, committed_at = ? WHERE replay_id = ?").run(commitment, this.now(), id);
+      this.split.onReplayCommit(r, body);
       this.emit("replay.committed", { candidate_id: r.candidate_id });
       this.progress(r.grp);
       return this.assignmentView(this.replayRow(id)!);
@@ -1627,6 +1642,7 @@ export class Core {
       }
       if (!this.blobs.has(result.transcript_digest)) throw bad("missing_transcript", "upload the transcript blob (PUT /v1/blobs/:sha256) before revealing");
       this.db.query("UPDATE replays SET status = 'revealed', result = ?, salt = ?, revealed_at = ? WHERE replay_id = ?").run(canonicalJson(result), body.salt, this.now(), id);
+      this.split.onReplayReveal(r, body);
       this.emit("replay.revealed", { candidate_id: r.candidate_id });
       const c = this.candByCandidateId(r.candidate_id)!;
       if (c.is_canary && !r.audit_id) this.checkCanaryReplay(c, this.replayRow(id)!);
@@ -1812,6 +1828,7 @@ export class Core {
       if (counted.has(r.replay_id)) {
         role = "counted";
         this.awardReplay(r, calib);
+        this.split.onCounted(r, calib);
       } else if (minority.has(r.replay_id)) {
         role = "minority";
         this.slash(r.replayer, this.cfg.minority_slash_bps, "minority", r.replay_id);
@@ -1917,7 +1934,11 @@ export class Core {
     }
     const finderTotal = finders.size ? this.cfg.finder_share * authorUnits : 0;
     // a team divides the same total by its declared shares; team size never adds units (SPEC 12.2)
-    for (const [member, u] of this.collab.authorShares(c, authorUnits - finderTotal)) this.addUnits(member, "author", gid, u);
+    // a port credits the original generation's authors first (SPEC 12.7); a measured split divides the rest (SPEC 12.6)
+    const portParts = this.ports.credit(c, gid, authorUnits - finderTotal);
+    const ownTotal = authorUnits - finderTotal - portParts.reduce((a, [, u]) => a + u, 0);
+    for (const [member, u] of this.split.authorShares(c, j, recipe, calib, ownTotal) ?? this.collab.authorShares(c, ownTotal)) this.addUnits(member, "author", gid, u);
+    for (const [orig, u] of portParts) this.addUnits(orig, "author", gid, u);
     for (const f of finders) this.addUnits(f, "finder", gid, finderTotal / finders.size);
     this.emit("generation.accepted", {
       gen_id: gid,
@@ -2536,6 +2557,8 @@ export class Core {
       canary: this.candidateRevealedAsCanary(c) ? { canary_id: c.canary_id } : null,
       team: blind ? null : this.collab.teamView(c.commit_id),
       series: this.series.view(c, viewer),
+      split: this.split.view(c, blind, terminal),
+      port: this.ports.view(c, blind, terminal),
       // replayer identities and results stay hidden until the candidate is final, so nobody can
       // copy, bribe or coordinate with another replayer of the same candidate
       replays: replays.map((r) => this.replayPublic(r, terminal || r.replayer === viewer)),
@@ -2751,6 +2774,7 @@ export class Core {
       parent_gen_id: r.eval_parent_gen_id,
       parent_series: this.patchSeries(r.eval_parent_gen_id),
       candidate: { candidate_id: c.candidate_id, kind: c.kind, target: JSON.parse(c.target), patch: c.patch, patch_hash: c.patch_hash },
+      split: this.split.assignment(c, r),
     };
   }
 

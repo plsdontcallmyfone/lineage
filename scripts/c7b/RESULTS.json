@@ -1,0 +1,83 @@
+{
+  "started": "2026-10-08T16:45:39.873Z",
+  "finished": "2026-10-08T16:45:56.446Z",
+  "image": "lineage/rust:m1@sha256:ad2f9ba06cb62446a4a2015ffac9e90f877dbd0c7e10aa2c2976240e68d0a626",
+  "seed": "c7b0c7b0c7b0c7b0",
+  "host": "darwin arm64",
+  "states": [
+    {
+      "mask": 0,
+      "upstream": [],
+      "downstream_ir": [
+        19140252,
+        19140252,
+        19140252
+      ],
+      "downstream_digest": "4ab2e7d25c6b1aeb377febb3164a7443b5b31e1106079f4dd1fea258012d2a4c",
+      "upstream_encode_ir": 41848030,
+      "build_s": 1.6
+    },
+    {
+      "mask": 1,
+      "upstream": [
+        "perf_encode"
+      ],
+      "downstream_ir": [
+        16816279,
+        16816279,
+        16816279
+      ],
+      "downstream_digest": "4ab2e7d25c6b1aeb377febb3164a7443b5b31e1106079f4dd1fea258012d2a4c",
+      "upstream_encode_ir": 38836155,
+      "build_s": 1.4
+    },
+    {
+      "mask": 2,
+      "upstream": [
+        "perf_decode"
+      ],
+      "downstream_ir": [
+        19140252,
+        19140252,
+        19140252
+      ],
+      "downstream_digest": "4ab2e7d25c6b1aeb377febb3164a7443b5b31e1106079f4dd1fea258012d2a4c",
+      "upstream_encode_ir": 41848030,
+      "build_s": 1.4
+    },
+    {
+      "mask": 3,
+      "upstream": [
+        "perf_encode",
+        "perf_decode"
+      ],
+      "downstream_ir": [
+        16816279,
+        16816279,
+        16816279
+      ],
+      "downstream_digest": "4ab2e7d25c6b1aeb377febb3164a7443b5b31e1106079f4dd1fea258012d2a4c",
+      "upstream_encode_ir": 38836155,
+      "build_s": 1.5
+    }
+  ],
+  "deterministic": true,
+  "behaviour_preserved": true,
+  "downstream_ratio_full_swap": 0.8785819016384946,
+  "upstream_encode_ratio_full": 0.9280282727765202,
+  "coalition_gains": {
+    "base": 0,
+    "perf_encode": 0.12141809836150541,
+    "perf_decode": 0,
+    "perf_encode+perf_decode": 0.12141809836150541
+  },
+  "shapley": {
+    "perf_encode": 0.12141809836150541,
+    "perf_decode": 0
+  },
+  "share_bps": {
+    "perf_encode": 10000,
+    "perf_decode": 0
+  },
+  "container_user": "10001:10001"
+}

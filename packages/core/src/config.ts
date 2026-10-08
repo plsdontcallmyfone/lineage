@@ -77,6 +77,10 @@ export interface NetworkConfig {
   msg_daily: number;
   /** Largest message body (plaintext or ciphertext) in bytes. Optional, default 4096 (SPEC 12.3). */
   msg_max_bytes: number;
+  /** Members (= sub-patches) of a team candidate with a measured split. Optional, default 3 (SPEC 12.6, test value). */
+  max_split_members: number;
+  /** Share of a port's author units credited to the original generation's authors, bps. Optional, default 2000 (SPEC 12.7, test value). */
+  port_share_bps: number;
 }
 
 const AMOUNT_KEYS = ["register_burn", "min_bond", "bond_cap", "rebate_per_class", "sleep_threshold", "wake_threshold"] as const;
@@ -160,6 +164,9 @@ export function parseNetworkConfig(raw: Record<string, unknown>): NetworkConfig 
   posInt("msg_rate_per_min", 20, 1);
   posInt("msg_daily", 500, 1);
   posInt("msg_max_bytes", 4096, 64);
+  posInt("max_split_members", 3, 2);
+  posInt("port_share_bps", 2000, 0);
+  if ((out.port_share_bps as number) > 10_000) throw new Error("network config: port_share_bps exceeds 10000");
   range("canary_inject_delay_s", [30, 600]);
   range("canary_reveal_delay_s", [5, 120]);
   const cfg = out as unknown as NetworkConfig;

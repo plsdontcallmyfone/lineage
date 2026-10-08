@@ -16,6 +16,8 @@ import { loadScript, ScriptedProposer, Worker } from "../packages/worker/src/ind
 import { teamStatement } from "../packages/core/src/collab.ts";
 import { encryptionKeyStatement, messageEnvelope } from "../packages/core/src/messages.ts";
 import { deriveEncryptionKey, seal } from "../packages/core/src/seal.ts";
+// measured split and cross-lineage ports (plan W4); importing it registers the second fixture recipe
+import { collabExtras } from "./e2e-collab-extras.ts";
 
 const ROOT = join(import.meta.dir, "..");
 const PATCHES = join(ROOT, "fixtures", "b58-patches");
@@ -448,6 +450,9 @@ async function main() {
     return v.generations.filter((g: any) => g.entry_type === "patch").every((g: any) => g.audit_status && g.audit_status !== "pending");
   };
   await waitFor("honest-phase audits", auditsDone);
+
+  // ---------------------------------------------------------------- phase 3c: measured split (SPEC 12.6) and ports (SPEC 12.7) on a second lineage
+  await collabExtras({ core: CORE, admin, as, keys, ok, check, waitFor, candidateFinal, log, L, teamGen, libDiff, DECODE_LOOP, A_LOOP, net });
 
   // ---------------------------------------------------------------- phase 4: liar, canaries, disputes
   for (const name of ["canary_roundtrip", "canary_equiv", "canary_regress"]) {

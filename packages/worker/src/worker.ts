@@ -15,6 +15,8 @@ import {
   resultCommitment,
   signMessage,
   signStatement,
+  splitReportCommitment,
+  type SplitReport,
   type AgentKey,
   type Calibration,
   type Capabilities,
@@ -34,6 +36,7 @@ import { doctor } from "./doctor.ts";
 import { RecipeBook } from "./recipes.ts";
 import { proposerSoulBlock, type SoulDoc } from "@lineage/souls";
 import { Telemetry } from "./telemetry.ts";
+import { measureCoalitions, type SplitAssignment } from "./split.ts";
 
 // The worker process: replays assignments first (they have deadlines), then authors when it has a
 // proposer and its agent is an awake launched agent (SPEC 3, 5).
@@ -99,6 +102,8 @@ export interface WorkerOptions {
 interface PendingReplay {
   result: ReplayResult;
   salt: string;
+  /** measured split report (SPEC 12.6), revealed with the result */
+  split?: SplitReport;
 }
 
 interface Assignment {
@@ -115,6 +120,8 @@ interface Assignment {
   parent_series: { gen_id: string; patch: string }[];
   /** null for a qualification (SPEC 6.1) */
   candidate: { candidate_id: string; kind: CandidateKind; target: string | string[]; patch: string; patch_hash: string } | null;
+  /** a team candidate's sub-patches to measure by coalition (SPEC 12.6); null otherwise */
+  split?: SplitAssignment | null;
 }
 
 class ApiFailure extends Error {
@@ -190,7 +197,7 @@ export class Worker {
           }
           this.telemetry.job(a.kind === "qualify" ? "qualify" : "replay", { replay_id: a.replay_id });
           this.telemetry.phase("reveal");
-          const r = await this.ok(this.client.post(`/v1/replays/${a.replay_id}/reveal`, { result: p.result, salt: p.salt }), "reveal");
+          const r = await this.ok(this.client.post(`/v1/replays/${a.replay_id}/reveal`, { result: p.result, salt: p.salt, ...(p.split ? { split: p.split } : {}) }), "reveal");
           this.pending.delete(a.replay_id);
           this.persist();
           this.log(`replay ${a.replay_id.slice(0, 10)}: revealed (${(r as { status: string }).status})`);
@@ -211,6 +218,7 @@ export class Worker {
     const loaded = this.recipes.get(a.recipe_id);
     let result: ReplayResult;
     let transcript: Transcript | Record<string, unknown>;
+    let split: SplitReport | undefined;
     if (a.kind === "qualify" || !a.candidate) {
       if (this.opts.dishonest === "fabricate") ({ result, transcript } = fabricateQualification(a));
       else ({ result, transcript } = await this.qualifyRun(a));
@@ -219,15 +227,20 @@ export class Worker {
     } else {
       const deps = await this.recipes.depsFor(loaded, a.lineage.deps_digest);
       ({ result, transcript } = await evaluate({ loaded, deps, parentPatches: a.parent_series.map((p) => p.patch), candidatePatch: a.candidate!.patch, seed: a.seed, onPhase: this.telemetry.onPhase, enabledMetrics: enabledMetrics(a.calibration) }));
+      if (a.split) {
+        const parentPatches = a.parent_series.map((p) => p.patch);
+        split = await measureCoalitions({ loaded, deps, parentPatches, candidatePatch: a.candidate!.patch, split: a.split, seed: a.seed, main: result, mainSeconds: (Date.now() - t0) / 1000, onPhase: this.telemetry.onPhase, log: this.log });
+        this.log(`replay ${a.replay_id.slice(0, 10)}: split compose ${split.compose}, ${Object.keys(split.subsets).length} coalitions${split.cost ? `, ${split.cost.subsets_s}s extra vs ${split.cost.main_s}s main` : ""}`);
+      }
     }
     this.telemetry.phase("commit");
     const bytes = canonicalJson(transcript);
     if (hashJson(transcript) !== result.transcript_digest) result.transcript_digest = hashJson(transcript);
     await this.ok(this.client.putBlob(result.transcript_digest, new TextEncoder().encode(bytes)), "transcript upload");
     const salt = randomBytes(16).toString("hex");
-    this.pending.set(a.replay_id, { result, salt });
+    this.pending.set(a.replay_id, { result, salt, ...(split ? { split } : {}) });
     this.persist();
-    await this.ok(this.client.post(`/v1/replays/${a.replay_id}/commit`, { commitment: resultCommitment(result, salt) }), "commit");
+    await this.ok(this.client.post(`/v1/replays/${a.replay_id}/commit`, { commitment: resultCommitment(result, salt), ...(split ? { split_commitment: splitReportCommitment(split, salt) } : {}) }), "commit");
     if (!a.candidate) {
       const m = Object.entries(result.metrics).map(([k, v]) => `${k}=${v.base[0]}`).join(" ");
       this.log(`qualify ${a.replay_id.slice(0, 10)} on ${a.lineage.lineage_id.slice(0, 10)}: base ${result.build.base}, ${result.tests.base_pass.length} tests pass, ${m}, committed in ${((Date.now() - t0) / 1000).toFixed(1)}s`);

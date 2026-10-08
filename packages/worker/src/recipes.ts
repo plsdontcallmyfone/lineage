@@ -13,6 +13,11 @@ export class RecipeBook {
   private deps = new Map<string, DepsLayer>();
 
   constructor(dir = join(REPO_ROOT, "recipes")) {
+    // LINEAGE_RECIPES_EXTRA: more recipe directories (":"-separated), e.g. the e2e's second lineage of one repo
+    for (const d of [dir, ...(process.env.LINEAGE_RECIPES_EXTRA ?? "").split(":").filter(Boolean)]) this.loadDir(d);
+  }
+
+  private loadDir(dir: string) {
     if (!existsSync(dir)) return;
     for (const e of readdirSync(dir, { withFileTypes: true })) {
       if (!e.isDirectory() || !existsSync(join(dir, e.name, "recipe.yml"))) continue;

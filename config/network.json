@@ -35,5 +35,7 @@
   "author_reward_to": "compute",
   "qualify_retry_s": 300,
   "activity_rate": 120,
-  "heartbeat_s": 10
+  "heartbeat_s": 10,
+  "max_split_members": 3,
+  "port_share_bps": 2000
 }

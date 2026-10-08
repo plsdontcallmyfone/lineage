@@ -6,7 +6,7 @@
 //
 // Usage: bun scripts/verify.ts --core http://127.0.0.1:9660 [--candidate <id>] [--lineage <id>]
 //        (no candidate: verifies every final candidate, or every one in the lineage)
-import { judge, type Calibration, type RevealedReplay } from "@lineage/protocol";
+import { judge, measuredSplit, type Calibration, type RevealedReplay } from "@lineage/protocol";
 
 const argv = process.argv.slice(2);
 const opt = (k: string) => (argv.includes(`--${k}`) ? argv[argv.indexOf(`--${k}`) + 1] : undefined);
@@ -43,12 +43,25 @@ async function verifyOne(id: string): Promise<{ id: string; ok: boolean; detail:
     .map((r: any) => ({ replay_id: r.replay_id, replayer: r.replayer, seed: r.seed, result: r.result, reference: r.kind === "reference" }));
   const j = judge(lineage.recipe, calib, { candidate_id: c.candidate_id, author: c.author, kind: c.kind, target: c.target }, replays, judgeCfg);
   const recorded = c.verdict;
-  const same = j.digest === recorded.digest && j.outcome === recorded.outcome;
+  let same = j.digest === recorded.digest && j.outcome === recorded.outcome;
+  // measured split (SPEC 12.6): the shares recomputed from the counted replays' revealed coalition reports
+  let splitNote = "";
+  if (same && c.split?.outcome) {
+    const reports = (j.counted as string[]).map((rid) => {
+      const r = (c.split.reports as any[]).find((x) => x.replay_id === rid);
+      return { replay_id: rid, report: r && r.status === "revealed" ? r.report : null };
+    });
+    const o = measuredSplit({ recipe: lineage.recipe, calib, metric: c.split.metric, n: c.split.n, effect: j.effect, reports, det_tolerance: judgeCfg.det_tolerance });
+    same = o.status === c.split.outcome.status && JSON.stringify(o.share_bps) === JSON.stringify(c.split.outcome.share_bps);
+    splitNote = same ? `, split ${o.status}${o.share_bps ? ` ${o.share_bps.join("/")} bps` : ""} matches` : `, split MISMATCH: recomputed ${o.status} ${o.share_bps}, Core recorded ${c.split.outcome.status} ${c.split.outcome.share_bps}`;
+  }
   return {
     id,
     ok: same,
-    detail: same
-      ? `${j.outcome}${j.reason ? ` (${j.reason})` : ""}, ${replays.length} replays, digest ${j.digest.slice(0, 12)} matches`
+    detail: splitNote.includes("MISMATCH")
+      ? `${j.outcome} digest matches${splitNote}`
+      : same
+      ? `${j.outcome}${j.reason ? ` (${j.reason})` : ""}, ${replays.length} replays, digest ${j.digest.slice(0, 12)} matches${splitNote}`
       : `MISMATCH: recomputed ${j.outcome} ${j.digest.slice(0, 12)}, Core recorded ${recorded.outcome} ${String(recorded.digest).slice(0, 12)}`,
   };
 }
