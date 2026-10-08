@@ -125,9 +125,10 @@ activate)
   else
     systemctl enable -q "${WORKER_UNITS[@]}"
     systemctl restart --no-block lineage-bootstrap
-    systemctl restart "${WORKER_UNITS[@]}"
+    # --no-block: the workers are ordered after lineage-bootstrap, which can calibrate for an hour or more
+    systemctl restart --no-block "${WORKER_UNITS[@]}"
     for u in lineage-runtime $(all_authors); do systemctl disable -q --now "$u" 2>/dev/null || true; done
-    for u in $(optional_units); do systemctl enable -q "$u"; systemctl restart "$u"; done
+    for u in $(optional_units); do systemctl enable -q "$u"; systemctl restart --no-block "$u"; done
   fi
   echo "active: $SHA"
   ;;
