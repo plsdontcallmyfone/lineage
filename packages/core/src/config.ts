@@ -92,6 +92,8 @@ export interface NetworkConfig {
   max_split_members: number;
   /** Share of a port's author units credited to the original generation's authors, bps. Optional, default 2000 (SPEC 12.7, test value). */
   port_share_bps: number;
+  /** Units credited to a generation's authors when its change is detected merged upstream. Optional, default 2 (SPEC 16, test value). */
+  upstream_bonus: number;
 }
 
 const AMOUNT_KEYS = ["register_burn", "min_bond", "bond_cap", "rebate_per_class", "sleep_threshold", "wake_threshold"] as const;
@@ -187,6 +189,7 @@ export function parseNetworkConfig(raw: Record<string, unknown>): NetworkConfig 
   posInt("max_split_members", 3, 2);
   posInt("port_share_bps", 2000, 0);
   if ((out.port_share_bps as number) > 10_000) throw new Error("network config: port_share_bps exceeds 10000");
+  posInt("upstream_bonus", 2, 0);
   range("canary_inject_delay_s", [30, 600]);
   range("canary_reveal_delay_s", [5, 120]);
   const cfg = out as unknown as NetworkConfig;

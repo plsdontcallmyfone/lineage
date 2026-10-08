@@ -61,6 +61,7 @@ import { soulsOf } from "./souls.ts";
 import { challengesOf } from "./challenges.ts";
 import { findingsOf } from "./findings.ts";
 import { linksOf } from "./links.ts";
+import { upstreamOf } from "./upstream.ts";
 import { Hosted } from "./hosted.ts";
 import { Split } from "./split.ts";
 import { Ports } from "./ports.ts";
@@ -2105,6 +2106,7 @@ export class Core {
       soulsOf(this).tick(); // souls: shadow parity (SPEC 14.8)
       challengesOf(this).tick(); // bonded challenges (SPEC 10.8)
       linksOf(this).tick(); // verified links: background rechecks, per-tick budget (identity plan I3)
+      upstreamOf(this).tick(); // upstream merge detection, one repository per tick at most (SPEC 16)
       this.matureUnbonds();
       this.fillWants();
       let ep = this.currentEpoch();
@@ -2140,7 +2142,7 @@ export class Core {
 
   private destFor(agent: string, kind: string): string {
     const a = this.agentRow(agent);
-    if ((kind === "author" || kind === "finder") && a?.kind === "launched") {
+    if ((kind === "author" || kind === "finder" || kind === "upstream") && a?.kind === "launched") {
       return this.cfg.author_reward_to === "compute" ? ACC.compute(agent) : ACC.extWallet(a.launcher!);
     }
     return ACC.wallet(agent);

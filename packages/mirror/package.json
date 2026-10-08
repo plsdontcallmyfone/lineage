@@ -1,0 +1,14 @@
+{
+  "name": "@lineage/mirror",
+  "version": "0.1.0",
+  "type": "module",
+  "main": "src/index.ts",
+  "types": "src/index.ts",
+  "bin": {
+    "lineage-mirror": "src/cli.ts"
+  },
+  "dependencies": {
+    "@lineage/protocol": "workspace:*",
+    "@lineage/souls": "workspace:*"
+  }
+}

@@ -5,6 +5,7 @@ import { soulsOf } from "./souls.ts";
 import { findingsOf } from "./findings.ts";
 import { recipeProposalsOf } from "./recipe-proposals.ts";
 import { linksOf } from "./links.ts";
+import { upstreamOf } from "./upstream.ts";
 import { erc8004Of } from "./erc8004.ts";
 import { networkConfigJson } from "./config.ts";
 import type { Core, CoreEvent } from "./core.ts";
@@ -176,6 +177,16 @@ export function buildRoutes(core: Core): Route[] {
     route("GET", "/v1/agents/:id/registration.json", "none", (c) => erc8004Of(core).registration(c.params.id!, c.url.origin)),
     // bounties (C6, packages/core/src/bounties.ts): read-only mirror of the onchain escrows
     // bonded challenges (SPEC 10.8, src/challenges.ts); chain mode opens them with open_challenge
+    // upstream policy (SPEC 16): opt-in registry, PR records, merge detection
+    route("GET", "/v1/upstream/repos", "none", (c) => upstreamOf(core).list(q(c, "status"))),
+    route("GET", "/v1/upstream/repo", "none", (c) => upstreamOf(core).view(q(c, "url"))),
+    route("POST", "/v1/upstream/check", "none", (c) => upstreamOf(core).check(c.json())),
+    route("POST", "/v1/upstream/optin", "none", (c) => upstreamOf(core).optIn(c.json())),
+    route("GET", "/v1/upstream/eligible/:gen", "none", (c) => upstreamOf(core).eligible(c.params.gen!)),
+    route("GET", "/v1/upstream/prs", "none", (c) => upstreamOf(core).prs({ repo: q(c, "repo"), gen: q(c, "gen") })),
+    route("POST", "/v1/upstream/prs", "runtime", (c) => upstreamOf(core).recordPr(c.json())),
+    route("GET", "/v1/upstream/merges", "none", () => upstreamOf(core).merges()),
+    route("POST", "/v1/admin/upstream/scan", "admin", (c) => upstreamOf(core).scan(c.json())),
     route("GET", "/v1/challenges", "none", (c) => challengesOf(core).list({ status: q(c, "status"), kind: q(c, "kind"), challenger: q(c, "challenger"), epoch: q(c, "epoch") })),
     route("GET", "/v1/challenges/config", "none", () => challengesOf(core).configView()),
     route("GET", "/v1/challenges/:id", "none", (c) => challengesOf(core).one(c.params.id!)),

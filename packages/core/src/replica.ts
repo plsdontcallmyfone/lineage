@@ -324,7 +324,7 @@ export async function replicate(url: string, opts: { fetch?: typeof fetch; log?:
   const agentById = new Map(agents.map((a) => [a.agent_id ?? a.id, a]));
   const destFor = (agent: string, kind: string) => {
     const a = agentById.get(agent);
-    if ((kind === "author" || kind === "finder") && a?.kind === "launched") return net.author_reward_to === "compute" ? `agent:${agent}:compute` : `wallet:${a.launcher}`;
+    if ((kind === "author" || kind === "finder" || kind === "upstream") && a?.kind === "launched") return net.author_reward_to === "compute" ? `agent:${agent}:compute` : `wallet:${a.launcher}`;
     return `agent:${agent}:wallet`;
   };
   const epochs = (await src.get("/v1/epochs")) as Json[];
