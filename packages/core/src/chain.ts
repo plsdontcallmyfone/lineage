@@ -17,6 +17,7 @@ import {
   type Signer,
 } from "@lineage/chain";
 import { bountiesOf } from "./bounties.ts";
+import { challengesOf } from "./challenges.ts";
 import { soulsOf } from "./souls.ts";
 import { msgchainOf } from "./msgchain.ts";
 import type { NetworkConfig } from "./config.ts";
@@ -274,6 +275,14 @@ export class ChainBridge {
     } catch (e) {
       messages = { error: (e as Error).message, ...msgchainOf(this.core).status() };
       this.log(`messages not indexed: ${(e as Error).message}`);
+    }
+
+    // bonded challenges (SPEC 10.8): mirror open_challenge accounts, record Core's resolutions (before epochs are posted, so a held epoch posts corrected)
+    try {
+      await challengesOf(this.core).syncChain({ reader: this.reader, send: this.send && this.coreKeyId === reg.coreAuthority ? this.send : null, coreKeyId: this.coreKeyId,
+        reg, log: (m) => this.log(m) });
+    } catch (e) {
+      this.log(`challenges not mirrored: ${(e as Error).message}`);
     }
 
     const posted: { n: number; signature?: string; error?: string }[] = [];

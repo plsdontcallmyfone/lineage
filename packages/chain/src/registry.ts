@@ -35,6 +35,13 @@ export const registryPdas = {
   /** One per slash Core sent, keyed by Core's 32-byte slash id: a retried slash lands once. */
   slashReceipt: (slashId: Uint8Array | string) => pda(P, "slash", typeof slashId === "string" ? hexToBytes(slashId) : slashId),
   programData: (program: Address = P) => pda(BPF_LOADER_UPGRADEABLE, addressBytes(program)),
+  // bonded challenges (SPEC 10.8, src/challenge.ts)
+  challengeConfig: () => pda(P, "challenge_config"),
+  challengeVault: () => pda(P, "challenge_vault"),
+  /** One per epoch any challenge named; claims of the epoch wait while its `open` count is above zero. */
+  challengeGate: (n: bigint | number) => pda(P, "challenge_gate", u64le(n)),
+  /** One per subject: kind 0 verdict (candidate id), 1 slash (slash id), 2 epoch (epoch number, little-endian, zero padded). */
+  challenge: (kind: number, subject: Uint8Array | string) => pda(P, "challenge", Uint8Array.of(kind), typeof subject === "string" ? hexToBytes(subject) : subject),
 };
 
 export const OFFENCE = { canary: 0, minority: 1, reveal: 2, abandon: 3 } as const;
@@ -235,7 +242,9 @@ export const registry = {
   },
   /**
    * Anyone may send a claim; tokens go only to the leaf's destination. `agentRecord` is required for
-   * `agent:<id>:wallet` leaves (pass registryPdas.agent(agent)) and omitted otherwise.
+   * `agent:<id>:wallet` leaves (pass registryPdas.agent(agent)) and omitted otherwise. The last two
+   * accounts are the challenge config and the epoch's challenge gate: the program holds the claim
+   * during the epoch's challenge window and while a challenge on it is open (SPEC 10.8).
    */
   claim(a: { payer: Address; mint: Address; epoch: bigint | number; agent: Address; destKind: number; wallet?: Address; amount: bigint;
     leaf: Uint8Array; proof: Uint8Array[]; destToken: Address; agentRecord?: Address; tokenProgram?: Address }): Ix {
@@ -243,7 +252,8 @@ export const registry = {
     return {
       programId: P,
       keys: [r(pd.config()), w(a.payer, true), w(pd.epoch(a.epoch)), w(pd.claimReceipt(a.epoch, a.leaf)), r(a.agentRecord ?? P), r(a.mint),
-        r(pd.vaultAuthority()), w(pd.payable()), w(a.destToken), r(a.tokenProgram ?? TOKEN_PROGRAM), r(SYSTEM_PROGRAM)],
+        r(pd.vaultAuthority()), w(pd.payable()), w(a.destToken), r(a.tokenProgram ?? TOKEN_PROGRAM), r(SYSTEM_PROGRAM), r(pd.challengeConfig()),
+        r(pd.challengeGate(a.epoch))],
       data: data("claim").address(a.agent).u8(a.destKind).address(a.wallet ?? SYSTEM_PROGRAM).u64(a.amount).fixed32(a.leaf).vec32(a.proof).done(),
     };
   },

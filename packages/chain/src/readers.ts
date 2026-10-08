@@ -1,4 +1,5 @@
 import { accountDisc, type Address } from "./codec.ts";
+import { decodeChallenge, decodeChallengeConfig, decodeChallengeGate, type ChallengeAccount, type ChallengeConfig, type ChallengeGate } from "./challenge.ts";
 import { bountyPdas, decodeBounty, decodeBountyConfig, decodeBountyLedger, type BountyAccount, type BountyConfig, type BountyLedger } from "./bounty.ts";
 import { decodeAgentLaunch, decodeLaunchConfig, LAUNCH_PROGRAM_ID, launchPdas, type AgentLaunch, type LaunchConfig } from "./launch.ts";
 import { decodeAgent, decodeClaimReceipt, decodeConfig, decodeEpoch, decodeSlashReceipt, REGISTRY_PROGRAM_ID, registryPdas, type AgentRecord,
@@ -84,6 +85,24 @@ export class ChainReader {
   async bountyLedger(agent: Address): Promise<BountyLedger | null> {
     const a = owned(await this.rpc.getAccountInfo(bountyPdas.ledger(agent)), this.launchProgram);
     return a ? decodeBountyLedger(a.data) : null;
+  }
+  /** The bonded-challenge config (SPEC 10.8); null before the admin set it (claims are not held then). */
+  async challengeConfig(): Promise<ChallengeConfig | null> {
+    const a = owned(await this.rpc.getAccountInfo(registryPdas.challengeConfig()), this.registryProgram);
+    return a ? decodeChallengeConfig(a.data) : null;
+  }
+  /** Every `Challenge` of the registry, with its address. */
+  async challenges(): Promise<(ChallengeAccount & { address: Address })[]> {
+    const all = await this.rpc.getProgramAccounts(this.registryProgram, { memcmp: [{ offset: 0, bytes: accountDisc("Challenge") }] });
+    return all.map((a) => ({ ...decodeChallenge(a.data), address: a.address }));
+  }
+  async challenge(kind: number, subject: Uint8Array | string): Promise<ChallengeAccount | null> {
+    const a = owned(await this.rpc.getAccountInfo(registryPdas.challenge(kind, subject)), this.registryProgram);
+    return a ? decodeChallenge(a.data) : null;
+  }
+  async challengeGate(n: bigint | number): Promise<ChallengeGate | null> {
+    const a = owned(await this.rpc.getAccountInfo(registryPdas.challengeGate(n)), this.registryProgram);
+    return a ? decodeChallengeGate(a.data) : null;
   }
   /** Token balances of the given accounts; a missing account reads as null. */
   async tokenBalances(accounts: Address[]): Promise<(bigint | null)[]> {

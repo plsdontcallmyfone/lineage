@@ -142,9 +142,10 @@ describe("instruction builders equal the Anchor encodings", () => {
     expect(ix.accounts[6]![0]).toBe(launchPdas.dammVault(mint, k(12)));
   });
   test("every vector is covered", () => {
-    // The bounty vectors are checked in bounty.test.ts.
+    // The bounty vectors are checked in bounty.test.ts, the challenge vectors in challenge.test.ts.
     const names = new Set([...cases.map((c) => c[0]), "launch.crank_pool_fees", "launch.set_bounty_config", "launch.open_bounty", "launch.release_bounty",
-      "launch.refund_bounty", "launch.cancel_bounty"]);
+      "launch.refund_bounty", "launch.cancel_bounty", "registry.set_challenge_config", "registry.open_challenge.verdict", "registry.open_challenge.slash",
+      "registry.resolve_challenge.epoch", "registry.resolve_challenge.slash", "registry.resolve_challenge.failed", "registry.expire_challenge"]);
     expect(vectors.instructions.map((v: { name: string }) => v.name).filter((n: string) => !names.has(n))).toEqual([]);
   });
 });

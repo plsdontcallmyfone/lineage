@@ -311,6 +311,18 @@ pub fn agent_record(agent: &Pubkey) -> Pubkey {
 pub fn epoch_pda(n: u64) -> Pubkey {
     rpda(&[lr::EPOCH_SEED, &n.to_le_bytes()])
 }
+pub fn challenge_config() -> Pubkey {
+    rpda(&[lr::CHALLENGE_CONFIG_SEED])
+}
+pub fn challenge_vault() -> Pubkey {
+    rpda(&[lr::CHALLENGE_VAULT_SEED])
+}
+pub fn challenge_gate(epoch: u64) -> Pubkey {
+    rpda(&[lr::GATE_SEED, &epoch.to_le_bytes()])
+}
+pub fn challenge_pda(kind: u8, subject: &[u8; 32]) -> Pubkey {
+    rpda(&[lr::CHALLENGE_SEED, &[kind], subject])
+}
 pub fn launch_config() -> Pubkey {
     lpda(&[ll::LAUNCH_CONFIG_SEED])
 }
@@ -593,9 +605,63 @@ impl Env {
                 config: registry_config(), payer: *payer, epoch: epoch_pda(epoch),
                 receipt: rpda(&[lr::CLAIM_SEED, &epoch.to_le_bytes(), &args.leaf]), agent_record: agent_rec, mint: self.line_mint,
                 vault_authority: vault_authority(), payable_vault: payable_vault(), dest_token: *dest_token, token_program: self.line_program,
-                system_program: system_program::ID,
+                system_program: system_program::ID, challenge_config: challenge_config(), challenge_gate: challenge_gate(epoch),
             }.to_account_metas(None),
             data: lr::instruction::Claim { args }.data(),
+        }
+    }
+    pub fn set_challenge_config_ix(&self, admin: &Pubkey, args: lr::ChallengeConfigArgs) -> Instruction {
+        Instruction {
+            program_id: lr::ID,
+            accounts: lr::accounts::SetChallengeConfig {
+                config: registry_config(), admin: *admin, challenge_config: challenge_config(), mint: self.line_mint, vault_authority: vault_authority(),
+                challenge_vault: challenge_vault(), token_program: self.line_program, system_program: system_program::ID,
+            }.to_account_metas(None),
+            data: lr::instruction::SetChallengeConfig { args }.data(),
+        }
+    }
+    pub fn open_challenge_ix(&self, challenger: &Pubkey, signing_key: &Pubkey, payer: &Pubkey, payer_token: &Pubkey, args: lr::OpenChallengeArgs)
+        -> Instruction {
+        let slash_receipt = (args.kind == lr::KIND_SLASH).then(|| slash_receipt(&args.subject));
+        Instruction {
+            program_id: lr::ID,
+            accounts: lr::accounts::OpenChallenge {
+                config: registry_config(), challenge_config: challenge_config(), challenger_record: agent_record(challenger), signing_key: *signing_key,
+                payer: *payer, payer_token: *payer_token, challenge: challenge_pda(args.kind, &args.subject), gate: challenge_gate(args.epoch),
+                epoch_account: epoch_pda(args.epoch), slash_receipt, mint: self.line_mint, challenge_vault: challenge_vault(),
+                token_program: self.line_program, system_program: system_program::ID,
+            }.to_account_metas(None),
+            data: lr::instruction::OpenChallenge { args }.data(),
+        }
+    }
+    /// `slashed`: the contested slash's (slash id, agent) for an upheld slash challenge; `correct`: pass the epoch account.
+    pub fn resolve_challenge_ix(&self, signer: &Pubkey, kind: u8, subject: &[u8; 32], epoch: u64, refund_token: &Pubkey,
+        args: lr::ResolveChallengeArgs, slashed: Option<Pubkey>) -> Instruction {
+        let is_slash = kind == lr::KIND_SLASH;
+        Instruction {
+            program_id: lr::ID,
+            accounts: lr::accounts::ResolveChallenge {
+                config: registry_config(), challenge_config: challenge_config(), core_authority: *signer, challenge: challenge_pda(kind, subject),
+                gate: challenge_gate(epoch), refund_token: *refund_token, mint: self.line_mint, vault_authority: vault_authority(),
+                challenge_vault: challenge_vault(), reserve_vault: reserve_vault(),
+                epoch: args.corrected.map(|_| epoch_pda(epoch)),
+                slash_receipt: is_slash.then(|| slash_receipt(subject)),
+                agent_record: slashed.map(|a| agent_record(&a)),
+                bond_vault: is_slash.then(bond_vault),
+                token_program: self.line_program,
+            }.to_account_metas(None),
+            data: lr::instruction::ResolveChallenge { args }.data(),
+        }
+    }
+    pub fn expire_challenge_ix(&self, kind: u8, subject: &[u8; 32], epoch: u64, refund_token: &Pubkey) -> Instruction {
+        Instruction {
+            program_id: lr::ID,
+            accounts: lr::accounts::ExpireChallenge {
+                config: registry_config(), challenge_config: challenge_config(), challenge: challenge_pda(kind, subject), gate: challenge_gate(epoch),
+                refund_token: *refund_token, mint: self.line_mint, vault_authority: vault_authority(), challenge_vault: challenge_vault(),
+                token_program: self.line_program,
+            }.to_account_metas(None),
+            data: lr::instruction::ExpireChallenge {}.data(),
         }
     }
     pub fn rotate_agent_key_ix(&self, owner: &Pubkey, agent: &Pubkey, new_key: &Pubkey) -> Instruction {

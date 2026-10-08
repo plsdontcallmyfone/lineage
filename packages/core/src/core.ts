@@ -58,6 +58,7 @@ import { Records } from "./records.ts";
 import { Series } from "./series.ts";
 import { Messages } from "./messages.ts";
 import { soulsOf } from "./souls.ts";
+import { challengesOf } from "./challenges.ts";
 import { findingsOf } from "./findings.ts";
 import { linksOf } from "./links.ts";
 import { Hosted } from "./hosted.ts";
@@ -1677,6 +1678,7 @@ export class Core {
       if (rows.some((r) => r.status === "committed" && r.reveal_open_at === null)) this.emit("replay.reveal_open", { group: grp.split(":")[0] === "audit" ? "audit" : "candidate", candidate_id: rows[0]!.candidate_id });
     }
     if (rows.some((r) => r.status === "assigned" || r.status === "committed")) return;
+    if (grp.startsWith("chal:")) return challengesOf(this).progress(grp); // bonded challenges (SPEC 10.8)
     if (grp.startsWith("audit:")) {
       const a = this.auditRow(grp.slice(6))!;
       if (a.status === "pending" && a.want_replays === 0 && a.want_reference === 0) this.judgeAudit(a);
@@ -2101,6 +2103,7 @@ export class Core {
       this.series.tick();
       this.messages.tick();
       soulsOf(this).tick(); // souls: shadow parity (SPEC 14.8)
+      challengesOf(this).tick(); // bonded challenges (SPEC 10.8)
       linksOf(this).tick(); // verified links: background rechecks, per-tick budget (identity plan I3)
       this.matureUnbonds();
       this.fillWants();
@@ -2226,6 +2229,7 @@ export class Core {
   claim(agent: string, n: number, body: unknown) {
     return this.tx(() => {
       this.notOnChain("an epoch claim");
+      challengesOf(this).assertClaimable(n); // held while a challenge on the epoch is open (SPEC 10.8)
       const ep = this.epochRow(n);
       if (!ep) throw notFound("epoch");
       if (ep.status !== "closed") throw conflict("epoch_open", "epoch not closed yet");

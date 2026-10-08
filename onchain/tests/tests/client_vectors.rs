@@ -88,6 +88,21 @@ fn instruction_vectors() -> Vec<Value> {
     v.push(ix_json("registry.claim.agent_wallet", &env.claim_ix(&owner, 9, claim.clone(), Some(agent_record(&agent)), &owner_token)));
     let claim2 = lr::ClaimArgs { dest_kind: 2, wallet: k(11), ..claim };
     v.push(ix_json("registry.claim.wallet", &env.claim_ix(&owner, 9, claim2, None, &ata(&k(11), &env.line_mint, &TOKEN))));
+    // bonded challenges (SPEC 10.8)
+    v.push(ix_json("registry.set_challenge_config", &env.set_challenge_config_ix(&k(1), lr::ChallengeConfigArgs { window_s: 600, bond: 2_000_000,
+        reward: 1_000_000, resolve_timeout_s: 3_600, paused: false })));
+    let verdict = lr::OpenChallengeArgs { kind: lr::KIND_VERDICT, subject: [0x3c; 32], epoch: 9, claim: [0x3d; 32] };
+    v.push(ix_json("registry.open_challenge.verdict", &env.open_challenge_ix(&agent, &k(12), &owner, &owner_token, verdict)));
+    let slash = lr::OpenChallengeArgs { kind: lr::KIND_SLASH, subject: [0x5a; 32], epoch: 42, claim: [0x3e; 32] };
+    v.push(ix_json("registry.open_challenge.slash", &env.open_challenge_ix(&agent, &k(12), &owner, &owner_token, slash)));
+    let roots = lr::CorrectedRoots { payout_root: [1; 32], lineage_root: [2; 32], record_root: [3; 32], total_units_micro: 77 };
+    v.push(ix_json("registry.resolve_challenge.epoch", &env.resolve_challenge_ix(&k(2), lr::KIND_EPOCH, &lr::epoch_subject(9), 9, &owner_token,
+        lr::ResolveChallengeArgs { outcome: lr::CH_UPHELD, evidence: [0x4e; 32], corrected: Some(roots) }, None)));
+    v.push(ix_json("registry.resolve_challenge.slash", &env.resolve_challenge_ix(&k(2), lr::KIND_SLASH, &[0x5a; 32], 42, &owner_token,
+        lr::ResolveChallengeArgs { outcome: lr::CH_UPHELD, evidence: [0x4f; 32], corrected: None }, Some(agent))));
+    v.push(ix_json("registry.resolve_challenge.failed", &env.resolve_challenge_ix(&k(2), lr::KIND_VERDICT, &[0x3c; 32], 9, &owner_token,
+        lr::ResolveChallengeArgs { outcome: lr::CH_FAILED, evidence: [0x50; 32], corrected: None }, None)));
+    v.push(ix_json("registry.expire_challenge", &env.expire_challenge_ix(lr::KIND_VERDICT, &[0x3c; 32], 9, &owner_token)));
 
     let largs = ll::LaunchConfigArgs { admin: k(1), runtime_authority: k(3), compute_sink: k(10), agent_compute_bps: 7000,
         protocol_bps: 3000, sleep_threshold: 1, wake_threshold: 2, paused: false, max_debit_per_epoch: 4_242 };
@@ -249,6 +264,24 @@ fn account_snapshots() -> Vec<Value> {
     let sl_id = [0x77; 32];
     let ix = e.slash_ix(&core.pubkey(), &agent.pubkey(), lr::OFFENCE_REVEAL, 4, sl_id);
     ok(send(&mut e.svm, &core, &[], vec![ix]));
+    // a challenge config, an upheld slash challenge (the reveal slash reversed) and an open verdict challenge on epoch 4
+    let admin0 = e.admin.insecure_clone();
+    let ix = e.set_challenge_config_ix(&admin0.pubkey(), lr::ChallengeConfigArgs { window_s: 600, bond: 2 * ONE, reward: ONE, resolve_timeout_s: 3_600,
+        paused: false });
+    ok(send(&mut e.svm, &admin0, &[], vec![ix]));
+    let (cowner, ctoken) = e.wallet(1_100 * ONE);
+    let cagent = Keypair::new();
+    e.register_verifier(&cowner, &cagent);
+    let ix = e.open_challenge_ix(&cagent.pubkey(), &cagent.pubkey(), &cowner.pubkey(), &ctoken,
+        lr::OpenChallengeArgs { kind: lr::KIND_SLASH, subject: sl_id, epoch: 4, claim: [0x61; 32] });
+    ok(send(&mut e.svm, &cowner, &[&cagent], vec![ix]));
+    let ix = e.open_challenge_ix(&cagent.pubkey(), &cagent.pubkey(), &cowner.pubkey(), &ctoken,
+        lr::OpenChallengeArgs { kind: lr::KIND_VERDICT, subject: [0x62; 32], epoch: 4, claim: [0x63; 32] });
+    ok(send(&mut e.svm, &cowner, &[&cagent], vec![ix]));
+    let ix = e.resolve_challenge_ix(&core.pubkey(), lr::KIND_SLASH, &sl_id, 4, &ctoken,
+        lr::ResolveChallengeArgs { outcome: lr::CH_UPHELD, evidence: [0x64; 32], corrected: None }, Some(agent.pubkey()));
+    ok(send(&mut e.svm, &core, &[], vec![ix]));
+    let ch_addr = challenge_pda(lr::KIND_SLASH, &sl_id);
     let runtime = e.runtime.insecure_clone();
     let ix = Instruction {
         program_id: ll::ID,
@@ -366,6 +399,25 @@ fn account_snapshots() -> Vec<Value> {
                 "receivedTotal": d.received_total.to_string() } })
         },
         {
+            let c: lr::ChallengeConfig = read(&e.svm, &challenge_config());
+            json!({ "type": "ChallengeConfig", "address": challenge_config().to_string(), "data": raw(&challenge_config()), "fields": {
+                "windowS": c.window_s.to_string(), "bond": c.bond.to_string(), "reward": c.reward.to_string(), "resolveTimeoutS": c.resolve_timeout_s.to_string(),
+                "paused": c.paused, "open": c.open } })
+        },
+        {
+            let c: lr::Challenge = read(&e.svm, &ch_addr);
+            json!({ "type": "Challenge", "address": ch_addr.to_string(), "data": raw(&ch_addr), "fields": {
+                "kind": c.kind, "subject": hex(&c.subject), "epoch": c.epoch.to_string(), "challenger": c.challenger.to_string(), "payer": c.payer.to_string(),
+                "refundToken": c.refund_token.to_string(), "bond": c.bond.to_string(), "claim": hex(&c.claim), "openedAt": c.opened_at.to_string(),
+                "status": c.status, "resolvedAt": c.resolved_at.to_string(), "evidence": hex(&c.evidence), "reward": c.reward.to_string(),
+                "reversed": c.reversed.to_string(), "corrected": c.corrected } })
+        },
+        {
+            let g: lr::ChallengeGate = read(&e.svm, &challenge_gate(4));
+            json!({ "type": "ChallengeGate", "address": challenge_gate(4).to_string(), "data": raw(&challenge_gate(4)), "fields": {
+                "epoch": g.epoch.to_string(), "open": g.open, "opened": g.opened, "upheld": g.upheld, "corrected": g.corrected } })
+        },
+        {
             let r: bt::BountyReceipt = read(&e.svm, &rcpt);
             json!({ "type": "BountyReceipt", "address": rcpt.to_string(), "data": raw(&rcpt), "fields": {
                 "bounty": r.bounty.to_string(), "payer": r.payer.to_string(), "leaf": hex(&r.leaf), "epoch": r.epoch.to_string(), "genId": hex(&r.gen_id),
@@ -390,5 +442,5 @@ fn client_vectors() {
     }
     let doc: Value = serde_json::from_str(&std::fs::read_to_string(&path).expect("run with UPDATE_VECTORS=1 once")).unwrap();
     assert_eq!(doc["instructions"], Value::Array(ixs), "instruction vectors changed: rerun with UPDATE_VECTORS=1 and the packages/chain tests");
-    assert_eq!(doc["accounts"].as_array().unwrap().len(), 10);
+    assert_eq!(doc["accounts"].as_array().unwrap().len(), 13);
 }

@@ -1,5 +1,6 @@
 import type { Server } from "bun";
 import { bountiesOf } from "./bounties.ts";
+import { challengesOf } from "./challenges.ts";
 import { soulsOf } from "./souls.ts";
 import { findingsOf } from "./findings.ts";
 import { recipeProposalsOf } from "./recipe-proposals.ts";
@@ -174,6 +175,11 @@ export function buildRoutes(core: Core): Route[] {
     route("GET", "/v1/agents/:id/card", "none", (c) => erc8004Of(core).card(c.params.id!, c.url.origin)),
     route("GET", "/v1/agents/:id/registration.json", "none", (c) => erc8004Of(core).registration(c.params.id!, c.url.origin)),
     // bounties (C6, packages/core/src/bounties.ts): read-only mirror of the onchain escrows
+    // bonded challenges (SPEC 10.8, src/challenges.ts); chain mode opens them with open_challenge
+    route("GET", "/v1/challenges", "none", (c) => challengesOf(core).list({ status: q(c, "status"), kind: q(c, "kind"), challenger: q(c, "challenger"), epoch: q(c, "epoch") })),
+    route("GET", "/v1/challenges/config", "none", () => challengesOf(core).configView()),
+    route("GET", "/v1/challenges/:id", "none", (c) => challengesOf(core).one(c.params.id!)),
+    route("POST", "/v1/challenges", "agent", (c) => challengesOf(core).open(c.agent!, c.json())),
     route("GET", "/v1/bounties", "none", (c) => bountiesOf(core).list({ lineage: q(c, "lineage"), payee: q(c, "payee"), payer: q(c, "payer"), status: q(c, "status") })),
     route("GET", "/v1/bounties/:id", "none", (c) => bountiesOf(core).one(c.params.id!)),
     route("GET", "/v1/bounties/:id/release", "none", (c) => bountiesOf(core).release(c.params.id!)),

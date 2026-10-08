@@ -46,6 +46,17 @@ export interface NetworkConfig {
   heartbeat_s: number;
   /** Random auditors drawn per audit besides the reference runner (SPEC 10.6). Optional, default 2. */
   audit_replayers: number;
+  // Bonded challenges (SPEC 10.8). Defaults are test values; launch values are TBA (owner). Chain mode reads them from ChallengeConfig.
+  /** Seconds after a verdict is final, a slash lands or an epoch closes during which it may be challenged (and its payouts are held). Optional, default 3600. */
+  challenge_window_s: number;
+  /** Bond a challenger escrows, base units. Optional, default 1 token at token_decimals. */
+  challenge_bond: bigint;
+  /** Reward from the compute reserve to an upheld challenger, base units (capped by the reserve). Optional, default half a token. */
+  challenge_reward: bigint;
+  /** Fresh random replayers drawn per challenge besides the reference runner. Optional, default 1. */
+  challenge_replayers: number;
+  /** A challenge Core has not resolved after this many seconds is void (bond returned). Optional, default 7200. */
+  challenge_resolve_timeout_s: number;
   /** Shadow author identities kept launched per lineage that has canaries (SPEC 10.5). Optional, default 3. */
   shadow_pool: number;
   /** Shadow launches are spread uniformly at random over this many seconds after they are planned. Optional, default 3600. */
@@ -145,6 +156,15 @@ export function parseNetworkConfig(raw: Record<string, unknown>): NetworkConfig 
     out[k] = v;
   };
   posInt("audit_replayers", 2, 1);
+  posInt("challenge_window_s", 3600, 1);
+  posInt("challenge_replayers", 1, 1);
+  posInt("challenge_resolve_timeout_s", 7200, 1);
+  const tokenUnit = 10n ** BigInt(Number.isInteger(out.token_decimals) ? (out.token_decimals as number) : 0);
+  for (const [k, def] of [["challenge_bond", tokenUnit], ["challenge_reward", tokenUnit / 2n]] as const) {
+    const s = String(raw[k] ?? def);
+    if (!/^\d+$/.test(s)) throw new Error(`network config: ${k} must be a non-negative integer`);
+    out[k] = BigInt(s);
+  }
   posInt("shadow_pool", 3, 0);
   posInt("shadow_launch_spread_s", 3600, 0);
   posInt("shadow_min_age_s", 900, 0);
@@ -185,5 +205,6 @@ export function loadNetworkConfig(path: string): NetworkConfig {
 export function networkConfigJson(cfg: NetworkConfig): Record<string, unknown> {
   const o: Record<string, unknown> = { ...cfg };
   for (const k of AMOUNT_KEYS) o[k] = cfg[k].toString();
+  for (const k of ["challenge_bond", "challenge_reward"] as const) if (typeof cfg[k] === "bigint") o[k] = cfg[k].toString();
   return o;
 }

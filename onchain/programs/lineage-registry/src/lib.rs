@@ -5,7 +5,10 @@ use anchor_lang::prelude::*;
 use anchor_lang::solana_program::bpf_loader_upgradeable;
 use anchor_spl::token_interface::{self, Burn, Mint, TokenAccount, TokenInterface, TransferChecked};
 
+pub mod challenge;
 pub mod leaf;
+
+pub use challenge::*;
 
 declare_id!("2vhj9aBZkuoCpmJxm5BcA3CYkvBJgY6VHTax8FpFmxuY");
 
@@ -484,6 +487,9 @@ pub mod lineage_registry {
             _ => return err!(RegistryError::BadDestination),
         };
         let e = &ctx.accounts.epoch;
+        // payouts wait for the epoch's challenge window and for every challenge on it (SPEC 10.8)
+        challenge::check_claim_hold(&ctx.accounts.challenge_config.to_account_info(), &ctx.accounts.challenge_gate.to_account_info(), e,
+            Clock::get()?.unix_timestamp)?;
         let leaf_h = leaf::payout_leaf(e.epoch, &args.agent.to_bytes(), kind, &args.wallet.to_bytes(), args.amount);
         require!(leaf_h == args.leaf, RegistryError::LeafMismatch);
         require!(leaf::verify_proof(&leaf_h, &args.proof, &e.payout_root), RegistryError::BadProof);
@@ -518,6 +524,28 @@ pub mod lineage_registry {
         r.claimed_at = Clock::get()?.unix_timestamp;
         emit!(Claimed { epoch: e.epoch, agent: args.agent, dest_kind: args.dest_kind, dest_token: dest.key(), amount: args.amount, leaf: leaf_h });
         Ok(())
+    }
+
+    /// Admin: creates or updates the `ChallengeConfig` and the challenge bond vault (SPEC 10.8).
+    pub fn set_challenge_config(ctx: Context<SetChallengeConfig>, args: ChallengeConfigArgs) -> Result<()> {
+        challenge::handle_set_config(ctx, args)
+    }
+
+    /// A registered agent (its current signing key signs; any payer bonds `bond` `$LINE`): contests a
+    /// final verdict, a slash or an epoch root within `window_s` (challenge.rs).
+    pub fn open_challenge(ctx: Context<OpenChallenge>, args: OpenChallengeArgs) -> Result<()> {
+        challenge::handle_open(ctx, args)
+    }
+
+    /// Core authority: records Core's resolution (upheld, failed, void), moves the bond and reward,
+    /// reverses a contested slash and may correct a contested epoch's roots before any claim.
+    pub fn resolve_challenge(ctx: Context<ResolveChallenge>, args: ResolveChallengeArgs) -> Result<()> {
+        challenge::handle_resolve(ctx, args)
+    }
+
+    /// Anyone, after `resolve_timeout_s`: an unresolved challenge's bond goes back and its hold ends.
+    pub fn expire_challenge(ctx: Context<ExpireChallenge>) -> Result<()> {
+        challenge::handle_expire(ctx)
     }
 }
 
@@ -1075,6 +1103,12 @@ pub struct Claim<'info> {
     pub dest_token: Box<InterfaceAccount<'info, TokenAccount>>,
     pub token_program: Interface<'info, TokenInterface>,
     pub system_program: Program<'info, System>,
+    /// CHECK: the `ChallengeConfig` PDA, read only if it exists (claims are held for its window).
+    #[account(seeds = [CHALLENGE_CONFIG_SEED], bump)]
+    pub challenge_config: UncheckedAccount<'info>,
+    /// CHECK: this epoch's `ChallengeGate` PDA, read only if it exists (claims wait while it is open).
+    #[account(seeds = [GATE_SEED, &epoch.epoch.to_le_bytes()], bump)]
+    pub challenge_gate: UncheckedAccount<'info>,
 }
 
 // ---------- events and errors ----------
@@ -1240,4 +1274,20 @@ pub enum RegistryError {
     ProfileSeq,
     #[msg("no owner transfer is pending")]
     NoPendingOwner,
+    #[msg("payouts of this epoch are held: challenge window or an open challenge")]
+    ClaimHeld,
+    #[msg("challenge outside its window")]
+    ChallengeWindow,
+    #[msg("unknown challenge kind")]
+    ChallengeKind,
+    #[msg("challenge epoch is not posted or not the next epoch")]
+    ChallengeEpoch,
+    #[msg("challenge subject does not match its accounts")]
+    ChallengeSubject,
+    #[msg("challenge is not open")]
+    ChallengeNotOpen,
+    #[msg("invalid challenge outcome")]
+    ChallengeOutcome,
+    #[msg("challenge resolve timeout has not passed")]
+    ChallengeTimeout,
 }

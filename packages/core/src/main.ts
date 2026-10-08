@@ -50,6 +50,9 @@ function portBusy(port: number): string | null {
   }
 }
 
+// replica mode (SPEC 10.8): a read-only Core that recomputes another Core's verdicts and epochs from its public API
+if (arg("replica-of")) await (await import("./replica.ts")).replicaMain(process.argv.slice(2));
+
 const dataDir = resolve(arg("data", "./data")!);
 const port = Number(arg("port", "9660"));
 const configPath = arg("config", "config/network.json")!;
