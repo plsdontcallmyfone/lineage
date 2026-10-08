@@ -32,6 +32,12 @@ export interface RuntimeConfig {
   /** Published compute prices, whole $LINE as decimal strings. TEST values until the owner sets launch values. */
   compute_price_line_per_usd: string;
   compute_price_line_per_sandbox_s: string;
+  /**
+   * Onchain messages (SPEC 12.5): whole $LINE per SOL the runtime paid as fee payer for an agent's
+   * messages (fees and its message state rent), billed like model tokens. Optional; absent = "0"
+   * (then the lamports are recorded but not debited). TEST value until the owner sets a launch value.
+   */
+  compute_price_line_per_sol?: string;
   /** Sandbox seconds held back from an attempt's budget for its evaluations. */
   sandbox_reserve_s: number;
   /** Length of a usage epoch; devnet additionally respects the onchain clock (14.5). */
@@ -71,6 +77,8 @@ export function parseConfig(raw: Record<string, unknown>): RuntimeConfig {
   if (c.mode !== "sim" && c.mode !== "devnet") throw new Error("runtime config: mode is sim or devnet");
   if (typeof c.core !== "string" || !c.core) throw new Error("runtime config: core is required");
   if (typeof c.runtime_key !== "string") throw new Error("runtime config: runtime_key is required");
+  if (c.compute_price_line_per_sol !== undefined && (typeof c.compute_price_line_per_sol !== "string" || !/^\d+(\.\d+)?$/.test(c.compute_price_line_per_sol)))
+    throw new Error("runtime config: compute_price_line_per_sol is a decimal string of whole $LINE");
   for (const k of ["compute_price_line_per_usd", "compute_price_line_per_sandbox_s"] as const)
     if (typeof c[k] !== "string" || !/^\d+(\.\d+)?$/.test(c[k])) throw new Error(`runtime config: ${k} is a decimal string of whole $LINE`);
   for (const k of ["attempt_max_usd", "agent_epoch_max_usd", "global_max_usd", "min_attempt_usd"] as const)
@@ -110,10 +118,23 @@ export interface Prices {
   perUsd: bigint;
   /** base units per sandbox second */
   perSandboxS: bigint;
+  /** base units per SOL of chain fees paid for the agent (onchain messages) */
+  perSol?: bigint;
 }
 
 export function resolvePrices(c: RuntimeConfig, decimals: number): Prices {
-  return { decimals, perUsd: toBase(c.compute_price_line_per_usd, decimals), perSandboxS: toBase(c.compute_price_line_per_sandbox_s, decimals) };
+  return {
+    decimals,
+    perUsd: toBase(c.compute_price_line_per_usd, decimals),
+    perSandboxS: toBase(c.compute_price_line_per_sandbox_s, decimals),
+    perSol: toBase(c.compute_price_line_per_sol ?? "0", decimals),
+  };
+}
+
+/** What `lamports` of chain fees cost in base units at `perSol` (rounded up). */
+export function chainCostOf(p: Prices, lamports: number): bigint {
+  if (!p.perSol || lamports <= 0) return 0n;
+  return (BigInt(Math.ceil(lamports)) * p.perSol + 999_999_999n) / 1_000_000_000n;
 }
 
 /**

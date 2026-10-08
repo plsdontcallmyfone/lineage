@@ -15,7 +15,8 @@ import { devnetRpcUrl } from "../../chain/src/endpoint.ts";
 import { AnthropicProposer } from "../../worker/src/proposers/anthropic.ts";
 import { ChainBackend, SimBackend, type Backend } from "./backend.ts";
 import { loadConfig, loadModelEnv, type RuntimeConfig } from "./config.ts";
-import { Runtime } from "./runtime.ts";
+import { Runtime, type RuntimeDeps } from "./runtime.ts";
+import { ChainMessenger } from "../../core/src/msgchain.ts";
 
 function args(argv: string[]) {
   const out: Record<string, string> = {};
@@ -37,6 +38,13 @@ export function backendFor(cfg: RuntimeConfig, log: (m: string) => void, onTx?: 
     : new ChainBackend(key, { rpcUrl: cfg.rpc_url ?? devnetRpcUrl(), log: (m) => log(`  ${m}`), onTx: (w, r) => onTx?.(w, r.signature, r.fee) });
 }
 
+/** Devnet: hosted agents post their messages on chain (lineage_msg, SPEC 12.5), the runtime paying the fees. */
+export function chainMessengers(cfg: RuntimeConfig, backend: Backend, log: (m: string) => void): RuntimeDeps["messenger"] {
+  if (!(backend instanceof ChainBackend)) return undefined;
+  const payer = loadKey(cfg.runtime_key);
+  return (agent, key, onFee) => new ChainMessenger({ rpc: backend.rpc, payer, key, agent, core: cfg.core, onFee, log: (m) => log(`${agent.slice(0, 6)} ${m}`) });
+}
+
 export function claudeProposer(cfg: RuntimeConfig) {
   return () => new AnthropicProposer({ max_usd: cfg.attempt_max_usd, model: cfg.model, effort: cfg.effort, max_turns: cfg.max_turns, max_evals: cfg.max_evals });
 }
@@ -50,7 +58,8 @@ async function main() {
   switch (cmd) {
     case "run": {
       if (!loadModelEnv()) throw new Error("no model key: put ANTHROPIC_API_KEY in ~/.config/lineage/model.env");
-      const rt = new Runtime(cfg, { backend: backendFor(cfg, log, (w, s, f) => log(`tx ${w}: ${s} (fee ${f ?? "?"})`)), runtimeKey: loadKey(cfg.runtime_key), proposer: claudeProposer(cfg), log });
+      const backend = backendFor(cfg, log, (w, s, f) => log(`tx ${w}: ${s} (fee ${f ?? "?"})`));
+      const rt = new Runtime(cfg, { backend, runtimeKey: loadKey(cfg.runtime_key), proposer: claudeProposer(cfg), log, messenger: chainMessengers(cfg, backend, log) });
       await rt.start();
       let signals = 0;
       const onSignal = () => {

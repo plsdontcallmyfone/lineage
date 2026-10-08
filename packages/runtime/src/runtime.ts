@@ -5,7 +5,8 @@ import { CoreClient } from "../../core/src/client.ts";
 import { Worker } from "../../worker/src/worker.ts";
 import type { Meter, Proposer } from "../../worker/src/proposers/types.ts";
 import type { Backend, HostedAgent, Vault } from "./backend.ts";
-import { costOf, resolvePrices, usdFor, type Prices, type RuntimeConfig } from "./config.ts";
+import { chainCostOf, costOf, resolvePrices, usdFor, type Prices, type RuntimeConfig } from "./config.ts";
+import type { ChainFee, Messenger } from "../../core/src/msgchain.ts";
 import { provenanceRecord, signProvenance, type AttemptTotals } from "./provenance.ts";
 import { emptyUsage, Lock, modelTokens, redact, StateStore, type AgentUsage, type ClosedEpoch } from "./state.ts";
 
@@ -26,6 +27,11 @@ export interface RuntimeDeps {
   now?: () => number;
   /** heartbeats and activity from each agent's worker (SPEC 17.1); default on */
   telemetry?: boolean;
+  /**
+   * Onchain messages (SPEC 12.5, devnet): a transport per bound agent, signing with the agent's
+   * runtime key; the runtime pays the fees and `onFee` bills them to the agent's usage ("chain fee").
+   */
+  messenger?: (agent: string, key: AgentKey, onFee: (f: ChainFee) => void) => Messenger | undefined;
 }
 
 interface Attempt {
@@ -99,10 +105,24 @@ export class Runtime {
     return (this.state.open.usage[agent] ??= emptyUsage());
   }
 
+  /** What a usage record costs: model spend and sandbox time, plus chain fees paid for the agent. */
+  private usageCost(u: AgentUsage): bigint {
+    return costOf(this.prices, u.usd, u.sandbox_s) + chainCostOf(this.prices, u.chain_lamports ?? 0);
+  }
+
+  /** Records lamports this runtime paid for one of the agent's onchain messages (usage line "chain fee"). */
+  private meterChain(f: ChainFee): void {
+    const u = this.usageOf(f.agent);
+    u.chain_lamports = (u.chain_lamports ?? 0) + f.lamports;
+    u.chain_txs = (u.chain_txs ?? 0) + 1;
+    this.save();
+    this.log(`${f.agent.slice(0, 6)} chain fee ${f.lamports} lamports for ${f.what} ${f.signature}`);
+  }
+
   /** Base units already owed by `agent`: its open usage plus closed epochs not yet debited. */
   owed(agent: string): bigint {
     const u = this.state.open.usage[agent];
-    let owed = u ? costOf(this.prices, u.usd, u.sandbox_s) : 0n;
+    let owed = u ? this.usageCost(u) : 0n;
     for (const e of this.state.closed) {
       if (e.done || e.debits[agent]) continue;
       const l = e.leaves.find((x) => x.agent === agent);
@@ -131,7 +151,7 @@ export class Runtime {
     let line = avail;
     if (this.limits.maxDebitPerEpoch !== null) {
       let epochOwed = 0n;
-      for (const u of Object.values(this.state.open.usage)) epochOwed += costOf(this.prices, u.usd, u.sandbox_s);
+      for (const u of Object.values(this.state.open.usage)) epochOwed += this.usageCost(u);
       const left = this.limits.maxDebitPerEpoch - epochOwed;
       if (left < line) line = left;
     }
@@ -192,6 +212,7 @@ export class Runtime {
       stateDir: join(this.cfg.state_dir, "worker", agent),
       log: (m) => this.log(`${agent.slice(0, 6)} ${m}`),
       collab: "advisory",
+      messenger: this.deps.messenger?.(agent, key, (f) => this.meterChain(f)),
       attempt: () => {
         const b = this.budget(agent);
         if (b.usd === null) {
@@ -341,7 +362,7 @@ export class Runtime {
   /** Closes the open usage epoch when it is due and the chain clock allows it, then posts closed epochs in order. */
   private async epochs(force = false): Promise<void> {
     const open = this.state.open;
-    const used = Object.entries(open.usage).filter(([, u]) => u.usd > 0 || u.sandbox_s > 0);
+    const used = Object.entries(open.usage).filter(([, u]) => u.usd > 0 || u.sandbox_s > 0 || (u.chain_lamports ?? 0) > 0);
     const due = this.now() - open.opened_at >= this.cfg.usage_epoch_s * 1000;
     const drained = this.cfg.close_when_exhausted && used.some(([a]) => this.exhausted.has(a) && !this.running.has(a));
     const pending = this.state.closed.some((e) => !e.done);
@@ -350,11 +371,11 @@ export class Runtime {
       if (this.now() / 1000 >= next.earliestS) {
         const leaves: ClosedEpoch["leaves"] = [];
         for (const [agent, u] of used) {
-          const cost = costOf(this.prices, u.usd, u.sandbox_s);
+          const cost = this.usageCost(u);
           // a vault cannot pay more than it holds; the shortfall stays in the record (cost) and is never invented
           const bal = this.vaults.get(agent)?.balance ?? cost;
           const amount = cost < bal ? cost : bal;
-          leaves.push({ agent, amount: amount.toString(), cost: cost.toString(), model_tokens: modelTokens(u), sandbox_s: Math.ceil(u.sandbox_s), usd: u.usd });
+          leaves.push({ agent, amount: amount.toString(), cost: cost.toString(), model_tokens: modelTokens(u), sandbox_s: Math.ceil(u.sandbox_s), usd: u.usd, chain_lamports: u.chain_lamports ?? 0 });
         }
         this.state.closed.push({ epoch: next.epoch, opened_at: open.opened_at, closed_at: this.now(), leaves, root: null, post: null, debits: {}, done: false });
         this.state.open = { period: open.period + 1, opened_at: this.now(), usage: {} };
