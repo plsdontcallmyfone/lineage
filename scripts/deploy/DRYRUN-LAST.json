@@ -1,11 +1,11 @@
 {
-  "at": "2026-10-08T11:42:38.354Z",
-  "head": "acad8c936d9684e3ddc763bb7df84f9c23f3c461",
-  "first": "acad8c936d9684e3ddc763bb7df84f9c23f3c461",
+  "at": "2026-10-08T11:45:28.767Z",
+  "head": "392b73830b20e23c29809048883c09c640d1fa9a",
+  "first": "392b73830b20e23c29809048883c09c640d1fa9a",
   "container_image": "lineage/site-dryrun:24.04",
-  "seconds": 254,
-  "passed": 24,
-  "failed": 25,
+  "seconds": 152,
+  "passed": 48,
+  "failed": 1,
   "checks": [
     {
       "check": "fresh box reachable over root ssh",
@@ -15,7 +15,7 @@
     {
       "check": "deploy.sh full on a fresh box",
       "ok": true,
-      "detail": "exit 0, 86 s"
+      "detail": "exit 0, 75 s"
     },
     {
       "check": "fund and site-chain ran as plans (nothing sent on chain)",
@@ -25,7 +25,7 @@
     {
       "check": "deploy.sh full re-run, same commit",
       "ok": true,
-      "detail": "exit 0, 18 s"
+      "detail": "exit 0, 31 s"
     },
     {
       "check": "same-commit re-run takes no data backup",
@@ -49,8 +49,8 @@
     },
     {
       "check": "unit caddy active",
-      "ok": false,
-      "detail": "failed"
+      "ok": true,
+      "detail": "active"
     },
     {
       "check": "sandbox unit lineage-bootstrap skipped in the dry run",
@@ -119,47 +119,47 @@
     },
     {
       "check": "GET /v1/health over HTTPS (internal TLS)",
-      "ok": false,
-      "detail": ""
+      "ok": true,
+      "detail": "{\"ok\":true,\"now\":1791459911760,\"epoch\":13}"
     },
     {
       "check": "Core in devnet chain mode read the chain",
-      "ok": false,
-      "detail": ""
+      "ok": true,
+      "detail": "slot 508805835, epochs posted 13, core_signing false"
     },
     {
       "check": "Core does not sign as Core authority in the dry run",
-      "ok": false,
+      "ok": true,
       "detail": ""
     },
     {
       "check": "Core mirrored the registry's agents",
-      "ok": false,
-      "detail": " agents"
+      "ok": true,
+      "detail": "28 agents"
     },
     {
       "check": "dashboard page",
-      "ok": false,
+      "ok": true,
       "detail": ""
     },
     {
       "check": "wallet page",
-      "ok": false,
+      "ok": true,
       "detail": ""
     },
     {
       "check": "client bundle",
-      "ok": false,
+      "ok": true,
       "detail": ""
     },
     {
       "check": "wallet bundle",
-      "ok": false,
+      "ok": true,
       "detail": ""
     },
     {
       "check": "/chain/config: devnet",
-      "ok": false,
+      "ok": true,
       "detail": ""
     },
     {
@@ -169,68 +169,68 @@
     },
     {
       "check": "/api proxy to Core",
-      "ok": false,
+      "ok": true,
       "detail": ""
     },
     {
       "check": "CORS * on the public read API",
-      "ok": false,
-      "detail": ""
+      "ok": true,
+      "detail": "*"
     },
     {
       "check": "security headers",
-      "ok": false,
+      "ok": true,
       "detail": ""
     },
     {
       "check": "admin API not public",
-      "ok": false,
+      "ok": true,
       "detail": ""
     },
     {
       "check": "Core writes not public",
-      "ok": false,
+      "ok": true,
       "detail": ""
     },
     {
       "check": "cross-origin faucet POST refused",
-      "ok": false,
+      "ok": true,
       "detail": ""
     },
     {
       "check": "devnet RPC proxy (same origin)",
-      "ok": false,
-      "detail": ""
+      "ok": true,
+      "detail": "{\"jsonrpc\":\"2.0\",\"result\":508805875,\"id\":1}"
     },
     {
       "check": "RPC method allowlist kept",
-      "ok": false,
+      "ok": true,
       "detail": ""
     },
     {
       "check": "faucet rate limit per address (3 then 429)",
-      "ok": false,
-      "detail": " 000 000 000 000"
+      "ok": true,
+      "detail": " 503 503 503 429"
     },
     {
       "check": "oversized body refused",
-      "ok": false,
-      "detail": "000"
+      "ok": true,
+      "detail": "413"
     },
     {
       "check": "event streams capped per address (4 open, 5th 429)",
-      "ok": false,
-      "detail": "000"
+      "ok": true,
+      "detail": "429"
     },
     {
       "check": "event stream flows through Caddy and the gate",
-      "ok": false,
-      "detail": ""
+      "ok": true,
+      "detail": "retry: 3000"
     },
     {
       "check": "scripts/verify.ts runs against the public site",
-      "ok": false,
-      "detail": "exit 1: Bun v1.3.13 (macOS arm64)"
+      "ok": true,
+      "detail": "exit 0: 0/0 verdicts independently recomputed"
     },
     {
       "check": "deploy.sh status",
@@ -240,17 +240,17 @@
     {
       "check": "stop",
       "ok": true,
-      "detail": "failed inactive "
+      "detail": "inactive "
     },
     {
       "check": "start",
-      "ok": false,
+      "ok": true,
       "detail": ""
     },
     {
       "check": "host disk still >= 4 GB free",
       "ok": true,
-      "detail": "6 GB"
+      "detail": "7 GB"
     }
   ]
 }

@@ -81,7 +81,14 @@ fi
 echo "== deploy 3: full again at HEAD (re-run safety)"
 s=$(date +%s); "$D" 127.0.0.1 full > "$WORK/d3.log" 2>&1; rc=$?; tail -5 "$WORK/d3.log"
 check "deploy.sh full re-run, same commit" "$([ $rc = 0 ] && echo 1 || echo 0)" "exit $rc, $(( $(date +%s) - s )) s"
-grep -q "data backup" "$WORK/d3.log" && check "same-commit re-run takes no data backup" 0 || check "same-commit re-run takes no data backup" 1
+prevsha=$(sed -n 's/^== ship \([0-9a-f]*\) .*/\1/p' "$WORK/d$([ -f "$WORK/d2.log" ] && echo 2 || echo 1).log")
+d3sha=$(sed -n 's/^== ship \([0-9a-f]*\) .*/\1/p' "$WORK/d3.log")
+if [ "$prevsha" = "$d3sha" ]; then
+  grep -q "data backup" "$WORK/d3.log" && check "same-commit re-run takes no data backup" 0 || check "same-commit re-run takes no data backup" 1
+else
+  # another session committed in between: a new release must back the data up
+  grep -q "data backup" "$WORK/d3.log" && check "re-run on a newer HEAD backs up Core's data" 1 "$prevsha -> $d3sha" || check "re-run on a newer HEAD backs up Core's data" 0
+fi
 
 R() { ssh -i "$WORK/key" -p $SSH_P -o IdentitiesOnly=yes -o BatchMode=yes -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o LogLevel=ERROR root@127.0.0.1 "$@"; }
 docker cp "$NAME:/var/lib/caddy/.local/share/caddy/pki/authorities/local/root.crt" "$WORK/ca.crt" >/dev/null 2>&1
@@ -149,13 +156,14 @@ check "stop" "$(echo "$st" | grep -qw active && echo 0 || echo 1)" "$st"
 for i in $(seq 1 30); do [ "$(code "$U/v1/health")" = 200 ] && break; sleep 2; done
 check "start" "$([ "$(code "$U/v1/health")" = 200 ] && echo 1 || echo 0)"
 if [ "$FIRSTSHA" != "$HEADSHA" ]; then
+  want=$(R "basename \$(cat /opt/lineage/previous)")
   "$D" 127.0.0.1 rollback > "$WORK/rb.log" 2>&1; rc=$?
   cur=$(R "basename \$(readlink /opt/lineage/current)")
   for i in $(seq 1 30); do [ "$(code "$U/v1/health")" = 200 ] && break; sleep 2; done
-  check "rollback to the previous release" "$([ $rc = 0 ] && [ "$cur" = "$FIRSTSHA" ] && [ "$(code "$U/v1/health")" = 200 ] && echo 1 || echo 0)" "now $cur"
+  check "rollback to the previous release" "$([ $rc = 0 ] && [ "$cur" = "$want" ] && [ "$(code "$U/v1/health")" = 200 ] && echo 1 || echo 0)" "now $cur"
   DEPLOY_REF=HEAD "$D" 127.0.0.1 code > "$WORK/d4.log" 2>&1; rc=$?
   cur=$(R "basename \$(readlink /opt/lineage/current)")
-  check "forward again to HEAD (code mode)" "$([ $rc = 0 ] && [ "$cur" = "$HEADSHA" ] && echo 1 || echo 0)" "now $cur"
+  check "forward again to HEAD (code mode)" "$([ $rc = 0 ] && [ "$cur" = "$(sed -n 's/^== ship \([0-9a-f]*\) .*/\1/p' "$WORK/d4.log")" ] && echo 1 || echo 0)" "now $cur"
 fi
 dfree=$(df -g / | tail -1 | awk '{print $4}')
 check "host disk still >= 4 GB free" "$([ "$dfree" -ge 4 ] && echo 1 || echo 0)" "$dfree GB"

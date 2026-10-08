@@ -1,0 +1,191 @@
+# Public devnet site: deploy
+
+One public Linux server runs Core in devnet chain mode, the dashboard and the Wallet page, so anyone
+can browse lineages, watch the live wall, recompute verdicts (`scripts/verify.ts --core https://<site>`)
+and use the devnet wallet flows (faucet, launch, bond, claims, bounties). Everything is devnet and every
+amount is a TEST value. The kit is `scripts/deploy/`; one command brings a fresh box up and the same
+command is safe to run again:
+
+```sh
+scripts/deploy/deploy.sh <server IPv4>
+```
+
+## What the owner provides
+
+| What | Why |
+|---|---|
+| A fresh Ubuntu 24.04 server, amd64 is fine (see "Size and cost") | runs everything |
+| Root SSH with the key `~/.ssh/lineage_site` (or `SSH_KEY=<path>`) | deploy.sh logs in as root; provisioning copies root's authorized key to the `lineage` user |
+| Optional: a domain whose A record points at the server (`DOMAIN=lineage.example`) | served next to `<ip-with-dashes>.sslip.io`, which needs no DNS |
+| Optional: `ACME_EMAIL=<email>` | Let's Encrypt expiry notices |
+| On this machine: `~/.config/lineage/devnet/core-authority.json`, `faucet.json`, `~/.config/lineage/devnet-deployer.json` | already here (devnet wiring lane); see "Secrets" |
+| Optional: `WITH_AUTHOR=1` | the minbpe TEST agent authors its prepared candidates on the site (real verdicts, no model spend) |
+| Optional, later: `WITH_RUNTIME=1` and `~/.config/lineage/model.env` | the hosted runtime authors with Claude; spends real money up to `global_max_usd` (TEST value 5 USD in `/var/lib/lineage/site/runtime.json`, set by the owner before enabling) |
+
+No DigitalOcean token is needed: create the droplet in the console (Ubuntu 24.04, add the public half
+of `~/.ssh/lineage_site`), then run deploy.sh with its address.
+
+## What the kit does
+
+`deploy.sh <host>` (mode `full`) runs, in order:
+
+1. **provision** (`provision.sh`, idempotent, as root): base packages; user `lineage` (no password, no
+   sudo, root's authorized key); ufw deny incoming except 22, 80, 443; fail2ban for sshd; unattended
+   upgrades; sshd keys only; journald capped at 500 MB; a 4 GiB swapfile when RAM is under 8 GiB;
+   Docker (`docker.io` from Ubuntu, `lineage` in the docker group); Bun 1.3.13 checked against the
+   release's SHASUMS256.txt; Caddy from the Caddy project's apt repository (memory cap 256 MB).
+2. **ship**: `git bundle` of HEAD (the repo has no remote; the working tree never ships; `DEPLOY_REF=<commit>`
+   ships an ancestor), cloned on the server into `/opt/lineage/releases/<sha>` as `lineage`, then
+   `bun install --frozen-lockfile`.
+3. **sandbox images and amd64 calibration**: builds the images the served recipes use
+   (`lineage/rust:m1`, `lineage/python:m1` for the default set) from `images/<class>` on the server, then
+   `arch-recipes.ts` re-pins `fixture-b58`, `base58-py`, `minbpe` (or `LINEAGE_RECIPES`) in that release
+   only: `requires.arch` to the server's arch and the image pin to the image id built there. Why: the
+   committed recipes pin arm64 image ids measured on an Apple M4; cachegrind counts and image ids differ
+   on amd64, so an amd64 reference runner and amd64 verifiers can only serve recipes calibrated on amd64.
+   The re-pinned recipe has a new recipe id, so the site has its own lineages, calibrated on the server
+   by its reference runner (step 6). Images are never rebuilt with `--pull`, so their ids, the recipe ids
+   and the lineages stay the same across deploys. An arm64 server (not offered by DigitalOcean; Hetzner
+   CAX, AWS Graviton) whose images match the committed ids keeps the recipes as committed.
+4. **keys** (see "Secrets"): makes the site's own keys on the server and copies only the keys the
+   server needs from this machine, checked by public key first.
+5. **fund and chain**: `fund-site.ts` runs here (the deployer key stays here): SOL and tLINE to the
+   site's verifier owner, SOL to the Core authority. Then `site-chain.ts` on the server registers the
+   site's reference runner and two verifiers on devnet (`register` with the server's capabilities digest,
+   `bond` min_bond for the two verifiers), owner = the site's owner key. Every transaction is appended
+   to `scripts/deploy/SITE-DEVNET.md`.
+6. **activate**: backs up Core's database (when the release changes), switches `/opt/lineage/current`,
+   writes `/var/lib/lineage/site/network.json` (config/network.json plus the devnet `chain` block, daily
+   epochs), installs the units and the Caddyfile, restarts, waits for health, then starts
+   `lineage-bootstrap` (recipes, snapshots, reference flag, calibrations: minutes per recipe) and the
+   workers.
+
+| Unit | What | Listens | Memory cap |
+|---|---|---|---|
+| `lineage-core` | Core, chain mode devnet, data `/var/lib/lineage/core` | 127.0.0.1:9660 | 1 GB |
+| `lineage-web` | dashboard, Wallet page, `/chain` RPC proxy and faucet | 127.0.0.1:9661 | 768 MB |
+| `lineage-gate` | rate limits, CORS, method and path allowlists, body cap, stream cap (`gate.ts`) | 127.0.0.1:9662 | 256 MB |
+| `caddy` | HTTPS for `<ip-dashes>.sslip.io` and `DOMAIN`, gzip, security headers, everything to the gate | 80, 443 | 256 MB |
+| `lineage-bootstrap` | one shot per deploy: lineages for the served recipes | | 1 GB |
+| `lineage-reference` | reference runner (calibrations, reference replays, audits) | | 1 GB |
+| `lineage-verifier@v1`, `@v2` | two honest verifiers, bonded on devnet | | 1 GB each |
+| `lineage-author` (optional) | minbpe TEST agent, scripted candidates | | 1 GB |
+| `lineage-runtime` (optional, disabled) | hosted runtime (`packages/runtime`) | | 1 GB |
+
+The worker caps cover the Bun processes. Sandboxes run under dockerd with each recipe's own limits
+(`limits` in `recipe.yml`: 2 CPUs and 2048 MB for the default recipes), outside the unit caps.
+
+Public surface (the gate refuses everything else before it reaches Core or the dashboard):
+
+| Path | Methods | Limit per client address | CORS |
+|---|---|---|---|
+| `/v1/*` except `/v1/admin/*` | GET, HEAD | 120 per minute, burst 60 | `*` |
+| `/api/*`, `/live/*` | GET, HEAD | 240 per minute, burst 120 | `*` |
+| `/v1/bounties/:id/terms`, `/api/bounties/:id/terms` | PUT | 10 per minute | `*` |
+| `/chain/rpc` | POST (web keeps its method allowlist) | 120 per minute, burst 40 | same origin only |
+| `/chain/faucet` | POST (web keeps its per-wallet 24 h and 30 per hour limits) | 3 per hour | same origin only |
+| pages and assets | GET, HEAD | 600 per minute | none |
+| event streams (`/live/events`, `/api/events`, `/v1/events`) | GET | 4 open per address, 400 in all | |
+
+Bodies over 64 KB are refused by the gate (256 KB by Caddy). Core's write API is not public on this
+site: outside workers cannot join through it (open `POST /v1/*` in `gate.ts` when they should).
+
+## Secrets
+
+Never printed by any script; keys are compared and reported by public key only. All key files on the
+server are owned by `lineage`, mode 600, in mode 700 directories.
+
+| File on the server | Public key | Origin | Used by |
+|---|---|---|---|
+| `~lineage/.config/lineage/site/admin.json` | made on the server | `site-keys.ts` | Core `--admin-key` (only its public half is read), bootstrap |
+| `~lineage/.config/lineage/site/owner.json` | made on the server | `site-keys.ts` | owns the site's verifiers on chain (pays their burn and bond) |
+| `~lineage/.config/lineage/site/verifier-{ref,v1,v2}.json` | made on the server | `site-keys.ts` | reference runner and verifiers |
+| `~lineage/.config/lineage/devnet/core-authority.json` | `CjNUnQ3v2FRQJiMr16CfaFWCdzJ3nqq1VvY2zAgsc4j9` | copied from this machine | Core's chain bridge: `post_epoch`, `slash`, `migrate_agent` |
+| `~lineage/.config/lineage/devnet/faucet.json` | `FX4UjRbmbLHJ6K6RTvYcV4bFA9Yai2qntnPNex31GiH6` | copied | the Wallet page's tLINE faucet |
+| `~lineage/.config/lineage/devnet/agent-minbpe.json` (WITH_AUTHOR=1) | `BFPxdave7NVSXztGEZA5iZ7FiBDKRsuZmS9wZn2J1WBV` | copied | `lineage-author` |
+| `~lineage/.config/lineage/devnet/runtime-authority.json` (WITH_RUNTIME=1) | `DCmdy5MoAfnN6fn3nVW27db62ZwtjoksqSqdjAc8VPk4` | copied | `lineage-runtime` (Core only gets the public key file `runtime-authority.pub`) |
+| `~lineage/.config/lineage/model.env` (WITH_RUNTIME=1) | | copied | `lineage-runtime` |
+| `~lineage/.config/lineage/rpc.env` (only if it exists here) | | copied | the dashboard's RPC proxy, status |
+
+The devnet deployer key (`CVEZW...`, registry and launch admin, upgrade authority) never leaves this
+machine. A key already on the server with a different public key is never replaced (deploy stops).
+Core's chain bridge always uses the public devnet RPC named in `scripts/devnet/devnet.json`; do not put a
+keyed RPC URL into the site's `network.json` `chain.rpc_url`, because Core publishes that field at
+`GET /v1/chain`.
+
+**One Core authority at a time.** The site's Core holds the registry's Core authority key and posts
+every epoch it closes (daily), oldest first, never at or before the chain's last epoch. While the site
+runs, `scripts/devnet/e2e-devnet.ts` on this machine (which posts epochs with the same key) races it:
+whichever posts epoch N first wins and the other's epoch N is refused. Stop the site's Core
+(`deploy.sh <host> stop`) for the duration of a devnet e2e run, or run the site read only (delete
+`devnet/core-authority.json` on the server; its Core then only reads). The same holds for the runtime
+authority: run `lineage-runtime` on the site or on this machine, not both.
+
+## Day to day
+
+```sh
+scripts/deploy/deploy.sh <host> status            # units, memory, Core health, chain read, vaults, verifiers, faucet, SOL, disk
+scripts/deploy/deploy.sh <host> code              # ship HEAD and activate it
+scripts/deploy/deploy.sh <host> fund              # top up and re-register (idempotent)
+ssh -i ~/.ssh/lineage_site root@<host> journalctl -u lineage-core -f
+```
+
+`status` prints the Core authority's and the site owner's SOL, the faucet's SOL and tLINE, and the
+registry vaults as Core last read them. Top-ups: `fund` (site owner, Core authority from the deployer),
+`apps/web/scripts/fund-faucet.ts` (faucet). Private canaries go in `/var/lib/lineage/canaries/<recipe name>/`
+(Core rereads it every 60 s); without them the site injects none.
+
+## Roll back
+
+```sh
+scripts/deploy/deploy.sh <host> rollback              # previous release, data kept
+scripts/deploy/deploy.sh <host> rollback --with-data  # also restores the Core database backed up when the current release was activated
+scripts/deploy/deploy.sh <host> code                  # forward again (or DEPLOY_REF=<commit>)
+```
+
+Each activation of a new release backs up `core.db` (`sqlite3 .backup`) to `/var/lib/lineage/backups/`
+(last five kept). Core's migrations only go forward, so roll back with `--with-data` when the newer
+release added a migration; the data replaced by the restore is kept next to the backups.
+
+## Stop
+
+```sh
+scripts/deploy/deploy.sh <host> stop        # every lineage unit and Caddy stopped and disabled (site offline, data kept)
+scripts/deploy/deploy.sh <host> start
+scripts/deploy/deploy.sh <host> wipe-keys   # remove the keys copied from this machine
+```
+
+To retire the server: `stop`, `wipe-keys`, then destroy the droplet. The site's verifiers keep their
+devnet bonds until their owner key (on the server) requests an unbond; back up
+`~lineage/.config/lineage/site/` first if those bonds should be recovered.
+
+## Size and cost
+
+DigitalOcean Basic droplet prices, read from https://www.digitalocean.com/pricing/droplets on 2026-10-08:
+
+| Plan | vCPU | RAM | SSD | Transfer | Price |
+|---|---|---|---|---|---|
+| Basic | 2 | 4 GiB | 80 GiB | 4,000 GiB | $24.00/mo ($0.03571/h) |
+| **Basic (recommended)** | **4** | **8 GiB** | **160 GiB** | **5,000 GiB** | **$48.00/mo ($0.07143/h)** |
+| Basic | 8 | 16 GiB | 320 GiB | 6,000 GiB | $96.00/mo ($0.14286/h) |
+
+Backups: 20% of the droplet price weekly, 30% daily (same page). Why 8 GiB: three workers can each hold
+one sandbox at 2048 MB (the default recipes' limit) at the same time, next to Core, the dashboard, the
+gate, Caddy and dockerd; the 4 GiB plan works with its swapfile but replays then queue and slow down.
+Disk: the rust and python images are 1.35 GB and 0.42 GB (RUNBOOK), plus mirrors and dependency layers
+(about 2 GB after every recipe had run on the Mac). DigitalOcean offers no arm64 droplets; the kit
+defaults to amd64 and recalibrates there.
+
+Devnet costs (test SOL, no money): each `post_epoch` locks 0.00148844 SOL of Epoch account rent
+(measured on epoch 2's account, 165 bytes, 2026-10-08) plus the 5,000 lamport fee, once a day. Verifier
+registration and bonds: three burns of 1 tLINE and two bonds of 5 tLINE, plus fees and rent. The model
+spend of the optional runtime is real money and is capped by `runtime.json`.
+
+## Tested
+
+`scripts/deploy/dryrun.sh` runs the real deploy.sh over real ssh against a local systemd Ubuntu 24.04
+container (`jrei/systemd-ubuntu`, pinned by digest, amd64, label `lineage=1`, removed afterwards). There is
+no Docker in that container, so the sandbox units are skipped there and nothing is sent on chain (fund
+and site-chain run as plans); Core runs in devnet chain mode read only and Caddy uses internal TLS. The
+last result is `scripts/deploy/DRYRUN-LAST.json`. Gate unit tests: `bun test scripts/deploy`. The sandbox
+units, the amd64 recalibration and the devnet registration run for the first time on the real server.
