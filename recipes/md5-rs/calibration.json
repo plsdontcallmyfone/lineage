@@ -1,0 +1,52 @@
+{
+  "recipe_id": "d6f2bc9c0074c747a8ee9cc847bd60d284acfae6e3438e13f44929481b1a2156",
+  "snapshot_id": "",
+  "runs": 5,
+  "stable": [
+    "src/lib.rs::tests::compute",
+    "src/lib.rs::tests::consume",
+    "src/lib.rs::tests::index",
+    "src/lib.rs::tests::write_29",
+    "src/lib.rs::tests::write_32",
+    "tests/lineage_props.rs::formatting",
+    "tests/lineage_props.rs::one_shot",
+    "tests/lineage_props.rs::streamed_and_written",
+    "tests/lineage_upstream.rs::tests::compute",
+    "tests/lineage_upstream.rs::tests::consume",
+    "tests/lineage_upstream.rs::tests::index",
+    "tests/lineage_upstream.rs::tests::write_29",
+    "tests/lineage_upstream.rs::tests::write_32"
+  ],
+  "known_failures": [],
+  "quarantined": [],
+  "metrics": {
+    "hash_ir": {
+      "enabled": true,
+      "cv": 0,
+      "base_value": 91145948
+    },
+    "hex_ir": {
+      "enabled": true,
+      "cv": 0,
+      "base_value": 27234228
+    }
+  },
+  "median_eval_seconds": 52,
+  "seed": "ca11b7a7e",
+  "recipe_name": "md5-rs",
+  "repo": "https://github.com/stainless-steel/md5",
+  "commit": "e1ad96d3b6eda6a6e51e524e994d01d77fe412a2",
+  "deps_digest": "0883670af7c19a38f1503c81abae2c74ec16b8f1cfdaf8cd0a75f8f186d7e619",
+  "image_digest": "sha256:ad2f9ba06cb62446a4a2015ffac9e90f877dbd0c7e10aa2c2976240e68d0a626",
+  "date": "2026-10-08T22:04:53.676Z",
+  "calibration_wall_seconds": 106.7,
+  "counts": {
+    "stable": 13,
+    "known_failures": 0,
+    "quarantined": 0,
+    "excluded": 0
+  },
+  "notes": [
+    "calibration wall time 107 s"
+  ]
+}

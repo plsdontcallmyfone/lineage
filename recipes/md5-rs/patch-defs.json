@@ -1,0 +1,62 @@
+{
+  "canaries": [
+    {
+      "name": "short_padding",
+      "kind": "perf",
+      "target": "hash_ir",
+      "expect": "tests_fail",
+      "note": "Presented as avoiding a second padding block when exactly 56 bytes are buffered (<= instead of <); no 0x80 marker is written and the length lands where it should have gone, so every message of length 56 mod 64 gets a wrong digest.",
+      "edits": [
+        [
+          "src/lib.rs",
+          "            &PADDING[..(if k < 56 { 56 - k } else { 120 - k })],\n",
+          "            &PADDING[..(if k <= 56 { 56 - k } else { 120 - k })],\n"
+        ]
+      ]
+    },
+    {
+      "name": "upper_hex_pad",
+      "kind": "perf",
+      "target": "hex_ir",
+      "expect": "equivalence_changed",
+      "note": "Presented as one formatter call instead of sixteen for upper-case hex (build the string, then formatter.pad); pad honours width, fill and precision, which the impl ignored before, so {:<36X} or {:.4X} now print differently. Tests only format without flags in upper case.",
+      "edits": [
+        [
+          "src/lib.rs",
+          "macro_rules! implement {\n    ($kind:ident, $format:expr) => {\n        impl core::fmt::$kind for Digest {\n            fn fmt(&self, formatter: &mut core::fmt::Formatter) -> core::fmt::Result {\n                for value in &self.0 {\n                    write!(formatter, $format, value)?;\n                }\n                Ok(())\n            }\n        }\n    };\n}\n\nimplement!(LowerHex, \"{:02x}\");\nimplement!(UpperHex, \"{:02X}\");\n",
+          "macro_rules! implement {\n    ($kind:ident, $format:expr) => {\n        impl core::fmt::$kind for Digest {\n            fn fmt(&self, formatter: &mut core::fmt::Formatter) -> core::fmt::Result {\n                for value in &self.0 {\n                    write!(formatter, $format, value)?;\n                }\n                Ok(())\n            }\n        }\n    };\n}\n\nimplement!(LowerHex, \"{:02x}\");\n\nimpl core::fmt::UpperHex for Digest {\n    fn fmt(&self, formatter: &mut core::fmt::Formatter) -> core::fmt::Result {\n        let mut s = [0u8; 32];\n        for (i, value) in self.0.iter().enumerate() {\n            s[2 * i] = b\"0123456789ABCDEF\"[(value >> 4) as usize];\n            s[2 * i + 1] = b\"0123456789ABCDEF\"[(value & 15) as usize];\n        }\n        formatter.pad(core::str::from_utf8(&s).unwrap())\n    }\n}\n"
+        ]
+      ]
+    },
+    {
+      "name": "chunks_exact",
+      "kind": "perf",
+      "target": "hash_ir",
+      "expect": "no_improvement",
+      "note": "Presented as letting the compiler drop bounds checks in the block loop with chunks_exact; the loop was already check-free after the length test, so the instruction count does not move by the required 1%.",
+      "edits": [
+        [
+          "src/lib.rs",
+          "    while data.len() >= 64 {\n        let block = <&[u8; 64]>::try_from(&data[..64]).unwrap();\n        transform(&mut context.state, block);\n        data = &data[64..];\n    }\n    context.buffer[..data.len()].copy_from_slice(data);\n",
+          "    let mut blocks = data.chunks_exact(64);\n    for block in &mut blocks {\n        transform(&mut context.state, <&[u8; 64]>::try_from(block).unwrap());\n    }\n    let rest = blocks.remainder();\n    context.buffer[..rest.len()].copy_from_slice(rest);\n"
+        ]
+      ]
+    }
+  ],
+  "candidates": [
+    {
+      "name": "hex_table",
+      "kind": "perf",
+      "target": "hex_ir",
+      "expect": "accepted",
+      "note": "LowerHex and UpperHex (and Debug, which uses LowerHex) fill a 32-byte buffer from a 16-entry digit table and write it with one write_str, instead of sixteen write!(\"{:02x}\") calls through the formatting machinery. Like before, formatter flags are ignored, so every output is unchanged.",
+      "edits": [
+        [
+          "src/lib.rs",
+          "macro_rules! implement {\n    ($kind:ident, $format:expr) => {\n        impl core::fmt::$kind for Digest {\n            fn fmt(&self, formatter: &mut core::fmt::Formatter) -> core::fmt::Result {\n                for value in &self.0 {\n                    write!(formatter, $format, value)?;\n                }\n                Ok(())\n            }\n        }\n    };\n}\n\nimplement!(LowerHex, \"{:02x}\");\nimplement!(UpperHex, \"{:02X}\");\n",
+          "macro_rules! implement {\n    ($kind:ident, $digits:expr) => {\n        impl core::fmt::$kind for Digest {\n            fn fmt(&self, formatter: &mut core::fmt::Formatter) -> core::fmt::Result {\n                let mut s = [0u8; 32];\n                for (i, value) in self.0.iter().enumerate() {\n                    s[2 * i] = $digits[(value >> 4) as usize];\n                    s[2 * i + 1] = $digits[(value & 15) as usize];\n                }\n                // ASCII digits only; write_str ignores flags, as the per-byte write! did\n                formatter.write_str(core::str::from_utf8(&s).unwrap())\n            }\n        }\n    };\n}\n\nimplement!(LowerHex, b\"0123456789abcdef\");\nimplement!(UpperHex, b\"0123456789ABCDEF\");\n"
+        ]
+      ]
+    }
+  ]
+}

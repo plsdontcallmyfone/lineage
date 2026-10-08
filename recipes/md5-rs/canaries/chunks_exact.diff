@@ -1,0 +1,21 @@
+diff --git a/src/lib.rs b/src/lib.rs
+--- a/src/lib.rs
++++ b/src/lib.rs
+@@ -196,12 +196,12 @@ fn consume(context: &mut Context, mut data: &[u8]) {
+         }
+         transform(&mut context.state, &context.buffer);
+     }
+-    while data.len() >= 64 {
+-        let block = <&[u8; 64]>::try_from(&data[..64]).unwrap();
+-        transform(&mut context.state, block);
+-        data = &data[64..];
++    let mut blocks = data.chunks_exact(64);
++    for block in &mut blocks {
++        transform(&mut context.state, <&[u8; 64]>::try_from(block).unwrap());
+     }
+-    context.buffer[..data.len()].copy_from_slice(data);
++    let rest = blocks.remainder();
++    context.buffer[..rest.len()].copy_from_slice(rest);
+ }
+ 
+ #[rustfmt::skip]

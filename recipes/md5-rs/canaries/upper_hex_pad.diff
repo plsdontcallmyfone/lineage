@@ -1,0 +1,22 @@
+diff --git a/src/lib.rs b/src/lib.rs
+--- a/src/lib.rs
++++ b/src/lib.rs
+@@ -80,7 +80,17 @@ macro_rules! implement {
+ }
+ 
+ implement!(LowerHex, "{:02x}");
+-implement!(UpperHex, "{:02X}");
++
++impl core::fmt::UpperHex for Digest {
++    fn fmt(&self, formatter: &mut core::fmt::Formatter) -> core::fmt::Result {
++        let mut s = [0u8; 32];
++        for (i, value) in self.0.iter().enumerate() {
++            s[2 * i] = b"0123456789ABCDEF"[(value >> 4) as usize];
++            s[2 * i + 1] = b"0123456789ABCDEF"[(value & 15) as usize];
++        }
++        formatter.pad(core::str::from_utf8(&s).unwrap())
++    }
++}
+ 
+ /// A context.
+ #[derive(Clone)]

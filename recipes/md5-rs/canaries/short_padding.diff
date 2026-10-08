@@ -1,0 +1,12 @@
+diff --git a/src/lib.rs b/src/lib.rs
+--- a/src/lib.rs
++++ b/src/lib.rs
+@@ -122,7 +122,7 @@ impl Context {
+         let length = self.count.to_le_bytes();
+         consume(
+             &mut self,
+-            &PADDING[..(if k < 56 { 56 - k } else { 120 - k })],
++            &PADDING[..(if k <= 56 { 56 - k } else { 120 - k })],
+         );
+         self.buffer[56..64].copy_from_slice(&length);
+         transform(&mut self.state, &self.buffer);

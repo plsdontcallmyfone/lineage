@@ -1,0 +1,33 @@
+diff --git a/src/lib.rs b/src/lib.rs
+--- a/src/lib.rs
++++ b/src/lib.rs
+@@ -67,20 +67,23 @@ impl core::ops::DerefMut for Digest {
+ }
+ 
+ macro_rules! implement {
+-    ($kind:ident, $format:expr) => {
++    ($kind:ident, $digits:expr) => {
+         impl core::fmt::$kind for Digest {
+             fn fmt(&self, formatter: &mut core::fmt::Formatter) -> core::fmt::Result {
+-                for value in &self.0 {
+-                    write!(formatter, $format, value)?;
++                let mut s = [0u8; 32];
++                for (i, value) in self.0.iter().enumerate() {
++                    s[2 * i] = $digits[(value >> 4) as usize];
++                    s[2 * i + 1] = $digits[(value & 15) as usize];
+                 }
+-                Ok(())
++                // ASCII digits only; write_str ignores flags, as the per-byte write! did
++                formatter.write_str(core::str::from_utf8(&s).unwrap())
+             }
+         }
+     };
+ }
+ 
+-implement!(LowerHex, "{:02x}");
+-implement!(UpperHex, "{:02X}");
++implement!(LowerHex, b"0123456789abcdef");
++implement!(UpperHex, b"0123456789ABCDEF");
+ 
+ /// A context.
+ #[derive(Clone)]

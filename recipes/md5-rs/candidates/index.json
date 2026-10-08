@@ -1,0 +1,10 @@
+{
+  "hex_table": {
+    "kind": "perf",
+    "target": "hex_ir",
+    "expect": "accepted",
+    "note": "LowerHex and UpperHex (and Debug, which uses LowerHex) fill a 32-byte buffer from a 16-entry digit table and write it with one write_str, instead of sixteen write!(\"{:02x}\") calls through the formatting machinery. Like before, formatter flags are ignored, so every output is unchanged.",
+    "lines": 15,
+    "guard": "ok"
+  }
+}

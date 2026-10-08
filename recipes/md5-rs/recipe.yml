@@ -1,0 +1,70 @@
+# stainless-steel/md5: the `md5` crate on crates.io, a small dependency-free MD5 implementation
+# (one of the most downloaded hashing crates; used for checksums, ETags, cache keys and legacy
+# protocol fields). Apache-2.0 OR MIT (LICENSE.md, Cargo.toml). No CONTRIBUTING, AI policy or
+# AGENTS file in the repository (checked 2026-10-08).
+#
+# Why: the transform is already unrolled, but the paths around it are not: finalize pushes the
+# padding through the general consume() path, and the LowerHex / UpperHex / Debug impls format
+# the digest with one write!("{:02x}") call per byte, which dominates the common
+# format!("{:x}", md5::compute(data)) for short inputs.
+#
+# Build: upstream's benches use #![feature(test)] (nightly only), so the build and tests select
+# the library, examples and test targets instead of --all-targets. Tests run --lib --tests
+# (no doc tests: libtest names them by line number, so any patch that moves lines would "fail"
+# them under new ids). Upstream's unit tests live in src/lib.rs (a protected block) and are copied
+# verbatim to tests/lineage_upstream.rs; they include hashing 512 MB and 4 GiB of zeros (the 4 GiB
+# buffer is untouched zero pages, so it costs time, not memory). tests/lineage_props.rs checks
+# digests against Python's hashlib around every block and padding boundary, streamed and through
+# io::Write, and every formatting of the digest.
+#
+# Determinism: native code under cachegrind, inputs only from $LINEAGE_SEED (FNV-1a ->
+# splitmix64, examples/lineage_support/rng.rs). The repository has no dependencies, so the
+# lockfile prepare generates offline is fixed. Calibrated on arm64.
+name: md5-rs
+class: rust
+requires: { arch: arm64 }
+repo: https://github.com/stainless-steel/md5
+commit: "e1ad96d3b6eda6a6e51e524e994d01d77fe412a2"
+image: "lineage/rust:m1@sha256:ad2f9ba06cb62446a4a2015ffac9e90f877dbd0c7e10aa2c2976240e68d0a626"
+workdir: /work/src
+prepare:
+  - cargo generate-lockfile --offline
+prepare_outputs: [Cargo.lock]
+build:
+  commands:
+    - cargo build --release --locked --offline --lib --examples --tests
+  artifacts: ["target/release/libmd5.rlib"]
+  reproducible: true
+test:
+  command: cargo test --release --locked --offline --no-fail-fast --lib --tests 2>&1
+  parser: libtest
+  exclude: []
+  timeout_s: 900
+equivalence:
+  command: target/release/examples/lineage_equiv "$LINEAGE_SEED"
+  output: stdout-digest
+metrics:
+  - name: hash_ir
+    kind: perf
+    direction: lower
+    deterministic: true
+    command: valgrind --tool=cachegrind --cache-sim=no --cachegrind-out-file=/dev/null target/release/examples/lineage_bench hash "$LINEAGE_SEED"
+    parser: cachegrind-ir
+    holdout: true
+    min_effect: 0.01
+  - name: hex_ir
+    kind: perf
+    direction: lower
+    deterministic: true
+    command: valgrind --tool=cachegrind --cache-sim=no --cachegrind-out-file=/dev/null target/release/examples/lineage_bench hex "$LINEAGE_SEED"
+    parser: cachegrind-ir
+    holdout: true
+    min_effect: 0.01
+patch:
+  allowed_paths: ["src/**"]
+  protected_paths: ["tests/**", "examples/**", "benches/**", "Cargo.toml", "Cargo.lock", "build.rs", "README.md", ".github/**", "**/*.yml"]
+  protected_blocks:
+    - { glob: "src/**/*.rs", start: "^\\s*#\\[cfg\\(test\\)\\]" }
+  max_files: 5
+  max_lines: 200
+limits: { cpus: 2, memory_mb: 3072, pids: 256, wall_s: 1200, disk_mb: 4096 }

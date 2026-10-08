@@ -1,0 +1,26 @@
+{
+  "short_padding": {
+    "kind": "perf",
+    "target": "hash_ir",
+    "expect": "tests_fail",
+    "note": "Presented as avoiding a second padding block when exactly 56 bytes are buffered (<= instead of <); no 0x80 marker is written and the length lands where it should have gone, so every message of length 56 mod 64 gets a wrong digest.",
+    "lines": 2,
+    "guard": "ok"
+  },
+  "upper_hex_pad": {
+    "kind": "perf",
+    "target": "hex_ir",
+    "expect": "equivalence_changed",
+    "note": "Presented as one formatter call instead of sixteen for upper-case hex (build the string, then formatter.pad); pad honours width, fill and precision, which the impl ignored before, so {:<36X} or {:.4X} now print differently. Tests only format without flags in upper case.",
+    "lines": 12,
+    "guard": "ok"
+  },
+  "chunks_exact": {
+    "kind": "perf",
+    "target": "hash_ir",
+    "expect": "no_improvement",
+    "note": "Presented as letting the compiler drop bounds checks in the block loop with chunks_exact; the loop was already check-free after the length test, so the instruction count does not move by the required 1%.",
+    "lines": 10,
+    "guard": "ok"
+  }
+}
