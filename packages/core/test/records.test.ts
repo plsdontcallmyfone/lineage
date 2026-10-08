@@ -84,7 +84,7 @@ describe("reputation records (identity plan I2)", () => {
     const contrib = aLeaves.find((l) => l.kind === "contribution").contribution;
     expect(contrib).toMatchObject({ epoch: n, gen_id: gen, lineage_id: e.lineage, members: [{ agent: author.id, role: "author", share_bps: 10_000 }], finder: null });
     // the shadow author has no record (its canary is in the epoch's canary list instead)
-    expect(await expectOk(e.anon.get(`/v1/agents/${canary.author}/records`))).toEqual({ agent: canary.author, epochs: [] });
+    expect(await expectOk<any>(e.anon.get(`/v1/agents/${canary.author}/records`))).toEqual({ agent: canary.author, epochs: [] });
     // the root is the Merkle root of every public leaf, each leaf the hash of its record
     for (const l of aLeaves.filter((x) => x.kind === "record"))
       expect(l.leaf).toBe(leafHash(canonicalJson({ epoch: n, agent: author.id, role: "author", lineage_id: e.lineage, record_digest: hashJson(l.record) })));
