@@ -74,9 +74,16 @@ fn instruction_vectors() -> Vec<Value> {
             data: lr::instruction::MigrateConfig { max_rebate_per_epoch: 654_321 }.data(),
         }),
         ix_json("registry.split", &env.split_ix()),
-        ix_json("registry.post_epoch", &env.post_epoch_ix(&k(2), lr::PostEpochArgs { epoch: 9, payout_root: [1; 32], lineage_root: [2; 32],
+        ix_json("registry.post_epoch", &env.post_epoch_ix(&k(2), lr::PostEpochArgs { epoch: 9, payout_root: [1; 32], lineage_root: [2; 32], record_root: [3; 32],
             total_units_micro: 3_500_000, pool_amount: 10, rebate_amount: 20 })),
     ];
+    v.push(ix_json("registry.rotate_agent_key", &env.rotate_agent_key_ix(&owner, &agent, &k(12))));
+    v.push(ix_json("registry.revoke_agent_key", &env.owner_agent_ix(&owner, &agent, lr::instruction::RevokeAgentKey {}.data())));
+    v.push(ix_json("registry.set_profile", &env.set_profile_ix(&k(12), &agent, [0xab; 32], 7)));
+    v.push(ix_json("registry.propose_owner", &env.owner_agent_ix(&owner, &agent, lr::instruction::ProposeOwner { new_owner: k(13) }.data())));
+    v.push(ix_json("registry.accept_owner", &env.accept_owner_ix(&k(13), &agent)));
+    v.push(ix_json("registry.migrate_agent", &migrate_agent_ix(&k(1), &agent)));
+    v.push(ix_json("registry.migrate_epoch", &migrate_epoch_ix(&k(1), 9)));
     let claim = lr::ClaimArgs { agent, dest_kind: 0, wallet: Pubkey::default(), amount: 99, leaf: [8; 32], proof: vec![[5; 32], [6; 32]] };
     v.push(ix_json("registry.claim.agent_wallet", &env.claim_ix(&owner, 9, claim.clone(), Some(agent_record(&agent)), &owner_token)));
     let claim2 = lr::ClaimArgs { dest_kind: 2, wallet: k(11), ..claim };
@@ -181,9 +188,17 @@ fn account_snapshots() -> Vec<Value> {
     let l = e.launch_agent(Keypair::new(), default_launch_args());
     e.fund(&reserve_vault(), 1_000);
     let core = e.core.insecure_clone();
-    let ix = e.post_epoch_ix(&core.pubkey(), lr::PostEpochArgs { epoch: 4, payout_root: [1; 32], lineage_root: [2; 32], total_units_micro: 3,
+    let ix = e.post_epoch_ix(&core.pubkey(), lr::PostEpochArgs { epoch: 4, payout_root: [1; 32], lineage_root: [2; 32], record_root: [3; 32], total_units_micro: 3,
         pool_amount: 0, rebate_amount: 1_000 });
     ok(send(&mut e.svm, &core, &[], vec![ix]));
+    // Agent v2 fields with values: a rotation, a profile and a pending owner transfer.
+    let new_key = Keypair::new();
+    let ix = e.rotate_agent_key_ix(&owner.pubkey(), &agent.pubkey(), &new_key.pubkey());
+    ok(send(&mut e.svm, &owner, &[&new_key], vec![ix]));
+    let ix = e.set_profile_ix(&new_key.pubkey(), &agent.pubkey(), [0xcd; 32], 2);
+    ok(send(&mut e.svm, &owner, &[&new_key], vec![ix]));
+    let ix = e.owner_agent_ix(&owner.pubkey(), &agent.pubkey(), lr::instruction::ProposeOwner { new_owner: k(13) }.data());
+    ok(send(&mut e.svm, &owner, &[], vec![ix]));
     let sl_id = [0x77; 32];
     let ix = e.slash_ix(&core.pubkey(), &agent.pubkey(), lr::OFFENCE_REVEAL, 4, sl_id);
     ok(send(&mut e.svm, &core, &[], vec![ix]));
@@ -214,10 +229,13 @@ fn account_snapshots() -> Vec<Value> {
         json!({ "type": "Agent", "data": raw(&agent_record(&agent.pubkey())), "fields": {
             "agent": a.agent.to_string(), "owner": a.owner.to_string(), "kind": a.kind, "hosted": a.hosted, "burned": a.burned.to_string(),
             "bond": a.bond.to_string(), "unbondAmount": a.unbond_amount.to_string(), "unbondReadyAt": a.unbond_ready_at.to_string(),
-            "operator": hex(&a.operator), "capabilities": hex(&a.capabilities), "registeredAt": a.registered_at.to_string() } }),
+            "operator": hex(&a.operator), "capabilities": hex(&a.capabilities), "registeredAt": a.registered_at.to_string(),
+            "signingKey": a.signing_key.to_string(), "keySeq": a.key_seq, "keyChangedAt": a.key_changed_at.to_string(),
+            "profileDigest": hex(&a.profile_digest), "profileSeq": a.profile_seq, "pendingOwner": a.pending_owner.to_string(),
+            "ownerSince": a.owner_since.to_string() } }),
         json!({ "type": "Epoch", "data": raw(&epoch_pda(4)), "fields": {
             "epoch": ep.epoch.to_string(), "payoutRoot": hex(&ep.payout_root), "lineageRoot": hex(&ep.lineage_root), "totalPayable": ep.total_payable.to_string(),
-            "rebateAmount": ep.rebate_amount.to_string(), "claimedAmount": ep.claimed_amount.to_string() } }),
+            "recordRoot": hex(&ep.record_root), "rebateAmount": ep.rebate_amount.to_string(), "claimedAmount": ep.claimed_amount.to_string() } }),
         json!({ "type": "LaunchConfig", "data": raw(&launch_config()), "fields": {
             "admin": lc.admin.to_string(), "runtimeAuthority": lc.runtime_authority.to_string(), "lineMint": lc.line_mint.to_string(),
             "dbcConfig": lc.dbc_config.to_string(), "agentComputeBps": lc.agent_compute_bps, "protocolBps": lc.protocol_bps,

@@ -330,6 +330,7 @@ pub mod lineage_registry {
         e.epoch = args.epoch;
         e.payout_root = args.payout_root;
         e.lineage_root = args.lineage_root;
+        e.record_root = args.record_root;
         e.total_units_micro = args.total_units_micro;
         e.pool_amount = args.pool_amount;
         e.rebate_amount = args.rebate_amount;
@@ -345,8 +346,126 @@ pub mod lineage_registry {
         }
         c.epochs_posted += 1;
         c.last_epoch = args.epoch;
-        emit!(EpochPosted { epoch: args.epoch, payout_root: args.payout_root, lineage_root: args.lineage_root, pool_amount: args.pool_amount,
-            rebate_amount: args.rebate_amount, total_units_micro: args.total_units_micro });
+        emit!(EpochPosted { epoch: args.epoch, payout_root: args.payout_root, lineage_root: args.lineage_root, record_root: args.record_root,
+            pool_amount: args.pool_amount, rebate_amount: args.rebate_amount, total_units_micro: args.total_units_micro });
+        Ok(())
+    }
+
+    /// Owner and the new key (Agent v2, identity plan I1): points the agent at `new_key`. The agent
+    /// id never changes; `signing_key` is the key that speaks for it. The new key signs, so nobody
+    /// can point an agent at a key they do not hold. Also how a revoked agent is restored.
+    pub fn rotate_agent_key(ctx: Context<RotateAgentKey>) -> Result<()> {
+        require!(!ctx.accounts.config.paused, RegistryError::Paused);
+        let new_key = ctx.accounts.new_key.key();
+        require!(new_key != Pubkey::default(), RegistryError::InvalidParams);
+        let a = &mut ctx.accounts.agent_record;
+        let old = a.signing_key;
+        a.signing_key = new_key;
+        a.key_seq = a.key_seq.checked_add(1).ok_or(RegistryError::Overflow)?;
+        a.key_changed_at = Clock::get()?.unix_timestamp;
+        emit!(KeyRotated { agent: a.agent, old, new: new_key, seq: a.key_seq });
+        Ok(())
+    }
+
+    /// Owner: kill switch for a leaked signing key (`signing_key` = default; Core refuses every
+    /// request for the agent until a rotation). Allowed while paused: it only removes power.
+    pub fn revoke_agent_key(ctx: Context<OwnerAgent>) -> Result<()> {
+        let a = &mut ctx.accounts.agent_record;
+        let old = a.signing_key;
+        a.signing_key = Pubkey::default();
+        a.key_seq = a.key_seq.checked_add(1).ok_or(RegistryError::Overflow)?;
+        a.key_changed_at = Clock::get()?.unix_timestamp;
+        emit!(KeyRevoked { agent: a.agent, old, seq: a.key_seq });
+        Ok(())
+    }
+
+    /// The agent's current signing key: sha256 of its canonical profile document (identity plan
+    /// 2.3). `seq` must exceed the last one, so an older signed profile cannot be replayed.
+    pub fn set_profile(ctx: Context<SetProfile>, digest: [u8; 32], seq: u32) -> Result<()> {
+        require!(!ctx.accounts.config.paused, RegistryError::Paused);
+        let a = &mut ctx.accounts.agent_record;
+        require!(a.signing_key != Pubkey::default(), RegistryError::KeyRevoked);
+        require_keys_eq!(ctx.accounts.signing_key.key(), a.signing_key, RegistryError::Unauthorized);
+        require!(seq > a.profile_seq, RegistryError::ProfileSeq);
+        a.profile_digest = digest;
+        a.profile_seq = seq;
+        emit!(ProfileSet { agent: a.agent, digest, seq });
+        Ok(())
+    }
+
+    /// Owner: first step of a public owner transfer (owner decision Q3). `Pubkey::default()`
+    /// cancels a pending proposal. Nothing changes until the proposed owner accepts.
+    pub fn propose_owner(ctx: Context<OwnerAgent>, new_owner: Pubkey) -> Result<()> {
+        require!(!ctx.accounts.config.paused, RegistryError::Paused);
+        let a = &mut ctx.accounts.agent_record;
+        require!(new_owner != a.owner, RegistryError::InvalidParams);
+        a.pending_owner = new_owner;
+        emit!(OwnerProposed { agent: a.agent, owner: a.owner, proposed: new_owner });
+        Ok(())
+    }
+
+    /// The proposed owner: completes the transfer. `owner_since` (the credential's
+    /// `controller_since`) restarts now. The bond, its unbond request and `agent:<id>:wallet`
+    /// payouts follow the owner; the signing key does not change (the new owner rotates it).
+    pub fn accept_owner(ctx: Context<AcceptOwner>) -> Result<()> {
+        require!(!ctx.accounts.config.paused, RegistryError::Paused);
+        let a = &mut ctx.accounts.agent_record;
+        require!(a.pending_owner != Pubkey::default(), RegistryError::NoPendingOwner);
+        require_keys_eq!(ctx.accounts.new_owner.key(), a.pending_owner, RegistryError::Unauthorized);
+        let old = a.owner;
+        a.owner = a.pending_owner;
+        a.pending_owner = Pubkey::default();
+        a.owner_since = Clock::get()?.unix_timestamp;
+        emit!(OwnerChanged { agent: a.agent, old, new: a.owner, at: a.owner_since });
+        Ok(())
+    }
+
+    /// Anyone (the payer adds the rent): grows an `Agent` written by the first layout to Agent v2,
+    /// `signing_key` = the agent key, `owner_since` = `registered_at`. Every instruction that reads
+    /// an Agent fails on a v1 record until this runs.
+    pub fn migrate_agent(ctx: Context<MigrateAgent>) -> Result<()> {
+        let info = ctx.accounts.agent_record.to_account_info();
+        let new_len = 8 + Agent::INIT_SPACE;
+        require!(info.data_len() == new_len - AGENT_V1_TAIL, RegistryError::InvalidParams);
+        {
+            let d = info.try_borrow_data()?;
+            require!(d[..8] == *Agent::DISCRIMINATOR, RegistryError::InvalidParams);
+        }
+        grow(&info, &ctx.accounts.payer.to_account_info(), &ctx.accounts.system_program.to_account_info(), new_len)?;
+        let mut a = Agent::try_deserialize(&mut &info.try_borrow_data()?[..])?;
+        let expected = Pubkey::create_program_address(&[AGENT_SEED, a.agent.as_ref(), &[a.bump]], &crate::ID)
+            .map_err(|_| error!(RegistryError::InvalidParams))?;
+        require_keys_eq!(expected, info.key(), RegistryError::InvalidParams);
+        a.signing_key = a.agent;
+        a.key_seq = 0;
+        a.key_changed_at = 0;
+        a.profile_digest = [0; 32];
+        a.profile_seq = 0;
+        a.pending_owner = Pubkey::default();
+        a.owner_since = a.registered_at;
+        a.v2_reserved = [0; 32];
+        a.try_serialize(&mut &mut info.try_borrow_mut_data()?[..])?;
+        emit!(AgentMigrated { agent: a.agent });
+        Ok(())
+    }
+
+    /// Anyone (the payer adds the rent): grows an `Epoch` posted before `record_root` existed, with
+    /// a zero `record_root` (none), so its claims keep working after the upgrade.
+    pub fn migrate_epoch(ctx: Context<MigrateEpoch>) -> Result<()> {
+        let info = ctx.accounts.epoch.to_account_info();
+        let new_len = 8 + Epoch::INIT_SPACE;
+        require!(info.data_len() == new_len - EPOCH_V1_TAIL, RegistryError::InvalidParams);
+        {
+            let d = info.try_borrow_data()?;
+            require!(d[..8] == *Epoch::DISCRIMINATOR, RegistryError::InvalidParams);
+        }
+        grow(&info, &ctx.accounts.payer.to_account_info(), &ctx.accounts.system_program.to_account_info(), new_len)?;
+        let mut e = Epoch::try_deserialize(&mut &info.try_borrow_data()?[..])?;
+        let expected = Pubkey::create_program_address(&[EPOCH_SEED, &e.epoch.to_le_bytes(), &[e.bump]], &crate::ID)
+            .map_err(|_| error!(RegistryError::InvalidParams))?;
+        require_keys_eq!(expected, info.key(), RegistryError::InvalidParams);
+        e.record_root = [0; 32];
+        e.try_serialize(&mut &mut info.try_borrow_mut_data()?[..])?;
         Ok(())
     }
 
@@ -425,6 +544,14 @@ fn init_agent(a: &mut Agent, agent: Pubkey, owner: Pubkey, kind: u8, mint: Pubke
     a.capabilities = capabilities;
     a.registered_at = Clock::get()?.unix_timestamp;
     a.bump = bump;
+    a.signing_key = agent;
+    a.key_seq = 0;
+    a.key_changed_at = 0;
+    a.profile_digest = [0; 32];
+    a.profile_seq = 0;
+    a.pending_owner = Pubkey::default();
+    a.owner_since = a.registered_at;
+    a.v2_reserved = [0; 32];
     Ok(())
 }
 
@@ -584,7 +711,30 @@ pub struct Agent {
     pub capabilities: [u8; 32],
     pub registered_at: i64,
     pub bump: u8,
+    // ---- Agent v2 (identity plan I1), appended; `migrate_agent` grows v1 records ----
+    /// The key that currently speaks for the agent (equal to `agent` until the first rotation);
+    /// `Pubkey::default()` means revoked.
+    pub signing_key: Pubkey,
+    /// Rotations and revocations so far.
+    pub key_seq: u32,
+    /// Unix seconds of the last rotation or revocation (0 if none).
+    pub key_changed_at: i64,
+    /// sha256 of the canonical profile document (identity plan 2.3), zero if none.
+    pub profile_digest: [u8; 32],
+    pub profile_seq: u32,
+    /// Proposed owner of a two-step transfer, default if none.
+    pub pending_owner: Pubkey,
+    /// Unix seconds since the current owner controls the agent (registration, or the last
+    /// `accept_owner`): the credential's `controller_since`.
+    pub owner_since: i64,
+    /// Room for an attestation pointer (SAS or ERC-8004 id) without another migration.
+    pub v2_reserved: [u8; 32],
 }
+
+/// Bytes `Agent` gained in v2 (`migrate_agent`): 32 + 4 + 8 + 32 + 4 + 32 + 8 + 32.
+pub const AGENT_V1_TAIL: usize = 32 + 4 + 8 + 32 + 4 + 32 + 8 + 32;
+/// Bytes `Epoch` gained with `record_root` (`migrate_epoch`).
+pub const EPOCH_V1_TAIL: usize = 32;
 
 #[account]
 #[derive(InitSpace)]
@@ -601,6 +751,9 @@ pub struct Epoch {
     pub claims: u32,
     pub posted_at: i64,
     pub bump: u8,
+    /// Merkle root of the epoch's reputation and contribution records (identity plan 2.4), zero on
+    /// epochs posted before it existed. No leaf is verified onchain; readers verify offchain.
+    pub record_root: [u8; 32],
 }
 
 /// One per slash Core sent (PDA `slash`, slash id); its existence refuses a second landing.
@@ -643,6 +796,7 @@ pub struct PostEpochArgs {
     pub total_units_micro: u64,
     pub pool_amount: u64,
     pub rebate_amount: u64,
+    pub record_root: [u8; 32],
 }
 
 #[derive(AnchorSerialize, AnchorDeserialize, Clone, Debug)]
@@ -748,6 +902,55 @@ pub struct OwnerAgent<'info> {
     pub owner: Signer<'info>,
     #[account(mut, seeds = [AGENT_SEED, agent_record.agent.as_ref()], bump = agent_record.bump, has_one = owner @ RegistryError::Unauthorized)]
     pub agent_record: Box<Account<'info, Agent>>,
+}
+
+#[derive(Accounts)]
+pub struct RotateAgentKey<'info> {
+    #[account(seeds = [CONFIG_SEED], bump = config.bump)]
+    pub config: Box<Account<'info, Config>>,
+    pub owner: Signer<'info>,
+    pub new_key: Signer<'info>,
+    #[account(mut, seeds = [AGENT_SEED, agent_record.agent.as_ref()], bump = agent_record.bump, has_one = owner @ RegistryError::Unauthorized)]
+    pub agent_record: Box<Account<'info, Agent>>,
+}
+
+#[derive(Accounts)]
+pub struct SetProfile<'info> {
+    #[account(seeds = [CONFIG_SEED], bump = config.bump)]
+    pub config: Box<Account<'info, Config>>,
+    pub signing_key: Signer<'info>,
+    #[account(mut, seeds = [AGENT_SEED, agent_record.agent.as_ref()], bump = agent_record.bump)]
+    pub agent_record: Box<Account<'info, Agent>>,
+}
+
+#[derive(Accounts)]
+pub struct AcceptOwner<'info> {
+    #[account(seeds = [CONFIG_SEED], bump = config.bump)]
+    pub config: Box<Account<'info, Config>>,
+    pub new_owner: Signer<'info>,
+    #[account(mut, seeds = [AGENT_SEED, agent_record.agent.as_ref()], bump = agent_record.bump)]
+    pub agent_record: Box<Account<'info, Agent>>,
+}
+
+#[derive(Accounts)]
+pub struct MigrateAgent<'info> {
+    /// CHECK: the v1 layout cannot deserialize; owner (this program), discriminator, length and
+    /// PDA address are checked by hand.
+    #[account(mut, owner = crate::ID)]
+    pub agent_record: UncheckedAccount<'info>,
+    #[account(mut)]
+    pub payer: Signer<'info>,
+    pub system_program: Program<'info, System>,
+}
+
+#[derive(Accounts)]
+pub struct MigrateEpoch<'info> {
+    /// CHECK: as in `MigrateAgent`.
+    #[account(mut, owner = crate::ID)]
+    pub epoch: UncheckedAccount<'info>,
+    #[account(mut)]
+    pub payer: Signer<'info>,
+    pub system_program: Program<'info, System>,
 }
 
 #[derive(Accounts)]
@@ -942,9 +1145,46 @@ pub struct EpochPosted {
     pub epoch: u64,
     pub payout_root: [u8; 32],
     pub lineage_root: [u8; 32],
+    pub record_root: [u8; 32],
     pub pool_amount: u64,
     pub rebate_amount: u64,
     pub total_units_micro: u64,
+}
+#[event]
+pub struct KeyRotated {
+    pub agent: Pubkey,
+    pub old: Pubkey,
+    pub new: Pubkey,
+    pub seq: u32,
+}
+#[event]
+pub struct KeyRevoked {
+    pub agent: Pubkey,
+    pub old: Pubkey,
+    pub seq: u32,
+}
+#[event]
+pub struct ProfileSet {
+    pub agent: Pubkey,
+    pub digest: [u8; 32],
+    pub seq: u32,
+}
+#[event]
+pub struct OwnerProposed {
+    pub agent: Pubkey,
+    pub owner: Pubkey,
+    pub proposed: Pubkey,
+}
+#[event]
+pub struct OwnerChanged {
+    pub agent: Pubkey,
+    pub old: Pubkey,
+    pub new: Pubkey,
+    pub at: i64,
+}
+#[event]
+pub struct AgentMigrated {
+    pub agent: Pubkey,
 }
 #[event]
 pub struct Claimed {
@@ -994,4 +1234,10 @@ pub enum RegistryError {
     RebateCap,
     #[msg("$LINE mint has an unsupported Token-2022 extension")]
     MintExtension,
+    #[msg("the agent's signing key is revoked")]
+    KeyRevoked,
+    #[msg("profile seq must increase")]
+    ProfileSeq,
+    #[msg("no owner transfer is pending")]
+    NoPendingOwner,
 }

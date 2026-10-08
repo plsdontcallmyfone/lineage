@@ -189,15 +189,49 @@ export const registry = {
       data: data("split").done(),
     };
   },
+  /** `recordRoot`: the epoch's reputation and contribution records root (identity plan 2.4); zero bytes when omitted. */
   postEpoch(a: { coreAuthority: Address; mint: Address; epoch: bigint | number; payoutRoot: Uint8Array | string; lineageRoot: Uint8Array | string;
-    totalUnitsMicro: bigint; poolAmount: bigint; rebateAmount: bigint; tokenProgram?: Address }): Ix {
+    recordRoot?: Uint8Array | string; totalUnitsMicro: bigint; poolAmount: bigint; rebateAmount: bigint; tokenProgram?: Address }): Ix {
     const pd = registryPdas;
     return {
       programId: P,
       keys: [w(pd.config()), w(a.coreAuthority, true), w(pd.epoch(a.epoch)), r(a.mint), r(pd.vaultAuthority()), w(pd.pool()), w(pd.reserve()),
         w(pd.payable()), r(a.tokenProgram ?? TOKEN_PROGRAM), r(SYSTEM_PROGRAM)],
-      data: data("post_epoch").u64(a.epoch).fixed32(a.payoutRoot).fixed32(a.lineageRoot).u64(a.totalUnitsMicro).u64(a.poolAmount).u64(a.rebateAmount).done(),
+      data: data("post_epoch").u64(a.epoch).fixed32(a.payoutRoot).fixed32(a.lineageRoot).u64(a.totalUnitsMicro).u64(a.poolAmount).u64(a.rebateAmount)
+        .fixed32(a.recordRoot ?? new Uint8Array(32)).done(),
     };
+  },
+  /** Owner and the new key both sign (Agent v2): `newKey` becomes the agent's signing key. */
+  rotateAgentKey(a: { owner: Address; agent: Address; newKey: Address }): Ix {
+    return { programId: P, keys: [r(registryPdas.config()), r(a.owner, true), r(a.newKey, true), w(registryPdas.agent(a.agent))], data: data("rotate_agent_key").done() };
+  },
+  /** Owner: the signing key becomes the default key (revoked) until a rotation. */
+  revokeAgentKey(a: { owner: Address; agent: Address }): Ix {
+    return { programId: P, keys: [r(registryPdas.config()), r(a.owner, true), w(registryPdas.agent(a.agent))], data: data("revoke_agent_key").done() };
+  },
+  /** The agent's current signing key: sha256 of its profile document, with a strictly increasing seq. */
+  setProfile(a: { signingKey: Address; agent: Address; digest: Uint8Array | string; seq: number }): Ix {
+    return {
+      programId: P,
+      keys: [r(registryPdas.config()), r(a.signingKey, true), w(registryPdas.agent(a.agent))],
+      data: data("set_profile").fixed32(a.digest).u32(a.seq).done(),
+    };
+  },
+  /** Owner: proposes a new owner (the default address cancels). Nothing changes until it accepts. */
+  proposeOwner(a: { owner: Address; agent: Address; newOwner: Address }): Ix {
+    return { programId: P, keys: [r(registryPdas.config()), r(a.owner, true), w(registryPdas.agent(a.agent))], data: data("propose_owner").address(a.newOwner).done() };
+  },
+  /** The proposed owner completes the transfer; `ownerSince` restarts. */
+  acceptOwner(a: { newOwner: Address; agent: Address }): Ix {
+    return { programId: P, keys: [r(registryPdas.config()), r(a.newOwner, true), w(registryPdas.agent(a.agent))], data: data("accept_owner").done() };
+  },
+  /** Anyone (payer adds the rent): grows a v1 Agent record to Agent v2. */
+  migrateAgent(a: { payer: Address; agent: Address }): Ix {
+    return { programId: P, keys: [w(registryPdas.agent(a.agent)), w(a.payer, true), r(SYSTEM_PROGRAM)], data: data("migrate_agent").done() };
+  },
+  /** Anyone (payer adds the rent): grows an Epoch posted before `record_root` existed. */
+  migrateEpoch(a: { payer: Address; epoch: bigint | number }): Ix {
+    return { programId: P, keys: [w(registryPdas.epoch(a.epoch)), w(a.payer, true), r(SYSTEM_PROGRAM)], data: data("migrate_epoch").done() };
   },
   /**
    * Anyone may send a claim; tokens go only to the leaf's destination. `agentRecord` is required for
@@ -277,14 +311,46 @@ export interface AgentRecord {
   operator: string;
   capabilities: string;
   registeredAt: bigint;
+  /** 1 for a record the first layout wrote (needs `migrate_agent`), 2 for Agent v2. */
+  version: 1 | 2;
+  /**
+   * Agent v2 (identity plan I1). On a v1 record these read as they will after `migrate_agent`:
+   * signing key = the agent key, no rotation, no profile, no pending owner, owner since registration.
+   * `signingKey` is null when the owner revoked it.
+   */
+  signingKey: Address | null;
+  keySeq: number;
+  keyChangedAt: bigint;
+  profileDigest: string | null;
+  profileSeq: number;
+  pendingOwner: Address | null;
+  ownerSince: bigint;
 }
+/** Bytes Agent v2 appended to the first layout. */
+export const AGENT_V2_TAIL = 32 + 4 + 8 + 32 + 4 + 32 + 8 + 32;
+const DEFAULT_ADDRESS = "11111111111111111111111111111111";
+const ZERO_HEX = "00".repeat(32);
 export function decodeAgent(d: Uint8Array): AgentRecord {
   const rd = new Reader(d).expect("Agent");
+  const v1 = {
+    agent: rd.address(), owner: rd.address(), kind: (rd.u8() === 1 ? "launched" : "verifier") as AgentRecord["kind"], mint: rd.address(), hosted: rd.bool(),
+    burned: rd.u64(), bond: rd.u64(), unbondAmount: rd.u64(), unbondRequestedAt: rd.i64(), unbondReadyAt: rd.i64(), strikesTotal: rd.u32(),
+    strikesEpoch: rd.u64(), strikesInEpoch: rd.u16(), suspendedThroughEpoch: rd.u64(), slashedTotal: rd.u64(), operator: rd.hex32(),
+    capabilities: rd.hex32(), registeredAt: rd.i64(),
+  };
+  rd.u8(); // bump
+  if (rd.remaining() < AGENT_V2_TAIL)
+    return { ...v1, version: 1, signingKey: v1.agent, keySeq: 0, keyChangedAt: 0n, profileDigest: null, profileSeq: 0, pendingOwner: null, ownerSince: v1.registeredAt };
+  const signingKey = rd.address();
+  const keySeq = rd.u32();
+  const keyChangedAt = rd.i64();
+  const profileDigest = rd.hex32();
+  const profileSeq = rd.u32();
+  const pendingOwner = rd.address();
+  const ownerSince = rd.i64();
   return {
-    agent: rd.address(), owner: rd.address(), kind: rd.u8() === 1 ? "launched" : "verifier", mint: rd.address(), hosted: rd.bool(), burned: rd.u64(),
-    bond: rd.u64(), unbondAmount: rd.u64(), unbondRequestedAt: rd.i64(), unbondReadyAt: rd.i64(), strikesTotal: rd.u32(), strikesEpoch: rd.u64(),
-    strikesInEpoch: rd.u16(), suspendedThroughEpoch: rd.u64(), slashedTotal: rd.u64(), operator: rd.hex32(), capabilities: rd.hex32(),
-    registeredAt: rd.i64(),
+    ...v1, version: 2, signingKey: signingKey === DEFAULT_ADDRESS ? null : signingKey, keySeq, keyChangedAt,
+    profileDigest: profileDigest === ZERO_HEX ? null : profileDigest, profileSeq, pendingOwner: pendingOwner === DEFAULT_ADDRESS ? null : pendingOwner, ownerSince,
   };
 }
 
@@ -299,13 +365,21 @@ export interface EpochRecord {
   claimedAmount: bigint;
   claims: number;
   postedAt: bigint;
+  /** Reputation and contribution records root (identity plan 2.4); null on epochs posted before it existed (zero or absent). */
+  recordRoot: string | null;
+  /** 1 for an Epoch the first layout wrote (needs `migrate_epoch`), 2 otherwise. */
+  version: 1 | 2;
 }
 export function decodeEpoch(d: Uint8Array): EpochRecord {
   const rd = new Reader(d).expect("Epoch");
-  return {
+  const head = {
     epoch: rd.u64(), payoutRoot: rd.hex32(), lineageRoot: rd.hex32(), totalUnitsMicro: rd.u64(), poolAmount: rd.u64(), rebateAmount: rd.u64(),
     totalPayable: rd.u64(), claimedAmount: rd.u64(), claims: rd.u32(), postedAt: rd.i64(),
   };
+  rd.u8(); // bump
+  if (rd.remaining() < 32) return { ...head, recordRoot: null, version: 1 };
+  const root = rd.hex32();
+  return { ...head, recordRoot: root === ZERO_HEX ? null : root, version: 2 };
 }
 
 export interface ClaimReceipt {

@@ -238,7 +238,7 @@ fn epoch_post_and_claim_with_a_typescript_root() {
         ok(send(&mut e.svm, &anyone, &[], vec![ix]));
         let pool_amount = 2_000_000;
         let rebate = total - pool_amount;
-        let args = lr::PostEpochArgs { epoch, payout_root: root, lineage_root: [5; 32], total_units_micro: 12_500_000, pool_amount, rebate_amount: rebate };
+        let args = lr::PostEpochArgs { epoch, payout_root: root, lineage_root: [5; 32], record_root: [6; 32], total_units_micro: 12_500_000, pool_amount, rebate_amount: rebate };
         let core = e.core.insecure_clone();
         let ix = e.post_epoch_ix(&anyone.pubkey(), args);
         rejects(send(&mut e.svm, &anyone, &[], vec![ix]), "Unauthorized");
@@ -248,7 +248,7 @@ fn epoch_post_and_claim_with_a_typescript_root() {
         assert_eq!(balance(&e.svm, &pool_vault()), 0);
         assert_eq!(balance(&e.svm, &reserve_vault()), 8_000_000 - rebate);
         let ep: lr::Epoch = read(&e.svm, &epoch_pda(epoch));
-        assert_eq!((ep.payout_root, ep.lineage_root, ep.total_payable, ep.claimed_amount), (root, [5; 32], total, 0));
+        assert_eq!((ep.payout_root, ep.lineage_root, ep.record_root, ep.total_payable, ep.claimed_amount), (root, [5; 32], [6; 32], total, 0));
         // Epochs only move forward.
         let ix = e.post_epoch_ix(&core.pubkey(), lr::PostEpochArgs { epoch, ..args });
         assert!(send(&mut e.svm, &core, &[], vec![ix]).is_err());
@@ -298,7 +298,7 @@ fn epoch_post_and_claim_with_a_typescript_root() {
         assert_eq!(balance(&e.svm, &payable_vault()), total - paid);
 
         // A later epoch whose posted total is smaller than a leaf cannot overpay.
-        let args8 = lr::PostEpochArgs { epoch: epoch + 1, payout_root: root, lineage_root: [0; 32], total_units_micro: 1, pool_amount: 0, rebate_amount: 1_000 };
+        let args8 = lr::PostEpochArgs { epoch: epoch + 1, payout_root: root, lineage_root: [0; 32], record_root: [0; 32], total_units_micro: 1, pool_amount: 0, rebate_amount: 1_000 };
         let ix = e.post_epoch_ix(&core.pubkey(), args8);
         ok(send(&mut e.svm, &core, &[], vec![ix]));
         let i = (0..n).find(|i| claim_args(&f, *i).2 == seeded(11).pubkey()).unwrap();
@@ -320,7 +320,7 @@ fn over_claim_is_refused() {
     let leaf = lr::leaf::payout_leaf(1, &agent.pubkey().to_bytes(), lr::leaf::Dest::AgentWallet, &[0; 32], 5_000);
     e.fund(&reserve_vault(), 4_999);
     let core = e.core.insecure_clone();
-    let ix = e.post_epoch_ix(&core.pubkey(), lr::PostEpochArgs { epoch: 1, payout_root: leaf, lineage_root: [0; 32], total_units_micro: 1, pool_amount: 0,
+    let ix = e.post_epoch_ix(&core.pubkey(), lr::PostEpochArgs { epoch: 1, payout_root: leaf, lineage_root: [0; 32], record_root: [0; 32], total_units_micro: 1, pool_amount: 0,
         rebate_amount: 4_999 });
     ok(send(&mut e.svm, &core, &[], vec![ix]));
     let args = lr::ClaimArgs { agent: agent.pubkey(), dest_kind: 0, wallet: Pubkey::default(), amount: 5_000, leaf, proof: vec![] };
@@ -345,7 +345,7 @@ fn pause_and_config_are_admin_only() {
     let ix = e.split_ix();
     rejects(send(&mut e.svm, &owner, &[], vec![ix]), "Paused");
     let core = e.core.insecure_clone();
-    let ix = e.post_epoch_ix(&core.pubkey(), lr::PostEpochArgs { epoch: 1, payout_root: [1; 32], lineage_root: [0; 32], total_units_micro: 0,
+    let ix = e.post_epoch_ix(&core.pubkey(), lr::PostEpochArgs { epoch: 1, payout_root: [1; 32], lineage_root: [0; 32], record_root: [0; 32], total_units_micro: 0,
         pool_amount: 0, rebate_amount: 0 });
     rejects(send(&mut e.svm, &core, &[], vec![ix]), "Paused");
     // Launches register through the registry, so they stop too.
@@ -400,7 +400,7 @@ fn register_launched_only_through_the_launch_program() {
 
 fn post(e: &mut Env, epoch: u64, pool_amount: u64, rebate_amount: u64) -> litesvm::types::TransactionResult {
     let core = e.core.insecure_clone();
-    let ix = e.post_epoch_ix(&core.pubkey(), lr::PostEpochArgs { epoch, payout_root: [epoch as u8; 32], lineage_root: [0; 32], total_units_micro: 1,
+    let ix = e.post_epoch_ix(&core.pubkey(), lr::PostEpochArgs { epoch, payout_root: [epoch as u8; 32], lineage_root: [0; 32], record_root: [0; 32], total_units_micro: 1,
         pool_amount, rebate_amount });
     send(&mut e.svm, &core, &[], vec![ix])
 }

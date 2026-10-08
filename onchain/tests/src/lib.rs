@@ -598,6 +598,30 @@ impl Env {
             data: lr::instruction::Claim { args }.data(),
         }
     }
+    pub fn rotate_agent_key_ix(&self, owner: &Pubkey, agent: &Pubkey, new_key: &Pubkey) -> Instruction {
+        Instruction {
+            program_id: lr::ID,
+            accounts: lr::accounts::RotateAgentKey { config: registry_config(), owner: *owner, new_key: *new_key, agent_record: agent_record(agent) }
+                .to_account_metas(None),
+            data: lr::instruction::RotateAgentKey {}.data(),
+        }
+    }
+    pub fn set_profile_ix(&self, signing_key: &Pubkey, agent: &Pubkey, digest: [u8; 32], seq: u32) -> Instruction {
+        Instruction {
+            program_id: lr::ID,
+            accounts: lr::accounts::SetProfile { config: registry_config(), signing_key: *signing_key, agent_record: agent_record(agent) }
+                .to_account_metas(None),
+            data: lr::instruction::SetProfile { digest, seq }.data(),
+        }
+    }
+    pub fn accept_owner_ix(&self, new_owner: &Pubkey, agent: &Pubkey) -> Instruction {
+        Instruction {
+            program_id: lr::ID,
+            accounts: lr::accounts::AcceptOwner { config: registry_config(), new_owner: *new_owner, agent_record: agent_record(agent) }
+                .to_account_metas(None),
+            data: lr::instruction::AcceptOwner {}.data(),
+        }
+    }
     pub fn admin_ix(&self, admin: &Pubkey, data: Vec<u8>) -> Instruction {
         Instruction {
             program_id: lr::ID,
@@ -765,4 +789,19 @@ pub fn hex32(s: &str) -> [u8; 32] {
 }
 pub fn b58_pubkey(s: &str) -> Pubkey {
     s.parse().unwrap()
+}
+
+pub fn migrate_agent_ix(payer: &Pubkey, agent: &Pubkey) -> Instruction {
+    Instruction {
+        program_id: lr::ID,
+        accounts: lr::accounts::MigrateAgent { agent_record: agent_record(agent), payer: *payer, system_program: system_program::ID }.to_account_metas(None),
+        data: lr::instruction::MigrateAgent {}.data(),
+    }
+}
+pub fn migrate_epoch_ix(payer: &Pubkey, epoch: u64) -> Instruction {
+    Instruction {
+        program_id: lr::ID,
+        accounts: lr::accounts::MigrateEpoch { epoch: epoch_pda(epoch), payer: *payer, system_program: system_program::ID }.to_account_metas(None),
+        data: lr::instruction::MigrateEpoch {}.data(),
+    }
 }

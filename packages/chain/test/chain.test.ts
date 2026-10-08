@@ -6,6 +6,7 @@ import {
   addressBytes,
   ata,
   claimFromCoreProof,
+  AGENT_V2_TAIL,
   decodeAgent,
   decodeAgentLaunch,
   decodeConfig,
@@ -96,7 +97,14 @@ describe("instruction builders equal the Anchor encodings", () => {
     ["registry.migrate_config", () => registry.migrateConfig({ admin: k(1), maxRebatePerEpoch: 654_321n })],
     ["registry.split", () => registry.split({ mint: line })],
     ["registry.post_epoch", () => registry.postEpoch({ coreAuthority: k(2), mint: line, epoch: 9, payoutRoot: fill(1), lineageRoot: fill(2),
-      totalUnitsMicro: 3_500_000n, poolAmount: 10n, rebateAmount: 20n })],
+      recordRoot: fill(3), totalUnitsMicro: 3_500_000n, poolAmount: 10n, rebateAmount: 20n })],
+    ["registry.rotate_agent_key", () => registry.rotateAgentKey({ owner, agent, newKey: k(12) })],
+    ["registry.revoke_agent_key", () => registry.revokeAgentKey({ owner, agent })],
+    ["registry.set_profile", () => registry.setProfile({ signingKey: k(12), agent, digest: fill(0xab), seq: 7 })],
+    ["registry.propose_owner", () => registry.proposeOwner({ owner, agent, newOwner: k(13) })],
+    ["registry.accept_owner", () => registry.acceptOwner({ newOwner: k(13), agent })],
+    ["registry.migrate_agent", () => registry.migrateAgent({ payer: k(1), agent })],
+    ["registry.migrate_epoch", () => registry.migrateEpoch({ payer: k(1), epoch: 9 })],
     ["registry.claim.agent_wallet", () => registry.claim({ payer: owner, mint: line, epoch: 9, agent, destKind: 0, amount: 99n, leaf: fill(8),
       proof: [fill(5), fill(6)], destToken: ownerToken, agentRecord: registryPdas.agent(agent) })],
     ["registry.claim.wallet", () => registry.claim({ payer: owner, mint: line, epoch: 9, agent, destKind: 2, wallet: k(11), amount: 99n, leaf: fill(8),
@@ -171,12 +179,26 @@ describe("account decoders read live LiteSVM accounts", () => {
       f.capabilities]);
     expect([a.burned, a.bond, a.unbondAmount, a.unbondReadyAt, a.registeredAt].map(String)).toEqual([f.burned, f.bond, f.unbondAmount, f.unbondReadyAt,
       f.registeredAt]);
+    // Agent v2: the snapshot was rotated, given a profile and a pending owner.
+    expect([a.version, a.signingKey, a.keySeq, String(a.keyChangedAt), a.profileDigest, a.profileSeq, a.pendingOwner, String(a.ownerSince)]).toEqual([2,
+      f.signingKey, f.keySeq, f.keyChangedAt, f.profileDigest, f.profileSeq, f.pendingOwner, f.ownerSince]);
+    expect(a.signingKey).not.toBe(a.agent);
+    // A v1 record (the first layout) decodes with the values migrate_agent will write.
+    const old = decodeAgent(raw("Agent").subarray(0, raw("Agent").length - AGENT_V2_TAIL));
+    expect([old.version, old.signingKey, old.keySeq, old.pendingOwner, old.ownerSince, old.bond]).toEqual([1, a.agent, 0, null, a.registeredAt, a.bond]);
+    // A revoked key (default address) decodes as null.
+    const revoked = raw("Agent").slice();
+    revoked.fill(0, revoked.length - AGENT_V2_TAIL, revoked.length - AGENT_V2_TAIL + 32);
+    expect(decodeAgent(revoked).signingKey).toBe(null);
   });
   test("Epoch", () => {
     const e = decodeEpoch(raw("Epoch"));
     const f = acct("Epoch").fields;
     expect([String(e.epoch), e.payoutRoot, e.lineageRoot, String(e.totalPayable), String(e.rebateAmount), String(e.claimedAmount)]).toEqual([f.epoch,
       f.payoutRoot, f.lineageRoot, f.totalPayable, f.rebateAmount, f.claimedAmount]);
+    expect([e.version, e.recordRoot]).toEqual([2, f.recordRoot]);
+    const old = decodeEpoch(raw("Epoch").subarray(0, raw("Epoch").length - 32));
+    expect([old.version, old.recordRoot, old.payoutRoot]).toEqual([1, null, e.payoutRoot]);
   });
   test("LaunchConfig", () => {
     const c = decodeLaunchConfig(raw("LaunchConfig"));
