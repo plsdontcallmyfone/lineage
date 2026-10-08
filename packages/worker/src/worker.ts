@@ -143,6 +143,8 @@ export class Worker {
   private stateFile: string;
   private submitted = 0;
   private busy = false;
+  /** Reveals in flight, shared by the main loop and the reveal timer so neither sends one twice. */
+  private revealing = new Set<string>();
   /** Patches this worker revealed, by commit id: what a stacked candidate builds on (SPEC 12.4). */
   private mine = new Map<string, { lineage_id: string; patch: string; at: number }>();
   /** Profile replays of hotspot claims (SPEC 12.8) and calibration replays of proposed recipes (SPEC 6.2). */
@@ -208,23 +210,51 @@ export class Worker {
           await this.runAndCommit(a);
           acted++;
         } else if (a.status === "committed" && a.reveal_open) {
-          const p = this.pending.get(a.replay_id);
-          if (!p) {
-            this.log(`replay ${a.replay_id.slice(0, 10)}: committed but local result lost; cannot reveal`);
-            continue;
-          }
-          this.telemetry.job(a.kind === "qualify" ? "qualify" : "replay", { replay_id: a.replay_id });
-          this.telemetry.phase("reveal");
-          const r = await this.ok(this.client.post(`/v1/replays/${a.replay_id}/reveal`, { result: p.result, salt: p.salt, ...(p.split ? { split: p.split } : {}) }), "reveal");
-          this.pending.delete(a.replay_id);
-          this.persist();
-          this.log(`replay ${a.replay_id.slice(0, 10)}: revealed (${(r as { status: string }).status})`);
-          acted++;
+          if (await this.reveal(a)) acted++;
         }
       } catch (e) {
         this.log(`replay ${a.replay_id.slice(0, 10)}: ${(e as Error).message}`);
       } finally {
         this.telemetry.idle();
+      }
+    }
+    return acted;
+  }
+
+  /** Reveals one committed replay whose reveal window is open; false when there is nothing to send. */
+  private async reveal(a: Assignment): Promise<boolean> {
+    const p = this.pending.get(a.replay_id);
+    if (!p) {
+      if (!this.revealing.has(a.replay_id)) this.log(`replay ${a.replay_id.slice(0, 10)}: committed but local result lost; cannot reveal`);
+      return false;
+    }
+    if (this.revealing.has(a.replay_id)) return false;
+    this.revealing.add(a.replay_id);
+    try {
+      const r = await this.ok(this.client.post(`/v1/replays/${a.replay_id}/reveal`, { result: p.result, salt: p.salt, ...(p.split ? { split: p.split } : {}) }), "reveal");
+      this.pending.delete(a.replay_id);
+      this.persist();
+      this.log(`replay ${a.replay_id.slice(0, 10)}: revealed (${(r as { status: string }).status})`);
+      return true;
+    } finally {
+      this.revealing.delete(a.replay_id);
+    }
+  }
+
+  /**
+   * Reveals only. Runs on its own timer next to the main loop: a worker busy with a long replay or
+   * qualification (minutes) must still reveal inside reveal_window_s, or it takes an unrevealed strike.
+   */
+  async revealOnce(): Promise<number> {
+    if (this.pending.size === 0) return 0;
+    const list = await this.ok<Assignment[]>(this.client.get("/v1/assignments", true), "assignments");
+    let acted = 0;
+    for (const a of list) {
+      if (a.status !== "committed" || !a.reveal_open) continue;
+      try {
+        if (await this.reveal(a)) acted++;
+      } catch (e) {
+        this.log(`replay ${a.replay_id.slice(0, 10)}: ${(e as Error).message}`);
       }
     }
     return acted;
@@ -686,12 +716,25 @@ export class Worker {
       this.log(`capabilities not declared: ${(e as Error).message}`);
     }
     await this.telemetry.start();
+    let stopped = false;
+    const revealLoop = (async () => {
+      while (!stopped) {
+        try {
+          await this.revealOnce();
+        } catch (e) {
+          this.log(`reveal loop: ${(e as Error).message}`);
+        }
+        await Bun.sleep(intervalMs);
+      }
+    })();
     try {
       while (!until?.()) {
         await this.tick();
         await Bun.sleep(intervalMs);
       }
     } finally {
+      stopped = true;
+      await revealLoop;
       await this.telemetry.stop();
     }
   }
