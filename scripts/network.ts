@@ -12,10 +12,11 @@
 import { spawn, type Subprocess } from "bun";
 import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { generateAgentKey, keyFromSolanaJson, type AgentKey } from "@lineage/protocol";
+import { generateAgentKey, keyFromSolanaJson, satisfies, type AgentKey } from "@lineage/protocol";
 import { loadRecipe, prepareDeps } from "@lineage/sandbox";
 import { CoreClient } from "../packages/core/src/client.ts";
 import { Worker } from "../packages/worker/src/index.ts";
+import { doctor } from "../packages/worker/src/doctor.ts";
 
 const ROOT = join(import.meta.dir, "..");
 const argv = process.argv.slice(2);
@@ -74,7 +75,20 @@ for (let i = 0; i < 60 && !(await fetch(`${CORE}/v1/health`).catch(() => null))?
 const A = new CoreClient(CORE, admin.key);
 const as = (k: AgentKey) => new CoreClient(CORE, k);
 
-const names = (opt("recipes") ?? readdirSync(join(ROOT, "recipes")).filter((d) => existsSync(join(ROOT, "recipes", d, "recipe.yml"))).join(",")).split(",");
+// Without --recipes: every recipe this machine can run. A recipe whose `requires` the local hardware
+// does not satisfy (the CUDA recipes need amd64 and an NVIDIA GPU) is skipped with a note, since its
+// calibration could not run here; naming it in --recipes still tries it.
+const HERE = doctor().capabilities;
+const names = opt("recipes")
+  ? opt("recipes")!.split(",")
+  : readdirSync(join(ROOT, "recipes"))
+      .filter((d) => existsSync(join(ROOT, "recipes", d, "recipe.yml")))
+      .filter((d) => {
+        const ok = satisfies(HERE, loadRecipe(join(ROOT, "recipes", d)).recipe.requires);
+        if (!ok) log(`${d}: skipped, requires ${JSON.stringify(loadRecipe(join(ROOT, "recipes", d)).recipe.requires)} and this machine is ${HERE.arch} with ${HERE.gpus.length} GPUs`);
+        return ok;
+      })
+      .sort();
 const MIN_BOND = BigInt(net.min_bond);
 const BURN = BigInt(net.register_burn);
 

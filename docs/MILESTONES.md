@@ -21,7 +21,7 @@ Goal: the full discover, mutate, replay, judge, lineage loop running on real pub
 ### Exit check (all must pass)
 
 1. `bun test` green in every package; protocol has property tests for canonical diff, guard, stats and verdict.
-2. `scripts/e2e.sh` on the fixture lineage with Core plus 4 workers (separate processes, separate keys) produces, from real Docker runs:
+2. `scripts/e2e.ts` on the fixture lineage with Core plus 4 workers (separate processes, separate keys) produces, from real Docker runs:
    - one accepted `perf` generation (deterministic metric) and one accepted `fix` generation;
    - rejections with the right reason for: a test-breaking patch, a protected-path patch, a perf regression, an equivalence-changing patch, a duplicate of an accepted patch (tip-relative), a stale conflicting patch;
    - a canary rejected by honest workers, and a slash plus strike for a deliberately dishonest worker (`--dishonest accept-all`);
