@@ -13,7 +13,9 @@
 // "Prerequisites"); the reference runner then measures every baseline on this machine.
 // On an arm64 server whose images match the committed ids the recipe is left as committed.
 // Arch-specific harness files: scripts/deploy/<arch>/<name>/** is copied into the release's
-// recipes/<name>/overlay (amd64: the Go harness entry stubs, entry_amd64.s next to entry_arm64.s).
+// recipes/<name>/overlay (amd64: the Go harness entry stubs, entry_amd64.s next to entry_arm64.s;
+// bitcoin-base58's Makefile), and scripts/deploy/<arch>/<name>.replace.json ([[from, to], ...]) is
+// applied to its recipe.yml (amd64: the zig recipes' -target aarch64-linux-musl becomes x86_64).
 // --check only prints what it would change. Prints { name: recipe_id } as JSON on the last line.
 import { cpSync, existsSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
@@ -39,7 +41,10 @@ for (const name of names) {
   const insp = Bun.spawnSync(["docker", "image", "inspect", "--format", "{{.Id}}", ref], { stdout: "pipe", stderr: "pipe" });
   const local = insp.stdout.toString().trim().replace(/^sha256:/, "");
   if (insp.exitCode !== 0 || !/^[0-9a-f]{64}$/.test(local)) throw new Error(`${name}: image ${ref} is not built here (docker build -t ${ref} images/<class>)`);
-  const next = text
+  const replFile = join(import.meta.dir, arch, `${name}.replace.json`);
+  const repl: [string, string][] = arch !== "arm64" && existsSync(replFile) ? JSON.parse(readFileSync(replFile, "utf8")) : [];
+  const next = repl
+    .reduce((t, [from, to]) => t.split(from).join(to), text)
     .replace(/^image:.*$/m, `image: "${ref}@sha256:${local}"`)
     .replace(/^requires:\s*\{([^}]*)\}/m, (_all, inner: string) => `requires: {${inner.replace(/arch:\s*\w+/, `arch: ${arch}`)}}`);
   const extra = join(import.meta.dir, arch, name);
