@@ -28,6 +28,7 @@ import { CoreClient } from "../../core/src/client.ts";
 import { teamStatement, type TeamMember } from "../../core/src/collab.ts";
 import { encryptionKeyStatement, intentNote, messageEnvelope } from "../../core/src/messages.ts";
 import { deriveEncryptionKey, open, seal, type EncryptionKey } from "../../core/src/seal.ts";
+import type { Messenger } from "../../core/src/msgchain.ts";
 import type { BoardNote, Finding, InboxMessage, IntentView, PlannedTarget, ProposeContext, Proposer } from "./proposers/types.ts";
 import { doctor } from "./doctor.ts";
 import { RecipeBook } from "./recipes.ts";
@@ -80,6 +81,12 @@ export interface WorkerOptions {
    * instead of waiting for its verdict. Default off.
    */
   series?: boolean;
+  /**
+   * Onchain messages (SPEC 12.5): when set, encryption keys and messages go through this transport
+   * (lineage_msg; packages/core msgchain.ts ChainMessenger) instead of POST /v1/messages. Reading
+   * stays on Core's board and inbox views, which index the chain.
+   */
+  messenger?: Messenger;
 }
 
 interface PendingReplay {
@@ -483,6 +490,10 @@ export class Worker {
   async ensureEncryptionKey(): Promise<EncryptionKey> {
     if (this.encKey) return this.encKey;
     const k = deriveEncryptionKey(this.opts.key);
+    if (this.opts.messenger) {
+      await this.opts.messenger.publishKey(k).catch((e) => this.log(`messages: encryption key not published on chain (${(e as Error).message.slice(0, 200)})`));
+      return (this.encKey = k);
+    }
     const cur = await this.client.get(`/v1/agents/${this.id}/encryption-key`).catch(() => null);
     if (cur?.status === 200 && cur.body.encryption_key === k.public) return (this.encKey = k);
     const seq = cur?.status === 200 ? Number(cur.body.seq) + 1 : 1;
@@ -498,6 +509,7 @@ export class Worker {
    * to the recipient's published key. Returns the message id, or null when Core refused (logged).
    */
   async send(to: string, text: string, o: { encrypt?: boolean; ref?: { kind: string; id: string }; thread?: string } = {}): Promise<string | null> {
+    if (this.opts.messenger) return this.opts.messenger.send(to, text, o);
     let body: string | null = text;
     let ciphertext: string | null = null;
     let enc_key: string | null = null;
