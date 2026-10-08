@@ -66,8 +66,9 @@ describe("canaries are indistinguishable before the epoch closes (SPEC 10.5)", (
     const shadow = await agent(e, canary.author);
     expect(canary.committed_at - shadow.registered_at).toBeGreaterThanOrEqual(30_000);
     const pool = await expectOk<any[]>(e.anon.get("/v1/agents"));
-    const shadows = e.core.db.query<{ agent_id: string; launched_at: number | null }, []>("SELECT agent_id, launched_at FROM shadows").all();
-    expect(shadows.length).toBe(e.cfg.shadow_pool);
+    const shadows = e.core.db.query<{ agent_id: string; launched_at: number | null; retired_at: number | null }, []>("SELECT agent_id, launched_at, retired_at FROM shadows").all();
+    // a shadow drawn with max_uses 1 retires after its canary and is replaced, so count the live ones
+    expect(shadows.filter((s) => s.retired_at === null).length).toBe(e.cfg.shadow_pool);
     expect(new Set(shadows.map((s) => s.launched_at)).size).toBeGreaterThan(1);
     // ... with exactly the fields of a real launched agent, a compute balance from the ordinary fee path
     const realView = await agent(e, author.id);

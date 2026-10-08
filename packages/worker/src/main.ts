@@ -31,6 +31,8 @@
 //   --max-candidates <n>    stop authoring after n submissions
 //   --interval <ms>         poll interval (default 2000)
 //   --once                  one tick then exit
+//   --collab off|advisory|team   SPEC 12.1/12.2: advisory (default) plans a target nobody else holds an
+//                           intent on and files an intent before editing
 //   --agent <id>            the agent id when --key is a rotated signing key (identity plan I1)
 import { chmodSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname } from "node:path";
@@ -199,6 +201,7 @@ async function main() {
         lineages: a.all("lineage"),
         dishonest,
         maxCandidates: a.one("max-candidates") ? Number(a.one("max-candidates")) : undefined,
+        collab: collabMode(a.one("collab")),
       });
       if (a.one("once")) {
         await w.declareCapabilities().catch((e) => console.error(`capabilities not declared: ${(e as Error).message}`));
@@ -217,6 +220,12 @@ async function main() {
       console.error("usage: lineage-worker keygen|doctor|register|bond|status|run|calibrate|cosign|rotate|revoke (see header of src/main.ts)");
       process.exit(2);
   }
+}
+
+function collabMode(v: string | undefined): "off" | "advisory" | "team" | undefined {
+  if (v === undefined) return undefined;
+  if (v !== "off" && v !== "advisory" && v !== "team") throw new Error("--collab is off, advisory or team");
+  return v;
 }
 
 if (import.meta.main) {

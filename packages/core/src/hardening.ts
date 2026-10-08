@@ -189,9 +189,22 @@ export class Hardening {
     const [lo, hi] = this.c.cfg.canary_inject_delay_s;
     const delay = Math.max(1000, Math.round((lo + rng.next() * (hi - lo)) * 1000));
     const now = this.c.now();
-    this.db
+    const ins = this.db
       .query("INSERT INTO canary_queue (lineage_id, canary_id, trigger_candidate_id, inject_at, status, created_at) VALUES (?, ?, ?, ?, 'pending', ?)")
       .run(trigger.lineage_id, pick.canary_id, trigger.candidate_id, now + delay, now);
+    // shadow parity (SPEC 10.7): the shadow files an intent first, as often and as early as real authors do
+    const live = this.db
+      .query<{ agent_id: string }, [string]>(
+        `SELECT s.agent_id FROM shadows s WHERE s.lineage_id = ? AND s.retired_at IS NULL AND s.launched_at IS NOT NULL
+           AND NOT EXISTS (SELECT 1 FROM candidates c WHERE c.author = s.agent_id AND c.status IN (${OPEN_SQL})) ORDER BY s.agent_id`,
+      )
+      .all(trigger.lineage_id)
+      .map((r) => r.agent_id);
+    this.c.collab.planShadowIntent(
+      { id: Number(ins.lastInsertRowid), lineage_id: trigger.lineage_id, kind: pick.kind, target: pick.target, inject_at: now + delay },
+      new Rng(H("m1-shadow-intent", ep.secret, trigger.candidate_id)),
+      live,
+    );
   }
 
   /** Commit-to-reveal delay for a canary: a real author's gap in this lineage, else the configured range. */
@@ -245,7 +258,9 @@ export class Hardening {
         continue;
       }
       const rng = new Rng(H("m1-canary-inject", ep.secret, String(q.id)));
-      const shadow = shadows[rng.int(shadows.length)]!.agent_id;
+      const pick = shadows[rng.int(shadows.length)]!.agent_id;
+      // the shadow that filed this canary's intent commits it, when it still can
+      const shadow = this.c.collab.plannedShadow(q.id, shadows.map((s) => s.agent_id)) ?? pick;
       // claimed effect copied from a random real candidate of this lineage, as authors state them
       const claims = this.db
         .query<{ claimed_effect: number | null }, [string]>("SELECT claimed_effect FROM candidates WHERE lineage_id = ? AND is_canary = 0 ORDER BY committed_at DESC LIMIT 50")

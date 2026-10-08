@@ -5,10 +5,12 @@ import { agentLink, authorLink, auditBadge, badge, candLink, candStatus, empty, 
 import type { Page } from "./types.ts";
 
 export async function lineagePage([id]: string[]): Promise<Page> {
-  const [l, findings, cands] = await Promise.all([
+  const [l, findings, cands, board, recentIntents] = await Promise.all([
     get(`lineages/${id}`),
     get<any[]>(`findings?lineage=${id}`),
     get<any[]>(`candidates?lineage=${id}&limit=200`),
+    get(`lineages/${id}/workboard`).catch(() => null),
+    get<any[]>(`intents?lineage=${id}&status=all&limit=30`).catch(() => [] as any[]),
     loadConfig(),
     loadLineageNames(),
   ]);
@@ -76,6 +78,48 @@ export async function lineagePage([id]: string[]): Promise<Page> {
         cands.length > FIRST ? html`<details class="more"><summary>Show ${cands.length - FIRST} older candidates</summary><div class="tw"><table class="t">${candHead}<tbody>${candRows(cands.slice(FIRST))}</tbody></table></div></details>` : ""
       }`
     : empty("No candidates yet", "Launched agents targeting this repo commit candidates against the tip.");
+  // Workboard (SPEC 12.1): advisory intents per target and who touched which file recently. No locks:
+  // anyone may still commit on a held target, and the earlier commitment owns a change.
+  const intentStatus = (i: any) =>
+    i.status === "committed"
+      ? html`${badge("led to candidate", "good")} ${candLink(i.candidate?.candidate_id ?? i.candidate?.commit_id)}${i.candidate?.gen_id ? html` <span class="sub">became ${genLink(i.candidate.gen_id)}</span>` : ""}`
+      : i.status === "open"
+        ? badge("open", "info")
+        : badge(i.status, i.status === "withdrawn" ? "" : "warn");
+  const targetRows = (board?.targets ?? []).map(
+    (t: any) => html`<tr><td>${kindBadge(t.kind, t.target)}</td><td class="wrap">${
+      t.holders.length ? t.holders.map((h: string) => html`<div>${agentLink(h)}</div>`) : html`<span class="faint">free</span>`
+    }</td></tr>`,
+  );
+  const intentRows = (recentIntents ?? []).slice(0, 12).map(
+    (i: any) => html`<tr><td>${agentLink(i.agent)}<div class="sub">${kindBadge(i.kind, i.target)}</div>${i.note ? html`<div class="sub wrap">${i.note}</div>` : ""}</td><td class="wrap">${intentStatus(i)}<div class="sub">${
+      i.status === "open" ? html`expires ${when(i.expires_at)}` : i.closed_at ? html`closed ${when(i.closed_at)}` : ""
+    }</div></td><td class="right">${when(i.created_at)}</td></tr>`,
+  );
+  const fileRows = (board?.files ?? []).slice(0, 10).map(
+    (f: any) => html`<tr><td class="wrap"><span class="hash">${f.path}</span></td><td class="wrap">${f.agents.map(
+      (a: any) => html`<div>${agentLink(a.agent)} <span class="sub">${a.edits ? `${a.edits} edit${a.edits === 1 ? "" : "s"}` : ""}${a.edits && a.reads ? ", " : ""}${a.reads ? `${a.reads} read${a.reads === 1 ? "" : "s"}` : ""}</span></div>`,
+    )}</td><td class="right">${when(f.last_at)}</td></tr>`,
+  );
+  const boardPanel = panel(
+    "Workboard",
+    board
+      ? html`
+        <div class="tw"><table class="t"><thead><tr><th>Target</th><th>Intents held by</th></tr></thead><tbody>${targetRows}</tbody></table></div>
+        ${
+          intentRows.length
+            ? html`<div class="eyebrow" style="padding:10px 14px 2px">Recent intents</div><div class="tw"><table class="t"><thead><tr><th>Agent and target</th><th>Status</th><th class="right">Filed</th></tr></thead><tbody>${intentRows}</tbody></table></div>`
+            : html`<div class="sub" style="padding:8px 14px">No intents filed on this lineage yet.</div>`
+        }
+        ${
+          fileRows.length
+            ? html`<div class="eyebrow" style="padding:10px 14px 2px">Files in the last ${Math.round(board.window_s / 60)} minutes</div><div class="tw"><table class="t"><thead><tr><th>File</th><th>Agents</th><th class="right">Last</th></tr></thead><tbody>${fileRows}</tbody></table></div>`
+            : ""
+        }`
+      : empty("Workboard unavailable", "This Core does not serve the workboard."),
+    { count: board?.intents?.length ?? 0, aside: html`<span>advisory, no locks</span>` },
+  );
+
   const metrics = (recipe.metrics ?? []).map((m: any) => {
     const cm = cal.metrics?.[m.name];
     const cv = cm ? (cm.cv === 0 ? "0" : cm.cv < 0.0001 ? cm.cv.toExponential(2) : (cm.cv * 100).toFixed(2) + "%") : "TBA";
@@ -143,6 +187,7 @@ export async function lineagePage([id]: string[]): Promise<Page> {
         ${panel("Candidates", candTable, { count: cands.length, aside: html`<span>unverified until accepted</span>` })}
       </div>
       <div class="stack">
+        ${boardPanel}
         ${panel("Open findings", findTable, { count: findings.length })}
         ${recipePanel}
         ${calPanel}
@@ -151,6 +196,6 @@ export async function lineagePage([id]: string[]): Promise<Page> {
   return {
     title: recipe.name ?? "Lineage",
     body,
-    refreshOn: (e) => e.data?.lineage_id === id || /^(candidate|generation|audit|finding)/.test(e.type),
+    refreshOn: (e) => e.data?.lineage_id === id || /^(candidate|generation|audit|finding|intent)/.test(e.type),
   };
 }

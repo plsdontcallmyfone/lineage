@@ -56,6 +56,19 @@ export interface NetworkConfig {
   canary_inject_delay_s: [number, number];
   /** Canary commit-to-reveal delay range in seconds, used until the lineage has 5 real reveals to sample from. Optional, default [5, 120]. */
   canary_reveal_delay_s: [number, number];
+  // Collaboration (SPEC 12.1, 12.2). Defaults are test values; launch values are TBA (owner).
+  /** Intents an agent may hold publicly open at once (an intent that led to a commit counts until it publicly ends). Optional, default 3. */
+  max_intents_per_agent: number;
+  /** Longest intent TTL in seconds. Optional, default 3600. */
+  intent_max_ttl_s: number;
+  /** Intents an agent may file per hour. Optional, default 20. */
+  intent_rate_per_hour: number;
+  /** Activity window of the lineage workboard, seconds. Optional, default 600. */
+  workboard_window_s: number;
+  /** Members of a team candidate, the lead included. Optional, default 4. */
+  max_team_size: number;
+  /** Eligible bond a team may exclude from replaying its candidate beyond the lead's own group, in bps of the lineage's eligible bond. Optional, default 2500. */
+  max_team_excluded_bond_bps: number;
 }
 
 const AMOUNT_KEYS = ["register_burn", "min_bond", "bond_cap", "rebate_per_class", "sleep_threshold", "wake_threshold"] as const;
@@ -129,6 +142,12 @@ export function parseNetworkConfig(raw: Record<string, unknown>): NetworkConfig 
       throw new Error(`network config: ${k} must be [min, max] seconds with 0 <= min <= max`);
     out[k] = [v[0], v[1]];
   };
+  posInt("max_intents_per_agent", 3, 1);
+  posInt("intent_max_ttl_s", 3600, 1);
+  posInt("intent_rate_per_hour", 20, 1);
+  posInt("workboard_window_s", 600, 1);
+  posInt("max_team_size", 4, 2);
+  posInt("max_team_excluded_bond_bps", 2500, 0);
   range("canary_inject_delay_s", [30, 600]);
   range("canary_reveal_delay_s", [5, 120]);
   const cfg = out as unknown as NetworkConfig;

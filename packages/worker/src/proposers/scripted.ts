@@ -2,7 +2,7 @@ import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { parseDiff, type CandidateKind } from "@lineage/protocol";
 import { applyPatch } from "@lineage/sandbox";
-import type { Proposal, ProposeContext, Proposer } from "./types.ts";
+import { heldByOthers, targetKey, type PlannedTarget, type Proposal, type ProposeContext, type Proposer } from "./types.ts";
 
 // Scripted proposer: submits prepared patches in order (fixture patches, hand-written candidates
 // in recipes/<name>/candidates/). Used by the e2e suite and for replaying known improvements
@@ -37,6 +37,21 @@ export class ScriptedProposer implements Proposer {
 
   get remaining(): number {
     return this.queue.length;
+  }
+
+  /**
+   * Picks the first scripted patch that applies to the parent, preferring (advisory collaboration)
+   * one whose target no other agent holds an intent on. Deterministic: script order, then held or not.
+   */
+  async plan(ctx: ProposeContext): Promise<PlannedTarget | null> {
+    const held = ctx.collab === "advisory" ? heldByOthers(ctx) : new Set<string>();
+    const applies = this.queue.filter((e) => Bun.spawnSync(["git", "apply", "--check", "--whitespace=nowarn", "-"], { cwd: ctx.tree, stdin: Buffer.from(e.diff) }).exitCode === 0);
+    const pick = applies.find((e) => !held.has(targetKey(e.kind, e.target))) ?? applies[0];
+    if (!pick) return null;
+    if (pick !== applies[0] || held.size) ctx.log(`scripted: plan ${pick.name} on ${JSON.stringify(pick.target)}${held.has(targetKey(pick.kind, pick.target)) ? " (every applying target is held; intents are advisory)" : held.size ? " (skipping targets other agents hold intents on)" : ""}`);
+    // propose() takes the planned patch next
+    this.queue = [pick, ...this.queue.filter((e) => e !== pick)];
+    return { kind: pick.kind, target: pick.target, note: `scripted ${pick.name}` };
   }
 
   async propose(ctx: ProposeContext): Promise<Proposal | null> {

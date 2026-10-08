@@ -1,6 +1,6 @@
 {
-  "at": "2026-10-08T01:42:59.689Z",
-  "seconds": 196,
+  "at": "2026-10-08T01:54:21.480Z",
+  "seconds": 135,
   "results": [
     {
       "check": "recipe id recomputed by Core matches the worker's",
@@ -10,7 +10,7 @@
     {
       "check": "calibration accepted, lineage created",
       "ok": true,
-      "detail": "{\"lineage_id\":\"385030aabff2e6cb7ae955f798bb5dafdd043a20be14d4a62479d7c5660521a3\",\"calib_id\":\"a7ab3444797459db4fd1bc3e708"
+      "detail": "{\"lineage_id\":\"385030aabff2e6cb7ae955f798bb5dafdd043a20be14d4a62479d7c5660521a3\",\"calib_id\":\"d7708dbe7a07f9105a15df78ce4"
     },
     {
       "check": "stable set and known failure from real calibration",
@@ -43,14 +43,59 @@
       "detail": "declared amd64"
     },
     {
-      "check": "perf_encode accepted (deterministic instruction count)",
+      "check": "a second author files a signed intent on encode_ir",
       "ok": true,
-      "detail": ""
+      "detail": "200 {\"intent_id\":\"cbd823cb560fb8f8c3ef19733595f62d19dfd1575e1b5e214674377f1063b6e5\",\"agent\":\"CJpPTfJK7yZ7gDFycEQKrc4MKNy3aaF"
+    },
+    {
+      "check": "the advisory worker picks a target nobody holds an intent on",
+      "ok": true,
+      "detail": "fix [\"tests/basic.rs::decode_leading_ones_are_zero_bytes\"]"
+    },
+    {
+      "check": "its intent closes on commit for the author at once, linked to the candidate",
+      "ok": true,
+      "detail": "fix:committed"
+    },
+    {
+      "check": "two authors' intents are public on the lineage board",
+      "ok": true,
+      "detail": "2 intents"
+    },
+    {
+      "check": "workboard names who holds an intent on each target",
+      "ok": true,
+      "detail": "4 targets"
     },
     {
       "check": "fix_leading_ones accepted (known failure fixed)",
       "ok": true,
       "detail": ""
+    },
+    {
+      "check": "once the candidate is final the public board shows the intent led to it",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "workboard lists the files authors touched in its window",
+      "ok": true,
+      "detail": "1 files"
+    },
+    {
+      "check": "an intent on a tip that moved is stale",
+      "ok": true,
+      "detail": "stale"
+    },
+    {
+      "check": "perf_encode accepted (deterministic instruction count)",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "an agent past max_intents_per_agent gets 429",
+      "ok": true,
+      "detail": "429 too_many_intents"
     },
     {
       "check": "break_tests rejected with tests_fail",
@@ -75,17 +120,17 @@
     {
       "check": "sealed replays never expose a candidate id or a replaying verifier via public live endpoints before final",
       "ok": true,
-      "detail": "154 samples, 328 sealed replay heartbeats seen, 0 leaks "
+      "detail": "101 samples, 255 sealed replay heartbeats seen, 0 leaks "
     },
     {
       "check": "author-blind replay: no public candidate view, event or activity names the author of an open candidate",
       "ok": true,
-      "detail": "148 open-candidate samples, 0 leaks "
+      "detail": "90 open-candidate samples, 0 leaks "
     },
     {
       "check": "heartbeats carry real replay phases from the sandbox",
       "ok": true,
-      "detail": "observed author:propose, qualify:commit, replay:build, replay:commit, replay:equivalence, replay:metrics, replay:reveal, replay:test"
+      "detail": "observed author:propose, replay:build, replay:equivalence, replay:metrics, replay:test"
     },
     {
       "check": "every worker process sends heartbeats with its declared capabilities",
@@ -153,9 +198,14 @@
       "detail": "rejected equivalence_changed"
     },
     {
+      "check": "shadow intents precede their canary's commit and link to it like a real author's",
+      "ok": true,
+      "detail": "2 of 3 canaries preceded by a shadow intent"
+    },
+    {
       "check": "fabricating verifier slashed and struck",
       "ok": true,
-      "detail": "slashed 29960937500, strikes 4"
+      "detail": "slashed 24617187500, strikes 4"
     },
     {
       "check": "no honest verifier slashed",
@@ -165,12 +215,12 @@
     {
       "check": "the fabricating verifier was caught by a canary",
       "ok": true,
-      "detail": "slash reasons: canary, canary, canary, minority"
+      "detail": "slash reasons: minority, canary, canary, minority"
     },
     {
       "check": "the fabricating verifier was caught as a dispute minority",
       "ok": true,
-      "detail": "slash reasons: canary, canary, canary, minority"
+      "detail": "slash reasons: minority, canary, canary, minority"
     },
     {
       "check": "audit replays agree with every accepted generation",
@@ -190,12 +240,12 @@
     {
       "check": "ledger reconciles to zero with no negative balances",
       "ok": true,
-      "detail": "{\"ok\":true,\"errors\":[],\"entries\":112,\"transactions\":56,\"total\":\"0\",\"balances\":{\"agent:22boQFvq9hGZ7EJL4kadV6Ka1sLe9fEF32iFx4oCapHf:bond\":\"5000000000\",\"agent:22b"
+      "detail": "{\"ok\":true,\"errors\":[],\"entries\":112,\"transactions\":56,\"total\":\"0\",\"balances\":{\"agent:2i7dRQSiFvhMDnJ1ZRvruwaUApARbvXsTgXdoVai6JfQ:wallet\":\"100000000000\",\"agent"
     },
     {
       "check": "verifier claims its epoch payout with a Merkle proof",
       "ok": true,
-      "detail": "{\"epoch\":0,\"agent\":\"C91BVvPgi4ZHjkspnj8y63N3jiwJLfdjPaPi2oW5XGnU\",\"dest\":\"agent:C91BVvPgi4ZHjkspnj8y63N3jiwJLfdjPaPi2oW5XGnU:wallet\",\"amount\":\"25535586201\",\"bal"
+      "detail": "{\"epoch\":0,\"agent\":\"ruDAGWo5GKbPXnd1BMXFhVjWQ7j5uDGahHfUdEDDpMq\",\"dest\":\"agent:ruDAGWo5GKbPXnd1BMXFhVjWQ7j5uDGahHfUdEDDpMq:wallet\",\"amount\":\"18834589695\",\"balan"
     },
     {
       "check": "another agent cannot claim that leaf",
@@ -215,7 +265,7 @@
     {
       "check": "unqualified verifiers (fabricated qualification, wrong arch) never enter an assignment draw",
       "ok": true,
-      "detail": "19 rounds"
+      "detail": "20 rounds"
     },
     {
       "check": "canary list revealed at epoch close",

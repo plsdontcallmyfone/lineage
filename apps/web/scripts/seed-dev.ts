@@ -25,6 +25,7 @@ import {
   resultCommitment,
   sha256Hex,
   signMessage,
+  signStatement,
   snapshotId,
   type AgentKey,
   type Calibration,
@@ -53,7 +54,8 @@ try {
 
 const dataDir = arg("data") ?? mkdtempSync(join(tmpdir(), "lineage-web-seed-"));
 const raw = JSON.parse(readFileSync(join(ROOT, "config/network.json"), "utf8"));
-const cfg = parseNetworkConfig({ ...raw, canary_rate: 1, audit_rate: 1, bootstrap_resamples: 2000 });
+// candidates of the scripted scenario stay open while canaries are injected on later ticks, so the cap is raised
+const cfg = parseNetworkConfig({ ...raw, canary_rate: 1, audit_rate: 1, bootstrap_resamples: 2000, max_open_candidates_per_agent: 20 });
 const adminKey = generateAgentKey();
 const core = new Core({ dataDir, network: cfg, adminId: adminKey.id, clock: systemClock });
 const server = serve(core, { port: PORT });
@@ -217,6 +219,13 @@ function copyClaim(lin: Lin, claimed: number, asg: any): ReplayResult {
 }
 
 const lins = new Map<string, Lin>();
+
+/** A signed advisory intent (SPEC 12.1) on the lineage's current tip. */
+async function intent(lin: Lin, a: A, kind: string, target: string | string[], note: string, ttl_s = 1800) {
+  const tip = (await ok(anon.get(`/v1/lineages/${lin.id}`))).tip;
+  const st = { v: 1, agent: a.id, lineage_id: lin.id, tip, kind, target, finding_id: null, note, ttl_s };
+  return ok(a.c.post("/v1/intents", { lineage_id: lin.id, tip, kind, target, note, ttl_s, sig: signStatement(a.key, "intent", st) }), "intent");
+}
 
 async function submit(lin: Lin, author: A, patch: string, kind: string, target: string | string[], outcome: Outcome, claimed: number, opts: { conflictOnRebase?: boolean; reveal?: boolean } = {}) {
   const salt = sha256Hex(Math.random().toString()).slice(0, 32);
@@ -473,6 +482,9 @@ async function main() {
   await submit(pyLin, a3, synthPatch("base58/__init__.py", "def b58encode_check(", "digest = sha256(sha256(v).digest()).digest()", "digest = _dsha(v)"), "perf", "check_ir", { kind: "improve", metric: "check_ir", ratio: 0.9512 }, 0.05);
   await drive();
   await refreshBases(pyLin);
+  // intents on the fixture lineage (advisory): one leads to the candidate below, one is just held
+  await intent(fxLin, a2, "perf", "decode_ir", "Preallocating the decode buffer from the input length");
+  await intent(fxLin, a1, "perf", "encode_ir", "Counting leading zeros with position() instead of take_while");
   await submit(fxLin, a2, synthPatch("src/lib.rs", "pub fn decode(input: &str) -> Result<Vec<u8>, Error> {", "let mut bytes: Vec<u8> = Vec::new();", "let mut bytes: Vec<u8> = Vec::with_capacity(n);"), "perf", "decode_ir", { kind: "improve", metric: "decode_ir", ratio: 0.97 }, 0.03);
   // committed and assigned, replays committed but not revealed
   for (const a of everyone) for (const asg of await ok<any[]>(a.c.get("/v1/assignments", true))) if (asg.status === "assigned") stash.set(asg.replay_id, await commitOne(a, asg));

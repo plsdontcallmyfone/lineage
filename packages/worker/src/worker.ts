@@ -14,6 +14,7 @@ import {
   patchHash,
   resultCommitment,
   signMessage,
+  signStatement,
   type AgentKey,
   type Calibration,
   type Capabilities,
@@ -24,7 +25,7 @@ import {
 } from "@lineage/protocol";
 import { applyPatch, calibrate, diffWorkingTree, evaluate, materialize, newWorkDir, removeTree, WORKER_VERSION, type Transcript } from "@lineage/sandbox";
 import { CoreClient } from "../../core/src/client.ts";
-import type { Finding, Proposer } from "./proposers/types.ts";
+import type { Finding, IntentView, PlannedTarget, ProposeContext, Proposer } from "./proposers/types.ts";
 import { doctor } from "./doctor.ts";
 import { RecipeBook } from "./recipes.ts";
 import { Telemetry } from "./telemetry.ts";
@@ -53,6 +54,12 @@ export interface WorkerOptions {
   capabilities?: Capabilities;
   /** live heartbeats and activity (SPEC 17.1); default on */
   telemetry?: boolean;
+  /**
+   * Collaboration (SPEC 12.1): `advisory` (default) reads the lineage's intents, lets the proposer
+   * plan a target nobody else holds, and files an intent for it before editing; `team` does the same
+   * and commits team candidates when `team` is set (SPEC 12.2); `off` does neither.
+   */
+  collab?: "off" | "advisory" | "team";
 }
 
 interface PendingReplay {
@@ -296,7 +303,8 @@ export class Worker {
       }
       for (const p of parentPatches) if (!applyPatch(dir, p)) throw new Error("parent series does not apply locally");
       const seed = randomBytes(8).toString("hex");
-      const proposal = await proposer.propose({
+      const collab = this.opts.collab ?? "advisory";
+      const ctx: ProposeContext = {
         loaded,
         deps,
         calibration: view.calibration,
@@ -307,7 +315,18 @@ export class Worker {
         log: this.log,
         activity: (e) => this.telemetry.activity(where, e),
         onPhase: this.telemetry.onPhase,
-      });
+        self: this.id,
+        collab,
+      };
+      if (collab !== "off") {
+        // intents are advisory (SPEC 12.1): reading or filing one never blocks authoring
+        ctx.intents = await this.intentsOn(view.lineage_id);
+        if (proposer.plan) {
+          ctx.planned = await proposer.plan(ctx);
+          if (ctx.planned) await this.fileIntent(view.lineage_id, tree.gen_id, ctx.planned);
+        }
+      }
+      const proposal = await proposer.propose(ctx);
       if (!proposal) return null;
       if (proposal.usage) this.log(`author: model spend ${proposal.usage.usd.toFixed(4)} USD (${proposal.usage.input_tokens} in, ${proposal.usage.output_tokens} out, ${proposal.usage.cache_read_tokens} cache read)`);
       const raw = diffWorkingTree(dir);
@@ -342,6 +361,36 @@ export class Worker {
       this.telemetry.idle();
       void this.telemetry.flush();
     }
+  }
+
+  // ------------------------------------------------------------------ collaboration (SPEC 12.1)
+
+  private intentTtl: number | null = null;
+
+  /** Live intents on a lineage; empty when Core cannot be read (advisory, never fatal). */
+  async intentsOn(lineage: string): Promise<IntentView[]> {
+    const r = await this.client.get(`/v1/intents?lineage=${lineage}`, true).catch(() => null);
+    return r && r.status === 200 && Array.isArray(r.body) ? (r.body as IntentView[]) : [];
+  }
+
+  /** Files a signed intent for the planned target. Returns its id, or null if Core refused (cap, rate, stale tip). */
+  async fileIntent(lineage: string, tip: string, planned: PlannedTarget): Promise<string | null> {
+    if (this.intentTtl === null) {
+      const c = await this.client.get("/v1/config").catch(() => null);
+      this.intentTtl = Math.min(1800, Number(c?.body?.network?.intent_max_ttl_s ?? 1800));
+    }
+    const target = planned.kind === "fix" ? [...new Set(Array.isArray(planned.target) ? planned.target : [planned.target])].sort() : planned.target;
+    const note = planned.note ? planned.note.slice(0, 280) : null;
+    const statement = { v: 1, agent: this.id, lineage_id: lineage, tip, kind: planned.kind, target, finding_id: null, note, ttl_s: this.intentTtl };
+    const r = await this.client
+      .post("/v1/intents", { lineage_id: lineage, tip, kind: planned.kind, target, note, ttl_s: this.intentTtl, sig: signStatement(this.opts.key, "intent", statement) })
+      .catch((e) => ({ status: 0, body: { error: String(e) } }));
+    if (r.status >= 300) {
+      this.log(`intent not filed (${r.status} ${r.body?.error ?? ""}); authoring anyway, intents are advisory`);
+      return null;
+    }
+    this.log(`intent ${String(r.body.intent_id).slice(0, 10)} filed: ${planned.kind} on ${JSON.stringify(target)}`);
+    return r.body.intent_id as string;
   }
 
   // ------------------------------------------------------------------ reference runner

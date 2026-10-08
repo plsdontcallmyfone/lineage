@@ -48,6 +48,27 @@ describe("ToolBox path confinement", () => {
 });
 
 describe("ScriptedProposer", () => {
+  test("plan (advisory collaboration) prefers a target no other agent holds an intent on, then proposes it", async () => {
+    const { c, done, logs } = await ctx();
+    try {
+      const p = new ScriptedProposer(loadScript(join(ROOT, "fixtures/b58-patches"), ["perf_encode", "fix_leading_ones"]));
+      const held = { intent_id: "i", agent: "someone-else", kind: "perf" as const, target: "encode_ir", note: null, expires_at: 0, status: "open" };
+      const mine = { ...held, agent: "me", kind: "fix" as const, target: ["tests/basic.rs::decode_leading_ones_are_zero_bytes"] };
+      const planned = await p.plan({ ...c, self: "me", collab: "advisory", intents: [held, mine] });
+      expect(planned?.kind).toBe("fix");
+      expect(logs.some((l) => l.includes("skipping targets other agents hold"))).toBe(true);
+      expect((await p.propose(c))?.kind).toBe("fix");
+      // with every applying target held, intents stay advisory: it still plans the first one
+      const q = new ScriptedProposer(loadScript(join(ROOT, "fixtures/b58-patches"), ["perf_encode"]));
+      expect((await q.plan({ ...c, self: "me", collab: "advisory", intents: [held] }))?.target).toBe("encode_ir");
+      // collab off: script order
+      const r = new ScriptedProposer(loadScript(join(ROOT, "fixtures/b58-patches"), ["perf_encode", "fix_leading_ones"]));
+      expect((await r.plan({ ...c, self: "me", collab: "off", intents: [held] }))?.kind).toBe("perf");
+    } finally {
+      done();
+    }
+  }, 120_000);
+
   test("applies the next patch that fits and skips ones that do not", async () => {
     const { c, done, logs } = await ctx();
     try {

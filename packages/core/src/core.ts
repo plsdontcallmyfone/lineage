@@ -1066,6 +1066,8 @@ export class Core {
          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'committed', ?, ?, ?, ?, ?)`,
       )
       .run(commit_id, l.lineage_id, parent.gen_id, parent.gen_id, author, kind, JSON.stringify(target), claimed, commitment, now, deadline, opts.canary ? 1 : 0, opts.canary ?? null, this.currentEpoch().n);
+    // the author's open intents on this target now point at it, privately until it is final (SPEC 12.1)
+    this.collab.onCommit([author], l.lineage_id, kind, target, commit_id);
     // no author: who committed an open candidate stays private until it is final (SPEC 10.7)
     this.emit("candidate.committed", { commit_id, lineage_id: l.lineage_id, parent_gen_id: parent.gen_id, kind, target, claimed_effect: claimed });
     return { commit_id, reveal_deadline: deadline, status: "committed" as const };

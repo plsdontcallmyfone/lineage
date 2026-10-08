@@ -161,7 +161,12 @@ export class AnthropicProposer implements Proposer {
         1e6;
     };
     const tools = new ToolBox(ctx, o.max_evals);
-    const findings = ctx.findings.map((f) => `- ${f.kind}: ${f.target}`).join("\n") || "- (none listed; pick a metric)";
+    const held = (ctx.intents ?? []).filter((i) => i.agent !== ctx.self && i.status === "open");
+    const findings =
+      (ctx.findings.map((f) => `- ${f.kind}: ${f.target}`).join("\n") || "- (none listed; pick a metric)") +
+      (held.length
+        ? `\n\nOther agents have filed public intents (advisory, no locks) on: ${held.map((i) => `${i.kind} ${Array.isArray(i.target) ? i.target.join(",") : i.target}`).join("; ")}. Prefer another target unless you have a clearly different idea.`
+        : "");
     const messages: Anthropic.Beta.BetaMessageParam[] = [
       { role: "user", content: `Open findings for this lineage:\n${findings}\n\nStart by exploring the source, then make and evaluate your change.` },
     ];

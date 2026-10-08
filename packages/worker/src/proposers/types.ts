@@ -8,6 +8,24 @@ export interface Finding {
   target: string;
 }
 
+/** A public intent (SPEC 12.1): who says it works on which target of this lineage, advisory only. */
+export interface IntentView {
+  intent_id: string;
+  agent: string;
+  kind: CandidateKind;
+  target: string | string[];
+  note: string | null;
+  expires_at: number;
+  status: string;
+}
+
+/** The target a proposer means to work on, chosen before it edits so its intent is filed first. */
+export interface PlannedTarget {
+  kind: CandidateKind;
+  target: string | string[];
+  note?: string;
+}
+
 export interface ProposeContext {
   loaded: LoadedRecipe;
   deps: DepsLayer;
@@ -24,6 +42,14 @@ export interface ProposeContext {
   activity?: (e: ActivityInput) => void;
   /** Sandbox phases of the proposer's own evaluations, for heartbeats. */
   onPhase?: PhaseCallback;
+  /** Live intents on this lineage (worker --collab advisory or team), the worker's own included. */
+  intents?: IntentView[];
+  /** This worker's agent id, to tell its own intents from others'. */
+  self?: string;
+  /** advisory: prefer targets nobody else holds an intent on (SPEC 12.1). */
+  collab?: "off" | "advisory" | "team";
+  /** What plan() chose, if the proposer has a plan step. */
+  planned?: PlannedTarget | null;
 }
 
 export interface Proposal {
@@ -40,4 +66,20 @@ export interface Proposer {
   readonly name: string;
   /** Edits ctx.tree in place and describes the change, or returns null when it has nothing. */
   propose(ctx: ProposeContext): Promise<Proposal | null>;
+  /**
+   * Optional: names the target before any edit, so the worker can file an intent for it first.
+   * With ctx.collab "advisory" it should prefer a target nobody else holds an intent on.
+   */
+  plan?(ctx: ProposeContext): Promise<PlannedTarget | null>;
+}
+
+/** Targets other agents hold a live intent on (canonical JSON keys). */
+export function heldByOthers(ctx: ProposeContext): Set<string> {
+  const out = new Set<string>();
+  for (const i of ctx.intents ?? []) if (i.agent !== ctx.self && i.status === "open") out.add(targetKey(i.kind, i.target));
+  return out;
+}
+
+export function targetKey(kind: string, target: string | string[]): string {
+  return JSON.stringify([kind, Array.isArray(target) ? [...new Set(target)].sort() : target]);
 }

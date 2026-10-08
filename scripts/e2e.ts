@@ -8,7 +8,7 @@ import { spawn, type Subprocess } from "bun";
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { generateAgentKey, H, patchCommitment, patchHash, sha256Hex, type AgentKey } from "@lineage/protocol";
+import { generateAgentKey, H, patchCommitment, patchHash, sha256Hex, signStatement, type AgentKey } from "@lineage/protocol";
 import { loadRecipe, prepareDeps } from "@lineage/sandbox";
 import { CoreClient } from "../packages/core/src/client.ts";
 import { doctor } from "../packages/worker/src/doctor.ts";
@@ -55,6 +55,9 @@ const keys = {
   wrongarch: generateAgentKey(),
   author: generateAgentKey(),
   launcher: generateAgentKey(),
+  // a second launched author on the same lineage (collaboration checks, SPEC 12)
+  author2: generateAgentKey(),
+  launcher2: generateAgentKey(),
 };
 const kp = Object.fromEntries(Object.entries(keys).map(([n, k]) => [n, writeKey(n, k)])) as Record<keyof typeof keys, string>;
 const net = JSON.parse(readFileSync(join(ROOT, "config/network.json"), "utf8"));
@@ -71,6 +74,10 @@ Object.assign(net, {
   shadow_min_age_s: 5,
   canary_inject_delay_s: [2, 10],
   canary_reveal_delay_s: [1, 5],
+  // collaboration caps (SPEC 12.1), test values
+  max_intents_per_agent: 3,
+  intent_max_ttl_s: 1800,
+  intent_rate_per_hour: 20,
 });
 writeFileSync(join(tmp, "network.json"), JSON.stringify(net));
 
@@ -252,11 +259,55 @@ async function main() {
     }
   })();
 
-  // ---------------------------------------------------------------- phase 1: accepted generations
+  // ---------------------------------------------------------------- phase 1: intents (SPEC 12.1), then accepted generations
+  await ok(
+    admin.post("/v1/admin/launches", { agent: keys.author2.id, mint: generateAgentKey().id, launcher: keys.launcher2.id, target_repo: loaded.recipe.repo, hosted: false, identity_mode: "token" }),
+    "launch author2",
+  );
+  const author2 = as(keys.author2);
+  const fileIntent2 = async (kind: string, target: string | string[]) => {
+    const tip = (await ok(admin.get(`/v1/lineages/${L}`), "lineage")).tip;
+    const st = { v: 1, agent: keys.author2.id, lineage_id: L, tip, kind, target, finding_id: null, note: null, ttl_s: 1200 };
+    return author2.post("/v1/intents", { lineage_id: L, tip, kind, target, ttl_s: 1200, sig: signStatement(keys.author2, "intent", st) });
+  };
+  const held = await fileIntent2("perf", "encode_ir");
+  check("a second author files a signed intent on encode_ir", held.status === 200 && held.body.status === "open", `${held.status} ${JSON.stringify(held.body).slice(0, 120)}`);
+  // the advisory worker plans around the held target: it files its own intent and authors the fix first
+  const advisory = author(["perf_encode", "fix_leading_ones"]);
+  const firstId = await advisory.authorOnce();
+  const firstMine = await ok<any>(as(keys.author).get(`/v1/candidates/${firstId}`, true), "first candidate");
+  check("the advisory worker picks a target nobody holds an intent on", firstMine.kind === "fix", `${firstMine.kind} ${JSON.stringify(firstMine.target)}`);
+  const myIntents = await ok<any[]>(as(keys.author).get(`/v1/intents?lineage=${L}&agent=${keys.author.id}&status=all`, true), "own intents");
+  check(
+    "its intent closes on commit for the author at once, linked to the candidate",
+    myIntents.some((i) => i.status === "committed" && i.candidate?.commit_id === firstMine.commit_id && i.kind === "fix"),
+    myIntents.map((i) => `${i.kind}:${i.status}`).join(", "),
+  );
+  const pubOpen = await ok<any[]>(admin.get(`/v1/intents?lineage=${L}&status=all`), "intents");
+  check("two authors' intents are public on the lineage board", new Set(pubOpen.map((i) => i.agent)).size === 2, `${pubOpen.length} intents`);
+  const wb = await ok(admin.get(`/v1/lineages/${L}/workboard`), "workboard");
+  check("workboard names who holds an intent on each target", wb.targets.some((t: any) => t.target === "encode_ir" && t.holders.includes(keys.author2.id)), `${wb.targets.length} targets`);
+  const p2 = await candidateFinal(firstMine.commit_id);
+  log(`fix_leading_ones: ${p2.status}${p2.reason ? ` (${p2.reason})` : ""}`);
+  check("fix_leading_ones accepted (known failure fixed)", p2.status === "accepted");
+  const closedPub = await waitFor("intent publicly committed", async () => {
+    const xs = await ok<any[]>(admin.get(`/v1/intents?lineage=${L}&agent=${keys.author.id}&status=committed`), "intents");
+    return xs.find((i) => i.candidate?.candidate_id === p2.candidate_id) ?? null;
+  }, 30_000).catch(() => null);
+  check("once the candidate is final the public board shows the intent led to it", !!closedPub && closedPub.candidate.status === "accepted");
+  const wb2 = await waitFor("workboard files", async () => {
+    const x = await ok(admin.get(`/v1/lineages/${L}/workboard`), "workboard");
+    return x.files.length > 0 ? x : null;
+  }, 30_000).catch(() => null);
+  check("workboard lists the files authors touched in its window", !!wb2 && wb2.files.some((f: any) => f.agents.some((a: any) => a.agent === keys.author.id)), `${wb2?.files.length ?? 0} files`);
+  const heldNow = await ok<any[]>(admin.get(`/v1/intents?lineage=${L}&agent=${keys.author2.id}&status=all`), "intents");
+  check("an intent on a tip that moved is stale", heldNow.some((i) => i.intent_id === held.body.intent_id && i.status === "stale"), heldNow.map((i) => i.status).join(","));
   const p1 = await submit("perf_encode");
   check("perf_encode accepted (deterministic instruction count)", p1.status === "accepted", p1.effect ? `ratio ${p1.effect.ratio}` : "");
-  const p2 = await submit("fix_leading_ones");
-  check("fix_leading_ones accepted (known failure fixed)", p2.status === "accepted");
+  // spam caps: max_intents_per_agent open intents, then 429
+  for (let k = 0; k < 3; k++) await ok(fileIntent2("perf", "decode_ir"), `intent ${k}`);
+  const spam = await fileIntent2("perf", "decode_ir");
+  check("an agent past max_intents_per_agent gets 429", spam.status === 429 && spam.body.error === "too_many_intents", `${spam.status} ${spam.body?.error}`);
 
   // ---------------------------------------------------------------- phase 2: rejections
   const expectReason: [string, string][] = [
@@ -379,6 +430,15 @@ async function main() {
     const canaries = cs.filter((c) => c.author !== keys.author.id);
     return canaries.length >= triggers.length && cs.every((c) => FINAL.has(c.status));
   });
+  {
+    // shadow parity (SPEC 10.7): shadows file intents on their canary's target at the rate real authors do
+    const cs = await ok<any[]>(admin.get(`/v1/candidates?lineage=${L}&limit=1000`, true), "candidates");
+    const canaries = cs.filter((c) => c.author !== keys.author.id && c.author !== keys.author2.id);
+    const its = await ok<any[]>(admin.get(`/v1/intents?lineage=${L}&status=all&limit=1000`, true), "intents");
+    const linked = canaries.map((c) => its.find((i) => i.agent === c.author && i.candidate?.commit_id === c.commit_id)).filter(Boolean);
+    const ok2 = linked.every((i: any) => i.created_at < canaries.find((c) => c.commit_id === i.candidate.commit_id).committed_at);
+    check("shadow intents precede their canary's commit and link to it like a real author's", ok2, `${linked.length} of ${canaries.length} canaries preceded by a shadow intent`);
+  }
   const after = await ok(admin.get(`/v1/admin/agents/${keys.liar.id}`, true), "liar");
   const slashed = BigInt(after.slashed_total) - BigInt(before.slashed_total);
   check("fabricating verifier slashed and struck", slashed > 0n && after.strikes_total > 0, `slashed ${slashed}, strikes ${after.strikes_total}`);
