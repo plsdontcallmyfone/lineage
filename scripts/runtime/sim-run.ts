@@ -94,7 +94,7 @@ async function main() {
     attempt_max_usd: 0.5,
     agent_epoch_max_usd: RUN_CAP,
     global_max_usd: RUN_CAP,
-    min_attempt_usd: 0.15,
+    min_attempt_usd: 0.1,
     compute_price_line_per_usd: "5",
     compute_price_line_per_sandbox_s: "0.001",
     sandbox_reserve_s: 300,
@@ -104,9 +104,9 @@ async function main() {
     max_concurrent: 1,
     lineages: [L],
   };
-  writeFileSync(join(tmp, "runtime.json"), JSON.stringify(cfg, null, 2));
+  writeFileSync(join(tmp, "runtime-config.json"), JSON.stringify(cfg, null, 2));
   const lines: string[] = [];
-  const rt = child("rt", ["bun", join(ROOT, "packages/runtime/src/main.ts"), "run", "--config", join(tmp, "runtime.json")], (l) => lines.push(l));
+  const rt = child("rt", ["bun", join(ROOT, "packages/runtime/src/main.ts"), "run", "--config", join(tmp, "runtime-config.json")], (l) => lines.push(l));
   const reqFile = join(stateDir, "bind-requests", `${keys.agent.id}.json`);
   const req = await waitFor("bind request", async () => (existsSync(reqFile) ? JSON.parse(readFileSync(reqFile, "utf8")) : null), 60_000, 500);
   check("the runtime generated its own key and asks the owner to bind it", req.body.new_key !== keys.agent.id, `runtime key ${req.body.new_key}`);
@@ -150,18 +150,27 @@ async function main() {
   const provUsd = state.closed.flatMap((e: any) => e.leaves).filter((l: any) => l.agent === keys.agent.id).reduce((s: number, l: any) => s + l.usd, 0);
   check("posted usage records match the runtime's meter", usage.records.every((r: any) => state.closed.some((e: any) => e.leaves.some((l: any) => l.amount === r.amount))), `${provUsd.toFixed(4)} USD metered`);
 
-  // ---------------------------------------------------------------- new fees wake it
-  await ok(admin.post("/v1/admin/agent-fees", { agent: keys.agent.id, amount: fees.toString() }), "fees");
-  const woke = await ok(anon.get(`/v1/agents/${keys.agent.id}`), "agent");
-  await waitFor("runtime sees the agent awake", async () => lines.some((l) => l.includes(`agent ${keys.agent.id} is awake`)), 60_000, 1000).catch(() => null);
-  check("new fees wake the agent and the runtime resumes it", woke.awake === true && lines.some((l) => l.includes(`agent ${keys.agent.id} is awake`)), `compute ${woke.compute}`);
-
-  // ---------------------------------------------------------------- graceful stop, spend
+  // ---------------------------------------------------------------- graceful stop, restart, new fees wake it
   rt.kill("SIGTERM");
   await rt.exited;
+  check("graceful stop released the lock", !existsSync(join(stateDir, "runtime.lock")));
+  // restart from the persisted state with the global cap at what was spent, so waking costs nothing more
+  const spentNow = JSON.parse(readFileSync(join(stateDir, "state.json"), "utf8")).spent_usd_total as number;
+  writeFileSync(join(tmp, "runtime-config.json"), JSON.stringify({ ...cfg, global_max_usd: spentNow }, null, 2));
+  const lines2: string[] = [];
+  const rt2 = child("rt2", ["bun", join(ROOT, "packages/runtime/src/main.ts"), "run", "--config", join(tmp, "runtime-config.json")], (l) => lines2.push(l));
+  await Bun.sleep(12_000);
+  check("restart recovered the binding from state (no new key, no new bind request)", lines2.every((l) => !l.includes("discovered hosted agent")) && !lines2.some((l) => /locked/.test(l)), `${lines2.length} lines`);
+  await ok(admin.post("/v1/admin/agent-fees", { agent: keys.agent.id, amount: fees.toString() }), "fees");
+  const woke = await ok(anon.get(`/v1/agents/${keys.agent.id}`), "agent");
+  await waitFor("runtime sees the agent awake", async () => lines2.some((l) => l.includes(`agent ${keys.agent.id} is awake`)), 60_000, 1000).catch(() => null);
+  check("new fees wake the agent and the runtime sees it awake", woke.awake === true && lines2.some((l) => l.includes(`agent ${keys.agent.id} is awake`)), `compute ${woke.compute}`);
+  rt2.kill("SIGTERM");
+  await rt2.exited;
+  lines.push(...lines2);
   const final = JSON.parse(readFileSync(join(stateDir, "state.json"), "utf8"));
   const spent = final.spent_usd_total as number;
-  check("graceful stop released the lock and kept state", !existsSync(join(stateDir, "runtime.lock")), `spent ${spent.toFixed(4)} USD`);
+  check("spend within the run cap", spent <= RUN_CAP + 1e-9, `${spent.toFixed(4)} of ${RUN_CAP.toFixed(4)} USD`);
   check("no secrets in the runtime's output", !lines.some((l) => /sk-ant-/.test(l)), `${lines.length} lines`);
   runNote = `minbpe, ${mine.length} candidate(s): ${mine.map((c) => c.status).join(", ")}`;
   writeFileSync(join(ROOT, "scripts/runtime/SIM-LAST.json"), JSON.stringify({ at: new Date().toISOString(), claude_usd: spent, candidates: mine.map((c) => ({ commit_id: c.commit_id, status: c.status, reason: c.reason })), usage: usage.records, results }, null, 2));

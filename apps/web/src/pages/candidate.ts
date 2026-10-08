@@ -3,11 +3,36 @@ import { diffStats, renderDiff } from "../diff.ts";
 import { gainPct, shortHex, stamp, target, when } from "../fmt.ts";
 import { html, type Raw } from "../html.ts";
 import { replayList, samplesPanel } from "../replays.ts";
-import { agentLink, authorLink, badge, teamPanel, banner, candStatus, epochLink, genLink, kindBadge, kv, linLink, panel, reasonText } from "../ui.ts";
+import { agentLink, authorLink, badge, teamPanel, banner, candLink, candStatus, epochLink, genLink, kindBadge, kv, linLink, panel, reasonText } from "../ui.ts";
 import { verdictPanel } from "./generation.ts";
+import { provenancePanel } from "./provenance.ts";
 import type { Page } from "./types.ts";
 
-const OPEN = new Set(["committed", "queued", "replaying", "disputed"]);
+const OPEN = new Set(["committed", "waiting", "queued", "replaying", "disputed"]);
+
+const OUTCOME: Record<string, string> = {
+  on_tip: "measured on the tip that includes its dependency",
+  alone: "its dependency failed; queued alone on the tip",
+  dependency_failed: "failed with its dependency",
+};
+
+/** Stacked series (SPEC 12.4): what this candidate builds on and what builds on it, once public. */
+function seriesPanel(c: any): Raw | "" {
+  const s = c.series;
+  if (!s) return "";
+  const waited = s.waiting_since && s.released_at ? Math.max(0, Math.round((s.released_at - s.waiting_since) / 1000)) : null;
+  return panel(
+    "Series",
+    kv([
+      ["builds on", s.depends_on ? candLink(s.depends_on) : null],
+      ["outcome", s.outcome ? (OUTCOME[s.outcome] ?? s.outcome) : s.depends_on ? html`<span class="faint">waiting</span>` : null],
+      ["waited", waited !== null ? `${waited}s` : null],
+      ["released onto", s.released_onto ? genLink(s.released_onto) : null],
+      ["built on by", s.dependents?.length ? html`${s.dependents.map((d: string) => html`<div>${candLink(d)}</div>`)}` : null],
+    ]),
+    { note: html`A stacked candidate commits early to fix its priority, is held until the one it builds on is final, then is judged on the tip like any candidate. The verdict rule does not change.` },
+  );
+}
 
 export async function candidatePage([id]: string[]): Promise<Page> {
   const [c] = await Promise.all([get(`candidates/${id}`), loadConfig(), loadLineageNames()]);
@@ -27,7 +52,9 @@ export async function candidatePage([id]: string[]): Promise<Page> {
         "Unverified",
         c.status === "committed"
           ? "The author has committed a sealed patch hash. The patch and any claim stay unverified until it is revealed and reproduced by independent replayers."
-          : "Replays are in progress. Replayer identities and results stay sealed until the candidate is final, so nobody can copy or coordinate.",
+          : c.status === "waiting"
+            ? "Held until the candidate it builds on is final, then measured on the tip like any candidate (SPEC 12.4). Which candidate that is stays private until both are final, like the author."
+            : "Replays are in progress. Replayer identities and results stay sealed until the candidate is final, so nobody can copy or coordinate.",
       ),
     );
   if (c.status === "rejected") banners.push(banner("bad", `Rejected: ${reasonText(c.reason)}`, c.detail ?? undefined));
@@ -70,6 +97,8 @@ export async function candidatePage([id]: string[]): Promise<Page> {
   );
 
   const sp = samplesPanel(mainReplays, l.recipe, tMetric);
+  const series = seriesPanel(c);
+  const prov = await provenancePanel(c.commit_id).catch(() => "");
   const body = html`
     <div class="crumbs"><a href="/">Network</a><span>/</span>${linLink(c.lineage_id)}<span>/</span><span>candidate</span></div>
     <div class="ph-row" style="margin-top:6px"><div class="ph-title"><h1>Candidate ${kindBadge(c.kind, c.target)}</h1>
@@ -82,7 +111,7 @@ export async function candidatePage([id]: string[]): Promise<Page> {
         ${sp ?? ""}
         ${replayList(c.replays, l.recipe, l.calibration, { perReplay, final: !OPEN.has(c.status) })}
       </div>
-      <div class="stack">${details}${teamPanel(c.team, c.author === null && OPEN.has(c.status))}${c.status !== "committed" && !v && !OPEN.has(c.status) ? panel("Verdict", html`<div class="empty"><div class="t1">Decided by Core without replays</div><div>${reasonText(c.reason)}${c.detail ? html`: ${c.detail}` : ""}</div></div>`) : verdictPanel(v)}</div>
+      <div class="stack">${details}${prov}${teamPanel(c.team, c.author === null && OPEN.has(c.status))}${series}${c.status !== "committed" && !v && !OPEN.has(c.status) ? panel("Verdict", html`<div class="empty"><div class="t1">Decided by Core without replays</div><div>${reasonText(c.reason)}${c.detail ? html`: ${c.detail}` : ""}</div></div>`) : verdictPanel(v)}</div>
     </div>`;
   return { title: "Candidate", body, refreshOn: (ev) => ev.data?.candidate_id === c.candidate_id || ev.data?.commit_id === c.commit_id };
 }

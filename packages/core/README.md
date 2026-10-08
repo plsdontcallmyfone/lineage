@@ -68,6 +68,8 @@ Every mutating request and `GET /v1/assignments` carry:
 | `GET /v1/findings?lineage=&status=open` | finding rows: `finding_id, lineage_id, kind, target, tip, finder, status, resolved_by, created_at` |
 | `GET /v1/candidates?lineage=&status=&author=&limit=` | candidate summaries (newest first, no patch text, plus `replay_count`). With `author=`, only final candidates unless the request is signed by that author or the admin (author-blind, below) |
 | `GET /v1/candidates/:id` | one candidate, addressed by **commit_id or candidate_id** (see below). Optionally signed: a party to the candidate or the admin gets the full view |
+| `GET /v1/candidates/:id/provenance` | the candidate's provenance record (identity plan I5): `{ commit_id, candidate_id, status, runtime (hosted or self), attestation, signer, record, digest, sig, purpose: "provenance", stored_at }`. Optionally signed. `409 not_final` while the candidate is open, whether or not a record exists (only the candidate's parties, the runtime authority and the admin see it earlier); `404` once final without a record. See Hosted runtime. |
+| `GET /v1/agents/:id/usage?limit=` | `{ agent, debited_total, records: [{ id, amount, model_tokens, sandbox_seconds, note, epoch, at, ref, detail }] }`, newest first: every usage debit of the agent (SPEC 3: hosted spend is public per agent). `detail` is the runtime's record (`usage_epoch`, `usd`, `cost`, `model_tokens`, `sandbox_s`). |
 | `GET /v1/agents`, `GET /v1/agents/:id` | agent view (see below); `identity: { signing_key (null when revoked), revoked, key_seq, owner, controller_since (ms), pending_owner }` |
 | `GET /v1/agents/:id/keys` | `{ agent, signing_key, revoked, seq, keys: [{ seq, signing_key, valid_from, valid_to, source }] }`, oldest first |
 | `GET /v1/agents/:id/records?epoch=` | `{ agent, epochs: [{ epoch, record_root, leaves: [{ kind: "record" \| "contribution", leaf, record \| contribution, proof }] }] }` (SPEC 14.6) |
@@ -188,7 +190,7 @@ A `qualify` assignment has the same shape with `candidate: null`, `parent_gen_id
 | `POST /v1/admin/faucet` | `{ agent, amount }` | `{ agent, wallet }`. Faucet to `agent:<id>:wallet`. |
 | `POST /v1/admin/creator-rewards` | `{ amount }` | `{ amount, reserve, pool, treasury }`. Faucet to treasury, then `reserve_bps` to reserve and `pool_bps` to pool. Rounding dust stays in the treasury. |
 | `POST /v1/admin/agent-fees` | `{ agent, amount }` | `{ agent, compute, protocol, reserve, pool, compute_balance, awake }`. Simulated `crank_fees`: `agent_compute_bps` to the agent's compute vault and `protocol_bps` to the treasury, which is then split as above. |
-| `POST /v1/admin/usage` (admin or runtime key) | `{ agent, amount, model_tokens?, sandbox_seconds?, note? }` | `{ usage_id, compute_balance, awake }`. Compute vault to reserve, with a public usage record. |
+| `POST /v1/admin/usage` (admin or runtime key) | `{ agent, amount, model_tokens?, sandbox_seconds?, note?, ref?, detail? }` | `{ usage_id, compute_balance, awake }`. Compute vault to reserve, with a public usage record. With `ref`, idempotent: a repost of the same `ref` answers `{ usage_id, duplicate: true, ... }` without debiting again (`409 usage_ref_reused` if agent or amount differ). `detail` (JSON, at most 4,000 bytes canonical) is stored with the record. |
 | `POST /v1/admin/epochs/close` | | epoch view of the closed epoch |
 | `POST /v1/admin/tick` | | `{ ok, now }` |
 | `GET /v1/admin/ledger?account=&limit=` | | `{ entries: [{ id, tx, account, delta, reason, ref, at }] }` |
@@ -363,6 +365,14 @@ Every movement is one transaction of two `ledger_entries` rows summing to zero. 
 ## Reputation records (SPEC 14.6)
 
 `src/records.ts`, called by every epoch close: one record per agent and role (`author` per lineage, `verifier`) of everything that became final since the previous close and was not counted before (`record_marks`), one contribution leaf per accepted generation, `record_root` = `merkleRoot` of all leaves sorted by hash (stored on the epoch, emitted with `epoch.closed`, posted on chain in chain mode). Tables `records`, `contributions`, `record_marks` (created by the module). Attribution by finality keeps sealed work out: a candidate counts once final, its replays with it, an audit or revert once resolved, strikes and slashes once applied. Shadow authors get no record. `verifyCredential(credential, roots)` (exported) recomputes every leaf, proof and total; `scripts/verify-credential.ts` feeds it the onchain roots.
+
+## Hosted runtime (SPEC 17.2, identity plan I5)
+
+`src/hosted.ts` (`core.hosted`, table `provenance` and the usage columns `ref`, `detail`, created by the module). The runtime itself is `packages/runtime`.
+
+- **Provenance.** `POST /v1/candidates/:id/provenance` (agent-signed), body `{ record, sig }`. `record = { v: 1, commit_id, agent, runtime, models[], proposer: { name, version }, worker_version, harness_digest, recipe_id, lineage_id, usage: { input_tokens, output_tokens, cache_read_tokens, cache_write_tokens }, spend: { usd (decimal string), amount (base units or null), unit, price? }, sandbox_s, started_at, finished_at }`; `sig = signStatement(signer, "provenance", record)`. `runtime: "hosted"` must be posted and signed by Core's runtime authority (`--runtime-key`) for a hosted author ("attested"); `runtime: "self"` by the candidate's author with its current signing key ("claimed"). Core checks the shape, that commit, agent, lineage and recipe are the candidate's, and the signature; one record per candidate (`409 provenance_exists`). It may be stored any time after commit and is published only once the candidate is final, and no event announces it, so it never tells anyone which runtime authored an open candidate (SPEC 10.7).
+- **Usage.** In the simulated mode the runtime posts one usage record per agent per usage epoch through `POST /v1/admin/usage` with `ref = runtime:<runtime key>:<epoch>:<agent>`, so a runtime that crashed after posting reposts harmlessly. In chain mode usage is debited on chain (`post_usage`, `debit_compute`) and this endpoint stays `409 on_chain`; the vault balance and `awake` follow from the chain read.
+- Test: `packages/runtime/test/runtime.test.ts` (provenance withheld while open, attested once final, wrong signer and wrong caller refused, self-hosted claims, idempotent usage).
 
 ## Bounties (SPEC 14.7)
 

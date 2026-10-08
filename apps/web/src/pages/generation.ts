@@ -5,6 +5,7 @@ import { html, type Raw } from "../html.ts";
 import { replayList, samplesPanel } from "../replays.ts";
 import { agentLink, auditBadge, badge, banner, teamPanel, candLink, epochLink, genLink, icon, kindBadge, kv, linLink, panel, reasonText } from "../ui.ts";
 import type { Page } from "./types.ts";
+import { provenancePanel } from "./provenance.ts";
 
 export function verdictPanel(v: any, title = "Verdict", extra: [string, unknown][] = []): Raw {
   if (!v) return panel(title, html`<div class="empty"><div class="t1">No verdict yet</div><div>Core computes it once every assigned replay has revealed.</div></div>`);
@@ -77,6 +78,7 @@ export async function generationPage([id]: string[]): Promise<Page> {
   } else hero = html``;
 
   const sp = samplesPanel(mainReplays, recipe, tMetric);
+  const prov = g.entry_type === "patch" && g.candidate_id ? await provenancePanel(g.candidate_id).catch(() => "") : "";
   const asp = auditReplays.length ? samplesPanel(auditReplays, recipe, tMetric, "Audit samples") : null;
 
   const body = html`
@@ -99,6 +101,7 @@ export async function generationPage([id]: string[]): Promise<Page> {
       <div class="stack">${sp ?? ""}${replayList(mainReplays, recipe, cal, { perReplay })}${asp ? html`${asp}` : ""}${auditReplays.length ? replayList(auditReplays, recipe, cal, { title: "Audit replays" }) : ""}</div>
       <div class="stack">
         ${verdictPanel(g.verdict, "Verdict", [["lineage", linLink(g.lineage_id, lineageName(g.lineage_id))], ["kind and target", html`${g.kind} ${target(g.target)}`]])}
+        ${prov}
         ${g.audit ? verdictPanel(g.audit.verdict, "Audit verdict", [["audit id", html`<span class="hash">${shortHex(g.audit.audit_id, 16)}</span>`], ["status", auditBadge(g.audit.status)]]) : ""}
         ${panel("Tests", kv([["stable set", int(cal?.stable?.length)], ["known failures at gen 0", int(cal?.known_failures?.length)], ["quarantined", int(cal?.quarantined?.length)]]), { note: html`A counted replay must pass the whole stable set${g.kind === "fix" ? " plus the targeted tests" : ""}.` })}
       </div></div>`
