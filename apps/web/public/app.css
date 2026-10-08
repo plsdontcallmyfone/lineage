@@ -355,7 +355,7 @@ table.t { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-
 .banner .t1 { font-weight: 600; }
 .banner .t2 { color: var(--dim); margin-top: 2px; }
 
-.empty { padding: 22px 14px; color: var(--dim); text-align: center; }
+.empty { padding: 22px 14px; color: var(--dim); text-align: center; overflow-wrap: anywhere; }
 .empty .t1 { color: var(--text); font-weight: 550; }
 .empty code, .errorbox code { font-family: var(--font); background: var(--panel-3); padding: 2px 6px; border-radius: 5px; color: var(--text); }
 
