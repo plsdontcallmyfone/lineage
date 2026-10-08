@@ -5,6 +5,7 @@ export * from "../codec.ts";
 export * from "../pda.ts";
 export * from "../registry.ts";
 export * from "../launch.ts";
+export * from "../bounty.ts";
 export * from "../leaves.ts";
 export { compileMessage, computeBudget, PACKET_LIMIT, COMPUTE_BUDGET_PROGRAM, type CompiledMessage } from "../tx.ts";
 export * from "../rpc.ts";

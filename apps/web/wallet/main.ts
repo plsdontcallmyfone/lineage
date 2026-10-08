@@ -1,7 +1,8 @@
 // Wallet page (M2, devnet only): connect a Wallet Standard wallet, launch an agent token, trade on
 // an agent's curve and crank its fees, register and bond a verifier with a worker-held agent key,
 // manage an agent's identity (rotate its signing key with the new key co-signing, revoke it, the
-// two-step public owner transfer), and claim epoch leaves. Every figure is read from chain (or from Core for proofs); nothing here
+// two-step public owner transfer), claim epoch leaves, and open, release, refund or cancel bounties
+// (C6: escrow from an agent's compute vault, released by a contribution proof into the payee's vault). Every figure is read from chain (or from Core for proofs); nothing here
 // holds a user's key: the wallet signs, and the fresh keys a launch needs are WebCrypto keys made
 // in this page. Loaded on demand as /assets/wallet.js (bundled with packages/chain's browser build).
 import "../../../packages/chain/src/browser/buffer.ts";
@@ -28,6 +29,15 @@ import {
   launchPdas,
   METEORA,
   accountDisc,
+  bounty,
+  bountyPdas,
+  BOUNTY_ROLES,
+  COND,
+  hashJson,
+  releaseFromContribution,
+  targetDigest,
+  type BountyAccount,
+  type BountyConfig,
   registry,
   registryPdas,
   REGISTRY_PROGRAM_ID,
@@ -111,6 +121,12 @@ const S = {
   // claims
   claims: null as null | { rows: any[]; note: Raw | null },
   claimOut: null as Raw | null,
+  // bounties (C6)
+  bcfg: undefined as BountyConfig | null | undefined,
+  bounties: null as null | (BountyAccount & { address: string })[],
+  bErr: null as Raw | null,
+  bOut: null as Raw | null,
+  bRelease: new Map<string, { rows: any[]; note: Raw | null }>(),
 };
 
 const dec = () => S.cfg?.state?.line_decimals ?? 6;
@@ -163,6 +179,7 @@ function skeleton(): Raw {
       <button type="button" data-tab="verify" aria-pressed="false">Verifier</button>
       <button type="button" data-tab="identity" aria-pressed="false">Identity</button>
       <button type="button" data-tab="claims" aria-pressed="false">Claims</button>
+      <button type="button" data-tab="bounties" aria-pressed="false">Bounties</button>
     </div></div>
     <div data-pane="launch"><div class="grid-2">
       ${panel("Launch an agent token", launchForm(), { note: html`<span class="num">lineage_launch::launch_agent</span> on Meteora DBC, quote tLINE (TEST). Curve, fee and supply come from the DBC config on chain; launch values are TBA (SPEC 13.7, 20).` })}
@@ -183,6 +200,10 @@ function skeleton(): Raw {
     <div data-pane="claims" hidden>
       ${panel("Claimable epoch leaves", html`<div id="w-claims"><div class="panel-b dim">Connect a wallet to look up its leaves.</div></div>`, { note: html`Leaves and proofs come from Core (<span class="num">GET /v1/epochs/:n/proofs/:agent</span>); each proof is checked against the payout root posted on chain before it is offered, and claim receipts are read from chain.` })}
     </div>
+    <div data-pane="bounties" hidden><div class="grid-2">
+      ${panel("Open a bounty", html`<div id="w-bopen"></div>`, { note: html`<span class="num">lineage_launch::open_bounty</span> escrows tLINE from an agent's compute vault. It is released only into the compute vault of an agent credited in an accepted generation that meets the condition, proven against the epoch's <span class="num">record_root</span> on chain (SPEC 14.7).` })}
+      ${panel("Bounties on chain", html`<div id="w-blist"><div class="panel-b dim">Reading Bounty accounts…</div></div>`, { aside: html`<span>Bounty accounts</span>` })}
+    </div></div>
     <div style="margin-top:16px">${panel("This session's transactions", html`<div id="w-sigs"></div>`, { note: html`Every signature links to Solana Explorer (devnet). Nothing is stored after you leave the page.` })}</div>`;
 }
 
@@ -1277,6 +1298,237 @@ async function claim(i: number) {
 }
 
 // ------------------------------------------------------------------------------------------------
+// bounties (identity plan C6, SPEC 14.7)
+
+const HEX64 = /^[0-9a-f]{64}$/;
+const COND_NAME = ["commitment", "target"];
+/** Self-hosted agents this wallet launched: the ones it can open bounties for (hosted agents' bounties are opened by the runtime). */
+const myPayers = () => S.launches.filter((l) => l.launcher === me() && !l.hosted);
+const mintOf = (agent: string) => S.launches.find((l) => l.agent === agent)?.mint ?? null;
+
+async function loadBounties() {
+  try {
+    const [cfg, list] = await Promise.all([reader.bountyConfig(), reader.bounties()]);
+    S.bcfg = cfg;
+    S.bounties = list.sort((a, b) => Number(b.createdAt - a.createdAt));
+    S.bErr = null;
+  } catch (e) {
+    S.bErr = errBox(e);
+  }
+  renderBountyForm();
+  renderBounties();
+}
+
+function renderBountyForm() {
+  const c = S.bcfg;
+  if (c === undefined) return set("w-bopen", html`<div class="panel-b dim">Reading the bounty config…</div>`);
+  if (c === null)
+    return set("w-bopen", html`<div class="panel-b">${banner("warn", "No BountyConfig on this cluster", "The launch admin has not run set_bounty_config yet, so open_bounty refuses every bounty.")}</div>`);
+  const payers = myPayers();
+  const cfgView = html`<div class="params wl-params">
+      <div><span class="k">max_bounty_out_bps</span><span class="v num">${c.maxBountyOutBps}</span></div>
+      <div><span class="k">window</span><span class="v num">${c.windowS} s</span></div>
+      <div><span class="k">self-hosted payee cap</span><span class="v">${c.selfHostedInCap === 0n ? html`<span class="faint">not paid</span>` : tl(c.selfHostedInCap)}</span></div>
+      <div><span class="k">deadline</span><span class="v num">${c.minTtlS} to ${c.maxTtlS} s</span></div>
+      <div><span class="k">refund grace</span><span class="v num">${c.refundGraceS} s</span></div>
+      <div><span class="k">min amount</span><span class="v">${tl(c.minAmount)}</span></div>
+      <div><span class="k">paused</span><span class="v">${c.paused ? badge("paused", "bad") : badge("no", "good")}</span></div>
+    </div>`;
+  const form = !S.account
+    ? html`<div class="panel-b dim">Connect a wallet to open a bounty for an agent it launched.</div>`
+    : !payers.length
+      ? html`<div class="panel-b dim">This wallet launched no self-hosted agent. A bounty is paid from an agent's compute vault: the launcher signs for a self-hosted agent, the hosted runtime for a hosted one.</div>`
+      : html`<form class="wl-form panel-b" autocomplete="off" data-wallet-form="bounty">
+        <label><span class="eyebrow">Paying agent (its compute vault)</span><select name="b_payer">${payers.map((l) => html`<option value="${l.agent}">${S.metas.get(l.mint)?.symbol ?? short(l.mint)} · ${short(l.agent)}</option>`)}</select></label>
+        <div class="wl-2">
+          <label><span class="eyebrow">Amount (tLINE)</span><input name="b_amount" inputmode="decimal" placeholder="1"></label>
+          <label><span class="eyebrow">Deadline (hours from now)</span><input name="b_hours" inputmode="decimal" value="${String(Math.max(1, Math.min(72, Math.ceil(c.maxTtlS / 3600))))}"></label>
+        </div>
+        <label><span class="eyebrow">Payee agent</span><input name="b_payee" placeholder="leave empty: any agent credited as author" spellcheck="false"><span class="wl-help">A named payee is paid if credited in any role (author, reviewer, harness, finder); it must be a launched agent, since payment goes to its compute vault.</span></label>
+        <label><span class="eyebrow">Lineage id</span><input name="b_lineage" placeholder="64 hex characters" spellcheck="false"></label>
+        <fieldset><legend class="eyebrow">Condition</legend>
+          <label class="radio"><input type="radio" name="b_kind" value="target" checked> <span><b>Target.</b> Any accepted generation on the lineage for this target (metric name, or test ids separated by commas); empty means any target.</span></label>
+          <label class="radio"><input type="radio" name="b_kind" value="commitment"> <span><b>Commitment.</b> The accepted generation of one candidate commitment (64 hex).</span></label>
+        </fieldset>
+        <label><span class="eyebrow">Target or commitment</span><input name="b_value" spellcheck="false"></label>
+        <label><span class="eyebrow">Terms (stored in Core; the account holds their sha256)</span><input name="b_note" maxlength="280" placeholder="what you want done"></label>
+        <div class="wl-row">${btn("b-open", "Sign open_bounty", { primary: true, disabled: c.paused ? "bounties are paused" : false })}</div>
+      </form>`;
+  set("w-bopen", html`${cfgView}${form}<div id="w-bout">${S.bOut ?? ""}</div>`);
+}
+
+function condText(b: BountyAccount): Raw {
+  if (b.conditionKind === COND.commitment) return html`commitment <span class="num" title="${b.conditionValue ?? ""}">${short(b.conditionValue ?? "")}</span>`;
+  return b.conditionValue ? html`target <span class="num" title="${b.conditionValue}">#${b.conditionValue.slice(0, 8)}</span>` : html`any target`;
+}
+
+function renderBounties() {
+  if (S.bErr) return set("w-blist", html`<div class="panel-b">${S.bErr}</div>`);
+  const list = S.bounties;
+  if (!list) return set("w-blist", html`<div class="panel-b dim">Reading Bounty accounts…</div>`);
+  if (!list.length) return set("w-blist", html`<div class="panel-b dim">No bounty has been opened on devnet yet.</div>
+    <div class="panel-b wl-row">${btn("b-reload", "Look again")}</div>`);
+  const nowS = BigInt(Math.floor(Date.now() / 1000));
+  const grace = BigInt(S.bcfg?.refundGraceS ?? 0);
+  set(
+    "w-blist",
+    html`<div class="tw"><table class="t" data-bounties><thead><tr><th>Bounty</th><th>Condition</th><th class="right">Amount</th><th>Status</th></tr></thead><tbody>
+      ${list.map((b) => {
+        const rel = S.bRelease.get(b.address);
+        const refundable = b.status === "open" && nowS > b.deadline + grace;
+        const cancellable = b.status === "open" && b.opener === me() && S.reg && S.reg.epochsPosted === b.epochsPostedAtOpen;
+        const actions = b.status !== "open"
+          ? ""
+          : html`<div class="wl-row" style="margin-top:6px">${btn("b-find", "Find release", { data: { i: b.address } })}${refundable ? btn("b-refund", "Refund", { data: { i: b.address } }) : ""}${cancellable ? btn("b-cancel", "Cancel", { data: { i: b.address } }) : ""}</div>`;
+        return html`<tr data-bounty="${b.address}"><td>${addr(b.address)}<div class="sub">payer ${short(b.payer)} · ${b.payee ? html`payee ${short(b.payee)}` : "any author"}</div>
+            <div class="sub">deadline ${when(b.deadline)}</div></td>
+          <td class="wrap">${condText(b)}<div class="sub">lineage ${short(b.lineageId)} · from epoch ${String(b.minEpoch)}</div></td>
+          <td class="right">${tl(b.amount)}</td>
+          <td>${b.status === "open" ? badge("open", "info") : b.status === "released" ? badge(`released to ${short(b.releasedTo ?? "")}`, "good", icon.check) : badge(b.status, "warn")}${actions}
+            ${rel ? html`<div class="wl-brel">${rel.note ? html`<div class="wl-fine">${rel.note}</div>` : ""}${rel.rows.map((r, j) => html`<div class="wl-row" style="margin-top:6px">${r.problem
+              ? badge(r.problem, "bad")
+              : btn("b-release", html`Release to ${short(r.payee)} (epoch ${r.epoch})`, { primary: true, data: { i: `${b.address}:${j}` } })}</div>`)}</div>` : ""}</td></tr>`;
+      })}</tbody></table></div>
+    <div class="panel-b wl-row">${btn("b-reload", "Look again")}<span class="wl-why">Every row is read from chain; release proofs come from Core and are checked against the record root on chain before they are offered.</span></div>`,
+  );
+}
+
+async function bSend(label: string, ixs: Ix[], units = 300_000) {
+  const b = await buildAndSimulate(me()!, ixs, units);
+  if (b.sim.err) throw Object.assign(new Error(`simulation failed: ${JSON.stringify(b.sim.err)}`), { logs: b.sim.logs });
+  const r = await signAndSend({ wallet: S.wallet!, account: S.account!, ixs, units });
+  const c = r.confirmed!;
+  logSig(label, c.signature, c.fee, !c.err);
+  if (c.err) throw Object.assign(new Error(`${label} failed: ${JSON.stringify(c.err)}`), { logs: c.logs });
+  return c;
+}
+
+async function bOpen() {
+  if (!requireReady() || !S.bcfg) return;
+  try {
+    const payer = val("b_payer");
+    const l = S.launches.find((x) => x.agent === payer);
+    if (!l) throw new Error("pick a paying agent");
+    const amount = parseUnits(val("b_amount"), dec());
+    if (!amount) throw new Error("enter a positive tLINE amount");
+    const hours = Number(val("b_hours"));
+    if (!(hours > 0)) throw new Error("enter the deadline in hours");
+    const lineage = val("b_lineage").toLowerCase();
+    if (!HEX64.test(lineage)) throw new Error("the lineage id is 64 hex characters");
+    const kind = S.root?.querySelector<HTMLInputElement>('[name="b_kind"]:checked')?.value === "commitment" ? COND.commitment : COND.target;
+    const raw0 = val("b_value");
+    let value: string | null = null;
+    let target: string | string[] | null = null;
+    if (kind === COND.commitment) {
+      if (!HEX64.test(raw0.toLowerCase())) throw new Error("a commitment is 64 hex characters");
+      value = raw0.toLowerCase();
+    } else if (raw0) {
+      const parts = raw0.split(",").map((x) => x.trim()).filter(Boolean);
+      target = parts.length === 1 && !raw0.includes(",") ? parts[0]! : parts;
+      value = targetDigest(target);
+    }
+    const payee = val("b_payee") || null;
+    const deadline = BigInt(Math.floor(Date.now() / 1000 + hours * 3600));
+    const terms = { v: 1, note: val("b_note") || null, lineage_id: lineage, condition: COND_NAME[kind], value: kind === COND.commitment ? value : target, payee, amount: amount.toString(), deadline: Number(deadline) };
+    const bountyId = BigInt(Date.now());
+    const ix = bounty.open({ opener: me()!, payer, payerMint: l.mint, lineMint: lineMint(), lineTokenProgram: T22,
+      args: { bountyId, payee, amount, termsDigest: hashJson(terms), conditionKind: kind, lineageId: lineage, conditionValue: value, deadline } });
+    const v0 = (await reader.tokenBalance(launchPdas.computeVault(payer))) ?? 0n;
+    const c = await bSend(`open_bounty ${units(amount, dec())} tLINE from ${short(payer)}`, [ix]);
+    const addrB = bountyPdas.bounty(payer, bountyId);
+    const [acct, v1, esc0] = await Promise.all([reader.bounty(addrB), reader.tokenBalance(launchPdas.computeVault(payer)), reader.tokenBalance(bountyPdas.vault(addrB))]);
+    // Core keeps the terms once it has mirrored the account (its next chain sync); try now, say so if not yet.
+    let termsNote: Raw = html`Terms stored in Core.`;
+    try {
+      const r = await fetch(`/api/bounties/${addrB}/terms`, { method: "PUT", headers: { "content-type": "application/json" }, body: JSON.stringify(terms) });
+      if (!r.ok) termsNote = html`Core has not mirrored the bounty yet (HTTP ${r.status}); the terms digest is on chain, and the terms can be sent again once it has.`;
+    } catch {
+      termsNote = html`Core did not answer; the terms digest is on chain.`;
+    }
+    S.bOut = html`<div class="panel-b">${banner("info", html`Opened bounty ${addr(addrB)}: ${txLink(c.signature)}`,
+      html`The compute vault went from ${units(v0, dec())} to ${units(v1 ?? 0n, dec())} tLINE and the escrow holds ${units(esc0 ?? 0n, dec())} tLINE (read back); qualifying generations from epoch ${String(acct?.minEpoch ?? "TBA")} on. ${termsNote}`)}</div>`;
+  } catch (e) {
+    S.bOut = html`<div class="panel-b">${errBox(e, (e as any).logs)}</div>`;
+  }
+  renderBountyForm();
+  await loadBounties();
+}
+
+async function bFind(address: string) {
+  const b = S.bounties?.find((x) => x.address === address);
+  if (!b) return;
+  const out: { rows: any[]; note: Raw | null } = { rows: [], note: null };
+  try {
+    const r = await fetch(`/api/bounties/${address}/release`);
+    if (!r.ok) throw new Error(`Core answered HTTP ${r.status}`);
+    const body = await r.json();
+    for (const c of body.candidates as any[]) {
+      const ep = await reader.epoch(c.epoch);
+      for (const payee of c.payees as string[]) {
+        let problem: string | null = null;
+        try {
+          if (!ep?.recordRoot) throw new Error(`epoch ${c.epoch} has no record root on chain`);
+          if (ep.recordRoot !== c.record_root) throw new Error("Core's record root differs from the one on chain");
+          if (ep.postedAt > b.deadline) throw new Error("posted after the deadline");
+          releaseFromContribution(c.contribution, c.proof, ep.recordRoot);
+          if (!mintOf(payee)) throw new Error("the payee has no compute vault (not a launched agent)");
+        } catch (e) {
+          problem = (e as Error).message;
+        }
+        out.rows.push({ epoch: c.epoch, payee, contribution: c.contribution, proof: c.proof, problem });
+      }
+    }
+    if (!out.rows.length) out.note = html`No accepted generation meets this bounty yet. Core offers one once its epoch is closed and posted on chain.`;
+  } catch (e) {
+    out.note = html`Release proofs come from Core: ${(e as Error).message}.`;
+  }
+  S.bRelease.set(address, out);
+  renderBounties();
+}
+
+async function bRelease(key: string) {
+  if (!requireReady()) return;
+  const [address, j] = key.split(":") as [string, string];
+  const b = S.bounties?.find((x) => x.address === address);
+  const row = S.bRelease.get(address)?.rows[Number(j)];
+  if (!b || !row) return;
+  try {
+    const payeeMint = mintOf(row.payee)!;
+    const ix = bounty.release({ caller: me()!, payer: b.payer, bountyId: b.bountyId, opener: b.opener, payee: row.payee, payeeMint, lineMint: lineMint(),
+      contribution: row.contribution, proof: row.proof, lineTokenProgram: T22 });
+    const v0 = (await reader.tokenBalance(launchPdas.computeVault(row.payee))) ?? 0n;
+    const c = await bSend(`release_bounty ${short(address)} to ${short(row.payee)}`, [ix], 400_000);
+    const [after, v1] = await Promise.all([reader.bounty(address), reader.tokenBalance(launchPdas.computeVault(row.payee))]);
+    S.bOut = html`<div class="panel-b">${banner("info", html`Released ${addr(address)}: ${txLink(c.signature)}`,
+      html`The payee's compute vault received ${units((v1 ?? 0n) - v0, dec())} tLINE${(v1 ?? 0n) - v0 === b.amount ? ", exactly the escrow" : ""}; status ${after?.status ?? "TBA"} (read back).`)}</div>`;
+    S.bRelease.delete(address);
+  } catch (e) {
+    S.bOut = html`<div class="panel-b">${errBox(e, (e as any).logs)}</div>`;
+  }
+  await loadBounties();
+}
+
+async function bBack(address: string, kind: "refund" | "cancel") {
+  if (!requireReady()) return;
+  const b = S.bounties?.find((x) => x.address === address);
+  if (!b) return;
+  try {
+    const payerMint = mintOf(b.payer);
+    if (!payerMint) throw new Error("the paying agent's launch was not found");
+    const a = { payer: b.payer, payerMint, bountyId: b.bountyId, opener: b.opener, lineMint: lineMint(), lineTokenProgram: T22 };
+    const ix = kind === "refund" ? bounty.refund(a) : bounty.cancel({ ...a, signer: me()! });
+    const v0 = (await reader.tokenBalance(launchPdas.computeVault(b.payer))) ?? 0n;
+    const c = await bSend(`${kind}_bounty ${short(address)}`, [ix]);
+    const v1 = (await reader.tokenBalance(launchPdas.computeVault(b.payer))) ?? 0n;
+    S.bOut = html`<div class="panel-b">${banner("info", html`${kind === "refund" ? "Refunded" : "Cancelled"} ${addr(address)}: ${txLink(c.signature)}`,
+      html`${units(v1 - v0, dec())} tLINE back in the paying agent's compute vault (read back).`)}</div>`;
+  } catch (e) {
+    S.bOut = html`<div class="panel-b">${errBox(e, (e as any).logs)}</div>`;
+  }
+  await loadBounties();
+}
+
+// ------------------------------------------------------------------------------------------------
 // session log
 
 function renderSigs() {
@@ -1341,6 +1593,8 @@ function afterConnect() {
   renderIdentity();
   if (S.sel) renderTrade();
   loadClaims();
+  renderBountyForm();
+  renderBounties();
 }
 
 async function onClick(ev: Event) {
@@ -1461,6 +1715,24 @@ async function onClick(ev: Event) {
         S.claimOut = null;
         await loadClaims();
         break;
+      case "b-open":
+        await bOpen();
+        break;
+      case "b-reload":
+        await loadBounties();
+        break;
+      case "b-find":
+        await bFind(b.dataset.i!);
+        break;
+      case "b-release":
+        await bRelease(b.dataset.i!);
+        break;
+      case "b-refund":
+        await bBack(b.dataset.i!, "refund");
+        break;
+      case "b-cancel":
+        await bBack(b.dataset.i!, "cancel");
+        break;
     }
   } finally {
     S.busy.delete(key);
@@ -1513,6 +1785,7 @@ export async function mountWallet(root: HTMLElement) {
   renderConn();
   if (S.gate !== "ok") return;
   await Promise.all([loadNetwork(), loadLaunches()]);
+  await loadBounties();
   autoReconnect();
 }
 
