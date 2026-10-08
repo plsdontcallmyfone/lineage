@@ -2124,7 +2124,7 @@ export class Core {
         "UPDATE epochs SET status = 'closed', closed_at = ?, pool_amount = ?, rebate_amount = ?, total_units = ?, payouts = ?, root = ?, lineage_root = ?, canaries = ? WHERE n = ?",
       )
       .run(this.now(), poolOut.toString(), rebateOut.toString(), totalUnits, JSON.stringify(leaves), root, lineageRoot, JSON.stringify(canaries), ep.n);
-    this.emit("epoch.closed", { n: ep.n, root, lineage_root: lineageRoot, record_root: recordRoot, pool_amount: poolOut.toString(), rebate_amount: rebateOut.toString(), payouts: leaves.length, secret: ep.secret });
+    this.emit("epoch.closed", { n: ep.n, root, lineage_root: lineageRoot, record_root: recordRoot, pool_amount: poolOut.toString(), rebate_amount: rebateOut.toString(), payouts: leaves.length });
     this.openEpoch(ep.n + 1, ep.end_ms);
   }
 
@@ -2721,7 +2721,9 @@ export class Core {
       start_ms: ep.start_ms,
       end_ms: ep.end_ms,
       beacon_commit: ep.beacon_commit,
-      secret: closed ? ep.secret : null,
+      // the secret recomputes every assignment draw of this epoch: published only once every subject
+      // drawn in it is final, or it would name the replayers of candidates still open (SPEC 10.3, 10.7)
+      secret: closed && this.epochSubjectsFinal(n) ? ep.secret : null,
       closed_at: ep.closed_at,
       pool_amount: ep.pool_amount,
       rebate_amount: ep.rebate_amount,
@@ -2736,6 +2738,12 @@ export class Core {
       assignment_rounds: rounds,
       usage: this.db.query<Record<string, unknown>, [number]>("SELECT * FROM usage WHERE epoch = ? ORDER BY id").all(n),
     };
+  }
+
+  /** True when every subject drawn with this epoch's beacon (candidates, audits, qualifications) is final. */
+  epochSubjectsFinal(n: number): boolean {
+    const subjects = this.db.query<{ subject: string }, [number]>("SELECT DISTINCT subject FROM assignment_rounds WHERE epoch = ?").all(n);
+    return subjects.every((r) => this.collab.subjectFinal(String(r.subject)));
   }
 
   listEpochs() {

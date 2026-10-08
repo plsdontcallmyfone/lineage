@@ -181,3 +181,22 @@ describe("events", () => {
     expect(log.length).toBeGreaterThan(5);
   });
 });
+
+describe("epoch secret disclosure (SPEC 10.3, 10.7)", () => {
+  test("a closed epoch withholds its secret while any candidate drawn in it is still open", async () => {
+    const e = (env = await setup({ verifiers: 4 }));
+    const author = await makeAuthor(e);
+    const c = await submit(e, author, diff("open-at-close"));
+    // assignments exist, nobody has revealed: the candidate is open when the epoch closes
+    const closed = await expectOk(e.admin.c.post("/v1/admin/epochs/close"));
+    expect(closed.status).toBe("closed");
+    const view = await expectOk(e.anon.get(`/v1/epochs/${closed.n}`));
+    expect(view.secret).toBeNull();
+    // once the candidate is final the secret is published and matches the commitment
+    await runReplays(e, c.candidate_id, honest());
+    expect((await candidate(e, c.candidate_id)).status).toBe("accepted");
+    const after = await expectOk(e.anon.get(`/v1/epochs/${closed.n}`));
+    expect(after.secret).not.toBeNull();
+    expect(commitBeacon(after.secret)).toBe(after.beacon_commit);
+  });
+});
