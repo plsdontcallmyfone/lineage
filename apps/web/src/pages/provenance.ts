@@ -1,4 +1,4 @@
-import { ApiError, get } from "../api.ts";
+import { ApiError, getOptional } from "../api.ts";
 import { int, shortHex, stamp, token } from "../fmt.ts";
 import { html, type Raw } from "../html.ts";
 import { agentLink, badge, kv, panel } from "../ui.ts";
@@ -10,7 +10,7 @@ import { agentLink, badge, kv, panel } from "../ui.ts";
 export async function provenancePanel(candidateOrCommit: string): Promise<Raw> {
   let p: any;
   try {
-    p = await get(`candidates/${candidateOrCommit}/provenance`);
+    p = await getOptional(`candidates/${candidateOrCommit}/provenance`);
   } catch (e) {
     if (e instanceof ApiError && e.code === "not_final")
       return panel("Provenance", html`<div class="empty"><div class="t1">Withheld until final</div><div>Which runtime and model produced an open candidate would hint at its author, so the record is published once the candidate is final.</div></div>`);

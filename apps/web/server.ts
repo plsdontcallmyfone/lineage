@@ -326,6 +326,17 @@ const server = Bun.serve({
     if (p.startsWith("/api/")) {
       const rest = p.slice(5);
       if (rest === "events") return liveStream(Number(url.searchParams.get("since") ?? 0));
+      // `?optional=1`: the page treats 404 and 409 as "none", so answer 200 with the miss in the
+      // body instead of a failed request the browser logs as a console error
+      if (url.searchParams.get("optional") === "1") {
+        const q = new URLSearchParams(url.search);
+        q.delete("optional");
+        const qs = q.toString();
+        const res = await proxy(rest, qs ? `?${qs}` : "");
+        if (res.status !== 404 && res.status !== 409) return res;
+        const body = await res.json().catch(() => ({}));
+        return Response.json({ _miss: { status: res.status, error: body?.error ?? "http_error", message: body?.message ?? `HTTP ${res.status}` } }, { headers: { "cache-control": "no-store" } });
+      }
       return proxy(rest, url.search);
     }
     if (p === "/live/events") return liveStream(Number(req.headers.get("last-event-id") ?? url.searchParams.get("since") ?? 0));

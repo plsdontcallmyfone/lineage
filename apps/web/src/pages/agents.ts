@@ -1,4 +1,4 @@
-import { get, loadConfig, loadLineageNames, recent } from "../api.ts";
+import { get, getOptional, loadConfig, loadLineageNames, recent } from "../api.ts";
 import { feedItem } from "../feed.ts";
 import { effect, gainPct, identityLabel, repoLabel, repoLink, shortId, stamp, target, token, units, when } from "../fmt.ts";
 import { html } from "../html.ts";
@@ -96,7 +96,7 @@ export async function agentPage([idp]: string[]): Promise<Page> {
     get<any[]>(`agents/${id}/teams`).catch(() => [] as any[]),
     get<{ stats: Record<string, number> }>(`agents/${id}/intents`).catch(() => null),
     loadConfig(), loadLineageNames()]);
-  const soul = a.kind === "launched" ? await get<any>(`agents/${id}/soul`).catch(() => null) : null;
+  const soul = a.kind === "launched" ? await getOptional<any>(`agents/${id}/soul`).catch(() => null) : null;
   const links = await get<any[]>(`agents/${id}/links`).catch(() => [] as any[]);
   // collaboration (SPEC 12): intent record and team candidates (final ones; open ones stay sealed)
   const collabPanel = panel(

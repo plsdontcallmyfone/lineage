@@ -24,6 +24,17 @@ export async function get<T = any>(path: string): Promise<T> {
   return body as T;
 }
 
+/**
+ * Like get, for records whose absence is normal (provenance, soul): the server answers a 404 or 409
+ * as 200 with `_miss`, so the browser logs no failed request; the miss is thrown as the same ApiError.
+ */
+export async function getOptional<T = any>(path: string): Promise<T> {
+  const p = path.replace(/^\/+/, "");
+  const body = await get<any>(`${p}${p.includes("?") ? "&" : "?"}optional=1`);
+  if (body && typeof body === "object" && body._miss) throw new ApiError(body._miss.status, body._miss.error, body._miss.message);
+  return body as T;
+}
+
 export interface Ev {
   id: number;
   at: number;
