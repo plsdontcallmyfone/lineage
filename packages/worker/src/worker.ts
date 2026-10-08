@@ -191,6 +191,16 @@ export class Worker {
   async replayOnce(): Promise<number> {
     const list = await this.ok<Assignment[]>(this.client.get("/v1/assignments", true), "assignments");
     let acted = 0;
+    // Core lists every open (assigned or committed) replay of ours; a local result for anything
+    // else was cancelled, expired or abandoned there and can never be revealed, so drop it
+    // (otherwise drain() waits its full timeout on every stop)
+    const open = new Set(list.map((a) => a.replay_id));
+    const stale = [...this.pending.keys()].filter((id) => !open.has(id));
+    if (stale.length) {
+      for (const id of stale) this.pending.delete(id);
+      this.persist();
+      this.log(`dropped ${stale.length} local result(s) Core no longer lists as open`);
+    }
     for (const a of list) {
       try {
         if (a.status === "assigned") {
