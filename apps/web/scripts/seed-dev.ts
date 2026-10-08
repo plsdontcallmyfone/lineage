@@ -56,7 +56,19 @@ try {
 const dataDir = arg("data") ?? mkdtempSync(join(tmpdir(), "lineage-web-seed-"));
 const raw = JSON.parse(readFileSync(join(ROOT, "config/network.json"), "utf8"));
 // candidates of the scripted scenario stay open while canaries are injected on later ticks, so the cap is raised
-const cfg = parseNetworkConfig({ ...raw, canary_rate: 1, audit_rate: 1, bootstrap_resamples: 2000, max_open_candidates_per_agent: 20 });
+// canaries are committed by shadow agents on later ticks (SPEC 10.5, 10.7); the network defaults
+// (minutes to an hour) are compressed so the seed finishes in about a minute, as scripts/e2e.ts does
+const cfg = parseNetworkConfig({
+  ...raw,
+  canary_rate: 1,
+  audit_rate: 1,
+  bootstrap_resamples: 2000,
+  max_open_candidates_per_agent: 20,
+  shadow_launch_spread_s: 2,
+  shadow_min_age_s: 1,
+  canary_inject_delay_s: [1, 3],
+  canary_reveal_delay_s: [1, 2],
+});
 const adminKey = generateAgentKey();
 const core = new Core({ dataDir, network: cfg, adminId: adminKey.id, clock: systemClock });
 const server = serve(core, { port: PORT });
@@ -92,10 +104,14 @@ async function ok<T = any>(p: Promise<{ status: number; body: any }>, what = "")
 const big = (n: number | bigint) => BigInt(n);
 const UNIT = 10n ** BigInt(cfg.token_decimals);
 
+// Declared verifier hardware (SPEC 6.1). Synthetic, like the replay results: it only has to satisfy
+// the seeded recipes' `requires` so Core issues qualification replays and the verifiers can pass them.
+const SEED_CAPS = { arch: "arm64", cpus: 4, memory_mb: 8192, gpus: [] };
+
 async function verifier(name: string, bond: bigint, operator?: string): Promise<A> {
   const a = mk(name);
   await ok(admin.c.post("/v1/admin/faucet", { agent: a.id, amount: (cfg.register_burn + bond + 3n * UNIT).toString() }), "faucet");
-  await ok(a.c.post("/v1/agents", operator ? { operator } : {}), "register");
+  await ok(a.c.post("/v1/agents", { capabilities: SEED_CAPS, ...(operator ? { operator } : {}) }), "register");
   if (bond > 0n) await ok(a.c.post(`/v1/agents/${a.id}/bond`, { amount: bond.toString() }), "bond");
   return a;
 }
@@ -204,7 +220,7 @@ function honestResult(lin: Lin, o: Outcome, asg: any, conflict: boolean): Replay
     guard: "ok",
     build: conflict
       ? { base: "ok", cand: "fail", base_digest: sha256Hex("base-" + asg.parent_gen_id), cand_digest: "" }
-      : { base: "ok", cand: "ok", base_digest: sha256Hex("base-" + asg.parent_gen_id), cand_digest: sha256Hex("cand-" + asg.candidate.patch_hash) },
+      : { base: "ok", cand: "ok", base_digest: sha256Hex("base-" + asg.parent_gen_id), cand_digest: sha256Hex("cand-" + (asg.candidate?.patch_hash ?? asg.parent_gen_id)) },
     tests: conflict ? { base_pass: [...stable], cand_pass: [], cand_fail: [] } : { base_pass: [...stable], cand_pass: candPass, cand_fail: candFail },
     equivalence: lin.recipe.equivalence && !conflict ? eq : null,
     metrics: conflict ? {} : metrics,
@@ -251,6 +267,17 @@ type Mode = "honest" | "copy-claim" | "accept-all";
 const modes = new Map<string, Mode>();
 
 function behave(a: A, asg: any): ReplayResult {
+  if (asg.kind === "qualify" || !asg.candidate) {
+    // a qualification replay: gen_0 only, base values must reproduce the calibration. Every seeded
+    // verifier qualifies honestly (the lazy one only turns dishonest on candidate replays).
+    const lin = lins.get(asg.lineage.lineage_id)!;
+    const calBase = Object.fromEntries(
+      Object.entries(lin.calib.metrics)
+        .filter(([, m]) => typeof m.base_value === "number")
+        .map(([k, m]) => [k, Math.round(m.base_value!)]),
+    );
+    return honestResult({ ...lin, base: { ...lin.base, ...calBase } }, { kind: "improve", metric: "", ratio: 1 }, asg, false);
+  }
   const cid = asg.candidate.candidate_id;
   const spec = specs.get(cid);
   const mode = modes.get(a.id) ?? "honest";
@@ -282,7 +309,7 @@ async function commitOne(a: A, asg: any) {
     `lineage seed-dev transcript (synthetic, not a sandbox run)`,
     `replay ${asg.replay_id}`,
     `replayer ${a.id} (${a.name}, ${modes.get(a.id) ?? "honest"})`,
-    `kind ${asg.kind} candidate ${asg.candidate.candidate_id}`,
+    `kind ${asg.kind} candidate ${asg.candidate?.candidate_id ?? "none (qualification)"}`,
     `parent ${asg.parent_gen_id}`,
     `seed ${asg.seed}`,
     `apply ${res.apply} build base=${res.build.base} cand=${res.build.cand}`,
@@ -308,7 +335,7 @@ async function drive(opts: { pause?: number; maxRounds?: number; only?: string }
     for (const a of everyone) {
       const list = await ok<any[]>(a.c.get("/v1/assignments", true), "assignments");
       for (const asg of list) {
-        if (opts.only && asg.candidate.candidate_id !== opts.only) continue;
+        if (opts.only && asg.candidate && asg.candidate.candidate_id !== opts.only) continue;
         any = true;
         if (asg.status === "assigned") pending.push(await commitOne(a, asg));
       }
@@ -343,6 +370,40 @@ async function refreshBases(lin: Lin) {
   if (!counted) return;
   for (const [k, m] of Object.entries(counted.result.metrics as ReplayResult["metrics"])) if (m.deterministic) lin.base[k] = m.cand[0]!;
   if (tip.kind === "fix" && tip.effect?.fixed) for (const t of tip.effect.fixed) lin.fixed.add(t);
+}
+
+const FINAL = new Set(["accepted", "rejected", "expired"]);
+
+/**
+ * Drives assignments until every candidate on the lineage is final and every canary Core queued has
+ * been committed by a shadow (canaries land on later ticks, after a random delay).
+ */
+async function settle(lineageId: string, maxS = 60) {
+  // a queued canary is committed within inject delay + shadow launch + reveal delay (under 8 s with
+  // the compressed config); after that long with everything final, nothing more is coming
+  let quiet = 0;
+  for (let i = 0; i < maxS; i++) {
+    await drive();
+    const cs = await ok<any[]>(anon.get(`/v1/candidates?lineage=${lineageId}&limit=1000`));
+    const canaries = await ok<any[]>(admin.c.get(`/v1/admin/canaries?lineage=${lineageId}`, true));
+    quiet = cs.every((c) => FINAL.has(c.status)) ? quiet + 1 : 0;
+    if (quiet > 0 && (canaries.every((c) => c.uses > 0) || quiet >= 8)) return;
+    await Bun.sleep(1000);
+  }
+  console.warn(`lineage ${lineageId.slice(0, 10)} not settled after ${maxS} s`);
+}
+
+async function qualifyAll(vs: A[], lineageIds: string[]) {
+  for (let i = 0; i < 60; i++) {
+    const views = await Promise.all(vs.map((x) => ok(anon.get(`/v1/agents/${x.id}`))));
+    if (views.every((w) => lineageIds.every((l) => w.qualified_lineages.includes(l)))) {
+      console.log(`${vs.length} verifiers qualified on ${lineageIds.length} lineages`);
+      return;
+    }
+    await drive();
+    await Bun.sleep(1000);
+  }
+  throw new Error("verifiers did not qualify within 60 s");
 }
 
 const patchFile = (n: string) => readFileSync(join(ROOT, "fixtures/b58-patches", `${n}.diff`), "utf8");
@@ -400,6 +461,10 @@ async function main() {
     Object.fromEntries(Object.entries(b58cal.metrics as Record<string, { base_value: number }>).map(([k, m]) => [k, Math.round(m.base_value)])),
   );
   lins.set(pyLin.id, pyLin);
+
+  // qualification (SPEC 6.1): Core issues one replay of gen_0 per verifier and lineage on its tick;
+  // only verifiers that reproduce the calibration enter assignment draws
+  await qualifyAll(v, [fxLin.id, pyLin.id]);
 
   const a1 = await launch("agent-encode", fx.repo, true, 14n * UNIT);
   const a2 = await launch("agent-fixer", fx.repo, true, 6n * UNIT, "purchased");
@@ -463,7 +528,11 @@ async function main() {
     const got = await slashReasons();
     if (got.has("canary") && [...got].some((r) => r !== "canary")) break;
     await submit(fxLin, i % 2 ? a2 : a1, synthPatch("src/lib.rs", `fn hot_loop_${i}() {`, `let mut acc = 0u64;`, `let mut acc: u64 = ${i};`, 80 + i * 7), "perf", "decode_ir", { kind: "regress", metric: "decode_ir", ratio: 1.012 }, 0.09);
-    await drive();
+    await settle(fxLin.id);
+  }
+  {
+    const got = await slashReasons();
+    console.log(`lazy verifier slashed for: ${[...got].join(", ") || "nothing"}`);
   }
 
   // base58-py lineage
