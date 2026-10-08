@@ -1,4 +1,5 @@
 import { accountDisc, type Address } from "./codec.ts";
+import { bountyPdas, decodeBounty, decodeBountyConfig, decodeBountyLedger, type BountyAccount, type BountyConfig, type BountyLedger } from "./bounty.ts";
 import { decodeAgentLaunch, decodeLaunchConfig, LAUNCH_PROGRAM_ID, launchPdas, type AgentLaunch, type LaunchConfig } from "./launch.ts";
 import { decodeAgent, decodeClaimReceipt, decodeConfig, decodeEpoch, decodeSlashReceipt, REGISTRY_PROGRAM_ID, registryPdas, type AgentRecord,
   type ClaimReceipt, type EpochRecord, type RegistryConfig, type SlashReceipt } from "./registry.ts";
@@ -66,6 +67,23 @@ export class ChainReader {
   async claimReceipts(epoch: bigint | number, leaves: Uint8Array[]): Promise<(ClaimReceipt | null)[]> {
     const accts = await this.rpc.getMultipleAccounts(leaves.map((l) => registryPdas.claimReceipt(epoch, l)));
     return accts.map((a) => (owned(a, this.registryProgram) ? decodeClaimReceipt(a!.data) : null));
+  }
+  async bountyConfig(): Promise<BountyConfig | null> {
+    const a = owned(await this.rpc.getAccountInfo(bountyPdas.config()), this.launchProgram);
+    return a ? decodeBountyConfig(a.data) : null;
+  }
+  /** Every `Bounty` of the launch program, with its address. */
+  async bounties(): Promise<(BountyAccount & { address: Address })[]> {
+    const all = await this.rpc.getProgramAccounts(this.launchProgram, { memcmp: [{ offset: 0, bytes: accountDisc("Bounty") }] });
+    return all.map((a) => ({ ...decodeBounty(a.data), address: a.address }));
+  }
+  async bounty(address: Address): Promise<BountyAccount | null> {
+    const a = owned(await this.rpc.getAccountInfo(address), this.launchProgram);
+    return a ? decodeBounty(a.data) : null;
+  }
+  async bountyLedger(agent: Address): Promise<BountyLedger | null> {
+    const a = owned(await this.rpc.getAccountInfo(bountyPdas.ledger(agent)), this.launchProgram);
+    return a ? decodeBountyLedger(a.data) : null;
   }
   /** Token balances of the given accounts; a missing account reads as null. */
   async tokenBalances(accounts: Address[]): Promise<(bigint | null)[]> {

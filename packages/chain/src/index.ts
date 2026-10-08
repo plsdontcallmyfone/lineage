@@ -2,6 +2,7 @@ export * from "./codec.ts";
 export * from "./pda.ts";
 export * from "./registry.ts";
 export * from "./launch.ts";
+export * from "./bounty.ts";
 export * from "./leaves.ts";
 export * from "./tx.ts";
 export * from "./rpc.ts";

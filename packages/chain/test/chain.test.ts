@@ -142,7 +142,9 @@ describe("instruction builders equal the Anchor encodings", () => {
     expect(ix.accounts[6]![0]).toBe(launchPdas.dammVault(mint, k(12)));
   });
   test("every vector is covered", () => {
-    const names = new Set([...cases.map((c) => c[0]), "launch.crank_pool_fees"]);
+    // The bounty vectors are checked in bounty.test.ts.
+    const names = new Set([...cases.map((c) => c[0]), "launch.crank_pool_fees", "launch.set_bounty_config", "launch.open_bounty", "launch.release_bounty",
+      "launch.refund_bounty", "launch.cancel_bounty"]);
     expect(vectors.instructions.map((v: { name: string }) => v.name).filter((n: string) => !names.has(n))).toEqual([]);
   });
 });
