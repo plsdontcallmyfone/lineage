@@ -53,6 +53,11 @@ export class ChainReader {
     const a = owned(await this.rpc.getAccountInfo(registryPdas.epoch(n)), this.registryProgram);
     return a ? decodeEpoch(a.data) : null;
   }
+  /** Every `Epoch` account of the registry (getProgramAccounts on the account discriminator), by epoch. */
+  async epochs(): Promise<EpochRecord[]> {
+    const all = await this.rpc.getProgramAccounts(this.registryProgram, { memcmp: [{ offset: 0, bytes: accountDisc("Epoch") }] });
+    return all.map((a) => decodeEpoch(a.data)).sort((a, b) => (a.epoch < b.epoch ? -1 : 1));
+  }
   /** The receipt of a slash Core sent (null if that slash id never landed). */
   async slashReceipt(slashId: Uint8Array | string): Promise<SlashReceipt | null> {
     const a = owned(await this.rpc.getAccountInfo(registryPdas.slashReceipt(slashId)), this.registryProgram);

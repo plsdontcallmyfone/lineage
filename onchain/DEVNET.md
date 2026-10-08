@@ -168,3 +168,34 @@ Both programs upgraded in place with the fixes of the adversarial review (`oncha
 | 2026-10-08 00:05:36 | e2e | claim epoch 4 agent:BFPxdave7NVSXztGEZA5iZ7FiBDKRsuZmS9wZn2J1WBV:compute 101676865 | 5000 | `5HCSwQMP5phtVy3CoviVHizzfFnLuZkwJFfE8DfBrBiZeb9VrkgVYW4Qxdo7QFkUdg2GSh1Z3oeWkR2Shy3bTSY9` |
 | 2026-10-08 00:05:45 | e2e | claim epoch 4 agent:DEHFFWt2uzVGn43nzU1EvEyo17G1x74gvn3C6usU43hj:wallet 8458317 | 5000 | `3CrtcqgeeR72W5FF3QjEGwPkngnPqpsp8BWQ4Sc5WgVUwMisoVTh7ANYfWT2fcb5b68PMKqLqLhTKJXvPqvBUZef` |
 | 2026-10-08 00:05:53 | e2e | claim epoch 4 agent:FRx89QoUEavL1mVMcroDH4QYUhdTbA66EthkX7uZrGSD:wallet 8458316 | 5000 | `3A5FGqBhJuyc21uvQhVD85cfxbxxuQUFUoMUo89bi8iGU5m5sUFkJEU54Dj7kB9yKnjU2APuMttdWVtHQPwjDYLd` |
+
+## Identity upgrade (2026-10-07, identity onchain lane)
+
+`lineage_registry` upgraded in place with Agent v2 and `Epoch.record_root` (identity plan I1 and I2: `rotate_agent_key`, `revoke_agent_key`, `set_profile`, `propose_owner`, `accept_owner`, `migrate_agent`, `migrate_epoch`, `post_epoch` with a record root). `lineage_launch` is unchanged (its deployed build is the one the LiteSVM suites load). Every command passed `-u devnet -k ~/.config/lineage/devnet-deployer.json`; nothing touched `solana config` or `~/.config/solana/id.json`; no SOL was taken from the Instance deployer.
+
+| Program | `.so` bytes | sha256 (built and dumped from devnet: equal) | Extended by | Extend sig | Upgrade sig |
+|---|---|---|---|---|---|
+| lineage_registry | 585,784 (was 543,408) | `030766bc96432131c634437e74f598b1df43a4f79a8caccd1586204ee83822aa` | 42,376 bytes (0.21592032 SOL rent, `solana rent -u devnet 42376`) | `48eLNkkhmAhkPB9fMUv3UDavozit2Rk7xiet4A8uhsfgNckQiFWb49uh8VX5BsDz45m8GvY29NVKqCdXToRmUvPg` | `xg8gCUPJggASFa45A51Fg42P6EnNNnHNjew785P915FUGGpokXioccNk7F1yPucdDWkuDLjfn4xJVVfrQkRL8Zw` |
+
+- Measured before: deployer 3.507496109 SOL; need at once 0.21592032 (extend) + 2.97662092 (buffer for 585,821 bytes, `solana rent -u devnet 585821`) + write fees. After extend and upgrade: 3.289311029 SOL (0.21818508 spent: extend rent plus fees; the buffer was closed back to the deployer).
+- 34/34 LiteSVM tests (7 new in `tests/tests/identity.rs`) passed against this exact `.so` and the deployed `lineage_launch.so` before the upgrade.
+
+| When (UTC) | Step | What | Fee | Signature |
+|---|---|---|---|---|
+| 2026-10-08 01:50:34 | g | migrate_agent AeDRJoR6kyYUzpj6nweTHFw82C89LdxLTFww9SWpWQmT (Agent v2: signing_key = agent key, owner_since = registered_at) | 5000 | `4ij8YWCy8VyfKhrm1Ht7mLrvxHAytGbzkRMoc2kWcutuww5wPKeVZaJwR75Lrq7gAww1tDyK5ow7TaAiQQjDHVdx` |
+| 2026-10-08 01:50:36 | g | migrate_agent Ei54yY7HarLLPENujpF63yCsfwZeBDVjeuC9tp9kfvho (Agent v2: signing_key = agent key, owner_since = registered_at) | 5000 | `dEdzpWHBiHtkTezbnsp1ZuBQKvWUWfE9GzMLCvjE1knEVTtE4rzwxbMv49HgJ6ZxmK6DbdhyrPvYZz4EckhHXaw` |
+| 2026-10-08 01:51:23 | g | migrate_agent DEHFFWt2uzVGn43nzU1EvEyo17G1x74gvn3C6usU43hj (Agent v2: signing_key = agent key, owner_since = registered_at) | 5000 | `565nMWavMMTM4ShNJXwXRZ6E5QaceUWzkA7SicB2ray5CPjXYXzMRpRV1x6B9mY9hpE6GgqyRmMSricRbeinETp4` |
+| 2026-10-08 01:51:25 | g | migrate_agent 3JPHYWGc6SSmJR5rdrMLiNFWjCSrjaA5bjZGkyQw2YZd (Agent v2: signing_key = agent key, owner_since = registered_at) | 5000 | `MwPfVEFUJMiQJJRnPvuxVq49n6tEbLQq8sZSLys6sQFZW4r11PKAEgu9p34yjtP1PcAV2L8F7aWBTbsAa5vpGqa` |
+| 2026-10-08 01:51:42 | g | migrate_agent 6mM4qSbAAGwLQ9RhwJvSZsY1MAZPSkeeC1PfRJAujQ2e (Agent v2: signing_key = agent key, owner_since = registered_at) | 5000 | `4Wqi29pK7kCe3juhySv23qSu9UBqj8S5vtkiaUtQSmzaVLBtjYKquGAmzXvChzqAoGG2asDbfWUSDrQTD6wVxQig` |
+| 2026-10-08 01:51:46 | g | migrate_agent FeGKtFj8U4ZnCRTuMBDMbhNqzsH3vZebuM1sisJFvfZ7 (Agent v2: signing_key = agent key, owner_since = registered_at) | 5000 | `5coBvz834DGDxquxWbTspwuVh644owvgGonwPEgbz9Ei6kxjtxz6S5hCR7aZs9cFSQHEuZg7m1x1UhzCiH4dpirs` |
+| 2026-10-08 01:51:48 | g | migrate_agent GqZCz9Gx7oHqVpmkuVMF17gMcCFeNyq5D7X2Y8jgcmFn (Agent v2: signing_key = agent key, owner_since = registered_at) | 5000 | `24o6c1gfM7QterwSD8rk9T8HDP8ArDKr7fy1uWMdcWY78FU3Cx7wBhcymMM6hxacQ7MNoSq7gLSuHC59g5d8TYAV` |
+| 2026-10-08 01:51:50 | g | migrate_agent G4N8fjGhrxqXQVCRRTKSq58LAuAyr2vgCKH83Y9sddaZ (Agent v2: signing_key = agent key, owner_since = registered_at) | 5000 | `4z6TYhFas47mTpgXB7q4rUYXyNrGhwDK8vkVup3uhFbe3of4CwkJ6JgWwz2qBexqa3Zwru2gzDp7LHJR6MGwFZPT` |
+| 2026-10-08 01:52:05 | g | migrate_agent BFPxdave7NVSXztGEZA5iZ7FiBDKRsuZmS9wZn2J1WBV (Agent v2: signing_key = agent key, owner_since = registered_at) | 5000 | `4XXGKRRpvvz4NJWDW74kfcTRukSVDNbTdWxnZtUvm4qVkoGLmwv9VsRfh3rzP3K5cm2nqphr5CwUWfyLDxf6p7gz` |
+| 2026-10-08 01:52:06 | g | migrate_agent GiSibEMYzg3Y4EGG4QKx9drpTGC36du3XJE2dPZsHXuA (Agent v2: signing_key = agent key, owner_since = registered_at) | 5000 | `U4anVzcub6e6BQKZ59KDK1gZRap3H19LfSw6CT1m1s25LuVmUmH9YWUfjqNYG19xHKXEy3JVUzz4JatmXvJrD9h` |
+| 2026-10-08 01:52:12 | g | migrate_agent FRx89QoUEavL1mVMcroDH4QYUhdTbA66EthkX7uZrGSD (Agent v2: signing_key = agent key, owner_since = registered_at) | 5000 | `5MnUyVSTEEbbg1PhJREAs1me8EY1V55woSGWgFZSnCcSU7GWQNDVoLGWUm3kBcdvsyXsxhVwoxQ5qdCfdt1QaYwT` |
+| 2026-10-08 01:52:22 | g | migrate_agent H9AKH5K79DWfwBQLRe8xv83u4pXgLdRfnzDjpkj3ihvk (Agent v2: signing_key = agent key, owner_since = registered_at) | 5000 | `kkXY2epqN6XyfjSEoBb4NDwvF6AdDXeYNwtoy8CVE6v9pw41hsudHRBAUaiy4B3GnttQgx91L6xwFuDqYPh3C63` |
+| 2026-10-08 01:52:28 | g | migrate_epoch 0 (record_root zero: posted before records existed) | 5000 | `67oTVT23FSuQRWgvatDoVcZhDSdeA9yAB2WJz3Da7ZhhySwRSzSWgExRVuu9GbAjU5Uc1FJGjomdAWv4AaZrM5sv` |
+| 2026-10-08 01:52:29 | g | migrate_epoch 1 (record_root zero: posted before records existed) | 5000 | `4ir9QmJTdkaVtdh9EjzZzErobLEutNo4kF1Gu4mXxYWdaHYM5puLtduHS5UaTndsoo6uf6TueSLsjCLvx7toAMK3` |
+| 2026-10-08 01:52:31 | g | migrate_epoch 2 (record_root zero: posted before records existed) | 5000 | `7Zmkf1jYT3GY5dqKZMKw6EmbQfsr6oLjN8nunig5iEdZhXnX2pFrJyHmUDu9h9K3CfnhLw5399WSP3nTnWALpoW` |
+| 2026-10-08 01:52:33 | g | migrate_epoch 3 (record_root zero: posted before records existed) | 5000 | `4hYUWeLDF8fT7z5PewyKYAD2tfeFgoJT3F39DkzNb7mu7SuwpSomYWvGw1hHwFh3tPCR1yZ1AWic4GnxrJt1fUje` |
+| 2026-10-08 01:52:38 | g | migrate_epoch 4 (record_root zero: posted before records existed) | 5000 | `37VBih2RyKJaFj8aM7e47M78UXY7d7XxGhMkipt4qWp7X5Jzfj3GQEVGz7R1qtkpS6NuSVtoEUWAkewYC2rpdpC5` |

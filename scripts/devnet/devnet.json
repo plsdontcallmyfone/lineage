@@ -8,7 +8,7 @@
   "line_decimals": 6,
   "line_holder": "GRb3V2j6yBraHf39a7STArgGjVxBQ2c6WbvaHEYQMTPe",
   "line_supply_initial": "1000000000000000",
-  "deployer_balance_after_setup": "3.511432549",
+  "deployer_balance_after_setup": "3.279147309",
   "admin": "CVEZWyUBoNb6Zkte3qa7JDu5TBV4wTH6wMw4pLodnDih",
   "core_authority": "CjNUnQ3v2FRQJiMr16CfaFWCdzJ3nqq1VvY2zAgsc4j9",
   "core_authority_key": "~/.config/lineage/devnet/core-authority.json",

@@ -8,6 +8,9 @@
 //   e  an agent launch targeting https://github.com/karpathy/minbpe, trades on its curve from a
 //      test trader, crank_fees with the exact split verified, then split of the treasury
 //   f  a verifier registered and bonded, an epoch posted with a Core-format Merkle root, claimed
+//   g  Agent v2 and Epoch.record_root (identity plan I1, I2): every Agent record and Epoch account an
+//      earlier registry layout wrote is grown in place (migrate_agent, migrate_epoch; the deployer
+//      pays the added rent) and read back
 // Usage: bun scripts/devnet/setup.ts [--only a,b,...]
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
@@ -354,6 +357,27 @@ async function stepF() {
   state.agents = { ...(state.agents ?? {}), "verifier-test": { agent: v.id, owner: owner.id } };
 }
 
+async function stepG() {
+  const agents = await reader.agents();
+  for (const a of agents.filter((x) => x.version === 1))
+    await send("g", `migrate_agent ${a.agent} (Agent v2: signing_key = agent key, owner_since = registered_at)`, dep, [registry.migrateAgent({ payer: dep.id, agent: a.agent })]);
+  const epochs = await reader.epochs();
+  for (const e of epochs.filter((x) => x.version === 1))
+    await send("g", `migrate_epoch ${e.epoch} (record_root zero: posted before records existed)`, dep, [registry.migrateEpoch({ payer: dep.id, epoch: e.epoch })]);
+  const after = await reader.agents();
+  check("g: every Agent record is v2 and keeps its fields", after.length === agents.length && after.every((a) => a.version === 2) &&
+    after.every((a) => {
+      const b = agents.find((x) => x.agent === a.agent)!;
+      return a.owner === b.owner && a.bond === b.bond && a.registeredAt === b.registeredAt && (b.version === 2 || (a.signingKey === a.agent && a.ownerSince === a.registeredAt && a.keySeq === 0));
+    }), `${after.length} agents, ${agents.filter((x) => x.version === 1).length} migrated now`);
+  const eAfter = await reader.epochs();
+  check("g: every Epoch account is v2 and keeps its roots", eAfter.length === epochs.length && eAfter.every((e) => e.version === 2) &&
+    eAfter.every((e) => {
+      const b = epochs.find((x) => x.epoch === e.epoch)!;
+      return e.payoutRoot === b.payoutRoot && e.claimedAmount === b.claimedAmount && (b.version === 2 || e.recordRoot === null);
+    }), `${eAfter.length} epochs, ${epochs.filter((x) => x.version === 1).length} migrated now`);
+}
+
 try {
   if (want("a")) await stepA();
   if (want("b")) await stepB();
@@ -361,6 +385,7 @@ try {
   if (want("d")) await stepD();
   if (want("e")) await stepE();
   if (want("f")) await stepF();
+  if (want("g")) await stepG();
 } finally {
   const end = await rpc.getBalance(dep.id);
   state.deployer_balance_after_setup = sol(end);
