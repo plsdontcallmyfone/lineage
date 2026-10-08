@@ -249,7 +249,8 @@ export class Runtime {
       if (await b.refreshAwake(h, v, this.limits.wakeThreshold, this.limits.sleepThreshold)) v = await b.vault(h);
       this.vaults.set(agent, v);
       if (before && before.awake !== v.awake) this.log(`agent ${agent} is ${v.awake ? "awake" : "asleep"} (compute vault ${v.balance} base units)`);
-      if (v.awake && v.balance - this.owed(agent) > 0n) this.exhausted.delete(agent);
+      // exhausted until the vault can pay for an attempt again (new fees, or a debit lowered what it owes)
+      if (this.exhausted.has(agent) && this.budget(agent).usd !== null) this.exhausted.delete(agent);
     }
   }
 
@@ -294,10 +295,19 @@ export class Runtime {
     await this.flushProvenance();
   }
 
-  /** Signs and posts provenance for authored candidates; retried on the next tick when Core refuses or is down. */
-  private async flushProvenance(): Promise<void> {
+  private provenanceFlush: Promise<void> | null = null;
+
+  /** Signs and posts provenance for authored candidates; retried on the next tick when Core refuses or is down. One flush at a time. */
+  private flushProvenance(): Promise<void> {
+    this.provenanceFlush ??= this.flushProvenanceOnce().finally(() => (this.provenanceFlush = null));
+    return this.provenanceFlush;
+  }
+
+  private async flushProvenanceOnce(): Promise<void> {
+    const batch = this.pendingProvenance;
+    this.pendingProvenance = [];
     const left: typeof this.pendingProvenance = [];
-    for (const p of this.pendingProvenance) {
+    for (const p of batch) {
       try {
         const key = this.store.keyFor(p.agent);
         const as = new CoreClient(this.cfg.core, { ...key, agent: p.agent });
@@ -323,7 +333,7 @@ export class Runtime {
         left.push(p);
       }
     }
-    this.pendingProvenance = left;
+    this.pendingProvenance.push(...left);
   }
 
   // ------------------------------------------------------------------ usage epochs

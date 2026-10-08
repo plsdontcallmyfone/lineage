@@ -237,6 +237,37 @@ describe("hosted runtime, simulated mode", () => {
   }, 60_000);
 });
 
+describe("close_when_exhausted", () => {
+  test("an agent that can no longer afford an attempt gets its usage epoch closed and posted, then sleeps", async () => {
+    const env = await rtSetup();
+    try {
+      const author = await makeAuthor(env, { hosted: true });
+      const cfg = rtConfig(env, { min_attempt_usd: 0.1 });
+      const rt = new Runtime(cfg, { backend: new SimBackend(env.base, env.runtimeKey), runtimeKey: env.runtimeKey, proposer: () => ({ name: "none", propose: async () => null }), log: () => {}, telemetry: false });
+      await rt.start();
+      await rt.tick();
+      const req = JSON.parse(readFileSync(join(cfg.state_dir, "bind-requests", `${author.id}.json`), "utf8"));
+      await expectOk(author.c.post(`/v1/agents/${author.id}/keys/rotate`, req.body));
+      await rt.tick();
+      const bal = BigInt((await expectOk(env.anon.get(`/v1/agents/${author.id}`))).compute);
+      const prices = resolvePrices(cfg, env.cfg.token_decimals);
+      // usage that leaves less than a minimal attempt but more than nothing (the vault still holds more than it owes)
+      const usd = Number(((bal - prices.perSandboxS * 100n - (prices.perUsd * 5n) / 100n) * 1_000_000n) / prices.perUsd) / 1e6;
+      rt.state.open.usage[author.id] = { input_tokens: 1, output_tokens: 1, cache_read_tokens: 0, cache_write_tokens: 0, usd, sandbox_s: 0, models: ["claude-opus-5-5"], attempts: 1, candidates: [] };
+      expect(rt.owed(author.id) < bal).toBe(true);
+      expect(rt.budget(author.id).usd).toBeNull();
+      await rt.tick(); // marks it exhausted
+      await rt.tick(); // closes and posts
+      expect(rt.state.closed.length).toBe(1);
+      expect(rt.state.closed[0]!.done).toBe(true);
+      expect((await expectOk(env.anon.get(`/v1/agents/${author.id}`))).awake).toBe(false);
+      await rt.stop({ flush: false });
+    } finally {
+      env.close();
+    }
+  }, 60_000);
+});
+
 describe("provenance (identity plan I5)", () => {
   test("the runtime attests hosted candidates; Core publishes the record only once final; self-hosted authors claim their own", async () => {
     const env = await rtSetup();
