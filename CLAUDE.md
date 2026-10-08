@@ -15,7 +15,7 @@ Spec: `docs/SPEC.md` (source of truth). Milestones: `docs/MILESTONES.md`.
 ## Who is working on what
 | Who | Paths | Status | Started |
 |---|---|---|---|
-| main session | docs/, packages/protocol, packages/sandbox, images/, recipes/, fixtures/ | IN PROGRESS | 2026-10-07 |
+| main session | docs/plans/FINISH.md, coordination, W6, W8 | IN PROGRESS | 2026-10-07 |
 | core lane | packages/core/** | DONE | 2026-10-07 |
 | recipes lane | recipes/base58-py/**, recipes/minbpe/**, recipes/base58-rs/**, recipes/fixture-b58/calibration.json, scripts/calibrate-recipe.ts, scripts/make-canaries.ts, scripts/check-canaries.ts | DONE | 2026-10-07 |
 | dashboard lane | apps/web/** | DONE | 2026-10-07 |
@@ -41,3 +41,8 @@ Spec: `docs/SPEC.md` (source of truth). Milestones: `docs/MILESTONES.md`.
 | GPU session lane | scripts/gpu/**, images/cuda/**, recipes/fixture-cuda/**, recipes/llmc-cuda/**, fixtures/cuda-reduce*/**, docs/GPU-SESSION.md | DONE (RTX 4000 Ada session: doctor 7/7, fixture patches 7/7, both recipes calibrated cv 0, llm.c canaries 3/3, gelu bwd ratio 0.68690, e2e-cuda 15/15; docs/GPU-SESSION.md; owner must destroy droplet 159.203.62.37) | 2026-10-08 |
 | souls lane | packages/souls/**, apps/web/wallet (launch soul step), apps/web/src/pages (soul views), packages/core (soul endpoints via new module) | DONE (SPEC 14.8, 0.17; 3 real souls, 0.2755 USD Claude; devnet TEST agent 6C8N2z5L... soul digest on chain seq 1 and 2; pool account owunqwxs provisioned, Verified signed commit on owunqwxs/minbpe; bun test packages/souls packages/core 183/183, ui-check 15/15) | 2026-10-08 |
 | onchain messages lane | onchain/** (lineage_msg), packages/chain/**, packages/core/src/msgchain.ts (+ minimal call sites), apps/web/src (board/inbox read paths) | DONE (SPEC 12.5; LiteSVM 56/56 incl. msg 6/6, bun test packages 368/368; lineage_msg deployed to devnet E6vHsk...apAB, hash verified; msg-e2e 17/17; onchain/DEVNET.md) | 2026-10-08 |
+| finish: github lane (W1+W2) | packages/mirror/** (new), packages/core/src/upstream.ts (new, + minimal call sites in core.ts/http.ts), scripts/mirror/**, docs/SPEC.md 16 | IN PROGRESS | 2026-10-08 |
+| finish: site lane (W3) | scripts/deploy/**, recipes/*/calibration-amd64*, docs/DEPLOY-SITE.md, onchain/DEVNET.md (own section) | IN PROGRESS | 2026-10-08 |
+| finish: collab extras lane (W4) | packages/protocol/src/shapley.ts (new), packages/core/src/split.ts + ports.ts (new, + minimal call sites), packages/worker/src (split measurement), scripts/e2e.ts (new checks), docs/plans/C7B-*.md | IN PROGRESS | 2026-10-08 |
+| finish: identity lane (W5) | packages/core/src/links.ts + erc8004.ts (new, + minimal call sites), apps/web/src/pages (agents page), scripts/identity/** | IN PROGRESS | 2026-10-08 |
+| finish: contestable core lane (W7) | onchain/** (challenges), packages/chain/**, packages/core/src/challenges.ts + replica.ts (new, + minimal call sites), scripts/devnet/challenge*.ts | IN PROGRESS | 2026-10-08 |
