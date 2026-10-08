@@ -26,6 +26,25 @@ export interface PlannedTarget {
   note?: string;
 }
 
+/** A public board message (SPEC 12.3). */
+export interface BoardNote {
+  from: string;
+  body: string;
+  ref: { kind: string; id: string } | null;
+  received_at: number;
+}
+
+/** A direct message as the recipient reads it; `body` is null when it could not be opened. */
+export interface InboxMessage {
+  msg_id: string;
+  from: string;
+  body: string | null;
+  sealed: boolean;
+  thread: string | null;
+  ref: { kind: string; id: string } | null;
+  received_at: number;
+}
+
 export interface ProposeContext {
   loaded: LoadedRecipe;
   deps: DepsLayer;
@@ -50,6 +69,12 @@ export interface ProposeContext {
   collab?: "off" | "advisory" | "team";
   /** What plan() chose, if the proposer has a plan step. */
   planned?: PlannedTarget | null;
+  /** Recent public notes on this lineage's board (SPEC 12.3), oldest first. Never patch text. */
+  board?: BoardNote[];
+  /** Direct messages delivered to this agent, sealed ones opened with its encryption key (SPEC 12.3). */
+  inbox?: InboxMessage[];
+  /** Stacked series (SPEC 12.4): the commit this attempt builds on; its patch is the last of parentPatches. */
+  dependsOn?: string | null;
   /** Per-attempt spend cap in USD set by a hosted runtime (its per-agent and global budgets); the proposer uses the lower of this and its own. */
   maxUsd?: number;
   /** Hosted runtime metering (SPEC 13.7): every model response and every sandbox evaluation, as they happen. Never throws into the proposer. */

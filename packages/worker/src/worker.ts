@@ -26,7 +26,9 @@ import {
 import { applyPatch, calibrate, diffWorkingTree, evaluate, materialize, newWorkDir, removeTree, WORKER_VERSION, type Transcript } from "@lineage/sandbox";
 import { CoreClient } from "../../core/src/client.ts";
 import { teamStatement, type TeamMember } from "../../core/src/collab.ts";
-import type { Finding, IntentView, PlannedTarget, ProposeContext, Proposer } from "./proposers/types.ts";
+import { encryptionKeyStatement, intentNote, messageEnvelope } from "../../core/src/messages.ts";
+import { deriveEncryptionKey, open, seal, type EncryptionKey } from "../../core/src/seal.ts";
+import type { BoardNote, Finding, InboxMessage, IntentView, PlannedTarget, ProposeContext, Proposer } from "./proposers/types.ts";
 import { doctor } from "./doctor.ts";
 import { RecipeBook } from "./recipes.ts";
 import { Telemetry } from "./telemetry.ts";
@@ -72,6 +74,12 @@ export interface WorkerOptions {
    * commitment and split. Without a key for every other member the worker commits alone.
    */
   team?: { members: TeamMember[]; keys: AgentKey[] };
+  /**
+   * Stacked series (SPEC 12.4): author the next candidate on top of this agent's own newest
+   * revealed, still pending candidate (committed with `depends_on`, held until that one is final)
+   * instead of waiting for its verdict. Default off.
+   */
+  series?: boolean;
 }
 
 interface PendingReplay {
@@ -110,6 +118,8 @@ export class Worker {
   private stateFile: string;
   private submitted = 0;
   private busy = false;
+  /** Patches this worker revealed, by commit id: what a stacked candidate builds on (SPEC 12.4). */
+  private mine = new Map<string, { lineage_id: string; patch: string; at: number }>();
 
   constructor(private opts: WorkerOptions) {
     this.client = new CoreClient(opts.core, opts.key);
@@ -289,7 +299,7 @@ export class Worker {
     }
     // signed: Core lists an agent's open candidates only to the agent itself (author-blind, SPEC 10.7)
     const mine = await this.ok<{ status: string }[]>(this.client.get(`/v1/candidates?lineage=${lineage}&author=${this.id}&limit=1000`, true), "candidates");
-    return mine.filter((c) => ["committed", "queued", "replaying", "disputed"].includes(c.status)).length >= this.maxOpen;
+    return mine.filter((c) => ["committed", "waiting", "queued", "replaying", "disputed"].includes(c.status)).length >= this.maxOpen;
   }
 
   private async authorOn(view: any): Promise<string | null> {
@@ -300,6 +310,8 @@ export class Worker {
     const loaded = this.recipes.get(view.recipe_id);
     const tree = await this.ok(this.client.get(`/v1/lineages/${view.lineage_id}/tree`), "tree");
     const parentPatches: string[] = tree.patches.map((p: { patch: string }) => p.patch);
+    // a stacked candidate builds on this agent's own pending patch (SPEC 12.4)
+    const stack = this.opts.series ? await this.stackTarget(view.lineage_id) : null;
     const findings = (await this.ok<any[]>(this.client.get(`/v1/findings?lineage=${view.lineage_id}`), "findings")).map((f) => ({ key: f.finding_key ?? f.key, kind: f.kind, target: f.target }) as Finding);
     const deps = await this.recipes.depsFor(loaded, tree.deps_digest);
     const work = newWorkDir("author");
@@ -316,6 +328,11 @@ export class Worker {
         Bun.spawnSync(["git", "-c", "user.name=l", "-c", "user.email=l@l", "commit", "-q", "-m", "prepare outputs"], { cwd: dir });
       }
       for (const p of parentPatches) if (!applyPatch(dir, p)) throw new Error("parent series does not apply locally");
+      if (stack && !applyPatch(dir, stack.patch)) throw new Error(`pending candidate ${stack.commit_id.slice(0, 10)} does not apply to the tip locally`);
+      if (stack) {
+        parentPatches.push(stack.patch);
+        this.log(`series: authoring on top of pending ${stack.commit_id.slice(0, 10)}`);
+      }
       const seed = randomBytes(8).toString("hex");
       const collab = this.opts.collab ?? "advisory";
       const ctx: ProposeContext = {
@@ -331,14 +348,22 @@ export class Worker {
         onPhase: this.telemetry.onPhase,
         self: this.id,
         collab,
+        dependsOn: stack?.commit_id ?? null,
         ...budget,
       };
       if (collab !== "off") {
         // intents are advisory (SPEC 12.1): reading or filing one never blocks authoring
         ctx.intents = await this.intentsOn(view.lineage_id);
+        // messages are advisory too (SPEC 12.3): the board and the inbox inform, never block
+        await this.ensureEncryptionKey();
+        ctx.board = await this.boardOf(view.lineage_id);
+        ctx.inbox = await this.readInbox();
         if (proposer.plan) {
           ctx.planned = await proposer.plan(ctx);
-          if (ctx.planned) await this.fileIntent(view.lineage_id, tree.gen_id, ctx.planned);
+          if (ctx.planned) {
+            const intent = await this.fileIntent(view.lineage_id, tree.gen_id, ctx.planned);
+            if (intent) await this.send(`board:${view.lineage_id}`, intentNote({ kind: ctx.planned.kind, target: this.normTarget(ctx.planned), tip: tree.gen_id }), { ref: { kind: "intent", id: intent } });
+          }
         }
       }
       const proposal = await proposer.propose(ctx);
@@ -362,13 +387,15 @@ export class Worker {
           target: proposal.target,
           commitment,
           claimed_effect: proposal.claimed_effect ?? null,
-          ...this.teamFor({ lineage_id: view.lineage_id, parent_gen_id: tree.gen_id, commitment, kind: proposal.kind, target: proposal.target }),
+          ...(stack ? { depends_on: stack.commit_id } : {}),
+          ...this.teamFor({ lineage_id: view.lineage_id, parent_gen_id: tree.gen_id, commitment, kind: proposal.kind, target: proposal.target, depends_on: stack?.commit_id ?? null }),
         }),
         "commit candidate",
       );
       // no target: a submit names no candidate while it is sealed, and Core shows submits only to this agent (SPEC 10.7)
       this.telemetry.activity(where, { kind: "submit" });
       const revealed = await this.ok(this.client.post(`/v1/candidates/${committed.commit_id}/reveal`, { patch, salt }), "reveal candidate");
+      this.mine.set(committed.commit_id, { lineage_id: view.lineage_id, patch, at: Date.now() });
       this.submitted++;
       this.log(`author: ${proposal.kind} on ${JSON.stringify(proposal.target)} (${g.lines} lines) -> ${revealed.status}${revealed.reason ? ` (${revealed.reason})` : ""}`);
       return committed.commit_id;
@@ -410,7 +437,7 @@ export class Worker {
   }
 
   /** `{ team }` for a commit when collab is "team" and every member can sign here, else nothing (SPEC 12.2). */
-  teamFor(ctx: { lineage_id: string; parent_gen_id: string; commitment: string; kind: CandidateKind; target: string | string[] }): { team?: { members: TeamMember[]; sigs: Record<string, string> } } {
+  teamFor(ctx: { lineage_id: string; parent_gen_id: string; commitment: string; kind: CandidateKind; target: string | string[]; depends_on?: string | null }): { team?: { members: TeamMember[]; sigs: Record<string, string> } } {
     const t = this.opts.team;
     if ((this.opts.collab ?? "advisory") !== "team" || !t) return {};
     const target = ctx.kind === "fix" ? [...new Set(Array.isArray(ctx.target) ? ctx.target : [ctx.target])].sort() : ctx.target;
@@ -426,6 +453,92 @@ export class Worker {
     }
     this.log(`team: ${t.members.map((m) => `${m.agent.slice(0, 6)} ${m.role} ${m.share_bps / 100}%`).join(", ")}`);
     return { team: { members: t.members, sigs } };
+  }
+
+  private normTarget(p: PlannedTarget): string | string[] {
+    return p.kind === "fix" ? [...new Set(Array.isArray(p.target) ? p.target : [p.target])].sort() : p.target;
+  }
+
+  // ------------------------------------------------------------------ stacked series (SPEC 12.4)
+
+  /** This agent's newest revealed candidate on the lineage that is still pending, with its patch. */
+  async stackTarget(lineage: string): Promise<{ commit_id: string; patch: string } | null> {
+    const mine = [...this.mine.entries()].filter(([, m]) => m.lineage_id === lineage).sort((a, b) => b[1].at - a[1].at);
+    for (const [id, m] of mine) {
+      const r = await this.client.get(`/v1/candidates/${id}`, true).catch(() => null);
+      const st = r?.status === 200 ? String(r.body.status) : "";
+      if (["waiting", "queued", "replaying", "disputed"].includes(st)) return { commit_id: id, patch: m.patch };
+      if (["accepted", "rejected", "expired"].includes(st)) this.mine.delete(id);
+    }
+    return null;
+  }
+
+  // ------------------------------------------------------------------ messages (SPEC 12.3)
+
+  private encKey: EncryptionKey | null = null;
+  private inboxAfter = 0;
+  private inboxSeen: InboxMessage[] = [];
+
+  /** Publishes this agent's message encryption key (derived from its key seed) if Core does not have it. Never fatal. */
+  async ensureEncryptionKey(): Promise<EncryptionKey> {
+    if (this.encKey) return this.encKey;
+    const k = deriveEncryptionKey(this.opts.key);
+    const cur = await this.client.get(`/v1/agents/${this.id}/encryption-key`).catch(() => null);
+    if (cur?.status === 200 && cur.body.encryption_key === k.public) return (this.encKey = k);
+    const seq = cur?.status === 200 ? Number(cur.body.seq) + 1 : 1;
+    const r = await this.client
+      .put(`/v1/agents/${this.id}/encryption-key`, { encryption_key: k.public, seq, sig: signStatement(this.opts.key, "msgkey", encryptionKeyStatement({ agent: this.id, encryption_key: k.public, seq })) })
+      .catch((e) => ({ status: 0, body: { error: String(e) } }));
+    if (r.status >= 300) this.log(`messages: encryption key not published (${r.status} ${r.body?.error ?? ""})`);
+    return (this.encKey = k);
+  }
+
+  /**
+   * Sends a signed message to an agent or to `board:<lineage>`. With `encrypt` the body is sealed
+   * to the recipient's published key. Returns the message id, or null when Core refused (logged).
+   */
+  async send(to: string, text: string, o: { encrypt?: boolean; ref?: { kind: string; id: string }; thread?: string } = {}): Promise<string | null> {
+    let body: string | null = text;
+    let ciphertext: string | null = null;
+    let enc_key: string | null = null;
+    if (o.encrypt) {
+      const k = await this.client.get(`/v1/agents/${to}/encryption-key`).catch(() => null);
+      if (k?.status !== 200) {
+        this.log(`messages: ${to.slice(0, 8)} has no encryption key; not sent`);
+        return null;
+      }
+      enc_key = k.body.encryption_key as string;
+      ciphertext = seal(text, enc_key);
+      body = null;
+    }
+    const env = messageEnvelope({ from: this.id, to, thread: o.thread ?? null, ref: o.ref ?? null, body, ciphertext, enc_key, sent_at: Date.now(), nonce: randomBytes(12).toString("hex") });
+    const r = await this.client.post("/v1/messages", { envelope: env, sig: signStatement(this.opts.key, "msg", env) }).catch((e) => ({ status: 0, body: { error: String(e) } }));
+    if (r.status >= 300) {
+      this.log(`messages: not sent to ${to.slice(0, 14)} (${r.status} ${r.body?.error ?? ""})`);
+      return null;
+    }
+    return r.body.msg_id as string;
+  }
+
+  /** New direct messages since the last read, sealed ones opened; keeps the last 50 for the proposer. */
+  async readInbox(): Promise<InboxMessage[]> {
+    const k = this.encKey ?? deriveEncryptionKey(this.opts.key);
+    const r = await this.client.get(`/v1/messages?after=${this.inboxAfter}`, true).catch(() => null);
+    if (r?.status !== 200) return this.inboxSeen;
+    for (const m of r.body.received as any[]) {
+      const e = m.envelope;
+      this.inboxSeen.push({ msg_id: m.msg_id, from: m.from, body: e.ciphertext ? open(e.ciphertext, k) : e.body, sealed: !!e.ciphertext, thread: e.thread, ref: e.ref, received_at: m.received_at });
+    }
+    this.inboxAfter = Number(r.body.next?.after ?? this.inboxAfter);
+    this.inboxSeen = this.inboxSeen.slice(-50);
+    return this.inboxSeen;
+  }
+
+  /** The lineage board's last notes (public). */
+  async boardOf(lineage: string, last = 50): Promise<BoardNote[]> {
+    const r = await this.client.get(`/v1/lineages/${lineage}/board?limit=1000`).catch(() => null);
+    if (r?.status !== 200) return [];
+    return (r.body.messages as any[]).slice(-last).map((m) => ({ from: m.from, body: String(m.envelope.body ?? ""), ref: m.envelope.ref, received_at: m.received_at }));
   }
 
   // ------------------------------------------------------------------ reference runner

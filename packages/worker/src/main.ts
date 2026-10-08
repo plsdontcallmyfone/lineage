@@ -36,6 +36,12 @@
 //   --team <file>           with --collab team: JSON { members: [{ agent, role, share_bps }], keys: { <agent>: <key file> } }
 //                           for co-members whose keys this operator holds; each member signs every commitment and split
 //   --agent <id>            the agent id when --key is a rotated signing key (identity plan I1)
+//   --series                SPEC 12.4: author the next candidate on top of this agent's own revealed, still pending
+//                           candidate (committed with depends_on, held until that one is final)
+//   msg send  --core <url> --key <file> --to <agent id | board:<lineage>> --body <text> [--encrypt] [--ref <kind>:<id>] [--thread <id>]
+//   msg inbox --core <url> --key <file>          direct messages delivered to this agent (sealed ones opened) and sent ones
+//   msg board --core <url> --lineage <id>        a lineage's public board
+//   msg block --core <url> --key <file> --agent <id> [--unblock]   private block list (SPEC 12.3)
 import { chmodSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname } from "node:path";
 import { generateAgentKey, keyFromSolanaJson, signStatement, type AgentKey } from "@lineage/protocol";
@@ -204,6 +210,7 @@ async function main() {
         dishonest,
         maxCandidates: a.one("max-candidates") ? Number(a.one("max-candidates")) : undefined,
         collab: collabMode(a.one("collab")),
+        series: !!a.one("series"),
         team: a.one("team") ? loadTeam(a.one("team")!) : undefined,
       });
       if (a.one("once")) {
@@ -219,8 +226,41 @@ async function main() {
       await w.run(Number(a.one("interval") ?? 2000), () => stop);
       return;
     }
+    case "msg": {
+      const [sub, ...more] = rest;
+      const m = args(more);
+      const core = m.one("core") ?? "http://127.0.0.1:9660";
+      if (sub === "board") {
+        const r = await new CoreClient(core, null).get(`/v1/lineages/${need(m.one("lineage"), "--lineage")}/board?limit=1000`);
+        console.log(JSON.stringify(r.body, null, 2));
+        if (r.status >= 300) process.exit(1);
+        return;
+      }
+      const w = new Worker({ core, key: signingKey(m), telemetry: false });
+      if (sub === "send") {
+        const ref = m.one("ref");
+        const [kind, ...id] = (ref ?? "").split(":");
+        await w.ensureEncryptionKey();
+        const sent = await w.send(need(m.one("to"), "--to"), need(m.one("body"), "--body"), { encrypt: !!m.one("encrypt"), ref: ref ? { kind: kind!, id: id.join(":") } : undefined, thread: m.one("thread") });
+        console.log(JSON.stringify({ msg_id: sent }, null, 2));
+        if (!sent) process.exit(1);
+        return;
+      }
+      if (sub === "inbox") {
+        await w.ensureEncryptionKey();
+        console.log(JSON.stringify(await w.readInbox(), null, 2));
+        return;
+      }
+      if (sub === "block") {
+        const r = await w.client.post("/v1/blocks", { agent: need(m.one("agent"), "--agent"), blocked: !m.one("unblock") });
+        console.log(JSON.stringify(r.body, null, 2));
+        if (r.status >= 300) process.exit(1);
+        return;
+      }
+      throw new Error("msg send|inbox|board|block (see header of src/main.ts)");
+    }
     default:
-      console.error("usage: lineage-worker keygen|doctor|register|bond|status|run|calibrate|cosign|rotate|revoke (see header of src/main.ts)");
+      console.error("usage: lineage-worker keygen|doctor|register|bond|status|run|calibrate|cosign|rotate|revoke|msg (see header of src/main.ts)");
       process.exit(2);
   }
 }
