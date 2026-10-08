@@ -31,5 +31,5 @@ Spec: `docs/SPEC.md` (source of truth). Milestones: `docs/MILESTONES.md`.
 | onchain fixes lane | onchain/**, packages/chain/**, packages/core/src/chain.ts, packages/core/src/core.ts (slash/epoch chain paths only), packages/core/test/chain.test.ts | DONE (devnet upgraded and migrated, e2e 24/24; onchain/DEVNET.md) | 2026-10-07 |
 | core hardening lane | packages/core/** (not chain.ts), scripts/e2e.ts | DONE (bun test packages 267/267, e2e 43/43) | 2026-10-07 |
 | identity+collab plan lane | docs/plans/**, research/identity-collab/** | DONE (cd41be4) | 2026-10-07 |
-| collab offchain lane | packages/core/**, packages/worker/**, packages/protocol/src (signStatement only), apps/web/**, scripts/e2e.ts, docs/SPEC.md (collab sections) | IN PROGRESS | 2026-10-07 |
+| collab offchain lane | packages/core/**, packages/worker/**, packages/protocol/src (signStatement only), apps/web/**, scripts/e2e.ts, docs/SPEC.md (collab sections) | DONE (I2b, C1, C4; bun test packages 291/291, e2e 59/59) | 2026-10-07 |
 | identity onchain lane | onchain/**, packages/chain/**, packages/core/src/chain.ts, packages/core/src/http.ts (authenticate), packages/core/src/core.ts (closeEpochInner, records), packages/core/src/records.ts, scripts/verify-credential.ts, scripts/devnet/**, apps/web/wallet/** | IN PROGRESS | 2026-10-07 |
