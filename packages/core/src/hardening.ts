@@ -1,5 +1,6 @@
 import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import { join, relative } from "node:path";
+import { intentTarget } from "./collab.ts";
 import type { Core } from "./core.ts";
 import { H, generateAgentKey, patchCommitment, Rng, type Calibration } from "./protocol.ts";
 
@@ -268,11 +269,11 @@ export class Hardening {
       const claimed = claims.length ? claims[rng.int(claims.length)]!.claimed_effect : null;
       const salt = H("canary-salt", ep.secret, String(q.id)).slice(0, 32);
       try {
-        const committed = this.c.commitCandidateInner(
-          shadow,
-          { lineage_id: q.lineage_id, parent_gen_id: tip.tip, kind: canary.kind, target: JSON.parse(canary.target), commitment: patchCommitment(canary.patch_hash, salt), claimed_effect: claimed },
-          { canary: q.canary_id },
-        );
+        const body: Record<string, unknown> = { lineage_id: q.lineage_id, parent_gen_id: tip.tip, kind: canary.kind, target: JSON.parse(canary.target), commitment: patchCommitment(canary.patch_hash, salt), claimed_effect: claimed };
+        // shadow parity (SPEC 10.7): committed as a team of shadows as often as real candidates are teams
+        const team = this.c.collab.shadowTeam(shadow, { lineage_id: q.lineage_id, parent_gen_id: tip.tip, commitment: body.commitment as string, kind: canary.kind, target: intentTarget(canary.kind, body.target) }, new Rng(H("m1-shadow-team", ep.secret, String(q.id))));
+        if (team) body.team = team;
+        const committed = this.c.commitCandidateInner(shadow, body, { canary: q.canary_id });
         const revealAt = now + this.revealDelayMs(q.lineage_id, new Rng(H("m1-canary-reveal", ep.secret, committed.commit_id)));
         this.db
           .query("UPDATE canary_queue SET status = 'committed', shadow_id = ?, commit_id = ?, salt = ?, reveal_at = ? WHERE id = ?")

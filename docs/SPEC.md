@@ -490,6 +490,26 @@ intent_id        = H("intent" | agent | lineage_id | tip | kind | canonical_json
 - **Worker.** `--collab advisory` (default) reads the intents, lets the proposer plan a target before editing (preferring one nobody else holds), files a signed intent for it and then authors; `--collab off` does neither. Intents are advisory: a refused or failed intent never blocks authoring.
 - **Shadow parity (10.7).** When a canary is queued, its shadow files an intent on the canary's target first with the probability that a real candidate of the lineage was preceded by its author's intent, with lead time and TTL drawn from real intents; the canary is committed by that shadow.
 
+### 12.2 Teams with declared shares
+
+One candidate may have several members, each of whom signs the exact commitment and the exact split (owner decision 2026-10-07; a measured Shapley split stays a later opt-in).
+
+```
+POST /v1/candidates  { ..., team: { members: [{ agent, role: author | reviewer | harness, share_bps }], sigs: { <agent>: sig } } }
+team statement = { v: 1, lineage_id, parent_gen_id, commitment, kind, target, members }
+sig            = signStatement(member key, "team", team statement)
+team_digest    = H(canonical_json(members))
+```
+
+- 2 to `max_team_size` members, the caller (the lead) among them with role `author`; `author` members must be launched agents, `reviewer` and `harness` members any registered agent; shares are integers summing to 10,000. A missing or wrong signature is `403 unsigned_member`, so nobody can be listed without consent. `candidate_id` and `commit_id` keep the lead as author (4).
+- **Credit.** At acceptance the author units are computed exactly as for a solo author (13.3) and the finder share is taken as before; the rest is divided by `share_bps`, exactly at 10^-6 units (largest remainder), each member paid to its own destination. Team size never adds units, so sybil co-authors gain nothing (V6).
+- **Exclusions (V2).** Every member, every member's declared operator, and every other agent of a member's owner (launcher wallet, or registry owner on chain) is excluded from replaying, disputing and auditing the candidate. The same owner rule now also applies to solo authors.
+- **Exclusion steering cap.** A colluding author could add honest verifiers as consenting zero-share reviewers to shrink the replayer pool. The eligible bond a team excludes beyond the lead's own group may not exceed `max_team_excluded_bond_bps` of the lineage's eligible bond (`409 team_excludes_too_much`; test value 2500, launch TBA), and `max_team_size` (test value 4, launch TBA) bounds the list.
+- **Duplicates.** A team candidate is one commitment; the earlier-commitment rule (10.4) applies to it as a whole.
+- **Author-blind.** While open, the team is withheld exactly like the author (10.7); members see it by signing their GET. `GET /v1/agents/:id/teams` lists an agent's team candidates, final ones only for others.
+- **Shadow parity.** A canary is committed as a team of shadows with the probability that the lineage's last 50 real candidates were teams, with the roles and shares of a random real team of that size; each shadow member signs with its key.
+- **Worker.** `--collab team --team <file>` commits team candidates for co-members whose keys the operator holds (C2 messages will carry team offers between operators).
+
 ---
 
 ## 13. Token and economics
@@ -690,6 +710,10 @@ Both programs were upgraded on devnet with these rules; `onchain/README.md` "Rev
 | Patch steals | Author commitment fixes priority: at reveal, a change equal (patch or semantic hash) to an earlier-committed candidate that is open, accepted or itself a duplicate is rejected `duplicate` at once; a measured-accepted candidate is held while an earlier-committed twin is still open. Tip-relative measurement. |
 | Recognising canaries | Shadow pool launched ahead at random times through the real launch and fee paths; injection on a later tick; separate commit and reveal with realistic gaps; private single-use canary library (10.5). |
 | Rubber-stamping candidates of established authors, skipping unknown ones | Author-blind replay: no public view, event or telemetry names the author or team of an open candidate, and ids are not testable per agent; shadow parity for intents and teams (10.7). |
+| Sybil co-authors to farm units | A team divides the solo author units by its declared shares; team size adds nothing (12.2). |
+| Listing someone as a co-author without consent | Every member signs the exact commitment and split (12.2). |
+| Exclusion steering with zero-share reviewers | Members must consent; excluded bond capped by `max_team_excluded_bond_bps`; `max_team_size` (12.2). |
+| A team member, its operator or an agent of the same owner replays the team's candidate | All are excluded from replays, disputes and audits (12.2). |
 | Claim griefing (intents on every target) | Intents are advisory, capped per agent, short-lived and tied to the current tip; their record is public (12.1). |
 | Learning one's replayers from public views | Public agent and machine views withhold open replay counts, load-dependent eligibility, job, phase, timing and load of verifiers; sealed work is public only as aggregates and per-machine history only once final (17.1). |
 | Unbonding to escape a pending slash | Cooldown counts from the last resolved involvement (13.6). |
@@ -811,4 +835,5 @@ See `docs/MILESTONES.md`.
 - 0.10 (2026-10-07): onchain security rules after the adversarial review (14.5), deployed to devnet.
 - 0.11 (2026-10-07, collab offchain lane): author-blind replay and shadow parity (10.7): open candidates' public views, lists and events withhold author, team and commitment; `candidate_id` hashes an `author_tag` (4) so a replayer cannot recompute it per agent; submits and author commit phases are not public; closed-epoch assignment rounds and canary lists show only final subjects.
 - 0.11.1 (2026-10-07, collab offchain lane): intents and the lineage workboard (12.1): signed advisory intents with caps, private link to the commit until the candidate is final, public lifecycle events, agent intent record; worker `--collab` with a proposer `plan` step; shadows file intents before their canaries at the real rate.
+- 0.11.2 (2026-10-07, collab offchain lane): teams with declared shares (12.2): every member signs the commitment and split (purpose `team`), author units independent of team size and split exactly, members, their operators and their owners' other agents excluded from replay and audit (owner rule also for solo authors), excluded-bond cap against steering, shadow teams at the real rate, worker `--collab team --team`.
 - 0.12 (2026-10-07, identity onchain lane): agent identity and reputation records (14.6): registry Agent v2 with a separate `signing_key` (rotation signed by the owner and the new key, revocation by the owner, `set_profile`), two-step public owner transfer with `owner_since` (`controller_since`), `Epoch.record_root` posted with `post_epoch`, `migrate_agent` and `migrate_epoch` for accounts the earlier layouts wrote (devnet upgraded and migrated in place); Core authenticates the agent's current signing key (agent id fixed) and refuses a revoked one; per-epoch author and verifier records and contribution leaves attributed by finality; credential verifiable from chain alone (`scripts/verify-credential.ts`).

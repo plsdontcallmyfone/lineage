@@ -13,6 +13,7 @@ import { loadRecipe, prepareDeps } from "@lineage/sandbox";
 import { CoreClient } from "../packages/core/src/client.ts";
 import { doctor } from "../packages/worker/src/doctor.ts";
 import { loadScript, ScriptedProposer, Worker } from "../packages/worker/src/index.ts";
+import { teamStatement } from "../packages/core/src/collab.ts";
 
 const ROOT = join(import.meta.dir, "..");
 const PATCHES = join(ROOT, "fixtures", "b58-patches");
@@ -50,6 +51,8 @@ const keys = {
   v2: generateAgentKey(),
   v3: generateAgentKey(),
   v4: generateAgentKey(),
+  // a fifth honest verifier that co-authors a team candidate as a reviewer (SPEC 12.2)
+  v5: generateAgentKey(),
   liar: generateAgentKey(),
   faker: generateAgentKey(),
   wrongarch: generateAgentKey(),
@@ -146,12 +149,12 @@ async function main() {
   // real capabilities from this machine (what `lineage-worker doctor` prints); workers re-declare on start
   const caps = doctor().capabilities;
   const wrongCaps = { ...caps, arch: caps.arch === "arm64" ? "amd64" : "arm64" };
-  for (const n of ["ref", "v1", "v2", "v3", "v4", "liar", "faker", "wrongarch"] as const) {
+  for (const n of ["ref", "v1", "v2", "v3", "v4", "v5", "liar", "faker", "wrongarch"] as const) {
     await fund(keys[n], BURN + MIN_BOND * 20n);
-    await ok(as(keys[n]).post("/v1/agents", { capabilities: n === "wrongarch" ? wrongCaps : caps }), `register ${n}`);
+    await ok(as(keys[n]).post("/v1/agents", { capabilities: n === "wrongarch" ? wrongCaps : caps, ...(n === "v5" ? { operator: "team-op" } : {}) }), `register ${n}`);
   }
   await ok(admin.post(`/v1/admin/agents/${keys.ref.id}/reference`, { reference: true }), "mark reference");
-  for (const n of ["v1", "v2", "v3", "v4", "faker", "wrongarch"] as const) await ok(as(keys[n]).post(`/v1/agents/${keys[n].id}/bond`, { amount: MIN_BOND.toString() }), `bond ${n}`);
+  for (const n of ["v1", "v2", "v3", "v4", "v5", "faker", "wrongarch"] as const) await ok(as(keys[n]).post(`/v1/agents/${keys[n].id}/bond`, { amount: MIN_BOND.toString() }), `bond ${n}`);
 
   log("reference runner calibrating the fixture in the sandbox");
   const refWorker = new Worker({ core: CORE, key: keys.ref, log: (m) => console.log(`   ref  ${m}`) });
@@ -179,6 +182,7 @@ async function main() {
   startVerifier("v3");
   // a fourth honest verifier: audits draw audit_replayers (2) auditors outside the accepted stage's pair
   startVerifier("v4");
+  startVerifier("v5");
   // a verifier that fabricates everything, qualification included
   startVerifier("faker", ["--dishonest", "fabricate"]);
 
@@ -302,8 +306,51 @@ async function main() {
   check("workboard lists the files authors touched in its window", !!wb2 && wb2.files.some((f: any) => f.agents.some((a: any) => a.agent === keys.author.id)), `${wb2?.files.length ?? 0} files`);
   const heldNow = await ok<any[]>(admin.get(`/v1/intents?lineage=${L}&agent=${keys.author2.id}&status=all`), "intents");
   check("an intent on a tip that moved is stale", heldNow.some((i) => i.intent_id === held.body.intent_id && i.status === "stale"), heldNow.map((i) => i.status).join(","));
-  const p1 = await submit("perf_encode");
-  check("perf_encode accepted (deterministic instruction count)", p1.status === "accepted", p1.effect ? `ratio ${p1.effect.ratio}` : "");
+  // ---------------------------------------------------------------- teams with declared shares (SPEC 12.2)
+  await waitFor("v5 qualified", async () => ((await agentView("v5")).qualified_lineages.includes(L) ? true : null));
+  const team = [
+    { agent: keys.author.id, role: "author" as const, share_bps: 7000 },
+    { agent: keys.v5.id, role: "reviewer" as const, share_bps: 3000 },
+  ];
+  const teamTry = async (members: { agent: string; role: string; share_bps: number }[], signers: AgentKey[]) => {
+    const tip = (await ok(admin.get(`/v1/lineages/${L}`), "lineage")).tip;
+    const commitment = H("e2e-team-try", String(Math.random()));
+    const st = teamStatement({ lineage_id: L, parent_gen_id: tip, commitment, kind: "perf", target: "decode_ir", members: members as any });
+    const sigs = Object.fromEntries(signers.map((k) => [k.id, signStatement(k, "team", st)]));
+    return as(keys.author).post("/v1/candidates", { lineage_id: L, parent_gen_id: tip, kind: "perf", target: "decode_ir", commitment, team: { members, sigs } });
+  };
+  const unsignedTry = await teamTry(team, [keys.author]);
+  check("a team candidate with an unsigned member is refused", unsignedTry.status === 403 && unsignedTry.body.error === "unsigned_member", `${unsignedTry.status} ${unsignedTry.body?.error}`);
+  const steerMembers = [
+    { agent: keys.author.id, role: "author", share_bps: 7000 },
+    { agent: keys.v5.id, role: "reviewer", share_bps: 1000 },
+    { agent: keys.v3.id, role: "reviewer", share_bps: 1000 },
+    { agent: keys.v4.id, role: "reviewer", share_bps: 1000 },
+  ];
+  const steerTry = await teamTry(steerMembers, [keys.author, keys.v5, keys.v3, keys.v4]);
+  check("exclusion steering (consenting zero-weight reviewers) is refused at max_team_excluded_bond_bps", steerTry.status === 409 && steerTry.body.error === "team_excludes_too_much", `${steerTry.status} ${steerTry.body?.message ?? ""}`);
+  const teamWorker = new Worker({
+    core: CORE,
+    key: keys.author,
+    proposer: new ScriptedProposer(loadScript(PATCHES, ["perf_encode"])),
+    lineages: [L],
+    collab: "team",
+    team: { members: team, keys: [keys.v5] },
+    log: (m) => console.log(`   team ${m}`),
+  });
+  const teamId = await teamWorker.authorOnce();
+  if (!teamId) throw new Error("team worker did not submit perf_encode");
+  const teamOpen = await ok<any>(admin.get(`/v1/candidates/${teamId}`), "team candidate");
+  check("a team candidate's team and author are withheld while open", teamOpen.author === null && teamOpen.team === null);
+  const p1 = await candidateFinal(teamId);
+  log(`perf_encode (team): ${p1.status}${p1.reason ? ` (${p1.reason})` : ""}`);
+  check("perf_encode accepted as a two-agent team candidate (deterministic instruction count)", p1.status === "accepted" && p1.team?.members?.length === 2, p1.effect ? `ratio ${p1.effect.ratio}` : "");
+  const teamGen = p1.gen_id as string;
+  const evLog = await ok<any[]>(admin.get("/v1/events/log?since=0&limit=5000"), "events");
+  const tu = evLog.filter((e) => e.type === "units.awarded" && e.data.kind === "author" && e.data.ref === teamGen).map((e) => e.data);
+  const mu = (a: string) => Math.round((tu.find((u) => u.agent === a)?.units ?? 0) * 1e6);
+  const totalMu = mu(keys.author.id) + mu(keys.v5.id);
+  check("author units split exactly by the declared shares (70/30)", tu.length === 2 && totalMu > 0 && mu(keys.author.id) === Math.round(totalMu * 0.7), `${mu(keys.author.id)} + ${mu(keys.v5.id)} micro-units`);
   // spam caps: max_intents_per_agent open intents, then 429
   for (let k = 0; k < 3; k++) await ok(fileIntent2("perf", "decode_ir"), `intent ${k}`);
   const spam = await fileIntent2("perf", "decode_ir");
@@ -464,6 +511,13 @@ async function main() {
   );
   check("audit replays agree with every accepted generation", statuses.length === audited.length && statuses.every((s: string) => s === "agreed"), `${statuses.join(",")} | ${details.join(" | ")}`.slice(0, 400));
   check("lineage height is 3 (encode, fix, decode)", lv2.height === 3, `height ${lv2.height}`);
+  const tg = await ok(admin.get(`/v1/generations/${teamGen}`), "team generation");
+  const drawnForTeam = (tg.replays as any[]).map((r) => r.replayer);
+  check(
+    "no team member (nor the reviewer's operator group) was drawn to replay or audit the team candidate",
+    drawnForTeam.length >= 3 && !drawnForTeam.includes(keys.author.id) && !drawnForTeam.includes(keys.v5.id) && tg.team?.members?.length === 2,
+    `${drawnForTeam.length} replays and audit replays`,
+  );
 
   await ok(admin.post("/v1/admin/creator-rewards", { amount: (10n ** 12n).toString() }), "creator rewards");
   const closed = await ok(admin.post("/v1/admin/epochs/close", {}), "close epoch");

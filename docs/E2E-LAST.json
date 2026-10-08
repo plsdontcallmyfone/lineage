@@ -1,6 +1,6 @@
 {
-  "at": "2026-10-08T01:54:21.480Z",
-  "seconds": 135,
+  "at": "2026-10-08T02:03:52.425Z",
+  "seconds": 138,
   "results": [
     {
       "check": "recipe id recomputed by Core matches the worker's",
@@ -10,7 +10,7 @@
     {
       "check": "calibration accepted, lineage created",
       "ok": true,
-      "detail": "{\"lineage_id\":\"385030aabff2e6cb7ae955f798bb5dafdd043a20be14d4a62479d7c5660521a3\",\"calib_id\":\"d7708dbe7a07f9105a15df78ce4"
+      "detail": "{\"lineage_id\":\"385030aabff2e6cb7ae955f798bb5dafdd043a20be14d4a62479d7c5660521a3\",\"calib_id\":\"fce11176a080a720529abc44bf7"
     },
     {
       "check": "stable set and known failure from real calibration",
@@ -45,7 +45,7 @@
     {
       "check": "a second author files a signed intent on encode_ir",
       "ok": true,
-      "detail": "200 {\"intent_id\":\"cbd823cb560fb8f8c3ef19733595f62d19dfd1575e1b5e214674377f1063b6e5\",\"agent\":\"CJpPTfJK7yZ7gDFycEQKrc4MKNy3aaF"
+      "detail": "200 {\"intent_id\":\"60d9a7cef84fe775e8fce312936afa7b559a9ba558009adc9a7d17be91871b7f\",\"agent\":\"CoYMrCkWjH4Qc8DtB76w9gEMpThtjyZ"
     },
     {
       "check": "the advisory worker picks a target nobody holds an intent on",
@@ -88,9 +88,29 @@
       "detail": "stale"
     },
     {
-      "check": "perf_encode accepted (deterministic instruction count)",
+      "check": "a team candidate with an unsigned member is refused",
+      "ok": true,
+      "detail": "403 unsigned_member"
+    },
+    {
+      "check": "exclusion steering (consenting zero-weight reviewers) is refused at max_team_excluded_bond_bps",
+      "ok": true,
+      "detail": "409 the team would exclude 15000000000 of 25000000000 eligible bond from replaying it; max_team_excluded_bond_bps is 2500"
+    },
+    {
+      "check": "a team candidate's team and author are withheld while open",
       "ok": true,
       "detail": ""
+    },
+    {
+      "check": "perf_encode accepted as a two-agent team candidate (deterministic instruction count)",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "author units split exactly by the declared shares (70/30)",
+      "ok": true,
+      "detail": "9163482 + 3927206 micro-units"
     },
     {
       "check": "an agent past max_intents_per_agent gets 429",
@@ -120,12 +140,12 @@
     {
       "check": "sealed replays never expose a candidate id or a replaying verifier via public live endpoints before final",
       "ok": true,
-      "detail": "101 samples, 255 sealed replay heartbeats seen, 0 leaks "
+      "detail": "98 samples, 204 sealed replay heartbeats seen, 0 leaks "
     },
     {
       "check": "author-blind replay: no public candidate view, event or activity names the author of an open candidate",
       "ok": true,
-      "detail": "90 open-candidate samples, 0 leaks "
+      "detail": "86 open-candidate samples, 0 leaks "
     },
     {
       "check": "heartbeats carry real replay phases from the sandbox",
@@ -140,7 +160,7 @@
     {
       "check": "stats count machines awake and verified gains",
       "ok": true,
-      "detail": "awake 7 of 7, gains 2"
+      "detail": "awake 8 of 8, gains 2"
     },
     {
       "check": "author activity arrives: edits with path and parent range checked against the generation tree, then propose and submit",
@@ -200,7 +220,7 @@
     {
       "check": "shadow intents precede their canary's commit and link to it like a real author's",
       "ok": true,
-      "detail": "2 of 3 canaries preceded by a shadow intent"
+      "detail": "1 of 3 canaries preceded by a shadow intent"
     },
     {
       "check": "fabricating verifier slashed and struck",
@@ -233,19 +253,24 @@
       "detail": "height 3"
     },
     {
+      "check": "no team member (nor the reviewer's operator group) was drawn to replay or audit the team candidate",
+      "ok": true,
+      "detail": "5 replays and audit replays"
+    },
+    {
       "check": "epoch closed with a payout root",
       "ok": true,
-      "detail": "5 payouts"
+      "detail": "6 payouts"
     },
     {
       "check": "ledger reconciles to zero with no negative balances",
       "ok": true,
-      "detail": "{\"ok\":true,\"errors\":[],\"entries\":112,\"transactions\":56,\"total\":\"0\",\"balances\":{\"agent:2i7dRQSiFvhMDnJ1ZRvruwaUApARbvXsTgXdoVai6JfQ:wallet\":\"100000000000\",\"agent"
+      "detail": "{\"ok\":true,\"errors\":[],\"entries\":118,\"transactions\":59,\"total\":\"0\",\"balances\":{\"agent:44EkSF1MyNsnJawGwGcN7XvmGafRxHYrPkGdt15pSFK5:bond\":\"5000000000\",\"agent:44E"
     },
     {
       "check": "verifier claims its epoch payout with a Merkle proof",
       "ok": true,
-      "detail": "{\"epoch\":0,\"agent\":\"ruDAGWo5GKbPXnd1BMXFhVjWQ7j5uDGahHfUdEDDpMq\",\"dest\":\"agent:ruDAGWo5GKbPXnd1BMXFhVjWQ7j5uDGahHfUdEDDpMq:wallet\",\"amount\":\"18834589695\",\"balan"
+      "detail": "{\"epoch\":0,\"agent\":\"AV96ScYCCE6bBndZcfVXeLQPZHatDR8U6Y2L7WvmxrGq\",\"dest\":\"agent:AV96ScYCCE6bBndZcfVXeLQPZHatDR8U6Y2L7WvmxrGq:wallet\",\"amount\":\"27965357458\",\"bal"
     },
     {
       "check": "another agent cannot claim that leaf",

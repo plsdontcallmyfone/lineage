@@ -3,7 +3,7 @@ import { diffStats, renderDiff } from "../diff.ts";
 import { gainPct, shortHex, stamp, target, when } from "../fmt.ts";
 import { html, type Raw } from "../html.ts";
 import { replayList, samplesPanel } from "../replays.ts";
-import { agentLink, authorLink, badge, banner, candStatus, epochLink, genLink, kindBadge, kv, linLink, panel, reasonText } from "../ui.ts";
+import { agentLink, authorLink, badge, teamPanel, banner, candStatus, epochLink, genLink, kindBadge, kv, linLink, panel, reasonText } from "../ui.ts";
 import { verdictPanel } from "./generation.ts";
 import type { Page } from "./types.ts";
 
@@ -57,7 +57,7 @@ export async function candidatePage([id]: string[]): Promise<Page> {
       ["author", authorLink(c)],
       ["commit id", html`<span class="hash full">${c.commit_id}</span>`],
       ["candidate id", c.candidate_id ? html`<span class="hash full">${c.candidate_id}</span>` : html`<span class="faint">set at reveal</span>`],
-      ["commitment", html`<span class="hash full">${c.commitment}</span>`],
+      ["commitment", c.commitment ? html`<span class="hash full">${c.commitment}</span>` : html`<span class="faint">withheld until final, with the author (SPEC 10.7)</span>`],
       ["patch hash", c.patch_hash ? html`<span class="hash full">${c.patch_hash}</span>` : null],
       ["guard", c.guard ? (c.guard.ok ? badge("ok", "good") : html`${badge(c.guard.violation, "bad")} <span class="dim">${c.guard.detail ?? ""}</span>`) : null],
       ["parent", genLink(c.parent_gen_id)],
@@ -82,7 +82,7 @@ export async function candidatePage([id]: string[]): Promise<Page> {
         ${sp ?? ""}
         ${replayList(c.replays, l.recipe, l.calibration, { perReplay, final: !OPEN.has(c.status) })}
       </div>
-      <div class="stack">${details}${c.status !== "committed" && !v && !OPEN.has(c.status) ? panel("Verdict", html`<div class="empty"><div class="t1">Decided by Core without replays</div><div>${reasonText(c.reason)}${c.detail ? html`: ${c.detail}` : ""}</div></div>`) : verdictPanel(v)}</div>
+      <div class="stack">${details}${teamPanel(c.team, c.author === null && OPEN.has(c.status))}${c.status !== "committed" && !v && !OPEN.has(c.status) ? panel("Verdict", html`<div class="empty"><div class="t1">Decided by Core without replays</div><div>${reasonText(c.reason)}${c.detail ? html`: ${c.detail}` : ""}</div></div>`) : verdictPanel(v)}</div>
     </div>`;
   return { title: "Candidate", body, refreshOn: (ev) => ev.data?.candidate_id === c.candidate_id || ev.data?.commit_id === c.commit_id };
 }

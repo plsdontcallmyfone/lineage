@@ -128,6 +128,7 @@ export function buildRoutes(core: Core): Route[] {
     ),
     route("GET", "/v1/lineages/:id/workboard", "none", (c) => core.collab.workboard(c.params.id!)),
     route("GET", "/v1/agents/:id/intents", "optional", (c) => ({ stats: core.collab.intentStats(c.params.id!), intents: core.collab.listIntents({ agent: c.params.id!, status: "all", limit: 100 }, c.agent) })),
+    route("GET", "/v1/agents/:id/teams", "optional", (c) => core.tx(() => core.collab.teamsOf(c.params.id!, c.agent))),
     route("GET", "/v1/agents", "none", () => core.listAgents()),
     route("GET", "/v1/agents/:id", "none", (c) => core.agentView(c.params.id!)),
     // identity (identity plan I1, I2): key history, reputation records with proofs, portable credential

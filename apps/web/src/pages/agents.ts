@@ -87,8 +87,34 @@ export async function agentsPage(): Promise<Page> {
 
 export async function agentPage([idp]: string[]): Promise<Page> {
   const id = idp!;
-  const [a, counts, cands, evs, recs] = await Promise.all([get(`agents/${id}`), genCounts(), get<any[]>(`candidates?author=${id}&limit=100`), recent({ agent: id, limit: 60 }),
-    get<{ epochs: { epoch: number; record_root: string; leaves: any[] }[] }>(`agents/${id}/records`).catch(() => ({ epochs: [] })), loadConfig(), loadLineageNames()]);
+  const [a, counts, cands, evs, recs, teams, intents] = await Promise.all([get(`agents/${id}`), genCounts(), get<any[]>(`candidates?author=${id}&limit=100`), recent({ agent: id, limit: 60 }),
+    get<{ epochs: { epoch: number; record_root: string; leaves: any[] }[] }>(`agents/${id}/records`).catch(() => ({ epochs: [] })),
+    get<any[]>(`agents/${id}/teams`).catch(() => [] as any[]),
+    get<{ stats: Record<string, number> }>(`agents/${id}/intents`).catch(() => null),
+    loadConfig(), loadLineageNames()]);
+  // collaboration (SPEC 12): intent record and team candidates (final ones; open ones stay sealed)
+  const collabPanel = panel(
+    "Collaboration",
+    html`${
+      intents
+        ? kv([
+            ["intents filed", String(intents.stats.filed ?? 0)],
+            ["open now", String(intents.stats.open ?? 0)],
+            ["led to a candidate", String(intents.stats.led_to_candidate ?? 0)],
+            ["led to a generation", String(intents.stats.led_to_generation ?? 0)],
+            ["withdrawn, expired or stale", String((intents.stats.withdrawn ?? 0) + (intents.stats.expired ?? 0))],
+          ])
+        : ""
+    }${
+      teams.length
+        ? html`<div class="eyebrow" style="padding:10px 14px 2px">Team candidates</div><div class="tw"><table class="t"><thead><tr><th>Candidate</th><th>Role and share</th></tr></thead><tbody>${teams.map((t) => {
+            const me = t.team?.members.find((m: any) => m.agent === id);
+            return html`<tr class="rowlink" data-href="/candidates/${t.candidate_id ?? t.commit_id}"><td>${candLink(t.candidate_id ?? t.commit_id)} ${candStatus(t)}<div class="sub">${t.kind} ${target(t.target)}${t.gen_id ? html`, became ${genLink(t.gen_id)}` : ""}</div></td><td>${me ? `${me.role}, ${(me.share_bps / 100).toFixed(2)}%` : ""}<div class="sub">${t.team?.members.length ?? 0} members</div></td></tr>`;
+          })}</tbody></table></div>`
+        : html`<div class="sub" style="padding:8px 14px">No final team candidates. Open ones stay sealed until final (SPEC 10.7).</div>`
+    }`,
+    { count: teams.length },
+  );
   const g = counts.get(id);
   const isL = a.kind === "launched";
   const head = isL ? "Launched agent" : a.reference ? "Reference runner" : "Verifier";
@@ -140,6 +166,7 @@ export async function agentPage([idp]: string[]): Promise<Page> {
             : ""
         }
         ${reputationPanel(id, recs.epochs)}
+        ${collabPanel}
         ${panel("Activity", evs.events.length ? html`<div class="feed" style="max-height:640px">${evs.events.map((e) => feedItem(e))}</div>` : empty("No events held for this agent", "The dashboard keeps Core events it has seen since it started."), { count: evs.events.length, note: html`Replay events name only the candidate while it is open, so replays this agent ran appear after they settle as units and slashes.` })}
       </div>
       <div class="stack">

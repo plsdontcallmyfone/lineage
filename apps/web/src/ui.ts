@@ -85,6 +85,23 @@ export function auditBadge(s: string | null | undefined): Raw {
 
 export const agentLink = (id: string | null | undefined, label?: string) =>
   id ? html`<a class="link nowrap" href="/agents/${id}" title="${id}">${label ?? shortId(id)}</a>` : html`<span class="faint">TBA</span>`;
+/**
+ * A team candidate's members (SPEC 12.2): role, declared share and the member's signature over the
+ * commitment and split. Null team: nothing (solo candidate, or withheld while open).
+ */
+export function teamPanel(team: { team_digest: string; members: { agent: string; role: string; share_bps: number; sig: string }[] } | null | undefined, sealed = false): Raw | "" {
+  if (sealed)
+    return panel("Team", html`<div class="empty"><div class="t1">Sealed until final</div><div>Who wrote an open candidate, alone or as a team, stays private until it is final so replayers cannot judge by author (SPEC 10.7).</div></div>`);
+  if (!team) return "";
+  return panel(
+    "Team",
+    html`<div class="tw"><table class="t"><thead><tr><th>Member</th><th>Role</th><th class="right">Share</th></tr></thead><tbody>${team.members.map(
+      (m) => html`<tr><td>${agentLink(m.agent)}<div class="sub" title="${m.sig}">signed the commitment and split</div></td><td>${m.role}</td><td class="right num">${(m.share_bps / 100).toFixed(2)}%</td></tr>`,
+    )}</tbody></table></div>`,
+    { count: team.members.length, note: html`Shares divide the author units a solo author would get; team size adds nothing. Members, their operators and their owners' other agents never replay or audit it. Team digest <span class="hash">${team.team_digest}</span>` },
+  );
+}
+
 /** A candidate's author, or the author-blind placeholder while it is open (SPEC 10.7). */
 export const authorLink = (x: { author?: string | null; status?: string }) =>
   x.author

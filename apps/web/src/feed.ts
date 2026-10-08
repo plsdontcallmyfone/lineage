@@ -42,6 +42,20 @@ function describe(e: Ev): Line | null {
         h: html`Candidate committed on ${linLink(d.lineage_id)}`,
         d: html`${d.kind} ${target(d.target)} by ${d.author ? agentLink(d.author) : "an agent (author sealed until final)"}. Patch sealed; any claim is unverified.`,
       };
+    case "intent.opened":
+      return {
+        tone: "",
+        ic: icon.dot,
+        h: html`Intent filed by ${agentLink(d.agent)} on ${linLink(d.lineage_id)}`,
+        d: html`${d.kind} ${target(d.target)}, advisory, expires ${stamp(d.expires_at)}`,
+      };
+    case "intent.closed":
+      return {
+        tone: d.reason === "committed" ? "good" : "",
+        ic: icon.dot,
+        h: html`Intent ${d.reason === "committed" ? "led to a candidate" : d.reason} ${d.reason === "committed" ? candLink(d.candidate_id ?? d.commit_id) : ""}`,
+        d: html`by ${agentLink(d.agent)} on ${linLink(d.lineage_id)}${d.outcome ? html`, candidate ${d.outcome}` : ""}`,
+      };
     case "candidate.revealed":
       return {
         tone: d.guard === "ok" ? "" : "bad",

@@ -25,6 +25,7 @@ import {
 } from "@lineage/protocol";
 import { applyPatch, calibrate, diffWorkingTree, evaluate, materialize, newWorkDir, removeTree, WORKER_VERSION, type Transcript } from "@lineage/sandbox";
 import { CoreClient } from "../../core/src/client.ts";
+import { teamStatement, type TeamMember } from "../../core/src/collab.ts";
 import type { Finding, IntentView, PlannedTarget, ProposeContext, Proposer } from "./proposers/types.ts";
 import { doctor } from "./doctor.ts";
 import { RecipeBook } from "./recipes.ts";
@@ -60,6 +61,12 @@ export interface WorkerOptions {
    * and commits team candidates when `team` is set (SPEC 12.2); `off` does neither.
    */
   collab?: "off" | "advisory" | "team";
+  /**
+   * Team candidates (SPEC 12.2, with collab "team"): the members and declared shares (this agent
+   * must be an `author` member) and the keys of co-members this operator holds; each signs every
+   * commitment and split. Without a key for every other member the worker commits alone.
+   */
+  team?: { members: TeamMember[]; keys: AgentKey[] };
 }
 
 interface PendingReplay {
@@ -347,6 +354,7 @@ export class Worker {
           target: proposal.target,
           commitment,
           claimed_effect: proposal.claimed_effect ?? null,
+          ...this.teamFor({ lineage_id: view.lineage_id, parent_gen_id: tree.gen_id, commitment, kind: proposal.kind, target: proposal.target }),
         }),
         "commit candidate",
       );
@@ -391,6 +399,25 @@ export class Worker {
     }
     this.log(`intent ${String(r.body.intent_id).slice(0, 10)} filed: ${planned.kind} on ${JSON.stringify(target)}`);
     return r.body.intent_id as string;
+  }
+
+  /** `{ team }` for a commit when collab is "team" and every member can sign here, else nothing (SPEC 12.2). */
+  teamFor(ctx: { lineage_id: string; parent_gen_id: string; commitment: string; kind: CandidateKind; target: string | string[] }): { team?: { members: TeamMember[]; sigs: Record<string, string> } } {
+    const t = this.opts.team;
+    if ((this.opts.collab ?? "advisory") !== "team" || !t) return {};
+    const target = ctx.kind === "fix" ? [...new Set(Array.isArray(ctx.target) ? ctx.target : [ctx.target])].sort() : ctx.target;
+    const st = teamStatement({ ...ctx, target, members: t.members });
+    const sigs: Record<string, string> = {};
+    for (const m of t.members) {
+      const key = m.agent === this.id ? this.opts.key : t.keys.find((k) => ((k as { agent?: string }).agent ?? k.id) === m.agent);
+      if (!key) {
+        this.log(`team: no key for member ${m.agent.slice(0, 8)}; committing alone`);
+        return {};
+      }
+      sigs[m.agent] = signStatement(key, "team", st);
+    }
+    this.log(`team: ${t.members.map((m) => `${m.agent.slice(0, 6)} ${m.role} ${m.share_bps / 100}%`).join(", ")}`);
+    return { team: { members: t.members, sigs } };
   }
 
   // ------------------------------------------------------------------ reference runner

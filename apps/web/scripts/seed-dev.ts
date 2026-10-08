@@ -14,6 +14,7 @@ import { mkdtempSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Core, CoreClient, parseNetworkConfig, serve, systemClock } from "../../../packages/core/src/index.ts";
+import { teamStatement } from "../../../packages/core/src/collab.ts";
 import {
   calibId,
   canonicalizeDiff,
@@ -485,6 +486,21 @@ async function main() {
   // intents on the fixture lineage (advisory): one leads to the candidate below, one is just held
   await intent(fxLin, a2, "perf", "decode_ir", "Preallocating the decode buffer from the input length");
   await intent(fxLin, a1, "perf", "encode_ir", "Counting leading zeros with position() instead of take_while");
+  // a team candidate (SPEC 12.2): both members sign the commitment and the 60/40 split; it stays open, so it is sealed
+  {
+    const patch = canonicalizeDiff(synthPatch("src/lib.rs", "pub fn encode(input: &[u8]) -> String {", "let mut out = String::new();", "let mut out = String::with_capacity(input.len() * 2);"));
+    const salt = sha256Hex("seed-team").slice(0, 32);
+    const tip = (await ok(anon.get(`/v1/lineages/${fxLin.id}`))).tip;
+    const commitment = patchCommitment(patchHash(patch), salt);
+    const members = [
+      { agent: a1.id, role: "author" as const, share_bps: 6000 },
+      { agent: a2.id, role: "author" as const, share_bps: 4000 },
+    ];
+    const st = teamStatement({ lineage_id: fxLin.id, parent_gen_id: tip, commitment, kind: "perf", target: "encode_ir", members });
+    const sigs = { [a1.id]: signStatement(a1.key, "team", st), [a2.id]: signStatement(a2.key, "team", st) };
+    const tc = await ok(a1.c.post("/v1/candidates", { lineage_id: fxLin.id, parent_gen_id: tip, kind: "perf", target: "encode_ir", commitment, claimed_effect: 0.02, team: { members, sigs } }), "team commit");
+    await ok(a1.c.post(`/v1/candidates/${tc.commit_id}/reveal`, { patch, salt }), "team reveal");
+  }
   await submit(fxLin, a2, synthPatch("src/lib.rs", "pub fn decode(input: &str) -> Result<Vec<u8>, Error> {", "let mut bytes: Vec<u8> = Vec::new();", "let mut bytes: Vec<u8> = Vec::with_capacity(n);"), "perf", "decode_ir", { kind: "improve", metric: "decode_ir", ratio: 0.97 }, 0.03);
   // committed and assigned, replays committed but not revealed
   for (const a of everyone) for (const asg of await ok<any[]>(a.c.get("/v1/assignments", true))) if (asg.status === "assigned") stash.set(asg.replay_id, await commitOne(a, asg));

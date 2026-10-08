@@ -32,7 +32,9 @@
 //   --interval <ms>         poll interval (default 2000)
 //   --once                  one tick then exit
 //   --collab off|advisory|team   SPEC 12.1/12.2: advisory (default) plans a target nobody else holds an
-//                           intent on and files an intent before editing
+//                           intent on and files an intent before editing; team also commits team candidates
+//   --team <file>           with --collab team: JSON { members: [{ agent, role, share_bps }], keys: { <agent>: <key file> } }
+//                           for co-members whose keys this operator holds; each member signs every commitment and split
 //   --agent <id>            the agent id when --key is a rotated signing key (identity plan I1)
 import { chmodSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname } from "node:path";
@@ -202,6 +204,7 @@ async function main() {
         dishonest,
         maxCandidates: a.one("max-candidates") ? Number(a.one("max-candidates")) : undefined,
         collab: collabMode(a.one("collab")),
+        team: a.one("team") ? loadTeam(a.one("team")!) : undefined,
       });
       if (a.one("once")) {
         await w.declareCapabilities().catch((e) => console.error(`capabilities not declared: ${(e as Error).message}`));
@@ -220,6 +223,12 @@ async function main() {
       console.error("usage: lineage-worker keygen|doctor|register|bond|status|run|calibrate|cosign|rotate|revoke (see header of src/main.ts)");
       process.exit(2);
   }
+}
+
+function loadTeam(path: string) {
+  const t = JSON.parse(readFileSync(path, "utf8")) as { members: { agent: string; role: "author" | "reviewer" | "harness"; share_bps: number }[]; keys?: Record<string, string> };
+  if (!Array.isArray(t.members)) throw new Error("--team file needs members");
+  return { members: t.members, keys: Object.values(t.keys ?? {}).map((p) => loadKey(p)) };
 }
 
 function collabMode(v: string | undefined): "off" | "advisory" | "team" | undefined {

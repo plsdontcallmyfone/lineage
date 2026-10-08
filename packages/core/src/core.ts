@@ -1058,6 +1058,8 @@ export class Core {
       throw new ApiError(429, "too_many_open", `max_open_candidates_per_agent is ${this.cfg.max_open_candidates_per_agent}`);
     const commit_id = H("cand-commit", author, commitment);
     if (this.db.query("SELECT 1 FROM candidates WHERE commit_id = ?").get(commit_id)) throw conflict("duplicate_commit", "commitment already used");
+    // a team candidate: every member signed this commitment and split (SPEC 12.2)
+    const team = this.collab.checkTeam(author, { lineage_id: l.lineage_id, parent_gen_id: parent.gen_id, commitment, kind, target }, body.team);
     const now = this.now();
     const deadline = now + this.cfg.reveal_window_s * 1000;
     this.db
@@ -1067,7 +1069,8 @@ export class Core {
       )
       .run(commit_id, l.lineage_id, parent.gen_id, parent.gen_id, author, kind, JSON.stringify(target), claimed, commitment, now, deadline, opts.canary ? 1 : 0, opts.canary ?? null, this.currentEpoch().n);
     // the author's open intents on this target now point at it, privately until it is final (SPEC 12.1)
-    this.collab.onCommit([author], l.lineage_id, kind, target, commit_id);
+    if (team) this.collab.storeTeam(commit_id, team);
+    this.collab.onCommit(team ? team.members.map((m) => m.agent) : [author], l.lineage_id, kind, target, commit_id);
     // no author: who committed an open candidate stays private until it is final (SPEC 10.7)
     this.emit("candidate.committed", { commit_id, lineage_id: l.lineage_id, parent_gen_id: parent.gen_id, kind, target, claimed_effect: claimed });
     return { commit_id, reveal_deadline: deadline, status: "committed" as const };
@@ -1297,6 +1300,8 @@ export class Core {
     const exAgents = new Set([c.author, ...existing.map((r) => r.replayer)]);
     const exOps = new Set<string>();
     if (author.operator) exOps.add(author.operator);
+    // every team member, their operators and their owners' other agents (SPEC 12.2)
+    this.collab.extendExclusion(c, exAgents, exOps);
     for (const r of existing) {
       const op = this.agentRow(r.replayer)?.operator;
       if (op) exOps.add(op);
@@ -1338,6 +1343,7 @@ export class Core {
     // the reference runner may audit a generation it also replayed: it is Core, and the audit runs a fresh seed
     const exAgents = new Set([c.author, ...original.filter((r) => r.kind !== "reference").map((r) => r.replayer), ...existing.map((r) => r.replayer)]);
     const exOps = new Set<string>(author.operator ? [author.operator] : []);
+    this.collab.extendExclusion(c, exAgents, exOps);
     const l = this.lineageRow(c.lineage_id)!;
     if (a.want_reference && this.referenceAgents(exAgents, l).length === 0) {
       this.db.query("UPDATE audits SET want_reference = 0, want_replays = want_replays + 1 WHERE audit_id = ?").run(a.audit_id);
@@ -1845,7 +1851,8 @@ export class Core {
       }
     }
     const finderTotal = finders.size ? this.cfg.finder_share * authorUnits : 0;
-    this.addUnits(c.author, "author", gid, authorUnits - finderTotal);
+    // a team divides the same total by its declared shares; team size never adds units (SPEC 12.2)
+    for (const [member, u] of this.collab.authorShares(c, authorUnits - finderTotal)) this.addUnits(member, "author", gid, u);
     for (const f of finders) this.addUnits(f, "finder", gid, finderTotal / finders.size);
     this.emit("generation.accepted", {
       gen_id: gid,
@@ -1853,6 +1860,7 @@ export class Core {
       height: parent.height + 1,
       candidate_id: c.candidate_id,
       author: c.author,
+      team: this.collab.teamView(c.commit_id)?.members.map((m) => ({ agent: m.agent, role: m.role, share_bps: m.share_bps })) ?? null,
       kind: c.kind,
       effect: j.effect,
     });
@@ -2457,6 +2465,7 @@ export class Core {
       epoch: c.epoch,
       verdict: terminal && c.verdict ? JSON.parse(c.verdict) : null,
       canary: this.candidateRevealedAsCanary(c) ? { canary_id: c.canary_id } : null,
+      team: blind ? null : this.collab.teamView(c.commit_id),
       // replayer identities and results stay hidden until the candidate is final, so nobody can
       // copy, bribe or coordinate with another replayer of the same candidate
       replays: replays.map((r) => this.replayPublic(r, terminal || r.replayer === viewer)),
@@ -2557,6 +2566,7 @@ export class Core {
       verdict: g.verdict ? JSON.parse(g.verdict) : null,
       replay_ids: g.replay_ids ? JSON.parse(g.replay_ids) : [],
       author: g.author,
+      team: g.candidate_id ? this.collab.teamView(this.candByCandidateId(g.candidate_id)?.commit_id ?? "") : null,
       accepted_at: g.accepted_at,
       epoch: g.epoch,
       reverts: g.reverts,

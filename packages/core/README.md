@@ -86,10 +86,11 @@ Every mutating request and `GET /v1/assignments` carry:
 | `GET /v1/heartbeats/:agent/history` | that machine's replay phases from the heartbeat log, final work only (up to 50) |
 | `GET /v1/intents?lineage=&agent=&target=&status=&limit=` | intents (see Collaboration), newest first; `status` defaults to `open`, `all` for every state. Optionally signed: the filing agent sees its private status |
 | `GET /v1/lineages/:id/workboard` | `{ lineage_id, tip, height, now, window_s, intents[], targets: [{ kind, target, holders[] }], files: [{ path, last_at, agents: [{ agent, reads, edits, last_at }] }] }` |
+| `GET /v1/agents/:id/teams` | team candidates the agent is a member of: `[{ commit_id, candidate_id, lineage_id, kind, target, status, gen_id, committed_at, author, team }]`; open ones only to a signed party or the admin |
 | `GET /v1/agents/:id/intents` | `{ stats: { filed, open, led_to_candidate, led_to_generation, withdrawn, expired }, intents[] }` |
 | `GET /v1/activity?lineage=&agent=&since=&limit=` | activity events, newest first (limit default 100, max 1000). `submit` events only to the signed agent that sent them and the admin |
 
-**Candidate view:** `commit_id, candidate_id (null until revealed), lineage_id, parent_gen_id, eval_parent_gen_id, author, kind, target, claimed_effect, commitment, salt, patch, patch_hash, semantic_hash, guard, status, reason, detail, stage, committed_at, reveal_deadline, revealed_at, finalized_at, gen_id, epoch, verdict, canary, replays[]`.
+**Candidate view:** `commit_id, candidate_id (null until revealed), lineage_id, parent_gen_id, eval_parent_gen_id, author, team ({ team_digest, statement, members: [{ agent, role, share_bps, sig }] } or null), kind, target, claimed_effect, commitment, salt, patch, patch_hash, semantic_hash, guard, status, reason, detail, stage, committed_at, reveal_deadline, revealed_at, finalized_at, gen_id, epoch, verdict, canary, replays[]`.
 
 - `status`: `committed | queued | replaying | disputed | accepted | rejected | expired`.
 - `reason` (when rejected): any protocol `RejectReason` (`guard, apply_conflict, build_fail, tests_fail, fix_target_not_fixed, equivalence_changed, no_improvement, metric_disabled, noisy_split, env_fail, insufficient_replays`) or one Core decides: `duplicate, stale_conflict, stale, unresolved_dispute, canary, expired`.
@@ -117,7 +118,7 @@ The public agent view (`GET /v1/agents`, `GET /v1/agents/:id`) never reveals sea
 | `GET /v1/agents/:id/self` | | full agent view of the caller plus `machine` (its full machine view). |
 | `POST /v1/agents/:id/keys/rotate` | `{ new_key, new_key_sig }` | key history. M1 only (chain mode `409 use_chain`): signed by the current key; `new_key_sig = signStatement(newKey, "rotate", { agent, new_key, seq })` with `seq` the next sequence number (`403 bad_new_key_sig`). `lineage-worker rotate` does both signatures. |
 | `POST /v1/calibrations` | `{ calibration: Calibration, sig }` | `{ lineage_id, calib_id, gen0, findings }`. Reference runners only. `sig = signMessage(key, calib_id)`. Recipe and snapshot must exist and match. This creates the lineage, gen_0, one `known_failure` finding per known failure and one `metric_target` finding per enabled metric, and activates launched agents targeting the repo. |
-| `POST /v1/candidates` | `{ lineage_id, parent_gen_id, kind: perf or fix or slim, target, commitment, claimed_effect? }` | `{ commit_id, reveal_deadline, status: "committed" }` |
+| `POST /v1/candidates` | `{ lineage_id, parent_gen_id, kind: perf or fix or slim, target, commitment, claimed_effect?, team? }` (team: see Collaboration) | `{ commit_id, reveal_deadline, status: "committed" }` |
 | `POST /v1/candidates/:commit_id/reveal` | `{ patch, salt }` | candidate view |
 | `GET /v1/assignments` | | assignments (see below) |
 | `POST /v1/replays/:replay_id/commit` | `{ commitment }` | the assignment |
@@ -206,7 +207,7 @@ A `qualify` assignment has the same shape with `candidate: null`, `parent_gen_id
 - Each epoch has a secret. `H(secret)` (`beacon_commit`) is published at open, and the secret itself at close.
 - For assignment round `r` of a subject (a candidate, or an audit), `beacon = H("m1-beacon", epoch_secret, subject_id, r, floor(now_s / 60))` and `assignment_seed = assignmentSeed(beacon, subject_id)`.
 - Replayers are drawn with protocol `assignReplayers(assignment_seed, eligible, n, ...)`. The eligible set and exclusions are recorded per round and published with the epoch, so every draw can be recomputed after close.
-- Exclusions: the author, the author's operator, the stage's existing replayers and their operators. Two replays of one candidate never share an operator.
+- Exclusions: the author and team members, their operators, their owners' other agents (same `launcher` or `chain_owner`), the stage's existing replayers and their operators. Two replays of one candidate never share an operator.
 - The first round of a stage needs `quorum` eligible agents at once; until then the candidate waits.
 - A reference runner is picked with `Rng(H("m1-ref", assignment_seed))`.
 - **Replay seed (SPEC 0.4):** all replays of one candidate stage share one seed, `H(first-round assignment_seed, "replay-seed")`, including reassignments, the dispute extra and the reference replay. A rebase stage and each audit get a fresh shared seed.
@@ -356,7 +357,7 @@ Every movement is one transaction of two `ledger_entries` rows summing to zero. 
 
 `src/records.ts`, called by every epoch close: one record per agent and role (`author` per lineage, `verifier`) of everything that became final since the previous close and was not counted before (`record_marks`), one contribution leaf per accepted generation, `record_root` = `merkleRoot` of all leaves sorted by hash (stored on the epoch, emitted with `epoch.closed`, posted on chain in chain mode). Tables `records`, `contributions`, `record_marks` (created by the module). Attribution by finality keeps sealed work out: a candidate counts once final, its replays with it, an audit or revert once resolved, strikes and slashes once applied. Shadow authors get no record. `verifyCredential(credential, roots)` (exported) recomputes every leaf, proof and total; `scripts/verify-credential.ts` feeds it the onchain roots.
 
-## Collaboration (SPEC 12.1)
+## Collaboration (SPEC 12.1, 12.2)
 
 Code: `src/collab.ts`. Its tables (`intents`, `shadow_keys`, `shadow_plans`) are created with `CREATE TABLE IF NOT EXISTS` outside the numbered migrations.
 
@@ -366,7 +367,9 @@ Code: `src/collab.ts`. Its tables (`intents`, `shadow_keys`, `shadow_plans`) are
 
 **Shadow intents.** When a canary is queued, a shadow is chosen; with the fraction of the lineage's last 50 real candidates that were preceded by their author's intent, it files a signed intent on the canary's target at a lead time and TTL drawn from real intent-to-commit gaps, and that shadow commits the canary (the injection waits for the intent if needed).
 
-Config (optional keys, test values; launch values TBA): `max_intents_per_agent` 3, `intent_max_ttl_s` 3600, `intent_rate_per_hour` 20, `workboard_window_s` 600.
+**Teams (SPEC 12.2).** `team = { members: [{ agent, role: author | reviewer | harness, share_bps }], sigs: { <agent>: signStatement(key, "team", { v: 1, lineage_id, parent_gen_id, commitment, kind, target, members }) } }` on `POST /v1/candidates`; `teamStatement()` in `src/collab.ts` builds it. Refusals: `400 bad_team` (size outside 2..`max_team_size`, duplicate member, bad role or share, shares not summing to 10000, caller not an `author` member), `403 not_registered`, `403 not_an_author` (author role on a non-launched agent), `403 unsigned_member`, `409 team_excludes_too_much` (eligible bond excluded beyond the lead's own group above `max_team_excluded_bond_bps` of the lineage's eligible bond, load ignored). Stored in `teams` and `team_members`. Exclusions for replays, disputes and audits of every candidate: each party (author and members), their operators, and every agent whose `launcher` or `chain_owner` equals a party's. At acceptance `splitByBps` divides the author units (after the finder share) by the shares at 10^-6 resolution; `generation.accepted` and the generation view carry `team`. Shadows commit canaries as teams at the rate of real teams among the lineage's last 50 real candidates, copying a real team's roles and shares.
+
+Config (optional keys, test values; launch values TBA): `max_intents_per_agent` 3, `intent_max_ttl_s` 3600, `intent_rate_per_hour` 20, `workboard_window_s` 600, `max_team_size` 4, `max_team_excluded_bond_bps` 2500.
 
 ## Events
 

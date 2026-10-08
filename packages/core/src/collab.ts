@@ -1,6 +1,6 @@
 import type { Core } from "./core.ts";
 import { ApiError, bad, conflict, forbidden, notFound } from "./errors.ts";
-import { canonicalJson, H, Rng, signStatement, verifyStatement, type AgentKey, type Calibration, type Recipe } from "./protocol.ts";
+import { canonicalJson, H, hashJson, Rng, satisfies, signStatement, verifyStatement, type AgentKey, type Calibration, type Capabilities, type Recipe } from "./protocol.ts";
 
 // Collaboration and author-blind replay (docs/plans/IDENTITY-AND-COLLABORATION.md 2.7, 3.3, 3.6;
 // SPEC 10.7, 12.1, 12.2). Everything here runs inside a Core transaction, reads time only from
@@ -43,6 +43,22 @@ CREATE TABLE IF NOT EXISTS intents (
 );
 CREATE INDEX IF NOT EXISTS intents_lineage ON intents(lineage_id, public_status);
 CREATE INDEX IF NOT EXISTS intents_agent ON intents(agent, created_at);
+CREATE TABLE IF NOT EXISTS teams (
+  commit_id TEXT PRIMARY KEY,
+  team_digest TEXT NOT NULL,            -- hashJson(members)
+  statement TEXT NOT NULL,              -- canonical JSON every member signed (purpose "team")
+  created_at INTEGER NOT NULL
+);
+CREATE TABLE IF NOT EXISTS team_members (
+  commit_id TEXT NOT NULL,
+  idx INTEGER NOT NULL,
+  agent TEXT NOT NULL,
+  role TEXT NOT NULL,                   -- author | reviewer | harness
+  share_bps INTEGER NOT NULL,
+  sig TEXT NOT NULL,
+  PRIMARY KEY (commit_id, idx)
+);
+CREATE INDEX IF NOT EXISTS team_members_agent ON team_members(agent);
 CREATE TABLE IF NOT EXISTS shadow_plans (
   queue_id INTEGER PRIMARY KEY,         -- canary_queue.id
   shadow_id TEXT NOT NULL,
@@ -69,6 +85,52 @@ interface Internals {
   recipeOf(id: string): Recipe;
   effectiveCalibration(calib_id: string, gen: string): Calibration;
   identity?: { signingKey?(agent: string): string | null };
+  isEligible(a: unknown, epoch: number, ignoreLoad?: boolean): boolean;
+  hasPassedQualification(agent: string, lineage: string): boolean;
+  bondOf(id: string): bigint;
+}
+
+export interface TeamMember {
+  agent: string;
+  role: "author" | "reviewer" | "harness";
+  share_bps: number;
+}
+
+export interface Team {
+  members: TeamMember[];
+  sigs: Record<string, string>;
+  digest: string;
+  statement: ReturnType<typeof teamStatement>;
+}
+
+const ROLES = new Set(["author", "reviewer", "harness"]);
+
+/**
+ * What every team member signs (purpose "team", SPEC 12.2): the exact commitment and the exact split.
+ * `target` is normalised like a candidate target.
+ */
+export function teamStatement(p: { lineage_id: string; parent_gen_id: string; commitment: string; kind: string; target: string | string[]; members: TeamMember[] }) {
+  return {
+    v: 1,
+    lineage_id: p.lineage_id,
+    parent_gen_id: p.parent_gen_id,
+    commitment: p.commitment,
+    kind: p.kind,
+    target: p.target,
+    members: p.members.map((m) => ({ agent: m.agent, role: m.role, share_bps: m.share_bps })),
+  };
+}
+
+/** Splits `total` units by basis points, exactly at 1e-6 resolution (largest remainder, ties by order). */
+export function splitByBps(total: number, shares: { agent: string; share_bps: number }[]): [string, number][] {
+  const micro = Math.round(total * 1e6);
+  const parts = shares.map((m, i) => ({ agent: m.agent, i, q: Math.floor((micro * m.share_bps) / 10_000), r: (micro * m.share_bps) % 10_000 }));
+  let left = micro - parts.reduce((a, p) => a + p.q, 0);
+  for (const p of [...parts].sort((a, b) => b.r - a.r || a.i - b.i)) {
+    if (left <= 0) break;
+    if (p.r > 0) (p.q += 1), left--;
+  }
+  return parts.filter((p) => p.q > 0).map((p) => [p.agent, p.q / 1e6]);
 }
 
 interface IntentRow {
@@ -137,7 +199,8 @@ export class Collab {
 
   /** The agents a candidate belongs to: its author plus, for a team candidate, every member. */
   parties(c: CandidateLike): string[] {
-    return [c.author];
+    const m = this.db.query<{ agent: string }, [string]>("SELECT agent FROM team_members WHERE commit_id = ? ORDER BY idx").all(c.commit_id).map((r) => r.agent);
+    return m.length ? [...new Set([c.author, ...m])] : [c.author];
   }
 
   /** True when `viewer` may not see who authored `c`: it is open and the viewer is not a party or the admin. */
@@ -153,7 +216,7 @@ export class Collab {
     const final = `status IN ('accepted','rejected','expired')`;
     if (viewer && viewer === this.c.adminId) return { sql: "1", args: [] };
     if (!viewer) return { sql: final, args: [] };
-    return { sql: `(${final} OR author = ?)`, args: [viewer] };
+    return { sql: `(${final} OR author = ? OR commit_id IN (SELECT commit_id FROM team_members WHERE agent = ?))`, args: [viewer, viewer] };
   }
 
   /** An assignment round names its subject's exclusions and draw; public only once the subject is final. */
@@ -412,6 +475,176 @@ export class Collab {
       targets,
       files: [...files.values()].sort((x, y) => y.last_at - x.last_at).map((f) => ({ path: f.path, last_at: f.last_at, agents: [...f.agents.values()].sort((x, y) => y.last_at - x.last_at) })),
     };
+  }
+
+  // ---------------------------------------------------------------------------------------------
+  // Teams with declared shares (SPEC 12.2)
+
+  /**
+   * Validates a team on a commit: 2 to max_team_size members, the lead (the caller) an `author`,
+   * `author` members launched agents, shares summing to 10000, every member's signature over the
+   * exact commitment and split, and the exclusion cap. Returns null when the body has no team.
+   */
+  checkTeam(lead: string, ctx: { lineage_id: string; parent_gen_id: string; commitment: string; kind: string; target: string | string[] }, raw: unknown): Team | null {
+    if (raw === undefined || raw === null) return null;
+    if (!isObj(raw) || !Array.isArray(raw.members) || !isObj(raw.sigs)) throw bad("bad_team", "team is { members: [{ agent, role, share_bps }], sigs: { <agent>: sig } }");
+    const max = this.c.cfg.max_team_size;
+    if (raw.members.length < 2 || raw.members.length > max) throw bad("bad_team", `a team has 2 to max_team_size (${max}) members, the lead included`);
+    const members: TeamMember[] = [];
+    const seen = new Set<string>();
+    for (const m of raw.members as unknown[]) {
+      if (!isObj(m) || typeof m.agent !== "string" || typeof m.role !== "string" || !ROLES.has(m.role)) throw bad("bad_team", "each member is { agent, role: author | reviewer | harness, share_bps }");
+      if (typeof m.share_bps !== "number" || !Number.isInteger(m.share_bps) || m.share_bps < 0 || m.share_bps > 10_000) throw bad("bad_team", "share_bps is an integer from 0 to 10000");
+      if (seen.has(m.agent)) throw bad("bad_team", `member ${m.agent} listed twice`);
+      seen.add(m.agent);
+      members.push({ agent: m.agent, role: m.role as TeamMember["role"], share_bps: m.share_bps });
+    }
+    if (members.reduce((a, m) => a + m.share_bps, 0) !== 10_000) throw bad("bad_team", "shares must sum to 10000 bps");
+    const leadM = members.find((m) => m.agent === lead);
+    if (!leadM || leadM.role !== "author") throw bad("bad_team", "the committing agent must be a member with role author");
+    for (const m of members) {
+      const a = this.db.query<{ kind: string }, [string]>("SELECT kind FROM agents WHERE agent_id = ?").get(m.agent);
+      if (!a) throw forbidden("not_registered", `team member ${m.agent} is not registered`);
+      if (m.role === "author" && a.kind !== "launched") throw forbidden("not_an_author", `team member ${m.agent} has role author but is not a launched agent`);
+    }
+    const statement = teamStatement({ ...ctx, members });
+    const sigs: Record<string, string> = {};
+    for (const m of members) {
+      const sig = (raw.sigs as Record<string, unknown>)[m.agent];
+      if (typeof sig !== "string" || !verifyStatement(this.signerOf(m.agent), sig, "team", statement))
+        throw forbidden("unsigned_member", `team member ${m.agent} did not sign this commitment and split (signStatement purpose "team")`);
+      sigs[m.agent] = sig;
+    }
+    // exclusion steering (SPEC 12.2): consenting zero-share members may not remove too much of the replayer pool
+    const l = this.db.query<{ lineage_id: string; recipe_id: string }, [string]>("SELECT lineage_id, recipe_id FROM lineages WHERE lineage_id = ?").get(ctx.lineage_id)!;
+    const recipe = this.c.recipeOf(l.recipe_id);
+    const epoch = this.c.currentEpoch().n;
+    const pool = this.db
+      .query<{ agent_id: string; operator: string | null; capabilities: string | null }, []>("SELECT * FROM agents ORDER BY agent_id")
+      .all()
+      .filter(
+        (a) =>
+          this.c.isEligible(a, epoch, true) &&
+          satisfies(a.capabilities ? (JSON.parse(a.capabilities) as Capabilities) : null, recipe.requires) &&
+          this.c.hasPassedQualification(a.agent_id, l.lineage_id),
+      );
+    const total = pool.reduce((s, a) => s + this.c.bondOf(a.agent_id), 0n);
+    const leadG = this.exclusionGroup([lead]);
+    const teamG = this.exclusionGroup(members.map((m) => m.agent));
+    const inG = (g: { agents: Set<string>; ops: Set<string> }, a: { agent_id: string; operator: string | null }) => g.agents.has(a.agent_id) || (!!a.operator && g.ops.has(a.operator));
+    const excluded = pool.filter((a) => inG(teamG, a) && !inG(leadG, a)).reduce((s, a) => s + this.c.bondOf(a.agent_id), 0n);
+    if (total > 0n && excluded * 10_000n > BigInt(this.c.cfg.max_team_excluded_bond_bps) * total)
+      throw conflict("team_excludes_too_much", `the team would exclude ${excluded} of ${total} eligible bond from replaying it; max_team_excluded_bond_bps is ${this.c.cfg.max_team_excluded_bond_bps}`);
+    return { members, sigs, digest: hashJson(members), statement };
+  }
+
+  storeTeam(commitId: string, t: Team) {
+    this.db.query("INSERT INTO teams (commit_id, team_digest, statement, created_at) VALUES (?, ?, ?, ?)").run(commitId, t.digest, canonicalJson(t.statement), this.c.now());
+    t.members.forEach((m, i) =>
+      this.db.query("INSERT INTO team_members (commit_id, idx, agent, role, share_bps, sig) VALUES (?, ?, ?, ?, ?, ?)").run(commitId, i, m.agent, m.role, m.share_bps, t.sigs[m.agent]!),
+    );
+  }
+
+  members(commitId: string): (TeamMember & { sig: string })[] {
+    return this.db
+      .query<TeamMember & { sig: string }, [string]>("SELECT agent, role, share_bps, sig FROM team_members WHERE commit_id = ? ORDER BY idx")
+      .all(commitId);
+  }
+
+  /** Public team record of a candidate, or null for a solo candidate. Callers withhold it while blind. */
+  teamView(commitId: string) {
+    const t = this.db.query<{ team_digest: string; statement: string }, [string]>("SELECT team_digest, statement FROM teams WHERE commit_id = ?").get(commitId);
+    if (!t) return null;
+    return { team_digest: t.team_digest, statement: JSON.parse(t.statement), members: this.members(commitId) };
+  }
+
+  /**
+   * Who may not replay, dispute or audit work of these agents (V2): the agents, their declared
+   * operators, and every other agent of their owners (launcher wallet, or registry owner on chain).
+   */
+  exclusionGroup(agents: string[]): { agents: Set<string>; ops: Set<string> } {
+    const out = { agents: new Set<string>(agents), ops: new Set<string>() };
+    const owners = new Set<string>();
+    for (const id of agents) {
+      const a = this.db.query<{ operator: string | null; launcher: string | null; chain_owner: string | null }, [string]>("SELECT operator, launcher, chain_owner FROM agents WHERE agent_id = ?").get(id);
+      if (!a) continue;
+      if (a.operator) out.ops.add(a.operator);
+      if (a.launcher) owners.add(a.launcher);
+      if (a.chain_owner) owners.add(a.chain_owner);
+    }
+    for (const o of owners)
+      for (const r of this.db.query<{ agent_id: string }, [string, string]>("SELECT agent_id FROM agents WHERE launcher = ? OR chain_owner = ?").all(o, o)) out.agents.add(r.agent_id);
+    return out;
+  }
+
+  /** Adds a candidate's whole exclusion group (every party, their operators and owners' agents) to a draw's exclusions. */
+  extendExclusion(c: CandidateLike, exAgents: Set<string>, exOps: Set<string>) {
+    const g = this.exclusionGroup(this.parties(c));
+    for (const a of g.agents) exAgents.add(a);
+    for (const o of g.ops) exOps.add(o);
+  }
+
+  /**
+   * Author units of an accepted candidate per member (SPEC 12.2): the same total a solo author would
+   * get, divided by the declared shares, exactly at 1e-6 units. Solo: everything to the author.
+   */
+  authorShares(c: CandidateLike, total: number): [string, number][] {
+    const m = this.members(c.commit_id);
+    if (!m.length) return [[c.author, total]];
+    return splitByBps(total, m);
+  }
+
+  /** Team candidates an agent is a member of; only final ones unless the viewer is a party or the admin. */
+  teamsOf(agent: string, viewer?: string | null) {
+    const rows = this.db
+      .query<{ commit_id: string; author: string; status: string; candidate_id: string | null; lineage_id: string; kind: string; target: string; gen_id: string | null; committed_at: number }, [string]>(
+        `SELECT c.commit_id, c.author, c.status, c.candidate_id, c.lineage_id, c.kind, c.target, c.gen_id, c.committed_at FROM team_members m JOIN candidates c ON c.commit_id = m.commit_id
+         WHERE m.agent = ? ORDER BY c.committed_at DESC LIMIT 200`,
+      )
+      .all(agent);
+    return rows
+      .filter((r) => !this.blind(r, viewer))
+      .map((r) => ({ commit_id: r.commit_id, candidate_id: r.candidate_id, lineage_id: r.lineage_id, kind: r.kind, target: JSON.parse(r.target), status: r.status, gen_id: r.gen_id, committed_at: r.committed_at, author: r.author, team: this.teamView(r.commit_id) }));
+  }
+
+  /**
+   * Shadow teams (shadow parity, SPEC 10.7): with the fraction of the lineage's last 50 real
+   * candidates that were team candidates, a canary is committed as a team of shadows, its roles and
+   * shares copied from a random real team of the same size. Every shadow member signs with its key.
+   */
+  shadowTeam(lead: string, ctx: { lineage_id: string; parent_gen_id: string; commitment: string; kind: string; target: string | string[] }, rng: Rng): { members: TeamMember[]; sigs: Record<string, string> } | undefined {
+    const real = this.db
+      .query<{ commit_id: string }, [string]>("SELECT commit_id FROM candidates WHERE lineage_id = ? AND is_canary = 0 ORDER BY committed_at DESC LIMIT 50")
+      .all(ctx.lineage_id);
+    if (!real.length) return undefined;
+    const teams = real.map((r) => this.members(r.commit_id)).filter((m) => m.length > 0);
+    if (rng.next() >= teams.length / real.length) return undefined;
+    const others = this.db
+      .query<{ agent_id: string }, [string, string]>(
+        `SELECT s.agent_id FROM shadows s JOIN agents a ON a.agent_id = s.agent_id WHERE s.lineage_id = ? AND s.retired_at IS NULL AND s.launched_at IS NOT NULL AND s.agent_id != ? ORDER BY s.agent_id`,
+      )
+      .all(ctx.lineage_id, lead)
+      .map((r) => r.agent_id);
+    const like = teams.filter((t) => t.length - 1 <= others.length);
+    if (!like.length) return undefined;
+    const tpl = like[rng.int(like.length)]!;
+    const pool = [...others];
+    // the lead takes the template's first author seat; the other seats get distinct shadows
+    const leadSeat = tpl.findIndex((m) => m.role === "author");
+    const members: TeamMember[] = tpl.map((m, i) => {
+      if (i === leadSeat) return { agent: lead, role: m.role, share_bps: m.share_bps };
+      const k = rng.int(pool.length);
+      const agent = pool.splice(k, 1)[0]!;
+      return { agent, role: m.role, share_bps: m.share_bps };
+    });
+    const statement = teamStatement({ ...ctx, members });
+    const sigs: Record<string, string> = {};
+    for (const m of members) {
+      const key = this.shadowKey(m.agent);
+      if (!key) return undefined;
+      sigs[m.agent] = signStatement(key, "team", statement);
+    }
+    return { members, sigs };
   }
 
   // ---------------------------------------------------------------------------------------------
