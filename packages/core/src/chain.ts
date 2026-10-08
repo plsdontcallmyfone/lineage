@@ -16,6 +16,7 @@ import {
   type Signer,
 } from "@lineage/chain";
 import { bountiesOf } from "./bounties.ts";
+import { msgchainOf } from "./msgchain.ts";
 import type { NetworkConfig } from "./config.ts";
 import type { ChainAgent, Core } from "./core.ts";
 
@@ -263,6 +264,15 @@ export class ChainBridge {
       this.log(`bounties not mirrored: ${(e as Error).message}`);
     }
 
+    // onchain messages (SPEC 12.5): index every lineage_msg event into the C2 views
+    let messages: unknown = null;
+    try {
+      messages = { ...(await msgchainOf(this.core).sync(this.reader.rpc)), ...msgchainOf(this.core).status() };
+    } catch (e) {
+      messages = { error: (e as Error).message, ...msgchainOf(this.core).status() };
+      this.log(`messages not indexed: ${(e as Error).message}`);
+    }
+
     const posted: { n: number; signature?: string; error?: string }[] = [];
     if (this.send && this.coreKeyId === reg.coreAuthority) {
       let last = reg.epochsPosted === 0n ? -1n : reg.lastEpoch;
@@ -344,6 +354,7 @@ export class ChainBridge {
             paused: bountyConfig.paused }
         : null },
       agents: kinds,
+      messages,
       agents_v1: agents.filter((a) => a.version === 1).length,
       posted_epochs: this.core.chainEpochs(),
       this_sync: { posted },

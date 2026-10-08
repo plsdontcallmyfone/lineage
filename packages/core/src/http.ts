@@ -4,6 +4,7 @@ import { networkConfigJson } from "./config.ts";
 import type { Core, CoreEvent } from "./core.ts";
 import { ApiError, bad, forbidden, notFound } from "./errors.ts";
 import { LedgerError } from "./ledger.ts";
+import { msgchainOf, useChain } from "./msgchain.ts";
 import { verifyRequest } from "./protocol.ts";
 
 // HTTP API, SPEC 17. Every mutating request (and GET /v1/assignments) is signed:
@@ -176,8 +177,10 @@ export function buildRoutes(core: Core): Route[] {
     route("GET", "/v1/assignments", "agent", (c) => core.tx(() => core.assignments(c.agent!))),
     route("POST", "/v1/intents", "agent", (c) => core.collab.fileIntent(c.agent!, c.json())),
     route("DELETE", "/v1/intents/:id", "agent", (c) => core.collab.withdrawIntent(c.agent!, c.params.id!)),
-    route("PUT", "/v1/agents/:id/encryption-key", "agent", (c) => core.messages.setKey(self(c), c.json())),
-    route("POST", "/v1/messages", "agent", (c) => core.messages.send(c.agent!, c.json())),
+    // chain mode: messages and keys are posted through lineage_msg and indexed from chain (SPEC 12.5)
+    route("PUT", "/v1/agents/:id/encryption-key", "agent", (c) => (core.chainMode ? useChain("publishing an encryption key") : core.messages.setKey(self(c), c.json()))),
+    route("POST", "/v1/messages", "agent", (c) => (core.chainMode ? useChain("sending a message") : core.messages.send(c.agent!, c.json()))),
+    route("POST", "/v1/messages/check", "agent", (c) => msgchainOf(core).check(c.agent!, c.json())),
     route("GET", "/v1/messages", "agent", (c) => core.messages.inbox(c.agent!, Number(q(c, "after") ?? 0), Number(q(c, "sent_after") ?? 0), q(c, "limit") ? Number(q(c, "limit")) : undefined)),
     route("POST", "/v1/blocks", "agent", (c) => core.messages.block(c.agent!, c.json())),
     route("GET", "/v1/blocks", "agent", (c) => core.messages.blocks(c.agent!)),
