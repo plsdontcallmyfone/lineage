@@ -1,39 +1,39 @@
 {
-  "at": "2026-10-08T00:05:59.036Z",
-  "seconds": 382,
-  "epoch": 4,
-  "post_epoch": "5ZSyTZk91ABntGCdb3AAaHb5JZkSDgP2DW8nR6QH7agAntJsMsWKe5BHpuy3N8QX3YSukCtE3pAQj7VM1nbqQPyi",
+  "at": "2026-10-08T02:04:13.591Z",
+  "seconds": 409,
+  "epoch": 5,
+  "post_epoch": "2oAkiBS5eMYm1mqGxk2MiuCFu7HL7h44115GMvTVXCaLfKMTSSZ6y78vCSMTZ6KHwz1SUtZMm22bJdZtKXqfdF7w",
   "payouts": [
     {
       "agent": "BFPxdave7NVSXztGEZA5iZ7FiBDKRsuZmS9wZn2J1WBV",
       "dest": "agent:BFPxdave7NVSXztGEZA5iZ7FiBDKRsuZmS9wZn2J1WBV:compute",
-      "amount": "101676865",
-      "units": 12.022355710331862,
+      "amount": "100357385",
+      "units": 12.58369323544662,
       "rebate": "0",
-      "leaf": "a4e81f74281d826b9af83534d85d143ec1f9dcd8a1f29ef8c94194f649c414ce"
+      "leaf": "ad717ba4535c626388182d1527e09b46af806fb0f93660875aac74230edfe17e"
     },
     {
       "agent": "DEHFFWt2uzVGn43nzU1EvEyo17G1x74gvn3C6usU43hj",
       "dest": "agent:DEHFFWt2uzVGn43nzU1EvEyo17G1x74gvn3C6usU43hj:wallet",
-      "amount": "8458317",
+      "amount": "7976193",
       "units": 1,
       "rebate": "1000",
-      "leaf": "4557d02810b0837be8324922ce07f0c27ab94e7b96193a3337a3af4a8be40d2f"
+      "leaf": "d320c72457920f98a58d28b6ededf5b273a261aea198933c9fa54e8acce970e6"
     },
     {
       "agent": "FRx89QoUEavL1mVMcroDH4QYUhdTbA66EthkX7uZrGSD",
       "dest": "agent:FRx89QoUEavL1mVMcroDH4QYUhdTbA66EthkX7uZrGSD:wallet",
-      "amount": "8458316",
+      "amount": "7976193",
       "units": 1,
       "rebate": "1000",
-      "leaf": "c54b9b96de63a7f77757fdaa921f2ad5f2493f6f2330d95329b111c78c02cdd4"
+      "leaf": "4448020bd7e3733bedb02bc2513c782ae10654124ba8b9bc2eba4798bb982b6c"
     }
   ],
   "chain": {
     "mode": "devnet",
     "rpc_url": "https://api.devnet.solana.com",
-    "read_at": 1791417959028,
-    "slot": 508630040,
+    "read_at": 1791424990049,
+    "slot": 508659487,
     "registry_program": "2vhj9aBZkuoCpmJxm5BcA3CYkvBJgY6VHTax8FpFmxuY",
     "launch_program": "8eHzm1XtNtbxJujrMAci4VdhCJvQttFUBukmkFaUwsAT",
     "line_mint": "3PLqpwWokAbpxZgBVLAzMAeLSvzfoDvjkhH9YydwVXmU",
@@ -42,8 +42,8 @@
     "core_signing": true,
     "admin": "CVEZWyUBoNb6Zkte3qa7JDu5TBV4wTH6wMw4pLodnDih",
     "paused": false,
-    "epochs_posted": "5",
-    "last_epoch": "4",
+    "epochs_posted": "6",
+    "last_epoch": "5",
     "params": {
       "register_burn": "1000000",
       "min_bond": "5000000",
@@ -63,7 +63,7 @@
     },
     "balances": {
       "treasury": "0",
-      "reserve": "2257379601",
+      "reserve": "2722608679",
       "pool": "0",
       "payable": "0",
       "bond_vault": "30000000"
@@ -88,22 +88,27 @@
         "vault": "Fu5ynVF81n9RdCLvamDkrAtdBrW4ybKBehjYufowAct8",
         "balance": "3360000"
       },
+      "GqZCz9Gx7oHqVpmkuVMF17gMcCFeNyq5D7X2Y8jgcmFn": {
+        "vault": "AF1NbXmStvmsTpAbJmiVzQ6tLoLeGxLBzF1m8aEgKDN7",
+        "balance": "0"
+      },
       "BFPxdave7NVSXztGEZA5iZ7FiBDKRsuZmS9wZn2J1WBV": {
         "vault": "DfTUeYEo3q9tq2gYSDhYUWKixeRQyMgsy958UXPskWkb",
-        "balance": "6965145874"
+        "balance": "8422427238"
       }
     },
     "agents": {
       "verifier": 7,
-      "launched": 4
+      "launched": 5
     },
+    "agents_v1": 0,
     "posted_epochs": [
       {
-        "n": 4,
-        "signature": "5ZSyTZk91ABntGCdb3AAaHb5JZkSDgP2DW8nR6QH7agAntJsMsWKe5BHpuy3N8QX3YSukCtE3pAQj7VM1nbqQPyi",
+        "n": 5,
+        "signature": "2oAkiBS5eMYm1mqGxk2MiuCFu7HL7h44115GMvTVXCaLfKMTSSZ6y78vCSMTZ6KHwz1SUtZMm22bJdZtKXqfdF7w",
         "error": null,
         "attempts": 1,
-        "posted_at": 1791417933696
+        "posted_at": 1791424945392
       }
     ],
     "this_sync": {
@@ -129,17 +134,17 @@
     {
       "check": "crank_fees split exactly 7000/3000 bps on chain",
       "ok": true,
-      "detail": "fees 982004231: compute +687402961, treasury +294601270"
+      "detail": "fees 965768220: compute +676037754, treasury +289730466"
     },
     {
       "check": "split moved exactly 8000 bps to the reserve and the rest to the pool",
       "ok": true,
-      "detail": "reserve +235681016, pool +58920254"
+      "detail": "reserve +231784372, pool +57946094"
     },
     {
       "check": "Core in chain mode takes amounts from the registry (6-decimal tLINE)",
       "ok": true,
-      "detail": "min_bond 5000000, first epoch 4"
+      "detail": "min_bond 5000000, first epoch 5"
     },
     {
       "check": "Core registered ref from its Agent PDA with the onchain bond",
@@ -159,7 +164,7 @@
     {
       "check": "the onchain-launched minbpe agent is in Core with its compute vault balance read from chain",
       "ok": true,
-      "detail": "compute 6863469009, setting up: setting_up"
+      "detail": "compute 8322069853, setting up: setting_up"
     },
     {
       "check": "simulated bonding is refused in chain mode (409 on_chain)",
@@ -177,44 +182,84 @@
       "detail": ""
     },
     {
+      "check": "the minbpe Agent record is v2, owned by its launcher, signing with its own key",
+      "ok": true,
+      "detail": "key_seq 2"
+    },
+    {
+      "check": "rotate_agent_key landed: signing_key is the runtime key, key_seq advanced",
+      "ok": true,
+      "detail": "seq 2 -> 3"
+    },
+    {
+      "check": "Core mirrored the rotation from the registry",
+      "ok": true,
+      "detail": "seq 3"
+    },
+    {
+      "check": "the old agent key gets 401",
+      "ok": true,
+      "detail": "401 bad_signature"
+    },
+    {
       "check": "encode_chunk_cache accepted by two onchain-bonded verifiers",
       "ok": true,
       "detail": "accepted  "
     },
     {
+      "check": "the runtime key committed it under the unchanged agent id",
+      "ok": true,
+      "detail": "author BFPxdave7NVSXztGEZA5iZ7FiBDKRsuZmS9wZn2J1WBV"
+    },
+    {
+      "check": "revoked: Core refuses every key (401 key_revoked)",
+      "ok": true,
+      "detail": "401 key_revoked / 401 key_revoked"
+    },
+    {
+      "check": "rotated back: the original key works again, the key history is public",
+      "ok": true,
+      "detail": "0:BFPxda 1:367NWo 2:BFPxda 3:367NWo 4:revoked 5:BFPxda"
+    },
+    {
       "check": "epoch closed with payouts from the onchain pool",
       "ok": true,
-      "detail": "epoch 4: pool 118591498 of 118591498 on chain, rebate 2000, 3 leaves"
+      "detail": "epoch 5: pool 116307771 of 116307771 on chain, rebate 2000, 3 leaves"
     },
     {
       "check": "the bridge posted the epoch root with post_epoch",
       "ok": true,
-      "detail": "5ZSyTZk91ABntGCdb3AAaHb5JZkSDgP2DW8nR6QH7agAntJsMsWKe5BHpuy3N8QX3YSukCtE3pAQj7VM1nbqQPyi"
+      "detail": "2oAkiBS5eMYm1mqGxk2MiuCFu7HL7h44115GMvTVXCaLfKMTSSZ6y78vCSMTZ6KHwz1SUtZMm22bJdZtKXqfdF7w"
     },
     {
       "check": "onchain Epoch equals Core's root, pool and rebate",
       "ok": true,
-      "detail": "root b6e783636f15d143..., payable 118593498"
+      "detail": "root 88875a019100c965..., payable 116309771"
+    },
+    {
+      "check": "onchain Epoch.record_root equals Core's record root (identity plan I2)",
+      "ok": true,
+      "detail": "b9a1463d3cdabc77..."
     },
     {
       "check": "claim paid compute of BFPxdave exactly",
       "ok": true,
-      "detail": "101676865"
+      "detail": "100357385"
     },
     {
       "check": "claim paid wallet of DEHFFWt2 exactly",
       "ok": true,
-      "detail": "8458317"
+      "detail": "7976193"
     },
     {
       "check": "claim paid wallet of FRx89QoU exactly",
       "ok": true,
-      "detail": "8458316"
+      "detail": "7976193"
     },
     {
       "check": "every leaf claimed on chain; claimed equals payable",
       "ok": true,
-      "detail": "118593498 / 118593498"
+      "detail": "116309771 / 116309771"
     },
     {
       "check": "Core mirrored every onchain claim",
@@ -229,7 +274,32 @@
     {
       "check": "dashboard reads: /v1/chain and /v1/stats carry the vault balances read at a slot",
       "ok": true,
-      "detail": "{\"treasury\":\"0\",\"reserve\":\"2257379601\",\"pool\":\"0\",\"payable\":\"0\",\"bond_vault\":\"30000000\"}"
+      "detail": "{\"treasury\":\"0\",\"reserve\":\"2722608679\",\"pool\":\"0\",\"payable\":\"0\",\"bond_vault\":\"30000000\"}"
+    },
+    {
+      "check": "verifier v1's credential verifies against the onchain record roots alone",
+      "ok": true,
+      "detail": "1 leaves, totals {\"replays\":1,\"counted\":1}, issuer CjNUnQ3v2FRQJiMr16CfaFWCdzJ3nqq1VvY2zAgsc4j9"
+    },
+    {
+      "check": "scripts/verify-credential.ts: the credential verifies; altering one record fails",
+      "ok": true,
+      "detail": "exit 0 / tamper exit 0"
+    },
+    {
+      "check": "the minbpe agent's credential carries its accepted generation and verifies",
+      "ok": true,
+      "detail": "accepted 1, contributions 1"
+    },
+    {
+      "check": "owner transfer: chain owner and owner_since mirrored as controller_since",
+      "ok": true,
+      "detail": "owner_since 1791425022"
+    },
+    {
+      "check": "owner transferred back",
+      "ok": true,
+      "detail": ""
     }
   ]
 }

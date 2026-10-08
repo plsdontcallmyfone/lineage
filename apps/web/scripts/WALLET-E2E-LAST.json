@@ -1,8 +1,8 @@
 {
-  "at": "2026-10-07T22:32:03.462Z",
+  "at": "2026-10-08T02:08:35.533Z",
   "wallet": "8juHDv3a67114S8JTjCwUGQkrZqjkw9Mac5fneSBsQi2",
-  "worker_key": "Ei54yY7HarLLPENujpF63yCsfwZeBDVjeuC9tp9kfvho",
-  "mint": "D4ymaHFULQnd1NWdoappnXrsdZy8ihbLqatkM5fkFtVE",
+  "worker_key": "5UernSMGSqbG1eLCLZ1eqDMY29cKL1WwqKDu9oaoi3vr",
+  "mint": "DsRt7x8W3tuhqN4Vc7XviZXAsStvu1qR39YJdRCfMMdu",
   "results": [
     {
       "check": "page states devnet only and the cluster was checked",
@@ -12,7 +12,7 @@
     {
       "check": "balances shown equal chain",
       "ok": true,
-      "detail": "ACCOUNT 8juH…sQi2 Lineage Test Wallet SOL 0.15 devnet, for fees and rent TLINE 588 TEST mint, Token-2022 vs 150000000 lamports, 588000000 tLINE base units"
+      "detail": "ACCOUNT 8juH…sQi2 Lineage Test Wallet SOL 0.15 devnet, for fees and rent TLINE 382.864 TEST mint, Token-2022 vs 150000000 lamports, 382864000 tLINE base units"
     },
     {
       "check": "repository validated against the GitHub API",
@@ -22,17 +22,17 @@
     {
       "check": "review lists the accounts and the rent the wallet pays",
       "ok": true,
-      "detail": "simulation succeeded on devnet | RENT DEPOSITS | 0.01541272SOL | 7 new accounts, from the simulation | NETWORK FEE | 0.000015001SOL | getFeeForMessage | WALLET CHANGE"
+      "detail": "simulation succeeded on devnet | RENT DEPOSITS | 0.01618488SOL | 7 new accounts, from the simulation | NETWORK FEE | 0.000015001SOL | getFeeForMessage | WALLET CHANGE"
     },
     {
       "check": "AgentLaunch read back: repo, identity app, self-hosted",
       "ok": true,
-      "detail": "D4ymaHFULQnd1NWdoappnXrsdZy8ihbLqatkM5fkFtVE"
+      "detail": "DsRt7x8W3tuhqN4Vc7XviZXAsStvu1qR39YJdRCfMMdu"
     },
     {
       "check": "token metadata: TEST name, class in the URI",
       "ok": true,
-      "detail": "{\"name\":\"TEST ui check 10072230\",\"symbol\":\"TUICHECK10\",\"uri\":\"https://lineage.invalid/devnet/agents/tuicheck10.json?class=python\"}"
+      "detail": "{\"name\":\"TEST ui check 10080205\",\"symbol\":\"TUICHECK10\",\"uri\":\"https://lineage.invalid/devnet/agents/tuicheck10.json?class=python\"}"
     },
     {
       "check": "registry Agent (launched) owned by the wallet",
@@ -57,7 +57,7 @@
     {
       "check": "worker CLI co-signed and sent register",
       "ok": true,
-      "detail": "  sent 4P6ZufazAQKxPPsQRiQacpqoKYcbtg7XCD8oUzv5uz9vzbRAPYD9uEJxt17QPWKCoT7Y8EWhfGk7RNVJvE2fjue6 | registered: 4P6ZufazAQKxPPsQRiQacpqoKYcbtg7XCD8oUzv5uz9vzbRAPYD9uEJxt17QPWKCoT7Y8EWhfGk7RNVJvE2fjue6 (slot 508606188) | https://explorer.solana.com/tx/4P6ZufazAQKxPPsQRiQacpqoKYcbtg7XCD8oUzv5uz9vzbRAPYD9uEJxt17QPWKCoT7Y8EWhfGk7RNVJvE2fjue6?cluster=devnet"
+      "detail": "  sent 4piZ2Qva3nWbomDgzVKbkRLgXkjuExwbAuRmf9PSi8e4MTvqLaVaaQpevKjcDkxAGtAHEtSHYFw7vB5sS8wCNVKF | registered: 4piZ2Qva3nWbomDgzVKbkRLgXkjuExwbAuRmf9PSi8e4MTvqLaVaaQpevKjcDkxAGtAHEtSHYFw7vB5sS8wCNVKF (slot 508660199) | https://explorer.solana.com/tx/4piZ2Qva3nWbomDgzVKbkRLgXkjuExwbAuRmf9PSi8e4MTvqLaVaaQpevKjcDkxAGtAHEtSHYFw7vB5sS8wCNVKF?cluster=devnet"
     },
     {
       "check": "page logged the worker-sent register signature",
@@ -77,12 +77,52 @@
     {
       "check": "request_unbond recorded with its cooldown",
       "ok": true,
-      "detail": "ready at 1791412895"
+      "detail": "ready at 1791425795"
+    },
+    {
+      "check": "identity tab reads the Agent v2 record: signing key is the agent key, owner is this wallet",
+      "ok": true,
+      "detail": "key_seq 0"
+    },
+    {
+      "check": "the new key co-signed and sent rotate_agent_key with the worker CLI",
+      "ok": true,
+      "detail": "rotated: 36CdAAGkKTSvYV6rkfhf5pHPUbFt4Hrk1qtgNg18c2Ygoej5Bbdk46goZ95pJf9hAym1Vx1E91kcUH5g7uLNBfJG (slot 508660476) | https://explorer.solana.com/tx/36CdAAGkKTSvYV6rkfhf5pHPUbFt4Hrk1qtgNg18c2Ygoej5Bbdk46goZ95pJf9hAym1Vx1E91kcUH5g7uLNBfJG?cluster=devnet"
+    },
+    {
+      "check": "rotation read back: signing key is the new key, the agent id is unchanged",
+      "ok": true,
+      "detail": "5cYhBfRJ9ffvMUQRQcjb8sSViGcYbKKGMMrKkZ3jYKab, key_seq 1"
+    },
+    {
+      "check": "page logged the cosign-sent rotation",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "revoke read back: no signing key until a rotation",
+      "ok": true,
+      "detail": "key_seq 2"
+    },
+    {
+      "check": "propose_owner read back: pending, the owner unchanged until acceptance",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "accept_owner: owner changed and controller-since restarted",
+      "ok": true,
+      "detail": "owner_since 1791425255"
+    },
+    {
+      "check": "the page accepted the transfer back: this wallet owns the agent again",
+      "ok": true,
+      "detail": "owner_since 1791425261"
     },
     {
       "check": "claim paid exactly the leaf to the owner's tLINE account, receipt on chain",
       "ok": true,
-      "detail": "864000"
+      "detail": "288000"
     },
     {
       "check": "no page errors",
@@ -92,7 +132,7 @@
     {
       "check": "every wallet signature was requested through the Wallet Standard mock",
       "ok": true,
-      "detail": "7 requests"
+      "detail": "11 requests"
     }
   ]
 }
