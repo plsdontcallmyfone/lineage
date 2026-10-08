@@ -65,7 +65,7 @@ Status: PASS (seen passing), FAIL (seen failing; each has a fix below and a late
 | 34 | geth-rlp canaries / candidates (run last) | same for `recipes/geth-rlp` | PASS | 3/3 / 1/1 (`bigint_words` accepted, encode_ir ratio 0.86957); 1,245 s to 1,256 s per evaluation | 3,735 s / 1,256 s |
 | 35 | fixture-cu-tally planted patches | `bun fixtures/cu-tally-patches/check.ts` | PASS | 8/8 as expected | 25 s |
 | 36 | fixture-b58 | covered by row 9 (`recipes/fixture-b58` has no canaries or candidates directory) | PASS | | |
-| 37 | fixture-cuda, llmc-cuda | | NOT RUN | CUDA recipes need an amd64 host with an NVIDIA GPU; this machine is arm64 with none | |
+| 37 | fixture-cuda, llmc-cuda | `scripts/gpu/session.sh` on a rented RTX 4000 Ada (sm 8.9) | PASS (2026-10-08, see docs/GPU-SESSION.md) | doctor-gpu 7/7 (ncu counts identical across runs); fixture patches 7/7; both calibrations cv 0 on every warp metric; llm.c canaries 3/3 rejected; llm.c gelu backward improvement accepted (0.68690); upstream `idx > N` bug confirmed as a known failure and its fix accepted; e2e-cuda 15/15 with verify.ts 7/7 | |
 
 ## Fixes made
 
@@ -82,7 +82,7 @@ Status: PASS (seen passing), FAIL (seen failing; each has a fix below and a late
 
 ## Residual issues
 
-- Nothing is left BLOCKED. Only rows 23 (credential through a live chain-mode Core) and 37 (CUDA) were not run, for the reasons given.
+- Nothing is left BLOCKED. Only row 23 (credential through a live chain-mode Core) was not run, for the reason given; row 37 (CUDA) passed on a GPU host on 2026-10-08.
 - The disk is shared with other sessions and fell below the 3 GB floor twice during this run. The checks here add almost no persistent disk, but a new developer on a small disk should expect `~/.lineage` to reach about 2 GB and the images about 6.3 GB.
 - `onchain/DEVNET.md` in the main tree carries one uncommitted line from another session's earlier wallet-e2e run (`page: launch_agent TUICHECK10`, 00:09 UTC), which stopped at the buy for the reason of fix 3. Left in place for its owner.
 - `replay.ts` exits 1 whenever any revealed replay differs, including when the only difference is a known dishonest replayer. That is correct for its purpose, but a script that wants "my run matches the honest majority" has to read the DIFF lines.
