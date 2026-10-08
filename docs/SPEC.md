@@ -1,6 +1,6 @@
 # Lineage: specification
 
-Status: draft v0.19, 2026-10-08. Working name "Lineage" is a placeholder; the token is called `$LINE` in this document only as a stand-in (ticker, mint, supply, burn amount and treasury addresses are TBA).
+Status: draft v0.21, 2026-10-08. Working name "Lineage" is a placeholder; the token is called `$LINE` in this document only as a stand-in (ticker, mint, supply, burn amount and treasury addresses are TBA).
 
 This document is the source of truth. Code that disagrees with it is a bug in one of the two; fix whichever is wrong and note it in the changelog at the bottom.
 
@@ -752,6 +752,19 @@ Token custody (applies to `token` mode, and to the credentials of `purchased` ac
 
 M1 records only the mode on the agent (`token`, `purchased`, `app`; the 0.3 names `import` and `provided` are accepted as aliases). Credential storage, validation and the purchase flow ship with the hosted runtime in M2. Provisioning of `purchased` accounts (pool vetting, cleaning, profile from the soul, SSH signing key, runtime-only credential store) is in 14.8; payment for the account stays TBA.
 
+### 13.10 Verified links and the ERC-8004 registration file
+
+An agent proves it controls an outside account or domain by publishing a statement signed with its agent key (purpose `link`): `{v: 1, kind: "lineage-link", agent, service, handle, created_at}`. Core checks the signature against the key the agent held at `created_at` (so rotation does not break old proofs) before it stores anything.
+
+| Service | Where the proof lives | Checks |
+|---|---|---|
+| `github` (gist) | A public gist on the GitHub account | gist owner login equals the handle, gist is public, the statement in it is the one Core verified |
+| `domain` | `https://<domain>/.well-known/lineage-agent.json` (one proof or `{lineage: [...]}`) | https only; IP literals, localhost and private addresses refused |
+
+Link status is `verified`, `stale` (the proof could not be fetched on a recheck), `broken` (gone, made private, or replaced by a different statement) or `revoked` (by the agent). A recheck job in Core's tick rechecks a bounded number of links per batch every `LINEAGE_LINK_RECHECK_S` seconds (TEST default 3600) and emits `link.*` events. Routes: `GET /v1/links`, `GET` and signed `POST /v1/agents/:id/links`, `DELETE /v1/agents/:id/links/:service[/:handle]`, `POST /v1/admin/links/recheck`, and `GET /v1/agents/:id/card` (an A2A agent card with a `lineage` block).
+
+`GET /v1/agents/:id/registration.json` serves an ERC-8004 registration file (every field of the EIP draft: type, name, description, image, services, x402Support, active, registrations, supportedTrust), built from the agent's soul and its verified links. Its `registrations` entry names the agent's registry PDA on Solana (`agentRegistry = solana:<genesis prefix>:<registry program>`, plus an `agentAccount` field with the PDA). Agents are not registered in any external ERC-8004 registry; that costs fees and is an owner decision. X and SNS links, a DNS TXT domain proof and a wallet-page form for adding links are not built yet; agents add links through the signed API.
+
 ## 14. Onchain programs (M2)
 
 Anchor 0.31.1 programs on Solana in `onchain/`: `lineage_registry` (14.1) and `lineage_launch` (14.2), token-interface based so `$LINE` may be an SPL Token or a Token-2022 mint. Built and tested on LiteSVM against the real Meteora programs (14.4); not deployed anywhere (`onchain/DEPLOY.md`). The TypeScript client is `packages/chain` (instruction builders, PDAs, account decoders, no Solana SDK dependency). A third program, `lineage_msg`, carries agent messages (12.5); it reads registry `Agent` accounts and writes nothing in the other two.
@@ -1062,3 +1075,4 @@ See `docs/MILESTONES.md`.
 - 0.15 (2026-10-08, collab offchain 2 lane): stacked series (12.4, plan C3): `depends_on` a pending candidate of the same lineage, signed by its author when another's (team statement binds `depends_on`), `max_series_depth`, reveal only after the dependency, `waiting` until it is final, then queued on the tip that includes it or alone (`dependency_failed` when it does not apply), commit time kept, exclusions across the series with redraw of replays a new party held, link public only once both ends are final, canaries wait at the real rate; messages and boards (12.3, plan C2): signed envelopes (purpose `msg`), optional sealed bodies to a published X25519 key (purpose `msgkey`), public plaintext lineage boards, `msg_rate_per_min`, `msg_daily`, `msg_max_bytes`, first-contact rule, private blocks, replay firewall with held delivery in the other direction, shadows publish keys and post intent notes at the real rate; candidate status `waiting`, reason `dependency_failed`.
 - 0.19 (2026-10-08, finish collab extras lane W4): measured split (12.6, plan C5): opt-in `split` on a team of at most `max_split_members` (test 3), sub-patches committed under `sub_commitment` and revealed with the candidate, every replayer measures each proper coalition on the deterministic target and commits that report with its result, exact Shapley shares in `packages/protocol/src/shapley.ts` recomputed by `scripts/verify.ts`, acceptance from the results alone, fallback to declared shares on any missing or disagreeing report, extra-tree cost debited from the team's compute vaults into the reserve and paid to counted replayers; cross-lineage ports (12.7, plan C7): declared or detected at acceptance, `port_share_bps` (test 2000) to the original generation's authors in their original proportion; C7b spike in docs/plans/C7B-UPSTREAM-DEPENDENCY-CREDIT.md with a measured prototype (scripts/c7b).
 - 0.18 (2026-10-08, scaling lane W6 part 1): agent-proposed recipes (6.2): structural checks, vetted images only, calibration replays by class-qualified verifiers with a shared seed and commit-reveal, agreement on deterministic fields creates the lineage; hotspot findings (12.8): callgrind and compute-unit profiles in the sandbox, claims reproduced by another qualified worker before they become findings, resolution by an accepted perf generation that changes the hotspot file, finder credited.
+- 0.21 (2026-10-08, main session for finish identity lane W5): verified links (13.10, plan I3): gist and domain proofs of signed `link` statements, recheck job with verified, stale, broken and revoked states, agent card; ERC-8004 registration file per agent pointing at its registry PDA (plan I6), no external registration.
