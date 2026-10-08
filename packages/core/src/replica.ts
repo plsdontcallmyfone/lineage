@@ -165,6 +165,9 @@ class Source {
 const TERMINAL = new Set(["accepted", "rejected", "expired"]);
 const REF_KINDS = new Set(["reference", "audit_reference", "challenge_reference"]);
 const close = (a: number, b: number) => Math.abs(a - b) <= 1e-9 * Math.max(1, Math.abs(a), Math.abs(b));
+// author units are divided in micro-units (collab.ts splitByBps: team, measured split and port shares),
+// so a generation's awarded total can differ from u_author x class x effect by under 1e-6 units
+const closeMicro = (a: number, b: number) => Math.abs(a - b) <= 1e-6 + 1e-9 * Math.max(1, Math.abs(a), Math.abs(b));
 
 /** Recomputes everything final on the Core at `url` from its public API. */
 export async function replicate(url: string, opts: { fetch?: typeof fetch; log?: (m: string) => void } = {}): Promise<ReplicaReport> {
@@ -194,6 +197,7 @@ export async function replicate(url: string, opts: { fetch?: typeof fetch; log?:
   // candidates: every final one with a verdict is recomputed
   const replays = new Map<string, { role: string | null; kind: string; replayer: string; candidate_id: string; lineage_id: string }>();
   const finalVerdicts = new Map<string, Judgement>();
+  const splitExtra = new Map<string, number>();
   let checkedV = 0;
   let skipped = 0;
   let auditsChecked = 0;
@@ -203,6 +207,8 @@ export async function replicate(url: string, opts: { fetch?: typeof fetch; log?:
       if (!TERMINAL.has(s.status)) continue;
       const c = await src.get(`/v1/candidates/${s.commit_id}`);
       for (const r of c.replays as Json[]) if (r.replay_id) replays.set(r.replay_id, { role: r.role, kind: r.kind, replayer: r.replayer, candidate_id: c.candidate_id, lineage_id: c.lineage_id });
+      // a measured split (SPEC 12.6): each counted replay whose coalition report was revealed (not skipped) earns extra_trees more replay units
+      if (c.split) for (const rep of (c.split.reports ?? []) as Json[]) if (rep.status === "revealed" && rep.report?.compose !== "skipped") splitExtra.set(rep.replay_id, c.split.extra_trees);
       if (!c.verdict) {
         skipped++;
         continue;
@@ -276,6 +282,7 @@ export async function replicate(url: string, opts: { fetch?: typeof fetch; log?:
   let unitsPending = 0;
   const lineageOfGen = (g: string) => gens.get(g)?.lineage_id;
   const authorTotals = new Map<string, number>();
+  const replayAwards = new Set<string>();
   for (const u of awarded) {
     if (u.kind === "replay") {
       const r = replays.get(u.ref);
@@ -287,9 +294,12 @@ export async function replicate(url: string, opts: { fetch?: typeof fetch; log?:
       }
       const lin = lineages.get(r.lineage_id)!;
       const cls = costClass(lin.calibration.median_eval_seconds);
-      if (!close(u.units, net.u_replay * cls)) report({ kind: "units", id: u.ref, field: "replay.units", core: u.units, replica: net.u_replay * cls });
-      if (u.rebate !== BigInt(net.rebate_per_class) * BigInt(cls)) report({ kind: "units", id: u.ref, field: "replay.rebate", core: u.rebate.toString(),
-        replica: (BigInt(net.rebate_per_class) * BigInt(cls)).toString() });
+      // the first award of a replay is its base pay; a second one is only the measured-split extra
+      const mult = replayAwards.has(u.ref) ? (splitExtra.get(u.ref) ?? 0) : 1;
+      replayAwards.add(u.ref);
+      if (!close(u.units, net.u_replay * cls * mult)) report({ kind: "units", id: u.ref, field: "replay.units", core: u.units, replica: net.u_replay * cls * mult });
+      if (u.rebate !== BigInt(net.rebate_per_class) * BigInt(cls * mult)) report({ kind: "units", id: u.ref, field: "replay.rebate", core: u.rebate.toString(),
+        replica: (BigInt(net.rebate_per_class) * BigInt(cls * mult)).toString() });
       const wasCounted = r.role === "counted" || r.role === "canary_pass" || voided.has(`${u.agent}\nreplay\n${u.ref}\n${u.epoch}`);
       if (!wasCounted) report({ kind: "units", id: u.ref, field: "replay.role", core: r.role, replica: "counted" });
     } else if (u.kind === "author" || u.kind === "finder") {
@@ -308,7 +318,7 @@ export async function replicate(url: string, opts: { fetch?: typeof fetch; log?:
     const metric = Array.isArray(target) ? target[0] : target;
     const minEffect = lin.recipe.metrics.find((m) => m.name === metric)?.min_effect ?? 1;
     const want = net.u_author * costClass(lin.calibration.median_eval_seconds) * effectValue(g.effect as never, minEffect, net.value_cap);
-    if (!close(total, want)) report({ kind: "units", id: genId, field: "author+finder units", core: total, replica: want });
+    if (!closeMicro(total, want)) report({ kind: "units", id: genId, field: "author+finder units", core: total, replica: want });
   }
   // every counted replay of a final candidate was paid (reference runners are paid from the reserve)
   const paid = new Set(awarded.filter((u) => u.kind === "replay").map((u) => u.ref));
