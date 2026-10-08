@@ -1,0 +1,68 @@
+{
+  "launch_signature": "QZazfmV9KycWJBp9AgTq1LrXrgMz72yrDR3eVvo3UyaqvkPfxCJDzJm4tADY1J3tQSpu3ogMX9N7LUyyUr6fBv6",
+  "launch_fee_lamports": 15000,
+  "agent": "6C8N2z5LwktukWEP6g8sUnf9ky1L9rxyngBLbdomUzHc",
+  "mint": "2QLZMM5G6M2KwrG7knM82g5dvJXHhu4p2hpi2hYUUL8G",
+  "launcher": "26dsYuFo5zvuE7of7MnauJksubD7JCDPnxNqLZ8czp8v",
+  "repo": "https://github.com/karpathy/minbpe",
+  "soul_v1_digest": "8fbb3bf31f144dab00ecb94aef16af9b6bcb27a4e5a8958543e65ddf0cb4f05d",
+  "onchain_after_launch": {
+    "digest": "8fbb3bf31f144dab00ecb94aef16af9b6bcb27a4e5a8958543e65ddf0cb4f05d",
+    "seq": 1
+  },
+  "checks_launch": [
+    {
+      "check": "TEST agent launched on chain (purchased, hosted, minbpe)",
+      "ok": true,
+      "detail": "6C8N2z5LwktukWEP6g8sUnf9ky1L9rxyngBLbdomUzHc"
+    },
+    {
+      "check": "registry Agent.profile_digest equals soul A's digest",
+      "ok": true,
+      "detail": "8fbb3bf31f144dab00ecb94aef16af9b6bcb27a4e5a8958543e65ddf0cb4f05d seq 1"
+    }
+  ],
+  "at": "2026-10-08T12:16:24.631Z",
+  "v2_signature": "3HdPJqrG4jUT7gDU57XVNu38SxDRV6giuXSJbUYqhDD3U7oWkAUQveeQfCFEyG1eoGm6bJoFkwn6cdKwKq7wGS9y",
+  "soul_v2_digest": "de7c81ec3357cc1e6692fe2d89b9c99e9dda8ad46cbd83f3eff538690d9fe58f",
+  "github_login": "owunqwxs",
+  "onchain_after_v2": {
+    "digest": "de7c81ec3357cc1e6692fe2d89b9c99e9dda8ad46cbd83f3eff538690d9fe58f",
+    "seq": 2
+  },
+  "checks_v2": [
+    {
+      "check": "registry Agent.profile_digest equals soul A version 2",
+      "ok": true,
+      "detail": "de7c81ec3357cc1e6692fe2d89b9c99e9dda8ad46cbd83f3eff538690d9fe58f seq 2"
+    }
+  ],
+  "core_view": {
+    "seq": 2,
+    "digest": "de7c81ec3357cc1e6692fe2d89b9c99e9dda8ad46cbd83f3eff538690d9fe58f",
+    "onchain": {
+      "digest": "de7c81ec3357cc1e6692fe2d89b9c99e9dda8ad46cbd83f3eff538690d9fe58f",
+      "seq": 2,
+      "synced_at": 1791461777949,
+      "matches": true
+    },
+    "name": "Slackwater"
+  },
+  "checks_core": [
+    {
+      "check": "Core stores soul A version 1 (signature by the agent's signing key)",
+      "ok": true,
+      "detail": "{\"agent\":\"6C8N2z5LwktukWEP6g8sUnf9ky1L9rxyngBLbdomUzHc\",\"digest\":\"8fbb3bf31f144dab00ecb94aef16af9b6bcb27a4e5a8958543e65ddf0cb4f05d\",\"seq\":1,\"created\":true,\"public\":true}"
+    },
+    {
+      "check": "Core stores soul A version 2 (signature by the agent's signing key)",
+      "ok": true,
+      "detail": "{\"agent\":\"6C8N2z5LwktukWEP6g8sUnf9ky1L9rxyngBLbdomUzHc\",\"digest\":\"de7c81ec3357cc1e6692fe2d89b9c99e9dda8ad46cbd83f3eff538690d9fe58f\",\"seq\":2,\"created\":true,\"public\":true}"
+    },
+    {
+      "check": "Core serves the soul publicly with the onchain digest matching",
+      "ok": true,
+      "detail": "seq 2, digest de7c81ec3357cc1e6692fe2d89b9c99e9dda8ad46cbd83f3eff538690d9fe58f, onchain de7c81ec3357cc1e6692fe2d89b9c99e9dda8ad46cbd83f3eff538690d9fe58f seq 2"
+    }
+  ]
+}

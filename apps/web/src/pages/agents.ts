@@ -3,6 +3,7 @@ import { feedItem } from "../feed.ts";
 import { effect, gainPct, identityLabel, repoLabel, repoLink, shortId, stamp, target, token, units, when } from "../fmt.ts";
 import { html } from "../html.ts";
 import { agentLink, auditBadge, badge, candLink, candStatus, empty, genLink, icon, kv, linLink, panel, reasonText, stat } from "../ui.ts";
+import { soulPanel } from "./soul.ts";
 import type { Page } from "./types.ts";
 
 async function genCounts(): Promise<Map<string, { accepted: number; reverted: number; gens: any[] }>> {
@@ -92,6 +93,7 @@ export async function agentPage([idp]: string[]): Promise<Page> {
     get<any[]>(`agents/${id}/teams`).catch(() => [] as any[]),
     get<{ stats: Record<string, number> }>(`agents/${id}/intents`).catch(() => null),
     loadConfig(), loadLineageNames()]);
+  const soul = a.kind === "launched" ? await get<any>(`agents/${id}/soul`).catch(() => null) : null;
   // collaboration (SPEC 12): intent record and team candidates (final ones; open ones stay sealed)
   const collabPanel = panel(
     "Collaboration",
@@ -120,7 +122,7 @@ export async function agentPage([idp]: string[]): Promise<Page> {
   const head = isL ? "Launched agent" : a.reference ? "Reference runner" : "Verifier";
   const body = html`
     <div class="crumbs"><a href="/agents">Agents</a><span>/</span><span>${shortId(id)}</span></div>
-    <div class="ph-row" style="margin-top:6px"><div class="ph-title"><h1>${head} <span class="dim" style="font-weight:500">${shortId(id)}</span></h1>
+    <div class="ph-row" style="margin-top:6px"><div class="ph-title"><h1>${soul ? soul.doc.persona.name : head} <span class="dim" style="font-weight:500">${soul ? head.toLowerCase() : ""} ${shortId(id)}</span></h1>
       <div class="ph-sub"><span class="hash full">${id}</span>
       ${isL ? (a.lifecycle === "setting_up" ? badge("setting up", "warn") : a.awake ? badge("awake", "good", icon.sun) : badge("asleep", "", icon.moon)) : a.eligible ? badge("eligible", "good", icon.check) : a.suspended ? badge("suspended", "bad") : ""}
       ${a.shadow ? badge("canary identity", "warn", icon.canary) : ""}</div></div></div>
@@ -165,6 +167,7 @@ export async function agentPage([idp]: string[]): Promise<Page> {
               )
             : ""
         }
+        ${isL ? soulPanel(soul) : ""}
         ${reputationPanel(id, recs.epochs)}
         ${collabPanel}
         ${panel("Activity", evs.events.length ? html`<div class="feed" style="max-height:640px">${evs.events.map((e) => feedItem(e))}</div>` : empty("No events held for this agent", "The dashboard keeps Core events it has seen since it started."), { count: evs.events.length, note: html`Replay events name only the candidate while it is open, so replays this agent ran appear after they settle as units and slashes.` })}
@@ -214,7 +217,7 @@ export async function agentPage([idp]: string[]): Promise<Page> {
         )}
       </div>
     </div>`;
-  return { title: shortId(id), body, refreshOn: (e) => e.data?.agent === id || e.data?.author === id || /^(epoch|generation)/.test(e.type) };
+  return { title: soul ? `${soul.doc.persona.name} ${shortId(id)}` : shortId(id), body, refreshOn: (e) => e.data?.agent === id || e.data?.author === id || /^(epoch|generation)/.test(e.type) };
 }
 
 /** Per-epoch reputation records (identity plan I2), each a leaf under the epoch's onchain record_root. */

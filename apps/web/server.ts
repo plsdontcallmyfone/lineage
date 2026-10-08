@@ -12,6 +12,9 @@
 //   /chain/config      public devnet addresses (scripts/devnet/devnet.json) and the RPC's cluster
 //   /chain/rpc         POST JSON-RPC proxy to the devnet RPC (read, simulate, send; method allowlist)
 //   /chain/faucet      GET faucet state, POST {wallet} one small tLINE transfer (rate-limited, logged)
+//   /souls/config      GET soul draft service state (caps, today's spend; TEST values)
+//   /souls/draft       POST {seed, agent, repo} a soul draft by Claude (per-soul, daily and per-address caps)
+//   /souls/publish     POST {doc, sig} forwarded to Core's PUT /v1/agents/:id/soul (SPEC 14.8)
 //   everything else    index.html (client-side routing)
 //
 // The server never holds a user's key: wallets sign in the browser. The only key it loads is the
@@ -25,6 +28,7 @@ import { join } from "node:path";
 import { chainBrowserPlugin } from "../../packages/chain/src/browser/plugin.ts";
 import { DEVNET_GENESIS, KNOWN_GENESIS } from "../../packages/chain/src/browser/client.ts";
 import { Faucet } from "./wallet/faucet.ts";
+import { publishSoul, SoulDrafts } from "./wallet/souls.ts";
 
 const arg = (n: string, d?: string) => {
   const i = process.argv.indexOf(`--${n}`);
@@ -282,16 +286,29 @@ async function proxy(path: string, search: string): Promise<Response> {
   }
 }
 
+// ------------------------------------------------------------------------------------------------
+// souls (SPEC 14.8): drafts for the Wallet page's launch step; the page signs and publishes
+
+const drafts = new SoulDrafts();
+async function soulsRoute(req: Request, p: string, who: string): Promise<Response> {
+  if (p === "/souls/config") return Response.json(await drafts.info());
+  if (req.method !== "POST") return new Response("POST only", { status: 405 });
+  const body = await req.json().catch(() => null);
+  const r = p === "/souls/draft" ? await drafts.draft(body, who) : p === "/souls/publish" ? await publishSoul(CORE, body) : { status: 404, body: { error: "not_found" } };
+  return Response.json(r.body, { status: r.status });
+}
+
 const indexHtml = () => Bun.file(join(DIR, "public/index.html"));
 
 const server = Bun.serve({
   port: PORT,
   hostname: HOST,
   idleTimeout: 0,
-  async fetch(req) {
+  async fetch(req, srv) {
     const url = new URL(req.url);
     const p = url.pathname;
     if (p.startsWith("/chain/")) return chainRoute(req, p);
+    if (p.startsWith("/souls/")) return soulsRoute(req, p, req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || srv.requestIP(req)?.address || "?");
     // the one write the dashboard forwards: bounty terms, which Core keeps only if their sha256
     // equals the digest committed onchain (so the web server needs no authority of its own)
     const terms = /^\/api\/bounties\/([A-Za-z0-9]{32,44})\/terms$/.exec(p);

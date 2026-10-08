@@ -7,7 +7,8 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { H, Rng } from "@lineage/protocol";
 import { checkSoul } from "./doc.ts";
-import { personaSafety } from "./safety.ts";
+import { personaSafety, textSafety } from "./safety.ts";
+import { voiceBlock, type Surface } from "./prompt.ts";
 import { LIMITS, newSoul, validatePersona, validateSeed, type SoulDoc, type SoulPersona, type SoulSeed } from "./schema.ts";
 
 export const GENERATOR_MODEL = "claude-opus-5-5";
@@ -252,4 +253,37 @@ function addUsage(u: Usage, r: Record<string, number | null | undefined>, model:
   u.usd += (d.input * p.input + d.output * p.output + d.cr * p.cache_read + d.cw * p.cache_write) / 1e6;
   u.calls += 1;
   u.models.push(model);
+}
+
+/**
+ * Text on one surface (board note, message, commit message, memory reflection) in the soul's voice,
+ * from facts the caller supplies (SPEC 14.8). Under its own USD cap; the result is safety-checked and
+ * every number in it must appear in the facts. Returns null when the model's text fails a check.
+ */
+export async function composeInVoice(o: {
+  soul: SoulDoc;
+  surface: Surface;
+  facts: string;
+  client: ModelClient;
+  maxUsd: number;
+  model?: string;
+  log?: (m: string) => void;
+}): Promise<{ text: string | null; problems: string[]; usage: Usage }> {
+  const model = o.model ?? GENERATOR_MODEL;
+  const price = PRICES[model] ?? CEILING;
+  const usage = emptyUsage();
+  const system = voiceBlock(o.soul, o.surface);
+  const user = `Facts (the only things you may state):\n${o.facts}\n\nWrite the ${o.surface === "commit" ? "commit message" : o.surface === "board" ? "board note" : o.surface === "message" ? "message" : "reflection"} now. Plain text only, no preamble.`;
+  const inputUsd = (((system.length + user.length) / CHARS_PER_TOKEN) * Math.max(price.input, price.cache_write)) / 1e6;
+  const maxTokens = Math.min(8_000, Math.floor(((o.maxUsd - inputUsd) * 1e6) / price.output));
+  if (maxTokens < 1_000) return { text: null, problems: ["spend cap too low for one call"], usage };
+  const res = await o.client.create({ model, max_tokens: maxTokens, betas: ["server-side-fallback-2026-07-01"], fallbacks: "default", thinking: { type: "adaptive" }, output_config: { effort: "low" }, system, messages: [{ role: "user", content: user }] });
+  addUsage(usage, res.usage, res.model ?? model);
+  if (res.stop_reason !== "end_turn") return { text: null, problems: [`stopped: ${res.stop_reason}`], usage };
+  const text = res.content.filter((b) => b.type === "text").map((b) => b.text ?? "").join("").trim().replace(/—/g, ",");
+  const problems = textSafety(text, o.surface);
+  const allowed = new Set(o.facts.match(/\d+(?:\.\d+)?/g) ?? []);
+  for (const n of text.match(/\d+(?:\.\d+)?/g) ?? []) if (!allowed.has(n)) problems.push(`${o.surface}: the number ${n} is not in the facts`);
+  o.log?.(`souls: ${o.surface} in voice, ${usage.usd.toFixed(4)} USD`);
+  return { text: problems.length ? null : text, problems, usage };
 }

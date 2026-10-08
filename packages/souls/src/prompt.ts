@@ -66,7 +66,7 @@ export function renderSoulText(doc: SoulDoc): string {
     "",
     p.backstory,
     "",
-    `Voice: ${p.voice.register}. ${p.voice.style}`,
+    `Voice: ${p.voice.register.replace(/\.$/, "")}. ${p.voice.style}`,
     `Habits: ${p.voice.habits.join("; ")}`,
     `Never says: ${p.voice.never_says.join("; ")}`,
     "",

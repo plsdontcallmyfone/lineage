@@ -8,6 +8,7 @@
 import "../../../packages/chain/src/browser/buffer.ts";
 import {
   ata,
+  base58Encode,
   base64Encode,
   canonicalJson,
   canonicalUrl,
@@ -55,6 +56,7 @@ import {
   type DbcPoolView,
   type Ix,
 } from "../../../packages/chain/src/browser/index.ts";
+import { checkSoul, soulDigest, soulSigningMessage, type SoulDoc, type SoulPersona } from "../../../packages/souls/src/doc.ts";
 import { esc, html, raw, type Raw } from "../src/html.ts";
 import { badge, banner, icon, kv, panel, stat } from "../src/ui.ts";
 import { buildAndSimulate, loadChainCfg, parseUnits, reader, rpc, signAndSend, sol, units, devnetGate, type Built, type ChainCfg } from "./chain.ts";
@@ -100,9 +102,12 @@ const S = {
   sigs: [] as SigRow[],
   // launch
   repo: null as null | { url: string; state: "checking" | "ok" | "bad"; msg: string; gh?: any; lineage?: any; core?: "ok" | "down" },
-  draft: null as null | { agent: WebKey; mint: WebKey; built: Built; args: any; ix: Ix },
+  draft: null as null | { agent: WebKey; mint: WebKey; built: Built; args: any; ix: Ix; ixs: Ix[]; soul: SoulDoc | null },
   launchOut: null as Raw | null,
   launched: null as null | { agent: WebKey; mint: string; sig: string },
+  // soul (SPEC 14.8): the agent key is made when the soul is drafted, so the soul names it
+  soul: null as null | { agent: WebKey; doc: SoulDoc | null; note: Raw | null; edited: boolean; usd: number | null },
+  soulPub: null as Raw | null,
   busy: new Set<string>(),
   // trade
   sel: null as string | null,
@@ -345,6 +350,17 @@ function launchForm(): Raw {
       <label class="radio"><input type="radio" name="l_identity" value="app"> <span><b>App identity.</b> lineage-app[bot] on the project's forks; always the fallback.</span></label>
     </fieldset>
     <div class="wl-custody" id="w-custody">${custodyText("token")}</div>
+    <fieldset><legend class="eyebrow">Soul (SPEC 14.8)</legend>
+      <div class="wl-fine" style="margin-bottom:8px">A short seed; Claude expands it into the agent's soul (voice, taste, values, how it collaborates). You review and edit it before minting. Its sha256 is committed on chain with <span class="num">set_profile</span> in the launch transaction. The soul shapes how the agent works and writes; it never changes what is accepted.</div>
+      <div class="wl-2">
+        <label><span class="eyebrow">Vibe</span><input name="s_vibe" maxlength="200" placeholder="patient, precise, quietly funny"></label>
+        <label><span class="eyebrow">Specialty</span><input name="s_specialty" maxlength="200" placeholder="tokenizer hot paths: fewer allocations, same bytes out"></label>
+      </div>
+      <label><span class="eyebrow">Values</span><input name="s_values" maxlength="400" placeholder="measure twice, small diffs, credit the finder"><span class="wl-help">Comma separated, 1 to 7.</span></label>
+      <label><span class="eyebrow">A few lines</span><textarea name="s_lines" maxlength="1200" rows="2" placeholder="Anything else the soul should know."></textarea></label>
+      <div class="wl-row" style="margin-top:8px">${btn("soul-generate", "Generate soul")}${btn("soul-clear", "Launch without a soul")}</div>
+      <div id="w-soul"></div>
+    </fieldset>
     <div class="wl-row">${btn("launch-review", "Review transaction", { primary: true })}</div>
   </form>`;
 }
@@ -491,6 +507,100 @@ function simTable(sim: Simulation, x: { agent?: string; mint?: string }, payer: 
     </tbody></table></div>`;
 }
 
+// soul (SPEC 14.8): seed, Claude draft, review and edit, then sign with the agent key at launch
+
+function soulSeed() {
+  const values = val("s_values").split(",").map((x) => x.trim()).filter(Boolean);
+  return { vibe: val("s_vibe"), specialty: val("s_specialty"), values, lines: (S.root?.querySelector<HTMLTextAreaElement>('[name="s_lines"]')?.value ?? "").trim() };
+}
+
+async function soulGenerate() {
+  const seed = soulSeed();
+  if (!seed.vibe || !seed.specialty || !seed.values.length) return set("w-soul", errBox("Vibe, specialty and at least one value are needed."));
+  const agent = S.soul?.agent ?? (await generateWebKey());
+  S.soul = { agent, doc: null, note: null, edited: false, usd: null };
+  S.draft = null;
+  set("w-soul", html`<div class="wl-fine" style="margin-top:8px">Drafting a soul for agent ${addr(agent.id)}. This takes a minute or two.</div>`);
+  const r = await fetch("/souls/draft", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ seed, agent: agent.id, repo: S.repo?.url ?? null }) });
+  const j = await r.json().catch(() => ({}));
+  if (!r.ok) {
+    S.soul.note = errBox(j.problems ? `${j.error}: ${j.problems.join("; ")}` : (j.message ?? `HTTP ${r.status}`));
+    return renderSoul();
+  }
+  S.soul.doc = j.doc as SoulDoc;
+  S.soul.usd = typeof j.usd === "number" ? j.usd : null;
+  renderSoul();
+}
+
+function soulApply() {
+  if (!S.soul?.doc) return;
+  const text = S.root?.querySelector<HTMLTextAreaElement>('[name="s_persona"]')?.value ?? "";
+  let persona: SoulPersona;
+  try {
+    persona = JSON.parse(text);
+  } catch {
+    S.soul.note = errBox("The persona is not valid JSON.");
+    return renderSoul(text);
+  }
+  const doc: SoulDoc = { ...S.soul.doc, persona, origin: { ...S.soul.doc.origin, by: "edited" } };
+  const errs = checkSoul(doc);
+  if (errs.length) {
+    S.soul.note = errBox(`Not applied: ${errs.slice(0, 6).join("; ")}`);
+    return renderSoul(text);
+  }
+  S.soul.doc = doc;
+  S.soul.edited = true;
+  S.soul.note = html`<span class="mark good">${icon.check} edits applied; the digest below is what goes on chain</span>`;
+  S.draft = null;
+  renderSoul();
+}
+
+function renderSoul(editing?: string) {
+  const s = S.soul;
+  if (!s) return set("w-soul", "");
+  if (!s.doc) return set("w-soul", html`<div style="margin-top:8px">${s.note ?? ""}</div>`);
+  const p = s.doc.persona;
+  const li = (xs: string[]) => html`<ul class="wl-soul-list">${xs.map((x) => html`<li>${x}</li>`)}</ul>`;
+  set(
+    "w-soul",
+    html`<div class="wl-soul">
+      <div class="wl-soul-h"><b>${p.name}</b> <span class="dim">${p.tagline}</span></div>
+      <div class="wl-fine">${s.edited ? "Edited by you" : `Drafted by ${s.doc.origin.model ?? "the model"}`}${s.usd !== null ? `, ${s.usd.toFixed(4)} USD of model spend` : ""}. Digest <span class="wl-hash">${soulDigest(s.doc)}</span></div>
+      <p>${p.backstory}</p>
+      <div class="wl-2">
+        <div><div class="eyebrow">Voice</div><p>${p.voice.register}. ${p.voice.style}</p></div>
+        <div><div class="eyebrow">Taste</div><p>${p.taste.aesthetic}</p></div>
+      </div>
+      <div class="wl-2">
+        <div><div class="eyebrow">Optimises for</div>${li(p.taste.optimises_for)}</div>
+        <div><div class="eyebrow">Refuses</div>${li(p.taste.refuses)}</div>
+      </div>
+      <div class="wl-2">
+        <div><div class="eyebrow">Values</div>${li(p.values)}</div>
+        <div><div class="eyebrow">Collaboration</div><p>${p.collaboration.seeks} ${p.collaboration.disagrees}</p></div>
+      </div>
+      <details><summary class="eyebrow">Edit the persona (JSON)</summary>
+        <textarea name="s_persona" rows="16" class="wl-soul-edit">${editing ?? JSON.stringify(p, null, 2)}</textarea>
+        <div class="wl-row" style="margin-top:6px">${btn("soul-apply", "Apply edits")}</div>
+      </details>
+      <div style="margin-top:6px">${s.note ?? ""}</div>
+    </div>`,
+  );
+}
+
+async function publishLaunchedSoul(agent: WebKey, doc: SoulDoc) {
+  try {
+    const sig = base58Encode(await agent.sign(new TextEncoder().encode(soulSigningMessage(doc))));
+    const r = await fetch("/souls/publish", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ doc, sig }) });
+    const j = await r.json().catch(() => ({}));
+    S.soulPub = r.ok
+      ? html`stored, seq ${j.seq}${j.public ? "" : html` <span class="dim">(public once Core's next chain sync sees the launch)</span>`}`
+      : html`<span class="mark warn">${icon.warn} not stored: ${j.message ?? j.error ?? `HTTP ${r.status}`}</span> <span class="dim">Download the agent key; the soul can be published later.</span>`;
+  } catch (e) {
+    S.soulPub = html`<span class="mark warn">${icon.warn} not stored: ${(e as Error).message}</span>`;
+  }
+}
+
 async function launchReview() {
   if (!requireReady()) return;
   S.launchOut = null;
@@ -504,12 +614,16 @@ async function launchReview() {
   set("w-launch-out", html`<div class="panel-b dim">Making the agent and mint keys, building and simulating…</div>`);
   try {
     const keep = S.draft && S.draft.args.repoUrl === args.repoUrl && S.draft.args.symbol === args.symbol;
-    const agent = keep ? S.draft!.agent : await generateWebKey();
+    const soul = S.soul?.doc ?? null;
+    if (S.soul && !soul) throw new Error("The soul has problems; fix them, generate again, or choose Launch without a soul.");
+    const agent = soul ? S.soul!.agent : keep ? S.draft!.agent : await generateWebKey();
     const mint = keep ? S.draft!.mint : await generateWebKey();
     const ix = launch.launchAgent({ launcher: me()!, agent: agent.id, agentMint: mint.id, lineMint: lineMint(), dbcConfig: dbcConfig(), lineTokenProgram: T22,
       args: { name: args.name, symbol: args.symbol, uri: args.uri, repoUrl: args.repoUrl, identityMode: args.identityMode, hosted: args.hosted } });
-    const built = await buildAndSimulate(me()!, [ix], 400_000);
-    S.draft = { agent, mint, built, args, ix };
+    // the soul's digest goes on chain in the same transaction, signed by the agent key (its signing key until a rotation)
+    const ixs = soul ? [ix, registry.setProfile({ signingKey: agent.id, agent: agent.id, digest: soulDigest(soul), seq: soul.seq })] : [ix];
+    const built = await buildAndSimulate(me()!, ixs, 450_000);
+    S.draft = { agent, mint, built, args, ix, ixs, soul };
     renderLaunchReview();
   } catch (e) {
     set("w-launch-out", html`<div class="panel-b">${errBox(e)}</div>`);
@@ -528,6 +642,7 @@ function renderLaunchReview() {
     ["Class", `${d.args.cls} (metadata URI)`],
     ["Agent key", addr(d.agent.id)],
     ["Agent mint", addr(d.mint.id)],
+    ["Soul", d.soul ? html`${d.soul.persona.name}, <span class="wl-hash">${soulDigest(d.soul)}</span> <span class="dim">set_profile seq ${d.soul.seq} in this transaction</span>` : html`<span class="faint">none</span>`],
   ];
   set(
     "w-launch-out",
@@ -544,12 +659,13 @@ async function launchSign() {
   if (!d || !requireReady()) return;
   const st = (m: string) => set("w-launch-status", html`<span class="dim">${m}</span>`);
   try {
-    const r = await signAndSend({ wallet: S.wallet!, account: S.account!, ixs: [d.ix], units: 400_000, local: [d.agent, d.mint], onStatus: st });
+    const r = await signAndSend({ wallet: S.wallet!, account: S.account!, ixs: d.ixs, units: 450_000, local: [d.agent, d.mint], onStatus: st });
     const c = r.confirmed!;
     logSig(`launch_agent ${d.args.symbol}`, c.signature, c.fee, !c.err);
     if (c.err) throw Object.assign(new Error(`launch_agent failed on chain: ${JSON.stringify(c.err)}`), { logs: c.logs });
     S.launched = { agent: d.agent, mint: d.mint.id, sig: c.signature };
     S.draft = null;
+    if (d.soul) await publishLaunchedSoul(d.agent, d.soul);
     await renderLaunched();
     loadLaunches();
     refreshBalances();
@@ -586,6 +702,8 @@ async function renderLaunched() {
         ["Supply", mi ? html`${units(mi.supply, mi.decimals)} <span class="dim">agent tokens, ${mi.decimals} decimals, Token-2022</span>` : "TBA"],
         ["Metadata URI", meta?.uri ?? "TBA"],
         ["Registry record", rec ? html`kind ${rec.kind}, owner ${addr(rec.owner)}, hosted ${rec.hosted ? "yes" : "no"}` : "TBA"],
+        ["Soul on chain", rec?.profileDigest ? html`<span class="wl-hash">${rec.profileDigest}</span> seq ${rec.profileSeq} ${S.soul?.doc && rec.profileDigest === soulDigest(S.soul.doc) ? html`<span class="mark good">${icon.check} equals the soul you signed</span>` : ""}` : html`<span class="faint">none</span>`],
+        ["Soul in Core", S.soulPub ?? html`<span class="faint">none</span>`],
       ])}
       <div class="panel-b">
         <div class="wl-row">${btn("download-agent-key", "Download agent key (keypair JSON)", { primary: true })}${btn("goto-trade", "Trade on its curve")}</div>
@@ -1639,6 +1757,17 @@ async function onClick(ev: Event) {
       }
       case "launch-review":
         await launchReview();
+        break;
+      case "soul-generate":
+        await soulGenerate();
+        break;
+      case "soul-apply":
+        soulApply();
+        break;
+      case "soul-clear":
+        S.soul = null;
+        S.draft = null;
+        set("w-soul", html`<div class="wl-fine" style="margin-top:8px">No soul: the agent launches without one (it can publish one later, signed by its key).</div>`);
         break;
       case "launch-sign":
         await launchSign();

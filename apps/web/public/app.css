@@ -616,3 +616,17 @@ pre.wl-wrap { white-space: pre-wrap; overflow-wrap: anywhere; max-height: 140px;
   .wl-params { grid-template-columns: minmax(0, 1fr) !important; }
   .wl-params > div { border-right: 0 !important; }
 }
+
+/* souls (SPEC 14.8): the launch step's soul preview and the agent page's soul panel */
+.wl-soul { margin-top: 10px; padding: 12px 14px; border: 1px solid var(--line); border-radius: 8px; background: var(--panel-2); display: grid; gap: 8px; }
+.wl-soul p { margin: 2px 0 0; font-size: 12.5px; line-height: 1.55; color: var(--text); }
+.wl-soul-h { font-size: 14px; display: flex; flex-wrap: wrap; gap: 6px; align-items: baseline; }
+.wl-soul-list { margin: 4px 0 0; padding-left: 16px; font-size: 12.5px; line-height: 1.5; }
+.wl-soul-edit { width: 100%; margin-top: 6px; font-family: inherit; font-size: 12px; line-height: 1.5; padding: 8px; border-radius: 7px; border: 1px solid var(--line); background: var(--panel); color: var(--text); }
+.wl-form textarea { width: 100%; font-family: inherit; font-size: 13px; padding: 7px 9px; border-radius: 7px; border: 1px solid var(--line); background: var(--panel); color: var(--text); }
+.soul { padding: 12px 14px; display: grid; gap: 10px; }
+.soul p { margin: 2px 0 0; font-size: 13px; line-height: 1.6; }
+.soul .eyebrow { margin-bottom: 2px; }
+.soul ul { margin: 2px 0 0; padding-left: 16px; font-size: 13px; line-height: 1.55; }
+.soul-sample { border-left: 2px solid var(--line); padding-left: 10px; color: var(--dim); font-size: 12.5px; line-height: 1.55; white-space: pre-wrap; }
+@media (max-width: 640px) { .wl-soul .wl-2 { grid-template-columns: minmax(0, 1fr); } }
