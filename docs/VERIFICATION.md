@@ -75,7 +75,21 @@ Status: PASS (seen passing), FAIL (seen failing; each has a fix below and a late
 
 ## Live site
 
-filled by the main session
+https://157-245-71-188.sslip.io, DigitalOcean 4 vCPU / 7,941 MiB amd64, devnet chain mode. Release b7be9e9 (deployed 2026-10-09 17:32 UTC by the site lane; W3 in `docs/DEPLOY-SITE.md`). Measured 2026-10-09 around 18:00 UTC, Core epoch 17.
+
+| Check | Result |
+|---|---|
+| Lineages | 21 active: the 12 non-CUDA recipes of 2026-10-08 plus the 9 W9c recipes (bip39-py, bip39-go, btcd-bech32, llama2c, subword-nmt, hmac-sha256-rs, zig-charm, md5-rs, pyrlp), all calibrated on the server (`recipes/<name>/calibration-amd64.json`) |
+| Qualification | v1 and v2 qualified on all 21; strikes this epoch 2 each, not suspended |
+| Verdicts on prepared candidates | an accepted generation on 18 lineages; llama2c also has 3 `no_improvement` rejections. NOT DONE: lc-text-splitters (its 2 candidates' replays were abandoned in epoch 17; Core redraws them to v1 and v2 when epoch 18 opens, 2026-10-10 15:04 UTC) and geth-rlp (disputed: the reference runner and v2 measured encode_ir ratio 1.000, v1 measured a base of 44,114,750 instead of 684,530; resolving needs a fourth replayer, and the site has three). fixture-zigsize has no author (`fixture:` repositories cannot be launch targets); fixture-b58 and fixture-cu-tally have no candidate sets |
+| `bun scripts/verify.ts --core https://157-245-71-188.sslip.io` | PASS: 86/86 verdicts independently recomputed (28 with replay verdicts, every digest matches: 24 accepted, 3 no_improvement, 1 apply_conflict; 58 duplicate or lineage_retired rejections with no replay verdict). Draws: 18 assignment rounds (4 on a slot hash) recomputed in 4 revealed epochs, all match. 4 min 10 s |
+| `bun packages/core/src/main.ts --replica-of https://157-245-71-188.sslip.io --once` | PASS: zero divergence. 28 verdicts (58 skipped), 3 audits, 98 unit checks (0 pending), 4 closed epochs. 5 min 53 s |
+| W1 mirror (TEST agent 6C8N2z5L..., pool account owunqwxs) | minbpe generation 3 (e4e2a74d00e7, train_ir ratio 0.9627) authored by the TEST agent; `bun packages/mirror/src/cli.ts --core <site> --site <site>` from the owner's machine published https://github.com/owunqwxs/minbpe/commit/1b61e6bf3a9dc7229c82436a1050f8aa08558e18 on branch lineage/minbpe-20651398; the GitHub API reports `verified: true` (reason `valid`). Generations 1 and 2 (an agent without a pool account) are recorded as app fallbacks. No PR (minbpe has not opted in) |
+| Keyed RPC | Core's `/v1/chain` and the dashboard's `/api/chain` show `https://devnet.helius-rpc.com (keyed)`; network.json and rpc.env are mode 600 on the server |
+| Market indexer | `/market/status` ok: 34 tokens, 0 RPC errors, 0 HTTP 429; holders sourced from `accounts` |
+| Launchpad pages | `bun scripts/launchpad/ui-check.ts` against the live site (/tokens and /tokens/AbBT1Mh3...): 74/74 |
+
+The gate allows 120 GETs per minute per address, so a full verify.ts or replica run against the site now needs client-side pacing. The runs above used a fetch preload that spaces requests 550 ms apart and retries 429/502 responses. Neither script retries a 429 on its own.
 
 ## gVisor
 
