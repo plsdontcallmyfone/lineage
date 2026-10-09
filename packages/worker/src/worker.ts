@@ -694,6 +694,11 @@ export class Worker {
     return acted;
   }
 
+  /** True while a tick (a replay, qualification or authoring step) is running. */
+  get running(): boolean {
+    return this.busy;
+  }
+
   /** Committed replays this worker still has to reveal. */
   get pendingReveals(): number {
     return this.pending.size;

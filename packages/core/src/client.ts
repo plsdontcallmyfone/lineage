@@ -6,6 +6,10 @@ import { signRequest, type AgentKey } from "./protocol.ts";
  * A key that signs for an agent. `agent` is the agent id when it differs from the key (after a key
  * rotation the id stays the original public key, identity plan I1); omitted, the key is the agent.
  */
+
+/** Per-request timeout for calls to Core (LINEAGE_CORE_TIMEOUT_MS, default 120 s). */
+const CORE_TIMEOUT_MS = Number(process.env.LINEAGE_CORE_TIMEOUT_MS ?? 120_000);
+
 export type SigningKey = AgentKey & { agent?: string };
 
 export class CoreClient {
@@ -32,7 +36,13 @@ export class CoreClient {
       headers["x-lineage-nonce"] = nonce;
       headers["x-lineage-sig"] = signRequest(key, method, path, text, nonce);
     }
-    const res = await fetch(this.base + path, { method, headers, body: opts.raw ? new Blob([opts.raw as Uint8Array<ArrayBuffer>]) : text || undefined });
+    // bounded: a request Core accepted but never answered (seen during deploys) used to hang a worker forever
+    const res = await fetch(this.base + path, {
+      method,
+      headers,
+      body: opts.raw ? new Blob([opts.raw as Uint8Array<ArrayBuffer>]) : text || undefined,
+      signal: AbortSignal.timeout(CORE_TIMEOUT_MS),
+    });
     const ct = res.headers.get("content-type") ?? "";
     const out = ct.includes("json") ? await res.json() : await res.arrayBuffer();
     return { status: res.status, body: out as T };

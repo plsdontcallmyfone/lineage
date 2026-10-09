@@ -221,11 +221,25 @@ async function main() {
         return;
       }
       let stop = false;
-      process.on("SIGINT", () => (stop = true));
-      process.on("SIGTERM", () => (stop = true));
+      let stoppedAt = 0;
+      const onStop = () => {
+        if (stop) return;
+        stop = true;
+        stoppedAt = Date.now();
+        // watchdog: once no job is running and nothing is left to reveal, give the loop a minute to finish
+        // and then exit even if a call is stuck (a stop that hung for the whole TimeoutStopSec held a deploy)
+        setInterval(() => {
+          if (!w.running && w.pendingReveals === 0 && Date.now() - stoppedAt > 60_000) {
+            console.error("stop: no job running, nothing left to reveal, and the loop did not finish within 60 s; exiting");
+            process.exit(0);
+          }
+        }, 5_000).unref();
+      };
+      process.on("SIGINT", onStop);
+      process.on("SIGTERM", onStop);
       await w.run(Number(a.one("interval") ?? 2000), () => stop);
       await w.drain(Number(a.one("interval") ?? 2000));
-      return;
+      process.exit(0);
     }
     case "msg": {
       const [sub, ...more] = rest;
