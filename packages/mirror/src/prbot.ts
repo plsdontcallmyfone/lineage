@@ -20,6 +20,9 @@ import { client, gitUrl, push, type GitHubTarget } from "./github.ts";
 import { commitMessage, prBranch } from "./message.ts";
 import type { MirrorReport } from "./mirror.ts";
 
+/** A branch name safe to pass to git: no leading dash, no `..`, no spaces or control characters. */
+export const SAFE_REF = /^(?!-)(?!.*\.\.)(?!.*\/\/)[A-Za-z0-9._\/-]{1,200}$/;
+
 export interface PrOptions extends GitHubTarget {
   core: CoreReader;
   coreUrl: string;
@@ -77,6 +80,11 @@ export async function prCycle(o: PrOptions): Promise<PrRecord[]> {
     const upstream = el.repo.replace(/^https:\/\/github\.com\//, "");
     const branch = prBranch(g.gen_id);
     rec.head = `${id.login}:${branch}`;
+    // from Core, and it goes into git argv: a plain ref name only (audit A2, OFF-G3)
+    if (!SAFE_REF.test(String(el.default_branch ?? "main"))) {
+      rec.reason = "bad_default_branch";
+      continue;
+    }
     if (o.dryRun) {
       rec.action = "dry_run";
       continue;

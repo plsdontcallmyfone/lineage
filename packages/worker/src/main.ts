@@ -49,6 +49,7 @@ import { AnthropicProposer } from "./proposers/anthropic.ts";
 import { loadScript, ScriptedProposer } from "./proposers/scripted.ts";
 import type { Proposer } from "./proposers/types.ts";
 import { doctor } from "./doctor.ts";
+import { writeNewSecret } from "./secret-file.ts";
 import { CoreClient } from "../../core/src/client.ts";
 import { Worker, type Dishonesty } from "./worker.ts";
 
@@ -100,8 +101,7 @@ async function main() {
       if (existsSync(out)) throw new Error(`${out} exists; refusing to overwrite a key`);
       const k = generateAgentKey();
       mkdirSync(dirname(out), { recursive: true });
-      writeFileSync(out, JSON.stringify(Array.from(k.secret)));
-      chmodSync(out, 0o600);
+      writeNewSecret(out, JSON.stringify(Array.from(k.secret)));
       console.log(k.id);
       return;
     }
@@ -135,7 +135,7 @@ async function main() {
       const { cosignCommand } = await import("../../chain/src/cosign.ts");
       const key = loadKey(need(a.one("key"), "--key"));
       await cosignCommand({ key, tx: need(a.one("tx"), "--tx"), rpcUrl: a.one("rpc") ?? process.env.LINEAGE_DEVNET_RPC ?? "https://api.devnet.solana.com",
-        dryRun: !!a.one("dry-run") });
+        dryRun: !!a.one("dry-run"), expectAgent: a.one("agent") });
       return;
     }
     case "rotate":

@@ -20,6 +20,7 @@ import {
 import { gpuDeviceRequest, hostGpus, withHostLock, imageArch, imageDigest, runContainer, runnableImage, type Mount, type RunResult } from "./docker.ts";
 import { parseMetric, parseTests, type TestOutcome } from "./parsers.ts";
 import type { LoadedRecipe } from "./recipe.ts";
+import { copyConfined, fileSha256, openRegular, readInside } from "./fsafe.ts";
 import { applyPatch, cloneTree, commitTime, LINEAGE_HOME, materialize, newWorkDir, openPermissions, removeTree } from "./repo.ts";
 
 // The evaluation pipeline every replay runs, SPEC sections 8 and 9.
@@ -94,7 +95,9 @@ export function dirDigest(dir: string, filter?: (rel: string) => boolean): Hex {
     .map((p) => relative(dir, p))
     .filter((r) => (filter ? filter(r) : true))
     .sort()
-    .map((r) => [r, sha256Hex(readFileSync(join(dir, r)))]);
+    .map((r) => [r, fileSha256(join(dir, r))]);
+  // fileSha256 hashes in chunks: readFileSync threw on a file over 2 GiB that a build could write
+  // into an artifact path, so the replay died before its commit (audit A2, OFF-S4)
   return H("dir", JSON.stringify(entries));
 }
 
@@ -155,17 +158,29 @@ export async function prepareDeps(loaded: LoadedRecipe, opts: { force?: boolean 
       });
       if (res.exit !== 0) throw new EvalError(`prepare failed (${res.exit}): ${tail(res.stderr, 2000)}`);
     }
-    for (const out of r.prepare_outputs ?? []) {
-      const src = join(tree, out);
-      if (!existsSync(src)) throw new EvalError(`prepare did not produce ${out}`);
-      mkdirSync(join(dir, "outputs", out, ".."), { recursive: true });
-      cpSync(src, join(dir, "outputs", out));
-    }
+    copyPrepareOutputs(tree, join(dir, "outputs"), r.prepare_outputs ?? []);
     const digest = H("deps-layer", dirDigest(join(dir, "layer"), (rel) => !VOLATILE_DEPS.test(rel)), dirDigest(join(dir, "outputs")));
     writeFileSync(digestFile, digest);
     return { dir, digest };
   } finally {
     removeTree(work);
+  }
+}
+
+/**
+ * Copies the recipe's prepare outputs out of the prepare tree. The tree is the target repository
+ * plus whatever the prepare container wrote, so an output path may run through a symlink the repo
+ * shipped (`out -> ../../../../.config/lineage`): following it copied host secrets into the deps
+ * layer, from where the code under test could print them (audit A2, OFF-S1). Symlinks anywhere on
+ * the path or inside a copied directory are refused.
+ */
+export function copyPrepareOutputs(tree: string, outputsDir: string, outputs: string[]): void {
+  for (const out of outputs) {
+    try {
+      copyConfined(tree, out, outputsDir);
+    } catch (e) {
+      throw new EvalError(`prepare output ${out}: ${(e as Error).message}`);
+    }
   }
 }
 
@@ -248,20 +263,17 @@ async function tests(ctx: Ctx, built: string, side: "base" | "cand"): Promise<Te
  * would otherwise follow when reading results.
  */
 export function readRegularFile(path: string, cap: number): string | null {
-  let fd: number;
+  // O_NONBLOCK: a FIFO planted at the result path made a blocking open hang the worker's whole
+  // event loop, reveal timers included (audit A2, OFF-S2)
+  const o = openRegular(path);
+  if (!o) return null;
   try {
-    fd = openSync(path, constants.O_RDONLY | constants.O_NOFOLLOW);
-  } catch {
-    return null;
-  }
-  try {
-    const st = fstatSync(fd);
-    if (!st.isFile() || st.size > cap) return null;
-    const buf = Buffer.alloc(st.size);
-    readSync(fd, buf, 0, st.size, 0);
+    if (o.st.size > cap) return null;
+    const buf = Buffer.alloc(o.st.size);
+    readSync(o.fd, buf, 0, o.st.size, 0);
     return buf.toString("utf8");
   } finally {
-    closeSync(fd);
+    closeSync(o.fd);
   }
 }
 
@@ -353,7 +365,8 @@ export function changedProtectedBlocks(parent: string, cand: string, rules: { gl
       if (!rel.startsWith(".git/") && rules.some((r) => matchesAny(rel, [r.glob]))) files.add(rel);
     }
   for (const rel of [...files].sort()) {
-    const read = (root: string) => (existsSync(join(root, rel)) ? readFileSync(join(root, rel), "utf8") : "");
+    // never through a symlink (a candidate tree may turn a directory into one): audit A2, OFF-S7
+    const read = (root: string) => readInside(root, rel, 64 * 1024 * 1024)?.toString("utf8") ?? "";
     for (const rule of rules.filter((r) => matchesAny(rel, [r.glob]))) {
       const a = blocks(read(parent), new RegExp(rule.start));
       const b = blocks(read(cand), new RegExp(rule.start));

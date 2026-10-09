@@ -159,6 +159,8 @@ export function checkProposedRecipe(r: Recipe): void {
   need(typeof r.image === "string" && /@sha256:[0-9a-f]{64}$/.test(r.image), "image must be pinned as name@sha256:<id>");
   need(r.workdir === "/work/src", "workdir must be /work/src");
   need(strArr(r.prepare), "prepare must be a list of commands");
+  // copied out of the prepare tree on every calibrating verifier: relative, no `.`/`..` (audit A2, OFF-S1)
+  need(r.prepare_outputs === undefined || (strArr(r.prepare_outputs) && r.prepare_outputs.length <= 32 && r.prepare_outputs.every((o) => /^(?!\/)(?!.*(^|\/)\.{1,2}(\/|$))[A-Za-z0-9_.\/-]{1,200}$/.test(o) && !o.includes("//"))), "prepare_outputs must be relative paths without . or .. segments");
   need(isObj(r.build) && strArr(r.build.commands) && r.build.commands.length > 0, "build.commands required");
   need(isObj(r.test) && typeof r.test.command === "string" && ["libtest", "junit", "tap"].includes(r.test.parser), "test.command and test.parser (libtest | junit | tap) required");
   need(Array.isArray(r.metrics) && r.metrics.length > 0 && r.metrics.length <= 8, "1 to 8 metrics");

@@ -1,6 +1,20 @@
 import { chmodSync, existsSync, mkdirSync, readFileSync, renameSync, unlinkSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { generateAgentKey, keyFromSolanaJson, type AgentKey } from "@lineage/protocol";
+import { base58Decode, generateAgentKey, keyFromSolanaJson, type AgentKey } from "@lineage/protocol";
+
+/**
+ * An agent id is a base58 ed25519 public key. Ids come from Core or the chain and become file names
+ * (keys, bind requests, worker state): `../../../../.config/solana/id` loaded and then overwrote the
+ * machine's Solana keypair (audit A2, OFF-R1).
+ */
+export function isAgentId(id: unknown): id is string {
+  if (typeof id !== "string" || !/^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(id)) return false;
+  try {
+    return base58Decode(id).length === 32;
+  } catch {
+    return false;
+  }
+}
 
 // Persisted runtime state (crash recovery), the single-process lock, runtime-generated agent keys
 // and log redaction. State is one JSON file written atomically (temp file, then rename) after every
@@ -101,7 +115,7 @@ export class StateStore {
 
   /** Generates (once) and stores the runtime's signing key for `agent`. */
   keyFor(agent: string): AgentKey {
-    const file = join(this.keysDir, `${agent}.json`);
+    const file = this.keyFile(agent);
     if (existsSync(file)) return keyFromSolanaJson(JSON.parse(readFileSync(file, "utf8")));
     const k = generateAgentKey();
     writeFileSync(file, JSON.stringify(Array.from(k.secret)), { mode: 0o600, flag: "wx" });
@@ -109,6 +123,7 @@ export class StateStore {
   }
 
   keyFile(agent: string): string {
+    if (!isAgentId(agent)) throw new Error(`not an agent id: ${JSON.stringify(String(agent).slice(0, 60))}`);
     return join(this.keysDir, `${agent}.json`);
   }
 }
@@ -127,9 +142,39 @@ export class Lock {
   /** Takes the lock, or throws naming the live process that holds it. A stale lock is taken over. */
   acquire(): void {
     if (existsSync(this.file)) {
-      const pid = Number(readFileSync(this.file, "utf8").split("\n")[0]);
+      const seen = readFileSync(this.file, "utf8");
+      const pid = Number(seen.split("\n")[0]);
       if (Number.isInteger(pid) && pid > 0 && pid !== process.pid && alive(pid)) throw new Error(`runtime state is locked by live pid ${pid} (${this.file}); one process per runtime`);
-      unlinkSync(this.file);
+      // Taking over a stale lock is itself exclusive: two starters that both saw the same stale lock
+      // used to both unlink and both run, overwriting each other's spend record (audit A2, OFF-R4).
+      // The takeover file is created with O_EXCL; whoever holds it re-checks that the lock is still
+      // the stale one before replacing it.
+      const takeover = `${this.file}.takeover`;
+      if (existsSync(takeover)) {
+        const tp = Number(readFileSync(takeover, "utf8").split("\n")[0]);
+        if (Number.isInteger(tp) && tp > 0 && tp !== process.pid && alive(tp)) throw new Error(`runtime lock ${this.file} is being taken over by live pid ${tp}`);
+        unlinkSync(takeover);
+      }
+      try {
+        writeFileSync(takeover, `${process.pid}\n`, { flag: "wx", mode: 0o600 });
+      } catch {
+        throw new Error(`runtime lock ${this.file} is being taken over by another process`);
+      }
+      try {
+        let now: string | null = null;
+        try {
+          now = readFileSync(this.file, "utf8");
+        } catch {
+          /* gone meanwhile */
+        }
+        if (now !== null && now !== seen) throw new Error(`runtime lock ${this.file} changed while taking it over; one process per runtime`);
+        if (now !== null) unlinkSync(this.file);
+        writeFileSync(this.file, `${process.pid}\n${new Date().toISOString()}\n`, { flag: "wx", mode: 0o600 });
+      } finally {
+        unlinkSync(takeover);
+      }
+      this.held = true;
+      return;
     }
     writeFileSync(this.file, `${process.pid}\n${new Date().toISOString()}\n`, { flag: "wx", mode: 0o600 });
     this.held = true;
@@ -160,14 +205,31 @@ function alive(pid: number): boolean {
 // ------------------------------------------------------------------------------------------------
 // secrets never reach logs
 
-const SECRET_ENV = ["ANTHROPIC_API_KEY", "ANTHROPIC_AUTH_TOKEN", "HELIUS_DEVNET_RPC", "LINEAGE_DEVNET_RPC"];
+const SECRET_ENV = ["ANTHROPIC_API_KEY", "ANTHROPIC_AUTH_TOKEN", "HELIUS_DEVNET_RPC", "LINEAGE_DEVNET_RPC", "LINEAGE_GITHUB_TOKEN", "GITHUB_TOKEN", "GH_TOKEN"];
+const extraSecrets = new Set<string>();
 
-/** Replaces model keys, keyed RPC URLs and any value of a secret environment variable. */
+/** Registers a secret that does not come from the environment (a keyed RPC URL in the config file). */
+export function addSecret(v: string | null | undefined): void {
+  if (v && v.length >= 8) extraSecrets.add(v);
+}
+
+/** Hosts whose RPC URLs carry the key in the path (Alchemy /v2/<key>, QuickNode /<token>/, ...). */
+const KEYED_PATH_HOSTS = /(alchemy\.com|quiknode\.pro|quicknode\.com|ankr\.com|chainstack\.com|getblock\.io|helius-rpc\.com|helius\.xyz|triton\.one|rpcpool\.com)/i;
+
+/**
+ * Replaces model keys, GitHub tokens, Authorization header values, keyed RPC URLs (query and path
+ * keys) and any value of a secret environment variable or registered secret (audit A2, OFF-R5).
+ */
 export function redact(s: string): string {
-  let out = s.replace(/sk-ant-[A-Za-z0-9_\-]{8,}/g, "[redacted]").replace(/(api-key=|api_key=)[^&\s"']+/gi, "$1[redacted]");
-  for (const k of SECRET_ENV) {
-    const v = process.env[k];
-    if (v && v.length >= 8) out = out.split(v).join("[redacted]");
-  }
+  let out = s
+    .replace(/sk-ant-[A-Za-z0-9_\-]{8,}/g, "[redacted]")
+    .replace(/\b(gh[pousr]_[A-Za-z0-9]{20,}|github_pat_[A-Za-z0-9_]{20,})/g, "[redacted]")
+    .replace(/\b(authorization:\s*(?:basic|bearer|token)\s+)[A-Za-z0-9+/=._\-]+/gi, "$1[redacted]")
+    .replace(/(api-key=|api_key=|apikey=|token=|access_token=)[^&\s"']+/gi, "$1[redacted]")
+    .replace(/(https?|wss?):\/\/([^\s/"']+)(\/[^\s"'?]*)/gi, (m, scheme: string, host: string, path: string) =>
+      KEYED_PATH_HOSTS.test(host) ? `${scheme}://${host}${path.replace(/[A-Za-z0-9_\-]{16,}/g, "[redacted]")}` : m,
+    );
+  const secrets = [...SECRET_ENV.map((k) => process.env[k]), ...extraSecrets];
+  for (const v of secrets) if (v && v.length >= 8) out = out.split(v).join("[redacted]");
   return out;
 }

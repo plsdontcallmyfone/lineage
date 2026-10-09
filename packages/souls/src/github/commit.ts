@@ -42,8 +42,17 @@ export interface SignedCommitResult {
 
 const noreply = (c: AgentCredential) => `${c.github_id}+${c.login}@users.noreply.github.com`;
 
+/** An inherited git trace setting would print the Authorization header (audit A2, OFF-G1). */
+const NO_TRACE = { GIT_TRACE: "0", GIT_TRACE_CURL: "0", GIT_CURL_VERBOSE: "0", GIT_TRACE_PACKET: "0" };
+
+/** A file path a signed commit may write: relative, no `.`/`..` segment, no `.git` component (audit A2, OFF-G2). */
+export function safeCommitPath(p: string): boolean {
+  if (typeof p !== "string" || !p || p.startsWith("/") || p.includes("\\") || p.includes("\0")) return false;
+  return p.split("/").every((x) => x !== "" && x !== "." && x !== ".." && x.toLowerCase() !== ".git");
+}
+
 function git(cwd: string, args: string[], env: Record<string, string> = {}): string {
-  const r = spawnSync("git", args, { cwd, encoding: "utf8", env: { ...process.env, GIT_TERMINAL_PROMPT: "0", ...env } });
+  const r = spawnSync("git", args, { cwd, encoding: "utf8", env: { ...process.env, ...NO_TRACE, GIT_TERMINAL_PROMPT: "0", ...env } });
   if (r.status !== 0) throw new Error(`git ${args[0]} failed: ${redactTokens(r.stderr || r.stdout)}`);
   return r.stdout.trim();
 }
@@ -60,6 +69,7 @@ export async function signedCommit(o: SignedCommitOptions): Promise<SignedCommit
   const gitBase = (o.gitBase ?? "https://github.com").replace(/\/$/, "");
   const [owner, repo] = o.upstream.split("/");
   if (!owner || !repo) throw new Error(`upstream must be owner/repo, got ${o.upstream}`);
+  for (const p of Object.keys(o.files)) if (!safeCommitPath(p)) throw new Error(`unsafe file path in a signed commit: ${JSON.stringify(p)}`);
 
   // fork (idempotent: GitHub answers 202 with the existing fork)
   const existing = await gh.get<{ full_name: string; fork: boolean; parent?: { full_name: string } } | null>(`/repos/${o.cred.login}/${repo}`, [404]);
@@ -78,7 +88,8 @@ export async function signedCommit(o: SignedCommitOptions): Promise<SignedCommit
       if (Date.now() > deadline) throw new Error(`fork ${forkName} not ready after ${o.forkWaitS ?? 120} s`);
       await Bun.sleep(3000);
     }
-  } else if (existing.parent && existing.parent.full_name.toLowerCase() !== o.upstream.toLowerCase()) {
+  } else if (!existing.fork || !existing.parent || existing.parent.full_name.toLowerCase() !== o.upstream.toLowerCase()) {
+    // a repository of the same name that is not our fork (the account's own project) is never force-pushed into (audit A2, OFF-G2)
     throw new Error(`${forkName} exists and is not a fork of ${o.upstream}`);
   }
 

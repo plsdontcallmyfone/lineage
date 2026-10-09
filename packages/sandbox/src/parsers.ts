@@ -94,14 +94,32 @@ export function parseLibtest(out: string): TestOutcome {
 export function parseJunit(xml: string): TestOutcome {
   const pass: string[] = [];
   const fail: string[] = [];
-  const re = /<testcase\b([^>]*?)(\/>|>([\s\S]*?)<\/testcase>)/g;
   const attr = (s: string, k: string) => new RegExp(`\\b${k}="([^"]*)"`).exec(s)?.[1] ?? "";
-  let m: RegExpExecArray | null;
   let recognised = /<testsuite/.test(xml);
-  while ((m = re.exec(xml))) {
+  // A linear scan with indexOf. The old /<testcase\b([^>]*?)(\/>|>([\s\S]*?)<\/testcase>)/g rescanned
+  // to the end of the input for every unclosed <testcase>, so a 16 MB junit.xml written by the code
+  // under test could hold the host for hours (audit A2, OFF-S3). Same matches as the regex.
+  let closeMissing = false;
+  for (let at = xml.indexOf("<testcase"); at >= 0; at = xml.indexOf("<testcase", at + 1)) {
+    if (/\w/.test(xml[at + 9] ?? "")) continue; // \b after "testcase"
+    const gt = xml.indexOf(">", at + 9);
+    if (gt < 0) break;
+    let attrs: string;
+    let body = "";
+    if (xml[gt - 1] === "/") attrs = xml.slice(at + 9, gt - 1);
+    else {
+      if (closeMissing) continue;
+      const close = xml.indexOf("</testcase>", gt + 1);
+      if (close < 0) {
+        closeMissing = true;
+        continue;
+      }
+      attrs = xml.slice(at + 9, gt);
+      body = xml.slice(gt + 1, close);
+      at = close;
+    }
     recognised = true;
-    const id = `${attr(m[1]!, "classname")}::${attr(m[1]!, "name")}`;
-    const body = m[3] ?? "";
+    const id = `${attr(attrs, "classname")}::${attr(attrs, "name")}`;
     if (/<skipped\b/.test(body)) continue;
     if (/<(failure|error)\b/.test(body)) fail.push(id);
     else pass.push(id);

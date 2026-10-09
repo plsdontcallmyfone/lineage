@@ -2,6 +2,8 @@ import { cpSync, existsSync, mkdirSync, mkdtempSync, readdirSync, rmSync, writeF
 import { homedir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { canonicalUrl, sha256Hex } from "@lineage/protocol";
+import { containerUser } from "./docker.ts";
+import { copyConfined } from "./fsafe.ts";
 
 // Snapshot trees: a bare mirror per repo, then a fresh tree per evaluation (snapshot commit +
 // overlay + parent patch series + candidate patch).
@@ -116,9 +118,16 @@ export function newWorkDir(prefix: string): string {
   return mkdtempSync(join(base, `${prefix}-`));
 }
 
-/** Container user 10001 must be able to write the tree. */
-export function openPermissions(dir: string): void {
+/**
+ * Container user 10001 must be able to write the tree. Only when containers really run as 10001
+ * (macOS, or a root worker): on Linux they run as the worker's own uid (containerUser), and making
+ * work trees and the persistent deps layer world-writable let any local user poison the deps layer
+ * or swap built binaries between build and metrics (audit A2, OFF-S6).
+ */
+export function openPermissions(dir: string, user: string = containerUser()): boolean {
+  if (user !== "10001:10001") return false;
   Bun.spawnSync(["chmod", "-R", "a+rwX", dir]);
+  return true;
 }
 
 /** Checks out the snapshot into `dest` (which must not exist) and copies the overlay on top. */
@@ -130,11 +139,31 @@ export function materialize(url: string, commit: string, overlayDir: string | nu
   if (archive.exitCode !== 0) throw new Error(`archive: ${archive.stderr.toString()}`);
   const untar = Bun.spawnSync(["tar", "-x", "-C", dest], { stdin: archive.stdout });
   if (untar.exitCode !== 0) throw new Error(`untar: ${untar.stderr.toString()}`);
-  if (overlayDir) cpSync(overlayDir, dest, { recursive: true });
+  if (overlayDir) applyOverlay(overlayDir, dest);
   // a throwaway repo so patches apply with git's exact semantics
   must(git(dest, ["init", "-q"]), "tree init");
   must(git(dest, ["add", "-A"]), "tree add");
   must(git(dest, ["commit", "-q", "--no-gpg-sign", "-m", "snapshot"], FIXED), "tree commit");
+}
+
+/**
+ * Copies the recipe overlay over a checked-out tree. The tree is the target repository's, so it may
+ * ship a symlink where the overlay writes (`bench -> ../../../../.ssh`); a plain recursive copy could
+ * write through it onto the host (audit A2, OFF-S5). Every overlay file is copied with
+ * copyConfined, which refuses a symlink on the destination path.
+ */
+export function applyOverlay(overlayDir: string, dest: string): void {
+  const walk = (rel: string): string[] => {
+    const out: string[] = [];
+    for (const e of readdirSync(join(overlayDir, rel), { withFileTypes: true })) {
+      const r = rel ? `${rel}/${e.name}` : e.name;
+      if (e.isDirectory()) out.push(...walk(r));
+      else if (e.isFile()) out.push(r);
+      else throw new Error(`overlay ${r} is not a regular file`);
+    }
+    return out;
+  };
+  for (const rel of walk("")) copyConfined(overlayDir, rel, dest);
 }
 
 /** Applies a canonical diff exactly (no fuzz). Returns false on conflict, leaving the tree unchanged. */

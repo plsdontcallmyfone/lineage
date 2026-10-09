@@ -27,7 +27,13 @@ export interface GitHubOptions {
 
 /** Strips anything token-shaped from a string (log and error safety net). */
 export function redactTokens(s: string): string {
-  return s.replace(/\b(gh[pousr]_[A-Za-z0-9]{20,}|github_pat_[A-Za-z0-9_]{20,})\b/g, "<redacted>").replace(/\b[0-9a-f]{40}\b/g, "<redacted>");
+  // also the Authorization header value git carries in GIT_CONFIG_VALUE_0 (base64 of
+  // x-access-token:<token>), which an inherited GIT_TRACE or GIT_CURL_VERBOSE can echo (audit A2, OFF-G1)
+  return s
+    .replace(/\b(gh[pousr]_[A-Za-z0-9]{20,}|github_pat_[A-Za-z0-9_]{20,})\b/g, "<redacted>")
+    .replace(/\b[0-9a-f]{40}\b/g, "<redacted>")
+    .replace(/(authorization:\s*(?:basic|bearer|token)\s+)[A-Za-z0-9+/=._-]+/gi, "$1<redacted>")
+    .replace(/eC1hY2Nlc3MtdG9rZW46[A-Za-z0-9+/=]*/g, "<redacted>");
 }
 
 export class GitHub {

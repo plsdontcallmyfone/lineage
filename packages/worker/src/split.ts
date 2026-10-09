@@ -37,6 +37,9 @@ function applyCoalition(dir: string, parent: string, subs: string[], mask: numbe
   return true;
 }
 
+/** The most members a measured split this worker will run (2^n - 2 coalition evaluations). */
+export const MAX_SPLIT_N = 5;
+
 export async function measureCoalitions(p: {
   loaded: LoadedRecipe;
   deps: DepsLayer;
@@ -54,6 +57,11 @@ export async function measureCoalitions(p: {
   const report: SplitReport = { v: 1, compose: "skipped", metric: split.metric, subsets: {} };
   // a candidate that does not even apply or build is rejected anyway; every honest replayer skips alike
   if (main.apply !== "ok" || main.guard !== "ok" || main.build.cand !== "ok") return report;
+  // n comes from Core and the work is 2^n - 2 evaluations: bounded locally (audit A2, OFF-K5)
+  if (!Number.isInteger(split.n) || split.n < 2 || split.n > MAX_SPLIT_N || !Array.isArray(split.subs) || split.subs.length !== split.n) {
+    p.log?.(`split: refusing a measured split with n = ${String(split.n)} (at most ${MAX_SPLIT_N})`);
+    return report;
+  }
   const work = newWorkDir("split");
   try {
     const dir = `${work}/src`;

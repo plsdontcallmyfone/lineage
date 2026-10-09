@@ -36,6 +36,7 @@ import { doctor } from "./doctor.ts";
 import { RecipeBook } from "./recipes.ts";
 import { proposerSoulBlock, type SoulDoc } from "@lineage/souls";
 import { Telemetry } from "./telemetry.ts";
+import { writeSecret } from "./secret-file.ts";
 import { SessionRecorder } from "./session.ts";
 import { measureCoalitions, type SplitAssignment } from "./split.ts";
 import { DiscoveryAgent } from "./discovery.ts";
@@ -175,7 +176,7 @@ export class Worker {
   }
 
   private persist(): void {
-    writeFileSync(this.stateFile, JSON.stringify(Object.fromEntries(this.pending)));
+    writeSecret(this.stateFile, JSON.stringify(Object.fromEntries(this.pending)));
   }
 
   private async ok<T = any>(p: Promise<{ status: number; body: T }>, what: string): Promise<T> {

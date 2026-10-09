@@ -8,7 +8,10 @@ import type { Backend, HostedAgent, Vault } from "./backend.ts";
 import { chainCostOf, costOf, resolvePrices, usdFor, type Prices, type RuntimeConfig } from "./config.ts";
 import type { ChainFee, Messenger } from "../../core/src/msgchain.ts";
 import { provenanceRecord, signProvenance, type AttemptTotals } from "./provenance.ts";
-import { emptyUsage, Lock, modelTokens, redact, StateStore, type AgentUsage, type ClosedEpoch } from "./state.ts";
+import { emptyUsage, isAgentId, Lock, modelTokens, redact, StateStore, type AgentUsage, type ClosedEpoch } from "./state.ts";
+
+/** A spend figure for logs; a corrupt record shows as such (the caps then refuse every attempt). */
+const usd4 = (x: unknown) => (typeof x === "number" && Number.isFinite(x) ? x.toFixed(4) : `unknown (${String(x)})`);
 
 // The hosted runtime (SPEC 17.2): runs every hosted launched agent. For each one it generates its
 // own signing key and waits for the owner to bind it (identity plan I1; the launcher's key never
@@ -95,7 +98,7 @@ export class Runtime {
     this.save();
     const unposted = this.state.closed.filter((e) => !e.done).length;
     this.log(
-      `started (${this.cfg.mode}, runtime ${this.deps.runtimeKey.id}, pid ${process.pid}); prices ${this.cfg.compute_price_line_per_usd} $LINE per USD and ${this.cfg.compute_price_line_per_sandbox_s} per sandbox second (TEST values); spent so far ${this.state.spent_usd_total.toFixed(4)} of ${this.cfg.global_max_usd} USD${unposted ? `; recovering ${unposted} unposted usage epoch(s)` : ""}`,
+      `started (${this.cfg.mode}, runtime ${this.deps.runtimeKey.id}, pid ${process.pid}); prices ${this.cfg.compute_price_line_per_usd} $LINE per USD and ${this.cfg.compute_price_line_per_sandbox_s} per sandbox second (TEST values); spent so far ${usd4(this.state.spent_usd_total)} of ${this.cfg.global_max_usd} USD${unposted ? `; recovering ${unposted} unposted usage epoch(s)` : ""}`,
     );
   }
 
@@ -134,7 +137,10 @@ export class Runtime {
   private globalLeft(): number {
     let reserved = 0;
     for (const a of this.attempts.values()) reserved += Math.max(0, a.maxUsd - a.totals.usd);
-    return this.cfg.global_max_usd - this.state.spent_usd_total - reserved;
+    // a non-finite or negative total (NaN usage saved as null) must not reset the cap (audit A2, OFF-R3)
+    const spent = this.state.spent_usd_total;
+    if (typeof spent !== "number" || !Number.isFinite(spent) || spent < 0) return 0;
+    return this.cfg.global_max_usd - spent - reserved;
   }
 
   /**
@@ -156,9 +162,11 @@ export class Runtime {
       if (left < line) line = left;
     }
     const fromVault = usdFor(this.prices, line, this.cfg.sandbox_reserve_s);
-    const epochLeft = this.cfg.agent_epoch_max_usd - this.usageOf(agent).usd;
+    const used = this.usageOf(agent).usd;
+    const epochLeft = typeof used === "number" && Number.isFinite(used) && used >= 0 ? this.cfg.agent_epoch_max_usd - used : 0;
     const g = this.globalLeft();
     const usd = Math.min(this.cfg.attempt_max_usd, fromVault, epochLeft, g);
+    if (!Number.isFinite(usd) || !Number.isFinite(epochLeft)) return { usd: null, why: "spend record is not a finite number; refusing to start an attempt", vault: false };
     if (usd < this.cfg.min_attempt_usd) {
       const why = g === usd ? `global runtime cap (${this.cfg.global_max_usd} USD) reached` : epochLeft === usd ? "per-agent epoch cap reached" : `compute vault exhausted (${avail} base units unowed)`;
       return { usd: null, why, vault: fromVault === usd };
@@ -238,6 +246,11 @@ export class Runtime {
     const b = this.deps.backend;
     if (this.ticks % (b.mode === "devnet" ? 6 : 1) === 0 || this.hosted.size === 0) {
       for (const h of await b.discover()) {
+        // ids become file names below: a malformed one from Core or the chain is skipped (audit A2, OFF-R1)
+        if (!isAgentId(h.agent)) {
+          this.log(`skipping a discovered agent with a malformed id ${JSON.stringify(String(h.agent).slice(0, 60))}`);
+          continue;
+        }
         this.hosted.set(h.agent, h);
         if (this.state.agents[h.agent]) continue;
         const key = this.store.keyFor(h.agent);
@@ -458,7 +471,7 @@ export class Runtime {
     }
     this.save();
     this.lock.release();
-    this.log(`stopped; this run spent ${this.runSpent.toFixed(4)} USD of model usage, ${this.state.spent_usd_total.toFixed(4)} USD in total`);
+    this.log(`stopped; this run spent ${this.runSpent.toFixed(4)} USD of model usage, ${usd4(this.state.spent_usd_total)} USD in total`);
   }
 
   /** A public summary (no keys, no secrets). */

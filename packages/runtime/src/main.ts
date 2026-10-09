@@ -16,6 +16,7 @@ import { AnthropicProposer } from "../../worker/src/proposers/anthropic.ts";
 import { ChainBackend, SimBackend, type Backend } from "./backend.ts";
 import { loadConfig, loadModelEnv, type RuntimeConfig } from "./config.ts";
 import { Runtime, type RuntimeDeps } from "./runtime.ts";
+import { addSecret, redact } from "./state.ts";
 import { ChainMessenger } from "../../core/src/msgchain.ts";
 
 function args(argv: string[]) {
@@ -54,7 +55,9 @@ async function main() {
   const a = args(rest);
   if (!a.config) throw new Error("--config <file> is required");
   const cfg = loadConfig(a.config, a["max-candidates"] ? { max_candidates_per_agent: Number(a["max-candidates"]) } : {});
-  const log = (m: string) => console.log(`[${new Date().toISOString().slice(11, 19)} runtime] ${m}`);
+  addSecret(cfg.rpc_url);
+  // every line through redact, including the backend's and the messengers' (audit A2, OFF-R5)
+  const log = (m: string) => console.log(redact(`[${new Date().toISOString().slice(11, 19)} runtime] ${m}`));
   switch (cmd) {
     case "run": {
       if (!loadModelEnv()) throw new Error("no model key: put ANTHROPIC_API_KEY in ~/.config/lineage/model.env");
@@ -91,7 +94,7 @@ async function main() {
       const keyFile = join(cfg.state_dir, "keys", `${a.agent}.json`);
       if (!existsSync(keyFile)) throw new Error(`this runtime holds no key for ${a.agent}`);
       const { cosignCommand } = await import("../../chain/src/cosign.ts");
-      await cosignCommand({ key: loadKey(keyFile), tx: a.tx!, rpcUrl: cfg.rpc_url ?? devnetRpcUrl(), dryRun: a["dry-run"] === "true" });
+      await cosignCommand({ key: loadKey(keyFile), tx: a.tx!, rpcUrl: cfg.rpc_url ?? devnetRpcUrl(), dryRun: a["dry-run"] === "true", expectAgent: a.agent });
       return;
     }
     default:
@@ -102,6 +105,6 @@ async function main() {
 
 if (import.meta.main)
   main().catch((e) => {
-    console.error(e instanceof Error ? e.message : e);
+    console.error(redact(String(e instanceof Error ? e.message : e)));
     process.exit(1);
   });

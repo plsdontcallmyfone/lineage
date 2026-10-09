@@ -1,6 +1,7 @@
 import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import { join, relative } from "node:path";
 import { H, recipeId, sha256Hex, type Recipe } from "@lineage/protocol";
+import { isCleanRel } from "./fsafe.ts";
 
 // Recipe loading and validation, SPEC section 6. A recipe lives in recipes/<name>/ with
 // recipe.yml, an optional overlay/ (harness files copied into the tree, always protected) and
@@ -48,6 +49,8 @@ export function validateRecipe(r: Recipe): void {
   req(typeof r.image === "string" && /@sha256:[0-9a-f]{64}$/.test(r.image), "image must be pinned as name@sha256:<id>");
   req(r.workdir === "/work/src", "workdir must be /work/src");
   req(Array.isArray(r.prepare), "prepare must be a list");
+  // relative, no `..`: copied out of the prepare tree on the host (audit A2, OFF-S1)
+  req(r.prepare_outputs === undefined || (Array.isArray(r.prepare_outputs) && r.prepare_outputs.every((o) => isCleanRel(o))), "prepare_outputs must be relative paths without . or .. segments");
   req(Array.isArray(r.build?.commands) && r.build.commands.length > 0, "build.commands required");
   req(typeof r.test?.command === "string" && typeof r.test?.parser === "string", "test.command and test.parser required");
   req(Array.isArray(r.metrics), "metrics must be a list");

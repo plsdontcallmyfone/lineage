@@ -307,6 +307,10 @@ export interface CalibAssignment {
 
 /** Writes a proposed recipe (Core's JSON plus overlay blobs) as a recipe directory and checks its id. */
 export async function materializeProposal(client: CoreClient, a: { recipe: Recipe; recipe_id: string; overlay: Record<string, string> }, root = join(LINEAGE_HOME, "proposals")): Promise<LoadedRecipe> {
+  // Core supplies both: a compromised Core naming "../../.." made the worker delete and write
+  // outside its proposals directory before anything was validated (audit A2, OFF-K1)
+  if (typeof a.recipe?.name !== "string" || !/^[a-z0-9][a-z0-9-]{1,63}$/.test(a.recipe.name)) throw new RecipeError("proposed recipe name must be lowercase kebab");
+  if (typeof a.recipe_id !== "string" || !/^[0-9a-f]{64}$/.test(a.recipe_id)) throw new RecipeError("recipe_id must be 64 hex");
   const dir = join(root, a.recipe.name + "-" + a.recipe_id.slice(0, 12));
   rmSync(dir, { recursive: true, force: true });
   mkdirSync(dir, { recursive: true });

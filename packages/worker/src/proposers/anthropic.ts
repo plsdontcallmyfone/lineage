@@ -172,15 +172,26 @@ export class AnthropicProposer implements Proposer {
     const cap = Math.min(o.max_usd, ctx.maxUsd ?? Infinity);
     const usage = { input_tokens: 0, output_tokens: 0, cache_read_tokens: 0, cache_write_tokens: 0, usd: 0 };
     let lastTurnUsd = 0;
+    let lastInput = 0;
     const addUsage = (u: Anthropic.Beta.BetaUsage, model: string) => {
       const p = model === o.model ? o.prices : (MODEL_PRICES[model] ?? PRICE_CEILING);
-      const d = {
-        input_tokens: u.input_tokens,
-        output_tokens: u.output_tokens,
-        cache_read_tokens: u.cache_read_input_tokens ?? 0,
-        cache_write_tokens: u.cache_creation_input_tokens ?? 0,
+      // a missing, negative or non-finite count turned the spend into NaN, which no cap compares
+      // against (audit A2, OFF-K4): such a turn is charged the rest of the cap so the attempt stops
+      let bad = false;
+      const n = (v: unknown, missingOk = false) => {
+        if (typeof v === "number" && Number.isFinite(v) && v >= 0) return Math.floor(v);
+        if (!(missingOk && (v === undefined || v === null))) bad = true;
+        return 0;
       };
-      const usd = (d.input_tokens * p.input + d.output_tokens * p.output + d.cache_read_tokens * p.cache_read + d.cache_write_tokens * p.cache_write) / 1e6;
+      const d = {
+        input_tokens: n(u?.input_tokens),
+        output_tokens: n(u?.output_tokens),
+        cache_read_tokens: n(u?.cache_read_input_tokens, true),
+        cache_write_tokens: n(u?.cache_creation_input_tokens, true),
+      };
+      lastInput = d.input_tokens + d.cache_read_tokens + d.cache_write_tokens;
+      let usd = (d.input_tokens * p.input + d.output_tokens * p.output + d.cache_read_tokens * p.cache_read + d.cache_write_tokens * p.cache_write) / 1e6;
+      if (bad) usd = Math.max(usd, cap - usage.usd, 0);
       usage.input_tokens += d.input_tokens;
       usage.output_tokens += d.output_tokens;
       usage.cache_read_tokens += d.cache_read_tokens;
@@ -227,6 +238,14 @@ export class AnthropicProposer implements Proposer {
         message = await stream.finalMessage();
       } catch (err) {
         if (err instanceof Anthropic.APIError) throw err;
+        // the turn was generated and billed even though its tool JSON did not parse: meter what the
+        // stream saw, or at worst the last turn's input plus the full output allowance, so these turns
+        // cannot run past the caps unmetered (audit A2, OFF-K3)
+        const seen = (stream as unknown as { currentMessage?: { usage?: Anthropic.Beta.BetaUsage; model?: string } }).currentMessage;
+        const est = { input_tokens: lastInput, output_tokens: 64000, cache_read_input_tokens: 0, cache_creation_input_tokens: 0 } as Anthropic.Beta.BetaUsage;
+        const su = seen?.usage;
+        const partial = su && typeof su.output_tokens === "number" && su.output_tokens > 0 && typeof su.input_tokens === "number";
+        addUsage(partial ? su : est, seen?.model ?? o.model);
         ctx.log("anthropic: unparseable tool input, re-issuing turn");
         continue;
       }

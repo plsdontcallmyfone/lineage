@@ -75,6 +75,8 @@ export async function buildChain(o: BuildOptions): Promise<Chain> {
   mkdirSync(dir, { recursive: true });
   git(dir, ["init", "-q"]);
   const base = L.snapshot.commit_sha;
+  // from Core, and it goes into git argv: only a full sha (a value like --upload-pack=... is an option) (audit A2, OFF-G3)
+  if (typeof base !== "string" || !/^[0-9a-f]{40}$/.test(base)) throw new Error(`snapshot commit must be a 40-hex sha, got ${JSON.stringify(String(base).slice(0, 60))}`);
   let fetched = git(dir, ["fetch", "-q", "--depth", "1", o.repoGitUrl, base], { allowFail: true });
   if (!fetched.ok) fetched = git(dir, ["fetch", "-q", o.repoGitUrl], { allowFail: true });
   if (!git(dir, ["cat-file", "-e", `${base}^{commit}`], { allowFail: true }).ok) throw new Error(`snapshot commit ${base} not found in ${L.repo}: ${fetched.err}`);

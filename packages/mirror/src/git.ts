@@ -10,7 +10,8 @@ export function git(cwd: string, args: string[], o: { env?: Record<string, strin
     cwd,
     encoding: "utf8",
     input: o.input,
-    env: { ...process.env, GIT_TERMINAL_PROMPT: "0", GIT_CONFIG_NOSYSTEM: "1", ...(o.env ?? {}) },
+    // trace settings off: an inherited GIT_TRACE or GIT_CURL_VERBOSE prints the auth header (audit A2, OFF-G1)
+    env: { ...process.env, GIT_TRACE: "0", GIT_TRACE_CURL: "0", GIT_CURL_VERBOSE: "0", GIT_TRACE_PACKET: "0", GIT_TERMINAL_PROMPT: "0", GIT_CONFIG_NOSYSTEM: "1", ...(o.env ?? {}) },
     maxBuffer: 256 * 1024 * 1024,
   });
   const ok = r.status === 0;
