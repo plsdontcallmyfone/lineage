@@ -399,6 +399,15 @@ export async function replicate(url: string, opts: { fetch?: typeof fetch; log?:
  * With --once: one pass, the report on stdout (and --out), exit 0 when nothing diverged. Otherwise
  * a pass every interval and the last report at GET /v1/replica on the given port (read-only).
  */
+const divKey = (d: Divergence) => `${d.kind}|${d.id}|${d.field}|${canonicalJson(d.core ?? null)}|${canonicalJson(d.replica ?? null)}`;
+
+/** Keeps only divergences that a second, later pass reports identically; transient ones are dropped. */
+export function confirmDivergences(first: ReplicaReport, second: ReplicaReport): ReplicaReport {
+  const again = new Set(second.divergences.map(divKey));
+  const divergences = first.divergences.filter((d) => again.has(divKey(d)));
+  return { ...second, divergences, ok: divergences.length === 0 };
+}
+
 export async function replicaMain(argv: string[]): Promise<never> {
   const arg = (n: string) => (argv.includes(`--${n}`) ? argv[argv.indexOf(`--${n}`) + 1] : undefined);
   const url = arg("replica-of")!;
@@ -406,7 +415,13 @@ export async function replicaMain(argv: string[]): Promise<never> {
   const out = arg("out");
   const log = (m: string) => console.error(`[replica] ${m}`);
   const pass = async () => {
-    const r = await replicate(url, { log });
+    let r = await replicate(url, { log });
+    // a verdict or epoch can change while a pass reads it (seen on the live site): a divergence counts
+    // only when a second pass, read a little later, reports the same one
+    if (!r.ok) {
+      await Bun.sleep(Number(arg("confirm-delay-s") ?? "20") * 1000);
+      r = confirmDivergences(r, await replicate(url, { log }));
+    }
     if (out) await Bun.write(out, JSON.stringify(r, null, 2) + "\n");
     log(`${r.ok ? "zero divergence" : `${r.divergences.length} divergences`}: ${r.verdicts.checked} verdicts, ${r.audits.checked} audits, ${r.challenges.checked} challenges, ` +
       `${r.units.checked} unit checks, ${r.epochs.checked} closed epochs`);
