@@ -816,6 +816,8 @@ export class Challenges {
             bond: a.bond.toString(), opened_at: Number(a.openedAt) * 1000, source: "chain", chain_address: a.address, refund_token: a.refundToken,
             chain_status: a.status, status: a.status === "open" ? "open" : a.status }),
         );
+        // already resolved on chain by another Core (or before this one existed): nothing to send
+        if (a.status !== "open") this.c.db.query("UPDATE challenges SET resolve_sig = ? WHERE challenge_id = ?").run(`landed:${a.address}`, id);
         continue;
       }
       if (known.chain_status !== a.status) {
@@ -840,6 +842,11 @@ export class Challenges {
       .query<Row, []>("SELECT * FROM challenges WHERE source = 'chain' AND status IN ('upheld','failed','void') AND resolve_sig IS NULL ORDER BY resolved_at")
       .all()) {
       if (r.resolve_next_at && now < r.resolve_next_at) continue;
+      // resolved on chain already, or mirrored without a resolution of this Core's own: never re-send
+      if ((r.chain_status && r.chain_status !== "open") || !r.evidence) {
+        this.c.db.query("UPDATE challenges SET resolve_sig = ? WHERE challenge_id = ?").run(`landed:${r.chain_address}`, r.challenge_id);
+        continue;
+      }
       const doc = JSON.parse(r.resolution ?? "{}") as { corrected?: { root: string; lineage_root: string; record_root: string | null; total_units_micro: number } };
       const kindN = CHALLENGE_KIND[r.kind];
       let corrected = null;
