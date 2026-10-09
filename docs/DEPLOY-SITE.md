@@ -65,7 +65,8 @@ of `~/.ssh/lineage_site`), then run deploy.sh with its address.
 | `lineage-core` | Core, chain mode devnet, data `/var/lib/lineage/core` | 127.0.0.1:9660 | 1 GB |
 | `lineage-web` | dashboard, Wallet page, `/chain` RPC proxy and faucet | 127.0.0.1:9661 | 768 MB |
 | `lineage-gate` | rate limits, CORS, method and path allowlists, body cap, stream cap (`gate.ts`) | 127.0.0.1:9662 | 256 MB |
-| `caddy` | HTTPS for `<ip-dashes>.sslip.io` and `DOMAIN`, gzip, security headers, everything to the gate | 80, 443 | 256 MB |
+| `lineage-indexer` | market indexer (`packages/indexer`): agent tokens, DBC and DAMM v2 trades, fee cranks, holders; read API `/market/*`; data `/var/lib/lineage/indexer/market.db` | 127.0.0.1:9668 | 256 MB |
+| `caddy` | HTTPS for `<ip-dashes>.sslip.io` and `DOMAIN`, gzip, security headers; `/market/*` to the indexer, everything else to the gate | 80, 443 | 256 MB |
 | `lineage-bootstrap` | one shot per deploy: lineages for the served recipes | | 1 GB |
 | `lineage-reference` | reference runner (calibrations, reference replays, audits) | | 1 GB |
 | `lineage-verifier@v1`, `@v2` | two honest verifiers, bonded on devnet | | 1 GB each |
@@ -87,8 +88,33 @@ Public surface (the gate refuses everything else before it reaches Core or the d
 | pages and assets | GET, HEAD | 600 per minute | none |
 | event streams (`/live/events`, `/api/events`, `/v1/events`) | GET | 4 open per address, 400 in all | |
 
+| `/market/*` (Caddy to `lineage-indexer` directly, not through the gate) | GET, HEAD, OPTIONS (the indexer refuses others with 405) | none (read only, served from SQLite) | `*` |
+
 Bodies over 64 KB are refused by the gate (256 KB by Caddy). Core's write API is not public on this
 site: outside workers cannot join through it (open `POST /v1/*` in `gate.ts` when they should).
+
+### Market indexer (launchpad L2)
+
+`lineage-indexer` runs `bun packages/indexer/src/main.ts --port 9668 --host 127.0.0.1 --db
+/var/lib/lineage/indexer/market.db --interval 15` (systemd `StateDirectory` makes the data directory).
+It is one of the core units in `remote.sh` (enabled, restarted and stopped with Core, the dashboard and
+the gate), sends nothing on chain and holds no key. RPC: the chain resolver
+(`packages/chain/src/endpoint.ts`): `LINEAGE_DEVNET_RPC` in `/etc/lineage/site.env` if set, else
+`HELIUS_DEVNET_RPC` in `~lineage/.config/lineage/rpc.env` (copied only when it exists on this machine),
+else public devnet. It never prints the URL (`/market/status` shows the host only). Sources per token:
+its DBC pool, its DAMM v2 pool after migration, its mint and its `AgentLaunch` account; a quiet source
+is polled less often (doubling up to `--max-idle`, 300 s) and `logsSubscribe` makes a token's sources
+due again when it sees activity. On public devnet (2026-10-09, 34 tokens) a first backfill took about 4
+minutes and a pass about 2.5 minutes, most of it 429 backoff; a keyed RPC is faster. Public devnet
+refuses `getProgramAccounts` on Token-2022, so holders there are the latest balances of every token
+account seen in an indexed transaction (`source: "transactions"` in `/market/tokens/:mint/holders`;
+a legacy plain `transfer`, which does not name the mint, is missed); a keyed RPC that serves it gives
+the account list (`source: "accounts"`). The database is derived data: deleting it
+and restarting rebuilds it from chain. Check after a deploy:
+
+```
+curl -s https://<site>/market/status | jq '{ok, tokens, trades, rpc}'
+```
 
 ## Secrets
 

@@ -1,0 +1,144 @@
+{
+ "at": "2026-10-09T16:11:09.122Z",
+ "rpc": "https://api.devnet.solana.com",
+ "indexer": {
+  "api": "http://127.0.0.1:9668",
+  "tokens": 34,
+  "trades": 36,
+  "fee_cranks": 23,
+  "transactions": 141,
+  "head_slot": 509233661
+ },
+ "method": "independent recount: getSignaturesForAddress on each pool, getTransaction, Meteora EvtSwap2 events only, pool account sqrt_price, FeesCranked logs, getTokenAccountBalance",
+ "pass": true,
+ "tokens": [
+  {
+   "mint": "3AvZ77ZdVPx7yxtqA4UP11DoaPdjdgP3AUbkSnidsmY4",
+   "symbol": "TMBPE",
+   "phase": "curve",
+   "signatures_listed": 32,
+   "pass": true,
+   "checks": {
+    "trade_count": {
+     "chain": 21,
+     "indexer": 21,
+     "pass": true
+    },
+    "trades_by_venue": {
+     "chain": {
+      "dbc": 21,
+      "damm": 0
+     },
+     "indexer": {
+      "dbc": 21,
+      "damm": 0
+     }
+    },
+    "last_trade": {
+     "chain": {
+      "signature": "3RnMNwf5d2P8w2T4qXwYV4XD5BHxHNuHosb8LXHEMPZd9LJ9ABfgwBvVDjruqEU48dy1ubf8WS6kTZnWici3ayPC",
+      "venue": "dbc",
+      "side": "sell",
+      "base_raw": "385017929033",
+      "quote_raw": "19154343866",
+      "price": 0.04974922574153235
+     },
+     "indexer": {
+      "signature": "3RnMNwf5d2P8w2T4qXwYV4XD5BHxHNuHosb8LXHEMPZd9LJ9ABfgwBvVDjruqEU48dy1ubf8WS6kTZnWici3ayPC",
+      "venue": "dbc",
+      "side": "sell",
+      "base_raw": "385017929033",
+      "quote_raw": "19154343866",
+      "price": 0.04974922574153235
+     },
+     "pass": true
+    },
+    "pool_price": {
+     "chain": 0.05110070924112988,
+     "indexer": 0.05110070924112988,
+     "pass": true
+    },
+    "fee_cranks": {
+     "chain": {
+      "count": 10,
+      "to_compute_raw": "9940813377"
+     },
+     "indexer": {
+      "count": 10,
+      "to_compute_raw": "9940813377"
+     },
+     "pass": true
+    },
+    "compute_vault_raw": {
+     "chain": "10582740757",
+     "indexer": "10582740757",
+     "pass": true
+    }
+   }
+  },
+  {
+   "mint": "AbBT1Mh3mQJgMfVVfKj8zUZhD4mLw5NqbJptFUacb9Zz",
+   "symbol": "TGRAD",
+   "phase": "graduated",
+   "signatures_listed": 15,
+   "pass": true,
+   "checks": {
+    "trade_count": {
+     "chain": 5,
+     "indexer": 5,
+     "pass": true
+    },
+    "trades_by_venue": {
+     "chain": {
+      "dbc": 1,
+      "damm": 4
+     },
+     "indexer": {
+      "dbc": 1,
+      "damm": 4
+     }
+    },
+    "last_trade": {
+     "chain": {
+      "signature": "5KNVbANFmNnqaicQTp46YZk4ktiuU77qu2178UuexndurXcGKW4HVSoSM3anYYgAJkrJ8ufBUMXYe5VtkBFWiWEA",
+      "venue": "damm",
+      "side": "sell",
+      "base_raw": "2641779346064",
+      "quote_raw": "1393025153136",
+      "price": 0.5273056416356177
+     },
+     "indexer": {
+      "signature": "5KNVbANFmNnqaicQTp46YZk4ktiuU77qu2178UuexndurXcGKW4HVSoSM3anYYgAJkrJ8ufBUMXYe5VtkBFWiWEA",
+      "venue": "damm",
+      "side": "sell",
+      "base_raw": "2641779346064",
+      "quote_raw": "1393025153136",
+      "price": 0.5273056416356177
+     },
+     "pass": true
+    },
+    "pool_price": {
+     "chain": 0.5147569552305798,
+     "indexer": 0.5147569552305798,
+     "pass": true
+    },
+    "fee_cranks": {
+     "chain": {
+      "count": 3,
+      "to_compute_raw": "340117655127"
+     },
+     "indexer": {
+      "count": 3,
+      "to_compute_raw": "340117655127"
+     },
+     "pass": true
+    },
+    "compute_vault_raw": {
+     "chain": "340117655127",
+     "indexer": "340117655127",
+     "pass": true
+    }
+   }
+  }
+ ]
+}

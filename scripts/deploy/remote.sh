@@ -26,7 +26,7 @@ LINEAGE_RECIPES="${LINEAGE_RECIPES:-fixture-b58,base58-py,minbpe}"
 AUTHORS="${AUTHORS:-minbpe}"; AUTHORS="${AUTHORS//,/ }"
 # every author unit present (running or not), so stop and status also reach authors dropped from AUTHORS
 all_authors() { systemctl list-units --all --plain --no-legend 'lineage-author@*' 2>/dev/null | awk '{print $1}'; echo lineage-author; }
-CORE_UNITS=(lineage-core lineage-web lineage-gate)
+CORE_UNITS=(lineage-core lineage-web lineage-gate lineage-indexer)
 WORKER_UNITS=(lineage-reference lineage-verifier@v1 lineage-verifier@v2)
 
 as_lineage() {

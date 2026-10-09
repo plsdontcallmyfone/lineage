@@ -1,0 +1,28 @@
+# Installed by scripts/deploy/remote.sh. Lineage public devnet site, docs/DEPLOY-SITE.md.
+# Market indexer (packages/indexer): agent tokens, DBC and DAMM v2 trades, fee cranks; read API under
+# /market/* (Caddy routes it here directly). RPC from the chain resolver: LINEAGE_DEVNET_RPC in
+# /etc/lineage/site.env, else /home/lineage/.config/lineage/rpc.env, else public devnet.
+[Unit]
+Description=Lineage market indexer on 127.0.0.1:9668
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+User=lineage
+Group=lineage
+WorkingDirectory=/opt/lineage/current
+Environment=HOME=/home/lineage LINEAGE_HOME=/home/lineage/.lineage PATH=/usr/local/bin:/usr/bin:/bin
+EnvironmentFile=-/etc/lineage/site.env
+StateDirectory=lineage/indexer
+NoNewPrivileges=yes
+PrivateTmp=yes
+ProtectSystem=full
+Restart=always
+RestartSec=10
+StandardOutput=journal
+StandardError=journal
+MemoryMax=256M
+ExecStart=/usr/local/bin/bun packages/indexer/src/main.ts --port 9668 --host 127.0.0.1 --db /var/lib/lineage/indexer/market.db --interval 15
+
+[Install]
+WantedBy=multi-user.target

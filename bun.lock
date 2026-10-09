@@ -36,6 +36,14 @@
         "@lineage/souls": "workspace:*",
       },
     },
+    "packages/indexer": {
+      "name": "@lineage/indexer",
+      "version": "0.1.0",
+      "dependencies": {
+        "@lineage/chain": "workspace:*",
+        "@lineage/protocol": "workspace:*",
+      },
+    },
     "packages/mirror": {
       "name": "@lineage/mirror",
       "version": "0.1.0",
@@ -105,6 +113,8 @@
     "@lineage/chain": ["@lineage/chain@workspace:packages/chain"],
 
     "@lineage/core": ["@lineage/core@workspace:packages/core"],
+
+    "@lineage/indexer": ["@lineage/indexer@workspace:packages/indexer"],
 
     "@lineage/mirror": ["@lineage/mirror@workspace:packages/mirror"],
 
