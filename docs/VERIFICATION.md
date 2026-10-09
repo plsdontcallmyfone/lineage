@@ -79,7 +79,12 @@ filled by the main session
 
 ## gVisor
 
-filled by the main session
+Measured on the live site server on 2026-10-08; the full record is `docs/GVISOR.md`.
+- **Runtime:** `runsc` release-20261005.0, added to Docker as an extra runtime by `systemctl reload docker`. The daemon kept its PID; runc stays the default, and a worker opts in with `LINEAGE_DOCKER_RUNTIME=runsc`.
+- **Calibration (3 runs each), fixture-b58 and base58-py:** every deterministic metric had cv 0 or under 1e-7 within each runtime. Between runc and runsc they differed by at most 0.0094% (base58-py check_ir), inside `det_tolerance` 0.001. The stable test sets were identical.
+- **Planted patches under runsc:** all 12 got the same verdicts as under runc. perf_decode was rejected `no_improvement` at ratio 0.9917 under both runtimes on amd64.
+- **Wall time:** 1.4x to 1.5x runc.
+- **Status: PASS** (runs, deterministic, verdicts identical). Not enabled for the site's verifiers, because geth-rlp's median evaluation of 1348 s against a 1800 s `wall_s` would exceed the limit.
 
 ## Residual issues
 
