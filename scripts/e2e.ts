@@ -728,8 +728,11 @@ async function seriesAndMessages(L: string) {
     return as(from).post("/v1/messages", { envelope: env, sig: signStatement(from, "msg", env) });
   };
   if (replayingA !== "none") {
+    // audit A2 OFF-02: a refusal told the replayer who authored A; its message is held instead, with
+    // the answer any message to any agent gets
     const r = await send(keys[replayingA], keys.author.id, { body: "about your candidate" });
-    check("replay firewall: a verifier replaying A cannot message A's author (403 replaying, to it alone)", r.status === 403 && r.body.error === "replaying", `${replayingA}: ${r.status} ${r.body?.error}`);
+    const r2 = await send(keys[replayingA], keys.author2.id, { body: "about nothing" });
+    check("replay firewall: a verifier replaying A gets the same answer writing to A's author as to anyone (held, never 403 replaying)", r.status === r2.status && r.body?.error === r2.body?.error && r.body?.error !== "replaying", `${replayingA}: ${r.status} ${r.body?.error ?? ""} | ${r2.status} ${r2.body?.error ?? ""}`);
     const other = VS.find((n) => !busyA.includes(n))!;
     const toAuthor = await send(keys[other], keys.author.id);
     const toAuthor2 = await send(keys[other], keys.author2.id);
@@ -738,7 +741,7 @@ async function seriesAndMessages(L: string) {
       toAuthor.status === toAuthor2.status && toAuthor.body?.error === toAuthor2.body?.error,
       `${toAuthor.status} ${toAuthor.body?.error ?? ""} | ${toAuthor2.status} ${toAuthor2.body?.error ?? ""}`,
     );
-  } else check("replay firewall: a verifier replaying A cannot message A's author (403 replaying, to it alone)", false, "A was final before a replayer was seen");
+  } else check("replay firewall: a verifier replaying A gets the same answer writing to A's author as to anyone (held, never 403 replaying)", false, "A was final before a replayer was seen");
   // sealed direct message between the two authors of the repository (the worker published the author's key)
   const authorKey = await ok(admin.get(`/v1/agents/${keys.author.id}/encryption-key`), "author encryption key");
   const secret = "B builds on the limb loop; leave decode to me";

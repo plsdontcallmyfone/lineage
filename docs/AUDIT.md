@@ -234,3 +234,427 @@ proof run of which 0.02 went to its buyer key).
 - The Merkle leaf encoders (`leaf.rs`, `bounty.rs` `contribution_json`) against Core's canonical JSON,
   in particular escaping and key order, since a mismatch either strands payouts or admits a forged leaf.
 - Key management: one hot key is the upgrade authority and admin on devnet.
+
+## Offchain
+
+Lane A2, 2026-10-09. Scope: Core (auth, nonces, admin routes, author-blind views, the session gate,
+rate limits, SQL, blobs, units and payouts), the sandbox and the worker's trust in Core, the hosted
+runtime's spend caps, souls and GitHub token handling, the web pages, wallet and embed kit, the market
+indexer, and the site deploy kit (gate, Caddy, systemd).
+
+Method: four read-only reviews (Core leaks and economics; sandbox, worker, runtime and GitHub; web,
+wallet, embed and indexer; deploy kit and gate), every finding checked against the code, then a
+failing test, the fix, the test green. Red runs: the Core tests were run against the unfixed sources
+(the fix reverse-applied) and failed; the sandbox, worker, runtime, souls and mirror tests against a
+`git archive HEAD` copy; the indexer, embed, chain and gate tests against the unfixed files (gate:
+D1 to D8 red with stubs reproducing the old behaviour, D9 written afterwards).
+
+Fuzzing: `scripts/audit/fuzz-core.ts` sends every Core route hostile path parameters (malformed
+percent-encoding, traversal, 3000-character ids), hostile query values (NaN, -1, 1e309, SQL fragments,
+`__proto__`) and type-confused bodies, unsigned, agent-signed and admin-signed, with GitHub and proof
+fetches stubbed. Before the fixes 42 of 762 requests answered 500; after them 0 of 1524. No route
+builds SQL from request input (every value is bound; the two `${where}` joins are constants).
+
+After all fixes: `bun test packages` 567/567, `bunx tsc --noEmit -p .` clean, `bun scripts/e2e.ts` 83/83
+(two e2e checks rewritten for OFF-02 and OFF-09), `bun test apps/web/test` 2/2.
+
+Fix commits: Core `ef823c7`; web, wallet, embed, indexer `77b8144`; deploy kit and gate `fda0c0e`;
+sandbox, worker, runtime, souls, mirror `b7b4e0f`. Test files: `packages/*/test/audit-a2.test.ts`,
+`scripts/deploy/gate.test.ts` (OFF-D tests), `packages/indexer/test/{decode,ingest}.test.ts` and
+`packages/embed/test/embed.test.ts` ("audit" describes), `packages/chain/test/browser.test.ts`
+("audit: co-sign guards"), `apps/web/test/trade-decimals.test.ts` (run with `bun test apps/web/test`;
+`bun test packages` does not pick it up), plus assertions added to existing Core suites as named below.
+
+### Findings
+
+| Id | Severity | Status | Where |
+|---|---|---|---|
+| OFF-01 | High | Fixed | Core `hosted.ts` `submit` (provenance) |
+| OFF-02 | High | Fixed | Core `messages.ts` replay firewall, `msgchain.ts` |
+| OFF-03 | High | Fixed | Core `core.ts` `revealReplay`, `finalizeCanary` |
+| OFF-I1 | High | Fixed | indexer `decode.ts` `programData` |
+| OFF-S1 | High | Fixed | sandbox `evaluate.ts` `prepare_outputs`, `recipe.ts`, Core `recipe-proposals.ts` |
+| OFF-S2 | High | Fixed | sandbox `evaluate.ts` `readRegularFile`, worker `discovery.ts` |
+| OFF-K1 | High (malicious Core) | Fixed | worker `recipe-proposer.ts` `materializeProposal` |
+| OFF-R1 | High (malicious Core) | Fixed | runtime `backend.ts`, `state.ts`, `runtime.ts` |
+| OFF-D10 | High (as filed) | Partly fixed, rest accepted | systemd units, `provision.sh` |
+| OFF-04 | Medium | Partly fixed, rest accepted | Core `core.ts` candidate view |
+| OFF-05 | Medium | Fixed | Core `series.ts` `route` |
+| OFF-06 | Medium | Partly fixed, rest accepted | Core `sessions.ts` |
+| OFF-07 | Medium | Fixed | Core `hardening.ts` `retireExposedShadows` |
+| OFF-09 | Medium | Fixed | Core `split.ts` `onCommit`, `onFinal` |
+| OFF-10 | Medium | Fixed | Core `split.ts` `onCounted` |
+| OFF-11 | Medium | Fixed | Core `http.ts` query and path parsing |
+| OFF-16 | Medium | Fixed | Core `http.ts` (lazy module tables) |
+| OFF-S3 | Medium | Fixed | sandbox `parsers.ts` `parseJunit` |
+| OFF-S4 | Medium | Fixed | sandbox `evaluate.ts` `dirDigest` |
+| OFF-S5 | Medium | Fixed | sandbox `repo.ts` overlay copy |
+| OFF-K3 | Medium | Fixed | worker `proposers/anthropic.ts` |
+| OFF-K4 | Medium | Fixed | worker `proposers/anthropic.ts` `addUsage` |
+| OFF-R3 | Medium | Fixed | runtime `state.ts`, `runtime.ts` caps |
+| OFF-R4 | Medium | Fixed | runtime `state.ts` lock |
+| OFF-E1 | Medium | Fixed | embed `client.ts` `resolveBases`, `demo/demo.html` |
+| OFF-E2 | Medium | Fixed | embed `render.ts`, `terminal.ts` |
+| OFF-C1 | Medium | Fixed | chain `cosign.ts` `inspectForCosign` |
+| OFF-C2 | Medium | Fixed | chain `cosign.ts`, runtime and worker `cosign` |
+| OFF-W1 | Medium | Fixed | web `wallet/trade.ts` |
+| OFF-D1 | Medium | Fixed | `scripts/deploy/gate.ts` stream cap |
+| OFF-D2 | Medium | Fixed | `gate.ts` client key |
+| OFF-D3 | Medium | Fixed | `gate.ts` `Limiter` |
+| OFF-D5 | Medium | Fixed | `gate.ts` body read |
+| OFF-D8 | Medium | Fixed | `Caddyfile.tmpl` `/market` |
+| OFF-D9 | Medium | Fixed | `Caddyfile.tmpl`, `apps/web/server.ts` (CSP) |
+| OFF-W3 | Medium | Accepted | web trade box slippage and devnet check (one RPC) |
+| OFF-D4 | Medium-low | Fixed | `gate.ts` `classify` |
+| OFF-08 | Low | Accepted | Core `sessions.ts` sequence numbers |
+| OFF-12 | Low | Fixed | Core `http.ts` 500 body |
+| OFF-13 | Low | Fixed | Core `findings.ts` |
+| OFF-14 | Low | Fixed | Core `core.ts` `usage` |
+| OFF-15 | Low | Fixed | Core `upstream.ts` `githubFullName` |
+| OFF-17 | Low | Accepted | Core `upstream.ts` unauthenticated checks |
+| OFF-18 | Low | Accepted | Core public full scans |
+| OFF-19 | Low | Accepted | Core `links.ts` domain proofs |
+| OFF-S6 | Low-medium | Partly fixed | sandbox `repo.ts`, `evaluate.ts` permissions |
+| OFF-S7 | Low | Fixed | sandbox `evaluate.ts` `changedProtectedBlocks` |
+| OFF-K2 | Low | Fixed | worker `main.ts` keygen, `worker.ts` pending state |
+| OFF-K5 | Low | Fixed | worker `split.ts` |
+| OFF-R5 | Low | Fixed | runtime `state.ts` `redact`, `main.ts` |
+| OFF-G1 | Low | Fixed | souls `github/api.ts`, mirror `git.ts` |
+| OFF-G2 | Low-medium | Fixed | souls `github/commit.ts` `signedCommit` |
+| OFF-G3 | Low (malicious Core) | Fixed | mirror `chain.ts`, `prbot.ts` |
+| OFF-I2 | Low-medium | Fixed | indexer `decode.ts` trades |
+| OFF-I3 | Low | Fixed | indexer `indexer.ts`, `main.ts` |
+| OFF-I4 | Low | Accepted | indexer source spam |
+| OFF-W2 | Low | Fixed | web `pages/token.ts` |
+| OFF-W4 | Low | Accepted | web `wallet/faucet.ts` hourly cap race |
+| OFF-D6 | Low | Fixed | `gate.ts` same-origin routes |
+| OFF-D7 | Low | Fixed | `gate.ts` forwarded headers |
+| OFF-D11 | Low | Fixed | `deploy.sh`, `remote.sh`, `DEPLOY-SITE.md` |
+| OFF-D12 | Low | Accepted | Caddy admin API |
+| OFF-S8 | Medium | Accepted | sandbox: every worker runs `prepare` with network |
+| OFF-S9 | Low | Accepted | sandbox: valgrind summary race, junit counts, equivalence truncation, container uid |
+
+### Core
+
+**OFF-01 (High): POST provenance answered "is X the author of this open candidate?" for anyone.**
+`hosted.ts` compared `record.agent` with the author (400) before checking the caller (403), so any
+signer (no registration needed) could probe every agent id against an open candidate, and find a
+canary's shadow author. Fix: only the author or the runtime authority gets past the first check.
+Test: `core/test/audit-a2.test.ts` OFF-01.
+
+**OFF-02 (High): the replay firewall named the author to the replayer.** A replayer's message to a
+party of its candidate was refused `403 replaying` before rate caps, so a replayer could DM every
+launched agent and learn the author (and that a shadow author means a canary). Fix: such messages are
+accepted with the same answer as any other and held until the work is over, in both directions; refs
+to the candidate are still refused (that names only the sender's own work). SPEC 12.3 and 15 updated.
+Tests: `messages.test.ts` "replay firewall", `msgchain.test.ts` "preflight".
+
+**OFF-03 (High): a canary was judged at each reveal.** The first reveal of a canary published
+`units.awarded` or a canary slash at once, while a real candidate pays only when its group settles.
+A replayer that committed "accept" saw it, skipped its own reveal and took the smaller unrevealed
+penalty instead of the canary slash. Fix: canary replays are judged when the group settles
+(`finalizeCanary`). Test: OFF-03.
+
+**OFF-04 (Medium, partly fixed): a final canary is recognisable before its epoch closes.** Fixed: a
+passing canary replay's public role reads `counted` until the canary is listed (test OFF-07,
+`canary-audit.test.ts`). Accepted: a canary the replayers accepted ends `rejected` with reason
+`canary` and an accepted verdict, which no real candidate can show, and its slash is public. Rationale:
+this exists only after every commit and (with OFF-03) every reveal of that canary, so it cannot change
+any replay of it; the shadow retires (SPEC 10.5 residue).
+
+**OFF-05 (Medium): a released stacked candidate's public `detail` named its dependency's generation**
+(and so that generation's author) while open, and read differently from a canary's release. Fix: one
+wording for every release; the outcome stays in the series record, public once both ends are final.
+Test: `series.test.ts` first test.
+
+**OFF-06 (Medium, partly fixed): sessions and author-blindness.** Fixed: any intent ever filed on the
+lineage (withdrawn, stale, expired) named the agent of a later sealed session; now only an open or
+committed intent does (test OFF-06). Accepted: a live session names its agent and turns `sealed` at
+the commit, and shadows record no sessions, so sealed sessions time a commit to an agent seen live and
+open candidates minus sealed sessions bounds the canaries on a lineage. Rationale: SPEC 17.3 accepts the
+live naming as no worse than activity; the counting signal needs shadow sessions (parity) to close and
+is noisy while self-hosted authors record no sessions. Recommended before mainnet.
+
+**OFF-07 (Medium): shadows outlived their listing.** A shadow whose canary was listed at its epoch's
+close kept authoring; its public intents then announced its next canary. Fix: retired once any of its
+canaries is final in a closed epoch. Test: OFF-07.
+
+**OFF-08 (Low, accepted): private session events leave gaps in `seq`.** Subsumed by OFF-06: the
+same moment is already public as the `sealed` flip.
+
+**OFF-09 (Medium): the split fee was debited at commit** from each author member's compute vault,
+and balances are public, so the drop at `candidate.committed` named an open candidate's team. Fix:
+balances are checked at commit and the fee is debited when the candidate is final (capped by the
+vault then; nothing if never replayed). Test: `split-ports.test.ts` measured split tests.
+
+**OFF-10 (Medium): made-up split reports were paid.** Any well-formed report matching its commitment
+earned the extra trees' units and rebate. Fix: the extra pay goes only to counted replays whose
+reports agree on every coalition (the measured split's own check); one dissenting report voids it for
+all, so lying gains nothing. Test: `split-ports.test.ts` "disagreeing coalition reports".
+
+**OFF-11 (Medium): query and path parsing.** `limit=-1` became SQLite's "no limit" (a whole
+candidate list built view by view, the whole event log: the case that OOM-killed the gate), NaN
+reached `LIMIT NULL` (500), and malformed percent-encoding threw (500). Fix: numeric query values must
+be non-negative integers (400 otherwise), event log limit clamped to 1..5000, a bad path is 400. Test:
+OFF-11 and the fuzzer.
+
+**OFF-12 (Low): a 500 echoed the exception text** (SQL and paths). Fix: generic message; the text
+stays in Core's log. Test: OFF-12.
+
+**OFF-13 (Low): `hotspot.replay_assigned` named the replayer** before the claim was decided (12.8).
+Fix: removed from the event. Test: OFF-13 (asserts on the emitting line).
+
+**OFF-14 (Low): usage records took NaN, negative or fractional token counts and silently truncated
+refs** (two long refs could collide). Runtime or admin key only. Fix: validated, 400. Test: OFF-14.
+
+**OFF-15 (Low): `https://github.com/../user` passed `githubFullName`,** walking Core's token-bearing
+GitHub calls to other API paths. Fix: dot-only names refused. Test: OFF-15.
+
+**OFF-16 (Medium): a module's tables could be rolled back.** Modules built lazily inside a request's
+transaction created their tables there; on a fresh Core the first request (GET of an unknown session)
+failed, rolled the `CREATE TABLE` back, and the cached module answered 500 for sessions until a
+restart. Found by the fuzzer. Fix: every module is built when the routes are, outside any
+transaction. Test: OFF-16.
+
+**OFF-17 (Low, accepted): `POST /v1/upstream/check` and `/optin` are unauthenticated** and spend
+Core's GitHub quota per distinct repository. The site gate refuses every POST to `/v1`, so only local
+callers reach them; Core keeps a per-repository minute cap.
+
+**OFF-18 (Low, accepted): public full scans** (`/v1/ledger/reconcile`, `/v1/agents`). Bounded by the
+database size and the gate's per-client limits; needed by `scripts/verify.ts` and replicas.
+
+**OFF-19 (Low, accepted, speculative): domain link proofs resolve then fetch** (a DNS rebinding
+window to a private address). Redirects are refused and only the proof text is read; the window gives
+a GET to an internal address with no response shown beyond pass or fail.
+
+### Sandbox, worker, runtime, souls and mirror
+
+**OFF-S1 (High): `prepare_outputs` followed symlinks.** A proposal repo shipping
+`out -> ../../../../.config/lineage` made every calibrating verifier copy its model key or agent keys
+into the deps layer, where the code under test could print them as test ids. Fix: `fsafe.ts`
+`copyConfined` refuses a symlink anywhere on either path and anything not a regular file or directory;
+recipes and proposals must give clean relative paths. Tests: sandbox OFF-S1 (two).
+
+**OFF-S2 (High): a FIFO froze the worker.** A FIFO planted where a result file is read blocked the
+synchronous open forever (reveal timers included, so every replayer took unrevealed strikes). Fix:
+O_NOFOLLOW plus O_NONBLOCK, then fstat. Test: OFF-S2 (subprocess with a timeout).
+
+**OFF-S3 (Medium): quadratic junit regex** (40k unclosed testcases: 12.8 s, the cap allows far more).
+Fix: a linear scan with identical results. Test: OFF-S3.
+
+**OFF-S4 (Medium): artifacts hashed by reading whole files** (2.2 GB file: 1.6 GB peak RSS). Fix:
+streamed hashing, peak 40 MB. Test: OFF-S4.
+
+**OFF-S5 (Medium): the recipe overlay copy wrote through repository symlinks.** Fix: per-file
+confined copy. Test: OFF-S5.
+
+**OFF-S6 (Low-medium, partly fixed): world-writable work trees and deps layer.** Fixed: `chmod a+rwX`
+only where containers really run as uid 10001 (macOS, a root worker). Accepted: the deps layer's
+`.lineage-digest` cache is not re-verified; on Linux the layer is no longer writable by others, on
+macOS it is a single-user machine. Test: OFF-S6.
+
+**OFF-S7 (Low): protected-block checks read through a candidate's directory symlink** (a yes/no
+signal about a host file). Fix: confined reads. Test: OFF-S7.
+
+**OFF-S8 (Medium, accepted): every worker runs a proposal's `prepare` with network,** where SPEC 15
+has the reference runner prepare once. Rationale: the resulting deps digest must equal the snapshot's,
+so a divergent prepare is caught; the reachable surface is the host's bridge network. Operators must
+run workers on hosts with no cloud metadata endpoint and no services on the docker bridge, or under
+gVisor (M3). Listed for the external audit.
+
+**OFF-S9 (Low, accepted): known SPEC 15 residuals confirmed.** A forked child can race a forged
+valgrind summary line in before the kill (covered by equivalence on holdout seeds, canaries, audits;
+separate-uid helper on M3); junit has no count or plan check (in-process runners, same coverage);
+equivalence output truncated at 4 MB hashes equal (harness is recipe-owned and protected; a recipe
+review rule); on Linux containers run as the worker's uid, not 10001 (build outputs must stay owned
+by the worker; cap-drop, no-new-privileges and the read-only root still apply).
+
+**OFF-K1 (High, malicious Core): `materializeProposal` deleted and wrote outside its root** from a
+Core-supplied recipe name or id. Fix: both validated before any path use. Test: worker OFF-K1.
+
+**OFF-K2 (Low): key and pending-state files.** keygen wrote then chmodded (a 0644 window, and a
+check-then-write race); `pending.json` (salts, unrevealed results) had the default mode. Fix:
+`secret-file.ts` (O_EXCL 0600, atomic 0600). Tests: OFF-K2 (two).
+
+**OFF-K3 (Medium): a model turn that failed to parse was billed but never metered,** bypassing every
+spend cap. Fix: meters the stream's partial usage, else a worst case. Test: worker "a turn whose tool
+JSON fails to parse is still metered".
+
+**OFF-K4 (Medium): NaN or negative usage turned the spend into NaN,** and no cap stopped the attempt.
+Fix: sanitized; a bad block is charged the rest of the cap. Test: worker "a usage block with missing
+or negative counts".
+
+**OFF-K5 (Low): Core's `split.n` drove 2^n local evaluations.** Fix: local cap of 5 and a subs count
+check. Test: OFF-K5.
+
+**OFF-R1 (High, malicious Core or chain): discovered agent ids were used as file paths**
+(`../../.config/solana/id` read and then overwrote the machine's keypair). Fix: ids must be base58
+32-byte keys; bad ones are skipped. Tests: runtime OFF-R1 (two).
+
+**OFF-R3 (Medium): a NaN spend total was saved as null and reset the global cap** after a restart.
+Fix: a non-finite or negative record means nothing is left. Test: runtime "a NaN spend record".
+
+**OFF-R4 (Medium): stale-lock takeover race** (6 concurrent starts produced two runtimes, whose saves
+overwrite each other's spend). Fix: O_EXCL takeover file and a re-read. Tests: OFF-R4 (two, one a
+6-process race).
+
+**OFF-R5 (Low): redaction gaps** (backend and messenger logs, the top-level error, keys in RPC URL
+paths, GitHub tokens, Authorization values, `cfg.rpc_url`). Fix: all log lines through `redact`,
+patterns extended. Test: OFF-R5.
+
+**OFF-G1 (Low): base64 basic-auth values escaped `redactTokens`,** and an inherited `GIT_TRACE` or
+`GIT_CURL_VERBOSE` could print them. Fix: redaction extended, git runs with tracing off. Tests: souls
+and mirror OFF-G1.
+
+**OFF-G2 (Low-medium): `signedCommit` force-pushed into an existing same-name repository that is not
+a fork, and took any file path** (a `.git/config` entry could run code with the token in env). Fix:
+requires a fork of the expected parent; `safeCommitPath`. Tests: OFF-G2 (two).
+
+**OFF-G3 (Low, malicious Core): Core-supplied `commit_sha` and `default_branch` reached git argv.**
+Fix: 40-hex sha, safe ref names. Tests: OFF-G3 (two).
+
+### Web, wallet, embed and indexer
+
+**OFF-I1 (High): the indexer accepted lineage_launch events logged by any program.** A program
+logging `FeesCranked`, `Graduated` or `AgentLaunched` data naming a victim mint (in a transaction that
+mentions the mint) added fake fee cranks and launch or graduation events. Fix: data lines count only
+inside `lineage_launch`'s own invoke frame. Tests: `decode.test.ts` "audit: forged events" (two).
+
+**OFF-I2 (Low-medium): trade amounts came from vault deltas,** so a donation to the quote vault in
+the same transaction inflated amount, price and volume. Fix: Meteora's swap event first. Test:
+`decode.test.ts` "tokens donated into the quote vault".
+
+**OFF-I3 (Low): one undecodable transaction wedged its source; a bad WebSocket frame could throw.**
+Fix: per-transaction failures logged to `sources.last_error`, the cursor moves on; frames parsed in a
+try. Test: `ingest.test.ts` "a malformed transaction does not wedge its source".
+
+**OFF-I4 (Low, accepted): source spam.** Any transaction mentioning a mint is fetched; on devnet this
+is free to produce. Bounded by the RPC and the per-cycle work; revisit with a mainnet RPC budget.
+
+**OFF-E1 (Medium): embed bases accepted any string, and the demo's `?api=` swapped the data source on
+the site's own origin** (`javascript:` links, foreign data under the site's name). Fix: http(s)
+overrides only, `?api=` same origin only (and the site CSP blocks the demo's inline script, OFF-D9).
+Test: `embed.test.ts` "resolveBases ignores javascript:".
+
+**OFF-E2 (Medium): `repo_url` became an href without a scheme check in the embed kit.** Fix:
+`extLink` renders non-http(s) URLs as text. Test: `embed.test.ts` "a repository URL that is not
+http(s)".
+
+**OFF-W2 (Low): the same on the token page.** Fix: `repoLink`. Checked by tsc (no page harness);
+the chain already requires `https://` for `repo_url`, so only a lying indexer could exploit it.
+
+**OFF-C1 (Medium): co-sign let the co-signing key be the fee payer, with any compute budget,** so an
+owner could spend the runtime's or worker's SOL. Fix: refuse when the key is the fee payer or a
+writable signer; compute limit at most 1,400,000, price at most 1,000,000 micro-lamports, no other
+ComputeBudget instruction. Tests: `browser.test.ts` "audit: co-sign guards" (two).
+
+**OFF-C2 (Medium): a rotation co-signed "for agent A" could rotate agent B's record.** Fix:
+`expectAgent` checks the agent record PDA; the runtime passes it, the worker with `--agent`. Test:
+"a rotation co-signed for agent A refuses a transaction that rotates agent B".
+
+**OFF-W1 (Medium): the trade box took token decimals from the indexer,** so a lying indexer turned
+"1" into 1000 tokens with a matching review screen. Fix: decimals from the mint account read with
+the venue. Test: `apps/web/test/trade-decimals.test.ts`.
+
+**OFF-W3 (Medium, accepted): the slippage floor and the devnet check rest on the site's one RPC.**
+A lying upstream RPC could lower `minOut` or fake the genesis hash. Rationale: devnet tokens, and the
+RPC is the operator's keyed endpoint; before mainnet, cross-check the simulated output against a quote
+from the pool's onchain price read separately.
+
+**OFF-W4 (Low, accepted): the faucet's hourly cap counts finished drips,** so concurrent requests
+can pass it together. Devnet tLINE only; the gate now limits the faucet to 3 per hour per client (/64
+for IPv6) and requires a listed Origin.
+
+Checked without a finding: the `html` template escapes every interpolation and no `raw()` takes agent
+or chain data; the live panel escapes all session, file and run text; program ids are compiled in and
+trade venues, pools and configs are derived from PDAs; claims and bounty proofs are recomputed
+locally against onchain roots; `signAndSend` refuses a message the wallet altered; Meteora events
+count only from the pool program; no `postMessage` handlers; static serving uses fixed paths. The
+docs and manual markdown renderers allow protocol-relative links and raw HTML: safe only because their
+sources are bundled repository files.
+
+### Deploy kit and gate
+
+**OFF-D1 (Medium): the stream cap could be raced** (parallel opens passed the check before any was
+counted; about 60 streams per IP against a cap of 4). Fix: `StreamSlots` reserves before the upstream
+fetch. Test: `gate.test.ts` OFF-D1.
+
+**OFF-D2 (Medium): rotating IPv6 addresses got fresh buckets.** Fix: `clientKey` keys IPv6 by /64,
+IPv4-mapped by IPv4. Test: OFF-D2.
+
+**OFF-D3 (Medium): the bucket table grew without bound.** Fix: LRU above 50,000 keys. Test: OFF-D3.
+
+**OFF-D4 (Medium-low): `/api/admin/*` reached Core's admin routes** through the dashboard proxy (safe
+only because the proxy sends no signature). Fix: refused, along with encoded slashes, `//` and
+backslashes. `POST /souls/*` stays refused (drafts spend the model key; owner decision). Test: OFF-D4.
+
+**OFF-D5 (Medium): bodies were buffered whole before the 64 KB check, with no deadline.** Fix:
+`readCapped` (413 past the cap, 408 after 10 s). Test: OFF-D5.
+
+**OFF-D6 (Low): same-origin routes passed requests with no Origin.** Fix: `/chain/rpc` and
+`/chain/faucet` need a listed Origin. Test: OFF-D6.
+
+**OFF-D7 (Low): client `Forwarded`, `X-Real-IP`, `Cookie`, `Authorization` reached upstreams.** Fix:
+stripped, one X-Forwarded-For; upstream `set-cookie` dropped; `/gate/health` no longer shows counts.
+Test: OFF-D7.
+
+**OFF-D8 (Medium): `/market/*` bypassed the gate.** Fix: a `market` class and an `--indexer` upstream;
+Caddy sends everything to the gate. Test: OFF-D8.
+
+**OFF-D9 (Medium): no CSP on the origin that builds wallet transactions.** Fix: `script-src 'self'`
+plus the hash of the one inline theme script, `object-src 'none'`, `base-uri 'none'`,
+`frame-ancestors 'none'`, Permissions-Policy and COOP, from Caddy and from `apps/web/server.ts`. The
+Vercel front gets the other headers but no CSP (its export uses inline scripts). Test: OFF-D9 (checks
+both against the actual hash).
+
+**OFF-D10 (High as filed, partly fixed): one user runs every service and is in the docker group.**
+Fixed: gate, web and indexer units gain PrivateDevices, ProtectKernel*, ProtectControlGroups,
+RestrictNamespaces, RestrictSUIDSGID, LockPersonality, an empty CapabilityBoundingSet,
+RestrictAddressFamilies and `SystemCallFilter=@system-service`; the gate also ProtectHome. Accepted:
+splitting users (a web user that reads only the faucet key and RPC env, DynamicUser for gate and
+indexer, docker group for workers only) changes provisioning and key paths and can only be tested on
+the server; this is a devnet site without real funds. Required before mainnet.
+
+**OFF-D11 (Low): site.env was world-readable; `wipe-keys` left the keyed RPC URL in network.json;
+the docs said the gate had 256 MB.** Fixed (umask 077 and 600, scrub, docs).
+
+**OFF-D12 (Low, accepted): Caddy's admin API on localhost:2019** lets any local process rewrite the
+proxy config. The packaged unit reloads through it; moving it to a 0600 unix socket needs a reload
+path tested on the server.
+
+### What the site needs
+
+The identity service lane deployed the site at `b7b4e0f`, which carries every A2 fix commit. Read-only
+probes afterwards (2026-10-09, about 21:05 UTC): `/v1/health` 200; `/v1/candidates?limit=-1` 400
+(OFF-11); `/api/admin/ledger` 404 from the gate (OFF-D4); a malformed percent-encoded path is refused
+before Core (HTTP/2 stream error, no 500); `/market/status` answers through the gate (OFF-D8); `/`
+carries the CSP, Permissions-Policy and COOP (OFF-D9). Still to check on the server:
+
+- `systemd-analyze security` for lineage-gate, lineage-web and lineage-indexer, and `journalctl` for
+  `226/NAMESPACE`, `SIGSYS` or `EPERM` after a restart (the new hardening was not tried in the local
+  dry run); drop `SystemCallFilter`, then `PrivateDevices`, on a failing unit.
+- With the browser console open, the CSP on `/`, `/wallet`, `/tokens/:mint`, `/docs` and a session
+  page (wallet extensions, fonts, the dynamic wallet bundle import), and a POST to `/chain/rpc` from
+  the Wallet page. A Vercel front calling `/chain/*` needs its origin in the gate's `--origin` list.
+- No data migration: OFF-09 changes when the split fee moves, and measured splits are refused in chain
+  mode, which the site runs (a simulated-mode Core holding an open split candidate committed before
+  this release would charge its fee a second time at the end).
+- Before mainnet: OFF-D10 (separate users), OFF-D12 (Caddy admin socket), OFF-06 (shadow sessions),
+  OFF-W3 (second price source for slippage).
+
+### For an external auditor
+
+- Author-blindness as a whole (SPEC 10.7): it is a property of every public byte, and this audit
+  found five independent oracles. OFF-06's residual (sessions without shadow parity) and OFF-04's
+  (a canary the replayers accepted is recognisable once final) are open by design; any new public
+  field or event can reopen it. `hardening.test.ts` "author-blind replay" sweeps routes, not timing.
+- Economic incentives around canaries after OFF-03: whether any other signal tells a replayer,
+  between its commit and its reveal, that the candidate is a canary.
+- The sandbox against a determined candidate: the measurement forging residuals (OFF-S9), `prepare`
+  with network on every worker (OFF-S8), and the container running as the worker's uid on Linux.
+- The worker, runtime and mirror against a compromised Core: this audit fixed the path and argv
+  cases found; every other Core-supplied value should be treated as hostile too.
+- The site host: one user with docker access runs every internet-facing service (OFF-D10), Caddy's
+  admin API (OFF-D12), and the identity service route `/identity/*`, which bypasses the gate and
+  receives pasted GitHub tokens (lane B, not reviewed here).
+- The wallet's trust in the site RPC (OFF-W3) and the co-sign flows (OFF-C1, OFF-C2).

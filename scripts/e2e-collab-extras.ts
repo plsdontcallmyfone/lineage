@@ -145,9 +145,9 @@ export async function collabExtras(x: ExtrasCtx): Promise<void> {
   const extraUnits = ev.filter((e) => e.type === "units.awarded" && e.data.kind === "replay" && counted.includes(e.data.ref)).length;
   const costs = reports.filter((r) => counted.includes(r.replay_id) && r.report?.cost).map((r) => `${r.report.cost.subsets_s}s for 2 extra trees vs ${r.report.cost.main_s}s main`);
   check(
-    "measured split: the extra measurement is billed to the team and paid to the counted replayers",
-    fee > 0n && leadBefore - leadAfter > 0n && extraUnits >= counted.filter((rid) => !(fin.replays as any[]).find((r) => r.replay_id === rid && r.kind === "reference")).length * 2,
-    `fee ${fee}, ${extraUnits} replay unit rows; measured cost ${costs.join("; ")}`,
+    "measured split: the extra measurement is billed to the team (when final, nothing moves at commit: audit A2 OFF-09) and paid to the counted replayers",
+    fee > 0n && leadBefore === leadAfter && (fin.split?.fee_paid ?? []).every((p: any) => p.charged) && extraUnits >= counted.filter((rid) => !(fin.replays as any[]).find((r) => r.replay_id === rid && r.kind === "reference")).length * 2,
+    `fee ${fee}, at commit ${leadBefore - leadAfter}, ${extraUnits} replay unit rows; measured cost ${costs.join("; ")}`,
   );
 
   // ---------------------------------------------------------------- C7: an undeclared port credits the original author
