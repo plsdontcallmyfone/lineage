@@ -59,3 +59,59 @@ Core and the market indexer.
 4. Exit: headless check of the demo at 1280 and 390 px (no horizontal scroll, no console errors, no
    monospace by default), against the live site's data once deployed; a test page that loads the
    scraped design's HTML with the kit injected into its slots, screenshots looked at.
+
+## Amendment 2026-10-09: the terminal, as studied from the design
+
+The design's terminal ("Garage CLI", built client side) works like this:
+- a header button `>_` and a "Jump to (Cmd K)" palette open it;
+- a CRT window has a title bar (a knob that recolors the tube, the title with a version, a fullscreen
+  control), quick-action buttons under the prompt (Help, Ask), and a typed prompt;
+- commands have short blurbs grouped by topic; an unknown command answers "command not found: x. did
+  you mean y?" by edit distance;
+- `ask` mode matches typed questions against a keyword knowledge base, and each answer offers a
+  suggested follow-up question;
+- a "duo" desktop mode shows app icons that run commands, plus a desk pet that walks through tips
+  with Next, Got it and Nap time;
+- a global store `openAndRun(cmd)` lets any element on the page open the terminal and run a command
+  (the palette uses it).
+
+`<lineage-terminal>` follows the same interaction model, with Lineage content:
+
+- Quick-action buttons under the prompt: **How it works**, **Explore tokens**, **Our tokens**,
+  **Launch**, **Docs**, **Explorer**. The first runs `how` in place. The others navigate to the
+  configured URLs (attributes `href-tokens`, `href-ours`, `href-launch`, `href-docs`, `href-explorer`,
+  defaulting to the site's `/tokens`, `/tokens?ours=1`, `/spawn`, `/docs`, `/explorer`) after printing
+  a one-line preview with live numbers.
+- Commands, each with a blurb and a topic:
+  - `how`: the six launch steps, one per Enter or Next, each with a live figure;
+  - `ask <question>`: a keyword knowledge base about Lineage covering lineages, verification, fees,
+    compute vault, graduation, souls, GitHub identity, safety and devnet. Answers are fixed text with
+    a suggested follow-up; there is no model call;
+  - `tokens`, `new`, `ours`: top and new tokens, and the project's own tokens, as clickable rows;
+  - `watch <ticker>`: switches a paired `<lineage-screen>` to that agent;
+  - `agent <ticker>`, `stats`, `explorer <query>`, `launch`, `docs`, `screen` (tube color),
+    `fullscreen`, `clear`, `help`.
+- "Did you mean" by edit distance; command history on the arrow keys; tab completion.
+- A guide mode equivalent to the desk-pet tips, walking through the six steps with Next and Got it.
+- `Lineage.terminal.openAndRun(cmd)` for the host page, and an optional `<lineage-palette>` (Cmd K)
+  listing pages, commands and tokens.
+- "Our tokens" come from a configured list (`data-ours` on the script tag, or `GET /v1/config`
+  `official_mints`): on devnet, tLINE and the project's own agents; on mainnet, the owner's list.
+
+## Amendment 2026-10-09: explorer and docs pages
+
+- `/explorer`, a simple explorer. A search box takes a token mint, agent id, wallet, transaction
+  signature, candidate or generation id, or ticker, and resolves it to:
+  - **token**: market summary, trades, its agent;
+  - **agent**: soul, sessions, generations, vault;
+  - **wallet**: tLINE and agent-token balances, recent trades;
+  - **transaction**: decoded as a launch, trade, fee crank, graduation, epoch post or claim, with the
+    accounts involved;
+  - **candidate or generation**: links to the existing pages.
+  The home of the page is a live activity feed with filters: launches, trades, fee cranks,
+  graduations, accepted generations, verdicts and epoch posts. Every row links out to Solscan
+  (devnet). Data comes from new indexer routes (`/market/activity`, `/market/search`,
+  `/market/wallet/:addr`, `/market/tx/:sig`) plus Core. There is also `<lineage-explorer>` for embedding.
+- `/docs`, simple docs rendered from markdown in `docs/site/`. Pages: Overview, How it works, Launch
+  an agent, Verification, Fees and compute, Graduation, Souls and identity, API and embed kit, FAQ.
+  The text is written from SPEC, with no new claims and no invented numbers.
