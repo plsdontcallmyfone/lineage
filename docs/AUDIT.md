@@ -31,8 +31,8 @@ this machine and was not run (no offline advisory database).
 | A1-10 | Info | Accepted | `lineage_launch` `graduate`, `repoint_position` |
 | A1-11 | Info | Accepted | `lineage_launch` `LaunchConfig.max_debit_per_epoch`, devnet `compute_sink` |
 
-Fix commit for A1-01 to A1-05: the commit titled "audit A1: onchain fixes" (this file's first
-commit; `git log --grep "audit A1"`). Tests are in `onchain/tests/tests/`.
+Fix commit for A1-01 to A1-05: `b855b4a` ("audit A1: onchain fixes"). Tests are in
+`onchain/tests/tests/`.
 
 #### A1-01 (High): a one-unit donation froze any bounty escrow forever
 
