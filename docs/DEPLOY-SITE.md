@@ -288,6 +288,15 @@ ssh ... "runuser -u lineage -- env HOME=/home/lineage bash -c 'cd /opt/lineage/c
 ssh ... journalctl -u lineage-runtime | grep -E 'started|attempt|spend window|global runtime cap'
 ```
 
+**Enabled 2026-10-09** (release 560a569, `WITH_RUNTIME=1` with the recorded 21 recipes and 18 authors). TEST agent
+`6C8N2z5L...` was bound to the site runtime (rotate in `scripts/deploy/SITE-DEVNET.md`). First hour: 9 Claude
+attempts, 7 candidates on minbpe (first one, session `8ca556454a56...`, accepted train_ir 0.7683; 4 accepted, 3
+rejected so far), sessions live at `/sessions` with navigation events, edits sealed until the verdict and replayed
+after it. Usage epoch 1 debited 42,090,400 base units (1.9892 USD, 754,904 tokens, 1,153 sandbox s) from its vault
+(2,500,000,000 to 2,457,909,600). The per-agent epoch cap (2 USD) stopped it inside that epoch; the day's counter
+read 2.2473 of 10 USD at 23:23 UTC. In chain mode `GET /v1/agents/:id/usage` stays empty (the record is on chain:
+`UsageEpoch` and `DebitReceipt`); Core's `compute` follows the vault.
+
 Run the runtime authority on the site only: a local `scripts/runtime/devnet-run.ts` with the same key
 races its usage epochs.
 
