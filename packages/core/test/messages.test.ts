@@ -168,7 +168,7 @@ describe("messages (SPEC 12.3)", () => {
     await expectOk(msg(e, v, a.id));
   });
 
-  test("replay firewall: a replayer cannot reach the candidate's parties; a party's message to its replayer is held, and nothing differs for the sender", async () => {
+  test("replay firewall: messages between a replayer and the candidate's parties are held either way, and nothing differs for the sender", async () => {
     const e = (env = await setup({ verifiers: 5 }));
     const a = await makeAuthor(e);
     const b = await makeAuthor(e);
@@ -192,9 +192,12 @@ describe("messages (SPEC 12.3)", () => {
     expect(others.length).toBeGreaterThan(0);
     const r = replayers[0]!;
     const w = others[0]!;
-    const refused = await msg(e, r, a.id, { body: "please" });
-    expect(refused.status).toBe(403);
-    expect(refused.body.error).toBe("replaying");
+    // the replayer writes to the author: same answer as to anyone (a refusal would name the author,
+    // audit A2 OFF-02), held until the replay is over
+    const toParty = await expectOk(msg(e, r, a.id, { body: "please" }));
+    const toNonParty = await expectOk(msg(e, r, b.id, { body: "please too" }));
+    expect(Object.keys(toParty).sort()).toEqual(Object.keys(toNonParty).sort());
+    expect((await inbox(a)).received.map((m: any) => m.envelope.body)).not.toContain("please");
     const viaRef = await msg(e, r, b.id, { ref: { kind: "candidate", id: c.candidate_id } });
     expect(viaRef.status).toBe(403);
     expect(viaRef.body.error).toBe("replaying");
@@ -226,6 +229,7 @@ describe("messages (SPEC 12.3)", () => {
     expect((await candidate(e, c.candidate_id)).status).toBe("accepted");
     e.core.tick();
     expect((await inbox(r)).received.map((m: any) => m.envelope.body)).toContain("held for later");
+    expect((await inbox(a)).received.map((m: any) => m.envelope.body)).toContain("please");
     e.clock.advance(61_000);
     await expectOk(msg(e, r, a.id, { body: "now it is final" }));
   });

@@ -45,7 +45,7 @@ CREATE TABLE IF NOT EXISTS splits (
   metric TEXT NOT NULL,                -- the candidate's deterministic target metric
   sub_commitment TEXT NOT NULL,        -- subCommitment(sub patch hashes, salt)
   extra_trees INTEGER NOT NULL,
-  fee_paid TEXT NOT NULL,              -- JSON [{ agent, amount }] debited at commit
+  fee_paid TEXT NOT NULL,              -- JSON [{ agent, amount, charged? }]: due at commit, debited when final
   refunded INTEGER NOT NULL DEFAULT 0,
   subs TEXT,                           -- JSON canonical sub-patches, once revealed
   sub_hashes TEXT,                     -- JSON patch hashes
@@ -157,14 +157,14 @@ export class Split {
     // the author members pay, evenly, the lead taking the remainder; reviewers and harness members hold no compute vault
     const payers = team.members.filter((x) => x.role === "author").map((x) => x.agent);
     const each = fee / BigInt(payers.length);
+    // Checked now, debited when the candidate is final (onFinal): compute balances are public, and a
+    // debit at commit named the team's authors of an open candidate (10.7; audit A2, OFF-09).
     const paid: { agent: string; amount: string }[] = [];
     for (const p of payers) {
       const amt = p === lead ? fee - each * BigInt(payers.length - 1) : each;
       if (amt === 0n) continue;
       const bal = this.c.ledger.balance(ACC.compute(p));
       if (bal < amt) throw forbidden("insufficient_compute", `member ${p} cannot pay its part of the split's measurement cost (${amt}; compute vault holds ${bal})`);
-      this.c.ledger.transfer(ACC.compute(p), ACC.reserve, amt, "split_fee", commitId);
-      this.c.refreshAwake(p);
       paid.push({ agent: p, amount: amt.toString() });
     }
     this.db
@@ -233,8 +233,28 @@ export class Split {
     this.db.query("UPDATE split_reports SET report = ?, status = ? WHERE replay_id = ?").run(text, status, r.replay_id);
   }
 
-  /** Extra pay for a counted replay that measured the coalitions (SPEC 12.6). */
-  onCounted(r: { replay_id: string; replayer: string }, calib: Calibration) {
+  /**
+   * The counted replays whose split reports agree with each other on every coalition (the same check
+   * the measured split applies). Only those earn the extra pay: a well-formed report with made-up
+   * numbers used to earn it without measuring anything (audit A2, OFF-10). One dissenting report
+   * voids the extra for every counted replay of the candidate, its own included, so lying gains nothing.
+   */
+  agreedReports(c: CandLike, j: Judgement, recipe: Recipe, calib: Calibration): Set<string> {
+    const s = this.row(c.commit_id);
+    if (!s || !j.counted.length) return new Set();
+    const reports = j.counted.map((id) => {
+      const x = this.db.query<{ report: string | null; status: string }, [string]>("SELECT report, status FROM split_reports WHERE replay_id = ?").get(id);
+      return { replay_id: id, report: x && x.status === "revealed" && x.report ? (JSON.parse(x.report) as SplitReport) : null };
+    });
+    // the agreement check does not depend on the verdict's effect; a rejected candidate has none
+    const effect = j.effect && "ratio" in j.effect ? j.effect : ({ ratio: 1 } as never);
+    const o = measuredSplit({ recipe, calib, metric: s.metric, n: s.n, effect, reports, det_tolerance: this.c.cfg.det_tolerance });
+    return new Set(o.used);
+  }
+
+  /** Extra pay for a counted replay that measured the coalitions (SPEC 12.6), when its report agreed. */
+  onCounted(r: { replay_id: string; replayer: string }, calib: Calibration, agreed: Set<string>) {
+    if (!agreed.has(r.replay_id)) return;
     const rep = this.db.query<{ commit_id: string; report: string }, [string]>("SELECT commit_id, report FROM split_reports WHERE replay_id = ? AND status = 'revealed'").get(r.replay_id);
     if (!rep) return;
     if ((JSON.parse(rep.report) as SplitReport).compose === "skipped") return;
@@ -264,19 +284,32 @@ export class Split {
     return splitByBps(total, members.map((m, i) => ({ agent: m.agent, share_bps: o.share_bps![i]! })));
   }
 
-  /** When the candidate ends: refunds the fee if no replay was ever revealed (nobody measured anything). */
+  /**
+   * When the candidate ends: debits the fee set at commit, or nothing if no replay was ever revealed
+   * (nobody measured anything). A member whose vault holds less by now pays what it holds.
+   */
   onFinal(c: { commit_id: string; candidate_id: string | null }) {
     const s = this.row(c.commit_id);
     if (!s || s.refunded) return;
+    const due = JSON.parse(s.fee_paid) as { agent: string; amount: string; charged?: boolean }[];
+    if (due.some((x) => x.charged)) return;
     const revealed = c.candidate_id
       ? this.db.query<{ n: number }, [string]>("SELECT COUNT(*) AS n FROM replays WHERE candidate_id = ? AND audit_id IS NULL AND status IN ('revealed','invalid')").get(c.candidate_id)!.n
       : 0;
-    if (revealed > 0) return;
-    for (const p of JSON.parse(s.fee_paid) as { agent: string; amount: string }[]) {
-      this.c.ledger.transfer(ACC.reserve, ACC.compute(p.agent), BigInt(p.amount), "split_fee_refund", c.commit_id);
-      this.c.refreshAwake(p.agent);
+    if (revealed === 0) {
+      this.db.query("UPDATE splits SET refunded = 1 WHERE commit_id = ?").run(c.commit_id);
+      return;
     }
-    this.db.query("UPDATE splits SET refunded = 1 WHERE commit_id = ?").run(c.commit_id);
+    const paid = due.map((p) => {
+      const bal = this.c.ledger.balance(ACC.compute(p.agent));
+      const amt = BigInt(p.amount) < bal ? BigInt(p.amount) : bal;
+      if (amt > 0n) {
+        this.c.ledger.transfer(ACC.compute(p.agent), ACC.reserve, amt, "split_fee", c.commit_id);
+        this.c.refreshAwake(p.agent);
+      }
+      return { agent: p.agent, amount: amt.toString(), charged: true };
+    });
+    this.db.query("UPDATE splits SET fee_paid = ? WHERE commit_id = ?").run(JSON.stringify(paid), c.commit_id);
   }
 
   /** Public view: withheld while the candidate is blind to the viewer; reports only once final. */

@@ -321,7 +321,8 @@ export class Findings {
       this.c.db
         .query("INSERT INTO profile_replays (replay_id, claim_id, round, replayer, assignment_seed, pool, status, deadline, created_at) VALUES (?, ?, ?, ?, ?, ?, 'assigned', ?, ?)")
         .run(rid, cl.claim_id, cl.round, who, seed, poolJson, deadline, this.c.now());
-      this.c.emitEvent("hotspot.replay_assigned", { claim_id: cl.claim_id, replay_id: rid, replayer: who });
+      // no replayer in the public event: it is named once the claim is decided (12.8; audit A2, OFF-13)
+      this.c.emitEvent("hotspot.replay_assigned", { claim_id: cl.claim_id, replay_id: rid });
     }
     this.c.db.query("UPDATE hotspot_claims SET status = 'reproducing' WHERE claim_id = ?").run(cl.claim_id);
   }

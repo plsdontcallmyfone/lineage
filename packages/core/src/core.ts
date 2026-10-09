@@ -805,7 +805,8 @@ export class Core {
       this.mustAgent(agent);
       const amount = parseAmount(body.amount);
       // hosted runtime records are idempotent by `ref` (a crashed runtime reposts the same record)
-      const ref = body.ref === undefined || body.ref === null ? null : String(body.ref).slice(0, 200);
+      if (body.ref !== undefined && body.ref !== null && (typeof body.ref !== "string" || body.ref.length > 200)) throw bad("bad_ref", "ref is a string of at most 200 characters");
+      const ref = body.ref === undefined || body.ref === null ? null : body.ref;
       const seen = ref ? this.hosted.usageByRef(ref) : null;
       if (seen) {
         if (seen.agent_id !== agent || seen.amount !== amount.toString()) throw conflict("usage_ref_reused", "this ref was posted with a different agent or amount");
@@ -815,6 +816,9 @@ export class Core {
       if (bal < amount) throw forbidden("insufficient_compute", `compute vault holds ${bal}`);
       const tokens = body.model_tokens === undefined ? null : Number(body.model_tokens);
       const secs = body.sandbox_seconds === undefined ? null : Number(body.sandbox_seconds);
+      // NaN or negative figures went into public usage records as is (audit A2, OFF-14)
+      if ((tokens !== null && !(Number.isSafeInteger(tokens) && tokens >= 0)) || (secs !== null && !(Number.isFinite(secs) && secs >= 0)))
+        throw bad("bad_usage", "model_tokens is a non-negative integer and sandbox_seconds a non-negative number");
       const note = body.note === undefined ? null : String(body.note).slice(0, 500);
       const epoch = this.currentEpoch().n;
       const detail = body.detail === undefined || body.detail === null ? null : canonicalJson(body.detail).slice(0, 4000);
@@ -1700,7 +1704,10 @@ export class Core {
       this.split.onReplayReveal(r, body);
       this.emit("replay.revealed", { candidate_id: r.candidate_id });
       const c = this.candByCandidateId(r.candidate_id)!;
-      if (c.is_canary && !r.audit_id) this.checkCanaryReplay(c, this.replayRow(id)!);
+      // a canary's replays are judged when its group settles (finalizeCanary), like a real candidate's
+      // are paid: judging each at its reveal published units or a canary slash right after the first
+      // reveal, so a replayer that committed "accept" learned it was a canary and skipped its own
+      // reveal for a smaller penalty (audit A2, OFF-03)
       this.progress(r.grp);
       this.fillWants();
       return { replay_id: id, status: "revealed" as const };
@@ -1875,16 +1882,17 @@ export class Core {
    * regardless of the verdict (SPEC 1.1 principle 3); minority replays are slashed (SPEC 13.6).
    */
   private settleRoles(c: CandRow, grp: string, j: Judgement, resolved: boolean) {
-    const { calib } = this.lineageCtx(c);
+    const { recipe, calib } = this.lineageCtx(c);
     const counted = new Set(resolved ? j.counted : []);
     const minority = new Set(resolved ? j.minority : []);
     const envFailed = new Set(j.env_failed);
+    const splitAgreed = resolved ? this.split.agreedReports(c, j, recipe, calib) : new Set<string>();
     for (const r of this.db.query<ReplayRow, [string]>("SELECT * FROM replays WHERE grp = ? AND status = 'revealed'").all(grp)) {
       let role: string | null = null;
       if (counted.has(r.replay_id)) {
         role = "counted";
         this.awardReplay(r, calib);
-        this.split.onCounted(r, calib);
+        this.split.onCounted(r, calib, splitAgreed);
       } else if (minority.has(r.replay_id)) {
         role = "minority";
         this.slash(r.replayer, this.cfg.minority_slash_bps, "minority", r.replay_id);
@@ -2046,6 +2054,8 @@ export class Core {
   }
 
   private finalizeCanary(c: CandRow) {
+    for (const r of this.db.query<ReplayRow, [string]>("SELECT * FROM replays WHERE grp = ? AND status = 'revealed' AND role IS NULL AND audit_id IS NULL ORDER BY replay_id").all(this.candGroup(c)))
+      this.checkCanaryReplay(c, r);
     const { recipe, calib } = this.lineageCtx(c);
     const replays = this.revealedOf(this.candGroup(c));
     // its public status is what the full rule says, except it can never become a generation
@@ -2650,11 +2660,12 @@ export class Core {
       port: this.ports.view(c, blind, terminal),
       // replayer identities and results stay hidden until the candidate is final, so nobody can
       // copy, bribe or coordinate with another replayer of the same candidate
-      replays: replays.map((r) => this.replayPublic(r, terminal || r.replayer === viewer)),
+      replays: replays.map((r) => this.replayPublic(r, terminal || r.replayer === viewer, !!c.is_canary && !this.candidateRevealedAsCanary(c) && viewer !== this.adminId)),
     };
   }
 
-  private replayPublic(r: ReplayRow, full: boolean) {
+  /** `maskCanary`: a canary not yet listed shows its passing replays as `counted`, like a real rejection's (audit A2, OFF-04). */
+  private replayPublic(r: ReplayRow, full: boolean, maskCanary = false) {
     const kind = r.kind === "reference" ? "replay" : r.kind === "audit_reference" ? "audit" : r.kind;
     const base = { status: r.status, stage: r.stage, assigned_at: r.assigned_at, committed_at: r.committed_at, revealed_at: r.revealed_at };
     if (!full) return { ...base, kind };
@@ -2667,7 +2678,7 @@ export class Core {
       audit_id: r.audit_id,
       eval_parent_gen_id: r.eval_parent_gen_id,
       seed: r.seed,
-      role: r.role,
+      role: maskCanary && r.role === "canary_pass" ? "counted" : r.role,
       commitment: r.commitment,
       transcript_digest: result?.transcript_digest ?? null,
       result,

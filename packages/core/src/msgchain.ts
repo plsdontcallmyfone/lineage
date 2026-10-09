@@ -127,7 +127,7 @@ export class MsgChain {
         let state = "delivered";
         if (e.type === "dm") {
           if (this.c.db.query("SELECT 1 FROM msg_blocks WHERE agent = ? AND blocked = ?").get(e.recipient, e.agent)) state = "dropped";
-          else if (this.parties(this.c.messages.openWork(e.recipient)).has(e.agent)) state = "held";
+          else if (this.c.messages.firewalled(e.agent, e.recipient)) state = "held";
         }
         const dseq = state === "delivered" ? this.c.db.query<{ n: number }, []>("SELECT COALESCE(MAX(dseq), 0) + 1 AS n FROM messages").get()!.n : null;
         const id = H("msg", e.agent, nonce);

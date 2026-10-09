@@ -115,8 +115,9 @@ describe("measured split (SPEC 12.6)", () => {
     expect(x.r.status).toBe(200);
     // fee: rebate_per_class x cost class x 2 extra trees x quorum 2, half each
     const fee = e.cfg.rebate_per_class * BigInt(costClass(CALIB.median_eval_seconds)) * 2n * 2n;
-    expect(before.lead - e.core.ledger.balance(ACC.compute(lead.id))).toBe(fee / 2n);
-    expect(before.mate - e.core.ledger.balance(ACC.compute(mate.id))).toBe(fee / 2n);
+    // audit A2 OFF-09: nothing moves at commit (public balances would name the open candidate's team)
+    expect(e.core.ledger.balance(ACC.compute(lead.id))).toBe(before.lead);
+    expect(e.core.ledger.balance(ACC.compute(mate.id))).toBe(before.mate);
     // a reveal without the sub-patches, or with sub-patches in the wrong order, is refused
     expect((await lead.c.post(`/v1/candidates/${x.r.body.commit_id}/reveal`, { patch: x.patch, salt: x.salt })).status).toBe(400);
     const wrong = await lead.c.post(`/v1/candidates/${x.r.body.commit_id}/reveal`, { patch: x.patch, salt: x.salt, subs: [subs[1], subs[0]] });
@@ -128,6 +129,9 @@ describe("measured split (SPEC 12.6)", () => {
     await replaySplit(e, c.candidate_id, result({}, 800), () => report(850, 950));
     const fin = await candidate(e, c.candidate_id);
     expect(fin.status).toBe("accepted");
+    // the fee is debited once the candidate is final, half each
+    expect(fin.split.fee_paid.map((p: any) => p.amount)).toEqual([(fee / 2n).toString(), (fee / 2n).toString()]);
+    expect(e.core.db.query<{ n: number }, [string]>("SELECT COUNT(*) AS n FROM ledger_entries WHERE reason = 'split_fee' AND ref = ?").get(x.r.body.commit_id)!.n).toBeGreaterThan(0);
     expect(fin.split.outcome.status).toBe("measured");
     expect(fin.split.outcome.share_bps).toEqual([7500, 2500]);
     expect(fin.split.outcome.phi[0] + fin.split.outcome.phi[1]).toBeCloseTo(0.2, 12);
@@ -162,6 +166,13 @@ describe("measured split (SPEC 12.6)", () => {
     expect(fin.split.outcome.status).toBe("disagreed");
     const u = unitsOf(e, fin.gen_id);
     expect(Math.abs(Math.round(u[0]!.units * 1e6) - Math.round(u[1]!.units * 1e6))).toBeLessThanOrEqual(1);
+    // audit A2 OFF-10: a report that disagrees earns nobody the extra trees' pay (a made-up report
+    // used to be paid like a measured one); each counted replay is paid for its one tree only
+    const cls = costClass(CALIB.median_eval_seconds);
+    for (const r of fin.verdict.counted) {
+      const rows = e.core.db.query<{ units: number }, [string]>("SELECT units FROM units WHERE ref = ? AND kind = 'replay'").all(r);
+      expect(rows.map((x) => x.units)).toEqual([cls * e.cfg.u_replay]);
+    }
   }, 60_000);
 
   test("refused on a noisy metric, beyond max_split_members, without a team; refunded when never replayed", async () => {
@@ -188,7 +199,7 @@ describe("measured split (SPEC 12.6)", () => {
     const subs = [diff("ra", "src/a.rs"), diff("rb", "src/b.rs")];
     const before = e.core.ledger.balance(ACC.compute(lead.id));
     const x = await commitSplit(e, lead, mate, subs);
-    expect(e.core.ledger.balance(ACC.compute(lead.id))).toBeLessThan(before);
+    expect(e.core.ledger.balance(ACC.compute(lead.id))).toBe(before);
     e.clock.advance((e.cfg.reveal_window_s + 1) * 1000);
     e.core.tick();
     expect((await expectOk(lead.c.get(`/v1/candidates/${x.r.body.commit_id}`, true))).status).toBe("expired");

@@ -167,7 +167,11 @@ export class Hardening {
         `SELECT s.agent_id FROM shadows s WHERE s.retired_at IS NULL AND (
            s.uses >= s.max_uses OR EXISTS (
              SELECT 1 FROM candidates c WHERE c.author = s.agent_id AND (c.reason = 'canary' OR EXISTS (
-               SELECT 1 FROM replays r WHERE r.candidate_id = c.candidate_id AND r.role = 'canary_fail'))))`,
+               SELECT 1 FROM replays r WHERE r.candidate_id = c.candidate_id AND r.role = 'canary_fail'))) OR EXISTS (
+             -- a canary listed at its epoch's close names its shadow publicly: reused, the shadow's
+             -- intents and notes would announce its next canary (audit A2, OFF-07)
+             SELECT 1 FROM candidates c JOIN epochs e ON e.n = c.epoch WHERE c.author = s.agent_id AND c.is_canary = 1
+               AND c.status IN ('accepted', 'rejected', 'expired') AND e.status = 'closed'))`,
       )
       .all();
     for (const r of rows) this.db.query("UPDATE shadows SET retired_at = ? WHERE agent_id = ?").run(now, r.agent_id);

@@ -83,7 +83,9 @@ describe("canaries (SPEC 10.5)", () => {
     expect(v.status).toBe("rejected");
     expect(v.gen_id).toBeNull();
     expect(v.replays.find((r: any) => r.replayer === cheat.id).role).toBe("canary_fail");
-    expect(v.replays.find((r: any) => r.replayer === honest.id).role).toBe("canary_pass");
+    // publicly a passing canary replay reads `counted` until the canary is listed (audit A2 OFF-04)
+    expect(v.replays.find((r: any) => r.replayer === honest.id).role).toBe("counted");
+    expect((await expectOk(e.admin.c.get(`/v1/candidates/${canary.candidate_id}`, true))).replays.find((r: any) => r.replayer === honest.id).role).toBe("canary_pass");
     // the honest canary replay earned normal replay units; the cheat earned only its real replay
     const ep = await expectOk(e.anon.get("/v1/epochs/current"));
     expect(ep.units.find((u: any) => u.agent === honest.id).count).toBe(2);

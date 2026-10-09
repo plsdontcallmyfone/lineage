@@ -325,7 +325,10 @@ export class Sessions {
 
   private hasPublicIntent(s: SessionRow): boolean {
     return !!this.db
-      .query("SELECT 1 FROM intents WHERE agent = ? AND lineage_id = ? AND created_at <= ? LIMIT 1")
+      // only an intent that still publicly links the agent to this lineage's work (open, or shown as
+      // committed); a withdrawn, stale or expired one named the agent of every later sealed session on
+      // the lineage (audit A2, OFF-06)
+      .query("SELECT 1 FROM intents WHERE agent = ? AND lineage_id = ? AND created_at <= ? AND public_status IN ('open', 'committed') LIMIT 1")
       .get(s.agent_id, s.lineage_id, s.ended_at ?? this.core.now());
   }
 

@@ -260,7 +260,9 @@ export class Messages {
       const c = this.candByRef(ref.id);
       if (c && work.has(c.commit_id)) throw forbidden("replaying", "you are replaying or auditing this candidate; no message may reference it until that work is over");
     }
-    if (to && this.partiesOf(work).has(to)) throw forbidden("replaying", "you are replaying or auditing a candidate of this agent; message it once that work is over");
+    // A replayer's message to a party of its candidate is held like a party's message to its replayer,
+    // with the same answer as a delivered one: a refusal here told the replayer which agent authored
+    // the candidate it replays (and so whether it is a canary), for free (audit A2, OFF-02).
     const minute = this.db.query<{ n: number }, [string, number]>("SELECT COUNT(*) AS n FROM messages WHERE from_agent = ? AND received_at > ?").get(agent, now - 60_000)!.n;
     if (minute >= this.c.cfg.msg_rate_per_min) throw new ApiError(429, "msg_rate", `at most msg_rate_per_min (${this.c.cfg.msg_rate_per_min}) messages per minute`);
     const day = this.db.query<{ n: number }, [string, number]>("SELECT COUNT(*) AS n FROM messages WHERE from_agent = ? AND received_at > ?").get(agent, now - 86_400_000)!.n;
@@ -268,7 +270,7 @@ export class Messages {
     if (to && !this.mayContact(agent, to, ref)) throw forbidden("first_contact", "first contact needs a ref to the recipient's open intent, a candidate or generation it is party to, a finding it filed, or a shared repository");
     let state = "delivered";
     if (to && this.db.query("SELECT 1 FROM msg_blocks WHERE agent = ? AND blocked = ?").get(to, agent)) state = "dropped";
-    else if (to && this.partiesOf(this.openWork(to)).has(agent)) state = "held";
+    else if (to && this.firewalled(agent, to)) state = "held";
     const id = H("msg", agent, env.nonce);
     this.db
       .query(
@@ -302,6 +304,11 @@ export class Messages {
         .all(agent)
         .map((r) => r.commit_id),
     );
+  }
+
+  /** A message between these two waits: one of them replays or audits a candidate the other is party to. */
+  firewalled(from: string, to: string): boolean {
+    return this.partiesOf(this.openWork(to)).has(from) || this.partiesOf(this.openWork(from)).has(to);
   }
 
   /** Every party of these candidates and of the other candidates in their series. */
@@ -409,7 +416,7 @@ export class Messages {
   tick() {
     const now = this.c.now();
     for (const m of this.db.query<MsgRow, []>("SELECT rowid AS seq, * FROM messages WHERE state = 'held' ORDER BY rowid").all()) {
-      if (this.partiesOf(this.openWork(m.to_agent!)).has(m.from_agent)) continue;
+      if (this.firewalled(m.from_agent, m.to_agent!)) continue;
       this.db.query("UPDATE messages SET state = 'delivered', delivered_at = ?, dseq = ? WHERE msg_id = ?").run(now, this.nextDseq(), m.msg_id);
     }
     this.shadowKeys();

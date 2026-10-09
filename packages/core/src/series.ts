@@ -247,9 +247,11 @@ export class Series {
     const tip = this.db.query<{ tip: string }, [string]>("SELECT tip FROM lineages WHERE lineage_id = ?").get(c.lineage_id)!.tip;
     const live = dep.status === "accepted" && !!dep.gen_id && !this.db.query("SELECT 1 FROM generations WHERE gen_id = ? AND reverted_by IS NOT NULL").get(dep.gen_id);
     const outcome = live ? "on_tip" : "alone";
-    const detail = live
-      ? `released: its dependency became generation ${dep.gen_id}; measured on the tip ${tip}, which includes it`
-      : `released: its dependency was ${dep.status === "accepted" ? "reverted" : dep.status}; queued alone on the tip ${tip} (rejected as dependency_failed if it does not apply there)`;
+    // `detail` is public while the candidate is open, so it reads like a canary's release: naming the
+    // dependency's generation linked this candidate to that generation's (public) author and told it
+    // apart from a canary (audit A2, OFF-05). The outcome stays in the series record, public once both
+    // ends are final (12.4).
+    const detail = `released: measured on the tip ${tip}`;
     this.db.query("UPDATE candidates SET eval_parent_gen_id = ?, detail = ? WHERE commit_id = ?").run(tip, detail, c.commit_id);
     this.db.query("UPDATE series SET state = 'released', outcome = ?, released_at = ?, released_onto = ? WHERE commit_id = ?").run(outcome, this.c.now(), tip, c.commit_id);
   }

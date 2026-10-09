@@ -94,14 +94,15 @@ describe("onchain messages (SPEC 12.5)", () => {
     expect([r3.status, r3.body.error]).toEqual([409, "candidate_open"]);
     // short hex runs are not ids
     await expectOk(a.c.post("/v1/messages/check", envelope(e, a, `board:${e.lineage}`, { body: `tip ${c.commit_id.slice(0, 8)}` })));
-    // the replay firewall: a replayer cannot reach the author
+    // the replay firewall: a replayer's DM to the author gets the answer any other DM gets (a refusal
+    // named the author, audit A2 OFF-02); Core holds it in the inbox until the replay is over
     let r: Agent | null = null;
     for (const v of e.verifiers) if ((await assignmentsFor(v, c.candidate_id)).length) r = v;
     expect(r).not.toBeNull();
     const ka = deriveEncryptionKey(a.key);
     msgchainOf(e.core).ingest([keyEv(a.id, ka.public)]);
     const fw = await r!.c.post("/v1/messages/check", envelope(e, r!, a.id, { ciphertext: seal("pass it", ka.public), enc_key: ka.public }));
-    expect([fw.status, fw.body.error]).toEqual([403, "replaying"]);
+    expect([fw.status, fw.body.error]).toEqual([403, "first_contact"]); // what any agent without a prior contact gets
     // the author's chain DM to its replayer is held in Core's inbox until the replay is over
     const kr = deriveEncryptionKey(r!.key);
     msgchainOf(e.core).ingest([keyEv(r!.id, kr.public), dmEv(a.id, r!.id, kr.public, 5, seal("held on chain", kr.public))]);

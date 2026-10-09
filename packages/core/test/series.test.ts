@@ -109,6 +109,11 @@ describe("stacked series (SPEC 12.4)", () => {
     expect(queued.eval_parent_gen_id).toBe(fa.gen_id);
     expect(queued.series.outcome).toBe("on_tip");
     expect(queued.series.released_onto).toBe(fa.gen_id);
+    // audit A2 OFF-05: the public detail of the open B reads like a canary's release; it no longer
+    // says its dependency became a generation (linking B to that generation's author)
+    const pubB = await candidate(e, rb.candidate_id);
+    expect(pubB.detail).toBe(`released: measured on the tip ${fa.gen_id}`);
+    expect(pubB.detail).not.toContain("dependency");
     // every replay of B is measured on the tip that contains A
     for (const v of e.verifiers) for (const asg of await assignmentsFor(v, rb.candidate_id)) expect(asg.parent_series.map((p: any) => p.gen_id)).toContain(fa.gen_id);
     await runReplays(e, rb.candidate_id, honest(result({}, 900)));

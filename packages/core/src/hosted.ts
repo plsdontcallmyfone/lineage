@@ -103,6 +103,10 @@ export class Hosted {
   submit(caller: string, id: string, body: unknown) {
     const c = this.cand(id);
     if (!c) throw notFound("candidate");
+    // Only the author or the runtime authority may submit, and that is checked before anything is
+    // compared with the author: otherwise "record.agent is not this candidate's author" (400) versus
+    // a later 403 answered "is X the author of this open candidate?" for anyone (audit A2, OFF-01).
+    if (caller !== c.author && (!this.c.runtimeId || caller !== this.c.runtimeId)) throw forbidden("not_author", "provenance is submitted by the candidate's author or the runtime authority");
     if (!isObj(body)) throw bad("bad_body", "object expected");
     const record = body.record;
     const err = checkProvenanceRecord(record);

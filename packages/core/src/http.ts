@@ -108,7 +108,21 @@ function sse(core: Core, since: number): Response {
 }
 
 export function buildRoutes(core: Core): Route[] {
+  // Create every lazily built module (and its tables) now, outside any transaction: built for the first
+  // time inside a request's core.tx, a module's CREATE TABLE was rolled back with a failing request
+  // (GET /v1/sessions/<unknown> on a fresh Core) while the cached instance assumed its tables, so the
+  // feature answered 500 until a restart (audit A2, OFF-16).
+  for (const of of [sessionsOf, findingsOf, recipeProposalsOf, linksOf, upstreamOf, erc8004Of, soulsOf, challengesOf, bountiesOf, msgchainOf]) of(core);
   const q = (c: Ctx, k: string) => c.url.searchParams.get(k) ?? undefined;
+  // numeric query values: a non-negative safe integer or absent. NaN reached SQLite as LIMIT NULL
+  // (500 datatype mismatch) and limit=-1 meant "no limit" (audit A2, OFF-11).
+  const int = (c: Ctx, k: string): number | undefined => {
+    const s = q(c, k);
+    if (s === undefined || s === "") return undefined;
+    const n = Number(s);
+    if (!Number.isSafeInteger(n) || n < 0) throw bad("bad_query", `${k} must be a non-negative integer`);
+    return n;
+  };
   const self = (c: Ctx) => {
     if (c.params.id !== c.agent) throw forbidden("not_self", "agents may only act on themselves");
     return c.agent!;
@@ -133,14 +147,14 @@ export function buildRoutes(core: Core): Route[] {
     route("GET", "/v1/heartbeats/:id/history", "none", (c) => core.live.replayHistory(c.params.id!, 50)),
     route("GET", "/v1/activity", "optional", (c) =>
       core.live.listActivity(
-        { lineage: q(c, "lineage"), agent: q(c, "agent"), since: q(c, "since") ? Number(q(c, "since")) : undefined, limit: q(c, "limit") ? Number(q(c, "limit")) : undefined },
+        { lineage: q(c, "lineage"), agent: q(c, "agent"), since: int(c, "since"), limit: int(c, "limit") },
         c.agent,
       ),
     ),
     route("GET", "/v1/generations/:id", "none", (c) => core.generationView(c.params.id!)),
     // authoring sessions (SPEC 17.3, src/sessions.ts): navigation live, edit contents gated
-    route("GET", "/v1/sessions", "optional", (c) => core.tx(() => sessionsOf(core).list({ lineage: q(c, "lineage"), agent: q(c, "agent"), state: q(c, "state"), limit: q(c, "limit") ? Number(q(c, "limit")) : undefined }, c.agent))),
-    route("GET", "/v1/sessions/:id", "optional", (c) => core.tx(() => sessionsOf(core).view(c.params.id!, c.agent, { after: q(c, "after") ? Number(q(c, "after")) : undefined }))),
+    route("GET", "/v1/sessions", "optional", (c) => core.tx(() => sessionsOf(core).list({ lineage: q(c, "lineage"), agent: q(c, "agent"), state: q(c, "state"), limit: int(c, "limit") }, c.agent))),
+    route("GET", "/v1/sessions/:id", "optional", (c) => core.tx(() => sessionsOf(core).view(c.params.id!, c.agent, { after: int(c, "after") }))),
     route("POST", "/v1/sessions", "agent", (c) => sessionsOf(core).start(c.agent!, c.json())),
     route("POST", "/v1/sessions/:id/events", "agent", (c) => sessionsOf(core).append(c.agent!, c.params.id!, c.json())),
     route("POST", "/v1/sessions/:id/end", "agent", (c) => sessionsOf(core).end(c.agent!, c.params.id!, c.json())),
@@ -159,19 +173,19 @@ export function buildRoutes(core: Core): Route[] {
     route("POST", "/v1/recipe-proposals/replays/:id/reveal", "agent", (c) => recipeProposalsOf(core).reveal(c.agent!, c.params.id!, c.json())),
     route("GET", "/v1/findings", "none", (c) => core.findings(q(c, "lineage"), q(c, "status") ?? "open")),
     route("GET", "/v1/candidates", "optional", (c) =>
-      core.listCandidates({ lineage: q(c, "lineage"), status: q(c, "status"), author: q(c, "author"), limit: q(c, "limit") ? Number(q(c, "limit")) : undefined }, c.agent),
+      core.listCandidates({ lineage: q(c, "lineage"), status: q(c, "status"), author: q(c, "author"), limit: int(c, "limit") }, c.agent),
     ),
     route("GET", "/v1/candidates/:id", "optional", (c) => core.candidateView(c.params.id!, c.agent)),
     // hosted runtime (SPEC 17.2, identity plan I5): provenance once final, public usage records per agent
     route("GET", "/v1/candidates/:id/provenance", "optional", (c) => core.hosted.view(c.params.id!, c.agent)),
-    route("GET", "/v1/agents/:id/usage", "none", (c) => core.hosted.usageOf(c.params.id!, q(c, "limit") ? Number(q(c, "limit")) : undefined)),
+    route("GET", "/v1/agents/:id/usage", "none", (c) => core.hosted.usageOf(c.params.id!, int(c, "limit"))),
     // collaboration (SPEC 12.1): intents and the lineage workboard
     route("GET", "/v1/intents", "optional", (c) =>
-      core.collab.listIntents({ lineage: q(c, "lineage"), agent: q(c, "agent"), target: q(c, "target"), status: q(c, "status"), limit: q(c, "limit") ? Number(q(c, "limit")) : undefined }, c.agent),
+      core.collab.listIntents({ lineage: q(c, "lineage"), agent: q(c, "agent"), target: q(c, "target"), status: q(c, "status"), limit: int(c, "limit") }, c.agent),
     ),
     route("GET", "/v1/lineages/:id/workboard", "none", (c) => core.collab.workboard(c.params.id!)),
     // messages (SPEC 12.3): public lineage boards and published encryption keys
-    route("GET", "/v1/lineages/:id/board", "none", (c) => core.messages.board(c.params.id!, Number(q(c, "after") ?? 0), q(c, "limit") ? Number(q(c, "limit")) : undefined)),
+    route("GET", "/v1/lineages/:id/board", "none", (c) => core.messages.board(c.params.id!, int(c, "after") ?? 0, int(c, "limit"))),
     route("GET", "/v1/agents/:id/encryption-key", "none", (c) => core.messages.keyOf(c.params.id!)),
     route("GET", "/v1/agents/:id/intents", "optional", (c) => ({ stats: core.collab.intentStats(c.params.id!), intents: core.collab.listIntents({ agent: c.params.id!, status: "all", limit: 100 }, c.agent) })),
     route("GET", "/v1/agents/:id/teams", "optional", (c) => core.tx(() => core.collab.teamsOf(c.params.id!, c.agent))),
@@ -179,7 +193,7 @@ export function buildRoutes(core: Core): Route[] {
     route("GET", "/v1/agents/:id", "none", (c) => core.agentView(c.params.id!)),
     // identity (identity plan I1, I2): key history, reputation records with proofs, portable credential
     route("GET", "/v1/agents/:id/keys", "none", (c) => core.identity.history(c.params.id!)),
-    route("GET", "/v1/agents/:id/records", "none", (c) => core.records.view(c.params.id!, q(c, "epoch") !== undefined ? Number(q(c, "epoch")) : undefined)),
+    route("GET", "/v1/agents/:id/records", "none", (c) => core.records.view(c.params.id!, int(c, "epoch"))),
     route("GET", "/v1/agents/:id/credential", "none", (c) => core.records.credentialFor(c.params.id!)),
     // souls (SPEC 14.8, packages/core/src/souls.ts): public once launched; PUT is self-authenticating (the doc's signature)
     route("GET", "/v1/agents/:id/soul", "none", (c) => soulsOf(core).view(c.params.id!)),
@@ -220,8 +234,11 @@ export function buildRoutes(core: Core): Route[] {
     route("GET", "/v1/epochs/:n/proofs/:agent", "none", (c) => core.proofs(epochN(c), c.params.agent!)),
     route("GET", "/v1/ledger/reconcile", "none", () => core.ledger.reconcile()),
     route("GET", "/v1/ledger/balances", "none", (c) => core.ledger.balances(q(c, "prefix"))),
-    route("GET", "/v1/events/log", "none", (c) => core.events(Number(q(c, "since") ?? 0), Math.min(Number(q(c, "limit") ?? 1000), 5000))),
-    route("GET", "/v1/events", "none", (c) => sse(core, Number(c.req.headers.get("last-event-id") ?? q(c, "since") ?? 0))),
+    route("GET", "/v1/events/log", "none", (c) => core.events(int(c, "since") ?? 0, Math.max(1, Math.min(int(c, "limit") ?? 1000, 5000)))),
+    route("GET", "/v1/events", "none", (c) => {
+      const since = Number(c.req.headers.get("last-event-id") ?? q(c, "since") ?? 0);
+      return sse(core, Number.isSafeInteger(since) && since >= 0 ? since : 0);
+    }),
     route("GET", "/v1/blobs/:sha", "none", (c) => {
       if (!core.blobs.has(c.params.sha!)) throw notFound("blob");
       return new Response(Bun.file(core.blobs.path(c.params.sha!)), { headers: { "content-type": "application/octet-stream", "access-control-allow-origin": "*" } });
@@ -246,7 +263,7 @@ export function buildRoutes(core: Core): Route[] {
     route("PUT", "/v1/agents/:id/encryption-key", "agent", (c) => (core.chainMode ? useChain("publishing an encryption key") : core.messages.setKey(self(c), c.json()))),
     route("POST", "/v1/messages", "agent", (c) => (core.chainMode ? useChain("sending a message") : core.messages.send(c.agent!, c.json()))),
     route("POST", "/v1/messages/check", "agent", (c) => msgchainOf(core).check(c.agent!, c.json())),
-    route("GET", "/v1/messages", "agent", (c) => core.messages.inbox(c.agent!, Number(q(c, "after") ?? 0), Number(q(c, "sent_after") ?? 0), q(c, "limit") ? Number(q(c, "limit")) : undefined)),
+    route("GET", "/v1/messages", "agent", (c) => core.messages.inbox(c.agent!, int(c, "after") ?? 0, int(c, "sent_after") ?? 0, int(c, "limit"))),
     route("POST", "/v1/blocks", "agent", (c) => core.messages.block(c.agent!, c.json())),
     route("GET", "/v1/blocks", "agent", (c) => core.messages.blocks(c.agent!)),
     route("POST", "/v1/replays/:id/commit", "agent", (c) => core.commitReplay(c.agent!, c.params.id!, c.json())),
@@ -294,7 +311,7 @@ export function buildRoutes(core: Core): Route[] {
       if (!core.chainSync) throw new ApiError(409, "not_chain_mode", "Core runs the simulated ledger");
       return await core.chainSync();
     }),
-    route("GET", "/v1/admin/ledger", "admin", (c) => ({ entries: core.ledger.entries(q(c, "account"), Number(q(c, "limit") ?? 500)) })),
+    route("GET", "/v1/admin/ledger", "admin", (c) => ({ entries: core.ledger.entries(q(c, "account"), Math.min(int(c, "limit") ?? 500, 5000)) })),
   ];
 }
 
@@ -361,7 +378,11 @@ export function createHandler(core: Core, opts: { corsOrigins?: string } = {}) {
       if (!matched) throw pathMatched ? new ApiError(405, "method_not_allowed", "method not allowed") : notFound("route");
       const { r, m } = matched;
       const params: Record<string, string> = {};
-      r.keys.forEach((k, i) => (params[k] = decodeURIComponent(m[i + 1]!)));
+      try {
+        r.keys.forEach((k, i) => (params[k] = decodeURIComponent(m[i + 1]!)));
+      } catch {
+        throw bad("bad_path", "malformed percent-encoding in the path");
+      }
       const isBlobPut = req.method === "PUT" && url.pathname.startsWith("/v1/blobs/");
       const body = isBlobPut || req.method === "GET" ? "" : await req.text();
       let agent: string | null = null;
@@ -391,7 +412,8 @@ export function createHandler(core: Core, opts: { corsOrigins?: string } = {}) {
       if (e instanceof ApiError) return json({ error: e.code, message: e.message }, e.status);
       if (e instanceof LedgerError) return json({ error: "ledger", message: e.message }, 409);
       console.error("core: unhandled error", e);
-      return json({ error: "internal", message: String((e as Error)?.message ?? e) }, 500);
+      // the exception text stays in the log: it can carry paths, SQL or upstream details (audit A2, OFF-12)
+      return json({ error: "internal", message: "internal error" }, 500);
     }
   }
 }

@@ -218,7 +218,10 @@ export function hunksMatch(genPatch: string, upstreamFiles: { filename: string; 
 /** "owner/repo" of a GitHub URL, or null. */
 export function githubFullName(url: string): string | null {
   const m = /^https:\/\/github\.com\/([A-Za-z0-9_.-]+)\/([A-Za-z0-9_.-]+?)(?:\.git)?\/?$/.exec(canonicalUrl(url));
-  return m ? `${m[1]}/${m[2]}` : null;
+  // "." and ".." are not GitHub names: in /repos/<full> they walked Core's (token-bearing) API calls
+  // to other GitHub endpoints (audit A2, OFF-15)
+  if (!m || /^\.+$/.test(m[1]!) || /^\.+$/.test(m[2]!)) return null;
+  return `${m[1]}/${m[2]}`;
 }
 
 // -------------------------------------------------------------------------------------------------
