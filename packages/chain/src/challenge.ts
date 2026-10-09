@@ -98,7 +98,9 @@ export const challenge = {
     return {
       programId: P,
       keys: [r(pd.config()), w(pd.challengeConfig()), w(pd.challenge(a.kind, subjectBytes(a.subject))), w(pd.challengeGate(a.epoch)), w(a.refundToken),
-        r(a.mint), r(pd.vaultAuthority()), w(pd.challengeVault()), r(a.tokenProgram ?? TOKEN_PROGRAM)],
+        r(a.mint), r(pd.vaultAuthority()), w(pd.challengeVault()), r(a.tokenProgram ?? TOKEN_PROGRAM),
+        // the reserve takes the bond when the refund account was closed, frozen or memo-locked (audit A1-02)
+        w(pd.reserve())],
       data: data("expire_challenge").done(),
     };
   },
@@ -113,10 +115,15 @@ export interface ChallengeConfig {
   resolveTimeoutS: bigint;
   paused: boolean;
   open: number;
+  /** Upheld rewards are capped at the registry's `max_rebate_per_epoch` per `epoch_length_s` window (audit A1-05): the window index and what it paid. */
+  rewardWindow: bigint;
+  rewardsInWindow: bigint;
 }
 export function decodeChallengeConfig(d: Uint8Array): ChallengeConfig {
   const rd = new Reader(d).expect("ChallengeConfig");
-  return { windowS: rd.i64(), bond: rd.u64(), reward: rd.u64(), resolveTimeoutS: rd.i64(), paused: rd.bool(), open: rd.u32() };
+  const c = { windowS: rd.i64(), bond: rd.u64(), reward: rd.u64(), resolveTimeoutS: rd.i64(), paused: rd.bool(), open: rd.u32() };
+  rd.u8(); // bump
+  return { ...c, rewardWindow: rd.u64(), rewardsInWindow: rd.u64() };
 }
 
 export interface ChallengeAccount {

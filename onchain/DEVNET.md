@@ -559,3 +559,71 @@ Devnet transactions sent through the token page's trade box (apps/web/wallet/tra
 | 2026-10-09 16:18:42 | sell 474.548831 TMBPE on DBC through /tokens/3AvZ77ZdVPx7yxtqA4UP11DoaPdjdgP3AUbkSnidsmY4 (test wallet CmzfSr...) | 5001 | `8231hBSVyjPMcepDz25Gx8C56M12MZAQ5wsnDeVxxnK5eo3zMqAe8SsJQyfjUXrZngcjmFb2UmNs9MnCC6N6JdB` |
 | 2026-10-09 16:20:03 | buy 50 tLINE of TGRAD on DAMM v2 through /tokens/AbBT1Mh3mQJgMfVVfKj8zUZhD4mLw5NqbJptFUacb9Zz (test wallet CmzfSr...) | 5001 | `55ngnNo2v7myXwEmRdjq5WcdigPsKwiaw7eopwDyYdB1zKA41xWZBRBbNdMEdL42fA18vFX8kF9ZFYF8Qv6dx91k` |
 | 2026-10-09 16:21:41 | sell 47.109521 TGRAD on DAMM v2 through /tokens/AbBT1Mh3mQJgMfVVfKj8zUZhD4mLw5NqbJptFUacb9Zz (test wallet CmzfSr...) | 5001 | `4vHTNAogPRon4YKvDe5k3bUAzpwRMpTF5rFFA1rCjgfNGixwpWqeXwjZH11MFi3K6JRc5pAp1SyGknZ6A7AoFXPk` |
+
+## Graduation e2e run 20261009205210 (launchpad L1, scripts/devnet/graduation-e2e.ts)
+
+Outcome: PASS; checks 16/16.
+
+- Preconditions: deployer CVEZWyUBoNb6Zkte3qa7JDu5TBV4wTH6wMw4pLodnDih 67.405428370 SOL and 972572482 tLINE; DBC config AEcaMdhK3PSqPDq2rrXZMoKsCPCTVTMdqJXaT34mWWGw migration threshold 15999999999792 base units, migration option 1, partner/creator permanent lock 100/0%; DBC pool authority holds 99.226635387 SOL (it lends migration rent); rent: DAMM pool 0.006299200, position 0.002722880 SOL.
+- Curve fill: the deployer paid 16494845360611 tLINE base units in one PartialFill buy (quote reserve 15999999999792, partner fee 395876288656).
+- Migration positions: 63uLRCk7eW6HkeDSkrVg67RS7Cz8eCBhNxo52jU7k6Ce (NFT E1HZUcgnEkECqRUC9zb5UpaU8ZBoFEmVSFZsjtM7Xmwc, locked 329325419000909866030255248650428, unlocked 0).
+- crank_pool_fees (migration position): compute vault 4zXZ6rwKbSiLTpsBykpJq9HhKKwGkCqxLcCtzvQZfhdT 277113402059 -> 326374344523 base units (+49260942464), treasury +21111832485, agent-token fees burned 0.
+- crank_pool_fees (repointed position): compute vault 4zXZ6rwKbSiLTpsBykpJq9HhKKwGkCqxLcCtzvQZfhdT 326374344523 -> 340117655127 base units (+13743310604), treasury +5889990259, agent-token fees burned 0.
+- Token mint DrJpovn9yFZjNYkuPz7PHX3qWWcYTgwrr3v8hHAHjoWn; agent GtRcPskRHBgwdLZUiJqwLaqW8XcQCKt99fgUtfXUXk2D; DBC pool 5QEVSMQzNsFgk47JgQBhivqs4PPPy1KHY8pvcZFHvN8z; DAMM v2 pool 8TZv7GtbhHas8CDx4pebxZo6UAVCfpsfJCVsBB3Er4E; migration position 63uLRCk7eW6HkeDSkrVg67RS7Cz8eCBhNxo52jU7k6Ce; repointed position 9mCYAdTaja5bEuuWw4vBeKGAFFdnx8zkjWGWpZFepzus; compute vault 4zXZ6rwKbSiLTpsBykpJq9HhKKwGkCqxLcCtzvQZfhdT ends at 340117655127 base units (to_compute 340117655127, to_protocol 145764709341).
+- Deployer spent 0.042965040 SOL and 26281388263497 tLINE base units (curve fill, DAMM trades, locked liquidity); it still holds 50193807575216 agent-token base units.
+
+| When (UTC) | Step | What | Fee | Signature |
+|---|---|---|---|---|
+| 2026-10-09 20:52:13 | L1 | launch_agent: TEST graduation agent GtRcPskRHBgwdLZUiJqwLaqW8XcQCKt99fgUtfXUXk2D on https://github.com/karpathy/minbpe, agent mint DrJpovn9yFZjNYkuPz7PHX3qWWcYTgwrr3v8hHAHjoWn, launcher = deployer | 15000 | `4GsEzgMVhuW5KGMn8rC4ruqsGDZckC8vTZLohypVEYyKk1HD7a23oXAQYA8Ur8sNLQQMqu4MrHH22wkGwo8282Ss` |
+| 2026-10-09 20:52:16 | L1 | create the launch authority's and the deployer's agent-token ATAs | 5000 | `36JiSjRZotzHjUhwYeZrBMzTaurgpDK5u1Kd9J8UJiErso32Dwyc4GcGgfrbrcrdSH6kyZ694ZTnSZK91pYoqtZT` |
+| 2026-10-09 20:52:17 | L1 | fill the curve: deployer buys with up to 17599999999771 tLINE base units (PartialFill, stops at the threshold) | 5000 | `3GPBLo2vhf4Vv2F2hVeMCqGrbK1NyiNYSCkpDyNz7zqJfLpzEFVBBR9KuNdF79Eo6reGj1YgcPcGoJ8Qoq2Co2V9` |
+| 2026-10-09 20:52:20 | L1 | crank_fees: curve partner fee 395876288656 base units | 5000 | `52q3phXHAWQYATkBZNivTPqnkxGyny8hjQMpYwvkjuvBhf8GCAA4qKeEt3Ze3vJhDhwJ7DAvcZeLVkj5agr8rLiS` |
+| 2026-10-09 20:52:22 | L1 | Meteora DBC migration_damm_v2: DAMM v2 pool 8TZv7GtbhHas8CDx4pebxZo6UAVCfpsfJCVsBB3Er4E on config A8gMrEPJkacWkcb3DGwtJwTe16HktSEfvwtuDh2MCtck | 15000 | `4QaZJ1K7AaPiSvLvexkAdtEcFbjR2tK9zFgNpXuNfUKQUYRnzmsMrxei6SZeG3Fe4BacQM2PnnkHs6xSaSDqgcto` |
+| 2026-10-09 20:52:25 | L1 | graduate: DAMM v2 pool 8TZv7GtbhHas8CDx4pebxZo6UAVCfpsfJCVsBB3Er4E, migration position 63uLRCk7eW6HkeDSkrVg67RS7Cz8eCBhNxo52jU7k6Ce | 5000 | `4nmHoG1DEZ2K46jqfLbwpvi4KjfKevocvZhmHNB7qnBhBfnBn15bRSw54RU9f3VR4DMbBiPRXJyTirgmK5Bnstv2` |
+| 2026-10-09 20:52:26 | L1 | DAMM v2 trade (migration position): deployer buys with 200000 tLINE | 5000 | `3HNKrU9niUR4XmWtMFuD4t6syUSkpbd16KfjPaqJVYaGR3zdpS1JknYZtot9fpuKWkp9XMNexoAjBqHbZP7Uf1U7` |
+| 2026-10-09 20:52:28 | L1 | DAMM v2 trade (migration position): deployer sells 4011979457935 agent-token base units | 5000 | `4yzVGU7mmc8sq2sBKi6knx5qYKM2bui3dn8sgJJmex9DyycPfPZ733K5H3tYYAFYYJ5FRRwRStUhbgTYxzDC33eZ` |
+| 2026-10-09 20:52:34 | L1 | crank_pool_fees (migration position): position 63uLRCk7eW6HkeDSkrVg67RS7Cz8eCBhNxo52jU7k6Ce into compute vault 4zXZ6rwKbSiLTpsBykpJq9HhKKwGkCqxLcCtzvQZfhdT | 5000 | `4dygazaY8gV2AGpHpTd2Syadfe8bMr2LpTSSffRMHyjXTBXZ6XJnPh6k75828U3HDW4iDVoM8LRzm59GB9hqAZPd` |
+| 2026-10-09 20:52:37 | L1 | DAMM v2 create_position 9mCYAdTaja5bEuuWw4vBeKGAFFdnx8zkjWGWpZFepzus (deployer owns the NFT) | 10000 | `5ZdEeBcCNBbGMiDp1vKDRTkkAJ6MQcf8ANAArRpNvKNuhPjRoA7XB5sbF7YFZYSZ4vuKx7nxmSZUWgPDqX8VQhPp` |
+| 2026-10-09 20:52:39 | L1 | add_liquidity 329325419000909866030255248650429 (migration position locked + 1), permanent_lock_position, hand the NFT account to the launch authority | 5000 | `4x6DLGv72LKGoD5tYpb9qCC28fXFsKoUKEGsVPA6VKCYMFT1ryFucsdST8hY9zr23qgoHBSMLTPMuNfmGuaMK7JZ` |
+| 2026-10-09 20:52:41 | L1 | repoint_position: 63uLRCk7eW6HkeDSkrVg67RS7Cz8eCBhNxo52jU7k6Ce -> 9mCYAdTaja5bEuuWw4vBeKGAFFdnx8zkjWGWpZFepzus | 5000 | `3ztY6g6dqEHfa272c8c7sxhEEmyYpQJzNynfQ5cixykPEbcP3gggfHWmkUXQCz4MZ1anJjHpwCYvN5oD1iztWeYt` |
+| 2026-10-09 20:52:43 | L1 | DAMM v2 trade (repointed position): deployer buys with 200000 tLINE | 5000 | `4UQbHbx5ZQo279MwjcHK1vPGDn3H4LjH8EwSfEAWAUbBYhHBrHvtQwtDDf2gT9bDhQJB47jjxcTFnHtguxCGGNUH` |
+| 2026-10-09 20:52:45 | L1 | DAMM v2 trade (repointed position): deployer sells 2641779346064 agent-token base units | 5000 | `j8TvoVg8ohABB86YZEdN8ycncbag8SBsJztBdySAZkUWFQYB7zLvVAJA4YrURAwFQQzbRQGyEShsGPdvKq4VPwh` |
+| 2026-10-09 20:52:47 | L1 | crank_pool_fees (repointed position): position 9mCYAdTaja5bEuuWw4vBeKGAFFdnx8zkjWGWpZFepzus into compute vault 4zXZ6rwKbSiLTpsBykpJq9HhKKwGkCqxLcCtzvQZfhdT | 5000 | `5jg2ac5FgAzucrjAvb161EteY2T45bC2ZtCwvy1y6fQQr4tXNuoYDzcfR1oVMcu4KiY3bfSeKE1pstiPE2wSfu48` |
+
+## Internal audit A1 upgrade (2026-10-09, audit: onchain lane A1)
+
+`lineage_registry` and `lineage_launch` upgraded in place with the fixes of the internal onchain audit (docs/AUDIT.md, "Onchain": A1-01 to A1-05). No account changed size: `ChallengeConfig` took two `u64` fields out of its 32 reserved bytes (zero on the live account, which is the right start), so nothing was migrated. `lineage_msg` had no finding and was not upgraded. Every command passed `-u <keyed devnet RPC> -k ~/.config/lineage/devnet-deployer.json` (and `--upgrade-authority` the same file); the machine-wide `solana config` was not touched. Program id keypairs backed up to `~/.config/lineage/program-keys-a1/` before any build (identical to `keys-backup/`).
+
+| Program | `.so` bytes | sha256 (built; devnet dump equal) | Extended by | Extend sig | Upgrade sig |
+|---|---|---|---|---|---|
+| lineage_registry | 723,776 (was 717,760, dump before `770d56ba...24a0`) | `8f3861a414b6b13e6acf3d13f2222502f9c1d2b8f04485f880b1231b6fa62b32` (ProgramData now 728,000 bytes: the first 723,776 hash equal, the rest zero) | 10,240 bytes, the loader's minimum (0.05266944 SOL rent; 6,016 were needed and were refused as below the minimum) | `3bVHwJ6B9saPRn4TE9F69DKi7yfJVoaLndaj5NToveQaKepPtuoKMFbxtW2pzC1Wap5TkFFaPVnrBnZnm9V4um19` | `2vUwJdCkh6SDm9yivLxzHe9bGzSRsGv3TsfnDQuAxj85Znx6cXasTgBBgXQiYYWT6uDDXWkMhGtebb5MjpVSd1ey` |
+| lineage_launch | 744,448 (was 722,768, dump before `2bf5fb61...9b34`) | `762a18d9942316140cca508dd3b3b49f062c5ed19c174ada67d9b15dbd9e30b0` | 21,680 bytes (0.11078464 SOL rent) | `62dc3RmVNGCjN87o1qzsjpzEJ2VEojQ3NFFusGhAEWpCL1x3oq9zVjssoNQnvzZX54iL77WoeVmNqVfGGRSRnzLC` | `2atRwyv2jidB17gn1ztUgLByK9oYY7bJQXqRpcjSnP3MsjXvfn51MQkkyDP9M4PgZLPY1CFAS1cqGUMRAgmAy2X5` |
+
+- Preconditions measured first: LiteSVM 61/61 (56 before plus 5 attack tests, client vectors regenerated), `bun test packages/chain` 96/96, `cargo clippy` clean on all three programs, ProgramData 717,760 and 722,768 bytes against the new builds, buffer rent 3.67766092 and 3.78267468 SOL (`solana rent` for the `.so` plus 45 bytes; returned after each upgrade), deployer 67.57488197 SOL.
+- Landed 2026-10-09 20:50 to 20:51 UTC (registry slot 509305148, launch slot 509305277). Deployer 67.57488197 before the extends, 67.40542837 SOL after both upgrades (0.1694536 SOL: 0.16345408 extend rent plus fees).
+- Compatibility: Core's `post_epoch`, `slash`, `resolve_challenge` and every `claim` keep their account lists, so the live site's Core is unaffected. Four `lineage_launch` instructions take accounts appended at the end, and `expire_challenge` takes the reserve vault at the end: `withdraw_compute` (+ registry `Agent`), `open_bounty` (+ payer's registry `Agent`), `cancel_bounty` (+ payer's registry `Agent`), `release_bounty` (+ registry `ChallengeConfig` and the epoch's `ChallengeGate`). `packages/chain` builds them from the same arguments as before, so callers need no change, but a wallet bundle built from the earlier `packages/chain` fails these five with `NotEnoughAccountKeys` until the site redeploys it.
+- After the upgrade: `scripts/devnet/graduation-e2e.ts` PASS 16/16 (section "Graduation e2e run 20261009205210" above: launch, curve fill, `crank_fees`, migration, `graduate`, `crank_pool_fees`, `repoint_position` on the upgraded `lineage_launch`; 0.042965040 SOL). `scripts/launchpad/trade-e2e.ts` was not rerun: its buys and sells go straight to Meteora DBC and DAMM v2 and touch no `lineage_launch` instruction or account layout that changed. `e2e-devnet.ts` and `challenge-e2e.ts` were not run (they use the live site's Core authority).
+
+### Audit A1 devnet proof run 20261009205417 (onchain/scripts/audit-a1-devnet.ts)
+
+Outcome: PASS; checks 9/9; deployer 67.362463330 -> 67.324861610 SOL (0.037601720 spent, including 0.02 SOL sent to the buyer key).
+
+- PASS launch and bounty configs live and unpaused: bounty min 10000, out cap 5000 bps, ttl 60..2592000 s
+- PASS deployer holds enough SOL: 67.362463330 SOL
+- PASS registry owner is the buyer; AgentLaunch.launcher is still the deployer
+- PASS A1-03 old launcher withdraw_compute after the sale: refused in simulation (Unauthorized)
+- PASS A1-03 the new owner withdraws
+- PASS bounty amount fits the per-window cap: 1000000 of 97000000
+- PASS A1-03 old launcher open_bounty from the sold agent's vault: refused in simulation (Unauthorized)
+- PASS A1-03 old launcher cancel_bounty of the new owner's bounty: refused in simulation (Unauthorized)
+- PASS A1-01 cancel landed despite the donation: escrow vault closed, escrow and donation back in the compute vault: vault 97000000 -> 97000001
+
+| When (UTC) | Step | What | Fee | Signature |
+|---|---|---|---|---|
+| 2026-10-09 20:54:19 | A1 | launch_agent: TEST audit agent 7vY1UWivUoPwztfNJYHkEJ1eUcageAPmpjFBSLhm2Riv (self-hosted), mint EUXEofRg54Cd3Dnnhsm7aTutiCQ17egiZqoYfQ2Bp6cN, launcher = deployer | 15000 | `2ncgmP2eZmEsN49XWEdhF4MExiwtW8xmF7kyMnnyb1CNfmdkbqAwWptwSis42mdsY4Lxf7ykxkAivY1rgj2xwz7o` |
+| 2026-10-09 20:54:22 | A1 | fund the agent's compute vault with 100 tLINE; buyer Br5k2h2iZ8Uvp1o3JTg2rfXjzLe9HcmBywpRRSUtB27x: 0.02 SOL and a tLINE account | 5000 | `FuFehzJ7wNYeJpJv22AZKUAeUWBAy3RcdqsGcCiXK1tE66kSoRFqf2k6ZwJy4eDB1udjbTk46sC4zUdZmZTiZVa` |
+| 2026-10-09 20:54:24 | A1 | withdraw_compute 1 tLINE by the launcher (still the owner) | 5000 | `3LfvDMu66GxMpiq1TF9M9S123sQK33tpVgN1J3C7Z9ibQjAwP1HZ3rbRWEoWTpWU8hjRMGttuGBR4wjSv6XC1KB8` |
+| 2026-10-09 20:54:26 | A1 | propose_owner: deployer proposes Br5k2h2iZ8Uvp1o3JTg2rfXjzLe9HcmBywpRRSUtB27x | 5000 | `3jANMQZ9JHpyTkPEfisKdJMETrV65EY5bJMGRmgNgXHT3xYh6y7wbnUghwduKDfDUiBzYdxczCtmdoEwaV8EZ6Gz` |
+| 2026-10-09 20:54:32 | A1 | accept_owner by the buyer | 5000 | `2quPJ3xiZUdMVma4r2yprrHxRkbFGtP1FRQnraKwLqs4zzjdspSDmg3C3B2gogYKQBEABv77tvhRseRdK3ZVJ5M3` |
+| 2026-10-09 20:54:35 | A1 | withdraw_compute 2 tLINE by the new owner | 5000 | `5MDJ4FHcs8ArwHccBJDzpV3PoMeNiDJw9pSW9nT2xa1M2Xker4GgKMsZYNJ6siz2rX8LLzJb5ATrFfPsdr82NxFb` |
+| 2026-10-09 20:54:38 | A1 | A1-01 open_bounty 20261009205417 (1000000 base units) by the new owner, donate 1 base unit into its escrow vault, cancel_bounty: one transaction | 5000 | `5CsfKB27xviVgNmYneoiA2KZkELanGU2b3wYbmScbBmsxR1vdp5K4iJV3PcHRei21APNVownxhF9NP9kxckwFQKD` |

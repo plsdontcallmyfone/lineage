@@ -60,7 +60,12 @@ pub struct ChallengeConfig {
     /// Challenges open now (all kinds).
     pub open: u32,
     pub bump: u8,
-    pub reserved: [u8; 32],
+    /// Upheld rewards are capped at the registry's `max_rebate_per_epoch` per `epoch_length_s` window
+    /// (audit A1-05): the window index (`unix_time / epoch_length_s`) and what was paid in it. These
+    /// two fields took 16 of the 32 reserved bytes, so the account size did not change.
+    pub reward_window: u64,
+    pub rewards_in_window: u64,
+    pub reserved: [u8; 16],
 }
 
 #[account]
@@ -155,7 +160,7 @@ pub fn check_claim_hold(challenge_config: &AccountInfo, gate: &AccountInfo, epoc
 }
 
 fn transfer_from_vault<'info>(token_program: &Interface<'info, TokenInterface>, from: &InterfaceAccount<'info, TokenAccount>,
-    mint: &InterfaceAccount<'info, Mint>, to: &InterfaceAccount<'info, TokenAccount>, authority: &UncheckedAccount<'info>, bump: u8,
+    mint: &InterfaceAccount<'info, Mint>, to: &AccountInfo<'info>, authority: &UncheckedAccount<'info>, bump: u8,
     amount: u64) -> Result<()> {
     if amount == 0 {
         return Ok(());
@@ -165,12 +170,36 @@ fn transfer_from_vault<'info>(token_program: &Interface<'info, TokenInterface>, 
         CpiContext::new_with_signer(token_program.to_account_info(), TransferChecked {
             from: from.to_account_info(),
             mint: mint.to_account_info(),
-            to: to.to_account_info(),
+            to: to.clone(),
             authority: authority.to_account_info(),
         }, &[seeds]),
         amount,
         mint.decimals,
     )
+}
+
+/// Whether a challenge's refund account can still take a transfer: a token account of `token_program`
+/// for `mint`, initialized and not frozen, that does not demand a memo on incoming transfers. A
+/// challenger who closes, freezes or memo-locks it after opening would otherwise make every
+/// `resolve_challenge` and `expire_challenge` fail and hold the epoch's payouts forever (audit
+/// A1-02); such a bond goes to the compute reserve instead.
+pub fn refund_usable(info: &AccountInfo, mint: &Pubkey, token_program: &Pubkey) -> bool {
+    use anchor_spl::token_2022::spl_token_2022::extension::{memo_transfer::MemoTransfer, BaseStateWithExtensions, StateWithExtensions};
+    use anchor_spl::token_2022::spl_token_2022::state::{Account as TokenState, AccountState};
+    if info.owner != token_program {
+        return false;
+    }
+    let Ok(data) = info.try_borrow_data() else { return false };
+    let Ok(acct) = StateWithExtensions::<TokenState>::unpack(&data) else { return false };
+    if acct.base.mint != *mint || acct.base.state != AccountState::Initialized {
+        return false;
+    }
+    if let Ok(m) = acct.get_extension::<MemoTransfer>() {
+        if bool::from(m.require_incoming_transfer_memos) {
+            return false;
+        }
+    }
+    true
 }
 
 pub fn handle_set_config(ctx: Context<SetChallengeConfig>, args: ChallengeConfigArgs) -> Result<()> {
@@ -271,6 +300,10 @@ pub fn handle_resolve(ctx: Context<ResolveChallenge>, args: ResolveChallengeArgs
     require!(args.corrected.is_none() || (args.outcome == CH_UPHELD && ch.kind != KIND_SLASH), RegistryError::ChallengeOutcome);
     let (kind, bond, subject, epoch_n) = (ch.kind, ch.bond, ch.subject, ch.epoch);
     let bump = c.vault_authority_bump;
+    let (reward_cap, epoch_length_s) = (c.max_rebate_per_epoch, c.params.epoch_length_s);
+    let now = Clock::get()?.unix_timestamp;
+    let refund_ok = refund_usable(&ctx.accounts.refund_token, &ctx.accounts.mint.key(), &ctx.accounts.token_program.key());
+    let refund_to = if refund_ok { ctx.accounts.refund_token.to_account_info() } else { ctx.accounts.reserve_vault.to_account_info() };
     let mut reversed = 0u64;
     let mut reward = 0u64;
     let mut corrected = false;
@@ -284,7 +317,7 @@ pub fn handle_resolve(ctx: Context<ResolveChallenge>, args: ResolveChallengeArgs
             require_keys_eq!(bond_vault.key(), Pubkey::find_program_address(&[BOND_VAULT_SEED], &crate::ID).0, RegistryError::ChallengeSubject);
             let (r_amount, r_epoch, r_agent) = (r.amount, r.epoch, r.agent);
             reversed = r_amount.min(ctx.accounts.reserve_vault.amount);
-            transfer_from_vault(&ctx.accounts.token_program, &ctx.accounts.reserve_vault, &ctx.accounts.mint, bond_vault,
+            transfer_from_vault(&ctx.accounts.token_program, &ctx.accounts.reserve_vault, &ctx.accounts.mint, &bond_vault.to_account_info(),
                 &ctx.accounts.vault_authority, bump, reversed)?;
             let limit = c.params.strike_limit;
             let a = ctx.accounts.agent_record.as_mut().ok_or(RegistryError::ChallengeSubject)?;
@@ -314,17 +347,31 @@ pub fn handle_resolve(ctx: Context<ResolveChallenge>, args: ResolveChallengeArgs
             emit!(EpochCorrected { epoch: epoch_n, payout_root: roots.payout_root, lineage_root: roots.lineage_root, record_root: roots.record_root,
                 total_units_micro: roots.total_units_micro });
         }
-        transfer_from_vault(&ctx.accounts.token_program, &ctx.accounts.challenge_vault, &ctx.accounts.mint, &ctx.accounts.refund_token,
+        transfer_from_vault(&ctx.accounts.token_program, &ctx.accounts.challenge_vault, &ctx.accounts.mint, &refund_to,
             &ctx.accounts.vault_authority, bump, bond)?;
-        reward = ctx.accounts.challenge_config.reward.min(ctx.accounts.reserve_vault.amount);
-        transfer_from_vault(&ctx.accounts.token_program, &ctx.accounts.reserve_vault, &ctx.accounts.mint, &ctx.accounts.refund_token,
-            &ctx.accounts.vault_authority, bump, reward)?;
+        if refund_ok {
+            // At most `max_rebate_per_epoch` of rewards per `epoch_length_s` window (audit A1-05): the
+            // reserve leaves through Core's key only at bounded rates, as `post_epoch` rebates do.
+            let window = (now.max(0) as u64) / (epoch_length_s.max(1) as u64);
+            let cc = &mut ctx.accounts.challenge_config;
+            if cc.reward_window != window {
+                cc.reward_window = window;
+                cc.rewards_in_window = 0;
+            }
+            reward = cc.reward.min(ctx.accounts.reserve_vault.amount).min(reward_cap.saturating_sub(cc.rewards_in_window));
+            cc.rewards_in_window = cc.rewards_in_window.saturating_add(reward);
+            transfer_from_vault(&ctx.accounts.token_program, &ctx.accounts.reserve_vault, &ctx.accounts.mint, &refund_to,
+                &ctx.accounts.vault_authority, bump, reward)?;
+        }
     } else if args.outcome == CH_FAILED {
-        transfer_from_vault(&ctx.accounts.token_program, &ctx.accounts.challenge_vault, &ctx.accounts.mint, &ctx.accounts.reserve_vault,
+        transfer_from_vault(&ctx.accounts.token_program, &ctx.accounts.challenge_vault, &ctx.accounts.mint, &ctx.accounts.reserve_vault.to_account_info(),
             &ctx.accounts.vault_authority, bump, bond)?;
     } else {
-        transfer_from_vault(&ctx.accounts.token_program, &ctx.accounts.challenge_vault, &ctx.accounts.mint, &ctx.accounts.refund_token,
+        transfer_from_vault(&ctx.accounts.token_program, &ctx.accounts.challenge_vault, &ctx.accounts.mint, &refund_to,
             &ctx.accounts.vault_authority, bump, bond)?;
+    }
+    if !refund_ok && args.outcome != CH_FAILED {
+        emit!(ChallengeRefundForfeited { challenge: ctx.accounts.challenge.key(), refund_token: ctx.accounts.refund_token.key(), amount: bond });
     }
     let g = &mut ctx.accounts.gate;
     if kind != KIND_SLASH {
@@ -336,7 +383,6 @@ pub fn handle_resolve(ctx: Context<ResolveChallenge>, args: ResolveChallengeArgs
     g.corrected |= corrected;
     let cc = &mut ctx.accounts.challenge_config;
     cc.open = cc.open.saturating_sub(1);
-    let now = Clock::get()?.unix_timestamp;
     let ch = &mut ctx.accounts.challenge;
     ch.status = args.outcome;
     ch.resolved_at = now;
@@ -355,8 +401,13 @@ pub fn handle_expire(ctx: Context<ExpireChallenge>) -> Result<()> {
     let now = Clock::get()?.unix_timestamp;
     require!(now >= ch.opened_at.saturating_add(ctx.accounts.challenge_config.resolve_timeout_s), RegistryError::ChallengeTimeout);
     let (kind, bond) = (ch.kind, ch.bond);
-    transfer_from_vault(&ctx.accounts.token_program, &ctx.accounts.challenge_vault, &ctx.accounts.mint, &ctx.accounts.refund_token,
+    let refund_ok = refund_usable(&ctx.accounts.refund_token, &ctx.accounts.mint.key(), &ctx.accounts.token_program.key());
+    let refund_to = if refund_ok { ctx.accounts.refund_token.to_account_info() } else { ctx.accounts.reserve_vault.to_account_info() };
+    transfer_from_vault(&ctx.accounts.token_program, &ctx.accounts.challenge_vault, &ctx.accounts.mint, &refund_to,
         &ctx.accounts.vault_authority, ctx.accounts.config.vault_authority_bump, bond)?;
+    if !refund_ok {
+        emit!(ChallengeRefundForfeited { challenge: ctx.accounts.challenge.key(), refund_token: ctx.accounts.refund_token.key(), amount: bond });
+    }
     if kind != KIND_SLASH {
         let g = &mut ctx.accounts.gate;
         g.open = g.open.saturating_sub(1);
@@ -434,8 +485,10 @@ pub struct ResolveChallenge<'info> {
     pub challenge: Box<Account<'info, Challenge>>,
     #[account(mut, seeds = [GATE_SEED, &challenge.epoch.to_le_bytes()], bump = gate.bump)]
     pub gate: Box<Account<'info, ChallengeGate>>,
+    /// CHECK: the challenge's recorded refund account (address); it may have been closed, frozen or
+    /// memo-locked since the open, so it is checked with `refund_usable` and never deserialized.
     #[account(mut, address = challenge.refund_token @ RegistryError::BadDestination)]
-    pub refund_token: Box<InterfaceAccount<'info, TokenAccount>>,
+    pub refund_token: UncheckedAccount<'info>,
     pub mint: Box<InterfaceAccount<'info, Mint>>,
     /// CHECK: PDA signer.
     #[account(seeds = [VAULT_AUTHORITY_SEED], bump = config.vault_authority_bump)]
@@ -466,8 +519,10 @@ pub struct ExpireChallenge<'info> {
     pub challenge: Box<Account<'info, Challenge>>,
     #[account(mut, seeds = [GATE_SEED, &challenge.epoch.to_le_bytes()], bump = gate.bump)]
     pub gate: Box<Account<'info, ChallengeGate>>,
+    /// CHECK: the challenge's recorded refund account (address); it may have been closed, frozen or
+    /// memo-locked since the open, so it is checked with `refund_usable` and never deserialized.
     #[account(mut, address = challenge.refund_token @ RegistryError::BadDestination)]
-    pub refund_token: Box<InterfaceAccount<'info, TokenAccount>>,
+    pub refund_token: UncheckedAccount<'info>,
     pub mint: Box<InterfaceAccount<'info, Mint>>,
     /// CHECK: PDA signer.
     #[account(seeds = [VAULT_AUTHORITY_SEED], bump = config.vault_authority_bump)]
@@ -475,6 +530,9 @@ pub struct ExpireChallenge<'info> {
     #[account(mut, seeds = [CHALLENGE_VAULT_SEED], bump)]
     pub challenge_vault: Box<InterfaceAccount<'info, TokenAccount>>,
     pub token_program: Interface<'info, TokenInterface>,
+    /// The compute reserve: receives the bond when the refund account can no longer take it (audit A1-02).
+    #[account(mut, seeds = [RESERVE_SEED], bump)]
+    pub reserve_vault: Box<InterfaceAccount<'info, TokenAccount>>,
 }
 
 // ---------- events ----------
@@ -514,6 +572,14 @@ pub struct ChallengeExpired {
     pub kind: u8,
     pub subject: [u8; 32],
     pub epoch: u64,
+}
+/// A bond that could not be returned (its refund account was closed, frozen or memo-locked) went to
+/// the compute reserve (audit A1-02).
+#[event]
+pub struct ChallengeRefundForfeited {
+    pub challenge: Pubkey,
+    pub refund_token: Pubkey,
+    pub amount: u64,
 }
 #[event]
 pub struct EpochCorrected {

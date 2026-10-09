@@ -144,3 +144,17 @@ Devnet: deployed 2026-10-08 (DEPLOY.md "Messages program", DEVNET.md "Onchain me
 | Owner wallet instead of the signing key, unregistered keys, someone else's token account, revoked keys, paused config | `only_a_registered_agents_current_key_challenges` |
 | Unresolved challenges expire to the recorded refund account and release the hold | `unresolved_challenges_expire_and_release_the_hold` |
 
+
+## Internal audit A1 (2026-10-09, audit: onchain lane)
+
+Findings, exploit scenarios, accepted risks and the exact admin, Core, runtime and upgrade powers are in [`docs/AUDIT.md`](../docs/AUDIT.md), "Onchain". Each fix has a LiteSVM attack test that failed before it.
+
+| Finding | Rule now | Test |
+|---|---|---|
+| A1-01 (high) a one-unit donation into a bounty escrow vault blocked its close forever | `drain` moves the vault's whole balance, then closes it | `bounty.rs` `audit_a1_01_a_donation_cannot_freeze_an_escrow` |
+| A1-02 (high) a closed, frozen or memo-locked refund account blocked `resolve_challenge` and `expire_challenge`, holding the epoch's claims forever | the refund account is address-checked only; if `refund_usable` refuses it the bond goes to the reserve and the challenge closes (`ChallengeRefundForfeited`); `expire_challenge` takes the reserve vault last | `challenge.rs` `audit_a1_02_a_closed_refund_account_cannot_hold_an_epoch_forever` |
+| A1-03 (medium) the seller of an agent kept `withdraw_compute` and the bounty opener role (`AgentLaunch.launcher` is fixed at launch) | both follow the registry `Agent.owner`; `withdraw_compute`, `open_bounty` and `cancel_bounty` take the registry `Agent` last | `bounty.rs` `audit_a1_03_compute_follows_the_registry_owner` |
+| A1-04 (medium) `release_bounty` ignored the challenge hold, so a root later corrected had already paid escrows | release runs the registry's `check_claim_hold` (`BountyHeld`); `release_bounty` takes `ChallengeConfig` and the epoch's `ChallengeGate` last | `bounty.rs` `audit_a1_04_bounty_release_waits_for_the_challenge_hold` |
+| A1-05 (medium) upheld challenge rewards had no rate limit (a leaked Core key could drain the reserve past `max_rebate_per_epoch`) | rewards capped at `max_rebate_per_epoch` per `epoch_length_s` window (`ChallengeConfig.reward_window`, `rewards_in_window`, from its reserved bytes) | `challenge.rs` `audit_a1_05_upheld_rewards_are_capped_per_epoch_length` |
+
+No account changed size. `packages/chain` appends the new accounts in `launch.withdrawCompute`, `bounty.open`, `bounty.cancel`, `bounty.release` and `challenge.expire` from the same arguments, and decodes the two `ChallengeConfig` fields; client vectors regenerated. Devnet upgraded in place (DEVNET.md, "Internal audit A1 upgrade"); `scripts/audit-a1-devnet.ts` proves A1-01 and A1-03 there.

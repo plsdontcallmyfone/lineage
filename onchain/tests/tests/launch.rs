@@ -354,8 +354,9 @@ fn debit_ix(e: &Env, signer: &Pubkey, epoch: u64, l: &Launched, args: ll::DebitA
 fn withdraw_ix(e: &Env, launcher: &Pubkey, l: &Launched, to: &Pubkey, amount: u64) -> Instruction {
     Instruction {
         program_id: ll::ID,
-        accounts: ll::accounts::WithdrawCompute { launch_config: launch_config(), launcher: *launcher, authority: launch_authority(), agent_launch: l.launch,
-            compute_vault: l.compute_vault, launcher_token: *to, line_mint: e.line_mint, line_token_program: e.line_program }.to_account_metas(None),
+        accounts: ll::accounts::WithdrawCompute { launch_config: launch_config(), owner: *launcher, authority: launch_authority(), agent_launch: l.launch,
+            compute_vault: l.compute_vault, owner_token: *to, line_mint: e.line_mint, line_token_program: e.line_program,
+            agent_record: agent_record(&l.agent.pubkey()) }.to_account_metas(None),
         data: ll::instruction::WithdrawCompute { amount }.data(),
     }
 }
@@ -415,8 +416,8 @@ fn self_hosted_withdrawals_and_sleep_wake() {
     assert!(!refresh(&mut e, &l));
     e.fund(&l.compute_vault, 2_500 * ONE);
     assert!(refresh(&mut e, &l));
-    let stranger = funded(&mut e.svm);
-    let ix = withdraw_ix(&e, &stranger.pubkey(), &l, &l.launcher_line, ONE);
+    let (stranger, stranger_line) = e.wallet(0);
+    let ix = withdraw_ix(&e, &stranger.pubkey(), &l, &stranger_line, ONE);
     rejects(send(&mut e.svm, &stranger, &[], vec![ix]), "Unauthorized");
     let launcher = l.launcher.insecure_clone();
     // 1,500 left: above sleep (1,000), still awake.

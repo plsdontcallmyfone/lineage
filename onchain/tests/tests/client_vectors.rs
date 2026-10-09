@@ -179,8 +179,9 @@ fn instruction_vectors() -> Vec<Value> {
     }));
     v.push(ix_json("launch.withdraw_compute", &Instruction {
         program_id: ll::ID,
-        accounts: ll::accounts::WithdrawCompute { launch_config: launch_config(), launcher, authority: launch_authority(), agent_launch: l.launch,
-            compute_vault: l.compute_vault, launcher_token: l.launcher_line, line_mint: env.line_mint, line_token_program: TOKEN }.to_account_metas(None),
+        accounts: ll::accounts::WithdrawCompute { launch_config: launch_config(), owner: launcher, authority: launch_authority(), agent_launch: l.launch,
+            compute_vault: l.compute_vault, owner_token: l.launcher_line, line_mint: env.line_mint, line_token_program: TOKEN,
+            agent_record: agent_record(&agent) }.to_account_metas(None),
         data: ll::instruction::WithdrawCompute { amount: 5 }.data(),
     }));
     v.push(ix_json("launch.refresh_awake", &Instruction {
@@ -205,7 +206,7 @@ fn instruction_vectors() -> Vec<Value> {
         accounts: ll::accounts::OpenBounty {
             launch_config: launch_config(), bounty_config: bcfg, registry_config: registry_config(), opener: k(3), authority: launch_authority(),
             payer_launch: l.launch, payer_compute: l.compute_vault, payer_ledger: lpda(&[bt::BOUNTY_LEDGER_SEED, agent.as_ref()]), bounty,
-            bounty_vault: bvault, line_mint: env.line_mint, line_token_program: TOKEN, system_program: sys,
+            bounty_vault: bvault, line_mint: env.line_mint, line_token_program: TOKEN, system_program: sys, payer_record: agent_record(&agent),
         }.to_account_metas(None),
         data: ll::instruction::OpenBounty { args: bt::OpenBountyArgs { bounty_id: 7, payee: k(11), amount: 5_000_000, terms_digest: [0xaa; 32],
             condition_kind: bt::COND_TARGET, lineage_id: [0xbb; 32], condition_value: [0xcc; 32], deadline: 1_900_100_000 } }.data(),
@@ -217,7 +218,7 @@ fn instruction_vectors() -> Vec<Value> {
             launch_config: launch_config(), bounty_config: bcfg, caller: k(5), authority: launch_authority(), bounty, bounty_vault: bvault, opener: k(3),
             registry_epoch: epoch_pda(9), payee_launch: agent_launch(&payee_mint), payee_compute: compute_vault(&k(11)),
             payee_ledger: lpda(&[bt::BOUNTY_LEDGER_SEED, k(11).as_ref()]), receipt: lpda(&[bt::BOUNTY_RECEIPT_SEED, agent.as_ref(), &[0xdd; 32]]),
-            line_mint: env.line_mint, line_token_program: TOKEN, system_program: sys,
+            line_mint: env.line_mint, line_token_program: TOKEN, system_program: sys, challenge_config: challenge_config(), challenge_gate: challenge_gate(9),
         }.to_account_metas(None),
         data: ll::instruction::ReleaseBounty { args: bt::ReleaseArgs { leaf: [0xdd; 32], epoch: 9, gen_id: [1; 32], lineage_id: [0xbb; 32],
             candidate_commitment: [2; 32], target: vec!["t1".into(), "t2".into()], target_is_list: true,
@@ -232,7 +233,7 @@ fn instruction_vectors() -> Vec<Value> {
         data: ll::instruction::RefundBounty {}.data() }));
     v.push(ix_json("launch.cancel_bounty", &Instruction {
         program_id: ll::ID,
-        accounts: ll::accounts::CancelBounty { r: refund, registry_config: registry_config(), signer: k(3) }.to_account_metas(None),
+        accounts: ll::accounts::CancelBounty { r: refund, registry_config: registry_config(), signer: k(3), payer_record: agent_record(&agent) }.to_account_metas(None),
         data: ll::instruction::CancelBounty {}.data(),
     }));
     v
@@ -315,7 +316,7 @@ fn account_snapshots() -> Vec<Value> {
             accounts: ll::accounts::OpenBounty { launch_config: launch_config(), bounty_config: bcfg, registry_config: registry_config(), opener: runtime.pubkey(),
                 authority: launch_authority(), payer_launch: l.launch, payer_compute: l.compute_vault, payer_ledger: lpda(&[bt::BOUNTY_LEDGER_SEED, pa.as_ref()]),
                 bounty: b, bounty_vault: lpda(&[bt::BOUNTY_VAULT_SEED, b.as_ref()]), line_mint: e.line_mint, line_token_program: e.line_program,
-                system_program: sys }.to_account_metas(None),
+                system_program: sys, payer_record: agent_record(&pa) }.to_account_metas(None),
             data: ll::instruction::OpenBounty { args: bt::OpenBountyArgs { bounty_id: id, payee: Pubkey::default(), amount: 3 * ONE, terms_digest: [0x7e; 32],
                 condition_kind: bt::COND_TARGET, lineage_id: lineage, condition_value: bt::target_digest(&tj), deadline } }.data() }
     };
@@ -327,11 +328,14 @@ fn account_snapshots() -> Vec<Value> {
     let b1 = lpda(&[bt::BOUNTY_SEED, pa.as_ref(), &1u64.to_le_bytes()]);
     let rcpt = lpda(&[bt::BOUNTY_RECEIPT_SEED, pa.as_ref(), &leaf]);
     let caller = funded(&mut e.svm);
+    // the release waits for epoch 5's challenge window like a claim (audit A1-04)
+    warp(&mut e.svm, 600);
     ok(send(&mut e.svm, &caller, &[], vec![Instruction { program_id: ll::ID,
         accounts: ll::accounts::ReleaseBounty { launch_config: launch_config(), bounty_config: bcfg, caller: caller.pubkey(), authority: launch_authority(),
             bounty: b1, bounty_vault: lpda(&[bt::BOUNTY_VAULT_SEED, b1.as_ref()]), opener: runtime.pubkey(), registry_epoch: epoch_pda(5),
             payee_launch: payee.launch, payee_compute: payee.compute_vault, payee_ledger: lpda(&[bt::BOUNTY_LEDGER_SEED, payee.agent.pubkey().as_ref()]),
-            receipt: rcpt, line_mint: e.line_mint, line_token_program: e.line_program, system_program: sys }.to_account_metas(None),
+            receipt: rcpt, line_mint: e.line_mint, line_token_program: e.line_program, system_program: sys, challenge_config: challenge_config(),
+            challenge_gate: challenge_gate(5) }.to_account_metas(None),
         data: ll::instruction::ReleaseBounty { args: bt::ReleaseArgs { leaf, epoch: 5, gen_id: [0x47; 32], lineage_id: lineage, candidate_commitment: [0x4b; 32],
             target: vec!["ir".into()], target_is_list: false, members, finder: None, proof: vec![] } }.data() }]));
     let raw = |key: &Pubkey| b64(&e.svm.get_account(key).unwrap().data);
@@ -402,7 +406,7 @@ fn account_snapshots() -> Vec<Value> {
             let c: lr::ChallengeConfig = read(&e.svm, &challenge_config());
             json!({ "type": "ChallengeConfig", "address": challenge_config().to_string(), "data": raw(&challenge_config()), "fields": {
                 "windowS": c.window_s.to_string(), "bond": c.bond.to_string(), "reward": c.reward.to_string(), "resolveTimeoutS": c.resolve_timeout_s.to_string(),
-                "paused": c.paused, "open": c.open } })
+                "paused": c.paused, "open": c.open, "rewardWindow": c.reward_window.to_string(), "rewardsInWindow": c.rewards_in_window.to_string() } })
         },
         {
             let c: lr::Challenge = read(&e.svm, &ch_addr);

@@ -181,12 +181,13 @@ export const launch = {
       data: data("debit_compute").u64(a.amount).u64(a.modelTokens).u64(a.sandboxS).vec32(a.proof).done(),
     };
   },
+  /** `launcher`: the agent's current registry owner (the launcher until an owner transfer; audit A1-03), who signs and owns `launcherToken`. */
   withdrawCompute(a: { launcher: Address; agent: Address; agentMint: Address; launcherToken: Address; lineMint: Address; amount: bigint;
     lineTokenProgram?: Address }): Ix {
     return {
       programId: P,
       keys: [r(launchPdas.config()), r(a.launcher, true), r(launchPdas.authority()), w(launchPdas.agentLaunch(a.agentMint)), w(launchPdas.computeVault(a.agent)),
-        w(a.launcherToken), r(a.lineMint), r(a.lineTokenProgram ?? TOKEN_PROGRAM)],
+        w(a.launcherToken), r(a.lineMint), r(a.lineTokenProgram ?? TOKEN_PROGRAM), r(registryPdas.agent(a.agent))],
       data: data("withdraw_compute").u64(a.amount).done(),
     };
   },

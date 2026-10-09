@@ -67,6 +67,9 @@ describe("challenge accounts decode live LiteSVM bytes", () => {
     const f = acct("ChallengeConfig").fields;
     expect([String(c.windowS), String(c.bond), String(c.reward), String(c.resolveTimeoutS), c.paused, c.open]).toEqual([f.windowS, f.bond, f.reward,
       f.resolveTimeoutS, f.paused, f.open]);
+    // audit A1-05: the upheld slash challenge's reward counted in its window
+    expect([String(c.rewardWindow), String(c.rewardsInWindow)]).toEqual([f.rewardWindow, f.rewardsInWindow]);
+    expect(c.rewardsInWindow).toBe(BigInt(acct("Challenge").fields.reward));
     expect(acct("ChallengeConfig").address).toBe(registryPdas.challengeConfig());
   });
   test("Challenge (an upheld slash challenge)", () => {

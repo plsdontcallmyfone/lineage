@@ -329,3 +329,88 @@ fn unresolved_challenges_expire_and_release_the_hold() {
     let ix = wallet_claim(&e, &w.pubkey(), 8, &w.pubkey(), &w_token, 400);
     ok(send(&mut e.svm, &w, &[], vec![ix]));
 }
+
+// ---------- internal audit A1 (docs/AUDIT.md, "Onchain") ----------
+
+fn close_ix(e: &Env, account: &Pubkey, owner: &Pubkey) -> anchor_lang::solana_program::instruction::Instruction {
+    spl_token_2022::instruction::close_account(&e.line_program, account, owner, owner, &[]).unwrap()
+}
+
+/// A1-02: a challenger emptied and closed its refund token account after opening. `resolve_challenge`
+/// and `expire_challenge` both deserialized that account, so neither could land: the epoch's gate
+/// stayed open and every payout of the epoch was held forever for the price of one bond. The bond
+/// of an unusable refund account now goes to the reserve and the challenge still closes.
+#[test]
+fn audit_a1_02_a_closed_refund_account_cannot_hold_an_epoch_forever() {
+    let mut e = configured();
+    let c = challenger(&mut e);
+    let (w, w_token) = e.wallet(0);
+    post_one_leaf(&mut e, 1, wallet_leaf(1, &w.pubkey(), 500), 500);
+    let subject = lr::epoch_subject(1);
+    ok(open(&mut e, &c, lr::OpenChallengeArgs { kind: lr::KIND_EPOCH, subject, epoch: 1, claim: [1; 32] }));
+    ok(open(&mut e, &c, lr::OpenChallengeArgs { kind: lr::KIND_VERDICT, subject: [0x51; 32], epoch: 1, claim: [2; 32] }));
+    assert_eq!(read::<lr::ChallengeGate>(&e.svm, &challenge_gate(1)).open, 2);
+    // The payer empties its token account and closes it.
+    let rest = balance(&e.svm, &c.owner_token);
+    let (_sink, sink_token) = e.wallet(0);
+    let m = e.line_mint;
+    transfer(&mut e.svm, &c.owner, &m, &c.owner_token, &sink_token, rest);
+    let ix = close_ix(&e, &c.owner_token, &c.owner.pubkey());
+    ok(send(&mut e.svm, &c.owner, &[], vec![ix]));
+    assert!(e.svm.get_account(&c.owner_token).map_or(true, |a| a.lamports == 0));
+
+    // Core can still resolve (void would refund; the refund account is gone, so the bond is forfeited).
+    let core = e.core.insecure_clone();
+    let reserve0 = balance(&e.svm, &reserve_vault());
+    let ix = e.resolve_challenge_ix(&core.pubkey(), lr::KIND_EPOCH, &subject, 1, &c.owner_token, resolve_args(lr::CH_VOID, None), None);
+    ok(send(&mut e.svm, &core, &[], vec![ix]));
+    assert_eq!(balance(&e.svm, &reserve_vault()), reserve0 + BOND);
+    assert_eq!(read::<lr::Challenge>(&e.svm, &challenge_pda(lr::KIND_EPOCH, &subject)).status, lr::CH_VOID);
+    // Anyone can still expire the other one after the timeout (bond forfeited the same way).
+    warp(&mut e.svm, TIMEOUT);
+    let ix = e.expire_challenge_ix(lr::KIND_VERDICT, &[0x51; 32], 1, &c.owner_token);
+    let k = funded(&mut e.svm);
+    ok(send(&mut e.svm, &k, &[], vec![ix]));
+    assert_eq!(balance(&e.svm, &reserve_vault()), reserve0 + 2 * BOND);
+    assert_eq!(read::<lr::ChallengeGate>(&e.svm, &challenge_gate(1)).open, 0);
+    // The epoch pays again.
+    let ix = wallet_claim(&e, &w.pubkey(), 1, &w.pubkey(), &w_token, 500);
+    ok(send(&mut e.svm, &w, &[], vec![ix]));
+    // A redirected refund is still refused (the address stays bound to the challenge).
+    let c2 = challenger(&mut e);
+    ok(open(&mut e, &c2, lr::OpenChallengeArgs { kind: lr::KIND_VERDICT, subject: [0x52; 32], epoch: 2, claim: [0; 32] }));
+    let ix = e.resolve_challenge_ix(&core.pubkey(), lr::KIND_VERDICT, &[0x52; 32], 2, &sink_token, resolve_args(lr::CH_VOID, None), None);
+    rejects(send(&mut e.svm, &core, &[], vec![ix]), "BadDestination");
+}
+
+/// A1-05: `resolve_challenge` paid `reward` from the compute reserve on every upheld challenge with
+/// no bound, so a leaked Core key (opening challenges with a sybil agent and upholding them) drained
+/// the reserve past `max_rebate_per_epoch`, the cap the review put on Core's other reserve outflow.
+/// Rewards are now capped at `max_rebate_per_epoch` per `epoch_length_s` window.
+#[test]
+fn audit_a1_05_upheld_rewards_are_capped_per_epoch_length() {
+    let mut e = configured();
+    let admin = e.admin.insecure_clone();
+    let core = e.core.insecure_clone();
+    let cap = REWARD * 3 / 2;
+    let mut a = config_args(&admin.pubkey(), &core.pubkey());
+    a.max_rebate_per_epoch = cap;
+    let ix = e.admin_ix(&admin.pubkey(), lr::instruction::SetConfig { args: a }.data());
+    ok(send(&mut e.svm, &admin, &[], vec![ix]));
+    e.fund(&reserve_vault(), 100 * ONE);
+    let c = challenger(&mut e);
+    let paid = |e: &mut Env, subject: [u8; 32]| -> u64 {
+        let c_open = open(e, &c, lr::OpenChallengeArgs { kind: lr::KIND_VERDICT, subject, epoch: 1, claim: [0; 32] });
+        ok(c_open);
+        let before = balance(&e.svm, &c.owner_token);
+        let ix = e.resolve_challenge_ix(&core.pubkey(), lr::KIND_VERDICT, &subject, 1, &c.owner_token, resolve_args(lr::CH_UPHELD, None), None);
+        ok(send(&mut e.svm, &core, &[], vec![ix]));
+        balance(&e.svm, &c.owner_token) - before - BOND
+    };
+    let first: Vec<u64> = (0..3u8).map(|i| paid(&mut e, [0x60 + i; 32])).collect();
+    assert_eq!(first, vec![REWARD, cap - REWARD, 0]);
+    assert_eq!(read::<lr::Challenge>(&e.svm, &challenge_pda(lr::KIND_VERDICT, &[0x62; 32])).reward, 0);
+    // The next epoch length pays again.
+    warp(&mut e.svm, 300);
+    assert_eq!(paid(&mut e, [0x70; 32]), REWARD);
+}

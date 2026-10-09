@@ -366,18 +366,22 @@ pub mod lineage_launch {
         Ok(())
     }
 
-    /// The launcher of a self-hosted agent withdraws compute to run it themselves.
+    /// The current registry owner of a self-hosted agent (its launcher until an owner transfer)
+    /// withdraws compute to run it themselves.
     pub fn withdraw_compute(ctx: Context<WithdrawCompute>, amount: u64) -> Result<()> {
         let c = &ctx.accounts.launch_config;
         require!(!c.paused, LaunchError::Paused);
         require!(!ctx.accounts.agent_launch.hosted, LaunchError::Hosted);
         require!(amount > 0, LaunchError::InvalidArgs);
+        // The agent's current registry owner withdraws, not the launcher recorded at launch: compute
+        // follows an owner transfer like the bond and the wallet payouts do (audit A1-03).
+        require_keys_eq!(ctx.accounts.agent_record.owner, ctx.accounts.owner.key(), LaunchError::Unauthorized);
         let seeds: &[&[u8]] = &[AUTHORITY_SEED, &[c.authority_bump]];
         token_interface::transfer_checked(
             CpiContext::new_with_signer(ctx.accounts.line_token_program.to_account_info(), TransferChecked {
                 from: ctx.accounts.compute_vault.to_account_info(),
                 mint: ctx.accounts.line_mint.to_account_info(),
-                to: ctx.accounts.launcher_token.to_account_info(),
+                to: ctx.accounts.owner_token.to_account_info(),
                 authority: ctx.accounts.authority.to_account_info(),
             }, &[seeds]),
             amount,
@@ -937,19 +941,23 @@ pub struct DebitCompute<'info> {
 pub struct WithdrawCompute<'info> {
     #[account(seeds = [LAUNCH_CONFIG_SEED], bump = launch_config.bump, has_one = line_mint)]
     pub launch_config: Box<Account<'info, LaunchConfig>>,
-    pub launcher: Signer<'info>,
+    /// The agent's current registry owner (the launcher until an owner transfer; audit A1-03).
+    pub owner: Signer<'info>,
     /// CHECK: PDA signer.
     #[account(seeds = [AUTHORITY_SEED], bump = launch_config.authority_bump)]
     pub authority: UncheckedAccount<'info>,
-    #[account(mut, seeds = [AGENT_LAUNCH_SEED, agent_launch.mint.as_ref()], bump = agent_launch.bump, has_one = launcher @ LaunchError::Unauthorized)]
+    #[account(mut, seeds = [AGENT_LAUNCH_SEED, agent_launch.mint.as_ref()], bump = agent_launch.bump)]
     pub agent_launch: Box<Account<'info, AgentLaunch>>,
     #[account(mut, seeds = [COMPUTE_SEED, agent_launch.agent.as_ref()], bump = agent_launch.compute_bump)]
     pub compute_vault: Box<InterfaceAccount<'info, TokenAccount>>,
-    #[account(mut, token::mint = line_mint, token::authority = launcher, token::token_program = line_token_program)]
-    pub launcher_token: Box<InterfaceAccount<'info, TokenAccount>>,
+    #[account(mut, token::mint = line_mint, token::authority = owner, token::token_program = line_token_program)]
+    pub owner_token: Box<InterfaceAccount<'info, TokenAccount>>,
     #[account(mint::token_program = line_token_program)]
     pub line_mint: Box<InterfaceAccount<'info, Mint>>,
     pub line_token_program: Interface<'info, TokenInterface>,
+    /// The registry's `Agent` of this agent (owner program and PDA checked): its `owner` withdraws.
+    #[account(seeds = [lineage_registry::AGENT_SEED, agent_launch.agent.as_ref()], bump = agent_record.bump, seeds::program = lineage_registry::ID)]
+    pub agent_record: Box<Account<'info, lineage_registry::Agent>>,
 }
 
 #[derive(Accounts)]
@@ -1076,4 +1084,6 @@ pub enum LaunchError {
     BountyLocked,
     #[msg("self-hosted payee above self_hosted_in_cap in this window")]
     SelfHostedCap,
+    #[msg("bounty release held: the epoch's challenge window or an open challenge")]
+    BountyHeld,
 }

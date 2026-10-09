@@ -95,6 +95,7 @@ impl World {
                 launch_config: launch_config(), bounty_config: bcfg(), registry_config: registry_config(), opener: *opener, authority: launch_authority(),
                 payer_launch: payer.launch, payer_compute: payer.compute_vault, payer_ledger: ledger(&payer.agent.pubkey()), bounty: b,
                 bounty_vault: bounty_vault(&b), line_mint: self.e.line_mint, line_token_program: self.e.line_program, system_program: system_program::ID,
+                payer_record: agent_record(&payer.agent.pubkey()),
             }.to_account_metas(None),
             data: ll::instruction::OpenBounty { args: a }.data(),
         }
@@ -145,6 +146,7 @@ impl World {
                 launch_config: launch_config(), bounty_config: bcfg(), caller: *caller, authority: launch_authority(), bounty: b, bounty_vault: bounty_vault(&b),
                 opener, registry_epoch: epoch_acct, payee_launch: payee.launch, payee_compute: payee.compute_vault, payee_ledger: ledger(&payee.agent.pubkey()),
                 receipt: receipt(payer, &a.leaf), line_mint: self.e.line_mint, line_token_program: self.e.line_program, system_program: system_program::ID,
+                challenge_config: challenge_config(), challenge_gate: challenge_gate(a.epoch),
             }.to_account_metas(None),
             data: ll::instruction::ReleaseBounty { args: a }.data(),
         }
@@ -173,7 +175,8 @@ impl World {
         send(&mut self.e.svm, &k, &[], vec![ix])
     }
     fn cancel(&mut self, id: u64, signer: &Keypair) -> TransactionResult {
-        let accounts = ll::accounts::CancelBounty { r: self.refund_accounts(id), registry_config: registry_config(), signer: signer.pubkey() };
+        let accounts = ll::accounts::CancelBounty { r: self.refund_accounts(id), registry_config: registry_config(), signer: signer.pubkey(),
+            payer_record: agent_record(&self.p.agent.pubkey()) };
         let ix = Instruction { program_id: ll::ID, accounts: accounts.to_account_metas(None), data: ll::instruction::CancelBounty {}.data() };
         send(&mut self.e.svm, signer, &[], vec![ix])
     }
@@ -475,4 +478,144 @@ fn cancel_only_by_the_opener_before_the_next_epoch() {
     w.post(2);
     rejects(w.cancel(2, &rt), "BountyLocked");
     ok(w.release(2, "H", "c2"));
+}
+
+// ---------- internal audit A1 (docs/AUDIT.md, "Onchain") ----------
+
+/// A1-01: anyone could send one base unit of `$LINE` into an escrow vault. `drain` moved only
+/// `bounty.amount` and then closed the vault, which the token program refuses on a nonzero balance,
+/// so release, refund and cancel all failed and the escrow was frozen forever. The whole vault
+/// balance now moves (a donation follows the escrow).
+#[test]
+fn audit_a1_01_a_donation_cannot_freeze_an_escrow() {
+    let mut w = world();
+    w.post(1);
+    let (hk, k2) = (w.h.agent.pubkey(), w.commitment("c2"));
+    let ir = hex(&w.fx["bounty"]["target_ir_digest"]);
+    ok(w.open(w.args(1, hk, 5 * ONE, bt::COND_COMMITMENT, k2)));
+    ok(w.open(w.args(2, Pubkey::default(), 5 * ONE, bt::COND_TARGET, ir)));
+    ok(w.open(w.args(3, Pubkey::default(), 5 * ONE, bt::COND_TARGET, ir)));
+    let (donor, donor_token) = w.e.wallet(10 * ONE);
+    let m = w.e.line_mint;
+    for id in [1u64, 2, 3] {
+        let v = bounty_vault(&bounty_pda(&w.p.agent.pubkey(), id));
+        transfer(&mut w.e.svm, &donor, &m, &donor_token, &v, 1);
+    }
+    // Cancel (before the next epoch) still lands and returns escrow and donation to the payer.
+    let p0 = balance(&w.e.svm, &w.p.compute_vault);
+    let rt = w.e.runtime.insecure_clone();
+    ok(w.cancel(3, &rt));
+    assert_eq!(balance(&w.e.svm, &w.p.compute_vault), p0 + 5 * ONE + 1);
+    // Release still lands: the payee gets the escrow and the donation.
+    w.post(2);
+    let h0 = balance(&w.e.svm, &w.h.compute_vault);
+    ok(w.release(1, "H", "c2"));
+    assert_eq!(balance(&w.e.svm, &w.h.compute_vault), h0 + 5 * ONE + 1);
+    // Refund still lands after the deadline plus grace.
+    warp(&mut w.e.svm, TTL + GRACE as i64 + 1);
+    let p1 = balance(&w.e.svm, &w.p.compute_vault);
+    ok(w.refund(2));
+    assert_eq!(balance(&w.e.svm, &w.p.compute_vault), p1 + 5 * ONE + 1);
+    assert_eq!(w.bounty(2).status, bt::STATUS_REFUNDED);
+}
+
+fn withdraw_ix(w: &World, signer: &Pubkey, l: &Launched, to: &Pubkey, amount: u64) -> Instruction {
+    Instruction {
+        program_id: ll::ID,
+        accounts: ll::accounts::WithdrawCompute { launch_config: launch_config(), owner: *signer, authority: launch_authority(), agent_launch: l.launch,
+            compute_vault: l.compute_vault, owner_token: *to, line_mint: w.e.line_mint, line_token_program: w.e.line_program,
+            agent_record: agent_record(&l.agent.pubkey()) }.to_account_metas(None),
+        data: ll::instruction::WithdrawCompute { amount }.data(),
+    }
+}
+
+/// A1-03: after a public owner transfer (`propose_owner`, `accept_owner`) the seller kept every power
+/// over a self-hosted agent's compute vault, because `withdraw_compute` and the bounty opener checked
+/// `AgentLaunch.launcher`, fixed at launch. A seller could drain the vault (author rewards included)
+/// right after the sale. Both now follow the registry `Agent.owner`.
+#[test]
+fn audit_a1_03_compute_follows_the_registry_owner() {
+    let mut w = world();
+    let s = w.s.agent.pubkey();
+    let cv = w.s.compute_vault;
+    w.e.fund(&cv, 100 * ONE);
+    let seller = w.s.launcher.insecure_clone();
+    let seller_line = w.s.launcher_line;
+    let (buyer, buyer_line) = w.e.wallet(0);
+    let ix = w.e.owner_agent_ix(&seller.pubkey(), &s, lr::instruction::ProposeOwner { new_owner: buyer.pubkey() }.data());
+    ok(send(&mut w.e.svm, &seller, &[], vec![ix]));
+    // Until the buyer accepts, the seller is still the owner.
+    let ix = withdraw_ix(&w, &seller.pubkey(), &w.s, &seller_line, ONE);
+    ok(send(&mut w.e.svm, &seller, &[], vec![ix]));
+    let ix = w.e.accept_owner_ix(&buyer.pubkey(), &s);
+    ok(send(&mut w.e.svm, &buyer, &[], vec![ix]));
+    // The seller can no longer withdraw, open a bounty from the vault, or cancel one.
+    let ix = withdraw_ix(&w, &seller.pubkey(), &w.s, &seller_line, ONE);
+    rejects(send(&mut w.e.svm, &seller, &[], vec![ix]), "Unauthorized");
+    let hk = w.h.agent.pubkey();
+    let ir = hex(&w.fx["bounty"]["target_ir_digest"]);
+    let ix = w.open_ix(&seller.pubkey(), &w.s, w.args(1, hk, ONE, bt::COND_TARGET, ir));
+    rejects(send(&mut w.e.svm, &seller, &[], vec![ix]), "Unauthorized");
+    // The buyer can.
+    let ix = withdraw_ix(&w, &buyer.pubkey(), &w.s, &buyer_line, 2 * ONE);
+    ok(send(&mut w.e.svm, &buyer, &[], vec![ix]));
+    assert_eq!(balance(&w.e.svm, &buyer_line), 2 * ONE);
+    let ix = w.open_ix(&buyer.pubkey(), &w.s, w.args(1, hk, ONE, bt::COND_TARGET, ir));
+    ok(send(&mut w.e.svm, &buyer, &[], vec![ix]));
+    let b = bounty_pda(&s, 1);
+    let cancel = |signer: &Pubkey| {
+        let accounts = ll::accounts::CancelBounty {
+            r: ll::accounts::RefundBounty { launch_config: launch_config(), bounty_config: bcfg(), authority: launch_authority(), bounty: b,
+                bounty_vault: bounty_vault(&b), opener: buyer.pubkey(), payer_launch: w.s.launch, payer_compute: cv, line_mint: w.e.line_mint,
+                line_token_program: w.e.line_program },
+            registry_config: registry_config(), signer: *signer, payer_record: agent_record(&s),
+        };
+        Instruction { program_id: ll::ID, accounts: accounts.to_account_metas(None), data: ll::instruction::CancelBounty {}.data() }
+    };
+    let ix = cancel(&seller.pubkey());
+    rejects(send(&mut w.e.svm, &seller, &[], vec![ix]), "Unauthorized");
+    let ix = cancel(&buyer.pubkey());
+    ok(send(&mut w.e.svm, &buyer, &[], vec![ix]));
+    // A wrong registry record (another agent's, owned by the caller) is refused.
+    let ix = w.open_ix(&buyer.pubkey(), &w.s, w.args(2, hk, ONE, bt::COND_TARGET, ir));
+    let mut ix2 = ix.clone();
+    let last = ix2.accounts.len() - 1;
+    ix2.accounts[last].pubkey = agent_record(&w.h.agent.pubkey());
+    assert!(send(&mut w.e.svm, &buyer, &[], vec![ix2]).is_err());
+    ok(send(&mut w.e.svm, &buyer, &[], vec![ix]));
+}
+
+/// A1-04: `release_bounty` read `Epoch.record_root` but ignored the challenge hold `claim` applies
+/// (SPEC 10.8), so an escrow could be paid on a root during its challenge window or while an epoch
+/// challenge was open, and a root later corrected by an upheld challenge had already paid out
+/// (`resolve_challenge` only checks the registry's own claim counter). Release now waits like a claim.
+#[test]
+fn audit_a1_04_bounty_release_waits_for_the_challenge_hold() {
+    let mut w = world();
+    let admin = w.e.admin.insecure_clone();
+    let window = 600;
+    let ix = w.e.set_challenge_config_ix(&admin.pubkey(), lr::ChallengeConfigArgs { window_s: window, bond: ONE, reward: 0, resolve_timeout_s: 3_600,
+        paused: false });
+    ok(send(&mut w.e.svm, &admin, &[], vec![ix]));
+    w.post(1);
+    let (hk, k2) = (w.h.agent.pubkey(), w.commitment("c2"));
+    ok(w.open(w.args(1, hk, 5 * ONE, bt::COND_COMMITMENT, k2)));
+    w.post(2);
+    rejects(w.release(1, "H", "c2"), "BountyHeld");
+    // An epoch challenge on epoch 2 keeps it held past the window until Core resolves it.
+    let (owner, owner_token) = w.e.wallet(1_100 * ONE);
+    let ch = Keypair::new();
+    w.e.register_verifier(&owner, &ch);
+    let subject = lr::epoch_subject(2);
+    let ix = w.e.open_challenge_ix(&ch.pubkey(), &ch.pubkey(), &owner.pubkey(), &owner_token,
+        lr::OpenChallengeArgs { kind: lr::KIND_EPOCH, subject, epoch: 2, claim: [0; 32] });
+    ok(send(&mut w.e.svm, &owner, &[&ch], vec![ix]));
+    warp(&mut w.e.svm, window);
+    rejects(w.release(1, "H", "c2"), "BountyHeld");
+    let core = w.e.core.insecure_clone();
+    let ix = w.e.resolve_challenge_ix(&core.pubkey(), lr::KIND_EPOCH, &subject, 2, &owner_token,
+        lr::ResolveChallengeArgs { outcome: lr::CH_VOID, evidence: [0; 32], corrected: None }, None);
+    ok(send(&mut w.e.svm, &core, &[], vec![ix]));
+    ok(w.release(1, "H", "c2"));
+    assert_eq!(w.bounty(1).status, bt::STATUS_RELEASED);
 }

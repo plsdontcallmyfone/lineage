@@ -659,7 +659,7 @@ impl Env {
             accounts: lr::accounts::ExpireChallenge {
                 config: registry_config(), challenge_config: challenge_config(), challenge: challenge_pda(kind, subject), gate: challenge_gate(epoch),
                 refund_token: *refund_token, mint: self.line_mint, vault_authority: vault_authority(), challenge_vault: challenge_vault(),
-                token_program: self.line_program,
+                token_program: self.line_program, reserve_vault: reserve_vault(),
             }.to_account_metas(None),
             data: lr::instruction::ExpireChallenge {}.data(),
         }

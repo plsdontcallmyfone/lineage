@@ -81,7 +81,7 @@ export const bounty = {
         .u64(x.minAmount).bool(x.paused).done(),
     };
   },
-  /** Opener: the payer's launcher (self-hosted) or the runtime authority (hosted); pays the rent. */
+  /** Opener: the payer's current registry owner (self-hosted; audit A1-03) or the runtime authority (hosted); pays the rent. */
   open(a: { opener: Address; payer: Address; payerMint: Address; lineMint: Address; args: OpenBountyArgs; lineTokenProgram?: Address }): Ix {
     const b = bountyPdas.bounty(a.payer, a.args.bountyId);
     const x = a.args;
@@ -90,7 +90,7 @@ export const bounty = {
       keys: [
         r(launchPdas.config()), r(bountyPdas.config()), r(registryPdas.config()), w(a.opener, true), r(launchPdas.authority()),
         w(launchPdas.agentLaunch(a.payerMint)), w(launchPdas.computeVault(a.payer)), w(bountyPdas.ledger(a.payer)), w(b), w(bountyPdas.vault(b)),
-        r(a.lineMint), r(a.lineTokenProgram ?? TOKEN_PROGRAM), r(SYSTEM_PROGRAM),
+        r(a.lineMint), r(a.lineTokenProgram ?? TOKEN_PROGRAM), r(SYSTEM_PROGRAM), r(registryPdas.agent(a.payer)),
       ],
       data: data("open_bounty").u64(x.bountyId).address(x.payee ?? DEFAULT_ADDRESS).u64(x.amount).fixed32(x.termsDigest).u8(x.conditionKind)
         .fixed32(x.lineageId).fixed32(fixed(x.conditionValue)).i64(x.deadline).done(),
@@ -121,6 +121,8 @@ export const bounty = {
         r(launchPdas.config()), r(bountyPdas.config()), w(a.caller, true), r(launchPdas.authority()), w(b), w(bountyPdas.vault(b)), w(a.opener),
         r(registryPdas.epoch(c.epoch)), w(launchPdas.agentLaunch(a.payeeMint)), w(launchPdas.computeVault(a.payee)), w(bountyPdas.ledger(a.payee)),
         w(bountyPdas.receipt(a.payer, leaf)), r(a.lineMint), r(a.lineTokenProgram ?? TOKEN_PROGRAM), r(SYSTEM_PROGRAM),
+        // the registry's challenge hold applies to releases like to claims (audit A1-04)
+        r(registryPdas.challengeConfig()), r(registryPdas.challengeGate(c.epoch)),
       ],
       data: wr.done(),
     };
@@ -129,9 +131,9 @@ export const bounty = {
   refund(a: { payer: Address; payerMint: Address; bountyId: bigint | number; opener: Address; lineMint: Address; lineTokenProgram?: Address }): Ix {
     return { programId: P, keys: refundKeys(a), data: data("refund_bounty").done() };
   },
-  /** The opener's authority, only before the registry posts another epoch. */
+  /** The opener's authority (the payer's current registry owner, or the runtime for a hosted payer), only before the registry posts another epoch. */
   cancel(a: { signer: Address; payer: Address; payerMint: Address; bountyId: bigint | number; opener: Address; lineMint: Address; lineTokenProgram?: Address }): Ix {
-    return { programId: P, keys: [...refundKeys(a), r(registryPdas.config()), r(a.signer, true)], data: data("cancel_bounty").done() };
+    return { programId: P, keys: [...refundKeys(a), r(registryPdas.config()), r(a.signer, true), r(registryPdas.agent(a.payer))], data: data("cancel_bounty").done() };
   },
 };
 function refundKeys(a: { payer: Address; payerMint: Address; bountyId: bigint | number; opener: Address; lineMint: Address; lineTokenProgram?: Address }) {

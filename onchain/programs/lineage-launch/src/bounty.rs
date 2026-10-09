@@ -162,9 +162,12 @@ pub(crate) fn set_bounty_config(ctx: Context<SetBountyConfig>, args: BountyConfi
     Ok(())
 }
 
-/// The signer allowed to act for a payer agent: its launcher if self-hosted, the hosted runtime otherwise.
-fn check_opener(c: &LaunchConfig, payer: &AgentLaunch, opener: &Pubkey) -> Result<()> {
-    let want = if payer.hosted { c.runtime_authority } else { payer.launcher };
+/// The signer allowed to act for a payer agent: the hosted runtime if hosted, otherwise the agent's
+/// current registry owner (the launcher until a `propose_owner` / `accept_owner` transfer; audit
+/// A1-03: `AgentLaunch.launcher` is fixed at launch and kept the seller in control after a sale).
+fn check_opener(c: &LaunchConfig, payer: &AgentLaunch, record: &lineage_registry::Agent, opener: &Pubkey) -> Result<()> {
+    require_keys_eq!(record.agent, payer.agent, LaunchError::Unauthorized);
+    let want = if payer.hosted { c.runtime_authority } else { record.owner };
     require_keys_eq!(*opener, want, LaunchError::Unauthorized);
     Ok(())
 }
@@ -178,7 +181,7 @@ pub(crate) fn open_bounty(ctx: Context<OpenBounty>, args: OpenBountyArgs) -> Res
     let bc = &ctx.accounts.bounty_config;
     require!(!c.paused && !bc.paused, LaunchError::Paused);
     let payer = &ctx.accounts.payer_launch;
-    check_opener(c, payer, &ctx.accounts.opener.key())?;
+    check_opener(c, payer, &ctx.accounts.payer_record, &ctx.accounts.opener.key())?;
     let now = Clock::get()?.unix_timestamp;
     require!(args.amount > 0 && args.amount >= bc.min_amount, LaunchError::InvalidArgs);
     let ttl = args.deadline.checked_sub(now).ok_or(LaunchError::InvalidArgs)?;
@@ -247,11 +250,15 @@ pub(crate) fn open_bounty(ctx: Context<OpenBounty>, args: OpenBountyArgs) -> Res
     Ok(())
 }
 
-/// Moves the whole escrow to `to` and closes the vault, its rent back to the opener.
+/// Moves the whole vault balance to `to` and closes the vault, its rent back to the opener. The
+/// balance, not the escrowed amount: anyone can send tokens into the vault, and a closing balance
+/// above zero would make the token program refuse the close and freeze the escrow (audit A1-01).
+/// A donation follows the escrow.
 fn drain<'info>(c: &LaunchConfig, vault: &InterfaceAccount<'info, TokenAccount>, to: &InterfaceAccount<'info, TokenAccount>,
     mint: &InterfaceAccount<'info, Mint>, token_program: &Interface<'info, TokenInterface>, authority: &AccountInfo<'info>,
-    rent_to: &AccountInfo<'info>, amount: u64) -> Result<()> {
+    rent_to: &AccountInfo<'info>) -> Result<()> {
     let seeds: &[&[u8]] = &[AUTHORITY_SEED, &[c.authority_bump]];
+    let amount = vault.amount;
     if amount > 0 {
         token_interface::transfer_checked(
             CpiContext::new_with_signer(token_program.to_account_info(), TransferChecked {
@@ -283,6 +290,11 @@ pub(crate) fn release_bounty(ctx: Context<ReleaseBounty>, args: ReleaseArgs) -> 
     require!(ep.epoch == args.epoch && ep.record_root != [0u8; 32], LaunchError::BadProof);
     require!(args.epoch >= b.min_epoch, LaunchError::BountyCondition);
     require!(ep.posted_at <= b.deadline, LaunchError::BountyCondition);
+    // The registry's payout hold applies to record roots too (audit A1-04): nothing is released on an
+    // epoch inside its challenge window or while a challenge on it is open, so a root an upheld
+    // challenge corrects has paid nothing.
+    lineage_registry::challenge::check_claim_hold(&ctx.accounts.challenge_config.to_account_info(), &ctx.accounts.challenge_gate.to_account_info(),
+        ep, Clock::get()?.unix_timestamp).map_err(|_| error!(LaunchError::BountyHeld))?;
     // Condition.
     require!(args.lineage_id == b.lineage_id, LaunchError::BountyCondition);
     let tj = target_json(&args.target, args.target_is_list).ok_or(LaunchError::InvalidArgs)?;
@@ -330,7 +342,7 @@ pub(crate) fn release_bounty(ctx: Context<ReleaseBounty>, args: ReleaseArgs) -> 
 
     let amount = b.amount;
     drain(c, &ctx.accounts.bounty_vault, &ctx.accounts.payee_compute, &ctx.accounts.line_mint, &ctx.accounts.line_token_program,
-        &ctx.accounts.authority.to_account_info(), &ctx.accounts.opener.to_account_info(), amount)?;
+        &ctx.accounts.authority.to_account_info(), &ctx.accounts.opener.to_account_info())?;
     ctx.accounts.payee_compute.reload()?;
     let r = &mut ctx.accounts.receipt;
     r.bounty = ctx.accounts.bounty.key();
@@ -357,8 +369,7 @@ pub(crate) fn release_bounty(ctx: Context<ReleaseBounty>, args: ReleaseArgs) -> 
 fn give_back<'info>(a: &mut RefundBounty<'info>, status: u8) -> Result<()> {
     let c = &a.launch_config;
     let amount = a.bounty.amount;
-    drain(c, &a.bounty_vault, &a.payer_compute, &a.line_mint, &a.line_token_program, &a.authority.to_account_info(), &a.opener.to_account_info(),
-        amount)?;
+    drain(c, &a.bounty_vault, &a.payer_compute, &a.line_mint, &a.line_token_program, &a.authority.to_account_info(), &a.opener.to_account_info())?;
     a.payer_compute.reload()?;
     let now = Clock::get()?.unix_timestamp;
     let b = &mut a.bounty;
@@ -380,7 +391,7 @@ pub(crate) fn refund_bounty(ctx: Context<RefundBounty>) -> Result<()> {
 pub(crate) fn cancel_bounty(ctx: Context<CancelBounty>) -> Result<()> {
     let a = &mut ctx.accounts.r;
     require!(a.bounty.status == STATUS_OPEN, LaunchError::BountyClosed);
-    check_opener(&a.launch_config, &a.payer_launch, &ctx.accounts.signer.key())?;
+    check_opener(&a.launch_config, &a.payer_launch, &ctx.accounts.payer_record, &ctx.accounts.signer.key())?;
     // Only while no epoch that could hold a qualifying generation exists: once Core posts the
     // next epoch, a payee may have done the work and the escrow stays until release or expiry.
     require!(ctx.accounts.registry_config.epochs_posted == a.bounty.epochs_posted_at_open, LaunchError::BountyLocked);
@@ -558,6 +569,9 @@ pub struct OpenBounty<'info> {
     pub line_mint: Box<InterfaceAccount<'info, Mint>>,
     pub line_token_program: Interface<'info, TokenInterface>,
     pub system_program: Program<'info, System>,
+    /// The payer's registry `Agent`: a self-hosted payer's opener is its current `owner` (audit A1-03).
+    #[account(seeds = [lineage_registry::AGENT_SEED, payer_launch.agent.as_ref()], bump = payer_record.bump, seeds::program = lineage_registry::ID)]
+    pub payer_record: Box<Account<'info, lineage_registry::Agent>>,
 }
 
 #[derive(Accounts)]
@@ -597,6 +611,14 @@ pub struct ReleaseBounty<'info> {
     pub line_mint: Box<InterfaceAccount<'info, Mint>>,
     pub line_token_program: Interface<'info, TokenInterface>,
     pub system_program: Program<'info, System>,
+    /// CHECK: the registry's `ChallengeConfig` PDA, read only if it exists (audit A1-04: a release
+    /// waits for the epoch's challenge window, as a claim does).
+    #[account(seeds = [lineage_registry::CHALLENGE_CONFIG_SEED], bump, seeds::program = lineage_registry::ID)]
+    pub challenge_config: UncheckedAccount<'info>,
+    /// CHECK: the registry's `ChallengeGate` PDA of `args.epoch`, read only if it exists (no release
+    /// while a challenge on the epoch is open).
+    #[account(seeds = [lineage_registry::GATE_SEED, &args.epoch.to_le_bytes()], bump, seeds::program = lineage_registry::ID)]
+    pub challenge_gate: UncheckedAccount<'info>,
 }
 
 #[derive(Accounts)]
@@ -630,8 +652,11 @@ pub struct CancelBounty<'info> {
     pub r: RefundBounty<'info>,
     #[account(seeds = [lineage_registry::CONFIG_SEED], bump = registry_config.bump, seeds::program = lineage_registry::ID)]
     pub registry_config: Box<Account<'info, lineage_registry::Config>>,
-    /// The payer's launcher (self-hosted) or the runtime authority (hosted).
+    /// The payer's current registry owner (self-hosted) or the runtime authority (hosted).
     pub signer: Signer<'info>,
+    /// The payer's registry `Agent` (audit A1-03).
+    #[account(seeds = [lineage_registry::AGENT_SEED, r.bounty.payer.as_ref()], bump = payer_record.bump, seeds::program = lineage_registry::ID)]
+    pub payer_record: Box<Account<'info, lineage_registry::Agent>>,
 }
 
 // ---------- events ----------
