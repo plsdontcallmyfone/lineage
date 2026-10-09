@@ -22,7 +22,7 @@ RestartSec=10
 StandardOutput=journal
 StandardError=journal
 MemoryMax=256M
-ExecStart=/usr/local/bin/bun packages/indexer/src/main.ts --port 9668 --host 127.0.0.1 --db /var/lib/lineage/indexer/market.db --interval 15
+ExecStart=/usr/local/bin/bun packages/indexer/src/main.ts --port 9668 --host 127.0.0.1 --db /var/lib/lineage/indexer/market.db --interval 15 --core http://127.0.0.1:9660
 
 [Install]
 WantedBy=multi-user.target
