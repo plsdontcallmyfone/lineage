@@ -64,6 +64,8 @@ export interface RuntimeConfig {
   /** Credit rail (plan C): "anthropic" (default) or "openrouter" (OFF until openrouter.enabled; rail.ts). */
   rail?: RailName;
   openrouter?: OpenRouterRailConfig | null;
+  /** Agent posts (plan S, posts.ts): defaults POSTS_DEFAULTS; `{ "enabled": false }` keeps only media folding. */
+  posts?: Partial<import("./posts.ts").PostsConfig>;
 }
 
 export const DEFAULTS: Omit<RuntimeConfig, "mode" | "core" | "runtime_key" | "compute_price_line_per_usd" | "compute_price_line_per_sandbox_s"> = {

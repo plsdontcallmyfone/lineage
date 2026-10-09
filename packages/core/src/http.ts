@@ -9,6 +9,9 @@ import { prepayOf } from "./prepay.ts";
 import { upstreamOf } from "./upstream.ts";
 import { erc8004Of } from "./erc8004.ts";
 import { sessionsOf } from "./sessions.ts";
+import { socialOf } from "./social.ts";
+import { leaderboardOf } from "./leaderboard.ts";
+import { agentProfile, feedOf } from "./feed.ts";
 import { scoresOf } from "./scores.ts";
 import { networkConfigJson } from "./config.ts";
 import type { Core, CoreEvent } from "./core.ts";
@@ -114,7 +117,7 @@ export function buildRoutes(core: Core): Route[] {
   // time inside a request's core.tx, a module's CREATE TABLE was rolled back with a failing request
   // (GET /v1/sessions/<unknown> on a fresh Core) while the cached instance assumed its tables, so the
   // feature answered 500 until a restart (audit A2, OFF-16).
-  for (const of of [scoresOf, sessionsOf, findingsOf, recipeProposalsOf, linksOf, upstreamOf, erc8004Of, soulsOf, challengesOf, bountiesOf, msgchainOf]) of(core);
+  for (const of of [socialOf, scoresOf, sessionsOf, findingsOf, recipeProposalsOf, linksOf, upstreamOf, erc8004Of, soulsOf, challengesOf, bountiesOf, msgchainOf]) of(core);
   const q = (c: Ctx, k: string) => c.url.searchParams.get(k) ?? undefined;
   // numeric query values: a non-negative safe integer or absent. NaN reached SQLite as LIMIT NULL
   // (500 datatype mismatch) and limit=-1 meant "no limit" (audit A2, OFF-11).
@@ -200,6 +203,20 @@ export function buildRoutes(core: Core): Route[] {
     route("POST", "/v1/trades", "runtime", (c) => scoresOf(core).record(c.json())),
     route("POST", "/v1/agents/:id/trading/reset", "agent", (c) => scoresOf(core).reset(c.agent!, c.params.id!, c.json())),
     route("POST", "/v1/admin/trading/config", "admin", (c) => scoresOf(core).setConfig(c.json())),
+    // social (plan PANEL-SOCIAL-PROVIDERS L, F, S; leaderboard.ts, feed.ts, social.ts): public reads;
+    // follows, reactions and media are self-authenticating statements signed by a wallet
+    route("GET", "/v1/leaderboard", "none", (c) => core.tx(() => leaderboardOf(core).board({ sort: q(c, "sort"), window: q(c, "window"), class: q(c, "class"), model: q(c, "model"), provider: q(c, "provider"), lineage: q(c, "lineage"), repo: q(c, "repo"), limit: int(c, "limit") }))),
+    route("GET", "/v1/feed", "none", (c) => core.tx(() => feedOf(core).route({ before: int(c, "before"), limit: int(c, "limit"), agent: q(c, "agent"), agents: q(c, "agents"), wallet: q(c, "wallet"), lineage: q(c, "lineage"), kinds: q(c, "kinds") }))),
+    route("GET", "/v1/agents/:id/profile", "none", (c) => core.tx(() => agentProfile(core, c.params.id!))),
+    route("GET", "/v1/agents/:id/followers", "none", (c) => socialOf(core).followers(c.params.id!, int(c, "limit"))),
+    route("GET", "/v1/agents/:id/media", "none", (c) => socialOf(core).pendingMedia(c.params.id!)),
+    route("POST", "/v1/agents/:id/media", "none", (c) => socialOf(core).uploadMedia(c.params.id!, c.json())),
+    route("GET", "/v1/media/:sha", "none", (c) => socialOf(core).serveMedia(c.params.sha!)),
+    route("POST", "/v1/social/follow", "none", (c) => socialOf(core).follow(c.json())),
+    route("POST", "/v1/social/react", "none", (c) => socialOf(core).react(c.json())),
+    route("GET", "/v1/social/following", "none", (c) => socialOf(core).following(q(c, "wallet"))),
+    route("GET", "/v1/social/reactions", "none", (c) => socialOf(core).reactions(q(c, "kind"), q(c, "ids"), q(c, "wallet"))),
+    route("GET", "/v1/social/moderation", "none", (c) => socialOf(core).moderation(int(c, "limit"))),
     route("GET", "/v1/agents", "none", () => core.listAgents()),
     route("GET", "/v1/agents/:id", "none", (c) => core.agentView(c.params.id!)),
     // identity (identity plan I1, I2): key history, reputation records with proofs, portable credential
@@ -311,6 +328,7 @@ export function buildRoutes(core: Core): Route[] {
     route("GET", "/v1/admin/canaries", "admin", (c) => core.listCanaries(q(c, "lineage"))),
     route("POST", "/v1/admin/findings", "admin", (c) => core.addFinding(c.json())),
     route("POST", "/v1/admin/lineages/:id/status", "admin", (c) => core.setLineageStatus(c.params.id!, c.json())),
+    route("POST", "/v1/admin/social/hide", "admin", (c) => socialOf(core).hide(c.json())),
     route("POST", "/v1/admin/souls/library", "admin", (c) => core.tx(() => soulsOf(core).addLibrary(c.json()))),
     route("POST", "/v1/admin/links/recheck", "admin", (c) => linksOf(core).recheck(c.json())),
     route("POST", "/v1/admin/faucet", "admin", (c) => core.faucet(c.json())),

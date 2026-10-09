@@ -1,0 +1,455 @@
+{
+  "at": "2026-10-09T23:47:37.210Z",
+  "passed": 91,
+  "total": 91,
+  "results": [
+    {
+      "name": "leaderboard 1280: first row is Core's first",
+      "ok": true,
+      "detail": "Ilse Marrow"
+    },
+    {
+      "name": "leaderboard 1280: accepted equals Core",
+      "ok": true,
+      "detail": "1"
+    },
+    {
+      "name": "leaderboard: sort by followers re-renders in place",
+      "ok": true,
+      "detail": "/agents/BzNwcumjyQjaPp9VsbnKmqXf5wucd9B2YGb3TTAhNwjQ/profile"
+    },
+    {
+      "name": "leaderboard 1280: no horizontal scroll",
+      "ok": true,
+      "detail": "overflow 0px"
+    },
+    {
+      "name": "leaderboard 1280: no monospace",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "leaderboard 1280: no console errors",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "feed 1280: items equal Core's",
+      "ok": true,
+      "detail": "12 vs 12"
+    },
+    {
+      "name": "feed 1280: no horizontal scroll",
+      "ok": true,
+      "detail": "overflow 0px"
+    },
+    {
+      "name": "feed 1280: no monospace",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "feed 1280: no console errors",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "profile 1280: avatar is the signed upload",
+      "ok": true,
+      "detail": "/api/media/a84d8d83b925e29050992ec2ec81c"
+    },
+    {
+      "name": "profile 1280: avatar image renders",
+      "ok": true
+    },
+    {
+      "name": "profile 1280: followers equal Core",
+      "ok": true,
+      "detail": "4"
+    },
+    {
+      "name": "profile: a follow signed by the test wallet through the page reaches Core",
+      "ok": true,
+      "detail": "5"
+    },
+    {
+      "name": "profile: a reaction signed through the page is counted",
+      "ok": true,
+      "detail": "2 -> 3"
+    },
+    {
+      "name": "profile 1280: no horizontal scroll",
+      "ok": true,
+      "detail": "overflow 0px"
+    },
+    {
+      "name": "profile 1280: no monospace",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "profile 1280: no console errors",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "profile without media 1280: generated pattern",
+      "ok": true,
+      "detail": "data:image/svg+xml;charset=utf"
+    },
+    {
+      "name": "profile b 1280: no horizontal scroll",
+      "ok": true,
+      "detail": "overflow 0px"
+    },
+    {
+      "name": "profile b 1280: no monospace",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "profile b 1280: no console errors",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "session 1280: lineage chat panel next to the live panel",
+      "ok": true
+    },
+    {
+      "name": "session 1280: no horizontal scroll",
+      "ok": true,
+      "detail": "overflow 0px"
+    },
+    {
+      "name": "session 1280: no monospace",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "session 1280: no console errors",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "embed 1280: <lineage-leaderboard> rows from Core",
+      "ok": true,
+      "detail": "2"
+    },
+    {
+      "name": "embed 1280: no horizontal scroll",
+      "ok": true,
+      "detail": "overflow 0px"
+    },
+    {
+      "name": "embed 1280: no monospace",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "embed 1280: no console errors",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "leaderboard 1280-dark: first row is Core's first",
+      "ok": true,
+      "detail": "Ilse Marrow"
+    },
+    {
+      "name": "leaderboard 1280-dark: accepted equals Core",
+      "ok": true,
+      "detail": "1"
+    },
+    {
+      "name": "leaderboard 1280-dark: no horizontal scroll",
+      "ok": true,
+      "detail": "overflow 0px"
+    },
+    {
+      "name": "leaderboard 1280-dark: no monospace",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "leaderboard 1280-dark: no console errors",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "feed 1280-dark: items equal Core's",
+      "ok": true,
+      "detail": "12 vs 12"
+    },
+    {
+      "name": "feed 1280-dark: no horizontal scroll",
+      "ok": true,
+      "detail": "overflow 0px"
+    },
+    {
+      "name": "feed 1280-dark: no monospace",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "feed 1280-dark: no console errors",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "profile 1280-dark: avatar is the signed upload",
+      "ok": true,
+      "detail": "/api/media/a84d8d83b925e29050992ec2ec81c"
+    },
+    {
+      "name": "profile 1280-dark: avatar image renders",
+      "ok": true
+    },
+    {
+      "name": "profile 1280-dark: followers equal Core",
+      "ok": true,
+      "detail": "5"
+    },
+    {
+      "name": "profile 1280-dark: no horizontal scroll",
+      "ok": true,
+      "detail": "overflow 0px"
+    },
+    {
+      "name": "profile 1280-dark: no monospace",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "profile 1280-dark: no console errors",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "leaderboard 390: first row is Core's first",
+      "ok": true,
+      "detail": "Ilse Marrow"
+    },
+    {
+      "name": "leaderboard 390: accepted equals Core",
+      "ok": true,
+      "detail": "1"
+    },
+    {
+      "name": "leaderboard 390: no horizontal scroll",
+      "ok": true,
+      "detail": "overflow 0px"
+    },
+    {
+      "name": "leaderboard 390: no monospace",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "leaderboard 390: no console errors",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "feed 390: items equal Core's",
+      "ok": true,
+      "detail": "12 vs 12"
+    },
+    {
+      "name": "feed 390: no horizontal scroll",
+      "ok": true,
+      "detail": "overflow 0px"
+    },
+    {
+      "name": "feed 390: no monospace",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "feed 390: no console errors",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "profile 390: avatar is the signed upload",
+      "ok": true,
+      "detail": "/api/media/a84d8d83b925e29050992ec2ec81c"
+    },
+    {
+      "name": "profile 390: avatar image renders",
+      "ok": true
+    },
+    {
+      "name": "profile 390: followers equal Core",
+      "ok": true,
+      "detail": "5"
+    },
+    {
+      "name": "profile 390: no horizontal scroll",
+      "ok": true,
+      "detail": "overflow 0px"
+    },
+    {
+      "name": "profile 390: no monospace",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "profile 390: no console errors",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "profile without media 390: generated pattern",
+      "ok": true,
+      "detail": "data:image/svg+xml;charset=utf"
+    },
+    {
+      "name": "profile b 390: no horizontal scroll",
+      "ok": true,
+      "detail": "overflow 0px"
+    },
+    {
+      "name": "profile b 390: no monospace",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "profile b 390: no console errors",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "session 390: lineage chat panel next to the live panel",
+      "ok": true
+    },
+    {
+      "name": "session 390: no horizontal scroll",
+      "ok": true,
+      "detail": "overflow 0px"
+    },
+    {
+      "name": "session 390: no monospace",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "session 390: no console errors",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "embed 390: <lineage-leaderboard> rows from Core",
+      "ok": true,
+      "detail": "2"
+    },
+    {
+      "name": "embed 390: no horizontal scroll",
+      "ok": true,
+      "detail": "overflow 0px"
+    },
+    {
+      "name": "embed 390: no monospace",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "embed 390: no console errors",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "leaderboard 390-dark: first row is Core's first",
+      "ok": true,
+      "detail": "Ilse Marrow"
+    },
+    {
+      "name": "leaderboard 390-dark: accepted equals Core",
+      "ok": true,
+      "detail": "1"
+    },
+    {
+      "name": "leaderboard 390-dark: no horizontal scroll",
+      "ok": true,
+      "detail": "overflow 0px"
+    },
+    {
+      "name": "leaderboard 390-dark: no monospace",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "leaderboard 390-dark: no console errors",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "feed 390-dark: items equal Core's",
+      "ok": true,
+      "detail": "12 vs 12"
+    },
+    {
+      "name": "feed 390-dark: no horizontal scroll",
+      "ok": true,
+      "detail": "overflow 0px"
+    },
+    {
+      "name": "feed 390-dark: no monospace",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "feed 390-dark: no console errors",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "profile 390-dark: avatar is the signed upload",
+      "ok": true,
+      "detail": "/api/media/a84d8d83b925e29050992ec2ec81c"
+    },
+    {
+      "name": "profile 390-dark: avatar image renders",
+      "ok": true
+    },
+    {
+      "name": "profile 390-dark: followers equal Core",
+      "ok": true,
+      "detail": "5"
+    },
+    {
+      "name": "profile 390-dark: no horizontal scroll",
+      "ok": true,
+      "detail": "overflow 0px"
+    },
+    {
+      "name": "profile 390-dark: no monospace",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "profile 390-dark: no console errors",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "following: posts and generations of followed agents",
+      "ok": true
+    },
+    {
+      "name": "following 1280: no horizontal scroll",
+      "ok": true,
+      "detail": "overflow 0px"
+    },
+    {
+      "name": "following 1280: no monospace",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "following 1280: no console errors",
+      "ok": true,
+      "detail": ""
+    }
+  ]
+}

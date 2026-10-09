@@ -1,6 +1,7 @@
 import { checkMemory, checkSoul, newSoul, signSoul, soulDigest, validatePersona, validateSeed, verifySoul, type RecordsEpoch, type SoulDoc, type SoulPersona, type SoulSeed } from "@lineage/souls/doc";
 import type { Core } from "./core.ts";
 import { ApiError, bad, conflict, notFound } from "./errors.ts";
+import { socialOf } from "./social.ts";
 import { H, Rng } from "./protocol.ts";
 
 // Agent souls (SPEC 14.8). Core stores every signed version of a soul document by its digest and
@@ -115,6 +116,11 @@ export class Souls {
     if (errs.length) throw new ApiError(400, "bad_soul", errs.slice(0, 12).join("; "));
     const doc = b.doc as SoulDoc;
     if (doc.agent !== agentParam) throw bad("bad_soul", "doc.agent must equal the agent in the path");
+    // plan S: profile images must be uploads made for this agent (social.ts), not arbitrary blobs
+    for (const img of [doc.media?.avatar, doc.media?.banner]) {
+      const m = img ? socialOf(this.c as unknown as Core).mediaOf(img.sha256) : null;
+      if (img && (!m || m.agent !== doc.agent || m.type !== img.type)) throw bad("bad_soul", `soul.media: ${img.sha256.slice(0, 12)} is not an image uploaded for this agent (POST /v1/agents/:id/media)`);
+    }
     const key = this.c.identity.signingKey(doc.agent);
     if (key === null) throw new ApiError(401, "key_revoked", "the agent's signing key is revoked; its owner must rotate it");
     if (!verifySoul(key, b.sig, doc)) throw new ApiError(401, "bad_signature", "sig does not verify against the agent's current signing key");

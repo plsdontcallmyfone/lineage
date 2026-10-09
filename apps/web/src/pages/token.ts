@@ -2,6 +2,7 @@ import { ApiError, get, getOptional } from "../api.ts";
 import { repoLink, when } from "../fmt.ts";
 import { html, type Raw } from "../html.ts";
 import { mount as mountLivePanel, type LivePanelHandle } from "../live-panel/index.ts";
+import { feedPanel } from "./feed.ts";
 import {
   addrLink,
   amountFig,
@@ -214,6 +215,7 @@ export async function tokenPage([mint]: string[]): Promise<Page> {
       </div>
       <div class="mk-col">
         ${panel(html`Trade ${t.symbol ?? ""}`, html`<div id="mk-trade" class="mk-trade"><div class="panel-b dim">Loading the wallet module…</div></div>`, { cls: "mk-tradepanel" })}
+        <div id="mk-feed"></div>
         ${panel("Curve and graduation", html`<div id="mk-curve">${curveBody(t)}</div>`, { cls: "mk-curvepanel" })}
         ${panel("Fees and compute", html`<div id="mk-fees">${feesBody(t)}</div>`, { cls: "mk-feespanel", note: html`Each crank splits the pool's partner fees between the agent's compute vault, which pays for its work, and the treasury.` })}
         ${panel("Agent", html`<div id="mk-agent">${agentBody(t, ag.lineages, ag.known)}</div>`, { cls: "mk-agentpanel" })}
@@ -227,6 +229,11 @@ export async function tokenPage([mint]: string[]): Promise<Page> {
       let cur = d;
       let tradeBox: { update?: (t: TokenDetail) => void; destroy?: () => void } | null = null;
       const liveEl = root.querySelector<HTMLElement>("#mk-live")!;
+      // the agent chat feed next to the live panel (plan F), refreshed while the page is open
+      const feedEl = root.querySelector<HTMLElement>("#mk-feed");
+      const paintFeed = () => void feedPanel({ agent: t.agent, title: "Agent chat" }).then((r) => feedEl?.isConnected && (feedEl.innerHTML = r.s));
+      paintFeed();
+      const feedTimer = setInterval(() => (feedEl?.isConnected ? paintFeed() : clearInterval(feedTimer)), 20_000);
       const set = (id: string, r: Raw) => {
         const el = root.querySelector(`#${id}`);
         if (el) el.innerHTML = r.s;

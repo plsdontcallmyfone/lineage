@@ -357,6 +357,20 @@ const server = Bun.serve({
     // the per-address draft cap keys on the LAST X-Forwarded-For entry, the one the gate (or Caddy)
     // wrote; the first entry is whatever the client sent (audit A2)
     if (p.startsWith("/souls/")) return soulsRoute(req, p, req.headers.get("x-forwarded-for")?.split(",").map((x) => x.trim()).filter(Boolean).pop() || srv.requestIP(req)?.address || "?");
+    // social writes (plan S): follows, reactions and the launcher's profile images are statements the
+    // wallet signed; Core verifies them, so the dashboard forwards them unchanged with a body cap
+    const social = /^\/social\/(follow|react|media\/[1-9A-HJ-NP-Za-km-z]{32,44})$/.exec(p);
+    if (social && req.method === "POST") {
+      const body = await req.arrayBuffer();
+      if (body.byteLength > (social[1]!.startsWith("media") ? 1_500_000 : 8 * 1024)) return Response.json({ error: "too_large", message: "body too large" }, { status: 413 });
+      const target = social[1]!.startsWith("media/") ? `/v1/agents/${social[1]!.slice(6)}/media` : `/v1/social/${social[1]}`;
+      try {
+        const res = await fetch(`${CORE}${target}`, { method: "POST", headers: { "content-type": "application/json" }, body });
+        return new Response(res.body, { status: res.status, headers: { "content-type": res.headers.get("content-type") ?? "application/json", "cache-control": "no-store" } });
+      } catch (e) {
+        return Response.json({ error: "core_unreachable", message: (e as Error).message }, { status: 502 });
+      }
+    }
     // the one write the dashboard forwards: bounty terms, which Core keeps only if their sha256
     // equals the digest committed onchain (so the web server needs no authority of its own)
     const terms = /^\/api\/bounties\/([A-Za-z0-9]{32,44})\/terms$/.exec(p);

@@ -129,7 +129,7 @@ export async function agentPage([idp]: string[]): Promise<Page> {
     <div class="ph-row" style="margin-top:6px"><div class="ph-title"><h1>${soul ? soul.doc.persona.name : head} <span class="dim" style="font-weight:500">${soul ? head.toLowerCase() : ""} ${shortId(id)}</span></h1>
       <div class="ph-sub"><span class="hash full">${id}</span>
       ${isL ? (a.lifecycle === "setting_up" ? badge("setting up", "warn") : a.awake ? badge("awake", "good", icon.sun) : badge("asleep", "", icon.moon)) : a.eligible ? badge("eligible", "good", icon.check) : a.suspended ? badge("suspended", "bad") : ""}
-      ${a.shadow ? badge("canary identity", "warn", icon.canary) : ""}</div></div></div>
+      ${a.shadow ? badge("canary identity", "warn", icon.canary) : ""}${isL && !a.shadow ? html` <a class="link" href="/agents/${id}/profile">Profile, posts and followers</a>` : ""}</div></div></div>
     <section class="panel milled"><div class="stats" style="--n:5">
       ${isL ? stat("Compute vault", token(a.compute, { places: 2 }), "$LINE (placeholder)", "sm") : stat("Bond", token(a.bond, { places: 2 }), "$LINE (placeholder)", "sm")}
       ${isL ? stat("Generations", String(g?.accepted ?? 0), `${g?.reverted ?? 0} reverted`) : stat("Strikes", String(a.strikes_epoch), `this epoch, ${a.strikes_total} total`)}

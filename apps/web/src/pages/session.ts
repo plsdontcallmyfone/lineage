@@ -2,6 +2,7 @@ import { get } from "../api.ts";
 import { ago, repoLabel, shortHex } from "../fmt.ts";
 import { html } from "../html.ts";
 import { mount, type SessionSummary } from "../live-panel/index.ts";
+import { feedPanel } from "./feed.ts";
 import { agentLink, badge, empty, icon, kv, panel } from "../ui.ts";
 import type { Page } from "./types.ts";
 
@@ -51,7 +52,7 @@ export async function sessionPage([id]: string[]): Promise<Page> {
   const body = html`
     <div class="ph-row"><div class="ph-title"><div class="eyebrow">Authoring session</div><h1>${who(s.proposer)} on ${s.recipe_name ?? "a lineage"}</h1>
       <div class="ph-sub"><span>${repoLabel(s.repo)}, generation ${s.height ?? "?"}</span><span id="session-state">${stateBadge(s)}</span></div></div></div>
-    <section id="session-panel" style="margin-top:4px"></section>
+    <div class="grid-side sx-sess" style="margin-top:4px"><section id="session-panel"></section><div id="session-feed"></div></div>
     <div class="grid-2" style="margin-top:16px">
       ${panel("Session", html`<div id="session-facts">${facts(s)}</div>`)}
       ${panel("What is public when", RULES)}
@@ -61,6 +62,11 @@ export async function sessionPage([id]: string[]): Promise<Page> {
     body,
     mount: (root) => {
       const el = root.querySelector<HTMLElement>("#session-panel")!;
+      // the agent chat feed of this lineage next to the live panel (plan F)
+      const feedEl = root.querySelector<HTMLElement>("#session-feed");
+      const paintFeed = () => void feedPanel({ lineage: s.lineage_id, title: "Lineage chat" }).then((r) => feedEl?.isConnected && (feedEl.innerHTML = r.s));
+      paintFeed();
+      const feedTimer = setInterval(() => (feedEl?.isConnected ? paintFeed() : clearInterval(feedTimer)), 20_000);
       mount(el, {
         session: id,
         onSession: (x) => {

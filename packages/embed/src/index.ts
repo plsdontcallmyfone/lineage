@@ -1,6 +1,7 @@
 import { buildCards, LineageClient, pickSession, resolveBases } from "./client.ts";
 import { configure, getClient, ourMints } from "./config.ts";
 import { ELEMENTS, openAndRun, terminals } from "./elements.ts";
+import { SOCIAL_ELEMENTS } from "./social.ts";
 import { answer, run } from "./terminal.ts";
 
 // lineage-embed.js: the six elements (lineage-screen, lineage-terminal, lineage-reel, lineage-token,
@@ -23,6 +24,8 @@ export const Lineage = {
   sessions: (o?: { agent?: string; lineage?: string; state?: string; limit?: number }) => c().sessions(o),
   session: (id: string) => c().session(id),
   stats: (o?: { fees?: boolean }) => c().stats(o ?? { fees: true }),
+  leaderboard: (q: Record<string, string> = {}) => c().core(`leaderboard?${new URLSearchParams(q)}`, 15_000),
+  feed: (q: Record<string, string> = {}) => c().core(`feed?${new URLSearchParams(q)}`, 5_000),
   subscribe: (type: string, cb: (e: any) => void) => c().subscribe(type, cb),
   ours: ourMints,
   terminal: {
@@ -43,6 +46,6 @@ declare global {
 
 if (typeof window !== "undefined") {
   window.Lineage = Object.assign(window.Lineage ?? {}, Lineage);
-  for (const [name, ctor] of ELEMENTS) if (!customElements.get(name)) customElements.define(name, ctor);
+  for (const [name, ctor] of [...ELEMENTS, ...SOCIAL_ELEMENTS]) if (!customElements.get(name)) customElements.define(name, ctor);
   window.dispatchEvent(new CustomEvent("lineage-ready"));
 }

@@ -5,6 +5,9 @@ import { ago, dur } from "./fmt.ts";
 import { esc, html } from "./html.ts";
 import { live, MAX_FEED } from "./live.ts";
 import { agentPage, agentsPage } from "./pages/agents.ts";
+import { agentProfilePage } from "./pages/agent-profile.ts";
+import { feedPage, followingPage } from "./pages/feed.ts";
+import { leaderboardPage } from "./pages/leaderboard.ts";
 import { candidatePage } from "./pages/candidate.ts";
 import { docsPage } from "./pages/docs.ts";
 import { epochsPage } from "./pages/epochs.ts";
@@ -35,6 +38,10 @@ const routes: [RegExp, Handler, string][] = [
   [/^\/candidates\/([0-9a-f]{64})$/, candidatePage, "/"],
   [/^\/agents$/, agentsPage, "/agents"],
   [/^\/agents\/([1-9A-HJ-NP-Za-km-z]{32,44})$/, agentPage, "/agents"],
+  [/^\/agents\/([1-9A-HJ-NP-Za-km-z]{32,44})\/profile$/, agentProfilePage, "/agents"],
+  [/^\/leaderboard$/, leaderboardPage, "/leaderboard"],
+  [/^\/feed$/, feedPage, "/feed"],
+  [/^\/following$/, followingPage, "/feed"],
   [/^\/epochs$/, epochsPage, "/epochs"],
   [/^\/epochs\/(\d+)$/, epochsPage, "/epochs"],
   [/^\/live$/, livePage, "/live"],
@@ -69,6 +76,8 @@ function shell() {
         <a href="/live" data-nav="/live">Live</a>
         <a href="/machines" data-nav="/machines">Machines</a>
         <a href="/agents" data-nav="/agents">Agents</a>
+        <a href="/leaderboard" data-nav="/leaderboard">Leaderboard</a>
+        <a href="/feed" data-nav="/feed">Feed</a>
         <a href="/tokens" data-nav="/tokens">Tokens</a>
         <a href="/epochs" data-nav="/epochs">Epochs</a>
         <a href="/spawn" data-nav="/spawn">Spawn</a>

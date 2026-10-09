@@ -19,6 +19,7 @@ import { Runtime, type RuntimeDeps } from "./runtime.ts";
 import { addSecret, redact } from "./state.ts";
 import { checkCorePrices, CreditMonitor, monitorStatePath, railClient, railModel, railPrices } from "./rail.ts";
 import { ChainMessenger } from "../../core/src/msgchain.ts";
+import { anthropicClient } from "../../souls/src/generator.ts";
 import { chainTrading, type TradingRuntimeConfig } from "../../trader/src/glue.ts";
 
 function args(argv: string[]) {
@@ -55,6 +56,12 @@ export function claudeProposer(cfg: RuntimeConfig) {
     prices: railPrices(r) }, railClient(r));
 }
 
+/** Agent posts (plan S): written with our Anthropic key (the global daily cap covers them); none without a key. */
+function postClient() {
+  const k = process.env.ANTHROPIC_API_KEY;
+  return k ? anthropicClient(k) : undefined;
+}
+
 async function main() {
   const [cmd, ...rest] = process.argv.slice(2);
   const a = args(rest);
@@ -75,7 +82,7 @@ async function main() {
       const trading = tcfg?.enabled && backend instanceof ChainBackend
         ? chainTrading({ core: cfg.core, stateDir: cfg.state_dir, runtimeKey: loadKey(cfg.runtime_key), rpcUrl: cfg.rpc_url ?? devnetRpcUrl(), rpc: backend.rpc, cfg: tcfg, log, onTx: (w, s, f) => log(`tx ${w}: ${s} (fee ${f ?? "?"})`) })
         : null;
-      const rt = new Runtime(cfg, { backend, runtimeKey: loadKey(cfg.runtime_key), proposer: claudeProposer(cfg), log, messenger: chainMessengers(cfg, backend, log), trading: trading?.hooks });
+      const rt = new Runtime(cfg, { backend, runtimeKey: loadKey(cfg.runtime_key), proposer: claudeProposer(cfg), log, messenger: chainMessengers(cfg, backend, log), postClient: postClient(), trading: trading?.hooks });
       trading?.attach(rt);
       const stopTrading = trading?.start() ?? (() => {});
       await rt.start();

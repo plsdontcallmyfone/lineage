@@ -9,6 +9,9 @@ import { chainCostOf, costOf, resolvePrices, usdFor, windowStart, type Prices, t
 import type { ChainFee, Messenger } from "../../core/src/msgchain.ts";
 import { provenanceRecord, signProvenance, type AttemptTotals } from "./provenance.ts";
 import { emptyUsage, isAgentId, Lock, modelTokens, redact, StateStore, type AgentUsage, type ClosedEpoch } from "./state.ts";
+import { AgentPoster, emptyPostState, POSTS_DEFAULTS, type PostState } from "./posts.ts";
+import type { ModelClient, Usage as SoulUsage } from "../../souls/src/generator.ts";
+import { existsSync, readFileSync, renameSync } from "node:fs";
 
 /** A spend figure for logs; a corrupt record shows as such (the caps then refuse every attempt). */
 const usd4 = (x: unknown) => (typeof x === "number" && Number.isFinite(x) ? x.toFixed(4) : `unknown (${String(x)})`);
@@ -35,6 +38,8 @@ export interface RuntimeDeps {
    * runtime key; the runtime pays the fees and `onFee` bills them to the agent's usage ("chain fee").
    */
   messenger?: (agent: string, key: AgentKey, onFee: (f: ChainFee) => void) => Messenger | undefined;
+  /** Agent posts (plan S, posts.ts): the model client posts are written with; absent = no posts. */
+  postClient?: ModelClient;
   /**
    * Agents as traders (plan T, packages/trader glue.ts): when a usage epoch is due, `share` gives the
    * trade share of each bound agent's new fee income, which rides its usage leaf as the line "trade
@@ -76,6 +81,9 @@ export class Runtime {
   private log: (m: string) => void;
   private now: () => number;
   private pendingProvenance: { agent: string; commit_id: string; totals: AttemptTotals }[] = [];
+  private poster: AgentPoster | null = null;
+  private postState: PostState = emptyPostState();
+  private postsRun: Promise<void> | null = null;
 
   constructor(readonly cfg: RuntimeConfig, private deps: RuntimeDeps) {
     const sink = deps.log ?? ((m: string) => console.log(`[${new Date().toISOString().slice(11, 19)} runtime] ${m}`));
@@ -103,6 +111,7 @@ export class Runtime {
   async start(): Promise<void> {
     this.limits = await this.deps.backend.init();
     this.prices = resolvePrices(this.cfg, this.limits.decimals);
+    this.startPoster();
     this.state.runs.push({ started_at: this.now(), stopped_at: null, spent_usd: 0, pid: process.pid });
     this.save();
     const unposted = this.state.closed.filter((e) => !e.done).length;
@@ -427,6 +436,81 @@ export class Runtime {
     this.pendingProvenance.push(...left);
   }
 
+  // ------------------------------------------------------------------ agent posts (plan S, posts.ts)
+
+  private postsFile() {
+    return join(this.cfg.state_dir, "posts.json");
+  }
+
+  private startPoster() {
+    if (!this.deps.postClient) return;
+    const cfg = { ...POSTS_DEFAULTS, ...(this.cfg.posts ?? {}) };
+    try {
+      if (existsSync(this.postsFile())) this.postState = { ...emptyPostState(), ...JSON.parse(readFileSync(this.postsFile(), "utf8")) };
+    } catch (e) {
+      this.log(`posts: state unreadable (${(e as Error).message}); starting fresh`);
+    }
+    this.poster = new AgentPoster({
+      core: this.cfg.core,
+      client: this.deps.postClient,
+      cfg,
+      state: () => this.postState,
+      save: () => {
+        const tmp = `${this.postsFile()}.tmp`;
+        writeFileSync(tmp, JSON.stringify(this.postState), { mode: 0o600 });
+        renameSync(tmp, this.postsFile());
+      },
+      now: this.now,
+      log: (m) => this.log(`posts: ${m}`),
+      room: (agent) => this.postRoom(agent),
+      meter: (agent, u) => this.meterPost(agent, u),
+      send: (agent, to, text, ref) => this.worker(agent).send(to, text, { ref }),
+      keyOf: (agent) => this.store.keyFor(agent),
+    });
+    this.log(`posts: ${cfg.enabled ? `on (${cfg.model}, at most ${cfg.max_usd_per_post} USD each, ${cfg.max_per_day} per agent per UTC day, cadence ${cfg.cadence_s} s)` : "off (media folding only)"}`);
+  }
+
+  private async postsTick(): Promise<void> {
+    if (!this.poster || this.stopping) return;
+    const bound = Object.entries(this.state.agents).filter(([, s]) => s.status === "bound").map(([a]) => a);
+    await this.poster.tick(bound);
+  }
+
+  /** USD a post may spend for `agent` now: the global cap, the agent's epoch cap and what its vault pays. */
+  private postRoom(agent: string): number {
+    const v = this.vaults.get(agent);
+    if (!v?.awake) return 0;
+    const avail = v.balance - this.owed(agent);
+    const fromVault = usdFor(this.prices, avail, 0);
+    const used = this.usageOf(agent).usd;
+    const epochLeft = typeof used === "number" && Number.isFinite(used) && used >= 0 ? this.cfg.agent_epoch_max_usd - used : 0;
+    const r = Math.min(fromVault, epochLeft, this.globalLeft());
+    return Number.isFinite(r) && r > 0 ? r : 0;
+  }
+
+  /** A post's model call: into the agent's usage (billed to its vault with the epoch) and the global cap. */
+  private meterPost(agent: string, u: SoulUsage): void {
+    const s = this.usageOf(agent);
+    s.input_tokens += u.input_tokens;
+    s.output_tokens += u.output_tokens;
+    s.cache_read_tokens += u.cache_read_tokens;
+    s.cache_write_tokens += u.cache_write_tokens;
+    s.usd += u.usd;
+    for (const m of u.models) if (!s.models.includes(m)) s.models.push(m);
+    this.state.spent_usd_total += u.usd;
+    const w = this.spendWindow();
+    if (w) w.usd += u.usd;
+    this.runSpent += u.usd;
+    const run = this.state.runs[this.state.runs.length - 1];
+    if (run) run.spent_usd = this.runSpent;
+    this.save();
+  }
+
+  /** Posts sent and refused so far (public summary). */
+  postsStatus() {
+    return this.postState.log.slice(-50);
+  }
+
   // ------------------------------------------------------------------ usage epochs
 
   /** Closes the open usage epoch when it is due and the chain clock allows it, then posts closed epochs in order. */
@@ -503,6 +587,8 @@ export class Runtime {
         await this.posting;
       }
       this.startAttempts();
+      this.postsRun ??= this.postsTick().finally(() => (this.postsRun = null));
+      await this.postsRun; // attempts already run in the background; posts are short model calls
     } catch (e) {
       this.log(`tick: ${(e as Error).message}`);
     }
@@ -534,6 +620,7 @@ export class Runtime {
     this.stopping = true;
     this.log(`stopping: waiting for ${this.running.size} running attempt(s)`);
     await this.idle();
+    if (this.postsRun) await this.postsRun;
     if (this.posting) await this.posting;
     if (opts.flush !== false) {
       try {

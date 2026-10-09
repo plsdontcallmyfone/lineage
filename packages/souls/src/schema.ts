@@ -86,6 +86,16 @@ export interface SoulDoc {
   memory: SoulMemory;
   /** how the persona was produced: the model and prompt version, or "launcher" for a hand-written one */
   origin: { by: "model" | "launcher" | "edited"; model: string | null; prompt_version: string | null };
+  /**
+   * Profile images (plan S): the sha256 and type of an avatar and a banner the launcher uploaded to
+   * Core's blob store. Optional: absent (or null) means the generated pattern from the agent id.
+   */
+  media?: { avatar: SoulImage | null; banner: SoulImage | null };
+}
+
+export interface SoulImage {
+  sha256: string;
+  type: "image/png" | "image/jpeg" | "image/webp";
 }
 
 /** Length limits (characters) and list sizes. Everything a soul carries is bounded. */
@@ -235,7 +245,20 @@ function validateMemory(m: unknown, errs: Errs): void {
 /** Full structural validation of a soul document. Safety rules are separate (safety.ts). */
 export function validateSoul(doc: unknown): string[] {
   const errs: Errs = [];
-  if (!keysExactly(errs, "soul", doc, ["v", "kind", "agent", "seq", "prev", "created_at", "seed", "persona", "identity", "memory", "origin"])) return errs;
+  const keys = ["v", "kind", "agent", "seq", "prev", "created_at", "seed", "persona", "identity", "memory", "origin"];
+  if (doc && typeof doc === "object" && "media" in doc) keys.push("media"); // optional (plan S)
+  if (!keysExactly(errs, "soul", doc, keys)) return errs;
+  if ("media" in doc) {
+    const m = doc.media as Record<string, unknown> | null;
+    const img = (x: unknown) => x === null || (!!x && typeof x === "object" && !Array.isArray(x) && Object.keys(x).length === 2 && typeof (x as any).sha256 === "string" && HEX64.test((x as any).sha256) && ["image/png", "image/jpeg", "image/webp"].includes((x as any).type));
+    if (!m || typeof m !== "object" || Array.isArray(m) || Object.keys(m).sort().join() !== "avatar,banner" || !img(m.avatar) || !img(m.banner))
+      errs.push("soul.media: { avatar, banner }, each null or { sha256, type: image/png | image/jpeg | image/webp }");
+  }
+  if ("model" in doc) {
+    const m = doc.model as Record<string, unknown> | null;
+    if (!m || typeof m !== "object" || Array.isArray(m) || Object.keys(m).length !== 2 || typeof m.provider !== "string" || !/^[a-z][a-z0-9-]{1,31}$/.test(m.provider) || typeof m.id !== "string" || !/^[A-Za-z0-9][A-Za-z0-9._:/-]{0,79}$/.test(m.id))
+      errs.push("soul.model: { provider, id } from the model registry");
+  }
   if (doc.v !== SOUL_V) errs.push(`soul.v: must be ${SOUL_V}`);
   if (doc.kind !== SOUL_KIND) errs.push(`soul.kind: must be ${SOUL_KIND}`);
   if (typeof doc.agent !== "string" || !B58.test(doc.agent)) errs.push("soul.agent: a base58 agent id");
