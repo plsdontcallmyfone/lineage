@@ -4,3 +4,4 @@ export * from "./db.ts";
 export * from "./decode.ts";
 export * from "./indexer.ts";
 export * from "./rpc.ts";
+export * from "./core-sync.ts";

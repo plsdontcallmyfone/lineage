@@ -2,7 +2,7 @@
 // Lineage market indexer (docs/plans/LAUNCHPAD-AND-LIVE.md L2).
 //
 //   bun packages/indexer/src/main.ts [--port 9668] [--host 127.0.0.1] [--db <file>] [--interval 15]
-//     [--min-gap-ms 250] [--holders-every 600] [--max-idle 300] [--no-ws] [--once]
+//     [--min-gap-ms 250] [--holders-every 600] [--max-idle 300] [--no-ws] [--once] [--core http://127.0.0.1:9660] [--core-every 60]
 //
 // --interval: seconds between passes and the poll interval of an active source; a source with nothing
 // new is polled less often (doubling up to --max-idle seconds) unless logsSubscribe reports activity.
@@ -15,6 +15,7 @@ import { dirname, join } from "node:path";
 import { Rpc } from "@lineage/chain";
 import { devnetRpcUrl, redactRpc } from "@lineage/chain/src/endpoint.ts";
 import { marketApi } from "./api.ts";
+import { syncCore } from "./core-sync.ts";
 import { openDb } from "./db.ts";
 import { Indexer } from "./indexer.ts";
 import { throttledTransport } from "./rpc.ts";
@@ -144,6 +145,30 @@ if (flag("once")) {
   process.exit(r.errors ? 1 : 0);
 }
 const handle = marketApi(db, status);
+// Core: target class, verified generations, latest session and model per agent for the token directory
+const core = arg("core", process.env.LINEAGE_CORE ?? "http://127.0.0.1:9660").replace(/\/+$/, "");
+const coreEvery = Number(arg("core-every", "60"));
+const modelCache = new Map<string, { model: string | null; at: number }>();
+const coreGet = async (p: string) => {
+  const r = await fetch(`${core}${p}`, { headers: { accept: "application/json" }, signal: AbortSignal.timeout(15_000) });
+  if (!r.ok) throw new Error(`${p.split("?")[0]}: HTTP ${r.status}`);
+  return r.json();
+};
+let coreFailed = false;
+async function coreLoop() {
+  for (;;) {
+    try {
+      const n = await syncCore(db, coreGet, Math.floor(Date.now() / 1000), { modelCache });
+      if (coreFailed) log(`core sync: ${n} agent(s)`);
+      coreFailed = false;
+    } catch (e) {
+      if (!coreFailed) log(`core sync failed (${core}): ${(e as Error).message}`);
+      coreFailed = true;
+    }
+    await new Promise((r) => setTimeout(r, coreEvery * 1000));
+  }
+}
+if (coreEvery > 0) void coreLoop();
 Bun.serve({ port, hostname: host, fetch: (req) => handle(req) });
 log(`listening on http://${host}:${port}/market/tokens`);
 if (!flag("no-ws")) subscribeLogs();

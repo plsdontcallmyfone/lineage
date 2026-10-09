@@ -1,0 +1,226 @@
+{
+ "at": "2026-10-09T18:03:37.202Z",
+ "web": "http://127.0.0.1:9663",
+ "pass": 44,
+ "total": 44,
+ "results": [
+  {
+   "name": "1280 /explorer no horizontal scroll",
+   "ok": true,
+   "detail": "overflow 0px"
+  },
+  {
+   "name": "1280 /explorer no monospace",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "name": "1280 counters equal /market/summary",
+   "ok": true,
+   "detail": "34,31,TBA,1 vs 34,31,,1"
+  },
+  {
+   "name": "1280 cards in the indexer's Top order",
+   "ok": true,
+   "detail": "24 cards"
+  },
+  {
+   "name": "1280 showing line",
+   "ok": true,
+   "detail": "Showing 24 of 34 tokens"
+  },
+  {
+   "name": "1280 screens painted",
+   "ok": true,
+   "detail": "24 canvases"
+  },
+  {
+   "name": "1280 state Graduated filter",
+   "ok": true,
+   "detail": "1 card(s)"
+  },
+  {
+   "name": "1280 sort Most fees",
+   "ok": true
+  },
+  {
+   "name": "1280 no horizontal scroll after filters",
+   "ok": true,
+   "detail": "overflow 0px"
+  },
+  {
+   "name": "1280 search graduated mint resolves to the token page",
+   "ok": true,
+   "detail": "1 card(s), at http://127.0.0.1:9663/tokens/AbBT1Mh3mQJgMfVVfKj8zUZhD4mLw5NqbJptFUacb9Zz"
+  },
+  {
+   "name": "1280 search agent id resolves to the token page",
+   "ok": true,
+   "detail": "1 card(s), at http://127.0.0.1:9663/tokens/AbBT1Mh3mQJgMfVVfKj8zUZhD4mLw5NqbJptFUacb9Zz"
+  },
+  {
+   "name": "1280 search ticker resolves to the token page",
+   "ok": true,
+   "detail": "1 card(s), at http://127.0.0.1:9663/tokens/AbBT1Mh3mQJgMfVVfKj8zUZhD4mLw5NqbJptFUacb9Zz"
+  },
+  {
+   "name": "1280 /docs/overview layout",
+   "ok": true,
+   "detail": "overflow 0px, mono , \"Overview\", live 2, TBA 0"
+  },
+  {
+   "name": "1280 /docs/how-it-works layout",
+   "ok": true,
+   "detail": "overflow 0px, mono , \"How it works\", live 0, TBA 0"
+  },
+  {
+   "name": "1280 /docs/launch-an-agent layout",
+   "ok": true,
+   "detail": "overflow 0px, mono , \"Launch an agent\", live 2, TBA 0"
+  },
+  {
+   "name": "1280 /docs/verification layout",
+   "ok": true,
+   "detail": "overflow 0px, mono , \"Verification\", live 11, TBA 0"
+  },
+  {
+   "name": "1280 /docs/fees-and-compute layout",
+   "ok": true,
+   "detail": "overflow 0px, mono , \"Fees and compute\", live 8, TBA 0"
+  },
+  {
+   "name": "1280 /docs/graduation layout",
+   "ok": true,
+   "detail": "overflow 0px, mono , \"Graduation\", live 2, TBA 0"
+  },
+  {
+   "name": "1280 /docs/souls-and-identity layout",
+   "ok": true,
+   "detail": "overflow 0px, mono , \"Souls and identity\", live 0, TBA 0"
+  },
+  {
+   "name": "1280 /docs/api-and-embed-kit layout",
+   "ok": true,
+   "detail": "overflow 0px, mono , \"API and embed kit\", live 1, TBA 0"
+  },
+  {
+   "name": "1280 /docs/faq layout",
+   "ok": true,
+   "detail": "overflow 0px, mono , \"FAQ\", live 0, TBA 0"
+  },
+  {
+   "name": "1280 no console errors",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "name": "390 /explorer no horizontal scroll",
+   "ok": true,
+   "detail": "overflow 0px"
+  },
+  {
+   "name": "390 /explorer no monospace",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "name": "390 counters equal /market/summary",
+   "ok": true,
+   "detail": "34,31,TBA,1 vs 34,31,,1"
+  },
+  {
+   "name": "390 cards in the indexer's Top order",
+   "ok": true,
+   "detail": "24 cards"
+  },
+  {
+   "name": "390 showing line",
+   "ok": true,
+   "detail": "Showing 24 of 34 tokens"
+  },
+  {
+   "name": "390 screens painted",
+   "ok": true,
+   "detail": "24 canvases"
+  },
+  {
+   "name": "390 state Graduated filter",
+   "ok": true,
+   "detail": "1 card(s)"
+  },
+  {
+   "name": "390 sort Most fees",
+   "ok": true
+  },
+  {
+   "name": "390 no horizontal scroll after filters",
+   "ok": true,
+   "detail": "overflow 0px"
+  },
+  {
+   "name": "390 search graduated mint resolves to the token page",
+   "ok": true,
+   "detail": "1 card(s), at http://127.0.0.1:9663/tokens/AbBT1Mh3mQJgMfVVfKj8zUZhD4mLw5NqbJptFUacb9Zz"
+  },
+  {
+   "name": "390 search agent id resolves to the token page",
+   "ok": true,
+   "detail": "1 card(s), at http://127.0.0.1:9663/tokens/AbBT1Mh3mQJgMfVVfKj8zUZhD4mLw5NqbJptFUacb9Zz"
+  },
+  {
+   "name": "390 search ticker resolves to the token page",
+   "ok": true,
+   "detail": "1 card(s), at http://127.0.0.1:9663/tokens/AbBT1Mh3mQJgMfVVfKj8zUZhD4mLw5NqbJptFUacb9Zz"
+  },
+  {
+   "name": "390 /docs/overview layout",
+   "ok": true,
+   "detail": "overflow 0px, mono , \"Overview\", live 2, TBA 0"
+  },
+  {
+   "name": "390 /docs/how-it-works layout",
+   "ok": true,
+   "detail": "overflow 0px, mono , \"How it works\", live 0, TBA 0"
+  },
+  {
+   "name": "390 /docs/launch-an-agent layout",
+   "ok": true,
+   "detail": "overflow 0px, mono , \"Launch an agent\", live 2, TBA 0"
+  },
+  {
+   "name": "390 /docs/verification layout",
+   "ok": true,
+   "detail": "overflow 0px, mono , \"Verification\", live 11, TBA 0"
+  },
+  {
+   "name": "390 /docs/fees-and-compute layout",
+   "ok": true,
+   "detail": "overflow 0px, mono , \"Fees and compute\", live 8, TBA 0"
+  },
+  {
+   "name": "390 /docs/graduation layout",
+   "ok": true,
+   "detail": "overflow 0px, mono , \"Graduation\", live 2, TBA 0"
+  },
+  {
+   "name": "390 /docs/souls-and-identity layout",
+   "ok": true,
+   "detail": "overflow 0px, mono , \"Souls and identity\", live 0, TBA 0"
+  },
+  {
+   "name": "390 /docs/api-and-embed-kit layout",
+   "ok": true,
+   "detail": "overflow 0px, mono , \"API and embed kit\", live 1, TBA 0"
+  },
+  {
+   "name": "390 /docs/faq layout",
+   "ok": true,
+   "detail": "overflow 0px, mono , \"FAQ\", live 0, TBA 0"
+  },
+  {
+   "name": "390 no console errors",
+   "ok": true,
+   "detail": ""
+  }
+ ]
+}

@@ -1,4 +1,5 @@
 import type { Database } from "bun:sqlite";
+import { CORE_SCHEMA } from "./core-sync.ts";
 
 // Read API (docs/plans/LAUNCHPAD-AND-LIVE.md L2), JSON with CORS *. Prices are tLINE per agent
 // token; amounts are UI units (numbers) with the exact base units next to them as strings ("_raw").
@@ -6,6 +7,9 @@ import type { Database } from "bun:sqlite";
 
 const TF: Record<string, number> = { "1m": 60, "5m": 300, "1h": 3600, "1d": 86400 };
 const CORS = { "access-control-allow-origin": "*", "access-control-allow-methods": "GET, HEAD, OPTIONS", "access-control-allow-headers": "content-type" };
+
+interface CoreRow { agent: string; class: string | null; lineage_id: string | null; repo: string | null; model: string | null; provider: string | null;
+  generations: number; session_id: string | null; session_state: string | null; session_at: number | null }
 
 export interface StatusSource {
   (): Record<string, unknown>;
@@ -50,6 +54,26 @@ export function marketApi(db: Database, status: StatusSource, opts: { now?: () =
 function marketHandler(db: Database, status: StatusSource, opts: { now?: () => number } = {}) {
   const now = opts.now ?? (() => Math.floor(Date.now() / 1000));
   const lineDecimals = () => Number((db.query("SELECT v FROM meta WHERE k = 'line_decimals'").get() as { v: string } | null)?.v ?? 6);
+  db.exec(CORE_SCHEMA);
+  const coreOf = (agent: string) => db.query("SELECT * FROM core_agents WHERE agent = ?").get(agent) as CoreRow | null;
+
+  /** Token directory fields (FRONTEND-EMBED.md amendment 2): chain state plus what Core says about the agent. */
+  function directory(t: TokRow) {
+    const c = coreOf(t.agent);
+    const awake = t.awake == null ? null : t.awake === 1;
+    const working = c?.session_state === "live";
+    return {
+      fees_to_compute: ui(t.to_compute, lineDecimals()),
+      awake,
+      state: working ? "working" : t.graduated ? "graduated" : awake === null ? null : awake ? "awake" : "asleep",
+      class: c?.class ?? null,
+      model: c?.model ?? null,
+      provider: c?.provider ?? null,
+      generations: c ? c.generations : null,
+      lineage_id: c?.lineage_id ?? null,
+      session: c?.session_id ? { id: c.session_id, state: c.session_state, at: c.session_at } : null,
+    };
+  }
 
   function summary(t: TokRow) {
     const qd = lineDecimals();
@@ -89,6 +113,7 @@ function marketHandler(db: Database, status: StatusSource, opts: { now?: () => n
       launcher: t.launcher,
       repo_url: t.repo_url,
       state_at: t.state_at,
+      ...directory(t),
     };
   }
 
@@ -155,20 +180,55 @@ function marketHandler(db: Database, status: StatusSource, opts: { now?: () => n
     };
 
     if (parts.length === 2 && parts[1] === "status") return json(status());
+    if (parts.length === 2 && parts[1] === "summary") {
+      const rows = (db.query("SELECT * FROM tokens").all() as TokRow[]).map(summary);
+      const synced = (db.query("SELECT v FROM meta WHERE k = 'core_synced_at'").get() as { v: string } | null)?.v ?? null;
+      const known = !!synced && rows.some((r) => r.generations !== null);
+      return json({
+        tokens: rows.length,
+        awake: rows.filter((r) => r.awake === true).length,
+        working: known ? rows.filter((r) => r.state === "working").length : null,
+        graduated: rows.filter((r) => r.phase === "graduated").length,
+        // null until Core has a record of at least one token's agent (never a zero Core did not say)
+        verified_generations: known ? rows.reduce((n, r) => n + (r.generations ?? 0), 0) : null,
+        fees_to_compute: rows.reduce((n, r) => n + (r.fees_to_compute ?? 0), 0),
+        core_synced_at: synced ? Number(synced) : null,
+        quote: "tLINE",
+      });
+    }
     if (parts[1] !== "tokens") return json({ error: "not found" }, 404);
 
     if (parts.length === 2) {
-      const rows = (db.query("SELECT * FROM tokens").all() as TokRow[]).map(summary);
+      const all = (db.query("SELECT * FROM tokens").all() as TokRow[]).map(summary);
       const sort = q.get("sort") ?? "newest";
       const key: Record<string, (r: ReturnType<typeof summary>) => number> = {
         newest: (r) => r.created_at,
         market_cap: (r) => r.market_cap ?? -1,
         volume: (r) => r.volume_24h,
         progress: (r) => r.curve_progress ?? -1,
+        fees: (r) => r.fees_to_compute ?? -1,
+        verified: (r) => r.generations ?? -1,
+        // awake first (working counts as awake), then market cap
+        awake: (r) => (r.state === "working" ? 2e18 : r.awake ? 1e18 : 0) + Math.min(9.9e17, r.market_cap ?? 0),
       };
       const k = key[sort] ?? key.newest!;
+      // filters: class, model ("unknown" for none), state (working, awake, asleep, graduated), q (name, ticker, mint or agent)
+      const cls = q.get("class");
+      const model = q.get("model");
+      const state = q.get("state");
+      const text = (q.get("q") ?? "").trim().replace(/^\$/, "").toLowerCase();
+      const facet = (v: string | null) => v ?? "unknown";
+      const rows = all.filter((r) =>
+        (!cls || facet(r.class) === cls) &&
+        (!model || facet(r.model) === model) &&
+        (!state || (state === "graduated" ? r.phase === "graduated" : state === "awake" ? r.awake === true : state === "asleep" ? r.awake === false : r.state === state)) &&
+        (!text || r.mint.toLowerCase() === text || r.agent.toLowerCase() === text || (r.symbol ?? "").toLowerCase().includes(text) || (r.name ?? "").toLowerCase().includes(text)));
       rows.sort((a, b) => k(b) - k(a) || (a.mint < b.mint ? -1 : 1));
-      return json({ tokens: rows, count: rows.length, quote: "tLINE", sort: key[sort] ? sort : "newest" });
+      const count = (f: (r: (typeof all)[number]) => string) => all.reduce<Record<string, number>>((m, r) => ((m[f(r)] = (m[f(r)] ?? 0) + 1), m), {});
+      const offset = int("offset", 0);
+      const limit = int("limit", rows.length || 1, 500);
+      return json({ tokens: rows.slice(offset, offset + limit), count: rows.length, total: all.length, offset, quote: "tLINE", sort: key[sort] ? sort : "newest",
+        facets: { class: count((r) => facet(r.class)), model: count((r) => facet(r.model)) } });
     }
 
     const t = getTok(parts[2] ?? "");

@@ -6,7 +6,9 @@ import { esc, html } from "./html.ts";
 import { live, MAX_FEED } from "./live.ts";
 import { agentPage, agentsPage } from "./pages/agents.ts";
 import { candidatePage } from "./pages/candidate.ts";
+import { docsPage } from "./pages/docs.ts";
 import { epochsPage } from "./pages/epochs.ts";
+import { explorerPage } from "./pages/explorer.ts";
 import { generationPage } from "./pages/generation.ts";
 import { lineagePage } from "./pages/lineage.ts";
 import { livePage } from "./pages/live.ts";
@@ -43,6 +45,9 @@ const routes: [RegExp, Handler, string][] = [
   [/^\/spawn$/, spawnPage, "/spawn"],
   [/^\/wallet$/, walletPage, "/wallet"],
   [/^\/manual$/, manualPage, "/manual"],
+  [/^\/explorer$/, explorerPage, "/explorer"],
+  [/^\/docs$/, docsPage, "/docs"],
+  [/^\/docs\/([a-z0-9-]+)$/, docsPage, "/docs"],
 ];
 /** Selected tab per [data-tabs] group, kept across background re-renders. */
 const tabState = new Map<string, string>();
@@ -65,6 +70,8 @@ function shell() {
         <a href="/epochs" data-nav="/epochs">Epochs</a>
         <a href="/spawn" data-nav="/spawn">Spawn</a>
         <a href="/wallet" data-nav="/wallet">Wallet</a>
+        <a href="/explorer" data-nav="/explorer">Explorer</a>
+        <a href="/docs" data-nav="/docs">Docs</a>
         <a href="/manual" data-nav="/manual">Manual</a>
       </nav>
       <div class="top-right">
