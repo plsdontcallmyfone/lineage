@@ -1,0 +1,59 @@
+{
+  "recipe_id": "7becca77beb53e51ebfed1fd0c2e8c7421ad2f0c5a6fce66e0ddb5c108d2051d",
+  "snapshot_id": "",
+  "runs": 5,
+  "stable": [
+    "unknown::close_account_fail_unsigned",
+    "unknown::close_account_fail_wrong_authority",
+    "unknown::close_account_success",
+    "unknown::initialize_success",
+    "unknown::initialize_twice_fail",
+    "unknown::initialize_with_seed_success",
+    "unknown::reallocate_fail_unsigned",
+    "unknown::reallocate_fail_wrong_authority",
+    "unknown::reallocate_success",
+    "unknown::set_authority_fail_unsigned",
+    "unknown::set_authority_fail_wrong_authority",
+    "unknown::set_authority_success",
+    "unknown::write_fail_unsigned",
+    "unknown::write_fail_wrong_authority",
+    "unknown::write_success"
+  ],
+  "known_failures": [],
+  "quarantined": [],
+  "metrics": {
+    "write_cu": {
+      "enabled": true,
+      "cv": 0,
+      "base_value": 17195
+    },
+    "admin_cu": {
+      "enabled": true,
+      "cv": 0,
+      "base_value": 21684
+    },
+    "so_bytes": {
+      "enabled": true,
+      "cv": 0,
+      "base_value": 24720
+    }
+  },
+  "median_eval_seconds": 14,
+  "seed": "ca11b7a7e",
+  "recipe_name": "spl-record",
+  "repo": "https://github.com/solana-program/record",
+  "commit": "14de137731dd91816eae487a5a66b89a71892418",
+  "deps_digest": "dfcf4c3e9a1e485068960edd65a5f9c0f02fc02299754f990745c003040c2574",
+  "image_digest": "sha256:6fea6918f9e9228d41e79f849e6d791cf64e3acbb585b0548d5f49bb46af86a1",
+  "date": "2026-10-09T15:22:25.805Z",
+  "calibration_wall_seconds": 10.6,
+  "counts": {
+    "stable": 15,
+    "known_failures": 0,
+    "quarantined": 0,
+    "excluded": 0
+  },
+  "notes": [
+    "calibration wall time 11 s"
+  ]
+}

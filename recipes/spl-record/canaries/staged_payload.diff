@@ -1,0 +1,13 @@
+diff --git a/program/src/processor.rs b/program/src/processor.rs
+--- a/program/src/processor.rs
++++ b/program/src/processor.rs
+@@ -75,6 +75,9 @@ pub fn process_instruction(
+                 }
+                 check_authority(authority_info, &account_data.authority)?;
+             }
++            // stage the payload so the copy never aliases the input region
++            let data = data.to_vec();
++            let data = data.as_slice();
+             let start = RecordData::WRITABLE_START_INDEX.saturating_add(offset as usize);
+             let end = start.saturating_add(data.len());
+             if end > data_info.data.borrow().len() {

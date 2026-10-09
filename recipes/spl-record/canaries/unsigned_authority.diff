@@ -1,0 +1,14 @@
+diff --git a/program/src/processor.rs b/program/src/processor.rs
+--- a/program/src/processor.rs
++++ b/program/src/processor.rs
+@@ -14,10 +14,6 @@ fn check_authority(authority_info: &AccountInfo, expected_authority: &Address) -
+         msg!("Incorrect record authority provided");
+         return Err(RecordError::IncorrectAuthority.into());
+     }
+-    if !authority_info.is_signer {
+-        msg!("Record authority signature missing");
+-        return Err(ProgramError::MissingRequiredSignature);
+-    }
+     Ok(())
+ }
+ 

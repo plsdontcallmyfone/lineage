@@ -1,0 +1,142 @@
+{
+  "unsigned_authority": {
+    "expect": "tests_fail",
+    "outcome": "rejected",
+    "reason": "tests_fail",
+    "detail": "4 stable tests fail: unknown::close_account_fail_unsigned, unknown::reallocate_fail_unsigned, unknown::set_authority_fail_unsigned, unknown::write_fail_unsigned",
+    "effect": null,
+    "metrics": {
+      "write_cu": {
+        "base": [
+          17184
+        ],
+        "cand": [
+          17112
+        ],
+        "ratio": 0.9958100558659218
+      },
+      "admin_cu": {
+        "base": [
+          20634
+        ],
+        "cand": [
+          20583
+        ],
+        "ratio": 0.9975283512649026
+      },
+      "so_bytes": {
+        "base": [
+          24720
+        ],
+        "cand": [
+          24560
+        ],
+        "ratio": 0.9935275080906149
+      }
+    },
+    "equivalence": "changed",
+    "seed": "7265706c61792d75",
+    "recipe_id": "7becca77beb53e51ebfed1fd0c2e8c7421ad2f0c5a6fce66e0ddb5c108d2051d",
+    "eval_seconds": 15.4,
+    "date": "2026-10-09T15:22:47.187Z",
+    "match": true
+  },
+  "write_bounds_by_panic": {
+    "expect": "equivalence_changed",
+    "outcome": "rejected",
+    "reason": "equivalence_changed",
+    "detail": "candidate output differs from parent on seeded inputs",
+    "effect": null,
+    "metrics": {
+      "write_cu": {
+        "base": [
+          17184
+        ],
+        "cand": [
+          17160
+        ],
+        "ratio": 0.9986033519553073
+      },
+      "admin_cu": {
+        "base": [
+          22505
+        ],
+        "cand": [
+          22505
+        ],
+        "ratio": 1
+      },
+      "so_bytes": {
+        "base": [
+          24720
+        ],
+        "cand": [
+          25408
+        ],
+        "ratio": 1.027831715210356
+      }
+    },
+    "equivalence": "changed",
+    "seed": "7265706c61792d77",
+    "recipe_id": "7becca77beb53e51ebfed1fd0c2e8c7421ad2f0c5a6fce66e0ddb5c108d2051d",
+    "eval_seconds": 11,
+    "date": "2026-10-09T15:22:58.166Z",
+    "match": true
+  },
+  "staged_payload": {
+    "expect": "no_improvement",
+    "outcome": "rejected",
+    "reason": "no_improvement",
+    "detail": "worst ratio 1.0573 vs required 0.9900",
+    "effect": {
+      "metric": "write_cu",
+      "ratio": 1.0573174279895257,
+      "ci_low": 1.0573174279895257,
+      "ci_high": 1.0573174279895257,
+      "per_replay": [
+        {
+          "replay_id": "r1",
+          "ratio": 1.0573174279895257,
+          "ci_low": 1.0573174279895257,
+          "ci_high": 1.0573174279895257,
+          "pass": false
+        }
+      ]
+    },
+    "metrics": {
+      "write_cu": {
+        "base": [
+          17185
+        ],
+        "cand": [
+          18170
+        ],
+        "ratio": 1.0573174279895257
+      },
+      "admin_cu": {
+        "base": [
+          21678
+        ],
+        "cand": [
+          21678
+        ],
+        "ratio": 1
+      },
+      "so_bytes": {
+        "base": [
+          24720
+        ],
+        "cand": [
+          25008
+        ],
+        "ratio": 1.0116504854368933
+      }
+    },
+    "equivalence": "same",
+    "seed": "7265706c61792d73",
+    "recipe_id": "7becca77beb53e51ebfed1fd0c2e8c7421ad2f0c5a6fce66e0ddb5c108d2051d",
+    "eval_seconds": 12.5,
+    "date": "2026-10-09T15:23:10.617Z",
+    "match": true
+  }
+}

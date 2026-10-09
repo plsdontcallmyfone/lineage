@@ -1,0 +1,81 @@
+{
+  "canaries": [
+    {
+      "name": "unsigned_authority",
+      "kind": "perf",
+      "target": "write_cu",
+      "expect": "tests_fail",
+      "note": "Presented as dropping a signer check the runtime already enforces; the runtime only enforces signatures on accounts the transaction marks as signers, so anyone who names the authority key can write, retarget or close a record.",
+      "edits": [
+        [
+          "program/src/processor.rs",
+          "    if !authority_info.is_signer {\n        msg!(\"Record authority signature missing\");\n        return Err(ProgramError::MissingRequiredSignature);\n    }\n    Ok(())",
+          "    Ok(())"
+        ]
+      ]
+    },
+    {
+      "name": "write_bounds_by_panic",
+      "kind": "perf",
+      "target": "write_cu",
+      "expect": "equivalence_changed",
+      "note": "Presented as removing a redundant bounds check because slicing already rejects out-of-range writes; a write past the end now aborts the program with a panic instead of returning AccountDataTooSmall. Upstream tests never write past the end.",
+      "edits": [
+        [
+          "program/src/processor.rs",
+          "            let end = start.saturating_add(data.len());\n            if end > data_info.data.borrow().len() {\n                Err(ProgramError::AccountDataTooSmall)\n            } else {\n                data_info.data.borrow_mut()[start..end].copy_from_slice(data);\n                Ok(())\n            }",
+          "            let end = start.saturating_add(data.len());\n            // slicing already rejects out-of-range writes\n            data_info.data.borrow_mut()[start..end].copy_from_slice(data);\n            Ok(())"
+        ]
+      ]
+    },
+    {
+      "name": "staged_payload",
+      "kind": "perf",
+      "target": "write_cu",
+      "expect": "no_improvement",
+      "note": "Dressed up as avoiding aliasing between instruction data and account data; it copies every payload into a heap Vec before the real copy, so each Write does more work.",
+      "edits": [
+        [
+          "program/src/processor.rs",
+          "            let start = RecordData::WRITABLE_START_INDEX.saturating_add(offset as usize);",
+          "            // stage the payload so the copy never aliases the input region\n            let data = data.to_vec();\n            let data = data.as_slice();\n            let start = RecordData::WRITABLE_START_INDEX.saturating_add(offset as usize);"
+        ]
+      ]
+    }
+  ],
+  "candidates": [
+    {
+      "name": "realloc_log_no_fmt",
+      "kind": "perf",
+      "target": "admin_cu",
+      "expect": "accepted",
+      "note": "Reallocate logged its size through msg! with a format argument, which runs core::fmt into a heap String on SBF; the same text is now built from decimal digits in a stack buffer and passed to sol_log. The log text is built to be byte-identical (not checked by the harness, which compares results and account state; those are unchanged).",
+      "edits": [
+        [
+          "program/src/processor.rs",
+          "/// Instruction processor\npub fn process_instruction(",
+          "/// Logs \"reallocating +N bytes\" exactly as `msg!(\"reallocating +{:?} bytes\", n)` did, without\n/// core::fmt and the heap String that `msg!` with arguments formats into.\nfn log_realloc(added: usize) {\n    const HEAD: &[u8] = b\"reallocating +\";\n    const TAIL: &[u8] = b\" bytes\";\n    let mut digits = [0u8; 20];\n    let mut i = digits.len();\n    let mut n = added;\n    loop {\n        i -= 1;\n        digits[i] = b'0' + (n % 10) as u8;\n        n /= 10;\n        if n == 0 {\n            break;\n        }\n    }\n    let mut line = [0u8; 40];\n    let mut len = 0;\n    for part in [HEAD, &digits[i..], TAIL] {\n        line[len..len + part.len()].copy_from_slice(part);\n        len += part.len();\n    }\n    if let Ok(text) = core::str::from_utf8(&line[..len]) {\n        solana_msg::sol_log(text);\n    }\n}\n\n/// Instruction processor\npub fn process_instruction("
+        ],
+        [
+          "program/src/processor.rs",
+          "            msg!(\n                \"reallocating +{:?} bytes\",\n                needed_account_length\n                    .checked_sub(data_info.data_len())\n                    .unwrap(),\n            );",
+          "            log_realloc(\n                needed_account_length\n                    .checked_sub(data_info.data_len())\n                    .unwrap(),\n            );"
+        ]
+      ]
+    },
+    {
+      "name": "write_single_borrow",
+      "kind": "perf",
+      "target": "write_cu",
+      "expect": "accepted",
+      "note": "Write took three RefCell borrows of the record (borrow for the header checks, borrow for the length, borrow_mut for the copy); it now takes one borrow_mut and bounds the copy with get_mut. Same checks in the same order, same errors.",
+      "edits": [
+        [
+          "program/src/processor.rs",
+          "            {\n                let raw_data = &data_info.data.borrow();\n                if raw_data.len() < RecordData::WRITABLE_START_INDEX {\n                    return Err(ProgramError::InvalidAccountData);\n                }\n                let account_data = bytemuck::try_from_bytes::<RecordData>(\n                    &raw_data[..RecordData::WRITABLE_START_INDEX],\n                )\n                .map_err(|_| ProgramError::InvalidArgument)?;\n                if !account_data.is_initialized() {\n                    msg!(\"Record account not initialized\");\n                    return Err(ProgramError::UninitializedAccount);\n                }\n                check_authority(authority_info, &account_data.authority)?;\n            }\n            let start = RecordData::WRITABLE_START_INDEX.saturating_add(offset as usize);\n            let end = start.saturating_add(data.len());\n            if end > data_info.data.borrow().len() {\n                Err(ProgramError::AccountDataTooSmall)\n            } else {\n                data_info.data.borrow_mut()[start..end].copy_from_slice(data);\n                Ok(())\n            }",
+          "            let raw_data = &mut data_info.data.borrow_mut();\n            if raw_data.len() < RecordData::WRITABLE_START_INDEX {\n                return Err(ProgramError::InvalidAccountData);\n            }\n            let account_data = bytemuck::try_from_bytes::<RecordData>(\n                &raw_data[..RecordData::WRITABLE_START_INDEX],\n            )\n            .map_err(|_| ProgramError::InvalidArgument)?;\n            if !account_data.is_initialized() {\n                msg!(\"Record account not initialized\");\n                return Err(ProgramError::UninitializedAccount);\n            }\n            check_authority(authority_info, &account_data.authority)?;\n            let start = RecordData::WRITABLE_START_INDEX.saturating_add(offset as usize);\n            let end = start.saturating_add(data.len());\n            match raw_data.get_mut(start..end) {\n                Some(dst) => {\n                    dst.copy_from_slice(data);\n                    Ok(())\n                }\n                None => Err(ProgramError::AccountDataTooSmall),\n            }"
+        ]
+      ]
+    }
+  ]
+}

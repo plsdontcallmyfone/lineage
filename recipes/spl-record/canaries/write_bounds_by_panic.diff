@@ -1,0 +1,19 @@
+diff --git a/program/src/processor.rs b/program/src/processor.rs
+--- a/program/src/processor.rs
++++ b/program/src/processor.rs
+@@ -77,12 +77,9 @@ pub fn process_instruction(
+             }
+             let start = RecordData::WRITABLE_START_INDEX.saturating_add(offset as usize);
+             let end = start.saturating_add(data.len());
+-            if end > data_info.data.borrow().len() {
+-                Err(ProgramError::AccountDataTooSmall)
+-            } else {
+-                data_info.data.borrow_mut()[start..end].copy_from_slice(data);
+-                Ok(())
+-            }
++            // slicing already rejects out-of-range writes
++            data_info.data.borrow_mut()[start..end].copy_from_slice(data);
++            Ok(())
+         }
+ 
+         RecordInstruction::SetAuthority => {

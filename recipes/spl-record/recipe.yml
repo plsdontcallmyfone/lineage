@@ -1,0 +1,107 @@
+# solana-program/record: the SPL Record program (deployed on mainnet at recr1L3P...), which stores
+# arbitrary data in an account under an authority: Initialize, Write, SetAuthority, Reallocate,
+# CloseAccount. Apache-2.0 (LICENSE, Cargo.toml). No CONTRIBUTING, AI policy or AGENTS file in the
+# repository or in the solana-program/.github organisation repository (checked 2026-10-08).
+#
+# Why: a real deployed program built on the solana-program crates (not pinocchio), so the
+# entrypoint deserializes every account into a heap-allocated AccountInfo vector, and each
+# instruction re-borrows account data through RefCells and logs its name, leaving visible
+# compute-unit headroom.
+#
+# Class `solana` (SPEC 6.1), following solana-config: the primary metrics are compute units,
+# measured in-process by the overlay harness (lineage_harness, mollusk-svm 0.12.0 pinned by the
+# same Cargo.lock solana-config's harness uses) on seeded instructions, loading the program .so
+# from the tree under test. Secondary: bytes of the .so.
+#
+# Disk-lean layout: the harness and upstream's functional test binary are built once in prepare
+# and only the two executables are kept (/deps/bin); their target dirs are deleted. Each tree
+# then only runs cargo build-sbf. The functional tests (program/tests/functional.rs, mollusk) are
+# black-box: they load spl_record.so from SBF_OUT_DIR, which points at the candidate's build, so
+# they judge the candidate program; their host-side helpers (instruction builders, state layout)
+# are the snapshot's, so a patch that changes the wire format fails them. Upstream's in-source
+# unit tests (instruction and state modules, host-only) are protected blocks and are not run:
+# compiling them per tree would rebuild mollusk for every evaluation.
+#
+# Toolchain: rust-toolchain.toml pins 1.93.1, the image's host toolchain; SBF builds use platform
+# tools v1.57 through cargo-build-sbf 4.3.0. Tests run with RUST_LOG=error and one thread
+# (mollusk logs every program message; see solana-config). Calibrated on arm64.
+#
+# prepare retries each cargo fetch up to 5 times with a growing backoff (CARGO_NET_RETRY=10,
+# CARGO_HTTP_TIMEOUT=120): the first draft failed twice on crates.io index timeouts inside Docker;
+# on 2026-10-09 DNS and HTTPS from the bridge network were healthy and both prepares passed (101 s,
+# 184 s). The equivalence harness supplies the account for a substituted authority key: without it
+# mollusk aborted the whole run on some seeds, both sides crashed identically and equivalence
+# compared nothing (found by the write_bounds_by_panic canary).
+name: spl-record
+class: solana
+requires: { arch: arm64 }
+repo: https://github.com/solana-program/record
+commit: "14de137731dd91816eae487a5a66b89a71892418"
+image: "lineage/solana:m1@sha256:6fea6918f9e9228d41e79f849e6d791cf64e3acbb585b0548d5f49bb46af86a1"
+workdir: /work/src
+prepare:
+  - 'export CARGO_NET_RETRY=10 CARGO_HTTP_TIMEOUT=120'
+  - 'retry() { for i in 1 2 3 4 5; do "$@" && return 0; echo "retry $i of 5 failed, backing off" >&2; sleep $((i * 15)); done; return 1; }'
+  - retry cargo fetch --locked
+  - retry cargo fetch --locked --manifest-path lineage_harness/Cargo.toml
+  - mkdir -p /deps/bin
+  - CARGO_PROFILE_DEV_DEBUG=0 cargo test -p spl-record --test functional --no-run --locked --target-dir /deps/tt
+  - cp "$(find /deps/tt/debug/deps -maxdepth 1 -type f -name 'functional-*' -perm -u+x | head -n 1)" /deps/bin/functional
+  - rm -rf /deps/tt
+  - cd lineage_harness && cargo build --release --locked --target-dir /deps/harness
+  - cp /deps/harness/release/lineage-cu /deps/bin/lineage-cu && rm -rf /deps/harness
+  - du -sh /deps/cargo /deps/bin
+prepare_outputs: []
+build:
+  commands:
+    - cargo build-sbf --offline --manifest-path program/Cargo.toml -- --locked
+  artifacts: ["target/deploy/spl_record.so"]
+  reproducible: true
+test:
+  command: RUST_LOG=error SBF_OUT_DIR=/work/src/target/deploy /deps/bin/functional --test-threads=1 2>&1
+  parser: libtest
+  exclude: []
+  timeout_s: 600
+equivalence:
+  command: /deps/bin/lineage-cu equiv "$LINEAGE_SEED" target/deploy/spl_record.so
+  output: stdout-digest
+metrics:
+  - name: write_cu
+    kind: perf
+    direction: lower
+    deterministic: true
+    command: /deps/bin/lineage-cu cu write "$LINEAGE_SEED" target/deploy/spl_record.so
+    parser: number
+    holdout: true
+    min_effect: 0.01
+  - name: admin_cu
+    kind: perf
+    direction: lower
+    deterministic: true
+    command: /deps/bin/lineage-cu cu admin "$LINEAGE_SEED" target/deploy/spl_record.so
+    parser: number
+    holdout: true
+    min_effect: 0.01
+  - name: so_bytes
+    kind: slim
+    direction: lower
+    deterministic: true
+    command: wc -c < target/deploy/spl_record.so
+    parser: bytes
+    min_effect: 0.005
+patch:
+  allowed_paths: ["program/src/**"]
+  protected_paths:
+    - "program/tests/**"
+    - "**/Cargo.toml"
+    - "Cargo.lock"
+    - "rust-toolchain.toml"
+    - "clients/**"
+    - ".github/**"
+    - "**/*.yml"
+    - "lineage_harness/**"
+  protected_blocks:
+    - { glob: "program/src/**/*.rs", start: "^\\s*#\\[cfg\\(test\\)\\]" }
+  max_files: 5
+  max_lines: 200
+limits: { cpus: 4, memory_mb: 4096, pids: 512, wall_s: 2400, disk_mb: 6144 }

@@ -1,0 +1,18 @@
+{
+  "realloc_log_no_fmt": {
+    "kind": "perf",
+    "target": "admin_cu",
+    "expect": "accepted",
+    "note": "Reallocate logged its size through msg! with a format argument, which runs core::fmt into a heap String on SBF; the same text is now built from decimal digits in a stack buffer and passed to sol_log. The log text is built to be byte-identical (not checked by the harness, which compares results and account state; those are unchanged).",
+    "lines": 30,
+    "guard": "ok"
+  },
+  "write_single_borrow": {
+    "kind": "perf",
+    "target": "write_cu",
+    "expect": "accepted",
+    "note": "Write took three RefCell borrows of the record (borrow for the header checks, borrow for the length, borrow_mut for the copy); it now takes one borrow_mut and bounds the copy with get_mut. Same checks in the same order, same errors.",
+    "lines": 37,
+    "guard": "ok"
+  }
+}

@@ -1,0 +1,26 @@
+{
+  "unsigned_authority": {
+    "kind": "perf",
+    "target": "write_cu",
+    "expect": "tests_fail",
+    "note": "Presented as dropping a signer check the runtime already enforces; the runtime only enforces signatures on accounts the transaction marks as signers, so anyone who names the authority key can write, retarget or close a record.",
+    "lines": 4,
+    "guard": "ok"
+  },
+  "write_bounds_by_panic": {
+    "kind": "perf",
+    "target": "write_cu",
+    "expect": "equivalence_changed",
+    "note": "Presented as removing a redundant bounds check because slicing already rejects out-of-range writes; a write past the end now aborts the program with a panic instead of returning AccountDataTooSmall. Upstream tests never write past the end.",
+    "lines": 9,
+    "guard": "ok"
+  },
+  "staged_payload": {
+    "kind": "perf",
+    "target": "write_cu",
+    "expect": "no_improvement",
+    "note": "Dressed up as avoiding aliasing between instruction data and account data; it copies every payload into a heap Vec before the real copy, so each Write does more work.",
+    "lines": 3,
+    "guard": "ok"
+  }
+}
