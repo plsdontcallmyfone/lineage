@@ -2132,6 +2132,29 @@ export class Core {
   // Scheduler
 
   /** Advances every timer against the clock. Idempotent; main.ts calls it on an interval. */
+  /**
+   * A dispute round that could not draw a fresh replayer (every eligible verifier already replayed the
+   * candidate: a small network) within twice its lineage's replay window ends as `unresolved_dispute`,
+   * judged on the replays it has: rejected, nobody slashed (SPEC 10.6). It used to wait forever.
+   */
+  private closeStarvedDisputes(now: number) {
+    const rows = this.db
+      .query<CandRow & { opened_at: number }, []>(
+        `SELECT c.*, d.opened_at AS opened_at FROM candidates c JOIN disputes d ON d.candidate_id = c.candidate_id AND d.stage = c.stage AND d.resolved_at IS NULL
+         WHERE c.status = 'disputed' AND (c.want_replays > 0 OR c.want_reference > 0)`,
+      )
+      .all();
+    for (const c of rows) {
+      const grp = this.candGroup(c);
+      if (this.db.query("SELECT 1 FROM replays WHERE grp = ? AND status IN ('assigned','committed') LIMIT 1").get(grp)) continue;
+      const wait = 2 * this.replayWindowMs(this.calibOf(this.lineageRow(c.lineage_id)!.calib_id));
+      if (now < c.opened_at + wait) continue;
+      this.db.query("UPDATE candidates SET want_replays = 0, want_reference = 0 WHERE commit_id = ?").run(c.commit_id);
+      this.emit("candidate.dispute_starved", { candidate_id: c.candidate_id });
+      this.progress(grp);
+    }
+  }
+
   tick() {
     return this.tx(() => {
       const now = this.now();
@@ -2154,6 +2177,7 @@ export class Core {
         touched.add(r.grp);
       }
       for (const g of touched) this.progress(g);
+      this.closeStarvedDisputes(now);
       this.expireQualifications();
       this.hardening.tick();
       this.series.tick();

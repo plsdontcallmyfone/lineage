@@ -92,6 +92,25 @@ describe("disputes (SPEC 10.2)", () => {
     expect(audit[0].seed).not.toBe(stage[0].seed);
   });
 
+  test("a dispute that cannot draw a fresh replayer ends unresolved after twice the replay window, nobody slashed", async () => {
+    const e = (env = await setup({ verifiers: 2, reference: false }));
+    const author = await makeAuthor(e);
+    const c = await submit(e, author, diff("starved-dispute"));
+    let first: string | null = null;
+    await runReplays(e, c.candidate_id, (a: Agent) => ((first ??= a.id) === a.id ? result() : breaks()), 1);
+    expect((await candidate(e, c.candidate_id)).status).toBe("disputed");
+    const bonds = await Promise.all(e.verifiers.map(async (v) => BigInt((await agent(e, v.id)).bond)));
+    e.clock.advance(Math.max(e.cfg.replay_window_min_s, e.cfg.replay_window_factor * 120) * 1000);
+    e.core.tick();
+    expect((await candidate(e, c.candidate_id)).status).toBe("disputed");
+    e.clock.advance(Math.max(e.cfg.replay_window_min_s, e.cfg.replay_window_factor * 120) * 1000 + 1);
+    e.core.tick();
+    const v = await candidate(e, c.candidate_id);
+    expect(v.status).toBe("rejected");
+    expect(v.reason).toBe("unresolved_dispute");
+    for (const [i, x] of e.verifiers.entries()) expect(BigInt((await agent(e, x.id)).bond)).toBe(bonds[i]!);
+  });
+
   test("without a reference runner a dispute draws two more random replayers; a 2-2 split is unresolved", async () => {
     const e = (env = await setup({ verifiers: 4, reference: false }));
     const author = await makeAuthor(e);

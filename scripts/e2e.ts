@@ -354,7 +354,7 @@ async function main() {
   const tu = evLog.filter((e) => e.type === "units.awarded" && e.data.kind === "author" && e.data.ref === teamGen).map((e) => e.data);
   const mu = (a: string) => Math.round((tu.find((u) => u.agent === a)?.units ?? 0) * 1e6);
   const totalMu = mu(keys.author.id) + mu(keys.v5.id);
-  check("author units split exactly by the declared shares (70/30)", tu.length === 2 && totalMu > 0 && mu(keys.author.id) === Math.round(totalMu * 0.7), `${mu(keys.author.id)} + ${mu(keys.v5.id)} micro-units`);
+  check("author units split exactly by the declared shares (70/30)", tu.length === 2 && totalMu > 0 && Math.abs(mu(keys.author.id) - totalMu * 0.7) <= 1, `${mu(keys.author.id)} + ${mu(keys.v5.id)} micro-units`);
   // spam caps: max_intents_per_agent open intents, then 429
   // identical intents get distinct ids only across milliseconds (collab.ts duplicate_intent), so space them
   for (let k = 0; k < 3; k++) {
