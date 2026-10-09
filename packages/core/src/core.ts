@@ -1409,7 +1409,11 @@ export class Core {
     const grp = this.candGroup(c);
     const existing = this.db.query<ReplayRow, [string]>("SELECT * FROM replays WHERE grp = ?").all(grp);
     const author = this.agentRow(c.author)!;
-    const exAgents = new Set([c.author, ...existing.map((r) => r.replayer)]);
+    // an agent that abandoned this group is left out for the rest of that epoch only (it was struck
+    // for it); excluding it for good starved candidates on a small network, where the abandoners were
+    // the only verifiers left (site, 2026-10-09: six candidates stuck in replaying)
+    const epoch = this.currentEpoch().n;
+    const exAgents = new Set([c.author, ...existing.filter((r) => r.status !== "abandoned" || r.epoch >= epoch).map((r) => r.replayer)]);
     const exOps = new Set<string>();
     if (author.operator) exOps.add(author.operator);
     // every team member, their operators and their owners' other agents (SPEC 12.2)

@@ -153,6 +153,22 @@ describe("timeouts and strikes", () => {
     expect((await candidate(e, c.candidate_id)).status).toBe("accepted");
   });
 
+  test("abandoners are drawn again for the same candidate after the epoch rolls over, so a small network cannot starve it", async () => {
+    const e = (env = await setup({ verifiers: 2 }));
+    const author = await makeAuthor(e);
+    const c = await submit(e, author, diff("starve"));
+    await runReplays(e, c.candidate_id, () => "skip", 1);
+    e.clock.advance(Math.max(e.cfg.replay_window_min_s, e.cfg.replay_window_factor * 120) * 1000 + 1);
+    e.core.tick();
+    expect((await candidate(e, c.candidate_id)).status).toBe("replaying");
+    for (const v of e.verifiers) expect(await assignmentsFor(v, c.candidate_id)).toHaveLength(0);
+    await expectOk(e.admin.c.post("/v1/admin/epochs/close"));
+    e.core.tick();
+    for (const v of e.verifiers) expect(await assignmentsFor(v, c.candidate_id)).toHaveLength(1);
+    await runReplays(e, c.candidate_id, honest());
+    expect((await candidate(e, c.candidate_id)).status).toBe("accepted");
+  });
+
   test("strike_limit strikes in an epoch suspend the agent through the next epoch", async () => {
     const e = (env = await setup({ verifiers: 2, over: { max_open_replays: 10 } }));
     const author = await makeAuthor(e);
