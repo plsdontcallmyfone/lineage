@@ -44,6 +44,7 @@ func main() {
 	// goroutine that has run for 10 ms of wall time, but the runtime then declines to
 	// preempt it, instead of entering the scheduler a wall-clock-dependent number of times
 	// (~900 instructions each under valgrind). Nothing in run blocks, so this is safe.
+	growStack(16) // grow the goroutine stack before the measured region (see growStack)
 	procPin()
 	sum := run(mode, in, enc)
 	procUnpin()
@@ -104,4 +105,20 @@ func run(mode string, in []gen.Block, enc [][]byte) int {
 		os.Exit(2)
 	}
 	return sum
+}
+
+// growStack grows the goroutine stack to about 1 MiB before the measured region. Go grows a stack by
+// copying it to a new one, a stack switch that callgrind on amd64 intermittently took for main.run
+// returning, after which it stopped counting: encode_ir read about 0.68M in most runs and 43.6M in
+// others on one tree (decode and stream grow the stack before run and were stable). With GOGC=off the
+// stack never shrinks back, so run never grows it again; 12 runs then agreed within 4.7e-5.
+//
+//go:noinline
+func growStack(n int) byte {
+	var b [64 << 10]byte
+	b[n%len(b)] = byte(n)
+	if n > 0 {
+		return growStack(n-1) + b[0]
+	}
+	return b[1]
 }
