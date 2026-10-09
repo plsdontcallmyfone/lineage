@@ -1,5 +1,5 @@
 {
-  "recipe_id": "89f640bfdee3e954c3f5930dbb2eb6d430d0b02b8ade3fadba9f64bfaceab01c",
+  "recipe_id": "6f960627f5039145a977e44d5f022284234c25481dd20736d4efe0da464efaaf",
   "snapshot_id": "",
   "runs": 5,
   "stable": [
@@ -118,28 +118,28 @@
     "encode_ir": {
       "enabled": true,
       "cv": 0,
-      "base_value": 27139356
+      "base_value": 40725548
     },
     "decode_ir": {
       "enabled": true,
       "cv": 0,
-      "base_value": 122944074
+      "base_value": 123575198
     },
     "stream_ir": {
       "enabled": true,
       "cv": 0,
-      "base_value": 15005773
+      "base_value": 15001750
     }
   },
-  "median_eval_seconds": 1270,
+  "median_eval_seconds": 1260,
   "seed": "ca11b7a7e",
   "recipe_name": "geth-rlp",
   "repo": "https://github.com/ethereum/go-ethereum",
   "commit": "0b468a86b90a6563c3725e9871d7cea8581eb1b2",
   "deps_digest": "e74c53f5a449367ebdfe95c2fe044b42d0dfeea47e0eba986bfbb650f52c4510",
   "image_digest": "sha256:7f90f7bb53ceec9f7b62ed14867b6439c7020fa8439ff5ea4daf891a84069838",
-  "date": "2026-10-08T00:33:07.461Z",
-  "calibration_wall_seconds": 3117.2,
+  "date": "2026-10-09T20:18:11.880Z",
+  "calibration_wall_seconds": 3125.5,
   "counts": {
     "stable": 108,
     "known_failures": 0,
@@ -147,6 +147,6 @@
     "excluded": 0
   },
   "notes": [
-    "calibration wall time 3116 s"
+    "calibration wall time 3125 s"
   ]
 }

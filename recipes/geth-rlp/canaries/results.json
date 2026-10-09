@@ -8,35 +8,35 @@
     "metrics": {
       "encode_ir": {
         "base": [
-          27132471
+          40787103
         ],
         "cand": [
-          27132307
+          40786857
         ],
-        "ratio": 0.9999939555818561
+        "ratio": 0.9999939686817179
       },
       "decode_ir": {
         "base": [
-          122485599
+          123098613
         ],
         "cand": [],
         "ratio": null
       },
       "stream_ir": {
         "base": [
-          15004261
+          14996823
         ],
         "cand": [
-          15004261
+          14995873
         ],
-        "ratio": 1
+        "ratio": 0.999936653249825
       }
     },
     "equivalence": "changed",
     "seed": "7265706c61792d66",
-    "recipe_id": "89f640bfdee3e954c3f5930dbb2eb6d430d0b02b8ade3fadba9f64bfaceab01c",
-    "eval_seconds": 1289.3,
-    "date": "2026-10-08T00:55:29.142Z",
+    "recipe_id": "6f960627f5039145a977e44d5f022284234c25481dd20736d4efe0da464efaaf",
+    "eval_seconds": 1331.7,
+    "date": "2026-10-09T20:40:23.657Z",
     "match": true
   },
   "big_input_no_tail_check": {
@@ -48,55 +48,55 @@
     "metrics": {
       "encode_ir": {
         "base": [
-          27214224
+          40907822
         ],
         "cand": [
-          27214214
+          40907822
         ],
-        "ratio": 0.9999996325450985
+        "ratio": 1
       },
       "decode_ir": {
         "base": [
-          123094392
+          123592854
         ],
         "cand": [
-          123094932
+          123594875
         ],
-        "ratio": 1.0000043868773485
+        "ratio": 1.0000163520780903
       },
       "stream_ir": {
         "base": [
-          14885119
+          14875296
         ],
         "cand": [
-          14885119
+          14876246
         ],
-        "ratio": 1
+        "ratio": 1.000063864275373
       }
     },
     "equivalence": "changed",
     "seed": "7265706c61792d62",
-    "recipe_id": "89f640bfdee3e954c3f5930dbb2eb6d430d0b02b8ade3fadba9f64bfaceab01c",
-    "eval_seconds": 1674.6,
-    "date": "2026-10-08T01:23:23.772Z",
+    "recipe_id": "6f960627f5039145a977e44d5f022284234c25481dd20736d4efe0da464efaaf",
+    "eval_seconds": 1384.8,
+    "date": "2026-10-09T21:03:28.481Z",
     "match": true
   },
   "no_buffer_pool": {
     "expect": "no_improvement",
     "outcome": "rejected",
     "reason": "no_improvement",
-    "detail": "worst ratio 1.1572 vs required 0.9900",
+    "detail": "worst ratio 1.1569 vs required 0.9900",
     "effect": {
       "metric": "encode_ir",
-      "ratio": 1.1571921141276929,
-      "ci_low": 1.1571921141276929,
-      "ci_high": 1.1571921141276929,
+      "ratio": 1.1569358490831794,
+      "ci_low": 1.1569358490831794,
+      "ci_high": 1.1569358490831794,
       "per_replay": [
         {
           "replay_id": "r1",
-          "ratio": 1.1571921141276929,
-          "ci_low": 1.1571921141276929,
-          "ci_high": 1.1571921141276929,
+          "ratio": 1.1569358490831794,
+          "ci_low": 1.1569358490831794,
+          "ci_high": 1.1569358490831794,
           "pass": false
         }
       ]
@@ -104,37 +104,37 @@
     "metrics": {
       "encode_ir": {
         "base": [
-          27257048
+          40894474
         ],
         "cand": [
-          31541641
+          47312283
         ],
-        "ratio": 1.1571921141276929
+        "ratio": 1.1569358490831794
       },
       "decode_ir": {
         "base": [
-          123295808
+          123782011
         ],
         "cand": [
-          123155727
+          123783151
         ],
-        "ratio": 0.9988638624275045
+        "ratio": 1.0000092097388853
       },
       "stream_ir": {
         "base": [
-          14767400
+          14764270
         ],
         "cand": [
-          14767400
+          14769818
         ],
-        "ratio": 1
+        "ratio": 1.0003757720496849
       }
     },
     "equivalence": "same",
     "seed": "7265706c61792d6e",
-    "recipe_id": "89f640bfdee3e954c3f5930dbb2eb6d430d0b02b8ade3fadba9f64bfaceab01c",
-    "eval_seconds": 1257,
-    "date": "2026-10-08T01:44:20.809Z",
+    "recipe_id": "6f960627f5039145a977e44d5f022284234c25481dd20736d4efe0da464efaaf",
+    "eval_seconds": 1521.5,
+    "date": "2026-10-09T21:28:49.987Z",
     "match": true
   }
 }
