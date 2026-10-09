@@ -1,30 +1,30 @@
 {
-  "_note": "amd64 calibration of the public devnet site (157.245.71.188, DigitalOcean 4 vCPU / 8 GB), as Core recorded it; read from GET /v1/lineages/:id on 2026-10-08. The committed calibration.json is the arm64 (Apple M4) one.",
+  "_note": "amd64 calibration of the live site after the geth-rlp harness fix (c0863b2): recalibrated by the site's reference runner; the previous lineage e12b944d7344 is retired",
   "site": "https://157-245-71-188.sslip.io",
-  "lineage_id": "e12b944d7344bc7248a93413fdc82623cacb94742a1cc8d37d17c52d6e3b2ba7",
-  "recipe_id": "80e73e36c57aee4baf8479429f2e2de6c1cc29364c7cfa360663a1ee36dc1f7e",
+  "lineage_id": "132701de2125efe267d069285344611554f4149f57958d1eb402903019acf795",
+  "recipe_id": "6b3484b89dd34fc99e548f021912d0a1c406e1cd553227fc2ae54f8141e84957",
   "calibration": {
     "known_failures": [],
-    "median_eval_seconds": 1348,
+    "median_eval_seconds": 1394,
     "metrics": {
       "decode_ir": {
-        "base_value": 127207374,
-        "cv": 0.00004549234620023447,
+        "base_value": 127735616,
+        "cv": 3.5184945608448756e-05,
         "enabled": true
       },
       "encode_ir": {
-        "base_value": 685957,
+        "base_value": 43550384,
         "cv": 0,
         "enabled": true
       },
       "stream_ir": {
-        "base_value": 140372294,
-        "cv": 0,
+        "base_value": 140349098,
+        "cv": 1.5719183013930222e-06,
         "enabled": true
       }
     },
     "quarantined": [],
-    "recipe_id": "80e73e36c57aee4baf8479429f2e2de6c1cc29364c7cfa360663a1ee36dc1f7e",
+    "recipe_id": "6b3484b89dd34fc99e548f021912d0a1c406e1cd553227fc2ae54f8141e84957",
     "runs": 5,
     "seed": "89b3c70d217013cdf172e94c292b155e6215bad939b26f1d60ca2d12a8270b68",
     "snapshot_id": "1d5faaf4be0abf243944976eaf611a0ef3f64928f0d93731b00ea4bae2c59807",
