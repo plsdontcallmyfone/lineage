@@ -55,14 +55,17 @@ import {
   type WebKey,
   type DbcPoolView,
   type Ix,
+  planLaunch,
+  type LaunchPlan,
 } from "../../../packages/chain/src/browser/index.ts";
 import { checkSoul, soulDigest, soulSigningMessage, type SoulDoc, type SoulPersona } from "../../../packages/souls/src/doc.ts";
 import { esc, html, raw, type Raw } from "../src/html.ts";
 import { badge, banner, icon, kv, panel, stat } from "../src/ui.ts";
-import { buildAndSimulate, loadChainCfg, parseUnits, reader, rpc, signAndSend, sol, units, devnetGate, type Built, type ChainCfg } from "./chain.ts";
-import { connect, DEVNET_CHAIN, disconnect, discovered, legacyOnly, onChange, onWallets, startDiscovery, type StdAccount, type StdWallet } from "./standard.ts";
+import { budgetIxs, buildAndSimulate, loadChainCfg, parseUnits, reader, rpc, signAndSend, sol, units, devnetGate, type Built, type ChainCfg } from "./chain.ts";
+import { connect, DEVNET_CHAIN, disconnect, discovered, legacyOnly, onChange, onWallets, signsV0, startDiscovery, type StdAccount, type StdWallet } from "./standard.ts";
 export { mountTradeBox } from "./trade.ts";
 import { custodyHtml, ghClick, initGithubIdentity, showIdentity, submitLaunchToken } from "./identity.ts";
+import { depositBase, depositUsd, loadPrepay, P, prepayFieldset, prepayHelp, showCorePrepay } from "./prepay.ts";
 
 const T22 = TOKEN_2022_PROGRAM;
 const W = "bun packages/worker/src/main.ts";
@@ -98,15 +101,17 @@ const S = {
   lc: null as LaunchConfig | null,
   supply: null as bigint | null,
   launches: [] as AgentLaunch[],
+  /** agent -> current registry owner (the launcher until an owner transfer); bounty powers follow it (audit A1-03) */
+  owners: new Map<string, string>(),
   metas: new Map<string, MintMeta | null>(),
   pools: new Map<string, DbcPoolView | null>(),
   decimals: new Map<string, number>(),
   sigs: [] as SigRow[],
   // launch
   repo: null as null | { url: string; state: "checking" | "ok" | "bad"; msg: string; gh?: any; lineage?: any; core?: "ok" | "down" },
-  draft: null as null | { agent: WebKey; mint: WebKey; built: Built; args: any; ix: Ix; ixs: Ix[]; soul: SoulDoc | null },
+  draft: null as null | { agent: WebKey; mint: WebKey; built: Built; args: any; ix: Ix; ixs: Ix[]; soul: SoulDoc | null; plan: LaunchPlan; builts: Built[]; deposit: bigint },
   launchOut: null as Raw | null,
-  launched: null as null | { agent: WebKey; mint: string; sig: string },
+  launched: null as null | { agent: WebKey; mint: string; sig: string; sigs?: string[]; deposit?: bigint; mode?: LaunchPlan["mode"] },
   // soul (SPEC 14.8): the agent key is made when the soul is drafted, so the soul names it
   soul: null as null | { agent: WebKey; doc: SoulDoc | null; note: Raw | null; edited: boolean; usd: number | null },
   soulPub: null as Raw | null,
@@ -353,6 +358,7 @@ function launchForm(): Raw {
       <label class="radio"><input type="radio" name="l_identity" value="app"> <span><b>App identity.</b> lineage-app[bot] on the project's forks; always the fallback.</span></label>
     </fieldset>
     <div class="wl-custody" id="w-custody">${custodyText("token")}</div>
+    ${prepayFieldset()}
     <fieldset><legend class="eyebrow">Soul (SPEC 14.8)</legend>
       <div class="wl-fine" style="margin-bottom:8px">A short seed; Claude expands it into the agent's soul (voice, taste, values, how it collaborates). You review and edit it before minting. Its sha256 is committed on chain with <span class="num">set_profile</span> in the launch transaction. The soul shapes how the agent works and writes; it never changes what is accepted.</div>
       <div class="wl-2">
@@ -451,6 +457,7 @@ function launchArgs() {
 function labelFor(a: string, x: { agent?: string; mint?: string; pool?: string }): string {
   const L: Record<string, string> = {
     [me() ?? "-"]: "your wallet (launcher, fee payer)",
+    ...(me() ? { [ata(me()!, lineMint(), T22)]: "your tLINE account (deposit source)" } : {}),
     [launchPdas.config()]: "launch config",
     [launchPdas.authority()]: "launch authority PDA",
     [lineMint()]: "tLINE mint (TEST)",
@@ -617,12 +624,21 @@ async function launchReview() {
     if (S.soul && !soul) throw new Error("The soul has problems; fix them, generate again, or choose Launch without a soul.");
     const agent = soul ? S.soul!.agent : keep ? S.draft!.agent : await generateWebKey();
     const mint = keep ? S.draft!.mint : await generateWebKey();
+    // prepaid credits (plan C): the deposit and refresh_awake ride in the launch transaction
+    const deposit = depositBase(val("l_deposit"), dec());
+    if (S.line !== null && S.line < deposit) throw new Error(`Deposit: your wallet holds ${units(S.line, dec())} tLINE, the deposit is ${units(deposit, dec())}. Use the tLINE faucet above.`);
     const ix = launch.launchAgent({ launcher: me()!, agent: agent.id, agentMint: mint.id, lineMint: lineMint(), dbcConfig: dbcConfig(), lineTokenProgram: T22,
       args: { name: args.name, symbol: args.symbol, uri: args.uri, repoUrl: args.repoUrl, identityMode: args.identityMode, hosted: args.hosted } });
-    // the soul's digest goes on chain in the same transaction, signed by the agent key (its signing key until a rotation)
-    const ixs = soul ? [ix, registry.setProfile({ signingKey: agent.id, agent: agent.id, digest: soulDigest(soul), seq: soul.seq })] : [ix];
-    const built = await buildAndSimulate(me()!, ixs, 450_000);
-    S.draft = { agent, mint, built, args, ix, ixs, soul };
+    const main = [ix, ...launch.prepay({ launcher: me()!, agent: agent.id, agentMint: mint.id, lineMint: lineMint(), amount: deposit, decimals: dec(), lineTokenProgram: T22 })];
+    // the soul's digest goes on chain with the launch, signed by the agent key (its signing key until a rotation)
+    const soulIx = soul ? registry.setProfile({ signingKey: agent.id, agent: agent.id, digest: soulDigest(soul), seq: soul.seq }) : null;
+    const ixs = soulIx ? [...main, soulIx] : main;
+    // one legacy transaction; over 1232 bytes a v0 one with the frozen lookup table; still over, launch + deposit + wake first and the soul second
+    const plan = planLaunch({ payer: me()!, main, soul: soulIx, budget: budgetIxs(450_000), table: P.table, v0: signsV0(S.wallet!) });
+    // in a split the soul transaction is simulated once the first has landed (it needs the new Agent record)
+    const builts = [await buildAndSimulate(me()!, plan.txs[0]!.ixs, 450_000, plan.txs[0]!.table)];
+    const built = builts[0]!;
+    S.draft = { agent, mint, built, args, ix, ixs, soul, plan, builts, deposit };
     renderLaunchReview();
   } catch (e) {
     set("w-launch-out", html`<div class="panel-b">${errBox(e)}</div>`);
@@ -641,14 +657,20 @@ function renderLaunchReview() {
     ["Class", `${d.args.cls} (metadata URI)`],
     ["Agent key", addr(d.agent.id)],
     ["Agent mint", addr(d.mint.id)],
-    ["Soul", d.soul ? html`${d.soul.persona.name}, <span class="wl-hash">${soulDigest(d.soul)}</span> <span class="dim">set_profile seq ${d.soul.seq} in this transaction</span>` : html`<span class="faint">none</span>`],
+    ["Soul", d.soul ? html`${d.soul.persona.name}, <span class="wl-hash">${soulDigest(d.soul)}</span> <span class="dim">set_profile seq ${d.soul.seq} ${d.plan.mode === "split" ? "in the second transaction" : "in this transaction"}</span>` : html`<span class="faint">none</span>`],
+    ["Deposit", html`${tl(d.deposit)} <span class="dim">${depositUsd(val("l_deposit"))} USD; transferChecked into the compute vault, then refresh_awake</span>`],
+    ["Transaction", d.plan.mode === "split"
+      ? html`<b>2 signatures</b> <span class="dim">(1) launch_agent + deposit + refresh_awake, ${d.plan.txs[0]!.size} bytes; (2) set_profile, ${d.plan.txs[1]!.size} bytes. One transaction does not fit 1232 bytes${P.table ? ", even as v0 with the lookup table" : ""}${signsV0(S.wallet!) ? "" : " and this wallet does not sign v0"}.</span>`
+      : d.plan.mode === "v0"
+        ? html`one v0 transaction, ${d.plan.txs[0]!.size} of 1232 bytes, reading the frozen lookup table ${addr(P.table!.address)}`
+        : html`one transaction, ${d.plan.txs[0]!.size} of 1232 bytes`],
   ];
   set(
     "w-launch-out",
     html`${sim.err ? html`<div class="panel-b">${errBox(`Simulation failed: ${JSON.stringify(sim.err)}`, sim.logs)}</div>` : html`<div class="panel-b wl-row"><span class="mark good">${icon.check} simulation succeeded on devnet</span></div>`}
       ${simTable(sim, { agent: d.agent.id, mint: d.mint.id }, me()!)}
       <div class="panel-b"><div class="eyebrow" style="margin-bottom:6px">launch_agent arguments</div>${kv(recordRows)}</div>
-      <div class="panel-b wl-row">${btn("launch-sign", html`Sign with ${S.wallet!.name} and launch`, { primary: true, disabled: sim.err ? "the simulation failed; fix the inputs and review again" : false })}${btn("launch-review", "Simulate again")}</div>
+      <div class="panel-b wl-row">${btn("launch-sign", html`Sign with ${S.wallet!.name} and launch${d.plan.mode === "split" ? " (2 signatures)" : ""}`, { primary: true, disabled: sim.err ? "the simulation failed; fix the inputs and review again" : false })}${btn("launch-review", "Simulate again")}</div>
       <div class="panel-b" id="w-launch-status"></div>`,
   );
 }
@@ -658,11 +680,22 @@ async function launchSign() {
   if (!d || !requireReady()) return;
   const st = (m: string) => set("w-launch-status", html`<span class="dim">${m}</span>`);
   try {
-    const r = await signAndSend({ wallet: S.wallet!, account: S.account!, ixs: d.ixs, units: 450_000, local: [d.agent, d.mint], onStatus: st });
+    const t0 = d.plan.txs[0]!;
+    const r = await signAndSend({ wallet: S.wallet!, account: S.account!, ixs: t0.ixs, units: 450_000, local: [d.agent, d.mint], onStatus: st, table: t0.table });
     const c = r.confirmed!;
-    logSig(`launch_agent ${d.args.symbol}`, c.signature, c.fee, !c.err);
+    logSig(`launch_agent + deposit + refresh_awake ${d.args.symbol}`, c.signature, c.fee, !c.err);
     if (c.err) throw Object.assign(new Error(`launch_agent failed on chain: ${JSON.stringify(c.err)}`), { logs: c.logs });
-    S.launched = { agent: d.agent, mint: d.mint.id, sig: c.signature };
+    const sigs = [c.signature];
+    if (d.plan.mode === "split") {
+      // the agent is already awake; the soul's set_profile is the second signature
+      const t1 = d.plan.txs[1]!;
+      st("launched; now sign the soul transaction (2 of 2)");
+      const r2 = await signAndSend({ wallet: S.wallet!, account: S.account!, ixs: t1.ixs, units: 100_000, local: [d.agent], onStatus: st, table: t1.table });
+      logSig(`set_profile ${d.args.symbol}`, r2.confirmed!.signature, r2.confirmed!.fee, !r2.confirmed!.err);
+      if (r2.confirmed!.err) throw Object.assign(new Error(`set_profile failed on chain: ${JSON.stringify(r2.confirmed!.err)} (the agent is launched and awake; publish the soul again from its page)`), { logs: r2.confirmed!.logs });
+      sigs.push(r2.confirmed!.signature);
+    }
+    S.launched = { agent: d.agent, mint: d.mint.id, sig: c.signature, sigs, deposit: d.deposit, mode: d.plan.mode };
     S.draft = null;
     if (d.soul) await publishLaunchedSoul(d.agent, d.soul);
     S.ghLaunch = d.args.identity === "token" ? await submitLaunchToken({ agent: d.agent, mint: d.mint.id }) : null;
@@ -697,7 +730,8 @@ async function renderLaunched() {
         ["Identity / runtime", `${["token", "purchased", "app"][l.identityMode]} / ${l.hosted ? "hosted" : "self-hosted"}`],
         ["DBC pool", html`${addr(l.dbcPool)}${pv ? html` <span class="dim">creator ${pv.creator === launchPdas.authority() ? "launch authority PDA" : short(pv.creator)}, quote reserve ${units(pv.quoteReserve, dec())} tLINE</span>` : ""}`],
         ["Compute vault", html`${addr(launchPdas.computeVault(l.agent))} ${tl(vaultBal)}`],
-        ["Awake", l.awake ? "yes" : "no (vault below wake_threshold)"],
+        ["Awake", l.awake ? html`yes ${L.deposit !== undefined ? html`<span class="dim">woken by the deposit in the launch transaction</span>` : ""}` : "no (vault below wake_threshold)"],
+        ...(L.deposit !== undefined ? [["Prepaid", html`${tl(L.deposit)} deposited; ${L.mode === "split" ? html`2 transactions, soul in ${txLink(L.sigs![1]!)}` : L.mode === "v0" ? "one v0 transaction" : "one transaction"}<div id="w-prepay-core" class="dim">Core's check of the deposit follows its next chain sync.</div>`] as [string, unknown]] : []),
         ["Created", when(l.createdAt)],
         ["Supply", mi ? html`${units(mi.supply, mi.decimals)} <span class="dim">agent tokens, ${mi.decimals} decimals, Token-2022</span>` : "TBA"],
         ["Metadata URI", meta?.uri ?? "TBA"],
@@ -712,6 +746,7 @@ async function renderLaunched() {
       </div>`,
   );
   showIdentity("w-gh-launch", l.agent, l.mint, false);
+  if (L.deposit !== undefined) void showCorePrepay(l.agent, dec(), (r) => set("w-prepay-core", r));
 }
 
 async function downloadAgentKey() {
@@ -730,7 +765,9 @@ async function downloadAgentKey() {
 
 async function loadLaunches() {
   try {
-    S.launches = await reader.launches();
+    const [launches, agents] = await Promise.all([reader.launches(), reader.agents()]);
+    S.launches = launches;
+    S.owners = new Map(agents.map((a) => [a.agent, a.owner]));
     const mints = S.launches.map((l) => l.mint);
     const pools = S.launches.map((l) => l.dbcPool);
     const accs = await rpc.getMultipleAccounts([...mints, ...pools]);
@@ -1428,7 +1465,7 @@ async function claim(i: number) {
 const HEX64 = /^[0-9a-f]{64}$/;
 const COND_NAME = ["commitment", "target"];
 /** Self-hosted agents this wallet launched: the ones it can open bounties for (hosted agents' bounties are opened by the runtime). */
-const myPayers = () => S.launches.filter((l) => l.launcher === me() && !l.hosted);
+const myPayers = () => S.launches.filter((l) => S.owners.get(l.agent) === me() && !l.hosted);
 const mintOf = (agent: string) => S.launches.find((l) => l.agent === agent)?.mint ?? null;
 
 async function loadBounties() {
@@ -1462,7 +1499,7 @@ function renderBountyForm() {
   const form = !S.account
     ? html`<div class="panel-b dim">Connect a wallet to open a bounty for an agent it launched.</div>`
     : !payers.length
-      ? html`<div class="panel-b dim">This wallet launched no self-hosted agent. A bounty is paid from an agent's compute vault: the launcher signs for a self-hosted agent, the hosted runtime for a hosted one.</div>`
+      ? html`<div class="panel-b dim">This wallet owns no self-hosted agent. A bounty is paid from an agent's compute vault: the agent's current registry owner signs for a self-hosted agent, the hosted runtime for a hosted one.</div>`
       : html`<form class="wl-form panel-b" autocomplete="off" data-wallet-form="bounty">
         <label><span class="eyebrow">Paying agent (its compute vault)</span><select name="b_payer">${payers.map((l) => html`<option value="${l.agent}">${S.metas.get(l.mint)?.symbol ?? short(l.mint)} · ${short(l.agent)}</option>`)}</select></label>
         <div class="wl-2">
@@ -1501,7 +1538,8 @@ function renderBounties() {
       ${list.map((b) => {
         const rel = S.bRelease.get(b.address);
         const refundable = b.status === "open" && nowS > b.deadline + grace;
-        const cancellable = b.status === "open" && b.opener === me() && S.reg && S.reg.epochsPosted === b.epochsPostedAtOpen;
+        // cancel_bounty signer: the payer's current registry owner for a self-hosted payer (audit A1-03), not the original opener
+        const cancellable = b.status === "open" && myPayers().some((l) => l.agent === b.payer) && S.reg && S.reg.epochsPosted === b.epochsPostedAtOpen;
         const actions = b.status !== "open"
           ? ""
           : html`<div class="wl-row" style="margin-top:6px">${btn("b-find", "Find release", { data: { i: b.address } })}${refundable ? btn("b-refund", "Refund", { data: { i: b.address } }) : ""}${cancellable ? btn("b-cancel", "Cancel", { data: { i: b.address } }) : ""}</div>`;
@@ -1896,6 +1934,11 @@ function onInput(ev: Event) {
   if (t.name === "l_symbol") t.dataset.touched = "1";
   if (t.name === "t_amount" || t.name === "t_slip") S.quote = null;
   if (t.name?.startsWith("l_") && t.name !== "l_token") S.draft = null;
+  if (t.name === "l_deposit") renderPrepay();
+}
+
+function renderPrepay() {
+  set("w-prepay", prepayHelp(val("l_deposit"), { decimals: dec(), wake: S.lc?.wakeThreshold ?? null, balance: S.line }));
 }
 
 /** Called by the dashboard shell after the Wallet page's skeleton is in the DOM. */
@@ -1926,7 +1969,10 @@ export async function mountWallet(root: HTMLElement) {
   renderGate();
   renderConn();
   if (S.gate !== "ok") return;
-  await Promise.all([loadNetwork(), loadLaunches()]);
+  await Promise.all([loadNetwork(), loadLaunches(), loadPrepay(S.cfg!.state as any)]);
+  const dep = S.root?.querySelector<HTMLInputElement>('[name="l_deposit"]');
+  if (dep && !dep.value && P.cfg) dep.value = P.cfg.default_usd;
+  renderPrepay();
   await loadBounties();
   autoReconnect();
 }

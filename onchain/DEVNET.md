@@ -627,3 +627,42 @@ Outcome: PASS; checks 9/9; deployer 67.362463330 -> 67.324861610 SOL (0.03760172
 | 2026-10-09 20:54:32 | A1 | accept_owner by the buyer | 5000 | `2quPJ3xiZUdMVma4r2yprrHxRkbFGtP1FRQnraKwLqs4zzjdspSDmg3C3B2gogYKQBEABv77tvhRseRdK3ZVJ5M3` |
 | 2026-10-09 20:54:35 | A1 | withdraw_compute 2 tLINE by the new owner | 5000 | `5MDJ4FHcs8ArwHccBJDzpV3PoMeNiDJw9pSW9nT2xa1M2Xker4GgKMsZYNJ6siz2rX8LLzJb5ATrFfPsdr82NxFb` |
 | 2026-10-09 20:54:38 | A1 | A1-01 open_bounty 20261009205417 (1000000 base units) by the new owner, donate 1 base unit into its escrow vault, cancel_bounty: one transaction | 5000 | `5CsfKB27xviVgNmYneoiA2KZkELanGU2b3wYbmScbBmsxR1vdp5K4iJV3PcHRei21APNVownxhF9NP9kxckwFQKD` |
+
+## Prepaid credits at launch (2026-10-09, prepaid credits lane C)
+
+No program change and no upgrade: one launch transaction carries `launch_agent`, a Token-2022 `transferChecked` of the deposit from the launcher's tLINE account into the new compute vault, and the permissionless `refresh_awake`, so the agent wakes at once. The minimum (`prepay.min_usd`, 10 USD) and the dollar rate (`prepay.line_per_usd`, 20 tLINE per USD, a TEST rate) live in Core's network config; the Wallet page refuses a smaller deposit and Core keeps an underfunded launch asleep (packages/core/src/prepay.ts).
+
+Transaction paths (packages/chain `planLaunch`): one legacy transaction when it fits 1,232 bytes (a typical launch without a soul is 1,200); otherwise one v0 transaction reading a frozen address lookup table when the wallet signs v0 (with a soul, 1,007 bytes); otherwise two signatures, launch + deposit + wake first and `set_profile` second. Nothing the launcher typed is shortened.
+
+- Launch lookup table `AN3jKVEWN7H8gJAnZkWdmd51JzK3U8nSMKF5Fz8nTD9S` (scripts/prepay/make-table.ts; `launch_lookup_table` in scripts/devnet/devnet.json): 11 addresses (`launchTableAddresses`: launch config and authority PDAs, tLINE mint, DBC config, registry config and program, DBC pool and event authorities, DBC program, Token-2022, System), frozen (authority none), read back and compared by the wallet before every use. Deployer 67.32486161 -> 67.32212873 SOL (0.00273288).
+
+| When (UTC) | Step | What | Fee | Signature |
+|---|---|---|---|---|
+| 2026-10-09 21:05 | table | create + extend the launch lookup table (11 addresses) | 10000 | `2QMugzyaQXdmDcXMQGezQ7grZ2s7yCdN39eEmZxkJw1ytxhAK3jBuAtmrmnBWpZPgdb9ro7yodqi72ABLSb3u4BY` |
+| 2026-10-09 21:05 | table | freeze it | 5000 | `4jZfHQyzhEukjTnMW1krwCTEPPuQ5yCxPewo61fWidWULT1NF8Yk9HmPusVz7eTUymwQbW2PuKVAdkyRky1q2JqZ` |
+
+### Wallet page run (scripts/prepay/launch-e2e.ts): PASS 33/33
+
+The real Wallet page with a mock Wallet Standard wallet signing with `~/.config/lineage/devnet/prepay-test.json` (`Ds2dJD9Qr5WPbq9ZHjsnp7Lh6aybPaQU72nS7pfCB4C`), served against a local chain-mode Core with no Core authority key (read only; the live site's Core untouched). Each agent was awake on chain right after its launch transaction, and Core read the launch transaction, recorded the deposit as meeting the minimum with `refresh_awake` in it, and showed the agent awake. scripts/prepay/LAUNCH-E2E-LAST.json.
+
+| Run | Agent (TEST) | Mint | Path | Deposit | Awake on chain / in Core |
+|---|---|---|---|---|---|
+| A, hosted, soul, wallet signs v0 | `63JTudW2oYZyy5oQPwyjZAPQAVGaF7xXTKEzQw8uvqAy` | `5J5Rg8RhsxipCJNSj76RLt6Mqs4HJqiDgS9Vk3kMhTHW` | one v0 transaction incl. `set_profile` | 200 tLINE (10 USD) | yes / yes |
+| B, hosted, soul, legacy-only wallet | `5UYUSGhP6m1UyWLpRpH4x3qBE1sX34QWaA3CTQDbE7DR` | `6JnoSukiReooKsBWnpbR7pxSJCZ2fz9qqxrk4k3V61Fb` | 2 signatures (launch + deposit + wake, then soul) | 200 tLINE | yes / yes |
+| C, self-hosted, no soul | `8hSQghxix9fCKRK98vYMmhZjAJn5dFNYu5J2YvGxvWQV` | `2JJBjimgMwqD7m15yK26DzDzmPqZaYksKqjoEW5Lf83Z` | one legacy transaction | 250 tLINE (12.50 USD typed) | yes / yes |
+
+Run C also checked the bounty form follows the registry owner (audit A1-03): listed for the launcher, gone after an owner transfer to `85Uv4FtiyoHe5cj7XWJpCebAAbzirKbMEF5pmDGeTArQ`.
+
+| When (UTC) | Step | What | Fee | Signature |
+|---|---|---|---|---|
+| 2026-10-09 21:18 | setup | fund the test wallet with 0.5 SOL from the deployer | 5000 | `3BEpCDVP9vgYdMRoQYQQzWpj55aQLCAmLoos4M1LTGfXMVcSzwRv5Eyxi5tiV2peDqipaFuDfU6Ux6r8gNtXTaX3` |
+| 2026-10-09 21:18 | setup | fund the second owner key with 0.02 SOL from the deployer | 5000 | `MfVtkE6TNnH39q6TNeVoCBKhHUCxWsq2brCkkdphCLsD9qE3XHDm8xiAHczggPmdcKUfQhY8JQurv7qUJu1f3eu` |
+| 2026-10-09 21:18 | setup | top up the test wallet with 900 tLINE from the faucet key | 5000 | `517YVFn5oh6ADczhEqhmnBuPmXSujDuVVdUQFBbRvmG3z3xGNzKsVYQkAWp1LcSXHxNJ8jh5bFT5arFgg49TtRSc` |
+| 2026-10-09 21:19 | A | launch_agent + deposit 200 tLINE + refresh_awake + set_profile (v0) | 15001 | `BttTYoiwfqd35gNycLrgm9MCcyrq6F8bq9d82AsznpVQxDZSBAddJsZDexJhANmhozfpwpML2JKryNzYGGAjJuN` |
+| 2026-10-09 21:19 | B | launch_agent + deposit 200 tLINE + refresh_awake (legacy) | 15001 | `2LWRoCxbnbryqJJ3P2zw3zy7f8m6AYGTk58e3kP2t1DJz8foRdEVRDuKDGjiMSjZdjXSn5Z5b23nyjS1S81dLrpE` |
+| 2026-10-09 21:19 | B | set_profile (soul), second signature | 10001 | `3BkUiN3AtzzvWfkHfXL7hqx14evJry7jejqgaiYEhJRaEKBwRbqYXrWdeibyFKUynHJTvz4c8wkZGs26NJQ4npcj` |
+| 2026-10-09 21:19 | C | launch_agent + deposit 250 tLINE + refresh_awake (legacy) | 15001 | `3ktmmjUsHxbZNYZdxsmz6zDYnu3yDzbiK1KpAtHqgrsvJ5yMhE79ztZ82vNs3YdCkvYNshwNpN56iw4k8ADoEDmy` |
+| 2026-10-09 21:19 | C | propose_owner to a second key (bounty owner check) | 5000 | `5eLoZCSLCW1brSi5qFsTwmZcAAxzmxQ2t1ua4dcLh1FfCdnYTzcEH3LvAijLERwPj8FUbrdn63BGFwZyKCd61r3e` |
+| 2026-10-09 21:19 | C | accept_owner by the second key | 5000 | `2oufoETiJDb6H7QHcAUbNiaiBFt7EPxhb43Lwy1cq6JuPKVG4orDTxzyCRCaPVz7QsCNEmMVtL87t77Uw4o6TrB7` |
+
+SOL: deployer 67.32486161 -> 66.80209873 (0.52276288, of which 0.52 sits in the two test keys; the test wallet holds 0.45138536 after three launches at about 0.0162 SOL each in rent and fees).

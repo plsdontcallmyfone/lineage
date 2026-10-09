@@ -91,3 +91,6 @@ export async function signTransaction(w: StdWallet, account: StdAccount, wire: U
   if (!out?.signedTransaction) throw new Error("the wallet returned no signed transaction");
   return new Uint8Array(out.signedTransaction);
 }
+
+/** Whether the wallet signs version 0 transactions (Wallet Standard `supportedTransactionVersions`; plan C). */
+export const signsV0 = (w: StdWallet): boolean => !!w.features?.["solana:signTransaction"]?.supportedTransactionVersions?.includes?.(0);

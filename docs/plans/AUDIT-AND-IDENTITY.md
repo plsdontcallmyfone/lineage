@@ -141,3 +141,16 @@ New `packages/identity` service, a systemd unit `lineage-identity` on the site.
     transaction, verified on chain and in Core;
   - LiteSVM and unit tests;
   - the rail tests pass with a mocked OpenRouter.
+- Finding (2026-10-09, lane C): OpenRouter removed `POST /api/v1/credits/coinbase`; it now answers
+  `410 Gone` because Coinbase deprecated the Commerce APIs it used, and OpenRouter points to the web
+  credits page instead (https://openrouter.ai/docs/cookbook/administration/crypto-api.md). There is no
+  programmatic crypto top-up today. The `openrouter` rail therefore ships as: OpenRouter as the model
+  endpoint (its Anthropic-compatible `POST /api/v1/messages`, bearer key), a balance monitor on
+  `GET /api/v1/credits` (management key, `total_credits - total_usage`) with a floor alert, and a
+  pluggable top-up that keeps the legacy request shape for a mock only and treats 410 as "purchase
+  unavailable, top up on the web credits page" (one alert, retried at most daily). All OFF by config
+  (`packages/runtime/src/rail.ts`).
+- Built (lane C): no program change. The launch is one legacy transaction when it fits, one v0
+  transaction reading a frozen lookup table when it does not and the wallet signs v0, and two
+  signatures (launch + deposit + wake, then the soul) only when neither fits. Devnet proof and
+  signatures: onchain/DEVNET.md, "Prepaid credits at launch".

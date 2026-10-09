@@ -7,6 +7,8 @@ export * from "./challenge.ts";
 export * from "./msg.ts";
 export * from "./leaves.ts";
 export * from "./tx.ts";
+export * from "./v0.ts";
+export * from "./prepay.ts";
 export * from "./rpc.ts";
 export * from "./sender.ts";
 export * from "./spl.ts";

@@ -5,6 +5,8 @@ export * from "../codec.ts";
 export * from "../pda.ts";
 export * from "../registry.ts";
 export * from "../launch.ts";
+export * from "../v0.ts";
+export * from "../prepay.ts";
 export * from "../bounty.ts";
 export * from "../leaves.ts";
 export { compileMessage, computeBudget, PACKET_LIMIT, COMPUTE_BUDGET_PROGRAM, type CompiledMessage } from "../tx.ts";

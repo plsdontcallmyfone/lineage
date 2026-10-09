@@ -1,4 +1,4 @@
-// Legacy transaction wire format for a page: an unsigned transaction (zeroed signature slots) for
+// Legacy and v0 transaction wire format for a page: an unsigned transaction (zeroed signature slots) for
 // the wallet, signatures placed by signer address, the message decoded back for inspection, and
 // WebCrypto Ed25519 keys for the fresh keypairs a launch needs (agent key, agent mint). No secret
 // ever leaves the page except as a file the person chooses to download.
@@ -62,41 +62,77 @@ export interface DecodedIx {
   data: Uint8Array;
 }
 export interface DecodedMessage {
+  /** "legacy", or 0 for a v0 message with address lookup tables */
+  version: "legacy" | 0;
   numSigners: number;
   numReadonlySigned: number;
   numReadonlyUnsigned: number;
+  /** Static keys, then (v0) the accounts loaded from lookup tables: writable ones, then read-only. */
   keys: Address[];
+  /** Per entry of `keys`: whether the message locks it writable. */
+  writable: boolean[];
+  /** v0: the tables the message reads, with the indexes it loads. */
+  lookups: { table: Address; writable: number[]; readonly: number[] }[];
   blockhash: string;
   instructions: DecodedIx[];
 }
-/** Decodes a legacy message (a v0 message is refused: the builders never make one). */
-export function decodeMessage(m: Uint8Array): DecodedMessage {
-  if (m[0]! & 0x80) throw new Error("versioned messages are not used here");
-  const [numSigners, numReadonlySigned, numReadonlyUnsigned] = [m[0]!, m[1]!, m[2]!];
-  let [nk, o] = readCompact(m, 3);
+/**
+ * Decodes a legacy or v0 message. A v0 message's loaded accounts are resolved from `tables`
+ * (address to its addresses, as read from chain); without them they show as "<table>#<index>".
+ */
+export function decodeMessage(m: Uint8Array, tables?: Map<Address, Address[]>): DecodedMessage {
+  const v0 = (m[0]! & 0x80) !== 0;
+  if (v0 && (m[0]! & 0x7f) !== 0) throw new Error(`message version ${m[0]! & 0x7f} is not supported`);
+  let o = v0 ? 1 : 0;
+  const [numSigners, numReadonlySigned, numReadonlyUnsigned] = [m[o]!, m[o + 1]!, m[o + 2]!];
+  let nk: number;
+  [nk, o] = readCompact(m, o + 3);
   const keys: Address[] = [];
   for (let i = 0; i < nk; i++, o += 32) keys.push(toAddress(m.subarray(o, o + 32)));
   const blockhash = toAddress(m.subarray(o, o + 32));
   o += 32;
-  const writable = (i: number) => (i < numSigners ? i < numSigners - numReadonlySigned : i < keys.length - numReadonlyUnsigned);
+  const writable = keys.map((_, i) => (i < numSigners ? i < numSigners - numReadonlySigned : i < keys.length - numReadonlyUnsigned));
   let ni: number;
   [ni, o] = readCompact(m, o);
-  const instructions: DecodedIx[] = [];
+  const raw: { p: number; a: number[]; data: Uint8Array }[] = [];
   for (let k = 0; k < ni; k++) {
-    const programId = keys[m[o++]!]!;
+    const p = m[o++]!;
     let na: number;
     [na, o] = readCompact(m, o);
-    const accounts = [];
-    for (let j = 0; j < na; j++) {
-      const idx = m[o++]!;
-      accounts.push({ pubkey: keys[idx]!, isSigner: idx < numSigners, isWritable: writable(idx) });
-    }
+    const a: number[] = [];
+    for (let j = 0; j < na; j++) a.push(m[o++]!);
     let nd: number;
     [nd, o] = readCompact(m, o);
-    instructions.push({ programId, accounts, data: m.slice(o, o + nd) });
+    raw.push({ p, a, data: m.slice(o, o + nd) });
     o += nd;
   }
-  return { numSigners, numReadonlySigned, numReadonlyUnsigned, keys, blockhash, instructions };
+  const lookups: DecodedMessage["lookups"] = [];
+  if (v0) {
+    let nl: number;
+    [nl, o] = readCompact(m, o);
+    for (let t = 0; t < nl; t++) {
+      const table = toAddress(m.subarray(o, o + 32));
+      o += 32;
+      const idx = (): number[] => {
+        let n: number;
+        [n, o] = readCompact(m, o);
+        const out: number[] = [];
+        for (let j = 0; j < n; j++) out.push(m[o++]!);
+        return out;
+      };
+      const w = idx();
+      lookups.push({ table, writable: w, readonly: idx() });
+    }
+    const resolve = (table: Address, i: number) => tables?.get(table)?.[i] ?? `${table}#${i}`;
+    for (const l of lookups) for (const i of l.writable) (keys.push(resolve(l.table, i)), writable.push(true));
+    for (const l of lookups) for (const i of l.readonly) (keys.push(resolve(l.table, i)), writable.push(false));
+  }
+  const instructions: DecodedIx[] = raw.map((x) => ({
+    programId: keys[x.p]!,
+    accounts: x.a.map((idx) => ({ pubkey: keys[idx]!, isSigner: idx < numSigners, isWritable: writable[idx]! })),
+    data: x.data,
+  }));
+  return { version: v0 ? 0 : "legacy", numSigners, numReadonlySigned, numReadonlyUnsigned, keys, writable, lookups, blockhash, instructions };
 }
 
 /** Puts `sig` into the slot of `signer` (an address among the message's signers). */

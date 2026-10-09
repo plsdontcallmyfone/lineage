@@ -6,6 +6,7 @@ import {
   assertDevnet,
   ChainReader,
   compileMessage,
+  compileMessageV0,
   computeBudget,
   decodeMessage,
   missingSigners,
@@ -19,6 +20,7 @@ import {
   unsignedWire,
   type Confirmed,
   type Ix,
+  type LookupTable,
   type Simulation,
   type WebKey,
 } from "../../../packages/chain/src/browser/index.ts";
@@ -72,17 +74,23 @@ export interface Built {
   sim: Simulation;
 }
 
-const withBudget = (ixs: Ix[], units: number) => [computeBudget.limit(units), computeBudget.price(1), ...ixs];
+/** The compute budget instructions every transaction of this page starts with. */
+export const budgetIxs = (units: number) => [computeBudget.limit(units), computeBudget.price(1)];
+const withBudget = (ixs: Ix[], units: number) => [...budgetIxs(units), ...ixs];
 
 /** Builds and simulates (signatures not verified). Nothing is signed here. */
-export async function buildAndSimulate(payer: string, ixs: Ix[], units = 200_000): Promise<Built> {
+export async function buildAndSimulate(payer: string, ixs: Ix[], units = 200_000, table?: LookupTable | null): Promise<Built> {
   await devnetGate();
   const all = withBudget(ixs, units);
   const { blockhash, lastValidBlockHeight } = await rpc.getLatestBlockhash();
-  const wire = unsignedWire(compileMessage(payer, all, blockhash));
-  const sim = await simulateDetailed(rpc, wire);
+  const wire = unsignedWire(compile(payer, all, blockhash, table));
+  const sim = await simulateDetailed(rpc, wire, table ? new Map([[table.address, table.addresses]]) : undefined);
   return { ixs, payer, wire, lastValidBlockHeight, sim };
 }
+
+/** A legacy message, or a v0 message reading `table` (a frozen lookup table checked by the caller; plan C). */
+const compile = (payer: string, ixs: Ix[], blockhash: string, table?: LookupTable | null) =>
+  table ? compileMessageV0(payer, ixs, blockhash, [table]) : compileMessage(payer, ixs, blockhash);
 
 /**
  * Rebuilds with a fresh blockhash, asks the wallet to sign, adds the signatures of fresh local keys,
@@ -96,11 +104,13 @@ export async function signAndSend(o: {
   local?: WebKey[];
   leaveFor?: string;
   onStatus?: (s: string) => void;
+  /** v0 message reading this lookup table (plan C) */
+  table?: LookupTable | null;
 }): Promise<{ confirmed?: Confirmed; partial?: Uint8Array; lastValidBlockHeight: number }> {
   await devnetGate();
   const all = withBudget(o.ixs, o.units ?? 200_000);
   const { blockhash, lastValidBlockHeight } = await rpc.getLatestBlockhash();
-  const msg = compileMessage(o.account.address, all, blockhash);
+  const msg = compile(o.account.address, all, blockhash, o.table);
   const unsigned = unsignedWire(msg);
   o.onStatus?.("waiting for the wallet to sign");
   const signed = await signTransaction(o.wallet, o.account, unsigned);
@@ -108,7 +118,7 @@ export async function signAndSend(o: {
   if (!sameBytes(back.message, msg.bytes)) {
     // A wallet that rewrites the message (extra instructions) would invalidate the co-signatures and
     // change what was reviewed: refuse rather than sign something else.
-    const d = decodeMessage(back.message);
+    const d = decodeMessage(back.message, o.table ? new Map([[o.table.address, o.table.addresses]]) : undefined);
     throw new Error(`the wallet changed the transaction (${d.instructions.length} instructions, built ${all.length}); nothing was sent`);
   }
   let wire = signed;

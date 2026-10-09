@@ -47,14 +47,12 @@ export interface Simulation {
 }
 
 /** Simulates `wire` (signatures not verified) and reads every account of the message before and after. */
-export async function simulateDetailed(rpc: Rpc, wire: Uint8Array): Promise<Simulation> {
+export async function simulateDetailed(rpc: Rpc, wire: Uint8Array, tables?: Map<string, string[]>): Promise<Simulation> {
   const { message } = parseWire(wire);
-  const d = decodeMessage(message);
-  const meta = d.keys.map((k, i) => ({
-    address: k,
-    signer: i < d.numSigners,
-    writable: i < d.numSigners ? i < d.numSigners - d.numReadonlySigned : i < d.keys.length - d.numReadonlyUnsigned,
-  }));
+  // a v0 message lists its lookup-table accounts too, resolved from `tables` (read from chain by the caller)
+  const d = decodeMessage(message, tables);
+  if (d.keys.some((k) => k.includes("#"))) throw new Error("a lookup table this message reads was not supplied");
+  const meta = d.keys.map((k, i) => ({ address: k, signer: i < d.numSigners, writable: d.writable[i]! }));
   const before = await rpc.getMultipleAccounts(d.keys);
   const r = await rpc.call<{ value: { err: unknown; logs: string[] | null; unitsConsumed?: number; accounts: ({ lamports: number; owner: string; data: [string, string] } | null)[] | null } }>(
     "simulateTransaction",

@@ -1,4 +1,5 @@
 import { readFileSync } from "node:fs";
+import { parsePrepayConfig, type PrepayConfig } from "@lineage/chain";
 
 // Network parameters (SPEC 13, config/network.json). Token amounts are integer base units, held as
 // bigint in Core and as decimal strings on disk and on the wire.
@@ -94,6 +95,8 @@ export interface NetworkConfig {
   port_share_bps: number;
   /** Units credited to a generation's authors when its change is detected merged upstream. Optional, default 2 (SPEC 16, test value). */
   upstream_bonus: number;
+  /** Prepaid credits at launch (plan C): minimum and default deposit, the $LINE rate (TEST on devnet). Optional; absent = no minimum. */
+  prepay?: PrepayConfig | null;
 }
 
 const AMOUNT_KEYS = ["register_burn", "min_bond", "bond_cap", "rebate_per_class", "sleep_threshold", "wake_threshold"] as const;
@@ -192,6 +195,7 @@ export function parseNetworkConfig(raw: Record<string, unknown>): NetworkConfig 
   posInt("upstream_bonus", 2, 0);
   range("canary_inject_delay_s", [30, 600]);
   range("canary_reveal_delay_s", [5, 120]);
+  out.prepay = raw.prepay === undefined || raw.prepay === null ? null : parsePrepayConfig(raw.prepay);
   const cfg = out as unknown as NetworkConfig;
   if (cfg.agent_compute_bps + cfg.protocol_bps > 10_000) throw new Error("network config: agent_compute_bps + protocol_bps exceeds 10000");
   if (cfg.wake_threshold < cfg.sleep_threshold) throw new Error("network config: wake_threshold below sleep_threshold");

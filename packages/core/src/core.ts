@@ -61,6 +61,7 @@ import { soulsOf } from "./souls.ts";
 import { challengesOf } from "./challenges.ts";
 import { findingsOf } from "./findings.ts";
 import { linksOf } from "./links.ts";
+import { prepayOf } from "./prepay.ts";
 import { upstreamOf } from "./upstream.ts";
 import { Hosted } from "./hosted.ts";
 import { Split } from "./split.ts";
@@ -634,6 +635,15 @@ export class Core {
            VALUES (?, 'launched', ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?)`,
         )
         .run(agent, operator, this.now(), mint, launcher, url, rid, mode, hosted ? 1 : 0, active ? "active" : "setting_up", opts.shadow ? 1 : 0);
+      // simulated prepaid launch (plan C): the launcher's deposit into the compute vault in the same step
+      if (!opts.shadow && !opts.fromChain && body.deposit !== undefined) {
+        const s = String(body.deposit);
+        if (!/^\d{1,30}$/.test(s)) throw bad("bad_deposit", "deposit is an integer string of base units");
+        const dep = BigInt(s);
+        prepayOf(this).checkSimDeposit(dep);
+        prepayOf(this).record(agent, { mint, launchedAt: Math.floor(this.now() / 1000), signature: null, deposit: dep, woke: true, source: "sim" });
+        this.ledger.transfer(ACC.faucet, ACC.compute(agent), dep, "launch_deposit", agent);
+      }
       this.refreshAwake(agent);
       this.emit("agent.launched", { agent, mint, launcher, target_repo: url, hosted, identity_mode: mode, lifecycle: active ? "active" : "setting_up" });
       return this.agentView(agent);
@@ -839,7 +849,8 @@ export class Core {
     const bal = this.ledger.balance(ACC.compute(agent));
     let awake = a.awake;
     if (awake && bal < this.cfg.sleep_threshold) awake = 0;
-    else if (!awake && bal >= this.cfg.wake_threshold) awake = 1;
+    // an underfunded prepaid launch wakes only once its vault holds the minimum deposit (plan C)
+    else if (!awake && bal >= prepayOf(this).wakeThreshold(agent, this.cfg.wake_threshold)) awake = 1;
     if (awake !== a.awake) {
       this.db.query("UPDATE agents SET awake = ? WHERE agent_id = ?").run(awake, agent);
       this.emit(awake ? "agent.awake" : "agent.asleep", { agent, compute: bal.toString() });

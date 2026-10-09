@@ -17,6 +17,7 @@ import { ChainBackend, SimBackend, type Backend } from "./backend.ts";
 import { loadConfig, loadModelEnv, type RuntimeConfig } from "./config.ts";
 import { Runtime, type RuntimeDeps } from "./runtime.ts";
 import { addSecret, redact } from "./state.ts";
+import { checkCorePrices, CreditMonitor, monitorStatePath, railClient, railModel, railPrices } from "./rail.ts";
 import { ChainMessenger } from "../../core/src/msgchain.ts";
 
 function args(argv: string[]) {
@@ -47,7 +48,10 @@ export function chainMessengers(cfg: RuntimeConfig, backend: Backend, log: (m: s
 }
 
 export function claudeProposer(cfg: RuntimeConfig) {
-  return () => new AnthropicProposer({ max_usd: cfg.attempt_max_usd, model: cfg.model, effort: cfg.effort, max_turns: cfg.max_turns, max_evals: cfg.max_evals });
+  // the credit rail picks the model endpoint (plan C): Anthropic by default, OpenRouter only when enabled
+  const r = { rail: cfg.rail ?? "anthropic", openrouter: cfg.openrouter ?? null } as const;
+  return () => new AnthropicProposer({ max_usd: cfg.attempt_max_usd, model: railModel(r, cfg.model), effort: cfg.effort, max_turns: cfg.max_turns, max_evals: cfg.max_evals,
+    prices: railPrices(r) }, railClient(r));
 }
 
 async function main() {
@@ -60,7 +64,10 @@ async function main() {
   const log = (m: string) => console.log(redact(`[${new Date().toISOString().slice(11, 19)} runtime] ${m}`));
   switch (cmd) {
     case "run": {
-      if (!loadModelEnv()) throw new Error("no model key: put ANTHROPIC_API_KEY in ~/.config/lineage/model.env");
+      const anthropicKey = loadModelEnv();
+      if ((cfg.rail ?? "anthropic") === "anthropic" && !anthropicKey) throw new Error("no model key: put ANTHROPIC_API_KEY in ~/.config/lineage/model.env");
+      await checkCorePrices(cfg.core, cfg, log);
+      const stopMonitor = cfg.rail === "openrouter" && cfg.openrouter?.enabled ? new CreditMonitor(cfg.openrouter, { statePath: monitorStatePath(cfg.state_dir), log }).start() : () => {};
       const backend = backendFor(cfg, log, (w, s, f) => log(`tx ${w}: ${s} (fee ${f ?? "?"})`));
       const rt = new Runtime(cfg, { backend, runtimeKey: loadKey(cfg.runtime_key), proposer: claudeProposer(cfg), log, messenger: chainMessengers(cfg, backend, log) });
       await rt.start();
@@ -68,6 +75,7 @@ async function main() {
       const onSignal = () => {
         if (++signals > 1) process.exit(130); // state is persisted after every step; a second signal leaves now
         log("signal: graceful stop (send again to leave at once)");
+        stopMonitor();
         void rt.stop().then(() => process.exit(0));
       };
       process.on("SIGINT", onSignal);

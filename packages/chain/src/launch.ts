@@ -1,6 +1,7 @@
 import { addressBytes, ixDisc, Reader, Writer, type Address } from "./codec.ts";
 import { ata, BPF_LOADER_UPGRADEABLE, pda, SYSTEM_PROGRAM, TOKEN_2022_PROGRAM, TOKEN_PROGRAM, u64le } from "./pda.ts";
 import { r, REGISTRY_PROGRAM_ID, registryPdas, w, type Ix } from "./registry.ts";
+import { token } from "./spl.ts";
 
 // lineage_launch (SPEC 14.2): addresses, instruction builders and account decoders.
 
@@ -46,6 +47,16 @@ export const launchPdas = {
   },
   dammVault: (mint: Address, pool: Address) => pda(METEORA.dammV2Program, "token_vault", addressBytes(mint), addressBytes(pool)),
 };
+
+/**
+ * The accounts every launch_agent names that are neither signers nor fresh: the content of the
+ * frozen lookup table a v0 launch transaction reads (plan C). Programs invoked at the top level stay
+ * static whatever the table holds.
+ */
+export function launchTableAddresses(a: { lineMint: Address; dbcConfig: Address; lineTokenProgram?: Address }): Address[] {
+  return [...new Set([launchPdas.config(), launchPdas.authority(), a.lineMint, a.dbcConfig, registryPdas.config(), REGISTRY_PROGRAM_ID, METEORA.dbcPoolAuthority,
+    METEORA.dbcEventAuthority, METEORA.dbcProgram, a.lineTokenProgram ?? TOKEN_PROGRAM, TOKEN_2022_PROGRAM, SYSTEM_PROGRAM])];
+}
 
 export interface LaunchConfigArgs {
   admin: Address;
@@ -190,6 +201,18 @@ export const launch = {
         w(a.launcherToken), r(a.lineMint), r(a.lineTokenProgram ?? TOKEN_PROGRAM), r(registryPdas.agent(a.agent))],
       data: data("withdraw_compute").u64(a.amount).done(),
     };
+  },
+  /**
+   * Prepaid credits at launch (plan C): the launcher's tLINE into the new agent's compute vault, then
+   * the permissionless refresh_awake, placed after launch_agent in the same transaction so the agent
+   * wakes at once when `amount` reaches wake_threshold.
+   */
+  prepay(a: { launcher: Address; agent: Address; agentMint: Address; lineMint: Address; amount: bigint; decimals: number; lineTokenProgram?: Address }): Ix[] {
+    const tp = a.lineTokenProgram ?? TOKEN_PROGRAM;
+    return [
+      token.transferChecked(ata(a.launcher, a.lineMint, tp), a.lineMint, launchPdas.computeVault(a.agent), a.launcher, a.amount, a.decimals, tp),
+      launch.refreshAwake({ agent: a.agent, agentMint: a.agentMint }),
+    ];
   },
   refreshAwake(a: { agent: Address; agentMint: Address }): Ix {
     return {

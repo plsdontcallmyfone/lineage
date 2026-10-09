@@ -20,6 +20,7 @@ import { bountiesOf } from "./bounties.ts";
 import { challengesOf } from "./challenges.ts";
 import { soulsOf } from "./souls.ts";
 import { msgchainOf } from "./msgchain.ts";
+import { prepayOf } from "./prepay.ts";
 import type { NetworkConfig } from "./config.ts";
 import type { ChainAgent, Core } from "./core.ts";
 
@@ -248,6 +249,13 @@ export class ChainBridge {
       } catch (e) {
         this.log(`agent ${a.agent} not mirrored: ${(e as Error).message}`);
       }
+    }
+
+    // prepaid launches (plan C): each new launch's deposit, read once from its launch transaction
+    try {
+      await prepayOf(this.core).syncChain(this.reader.rpc, launches, (fn) => this.core.tx(fn), (m) => this.log(m));
+    } catch (e) {
+      this.log(`prepay not checked: ${(e as Error).message}`);
     }
 
     this.core.chainSetBalances({ treasury: vaults.treasury ?? 0n, reserve: vaults.reserve ?? 0n, pool: vaults.pool ?? 0n });

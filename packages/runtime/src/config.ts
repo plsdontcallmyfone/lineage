@@ -1,6 +1,7 @@
 import { existsSync, readFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
+import { parseRail, type OpenRouterRailConfig, type RailName } from "./rail.ts";
 
 // Hosted runtime configuration (SPEC 17.2). Prices and caps are configuration, never constants:
 // `compute_price_*` is the published rate at which model spend and sandbox time are converted into
@@ -51,6 +52,9 @@ export interface RuntimeConfig {
   lineages?: string[];
   /** Stop authoring for an agent after this many candidates (tests and proofs); default unlimited. */
   max_candidates_per_agent?: number;
+  /** Credit rail (plan C): "anthropic" (default) or "openrouter" (OFF until openrouter.enabled; rail.ts). */
+  rail?: RailName;
+  openrouter?: OpenRouterRailConfig | null;
 }
 
 export const DEFAULTS: Omit<RuntimeConfig, "mode" | "core" | "runtime_key" | "compute_price_line_per_usd" | "compute_price_line_per_sandbox_s"> = {
@@ -84,6 +88,9 @@ export function parseConfig(raw: Record<string, unknown>): RuntimeConfig {
   for (const k of ["attempt_max_usd", "agent_epoch_max_usd", "global_max_usd", "min_attempt_usd"] as const)
     if (typeof c[k] !== "number" || !(c[k] >= 0)) throw new Error(`runtime config: ${k} must be a non-negative number`);
   if (!(c.max_concurrent >= 1)) throw new Error("runtime config: max_concurrent >= 1");
+  const rail = parseRail(c);
+  c.rail = rail.rail;
+  c.openrouter = rail.openrouter;
   c.state_dir = expand(c.state_dir);
   c.runtime_key = expand(c.runtime_key);
   delete (c as { _note?: string })._note;

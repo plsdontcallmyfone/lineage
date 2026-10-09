@@ -37,5 +37,17 @@
   "activity_rate": 120,
   "heartbeat_s": 10,
   "max_split_members": 3,
-  "port_share_bps": 2000
+  "port_share_bps": 2000,
+  "prepay": {
+    "_note": "Plan C, TEST values: the dollar to $LINE rate is a TEST rate until $LINE exists; compute prices mirror the site runtime's config (scripts/deploy/site-config.ts) and the runtime checks they match at start.",
+    "min_usd": "10",
+    "default_usd": "10",
+    "line_per_usd": "20",
+    "rate_status": "test",
+    "compute_price_line_per_usd": "20",
+    "compute_price_line_per_sandbox_s": "0.002",
+    "sandbox_reserve_s": 600,
+    "attempt_max_usd": 0.5,
+    "since": 1791580000
+  }
 }

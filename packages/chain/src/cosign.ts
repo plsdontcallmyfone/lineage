@@ -39,6 +39,8 @@ export const COSIGN_MAX_CU_PRICE = 1_000_000n;
 export function inspectForCosign(wire: Uint8Array, agent: Address, opts: { expectAgent?: Address } = {}): CosignPlan {
   const { signatures, message } = parseWire(wire);
   const m = decodeMessage(message);
+  // lookup-table accounts are not shown in the message itself: co-sign legacy messages only
+  if (m.version !== "legacy") throw new Error("refusing to co-sign: a versioned (v0) message");
   const signers = m.keys.slice(0, m.numSigners);
   if (!signers.includes(agent)) throw new Error(`agent ${agent} is not a signer of this transaction`);
   // the co-signing key proves possession only: it never pays fees and is never a writable account,

@@ -1,0 +1,231 @@
+{
+  "at": "2026-10-09T21:22:08.559Z",
+  "passed": 33,
+  "total": 33,
+  "wallet": "Ds2dJD9Qr5WPbq9ZHjsnp7Lh6aybPaQU72nS7pfCB4C",
+  "deployer_sol_spent": 0.52001,
+  "wallet_sol_left": 0.451385356,
+  "txs": [
+    {
+      "run": "setup",
+      "what": "fund the test wallet with 0.5 SOL from the deployer",
+      "signature": "3BEpCDVP9vgYdMRoQYQQzWpj55aQLCAmLoos4M1LTGfXMVcSzwRv5Eyxi5tiV2peDqipaFuDfU6Ux6r8gNtXTaX3",
+      "fee": 5000
+    },
+    {
+      "run": "setup",
+      "what": "fund the second owner key with 0.02 SOL from the deployer",
+      "signature": "MfVtkE6TNnH39q6TNeVoCBKhHUCxWsq2brCkkdphCLsD9qE3XHDm8xiAHczggPmdcKUfQhY8JQurv7qUJu1f3eu",
+      "fee": 5000
+    },
+    {
+      "run": "setup",
+      "what": "top up the test wallet with 900 tLINE from the faucet key",
+      "signature": "517YVFn5oh6ADczhEqhmnBuPmXSujDuVVdUQFBbRvmG3z3xGNzKsVYQkAWp1LcSXHxNJ8jh5bFT5arFgg49TtRSc",
+      "fee": 5000
+    },
+    {
+      "run": "A",
+      "what": "launch_agent + deposit 200 tLINE + refresh_awake + set_profile (v0)",
+      "signature": "BttTYoiwfqd35gNycLrgm9MCcyrq6F8bq9d82AsznpVQxDZSBAddJsZDexJhANmhozfpwpML2JKryNzYGGAjJuN",
+      "fee": 15001
+    },
+    {
+      "run": "B",
+      "what": "launch_agent + deposit 200 tLINE + refresh_awake (legacy)",
+      "signature": "2LWRoCxbnbryqJJ3P2zw3zy7f8m6AYGTk58e3kP2t1DJz8foRdEVRDuKDGjiMSjZdjXSn5Z5b23nyjS1S81dLrpE",
+      "fee": 15001
+    },
+    {
+      "run": "B",
+      "what": "set_profile (soul), second signature",
+      "signature": "3BkUiN3AtzzvWfkHfXL7hqx14evJry7jejqgaiYEhJRaEKBwRbqYXrWdeibyFKUynHJTvz4c8wkZGs26NJQ4npcj",
+      "fee": 10001
+    },
+    {
+      "run": "C",
+      "what": "launch_agent + deposit 250 tLINE + refresh_awake (legacy)",
+      "signature": "3ktmmjUsHxbZNYZdxsmz6zDYnu3yDzbiK1KpAtHqgrsvJ5yMhE79ztZ82vNs3YdCkvYNshwNpN56iw4k8ADoEDmy",
+      "fee": 15001
+    },
+    {
+      "run": "C",
+      "what": "propose_owner to a second key (bounty owner check)",
+      "signature": "5eLoZCSLCW1brSi5qFsTwmZcAAxzmxQ2t1ua4dcLh1FfCdnYTzcEH3LvAijLERwPj8FUbrdn63BGFwZyKCd61r3e",
+      "fee": 5000
+    },
+    {
+      "run": "C",
+      "what": "accept_owner by the second key",
+      "signature": "2oufoETiJDb6H7QHcAUbNiaiBFt7EPxhb43Lwy1cq6JuPKVG4orDTxzyCRCaPVz7QsCNEmMVtL87t77Uw4o6TrB7",
+      "fee": 5000
+    }
+  ],
+  "results": [
+    {
+      "check": "local Core serves the prepay config (min, default, TEST rate)",
+      "ok": true,
+      "detail": "{\"min_usd\":\"10\",\"line_per_usd\":\"20\"}"
+    },
+    {
+      "check": "a deposit below the minimum is refused by the form",
+      "ok": true,
+      "detail": "Deposit: at least 10 USD (prepay.min_usd in Core's config)."
+    },
+    {
+      "check": "A: form shows the deposit in tLINE, the TEST rate and the first-run budget",
+      "ok": true,
+      "detail": "200 tLINE (10.00 USD at 20 tLINE per USD TEST rate) into the agent's compute vault in the launch transaction; minimum 10 USD, editable upward. First-run budget at the runtime's published prices (20 tLINE per USD of model"
+    },
+    {
+      "check": "A: review shows the v0 path",
+      "ok": true,
+      "detail": "one v0 transaction, 1007 of 1232 bytes, reading the frozen lookup table AN3j…TD9S"
+    },
+    {
+      "check": "A: one transaction ran launch_agent, the deposit and refresh_awake and set_profile (v0)",
+      "ok": true,
+      "detail": "BttTYoiwfqd35gNycLrgm9MCcyrq6F8bq9d82AsznpVQxDZSBAddJsZDexJhANmhozfpwpML2JKryNzYGGAjJuN version 0"
+    },
+    {
+      "check": "A: the v0 transaction read the frozen lookup table",
+      "ok": true,
+      "detail": "AN3jKVEWN7H8gJAnZkWdmd51JzK3U8nSMKF5Fz8nTD9S"
+    },
+    {
+      "check": "A: AgentLaunch.awake on chain right after the launch transaction; vault holds the deposit",
+      "ok": true,
+      "detail": "awake true, vault 200000000 base units (want 200000000)"
+    },
+    {
+      "check": "A: wallet signatures",
+      "ok": true,
+      "detail": "1 (0)"
+    },
+    {
+      "check": "A: soul digest on chain (set_profile seq 1)",
+      "ok": true,
+      "detail": "976fbfd81717ec66… seq 1"
+    },
+    {
+      "check": "A: Core read the launch transaction: deposit, minimum met, refresh_awake in it",
+      "ok": true,
+      "detail": "{\"deposit\":\"200000000\",\"min\":\"200000000\",\"ok\":true,\"woke\":true}"
+    },
+    {
+      "check": "A: awake in Core",
+      "ok": true,
+      "detail": "awake true"
+    },
+    {
+      "check": "A: page shows awake, the deposit and Core's check",
+      "ok": true,
+      "detail": "Prepaid 200tLINE deposited; one v0 transaction"
+    },
+    {
+      "check": "B: form shows the deposit in tLINE, the TEST rate and the first-run budget",
+      "ok": true,
+      "detail": "200 tLINE (10.00 USD at 20 tLINE per USD TEST rate) into the agent's compute vault in the launch transaction; minimum 10 USD, editable upward. First-run budget at the runtime's published prices (20 tLINE per USD of model"
+    },
+    {
+      "check": "B: review shows the split path",
+      "ok": true,
+      "detail": "2 signatures (1) launch_agent + deposit + refresh_awake, 1200 bytes; (2) set_profile, 428 bytes. One transaction does not fit 1232 bytes, even as v0 with the lookup table and this wallet does not sign"
+    },
+    {
+      "check": "B: one transaction ran launch_agent, the deposit and refresh_awake (legacy)",
+      "ok": true,
+      "detail": "2LWRoCxbnbryqJJ3P2zw3zy7f8m6AYGTk58e3kP2t1DJz8foRdEVRDuKDGjiMSjZdjXSn5Z5b23nyjS1S81dLrpE version legacy"
+    },
+    {
+      "check": "B: AgentLaunch.awake on chain right after the launch transaction; vault holds the deposit",
+      "ok": true,
+      "detail": "awake true, vault 200000000 base units (want 200000000)"
+    },
+    {
+      "check": "B: wallet signatures",
+      "ok": true,
+      "detail": "2 (legacy, legacy)"
+    },
+    {
+      "check": "B: soul digest on chain (set_profile seq 1)",
+      "ok": true,
+      "detail": "433b7a940f23adf1… seq 1"
+    },
+    {
+      "check": "B: second transaction is set_profile only",
+      "ok": true,
+      "detail": "3BkUiN3AtzzvWfkHfXL7hqx14evJry7jejqgaiYEhJRaEKBwRbqYXrWdeibyFKUynHJTvz4c8wkZGs26NJQ4npcj"
+    },
+    {
+      "check": "B: Core read the launch transaction: deposit, minimum met, refresh_awake in it",
+      "ok": true,
+      "detail": "{\"deposit\":\"200000000\",\"min\":\"200000000\",\"ok\":true,\"woke\":true}"
+    },
+    {
+      "check": "B: awake in Core",
+      "ok": true,
+      "detail": "awake true"
+    },
+    {
+      "check": "B: page shows awake, the deposit and Core's check",
+      "ok": true,
+      "detail": "Prepaid 200tLINE deposited; 2 transactions, soul in 3BkU…npcj "
+    },
+    {
+      "check": "C: form shows the deposit in tLINE, the TEST rate and the first-run budget",
+      "ok": true,
+      "detail": "250 tLINE (12.50 USD at 20 tLINE per USD TEST rate) into the agent's compute vault in the launch transaction; minimum 10 USD, editable upward. First-run budget at the runtime's published prices (20 tLINE per USD of model"
+    },
+    {
+      "check": "C: review shows the legacy path",
+      "ok": true,
+      "detail": "one transaction, 1200 of 1232 bytes"
+    },
+    {
+      "check": "C: one transaction ran launch_agent, the deposit and refresh_awake (legacy)",
+      "ok": true,
+      "detail": "3ktmmjUsHxbZNYZdxsmz6zDYnu3yDzbiK1KpAtHqgrsvJ5yMhE79ztZ82vNs3YdCkvYNshwNpN56iw4k8ADoEDmy version legacy"
+    },
+    {
+      "check": "C: AgentLaunch.awake on chain right after the launch transaction; vault holds the deposit",
+      "ok": true,
+      "detail": "awake true, vault 250000000 base units (want 250000000)"
+    },
+    {
+      "check": "C: wallet signatures",
+      "ok": true,
+      "detail": "1 (legacy)"
+    },
+    {
+      "check": "C: Core read the launch transaction: deposit, minimum met, refresh_awake in it",
+      "ok": true,
+      "detail": "{\"deposit\":\"250000000\",\"min\":\"200000000\",\"ok\":true,\"woke\":true}"
+    },
+    {
+      "check": "C: awake in Core",
+      "ok": true,
+      "detail": "awake true"
+    },
+    {
+      "check": "C: page shows awake, the deposit and Core's check",
+      "ok": true,
+      "detail": "Prepaid 250tLINE deposited; one transaction"
+    },
+    {
+      "check": "C: bounty form lists the self-hosted agent for its registry owner",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "C: after an owner transfer the launcher no longer gets the bounty form for it (owner, not launcher)",
+      "ok": true,
+      "detail": "owner 85Uv4FtiyoHe5cj7XWJpCebAAbzirKbMEF5pmDGeTArQ"
+    },
+    {
+      "check": "no page errors",
+      "ok": true,
+      "detail": ""
+    }
+  ]
+}

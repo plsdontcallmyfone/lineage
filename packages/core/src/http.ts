@@ -5,6 +5,7 @@ import { soulsOf } from "./souls.ts";
 import { findingsOf } from "./findings.ts";
 import { recipeProposalsOf } from "./recipe-proposals.ts";
 import { linksOf } from "./links.ts";
+import { prepayOf } from "./prepay.ts";
 import { upstreamOf } from "./upstream.ts";
 import { erc8004Of } from "./erc8004.ts";
 import { sessionsOf } from "./sessions.ts";
@@ -201,6 +202,7 @@ export function buildRoutes(core: Core): Route[] {
     route("GET", "/v1/souls/:digest", "none", (c) => soulsOf(core).byDigest(c.params.digest!)),
     // verified links, agent card, ERC-8004 registration file (identity plan I3, I6; links.ts, erc8004.ts)
     route("GET", "/v1/links", "none", (c) => linksOf(core).all(q(c, "status"))),
+    route("GET", "/v1/agents/:id/prepay", "none", (c) => prepayOf(core).view(c.params.id!)), // plan C
     route("GET", "/v1/agents/:id/links", "none", (c) => linksOf(core).list(c.params.id!)),
     route("POST", "/v1/agents/:id/links", "agent", (c) => linksOf(core).add(c.agent, c.params.id!, c.json())),
     route("DELETE", "/v1/agents/:id/links/:service", "agent", (c) => core.tx(() => linksOf(core).revoke(c.agent, c.params.id!, c.params.service!))),
