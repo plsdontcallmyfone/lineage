@@ -40,6 +40,19 @@
       "name": "@lineage/embed",
       "version": "0.1.0",
     },
+    "packages/identity": {
+      "name": "@lineage/identity",
+      "version": "0.1.0",
+      "bin": {
+        "lineage-identity": "src/main.ts",
+      },
+      "dependencies": {
+        "@lineage/chain": "workspace:*",
+        "@lineage/mirror": "workspace:*",
+        "@lineage/protocol": "workspace:*",
+        "@lineage/souls": "workspace:*",
+      },
+    },
     "packages/indexer": {
       "name": "@lineage/indexer",
       "version": "0.1.0",
@@ -119,6 +132,8 @@
     "@lineage/core": ["@lineage/core@workspace:packages/core"],
 
     "@lineage/embed": ["@lineage/embed@workspace:packages/embed"],
+
+    "@lineage/identity": ["@lineage/identity@workspace:packages/identity"],
 
     "@lineage/indexer": ["@lineage/indexer@workspace:packages/indexer"],
 

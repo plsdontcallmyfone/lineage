@@ -32,6 +32,8 @@
 	}
 	# market indexer read API (packages/indexer, lineage-indexer.service); a path matcher sorts before the catch-all below
 	reverse_proxy /market/* 127.0.0.1:9668
+	# GitHub identity service (packages/identity, lineage-identity.service): pasted tokens go here only, never to the gate or Core
+	reverse_proxy /identity/* 127.0.0.1:9665
 	reverse_proxy 127.0.0.1:9662 {
 		flush_interval -1
 	}

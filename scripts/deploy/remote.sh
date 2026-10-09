@@ -26,12 +26,39 @@ LINEAGE_RECIPES="${LINEAGE_RECIPES:-fixture-b58,base58-py,minbpe}"
 AUTHORS="${AUTHORS:-minbpe}"; AUTHORS="${AUTHORS//,/ }"
 # every author unit present (running or not), so stop and status also reach authors dropped from AUTHORS
 all_authors() { systemctl list-units --all --plain --no-legend 'lineage-author@*' 2>/dev/null | awk '{print $1}'; echo lineage-author; }
-CORE_UNITS=(lineage-core lineage-web lineage-gate lineage-indexer)
+CORE_UNITS=(lineage-core lineage-web lineage-gate lineage-indexer lineage-identity)
+IDENTITY_TIMER=lineage-identity-cycle.timer
 WORKER_UNITS=(lineage-reference lineage-verifier@v1 lineage-verifier@v2)
 
 as_lineage() {
   runuser -u lineage -- env -i HOME=/home/lineage USER=lineage LINEAGE_HOME=/home/lineage/.lineage PATH=/usr/local/bin:/usr/bin:/bin bash -c "$1"
 }
+# The GitHub identity service (packages/identity, docs/DEPLOY-SITE.md "GitHub identity service"):
+# a dedicated user, its encrypted store (mode 700) and key file (made once on the server, never
+# copied anywhere), the RPC URL and the Core key it records PRs with. Idempotent.
+identity_setup() {
+  local REL="$1" ID=/var/lib/lineage/identity
+  if ! id lineage-identity >/dev/null 2>&1; then
+    useradd --system --home-dir "$ID/home" --no-create-home --shell /usr/sbin/nologin --user-group lineage-identity
+  fi
+  if id -nG lineage-identity | tr ' ' '\n' | grep -qx -E 'docker|sudo|admin|lineage'; then echo "lineage-identity is in a privileged group; refusing" >&2; exit 1; fi
+  chmod o+x /var/lib/lineage   # traverse only (no listing); every other directory under it stays 750
+  install -d -m 700 -o lineage-identity -g lineage-identity "$ID" "$ID/home" /etc/lineage-identity
+  # keyed RPC for the launch watcher (lineage's rpc.env is not readable by this user)
+  local rpcenv=/home/lineage/.config/lineage/rpc.env
+  if [ -f "$rpcenv" ]; then
+    ( umask 077; sed -n 's/^[[:space:]]*HELIUS_DEVNET_RPC[[:space:]]*=[[:space:]]*/LINEAGE_DEVNET_RPC=/p' "$rpcenv" > /etc/lineage-identity/identity.env.tmp )
+    chown lineage-identity:lineage-identity /etc/lineage-identity/identity.env.tmp && mv /etc/lineage-identity/identity.env.tmp /etc/lineage-identity/identity.env
+  fi
+  # Core accepts PR records from its runtime or admin key; the site's admin key is the one on this box
+  local ck=/home/lineage/.config/lineage/site/admin.json
+  if [ -f "$ck" ] && ! cmp -s "$ck" /etc/lineage-identity/core-key.json; then
+    install -m 600 -o lineage-identity -g lineage-identity "$ck" /etc/lineage-identity/core-key.json
+  fi
+  runuser -u lineage-identity -- env -i HOME="$ID/home" BUN_RUNTIME_TRANSPILER_CACHE_PATH=0 PATH=/usr/local/bin:/usr/bin:/bin \
+    /usr/local/bin/bun "$REL/packages/identity/src/main.ts" init --dir "$ID" --key /etc/lineage-identity/master.key
+}
+
 optional_units() {
   local u=()
   [ "${WITH_RUNTIME:-0}" = 1 ] && u+=(lineage-runtime)
@@ -94,7 +121,7 @@ activate)
   OLD="$(readlink "$BASE/current" 2>/dev/null || true)"
   as_lineage "cd $REL && bun scripts/deploy/site-config.ts --out /var/lib/lineage/site"
   # the new units first, so the stop below already uses their drain allowance (TimeoutStopSec)
-  install -m 644 "$REL"/scripts/deploy/systemd/*.service /etc/systemd/system/ && systemctl daemon-reload
+  install -m 644 "$REL"/scripts/deploy/systemd/*.service "$REL"/scripts/deploy/systemd/*.timer /etc/systemd/system/ && systemctl daemon-reload
   if [ -n "$OLD" ] && [ "$OLD" != "$REL" ]; then
     systemctl stop lineage-runtime $(all_authors) "${WORKER_UNITS[@]}" "${CORE_UNITS[@]}" 2>/dev/null || true
     B="/var/lib/lineage/backups/$(date -u +%Y%m%dT%H%M%SZ)-$(basename "$OLD")"
@@ -109,7 +136,8 @@ activate)
     ls -1dt /var/lib/lineage/backups/*/ 2>/dev/null | tail -n +6 | xargs -r rm -rf
   fi
   ln -sfn "$REL" "$BASE/current.new" && mv -Tf "$BASE/current.new" "$BASE/current"
-  install -m 644 "$REL"/scripts/deploy/systemd/*.service /etc/systemd/system/
+  install -m 644 "$REL"/scripts/deploy/systemd/*.service "$REL"/scripts/deploy/systemd/*.timer /etc/systemd/system/
+  identity_setup "$REL"
   # Caddy
   SITES="${SITE_NAMES:-localhost}"
   if [ "$DRY_RUN" = 1 ]; then TLS="	tls internal"; GLOBAL="	local_certs"; else TLS=""; GLOBAL="${ACME_EMAIL:+	email $ACME_EMAIL}"; fi
@@ -122,6 +150,7 @@ activate)
   systemctl enable -q "${CORE_UNITS[@]}" caddy
   systemctl restart "${CORE_UNITS[@]}"
   systemctl reload-or-restart caddy
+  systemctl enable -q --now "$IDENTITY_TIMER"
   if [ "$DRY_RUN" = 1 ]; then
     echo "dry run: lineage-bootstrap, lineage-reference, lineage-verifier@v1, lineage-verifier@v2, lineage-runtime, lineage-author@* SKIPPED (sandbox units need Docker)"
   else
@@ -138,7 +167,7 @@ rollback)
   PREV="$(cat "$BASE/previous" 2>/dev/null || true)"
   [ -n "$PREV" ] && [ -d "$PREV" ] || { echo "no previous release recorded" >&2; exit 1; }
   CUR="$(readlink "$BASE/current")"
-  systemctl stop lineage-runtime $(all_authors) "${WORKER_UNITS[@]}" "${CORE_UNITS[@]}" 2>/dev/null || true
+  systemctl stop "$IDENTITY_TIMER" lineage-runtime $(all_authors) "${WORKER_UNITS[@]}" "${CORE_UNITS[@]}" 2>/dev/null || true
   if [ "${1:-}" = "--with-data" ]; then
     BK="$(cat "$BASE/previous-backup")"
     [ -f "$BK/core.db" ] || { echo "no data backup at $BK" >&2; exit 1; }
@@ -151,23 +180,24 @@ rollback)
   ln -sfn "$PREV" "$BASE/current.new" && mv -Tf "$BASE/current.new" "$BASE/current"
   echo "$CUR" > "$BASE/previous"
   install -m 644 "$PREV"/scripts/deploy/systemd/*.service /etc/systemd/system/
+  ls "$PREV"/scripts/deploy/systemd/*.timer >/dev/null 2>&1 && install -m 644 "$PREV"/scripts/deploy/systemd/*.timer /etc/systemd/system/
   systemctl daemon-reload
   systemctl start "${CORE_UNITS[@]}"
   [ "$DRY_RUN" = 1 ] || systemctl start "${WORKER_UNITS[@]}" $(optional_units)
   echo "rolled back to $(basename "$PREV")"
   ;;
 stop)
-  systemctl disable -q --now lineage-runtime $(all_authors) lineage-bootstrap "${WORKER_UNITS[@]}" "${CORE_UNITS[@]}" caddy 2>/dev/null || true
+  systemctl disable -q --now "$IDENTITY_TIMER" lineage-identity-cycle lineage-runtime $(all_authors) lineage-bootstrap "${WORKER_UNITS[@]}" "${CORE_UNITS[@]}" caddy 2>/dev/null || true
   echo "stopped: every lineage unit and Caddy (disabled; 'start' brings them back)"
   ;;
 start)
-  systemctl enable -q --now "${CORE_UNITS[@]}" caddy
+  systemctl enable -q --now "${CORE_UNITS[@]}" caddy "$IDENTITY_TIMER"
   [ "$DRY_RUN" = 1 ] || systemctl enable -q --now "${WORKER_UNITS[@]}" $(optional_units)
   echo "started"
   ;;
 status)
   echo "release   $(basename "$(readlink "$BASE/current" 2>/dev/null || echo none)") (previous $(basename "$(cat "$BASE/previous" 2>/dev/null || echo none)"))"
-  for u in "${CORE_UNITS[@]}" caddy lineage-bootstrap "${WORKER_UNITS[@]}" lineage-runtime $(all_authors | sort -u); do
+  for u in "${CORE_UNITS[@]}" "$IDENTITY_TIMER" caddy lineage-bootstrap "${WORKER_UNITS[@]}" lineage-runtime $(all_authors | sort -u); do
     st=$(systemctl is-active "$u" 2>/dev/null || true)
     mem=$(systemctl show -p MemoryCurrent --value "$u" 2>/dev/null || echo "")
     [[ "$mem" =~ ^[0-9]+$ ]] && mem="$((mem / 1048576)) MiB" || mem="-"
@@ -185,7 +215,9 @@ wipe-keys)
     [ -f "$p" ] && { shred -u "$p" 2>/dev/null || rm -f "$p"; echo "removed $(basename "$p" .json)"; }
   done
   rm -f /home/lineage/.config/lineage/model.env /home/lineage/.config/lineage/rpc.env
+  rm -f /etc/lineage-identity/core-key.json /etc/lineage-identity/identity.env
   echo "copied keys removed; the site's own keys stay in /home/lineage/.config/lineage/site"
+  echo "the identity store /var/lib/lineage/identity and its key /etc/lineage-identity/master.key stay; delete both before destroying the box"
   ;;
 *)
   echo "usage: remote.sh install|chain|activate <sha> | rollback [--with-data] | stop | start | status | wipe-keys" >&2

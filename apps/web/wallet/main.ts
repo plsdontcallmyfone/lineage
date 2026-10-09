@@ -62,6 +62,7 @@ import { badge, banner, icon, kv, panel, stat } from "../src/ui.ts";
 import { buildAndSimulate, loadChainCfg, parseUnits, reader, rpc, signAndSend, sol, units, devnetGate, type Built, type ChainCfg } from "./chain.ts";
 import { connect, DEVNET_CHAIN, disconnect, discovered, legacyOnly, onChange, onWallets, startDiscovery, type StdAccount, type StdWallet } from "./standard.ts";
 export { mountTradeBox } from "./trade.ts";
+import { custodyHtml, ghClick, initGithubIdentity, showIdentity, submitLaunchToken } from "./identity.ts";
 
 const T22 = TOKEN_2022_PROGRAM;
 const W = "bun packages/worker/src/main.ts";
@@ -109,6 +110,7 @@ const S = {
   // soul (SPEC 14.8): the agent key is made when the soul is drafted, so the soul names it
   soul: null as null | { agent: WebKey; doc: SoulDoc | null; note: Raw | null; edited: boolean; usd: number | null },
   soulPub: null as Raw | null,
+  ghLaunch: null as Raw | null,
   busy: new Set<string>(),
   // trade
   sel: null as string | null,
@@ -347,7 +349,7 @@ function launchForm(): Raw {
     </div>
     <fieldset><legend class="eyebrow">GitHub identity (SPEC 13.9)</legend>
       <label class="radio"><input type="radio" name="l_identity" value="token" checked> <span><b>Own token.</b> A fine-grained token limited to the agent's forks is the recommended choice; any scope is accepted, and a full-scope token is a large liability for whoever holds it.</span></label>
-      <label class="radio"><input type="radio" name="l_identity" value="purchased"> <span><b>Purchased account</b> from the operated pool. Price TBA, paid in $LINE to the treasury when the purchase flow ships.</span></label>
+      <label class="radio"><input type="radio" name="l_identity" value="purchased"> <span><b>Purchased account</b> from the operated pool, set up automatically after launch. Price TBA; devnet charges nothing.</span></label>
       <label class="radio"><input type="radio" name="l_identity" value="app"> <span><b>App identity.</b> lineage-app[bot] on the project's forks; always the fallback.</span></label>
     </fieldset>
     <div class="wl-custody" id="w-custody">${custodyText("token")}</div>
@@ -367,11 +369,7 @@ function launchForm(): Raw {
 }
 
 function custodyText(mode: string): Raw {
-  if (mode === "token")
-    return html`<label><span class="eyebrow">GitHub token</span><input type="password" disabled placeholder="Not collected on devnet"></label>
-      <div class="wl-fine">On devnet in M2 the token is never collected or sent anywhere: this field is disabled. Only the mode (token) is recorded on chain. Custody when it ships with the hosted runtime: validated once with a GitHub API call (login, scopes, expiry), encrypted at rest under a key held only by the runtime's credential service, never in Core's database, logs or any API response, never inside a sandbox, used only to fork, push the agent's branches and open PRs on opted-in repos, rotatable and revocable from the agent page; a revoked token moves the agent to the app identity.</div>`;
-  if (mode === "purchased") return html`<div class="wl-fine">Purchased accounts: price TBA. The purchase flow and credential storage ship with the hosted runtime; until then the agent uses the app identity. Only the mode (purchased) is recorded on chain.</div>`;
-  return html`<div class="wl-fine">No credential is involved. Commits are pushed by the project's GitHub App with the agent id in a trailer.</div>`;
+  return custodyHtml(mode);
 }
 
 function launchIdle(): Raw {
@@ -667,6 +665,7 @@ async function launchSign() {
     S.launched = { agent: d.agent, mint: d.mint.id, sig: c.signature };
     S.draft = null;
     if (d.soul) await publishLaunchedSoul(d.agent, d.soul);
+    S.ghLaunch = d.args.identity === "token" ? await submitLaunchToken({ agent: d.agent, mint: d.mint.id }) : null;
     await renderLaunched();
     loadLaunches();
     refreshBalances();
@@ -705,12 +704,14 @@ async function renderLaunched() {
         ["Registry record", rec ? html`kind ${rec.kind}, owner ${addr(rec.owner)}, hosted ${rec.hosted ? "yes" : "no"}` : "TBA"],
         ["Soul on chain", rec?.profileDigest ? html`<span class="wl-hash">${rec.profileDigest}</span> seq ${rec.profileSeq} ${S.soul?.doc && rec.profileDigest === soulDigest(S.soul.doc) ? html`<span class="mark good">${icon.check} equals the soul you signed</span>` : ""}` : html`<span class="faint">none</span>`],
         ["Soul in Core", S.soulPub ?? html`<span class="faint">none</span>`],
+        ["GitHub identity", html`${S.ghLaunch ?? ""}<div id="w-gh-launch"><span class="dim">Reading the identity service…</span></div>`],
       ])}
       <div class="panel-b">
         <div class="wl-row">${btn("download-agent-key", "Download agent key (keypair JSON)", { primary: true })}${btn("goto-trade", "Trade on its curve")}</div>
         <div class="wl-fine">The agent key exists only in this tab. ${l.hosted ? "The hosted runtime's key handover ships with the runtime (TBA); keep the file." : "A self-hosted worker runs with it:"} <span class="num">${W} run --core &lt;core&gt; --key &lt;file&gt;</span>. Leaving the page drops it.</div>
       </div>`,
   );
+  showIdentity("w-gh-launch", l.agent, l.mint, false);
 }
 
 async function downloadAgentKey() {
@@ -1157,6 +1158,7 @@ function renderIdentity() {
           </div>`
         : ""}
       ${pendingMe ? html`<div style="margin-top:12px">${banner("info", "This wallet is the proposed owner.", "Accepting makes it the owner from now on.")}<div class="wl-row" style="margin-top:8px">${btn("i-accept", "Accept ownership", { primary: true })}</div></div>` : ""}
+      <div class="eyebrow wl-sub" style="margin-top:12px">GitHub identity (SPEC 13.9)</div><div id="w-gh"><span class="dim">Reading the identity service…</span></div>
       <div id="w-iout">${S.iOut ?? ""}</div>`;
   }
   set(
@@ -1165,6 +1167,8 @@ function renderIdentity() {
       <div class="wl-row" style="margin-top:8px">${btn("i-lookup", "Look up")}</div></div>
     <div class="panel-b" style="padding-top:0">${body}</div>`,
   );
+  if (rec && rec.kind === "launched") showIdentity("w-gh", rec.agent, rec.mint, true);
+  else if (rec) set("w-gh", html`<span class="dim">A verifier has no GitHub identity.</span>`);
   set(
     "w-id-kit",
     html`<div class="panel-b"><div class="kit" style="margin-top:0">
@@ -1862,6 +1866,11 @@ async function onClick(ev: Event) {
       case "b-refund":
         await bBack(b.dataset.i!, "refund");
         break;
+      case "gh-check":
+      case "gh-rotate":
+      case "gh-revoke":
+        await ghClick(act, b);
+        break;
       case "b-cancel":
         await bBack(b.dataset.i!, "cancel");
         break;
@@ -1886,12 +1895,13 @@ function onInput(ev: Event) {
   }
   if (t.name === "l_symbol") t.dataset.touched = "1";
   if (t.name === "t_amount" || t.name === "t_slip") S.quote = null;
-  if (t.name?.startsWith("l_")) S.draft = null;
+  if (t.name?.startsWith("l_") && t.name !== "l_token") S.draft = null;
 }
 
 /** Called by the dashboard shell after the Wallet page's skeleton is in the DOM. */
 export async function mountWallet(root: HTMLElement) {
   S.root = root;
+  initGithubIdentity({ root: () => S.root, wallet: () => S.wallet, account: () => S.account });
   root.innerHTML = skeleton().s;
   root.addEventListener("click", onClick);
   root.addEventListener("input", onInput);

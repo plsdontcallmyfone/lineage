@@ -1,0 +1,12 @@
+# Installed by scripts/deploy/remote.sh. Runs the identity mirror and PR bot cycle every 5 minutes.
+[Unit]
+Description=Lineage identity: mirror and PR bot every 5 minutes
+
+[Timer]
+OnActiveSec=1min
+OnBootSec=3min
+OnUnitInactiveSec=5min
+Unit=lineage-identity-cycle.service
+
+[Install]
+WantedBy=timers.target

@@ -244,6 +244,42 @@ URL only redacted, as `https://devnet.helius-rpc.com (keyed)`.
 - A deploy restarts the scripted authors from the top of their lists, so a candidate still queued at that
   moment is submitted again and rejected as `duplicate`. This is harmless.
 
+## GitHub identity service
+
+`lineage-identity` (packages/identity, SPEC 13.9 "Identity service") runs as the dedicated user
+`lineage-identity`, not in the docker, sudo or lineage groups. It listens on 127.0.0.1:9665, and Caddy routes
+`/identity/*` to it directly, so a pasted token never passes the gate or Core. `remote.sh activate`
+sets it up idempotently:
+
+- makes the user;
+- gives `/var/lib/lineage` traverse-only permission for others (`o+x`; every directory under it keeps its own mode);
+- makes `/var/lib/lineage/identity` and `/etc/lineage-identity` (both mode 700);
+- makes the 32-byte key `master.key` once on the server (it is never copied anywhere);
+- writes `identity.env` with the keyed RPC from lineage's `rpc.env`;
+- copies the site admin key to `core-key.json` (Core accepts PR records from it).
+
+`lineage-identity-cycle.timer` runs the mirror and PR bot cycle every 5 minutes as the same user.
+
+| What | Where |
+|---|---|
+| Encrypted records (reserve, credentials, status, published commits) | `/var/lib/lineage/identity/records/<kind>/<id>.enc`, mode 600 |
+| Key file | `/etc/lineage-identity/master.key`, mode 600 |
+| Signing keys while git signs | `/run/lineage-identity*` (tmpfs, mode 700, removed after use) |
+| Status | `https://<site>/identity/health`, `/identity/agents/<id>` |
+
+The reserve is topped up from this machine; only logins are printed:
+
+```sh
+bun scripts/identity/push-reserve.ts --host <server> [--target 5] [--plan]
+```
+
+It first copies the server's assignments back into `~/.config/lineage/github-pool.json`. Accounts it
+pushes are marked `server_reserve` there. Launches made before the service first started are never
+acted on. Back up `/var/lib/lineage/identity` and the key file together; one without the other cannot
+be read. Note that `lineage` is in the docker group, so it is root-equivalent on this box: the separate
+user keeps the tokens out of the units' and sandboxes' reach and out of their logs, but it does not
+protect them from an operator with root.
+
 ## Day to day
 
 ```sh

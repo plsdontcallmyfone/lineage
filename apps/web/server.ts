@@ -43,6 +43,8 @@ const CORE = (arg("core", process.env.LINEAGE_CORE ?? "http://127.0.0.1:9660") ?
 const HOST = arg("host", "127.0.0.1")!;
 const DEV = process.argv.includes("--dev");
 const MARKET = (arg("market", process.env.LINEAGE_MARKET ?? "http://127.0.0.1:9668") ?? "").replace(/\/+$/, "");
+// the GitHub identity service (packages/identity); on the site Caddy routes /identity/* to it directly
+const IDENTITY = (arg("identity", process.env.LINEAGE_IDENTITY ?? "http://127.0.0.1:9665") ?? "").replace(/\/+$/, "");
 const DIR = import.meta.dir;
 
 try {
@@ -342,6 +344,11 @@ const server = Bun.serve({
     const url = new URL(req.url);
     const p = url.pathname;
     if (p.startsWith("/chain/")) return chainRoute(req, p);
+    if (p.startsWith("/identity/")) {
+      // local development only: passed through unchanged (bodies may hold a token; never logged)
+      const r = await fetch(`${IDENTITY}${p}${url.search}`, { method: req.method, headers: { "content-type": req.headers.get("content-type") ?? "application/json" }, body: req.method === "POST" ? await req.text() : undefined }).catch(() => null);
+      return r ? new Response(r.body, { status: r.status, headers: { "content-type": r.headers.get("content-type") ?? "application/json", "cache-control": "no-store" } }) : Response.json({ error: "identity_unavailable" }, { status: 502 });
+    }
     if (p.startsWith("/souls/")) return soulsRoute(req, p, req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || srv.requestIP(req)?.address || "?");
     // the one write the dashboard forwards: bounty terms, which Core keeps only if their sha256
     // equals the digest committed onchain (so the web server needs no authority of its own)
