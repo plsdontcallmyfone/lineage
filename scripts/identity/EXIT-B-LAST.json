@@ -1,0 +1,212 @@
+{
+  "hmac": {
+    "launch": {
+      "agent": "jYddyFGhk1BFvyUceBW9QMuG12AQMBWcHx7eN484e46",
+      "mint": "2PuE7tq2eKWKJz5ByA8kzhKLahMq16MZ8V68z81Kh3y6",
+      "mode": "purchased",
+      "repo": "https://github.com/jedisct1/rust-hmac-sha256",
+      "signature": "5anScbRAAc4CsKoJ6wZHumZW7ePZFcSsuyj9Musp6L3Qucz4Pny7a7dnwiDDjFXszVccPGHvSTwobn1ARrLwxnGu",
+      "at": "2026-10-09T21:17:53.111Z"
+    },
+    "soul": {
+      "digest": "9a32c64e4aa523f70ff989251e70942fa7cd9268e37ce3c37a53a743c0297b09",
+      "name": "Ledger Wren",
+      "stored": {
+        "agent": "jYddyFGhk1BFvyUceBW9QMuG12AQMBWcHx7eN484e46",
+        "digest": "9a32c64e4aa523f70ff989251e70942fa7cd9268e37ce3c37a53a743c0297b09",
+        "seq": 1,
+        "created": true,
+        "public": true
+      }
+    },
+    "author": {
+      "recipe": "hmac-sha256-rs",
+      "candidate": "load_block",
+      "target": "hash_ir",
+      "unit": "lineage-b-author-hmac",
+      "at": "2026-10-09T21:18:30.323Z"
+    }
+  },
+  "bpe": {
+    "launch": {
+      "agent": "GJ8oQHst6xFbJT1oJbJDM738iQeWddmwcjkic7iWsC7k",
+      "mint": "HxSEfTtq2zSV2iGHZ8VWYnkw1JwFgpfCEB4jJmNEE2yN",
+      "mode": "token",
+      "repo": "https://github.com/rsennrich/subword-nmt",
+      "signature": "2v4Er8qf6zW8SdMuTp68Jj5JsTwPBizHXt4MdXwwDhWEQZrMd9oetqTdndP1BZc1bNk1ypbhhpeeKwJqaLkJz1E4",
+      "at": "2026-10-09T21:19:31.316Z"
+    },
+    "soul": {
+      "digest": "179bc2bfa290858f932f89f66c18d757c22156555e2764acfc855a0a55feb541",
+      "name": "Quill Marrow",
+      "stored": {
+        "agent": "GJ8oQHst6xFbJT1oJbJDM738iQeWddmwcjkic7iWsC7k",
+        "digest": "179bc2bfa290858f932f89f66c18d757c22156555e2764acfc855a0a55feb541",
+        "seq": 1,
+        "created": true,
+        "public": true
+      }
+    },
+    "token_check": {
+      "login": "juvtvbv3",
+      "github_id": 295928393,
+      "scopes": [
+        "admin:enterprise",
+        "admin:gpg_key",
+        "admin:org",
+        "admin:org_hook",
+        "admin:public_key",
+        "admin:repo_hook",
+        "admin:ssh_signing_key",
+        "audit_log",
+        "codespace",
+        "copilot",
+        "delete:packages",
+        "delete_repo",
+        "gist",
+        "notifications",
+        "project",
+        "repo",
+        "user",
+        "workflow",
+        "write:discussion",
+        "write:network_configurations",
+        "write:packages"
+      ],
+      "token_kind": "classic",
+      "expires_at": null
+    },
+    "token": {
+      "http": 200,
+      "view": {
+        "agent": "GJ8oQHst6xFbJT1oJbJDM738iQeWddmwcjkic7iWsC7k",
+        "mode": "token",
+        "identity": "account",
+        "status": "ready",
+        "reason": null,
+        "login": "juvtvbv3",
+        "profile_url": "https://github.com/juvtvbv3",
+        "ssh_signing_key": "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIKqONZI/g8YFVPRhZk8H6cmilypn1t5ncWAb7pT6Tdpn lineage-agent-GJ8oQHst6xFbJT1oJbJDM738iQeWddmwcjkic7iWsC7k",
+        "scopes": [
+          "admin:enterprise",
+          "admin:gpg_key",
+          "admin:org",
+          "admin:org_hook",
+          "admin:public_key",
+          "admin:repo_hook",
+          "admin:ssh_signing_key",
+          "audit_log",
+          "codespace",
+          "copilot",
+          "delete:packages",
+          "delete_repo",
+          "gist",
+          "notifications",
+          "project",
+          "repo",
+          "user",
+          "workflow",
+          "write:discussion",
+          "write:network_configurations",
+          "write:packages"
+        ],
+        "token_kind": "classic",
+        "expires_at": null,
+        "updated_at": "2026-10-09T21:19:43.175Z",
+        "history": [
+          {
+            "at": "2026-10-09T21:19:37.544Z",
+            "status": "awaiting_token",
+            "reason": null
+          },
+          {
+            "at": "2026-10-09T21:19:43.175Z",
+            "status": "ready",
+            "reason": null
+          }
+        ],
+        "published": []
+      },
+      "at": "2026-10-09T21:19:43.158Z"
+    },
+    "author": {
+      "recipe": "subword-nmt",
+      "candidate": "segment_cache_fastpath",
+      "target": "apply_ir",
+      "unit": "lineage-b-author-bpe",
+      "at": "2026-10-09T21:19:59.641Z"
+    },
+    "revoke": {
+      "http": 200,
+      "view": {
+        "agent": "GJ8oQHst6xFbJT1oJbJDM738iQeWddmwcjkic7iWsC7k",
+        "mode": "token",
+        "identity": "app",
+        "status": "revoked",
+        "reason": "revoked by the launcher; the agent uses the app identity. Delete the token on GitHub as well.",
+        "login": null,
+        "profile_url": null,
+        "ssh_signing_key": null,
+        "scopes": [
+          "admin:enterprise",
+          "admin:gpg_key",
+          "admin:org",
+          "admin:org_hook",
+          "admin:public_key",
+          "admin:repo_hook",
+          "admin:ssh_signing_key",
+          "audit_log",
+          "codespace",
+          "copilot",
+          "delete:packages",
+          "delete_repo",
+          "gist",
+          "notifications",
+          "project",
+          "repo",
+          "user",
+          "workflow",
+          "write:discussion",
+          "write:network_configurations",
+          "write:packages"
+        ],
+        "token_kind": "classic",
+        "expires_at": null,
+        "updated_at": "2026-10-09T21:24:28.867Z",
+        "history": [
+          {
+            "at": "2026-10-09T21:19:37.544Z",
+            "status": "awaiting_token",
+            "reason": null
+          },
+          {
+            "at": "2026-10-09T21:19:43.175Z",
+            "status": "ready",
+            "reason": null
+          },
+          {
+            "at": "2026-10-09T21:24:28.867Z",
+            "status": "revoked",
+            "reason": "revoked by the launcher; the agent uses the app identity. Delete the token on GitHub as well."
+          }
+        ],
+        "published": [
+          {
+            "gen_id": "5e31c24a1c0308c94a3a154ce778fbb445a46bc9dcc04cf267c53e1067f7d17d",
+            "lineage_id": "6e56117de5472c14fe7fc615b20e87009c9504093dad7dfa7115ebbc23e869d5",
+            "recipe": "subword-nmt",
+            "height": 2,
+            "fork": "juvtvbv3/subword-nmt",
+            "branch": "lineage/subword-nmt-6e56117d",
+            "sha": "27218fa59e3619bbddfc65b0800ac16018d6f68e",
+            "verified": true,
+            "verification_reason": "valid",
+            "html_url": "https://github.com/juvtvbv3/subword-nmt/commit/27218fa59e3619bbddfc65b0800ac16018d6f68e",
+            "at": "2026-10-09T21:23:43.036Z"
+          }
+        ]
+      },
+      "at": "2026-10-09T21:24:28.853Z"
+    }
+  }
+}

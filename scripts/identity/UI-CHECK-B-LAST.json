@@ -1,0 +1,112 @@
+{
+  "at": "2026-10-09T21:21:10.176Z",
+  "site": "https://157-245-71-188.sslip.io",
+  "agents": [
+    "jYddyFGhk1BFvyUceBW9QMuG12AQMBWcHx7eN484e46",
+    "GJ8oQHst6xFbJT1oJbJDM738iQeWddmwcjkic7iWsC7k"
+  ],
+  "pass": 20,
+  "total": 20,
+  "checks": [
+    {
+      "name": "1280: launch form has an enabled token field",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "1280: purchased explains automatic provisioning",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "1280: jYddyF status shown",
+      "ok": true,
+      "detail": "ready"
+    },
+    {
+      "name": "1280: jYddyF login shown",
+      "ok": true,
+      "detail": "0rjvz0i0"
+    },
+    {
+      "name": "1280: jYddyF no monospace in the identity panel",
+      "ok": true,
+      "detail": "0 elements"
+    },
+    {
+      "name": "1280: no horizontal scroll",
+      "ok": true,
+      "detail": "0px"
+    },
+    {
+      "name": "1280: GJ8oQH status shown",
+      "ok": true,
+      "detail": "ready"
+    },
+    {
+      "name": "1280: GJ8oQH login shown",
+      "ok": true,
+      "detail": "juvtvbv3"
+    },
+    {
+      "name": "1280: GJ8oQH no monospace in the identity panel",
+      "ok": true,
+      "detail": "0 elements"
+    },
+    {
+      "name": "1280: no horizontal scroll",
+      "ok": true,
+      "detail": "0px"
+    },
+    {
+      "name": "390: launch form has an enabled token field",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "390: purchased explains automatic provisioning",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "390: jYddyF status shown",
+      "ok": true,
+      "detail": "ready"
+    },
+    {
+      "name": "390: jYddyF login shown",
+      "ok": true,
+      "detail": "0rjvz0i0"
+    },
+    {
+      "name": "390: jYddyF no monospace in the identity panel",
+      "ok": true,
+      "detail": "0 elements"
+    },
+    {
+      "name": "390: no horizontal scroll",
+      "ok": true,
+      "detail": "0px"
+    },
+    {
+      "name": "390: GJ8oQH status shown",
+      "ok": true,
+      "detail": "ready"
+    },
+    {
+      "name": "390: GJ8oQH login shown",
+      "ok": true,
+      "detail": "juvtvbv3"
+    },
+    {
+      "name": "390: GJ8oQH no monospace in the identity panel",
+      "ok": true,
+      "detail": "0 elements"
+    },
+    {
+      "name": "390: no horizontal scroll",
+      "ok": true,
+      "detail": "0px"
+    }
+  ]
+}
