@@ -46,6 +46,39 @@ export function clientIp(req: Request, peer: string | null): string {
   return peer ?? "unknown";
 }
 
+/** Host of an Origin header; null for "null" or anything unparsable (treated as cross-origin). */
+function originHost(origin: string): string | null {
+  try {
+    return new URL(origin).host;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Reads a request body up to `max` bytes, stopping as soon as it is over: this route bypasses the
+ * gate, so a client must not be able to make it buffer an unbounded body. null when too large.
+ */
+export async function readCapped(req: Request, max: number): Promise<string | null> {
+  const declared = Number(req.headers.get("content-length"));
+  if (Number.isFinite(declared) && declared > max) return null;
+  if (!req.body) return "";
+  const reader = req.body.getReader();
+  const chunks: Uint8Array[] = [];
+  let n = 0;
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    n += value.byteLength;
+    if (n > max) {
+      await reader.cancel().catch(() => {});
+      return null;
+    }
+    chunks.push(value);
+  }
+  return new TextDecoder().decode(Buffer.concat(chunks));
+}
+
 const json = (body: unknown, status = 200) =>
   new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json", "cache-control": "no-store", "x-content-type-options": "nosniff" } });
 
@@ -68,10 +101,10 @@ export function handler(svc: IdentityService, log: Log, limiter = new Limiter())
       if (!(req.headers.get("content-type") ?? "").startsWith("application/json")) return json({ error: "bad_request", message: "JSON body required" }, 415);
       const origin = req.headers.get("origin");
       const host = req.headers.get("x-forwarded-host") ?? req.headers.get("host");
-      if (origin && host && new URL(origin).host !== host) return json({ error: "cross_origin" }, 403);
+      if (origin && host && originHost(origin) !== host) return json({ error: "cross_origin" }, 403);
       if (!limiter.take(ip, p === "/identity/token/check" ? "check" : "write")) return json({ error: "rate_limited", message: "too many requests; wait a minute" }, 429);
-      const text = await req.text();
-      if (text.length > MAX_BODY) return json({ error: "too_large" }, 413);
+      const text = await readCapped(req, MAX_BODY);
+      if (text === null) return json({ error: "too_large" }, 413);
       let body: any;
       try {
         body = JSON.parse(text);
