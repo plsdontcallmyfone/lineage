@@ -269,7 +269,18 @@ async function equivalence(ctx: Ctx, tree: string, side: "base" | "cand"): Promi
   const eq = ctx.loaded.recipe.equivalence;
   if (!eq) return null;
   const res = await run(ctx, "equivalence", eq.command, [{ host: tree, container: "/work/src", readonly: true }], ctx.loaded.recipe.limits.wall_s, side);
-  return res.exit === 0 ? sha256Hex(res.stdout) : H("equivalence-failed", String(res.exit), sha256Hex(res.stdout));
+  return equivalenceDigest(res.exit, res.stdout, side);
+}
+
+/**
+ * The parent tree is the reference: if the harness fails on it, this seed cannot show the candidate
+ * is equivalent. No digest, so the judge rejects (`equivalence_changed`, no output) instead of a
+ * candidate that fails the same way matching the parent's failure digest (seen on spl-record).
+ */
+export function equivalenceDigest(exit: number, stdout: string, side: "base" | "cand"): Hex | null {
+  if (exit === 0) return sha256Hex(stdout);
+  if (side === "base") return null;
+  return H("equivalence-failed", String(exit), sha256Hex(stdout));
 }
 
 /**

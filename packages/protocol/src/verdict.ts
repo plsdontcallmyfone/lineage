@@ -237,7 +237,7 @@ export function judge(
 
   if (recipe.equivalence) {
     const eq = r0.equivalence;
-    if (!eq) return reject("equivalence_changed", "equivalence harness produced no output");
+    if (!eq) return reject("equivalence_changed", "equivalence harness produced no output or failed on the parent tree");
     if (eq.base_digest !== eq.cand_digest) return reject("equivalence_changed", "candidate output differs from parent on seeded inputs");
   }
 
