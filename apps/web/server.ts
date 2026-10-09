@@ -406,7 +406,7 @@ const server = Bun.serve({
     if (p === "/favicon.svg") return new Response(Bun.file(join(DIR, "public/favicon.svg")), { headers: { "content-type": "image/svg+xml" } });
     // Serve the Garage snapshot at its original asset paths so Next's chunk loader
     // can resolve dynamic imports after client-side hydration.
-    const garagePages = new Set(["/aura", "/core-motion", "/google", "/pixelagent", "/showcase", "/contact-fold-3d.html"]);
+    const garagePages = new Set(["/aura", "/core-motion", "/google", "/pixelagent", "/contact-fold-3d.html"]);
     const imageSource = p === "/_next/image" ? url.searchParams.get("url") : null;
     // The Garage snapshot's index is the landing page at "/"; the dashboard's overview lives at /network.
     const relative = p === "/" || p === "/garage" ? "index.html" : p.startsWith("/garage/") ? p.slice(8) : imageSource?.startsWith("/") ? imageSource.slice(1) : p.slice(1);
