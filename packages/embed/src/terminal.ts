@@ -1,6 +1,6 @@
 import { fmtAmount, fmtInt, fmtProgress, QUOTE, shortAddr } from "../../../apps/web/src/market.ts";
 import type { Stats, TokenSummary } from "./client.ts";
-import { esc, howSteps, repoLabel } from "./render.ts";
+import { esc, extLink, howSteps, repoLabel } from "./render.ts";
 
 // The terminal's logic (docs/plans/FRONTEND-EMBED.md, amendment "the terminal"): commands with blurbs
 // and topics, a keyword knowledge base for `ask` (fixed text, no model call), did-you-mean by edit
@@ -174,7 +174,7 @@ function commonPrefix(xs: string[]): string {
 // ------------------------------------------------------------------------------------------- output
 
 const row = (cells: string[]) => `<div class="tr">${cells.join("")}</div>`;
-const a = (href: string, label: string) => `<a href="${esc(href)}" target="_blank" rel="noopener">${esc(label)}</a>`;
+const a = (href: string, label: string) => extLink(href, label);
 const cmdBtn = (cmd: string, label = cmd) => `<button type="button" class="run" data-run="${esc(cmd)}">${esc(label)}</button>`;
 
 export function helpHtml(): string[] {

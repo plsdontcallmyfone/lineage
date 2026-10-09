@@ -144,3 +144,25 @@ describe("rpc transport", () => {
     await expect(transport("getSlot", [])).rejects.toThrow(/gave up/);
   });
 });
+
+// Audit A2 OFF-I3: one transaction the decoder cannot read (a lying RPC, a malformed balance) is
+// recorded as an error and skipped; it must not make the source retry it forever.
+describe("audit: a malformed transaction does not wedge its source", () => {
+  test("the bad signature is skipped, later ones are ingested, and the next poll moves on", async () => {
+    const { db, ix, state } = setup(3);
+    const orig = (ix as any).rpc.call.bind((ix as any).rpc);
+    const badSig = fx[1]!.tx.transaction.signatures[0]!;
+    (ix as any).rpc.call = async (m: string, p: unknown[]) => {
+      const r = await orig(m, p);
+      if (m === "getTransaction" && (p as [string])[0] === badSig) r.meta.postTokenBalances = [{ accountIndex: 0, mint: MINT, uiTokenAmount: { amount: "not a number" } }];
+      return r;
+    };
+    await ix.syncSource(ctx.dbcPool);
+    const src = db.query("SELECT newest_sig FROM sources WHERE address = ?").get(ctx.dbcPool) as { newest_sig: string };
+    expect(src.newest_sig).toBe(fx[2]!.tx.transaction.signatures[0]!);
+    state.visible = 4;
+    await ix.syncSource(ctx.dbcPool);
+    expect((db.query("SELECT newest_sig FROM sources WHERE address = ?").get(ctx.dbcPool) as { newest_sig: string }).newest_sig).toBe(fx[3]!.tx.transaction.signatures[0]!);
+  });
+});
+

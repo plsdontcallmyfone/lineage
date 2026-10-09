@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { buildCards, LineageClient, pickSession, resolveBases, soulFrom, type SessionSummary, type TokenSummary } from "../src/client.ts";
-import { cardHtml, describeEvent, howSteps, linkFor, statsHtml, timelineLayout } from "../src/render.ts";
+import { cardHtml, describeEvent, extLink, howSteps, linkFor, statsHtml, timelineLayout, tokenHeadHtml } from "../src/render.ts";
 import { answer, complete, didYouMean, editDistance, FACTS, run, type TermEnv } from "../src/terminal.ts";
 import { dither, thumbModel } from "../src/thumb.ts";
 
@@ -227,3 +227,22 @@ describe("terminal", () => {
     expect(all).not.toContain("\u2014");
   });
 });
+
+// Audit A2 OFF-E1, OFF-E2: no data-driven URL becomes a non-http(s) href or data source.
+describe("audit: URL schemes", () => {
+  test("resolveBases ignores javascript:, data: and relative overrides and keeps the fallback origin", () => {
+    for (const evil of ["javascript:alert(1)//", "data:text/html,x", "//evil.example", "vbscript:x", " javascript:alert(1)"]) {
+      const b = resolveBases({ api: evil, core: evil, market: evil, events: evil, site: evil }, "https://site.example");
+      expect(b).toEqual({ core: "https://site.example/api", market: "https://site.example/market", events: "https://site.example/live/events", site: "https://site.example" });
+    }
+    expect(resolveBases({ api: "https://other.example/" }, "https://site.example").site).toBe("https://other.example");
+    expect(resolveBases({ core: "http://127.0.0.1:9660/v1" }, "https://site.example").core).toBe("http://127.0.0.1:9660/v1");
+  });
+  test("a repository URL that is not http(s) is shown as text, never as an href", () => {
+    expect(extLink("javascript:alert(1)", "x")).not.toContain("href");
+    expect(extLink("https://github.com/a/b", "a/b")).toContain('href="https://github.com/a/b"');
+    const t = { ...tok({ repo_url: "javascript:alert(document.domain)" }), compute_vault: { balance: "0" }, pools: { damm_pool: null } } as any;
+    expect(tokenHeadHtml(t, null, "https://site.example/tokens/M1")).not.toContain('href="javascript:');
+  });
+});
+

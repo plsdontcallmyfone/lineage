@@ -25,6 +25,7 @@ import {
 } from "../../../packages/chain/src/browser/index.ts";
 import { esc, html, raw, type Raw } from "../src/html.ts";
 import { banner, icon } from "../src/ui.ts";
+import { tradeDecimals } from "./decimals.ts";
 import { buildAndSimulate, devnetGate, loadChainCfg, parseUnits, rpc, signAndSend, sol, units, type Built, type ChainCfg } from "./chain.ts";
 import { connect, DEVNET_CHAIN, disconnect, discovered, onChange, onWallets, startDiscovery, type StdAccount, type StdWallet } from "./standard.ts";
 
@@ -61,6 +62,8 @@ class Box {
   private wallet: StdWallet | null = null;
   private account: StdAccount | null = null;
   private la: AgentLaunch | null = null;
+  /** the mint's decimals read from chain in readVenue (audit A2 OFF-W1); null until read */
+  private dec: number | null = null;
   private pool: DbcPoolView | null = null;
   private venue: Venue | null = null;
   private sol: bigint | null = null;
@@ -87,6 +90,10 @@ class Box {
   }
   private sym() {
     return this.t.symbol ?? "token";
+  }
+  /** token decimals: the chain's once read; the indexer's only for display before that */
+  private td() {
+    return this.dec ?? this.t.decimals;
   }
   private qd() {
     return this.cfg?.state?.line_decimals ?? 6;
@@ -133,8 +140,9 @@ class Box {
   // ------------------------------------------------------------------------------------- chain
 
   private async readVenue() {
-    const accs = await rpc.getMultipleAccounts([launchPdas.agentLaunch(this.t.mint)]);
+    const accs = await rpc.getMultipleAccounts([launchPdas.agentLaunch(this.t.mint), this.t.mint]);
     if (!accs[0]) throw new Error("No AgentLaunch account for this mint on devnet.");
+    this.dec = tradeDecimals(accs[1]?.data, this.t.decimals);
     const la = decodeAgentLaunch(accs[0].data);
     const p = (await rpc.getMultipleAccounts([la.dbcPool]))[0];
     this.la = la;
@@ -170,7 +178,8 @@ class Box {
   private async review() {
     if (!this.ready()) return;
     const buy = this.side === "buy";
-    const amountIn = parseUnits(this.amount, buy ? this.qd() : this.t.decimals);
+    if (this.dec === null) await this.readVenue();
+    const amountIn = parseUnits(this.amount, buy ? this.qd() : this.dec!);
     const slip = Number(this.slip);
     if (!amountIn || !Number.isInteger(slip) || slip < 0 || slip > 5000) {
       this.err = this.errBox("Enter a positive amount and a slippage tolerance between 0 and 5000 bps.");
@@ -178,7 +187,7 @@ class Box {
     }
     const have = buy ? this.line : this.tok;
     if (have !== null && amountIn > have) {
-      this.err = this.errBox(`You hold ${units(have, buy ? this.qd() : this.t.decimals)} ${buy ? "tLINE" : this.sym()}.`);
+      this.err = this.errBox(`You hold ${units(have, buy ? this.qd() : this.td())} ${buy ? "tLINE" : this.sym()}.`);
       return this.render();
     }
     this.err = null;
@@ -313,13 +322,13 @@ class Box {
       const buy = this.side === "buy";
       const inU = buy ? "tLINE" : sym;
       const outU = buy ? sym : "tLINE";
-      const inD = buy ? qd : this.t.decimals;
-      const outD = buy ? this.t.decimals : qd;
+      const inD = buy ? qd : this.td();
+      const outD = buy ? this.td() : qd;
       body = html`<div class="mk-tb-venue">${this.venueLine()}</div>
         <div class="mk-tb-acct"><span title="${this.account.address}">${this.wallet?.name ?? "Wallet"} ${this.account.address.slice(0, 4)}…${this.account.address.slice(-4)}</span>${this.btn("disconnect", "Disconnect")}</div>
         <div class="mk-tb-bal">
           <div><span class="eyebrow">tLINE</span><b class="num" data-bal="line">${this.line === null ? "TBA" : units(this.line, qd)}</b></div>
-          <div><span class="eyebrow">${sym}</span><b class="num" data-bal="token">${this.tok === null ? "TBA" : units(this.tok, this.t.decimals)}</b></div>
+          <div><span class="eyebrow">${sym}</span><b class="num" data-bal="token">${this.tok === null ? "TBA" : units(this.tok, this.td())}</b></div>
           <div><span class="eyebrow">SOL</span><b class="num" data-bal="sol">${this.sol === null ? "TBA" : sol(this.sol)}</b></div>
         </div>
         <div class="seg mk-tb-side" role="group" aria-label="Side"><button type="button" data-tb="side" data-side="buy" aria-pressed="${String(buy)}">Buy</button><button type="button" data-tb="side" data-side="sell" aria-pressed="${String(!buy)}">Sell</button></div>
@@ -377,7 +386,7 @@ class Box {
           break;
         case "max": {
           const have = this.side === "buy" ? this.line : this.tok;
-          if (have !== null) this.amount = units(have, this.side === "buy" ? this.qd() : this.t.decimals).replace(/,/g, "");
+          if (have !== null) this.amount = units(have, this.side === "buy" ? this.qd() : this.td()).replace(/,/g, "");
           this.quote = null;
           break;
         }

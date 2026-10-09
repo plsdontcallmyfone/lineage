@@ -173,19 +173,31 @@ export class Indexer {
     const ctx = this.ctx(tok);
     const isSeen = this.db.prepare("SELECT 1 FROM seen WHERE sig = ? AND mint = ?");
     let n = 0;
+    let skipped = false;
     for (const s of sigs) {
       if (!isSeen.get(s.signature, tok.mint)) {
         const tx = await this.rpc.call<RawTx | null>("getTransaction", [s.signature,
           { encoding: "json", commitment: "confirmed", maxSupportedTransactionVersion: 0 }]);
         if (!tx) break; // not served yet: resume from here on the next poll
-        const d = decodeTx(tx, ctx);
-        storeDecoded(this.db, tok.mint, d, { base: tok.decimals, quote: this.lineDecimals });
-        if (d.trades.length) this.dirtyHolders.add(tok.mint);
-        n++;
+        // one transaction the decoder cannot read (malformed balances or keys from the RPC) is logged
+        // and skipped, never retried forever: it used to throw here and wedge the source (audit A2 OFF-I3)
+        let ok = true;
+        try {
+          const d = decodeTx(tx, ctx);
+          this.db.transaction(() => storeDecoded(this.db, tok.mint, d, { base: tok.decimals, quote: this.lineDecimals }))();
+          if (d.trades.length) this.dirtyHolders.add(tok.mint);
+        } catch (e) {
+          ok = false;
+          skipped = true;
+          console.error(`indexer: skipped undecodable tx ${s.signature} for ${tok.mint}: ${(e as Error).message}`);
+          this.db.query("UPDATE sources SET last_error = ? WHERE address = ?").run(`skipped ${s.signature}: ${(e as Error).message}`.slice(0, 300), address);
+        }
+        if (ok) n++;
       }
       this.db.query("UPDATE sources SET newest_sig = ?, newest_slot = ?, txs = txs + 1 WHERE address = ?").run(s.signature, s.slot, address);
     }
-    this.db.query("UPDATE sources SET last_ok_at = ?, last_error = NULL WHERE address = ?").run(this.now(), address);
+    if (skipped) this.db.query("UPDATE sources SET last_ok_at = ? WHERE address = ?").run(this.now(), address);
+    else this.db.query("UPDATE sources SET last_ok_at = ?, last_error = NULL WHERE address = ?").run(this.now(), address);
     return n;
   }
 

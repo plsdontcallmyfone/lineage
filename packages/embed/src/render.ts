@@ -181,7 +181,12 @@ const ago = (sec: number | null | undefined) => {
   return s < 60 ? `${s}s ago` : s < 3600 ? `${Math.round(s / 60)}m ago` : s < 86400 ? `${Math.round(s / 3600)}h ago` : `${Math.round(s / 86400)}d ago`;
 };
 const explorer = (kind: "tx" | "address", v: string) => `https://explorer.solana.com/${kind}/${v}?cluster=devnet`;
-const ext = (href: string, label: string, title = "") => `<a href="${esc(href)}" target="_blank" rel="noopener"${title ? ` title="${esc(title)}"` : ""}>${esc(label)}</a>`;
+/** An outside link; a URL from data that is not http(s) is shown as plain text (audit A2 OFF-E2). */
+export const extLink = (href: string, label: string, title = "") =>
+  /^https?:\/\//i.test(href)
+    ? `<a href="${esc(href)}" target="_blank" rel="noopener"${title ? ` title="${esc(title)}"` : ""}>${esc(label)}</a>`
+    : `<span${title ? ` title="${esc(title)}"` : ""}>${esc(label)}</span>`;
+const ext = extLink;
 
 export function tokenHeadHtml(t: TokenDetail, tagline: string | null, tradeHref: string): string {
   const phase = t.phase === "graduated" ? "Graduated, DAMM v2" : t.migrated ? "Migrated, graduation pending" : "Bonding curve";

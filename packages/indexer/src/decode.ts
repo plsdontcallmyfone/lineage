@@ -244,11 +244,25 @@ const isSwapIx = (data: Uint8Array) => {
   return d === IX.swap || d === IX.swap2 || d === IX.swap2Hook;
 };
 
-/** Every "Program data:" log line (Anchor emit!), base64-decoded. */
-function programData(logs: string[]): Uint8Array[] {
+/**
+ * Every "Program data:" log line (Anchor emit!) logged by `program` itself, base64-decoded. The
+ * invoke stack is tracked from the runtime's "Program X invoke [n]" / "success" / "failed" lines, so
+ * a line some other program logged (any program can log any bytes, audit A2 OFF-I1) is ignored.
+ */
+export function programData(logs: string[], program: string): Uint8Array[] {
   const out: Uint8Array[] = [];
+  const stack: string[] = [];
   for (const l of logs) {
-    if (!l.startsWith("Program data: ")) continue;
+    const inv = /^Program (\S+) invoke \[\d+\]$/.exec(l);
+    if (inv) {
+      stack.push(inv[1]!);
+      continue;
+    }
+    if (/^Program \S+ (success|failed)/.test(l)) {
+      stack.pop();
+      continue;
+    }
+    if (!l.startsWith("Program data: ") || stack[stack.length - 1] !== program) continue;
     try {
       out.push(new Uint8Array(Buffer.from(l.slice(14).trim(), "base64")));
     } catch {
@@ -297,16 +311,18 @@ export function decodeTx(tx: RawTx, ctx: TokenCtx): Decoded {
       let quoteRaw: bigint;
       let source: Trade["source"];
       const oppositeSigns = (dBase < 0n && dQuote > 0n) || (dBase > 0n && dQuote < 0n);
-      if (n === 1 && oppositeSigns) {
-        side = dBase < 0n ? "buy" : "sell";
-        baseRaw = dBase < 0n ? -dBase : dBase;
-        quoteRaw = dQuote < 0n ? -dQuote : dQuote;
-        source = "deltas";
-      } else if (ev) {
+      // Meteora's own swap event first: vault deltas also count any plain transfer into a vault in
+      // the same transaction, which inflated amount, price and volume (audit A2 OFF-I2).
+      if (ev) {
         side = ev.buy ? "buy" : "sell";
         baseRaw = ev.buy ? ev.outputRaw : ev.inputRaw;
         quoteRaw = ev.buy ? ev.inputRaw : ev.outputRaw;
         source = "event";
+      } else if (n === 1 && oppositeSigns) {
+        side = dBase < 0n ? "buy" : "sell";
+        baseRaw = dBase < 0n ? -dBase : dBase;
+        quoteRaw = dQuote < 0n ? -dQuote : dQuote;
+        source = "deltas";
       } else continue;
       if (baseRaw === 0n) continue;
       base.trades.push({
@@ -320,7 +336,7 @@ export function decodeTx(tx: RawTx, ctx: TokenCtx): Decoded {
 
   // ---- lineage_launch events (Anchor emit! logs) ----
   let fi = 0;
-  for (const b of programData(tx.meta.logMessages ?? [])) {
+  for (const b of programData(tx.meta.logMessages ?? [], LAUNCH_PROGRAM)) {
     const d = hex(b.subarray(0, 8));
     if (d === EV.feesCranked && b.length >= 8 + 98) {
       const f = decodeFeesCranked(b.subarray(8));

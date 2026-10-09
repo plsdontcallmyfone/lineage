@@ -156,6 +156,39 @@ describe("wire", () => {
   });
 });
 
+// Audit A2 OFF-C1, OFF-C2: the co-signing key never pays, never takes a huge priority fee, and a
+// rotation co-signed for one agent cannot install the key on another agent's record.
+describe("audit: co-sign guards", () => {
+  const payer = generateAgentKey();
+  const agent = generateAgentKey();
+  const mint = generateAgentKey().id;
+  const reg = () => node.registry.register({ owner: payer.id, agent: agent.id, mint, ownerToken: node.ata(payer.id, mint), operator: new Uint8Array(32), capabilities: new Uint8Array(32) } as any);
+  const signedBy = (feePayer: typeof payer, ixs: any[], others: (typeof payer)[] = []) => {
+    const msg = node.compileMessage(feePayer.id, ixs, DEVNET_GENESIS);
+    let w = unsignedWire(msg);
+    for (const k of others) w = placeSignature(w, k.id, node.signBytes(k, msg.bytes));
+    return w;
+  };
+  test("refuses when the co-signing key is the fee payer", () => {
+    const w = signedBy(agent, [reg()], [payer]);
+    expect(() => inspectForCosign(w, agent.id)).toThrow(/fee payer|writable/);
+  });
+  test("refuses an outsized compute unit price or limit, and unknown compute budget instructions", () => {
+    expect(() => inspectForCosign(signedBy(payer, [node.computeBudget.price(10n ** 12n), reg()], [payer]), agent.id)).toThrow(/compute/);
+    expect(() => inspectForCosign(signedBy(payer, [node.computeBudget.limit(5_000_000), reg()], [payer]), agent.id)).toThrow(/compute/);
+    const heapFrame = { programId: node.COMPUTE_BUDGET_PROGRAM, keys: [], data: Uint8Array.from([1, 0, 0, 1, 0]) };
+    expect(() => inspectForCosign(signedBy(payer, [heapFrame, reg()], [payer]), agent.id)).toThrow(/compute/);
+    expect(() => inspectForCosign(signedBy(payer, [node.computeBudget.price(1000), node.computeBudget.limit(200_000), reg()], [payer]), agent.id)).not.toThrow();
+  });
+  test("a rotation co-signed for agent A refuses a transaction that rotates agent B", () => {
+    const newKey = generateAgentKey();
+    const other = generateAgentKey();
+    const w = signedBy(payer, [node.registry.rotateAgentKey({ owner: payer.id, agent: other.id, newKey: newKey.id })], [payer]);
+    expect(() => inspectForCosign(w, newKey.id, { expectAgent: agent.id })).toThrow(/agent record/);
+    expect(() => inspectForCosign(w, newKey.id, { expectAgent: other.id })).not.toThrow();
+  });
+});
+
 describe("simulation read-out", () => {
   test("rent deposits are the lamports of accounts that the simulation creates", async () => {
     const payer = generateAgentKey();

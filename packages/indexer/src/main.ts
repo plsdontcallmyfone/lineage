@@ -97,7 +97,13 @@ function subscribeLogs() {
     sock = new WebSocket(wsUrl);
     sock.onopen = () => { ws.connected = true; subscribed.clear(); bySub.clear(); sync(); };
     sock.onmessage = (m) => {
-      const msg = JSON.parse(String(m.data)) as { id?: number; method?: string; result?: unknown; params?: { subscription?: number } };
+      let msg: { id?: number; method?: string; result?: unknown; params?: { subscription?: number } };
+      try {
+        msg = JSON.parse(String(m.data));
+      } catch {
+        return; // a malformed frame from the RPC is ignored (audit A2 OFF-I3); polling still covers it
+      }
+      if (!msg || typeof msg !== "object") return;
       if (msg.method === "logsNotification") {
         ws.notifications++;
         const address = bySub.get(msg.params?.subscription ?? -1);

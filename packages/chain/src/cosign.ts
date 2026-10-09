@@ -8,7 +8,7 @@
 import { createPublicKey, verify } from "node:crypto";
 import { base58Decode, base58Encode } from "@lineage/protocol";
 import { ixDisc, type Address } from "./codec.ts";
-import { REGISTRY_PROGRAM_ID } from "./registry.ts";
+import { REGISTRY_PROGRAM_ID, registryPdas } from "./registry.ts";
 import { Rpc } from "./rpc.ts";
 import { COMPUTE_BUDGET_PROGRAM, signBytes, type Signer } from "./tx.ts";
 import { assertDevnet, sendWire } from "./browser/client.ts";
@@ -27,20 +27,34 @@ export interface CosignPlan {
   summary: string[];
 }
 
+/** Most compute units and micro-lamports per unit a co-signed transaction may ask for (audit A2 OFF-C1). */
+export const COSIGN_MAX_CU_LIMIT = 1_400_000;
+export const COSIGN_MAX_CU_PRICE = 1_000_000n;
+
 /**
  * Refuses anything but a registry `register` naming this agent key, or a `rotate_agent_key` to this
- * key, already signed by every other signer.
+ * key, already signed by every other signer. The key is never the fee payer or writable; with
+ * `expectAgent`, a rotation must target that agent's record.
  */
-export function inspectForCosign(wire: Uint8Array, agent: Address): CosignPlan {
+export function inspectForCosign(wire: Uint8Array, agent: Address, opts: { expectAgent?: Address } = {}): CosignPlan {
   const { signatures, message } = parseWire(wire);
   const m = decodeMessage(message);
   const signers = m.keys.slice(0, m.numSigners);
   if (!signers.includes(agent)) throw new Error(`agent ${agent} is not a signer of this transaction`);
+  // the co-signing key proves possession only: it never pays fees and is never a writable account,
+  // so a page cannot spend its SOL (audit A2 OFF-C1)
+  const at = signers.indexOf(agent);
+  if (at === 0) throw new Error("refusing to co-sign: this key would be the fee payer (the owner's wallet pays)");
+  if (at < m.numSigners - m.numReadonlySigned) throw new Error("refusing to co-sign: this key is a writable account of the transaction");
   const summary: string[] = [];
   let found = false;
   for (const ix of m.instructions) {
     if (ix.programId === COMPUTE_BUDGET_PROGRAM) {
-      summary.push("compute budget");
+      const d = ix.data;
+      const u = (o: number, n: number) => d.subarray(o, o + n).reduceRight((acc, b) => acc * 256n + BigInt(b), 0n);
+      if (d[0] === 2 && d.length === 5 && Number(u(1, 4)) <= COSIGN_MAX_CU_LIMIT) summary.push(`compute budget: limit ${u(1, 4)} units`);
+      else if (d[0] === 3 && d.length === 9 && u(1, 8) <= COSIGN_MAX_CU_PRICE) summary.push(`compute budget: price ${u(1, 8)} micro-lamports per unit`);
+      else throw new Error(`refusing to co-sign: compute budget instruction outside the allowed limit (${COSIGN_MAX_CU_LIMIT} units) and price (${COSIGN_MAX_CU_PRICE})`);
       continue;
     }
     if (ix.programId !== REGISTRY_PROGRAM_ID) throw new Error(`refusing to co-sign: instruction for program ${ix.programId} (only lineage_registry and compute budget)`);
@@ -48,6 +62,9 @@ export function inspectForCosign(wire: Uint8Array, agent: Address): CosignPlan {
     if (!name) throw new Error("refusing to co-sign: a lineage_registry instruction other than register or rotate_agent_key");
     const a = ix.accounts[COSIGNABLE[name]!]!.pubkey;
     if (a !== agent) throw new Error(`refusing to co-sign: ${name} names ${a}, not ${agent}`);
+    // a rotation requested for agent A must rotate A's record, not another agent the owner holds (OFF-C2)
+    if (name === "rotate_agent_key" && opts.expectAgent && ix.accounts[3]!.pubkey !== registryPdas.agent(opts.expectAgent))
+      throw new Error(`refusing to co-sign: rotate_agent_key targets agent record ${ix.accounts[3]!.pubkey}, not the record of ${opts.expectAgent}`);
     summary.push(name === "rotate_agent_key"
       ? `lineage_registry::rotate_agent_key of agent record ${ix.accounts[3]!.pubkey} to new key ${a}, owner ${ix.accounts[1]!.pubkey}`
       : `lineage_registry::${name} agent ${a} owner ${ix.accounts[1]!.pubkey}`);
@@ -68,12 +85,12 @@ export function cosign(wire: Uint8Array, key: Signer): Uint8Array {
 }
 
 /** `lineage-worker cosign --key <file> --tx <base64> [--rpc <url>] [--dry-run]` */
-export async function cosignCommand(o: { key: Signer; tx: string; rpcUrl: string; dryRun?: boolean; log?: (m: string) => void }) {
+export async function cosignCommand(o: { key: Signer; tx: string; rpcUrl: string; dryRun?: boolean; expectAgent?: Address; log?: (m: string) => void }) {
   const log = o.log ?? console.log;
   const rpc = Rpc.http(o.rpcUrl, "confirmed");
   await assertDevnet(rpc);
   const wire = new Uint8Array(Buffer.from(o.tx.trim(), "base64"));
-  const plan = inspectForCosign(wire, o.key.id);
+  const plan = inspectForCosign(wire, o.key.id, { expectAgent: o.expectAgent });
   for (const s of plan.summary) log(`  ${s}`);
   log(`  fee payer (wallet) ${plan.payer}`);
   const signed = cosign(wire, o.key);

@@ -34,13 +34,26 @@ export interface BaseOverrides {
 
 const trim = (s: string) => s.replace(/\/+$/, "");
 
+/** `s` when it is an absolute http(s) URL, else null (javascript:, data:, relative, garbage). */
+export function httpUrl(s: string | null | undefined): string | null {
+  if (typeof s !== "string" || !/^https?:\/\//i.test(s)) return null;
+  try {
+    const u = new URL(s);
+    return u.protocol === "http:" || u.protocol === "https:" ? s : null;
+  } catch {
+    return null;
+  }
+}
+
 export function resolveBases(o: BaseOverrides, fallbackOrigin: string): Bases {
-  const api = trim(o.api || fallbackOrigin);
+  // overrides come from attributes, window.LineageConfig or a page's query string: only absolute
+  // http(s) URLs are taken, so `javascript:` can never become a link base or data source (audit A2 OFF-E1)
+  const api = trim(httpUrl(o.api) || fallbackOrigin);
   return {
-    core: trim(o.core || `${api}/api`),
-    market: trim(o.market || `${api}/market`),
-    events: o.events || `${api}/live/events`,
-    site: trim(o.site || api),
+    core: trim(httpUrl(o.core) || `${api}/api`),
+    market: trim(httpUrl(o.market) || `${api}/market`),
+    events: httpUrl(o.events) || `${api}/live/events`,
+    site: trim(httpUrl(o.site) || api),
   };
 }
 

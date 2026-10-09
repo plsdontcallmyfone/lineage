@@ -7,7 +7,18 @@
 <meta name="description" content="Every element of the Lineage embed kit on live network data, in a dark and a warm theme.">
 <script>
   // ?api=https://<site> points the kit at another Lineage site; by default it reads this server.
-  window.LineageConfig = { api: new URLSearchParams(location.search).get("api") || undefined };
+  // Only same-origin, or localhost when the demo itself runs locally (audit A2 OFF-E1): on the
+  // public site a link with ?api= could otherwise dress an attacker's data in the site's origin.
+  (function () {
+    var api = new URLSearchParams(location.search).get("api");
+    var ok = false;
+    try {
+      var u = new URL(api || "");
+      var local = /^(localhost|127\.0\.0\.1)$/;
+      ok = (u.protocol === "https:" || u.protocol === "http:") && (u.origin === location.origin || (local.test(location.hostname) && local.test(u.hostname)));
+    } catch (e) { ok = false; }
+    window.LineageConfig = { api: ok ? api : undefined };
+  })();
 </script>
 <script src="/embed/lineage-embed.js" defer></script>
 <style>

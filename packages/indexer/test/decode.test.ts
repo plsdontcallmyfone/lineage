@@ -29,7 +29,7 @@ describe("decode recorded devnet transactions", () => {
     const d = dec("dbc-buy");
     expect(d.trades).toHaveLength(1);
     const t = d.trades[0]!;
-    expect([t.venue, t.side, t.trader, t.source]).toEqual(["dbc", "buy", TRADER, "deltas"]);
+    expect([t.venue, t.side, t.trader, t.source]).toEqual(["dbc", "buy", TRADER, "event"]);
     expect(t.quoteRaw).toBe(100_000_000_000n);
     expect(t.baseRaw).toBe(1_905_346_510_342n);
     expect(t.price).toBeCloseTo(100_000 / 1_905_346.510342, 12);
@@ -95,5 +95,35 @@ describe("decode recorded devnet transactions", () => {
     const f = fx("dbc-buy");
     const d = decodeTx({ ...f.tx, meta: { ...f.tx.meta!, err: { InstructionError: [1, "Custom"] } } }, f.ctx);
     expect([d.failed, d.trades.length]).toEqual([true, 0]);
+  });
+});
+
+// Audit A2 (OFF-I1, OFF-I2): events only from lineage_launch's own frame; amounts from Meteora's event.
+describe("audit: forged events and vault donations", () => {
+  const FOREIGN = "Fake1111111111111111111111111111111111111111";
+  test("a FeesCranked log line emitted by another program is ignored", () => {
+    const f = fx("crank-fees");
+    const logs = f.tx.meta!.logMessages!.filter((l) => !l.startsWith("Program data: "));
+    const data = f.tx.meta!.logMessages!.find((l) => l.startsWith("Program data: "))!;
+    const forged = [`Program ${FOREIGN} invoke [1]`, data, `Program ${FOREIGN} success`, ...logs];
+    expect(decodeTx({ ...f.tx, meta: { ...f.tx.meta!, logMessages: forged } }, f.ctx).fees).toHaveLength(0);
+  });
+  test("a lineage_launch data line nested inside a CPI to another program is ignored", () => {
+    const f = fx("graduate");
+    const logs = f.tx.meta!.logMessages!;
+    const i = logs.findIndex((l) => l.startsWith("Program data: "));
+    const forged = [...logs.slice(0, i), `Program ${FOREIGN} invoke [2]`, logs[i]!, `Program ${FOREIGN} success`, ...logs.slice(i + 1)];
+    expect(decodeTx({ ...f.tx, meta: { ...f.tx.meta!, logMessages: forged } }, f.ctx).events.filter((e) => e.kind === "graduated")).toHaveLength(0);
+    expect(dec("graduate").events.filter((e) => e.kind === "graduated")).toHaveLength(1);
+  });
+  test("tokens donated into the quote vault in the same transaction do not inflate the trade", () => {
+    const f = fx("dbc-buy");
+    const keys = f.tx.transaction.message.accountKeys;
+    const qi = keys.indexOf(f.ctx.dbcQuoteVault);
+    const post = f.tx.meta!.postTokenBalances!.map((b) =>
+      b.accountIndex === qi ? { ...b, uiTokenAmount: { ...b.uiTokenAmount, amount: (BigInt(b.uiTokenAmount.amount) + 5_000_000_000_000n).toString() } } : b);
+    const t = decodeTx({ ...f.tx, meta: { ...f.tx.meta!, postTokenBalances: post } }, f.ctx).trades[0]!;
+    expect(t.quoteRaw).toBe(100_000_000_000n);
+    expect(t.source).toBe("event");
   });
 });

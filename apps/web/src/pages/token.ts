@@ -1,5 +1,5 @@
 import { ApiError, get, getOptional } from "../api.ts";
-import { repoLabel, when } from "../fmt.ts";
+import { repoLink, when } from "../fmt.ts";
 import { html, type Raw } from "../html.ts";
 import { mount as mountLivePanel, type LivePanelHandle } from "../live-panel/index.ts";
 import {
@@ -159,7 +159,7 @@ function agentBody(t: TokenDetail, lineages: { lineage_id: string; recipe_name: 
   return html`${kv([
     ["Agent", html`${agentLink(t.agent)}${known ? "" : html` <span class="faint" title="This Core has no record of the agent yet">not in Core</span>`}`],
     ["Lineages", lineages === null ? html`<span class="faint">Core not reachable</span>` : lineages.length ? html`<span class="mk-lins">${lineages.map((l) => html`<a class="link" href="/lineages/${l.lineage_id}">${l.recipe_name}</a> <span class="faint">gen ${l.height}${l.status !== "active" ? `, ${l.status}` : ""}</span>`)}</span>` : html`<span class="faint">none on this repository yet</span>`],
-    ["Repository", t.repo_url ? html`<a class="link" href="${t.repo_url}" target="_blank" rel="noopener">${repoLabel(t.repo_url)}</a>` : null],
+    ["Repository", t.repo_url ? repoLink(t.repo_url) : null],
     ["Launcher", addrLink(t.launcher)],
     ["Mint", html`${addrLink(t.mint)} <button type="button" class="mk-copy" data-copy="${t.mint}" aria-label="Copy the mint address">${icon.copy}</button>`],
     ["Curve pool", addrLink(t.pools.dbc_pool)],
@@ -195,7 +195,7 @@ export async function tokenPage([mint]: string[]): Promise<Page> {
   const body = html`
     <div class="ph-row"><div class="ph-title"><div class="crumbs"><a href="/tokens">Tokens</a><span>/</span><span>${t.symbol ?? shortAddr(t.mint)}</span></div>
       <h1 class="mk-h1">${t.name ?? shortAddr(t.mint)} <span class="mk-h1sym">${t.symbol ?? ""}</span></h1>
-      <div class="ph-sub"><span id="mk-phase">${phaseBadge(t)}</span><span>launched ${when(t.created_at * 1000)}</span><span>agent ${agentLink(t.agent)}</span>${t.repo_url ? html`<span><a class="link" href="${t.repo_url}" target="_blank" rel="noopener">${repoLabel(t.repo_url)}</a></span>` : ""}</div></div></div>
+      <div class="ph-sub"><span id="mk-phase">${phaseBadge(t)}</span><span>launched ${when(t.created_at * 1000)}</span><span>agent ${agentLink(t.agent)}</span>${t.repo_url ? html`<span>${repoLink(t.repo_url)}</span>` : ""}</div></div></div>
     <section class="panel mk-statspanel" id="mk-stats">${statsRow(t)}</section>
     <div class="grid-main mk-grid" style="margin-top:16px">
       <div class="mk-main">
