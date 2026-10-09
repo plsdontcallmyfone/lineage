@@ -26,7 +26,28 @@ interface TokRow {
   compute_vault: string; compute_balance: string | null; holders: number | null; holders_source: string | null; holders_at: number | null; state_at: number | null;
 }
 
-export function marketApi(db: Database, status: StatusSource, opts: { now?: () => number } = {}) {
+// CORS for configured origins (embed kit, docs/EMBED.md): with LINEAGE_CORS_ORIGINS unset every answer
+// keeps `*`; set (comma separated, `*` wildcards such as https://*.vercel.app), only listed origins
+// get CORS headers, echoed back. The API is read-only either way.
+export function corsFor(origin: string | null, env = process.env.LINEAGE_CORS_ORIGINS): Record<string, string> {
+  const list = (env ?? "").split(",").map((s) => s.trim()).filter(Boolean);
+  if (!list.length) return CORS;
+  const ok = !!origin && list.some((o) => o === "*" || new RegExp(`^${o.replace(/[.+?^${}()|[\]\\]/g, "\\$&").replace(/\*/g, "[^/]*")}$`).test(origin));
+  return ok ? { ...CORS, "access-control-allow-origin": origin!, vary: "Origin" } : { vary: "Origin" };
+}
+
+export function marketApi(db: Database, status: StatusSource, opts: { now?: () => number; corsOrigins?: string } = {}) {
+  const handle = marketHandler(db, status, opts);
+  return async function withCors(req: Request): Promise<Response> {
+    const res = await handle(req);
+    const h = corsFor(req.headers.get("origin"), opts.corsOrigins ?? process.env.LINEAGE_CORS_ORIGINS);
+    for (const k of Object.keys(CORS)) res.headers.delete(k);
+    for (const [k, v] of Object.entries(h)) res.headers.set(k, v);
+    return res;
+  };
+}
+
+function marketHandler(db: Database, status: StatusSource, opts: { now?: () => number } = {}) {
   const now = opts.now ?? (() => Math.floor(Date.now() / 1000));
   const lineDecimals = () => Number((db.query("SELECT v FROM meta WHERE k = 'line_decimals'").get() as { v: string } | null)?.v ?? 6);
 

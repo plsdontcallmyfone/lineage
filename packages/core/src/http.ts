@@ -287,9 +287,43 @@ export function buildRoutes(core: Core): Route[] {
   ];
 }
 
-export function createHandler(core: Core) {
+
+// CORS (embed kit, docs/EMBED.md). With LINEAGE_CORS_ORIGINS unset every response keeps
+// `access-control-allow-origin: *` as before. When it is set (comma separated origins; `*` as a
+// subdomain or port wildcard, e.g. https://*.vercel.app, http://localhost:*), only GET and HEAD
+// answers to a listed Origin carry CORS headers (echoing that origin), so configured front ends can
+// read the public API and nothing else can be called cross-origin from a browser.
+export function corsOrigins(env = process.env.LINEAGE_CORS_ORIGINS): RegExp[] | null {
+  const list = (env ?? "").split(",").map((s) => s.trim()).filter(Boolean);
+  if (!list.length) return null;
+  return list.map((o) => o === "*" ? /^.+$/ : new RegExp(`^${o.replace(/[.+?^${}()|[\]\\]/g, "\\$&").replace(/\*/g, "[^/]*")}$`));
+}
+
+export function applyCors(req: Request, res: Response, allowed: RegExp[] | null): Response {
+  if (!allowed) return res;
+  const h = res.headers;
+  h.delete("access-control-allow-origin");
+  h.delete("access-control-allow-methods");
+  h.delete("access-control-allow-headers");
+  const origin = req.headers.get("origin");
+  const read = req.method === "GET" || req.method === "HEAD" || (req.method === "OPTIONS" && ["GET", "HEAD"].includes(req.headers.get("access-control-request-method") ?? "GET"));
+  if (origin && read && allowed.some((r) => r.test(origin))) {
+    h.set("access-control-allow-origin", origin);
+    if (req.method === "OPTIONS") {
+      h.set("access-control-allow-methods", "GET, HEAD, OPTIONS");
+      h.set("access-control-allow-headers", "content-type, last-event-id");
+      h.set("access-control-max-age", "600");
+    }
+  }
+  h.append("vary", "Origin");
+  return res;
+}
+
+export function createHandler(core: Core, opts: { corsOrigins?: string } = {}) {
   const routes = buildRoutes(core);
-  return async function handle(req: Request): Promise<Response> {
+  const allowed = corsOrigins(opts.corsOrigins ?? process.env.LINEAGE_CORS_ORIGINS);
+  return async (req: Request): Promise<Response> => applyCors(req, await handle(req), allowed);
+  async function handle(req: Request): Promise<Response> {
     const url = new URL(req.url);
     if (req.method === "OPTIONS") {
       return new Response(null, {
@@ -348,7 +382,7 @@ export function createHandler(core: Core) {
       console.error("core: unhandled error", e);
       return json({ error: "internal", message: String((e as Error)?.message ?? e) }, 500);
     }
-  };
+  }
 }
 
 function authenticate(core: Core, req: Request, url: URL, body: string): string {

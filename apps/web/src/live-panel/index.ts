@@ -19,6 +19,9 @@ import { ensureStyle } from "./style.ts";
 //   const panel = mount(el, { session, mode: "replay", speed: 2 });
 //   panel.destroy();
 //
+// Outside the dashboard (the embed kit, packages/embed) pass `io`: where Core, blobs and the event
+// stream live, how links to Lineage pages are written, and the shadow root to put the styles in.
+//
 // mode "auto" (default) follows a live session and replays a finished one; it switches to the newest
 // session of the mounted agent or lineage when one starts, and replays a session from the start
 // with its edits once its gate opens.
@@ -41,7 +44,42 @@ export interface LivePanelOptions {
   height?: number;
   /** called whenever the shown session changes or its summary updates */
   onSession?: (s: SessionSummary | null) => void;
+  /** data and link access; defaults to the dashboard's own (/api, /live/events, same-origin links) */
+  io?: Partial<PanelIO>;
 }
+
+/** Everything the panel reads from outside itself. The dashboard uses DEFAULT_IO; the embed kit its own client. */
+export interface PanelIO {
+  /** GET a Core path (no /v1 prefix), JSON; throws ApiError (status 404 for a missing record) */
+  get<T = any>(path: string): Promise<T>;
+  /** a file at a generation: { text } or { error, message } */
+  fileAt(lineage: string, gen: string, path: string): Promise<{ text: string | null } | { error: string; message: string }>;
+  /** a blob's bytes parsed as JSON, or null */
+  blob(digest: string): Promise<any>;
+  /** a new connection to the event stream (the panel closes it on destroy), or null for none */
+  events(): EventSource | null;
+  /** the URL of a Lineage page such as /agents/<id> */
+  href(path: string): string;
+  /** extra attributes on every link (an embed opens the Lineage site in a new tab) */
+  linkAttrs: string;
+  /** where the panel's stylesheet goes */
+  styleRoot: Document | ShadowRoot;
+}
+
+export const DEFAULT_IO: PanelIO = {
+  get,
+  fileAt,
+  async blob(digest) {
+    const res = await fetch(`/api/blobs/${digest}`);
+    return res.ok ? JSON.parse(await res.text()) : null;
+  },
+  events: () => (typeof EventSource === "undefined" ? null : new EventSource("/live/events")),
+  href: (p) => p,
+  linkAttrs: "",
+  get styleRoot() {
+    return document;
+  },
+};
 
 export interface LivePanelHandle {
   readonly session: SessionSummary | null;
@@ -169,7 +207,7 @@ function lineHtml(text: string, caret = false): string {
 }
 
 export function mount(el: HTMLElement, opts: LivePanelOptions = {}): LivePanelHandle {
-  ensureStyle();
+  ensureStyle(opts.io?.styleRoot ?? document);
   const p = new Panel(el, opts);
   void p.init();
   return {
@@ -211,12 +249,15 @@ class Panel {
   private network: { cand: any; transcripts: Map<string, any> } | null = null;
   private reduced = typeof matchMedia === "function" && matchMedia("(prefers-reduced-motion: reduce)").matches;
   private root!: HTMLElement;
+  private io: PanelIO;
+  private a = (path: string) => `href="${esc(this.io.href(path))}"${this.io.linkAttrs ? ` ${this.io.linkAttrs}` : ""}`;
   private q = <T extends HTMLElement = HTMLElement>(sel: string) => this.root.querySelector<T>(sel)!;
 
   constructor(
     private host: HTMLElement,
     private opts: LivePanelOptions,
   ) {
+    this.io = { ...DEFAULT_IO, styleRoot: DEFAULT_IO.styleRoot, ...(opts.io ?? {}) };
     this.want = opts.mode ?? "auto";
     this.speed = SPEEDS.includes(opts.speed ?? 1) ? (opts.speed ?? 1) : 1;
   }
@@ -275,7 +316,7 @@ class Panel {
 
   private async pickFromList() {
     const q = this.listQuery();
-    const all = await get<SessionSummary[]>(`sessions?${q}${q ? "&" : ""}limit=24`);
+    const all = await this.io.get<SessionSummary[]>(`sessions?${q}${q ? "&" : ""}limit=24`);
     // sessions that recorded nothing (older workers opened one per idle attempt) are left out, unless
     // one is live right now
     this.others = all.filter((s) => s.events > 0 || s.state === "live").slice(0, 12);
@@ -303,7 +344,7 @@ class Panel {
   async load(id: string, want: PanelMode) {
     this.gen++;
     this.want = want;
-    const v = await get<SessionSummary & { event_list: SEv[] }>(`sessions/${id}`);
+    const v = await this.io.get<SessionSummary & { event_list: SEv[] }>(`sessions/${id}`);
     if (this.dead) return;
     const { event_list, ...summary } = v;
     this.summary = summary;
@@ -330,7 +371,7 @@ class Panel {
     const id = this.summary.session_id;
     this.refetching = (async () => {
       try {
-        const v = await get<SessionSummary & { event_list: SEv[] }>(`sessions/${id}`);
+        const v = await this.io.get<SessionSummary & { event_list: SEv[] }>(`sessions/${id}`);
         if (this.dead || this.summary?.session_id !== id) return;
         const { event_list, ...summary } = v;
         const wasOpen = this.summary.open;
@@ -382,15 +423,15 @@ class Panel {
     const c = this.summary?.candidate;
     if (!c) return;
     try {
-      const cand = await get(`candidates/${c.commit_id}`);
+      const cand = await this.io.get(`candidates/${c.commit_id}`);
       const transcripts = new Map<string, any>();
       this.network = { cand, transcripts };
       this.renderRun();
       // the first revealed replay's transcript: real build, test and metrics output
       const r = (cand.replays ?? []).find((x: any) => x.result?.transcript_digest && x.status === "revealed");
       if (r) {
-        const res = await fetch(`/api/blobs/${r.result.transcript_digest}`);
-        if (res.ok) transcripts.set(r.replay_id, JSON.parse(await res.text()));
+        const tx = await this.io.blob(r.result.transcript_digest);
+        if (tx) transcripts.set(r.replay_id, tx);
         this.renderRun();
       }
     } catch {
@@ -399,8 +440,8 @@ class Panel {
   }
 
   private connect() {
-    if (typeof EventSource === "undefined") return;
-    const es = new EventSource("/live/events");
+    const es = this.io.events();
+    if (!es) return;
     this.es = es;
     let debounce: ReturnType<typeof setTimeout> | null = null;
     const later = () => {
@@ -432,7 +473,7 @@ class Panel {
     if (this.opts.session || this.opts.list === false) return;
     const q = this.listQuery();
     try {
-      this.others = await get<SessionSummary[]>(`sessions?${q}${q ? "&" : ""}limit=12`);
+      this.others = await this.io.get<SessionSummary[]>(`sessions?${q}${q ? "&" : ""}limit=12`);
       this.renderList();
     } catch {
       /* keep */
@@ -527,7 +568,7 @@ class Panel {
   private async loadFile(f: FileState, allowMissing: boolean) {
     if (f.lines || f.note) return;
     const s = this.summary!;
-    const r = await fileAt(s.lineage_id, s.gen_id, f.path);
+    const r = await this.io.fileAt(s.lineage_id, s.gen_id, f.path);
     if ("error" in r) {
       if (allowMissing && r.error === "not_found") f.lines = [];
       else f.note = r.error === "tree_unavailable" ? "Core has no snapshot mirror for this repository on its host, so it cannot rebuild this file." : r.error === "not_found" ? "This file is not in the parent generation; the agent created it." : r.message;
@@ -867,13 +908,13 @@ class Panel {
         return `<button type="button" data-tab="${esc(p)}">${I.file}<span class="p">${esc(p)}</span><span class="c">${esc(what)}</span></button>`;
       })
       .join("");
-    const agent = s.agent ? `<a class="link" href="/agents/${esc(s.agent)}">${esc(s.agent.slice(0, 6))}...${esc(s.agent.slice(-4))}</a>` : `<span title="Hidden while the session's candidate is open (SPEC 10.7)">withheld</span>`;
+    const agent = s.agent ? `<a class="link" ${this.a(`/agents/${s.agent}`)}>${esc(s.agent.slice(0, 6))}...${esc(s.agent.slice(-4))}</a>` : `<span title="Hidden while the session's candidate is open (SPEC 10.7)">withheld</span>`;
     home.innerHTML = `<h3>${esc(who(s.proposer))} on ${esc(s.recipe_name ?? "lineage")}</h3>
       <div class="sub">${esc(s.repo ?? "")} at commit ${esc(s.commit.slice(0, 10))}, generation ${esc(s.height ?? "?")}</div>
       <div class="lp-kv">
         ${kv("Agent", agent)}
-        ${kv("Lineage", `<a class="link" href="/lineages/${esc(s.lineage_id)}">${esc(s.recipe_name ?? s.lineage_id.slice(0, 8))}</a>`)}
-        ${kv("Parent", `<a class="link" href="/generations/${esc(s.gen_id)}" title="${esc(s.gen_id)}">gen ${esc(s.height ?? "?")}</a>`)}
+        ${kv("Lineage", `<a class="link" ${this.a(`/lineages/${s.lineage_id}`)}>${esc(s.recipe_name ?? s.lineage_id.slice(0, 8))}</a>`)}
+        ${kv("Parent", `<a class="link" ${this.a(`/generations/${s.gen_id}`)} title="${esc(s.gen_id)}">gen ${esc(s.height ?? "?")}</a>`)}
         ${kv("Started", esc(new Date(s.started_at).toLocaleString()))}
         ${kv("Events", esc(this.events.length))}
         ${kv("Duration", esc(mmss((s.ended_at ?? s.last_at) - s.started_at)))}
@@ -1021,7 +1062,7 @@ class Panel {
     const ratio = eff && typeof eff.ratio === "number" ? `${eff.metric} ratio ${eff.ratio.toFixed(4)} (${(Math.abs(1 - eff.ratio) * 100).toFixed(1)}% ${eff.ratio < 1 ? "better" : "worse"})` : eff?.fixed ? `fixed ${eff.fixed.join(", ")}` : "";
     const cls = c.status === "accepted" ? "lp-ok" : "lp-bad";
     const rows = [
-      `<div class="lp-row"><b class="${cls}">${esc(c.status)}</b>${c.reason ? `<span>${esc(c.reason.replace(/_/g, " "))}</span>` : ""}${ratio ? `<span class="lbl"><span>${esc(ratio)}</span></span>` : ""}<a class="link" href="/candidates/${esc(c.candidate_id ?? c.commit_id)}">candidate</a>${c.gen_id ? `<a class="link" href="/generations/${esc(c.gen_id)}">generation</a>` : ""}</div>`,
+      `<div class="lp-row"><b class="${cls}">${esc(c.status)}</b>${c.reason ? `<span>${esc(c.reason.replace(/_/g, " "))}</span>` : ""}${ratio ? `<span class="lbl"><span>${esc(ratio)}</span></span>` : ""}<a class="link" ${this.a(`/candidates/${c.candidate_id ?? c.commit_id}`)}>candidate</a>${c.gen_id ? `<a class="link" ${this.a(`/generations/${c.gen_id}`)}>generation</a>` : ""}</div>`,
     ];
     const cand = this.network?.cand;
     if (cand?.replays?.length) {

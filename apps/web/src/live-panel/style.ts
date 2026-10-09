@@ -6,7 +6,7 @@
 // so indentation lines up exactly whatever the proportional glyph widths are; the rest of the line
 // keeps tabular figures and its own spacing.
 
-const CSS = `
+export const CSS = `
 .lp {
   --lp-o: #f0661a;
   --lp-o-ink: #b8460a;
@@ -178,10 +178,14 @@ const CSS = `
 }
 `;
 
-export function ensureStyle() {
-  if (document.getElementById("lp-style")) return;
+/** Injects the panel's stylesheet once per document, or once per shadow root (the embed kit). */
+export function ensureStyle(root: Document | ShadowRoot = document) {
+  if (root instanceof Document) {
+    if (root.getElementById("lp-style")) return;
+  } else if (root.querySelector("style[data-lp-style]")) return;
   const s = document.createElement("style");
   s.id = "lp-style";
+  s.dataset.lpStyle = "";
   s.textContent = CSS;
-  document.head.appendChild(s);
+  (root instanceof Document ? root.head : root).appendChild(s);
 }
