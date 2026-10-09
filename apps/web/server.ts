@@ -338,7 +338,7 @@ const indexHtml = () => Bun.file(join(DIR, "public/index.html"));
 // Page security headers (audit A2), the same policy Caddy sets on the site (scripts/deploy/caddy/Caddyfile.tmpl);
 // the hash is the inline theme script in public/index.html (gate.test.ts checks both stay in step).
 const PAGE_CSP =
-  "default-src 'self'; script-src 'self' 'sha256-4RrfDA7V9jObfogJTeFxDmcAf0ViIdY70gMdVWyrQ9E='; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: blob: https:; connect-src 'self' https://api.github.com; object-src 'none'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'";
+  "default-src 'self'; script-src 'self' 'sha256-63H06+4kOPnJGg/D6siH2d7URozVzLhxtBaUeqTsuPE='; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: blob: https:; connect-src 'self' https://api.github.com; object-src 'none'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'";
 const PAGE_HEADERS = { "content-type": "text/html; charset=utf-8", "content-security-policy": PAGE_CSP, "x-content-type-options": "nosniff", "x-frame-options": "DENY", "referrer-policy": "strict-origin-when-cross-origin" };
 
 const server = Bun.serve({
