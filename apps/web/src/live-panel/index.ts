@@ -275,8 +275,11 @@ class Panel {
 
   private async pickFromList() {
     const q = this.listQuery();
-    this.others = await get<SessionSummary[]>(`sessions?${q}${q ? "&" : ""}limit=12`);
-    const pick = this.others.find((s) => s.state === "live") ?? this.others[0];
+    const all = await get<SessionSummary[]>(`sessions?${q}${q ? "&" : ""}limit=24`);
+    // sessions that recorded nothing (older workers opened one per idle attempt) are left out, unless
+    // one is live right now
+    this.others = all.filter((s) => s.events > 0 || s.state === "live").slice(0, 12);
+    const pick = this.others.find((s) => s.state === "live" && s.events > 0) ?? this.others.find((s) => s.events > 0) ?? this.others[0];
     if (!pick) {
       this.setState("idle", "No sessions");
       this.message(

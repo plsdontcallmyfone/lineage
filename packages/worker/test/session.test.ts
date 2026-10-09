@@ -74,3 +74,26 @@ describe("session events", () => {
     }
   });
 });
+
+describe("SessionRecorder", () => {
+  test("opens a session only once the attempt records an event", async () => {
+    const { SessionRecorder } = await import("../src/session.ts");
+    const calls: string[] = [];
+    const client = {
+      post: async (path: string) => {
+        calls.push(path);
+        return path === "/v1/sessions" ? { status: 200, body: { session_id: "s1" } } : { status: 200, body: {} };
+      },
+    } as any;
+    const w = { lineage_id: "l", gen_id: "g", commit: "c" };
+    const idle = new SessionRecorder(client, () => {}, { flushMs: 60_000 });
+    await idle.start(w, "scripted");
+    await idle.end(null);
+    expect(calls).toEqual([]);
+    const busy = new SessionRecorder(client, () => {}, { flushMs: 60_000 });
+    await busy.start(w, "scripted");
+    busy.push({ kind: "read", path: "src/lib.rs", start_line: 1, end_line: 2 });
+    await busy.end("commit1");
+    expect(calls).toEqual(["/v1/sessions", "/v1/sessions/s1/events", "/v1/sessions/s1/end"]);
+  });
+});

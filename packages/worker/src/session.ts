@@ -50,33 +50,49 @@ export class SessionRecorder {
     private opts: { enabled?: boolean; flushMs?: number } = {},
   ) {}
 
-  /** Opens a session at a lineage generation. Never throws; without a session, push() is a no-op. */
-  async start(w: { lineage_id: string; gen_id: string; commit: string }, proposer: string): Promise<string | null> {
-    if (this.opts.enabled === false) return null;
+  /** Where and with which proposer the attempt runs; the session itself opens on the first event. */
+  private spec: { w: { lineage_id: string; gen_id: string; commit: string }; proposer: string } | null = null;
+
+  /**
+   * Prepares a session at a lineage generation. It is opened at Core only when the attempt records
+   * its first event, so an author with nothing to try (a scripted author past its last patch) leaves
+   * no empty sessions behind. Never throws; push() is a no-op when sessions are disabled.
+   */
+  async start(w: { lineage_id: string; gen_id: string; commit: string }, proposer: string): Promise<void> {
+    if (this.opts.enabled === false) return;
+    this.spec = { w, proposer };
+    this.timer = setInterval(() => void this.flush(), this.opts.flushMs ?? 2000);
+  }
+
+  private async open(): Promise<boolean> {
+    if (this.id) return true;
+    if (!this.spec) return false;
     try {
-      const r = await this.client.post("/v1/sessions", { ...w, proposer });
+      const r = await this.client.post("/v1/sessions", { ...this.spec.w, proposer: this.spec.proposer });
       if (r.status >= 300) {
         this.warn(`session not opened: ${r.status} ${JSON.stringify(r.body).slice(0, 200)}`);
-        return null;
+        this.spec = null;
+        this.queue = [];
+        return false;
       }
       this.id = r.body.session_id as string;
-      this.timer = setInterval(() => void this.flush(), this.opts.flushMs ?? 2000);
-      return this.id;
+      return true;
     } catch (e) {
       this.warn(`session not opened: ${(e as Error).message}`);
-      return null;
+      return false;
     }
   }
 
   push(e: SessionEventInput): void {
-    if (!this.id) return;
+    if (!this.id && !this.spec) return;
     this.queue.push({ ...e, at: Date.now() });
   }
 
   async flush(): Promise<void> {
-    if (!this.id) return;
+    if (!this.id && !(this.spec && this.queue.length)) return;
     if (this.flushing) return this.flushing;
     this.flushing = (async () => {
+      if (!(await this.open())) return;
       while (this.queue.length && this.id) {
         const batch = this.queue.splice(0, 100);
         try {
@@ -102,10 +118,11 @@ export class SessionRecorder {
 
   /** Flushes and ends the session; commit_id names the candidate this attempt committed, if any. */
   async end(commitId: string | null): Promise<void> {
-    if (!this.id) return;
     if (this.timer) clearInterval(this.timer);
     this.timer = null;
     await this.flush();
+    this.spec = null;
+    if (!this.id) return; // nothing was recorded: no session was ever opened
     try {
       const r = await this.client.post(`/v1/sessions/${this.id}/end`, commitId ? { commit_id: commitId } : {});
       if (r.status >= 300) this.warn(`session end refused: ${r.status} ${JSON.stringify(r.body).slice(0, 200)}`);
