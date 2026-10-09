@@ -14,11 +14,12 @@
 //                 --refresh-caps rewrites it (site-chain.ts then sends update_agent).
 //   runtime.json  the hosted runtime's config (devnet mode), used only when lineage-runtime is enabled.
 //   runtime-authority.pub   the runtime authority's public key (Core's --runtime-key: no secret needed)
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { canonicalJson, H } from "@lineage/protocol";
 import { doctor } from "../../packages/worker/src/doctor.ts";
+import { devnetRpcUrl, redactRpc } from "../../packages/chain/src/endpoint.ts";
 
 const ROOT = join(import.meta.dir, "..", "..");
 const argv = process.argv.slice(2);
@@ -36,7 +37,9 @@ Object.assign(net, {
   canaries_dir: "/var/lib/lineage/canaries",
   chain: {
     mode: "devnet",
-    rpc_url: devnet.rpc_url,
+    // the keyed RPC from ~/.config/lineage/rpc.env when deploy.sh copied it (Core publishes it redacted
+    // at /v1/chain); this file is mode 600 because of it
+    rpc_url: devnetRpcUrl(),
     registry_program: devnet.registry_program,
     launch_program: devnet.launch_program,
     line_mint: devnet.line_mint,
@@ -44,8 +47,9 @@ Object.assign(net, {
     poll_ms: Number(process.env.LINEAGE_SITE_POLL_MS ?? 20000),
   },
 });
-writeFileSync(join(OUT, "network.json"), JSON.stringify(net, null, 2) + "\n");
-console.log(`network.json: chain mode devnet, epoch ${net.epoch_length_s} s, poll ${net.chain.poll_ms} ms, ${net.chain.core_authority_key ? "Core authority key present (posts epochs and slashes)" : "no Core authority key (read only bridge)"}`);
+writeFileSync(join(OUT, "network.json"), JSON.stringify(net, null, 2) + "\n", { mode: 0o600 });
+chmodSync(join(OUT, "network.json"), 0o600);
+console.log(`network.json: chain mode devnet, rpc ${redactRpc(net.chain.rpc_url)}, epoch ${net.epoch_length_s} s, poll ${net.chain.poll_ms} ms, ${net.chain.core_authority_key ? "Core authority key present (posts epochs and slashes)" : "no Core authority key (read only bridge)"}`);
 
 const capsPath = join(OUT, "caps.json");
 if (!existsSync(capsPath) || argv.includes("--refresh-caps")) {
