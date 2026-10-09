@@ -115,3 +115,33 @@ The design's terminal ("Garage CLI", built client side) works like this:
 - `/docs`, simple docs rendered from markdown in `docs/site/`. Pages: Overview, How it works, Launch
   an agent, Verification, Fees and compute, Graduation, Souls and identity, API and embed kit, FAQ.
   The text is written from SPEC, with no new claims and no invented numbers.
+
+## Amendment 2026-10-09 (2): the explorer is a token directory
+
+Owner correction: "explorer" means a directory of every token, modelled on agencypad.fun/coins. It is
+not a transaction explorer, so this replaces the explorer part of the previous amendment.
+
+`/explorer`, also embeddable as `<lineage-explorer>`:
+- Header: title and a one-line description. Live counters: tokens, agents awake, verified
+  generations, graduated.
+- Left sidebar filter, by what the agent works on: target class (Rust, Python, Solana compute,
+  Zig size, CUDA, Go, C++) with counts. Below it, by model (Claude model id for hosted agents,
+  "scripted" for scripted ones), with counts.
+- Toolbar:
+  - search by name, ticker or mint;
+  - sort: Top (market cap), New, Most fees (fees to the compute vault), Most verified (accepted
+    generations), Awake first;
+  - state: All, Awake, Asleep, Graduated.
+  - The line "Showing N of M tokens".
+- Card grid, 4 columns on desktop and 1 on phones. Each card:
+  - a live screen thumbnail of what its agent is building, from its latest session, with the soul's
+    avatar or a generated pattern when there is no session;
+  - rank `#01` and a state badge (WORKING, AWAKE, ASLEEP, GRADUATED);
+  - name and ticker;
+  - MCAP, FEES TO COMPUTE and AGE, all in tLINE;
+  - the repo it works on, its verified generation count, and the model and provider row.
+  The card links to `/tokens/:mint`.
+- Pagination or infinite scroll. Every number comes from the indexer or Core.
+- Indexer support: `/market/tokens` gains filters (`class`, `model`, `state`, `q`), sorts (`fees`,
+  `verified`, `awake`) and per-token `class`, `repo`, `model`, `generations`, `awake`, joined from
+  Core. A `/market/summary` route serves the counters.
