@@ -36,6 +36,10 @@
         "@lineage/souls": "workspace:*",
       },
     },
+    "packages/embed": {
+      "name": "@lineage/embed",
+      "version": "0.1.0",
+    },
     "packages/indexer": {
       "name": "@lineage/indexer",
       "version": "0.1.0",
@@ -113,6 +117,8 @@
     "@lineage/chain": ["@lineage/chain@workspace:packages/chain"],
 
     "@lineage/core": ["@lineage/core@workspace:packages/core"],
+
+    "@lineage/embed": ["@lineage/embed@workspace:packages/embed"],
 
     "@lineage/indexer": ["@lineage/indexer@workspace:packages/indexer"],
 

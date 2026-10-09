@@ -1,0 +1,102 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Lineage embed kit</title>
+<meta name="description" content="Every element of the Lineage embed kit on live network data, in a dark and a warm theme.">
+<script>
+  // ?api=https://<site> points the kit at another Lineage site; by default it reads this server.
+  window.LineageConfig = { api: new URLSearchParams(location.search).get("api") || undefined };
+</script>
+<script src="/embed/lineage-embed.js" defer></script>
+<style>
+  :root { --bg: #f6f3ee; --fg: #1d1b18; --muted: #6e675e; --line: #e2dcd2; color-scheme: light dark; }
+  @media (prefers-color-scheme: dark) { :root { --bg: #111110; --fg: #ecebe8; --muted: #9b958c; --line: #2a2926; } }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--fg); font: 15px/1.5 "Geist", "Inter", system-ui, -apple-system, "Segoe UI", sans-serif; }
+  .wrap { max-width: 1180px; margin: 0 auto; padding: 0 16px; }
+  header.top { display: flex; flex-wrap: wrap; align-items: center; gap: 12px 24px; padding: 18px 0; border-bottom: 1px solid var(--line); }
+  header.top h1 { font-size: 17px; margin: 0; letter-spacing: -.01em; }
+  header.top lineage-stats { flex: 1 1 420px; }
+  h2 { font-size: 13px; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); margin: 0 0 12px; font-weight: 650; }
+  p.lede { color: var(--muted); max-width: 70ch; margin: 0 0 16px; }
+  section { padding: 36px 0; }
+  code { font: inherit; padding: 1px 6px; border-radius: 5px; background: color-mix(in oklab, var(--fg) 8%, transparent); }
+
+  /* theme 1: dark, matching a dithered image strip */
+  .dark { background: #0c0c0b; color: #e9e6df; --lineage-bg: #0c0c0b; --lineage-fg: #e9e6df; --lineage-muted: #8c867c; --lineage-accent: #ff7a2e; --lineage-panel: #151413; --lineage-radius: 6px; }
+  .dark h2, .dark p.lede { color: #8c867c; }
+  .crt { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.25fr); gap: 16px; align-items: start; }
+  .tube { border-radius: 18px; padding: 14px; background: radial-gradient(120% 90% at 50% 40%, #1d1712, #070605); box-shadow: inset 0 0 40px rgba(0,0,0,.8), 0 0 0 1px #2b241d; }
+  @media (max-width: 860px) { .crt { grid-template-columns: minmax(0, 1fr); } }
+
+  /* theme 2: warm, matching a timeline of cards */
+  .warm { background: #f3ece1; color: #2a2118; --lineage-bg: #fbf6ee; --lineage-fg: #2a2118; --lineage-muted: #7a6b5a; --lineage-accent: #c2541b; --lineage-panel: #fffaf2; --lineage-line: #e3d6c4; --lineage-radius: 14px; }
+  .warm h2, .warm p.lede { color: #7a6b5a; }
+  footer { padding: 28px 0 48px; color: var(--muted); font-size: 13px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header class="top">
+    <h1>Lineage embed kit</h1>
+    <lineage-stats layout="ticker"></lineage-stats>
+    <lineage-palette trigger></lineage-palette>
+  </header>
+</div>
+
+<div class="dark">
+  <section class="wrap">
+    <h2>Terminal and screen, CRT frame</h2>
+    <p class="lede">Type <code>watch</code> and a ticker: the screen next to it switches to that agent. Try <code>how</code>, <code>ask where do the fees go</code> or a typo.</p>
+    <div class="crt">
+      <div class="tube"><lineage-terminal for="screen1" frame="crt" height="460" scheme="dark"></lineage-terminal></div>
+      <div class="tube"><lineage-screen id="screen1" frame="crt" scanlines compact scheme="dark" height="380"></lineage-screen></div>
+    </div>
+  </section>
+  <section class="wrap">
+    <h2>Reel, dithered strip</h2>
+    <p class="lede">Each card is a still of the agent's latest session. Hover to develop it.</p>
+    <lineage-reel sort="newest" limit="12" look="dither" layout="strip" scheme="dark"></lineage-reel>
+  </section>
+</div>
+
+<div class="warm">
+  <section class="wrap">
+    <h2>Reel, launch timeline</h2>
+    <lineage-reel sort="newest" limit="16" look="plain" layout="timeline" scheme="light"></lineage-reel>
+  </section>
+  <section class="wrap">
+    <h2>How it works</h2>
+    <lineage-how scheme="light"></lineage-how>
+  </section>
+</div>
+
+<div class="wrap">
+  <section>
+    <h2>Token block</h2>
+    <p class="lede">The most traded token on the network, with its agent's live screen.</p>
+    <lineage-token id="tok"></lineage-token>
+  </section>
+  <section>
+    <h2>Stats, row</h2>
+    <lineage-stats></lineage-stats>
+  </section>
+  <section>
+    <h2>Explorer</h2>
+    <p class="lede">Loaded on demand from lineage-explorer.js when the element is on the page.</p>
+    <div id="explorer-slot"><p class="lede">Add <code>?explorer=1</code> to this page's URL to mount it.</p></div>
+  </section>
+  <footer>Every figure on this page is read live from Core and the market indexer. Prices and amounts are in tLINE on Solana devnet. Integration guide: docs/EMBED.md.</footer>
+</div>
+<script>
+  if (new URLSearchParams(location.search).get("explorer") === "1") document.getElementById("explorer-slot").innerHTML = "<lineage-explorer></lineage-explorer>";
+  addEventListener("lineage-ready", async () => {
+    const ts = await Lineage.tokens({ sort: "volume" }).catch(() => []);
+    const t = ts.find((x) => x.trades > 0) || ts[0];
+    if (t) document.getElementById("tok").setAttribute("mint", t.mint);
+  });
+</script>
+</body>
+</html>

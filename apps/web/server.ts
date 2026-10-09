@@ -16,6 +16,9 @@
 //   /souls/draft       POST {seed, agent, repo} a soul draft by Claude (per-soul, daily and per-address caps)
 //   /souls/publish     POST {doc, sig} forwarded to Core's PUT /v1/agents/:id/soul (SPEC 14.8)
 //   /market/<path>     GET proxy to the market indexer (packages/indexer; --market, default http://127.0.0.1:9668)
+//   /embed/lineage-embed.js   the embed kit (packages/embed, built at startup; rebuilt per request with --dev), CORS *
+//   /embed/lineage-explorer.js  <lineage-explorer>'s module, loaded on demand by the kit
+//   /embed/demo.html          the kit's demo page (every element, two themes)
 //   everything else    index.html (client-side routing)
 //
 // The server never holds a user's key: wallets sign in the browser. The only key it loads is the
@@ -71,6 +74,25 @@ async function buildWallet(): Promise<string> {
   return await out.outputs[0]!.text();
 }
 walletBundle = await buildWallet();
+
+// embed kit (packages/embed, docs/EMBED.md): one file any front end loads with a script tag
+const { buildEmbed } = await import("../../packages/embed/scripts/build.ts");
+let embedBundle: string = await buildEmbed({ dev: DEV });
+let explorerBundle: string | null = null; // built on first request (the explorer lane's module, loaded on demand by <lineage-explorer>)
+async function embedRoute(p: string): Promise<Response> {
+  const cors = { "access-control-allow-origin": "*", "cross-origin-resource-policy": "cross-origin" };
+  if (p === "/embed/lineage-embed.js") {
+    if (DEV) embedBundle = await buildEmbed({ dev: true }).catch((e) => `console.error(${JSON.stringify(String(e))})`);
+    return new Response(embedBundle, { headers: { "content-type": "text/javascript; charset=utf-8", "cache-control": DEV ? "no-store" : "public, max-age=300", ...cors } });
+  }
+  if (p === "/embed/lineage-explorer.js") {
+    if (DEV || !explorerBundle) explorerBundle = await buildEmbed({ dev: DEV, entry: "explorer-entry" }).catch((e) => `console.error(${JSON.stringify(String(e))})`);
+    return new Response(explorerBundle, { headers: { "content-type": "text/javascript; charset=utf-8", "cache-control": DEV ? "no-store" : "public, max-age=300", ...cors } });
+  }
+  if (p === "/embed/demo.html" || p === "/embed/" || p === "/embed")
+    return new Response(Bun.file(join(DIR, "../../packages/embed/demo/demo.html")), { headers: { "content-type": "text/html; charset=utf-8", "cache-control": "no-store" } });
+  return new Response("not found", { status: 404 });
+}
 
 // ------------------------------------------------------------------------------------------------
 // devnet: public state, RPC proxy, faucet
@@ -336,6 +358,7 @@ const server = Bun.serve({
     }
     if (req.method !== "GET" && req.method !== "HEAD") return new Response("read-only", { status: 405 });
     if (p.startsWith("/market/")) return marketProxy(p, url.search);
+    if (p === "/embed" || p.startsWith("/embed/")) return embedRoute(p);
     if (p.startsWith("/api/")) {
       const rest = p.slice(5);
       if (rest === "events") return liveStream(Number(url.searchParams.get("since") ?? 0));
