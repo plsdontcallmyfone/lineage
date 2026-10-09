@@ -36,6 +36,7 @@ import { doctor } from "./doctor.ts";
 import { RecipeBook } from "./recipes.ts";
 import { proposerSoulBlock, type SoulDoc } from "@lineage/souls";
 import { Telemetry } from "./telemetry.ts";
+import { SessionRecorder } from "./session.ts";
 import { measureCoalitions, type SplitAssignment } from "./split.ts";
 import { DiscoveryAgent } from "./discovery.ts";
 import { CalibrationVerifier } from "./recipe-proposer.ts";
@@ -408,6 +409,10 @@ export class Worker {
     const where = { lineage_id: view.lineage_id as string, gen_id: tree.gen_id as string, commit: tree.commit as string };
     this.telemetry.job("author", { lineage_id: where.lineage_id, gen_id: where.gen_id });
     this.telemetry.phase("propose");
+    // authoring session (SPEC 17.3): every tool call, sealed contents included; best effort
+    const session = new SessionRecorder(this.client, this.log, { enabled: this.opts.telemetry !== false });
+    await session.start(where, proposer.name);
+    let sessionCommit: string | null = null;
     try {
       const dir = join(work, "src");
       materialize(loaded.recipe.repo, loaded.recipe.commit, loaded.overlayDir, dir);
@@ -435,6 +440,7 @@ export class Worker {
         seed,
         log: this.log,
         activity: (e) => this.telemetry.activity(where, e),
+        session: (e) => session.push(e),
         onPhase: this.telemetry.onPhase,
         self: this.id,
         collab,
@@ -483,6 +489,7 @@ export class Worker {
         }),
         "commit candidate",
       );
+      sessionCommit = committed.commit_id;
       // no target: a submit names no candidate while it is sealed, and Core shows submits only to this agent (SPEC 10.7)
       this.telemetry.activity(where, { kind: "submit" });
       const revealed = await this.ok(this.client.post(`/v1/candidates/${committed.commit_id}/reveal`, { patch, salt }), "reveal candidate");
@@ -491,6 +498,7 @@ export class Worker {
       this.log(`author: ${proposal.kind} on ${JSON.stringify(proposal.target)} (${g.lines} lines) -> ${revealed.status}${revealed.reason ? ` (${revealed.reason})` : ""}`);
       return committed.commit_id;
     } finally {
+      await session.end(sessionCommit);
       removeTree(work);
       this.telemetry.idle();
       void this.telemetry.flush();

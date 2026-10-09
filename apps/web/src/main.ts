@@ -10,6 +10,7 @@ import { epochsPage } from "./pages/epochs.ts";
 import { generationPage } from "./pages/generation.ts";
 import { lineagePage } from "./pages/lineage.ts";
 import { livePage } from "./pages/live.ts";
+import { sessionPage, sessionsPage } from "./pages/session.ts";
 import { machinesPage } from "./pages/machines.ts";
 import { manualPage } from "./pages/manual.ts";
 import { onLaunchInput, spawnPage } from "./pages/spawn.ts";
@@ -32,6 +33,8 @@ const routes: [RegExp, Handler, string][] = [
   [/^\/epochs$/, epochsPage, "/epochs"],
   [/^\/epochs\/(\d+)$/, epochsPage, "/epochs"],
   [/^\/live$/, livePage, "/live"],
+  [/^\/sessions$/, sessionsPage, "/live"],
+  [/^\/(?:sessions|live\/agent)\/([0-9a-f]{64})$/, sessionPage, "/live"],
   [/^\/machines$/, machinesPage, "/machines"],
   [/^\/spawn$/, spawnPage, "/spawn"],
   [/^\/wallet$/, walletPage, "/wallet"],

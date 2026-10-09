@@ -1,6 +1,7 @@
 import type { Calibration, CandidateKind } from "@lineage/protocol";
 import type { DepsLayer, LoadedRecipe, PhaseCallback } from "@lineage/sandbox";
 import type { ActivityInput } from "../telemetry.ts";
+import type { SessionEventInput } from "../session.ts";
 
 export interface Finding {
   key: string;
@@ -59,6 +60,8 @@ export interface ProposeContext {
   log: (msg: string) => void;
   /** Live activity (SPEC 17.1): what the proposer actually reads, searches, edits and evaluates. Best effort, never throws. */
   activity?: (e: ActivityInput) => void;
+  /** Authoring session (SPEC 17.3): every tool call with its contents; Core seals the contents until the candidate is final. Never throws. */
+  session?: (e: SessionEventInput) => void;
   /** Sandbox phases of the proposer's own evaluations, for heartbeats. */
   onPhase?: PhaseCallback;
   /** Live intents on this lineage (worker --collab advisory or team), the worker's own included. */

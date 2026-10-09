@@ -64,6 +64,7 @@ export class ScriptedProposer implements Proposer {
         continue;
       }
       ctx.log(`scripted: proposing ${next.name}`);
+      sessionHunks(ctx, next);
       reportEdits(ctx, next);
       return { kind: next.kind, target: next.target, rationale: `scripted patch ${next.name}` };
     }
@@ -88,6 +89,70 @@ function reportEdits(ctx: ProposeContext, entry: ScriptEntry) {
       }
     }
     ctx.activity?.({ kind: "propose", target: Array.isArray(entry.target) ? entry.target.join(",").slice(0, 200) : entry.target });
+  } catch {
+    /* telemetry never breaks authoring */
+  }
+}
+
+/** One hunk of a unified diff as before and after text, anchored where it lands when hunks apply in order. */
+export interface PatchHunk {
+  path: string;
+  start: number;
+  oldLen: number;
+  newLen: number;
+  before: string;
+  after: string;
+}
+
+export function patchHunks(diff: string): PatchHunk[] {
+  const out: PatchHunk[] = [];
+  for (const f of parseDiff(diff)) {
+    const path = f.newPath ?? f.oldPath;
+    if (!path || f.binary || f.status === "delete") continue;
+    let cur: PatchHunk | null = null;
+    const b: string[] = [];
+    const a: string[] = [];
+    const close = () => {
+      if (cur) out.push({ ...cur, before: b.join("\n"), after: a.join("\n") });
+      b.length = 0;
+      a.length = 0;
+    };
+    for (const l of f.hunks) {
+      const m = /^@@ -(\d+)(?:,(\d+))? \+(\d+)(?:,(\d+))? @@/.exec(l);
+      if (m) {
+        close();
+        // the new-side start is where this hunk lands once every earlier hunk of the file applied
+        cur = { path, start: Math.max(1, Number(m[3])), oldLen: m[2] === undefined ? 1 : Number(m[2]), newLen: m[4] === undefined ? 1 : Number(m[4]), before: "", after: "" };
+        continue;
+      }
+      if (!cur || l.startsWith("\\")) continue;
+      const body = l.slice(1);
+      if (l.startsWith("-")) b.push(body);
+      else if (l.startsWith("+")) a.push(body);
+      else (b.push(body), a.push(body));
+    }
+    close();
+  }
+  return out;
+}
+
+/** Session events (SPEC 17.3) for a scripted patch: one labelled edit per hunk, in apply order. */
+function sessionHunks(ctx: ProposeContext, entry: ScriptEntry) {
+  try {
+    const hunks = patchHunks(entry.diff);
+    hunks.forEach((h, i) =>
+      ctx.session?.({
+        kind: "patch",
+        label: `applying patch ${entry.name}, hunk ${i + 1} of ${hunks.length}`.slice(0, 200),
+        path: h.path,
+        start_line: h.start,
+        end_line: Math.max(h.start, h.start + h.oldLen - 1),
+        lines_before: h.oldLen,
+        lines_after: h.newLen,
+        before: h.before.slice(0, 40_000),
+        after: h.after.slice(0, 40_000),
+      }),
+    );
   } catch {
     /* telemetry never breaks authoring */
   }

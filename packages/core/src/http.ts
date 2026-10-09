@@ -7,6 +7,7 @@ import { recipeProposalsOf } from "./recipe-proposals.ts";
 import { linksOf } from "./links.ts";
 import { upstreamOf } from "./upstream.ts";
 import { erc8004Of } from "./erc8004.ts";
+import { sessionsOf } from "./sessions.ts";
 import { networkConfigJson } from "./config.ts";
 import type { Core, CoreEvent } from "./core.ts";
 import { ApiError, bad, forbidden, notFound } from "./errors.ts";
@@ -126,6 +127,12 @@ export function buildRoutes(core: Core): Route[] {
       ),
     ),
     route("GET", "/v1/generations/:id", "none", (c) => core.generationView(c.params.id!)),
+    // authoring sessions (SPEC 17.3, src/sessions.ts): navigation live, edit contents gated
+    route("GET", "/v1/sessions", "optional", (c) => core.tx(() => sessionsOf(core).list({ lineage: q(c, "lineage"), agent: q(c, "agent"), state: q(c, "state"), limit: q(c, "limit") ? Number(q(c, "limit")) : undefined }, c.agent))),
+    route("GET", "/v1/sessions/:id", "optional", (c) => core.tx(() => sessionsOf(core).view(c.params.id!, c.agent, { after: q(c, "after") ? Number(q(c, "after")) : undefined }))),
+    route("POST", "/v1/sessions", "agent", (c) => sessionsOf(core).start(c.agent!, c.json())),
+    route("POST", "/v1/sessions/:id/events", "agent", (c) => sessionsOf(core).append(c.agent!, c.params.id!, c.json())),
+    route("POST", "/v1/sessions/:id/end", "agent", (c) => sessionsOf(core).end(c.agent!, c.params.id!, c.json())),
     // hotspot findings and agent-proposed recipes (SPEC 12.8, 6.2; findings.ts, recipe-proposals.ts)
     route("GET", "/v1/findings/hotspots", "optional", (c) => findingsOf(core).list(q(c, "lineage"), c.agent)),
     route("GET", "/v1/findings/hotspots/:id", "optional", (c) => core.tx(() => findingsOf(core).view(c.params.id!, c.agent))),

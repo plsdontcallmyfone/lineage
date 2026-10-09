@@ -4,6 +4,7 @@ import { dirname, join, normalize, relative, resolve, sep } from "node:path";
 import { canonicalizeDiff, guard, judge, matchesAny, sha256Hex, type CandidateKind, type CandidateView } from "@lineage/protocol";
 import { diffWorkingTree, evaluate } from "@lineage/sandbox";
 import type { Proposal, ProposeContext, Proposer } from "./types.ts";
+import { clip, type SessionEventInput } from "../session.ts";
 
 // LLM proposer: Claude edits the parent tree through a small, path-confined tool set and can
 // measure its own change in the real sandbox before submitting. Spend is metered per attempt
@@ -238,6 +239,7 @@ export class AnthropicProposer implements Proposer {
         messages.push({ role: "assistant", content: message.content });
         continue;
       }
+      for (const b of message.content) if (b.type === "text" && b.text.trim()) tools.session({ kind: "note", text: clip(b.text, 8000).text });
       const calls = message.content.filter((b): b is Anthropic.Beta.BetaToolUseBlock => b.type === "tool_use");
       if (calls.length === 0) {
         ctx.log("anthropic: ended without submit");
@@ -254,6 +256,7 @@ export class AnthropicProposer implements Proposer {
           const v = tools.validateSubmit(input);
           if (v.ok) {
             submitted = { kind: v.kind, target: v.kind === "fix" ? [v.target] : v.target, rationale: String(input.rationale ?? ""), claimed_effect: v.ratio };
+            tools.session({ kind: "submit", reason: clip(String(input.rationale ?? ""), 4000).text });
             results.push({ type: "tool_result", tool_use_id: call.id, content: "submitted" });
           } else results.push({ type: "tool_result", tool_use_id: call.id, is_error: true, content: v.error });
           continue;
@@ -261,6 +264,7 @@ export class AnthropicProposer implements Proposer {
         if (call.name === "give_up") {
           ctx.log(`anthropic: gave up: ${String(input.reason ?? "")}`);
           tools.report({ kind: "give_up" });
+          tools.session({ kind: "give_up", reason: clip(String(input.reason ?? ""), 4000).text });
           gaveUp = true;
           results.push({ type: "tool_result", tool_use_id: call.id, content: "ok" });
           continue;
@@ -293,6 +297,15 @@ export class ToolBox {
   report(e: Parameters<NonNullable<ProposeContext["activity"]>>[0]): void {
     try {
       this.ctx.activity?.(e);
+    } catch {
+      /* ignore */
+    }
+  }
+
+  /** Authoring session (SPEC 17.3): the tool call with its contents. Never throws. */
+  session(e: SessionEventInput): void {
+    try {
+      this.ctx.session?.(e);
     } catch {
       /* ignore */
     }
@@ -337,6 +350,7 @@ export class ToolBox {
           }
         };
         walk(abs, 0);
+        this.session({ kind: "list", path: rel, count: out.length });
         return `${rel}:\n` + out.sort().join("\n");
       }
       case "read_file": {
@@ -348,6 +362,7 @@ export class ToolBox {
         const e = typeof input.end_line === "number" ? Math.min(lines.length, input.end_line) : lines.length;
         // the hash covers the whole file, so the wall can check it against the generation tree
         if (e >= s) this.report({ kind: "read", path: rel, start_line: s, end_line: e, content_sha256: sha256Hex(bytes) });
+        if (e >= s) this.session({ kind: "read", path: rel, start_line: s, end_line: e, content_sha256: sha256Hex(bytes) });
         let text = lines
           .slice(s - 1, e)
           .map((l, i) => `${s + i}\t${l}`)
@@ -360,6 +375,7 @@ export class ToolBox {
         if (input.pattern.length > 0 && input.pattern.length <= 500) this.report({ kind: "search", query: input.pattern });
         const p = Bun.spawnSync(["git", "grep", "-n", "-E", "-I", "--", input.pattern], { cwd: this.ctx.tree });
         const out = p.stdout.toString().split("\n").filter(Boolean);
+        if (input.pattern.length > 0 && input.pattern.length <= 500) this.session({ kind: "search", query: input.pattern, matches: out.length });
         return out.length ? out.slice(0, 200).join("\n") + (out.length > 200 ? `\n[${out.length - 200} more]` : "") : "no matches";
       }
       case "edit_file": {
@@ -372,6 +388,21 @@ export class ToolBox {
         // path and line range only: the new text stays sealed until the candidate is revealed
         const start = src.slice(0, src.indexOf(input.old_string)).split("\n").length;
         this.report({ kind: "edit", path: rel, start_line: start, end_line: start + Math.max(0, input.old_string.split("\n").length - 1) });
+        {
+          const b = clip(input.old_string);
+          const a = clip(input.new_string);
+          this.session({
+            kind: "edit",
+            path: rel,
+            start_line: start,
+            end_line: start + Math.max(0, input.old_string.split("\n").length - 1),
+            lines_before: input.old_string.split("\n").length,
+            lines_after: input.new_string.split("\n").length,
+            before: b.text,
+            after: a.text,
+            ...(b.truncated || a.truncated ? { truncated: true } : {}),
+          });
+        }
         writeFileSync(abs, src.replace(input.old_string, () => input.new_string as string));
         return `edited ${rel}`;
       }
@@ -380,6 +411,21 @@ export class ToolBox {
         this.checkWritable(rel);
         if (typeof input.contents !== "string") throw new Error("contents must be a string");
         if (existsSync(abs)) this.report({ kind: "edit", path: rel, start_line: 1, end_line: Math.max(1, readFileSync(abs, "utf8").split("\n").length) });
+        {
+          const old = existsSync(abs) ? readFileSync(abs, "utf8") : "";
+          const b = clip(old);
+          const a = clip(input.contents);
+          this.session({
+            kind: "write",
+            path: rel,
+            ...(old ? { start_line: 1, end_line: Math.max(1, old.split("\n").length) } : {}),
+            lines_before: old ? old.split("\n").length : 0,
+            lines_after: input.contents.split("\n").length,
+            before: b.text,
+            after: a.text,
+            ...(b.truncated || a.truncated ? { truncated: true } : {}),
+          });
+        }
         writeFileSync(abs, input.contents);
         return `wrote ${rel}`;
       }
@@ -406,7 +452,12 @@ export class ToolBox {
     this.evals++;
     this.ctx.log(`anthropic: evaluating (${this.evals}/${this.maxEvals})`);
     this.report({ kind: "evaluate", target: target.slice(0, 200) || kind });
-    const { result, transcript } = await evaluate({ loaded: this.ctx.loaded, deps: this.ctx.deps, parentPatches: this.ctx.parentPatches, candidatePatch: diff, seed: this.ctx.seed, onPhase: this.ctx.onPhase, enabledMetrics: Object.entries(this.ctx.calibration.metrics).filter(([, m]) => m.enabled).map(([n]) => n) });
+    this.session({ kind: "evaluate", target: target.slice(0, 200) || kind, eval_kind: kind });
+    const onPhase: typeof this.ctx.onPhase = (p, at) => {
+      this.session({ kind: "phase", phase: p });
+      this.ctx.onPhase?.(p, at);
+    };
+    const { result, transcript } = await evaluate({ loaded: this.ctx.loaded, deps: this.ctx.deps, parentPatches: this.ctx.parentPatches, candidatePatch: diff, seed: this.ctx.seed, onPhase, enabledMetrics: Object.entries(this.ctx.calibration.metrics).filter(([, m]) => m.enabled).map(([n]) => n) });
     // sandbox time as the transcript records it (hosted runtime metering, SPEC 13.7)
     try {
       this.ctx.meter?.sandbox(transcript.steps.reduce((a, st) => a + st.duration_ms, 0) / 1000);
@@ -433,6 +484,19 @@ export class ToolBox {
     }
     let ratio: number | undefined;
     if (j.effect && "ratio" in j.effect) ratio = j.effect.ratio;
+    this.session({
+      kind: "result",
+      outcome: j.outcome,
+      output: clip(lines.join("\n"), 8000).text,
+      steps: transcript.steps.slice(0, 64).map((st) => ({
+        step: st.step,
+        ...(st.side ? { side: st.side } : {}),
+        exit: st.exit,
+        duration_ms: st.duration_ms,
+        timed_out: st.timed_out,
+        tail: clip([st.stdout_tail, st.stderr_tail].filter((t) => t && t.trim()).join("\n").slice(-1200), 1200).text,
+      })),
+    });
     this.lastAccepted = j.outcome === "accepted" ? { kind, target, diffHash: Bun.hash(diff).toString(), ratio } : null;
     return lines.join("\n");
   }
