@@ -40,7 +40,7 @@ const vercel = {
     { source: "/garage", destination: "/garage/index.html" },
     ...garagePages.map((p) => ({ source: `/${p}`, destination: `/garage/${p}/index.html` })),
     { source: "/contact-fold-3d.html", destination: "/garage/contact-fold-3d.html" },
-    { source: "/:path*", destination: "/index.html" },
+    { source: "/:path*", destination: "/" },
   ],
   headers: [
     { source: "/assets/(.*)", headers: [{ key: "cache-control", value: "public, max-age=60" }] },
