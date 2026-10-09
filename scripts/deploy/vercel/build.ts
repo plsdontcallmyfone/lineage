@@ -30,6 +30,7 @@ cpSync(join(WEB, "public/favicon.svg"), join(OUT, "favicon.svg"));
 cpSync(join(WEB, "public/index.html"), join(OUT, "index.html"));
 cpSync(join(WEB, "public/garage"), join(OUT, "garage"), { recursive: true });
 cpSync(join(WEB, "public/garage/_next"), join(OUT, "_next"), { recursive: true });
+cpSync(join(WEB, "public/garage/fonts"), join(OUT, "fonts"), { recursive: true });
 
 const garagePages = ["aura", "core-motion", "google", "pixelagent", "showcase"];
 const vercel = {

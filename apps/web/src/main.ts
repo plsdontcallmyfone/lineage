@@ -260,12 +260,9 @@ async function connect() {
 // ------------------------------------------------------------------------------------------------
 // theme, tooltips, clicks, timers
 
-function systemDark() {
-  return matchMedia("(prefers-color-scheme: dark)").matches;
-}
+/** Dark is the default (Garage design); light is opted into with data-theme="light". */
 function isDark() {
-  const t = document.documentElement.getAttribute("data-theme");
-  return t ? t === "dark" : systemDark();
+  return document.documentElement.getAttribute("data-theme") !== "light";
 }
 function updateThemeIcon() {
   const b = document.getElementById("theme");
@@ -276,7 +273,8 @@ document.addEventListener("click", (ev) => {
   const t = ev.target as HTMLElement;
   if (t.closest("#theme")) {
     const next = isDark() ? "light" : "dark";
-    document.documentElement.setAttribute("data-theme", next);
+    if (next === "light") document.documentElement.setAttribute("data-theme", "light");
+    else document.documentElement.removeAttribute("data-theme");
     try {
       localStorage.setItem("lineage-theme", next);
     } catch {
@@ -369,7 +367,7 @@ window.addEventListener("resize", () => {
   if (rz) clearTimeout(rz);
   rz = setTimeout(() => mountCharts(document), 120);
 });
-matchMedia("(prefers-color-scheme: dark)").addEventListener("change", updateThemeIcon);
+
 
 // ------------------------------------------------------------------------------------------------
 
