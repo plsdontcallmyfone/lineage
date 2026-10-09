@@ -135,9 +135,8 @@ server are owned by `lineage`, mode 600, in mode 700 directories.
 
 The devnet deployer key (`CVEZW...`, registry and launch admin, upgrade authority) never leaves this
 machine. A key already on the server with a different public key is never replaced (deploy stops).
-Core's chain bridge always uses the public devnet RPC named in `scripts/devnet/devnet.json`; do not put a
-keyed RPC URL into the site's `network.json` `chain.rpc_url`, because Core publishes that field at
-`GET /v1/chain`.
+Core's chain bridge uses the keyed RPC from `rpc.env` when it is on the server, and the public devnet RPC
+otherwise. Core publishes `chain.rpc_url` at `GET /v1/chain` redacted to its host.
 
 **One Core authority at a time.** The site's Core holds the registry's Core authority key and posts
 every epoch it closes (daily), oldest first, never at or before the chain's last epoch. While the site
@@ -210,11 +209,38 @@ no author: its repository `fixture:zigsize` is not an https URL, so `launch_agen
 154 GB, 6,694 MiB available with everything running. Everything fits. The limit is CPU time (see geth-rlp
 cadence), not disk or memory.
 
+**W9c recipes (2026-10-09).** The 9 recipes bip39-py, bip39-go, btcd-bech32, llama2c, subword-nmt,
+hmac-sha256-rs, zig-charm, md5-rs and pyrlp were added in one deploy, each with its own author agent
+(`site-authors.ts`). The amd64 changes follow the same pattern as above: entry_amd64.s for bip39-go and
+btcd-bech32, and `-target x86_64-linux-musl` for zig-charm. Calibration by lineage-bootstrap:
+
+| Recipe | Bootstrap wall | Median evaluation | Largest metric cv |
+|---|---|---|---|
+| bip39-py | 2 min 53 s | 67 s | 1.6e-8 |
+| bip39-go | 8 min 48 s | 341 s | 1.8e-4 |
+| btcd-bech32 | 3 min 59 s | 209 s | 4.2e-5 |
+| llama2c | 52 s | 38 s | 0 |
+| subword-nmt | 2 min 2 s | 46 s | 4.3e-9 |
+| hmac-sha256-rs | 1 min 32 s | 148 s | 0 |
+| zig-charm | 1 min 20 s | 105 s | 0 |
+| md5-rs | 3 min 1 s | 85 s | 0 |
+| pyrlp | 4 min 0 s | 90 s | 6.8e-8 |
+
+**Keyed RPC.** When `~/.config/lineage/rpc.env` exists on the deploying machine, deploy.sh copies it to the
+server (mode 600). `site-config.ts` then writes the resolved keyed URL into network.json, which is mode 600
+for that reason, so Core's chain bridge, the dashboard and lineage-indexer all use it. Core publishes the
+URL only redacted, as `https://devnet.helius-rpc.com (keyed)`.
+
 **Deploy hazards found** (fixed in the kit):
 - Verifiers and authors used to be ordered after lineage-bootstrap. While a long calibration ran they
   were held back, Core assigned them a replay they never committed, and the abandon strikes suspended both
   verifiers for the epoch. They now start without waiting; only lineage-reference still waits.
 - Never submit a candidate by hand while the verifiers are stopped or draining.
+- Workers older than 098ba4f could hang on SIGTERM (a Core request with no timeout) until TimeoutStopSec,
+  which is now 45 minutes so that a running geth-rlp replay can finish. Check that the stopping workers have
+  no job (`docker ps`) and an empty `pending.json` before killing them by PID.
+- Core used to exclude an agent that abandoned a candidate from it forever, so with only two verifiers six
+  candidates stuck in `replaying`. Since a48258d the exclusion lasts only until that epoch ends.
 - A deploy restarts the scripted authors from the top of their lists, so a candidate still queued at that
   moment is submitted again and rejected as `duplicate`. This is harmless.
 

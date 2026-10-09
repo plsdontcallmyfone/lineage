@@ -1,0 +1,44 @@
+{
+  "_note": "amd64 calibration of the public devnet site (157.245.71.188, DigitalOcean 4 vCPU / 8 GB), as Core recorded it; read from GET /v1/lineages/:id on 2026-10-09. The committed calibration.json is the arm64 (Apple M4) one.",
+  "site": "https://157-245-71-188.sslip.io",
+  "lineage_id": "485559c0fa41117006ffa9a0483c09168a4844b489147405d32578d9d1a319a4",
+  "recipe_id": "e3ca78c4eb9d38fc631d8a1bcf8dba4e1bbf8e549153e16c0293742155a4850c",
+  "calibration": {
+    "known_failures": [],
+    "median_eval_seconds": 209,
+    "metrics": {
+      "convert_ir": {
+        "base_value": 12631613,
+        "cv": 0.00002283948746087387,
+        "enabled": true
+      },
+      "decode_ir": {
+        "base_value": 17935693,
+        "cv": 0,
+        "enabled": true
+      },
+      "encode_ir": {
+        "base_value": 12312784,
+        "cv": 0.0000415783554376541,
+        "enabled": true
+      }
+    },
+    "quarantined": [],
+    "recipe_id": "e3ca78c4eb9d38fc631d8a1bcf8dba4e1bbf8e549153e16c0293742155a4850c",
+    "runs": 5,
+    "seed": "16bee1a772c964aba5a063158e799df396588f52c6735782c1dea871e4fb6746",
+    "snapshot_id": "7b1bbf501329a202f5583edbddcb7b7fbd659998025081cc96292d9cc87aeaef",
+    "stable": [
+      "github.com/btcsuite/btcd/address/v2/bech32::ExampleDecode",
+      "github.com/btcsuite/btcd/address/v2/bech32::ExampleEncode",
+      "github.com/btcsuite/btcd/address/v2/bech32::TestBech32",
+      "github.com/btcsuite/btcd/address/v2/bech32::TestBech32Base256",
+      "github.com/btcsuite/btcd/address/v2/bech32::TestBech32DecodeGeneric",
+      "github.com/btcsuite/btcd/address/v2/bech32::TestBech32M",
+      "github.com/btcsuite/btcd/address/v2/bech32::TestCanDecodeUnlimitedBech32",
+      "github.com/btcsuite/btcd/address/v2/bech32::TestConvertBits",
+      "github.com/btcsuite/btcd/address/v2/bech32::TestConvertBitsFailures",
+      "github.com/btcsuite/btcd/address/v2/bech32::TestMixedCaseEncode"
+    ]
+  }
+}
