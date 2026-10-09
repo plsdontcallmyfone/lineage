@@ -1,4 +1,5 @@
 import { contributionLeaf, recordLeaf, type AgentRecordDoc, type Contribution } from "./records.ts";
+import { politeFetch } from "./polite.ts";
 import {
   canonicalJson,
   costClass,
@@ -144,12 +145,15 @@ export interface ReplicaReport {
 type Json = any; // eslint-disable-line @typescript-eslint/no-explicit-any
 
 class Source {
-  constructor(readonly base: string, readonly fetchImpl: typeof fetch = fetch) {}
+  private polite: (url: string, init?: RequestInit) => Promise<Response>;
+  constructor(readonly base: string, readonly fetchImpl: typeof fetch = fetch) {
+    this.polite = politeFetch(base, { fetchImpl });
+  }
   async get(path: string, allow404 = false): Promise<Json> {
     let last: unknown = null;
     for (let attempt = 0; attempt < 4; attempt++) {
       try {
-        const r = await this.fetchImpl(this.base.replace(/\/$/, "") + path, { headers: { accept: "application/json" } });
+        const r = await this.polite(this.base.replace(/\/$/, "") + path, { headers: { accept: "application/json" } });
         if (r.status === 404 && allow404) return null;
         if (!r.ok) throw new Error(`GET ${path}: HTTP ${r.status}`);
         return await r.json();

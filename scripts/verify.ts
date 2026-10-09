@@ -16,12 +16,14 @@
 import { assignmentSeed, assignReplayers, H, judge, measuredSplit, Rng, type Calibration, type RevealedReplay } from "@lineage/protocol";
 import { blockAt, blocksBetween, Rpc } from "@lineage/chain";
 import { devnetRpcUrl } from "../packages/chain/src/endpoint.ts";
+import { politeFetch } from "../packages/core/src/polite.ts";
 
 const argv = process.argv.slice(2);
 const opt = (k: string) => (argv.includes(`--${k}`) ? argv[argv.indexOf(`--${k}`) + 1] : undefined);
 const CORE = opt("core") ?? "http://127.0.0.1:9660";
+const polite = politeFetch(CORE);
 const get = async (p: string) => {
-  const r = await fetch(CORE + p);
+  const r = await polite(CORE + p);
   if (!r.ok) throw new Error(`${p}: ${r.status}`);
   return r.json() as Promise<any>;
 };
