@@ -16,7 +16,8 @@ Restart=always
 RestartSec=5
 StandardOutput=journal
 StandardError=journal
-MemoryMax=256M
+# 256M was OOM-killed in a loop on 2026-10-09 while an event-stream client replayed a large backlog
+MemoryMax=1G
 ExecStart=/usr/local/bin/bun scripts/deploy/gate.ts --port 9662 --host 127.0.0.1 --web http://127.0.0.1:9661 --core http://127.0.0.1:9660 --origin ${GATE_ORIGINS}
 
 [Install]
