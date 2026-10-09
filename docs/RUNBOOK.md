@@ -87,7 +87,7 @@ bun scripts/check-canaries.ts recipes/<name> canaries      # every canary must b
 bun scripts/check-canaries.ts recipes/<name> candidates    # hand-written candidates, judged as one replay each
 ```
 
-Real-repo recipes (20): base58-py, base58-rs, bech32-py, bip39-go, bip39-py, bitcoin-base58, btcd-bech32, geth-rlp, hmac-sha256-rs, lc-text-splitters, llama2c, llmc-cuda, md5-rs, minbpe, ollama-tokenizer, pyrlp, solana-config, subword-nmt, zig-charm, zig-clap; fixtures: fixture-b58, fixture-cu-tally, fixture-cuda, fixture-zigsize. Hand-written canaries and candidates for a recipe come from its `patch-defs.json` (`bun scripts/make-canaries.ts <name>`).
+Real-repo recipes (21): base58-py, base58-rs, bech32-py, bip39-go, bip39-py, bitcoin-base58, btcd-bech32, geth-rlp, hmac-sha256-rs, lc-text-splitters, llama2c, llmc-cuda, md5-rs, minbpe, ollama-tokenizer, pyrlp, solana-config, spl-record, subword-nmt, zig-charm, zig-clap; fixtures: fixture-b58, fixture-cu-tally, fixture-cuda, fixture-zigsize. Hand-written canaries and candidates for a recipe come from its `patch-defs.json` (`bun scripts/make-canaries.ts <name>`).
 
 Calibration results are committed in `recipes/<name>/calibration.json`; `check-canaries.ts` reuses them when the recipe id matches and writes `recipes/<name>/<set>/results.json`. It exits 1 on any verdict that differs from the expected one in `index.json`. The CUDA recipes (`fixture-cuda`, `llmc-cuda`) need an NVIDIA GPU (`scripts/gpu/`). `geth-rlp` takes about 21 minutes per evaluation. The solana compute-unit fixture has its own check: `bun fixtures/cu-tally-patches/check.ts`.
 
