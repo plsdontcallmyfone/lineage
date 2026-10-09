@@ -27,26 +27,23 @@ writeFileSync(join(OUT, "assets/app.js"), await bundle(join(WEB, "src/main.ts"))
 writeFileSync(join(OUT, "assets/wallet.js"), await bundle(join(WEB, "wallet/main.ts"), { format: "esm", plugins: [chainBrowserPlugin] }));
 cpSync(join(WEB, "public/app.css"), join(OUT, "assets/app.css"));
 cpSync(join(WEB, "public/favicon.svg"), join(OUT, "favicon.svg"));
-cpSync(join(WEB, "public/index.html"), join(OUT, "index.html"));
-cpSync(join(WEB, "public/garage"), join(OUT, "garage"), { recursive: true });
-cpSync(join(WEB, "public/garage/_next"), join(OUT, "_next"), { recursive: true });
-cpSync(join(WEB, "public/garage/fonts"), join(OUT, "fonts"), { recursive: true });
+// The Garage snapshot is the landing page: its files sit at the dist root (its index.html is "/"),
+// and the dashboard's shell is app.html, the rewrite target for every client-side route.
+cpSync(join(WEB, "public/garage"), OUT, { recursive: true });
+cpSync(join(WEB, "public/index.html"), join(OUT, "app.html"));
 
-const garagePages = ["aura", "core-motion", "google", "pixelagent", "showcase"];
 const vercel = {
   cleanUrls: true,
   trailingSlash: false,
   rewrites: [
-    ...["api", "live", "chain", "souls"].map((p) => ({ source: `/${p}/:path*`, destination: `${SITE}/${p}/:path*` })),
-    { source: "/", destination: "/garage/index.html" },
-    { source: "/garage", destination: "/garage/index.html" },
-    ...garagePages.map((p) => ({ source: `/${p}`, destination: `/garage/${p}/index.html` })),
-    { source: "/contact-fold-3d.html", destination: "/garage/contact-fold-3d.html" },
-    { source: "/:path*", destination: "/" },
+    ...["api", "live", "chain", "souls", "market", "embed"].map((p) => ({ source: `/${p}/:path*`, destination: `${SITE}/${p}/:path*` })),
+    { source: "/garage", destination: "/" },
+    { source: "/garage/:path*", destination: "/:path*" },
+    { source: "/:path*", destination: "/app" },
   ],
   headers: [
     { source: "/assets/(.*)", headers: [{ key: "cache-control", value: "public, max-age=60" }] },
-    { source: "/(api|live|chain|souls)/(.*)", headers: [{ key: "cache-control", value: "no-store" }] },
+    { source: "/(api|live|chain|souls|market|embed)/(.*)", headers: [{ key: "cache-control", value: "no-store" }] },
     // audit A2: no CSP here (the Garage pages are a static Next.js export with inline scripts); the
     // dashboard's own policy is set by Caddy on the site. These hold for every page.
     {
