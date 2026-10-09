@@ -54,6 +54,11 @@ SITE_NAMES="${SITE_NAMES#,}"
 [ -n "$SITE_NAMES" ] || { echo "no site name: give the server's IPv4 address as <host>, or SITE_NAMES / DOMAIN" >&2; exit 2; }
 ORIGINS="$(echo "$SITE_NAMES" | tr ',' '\n' | sed 's|^|https://|' | paste -sd, -)"
 [ "$DRY_RUN" = 1 ] && [ -n "${DRY_RUN_ORIGIN:-}" ] && ORIGINS="$ORIGINS,$DRY_RUN_ORIGIN"
+# other front ends that proxy to this site (e.g. Vercel rewrites forward the browser's Origin)
+if [ -n "${EXTRA_ORIGINS:-}" ]; then
+  echo "$EXTRA_ORIGINS" | tr ',' '\n' | grep -qvE '^https://[A-Za-z0-9.-]+$' && { echo "EXTRA_ORIGINS must be comma-separated https://host origins" >&2; exit 2; }
+  ORIGINS="$ORIGINS,$EXTRA_ORIGINS"
+fi
 SHA="$(git rev-parse "${DEPLOY_REF:-HEAD}^{commit}")"
 git merge-base --is-ancestor "$SHA" HEAD || { echo "DEPLOY_REF must be HEAD or one of its ancestors" >&2; exit 2; }
 

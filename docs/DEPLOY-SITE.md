@@ -350,3 +350,8 @@ no Docker in that container, so the sandbox units are skipped there and nothing 
 and site-chain run as plans); Core runs in devnet chain mode read only and Caddy uses internal TLS. The
 last result is `scripts/deploy/DRYRUN-LAST.json`. Gate unit tests: `bun test scripts/deploy`. The sandbox
 units, the amd64 recalibration and the devnet registration run for the first time on the real server.
+
+**Other front ends.** A front end on another domain that proxies to this site (the Vercel build in
+`scripts/deploy/vercel/` rewrites `/chain`, `/api`, `/live` and `/souls` here) forwards the browser's
+Origin, and the gate only accepts wallet writes (`/chain/rpc`, `/chain/faucet`) from listed origins. List
+them at deploy time: `EXTRA_ORIGINS=https://lineage-sable.vercel.app,https://lineage-garage.vercel.app`.
