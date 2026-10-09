@@ -7,14 +7,15 @@ describe("identity http input bounds", () => {
     expect(await readCapped(new Request("http://x/", { method: "POST", body: "a".repeat(10) }), 16)).toBe("a".repeat(10));
     expect(await readCapped(new Request("http://x/", { method: "POST", body: "a".repeat(17) }), 16)).toBeNull();
     let pulled = 0;
-    const stream = new ReadableStream<Uint8Array>({
-      pull(c) {
+    const Stream = globalThis.ReadableStream as any; // untyped: keeps the DOM stream types out of this program
+    const body = new Stream({
+      pull(c: any) {
         pulled++;
         if (pulled > 1000) return c.close();
         c.enqueue(new Uint8Array(1024));
       },
     });
-    expect(await readCapped(new Request("http://x/", { method: "POST", body: stream, duplex: "half" } as RequestInit), 4096)).toBeNull();
+    expect(await readCapped(new Request("http://x/", { method: "POST", body, duplex: "half" } as any), 4096)).toBeNull();
     expect(pulled).toBeLessThan(20); // stopped reading early, did not buffer the whole stream
   });
 
