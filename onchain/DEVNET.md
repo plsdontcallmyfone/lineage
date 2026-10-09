@@ -514,3 +514,35 @@ from finalized devnet slots, the audit decision from the candidate's draw, and `
 |---|---|---|---|---|---|
 | candidate 33b920df... round 0 | 508956837 | 508956869 | 508956869 | BAEYz1am1359KHquoipFFE2Z5tqiFhJWBe1gEHacR7s3 | 6.8 s |
 | audit 80609371... round 0 | 508956973 | 508957005 | 508957005 | AAyo3WwgbVGp6bW7xwEdi8AeMadbHT2ikFKhiYJaDt4t | 6.7 s |
+
+## Graduation e2e run 20261009152905 (launchpad L1, scripts/devnet/graduation-e2e.ts)
+
+Outcome: PASS; checks 16/16.
+
+- Preconditions: deployer CVEZWyUBoNb6Zkte3qa7JDu5TBV4wTH6wMw4pLodnDih 67.919470850 SOL and 998877371 tLINE; DBC config AEcaMdhK3PSqPDq2rrXZMoKsCPCTVTMdqJXaT34mWWGw migration threshold 15999999999792 base units, migration option 1, partner/creator permanent lock 100/0%; DBC pool authority holds 99.226635387 SOL (it lends migration rent); rent: DAMM pool 0.006299200, position 0.002722880 SOL.
+- Curve fill: the deployer paid 16494845360611 tLINE base units in one PartialFill buy (quote reserve 15999999999792, partner fee 395876288656).
+- Migration positions: CC4ZQFcsDBKfCqNXipEnvTy77EGQjkERWmpNU1qaZoM2 (NFT Dd6MS4NJLzHUHM17Gr9yAsDLEqJSKbmuNKMZ18osnpqr, locked 329325419000909866030255248650428, unlocked 0).
+- crank_pool_fees (migration position): compute vault 363zLyPBM7KvkeWo4UP285uMSBp4W4fKZEkx9B5k9P3Y 277113402059 -> 326374344523 base units (+49260942464), treasury +21111832485, agent-token fees burned 0.
+- crank_pool_fees (repointed position): compute vault 363zLyPBM7KvkeWo4UP285uMSBp4W4fKZEkx9B5k9P3Y 326374344523 -> 340117655127 base units (+13743310604), treasury +5889990259, agent-token fees burned 0.
+- Token mint AbBT1Mh3mQJgMfVVfKj8zUZhD4mLw5NqbJptFUacb9Zz; agent EfyccrDk4Tg77PapaYf4tPMsmLLz6yAEKA57VhN62pMq; DBC pool 74CFRruagi96s8GWSAj49cU2kCUM66wERiuQDa1t1xmb; DAMM v2 pool 6mNHiH2MzGD4bHFMkB8R6aGTLAR2D1ovcFRVMqUFfvkp; migration position CC4ZQFcsDBKfCqNXipEnvTy77EGQjkERWmpNU1qaZoM2; repointed position 4nd5ej1p3VqGv4FxMUQM3cuh45zQbDFjwUant75b5Tsk; compute vault 363zLyPBM7KvkeWo4UP285uMSBp4W4fKZEkx9B5k9P3Y ends at 340117655127 base units (to_compute 340117655127, to_protocol 145764709341).
+- Deployer spent 0.042965040 SOL and 26281388263497 tLINE base units (curve fill, DAMM trades, locked liquidity); it still holds 50193807575216 agent-token base units.
+
+| When (UTC) | Step | What | Fee | Signature |
+|---|---|---|---|---|
+| 2026-10-09 15:29:09 | L1 | launch_agent: TEST graduation agent EfyccrDk4Tg77PapaYf4tPMsmLLz6yAEKA57VhN62pMq on https://github.com/karpathy/minbpe, agent mint AbBT1Mh3mQJgMfVVfKj8zUZhD4mLw5NqbJptFUacb9Zz, launcher = deployer | 15000 | `5U2B6nhCYy7cJrRYCqAoZG5sBpEEgK4w9ssMegRnum9KiKKqeZRLYLbHGg8T2vff7fHSQeb8GHh1UuwNSx9ZjVBB` |
+| 2026-10-09 15:29:11 | L1 | create the launch authority's and the deployer's agent-token ATAs | 5000 | `439Ra9Qx2yVYLcuGXKNzyv7cPzm4XQjSWP13NkwbJ6kgbtbgYenDQq2zDxfaJX2etpx3tpTkE6yTpCVeeZYnZVsM` |
+| 2026-10-09 15:29:13 | L1 | fill the curve: deployer buys with up to 17599999999771 tLINE base units (PartialFill, stops at the threshold) | 5000 | `4HRQQZLrssiiE628hihVX1mdHtrey9eUqNChFtYCK6YWkXHj5HBC2nesajzsJzVUKiduE2taJjYt4vv6E5iF2foc` |
+| 2026-10-09 15:29:24 | L1 | crank_fees: curve partner fee 395876288656 base units | 5000 | `5GE692Wbb7g3XxKy8nfXuCk6SEmBy6f92vuU625pQhTuUa8Ns1pt9iSyPjhzahQthQzmWGmZn9fzrpvkAaN4VcHC` |
+| 2026-10-09 15:29:26 | L1 | Meteora DBC migration_damm_v2: DAMM v2 pool 6mNHiH2MzGD4bHFMkB8R6aGTLAR2D1ovcFRVMqUFfvkp on config A8gMrEPJkacWkcb3DGwtJwTe16HktSEfvwtuDh2MCtck | 15000 | `2t7gGK2G5AVY5h7ETNVCgwkwmZVsaga2W1Hfr53eVkoTJcoXCKuhg8eTseKAZeh2XiSokTjypxeGYwD8zpbjt5ZU` |
+| 2026-10-09 15:29:28 | L1 | graduate: DAMM v2 pool 6mNHiH2MzGD4bHFMkB8R6aGTLAR2D1ovcFRVMqUFfvkp, migration position CC4ZQFcsDBKfCqNXipEnvTy77EGQjkERWmpNU1qaZoM2 | 5000 | `45KsTw5VkWHEaWFm2SekcYqVPhbNxdK6sJnsbuNTKyw3pW5VDFeDXeQLSRs15FDaMrwEZKHAFvraVCFNa8BJLtZU` |
+| 2026-10-09 15:29:34 | L1 | DAMM v2 trade (migration position): deployer buys with 200000 tLINE | 5000 | `4GtTHiSzF39LJtndbTgwtfLDBwioBWee6uGm1qrvwHqZWrEKAfTmAxhpLf6AvakuXFUqAKo6MiHWGHZ6F1tcHyf2` |
+| 2026-10-09 15:29:39 | L1 | DAMM v2 trade (migration position): deployer sells 4011979457935 agent-token base units | 5000 | `3NnnED1Q2GYDaioL27Zv2p8aKyPrmZmiG4qemqxWa66qCn2rc5wthkEu2M5f53PhzToPtci7bFB2o9wVRyZK8EXn` |
+| 2026-10-09 15:29:41 | L1 | crank_pool_fees (migration position): position CC4ZQFcsDBKfCqNXipEnvTy77EGQjkERWmpNU1qaZoM2 into compute vault 363zLyPBM7KvkeWo4UP285uMSBp4W4fKZEkx9B5k9P3Y | 5000 | `a1SMbZQKg71NyYnEj4LC8mQeoSdNKA2GZ6cajoBi5jJ8ji7uK76TPA91U5AnPxxeEnfHhiuaieXdMHfM654mS8a` |
+| 2026-10-09 15:29:43 | L1 | DAMM v2 create_position 4nd5ej1p3VqGv4FxMUQM3cuh45zQbDFjwUant75b5Tsk (deployer owns the NFT) | 10000 | `3wBHQsh2VBiEamcPkZLUmZwoLpPDW8GNYrkLkLSV2BZxZo6fgAF9Jm5TP6K4zWFch8p9er8TZEdqEpudUgqqu2xL` |
+| 2026-10-09 15:29:51 | L1 | add_liquidity 329325419000909866030255248650429 (migration position locked + 1), permanent_lock_position, hand the NFT account to the launch authority | 5000 | `482eBJmn5S3xcAgyYF2xhxmiLspDHyUHHMm2c4WtGcF6of14yK81hAzQQvkCiRzYzN4x13e5WXaBUrQ1Ts2S4wFM` |
+| 2026-10-09 15:29:53 | L1 | repoint_position: CC4ZQFcsDBKfCqNXipEnvTy77EGQjkERWmpNU1qaZoM2 -> 4nd5ej1p3VqGv4FxMUQM3cuh45zQbDFjwUant75b5Tsk | 5000 | `3zn9K1ZAzuy6QjY9bCyGSpumkaAMH3199dAu5QzP8JAiDL8u52yJPV13o53DWdrBg6tXtwRqQ1LoPfEJPPLPcRif` |
+| 2026-10-09 15:29:55 | L1 | DAMM v2 trade (repointed position): deployer buys with 200000 tLINE | 5000 | `ejSb3Y45BcLphC1f5WQ1kKjTxkiujtMx5ZrH6s3GcdCr4NFjaY6Q7U1FsaTxMm9btpGH89VUANc8i6Cv1BGRMWx` |
+| 2026-10-09 15:29:57 | L1 | DAMM v2 trade (repointed position): deployer sells 2641779346064 agent-token base units | 5000 | `5KNVbANFmNnqaicQTp46YZk4ktiuU77qu2178UuexndurXcGKW4HVSoSM3anYYgAJkrJ8ufBUMXYe5VtkBFWiWEA` |
+| 2026-10-09 15:29:59 | L1 | crank_pool_fees (repointed position): position 4nd5ej1p3VqGv4FxMUQM3cuh45zQbDFjwUant75b5Tsk into compute vault 363zLyPBM7KvkeWo4UP285uMSBp4W4fKZEkx9B5k9P3Y | 5000 | `dC5P7KcVvgGvTGcFNkzfnjppuob9Xhv8B3g76RfnWmje547UNCYNaXAfipqkv237NoVDX1u15u2Xc4skFD1vxVt` |
+
+L1 notes (2026-10-09): `lineage_launch` needed no fix and was not upgraded (devnet build `2bf5fb61...9b34`). Meteora DBC on devnet was redeployed after the LiteSVM vendor dump (last deployed slot 508,712,305; dump sha256 `5edf76d9...8ad3`, vendored pin `f5ccbb01...79f0`, DBC branch release_0.2.2 head adds config versions and quote-mint scoring, #215); DAMM v2 is unchanged (`82bb9375...1ec2`). The launch suite run against the new DBC dump in a scratch copy passed 13/13, so the vendored pin is stale but the interface is unchanged; the existing DBC config is a legacy (version 0) config and launches on it still work. The migration created one position (100% partner lock, no creator share), and DAMM v2 paid the locked position's fees in tLINE only (no agent tokens to burn).

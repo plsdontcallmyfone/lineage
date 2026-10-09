@@ -1,10 +1,11 @@
-import { sha256, toAddress, Writer, type Address } from "./codec.ts";
+import { addressBytes, sha256, toAddress, Writer, type Address } from "./codec.ts";
 import { pda, SYSTEM_PROGRAM, TOKEN_2022_PROGRAM, TOKEN_PROGRAM } from "./pda.ts";
 import { launchPdas, METEORA } from "./launch.ts";
 import { r, w, type Ix } from "./registry.ts";
 
-// Meteora DBC calls the devnet scripts make directly: create_config (the DBC config a launch uses)
-// and swap2 (a trade on an agent's curve), plus the VirtualPool fields the scripts read. The
+// Meteora DBC calls the devnet scripts make directly: create_config (the DBC config a launch uses),
+// swap2 (a trade on an agent's curve) and migration_damm_v2, the DAMM v2 calls graduation needs
+// (swap2, create_position, add_liquidity, permanent_lock_position), plus the fields the scripts read. The
 // encoding is the LiteSVM suite's `encode_params` (onchain/tests/src/lib.rs), checked there against
 // the real DBC build.
 
@@ -87,9 +88,13 @@ export const dbc = {
       data: new Writer().bytes(disc("create_config")).bytes(encodeDbcParams(a.params)).done(),
     };
   },
-  /** swap2 in ExactIn mode (0). Buy: `$LINE` in, agent tokens out. */
+  /**
+   * swap2, ExactIn (mode 0) unless `mode` says otherwise. Buy: `$LINE` in, agent tokens out. DBC
+   * refuses an ExactIn buy past the migration threshold; PartialFill (1) stops at it and leaves the
+   * rest of the input with the buyer, so the buy that completes a curve uses PartialFill.
+   */
   swap(a: { config: Address; pool: Address; agentMint: Address; lineMint: Address; trader: Address; lineAccount: Address; agentAccount: Address;
-    buy: boolean; amountIn: bigint; minOut: bigint; lineTokenProgram?: Address }): Ix {
+    buy: boolean; amountIn: bigint; minOut: bigint; lineTokenProgram?: Address; mode?: number }): Ix {
     const [input, output] = a.buy ? [a.lineAccount, a.agentAccount] : [a.agentAccount, a.lineAccount];
     const baseVault = launchPdas.dbcVault(a.agentMint, a.pool);
     const quoteVault = launchPdas.dbcVault(a.lineMint, a.pool);
@@ -98,10 +103,121 @@ export const dbc = {
       keys: [r(METEORA.dbcPoolAuthority), r(a.config), w(a.pool), w(input), w(output), w(baseVault), w(quoteVault), r(a.agentMint), r(a.lineMint),
         r(a.trader, true), r(TOKEN_2022_PROGRAM), r(a.lineTokenProgram ?? TOKEN_PROGRAM), r(METEORA.dbcProgram), r(dbcEventAuthority()),
         r(METEORA.dbcProgram)],
-      data: new Writer().bytes(disc("swap2")).u64(a.amountIn).u64(a.minOut).u8(0).done(),
+      data: new Writer().bytes(disc("swap2")).u64(a.amountIn).u64(a.minOut).u8(a.mode ?? 0).done(),
+    };
+  },
+  /**
+   * Meteora's permissionless `migration_damm_v2` (DBC release_0.2.2 `MigrateDammV2Ctx`): once the
+   * curve is complete, DBC creates the DAMM v2 pool on `dammConfig` and its positions. Signers:
+   * `payer` and both fresh NFT mint keypairs. `migration_metadata` is optional and passed as the DBC
+   * program id (None); the DAMM v2 config rides as the one remaining account.
+   */
+  migrationDammV2(a: { dbcPool: Address; dbcConfig: Address; agentMint: Address; lineMint: Address; firstNftMint: Address; secondNftMint: Address;
+    payer: Address; lineTokenProgram?: Address; dammConfig?: Address }): Ix {
+    const dammConfig = a.dammConfig ?? METEORA.dammDynamicConfig;
+    const pool = launchPdas.dammPool(a.agentMint, a.lineMint, dammConfig);
+    const p1 = dammPdas.position(a.firstNftMint), n1 = dammPdas.positionNftAccount(a.firstNftMint);
+    const p2 = dammPdas.position(a.secondNftMint), n2 = dammPdas.positionNftAccount(a.secondNftMint);
+    return {
+      programId: METEORA.dbcProgram,
+      keys: [
+        w(a.dbcPool), r(METEORA.dbcProgram), r(a.dbcConfig), w(METEORA.dbcPoolAuthority), w(pool),
+        w(a.firstNftMint, true), w(n1), w(p1), w(a.secondNftMint, true), w(n2), w(p2),
+        r(METEORA.dammPoolAuthority), r(METEORA.dammV2Program), w(a.agentMint), w(a.lineMint),
+        w(launchPdas.dammVault(a.agentMint, pool)), w(launchPdas.dammVault(a.lineMint, pool)),
+        w(launchPdas.dbcVault(a.agentMint, a.dbcPool)), w(launchPdas.dbcVault(a.lineMint, a.dbcPool)),
+        w(a.payer, true), r(TOKEN_2022_PROGRAM), r(a.lineTokenProgram ?? TOKEN_PROGRAM), r(TOKEN_2022_PROGRAM), r(METEORA.dammEventAuthority),
+        r(SYSTEM_PROGRAM), r(dammConfig),
+      ],
+      data: disc("migration_damm_v2"),
     };
   },
 };
+
+// ---------- DAMM v2 (cp_amm release_0.2.5; account lists as its IDL) ----------
+
+export const dammPdas = {
+  position: (nftMint: Address) => pda(METEORA.dammV2Program, "position", addressBytes(nftMint)),
+  positionNftAccount: (nftMint: Address) => pda(METEORA.dammV2Program, "position_nft_account", addressBytes(nftMint)),
+};
+
+const dammTail = () => [r(METEORA.dammEventAuthority), r(METEORA.dammV2Program)];
+
+export const damm = {
+  /** swap2 ExactIn (mode 0). Buy: `$LINE` (token B) in, agent tokens (token A) out. No referral account (the program id stands for None). */
+  swap(a: { pool: Address; agentMint: Address; lineMint: Address; trader: Address; lineAccount: Address; agentAccount: Address; buy: boolean;
+    amountIn: bigint; minOut: bigint; lineTokenProgram?: Address }): Ix {
+    const [input, output] = a.buy ? [a.lineAccount, a.agentAccount] : [a.agentAccount, a.lineAccount];
+    return {
+      programId: METEORA.dammV2Program,
+      keys: [r(METEORA.dammPoolAuthority), w(a.pool), w(input), w(output), w(launchPdas.dammVault(a.agentMint, a.pool)),
+        w(launchPdas.dammVault(a.lineMint, a.pool)), r(a.agentMint), r(a.lineMint), r(a.trader, true), r(TOKEN_2022_PROGRAM),
+        r(a.lineTokenProgram ?? TOKEN_PROGRAM), r(METEORA.dammV2Program), ...dammTail()],
+      data: new Writer().bytes(disc("swap2")).u64(a.amountIn).u64(a.minOut).u8(0).done(),
+    };
+  },
+  /** create_position: `payer` pays, `owner` gets the NFT. Signers: payer and `nftMint` (fresh keypair). */
+  createPosition(a: { owner: Address; nftMint: Address; pool: Address; payer: Address }): Ix {
+    return {
+      programId: METEORA.dammV2Program,
+      keys: [r(a.owner), w(a.nftMint, true), w(dammPdas.positionNftAccount(a.nftMint)), w(a.pool), w(dammPdas.position(a.nftMint)),
+        r(METEORA.dammPoolAuthority), w(a.payer, true), r(TOKEN_2022_PROGRAM), r(SYSTEM_PROGRAM), ...dammTail()],
+      data: disc("create_position"),
+    };
+  },
+  /** add_liquidity, signed by the position NFT's holder; the thresholds are the most of each token it may take. */
+  addLiquidity(a: { pool: Address; nftMint: Address; owner: Address; agentMint: Address; lineMint: Address; agentAccount: Address; lineAccount: Address;
+    liquidity: bigint; maxAgent: bigint; maxLine: bigint; lineTokenProgram?: Address }): Ix {
+    return {
+      programId: METEORA.dammV2Program,
+      keys: [w(a.pool), w(dammPdas.position(a.nftMint)), w(a.agentAccount), w(a.lineAccount), w(launchPdas.dammVault(a.agentMint, a.pool)),
+        w(launchPdas.dammVault(a.lineMint, a.pool)), r(a.agentMint), r(a.lineMint), r(dammPdas.positionNftAccount(a.nftMint)), r(a.owner, true),
+        r(TOKEN_2022_PROGRAM), r(a.lineTokenProgram ?? TOKEN_PROGRAM), ...dammTail()],
+      data: new Writer().bytes(disc("add_liquidity")).u128(a.liquidity).u64(a.maxAgent).u64(a.maxLine).done(),
+    };
+  },
+  /** permanent_lock_position, signed by the position NFT's holder. */
+  permanentLock(a: { pool: Address; nftMint: Address; owner: Address; liquidity: bigint }): Ix {
+    return {
+      programId: METEORA.dammV2Program,
+      keys: [w(a.pool), w(dammPdas.position(a.nftMint)), r(dammPdas.positionNftAccount(a.nftMint)), r(a.owner, true), ...dammTail()],
+      data: new Writer().bytes(disc("permanent_lock_position")).u128(a.liquidity).done(),
+    };
+  },
+};
+
+/** Token-2022 SetAuthority(AccountOwner): hands a position NFT account (and so the position) to `newOwner`. */
+export function setTokenAccountOwner(account: Address, newOwner: Address, owner: Address, tokenProgram: Address = TOKEN_2022_PROGRAM): Ix {
+  return { programId: tokenProgram, keys: [w(account), r(owner, true)], data: new Writer().u8(6).u8(2).u8(1).address(newOwner).done() };
+}
+
+/** DAMM v2 Pool fields (offsets include the discriminator; `lineage_launch` meteora.rs reads the same). */
+export interface DammPoolView {
+  tokenAMint: Address;
+  tokenBMint: Address;
+  creator: Address;
+  liquidity: bigint;
+  permanentLockLiquidity: bigint;
+}
+const u128At = (d: Uint8Array, o: number) => {
+  const dv = new DataView(d.buffer, d.byteOffset, d.length);
+  return dv.getBigUint64(o, true) | (dv.getBigUint64(o + 8, true) << 64n);
+};
+export function decodeDammPool(d: Uint8Array): DammPoolView {
+  return { tokenAMint: toAddress(d.subarray(168, 200)), tokenBMint: toAddress(d.subarray(200, 232)), creator: toAddress(d.subarray(648, 680)),
+    liquidity: u128At(d, 360), permanentLockLiquidity: u128At(d, 552) };
+}
+export interface DammPositionView {
+  pool: Address;
+  nftMint: Address;
+  unlockedLiquidity: bigint;
+  vestedLiquidity: bigint;
+  permanentLockedLiquidity: bigint;
+}
+export function decodeDammPosition(d: Uint8Array): DammPositionView {
+  return { pool: toAddress(d.subarray(8, 40)), nftMint: toAddress(d.subarray(40, 72)), unlockedLiquidity: u128At(d, 152),
+    vestedLiquidity: u128At(d, 168), permanentLockedLiquidity: u128At(d, 184) };
+}
 
 /** VirtualPool fields (offsets include the discriminator; the suite's `dbc_view` and the launch program's reader). */
 export interface DbcPoolView {
