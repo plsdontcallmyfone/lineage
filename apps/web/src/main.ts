@@ -28,10 +28,10 @@ import { icon, logo } from "./ui.ts";
 
 type Handler = (params: string[]) => Promise<Page>;
 const routes: [RegExp, Handler, string][] = [
-  [/^\/$/, overview, "/"],
-  [/^\/lineages\/([0-9a-f]{64})$/, lineagePage, "/"],
-  [/^\/generations\/([0-9a-f]{64})$/, generationPage, "/"],
-  [/^\/candidates\/([0-9a-f]{64})$/, candidatePage, "/"],
+  [/^\/(?:network)?$/, overview, "/network"],
+  [/^\/lineages\/([0-9a-f]{64})$/, lineagePage, "/network"],
+  [/^\/generations\/([0-9a-f]{64})$/, generationPage, "/network"],
+  [/^\/candidates\/([0-9a-f]{64})$/, candidatePage, "/network"],
   [/^\/agents$/, agentsPage, "/agents"],
   [/^\/agents\/([1-9A-HJ-NP-Za-km-z]{32,44})$/, agentPage, "/agents"],
   [/^\/epochs$/, epochsPage, "/epochs"],
@@ -62,7 +62,7 @@ function shell() {
   app.innerHTML = html`<header class="top"><div class="top-in">
       <a class="brand" href="/">${logo}<span>Lineage</span><span class="ph">placeholder name</span></a>
       <nav class="nav" aria-label="Main">
-        <a href="/" data-nav="/">Network</a>
+        <a href="/network" data-nav="/network">Network</a>
         <a href="/live" data-nav="/live">Live</a>
         <a href="/machines" data-nav="/machines">Machines</a>
         <a href="/agents" data-nav="/agents">Agents</a>
@@ -96,7 +96,7 @@ function errorView(e: unknown) {
   if (err.code === "core_unreachable" || err.status === 502)
     return html`<div class="panel errorbox"><h1>Core is not answering</h1><p>${err.message}</p>
       <p>Start Core and reload: <code>bun packages/core/src/main.ts --port 9660 --admin-key &lt;path&gt;</code>, or point the dashboard elsewhere with <code>bun apps/web/server.ts --core &lt;url&gt;</code>.</p></div>`;
-  if (err.status === 404) return html`<div class="panel errorbox"><h1>Not found</h1><p>Core has no record with this id (${err.code}: ${err.message}).</p><p><a class="link" href="/">Back to the network overview</a></p></div>`;
+  if (err.status === 404) return html`<div class="panel errorbox"><h1>Not found</h1><p>Core has no record with this id (${err.code}: ${err.message}).</p><p><a class="link" href="/network">Back to the network overview</a></p></div>`;
   return html`<div class="panel errorbox"><h1>Could not load this page</h1><p>${err.code}: ${err.message}</p></div>`;
 }
 
@@ -106,7 +106,7 @@ async function render(opts: { soft?: boolean } = {}) {
   const seq = ++renderSeq;
   const match = routes.map(([re, h, nav]) => ({ m: re.exec(path), h, nav })).find((x) => x.m);
   if (!match) {
-    main.innerHTML = html`<div class="panel errorbox"><h1>No such page</h1><p><a class="link" href="/">Back to the network overview</a></p></div>`.s;
+    main.innerHTML = html`<div class="panel errorbox"><h1>No such page</h1><p><a class="link" href="/network">Back to the network overview</a></p></div>`.s;
     return;
   }
   setNav(match.nav);

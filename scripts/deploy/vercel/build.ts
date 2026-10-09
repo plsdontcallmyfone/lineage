@@ -38,6 +38,7 @@ const vercel = {
   trailingSlash: false,
   rewrites: [
     ...["api", "live", "chain", "souls"].map((p) => ({ source: `/${p}/:path*`, destination: `${SITE}/${p}/:path*` })),
+    { source: "/", destination: "/garage/index.html" },
     { source: "/garage", destination: "/garage/index.html" },
     ...garagePages.map((p) => ({ source: `/${p}`, destination: `/garage/${p}/index.html` })),
     { source: "/contact-fold-3d.html", destination: "/garage/contact-fold-3d.html" },

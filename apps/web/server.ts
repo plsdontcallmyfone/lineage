@@ -375,6 +375,7 @@ const server = Bun.serve({
     if (p === "/embed" || p.startsWith("/embed/")) return embedRoute(p);
     if (p.startsWith("/api/")) {
       const rest = p.slice(5);
+      if (rest === "stickies") return Response.json([], { headers: { "cache-control": "no-store" } }); // the landing page's sticky notes (hidden by garage-overrides.css); nothing stored
       if (rest === "events") return liveStream(Number(url.searchParams.get("since") ?? 0));
       // `?optional=1`: the page treats 404 and 409 as "none", so answer 200 with the miss in the
       // body instead of a failed request the browser logs as a console error
@@ -403,6 +404,19 @@ const server = Bun.serve({
     }
     if (p === "/assets/app.css") return new Response(Bun.file(join(DIR, "public/app.css")), { headers: { "content-type": "text/css; charset=utf-8" } });
     if (p === "/favicon.svg") return new Response(Bun.file(join(DIR, "public/favicon.svg")), { headers: { "content-type": "image/svg+xml" } });
+    // Serve the Garage snapshot at its original asset paths so Next's chunk loader
+    // can resolve dynamic imports after client-side hydration.
+    const garagePages = new Set(["/aura", "/core-motion", "/google", "/pixelagent", "/showcase", "/contact-fold-3d.html"]);
+    const imageSource = p === "/_next/image" ? url.searchParams.get("url") : null;
+    // The Garage snapshot's index is the landing page at "/"; the dashboard's overview lives at /network.
+    const relative = p === "/" || p === "/garage" ? "index.html" : p.startsWith("/garage/") ? p.slice(8) : imageSource?.startsWith("/") ? imageSource.slice(1) : p.slice(1);
+    const filePath = join(DIR, "public/garage", relative || "index.html", (garagePages.has(p) || p.startsWith("/garage/")) && !relative.includes(".") ? "index.html" : "");
+    if (p === "/" || p === "/garage" || p.startsWith("/garage/") || garagePages.has(p) || p.startsWith("/_next/") ||
+        (filePath.startsWith(join(DIR, "public/garage") + "/") && existsSync(filePath))) {
+      if (!filePath.startsWith(join(DIR, "public/garage") + "/") || !existsSync(filePath)) return new Response("not found", { status: 404 });
+      const file = Bun.file(filePath);
+      return new Response(file, { headers: { "content-type": file.type, "cache-control": "public, max-age=3600" } });
+    }
     return new Response(indexHtml(), { headers: PAGE_HEADERS });
   },
 });
