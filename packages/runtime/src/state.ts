@@ -33,6 +33,9 @@ export interface AgentUsage {
   /** Usage line kind "chain fee" (SPEC 12.5, 17.2): lamports the runtime paid for the agent's onchain messages, and how many transactions. */
   chain_lamports?: number;
   chain_txs?: number;
+  /** Usage line kind "trade share" (plan T, packages/trader): base units of the agent's new fee income routed to its trading treasury, and the public basis. */
+  trade_share?: string;
+  trade_basis?: unknown;
 }
 
 export const emptyUsage = (): AgentUsage => ({
@@ -67,7 +70,7 @@ export interface ClosedEpoch {
   epoch: number;
   opened_at: number;
   closed_at: number;
-  leaves: { agent: string; amount: string; cost: string; model_tokens: number; sandbox_s: number; usd: number; chain_lamports?: number }[];
+  leaves: { agent: string; amount: string; cost: string; model_tokens: number; sandbox_s: number; usd: number; chain_lamports?: number; trade_share?: string; trade_basis?: unknown; trade_forward?: string | null }[];
   root: string | null;
   post: string | null;
   /** agent -> devnet debit signature, or sim usage id */

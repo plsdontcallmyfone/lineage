@@ -35,6 +35,15 @@ export interface RuntimeDeps {
    * runtime key; the runtime pays the fees and `onFee` bills them to the agent's usage ("chain fee").
    */
   messenger?: (agent: string, key: AgentKey, onFee: (f: ChainFee) => void) => Messenger | undefined;
+  /**
+   * Agents as traders (plan T, packages/trader glue.ts): when a usage epoch is due, `share` gives the
+   * trade share of each bound agent's new fee income, which rides its usage leaf as the line "trade
+   * share"; after epochs post, `forward` moves each landed share from the compute sink to the treasury.
+   */
+  trading?: {
+    share(o: { agent: string; mint: string; vault: bigint; computeOwed: bigint; wake: bigint }): Promise<{ amount: bigint; basis: unknown } | null>;
+    forward(epochs: ClosedEpoch[], save: () => void): Promise<void>;
+  };
 }
 
 interface Attempt {
@@ -114,7 +123,7 @@ export class Runtime {
 
   /** What a usage record costs: model spend and sandbox time, plus chain fees paid for the agent. */
   private usageCost(u: AgentUsage): bigint {
-    return costOf(this.prices, u.usd, u.sandbox_s) + chainCostOf(this.prices, u.chain_lamports ?? 0);
+    return costOf(this.prices, u.usd, u.sandbox_s) + chainCostOf(this.prices, u.chain_lamports ?? 0) + BigInt(u.trade_share ?? "0");
   }
 
   /** Records lamports this runtime paid for one of the agent's onchain messages (usage line "chain fee"). */
@@ -421,9 +430,30 @@ export class Runtime {
   // ------------------------------------------------------------------ usage epochs
 
   /** Closes the open usage epoch when it is due and the chain clock allows it, then posts closed epochs in order. */
+  /** Plan T: sets each bound agent's trade share line for the epoch about to close (replaced, never added twice). */
+  private async accrueTradeShares(): Promise<void> {
+    const t = this.deps.trading!;
+    for (const [agent, st] of Object.entries(this.state.agents)) {
+      const v = this.vaults.get(agent);
+      if (st.status !== "bound" || !st.mint || !v) continue;
+      const u = this.usageOf(agent);
+      const computeOwed = this.owed(agent) - BigInt(u.trade_share ?? "0");
+      const s = await t.share({ agent, mint: st.mint, vault: v.balance, computeOwed, wake: this.limits.wakeThreshold }).catch((e) => (this.log(`${agent.slice(0, 6)} trade share: ${(e as Error).message}`), null));
+      if (s) {
+        u.trade_share = s.amount.toString();
+        u.trade_basis = s.basis;
+      } else {
+        delete u.trade_share;
+        delete u.trade_basis;
+      }
+    }
+    this.save();
+  }
+
   private async epochs(force = false): Promise<void> {
+    if (this.deps.trading && (force || this.now() - this.state.open.opened_at >= this.cfg.usage_epoch_s * 1000) && !this.state.closed.some((e) => !e.done)) await this.accrueTradeShares();
     const open = this.state.open;
-    const used = Object.entries(open.usage).filter(([, u]) => u.usd > 0 || u.sandbox_s > 0 || (u.chain_lamports ?? 0) > 0);
+    const used = Object.entries(open.usage).filter(([, u]) => u.usd > 0 || u.sandbox_s > 0 || (u.chain_lamports ?? 0) > 0 || BigInt(u.trade_share ?? "0") > 0n);
     const due = this.now() - open.opened_at >= this.cfg.usage_epoch_s * 1000;
     const drained = this.cfg.close_when_exhausted && used.some(([a]) => this.exhausted.has(a) && !this.running.has(a));
     const pending = this.state.closed.some((e) => !e.done);
@@ -436,7 +466,7 @@ export class Runtime {
           // a vault cannot pay more than it holds; the shortfall stays in the record (cost) and is never invented
           const bal = this.vaults.get(agent)?.balance ?? cost;
           const amount = cost < bal ? cost : bal;
-          leaves.push({ agent, amount: amount.toString(), cost: cost.toString(), model_tokens: modelTokens(u), sandbox_s: Math.ceil(u.sandbox_s), usd: u.usd, chain_lamports: u.chain_lamports ?? 0 });
+          leaves.push({ agent, amount: amount.toString(), cost: cost.toString(), model_tokens: modelTokens(u), sandbox_s: Math.ceil(u.sandbox_s), usd: u.usd, chain_lamports: u.chain_lamports ?? 0, ...(u.trade_share ? { trade_share: u.trade_share, trade_basis: u.trade_basis } : {}) });
         }
         this.state.closed.push({ epoch: next.epoch, opened_at: open.opened_at, closed_at: this.now(), leaves, root: null, post: null, debits: {}, done: false });
         this.state.open = { period: open.period + 1, opened_at: this.now(), usage: {} };
@@ -458,6 +488,8 @@ export class Runtime {
         break; // keep the order: a later epoch never lands before an earlier one
       }
     }
+    // plan T: landed trade shares go from the compute sink to the treasuries (idempotent per leaf)
+    if (this.deps.trading) await this.deps.trading.forward(this.state.closed.slice(-20), () => this.save()).catch((e) => this.log(`trade share forward: ${(e as Error).message}`));
   }
 
   // ------------------------------------------------------------------ loop

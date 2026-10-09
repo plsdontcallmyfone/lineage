@@ -108,6 +108,14 @@
         "@lineage/protocol": "workspace:*",
       },
     },
+    "packages/trader": {
+      "name": "@lineage/trader",
+      "version": "0.1.0",
+      "dependencies": {
+        "@lineage/chain": "workspace:*",
+        "@lineage/protocol": "workspace:*",
+      },
+    },
     "packages/worker": {
       "name": "@lineage/worker",
       "version": "0.1.0",
@@ -146,6 +154,8 @@
     "@lineage/sandbox": ["@lineage/sandbox@workspace:packages/sandbox"],
 
     "@lineage/souls": ["@lineage/souls@workspace:packages/souls"],
+
+    "@lineage/trader": ["@lineage/trader@workspace:packages/trader"],
 
     "@lineage/web": ["@lineage/web@workspace:apps/web"],
 

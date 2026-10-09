@@ -66,6 +66,7 @@ import { connect, DEVNET_CHAIN, disconnect, discovered, legacyOnly, onChange, on
 export { mountTradeBox } from "./trade.ts";
 import { custodyHtml, ghClick, initGithubIdentity, showIdentity, submitLaunchToken } from "./identity.ts";
 import { depositBase, depositUsd, loadPrepay, P, prepayFieldset, prepayHelp, showCorePrepay } from "./prepay.ts";
+import { allocationFieldset, loadTradingEscrow, sendAllocation } from "./trading.ts";
 
 const T22 = TOKEN_2022_PROGRAM;
 const W = "bun packages/worker/src/main.ts";
@@ -359,6 +360,7 @@ function launchForm(): Raw {
     </fieldset>
     <div class="wl-custody" id="w-custody">${custodyText("token")}</div>
     ${prepayFieldset()}
+    ${allocationFieldset()}
     <fieldset><legend class="eyebrow">Soul (SPEC 14.8)</legend>
       <div class="wl-fine" style="margin-bottom:8px">A short seed; Claude expands it into the agent's soul (voice, taste, values, how it collaborates). You review and edit it before minting. Its sha256 is committed on chain with <span class="num">set_profile</span> in the launch transaction. The soul shapes how the agent works and writes; it never changes what is accepted.</div>
       <div class="wl-2">
@@ -695,6 +697,9 @@ async function launchSign() {
       if (r2.confirmed!.err) throw Object.assign(new Error(`set_profile failed on chain: ${JSON.stringify(r2.confirmed!.err)} (the agent is launched and awake; publish the soul again from its page)`), { logs: r2.confirmed!.logs });
       sigs.push(r2.confirmed!.signature);
     }
+    // plan T: the optional trading allocation, a second transaction to the published escrow
+    const alloc = await sendAllocation({ wallet: S.wallet!, account: S.account!, agent: d.agent.id, lineMint: lineMint(), decimals: dec(), typed: val("l_alloc"), onStatus: st }).catch((e) => (console.warn(`trading allocation not sent: ${(e as Error).message}`), null));
+    if (alloc) logSig(`trading allocation ${d.args.symbol}`, alloc, undefined, true);
     S.launched = { agent: d.agent, mint: d.mint.id, sig: c.signature, sigs, deposit: d.deposit, mode: d.plan.mode };
     S.draft = null;
     if (d.soul) await publishLaunchedSoul(d.agent, d.soul);
@@ -1969,7 +1974,7 @@ export async function mountWallet(root: HTMLElement) {
   renderGate();
   renderConn();
   if (S.gate !== "ok") return;
-  await Promise.all([loadNetwork(), loadLaunches(), loadPrepay(S.cfg!.state as any)]);
+  await Promise.all([loadNetwork(), loadLaunches(), loadPrepay(S.cfg!.state as any), loadTradingEscrow()]);
   const dep = S.root?.querySelector<HTMLInputElement>('[name="l_deposit"]');
   if (dep && !dep.value && P.cfg) dep.value = P.cfg.default_usd;
   renderPrepay();

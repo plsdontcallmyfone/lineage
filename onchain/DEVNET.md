@@ -666,3 +666,25 @@ Run C also checked the bounty form follows the registry owner (audit A1-03): lis
 | 2026-10-09 21:19 | C | accept_owner by the second key | 5000 | `2oufoETiJDb6H7QHcAUbNiaiBFt7EPxhb43Lwy1cq6JuPKVG4orDTxzyCRCaPVz7QsCNEmMVtL87t77Uw4o6TrB7` |
 
 SOL: deployer 67.32486161 -> 66.80209873 (0.52276288, of which 0.52 sits in the two test keys; the test wallet holds 0.45138536 after three launches at about 0.0162 SOL each in rent and fees).
+
+## Agent trading (plan T, agent trading lane)
+
+Devnet transactions of the agent trading lane: smoke checks of the trade venue and the treasury funding paths (scripts/trader/devnet-smoke.ts, local TEST keys funded by the Lineage deployer, passed explicitly), binding TEST agents to the site runtime (scripts/trader/bind.ts) and their funding (scripts/trader/fund.ts). Trades the site runtime places are published by Core at GET /v1/trades with their signatures, not listed here. No program change. Fee in lamports as returned by the RPC.
+
+| When (UTC) | What | Fee | Signature |
+|---|---|---|---|
+| 2026-10-09 23:44:16 | smoke: fund TEST treasury 9EGvqRd8Bk58Snp4Xqi3TJBixdJvAjyZ5teGyNTPub3e with 0.1 SOL from the deployer | 5000 | `4TthuxgG8TWHX2kN6HTgSnex7HzKNP497xC5dFkN9iGcuEXtodoufumTpnzCbUDdrRKDbaNCyoCjXUHa7hERnVwn` |
+| 2026-10-09 23:44:18 | smoke: fund TEST treasury with 100000000 tLINE base units from the deployer | 5000 | `4Zg1ANxDts98NHXvdmMaGX6pKXtdismTCsiMPNgy9Ny5jHY6T84k2yVXegZ8xDzTRoUt2tVcRPJeCo8DWKXRCnWc` |
+| 2026-10-09 23:44:24 | smoke: buy 3AvZ77ZdVPx7yxtqA4UP11DoaPdjdgP3AUbkSnidsmY4 on dbc by treasury 9EGvqRd8Bk58Snp4Xqi3TJBixdJvAjyZ5teGyNTPub3e in 2000000 min out 37204614 | 5000 | `XsimvYaifR9hFz8CTZLVL3QDDkpNFiKZXoaH6CRzcwYEHhJKkDR93P97teV7xoHWxCETCz9Jfbmrdd6QLJWNcYP` |
+| 2026-10-09 23:44:29 | smoke: sell 3AvZ77ZdVPx7yxtqA4UP11DoaPdjdgP3AUbkSnidsmY4 on dbc by treasury 9EGvqRd8Bk58Snp4Xqi3TJBixdJvAjyZ5teGyNTPub3e in 18981946 min out 922082 | 5000 | `5yteisnyYSjo9BhCubozB78jcXWNHLT4MXrQCtRPH8d63M2HcmC2P2XzZDasZjY9RLvabPjAzwimQDJbuojPbjfK` |
+| 2026-10-09 23:44:35 | smoke: buy DrJpovn9yFZjNYkuPz7PHX3qWWcYTgwrr3v8hHAHjoWn on damm_v2 by treasury 9EGvqRd8Bk58Snp4Xqi3TJBixdJvAjyZ5teGyNTPub3e in 2000000 min out 3693392 | 5000 | `5EuctpV5qYijr2PNYKbkFK2iBKpXDUVFYW1tkk8V24cq7pHK5knGb9hogQvxbaAVE5WB7v6r7KqiDDAf4a99dwCM` |
+| 2026-10-09 23:44:40 | smoke: sell DrJpovn9yFZjNYkuPz7PHX3qWWcYTgwrr3v8hHAHjoWn on damm_v2 by treasury 9EGvqRd8Bk58Snp4Xqi3TJBixdJvAjyZ5teGyNTPub3e in 1884384 min out 922081 | 5000 | `FD1hBWbe8AVHgp7gWEbnADYKx1gY1wX62QKqgVYqy8TnYmTWJS2vvqDxZ5nDk5u84gwvosefvYbYxek7Dg6XgF7` |
+| 2026-10-09 23:44:43 | smoke: create the allocation escrow AuJsujzdvrEbeg4gY68tygpt3qRVrDMcnExLLtSahCm5 | 5000 | `124ce6vpw35DsXEmiowc62nMp8FSsmZpR9LqQCEXu8ctYPY1GAdyZqTk7nJUXAEdNen9g1r6iJUrcpUpiyZVqtmc` |
+| 2026-10-09 23:44:45 | smoke: allocation deposit of 1000000 into escrow AuJsujzdvrEbeg4gY68tygpt3qRVrDMcnExLLtSahCm5 with memo for 9EGvqRd8Bk58Snp4Xqi3TJBixdJvAjyZ5teGyNTPub3e | 5000 | `3z3qUiL99ECTXseU6GKUGBRbrLs1zNLB6VPWjwhVmGXhFvoY1xz1umaAPCRpdmtjMht7RQkHm26iknRmo4XoqgMg` |
+| 2026-10-09 23:44:49 | smoke: allocation 1000000 to treasury 9EGvqRd8Bk58Snp4Xqi3TJBixdJvAjyZ5teGyNTPub3e (deposit 3z3qUiL99ECTXseU6GKUGBRbrLs1zNLB6VPWjwhVmGXhFvoY1xz1umaAPCRpdmtjMht7RQkHm26iknRmo4XoqgMg) | 10000 | `44VxfkSUhjmneUXwQ8XLnG3B9Jn3A9UeXDPJYbZDacVJH9VrDi1p7KcLH4exBJam1DKtodT5F9ruTMWWsVtKp2sr` |
+| 2026-10-09 23:44:52 | smoke: gas 1000000 lamports to treasury 9EGvqRd8Bk58Snp4Xqi3TJBixdJvAjyZ5teGyNTPub3e | 5000 | `2ngxHvEkPW8rU1Z7kAhkfwzrE1uHmHwntR9xVbFFBSdkis8Lk3urP4G7pM1f2MFxfMGHQBS7Mpsyv8QhSxV2w1DF` |
+| 2026-10-09 23:48:24 | prep: 0.5 SOL from the deployer to the runtime authority DCmdy5MoAfnN6fn3nVW27db62ZwtjoksqSqdjAc8VPk4 (treasury gas top-ups) | 5000 | `frHAGcziSTeW3Sdra2AghDwX99i3VFvRmJW9dS5Qz4LCSEfuTzgMjw1bQNfDZ94EbB7MZ61PYv3rTGtmhWiKPsM` |
+| 2026-10-09 23:48:26 | prep: 1000000000 tLINE base units from the deployer to TEST launcher 26dsYuFo5zvuE7of7MnauJksubD7JCDPnxNqLZ8czp8v (allocation for agent 6C8N2z5LwktukWEP6g8sUnf9ky1L9rxyngBLbdomUzHc), its tLINE account created | 5000 | `3PhtJ62hi8fdkc2qr1VxXQasq5YG8YAHBzEbPCTkufSPVch3cYQk7vPmhMehyB51hb1faw2ptN8zV3GK5sq13Uwu` |
+| 2026-10-09 23:48:28 | prep: 1000000000 tLINE base units from the deployer to TEST launcher Ds2dJD9Qr5WPbq9ZHjsnp7Lh6aybPaQU72nS7pfCB4C (allocation for agent 63JTudW2oYZyy5oQPwyjZAPQAVGaF7xXTKEzQw8uvqAy) | 5000 | `3CgbVGt7i2KbmDSXnNq2A5qQh2waXcsvf11fpoCmkuvGWBwmBgr6e4ShTeL3Wwhdgvaobamc2NNdHMzvKqc59ndi` |
+| 2026-10-09 23:48:30 | prep: 1000000000 tLINE base units from the deployer to TEST launcher Hwudggz5NWKsJ7afGgXqAFqNnDRVD7NcM9sY3HkmDvp6 (allocation for agent 5t9wKLssXQ1ZFdM74UdiXj9QxFphjVxBmo6rmLaSK91R), its tLINE account created | 5000 | `3MfjXVsdSKeFjio4N9KeQXqGTveEj1KjfK957KJf7vpQFh4i4jqweVPYFMGQMaWTh4HKWkvrDXKQyfb75gJSfhsy` |
+| 2026-10-09 23:48:32 | prep: 1000000000 tLINE base units from the deployer to TEST launcher 9vsruXazhbaehi3DAF3sPk7SD2Wh26SXmj8Sp3HwJNnh (allocation for agent BFPxdave7NVSXztGEZA5iZ7FiBDKRsuZmS9wZn2J1WBV), its tLINE account created | 5000 | `37QsDBEEKEM9T4ckgzCKMaw51535fHsVm7Fz4v9Eb8qnDykv6P4XLRsyiZuFN9wS4eeykGLisdgKWXA4vFMi5Phk` |

@@ -19,6 +19,7 @@ import { Runtime, type RuntimeDeps } from "./runtime.ts";
 import { addSecret, redact } from "./state.ts";
 import { checkCorePrices, CreditMonitor, monitorStatePath, railClient, railModel, railPrices } from "./rail.ts";
 import { ChainMessenger } from "../../core/src/msgchain.ts";
+import { chainTrading, type TradingRuntimeConfig } from "../../trader/src/glue.ts";
 
 function args(argv: string[]) {
   const out: Record<string, string> = {};
@@ -69,13 +70,21 @@ async function main() {
       await checkCorePrices(cfg.core, cfg, log);
       const stopMonitor = cfg.rail === "openrouter" && cfg.openrouter?.enabled ? new CreditMonitor(cfg.openrouter, { statePath: monitorStatePath(cfg.state_dir), log }).start() : () => {};
       const backend = backendFor(cfg, log, (w, s, f) => log(`tx ${w}: ${s} (fee ${f ?? "?"})`));
-      const rt = new Runtime(cfg, { backend, runtimeKey: loadKey(cfg.runtime_key), proposer: claudeProposer(cfg), log, messenger: chainMessengers(cfg, backend, log) });
+      // agents as traders (plan T): runtime.json "trading": { "enabled": true } on devnet
+      const tcfg = (cfg as { trading?: TradingRuntimeConfig }).trading;
+      const trading = tcfg?.enabled && backend instanceof ChainBackend
+        ? chainTrading({ core: cfg.core, stateDir: cfg.state_dir, runtimeKey: loadKey(cfg.runtime_key), rpcUrl: cfg.rpc_url ?? devnetRpcUrl(), rpc: backend.rpc, cfg: tcfg, log, onTx: (w, s, f) => log(`tx ${w}: ${s} (fee ${f ?? "?"})`) })
+        : null;
+      const rt = new Runtime(cfg, { backend, runtimeKey: loadKey(cfg.runtime_key), proposer: claudeProposer(cfg), log, messenger: chainMessengers(cfg, backend, log), trading: trading?.hooks });
+      trading?.attach(rt);
+      const stopTrading = trading?.start() ?? (() => {});
       await rt.start();
       let signals = 0;
       const onSignal = () => {
         if (++signals > 1) process.exit(130); // state is persisted after every step; a second signal leaves now
         log("signal: graceful stop (send again to leave at once)");
         stopMonitor();
+        stopTrading();
         void rt.stop().then(() => process.exit(0));
       };
       process.on("SIGINT", onSignal);

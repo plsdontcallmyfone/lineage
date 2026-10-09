@@ -9,6 +9,7 @@ import { prepayOf } from "./prepay.ts";
 import { upstreamOf } from "./upstream.ts";
 import { erc8004Of } from "./erc8004.ts";
 import { sessionsOf } from "./sessions.ts";
+import { scoresOf } from "./scores.ts";
 import { networkConfigJson } from "./config.ts";
 import type { Core, CoreEvent } from "./core.ts";
 import { ApiError, bad, forbidden, notFound } from "./errors.ts";
@@ -113,7 +114,7 @@ export function buildRoutes(core: Core): Route[] {
   // time inside a request's core.tx, a module's CREATE TABLE was rolled back with a failing request
   // (GET /v1/sessions/<unknown> on a fresh Core) while the cached instance assumed its tables, so the
   // feature answered 500 until a restart (audit A2, OFF-16).
-  for (const of of [sessionsOf, findingsOf, recipeProposalsOf, linksOf, upstreamOf, erc8004Of, soulsOf, challengesOf, bountiesOf, msgchainOf]) of(core);
+  for (const of of [scoresOf, sessionsOf, findingsOf, recipeProposalsOf, linksOf, upstreamOf, erc8004Of, soulsOf, challengesOf, bountiesOf, msgchainOf]) of(core);
   const q = (c: Ctx, k: string) => c.url.searchParams.get(k) ?? undefined;
   // numeric query values: a non-negative safe integer or absent. NaN reached SQLite as LIMIT NULL
   // (500 datatype mismatch) and limit=-1 meant "no limit" (audit A2, OFF-11).
@@ -190,6 +191,15 @@ export function buildRoutes(core: Core): Route[] {
     route("GET", "/v1/agents/:id/encryption-key", "none", (c) => core.messages.keyOf(c.params.id!)),
     route("GET", "/v1/agents/:id/intents", "optional", (c) => ({ stats: core.collab.intentStats(c.params.id!), intents: core.collab.listIntents({ agent: c.params.id!, status: "all", limit: 100 }, c.agent) })),
     route("GET", "/v1/agents/:id/teams", "optional", (c) => core.tx(() => core.collab.teamsOf(c.params.id!, c.agent))),
+    // agents as traders (plan T, src/scores.ts): published project scores, risk config, public trade records
+    route("GET", "/v1/scores", "none", () => core.tx(() => scoresOf(core).scores())),
+    route("GET", "/v1/agents/:id/score", "none", (c) => core.tx(() => scoresOf(core).scoreOf(c.params.id!))),
+    route("GET", "/v1/agents/:id/trades", "none", (c) => core.tx(() => scoresOf(core).agentTrades(c.params.id!, { limit: int(c, "limit"), before: int(c, "before") }))),
+    route("GET", "/v1/trades", "none", (c) => scoresOf(core).list({ limit: int(c, "limit"), before: int(c, "before"), kind: q(c, "kind"), mint: q(c, "mint") })),
+    route("GET", "/v1/trading/config", "none", () => scoresOf(core).configView()),
+    route("POST", "/v1/trades", "runtime", (c) => scoresOf(core).record(c.json())),
+    route("POST", "/v1/agents/:id/trading/reset", "agent", (c) => scoresOf(core).reset(c.agent!, c.params.id!, c.json())),
+    route("POST", "/v1/admin/trading/config", "admin", (c) => scoresOf(core).setConfig(c.json())),
     route("GET", "/v1/agents", "none", () => core.listAgents()),
     route("GET", "/v1/agents/:id", "none", (c) => core.agentView(c.params.id!)),
     // identity (identity plan I1, I2): key history, reputation records with proofs, portable credential

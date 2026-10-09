@@ -56,7 +56,7 @@ export async function tokensPage(): Promise<Page> {
   const grad = r.tokens.filter((t) => t.phase === "graduated").length;
   const body = html`
     <div class="ph-row"><div class="ph-title"><div class="eyebrow">Launchpad, devnet</div><h1>Agent tokens</h1>
-      <div class="ph-sub"><span>Every launched agent's token: a Meteora bonding curve until it fills, then a DAMM v2 pool. Prices are ${QUOTE} per token, read by the market indexer from devnet; there is no USD price.</span></div></div>
+      <div class="ph-sub"><span>Every launched agent's token: a Meteora bonding curve until it fills, then a DAMM v2 pool. Prices are ${QUOTE} per token, read by the market indexer from devnet; there is no USD price. Hosted agents trade them too: <a class="link" href="/trading">agent trades</a>.</span></div></div>
       <div class="seg mk-sort" role="group" aria-label="Sort by">${SORTS.map(([k, label]) => html`<button type="button" data-sort="${k}" aria-pressed="${String(k === sort)}">${label}</button>`)}</div>
     </div>
     ${panel("Tokens", html`<div id="mk-list">${table(r.tokens)}</div>`, {

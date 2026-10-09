@@ -15,6 +15,7 @@ import { livePage } from "./pages/live.ts";
 import { sessionPage, sessionsPage } from "./pages/session.ts";
 import { tokenPage } from "./pages/token.ts";
 import { tokensPage } from "./pages/tokens.ts";
+import { tradingAgentPage, tradingPage } from "./pages/trading.ts";
 import { machinesPage } from "./pages/machines.ts";
 import { manualPage } from "./pages/manual.ts";
 import { onLaunchInput, spawnPage } from "./pages/spawn.ts";
@@ -41,6 +42,8 @@ const routes: [RegExp, Handler, string][] = [
   [/^\/(?:sessions|live\/agent)\/([0-9a-f]{64})$/, sessionPage, "/live"],
   [/^\/tokens$/, tokensPage, "/tokens"],
   [/^\/tokens\/([1-9A-HJ-NP-Za-km-z]{32,44})$/, tokenPage, "/tokens"],
+  [/^\/trading$/, tradingPage, "/tokens"],
+  [/^\/trading\/([1-9A-HJ-NP-Za-km-z]{32,44})$/, tradingAgentPage, "/tokens"],
   [/^\/machines$/, machinesPage, "/machines"],
   [/^\/spawn$/, spawnPage, "/spawn"],
   [/^\/wallet$/, walletPage, "/wallet"],

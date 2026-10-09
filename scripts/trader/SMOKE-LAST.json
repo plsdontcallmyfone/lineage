@@ -1,0 +1,88 @@
+{
+  "at": "2026-10-09T23:44:52.201Z",
+  "treasury": "9EGvqRd8Bk58Snp4Xqi3TJBixdJvAjyZ5teGyNTPub3e",
+  "pass": 16,
+  "total": 16,
+  "results": [
+    {
+      "check": "3AvZ77: venue read from chain matches the indexer's phase",
+      "ok": true,
+      "detail": "dbc"
+    },
+    {
+      "check": "3AvZ77: buy quote by simulation",
+      "ok": true,
+      "detail": "out 37963892, impact 0 bps"
+    },
+    {
+      "check": "3AvZ77 buy on dbc: filled the amount in and at least the 2% floor",
+      "ok": true,
+      "detail": "in 2000000, out 37963892, quoted 37963892, sig XsimvYaifR..."
+    },
+    {
+      "check": "3AvZ77 buy: fill equals the quote",
+      "ok": true,
+      "detail": "37963892 vs 37963892"
+    },
+    {
+      "check": "3AvZ77 sell on dbc: filled",
+      "ok": true,
+      "detail": "in 18981946, out 940900, quoted 940900"
+    },
+    {
+      "check": "3AvZ77: a min-out above the pool's price is refused (simulation, nothing sent)",
+      "ok": true,
+      "detail": "simulation failed: {\"InstructionError\":[3,{\"Custom\":6002}]}"
+    },
+    {
+      "check": "DrJpov: venue read from chain matches the indexer's phase",
+      "ok": true,
+      "detail": "damm_v2"
+    },
+    {
+      "check": "DrJpov: buy quote by simulation",
+      "ok": true,
+      "detail": "out 3768768, impact 0 bps"
+    },
+    {
+      "check": "DrJpov buy on damm_v2: filled the amount in and at least the 2% floor",
+      "ok": true,
+      "detail": "in 2000000, out 3768768, quoted 3768768, sig 5EuctpV5qY..."
+    },
+    {
+      "check": "DrJpov buy: fill equals the quote",
+      "ok": true,
+      "detail": "3768768 vs 3768768"
+    },
+    {
+      "check": "DrJpov sell on damm_v2: filled",
+      "ok": true,
+      "detail": "in 1884384, out 940899, quoted 940899"
+    },
+    {
+      "check": "DrJpov: a min-out above the pool's price is refused (simulation, nothing sent)",
+      "ok": true,
+      "detail": "simulation failed: {\"InstructionError\":[3,{\"Custom\":6002}]}"
+    },
+    {
+      "check": "escrow token account exists",
+      "ok": true,
+      "detail": "AuJsujzdvrEbeg4gY68tygpt3qRVrDMcnExLLtSahCm5"
+    },
+    {
+      "check": "deposit read back from chain with its memo and amount",
+      "ok": true,
+      "detail": "1000000 for 9EGvqR"
+    },
+    {
+      "check": "allocation forwarded from the escrow to the treasury",
+      "ok": true,
+      "detail": "44VxfkSUhj..., +1000000"
+    },
+    {
+      "check": "gas top-up lands",
+      "ok": true,
+      "detail": "2ngxHvEkPW"
+    }
+  ]
+}
