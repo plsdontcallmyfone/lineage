@@ -1,6 +1,6 @@
 {
-  "at": "2026-10-08T22:06:33.362Z",
-  "seconds": 332,
+  "at": "2026-10-09T18:43:15.454Z",
+  "seconds": 239,
   "results": [
     {
       "check": "recipe id recomputed by Core matches the worker's",
@@ -10,7 +10,7 @@
     {
       "check": "calibration accepted, lineage created",
       "ok": true,
-      "detail": "{\"lineage_id\":\"385030aabff2e6cb7ae955f798bb5dafdd043a20be14d4a62479d7c5660521a3\",\"calib_id\":\"0ab383e0a86342507088272eb3a"
+      "detail": "{\"lineage_id\":\"385030aabff2e6cb7ae955f798bb5dafdd043a20be14d4a62479d7c5660521a3\",\"calib_id\":\"af31431cd47f50062356a27fec5"
     },
     {
       "check": "stable set and known failure from real calibration",
@@ -45,7 +45,7 @@
     {
       "check": "a second author files a signed intent on encode_ir",
       "ok": true,
-      "detail": "200 {\"intent_id\":\"8f9ada571120b6adad40fb02a6cd9eb15d1a3906fa63dcbbb8414c1b75aa31aa\",\"agent\":\"G3DGQ4ke82wUnGZhLbreNSyunrQ7ZeQ"
+      "detail": "200 {\"intent_id\":\"6c01b7624c2d7ce4dee7eedc4b2a83ac61e0e1a29565177226a8add3ddacdf88\",\"agent\":\"2cknJjMhSRmTsLygvTDhzwr6spcA2Ym"
     },
     {
       "check": "the advisory worker picks a target nobody holds an intent on",
@@ -110,7 +110,7 @@
     {
       "check": "author units split exactly by the declared shares (70/30)",
       "ok": true,
-      "detail": "8399729 + 3599884 micro-units"
+      "detail": "8226026 + 3525440 micro-units"
     },
     {
       "check": "an agent past max_intents_per_agent gets 429",
@@ -140,17 +140,17 @@
     {
       "check": "sealed replays never expose a candidate id or a replaying verifier via public live endpoints before final",
       "ok": true,
-      "detail": "150 samples, 407 sealed replay heartbeats seen, 0 leaks "
+      "detail": "108 samples, 238 sealed replay heartbeats seen, 0 leaks "
     },
     {
       "check": "author-blind replay: no public candidate view, event or activity names the author of an open candidate",
       "ok": true,
-      "detail": "137 open-candidate samples, 0 leaks "
+      "detail": "97 open-candidate samples, 0 leaks "
     },
     {
       "check": "heartbeats carry real replay phases from the sandbox",
       "ok": true,
-      "detail": "observed author:propose, qualify:commit, qualify:metrics, replay:build, replay:equivalence, replay:metrics, replay:test"
+      "detail": "observed author:propose, qualify:metrics, replay:build, replay:equivalence, replay:metrics, replay:test"
     },
     {
       "check": "every worker process sends heartbeats with its declared capabilities",
@@ -215,7 +215,7 @@
     {
       "check": "the --series worker commits B on top of its own pending A, and B waits",
       "ok": true,
-      "detail": "B waiting, depends_on 254950bd5f"
+      "detail": "B waiting, depends_on 26ee1ce84b"
     },
     {
       "check": "replay firewall: a verifier replaying A cannot message A's author (403 replaying, to it alone)",
@@ -250,7 +250,7 @@
     {
       "check": "B, held until A was final, is measured on the tip that includes A and accepted with its original commit time",
       "ok": true,
-      "detail": "accepted , eval parent c2854999d2, A gen c2854999d2"
+      "detail": "accepted , eval parent df8ee6f538, A gen df8ee6f538"
     },
     {
       "check": "once both are final the series link is public",
@@ -260,7 +260,7 @@
     {
       "check": "B's author units go to B's own author",
       "ok": true,
-      "detail": "NYxGQYFcHu1hrQEz83hjTyuRAvfzLFP5QTnkMFCrfG7"
+      "detail": "5D6m7w7mqUiZUcc1o6uHJNtbzZjfXUu5PxMLiPRQLVS4"
     },
     {
       "check": "a second lineage of the same repository is calibrated (another recipe, same repo)",
@@ -270,32 +270,32 @@
     {
       "check": "measured split: the team candidate (two sub-patches on independent functions) is accepted on decode_ir",
       "ok": true,
-      "detail": "ratio 0.4326130074229223"
+      "detail": "ratio 0.4324903446446825"
     },
     {
       "check": "measured split: Shapley shares computed from each of two replayers' coalition reports agree, and match Core's",
       "ok": true,
-      "detail": "2 counted, shares 1276/8724 | 1276/8724, Core 1276/8724; phi 0.072414, 0.494973 of v(all) 0.567387"
+      "detail": "2 counted, shares 1277/8723 | 1277/8723, Core 1277/8723; phi 0.072497, 0.495013 of v(all) 0.567510"
     },
     {
       "check": "measured split: the Shapley values sum to the whole patch's gain",
       "ok": true,
-      "detail": "sum 0.567387 vs gain 0.567387; v(lookup) 0.108317, v(limbs) 0.530876"
+      "detail": "sum 0.567510 vs gain 0.567510; v(lookup) 0.108352, v(limbs) 0.530869"
     },
     {
       "check": "measured split: the verdict is identical without the split (recomputed from the whole-patch results alone)",
       "ok": true,
-      "detail": "accepted 1576ac8b1626"
+      "detail": "accepted b798aa43b720"
     },
     {
       "check": "measured split: author units follow the measured shares, not the declared 50/50",
       "ok": true,
-      "detail": "2986589 + 20419278 micro-units"
+      "detail": "2989086 + 20418007 micro-units"
     },
     {
       "check": "measured split: the extra measurement is billed to the team and paid to the counted replayers",
       "ok": true,
-      "detail": "fee 4000000, 4 replay unit rows; measured cost 8.8s for 2 extra trees vs 10.4s main; 8.8s for 2 extra trees vs 10.5s main"
+      "detail": "fee 4000000, 4 replay unit rows; measured cost 7.5s for 2 extra trees vs 4.6s main; 7.4s for 2 extra trees vs 4.4s main"
     },
     {
       "check": "port: the same change on the second lineage is accepted (not a duplicate there)",
@@ -305,12 +305,12 @@
     {
       "check": "port: Core detects the undeclared port of the first lineage's generation",
       "ok": true,
-      "detail": "{\"ported_from\":\"58d342903a9f3b14311029541df6696cdd7debf63b42e52748b42b70ca9bf209\",\"lineage_id\":\"385030aabff2e6cb7ae955f798bb5dafdd043a20be14d4a62479d7c5660521a3\",\"original_author\":\"NYxGQYFcHu1hrQEz83h"
+      "detail": "{\"ported_from\":\"99275979135a8dfe1c8329d2918e21c5ddcdad734ef3eea5329f5c6de65bfc17\",\"lineage_id\":\"385030aabff2e6cb7ae955f798bb5dafdd043a20be14d4a62479d7c5660521a3\",\"original_author\":\"5D6m7w7mqUiZUcc1o6u"
     },
     {
       "check": "port: the original authors are credited port_share_bps of the port's author units, in their original 70/30 proportion",
       "ok": true,
-      "detail": "porter 10150771, original author 1776385, original reviewer 761308 micro-units (port_share_bps 2000)"
+      "detail": "porter 9452002, original author 1654101, original reviewer 708900 micro-units (port_share_bps 2000)"
     },
     {
       "check": "second-lineage audits agree with its generations (split and port)",
@@ -340,12 +340,12 @@
     {
       "check": "shadow intents precede their canary's commit and link to it like a real author's",
       "ok": true,
-      "detail": "2 of 3 canaries preceded by a shadow intent"
+      "detail": "1 of 3 canaries preceded by a shadow intent"
     },
     {
       "check": "fabricating verifier slashed and struck",
       "ok": true,
-      "detail": "slashed 24617187500, strikes 4"
+      "detail": "slashed 16156250000, strikes 3"
     },
     {
       "check": "no honest verifier slashed",
@@ -355,12 +355,12 @@
     {
       "check": "the fabricating verifier was caught by a canary",
       "ok": true,
-      "detail": "slash reasons: canary, minority, canary, minority"
+      "detail": "slash reasons: minority, canary, minority"
     },
     {
       "check": "the fabricating verifier was caught as a dispute minority",
       "ok": true,
-      "detail": "slash reasons: canary, minority, canary, minority"
+      "detail": "slash reasons: minority, canary, minority"
     },
     {
       "check": "audit replays agree with every accepted generation",
@@ -385,12 +385,12 @@
     {
       "check": "ledger reconciles to zero with no negative balances",
       "ok": true,
-      "detail": "{\"ok\":true,\"errors\":[],\"entries\":122,\"transactions\":61,\"total\":\"0\",\"balances\":{\"agent:3nZb5ERb9zUPPVtu7aUUsJPSrnThehtnxFuPnk72wzWj:compute\":\"3358000000\",\"agent:"
+      "detail": "{\"ok\":true,\"errors\":[],\"entries\":120,\"transactions\":60,\"total\":\"0\",\"balances\":{\"agent:2cknJjMhSRmTsLygvTDhzwr6spcA2Ym1E237RSex2Q9E:compute\":\"13998000000\",\"agent"
     },
     {
       "check": "verifier claims its epoch payout with a Merkle proof",
       "ok": true,
-      "detail": "{\"epoch\":0,\"agent\":\"5NjpxZ5mtf2wmFdYt7QeCDe75NtZa9A4aDLiPQV6DKNY\",\"dest\":\"agent:5NjpxZ5mtf2wmFdYt7QeCDe75NtZa9A4aDLiPQV6DKNY:wallet\",\"amount\":\"14860855619\",\"bal"
+      "detail": "{\"epoch\":0,\"agent\":\"J2SevTZbmMwVNYNv1r43aERa7r9BKkNktgg42hEEBn5f\",\"dest\":\"agent:J2SevTZbmMwVNYNv1r43aERa7r9BKkNktgg42hEEBn5f:wallet\",\"amount\":\"12398897461\",\"bal"
     },
     {
       "check": "another agent cannot claim that leaf",
