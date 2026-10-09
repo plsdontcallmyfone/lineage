@@ -28,7 +28,9 @@ case "$VERSION_ID" in 24.04) ;; *) echo "note: written for Ubuntu 24.04, this is
 IN_CONTAINER=0
 if systemd-detect-virt --container >/dev/null 2>&1; then IN_CONTAINER=1; fi
 
-apt-get update -qq
+# the Caddy project's apt repository (dl.cloudsmith.io) answered 402 on 2026-10-09; an apt source that
+# fails must not stop provisioning of a box that already has everything
+apt-get update -qq || echo "note: apt-get update reported an error (an unreachable source); continuing"
 apt-get install -y -qq ca-certificates curl gnupg git unzip jq lsof sqlite3 ufw fail2ban unattended-upgrades \
   debian-keyring debian-archive-keyring apt-transport-https openssh-server >/dev/null
 echo "packages ok"
@@ -127,10 +129,14 @@ echo "bun $(bun --version)"
 
 # ---------------------------------------------------------------- caddy
 if ! command -v caddy >/dev/null; then
-  curl -1sLf https://dl.cloudsmith.io/public/caddy/stable/gpg.key | gpg --dearmor --yes -o /usr/share/keyrings/caddy-stable-archive-keyring.gpg
-  curl -1sLf https://dl.cloudsmith.io/public/caddy/stable/debian.deb.txt > /etc/apt/sources.list.d/caddy-stable.list
-  apt-get update -qq
-  apt-get install -y -qq caddy >/dev/null
+  if curl -1sLf https://dl.cloudsmith.io/public/caddy/stable/gpg.key | gpg --dearmor --yes -o /usr/share/keyrings/caddy-stable-archive-keyring.gpg \
+    && curl -1sLf https://dl.cloudsmith.io/public/caddy/stable/debian.deb.txt > /etc/apt/sources.list.d/caddy-stable.list \
+    && apt-get update -qq && apt-get install -y -qq caddy >/dev/null; then :; else
+    # fallback: Ubuntu's own caddy package (universe)
+    rm -f /etc/apt/sources.list.d/caddy-stable.list
+    apt-get update -qq || true
+    apt-get install -y -qq caddy >/dev/null
+  fi
 fi
 install -d /etc/systemd/system/caddy.service.d
 printf '[Service]\nMemoryMax=256M\n' > /etc/systemd/system/caddy.service.d/lineage.conf
