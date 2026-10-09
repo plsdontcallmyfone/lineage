@@ -29,7 +29,7 @@ pub const DECIMALS: u8 = 6;
 pub const ONE: u64 = 1_000_000;
 pub const LINE_SUPPLY: u64 = 1_000_000_000 * ONE;
 
-pub const DBC_SO_SHA256: &str = "f5ccbb01e37165d16108bda0259fb3acbfca29305e23098c3b248e50c22979f0";
+pub const DBC_SO_SHA256: &str = "5edf76d972abaf355048db5d9003bc4dfa843cd98a5f93785430dac371678ad3";
 pub const DAMM_SO_SHA256: &str = "82bb9375921bb8007551cb65f9ca43b191597496cc9922926468b36671081ec2";
 
 // ---------- transactions ----------
