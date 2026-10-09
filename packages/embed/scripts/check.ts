@@ -50,6 +50,9 @@ const MONO_PROBE = `(() => {
 
 const shadowCount = (tag: string, sel: string) => `(() => [...document.querySelectorAll(${JSON.stringify(tag)})].reduce((n, h) => n + (h.shadowRoot ? h.shadowRoot.querySelectorAll(${JSON.stringify(sel)}).length : 0), 0))()`;
 
+/** Scrolls through the page so lazily drawn stills (IntersectionObserver) come into view. */
+const SCROLL_ALL = `(async () => { for (let y = 0; y < document.documentElement.scrollHeight; y += 500) { scrollTo(0, y); await new Promise((r) => setTimeout(r, 250)); } scrollTo(0, 0); })()`;
+
 async function waitFor(page: any, expr: string, ms = 30_000) {
   const t0 = Date.now();
   while (Date.now() - t0 < ms) {
@@ -70,6 +73,7 @@ for (const width of [1280, 390]) {
   await page.goto(`${WEB}/embed/demo.html${API !== WEB ? `?api=${encodeURIComponent(API)}` : ""}`, { waitUntil: "domcontentloaded" });
   const w = `demo ${width}`;
   check(`${w}: reel cards`, await waitFor(page, `${shadowCount("lineage-reel", ".card")} >= 4`), String(await page.evaluate(shadowCount("lineage-reel", ".card"))));
+  await page.evaluate(SCROLL_ALL);
   check(`${w}: card screens drawn`, await waitFor(page, `${shadowCount("lineage-reel", ".thumb canvas")} >= 2`, 40_000));
   check(`${w}: dithered stills`, (await page.evaluate(shadowCount("lineage-reel", "canvas.dith"))) >= 1);
   check(`${w}: screen panel mounted`, await waitFor(page, `${shadowCount("lineage-screen", ".lp")} === 1`));
@@ -203,6 +207,7 @@ if (GARAGE) {
       const w = `garage ${width}`;
       check(`${w}: kit loaded cross-origin`, await waitFor(page, `!!window.Lineage && !!customElements.get("lineage-reel")`));
       check(`${w}: strip slot cards (CORS read of ${API})`, await waitFor(page, `${shadowCount("lineage-reel", ".card")} >= 8`, 40_000));
+      await page.evaluate(SCROLL_ALL);
       check(`${w}: stills drawn`, await waitFor(page, `${shadowCount("lineage-reel", ".thumb canvas")} >= 3`, 40_000));
       check(`${w}: CRT screen and terminal`, await waitFor(page, `${shadowCount("lineage-screen", ".lp")} === 1 && ${shadowCount("lineage-terminal", ".out > div")} >= 1`));
       check(`${w}: stats in the readout`, await waitFor(page, `${shadowCount("lineage-stats", ".stat")} === 3`));

@@ -47,6 +47,13 @@ describe("client", () => {
     c.retryDelays = [0, 0];
     expect(await c.core<any>("stats")).toEqual({ generations: 1 });
     expect(n).toBe(3);
+    let m = 0;
+    const d = new LineageClient(resolveBases({ api: "https://s" }, ""), async () => {
+      if (++m < 2) throw new TypeError("Failed to fetch");
+      return new Response("{}", { headers: { "content-type": "application/json" } });
+    });
+    d.retryDelays = [0];
+    expect(await d.core<any>("stats")).toEqual({});
   });
 
   test("pickSession prefers live with events, skips empty ones", () => {
@@ -77,6 +84,7 @@ describe("client", () => {
     );
     expect(await c.stats({ fees: true })).toEqual({ tokens: 2, graduated: 1, agents_working: 2, generations: 20, candidates: 82, fees_to_compute: 12.5, sessions_live: 3 });
     const down = new LineageClient(resolveBases({ api: "https://s" }, ""), fakeFetch({}));
+    down.retryDelays = [];
     const s = await down.stats({ fees: true });
     expect(s.tokens).toBeNull();
     expect(s.generations).toBeNull();
@@ -93,7 +101,7 @@ describe("render", () => {
     expect(h).not.toContain('part="description"');
     expect(h).toContain("5,000,000");
     expect(h).toContain("tLINE");
-    expect(h).not.toMatch(/\$|USD|—/);
+    expect(h).not.toMatch(/\$|USD|\u2014/);
     expect(h).toContain("karpathy/minbpe");
     expect(cardHtml({ ...card, tagline: "Faster BPE." }, { href: "#", look: "plain" })).toContain('<p class="tag" part="description">Faster BPE.</p>');
   });
@@ -216,6 +224,6 @@ describe("terminal", () => {
   });
   test("no em dashes in any text the kit ships", async () => {
     const all = JSON.stringify(FACTS) + (await run("help", env())).html.join("");
-    expect(all).not.toContain("—");
+    expect(all).not.toContain("\u2014");
   });
 });

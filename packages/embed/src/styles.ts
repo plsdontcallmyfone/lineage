@@ -63,7 +63,7 @@ export const REEL = `
 .thumb canvas.dith { image-rendering: pixelated; transition: opacity .6s ease; }
 .card:hover canvas.dith, .card:focus-within canvas.dith { opacity: 0; }
 .ph { position: absolute; inset: 0; display: grid; place-items: center; color: var(--dim); font-size: 12px; text-align: center; padding: 10px; }
-.chip { position: absolute; left: 8px; top: 30px; display: inline-flex; align-items: center; gap: 5px; height: 20px; padding: 0 8px; border-radius: 10px; font-size: 11px; font-weight: 600;
+.chip { position: absolute; right: 6px; top: 2px; display: inline-flex; align-items: center; gap: 5px; height: 18px; padding: 0 7px; border-radius: 9px; font-size: 10.5px; font-weight: 600;
   background: color-mix(in oklab, var(--_bg) 86%, transparent); border: 1px solid var(--_line); color: var(--dim); backdrop-filter: blur(4px); }
 .chip i { width: 6px; height: 6px; border-radius: 50%; background: var(--dim); }
 .chip[data-s="working"] { color: var(--_accent); border-color: color-mix(in oklab, var(--_accent) 50%, transparent); }

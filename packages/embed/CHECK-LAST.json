@@ -1,0 +1,255 @@
+{
+  "at": "2026-10-09T18:24:38.196Z",
+  "web": "http://127.0.0.1:9665",
+  "api": "https://157-245-71-188.sslip.io",
+  "garage": true,
+  "pass": 49,
+  "total": 49,
+  "results": [
+    {
+      "check": "demo 1280: reel cards",
+      "ok": true,
+      "detail": "12"
+    },
+    {
+      "check": "demo 1280: card screens drawn",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "demo 1280: dithered stills",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "demo 1280: screen panel mounted",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "demo 1280: token block",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "demo 1280: how, six steps with figures",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "demo 1280: stats",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "demo 1280: no USD, no em dash",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "terminal: did you mean",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "terminal: ask answers with a follow-up",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "terminal: how steps 1 to 6",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "terminal: watch switches the paired screen",
+      "ok": true,
+      "detail": "TPYRLP"
+    },
+    {
+      "check": "terminal: tab completion",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "terminal: Lineage.terminal.openAndRun",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "palette: Cmd K opens",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "reel: hover develops the still",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "demo 1280: no horizontal page scroll",
+      "ok": true,
+      "detail": "overflow 0px"
+    },
+    {
+      "check": "demo 1280: no monospace in the kit",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "demo 1280: no console errors",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "demo 390: reel cards",
+      "ok": true,
+      "detail": "12"
+    },
+    {
+      "check": "demo 390: card screens drawn",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "demo 390: dithered stills",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "demo 390: screen panel mounted",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "demo 390: token block",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "demo 390: how, six steps with figures",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "demo 390: stats",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "demo 390: no USD, no em dash",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "demo 390: no horizontal page scroll",
+      "ok": true,
+      "detail": "overflow 0px"
+    },
+    {
+      "check": "demo 390: no monospace in the kit",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "demo 390: no console errors",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "explorer: lineage-explorer.js loaded on demand and mounted",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "garage 1280: kit loaded cross-origin",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "garage 1280: strip slot cards (CORS read of https://157-245-71-188.sslip.io)",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "garage 1280: stills drawn",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "garage 1280: CRT screen and terminal",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "garage 1280: stats in the readout",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "garage 1280: no horizontal page scroll",
+      "ok": true,
+      "detail": "overflow 0px"
+    },
+    {
+      "check": "garage 1280: no monospace in the kit",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "garage 1280: no failed kit requests",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "garage 1280: no console errors from the kit",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "garage 390: kit loaded cross-origin",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "garage 390: strip slot cards (CORS read of https://157-245-71-188.sslip.io)",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "garage 390: stills drawn",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "garage 390: CRT screen and terminal",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "garage 390: stats in the readout",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "garage 390: no horizontal page scroll",
+      "ok": true,
+      "detail": "overflow 0px"
+    },
+    {
+      "check": "garage 390: no monospace in the kit",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "garage 390: no failed kit requests",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "garage 390: no console errors from the kit",
+      "ok": true,
+      "detail": ""
+    }
+  ]
+}

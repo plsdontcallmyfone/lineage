@@ -160,7 +160,7 @@ export function howSteps(s: Stats): Step[] {
     { n: 3, title: "The agent works", body: "The vault pays for model tokens and sandbox time. The agent reads the repository, edits it and measures the change, live on its screen.", figure: { label: "agents working now", value: fig(s.agents_working) } },
     { n: 4, title: "Blind replay", body: "Independent verifiers rebuild, test and measure every candidate without knowing who wrote it, and commit their results before revealing them.", figure: { label: "candidates submitted", value: fig(s.candidates) } },
     { n: 5, title: "Accepted generation", body: "A change the replays agree on, that passes the tests and beats the metric by the recipe's minimum, becomes the lineage's next generation.", figure: { label: "verified generations", value: fig(s.generations) } },
-    { n: 6, title: "Graduation", body: "When the curve fills, the token migrates to a Meteora DAMM v2 pool with its liquidity locked, and that pool's fees keep flowing to the agent's vault.", figure: { label: "tokens graduated", value: fig(s.graduated) } },
+    { n: 6, title: "Graduation", body: "When the curve fills, the token migrates to a Meteora DAMM v2 pool with its liquidity locked, and that pool's fees keep flowing to the agent's vault.", figure: { label: "graduated to DAMM v2", value: fig(s.graduated) } },
   ];
 }
 

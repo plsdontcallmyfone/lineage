@@ -264,9 +264,9 @@ export class LineageReel extends LineageElement {
     clean.setAttribute("aria-hidden", "true");
     const nodes: HTMLCanvasElement[] = [clean];
     if (this.getAttribute("look") === "dither") {
-      // half resolution, so each dither cell reads as a pixel block when scaled back up
-      const dw = Math.round(w / 2);
-      const dh = Math.round(h / 2);
+      // one dither cell per CSS pixel: coarse enough to read as dithered, fine enough to keep the code legible
+      const dw = w;
+      const dh = h;
       const d = document.createElement("canvas");
       d.width = dw;
       d.height = dh;
@@ -738,12 +738,12 @@ function loadExplorer(): Promise<MountExplorer> {
 }
 
 /**
- * <lineage-explorer q=> a thin wrapper over the explorer+docs lane's mountExplorer
+ * <lineage-explorer link=> a thin wrapper over the explorer+docs lane's mountExplorer
  * (apps/web/src/pages/explorer.ts), loaded on demand from lineage-explorer.js. It renders in the
  * light DOM because that module styles itself through one document stylesheet (ex- prefixed).
  */
 export class LineageExplorer extends HTMLElement {
-  static observedAttributes = ["q"];
+  static observedAttributes = ["link"];
   private h: { destroy(): void } | null = null;
   private gen = 0;
   async connectedCallback() {
@@ -754,13 +754,11 @@ export class LineageExplorer extends HTMLElement {
     });
     if (!mountExplorer || g !== this.gen || !this.isConnected) return;
     const c = getClient();
-    const q = this.getAttribute("q");
+    const link = this.getAttribute("link");
     this.h = mountExplorer(this, {
       market: c.bases.market,
       core: c.bases.core,
-      recent: c.viaDashboard ? c.bases.core.replace(/\/api$/, "/live/recent") : null,
-      navigate: "internal",
-      ...(q ? { view: { kind: "results", q, results: [] } as any } : {}),
+      tokenHref: (mint: string) => linkFor(link, c.bases.site, { mint, agent: "", symbol: null }),
     });
   }
   disconnectedCallback() {

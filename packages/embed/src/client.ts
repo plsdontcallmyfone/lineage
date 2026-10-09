@@ -179,8 +179,8 @@ export class LineageClient {
     return `${this.bases.site}${path.startsWith("/") ? path : `/${path}`}`;
   }
 
-  /** retries a transient gateway answer (502, 503, 504) twice, with a short backoff */
-  retryDelays = [600, 1800];
+  /** retries a transient gateway answer (502, 503, 504) or network error three times, with backoff */
+  retryDelays = [800, 2500, 6000];
 
   private async json<T>(url: string): Promise<T> {
     let res!: Response;
@@ -188,6 +188,11 @@ export class LineageClient {
       try {
         res = await this.fetchImpl(url, { headers: { accept: "application/json" } });
       } catch (e) {
+        // cross-origin, a proxy's own 502 carries no CORS header and surfaces as a network error
+        if (i < this.retryDelays.length) {
+          await new Promise((r) => setTimeout(r, this.retryDelays[i]));
+          continue;
+        }
         throw new ApiError(0, "unreachable", `${url} did not answer (${(e as Error).message})`);
       }
       if (![502, 503, 504].includes(res.status) || i >= this.retryDelays.length) break;

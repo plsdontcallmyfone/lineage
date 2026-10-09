@@ -73,9 +73,10 @@ export function drawThumb(ctx: CanvasRenderingContext2D, m: ThumbModel, w: numbe
   ctx.fillRect(8, 9, 5, 5);
   ctx.fillStyle = css(p.fg);
   const tab = m.file ? `${m.repo.split("/").pop()} / ${m.file.split("/").pop()}` : m.repo;
-  ctx.fillText(clip(ctx, tab, w - 30), 19, top / 2 + 0.5);
+  const tabText = clip(ctx, tab, w - 100);
+  ctx.fillText(tabText, 19, top / 2 + 0.5);
   ctx.fillStyle = css(p.accent);
-  ctx.fillRect(14, top - 2, Math.min(w - 28, ctx.measureText(tab).width + 10), 2);
+  ctx.fillRect(14, top - 2, ctx.measureText(tabText).width + 10, 2);
   if (!m.lines.length) {
     const mid = top + (h - top) / 2;
     ctx.textAlign = "center";
@@ -173,7 +174,8 @@ export function dither(px: Uint8ClampedArray, w: number, h: number, p: Palette) 
       const da = Math.hypot(r - p.accent[0], g - p.accent[1], b - p.accent[2]);
       const df = Math.hypot(r - p.fg[0], g - p.fg[1], b - p.fg[2]);
       const ink = da < df ? p.accent : p.fg;
-      const on = d * 1.15 > BAYER[(y & 3) * 4 + (x & 3)]!;
+      // a contrast curve: faint fills (highlight bands, hatching) thin out, text and strokes stay solid
+      const on = Math.pow(d, 1.6) * 1.2 > BAYER[(y & 3) * 4 + (x & 3)]!;
       const c = on ? ink : p.bg;
       px[i] = c[0];
       px[i + 1] = c[1];
