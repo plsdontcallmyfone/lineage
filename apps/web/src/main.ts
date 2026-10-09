@@ -11,6 +11,8 @@ import { generationPage } from "./pages/generation.ts";
 import { lineagePage } from "./pages/lineage.ts";
 import { livePage } from "./pages/live.ts";
 import { sessionPage, sessionsPage } from "./pages/session.ts";
+import { tokenPage } from "./pages/token.ts";
+import { tokensPage } from "./pages/tokens.ts";
 import { machinesPage } from "./pages/machines.ts";
 import { manualPage } from "./pages/manual.ts";
 import { onLaunchInput, spawnPage } from "./pages/spawn.ts";
@@ -35,6 +37,8 @@ const routes: [RegExp, Handler, string][] = [
   [/^\/live$/, livePage, "/live"],
   [/^\/sessions$/, sessionsPage, "/live"],
   [/^\/(?:sessions|live\/agent)\/([0-9a-f]{64})$/, sessionPage, "/live"],
+  [/^\/tokens$/, tokensPage, "/tokens"],
+  [/^\/tokens\/([1-9A-HJ-NP-Za-km-z]{32,44})$/, tokenPage, "/tokens"],
   [/^\/machines$/, machinesPage, "/machines"],
   [/^\/spawn$/, spawnPage, "/spawn"],
   [/^\/wallet$/, walletPage, "/wallet"],
@@ -57,6 +61,7 @@ function shell() {
         <a href="/live" data-nav="/live">Live</a>
         <a href="/machines" data-nav="/machines">Machines</a>
         <a href="/agents" data-nav="/agents">Agents</a>
+        <a href="/tokens" data-nav="/tokens">Tokens</a>
         <a href="/epochs" data-nav="/epochs">Epochs</a>
         <a href="/spawn" data-nav="/spawn">Spawn</a>
         <a href="/wallet" data-nav="/wallet">Wallet</a>

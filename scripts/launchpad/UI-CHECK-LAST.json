@@ -1,0 +1,633 @@
+{
+  "at": "2026-10-09T16:23:16.610Z",
+  "web": "http://127.0.0.1:9663",
+  "market": "http://127.0.0.1:9668",
+  "mints": [
+    "AbBT1Mh3mQJgMfVVfKj8zUZhD4mLw5NqbJptFUacb9Zz",
+    "3AvZ77ZdVPx7yxtqA4UP11DoaPdjdgP3AUbkSnidsmY4"
+  ],
+  "pass": 124,
+  "total": 124,
+  "results": [
+    {
+      "check": "/tokens 1280 light: one row per indexed token",
+      "ok": true,
+      "detail": "34 rows, 34 tokens"
+    },
+    {
+      "check": "/tokens 1280 light: sorted by market_cap as the indexer sorts (market_cap)",
+      "ok": true,
+      "detail": "AbBT1Mh3mQJgMfVVfKj8zUZhD4mLw5NqbJptFUacb9Zz,3AvZ77ZdVPx7yxtqA4UP11DoaPdjdgP3AUbkSnidsmY4,9vgxbHXpDQAvnzLUxsAhS7fMhw37ow4qdS1WAW5Nqoyk"
+    },
+    {
+      "check": "/tokens 1280 light: sorted by volume as the indexer sorts (volume_24h)",
+      "ok": true,
+      "detail": "AbBT1Mh3mQJgMfVVfKj8zUZhD4mLw5NqbJptFUacb9Zz,3AvZ77ZdVPx7yxtqA4UP11DoaPdjdgP3AUbkSnidsmY4,1wj1WJDaGugaSwEvPL9aSZ4okmAQ9shLjyC4e7d1Dhb"
+    },
+    {
+      "check": "/tokens 1280 light: sorted by newest as the indexer sorts (created_at)",
+      "ok": true,
+      "detail": "8rU2Nb8KbdLBedycnRauCunVGWrCVUN5on2XUiYP6maV,785uP7E9DLoJZBVnMovGzGnQCoXrL6uBSphnhETdX2qf,D5zwa5RooWojRxfExaavxAW3DbcBgiZkqPBpgdFiBcyt"
+    },
+    {
+      "check": "/tokens 1280 light: sorted by progress as the indexer sorts (curve_progress)",
+      "ok": true,
+      "detail": "AbBT1Mh3mQJgMfVVfKj8zUZhD4mLw5NqbJptFUacb9Zz,3AvZ77ZdVPx7yxtqA4UP11DoaPdjdgP3AUbkSnidsmY4,9vgxbHXpDQAvnzLUxsAhS7fMhw37ow4qdS1WAW5Nqoyk"
+    },
+    {
+      "check": "/tokens 1280 light row AbBT1M: 6 figures equal the indexer's",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "/tokens 1280 light row 3AvZ77: 6 figures equal the indexer's",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "/tokens 1280 light: no horizontal page scroll",
+      "ok": true,
+      "detail": "scrollWidth 1280, body 1280, viewport 1280"
+    },
+    {
+      "check": "/tokens 1280 light: no monospace text",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "/tokens 1280 light: no console errors or failed requests",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "/tokens/AbBT1M 1280 light: 16 figures equal the indexer's",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "/tokens/AbBT1M 1280 light: phase shown as the indexer's",
+      "ok": true,
+      "detail": "graduated vs graduated"
+    },
+    {
+      "check": "/tokens/AbBT1M 1280 light: trade box venue read from chain",
+      "ok": true,
+      "detail": "Meteora DAMM v2 6mNH…fvkp"
+    },
+    {
+      "check": "/tokens/AbBT1M 1280 light: recent trades are the indexer's",
+      "ok": true,
+      "detail": "7 rows, 7 indexed"
+    },
+    {
+      "check": "/tokens/AbBT1M 1280 light: first trade amounts",
+      "ok": true,
+      "detail": "Sell 47.11 23.52 0.499316 Cmzf…aCAg DAMM v2 1m ago"
+    },
+    {
+      "check": "/tokens/AbBT1M 1280 light: fee history is the indexer's",
+      "ok": true,
+      "detail": "3 cranks"
+    },
+    {
+      "check": "/tokens/AbBT1M 1280 light: holders are the indexer's",
+      "ok": true,
+      "detail": "2 holders"
+    },
+    {
+      "check": "/tokens/AbBT1M 1280 light: price chart draws the indexer's candles",
+      "ok": true,
+      "detail": "3 candles"
+    },
+    {
+      "check": "/tokens/AbBT1M 1280 light: live panel (agent mode) shows the agent's live session, earlier ones listed",
+      "ok": true,
+      "detail": "Live, 12 listed, current 17310346, Core newest 17310346"
+    },
+    {
+      "check": "/tokens/AbBT1M 1280 light: no horizontal page scroll",
+      "ok": true,
+      "detail": "scrollWidth 1280, body 1280, viewport 1280"
+    },
+    {
+      "check": "/tokens/AbBT1M 1280 light: no monospace text",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "/tokens/AbBT1M 1280 light: no console errors or failed requests",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "/tokens/3AvZ77 1280 light: 17 figures equal the indexer's",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "/tokens/3AvZ77 1280 light: phase shown as the indexer's",
+      "ok": true,
+      "detail": "curve vs curve"
+    },
+    {
+      "check": "/tokens/3AvZ77 1280 light: trade box venue read from chain",
+      "ok": true,
+      "detail": "Meteora DBC curve 2Qai…dSUE"
+    },
+    {
+      "check": "/tokens/3AvZ77 1280 light: recent trades are the indexer's",
+      "ok": true,
+      "detail": "23 rows, 23 indexed"
+    },
+    {
+      "check": "/tokens/3AvZ77 1280 light: first trade amounts",
+      "ok": true,
+      "detail": "Sell 474.55 23.52 0.0495684 Cmzf…aCAg DBC 4m ago"
+    },
+    {
+      "check": "/tokens/3AvZ77 1280 light: fee history is the indexer's",
+      "ok": true,
+      "detail": "10 cranks"
+    },
+    {
+      "check": "/tokens/3AvZ77 1280 light: holders are the indexer's",
+      "ok": true,
+      "detail": "2 holders"
+    },
+    {
+      "check": "/tokens/3AvZ77 1280 light: price chart draws the indexer's candles",
+      "ok": true,
+      "detail": "6 candles"
+    },
+    {
+      "check": "/tokens/3AvZ77 1280 light: live panel (agent mode) says the agent has no session yet",
+      "ok": true,
+      "detail": "This agent has no authoring session yet. The panel goes live as soon as it starts working on a lineage."
+    },
+    {
+      "check": "/tokens/3AvZ77 1280 light: no horizontal page scroll",
+      "ok": true,
+      "detail": "scrollWidth 1280, body 1280, viewport 1280"
+    },
+    {
+      "check": "/tokens/3AvZ77 1280 light: no monospace text",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "/tokens/3AvZ77 1280 light: no console errors or failed requests",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "/tokens 1280 dark: one row per indexed token",
+      "ok": true,
+      "detail": "34 rows, 34 tokens"
+    },
+    {
+      "check": "/tokens 1280 dark: no horizontal page scroll",
+      "ok": true,
+      "detail": "scrollWidth 1280, body 1280, viewport 1280"
+    },
+    {
+      "check": "/tokens 1280 dark: no monospace text",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "/tokens 1280 dark: no console errors or failed requests",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "/tokens/AbBT1M 1280 dark: 16 figures equal the indexer's",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "/tokens/AbBT1M 1280 dark: phase shown as the indexer's",
+      "ok": true,
+      "detail": "graduated vs graduated"
+    },
+    {
+      "check": "/tokens/AbBT1M 1280 dark: trade box venue read from chain",
+      "ok": true,
+      "detail": "Meteora DAMM v2 6mNH…fvkp"
+    },
+    {
+      "check": "/tokens/AbBT1M 1280 dark: recent trades are the indexer's",
+      "ok": true,
+      "detail": "7 rows, 7 indexed"
+    },
+    {
+      "check": "/tokens/AbBT1M 1280 dark: first trade amounts",
+      "ok": true,
+      "detail": "Sell 47.11 23.52 0.499316 Cmzf…aCAg DAMM v2 1m ago"
+    },
+    {
+      "check": "/tokens/AbBT1M 1280 dark: fee history is the indexer's",
+      "ok": true,
+      "detail": "3 cranks"
+    },
+    {
+      "check": "/tokens/AbBT1M 1280 dark: holders are the indexer's",
+      "ok": true,
+      "detail": "2 holders"
+    },
+    {
+      "check": "/tokens/AbBT1M 1280 dark: price chart draws the indexer's candles",
+      "ok": true,
+      "detail": "3 candles"
+    },
+    {
+      "check": "/tokens/AbBT1M 1280 dark: live panel (agent mode) shows the agent's latest session, earlier ones listed",
+      "ok": true,
+      "detail": "Live, 12 listed, current 61964629, Core newest 61964629"
+    },
+    {
+      "check": "/tokens/AbBT1M 1280 dark: no horizontal page scroll",
+      "ok": true,
+      "detail": "scrollWidth 1280, body 1280, viewport 1280"
+    },
+    {
+      "check": "/tokens/AbBT1M 1280 dark: no monospace text",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "/tokens/AbBT1M 1280 dark: no console errors or failed requests",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "/tokens/3AvZ77 1280 dark: 17 figures equal the indexer's",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "/tokens/3AvZ77 1280 dark: phase shown as the indexer's",
+      "ok": true,
+      "detail": "curve vs curve"
+    },
+    {
+      "check": "/tokens/3AvZ77 1280 dark: trade box venue read from chain",
+      "ok": true,
+      "detail": "Meteora DBC curve 2Qai…dSUE"
+    },
+    {
+      "check": "/tokens/3AvZ77 1280 dark: recent trades are the indexer's",
+      "ok": true,
+      "detail": "23 rows, 23 indexed"
+    },
+    {
+      "check": "/tokens/3AvZ77 1280 dark: first trade amounts",
+      "ok": true,
+      "detail": "Sell 474.55 23.52 0.0495684 Cmzf…aCAg DBC 4m ago"
+    },
+    {
+      "check": "/tokens/3AvZ77 1280 dark: fee history is the indexer's",
+      "ok": true,
+      "detail": "10 cranks"
+    },
+    {
+      "check": "/tokens/3AvZ77 1280 dark: holders are the indexer's",
+      "ok": true,
+      "detail": "2 holders"
+    },
+    {
+      "check": "/tokens/3AvZ77 1280 dark: price chart draws the indexer's candles",
+      "ok": true,
+      "detail": "6 candles"
+    },
+    {
+      "check": "/tokens/3AvZ77 1280 dark: live panel (agent mode) says the agent has no session yet",
+      "ok": true,
+      "detail": "This agent has no authoring session yet. The panel goes live as soon as it starts working on a lineage."
+    },
+    {
+      "check": "/tokens/3AvZ77 1280 dark: no horizontal page scroll",
+      "ok": true,
+      "detail": "scrollWidth 1280, body 1280, viewport 1280"
+    },
+    {
+      "check": "/tokens/3AvZ77 1280 dark: no monospace text",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "/tokens/3AvZ77 1280 dark: no console errors or failed requests",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "/tokens 390 light: one row per indexed token",
+      "ok": true,
+      "detail": "34 rows, 34 tokens"
+    },
+    {
+      "check": "/tokens 390 light: sorted by market_cap as the indexer sorts (market_cap)",
+      "ok": true,
+      "detail": "AbBT1Mh3mQJgMfVVfKj8zUZhD4mLw5NqbJptFUacb9Zz,3AvZ77ZdVPx7yxtqA4UP11DoaPdjdgP3AUbkSnidsmY4,9vgxbHXpDQAvnzLUxsAhS7fMhw37ow4qdS1WAW5Nqoyk"
+    },
+    {
+      "check": "/tokens 390 light: sorted by volume as the indexer sorts (volume_24h)",
+      "ok": true,
+      "detail": "AbBT1Mh3mQJgMfVVfKj8zUZhD4mLw5NqbJptFUacb9Zz,3AvZ77ZdVPx7yxtqA4UP11DoaPdjdgP3AUbkSnidsmY4,1wj1WJDaGugaSwEvPL9aSZ4okmAQ9shLjyC4e7d1Dhb"
+    },
+    {
+      "check": "/tokens 390 light: sorted by newest as the indexer sorts (created_at)",
+      "ok": true,
+      "detail": "8rU2Nb8KbdLBedycnRauCunVGWrCVUN5on2XUiYP6maV,785uP7E9DLoJZBVnMovGzGnQCoXrL6uBSphnhETdX2qf,D5zwa5RooWojRxfExaavxAW3DbcBgiZkqPBpgdFiBcyt"
+    },
+    {
+      "check": "/tokens 390 light: sorted by progress as the indexer sorts (curve_progress)",
+      "ok": true,
+      "detail": "AbBT1Mh3mQJgMfVVfKj8zUZhD4mLw5NqbJptFUacb9Zz,3AvZ77ZdVPx7yxtqA4UP11DoaPdjdgP3AUbkSnidsmY4,9vgxbHXpDQAvnzLUxsAhS7fMhw37ow4qdS1WAW5Nqoyk"
+    },
+    {
+      "check": "/tokens 390 light row AbBT1M: 6 figures equal the indexer's",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "/tokens 390 light row 3AvZ77: 6 figures equal the indexer's",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "/tokens 390 light: no horizontal page scroll",
+      "ok": true,
+      "detail": "scrollWidth 390, body 390, viewport 390"
+    },
+    {
+      "check": "/tokens 390 light: no monospace text",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "/tokens 390 light: no console errors or failed requests",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "/tokens/AbBT1M 390 light: 16 figures equal the indexer's",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "/tokens/AbBT1M 390 light: phase shown as the indexer's",
+      "ok": true,
+      "detail": "graduated vs graduated"
+    },
+    {
+      "check": "/tokens/AbBT1M 390 light: trade box venue read from chain",
+      "ok": true,
+      "detail": "Meteora DAMM v2 6mNH…fvkp"
+    },
+    {
+      "check": "/tokens/AbBT1M 390 light: recent trades are the indexer's",
+      "ok": true,
+      "detail": "7 rows, 7 indexed"
+    },
+    {
+      "check": "/tokens/AbBT1M 390 light: first trade amounts",
+      "ok": true,
+      "detail": "Sell 47.11 23.52 0.499316 Cmzf…aCAg DAMM v2 1m ago"
+    },
+    {
+      "check": "/tokens/AbBT1M 390 light: fee history is the indexer's",
+      "ok": true,
+      "detail": "3 cranks"
+    },
+    {
+      "check": "/tokens/AbBT1M 390 light: holders are the indexer's",
+      "ok": true,
+      "detail": "2 holders"
+    },
+    {
+      "check": "/tokens/AbBT1M 390 light: price chart draws the indexer's candles",
+      "ok": true,
+      "detail": "3 candles"
+    },
+    {
+      "check": "/tokens/AbBT1M 390 light: live panel (agent mode) shows the agent's latest session, earlier ones listed",
+      "ok": true,
+      "detail": "Paused, 12 listed, current 184124e6, Core newest 184124e6"
+    },
+    {
+      "check": "/tokens/AbBT1M 390 light: no horizontal page scroll",
+      "ok": true,
+      "detail": "scrollWidth 390, body 390, viewport 390"
+    },
+    {
+      "check": "/tokens/AbBT1M 390 light: no monospace text",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "/tokens/AbBT1M 390 light: no console errors or failed requests",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "/tokens/3AvZ77 390 light: 17 figures equal the indexer's",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "/tokens/3AvZ77 390 light: phase shown as the indexer's",
+      "ok": true,
+      "detail": "curve vs curve"
+    },
+    {
+      "check": "/tokens/3AvZ77 390 light: trade box venue read from chain",
+      "ok": true,
+      "detail": "Meteora DBC curve 2Qai…dSUE"
+    },
+    {
+      "check": "/tokens/3AvZ77 390 light: recent trades are the indexer's",
+      "ok": true,
+      "detail": "23 rows, 23 indexed"
+    },
+    {
+      "check": "/tokens/3AvZ77 390 light: first trade amounts",
+      "ok": true,
+      "detail": "Sell 474.55 23.52 0.0495684 Cmzf…aCAg DBC 4m ago"
+    },
+    {
+      "check": "/tokens/3AvZ77 390 light: fee history is the indexer's",
+      "ok": true,
+      "detail": "10 cranks"
+    },
+    {
+      "check": "/tokens/3AvZ77 390 light: holders are the indexer's",
+      "ok": true,
+      "detail": "2 holders"
+    },
+    {
+      "check": "/tokens/3AvZ77 390 light: price chart draws the indexer's candles",
+      "ok": true,
+      "detail": "6 candles"
+    },
+    {
+      "check": "/tokens/3AvZ77 390 light: live panel (agent mode) says the agent has no session yet",
+      "ok": true,
+      "detail": "This agent has no authoring session yet. The panel goes live as soon as it starts working on a lineage."
+    },
+    {
+      "check": "/tokens/3AvZ77 390 light: no horizontal page scroll",
+      "ok": true,
+      "detail": "scrollWidth 390, body 390, viewport 390"
+    },
+    {
+      "check": "/tokens/3AvZ77 390 light: no monospace text",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "/tokens/3AvZ77 390 light: no console errors or failed requests",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "/tokens 390 dark: one row per indexed token",
+      "ok": true,
+      "detail": "34 rows, 34 tokens"
+    },
+    {
+      "check": "/tokens 390 dark: no horizontal page scroll",
+      "ok": true,
+      "detail": "scrollWidth 390, body 390, viewport 390"
+    },
+    {
+      "check": "/tokens 390 dark: no monospace text",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "/tokens 390 dark: no console errors or failed requests",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "/tokens/AbBT1M 390 dark: 16 figures equal the indexer's",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "/tokens/AbBT1M 390 dark: phase shown as the indexer's",
+      "ok": true,
+      "detail": "graduated vs graduated"
+    },
+    {
+      "check": "/tokens/AbBT1M 390 dark: trade box venue read from chain",
+      "ok": true,
+      "detail": "Meteora DAMM v2 6mNH…fvkp"
+    },
+    {
+      "check": "/tokens/AbBT1M 390 dark: recent trades are the indexer's",
+      "ok": true,
+      "detail": "7 rows, 7 indexed"
+    },
+    {
+      "check": "/tokens/AbBT1M 390 dark: first trade amounts",
+      "ok": true,
+      "detail": "Sell 47.11 23.52 0.499316 Cmzf…aCAg DAMM v2 1m ago"
+    },
+    {
+      "check": "/tokens/AbBT1M 390 dark: fee history is the indexer's",
+      "ok": true,
+      "detail": "3 cranks"
+    },
+    {
+      "check": "/tokens/AbBT1M 390 dark: holders are the indexer's",
+      "ok": true,
+      "detail": "2 holders"
+    },
+    {
+      "check": "/tokens/AbBT1M 390 dark: price chart draws the indexer's candles",
+      "ok": true,
+      "detail": "3 candles"
+    },
+    {
+      "check": "/tokens/AbBT1M 390 dark: live panel (agent mode) shows the agent's latest session, earlier ones listed",
+      "ok": true,
+      "detail": "Paused, 12 listed, current 62aa66ab, Core newest 62aa66ab"
+    },
+    {
+      "check": "/tokens/AbBT1M 390 dark: no horizontal page scroll",
+      "ok": true,
+      "detail": "scrollWidth 390, body 390, viewport 390"
+    },
+    {
+      "check": "/tokens/AbBT1M 390 dark: no monospace text",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "/tokens/AbBT1M 390 dark: no console errors or failed requests",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "/tokens/3AvZ77 390 dark: 17 figures equal the indexer's",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "/tokens/3AvZ77 390 dark: phase shown as the indexer's",
+      "ok": true,
+      "detail": "curve vs curve"
+    },
+    {
+      "check": "/tokens/3AvZ77 390 dark: trade box venue read from chain",
+      "ok": true,
+      "detail": "Meteora DBC curve 2Qai…dSUE"
+    },
+    {
+      "check": "/tokens/3AvZ77 390 dark: recent trades are the indexer's",
+      "ok": true,
+      "detail": "23 rows, 23 indexed"
+    },
+    {
+      "check": "/tokens/3AvZ77 390 dark: first trade amounts",
+      "ok": true,
+      "detail": "Sell 474.55 23.52 0.0495684 Cmzf…aCAg DBC 4m ago"
+    },
+    {
+      "check": "/tokens/3AvZ77 390 dark: fee history is the indexer's",
+      "ok": true,
+      "detail": "10 cranks"
+    },
+    {
+      "check": "/tokens/3AvZ77 390 dark: holders are the indexer's",
+      "ok": true,
+      "detail": "2 holders"
+    },
+    {
+      "check": "/tokens/3AvZ77 390 dark: price chart draws the indexer's candles",
+      "ok": true,
+      "detail": "6 candles"
+    },
+    {
+      "check": "/tokens/3AvZ77 390 dark: live panel (agent mode) says the agent has no session yet",
+      "ok": true,
+      "detail": "This agent has no authoring session yet. The panel goes live as soon as it starts working on a lineage."
+    },
+    {
+      "check": "/tokens/3AvZ77 390 dark: no horizontal page scroll",
+      "ok": true,
+      "detail": "scrollWidth 390, body 390, viewport 390"
+    },
+    {
+      "check": "/tokens/3AvZ77 390 dark: no monospace text",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "/tokens/3AvZ77 390 dark: no console errors or failed requests",
+      "ok": true,
+      "detail": ""
+    }
+  ]
+}

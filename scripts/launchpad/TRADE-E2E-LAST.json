@@ -1,0 +1,149 @@
+{
+  "at": "2026-10-09T16:22:29.028Z",
+  "wallet": "CmzfSrkhWpdoEx7nZR4UTk3bXLb4rGZG5dxQRHL5aCAg",
+  "mints": [
+    "3AvZ77ZdVPx7yxtqA4UP11DoaPdjdgP3AUbkSnidsmY4",
+    "AbBT1Mh3mQJgMfVVfKj8zUZhD4mLw5NqbJptFUacb9Zz"
+  ],
+  "pass": 21,
+  "total": 21,
+  "results": [
+    {
+      "check": "TMBPE: page shows the wallet's tLINE as chain does",
+      "ok": true,
+      "detail": "1,000 vs 1,000"
+    },
+    {
+      "check": "TMBPE: venue DBC",
+      "ok": true,
+      "detail": "Meteora DBC curve 2Qai…dSUE"
+    },
+    {
+      "check": "TMBPE buy on DBC: confirmed, chain balances moved by the amount in and the simulated out",
+      "ok": true,
+      "detail": "44xayoz3YT..., in 50000000, out 949097663, quoted 949097663"
+    },
+    {
+      "check": "TMBPE buy: page balance equals chain after the trade",
+      "ok": true,
+      "detail": "949.097663 vs 949.097663"
+    },
+    {
+      "check": "TMBPE buy: the indexer reports it with the same amounts",
+      "ok": true,
+      "detail": "buy base 949097663 quote 50000000 venue dbc"
+    },
+    {
+      "check": "TMBPE buy: the page's trade list shows it",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "TMBPE sell on DBC: confirmed, chain balances moved by the amount in and the simulated out",
+      "ok": true,
+      "detail": "8231hBSVyj..., in 474548831, out 23522605, quoted 23522605"
+    },
+    {
+      "check": "TMBPE sell: page balance equals chain after the trade",
+      "ok": true,
+      "detail": "973.522605 vs 973.522605"
+    },
+    {
+      "check": "TMBPE sell: the indexer reports it with the same amounts",
+      "ok": true,
+      "detail": "sell base 474548831 quote 23522605 venue dbc"
+    },
+    {
+      "check": "TMBPE sell: the page's trade list shows it",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "TGRAD: page shows the wallet's tLINE as chain does",
+      "ok": true,
+      "detail": "973.522605 vs 973.522605"
+    },
+    {
+      "check": "TGRAD: venue DAMM v2",
+      "ok": true,
+      "detail": "Meteora DAMM v2 6mNH…fvkp"
+    },
+    {
+      "check": "TGRAD buy on DAMM v2: confirmed, chain balances moved by the amount in and the simulated out",
+      "ok": true,
+      "detail": "55ngnNo2v7..., in 50000000, out 94219043, quoted 94219043"
+    },
+    {
+      "check": "TGRAD buy: page balance equals chain after the trade",
+      "ok": true,
+      "detail": "94.219043 vs 94.219043"
+    },
+    {
+      "check": "TGRAD buy: the indexer reports it with the same amounts",
+      "ok": true,
+      "detail": "buy base 94219043 quote 50000000 venue damm"
+    },
+    {
+      "check": "TGRAD buy: the page's trade list shows it",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "TGRAD sell on DAMM v2: confirmed, chain balances moved by the amount in and the simulated out",
+      "ok": true,
+      "detail": "4vHTNAogPR..., in 47109521, out 23522521, quoted 23522521"
+    },
+    {
+      "check": "TGRAD sell: page balance equals chain after the trade",
+      "ok": true,
+      "detail": "947.045126 vs 947.045126"
+    },
+    {
+      "check": "TGRAD sell: the indexer reports it with the same amounts",
+      "ok": true,
+      "detail": "sell base 47109521 quote 23522521 venue damm"
+    },
+    {
+      "check": "TGRAD sell: the page's trade list shows it",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "no page errors during the trades",
+      "ok": true,
+      "detail": ""
+    }
+  ],
+  "transactions": [
+    {
+      "what": "fund the test wallet CmzfSrkhWpdoEx7nZR4UTk3bXLb4rGZG5dxQRHL5aCAg with 0.1 SOL from the deployer",
+      "sig": "42kG6bD1iFX7wzjdV6fWP18sttE58Ye5KGJimE5bKtBXVJTBfv9eYggt5cXLMjj5WFimD3Pz9oGXxBM61mZyvpxn",
+      "fee": 5000
+    },
+    {
+      "what": "fund the test wallet with 1,000 tLINE from the deployer",
+      "sig": "2MoicbAvr6Zwb1PP5sLHxwwLV9N9e4ciWKDenkYCEgZ7zQXUrYnJiCJWbj3PjUvuhXXQMBcwJihNRLkfM4iZGyZq",
+      "fee": 5000
+    },
+    {
+      "what": "buy 50 tLINE of TMBPE on DBC through /tokens/3AvZ77ZdVPx7yxtqA4UP11DoaPdjdgP3AUbkSnidsmY4 (test wallet CmzfSr...)",
+      "sig": "44xayoz3YTT5mbzhjZJNQc4QmtYoqPzAENmPcx9hyKjepYDuQkzDsdvLmsxbajvrikgmGSjcYFqr8XYKRQ9sHuQh",
+      "fee": 5001
+    },
+    {
+      "what": "sell 474.548831 TMBPE on DBC through /tokens/3AvZ77ZdVPx7yxtqA4UP11DoaPdjdgP3AUbkSnidsmY4 (test wallet CmzfSr...)",
+      "sig": "8231hBSVyjPMcepDz25Gx8C56M12MZAQ5wsnDeVxxnK5eo3zMqAe8SsJQyfjUXrZngcjmFb2UmNs9MnCC6N6JdB",
+      "fee": 5001
+    },
+    {
+      "what": "buy 50 tLINE of TGRAD on DAMM v2 through /tokens/AbBT1Mh3mQJgMfVVfKj8zUZhD4mLw5NqbJptFUacb9Zz (test wallet CmzfSr...)",
+      "sig": "55ngnNo2v7myXwEmRdjq5WcdigPsKwiaw7eopwDyYdB1zKA41xWZBRBbNdMEdL42fA18vFX8kF9ZFYF8Qv6dx91k",
+      "fee": 5001
+    },
+    {
+      "what": "sell 47.109521 TGRAD on DAMM v2 through /tokens/AbBT1Mh3mQJgMfVVfKj8zUZhD4mLw5NqbJptFUacb9Zz (test wallet CmzfSr...)",
+      "sig": "4vHTNAogPRon4YKvDe5k3bUAzpwRMpTF5rFFA1rCjgfNGixwpWqeXwjZH11MFi3K6JRc5pAp1SyGknZ6A7AoFXPk",
+      "fee": 5001
+    }
+  ]
+}

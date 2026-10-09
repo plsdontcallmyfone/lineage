@@ -61,6 +61,7 @@ import { esc, html, raw, type Raw } from "../src/html.ts";
 import { badge, banner, icon, kv, panel, stat } from "../src/ui.ts";
 import { buildAndSimulate, loadChainCfg, parseUnits, reader, rpc, signAndSend, sol, units, devnetGate, type Built, type ChainCfg } from "./chain.ts";
 import { connect, DEVNET_CHAIN, disconnect, discovered, legacyOnly, onChange, onWallets, startDiscovery, type StdAccount, type StdWallet } from "./standard.ts";
+export { mountTradeBox } from "./trade.ts";
 
 const T22 = TOKEN_2022_PROGRAM;
 const W = "bun packages/worker/src/main.ts";

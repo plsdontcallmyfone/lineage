@@ -546,3 +546,16 @@ Outcome: PASS; checks 16/16.
 | 2026-10-09 15:29:59 | L1 | crank_pool_fees (repointed position): position 4nd5ej1p3VqGv4FxMUQM3cuh45zQbDFjwUant75b5Tsk into compute vault 363zLyPBM7KvkeWo4UP285uMSBp4W4fKZEkx9B5k9P3Y | 5000 | `dC5P7KcVvgGvTGcFNkzfnjppuob9Xhv8B3g76RfnWmje547UNCYNaXAfipqkv237NoVDX1u15u2Xc4skFD1vxVt` |
 
 L1 notes (2026-10-09): `lineage_launch` needed no fix and was not upgraded (devnet build `2bf5fb61...9b34`). Meteora DBC on devnet was redeployed after the LiteSVM vendor dump (last deployed slot 508,712,305; dump sha256 `5edf76d9...8ad3`, vendored pin `f5ccbb01...79f0`, DBC branch release_0.2.2 head adds config versions and quote-mint scoring, #215); DAMM v2 is unchanged (`82bb9375...1ec2`). The launch suite run against the new DBC dump in a scratch copy passed 13/13, so the vendored pin is stale but the interface is unchanged; the existing DBC config is a legacy (version 0) config and launches on it still work. The migration created one position (100% partner lock, no creator share), and DAMM v2 paid the locked position's fees in tLINE only (no agent tokens to burn).
+
+## Launchpad pages (L3): token page trades
+
+Devnet transactions sent through the token page's trade box (apps/web/wallet/trade.ts) by scripts/launchpad/trade-e2e.ts: headless Chromium with a mock Wallet Standard wallet signing with the test key ~/.config/lineage/devnet/launchpad-ui-test.json, funded by the Lineage deployer. TEST tokens only. Fee in lamports as returned by the RPC.
+
+| When (UTC) | What | Fee | Signature |
+|---|---|---|---|
+| 2026-10-09 16:16:40 | fund the test wallet CmzfSrkhWpdoEx7nZR4UTk3bXLb4rGZG5dxQRHL5aCAg with 0.1 SOL from the deployer | 5000 | `42kG6bD1iFX7wzjdV6fWP18sttE58Ye5KGJimE5bKtBXVJTBfv9eYggt5cXLMjj5WFimD3Pz9oGXxBM61mZyvpxn` |
+| 2026-10-09 16:16:41 | fund the test wallet with 1,000 tLINE from the deployer | 5000 | `2MoicbAvr6Zwb1PP5sLHxwwLV9N9e4ciWKDenkYCEgZ7zQXUrYnJiCJWbj3PjUvuhXXQMBcwJihNRLkfM4iZGyZq` |
+| 2026-10-09 16:17:01 | buy 50 tLINE of TMBPE on DBC through /tokens/3AvZ77ZdVPx7yxtqA4UP11DoaPdjdgP3AUbkSnidsmY4 (test wallet CmzfSr...) | 5001 | `44xayoz3YTT5mbzhjZJNQc4QmtYoqPzAENmPcx9hyKjepYDuQkzDsdvLmsxbajvrikgmGSjcYFqr8XYKRQ9sHuQh` |
+| 2026-10-09 16:18:42 | sell 474.548831 TMBPE on DBC through /tokens/3AvZ77ZdVPx7yxtqA4UP11DoaPdjdgP3AUbkSnidsmY4 (test wallet CmzfSr...) | 5001 | `8231hBSVyjPMcepDz25Gx8C56M12MZAQ5wsnDeVxxnK5eo3zMqAe8SsJQyfjUXrZngcjmFb2UmNs9MnCC6N6JdB` |
+| 2026-10-09 16:20:03 | buy 50 tLINE of TGRAD on DAMM v2 through /tokens/AbBT1Mh3mQJgMfVVfKj8zUZhD4mLw5NqbJptFUacb9Zz (test wallet CmzfSr...) | 5001 | `55ngnNo2v7myXwEmRdjq5WcdigPsKwiaw7eopwDyYdB1zKA41xWZBRBbNdMEdL42fA18vFX8kF9ZFYF8Qv6dx91k` |
+| 2026-10-09 16:21:41 | sell 47.109521 TGRAD on DAMM v2 through /tokens/AbBT1Mh3mQJgMfVVfKj8zUZhD4mLw5NqbJptFUacb9Zz (test wallet CmzfSr...) | 5001 | `4vHTNAogPRon4YKvDe5k3bUAzpwRMpTF5rFFA1rCjgfNGixwpWqeXwjZH11MFi3K6JRc5pAp1SyGknZ6A7AoFXPk` |

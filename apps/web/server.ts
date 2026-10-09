@@ -15,6 +15,7 @@
 //   /souls/config      GET soul draft service state (caps, today's spend; TEST values)
 //   /souls/draft       POST {seed, agent, repo} a soul draft by Claude (per-soul, daily and per-address caps)
 //   /souls/publish     POST {doc, sig} forwarded to Core's PUT /v1/agents/:id/soul (SPEC 14.8)
+//   /market/<path>     GET proxy to the market indexer (packages/indexer; --market, default http://127.0.0.1:9668)
 //   everything else    index.html (client-side routing)
 //
 // The server never holds a user's key: wallets sign in the browser. The only key it loads is the
@@ -38,6 +39,7 @@ const PORT = Number(arg("port", "9661"));
 const CORE = (arg("core", process.env.LINEAGE_CORE ?? "http://127.0.0.1:9660") ?? "").replace(/\/+$/, "");
 const HOST = arg("host", "127.0.0.1")!;
 const DEV = process.argv.includes("--dev");
+const MARKET = (arg("market", process.env.LINEAGE_MARKET ?? "http://127.0.0.1:9668") ?? "").replace(/\/+$/, "");
 const DIR = import.meta.dir;
 
 try {
@@ -286,6 +288,16 @@ async function proxy(path: string, search: string): Promise<Response> {
   }
 }
 
+// market indexer (plan L2): read-only, JSON; an unreachable indexer answers 503 so the page can say so
+async function marketProxy(path: string, search: string): Promise<Response> {
+  try {
+    const res = await fetch(`${MARKET}${path}${search}`);
+    return new Response(res.body, { status: res.status, headers: { "content-type": res.headers.get("content-type") ?? "application/json", "cache-control": "no-store" } });
+  } catch (e) {
+    return Response.json({ error: "market_unreachable", code: "market_unreachable", message: `the market indexer at ${MARKET} did not answer (${(e as Error).message})` }, { status: 503 });
+  }
+}
+
 // ------------------------------------------------------------------------------------------------
 // souls (SPEC 14.8): drafts for the Wallet page's launch step; the page signs and publishes
 
@@ -323,6 +335,7 @@ const server = Bun.serve({
       }
     }
     if (req.method !== "GET" && req.method !== "HEAD") return new Response("read-only", { status: 405 });
+    if (p.startsWith("/market/")) return marketProxy(p, url.search);
     if (p.startsWith("/api/")) {
       const rest = p.slice(5);
       if (rest === "events") return liveStream(Number(url.searchParams.get("since") ?? 0));
@@ -357,7 +370,7 @@ const server = Bun.serve({
   },
 });
 
-console.log(`lineage web on http://${HOST}:${server.port} (core ${CORE}, pid ${process.pid})`);
+console.log(`lineage web on http://${HOST}:${server.port} (core ${CORE}, market ${MARKET}, pid ${process.pid})`);
 const stop = () => {
   server.stop(true);
   process.exit(0);
