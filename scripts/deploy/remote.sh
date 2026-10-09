@@ -215,6 +215,24 @@ wipe-keys)
     [ -f "$p" ] && { shred -u "$p" 2>/dev/null || rm -f "$p"; echo "removed $(basename "$p" .json)"; }
   done
   rm -f /home/lineage/.config/lineage/model.env /home/lineage/.config/lineage/rpc.env
+  # the keyed RPC URL was also resolved into the rendered network config (audit A2)
+  NETCFG=/var/lib/lineage/site/network.json
+  if [ -f "$NETCFG" ] && grep -q '"rpc' "$NETCFG"; then
+    python3 - "$NETCFG" <<'PY' && echo "cleared the RPC URL from $NETCFG (Core falls back to public devnet until the next install)"
+import json, sys
+p = sys.argv[1]
+c = json.load(open(p))
+def scrub(o):
+    if isinstance(o, dict):
+        for k in list(o):
+            if "rpc" in k.lower() and isinstance(o[k], str): o[k] = "https://api.devnet.solana.com"
+            else: scrub(o[k])
+    elif isinstance(o, list):
+        for x in o: scrub(x)
+scrub(c)
+json.dump(c, open(p, "w"), indent=2)
+PY
+  fi
   rm -f /etc/lineage-identity/core-key.json /etc/lineage-identity/identity.env
   echo "copied keys removed; the site's own keys stay in /home/lineage/.config/lineage/site"
   echo "the identity store /var/lib/lineage/identity and its key /etc/lineage-identity/master.key stay; delete both before destroying the box"

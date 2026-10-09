@@ -335,6 +335,11 @@ async function soulsRoute(req: Request, p: string, who: string): Promise<Respons
 }
 
 const indexHtml = () => Bun.file(join(DIR, "public/index.html"));
+// Page security headers (audit A2), the same policy Caddy sets on the site (scripts/deploy/caddy/Caddyfile.tmpl);
+// the hash is the inline theme script in public/index.html (gate.test.ts checks both stay in step).
+const PAGE_CSP =
+  "default-src 'self'; script-src 'self' 'sha256-4RrfDA7V9jObfogJTeFxDmcAf0ViIdY70gMdVWyrQ9E='; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: blob: https:; connect-src 'self' https://api.github.com; object-src 'none'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'";
+const PAGE_HEADERS = { "content-type": "text/html; charset=utf-8", "content-security-policy": PAGE_CSP, "x-content-type-options": "nosniff", "x-frame-options": "DENY", "referrer-policy": "strict-origin-when-cross-origin" };
 
 const server = Bun.serve({
   port: PORT,
@@ -349,7 +354,9 @@ const server = Bun.serve({
       const r = await fetch(`${IDENTITY}${p}${url.search}`, { method: req.method, headers: { "content-type": req.headers.get("content-type") ?? "application/json" }, body: req.method === "POST" ? await req.text() : undefined }).catch(() => null);
       return r ? new Response(r.body, { status: r.status, headers: { "content-type": r.headers.get("content-type") ?? "application/json", "cache-control": "no-store" } }) : Response.json({ error: "identity_unavailable" }, { status: 502 });
     }
-    if (p.startsWith("/souls/")) return soulsRoute(req, p, req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || srv.requestIP(req)?.address || "?");
+    // the per-address draft cap keys on the LAST X-Forwarded-For entry, the one the gate (or Caddy)
+    // wrote; the first entry is whatever the client sent (audit A2)
+    if (p.startsWith("/souls/")) return soulsRoute(req, p, req.headers.get("x-forwarded-for")?.split(",").map((x) => x.trim()).filter(Boolean).pop() || srv.requestIP(req)?.address || "?");
     // the one write the dashboard forwards: bounty terms, which Core keeps only if their sha256
     // equals the digest committed onchain (so the web server needs no authority of its own)
     const terms = /^\/api\/bounties\/([A-Za-z0-9]{32,44})\/terms$/.exec(p);
@@ -396,7 +403,7 @@ const server = Bun.serve({
     }
     if (p === "/assets/app.css") return new Response(Bun.file(join(DIR, "public/app.css")), { headers: { "content-type": "text/css; charset=utf-8" } });
     if (p === "/favicon.svg") return new Response(Bun.file(join(DIR, "public/favicon.svg")), { headers: { "content-type": "image/svg+xml" } });
-    return new Response(indexHtml(), { headers: { "content-type": "text/html; charset=utf-8" } });
+    return new Response(indexHtml(), { headers: PAGE_HEADERS });
   },
 });
 

@@ -1,7 +1,10 @@
 # Rendered by scripts/deploy/remote.sh into /etc/caddy/Caddyfile. Lineage public devnet site.
 # The site list is "<ip-with-dashes>.sslip.io" plus DOMAIN when given (Let's Encrypt certificates), or
-# "localhost" with internal TLS in the dry run. /market/* goes to the market indexer on 127.0.0.1:9668, everything else
-# to the gate on 127.0.0.1:9662.
+# "localhost" with internal TLS in the dry run. Everything goes to the gate on 127.0.0.1:9662 (which sends
+# /market/* on to the market indexer on 127.0.0.1:9668).
+# The admin API stays on localhost:2019: the packaged caddy.service reloads through it (`caddy reload`),
+# which remote.sh uses. Any local process can reach it; moving it to a 0600 unix socket needs a reload
+# path tested on the server first (audit A2, accepted for now).
 {
 	admin localhost:2019
 @GLOBAL@
@@ -25,13 +28,20 @@
 		X-Content-Type-Options nosniff
 		Referrer-Policy strict-origin-when-cross-origin
 		X-Frame-Options DENY
+		# audit A2: every page is built from strings on the origin that also builds wallet transactions,
+		# so scripts come only from this origin (plus the one inline theme script in index.html, by
+		# hash; recompute it if that script changes). The embed demo's inline config script is blocked
+		# on purpose (its ?api= override let a link point the site's own page at foreign data).
+		Content-Security-Policy "default-src 'self'; script-src 'self' 'sha256-4RrfDA7V9jObfogJTeFxDmcAf0ViIdY70gMdVWyrQ9E='; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: blob: https:; connect-src 'self' https://api.github.com; object-src 'none'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'"
+		Permissions-Policy "camera=(), microphone=(), geolocation=(), payment=(), usb=(), serial=(), bluetooth=()"
+		Cross-Origin-Opener-Policy same-origin
 		-Server
 	}
 	request_body {
 		max_size 256KB
 	}
-	# market indexer read API (packages/indexer, lineage-indexer.service); a path matcher sorts before the catch-all below
-	reverse_proxy /market/* 127.0.0.1:9668
+	# /market/* goes through the gate like everything else (rate limits per client; audit A2), which
+	# sends it on to the market indexer (packages/indexer, lineage-indexer.service) on 127.0.0.1:9668
 	# GitHub identity service (packages/identity, lineage-identity.service): pasted tokens go here only, never to the gate or Core
 	reverse_proxy /identity/* 127.0.0.1:9665
 	reverse_proxy 127.0.0.1:9662 {

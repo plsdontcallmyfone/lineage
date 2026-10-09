@@ -11,6 +11,27 @@ Environment=HOME=/home/lineage LINEAGE_HOME=/home/lineage/.lineage PATH=/usr/loc
 EnvironmentFile=-/etc/lineage/site.env
 NoNewPrivileges=yes
 PrivateTmp=yes
+# audit A2: this unit needs no Docker, devices, namespaces or raw sockets
+PrivateDevices=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectKernelLogs=yes
+ProtectControlGroups=yes
+ProtectClock=yes
+ProtectHostname=yes
+RestrictNamespaces=yes
+RestrictSUIDSGID=yes
+RestrictRealtime=yes
+LockPersonality=yes
+CapabilityBoundingSet=
+AmbientCapabilities=
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX AF_NETLINK
+SystemCallArchitectures=native
+SystemCallFilter=@system-service
+SystemCallErrorNumber=EPERM
+# the gate reads nothing under /home
+ProtectHome=yes
+Environment=BUN_RUNTIME_TRANSPILER_CACHE_PATH=0
 ProtectSystem=full
 Restart=always
 RestartSec=5
@@ -18,7 +39,7 @@ StandardOutput=journal
 StandardError=journal
 # 256M was OOM-killed in a loop on 2026-10-09 while an event-stream client replayed a large backlog
 MemoryMax=1G
-ExecStart=/usr/local/bin/bun scripts/deploy/gate.ts --port 9662 --host 127.0.0.1 --web http://127.0.0.1:9661 --core http://127.0.0.1:9660 --origin ${GATE_ORIGINS}
+ExecStart=/usr/local/bin/bun scripts/deploy/gate.ts --port 9662 --host 127.0.0.1 --web http://127.0.0.1:9661 --core http://127.0.0.1:9660 --indexer http://127.0.0.1:9668 --origin ${GATE_ORIGINS}
 
 [Install]
 WantedBy=multi-user.target

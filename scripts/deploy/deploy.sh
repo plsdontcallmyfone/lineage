@@ -58,7 +58,7 @@ SHA="$(git rev-parse "${DEPLOY_REF:-HEAD}^{commit}")"
 git merge-base --is-ancestor "$SHA" HEAD || { echo "DEPLOY_REF must be HEAD or one of its ancestors" >&2; exit 2; }
 
 write_env() {
-  r "install -d -m 755 /etc/lineage && cat > /etc/lineage/site.env" <<EOF
+  r "install -d -m 755 /etc/lineage && (umask 077; cat > /etc/lineage/site.env) && chmod 600 /etc/lineage/site.env && chown root:root /etc/lineage/site.env" <<EOF
 # written by scripts/deploy/deploy.sh; read by remote.sh and the lineage units
 SITE_NAMES=$SITE_NAMES
 GATE_ORIGINS=$ORIGINS

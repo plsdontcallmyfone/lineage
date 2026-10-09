@@ -45,6 +45,17 @@ const vercel = {
   headers: [
     { source: "/assets/(.*)", headers: [{ key: "cache-control", value: "public, max-age=60" }] },
     { source: "/(api|live|chain|souls)/(.*)", headers: [{ key: "cache-control", value: "no-store" }] },
+    // audit A2: no CSP here (the Garage pages are a static Next.js export with inline scripts); the
+    // dashboard's own policy is set by Caddy on the site. These hold for every page.
+    {
+      source: "/(.*)",
+      headers: [
+        { key: "x-content-type-options", value: "nosniff" },
+        { key: "x-frame-options", value: "DENY" },
+        { key: "referrer-policy", value: "strict-origin-when-cross-origin" },
+        { key: "permissions-policy", value: "camera=(), microphone=(), geolocation=(), payment=(), usb=(), serial=(), bluetooth=()" },
+      ],
+    },
   ],
 };
 writeFileSync(join(OUT, "vercel.json"), JSON.stringify(vercel, null, 2));

@@ -11,6 +11,24 @@ Environment=HOME=/home/lineage LINEAGE_HOME=/home/lineage/.lineage PATH=/usr/loc
 EnvironmentFile=-/etc/lineage/site.env
 NoNewPrivileges=yes
 PrivateTmp=yes
+# audit A2: this unit needs no Docker, devices, namespaces or raw sockets
+PrivateDevices=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectKernelLogs=yes
+ProtectControlGroups=yes
+ProtectClock=yes
+ProtectHostname=yes
+RestrictNamespaces=yes
+RestrictSUIDSGID=yes
+RestrictRealtime=yes
+LockPersonality=yes
+CapabilityBoundingSet=
+AmbientCapabilities=
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX AF_NETLINK
+SystemCallArchitectures=native
+SystemCallFilter=@system-service
+SystemCallErrorNumber=EPERM
 ProtectSystem=full
 Restart=always
 RestartSec=5

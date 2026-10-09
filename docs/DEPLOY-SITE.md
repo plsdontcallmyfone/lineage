@@ -64,14 +64,16 @@ of `~/.ssh/lineage_site`), then run deploy.sh with its address.
 |---|---|---|---|
 | `lineage-core` | Core, chain mode devnet, data `/var/lib/lineage/core` | 127.0.0.1:9660 | 1 GB |
 | `lineage-web` | dashboard, Wallet page, `/chain` RPC proxy and faucet | 127.0.0.1:9661 | 768 MB |
-| `lineage-gate` | rate limits, CORS, method and path allowlists, body cap, stream cap (`gate.ts`) | 127.0.0.1:9662 | 256 MB |
+| `lineage-gate` | rate limits, CORS, method and path allowlists, body cap and read deadline, stream cap (`gate.ts`) | 127.0.0.1:9662 | 1 GB (256 MB was OOM-killed on an event-stream backlog) |
 | `lineage-indexer` | market indexer (`packages/indexer`): agent tokens, DBC and DAMM v2 trades, fee cranks, holders; read API `/market/*`; data `/var/lib/lineage/indexer/market.db` | 127.0.0.1:9668 | 256 MB |
-| `caddy` | HTTPS for `<ip-dashes>.sslip.io` and `DOMAIN`, gzip, security headers; `/market/*` to the indexer, everything else to the gate | 80, 443 | 256 MB |
+| `caddy` | HTTPS for `<ip-dashes>.sslip.io` and `DOMAIN`, gzip, security headers (CSP, HSTS, nosniff, frame DENY, Permissions-Policy, COOP); everything to the gate | 80, 443 | 256 MB |
 | `lineage-bootstrap` | one shot per deploy: lineages for the served recipes | | 1 GB |
 | `lineage-reference` | reference runner (calibrations, reference replays, audits) | | 1 GB |
 | `lineage-verifier@v1`, `@v2` | two honest verifiers, bonded on devnet | | 1 GB each |
 | `lineage-author@<name>` (optional, one per name in `AUTHORS`) | TEST author agent of recipe `<name>`, scripted candidates | | 1 GB each |
 | `lineage-runtime` (optional, disabled) | hosted runtime (`packages/runtime`) | | 1 GB |
+
+`lineage-gate`, `lineage-web` and `lineage-indexer` need no Docker and run with systemd sandboxing on top of `NoNewPrivileges` and `ProtectSystem=full`: private devices, kernel and cgroup protection, no namespaces, no capabilities, `AF_INET`/`AF_INET6`/`AF_UNIX`/`AF_NETLINK` only and the `@system-service` syscall set (the gate also `ProtectHome=yes`). All units still run as the one `lineage` user, which is in the docker group (accepted for this devnet site; see docs/AUDIT.md, Offchain). Check a unit with `systemd-analyze security <unit>`.
 
 The worker caps cover the Bun processes. Sandboxes run under dockerd with each recipe's own limits
 (`limits` in `recipe.yml`: 2 CPUs and 2048 MB for the default recipes), outside the unit caps.
@@ -81,16 +83,16 @@ Public surface (the gate refuses everything else before it reaches Core or the d
 | Path | Methods | Limit per client address | CORS |
 |---|---|---|---|
 | `/v1/*` except `/v1/admin/*` | GET, HEAD | 120 per minute, burst 60 | `*` |
-| `/api/*`, `/live/*` | GET, HEAD | 240 per minute, burst 120 | `*` |
+| `/api/*`, `/live/*` (not `/api/admin*`, no encoded slashes or `//`) | GET, HEAD | 240 per minute, burst 120 | `*` |
 | `/v1/bounties/:id/terms`, `/api/bounties/:id/terms` | PUT | 10 per minute | `*` |
-| `/chain/rpc` | POST (web keeps its method allowlist) | 120 per minute, burst 40 | same origin only |
-| `/chain/faucet` | POST (web keeps its per-wallet 24 h and 30 per hour limits) | 3 per hour | same origin only |
+| `/chain/rpc` | POST (web keeps its method allowlist) | 120 per minute, burst 40 | same origin only (Origin header required) |
+| `/chain/faucet` | POST (web keeps its per-wallet 24 h and 30 per hour limits) | 3 per hour | same origin only (Origin header required) |
 | pages and assets | GET, HEAD | 600 per minute | none |
 | event streams (`/live/events`, `/api/events`, `/v1/events`) | GET | 4 open per address, 400 in all | |
+| `/market/*` (gate to `lineage-indexer`) | GET, HEAD, OPTIONS (the indexer answers its own preflight) | 240 per minute, burst 120 | the indexer's (`*` unless `LINEAGE_CORS_ORIGINS`) |
+| `/souls/*` | refused (405): drafts spend the model key, and opening them on the site is an owner decision | | |
 
-| `/market/*` (Caddy to `lineage-indexer` directly, not through the gate) | GET, HEAD, OPTIONS (the indexer refuses others with 405) | none (read only, served from SQLite) | `*` |
-
-Bodies over 64 KB are refused by the gate (256 KB by Caddy). Core's write API is not public on this
+"Per client address" means per IPv4 address or per IPv6 /64 (an IPv4-mapped address counts as its IPv4); the gate holds at most 50,000 buckets (least recently used evicted). A stream slot is reserved before the upstream answers. Upstreams see one `X-Forwarded-For` and no `Forwarded`, `X-Real-IP`, `Cookie` or `Authorization` from the client. Bodies over 64 KB are refused by the gate as soon as they pass the cap (256 KB by Caddy), and a body must arrive within 10 s (408). Core's write API is not public on this
 site: outside workers cannot join through it (open `POST /v1/*` in `gate.ts` when they should).
 
 ### Market indexer (launchpad L2)
@@ -311,7 +313,7 @@ release added a migration; the data replaced by the restore is kept next to the 
 ```sh
 scripts/deploy/deploy.sh <host> stop        # every lineage unit and Caddy stopped and disabled (site offline, data kept)
 scripts/deploy/deploy.sh <host> start
-scripts/deploy/deploy.sh <host> wipe-keys   # remove the keys copied from this machine
+scripts/deploy/deploy.sh <host> wipe-keys   # remove the keys copied from this machine and the keyed RPC URL in network.json
 ```
 
 To retire the server: `stop`, `wipe-keys`, then destroy the droplet. The site's verifiers keep their

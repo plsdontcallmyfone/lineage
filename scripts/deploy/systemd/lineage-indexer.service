@@ -1,6 +1,6 @@
 # Installed by scripts/deploy/remote.sh. Lineage public devnet site, docs/DEPLOY-SITE.md.
 # Market indexer (packages/indexer): agent tokens, DBC and DAMM v2 trades, fee cranks; read API under
-# /market/* (Caddy routes it here directly). RPC from the chain resolver: LINEAGE_DEVNET_RPC in
+# /market/* (Caddy sends it through the gate, which forwards here). RPC from the chain resolver: LINEAGE_DEVNET_RPC in
 # /etc/lineage/site.env, else /home/lineage/.config/lineage/rpc.env, else public devnet.
 [Unit]
 Description=Lineage market indexer on 127.0.0.1:9668
@@ -16,6 +16,24 @@ EnvironmentFile=-/etc/lineage/site.env
 StateDirectory=lineage/indexer
 NoNewPrivileges=yes
 PrivateTmp=yes
+# audit A2: this unit needs no Docker, devices, namespaces or raw sockets
+PrivateDevices=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectKernelLogs=yes
+ProtectControlGroups=yes
+ProtectClock=yes
+ProtectHostname=yes
+RestrictNamespaces=yes
+RestrictSUIDSGID=yes
+RestrictRealtime=yes
+LockPersonality=yes
+CapabilityBoundingSet=
+AmbientCapabilities=
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX AF_NETLINK
+SystemCallArchitectures=native
+SystemCallFilter=@system-service
+SystemCallErrorNumber=EPERM
 ProtectSystem=full
 Restart=always
 RestartSec=10
