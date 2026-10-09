@@ -1,6 +1,7 @@
 # Installed by scripts/deploy/remote.sh. Lineage public devnet site, docs/DEPLOY-SITE.md.
 # OPTIONAL (WITH_RUNTIME=1): the hosted runtime (packages/runtime). Spends real model money up to
-# global_max_usd in /var/lib/lineage/site/runtime.json; needs the runtime authority key and model.env.
+# global_max_usd per global_window_s (10 USD per UTC day, scripts/deploy/site-config.ts) in
+# /var/lib/lineage/site/runtime.json; needs the runtime authority key and model.env.
 [Unit]
 Description=Lineage hosted runtime (devnet)
 After=lineage-core.service lineage-bootstrap.service docker.service

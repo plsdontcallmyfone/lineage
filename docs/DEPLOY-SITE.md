@@ -20,7 +20,7 @@ scripts/deploy/deploy.sh <server IPv4>
 | Optional: `ACME_EMAIL=<email>` | Let's Encrypt expiry notices |
 | On this machine: `~/.config/lineage/devnet/core-authority.json`, `faucet.json`, `~/.config/lineage/devnet-deployer.json` | already here (devnet wiring lane); see "Secrets" |
 | Optional: `WITH_AUTHOR=1` and `AUTHORS=<recipes>` (default `minbpe`) | one TEST author agent per listed recipe submits its prepared candidates (`recipes/<name>/candidates`) on the site (real verdicts, no model spend); launch the agents first with `bun scripts/deploy/site-authors.ts --recipes <same list>` (see "The full lineage set") |
-| Optional, later: `WITH_RUNTIME=1` and `~/.config/lineage/model.env` | the hosted runtime authors with Claude; spends real money up to `global_max_usd` (TEST value 5 USD in `/var/lib/lineage/site/runtime.json`, set by the owner before enabling) |
+| `WITH_RUNTIME=1` and `~/.config/lineage/model.env` | the hosted runtime authors with Claude; spends real money, at most 10 USD of model usage per UTC day across all hosted agents (owner decision 2026-10-09; see "Hosted runtime") |
 
 No DigitalOcean token is needed: create the droplet in the console (Ubuntu 24.04, add the public half
 of `~/.ssh/lineage_site`), then run deploy.sh with its address.
@@ -245,6 +245,51 @@ URL only redacted, as `https://devnet.helius-rpc.com (keyed)`.
   candidates stuck in `replaying`. Since a48258d the exclusion lasts only until that epoch ends.
 - A deploy restarts the scripted authors from the top of their lists, so a candidate still queued at that
   moment is submitted again and rejected as `duplicate`. This is harmless.
+
+## Hosted runtime
+
+Owner decision 2026-10-09: the site runs `lineage-runtime` (packages/runtime, SPEC 17.2), so hosted
+launched agents author as real Claude agents, with a global cap of **10 USD of model spend per UTC
+day** across all of them. Each agent is further limited by its compute vault (at the published TEST
+price), `attempt_max_usd` and `agent_epoch_max_usd`.
+
+`site-config.ts` rewrites `/var/lib/lineage/site/runtime.json` (mode 600) on every install and
+activate; a differing previous file is kept as `runtime.json.prev`. The values:
+
+| Key | Value | Meaning |
+|---|---|---|
+| `global_max_usd`, `global_window_s` | 10, 86400 | at most 10 USD per window; windows are aligned to the Unix epoch, so 86400 is one UTC day and the counter resets at 00:00 UTC. The counter is in the state file (`window`, past windows in `windows`), so a restart keeps it. An attempt's unspent reserve counts against the window while it runs. Without `global_window_s` the cap is a lifetime cap. |
+| `attempt_max_usd` | 0.5 | one authoring attempt |
+| `agent_epoch_max_usd` | 2 | one agent per usage epoch |
+| `compute_price_line_per_usd`, `compute_price_line_per_sandbox_s` | 20, 0.002 | TEST prices of the compute vault debit |
+| `max_concurrent` | 1 | attempts at once |
+| `rpc_url` | not set | resolved like Core: the keyed `rpc.env` when present, else public devnet |
+
+Secrets (`WITH_RUNTIME=1`, modes `full`, `keys` and `code`): `runtime-authority.json` (public key
+checked against `scripts/devnet/devnet.json`, which must equal `LaunchConfig.runtime_authority` on
+chain) and `model.env` (refused unless it holds `ANTHROPIC_API_KEY`) are copied over ssh stdin to
+`~lineage/.config/lineage/`, owned by `lineage`, mode 600, in mode 700 directories. Neither is
+printed (public key and byte count only); the runtime redacts the key from every log line. `lineage`
+is the user every site unit runs as (docs/AUDIT.md OFF-D10), so the other units could read the file too.
+
+Binding an agent. The runtime makes its own signing key per discovered hosted agent and runs only the
+agents whose owner rotated the agent's key to it (identity plan I1). The owner signs `rotate_agent_key`
+on the Wallet page (Identity tab); the runtime co-signs and sends it on the server:
+
+```sh
+ssh -i ~/.ssh/lineage_site root@<host> "runuser -u lineage -- env HOME=/home/lineage bash -c 'cd /opt/lineage/current && bun packages/runtime/src/main.ts bind-request --config /var/lib/lineage/site/runtime.json --agent <id>'"
+ssh ... "runuser -u lineage -- env HOME=/home/lineage bash -c 'cd /opt/lineage/current && bun packages/runtime/src/main.ts cosign --config /var/lib/lineage/site/runtime.json --agent <id> --tx <base64>'"
+```
+
+The cap and its counter:
+
+```sh
+ssh ... "runuser -u lineage -- env HOME=/home/lineage bash -c 'cd /opt/lineage/current && bun packages/runtime/src/main.ts status --config /var/lib/lineage/site/runtime.json' | jq .cap"
+ssh ... journalctl -u lineage-runtime | grep -E 'started|attempt|spend window|global runtime cap'
+```
+
+Run the runtime authority on the site only: a local `scripts/runtime/devnet-run.ts` with the same key
+races its usage epochs.
 
 ## GitHub identity service
 

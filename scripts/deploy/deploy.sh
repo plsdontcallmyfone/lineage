@@ -20,7 +20,8 @@
 #   DOMAIN          optional real domain (its A record must point at the server) served next to <ip>.sslip.io
 #   ACME_EMAIL      optional email for Let's Encrypt
 #   LINEAGE_RECIPES recipes to serve (default fixture-b58,base58-py,minbpe), re-pinned to the server's arch
-#   WITH_RUNTIME=1  also copy the runtime authority key and model.env and run lineage-runtime (real model spend)
+#   WITH_RUNTIME=1  also copy the runtime authority key and model.env (modes full, keys and code) and run
+#                   lineage-runtime (real model spend, capped per UTC day in runtime.json by site-config.ts)
 #   WITH_AUTHOR=1   also copy the TEST author agent keys and run lineage-author@<name> (scripted candidates)
 #   AUTHORS         recipes whose TEST author runs (default minbpe); launch their agents first with
 #                   scripts/deploy/site-authors.ts --recipes <same list> (keys agent-<name>.json here)
@@ -138,10 +139,7 @@ do_keys() {
   put_key "$KEYS_LOCAL/core-authority.json" devnet/core-authority.json "$ca"
   put_key "$KEYS_LOCAL/faucet.json" devnet/faucet.json ""
   [ -f "$HOME/.config/lineage/rpc.env" ] && put_secret "$HOME/.config/lineage/rpc.env" rpc.env
-  if [ "${WITH_RUNTIME:-0}" = 1 ]; then
-    put_key "$KEYS_LOCAL/runtime-authority.json" devnet/runtime-authority.json "$rt"
-    put_secret "$HOME/.config/lineage/model.env" model.env
-  fi
+  [ "${WITH_RUNTIME:-0}" = 1 ] && do_runtime_secrets
   if [ "${WITH_AUTHOR:-0}" = 1 ]; then
     local ma n; ma="$(bun -e "console.log(JSON.parse(await Bun.file('$dj').text()).agents.minbpe.agent)")"
     for n in ${AUTHORS//,/ }; do
@@ -149,6 +147,18 @@ do_keys() {
       put_key "$KEYS_LOCAL/agent-$n.json" "devnet/agent-$n.json" "$([ "$n" = minbpe ] && echo "$ma")"
     done
   fi
+}
+
+# The hosted runtime's secrets (WITH_RUNTIME=1): the runtime authority key (checked against
+# devnet.json's runtime_authority, which must equal LaunchConfig.runtime_authority on chain) and the
+# model key file. Both land owned by lineage (the runtime's user), mode 600, in mode 700 directories;
+# their content goes over ssh stdin and is never printed (only the public key and a byte count).
+do_runtime_secrets() {
+  [ "$DRY_RUN" = 1 ] && { echo "runtime secrets: dry run, nothing copied"; return; }
+  local rt; rt="$(bun -e "console.log(JSON.parse(await Bun.file('$REPO/scripts/devnet/devnet.json').text()).runtime_authority)")"
+  put_key "$KEYS_LOCAL/runtime-authority.json" devnet/runtime-authority.json "$rt"
+  grep -qE '^[[:space:]]*ANTHROPIC_(API_KEY|AUTH_TOKEN)[[:space:]]*=' "$HOME/.config/lineage/model.env" || { echo "model.env holds no ANTHROPIC_API_KEY; not copied" >&2; return 1; }
+  put_secret "$HOME/.config/lineage/model.env" model.env
 }
 
 site_pub() { r "cat /var/lib/lineage/site/pubkeys.json" | bun -e "const j=JSON.parse(await Bun.stdin.text()); console.log(j.site['$1'])"; }
@@ -197,7 +207,7 @@ case "$MODE" in
     do_provision; do_ship; do_keys; do_fund; do_activate
     [ "$DRY_RUN" = 1 ] || echo "lineages are being calibrated by lineage-bootstrap (minutes per recipe): scripts/deploy/deploy.sh $HOST status" ;;
   provision) do_provision ;;
-  code) do_ship; do_activate ;;
+  code) do_ship; [ "${WITH_RUNTIME:-0}" = 1 ] && { say "runtime secrets"; do_runtime_secrets; }; do_activate ;;
   keys) do_ship; do_keys ;;
   fund) do_fund ;;
   status) r "bash /opt/lineage/current/scripts/deploy/remote.sh status" ;;

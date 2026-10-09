@@ -1,7 +1,7 @@
 #!/usr/bin/env bun
 // lineage-runtime CLI (SPEC 17.2).
 //   run      --config <file> [--max-candidates <n>]   run every hosted agent until SIGINT or SIGTERM
-//   status   --config <file>                          print the persisted state summary (no keys)
+//   status   --config <file>                          print the persisted state summary (no keys) and the global cap: window and spend counter
 //   bind-request --config <file> --agent <id>         what the owner needs to bind the agent to this runtime's key
 //   cosign   --config <file> --agent <id> --tx <base64> [--dry-run]
 //                                                     devnet: co-sign, as the agent's new runtime key, a
@@ -14,7 +14,7 @@ import { keyFromSolanaJson } from "@lineage/protocol";
 import { devnetRpcUrl } from "../../chain/src/endpoint.ts";
 import { AnthropicProposer } from "../../worker/src/proposers/anthropic.ts";
 import { ChainBackend, SimBackend, type Backend } from "./backend.ts";
-import { loadConfig, loadModelEnv, type RuntimeConfig } from "./config.ts";
+import { loadConfig, loadModelEnv, windowStart, type RuntimeConfig } from "./config.ts";
 import { Runtime, type RuntimeDeps } from "./runtime.ts";
 import { addSecret, redact } from "./state.ts";
 import { checkCorePrices, CreditMonitor, monitorStatePath, railClient, railModel, railPrices } from "./rail.ts";
@@ -88,6 +88,11 @@ async function main() {
       if (!existsSync(f)) throw new Error(`no state at ${f}`);
       const s = JSON.parse(readFileSync(f, "utf8"));
       for (const v of Object.values(s.agents) as { key_file?: string }[]) delete v.key_file;
+      // the global cap as configured and the counter it is checked against (a window not yet rolled over by the running process reads as 0)
+      const ws = cfg.global_window_s ?? null;
+      const start = ws ? windowStart(Date.now(), ws) : null;
+      const spent = ws ? (s.window?.start === start && s.window?.window_s === ws ? s.window.usd : 0) : s.spent_usd_total;
+      s.cap = { max_usd: cfg.global_max_usd, window_s: ws, window_start: start && new Date(start).toISOString(), window_end: start && new Date(start + ws! * 1000).toISOString(), spent_usd: spent, left_usd: Math.max(0, cfg.global_max_usd - spent), lifetime_usd: s.spent_usd_total };
       console.log(JSON.stringify(s, null, 2));
       return;
     }

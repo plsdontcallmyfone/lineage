@@ -5,7 +5,7 @@ import { CoreClient } from "../../core/src/client.ts";
 import { Worker } from "../../worker/src/worker.ts";
 import type { Meter, Proposer } from "../../worker/src/proposers/types.ts";
 import type { Backend, HostedAgent, Vault } from "./backend.ts";
-import { chainCostOf, costOf, resolvePrices, usdFor, type Prices, type RuntimeConfig } from "./config.ts";
+import { chainCostOf, costOf, resolvePrices, usdFor, windowStart, type Prices, type RuntimeConfig } from "./config.ts";
 import type { ChainFee, Messenger } from "../../core/src/msgchain.ts";
 import { provenanceRecord, signProvenance, type AttemptTotals } from "./provenance.ts";
 import { emptyUsage, isAgentId, Lock, modelTokens, redact, StateStore, type AgentUsage, type ClosedEpoch } from "./state.ts";
@@ -97,8 +97,12 @@ export class Runtime {
     this.state.runs.push({ started_at: this.now(), stopped_at: null, spent_usd: 0, pid: process.pid });
     this.save();
     const unposted = this.state.closed.filter((e) => !e.done).length;
+    const cap = this.capStatus();
+    const capText = cap.window_s
+      ? `global cap ${cap.max_usd} USD per ${cap.window_s} s window (${cap.window_s === 86400 ? "UTC day" : "aligned to the Unix epoch"}), this window ${new Date(cap.window_start!).toISOString()} to ${new Date(cap.window_end!).toISOString()} spent ${usd4(cap.spent_usd)}; lifetime ${usd4(this.state.spent_usd_total)} USD`
+      : `spent so far ${usd4(this.state.spent_usd_total)} of ${this.cfg.global_max_usd} USD (lifetime cap)`;
     this.log(
-      `started (${this.cfg.mode}, runtime ${this.deps.runtimeKey.id}, pid ${process.pid}); prices ${this.cfg.compute_price_line_per_usd} $LINE per USD and ${this.cfg.compute_price_line_per_sandbox_s} per sandbox second (TEST values); spent so far ${usd4(this.state.spent_usd_total)} of ${this.cfg.global_max_usd} USD${unposted ? `; recovering ${unposted} unposted usage epoch(s)` : ""}`,
+      `started (${this.cfg.mode}, runtime ${this.deps.runtimeKey.id}, pid ${process.pid}); prices ${this.cfg.compute_price_line_per_usd} $LINE per USD and ${this.cfg.compute_price_line_per_sandbox_s} per sandbox second (TEST values); ${capText}${unposted ? `; recovering ${unposted} unposted usage epoch(s)` : ""}`,
     );
   }
 
@@ -134,11 +138,53 @@ export class Runtime {
     return owed;
   }
 
+  /**
+   * The current spend window (config `global_window_s`), rolled over when the clock left it: the
+   * closed window goes to `windows` and a new one starts at 0. Null for a lifetime cap.
+   */
+  private spendWindow(): { start: number; window_s: number; usd: number } | null {
+    const ws = this.cfg.global_window_s;
+    if (!ws) return null;
+    const start = windowStart(this.now(), ws);
+    const w = this.state.window;
+    if (!w || w.start !== start || w.window_s !== ws) {
+      // a clock that went backwards never reopens a closed window with a fresh budget
+      if (w && w.window_s === ws && w.start > start) return w;
+      if (w) {
+        (this.state.windows ??= []).push(w);
+        if (this.state.windows.length > 60) this.state.windows.splice(0, this.state.windows.length - 60);
+        this.log(`spend window ${new Date(w.start).toISOString()} closed at ${usd4(w.usd)} USD of ${this.cfg.global_max_usd}`);
+      }
+      this.state.window = { start, window_s: ws, usd: 0 };
+      this.save();
+    }
+    return this.state.window!;
+  }
+
+  /** The global cap as configured, and the spend counter it is checked against (public: no keys). */
+  capStatus() {
+    const w = this.spendWindow();
+    const spent = w ? w.usd : this.state.spent_usd_total;
+    return {
+      max_usd: this.cfg.global_max_usd,
+      window_s: this.cfg.global_window_s ?? null,
+      window_start: w ? w.start : null,
+      window_end: w ? w.start + w.window_s * 1000 : null,
+      spent_usd: spent,
+      left_usd: Math.max(0, this.globalLeft()),
+      lifetime_usd: this.state.spent_usd_total,
+      past_windows: (this.state.windows ?? []).slice(-7),
+    };
+  }
+
   private globalLeft(): number {
     let reserved = 0;
     for (const a of this.attempts.values()) reserved += Math.max(0, a.maxUsd - a.totals.usd);
     // a non-finite or negative total (NaN usage saved as null) must not reset the cap (audit A2, OFF-R3)
-    const spent = this.state.spent_usd_total;
+    const total = this.state.spent_usd_total;
+    if (typeof total !== "number" || !Number.isFinite(total) || total < 0) return 0;
+    const w = this.spendWindow();
+    const spent = w ? w.usd : total;
     if (typeof spent !== "number" || !Number.isFinite(spent) || spent < 0) return 0;
     return this.cfg.global_max_usd - spent - reserved;
   }
@@ -168,7 +214,7 @@ export class Runtime {
     const usd = Math.min(this.cfg.attempt_max_usd, fromVault, epochLeft, g);
     if (!Number.isFinite(usd) || !Number.isFinite(epochLeft)) return { usd: null, why: "spend record is not a finite number; refusing to start an attempt", vault: false };
     if (usd < this.cfg.min_attempt_usd) {
-      const why = g === usd ? `global runtime cap (${this.cfg.global_max_usd} USD) reached` : epochLeft === usd ? "per-agent epoch cap reached" : `compute vault exhausted (${avail} base units unowed)`;
+      const why = g === usd ? `global runtime cap (${this.cfg.global_max_usd} USD${this.cfg.global_window_s ? ` per ${this.cfg.global_window_s} s window` : ""}) reached` : epochLeft === usd ? "per-agent epoch cap reached" : `compute vault exhausted (${avail} base units unowed)`;
       return { usd: null, why, vault: fromVault === usd };
     }
     return { usd };
@@ -192,6 +238,8 @@ export class Runtime {
         s.usd += u.usd;
         if (!s.models.includes(u.model)) s.models.push(u.model);
         this.state.spent_usd_total += u.usd;
+        const w = this.spendWindow();
+        if (w) w.usd += u.usd;
         this.runSpent += u.usd;
         const run = this.state.runs[this.state.runs.length - 1];
         if (run) run.spent_usd = this.runSpent;
@@ -481,6 +529,7 @@ export class Runtime {
       runtime: this.deps.runtimeKey.id,
       spent_usd_total: this.state.spent_usd_total,
       run_spent_usd: this.runSpent,
+      cap: this.capStatus(),
       agents: Object.fromEntries(
         Object.entries(this.state.agents).map(([a, s]) => [a, { status: s.status, runtime_key: s.key_id, candidates: s.candidates, vault: this.vaults.get(a)?.balance.toString() ?? null, awake: this.vaults.get(a)?.awake ?? null, owed: this.prices ? this.owed(a).toString() : null }]),
       ),

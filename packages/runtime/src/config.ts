@@ -26,8 +26,17 @@ export interface RuntimeConfig {
   /** Spend control (USD of model usage). */
   attempt_max_usd: number;
   agent_epoch_max_usd: number;
-  /** Lifetime cap of this runtime across restarts (persisted spend). */
+  /**
+   * Cap on this runtime's model spend across all agents (persisted across restarts). Without
+   * `global_window_s` it is a lifetime cap; with it, it is a cap per window (below).
+   */
   global_max_usd: number;
+  /**
+   * Optional spend window of `global_max_usd`, in seconds: windows are aligned to the Unix epoch, so
+   * 86400 is one UTC calendar day (00:00 to 24:00 UTC) and the cap resets at 00:00 UTC. Absent or
+   * null: `global_max_usd` caps the runtime's lifetime spend.
+   */
+  global_window_s?: number | null;
   /** An attempt whose allowed spend would be lower than this is not started. */
   min_attempt_usd: number;
   /** Published compute prices, whole $LINE as decimal strings. TEST values until the owner sets launch values. */
@@ -87,6 +96,8 @@ export function parseConfig(raw: Record<string, unknown>): RuntimeConfig {
     if (typeof c[k] !== "string" || !/^\d+(\.\d+)?$/.test(c[k])) throw new Error(`runtime config: ${k} is a decimal string of whole $LINE`);
   for (const k of ["attempt_max_usd", "agent_epoch_max_usd", "global_max_usd", "min_attempt_usd"] as const)
     if (typeof c[k] !== "number" || !(c[k] >= 0)) throw new Error(`runtime config: ${k} must be a non-negative number`);
+  if (c.global_window_s !== undefined && c.global_window_s !== null && !(Number.isInteger(c.global_window_s) && c.global_window_s >= 60))
+    throw new Error("runtime config: global_window_s is a whole number of seconds >= 60 (86400 = one UTC day), or null for a lifetime cap");
   if (!(c.max_concurrent >= 1)) throw new Error("runtime config: max_concurrent >= 1");
   const rail = parseRail(c);
   c.rail = rail.rail;
@@ -109,6 +120,12 @@ export function loadModelEnv(path = join(homedir(), ".config/lineage/model.env")
       if (m && !process.env[m[1]!]) process.env[m[1]!] = m[2]!.replace(/^["']|["']$/g, "");
     }
   return !!(process.env.ANTHROPIC_API_KEY || process.env.ANTHROPIC_AUTH_TOKEN);
+}
+
+/** Start (ms) of the spend window holding `nowMs`; windows of `windowS` seconds aligned to the Unix epoch (86400 = UTC days). */
+export function windowStart(nowMs: number, windowS: number): number {
+  const w = windowS * 1000;
+  return Math.floor(nowMs / w) * w;
 }
 
 /** A decimal string of whole tokens as integer base units (exact; extra decimals are refused). */

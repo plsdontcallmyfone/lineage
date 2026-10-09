@@ -80,6 +80,13 @@ export interface RuntimeState {
   mode: "sim" | "devnet";
   runtime: string;
   spent_usd_total: number;
+  /**
+   * Model spend in the current spend window (config `global_window_s`, e.g. one UTC day), and the
+   * spend of the last closed windows (newest last, at most 60). Absent in state files written
+   * before windows existed; created on the first budget check.
+   */
+  window?: { start: number; window_s: number; usd: number };
+  windows?: { start: number; window_s: number; usd: number }[];
   agents: Record<string, AgentState>;
   open: { period: number; opened_at: number; usage: Record<string, AgentUsage> };
   closed: ClosedEpoch[];

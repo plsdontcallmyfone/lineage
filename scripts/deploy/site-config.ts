@@ -12,7 +12,8 @@
 //   caps.json     this machine's capabilities (lineage-worker doctor). Written once and kept, so the
 //                 digest the site's verifiers registered on chain stays stable across reboots;
 //                 --refresh-caps rewrites it (site-chain.ts then sends update_agent).
-//   runtime.json  the hosted runtime's config (devnet mode), used only when lineage-runtime is enabled.
+//   runtime.json  the hosted runtime's config (devnet mode, rewritten each time from the values below; the
+//                 previous file is kept as runtime.json.prev when it differed), used only when lineage-runtime is enabled.
 //   runtime-authority.pub   the runtime authority's public key (Core's --runtime-key: no secret needed)
 import { chmodSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
@@ -66,15 +67,23 @@ const runtimeCfg = {
   core: "http://127.0.0.1:9660",
   state_dir: "/var/lib/lineage/runtime",
   runtime_key: join(HOME_CFG, "devnet", "runtime-authority.json"),
-  rpc_url: devnet.rpc_url,
-  _note: "TEST values from scripts/runtime/devnet-run.ts. global_max_usd caps the real model spend of this runtime over its lifetime; the owner sets it before enabling lineage-runtime.",
+  // no rpc_url: the runtime resolves it like Core (LINEAGE_DEVNET_RPC, the keyed rpc.env, else public devnet)
+  _note:
+    "Written by scripts/deploy/site-config.ts on every install and activate. Owner decision 2026-10-09: the hosted runtime runs on the site with a global cap of 10 USD of model spend per UTC day (global_max_usd per global_window_s, reset at 00:00 UTC), across all hosted agents; each agent is further limited by its compute vault, attempt_max_usd and agent_epoch_max_usd. Prices are TEST values.",
   attempt_max_usd: 0.5,
   agent_epoch_max_usd: 2,
-  global_max_usd: 5,
+  global_max_usd: 10,
+  global_window_s: 86400,
   compute_price_line_per_usd: "20",
   compute_price_line_per_sandbox_s: "0.002",
   max_concurrent: 1,
 };
 const runtimePath = join(OUT, "runtime.json");
-if (!existsSync(runtimePath)) writeFileSync(runtimePath, JSON.stringify(runtimeCfg, null, 2) + "\n");
-console.log(`runtime.json: ${existsSync(runtimeCfg.runtime_key) ? "runtime authority key present" : "no runtime authority key (lineage-runtime stays disabled)"}`);
+const runtimeText = JSON.stringify(runtimeCfg, null, 2) + "\n";
+const prevRuntime = existsSync(runtimePath) ? readFileSync(runtimePath, "utf8") : null;
+if (prevRuntime !== null && prevRuntime !== runtimeText) writeFileSync(`${runtimePath}.prev`, prevRuntime, { mode: 0o600 });
+writeFileSync(runtimePath, runtimeText, { mode: 0o600 });
+chmodSync(runtimePath, 0o600);
+console.log(
+  `runtime.json: global cap ${runtimeCfg.global_max_usd} USD per ${runtimeCfg.global_window_s} s (UTC day), attempt ${runtimeCfg.attempt_max_usd}, agent epoch ${runtimeCfg.agent_epoch_max_usd}${prevRuntime !== null && prevRuntime !== runtimeText ? " (changed; previous kept as runtime.json.prev)" : ""}; ${existsSync(runtimeCfg.runtime_key) ? "runtime authority key present" : "no runtime authority key (lineage-runtime stays disabled)"}`,
+);
