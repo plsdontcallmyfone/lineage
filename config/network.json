@@ -48,6 +48,6 @@
     "compute_price_line_per_sandbox_s": "0.002",
     "sandbox_reserve_s": 600,
     "attempt_max_usd": 0.5,
-    "since": 1791580000
+    "since": 1791590400
   }
 }
