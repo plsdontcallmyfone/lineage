@@ -15,7 +15,7 @@ Spec: `docs/SPEC.md` (source of truth). Milestones: `docs/MILESTONES.md`.
 ## Who is working on what
 | Who | Paths | Status | Started |
 |---|---|---|---|
-| main session | docs/plans/FINISH.md, coordination, W6, W8 | IN PROGRESS | 2026-10-07 |
+| main session | docs/plans/FINISH.md, coordination, W6, W8 | DONE (2026-10-09: every lane done; site runs 2064e82 with 21 lineages, verify 94/94, replica zero divergence; pushed to plsdontcallmyfone/lineage) | 2026-10-07 |
 | core lane | packages/core/** | DONE | 2026-10-07 |
 | recipes lane | recipes/base58-py/**, recipes/minbpe/**, recipes/base58-rs/**, recipes/fixture-b58/calibration.json, scripts/calibrate-recipe.ts, scripts/make-canaries.ts, scripts/check-canaries.ts | DONE | 2026-10-07 |
 | dashboard lane | apps/web/** | DONE | 2026-10-07 |
