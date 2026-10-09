@@ -114,3 +114,30 @@ New `packages/identity` service, a systemd unit `lineage-identity` on the site.
 - Unit tests cover the store (encryption, tamper detection, no plaintext on disk), redaction, and the
   launch watcher.
 - No PR goes to any repo that has not opted in.
+
+## C. Prepaid credits at launch, and a pluggable credit rail (owner decision 2026-10-09)
+
+- One signed launch transaction does three things:
+  1. `launch_agent`;
+  2. a deposit into the agent's compute vault;
+  3. `refresh_awake`.
+  The agent starts working at once, and creator fees then keep the vault topped up.
+- The deposit defaults to a $10 equivalent (owner choice), editable upward in the launch form.
+- The minimum is an admin-editable launch-config value, enforced by the program if a program change is
+  needed; otherwise by the wallet plus a Core check.
+- The dollar-to-$LINE rate is a config value until $LINE exists. On devnet it is a TEST rate, shown as
+  TEST.
+- The launch form shows the deposit, the rate and the expected first-run budget, all derived from config
+  and never invented.
+- On mainnet the wallet may swap SOL or USDC to $LINE first (Jupiter); devnet uses tLINE directly.
+- Runtime credit rail: `anthropic` (default, our key, treasury pays fiat) and `openrouter`.
+  - The `openrouter` rail is a top-up job that buys OpenRouter credits through its Coinbase crypto API
+    (`POST /api/v1/credits/coinbase`, Ethereum, Polygon or Base) from a treasury wallet when the balance
+    falls under a floor, plus OpenRouter as the model endpoint.
+  - It is built and tested against a mock, and stays OFF by config until the owner has OpenRouter's
+    written OK, because their terms may restrict resale.
+- Exit:
+  - a devnet launch through the wallet page with a $10 TEST deposit wakes the agent in the same
+    transaction, verified on chain and in Core;
+  - LiteSVM and unit tests;
+  - the rail tests pass with a mocked OpenRouter.
