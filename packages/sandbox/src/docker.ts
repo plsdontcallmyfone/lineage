@@ -46,7 +46,12 @@ async function readCapped(stream: ReadableStream<Uint8Array>, limit: number): Pr
   const chunks: Uint8Array[] = [];
   let size = 0;
   let truncated = false;
-  for await (const chunk of stream) {
+  // a reader loop rather than `for await`: this file is also typechecked under the DOM lib (apps/web
+  // scripts import Core), whose ReadableStream type has no async iterator
+  const reader = stream.getReader();
+  for (;;) {
+    const { done, value: chunk } = await reader.read();
+    if (done) break;
     if (size < limit) {
       const take = chunk.subarray(0, Math.max(0, limit - size));
       chunks.push(take);
