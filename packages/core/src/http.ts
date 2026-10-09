@@ -56,6 +56,9 @@ function route(method: string, path: string, auth: Route["auth"], handler: Handl
 const json = (data: unknown, status = 200) =>
   new Response(JSON.stringify(data), { status, headers: { "content-type": "application/json", "access-control-allow-origin": "*" } });
 
+/** Most events one SSE connection replays before going live (the rest are on /v1/events/log). */
+const SSE_BACKLOG_MAX = 5000;
+
 function sse(core: Core, since: number): Response {
   let unsub: (() => void) | null = null;
   let hb: ReturnType<typeof setInterval> | null = null;
@@ -70,7 +73,15 @@ function sse(core: Core, since: number): Response {
         }
       };
       controller.enqueue(enc.encode(": lineage core events\n\n"));
+      // replay at most the newest SSE_BACKLOG_MAX events: a client resuming from far back (since=0 on
+      // a busy network) made the stream buffer hundreds of MB and the site's gate was OOM-killed in a
+      // loop. A skipped range is announced with `stream.truncated`; it stays on /v1/events/log.
       let last = since;
+      const floor = core.lastEventId() - SSE_BACKLOG_MAX;
+      if (last < floor) {
+        controller.enqueue(enc.encode(`event: stream.truncated\ndata: ${JSON.stringify({ skipped_from: last, skipped_to: floor, log: "/v1/events/log" })}\n\n`));
+        last = floor;
+      }
       for (;;) {
         const batch = core.events(last, 1000);
         for (const e of batch) send(e);

@@ -492,6 +492,11 @@ export class Core {
     return () => this.listeners.delete(fn);
   }
 
+  /** Id of the newest event (0 when there is none). */
+  lastEventId(): number {
+    return this.db.query<{ id: number | null }, []>("SELECT MAX(id) AS id FROM events").get()?.id ?? 0;
+  }
+
   events(since = 0, limit = 1000): CoreEvent[] {
     return this.db
       .query<{ id: number; at: number; type: string; data: string }, [number, number]>("SELECT * FROM events WHERE id > ? ORDER BY id LIMIT ?")
