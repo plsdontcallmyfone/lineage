@@ -1383,10 +1383,22 @@ export class Core {
         `INSERT INTO replays (replay_id, candidate_id, grp, audit_id, replayer, kind, stage, round, eval_parent_gen_id, assignment_seed, seed, status, assigned_at, commit_deadline, epoch)
          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'assigned', ?, ?, ?)`,
       )
-      .run(id, p.candidate.candidate_id!, p.grp, p.audit_id, p.replayer, p.kind, p.stage, p.round, p.eval_parent, p.seed, seed, now, now + p.window, p.epoch);
+      .run(id, p.candidate.candidate_id!, p.grp, p.audit_id, p.replayer, p.kind, p.stage, p.round, p.eval_parent, p.seed, seed, now, this.queuedDeadline(p.replayer, now) + p.window, p.epoch);
     // the event names only the candidate: who replays it stays private until it is final
     this.emit("replay.assigned", { candidate_id: p.candidate.candidate_id, kind: p.kind === "audit_reference" ? "audit" : p.kind === "reference" ? "replay" : p.kind });
     return id;
+  }
+
+  /**
+   * Where a new assignment's commit window starts for this replayer: after the latest commit deadline
+   * of the work it already holds uncommitted. Workers run jobs one at a time, so a replay assigned
+   * while a verifier runs a long one (geth-rlp, about 13 min) otherwise expired before the worker
+   * could start it, and an honest verifier took an abandoned strike.
+   */
+  private queuedDeadline(replayer: string, now: number): number {
+    const r = this.db.query<{ d: number | null }, [string]>("SELECT MAX(commit_deadline) AS d FROM replays WHERE replayer = ? AND status = 'assigned'").get(replayer)?.d ?? 0;
+    const q = this.db.query<{ d: number | null }, [string]>("SELECT MAX(commit_deadline) AS d FROM qualifications WHERE agent_id = ? AND status = 'assigned'").get(replayer)?.d ?? 0;
+    return Math.max(now, r, q);
   }
 
   private candGroup(c: CandRow) {

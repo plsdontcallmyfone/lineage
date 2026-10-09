@@ -160,8 +160,13 @@ describe("timeouts and strikes", () => {
     for (let i = 0; i < e.cfg.strike_limit; i++) ids.push((await submit(e, author, diff(`s${i}`, `src/s${i}.rs`))).candidate_id);
     const [v, w] = e.verifiers as [Agent, Agent];
     for (const id of ids) await runReplays(e, id, (a) => (a.id === v.id ? "skip" : result()), 1);
-    e.clock.advance(Math.max(e.cfg.replay_window_min_s, e.cfg.replay_window_factor * 120) * 1000 + 1);
-    e.core.tick();
+    // work a replayer already holds pushes a new assignment's window back (queuedDeadline), so the
+    // skipped replays expire one window apart
+    const window = Math.max(e.cfg.replay_window_min_s, e.cfg.replay_window_factor * 120) * 1000;
+    for (let i = 0; i < e.cfg.strike_limit; i++) {
+      e.clock.advance(window + 1);
+      e.core.tick();
+    }
     const s = await agent(e, v.id);
     expect(s.strikes_epoch).toBe(e.cfg.strike_limit);
     expect(s.suspended).toBe(true);
