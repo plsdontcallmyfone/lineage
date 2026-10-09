@@ -1,4 +1,11 @@
 {
+  "get_stats_count_elements": {
+    "kind": "perf",
+    "target": "train_ir",
+    "expect": "accepted",
+    "note": "The get_stats half of base_count_merge: pairs are counted with collections' C helper _count_elements (same counts, same insertion order, so merges and ties are unchanged). Submitted on the site because base_count_merge (d7740881...) cannot finish: both of its replays were abandoned while the site's only two verifiers were held back by a deploy (2026-10-08), and Core never reassigns a replay to a verifier that abandoned it.",
+    "guard": "ok"
+  },
   "base_count_merge": {
     "kind": "perf",
     "target": "train_ir",
