@@ -23,6 +23,9 @@ export function loadScript(dir: string, names?: string[]): ScriptEntry[] {
   return order.map((name) => {
     const meta = index[name];
     if (!meta) throw new Error(`no patch ${name} in ${dir}`);
+    // a perf or slim target is one metric name (SPEC 10); Core refuses an array, so catch it here
+    if ((meta.kind === "perf" || meta.kind === "slim") && typeof meta.target !== "string")
+      throw new Error(`${name} in ${dir}: a ${meta.kind} target must be one metric name, got ${JSON.stringify(meta.target)}`);
     return { name, kind: meta.kind, target: meta.target, diff: readFileSync(join(dir, `${name}.diff`), "utf8") };
   });
 }

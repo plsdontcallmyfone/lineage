@@ -1,10 +1,7 @@
 {
   "load_block": {
     "kind": "perf",
-    "target": [
-      "hash_ir",
-      "hmac_ir"
-    ],
+    "target": "hash_ir",
     "expect": "accepted",
     "note": "W::new takes the 64-byte block as one fixed-size array and reads its sixteen words with u32::from_be_bytes over chunks_exact(4), so the compiler drops the per-word slice bounds checks and four-byte shift-or chains that load_be(&input[offset..]) needed.",
     "lines": 5,

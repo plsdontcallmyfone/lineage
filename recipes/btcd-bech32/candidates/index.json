@@ -1,10 +1,7 @@
 {
   "branchless_polymod": {
     "kind": "perf",
-    "target": [
-      "encode_ir",
-      "decode_ir"
-    ],
+    "target": "encode_ir",
     "expect": "accepted",
     "note": "bech32Polymod feeds every value through one polymodStep that xors each generator term under a mask built from its state bit (no data-dependent branches, constants inlined) instead of a 5-iteration loop with a branch per term.",
     "lines": 66,

@@ -1,10 +1,7 @@
 {
   "index_dict_ints": {
     "kind": "perf",
-    "target": [
-      "entropy_ir",
-      "check_ir"
-    ],
+    "target": "entropy_ir",
     "expect": "accepted",
     "note": "to_entropy and check look words up in a word-to-index dict built once per instance (first index kept, as list.index does) instead of a linear list.index scan, and pack the 11-bit indexes into one integer instead of a list of bools or a binary string; the checksum is the top bits of the first SHA-256 byte. Error types, messages and their order are unchanged.",
     "lines": 78,
