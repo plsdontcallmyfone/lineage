@@ -51,8 +51,8 @@
     "equivalence": "same",
     "seed": "7265706c61792d62",
     "recipe_id": "f0cf4ab50711fbc337a92661141ca7de39f777ba775ff6abf701854776ff0625",
-    "eval_seconds": 30.8,
-    "date": "2026-10-08T21:37:23.023Z",
+    "eval_seconds": 59.5,
+    "date": "2026-10-09T21:36:15.204Z",
     "match": true
   },
   "charset_table": {
@@ -62,15 +62,15 @@
     "detail": null,
     "effect": {
       "metric": "decode_ir",
-      "ratio": 0.7504913763731667,
-      "ci_low": 0.7504913763731667,
-      "ci_high": 0.7504913763731667,
+      "ratio": 0.7506006083982251,
+      "ci_low": 0.7506006083982251,
+      "ci_high": 0.7506006083982251,
       "per_replay": [
         {
           "replay_id": "r1",
-          "ratio": 0.7504913763731667,
-          "ci_low": 0.7504913763731667,
-          "ci_high": 0.7504913763731667,
+          "ratio": 0.7506006083982251,
+          "ci_low": 0.7506006083982251,
+          "ci_high": 0.7506006083982251,
           "pass": true
         }
       ]
@@ -90,9 +90,9 @@
           14904054
         ],
         "cand": [
-          11185364
+          11186992
         ],
-        "ratio": 0.7504913763731667
+        "ratio": 0.7506006083982251
       },
       "convert_ir": {
         "base": [
@@ -107,8 +107,8 @@
     "equivalence": "same",
     "seed": "7265706c61792d63",
     "recipe_id": "f0cf4ab50711fbc337a92661141ca7de39f777ba775ff6abf701854776ff0625",
-    "eval_seconds": 30.7,
-    "date": "2026-10-08T21:37:53.756Z",
+    "eval_seconds": 52.7,
+    "date": "2026-10-09T21:37:07.926Z",
     "match": true
   },
   "convertbits_acc": {
@@ -163,8 +163,8 @@
     "equivalence": "same",
     "seed": "7265706c61792d63",
     "recipe_id": "f0cf4ab50711fbc337a92661141ca7de39f777ba775ff6abf701854776ff0625",
-    "eval_seconds": 31.1,
-    "date": "2026-10-08T21:38:24.855Z",
+    "eval_seconds": 45.2,
+    "date": "2026-10-09T21:37:53.118Z",
     "match": true
   }
 }

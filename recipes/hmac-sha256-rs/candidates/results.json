@@ -51,8 +51,8 @@
     "equivalence": "same",
     "seed": "7265706c61792d6c",
     "recipe_id": "1d78dde96e78eb7882547fe8bf1074e364e1736c8177a45844157987fd377332",
-    "eval_seconds": 24.2,
-    "date": "2026-10-08T22:03:03.844Z",
+    "eval_seconds": 23.6,
+    "date": "2026-10-09T21:38:16.788Z",
     "match": true
   },
   "hkdf_rekey_once": {
@@ -107,8 +107,8 @@
     "equivalence": "same",
     "seed": "7265706c61792d68",
     "recipe_id": "1d78dde96e78eb7882547fe8bf1074e364e1736c8177a45844157987fd377332",
-    "eval_seconds": 27.7,
-    "date": "2026-10-08T22:03:31.570Z",
+    "eval_seconds": 23.6,
+    "date": "2026-10-09T21:38:40.353Z",
     "match": true
   }
 }
