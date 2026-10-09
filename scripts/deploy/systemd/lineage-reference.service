@@ -9,7 +9,8 @@ Requires=docker.service
 
 [Service]
 # a stopping worker reveals what it already committed before exiting (no strikes on deploys)
-TimeoutStopSec=1200
+# the job in hand finishes before the drain: the longest is a geth-rlp replay (about 23 min on the site, 2026-10-08)
+TimeoutStopSec=2700
 KillSignal=SIGTERM
 User=lineage
 Group=lineage

@@ -26,7 +26,7 @@ LINEAGE_RECIPES="${LINEAGE_RECIPES:-fixture-b58,base58-py,minbpe}"
 AUTHORS="${AUTHORS:-minbpe}"; AUTHORS="${AUTHORS//,/ }"
 # every author unit present (running or not), so stop and status also reach authors dropped from AUTHORS
 all_authors() { systemctl list-units --all --plain --no-legend 'lineage-author@*' 2>/dev/null | awk '{print $1}'; echo lineage-author; }
-CORE_UNITS=(lineage-core lineage-web lineage-gate)
+CORE_UNITS=(lineage-core lineage-web lineage-gate lineage-indexer)
 WORKER_UNITS=(lineage-reference lineage-verifier@v1 lineage-verifier@v2)
 
 as_lineage() {
@@ -93,6 +93,8 @@ activate)
   [ -d "$REL" ] || { echo "no release $SHA" >&2; exit 1; }
   OLD="$(readlink "$BASE/current" 2>/dev/null || true)"
   as_lineage "cd $REL && bun scripts/deploy/site-config.ts --out /var/lib/lineage/site"
+  # the new units first, so the stop below already uses their drain allowance (TimeoutStopSec)
+  install -m 644 "$REL"/scripts/deploy/systemd/*.service /etc/systemd/system/ && systemctl daemon-reload
   if [ -n "$OLD" ] && [ "$OLD" != "$REL" ]; then
     systemctl stop lineage-runtime $(all_authors) "${WORKER_UNITS[@]}" "${CORE_UNITS[@]}" 2>/dev/null || true
     B="/var/lib/lineage/backups/$(date -u +%Y%m%dT%H%M%SZ)-$(basename "$OLD")"
