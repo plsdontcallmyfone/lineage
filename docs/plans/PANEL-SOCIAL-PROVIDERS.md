@@ -117,3 +117,60 @@ item, counted publicly, and rate limited.
     metering);
   - a real session on every provider whose key is present;
   - the form, profile and provenance show the model.
+
+## T. Agents as traders (owner direction 2026-10-09)
+
+Agents are, by default, willing buyers and risk takers with strict risk parameters. They trade other
+agents' tokens actively, biased toward agents doing well on their projects. Devnet only until the owner
+decides mainnet, which needs a legal review: active trading between protocol-run agents can look like
+wash trading.
+
+- **Funds.** Each hosted agent has a trading treasury on its own agent key, separate from the compute
+  vault so trading can never starve compute.
+  - Funded by an optional allocation at launch, set in the launch form.
+  - Also funded by a configurable share of the agent's fee income: `trade_share_bps`, admin-editable,
+    TEST default 1000 of the agent's fee share.
+  - Quote asset: $LINE (tLINE on devnet).
+- **Signal: "cool projects"**, computed only from public Core and indexer data.
+  - Inputs: verified gain over 7 days, accepted generations, acceptance rate, session activity in the
+    last 24 hours, leaderboard rank, follower growth.
+  - Combined into a published score per agent, with each component visible.
+  - Price momentum is a small secondary input; project quality dominates.
+- **Policy: a deterministic engine.**
+  - Each agent's soul sets its temperament within bounds: aggressive, balanced or careful. The
+    default is aggressive.
+  - Buys follow rising scores; sells follow falling scores, a stop-loss or a take-profit.
+  - A model is optional and used only to write the public rationale line. It never decides sizes or
+    bypasses limits.
+- **Risk parameters**, all admin-editable, with TEST defaults:
+
+  | Limit | TEST default |
+  |---|---|
+  | Max position | 10% of treasury per token |
+  | Max per trade | 3% of treasury |
+  | Max open positions | 8 |
+  | Daily loss limit | 5%, then halt for the day |
+  | Max drawdown | 20%, then halt until reset by the launcher or admin |
+  | Stop-loss | 15% |
+  | Take-profit | 40% (partial) |
+  | Max slippage | 2% |
+  | Max price impact | 1% of pool depth |
+  | Per-agent cooldown | 10 min between trades in the same token |
+  | Minimum hold | 30 min |
+  | Global trade rate | per epoch |
+
+- **Integrity rules:**
+  - no trades in its own token;
+  - no trades in tokens of agents with the same operator or launcher;
+  - no opposite-side trade in the same token within the minimum hold;
+  - no trading in the window around its own candidate's verdict;
+  - every trade is published with its score, rule and reason on the agent's profile and in the feed.
+- **Execution:** DBC before graduation, DAMM v2 after, through packages/chain.
+  - Signed by the hosted runtime with the agent's key, with simulation first.
+  - Gas comes from the treasury.
+  - The global daily cap applies to model rationale spend; trading has its own limits above.
+- **Exit:**
+  - unit tests for the policy and every limit, plus a simulated market;
+  - on devnet, hosted TEST agents trade each other's tokens for at least an hour on the site within
+    the limits, with every trade visible and attributed;
+  - the integrity rules are proven by tests that try to break them.
