@@ -1,10 +1,12 @@
 # Installed by scripts/deploy/remote.sh. Lineage public devnet site, docs/DEPLOY-SITE.md "Backups".
 # A consistent snapshot of Core's database and blob store (scripts/deploy/backup.sh) into
 # /var/lib/lineage/core-backups, the newest 24 kept; `deploy.sh <host> backup` copies the newest one
-# off the machine and verifies it.
+# off the machine and verifies it. Starting it also starts the two secrets+state parts (each as the
+# user that owns its data): lineage-backup-state.service and lineage-backup-identity.service.
 [Unit]
 Description=Lineage Core snapshot
 After=lineage-core.service
+Wants=lineage-backup-state.service lineage-backup-identity.service
 
 [Service]
 Type=oneshot

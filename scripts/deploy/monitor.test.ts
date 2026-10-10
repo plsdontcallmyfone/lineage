@@ -24,6 +24,7 @@ const healthy = (): Inputs => ({
   disk: [{ path: "/", freeBytes: 100 * 2 ** 30, totalBytes: 150 * 2 ** 30 }],
   newestBackupMs: NOW - 20 * 60_000,
   backupsExpected: true,
+  secretsBackups: [{ part: "state", newestMs: NOW - 20 * 60_000 }, { part: "identity", newestMs: NOW - 20 * 60_000 }],
 });
 const level = (i: Inputs, id: string) => evaluate(i).find((c) => c.id === id)?.level;
 
@@ -31,7 +32,7 @@ describe("monitor evaluate", () => {
   test("a healthy site is all ok", () => {
     const c = evaluate(healthy());
     expect(c.filter((x) => x.level !== "ok")).toEqual([]);
-    expect(c.map((x) => x.id)).toEqual(["units", "core", "gate", "public", "epochs", "verifiers", "spend", "souls", "balance:core-authority", "balance:owner", "faucet", "disk:/", "backup"]);
+    expect(c.map((x) => x.id)).toEqual(["units", "core", "gate", "public", "epochs", "verifiers", "spend", "souls", "balance:core-authority", "balance:owner", "faucet", "disk:/", "backup", "backup:state", "backup:identity"]);
   });
   test("an enabled unit that is not active fails; a disabled one is ignored", () => {
     const i = healthy();
@@ -108,6 +109,17 @@ describe("monitor evaluate", () => {
     expect(level(i, "backup")).toBe("fail");
     i.newestBackupMs = null;
     expect(level(i, "backup")).toBe("fail");
+  });
+  test("secrets+state snapshots: each part checked for age; no recipient warns", () => {
+    const i = healthy();
+    i.secretsBackups![0]!.newestMs = NOW - LIMITS.backupStaleMs - 1;
+    expect(level(i, "backup:state")).toBe("fail");
+    expect(level(i, "backup:identity")).toBe("ok");
+    i.secretsBackups![1]!.newestMs = null;
+    expect(level(i, "backup:identity")).toBe("fail");
+    i.secretsBackups = null;
+    expect(level(i, "backup:secrets")).toBe("warn");
+    expect(level(i, "backup:state")).toBeUndefined();
   });
 });
 

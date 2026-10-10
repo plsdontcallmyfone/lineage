@@ -14,10 +14,21 @@
 #   rollback        previous release (code only); `rollback --with-data` also restores its data backup
 #   stop | start    stop and disable every lineage unit and Caddy, or start them again
 #   wipe-keys       remove the keys copied from here (before destroying the server)
-#   backup          copy the server's newest Core snapshot off the machine to BACKUP_DIR (default
-#                   ~/.lineage/site-backups/<host>, mode 700) and verify it here (checksum, archive,
-#                   integrity, table counts); keeps the newest BACKUP_KEEP (default 3)
-#   restore-test    on the server: restore the newest snapshot into a scratch Core and check what it serves
+#   backup          copy the server's newest Core snapshot and newest secrets+state parts (state,
+#                   identity; age-encrypted) off the machine to BACKUP_DIR (default
+#                   ~/.lineage/site-backups/<host>, mode 700) and verify them here (Core: checksum,
+#                   archive, integrity, table counts; secrets: checksum, decrypts with BACKUP_AGE_KEY,
+#                   every file against its SHA256SUMS); keeps the newest BACKUP_KEEP (default 3) of each
+#                   kind, or with BACKUP_KEEP_DAYS=<n> every copy younger than n days (the newest always)
+#   restore-test    on the server: restore the newest Core snapshot into a scratch Core and check what it
+#                   serves; then here: decrypt the newest secrets+state parts with BACKUP_AGE_KEY and check
+#                   their keys equal the live ones by public key (and the identity key file and records)
+#   restore-secrets [state file] [identity file]   disaster recovery: decrypt the newest local parts (or
+#                   the given ones) here and write them into place on <host> (refuses to overwrite a
+#                   differing file; RESTORE_REPLACE=1 keeps the old ones aside). Run before `full` on a
+#                   new server so the site keeps its keys (docs/DEPLOY-SITE.md "Disaster recovery")
+#   restore-core [file]   disaster recovery: copy a local Core snapshot (default the newest) to <host> and
+#                   restore it (on a server with no release yet it only places the data for `full`)
 #   monitor         on the server: run the monitor now and print every check
 #
 # Environment:
@@ -34,6 +45,10 @@
 #   KEEP_SITE_ENV   1 (default): LINEAGE_RECIPES, AUTHORS, WITH_RUNTIME, WITH_AUTHOR and EXTRA_ORIGINS left
 #                   unset keep the server's current site.env values; 0 falls back to the defaults
 #   DEPLOY_REF      commit to deploy (default HEAD; must be HEAD or an ancestor)
+#   BACKUP_AGE_KEY  the owner's age identity for secrets+state snapshots (default
+#                   ~/.config/lineage/backup-age.key, mode 600, never copied anywhere); its public
+#                   recipient goes to the server's /etc/lineage/backup-recipient.txt on every code ship
+#                   (a different recipient already there is kept unless BACKUP_RECIPIENT_REPLACE=1)
 #   DRY_RUN=1       test mode (scripts/deploy/dryrun.sh): no Docker, no keys from here, nothing sent on chain,
 #                   Caddy with internal TLS for SITE_NAMES (default localhost)
 #
@@ -41,7 +56,7 @@
 # are never printed: keys are compared and reported by public key only.
 set -euo pipefail
 HOST="${1:-}"; MODE="${2:-full}"; EXTRA="${3:-}"
-[ -n "$HOST" ] || { sed -n '2,37p' "$0"; exit 2; }
+[ -n "$HOST" ] || { sed -n '2,56p' "$0"; exit 2; }
 REPO="$(cd "$(dirname "$0")/../.." && pwd)"
 SSH_KEY="${SSH_KEY:-$HOME/.ssh/lineage_site}"
 SSH_PORT="${SSH_PORT:-22}"
@@ -106,7 +121,7 @@ EOF
 # command in it that reads stdin).
 put_tools() {
   r "install -d -m 700 /root/lineage-deploy"
-  env -u LC_CTYPE -u LC_ALL scp -q "${SCP_OPTS[@]}" "$REPO/scripts/deploy/provision.sh" "$REPO/scripts/deploy/remote.sh" "$SSH_USER@$HOST:/root/lineage-deploy/"
+  env -u LC_CTYPE -u LC_ALL scp -q "${SCP_OPTS[@]}" "$REPO/scripts/deploy/provision.sh" "$REPO/scripts/deploy/remote.sh" "$REPO/scripts/deploy/backup.sh" "$SSH_USER@$HOST:/root/lineage-deploy/"
 }
 do_provision() {
   say "provision $HOST"
@@ -125,6 +140,7 @@ do_ship() {
   rm -rf "$t"
   write_env
   put_tools
+  put_recipient
   r "bash /root/lineage-deploy/remote.sh install $SHA < /dev/null" | tee "${TMPDIR:-/tmp}/lineage-deploy-install.$$" | grep -v '^PUBKEYS '
   PUBKEYS="$(grep '^PUBKEYS ' "${TMPDIR:-/tmp}/lineage-deploy-install.$$" | sed 's/^PUBKEYS //')"
   rm -f "${TMPDIR:-/tmp}/lineage-deploy-install.$$"
@@ -240,27 +256,148 @@ do_activate() {
   echo "site: $(echo "$SITE_NAMES" | tr ',' '\n' | sed 's|^|https://|' | paste -sd' ' -)"
 }
 
-# Off-machine copy of the newest Core snapshot (docs/DEPLOY-SITE.md "Backups"). Snapshots hold unrevealed
-# epoch secrets: the directory is mode 700 and nothing is printed from them.
+# Off-machine copies (docs/DEPLOY-SITE.md "Backups"). Core snapshots hold unrevealed epoch secrets and
+# the secrets+state parts hold signing keys (encrypted): the directory is mode 700 and nothing is printed
+# from them.
+BACKUP_KEY="${BACKUP_AGE_KEY:-$HOME/.config/lineage/backup-age.key}"
+BACKUP_LOCAL="${BACKUP_DIR:-$HOME/.lineage/site-backups/$HOST}"
+
+# The public half of the owner's age identity, to the server (the private half never leaves here).
+put_recipient() {
+  local rc have
+  if [ -n "${BACKUP_RECIPIENT:-}" ]; then rc="$BACKUP_RECIPIENT"
+  elif [ -f "$BACKUP_KEY" ] && command -v age-keygen >/dev/null; then rc="$(age-keygen -y "$BACKUP_KEY")"
+  else echo "backup recipient: no $BACKUP_KEY here (or no age-keygen); secrets+state snapshots stay off"; return 0; fi
+  [[ "$rc" =~ ^age1[0-9a-z]{58}$ ]] || { echo "backup recipient: not an age public key; not copied" >&2; return 1; }
+  have="$(r 'cat /etc/lineage/backup-recipient.txt 2>/dev/null' || true)"
+  if [ "$have" = "$rc" ]; then echo "backup recipient: already on the server (${rc:0:12}...)"; return 0; fi
+  if [ -n "$have" ] && [ "${BACKUP_RECIPIENT_REPLACE:-0}" != 1 ]; then
+    echo "backup recipient: the server holds a different one (${have:0:12}...); kept (BACKUP_RECIPIENT_REPLACE=1 replaces it)" >&2; return 0
+  fi
+  r "install -d -m 755 /etc/lineage && printf '%s\n' '$rc' > /etc/lineage/backup-recipient.txt.tmp && chmod 644 /etc/lineage/backup-recipient.txt.tmp && mv /etc/lineage/backup-recipient.txt.tmp /etc/lineage/backup-recipient.txt"
+  echo "backup recipient: copied (${rc:0:12}...)"
+}
+
+# pull_newest <remote dir> <name glob>: the newest matching file and its .sha256 into BACKUP_LOCAL (kept
+# when already here, mtime preserved); sets PULLED to the local path, empty when the server has none
+pull_newest() {
+  local f
+  PULLED=""
+  f="$(r "ls -1t $1/$2 2>/dev/null | head -1" || true)"
+  [ -n "$f" ] || return 0
+  PULLED="$BACKUP_LOCAL/$(basename "$f")"
+  if [ -f "$PULLED" ]; then echo "already here: $(basename "$f")"
+  else
+    env -u LC_CTYPE -u LC_ALL scp -q -p "${SCP_OPTS[@]}" "$SSH_USER@$HOST:$f" "$SSH_USER@$HOST:$f.sha256" "$BACKUP_LOCAL/"
+    chmod 600 "$PULLED" "$PULLED.sha256"
+    echo "copied $(basename "$f") ($(du -h "$PULLED" | cut -f1)) to $BACKUP_LOCAL"
+  fi
+}
+
+# prune <name glob>: retention for one kind; the newest copy always stays
+prune() {
+  local list
+  list="$(ls -1t "$BACKUP_LOCAL"/$1 2>/dev/null | tail -n +2 || true)"
+  [ -n "$list" ] || return 0
+  if [ -n "${BACKUP_KEEP_DAYS:-}" ]; then
+    echo "$list" | while read -r old; do
+      [ -n "$(find "$old" -mtime +"$BACKUP_KEEP_DAYS" 2>/dev/null)" ] && rm -f "$old" "$old.sha256"
+    done
+  else
+    echo "$list" | tail -n +"${BACKUP_KEEP:-3}" | while read -r old; do rm -f "$old" "$old.sha256"; done
+  fi
+  return 0
+}
+
+verify_secrets() { # verify_secrets <file> [facts out]
+  if [ -f "$BACKUP_KEY" ]; then
+    bash "$REPO/scripts/deploy/backup.sh" verify-secrets "$1" --identity "$BACKUP_KEY" ${2:+--facts "$2"}
+  else
+    local h; h="$(shasum -a 256 "$1" | cut -c1-64)"
+    [ "$h" = "$(cat "$1.sha256")" ] || { echo "sha256 mismatch for $1" >&2; return 1; }
+    echo "checksum ok for $(basename "$1"); not decrypted (no $BACKUP_KEY here)"
+  fi
+}
+
 do_backup_pull() {
-  local dir="${BACKUP_DIR:-$HOME/.lineage/site-backups/$HOST}" keep="${BACKUP_KEEP:-3}" f size free
+  local f size free rc=0 p n
   f="$(r "ls -1t /var/lib/lineage/core-backups/core-*.tar.zst 2>/dev/null | head -1")"
   [ -n "$f" ] || { echo "no snapshot on the server yet (lineage-backup.timer runs hourly; 'remote.sh backup' makes one now)" >&2; exit 1; }
   size="$(r "stat -c %s $f")"
-  install -d -m 700 "$dir"
-  free="$(df -Pk "$dir" | awk 'NR==2 {printf "%d", $4 * 1024}')"
+  install -d -m 700 "$BACKUP_LOCAL"
+  free="$(df -Pk "$BACKUP_LOCAL" | awk 'NR==2 {printf "%d", $4 * 1024}')"
   # the copy, plus the verify step's temporary extract (the database is several times the archive)
   if [ "$free" -lt $((size * 10 + 2 * 1024 * 1024 * 1024)) ]; then echo "not enough free disk here for $(basename "$f") ($size bytes)" >&2; exit 1; fi
-  install -d -m 700 "$dir"
-  if [ -f "$dir/$(basename "$f")" ]; then echo "already here: $dir/$(basename "$f")"
-  else
-    env -u LC_CTYPE -u LC_ALL scp -q "${SCP_OPTS[@]}" "$SSH_USER@$HOST:$f" "$SSH_USER@$HOST:$f.sha256" "$dir/"
-    chmod 600 "$dir/$(basename "$f")" "$dir/$(basename "$f").sha256"
-    echo "copied $(basename "$f") ($(du -h "$dir/$(basename "$f")" | cut -f1)) to $dir"
-  fi
-  bash "$REPO/scripts/deploy/backup.sh" verify "$dir/$(basename "$f")"
-  ls -1t "$dir"/core-*.tar.zst | tail -n +$((keep + 1)) | while read -r old; do rm -f "$old" "$old.sha256"; done
-  echo "kept here: $(ls -1 "$dir"/core-*.tar.zst | wc -l | tr -d ' ') snapshot(s)"
+  say "Core snapshot"
+  pull_newest /var/lib/lineage/core-backups 'core-*.tar.zst'
+  bash "$REPO/scripts/deploy/backup.sh" verify "$PULLED" || rc=1
+  prune 'core-*.tar.zst'
+  for p in state identity; do
+    say "secrets+state: $p"
+    pull_newest "/var/lib/lineage/$p-backups" "$p-*.tar.zst.age"
+    if [ -z "$PULLED" ]; then
+      if r "test -s /etc/lineage/backup-recipient.txt"; then echo "no $p snapshot on the server yet" >&2; rc=1
+      else echo "the server has no backup recipient: no $p snapshots (deploy.sh <host> code copies it)"; fi
+      continue
+    fi
+    verify_secrets "$PULLED" || rc=1
+    prune "$p-*.tar.zst.age"
+  done
+  say "kept in $BACKUP_LOCAL"
+  for p in core state identity; do
+    n="$(ls -1 "$BACKUP_LOCAL"/$p-*.tar.zst* 2>/dev/null | grep -v '\.sha256$' | wc -l | tr -d ' ')"
+    echo "$p: $n snapshot(s), $(du -ch $(ls -1 "$BACKUP_LOCAL"/$p-*.tar.zst* 2>/dev/null | grep -v '\.sha256$') /dev/null 2>/dev/null | tail -1 | cut -f1)"
+  done
+  return $rc
+}
+
+# restore-test, local half: the newest secrets+state parts decrypt here, and the keys in them equal the
+# live ones by public key (the identity part: the same key file by sha256, every record authenticates)
+do_secrets_proof() {
+  local p t rc=0
+  [ -f "$BACKUP_KEY" ] || { echo "no $BACKUP_KEY here: the secrets+state parts cannot be decrypted (keep that file safe)" >&2; return 1; }
+  install -d -m 700 "$BACKUP_LOCAL"
+  t="$(mktemp -d)"; chmod 700 "$t"
+  for p in state identity; do
+    say "secrets+state restore proof: $p"
+    pull_newest "/var/lib/lineage/$p-backups" "$p-*.tar.zst.age"
+    [ -n "$PULLED" ] || { echo "FAIL no $p snapshot on the server"; rc=1; continue; }
+    if ! verify_secrets "$PULLED" "$t/snap-$p.json"; then rc=1; continue; fi
+    r "bash /opt/lineage/current/scripts/deploy/remote.sh secrets-facts $p" > "$t/live-$p.json" || { echo "FAIL could not read the live $p facts"; rc=1; continue; }
+    bun "$REPO/scripts/deploy/backup-facts.ts" compare "$t/snap-$p.json" "$t/live-$p.json" || rc=1
+  done
+  rm -rf "$t"
+  echo "secrets+state restore proof: $([ $rc = 0 ] && echo PASS || echo FAIL)"
+  return $rc
+}
+
+# disaster recovery: decrypt here, send each part's files over ssh to remote.sh restore-secrets
+do_restore_secrets() {
+  local p f t rc=0
+  [ -f "$BACKUP_KEY" ] || { echo "no $BACKUP_KEY here: nothing can be decrypted" >&2; exit 1; }
+  put_tools
+  for p in state identity; do
+    if [ "$p" = state ]; then f="${EXTRA:-}"; else f="${4:-}"; fi
+    [ -n "$f" ] || f="$(ls -1t "$BACKUP_LOCAL"/$p-*.tar.zst.age 2>/dev/null | head -1)"
+    [ -f "$f" ] || { echo "no local $p snapshot in $BACKUP_LOCAL" >&2; rc=1; continue; }
+    say "restore $p from $(basename "$f")"
+    t="$(mktemp -d)"; chmod 700 "$t"; rmdir "$t"
+    bash "$REPO/scripts/deploy/backup.sh" extract-secrets "$f" "$t" --identity "$BACKUP_KEY" >/dev/null
+    COPYFILE_DISABLE=1 tar -C "$t" -cf - . | r "bash /root/lineage-deploy/remote.sh restore-secrets $p $([ "${RESTORE_REPLACE:-0}" = 1 ] && echo --replace) ${RESTORE_ROOT:+--root $RESTORE_ROOT}" || rc=1
+    rm -rf "$t"
+  done
+  return $rc
+}
+
+do_restore_core() {
+  local f="${EXTRA:-}"
+  [ -n "$f" ] || f="$(ls -1t "$BACKUP_LOCAL"/core-*.tar.zst 2>/dev/null | head -1)"
+  [ -f "$f" ] || { echo "no local Core snapshot in $BACKUP_LOCAL" >&2; exit 1; }
+  bash "$REPO/scripts/deploy/backup.sh" verify "$f"
+  put_tools
+  r "install -d -m 0750 /var/lib/lineage/core-backups"
+  env -u LC_CTYPE -u LC_ALL scp -q -p "${SCP_OPTS[@]}" "$f" "$f.sha256" "$SSH_USER@$HOST:/var/lib/lineage/core-backups/"
+  r "chmod 600 /var/lib/lineage/core-backups/$(basename "$f")*; bash /root/lineage-deploy/remote.sh restore /var/lib/lineage/core-backups/$(basename "$f") < /dev/null"
 }
 
 case "$MODE" in
@@ -274,7 +411,13 @@ case "$MODE" in
   status) r "bash /opt/lineage/current/scripts/deploy/remote.sh status" ;;
   rollback) r "bash /opt/lineage/current/scripts/deploy/remote.sh rollback $EXTRA" ;;
   stop|start|wipe-keys|monitor) r "bash /opt/lineage/current/scripts/deploy/remote.sh $MODE" ;;
-  restore-test) r "bash /opt/lineage/current/scripts/deploy/remote.sh restore-test $EXTRA" ;;
+  restore-test)
+    rt=0
+    r "bash /opt/lineage/current/scripts/deploy/remote.sh restore-test $EXTRA" || rt=1
+    do_secrets_proof || rt=1
+    exit $rt ;;
   backup) do_backup_pull ;;
+  restore-secrets) do_restore_secrets "$@" ;;
+  restore-core) do_restore_core ;;
   *) echo "unknown mode $MODE" >&2; exit 2 ;;
 esac

@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!-- Lineage site: daily off-machine backup pull (scripts/deploy/mac/backup-pull.sh). A template:
+     scripts/deploy/mac/install.sh fills @REPO@, @HOME@ and @HOST@ and installs it as
+     ~/Library/LaunchAgents/com.lineage.backup-pull.plist. A run missed while the Mac sleeps happens
+     on wake. -->
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.lineage.backup-pull</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>/bin/bash</string>
+    <string>@REPO@/scripts/deploy/mac/backup-pull.sh</string>
+    <string>@HOST@</string>
+  </array>
+  <key>StartCalendarInterval</key>
+  <dict>
+    <key>Hour</key>
+    <integer>9</integer>
+    <key>Minute</key>
+    <integer>20</integer>
+  </dict>
+  <key>RunAtLoad</key>
+  <false/>
+  <key>ProcessType</key>
+  <string>Background</string>
+  <key>LowPriorityIO</key>
+  <true/>
+  <key>StandardOutPath</key>
+  <string>@HOME@/.lineage/site-backups/launchd.out</string>
+  <key>StandardErrorPath</key>
+  <string>@HOME@/.lineage/site-backups/launchd.out</string>
+</dict>
+</plist>

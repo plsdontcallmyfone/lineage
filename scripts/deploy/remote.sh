@@ -11,11 +11,17 @@
 #                                taken when the current release was activated)
 #   remote.sh stop | start       stop (and disable) or start every lineage unit and Caddy
 #   remote.sh status             units, memory, health, balances (site-status.ts), disk
-#   remote.sh backup             a Core snapshot now (lineage-backup.service; hourly by its timer)
+#   remote.sh backup             a Core snapshot and both secrets+state parts now (lineage-backup.service
+#                                and the units it wants; hourly by its timer)
+#   remote.sh secrets-facts <state|identity>   public facts of the live data (public keys, key file hash,
+#                                record names), for deploy.sh restore-test (scripts/deploy/backup-facts.ts)
+#   remote.sh restore-secrets <state|identity> [--replace] [--root DIR]   write one decrypted part (a tar
+#                                on stdin, sent by deploy.sh restore-secrets) into place for its owner
 #   remote.sh monitor            run the monitor now and print every check
 #   remote.sh restore-test [f]   restore a snapshot (default the newest) into a scratch Core on 127.0.0.1:9669
 #                                and check it serves the snapshot's data; the live Core is not touched
-#   remote.sh restore <f>        replace Core's data with a snapshot (the replaced data is kept)
+#   remote.sh restore <f>        replace Core's data with a snapshot (the replaced data is kept); on a
+#                                server with no release yet (disaster recovery) it only places the data
 #   remote.sh wipe-keys          delete the keys copied from the owner's machine (before destroying the box)
 #
 # Settings come from /etc/lineage/site.env, which deploy.sh writes: SITE_NAMES, LINEAGE_RECIPES,
@@ -172,6 +178,18 @@ users_setup() {
   echo "service users: $(for u in "${SERVICE_USERS[@]}" lineage-identity lineage; do id "$u" >/dev/null 2>&1 && printf '%s(%s) ' "$u" "$(id -nG "$u" | tr ' ' ',')"; done)"
 }
 
+# Secrets+state snapshots (docs/DEPLOY-SITE.md "Backups"): age, and one directory per part owned by the
+# user that writes it (lineage, lineage-identity), group lineage-monitor so the monitor sees their age.
+# The public recipient in /etc/lineage/backup-recipient.txt is written by deploy.sh; without it the two
+# part units are skipped (ConditionPathExists) and the monitor warns.
+backup_setup() {
+  command -v age >/dev/null || { DEBIAN_FRONTEND=noninteractive apt-get install -y -qq age >/dev/null && echo "installed age $(age --version)"; }
+  install -d -m 0750 -o lineage -g lineage-monitor /var/lib/lineage/state-backups
+  install -d -m 0750 -o lineage-identity -g lineage-monitor /var/lib/lineage/identity-backups
+  chmod g-s /var/lib/lineage/state-backups /var/lib/lineage/identity-backups
+  [ -s /etc/lineage/backup-recipient.txt ] || echo "no /etc/lineage/backup-recipient.txt: secrets+state snapshots off (deploy.sh copies it when ~/.config/lineage/backup-age.key exists on the owner's machine)"
+}
+
 # the user the installed Core unit runs as (lineage before the service users, lineage-core after)
 core_user() { sed -n 's/^User=//p' /etc/systemd/system/lineage-core.service 2>/dev/null | head -1; }
 
@@ -267,6 +285,7 @@ activate)
   install -m 644 "$REL"/scripts/deploy/systemd/*.service "$REL"/scripts/deploy/systemd/*.timer /etc/systemd/system/
   identity_setup "$REL"
   users_setup "$REL"
+  backup_setup
   # Caddy. Its admin API listens on a unix socket in /run/caddy (mode 0600, owner caddy) instead of
   # localhost:2019, so other local users cannot rewrite the proxy (audit OFF-D12).
   caddy_dropin
@@ -354,6 +373,10 @@ status)
   echo "--"
   N="$(ls -1t /var/lib/lineage/core-backups/core-*.tar.zst 2>/dev/null | head -1)"
   [ -n "$N" ] && echo "backup    $(basename "$N") $(du -h "$N" | cut -f1), $(ls -1 /var/lib/lineage/core-backups/core-*.tar.zst | wc -l) kept" || echo "backup    none yet"
+  for p in state identity; do
+    N="$(ls -1t /var/lib/lineage/$p-backups/$p-*.tar.zst.age 2>/dev/null | head -1)"
+    [ -n "$N" ] && echo "backup    $(basename "$N") $(du -h "$N" | cut -f1), $(ls -1 /var/lib/lineage/$p-backups/$p-*.tar.zst.age | wc -l) kept (encrypted)" || echo "backup    no $p snapshot yet"
+  done
   M=/var/lib/lineage-monitor/state.json
   if [ -f "$M" ]; then
     echo "monitor   $(jq -r '.worst + " at " + .at' "$M")"
@@ -362,9 +385,76 @@ status)
   for u in lineage "${SERVICE_USERS[@]}" lineage-identity; do id "$u" >/dev/null 2>&1 && printf '%-16s %s\n' "$u" "$(id -nG "$u" | tr ' ' ',')"; done | sed 's/^/user      /'
   ;;
 backup)
-  # a snapshot now (the hourly timer's job), then the newest one
-  systemctl start lineage-backup.service
-  journalctl -u lineage-backup -n 1 -o cat --no-pager
+  # the hourly timer's job now: the two secrets+state parts (each as its data's owner), then Core
+  rc=0
+  for u in lineage-backup-state lineage-backup-identity lineage-backup; do
+    systemctl start "$u.service" || rc=1
+    journalctl -u "$u" -n 1 -o cat --no-pager
+  done
+  [ -s /etc/lineage/backup-recipient.txt ] || echo "secrets+state parts skipped: no /etc/lineage/backup-recipient.txt"
+  exit $rc
+  ;;
+secrets-facts)
+  # public facts only (public keys, the identity key file's sha256, record names), read by the data's owner
+  P="${1:-}"; REL="$(readlink -f "$BASE/current")"
+  case "$P" in state) U=lineage H=/home/lineage ;; identity) U=lineage-identity H=/var/lib/lineage/identity/home ;; *) echo "usage: remote.sh secrets-facts state|identity" >&2; exit 2 ;; esac
+  runuser -u "$U" -- env -i HOME="$H" BUN_RUNTIME_TRANSPILER_CACHE_PATH=0 PATH=/usr/local/bin:/usr/bin:/bin \
+    bash -c "cd $REL && bun scripts/deploy/backup-facts.ts facts --part $P --root /"
+  ;;
+restore-secrets)
+  # One decrypted secrets+state part on stdin (a tar of paths from /, sent by deploy.sh restore-secrets,
+  # which decrypts on the owner's machine). Only that part's paths are accepted; each file lands owned
+  # by its owner with the mode it was saved with. A file that exists and differs is a refusal (nothing is
+  # written) unless --replace, which keeps the replaced files in /var/lib/lineage/backups and stops the
+  # part's services while writing. --root writes under another directory (tests). Nothing is printed
+  # from the files; only their names and counts.
+  P="${1:-}"; shift || true
+  REPLACE=0 RR=""
+  while [ $# -gt 0 ]; do case "$1" in --replace) REPLACE=1; shift ;; --root) RR="$2"; shift 2 ;; *) echo "unknown argument $1" >&2; exit 2 ;; esac; done
+  case "$P" in
+    state) OWNER=lineage; ALLOW='^(var/lib/lineage/runtime/|home/lineage/\.config/lineage/site/)'; UNITS=(lineage-runtime) ;;
+    identity) OWNER=lineage-identity; ALLOW='^(var/lib/lineage/identity/records/|etc/lineage-identity/master\.key$)'; UNITS=(lineage-identity-cycle.timer lineage-identity)
+      id lineage-identity >/dev/null 2>&1 || useradd --system --home-dir /var/lib/lineage/identity/home --no-create-home --shell /usr/sbin/nologin --user-group lineage-identity ;;
+    *) echo "usage: remote.sh restore-secrets state|identity [--replace] [--root DIR] < part.tar" >&2; exit 2 ;;
+  esac
+  id lineage >/dev/null 2>&1 || { echo "no lineage user: run deploy.sh <host> provision first" >&2; exit 1; }
+  T="$(mktemp -d /root/restore-secrets.XXXXXX)"; trap 'rm -rf "$T"' EXIT
+  tar -C "$T" --no-same-owner -xpf -
+  mapfile -t FILES < <(cd "$T" && find . -type f | sed 's|^\./||' | LC_ALL=C sort)
+  [ ${#FILES[@]} -gt 0 ] || { echo "no files on stdin" >&2; exit 1; }
+  [ -z "$(find "$T" -type l)" ] || { echo "links in the archive; refusing" >&2; exit 1; }
+  BAD="$(printf '%s\n' "${FILES[@]}" | grep -vE "$ALLOW" || true)"
+  [ -z "$BAD" ] || { echo "paths outside the $P part; refusing: $(echo "$BAD" | head -3 | paste -sd' ' -)" >&2; exit 1; }
+  DIFF=()
+  for f in "${FILES[@]}"; do [ -e "$RR/$f" ] && ! cmp -s "$T/$f" "$RR/$f" && DIFF+=("$f"); done
+  if [ ${#DIFF[@]} -gt 0 ] && [ "$REPLACE" != 1 ]; then
+    echo "refusing: ${#DIFF[@]} file(s) exist and differ (nothing written; --replace keeps the old ones aside):" >&2
+    printf '  %s\n' "${DIFF[@]}" | head -20 >&2
+    exit 1
+  fi
+  WAS=()
+  if [ -z "$RR" ] && [ ${#DIFF[@]} -gt 0 ]; then
+    for u in "${UNITS[@]}"; do systemctl is-active -q "$u" 2>/dev/null && WAS+=("$u"); done
+    [ ${#WAS[@]} -gt 0 ] && systemctl stop "${WAS[@]}"
+    M="/var/lib/lineage/backups/$(date -u +%Y%m%dT%H%M%SZ)-before-restore-secrets-$P"
+    install -d -m 700 "$M"
+    for f in "${DIFF[@]}"; do install -d -m 700 "$M/$(dirname "$f")"; mv "$RR/$f" "$M/$f"; done
+    echo "replaced files kept in $M"
+  fi
+  # directories: the existing ones keep their mode and owner; new ones are made for the owner, mode 700
+  # (the runtime's state dir 750, as provision.sh makes it)
+  for f in "${FILES[@]}"; do
+    d="$(dirname "$f")"
+    parts=()
+    while [ "$d" != . ] && [ ! -d "$RR/$d" ]; do parts=("$d" "${parts[@]}"); d="$(dirname "$d")"; done
+    for d in "${parts[@]}"; do
+      m=700; [ "$d" = var/lib/lineage/runtime ] && m=750
+      case "$d" in var|var/lib|var/lib/lineage|etc|home|home/lineage) install -d -m 755 "$RR/$d" ;; *) install -d -m "$m" -o "$OWNER" -g "$OWNER" "$RR/$d" ;; esac
+    done
+    install -m "$(stat -c %a "$T/$f")" -o "$OWNER" -g "$OWNER" "$T/$f" "$RR/$f.restore-tmp" && mv "$RR/$f.restore-tmp" "$RR/$f"
+  done
+  [ ${#WAS[@]} -gt 0 ] && systemctl start "${WAS[@]}"
+  echo "restored $P: ${#FILES[@]} files${RR:+ under $RR} for $OWNER (${#DIFF[@]} replaced)"
   ;;
 monitor)
   systemctl start lineage-monitor.service || true
@@ -413,7 +503,18 @@ restore-test)
 restore)
   # replaces Core's live data with a snapshot (the replaced data is kept in /var/lib/lineage/backups)
   F="${1:-}"; [ -f "$F" ] || { echo "usage: remote.sh restore <snapshot.tar.zst>" >&2; exit 2; }
-  REL="$(readlink -f "$BASE/current")"
+  REL="$(readlink -f "$BASE/current" 2>/dev/null || true)"
+  if [ -z "$REL" ] || [ ! -d "$REL" ]; then
+    # disaster recovery on a fresh server (deploy.sh restore-core before the first activate): place the
+    # data only; the activate step that follows sets owners and modes (users_setup) and starts Core
+    [ -f /var/lib/lineage/core/core.db ] && { echo "/var/lib/lineage/core/core.db exists and no release is active; refusing" >&2; exit 1; }
+    bash /root/lineage-deploy/backup.sh verify "$F"
+    install -d -m 0770 /var/lib/lineage/core
+    bash /root/lineage-deploy/backup.sh extract "$F" /var/lib/lineage/core/.restore
+    mv /var/lib/lineage/core/.restore/core.db /var/lib/lineage/core/.restore/blobs /var/lib/lineage/core/ && rmdir /var/lib/lineage/core/.restore
+    echo "placed $(basename "$F") in /var/lib/lineage/core (no release yet; deploy.sh <host> full activates it)"
+    exit 0
+  fi
   runuser -u lineage-core -- env -i PATH=/usr/local/bin:/usr/bin:/bin bash "$REL/scripts/deploy/backup.sh" verify "$F"
   systemctl stop lineage-backup.timer lineage-runtime $(all_authors) "${WORKER_UNITS[@]}" "${CORE_UNITS[@]}" 2>/dev/null || true
   M="/var/lib/lineage/backups/$(date -u +%Y%m%dT%H%M%SZ)-before-restore"
@@ -461,7 +562,7 @@ PY
   echo "the identity store /var/lib/lineage/identity and its key /etc/lineage-identity/master.key stay; delete both before destroying the box"
   ;;
 *)
-  echo "usage: remote.sh install|chain|activate <sha> | rollback [--with-data] | stop | start | status | backup | monitor | restore-test [snapshot] | restore <snapshot> | wipe-keys" >&2
+  echo "usage: remote.sh install|chain|activate <sha> | rollback [--with-data] | stop | start | status | backup | monitor | restore-test [snapshot] | restore <snapshot> | secrets-facts <part> | restore-secrets <part> [--replace] | wipe-keys" >&2
   exit 2
   ;;
 esac

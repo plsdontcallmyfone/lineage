@@ -49,6 +49,9 @@ export interface Inputs {
   /** mtime of the newest snapshot, or null when there is none */
   newestBackupMs: number | null;
   backupsExpected: boolean;
+  /** secrets+state snapshots (backup.sh secrets): newest mtime per part, or null when no age recipient
+   * is configured on the server (then nothing of the runtime keys, site keys or identity data is kept) */
+  secretsBackups?: { part: string; newestMs: number | null }[] | null;
 }
 
 export const LIMITS = {
@@ -171,6 +174,14 @@ export function evaluate(i: Inputs): Check[] {
       const age = i.now - i.newestBackupMs;
       add("backup", age > LIMITS.backupStaleMs ? "fail" : "ok", `newest Core snapshot ${mins(age)} old`);
     }
+    if (i.secretsBackups === null) add("backup:secrets", "warn", `no age recipient in ${SECRETS_RECIPIENT}: runtime keys, site keys and identity data are not backed up`);
+    for (const b of i.secretsBackups ?? []) {
+      if (b.newestMs == null) add(`backup:${b.part}`, "fail", `no ${b.part} snapshot in ${SECRETS_DIRS[b.part] ?? "its directory"}`);
+      else {
+        const age = i.now - b.newestMs;
+        add(`backup:${b.part}`, age > LIMITS.backupStaleMs ? "fail" : "ok", `newest ${b.part} snapshot (encrypted) ${mins(age)} old`);
+      }
+    }
   }
   return out;
 }
@@ -224,7 +235,7 @@ function readUnits(): Inputs["units"] {
   const lines = sh(["systemctl", "list-units", "--all", "--plain", "--no-legend", "--type=service,timer", "lineage-*", "caddy.service"]).split("\n").filter(Boolean);
   for (const l of lines) {
     const name = l.split(/\s+/)[0]!;
-    if (name.endsWith(".service") && /^lineage-(identity-cycle|backup|monitor)\.service$/.test(name)) continue; // timer-run oneshots
+    if (name.endsWith(".service") && /^lineage-(identity-cycle|backup|backup-state|backup-identity|monitor)\.service$/.test(name)) continue; // timer-run oneshots
     const enabled = sh(["systemctl", "is-enabled", name]) === "enabled";
     units[name] = { enabled, active: sh(["systemctl", "is-active", name]) || "unknown" };
   }
@@ -248,9 +259,12 @@ function disk(path: string): { path: string; freeBytes: number; totalBytes: numb
   return { path, totalBytes: Number(f[1]) * 1024, freeBytes: Number(f[3]) * 1024 };
 }
 
-function newestBackup(dir: string): number | null {
+export const SECRETS_RECIPIENT = "/etc/lineage/backup-recipient.txt";
+export const SECRETS_DIRS: Record<string, string> = { state: "/var/lib/lineage/state-backups", identity: "/var/lib/lineage/identity-backups" };
+
+function newestBackup(dir: string, re = /^core-.*\.tar\.zst$/): number | null {
   try {
-    const ms = readdirSync(dir).filter((f) => /^core-.*\.tar\.zst$/.test(f)).map((f) => statSync(join(dir, f)).mtimeMs);
+    const ms = readdirSync(dir).filter((f) => re.test(f)).map((f) => statSync(join(dir, f)).mtimeMs);
     return ms.length ? Math.max(...ms) : null;
   } catch {
     return null;
@@ -327,6 +341,9 @@ if (import.meta.main) {
     disk: ["/", ...(existsSync("/var/lib/docker") ? ["/var/lib/docker"] : [])].map(disk).filter((d): d is NonNullable<typeof d> => !!d).filter((d, k, a) => a.findIndex((x) => x.totalBytes === d.totalBytes && x.freeBytes === d.freeBytes) === k),
     newestBackupMs: newestBackup(env.MONITOR_BACKUPS ?? "/var/lib/lineage/core-backups"),
     backupsExpected: env.MONITOR_BACKUPS_EXPECTED !== "0",
+    secretsBackups: existsSync(env.MONITOR_SECRETS_RECIPIENT ?? SECRETS_RECIPIENT)
+      ? Object.entries(SECRETS_DIRS).map(([part, dir]) => ({ part, newestMs: newestBackup(dir, new RegExp(`^${part}-.*\\.tar\\.zst\\.age$`)) }))
+      : null,
   };
   const checks = evaluate(inputs);
 
