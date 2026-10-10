@@ -13,6 +13,7 @@ export * from "./rpc.ts";
 export * from "./sender.ts";
 export * from "./spl.ts";
 export * from "./meteora.ts";
+export * from "./pump.ts";
 export * from "./readers.ts";
 export * from "./slots.ts";
 export * from "./swap.ts";

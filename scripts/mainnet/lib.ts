@@ -6,7 +6,13 @@
 import { existsSync } from "node:fs";
 import { join } from "node:path";
 import {
+  compileMessageV0,
+  computeBudget,
   loadOrCreateKeypair,
+  lookupTable,
+  signMessageWith,
+  wireSize,
+  type LookupTable,
   Rpc,
   sendAndConfirm,
   TxError,
@@ -159,4 +165,45 @@ export const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 export async function forkNow(): Promise<number> {
   const slot = await fork.getSlot();
   return fork.call<number>("getBlockTime", [slot]);
+}
+
+// ---------------------------------------------------------------- v0 transactions (pump.fun launches)
+
+/** Creates and extends an address lookup table on the fork (not frozen) and waits until it is usable. */
+export async function forkTable(step: string, payer: Signer, addresses: string[]): Promise<LookupTable> {
+  const slot = await fork.getSlot();
+  const t = lookupTable.create({ authority: payer.id, payer: payer.id, recentSlot: slot - 1 });
+  await send(step, `lookup table (${addresses.length} addresses)`, payer, [t.ix, lookupTable.extend({ table: t.address, authority: payer.id, payer: payer.id, addresses })]);
+  const s0 = await fork.getSlot();
+  while ((await fork.getSlot()) <= s0 + 1) await sleep(400);
+  return { address: t.address, addresses };
+}
+
+/** Sends a v0 transaction on the fork (simulated first), confirms, measures. */
+export async function sendV0(step: string, what: string, payer: Signer, ixs: Ix[], tables: LookupTable[], o: { signers?: Signer[]; computeUnits?: number } = {}): Promise<SendResult & { cost: CostRow; size: number }> {
+  const all = o.computeUnits ? [computeBudget.limit(o.computeUnits), ...ixs] : ixs;
+  const { blockhash } = await fork.getLatestBlockhash();
+  const msg = compileMessageV0(payer.id, all, blockhash, tables);
+  const tx = signMessageWith(msg, [payer, ...(o.signers ?? [])]);
+  const size = wireSize(msg);
+  if (size > 1232) throw new Error(`${step}: v0 transaction is ${size} bytes`);
+  const sim = await fork.simulate(tx.wire);
+  if (sim.err) {
+    console.error(`[fork] ${step}: ${what} FAILED in simulation: ${JSON.stringify(sim.err)}`);
+    for (const l of (sim.logs ?? []).slice(-25)) console.error(`    ${l}`);
+    throw new TxError(`simulation failed: ${JSON.stringify(sim.err)}`, sim.logs ?? []);
+  }
+  await fork.sendRawTransaction(tx.wire, true);
+  for (let i = 0; i < 120; i++) {
+    await sleep(500);
+    if (i % 4 === 3) await fork.sendRawTransaction(tx.wire, true).catch(() => undefined);
+    const [st] = await fork.getSignatureStatuses([tx.signature]);
+    if (st?.err) throw new TxError(`transaction failed: ${JSON.stringify(st.err)}`, [], tx.signature);
+    if (st && (st.confirmationStatus === "confirmed" || st.confirmationStatus === "finalized")) {
+      const cost = await measure(step, what, tx.signature);
+      log(`${step}: ${what}: v0 ${size} bytes, fee ${cost.fee}, payer mainnet ${sol(BigInt(cost.payerMainnet))} SOL, ${cost.computeUnits} CU`);
+      return { signature: tx.signature, slot: st.slot, logs: [], cost, size, computeUnits: cost.computeUnits ?? undefined, fee: cost.fee };
+    }
+  }
+  throw new TxError(`${step}: not confirmed`);
 }

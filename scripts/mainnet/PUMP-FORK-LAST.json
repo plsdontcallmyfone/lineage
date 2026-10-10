@@ -1,0 +1,698 @@
+{
+  "ran_at": "2026-10-10T19:39:20.037Z",
+  "pump_global": {
+    "max_curve_depth": 1,
+    "creator_fee_configurable": true,
+    "max_configurable_creator_fee_bps": "300",
+    "pool_migration_fee": "15000001"
+  },
+  "exotic_flat_fees": {
+    "curve": {
+      "lpFeeBps": "0",
+      "protocolFeeBps": "95",
+      "creatorFeeBps": "30"
+    }
+  },
+  "mints": {
+    "line": "AGPqRY6A9truYDUAX5NfurjDT2d9xkL8Ymy9qSw7iuUH",
+    "a1": "FFuU94x71LBuM6BWH1CZTDxsB9rQfZMNBsipKd2yQEez",
+    "a2": "8YLTDZwx4FcnHr7QQnTAvkkrhcUZnvjg4jYjphVmjSsT"
+  },
+  "creator_pdas": {
+    "a1": "2T5ycXQ5Ktc8VPp1fkd6WYB2Djda8JFCN1TkCnxVn2S5",
+    "a2": "87sE8q4z8DGceKnYs4BAbioBu2N5NHWSfvwLyHeTsPPh"
+  },
+  "pass": 28,
+  "total": 28,
+  "checks": [
+    {
+      "name": "fork runs mainnet's Global: create_v2 enabled, max_curve_depth 1",
+      "ok": true,
+      "detail": "max_curve_depth 1"
+    },
+    {
+      "name": "$LINE curve: owner Pump, quote SOL (zero key), depth 0, not mayhem",
+      "ok": true,
+      "detail": "curve 166 bytes"
+    },
+    {
+      "name": "$LINE mint: Token-2022, 6 decimals, mint authority none, supply 1e15",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "launcher and trader hold $LINE",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "A1 curve: owner Pump, quote $LINE, creator = PDA [pump_creator, agent], depth 1, not mayhem/cashback/holder, creator_fee_bps 0",
+      "ok": true,
+      "detail": "curve 166 bytes, virtual quote 253699729195503"
+    },
+    {
+      "name": "A1: total supply and real token reserves are Global's",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "initial buy: the treasury holds exactly 1% of supply, the launcher none",
+      "ok": true,
+      "detail": "10000000000000"
+    },
+    {
+      "name": "CreateEvent: creator PDA, quote $LINE, depth 1",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "multi_hop_swap from SOL delivered A1 without a $LINE account move",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "A1 curve holds exactly the creator fees of its trade events",
+      "ok": true,
+      "detail": "103289391468"
+    },
+    {
+      "name": "multi-hop: protocol fee once (on the SOL hop), creator fee once (on A1's hop)",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "the PDA's $LINE ATA holds exactly the swept creator fees, none signed by the creator",
+      "ok": true,
+      "detail": "103289391468"
+    },
+    {
+      "name": "SweepBondingCurveFeeEvent bucket 1 to the creator vault",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "a depth-1 coin cannot be a quote (CurveDepthExceeded 6105)",
+      "ok": true,
+      "detail": "simulation failed: {\"InstructionError\":[1,{\"Custom\":6105}]} Program log: AnchorError thrown in programs/pump/src/pump_quote.rs:46. Error Code: CurveDepthExceede"
+    },
+    {
+      "name": "mayhem mode refused for a pump-coin quote (6071)",
+      "ok": true,
+      "detail": "simulation failed: {\"InstructionError\":[1,{\"Custom\":6071}]} Program log: AnchorError thrown in programs/pump/src/create_v2.rs:679. Error Code: MayhemModeQuoteMi"
+    },
+    {
+      "name": "$LINE: TradeEvent, CompleteEvent, PostCompleteBuyEvent in order",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "synthetic leg delivered exactly the past-curve tokens",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "a launch while $LINE awaits migration is refused (QuoteCurveAwaitingMigration 6107)",
+      "ok": true,
+      "detail": "simulation failed: {\"InstructionError\":[1,{\"Custom\":6107}]} Program log: AnchorError thrown in programs/pump/src/create_v2.rs:429. Error Code: QuoteCurveAwaitin"
+    },
+    {
+      "name": "$LINE pool: canonical (index 0, creator = Pump pool authority), quote WSOL",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "A2 curve: quote $LINE, creator = PDA, depth 1",
+      "ok": true,
+      "detail": "virtual quote 33887484709325"
+    },
+    {
+      "name": "pool-then-curve multi-hop delivered A2",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "trader holds enough $LINE to complete A2",
+      "ok": true,
+      "detail": "needs 95276844743796"
+    },
+    {
+      "name": "A2 quote math: the completing buy cost what quoteCurveBuyExactOut said",
+      "ok": true,
+      "detail": "predicted 95276844743796"
+    },
+    {
+      "name": "A2 pool: canonical, base A2, quote $LINE, coin_creator = our PDA (carried over from the curve)",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "A2 pool LP mint supply is 0 (LP burnt)",
+      "ok": true,
+      "detail": "lp_supply field 140949142590022"
+    },
+    {
+      "name": "A2 pool holds exactly the coin creator fees of its trade events",
+      "ok": true,
+      "detail": "425712173"
+    },
+    {
+      "name": "A2: the PDA's $LINE ATA = curve creator fees + pool creator fees exactly",
+      "ok": true,
+      "detail": "295195554190 + 425712173"
+    },
+    {
+      "name": "creator_fee_bps 150 probe recorded (informational)",
+      "ok": true,
+      "detail": "accepted, curve creator_fee_bps 150"
+    }
+  ],
+  "rows": [
+    {
+      "step": "1",
+      "what": "$LINE stand-in: create_v2 SOL-paired",
+      "signature": "51LmQzuR2RAKtpgU4R2yYavswESfTCPL3GQtQbY7Z8ehCPGX2LcvapuUxnKBHZG2BUrkD9Kfv1pcX7VzdR8aknod",
+      "payer": "9mJty3S95BM844vWp3yWoPKLQe4BEZh7h83NJQYiCghg",
+      "fee": 10000,
+      "computeUnits": 94517,
+      "signatures": 2,
+      "created": [
+        {
+          "address": "AGPqRY6A9truYDUAX5NfurjDT2d9xkL8Ymy9qSw7iuUH",
+          "bytes": 367,
+          "forkRent": "3445200",
+          "mainnetRent": "2514600"
+        },
+        {
+          "address": "9KtXbdvufXFJSbHGL2uu2mFLyanw5qZyh3tX2x5QdGSp",
+          "bytes": 166,
+          "forkRent": "2046240",
+          "mainnetRent": "1493520"
+        },
+        {
+          "address": "Grb2jaWb1iJAgACR2wzoRbTQFbaz5V8dpPaBtVTofpap",
+          "bytes": 170,
+          "forkRent": "2074080",
+          "mainnetRent": "1513840"
+        }
+      ],
+      "payerDeltaFork": "7575520",
+      "payerMainnet": "5531960",
+      "other": "0"
+    },
+    {
+      "step": "1b",
+      "what": "buy 40000000000000 $LINE base units for launcher (buy_v3, SOL)",
+      "signature": "4RVLFTRCWvVBX5NDeBE4xkbEk2KtynXzLj912H2h9gtrFtCvKHVcc2PfQVbvP9Sy2ZeKSPcyWbEsGY2KcJ7KdySx",
+      "payer": "GD5rH2bmFEuTwpabf1zZL9ww4WHJFK3QX71aRR6Z5vFd",
+      "fee": 5000,
+      "computeUnits": 61973,
+      "signatures": 1,
+      "created": [
+        {
+          "address": "HVkSRWUiQonS6vJQMEjXiEU7zqU2urjQU9vWArotVh7a",
+          "bytes": 170,
+          "forkRent": "2074080",
+          "mainnetRent": "1513840"
+        }
+      ],
+      "payerDeltaFork": "1178264949",
+      "payerMainnet": "1177704709",
+      "other": "1176185869"
+    },
+    {
+      "step": "1c",
+      "what": "buy 40000000000000 $LINE base units for trader (buy_v3, SOL)",
+      "signature": "3dH8F5W1Qo2vgMMp8QUCXVJKmLwDyUvePAyXZwLPLeZ1ramJxFg5SeLGsUbBh65reYqP5xPxRWmzxxnMBrDxmrPJ",
+      "payer": "CpNTj8io5tSLhVVtd1F8gbBMQzB4ebHrvXXb2nq2K3fY",
+      "fee": 5000,
+      "computeUnits": 61974,
+      "signatures": 1,
+      "created": [
+        {
+          "address": "7AN3zcd5zWDuqVrv2f7NRYp2hp7X2LRLdTEa8W9cyg3x",
+          "bytes": 170,
+          "forkRent": "2074080",
+          "mainnetRent": "1513840"
+        }
+      ],
+      "payerDeltaFork": "1273023125",
+      "payerMainnet": "1272462885",
+      "other": "1270944045"
+    },
+    {
+      "step": "2t",
+      "what": "lookup table (15 addresses)",
+      "signature": "3TBXroqS2ZJ3KLWKEjN5tD7ubBPkfkDfNKXkZc1EnJvVQBMh1xFr3cqN3BfDLt77Vr14L187xXmCCQXRoUxDudgd",
+      "payer": "GD5rH2bmFEuTwpabf1zZL9ww4WHJFK3QX71aRR6Z5vFd",
+      "fee": 5000,
+      "computeUnits": 20686,
+      "signatures": 1,
+      "created": [
+        {
+          "address": "AzYgUdA1gDkLTqdn8LdrcGk8spicTQ3tNYa8h8FKiWos",
+          "bytes": 536,
+          "forkRent": "4621440",
+          "mainnetRent": "3373120"
+        }
+      ],
+      "payerDeltaFork": "4626440",
+      "payerMainnet": "3378120",
+      "other": "0"
+    },
+    {
+      "step": "2",
+      "what": "agent coin A1: create_v2 (quote $LINE on its curve) + initial buy 1% delivered to the treasury",
+      "signature": "4YbNu6WPqbdtQYMYTrvfz8VouUxMA4s3K1m5i2Jes3MctTuGE1PfYcSpraVQefzjM5x9qEhuRtUqbctgCmMMPVnq",
+      "payer": "GD5rH2bmFEuTwpabf1zZL9ww4WHJFK3QX71aRR6Z5vFd",
+      "fee": 10000,
+      "computeUnits": 270464,
+      "signatures": 2,
+      "created": [
+        {
+          "address": "FFuU94x71LBuM6BWH1CZTDxsB9rQfZMNBsipKd2yQEez",
+          "bytes": 362,
+          "forkRent": "3410400",
+          "mainnetRent": "2489200"
+        },
+        {
+          "address": "A9CYNzyB5DgdYBhpdzbHdDup39RhpJSXzgdtNauFzr9C",
+          "bytes": 166,
+          "forkRent": "2046240",
+          "mainnetRent": "1493520"
+        },
+        {
+          "address": "HSwXEe5Cy7BowkfynCJgfnPCB6kCNPVpcaF4SjnYffn4",
+          "bytes": 170,
+          "forkRent": "2074080",
+          "mainnetRent": "1513840"
+        },
+        {
+          "address": "CH5FYoy2dpocscysopx2VFTUhWbaKqRagoKdFMc4YQcC",
+          "bytes": 170,
+          "forkRent": "2074080",
+          "mainnetRent": "1513840"
+        },
+        {
+          "address": "LAa3kq9XYvrZsfDprej6sT4MRKUv1DaAouU8jCKsyHM",
+          "bytes": 170,
+          "forkRent": "2074080",
+          "mainnetRent": "1513840"
+        },
+        {
+          "address": "ANJ6b1zZPKMqGWzN3gngdbEGB5Gvsr7YyjVu1CQfaMj6",
+          "bytes": 170,
+          "forkRent": "2074080",
+          "mainnetRent": "1513840"
+        },
+        {
+          "address": "3qykH437uKWZD1Ygb2y1AdJHhdUDMWvcg4hG3LUhMVi3",
+          "bytes": 170,
+          "forkRent": "2074080",
+          "mainnetRent": "1513840"
+        }
+      ],
+      "payerDeltaFork": "15837040",
+      "payerMainnet": "11561920",
+      "other": "0"
+    },
+    {
+      "step": "3a",
+      "what": "A1 buy_v3 (trader, in $LINE)",
+      "signature": "5G9AMC5mD64LkFcaz7T2T4zRocCoY1NUtBARGknrp68FFV8difQDNqmz6sGWh5MjRJy9sAuJHqeo8EwNrB8PX7pL",
+      "payer": "CpNTj8io5tSLhVVtd1F8gbBMQzB4ebHrvXXb2nq2K3fY",
+      "fee": 5000,
+      "computeUnits": 80860,
+      "signatures": 1,
+      "created": [
+        {
+          "address": "4U4YCTnyqwfbE9qdHaVRB3mFG4CawtD2boskxThkCCQm",
+          "bytes": 170,
+          "forkRent": "2074080",
+          "mainnetRent": "1513840"
+        }
+      ],
+      "payerDeltaFork": "2079080",
+      "payerMainnet": "1518840",
+      "other": "0"
+    },
+    {
+      "step": "3b",
+      "what": "A1 buy_exact_quote_in_v3 (trader)",
+      "signature": "goL1sZwc29Uns36zNHV6UnrUZKHkyywnXHWEUNhSYiB47axtCypoNRrwydzTxzKQTqMosnooJ9ZfPnimj74gEtS",
+      "payer": "CpNTj8io5tSLhVVtd1F8gbBMQzB4ebHrvXXb2nq2K3fY",
+      "fee": 5000,
+      "computeUnits": 64986,
+      "signatures": 1,
+      "created": [],
+      "payerDeltaFork": "5000",
+      "payerMainnet": "5000",
+      "other": "0"
+    },
+    {
+      "step": "3c",
+      "what": "A1 sell_v3 (trader)",
+      "signature": "3R5F3HiBEaiekpibrXuEEYRG2PvrwHTgZMrPMAiU1U8vEUFLZZ6RwbMAYgS9bps7WDDaR1wcWYUDdp5aHLmMkpAf",
+      "payer": "CpNTj8io5tSLhVVtd1F8gbBMQzB4ebHrvXXb2nq2K3fY",
+      "fee": 5000,
+      "computeUnits": 63493,
+      "signatures": 1,
+      "created": [],
+      "payerDeltaFork": "5000",
+      "payerMainnet": "5000",
+      "other": "0"
+    },
+    {
+      "step": "3d",
+      "what": "multi_hop_swap SOL -> $LINE curve -> A1 curve (trader, 1 SOL)",
+      "signature": "64RFtUkfUAvcY2mb7XWfNvvDG5DCqdWDVfuwSt61efYmrERnu7AX8D8qviGHGGF8xYxsiTX5dXeTeL3yGzjV5Fav",
+      "payer": "CpNTj8io5tSLhVVtd1F8gbBMQzB4ebHrvXXb2nq2K3fY",
+      "fee": 5000,
+      "computeUnits": 147546,
+      "signatures": 1,
+      "created": [],
+      "payerDeltaFork": "1000005000",
+      "payerMainnet": "1000005000",
+      "other": "1000000000"
+    },
+    {
+      "step": "4",
+      "what": "A1 creator fees: sweep_creator_fee + collect_creator_fee_v2 (keeper, permissionless)",
+      "signature": "5LTjsY15qNVSR9Bg7SSv4VA3JGkiZEWdheMpHWn6QQN5qC9DsCYQvvvfZwgvPKmtEVqALJGHDrq4PTZZpp7w69Wr",
+      "payer": "4ZyDVPNyRHY888x6DpfSa52y6qsVj1L9jdfr2CSsfuXH",
+      "fee": 5000,
+      "computeUnits": 100264,
+      "signatures": 1,
+      "created": [
+        {
+          "address": "46BpRcb3DCgDzkAv7CyWuhU5fUyNnm3otJL5ZUthBDYu",
+          "bytes": 170,
+          "forkRent": "2074080",
+          "mainnetRent": "1513840"
+        },
+        {
+          "address": "7AYtEdx4uHx1jGqFaZvLCwUmoV6eJQF4H2WtTaZJPDc8",
+          "bytes": 170,
+          "forkRent": "2074080",
+          "mainnetRent": "1513840"
+        }
+      ],
+      "payerDeltaFork": "4153160",
+      "payerMainnet": "3032680",
+      "other": "0"
+    },
+    {
+      "step": "6a",
+      "what": "$LINE: completing buy_v3 past the curve (synthetic migration)",
+      "signature": "2y9LcwgNu9iMYbmsB7AhJX8e1ziKLqGUMHceqXYPBf1haoRvQ3HzTh13rfXuxtxj5UXNW1seL9FVZMvvFa7tetkZ",
+      "payer": "CpNTj8io5tSLhVVtd1F8gbBMQzB4ebHrvXXb2nq2K3fY",
+      "fee": 5000,
+      "computeUnits": 59279,
+      "signatures": 1,
+      "created": [],
+      "payerDeltaFork": "86988207159",
+      "payerMainnet": "86988207159",
+      "other": "86988202159"
+    },
+    {
+      "step": "6b",
+      "what": "$LINE migrate_v2 to PumpSwap (permissionless)",
+      "signature": "3h6AXjS7r8J1sddPyseXt4cbEoPQD7yEDFrC47npsdSmFDzGXWDtVYf8WgJ9WcSEniAXVrjARpQrjvVY8byeQtXc",
+      "payer": "4ZyDVPNyRHY888x6DpfSa52y6qsVj1L9jdfr2CSsfuXH",
+      "fee": 5000,
+      "computeUnits": 371181,
+      "signatures": 1,
+      "created": [
+        {
+          "address": "BtJusbzTBPVG1QvjTMkh9CcVS88A8TszYeiJXLUqiAU",
+          "bytes": 287,
+          "forkRent": "2888400",
+          "mainnetRent": "2108200"
+        },
+        {
+          "address": "7KD17yrf3Q3m4jvHPQyAbhmehJh7c4kH14MsdFR5PSbn",
+          "bytes": 82,
+          "forkRent": "1461600",
+          "mainnetRent": "1066800"
+        },
+        {
+          "address": "3tLEg5uBkjbrzsGbkaiqxeqrWyyT2aGHyR5HRGdXsuPH",
+          "bytes": 170,
+          "forkRent": "2074080",
+          "mainnetRent": "1513840"
+        },
+        {
+          "address": "2RqpWM2CBpDGYLz9xyV4KzQyeYhJqbNsUMzWQJdnXjac",
+          "bytes": 165,
+          "forkRent": "2039280",
+          "mainnetRent": "1488440"
+        },
+        {
+          "address": "75UY7Cms8XKmC8tD2wtDRAW8RqP8LCisKDsqB3qt3v5E",
+          "bytes": 165,
+          "forkRent": "2039280",
+          "mainnetRent": "1488440"
+        }
+      ],
+      "payerDeltaFork": "2044280",
+      "payerMainnet": "1493440",
+      "other": "0"
+    },
+    {
+      "step": "7a",
+      "what": "agent coin A2: create_v2 quoted in the migrated $LINE (8 quote accounts)",
+      "signature": "3GvAa7ovPSk2ttncgi4vaFRvzJEb81Cda7UXuFhCUTjNh3FY59rtBvQyx7fU7d9WrmGojEPRJVkLorAch1sAtz6V",
+      "payer": "GD5rH2bmFEuTwpabf1zZL9ww4WHJFK3QX71aRR6Z5vFd",
+      "fee": 10000,
+      "computeUnits": 151188,
+      "signatures": 2,
+      "created": [
+        {
+          "address": "8YLTDZwx4FcnHr7QQnTAvkkrhcUZnvjg4jYjphVmjSsT",
+          "bytes": 362,
+          "forkRent": "3410400",
+          "mainnetRent": "2489200"
+        },
+        {
+          "address": "F1vddVcqmJKCUBbD5XG8HEVhN9vL8TNMEz6BHmzHqsQc",
+          "bytes": 166,
+          "forkRent": "2046240",
+          "mainnetRent": "1493520"
+        },
+        {
+          "address": "EBYkaFqeQ6yGfBJpsQnVYGZ889xWJv7u86jRvNPk5R2Y",
+          "bytes": 170,
+          "forkRent": "2074080",
+          "mainnetRent": "1513840"
+        },
+        {
+          "address": "HDBZBewNFyfJ9UaGaDKbyEstEHHBm3Q8LWTnF8ftsVFR",
+          "bytes": 170,
+          "forkRent": "2074080",
+          "mainnetRent": "1513840"
+        }
+      ],
+      "payerDeltaFork": "9614800",
+      "payerMainnet": "7020400",
+      "other": "0"
+    },
+    {
+      "step": "7b",
+      "what": "multi_hop_swap SOL -> $LINE pool -> A2 curve (trader, 2 SOL wrapped)",
+      "signature": "hyiKeWbdePBRui8HrbzFg4KrM3xY94KaSt4K2j6rqFfwaTutK1CPTZERiFtWgT1cnXz92Sh2D5EJPBjaLR71yaL",
+      "payer": "CpNTj8io5tSLhVVtd1F8gbBMQzB4ebHrvXXb2nq2K3fY",
+      "fee": 5000,
+      "computeUnits": 175136,
+      "signatures": 1,
+      "created": [
+        {
+          "address": "14SFMN53zR54DthNdzmG3TZCehWz61MsnXyP22icmFh1",
+          "bytes": 170,
+          "forkRent": "2074080",
+          "mainnetRent": "1513840"
+        }
+      ],
+      "payerDeltaFork": "2002079080",
+      "payerMainnet": "2001518840",
+      "other": "2000000000"
+    },
+    {
+      "step": "8a",
+      "what": "trader buys $LINE on its PumpSwap pool (buy_exact_quote_in_v2, 300 SOL)",
+      "signature": "4KkWhSH8jpgjixp4x4tznPasKvaTi3tbnzeEVncLpeHBxUeGbK2bYGAW88hA5uiLUFGSdeXMZLYUkYTTDD3tT1Vh",
+      "payer": "CpNTj8io5tSLhVVtd1F8gbBMQzB4ebHrvXXb2nq2K3fY",
+      "fee": 5000,
+      "computeUnits": 91417,
+      "signatures": 1,
+      "created": [],
+      "payerDeltaFork": "300000005000",
+      "payerMainnet": "300000005000",
+      "other": "300000000000"
+    },
+    {
+      "step": "8b",
+      "what": "A2: completing buy_v3 past the curve (synthetic migration, in $LINE)",
+      "signature": "jaGuJ84HG2gywab9EnJv3fxQ6MGpmyrwEStRW764G76tG5QqjggXcPG6RBgF1UAxrC5Pk4tfQS8mXtzm7zUg8Eo",
+      "payer": "CpNTj8io5tSLhVVtd1F8gbBMQzB4ebHrvXXb2nq2K3fY",
+      "fee": 5000,
+      "computeUnits": 78008,
+      "signatures": 1,
+      "created": [],
+      "payerDeltaFork": "5000",
+      "payerMainnet": "5000",
+      "other": "0"
+    },
+    {
+      "step": "8c",
+      "what": "A2 migrate_v2 to PumpSwap (permissionless, keeper pays)",
+      "signature": "3kAbcnJXm5ruiN6GwimkReoYms9EhXyrdtmbJ7Rv1yJLh2Vj6APKNnezE17B4mVZRFDv9WBey8HsmgKWjcVWg6d9",
+      "payer": "4ZyDVPNyRHY888x6DpfSa52y6qsVj1L9jdfr2CSsfuXH",
+      "fee": 5000,
+      "computeUnits": 335064,
+      "signatures": 1,
+      "created": [
+        {
+          "address": "3mv8BQD2qiEueacWVr6oPPETmYSrWBf8RK5cnfKHRu4h",
+          "bytes": 287,
+          "forkRent": "2888400",
+          "mainnetRent": "2108200"
+        },
+        {
+          "address": "GEdW6q46Z2YBagsG4LUoD9gXdy6cqBngqPtNiQKK4wQ3",
+          "bytes": 82,
+          "forkRent": "1461600",
+          "mainnetRent": "1066800"
+        },
+        {
+          "address": "BhZiUYaErr6PaDXeZwi9UtTU8zPBEqwM89FR3v2DMDSJ",
+          "bytes": 170,
+          "forkRent": "2074080",
+          "mainnetRent": "1513840"
+        },
+        {
+          "address": "A7enHyHCuXWPVUNaV5ttfN8n53pWXgGfWL1iWaCeajyX",
+          "bytes": 170,
+          "forkRent": "2074080",
+          "mainnetRent": "1513840"
+        },
+        {
+          "address": "2ebAPgbpK1PtLbJ7e9HSFSqvBJrRyRQDB4tbBgcVr8Hu",
+          "bytes": 170,
+          "forkRent": "2074080",
+          "mainnetRent": "1513840"
+        }
+      ],
+      "payerDeltaFork": "25375401",
+      "payerMainnet": "22519681",
+      "other": "14798161"
+    },
+    {
+      "step": "9a",
+      "what": "A2 pool buy_v2 (trader, in $LINE)",
+      "signature": "4TLYGstBUjJXUzLeXiCjkkSNduRigcJzdYbrXJ3Ev7x9x54d9gb3uGLVZHUEnfqdp6WeoYpX5EwXxUaYhWCUtm1F",
+      "payer": "CpNTj8io5tSLhVVtd1F8gbBMQzB4ebHrvXXb2nq2K3fY",
+      "fee": 5000,
+      "computeUnits": 56899,
+      "signatures": 1,
+      "created": [],
+      "payerDeltaFork": "5000",
+      "payerMainnet": "5000",
+      "other": "0"
+    },
+    {
+      "step": "9b",
+      "what": "A2 pool sell_v2 (trader)",
+      "signature": "56c1N1TroSFq3ej1FXZ337GXqJnppvvY5cEYfy18oa2bbwQSs54VKmFP7BzdGG5YfYNX7HGSzDUC26iv28Rnxf16",
+      "payer": "CpNTj8io5tSLhVVtd1F8gbBMQzB4ebHrvXXb2nq2K3fY",
+      "fee": 5000,
+      "computeUnits": 56121,
+      "signatures": 1,
+      "created": [],
+      "payerDeltaFork": "5000",
+      "payerMainnet": "5000",
+      "other": "0"
+    },
+    {
+      "step": "9c",
+      "what": "multi_hop_swap SOL -> $LINE pool -> A2 pool (trader, 1 SOL wrapped)",
+      "signature": "3VywMan91nAgHMTRqvHNQ8i3w8AvYh2xshGbtQFmRxGA6CRv2u21M8wNvN89tVbvVgpdGPKbFTHEGs94393gko1m",
+      "payer": "CpNTj8io5tSLhVVtd1F8gbBMQzB4ebHrvXXb2nq2K3fY",
+      "fee": 5000,
+      "computeUnits": 122849,
+      "signatures": 1,
+      "created": [],
+      "payerDeltaFork": "1000005000",
+      "payerMainnet": "1000005000",
+      "other": "1000000000"
+    },
+    {
+      "step": "9d",
+      "what": "A2 fees after migration: curve sweep + collect_creator_fee_v2, pool sweep + collect_coin_creator_fee (keeper)",
+      "signature": "36LW1nSiLPc8PF1Lgy87DjEVS5KSKvMjATcjLKz8n1rdNct9z81wAGRoFLBLE7E6JMvSavPCT6fnR5AgYwNJ5r6w",
+      "payer": "4ZyDVPNyRHY888x6DpfSa52y6qsVj1L9jdfr2CSsfuXH",
+      "fee": 5000,
+      "computeUnits": 190504,
+      "signatures": 1,
+      "created": [
+        {
+          "address": "75ukLMUkg8fghsq12Q5thWamqaTxxqELcU6AzCgNAGyF",
+          "bytes": 170,
+          "forkRent": "2074080",
+          "mainnetRent": "1513840"
+        },
+        {
+          "address": "EAPGgJL9P18AwKjng74YE4atf56ceHv4aEpYTtX6Gu83",
+          "bytes": 170,
+          "forkRent": "2074080",
+          "mainnetRent": "1513840"
+        },
+        {
+          "address": "8fd2NCN31ubTVeuMaXDx2tPnYUWSY1hk4di5ZthRwf1M",
+          "bytes": 170,
+          "forkRent": "2074080",
+          "mainnetRent": "1513840"
+        }
+      ],
+      "payerDeltaFork": "6227240",
+      "payerMainnet": "4546520",
+      "other": "0"
+    },
+    {
+      "step": "10",
+      "what": "A3: create_v2 with creator_fee_bps 150 (owner decision 4 probe)",
+      "signature": "31sfKGabrx6qWETDrPkHSoi9nhsZqgqADUtJaSYuexxZUxRsAsVKJniqEdbk498bUwiBaEvEFFz8KxfGMr4gAaQv",
+      "payer": "GD5rH2bmFEuTwpabf1zZL9ww4WHJFK3QX71aRR6Z5vFd",
+      "fee": 10000,
+      "computeUnits": 149002,
+      "signatures": 2,
+      "created": [
+        {
+          "address": "F1akN7Bu2RQ6yaVjKBuxKPCQR7y2tQP5vzF4icRqFcu",
+          "bytes": 334,
+          "forkRent": "3215520",
+          "mainnetRent": "2346960"
+        },
+        {
+          "address": "6Xk4uwTtHqs4KvdkD1Wy9D3i8GFknGVmTNcbuydwL4J5",
+          "bytes": 166,
+          "forkRent": "2046240",
+          "mainnetRent": "1493520"
+        },
+        {
+          "address": "1tJUWDmCt5p4YK6jo1MvWjg828qsZjgRjNynYLbadgW",
+          "bytes": 170,
+          "forkRent": "2074080",
+          "mainnetRent": "1513840"
+        },
+        {
+          "address": "3Y4eSBNHrWTbPM4W6nrAbp7EVTVg4extERB4JZSq37LN",
+          "bytes": 170,
+          "forkRent": "2074080",
+          "mainnetRent": "1513840"
+        }
+      ],
+      "payerDeltaFork": "9419920",
+      "payerMainnet": "6878160",
+      "other": "0"
+    }
+  ]
+}
