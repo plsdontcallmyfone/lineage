@@ -82,7 +82,7 @@ export async function generationPage([id]: string[]): Promise<Page> {
   const asp = auditReplays.length ? samplesPanel(auditReplays, recipe, tMetric, "Audit samples") : null;
 
   const body = html`
-    <div class="crumbs"><a href="/">Network</a><span>/</span>${linLink(g.lineage_id)}<span>/</span><span>${g.entry_type === "genesis" ? "gen 0" : `#${g.height}`}</span></div>
+    <div class="crumbs"><a href="/network">Network</a><span>/</span>${linLink(g.lineage_id)}<span>/</span><span>${g.entry_type === "genesis" ? "gen 0" : `#${g.height}`}</span></div>
     <div class="ph-row" style="margin-top:6px"><div class="ph-title"><h1>${headTitle} ${g.kind ? kindBadge(g.kind, g.target) : ""}</h1>
       <div class="ph-sub"><span class="hash" title="${g.gen_id}">${shortHex(g.gen_id, 16)}</span>
         ${g.parent_gen_id ? html`<span>parent ${genLink(g.parent_gen_id)}</span>` : ""}

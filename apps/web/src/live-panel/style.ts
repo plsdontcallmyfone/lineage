@@ -8,8 +8,8 @@
 
 export const CSS = `
 .lp {
-  --lp-o: #f0661a;
-  --lp-o-ink: #b8460a;
+  --lp-o: #e06510;
+  --lp-o-ink: #c45a20;
   --lp-o-soft: color-mix(in oklab, var(--lp-o) 12%, transparent);
   --lp-hl: color-mix(in oklab, var(--lp-o) 7%, transparent);
   --lp-o-line: color-mix(in oklab, var(--lp-o) 55%, var(--line));
@@ -25,10 +25,7 @@ export const CSS = `
   border: 1px solid var(--lp-o-line); min-width: 0; font-size: 13px;
   box-shadow: 0 0 0 1px color-mix(in oklab, var(--lp-o) 18%, transparent), 0 10px 30px -18px rgba(0,0,0,.35);
 }
-@media (prefers-color-scheme: dark) {
-  :root:not([data-theme="light"]) .lp { --lp-o: #ff7a2e; --lp-o-ink: #ffae7a; --lp-glow: color-mix(in oklab, var(--lp-o) 34%, transparent); }
-}
-:root[data-theme="dark"] .lp { --lp-o: #ff7a2e; --lp-o-ink: #ffae7a; --lp-glow: color-mix(in oklab, var(--lp-o) 34%, transparent); }
+:root:not([data-theme="light"]) .lp { --lp-o: #ff7a17; --lp-o-ink: #ffc285; --lp-glow: color-mix(in oklab, var(--lp-o) 34%, transparent); }
 .lp::before {
   content: ""; position: absolute; inset: -1px; border-radius: 12px; pointer-events: none; z-index: -1;
   box-shadow: 0 0 0 1px var(--lp-o), 0 0 22px 3px var(--lp-glow), inset 0 0 18px -6px var(--lp-glow);

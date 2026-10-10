@@ -100,7 +100,7 @@ export async function candidatePage([id]: string[]): Promise<Page> {
   const series = seriesPanel(c);
   const prov = await provenancePanel(c.commit_id).catch(() => "");
   const body = html`
-    <div class="crumbs"><a href="/">Network</a><span>/</span>${linLink(c.lineage_id)}<span>/</span><span>candidate</span></div>
+    <div class="crumbs"><a href="/network">Network</a><span>/</span>${linLink(c.lineage_id)}<span>/</span><span>candidate</span></div>
     <div class="ph-row" style="margin-top:6px"><div class="ph-title"><h1>Candidate ${kindBadge(c.kind, c.target)}</h1>
       <div class="ph-sub"><span class="hash" title="${c.candidate_id ?? c.commit_id}">${shortHex(c.candidate_id ?? c.commit_id, 16)}</span><span>by ${authorLink(c)}</span><span title="${stamp(c.committed_at)}">committed ${when(c.committed_at)}</span></div></div></div>
     ${banners}
