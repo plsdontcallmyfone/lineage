@@ -151,9 +151,11 @@ test("OFF-D9 the page CSP allows exactly the inline theme script of index.html, 
   const { createHash } = await import("node:crypto");
   const { join } = await import("node:path");
   const root = join(import.meta.dir, "../..");
-  const html = readFileSync(join(root, "apps/web/public/index.html"), "utf8");
-  const inline = [...html.matchAll(/<script>([\s\S]*?)<\/script>/g)].map((m) => `'sha256-${createHash("sha256").update(m[1]!).digest("base64")}'`);
+  const hashes = (f: string) => [...readFileSync(join(root, f), "utf8").matchAll(/<script>([\s\S]*?)<\/script>/g)].map((m) => `'sha256-${createHash("sha256").update(m[1]!).digest("base64")}'`);
+  const inline = hashes("apps/web/public/index.html");
   expect(inline).toHaveLength(1);
+  // the landing page ("/", apps/web/landing) carries the same theme script, byte for byte, and nothing else inline
+  expect(hashes("apps/web/landing/index.html")).toEqual(inline);
   for (const f of ["scripts/deploy/caddy/Caddyfile.tmpl", "apps/web/server.ts"]) {
     const src = readFileSync(join(root, f), "utf8");
     const csp = /default-src 'self';[^"]*/.exec(src)?.[0] ?? "";

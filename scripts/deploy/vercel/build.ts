@@ -1,11 +1,12 @@
 #!/usr/bin/env bun
-// Static build of the dashboard for Vercel: client bundles, public assets, the Garage snapshot and a
-// vercel.json whose rewrites proxy the API paths (/api, /live, /chain, /souls) to the public site, which
-// runs Core and the full dashboard server. Vercel serves only static files here; nothing stateful.
+// Static build of the dashboard for Vercel: client bundles, public assets, the landing page
+// (apps/web/landing) at "/", self-hosted fonts, and a vercel.json whose rewrites proxy the API paths
+// (/api, /live, /chain, /souls, /market, /embed) to the public site, which runs Core and the full
+// dashboard server. Vercel serves only static files here; nothing stateful.
 //
 //   bun scripts/deploy/vercel/build.ts [--site https://157-245-71-188.sslip.io] [--out apps/web/dist]
 //   cd apps/web/dist && vercel deploy --prod
-import { cpSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
+import { cpSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { chainBrowserPlugin } from "../../../packages/chain/src/browser/plugin.ts";
 
@@ -27,28 +28,36 @@ writeFileSync(join(OUT, "assets/app.js"), await bundle(join(WEB, "src/main.ts"))
 writeFileSync(join(OUT, "assets/wallet.js"), await bundle(join(WEB, "wallet/main.ts"), { format: "esm", plugins: [chainBrowserPlugin] }));
 cpSync(join(WEB, "public/app.css"), join(OUT, "assets/app.css"));
 cpSync(join(WEB, "public/favicon.svg"), join(OUT, "favicon.svg"));
-// The Garage snapshot is the landing page: its files sit at the dist root (its index.html is "/"),
-// and the dashboard's shell is app.html, the rewrite target for every client-side route.
-cpSync(join(WEB, "public/garage"), OUT, { recursive: true });
+cpSync(join(WEB, "public/fonts"), join(OUT, "fonts"), { recursive: true });
+// The landing page is "/" (index.html); the dashboard's shell is app.html, the rewrite target for every
+// client-side route (its overview is /network).
+mkdirSync(join(OUT, "landing"), { recursive: true });
+cpSync(join(WEB, "landing/index.html"), join(OUT, "index.html"));
+cpSync(join(WEB, "landing/landing.css"), join(OUT, "landing/landing.css"));
+writeFileSync(join(OUT, "landing/landing.js"), await bundle(join(WEB, "landing/main.ts")));
 cpSync(join(WEB, "public/index.html"), join(OUT, "app.html"));
+
+// the same page policy Caddy sets on the site (one source: the Caddyfile template); both pages carry
+// only the inline theme script it allows by hash (gate.test.ts checks)
+const CSP = /Content-Security-Policy "([^"]+)"/.exec(readFileSync(join(ROOT, "scripts/deploy/caddy/Caddyfile.tmpl"), "utf8"))?.[1];
+if (!CSP) throw new Error("no Content-Security-Policy in scripts/deploy/caddy/Caddyfile.tmpl");
 
 const vercel = {
   cleanUrls: true,
   trailingSlash: false,
   rewrites: [
     ...["api", "live", "chain", "souls", "market", "embed"].map((p) => ({ source: `/${p}/:path*`, destination: `${SITE}/${p}/:path*` })),
-    { source: "/garage", destination: "/" },
-    { source: "/garage/:path*", destination: "/:path*" },
     { source: "/:path*", destination: "/app" },
   ],
   headers: [
     { source: "/assets/(.*)", headers: [{ key: "cache-control", value: "public, max-age=60" }] },
     { source: "/(api|live|chain|souls|market|embed)/(.*)", headers: [{ key: "cache-control", value: "no-store" }] },
-    // audit A2: no CSP here (the Garage pages are a static Next.js export with inline scripts); the
-    // dashboard's own policy is set by Caddy on the site. These hold for every page.
+    { source: "/fonts/(.*)", headers: [{ key: "cache-control", value: "public, max-age=86400" }] },
+    // audit A2: the page policy and the usual headers hold for every page
     {
       source: "/(.*)",
       headers: [
+        { key: "content-security-policy", value: CSP },
         { key: "x-content-type-options", value: "nosniff" },
         { key: "x-frame-options", value: "DENY" },
         { key: "referrer-policy", value: "strict-origin-when-cross-origin" },

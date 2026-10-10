@@ -15,7 +15,7 @@ describe("market API CORS", () => {
 
   test("set: listed origins echoed, wildcards, others get none", async () => {
     const api = marketApi(db, () => ({ ok: true }), { corsOrigins: "https://*.vercel.app, http://localhost:*" });
-    expect((await get(api, "https://lineage-garage.vercel.app")).headers.get("access-control-allow-origin")).toBe("https://lineage-garage.vercel.app");
+    expect((await get(api, "https://lineage-landing.vercel.app")).headers.get("access-control-allow-origin")).toBe("https://lineage-landing.vercel.app");
     expect((await get(api, "http://localhost:3000")).headers.get("access-control-allow-origin")).toBe("http://localhost:3000");
     const no = await get(api, "https://evil.example");
     expect(no.status).toBe(200);
@@ -23,6 +23,6 @@ describe("market API CORS", () => {
     expect(no.headers.get("vary")).toBe("Origin");
     expect((await get(api)).headers.get("access-control-allow-origin")).toBeNull();
     // a dot in the pattern is literal
-    expect(corsFor("https://lineage-garageXvercel.app", "https://lineage-garage.vercel.app")["access-control-allow-origin"]).toBeUndefined();
+    expect(corsFor("https://lineage-landingXvercel.app", "https://lineage-landing.vercel.app")["access-control-allow-origin"]).toBeUndefined();
   });
 });

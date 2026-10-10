@@ -272,7 +272,7 @@ async function connect() {
 // ------------------------------------------------------------------------------------------------
 // theme, tooltips, clicks, timers
 
-/** Dark is the default (Garage design); light is opted into with data-theme="light". */
+/** Dark is the default; light is opted into with data-theme="light". */
 function isDark() {
   return document.documentElement.getAttribute("data-theme") !== "light";
 }

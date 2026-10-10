@@ -19,7 +19,9 @@
 //   /embed/lineage-embed.js   the embed kit (packages/embed, built at startup; rebuilt per request with --dev), CORS *
 //   /embed/lineage-explorer.js  <lineage-explorer>'s module, loaded on demand by the kit
 //   /embed/demo.html          the kit's demo page (every element, two themes)
-//   everything else    index.html (client-side routing)
+//   /                  the landing page (apps/web/landing: index.html, landing.css, /landing/landing.js built at startup)
+//   /fonts/<file>      self-hosted fonts (public/fonts, SIL OFL 1.1, licenses in public/fonts/OFL.txt)
+//   everything else    index.html (client-side routing; the dashboard's overview is /network)
 //
 // The server never holds a user's key: wallets sign in the browser. The only key it loads is the
 // devnet faucet's own (~/.config/lineage/devnet/faucet.json).
@@ -76,6 +78,16 @@ async function buildWallet(): Promise<string> {
   return await out.outputs[0]!.text();
 }
 walletBundle = await buildWallet();
+
+// landing page (apps/web/landing): static HTML and CSS plus one small module that reads live figures
+let landingBundle: string | null = null;
+async function buildLanding(): Promise<string> {
+  const out = await Bun.build({ entrypoints: [join(DIR, "landing/main.ts")], target: "browser", minify: !DEV, sourcemap: DEV ? "inline" : "none" });
+  if (!out.success) throw new Error(out.logs.map((l) => String(l)).join("\n"));
+  return await out.outputs[0]!.text();
+}
+landingBundle = await buildLanding();
+const FONT_TYPES: Record<string, string> = { woff2: "font/woff2", txt: "text/plain; charset=utf-8" };
 
 // embed kit (packages/embed, docs/EMBED.md): one file any front end loads with a script tag
 const { buildEmbed } = await import("../../packages/embed/scripts/build.ts");
@@ -389,7 +401,6 @@ const server = Bun.serve({
     if (p === "/embed" || p.startsWith("/embed/")) return embedRoute(p);
     if (p.startsWith("/api/")) {
       const rest = p.slice(5);
-      if (rest === "stickies") return Response.json([], { headers: { "cache-control": "no-store" } }); // the landing page's sticky notes (hidden by garage-overrides.css); nothing stored
       if (rest === "events") return liveStream(Number(url.searchParams.get("since") ?? 0));
       // `?optional=1`: the page treats 404 and 409 as "none", so answer 200 with the miss in the
       // body instead of a failed request the browser logs as a console error
@@ -418,18 +429,17 @@ const server = Bun.serve({
     }
     if (p === "/assets/app.css") return new Response(Bun.file(join(DIR, "public/app.css")), { headers: { "content-type": "text/css; charset=utf-8" } });
     if (p === "/favicon.svg") return new Response(Bun.file(join(DIR, "public/favicon.svg")), { headers: { "content-type": "image/svg+xml" } });
-    // Serve the Garage snapshot at its original asset paths so Next's chunk loader
-    // can resolve dynamic imports after client-side hydration.
-    const garagePages = new Set(["/aura", "/core-motion", "/google", "/pixelagent", "/contact-fold-3d.html"]);
-    const imageSource = p === "/_next/image" ? url.searchParams.get("url") : null;
-    // The Garage snapshot's index is the landing page at "/"; the dashboard's overview lives at /network.
-    const relative = p === "/" || p === "/garage" ? "index.html" : p.startsWith("/garage/") ? p.slice(8) : imageSource?.startsWith("/") ? imageSource.slice(1) : p.slice(1);
-    const filePath = join(DIR, "public/garage", relative || "index.html", (garagePages.has(p) || p.startsWith("/garage/")) && !relative.includes(".") ? "index.html" : "");
-    if (p === "/" || p === "/garage" || p.startsWith("/garage/") || garagePages.has(p) || p.startsWith("/_next/") ||
-        (filePath.startsWith(join(DIR, "public/garage") + "/") && existsSync(filePath))) {
-      if (!filePath.startsWith(join(DIR, "public/garage") + "/") || !existsSync(filePath)) return new Response("not found", { status: 404 });
-      const file = Bun.file(filePath);
-      return new Response(file, { headers: { "content-type": file.type, "cache-control": "public, max-age=3600" } });
+    if (p === "/") return new Response(Bun.file(join(DIR, "landing/index.html")), { headers: PAGE_HEADERS });
+    if (p === "/landing/landing.css") return new Response(Bun.file(join(DIR, "landing/landing.css")), { headers: { "content-type": "text/css; charset=utf-8", "cache-control": DEV ? "no-store" : "public, max-age=60" } });
+    if (p === "/landing/landing.js") {
+      if (DEV) landingBundle = await buildLanding().catch((e) => `console.error(${JSON.stringify(String(e))})`);
+      return new Response(landingBundle, { headers: { "content-type": "text/javascript; charset=utf-8", "cache-control": DEV ? "no-store" : "public, max-age=60" } });
+    }
+    const font = /^\/fonts\/([A-Za-z0-9-]+\.(woff2|txt))$/.exec(p);
+    if (font) {
+      const f = Bun.file(join(DIR, "public/fonts", font[1]!));
+      if (!(await f.exists())) return new Response("not found", { status: 404 });
+      return new Response(f, { headers: { "content-type": FONT_TYPES[font[2]!]!, "cache-control": "public, max-age=86400" } });
     }
     return new Response(indexHtml(), { headers: PAGE_HEADERS });
   },

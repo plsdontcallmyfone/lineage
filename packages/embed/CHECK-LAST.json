@@ -1,10 +1,9 @@
 {
-  "at": "2026-10-09T18:24:38.196Z",
-  "web": "http://127.0.0.1:9665",
-  "api": "https://157-245-71-188.sslip.io",
-  "garage": true,
-  "pass": 49,
-  "total": 49,
+  "at": "2026-10-10T01:53:53.940Z",
+  "web": "http://127.0.0.1:9667",
+  "api": "http://127.0.0.1:9667",
+  "pass": 31,
+  "total": 31,
   "results": [
     {
       "check": "demo 1280: reel cards",
@@ -64,7 +63,7 @@
     {
       "check": "terminal: watch switches the paired screen",
       "ok": true,
-      "detail": "TPYRLP"
+      "detail": "TESTB58"
     },
     {
       "check": "terminal: tab completion",
@@ -158,96 +157,6 @@
     },
     {
       "check": "explorer: lineage-explorer.js loaded on demand and mounted",
-      "ok": true,
-      "detail": ""
-    },
-    {
-      "check": "garage 1280: kit loaded cross-origin",
-      "ok": true,
-      "detail": ""
-    },
-    {
-      "check": "garage 1280: strip slot cards (CORS read of https://157-245-71-188.sslip.io)",
-      "ok": true,
-      "detail": ""
-    },
-    {
-      "check": "garage 1280: stills drawn",
-      "ok": true,
-      "detail": ""
-    },
-    {
-      "check": "garage 1280: CRT screen and terminal",
-      "ok": true,
-      "detail": ""
-    },
-    {
-      "check": "garage 1280: stats in the readout",
-      "ok": true,
-      "detail": ""
-    },
-    {
-      "check": "garage 1280: no horizontal page scroll",
-      "ok": true,
-      "detail": "overflow 0px"
-    },
-    {
-      "check": "garage 1280: no monospace in the kit",
-      "ok": true,
-      "detail": ""
-    },
-    {
-      "check": "garage 1280: no failed kit requests",
-      "ok": true,
-      "detail": ""
-    },
-    {
-      "check": "garage 1280: no console errors from the kit",
-      "ok": true,
-      "detail": ""
-    },
-    {
-      "check": "garage 390: kit loaded cross-origin",
-      "ok": true,
-      "detail": ""
-    },
-    {
-      "check": "garage 390: strip slot cards (CORS read of https://157-245-71-188.sslip.io)",
-      "ok": true,
-      "detail": ""
-    },
-    {
-      "check": "garage 390: stills drawn",
-      "ok": true,
-      "detail": ""
-    },
-    {
-      "check": "garage 390: CRT screen and terminal",
-      "ok": true,
-      "detail": ""
-    },
-    {
-      "check": "garage 390: stats in the readout",
-      "ok": true,
-      "detail": ""
-    },
-    {
-      "check": "garage 390: no horizontal page scroll",
-      "ok": true,
-      "detail": "overflow 0px"
-    },
-    {
-      "check": "garage 390: no monospace in the kit",
-      "ok": true,
-      "detail": ""
-    },
-    {
-      "check": "garage 390: no failed kit requests",
-      "ok": true,
-      "detail": ""
-    },
-    {
-      "check": "garage 390: no console errors from the kit",
       "ok": true,
       "detail": ""
     }

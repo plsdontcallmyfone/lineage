@@ -15,7 +15,7 @@ describe("Core CORS", () => {
   test("configured origins: reads only, echoed, wildcards", () => {
     const allowed = corsOrigins("https://*.vercel.app,http://localhost:*,https://lineage.example");
     const acao = (r: Request) => applyCors(r, res(), allowed).headers.get("access-control-allow-origin");
-    expect(acao(req("GET", "https://lineage-garage.vercel.app"))).toBe("https://lineage-garage.vercel.app");
+    expect(acao(req("GET", "https://lineage-landing.vercel.app"))).toBe("https://lineage-landing.vercel.app");
     expect(acao(req("HEAD", "http://localhost:5173"))).toBe("http://localhost:5173");
     expect(acao(req("GET", "https://lineage.example"))).toBe("https://lineage.example");
     expect(acao(req("GET", "https://evil.example"))).toBeNull();

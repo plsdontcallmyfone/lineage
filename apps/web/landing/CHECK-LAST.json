@@ -1,0 +1,313 @@
+{
+  "at": "2026-10-10T01:59:34.829Z",
+  "web": "http://127.0.0.1:9667",
+  "pass": 61,
+  "total": 61,
+  "results": [
+    {
+      "check": "1280 dark: page CSP header",
+      "ok": true,
+      "detail": "default-src 'self'; script-src 'self' 'sha256-63H06+4kOPnJGg"
+    },
+    {
+      "check": "1280 dark: theme applied",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "1280 dark: figures filled",
+      "ok": true,
+      "detail": "tokens=42, agents_working=14, generations=41, fees_to_compute=690.2K"
+    },
+    {
+      "check": "1280 dark: terminal rendered",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "1280 dark: strip cards",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "1280 dark: timeline cards",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "1280 dark: screen rendered",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "1280 dark: step figures filled",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "1280 dark: no horizontal page scroll",
+      "ok": true,
+      "detail": "1280 <= 1280"
+    },
+    {
+      "check": "1280 dark: no monospace outside the device screen",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "1280 dark: no em dash",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "1280 dark: no scraped names",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "1280 dark: one load stays under the gate's burst",
+      "ok": true,
+      "detail": "/api 36, /market 3"
+    },
+    {
+      "check": "1280 dark: no CSP violations",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "1280 dark: no console errors",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "1280 dark: terminal answers",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "1280 light: page CSP header",
+      "ok": true,
+      "detail": "default-src 'self'; script-src 'self' 'sha256-63H06+4kOPnJGg"
+    },
+    {
+      "check": "1280 light: theme applied",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "1280 light: figures filled",
+      "ok": true,
+      "detail": "tokens=42, agents_working=14, generations=41, fees_to_compute=690.2K"
+    },
+    {
+      "check": "1280 light: terminal rendered",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "1280 light: strip cards",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "1280 light: timeline cards",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "1280 light: screen rendered",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "1280 light: step figures filled",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "1280 light: no horizontal page scroll",
+      "ok": true,
+      "detail": "1280 <= 1280"
+    },
+    {
+      "check": "1280 light: no monospace outside the device screen",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "1280 light: no em dash",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "1280 light: no scraped names",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "1280 light: one load stays under the gate's burst",
+      "ok": true,
+      "detail": "/api 36, /market 3"
+    },
+    {
+      "check": "1280 light: no CSP violations",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "1280 light: no console errors",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "390 dark: page CSP header",
+      "ok": true,
+      "detail": "default-src 'self'; script-src 'self' 'sha256-63H06+4kOPnJGg"
+    },
+    {
+      "check": "390 dark: theme applied",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "390 dark: figures filled",
+      "ok": true,
+      "detail": "tokens=42, agents_working=14, generations=41, fees_to_compute=690.2K"
+    },
+    {
+      "check": "390 dark: terminal rendered",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "390 dark: strip cards",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "390 dark: timeline cards",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "390 dark: screen rendered",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "390 dark: step figures filled",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "390 dark: no horizontal page scroll",
+      "ok": true,
+      "detail": "390 <= 390"
+    },
+    {
+      "check": "390 dark: no monospace outside the device screen",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "390 dark: no em dash",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "390 dark: no scraped names",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "390 dark: one load stays under the gate's burst",
+      "ok": true,
+      "detail": "/api 26, /market 3"
+    },
+    {
+      "check": "390 dark: no CSP violations",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "390 dark: no console errors",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "390 light: page CSP header",
+      "ok": true,
+      "detail": "default-src 'self'; script-src 'self' 'sha256-63H06+4kOPnJGg"
+    },
+    {
+      "check": "390 light: theme applied",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "390 light: figures filled",
+      "ok": true,
+      "detail": "tokens=42, agents_working=14, generations=41, fees_to_compute=690.2K"
+    },
+    {
+      "check": "390 light: terminal rendered",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "390 light: strip cards",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "390 light: timeline cards",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "390 light: screen rendered",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "390 light: step figures filled",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "390 light: no horizontal page scroll",
+      "ok": true,
+      "detail": "390 <= 390"
+    },
+    {
+      "check": "390 light: no monospace outside the device screen",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "390 light: no em dash",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "390 light: no scraped names",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "390 light: one load stays under the gate's burst",
+      "ok": true,
+      "detail": "/api 26, /market 3"
+    },
+    {
+      "check": "390 light: no CSP violations",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "390 light: no console errors",
+      "ok": true,
+      "detail": ""
+    }
+  ]
+}

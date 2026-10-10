@@ -1,12 +1,13 @@
-/* Lineage dashboard, restyled after the Garage design (public/garage): dark by default, light via
-   [data-theme=light] on <html>. Tokens first; the dashboard's older token names are aliases of the
-   Garage ones so every page keeps working. Hairline borders, 8px cards, pill chips, Instrument Serif
-   headings, Geist body, Geist Mono for small uppercase labels, Departure Mono for the wordmark. */
+/* Lineage dashboard: dark by default, light via [data-theme=light] on <html>. Tokens first; the
+   dashboard's older token names are aliases of the short ones so every page keeps working. Hairline
+   borders, 8px cards, pill chips, Instrument Serif headings, Geist body, Geist Mono for small uppercase
+   labels, Departure Mono for the wordmark. Fonts are self-hosted from /fonts/ (SIL OFL 1.1; sources
+   and licenses in public/fonts/OFL.txt). */
 
-@font-face { font-family: "GeistSans"; src: url("/_next/static/media/Geist_Variable-s.p.06.f0v_2js29o.woff2") format("woff2"); font-weight: 100 900; font-display: swap; }
-@font-face { font-family: "GeistMono"; src: url("/_next/static/media/GeistMono_Variable.p.1216mhqx6y_is.woff2") format("woff2"); font-weight: 100 900; font-display: swap; }
-@font-face { font-family: "Instrument Serif"; src: url("/_next/static/media/e41d5df559864f9e-s.p.0gq7fw9.sy_5..woff2") format("woff2"); font-weight: 400; font-style: normal; font-display: swap; }
-@font-face { font-family: "Instrument Serif"; src: url("/_next/static/media/7ebf22b5a21034f8-s.p.10_7676vm7pyy.woff2") format("woff2"); font-weight: 400; font-style: italic; font-display: swap; }
+@font-face { font-family: "GeistSans"; src: url("/fonts/Geist-Variable.woff2") format("woff2"); font-weight: 100 900; font-display: swap; }
+@font-face { font-family: "GeistMono"; src: url("/fonts/GeistMono-Variable.woff2") format("woff2"); font-weight: 100 900; font-display: swap; }
+@font-face { font-family: "Instrument Serif"; src: url("/fonts/InstrumentSerif-Regular.woff2") format("woff2"); font-weight: 400; font-style: normal; font-display: swap; }
+@font-face { font-family: "Instrument Serif"; src: url("/fonts/InstrumentSerif-Italic.woff2") format("woff2"); font-weight: 400; font-style: italic; font-display: swap; }
 @font-face { font-family: "Departure Mono"; src: url("/fonts/DepartureMono-Regular.woff2") format("woff2"); font-weight: 400; font-display: swap; }
 
 :root {
@@ -192,7 +193,7 @@ main { padding: 28px var(--pad-x) 80px; min-height: calc(100vh - var(--hdr-h)); 
 .crumbs { display: flex; gap: 8px; align-items: center; color: var(--tt); font: 400 11px/1.2 var(--mono); letter-spacing: .08em; text-transform: uppercase; flex-wrap: wrap; }
 .crumbs a:hover { color: var(--tp); }
 
-/* ---------------------------------------------------------------- panels (Garage .cb cards) */
+/* ---------------------------------------------------------------- panels */
 
 .panel { background: var(--bg2); border: 1px solid var(--border); border-radius: var(--radius); min-width: 0; overflow: hidden; }
 .panel + .panel { margin-top: 20px; }
@@ -211,7 +212,7 @@ main { padding: 28px var(--pad-x) 80px; min-height: calc(100vh - var(--hdr-h)); 
 .stack > * + * { margin-top: 20px; }
 .sticky { position: sticky; top: calc(var(--hdr-h) + 16px); }
 
-/* ---------------------------------------------------------------- stat strip (Garage .spec-row ruling) */
+/* ---------------------------------------------------------------- stat strip */
 
 .stats { display: grid; grid-template-columns: repeat(var(--n, 6), minmax(0, 1fr)); background: var(--border); gap: 1px; }
 .stat { padding: 14px 16px 16px; min-width: 0; background: var(--bg2); }
@@ -238,14 +239,14 @@ table.t { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-
 .t tr.reverted td { opacity: 0.62; }
 .t tr.reverted td .eff { text-decoration: line-through; text-decoration-color: var(--tt); }
 
-/* key/value lists (Garage .spec-item) */
+/* key/value lists */
 .kv { display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: 0; }
 .kv > div { padding: 11px 16px; border-bottom: 1px solid var(--border); min-width: 0; }
 .kv > div:nth-child(odd) { font: 400 11px/1.6 var(--mono); letter-spacing: .04em; color: var(--tt); padding-right: 6px; white-space: nowrap; }
 .kv > div:nth-child(even) { word-break: break-word; color: var(--ts); }
 .kv > div:nth-last-child(-n + 2) { border-bottom: 0; }
 
-/* ---------------------------------------------------------------- badges (Garage chips) */
+/* ---------------------------------------------------------------- badges */
 
 .b { display: inline-flex; align-items: center; gap: 6px; height: 22px; padding: 0 10px; border-radius: 9999px; font: 400 11px/1 var(--mono); letter-spacing: .06em; white-space: nowrap; background: var(--bg3); border: 1px solid var(--border); color: var(--tt); vertical-align: middle; }
 .b svg { width: 11px; height: 11px; flex: none; }
@@ -313,7 +314,7 @@ table.t { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-
 .hero .mid { font-family: var(--serif); font-size: 26px; font-weight: 400; margin-top: 10px; letter-spacing: -0.018em; font-variant-numeric: tabular-nums; }
 .hero .s { color: var(--ts); margin-top: 6px; font-size: 13px; }
 
-/* ---------------------------------------------------------------- diff and code (Garage .cb-body) */
+/* ---------------------------------------------------------------- diff and code */
 
 .diff { font: 400 13px/1.8 var(--mono); font-variant-ligatures: none; font-variant-numeric: tabular-nums; overflow-x: auto; tab-size: 4; color: var(--ts); }
 .diff table { border-collapse: collapse; min-width: 100%; }
@@ -556,7 +557,7 @@ pre.json, pre.block { background: var(--bg); border: 1px solid var(--border); bo
 .mark.good { color: var(--good); }
 .mark.warn { color: var(--warn); }
 
-/* ---------------------------------------------------------------- buttons, wallet (Garage .btn-p and .btn-g) */
+/* ---------------------------------------------------------------- buttons, wallet */
 
 .wl-tabs { margin: 20px 0 14px; }
 .wl-row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }

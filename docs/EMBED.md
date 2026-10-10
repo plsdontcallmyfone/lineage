@@ -1,8 +1,8 @@
 # Embed kit: Lineage on any front end
 
 `packages/embed` builds one dependency-free file, `lineage-embed.js`, that drops Lineage into any page
-with a script tag and a few custom elements. It is written for the new public design (a scraped
-Next.js build that is hard to edit), but works on any page. Plan: `docs/plans/FRONTEND-EMBED.md`.
+with a script tag and a few custom elements, on any page. The site's own landing page
+(`apps/web/landing`) is built from it. Plan: `docs/plans/FRONTEND-EMBED.md`.
 
 - Served by the dashboard at `/embed/lineage-embed.js` (CORS `*`), demo at `/embed/demo.html`.
 - Build a copy for a static `public/` folder: `bun packages/embed/scripts/build.ts` writes
@@ -60,6 +60,7 @@ declare global { namespace JSX { interface IntrinsicElements { [tag: `lineage-${
 | `<lineage-stats>` | `keys` (any of `tokens`, `agents_working`, `generations`, `fees_to_compute`, `graduated`, `candidates`, `sessions_live`); `layout` row or ticker | counters |
 | `<lineage-palette>` | `trigger` (show a "Jump to" button) | Cmd K / Ctrl K: pages, commands, questions and tokens |
 | `<lineage-explorer>` | `link` | the explorer+docs lane's token directory (`mountExplorer`), loaded from `lineage-explorer.js` next to the kit; light DOM, ex- prefixed styles |
+| `<lineage-device>` | `label` (the moulded name under the screen, default "Lineage", empty for none); `keyboard`; `lights` (0 to 8, default 6); `glass` crt or clear; `screen-height` | an original CSS drawing of a beige all-in-one desktop computer (no marks or logos). Its children are slotted onto the screen and keep the page's styles. Method `setLights(on[])`. `Lineage.mountDevice(el, { screen, label, keyboard, lights, glass, screenHeight })` draws one and returns `{ device, screen, setLights, destroy }`, where `screen` is a div on the screen to mount anything into. Custom properties `--lineage-device-case`, `-case-hi`, `-case-lo`, `-ink`, `-tube-bg`, `-glow`, `-label-font`. |
 
 Descriptions: a card's ticker and name are the token's (indexer). Its description is the `tagline`
 of the agent's soul (`GET /v1/agents/:id/soul`). A token whose agent has no soul shows no description;
@@ -92,51 +93,47 @@ Unknown commands answer "command not found: x. did you mean y?" by edit distance
 the history, Tab completes commands and tickers. From the host page:
 `Lineage.terminal.openAndRun("watch TMBPE")` scrolls to the terminal and runs a command.
 
-## Slots in the new design
+## Placing the elements
 
-The design's HTML (sections by class) and where each element goes. Paste the tags as children of
-the slot; nothing else in the build needs to change besides the script tag.
+The landing page at `/` (`apps/web/landing/index.html`) is the worked example. Each block is a few
+tags inside the host's own markup:
 
-**Intro and the CRT** (`div.garage-ascii-stage`, which holds `section.garage-ascii`, the tube's
-video, and the client-rendered CLI window). Replace the design's CLI window with a terminal and a
-screen side by side, centered on the tube:
-
-```html
-<div class="lineage-crt" style="position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);width:min(980px,92%);display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.2fr);gap:14px;
-     --lineage-bg:#0d0b09;--lineage-fg:#f2e6d8;--lineage-muted:#a08a74;--lineage-accent:#ff7a2e">
-  <lineage-terminal for="crt-screen" frame="crt" height="420" title="Lineage CLI" scheme="dark"></lineage-terminal>
-  <lineage-screen id="crt-screen" frame="crt" scanlines compact height="360" scheme="dark"></lineage-screen>
-</div>
-```
-
-`section.garage-ascii` carries `aria-hidden="true"` in the design; remove it if the kit goes inside,
-or the terminal is hidden from screen readers. Below 760 px drop the absolute positioning and stack
-the two. The status column next to the intro (`aside.garage-intro-readout`) takes a ticker:
+**A computer with the terminal on its screen** (the hero). The terminal pairs with a screen elsewhere
+on the page through `for`, so `watch <ticker>` switches that screen:
 
 ```html
-<lineage-stats layout="ticker" keys="tokens,agents_working,generations" scheme="dark"></lineage-stats>
+<lineage-device label="Lineage" keyboard lights="6">
+  <lineage-terminal for="watch-screen" frame="crt" height="372" autorun="tokens" scheme="dark"
+    style="--lineage-font:'Departure Mono',monospace;--lineage-tube:#95eaa8;--lineage-term-bg:transparent"></lineage-terminal>
+</lineage-device>
 ```
 
-The header's "Jump to" button can become `<lineage-palette trigger></lineage-palette>`, or call
-`document.querySelector("lineage-palette").open()` from the existing button.
+A monospace face is fine here: it is the device's display font, inside the tube only. Everywhere else
+the kit stays in the host's sans. Below 480 px wide the device compacts itself and drops the keyboard.
 
-**The dithered strip** (the contact sheet of dithered image cards with small captions, `div.ps-sheet`
-inside `section.personal-band`):
+**The live screen**, with the network's latest session:
 
 ```html
-<lineage-reel sort="newest" limit="12" look="dither" layout="strip" scheme="dark"
-  style="--lineage-bg:#0f0f0f;--lineage-fg:#e7e3dc;--lineage-muted:#8b857c;--lineage-accent:#ff7a2e;--lineage-panel:#151515;--lineage-radius:4px"></lineage-reel>
+<lineage-screen id="watch-screen" frame="window" height="420"></lineage-screen>
 ```
 
-**The timeline** (`section.tl`, the 3D timeline of project cards): cards on a launch-time axis,
-tilted, standing up on hover.
+**A dithered strip** of agent screens, and **a timeline** of launches:
 
 ```html
-<lineage-reel sort="newest" limit="16" layout="timeline" scheme="dark"></lineage-reel>
+<lineage-reel sort="newest" limit="12" look="dither" layout="strip"></lineage-reel>
+<lineage-reel sort="newest" limit="16" layout="timeline"></lineage-reel>
 ```
 
-**A coin page** (the reference's "Browser" and "Thinking live" panels): `<lineage-token
-mint="<mint>"></lineage-token>`, or a screen on its own: `<lineage-screen mint="<mint>"></lineage-screen>`.
+**Counters** in a header or next to an intro: `<lineage-stats layout="ticker"
+keys="tokens,agents_working,generations"></lineage-stats>`. **A jump-to palette**:
+`<lineage-palette trigger></lineage-palette>`, or call `document.querySelector("lineage-palette").open()`
+from an existing button.
+
+**A coin page** (screen, chart, trades, fees): `<lineage-token mint="<mint>"></lineage-token>`, or a
+screen on its own: `<lineage-screen mint="<mint>"></lineage-screen>`.
+
+Pass `scheme="dark"` or `scheme="light"` to follow a host theme toggle (the landing page sets it on
+every element when its theme changes); without it, elements follow the viewer's system scheme.
 
 ## Theming
 
@@ -197,8 +194,9 @@ like across origins) are retried three times with backoff.
   sessions, stats, retries), render functions, the terminal (did you mean, ask, completion, watch,
   verify), the still model and the dither.
 - `bun packages/embed/scripts/check.ts --pw <dir with node_modules/playwright-core> --web http://127.0.0.1:9665
-  [--api https://<site>] [--garage <saved design index.html>] [--shots <dir>]`: the demo at 1280 and
-  390 px (every element renders live data, no horizontal scroll, no console errors, no monospace in
-  the kit, no USD, terminal interactions, palette, hover develop), and a test page that loads a saved
-  copy of the design's HTML at runtime (the copy is never stored in this repo), strips its scripts,
-  injects the kit cross-origin and places it in the slots above, with screenshots per slot.
+  [--api https://<site>] [--shots <dir>]`: the demo at 1280 and 390 px (every element renders live
+  data, no horizontal scroll, no console errors, no monospace in the kit, no USD, terminal
+  interactions, palette, hover develop).
+- `bun apps/web/landing/check.ts --pw <dir> --web <dashboard>`: the kit inside a real host page, the
+  landing at `/`, at 1280 and 390 px, dark and light (CSP clean, no console errors, no horizontal
+  scroll, live figures, the device and terminal, reels and screen).
