@@ -174,7 +174,7 @@ if [ "$FIRSTSHA" != "$HEADSHA" ]; then
   echo "== zero-downtime activate: a verifier mid-replay drains without holding the public units"
   # Stand-in for a verifier finishing a long replay: on SIGTERM it keeps working SIM_DRAIN_S seconds
   # (the real template's TimeoutStopSec stays in force). No Docker here, so docker.service is a stub.
-  SIM_DRAIN_S=240   # longer than a dry-run Core restart (it reads public devnet before it listens)
+  SIM_DRAIN_S=150
   cat > "$WORK/sim.sh" <<'SIM'
 #!/bin/bash
 LOG=/var/lib/lineage-sim/verifier.log

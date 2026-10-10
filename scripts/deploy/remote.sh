@@ -241,7 +241,10 @@ now_ms() { date +%s%3N; }
 restart_checked() {
   local u="$1" t0 code url
   t0=$(now_ms)
-  systemctl restart "$u" || { echo "  $u: restart failed" >&2; return 1; }
+  # ignore-dependencies: a worker unit is ordered After=lineage-core, so a plain restart of Core waits
+  # until every draining worker has stopped (stop jobs run in reverse order) and the release switch waits
+  # with it; the dry run's simulated verifier drain showed exactly that. Boot and shutdown keep the order.
+  systemctl restart --job-mode=ignore-dependencies "$u" || { echo "  $u: restart failed" >&2; return 1; }
   if [ "$(systemctl show -p ConditionResult --value "$u")" = no ]; then echo "  $u skipped (unit condition not met)"; return 0; fi
   url="$(health_url "$u")"
   local until=$(( $(date +%s) + HEALTH_WAIT ))

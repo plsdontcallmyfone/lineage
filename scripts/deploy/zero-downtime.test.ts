@@ -116,6 +116,8 @@ describe("deploy kit wiring", () => {
     expect(activate).toContain("public_restart");
     expect(activate).toContain("rolling back to");
     expect(activate).not.toMatch(/systemctl restart "\$\{CORE_UNITS\[@\]\}"/);
+    // a draining worker is ordered After=lineage-core: a plain restart of Core would wait for its drain
+    expect(remote).toContain("systemctl restart --job-mode=ignore-dependencies");
   });
 
   test("the background drain wait is bounded and reported", () => {
