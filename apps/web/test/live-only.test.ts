@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { endOf, idleCaption, idleStatus, idleSub, idleTitle, lastEndOf, pauseOf, RECORDINGS_SHOWN } from "../src/live-panel/live-only.ts";
+import { endOf, idleCaption, idleHeadline, idleStatus, idleSub, idleTitle, lastEndOf, pauseOf, RECORDINGS_SHOWN } from "../src/live-panel/live-only.ts";
 
 // Live only (owner direction 2026-10-10): the UI shows live work, and with none an idle state read
 // from the runtime's spend report (GET /v1/agents/:id/spend).
@@ -37,7 +37,13 @@ describe("live only", () => {
     expect(idleTitle({ kind: "provider", last_end: null })).toBe("Paused: provider balance low");
     expect(idleSub({ kind: "next", last_end: now - 12 * 60_000 }, now)).toContain("(12 min ago)");
     expect(idleSub({ kind: "next", last_end: null }, now)).toBe("No session has run yet.");
-    expect(idleCaption({ kind: "next", last_end: now - 3 * 3600_000 }, now)).toBe("Starting next session, last ended 3 h ago");
+    expect(idleCaption({ kind: "next", last_end: now - 3 * 3600_000 }, now)).toBe("Agent idle, last session ended 3 h ago");
+    expect(idleCaption({ kind: "next", last_end: now - 60_000 }, now)).toBe("Desktop ended: next session starting");
+    // the screen's headline: right after a session the next is starting; later, since when it is idle
+    expect(idleHeadline({ kind: "next", last_end: now - 2 * 60_000 }, now)).toBe("Desktop ended: next session starting");
+    expect(idleHeadline({ kind: "next", last_end: now - 40 * 60_000 }, now)).toMatch(/^Agent idle since \d/);
+    expect(idleHeadline({ kind: "next", last_end: null }, now)).toBe("Agent idle: no session has run yet");
+    expect(idleHeadline({ kind: "vault", last_end: now }, now)).toBe("Paused: vault empty");
     expect(idleCaption({ kind: "provider", last_end: now }, now)).toBe("Paused: provider balance low");
   });
 

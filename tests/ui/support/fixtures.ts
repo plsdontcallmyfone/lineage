@@ -24,8 +24,11 @@ import { installMockWallet, testWallet, type TestWallet } from "./wallet.ts";
  *  - a 429 on /live/events: the deployed site's gate caps open event streams per address
  *    (scripts/deploy/gate.ts, too_many_streams); parallel test pages from one address exceed it, and the
  *    app's EventSource reconnects on its own. Only that stream, only status 429.
+ *  - a 404/410/429/5xx on an agent desktop's stream (/desktops/<session>/...): a desktop that ended,
+ *    was never assigned, is too busy or whose host is down; the screen says so in words (honest screen,
+ *    apps/web/src/live-panel/desk-player.ts goneReason) and asks again. Only those paths and statuses.
  */
-export const CONSOLE_ALLOW: RegExp[] = [/net::ERR_BLOCKED_BY_CLIENT/, /status of 429 \(\) \S+\/live\/events(\?|$)/];
+export const CONSOLE_ALLOW: RegExp[] = [/net::ERR_BLOCKED_BY_CLIENT/, /status of 429 \(\) \S+\/live\/events(\?|$)/, /status of (404|410|429|502|503|504) \([^)]*\) \S+\/desktops\/[0-9a-f]{64}\//];
 
 /**
  * Third-party POSTs that pass the write guard: matched by exact host, then by path prefix on that host

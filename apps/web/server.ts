@@ -111,6 +111,19 @@ async function docsRoute(p: string): Promise<Response> {
   return new Response(f.body as BodyInit, { headers: page ? PAGE_HEADERS : { "content-type": f.type, "cache-control": DEV ? "no-store" : "public, max-age=300" } });
 }
 
+/**
+ * Agent desktop streams (SPEC 17.7): /desktops/<session>/live.m3u8, init.mp4, seg-<n>.m4s from the
+ * deployed site (--upstream) or the local hosted runtime. On the site the gate routes them; without
+ * this route a local dashboard answered the app shell (HTML, 200) and the player waited on a playlist
+ * that never came, a black screen.
+ */
+async function desktopProxy(p: string): Promise<Response> {
+  if (!/^\/desktops\/[0-9a-f]{64}\/(live\.m3u8|init\.mp4|seg-\d{1,20}\.m4s)$/.test(p)) return Response.json({ error: "not_found" }, { status: 404 });
+  const r = await fetch(`${UPSTREAM || RUNTIME}${p}`, { signal: AbortSignal.timeout(10_000) }).catch(() => null);
+  if (!r) return Response.json({ error: "upstream_unreachable", message: "the desktop stream's host did not answer" }, { status: 502, headers: { "cache-control": "no-store" } });
+  return new Response(r.body, { status: r.status, headers: { "content-type": r.headers.get("content-type") ?? "application/octet-stream", "cache-control": r.headers.get("cache-control") ?? "no-store" } });
+}
+
 /** --upstream: forward one write to the deployed site, as that site's own page would send it. */
 async function toUpstream(req: Request, url: URL): Promise<Response> {
   const body = req.method === "GET" || req.method === "HEAD" ? undefined : await req.arrayBuffer();
@@ -395,6 +408,7 @@ const server = Bun.serve({
     }
     if (req.method !== "GET" && req.method !== "HEAD") return new Response("read-only", { status: 405 });
     if (p.startsWith("/market/")) return marketProxy(p, url.search);
+    if (p.startsWith("/desktops/")) return desktopProxy(p);
     if (p === "/docs" || p.startsWith("/docs/")) return docsRoute(p);
     const moved = REDIRECTS[p.replace(/\/+$/, "")];
     if (moved) return new Response(null, { status: 302, headers: { location: moved + url.search } });

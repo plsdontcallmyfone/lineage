@@ -40,7 +40,7 @@ export const SCREEN = `
 .wrap { position: relative; }
 :host([frame="crt"]) .scan { position: absolute; inset: 0; pointer-events: none; z-index: 30;
   background: repeating-linear-gradient(0deg, rgba(0,0,0,.16) 0 1px, transparent 1px 3px); mix-blend-mode: multiply; }
-:host([compact]) .lp-run, :host([compact]) .lp-banner, :host([compact]) .lp-list, :host([compact]) .lp-prog, :host([compact]) .lp-ctlrow { display: none; }
+:host([compact]) .lp-run, :host([compact]) .lp-list, :host([compact]) .lp-note, :host([compact]) .lp-latest { display: none; }
 `;
 
 export const REEL = `

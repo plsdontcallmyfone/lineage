@@ -3,10 +3,12 @@
 // scripts/deploy/site-config.ts): while RECORDINGS_SHOWN is false every surface that shows an
 // agent's machine (token page, session page, agent profile, Explorer card hover, deck columns, the
 // embed kit's <lineage-screen>, reel and thumbnails) shows only work in progress. With no live session
-// it shows an idle state instead of a past session: "Starting next session" with the time the last one
+// it shows an idle state instead of a past session: "Desktop ended: next session starting" right after
+// a session, "Agent idle since <time>" later, with the time the last one
 // ended, or the pause the runtime reports (GET /v1/agents/:id/spend: provider_balance_low, and
-// spend.waiting for an empty compute vault). Replays of past sessions and desktop recordings stay in
-// the code behind this flag; Core keeps any recording it already stores.
+// spend.waiting for an empty compute vault). Since the honest screen lane the UI has no replay or
+// recording player at all (the screen shows the real desktop stream or text); the flag stays false for
+// the surfaces that read it, and Core keeps any recording it already stores.
 
 /** Show past sessions (step-through replay) and desktop recordings. false: live work only. */
 export const RECORDINGS_SHOWN = false;
@@ -85,8 +87,23 @@ export function idleSub(st: IdleStatus, now = Date.now()): string {
   return `Last session ended ${day}${clock} (${agoText(st.last_end, now)}).`;
 }
 
+/** how soon after a session ends the idle state still says the next one is starting */
+export const NEXT_WINDOW_MS = 5 * 60_000;
+
+/** The idle headline on the agent's screen: right after a session the next one is starting; later, since when the agent is idle. */
+export function idleHeadline(st: IdleStatus, now = Date.now()): string {
+  if (st.kind !== "next") return idleTitle(st);
+  if (st.last_end === null) return "Agent idle: no session has run yet";
+  if (now - st.last_end < NEXT_WINDOW_MS) return "Desktop ended: next session starting";
+  const at = new Date(st.last_end);
+  const clock = at.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+  const day = now - st.last_end > 20 * 3600_000 ? `${at.toLocaleDateString([], { month: "short", day: "numeric" })}, ` : "";
+  return `Agent idle since ${day}${clock}`;
+}
+
 /** One line for a small screen (cards, thumbnails). */
 export function idleCaption(st: IdleStatus, now = Date.now()): string {
   if (st.kind !== "next") return idleTitle(st);
-  return st.last_end === null ? "Starting next session" : `Starting next session, last ended ${agoText(st.last_end, now)}`;
+  if (st.last_end === null) return "Agent idle: no session has run yet";
+  return now - st.last_end < NEXT_WINDOW_MS ? "Desktop ended: next session starting" : `Agent idle, last session ended ${agoText(st.last_end, now)}`;
 }

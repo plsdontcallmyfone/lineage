@@ -891,6 +891,11 @@ a.eco-btn { text-decoration: none; }
 .tk-pane { min-height: 460px; }
 .tk-pane[hidden] { display: none; }
 .tk-chart { position: relative; height: 460px; padding: 8px 4px 4px 12px; }
+/* the agent's desktop beside the price chart (token page, agent profile): watch the work and the price together; stacked on a phone */
+.tk-watch { display: grid; grid-template-columns: minmax(0, 1.25fr) minmax(0, 1fr); gap: 16px; align-items: start; margin-top: 16px; }
+.tk-watch > .panel { margin-top: 0; min-width: 0; }
+.tk-watch > .panel:only-child { grid-column: 1 / -1; }
+@media (max-width: 900px) { .tk-watch { grid-template-columns: minmax(0, 1fr); } }
 .tk-canvas { position: absolute; inset: 34px 4px 4px 12px; }
 .tk-legend { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 12px; font: 500 12px/1.4 var(--sans); color: var(--tt); font-variant-numeric: tabular-nums; min-height: 20px; padding-top: 2px; }
 .tk-legend b { color: var(--tp); font-weight: 500; }

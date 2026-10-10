@@ -153,7 +153,7 @@ describe("render", () => {
 });
 
 describe("thumb", () => {
-  test("model: window around the latest file event, marks and cursor", () => {
+  test("model: lines around the latest file event, marks and label", () => {
     const text = Array.from({ length: 40 }, (_, i) => `line ${i + 1}`).join("\n");
     const m = thumbModel({ repo: "https://github.com/a/b", state: "live", event_list: [{ seq: 1, kind: "read", at: 0, path: "x.py", start_line: 10, end_line: 12 }, { seq: 2, kind: "phase", at: 1, phase: "build" }] }, text, 8);
     expect(m.file).toBe("x.py");
@@ -164,9 +164,10 @@ describe("thumb", () => {
     const sealed = thumbModel({ repo: null, state: "sealed", event_list: [{ seq: 1, kind: "edit", at: 0, path: "x.py", start_line: 2, end_line: 2 }] }, text);
     expect(sealed.lines.find((l) => l.n === 2)!.mark).toBe("sealed");
     expect(thumbModel({ repo: null, state: "ended", event_list: [] }, null).lines).toEqual([]);
-    // the address bar shows where the agent looked, in the code host's own URL shape
+    // the header names the file and lines for what they are (no drawn address bar)
     const u = thumbModel({ repo: "https://github.com/a/b.git", commit: "1acefe89412b", state: "final", event_list: [{ seq: 1, kind: "read", at: 0, path: "src/x.py", start_line: 3, end_line: 9 }] }, text);
-    expect(u.url).toBe("github.com/a/b/blob/1acefe8/src/x.py#L3-L9");
+    expect(u.label).toBe("src/x.py, lines 3 to 9, last read");
+    expect((u as any).url).toBeUndefined();
   });
   test("dither maps every pixel into the palette", () => {
     const p = { bg: [10, 10, 10], fg: [240, 240, 240], muted: [128, 128, 128], accent: [255, 120, 40], panel: [30, 30, 30] } as any;

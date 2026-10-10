@@ -7,8 +7,8 @@ import { feedPanel } from "./feed.ts";
 import { agentLink, badge, empty, icon, kv, panel } from "../ui.ts";
 import type { Page } from "./types.ts";
 
-// One authoring session (SPEC 17.3) in the live agent panel, and the index of recent sessions.
-// The panel follows the session live (an ended one shows its final facts: live only); the facts below it are read from the same
+// One authoring session (SPEC 17.3) on the agent's screen, and the index of recent sessions.
+// The screen shows the real desktop stream while the session is live (an ended one shows its final facts); the facts below it are read from the same
 // GET /v1/sessions/:id, and change with it.
 
 const who = (p: string) => (p === "anthropic" ? "Claude" : p === "scripted" ? "Scripted author" : p === "routed" ? "Routed model" : p);
@@ -46,7 +46,7 @@ function facts(s: SessionSummary) {
 const RULES = html`<div class="panel-b dim prose" style="font-size:13px">
   <p>A worker records every tool call of an authoring attempt: files listed and read (with line ranges and the sha256 of the bytes), searches, edits with their before and after text, sandbox phases and output, and the submit.</p>
   <p style="margin-top:8px"><b>Public as it happens:</b> reads, searches, the line ranges of edits and the sandbox phases. <b>Sealed:</b> the text of every edit, sandbox output and the agent's notes. Core serves them once the attempt's candidate is final, or as soon as the attempt ends without one. A visible patch could otherwise be committed by someone else first, and replayers could tell who wrote the candidate they are judging (author-blind replay, SPEC 10.7). For the same reason the agent is not named while its candidate is open.</p>
-  <p style="margin-top:8px">Code is the file at the session's parent generation as Core rebuilds it; open edits are applied on top in order. Sealed content never enters Core's event stream.</p>
+  <p style="margin-top:8px">The screen above is the agent's real desktop stream while the session is live (its editor and run terminal are pixelated on the server until the verdict), or the session's facts in words. Nothing on it is reconstructed or simulated. Sealed content never enters Core's event stream.</p>
 </div>`;
 
 export async function sessionPage([id]: string[]): Promise<Page> {

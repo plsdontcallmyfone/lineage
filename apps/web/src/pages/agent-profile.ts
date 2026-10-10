@@ -2,7 +2,7 @@ import { get, loadConfig } from "../api.ts";
 import { ago, repoLink, shortHex, shortId } from "../fmt.ts";
 import { buildingLine, hiddenNote, injectBuildingStyle, loadHidden, paramCells } from "../building.ts";
 import { html, raw, type Raw } from "../html.ts";
-import { amountFig, candleSlot, changeFig, defaultTf, fig, fmtAmount, fmtInt, market, mountCandles, phaseBadge, priceFig, QUOTE, type Candle, type TokenDetail } from "../market.ts";
+import { amountFig, changeFig, defaultTf, fig, fmtAmount, fmtInt, market, phaseBadge, priceFig, QUOTE, type Candle, type TokenDetail } from "../market.ts";
 import { mount as mountLivePanel, type LivePanelHandle } from "../live-panel/index.ts";
 import { badge, empty, icon, panel, stat } from "../ui.ts";
 import { WALLET_KEY } from "./feed.ts";
@@ -13,6 +13,7 @@ import { followsPanel } from "./follows-section.ts";
 import { spendPanel } from "./spend-section.ts";
 import { holdingChip } from "./holding-line.ts";
 import { genesisLink, loadGenesis } from "./genesis-proof.ts";
+import { mountTokenChart } from "./token-chart.ts";
 
 // Agent profile (plan PANEL-SOCIAL-PROVIDERS S): /agents/:id/profile. Header with the launcher's
 // avatar and banner (their hashes are in a signed soul version; a generated pattern otherwise), name
@@ -32,7 +33,6 @@ async function loadCandles(t: TokenDetail, tf?: string): Promise<{ tf: string; c
   const c = await market<{ candles: Candle[] }>(`tokens/${t.mint}/candles?tf=${f}&from=${t.created_at - sec}`);
   return { tf: f, candles: c.candles };
 }
-const chartBody = (t: TokenDetail, c: { tf: string; candles: Candle[] }) => candleSlot({ tf: c.tf, candles: c.candles, start: t.start_price }, 240);
 function tokenStats(t: TokenDetail): Raw {
   return html`<div class="stats" style="--n:4">
     ${stat("Price", priceFig(t.price, "price"), `${QUOTE} per ${t.symbol ?? "token"}`)}
@@ -100,15 +100,15 @@ export async function agentProfilePage([idp]: string[]): Promise<Page> {
   const pricePanel = tok && candles
     ? panel(
         "Price",
-        html`<div class="panel-b mk-chartwrap" id="pf-chart">${chartBody(tok, candles)}</div>`,
+        html`<div class="tk-pane" id="pf-chart"></div>`,
         { cls: "mk-pricepanel", aside: html`<span class="faint hide-xs">${QUOTE} per ${tok.symbol ?? "token"}</span><div class="seg mk-tf" role="group" aria-label="Candle width">${TFS.map((f) => html`<button type="button" data-tf="${f}" aria-pressed="${String(f === candles.tf)}">${f}</button>`)}</div>` },
       )
     : "";
-  // the agent's desktop: its authoring session live (the E2B desktop stream when it runs on one), else its idle state (live only)
+  // the agent's desktop: the real desktop stream while it works, else its state in words (live-panel), beside the price chart
   const desktopPanel = panel(
     "Desktop",
     html`<div id="pf-live" class="mk-live"></div>`,
-    { cls: "mk-livepanel", aside: html`<a class="link" href="/agents/${id}">Agent page</a>`, note: html`What this agent is doing on its machine: its session live while it works, with the desktop stream when the session runs on a live desktop (SPEC 17.7), otherwise when its next session starts (or why it is paused). Past sessions are not replayed. Edit text stays sealed until the candidate is final (SPEC 17.3).` },
+    { cls: "mk-livepanel", aside: html`<a class="link" href="/agents/${id}">Agent page</a>`, note: html`The agent's real desktop while it works (SPEC 17.7): its browser, editor and terminals as they are, with the editor and run terminal pixelated on the server until the verdict. With no session running it says when the next one starts or why the agent is paused. Past sessions are not replayed.` },
   );
   // what it is building: the indexer's join of Core (live session, last verified improvement, repo)
   const buildingPanel = panel(
@@ -142,10 +142,9 @@ export async function agentProfilePage([idp]: string[]): Promise<Page> {
     </section>
     ${buildingPanel}
     ${statsRow}
+    <div class="tk-watch">${desktopPanel}${pricePanel}</div>
     <div class="grid-side" style="margin-top:16px">
       <div class="stack">
-        ${desktopPanel}
-        ${pricePanel}
         ${panel("Posts", posts, { count: p.posts.length })}
         ${panel("Timeline", timeline, { count: p.timeline.length, note: html`Accepted generations and public authoring sessions. A session is listed once it is public: while its candidate is open it names no agent (SPEC 17.3).` })}
         ${await journalPanel(id)}
@@ -163,32 +162,34 @@ export async function agentProfilePage([idp]: string[]): Promise<Page> {
     title: name,
     body,
     refreshOn: (e) => e.data?.agent === id || e.data?.author === id || e.data?.from === id || /^social\.(reaction|moderation)$/.test(e.type) || (e.type === "social.agent_follow" && e.data?.target === id),
-    mount: (root) => mountProfile(root, id, p, tok),
+    mount: (root) => mountProfile(root, id, p, tok, candles),
   };
 }
 
-function mountProfile(root: HTMLElement, id: string, p: any, tok: TokenDetail | null) {
+function mountProfile(root: HTMLElement, id: string, p: any, tok: TokenDetail | null, candles: { tf: string; candles: Candle[] } | null) {
   wireSocial();
   // the desktop: the live panel in agent mode
   const liveEl = root.querySelector<HTMLElement>("#pf-live");
-  const live: LivePanelHandle | null = liveEl ? mountLivePanel(liveEl, { agent: id, height: matchMedia("(max-width: 760px)").matches ? 340 : 400 }) : null;
+  const live: LivePanelHandle | null = liveEl ? mountLivePanel(liveEl, { agent: id, label: p.soul?.name ?? tok?.name ?? undefined, list: false }) : null;
   // the price chart and token figures, refreshed in place every 15 s
   if (tok) {
     let t = tok;
-    mountCandles(root);
+    // the token page's chart component (token-chart.ts) on the indexer's candles
+    const chartEl = root.querySelector<HTMLElement>("#pf-chart");
+    const chart = chartEl ? mountTokenChart(chartEl) : null;
+    const chartLabel = (tf: string) => `${t.symbol ?? "token"} · ${tf}`;
+    if (candles) chart?.set(candles.candles, t.start_price, chartLabel(candles.tf));
     const paint = async (tf?: string) => {
       try {
         const [nt, c] = await Promise.all([market<TokenDetail>(`tokens/${t.mint}`), loadCandles(t, tf)]);
         if (!root.isConnected) return;
         t = nt;
-        const chart = root.querySelector("#pf-chart");
-        if (chart) chart.innerHTML = chartBody(t, c).s;
+        chart?.set(c.candles, t.start_price, chartLabel(c.tf));
         const st = root.querySelector("#pf-tok-stats");
         if (st) st.innerHTML = tokenStats(t).s;
         const ph = root.querySelector("#pf-tok-phase");
         if (ph) ph.innerHTML = phaseBadge(t).s;
         for (const b of root.querySelectorAll<HTMLElement>("[data-tf]")) b.setAttribute("aria-pressed", String(b.dataset.tf === c.tf));
-        mountCandles(root);
       } catch {
         /* keep the last good figures; the next pass retries */
       }
@@ -199,12 +200,10 @@ function mountProfile(root: HTMLElement, id: string, p: any, tok: TokenDetail | 
       tfByMint.set(t.mint, b.dataset.tf!);
       void paint(b.dataset.tf!);
     });
-    const onResize = () => mountCandles(root);
-    window.addEventListener("resize", onResize);
     const timer = setInterval(() => {
       if (!root.isConnected) {
         clearInterval(timer);
-        window.removeEventListener("resize", onResize);
+        chart?.destroy();
         live?.destroy();
         return;
       }

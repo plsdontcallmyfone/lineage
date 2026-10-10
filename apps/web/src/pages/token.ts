@@ -35,10 +35,10 @@ import { unreachable } from "./tokens.ts";
 import type { Page } from "./types.ts";
 
 // One agent token (plan L3; APP-CONSOLIDATION.md amendment 2026-10-10 (2)). A head card with the
-// name, the mint and the figures (market cap, price, 24 h volume, 24 h change, holders), then three
-// columns: on the left what the agent is building and its feed; in the centre the price chart
-// (TradingView Lightweight Charts, token-chart.ts) with a toggle to the agent's computer (the live
-// panel, L4: its session in progress, else its idle state), and under it the curve and the agent; on
+// name, the mint and the figures (market cap, price, 24 h volume, 24 h change, holders), then the
+// agent's desktop (live-panel: the real desktop stream while it works, else its state in words) beside
+// the price chart (TradingView Lightweight Charts, token-chart.ts), stacked on a phone, then three
+// columns: on the left what the agent is building and its feed; in the centre the curve and the agent; on
 // the right the trade box, the holders and the transactions. Figures come from the market indexer, the
 // agent and the lineages on its repository from Core. No fee figures are shown. A hidden launch still resolves here, marked as hidden. The
 // trade box is part of the wallet bundle (apps/web/wallet/trade.ts), loaded on demand: it signs in
@@ -199,20 +199,25 @@ export async function tokenPage([mint]: string[]): Promise<Page> {
       <div id="mk-stats" class="tk-statwrap">${statsRow(t, d.holders)}</div>
     </section>
     ${hiddenNote(dt.hidden)}
+    <div class="tk-watch">
+      <section class="panel mk-livepanel tk-deskpanel">
+        <div class="panel-h"><h2>Desktop</h2><div class="aside"><a class="link" href="/agents/${t.agent}">Agent page</a></div></div>
+        <div id="mk-live" class="mk-live"></div>
+      </section>
+      <section class="panel mk-pricepanel tk-chartpanel">
+        <div class="panel-h">
+          <h2>Price</h2>
+          <div class="aside"><span class="faint hide-xs tk-unit">${QUOTE} per ${sym(t)}</span><div class="seg mk-tf" role="group" aria-label="Candle width">${TFS.map((f) => html`<button type="button" data-tf="${f}" aria-pressed="${String(f === d.tf)}">${f}</button>`)}</div></div>
+        </div>
+        <div class="tk-pane" id="mk-chart"></div>
+      </section>
+    </div>
     <div class="tk-grid">
       <div class="tk-left">
         ${panel("What the agent is building", html`<div id="mk-building">${buildingBody(t)}</div>`, { cls: "mk-buildpanel", aside: html`<a class="link" href="/agents/${t.agent}/profile">Profile</a>` })}
         <div id="mk-feed" class="tk-feed"></div>
       </div>
       <div class="tk-center">
-        <section class="panel mk-pricepanel tk-chartpanel" data-view="chart">
-          <div class="panel-h">
-            <div class="seg tk-view" role="group" aria-label="Show"><button type="button" data-view-b="chart" aria-pressed="true">Chart</button><button type="button" data-view-b="computer" aria-pressed="false">Computer</button></div>
-            <div class="aside"><span class="faint hide-xs tk-unit">${QUOTE} per ${sym(t)}</span><div class="seg mk-tf" role="group" aria-label="Candle width">${TFS.map((f) => html`<button type="button" data-tf="${f}" aria-pressed="${String(f === d.tf)}">${f}</button>`)}</div><a class="link tk-agentlink" href="/agents/${t.agent}">Agent page</a></div>
-          </div>
-          <div class="tk-pane" data-pane-v="chart" id="mk-chart"></div>
-          <div class="tk-pane mk-livepanel" data-pane-v="computer" hidden><div id="mk-live" class="mk-live"></div></div>
-        </section>
         <div class="tk-pair">
           ${panel("Curve and graduation", html`<div id="mk-curve">${curveBody(t)}</div>`, { cls: "mk-curvepanel" })}
           ${panel("Agent", html`<div id="mk-agent">${agentBody(t, ag.lineages, ag.known)}</div>`, { cls: "mk-agentpanel" })}
@@ -284,19 +289,8 @@ export async function tokenPage([mint]: string[]): Promise<Page> {
         root.querySelector(".mk-tradepanel")?.scrollIntoView({ behavior: "smooth", block: "start" });
       });
 
-      // Chart / Computer: the centre panel shows the price chart or the agent's computer (the live
-      // panel, L4, mounted the first time it is shown and kept while the page is open)
-      const chartPanel = root.querySelector<HTMLElement>(".tk-chartpanel")!;
-      let live: LivePanelHandle | null = null;
-      chartPanel.querySelector(".tk-view")?.addEventListener("click", (ev) => {
-        const b = (ev.target as HTMLElement).closest<HTMLElement>("[data-view-b]");
-        if (!b) return;
-        const v = b.dataset.viewB!;
-        chartPanel.dataset.view = v;
-        for (const x of chartPanel.querySelectorAll<HTMLElement>("[data-view-b]")) x.setAttribute("aria-pressed", String(x.dataset.viewB === v));
-        for (const p of chartPanel.querySelectorAll<HTMLElement>("[data-pane-v]")) p.hidden = p.dataset.paneV !== v;
-        if (v === "computer" && !live) live = mountLivePanel(liveEl, { agent: t.agent, height: matchMedia("(max-width: 760px)").matches ? 340 : 460 });
-      });
+      // the agent's desktop beside the price chart: the real desktop stream while it works, else its state in words
+      const live: LivePanelHandle = mountLivePanel(liveEl, { agent: t.agent, label: t.name ?? t.symbol ?? undefined, list: false });
 
       // the trade box (wallet bundle)
       const tradeEl = root.querySelector<HTMLElement>("#mk-trade")!;

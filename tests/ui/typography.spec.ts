@@ -18,7 +18,7 @@ const PAGES: [string, (d: Data) => Promise<string | null>, string][] = [
   ["Session page", async (d) => {
     const t = (await d.tokens()).find((x) => x.building?.session_id ?? x.session?.id);
     return t ? `/sessions/${t.building?.session_id ?? t.session.id}` : null;
-  }, ".cr .cr-tab"],
+  }, ".lp-scr"],
   ["Docs", async () => "/docs", ".dc-h1"],
 ];
 

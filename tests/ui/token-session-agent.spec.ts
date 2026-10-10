@@ -32,19 +32,17 @@ test.describe("Token page (/tokens/:mint)", () => {
     }
   });
 
-  test("panels: head, feed | chart (or the computer) | trade, holders, transactions; curve, agent and commits", async ({ page, data }) => {
+  test("panels: head, desktop beside the chart, feed | curve, agent | trade, holders, transactions; commits", async ({ page, data }) => {
     const t = await pickToken(data);
     await page.goto(`/tokens/${t.mint}`);
     await page.locator(".mk-statspanel").waitFor({ timeout: 60_000 });
-    for (const p of [".mk-buildpanel", ".mk-pricepanel", ".mk-tradepanel", ".mk-holderspanel", ".mk-activity", ".mk-curvepanel", ".mk-agentpanel"]) await expect(page.locator(p)).toBeVisible();
-    // the chart (Lightweight Charts canvas) by default; the toggle swaps it for the agent's computer and back
+    for (const p of [".mk-buildpanel", ".mk-pricepanel", ".mk-livepanel", ".mk-tradepanel", ".mk-holderspanel", ".mk-activity", ".mk-curvepanel", ".mk-agentpanel"]) await expect(page.locator(p)).toBeVisible();
+    // the agent's desktop and the chart (Lightweight Charts canvas) together: side by side on a wide screen, stacked on a phone
     await expect(page.locator("#mk-chart canvas").first()).toBeVisible();
-    await expect(page.locator(".mk-livepanel")).toBeHidden();
-    await page.locator("[data-view-b=computer]").click();
-    await expect(page.locator(".mk-livepanel")).toBeVisible();
-    await expect(page.locator("#mk-chart")).toBeHidden();
-    await page.locator("[data-view-b=chart]").click();
-    await expect(page.locator("#mk-chart canvas").first()).toBeVisible();
+    await expect(page.locator(".tk-watch .mk-livepanel .lp-scr")).toBeVisible();
+    const [dk, ch] = [await page.locator(".tk-watch .mk-livepanel").boundingBox(), await page.locator(".tk-watch .mk-pricepanel").boundingBox()];
+    if ((page.viewportSize()?.width ?? 0) > 900) expect(ch!.x, "chart beside the desktop").toBeGreaterThan(dk!.x + dk!.width - 1);
+    else expect(ch!.y, "chart under the desktop").toBeGreaterThan(dk!.y + dk!.height - 1);
     await page.locator(".cm-panel table, .cm-panel .empty, .cm-panel .banner").first().waitFor({ timeout: 60_000 });
     const repo = t.building?.repo ?? t.repo_url;
     if (repo) await expect(page.locator(".mk-buildpanel .bd-repo > span")).toHaveAttribute("title", repo);
@@ -65,16 +63,17 @@ test.describe("Token page (/tokens/:mint)", () => {
 });
 
 test.describe("Session page (/sessions/:id)", () => {
-  test("the live panel plays the session; the facts equal Core's", async ({ page, data }) => {
+  test("the screen shows the session (its desktop or its facts); the facts equal Core's", async ({ page, data }) => {
     const t = await pickToken(data);
     const id = t.building?.session_id ?? t.session?.id;
     test.skip(!id, "no listed token has a public session");
     const s = await data.core(`sessions/${id}`);
     await page.goto(`/sessions/${id}`);
     await page.locator(".lp").first().waitFor({ timeout: 60_000 });
-    await page.locator(".cr .cr-tab").first().waitFor({ timeout: 60_000 });
     await expect(page.locator(".lp lineage-device")).toHaveCount(1);
-    await expect(page.locator(".cr .cr-lights i")).toHaveCount(3);
+    // the screen is the real desktop or the session's facts in words: no drawn browser
+    await expect(page.locator(".lp-scr")).toHaveAttribute("data-kind", /^(live|connecting|unavailable|nodesk|facts)$/, { timeout: 60_000 });
+    await expect(page.locator(".cr, .cr-tab, .cr-omni, .cr-avatar")).toHaveCount(0);
     await expect(page.locator("#session-facts")).toContainText(id!);
     const commit = (s.session ?? s).commit as string | undefined;
     if (commit) await expect(page.locator("#session-facts")).toContainText(commit.slice(0, 10));

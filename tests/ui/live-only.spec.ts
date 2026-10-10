@@ -4,7 +4,8 @@ import { expect, test, type Data } from "./support/fixtures.ts";
 
 // Live only (owner direction 2026-10-10, apps/web/src/live-panel/live-only.ts): every surface that
 // shows an agent's machine shows only work in progress. With no live session it shows the idle state
-// (Starting next session with the last end, or the runtime's pause), never a replay of a past session
+// ("Desktop ended: next session starting" or "Agent idle since <time>" with the last end, or the
+// runtime's pause), never a replay of a past session
 // and never a desktop recording. Session pages of ended sessions show the final facts without playback.
 //
 // The agent's session list is Core's real list with any live session turned into an ended one (so the
@@ -31,10 +32,9 @@ async function noReplay(page: Page, scope: string) {
   const lp = page.locator(scope).first();
   await expect(lp.locator('[data-act="replay"], [data-act="play"], [data-act="restart"], [data-speed]')).toHaveCount(0);
   await expect(lp.locator(".lp-prog")).toBeHidden();
-  await expect(lp.locator(".lp-l")).toHaveCount(0);
-  await expect(lp.locator(".cr-desk-v[src]")).toHaveCount(0);
+  await expect(lp.locator(".lp-l, .cr, .cr-tab, .cr-omni")).toHaveCount(0);
   await expect(lp.locator("video[src]")).toHaveCount(0);
-  await expect(lp).not.toContainText(/Recording of the desktop|Replaying the session/);
+  await expect(lp).not.toContainText(/Recording of the desktop|Replaying the session|Show the reconstruction/);
 }
 
 async function pickToken(data: Data) {
@@ -60,7 +60,6 @@ test.describe("Live only: idle state, no replay", () => {
     const t = await pickToken(data);
     await idleAgent(page, t.agent, { provider_balance_low: false, spend: { waiting: "compute vault exhausted (0 base units unowed)" } });
     await page.goto(`/tokens/${t.mint}`);
-    await page.locator("[data-view-b=computer]").click(); // the token page shows its chart first; the toggle shows the computer
     const idle = page.locator('.mk-livepanel .lp-idle[data-idle="vault"]');
     await idle.waitFor({ timeout: 60_000 });
     await expect(idle).toContainText("Paused: vault empty");
@@ -68,16 +67,15 @@ test.describe("Live only: idle state, no replay", () => {
     await cleanPage(page);
   });
 
-  test("token page: Starting next session with the last session's end", async ({ page, data }) => {
+  test("token page: idle state with the last session's end", async ({ page, data }) => {
     const t = await pickToken(data);
     const list = (await data.core(`sessions?agent=${t.agent}&limit=24`)) as any[];
     await idleAgent(page, t.agent, null);
     await page.goto(`/tokens/${t.mint}`);
-    await page.locator("[data-view-b=computer]").click(); // the token page shows its chart first; the toggle shows the computer
     const idle = page.locator('.mk-livepanel .lp-idle[data-idle="next"]');
     await idle.waitFor({ timeout: 60_000 });
-    await expect(idle).toContainText("Starting next session");
-    await expect(idle).toContainText(list.length ? /Last session ended .+ \(.+\)\./ : /No session has run yet\./);
+    await expect(idle).toContainText(list.length ? /Desktop ended: next session starting|Agent idle since / : /Agent idle: no session has run yet/);
+    if (list.length) await expect(idle).toContainText(/Last session ended .+ \(.+\)\./);
     await expect(page.locator(".mk-livepanel .lp-state").first()).toHaveText("Idle");
     await noReplay(page, ".mk-livepanel .lp");
     await cleanPage(page);
@@ -95,7 +93,7 @@ test.describe("Live only: idle state, no replay", () => {
     await card.locator(".ex-screen").hover();
     const idle = card.locator(".ex-livewrap .lp-idle");
     await idle.waitFor({ timeout: 60_000 });
-    await expect(idle).toContainText(/Starting next session|Paused: /);
+    await expect(idle).toContainText(/Desktop ended: next session starting|Agent idle|Paused: /);
     await noReplay(page, `.ex-card[data-agent="${agent}"] .ex-livewrap`);
   });
 

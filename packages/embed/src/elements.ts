@@ -97,13 +97,19 @@ export class LineageScreen extends LineageElement {
   protected async start(g: number) {
     let agent = this.getAttribute("agent") ?? undefined;
     const mint = this.getAttribute("mint");
-    if (!agent && mint) agent = (await this.client.token(mint)).agent;
+    let label: string | undefined;
+    if (!agent && mint) {
+      const tok = await this.client.token(mint);
+      agent = tok.agent;
+      label = tok.name ?? tok.symbol ?? undefined;
+    }
     if (g !== this.alive) return;
     this.box.innerHTML = `<div class="host"></div>${this.getAttribute("frame") === "crt" && this.hasAttribute("scanlines") ? '<div class="scan"></div>' : ""}`;
     const h = Number(this.getAttribute("height")) || undefined;
     const fr = this.getAttribute("frame");
     this.panel = mountPanel(this.box.querySelector<HTMLElement>(".host")!, {
-      // the browser window alone by default; "device" puts it on the shared machine's screen
+      // the screen alone by default (the real desktop stream or its state in words); "device" puts it on the shared machine
+      label,
       frame: fr === "device" ? "device" : fr === "none" || fr === "crt" ? "none" : "window",
       fps: Number(this.getAttribute("fps")) || undefined,
       agent,

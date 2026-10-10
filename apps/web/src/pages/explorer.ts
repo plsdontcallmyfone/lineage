@@ -431,7 +431,7 @@ export async function explorerPage(): Promise<Page> {
           const box = document.createElement("div");
           box.className = "ex-livebox";
           wrap.appendChild(box);
-          // the window alone (no machine, no controls), scaled to cover the card's screen edge to edge
+          // the screen alone (no machine, no deck): the real desktop video or its state in words, scaled to the card's screen
           const h = mountLivePanel(box, { agent, frame: "none", list: false, fps: 12, height: 266 });
           const fit = () => {
             const W = wrap.clientWidth, H = wrap.clientHeight;
@@ -508,7 +508,7 @@ const CSS = `
 .ex-screen{position:relative;aspect-ratio:16/10;background:var(--ex-scr-bg);overflow:hidden;border-radius:16px;corner-shape:squircle}
 .ex-screen canvas{display:block;width:100%;height:100%}
 .ex-livewrap{position:absolute;inset:0;z-index:2;display:flex;align-items:center;justify-content:center;overflow:hidden;background:var(--ex-scr-bg);animation:ex-fade .3s ease-out} /* the agent's live desktop, over the still */
-.ex-livebox{position:absolute;left:50%;top:50%;width:560px;transform:translate(-50%,-50%);transform-origin:center}
+.ex-livebox{position:absolute;left:50%;top:50%;width:400px;transform:translate(-50%,-50%);transform-origin:center}
 .ex-livewrap .lp{border-radius:0;border:0;box-shadow:none}
 .ex-livewrap .lp-list,.ex-livewrap .lp-run,.ex-livewrap .lp-deck{display:none} /* the playing window only */
 .ex-livewrap .lp-stage{display:block}
