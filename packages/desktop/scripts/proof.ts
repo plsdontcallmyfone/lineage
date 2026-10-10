@@ -2,6 +2,11 @@
 // Agent desktops proof (SPEC 17.7): one scripted attempt on a real desktop, without a model or Core.
 //
 //   bun packages/desktop/scripts/proof.ts --tree <git checkout> --out <dir> [--backend local|e2b] [--hold 20]
+//     [--serve-root <dir>] [--session <64 hex>]
+//
+// --serve-root: also list the stream in that desktop state directory (the hosted runtime's
+// <state_dir>/desktops on the site), so the runtime's stream server and the gate serve it at
+// /desktops/<session>/live.m3u8 while the proof runs (no model spend, no Core session).
 //
 // Opens a desktop (our own container, or an E2B desktop with --backend e2b), plays a session the way
 // the toolbox records one (list, read, search, edit then the file write, a search over the edited tree,
@@ -19,6 +24,8 @@ const tree = resolve(opt("tree")!);
 const out = resolve(opt("out")!);
 const backend = opt("backend", "local")!;
 const hold = Number(opt("hold", "20"));
+const serveRoot = opt("serve-root");
+const sid = opt("session", "a".repeat(64))!;
 mkdirSync(out, { recursive: true });
 const commit = Bun.spawnSync(["git", "rev-parse", "HEAD"], { cwd: tree }).stdout.toString().trim();
 const repo = Bun.spawnSync(["git", "remote", "get-url", "origin"], { cwd: tree }).stdout.toString().trim() || null;
@@ -33,8 +40,8 @@ const t0 = Date.now();
 const a = await pool.begin({ agent: "Proof11111111111111111111111111111111111111", tree, repo, commit, stacked: false, label: "proof" });
 if (!a) throw new Error("no desktop slot: " + logs.join("; "));
 log(`desktop up in ${((Date.now() - t0) / 1000).toFixed(1)} s on ${a.backend}`);
-const sid = "a".repeat(64);
 a.sessionOpened(sid);
+if (serveRoot) writeFileSync(join(serveRoot, "sessions", `${sid}.json`), readFileSync(pool.sessionFile(sid)));
 
 const cpu: { t: number; cpu: string; mem: string }[] = [];
 const sampler = backend === "local"
@@ -79,6 +86,7 @@ const sessionMeta = JSON.parse(readFileSync(pool.sessionFile(sid), "utf8")) as {
 if (existsSync(sessionMeta.dir)) cpSync(sessionMeta.dir, join(out, "live"), { recursive: true });
 const tEnd = Date.now();
 await a.end();
+if (serveRoot) writeFileSync(join(serveRoot, "sessions", `${sid}.json`), readFileSync(pool.sessionFile(sid)));
 if (sampler) clearInterval(sampler);
 log(`attempt ended in ${((Date.now() - tEnd) / 1000).toFixed(1)} s`);
 const held = pool.pending().find((p) => p.session_id === sid);
