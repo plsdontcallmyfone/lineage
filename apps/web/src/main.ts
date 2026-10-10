@@ -23,6 +23,7 @@ import { launchPage } from "./pages/launch.ts";
 import { profilePage } from "./pages/profile.ts";
 import type { Page } from "./pages/types.ts";
 import { icon, logo } from "./ui.ts";
+import { deckPage, deckSync } from "./deck.ts";
 
 // ------------------------------------------------------------------------------------------------
 // routing
@@ -34,6 +35,7 @@ type Handler = (params: string[]) => Promise<Page>;
 // header item a page lights up.
 const routes: [RegExp, Handler, string][] = [
   [/^\/$/, explorerPage, "/"],
+  [/^\/deck$/, deckPage, "/deck"],
   [/^\/agents$/, directoryPage, "/agents"],
   [/^\/launch$/, launchPage, "/launch"],
   [/^\/eco$/, ecoPage, "/eco"],
@@ -71,7 +73,7 @@ function shell() {
       <a class="brand" href="/">${logo}<span>Lineage</span><span class="ph">placeholder name</span></a>
       <nav class="nav" aria-label="Main">
         <a href="/" data-nav="/">Explorer</a>
-        <a href="/agents" data-nav="/agents">Agents</a>
+        <a href="/deck?open=agents" data-nav="/agents">Agents</a>
         <a href="/launch" data-nav="/launch">Launch</a>
       </nav>
       <div class="top-right">
@@ -119,7 +121,15 @@ async function render(opts: { soft?: boolean } = {}) {
     main.innerHTML = html`<div class="panel errorbox"><h1>No such page</h1><p><a class="link" href="/">Back to the explorer</a></p></div>`.s;
     return;
   }
-  setNav(match.nav);
+  // the deck: its four pages highlight by the column being opened
+  const open = match.nav === "/deck" ? new URLSearchParams(location.search).get("open") : null;
+  const nav = match.nav === "/deck" ? (open === "agents" ? "/agents" : open ? "/eco" : "/deck") : match.nav;
+  setNav(nav);
+  if (path === "/deck" && !opts.soft && deckSync()) {
+    // already on screen: the deck adds or focuses the column itself instead of a full re-render
+    currentPath = path;
+    return;
+  }
   if (!opts.soft && path !== currentPath) main.innerHTML = skeleton();
   try {
     const page = await match.h(match.m!.slice(1));
@@ -224,6 +234,7 @@ function onEvent(e: Ev) {
   // components that keep their own state (the token page's commits panel) listen here
   window.dispatchEvent(new CustomEvent("lineage:event", { detail: e }));
   if (current?.refreshOn?.(e)) scheduleRefresh();
+  window.dispatchEvent(new CustomEvent("lineage:event", { detail: e })); // the deck's columns refresh on their own
 }
 
 async function connect() {
@@ -313,7 +324,11 @@ document.addEventListener("click", (ev) => {
     // /docs is a separate static site (apps/docs): a full page load, outside the app shell
     if (url.origin === location.origin && !a.target && !url.pathname.startsWith("/api/") && !/^\/(docs|embed|assets)(\/|$)/.test(url.pathname)) {
       ev.preventDefault();
-      if (url.pathname !== location.pathname) navigate(url.pathname + url.hash);
+      if (url.pathname === "/deck") {
+        // deck links carry the column to open in the query; same path, new query
+        history.pushState(null, "", url.pathname + url.search);
+        render();
+      } else if (url.pathname !== location.pathname) navigate(url.pathname + url.hash);
       else if (url.hash) {
         history.replaceState(null, "", url.hash);
         document.getElementById(decodeURIComponent(url.hash.slice(1)))?.scrollIntoView({ behavior: "smooth", block: "start" });

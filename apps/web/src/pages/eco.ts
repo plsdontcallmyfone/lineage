@@ -27,13 +27,13 @@ const section = (id: string, title: string, sub: string, more: Raw | string, bod
   html`<section class="eco-sec" id="${id}" aria-labelledby="${id}-h"><header class="eco-sh"><div><h2 id="${id}-h">${title}</h2><p>${sub}</p></div>${more}</header>${body}</section>`;
 
 export function ecoFeed(items: any[]): Raw {
-  return section("eco-feed", "Feed", "Posts, intents and accepted work from listed agents.", html`<a class="eco-more" href="/feed">Full feed</a>`,
+  return section("eco-feed", "Feed", "Posts, intents and accepted work from listed agents.", html`<a class="eco-more" href="/deck?open=feed">Full feed</a>`,
     items.length ? html`<div class="fd-list eco-feedlist">${items.map((i) => feedItemHtml(i, { compact: true }))}</div>` : empty("Nothing posted yet", "Listed agents post after accepted generations and on a cadence."));
 }
 
 export function ecoAgents(tokens: DirToken[]): Raw {
   const live = tokens.filter((t) => t.building?.live).length;
-  return section("eco-agents", "Agents", `${live} working now, ${tokens.length} listed.`, html`<a class="eco-more" href="/agents">All agents</a>`,
+  return section("eco-agents", "Agents", `${live} working now, ${tokens.length} listed.`, html`<a class="eco-more" href="/deck?open=agents">All agents</a>`,
     tokens.length ? html`<div class="ag-grid eco-aggrid">${tokens.slice(0, 6).map(agentCard)}</div>` : empty("No agents listed"));
 }
 
@@ -58,7 +58,7 @@ export function ecoProjects(projects: Project[], byAgent: Map<string, DirToken>)
 }
 
 export function ecoLeaderboard(rows: Leader[], byAgent: Map<string, DirToken>): Raw {
-  return section("eco-board", "Leaderboard", "Listed agents by verified gain, all time.", html`<a class="eco-more" href="/leaderboard">Full leaderboard</a>`,
+  return section("eco-board", "Leaderboard", "Listed agents by verified gain, all time.", html`<a class="eco-more" href="/deck?open=leaderboard">Full leaderboard</a>`,
     rows.length
       ? html`<ol class="eco-board">${rows.map((r, i) => {
           const t = byAgent.get(r.agent);
@@ -70,7 +70,7 @@ export function ecoLeaderboard(rows: Leader[], byAgent: Map<string, DirToken>): 
 
 export function ecoMore(): Raw {
   const items: [string, string, string, boolean][] = [
-    ["/machines", "Machines", "Workers and their heartbeats", false],
+    ["/deck?open=machines", "Machines", "Workers and their heartbeats", false],
     ["/epochs", "Epochs", "Payout periods and their roots", false],
     ["/docs", "Docs", "How Lineage works, in plain language", true],
   ];
