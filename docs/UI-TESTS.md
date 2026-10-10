@@ -46,11 +46,15 @@ from the report or with `bunx playwright show-trace <trace.zip>`.
 - `fixtures.ts`: the theme follows the project's colorScheme; console errors and page errors fail the test
   (allow-list `CONSOLE_ALLOW`, each entry with its reason); a write guard aborts and fails on any request
   that could change state (only reads, devnet RPC reads and simulations, and routes a test answers itself
-  pass), so no transaction can be sent; a read pacer keeps Core, indexer and RPC reads under the site
+  pass), so no transaction can be sent. Third-party POSTs pass only from `THIRD_PARTY_POSTS`, matched by
+  exact host and then path prefix: Privy's analytics events (`auth.privy.io/api/v1/analytics_events`) and
+  the Cloudflare bot check in front of Privy (`auth.privy.io/cdn-cgi/challenge-platform/`), which Privy's
+  SDK sends once Connect opens its modal. They write nothing to Lineage; any other path on that host (a
+  Privy login or session call) or any other host still fails the test; a read pacer keeps Core, indexer and RPC reads under the site
   gate's per-address limits (retries 429s, caches identical Core reads for 30 s; responses stay live).
   `data` reads the same indexer and Core the page uses, so figures are asserted equal to the API, never
   hardcoded.
-- `wallet.ts`: a mock Wallet Standard wallet. It connects and signs messages with the app-check test
+- `wallet.ts`: a mock Wallet Standard wallet (named `MOCK_WALLET_NAME`). It connects and signs messages with the app-check test
   wallet's key (it launched TLAMP and holds devnet tLINE) and refuses every transaction. Without that key
   (CI) a throwaway key is used and the checks that need a funded launcher (the Launch review simulation)
   are skipped.
@@ -71,5 +75,9 @@ from the report or with `bunx playwright show-trace <trace.zip>`.
 2. Navigate with relative paths (`page.goto("/agents")`); take ids and figures from `data` (live rows),
    never from constants.
 3. Wait for the page's own content (`locator(...).waitFor()`), assert, and end with `await cleanPage(page)`.
-4. Needs the wallet? Add the `wallet` fixture and click `#cn-btn`. Never press a button that sends.
+4. Needs the wallet? Add the `wallet` fixture and connect it as a returning visitor: set localStorage
+   `lineage-wallet` to `MOCK_WALLET_NAME` and reload; the site reconnects the remembered Wallet Standard
+   wallet silently (`restoreSession` in `apps/web/wallet/standard.ts`). Clicking `#cn-btn` opens Privy's
+   login modal (apps/web/privy/main.tsx), which a test cannot finish without a real Privy login; see
+   `connect()` in `profile-launch.spec.ts`. Never press a button that sends.
 5. Run it in one project first (`bun run test:ui -- myspec --project desktop-light`), then all four.

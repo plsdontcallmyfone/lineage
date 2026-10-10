@@ -27,6 +27,18 @@ import { installMockWallet, testWallet, type TestWallet } from "./wallet.ts";
  */
 export const CONSOLE_ALLOW: RegExp[] = [/net::ERR_BLOCKED_BY_CLIENT/, /status of 429 \(\) \S+\/live\/events(\?|$)/];
 
+/**
+ * Third-party POSTs that pass the write guard: matched by exact host, then by path prefix on that host
+ * (no wildcard hosts). They write nothing to Lineage: they are the Privy login island's own traffic
+ * (apps/web/privy/main.tsx) once Connect opens Privy's modal. Keep each with its reason; any other POST
+ * to a third-party host, or another path on these hosts (a Privy login or session call), fails the test.
+ *  - auth.privy.io /api/v1/analytics_events: Privy SDK's analytics events, sent when the island mounts
+ *  - auth.privy.io /cdn-cgi/challenge-platform/: Cloudflare's bot check in front of Privy's API
+ */
+export const THIRD_PARTY_POSTS: Record<string, string[]> = {
+  "auth.privy.io": ["/api/v1/analytics_events", "/cdn-cgi/challenge-platform/"],
+};
+
 // ---------------------------------------------------------------- read pacing (one bucket per worker)
 
 const WORKERS = Math.max(1, Number(process.env.UI_WORKERS ?? 2));
@@ -122,6 +134,7 @@ export const test = base.extend<Fixtures>({
       const errors: string[] = [];
       const blocked: string[] = [];
       const allowed: RegExp[] = [];
+      const appOrigin = new URL(info.project.use.baseURL!).origin;
       page.on("pageerror", (e) => errors.push(`pageerror: ${e.message}`));
       page.on("console", (m) => {
         if (m.type() !== "error") return;
@@ -132,9 +145,10 @@ export const test = base.extend<Fixtures>({
         const req = route.request();
         const method = req.method();
         const url = new URL(req.url());
-        if (method === "GET" && /^\/(api|market)\//.test(url.pathname) && url.origin === new URL(info.project.use.baseURL!).origin) return pacedRead(route, url);
+        if (method === "GET" && /^\/(api|market)\//.test(url.pathname) && url.origin === appOrigin) return pacedRead(route, url);
         if (method === "GET" || method === "HEAD" || method === "OPTIONS") return route.fallback();
         if (allowed.some((re) => re.test(url.pathname))) return route.fallback();
+        if (url.origin !== appOrigin && url.protocol === "https:" && (THIRD_PARTY_POSTS[url.host] ?? []).some((p) => url.pathname.startsWith(p))) return route.fallback();
         if (url.pathname === "/chain/rpc") {
           let calls: { method?: string }[] = [];
           try {
@@ -143,7 +157,7 @@ export const test = base.extend<Fixtures>({
           } catch {}
           if (calls.length && calls.every((c) => READ_RPC.test(String(c?.method)))) return pacedRead(route, url);
           blocked.push(`${method} ${url.pathname} ${calls.map((c) => c?.method).join(",")}`);
-        } else blocked.push(`${method} ${url.pathname}`);
+        } else blocked.push(`${method} ${url.origin === appOrigin ? "" : url.host}${url.pathname}`);
         return route.abort("blockedbyclient");
       });
       const g = { errors, blocked, allowWrite: (re: RegExp) => void allowed.push(re) };

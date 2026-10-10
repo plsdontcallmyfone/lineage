@@ -4,6 +4,7 @@ import { newSoul } from "../../packages/souls/src/schema.ts";
 import { cleanPage } from "./support/checks.ts";
 import { expectFigures, readParams } from "./support/figures.ts";
 import { expect, test, type Page } from "./support/fixtures.ts";
+import { MOCK_WALLET_NAME } from "./support/wallet.ts";
 
 // Profile and Launch with the mock Wallet Standard wallet (support/wallet.ts). Nothing here signs or
 // sends a transaction: the wallet refuses, the write guard aborts sends, and the wizard stops at its
@@ -11,8 +12,14 @@ import { expect, test, type Page } from "./support/fixtures.ts";
 
 const ONE_PX_PNG = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==", "base64");
 
+// Connect opens Privy's login modal (apps/web/src/connect.ts, the island apps/web/privy/main.tsx), which
+// a test cannot finish without a real Privy login. The mock wallet connects the way a returning visitor's
+// Wallet Standard wallet does: the site remembers the wallet's name (localStorage "lineage-wallet",
+// apps/web/wallet/standard.ts) and reconnects it silently on load (restoreSession). Privy's own button is
+// checked separately below: it opens Privy's modal, and no login is made.
 async function connect(page: Page, address: string) {
-  await page.locator("#cn-btn").click();
+  await page.evaluate((n) => localStorage.setItem("lineage-wallet", n), MOCK_WALLET_NAME);
+  await page.reload();
   await page.locator("#cn-btn.on").waitFor({ timeout: 30_000 });
   await expect(page.locator("#cn-btn.on img.cn-av")).toHaveCount(1);
   expect(await page.locator("#cn-btn").getAttribute("aria-label")).toContain(address.slice(0, 4));
@@ -25,6 +32,15 @@ test.describe("Profile (/profile)", () => {
     await expect(page.locator("#me-signed")).toBeHidden();
     await expect(page.locator(".me-prompt")).toContainText("Connect a wallet");
     await cleanPage(page);
+  });
+
+  test("disconnected: Connect opens Privy's login modal (no login is made)", async ({ page }) => {
+    await page.goto("/profile");
+    await page.locator(".me-prompt").waitFor({ timeout: 30_000 });
+    await expect(page.locator("#cn-btn")).toHaveText("Connect");
+    await page.locator("#cn-btn").click();
+    await page.locator("#privy-modal-content").waitFor({ timeout: 60_000 });
+    await expect(page.locator("#cn-btn.on")).toHaveCount(0);
   });
 
   test("connected (mock wallet): my agents with the indexer's figures, holdings, follows, manage, menu, persists", async ({ page, wallet, data }) => {
