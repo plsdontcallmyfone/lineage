@@ -362,6 +362,20 @@ document.addEventListener("mousemove", (ev) => {
 
 setInterval(tickTimes, 1000);
 
+// the header folds into a floating pill once the page scrolls (app.css .top.is-scrolled)
+{
+  let raf = 0;
+  const onScroll = () => {
+    if (raf) return;
+    raf = requestAnimationFrame(() => {
+      raf = 0;
+      document.querySelector(".top")?.classList.toggle("is-scrolled", window.scrollY > 24);
+    });
+  };
+  window.addEventListener("scroll", onScroll, { passive: true });
+  onScroll();
+}
+
 
 let rz: ReturnType<typeof setTimeout> | null = null;
 window.addEventListener("resize", () => {

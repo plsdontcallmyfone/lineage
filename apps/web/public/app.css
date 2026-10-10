@@ -147,20 +147,32 @@ code { font-family: var(--mono); color: var(--ts); background: var(--bg3); borde
 
 /* ---------------------------------------------------------------- shell */
 
-.top {
-  position: sticky; top: 0; z-index: 100;
-  background: var(--hdr-bg);
-  backdrop-filter: blur(16px);
-  -webkit-backdrop-filter: blur(16px);
-  border-bottom: 1px solid var(--border);
+/* The header: a flat bar at the top of the page that becomes a floating pill once the page scrolls
+   (main.ts toggles .is-scrolled). Its total height never changes, so the content under it stays put. */
+.top { position: sticky; top: 0; z-index: 100; padding: 0; transition: padding .28s cubic-bezier(.22,1,.36,1); }
+.top-in {
+  position: relative; padding: 0 var(--pad-x); height: var(--hdr-h); display: flex; align-items: center; gap: 28px;
+  background: var(--hdr-bg); border: 1px solid transparent; border-bottom-color: var(--border); border-radius: 0;
+  backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px);
+  transition: height .28s cubic-bezier(.22,1,.36,1), padding .28s cubic-bezier(.22,1,.36,1), border-radius .28s cubic-bezier(.22,1,.36,1), background .28s, border-color .28s, box-shadow .28s;
 }
-.top-in { padding: 0 var(--pad-x); height: var(--hdr-h); display: flex; align-items: center; gap: 28px; }
+.top.is-scrolled { padding: 6px var(--pad-x) 0; }
+.top.is-scrolled .top-in {
+  height: calc(var(--hdr-h) - 6px); padding: 0 10px 0 22px; border-radius: 9999px;
+  background: color-mix(in srgb, var(--bg3) 82%, transparent); border-color: var(--glass-border); box-shadow: var(--glass-shadow), 0 12px 32px -12px #0008;
+}
 .brand { display: flex; align-items: center; gap: 10px; font-family: var(--wordmark); font-synthesis: none; -webkit-text-stroke: .02em currentColor; text-transform: uppercase; letter-spacing: .04em; font-size: 15px; font-weight: 400; white-space: nowrap; color: var(--tp); }
 .brand svg { width: 18px; height: 18px; flex: none; }
 .brand .ph { font-family: var(--mono); -webkit-text-stroke: 0; font-size: 10px; letter-spacing: .08em; color: var(--tt); }
+@media (min-width: 761px) {
+  .top-in .brand { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); } /* the wordmark sits centred, like the reference */
+  .top-in .nav { order: -1; }
+}
 .nav { display: flex; gap: 2px; overflow-x: auto; scrollbar-width: none; }
 .nav::-webkit-scrollbar { display: none; }
 .nav a { position: relative; padding: 8px 10px; font: 400 11px/1 var(--mono); letter-spacing: .1em; text-transform: uppercase; color: var(--tt); white-space: nowrap; transition: color .15s; }
+.top.is-scrolled .nav a { color: var(--ts); }
+.top.is-scrolled .nav a[aria-current="page"] { color: var(--tp); }
 .nav a:hover { color: var(--ts); }
 .nav a[aria-current="page"] { color: var(--tp); }
 .nav a[aria-current="page"]::after { content: ""; position: absolute; left: 10px; right: 10px; bottom: 2px; height: 1px; background: var(--ac); }
@@ -409,6 +421,8 @@ details.more[open] summary { border-bottom: 1px solid var(--border); }
 @media (max-width: 760px) {
   :root { --pad-x: 16px; }
   .top-in { gap: 12px; height: auto; min-height: var(--hdr-h); flex-wrap: wrap; padding-top: 8px; padding-bottom: 8px; }
+  .top.is-scrolled { padding: 6px 10px 0; }
+  .top.is-scrolled .top-in { height: auto; min-height: calc(var(--hdr-h) - 6px); padding: 6px 14px; border-radius: 22px; }
   .nav { order: 3; width: 100%; margin: 0 -6px; }
   .brand .ph { display: none; }
   main { padding: 20px var(--pad-x) 56px; }
