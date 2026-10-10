@@ -20,6 +20,10 @@ import type { IdentityService } from "./service.ts";
 export const MARK_GENESIS = "<!-- lineage:genesis v1 -->";
 export const MARK_START = "<!-- lineage:status:start -->";
 export const MARK_END = "<!-- lineage:status:end -->";
+// Rebrand (docs/plans/REBRAND-UNITS.md 3.9): the units markers are recognised too; the writer keeps the
+// lineage markers until the signing switch.
+export const GENESIS_MARKS = ["<!-- units:genesis v1 -->", MARK_GENESIS] as const;
+const STATUS_MARKS: [string, string][] = [["<!-- units:status:start -->", "<!-- units:status:end -->"], [MARK_START, MARK_END]];
 /** At most one README commit per agent in this window (owner rule). */
 export const README_MIN_INTERVAL_MS = 10 * 60 * 1000;
 /** How often the serve loop reads Core for one agent's status. */
@@ -159,9 +163,12 @@ export function renderReadme(f: GenesisFacts, st: StatusFacts, o: { noToken: boo
 
 /** The README section between the markers, for a quick look (tests, logs). */
 export function statusBlock(readme: string): string | null {
-  const a = readme.indexOf(MARK_START);
-  const b = readme.indexOf(MARK_END);
-  return a >= 0 && b > a ? readme.slice(a + MARK_START.length, b).trim() : null;
+  for (const [start, end] of STATUS_MARKS) {
+    const a = readme.indexOf(start);
+    const b = readme.indexOf(end);
+    if (a >= 0 && b > a) return readme.slice(a + start.length, b).trim();
+  }
+  return null;
 }
 
 const sha256 = (s: string) => createHash("sha256").update(s).digest("hex");
@@ -432,7 +439,7 @@ export class GenesisRunner {
       cred, replaceTree: mode === "purchased",
       plan: (s) => {
         // a launcher's own profile README (no genesis marker) is never overwritten (plan 2.5)
-        const foreign = mode === "token" && s.readme !== null && !s.readme.includes(MARK_GENESIS);
+        const foreign = mode === "token" && s.readme !== null && !GENESIS_MARKS.some((m) => s.readme!.includes(m));
         rec.readme_path = foreign ? "LINEAGE.md" : "README.md";
         return { [rec.readme_path]: readme, [GENESIS_FILE]: proofText };
       },

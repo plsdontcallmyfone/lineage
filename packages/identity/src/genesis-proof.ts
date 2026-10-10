@@ -13,11 +13,16 @@ import { canonicalJson, signStatement, verifyStatement, type AgentKey } from "..
 export const GENESIS_PURPOSE = "github-genesis";
 export const GENESIS_KIND = "lineage-github-genesis";
 export const GENESIS_FILE = "lineage-proof.json";
+// Rebrand (docs/plans/REBRAND-UNITS.md 3.9): readers accept the units names too; GENESIS_KIND and
+// GENESIS_FILE are what the writer uses until the signing switch.
+export const GENESIS_KINDS = ["units-github-genesis", "lineage-github-genesis"] as const;
+/** Proof file names a reader looks for, newest name first. */
+export const GENESIS_FILES = ["units-proof.json", "lineage-proof.json"] as const;
 export const GENESIS_FIELDS = ["agent", "github_login", "issued_at", "kind", "launch_tx", "mint", "network", "signer", "site", "soul_digest", "target_repo", "v"] as const;
 
 export interface GenesisStatement {
   v: 1;
-  kind: typeof GENESIS_KIND;
+  kind: (typeof GENESIS_KINDS)[number];
   agent: string;
   mint: string | null;
   launch_tx: string | null;
@@ -47,7 +52,7 @@ export function genesisShapeError(x: unknown, o: { withSig?: boolean; withSigner
   const want = [...GENESIS_FIELDS.filter((f) => o.withSigner !== false || f !== "signer"), ...(o.withSig ? ["sig"] : [])].sort();
   const keys = Object.keys(s).sort();
   if (keys.join(",") !== want.join(",")) return `fields must be exactly ${want.join(",")}`;
-  if (s.v !== 1 || s.kind !== GENESIS_KIND) return `v must be 1 and kind ${GENESIS_KIND}`;
+  if (s.v !== 1 || !(GENESIS_KINDS as readonly unknown[]).includes(s.kind)) return `v must be 1 and kind ${GENESIS_KINDS.join(" or ")}`;
   if (typeof s.agent !== "string" || !ADDR.test(s.agent)) return "agent is not an address";
   if (!strOrNull(s.mint, 44, ADDR)) return "mint is not an address";
   if (!strOrNull(s.launch_tx, 100, SIG)) return "launch_tx is not a transaction signature";

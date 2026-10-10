@@ -52,7 +52,7 @@ describe("genesis proof in Core", () => {
     // nothing there yet
     let r = await e.anon.post(`/v1/agents/${a.id}/genesis`, { login: "poolacct9" });
     expect(r.status).toBe(400);
-    expect(r.body.message).toContain("no lineage-proof.json");
+    expect(r.body.message).toContain("no units-proof.json or lineage-proof.json");
     expect((await e.anon.get(`/v1/agents/${a.id}/genesis`)).status).toBe(404);
 
     // signed by a stranger: refused
@@ -107,7 +107,7 @@ describe("genesis proof in Core", () => {
     await linksOf(e.core).idle();
     const after = await expectOk(e.anon.get(`/v1/agents/${a.id}/genesis`));
     expect(after.status).toBe("broken");
-    expect(after.detail).toContain("no lineage-proof.json");
+    expect(after.detail).toContain("no units-proof.json or lineage-proof.json");
     // unknown agent, bad login
     expect((await e.anon.post(`/v1/agents/${generateAgentKey().id}/genesis`, { login: "x" })).status).toBe(404);
     expect((await e.anon.post(`/v1/agents/${a.id}/genesis`, { login: "../x" })).status).toBe(400);

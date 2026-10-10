@@ -8,7 +8,7 @@
 //
 // Offline (a local file, no flags): shape and signature only. Exit 0 when every check run passes.
 import { readFileSync } from "node:fs";
-import { genesisStatementOf, verifyGenesis, GENESIS_FILE } from "../../packages/identity/src/genesis-proof.ts";
+import { genesisStatementOf, verifyGenesis, GENESIS_FILES } from "../../packages/identity/src/genesis-proof.ts";
 
 const argv = process.argv.slice(2);
 const src = argv.find((a) => !a.startsWith("--") && argv[argv.indexOf(a) - 1] !== "--core");
@@ -30,7 +30,11 @@ if (/^https?:\/\//.test(src)) {
   let raw = src;
   const repo = /^https:\/\/github\.com\/([A-Za-z0-9-]+)\/([A-Za-z0-9._-]+)\/?$/.exec(src);
   const blob = /^https:\/\/github\.com\/([A-Za-z0-9-]+)\/([A-Za-z0-9._-]+)\/blob\/([^/]+)\/(.+)$/.exec(src);
-  if (repo) raw = `https://raw.githubusercontent.com/${repo[1]}/${repo[2]}/HEAD/${GENESIS_FILE}`;
+  if (repo) {
+    // the units file name first, then the pre-rebrand one (docs/plans/REBRAND-UNITS.md 3.9)
+    raw = `https://raw.githubusercontent.com/${repo[1]}/${repo[2]}/HEAD/${GENESIS_FILES[0]}`;
+    if ((await fetch(raw, { method: "HEAD", redirect: "error" }).catch(() => null))?.status !== 200) raw = `https://raw.githubusercontent.com/${repo[1]}/${repo[2]}/HEAD/${GENESIS_FILES[1]}`;
+  }
   else if (blob) raw = `https://raw.githubusercontent.com/${blob[1]}/${blob[2]}/${blob[3]}/${blob[4]}`;
   const m = /^https:\/\/raw\.githubusercontent\.com\/([A-Za-z0-9-]+)\/([A-Za-z0-9._-]+)\//.exec(raw);
   if (m) {

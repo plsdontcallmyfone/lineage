@@ -3,7 +3,7 @@ import { isIP } from "node:net";
 import type { Core } from "./core.ts";
 import { ApiError, bad, forbidden, notFound } from "./errors.ts";
 import { canonicalJson, signStatement, verifyStatement, type AgentKey } from "./protocol.ts";
-import { GENESIS_FILE, verifyGenesis, type GenesisFile } from "../../identity/src/genesis-proof.ts";
+import { GENESIS_FILES, verifyGenesis, type GenesisFile } from "../../identity/src/genesis-proof.ts";
 
 // Verified external links (identity plan I3, 2.3; Keybase pattern). The agent signs a statement
 // `{ v: 1, kind: "lineage-link", agent, service, handle, created_at }` with purpose "link" and posts
@@ -323,16 +323,23 @@ export class Links {
   }
 
   /** The genesis proof in <login>/<login>: shape, agent, login, signature at issued_at, identity record. */
-  private async checkGenesis(agent: string, login: string, want?: { statement: string; sig: string }): Promise<CheckResult & { proof?: LinkProof }> {
-    const r = await this.get(`${this.opts.githubRaw}/${login}/${login}/HEAD/${GENESIS_FILE}`);
+  private async checkGenesis(agent: string, login: string, want?: { statement: string; sig: string }): Promise<CheckResult & { proof?: LinkProof; file?: string }> {
+    // the proof file under its units name, else its pre-rebrand name (REBRAND-UNITS.md 3.9)
+    let r: { status: number; text: string } | { error: string } = { error: "not fetched" };
+    let fileName: string = GENESIS_FILES[0];
+    for (const name of GENESIS_FILES) {
+      fileName = name;
+      r = await this.get(`${this.opts.githubRaw}/${login}/${login}/HEAD/${name}`);
+      if ("error" in r || r.status !== 404) break;
+    }
     if ("error" in r) return { ok: false, status: "stale", detail: `GitHub did not answer: ${r.error}` };
-    if (r.status === 404) return { ok: false, status: "broken", detail: `no ${GENESIS_FILE} in ${login}/${login}` };
+    if (r.status === 404) return { ok: false, status: "broken", detail: `no ${GENESIS_FILES.join(" or ")} in ${login}/${login}` };
     if (r.status !== 200) return { ok: false, status: "stale", detail: `GitHub answered HTTP ${r.status}` };
     let file: GenesisFile;
     try {
       file = JSON.parse(r.text);
     } catch {
-      return { ok: false, status: "broken", detail: `${GENESIS_FILE} is not JSON` };
+      return { ok: false, status: "broken", detail: `${fileName} is not JSON` };
     }
     const issued = typeof file?.issued_at === "number" ? file.issued_at : 0;
     if (issued > this.c.now() / 1000 + 300) return { ok: false, status: "broken", detail: "issued_at is in the future" };
@@ -355,7 +362,7 @@ export class Links {
       }
       if ((rec.login ?? "").toLowerCase() !== login) return { ok: false, status: "broken", detail: rec.login ? `the identity service names ${rec.login.toLowerCase()} for this agent` : "the identity service has no account for this agent" };
     }
-    return { ok: true, proof: { statement: statement as unknown as LinkStatement, sig: sig! } };
+    return { ok: true, proof: { statement: statement as unknown as LinkStatement, sig: sig! }, file: fileName };
   }
 
   // ---------------------------------------------------------------------------------------------
@@ -376,7 +383,7 @@ export class Links {
       if (prev) this.c.db.query("UPDATE links SET status = ?, checked_at = ?, detail = ?, fails = fails + 1 WHERE agent_id = ? AND service = 'github-genesis' AND handle = ?").run(res.status, now, res.detail, agent, login);
       throw new ApiError(res.status === "stale" ? 502 : 400, res.status === "stale" ? "proof_unreachable" : "proof_invalid", res.detail);
     }
-    const url = `https://github.com/${login}/${login}/blob/HEAD/${GENESIS_FILE}`;
+    const url = `https://github.com/${login}/${login}/blob/HEAD/${res.file ?? GENESIS_FILES[1]}`;
     return this.c.tx(() => {
       this.c.db
         .query(
