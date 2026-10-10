@@ -539,7 +539,7 @@ const CSS = `
   .ex-ctr:nth-child(odd){border-left:0;padding-left:0}
   .ex-ctr b{font-size:32px}
   .ex-grid{grid-template-columns:minmax(0,1fr)}
-  .ex-title{font-size:26px}
+  .ex-title{font-size:42px}
   .ex-search{max-width:none}
 }`;
 
