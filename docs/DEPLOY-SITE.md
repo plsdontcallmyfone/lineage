@@ -319,9 +319,12 @@ its build inputs are unchanged) and `runtime.json` gets:
 
 | Key | Value | Meaning |
 |---|---|---|
+| `desktop_required` | true | every attempt needs its own live desktop; with none free the attempt waits (status `waiting for a desktop: ...`) and is retried after `attempt_gap_s` |
+| `desktop_hosts_file` | `~lineage/.config/lineage/desktop-hosts/hosts.json` | dedicated desktop hosts, used first (see Desktop hosts below); re-read every minute |
 | `desktops_max` | 2 | desktops on this server at once (each capped at 1.5 CPUs and 1.5 GB) |
-| `e2b_max` | 3 | E2B Desktop overflow at once, only when `e2b.env` holds a key |
-| `desktop_usd_per_day` | 5 | E2B time per UTC day; at the cap no new E2B desktops start |
+| `e2b_max` | 6 | E2B Desktop overflow at once (6 hosted agents bound on 2026-10-10), only when `e2b.env` holds a key |
+| `desktop_usd_per_day` | 16 | E2B time per UTC day; at the cap no new E2B desktops start. 4 E2B desktops all day cost 15.90 USD |
+| `e2b` | template `lineage-desktop`, 2 vCPU, 4 GiB | built by `packages/desktop/scripts/e2b-template.ts`; 0.1656 USD per desktop-hour (e2b.dev/pricing read 2026-10-10). The stock `desktop` template is 8 vCPU, 8 GiB: 0.5328 USD per desktop-hour |
 | `desktop_allow` | github.com, githubusercontent.com, githubassets.com | hosts a desktop's browser may reach |
 
 The runtime serves the live stream on its bind port (9667) at `/desktops/<session>/*`; the gate forwards it.
@@ -329,6 +332,52 @@ The runtime serves the live stream on its bind port (9667) at `/desktops/<sessio
 The desktop containers and the allowlist proxy (`lineage-desk-proxy`) carry the label `lineage=1`.
 State: `/var/lib/lineage/runtime/desktops` (stream directories, the session map, held recordings,
 `e2b-spend.json`).
+
+### Desktop hosts
+
+Owner decision 2026-10-10: desktops run on dedicated desktop servers we run, with E2B as overflow.
+New desktops go to the least loaded healthy desktop host, then to this server's 2 slots, then to E2B.
+
+**What the owner creates:** a fresh Ubuntu 24.04 droplet (for example DigitalOcean, in the site's region),
+with the owner's ssh key for root, then runs from this repo:
+
+    scripts/deploy/desktop-host/provision.sh <droplet-ip>
+
+It reaches the droplet through the site (`JUMP`, default the site; after the firewall only the site can
+reach it) and, idempotently:
+- installs Docker, python3 and ufw; makes the `lineage-desk` user (docker group, locked password) whose
+  key runs only `/usr/local/bin/lineage-desk-gw`;
+- builds `lineage/desktop` on the host from `images/desktop` (rebuilt only when that tree changed) and
+  starts the internal network `lineage-desk` and the allowlist proxy `lineage-desk-proxy`;
+- turns off password logins and sets ufw to deny all incoming except ssh from the site;
+- on the site: makes the runtime's key `~lineage/.config/lineage/desktop-hosts/id_ed25519`, records the
+  host's own host key (read over the owner's root ssh) in `known_hosts` there, measures the host
+  (`lineage-desk-gw health`) and registers it in `hosts.json` with `desktops_max` from
+  `packages/desktop/src/placement.ts` `hostCapacity`;
+- checks from the site with the runtime's key: `health` answers, a command outside the gateway is refused.
+
+The running runtime picks the host up within a minute (no restart). `provision.sh <ip> update` redoes only
+the gateway, the image and the proxy: run it after `images/desktop` changes (the site's own image is
+rebuilt by `deploy.sh`). `bun scripts/deploy/desktop-host/register.ts --file <hosts.json> --remove <name>`
+takes a host out (its running desktops finish; run it as `lineage` on the site).
+
+Capacity per host (`hostCapacity`): one desktop measured 38 % of a core mean and at most 635 MiB on the site
+(SPEC 17.7); keep 1 vCPU and 1 GiB for the host, plan CPU at 70 % of its mean and memory at 1.25 times
+the peak. A 4 vCPU / 8 GiB droplet gives 5 desktops (CPU bound), 8 vCPU / 16 GiB gives 12.
+
+Failure: hosts are health-checked every 15 s over the runtime's multiplexed ssh connection. A host that
+does not answer takes no new desktops; desktops already on it end their live stream (the gate answers
+410) and their attempts go on. When it answers again, it takes new desktops; desktops a crashed runtime
+left on a host are removed on the first good check.
+
+The site's key and known_hosts for desktop hosts are not in the state backup: after restoring a site,
+re-run `provision.sh <ip>` for each host.
+
+Dry run: `scripts/deploy/desktop-host/dryrun.sh` (a privileged systemd Ubuntu 24.04 container with its own
+Docker plays the droplet, this machine plays the site; port 9665): provisions twice and updates, checks
+the gateway and the firewall, runs a scripted attempt on a desktop on the host through the real gateway
+with its stream pulled and served (latency measured), and pauses the host mid-attempt. Results in
+`scripts/deploy/desktop-host/DRYRUN-LAST.json`.
 
 ## GitHub identity service
 

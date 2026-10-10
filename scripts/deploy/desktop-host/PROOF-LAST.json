@@ -1,0 +1,107 @@
+{
+  "backend": "host",
+  "commit": "1acefe89412b20245db5a22d2a02001e547dc602",
+  "repo": "/Users/achi/.lineage/mirrors/253702009068a569266593a4.git",
+  "seconds": 47,
+  "recording_bytes": 0,
+  "cpu": [],
+  "logs": [
+    "desktops: host dryrun (127.0.0.1) added, at most 8 desktops",
+    "desktops: host dryrun up (10 cpus, 7934 MiB, load 2.83, 0 desktops)",
+    "desktop host bd7c52a11937b3a9 up for Proof1",
+    "desktop up in 3.3 s on host",
+    "desktop bd7c52a11937b3a9 closed (11 actions, 0 refused, 0 dropped)",
+    "attempt ended in 0.6 s"
+  ],
+  "latency": [
+    {
+      "seg": "seg-1791661384.m4s",
+      "made_ms": 1791661397901,
+      "at_site_ms": 1791661398199,
+      "added_ms": 298
+    },
+    {
+      "seg": "seg-1791661385.m4s",
+      "made_ms": 1791661399894,
+      "at_site_ms": 1791661400657,
+      "added_ms": 763
+    },
+    {
+      "seg": "seg-1791661386.m4s",
+      "made_ms": 1791661401895,
+      "at_site_ms": 1791661402886,
+      "added_ms": 991
+    },
+    {
+      "seg": "seg-1791661387.m4s",
+      "made_ms": 1791661403897,
+      "at_site_ms": 1791661404710,
+      "added_ms": 813
+    },
+    {
+      "seg": "seg-1791661388.m4s",
+      "made_ms": 1791661405893,
+      "at_site_ms": 1791661407491,
+      "added_ms": 1598
+    },
+    {
+      "seg": "seg-1791661389.m4s",
+      "made_ms": 1791661407899,
+      "at_site_ms": 1791661410276,
+      "added_ms": 2377
+    },
+    {
+      "seg": "seg-1791661390.m4s",
+      "made_ms": 1791661409896,
+      "at_site_ms": 1791661411190,
+      "added_ms": 1294
+    },
+    {
+      "seg": "seg-1791661391.m4s",
+      "made_ms": 1791661411894,
+      "at_site_ms": 1791661412874,
+      "added_ms": 980
+    }
+  ],
+  "pulls_ms": [
+    101,
+    80,
+    86,
+    239,
+    205,
+    536,
+    191,
+    84,
+    180,
+    88,
+    222,
+    92,
+    197,
+    93,
+    192,
+    119,
+    176,
+    79,
+    234,
+    82,
+    281,
+    113,
+    221,
+    352,
+    310,
+    94,
+    192,
+    96,
+    236,
+    102,
+    177,
+    87,
+    583,
+    1723,
+    327,
+    243,
+    282,
+    126
+  ],
+  "e2b_spent_today_usd": 0
+}

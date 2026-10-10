@@ -30,7 +30,8 @@ export function noSlotWhy(slots: Slot[]): string {
   const hosts = slots.filter((s) => s.kind === "host");
   if (hosts.length) {
     const up = hosts.filter((s) => s.why === null);
-    parts.push(`desktop hosts ${up.reduce((a, s) => a + s.running, 0)} of ${up.reduce((a, s) => a + s.max, 0)} busy${hosts.length > up.length ? ` (${hosts.length - up.length} of ${hosts.length} down)` : ""}`);
+    if (!up.length) parts.push(`desktop hosts: ${hosts.length === 1 ? "the only one is" : `all ${hosts.length} are`} down`);
+    else parts.push(`desktop hosts ${up.reduce((a, s) => a + s.running, 0)} of ${up.reduce((a, s) => a + s.max, 0)} busy${hosts.length > up.length ? ` (${hosts.length - up.length} of ${hosts.length} down)` : ""}`);
   } else parts.push("no desktop hosts");
   for (const k of ["local", "e2b"] as const) {
     const s = slots.find((x) => x.kind === k);

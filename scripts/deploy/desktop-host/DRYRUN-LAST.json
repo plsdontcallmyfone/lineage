@@ -1,0 +1,147 @@
+{
+  "at": "2026-10-10T19:44:17.127Z",
+  "passed": 28,
+  "total": 28,
+  "checks": [
+    {
+      "check": "fresh box reachable over root ssh",
+      "ok": true,
+      "detail": "site address seen by the host: 172.17.0.1"
+    },
+    {
+      "check": "provision.sh full on a fresh box",
+      "ok": true,
+      "detail": "exit 0, 1106 s"
+    },
+    {
+      "check": "provision.sh full re-run on the same box",
+      "ok": true,
+      "detail": "exit 0, 5 s"
+    },
+    {
+      "check": "re-run keeps the built image (no rebuild)",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "provision.sh update (gateway, image, proxy)",
+      "ok": true,
+      "detail": "exit 0, 3 s"
+    },
+    {
+      "check": "one host registered in the site's hosts file",
+      "ok": true,
+      "detail": "desktops_max 8: 10 vCPU, 7934 MiB: CPU (10 - 1) x 0.7 / 0.38 = 16; memory (7934 - 1024) / (635 x 1.25) = 8; per desktop measured 2026-10-10 on the site, 4 vCPU amd64"
+    },
+    {
+      "check": "known_hosts holds one entry for the host (its own key)",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "firewall: ssh only from the site",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "firewall: another machine cannot reach ssh",
+      "ok": true,
+      "detail": "from a container on the bridge to 172.17.0.2:22"
+    },
+    {
+      "check": "lineage-desk in the docker group",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "gateway refuses: id",
+      "ok": true,
+      "detail": "exit 126"
+    },
+    {
+      "check": "gateway refuses: docker ps",
+      "ok": true,
+      "detail": "exit 126"
+    },
+    {
+      "check": "gateway refuses: docker run --rm --privileged lineage/desktop",
+      "ok": true,
+      "detail": "exit 126"
+    },
+    {
+      "check": "gateway refuses: docker exec -u 0:0 lineage-desk-proxy id",
+      "ok": true,
+      "detail": "exit 126"
+    },
+    {
+      "check": "gateway refuses: docker run -d --name lineage-desk-0123456789abcdef --label lineage=1 --label lineage.desktop=1 --network lineage-desk --read-only --cap-drop ALL --security-opt no-new-privileges --user 1000:1000 -v /:/host lineage/desktop",
+      "ok": true,
+      "detail": "exit 126"
+    },
+    {
+      "check": "the runtime's key cannot forward ports",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "scripted attempt on a desktop on the host (proof.ts --backend host)",
+      "ok": true,
+      "detail": "desktop up in 3.3 s on host"
+    },
+    {
+      "check": "live stream pulled to the site and served (latency measured)",
+      "ok": true,
+      "detail": "{\"segments\":8,\"added_ms\":{\"min\":298,\"max\":2377,\"mean\":1139},\"pull_ms\":{\"n\":38,\"min\":79,\"max\":1723,\"mean\":232}}"
+    },
+    {
+      "check": "pool: the registered host is up",
+      "ok": true,
+      "detail": "{\"name\":\"dryrun\",\"running\":0,\"max\":8,\"up\":true,\"why\":null,\"load1\":2.86}"
+    },
+    {
+      "check": "placement: a new desktop goes to the desktop host",
+      "ok": true,
+      "detail": "up in 3.2 s"
+    },
+    {
+      "check": "the gate serves the host desktop's stream from the site",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "host paused",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "health marks the host down",
+      "ok": true,
+      "detail": "host dryrun: unreachable (Connection timed out during banner exchange)"
+    },
+    {
+      "check": "a new attempt waits with the reason (no other slot configured)",
+      "ok": true,
+      "detail": "desktop hosts 0 of 0 busy (1 of 1 down)"
+    },
+    {
+      "check": "the running desktop's stream ends cleanly (410)",
+      "ok": true,
+      "detail": "desktop host lost"
+    },
+    {
+      "check": "the slot is freed",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "the host back: new desktops go there again",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "no desktop container left on the host",
+      "ok": true,
+      "detail": ""
+    }
+  ]
+}
