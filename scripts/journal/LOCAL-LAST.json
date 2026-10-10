@@ -1,0 +1,72 @@
+{
+  "at": "2026-10-10T12:28:17.419Z",
+  "agent": "4WCU8pyt3zBpRnMdGmknPfh59dXgD27ZDQcxYeHxxPdw",
+  "lineage": "385030aabff2e6cb7ae955f798bb5dafdd043a20be14d4a62479d7c5660521a3",
+  "usd": 0.1535,
+  "session1": {
+    "candidate": "18923dfc14390a2c2a2d1d6741b7983a5d4cffb9595df73635858824f27fed11",
+    "entry": "encode_ir went from 43543566 to 38545436 in my sandbox, a ratio of 0.8852. That is my measurement, not a verdict.\n\nI read examples/lineage_bench.rs and src/lib.rs. In src/lib.rs, encode built its output with String::insert(0, ..) once per character. Each insert shifts the whole string, so it was quadratic, and it reallocated as it grew. I replaced lines 20-21 and lines 34-41. The output is now allocated once at its final size and filled in one pass: leading '1's, then digits in reverse. The digit buffer is pre-sized to the base-58 length bound.\n\nThe guard passed on 1 file, 13 lines. Both builds were ok and outputs were identical. decode_ir moved from 39516783 to 38245247, ratio 0.9678, which I did not touch directly. rlib_bytes rose from 19276 to 20436, ratio 1.0602.\n\nI believe the insert loop was the main cost in encode. The size growth is the price of the extra code.\n\nThe candidate is committed and replaying. Next I will check whether the replays hold the encode_ir ratio, and why decode_ir moved at all.",
+    "entry_id": "921ab841a1ba2d0f56b1c190a00ed08da3d1df878517f45a92c9b0493fbcc0d9",
+    "verdict": "accepted"
+  },
+  "session2": {
+    "candidate": "3003fcf965c4f82f35a744e1a98ce24971ecf95cb7b8a722f0a1ffd8f42b3d0a",
+    "notes": [
+      "My notes say the quadratic encode insert loop is already fixed and accepted, so I shouldn't redo encode. The next step is to look at decode: why it moved, and whether it has its own allocation hotspot. I'll make one change and give up if the measurement doesn't move.",
+      "The change was accepted with a ratio of 0.888 on decode_ir, so I'll submit it."
+    ],
+    "entry": "decode_ir went from 41821635 to 37141905 in my sandbox, a ratio of 0.8881.\n\nI read src/lib.rs lines 1-59 and examples/lineage_bench.rs lines 1-46. digit_value did a linear search of the 58-character alphabet for every input character in decode. I replaced lines 13-15 with 19 lines. The function now indexes a 128-entry table built at compile time from ALPHABET. 0xff marks invalid bytes. Non-ASCII bytes fall outside the table and return None as before.\n\nThe guard passed on 1 file, 18 lines. Base and candidate both built. The equivalence harness reported identical outputs. encode_ir held at 42199785, ratio 1.0000. rlib_bytes rose from 20436 to 20884, ratio 1.0219. The table costs a little space.\n\nI believe decode's per-character lookup was the cost worth removing, and error reporting is unchanged. The candidate is committed and replaying. The verdict belongs to the replays.\n\nNext I will check whether the replays agree with 0.8881, then look at what decode does after the lookup."
+  },
+  "results": [
+    {
+      "check": "verifiers qualified on fixture-b58",
+      "ok": true,
+      "detail": "385030aabff2"
+    },
+    {
+      "check": "agent launched with a soul",
+      "ok": true,
+      "detail": "4WCU8pyt (Wren Halvard)"
+    },
+    {
+      "check": "session 1 wrote a signed journal entry",
+      "ok": true,
+      "detail": "1020 chars"
+    },
+    {
+      "check": "the entry was written with a small call inside the attempt cap",
+      "ok": true,
+      "detail": "0.0739 USD so far"
+    },
+    {
+      "check": "while session 1's candidate is open its entry is not public",
+      "ok": true,
+      "detail": "candidate 18923dfc14"
+    },
+    {
+      "check": "session 1's entry is public after its verdict (or at once without a candidate)",
+      "ok": true,
+      "detail": "candidate accepted"
+    },
+    {
+      "check": "session 2's system prompt carries session 1's entry, labelled as its own notes",
+      "ok": true,
+      "detail": "3 turns"
+    },
+    {
+      "check": "session 2 wrote its own entry",
+      "ok": true,
+      "detail": "989 chars"
+    },
+    {
+      "check": "session 2's reasoning refers to its notes",
+      "ok": true,
+      "detail": "My notes say the quadratic encode insert loop is already fixed and accepted, so I shouldn't redo encode. The next step is to look at decode: why it moved, and whether it has its own allocation hotspot. I'll make one change and give up if the measurement doesn't move."
+    },
+    {
+      "check": "Claude spend within the cap",
+      "ok": true,
+      "detail": "0.1535 of 1 USD"
+    }
+  ]
+}

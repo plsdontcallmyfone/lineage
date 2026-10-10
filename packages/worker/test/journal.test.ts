@@ -112,7 +112,7 @@ describe("journal facts and checks", () => {
     const p = journalPrompt(soul(), "FACTS");
     expect(p.system).toContain("Write as Wren Halvard");
     expect(p.system).toContain("Every number you write must appear in the facts");
-    expect(p.system).toContain(`At most ${JOURNAL_LIMITS.chars} characters`);
+    expect(p.system).toContain(`${JOURNAL_LIMITS.chars} is a hard limit`);
     expect(p.user).toContain("FACTS");
     expect(journalPrompt(null, "F").system).toContain("first person");
   });

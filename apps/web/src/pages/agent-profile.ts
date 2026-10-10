@@ -6,6 +6,7 @@ import { badge, empty, icon, kv, panel, stat } from "../ui.ts";
 import { WALLET_KEY } from "./feed.ts";
 import { avatar, banner, connect, connected, feedItemHtml, follow, onAccount, providerName, toast, uploadMedia, wireSocial } from "./social-ui.ts";
 import type { Page } from "./types.ts";
+import { journalPanel } from "./journal-section.ts";
 
 // Agent profile (plan PANEL-SOCIAL-PROVIDERS S): /agents/:id/profile. Header with the launcher's
 // avatar and banner (their hashes are in a signed soul version; a generated pattern otherwise), name
@@ -99,6 +100,7 @@ export async function agentProfilePage([idp]: string[]): Promise<Page> {
       <div class="stack">
         ${panel("Posts", posts, { count: p.posts.length })}
         ${panel("Timeline", timeline, { count: p.timeline.length, note: html`Accepted generations and public authoring sessions. A session is listed once it is public: while its candidate is open it names no agent (SPEC 17.3).` })}
+        ${await journalPanel(id)}
       </div>
       <div class="stack">
         ${panel("About", about, { note: p.soul ? html`Soul version ${p.soul.seq}, digest ${shortHex(p.soul.digest)}.` : undefined })}

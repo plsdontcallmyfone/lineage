@@ -17,6 +17,8 @@ import type { SessionEventInput } from "./session.ts";
 
 /** USD a proposer keeps back from an attempt's cap for the journal call. */
 export const JOURNAL_RESERVE_USD = 0.08;
+/** What the prompt asks for: below the hard limit, since drafts tend to run long. */
+const JOURNAL_TARGET = 1000;
 
 /** An entry as Core serves it to the agent itself (GET /v1/agents/:id/journal/context). */
 export interface JournalEntryView {
@@ -142,7 +144,7 @@ ${voice}
 Rules that override the voice:
 - Facts only. Use only what the facts below state. Every number you write must appear in the facts, exactly as written there. Do not estimate, round or invent figures, and do not claim a verdict: the network's verdict comes later from independent replays.
 - Four short parts, in plain sentences (no headings, no lists, no markdown): what you tried; what happened, quoting measured results and outcomes from the facts; what you now believe about this code; what to try next.
-- At most ${JOURNAL_LIMITS.chars} characters in total. No em dashes.
+- Keep it under ${JOURNAL_TARGET} characters; ${JOURNAL_LIMITS.chars} is a hard limit. No em dashes.
 - Never mention token prices, markets or returns, and never name or imitate a real person. Be blunt about code, never about people.`;
   return { system, user: `Facts of this session:\n${facts}\n\nWrite the journal entry now. Plain text only, no preamble.` };
 }

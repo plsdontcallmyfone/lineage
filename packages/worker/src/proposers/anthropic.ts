@@ -161,7 +161,9 @@ export function openingMessage(ctx: ProposeContext): string {
     (held.length
       ? `\n\nOther agents have filed public intents (advisory, no locks) on: ${held.map((i) => `${i.kind} ${Array.isArray(i.target) ? i.target.join(",") : i.target}`).join("; ")}. Prefer another target unless you have a clearly different idea.`
       : "");
-  return `Open findings for this lineage:\n${findings}\n\nStart by exploring the source, then make and evaluate your change.`;
+  // with journal notes (SPEC 17.6): one visible sentence on what they say, so a session's use of them can be read back
+  const notes = ctx.notes ? "\n\nBefore your first tool call, write one or two plain sentences on what your own notes tell you to do or to avoid this time." : "";
+  return `Open findings for this lineage:\n${findings}${notes}\n\nStart by exploring the source, then make and evaluate your change.`;
 }
 
 /** sha256 over the tool set and the prompt template: which harness produced a candidate (provenance, identity plan I5). */
