@@ -162,3 +162,23 @@ TypeScript client and co-sign guards (`packages/chain`), the wallet pages (`apps
 market indexer (`packages/indexer`) and the site deploy kit (`scripts/deploy`). docs/AUDIT.md
 "Offchain" lists what the internal review found there; `REVIEW-AREAS.md` lists what we would like a
 second look at if the engagement covers it.
+
+## Rebrand rename (2026-10-10, after this table)
+
+Commit `5ea4d68` renamed the crates and their directories (`programs/lineage-*` to `programs/units-*`,
+`lineage_*` to `units_*`; docs/plans/REBRAND-UNITS.md 3.5). `git diff -M 3e6bb91 5ea4d68 --
+onchain/programs` changes only those names (every changed line contains `lineage_`/`lineage-` on the
+old side and `units_`/`units-` on the new side); ids, seeds, account, instruction and event names are
+unchanged, so discriminators are unchanged. The tables above stay as recorded; an auditor pinning a
+commit at or after `5ea4d68` uses these hashes instead:
+
+| What | Value |
+|---|---|
+| Tree `onchain/programs/units-registry` | `4dae3a94e4f20c9ada3da8d834d110ec11b379df` |
+| Tree `onchain/programs/units-launch` | `4c590ad71ccfaab28061b0b0c0d4e795b7daf707` |
+| Tree `onchain/programs/units-msg` | `bd260154ada4ef394b38747463108bd0a9082151` |
+| Blob `onchain/Cargo.lock` | `e6a12be875e23d05d190f45246ba7a4a2f23a272` (package names only) |
+
+Builds and the devnet upgrade in place: onchain/DEVNET.md "Rebrand upgrade". LiteSVM 69/69 on the
+renamed builds. The mainnet fork rehearsal was not rerun by the rebrand lane (its ports 9690-9730
+are outside that lane's port block).

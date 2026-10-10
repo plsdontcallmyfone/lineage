@@ -880,3 +880,25 @@ TMBPE, TRTA and TSOUL bound to the same runtime keys they had on v1. Other trans
 - Hosted attempts run on desktops (local and E2B) for the relaunched agents, and their usage is debited from the v2 compute vaults (`debit_compute` usage epoch 1 for all five).
 - GitHub: Verified genesis commits with the new mints: owunqwxs/owunqwxs@7dae41d (TSOUL), agwyus9p/agwyus9p@3b21db1 (Wick Radix, README without token lines as before), nbebp7jy/nbebp7jy@4ed988c (Neap); Core link status verified for all three. TMBPE and TRTA use the app identity.
 - Cost: the deployer went from 64.402306647 to 55.107785047 SOL over the whole lane (9.294521600 SOL, of which 8.94502148 is ProgramData rent of the three programs; the rest: setup, launcher, verifier and test wallet funding, cranks). Launchers spent about 0.0177 SOL per agent launch.
+
+## Rebrand upgrade (2026-10-10, rebrand to units lane)
+
+The crates were renamed (`units-registry`, `units-launch`, `units-msg`; docs/plans/REBRAND-UNITS.md
+3.5) with no logic change: same ids, seeds, account and instruction names. The renamed devnet builds
+were deployed in place over the devnet v2 programs with the dedicated deployer passed explicitly
+(`solana program deploy -u devnet -k <deployer> --upgrade-authority <deployer> --program-id <id>`).
+Before the upgrade the deployed binaries were dumped and equalled the pre-rename local builds.
+No extend was needed (registry and launch shrank by 16 bytes, msg kept its size).
+
+| Program | Id | Upgrade signature | Build sha256 (equals the devnet dump; rest of ProgramData zero) | Bytes |
+|---|---|---|---|---|
+| units_msg | `5uUyWAc9DQEWb3XF1aH8yG62sCjmrEjtAoRB1SD9JFqV` | `5gUuCap5vK1z797YDxE9Lg9qSF93PdqpsXe8UNLLdXpeZjv3rhBwGs8aCL3vSzTSZhkqSuCZosGz9wghv5ZYvY5C` | `69d02880fdab50d0e284bc31adda8b76b9dfe4d0b319c964ade2e9f4a401c192` | 342,600 |
+| units_launch | `Axo38WX6TBAGGQ2nPpejn5tPsQogygA728baRaeJebGX` | `3DRtzZnK8ceaPqatHk4hQMdM7DFd9ZXpHgZ6KQFjq6tDL3Jw8AieewCiajMBLhtQh6qBaGeFe1b3eq6vfEqvvZS6` | `88f447acfb6697a9a1b714132afb5b0935babf4be5b7fec30fb6b305133d73aa` | 685,224 |
+| units_registry | `CJk3kwUqSS4qoJD8iu7uhUzSBNySjn9HsqaExpaV9gM2` | `38keMeaYj1Sj1aSi1BEbN4411NeYPVkTZAdEfacHfQ41CpVMjuv73p5S88wPZwgbUxHRP8pGX1SVURdfDtj1jnU2` | `f42e058696cdd34736ed74de801ad24c99cc9e965c0217a1d6ac159469ffe0e3` | 732,456 |
+
+Mainnet builds (cargo feature `mainnet`, not deployed anywhere): registry `ead9e41fed21c50e8b01ca76ad58776c2f3bfd74a206d70342a5fbbda09b9c71`,
+launch `593dff1c876f83b4e59003cdeff4159c4a6a46cdefa9dc71a853dc175f045008`, msg
+`90715f1490bb45029ad085f7ddb287cf6a159af450e91a66cd7aa0220dbcccb2`. Deployer 55.107785047 to
+55.099035047 SOL (0.00875 SOL in fees; buffers closed into the programs). LiteSVM 69/69 on the
+renamed builds. Keypairs: `target/deploy/units_*-keypair.json` are copies of the `lineage_*` files
+(same pubkeys), both kept, plus a backup in `~/.config/lineage/program-keys-backup-20261010-rebrand`.
