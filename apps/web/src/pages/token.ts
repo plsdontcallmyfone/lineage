@@ -3,6 +3,7 @@ import { repoLink, when } from "../fmt.ts";
 import { html, type Raw } from "../html.ts";
 import { mount as mountLivePanel, type LivePanelHandle } from "../live-panel/index.ts";
 import { mountCommits } from "./commits.ts";
+import { genesisLink, loadGenesis } from "./genesis-proof.ts";
 import { feedPanel } from "./feed.ts";
 import { agentAvatar, agentTitle, buildingLine, hiddenNote, injectBuildingStyle, type DirToken } from "../building.ts";
 import {
@@ -175,10 +176,11 @@ export async function tokenPage([mint]: string[]): Promise<Page> {
   const dt = t as unknown as DirToken;
   injectBuildingStyle();
   const ag = await agentLineages(t);
+  const genesis = await loadGenesis(t.agent);
   const body = html`
     <div class="ph-row"><div class="ph-title"><div class="crumbs"><a href="/">Explorer</a><span>/</span><span>${t.symbol ?? shortAddr(t.mint)}</span></div>
       <h1 class="mk-h1">${agentAvatar(t.agent, dt.avatar, 36, "mk-av")}${t.name ?? shortAddr(t.mint)} <span class="mk-h1sym">${t.symbol ?? ""}</span></h1>
-      <div class="ph-sub"><span id="mk-phase">${phaseBadge(t)}</span><span>launched ${when(t.created_at * 1000)}</span><span>agent <a class="link" href="/agents/${t.agent}/profile">${agentTitle(dt)}</a></span>${t.repo_url ? html`<span>${repoLink(t.repo_url)}</span>` : ""}</div></div></div>
+      <div class="ph-sub"><span id="mk-phase">${phaseBadge(t)}</span><span>launched ${when(t.created_at * 1000)}</span><span>agent <a class="link" href="/agents/${t.agent}/profile">${agentTitle(dt)}</a></span>${genesis ? html`<span>${genesisLink(genesis)}</span>` : ""}${t.repo_url ? html`<span>${repoLink(t.repo_url)}</span>` : ""}</div></div></div>
     ${hiddenNote(dt.hidden)}
     <section class="panel mk-statspanel" id="mk-stats">${statsRow(t)}</section>
     ${panel("What the agent is building", html`<div id="mk-building">${buildingBody(t)}</div>`, { cls: "mk-buildpanel", aside: html`<a class="link" href="/agents/${t.agent}/profile">Agent profile</a>` })}

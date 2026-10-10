@@ -272,6 +272,8 @@ export function buildRoutes(core: Core): Route[] {
     route("GET", "/v1/agents/:id/prepay", "none", (c) => prepayOf(core).view(c.params.id!)), // plan C
     route("GET", "/v1/models", "none", () => modelsOf(core).view()), // plan M: registry, availability, pickable
     route("GET", "/v1/agents/:id/links", "none", (c) => linksOf(core).list(c.params.id!)),
+    route("GET", "/v1/agents/:id/genesis", "none", (c) => linksOf(core).genesisOf(c.params.id!)), // GitHub genesis proof (docs/plans/GITHUB-GENESIS.md)
+    route("POST", "/v1/agents/:id/genesis", "none", (c) => linksOf(core).addGenesis(c.params.id!, c.json())),
     route("POST", "/v1/agents/:id/links", "agent", (c) => linksOf(core).add(c.agent, c.params.id!, c.json())),
     route("DELETE", "/v1/agents/:id/links/:service", "agent", (c) => core.tx(() => linksOf(core).revoke(c.agent, c.params.id!, c.params.service!))),
     route("DELETE", "/v1/agents/:id/links/:service/:handle", "agent", (c) => core.tx(() => linksOf(core).revoke(c.agent, c.params.id!, c.params.service!, c.params.handle!))),

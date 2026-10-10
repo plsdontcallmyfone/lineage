@@ -8,6 +8,9 @@
 //   main.ts reserve-add                read {"login","token"} JSON lines on stdin into the encrypted reserve
 //   main.ts reserve-list               logins and statuses of the reserve (no tokens)
 //   main.ts status                     the service summary (no tokens)
+//   main.ts genesis --agent <id> [--no-token | --with-token] [--force] [--key <keypair.json>] [--readme]
+//                                      publish (or re-publish) the agent's GitHub genesis repository
+//                                      (docs/plans/GITHUB-GENESIS.md); --readme refreshes only the status
 //
 // Common flags and their environment fallbacks:
 //   --dir      LINEAGE_IDENTITY_DIR   store directory        (default /var/lib/lineage/identity)
@@ -17,12 +20,18 @@
 //   --site     LINEAGE_SITE_URL       public site base URL   (profile links, commit messages)
 //   --core-key LINEAGE_IDENTITY_CORE_KEY  Core runtime/admin key file (PR records)
 //   --since    LINEAGE_IDENTITY_SINCE unix seconds; launches before it are ignored (default: first start)
+//   --indexer  LINEAGE_INDEXER        market indexer base     (default http://127.0.0.1:9668; launch tx, symbol)
+//   --signer   LINEAGE_GENESIS_SIGNER hosted runtime base     (default http://127.0.0.1:9667; signs genesis proofs)
 // Tokens are never printed.
 
 import { ChainReader, Rpc } from "../../chain/src/index.ts";
 import { devnetRpcUrl, redactRpc } from "../../chain/src/endpoint.ts";
 import type { SoulDoc } from "../../souls/src/schema.ts";
+import { readFileSync } from "node:fs";
+import { keyFromSolanaJson } from "../../protocol/src/index.ts";
+import { loadNetworkProfile } from "../../chain/src/profile-node.ts";
 import { cycleOnce } from "./cycle.ts";
+import { GenesisRunner, httpSources } from "./genesis.ts";
 import { handler } from "./http.ts";
 import { safeLog } from "./redact.ts";
 import { IdentityService } from "./service.ts";
@@ -48,8 +57,8 @@ if (cmd === "init") {
   console.log(JSON.stringify({ key: k.created ? "created" : "present", dir: DIR }));
   process.exit(0);
 }
-if (!["serve", "cycle", "reserve-add", "reserve-list", "status"].includes(cmd ?? "")) {
-  console.error("usage: main.ts init | serve | cycle | reserve-add | reserve-list | status  (see the header)");
+if (!["serve", "cycle", "reserve-add", "reserve-list", "status", "genesis"].includes(cmd ?? "")) {
+  console.error("usage: main.ts init | serve | cycle | reserve-add | reserve-list | status | genesis  (see the header)");
   process.exit(2);
 }
 
@@ -72,6 +81,31 @@ const svc = new IdentityService({
   soul, site: SITE, since, log,
   soulWaitS: Number(process.env.LINEAGE_IDENTITY_SOUL_WAIT_S ?? 600),
 });
+
+const net = loadNetworkProfile();
+const genesis = new GenesisRunner({
+  svc, site: SITE, network: { name: net.network, explorer_cluster: net.explorer_cluster }, log,
+  sources: httpSources({ core: CORE, indexer: arg("indexer", "LINEAGE_INDEXER", "http://127.0.0.1:9668"), runtime: arg("signer", "LINEAGE_GENESIS_SIGNER", "http://127.0.0.1:9667"), log }),
+});
+svc.afterReady = (a) => genesis.run(a);
+
+if (cmd === "genesis") {
+  const agent = arg("agent");
+  if (!agent || !/^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(agent)) {
+    console.error("genesis needs --agent <id>");
+    process.exit(2);
+  }
+  if (flag("readme")) {
+    console.log(JSON.stringify({ readme: await genesis.refresh(agent, { force: true }), genesis: svc.view(agent).genesis }, null, 2));
+    process.exit(0);
+  }
+  const keyFile = arg("key");
+  const key = keyFile ? keyFromSolanaJson(JSON.parse(readFileSync(keyFile, "utf8"))) : undefined;
+  const noToken = flag("no-token") ? true : flag("with-token") ? false : undefined;
+  const r = await genesis.run(agent, { explicit: true, noToken, force: flag("force"), key });
+  console.log(JSON.stringify({ status: r.status, reason: r.reason, opts: r.opts, genesis: svc.view(agent).genesis, core: r.core }, null, 2));
+  process.exit(r.status === "published" ? 0 : 1);
+}
 
 if (cmd === "reserve-add") {
   const out = { added: [] as string[], present: [] as string[], refused: [] as string[] };
@@ -112,6 +146,7 @@ if (cmd === "reserve-add") {
     running = true;
     try {
       await svc.watchOnce();
+      await genesis.tick();
     } finally {
       running = false;
     }

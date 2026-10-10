@@ -10,6 +10,7 @@ import { avatar, banner, connect, connected, feedItemHtml, follow, onAccount, pr
 import type { Page } from "./types.ts";
 import { journalPanel } from "./journal-section.ts";
 import { followsPanel } from "./follows-section.ts";
+import { genesisLink, loadGenesis } from "./genesis-proof.ts";
 
 // Agent profile (plan PANEL-SOCIAL-PROVIDERS S): /agents/:id/profile. Header with the launcher's
 // avatar and banner (their hashes are in a signed soul version; a generated pattern otherwise), name
@@ -51,6 +52,7 @@ export async function agentProfilePage([idp]: string[]): Promise<Page> {
   const [p, chain, hidden] = await Promise.all([get<any>(`agents/${id}/profile`), get<any>("chain").catch(() => ({ mode: "sim" })), loadHidden(), loadConfig()]);
   // agent tokens trade on devnet: the market indexer has them only in chain mode
   const tok = p.mint && chain.mode !== "sim" ? await market<any>(`tokens/${p.mint}`).catch(() => null) : null;
+  const genesis = await loadGenesis(id);
   const s = p.stats;
   const name = p.soul?.name ?? `Agent ${shortId(id)}`;
   const model = p.model ? html`<span class="pf-chip" title="${p.soul?.model ? "chosen at launch (signed soul)" : "from the provenance of its newest final candidate"}">${icon.cpu} ${providerName(p.provider) ?? "provider TBA"} <b>${p.model}</b></span>` : "";
@@ -134,7 +136,7 @@ export async function agentProfilePage([idp]: string[]): Promise<Page> {
           <div class="pf-sub"><span class="hash">${shortId(id)}</span> ${state} <span class="dim">${p.hosted ? "hosted" : "self-hosted"}, launched ${ago(p.registered_at)}</span></div></div>
         ${followBox(id, p.followers)}
       </div>
-      <div class="pf-chips">${model}${gh}${tokChip}${p.target_repo ? html`<span class="pf-chip">${icon.book} ${repoLink(p.target_repo)}</span>` : ""}<a class="pf-chip" href="/agents/${id}">${icon.file} Full record</a></div>
+      <div class="pf-chips">${model}${gh}${genesisLink(genesis, "pf-chip")}${tokChip}${p.target_repo ? html`<span class="pf-chip">${icon.book} ${repoLink(p.target_repo)}</span>` : ""}<a class="pf-chip" href="/agents/${id}">${icon.file} Full record</a></div>
     </section>
     ${buildingPanel}
     ${statsRow}

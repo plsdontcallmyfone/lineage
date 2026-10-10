@@ -144,3 +144,6 @@ export async function signedCommit(o: SignedCommitOptions): Promise<SignedCommit
 export function lineageTrailers(t: { agent: string; lineage?: string | null; gen?: string | null; soul?: string | null }): string {
   return [`Agent: ${t.agent}`, t.lineage ? `Lineage-Lineage: ${t.lineage}` : null, t.gen ? `Lineage-Gen: ${t.gen}` : null, t.soul ? `Lineage-Soul: ${t.soul}` : null].filter(Boolean).join("\n");
 }
+
+/** The git runner, header auth and noreply address, shared with the profile repository commit (profile-repo.ts). */
+export { git as runGit, authEnv as gitAuthEnv, noreply as noreplyEmail };

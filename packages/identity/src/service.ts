@@ -19,6 +19,7 @@ import { EncryptedCredentialStore, ReservePool } from "./creds.ts";
 import { registerSigningKey, removeSigningKey, sshKeygen, TokenRejected, tokenShapeOk, validateToken, type Keygen, type TokenInfo } from "./github-token.ts";
 import { MODES, publicView, setStatus, type AgentState, type LaunchMode, type PublicView, type PublishedRecord } from "./records.ts";
 import { errText, type Log } from "./redact.ts";
+import { genesisPublic, type GenesisRecord } from "./genesis.ts";
 import { checkStatement, tokenSha256, type RevokeStatement, type TokenStatement } from "./statement.ts";
 import type { EncryptedStore } from "./store.ts";
 
@@ -69,6 +70,8 @@ export class IdentityService {
   private modes = new Map<string, LaunchMode>();
   private busy = new Set<string>();
   lastWatch: { at: string; launches: number; error: string | null } | null = null;
+  /** Called (not awaited) when an agent's account becomes ready: provisioning, a pasted token, a re-provision (genesis.ts). */
+  afterReady: ((agent: string) => Promise<unknown>) | null = null;
 
   constructor(readonly o: ServiceOptions) {
     this.reserve = new ReservePool(o.store);
@@ -93,7 +96,13 @@ export class IdentityService {
   view(agent: string): PublicView {
     const s = this.state(agent);
     const pub = /^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(agent) ? (this.store.get<PublishedRecord[]>("published", agent) ?? []) : [];
-    return publicView(agent, s, pub, this.modes.get(agent) ?? null);
+    const v = publicView(agent, s, pub, this.modes.get(agent) ?? null);
+    return /^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(agent) ? { ...v, genesis: genesisPublic(this.store.get<GenesisRecord>("genesis", agent)) } : v;
+  }
+
+  private ready(agent: string) {
+    if (!this.afterReady) return;
+    void this.afterReady(agent).catch((e) => this.log(`genesis: ${agent}: ${errText(e)}`));
   }
 
   views(): PublicView[] {
@@ -175,6 +184,7 @@ export class IdentityService {
       s.github_id = r.github_id;
       s.ssh_public_key = cred?.ssh_public_key ?? r.ssh_signing_key;
       this.save(setStatus(s, "ready", null, this.now()));
+      this.ready(s.agent);
       this.log(`watch: ${s.agent} provisioned as ${r.login} (cleaned ${r.cleaned.unstarred} stars, ${r.cleaned.gists_deleted} gists, ${r.cleaned.signing_keys_removed} old signing keys; ${r.skipped.length} reserve accounts skipped)`);
     } catch (e) {
       const why = errText(e);
@@ -265,6 +275,7 @@ export class IdentityService {
       s.github_id = info.github_id;
       s.ssh_public_key = kp.publicKey;
       this.save(setStatus(s, "ready", prev?.status === "ready" ? "token rotated" : null, this.now()));
+      this.ready(st.agent);
       this.log(`token: ${st.agent} ready as ${info.login} (${info.token_kind}${info.scopes ? `, scopes ${info.scopes.join(" ") || "none"}` : ""})`);
       return this.view(st.agent);
     } finally {

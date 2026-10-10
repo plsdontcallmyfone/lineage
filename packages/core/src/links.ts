@@ -3,6 +3,7 @@ import { isIP } from "node:net";
 import type { Core } from "./core.ts";
 import { ApiError, bad, forbidden, notFound } from "./errors.ts";
 import { canonicalJson, signStatement, verifyStatement, type AgentKey } from "./protocol.ts";
+import { GENESIS_FILE, verifyGenesis, type GenesisFile } from "../../identity/src/genesis-proof.ts";
 
 // Verified external links (identity plan I3, 2.3; Keybase pattern). The agent signs a statement
 // `{ v: 1, kind: "lineage-link", agent, service, handle, created_at }` with purpose "link" and posts
@@ -21,8 +22,14 @@ import { canonicalJson, signStatement, verifyStatement, type AgentKey } from "./
 // stores anything; the recheck job runs from Core.tick() with a per-tick budget so external APIs
 // are never hammered. Links name an external account, never a candidate, so author-blind replay
 // (SPEC 10.7) is untouched: no candidate view links an author while it is open.
+//
+//   github-genesis  the agent's profile repository <login>/<login> holds lineage-proof.json, a
+//            statement signed with purpose "github-genesis" (docs/plans/GITHUB-GENESIS.md). Core
+//            fetches it from raw.githubusercontent.com, checks the signature against the agent's key
+//            at issued_at and that the identity service's record names the same login. Recorded with
+//            POST /v1/agents/:id/genesis { login } (no signature: Core checks everything itself).
 
-export type LinkService = "github" | "domain";
+export type LinkService = "github" | "domain" | "github-genesis";
 export type LinkStatus = "verified" | "stale" | "broken" | "revoked";
 
 export interface LinkStatement {
@@ -148,6 +155,10 @@ export interface LinksOptions {
   /** Links rechecked per tick at most. */
   perTick: number;
   timeoutMs: number;
+  /** raw file host for genesis proofs (tests point it at a mock) */
+  githubRaw: string;
+  /** the identity service's base URL (its public GET /identity/agents/:id names the agent's login); null skips that check (tests only) */
+  identityApi: string | null;
 }
 
 const envList = (v: string | undefined) => (v ?? "").split(",").map((s) => s.trim().toLowerCase()).filter(Boolean);
@@ -174,6 +185,8 @@ export class Links {
       recheckS: Number(process.env.LINEAGE_LINK_RECHECK_S ?? 3600), // TEST value; launch value TBA
       perTick: 2,
       timeoutMs: 10_000,
+      githubRaw: "https://raw.githubusercontent.com",
+      identityApi: (process.env.LINEAGE_IDENTITY ?? "http://127.0.0.1:9665").replace(/\/+$/, "") || null,
     };
     this.ensure();
   }
@@ -303,13 +316,88 @@ export class Links {
   }
 
   private async check(agent: string, service: LinkService, handle: string, proofUrl: string, want?: { statement: string; sig: string }): Promise<CheckResult & { proof?: LinkProof }> {
+    if (service === "github-genesis") return this.checkGenesis(agent, handle, want);
     const got = service === "github" ? await this.fetchGithub(handle, proofUrl) : await this.fetchDomain(handle, proofUrl);
     if (!("proofs" in got)) return { ok: false, ...got };
     return this.matchProof(agent, service, handle, got.proofs, want);
   }
 
+  /** The genesis proof in <login>/<login>: shape, agent, login, signature at issued_at, identity record. */
+  private async checkGenesis(agent: string, login: string, want?: { statement: string; sig: string }): Promise<CheckResult & { proof?: LinkProof }> {
+    const r = await this.get(`${this.opts.githubRaw}/${login}/${login}/HEAD/${GENESIS_FILE}`);
+    if ("error" in r) return { ok: false, status: "stale", detail: `GitHub did not answer: ${r.error}` };
+    if (r.status === 404) return { ok: false, status: "broken", detail: `no ${GENESIS_FILE} in ${login}/${login}` };
+    if (r.status !== 200) return { ok: false, status: "stale", detail: `GitHub answered HTTP ${r.status}` };
+    let file: GenesisFile;
+    try {
+      file = JSON.parse(r.text);
+    } catch {
+      return { ok: false, status: "broken", detail: `${GENESIS_FILE} is not JSON` };
+    }
+    const issued = typeof file?.issued_at === "number" ? file.issued_at : 0;
+    if (issued > this.c.now() / 1000 + 300) return { ok: false, status: "broken", detail: "issued_at is in the future" };
+    const key = this.c.identity.keyAt(agent, issued * 1000);
+    const v = verifyGenesis(file, { agent, login, key: key ?? null });
+    if (!v.ok) return { ok: false, status: "broken", detail: v.reason };
+    const { sig, ...statement } = v.file;
+    if (want && (canonicalJson(statement) !== want.statement || sig !== want.sig)) {
+      // a newer proof replaces the recorded one only through POST /genesis (which re-verifies it)
+      return { ok: false, status: "broken", detail: "the repository now holds a different proof than the one Core verified" };
+    }
+    if (this.opts.identityApi) {
+      const id = await this.get(`${this.opts.identityApi}/identity/agents/${agent}`, { accept: "application/json" });
+      if ("error" in id || id.status !== 200) return { ok: false, status: "stale", detail: "the identity service did not answer" };
+      let rec: { login?: string | null };
+      try {
+        rec = JSON.parse(id.text);
+      } catch {
+        return { ok: false, status: "stale", detail: "the identity service answered with something other than JSON" };
+      }
+      if ((rec.login ?? "").toLowerCase() !== login) return { ok: false, status: "broken", detail: rec.login ? `the identity service names ${rec.login.toLowerCase()} for this agent` : "the identity service has no account for this agent" };
+    }
+    return { ok: true, proof: { statement: statement as unknown as LinkStatement, sig: sig! } };
+  }
+
   // ---------------------------------------------------------------------------------------------
   // endpoints
+
+  /** POST /v1/agents/:id/genesis `{ login }`: Core fetches and verifies the genesis proof, then stores it as a link. */
+  async addGenesis(agent: string, body: unknown) {
+    this.ensure();
+    if (!this.known(agent)) throw notFound("agent");
+    const login = typeof (body as { login?: unknown })?.login === "string" ? (body as { login: string }).login.trim().toLowerCase() : "";
+    if (!GITHUB_LOGIN.test(login)) throw bad("bad_handle", "login: a GitHub login");
+    const prev = this.c.db.query<LinkRow, [string, string]>("SELECT * FROM links WHERE agent_id = ? AND service = 'github-genesis' AND handle = ?").get(agent, login);
+    // a burst of calls for a proof that just verified costs one fetch (a re-publish comes seconds later at the earliest)
+    if (prev && prev.status === "verified" && this.c.now() - prev.checked_at < 5_000) return this.view(prev);
+    const res = await this.checkGenesis(agent, login);
+    const now = this.c.now();
+    if (!res.ok) {
+      if (prev) this.c.db.query("UPDATE links SET status = ?, checked_at = ?, detail = ?, fails = fails + 1 WHERE agent_id = ? AND service = 'github-genesis' AND handle = ?").run(res.status, now, res.detail, agent, login);
+      throw new ApiError(res.status === "stale" ? 502 : 400, res.status === "stale" ? "proof_unreachable" : "proof_invalid", res.detail);
+    }
+    const url = `https://github.com/${login}/${login}/blob/HEAD/${GENESIS_FILE}`;
+    return this.c.tx(() => {
+      this.c.db
+        .query(
+          `INSERT INTO links (agent_id, service, handle, proof_url, statement, sig, status, added_at, checked_at, verified_at, detail, fails)
+           VALUES (?, 'github-genesis', ?, ?, ?, ?, 'verified', ?, ?, ?, NULL, 0)
+           ON CONFLICT(agent_id, service, handle) DO UPDATE SET proof_url = excluded.proof_url, statement = excluded.statement, sig = excluded.sig,
+             status = 'verified', checked_at = excluded.checked_at, verified_at = excluded.verified_at, detail = NULL, fails = 0`,
+        )
+        .run(agent, login, url, canonicalJson(res.proof!.statement), res.proof!.sig, now, now, now);
+      this.c.emitEvent("link.verified", { agent, service: "github-genesis", handle: login });
+      return this.row(agent, "github-genesis", login)!;
+    });
+  }
+
+  /** GET /v1/agents/:id/genesis: the agent's newest genesis proof row (any status but revoked). */
+  genesisOf(agent: string) {
+    this.ensure();
+    const r = this.c.db.query<LinkRow, [string]>("SELECT * FROM links WHERE agent_id = ? AND service = 'github-genesis' AND status != 'revoked' ORDER BY added_at DESC LIMIT 1").get(agent);
+    if (!r) throw notFound("genesis proof");
+    return this.view(r);
+  }
 
   /** POST /v1/agents/:id/links (agent-signed): `{ service, handle, proof_url? }`. Core verifies before storing. */
   async add(caller: string | null, agent: string, body: unknown) {
@@ -365,7 +453,7 @@ export class Links {
       agent: r.agent_id,
       service: r.service,
       handle: r.handle,
-      url: r.service === "github" ? `https://github.com/${r.handle}` : new URL(r.proof_url).origin,
+      url: r.service === "github" ? `https://github.com/${r.handle}` : r.service === "github-genesis" ? `https://github.com/${r.handle}/${r.handle}` : new URL(r.proof_url).origin,
       proof_url: r.proof_url,
       status: r.status,
       added_at: r.added_at,

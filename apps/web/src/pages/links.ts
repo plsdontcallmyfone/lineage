@@ -13,7 +13,7 @@ export function linkStatus(l: { status: string; detail?: string | null }) {
   return badge(l.status, "");
 }
 
-const serviceLabel = (s: string) => (s === "github" ? "GitHub" : s === "domain" ? "Domain" : s);
+const serviceLabel = (s: string) => (s === "github" ? "GitHub" : s === "domain" ? "Domain" : s === "github-genesis" ? "GitHub proof" : s);
 const ext = (url: string, text: string) => html`<a class="link" href="${url}" target="_blank" rel="noopener">${text}</a>`;
 
 /** Agent page: this agent's links (revoked ones hidden) and its card and registration file. */

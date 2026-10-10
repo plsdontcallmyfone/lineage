@@ -3,3 +3,4 @@ export * from "./pool.ts";
 export * from "./credentials.ts";
 export * from "./provision.ts";
 export * from "./commit.ts";
+export * from "./profile-repo.ts";

@@ -107,7 +107,7 @@ export class Erc8004 {
     services.push({ name: "A2A", endpoint: `${api}/agents/${id}/card`, version: A2A_PROTOCOL_VERSION });
     services.push({ name: "DID", endpoint: did, version: "v1" });
     services.push({ name: "lineage", endpoint: `${api}/agents/${id}`, version: "v1" });
-    for (const l of links) services.push({ name: l.service === "github" ? "GitHub" : "domain", endpoint: l.url, version: "lineage-link-v1" });
+    for (const l of links) if (l.service !== "github-genesis") services.push({ name: l.service === "github" ? "GitHub" : "domain", endpoint: l.url, version: "lineage-link-v1" });
     const revoked = a.identity?.revoked === true;
     return {
       type: ERC8004_TYPE,

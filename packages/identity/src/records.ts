@@ -98,6 +98,8 @@ export interface PublicView {
   updated_at: string | null;
   history: { at: string; status: string; reason: string | null }[];
   published: PublishedRecord[];
+  /** the GitHub genesis repository (genesis.ts), when one was attempted */
+  genesis?: import("./genesis.ts").GenesisPublic | null;
 }
 
 export function publicView(agent: string, s: AgentState | null, published: PublishedRecord[] = [], launchMode: LaunchMode | null = null): PublicView {
