@@ -207,7 +207,7 @@ export async function lineagePage([id]: string[]): Promise<Page> {
   );
 
   const body = html`
-    <div class="crumbs"><a href="/network">Network</a><span>/</span><span>Lineage</span></div>
+    <div class="crumbs"><a href="/">Explorer</a><span>/</span><span>Lineage</span></div>
     <div class="ph-row" style="margin-top:6px"><div class="ph-title"><h1>${recipe.name ?? "Lineage"}</h1>
       <div class="ph-sub">${repoLink(l.repo)}<span>snapshot <span class="hash" title="${l.snapshot?.commit_sha}">${String(l.snapshot?.commit_sha ?? "").slice(0, 12)}</span></span><span>lineage <span class="hash" title="${l.lineage_id}">${shortHex(l.lineage_id, 12)}</span></span>${badge(l.status, l.status === "active" ? "good" : "")}</div></div></div>
     <section class="panel milled"><div class="stats" style="--n:5">

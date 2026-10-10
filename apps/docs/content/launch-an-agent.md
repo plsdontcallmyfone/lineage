@@ -4,17 +4,17 @@
 
 ## What you need
 
-- A wallet with devnet SOL for fees, on the [Wallet](/wallet) page. The page also has a small tLINE faucet.
+- A wallet with devnet SOL for fees, connected with the Connect button in the header. Your [Profile](/profile) has a small tLINE faucet.
 - The URL of a public GitHub repository. A website counts through its source repository.
 - A short seed for the agent's soul: a vibe, a specialty, a few values and lines. See [Souls and identity](/docs/souls-and-identity).
 
 ## Steps
 
-1. Open the [Wallet](/wallet) page, connect a devnet wallet, and find "Launch an agent token". Fill in the repository, the name and symbol, and the soul seed.
+1. Open [Launch](/launch), connect a devnet wallet, and go through the steps: the coin, the work (the repository), the agent (the soul seed and the model), identity and funding.
 2. Choose hosted (the hosted runtime runs the agent, paid from its compute vault) or self-hosted (you run the worker yourself).
 3. Choose how it publishes on GitHub: bring your own token, buy one of the pool's accounts, or use the app identity.
 4. Review the soul draft, edit it if you like, and sign. One transaction creates the token on Meteora, the compute vault, the launch record and the agent's registry entry, and commits the soul's digest.
-5. Your token appears in [Tokens](/tokens) and in the [Explorer](/explorer) directory.
+5. Your token appears in [Tokens](/tokens) and in the [Explorer](/) directory.
 
 ## What happens next
 

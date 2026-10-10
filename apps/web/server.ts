@@ -6,9 +6,10 @@
 //   /api/<path>        GET proxy to <core>/v1/<path> (JSON, blobs)
 //   /live/events       SSE fan-out of Core's event stream (one upstream connection, shared)
 //   /live/recent       last N events held in memory (?limit=, ?agent=, ?candidate=)
-//   /live/spec         docs/SPEC.md as text (the Manual page renders it with live config values)
+//   /live/spec         docs/SPEC.md as text
+//   /docs, /docs/*     the docs site (apps/docs, built by scripts/docs/build.ts at startup), static, outside the app shell
 //   /assets/app.js     client bundle (Bun.build at startup; rebuilt per request with --dev)
-//   /assets/wallet.js  wallet bundle (packages/chain in the browser; loaded by the Wallet page only)
+//   /assets/wallet.js  wallet bundle (packages/chain in the browser; loaded by Launch, Profile and the token page's trade box)
 //   /chain/config      public devnet addresses (scripts/devnet/devnet.json) and the RPC's cluster
 //   /chain/rpc         POST JSON-RPC proxy to the devnet RPC (read, simulate, send; method allowlist)
 //   /chain/faucet      GET faucet state, POST {wallet} one small tLINE transfer (rate-limited, logged)
@@ -20,7 +21,13 @@
 //   /embed/lineage-explorer.js  <lineage-explorer>'s module, loaded on demand by the kit
 //   /embed/demo.html          the kit's demo page (every element, two themes)
 //   /fonts/<file>      self-hosted fonts (public/fonts, SIL OFL 1.1, licenses in public/fonts/OFL.txt)
-//   everything else    index.html (client-side routing; the dashboard's overview is /network)
+//   /network, /live, /explorer, /wallet, /spawn, /manual   302 to what replaced them (app consolidation)
+//   everything else    index.html (client-side routing; the Explorer is /)
+//
+// --upstream <site> (testing a local build against a deployed site): the writes this server would
+// otherwise handle or route locally (/souls/*, /social/*, /runtime/*, /identity/*, /chain/faucet) are
+// forwarded to that site with its own Origin, so a local page drives the site's soul drafter, runtime,
+// identity service and faucet. Combine with --core <site> and --market <site>.
 //
 // The server never holds a user's key: wallets sign in the browser. The only key it loads is the
 // devnet faucet's own (~/.config/lineage/devnet/faucet.json).
@@ -46,6 +53,8 @@ const DEV = process.argv.includes("--dev");
 const MARKET = (arg("market", process.env.LINEAGE_MARKET ?? "http://127.0.0.1:9668") ?? "").replace(/\/+$/, "");
 // the GitHub identity service (packages/identity); on the site Caddy routes /identity/* to it directly
 const IDENTITY = (arg("identity", process.env.LINEAGE_IDENTITY ?? "http://127.0.0.1:9665") ?? "").replace(/\/+$/, "");
+const UPSTREAM = (arg("upstream", "") ?? "").replace(/\/+$/, "");
+const RUNTIME = (arg("runtime", process.env.LINEAGE_RUNTIME ?? "http://127.0.0.1:9667") ?? "").replace(/\/+$/, "");
 const DIR = import.meta.dir;
 
 try {
@@ -77,6 +86,28 @@ async function buildWallet(): Promise<string> {
   return await out.outputs[0]!.text();
 }
 walletBundle = await buildWallet();
+
+// docs site (apps/docs): static files built in memory, served at /docs outside the app shell
+const { buildDocs, docsLookup } = await import("../../scripts/docs/build.ts");
+let docs = await buildDocs({ base: "/docs" });
+async function docsRoute(p: string): Promise<Response> {
+  if (DEV) docs = await buildDocs({ base: "/docs" });
+  if (p === "/docs/") return Response.redirect("/docs", 301);
+  const f = docsLookup(docs, p.slice("/docs".length));
+  if (!f) return new Response(docs.get("index.html") ? "No such docs page. The docs start at /docs." : "not found", { status: 404, headers: { "content-type": "text/plain; charset=utf-8" } });
+  const page = f.type.startsWith("text/html");
+  return new Response(f.body as BodyInit, { headers: page ? PAGE_HEADERS : { "content-type": f.type, "cache-control": DEV ? "no-store" : "public, max-age=300" } });
+}
+
+/** --upstream: forward one write to the deployed site, as that site's own page would send it. */
+async function toUpstream(req: Request, url: URL): Promise<Response> {
+  const body = req.method === "GET" || req.method === "HEAD" ? undefined : await req.arrayBuffer();
+  const r = await fetch(`${UPSTREAM}${url.pathname}${url.search}`, { method: req.method, headers: { "content-type": req.headers.get("content-type") ?? "application/json", accept: "application/json", origin: UPSTREAM }, body }).catch(() => null);
+  if (!r) return Response.json({ error: "upstream_unreachable", message: `${UPSTREAM} did not answer` }, { status: 502 });
+  return new Response(r.body, { status: r.status, headers: { "content-type": r.headers.get("content-type") ?? "application/json", "cache-control": "no-store" } });
+}
+
+const REDIRECTS: Record<string, string> = { "/network": "/", "/live": "/", "/explorer": "/", "/wallet": "/profile", "/spawn": "/launch", "/manual": "/docs" };
 
 const FONT_TYPES: Record<string, string> = { woff2: "font/woff2", txt: "text/plain; charset=utf-8" };
 
@@ -341,7 +372,7 @@ const indexHtml = () => Bun.file(join(DIR, "public/index.html"));
 // Page security headers (audit A2), the same policy Caddy sets on the site (scripts/deploy/caddy/Caddyfile.tmpl);
 // the hash is the inline theme script in public/index.html (gate.test.ts checks both stay in step).
 const PAGE_CSP =
-  "default-src 'self'; script-src 'self' 'sha256-63H06+4kOPnJGg/D6siH2d7URozVzLhxtBaUeqTsuPE='; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: blob: https:; connect-src 'self' https://api.github.com; object-src 'none'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'";
+  "default-src 'self'; script-src 'self' 'sha256-63H06+4kOPnJGg/D6siH2d7URozVzLhxtBaUeqTsuPE='; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: blob: https:; media-src 'self' blob:; connect-src 'self' https://api.github.com; object-src 'none'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'";
 const PAGE_HEADERS = { "content-type": "text/html; charset=utf-8", "content-security-policy": PAGE_CSP, "x-content-type-options": "nosniff", "x-frame-options": "DENY", "referrer-policy": "strict-origin-when-cross-origin" };
 
 const server = Bun.serve({
@@ -351,7 +382,13 @@ const server = Bun.serve({
   async fetch(req, srv) {
     const url = new URL(req.url);
     const p = url.pathname;
+    if (UPSTREAM && (/^\/(souls|social|runtime|identity)\//.test(p) || p === "/chain/faucet")) return toUpstream(req, url);
     if (p.startsWith("/chain/")) return chainRoute(req, p);
+    if (p.startsWith("/runtime/bind/")) {
+      // local development: the hosted runtime's bind endpoint (on the site the gate routes it)
+      const r = await fetch(`${RUNTIME}${p}`, { method: req.method, headers: { "content-type": "application/json" }, body: req.method === "POST" ? await req.text() : undefined }).catch(() => null);
+      return r ? new Response(r.body, { status: r.status, headers: { "content-type": r.headers.get("content-type") ?? "application/json", "cache-control": "no-store" } }) : Response.json({ error: "runtime_unavailable", message: "the hosted runtime is not running here" }, { status: 503 });
+    }
     if (p.startsWith("/identity/")) {
       // local development only: passed through unchanged (bodies may hold a token; never logged)
       const r = await fetch(`${IDENTITY}${p}${url.search}`, { method: req.method, headers: { "content-type": req.headers.get("content-type") ?? "application/json" }, body: req.method === "POST" ? await req.text() : undefined }).catch(() => null);
@@ -389,6 +426,9 @@ const server = Bun.serve({
     }
     if (req.method !== "GET" && req.method !== "HEAD") return new Response("read-only", { status: 405 });
     if (p.startsWith("/market/")) return marketProxy(p, url.search);
+    if (p === "/docs" || p.startsWith("/docs/")) return docsRoute(p);
+    const moved = REDIRECTS[p.replace(/\/+$/, "")];
+    if (moved) return new Response(null, { status: 302, headers: { location: moved + url.search } });
     if (p === "/embed" || p.startsWith("/embed/")) return embedRoute(p);
     if (p.startsWith("/api/")) {
       const rest = p.slice(5);

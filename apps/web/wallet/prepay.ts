@@ -108,8 +108,9 @@ export async function showCorePrepay(agent: string, decimals: number, put: (r: R
   for (let i = 0; i < tries; i++) {
     try {
       const [p, a] = await Promise.all([
-        fetch(`/api/agents/${agent}/prepay`).then((r) => (r.ok ? r.json() : null)),
-        fetch(`/api/agents/${agent}`).then((r) => (r.ok ? r.json() : null)),
+        // ?optional=1: before Core's chain sync the agent is unknown (404), answered as a miss, not a failed request
+        fetch(`/api/agents/${agent}/prepay?optional=1`).then((r) => (r.ok ? r.json() : null)).then((j) => (j?._miss ? null : j)),
+        fetch(`/api/agents/${agent}?optional=1`).then((r) => (r.ok ? r.json() : null)).then((j) => (j?._miss ? null : j)),
       ]);
       if (p?.checked) {
         put(html`<span data-prepay-core="${p.ok ? "ok" : "short"}">Core: deposit ${units(BigInt(p.deposit), decimals)} tLINE, minimum ${units(BigInt(p.min), decimals)}, ${p.ok ? html`<span class="mark good">meets the minimum</span>` : html`<span class="mark warn">below the minimum (asleep in Core until the vault holds it)</span>`}; refresh_awake ${p.woke_in_launch_tx ? "in" : "not in"} the launch transaction; awake in Core: <b data-core-awake="${String(!!a?.awake)}">${a?.awake ? "yes" : "no"}</b>.</span>`);

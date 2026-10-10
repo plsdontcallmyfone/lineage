@@ -1,29 +1,26 @@
 import { ApiError, loadConfig, loadLineageNames, recent, state, type Ev } from "./api.ts";
 import { mountCharts } from "./chart.ts";
-import { feedItem } from "./feed.ts";
 import { ago, dur } from "./fmt.ts";
 import { esc, html } from "./html.ts";
 import { live, MAX_FEED } from "./live.ts";
+import { closeEco, ecoHtml, toggleEco } from "./eco.ts";
+import { connectHtml, wireConnect } from "./connect.ts";
 import { agentPage, agentsPage } from "./pages/agents.ts";
 import { agentProfilePage } from "./pages/agent-profile.ts";
 import { feedPage, followingPage } from "./pages/feed.ts";
 import { leaderboardPage } from "./pages/leaderboard.ts";
 import { candidatePage } from "./pages/candidate.ts";
-import { docsPage } from "./pages/docs.ts";
 import { epochsPage } from "./pages/epochs.ts";
 import { explorerPage } from "./pages/explorer.ts";
 import { generationPage } from "./pages/generation.ts";
 import { lineagePage } from "./pages/lineage.ts";
-import { livePage } from "./pages/live.ts";
 import { sessionPage, sessionsPage } from "./pages/session.ts";
 import { tokenPage } from "./pages/token.ts";
 import { tokensPage } from "./pages/tokens.ts";
 import { tradingAgentPage, tradingPage } from "./pages/trading.ts";
 import { machinesPage } from "./pages/machines.ts";
-import { manualPage } from "./pages/manual.ts";
-import { onLaunchInput, spawnPage } from "./pages/spawn.ts";
-import { walletPage } from "./pages/wallet.ts";
-import { feedAccepts, feedBody, overview } from "./pages/overview.ts";
+import { launchPage } from "./pages/launch.ts";
+import { profilePage } from "./pages/profile.ts";
 import type { Page } from "./pages/types.ts";
 import { icon, logo } from "./ui.ts";
 
@@ -31,34 +28,33 @@ import { icon, logo } from "./ui.ts";
 // routing
 
 type Handler = (params: string[]) => Promise<Page>;
+// The header has three destinations (Explorer, Launch, Profile); everything else is a deep link from
+// them or an entry of the Eco sidebar. The third column is the header item a page lights up.
 const routes: [RegExp, Handler, string][] = [
-  [/^\/(?:network)?$/, overview, "/network"],
-  [/^\/lineages\/([0-9a-f]{64})$/, lineagePage, "/network"],
-  [/^\/generations\/([0-9a-f]{64})$/, generationPage, "/network"],
-  [/^\/candidates\/([0-9a-f]{64})$/, candidatePage, "/network"],
-  [/^\/agents$/, agentsPage, "/agents"],
-  [/^\/agents\/([1-9A-HJ-NP-Za-km-z]{32,44})$/, agentPage, "/agents"],
-  [/^\/agents\/([1-9A-HJ-NP-Za-km-z]{32,44})\/profile$/, agentProfilePage, "/agents"],
-  [/^\/leaderboard$/, leaderboardPage, "/leaderboard"],
-  [/^\/feed$/, feedPage, "/feed"],
-  [/^\/following$/, followingPage, "/feed"],
-  [/^\/epochs$/, epochsPage, "/epochs"],
-  [/^\/epochs\/(\d+)$/, epochsPage, "/epochs"],
-  [/^\/live$/, livePage, "/live"],
-  [/^\/sessions$/, sessionsPage, "/live"],
-  [/^\/(?:sessions|live\/agent)\/([0-9a-f]{64})$/, sessionPage, "/live"],
-  [/^\/tokens$/, tokensPage, "/tokens"],
-  [/^\/tokens\/([1-9A-HJ-NP-Za-km-z]{32,44})$/, tokenPage, "/tokens"],
-  [/^\/trading$/, tradingPage, "/tokens"],
-  [/^\/trading\/([1-9A-HJ-NP-Za-km-z]{32,44})$/, tradingAgentPage, "/tokens"],
-  [/^\/machines$/, machinesPage, "/machines"],
-  [/^\/spawn$/, spawnPage, "/spawn"],
-  [/^\/wallet$/, walletPage, "/wallet"],
-  [/^\/manual$/, manualPage, "/manual"],
-  [/^\/explorer$/, explorerPage, "/explorer"],
-  [/^\/docs$/, docsPage, "/docs"],
-  [/^\/docs\/([a-z0-9-]+)$/, docsPage, "/docs"],
+  [/^\/$/, explorerPage, "/"],
+  [/^\/launch$/, launchPage, "/launch"],
+  [/^\/profile$/, profilePage, "/profile"],
+  [/^\/lineages\/([0-9a-f]{64})$/, lineagePage, "/"],
+  [/^\/generations\/([0-9a-f]{64})$/, generationPage, "/"],
+  [/^\/candidates\/([0-9a-f]{64})$/, candidatePage, "/"],
+  [/^\/agents$/, agentsPage, ""],
+  [/^\/agents\/([1-9A-HJ-NP-Za-km-z]{32,44})$/, agentPage, "/"],
+  [/^\/agents\/([1-9A-HJ-NP-Za-km-z]{32,44})\/profile$/, agentProfilePage, "/"],
+  [/^\/leaderboard$/, leaderboardPage, ""],
+  [/^\/feed$/, feedPage, ""],
+  [/^\/following$/, followingPage, ""],
+  [/^\/epochs$/, epochsPage, ""],
+  [/^\/epochs\/(\d+)$/, epochsPage, ""],
+  [/^\/sessions$/, sessionsPage, "/"],
+  [/^\/(?:sessions|live\/agent)\/([0-9a-f]{64})$/, sessionPage, "/"],
+  [/^\/tokens$/, tokensPage, "/"],
+  [/^\/tokens\/([1-9A-HJ-NP-Za-km-z]{32,44})$/, tokenPage, "/"],
+  [/^\/trading$/, tradingPage, ""],
+  [/^\/trading\/([1-9A-HJ-NP-Za-km-z]{32,44})$/, tradingAgentPage, ""],
+  [/^\/machines$/, machinesPage, ""],
 ];
+/** Removed pages (app consolidation): each goes to what replaced it. The server answers the same with a 302. */
+export const REDIRECTS: Record<string, string> = { "/network": "/", "/live": "/", "/explorer": "/", "/wallet": "/profile", "/spawn": "/launch", "/manual": "/docs" };
 /** Selected tab per [data-tabs] group, kept across background re-renders. */
 const tabState = new Map<string, string>();
 let pollTimer: ReturnType<typeof setInterval> | null = null;
@@ -72,28 +68,21 @@ function shell() {
   app.innerHTML = html`<header class="top"><div class="top-in">
       <a class="brand" href="/">${logo}<span>Lineage</span><span class="ph">placeholder name</span></a>
       <nav class="nav" aria-label="Main">
-        <a href="/network" data-nav="/network">Network</a>
-        <a href="/live" data-nav="/live">Live</a>
-        <a href="/machines" data-nav="/machines">Machines</a>
-        <a href="/agents" data-nav="/agents">Agents</a>
-        <a href="/leaderboard" data-nav="/leaderboard">Leaderboard</a>
-        <a href="/feed" data-nav="/feed">Feed</a>
-        <a href="/tokens" data-nav="/tokens">Tokens</a>
-        <a href="/epochs" data-nav="/epochs">Epochs</a>
-        <a href="/spawn" data-nav="/spawn">Spawn</a>
-        <a href="/wallet" data-nav="/wallet">Wallet</a>
-        <a href="/explorer" data-nav="/explorer">Explorer</a>
-        <a href="/docs" data-nav="/docs">Docs</a>
-        <a href="/manual" data-nav="/manual">Manual</a>
+        <a href="/" data-nav="/">Explorer</a>
+        <a href="/launch" data-nav="/launch">Launch</a>
+        <a href="/profile" data-nav="/profile">Profile</a>
       </nav>
       <div class="top-right">
-        <span class="live" id="live" data-s="${live.upstream}" title="Core event stream"><i></i><span id="live-t">connecting</span></span>
+        <button type="button" class="eco-btn" id="eco-open" aria-expanded="false" aria-controls="eco"><i class="eco-dot" id="live" data-s="${live.upstream}" title="Core event stream"></i>Eco</button>
+        ${connectHtml()}
         <button class="iconbtn" id="theme" type="button" aria-label="Toggle colour theme">${icon.moon}</button>
       </div>
     </div></header>
     <main id="main" aria-live="polite"></main>
-    <footer class="foot"><span>Read-only view of Core. Every figure is read from Core; values Core does not hold show as TBA.</span><span>Token amounts in $LINE (placeholder), formatted with token_decimals from <span class="num">GET /v1/config</span>.</span><span id="core-url"></span></footer>`.s;
+    ${ecoHtml()}
+    <footer class="foot"><span>Every figure is read from Core, the market indexer or devnet; values none of them holds show as TBA.</span><span>Token amounts in $LINE (placeholder), formatted with token_decimals from <span class="num">GET /v1/config</span>.</span><span id="core-url"></span></footer>`.s;
   updateThemeIcon();
+  wireConnect(document.getElementById("cn")!);
 }
 
 function setNav(section: string) {
@@ -108,17 +97,25 @@ function errorView(e: unknown) {
   if (err.code === "core_unreachable" || err.status === 502)
     return html`<div class="panel errorbox"><h1>Core is not answering</h1><p>${err.message}</p>
       <p>Start Core and reload: <code>bun packages/core/src/main.ts --port 9660 --admin-key &lt;path&gt;</code>, or point the dashboard elsewhere with <code>bun apps/web/server.ts --core &lt;url&gt;</code>.</p></div>`;
-  if (err.status === 404) return html`<div class="panel errorbox"><h1>Not found</h1><p>Core has no record with this id (${err.code}: ${err.message}).</p><p><a class="link" href="/network">Back to the network overview</a></p></div>`;
+  if (err.status === 404) return html`<div class="panel errorbox"><h1>Not found</h1><p>Core has no record with this id (${err.code}: ${err.message}).</p><p><a class="link" href="/">Back to the explorer</a></p></div>`;
   return html`<div class="panel errorbox"><h1>Could not load this page</h1><p>${err.code}: ${err.message}</p></div>`;
 }
 
 async function render(opts: { soft?: boolean } = {}) {
   const path = location.pathname.replace(/\/+$/, "") || "/";
+  const to = REDIRECTS[path];
+  if (to) {
+    if (to === "/docs") return location.replace(to);
+    history.replaceState(null, "", to + location.search + location.hash);
+    return render(opts);
+  }
   const main = document.getElementById("main")!;
   const seq = ++renderSeq;
   const match = routes.map(([re, h, nav]) => ({ m: re.exec(path), h, nav })).find((x) => x.m);
   if (!match) {
-    main.innerHTML = html`<div class="panel errorbox"><h1>No such page</h1><p><a class="link" href="/network">Back to the network overview</a></p></div>`.s;
+    setNav("");
+    document.title = "No such page | Lineage";
+    main.innerHTML = html`<div class="panel errorbox"><h1>No such page</h1><p><a class="link" href="/">Back to the explorer</a></p></div>`.s;
     return;
   }
   setNav(match.nav);
@@ -129,7 +126,7 @@ async function render(opts: { soft?: boolean } = {}) {
     const keep = saveUi(main);
     main.innerHTML = page.body.s;
     current = page;
-    document.title = page.title === "Network" ? "Lineage Network" : `${page.title} | Lineage`;
+    document.title = page.title === "Explorer" ? "Lineage Explorer" : `${page.title} | Lineage`;
     restoreUi(main, keep);
     restoreTabs(main);
     mountCharts(main);
@@ -208,10 +205,13 @@ function scheduleRefresh() {
 
 function setLive(s: string) {
   live.upstream = s;
-  const el = document.getElementById("live");
-  const t = document.getElementById("live-t");
-  if (el) el.dataset.s = s;
-  if (t) t.textContent = s === "open" ? "Live" : s === "down" ? "Core offline" : "Connecting";
+  const text = s === "open" ? "Live" : s === "down" ? "Core offline" : "Connecting";
+  for (const el of document.querySelectorAll<HTMLElement>("#live, #eco-live")) {
+    el.dataset.s = s;
+    el.title = `Core event stream: ${text}`;
+  }
+  const t = document.getElementById("eco-live-t");
+  if (t) t.textContent = text;
 }
 
 function onEvent(e: Ev) {
@@ -220,15 +220,8 @@ function onEvent(e: Ev) {
   live.events.unshift(e);
   if (live.events.length > MAX_FEED) live.events.length = MAX_FEED;
   if (e.type === "lineage.created" || e.type === "recipe.added") loadLineageNames(true).catch(() => {});
-  const feed = document.getElementById("feed");
-  if (feed && feedAccepts(e)) {
-    if (feed.querySelector(".empty")) feed.innerHTML = feedBody().s;
-    else {
-      feed.insertAdjacentHTML("afterbegin", feedItem(e, true).s);
-      const items = feed.querySelectorAll(".feed-item");
-      for (let i = 150; i < items.length; i++) items[i]!.remove();
-    }
-  }
+  // components that keep their own state (the token page's commits panel) listen here
+  window.dispatchEvent(new CustomEvent("lineage:event", { detail: e }));
   if (current?.refreshOn?.(e)) scheduleRefresh();
 }
 
@@ -259,8 +252,6 @@ async function connect() {
     // Core was replaced (new data dir): drop held events and reload the view
     live.events.length = 0;
     live.lastId = 0;
-    const feed = document.getElementById("feed");
-    if (feed) feed.innerHTML = feedBody().s;
     render({ soft: true });
   });
   es.onerror = () => setLive("down");
@@ -314,20 +305,16 @@ document.addEventListener("click", (ev) => {
     );
     return;
   }
-  const mode = t.closest<HTMLElement>("[data-feed-mode]");
-  if (mode) {
-    live.mode = mode.dataset.feedMode as "key" | "all";
-    for (const b of document.querySelectorAll<HTMLElement>("[data-feed-mode]")) b.setAttribute("aria-pressed", String(b.dataset.feedMode === live.mode));
-    const feed = document.getElementById("feed");
-    if (feed) feed.innerHTML = feedBody().s;
-    return;
-  }
+  if (t.closest("#eco-open")) return toggleEco();
+  if (t.closest("[data-eco-close]")) return closeEco();
   if (ev.defaultPrevented || ev.button !== 0 || ev.metaKey || ev.ctrlKey || ev.shiftKey || ev.altKey) return;
   const a = t.closest<HTMLAnchorElement>("a[href]");
   if (a) {
     const url = new URL(a.href, location.href);
-    if (url.origin === location.origin && !a.target && !url.pathname.startsWith("/api/")) {
+    // /docs is a separate static site (apps/docs): a full page load, outside the app shell
+    if (url.origin === location.origin && !a.target && !url.pathname.startsWith("/api/") && !/^\/(docs|embed|assets)(\/|$)/.test(url.pathname)) {
       ev.preventDefault();
+      if (a.closest("#eco")) closeEco();
       if (url.pathname !== location.pathname) navigate(url.pathname + url.hash);
       else if (url.hash) {
         history.replaceState(null, "", url.hash);
@@ -362,16 +349,8 @@ document.addEventListener("mousemove", (ev) => {
 
 setInterval(tickTimes, 1000);
 
-document.addEventListener("input", (ev) => {
-  const form = (ev.target as HTMLElement).closest?.<HTMLFormElement>("form[data-launch-form]");
-  if (form) onLaunchInput(form);
-});
-document.addEventListener("change", (ev) => {
-  const form = (ev.target as HTMLElement).closest?.<HTMLFormElement>("form[data-launch-form]");
-  if (form) onLaunchInput(form);
-});
-document.addEventListener("submit", (ev) => {
-  if ((ev.target as HTMLElement).matches?.("form[data-launch-form]")) ev.preventDefault();
+document.addEventListener("keydown", (ev) => {
+  if (ev.key === "Escape") closeEco();
 });
 
 let rz: ReturnType<typeof setTimeout> | null = null;

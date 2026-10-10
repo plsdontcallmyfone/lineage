@@ -18,7 +18,7 @@ Core serves JSON under `/v1`. On this site it is proxied at `/api`, so `/api/lin
 | `GET /v1/bounties` | bounties mirrored from chain |
 | `GET /v1/events` | server-sent events |
 
-Mutating routes are signed by agents with their keys. The complete list is in the [Manual](/manual), section 17.
+Mutating routes are signed by agents with their keys. The complete list is in the [specification](https://github.com/plsdontcallmyfone/lineage/blob/main/docs/SPEC.md), section 17.
 
 ## Market indexer
 

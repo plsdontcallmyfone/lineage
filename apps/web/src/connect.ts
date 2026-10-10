@@ -1,0 +1,113 @@
+import { connectWallet, disconnectWallet, discovered, legacyOnly, onSession, onWallets, restoreSession, session, startDiscovery } from "../wallet/standard.ts";
+import { esc, html } from "./html.ts";
+import { icon } from "./ui.ts";
+
+// The header's Connect button (docs/plans/APP-CONSOLIDATION.md): Wallet Standard (Phantom, Solflare,
+// Backpack) through wallet/standard.ts, whose session every page shares. Disconnected, it connects
+// the only wallet at once or offers a menu of the wallets found; connected, it shows the short
+// address and a menu: Profile, Copy address, Disconnect. The choice persists across pages and
+// reloads (a silent reconnect on load). Nothing here signs anything.
+
+const short = (a: string) => `${a.slice(0, 4)}…${a.slice(-4)}`;
+
+export function connectHtml() {
+  return html`<div class="cn" id="cn"><button type="button" class="cn-btn" id="cn-btn" aria-haspopup="menu" aria-expanded="false">Connect</button><div class="cn-menu" id="cn-menu" role="menu" hidden></div></div>`;
+}
+
+let root: HTMLElement | null = null;
+
+export function wireConnect(el: HTMLElement) {
+  root = el;
+  startDiscovery();
+  onSession(paint);
+  onWallets(paint);
+  restoreSession();
+  paint();
+  el.addEventListener("click", onClick);
+  document.addEventListener("click", (ev) => {
+    if (root && !root.contains(ev.target as Node)) setMenu(false);
+  });
+  document.addEventListener("keydown", (ev) => {
+    if (ev.key === "Escape") setMenu(false);
+  });
+}
+
+function setMenu(on: boolean) {
+  const m = root?.querySelector<HTMLElement>("#cn-menu");
+  const b = root?.querySelector<HTMLElement>("#cn-btn");
+  if (!m || !b) return;
+  if (on) menu();
+  m.hidden = !on;
+  b.setAttribute("aria-expanded", String(on));
+}
+
+function paint() {
+  const b = root?.querySelector<HTMLElement>("#cn-btn");
+  if (!b) return;
+  const s = session();
+  if (s.account) {
+    b.innerHTML = html`${s.wallet?.icon ? html`<img src="${s.wallet.icon}" alt="" width="16" height="16">` : ""}<span class="num">${short(s.account.address)}</span>`.s;
+    b.classList.add("on");
+    b.title = `${s.wallet?.name ?? "Wallet"} ${s.account.address}`;
+  } else {
+    b.textContent = s.restoring ? "Connecting…" : "Connect";
+    b.classList.remove("on");
+    b.title = "Connect a Wallet Standard wallet (devnet)";
+  }
+  const m = root?.querySelector<HTMLElement>("#cn-menu");
+  if (m && !m.hidden) menu();
+}
+
+function menu() {
+  const m = root?.querySelector<HTMLElement>("#cn-menu");
+  if (!m) return;
+  const s = session();
+  if (s.account) {
+    m.innerHTML = html`<div class="cn-who"><span class="eyebrow">${s.wallet?.name ?? "Wallet"}, devnet</span><span class="num" title="${s.account.address}">${short(s.account.address)}</span></div>
+      <a role="menuitem" href="/profile" data-cn="profile">${icon.agent} Profile</a>
+      <button type="button" role="menuitem" data-cn="copy">${icon.copy} Copy address</button>
+      <button type="button" role="menuitem" data-cn="disconnect">${icon.x} Disconnect</button>`.s;
+    return;
+  }
+  const ws = discovered();
+  const legacy = legacyOnly();
+  m.innerHTML = html`<div class="cn-who"><span class="eyebrow">Connect a wallet</span><span class="dim">Wallet Standard, devnet only</span></div>
+    ${ws.length
+      ? ws.map((w) => html`<button type="button" role="menuitem" data-cn="connect" data-name="${w.name}"><img src="${w.icon}" alt="" width="16" height="16"> ${w.name}</button>`)
+      : html`<div class="cn-none">No Wallet Standard wallet in this browser. Install <a class="link" href="https://phantom.com" target="_blank" rel="noopener">Phantom</a>, <a class="link" href="https://solflare.com" target="_blank" rel="noopener">Solflare</a> or <a class="link" href="https://backpack.app" target="_blank" rel="noopener">Backpack</a> and reload.</div>`}
+    ${legacy.length ? html`<div class="cn-none">${legacy.join(", ")} found only as a legacy provider; update the extension.</div>` : ""}
+    ${s.error ? html`<div class="cn-none cn-err">${esc(s.error)}</div>` : ""}`.s;
+}
+
+async function onClick(ev: Event) {
+  const t = ev.target as HTMLElement;
+  if (t.closest("#cn-btn")) {
+    const s = session();
+    const ws = discovered();
+    // one wallet and nothing connected: connect at once, no menu
+    if (!s.account && ws.length === 1) {
+      const acc = await connectWallet(ws[0]!.name);
+      if (!acc) setMenu(true);
+      return;
+    }
+    const m = root?.querySelector<HTMLElement>("#cn-menu");
+    setMenu(!!m?.hidden);
+    return;
+  }
+  const item = t.closest<HTMLElement>("[data-cn]");
+  if (!item) return;
+  const act = item.dataset.cn;
+  if (act === "connect") {
+    const acc = await connectWallet(item.dataset.name);
+    if (acc) setMenu(false);
+    else menu();
+  } else if (act === "copy") {
+    const a = session().account?.address;
+    if (a) await navigator.clipboard?.writeText(a).catch(() => {});
+    item.innerHTML = html`${icon.check} Copied`.s;
+    setTimeout(() => setMenu(false), 700);
+  } else if (act === "disconnect") {
+    await disconnectWallet();
+    setMenu(false);
+  } else if (act === "profile") setMenu(false);
+}

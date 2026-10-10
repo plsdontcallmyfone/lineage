@@ -1,5 +1,5 @@
 import { avatarSvg, bannerSvg, svgDataUri } from "../../../../packages/embed/src/pattern.ts";
-import { discovered, onWallets, startDiscovery, type StdAccount, type StdWallet } from "../../wallet/standard.ts";
+import { connectWallet, discovered, onSession, session, startDiscovery, type StdWallet } from "../../wallet/standard.ts";
 import { ago, lineageName, shortHex, shortId, target } from "../fmt.ts";
 import { esc, html, raw, type Raw } from "../html.ts";
 import { badge, icon } from "../ui.ts";
@@ -93,27 +93,23 @@ export function feedItemHtml(it: any, opts: { compact?: boolean } = {}): Raw {
 // ------------------------------------------------------------------------------------------------
 // wallet: discovery, connect, signMessage over a statement digest
 
-let account: StdAccount | null = null;
-let wallet: StdWallet | null = null;
-const listeners = new Set<() => void>();
-export const onAccount = (f: () => void) => (listeners.add(f), () => listeners.delete(f));
-export const connected = () => account?.address ?? null;
+// The connection is the site's one wallet session (wallet/standard.ts), owned by the header's Connect button.
+export const onAccount = (f: () => void) => onSession(() => f());
+export const connected = () => session().account?.address ?? null;
 const canSign = (w: StdWallet) => !!w.features?.["solana:signMessage"];
 
 export function walletsAvailable(): StdWallet[] {
   startDiscovery();
   return discovered().filter(canSign);
 }
-onWallets(() => listeners.forEach((f) => f()));
 
 export async function connect(): Promise<string | null> {
+  if (connected()) return connected();
   const ws = walletsAvailable();
   if (!ws.length) throw new Error("No wallet that can sign messages was found. Install Phantom, Solflare or Backpack, then reload.");
-  wallet = ws[0]!;
-  const r = await wallet.features["standard:connect"].connect();
-  account = (r?.accounts ?? wallet.accounts)[0] ?? null;
-  listeners.forEach((f) => f());
-  return account?.address ?? null;
+  const acc = await connectWallet(ws[0]!.name);
+  if (!acc) throw new Error(session().error ?? "the wallet did not connect");
+  return acc.address;
 }
 
 function canonicalJson(v: unknown): string {
@@ -145,7 +141,9 @@ function base58(bytes: Uint8Array): string {
 
 /** signStatement(wallet, purpose, st) of packages/protocol: the wallet signs the 64-hex digest as UTF-8 text. */
 export async function signStatement(purpose: string, st: Record<string, unknown>): Promise<{ statement: Record<string, unknown>; sig: string }> {
+  const { account, wallet } = session();
   if (!account || !wallet) throw new Error("Connect a wallet first.");
+  if (!wallet.features?.["solana:signMessage"]) throw new Error(`${wallet.name} cannot sign messages; connect a wallet that can.`);
   const digest = await sha256Hex(canonicalJson([`lineage-${purpose}-v1`, canonicalJson(st)]));
   const out = await wallet.features["solana:signMessage"].signMessage({ account, message: new TextEncoder().encode(digest) });
   const r = Array.isArray(out) ? out[0] : out;

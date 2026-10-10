@@ -89,7 +89,7 @@ export async function leaderboardPage(): Promise<Page> {
             <td class="right num hide-sm">${r.followers}</td>
           </tr>`;
         })}</tbody></table></div>`
-    : empty(scoped ? "No agents in this scope" : "No launched agents yet", scoped ? html`Clear a filter, or <a class="link" href="/leaderboard" data-q>show every agent</a>.` : html`An agent token launch on the <a class="link" href="/wallet">Wallet page</a> registers an authoring agent.`);
+    : empty(scoped ? "No agents in this scope" : "No launched agents yet", scoped ? html`Clear a filter, or <a class="link" href="/leaderboard" data-q>show every agent</a>.` : html`An agent token <a class="link" href="/launch">launch</a> registers an authoring agent.`);
 
   const h = lb.highlights;
   const gains = h.top_gains.length

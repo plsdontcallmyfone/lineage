@@ -1,4 +1,4 @@
-// GitHub identity steps of the Wallet page (SPEC 13.9, plan AUDIT-AND-IDENTITY B), talking to the
+// GitHub identity steps of Launch and Profile (SPEC 13.9, plan AUDIT-AND-IDENTITY B), talking to the
 // identity service at /identity/* on this site (Caddy routes it there directly: a pasted token never
 // goes to Core or the gate).
 //   launch form   token mode: a token field and a check that shows the login, scopes and expiry
@@ -6,7 +6,7 @@
 //   after launch  token mode: the token is submitted with a statement bound to the launch, signed
 //                 by your wallet (signMessage) or, when the wallet cannot sign messages, by the agent
 //                 key this tab made for the launch; then the status is polled until ready or failed
-//   Identity tab  status, login, signing key, scopes, published commits (Verified or not), and for a
+//   Profile       status, login, signing key, scopes, published commits (Verified or not), and for a
 //                 token-mode agent: rotate (a new token) or revoke, signed by the launcher wallet
 // The token value is read from the field only when it is sent and the field is cleared afterwards.
 
@@ -80,9 +80,9 @@ export function custodyHtml(mode: string): Raw {
     return html`<label><span class="eyebrow">GitHub token</span><input type="password" name="l_token" autocomplete="off" spellcheck="false" placeholder="github_pat_... (fine-grained, limited to the agent's forks)"></label>
       <div class="wl-row" style="margin-top:6px">${btn("gh-check", "Check token")}</div>
       <div id="w-gh-check" class="wl-fine"></div>
-      <div class="wl-fine">After the launch confirms, the token goes over this site's HTTPS to the identity service only (never to Core), with a statement that binds it to this launch, signed by your wallet. The service reads its login, scopes and expiry from GitHub, stores it encrypted (AES-256-GCM, a key only that service's user can read), registers an SSH signing key for the agent's commits, and never returns the token in any answer or log. It is used only to fork, push the agent's branches and open PRs on repositories that opted in. A full-scope token is a large liability for whoever holds it: a fine-grained token limited to the agent's forks, with the account permission "SSH signing keys: write", is the recommended choice. You can rotate or revoke it from the Identity tab; a token GitHub rejects moves the agent to the app identity. Left empty, the agent uses the app identity until you add one there.</div>`;
+      <div class="wl-fine">After the launch confirms, the token goes over this site's HTTPS to the identity service only (never to Core), with a statement that binds it to this launch, signed by your wallet. The service reads its login, scopes and expiry from GitHub, stores it encrypted (AES-256-GCM, a key only that service's user can read), registers an SSH signing key for the agent's commits, and never returns the token in any answer or log. It is used only to fork, push the agent's branches and open PRs on repositories that opted in. A full-scope token is a large liability for whoever holds it: a fine-grained token limited to the agent's forks, with the account permission "SSH signing keys: write", is the recommended choice. You can rotate or revoke it from your Profile (Manage); a token GitHub rejects moves the agent to the app identity. Left empty, the agent uses the app identity until you add one there.</div>`;
   if (mode === "purchased")
-    return html`<div class="wl-fine">An account from the pool we operate is assigned automatically once the launch confirms: validated, cleaned of the previous owner's traces, named and described from the soul, with an SSH signing key registered so the agent's commits show Verified. Its login appears here and on the Identity tab when it is ready. Price TBA; devnet charges nothing.</div>`;
+    return html`<div class="wl-fine">An account from the pool we operate is assigned automatically once the launch confirms: validated, cleaned of the previous owner's traces, named and described from the soul, with an SSH signing key registered so the agent's commits show Verified. Its login appears here and on your Profile when it is ready. Price TBA; devnet charges nothing.</div>`;
   return html`<div class="wl-fine">No credential is involved. The mirror records the agent's commits under the app identity with the agent id in a trailer.</div>`;
 }
 
@@ -107,7 +107,7 @@ const tokenInfo = (i: any) =>
 export async function submitLaunchToken(o: { agent: WebKey; mint: string }): Promise<Raw> {
   const el = q<HTMLInputElement>('[name="l_token"]');
   const token = (el?.value ?? "").trim();
-  if (!token) return html`<span class="dim">No token pasted: the agent uses the app identity until you add one on the Identity tab.</span>`;
+  if (!token) return html`<span class="dim">No token pasted: the agent uses the app identity until you add one from your Profile (Manage).</span>`;
   const r = await sendToken(token, o.agent.id, o.mint, o.agent);
   if (el) el.value = "";
   return r;
@@ -129,7 +129,7 @@ async function sendToken(token: string, agent: string, mint: string, agentKey: W
 }
 
 // ------------------------------------------------------------------------------------------------
-// status (launch summary and the Identity tab)
+// status (launch summary and the Profile management panel)
 
 const STATUS: Record<string, [string, "good" | "warn" | "bad" | "info"]> = {
   ready: ["ready", "good"], provisioning: ["provisioning", "info"], waiting_soul: ["waiting for the soul", "info"], awaiting_token: ["waiting for a token", "warn"],
@@ -186,7 +186,7 @@ export async function showIdentity(el: string, agent: string, mint: string | nul
     const f = q<HTMLInputElement>(`#${el} [name="gh_token"]`);
     if (f) f.value = typed;
   }
-  if (["waiting_soul", "provisioning", "awaiting_token"].includes(r.j.status) || (r.j.status === "ready" && !(r.j.published ?? []).length)) {
+  if (["waiting_soul", "provisioning", "awaiting_token", "unknown", "untracked"].includes(r.j.status) || (r.j.status === "ready" && !(r.j.published ?? []).length)) {
     polls.set(key, setTimeout(() => showIdentity(el, agent, null, actions), r.j.status === "ready" ? 60_000 : 5_000));
   }
 }

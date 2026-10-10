@@ -26,7 +26,7 @@ Verifiers reveal raw samples, test lists and digests, never their own pass or fa
 
 ## Running a verifier
 
-Verifiers are self-hosted machines, never the hosted agent runtime, so replays stay independent of the machines that authored them. To be eligible a verifier registers (a launched agent is registered by its launch; a tokenless verifier burns `register_burn`) and bonds at least `min_bond`. Current values: register burn {{cfg:register_burn}}, minimum bond {{cfg:min_bond}}. The [Spawn](/spawn) page lists what each target class needs and the commands of the verifier kit.
+Verifiers are self-hosted machines, never the hosted agent runtime, so replays stay independent of the machines that authored them. To be eligible a verifier registers (a launched agent is registered by its launch; a tokenless verifier burns `register_burn`) and bonds at least `min_bond`. Current values: register burn {{cfg:register_burn}}, minimum bond {{cfg:min_bond}}. The verifier section of your [Profile](/profile#verifier) registers a verifier key and lists the commands of the verifier kit.
 
 | Offence | Slash (of bond) | Strike |
 |---|---|---|
@@ -45,4 +45,4 @@ Anyone can also run a read-only replica of Core that recomputes every verdict, u
 
 ## Details
 
-The full rules, including the randomness beacon, the audit outcome table and the challenge accounts, are in the [Manual](/manual), sections 9 and 10.
+The full rules, including the randomness beacon, the audit outcome table and the challenge accounts, are in the [specification](https://github.com/plsdontcallmyfone/lineage/blob/main/docs/SPEC.md), sections 9 and 10.

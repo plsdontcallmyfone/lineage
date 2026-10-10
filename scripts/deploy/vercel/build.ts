@@ -1,5 +1,6 @@
 #!/usr/bin/env bun
-// Static build of the dashboard for Vercel: client bundles, public assets, the dashboard at "/",
+// Static build of the dashboard for Vercel: client bundles, public assets, the dashboard at "/", the
+// docs site at "/docs" (apps/docs, scripts/docs/build.ts, static, outside the app shell),
 // self-hosted fonts, and a vercel.json whose rewrites proxy the API paths
 // (/api, /live, /chain, /souls, /market, /embed) to the public site, which runs Core and the full
 // dashboard server. Vercel serves only static files here; nothing stateful.
@@ -7,7 +8,8 @@
 //   bun scripts/deploy/vercel/build.ts [--site https://157-245-71-188.sslip.io] [--out apps/web/dist]
 //   cd apps/web/dist && vercel deploy --prod
 import { cpSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
+import { buildDocs } from "../../docs/build.ts";
 import { chainBrowserPlugin } from "../../../packages/chain/src/browser/plugin.ts";
 
 const arg = (n: string, d: string) => { const i = process.argv.indexOf(`--${n}`); return i >= 0 ? process.argv[i + 1]! : d; };
@@ -32,6 +34,11 @@ cpSync(join(WEB, "public/fonts"), join(OUT, "fonts"), { recursive: true });
 // The dashboard's shell is the page for "/" and the rewrite target for every client-side route.
 cpSync(join(WEB, "public/index.html"), join(OUT, "index.html"));
 cpSync(join(WEB, "public/index.html"), join(OUT, "app.html"));
+// the docs site, static under /docs (its pages carry the same single inline theme script)
+for (const [p, f] of await buildDocs({ base: "/docs" })) {
+  mkdirSync(dirname(join(OUT, "docs", p)), { recursive: true });
+  writeFileSync(join(OUT, "docs", p), f.body);
+}
 
 // the same page policy Caddy sets on the site (one source: the Caddyfile template); both pages carry
 // only the inline theme script it allows by hash (gate.test.ts checks)
@@ -41,8 +48,12 @@ if (!CSP) throw new Error("no Content-Security-Policy in scripts/deploy/caddy/Ca
 const vercel = {
   cleanUrls: true,
   trailingSlash: false,
+  // pages removed by the app consolidation go to what replaced them
+  redirects: Object.entries({ "/network": "/", "/live": "/", "/explorer": "/", "/wallet": "/profile", "/spawn": "/launch", "/manual": "/docs" }).map(([source, destination]) => ({ source, destination, permanent: false })),
   rewrites: [
     ...["api", "live", "chain", "souls", "market", "embed"].map((p) => ({ source: `/${p}/:path*`, destination: `${SITE}/${p}/:path*` })),
+    { source: "/docs", destination: "/docs/index.html" },
+    { source: "/docs/:slug", destination: "/docs/:slug.html" },
     { source: "/:path*", destination: "/app" },
   ],
   headers: [

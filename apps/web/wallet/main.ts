@@ -1,10 +1,16 @@
-// Wallet page (M2, devnet only): connect a Wallet Standard wallet, launch an agent token, trade on
-// an agent's curve and crank its fees, register and bond a verifier with a worker-held agent key,
-// manage an agent's identity (rotate its signing key with the new key co-signing, revoke it, the
-// two-step public owner transfer), claim epoch leaves, and open, release, refund or cancel bounties
-// (C6: escrow from an agent's compute vault, released by a contribution proof into the payee's vault). Every figure is read from chain (or from Core for proofs); nothing here
-// holds a user's key: the wallet signs, and the fresh keys a launch needs are WebCrypto keys made
-// in this page. Loaded on demand as /assets/wallet.js (bundled with packages/chain's browser build).
+// The wallet bundle (devnet only), loaded on demand as /assets/wallet.js (bundled with packages/chain's
+// browser build). Two pages since the app consolidation (docs/plans/APP-CONSOLIDATION.md):
+//   Launch  (/launch, mountLaunch, launch.ts renders the steps): a six-step wizard in the Stags step
+//           pattern that launches an agent token with this file's launch transaction code (prepay
+//           planner, soul drafting, model registry, identity check, hosted bind)
+//   Profile (/profile, mountProfile, profile.ts renders it): the connected wallet's balances and
+//           faucet, its agents and their management (GitHub token rotate or revoke, images, trading
+//           allocation, fee crank, signing key), holdings, follows, claims and bounties (C6), and the
+//           verifier registration kit
+// and the token page's trade box (trade.ts). The connection is the site's one wallet session
+// (standard.ts), owned by the header's Connect button. Every figure is read from chain (or from Core
+// for proofs); nothing here holds a user's key: the wallet signs, and the fresh keys a launch needs
+// are WebCrypto keys made in this page.
 import "../../../packages/chain/src/browser/buffer.ts";
 import {
   ata,
@@ -62,16 +68,17 @@ import { checkSoul, soulDigest, soulSigningMessage, type SoulDoc, type SoulPerso
 import { esc, html, raw, type Raw } from "../src/html.ts";
 import { badge, banner, icon, kv, panel, stat } from "../src/ui.ts";
 import { budgetIxs, buildAndSimulate, loadChainCfg, parseUnits, reader, rpc, signAndSend, sol, units, devnetGate, type Built, type ChainCfg } from "./chain.ts";
-import { connect, DEVNET_CHAIN, disconnect, discovered, legacyOnly, onChange, onWallets, signsV0, startDiscovery, type StdAccount, type StdWallet } from "./standard.ts";
+import { connectWallet, DEVNET_CHAIN, onSession, restoreSession, session, signsV0, startDiscovery, type StdAccount, type StdWallet } from "./standard.ts";
 export { mountTradeBox } from "./trade.ts";
 import { custodyHtml, ghClick, initGithubIdentity, showIdentity, submitLaunchToken } from "./identity.ts";
-import { depositBase, depositUsd, loadPrepay, P, prepayFieldset, prepayHelp, showCorePrepay } from "./prepay.ts";
-import { allocationFieldset, loadTradingEscrow, sendAllocation } from "./trading.ts";
-import { entryOf, isDefaultChoice, loadModels, modelChoice, modelFieldset, modelsBody, onModelInput, priceText, withModel } from "./models.ts";
+import { depositBase, depositUsd, loadPrepay, P, prepayHelp, showCorePrepay } from "./prepay.ts";
+import { loadTradingEscrow, sendAllocation } from "./trading.ts";
+import { entryOf, isDefaultChoice, loadModels, modelChoice, modelsBody, onModelInput, priceText, withModel } from "./models.ts";
+import { launchSkeleton, profileSkeleton, stepNav, STEPS } from "./pages.ts";
+import { feedItemHtml, uploadMedia } from "../src/pages/social-ui.ts";
 
 const T22 = TOKEN_2022_PROGRAM;
 const W = "bun packages/worker/src/main.ts";
-const CLASSES = ["rust", "solana", "zig", "cuda", "python", "go", "cpp"];
 
 // ------------------------------------------------------------------------------------------------
 // state
@@ -90,6 +97,7 @@ interface MintMeta {
 }
 const S = {
   root: null as HTMLElement | null,
+  page: null as null | "launch" | "profile",
   cfg: null as ChainCfg | null,
   gate: "checking" as "checking" | "ok" | string,
   wallet: null as StdWallet | null,
@@ -103,6 +111,9 @@ const S = {
   lc: null as LaunchConfig | null,
   supply: null as bigint | null,
   launches: [] as AgentLaunch[],
+  launchesErr: null as Raw | null,
+  /** registry Agent records by agent id (owner, signing key) */
+  records: new Map<string, AgentRecord>(),
   /** agent -> current registry owner (the launcher until an owner transfer); bounty powers follow it (audit A1-03) */
   owners: new Map<string, string>(),
   metas: new Map<string, MintMeta | null>(),
@@ -110,7 +121,7 @@ const S = {
   decimals: new Map<string, number>(),
   sigs: [] as SigRow[],
   // launch
-  repo: null as null | { url: string; state: "checking" | "ok" | "bad"; msg: string; gh?: any; lineage?: any; core?: "ok" | "down" },
+  repo: null as null | { url: string; state: "checking" | "ok" | "bad"; msg: string; gh?: any; lineage?: any; core?: "ok" | "down"; recipes?: any[] },
   draft: null as null | { agent: WebKey; mint: WebKey; built: Built; args: any; ix: Ix; ixs: Ix[]; soul: SoulDoc | null; plan: LaunchPlan; builts: Built[]; deposit: bigint },
   launchOut: null as Raw | null,
   launched: null as null | { agent: WebKey; mint: string; sig: string; sigs?: string[]; deposit?: bigint; mode?: LaunchPlan["mode"] },
@@ -119,10 +130,14 @@ const S = {
   soulPub: null as Raw | null,
   ghLaunch: null as Raw | null,
   busy: new Set<string>(),
-  // trade
-  sel: null as string | null,
-  quote: null as null | { side: "buy" | "sell"; amountIn: bigint; out: bigint; built: Built; minOut: bigint },
-  tradeOut: null as Raw | null,
+  // wizard (launch): the step shown, the images picked, and the one-launch guard
+  step: 0,
+  image: null as File | null,
+  bannerFile: null as File | null,
+  /** set while a launch is between the wallet's signature and its confirmation: nothing is sent twice */
+  sending: false,
+  // profile: the agent whose management panel is open
+  manage: null as string | null,
   // verifier
   vkey: "",
   vrec: undefined as AgentRecord | null | undefined,
@@ -176,53 +191,6 @@ function logSig(label: string, signature: string, fee: number | undefined, ok: b
 }
 
 // ------------------------------------------------------------------------------------------------
-// skeleton
-
-function skeleton(): Raw {
-  return html`
-    <div class="ph-row"><div class="ph-title"><div class="eyebrow">Wallet ${badge("devnet only", "warn")} ${badge("TEST tokens", "warn")}</div>
-      <h1>Launch, trade, verify and claim from your wallet</h1>
-      <div class="ph-sub"><span>Your wallet signs every transaction; this page and its server never see a secret key. Every figure is read from Solana devnet at the moment shown, or from Core for epoch proofs.</span></div></div></div>
-    <div id="w-gate"></div>
-    <div class="grid-2">
-      ${panel("Wallet", html`<div id="w-conn"><div class="panel-b dim">Looking for wallets…</div></div>`, { aside: html`<span id="w-cluster"></span>` })}
-      ${panel("Programs on devnet", html`<div id="w-net"><div class="panel-b dim">Reading the registry and launch configs…</div></div>`, { note: html`Read from the <span class="num">Config</span> and <span class="num">LaunchConfig</span> accounts; admin-editable, so they are read on every load (SPEC 14).` })}
-    </div>
-    <div class="wl-tabs"><div class="seg" role="group" aria-label="Flow" data-tabs="wallet-flow">
-      <button type="button" data-tab="launch" aria-pressed="true">Launch</button>
-      <button type="button" data-tab="trade" aria-pressed="false">Trade and crank</button>
-      <button type="button" data-tab="verify" aria-pressed="false">Verifier</button>
-      <button type="button" data-tab="identity" aria-pressed="false">Identity</button>
-      <button type="button" data-tab="claims" aria-pressed="false">Claims</button>
-      <button type="button" data-tab="bounties" aria-pressed="false">Bounties</button>
-    </div></div>
-    <div data-pane="launch"><div class="grid-2">
-      ${panel("Launch an agent token", launchForm(), { note: html`<span class="num">lineage_launch::launch_agent</span> on Meteora DBC, quote tLINE (TEST). Curve, fee and supply come from the DBC config on chain; launch values are TBA (SPEC 13.7, 20).` })}
-      ${panel("Transaction", html`<div id="w-launch-out">${launchIdle()}</div>`)}
-    </div></div>
-    <div data-pane="trade" hidden><div class="grid-2">
-      ${panel("Agent curves", html`<div id="w-agents"><div class="panel-b dim">Reading launches…</div></div>`, { aside: html`<span>AgentLaunch accounts</span>` })}
-      ${panel("Trade on the curve", html`<div id="w-trade"><div class="panel-b dim">Pick an agent on the left.</div></div>`)}
-    </div></div>
-    <div data-pane="verify" hidden><div class="grid-2">
-      ${panel("Register and bond a verifier", html`<div id="w-ver"></div>`)}
-      ${panel("Worker kit", html`<div id="w-kit"></div>`, { note: html`The worker key is the agent's identity; the wallet is its owner. <span class="num">register</span> needs both signatures, so the key signs on the machine that holds it and only its public key is typed here.` })}
-    </div></div>
-    <div data-pane="identity" hidden><div class="grid-2">
-      ${panel("Agent identity", html`<div id="w-id"></div>`, { note: html`Read from the registry <span class="num">Agent</span> record (v2). The agent id never changes; the signing key is the key that speaks for it in Core and on chain.` })}
-      ${panel("How rotation works", html`<div id="w-id-kit"></div>`)}
-    </div></div>
-    <div data-pane="claims" hidden>
-      ${panel("Claimable epoch leaves", html`<div id="w-claims"><div class="panel-b dim">Connect a wallet to look up its leaves.</div></div>`, { note: html`Leaves and proofs come from Core (<span class="num">GET /v1/epochs/:n/proofs/:agent</span>); each proof is checked against the payout root posted on chain before it is offered, and claim receipts are read from chain.` })}
-    </div>
-    <div data-pane="bounties" hidden><div class="grid-2">
-      ${panel("Open a bounty", html`<div id="w-bopen"></div>`, { note: html`<span class="num">lineage_launch::open_bounty</span> escrows tLINE from an agent's compute vault. It is released only into the compute vault of an agent credited in an accepted generation that meets the condition, proven against the epoch's <span class="num">record_root</span> on chain (SPEC 14.7).` })}
-      ${panel("Bounties on chain", html`<div id="w-blist"><div class="panel-b dim">Reading Bounty accounts…</div></div>`, { aside: html`<span>Bounty accounts</span>` })}
-    </div></div>
-    <div style="margin-top:16px">${panel("This session's transactions", html`<div id="w-sigs"></div>`, { note: html`Every signature links to Solana Explorer (devnet). Nothing is stored after you leave the page.` })}</div>`;
-}
-
-// ------------------------------------------------------------------------------------------------
 // gate, wallet, balances, network
 
 function renderGate() {
@@ -255,24 +223,10 @@ async function refreshBalances() {
   renderConn();
 }
 
+/** Profile header: the address, SOL and tLINE, and the faucet (devnet). */
 function renderConn() {
-  const ws = discovered();
-  if (!S.account) {
-    const legacy = legacyOnly();
-    set(
-      "w-conn",
-      html`<div class="panel-b">
-        <div class="eyebrow" style="margin-bottom:8px">Connect (Wallet Standard)</div>
-        <div class="wl-wallets">${ws.length
-          ? ws.map((w) => html`<button type="button" class="wl-wallet" data-act="connect" data-name="${w.name}"><img src="${w.icon}" alt="" width="20" height="20"><span>${w.name}</span></button>`)
-          : html`<div class="dim">No Wallet Standard wallet found in this browser. Install <a class="link" href="https://phantom.com" target="_blank" rel="noopener">Phantom</a>, <a class="link" href="https://solflare.com" target="_blank" rel="noopener">Solflare</a> or <a class="link" href="https://backpack.app" target="_blank" rel="noopener">Backpack</a> and reload.</div>`}</div>
-        ${legacy.length ? html`<div class="wl-why" style="margin-top:8px">${legacy.join(", ")} found only as a legacy window provider; update the extension to one that registers with the Wallet Standard.</div>` : ""}
-        ${S.walletErr ? errBox(S.walletErr) : ""}
-        <div class="wl-fine">Signature only: the page asks the wallet to sign each transaction you review, then sends it to devnet itself. No auto-approve, no session keys.</div>
-      </div>`,
-    );
-    return;
-  }
+  if (S.page !== "profile") return;
+  if (!S.account) return;
   const f = S.faucet;
   const devnetOk = !S.account.chains?.length || S.account.chains.includes(DEVNET_CHAIN);
   const next = f?.last && f?.per_wallet_hours ? f.last.at + f.per_wallet_hours * 3_600_000 : 0;
@@ -281,10 +235,12 @@ function renderConn() {
     : next > Date.now()
       ? btn("faucet", "Get tLINE", { disabled: `one drip per wallet every ${f.per_wallet_hours} h; next after ${new Date(next).toLocaleString()}` })
       : btn("faucet", html`Get ${units(BigInt(f.amount), dec())} tLINE`, { primary: true });
+  const h = S.root?.querySelector("#me-h");
+  if (h) h.textContent = short(S.account.address);
   set(
     "w-conn",
     html`<div class="stats wl-bal" style="--n:3">
-        ${stat("Account", html`<span title="${S.account.address}">${short(S.account.address)}</span>`, html`${S.wallet!.name}${devnetOk ? "" : ", devnet not offered"}`, "sm")}
+        ${stat("Address", html`<span title="${S.account.address}">${short(S.account.address)}</span> <button type="button" class="copy" data-copy="${S.account.address}" aria-label="Copy address">${icon.copy}</button>`, html`${S.wallet!.name}${devnetOk ? ", devnet" : ", devnet not offered"}`, "sm")}
         ${stat("SOL", S.sol === null ? "TBA" : sol(S.sol), "devnet, for fees and rent", "sm")}
         ${stat("tLINE", S.line === null ? "TBA" : units(S.line, dec()), "TEST mint, Token-2022", "sm")}
       </div>
@@ -293,9 +249,8 @@ function renderConn() {
         ${faucetBtn}
         <a class="wl-btn" href="https://faucet.solana.com/?cluster=devnet" target="_blank" rel="noopener">Devnet SOL faucet ${icon.ext}</a>
         ${btn("refresh", "Refresh")}
-        ${btn("disconnect", "Disconnect")}
       </div>
-      <div class="panel-b wl-fine" style="padding-top:0">tLINE cannot be minted (its mint authority is revoked). The faucet is a devnet wallet of this server, ${f?.address ? addr(f.address) : "not set up"}, that transfers ${f?.amount ? units(BigInt(f.amount), dec()) : "TBA"} tLINE from the existing TEST supply, at most once per wallet every ${f?.per_wallet_hours ?? "TBA"} h and ${f?.per_hour ?? "TBA"} drips an hour; every drip is logged. It holds ${f?.line_base_units ? units(BigInt(f.line_base_units), dec()) : "TBA"} tLINE now. SOL comes from the public devnet faucet.</div>
+      <div class="panel-b wl-fine" style="padding-top:0">tLINE cannot be minted (its mint authority is revoked). The faucet is a devnet wallet of this server, ${f?.address ? addr(f.address) : "not set up"}, that transfers ${f?.amount ? units(BigInt(f.amount), dec()) : "TBA"} tLINE from the existing TEST supply, at most once per wallet every ${f?.per_wallet_hours ?? "TBA"} h and ${f?.per_hour ?? "TBA"} drips an hour; every drip is logged. SOL comes from the public devnet faucet.</div>
       ${S.faucetMsg ?? ""}${S.walletErr ? html`<div class="panel-b">${errBox(S.walletErr)}</div>` : ""}`,
   );
 }
@@ -313,78 +268,29 @@ async function loadNetwork() {
   renderNet();
 }
 
+/** Funding step: the fee split exactly as the LaunchConfig on chain holds it. */
 function renderNet() {
-  const r = S.reg, l = S.lc;
-  if (!r || !l) return set("w-net", html`<div class="panel-b">${banner("bad", "Programs not initialized on this cluster", "The registry or launch config account does not exist.")}</div>`);
-  const p = r.params;
+  const l = S.lc;
+  if (!l || !S.reg) return set("w-fees", html`${banner("bad", "Programs not initialized on this cluster", "The registry or launch config account does not exist.")}`);
   set(
-    "w-net",
+    "w-fees",
     html`<div class="params wl-params">
-      <div><span class="k">register_burn</span><span class="v">${tl(p.registerBurn)}</span></div>
-      <div><span class="k">min_bond</span><span class="v">${tl(p.minBond)}</span></div>
-      <div><span class="k">bond_cap</span><span class="v">${tl(p.bondCap)}</span></div>
-      <div><span class="k">unbond_cooldown</span><span class="v num">${String(p.unbondCooldownS)} s</span></div>
-      <div><span class="k">agent_compute_bps</span><span class="v num">${l.agentComputeBps}</span></div>
-      <div><span class="k">protocol_bps</span><span class="v num">${l.protocolBps}</span></div>
-      <div><span class="k">reserve / pool bps</span><span class="v num">${p.reserveBps} / ${p.poolBps}</span></div>
-      <div><span class="k">sleep / wake</span><span class="v">${tl(l.sleepThreshold)} / ${tl(l.wakeThreshold)}</span></div>
-      <div><span class="k">migrates at</span><span class="v">${tl(l.migrationQuoteThreshold)}</span></div>
-      <div><span class="k">epochs posted</span><span class="v num">${String(r.epochsPosted)}</span></div>
-      <div><span class="k">tLINE supply</span><span class="v">${tl(S.supply)}</span></div>
-      <div><span class="k">paused</span><span class="v">${r.paused || l.paused ? badge("paused", "bad") : badge("no", "good")}</span></div>
+      <div><span class="k">to the agent's compute vault</span><span class="v num">${(l.agentComputeBps / 100).toFixed(2)}%</span></div>
+      <div><span class="k">to the protocol treasury</span><span class="v num">${(l.protocolBps / 100).toFixed(2)}%</span></div>
+      <div><span class="k">agent wakes at</span><span class="v">${tl(l.wakeThreshold)}</span></div>
+      <div><span class="k">agent sleeps below</span><span class="v">${tl(l.sleepThreshold)}</span></div>
+      <div><span class="k">graduates at</span><span class="v">${tl(l.migrationQuoteThreshold)}</span></div>
+      <div><span class="k">launches paused</span><span class="v">${l.paused ? badge("paused", "bad") : badge("no", "good")}</span></div>
     </div>
-    <div class="panel-b wl-fine">Registry ${addr(REGISTRY_PROGRAM_ID)} · launch ${addr(LAUNCH_PROGRAM_ID)} · DBC config ${addr(l.dbcConfig)} · admin ${addr(r.admin)}</div>`,
+    <div class="wl-fine" style="margin-top:6px">Shares of the partner trading fees each <span class="num">crank_fees</span> claims from the curve (agent_compute_bps ${l.agentComputeBps}, protocol_bps ${l.protocolBps} in the LaunchConfig ${addr(launchPdas.config())}). The trading fee rate itself is set in the Meteora DBC config ${addr(l.dbcConfig)}; Meteora keeps its own share.</div>`,
   );
 }
 
 // ------------------------------------------------------------------------------------------------
 // launch (SPEC 13.7 to 13.9)
 
-function launchForm(): Raw {
-  return html`<form class="launch wl-form" data-wallet-form="launch" autocomplete="off">
-    <div class="wl-2">
-      <label><span class="eyebrow">Agent name</span><input name="l_name" maxlength="27" placeholder="minbpe speedups"><span class="wl-help">Token name on chain: "TEST " + this (32 bytes max).</span></label>
-      <label><span class="eyebrow">Symbol</span><input name="l_symbol" maxlength="10" placeholder="TMBPE"><span class="wl-help">A to Z and 0 to 9, up to 10.</span></label>
-    </div>
-    <label><span class="eyebrow">Target repository</span><input name="l_repo" type="url" placeholder="https://github.com/owner/repo"><span class="wl-help" id="w-repo">Any public GitHub repository, as an https URL. Checked against the GitHub API and Core's lineages.</span></label>
-    <div class="wl-2">
-      <label><span class="eyebrow">Target class</span><select name="l_class">${CLASSES.map((c) => html`<option value="${c}">${c}</option>`)}</select><span class="wl-help">Recorded in the token metadata URI; AgentLaunch has no class field.</span></label>
-      <fieldset><legend class="eyebrow">Runtime</legend>
-        <label class="radio"><input type="radio" name="l_hosted" value="hosted" checked> <span><b>Hosted.</b> Compute paid from the agent's vault.</span></label>
-        <label class="radio"><input type="radio" name="l_hosted" value="self"> <span><b>Self-hosted.</b> You run the worker with the agent key.</span></label>
-      </fieldset>
-    </div>
-    ${modelFieldset()}
-    <fieldset><legend class="eyebrow">GitHub identity (SPEC 13.9)</legend>
-      <label class="radio"><input type="radio" name="l_identity" value="token" checked> <span><b>Own token.</b> A fine-grained token limited to the agent's forks is the recommended choice; any scope is accepted, and a full-scope token is a large liability for whoever holds it.</span></label>
-      <label class="radio"><input type="radio" name="l_identity" value="purchased"> <span><b>Purchased account</b> from the operated pool, set up automatically after launch. Price TBA; devnet charges nothing.</span></label>
-      <label class="radio"><input type="radio" name="l_identity" value="app"> <span><b>App identity.</b> lineage-app[bot] on the project's forks; always the fallback.</span></label>
-    </fieldset>
-    <div class="wl-custody" id="w-custody">${custodyText("token")}</div>
-    ${prepayFieldset()}
-    ${allocationFieldset()}
-    <fieldset><legend class="eyebrow">Soul (SPEC 14.8)</legend>
-      <div class="wl-fine" style="margin-bottom:8px">A short seed; Claude expands it into the agent's soul (voice, taste, values, how it collaborates). You review and edit it before minting. Its sha256 is committed on chain with <span class="num">set_profile</span> in the launch transaction. The soul shapes how the agent works and writes; it never changes what is accepted.</div>
-      <div class="wl-2">
-        <label><span class="eyebrow">Vibe</span><input name="s_vibe" maxlength="200" placeholder="patient, precise, quietly funny"></label>
-        <label><span class="eyebrow">Specialty</span><input name="s_specialty" maxlength="200" placeholder="tokenizer hot paths: fewer allocations, same bytes out"></label>
-      </div>
-      <label><span class="eyebrow">Values</span><input name="s_values" maxlength="400" placeholder="measure twice, small diffs, credit the finder"><span class="wl-help">Comma separated, 1 to 7.</span></label>
-      <label><span class="eyebrow">A few lines</span><textarea name="s_lines" maxlength="1200" rows="2" placeholder="Anything else the soul should know."></textarea></label>
-      <div class="wl-row" style="margin-top:8px">${btn("soul-generate", "Generate soul")}${btn("soul-clear", "Launch without a soul")}</div>
-      <div id="w-soul"></div>
-    </fieldset>
-    <div class="wl-row">${btn("launch-review", "Review transaction", { primary: true })}</div>
-  </form>`;
-}
-
 function custodyText(mode: string): Raw {
   return custodyHtml(mode);
-}
-
-function launchIdle(): Raw {
-  return html`<div class="panel-b"><div class="dim">Fill the form and press Review. The page builds <span class="num">launch_agent</span> with packages/chain, simulates it on devnet, and shows every account and the rent your wallet pays before you sign.</div>
-    <ol class="wl-steps"><li>A fresh agent key and a fresh mint key are made in this page (WebCrypto Ed25519); both co-sign, as the program requires.</li><li>Your wallet signs as launcher and fee payer.</li><li>The page sends to devnet, waits for confirmation and reads the AgentLaunch, mint, DBC pool and compute vault back from chain.</li><li>You can download the agent key; the page keeps no copy once you leave.</li></ol></div>`;
 }
 
 const GH = /^https:\/\/github\.com\/([A-Za-z0-9-]+)\/([A-Za-z0-9._-]+?)(\.git)?\/?$/;
@@ -413,13 +319,18 @@ async function checkRepo() {
       if (gh.private) S.repo = { url, state: "bad", msg: "The repository is private." };
       else {
         let lineage: any = null, core: "ok" | "down" = "ok";
+        let recipes: any[] = [];
         try {
           const ls = await fetch("/api/lineages").then((x) => (x.ok ? x.json() : Promise.reject(new Error(String(x.status)))));
-          lineage = (ls as any[]).find((l) => canonicalUrl(String(l.repo)) === url && (l.status ?? "active") === "active") ?? null;
+          const mine = (ls as any[]).filter((l) => /^https:/.test(String(l.repo)) && canonicalUrl(String(l.repo)) === url && (l.status ?? "active") === "active");
+          lineage = mine[0] ?? null;
+          // what each active recipe on this repository measures (class, metrics, fix targets)
+          recipes = await Promise.all(mine.map((l) => fetch(`/api/lineages/${l.lineage_id}`).then((x) => (x.ok ? x.json() : null)).catch(() => null)));
+          recipes = recipes.filter(Boolean);
         } catch {
           core = "down";
         }
-        S.repo = { url, state: "ok", msg: "", gh, lineage, core };
+        S.repo = { url, state: "ok", msg: "", gh, lineage, core, recipes };
       }
     }
   } catch (e) {
@@ -430,19 +341,38 @@ async function checkRepo() {
 
 function renderRepo() {
   const r = S.repo;
+  renderWizard();
+  set("w-work", r?.state === "ok" ? workView(r) : "");
   if (!r) return set("w-repo", "Any public GitHub repository, as an https URL. Checked against the GitHub API and Core's lineages.");
   if (r.state === "checking") return set("w-repo", html`<span class="dim">${r.msg}</span>`);
   if (r.state === "bad") return set("w-repo", html`<span class="mark warn">${icon.warn} ${r.msg}</span>`);
   const gh = r.gh;
-  set(
-    "w-repo",
-    html`<span class="mark good">${icon.check} public on GitHub</span> <a class="link" href="${gh.html_url}" target="_blank" rel="noopener">${gh.full_name}</a>, default branch ${gh.default_branch}, ${gh.language ?? "language not reported"}. On chain as <span class="num">${r.url}</span>.
-      ${r.core === "down"
-        ? html`<div><span class="mark warn">${icon.warn} Core is not answering</span>: lineage status TBA.</div>`
-        : r.lineage
-          ? html`<div>${badge("active at launch", "good", icon.check)} lineage <a class="link" href="/lineages/${r.lineage.lineage_id}">${r.lineage.recipe_name}</a> exists for this repository.</div>`
-          : html`<div>${badge("setting_up", "warn")} No lineage for this repository on Core: the agent's first job is drafting a recipe, and it authors only after calibration replays agree (SPEC 13.8).</div>`}`,
-  );
+  set("w-repo", html`<span class="mark good">${icon.check} public on GitHub</span> <a class="link" href="${gh.html_url}" target="_blank" rel="noopener">${gh.full_name}</a>, default branch ${gh.default_branch}, ${gh.language ?? "language not reported"}. On chain as <span class="num">${r.url}</span>.`);
+  // the class follows the recipe when one exists
+  const cls = r.recipes?.[0]?.recipe?.class;
+  const sel = S.root?.querySelector<HTMLSelectElement>('[name="l_class"]');
+  if (sel && cls && [...sel.options].some((o) => o.value === cls)) {
+    sel.value = cls;
+    set("w-class-help", html`Set from the recipe ${r.recipes![0].recipe.name}: <b>${cls}</b>. Recorded in the token metadata URI.`);
+  }
+}
+
+/** What the agent can improve on this repository: the recipes Core runs on it, their class and measurable targets. */
+function workView(r: NonNullable<typeof S.repo>): Raw {
+  if (r.core === "down") return html`<div class="lz-work">${banner("warn", "Core is not answering", "What this repository can improve is TBA until it does.")}</div>`;
+  const rs = r.recipes ?? [];
+  if (!rs.length)
+    return html`<div class="lz-work">${banner("info", "No recipe for this repository yet", html`Core has no active lineage on it, so nothing here is measurable yet. The agent's first job is drafting a recipe; it authors only after calibration replays agree on one (SPEC 13.8). A repository that cannot be calibrated (no runnable tests, no metric, a policy against AI changes) stays in setting up with a public reason.`)}</div>`;
+  return html`<div class="lz-work"><div class="eyebrow" style="margin-bottom:6px">What it can improve, read from Core</div>
+    ${rs.map((v) => {
+      const rc = v.recipe ?? {};
+      const metrics = (rc.metrics ?? []) as any[];
+      const fix = (rc.fix?.targets ?? rc.targets ?? []) as any[];
+      return html`<div class="lz-rec"><div class="lz-rec-h"><a class="link" href="/lineages/${v.lineage_id}">${rc.name ?? "recipe"}</a> ${badge(rc.class ?? "class TBA", "info")} <span class="dim">height ${v.height ?? 0}, ${v.generations?.length ?? 0} accepted generation${(v.generations?.length ?? 0) === 1 ? "" : "s"}</span></div>
+        ${metrics.length ? html`<ul class="lz-mets">${metrics.map((m) => html`<li><b>${m.name}</b> <span class="dim">${m.direction ?? ""} is better, ${m.kind ?? "metric"}${typeof m.min_effect === "number" ? `, at least ${(m.min_effect * 100).toFixed(m.min_effect * 100 < 1 ? 2 : 0)}% to count` : ""}</span></li>`)}</ul>` : ""}
+        ${fix.length ? html`<div class="dim">Failing tests it can fix: ${fix.map((t) => (typeof t === "string" ? t : t.id ?? JSON.stringify(t))).join(", ")}</div>` : ""}
+        ${!metrics.length && !fix.length ? html`<div class="dim">This recipe publishes no measurable target.</div>` : ""}</div>`;
+    })}</div>`;
 }
 
 function launchArgs() {
@@ -519,9 +449,28 @@ function simTable(sim: Simulation, x: { agent?: string; mint?: string }, payer: 
 
 // soul (SPEC 14.8): seed, Claude draft, review and edit, then sign with the agent key at launch
 
+/** The launcher's links: up to three https URLs, one per line. Throws a message for the form. */
+function linksTyped(): string[] {
+  const raw0 = (S.root?.querySelector<HTMLTextAreaElement>('[name="l_links"]')?.value ?? "").split(/[\n,]+/).map((x) => x.trim()).filter(Boolean);
+  if (raw0.length > 3) throw new Error("Links: at most 3.");
+  for (const l of raw0) if (!/^https:\/\/[^\s]+\.[^\s]+$/.test(l)) throw new Error(`Links: ${l.slice(0, 60)} is not an https URL.`);
+  return raw0;
+}
+
+/** The seed the agent's soul is drafted from: the agent step's vibe, specialty and values (plus the temperament's word), and the coin step's description and links as the launcher's lines. */
 function soulSeed() {
-  const values = val("s_values").split(",").map((x) => x.trim()).filter(Boolean);
-  return { vibe: val("s_vibe"), specialty: val("s_specialty"), values, lines: (S.root?.querySelector<HTMLTextAreaElement>('[name="s_lines"]')?.value ?? "").trim() };
+  const values = val("s_values").split(",").map((x) => x.trim()).filter(Boolean).slice(0, 6);
+  const t = temperPick();
+  if (t && t !== "aggressive" && !values.some((v) => new RegExp(`\\b${t}\\b`, "i").test(v))) values.push(t);
+  let links: string[] = [];
+  try {
+    links = linksTyped();
+  } catch {
+    links = [];
+  }
+  const desc = (S.root?.querySelector<HTMLTextAreaElement>('[name="l_desc"]')?.value ?? "").trim();
+  const lines = [desc, links.length ? `Links: ${links.join(" ")}` : ""].filter(Boolean).join("\n");
+  return { vibe: val("s_vibe"), specialty: val("s_specialty"), values, lines };
 }
 
 async function soulGenerate() {
@@ -637,7 +586,7 @@ async function launchReview() {
     const mint = keep ? S.draft!.mint : await generateWebKey();
     // prepaid credits (plan C): the deposit and refresh_awake ride in the launch transaction
     const deposit = depositBase(val("l_deposit"), dec());
-    if (S.line !== null && S.line < deposit) throw new Error(`Deposit: your wallet holds ${units(S.line, dec())} tLINE, the deposit is ${units(deposit, dec())}. Use the tLINE faucet above.`);
+    if (S.line !== null && S.line < deposit) throw new Error(`Deposit: your wallet holds ${units(S.line, dec())} tLINE, the deposit is ${units(deposit, dec())}. Get tLINE from the faucet on your Profile.`);
     const ix = launch.launchAgent({ launcher: me()!, agent: agent.id, agentMint: mint.id, lineMint: lineMint(), dbcConfig: dbcConfig(), lineTokenProgram: T22,
       args: { name: args.name, symbol: args.symbol, uri: args.uri, repoUrl: args.repoUrl, identityMode: args.identityMode, hosted: args.hosted } });
     const main = [ix, ...launch.prepay({ launcher: me()!, agent: agent.id, agentMint: mint.id, lineMint: lineMint(), amount: deposit, decimals: dec(), lineTokenProgram: T22 })];
@@ -685,43 +634,78 @@ function renderLaunchReview() {
     html`${sim.err ? html`<div class="panel-b">${errBox(`Simulation failed: ${JSON.stringify(sim.err)}`, sim.logs)}</div>` : html`<div class="panel-b wl-row"><span class="mark good">${icon.check} simulation succeeded on devnet</span></div>`}
       ${simTable(sim, { agent: d.agent.id, mint: d.mint.id }, me()!)}
       <div class="panel-b"><div class="eyebrow" style="margin-bottom:6px">launch_agent arguments</div>${kv(recordRows)}</div>
-      <div class="panel-b wl-row">${btn("launch-sign", html`Sign with ${S.wallet!.name} and launch${d.plan.mode === "split" ? " (2 signatures)" : ""}`, { primary: true, disabled: sim.err ? "the simulation failed; fix the inputs and review again" : false })}${btn("launch-review", "Simulate again")}</div>
+      <div class="panel-b wl-row lz-launch">${btn("launch-sign", html`Launch${d.plan.mode === "split" ? " (2 signatures)" : ""}`, { primary: true, disabled: sim.err ? "the simulation failed; fix the inputs and review again" : false })}${btn("launch-review", "Simulate again")}<span class="wl-why">${S.wallet!.name} signs ${d.plan.mode === "split" ? "two transactions" : "one transaction"}; a hosted agent's binding is one more signature after it.</span></div>
       <div class="panel-b" id="w-launch-status"></div>`,
   );
 }
 
 async function launchSign() {
   const d = S.draft;
-  if (!d || !requireReady()) return;
+  // never double-send: one launch in flight at a time, and a mint already launched is read back, not sent again
+  if (!d || S.sending || S.launched?.mint === d.mint.id || !requireReady()) return;
+  S.sending = true;
+  renderWizard();
+  for (const el of S.root?.querySelectorAll<HTMLButtonElement>('[data-act="launch-sign"], [data-act="launch-review"]') ?? []) el.disabled = true;
   const st = (m: string) => set("w-launch-status", html`<span class="dim">${m}</span>`);
   try {
-    const t0 = d.plan.txs[0]!;
-    const r = await signAndSend({ wallet: S.wallet!, account: S.account!, ixs: t0.ixs, units: 450_000, local: [d.agent, d.mint], onStatus: st, table: t0.table });
-    const c = r.confirmed!;
-    logSig(`launch_agent + deposit + refresh_awake ${d.args.symbol}`, c.signature, c.fee, !c.err);
-    if (c.err) throw Object.assign(new Error(`launch_agent failed on chain: ${JSON.stringify(c.err)}`), { logs: c.logs });
-    const sigs = [c.signature];
-    if (d.plan.mode === "split") {
-      // the agent is already awake; the soul's set_profile is the second signature
-      const t1 = d.plan.txs[1]!;
-      st("launched; now sign the soul transaction (2 of 2)");
-      const r2 = await signAndSend({ wallet: S.wallet!, account: S.account!, ixs: t1.ixs, units: 100_000, local: [d.agent], onStatus: st, table: t1.table });
-      logSig(`set_profile ${d.args.symbol}`, r2.confirmed!.signature, r2.confirmed!.fee, !r2.confirmed!.err);
-      if (r2.confirmed!.err) throw Object.assign(new Error(`set_profile failed on chain: ${JSON.stringify(r2.confirmed!.err)} (the agent is launched and awake; publish the soul again from its page)`), { logs: r2.confirmed!.logs });
-      sigs.push(r2.confirmed!.signature);
+    let sig: string;
+    const already = await reader.agentLaunch(d.mint.id).catch(() => null);
+    if (already) {
+      // an earlier attempt landed although the page did not see its confirmation
+      const sigs = await rpc.call<{ signature: string }[]>("getSignaturesForAddress", [launchPdas.agentLaunch(d.mint.id), { limit: 50, commitment: "confirmed" }]).catch(() => []);
+      sig = sigs[sigs.length - 1]?.signature ?? "";
+      st("This launch is already on chain; reading it back instead of sending it again.");
+    } else {
+      const t0 = d.plan.txs[0]!;
+      const r = await signAndSend({ wallet: S.wallet!, account: S.account!, ixs: t0.ixs, units: 450_000, local: [d.agent, d.mint], onStatus: st, table: t0.table });
+      const c = r.confirmed!;
+      logSig(`launch_agent + deposit + refresh_awake ${d.args.symbol}`, c.signature, c.fee, !c.err);
+      if (c.err) throw Object.assign(new Error(`launch_agent failed on chain: ${JSON.stringify(c.err)}`), { logs: c.logs });
+      sig = c.signature;
     }
+    const sigs = [sig];
+    if (d.plan.mode === "split") {
+      // the agent is already awake; the soul's set_profile is the second signature, sent once
+      const rec = await reader.agent(d.agent.id).catch(() => null);
+      if (!rec?.profileDigest || rec.profileDigest !== soulDigest(d.soul!)) {
+        const t1 = d.plan.txs[1]!;
+        st("launched; now sign the soul transaction (2 of 2)");
+        const r2 = await signAndSend({ wallet: S.wallet!, account: S.account!, ixs: t1.ixs, units: 100_000, local: [d.agent], onStatus: st, table: t1.table });
+        logSig(`set_profile ${d.args.symbol}`, r2.confirmed!.signature, r2.confirmed!.fee, !r2.confirmed!.err);
+        if (r2.confirmed!.err) throw Object.assign(new Error(`set_profile failed on chain: ${JSON.stringify(r2.confirmed!.err)} (the agent is launched and awake; press Launch again to send only the soul)`), { logs: r2.confirmed!.logs });
+        sigs.push(r2.confirmed!.signature);
+      }
+    }
+    S.launched = { agent: d.agent, mint: d.mint.id, sig, sigs, deposit: d.deposit, mode: d.plan.mode };
+    S.draft = null;
+    S.sending = false;
+    renderWizard();
+    const started = Date.now();
+    track.clear();
+    mark("confirmed", "ok", html`${txLink(sig)}${sigs[1] ? html` and ${txLink(sigs[1])}` : ""}, ${d.plan.mode === "split" ? "two signatures" : d.plan.mode === "v0" ? "one v0 transaction" : "one transaction"}`);
+    mark("vault", "wait", "reading the compute vault");
+    mark("github", "wait", "asking the identity service");
+    if (d.args.hosted) mark("runtime", "wait", "the hosted runtime's binding follows");
+    else mark("runtime", "skip", "self-hosted: run the worker with the agent key below");
+    if (S.image || S.bannerFile) mark("images", "wait", "after Core reads the launch");
+    mark("session", "wait", "after the agent is awake and bound");
+    mark("verdict", "wait", "after the first candidate is replayed");
     // plan T: the optional trading allocation, a second transaction to the published escrow
     const alloc = await sendAllocation({ wallet: S.wallet!, account: S.account!, agent: d.agent.id, lineMint: lineMint(), decimals: dec(), typed: val("l_alloc"), onStatus: st }).catch((e) => (console.warn(`trading allocation not sent: ${(e as Error).message}`), null));
     if (alloc) logSig(`trading allocation ${d.args.symbol}`, alloc, undefined, true);
-    S.launched = { agent: d.agent, mint: d.mint.id, sig: c.signature, sigs, deposit: d.deposit, mode: d.plan.mode };
-    S.draft = null;
     if (d.soul) await publishLaunchedSoul(d.agent, d.soul);
     S.ghLaunch = d.args.identity === "token" ? await submitLaunchToken({ agent: d.agent, mint: d.mint.id }) : null;
+    void trackLaunch(d.agent.id, d.mint.id, d.args.hosted, started);
+    void uploadImages(d.agent.id);
     await renderLaunched();
-    loadLaunches();
-    refreshBalances();
+    void loadLaunches();
+    void refreshBalances();
   } catch (e) {
     set("w-launch-status", errBox(e, (e as any).logs));
+  } finally {
+    S.sending = false;
+    renderWizard();
+    if (!S.launched) for (const el of S.root?.querySelectorAll<HTMLButtonElement>('[data-act="launch-sign"], [data-act="launch-review"]') ?? []) el.disabled = false;
   }
 }
 
@@ -760,7 +744,7 @@ async function renderLaunched() {
         ...(l.hosted ? [["Hosted runtime", html`<div id="w-rt-bind"><span class="dim">Asking the hosted runtime for its key…</span></div>`] as [string, unknown]] : []),
       ])}
       <div class="panel-b">
-        <div class="wl-row">${btn("download-agent-key", "Download agent key (keypair JSON)", { primary: true })}${btn("goto-trade", "Trade on its curve")}</div>
+        <div class="wl-row">${btn("download-agent-key", "Download agent key (keypair JSON)", { primary: true })}<a class="wl-btn" href="/tokens/${l.mint}">Trade on its token page</a></div>
         <div class="wl-fine">The agent key exists only in this tab. ${l.hosted ? "Once bound, the hosted runtime's own key speaks for the agent and this key no longer does; keep the file to rotate back to it later." : "A self-hosted worker runs with it:"} <span class="num">${W} run --core &lt;core&gt; --key &lt;file&gt;</span>. Leaving the page drops it.</div>
       </div>`,
   );
@@ -821,13 +805,14 @@ async function downloadAgentKey() {
 }
 
 // ------------------------------------------------------------------------------------------------
-// trade and crank
+// launches on chain, and the fee crank (Profile, per agent)
 
 async function loadLaunches() {
   try {
     const [launches, agents] = await Promise.all([reader.launches(), reader.agents()]);
     S.launches = launches;
     S.owners = new Map(agents.map((a) => [a.agent, a.owner]));
+    S.records = new Map(agents.map((a) => [a.agent, a]));
     const mints = S.launches.map((l) => l.mint);
     const pools = S.launches.map((l) => l.dbcPool);
     const accs = await rpc.getMultipleAccounts([...mints, ...pools]);
@@ -837,153 +822,25 @@ async function loadLaunches() {
     });
     pools.forEach((p, i) => S.pools.set(p, accs[mints.length + i] ? decodeDbcPool(accs[mints.length + i]!.data) : null));
     S.launches.sort((a, b) => Number(b.createdAt - a.createdAt));
+    S.launchesErr = null;
   } catch (e) {
-    set("w-agents", html`<div class="panel-b">${errBox(e)}</div>`);
-    return;
+    S.launchesErr = errBox(e);
   }
-  renderAgents();
+  if (S.page === "profile") {
+    renderMine();
+    void renderHoldings();
+  }
   // the bounty form lists the agents this wallet launched
   if (S.bcfg !== undefined) renderBountyForm();
 }
 
-function renderAgents() {
-  if (!S.launches.length) return set("w-agents", html`<div class="panel-b dim">No agent has been launched on devnet yet. Launch one on the Launch tab.</div>`);
-  set(
-    "w-agents",
-    html`<div class="tw"><table class="t"><thead><tr><th>Agent token</th><th class="hide-sm">Repository</th><th class="right">Quote reserve</th><th class="right">Fees claimed</th><th></th></tr></thead><tbody>
-      ${S.launches.map((l) => {
-        const m = S.metas.get(l.mint);
-        const p = S.pools.get(l.dbcPool);
-        return html`<tr class="${S.sel === l.mint ? "wl-selrow" : ""}"><td><b>${m?.symbol ?? short(l.mint)}</b><div class="sub">${m?.name ?? ""}${l.launcher === me() ? " · yours" : ""}</div></td>
-          <td class="wrap hide-sm">${l.repoUrl.replace("https://github.com/", "")}</td>
-          <td class="right">${p ? tl(p.quoteReserve) : html`<span class="faint">TBA</span>`}</td>
-          <td class="right">${tl(l.feesClaimed)}</td>
-          <td class="right">${btn("select-agent", S.sel === l.mint ? "Selected" : "Select", { data: { mint: l.mint } })}</td></tr>`;
-      })}</tbody></table></div>`,
-  );
-}
-
-async function renderTrade() {
-  const l = S.launches.find((x) => x.mint === S.sel);
-  if (!l) return;
-  set("w-trade", html`<div class="panel-b dim">Reading the pool…</div>`);
-  const a = me();
-  const accs = await rpc.getMultipleAccounts([l.dbcPool, launchPdas.agentLaunch(l.mint), a ? ata(a, l.mint, T22) : l.mint, launchPdas.computeVault(l.agent), registryPdas.treasury()]);
-  const pv = accs[0] ? decodeDbcPool(accs[0].data) : null;
-  const fresh = accs[1] ? decodeAgentLaunch(accs[1].data) : l;
-  const myAgentTok = a && accs[2] ? decodeTokenAccount(accs[2].data).amount : a ? 0n : null;
-  const vault = accs[3] ? decodeTokenAccount(accs[3].data).amount : null;
-  S.pools.set(l.dbcPool, pv);
-  const m = S.metas.get(l.mint);
-  const sym = m?.symbol ?? "agent";
-  const thr = S.lc?.migrationQuoteThreshold ?? null;
-  const pending = pv?.partnerQuoteFee ?? 0n;
-  const q = S.quote;
-  set(
-    "w-trade",
-    html`<div class="stats" style="--n:3">
-        ${stat("Quote reserve", pv ? html`${units(pv.quoteReserve, dec())}<span class="unit">tLINE</span>` : "TBA", thr ? `migrates at ${units(thr, dec())} tLINE` : "threshold TBA", "sm")}
-        ${stat("Claimable fees", pv ? html`${units(pending, dec())}<span class="unit">tLINE</span>` : "TBA", "partner fees waiting for crank_fees", "sm")}
-        ${stat("Compute vault", vault === null ? "TBA" : html`${units(vault, dec())}<span class="unit">tLINE</span>`, fresh.awake ? "awake" : "asleep", "sm")}
-      </div>
-      ${kv([
-        ["Agent token", html`${addr(l.mint, `${sym} ${short(l.mint)}`)} <span class="dim">${m?.name ?? ""}</span>`],
-        ["Your balances", a ? html`${tl(S.line)} · <span class="num">${myAgentTok === null ? "TBA" : units(myAgentTok, adec(l.mint))}</span><span class="unit">${sym}</span>` : "connect a wallet"],
-        ["Fees so far", html`claimed ${tl(fresh.feesClaimed)}, to compute ${tl(fresh.toCompute)}, to protocol ${tl(fresh.toProtocol)}`],
-        ["Meteora's share", pv ? html`${tl(pv.protocolQuoteFee)} <span class="dim">kept by Meteora, not claimable by the program</span>` : "TBA"],
-        ["Pool", html`${addr(l.dbcPool)} ${pv?.isMigrated ? badge("migrated", "info") : ""}`],
-      ])}
-      <div class="panel-b wl-trade">
-        <div class="seg" role="group" aria-label="Side"><button type="button" data-act="side" data-side="buy" aria-pressed="${String((q?.side ?? S_side) === "buy")}">Buy with tLINE</button><button type="button" data-act="side" data-side="sell" aria-pressed="${String((q?.side ?? S_side) === "sell")}">Sell ${sym}</button></div>
-        <div class="wl-2" style="margin-top:10px">
-          <label class="wl-field"><span class="eyebrow">${S_side === "buy" ? "tLINE in" : `${sym} in`}</span><input name="t_amount" inputmode="decimal" placeholder="${S_side === "buy" ? "100" : "1000"}" value="${esc(S_amount)}"></label>
-          <label class="wl-field"><span class="eyebrow">Slippage tolerance (bps)</span><input name="t_slip" inputmode="numeric" value="${esc(S_slip)}"></label>
-        </div>
-        <div class="wl-row" style="margin-top:10px">${btn("trade-review", "Simulate", { primary: !q })}${q ? btn("trade-sign", html`Sign and ${q.side}`, { primary: true }) : ""}</div>
-        <div id="w-quote">${q ? quoteView(q, sym) : ""}</div>
-      </div>
-      <div class="panel-b wl-crank">
-        <div class="eyebrow">Crank fees (permissionless)</div>
-        <div class="wl-fine">Claims the pool's partner fees into this program and splits them: floor(fees x ${S.lc?.agentComputeBps ?? "TBA"} / 10,000) to the agent's compute vault, the rest to the registry treasury. Any wallet may send it and pays only the network fee (plus the authority's agent-token account the first time).</div>
-        <div class="wl-row" style="margin-top:8px">${btn("crank", html`Crank ${units(pending, dec())} tLINE of fees`, { disabled: !pv ? "pool not readable" : pending === 0n ? "no partner fees in the pool yet: trade first" : false })}</div>
-      </div>
-      <div id="w-trade-out">${S.tradeOut ?? ""}</div>`,
-  );
-}
-let S_side: "buy" | "sell" = "buy";
-let S_amount = "";
-let S_slip = "100";
-
 const adec = (mint: string | null | undefined) => (mint ? (S.decimals.get(mint) ?? 6) : 6);
 
-function quoteView(q: NonNullable<typeof S.quote>, sym: string): Raw {
-  const inU = q.side === "buy" ? "tLINE" : sym;
-  const outU = q.side === "buy" ? sym : "tLINE";
-  return html`<div class="wl-quote">${q.built.sim.err ? errBox(`Simulation failed: ${JSON.stringify(q.built.sim.err)}`, q.built.sim.logs) : html`
-    <div>Simulated on devnet: <b>${units(q.amountIn, q.side === "buy" ? dec() : adec(S.sel))} ${inU}</b> in, <b>${units(q.out, q.side === "buy" ? adec(S.sel) : dec())} ${outU}</b> out. Minimum out at your tolerance: ${units(q.minOut, q.side === "buy" ? adec(S.sel) : dec())} ${outU}. Network fee ${q.built.sim.fee === null ? "TBA" : sol(q.built.sim.fee)} SOL.</div>`}</div>`;
-}
-
-function tradeIxs(l: AgentLaunch, buy: boolean, amountIn: bigint, minOut: bigint): Ix[] {
-  const a = me()!;
-  return [
-    token.createAtaIdempotent(a, a, l.mint, T22),
-    dbc.swap({ config: l.dbcConfig, pool: l.dbcPool, agentMint: l.mint, lineMint: lineMint(), trader: a, lineAccount: ata(a, lineMint(), T22), agentAccount: ata(a, l.mint, T22),
-      buy, amountIn, minOut, lineTokenProgram: T22 }),
-  ];
-}
-
-async function tradeReview() {
-  const l = S.launches.find((x) => x.mint === S.sel);
+async function crank(mint: string) {
+  const l = S.launches.find((x) => x.mint === mint);
   if (!l || !requireReady()) return;
-  S_amount = val("t_amount");
-  S_slip = val("t_slip") || "100";
-  const buy = S_side === "buy";
-  const amountIn = parseUnits(S_amount, buy ? dec() : adec(l.mint));
-  const slip = Number(S_slip);
-  if (!amountIn || !Number.isInteger(slip) || slip < 0 || slip > 5000) {
-    set("w-quote", errBox("Enter a positive amount and a slippage tolerance between 0 and 5000 bps."));
-    return;
-  }
-  set("w-quote", html`<span class="dim">Simulating…</span>`);
-  try {
-    const built = await buildAndSimulate(me()!, tradeIxs(l, buy, amountIn, 1n), 300_000);
-    const outAcc = buy ? ata(me()!, l.mint, T22) : ata(me()!, lineMint(), T22);
-    const row = built.sim.accounts.find((x) => x.address === outAcc);
-    const before = row?.dataBefore ? decodeTokenAccount(row.dataBefore).amount : 0n;
-    const after = row?.dataAfter && row.dataAfter.length >= 165 ? decodeTokenAccount(row.dataAfter).amount : before;
-    const out = after - before;
-    S.quote = { side: S_side, amountIn, out, built, minOut: (out * BigInt(10_000 - slip)) / 10_000n || 1n };
-  } catch (e) {
-    S.quote = null;
-    set("w-quote", errBox(e));
-    return;
-  }
-  renderTrade();
-}
-
-async function tradeSign() {
-  const l = S.launches.find((x) => x.mint === S.sel);
-  const q = S.quote;
-  if (!l || !q || !requireReady()) return;
-  const st = (m: string) => set("w-quote", html`<span class="dim">${m}</span>`);
-  try {
-    const r = await signAndSend({ wallet: S.wallet!, account: S.account!, ixs: tradeIxs(l, q.side === "buy", q.amountIn, q.minOut), units: 300_000, onStatus: st });
-    const c = r.confirmed!;
-    logSig(`${q.side} ${S.metas.get(l.mint)?.symbol ?? "agent"} on DBC`, c.signature, c.fee, !c.err);
-    if (c.err) throw Object.assign(new Error(`swap failed on chain: ${JSON.stringify(c.err)}`), { logs: c.logs });
-    S.tradeOut = html`<div class="panel-b">${banner("info", html`${q.side === "buy" ? "Bought" : "Sold"}: ${txLink(c.signature)}`, "Balances and pool below are read after confirmation.")}</div>`;
-    S.quote = null;
-    await refreshBalances();
-    await renderTrade();
-  } catch (e) {
-    set("w-quote", errBox(e, (e as any).logs));
-  }
-}
-
-async function crank() {
-  const l = S.launches.find((x) => x.mint === S.sel);
-  if (!l || !requireReady()) return;
-  set("w-trade-out", html`<div class="panel-b dim">Building crank_fees…</div>`);
+  const out = (r: Raw) => set("me-crank-out", r);
+  out(html`<span class="dim">Building crank_fees…</span>`);
   try {
     const before = await Promise.all([reader.agentLaunch(l.mint), reader.tokenBalances([launchPdas.computeVault(l.agent), registryPdas.treasury()])]);
     const ixs = [
@@ -992,7 +849,7 @@ async function crank() {
     ];
     const sim = await buildAndSimulate(me()!, ixs, 400_000);
     if (sim.sim.err) throw Object.assign(new Error(`simulation failed: ${JSON.stringify(sim.sim.err)}`), { logs: sim.sim.logs });
-    const r = await signAndSend({ wallet: S.wallet!, account: S.account!, ixs, units: 400_000, onStatus: (m) => set("w-trade-out", html`<div class="panel-b dim">${m}</div>`) });
+    const r = await signAndSend({ wallet: S.wallet!, account: S.account!, ixs, units: 400_000, onStatus: (m) => out(html`<span class="dim">${m}</span>`) });
     const c = r.confirmed!;
     logSig(`crank_fees ${S.metas.get(l.mint)?.symbol ?? ""}`, c.signature, c.fee, !c.err);
     if (c.err) throw Object.assign(new Error(`crank_fees failed: ${JSON.stringify(c.err)}`), { logs: c.logs });
@@ -1001,18 +858,16 @@ async function crank() {
     const toC = after[0]!.toCompute - before[0]!.toCompute;
     const toP = after[0]!.toProtocol - before[0]!.toProtocol;
     const dV = (after[1][0] ?? 0n) - (before[1][0] ?? 0n);
-    const dT = (after[1][1] ?? 0n) - (before[1][1] ?? 0n);
     const want = (fees * BigInt(S.lc!.agentComputeBps)) / 10_000n;
-    S.tradeOut = html`<div class="panel-b">${banner("info", html`Cranked: ${txLink(c.signature)}`, "Split read back from the AgentLaunch counters and both token accounts.")}
+    out(html`${banner("info", html`Cranked: ${txLink(c.signature)}`, "Split read back from the AgentLaunch counters and both token accounts.")}
       ${kv([
         ["Fees claimed", tl(fees)],
         ["To compute vault", html`${tl(toC)} <span class="dim">vault balance +${units(dV, dec())}</span> ${toC === want ? html`<span class="mark good">${icon.check} floor(fees x ${S.lc!.agentComputeBps} / 10,000)</span>` : html`<span class="mark warn">${icon.warn} expected ${units(want, dec())}</span>`}`],
-        ["To treasury", html`${tl(toP)} <span class="dim">treasury +${units(dT, dec())}</span> ${toP === fees - toC ? html`<span class="mark good">${icon.check} the rest</span>` : ""}`],
-      ])}</div>`;
-    loadLaunches();
-    await renderTrade();
+        ["To treasury", html`${tl(toP)} ${toP === fees - toC ? html`<span class="mark good">${icon.check} the rest</span>` : ""}`],
+      ])}`);
+    void loadLaunches();
   } catch (e) {
-    set("w-trade-out", html`<div class="panel-b">${errBox(e, (e as any).logs)}</div>`);
+    out(errBox(e, (e as any).logs));
   }
 }
 
@@ -1093,7 +948,7 @@ function renderKit() {
     <ol class="wl-steps">
       <li>The registry's Agent record is keyed by the agent key (PDA <span class="num">agent</span> + key) and stores your wallet as <b>owner</b>. Register requires both signatures: the owner pays the burn, the agent key proves the worker holds it.</li>
       <li>Bond, unbond and withdraw are owner-only: your wallet signs them here; the worker key is not needed.</li>
-      <li>Rewards for replays go to <span class="num">agent:&lt;key&gt;:wallet</span>, paid to a tLINE account owned by the owner wallet (Claims tab).</li>
+      <li>Rewards for replays go to <span class="num">agent:&lt;key&gt;:wallet</span>, paid to a tLINE account owned by the owner wallet (Claims and bounties on your Profile).</li>
       <li>The worker key signs Core requests and commit-reveals; it never leaves the worker machine and is never typed into this page.</li>
     </ol></div>`,
   );
@@ -1765,6 +1620,474 @@ function renderSigs() {
 }
 
 // ------------------------------------------------------------------------------------------------
+// the launch wizard (docs/plans/APP-CONSOLIDATION.md, Stags step pattern)
+
+const TEMPERS = ["aggressive", "balanced", "careful"] as const;
+let tradingCfg: any = null;
+
+async function loadTradingCfg() {
+  for (let i = 0; i < 4 && !tradingCfg; i++) {
+    if (i) await new Promise((r) => setTimeout(r, 2000 * i));
+    tradingCfg = await fetch("/api/trading/config").then((r) => (r.ok ? r.json() : null)).catch(() => null);
+  }
+  renderTemper();
+}
+
+function temperPick(): string | null {
+  return S.root?.querySelector<HTMLInputElement>('input[name="l_temp"]:checked')?.value ?? null;
+}
+
+/** The temperament the network will read from the soul: the rule of packages/core/src/scores.ts temperamentFromSoul. */
+function effectiveTemper(doc: SoulDoc | null | undefined): string | null {
+  const fallback = tradingCfg?.default_temperament ?? null;
+  if (!doc) return fallback;
+  const words = [...(doc.seed?.values ?? []), ...(doc.persona?.values ?? [])].map((v) => String(v).toLowerCase());
+  if (typeof doc.seed?.vibe === "string") words.push(doc.seed.vibe.toLowerCase());
+  const text = words.join(" ");
+  if (/\b(careful|cautious|patient|conservative|prudent)\b/.test(text)) return "careful";
+  if (/\b(balanced|steady|measured|moderate)\b/.test(text)) return "balanced";
+  return fallback;
+}
+
+function renderTemper() {
+  const c = tradingCfg;
+  if (!c?.temperaments) return set("w-temp", html`<div class="wl-fine" style="margin-top:8px">Trading temperament: the trading config is not readable now (TBA); the agent takes the network default.</div>`);
+  const cur = temperPick() ?? c.default_temperament;
+  set(
+    "w-temp",
+    html`<fieldset class="lz-temp"><legend class="eyebrow">Trading temperament</legend>
+      ${TEMPERS.filter((t) => c.temperaments[t]).map((t) => html`<label class="radio"><input type="radio" name="l_temp" value="${t}"${t === cur ? raw(" checked") : ""}> <span><b>${t[0]!.toUpperCase() + t.slice(1)}</b>${t === c.default_temperament ? html` <span class="mark">default</span>` : ""} <span class="dim">at most ${(c.temperaments[t].size_bps / 100).toFixed(c.temperaments[t].size_bps % 100 ? 2 : 0)}% of its trading equity per buy. ${c.temperaments[t].prompt.replace(/^[A-Za-z]+: /, "")}</span></span></label>`)}
+      <div class="wl-fine" id="w-temp-eff"></div>
+    </fieldset>`,
+  );
+  renderTemperEffect();
+}
+
+function renderTemperEffect() {
+  const pick = temperPick();
+  const eff = effectiveTemper(S.soul?.doc);
+  set("w-temp-eff", !S.soul?.doc
+    ? html`Recorded as a word in the soul's values when it is drafted; the network reads the temperament from the soul (its values and vibe), within the bounds of the trading config.`
+    : eff === pick
+      ? html`<span class="mark good">${icon.check} the soul reads as ${eff}</span>`
+      : html`<span class="mark warn">${icon.warn} the soul reads as ${eff ?? "TBA"}, not ${pick}: its vibe or values name another temperament. Edit them and generate again.</span>`);
+}
+
+/** After a temperament change: keep the drafted soul's seed values in step (the soul is edited, not redrafted). */
+function applyTemperToSoul() {
+  if (!S.soul?.doc) return renderTemperEffect();
+  const t = temperPick();
+  const values = (S.soul.doc.seed.values ?? []).filter((v) => !TEMPERS.includes(v.toLowerCase() as (typeof TEMPERS)[number]));
+  if (t && t !== "aggressive") values.push(t);
+  S.soul.doc = { ...S.soul.doc, seed: { ...S.soul.doc.seed, values }, origin: { ...S.soul.doc.origin, by: "edited" } };
+  S.soul.edited = true;
+  S.draft = null;
+  renderSoul();
+  renderTemperEffect();
+}
+
+const IMG_TYPES = ["image/png", "image/jpeg", "image/webp"];
+
+/** Why a step cannot be left yet, or null. */
+function stepProblem(i: number): string | null {
+  try {
+    if (i === 0) {
+      const name = val("l_name");
+      if (!name) return "Name the coin.";
+      if (new TextEncoder().encode(`TEST ${name}`).length > 32) return "Name: at most 27 characters (the on-chain name is TEST + name, 32 bytes).";
+      if (!/^[A-Z0-9]{1,10}$/.test(val("l_symbol").toUpperCase())) return "Ticker: 1 to 10 characters, A to Z and 0 to 9.";
+      if (S.image && (!IMG_TYPES.includes(S.image.type) || S.image.size > 256 * 1024)) return "Image: PNG, JPEG or WebP, at most 256 KB.";
+      linksTyped();
+      return null;
+    }
+    if (i === 1) {
+      if (!S.repo) return "Enter the GitHub repository.";
+      if (S.repo.state === "checking") return "Checking the repository…";
+      if (S.repo.state === "bad") return S.repo.msg;
+      return null;
+    }
+    if (i === 2) {
+      if (S.bannerFile && (!IMG_TYPES.includes(S.bannerFile.type) || S.bannerFile.size > 1024 * 1024)) return "Banner: PNG, JPEG or WebP, at most 1 MB.";
+      if (!S.soul?.doc) return S.soul ? "The soul draft has problems; fix the seed and generate again." : "Generate the soul from the seed.";
+      if (M_ready() && !modelChoice()) return "Pick a model that can run.";
+      return null;
+    }
+    if (i === 3) return null;
+    if (i === 4) {
+      if (!S.account) return "Connect a wallet (the Connect button above) to fund the launch.";
+      const dep = depositBase(val("l_deposit"), dec());
+      const typed = val("l_alloc");
+      const alloc = typed && typed !== "0" ? parseUnits(typed, dec()) : 0n;
+      if (alloc === null) return "Trading allocation: a positive tLINE amount, or leave it empty.";
+      if (S.line !== null && S.line < dep + alloc) return `Your wallet holds ${units(S.line, dec())} tLINE; the deposit${alloc ? " and the allocation" : " needs"}${alloc ? " need" : ""} ${units(dep + alloc, dec())}. Get tLINE from the faucet on your Profile.`;
+      return null;
+    }
+  } catch (e) {
+    return (e as Error).message;
+  }
+  return null;
+}
+const M_ready = () => !!S.root?.querySelector('[name="l_model"]');
+
+function furthest(): number {
+  for (let i = 0; i < STEPS.length - 1; i++) if (stepProblem(i)) return i;
+  return STEPS.length - 1;
+}
+
+function renderWizard() {
+  if (S.page !== "launch" || !S.root) return;
+  const far = furthest();
+  const cur = Math.min(S.step, far);
+  // a launch in flight or done keeps the Review step on screen
+  const lock = !!(S.launched || S.sending);
+  const step = lock ? STEPS.length - 1 : cur;
+  const reach = lock ? STEPS.length - 1 : far;
+  // patched in place, never re-created: a field's change event (fired as focus moves to a button)
+  // re-renders here, and a replaced button would swallow the click that moved the focus
+  const nav = S.root.querySelector<HTMLElement>("#lz-nav");
+  if (nav && !nav.querySelector(".lz-step")) nav.innerHTML = stepNav(step, reach).s;
+  for (const btn0 of nav?.querySelectorAll<HTMLButtonElement>(".lz-step") ?? []) {
+    const i = Number(btn0.dataset.i);
+    btn0.classList.toggle("on", i === step);
+    btn0.classList.toggle("done", i < step);
+    btn0.setAttribute("aria-selected", String(i === step));
+    btn0.disabled = i > reach || (lock && i !== step);
+    btn0.toggleAttribute("aria-disabled", btn0.disabled);
+  }
+  for (const c of S.root.querySelectorAll<HTMLElement>("[data-step]")) c.hidden = Number(c.dataset.step) !== step;
+  const why = step < STEPS.length - 1 ? stepProblem(step) : null;
+  const foot = S.root.querySelector<HTMLElement>("#lz-foot");
+  if (foot) {
+    if (S.launched) {
+      if (foot.dataset.mode !== "done") foot.innerHTML = html`<div class="lz-btns"><a class="wl-btn" href="/profile">Your agents</a><a class="wl-btn primary" href="/tokens/${S.launched.mint}">Open its token page</a></div>`.s;
+      foot.dataset.mode = "done";
+    } else {
+      if (foot.dataset.mode !== "nav")
+        foot.innerHTML = html`<div class="lz-btns"><button type="button" class="wl-btn" data-act="lz-back">Back</button><button type="button" class="wl-btn primary" data-act="lz-next">Next</button></div><p class="lz-why" role="status"></p>`.s;
+      foot.dataset.mode = "nav";
+      const back = foot.querySelector<HTMLButtonElement>('[data-act="lz-back"]')!;
+      const next = foot.querySelector<HTMLButtonElement>('[data-act="lz-next"]')!;
+      back.disabled = step === 0 || !!S.sending;
+      next.hidden = step >= STEPS.length - 1;
+      next.disabled = !!why;
+      const w = foot.querySelector<HTMLElement>(".lz-why")!;
+      w.textContent = why ?? "";
+      w.hidden = !why;
+    }
+  }
+  const conn = S.root.querySelector<HTMLElement>("#lz-conn");
+  if (conn) {
+    const want = S.account ? "" : "prompt";
+    if (conn.dataset.mode !== want)
+      conn.innerHTML = S.account ? "" : html`<div class="lz-conn">${banner("info", "Launching needs a connected wallet", html`You can fill in every step now; funding and the launch itself need a wallet. <button type="button" class="wl-btn primary" data-act="me-connect">Connect</button>`)}</div>`.s;
+    conn.dataset.mode = want;
+  }
+}
+
+function go(i: number) {
+  const prev = S.step;
+  S.step = Math.max(0, Math.min(i, furthest()));
+  renderWizard();
+  if (S.step !== prev) window.scrollTo({ top: 0 });
+  if (S.step === STEPS.length - 1) void enterReview();
+}
+
+async function enterReview() {
+  renderReview();
+  if (S.launched || S.sending) return;
+  if (!S.draft) await launchReview();
+}
+
+function renderReview() {
+  const r = S.repo;
+  const soul = S.soul?.doc ?? null;
+  const m = entryOf(soul?.model ?? modelChoice());
+  let links: string[] = [];
+  try {
+    links = linksTyped();
+  } catch {
+    /* step 1 refuses it */
+  }
+  const identity = S.root?.querySelector<HTMLInputElement>('input[name="l_identity"]:checked')?.value ?? "purchased";
+  const hosted = (S.root?.querySelector<HTMLInputElement>('input[name="l_hosted"]:checked')?.value ?? "hosted") === "hosted";
+  let dep: bigint | null = null;
+  try {
+    dep = depositBase(val("l_deposit"), dec());
+  } catch {
+    dep = null;
+  }
+  const alloc = val("l_alloc");
+  const row = (k: string, v: unknown, step: number) => html`<div class="lz-rr"><span class="eyebrow">${k}</span><span class="lz-rv">${v}</span><button type="button" class="lz-edit" data-act="lz-go" data-i="${String(step)}">Edit</button></div>`;
+  set(
+    "w-review",
+    html`<div class="lz-review">
+      ${row("Coin", html`<b>TEST ${val("l_name")}</b> <span class="dim">${val("l_symbol").toUpperCase()}</span>`, 0)}
+      ${row("Description", (S.root?.querySelector<HTMLTextAreaElement>('[name="l_desc"]')?.value ?? "").trim() || html`<span class="faint">none</span>`, 0)}
+      ${row("Image", S.image ? `${S.image.name}, ${Math.ceil(S.image.size / 1024)} KB, uploaded as the avatar after the launch` : html`<span class="faint">none (generated pattern)</span>`, 0)}
+      ${row("Links", links.length ? links.join(", ") : html`<span class="faint">none</span>`, 0)}
+      ${row("Repository", r?.gh ? html`<a class="link" href="${r.gh.html_url}" target="_blank" rel="noopener">${r.gh.full_name}</a>, ${r.recipes?.length ? `${r.recipes.length} recipe${r.recipes.length === 1 ? "" : "s"} on Core` : "no recipe yet (setting up)"}` : "TBA", 1)}
+      ${row("Class", val("l_class"), 1)}
+      ${row("Soul", soul ? html`${soul.persona.name}, <span class="dim">${soul.persona.tagline}</span> <span class="wl-hash">${soulDigest(soul).slice(0, 16)}…</span>` : html`<span class="faint">none</span>`, 2)}
+      ${row("Temperament", html`${effectiveTemper(soul) ?? "TBA"} <span class="dim">read from the soul</span>`, 2)}
+      ${row("Model", m ? html`${m.name} <span class="dim">${m.provider}, ${priceText(m)}</span>` : html`<span class="faint">network default</span>`, 2)}
+      ${row("Banner", S.bannerFile ? `${S.bannerFile.name}, ${Math.ceil(S.bannerFile.size / 1024)} KB` : html`<span class="faint">none</span>`, 2)}
+      ${row("Runtime", hosted ? "hosted, bound to the hosted runtime after the launch" : "self-hosted, you run the worker", 2)}
+      ${row("GitHub identity", identity === "purchased" ? "purchased account from the pool" : identity === "token" ? (val("l_token") ? "your token (bound after the launch)" : "your token, none pasted yet (app identity until you add one)") : "app identity", 3)}
+      ${row("Prepaid credits", dep === null ? "TBA" : html`${tl(dep)} <span class="dim">${depositUsd(val("l_deposit"))} USD</span>`, 4)}
+      ${row("Trading allocation", alloc && alloc !== "0" ? html`${alloc} tLINE <span class="dim">a second transaction after the launch</span>` : html`<span class="faint">none</span>`, 4)}
+      ${row("Fee split", S.lc ? `${(S.lc.agentComputeBps / 100).toFixed(2)}% to compute, ${(S.lc.protocolBps / 100).toFixed(2)}% to the protocol` : "TBA", 4)}
+    </div>`,
+  );
+}
+
+// after the launch: a live status list
+
+type StepState = "wait" | "ok" | "bad" | "skip";
+const track = new Map<string, { s: StepState; t: Raw | string }>();
+let trackTimer: ReturnType<typeof setTimeout> | null = null;
+
+function renderTrack() {
+  const L = S.launched;
+  if (!L) return set("w-launch-steps", "");
+  const order: [string, string][] = [
+    ["confirmed", "Confirmed on devnet"],
+    ["vault", "Vault funded and awake"],
+    ["github", "GitHub account"],
+    ["runtime", "Runtime bound"],
+    ["images", "Images"],
+    ["session", "First session"],
+    ["verdict", "First verdict"],
+  ];
+  set(
+    "w-launch-steps",
+    html`<div class="lz-track"><div class="eyebrow">After the launch</div><ol>${order.filter(([k]) => track.has(k)).map(([k, label]) => {
+      const x = track.get(k)!;
+      return html`<li class="lz-t ${x.s}" data-track="${k}" data-state="${x.s}"><span class="lz-ti">${x.s === "ok" ? icon.check : x.s === "bad" ? icon.x : x.s === "skip" ? icon.dot : html`<i class="lz-spin"></i>`}</span><span><b>${label}</b> <span class="dim">${x.t}</span></span></li>`;
+    })}</ol></div>`,
+  );
+}
+const mark = (k: string, st: StepState, t: Raw | string) => {
+  track.set(k, { s: st, t });
+  renderTrack();
+};
+
+async function trackLaunch(agent: string, mint: string, hosted: boolean, started: number) {
+  if (trackTimer) clearTimeout(trackTimer);
+  const tick = async () => {
+    if (S.launched?.agent.id !== agent) return;
+    try {
+      const [la, vault, rec] = await Promise.all([reader.agentLaunch(mint), reader.tokenBalance(launchPdas.computeVault(agent)), reader.agent(agent)]);
+      if (la?.awake && (vault ?? 0n) > 0n) mark("vault", "ok", html`${tl(vault)} in the compute vault, awake on chain`);
+      else mark("vault", "wait", html`vault ${tl(vault)}, ${la?.awake ? "awake" : "asleep"}`);
+      if (hosted) {
+        if (rec?.signingKey && rec.signingKey !== agent) mark("runtime", "ok", html`signing key ${addr(rec.signingKey)}, the hosted runtime's`);
+        else if (track.get("runtime")?.s !== "bad") mark("runtime", "wait", "waiting for the binding signature");
+      }
+      const id = await fetch(`/identity/agents/${agent}`, { cache: "no-store" }).then((r) => (r.ok ? r.json() : null)).catch(() => null);
+      if (id) {
+        const st = String(id.status);
+        if (st === "ready") mark("github", "ok", html`${id.login ? html`<a class="link" href="${id.profile_url}" target="_blank" rel="noopener">${id.login}</a>` : "ready"}, ${id.mode}`);
+        else if (st === "app") mark("github", "ok", "app identity: commits are recorded, not pushed");
+        else if (["failed", "rejected"].includes(st)) mark("github", "bad", `${st}${id.reason ? `: ${id.reason}` : ""}`);
+        else mark("github", "wait", st.replace(/_/g, " "));
+      } else mark("github", "wait", "the identity service has not answered yet");
+      const ss = (await fetch(`/api/sessions?agent=${agent}&limit=20`).then((r) => (r.ok ? r.json() : [])).catch(() => [])) as any[];
+      if (Array.isArray(ss) && ss.length) {
+        const first = ss[ss.length - 1];
+        mark("session", "ok", html`<a class="link" href="/sessions/${first.session_id}">session ${first.session_id.slice(0, 8)}</a> on ${first.recipe_name ?? "its lineage"}, ${first.state}`);
+        const v = [...ss].reverse().find((x) => x.candidate && ["accepted", "rejected", "expired"].includes(x.candidate.status));
+        if (v) mark("verdict", v.candidate.status === "accepted" ? "ok" : "bad", html`${v.candidate.status}${v.candidate.reason ? ` (${v.candidate.reason})` : ""} on ${v.candidate.target ?? v.candidate.kind}${typeof v.candidate.verdict?.effect?.ratio === "number" ? `, ratio ${v.candidate.verdict.effect.ratio.toFixed(4)}` : ""}${v.candidate.gen_id ? html`, <a class="link" href="/generations/${v.candidate.gen_id}">generation</a>` : ""}`);
+        else mark("verdict", "wait", "waiting for replays to judge its first candidate");
+      } else {
+        mark("session", "wait", hosted ? "the runtime starts it once the agent is bound and a recipe is calibrated" : "starts when you run the worker");
+        mark("verdict", "wait", "after the first candidate is replayed");
+      }
+    } catch {
+      /* the next tick retries */
+    }
+    // 45 minutes of watching, then the Profile carries on
+    if (Date.now() - started < 45 * 60_000 && S.root?.isConnected) trackTimer = setTimeout(tick, 6000);
+  };
+  void tick();
+}
+
+/** The images picked in the wizard, signed by the launcher wallet and uploaded once Core knows the launch. */
+async function uploadImages(agent: string) {
+  const files: ["avatar" | "banner", File][] = [];
+  if (S.image) files.push(["avatar", S.image]);
+  if (S.bannerFile) files.push(["banner", S.bannerFile]);
+  if (!files.length) return;
+  mark("images", "wait", "waiting for Core to read the launch, then your wallet signs each image");
+  const done: string[] = [];
+  for (const [slot, f] of files) {
+    let last = "";
+    for (let i = 0; i < 30; i++) {
+      try {
+        await uploadMedia(agent, slot, f);
+        done.push(slot);
+        last = "";
+        break;
+      } catch (e) {
+        last = (e as Error).message;
+        // Core accepts the launcher's images once its chain sync has read the launch
+        if (/refus|denied|signature/i.test(last) && !/launch|unknown|not found|launcher/i.test(last)) break;
+        await new Promise((r) => setTimeout(r, 10_000));
+      }
+    }
+    if (last) return mark("images", "bad", `${slot} not uploaded: ${last}. Upload it again from your Profile.`);
+  }
+  mark("images", "ok", `${done.join(" and ")} uploaded; the hosted runtime folds ${done.length === 1 ? "it" : "them"} into the next signed soul version`);
+}
+
+// ------------------------------------------------------------------------------------------------
+// profile
+
+function myAgents(): AgentLaunch[] {
+  const a = me();
+  return a ? S.launches.filter((l) => l.launcher === a || S.owners.get(l.agent) === a) : [];
+}
+
+function renderMine() {
+  if (S.page !== "profile") return;
+  if (S.launchesErr) return set("w-mine", html`<div class="panel-b">${S.launchesErr}</div>`);
+  const mine = myAgents();
+  if (!mine.length) return set("w-mine", html`<div class="panel-b dim">This wallet has launched no agent on devnet yet. <a class="link" href="/launch">Launch one</a>.</div>`);
+  set(
+    "w-mine",
+    html`<div class="tw"><table class="t me-agents"><thead><tr><th>Agent token</th><th>Status</th><th class="hide-sm">GitHub</th><th class="right">Vault</th><th class="hide-sm">Latest session</th><th></th></tr></thead><tbody>
+      ${mine.map((l) => {
+        const m = S.metas.get(l.mint);
+        const rec = S.records.get(l.agent);
+        const bound = l.hosted && !!rec?.signingKey && rec.signingKey !== l.agent;
+        return html`<tr data-agent="${l.agent}"><td><a class="link" href="/tokens/${l.mint}"><b>${m?.symbol ?? short(l.mint)}</b></a><div class="sub">${m?.name ?? ""} · <a class="link" href="/agents/${l.agent}/profile">${short(l.agent)}</a></div></td>
+          <td>${l.awake ? badge("awake", "good") : badge("asleep", "")} ${l.hosted ? (bound ? badge("bound", "good") : rec?.signingKey === null ? badge("key revoked", "bad") : badge("not bound", "warn")) : badge("self-hosted", "info")}</td>
+          <td class="hide-sm" id="me-gh-${l.agent}"><span class="faint">…</span></td>
+          <td class="right" id="me-v-${l.agent}"><span class="faint">…</span></td>
+          <td class="hide-sm" id="me-s-${l.agent}"><span class="faint">…</span></td>
+          <td class="right">${btn("me-manage", S.manage === l.agent ? "Close" : "Manage", { data: { agent: l.agent }, primary: S.manage !== l.agent })}</td></tr>`;
+      })}</tbody></table></div>`,
+  );
+  void fillMine(mine);
+}
+
+async function fillMine(mine: AgentLaunch[]) {
+  const vaults = await reader.tokenBalances(mine.map((l) => launchPdas.computeVault(l.agent))).catch(() => mine.map(() => null));
+  mine.forEach((l, i) => set(`me-v-${l.agent}`, tl(vaults[i])));
+  await Promise.all(
+    mine.map(async (l) => {
+      const [id, ss] = await Promise.all([
+        fetch(`/identity/agents/${l.agent}`, { cache: "no-store" }).then((r) => (r.ok ? r.json() : null)).catch(() => null),
+        fetch(`/api/sessions?agent=${l.agent}&limit=1`).then((r) => (r.ok ? r.json() : null)).catch(() => null),
+      ]);
+      set(`me-gh-${l.agent}`, id ? html`${id.login ? html`<a class="link" href="${id.profile_url}" target="_blank" rel="noopener">${id.login}</a> ` : ""}<span class="dim">${String(id.status).replace(/_/g, " ")}</span>` : html`<span class="faint">TBA</span>`);
+      const s0 = Array.isArray(ss) ? ss[0] : null;
+      set(`me-s-${l.agent}`, s0 ? html`<a class="link" href="/sessions/${s0.session_id}">${s0.session_id.slice(0, 8)}</a> <span class="dim">${s0.state}</span>` : html`<span class="faint">none yet</span>`);
+    }),
+  );
+}
+
+async function renderManage() {
+  const box = S.root?.querySelector<HTMLElement>("#me-manage");
+  if (!box) return;
+  const l = S.launches.find((x) => x.agent === S.manage);
+  if (!l) {
+    box.hidden = true;
+    box.innerHTML = "";
+    return;
+  }
+  const m = S.metas.get(l.mint);
+  box.hidden = false;
+  box.innerHTML = html`<div class="panel-h"><h2>Manage ${m?.symbol ?? short(l.mint)}</h2><div class="aside"><a class="link" href="/agents/${l.agent}/profile">Public page</a> · <a class="link" href="/tokens/${l.mint}">Token page</a></div></div>
+    <div class="grid-2 me-b2">
+      <div class="me-sec"><div class="eyebrow">Images</div>
+        <p class="wl-fine">An avatar (PNG, JPEG or WebP, at most 256 KB) or a banner (at most 1 MB). Your wallet signs the upload; the hosted runtime puts its hash in the agent's next signed soul version.</p>
+        <div class="wl-row"><label class="wl-btn">Upload avatar<input type="file" accept="image/png,image/jpeg,image/webp" data-me-up="avatar" hidden></label><label class="wl-btn">Upload banner<input type="file" accept="image/png,image/jpeg,image/webp" data-me-up="banner" hidden></label></div>
+        <div id="me-up-out" class="wl-fine"></div>
+      </div>
+      <div class="me-sec"><div class="eyebrow">Fund trading</div>
+        <p class="wl-fine" id="me-fund-help">tLINE to the allocation escrow, with a memo naming this agent; the hosted runtime forwards it to the agent's trading treasury, separate from its compute vault.</p>
+        <div class="wl-row"><input name="m_alloc" inputmode="decimal" placeholder="tLINE" class="me-in">${btn("me-fund", "Sign and send", { primary: true, data: { agent: l.agent } })}</div>
+        <div id="me-fund-out" class="wl-fine"></div>
+      </div>
+      <div class="me-sec"><div class="eyebrow">Fees</div>
+        <p class="wl-fine">Claims the curve's partner fees and splits them: ${S.lc ? `${(S.lc.agentComputeBps / 100).toFixed(2)}%` : "TBA"} to this agent's compute vault, the rest to the protocol treasury. Any wallet may send it.</p>
+        <div class="wl-row">${btn("me-crank", "Crank fees", { data: { mint: l.mint } })}</div>
+        <div id="me-crank-out"></div>
+      </div>
+    </div>
+    <div class="me-sub eyebrow">Signing key, owner and GitHub token</div>
+    <div class="grid-2 me-b2"><div id="w-id"></div><details class="me-kit"><summary class="eyebrow">How rotation works</summary><div id="w-id-kit"></div></details></div>`.s;
+  const esc0 = await loadTradingEscrow();
+  if (!esc0) set("me-fund-help", "No allocation escrow is published on this network.");
+  S.ikey = l.agent;
+  S.iOut = null;
+  S.irec = await reader.agent(l.agent).catch(() => null);
+  renderIdentity();
+}
+
+async function renderHoldings() {
+  if (S.page !== "profile" || !me()) return;
+  const a = me()!;
+  try {
+    const mints = S.launches.map((l) => l.mint);
+    const atas = mints.map((m) => ata(a, m, T22));
+    const accs: (any | null)[] = [];
+    for (let i = 0; i < atas.length; i += 100) accs.push(...(await rpc.getMultipleAccounts(atas.slice(i, i + 100))));
+    const held = mints.map((m, i) => ({ mint: m, amount: accs[i] ? decodeTokenAccount(accs[i]!.data).amount : 0n })).filter((h) => h.amount > 0n);
+    if (!held.length) return set("w-hold", html`<div class="panel-b dim" data-none>This wallet holds no agent tokens. Buy on any token's page from the <a class="link" href="/">Explorer</a>.</div>`);
+    const market = await fetch("/market/tokens?limit=200").then((r) => (r.ok ? r.json() : null)).catch(() => null);
+    const price = new Map<string, number>(((market?.tokens ?? []) as any[]).filter((t) => typeof t.price === "number").map((t) => [t.mint, t.price]));
+    let total = 0;
+    let complete = true;
+    const rows = held.map((h) => {
+      const d = adec(h.mint);
+      const p = price.get(h.mint);
+      const v = p === undefined ? null : (Number(h.amount) / 10 ** d) * p;
+      if (v === null) complete = false;
+      else total += v;
+      return { ...h, d, v };
+    });
+    set(
+      "w-hold",
+      html`<div class="tw"><table class="t"><thead><tr><th>Token</th><th class="right">Balance</th><th class="right">Value</th><th></th></tr></thead><tbody>
+        ${rows.map((h) => html`<tr><td><b>${S.metas.get(h.mint)?.symbol ?? short(h.mint)}</b><div class="sub">${S.metas.get(h.mint)?.name ?? ""}</div></td>
+          <td class="right num">${units(h.amount, h.d)}</td>
+          <td class="right">${h.v === null ? html`<span class="faint">TBA</span>` : html`<span class="num">${h.v.toLocaleString("en-US", { maximumFractionDigits: 4 })}</span><span class="unit">tLINE</span>`}</td>
+          <td class="right"><a class="wl-btn" href="/tokens/${h.mint}">Trade</a></td></tr>`)}
+      </tbody></table></div>
+      <div class="panel-b wl-fine">${complete ? html`Total <b class="num">${total.toLocaleString("en-US", { maximumFractionDigits: 4 })}</b> tLINE at the indexer's last prices.` : "Some tokens have no indexed price, so no total is shown."}</div>`,
+    );
+  } catch (e) {
+    set("w-hold", html`<div class="panel-b">${errBox(e)}</div>`);
+  }
+}
+
+async function renderFollowing() {
+  if (S.page !== "profile" || !me()) return;
+  const a = me()!;
+  const f = await fetch(`/api/social/following?wallet=${a}`).then((r) => (r.ok ? r.json() : null)).catch(() => null);
+  if (!f) return set("w-follow", html`<div class="panel-b dim" data-none>Core did not answer; follows are TBA.</div>`);
+  if (!f.agents?.length) return set("w-follow", html`<div class="panel-b dim" data-none>This wallet follows no agents. Follow one from its public page, or start at the <a class="link" href="/leaderboard">leaderboard</a>.</div>`);
+  const feed = await fetch(`/api/feed?wallet=${a}&kinds=post,generation&limit=6`).then((r) => (r.ok ? r.json() : null)).catch(() => null);
+  set(
+    "w-follow",
+    html`<div class="panel-b me-follow"><div class="me-chips">${(f.agents as string[]).map((id) => html`<a class="me-chip" href="/agents/${id}/profile">${short(id)}</a>`)}</div>
+      ${feed?.items?.length ? html`<div class="fd-list">${feed.items.map((it: any) => feedItemHtml(it, { compact: true }))}</div>` : html`<div class="dim">Nothing new from them yet.</div>`}
+      <div class="wl-fine" style="margin-top:8px"><a class="link" href="/following">The full feed of the agents you follow</a></div></div>`,
+  );
+}
+
+/** Claims and bounties show only when this wallet has any. */
+function claimsVisibility() {
+  const box = S.root?.querySelector<HTMLElement>("#me-claims");
+  if (!box) return;
+  const agents = new Set(myAgents().map((l) => l.agent));
+  const anyClaims = !!S.claims?.rows.length;
+  const anyBounty = myPayers().length > 0 || !!S.bounties?.some((b) => agents.has(b.payer) || (b.payee && agents.has(b.payee)) || b.opener === me());
+  box.hidden = !(anyClaims || anyBounty);
+}
+
+// ------------------------------------------------------------------------------------------------
 // wiring
 
 function requireReady(): boolean {
@@ -1772,76 +2095,73 @@ function requireReady(): boolean {
   if (!S.account || !S.wallet) {
     S.walletErr = "Connect a wallet first.";
     renderConn();
+    renderWizard();
     return false;
   }
   if (S.account.chains?.length && !S.account.chains.includes(DEVNET_CHAIN)) return false;
   return true;
 }
 
-let unsub: (() => void) | null = null;
-async function doConnect(name: string, silent = false) {
-  const w = discovered().find((x) => x.name === name);
-  if (!w) return;
-  S.walletErr = null;
-  try {
-    const acc = await connect(w, silent);
-    if (!acc) throw new Error("the wallet returned no account");
-    S.wallet = w;
-    S.account = acc;
-    try {
-      localStorage.setItem("lineage-wallet", w.name);
-    } catch {
-      /* storage blocked */
-    }
-    unsub?.();
-    unsub = onChange(w, () => {
-      const a = w.accounts[0];
-      if (a && a.address !== S.account?.address) {
-        S.account = a;
-        afterConnect();
-      }
-    });
-    afterConnect();
-  } catch (e) {
-    if (!silent) S.walletErr = `Connect failed: ${(e as Error).message}`;
-    renderConn();
-  }
-}
-function afterConnect() {
+/** The header's session changed (connected, switched account, disconnected). */
+function onWalletSession() {
+  const s = session();
+  const changed = (s.account?.address ?? null) !== (S.account?.address ?? null);
+  S.wallet = s.wallet;
+  S.account = s.account;
+  if (!changed) return;
   S.sol = S.line = null;
   S.claims = null;
-  renderConn();
-  refreshBalances();
-  renderVerifier();
-  renderIdentity();
-  if (S.sel) renderTrade();
-  loadClaims();
-  renderBountyForm();
-  renderBounties();
+  S.walletErr = null;
+  S.draft = null;
+  if (S.page === "profile") paintProfileFrame();
+  if (!S.account) {
+    renderWizard();
+    return;
+  }
+  void refreshBalances().then(() => renderWizard());
+  if (S.page === "profile") {
+    renderVerifier();
+    renderMine();
+    void renderHoldings();
+    void renderFollowing();
+    void loadClaims().then(claimsVisibility);
+    renderBountyForm();
+    renderBounties();
+  }
+}
+
+function paintProfileFrame() {
+  const signed = S.root?.querySelector<HTMLElement>("#me-signed");
+  if (signed) signed.hidden = !S.account;
+  if (!S.account) {
+    const h = S.root?.querySelector("#me-h");
+    if (h) h.textContent = "Your wallet";
+    set("w-conn", html`<div class="panel-b me-prompt"><div><div class="t1">Connect a wallet to see your profile</div><div class="dim">Your agents, holdings, follows, claims and bounties, read for the connected wallet only. Devnet.</div></div>${btn("me-connect", "Connect", { primary: true })}</div>`);
+  }
 }
 
 async function onClick(ev: Event) {
   const b = (ev.target as HTMLElement).closest<HTMLElement>("[data-act]");
   if (!b || (b as HTMLButtonElement).disabled) return;
   const act = b.dataset.act!;
-  const key = act + (b.dataset.mint ?? b.dataset.i ?? "");
+  const key = act + (b.dataset.mint ?? b.dataset.i ?? b.dataset.agent ?? "");
   if (S.busy.has(key)) return;
   S.busy.add(key);
   b.setAttribute("aria-busy", "true");
   try {
     switch (act) {
-      case "connect":
-        await doConnect(b.dataset.name!);
+      case "me-connect":
+        // the header's Connect button owns the menu; open it (one wallet connects at once)
+        document.getElementById("cn-btn")?.click();
         break;
-      case "disconnect":
-        if (S.wallet) await disconnect(S.wallet);
-        S.wallet = S.account = null;
-        try {
-          localStorage.removeItem("lineage-wallet");
-        } catch {
-          /* ignore */
-        }
-        renderConn();
+      case "lz-go":
+        go(Number(b.dataset.i));
+        break;
+      case "lz-next":
+        go(S.step + 1);
+        break;
+      case "lz-back":
+        go(S.step - 1);
         break;
       case "refresh":
         await Promise.all([refreshBalances(), loadNetwork(), loadLaunches()]);
@@ -1850,7 +2170,7 @@ async function onClick(ev: Event) {
         S.faucetMsg = html`<div class="panel-b dim">Asking the faucet…</div>`;
         renderConn();
         const r = await fetch("/chain/faucet", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ wallet: me() }) });
-        const j = await r.json();
+        const j = await r.json().catch(() => ({}));
         if (r.ok) {
           logSig(`faucet: ${units(BigInt(j.amount), dec())} tLINE to you`, j.signature, j.fee, true);
           S.faucetMsg = html`<div class="panel-b">${banner("info", html`Received ${units(BigInt(j.amount), dec())} tLINE: ${txLink(j.signature)}`)}</div>`;
@@ -1859,18 +2179,18 @@ async function onClick(ev: Event) {
         break;
       }
       case "launch-review":
+        S.draft = null;
         await launchReview();
         break;
       case "soul-generate":
         await soulGenerate();
+        renderTemperEffect();
+        renderWizard();
         break;
       case "soul-apply":
         soulApply();
-        break;
-      case "soul-clear":
-        S.soul = null;
-        S.draft = null;
-        set("w-soul", html`<div class="wl-fine" style="margin-top:8px">No soul: the agent launches without one (it can publish one later, signed by its key).</div>`);
+        renderTemperEffect();
+        renderWizard();
         break;
       case "launch-sign":
         await launchSign();
@@ -1878,34 +2198,31 @@ async function onClick(ev: Event) {
       case "download-agent-key":
         await downloadAgentKey();
         break;
-      case "goto-trade":
-        S.sel = S.launched?.mint ?? null;
-        S.root?.querySelector<HTMLElement>('[data-tab="trade"]')?.click();
-        await loadLaunches();
-        await renderTrade();
+      case "me-manage":
+        S.manage = S.manage === b.dataset.agent ? null : b.dataset.agent!;
+        renderMine();
+        await renderManage();
+        S.root?.querySelector("#me-manage")?.scrollIntoView({ behavior: "smooth", block: "start" });
         break;
-      case "select-agent":
-        S.sel = b.dataset.mint!;
-        S.quote = null;
-        S.tradeOut = null;
-        renderAgents();
-        await renderTrade();
+      case "me-crank":
+        await crank(b.dataset.mint!);
         break;
-      case "side":
-        S_side = b.dataset.side as "buy" | "sell";
-        S.quote = null;
-        S_amount = "";
-        await renderTrade();
+      case "me-fund": {
+        if (!requireReady()) break;
+        const out = (r: Raw | string) => set("me-fund-out", r);
+        try {
+          const sig = await sendAllocation({ wallet: S.wallet!, account: S.account!, agent: b.dataset.agent!, lineMint: lineMint(), decimals: dec(), typed: val("m_alloc"), onStatus: (m) => out(html`<span class="dim">${m.replace(/^launched; now /, "")}</span>`) });
+          if (!sig) out("Nothing sent: enter an amount (and the network must publish an allocation escrow).");
+          else {
+            logSig(`trading allocation to ${short(b.dataset.agent!)}`, sig, undefined, true);
+            out(html`<span class="mark good">${icon.check} sent</span> ${txLink(sig)} <span class="dim">the runtime forwards it to the agent's trading treasury</span>`);
+            void refreshBalances();
+          }
+        } catch (e) {
+          out(errBox(e, (e as any).logs));
+        }
         break;
-      case "trade-review":
-        await tradeReview();
-        break;
-      case "trade-sign":
-        await tradeSign();
-        break;
-      case "crank":
-        await crank();
-        break;
+      }
       case "v-lookup":
         await vLookup();
         break;
@@ -1951,6 +2268,7 @@ async function onClick(ev: Event) {
       case "claims-reload":
         S.claimOut = null;
         await loadClaims();
+        claimsVisibility();
         break;
       case "b-open":
         await bOpen();
@@ -1967,13 +2285,13 @@ async function onClick(ev: Event) {
       case "b-refund":
         await bBack(b.dataset.i!, "refund");
         break;
+      case "b-cancel":
+        await bBack(b.dataset.i!, "cancel");
+        break;
       case "gh-check":
       case "gh-rotate":
       case "gh-revoke":
         await ghClick(act, b);
-        break;
-      case "b-cancel":
-        await bBack(b.dataset.i!, "cancel");
         break;
     }
   } finally {
@@ -1985,8 +2303,10 @@ async function onClick(ev: Event) {
 let repoTimer: ReturnType<typeof setTimeout> | null = null;
 function onInput(ev: Event) {
   const t = ev.target as HTMLInputElement;
-  if (t.name === "l_repo") {
+  if (t.name === "l_repo" && ev.type === "input") {
     if (repoTimer) clearTimeout(repoTimer);
+    S.repo = t.value.trim() ? { url: "", state: "checking", msg: "Checking GitHub…" } : null;
+    renderWizard();
     repoTimer = setTimeout(checkRepo, 500);
   }
   if (t.name === "l_identity") set("w-custody", custodyText(t.value));
@@ -1995,7 +2315,6 @@ function onInput(ev: Event) {
     if (sym && !sym.dataset.touched) sym.value = ("T" + t.value.toUpperCase().replace(/[^A-Z0-9]/g, "")).slice(0, 10);
   }
   if (t.name === "l_symbol") t.dataset.touched = "1";
-  if (t.name === "t_amount" || t.name === "t_slip") S.quote = null;
   if (t.name?.startsWith("l_") && t.name !== "l_token") S.draft = null;
   if (t.name === "l_deposit") renderPrepay();
   if ((t.name === "l_provider" || t.name === "l_model") && onModelInput(t)) {
@@ -2005,31 +2324,68 @@ function onInput(ev: Event) {
       renderSoul();
     }
   }
+  if (t.name === "l_temp" && ev.type === "change") applyTemperToSoul();
+  if ((t.name === "l_image" || t.name === "l_banner") && ev.type === "change") void pickImage(t);
+  if (t.dataset?.meUp && ev.type === "change") void profileUpload(t);
+  if (S.page === "launch") renderWizard();
+}
+
+async function pickImage(t: HTMLInputElement) {
+  const f = t.files?.[0] ?? null;
+  if (t.name === "l_image") S.image = f;
+  else S.bannerFile = f;
+  renderAvatar();
+  renderWizard();
+}
+
+/** The coin's image as the avatar preview (the agent step shows it too); the generated pattern when none. */
+function renderAvatar() {
+  const url = S.image && IMG_TYPES.includes(S.image.type) ? URL.createObjectURL(S.image) : null;
+  const prev = S.root?.querySelector<HTMLElement>("#lz-prev");
+  if (prev) prev.innerHTML = url ? html`<img src="${url}" alt="">`.s : html`<span>${icon.agent}</span>`.s;
+  set("lz-av", html`<div class="lz-avrow"><div class="lz-prev sm">${url ? html`<img src="${url}" alt="">` : html`<span>${icon.agent}</span>`}</div><div class="wl-fine">${url ? html`The coin's image is the avatar. ${S.image!.size > 256 * 1024 ? html`<span class="mark warn">${icon.warn} over 256 KB</span>` : ""}` : "No image: the avatar is a pattern generated from the agent key. Add one on the first step."}</div></div>`);
+}
+
+async function profileUpload(t: HTMLInputElement) {
+  const f = t.files?.[0];
+  const agent = S.manage;
+  if (!f || !agent) return;
+  const out = (r: Raw | string) => set("me-up-out", r);
+  out(html`<span class="dim">Your wallet signs the ${t.dataset.meUp}…</span>`);
+  try {
+    await uploadMedia(agent, t.dataset.meUp as "avatar" | "banner", f);
+    out(html`<span class="mark good">${icon.check} uploaded</span> <span class="dim">the hosted runtime signs it into the next soul version; it then shows on the public page</span>`);
+  } catch (e) {
+    out(html`<span class="mark warn">${icon.warn} ${(e as Error).message}</span>`);
+  }
+  t.value = "";
 }
 
 function renderPrepay() {
   set("w-prepay", prepayHelp(val("l_deposit"), { decimals: dec(), wake: S.lc?.wakeThreshold ?? null, balance: S.line }));
 }
 
-/** Called by the dashboard shell after the Wallet page's skeleton is in the DOM. */
-export async function mountWallet(root: HTMLElement) {
+let unsubSession: (() => void) | null = null;
+
+/** Shared start of both pages: listeners, the cluster gate, the session. */
+async function boot(root: HTMLElement, page: "launch" | "profile", body: Raw) {
   S.root = root;
+  S.page = page;
   initGithubIdentity({ root: () => S.root, wallet: () => S.wallet, account: () => S.account });
-  root.innerHTML = skeleton().s;
+  root.innerHTML = body.s;
   root.addEventListener("click", onClick);
   root.addEventListener("input", onInput);
   root.addEventListener("change", onInput);
   root.addEventListener("submit", (e) => e.preventDefault());
   startDiscovery();
-  onWallets(() => {
-    renderConn();
-    autoReconnect();
-  });
+  restoreSession();
+  S.wallet = session().wallet;
+  S.account = session().account;
+  unsubSession?.();
+  unsubSession = onSession(onWalletSession);
   renderSigs();
-  renderVerifier();
-  renderIdentity();
   try {
-    S.cfg = await loadChainCfg();
+    S.cfg ??= await loadChainCfg();
     if (!S.cfg.state) throw new Error("This server has no devnet state (scripts/devnet/devnet.json).");
     await devnetGate();
     S.gate = "ok";
@@ -2037,27 +2393,50 @@ export async function mountWallet(root: HTMLElement) {
     S.gate = (e as Error).message;
   }
   renderGate();
-  renderConn();
+}
+
+/** Launch (/launch): the six-step wizard. */
+export async function mountLaunch(root: HTMLElement) {
+  S.step = 0;
+  S.manage = null;
+  // a finished launch from an earlier visit starts a fresh wizard
+  if (S.launched && !S.sending) {
+    S.launched = null;
+    S.soul = null;
+    S.draft = null;
+    S.repo = null;
+    S.image = S.bannerFile = null;
+    track.clear();
+  }
+  await boot(root, "launch", launchSkeleton());
+  renderWizard();
+  renderAvatar();
   if (S.gate !== "ok") return;
-  await Promise.all([loadNetwork(), loadLaunches(), loadPrepay(S.cfg!.state as any), loadTradingEscrow(), loadModels().then(() => set("w-models", modelsBody()))]);
+  await Promise.all([loadNetwork(), loadPrepay(S.cfg!.state as any), loadTradingEscrow(), loadTradingCfg(), loadModels().then(() => set("w-models", modelsBody()))]);
   const dep = S.root?.querySelector<HTMLInputElement>('[name="l_deposit"]');
   if (dep && !dep.value && P.cfg) dep.value = P.cfg.default_usd;
   renderPrepay();
-  await loadBounties();
-  autoReconnect();
+  if (S.account) await refreshBalances();
+  renderWizard();
 }
 
-let triedAuto = false;
-function autoReconnect() {
-  if (triedAuto || S.account || !S.cfg) return;
-  let name: string | null = null;
-  try {
-    name = localStorage.getItem("lineage-wallet");
-  } catch {
-    /* ignore */
+/** Profile (/profile): the connected wallet only. */
+export async function mountProfile(root: HTMLElement) {
+  S.manage = null;
+  await boot(root, "profile", profileSkeleton());
+  paintProfileFrame();
+  renderVerifier();
+  if (S.gate !== "ok") return;
+  if (S.account) {
+    renderConn();
+    void refreshBalances();
   }
-  if (name && discovered().some((w) => w.name === name)) {
-    triedAuto = true;
-    doConnect(name, true);
+  await Promise.all([loadNetwork(), loadLaunches()]);
+  await loadBounties();
+  if (S.account) {
+    void renderFollowing();
+    await loadClaims();
+    claimsVisibility();
   }
+  if (location.hash === "#verifier") S.root?.querySelector<HTMLDetailsElement>("#verifier")?.setAttribute("open", "");
 }

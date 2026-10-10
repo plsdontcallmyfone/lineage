@@ -28,7 +28,7 @@ import { banner, icon } from "../src/ui.ts";
 import { tradeDecimals } from "./decimals.ts";
 import { payWithControl } from "./swap.ts";
 import { buildAndSimulate, devnetGate, loadChainCfg, parseUnits, rpc, signAndSend, sol, units, type Built, type ChainCfg } from "./chain.ts";
-import { connect, DEVNET_CHAIN, disconnect, discovered, onChange, onWallets, startDiscovery, type StdAccount, type StdWallet } from "./standard.ts";
+import { DEVNET_CHAIN, onSession, restoreSession, session, startDiscovery, type StdAccount, type StdWallet } from "./standard.ts";
 
 const T22 = TOKEN_2022_PROGRAM;
 
@@ -106,11 +106,20 @@ class Box {
   async init() {
     this.el.addEventListener("click", (ev) => void this.onClick(ev));
     this.el.addEventListener("input", (ev) => this.onInput(ev));
+    // the site's one wallet session (the header's Connect button); the box follows its changes
     startDiscovery();
-    this.offWallets = onWallets(() => {
-      this.render();
-      this.autoReconnect();
-    }) as () => void;
+    restoreSession();
+    this.wallet = session().wallet;
+    this.account = session().account;
+    this.offWallets = onSession((s) => {
+      if ((s.account?.address ?? null) === (this.account?.address ?? null)) return;
+      this.wallet = s.wallet;
+      this.account = s.account;
+      this.quote = null;
+      this.err = null;
+      if (this.account) void this.readBalances().then(() => this.render());
+      else this.render();
+    });
     this.render();
     try {
       this.cfg = await loadChainCfg();
@@ -121,8 +130,8 @@ class Box {
       this.gate = (e as Error).message;
     }
     if (this.gate === "ok") await this.readVenue().catch((e) => (this.err = this.errBox(e)));
+    if (this.account) await this.readBalances().catch(() => {});
     this.render();
-    this.autoReconnect();
   }
 
   update(t: TradeToken) {
@@ -239,51 +248,6 @@ class Box {
     return true;
   }
 
-  private async doConnect(name: string, silent = false) {
-    const w = discovered().find((x) => x.name === name);
-    if (!w) return;
-    try {
-      const acc = await connect(w, silent);
-      if (!acc) throw new Error("the wallet returned no account");
-      this.wallet = w;
-      this.account = acc;
-      try {
-        localStorage.setItem("lineage-wallet", w.name);
-      } catch {
-        /* storage blocked */
-      }
-      this.unsub?.();
-      this.unsub = onChange(w, () => {
-        const a = w.accounts[0];
-        if (a && a.address !== this.account?.address) {
-          this.account = a;
-          this.quote = null;
-          void this.readBalances().then(() => this.render());
-        }
-      });
-      this.err = null;
-      await this.readBalances();
-    } catch (e) {
-      if (!silent) this.err = this.errBox(`Connect failed: ${(e as Error).message}`);
-    }
-    this.render();
-  }
-
-  private triedAuto = false;
-  private autoReconnect() {
-    if (this.triedAuto || this.account || this.gate !== "ok") return;
-    let name: string | null = null;
-    try {
-      name = localStorage.getItem("lineage-wallet");
-    } catch {
-      /* ignore */
-    }
-    if (name && discovered().some((w) => w.name === name)) {
-      this.triedAuto = true;
-      void this.doConnect(name, true);
-    }
-  }
-
   // ------------------------------------------------------------------------------------- view
 
   private errBox(e: unknown, logs?: string[]): Raw {
@@ -311,13 +275,10 @@ class Box {
     if (this.gate === "checking") body = html`<div class="dim">Checking that the RPC is devnet…</div>`;
     else if (this.gate !== "ok") body = this.errBox(`Trading is off: ${this.gate}`);
     else if (!this.account) {
-      const ws = discovered();
       body = html`<div class="mk-tb-venue">${this.venueLine()}</div>
         <div class="eyebrow" style="margin:12px 0 8px">Connect a wallet to trade</div>
-        <div class="wl-wallets">${ws.length
-          ? ws.map((w) => html`<button type="button" class="wl-wallet" data-tb="connect" data-name="${w.name}"><img src="${w.icon}" alt="" width="20" height="20"><span>${w.name}</span></button>`)
-          : html`<div class="dim">No Wallet Standard wallet in this browser. Install <a class="link" href="https://phantom.com" target="_blank" rel="noopener">Phantom</a>, <a class="link" href="https://solflare.com" target="_blank" rel="noopener">Solflare</a> or <a class="link" href="https://backpack.app" target="_blank" rel="noopener">Backpack</a>, switch it to devnet and reload.</div>`}</div>
-        <div class="wl-fine">Devnet only, TEST tokens. Get tLINE on the <a class="link" href="/wallet">Wallet page</a>.</div>`;
+        <div class="wl-row">${this.btn("connect", "Connect", { primary: true })}</div>
+        <div class="wl-fine">Devnet only, TEST tokens. Get tLINE from the faucet on your <a class="link" href="/profile">Profile</a>.</div>`;
     } else {
       const q = this.quote;
       const buy = this.side === "buy";
@@ -326,7 +287,7 @@ class Box {
       const inD = buy ? qd : this.td();
       const outD = buy ? this.td() : qd;
       body = html`<div class="mk-tb-venue">${this.venueLine()}</div>
-        <div class="mk-tb-acct"><span title="${this.account.address}">${this.wallet?.name ?? "Wallet"} ${this.account.address.slice(0, 4)}…${this.account.address.slice(-4)}</span>${this.btn("disconnect", "Disconnect")}</div>
+        <div class="mk-tb-acct"><span title="${this.account.address}">${this.wallet?.name ?? "Wallet"} ${this.account.address.slice(0, 4)}…${this.account.address.slice(-4)}</span><a class="link" href="/profile">Profile</a></div>
         <div class="mk-tb-bal">
           <div><span class="eyebrow">tLINE</span><b class="num" data-bal="line">${this.line === null ? "TBA" : units(this.line, qd)}</b></div>
           <div><span class="eyebrow">${sym}</span><b class="num" data-bal="token">${this.tok === null ? "TBA" : units(this.tok, this.td())}</b></div>
@@ -368,17 +329,8 @@ class Box {
     try {
       switch (act) {
         case "connect":
-          await this.doConnect(b.dataset.name!);
-          break;
-        case "disconnect":
-          if (this.wallet) await disconnect(this.wallet);
-          this.wallet = this.account = null;
-          this.quote = null;
-          try {
-            localStorage.removeItem("lineage-wallet");
-          } catch {
-            /* ignore */
-          }
+          // the header's Connect button owns the connection and its menu
+          document.getElementById("cn-btn")?.click();
           break;
         case "side":
           this.side = b.dataset.side as "buy" | "sell";

@@ -1,5 +1,5 @@
 {
   "extends": "../../tsconfig.json",
   "compilerOptions": { "lib": ["ES2022", "DOM", "DOM.Iterable"], "noUncheckedIndexedAccess": true },
-  "include": ["src/**/*.ts", "landing/**/*.ts", "server.ts", "scripts/**/*.ts"]
+  "include": ["src/**/*.ts", "wallet/**/*.ts", "server.ts", "scripts/**/*.ts"]
 }

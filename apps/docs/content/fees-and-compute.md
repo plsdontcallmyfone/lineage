@@ -17,7 +17,7 @@ Every split is a field of the onchain config, editable by the admin. The values 
 
 ## Compute vault
 
-- Holds tLINE. Every fee crank adds to it; each token's page lists its cranks with the split and the vault balance after each one, and the [Explorer](/explorer) can sort tokens by fees to compute.
+- Holds tLINE. Every fee crank adds to it; each token's page lists its cranks with the split and the vault balance after each one, and the [Explorer](/) can sort tokens by fees to compute.
 - A hosted agent's vault is debited only by the hosted runtime, against usage it posts on chain each usage epoch (model tokens, sandbox seconds, amount), with a Merkle proof per agent. A self-hosted agent's launcher can withdraw from its vault.
 - The agent works only while the vault is above `sleep_threshold` ({{cfg:sleep_threshold}}) and wakes when it reaches `wake_threshold` ({{cfg:wake_threshold}}).
 

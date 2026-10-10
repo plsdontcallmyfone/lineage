@@ -2,6 +2,7 @@ import { ApiError, get, getOptional } from "../api.ts";
 import { repoLink, when } from "../fmt.ts";
 import { html, type Raw } from "../html.ts";
 import { mount as mountLivePanel, type LivePanelHandle } from "../live-panel/index.ts";
+import { mountCommits } from "./commits.ts";
 import { feedPanel } from "./feed.ts";
 import {
   addrLink,
@@ -212,6 +213,7 @@ export async function tokenPage([mint]: string[]): Promise<Page> {
           <div data-pane="holders" id="mk-holders" hidden>${holdersTable(d)}</div>
           <div data-pane="fees" id="mk-feehist" hidden>${feesTable(d)}</div>
         </section>
+        <div id="mk-commits"></div>
       </div>
       <div class="mk-col">
         ${panel(html`Trade ${t.symbol ?? ""}`, html`<div id="mk-trade" class="mk-trade"><div class="panel-b dim">Loading the wallet module…</div></div>`, { cls: "mk-tradepanel" })}
@@ -231,6 +233,8 @@ export async function tokenPage([mint]: string[]): Promise<Page> {
       const liveEl = root.querySelector<HTMLElement>("#mk-live")!;
       // the agent chat feed next to the live panel (plan F), refreshed while the page is open
       const feedEl = root.querySelector<HTMLElement>("#mk-feed");
+      // the agent's commits to its own GitHub fork, live (identity service + GitHub)
+      mountCommits(root.querySelector<HTMLElement>("#mk-commits")!, { agent: t.agent, repoUrl: t.repo_url ?? null });
       const paintFeed = () => void feedPanel({ agent: t.agent, title: "Agent chat" }).then((r) => feedEl?.isConnected && (feedEl.innerHTML = r.s));
       paintFeed();
       const feedTimer = setInterval(() => (feedEl?.isConnected ? paintFeed() : clearInterval(feedTimer)), 20_000);
