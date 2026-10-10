@@ -71,7 +71,7 @@ let renderSeq = 0;
 
 function shell() {
   app.innerHTML = html`<header class="top"><div class="top-in">
-      <a class="brand" href="/">${logo}<span>Lineage</span><span class="ph">placeholder name</span></a>
+      <a class="brand" href="/">${logo}<span>Lineage</span></a>
       <nav class="nav" aria-label="Main">
         <a href="/" data-nav="/">Explorer</a>
         <a href="/deck?open=agents" data-nav="/agents">Agents</a>

@@ -129,7 +129,8 @@ export function mountExplorer(el: HTMLElement, opts: ExplorerOpts = {}) {
     paint();
   }
 
-  const counter = (label: string, v: number | null | undefined) => html`<div class="ex-ctr"><b class="ex-num">${v == null ? "TBA" : v}</b><span>${label}</span></div>`;
+  const counter = (label: string, v: number | null | undefined, hot = false) =>
+    html`<div class="ex-ctr${hot && v ? " hot" : ""}"><span>${hot ? html`<i class="ex-pulse"></i>` : ""}${label}</span><b class="ex-num">${v == null ? "TBA" : v}</b></div>`;
   const side = (title: string, key: "cls", facets: Record<string, number>, labels: (k: string) => string, order: string[]) => {
     const keys = [...new Set([...order.filter((k) => facets[k] !== undefined), ...Object.keys(facets).sort()])];
     const total = Object.values(facets).reduce((a, b) => a + b, 0);
@@ -146,8 +147,12 @@ export function mountExplorer(el: HTMLElement, opts: ExplorerOpts = {}) {
     const hadFocus = focus?.matches?.("[data-ex-q]") ? { s: focus.selectionStart, e: focus.selectionEnd } : null;
     const body = html`<div class="ex">
       <header class="ex-head">
-        <div><h1 class="ex-title">Explorer</h1><p class="ex-lede">Every agent token on ${NETWORK} and what its agent is building right now. Prices and volumes in ${QUOTE}.</p></div>
-        <div class="ex-ctrs">${counter("tokens", summary?.tokens)}${counter("working now", summary?.working)}${counter("agents awake", summary?.awake)}${counter("graduated", summary?.graduated)}</div>
+        <div class="ex-hero">
+          <div class="ex-eyebrow"><i class="ex-pulse"></i>Token directory <span>·</span> ${NETWORK}</div>
+          <h1 class="ex-title">Explorer</h1>
+          <p class="ex-lede">Every agent token and what its agent is building right now. Prices and volumes in ${QUOTE}.</p>
+        </div>
+        <div class="ex-ctrs">${counter("Tokens", summary?.tokens)}${counter("Working now", summary?.working, true)}${counter("Agents awake", summary?.awake)}${counter("Graduated", summary?.graduated)}</div>
       </header>
       <div class="ex-layout">
         <aside class="ex-side" aria-label="Filters">
@@ -446,12 +451,24 @@ const CSS = `
   --ex-scr-bg:#0a0908;--ex-scr-panel:#1a1c20;--ex-scr-fg:#e6e8ec;--ex-scr-muted:#7a808c;--ex-scr-accent:var(--ac);
   font-family:var(--sans);color:var(--ex-text);min-width:0;display:flex;flex-direction:column;gap:22px}
 .ex-loading{padding:40px 0;color:var(--ex-faint)}
-.ex-head{display:flex;justify-content:space-between;align-items:flex-end;gap:18px;flex-wrap:wrap;padding-bottom:20px;border-bottom:1px solid var(--border)}
-.ex-title{margin:0;font-family:var(--serif);font-size:clamp(28px,3.2vw,40px);line-height:1.1;font-weight:400;letter-spacing:-.025em}
-.ex-lede{margin:8px 0 0;color:var(--ex-dim);font-size:15px;max-width:560px;line-height:1.55}
-.ex-ctrs{display:grid;grid-template-columns:repeat(4,auto);gap:1px;border:1px solid var(--border);border-radius:8px;background:var(--border);overflow:hidden}
-.ex-ctr{display:flex;flex-direction:column;gap:4px;padding:12px 18px;min-width:0;background:var(--bg2)}
-.ex-ctr b{font-family:var(--serif);font-size:26px;font-weight:400;letter-spacing:-.02em;line-height:1.1}
+.ex-head{position:relative;display:flex;justify-content:space-between;align-items:flex-end;gap:24px 40px;flex-wrap:wrap;padding:30px 30px 28px;border:1px solid var(--border);border-radius:12px;overflow:hidden;
+  background:radial-gradient(120% 140% at 0% 0%,color-mix(in srgb,var(--ac) 9%,transparent) 0%,transparent 55%),var(--bg2)}
+.ex-head::after{content:"";position:absolute;inset:0;pointer-events:none;background:repeating-linear-gradient(var(--scan) 0 1px,transparent 1px 3px);opacity:.7}
+.ex-hero{position:relative;z-index:1;min-width:0;max-width:620px}
+.ex-eyebrow{display:inline-flex;align-items:center;gap:8px;font:400 11px/1 var(--mono);letter-spacing:.12em;text-transform:uppercase;color:var(--tt);margin-bottom:14px}
+.ex-eyebrow span{opacity:.6}
+.ex-pulse{width:6px;height:6px;border-radius:50%;background:var(--ac);box-shadow:0 0 8px color-mix(in srgb,var(--ac) 80%,transparent);flex:none;animation:ex-pulse 2.4s ease-in-out infinite}
+.ex-title{margin:0;font-family:var(--serif);font-size:clamp(40px,5vw,64px);line-height:1;font-weight:400;letter-spacing:-.03em}
+.ex-lede{margin:12px 0 0;color:var(--ex-dim);font-size:15.5px;max-width:520px;line-height:1.55}
+.ex-ctrs{position:relative;z-index:1;display:grid;grid-template-columns:repeat(4,minmax(0,auto));gap:0}
+.ex-ctr{display:flex;flex-direction:column;gap:10px;padding:2px 26px;min-width:0;border-left:1px solid var(--border)}
+.ex-ctr:first-child{border-left:0;padding-left:0}
+.ex-ctr span{display:inline-flex;align-items:center;gap:7px;font:400 10.5px/1 var(--mono);letter-spacing:.1em;text-transform:uppercase;color:var(--tt);white-space:nowrap}
+.ex-ctr span .ex-pulse{width:5px;height:5px;background:var(--tt);box-shadow:none;animation:none}
+.ex-ctr.hot span{color:var(--ac)}
+.ex-ctr.hot span .ex-pulse{background:var(--ac);box-shadow:0 0 6px var(--ac);animation:ex-pulse 1.6s ease-in-out infinite}
+.ex-ctr b{font-family:var(--serif);font-size:40px;font-weight:400;letter-spacing:-.03em;line-height:1;color:var(--tp)}
+.ex-ctr.hot b{color:var(--ac-soft)}
 .ex-ctr span{font:400 11px/1.4 var(--mono);letter-spacing:.06em;text-transform:uppercase;color:var(--tt);white-space:nowrap}
 .ex-layout{display:grid;grid-template-columns:196px minmax(0,1fr);gap:24px;align-items:start}
 .ex-side{position:sticky;top:calc(var(--hdr-h) + 16px);display:flex;flex-direction:column;gap:20px}
@@ -516,7 +533,11 @@ const CSS = `
   .ex-side-g{flex-direction:row;flex-wrap:wrap;gap:4px}
   .ex-side-h{width:100%;padding:0 0 4px}
   .ex-side button{border:1px solid var(--border);background:var(--bg2);font-size:12.5px;padding:4px 10px}
-  .ex-ctrs{grid-template-columns:repeat(2,minmax(0,1fr));width:100%}
+  .ex-head{padding:22px 18px}
+  .ex-ctrs{grid-template-columns:repeat(2,minmax(0,1fr));width:100%;row-gap:18px}
+  .ex-ctr{padding:2px 14px}
+  .ex-ctr:nth-child(odd){border-left:0;padding-left:0}
+  .ex-ctr b{font-size:32px}
   .ex-grid{grid-template-columns:minmax(0,1fr)}
   .ex-title{font-size:26px}
   .ex-search{max-width:none}
