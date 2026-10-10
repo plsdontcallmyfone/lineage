@@ -38,8 +38,6 @@ export interface RuntimeDeps {
    * runtime key; the runtime pays the fees and `onFee` bills them to the agent's usage ("chain fee").
    */
   messenger?: (agent: string, key: AgentKey, onFee: (f: ChainFee) => void) => Messenger | undefined;
-  /** Agent posts (plan S, posts.ts): the model client posts are written with; absent = no posts. */
-  postClient?: ModelClient;
   /**
    * Agents as traders (plan T, packages/trader glue.ts): when a usage epoch is due, `share` gives the
    * trade share of each bound agent's new fee income, which rides its usage leaf as the line "trade
@@ -49,6 +47,8 @@ export interface RuntimeDeps {
     share(o: { agent: string; mint: string; vault: bigint; computeOwed: bigint; wake: bigint }): Promise<{ amount: bigint; basis: unknown } | null>;
     forward(epochs: ClosedEpoch[], save: () => void): Promise<void>;
   };
+  /** Agent posts (plan S, posts.ts): the model client posts are written with; absent = no posts. */
+  postClient?: ModelClient;
 }
 
 interface Attempt {
@@ -63,6 +63,16 @@ interface Running {
 }
 
 /** Agents ordered least recently started first (never started first, then by state order). */
+/**
+ * How long an agent waits before its next attempt after `misses` attempts in a row that spent money
+ * and produced no candidate: none for the first, then 15 min doubling, capped at 6 h. On the site,
+ * attempts kept ending at the spend cap with no candidate while the next started at once.
+ */
+export function missBackoffMs(misses: number): number {
+  if (misses <= 1) return 0;
+  return Math.min(15 * 60_000 * 2 ** (misses - 2), 6 * 3_600_000);
+}
+
 export function fairOrder<T>(entries: [string, T][], lastStarted: Map<string, number>): [string, T][] {
   return entries.map((e, i) => ({ e, i, t: lastStarted.get(e[0]) ?? -1 })).sort((a, b) => a.t - b.t || a.i - b.i).map((x) => x.e);
 }
@@ -79,6 +89,8 @@ export class Runtime {
   private hosted = new Map<string, HostedAgent>();
   /** When each agent's last attempt started (this process): the attempt slots go round robin. */
   private lastStarted = new Map<string, number>();
+  /** Attempts in a row that spent money and produced no candidate, and when the agent may try again. */
+  private misses = new Map<string, { n: number; until: number }>();
   private exhausted = new Set<string>();
   private client: CoreClient;
   private ticks = 0;
@@ -400,6 +412,7 @@ export class Runtime {
       if (this.cfg.max_candidates_per_agent !== undefined && st.candidates >= this.cfg.max_candidates_per_agent) continue;
       const v = this.vaults.get(agent);
       if (!v?.awake || this.exhausted.has(agent)) continue;
+      if ((this.misses.get(agent)?.until ?? 0) > this.now()) continue;
       if (this.budget(agent).usd === null) {
         const b = this.budget(agent);
         if (b.usd === null && b.vault) this.exhausted.add(agent);
@@ -426,7 +439,16 @@ export class Runtime {
     this.save();
     const cost = costOf(this.prices, a.totals.usd, a.totals.sandbox_s);
     this.log(`${agent.slice(0, 6)} attempt done: ${a.totals.usd.toFixed(4)} USD model spend, ${Math.ceil(a.totals.sandbox_s)} sandbox s, cost ${cost} base units${commit ? `, candidate ${commit.slice(0, 12)}` : ", no candidate"}`);
-    if (!commit) return;
+    if (!commit) {
+      if (a.totals.usd > 0) {
+        const n = (this.misses.get(agent)?.n ?? 0) + 1;
+        const wait = missBackoffMs(n);
+        this.misses.set(agent, { n, until: this.now() + wait });
+        if (wait) this.log(`${agent.slice(0, 6)} ${n} attempts in a row without a candidate; next attempt in ${Math.round(wait / 60_000)} min`);
+      }
+      return;
+    }
+    this.misses.delete(agent);
     this.state.agents[agent]!.candidates++;
     this.usageOf(agent).candidates.push(commit);
     this.save();

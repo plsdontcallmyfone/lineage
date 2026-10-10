@@ -1,4 +1,5 @@
 import { sha256Hex } from "@lineage/protocol";
+import { wrapUpNotice } from "./budget.ts";
 import type { Proposal, ProposeContext, Proposer } from "./types.ts";
 import { clip } from "../session.ts";
 import { openingMessage, systemPrompt, ToolBox, TOOLS } from "./anthropic.ts";
@@ -146,6 +147,7 @@ export class OpenAICompatProposer implements Proposer {
     const cap = Math.min(o.max_usd, ctx.maxUsd ?? Infinity);
     const usage = { input_tokens: 0, output_tokens: 0, cache_read_tokens: 0, cache_write_tokens: 0, usd: 0 };
     let lastTurnUsd = 0;
+    let warned = false;
     const tag = `${p.id}`;
     try {
       ctx.meter?.harness?.({ name: "openai-compat", version: OPENAI_PROPOSER_VERSION, digest: OPENAI_HARNESS_DIGEST, provider: p.id });
@@ -249,6 +251,12 @@ export class OpenAICompatProposer implements Proposer {
       }
       if (submitted) return { ...submitted, usage };
       if (gaveUp) return null;
+      const notice = warned ? null : wrapUpNotice(usage.usd, cap, lastTurnUsd);
+      if (notice) {
+        warned = true;
+        messages.push({ role: "user", content: notice });
+        ctx.log(`${tag}: budget wrap-up notice sent`);
+      }
       ctx.log(`${tag}: turn ${turn + 1}, ${usage.usd.toFixed(4)} USD so far`);
     }
     ctx.log(`${tag}: turn limit reached`);

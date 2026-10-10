@@ -1,4 +1,5 @@
 import Anthropic from "@anthropic-ai/sdk";
+import { wrapUpNotice } from "./budget.ts";
 import { existsSync, lstatSync, readdirSync, readFileSync, realpathSync, statSync, writeFileSync } from "node:fs";
 import { dirname, join, normalize, relative, resolve, sep } from "node:path";
 import { canonicalizeDiff, guard, judge, matchesAny, sha256Hex, type CandidateKind, type CandidateView } from "@lineage/protocol";
@@ -190,6 +191,7 @@ export class AnthropicProposer implements Proposer {
     const usage = { input_tokens: 0, output_tokens: 0, cache_read_tokens: 0, cache_write_tokens: 0, usd: 0 };
     let lastTurnUsd = 0;
     let lastInput = 0;
+    let warned = false;
     const addUsage = (u: Anthropic.Beta.BetaUsage, model: string) => {
       // a dated snapshot id (claude-haiku-4-5-20251001) is the requested model; it used to price at the ceiling (plan M real session)
       const base = model.replace(/-\d{8}$/, "");
@@ -313,7 +315,12 @@ export class AnthropicProposer implements Proposer {
       }
       if (submitted) return { ...submitted, usage };
       if (gaveUp) return null;
-      messages.push({ role: "user", content: results });
+      const notice = warned ? null : wrapUpNotice(usage.usd, cap, lastTurnUsd);
+      if (notice) {
+        warned = true;
+        ctx.log("anthropic: budget wrap-up notice sent");
+      }
+      messages.push({ role: "user", content: notice ? [...results, { type: "text", text: notice }] : results });
       ctx.log(`anthropic: turn ${turn + 1}, ${usage.usd.toFixed(4)} USD so far`);
     }
     ctx.log("anthropic: turn limit reached");
