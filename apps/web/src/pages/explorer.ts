@@ -414,8 +414,22 @@ export async function explorerPage(): Promise<Page> {
       mounted = mountExplorer(root.querySelector<HTMLElement>("#ex-root")!, {
         // hovering a card: the agent's desktop (its session live, else its latest replayed) in the machine frame
         hoverPanel: (wrap, agent) => {
-          const h = mountLivePanel(wrap, { agent, frame: "device", list: false, fps: 12 });
-          return () => h.destroy();
+          // the machine renders at its natural width in a box, and the box is scaled to fit the card's screen
+          const box = document.createElement("div");
+          box.className = "ex-livebox";
+          wrap.appendChild(box);
+          const h = mountLivePanel(box, { agent, frame: "device", list: false, fps: 12 });
+          const fit = () => {
+            const W = wrap.clientWidth, H = wrap.clientHeight, bw = box.offsetWidth || 1, bh = box.offsetHeight || 1;
+            const k = Math.min(W / bw, H / bh);
+            box.style.transform = `translate(-50%, -50%) scale(${k.toFixed(4)})`;
+          };
+          fit();
+          const t = setInterval(() => (wrap.isConnected ? fit() : clearInterval(t)), 250); // the panel's height settles as its session loads
+          return () => {
+            clearInterval(t);
+            h.destroy();
+          };
         },
       });
     },
@@ -464,7 +478,7 @@ const CSS = `
 .ex-screen::after{content:"";position:absolute;inset:0;pointer-events:none;background:repeating-linear-gradient(0deg,#0000003d 0 1px,#0000 1px 3px)}
 .ex-screen canvas{display:block;width:100%;height:100%}
 .ex-livewrap{position:absolute;inset:0;z-index:2;display:flex;align-items:center;justify-content:center;overflow:hidden;background:var(--ex-scr-bg);animation:ex-fade .3s ease-out} /* the agent's live desktop, over the still */
-.ex-livewrap>*{width:100%}
+.ex-livebox{position:absolute;left:50%;top:50%;width:560px;transform:translate(-50%,-50%);transform-origin:center}
 .ex-livewrap .lp{border-radius:0;border:0;box-shadow:none}
 .ex-livewrap .lp-list,.ex-livewrap .lp-run,.ex-livewrap .lp-say{display:none}
 @keyframes ex-fade{from{opacity:0}to{opacity:1}}
