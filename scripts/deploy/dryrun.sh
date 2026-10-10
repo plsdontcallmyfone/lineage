@@ -64,10 +64,11 @@ export SSH_KEY="$WORK/key" SSH_PORT=$SSH_P SSH_INSECURE_TEST=1 DRY_RUN=1 SITE_NA
 D="$REPO/scripts/deploy/deploy.sh"
 FIRST="${DRYRUN_FIRST_REF:-HEAD~1}"
 git -C "$REPO" cat-file -e "$FIRST:scripts/deploy/remote.sh" 2>/dev/null || FIRST=HEAD
+# pinned: other sessions commit in this tree while the dry run runs, so every deploy names HEADSHA
 HEADSHA="$(git -C "$REPO" rev-parse HEAD)"; FIRSTSHA="$(git -C "$REPO" rev-parse "$FIRST")"
 
 echo "== deploy 1: full at $FIRSTSHA"
-s=$(date +%s); DEPLOY_REF="$FIRST" "$D" 127.0.0.1 full > "$WORK/d1.log" 2>&1; rc=$?
+s=$(date +%s); DEPLOY_REF="$FIRSTSHA" "$D" 127.0.0.1 full > "$WORK/d1.log" 2>&1; rc=$?
 tail -25 "$WORK/d1.log"
 check "deploy.sh full on a fresh box" "$([ $rc = 0 ] && echo 1 || echo 0)" "exit $rc, $(( $(date +%s) - s )) s"
 [ $rc = 0 ] || { echo "first deploy failed; stopping (log above)" >&2; exit 1; }
@@ -75,11 +76,11 @@ grep -q "plan done (nothing sent)" "$WORK/d1.log" && grep -q "fund-site.*plan" "
 
 if [ "$FIRSTSHA" != "$HEADSHA" ]; then
   echo "== deploy 2: full at HEAD $HEADSHA"
-  s=$(date +%s); "$D" 127.0.0.1 full > "$WORK/d2.log" 2>&1; rc=$?; tail -8 "$WORK/d2.log"
+  s=$(date +%s); DEPLOY_REF="$HEADSHA" "$D" 127.0.0.1 full > "$WORK/d2.log" 2>&1; rc=$?; tail -8 "$WORK/d2.log"
   check "deploy.sh full re-run on the same box (new commit)" "$([ $rc = 0 ] && echo 1 || echo 0)" "exit $rc, $(( $(date +%s) - s )) s"
 fi
 echo "== deploy 3: full again at HEAD (re-run safety)"
-s=$(date +%s); "$D" 127.0.0.1 full > "$WORK/d3.log" 2>&1; rc=$?; tail -5 "$WORK/d3.log"
+s=$(date +%s); DEPLOY_REF="$HEADSHA" "$D" 127.0.0.1 full > "$WORK/d3.log" 2>&1; rc=$?; tail -5 "$WORK/d3.log"
 check "deploy.sh full re-run, same commit" "$([ $rc = 0 ] && echo 1 || echo 0)" "exit $rc, $(( $(date +%s) - s )) s"
 prevsha=$(sed -n 's/^== ship \([0-9a-f]*\) .*/\1/p' "$WORK/d$([ -f "$WORK/d2.log" ] && echo 2 || echo 1).log")
 d3sha=$(sed -n 's/^== ship \([0-9a-f]*\) .*/\1/p' "$WORK/d3.log")
@@ -164,7 +165,7 @@ if [ "$FIRSTSHA" != "$HEADSHA" ]; then
   echo "== zero-downtime activate: a release whose Core fails its health check is rolled back"
   # a drop-in that fails Core's start only while /opt/lineage/current is HEAD's release
   R "install -d /etc/systemd/system/lineage-core.service.d && printf '[Service]\nExecStartPre=/bin/sh -c \"readlink -f /opt/lineage/current | grep -qv $HEADSHA\"\n' > /etc/systemd/system/lineage-core.service.d/zz-dryrun-break.conf && systemctl daemon-reload"
-  DEPLOY_REF=HEAD DEPLOY_HEALTH_WAIT=15 "$D" 127.0.0.1 code > "$WORK/dbreak.log" 2>&1; rc=$?
+  DEPLOY_REF="$HEADSHA" DEPLOY_HEALTH_WAIT=15 "$D" 127.0.0.1 code > "$WORK/dbreak.log" 2>&1; rc=$?
   cur=$(R "basename \$(readlink /opt/lineage/current)")
   R "rm -f /etc/systemd/system/lineage-core.service.d/zz-dryrun-break.conf && systemctl daemon-reload"
   for i in $(seq 1 30); do [ "$(code "$U/v1/health")" = 200 ] && break; sleep 1; done
@@ -173,7 +174,7 @@ if [ "$FIRSTSHA" != "$HEADSHA" ]; then
   echo "== zero-downtime activate: a verifier mid-replay drains without holding the public units"
   # Stand-in for a verifier finishing a long replay: on SIGTERM it keeps working SIM_DRAIN_S seconds
   # (the real template's TimeoutStopSec stays in force). No Docker here, so docker.service is a stub.
-  SIM_DRAIN_S=90
+  SIM_DRAIN_S=240   # longer than a dry-run Core restart (it reads public devnet before it listens)
   cat > "$WORK/sim.sh" <<'SIM'
 #!/bin/bash
 LOG=/var/lib/lineage-sim/verifier.log
@@ -194,7 +195,7 @@ SIM
   ms() { perl -MTime::HiRes=time -e 'printf "%d\n", time * 1000'; }
   ( while :; do t=$(ms); c=$(code -m 10 "$U/api/config"); echo "$t $c $(ms)"; sleep 0.25; done ) > "$WORK/poll.log" 2>/dev/null &
   POLL=$!
-  s=$(date +%s); DEPLOY_REF=HEAD DEPLOY_DRAIN_WAIT=20 "$D" 127.0.0.1 code > "$WORK/d4.log" 2>&1; rc=$?; took=$(( $(date +%s) - s ))
+  s=$(date +%s); DEPLOY_REF="$HEADSHA" DEPLOY_DRAIN_WAIT=20 "$D" 127.0.0.1 code > "$WORK/d4.log" 2>&1; rc=$?; took=$(( $(date +%s) - s ))
   sleep 2; kill "$POLL" 2>/dev/null; wait "$POLL" 2>/dev/null
   cur=$(R "basename \$(readlink /opt/lineage/current)")
   check "forward again to HEAD (code mode)" "$([ $rc = 0 ] && [ "$cur" = "$(sed -n 's/^== ship \([0-9a-f]*\) .*/\1/p' "$WORK/d4.log")" ] && echo 1 || echo 0)" "now $cur"
