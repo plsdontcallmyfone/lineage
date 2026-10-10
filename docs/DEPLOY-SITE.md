@@ -54,12 +54,13 @@ of `~/.ssh/lineage_site`), then run deploy.sh with its address.
    site's reference runner and two verifiers on devnet (`register` with the server's capabilities digest,
    `bond` min_bond for the two verifiers), owner = the site's owner key. Every transaction is appended
    to `scripts/deploy/SITE-DEVNET.md`.
-6. **activate**: backs up Core's database (when the release changes), switches `/opt/lineage/current`,
-   writes `/var/lib/lineage/site/network.json` (config/network.json plus the devnet `chain` block, daily
-   epochs), sets up the service users and gives each its files (see "Service users"), installs the units,
-   the timers and the Caddyfile, restarts, waits for health, then starts
-   `lineage-bootstrap` (recipes, snapshots, reference flag, calibrations: minutes per recipe) and the
-   workers.
+6. **activate** (ordering: "Zero-downtime activate" below): backs up Core's database online (when the
+   release changes), writes `/var/lib/lineage/site/network.json` (config/network.json plus the devnet
+   `chain` block, daily epochs), sets up the service users and gives each its files (see "Service
+   users"), installs the units, the timers and the Caddyfile, tells the background units to drain,
+   switches `/opt/lineage/current`, restarts the public units one by one with a health check each (a
+   failed check rolls the release back), then queues `lineage-bootstrap` (recipes, snapshots, reference
+   flag, calibrations: minutes per recipe) and the workers on the new release.
 
 | Unit | What | User | Listens | Memory cap |
 |---|---|---|---|---|
@@ -437,9 +438,86 @@ scripts/deploy/deploy.sh <host> rollback --with-data  # also restores the Core d
 scripts/deploy/deploy.sh <host> code                  # forward again (or DEPLOY_REF=<commit>)
 ```
 
-Each activation of a new release backs up `core.db` (`sqlite3 .backup`) to `/var/lib/lineage/backups/`
-(last five kept). Core's migrations only go forward, so roll back with `--with-data` when the newer
+Each activation of a new release backs up `core.db` (`VACUUM INTO`, taken online while the old Core
+still serves, so writes in the seconds before its restart are not in it) to `/var/lib/lineage/backups/`
+(last five kept). `rollback` uses the activate ordering below (public units one by one, background
+units draining without holding them); with `--with-data`, or back to a release from before the service
+users, the public units are stopped first because the data or its owners change. Core's migrations only go forward, so roll back with `--with-data` when the newer
 release added a migration; the data replaced by the restore is kept next to the backups.
+
+## Zero-downtime activate
+
+Incident 2026-10-10 19:42 to about 20:28 UTC: activate for 5fc3208 ran one `systemctl stop` over the
+runtime, the authors, the verifiers and the public units together. `lineage-verifier@v2` was draining a
+long replay (TimeoutStopSec 45 min) and systemctl waited for it, with web, gate and indexer already
+stopped: the whole site answered 502 for about 45 minutes. Since then `remote.sh activate` keeps the two
+kinds of unit apart:
+
+1. **Stage** while the old release serves: site config, unit files, service users and keys, an online
+   copy of `core.db`, the Caddyfile (validated, the previous one kept as `/etc/caddy/Caddyfile.prev`),
+   then a graceful Caddy reload.
+2. **Background units drain, no wait**: every running `lineage-runtime`, `lineage-author@*`,
+   `lineage-reference` and `lineage-verifier@*` gets `systemctl stop --no-block`. Each drains as before:
+   a worker finishes and commits the replay it is running, takes no new assignment and reveals what it
+   committed (`packages/worker`, `drain()`); the runtime waits for its running attempts.
+   `lineage-identity-cycle` (a oneshot on a timer) is left to finish on its own.
+3. **Public units, one by one**: `/opt/lineage/current` switches, then `lineage-core`, `lineage-indexer`,
+   `lineage-identity`, `lineage-web`, `lineage-gate` restart in that order, each waiting for its health
+   URL (`/v1/health`, `/market/summary`, `/identity/health`, `/live/status`, `/gate/health`) for up to
+   `DEPLOY_HEALTH_WAIT` seconds (default 180: on a fresh box Core reads the chain for over 90 s before it listens). A failed check rolls back: current points at the previous
+   release again, its units, network config and Caddyfile go back in place, the public units restart on
+   it, `previous` is left as it was, and the deploy exits 1.
+4. **Background starts queue on the new release**: `systemctl start --no-block` for the workers, the
+   wanted authors and the runtime (and any other verifier instance that was running). For a unit still
+   draining, systemd runs the start only after the old process has exited: one unit never has two
+   processes, so a verifier on the new release cannot run a replay its old process is still running. It
+   loads the same `pending.json` and reveals what the old one committed; an assignment the old process
+   never committed (killed at TimeoutStopSec) is still `assigned` at Core and runs once on the new release.
+5. **Bounded wait**: activate waits at most `DEPLOY_DRAIN_WAIT` seconds (default 120) for the drains,
+   prints `DRAINING <unit>` for each one still stopping and returns; `deploy.sh` ends with a
+   `still draining:` list (unit, since when, stop timeout). systemd keeps each drain going up to the
+   unit's TimeoutStopSec (verifiers and reference 45 min, runtime 25 min, authors 20 min, unchanged).
+
+While a public unit restarts, requests wait instead of failing: Caddy retries a refused dial to the gate
+and to the identity service (`lb_try_duration 15s`), the gate retries a refused Core, web or indexer
+(`--upstream-wait-ms`, default 15000; `fetchUpstream` in `gate.ts`), and web's `/api/*` and `/market/*`
+proxies retry a refused Core or indexer for 15 s. A refused connection never reached the upstream, so
+the retry cannot double a write.
+
+Workers mid-request when Core restarts: the worker loop already retries a failed tick, but a commit sent
+in the restart window used to fail and lose the replay it was committing. The worker units now set
+`LINEAGE_CORE_RETRY_MS=30000`, so `CoreClient` retries a refused connection (same signed request and
+nonce, which Core never saw) until Core is back; it is off (0) everywhere else. Core's own stop closes
+open connections (`server.stop(true)`); a commit cut after Core applied it is seen as `committed` on the
+next pass and revealed from `pending.json`, one cut before is still `assigned` and is run again.
+
+Caddy older than 2.8 (Ubuntu's package, provision.sh's fallback when the Caddy apt repository refuses)
+cannot parse the `|0600` socket mode; activate drops the suffix there (`/run/caddy` is 0750 caddy:caddy
+either way) and falls back to a Caddy restart when a reload cannot reach the running Caddy.
+
+A worker that got SIGTERM used to keep taking work: `draining` was set only after its loop returned, so
+the tick running at the stop went on to start the next assigned replay (the incident's
+`lineage-verifier@v2` revealed at 19:44:41 after its stop and kept working to its 45 min timeout; the
+same was seen again at 21:03 to 21:48 UTC). `packages/worker/src/main.ts` now sets it at the signal: the
+running job finishes, no new assignment, profile, calibration or authoring step starts, committed
+replays are revealed, the process exits (`packages/worker/test/drain-stop.test.ts`). Workers still on an
+older release keep the old behaviour until their stop timeout.
+
+A second thing held Core: every worker unit is ordered `After=lineage-core`, so a plain
+`systemctl restart lineage-core` waits until every draining worker has stopped (stop jobs run in reverse
+order). The public restarts therefore use `--job-mode=ignore-dependencies`; boot and shutdown keep the
+ordering.
+
+Measured (2026-10-10):
+
+| Where | Public units back | Polling `/api/config` during the deploy | Background |
+|---|---|---|---|
+| dry run (`dryrun.sh`, simulated verifier draining 150 s) | Core 3767 ms, indexer 313, identity 300, web 337, gate 297; all 6 s after activate began | 73 polls every 250 ms: 0 non-200, longest time between two 200 answers 4080 ms, slowest answer 3810 ms | deploy returned after 30 s with the verifier listed as draining; it restarted once on the new release when its old process exited |
+| the site, `deploy.sh 157.245.71.188 code` at 3187bf4 | Core 7087 ms, indexer 10047, identity 5590, web 7402, gate 777; all 47 s after activate began | 140 polls every second over the 246 s deploy: 0 non-200, longest time between two 200 answers 8327 ms, slowest answer 7314 ms | runtime and both verifiers still draining when the deploy returned, listed with their stop timeouts |
+
+Before the change the same kind of deploy answered 502 for about 45 minutes. The dry run also checks that
+a release whose Core fails its health check is rolled back (`DEPLOY_HEALTH_WAIT=15`, the site answering
+again on the previous release).
 
 ## Stop
 
