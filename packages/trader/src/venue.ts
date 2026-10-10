@@ -1,15 +1,15 @@
 import type { TokenView } from "./policy.ts";
 
 // Where trades execute. `SimVenue` is the simulated market (constant-product pools with a flat fee,
-// the shape of a DBC curve segment and a DAMM v2 pool); `ChainVenue` (chain-venue.ts) trades on
-// Meteora DBC before graduation and DAMM v2 after, simulating every transaction before sending it.
+// the shape of a bonding curve segment and a pool); `ChainVenue` (chain-venue.ts) trades on pump.fun's
+// bonding curve before graduation and its PumpSwap pool after, simulating every transaction first.
 
 export interface Quote {
   /** simulated output of the exact trade, base units */
   out: bigint;
   /** execution price against the marginal price (a small probe), bps */
   impact_bps: number;
-  venue: "dbc" | "damm_v2" | "sim";
+  venue: "pump_curve" | "pump_pool" | "sim";
 }
 
 export interface Fill {
@@ -18,7 +18,7 @@ export interface Fill {
   amount_out: bigint;
   /** lamports the treasury key paid in fees */
   fee_lamports: number;
-  venue: "dbc" | "damm_v2" | "sim";
+  venue: "pump_curve" | "pump_pool" | "sim";
 }
 
 export interface Balances {
@@ -53,7 +53,7 @@ export interface SimPool {
   decimals: number;
 }
 
-/** Constant-product pools; the fee is taken from the input, like DBC's flat quote fee. */
+/** Constant-product pools; the fee is taken from the input, like a flat quote fee. */
 export class SimVenue implements Venue {
   readonly kind = "sim" as const;
   readonly pools = new Map<string, SimPool>();

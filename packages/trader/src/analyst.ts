@@ -154,7 +154,7 @@ export function userPrompt(i: AnalysisInput): string {
       [
         `- ${info?.symbol ?? "?"} ${t.mint} (agent ${t.agent.slice(0, 8)}, ${info?.repo_url ?? "repo n/a"}${info?.class ? `, ${info.class}` : ""})`,
         `  score ${n4(sc?.now)}${sc?.ref !== null && sc?.ref !== undefined ? ` (was ${n4(sc.ref)})` : ""}; accepted generations ${comp?.accepted_generations?.raw ?? "n/a"}; verified gain 7 d ${n4(comp?.verified_gain_7d?.raw)}; acceptance rate ${n4(comp?.acceptance_rate?.raw)}; sessions 24 h ${comp?.sessions_24h?.raw ?? "n/a"}`,
-        `  price ${n4(t.price)} ${quoteWords().q}; 24 h change ${t.change_24h === null ? "n/a" : `${n4(t.change_24h * 100)}%`}; 24 h volume ${n4(info?.volume_24h)} ${quoteWords().q} in ${info?.trades_24h ?? "n/a"} trades; holders ${info?.holders ?? "n/a"}; ${info?.phase === "graduated" ? "graduated (DAMM v2)" : `curve progress ${n4((info?.curve_progress ?? 0) * 100)}%`}`,
+        `  price ${n4(t.price)} ${quoteWords().q}; 24 h change ${t.change_24h === null ? "n/a" : `${n4(t.change_24h * 100)}%`}; 24 h volume ${n4(info?.volume_24h)} ${quoteWords().q} in ${info?.trades_24h ?? "n/a"} trades; holders ${info?.holders ?? "n/a"}; ${info?.phase === "graduated" ? "graduated (PumpSwap pool)" : `curve progress ${n4((info?.curve_progress ?? 0) * 100)}%`}`,
         ...gs.map((g) => `  accepted ${Math.round((i.now - g.at) / 3600000)} h ago: ${g.recipe_name ?? "lineage"} generation ${g.height}, ${g.kind} on ${typeof g.target === "string" ? g.target : JSON.stringify(g.target)}, gain ${n4(g.gain_pct)}%`),
       ].join("\n"),
     );

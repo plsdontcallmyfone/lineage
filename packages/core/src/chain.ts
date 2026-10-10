@@ -374,7 +374,7 @@ export class ChainBridge {
         rebate_per_class: s(reg.params.rebatePerClass) },
       launch: launchCfg
         ? { agent_compute_bps: launchCfg.agentComputeBps, protocol_bps: launchCfg.protocolBps, sleep_threshold: s(launchCfg.sleepThreshold),
-            wake_threshold: s(launchCfg.wakeThreshold), dbc_config: launchCfg.dbcConfig, migration_quote_threshold: s(launchCfg.migrationQuoteThreshold),
+            wake_threshold: s(launchCfg.wakeThreshold), venue: launchCfg.venue, pump_creator_fee_bps: s(launchCfg.pumpCreatorFeeBps),
             compute_sink: launchCfg.computeSink, paused: launchCfg.paused }
         : null,
       balances: { treasury: s(vaults.treasury), reserve: s(vaults.reserve), pool: s(vaults.pool), payable: s(vaults.payable), bond_vault: s(vaults.bondVault) },

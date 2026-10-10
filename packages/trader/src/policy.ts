@@ -18,7 +18,7 @@ export interface TokenView {
   /** 24 h price change as a fraction, null when unknown */
   change_24h: number | null;
   /** where it trades now; null: not tradable */
-  venue: "dbc" | "damm_v2" | "sim" | null;
+  venue: "pump_curve" | "pump_pool" | "sim" | null;
   /** the token's agent is excluded from trading (Core's trading config) */
   excluded?: boolean;
 }

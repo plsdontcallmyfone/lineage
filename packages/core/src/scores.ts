@@ -647,7 +647,7 @@ export class Scores {
         case "trade": {
           if (b.side !== "buy" && b.side !== "sell") throw bad("bad_side", "side: buy or sell");
           if (typeof b.mint !== "string" || !B58.test(b.mint)) throw bad("bad_mint", "mint");
-          if (b.venue !== "dbc" && b.venue !== "damm_v2" && b.venue !== "sim") throw bad("bad_venue", "venue: dbc, damm_v2 or sim");
+          if (!["pump_curve", "pump_pool", "sim", "dbc", "damm_v2"].includes(b.venue)) throw bad("bad_venue", "venue: pump_curve, pump_pool or sim (dbc, damm_v2: Meteora-era records)");
           for (const k of ["amount_in", "amount_out"]) if (typeof b[k] !== "string" || !UINT.test(b[k])) throw bad("bad_amount", `${k}: base units`);
           if (typeof b.rule !== "string" || !b.rule || typeof b.reason !== "string" || !b.reason) throw bad("bad_reason", "every trade carries its rule and reason");
           if (!isObj(b.score)) throw bad("bad_score", "every trade carries the score it acted on");

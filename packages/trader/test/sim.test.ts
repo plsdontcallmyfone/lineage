@@ -11,7 +11,7 @@ import { SimVenue, type Fill, type TraderKey } from "../src/venue.ts";
 import type { TokenView } from "../src/policy.ts";
 
 // The simulated market (plan T exit, owner amendment 2026-10-10): a real Core (in process, fake clock)
-// publishes scores and stores records; constant-product pools with a 3% fee stand in for DBC and DAMM
+// publishes scores and stores records; constant-product pools with a 3% fee stand in for the pump.fun curve and pool
 // v2; outside traders move prices. Each hosted agent's "model" is scripted and partly adversarial: it
 // answers with valid decisions, oversized ones, its own token, a same-launcher token, an excluded
 // token, extra fields and garbage. Afterwards every published record is checked against every limit

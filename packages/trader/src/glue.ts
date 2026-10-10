@@ -55,7 +55,7 @@ export function forwardAmount(l: { amount: string; cost: string; trade_share?: s
 export async function marketTokens(market: string): Promise<MarketToken[]> {
   const r = await fetch(`${market.replace(/\/+$/, "")}/market/tokens?limit=500`, { signal: AbortSignal.timeout(30_000) });
   if (!r.ok) throw new Error(`market: HTTP ${r.status}`);
-  const body = (await r.json()) as { tokens: { mint: string; agent: string; price: number | null; decimals?: number; change_24h: number | null; phase: string; migrated?: boolean; symbol?: string | null; volume_24h?: number | null; trades_24h?: number | null; holders?: number | null; curve_progress?: number | null; repo_url?: string | null; class?: string | null; lineage_id?: string | null }[] };
+  const body = (await r.json()) as { tokens: { mint: string; agent: string; price: number | null; decimals?: number; change_24h: number | null; phase: string; migrated?: boolean; venue?: string; symbol?: string | null; volume_24h?: number | null; trades_24h?: number | null; holders?: number | null; curve_progress?: number | null; repo_url?: string | null; class?: string | null; lineage_id?: string | null }[] };
   const numOrNull = (x: unknown) => (typeof x === "number" && Number.isFinite(x) ? x : null);
   return body.tokens.map((t) => ({
     mint: t.mint,
@@ -63,7 +63,8 @@ export async function marketTokens(market: string): Promise<MarketToken[]> {
     price: typeof t.price === "number" && t.price > 0 ? t.price : null,
     decimals: typeof t.decimals === "number" ? t.decimals : 6,
     change_24h: typeof t.change_24h === "number" ? t.change_24h : null,
-    venue: t.phase === "graduated" || t.migrated ? "damm_v2" : "dbc",
+    // pump.fun only; launches the Meteora venue recorded (devnet history) are read-only: not tradable
+    venue: t.venue === "meteora" ? null : t.phase === "graduated" || t.migrated ? "pump_pool" : "pump_curve",
     info: {
       symbol: typeof t.symbol === "string" ? t.symbol : null,
       phase: t.phase ?? null,
