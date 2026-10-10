@@ -21,7 +21,8 @@
 #   ACME_EMAIL      optional email for Let's Encrypt
 #   LINEAGE_RECIPES recipes to serve (default fixture-b58,base58-py,minbpe), re-pinned to the server's arch
 #   WITH_RUNTIME=1  also copy the runtime authority key and model.env (modes full, keys and code) and run
-#                   lineage-runtime (real model spend, capped per UTC day in runtime.json by site-config.ts)
+#                   lineage-runtime (real model spend, capped per UTC day in runtime.json by site-config.ts);
+#                   e2b.env too when it holds a key (agent desktops' E2B overflow, capped per UTC day)
 #   WITH_AUTHOR=1   also copy the TEST author agent keys and run lineage-author@<name> (scripted candidates)
 #   AUTHORS         recipes whose TEST author runs (default minbpe); launch their agents first with
 #                   scripts/deploy/site-authors.ts --recipes <same list> (keys agent-<name>.json here)
@@ -159,6 +160,12 @@ do_runtime_secrets() {
   put_key "$KEYS_LOCAL/runtime-authority.json" devnet/runtime-authority.json "$rt"
   grep -qE '^[[:space:]]*ANTHROPIC_(API_KEY|AUTH_TOKEN)[[:space:]]*=' "$HOME/.config/lineage/model.env" || { echo "model.env holds no ANTHROPIC_API_KEY; not copied" >&2; return 1; }
   put_secret "$HOME/.config/lineage/model.env" model.env
+  # agent desktops' E2B overflow (SPEC 17.7): only when the file holds a key; without it E2B stays off
+  if grep -qE '^[[:space:]]*E2B_API_KEY[[:space:]]*=[[:space:]]*[^[:space:]]' "$HOME/.config/lineage/e2b.env" 2>/dev/null; then
+    put_secret "$HOME/.config/lineage/e2b.env" e2b.env
+  else
+    echo "e2b.env holds no E2B_API_KEY; not copied (E2B desktops off)"
+  fi
 }
 
 site_pub() { r "cat /var/lib/lineage/site/pubkeys.json" | bun -e "const j=JSON.parse(await Bun.stdin.text()); console.log(j.site['$1'])"; }

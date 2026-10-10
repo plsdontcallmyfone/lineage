@@ -103,6 +103,17 @@ install)
       echo "  $ref $(docker image inspect --format '{{.Id}}' "$ref" | cut -c1-19) $(docker image inspect --format '{{.Architecture}}' "$ref")"
     done
     as_lineage "cd $REL && bun scripts/deploy/arch-recipes.ts $LINEAGE_RECIPES" | tail -n +1
+    # agent desktops (SPEC 17.7): the hosted runtime's desktop image, rebuilt only when images/desktop changed
+    if [ "${WITH_RUNTIME:-0}" = 1 ]; then
+      h=$(cd "$REL/images/desktop" && find . -type f -print0 | sort -z | xargs -0 sha256sum | sha256sum | cut -c1-64)
+      have=$(docker image inspect --format '{{ index .Config.Labels "lineage.build-hash" }}' lineage/desktop 2>/dev/null || true)
+      if [ "$have" = "$h" ]; then echo "reusing lineage/desktop (build inputs unchanged)"
+      else
+        echo "building lineage/desktop from images/desktop"
+        as_lineage "cd $REL && docker build -q --label lineage=1 --label lineage.build-hash=$h -t lineage/desktop images/desktop >/dev/null"
+      fi
+      echo "  lineage/desktop $(docker image inspect --format '{{.Id}}' lineage/desktop | cut -c1-19)"
+    fi
   else
     echo "dry run: sandbox images and recipe re-pinning skipped (no Docker)"
   fi
@@ -214,7 +225,7 @@ wipe-keys)
   for p in /home/lineage/.config/lineage/devnet/{core-authority,faucet,runtime-authority}.json /home/lineage/.config/lineage/devnet/agent-*.json; do
     [ -f "$p" ] && { shred -u "$p" 2>/dev/null || rm -f "$p"; echo "removed $(basename "$p" .json)"; }
   done
-  rm -f /home/lineage/.config/lineage/model.env /home/lineage/.config/lineage/rpc.env
+  rm -f /home/lineage/.config/lineage/model.env /home/lineage/.config/lineage/rpc.env /home/lineage/.config/lineage/e2b.env
   # the keyed RPC URL was also resolved into the rendered network config (audit A2)
   NETCFG=/var/lib/lineage/site/network.json
   if [ -f "$NETCFG" ] && grep -q '"rpc' "$NETCFG"; then

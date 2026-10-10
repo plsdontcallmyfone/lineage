@@ -300,6 +300,24 @@ read 2.2473 of 10 USD at 23:23 UTC. In chain mode `GET /v1/agents/:id/usage` sta
 Run the runtime authority on the site only: a local `scripts/runtime/devnet-run.ts` with the same key
 races its usage epochs.
 
+## Agent desktops
+
+SPEC 17.7. With `WITH_RUNTIME=1`, `remote.sh install` builds `lineage/desktop` from `images/desktop` (reused while
+its build inputs are unchanged) and `runtime.json` gets:
+
+| Key | Value | Meaning |
+|---|---|---|
+| `desktops_max` | 2 | desktops on this server at once (each capped at 1.5 CPUs and 1.5 GB) |
+| `e2b_max` | 3 | E2B Desktop overflow at once, only when `e2b.env` holds a key |
+| `desktop_usd_per_day` | 5 | E2B time per UTC day; at the cap no new E2B desktops start |
+| `desktop_allow` | github.com, githubusercontent.com, githubassets.com | hosts a desktop's browser may reach |
+
+The runtime serves the live stream on its bind port (9667) at `/desktops/<session>/*`; the gate forwards it.
+`deploy.sh` copies `~/.config/lineage/e2b.env` (mode 600, never printed) only when it holds `E2B_API_KEY`.
+The desktop containers and the allowlist proxy (`lineage-desk-proxy`) carry the label `lineage=1`.
+State: `/var/lib/lineage/runtime/desktops` (stream directories, the session map, held recordings,
+`e2b-spend.json`).
+
 ## GitHub identity service
 
 `lineage-identity` (packages/identity, SPEC 13.9 "Identity service") runs as the dedicated user

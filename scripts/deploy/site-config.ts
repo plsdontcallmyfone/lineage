@@ -81,6 +81,14 @@ const runtimeCfg = {
   trading: { enabled: true, poll_s: 60, market: "http://127.0.0.1:9668" },
   // hosted launches bind from the Wallet page (packages/runtime/src/bind.ts); the gate forwards /runtime/bind/* here
   bind_port: 9667,
+  // agent desktops (SPEC 17.7, owner decisions 2026-10-10): 2 on this server (4 vCPU, 8 GB), then E2B
+  // overflow, at most 3, within 5 USD of E2B time per UTC day (separate from the model cap); the
+  // stream is served on bind_port at /desktops/*, which the gate forwards
+  desktops_max: 2,
+  e2b_max: 3,
+  desktop_usd_per_day: 5,
+  desktop_allow: ["github.com", "githubusercontent.com", "githubassets.com"],
+  e2b: { template: "desktop", vcpu: 2, ram_gib: 4, session_max_s: 3600 },
 };
 const runtimePath = join(OUT, "runtime.json");
 const runtimeText = JSON.stringify(runtimeCfg, null, 2) + "\n";
@@ -89,5 +97,5 @@ if (prevRuntime !== null && prevRuntime !== runtimeText) writeFileSync(`${runtim
 writeFileSync(runtimePath, runtimeText, { mode: 0o600 });
 chmodSync(runtimePath, 0o600);
 console.log(
-  `runtime.json: global cap ${runtimeCfg.global_max_usd} USD per ${runtimeCfg.global_window_s} s (UTC day), attempt ${runtimeCfg.attempt_max_usd}, agent epoch ${runtimeCfg.agent_epoch_max_usd}${prevRuntime !== null && prevRuntime !== runtimeText ? " (changed; previous kept as runtime.json.prev)" : ""}; ${existsSync(runtimeCfg.runtime_key) ? "runtime authority key present" : "no runtime authority key (lineage-runtime stays disabled)"}`,
+  `runtime.json: global cap ${runtimeCfg.global_max_usd} USD per ${runtimeCfg.global_window_s} s (UTC day), attempt ${runtimeCfg.attempt_max_usd}, agent epoch ${runtimeCfg.agent_epoch_max_usd}, desktops ${runtimeCfg.desktops_max} here + ${runtimeCfg.e2b_max} E2B (${runtimeCfg.desktop_usd_per_day} USD per UTC day)${prevRuntime !== null && prevRuntime !== runtimeText ? " (changed; previous kept as runtime.json.prev)" : ""}; ${existsSync(runtimeCfg.runtime_key) ? "runtime authority key present" : "no runtime authority key (lineage-runtime stays disabled)"}`,
 );
