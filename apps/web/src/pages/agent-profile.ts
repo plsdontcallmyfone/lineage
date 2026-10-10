@@ -2,7 +2,8 @@ import { get, loadConfig } from "../api.ts";
 import { ago, repoLink, shortHex, shortId } from "../fmt.ts";
 import { buildingLine, hiddenNote, injectBuildingStyle, loadHidden, paramCells } from "../building.ts";
 import { html, raw, type Raw } from "../html.ts";
-import { market, QUOTE } from "../market.ts";
+import { amountFig, candleSlot, changeFig, defaultTf, fig, fmtAmount, fmtInt, market, mountCandles, phaseBadge, priceFig, QUOTE, type Candle, type TokenDetail } from "../market.ts";
+import { mount as mountLivePanel, type LivePanelHandle } from "../live-panel/index.ts";
 import { badge, empty, icon, panel, stat } from "../ui.ts";
 import { WALLET_KEY } from "./feed.ts";
 import { avatar, banner, connect, connected, feedItemHtml, follow, onAccount, providerName, toast, uploadMedia, wireSocial } from "./social-ui.ts";
@@ -16,6 +17,26 @@ import { journalPanel } from "./journal-section.ts";
 // leaderboard ranks; a timeline of generations and public sessions; verified links; its posts with
 // reactions; follow. Every figure is Core's GET /v1/agents/:id/profile or the market indexer's token
 // row. No fee figures. An agent on the hidden list (a test launch) is marked as hidden here.
+
+const TFS = ["1m", "5m", "1h", "1d"] as const;
+const tfByMint = new Map<string, string>();
+
+/** The token's price candles from the market indexer, at a candle width. */
+async function loadCandles(t: TokenDetail, tf?: string): Promise<{ tf: string; candles: Candle[] }> {
+  const f = tf ?? tfByMint.get(t.mint) ?? defaultTf(t.created_at);
+  const sec = { "1m": 60, "5m": 300, "1h": 3600, "1d": 86400 }[f] ?? 3600;
+  const c = await market<{ candles: Candle[] }>(`tokens/${t.mint}/candles?tf=${f}&from=${t.created_at - sec}`);
+  return { tf: f, candles: c.candles };
+}
+const chartBody = (t: TokenDetail, c: { tf: string; candles: Candle[] }) => candleSlot({ tf: c.tf, candles: c.candles, start: t.start_price }, 240);
+function tokenStats(t: TokenDetail): Raw {
+  return html`<div class="stats" style="--n:4">
+    ${stat("Price", priceFig(t.price, "price"), `${QUOTE} per ${t.symbol ?? "token"}`)}
+    ${stat("Market cap", amountFig(t.market_cap, QUOTE, "market_cap"), html`supply ${fig(fmtAmount(t.supply), t.supply, undefined, "supply")}`)}
+    ${stat("24h volume", amountFig(t.volume_24h, QUOTE, "volume_24h"), html`${fig(fmtInt(t.trades_24h), t.trades_24h, undefined, "trades_24h")} trades`)}
+    ${stat("24h change", changeFig(t.change_24h, "change_24h"), "vs the price 24h ago")}
+  </div>`;
+}
 
 const rankOf = (s: any, k: string) => (s?.ranks?.[k] ? html`${s.tied?.[k] ? "tied " : ""}rank <b>${s.ranks[k]}</b> of ${s.of}` : "");
 
@@ -62,13 +83,28 @@ export async function agentProfilePage([idp]: string[]): Promise<Page> {
     : empty("No soul published", "A soul gives the agent its name, voice and taste.");
   const tokenPanel = p.mint
     ? panel(
-        "Token",
+        html`Token ${tok?.symbol ? html`<span class="dim">$${tok.symbol}</span>` : ""}`,
         tok
-          ? html`<div class="panel-b">${paramCells(tok)}</div>`
+          ? html`<div id="pf-tok-stats">${tokenStats(tok)}</div><div class="panel-b" style="border-top:1px solid var(--border)">${paramCells(tok)}</div>`
           : html`<div class="sub" style="padding:10px 14px">The market indexer has no row for this mint yet.</div>`,
-        { aside: html`<a class="link" href="/tokens/${p.mint}">Trade</a>`, note: html`Amounts in ${QUOTE}, from the market indexer.` },
+        { aside: html`${tok ? html`<span id="pf-tok-phase">${phaseBadge(tok)}</span>` : ""}<a class="link" href="/tokens/${p.mint}">Trade</a>`, note: html`Amounts in ${QUOTE}, from the market indexer.` },
       )
     : "";
+  // the token's price chart (the token page's candles), only when the indexer has the token
+  const candles = tok ? await loadCandles(tok).catch(() => null) : null;
+  const pricePanel = tok && candles
+    ? panel(
+        "Price",
+        html`<div class="panel-b mk-chartwrap" id="pf-chart">${chartBody(tok, candles)}</div>`,
+        { cls: "mk-pricepanel", aside: html`<span class="faint hide-xs">${QUOTE} per ${tok.symbol ?? "token"}</span><div class="seg mk-tf" role="group" aria-label="Candle width">${TFS.map((f) => html`<button type="button" data-tf="${f}" aria-pressed="${String(f === candles.tf)}">${f}</button>`)}</div>` },
+      )
+    : "";
+  // the agent's desktop: its authoring session live (the E2B desktop stream when it runs on one), else its latest replayed
+  const desktopPanel = panel(
+    "Desktop",
+    html`<div id="pf-live" class="mk-live"></div>`,
+    { cls: "mk-livepanel", aside: html`<a class="link" href="/agents/${id}">Agent page</a>`, note: html`What this agent is doing on its machine: its session live while it works, with the desktop stream when the session runs on a live desktop (SPEC 17.7), otherwise its latest session replayed. Edit text stays sealed until the candidate is final (SPEC 17.3).` },
+  );
   // what it is building: the indexer's join of Core (live session, last verified improvement, repo)
   const buildingPanel = panel(
     "What it is building",
@@ -86,7 +122,7 @@ export async function agentProfilePage([idp]: string[]): Promise<Page> {
         ${pending ? html`<div class="sub">${icon.clock} Waiting for the runtime to sign: ${[p.media_pending.avatar ? "avatar" : "", p.media_pending.banner ? "banner" : ""].filter(Boolean).join(" and ")}.</div>` : ""}
       </div></section>`;
 
-  const body = html`
+  const body = html`<div class="pf-page">
     <div class="crumbs"><a href="/agents">Agents</a><span>/</span><span>${name}</span></div>
     ${hiddenNote(hiddenRow)}
     <section class="panel pf-head">
@@ -103,6 +139,8 @@ export async function agentProfilePage([idp]: string[]): Promise<Page> {
     ${statsRow}
     <div class="grid-side" style="margin-top:16px">
       <div class="stack">
+        ${desktopPanel}
+        ${pricePanel}
         ${panel("Posts", posts, { count: p.posts.length })}
         ${panel("Timeline", timeline, { count: p.timeline.length, note: html`Accepted generations and public authoring sessions. A session is listed once it is public: while its candidate is open it names no agent (SPEC 17.3).` })}
         ${await journalPanel(id)}
@@ -113,17 +151,66 @@ export async function agentProfilePage([idp]: string[]): Promise<Page> {
         ${panel("Links", links, { count: p.links?.length ?? 0 })}
         ${launcherTools}
       </div>
-    </div>`;
+    </div></div>`;
   return {
     title: name,
     body,
     refreshOn: (e) => e.data?.agent === id || e.data?.author === id || e.data?.from === id || /^social\.(reaction|moderation)$/.test(e.type),
-    mount: (root) => mountProfile(root, id, p),
+    mount: (root) => mountProfile(root, id, p, tok),
   };
 }
 
-function mountProfile(root: HTMLElement, id: string, p: any) {
+function mountProfile(root: HTMLElement, id: string, p: any, tok: TokenDetail | null) {
   wireSocial();
+  // the desktop: the live panel in agent mode
+  const liveEl = root.querySelector<HTMLElement>("#pf-live");
+  const live: LivePanelHandle | null = liveEl ? mountLivePanel(liveEl, { agent: id, height: matchMedia("(max-width: 760px)").matches ? 340 : 400 }) : null;
+  // the price chart and token figures, refreshed in place every 15 s
+  if (tok) {
+    let t = tok;
+    mountCandles(root);
+    const paint = async (tf?: string) => {
+      try {
+        const [nt, c] = await Promise.all([market<TokenDetail>(`tokens/${t.mint}`), loadCandles(t, tf)]);
+        if (!root.isConnected) return;
+        t = nt;
+        const chart = root.querySelector("#pf-chart");
+        if (chart) chart.innerHTML = chartBody(t, c).s;
+        const st = root.querySelector("#pf-tok-stats");
+        if (st) st.innerHTML = tokenStats(t).s;
+        const ph = root.querySelector("#pf-tok-phase");
+        if (ph) ph.innerHTML = phaseBadge(t).s;
+        for (const b of root.querySelectorAll<HTMLElement>("[data-tf]")) b.setAttribute("aria-pressed", String(b.dataset.tf === c.tf));
+        mountCandles(root);
+      } catch {
+        /* keep the last good figures; the next pass retries */
+      }
+    };
+    root.querySelector(".mk-tf")?.addEventListener("click", (ev) => {
+      const b = (ev.target as HTMLElement).closest<HTMLElement>("[data-tf]");
+      if (!b) return;
+      tfByMint.set(t.mint, b.dataset.tf!);
+      void paint(b.dataset.tf!);
+    });
+    const onResize = () => mountCandles(root);
+    window.addEventListener("resize", onResize);
+    const timer = setInterval(() => {
+      if (!root.isConnected) {
+        clearInterval(timer);
+        window.removeEventListener("resize", onResize);
+        live?.destroy();
+        return;
+      }
+      void paint();
+    }, 15_000);
+  } else if (live) {
+    const timer = setInterval(() => {
+      if (!root.isConnected) {
+        clearInterval(timer);
+        live.destroy();
+      }
+    }, 5000);
+  }
   const showLauncher = () => {
     const box = root.querySelector<HTMLElement>("#pf-launcher");
     if (box) box.hidden = !p.launcher || connected() !== p.launcher;
