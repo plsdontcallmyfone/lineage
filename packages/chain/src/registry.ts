@@ -1,11 +1,12 @@
 import { addressBytes, hexToBytes, ixDisc, Reader, Writer, type Address } from "./codec.ts";
 import { BPF_LOADER_UPGRADEABLE, pda, SYSTEM_PROGRAM, TOKEN_PROGRAM, u64le } from "./pda.ts";
+import { REGISTRY_PROGRAM_ID } from "./programs.ts";
 
 // lineage_registry (SPEC 14.1): addresses, instruction builders and account decoders. Account
 // order and encodings match the Anchor program; onchain/tests/fixtures/client-vectors.json pins them.
 
-/** The devnet id (the default build). The mainnet id is `PROGRAM_IDS.mainnet.registry` (programs.ts). */
-export const REGISTRY_PROGRAM_ID: Address = "2vhj9aBZkuoCpmJxm5BcA3CYkvBJgY6VHTax8FpFmxuY";
+/** The active network's id (devnet until a profile is applied; programs.ts). */
+export { REGISTRY_PROGRAM_ID };
 
 export interface AccountMeta {
   pubkey: Address;
@@ -21,28 +22,27 @@ export interface Ix {
 export const w = (pubkey: Address, isSigner = false): AccountMeta => ({ pubkey, isSigner, isWritable: true });
 export const r = (pubkey: Address, isSigner = false): AccountMeta => ({ pubkey, isSigner, isWritable: false });
 
-const P = REGISTRY_PROGRAM_ID;
 export const registryPdas = {
-  config: () => pda(P, "config"),
-  vaultAuthority: () => pda(P, "vault_authority"),
-  bondVault: () => pda(P, "bond_vault"),
-  treasury: () => pda(P, "treasury"),
-  reserve: () => pda(P, "reserve"),
-  pool: () => pda(P, "pool"),
-  payable: () => pda(P, "payable"),
-  agent: (agent: Address) => pda(P, "agent", addressBytes(agent)),
-  epoch: (n: bigint | number) => pda(P, "epoch", u64le(n)),
-  claimReceipt: (n: bigint | number, leaf: Uint8Array) => pda(P, "claim", u64le(n), leaf),
+  config: () => pda(REGISTRY_PROGRAM_ID, "config"),
+  vaultAuthority: () => pda(REGISTRY_PROGRAM_ID, "vault_authority"),
+  bondVault: () => pda(REGISTRY_PROGRAM_ID, "bond_vault"),
+  treasury: () => pda(REGISTRY_PROGRAM_ID, "treasury"),
+  reserve: () => pda(REGISTRY_PROGRAM_ID, "reserve"),
+  pool: () => pda(REGISTRY_PROGRAM_ID, "pool"),
+  payable: () => pda(REGISTRY_PROGRAM_ID, "payable"),
+  agent: (agent: Address) => pda(REGISTRY_PROGRAM_ID, "agent", addressBytes(agent)),
+  epoch: (n: bigint | number) => pda(REGISTRY_PROGRAM_ID, "epoch", u64le(n)),
+  claimReceipt: (n: bigint | number, leaf: Uint8Array) => pda(REGISTRY_PROGRAM_ID, "claim", u64le(n), leaf),
   /** One per slash Core sent, keyed by Core's 32-byte slash id: a retried slash lands once. */
-  slashReceipt: (slashId: Uint8Array | string) => pda(P, "slash", typeof slashId === "string" ? hexToBytes(slashId) : slashId),
-  programData: (program: Address = P) => pda(BPF_LOADER_UPGRADEABLE, addressBytes(program)),
+  slashReceipt: (slashId: Uint8Array | string) => pda(REGISTRY_PROGRAM_ID, "slash", typeof slashId === "string" ? hexToBytes(slashId) : slashId),
+  programData: (program: Address = REGISTRY_PROGRAM_ID) => pda(BPF_LOADER_UPGRADEABLE, addressBytes(program)),
   // bonded challenges (SPEC 10.8, src/challenge.ts)
-  challengeConfig: () => pda(P, "challenge_config"),
-  challengeVault: () => pda(P, "challenge_vault"),
+  challengeConfig: () => pda(REGISTRY_PROGRAM_ID, "challenge_config"),
+  challengeVault: () => pda(REGISTRY_PROGRAM_ID, "challenge_vault"),
   /** One per epoch any challenge named; claims of the epoch wait while its `open` count is above zero. */
-  challengeGate: (n: bigint | number) => pda(P, "challenge_gate", u64le(n)),
+  challengeGate: (n: bigint | number) => pda(REGISTRY_PROGRAM_ID, "challenge_gate", u64le(n)),
   /** One per subject: kind 0 verdict (candidate id), 1 slash (slash id), 2 epoch (epoch number, little-endian, zero padded). */
-  challenge: (kind: number, subject: Uint8Array | string) => pda(P, "challenge", Uint8Array.of(kind), typeof subject === "string" ? hexToBytes(subject) : subject),
+  challenge: (kind: number, subject: Uint8Array | string) => pda(REGISTRY_PROGRAM_ID, "challenge", Uint8Array.of(kind), typeof subject === "string" ? hexToBytes(subject) : subject),
 };
 
 export const OFFENCE = { canary: 0, minority: 1, reveal: 2, abandon: 3 } as const;
@@ -119,22 +119,22 @@ export const registry = {
   initialize(a: { upgradeAuthority: Address; mint: Address; tokenProgram?: Address; args: ConfigArgs }): Ix {
     const pd = registryPdas;
     return {
-      programId: P,
+      programId: REGISTRY_PROGRAM_ID,
       keys: [w(pd.config()), w(a.upgradeAuthority, true), r(pd.programData()), r(a.mint), r(pd.vaultAuthority()), w(pd.bondVault()),
         w(pd.treasury()), w(pd.reserve()), w(pd.pool()), w(pd.payable()), r(a.tokenProgram ?? TOKEN_PROGRAM), r(SYSTEM_PROGRAM)],
       data: configArgs(data("initialize"), a.args).done(),
     };
   },
   setConfig(a: { admin: Address; args: ConfigArgs }): Ix {
-    return { programId: P, keys: [w(registryPdas.config()), r(a.admin, true)], data: configArgs(data("set_config"), a.args).done() };
+    return { programId: REGISTRY_PROGRAM_ID, keys: [w(registryPdas.config()), r(a.admin, true)], data: configArgs(data("set_config"), a.args).done() };
   },
   pause(a: { admin: Address; paused: boolean }): Ix {
-    return { programId: P, keys: [w(registryPdas.config()), r(a.admin, true)], data: data("pause").bool(a.paused).done() };
+    return { programId: REGISTRY_PROGRAM_ID, keys: [w(registryPdas.config()), r(a.admin, true)], data: data("pause").bool(a.paused).done() };
   },
   /** Admin escape hatch for post_epoch's sequence and clock anchor. */
   setEpochCursor(a: { admin: Address; epochsPosted: bigint | number; lastEpoch: bigint | number; anchor: bigint | number; anchorTs: bigint | number }): Ix {
     return {
-      programId: P,
+      programId: REGISTRY_PROGRAM_ID,
       keys: [w(registryPdas.config()), r(a.admin, true)],
       data: data("set_epoch_cursor").u64(a.epochsPosted).u64(a.lastEpoch).u64(a.anchor).i64(a.anchorTs).done(),
     };
@@ -144,25 +144,25 @@ export const registry = {
    * points of its bond at stake in that epoch; at least every single slash share, at most 10,000.
    */
   setSlashCap(a: { admin: Address; maxSlashBpsPerEpoch: number }): Ix {
-    return { programId: P, keys: [w(registryPdas.config()), r(a.admin, true)], data: data("set_slash_cap").u16(a.maxSlashBpsPerEpoch).done() };
+    return { programId: REGISTRY_PROGRAM_ID, keys: [w(registryPdas.config()), r(a.admin, true)], data: data("set_slash_cap").u16(a.maxSlashBpsPerEpoch).done() };
   },
   /** Admin, once: grows a Config written before the slash cap by its two bytes and sets the cap. */
   migrateConfigSlashCap(a: { admin: Address; maxSlashBpsPerEpoch: number }): Ix {
     return {
-      programId: P,
+      programId: REGISTRY_PROGRAM_ID,
       keys: [w(registryPdas.config()), w(a.admin, true), r(SYSTEM_PROGRAM)],
       data: data("migrate_config_slash_cap").u16(a.maxSlashBpsPerEpoch).done(),
     };
   },
   /** Admin, once: grows a Config written by the first deployed layout to the current one. */
   migrateConfig(a: { admin: Address; maxRebatePerEpoch: bigint }): Ix {
-    return { programId: P, keys: [w(registryPdas.config()), w(a.admin, true), r(SYSTEM_PROGRAM)], data: data("migrate_config").u64(a.maxRebatePerEpoch).done() };
+    return { programId: REGISTRY_PROGRAM_ID, keys: [w(registryPdas.config()), w(a.admin, true), r(SYSTEM_PROGRAM)], data: data("migrate_config").u64(a.maxRebatePerEpoch).done() };
   },
   /** Tokenless verifier: `owner` burns register_burn from `ownerToken`; `agent` co-signs. */
   register(a: { owner: Address; agent: Address; mint: Address; ownerToken: Address; operator: Uint8Array | string; capabilities: Uint8Array | string;
     tokenProgram?: Address }): Ix {
     return {
-      programId: P,
+      programId: REGISTRY_PROGRAM_ID,
       keys: [r(registryPdas.config()), w(a.owner, true), r(a.agent, true), w(registryPdas.agent(a.agent)), w(a.mint), w(a.ownerToken),
         r(a.tokenProgram ?? TOKEN_PROGRAM), r(SYSTEM_PROGRAM)],
       data: data("register").fixed32(a.operator).fixed32(a.capabilities).done(),
@@ -170,25 +170,25 @@ export const registry = {
   },
   updateAgent(a: { owner: Address; agent: Address; operator: Uint8Array | string; capabilities: Uint8Array | string }): Ix {
     return {
-      programId: P,
+      programId: REGISTRY_PROGRAM_ID,
       keys: [r(registryPdas.config()), r(a.owner, true), w(registryPdas.agent(a.agent))],
       data: data("update_agent").fixed32(a.operator).fixed32(a.capabilities).done(),
     };
   },
   bond(a: { owner: Address; agent: Address; mint: Address; ownerToken: Address; amount: bigint; tokenProgram?: Address }): Ix {
     return {
-      programId: P,
+      programId: REGISTRY_PROGRAM_ID,
       keys: [r(registryPdas.config()), r(a.owner, true), w(registryPdas.agent(a.agent)), r(a.mint), w(a.ownerToken), w(registryPdas.bondVault()),
         r(a.tokenProgram ?? TOKEN_PROGRAM)],
       data: data("bond").u64(a.amount).done(),
     };
   },
   requestUnbond(a: { owner: Address; agent: Address; amount: bigint }): Ix {
-    return { programId: P, keys: [r(registryPdas.config()), r(a.owner, true), w(registryPdas.agent(a.agent))], data: data("request_unbond").u64(a.amount).done() };
+    return { programId: REGISTRY_PROGRAM_ID, keys: [r(registryPdas.config()), r(a.owner, true), w(registryPdas.agent(a.agent))], data: data("request_unbond").u64(a.amount).done() };
   },
   withdrawUnbonded(a: { owner: Address; agent: Address; mint: Address; ownerToken: Address; tokenProgram?: Address }): Ix {
     return {
-      programId: P,
+      programId: REGISTRY_PROGRAM_ID,
       keys: [r(registryPdas.config()), r(a.owner, true), w(registryPdas.agent(a.agent)), r(a.mint), w(a.ownerToken), r(registryPdas.vaultAuthority()),
         w(registryPdas.bondVault()), r(a.tokenProgram ?? TOKEN_PROGRAM)],
       data: data("withdraw_unbonded").done(),
@@ -198,7 +198,7 @@ export const registry = {
   slash(a: { coreAuthority: Address; agent: Address; mint: Address; offence: number; epoch: bigint | number; slashId: Uint8Array | string;
     tokenProgram?: Address }): Ix {
     return {
-      programId: P,
+      programId: REGISTRY_PROGRAM_ID,
       keys: [r(registryPdas.config()), w(a.coreAuthority, true), w(registryPdas.slashReceipt(a.slashId)), w(registryPdas.agent(a.agent)), r(a.mint),
         r(registryPdas.vaultAuthority()), w(registryPdas.bondVault()), w(registryPdas.reserve()), r(a.tokenProgram ?? TOKEN_PROGRAM), r(SYSTEM_PROGRAM)],
       data: data("slash").u8(a.offence).u64(a.epoch).fixed32(a.slashId).done(),
@@ -207,7 +207,7 @@ export const registry = {
   split(a: { mint: Address; tokenProgram?: Address }): Ix {
     const pd = registryPdas;
     return {
-      programId: P,
+      programId: REGISTRY_PROGRAM_ID,
       keys: [r(pd.config()), r(a.mint), r(pd.vaultAuthority()), w(pd.treasury()), w(pd.reserve()), w(pd.pool()), r(a.tokenProgram ?? TOKEN_PROGRAM)],
       data: data("split").done(),
     };
@@ -217,7 +217,7 @@ export const registry = {
     recordRoot?: Uint8Array | string; totalUnitsMicro: bigint; poolAmount: bigint; rebateAmount: bigint; tokenProgram?: Address }): Ix {
     const pd = registryPdas;
     return {
-      programId: P,
+      programId: REGISTRY_PROGRAM_ID,
       keys: [w(pd.config()), w(a.coreAuthority, true), w(pd.epoch(a.epoch)), r(a.mint), r(pd.vaultAuthority()), w(pd.pool()), w(pd.reserve()),
         w(pd.payable()), r(a.tokenProgram ?? TOKEN_PROGRAM), r(SYSTEM_PROGRAM)],
       data: data("post_epoch").u64(a.epoch).fixed32(a.payoutRoot).fixed32(a.lineageRoot).u64(a.totalUnitsMicro).u64(a.poolAmount).u64(a.rebateAmount)
@@ -226,35 +226,35 @@ export const registry = {
   },
   /** Owner and the new key both sign (Agent v2): `newKey` becomes the agent's signing key. */
   rotateAgentKey(a: { owner: Address; agent: Address; newKey: Address }): Ix {
-    return { programId: P, keys: [r(registryPdas.config()), r(a.owner, true), r(a.newKey, true), w(registryPdas.agent(a.agent))], data: data("rotate_agent_key").done() };
+    return { programId: REGISTRY_PROGRAM_ID, keys: [r(registryPdas.config()), r(a.owner, true), r(a.newKey, true), w(registryPdas.agent(a.agent))], data: data("rotate_agent_key").done() };
   },
   /** Owner: the signing key becomes the default key (revoked) until a rotation. */
   revokeAgentKey(a: { owner: Address; agent: Address }): Ix {
-    return { programId: P, keys: [r(registryPdas.config()), r(a.owner, true), w(registryPdas.agent(a.agent))], data: data("revoke_agent_key").done() };
+    return { programId: REGISTRY_PROGRAM_ID, keys: [r(registryPdas.config()), r(a.owner, true), w(registryPdas.agent(a.agent))], data: data("revoke_agent_key").done() };
   },
   /** The agent's current signing key: sha256 of its profile document, with a strictly increasing seq. */
   setProfile(a: { signingKey: Address; agent: Address; digest: Uint8Array | string; seq: number }): Ix {
     return {
-      programId: P,
+      programId: REGISTRY_PROGRAM_ID,
       keys: [r(registryPdas.config()), r(a.signingKey, true), w(registryPdas.agent(a.agent))],
       data: data("set_profile").fixed32(a.digest).u32(a.seq).done(),
     };
   },
   /** Owner: proposes a new owner (the default address cancels). Nothing changes until it accepts. */
   proposeOwner(a: { owner: Address; agent: Address; newOwner: Address }): Ix {
-    return { programId: P, keys: [r(registryPdas.config()), r(a.owner, true), w(registryPdas.agent(a.agent))], data: data("propose_owner").address(a.newOwner).done() };
+    return { programId: REGISTRY_PROGRAM_ID, keys: [r(registryPdas.config()), r(a.owner, true), w(registryPdas.agent(a.agent))], data: data("propose_owner").address(a.newOwner).done() };
   },
   /** The proposed owner completes the transfer; `ownerSince` restarts. */
   acceptOwner(a: { newOwner: Address; agent: Address }): Ix {
-    return { programId: P, keys: [r(registryPdas.config()), r(a.newOwner, true), w(registryPdas.agent(a.agent))], data: data("accept_owner").done() };
+    return { programId: REGISTRY_PROGRAM_ID, keys: [r(registryPdas.config()), r(a.newOwner, true), w(registryPdas.agent(a.agent))], data: data("accept_owner").done() };
   },
   /** Anyone (payer adds the rent): grows a v1 Agent record to Agent v2. */
   migrateAgent(a: { payer: Address; agent: Address }): Ix {
-    return { programId: P, keys: [w(registryPdas.agent(a.agent)), w(a.payer, true), r(SYSTEM_PROGRAM)], data: data("migrate_agent").done() };
+    return { programId: REGISTRY_PROGRAM_ID, keys: [w(registryPdas.agent(a.agent)), w(a.payer, true), r(SYSTEM_PROGRAM)], data: data("migrate_agent").done() };
   },
   /** Anyone (payer adds the rent): grows an Epoch posted before `record_root` existed. */
   migrateEpoch(a: { payer: Address; epoch: bigint | number }): Ix {
-    return { programId: P, keys: [w(registryPdas.epoch(a.epoch)), w(a.payer, true), r(SYSTEM_PROGRAM)], data: data("migrate_epoch").done() };
+    return { programId: REGISTRY_PROGRAM_ID, keys: [w(registryPdas.epoch(a.epoch)), w(a.payer, true), r(SYSTEM_PROGRAM)], data: data("migrate_epoch").done() };
   },
   /**
    * Anyone may send a claim; tokens go only to the leaf's destination. `agentRecord` is required for
@@ -266,8 +266,8 @@ export const registry = {
     leaf: Uint8Array; proof: Uint8Array[]; destToken: Address; agentRecord?: Address; tokenProgram?: Address }): Ix {
     const pd = registryPdas;
     return {
-      programId: P,
-      keys: [r(pd.config()), w(a.payer, true), w(pd.epoch(a.epoch)), w(pd.claimReceipt(a.epoch, a.leaf)), r(a.agentRecord ?? P), r(a.mint),
+      programId: REGISTRY_PROGRAM_ID,
+      keys: [r(pd.config()), w(a.payer, true), w(pd.epoch(a.epoch)), w(pd.claimReceipt(a.epoch, a.leaf)), r(a.agentRecord ?? REGISTRY_PROGRAM_ID), r(a.mint),
         r(pd.vaultAuthority()), w(pd.payable()), w(a.destToken), r(a.tokenProgram ?? TOKEN_PROGRAM), r(SYSTEM_PROGRAM), r(pd.challengeConfig()),
         r(pd.challengeGate(a.epoch))],
       data: data("claim").address(a.agent).u8(a.destKind).address(a.wallet ?? SYSTEM_PROGRAM).u64(a.amount).fixed32(a.leaf).vec32(a.proof).done(),

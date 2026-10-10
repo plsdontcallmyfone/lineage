@@ -2,10 +2,12 @@ import { addressBytes, ixDisc, Reader, Writer, type Address } from "./codec.ts";
 import { ata, BPF_LOADER_UPGRADEABLE, pda, SYSTEM_PROGRAM, TOKEN_2022_PROGRAM, TOKEN_PROGRAM, u64le } from "./pda.ts";
 import { r, REGISTRY_PROGRAM_ID, registryPdas, w, type Ix } from "./registry.ts";
 import { token } from "./spl.ts";
+import { LAUNCH_PROGRAM_ID } from "./programs.ts";
 
 // lineage_launch (SPEC 14.2): addresses, instruction builders and account decoders.
 
-export const LAUNCH_PROGRAM_ID: Address = "8eHzm1XtNtbxJujrMAci4VdhCJvQttFUBukmkFaUwsAT";
+/** The active network's id (devnet until a profile is applied; programs.ts). */
+export { LAUNCH_PROGRAM_ID };
 
 export const METEORA = {
   dbcProgram: "dbcij3LWUppWqq96dh6gJWwBifmcGfLSB5D4DuSMaqN",
@@ -18,7 +20,6 @@ export const METEORA = {
   dammDynamicConfig: "A8gMrEPJkacWkcb3DGwtJwTe16HktSEfvwtuDh2MCtck",
 } as const;
 
-const P = LAUNCH_PROGRAM_ID;
 export const IDENTITY_MODE = { token: 0, purchased: 1, app: 2 } as const;
 
 const maxMin = (a: Address, b: Address): [Uint8Array, Uint8Array] => {
@@ -28,14 +29,14 @@ const maxMin = (a: Address, b: Address): [Uint8Array, Uint8Array] => {
 };
 
 export const launchPdas = {
-  config: () => pda(P, "launch_config"),
+  config: () => pda(LAUNCH_PROGRAM_ID, "launch_config"),
   /** DBC pool creator, fee claimer, leftover receiver and position NFT holder. */
-  authority: () => pda(P, "authority"),
-  agentLaunch: (mint: Address) => pda(P, "agent_launch", addressBytes(mint)),
-  computeVault: (agent: Address) => pda(P, "compute", addressBytes(agent)),
-  usage: (epoch: bigint | number) => pda(P, "usage", u64le(epoch)),
-  debitReceipt: (epoch: bigint | number, agent: Address) => pda(P, "debit", u64le(epoch), addressBytes(agent)),
-  programData: () => pda(BPF_LOADER_UPGRADEABLE, addressBytes(P)),
+  authority: () => pda(LAUNCH_PROGRAM_ID, "authority"),
+  agentLaunch: (mint: Address) => pda(LAUNCH_PROGRAM_ID, "agent_launch", addressBytes(mint)),
+  computeVault: (agent: Address) => pda(LAUNCH_PROGRAM_ID, "compute", addressBytes(agent)),
+  usage: (epoch: bigint | number) => pda(LAUNCH_PROGRAM_ID, "usage", u64le(epoch)),
+  debitReceipt: (epoch: bigint | number, agent: Address) => pda(LAUNCH_PROGRAM_ID, "debit", u64le(epoch), addressBytes(agent)),
+  programData: () => pda(BPF_LOADER_UPGRADEABLE, addressBytes(LAUNCH_PROGRAM_ID)),
   dbcPool: (dbcConfig: Address, mint: Address, lineMint: Address) => {
     const [hi, lo] = maxMin(mint, lineMint);
     return pda(METEORA.dbcProgram, "pool", addressBytes(dbcConfig), hi, lo);
@@ -90,24 +91,24 @@ export interface LaunchArgs {
 export const launch = {
   initialize(a: { upgradeAuthority: Address; lineMint: Address; dbcConfig: Address; lineTokenProgram?: Address; args: LaunchConfigArgs }): Ix {
     return {
-      programId: P,
+      programId: LAUNCH_PROGRAM_ID,
       keys: [w(launchPdas.config()), w(a.upgradeAuthority, true), r(launchPdas.programData()), r(launchPdas.authority()), r(a.lineMint), r(a.dbcConfig),
         r(a.lineTokenProgram ?? TOKEN_PROGRAM), r(SYSTEM_PROGRAM)],
       data: configArgs(data("initialize_launch"), a.args).done(),
     };
   },
   setConfig(a: { admin: Address; dbcConfig: Address; args: LaunchConfigArgs }): Ix {
-    return { programId: P, keys: [w(launchPdas.config()), r(a.admin, true), r(a.dbcConfig)], data: configArgs(data("set_launch_config"), a.args).done() };
+    return { programId: LAUNCH_PROGRAM_ID, keys: [w(launchPdas.config()), r(a.admin, true), r(a.dbcConfig)], data: configArgs(data("set_launch_config"), a.args).done() };
   },
   /** Admin, once: grows a LaunchConfig written by the first deployed layout to the current one. */
   migrateConfig(a: { admin: Address; maxDebitPerEpoch: bigint }): Ix {
-    return { programId: P, keys: [w(launchPdas.config()), w(a.admin, true), r(SYSTEM_PROGRAM)], data: data("migrate_launch_config").u64(a.maxDebitPerEpoch).done() };
+    return { programId: LAUNCH_PROGRAM_ID, keys: [w(launchPdas.config()), w(a.admin, true), r(SYSTEM_PROGRAM)], data: data("migrate_launch_config").u64(a.maxDebitPerEpoch).done() };
   },
   /** Signers: launcher (payer), agent (the agent key) and agentMint (a fresh keypair). */
   launchAgent(a: { launcher: Address; agent: Address; agentMint: Address; lineMint: Address; dbcConfig: Address; args: LaunchArgs; lineTokenProgram?: Address }): Ix {
     const pool = launchPdas.dbcPool(a.dbcConfig, a.agentMint, a.lineMint);
     return {
-      programId: P,
+      programId: LAUNCH_PROGRAM_ID,
       keys: [
         r(launchPdas.config()), r(launchPdas.authority()), w(a.launcher, true), r(a.agent, true), w(a.agentMint, true), r(a.lineMint), r(a.dbcConfig),
         w(pool), w(launchPdas.dbcVault(a.agentMint, pool)), w(launchPdas.dbcVault(a.lineMint, pool)), w(launchPdas.agentLaunch(a.agentMint)),
@@ -123,7 +124,7 @@ export const launch = {
   crankFees(a: { agent: Address; agentMint: Address; lineMint: Address; dbcConfig: Address; lineTokenProgram?: Address }): Ix {
     const pool = launchPdas.dbcPool(a.dbcConfig, a.agentMint, a.lineMint);
     return {
-      programId: P,
+      programId: LAUNCH_PROGRAM_ID,
       keys: [
         r(launchPdas.config()), r(launchPdas.authority()), w(launchPdas.agentLaunch(a.agentMint)), r(a.dbcConfig), w(pool),
         w(launchPdas.dbcVault(a.agentMint, pool)), w(launchPdas.dbcVault(a.lineMint, pool)), r(a.agentMint), r(a.lineMint),
@@ -139,7 +140,7 @@ export const launch = {
    */
   graduate(a: { agentMint: Address; dbcPool: Address; dammPool: Address; position: Address; positionNftAccount: Address; dammConfig?: Address }): Ix {
     return {
-      programId: P,
+      programId: LAUNCH_PROGRAM_ID,
       keys: [r(launchPdas.config()), r(launchPdas.authority()), w(launchPdas.agentLaunch(a.agentMint)), r(a.dbcPool), r(a.dammPool), r(a.position),
         r(a.positionNftAccount), r(a.dammConfig ?? METEORA.dammDynamicConfig)],
       data: data("graduate").done(),
@@ -149,12 +150,12 @@ export const launch = {
   graduateByAdmin(a: { admin: Address; agentMint: Address; dbcPool: Address; dammPool: Address; position: Address; positionNftAccount: Address;
     dammConfig?: Address }): Ix {
     const g = launch.graduate(a);
-    return { programId: P, keys: [...g.keys, r(a.admin, true)], data: data("graduate_by_admin").done() };
+    return { programId: LAUNCH_PROGRAM_ID, keys: [...g.keys, r(a.admin, true)], data: data("graduate_by_admin").done() };
   },
   /** Permissionless: point crank_pool_fees at an authority-held, fully locked position with strictly more locked liquidity. */
   repointPosition(a: { agentMint: Address; currentPosition: Address; position: Address; positionNftAccount: Address }): Ix {
     return {
-      programId: P,
+      programId: LAUNCH_PROGRAM_ID,
       keys: [r(launchPdas.config()), r(launchPdas.authority()), w(launchPdas.agentLaunch(a.agentMint)), r(a.currentPosition), r(a.position),
         r(a.positionNftAccount)],
       data: data("repoint_position").done(),
@@ -163,7 +164,7 @@ export const launch = {
   crankPoolFees(a: { agent: Address; agentMint: Address; lineMint: Address; dammPool: Address; position: Address; positionNftAccount: Address;
     lineTokenProgram?: Address }): Ix {
     return {
-      programId: P,
+      programId: LAUNCH_PROGRAM_ID,
       keys: [
         r(launchPdas.config()), r(launchPdas.authority()), w(launchPdas.agentLaunch(a.agentMint)), r(a.dammPool), w(a.position), r(a.positionNftAccount),
         w(launchPdas.dammVault(a.agentMint, a.dammPool)), w(launchPdas.dammVault(a.lineMint, a.dammPool)), w(a.agentMint), r(a.lineMint),
@@ -175,7 +176,7 @@ export const launch = {
   },
   postUsage(a: { runtimeAuthority: Address; epoch: bigint | number; root: Uint8Array | string }): Ix {
     return {
-      programId: P,
+      programId: LAUNCH_PROGRAM_ID,
       keys: [w(launchPdas.config()), r(registryPdas.config()), w(a.runtimeAuthority, true), w(launchPdas.usage(a.epoch)), r(SYSTEM_PROGRAM)],
       data: data("post_usage").u64(a.epoch).fixed32(a.root).done(),
     };
@@ -183,7 +184,7 @@ export const launch = {
   debitCompute(a: { runtimeAuthority: Address; epoch: bigint | number; agent: Address; agentMint: Address; computeSink: Address; lineMint: Address;
     amount: bigint; modelTokens: bigint | number; sandboxS: bigint | number; proof: Uint8Array[]; lineTokenProgram?: Address }): Ix {
     return {
-      programId: P,
+      programId: LAUNCH_PROGRAM_ID,
       keys: [
         r(launchPdas.config()), w(a.runtimeAuthority, true), r(launchPdas.authority()), w(launchPdas.usage(a.epoch)), w(launchPdas.agentLaunch(a.agentMint)),
         w(launchPdas.debitReceipt(a.epoch, a.agent)), w(launchPdas.computeVault(a.agent)), w(a.computeSink), r(a.lineMint),
@@ -196,7 +197,7 @@ export const launch = {
   withdrawCompute(a: { launcher: Address; agent: Address; agentMint: Address; launcherToken: Address; lineMint: Address; amount: bigint;
     lineTokenProgram?: Address }): Ix {
     return {
-      programId: P,
+      programId: LAUNCH_PROGRAM_ID,
       keys: [r(launchPdas.config()), r(a.launcher, true), r(launchPdas.authority()), w(launchPdas.agentLaunch(a.agentMint)), w(launchPdas.computeVault(a.agent)),
         w(a.launcherToken), r(a.lineMint), r(a.lineTokenProgram ?? TOKEN_PROGRAM), r(registryPdas.agent(a.agent))],
       data: data("withdraw_compute").u64(a.amount).done(),
@@ -216,7 +217,7 @@ export const launch = {
   },
   refreshAwake(a: { agent: Address; agentMint: Address }): Ix {
     return {
-      programId: P,
+      programId: LAUNCH_PROGRAM_ID,
       keys: [r(launchPdas.config()), w(launchPdas.agentLaunch(a.agentMint)), r(launchPdas.computeVault(a.agent))],
       data: data("refresh_awake").done(),
     };

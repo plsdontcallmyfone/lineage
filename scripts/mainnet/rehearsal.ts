@@ -3,21 +3,25 @@
 // mainnet and no real key signs anything: every key is a throwaway in MAINNET_FORK_KEYS and every
 // lamport is a fork airdrop. Mainnet is only read (program bytes, Squads program config, rent).
 //
-//   0  the fork runs mainnet's exact Meteora DBC, DAMM v2, Token-2022 and Squads v4 builds, and our builds
-//   1  deploy cost: write-buffer + deploy of each program at a fresh id, exactly as the runbook does
+//   0  the fork runs mainnet's exact Meteora DBC, DAMM v2, Token-2022 and Squads v4 builds; our ids are still empty
+//   1  deploy: write-buffer + deploy of each build at the active profile's id with its id keypair, exactly
+//      as the runbook does (LINEAGE_NETWORK=mainnet: onchain/target/mainnet builds, the mainnet ids, the
+//      keypairs in ~/.config/lineage/mainnet signing on this local fork only), and its cost
 //   2  Squads v4: a 2-of-3 multisig with a time lock; its vault is every admin and, later, the upgrade authority
 //   3  a stand-in $LINE quote mint (Token-2022, metadata, fixed supply) until the real one exists
 //   4  initialize registry, launch and messages with admin = the vault (mainnet-shaped values, owner values TBA)
-//   5  every onchain admin action through propose, approve (2 of 3), time lock, execute
+//   5  every onchain admin action through propose, approve (2 of 3), time lock, execute (incl. set_slash_cap)
 //   6  upgrade authority to the vault, then an upgrade executed by the multisig
 //   7  launch, trades, fee crank, graduation on mainnet DBC to DAMM v2 (permissionless and by admin)
-//   8  verifier, epoch post, a challenge opened and resolved, claims after the window
+//   8  verifier, epoch post, a challenge opened and resolved, claims after the window, slashes up to the
+//      cap and one refused past it (A1-08)
 // Writes scripts/mainnet/REHEARSAL-LAST.json (every transaction with its exact cost, every check).
 //
-//   MAINNET_FORK_KEYS=<throwaway key dir> bun scripts/mainnet/rehearsal.ts
+//   LINEAGE_NETWORK=mainnet MAINNET_FORK_KEYS=<throwaway key dir> bun scripts/mainnet/rehearsal.ts
 import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import { readFileSync, writeFileSync } from "node:fs";
+import { existsSync, readFileSync, writeFileSync } from "node:fs";
+import { homedir } from "node:os";
 import { join } from "node:path";
 import { canonicalUrl, H, merkleProof, merkleRoot, proportionalSplit } from "@lineage/protocol";
 import {
@@ -26,6 +30,7 @@ import {
   CHALLENGE_OUTCOME,
   challenge,
   ChainReader,
+  addressBytes,
   claimFromCoreProof,
   damm,
   dammPdas,
@@ -45,6 +50,8 @@ import {
   lookupTable,
   METEORA,
   msg,
+  OFFENCE,
+  PROGRAM_IDS,
   paramsFromNetworkJson,
   payoutLeaf,
   programDataAddress,
@@ -63,23 +70,30 @@ import {
   type Ix,
   type Signer,
 } from "@lineage/chain";
-import { createMultisig, initializeAll, launchArgs, parseLaunchParams, registryArgs, checkHandover } from "./steps.ts";
+import { checkEndpoint, createMultisig, initializeAll, launchArgs, parseLaunchParams, programIdsNow, registryArgs, checkHandover, useActiveProfile } from "./steps.ts";
 import { adminActions, approve, execute, multisigState, proposalState, propose, proposeConfig, type Ms } from "./admin.ts";
 import { airdrop, assertFork, check, checks, fork, FORK_URL, forkKey, forkNow, forkRent, KEYS, log, mainnet, mainnetRent, refused, rows, send, sleep, sol } from "./lib.ts";
 
 const ROOT = join(import.meta.dir, "..", "..");
-const DEPLOY = join(ROOT, "onchain", "target", "deploy");
 const T22 = TOKEN_2022_PROGRAM;
 const DECIMALS = 6;
 const ONE = 10n ** BigInt(DECIMALS);
 const SUPPLY = 1_000_000_000n * ONE;
+// Program ids, builds and id keypairs follow the active network profile (LINEAGE_NETWORK): mainnet
+// deploys the `--features mainnet` builds at the mainnet ids; devnet the default builds at the devnet ids.
+const profile = useActiveProfile();
+const IDS = programIdsNow();
+const DEPLOY = join(ROOT, "onchain", "target", profile.network === "mainnet" ? "mainnet" : "deploy");
+const idKey = (name: string) =>
+  profile.network === "mainnet" ? join(homedir(), ".config", "lineage", "mainnet", `${name}-program-keypair.json`) : join(ROOT, "onchain", "target", "deploy", `lineage_${name}-keypair.json`);
 const PROGRAMS = {
-  registry: { id: "2vhj9aBZkuoCpmJxm5BcA3CYkvBJgY6VHTax8FpFmxuY", so: "lineage_registry.so" },
-  launch: { id: "8eHzm1XtNtbxJujrMAci4VdhCJvQttFUBukmkFaUwsAT", so: "lineage_launch.so" },
-  msg: { id: "E6vHskQjJAMLqDKXyfnn2ZDjeJ57RZXR4H9RjPDzapAB", so: "lineage_msg.so" },
-} as const;
+  registry: { id: IDS.registry, so: "lineage_registry.so", key: idKey("registry") },
+  launch: { id: IDS.launch, so: "lineage_launch.so", key: idKey("launch") },
+  msg: { id: IDS.msg, so: "lineage_msg.so", key: idKey("msg") },
+};
 const reader = new ChainReader(fork);
-const out: Record<string, unknown> = { started: new Date().toISOString(), fork: FORK_URL, params: "scripts/mainnet/fork-params.json" };
+const out: Record<string, unknown> = { started: new Date().toISOString(), fork: FORK_URL, params: "scripts/mainnet/fork-params.json", profile: profile.network,
+  program_ids: IDS, builds: DEPLOY.slice(ROOT.length + 1) };
 const sha = (b: Uint8Array) => createHash("sha256").update(b).digest("hex");
 
 // ---------------------------------------------------------------- keys (throwaway)
@@ -127,16 +141,21 @@ const trimZeros = (b: Uint8Array) => {
 // ---------------------------------------------------------------- 0: what the fork runs
 async function step0() {
   await assertFork();
+  await checkEndpoint(fork, profile, { deployed: false, local: true });
+  const other = profile.network === "mainnet" ? PROGRAM_IDS.devnet : PROGRAM_IDS.mainnet;
+  const has = (hay: Uint8Array, id: string) => Buffer.from(hay).indexOf(Buffer.from(addressBytes(id))) >= 0;
+  for (const [name, p] of Object.entries(PROGRAMS)) {
+    const so = readFileSync(join(DEPLOY, p.so));
+    check(`0: ${name} build embeds the ${profile.network} ids only`, has(so, p.id) && !Object.values(other).some((id) => has(so, id)),
+      `${DEPLOY.slice(ROOT.length + 1)}/${p.so}, ${so.length} bytes, ${sha(so).slice(0, 16)}`);
+    check(`0: ${name} id keypair is the ${profile.network} id ${p.id.slice(0, 6)}...`, existsSync(p.key) && pubkeyOf(p.key) === p.id);
+    check(`0: no program at ${p.id.slice(0, 6)}... on the fork yet (the deploy below is the first)`, (await fork.getAccountInfo(p.id)) === null);
+  }
   const fromMainnet: Record<string, string> = {};
   for (const [name, id] of [["Meteora DBC", METEORA.dbcProgram], ["Meteora DAMM v2", METEORA.dammV2Program], ["Token-2022", T22], ["Squads v4", SQUADS_PROGRAM_ID]] as const) {
     const [f, m] = [trimZeros(await programBytes(fork, id)), trimZeros(await programBytes(mainnet, id))];
     fromMainnet[name] = sha(m);
     check(`0: fork ${name} is mainnet's build`, sha(f) === sha(m), sha(m).slice(0, 16));
-  }
-  for (const [name, p] of Object.entries(PROGRAMS)) {
-    const local = readFileSync(join(DEPLOY, p.so));
-    const onFork = (await programBytes(fork, p.id)).subarray(0, local.length);
-    check(`0: fork ${name} at ${p.id.slice(0, 6)} is the local build`, sha(onFork) === sha(local), `${local.length} bytes, ${sha(local).slice(0, 16)}`);
   }
   const pc = decodeSquadsProgramConfig((await mainnet.getAccountInfo(squadsPdas.programConfig()))!.data);
   check("0: Squads program config cloned (mainnet creation fee read)", true, `fee ${pc.multisigCreationFee} lamports, treasury ${pc.treasury}`);
@@ -150,8 +169,8 @@ async function step1() {
   for (const [name, p] of Object.entries(PROGRAMS)) {
     const so = join(DEPLOY, p.so);
     const len = readFileSync(so).length;
-    const bufKp = freshKey(`fresh-buffer-${name}`), progKp = freshKey(`fresh-program-${name}`);
-    const buffer = pubkeyOf(bufKp), program = pubkeyOf(progKp);
+    const bufKp = freshKey(`deploy-buffer-${name}`), progKp = p.key;
+    const buffer = pubkeyOf(bufKp), program = p.id;
     const b0 = await fork.getBalance(dep.id);
     cli(["program", "write-buffer", so, "--buffer", bufKp, "--buffer-authority", join(KEYS, "deployer.json"), "--fee-payer", join(KEYS, "deployer.json")]);
     const b1 = await fork.getBalance(dep.id);
@@ -170,10 +189,13 @@ async function step1() {
     let fees = 0n;
     for (const s of sigs) fees += BigInt((await fork.call<{ meta: { fee: number } }>("getTransaction", [s.signature, { encoding: "json", commitment: "confirmed" }])).meta.fee);
     const writeFees = fees; // includes the deploy transaction's fee
-    check(`1: ${name} deployed at a fresh id by write-buffer + deploy`, (await fork.getAccountInfo(buffer)) === null && sigs.every((x) => !x.err) && b0 - b2 === fPd + fProg + fees,
+    check(`1: ${name} deployed at its ${profile.network} id ${program.slice(0, 6)}... by write-buffer + deploy`, (await fork.getAccountInfo(buffer)) === null && sigs.every((x) => !x.err) && b0 - b2 === fPd + fProg + fees,
       `ProgramData ${pdBytes} bytes, buffer ${bufBytes} bytes, ${sigs.length} transactions, fees ${fees}; balance delta equals rent + fees`);
+    const onFork = (await programBytes(fork, program)).subarray(0, len);
+    check(`1: ${name} at ${program.slice(0, 6)}... runs the build, upgrade authority the deployer`, sha(onFork) === sha(readFileSync(so)) &&
+      decodeLoaderAuthority((await fork.getAccountInfo(programDataAddress(program)))!.data) === dep.id);
     deploys[name] = {
-      so_bytes: len, so_sha256: sha(readFileSync(so)), max_len: len, buffer_bytes: bufBytes, programdata_bytes: pdBytes, program_bytes: progBytes,
+      program_id: program, so_bytes: len, so_sha256: sha(readFileSync(so)), max_len: len, buffer_bytes: bufBytes, programdata_bytes: pdBytes, program_bytes: progBytes,
       transactions: sigs.length, fees_lamports: writeFees.toString(),
       fork_delta_write_lamports: (b0 - b1).toString(), fork_delta_deploy_lamports: (b1 - b2).toString(),
       mainnet_rent: { buffer: mBuf.toString(), programdata: mPd.toString(), program: mProg.toString() },
@@ -191,15 +213,24 @@ async function step1() {
       return [`x${f}`, { max_len: ml, programdata_mainnet_rent: (await mainnetRent(45 + ml)).toString() }];
     })));
   }
-  // measured extend: the loader's 10,240-byte minimum on the registry's fresh copy
-  const fresh = pubkeyOf(join(KEYS, "fresh-program-registry.json"));
+  // measured extend: the loader's 10,240-byte minimum, on a throwaway copy of the messages build at a
+  // fresh id (the real programs stay exactly as the runbook deploys them)
+  const msgLen = readFileSync(join(DEPLOY, PROGRAMS.msg.so)).length;
+  const freshKp = freshKey("fresh-program-extend"), fresh = pubkeyOf(freshKp);
+  cli(["program", "deploy", join(DEPLOY, PROGRAMS.msg.so), "--program-id", freshKp, "--upgrade-authority", join(KEYS, "deployer.json"), "--max-len", String(msgLen),
+    "--fee-payer", join(KEYS, "deployer.json")]);
+  await sleep(1500);
   const e0 = await fork.getBalance(dep.id);
   cli(["program", "extend", fresh, "10240"]);
   const e1 = await fork.getBalance(dep.id);
-  const before = (await forkRent(45 + readFileSync(join(DEPLOY, PROGRAMS.registry.so)).length));
+  const before = await forkRent(45 + msgLen);
   const after = await forkRent((await fork.getAccountInfo(programDataAddress(fresh)))!.data.length);
   const extendFee = e0 - e1 - (after - before);
-  out.extend_10240 = { fee_lamports: extendFee.toString(), mainnet_rent_added: ((await mainnetRent(45 + 10240 + readFileSync(join(DEPLOY, PROGRAMS.registry.so)).length)) - (await mainnetRent(45 + readFileSync(join(DEPLOY, PROGRAMS.registry.so)).length))).toString() };
+  out.extend_10240 = { fee_lamports: extendFee.toString(), on: "a throwaway copy of lineage_msg", mainnet_rent_added: ((await mainnetRent(45 + 10240 + msgLen)) - (await mainnetRent(45 + msgLen))).toString(),
+    per_program_mainnet_rent_added: Object.fromEntries(await Promise.all(Object.entries(PROGRAMS).map(async ([n, p]) => {
+      const l = readFileSync(join(DEPLOY, p.so)).length;
+      return [n, ((await mainnetRent(45 + 10240 + l)) - (await mainnetRent(45 + l))).toString()];
+    }))) };
   // set-upgrade-authority: a fee only
   const s0 = await fork.getBalance(dep.id);
   cli(["program", "set-upgrade-authority", fresh, "--upgrade-authority", join(KEYS, "deployer.json"), "--new-upgrade-authority", ms.vault, "--skip-new-upgrade-authority-signer-check"]);
@@ -284,6 +315,8 @@ async function waitTimeLock(approvedAt: bigint) {
 }
 
 const BOUNTY_ARGS = P.bounty;
+/** The cap the vault sets: the largest single share, the lowest the registry accepts (one such slash per agent per epoch). */
+const SLASH_CAP_BPS = Math.max(params.canarySlashBps, params.minoritySlashBps, params.revealSlashBps);
 const CHALLENGE_ARGS = P.challenge;
 
 async function step5() {
@@ -297,6 +330,15 @@ async function step5() {
   check("5: ChallengeConfig set by the vault", Number(cc.windowS) === CHALLENGE_WINDOW_S && cc.bond === CHALLENGE_ARGS.bond);
   await viaSquads("registry set_config (max_rebate_per_epoch 2 units)", adminActions.registrySetConfig(ms.vault, { ...registryArgs(P, ms.vault), maxRebatePerEpoch: 2n * ONE }));
   check("5: registry set_config applied", (await reader.registryConfig())!.maxRebatePerEpoch === 2n * ONE);
+  // A1-08: the per agent, per epoch slash cap. initialize set the default (largest share x strike_limit, at most 10,000).
+  const maxShare = Math.max(params.canarySlashBps, params.minoritySlashBps, params.revealSlashBps);
+  const capDefault = Math.min(maxShare * Math.max(params.strikeLimit, 1), 10_000);
+  check("5: initialize set the default slash cap (largest share x strike_limit)", (await reader.registryConfig())!.maxSlashBpsPerEpoch === capDefault, `${capDefault} bps`);
+  const hotCap = await refused(dep, adminActions.registrySetSlashCap(dep.id, SLASH_CAP_BPS));
+  check("5: the deployer cannot set the slash cap (Unauthorized)", /"Custom":6000/.test(hotCap), hotCap.slice(0, 120));
+  await viaSquads(`registry set_slash_cap (${SLASH_CAP_BPS} bps: one largest-share slash per agent per epoch)`, adminActions.registrySetSlashCap(ms.vault, SLASH_CAP_BPS));
+  check("5: set_slash_cap applied by the vault", (await reader.registryConfig())!.maxSlashBpsPerEpoch === SLASH_CAP_BPS, `${capDefault} -> ${SLASH_CAP_BPS} bps`);
+  out.slash_cap = { default_bps: capDefault, set_bps: SLASH_CAP_BPS };
   await viaSquads("set_launch_config (max_debit_per_epoch 500 units)", adminActions.launchSetConfig(ms.vault, dbcConfigKey.id, { ...launchArgs(P, ms.vault), maxDebitPerEpoch: 500n * ONE }));
   check("5: launch set_config applied", (await reader.launchConfig())!.maxDebitPerEpoch === 500n * ONE);
   await viaSquads("lineage_msg set_config (max_per_day 400)", adminActions.msgSetConfig(ms.vault, { admin: ms.vault, ...P.msg, maxPerDay: 400 }));
@@ -470,6 +512,29 @@ async function step8(a: { agent: Signer }) {
     check(`8: claim paid exactly the leaf (${l.dest.split(":").pop()})`, (await reader.tokenBalance(dest))! - d0 === BigInt(l.amount));
   }
   out.epoch_post_signature = post.signature;
+
+  // A1-08 on the fork: Core slashes the verifier up to the cap; the next slash in the same chain epoch is refused whole.
+  const cfg = (await reader.registryConfig())!;
+  const v0 = (await reader.agent(verifier.id))!;
+  const sid = (tag: string) => H("fork-slash", tag);
+  const slashIx = (offence: number, tag: string) =>
+    registry.slash({ coreAuthority: core.id, agent: verifier.id, mint: lineMint, offence, epoch: n, slashId: sid(tag), tokenProgram: T22 });
+  const r0 = (await reader.tokenBalance(registryPdas.reserve()))!;
+  await send("8", `slash canary (${params.canarySlashBps} bps of the bond, Core authority; SlashReceipt)`, core, [slashIx(OFFENCE.canary, "one")]);
+  const v1 = (await reader.agent(verifier.id))!;
+  const first = (v0.bond * BigInt(params.canarySlashBps)) / 10_000n;
+  check("8: first slash landed: bond down by the canary share, moved to the reserve, counted in this epoch's window",
+    v0.bond - v1.bond === first && (await reader.tokenBalance(registryPdas.reserve()))! - r0 === first && v1.slashWindow === cfg.epochsPosted && v1.slashedInWindow === first &&
+    (await reader.slashReceipt(sid("one")))?.amount === first, `slashed ${first}, window ${v1.slashWindow}, cap ${cfg.maxSlashBpsPerEpoch} bps of ${v0.bond}`);
+  const capped = await refused(core, [slashIx(OFFENCE.canary, "two")]);
+  const v2 = (await reader.agent(verifier.id))!;
+  check("8: a second slash past the cap in the same chain epoch is refused whole (SlashCap), nothing moved",
+    /SlashCap/.test(capped) && v2.bond === v1.bond && v2.slashedInWindow === v1.slashedInWindow && v2.strikesTotal === v1.strikesTotal &&
+    (await reader.slashReceipt(sid("two"))) === null, capped.slice(0, 160));
+  await send("8", "slash abandon (a strike without an amount; never refused by the cap)", core, [slashIx(OFFENCE.abandon, "three")]);
+  const v3 = (await reader.agent(verifier.id))!;
+  check("8: a strike without an amount lands under the cap", v3.bond === v2.bond && v3.strikesTotal === v2.strikesTotal + 1);
+  out.slash = { bond_before: v0.bond.toString(), first_slash: first.toString(), cap_bps: cfg.maxSlashBpsPerEpoch, window: v1.slashWindow.toString(), refused: capped.slice(0, 200) };
 }
 
 // ---------------------------------------------------------------- run

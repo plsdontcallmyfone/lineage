@@ -103,7 +103,7 @@ From the repository root:
 
 ```sh
 bun install --frozen-lockfile
-bun test packages/chain                       # 129/129 on 2026-10-10; pre-audit 173/173 (incl. programs.test.ts)
+bun test packages/chain                       # 129/129 on 2026-10-10; pre-audit 173/173 (incl. programs.test.ts); 176/176 after the ids follow the profile
 bun onchain/scripts/make-fixtures.ts --check  # "merkle.json current"
 ```
 
@@ -112,6 +112,14 @@ use; its tests check them against `onchain/tests/fixtures/client-vectors.json`, 
 `client_vectors` test produces. `make-fixtures.ts` rebuilds the Merkle fixtures with the protocol
 package and checks they equal the committed ones, which ties Core's leaf and root encoding to the
 Rust encoder (`registry.rs` `leaves_match_the_typescript_protocol`).
+
+Run log, 2026-10-10 (mainnet ids follow-up lane): the builders, PDAs and readers now take the active
+network profile's program ids (`packages/chain/src/programs.ts`; devnet output byte-identical: a
+snapshot of every PDA helper and a set of builders hashed `eec8290f...108b` before and after, and the
+client vector tests unchanged). The mainnet fork rehearsal (`LINEAGE_NETWORK=mainnet
+scripts/mainnet/rehearsal.ts`) deployed the three `target/mainnet` builds above, hashes unchanged, at
+the mainnet ids and passed 97/97 including the slash cap (`scripts/mainnet/REHEARSAL-LAST.json`,
+docs/MAINNET-COSTS.md). No program source changed.
 
 ## Devnet end to end
 

@@ -7,7 +7,6 @@ import { r, REGISTRY_PROGRAM_ID, registryPdas, w, type Ix } from "./registry.ts"
 // records its resolution with the Core authority. Account order and encodings match the program;
 // onchain/tests/fixtures/client-vectors.json pins them.
 
-const P = REGISTRY_PROGRAM_ID;
 const data = (name: string) => new Writer().bytes(ixDisc(name));
 
 export const CHALLENGE_KIND = { verdict: 0, slash: 1, epoch: 2 } as const;
@@ -44,7 +43,7 @@ export const challenge = {
   setConfig(a: { admin: Address; mint: Address; args: ChallengeConfigArgs; tokenProgram?: Address }): Ix {
     const pd = registryPdas;
     return {
-      programId: P,
+      programId: REGISTRY_PROGRAM_ID,
       keys: [r(pd.config()), w(a.admin, true), w(pd.challengeConfig()), r(a.mint), r(pd.vaultAuthority()), w(pd.challengeVault()),
         r(a.tokenProgram ?? TOKEN_PROGRAM), r(SYSTEM_PROGRAM)],
       data: data("set_challenge_config").i64(a.args.windowS).u64(a.args.bond).u64(a.args.reward).i64(a.args.resolveTimeoutS).bool(a.args.paused).done(),
@@ -60,10 +59,10 @@ export const challenge = {
     const pd = registryPdas;
     const subject = subjectBytes(a.subject);
     return {
-      programId: P,
+      programId: REGISTRY_PROGRAM_ID,
       keys: [r(pd.config()), w(pd.challengeConfig()), r(pd.agent(a.challenger)), r(a.signingKey, true), w(a.payer, true), w(a.payerToken),
         w(pd.challenge(a.kind, subject)), w(pd.challengeGate(a.epoch)), r(pd.epoch(a.epoch)),
-        r(a.kind === CHALLENGE_KIND.slash ? pd.slashReceipt(subject) : P), r(a.mint), w(pd.challengeVault()), r(a.tokenProgram ?? TOKEN_PROGRAM),
+        r(a.kind === CHALLENGE_KIND.slash ? pd.slashReceipt(subject) : REGISTRY_PROGRAM_ID), r(a.mint), w(pd.challengeVault()), r(a.tokenProgram ?? TOKEN_PROGRAM),
         r(SYSTEM_PROGRAM)],
       data: data("open_challenge").u8(a.kind).fixed32(subject).u64(a.epoch).fixed32(a.claim).done(),
     };
@@ -81,13 +80,13 @@ export const challenge = {
     if (a.corrected) wr.u8(1).fixed32(a.corrected.payoutRoot).fixed32(a.corrected.lineageRoot).fixed32(a.corrected.recordRoot).u64(a.corrected.totalUnitsMicro);
     else wr.u8(0);
     return {
-      programId: P,
+      programId: REGISTRY_PROGRAM_ID,
       keys: [r(pd.config()), w(pd.challengeConfig()), r(a.coreAuthority, true), w(pd.challenge(a.kind, subject)), w(pd.challengeGate(a.epoch)),
         w(a.refundToken), r(a.mint), r(pd.vaultAuthority()), w(pd.challengeVault()), w(pd.reserve()),
-        a.corrected ? w(pd.epoch(a.epoch)) : r(P),
-        isSlash ? r(pd.slashReceipt(subject)) : r(P),
-        a.slashedAgent ? w(pd.agent(a.slashedAgent)) : r(P),
-        isSlash ? w(pd.bondVault()) : r(P),
+        a.corrected ? w(pd.epoch(a.epoch)) : r(REGISTRY_PROGRAM_ID),
+        isSlash ? r(pd.slashReceipt(subject)) : r(REGISTRY_PROGRAM_ID),
+        a.slashedAgent ? w(pd.agent(a.slashedAgent)) : r(REGISTRY_PROGRAM_ID),
+        isSlash ? w(pd.bondVault()) : r(REGISTRY_PROGRAM_ID),
         r(a.tokenProgram ?? TOKEN_PROGRAM)],
       data: wr.done(),
     };
@@ -96,7 +95,7 @@ export const challenge = {
   expire(a: { kind: number; subject: Uint8Array | string; epoch: bigint | number; refundToken: Address; mint: Address; tokenProgram?: Address }): Ix {
     const pd = registryPdas;
     return {
-      programId: P,
+      programId: REGISTRY_PROGRAM_ID,
       keys: [r(pd.config()), w(pd.challengeConfig()), w(pd.challenge(a.kind, subjectBytes(a.subject))), w(pd.challengeGate(a.epoch)), w(a.refundToken),
         r(a.mint), r(pd.vaultAuthority()), w(pd.challengeVault()), r(a.tokenProgram ?? TOKEN_PROGRAM),
         // the reserve takes the bond when the refund account was closed, frozen or memo-locked (audit A1-02)

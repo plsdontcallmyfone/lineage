@@ -18,11 +18,18 @@ function owned(a: AccountInfo | null, program: Address): AccountInfo | null {
 export class ChainReader {
   constructor(
     readonly rpc: Rpc,
-    readonly registryProgram: Address = REGISTRY_PROGRAM_ID,
-    readonly launchProgram: Address = LAUNCH_PROGRAM_ID,
+    registryProgram: Address = REGISTRY_PROGRAM_ID,
+    launchProgram: Address = LAUNCH_PROGRAM_ID,
   ) {
     if (registryProgram !== REGISTRY_PROGRAM_ID || launchProgram !== LAUNCH_PROGRAM_ID)
-      throw new Error("packages/chain derives PDAs for the deployed program ids only");
+      throw new Error("packages/chain derives PDAs for the active network's program ids only (programs.ts)");
+  }
+  /** The active network's ids (programs.ts), read on every call so a profile applied later is followed. */
+  get registryProgram(): Address {
+    return REGISTRY_PROGRAM_ID;
+  }
+  get launchProgram(): Address {
+    return LAUNCH_PROGRAM_ID;
   }
 
   async registryConfig(): Promise<RegistryConfig | null> {

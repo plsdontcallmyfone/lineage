@@ -3,6 +3,7 @@ import { homedir } from "node:os";
 import { isAbsolute, join } from "node:path";
 import { devnetRpcUrl, fromEnvFile } from "./endpoint.ts";
 import { quoteOfState, selectProfile, type NetworkProfile } from "./profile.ts";
+import { useProfilePrograms } from "./programs.ts";
 import { setDefaultFeePolicy } from "./sender.ts";
 
 // Node side of the network profile (M3, SPEC 14.10): reads config/profile.json once, applies the
@@ -50,12 +51,14 @@ export function stateFor(p: NetworkProfile): Record<string, unknown> | null {
 }
 
 /**
- * Process start for a service: loads the profile and, on mainnet, makes every server-side
- * sendAndConfirm price its compute units from recent prioritization fees (capped by config).
- * Devnet leaves the sender as it was.
+ * Process start for a service: loads the profile, makes its program ids the ones every builder, PDA
+ * and reader uses (programs.ts), and, on mainnet, makes every server-side sendAndConfirm price its
+ * compute units from recent prioritization fees (capped by config). Devnet leaves the sender and
+ * the ids as they were.
  */
 export function applyNetworkProfile(o: { file?: string; env?: Record<string, string | undefined> } = {}): NetworkProfile {
   const p = loadNetworkProfile(o);
+  useProfilePrograms(p);
   setDefaultFeePolicy(p.fees.mode === "recent" ? p.fees : null, p.confirm);
   return p;
 }

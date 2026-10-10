@@ -10,6 +10,7 @@ import {
   priorityFee,
   sendWithRebuilds,
   setExplorerCluster,
+  useProfilePrograms,
   writableAccounts,
   type PublicProfile,
   ChainReader,
@@ -111,6 +112,7 @@ export async function loadChainCfg(): Promise<ChainCfg> {
 }
 function applyProfile(p: PublicProfile) {
   NET.p = p;
+  useProfilePrograms(p);
   setExplorerCluster(p.explorer_cluster);
   setWalletChain(p.network === "mainnet" ? MAINNET_CHAIN : DEVNET_CHAIN);
 }

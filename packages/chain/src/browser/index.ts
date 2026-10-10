@@ -21,4 +21,5 @@ export { base64Decode, base64Encode } from "./buffer.ts";
 export { sha256Bytes } from "./sha256.ts";
 export { H, hashJson, canonicalUrl, repoId, canonicalJson, leafHash, merkleProof, merkleRoot, verifyProof, base58Decode, base58Encode } from "@lineage/protocol";
 export * from "../profile.ts";
+export * from "../programs.ts";
 export * from "../fees.ts";

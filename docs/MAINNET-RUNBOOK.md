@@ -2,8 +2,8 @@
 
 Written 2026-10-10. Nothing has been deployed to mainnet. Every step below has been run, in this
 order, on a local fork of mainnet with mainnet's own Meteora DBC, DAMM v2, Token-2022 and Squads v4
-builds (`scripts/mainnet/rehearsal.ts`, record `scripts/mainnet/REHEARSAL-LAST.json`, 80 of 80
-checks). Costs: [MAINNET-COSTS.md](MAINNET-COSTS.md). Powers: [AUDIT.md](AUDIT.md) "Powers" and the
+builds (`scripts/mainnet/rehearsal.ts`, record `scripts/mainnet/REHEARSAL-LAST.json`, 97 of 97
+checks on the `--features mainnet` builds deployed at the mainnet ids, 2026-10-10). Costs: [MAINNET-COSTS.md](MAINNET-COSTS.md). Powers: [AUDIT.md](AUDIT.md) "Powers" and the
 section below. The owner runs the mainnet steps; this lane never sent a mainnet transaction.
 
 ## Go / no-go
@@ -14,7 +14,7 @@ Owner items stay unchecked until the owner checks them.
 - [ ] Multisig signers set: members, threshold and time lock (`launch-params.json` `multisig`)
 - [ ] Token parameters set: the `$LINE` mint and decimals, every SPEC 13 parameter (`network_file`), the DBC curve, rebate and debit caps, message caps, bounty and challenge values
 - [ ] Legal review done
-- [ ] Budgets set: SOL for the deploy (11.251935880 held at the peak with exact-size ProgramData, MAINNET-COSTS.md), the priority fee policy, the `--max-len` headroom, the Core and runtime hot keys' running SOL, the runtime's model spend caps
+- [ ] Budgets set: SOL for the deploy (11.303959440 held at the peak with exact-size ProgramData, MAINNET-COSTS.md), the priority fee policy, the `--max-len` headroom, the Core and runtime hot keys' running SOL, the runtime's model spend caps
 - [ ] Domain set
 - [ ] Verifiers recruited (the minimum independent count is in the M4 server layout)
 - [x] Program ids decided: fresh mainnet ids (owner decision 2026-10-10; see "Program ids" below)
@@ -24,10 +24,11 @@ Owner items stay unchecked until the owner checks them.
 
 Engineering items, with their evidence:
 
-- [x] Fork rehearsal PASS 80/80 on the exact builds (`scripts/mainnet/REHEARSAL-LAST.json`)
+- [x] Fork rehearsal PASS 97/97 on the exact pre-audit `--features mainnet` builds, deployed at the mainnet ids with the mainnet id keypairs on the local fork only (`scripts/mainnet/REHEARSAL-LAST.json`, 2026-10-10; the earlier 80/80 ran on devnet-id builds before the slash cap)
+- [x] The A1-08 slash cap on the fork: default 7,500 bps from `initialize`, set to 2,500 through the vault (propose, 2 approvals, time lock, execute), one slash landed, the next in the same chain epoch refused whole (`SlashCap`)
 - [x] LiteSVM 61/61 against the mainnet Meteora builds (`METEORA_BUILD=mainnet`, step 0 below)
 - [x] Every onchain admin action proven through a 2-of-3 Squads vault with a time lock, including a program upgrade and `graduate_by_admin`
-- [x] The operator commands proven on the same fork after the rehearsal: `propose.ts` proposed, approved (2 of 3), waited out the time lock and executed a `msgSetConfig` (proposal 12, `max_per_day` 400 to 300, read back); `initialize.ts multisig`, `init` and `check` re-ran on the initialized state and skipped every existing step (16 checks PASS, 0 FAIL)
+- [x] The operator commands proven on the same fork after the rehearsal, under `LINEAGE_NETWORK=mainnet`: `propose.ts` proposed, approved (2 of 3), was refused before the time lock (6021) and executed a `registrySetSlashCap` 5,000 after it (proposal 13, read back 5,000); `initialize.ts init` re-ran on the initialized state and skipped every step (8 checks PASS, nothing sent) and `check` passed 7/7; under `LINEAGE_NETWORK=devnet` the same `check` refused (no program at the devnet registry id) (earlier, on the devnet-id run: a `msgSetConfig` through `propose.ts`, 16 checks PASS)
 - [ ] The rehearsal re-run on launch day (Meteora can redeploy DBC and DAMM v2 at any time: their mainnet upgrade authority is `JADaUV8k...uCVLd`)
 - [ ] Mainnet mode in the app and services (M3) and server hardening (M4)
 
@@ -93,15 +94,18 @@ exist there; those are not the mainnet ids. Delete them after a mainnet build an
 The devnet id keypairs stay in `onchain/target/deploy/` (copies in `onchain/keys-backup/`,
 `~/.config/lineage/program-keys/` and `~/.config/lineage/devnet-program-keypairs-backup/`).
 
-Still to do before mainnet (not done in the pre-audit lane): `scripts/mainnet/steps.ts` still names
-the devnet ids (`PROGRAM_IDS`) and the rehearsal loads the devnet builds, and the `packages/chain`
-instruction builders and PDAs default to the devnet ids. The mainnet initialize and the senders must
-take `PROGRAM_IDS.mainnet` (or the profile's `programs`), and the rehearsal must be rerun on the
-`target/mainnet` builds at these ids.
+**Which ids the code uses.** Every `packages/chain` instruction builder, PDA helper and reader uses
+the active network profile's ids (`packages/chain/src/programs.ts`): devnet until a profile is
+applied, then the profile's `programs` (Core, the indexer, the runtime and the web server apply it at
+start with `applyNetworkProfile`; the wallet applies the page's `/chain/config` profile). The
+`scripts/mainnet` commands take the active profile too, so they run with `LINEAGE_NETWORK=mainnet`
+(set once in "Steps" below); `initialize.ts` and `propose.ts` print the ids they use, refuse a
+mainnet endpoint under any other profile, and refuse when the profile's programs are not deployed
+at the endpoint. No script names an id.
 
-The rehearsal deployed the builds at fresh throwaway ids to measure the deploy path and ran the
-functional copies at the declared ids (loaded with a throwaway upgrade authority); it never used any
-program id keypair.
+The fork rehearsal deploys the `--features mainnet` builds (`onchain/target/mainnet`) at the mainnet
+ids with these keypairs, by the same write-buffer and deploy commands as step 3, on the local fork
+only (`fork.sh` no longer preloads any Lineage program). The keypairs signed nothing anywhere else.
 
 ## Steps
 
@@ -113,6 +117,7 @@ set -a; . ~/.config/lineage/mainnet-rpc.env; set +a   # RPC=<keyed mainnet URL>,
 K=~/.config/lineage/mainnet                            # deployer.json, dbc-config.json, ms-create.json (mode 600)
 PARAMS=scripts/mainnet/launch-params.json              # copied from launch-params.example.json, every TBA filled
 FEE=--with-compute-unit-price=<owner's price>          # priority fee, TBA
+export LINEAGE_NETWORK=mainnet                         # scripts/mainnet take the program ids from the mainnet profile
 ```
 
 ### 0. Preflight (no mainnet transaction)
@@ -130,10 +135,12 @@ vendor/meteora/mainnet/fetch.sh                                 # mainnet DBC an
 METEORA_BUILD=mainnet cargo test --offline -p lineage-onchain-tests   # 61 tests on mainnet's Meteora builds
 cargo test --offline -p lineage-onchain-tests                   # and on the devnet pins
 cd .. && bun test packages/chain
-# the full rehearsal on a fresh fork (throwaway keys, ports 9690-9693 and 9700-9730)
-mkdir -p /tmp/lin-fork-keys && solana-keygen new --no-bip39-passphrase --silent -o /tmp/lin-fork-keys/deployer.json
-scripts/mainnet/fork.sh /tmp/lin-fork-ledger "$(solana-keygen pubkey /tmp/lin-fork-keys/deployer.json)" > /tmp/lin-fork.log 2>&1 &
-MAINNET_FORK_KEYS=/tmp/lin-fork-keys bun scripts/mainnet/rehearsal.ts   # must end PASS; stop the validator by its PID, delete the ledger
+# the full rehearsal on a fresh fork (throwaway keys; the mainnet id keypairs deploy the mainnet builds on the fork only;
+# ports 9690-9693 and 9700-9730, checked free by fork.sh)
+mkdir -p -m 700 /tmp/lin-fork-keys
+scripts/mainnet/fork.sh /tmp/lin-fork-ledger > /tmp/lin-fork.log 2>&1 & echo $! > /tmp/lin-fork.pid
+LINEAGE_NETWORK=mainnet MAINNET_FORK_KEYS=/tmp/lin-fork-keys bun scripts/mainnet/rehearsal.ts   # must end PASS
+kill "$(cat /tmp/lin-fork.pid)" && rm -rf /tmp/lin-fork-ledger   # by its PID, then delete the ledger
 bun scripts/mainnet/initialize.ts check --params $PARAMS --multisig 11111111111111111111111111111111 --rpc "$RPC" --mainnet 2>&1 | head -1   # refuses while any value is TBA
 solana balance -u "$RPC" -k $K/deployer.json                     # at least the MAINNET-COSTS.md peak plus priority fees
 for id in 3GeaTsBUsaXCJ7Dru9tDHiKnVBsoHE6yiTdqqj42JHay 2vwKsTZm5doa3ahBmpm8Sv3sKPD76Fq2ZZENbNW5BYBq jmcb7cBA8aJ5Zra8V6gUsEbgKAoG3h5d2CNpmKsRdky; do solana program show -u "$RPC" $id; done   # must not exist yet
@@ -261,8 +268,8 @@ bun scripts/mainnet/propose.ts propose --multisig $MS --member <key> upgradeProg
 
 Both items listed here were done by the pre-audit program changes lane on 2026-10-10 (`9f70357`):
 
-- **Fresh program ids**: built by cargo feature (see "Program ids"); the mainnet scripts and builders
-  still have to take them (same section).
+- **Fresh program ids**: built by cargo feature (see "Program ids"); the builders and the mainnet
+  scripts take them from the active network profile, and the fork rehearsal ran on them (same section).
 - **A1-08 slash cap**: `max_slash_bps_per_epoch` (docs/AUDIT.md A1-08). `initialize` sets
   `min(10,000, strike_limit x the largest slash share)`; the vault edits it with `set_slash_cap`
   (`registrySetSlashCap` in `scripts/mainnet/admin.ts`, a vault transaction like the other admin

@@ -16,10 +16,12 @@
 //
 // Endpoint: --rpc <url>, default the local fork (127.0.0.1:9690). A mainnet endpoint is refused unless
 // --mainnet is also given (the owner's step, docs/MAINNET-RUNBOOK.md). Keyed URLs are never printed.
+// Program ids come from the active network profile: run with LINEAGE_NETWORK=mainnet.
 // Members can equally approve and execute in the Squads app: the vault transaction is standard.
 import { readFileSync } from "node:fs";
 import { compileVaultMessage, decodeSquadsVaultTransaction, loadKeypair, Rpc, sendAndConfirm, squads, squadsPdas, type Ix } from "@lineage/chain";
 import { adminActions, multisigState, proposalState } from "./admin.ts";
+import { checkEndpoint, programIdsNow, useActiveProfile } from "./steps.ts";
 
 const argv = process.argv.slice(2);
 const flag = (n: string) => (argv.includes(n) ? argv[argv.indexOf(n) + 1] : undefined);
@@ -27,8 +29,11 @@ const positional = argv.filter((a, i) => !a.startsWith("--") && !(i > 0 && argv[
 const [cmd, action, argsPath] = positional;
 const rpcUrl = flag("--rpc") ?? "http://127.0.0.1:9690";
 const rpc = Rpc.http(rpcUrl, "confirmed");
-const genesis = await rpc.call<string>("getGenesisHash");
+// program ids from the active network profile (LINEAGE_NETWORK=mainnet for the runbook and the fork)
+const profile = useActiveProfile();
+const genesis = await checkEndpoint(rpc, profile, { deployed: cmd !== "status", local: rpcUrl.startsWith("http://127.0.0.1:") });
 if (genesis === "5eykt4UsFv8P8NJdTREpY1vzqKqZKvdpKuc147dw2N9d" && !argv.includes("--mainnet")) throw new Error("mainnet endpoint: pass --mainnet to confirm");
+if (cmd !== "status") console.error(`[propose] ${profile.network} profile: registry ${programIdsNow().registry}, launch ${programIdsNow().launch}, msg ${programIdsNow().msg}`);
 const multisig = flag("--multisig") ?? (() => { throw new Error("--multisig required"); })();
 const vault = squadsPdas.vault(multisig, 0);
 const big = (_: string, v: unknown) => (typeof v === "string" && /^\d+n$/.test(v) ? BigInt(v.slice(0, -1)) : v);

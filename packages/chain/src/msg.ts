@@ -3,13 +3,15 @@ import { accountDisc, addressBytes, bytesToHex, hexToBytes, ixDisc, Reader, sha2
 import { BPF_LOADER_UPGRADEABLE, pda, SYSTEM_PROGRAM } from "./pda.ts";
 import { r, registryPdas, w, type Ix } from "./registry.ts";
 import type { Rpc } from "./rpc.ts";
+import { MSG_PROGRAM_ID } from "./programs.ts";
 
 // lineage_msg (SPEC 12.5): onchain agent messages. Instruction builders, account decoders, the
 // event decoder and a transaction parser. Every message is an Anchor event emitted by self-CPI, so it
 // is read from a transaction's inner instructions (never from an account). Encodings match
 // onchain/programs/lineage-msg; onchain/tests/fixtures/msg-events.json pins them.
 
-export const MSG_PROGRAM_ID: Address = "E6vHskQjJAMLqDKXyfnn2ZDjeJ57RZXR4H9RjPDzapAB";
+/** The active network's id (devnet until a profile is applied; programs.ts). */
+export { MSG_PROGRAM_ID };
 /** Largest inline body the program accepts: the longest message transaction is exactly 1,232 bytes. */
 export const MSG_MAX_INLINE = 568;
 /** Sealed bytes: 32-byte ephemeral key + ciphertext + 16-byte tag (packages/core seal.ts). */
@@ -17,12 +19,11 @@ export const SEAL_OVERHEAD = 48;
 /** Anchor's self-CPI event instruction tag (sha256("anchor:event")[..8], little endian). */
 export const EVENT_IX_TAG = hexToBytes("e445a52e51cb9a1d");
 
-const P = MSG_PROGRAM_ID;
 export const msgPdas = {
-  config: () => pda(P, "msg_config"),
-  state: (agent: Address) => pda(P, "msg_state", addressBytes(agent)),
-  eventAuthority: () => pda(P, "__event_authority"),
-  programData: () => pda(BPF_LOADER_UPGRADEABLE, addressBytes(P)),
+  config: () => pda(MSG_PROGRAM_ID, "msg_config"),
+  state: (agent: Address) => pda(MSG_PROGRAM_ID, "msg_state", addressBytes(agent)),
+  eventAuthority: () => pda(MSG_PROGRAM_ID, "__event_authority"),
+  programData: () => pda(BPF_LOADER_UPGRADEABLE, addressBytes(MSG_PROGRAM_ID)),
 };
 
 export const REF_KINDS = ["intent", "candidate", "generation", "finding", "bounty"] as const;
@@ -101,7 +102,7 @@ function postKeys(payer: Address, signer: Address, agent: Address, dmRecipient?:
     ...(dmRecipient ? [r(msgPdas.state(dmRecipient))] : []),
     r(SYSTEM_PROGRAM),
     r(msgPdas.eventAuthority()),
-    r(P),
+    r(MSG_PROGRAM_ID),
   ];
 }
 
@@ -109,13 +110,13 @@ export const msg = {
   /** Upgrade authority, once. */
   initialize(a: { upgradeAuthority: Address; args: MsgConfigArgs }): Ix {
     return {
-      programId: P,
+      programId: MSG_PROGRAM_ID,
       keys: [w(msgPdas.config()), w(a.upgradeAuthority, true), r(msgPdas.programData()), r(SYSTEM_PROGRAM)],
       data: writeConfig(data("initialize"), a.args).done(),
     };
   },
   setConfig(a: { admin: Address; args: MsgConfigArgs }): Ix {
-    return { programId: P, keys: [w(msgPdas.config()), r(a.admin, true)], data: writeConfig(data("set_config"), a.args).done() };
+    return { programId: MSG_PROGRAM_ID, keys: [w(msgPdas.config()), r(a.admin, true)], data: writeConfig(data("set_config"), a.args).done() };
   },
   /** `payer` pays the fee (the hosted runtime), `signer` is the agent's current registry signing key. */
   postBoard(a: { payer: Address; signer: Address; agent: Address; args: BoardPostArgs }): Ix {
@@ -123,17 +124,17 @@ export const msg = {
     const wr = data("post_board").fixed32(x.lineage).u8(x.kind ?? 0);
     optFixed(wr, x.replyTo);
     writeRef(wr, x.ref);
-    return { programId: P, keys: postKeys(a.payer, a.signer, a.agent), data: writeBody(wr, x.body).done() };
+    return { programId: MSG_PROGRAM_ID, keys: postKeys(a.payer, a.signer, a.agent), data: writeBody(wr, x.body).done() };
   },
   postDm(a: { payer: Address; signer: Address; agent: Address; args: DmPostArgs }): Ix {
     const x = a.args;
     const wr = data("post_dm").address(x.recipient).bytes(encKeyBytes(x.encKey)).u8(x.kind ?? 0);
     optFixed(wr, x.replyTo);
     writeRef(wr, x.ref);
-    return { programId: P, keys: postKeys(a.payer, a.signer, a.agent, x.recipient), data: writeBody(wr, x.body).done() };
+    return { programId: MSG_PROGRAM_ID, keys: postKeys(a.payer, a.signer, a.agent, x.recipient), data: writeBody(wr, x.body).done() };
   },
   publishEncKey(a: { payer: Address; signer: Address; agent: Address; encKey: string }): Ix {
-    return { programId: P, keys: postKeys(a.payer, a.signer, a.agent), data: data("publish_enc_key").bytes(encKeyBytes(a.encKey)).done() };
+    return { programId: MSG_PROGRAM_ID, keys: postKeys(a.payer, a.signer, a.agent), data: data("publish_enc_key").bytes(encKeyBytes(a.encKey)).done() };
   },
 };
 
@@ -291,7 +292,7 @@ export interface RawTx {
  * instruction to lineage_msg whose first account is the program's event authority: only the program
  * can sign as it (emit_cpi), so events cannot be forged by another program or a top-level call.
  */
-export function parseMsgTransaction(tx: RawTx, program: Address = P): ChainMsgEvent[] {
+export function parseMsgTransaction(tx: RawTx, program: Address = MSG_PROGRAM_ID): ChainMsgEvent[] {
   if (!tx.meta || tx.meta.err) return [];
   const keys = [...tx.transaction.message.accountKeys, ...(tx.meta.loadedAddresses?.writable ?? []), ...(tx.meta.loadedAddresses?.readonly ?? [])];
   const auth = msgPdas.eventAuthority();
@@ -312,7 +313,7 @@ export function parseMsgTransaction(tx: RawTx, program: Address = P): ChainMsgEv
  * getSignaturesForAddress backwards until it reaches `until` (or the program's first transaction).
  */
 export async function fetchMsgEvents(rpc: Rpc, o: { until?: string | null; program?: Address; pageLimit?: number; maxPages?: number } = {}): Promise<{ events: ChainMsgEvent[]; newest: string | null; transactions: number }> {
-  const program = o.program ?? P;
+  const program = o.program ?? MSG_PROGRAM_ID;
   const sigs: { signature: string; err: unknown; slot: number }[] = [];
   let before: string | undefined;
   for (let page = 0; page < (o.maxPages ?? 50); page++) {
@@ -337,18 +338,18 @@ export async function fetchMsgEvents(rpc: Rpc, o: { until?: string | null; progr
 export async function readMsgConfig(rpc: Rpc): Promise<MsgConfig | null> {
   const a = await rpc.getAccountInfo(msgPdas.config());
   if (!a) return null;
-  if (a.owner !== P) throw new Error(`${a.address} is not owned by lineage_msg`);
+  if (a.owner !== MSG_PROGRAM_ID) throw new Error(`${a.address} is not owned by lineage_msg`);
   return decodeMsgConfig(a.data);
 }
 export async function readMsgState(rpc: Rpc, agent: Address): Promise<AgentMsgState | null> {
   const a = await rpc.getAccountInfo(msgPdas.state(agent));
   if (!a) return null;
-  if (a.owner !== P) throw new Error(`${a.address} is not owned by lineage_msg`);
+  if (a.owner !== MSG_PROGRAM_ID) throw new Error(`${a.address} is not owned by lineage_msg`);
   return decodeAgentMsgState(a.data);
 }
 /** Every AgentMsgState (one getProgramAccounts). */
 export async function readMsgStates(rpc: Rpc): Promise<AgentMsgState[]> {
-  const all = await rpc.getProgramAccounts(P, { memcmp: [{ offset: 0, bytes: accountDisc("AgentMsgState") }] });
+  const all = await rpc.getProgramAccounts(MSG_PROGRAM_ID, { memcmp: [{ offset: 0, bytes: accountDisc("AgentMsgState") }] });
   return all.map((a) => decodeAgentMsgState(a.data));
 }
 

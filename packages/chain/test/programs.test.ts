@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
-import { LAUNCH_PROGRAM_ID, MSG_PROGRAM_ID, PROGRAM_IDS, programIds, REGISTRY_PROGRAM_ID } from "../src/index.ts";
+import { activePrograms, ChainReader, LAUNCH_PROGRAM_ID, launch, launchPdas, MSG_PROGRAM_ID, msgPdas, PROGRAM_IDS, programIds, registry, registryPdas, REGISTRY_PROGRAM_ID, Rpc, toAddress, useProfilePrograms } from "../src/index.ts";
+import { applyNetworkProfile } from "../src/profile-node.ts";
 import { DEVNET_PUBLIC_PROFILE, publicProfile, selectProfile } from "../src/profile.ts";
 
 // Program ids per network (SPEC 14): the builds declare them (declare_id! per cargo feature), the
@@ -44,5 +45,54 @@ describe("program ids per network", () => {
     delete absent.profiles.devnet.programs;
     expect(selectProfile(absent, "devnet").programs).toEqual(PROGRAM_IDS.devnet);
     expect(() => programIds("testnet")).toThrow();
+  });
+});
+
+describe("builders and PDAs follow the active profile's ids", () => {
+  const k = (n: number) => toAddress(new Uint8Array(32).fill(n));
+  const sample = () => ({
+    ids: [REGISTRY_PROGRAM_ID, LAUNCH_PROGRAM_ID, MSG_PROGRAM_ID],
+    pdas: [registryPdas.config(), registryPdas.agent(k(2)), launchPdas.config(), launchPdas.computeVault(k(2)), msgPdas.config()],
+    ix: [registry.pause({ admin: k(1), paused: true }), launch.crankFees({ agent: k(2), agentMint: k(3), lineMint: k(5), dbcConfig: k(6), lineTokenProgram: k(7) })]
+      .map((x) => ({ p: x.programId, k: x.keys.map((m) => m.pubkey), d: Buffer.from(x.data).toString("hex") })),
+  });
+  const devnet = () => useProfilePrograms({ network: "devnet", programs: PROGRAM_IDS.devnet });
+
+  test("mainnet profile switches every id and PDA; devnet again is byte-identical to the default", () => {
+    const before = sample();
+    expect(activePrograms()).toEqual({ network: "devnet", ...PROGRAM_IDS.devnet });
+    try {
+      useProfilePrograms(selectProfile(profileJson, "mainnet"));
+      const m = sample();
+      expect(m.ids).toEqual([PROGRAM_IDS.mainnet.registry, PROGRAM_IDS.mainnet.launch, PROGRAM_IDS.mainnet.msg]);
+      expect(m.ix[0]!.p).toBe(PROGRAM_IDS.mainnet.registry);
+      expect(m.ix[1]!.p).toBe(PROGRAM_IDS.mainnet.launch);
+      for (let i = 0; i < before.pdas.length; i++) expect(m.pdas[i]).not.toBe(before.pdas[i]);
+      expect(m.ix[0]!.d).toBe(before.ix[0]!.d); // same instruction data, other program
+      expect(new ChainReader(Rpc.http("http://127.0.0.1:1")).registryProgram).toBe(PROGRAM_IDS.mainnet.registry);
+    } finally {
+      devnet();
+    }
+    expect(sample()).toEqual(before);
+  });
+  test("applyNetworkProfile applies the profile's ids (LINEAGE_NETWORK=mainnet), devnet leaves them unchanged", () => {
+    const before = sample();
+    try {
+      applyNetworkProfile({ env: { LINEAGE_NETWORK: "mainnet" } });
+      expect(activePrograms()).toEqual({ network: "mainnet", ...PROGRAM_IDS.mainnet });
+      const reader = new ChainReader(Rpc.http("http://127.0.0.1:1"));
+      devnet();
+      expect(reader.launchProgram).toBe(PROGRAM_IDS.devnet.launch); // a reader built earlier follows too
+      applyNetworkProfile({ env: { LINEAGE_NETWORK: "devnet" } });
+      expect(sample()).toEqual(before);
+    } finally {
+      devnet();
+      applyNetworkProfile({ env: { LINEAGE_NETWORK: "devnet" } });
+    }
+  });
+  test("a profile whose ids are not its network's row is refused", () => {
+    expect(() => useProfilePrograms({ network: "mainnet", programs: PROGRAM_IDS.devnet })).toThrow(/not the id the mainnet build declares/);
+    expect(() => useProfilePrograms({ network: "testnet", programs: PROGRAM_IDS.devnet })).toThrow();
+    expect(activePrograms().network).toBe("devnet");
   });
 });

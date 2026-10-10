@@ -35,13 +35,49 @@ import {
   type Rpc,
   type SendResult,
   type Signer,
+  activePrograms,
+  useProfilePrograms,
+  type ProgramIds,
 } from "@lineage/chain";
+import { loadNetworkProfile } from "../../packages/chain/src/profile-node.ts";
+import type { NetworkProfile } from "../../packages/chain/src/profile.ts";
 
-export const PROGRAM_IDS = {
-  registry: "2vhj9aBZkuoCpmJxm5BcA3CYkvBJgY6VHTax8FpFmxuY",
-  launch: "8eHzm1XtNtbxJujrMAci4VdhCJvQttFUBukmkFaUwsAT",
-  msg: "E6vHskQjJAMLqDKXyfnn2ZDjeJ57RZXR4H9RjPDzapAB",
-} as const;
+const MAINNET_GENESIS = "5eykt4UsFv8P8NJdTREpY1vzqKqZKvdpKuc147dw2N9d";
+
+/**
+ * The active network profile (config/profile.json `network`, LINEAGE_NETWORK overrides), with its
+ * program ids applied to every builder, PDA and reader (packages/chain programs.ts). The mainnet
+ * scripts run under LINEAGE_NETWORK=mainnet (docs/MAINNET-RUNBOOK.md); nothing here names an id.
+ */
+export function useActiveProfile(env: Record<string, string | undefined> = process.env): NetworkProfile {
+  const p = loadNetworkProfile({ env });
+  useProfilePrograms(p);
+  return p;
+}
+
+/** The three program ids the builders use now (the active profile's). */
+export const programIdsNow = (): ProgramIds => {
+  const { registry, launch, msg } = activePrograms();
+  return { registry, launch, msg };
+};
+
+/**
+ * Refuses an endpoint the active profile does not fit: mainnet's genesis needs the mainnet profile,
+ * and the profile's genesis must be the endpoint's unless it is a local fork. With `deployed`, each
+ * program must already be an executable account at the profile's id (a devnet profile against a
+ * mainnet fork stops here instead of building for absent programs).
+ */
+export async function checkEndpoint(rpc: Rpc, p: NetworkProfile, o: { deployed: boolean; local?: boolean }): Promise<string> {
+  const genesis = await rpc.call<string>("getGenesisHash");
+  if (genesis === MAINNET_GENESIS && p.network !== "mainnet") throw new Error(`mainnet endpoint under the ${p.network} profile: run with LINEAGE_NETWORK=mainnet`);
+  if (genesis !== p.genesis && !o.local) throw new Error(`the endpoint's genesis ${genesis} is not the ${p.network} profile's ${p.genesis}`);
+  if (o.deployed)
+    for (const [name, id] of Object.entries(programIdsNow())) {
+      const a = await rpc.getAccountInfo(id);
+      if (!a || !a.executable) throw new Error(`${name}: no program at ${id}, the ${p.network} profile's id (LINEAGE_NETWORK=${process.env.LINEAGE_NETWORK ?? ""})`);
+    }
+  return genesis;
+}
 
 /** The owner's launch values (scripts/mainnet/launch-params.example.json); no field may be "TBA". */
 export interface LaunchParams {
@@ -111,7 +147,7 @@ export async function createMultisig(rpc: Rpc, send: Send, check: Check, payer: 
 }
 
 export const registryArgs = (p: Loaded, vault: string) =>
-  ({ admin: vault, coreAuthority: p.core_authority, launchProgram: PROGRAM_IDS.launch, params: p.params, maxRebatePerEpoch: p.max_rebate_per_epoch });
+  ({ admin: vault, coreAuthority: p.core_authority, launchProgram: programIdsNow().launch, params: p.params, maxRebatePerEpoch: p.max_rebate_per_epoch });
 export const computeSink = (p: LaunchParams, vault: string) => ata(vault, p.line_mint, p.line_token_program);
 export const launchArgs = (p: Loaded, vault: string) => {
   const one = 10n ** BigInt(p.line_decimals), from = 10n ** BigInt(p.net.token_decimals);
@@ -129,7 +165,7 @@ export const launchArgs = (p: Loaded, vault: string) => {
 export async function initializeAll(rpc: Rpc, send: Send, check: Check, deployer: Signer, dbcConfigKey: Signer, p: Loaded, vault: string, existingTable?: string) {
   const reader = new ChainReader(rpc);
   const T = p.line_token_program;
-  for (const [name, id] of Object.entries(PROGRAM_IDS)) {
+  for (const [name, id] of Object.entries(programIdsNow())) {
     const a = decodeLoaderAuthority((await rpc.getAccountInfo(programDataAddress(id)))!.data);
     check(`${name}: upgrade authority is the deployer (initialize needs it) or the registry is already initialized`, a === deployer.id || (await reader.registryConfig()) !== null, `${a}`);
   }
@@ -177,7 +213,7 @@ export async function checkHandover(rpc: Rpc, check: Check, vault: string, p: La
   check("compute sink = the vault's account", lc?.computeSink === computeSink(p, vault), `${lc?.computeSink}`);
   const mc = await readMsgConfig(rpc);
   check("messages admin = vault", mc?.admin === vault, `${mc?.admin}`);
-  for (const [name, id] of Object.entries(PROGRAM_IDS)) {
+  for (const [name, id] of Object.entries(programIdsNow())) {
     const a = decodeLoaderAuthority((await rpc.getAccountInfo(programDataAddress(id)))!.data);
     check(`${name} upgrade authority = vault`, a === vault, `${a}`);
   }

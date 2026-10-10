@@ -9,7 +9,6 @@ import { r, registryPdas, w, type Ix } from "./registry.ts";
 // compute vault. Account order and encodings match onchain/programs/lineage-launch/src/bounty.rs;
 // onchain/tests/fixtures/client-vectors.json pins them.
 
-const P = LAUNCH_PROGRAM_ID;
 const data = (name: string) => new Writer().bytes(ixDisc(name));
 const ZERO32 = "0".repeat(64);
 export const DEFAULT_ADDRESS: Address = "11111111111111111111111111111111";
@@ -20,11 +19,11 @@ export type BountyStatus = (typeof BOUNTY_STATUS)[number];
 export const BOUNTY_ROLES = ["author", "reviewer", "harness", "finder"] as const;
 
 export const bountyPdas = {
-  config: () => pda(P, "bounty_config"),
-  bounty: (payer: Address, id: bigint | number) => pda(P, "bounty", addressBytes(payer), u64le(id)),
-  vault: (bounty: Address) => pda(P, "bounty_vault", addressBytes(bounty)),
-  ledger: (agent: Address) => pda(P, "bounty_ledger", addressBytes(agent)),
-  receipt: (payer: Address, leaf: Uint8Array | string) => pda(P, "bounty_receipt", addressBytes(payer), typeof leaf === "string" ? hexToBytes(leaf) : leaf),
+  config: () => pda(LAUNCH_PROGRAM_ID, "bounty_config"),
+  bounty: (payer: Address, id: bigint | number) => pda(LAUNCH_PROGRAM_ID, "bounty", addressBytes(payer), u64le(id)),
+  vault: (bounty: Address) => pda(LAUNCH_PROGRAM_ID, "bounty_vault", addressBytes(bounty)),
+  ledger: (agent: Address) => pda(LAUNCH_PROGRAM_ID, "bounty_ledger", addressBytes(agent)),
+  receipt: (payer: Address, leaf: Uint8Array | string) => pda(LAUNCH_PROGRAM_ID, "bounty_receipt", addressBytes(payer), typeof leaf === "string" ? hexToBytes(leaf) : leaf),
 };
 
 export interface BountyConfigArgs {
@@ -75,7 +74,7 @@ export const bounty = {
   setConfig(a: { admin: Address; args: BountyConfigArgs }): Ix {
     const x = a.args;
     return {
-      programId: P,
+      programId: LAUNCH_PROGRAM_ID,
       keys: [r(launchPdas.config()), w(bountyPdas.config()), w(a.admin, true), r(SYSTEM_PROGRAM)],
       data: data("set_bounty_config").u16(x.maxBountyOutBps).u64(x.selfHostedInCap).u32(x.windowS).u32(x.minTtlS).u32(x.maxTtlS).u32(x.refundGraceS)
         .u64(x.minAmount).bool(x.paused).done(),
@@ -86,7 +85,7 @@ export const bounty = {
     const b = bountyPdas.bounty(a.payer, a.args.bountyId);
     const x = a.args;
     return {
-      programId: P,
+      programId: LAUNCH_PROGRAM_ID,
       keys: [
         r(launchPdas.config()), r(bountyPdas.config()), r(registryPdas.config()), w(a.opener, true), r(launchPdas.authority()),
         w(launchPdas.agentLaunch(a.payerMint)), w(launchPdas.computeVault(a.payer)), w(bountyPdas.ledger(a.payer)), w(b), w(bountyPdas.vault(b)),
@@ -116,7 +115,7 @@ export const bounty = {
     else wr.u8(0);
     wr.vec32(a.proof);
     return {
-      programId: P,
+      programId: LAUNCH_PROGRAM_ID,
       keys: [
         r(launchPdas.config()), r(bountyPdas.config()), w(a.caller, true), r(launchPdas.authority()), w(b), w(bountyPdas.vault(b)), w(a.opener),
         r(registryPdas.epoch(c.epoch)), w(launchPdas.agentLaunch(a.payeeMint)), w(launchPdas.computeVault(a.payee)), w(bountyPdas.ledger(a.payee)),
@@ -129,11 +128,11 @@ export const bounty = {
   },
   /** Anyone, after deadline + refund_grace_s. */
   refund(a: { payer: Address; payerMint: Address; bountyId: bigint | number; opener: Address; lineMint: Address; lineTokenProgram?: Address }): Ix {
-    return { programId: P, keys: refundKeys(a), data: data("refund_bounty").done() };
+    return { programId: LAUNCH_PROGRAM_ID, keys: refundKeys(a), data: data("refund_bounty").done() };
   },
   /** The opener's authority (the payer's current registry owner, or the runtime for a hosted payer), only before the registry posts another epoch. */
   cancel(a: { signer: Address; payer: Address; payerMint: Address; bountyId: bigint | number; opener: Address; lineMint: Address; lineTokenProgram?: Address }): Ix {
-    return { programId: P, keys: [...refundKeys(a), r(registryPdas.config()), r(a.signer, true), r(registryPdas.agent(a.payer))], data: data("cancel_bounty").done() };
+    return { programId: LAUNCH_PROGRAM_ID, keys: [...refundKeys(a), r(registryPdas.config()), r(a.signer, true), r(registryPdas.agent(a.payer))], data: data("cancel_bounty").done() };
   },
 };
 function refundKeys(a: { payer: Address; payerMint: Address; bountyId: bigint | number; opener: Address; lineMint: Address; lineTokenProgram?: Address }) {

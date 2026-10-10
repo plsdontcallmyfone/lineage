@@ -8,19 +8,25 @@
 //   bun scripts/mainnet/initialize.ts check    --params <launch-params.json> --multisig <addr> [--rpc <url>] [--mainnet]
 //
 // --rpc defaults to the local fork (127.0.0.1:9690). A mainnet endpoint is refused without --mainnet.
+// Program ids come from the active network profile: run with LINEAGE_NETWORK=mainnet (the mainnet ids,
+// on the fork and on mainnet); a mainnet endpoint under any other profile is refused.
 import { loadKeypair, Rpc, sendAndConfirm, squadsPdas, TxError, type Ix, type Signer } from "@lineage/chain";
-import { checkHandover, createMultisig, initializeAll, loadLaunchParams } from "./steps.ts";
+import { checkEndpoint, checkHandover, createMultisig, initializeAll, loadLaunchParams, programIdsNow, useActiveProfile } from "./steps.ts";
 
 const argv = process.argv.slice(2);
 const cmd = argv[0];
 const flag = (n: string) => (argv.includes(n) ? argv[argv.indexOf(n) + 1] : undefined);
 const need = (n: string) => flag(n) ?? (() => { throw new Error(`${n} required`); })();
-const rpc = Rpc.http(flag("--rpc") ?? "http://127.0.0.1:9690", "confirmed");
-const genesis = await rpc.call<string>("getGenesisHash");
+const rpcUrl = flag("--rpc") ?? "http://127.0.0.1:9690";
+const rpc = Rpc.http(rpcUrl, "confirmed");
+// program ids from the active network profile (LINEAGE_NETWORK=mainnet for the runbook and the fork)
+const profile = useActiveProfile();
+const genesis = await checkEndpoint(rpc, profile, { deployed: cmd !== "multisig", local: rpcUrl.startsWith("http://127.0.0.1:") });
 const isMainnet = genesis === "5eykt4UsFv8P8NJdTREpY1vzqKqZKvdpKuc147dw2N9d";
 if (isMainnet && !argv.includes("--mainnet")) throw new Error("mainnet endpoint: pass --mainnet to confirm");
 const price = flag("--priority-micro-lamports") ? Number(flag("--priority-micro-lamports")) : undefined;
-console.log(`[init] ${isMainnet ? "MAINNET" : "not mainnet"} (genesis ${genesis.slice(0, 8)}...)`);
+const ids = programIdsNow();
+console.log(`[init] ${isMainnet ? "MAINNET" : "not mainnet"} (genesis ${genesis.slice(0, 8)}...), ${profile.network} profile: registry ${ids.registry}, launch ${ids.launch}, msg ${ids.msg}`);
 
 let failed = 0;
 const check = (name: string, ok: boolean, detail = "") => {
