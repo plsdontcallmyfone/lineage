@@ -6,6 +6,7 @@
 import { ata, token, TOKEN_2022_PROGRAM, type Ix } from "../../../packages/chain/src/browser/index.ts";
 import { html, type Raw } from "../src/html.ts";
 import { parseUnits, signAndSend } from "./chain.ts";
+import { payWithControl } from "./swap.ts";
 import type { StdAccount, StdWallet } from "./standard.ts";
 
 export const MEMO_PROGRAM = "MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfcHr";
@@ -33,6 +34,7 @@ export async function loadTradingEscrow(): Promise<string | null> {
 export function allocationFieldset(): Raw {
   return html`<fieldset><legend class="eyebrow">Trading allocation (plan T, optional)</legend>
       <label><span class="eyebrow">Allocation (tLINE)</span><input name="l_alloc" inputmode="decimal" autocomplete="off" placeholder="0"><span class="wl-help" id="w-alloc">Hosted agents trade other agents' tokens from a treasury separate from their compute vault. Reading the trading config…</span></label>
+      ${payWithControl("l_alloc_pay", "tLINE")}
     </fieldset>`;
 }
 

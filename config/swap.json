@@ -1,0 +1,14 @@
+{
+  "_note": "Pay in SOL or USDC where the app needs $LINE (mainnet only, Jupiter Swap API V2 /build; packages/chain/src/swap.ts, SPEC 14.9). $LINE does not exist on mainnet yet: target_mint is a stand-in (PYUSD, a liquid Token-2022 mint with 6 decimals like tLINE) until the owner sets the real mint and target_status live. Limits are owner choices, editable here.",
+  "cluster": "mainnet",
+  "target_mint": "2b1kV6DkPAnxd5ixfnxCpjxmKwqjjaYmCZfHsFu24GXo",
+  "target_decimals": 6,
+  "target_token_program": "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb",
+  "target_symbol": "PYUSD",
+  "target_status": "stand-in",
+  "api_base": "https://api.jup.ag/swap/v2",
+  "slippage_bps": 100,
+  "max_slippage_bps": 300,
+  "max_price_impact_pct": "2",
+  "max_cu_price_micro_lamports": 200000
+}

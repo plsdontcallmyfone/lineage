@@ -26,6 +26,7 @@ import {
 import { esc, html, raw, type Raw } from "../src/html.ts";
 import { banner, icon } from "../src/ui.ts";
 import { tradeDecimals } from "./decimals.ts";
+import { payWithControl } from "./swap.ts";
 import { buildAndSimulate, devnetGate, loadChainCfg, parseUnits, rpc, signAndSend, sol, units, type Built, type ChainCfg } from "./chain.ts";
 import { connect, DEVNET_CHAIN, disconnect, discovered, onChange, onWallets, startDiscovery, type StdAccount, type StdWallet } from "./standard.ts";
 
@@ -333,6 +334,7 @@ class Box {
         </div>
         <div class="seg mk-tb-side" role="group" aria-label="Side"><button type="button" data-tb="side" data-side="buy" aria-pressed="${String(buy)}">Buy</button><button type="button" data-tb="side" data-side="sell" aria-pressed="${String(!buy)}">Sell</button></div>
         <label class="wl-field mk-tb-f"><span class="eyebrow">${buy ? "Pay tLINE" : `Sell ${sym}`}</span><span class="mk-tb-in"><input name="tb_amount" inputmode="decimal" autocomplete="off" placeholder="0.0" value="${esc(this.amount)}"><button type="button" class="mk-tb-max" data-tb="max">Max</button></span></label>
+        ${buy ? payWithControl("tb_pay", "tLINE") : ""}
         <label class="wl-field mk-tb-f"><span class="eyebrow">Slippage tolerance (bps)</span><input name="tb_slip" inputmode="numeric" value="${esc(this.slip)}"></label>
         ${q && !q.built.sim.err
           ? html`<div class="mk-tb-quote"><div><span>You pay</span><b class="num">${units(q.amountIn, inD)} ${inU}</b></div><div><span>You get (simulated)</span><b class="num" data-quote-out="${q.out}">${units(q.out, outD)} ${outU}</b></div><div><span>Minimum at your tolerance</span><b class="num">${units(q.minOut, outD)} ${outU}</b></div><div><span>Network fee</span><b class="num">${q.built.sim.fee === null ? "TBA" : sol(q.built.sim.fee)} SOL</b></div></div>`

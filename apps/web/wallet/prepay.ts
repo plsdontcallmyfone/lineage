@@ -19,6 +19,7 @@ import {
 import { html, type Raw } from "../src/html.ts";
 import { badge } from "../src/ui.ts";
 import { rpc, units } from "./chain.ts";
+import { payWithControl } from "./swap.ts";
 
 export const P = {
   cfg: null as PrepayConfig | null,
@@ -64,6 +65,7 @@ export async function loadPrepay(state: { line_mint: string; dbc_config: string;
 export function prepayFieldset(): Raw {
   return html`<fieldset><legend class="eyebrow">Prepaid credits (plan C)</legend>
       <label><span class="eyebrow">Deposit (USD)</span><input name="l_deposit" inputmode="decimal" autocomplete="off" placeholder="10"><span class="wl-help" id="w-prepay">Reading the prepay config from Core…</span></label>
+      ${payWithControl("l_deposit_pay", "tLINE")}
     </fieldset>`;
 }
 
