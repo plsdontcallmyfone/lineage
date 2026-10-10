@@ -143,14 +143,17 @@ export class E2BBackend implements DesktopBackend {
         if (r.code !== 0) throw new Error(`e2b desktop: could not install ${missing.join(", ")}`);
       }
       // from here on only the allowlisted hosts
-      if (sbx.updateNetwork) await sbx.updateNetwork({ allowOut: o.allow, denyOut: ["0.0.0.0/0"] });
+      // each host with its subdomains (E2B takes "*.host"; checked on a real desktop 2026-10-10)
+      if (sbx.updateNetwork) await sbx.updateNetwork({ allowOut: o.allow.flatMap((h) => [h, `*.${h}`]), denyOut: ["0.0.0.0/0"] });
       // the working tree, with its .git (the navigation terminal searches HEAD)
       const tar = Bun.spawnSync(["tar", "-C", o.tree, "-czf", "-", "."], { stdout: "pipe" });
       if (tar.exitCode !== 0 || tar.stdout.byteLength > 200 * 1024 * 1024) throw new Error("e2b desktop: tree not uploadable");
       await sbx.files.write("/tmp/repo.tgz", tar.stdout.buffer.slice(tar.stdout.byteOffset, tar.stdout.byteOffset + tar.stdout.byteLength) as ArrayBuffer);
       await sh(`mkdir -p ${REPO} /tmp/stream && tar -xzf /tmp/repo.tgz -C ${REPO} && rm -f /tmp/repo.tgz`, 120_000);
       // our own window manager and tiles instead of the template's desktop session
-      await sh("pkill -x xfce4-session; pkill -x xfwm4; pkill -x xfdesktop; pkill -x xfce4-panel; true");
+      // the session manager first (it respawns the panel), then the panel (its strut moved every window
+      // 27 px down, off its tile, which the geometry guard caught), the window manager and the desktop
+      await sh("pkill -x xfce4-session; sleep 0.5; pkill -x xfce4-panel; pkill -f '^panel-'; pkill -x xfwm4; pkill -x xfdesktop; pkill -x xfce4-notifyd; sleep 0.5; true");
       await sh(`${DESK}/bin/desk-bg session ${DESK}/bin/desk-session`);
       const t0 = Date.now();
       while (Date.now() - t0 < 60_000 && (await sh("test -f /tmp/desk/ready")).code !== 0) await Bun.sleep(500);

@@ -307,7 +307,7 @@ describe("E2B backend (mock SDK)", () => {
     expect(iNet).toBeLessThan(iTree);
     expect(iTree).toBeLessThan(iSession);
     expect(m.order[iNet]).toContain('"denyOut":["0.0.0.0/0"]');
-    expect(m.order[iNet]).toContain('"allowOut":["github.com"]');
+    expect(m.order[iNet]).toContain('"allowOut":["github.com","*.github.com"]');
     expect(m.opts().timeoutMs).toBe(900_000);
     expect(m.order.some((x) => /vnc|stream\.start/i.test(x))).toBe(false);
     expect([...m.files.keys()].some((k) => k.endsWith("/bin/desk-session"))).toBe(true);

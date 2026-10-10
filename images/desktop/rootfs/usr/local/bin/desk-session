@@ -17,7 +17,7 @@ if [ "${DESK_NO_X:-0}" != 1 ]; then
   for i in $(seq 1 50); do xdpyinfo >/dev/null 2>&1 && break; sleep 0.1; done
 fi
 xsetroot -solid '#15171c' 2>/dev/null || true
-openbox --config-file "$ETC/rc.xml" >/tmp/desk/openbox.log 2>&1 &
+openbox --replace --config-file "$ETC/rc.xml" >/tmp/desk/openbox.log 2>&1 &
 sleep 0.3
 XT=(xterm -fa 'DejaVu Sans Mono' -fs 10 -bg '#1b1d23' -fg '#d7dae0' -bc +sb -b 4 -u8)
 "${XT[@]}" -class LineageEditor -T editor -e "$BIN/desk-editor" &

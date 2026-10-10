@@ -107,6 +107,8 @@ export class Driver {
   private async act(a: Action): Promise<void> {
     switch (a.tile) {
       case "editor": {
+        // the toolbox records an edit and then writes it in the same tick: read the file after a pause
+        await Bun.sleep(30);
         if (this.inst.push) {
           const bytes = this.hostFile(a.path);
           if (bytes) await this.inst.push(a.path, bytes);
@@ -131,7 +133,17 @@ export class Driver {
       case "term":
       case "run":
         if (a.op === "ls") return this.x(["desk-cmd", a.tile, "ls", b64(a.path)], `${a.tile} ls`);
-        if (a.op === "search") return this.x(["desk-cmd", a.tile, "search", b64(a.pattern)], `${a.tile} search`);
+        if (a.op === "search") {
+          // a desktop holding a copy of the tree gets every edited file before a search over it
+          if (a.tile === "run" && this.inst.push) {
+            await Bun.sleep(30);
+            for (const p of this.seal.dirty) {
+              const bytes = p.includes("\0") ? null : this.hostFile(p);
+              if (bytes) await this.inst.push(p, bytes);
+            }
+          }
+          return this.x(["desk-cmd", a.tile, "search", b64(a.pattern)], `${a.tile} search`);
+        }
         if (a.op === "show" && a.tile === "run") {
           const name = `out-${++this.n}`;
           await this.inst.exec(["desk-put", name], { stdin: a.text });
