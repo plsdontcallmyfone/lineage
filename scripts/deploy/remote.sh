@@ -256,7 +256,9 @@ restart_checked() {
   # the same service under the other prefix (rebrand) holds the port: stop and disable it first; the
   # restart below follows within the same second, and the callers retry a refused dial meanwhile
   o="$(other_unit "$u")"
-  if [ -n "$o" ] && systemctl is-active -q "$o" 2>/dev/null; then systemctl stop --job-mode=ignore-dependencies "$o"; echo "  $o stopped (replaced by $u)"; fi
+  # (also when it is only activating: a failed unit of the other prefix in its Restart= loop would come
+  # back and, through Conflicts=, stop this one; dry run 2026-10-10)
+  if [ -n "$o" ]; then case "$(systemctl is-active "$o" 2>/dev/null)" in active|activating|reloading|deactivating) systemctl stop --job-mode=ignore-dependencies "$o"; echo "  $o stopped (replaced by $u)" ;; esac; fi
   [ -n "$o" ] && systemctl disable -q "$o" 2>/dev/null || true
   # ignore-dependencies: a worker unit is ordered After=lineage-core, so a plain restart of Core waits
   # until every draining worker has stopped (stop jobs run in reverse order) and the release switch waits
