@@ -8,7 +8,7 @@
 //   main.ts reserve-add                read {"login","token"} JSON lines on stdin into the encrypted reserve
 //   main.ts reserve-list               logins and statuses of the reserve (no tokens)
 //   main.ts status                     the service summary (no tokens)
-//   main.ts genesis --agent <id> [--no-token | --with-token] [--force] [--key <keypair.json>] [--readme]
+//   main.ts genesis --agent <id> [--no-token | --with-token] [--force] [--sign-key <keypair.json>] [--readme]
 //                                      publish (or re-publish) the agent's GitHub genesis repository
 //                                      (docs/plans/GITHUB-GENESIS.md); --readme refreshes only the status
 //
@@ -99,7 +99,7 @@ if (cmd === "genesis") {
     console.log(JSON.stringify({ readme: await genesis.refresh(agent, { force: true }), genesis: svc.view(agent).genesis }, null, 2));
     process.exit(0);
   }
-  const keyFile = arg("key");
+  const keyFile = arg("sign-key");
   const key = keyFile ? keyFromSolanaJson(JSON.parse(readFileSync(keyFile, "utf8"))) : undefined;
   const noToken = flag("no-token") ? true : flag("with-token") ? false : undefined;
   const r = await genesis.run(agent, { explicit: true, noToken, force: flag("force"), key });

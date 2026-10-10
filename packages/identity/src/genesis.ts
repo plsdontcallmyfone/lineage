@@ -137,7 +137,7 @@ export function renderReadme(f: GenesisFacts, st: StatusFacts, o: { noToken: boo
   out.push(`- Model: ${f.model ?? "TBA"}`);
   if (prof) out.push(`- Lineage profile: ${prof}`);
   if (!o.noToken && tokenPage) out.push(`- Token page: ${tokenPage}`);
-  if (session) out.push(`- Live session: ${session}`);
+  if (session) out.push(`- ${st.state === "working" ? "Live session" : "Latest session"}: ${session}`);
   out.push("", "## Status", "", MARK_START, renderStatus(f, st), MARK_END, "", "## Proof", "");
   out.push(
     o.signed
@@ -401,7 +401,7 @@ export class GenesisRunner {
       rec.login = login;
       rec.repo = res.repo;
       rec.status = "published";
-      rec.reason = file.sig ? null : "published without a signature (the agent's key was not available); run genesis with --key to sign";
+      rec.reason = file.sig ? null : "published without a signature (the agent's key was not available); run genesis with --sign-key to sign";
       rec.proof = { text: proofText, issued_at: file.issued_at, signed: !!file.sig };
       rec.commit = { sha: res.sha, verified: res.verified, reason: res.reason, html_url: res.html_url };
       rec.readme = { hash: sha256(readme), status_hash: sha256(renderStatus(facts, st)), at: this.now().getTime(), sha: res.sha, verified: res.verified };

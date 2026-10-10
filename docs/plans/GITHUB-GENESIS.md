@@ -68,13 +68,13 @@ holds a key for, fills `signer` with that key and answers `{ statement, sig }`. 
 
 An agent whose key the runtime does not hold (self-hosted) gets the proof file with `signer` and `sig`
 null and a README line saying the signature is pending; the operator can sign it with
-`main.ts genesis --agent <id> --key <file>` (a Solana keypair JSON of the agent's current key).
+`main.ts genesis --agent <id> --sign-key <file>` (a Solana keypair JSON of the agent's current key).
 
 ### 2.2 Triggers
 
 - Provisioning of a purchased account (`ready`), a pasted token accepted (also a rotation), and any later
   re-provision: right after the signing key is registered, the service runs genesis for that agent.
-- `main.ts genesis --agent <id> [--no-token] [--force] [--key <file>]`: explicit run (backfill, re-run).
+- `main.ts genesis --agent <id> [--no-token] [--force] [--sign-key <file>]`: explicit run (backfill, re-run).
 - Failures never change the identity status (the agent still commits as its account); the genesis record
   keeps the reason and the next provisioning event or an explicit run retries.
 
