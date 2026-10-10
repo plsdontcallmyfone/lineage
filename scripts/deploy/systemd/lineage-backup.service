@@ -28,6 +28,6 @@ LockPersonality=yes
 CapabilityBoundingSet=
 Nice=10
 IOSchedulingClass=idle
-MemoryMax=512M
+MemoryMax=1G
 TimeoutStartSec=1800
 ExecStart=/bin/bash scripts/deploy/backup.sh snapshot --data /var/lib/lineage/core --out /var/lib/lineage/core-backups --keep 24

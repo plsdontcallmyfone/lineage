@@ -32,7 +32,7 @@ of `~/.ssh/lineage_site`), then run deploy.sh with its address.
 1. **provision** (`provision.sh`, idempotent, as root): base packages; user `lineage` (no password, no
    sudo, root's authorized key); ufw deny incoming except 22, 80, 443; fail2ban for sshd; unattended
    upgrades; sshd keys only; journald capped at 500 MB; a 4 GiB swapfile when RAM is under 8 GiB;
-   Docker (`docker.io` from Ubuntu, `lineage` in the docker group); Bun 1.3.13 checked against the
+   Docker (`docker.io` from Ubuntu, `lineage` the only user in the docker group); Bun 1.3.13 checked against the
    release's SHASUMS256.txt; Caddy from the Caddy project's apt repository (memory cap 256 MB).
 2. **ship**: `git bundle` of HEAD (the repo has no remote; the working tree never ships; `DEPLOY_REF=<commit>`
    ships an ancestor), cloned on the server into `/opt/lineage/releases/<sha>` as `lineage`, then
@@ -56,24 +56,34 @@ of `~/.ssh/lineage_site`), then run deploy.sh with its address.
    to `scripts/deploy/SITE-DEVNET.md`.
 6. **activate**: backs up Core's database (when the release changes), switches `/opt/lineage/current`,
    writes `/var/lib/lineage/site/network.json` (config/network.json plus the devnet `chain` block, daily
-   epochs), installs the units and the Caddyfile, restarts, waits for health, then starts
+   epochs), sets up the service users and gives each its files (see "Service users"), installs the units,
+   the timers and the Caddyfile, restarts, waits for health, then starts
    `lineage-bootstrap` (recipes, snapshots, reference flag, calibrations: minutes per recipe) and the
    workers.
 
-| Unit | What | Listens | Memory cap |
-|---|---|---|---|
-| `lineage-core` | Core, chain mode devnet, data `/var/lib/lineage/core` | 127.0.0.1:9660 | 1 GB |
-| `lineage-web` | dashboard, Wallet page, `/chain` RPC proxy and faucet | 127.0.0.1:9661 | 768 MB |
-| `lineage-gate` | rate limits, CORS, method and path allowlists, body cap and read deadline, stream cap (`gate.ts`) | 127.0.0.1:9662 | 1 GB (256 MB was OOM-killed on an event-stream backlog) |
-| `lineage-indexer` | market indexer (`packages/indexer`): agent tokens, DBC and DAMM v2 trades, fee cranks, holders; read API `/market/*`; data `/var/lib/lineage/indexer/market.db` | 127.0.0.1:9668 | 256 MB |
-| `caddy` | HTTPS for `<ip-dashes>.sslip.io` and `DOMAIN`, gzip, security headers (CSP, HSTS, nosniff, frame DENY, Permissions-Policy, COOP); everything to the gate | 80, 443 | 256 MB |
-| `lineage-bootstrap` | one shot per deploy: lineages for the served recipes | | 1 GB |
-| `lineage-reference` | reference runner (calibrations, reference replays, audits) | | 1 GB |
-| `lineage-verifier@v1`, `@v2` | two honest verifiers, bonded on devnet | | 1 GB each |
-| `lineage-author@<name>` (optional, one per name in `AUTHORS`) | TEST author agent of recipe `<name>`, scripted candidates | | 1 GB each |
-| `lineage-runtime` (optional, disabled) | hosted runtime (`packages/runtime`) | | 1 GB |
+| Unit | What | User | Listens | Memory cap |
+|---|---|---|---|---|
+| `lineage-core` | Core, chain mode devnet, data `/var/lib/lineage/core` | `lineage-core` | 127.0.0.1:9660 | 1 GB |
+| `lineage-web` | dashboard, Wallet page, `/chain` RPC proxy and faucet | `lineage-web` | 127.0.0.1:9661 | 768 MB |
+| `lineage-gate` | rate limits, CORS, method and path allowlists, body cap and read deadline, stream cap (`gate.ts`) | `lineage-gate` | 127.0.0.1:9662 | 1 GB (256 MB was OOM-killed on an event-stream backlog) |
+| `lineage-indexer` | market indexer (`packages/indexer`): agent tokens, DBC and DAMM v2 trades, fee cranks, holders; read API `/market/*`; data `/var/lib/lineage/indexer/market.db` | `lineage-indexer` | 127.0.0.1:9668 | 256 MB |
+| `lineage-identity` | GitHub identity service (see its section) | `lineage-identity` | 127.0.0.1:9665 | 256 MB |
+| `caddy` | HTTPS for `<ip-dashes>.sslip.io` and `DOMAIN`, gzip, security headers (CSP, HSTS, nosniff, frame DENY, Permissions-Policy, COOP); everything to the gate | `caddy` | 80, 443; admin on a unix socket | 256 MB |
+| `lineage-bootstrap` | one shot per deploy: lineages for the served recipes | `lineage` | | 1 GB |
+| `lineage-reference` | reference runner (calibrations, reference replays, audits) | `lineage` | | 1 GB |
+| `lineage-verifier@v1`, `@v2` | two honest verifiers, bonded on devnet | `lineage` | | 1 GB each |
+| `lineage-author@<name>` (optional, one per name in `AUTHORS`) | TEST author agent of recipe `<name>`, scripted candidates | `lineage` | | 1 GB each |
+| `lineage-runtime` (optional, disabled) | hosted runtime (`packages/runtime`) | `lineage` | | 1 GB |
+| `lineage-backup.timer` | hourly Core snapshot (see "Backups") | `lineage-core` | | 512 MB |
+| `lineage-monitor.timer` | checks every 5 minutes, alerts (see "Monitoring") | `lineage-monitor` | | 256 MB |
 
-`lineage-gate`, `lineage-web` and `lineage-indexer` need no Docker and run with systemd sandboxing on top of `NoNewPrivileges` and `ProtectSystem=full`: private devices, kernel and cgroup protection, no namespaces, no capabilities, `AF_INET`/`AF_INET6`/`AF_UNIX`/`AF_NETLINK` only and the `@system-service` syscall set (the gate also `ProtectHome=yes`). All units still run as the one `lineage` user, which is in the docker group (accepted for this devnet site; see docs/AUDIT.md, Offchain). Check a unit with `systemd-analyze security <unit>`.
+Only `lineage` is in the docker group: it runs the sandboxes and everything that starts containers. Every
+other unit has its own system user with no shell, no home and no docker (see "Service users"). Core, the
+gate, the dashboard and the indexer run with systemd sandboxing on top of `NoNewPrivileges`:
+`ProtectSystem=strict` with only their data directory writable, private devices, kernel and cgroup
+protection, no namespaces, no capabilities, `AF_INET`/`AF_INET6`/`AF_UNIX`/`AF_NETLINK` only and the
+`@system-service` syscall set; the gate, the dashboard and the indexer cannot see `/home`, Core sees it
+read only with `~lineage/.config` hidden. Check a unit with `systemd-analyze security <unit>`.
 
 The worker caps cover the Bun processes. Sandboxes run under dockerd with each recipe's own limits
 (`limits` in `recipe.yml`: 2 CPUs and 2048 MB for the default recipes), outside the unit caps.
@@ -98,12 +108,12 @@ site: outside workers cannot join through it (open `POST /v1/*` in `gate.ts` whe
 ### Market indexer (launchpad L2)
 
 `lineage-indexer` runs `bun packages/indexer/src/main.ts --port 9668 --host 127.0.0.1 --db
-/var/lib/lineage/indexer/market.db --interval 15` (systemd `StateDirectory` makes the data directory).
+/var/lib/lineage/indexer/market.db --interval 15` as `lineage-indexer` (remote.sh makes its data directory).
 It is one of the core units in `remote.sh` (enabled, restarted and stopped with Core, the dashboard and
 the gate), sends nothing on chain and holds no key. RPC: the chain resolver
-(`packages/chain/src/endpoint.ts`): `LINEAGE_DEVNET_RPC` in `/etc/lineage/site.env` if set, else
-`HELIUS_DEVNET_RPC` in `~lineage/.config/lineage/rpc.env` (copied only when it exists on this machine),
-else public devnet. It never prints the URL (`/market/status` shows the host only). Sources per token:
+(`packages/chain/src/endpoint.ts`): `LINEAGE_DEVNET_RPC` from `/etc/lineage/indexer.env` (remote.sh
+writes it from `HELIUS_DEVNET_RPC` in `~lineage/.config/lineage/rpc.env`, copied only when it exists on
+this machine), else public devnet. It never prints the URL (`/market/status` shows the host only). Sources per token:
 its DBC pool, its DAMM v2 pool after migration, its mint and its `AgentLaunch` account; a quiet source
 is polled less often (doubling up to `--max-idle`, 300 s) and `logsSubscribe` makes a token's sources
 due again when it sees activity. On public devnet (2026-10-09, 34 tokens) a first backfill took about 4
@@ -120,20 +130,20 @@ curl -s https://<site>/market/status | jq '{ok, tokens, trades, rpc}'
 
 ## Secrets
 
-Never printed by any script; keys are compared and reported by public key only. All key files on the
-server are owned by `lineage`, mode 600, in mode 700 directories.
+Never printed by any script; keys are compared and reported by public key only. Every key file on the
+server is mode 600 in a mode 700 directory, owned by the one service user that uses it.
 
 | File on the server | Public key | Origin | Used by |
 |---|---|---|---|
-| `~lineage/.config/lineage/site/admin.json` | made on the server | `site-keys.ts` | Core `--admin-key` (only its public half is read), bootstrap |
+| `~lineage/.config/lineage/site/admin.json` | made on the server | `site-keys.ts` | bootstrap; a copy in `/etc/lineage-core/admin.json` (owner `lineage-core`) is Core's `--admin-key` (only its public half is read) |
 | `~lineage/.config/lineage/site/owner.json` | made on the server | `site-keys.ts` | owns the site's verifiers on chain (pays their burn and bond) |
 | `~lineage/.config/lineage/site/verifier-{ref,v1,v2}.json` | made on the server | `site-keys.ts` | reference runner and verifiers |
-| `~lineage/.config/lineage/devnet/core-authority.json` | `CjNUnQ3v2FRQJiMr16CfaFWCdzJ3nqq1VvY2zAgsc4j9` | copied from this machine | Core's chain bridge: `post_epoch`, `slash`, `migrate_agent` |
-| `~lineage/.config/lineage/devnet/faucet.json` | `FX4UjRbmbLHJ6K6RTvYcV4bFA9Yai2qntnPNex31GiH6` | copied | the Wallet page's tLINE faucet |
+| `/etc/lineage-core/core-authority.json` (owner `lineage-core`) | `CjNUnQ3v2FRQJiMr16CfaFWCdzJ3nqq1VvY2zAgsc4j9` | copied from this machine | Core's chain bridge: `post_epoch`, `slash`, `migrate_agent` |
+| `/var/lib/lineage/web/.config/lineage/devnet/faucet.json` (owner `lineage-web`) | `FX4UjRbmbLHJ6K6RTvYcV4bFA9Yai2qntnPNex31GiH6` | copied | the Wallet page's tLINE faucet |
 | `~lineage/.config/lineage/devnet/agent-<name>.json` (WITH_AUTHOR=1, each name in `AUTHORS`) | minbpe `BFPxdave7NVSXztGEZA5iZ7FiBDKRsuZmS9wZn2J1WBV`; the others as `site-authors.ts` printed them | copied | `lineage-author@<name>` |
 | `~lineage/.config/lineage/devnet/runtime-authority.json` (WITH_RUNTIME=1) | `DCmdy5MoAfnN6fn3nVW27db62ZwtjoksqSqdjAc8VPk4` | copied | `lineage-runtime` (Core only gets the public key file `runtime-authority.pub`) |
 | `~lineage/.config/lineage/model.env` (WITH_RUNTIME=1) | | copied | `lineage-runtime` |
-| `~lineage/.config/lineage/rpc.env` (only if it exists here) | | copied | the dashboard's RPC proxy, status |
+| `~lineage/.config/lineage/rpc.env` (only if it exists here) | | copied | workers, runtime, status; remote.sh copies its URL into `/etc/lineage-core/network.json` (Core), `/etc/lineage/web.env` (dashboard, with the soul drafter's `ANTHROPIC_API_KEY` from `model.env`) and `/etc/lineage/indexer.env`, all root or service-user owned, mode 600 |
 
 The devnet deployer key (`CVEZW...`, registry and launch admin, upgrade authority) never leaves this
 machine. A key already on the server with a different public key is never replaced (deploy stops).
@@ -145,7 +155,7 @@ every epoch it closes (daily), oldest first, never at or before the chain's last
 runs, `scripts/devnet/e2e-devnet.ts` on this machine (which posts epochs with the same key) races it:
 whichever posts epoch N first wins and the other's epoch N is refused. Stop the site's Core
 (`deploy.sh <host> stop`) for the duration of a devnet e2e run, or run the site read only (delete
-`devnet/core-authority.json` on the server; its Core then only reads). The same holds for the runtime
+`/etc/lineage-core/core-authority.json` on the server and activate again; its Core then only reads). The same holds for the runtime
 authority: run `lineage-runtime` on the site or on this machine, not both.
 
 ## The full lineage set (FINISH W3)
@@ -269,8 +279,9 @@ Secrets (`WITH_RUNTIME=1`, modes `full`, `keys` and `code`): `runtime-authority.
 checked against `scripts/devnet/devnet.json`, which must equal `LaunchConfig.runtime_authority` on
 chain) and `model.env` (refused unless it holds `ANTHROPIC_API_KEY`) are copied over ssh stdin to
 `~lineage/.config/lineage/`, owned by `lineage`, mode 600, in mode 700 directories. Neither is
-printed (public key and byte count only); the runtime redacts the key from every log line. `lineage`
-is the user every site unit runs as (docs/AUDIT.md OFF-D10), so the other units could read the file too.
+printed (public key and byte count only); the runtime redacts the key from every log line. Since the
+service users (OFF-D10) only the units running as `lineage` (workers, runtime) can read these files; the
+dashboard's soul drafter gets the model key alone, through `/etc/lineage/web.env`.
 
 Binding an agent. The runtime makes its own signing key per discovered hosted agent and runs only the
 agents whose owner rotated the agent's key to it (identity plan I1). The owner signs `rotate_agent_key`

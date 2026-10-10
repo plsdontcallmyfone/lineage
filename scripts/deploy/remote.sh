@@ -77,7 +77,7 @@ identity_setup() {
 #                    and its network.json, all in /etc/lineage-core (700); member of group lineage only to
 #                    read the workers' git mirrors (the tree view) and the private canaries
 #   lineage-monitor  the monitor timer (reads health endpoints, unit states, backup ages)
-# Core's and the indexer's data stay group `lineage` (dirs 2770, Core runs with UMask 0007), so a release
+# Core's and the indexer's data stay group `lineage` (dirs 0770, Core runs as group lineage with UMask 0007), so a release
 # from before the split still runs on the same data if one is activated; it then has no Core authority
 # key (Core reads the chain without posting) and no faucet until this release is activated again.
 SERVICE_USERS=(lineage-core lineage-web lineage-gate lineage-indexer lineage-monitor)
@@ -93,6 +93,25 @@ ensure_users() {
   done
   install -d -m 700 -o lineage-core -g lineage-core /etc/lineage-core
   install -d -m 755 /etc/lineage
+}
+# The caddy.service drop-in. `caddy reload` sends the new config to the admin address named IN the new
+# config, so a reload that moves the admin endpoint (localhost:2019 <-> the unix socket, in either
+# direction, including a release from before the socket being activated) would ask a Caddy that is not
+# listening there yet and fail (site deploy f701f6a, 2026-10-10). ExecReload therefore talks to the
+# address the running Caddy is on: the socket when it answers there, else the default localhost:2019.
+# provision.sh writes the same file.
+caddy_dropin() {
+  install -d /etc/systemd/system/caddy.service.d
+  cat > /etc/systemd/system/caddy.service.d/lineage.conf <<'EOF'
+[Service]
+MemoryMax=256M
+RuntimeDirectory=caddy
+RuntimeDirectoryMode=0750
+RuntimeDirectoryPreserve=restart
+ExecReload=
+ExecReload=/bin/sh -c '/usr/bin/caddy reload --config /etc/caddy/Caddyfile --force --address unix//run/caddy/admin.sock || /usr/bin/caddy reload --config /etc/caddy/Caddyfile --force --address localhost:2019'
+EOF
+  systemctl daemon-reload
 }
 # site-config.ts runs as lineage; the Core key it names is the service user's copy when there is one
 site_config() {
@@ -112,10 +131,10 @@ users_setup() {
   local REL="$1" LH=/home/lineage/.config/lineage WEB=/var/lib/lineage/web
   ensure_users
   # Core: data, keys, config
-  install -d -m 2770 -o lineage-core -g lineage /var/lib/lineage/core
+  # group lineage (Core's primary group; no setgid directories: RestrictSUIDSGID refuses creating them)
+  install -d -m 0770 -o lineage-core -g lineage /var/lib/lineage/core
   chown -R lineage-core:lineage /var/lib/lineage/core
-  chmod -R g+rwX /var/lib/lineage/core
-  find /var/lib/lineage/core -type d -exec chmod g+s {} +
+  chmod -R g+rwX,g-s /var/lib/lineage/core
   move_secret "$LH/devnet/core-authority.json" /etc/lineage-core/core-authority.json lineage-core
   [ -f "$LH/site/admin.json" ] && install -m 600 -o lineage-core -g lineage-core "$LH/site/admin.json" /etc/lineage-core/admin.json
   # site-config.ts (run as lineage) renders network.json; Core reads its own copy
@@ -124,8 +143,9 @@ users_setup() {
   # private canaries: Core reads them through group lineage
   chmod -R g+rX /var/lib/lineage/canaries 2>/dev/null || true
   # indexer
-  install -d -m 2770 -o lineage-indexer -g lineage /var/lib/lineage/indexer
+  install -d -m 0770 -o lineage-indexer -g lineage /var/lib/lineage/indexer
   chown -R lineage-indexer:lineage /var/lib/lineage/indexer
+  chmod -R g-s /var/lib/lineage/indexer
   # web: its own home with the faucet key and log and the soul drafts' state; RPC and model key by env
   install -d -m 700 -o lineage-web -g lineage-web "$WEB" "$WEB/.config" "$WEB/.config/lineage" "$WEB/.config/lineage/devnet" "$WEB/.lineage" "$WEB/.lineage/web"
   move_secret "$LH/devnet/faucet.json" "$WEB/.config/lineage/devnet/faucet.json" lineage-web
@@ -147,7 +167,8 @@ users_setup() {
       printf 'MONITOR_CORE_SIGNING=%s\n' "$([ -f /etc/lineage-core/core-authority.json ] && echo 1 || echo 0)"
       printf 'MONITOR_DRY_RUN=%s\n' "$DRY_RUN" ) > /etc/lineage/monitor.env
   fi
-  install -d -m 2750 -o lineage-core -g lineage-monitor /var/lib/lineage/core-backups
+  install -d -m 0750 -o lineage-core -g lineage-monitor /var/lib/lineage/core-backups
+  chmod g-s /var/lib/lineage/core-backups
   echo "service users: $(for u in "${SERVICE_USERS[@]}" lineage-identity lineage; do id "$u" >/dev/null 2>&1 && printf '%s(%s) ' "$u" "$(id -nG "$u" | tr ' ' ',')"; done)"
 }
 
@@ -247,13 +268,8 @@ activate)
   identity_setup "$REL"
   users_setup "$REL"
   # Caddy. Its admin API listens on a unix socket in /run/caddy (mode 0600, owner caddy) instead of
-  # localhost:2019, so other local users cannot rewrite the proxy (audit OFF-D12); the packaged unit's
-  # `caddy reload` (User=caddy) reads that address from the new config. Moving the admin endpoint needs
-  # one restart, since the running Caddy would be asked to reload over an address it is not on yet.
-  install -d /etc/systemd/system/caddy.service.d
-  printf '[Service]\nMemoryMax=256M\nRuntimeDirectory=caddy\nRuntimeDirectoryMode=0750\n' > /etc/systemd/system/caddy.service.d/lineage.conf
-  CADDY_RESTART=0
-  grep -q 'admin unix//' /etc/caddy/Caddyfile 2>/dev/null || CADDY_RESTART=1
+  # localhost:2019, so other local users cannot rewrite the proxy (audit OFF-D12).
+  caddy_dropin
   SITES="${SITE_NAMES:-localhost}"
   if [ "$DRY_RUN" = 1 ]; then TLS="	tls internal"; GLOBAL="	local_certs"; else TLS=""; GLOBAL="${ACME_EMAIL:+	email $ACME_EMAIL}"; fi
   install -d -o caddy -g caddy /var/log/caddy
@@ -264,7 +280,7 @@ activate)
   systemctl daemon-reload
   systemctl enable -q "${CORE_UNITS[@]}" caddy
   systemctl restart "${CORE_UNITS[@]}"
-  if [ "$CADDY_RESTART" = 1 ]; then systemctl restart caddy; else systemctl reload-or-restart caddy; fi
+  systemctl reload-or-restart caddy
   systemctl enable -q --now "$IDENTITY_TIMER" "${HARDEN_TIMERS[@]}"
   if [ "$DRY_RUN" = 1 ]; then
     echo "dry run: lineage-bootstrap, lineage-reference, lineage-verifier@v1, lineage-verifier@v2, lineage-runtime, lineage-author@* SKIPPED (sandbox units need Docker)"
@@ -362,7 +378,7 @@ restore-test)
   REL="$(readlink -f "$BASE/current")" D=/var/lib/lineage/restore-test PORT=9669
   [ -z "$(lsof -ti ":$PORT" 2>/dev/null)" ] || { echo "port $PORT is in use" >&2; exit 1; }
   systemctl stop lineage-restore-test 2>/dev/null || true
-  rm -rf "$D"; install -d -m 2770 -o lineage-core -g lineage "$D"
+  rm -rf "$D"; install -d -m 0770 -o lineage-core -g lineage "$D"
   RC() { runuser -u lineage-core -- env -i PATH=/usr/local/bin:/usr/bin:/bin HOME="$D" bash -c "$1"; }
   RC "bash $REL/scripts/deploy/backup.sh verify '$F'"
   RC "bash $REL/scripts/deploy/backup.sh extract '$F' $D/data && tar -xOf <(zstd -q -d -c '$F') manifest.json > $D/manifest.json"
@@ -404,7 +420,7 @@ restore)
   M="/var/lib/lineage/backups/$(date -u +%Y%m%dT%H%M%SZ)-before-restore"
   install -d -o lineage -g lineage "$M"
   mv /var/lib/lineage/core/core.db* /var/lib/lineage/core/blobs "$M"/ 2>/dev/null || true
-  install -d -m 2770 -o lineage-core -g lineage /var/lib/lineage/core/.restore
+  install -d -m 0770 -o lineage-core -g lineage /var/lib/lineage/core/.restore
   runuser -u lineage-core -- env -i PATH=/usr/local/bin:/usr/bin:/bin bash "$REL/scripts/deploy/backup.sh" extract "$F" /var/lib/lineage/core/.restore
   mv /var/lib/lineage/core/.restore/core.db /var/lib/lineage/core/.restore/blobs /var/lib/lineage/core/ && rmdir /var/lib/lineage/core/.restore
   chown -R "$(core_user)":lineage /var/lib/lineage/core; chmod -R g+rwX /var/lib/lineage/core

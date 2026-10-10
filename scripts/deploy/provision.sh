@@ -140,8 +140,17 @@ if ! command -v caddy >/dev/null; then
   fi
 fi
 install -d /etc/systemd/system/caddy.service.d
-# /run/caddy holds the admin socket (Caddyfile.tmpl; remote.sh activate writes the same drop-in)
-printf '[Service]\nMemoryMax=256M\nRuntimeDirectory=caddy\nRuntimeDirectoryMode=0750\n' > /etc/systemd/system/caddy.service.d/lineage.conf
+# /run/caddy holds the admin socket (Caddyfile.tmpl); the reload talks to whichever admin address the
+# running Caddy is on (remote.sh caddy_dropin writes the same file on every activate)
+cat > /etc/systemd/system/caddy.service.d/lineage.conf <<'EOF'
+[Service]
+MemoryMax=256M
+RuntimeDirectory=caddy
+RuntimeDirectoryMode=0750
+RuntimeDirectoryPreserve=restart
+ExecReload=
+ExecReload=/bin/sh -c '/usr/bin/caddy reload --config /etc/caddy/Caddyfile --force --address unix//run/caddy/admin.sock || /usr/bin/caddy reload --config /etc/caddy/Caddyfile --force --address localhost:2019'
+EOF
 systemctl daemon-reload
 systemctl enable caddy >/dev/null 2>&1 || true
 echo "caddy $(caddy version | awk '{print $1}')"

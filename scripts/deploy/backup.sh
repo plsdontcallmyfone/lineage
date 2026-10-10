@@ -49,7 +49,8 @@ snapshot)
   trap 'rm -rf "$T"' EXIT
   sqlite3 "$DATA/core.db" ".timeout 60000" ".backup '$T/core.db'"
   [ "$(sqlite3 -readonly "$T/core.db" 'pragma integrity_check')" = ok ] || die "integrity_check failed on the copy"
-  if [ -d "$DATA/blobs" ]; then cp -a "$DATA/blobs" "$T/blobs"; else mkdir "$T/blobs"; fi
+  # contents only (no owner, group or mode bits: the snapshot directory has its own group)
+  if [ -d "$DATA/blobs" ]; then cp -R "$DATA/blobs" "$T/blobs"; else mkdir "$T/blobs"; fi
   EPOCH="$(sqlite3 -readonly "$T/core.db" "select coalesce(max(n),-1) from epochs" 2>/dev/null || echo -1)"
   printf '{"v":1,"at":"%s","host":"%s","core_db_bytes":%s,"core_db_sha256":"%s","blobs":%s,"open_epoch":%s,"tables":%s}\n' \
     "$TS" "$(hostname)" "$(stat -c %s "$T/core.db")" "$(sha "$T/core.db")" "$(find "$T/blobs" -type f | wc -l)" "$EPOCH" "$(counts "$T/core.db")" > "$T/manifest.json"

@@ -10,7 +10,8 @@ Wants=network-online.target
 
 [Service]
 User=lineage-core
-Group=lineage-core
+# primary group lineage: its files stay readable to a release from before the service users
+Group=lineage
 UMask=0007
 WorkingDirectory=/opt/lineage/current
 Environment=HOME=/var/lib/lineage/core LINEAGE_HOME=/home/lineage/.lineage PATH=/usr/local/bin:/usr/bin:/bin
