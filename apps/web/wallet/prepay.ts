@@ -69,7 +69,7 @@ export const usdMode = () => NET.p.network === "devnet" || NET.p.usd_feed;
 
 export function prepayFieldset(): Raw {
   return html`<fieldset><legend class="eyebrow">Prepaid credits (plan C)</legend>
-      <label><span class="eyebrow">Deposit (${usdMode() ? "USD" : qsym()})</span><input name="l_deposit" inputmode="decimal" autocomplete="off" placeholder="${usdMode() ? "10" : ""}"><span class="wl-help" id="w-prepay">Reading the prepay config from Core…</span></label>
+      <label><span class="eyebrow">Deposit (${usdMode() ? "USD" : qsym()})</span><input name="l_deposit" inputmode="decimal" autocomplete="off" readonly aria-readonly="true" title="Required: the amount Core's config sets (launch fronting)" placeholder="${usdMode() ? "10" : ""}"><span class="wl-help" id="w-prepay">Reading the prepay config from Core…</span></label>
       ${payWithControl("l_deposit_pay", qsym())}
     </fieldset>`;
 }
@@ -79,10 +79,9 @@ export function depositNote(typed: string): string {
   return usdMode() ? `${depositUsd(typed)} USD` : "";
 }
 
-/** The USD typed in the form, or the default when empty. */
-export function depositUsd(typed: string): string {
-  const t = typed.trim().replace(/^\$/, "");
-  return t === "" ? (P.cfg?.default_usd ?? "") : t;
+/** The required credits in USD: exactly Core's configured amount (launch fronting, owner decision 2026-10-10; admin-editable in Core). The field is read-only. */
+export function depositUsd(_typed: string): string {
+  return P.cfg?.min_usd ?? "";
 }
 
 /** Validates the typed deposit; returns its base units or throws a message for the form. */
@@ -90,11 +89,8 @@ export function depositBase(typed: string, decimals: number): bigint {
   if (!P.cfg) throw new Error(`Prepaid credits: Core's prepay config is not available (${P.err ?? "not loaded"}); a launch needs it for the minimum and the rate.`);
   if (!usdMode()) {
     const min = usdToBase(P.cfg.min_usd, P.cfg.line_per_usd, decimals);
-    const t = typed.trim().replace(/,/g, "");
-    const amount = t === "" ? usdToBase(P.cfg.default_usd, P.cfg.line_per_usd, decimals) : parseQuote(t, decimals);
-    if (amount === null) throw new Error(`Deposit: a ${qsym()} amount such as ${units(min, decimals)}.`);
-    if (amount < min) throw new Error(`Deposit: at least ${units(min, decimals)} ${qsym()} (Core's prepay minimum).`);
-    return amount;
+    void typed;
+    return min; // required: exactly the configured credits (launch fronting)
   }
   const usd = depositUsd(typed);
   if (!/^\d+(\.\d{1,2})?$/.test(usd)) throw new Error("Deposit: a dollar amount such as 10 or 12.50.");
@@ -116,7 +112,7 @@ export function prepayHelp(typed: string, o: { decimals: number; wake: bigint | 
   }
   const b = firstRunBudget(c, amount, o.decimals);
   const cents = baseToUsdCents(amount, c.line_per_usd, o.decimals);
-  return html`<b class="num">${units(amount, o.decimals)}</b> tLINE (${(Number(cents) / 100).toFixed(2)} USD at ${rate}) into the agent's compute vault in the launch transaction; minimum ${c.min_usd} USD, editable upward.
+  return html`<b class="num">${units(amount, o.decimals)}</b> tLINE (${(Number(cents) / 100).toFixed(2)} USD at ${rate}) into the agent's compute vault in the launch transaction; required, set in Core's config (admin-editable).
     First-run budget at the runtime's published prices (${c.compute_price_line_per_usd} tLINE per USD of model spend, ${c.compute_price_line_per_sandbox_s} per sandbox second, ${c.sandbox_reserve_s} s held back): <b class="num">${b.usd.toFixed(2)}</b> USD of model spend, ${b.attempts} attempts at the ${c.attempt_max_usd} USD per-attempt cap.
     ${o.wake !== null ? (amount >= o.wake ? html`<span class="mark good">wakes at once (wake_threshold ${units(o.wake, o.decimals)} tLINE)</span>` : html`<span class="mark warn">below wake_threshold ${units(o.wake, o.decimals)} tLINE: the agent would stay asleep</span>`) : ""}
     ${o.balance !== null && o.balance < amount ? html`<span class="mark warn">your wallet holds ${units(o.balance, o.decimals)} tLINE</span>` : ""}`;
@@ -142,7 +138,7 @@ function quoteHelp(typed: string, o: { decimals: number; wake: bigint | null; ba
   }
   const min = usdToBase(c.min_usd, c.line_per_usd, o.decimals);
   const b = firstRunBudget(c, amount, o.decimals);
-  return html`<b class="num">${units(amount, o.decimals)}</b> ${sym} into the agent's compute vault in the launch transaction; minimum ${units(min, o.decimals)} ${sym} (Core's prepay config), editable upward.
+  return html`<b class="num">${units(amount, o.decimals)}</b> ${sym} into the agent's compute vault in the launch transaction; required, set in Core's config (admin-editable).
     First-run budget at the runtime's published prices: ${b.attempts} attempts at the per-attempt cap.
     ${o.wake !== null ? (amount >= o.wake ? html`<span class="mark good">wakes at once (wake_threshold ${units(o.wake, o.decimals)} ${sym})</span>` : html`<span class="mark warn">below wake_threshold ${units(o.wake, o.decimals)} ${sym}: the agent would stay asleep</span>`) : ""}
     ${o.balance !== null && o.balance < amount ? html`<span class="mark warn">your wallet holds ${units(o.balance, o.decimals)} ${sym}; pay with SOL or USDC to swap it through Jupiter</span>` : ""}`;

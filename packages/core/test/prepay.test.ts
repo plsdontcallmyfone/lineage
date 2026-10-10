@@ -109,11 +109,49 @@ describe("reading the launch transaction", () => {
       transaction: { message: { accountKeys: static_, instructions: [{ programIdIndex: 1, accounts: [2, 3, 4], data: data(ixDisc("refresh_awake")) }] } },
       meta: { err: null, loadedAddresses: loaded, postTokenBalances: [{ accountIndex: 4, mint: "m", uiTokenAmount: { amount: "200000000" } }] },
     };
-    expect(await readLaunchDeposit(rpcFor(tx), l)).toEqual({ signature: "launch", deposit: 200_000_000n, woke: true });
+    expect(await readLaunchDeposit(rpcFor(tx), l)).toEqual({ signature: "launch", deposit: 200_000_000n, woke: true, initialBuy: 0n });
   });
   test("legacy without a deposit or refresh", async () => {
     const tx = { transaction: { message: { accountKeys: ["payer", LAUNCH_PROGRAM_ID, vault], instructions: [{ programIdIndex: 1, accounts: [2], data: data(addressBytes(mint).subarray(0, 8)) }] } },
       meta: { err: null, postTokenBalances: [{ accountIndex: 2, mint: "m", uiTokenAmount: { amount: "0" } }] } };
-    expect(await readLaunchDeposit(rpcFor(tx), l)).toEqual({ signature: "launch", deposit: 0n, woke: false });
+    expect(await readLaunchDeposit(rpcFor(tx), l)).toEqual({ signature: "launch", deposit: 0n, woke: false, initialBuy: 0n });
+  });
+  test("launch fronting: the agent's own tokens left with the agent key are the initial buy (another owner's are not)", async () => {
+    const tx = { transaction: { message: { accountKeys: ["payer", LAUNCH_PROGRAM_ID, vault, "agentAta", "otherAta"], instructions: [] } },
+      meta: { err: null, postTokenBalances: [
+        { accountIndex: 2, mint: "m", owner: vault, uiTokenAmount: { amount: "200000000" } },
+        { accountIndex: 3, mint, owner: agent, uiTokenAmount: { amount: "1000000000000" } },
+        { accountIndex: 4, mint, owner: "someoneElse", uiTokenAmount: { amount: "5" } },
+      ] } };
+    expect(await readLaunchDeposit(rpcFor(tx), l)).toEqual({ signature: "launch", deposit: 200_000_000n, woke: false, initialBuy: 1_000_000_000_000n });
+  });
+});
+
+describe("launch fronting config (admin-editable)", () => {
+  test("defaults from the file; the admin patch changes the required credits and the buy bps, served by /v1/config's prepay block", () => {
+    const e = env();
+    const p = prepayOf(e.core);
+    expect(p.frontingView()).toMatchObject({ configured: true, credits_usd: "10", credits_required: true, initial_buy_bps: 100, initial_buy_slippage_bps: 100, admin_patch: null });
+    const v = p.setFronting({ credits_usd: "12.50", initial_buy_bps: 150 });
+    expect(v).toMatchObject({ credits_usd: "12.50", initial_buy_bps: 150, initial_buy_slippage_bps: 100 });
+    expect(e.cfg.prepay).toMatchObject({ min_usd: "12.50", default_usd: "12.50", initial_buy_bps: 150 });
+    expect(p.minBase()).toBe(250n * 10n ** BigInt(e.cfg.token_decimals));
+    // a launch at the old 10 USD is now below the required credits
+    expect(() => e.core.launchAgent(launchBody((200n * 10n ** BigInt(e.cfg.token_decimals)).toString()))).toThrow(/below the minimum/);
+  });
+  test("bad values refused, nothing stored", () => {
+    const e = env();
+    const p = prepayOf(e.core);
+    expect(() => p.setFronting({ credits_usd: 10 })).toThrow(/credits_usd/);
+    expect(() => p.setFronting({ credits_usd: "0" })).toThrow(/credits_usd/);
+    expect(() => p.setFronting({ initial_buy_bps: 10_001 })).toThrow(/initial_buy_bps/);
+    expect(() => p.setFronting({ min_usd: "1" })).toThrow(/unknown field/);
+    expect(p.frontingView()).toMatchObject({ admin_patch: null, credits_usd: "10" });
+  });
+  test("a recorded launch shows its initial buy as a share of the supply", () => {
+    const e = env();
+    const a = generateAgentKey().id;
+    e.core.tx(() => prepayOf(e.core).record(a, { mint: "m", launchedAt: 1, signature: "s", deposit: 1n, woke: true, source: "chain", initialBuy: 1_000_000_000_000n, supply: 100_000_000_000_000n }));
+    expect(prepayOf(e.core).view(a)).toMatchObject({ initial_buy: "1000000000000", initial_buy_bps_of_supply: 100 });
   });
 });

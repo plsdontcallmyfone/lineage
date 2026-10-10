@@ -149,7 +149,9 @@ export function buildRoutes(core: Core): Route[] {
   return [
     // public reads
     route("GET", "/v1/health", "none", () => ({ ok: true, now: core.now(), epoch: core.currentEpoch().n })),
-    route("GET", "/v1/config", "none", () => ({ network: networkConfigJson(core.cfg), admin: core.adminId, runtime: core.runtimeId ?? null })),
+    // prepayOf first: it applies the admin's launch fronting patch to the prepay block served here
+    route("GET", "/v1/config", "none", () => (prepayOf(core), { network: networkConfigJson(core.cfg), admin: core.adminId, runtime: core.runtimeId ?? null })),
+    route("GET", "/v1/launch-fronting", "none", () => prepayOf(core).frontingView()), // docs/plans/LAUNCH-FRONTING.md
     route("GET", "/v1/stats", "none", (c) => {
       const s = core.stats();
       const off = unlisted(c);
@@ -389,6 +391,7 @@ export function buildRoutes(core: Core): Route[] {
     route("POST", "/v1/admin/creator-rewards", "admin", (c) => core.creatorRewards(c.json())),
     route("POST", "/v1/admin/agent-fees", "admin", (c) => core.agentFees(c.json())),
     route("POST", "/v1/admin/usage", "runtime", (c) => core.usage(c.json())),
+    route("POST", "/v1/admin/launch-fronting", "admin", (c) => prepayOf(core).setFronting(c.json())),
     route("POST", "/v1/admin/hidden", "admin", (c) => core.tx(() => hiddenOf(core).edit(c.agent!, c.json()))),
     route("POST", "/v1/admin/models", "admin", (c) => core.tx(() => modelsOf(core).put(c.agent!, c.json()))), // plan M
     route("POST", "/v1/admin/models/availability", "runtime", (c) => core.tx(() => modelsOf(core).report(c.agent!, c.json()))),

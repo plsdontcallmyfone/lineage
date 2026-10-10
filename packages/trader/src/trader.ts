@@ -303,6 +303,8 @@ export class Trader {
       peak: big(bs.peak),
       halted: await this.haltOf(a.agent),
       blackout: await this.blackout(a, cfg),
+      // its own token (the launcher's initial buy): read for the prompt and the record, never a position
+      own_held: a.mint ? (bal.tokens.get(a.mint) ?? 0n) : 0n,
     };
     const equity = equityOf(book, market);
     if (bs.halt_seen === "max_drawdown" && !book.halted) {
@@ -560,6 +562,11 @@ export class Trader {
   }
 
   private async executeInner(a: TradingAgent, act: Action, cfg: TradingConfig, market: Market, temperament: Temperament, equityBefore: bigint, extra: Record<string, unknown>): Promise<{ ok: true; ref: string; id: number | null; amount_in: bigint; amount_out: bigint } | { ok: false; rule: string; detail: string }> {
+    // defence in depth (launch fronting): the policy refuses any trade in its own token; the executor does too
+    if (a.mint !== null && act.mint === a.mint) {
+      this.hit({ mint: act.mint, side: act.side, rule: "integrity_own_token", detail: "an agent never trades its own token (its launch holding is held, not traded)" });
+      return { ok: false, rule: "integrity_own_token", detail: "an agent never trades its own token" };
+    }
     const t = market.tokens.find((x) => x.mint === act.mint)!;
     const now = this.now();
     const held = this.state.books[a.agent]?.positions[act.mint];

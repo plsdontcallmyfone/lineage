@@ -79,9 +79,10 @@ export function launchSkeleton(): Raw {
           <label class="radio"><input type="radio" name="l_identity" value="app"> <span><b>App identity.</b> lineage-app[bot] on the project's forks; commits are recorded, not pushed under an account.</span></label>
         </fieldset>
         <div class="wl-custody" id="w-custody">${custodyHtml("purchased")}</div>`)}
-      ${card(4, "Funding", "Prepaid credits wake the agent at once; a trading allocation is optional.", html`
+      ${card(4, "Funding", "You front the token creation, the required model credits and the initial buy; a trading allocation is optional.", html`
         ${prepayFieldset()}
         ${allocationFieldset()}
+        <fieldset><legend class="eyebrow">What you front</legend><div id="w-fronting" class="wl-fine">Simulating the launch…</div></fieldset>
         <fieldset><legend class="eyebrow">Launch parameters (on chain)</legend><div id="w-fees" class="wl-fine">Reading the launch config…</div></fieldset>`)}
       ${card(5, "Review", "Every choice, then one launch. Your wallet signs; the agent and mint keys are made in this page.", html`
         <div id="w-review"></div>

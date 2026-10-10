@@ -1,5 +1,5 @@
 import { base58Decode } from "@lineage/protocol";
-import { ixDisc, LAUNCH_PROGRAM_ID, launchPdas, usdToBase, type AgentLaunch, type PrepayConfig, type Rpc } from "@lineage/chain";
+import { ChainReader, ixDisc, LAUNCH_PROGRAM_ID, launchPdas, parsePrepayConfig, usdToBase, type AgentLaunch, type PrepayConfig, type Rpc } from "@lineage/chain";
 import type { Core } from "./core.ts";
 import { bad } from "./errors.ts";
 import { ACC } from "./ledger.ts";
@@ -28,7 +28,19 @@ CREATE TABLE IF NOT EXISTS prepay (
   woke INTEGER NOT NULL,
   source TEXT NOT NULL,
   checked_at INTEGER NOT NULL
+);
+CREATE TABLE IF NOT EXISTS prepay_admin (
+  id INTEGER PRIMARY KEY CHECK (id = 1),
+  patch TEXT NOT NULL,
+  updated_at INTEGER NOT NULL
 );`;
+
+// Launch fronting (docs/plans/LAUNCH-FRONTING.md, owner decision 2026-10-10): the launcher fronts the
+// token creation cost, the prepaid credits (required: exactly `min_usd`, which equals `default_usd`)
+// and an initial buy of `initial_buy_bps` of the supply delivered to the agent's treasury. The admin
+// edits the amounts with POST /v1/admin/launch-fronting; the patch is stored here and applied over the
+// config file's prepay block, so GET /v1/config serves the effective values.
+const FRONTING_KEYS = ["credits_usd", "initial_buy_bps", "initial_buy_slippage_bps"] as const;
 
 interface Internals {
   db: Core["db"];
@@ -36,6 +48,7 @@ interface Internals {
   ledger: Core["ledger"];
   now(): number;
   emitEvent(type: string, data: unknown): void;
+  tx<T>(fn: () => T): T;
 }
 
 export interface PrepayRow {
@@ -49,6 +62,8 @@ export interface PrepayRow {
   woke: number;
   source: "chain" | "sim";
   checked_at: number;
+  initial_buy: string | null;
+  supply: string | null;
 }
 
 const instances = new WeakMap<Core, Prepay>();
@@ -67,6 +82,68 @@ export class Prepay {
   constructor(core: Core) {
     this.c = core as unknown as Internals;
     this.c.db.exec(SCHEMA);
+    // the initial buy a launch delivered to the agent key (launch fronting); added after plan C
+    const cols = this.c.db.query<{ name: string }, []>("PRAGMA table_info(prepay)").all().map((r) => r.name);
+    if (!cols.includes("initial_buy")) this.c.db.exec("ALTER TABLE prepay ADD COLUMN initial_buy TEXT");
+    if (!cols.includes("supply")) this.c.db.exec("ALTER TABLE prepay ADD COLUMN supply TEXT");
+    this.applyAdmin();
+  }
+
+  /** Applies the stored admin patch over the config file's prepay block (in place, so /v1/config serves it). */
+  private applyAdmin() {
+    const p = this.config();
+    if (!p) return;
+    const row = this.c.db.query<{ patch: string }, []>("SELECT patch FROM prepay_admin WHERE id = 1").get();
+    if (!row) return;
+    const patch = JSON.parse(row.patch) as Partial<Record<(typeof FRONTING_KEYS)[number], string | number>>;
+    const next = { ...p };
+    if (typeof patch.credits_usd === "string") next.min_usd = next.default_usd = patch.credits_usd;
+    if (typeof patch.initial_buy_bps === "number") next.initial_buy_bps = patch.initial_buy_bps;
+    if (typeof patch.initial_buy_slippage_bps === "number") next.initial_buy_slippage_bps = patch.initial_buy_slippage_bps;
+    (this.c.cfg as { prepay?: PrepayConfig | null }).prepay = parsePrepayConfig(next);
+  }
+
+  /** GET /v1/launch-fronting: the three things a launcher fronts, as configured now. */
+  frontingView() {
+    const p = this.config();
+    if (!p) return { configured: false };
+    const row = this.c.db.query<{ patch: string; updated_at: number }, []>("SELECT patch, updated_at FROM prepay_admin WHERE id = 1").get();
+    return {
+      configured: true,
+      token_creation: "paid by the launcher: rent and network fees, shown exactly from the launch simulation",
+      credits_usd: p.min_usd,
+      credits_required: true,
+      credits_base_units: this.minBase()!.toString(),
+      line_per_usd: p.line_per_usd,
+      rate_status: p.rate_status,
+      initial_buy_bps: p.initial_buy_bps,
+      initial_buy_slippage_bps: p.initial_buy_slippage_bps,
+      admin_patch: row ? JSON.parse(row.patch) : null,
+      updated_at: row?.updated_at ?? null,
+    };
+  }
+
+  /** POST /v1/admin/launch-fronting { credits_usd?, initial_buy_bps?, initial_buy_slippage_bps? } */
+  setFronting(body: unknown) {
+    const p = this.config();
+    if (!p) throw bad("no_prepay_config", "this Core has no prepay block in its network config");
+    if (!body || typeof body !== "object" || Array.isArray(body)) throw bad("bad_fronting", "a JSON object expected");
+    const b = body as Record<string, unknown>;
+    const extra = Object.keys(b).filter((k) => !(FRONTING_KEYS as readonly string[]).includes(k));
+    if (extra.length) throw bad("bad_fronting", `unknown field(s): ${extra.join(", ")}`);
+    if (b.credits_usd !== undefined && (typeof b.credits_usd !== "string" || !/^\d+(\.\d{1,2})?$/.test(b.credits_usd) || Number(b.credits_usd) <= 0))
+      throw bad("bad_fronting", "credits_usd must be a positive dollar amount as a string, such as \"10\"");
+    for (const k of ["initial_buy_bps", "initial_buy_slippage_bps"] as const)
+      if (b[k] !== undefined && (!Number.isInteger(b[k]) || (b[k] as number) < 0 || (b[k] as number) > 10_000)) throw bad("bad_fronting", `${k} must be an integer 0 to 10000`);
+    return this.c.tx(() => {
+      const cur = this.c.db.query<{ patch: string }, []>("SELECT patch FROM prepay_admin WHERE id = 1").get();
+      const patch = { ...(cur ? JSON.parse(cur.patch) : {}), ...b };
+      this.c.db.query("INSERT INTO prepay_admin (id, patch, updated_at) VALUES (1, ?, ?) ON CONFLICT(id) DO UPDATE SET patch = excluded.patch, updated_at = excluded.updated_at")
+        .run(JSON.stringify(patch), this.c.now());
+      this.applyAdmin();
+      this.c.emitEvent("launch.fronting_config", { changed: Object.keys(b) });
+      return this.frontingView();
+    });
   }
 
   config(): PrepayConfig | null {
@@ -98,6 +175,9 @@ export class Prepay {
       signature: r?.signature ?? null,
       source: r?.source ?? null,
       launched_at: r?.launched_at ?? null,
+      // launch fronting: the tokens the launch transaction delivered to the agent key (its treasury at launch), and their share of the supply
+      initial_buy: r?.initial_buy ?? null,
+      initial_buy_bps_of_supply: r?.initial_buy && r.supply && BigInt(r.supply) > 0n ? Number((BigInt(r.initial_buy) * 1_000_000n) / BigInt(r.supply)) / 100 : null,
     };
   }
 
@@ -118,13 +198,14 @@ export class Prepay {
   }
 
   /** Records a launch's deposit; an underfunded agent that is awake below the minimum is put to sleep. Inside the caller's transaction. */
-  record(agent: string, o: { mint: string | null; launchedAt: number | null; signature: string | null; deposit: bigint; woke: boolean; source: "chain" | "sim" }) {
+  record(agent: string, o: { mint: string | null; launchedAt: number | null; signature: string | null; deposit: bigint; woke: boolean; source: "chain" | "sim"; initialBuy?: bigint | null; supply?: bigint | null }) {
     const min = this.minBase() ?? 0n;
     const ok = o.deposit >= min;
     this.c.db
-      .query("INSERT OR REPLACE INTO prepay (agent_id, mint, launched_at, signature, deposit, min, ok, woke, source, checked_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)")
-      .run(agent, o.mint, o.launchedAt, o.signature, o.deposit.toString(), min.toString(), ok ? 1 : 0, o.woke ? 1 : 0, o.source, this.c.now());
-    this.c.emitEvent("agent.prepay", { agent, deposit: o.deposit.toString(), min: min.toString(), ok, woke: o.woke, signature: o.signature });
+      .query("INSERT OR REPLACE INTO prepay (agent_id, mint, launched_at, signature, deposit, min, ok, woke, source, checked_at, initial_buy, supply) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)")
+      .run(agent, o.mint, o.launchedAt, o.signature, o.deposit.toString(), min.toString(), ok ? 1 : 0, o.woke ? 1 : 0, o.source, this.c.now(),
+        o.initialBuy == null ? null : o.initialBuy.toString(), o.supply == null ? null : o.supply.toString());
+    this.c.emitEvent("agent.prepay", { agent, deposit: o.deposit.toString(), min: min.toString(), ok, woke: o.woke, signature: o.signature, initial_buy: o.initialBuy?.toString() ?? null });
     if (!ok) {
       const bal = this.c.ledger.balance(ACC.compute(agent));
       const a = this.c.db.query<{ awake: number }, [string]>("SELECT awake FROM agents WHERE agent_id = ?").get(agent);
@@ -156,7 +237,9 @@ export class Prepay {
           this.misses.set(l.agent, tries + 1);
           continue;
         }
-        tx(() => this.record(l.agent, { mint: l.mint, launchedAt: Number(l.createdAt), signature: got.signature, deposit: got.deposit, woke: got.woke, source: "chain" }));
+        const supply = got.initialBuy > 0n ? ((await new ChainReader(rpc).mint(l.mint).catch(() => null))?.supply ?? null) : null;
+        tx(() => this.record(l.agent, { mint: l.mint, launchedAt: Number(l.createdAt), signature: got.signature, deposit: got.deposit, woke: got.woke, source: "chain",
+          initialBuy: got.initialBuy, supply }));
         this.misses.delete(l.agent);
         n++;
       } catch (e) {
@@ -170,11 +253,11 @@ export class Prepay {
 
 interface TxJson {
   transaction: { message: { accountKeys: string[]; instructions: { programIdIndex: number; accounts: number[]; data: string }[] } };
-  meta: { err: unknown; postTokenBalances?: { accountIndex: number; mint: string; uiTokenAmount: { amount: string } }[]; loadedAddresses?: { writable: string[]; readonly: string[] } } | null;
+  meta: { err: unknown; postTokenBalances?: { accountIndex: number; mint: string; owner?: string; uiTokenAmount: { amount: string } }[]; loadedAddresses?: { writable: string[]; readonly: string[] } } | null;
 }
 
 /** The deposit and refresh_awake of one launch, read from its transaction (legacy or v0). */
-export async function readLaunchDeposit(rpc: Rpc, l: AgentLaunch): Promise<{ signature: string; deposit: bigint; woke: boolean } | null> {
+export async function readLaunchDeposit(rpc: Rpc, l: AgentLaunch): Promise<{ signature: string; deposit: bigint; woke: boolean; initialBuy: bigint } | null> {
   const sigs = await rpc.call<{ signature: string; err: unknown }[]>("getSignaturesForAddress", [launchPdas.agentLaunch(l.mint), { limit: 1000, commitment: "confirmed" }]);
   const ok = sigs.filter((s) => !s.err);
   if (!ok.length) return null;
@@ -192,6 +275,9 @@ export async function readLaunchDeposit(rpc: Rpc, l: AgentLaunch): Promise<{ sig
     const d = base58Decode(ix.data);
     return d.length === 8 && REFRESH.every((b, i) => d[i] === b) && keys[ix.accounts[1]!] === agentLaunch;
   });
-  return { signature, deposit, woke };
+  // launch fronting: the agent's own token the launch transaction left with the agent key (venue-agnostic: any
+  // token account of the agent's mint owned by the agent key, after the transaction)
+  const initialBuy = (t.meta.postTokenBalances ?? []).filter((b) => b.mint === l.mint && b.owner === l.agent).reduce((n, b) => n + BigInt(b.uiTokenAmount.amount), 0n);
+  return { signature, deposit, woke, initialBuy };
 }
 

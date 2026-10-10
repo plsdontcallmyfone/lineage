@@ -51,6 +51,12 @@ export interface Book {
   halted: { rule: "daily_loss" | "max_drawdown"; since: number; until: number | null } | null;
   /** private: the agent's own candidate is open, or its verdict is within verdict_window_s (never published while open) */
   blackout: boolean;
+  /**
+   * Its own token in the treasury, mostly the launcher's initial buy at launch (launch fronting,
+   * docs/plans/LAUNCH-FRONTING.md): held, never traded. Never a position, never counted in equity (so
+   * its price cannot trip a halt or size a trade), never sold by a risk exit or the model.
+   */
+  own_held?: bigint;
 }
 
 export interface ScoreInput {
@@ -222,6 +228,8 @@ export function riskExits(b0: Book, m: Market, cfg: TradingConfig, now: number, 
   let left = globalLeft;
   for (const p of Object.values(b.positions).sort((x, y) => (x.mint < y.mint ? -1 : 1))) {
     if (p.qty <= 0n) continue;
+    // its own token is held, not traded: no stop-loss or take-profit ever sells it (launch fronting)
+    if (b.mint !== null && p.mint === b.mint) continue;
     const t = tokOf.get(p.mint);
     if (!t || t.price === null || p.cost <= 0n) continue;
     const mark = valueOf(p.qty, t.price, t.decimals, m.lineDecimals);

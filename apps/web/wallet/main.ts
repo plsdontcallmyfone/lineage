@@ -72,6 +72,8 @@ import { connectWallet, onSession, walletChain, restoreSession, session, signsV0
 export { mountTradeBox } from "./trade.ts";
 import { custodyHtml, ghClick, initGithubIdentity, showIdentity, submitLaunchToken } from "./identity.ts";
 import { depositBase, depositNote, loadPrepay, P, prepayHelp, showCorePrepay, usdMode } from "./prepay.ts";
+import { costsFromSim, frontingBlock, initialBuyFor, type InitialBuy } from "./fronting.ts";
+import { frontingShortfall, type FrontingCosts } from "../../../packages/chain/src/browser/index.ts";
 import { payAsset, prepareSwapThen, routeLines, sendSwapPlan, simulatePlan, type PreparedSwap } from "./swap.ts";
 import { loadTradingEscrow, sendAllocation } from "./trading.ts";
 import { entryOf, isDefaultChoice, loadModels, modelChoice, modelsBody, onModelInput, priceText, withModel } from "./models.ts";
@@ -125,7 +127,7 @@ const S = {
   sigs: [] as SigRow[],
   // launch
   repo: null as null | { url: string; state: "checking" | "ok" | "bad"; msg: string; gh?: any; lineage?: any; core?: "ok" | "down"; recipes?: any[] },
-  draft: null as null | { agent: WebKey; mint: WebKey; built: Built; args: any; ix: Ix; ixs: Ix[]; soul: SoulDoc | null; plan: LaunchPlan; builts: Built[]; deposit: bigint; swap?: { prepared: PreparedSwap; sim: Simulation; sig?: string } | null },
+  draft: null as null | { agent: WebKey; mint: WebKey; built: Built; args: any; ix: Ix; ixs: Ix[]; soul: SoulDoc | null; plan: LaunchPlan; builts: Built[]; deposit: bigint; swap?: { prepared: PreparedSwap; sim: Simulation; sig?: string } | null; buy?: InitialBuy | null; costs?: FrontingCosts },
   launchOut: null as Raw | null,
   launched: null as null | { agent: WebKey; mint: string; sig: string; sigs?: string[]; deposit?: bigint; mode?: LaunchPlan["mode"] },
   // soul (SPEC 14.8): the agent key is made when the soul is drafted, so the soul names it
@@ -624,7 +626,9 @@ async function launchReview() {
     const soulIx = soul ? registry.setProfile({ signingKey: agent.id, agent: agent.id, digest: soulDigest(soul), seq: soul.seq }) : null;
     const ixs = soulIx ? [...main, soulIx] : main;
     // one legacy transaction; over 1232 bytes a v0 one with the frozen lookup table; still over, launch + deposit + wake first and the soul second
-    const plan = planLaunch({ payer: me()!, main, soul: soulIx, budget: budgetIxs(450_000), table: P.table, v0: signsV0(S.wallet!) });
+    // launch fronting (docs/plans/LAUNCH-FRONTING.md): the venue's initial buy, in the launch transaction when it fits
+    const buy = await initialBuyFor({ launcher: me()!, agent: agent.id, agentMint: mint.id }, P.cfg);
+    const plan = planLaunch({ payer: me()!, main, buy: buy?.ixs ?? [], soul: soulIx, budget: budgetIxs(450_000), table: P.table, v0: signsV0(S.wallet!) });
     // in a split the soul transaction is simulated once the first has landed (it needs the new Agent record)
     const builts = [await buildAndSimulate(me()!, plan.txs[0]!.ixs, 450_000, plan.txs[0]!.table)];
     const built = builts[0]!;
@@ -633,8 +637,13 @@ async function launchReview() {
       const prepared = await prepareSwapThen({ pay, need: deposit, taker: me()!, action: [], cuLimit: 400_000 });
       swap = { prepared, sim: await simulatePlan(prepared, me()!) };
     }
-    S.draft = { agent, mint, built, args, ix, ixs, soul, plan, builts, deposit, swap };
+    // the buy is in the simulated first transaction when the planner put it there, or when it rides inside the venue's create instruction (no ixs of its own)
+    const buyFirst = !!buy && (buy.ixs.length === 0 || plan.buyTx === 0);
+    const costs = costsFromSim({ sim: built.sim, launcher: me()!, launcherQuoteAccount: ata(me()!, lineMint(), T22), credits: deposit, buy: buyFirst ? buy : null });
+    if (buy && !buyFirst) costs.buy = { amountOut: buy.amountOut, cost: buy.quote, maxIn: buy.maxIn };
+    S.draft = { agent, mint, built, args, ix, ixs, soul, plan, builts, deposit, swap, buy, costs };
     renderLaunchReview();
+    renderFronting();
   } catch (e) {
     set("w-launch-out", html`<div class="panel-b">${errBox(e)}</div>`);
   }
@@ -666,11 +675,13 @@ function renderLaunchReview() {
   ];
   // paying by swap: the swap is simulated now; the launch is simulated again after the swap lands (it spends what the swap delivers)
   const sw = d.swap;
-  const blocked = sw ? (sw.sim.err ? "the swap simulation failed" : false) : sim.err ? "the simulation failed; fix the inputs and review again" : false;
+  const short = d.costs ? frontingShortfall(d.costs, S.sol, S.line) : null;
+  const blocked = sw ? (sw.sim.err ? "the swap simulation failed" : false) : sim.err ? "the simulation failed; fix the inputs and review again" : short ? `the wallet does not cover the launch: ${short}` : false;
   set(
     "w-launch-out",
     html`${sw ? html`<div class="panel-b"><div class="eyebrow" style="margin-bottom:6px">Swap first (Jupiter), one more signature</div>${routeLines(sw.prepared)}${sw.sim.err ? errBox(`Swap simulation failed: ${JSON.stringify(sw.sim.err)}`, sw.sim.logs) : html`<span class="mark good">${icon.check} swap simulation succeeded on ${netName()}</span>`}</div>` : ""}
       ${sim.err && sw ? html`<div class="panel-b wl-row"><span class="mark warn">${icon.warn} launch simulation before the swap: ${JSON.stringify(sim.err)}; it is simulated again after the swap lands and nothing is sent if it still fails</span></div>` : sim.err ? html`<div class="panel-b">${errBox(`Simulation failed: ${JSON.stringify(sim.err)}`, sim.logs)}</div>` : html`<div class="panel-b wl-row"><span class="mark good">${icon.check} simulation succeeded on ${netName()}</span></div>`}
+      <div class="panel-b"><div class="eyebrow" style="margin-bottom:6px">What you front</div>${frontingHtml()}</div>
       ${simTable(sim, { agent: d.agent.id, mint: d.mint.id }, me()!)}
       <div class="panel-b"><div class="eyebrow" style="margin-bottom:6px">launch_agent arguments</div>${kv(recordRows)}</div>
       <div class="panel-b wl-row lz-launch">${btn("launch-sign", html`Launch${d.plan.mode === "split" || sw ? ` (${(d.plan.mode === "split" ? 2 : 1) + (sw ? 1 : 0)} signatures)` : ""}`, { primary: true, disabled: blocked })}${btn("launch-review", "Simulate again")}<span class="wl-why">${S.wallet!.name} signs ${d.plan.mode === "split" ? "two transactions" : "one transaction"}; a hosted agent's binding is one more signature after it.</span></div>
@@ -717,12 +728,16 @@ async function launchSign() {
     if (d.plan.mode === "split") {
       // the agent is already awake; the soul's set_profile is the second signature, sent once
       const rec = await reader.agent(d.agent.id).catch(() => null);
-      if (!rec?.profileDigest || rec.profileDigest !== soulDigest(d.soul!)) {
+      // never a double send: the second transaction goes only while what it carries is missing on chain
+      const buyMissing = d.plan.buyTx === 1 && d.buy ? ((await reader.tokenBalance(d.buy.treasuryAccount).catch(() => null)) ?? 0n) < d.buy.amountOut : false;
+      const soulMissing = d.soul ? !rec?.profileDigest || rec.profileDigest !== soulDigest(d.soul) : false;
+      if (soulMissing || buyMissing) {
         const t1 = d.plan.txs[1]!;
-        st("launched; now sign the soul transaction (2 of 2)");
+        const second = d.plan.buyTx === 1 ? (d.soul ? "initial buy + set_profile" : "initial buy") : "set_profile";
+        st(`launched; now sign the second transaction, ${second} (2 of 2)`);
         const r2 = await signAndSend({ wallet: S.wallet!, account: S.account!, ixs: t1.ixs, units: 100_000, local: [d.agent], onStatus: st, table: t1.table });
-        logSig(`set_profile ${d.args.symbol}`, r2.confirmed!.signature, r2.confirmed!.fee, !r2.confirmed!.err);
-        if (r2.confirmed!.err) throw Object.assign(new Error(`set_profile failed on chain: ${JSON.stringify(r2.confirmed!.err)} (the agent is launched and awake; press Launch again to send only the soul)`), { logs: r2.confirmed!.logs });
+        logSig(`${second} ${d.args.symbol}`, r2.confirmed!.signature, r2.confirmed!.fee, !r2.confirmed!.err);
+        if (r2.confirmed!.err) throw Object.assign(new Error(`${second} failed on chain: ${JSON.stringify(r2.confirmed!.err)} (the agent is launched and awake; press Launch again to send only the second transaction)`), { logs: r2.confirmed!.logs });
         sigs.push(r2.confirmed!.signature);
       }
     }
@@ -1808,6 +1823,26 @@ function go(i: number) {
   renderWizard();
   if (S.step !== prev) window.scrollTo({ top: 0 });
   if (S.step === STEPS.length - 1) void enterReview();
+  // Funding shows the launch costs from the same simulation the Review step uses (launch fronting)
+  if (S.step === STEPS.indexOf("Funding")) {
+    renderFronting();
+    if (!S.draft && S.account) void launchReview();
+  }
+}
+
+/** The three fronted costs and the total (apps/web/wallet/fronting.ts), from the draft's simulation. */
+function frontingHtml() {
+  let credits: bigint | null = null;
+  try {
+    credits = depositBase(val("l_deposit"), dec());
+  } catch {
+    credits = null;
+  }
+  return frontingBlock({ cfg: P.cfg, costs: S.draft?.costs ?? null, credits, creditsUsd: P.cfg?.min_usd ?? null, decimals: dec(), sym: qsym(), solBalance: S.sol, quoteBalance: S.line,
+    fmtSol: (l) => (Number(l) / 1e9).toFixed(9), fmtQuote: (b) => units(b, dec()) });
+}
+function renderFronting() {
+  set("w-fronting", frontingHtml());
 }
 
 async function enterReview() {
@@ -2457,7 +2492,7 @@ export async function mountLaunch(root: HTMLElement) {
   const dep = S.root?.querySelector<HTMLInputElement>('[name="l_deposit"]');
   // devnet: the USD default typed in, as before; mainnet (quote amounts): empty means Core's default, shown as the placeholder
   if (dep && !dep.value && P.cfg) {
-    if (usdMode()) dep.value = P.cfg.default_usd;
+    if (usdMode()) dep.value = P.cfg.min_usd; // required credits (launch fronting)
     else dep.placeholder = units(depositBase("", dec()), dec());
   }
   renderPrepay();

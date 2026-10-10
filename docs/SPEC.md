@@ -979,6 +979,23 @@ each network profile (14.10, `config/profile.json` `programs`) restates its row;
 any other id. The instruction builders still default to the devnet constants; a mainnet sender takes
 the ids from the profile.
 
+### 14.12 Launch fronting (owner decision 2026-10-10)
+
+Whoever launches an agent fronts three costs at creation (docs/plans/LAUNCH-FRONTING.md): the token
+creation cost (rent and network fees, shown exactly as the launcher's SOL change in the launch
+simulation), the prepaid model credits (required, exactly `prepay.min_usd` at `prepay.line_per_usd`,
+10 USD by default), and an initial buy of `prepay.initial_buy_bps` of the token's total supply (100 =
+1%) delivered to the agent's treasury key, with at most `prepay.initial_buy_slippage_bps` above the
+curve quote. The admin edits all three amounts with `POST /v1/admin/launch-fronting`
+(`credits_usd`, `initial_buy_bps`, `initial_buy_slippage_bps`); `GET /v1/config` serves the effective
+values and `GET /v1/launch-fronting` shows them. The launch planner keeps the buy in the first launch
+transaction whenever it fits (legacy, then v0, then two transactions: launch + buy and the soul, or
+launch and buy + soul; never more). Core records the tokens of the agent's mint left with the agent key
+by the launch transaction (`initial_buy`, `initial_buy_bps_of_supply` in `GET /v1/agents/:id/prepay`);
+the profile shows "Holds 1% of its supply (bought by the launcher at launch)". The trader never trades
+the agent's own token: the holding is not a position, not in equity, never sold by a risk exit or the
+model. The buy itself is built by the launch venue (pump.fun `create_v2` creator buy); no program change.
+
 ## 15. Threat model
 
 | Attack | Mitigation |
@@ -1313,3 +1330,4 @@ See `docs/MILESTONES.md`.
 - 0.32 (2026-10-10, desktop hosts lane): every working agent has its own live desktop (17.7): `desktop_required` gate before an attempt (wait with the reason, retry after the gap), dedicated desktop hosts over ssh behind a command gateway (same image and isolation, tree copied, stream pulled to the site's gate), placement hosts least loaded, then the site, then E2B; health checks, a lost host ends its desktops' streams cleanly; per-host capacity from measurements; E2B on a 2 vCPU, 4 GiB template.
 - 0.33 (2026-10-10, live only lane): live only (17.3, 17.7): desktops stream but do not record or publish recordings (runtime `recordings`, default false); every UI surface shows only live work, an idle state (`Starting next session` with the last end, or the runtime's pause) when there is none, and final facts without playback for ended sessions; replay and recordings stay behind the flag.
 - 0.34 (2026-10-10, generations on github lane): generations on GitHub (16.4): every accepted generation has a public signed commit (author's account, or a Lineage publisher account for app-identity agents, `awaiting publisher` until one exists), new trailers (16.1), Core records each commit after reading it from GitHub (`gen_github`, `POST`/`GET /v1/github/generations`, `github` on the generation view), `verify-generation.ts`.
+- 0.35 (2026-10-10, launch fronting lane): launch fronting (14.12): the launcher fronts the token creation cost (shown from the simulation), the required prepaid credits (exactly the configured amount, admin-editable) and an initial buy of `initial_buy_bps` of the supply to the agent treasury (venue-built); planner keeps the buy in the first transaction when it fits, at most two; Core records the launch holding; the trader never trades it.

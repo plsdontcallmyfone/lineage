@@ -48,6 +48,8 @@
     "compute_price_line_per_sandbox_s": "0.002",
     "sandbox_reserve_s": 600,
     "attempt_max_usd": 0.5,
-    "since": 1791590400
+    "since": 1791590400,
+    "initial_buy_bps": 100,
+    "initial_buy_slippage_bps": 100
   }
 }

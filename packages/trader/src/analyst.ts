@@ -137,6 +137,8 @@ export function userPrompt(i: AnalysisInput): string {
       out.push(`- ${sym} ${p.mint}: value ${line(mark, dec)} ${quoteWords().q}, cost ${line(p.cost, dec)} ${quoteWords().q}, ${p.cost > 0n ? `${n4((Number(mark - p.cost) / Number(p.cost)) * 100)}%` : "n/a"} since bought; last ${p.last_side} ${Math.round((i.now - p.last_at) / 60000)} min ago`);
     }
   } else out.push("Your positions: none.");
+  if (i.book.own_held && i.book.own_held > 0n)
+    out.push(`You also hold ${line(i.book.own_held, i.market.tokens.find((t) => t.mint === i.book.mint)?.decimals ?? 6)} of your own token, bought by your launcher at launch. It is held, never traded: not a position, not in your equity, and the engine refuses any trade in your own token.`);
   out.push(
     `Limits the engine enforces: per trade at most ${cfg.max_trade_bps / 100}% of equity (and your temperament's ${i.temp.size_bps / 100}%); per token at most ${cfg.max_position_bps / 100}% of equity; at most ${cfg.max_open_positions} open positions; ${cfg.cooldown_s / 60} min between trades in the same token; ${cfg.min_hold_s / 60} min before the opposite side in the same token; stop-loss ${cfg.stop_loss_bps / 100}% and take-profit ${cfg.take_profit_bps / 100}% run automatically; slippage at most ${cfg.max_slippage_bps / 100}% and price impact at most ${cfg.max_impact_bps / 100}%; minimum trade ${line(BigInt(cfg.min_trade_line), dec)} ${quoteWords().q}.`,
   );

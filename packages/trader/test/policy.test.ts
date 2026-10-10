@@ -182,3 +182,38 @@ describe("risk exits and limits", () => {
     expect(valueOf(2n * L, 1.5, 6, 6)).toBe(3n * L);
   });
 });
+
+describe("own-token holding (launch fronting: the launcher's 1% initial buy is held, not traded)", () => {
+  const own = tok(9, { mint: M("ME"), agent: "ME", parties: ["LME"], price: 0.5 });
+  // as if a position in its own token had appeared anyway (state edited, an older build): still never sold
+  const holding = pos(M("ME"), 1_000_000_000_000n, 1n, { last_at: NOW - 86_400_000 });
+  test("the model's sell of its own token is refused with integrity_own_token, at any size", () => {
+    const b = book({ own_held: 1_000_000_000_000n, positions: { [M("ME")]: holding } });
+    for (const size_pct of [1, 50, 100]) {
+      const r = enforceDecision(b, market([own, tok(1)]), cfg(), agg, dec({ action: "sell", token: M("ME"), size_pct }), NOW, 10);
+      expect(r.ok).toBe(false);
+      if (!r.ok) expect(r.refusal.rule).toBe("integrity_own_token");
+    }
+  });
+  test("a buy of its own token is refused too", () => {
+    const r = enforceDecision(book({ own_held: 1n }), market([own]), cfg(), agg, dec({ action: "buy", token: M("ME"), size_pct: 1 }), NOW, 10);
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.refusal.rule).toBe("integrity_own_token");
+  });
+  test("checkTrade refuses a sell of it directly", () => {
+    const no = checkTrade(book({ positions: { [M("ME")]: holding } }), own, "sell", 1n, 1n, 1000n * L, cfg(), NOW, 10);
+    expect(no?.rule).toBe("integrity_own_token");
+  });
+  test("risk exits never sell it, at a stop-loss price or a take-profit price, and add no refusal noise", () => {
+    for (const price of [0.0000001, 1_000_000]) {
+      const d = riskExits(book({ own_held: 1_000_000_000_000n, positions: { [M("ME")]: holding } }), market([{ ...own, price }]), cfg(), NOW, 10);
+      expect(d.actions).toEqual([]);
+      expect(d.refused.filter((r) => r.mint === M("ME"))).toEqual([]);
+    }
+  });
+  test("it is not counted in equity, so its price can neither halt nor size trades", () => {
+    const b0 = book();
+    const b1 = book({ own_held: 1_000_000_000_000n });
+    expect(equityOf(b1, market([own]))).toBe(equityOf(b0, market([own])));
+  });
+});
