@@ -7,13 +7,28 @@ The doc drift at the end was found while preparing this package and fixed on 202
 
 ## Onchain (the requested scope)
 
-1. **The Meteora integration** (`lineage_launch/src/meteora.rs`, `crank_fees`, `crank_pool_fees`,
-   `graduate`, `repoint_position`, `graduate_by_admin`). No Meteora crate: fixed offsets,
-   discriminators and account lists for DBC `release_0.2.2` and DAMM v2 `release_0.2.5` builds.
-   Meteora redeployed DBC on devnet after the first vendored dump, and mainnet ran older DBC builds
-   when the vendor README was written. Please re-check every offset and every fee-claim account list
-   against the exact mainnet builds, and the "strict majority of permanently locked liquidity" rule
-   for graduation (review H1).
+1. **The pump.fun integration** (`lineage_launch/src/pump.rs`, `register_pump_launch`,
+   `crank_pump_fees`, `record_pump_graduation`; replaced the Meteora integration on 2026-10-10,
+   commit `6b24162`, docs/plans/PUMPFUN-LAUNCHES.md section 9). No pump.fun crate and no CPI. Please
+   look at:
+   - **Reading foreign program state**: owner, PDA, discriminator and minimum-length checks on Pump
+     `BondingCurve` (offsets 24 to 166), Pump `Global` (initial real token reserves at 89, total supply
+     at 97) and PumpSwap `Pool` (index, creator, base and quote mints, `coin_creator` at 211), against
+     mainnet's dumped builds (`SCOPE.md`). pump.fun appends fields only; a layout change by pump.fun
+     must refuse, never misread.
+   - **The same-transaction rule**: `created_in_this_tx` scans the instructions sysvar for an earlier
+     top-level Pump `create_v2` naming the same mint (account 0) and curve (account 2). Is there a way
+     to satisfy it without the curve having been created in this transaction (for example a failed or
+     differently shaped `create_v2`, a CPI-created curve, or a curve that traded between create and
+     register; the program also requires `real_quote_reserves == 0`)?
+   - **The PDA-signed transfer out of the `pump_creator` ATA** in `crank_pump_fees`: seeds and
+     `has_one` binding the PDA to the record, the ATA constraint, the split arithmetic, and the fact
+     that any `$LINE` in that ATA is treated as fees.
+   - **Trust in pump.fun's admin powers** (`POWERS.md` "External powers", `THREAT-MODEL.md`): creator
+     reassignment, fee and depth changes, upgrades. Is anything here worse than "future fees stop"?
+   - **Layout reuse**: `LaunchConfig` and `AgentLaunch` keep their byte layout with renamed fields so
+     Meteora-era devnet records stay usable; check nothing reads a Meteora-era value as a pump.fun one
+     (`venue` gate on the crank and the graduation record).
 2. **The challenge state machine as a whole** (`lineage_registry/src/challenge.rs`): `ChallengeGate`
    counters, the claim hold, root correction only while `claims == 0`, the interaction of the hold
    with bounty releases after A1-04, refund handling after A1-02, expiry racing resolution (A1-07),
@@ -36,11 +51,12 @@ The doc drift at the end was found while preparing this package and fixed on 202
    `max_rebate_per_epoch`; `set_epoch_cursor` rewrites the sequence; `launch_program` is admin-set and
    decides where `agent:<id>:compute` claims go (`POWERS.md`). Which of these need onchain bounds?
 8. **Initialization and migrations**: initializers checked through ProgramData (negative tests for all
-   three programs added 2026-10-10 in `tests/tests/init_auth.rs`, `THREAT-MODEL.md`; LiteSVM 64/64 with them), and the run-once, length-gated
+   three programs added 2026-10-10 in `tests/tests/init_auth.rs`, `THREAT-MODEL.md`; LiteSVM 69/69 at `6b24162`), and the run-once, length-gated
    migrations (`migrate_config`, `migrate_launch_config`, `migrate_agent`, `migrate_epoch`).
 9. **Token-2022 handling**: the `$LINE` extension allowlist, the A1-02 `refund_usable` checks
    (initialized, unfrozen, right mint and program, no required memo), `transfer_checked` everywhere,
-   and agent mints created by DBC.
+   and agent mints created by pump.fun's `create_v2` (Token-2022, metadata pointer and metadata, no
+   mint or freeze authority, read 2026-10-10).
 10. **`lineage_msg`**: the event authority and self-CPI pattern, rate-limit arithmetic, and the deployed
     binary pairing noted in `SCOPE.md`.
 

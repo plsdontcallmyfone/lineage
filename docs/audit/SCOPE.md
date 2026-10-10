@@ -8,19 +8,19 @@ was read or measured on that date with the command shown; nothing is estimated.
 | What | Value | How read |
 |---|---|---|
 | Repository | `github.com/plsdontcallmyfone/lineage`, branch `main` | `git remote -v` |
-| Repository head when this package was prepared | `76549f62885913c56dcf72bbb188d6b2c253a279` | `git log -1` |
-| Last commit that changed any program source | `9f7035789fdc2f9c076b3d1af299a38e7cf28112` ("pre-audit program changes": A1-08 slash cap, mainnet ids by cargo feature, 2026-10-10) | `git log -- onchain/programs` |
-| Previous program commit (the first version of this table) | `b855b4a682b54fc5a977a6861da08bb417171a20` ("audit A1: onchain fixes") | same |
-| `lineage_msg` source last changed | `9f70357` (only its `declare_id!` per feature and its `mainnet` feature; before that `257fe85`, 2026-10-08) | `git log -- onchain/programs/lineage-msg` |
-| Tree `onchain/programs/lineage-registry` | `fcdd35a605edd6db1df0b09afbf7bb7db775d277` (was `1cd55714...fe15`) | `git rev-parse 9f70357:onchain/programs/lineage-registry` |
-| Tree `onchain/programs/lineage-launch` | `abd42ea54d3ad76f458a4a7fb506dd760f8e41b5` (was `455d3717...201e`) | same |
-| Tree `onchain/programs/lineage-msg` | `35b655c66e886acc32222b7fd90754b98bff868c` (was `22a99ff1...b14c`) | same |
-| Blob `onchain/Cargo.lock` | `ae07e6cfbce9d993be465bd7a50be26c857ea07d` (unchanged) | `git rev-parse 9f70357:onchain/Cargo.lock` |
+| Repository head when this package was regenerated | `39bb221d2af8140ecdf05aeeb4a29efa9ec00697` | `git log -1` |
+| Last commit that changed any program source | `6b24162a14828da8f8269cdd4d9c474d58cd0c5e` ("lineage_launch on pump.fun only", owner decisions 2026-10-10) | `git log -- onchain/programs` |
+| Previous program commits | `9f70357` (pre-audit: A1-08 slash cap, mainnet ids by cargo feature), `b855b4a` (audit A1 onchain fixes); `eb8ac23` and `daa07db` removed and restored `meteora.rs` by mistake and net to no change | same |
+| Tree `onchain/programs/lineage-registry` | `fcdd35a605edd6db1df0b09afbf7bb7db775d277` (unchanged since `9f70357`) | `git rev-parse 6b24162:onchain/programs/lineage-registry` |
+| Tree `onchain/programs/lineage-launch` | `6fcfc385040cff0ddc8922be0264c213d37ef76e` (was `abd42ea5...41b5` at `9f70357`) | same |
+| Tree `onchain/programs/lineage-msg` | `35b655c66e886acc32222b7fd90754b98bff868c` (unchanged since `9f70357`) | same |
+| Blob `onchain/Cargo.lock` | `ae07e6cfbce9d993be465bd7a50be26c857ea07d` (unchanged) | `git rev-parse 6b24162:onchain/Cargo.lock` |
 
-Regenerated 2026-10-10 after the pre-audit program changes (owner decisions of 2026-10-10, both
-before the audit commit is frozen). The tree hashes above are what must match; an auditor pins
-`9f70357` or any later commit whose program trees and `Cargo.lock` hash the same (`git diff --stat
-9f70357 <commit> -- onchain/programs onchain/Cargo.toml onchain/Cargo.lock` empty). If any program
+Regenerated 2026-10-10 after the pump.fun venue change (owner decisions of 2026-10-10: pump.fun only,
+Meteora removed, same-transaction attach; docs/plans/PUMPFUN-LAUNCHES.md), made before the audit
+commit is frozen. The tree hashes above are what must match; an auditor pins `6b24162` or any later
+commit whose program trees and `Cargo.lock` hash the same (`git diff --stat 6b24162 <commit> --
+onchain/programs onchain/Cargo.toml onchain/Cargo.lock` empty; empty at `39bb221`). If any program
 changes again before the engagement starts, this table is regenerated and the new hashes are sent with it.
 
 ## Programs in scope
@@ -30,7 +30,7 @@ Anchor 0.31.1 workspace at `onchain/` (`Anchor.toml`, `Cargo.toml`). Release pro
 
 Lines counted with `awk` per file: blank lines, lines whose first non-space characters are `//`
 (comments and doc comments), and the rest ("code"). Recounted 2026-10-10 on the tree hashes above
-(`9f70357`).
+(`6b24162`, `git show 6b24162:<file> | awk ...`).
 
 | Program | Id | File | Total | Blank | Comment | Code |
 |---|---|---|---|---|---|---|
@@ -39,16 +39,17 @@ Lines counted with `awk` per file: blank lines, lines whose first non-space char
 | | | `programs/lineage-registry/src/leaf.rs` | 272 | 18 | 38 | 216 |
 | | | `programs/lineage-registry/Cargo.toml` | 29 | | | |
 | | | **subtotal (Rust)** | **2,251** | **120** | **255** | **1,876** |
-| `lineage_launch` | devnet `8eHzm1XtNtbxJujrMAci4VdhCJvQttFUBukmkFaUwsAT`, mainnet `2vwKsTZm5doa3ahBmpm8Sv3sKPD76Fq2ZZENbNW5BYBq` | `programs/lineage-launch/src/lib.rs` | 1,094 | 57 | 133 | 904 |
+| `lineage_launch` | devnet `8eHzm1XtNtbxJujrMAci4VdhCJvQttFUBukmkFaUwsAT`, mainnet `2vwKsTZm5doa3ahBmpm8Sv3sKPD76Fq2ZZENbNW5BYBq` | `programs/lineage-launch/src/lib.rs` | 843 | 48 | 102 | 693 |
 | | | `programs/lineage-launch/src/bounty.rs` | 710 | 43 | 78 | 589 |
-| | | `programs/lineage-launch/src/meteora.rs` | 308 | 17 | 35 | 256 |
+| | | `programs/lineage-launch/src/pump.rs` | 126 | 9 | 22 | 95 |
 | | | `programs/lineage-launch/Cargo.toml` | 30 | | | |
-| | | **subtotal (Rust)** | **2,112** | **117** | **246** | **1,749** |
+| | | **subtotal (Rust)** | **1,679** | **100** | **202** | **1,377** |
 | `lineage_msg` | devnet `E6vHskQjJAMLqDKXyfnn2ZDjeJ57RZXR4H9RjPDzapAB`, mainnet `jmcb7cBA8aJ5Zra8V6gUsEbgKAoG3h5d2CNpmKsRdky` | `programs/lineage-msg/src/lib.rs` | 455 | 36 | 51 | 368 |
 | | | `programs/lineage-msg/Cargo.toml` | 29 | | | |
-| **All three** | | **7 Rust files** | **4,818** | **273** | **552** | **3,993** |
+| **All three** | | **7 Rust files** | **4,385** | **256** | **508** | **3,621** |
 
-Before the pre-audit changes (`b855b4a`) the same count was 4,714 total and 3,921 code lines. The ids
+At `9f70357` (Meteora venue, `meteora.rs` 308 lines) the same count was 4,818 total and 3,993 code
+lines; at `b855b4a` 4,714 and 3,921. The ids
 are selected at build time: the default build declares the devnet ids, the cargo feature `mainnet`
 the mainnet ids (SPEC 14.11); `lineage_launch` and `lineage_msg` forward the feature to the registry
 crate. Both variants are in scope; they differ only in the declared ids.
@@ -61,36 +62,57 @@ leaf encoder (`lineage_registry::leaf`) and the typed reads of registry accounts
 depends on `lineage_registry` to read `Agent` records. Neither writes registry state except through
 the registry's own instructions.
 
-### External programs the launch program calls (not in scope, but their interface is)
+### External programs the launch program reads (not in scope, but their interface is)
 
-`lineage_launch` has no Meteora crate. `src/meteora.rs` pins program ids, PDAs, instruction and
-account discriminators and fixed byte offsets, and makes raw CPIs:
+`lineage_launch` never calls pump.fun (no CPI, no pump.fun crate). `src/pump.rs` pins program ids,
+PDAs, the `create_v2` instruction discriminator, account discriminators and fixed byte offsets, and
+reads three foreign accounts: Pump `BondingCurve` (owner, PDA `["bonding-curve", mint]`,
+discriminator, length at least 166), Pump `Global` (fixed address, owner, discriminator, length at
+least 105) and PumpSwap `Pool` (canonical PDA, owner, discriminator, length at least 243). It also
+reads the instructions sysvar to find the same transaction's top-level `create_v2`. The fee route runs
+through pump.fun's own permissionless sweeps and collects, which the keeper puts in front of
+`crank_pump_fees`.
 
 | Program | Id | Build the LiteSVM suite runs | sha256 of the vendored dump |
 |---|---|---|---|
-| Meteora Dynamic Bonding Curve (DBC) | `dbcij3LWUppWqq96dh6gJWwBifmcGfLSB5D4DuSMaqN` | devnet dump, re-dumped 2026-10-09 | `5edf76d972abaf355048db5d9003bc4dfa843cd98a5f93785430dac371678ad3` |
-| Meteora DAMM v2 | `cpamdpZCGKUy5JxQXB4dcpGPiikHawvSWAd6mEn1sGG` | devnet dump 2026-10-07 | `82bb9375921bb8007551cb65f9ca43b191597496cc9922926468b36671081ec2` |
-| DAMM v2 config account fixture | `A8gMrEPJkacWkcb3DGwtJwTe16HktSEfvwtuDh2MCtck` | committed `.bin` | `988089b8bacd1967ad85e4acd2bb520c847c872a74fed0614b01a89c57ae73a5` |
+| Pump | `6EF8rrecthR5Dkzon8Nwu78hRvfCKubJ14M5uBEwF6P` | mainnet dump 2026-10-10 | `a4b32d322295a15666b1293e0028b9b75d688bfce10b574e1094f249f2ce9f16` |
+| PumpSwap | `pAMMBay6oceH9fJKBRHGP5D4bD4sWpmSwMn52FMfXEA` | mainnet dump 2026-10-10 | `a8d05e6927cc6e861d3052a9bf2258ce3a4588f47307d53d0c20ecbe0b86697e` |
+| Pump Fees | `pfeeUxB6jkeY1Hxd7CsFCAjcbHA9rWtchMGdZ6VojVZ` | mainnet dump 2026-10-10 | `73c679c8dae8d24153fdd0455b557b73662e93ab2ec88831a9e4be2b08a897a4` |
+| Mayhem | `MAyhSmzXzV1pTf7LsNkrNwkWKTo4ougAJ1PPg47MD4e` | mainnet dump 2026-10-10 | `a87fa9f866272514e6acb852b668c4a08aeb173d56c883039991d114d1199bdb` |
 
-Source: `onchain/vendor/meteora/README.md` (hashes re-checked with `shasum -a 256` on 2026-10-10). The
-README records that mainnet ran older DBC builds when it was written, so the offsets must be
-re-checked against the exact mainnet builds (see `REVIEW-AREAS.md`).
+Seven mainnet account fixtures run with them (Pump `Global`, quote control, both fee configs, PumpSwap
+global config, Mayhem global params, buyback recipient 0), each pinned by sha256 in
+`onchain/tests/src/pumpfun.rs` (`FIXTURES`). Source: `onchain/vendor/pump/fetch.sh` (dumps read with an
+explicit `-u`; the `.so` files are not committed, the fixtures are). Layouts follow pump.fun's IDLs at
+github.com/pump-fun/pump-public-docs commit `2293f9a` (read 2026-10-10); pump.fun appends fields only,
+so the readers require a minimum length. pump.fun can upgrade these programs at any time: re-run
+`fetch.sh`, the suite and the fork rehearsal before any mainnet deploy (`REVIEW-AREAS.md`).
+
+The Meteora DBC and DAMM v2 interface (`src/meteora.rs`, `vendor/meteora`) was removed at `6b24162`;
+git history keeps it.
 
 ## Test code (supporting material, not in scope)
 
 | File | Total lines | Code lines |
 |---|---|---|
-| `onchain/tests/src/lib.rs` (LiteSVM harness) | 873 | 804 |
-| `onchain/tests/tests/registry.rs` | 562 | 486 |
-| `onchain/tests/tests/launch.rs` | 732 | 648 |
+| `onchain/tests/src/lib.rs` (LiteSVM harness) | 770 | 698 |
+| `onchain/tests/src/pumpfun.rs` (pump.fun programs, fixtures, raw builders) | 292 | 263 |
+| `onchain/tests/tests/registry.rs` | 561 | 485 |
+| `onchain/tests/tests/launch.rs` (pump.fun venue) | 473 | 420 |
 | `onchain/tests/tests/identity.rs` | 235 | 201 |
-| `onchain/tests/tests/bounty.rs` | 621 | 543 |
+| `onchain/tests/tests/bounty.rs` | 619 | 541 |
 | `onchain/tests/tests/challenge.rs` | 416 | 336 |
 | `onchain/tests/tests/msg.rs` | 411 | 354 |
-| `onchain/tests/tests/client_vectors.rs` | 457 | 440 |
+| `onchain/tests/tests/client_vectors.rs` | 429 | 412 |
+| `onchain/tests/tests/init_auth.rs` | 135 | 108 |
 | `onchain/tests/tests/slash_cap.rs` (pre-audit, A1-08) | 200 | 155 |
 
 ## Deployed on devnet
+
+Devnet still runs the Meteora-venue builds below: the pump.fun `lineage_launch` (`6b24162`) is not
+deployed there, because devnet's registry and launch config are bound to the earlier tLINE mint at
+initialize and a pump.fun launch needs `$LINE` to be a pump.fun coin (owner decision pending,
+docs/plans/PUMPFUN-LAUNCHES.md). The audit target is `6b24162`, not the devnet binaries.
 
 Read from devnet on 2026-10-10 at 16:06 UTC, after the pre-audit upgrade, with `solana program show -u
 devnet <id>` and `solana program dump -u devnet <id> <file>`; the dump's first bytes (as many as the

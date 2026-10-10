@@ -18,7 +18,7 @@ how long an audit takes.
 - The commit and tree hashes in `SCOPE.md`, with the LOC table: 3,921 lines of Rust code across three
   programs.
 - This directory: architecture and trust model, threat model, internal audit, powers, review areas.
-- `BUILD-AND-TEST.md` and the Meteora dumps (`onchain/vendor/meteora`, hashes in `SCOPE.md`).
+- `BUILD-AND-TEST.md` and the pump.fun dumps (`onchain/vendor/pump`, hashes in `SCOPE.md`).
 - Repository access. The repository is public (`github.com/plsdontcallmyfone/lineage`).
 
 Adevar's pre-audit advice asks teams to freeze the code between scope lock and the end of the

@@ -23,7 +23,7 @@ reproved on devnet on 2026-10-09 and again on 2026-10-10 (`runs/DEVNET-2026-10-1
 | A1-07 | Low | Accepted | permissionless expiry can race a late resolution | rationale: Core must resolve within the timeout | none |
 | A1-08 | Low | Fixed (2026-10-10, `9f70357`) | `slash` was bounded only by Core (repeat slashes in one epoch, arbitrary suspension epoch) | admin-editable `max_slash_bps_per_epoch`: per agent, per chain epoch (window `epochs_posted`), refused whole with `SlashCap`, never clamped; Core resends after the next post; residual: the suspension epoch argument | `onchain/tests/tests/slash_cap.rs` 5 tests; `packages/core/test/chain.test.ts` cap test |
 | A1-09 | Low | Accepted | message caps are per agent, not global; `lineage_msg` ignores the registry pause and suspension | rationale: each agent costs a burn or launch; fee payer pays; own pause | `msg.rs` `signer_must_be_the_current_registry_signing_key` (revoked keys) |
-| A1-10 | Info | Accepted | `graduate` and `repoint_position` ignore `LaunchConfig.paused` | rationale: they only record which locked position is cranked; cranks honour the pause | none |
+| A1-10 | Info | Accepted | `graduate` and `repoint_position` ignore `LaunchConfig.paused` (Meteora venue; since 2026-10-10 the same holds for `record_pump_graduation`) | rationale: they only record graduation; the crank honours the pause | none |
 | A1-11 | Info | Accepted | `max_debit_per_epoch = 0` means no cap; devnet compute sink is the runtime's own account | rationale: devnet only; before mainnet a treasury-controlled sink and a sized cap | none |
 
 ## Onchain, review of 2026-10-07
@@ -33,8 +33,8 @@ From onchain/README.md "Review fixes"; fixed in `0e808f3` and upgraded on devnet
 
 | Id | Fix | Test |
 |---|---|---|
-| H1 `graduate` could bind a forged dust position | strict majority of permanently locked liquidity; `repoint_position`; `graduate_by_admin` | `forged_dust_position_cannot_graduate`, `admin_graduates_past_a_larger_third_party_lock` |
-| H2 curve fees and partner surplus stranded at migration | `crank_fees` before and after graduation | `curve_fees_left_at_migration_are_cranked_after_graduation` |
+| H1 `graduate` could bind a forged dust position | strict majority of permanently locked liquidity; `repoint_position`; `graduate_by_admin`. Removed with the Meteora venue (2026-10-10) | `forged_dust_position_cannot_graduate`, `admin_graduates_past_a_larger_third_party_lock` (removed with the venue) |
+| H2 curve fees and partner surplus stranded at migration | `crank_fees` before and after graduation. Removed with the Meteora venue (2026-10-10); on pump.fun the curve's creator fee stays sweepable after migration and one crank takes curve and pool | `curve_fees_left_at_migration_are_cranked_after_graduation` (removed); now `graduation_and_pool_fees` |
 | M1 a retried slash could land twice | `SlashReceipt` per slash id | `slash_lands_once_per_id` |
 | M2 runtime key could drain every compute vault | clocked usage sequence, hosted only, `max_debit_per_epoch` | `usage_sequence_hosted_only_and_debit_cap` |
 | M3 Core key could post arbitrary epochs and amounts | clocked `post_epoch`, pool and rebate caps, `set_epoch_cursor` | `post_epoch_sequence_clock_and_caps` |
@@ -42,8 +42,24 @@ From onchain/README.md "Review fixes"; fixed in `0e808f3` and upgraded on devnet
 | L1 Core desync on a send reported failed but landed | read back `Epoch` / `SlashReceipt` before retry | `packages/core/test/chain.test.ts` |
 | L2 `registry_program` admin-changeable | constant | `full_launch_records_everything` |
 | L3 any Token-2022 `$LINE` accepted | extension allowlist | `line_mint_extension_allowlist` |
-| L4 surplus threshold from the launch config | read from the pool's DBC config | crank tests |
-| L5 long strings could not fit one transaction | `MAX_LAUNCH_STRINGS` 227 | `longest_launch_fits_one_transaction` |
+| L4 surplus threshold from the launch config | read from the pool's DBC config. Removed with the Meteora venue (2026-10-10) | crank tests (removed) |
+| L5 long strings could not fit one transaction | `MAX_LAUNCH_STRINGS` 227 onchain. Removed with the Meteora venue (2026-10-10): the program no longer sees name, symbol or URI; the client caps the strings (`MAX_LAUNCH_STRINGS` 327 in `packages/chain`, create + register fill one v0 transaction exactly) | `longest_launch_fits_one_transaction` (removed); `packages/chain/test/prepay.test.ts` |
+
+## Onchain, venue change to pump.fun (2026-10-10)
+
+Owner decisions of 2026-10-10 (docs/plans/PUMPFUN-LAUNCHES.md): pump.fun only, attach by a
+same-transaction check, no CPI into pump.fun. Commit `6b24162`; reviewed by the pump.fun launches lane
+with attack tests written first and run red against the previous `lineage_launch.so` (13 of 13 failed:
+the instructions did not exist), then green after the change (13 of 13), LiteSVM 69/69 overall on
+mainnet's pump.fun dumps. Not yet reviewed by a second internal lane.
+
+| Change | Rule | Test (`onchain/tests/tests/launch.rs`) |
+|---|---|---|
+| `register_pump_launch` | earlier top-level Pump `create_v2` for this mint and curve in the same transaction (instructions sysvar); curve owner, PDA, discriminator, length; quote `$LINE`; creator = PDA `["pump_creator", agent]`; depth 1; no mayhem, cashback or holder rewards; configured `creator_fee_bps`; not complete, no quote raised, Global's supply and real token reserves | `full_launch_records_everything`, `register_refuses_spoofed_curves` (9 attempts), `configured_creator_fee_rate_is_enforced` |
+| `crank_pump_fees` | creator PDA by seeds and `has_one`; its `$LINE` ATA by constraint; split `agent_compute_bps`, PDA-signed transfers | `trades_and_an_exact_fee_split`, `crank_refuses_foreign_accounts`, `launch_pause` |
+| `record_pump_graduation` | curve complete; canonical PumpSwap pool PDA, owner, discriminator, index 0, creator = Pump's pool authority, base = mint, quote = `$LINE`; once | `graduation_and_pool_fees` |
+| Meteora paths removed | `launch_agent`, `crank_fees`, `graduate`, `graduate_by_admin`, `repoint_position`, `crank_pool_fees`, `meteora.rs` | `meteora_instructions_are_removed` |
+| Layouts kept | `LaunchConfig` and `AgentLaunch` sizes unchanged (renamed fields); Meteora-era records keep debit, withdraw, refresh, bounties; the pump.fun crank and graduation refuse them | `meteora_era_records_stay_readable`, `migrate_launch_config_from_the_first_layout` |
 | L6 a late strike reset the epoch count | restart only on a strictly newer epoch | `slash_strikes_and_suspension` |
 | L7 failed slashes dropped after 5 attempts | retried with backoff until they land | `packages/core/test/chain.test.ts` |
 | L8 config validation | nonzero keys, `min_bond <= bond_cap` | `config_floors_and_nonzero_keys`, `usage_sequence_hosted_only_and_debit_cap` |
@@ -98,7 +114,7 @@ docs/AUDIT.md gives them.
 | OFF-D4 | Medium-low | Fixed | `/api/admin/*` reached Core admin routes through the proxy | refused, plus encoded slashes | OFF-D4 |
 | OFF-S6 | Low-medium | Partly fixed | world-writable trees and deps layer | chmod only where needed; residual accepted | OFF-S6 |
 | OFF-G2 | Low-medium | Fixed | `signedCommit` pushed into a non-fork repo, took any path | fork of expected parent; `safeCommitPath` | OFF-G2 (two) |
-| OFF-I2 | Low-medium | Fixed | trade amounts from vault deltas (donation inflates) | Meteora swap event first | `decode.test.ts` "tokens donated into the quote vault" |
+| OFF-I2 | Low-medium | Fixed | trade amounts from vault deltas (donation inflates) | Meteora swap event first (since 2026-10-10 the indexer reads pump.fun's trade events, and only for launched mints) | `decode.test.ts` "tokens donated into the quote vault" |
 | OFF-08 | Low | Accepted | private session events leave gaps in `seq` | subsumed by OFF-06 | none |
 | OFF-12 | Low | Fixed | 500 echoed exception text | generic message | OFF-12 |
 | OFF-13 | Low | Fixed | `hotspot.replay_assigned` named the replayer | removed | OFF-13 |

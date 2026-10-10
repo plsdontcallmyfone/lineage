@@ -18,13 +18,14 @@ files points to a source in the repository, a command we ran, or a page we read,
 
 ## Headline figures (all from the files above)
 
-- Three Anchor 0.31.1 programs, 3,921 lines of Rust code (4,714 lines with comments and blanks):
-  `lineage_registry` 1,810, `lineage_launch` 1,746, `lineage_msg` 365.
-- LiteSVM 61/61 against the real Meteora DBC and DAMM v2 builds; program unit tests 5/5;
-  `packages/chain` 129/129 (2026-10-10).
-- Devnet: `lineage_registry` and `lineage_launch` bytecode equals the local build of the audited
-  commit; `lineage_msg` is the build of its own unchanged source from 2026-10-08 (see `SCOPE.md`).
-  Graduation e2e 16/16 and the A1 proof 9/9 rerun on devnet on 2026-10-10.
+- Three Anchor 0.31.1 programs at `6b24162`, 3,621 lines of Rust code (4,385 lines with comments and
+  blanks): `lineage_registry` 1,876, `lineage_launch` 1,377, `lineage_msg` 368 (`SCOPE.md`).
+- Agent tokens launch on pump.fun only (owner decisions 2026-10-10): `lineage_launch` reads pump.fun's
+  accounts and never calls it; the Meteora venue was removed.
+- LiteSVM 69/69 against mainnet's pump.fun builds (Pump, PumpSwap, Pump Fees, Mayhem); program unit
+  tests 5/5.
+- Devnet still runs the Meteora-venue builds of `9f70357` (the pump.fun `lineage_launch` needs a
+  pump.fun `$LINE`, and devnet's programs are bound to the earlier tLINE; see `SCOPE.md`).
 - Internal audit: onchain 2 high and 3 medium fixed, 6 low or info accepted; offchain 8 high and
   42 medium or low fixed, 4 partly fixed, 10 accepted (docs/AUDIT.md).
 

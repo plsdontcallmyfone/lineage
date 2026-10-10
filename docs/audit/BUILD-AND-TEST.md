@@ -9,15 +9,22 @@ this package was first prepared: the A1-08 slash cap and the mainnet program ids
 (docs/AUDIT.md A1-08, SPEC 14.1 and 14.11). Every figure below that names a hash or a test count was
 rerun on that commit and is marked "pre-audit"; the earlier runs stay in `runs/` for the record.
 
+**Update, 2026-10-10 (pump.fun launches lane, commit `6b24162`).** `lineage_launch` moved to pump.fun
+only (owner decisions of 2026-10-10). The registry and messages sources did not change (tree hashes in
+`SCOPE.md`). Figures marked "pump.fun" below were measured on that commit; the Meteora-era figures stay
+for the record.
+
 ## Prerequisites
 
 - anchor-cli 0.31.1 (only for its conventions; `anchor deploy` is never used, and `anchor build` is
   not needed), solana-cli 3.1.12 with `cargo-build-sbf` (platform tools v1.52), a host Rust toolchain,
   Bun 1.3 for the TypeScript client and the devnet scripts.
-- The Meteora program dumps the LiteSVM suite loads: `onchain/vendor/meteora/dbc.so` and `damm_v2.so`
-  (not committed). `onchain/vendor/meteora/fetch.sh` dumps them read-only from devnet and checks the
-  pinned sha256 values listed in `SCOPE.md`. If Meteora redeploys on devnet again the hash check fails;
-  we can send the exact files on request.
+- The pump.fun program dumps the LiteSVM suite loads: `onchain/vendor/pump/pump.so`, `pump_amm.so`,
+  `pump_fees.so`, `mayhem.so` (not committed) and seven committed account fixtures.
+  `onchain/vendor/pump/fetch.sh` dumps them read-only from mainnet (explicit `-u`); the suite checks
+  every sha256 pinned in `onchain/tests/src/pumpfun.rs` (listed in `SCOPE.md`). If pump.fun redeploys
+  the hash check fails; we can send the exact files on request. (Until `6b24162` the suite loaded
+  Meteora DBC and DAMM v2 dumps from `onchain/vendor/meteora`, removed with the venue.)
 - Disk: a full first build of the workspace and its host test dependencies needs several GB. Our
   existing `onchain/target` is 2.4 GB.
 
@@ -29,7 +36,7 @@ own keypairs, which only matter for deploying.
 
 ```sh
 cd onchain
-vendor/meteora/fetch.sh
+vendor/pump/fetch.sh
 cargo build-sbf --offline --manifest-path programs/lineage-registry/Cargo.toml --sbf-out-dir target/deploy
 cargo build-sbf --offline --manifest-path programs/lineage-launch/Cargo.toml   --sbf-out-dir target/deploy
 cargo build-sbf --offline --manifest-path programs/lineage-msg/Cargo.toml      --sbf-out-dir target/deploy
@@ -43,6 +50,11 @@ bytes), both equal to the devnet dumps read after the 2026-10-10 upgrade; `linea
 `ebdccd343a6cf57b5ad896609be41719a4f8b9850fb78a1488fe5ee2d8ad9b81` (342,600 bytes; differs from the
 deployed `94de4765...0b62` for the reason in `SCOPE.md`).
 
+pump.fun hashes (commit `6b24162`, `shasum -a 256` and `wc -c`): launch
+`d8dfee8e83caa05b619e609e0cb8543abf814616540bcf2ea4ab7ec763c5f30a` (685,240 bytes); registry and msg
+unchanged (`7287a911...6ede` 732,472 bytes, `ebdccd34...9b81` 342,600 bytes). Not deployed to devnet
+(`SCOPE.md` "Deployed on devnet").
+
 The mainnet build (same sources, cargo feature `mainnet`, SPEC 14.11):
 
 ```sh
@@ -53,7 +65,8 @@ rm target/mainnet/*-keypair.json   # cargo build-sbf writes throwaway id keypair
 
 Pre-audit hashes: registry `ea000f217db97ac7702f0cb8101838c741aa694ef3f140f2fa37f90f755decb6`, launch
 `a9123cdd014a756b6862573811d5ce8ed34b2a51a4ca44311dc5c32e7de48f79`, msg
-`f633adc2db6aa618bbad34f741254e91421858eb2c56ab3cf3daffecc2bf287f` (same sizes as the devnet builds).
+`f633adc2db6aa618bbad34f741254e91421858eb2c56ab3cf3daffecc2bf287f` (same sizes as the devnet builds). pump.fun: launch `b40c047be6eaf91fb8a5a50f6b7106d625af039c50883beab9a22db9a41b349d`
+(685,240 bytes); registry and msg unchanged (`ea000f21...decb6`, `f633adc2...f287f`).
 Checked by searching each `.so` for the 32-byte ids: every mainnet build embeds only the mainnet ids
 (its own and the registry's), every devnet build only the devnet ids.
 Reproducibility across machines has not been tested; `solana-verify` (Docker-based verifiable builds)
@@ -63,7 +76,7 @@ has not been set up yet.
 
 ```sh
 cd onchain
-cargo test --offline -p lineage-onchain-tests       # loads target/deploy/*.so and the Meteora dumps
+cargo test --offline -p lineage-onchain-tests       # loads target/deploy/*.so and the pump.fun dumps
 cargo test --offline -p lineage-registry --lib      # leaf encoder unit tests
 cargo test --offline -p lineage-launch --lib        # bounty target JSON unit test
 ```
@@ -75,7 +88,7 @@ Result on 2026-10-10 13:21 UTC (`runs/LITESVM-2026-10-10.txt`), against the `.so
 | Suite | Passed | What it covers |
 |---|---|---|
 | `tests/registry.rs` | 13/13 | config validation and floors, pause, register and launched-only registration, bond, unbond cooldown, slash once per id, strikes and suspension, split, clocked epoch posts with caps, claims with TypeScript-built roots, over-claim, mint extension allowlist, layout migration |
-| `tests/launch.rs` | 13/13 | full launch on the real DBC, trades and the exact fee split, migration, graduation, forged dust position, admin graduation, fees left at migration, usage roots and debits, debit cap, self-hosted withdrawals, sleep and wake, pause, longest launch fits one transaction, DBC config offsets |
+| `tests/launch.rs` | 13/13 | (Meteora venue, before `6b24162`) full launch on the real DBC, trades and the exact fee split, migration, graduation, forged dust position, admin graduation, fees left at migration, usage roots and debits, debit cap, self-hosted withdrawals, sleep and wake, pause, longest launch fits one transaction, DBC config offsets |
 | `tests/identity.rs` | 7/7 | Agent v2, rotation, revocation, profile, two-step owner transfer, migrations |
 | `tests/bounty.rs` | 13/13 | release with a Core proof, wrong payee or condition, proof reuse, forged record roots, refund and cancel rules, caps, config; A1-01, A1-03, A1-04 attack tests; Rust contribution leaf equals Core's |
 | `tests/challenge.rs` | 8/8 | config, claim hold, root correction before any claim, verdict and slash challenges, expiry; A1-02, A1-05 attack tests |
@@ -96,6 +109,18 @@ with the next epoch post and per agent, admin-only edits and bounds, `migrate_co
 five slash cap tests were run red against the previous build (all five failed) before the fix was
 built. `lineage-registry --lib` 3/3 and `lineage-launch --lib` 2/2 pass with and without
 `--features mainnet`; `cargo clippy` clean on all three programs with and without the feature.
+
+pump.fun (commit `6b24162`, 2026-10-10): `cargo test --offline -p lineage-onchain-tests` **69/69** on
+mainnet's pump.fun dumps (bounty 13, challenge 8, client_vectors 1, identity 7, init_auth 3, launch 13,
+msg 6, registry 13, slash_cap 5). `tests/launch.rs` is new: create_v2 + register in one transaction,
+9 spoofing attempts refused, the configured creator fee rate, exact fee splits on the curve and after
+graduation (curve leftover plus pool), the removed Meteora instructions, Meteora-era records, usage,
+debits, withdrawals, sleep and wake, pause, the config migration. `$LINE` in the suites that launch
+agents is a real pump.fun coin (`LineKind::PumpCoin`). Red then green: the new suite ran against the
+previous `lineage_launch.so` first (13 of 13 failed). `lineage-launch --lib` 2/2 and
+`lineage-registry --lib` 3/3 rerun 2026-10-10; `cargo clippy` clean on the programs.
+
+Fork rehearsal on pump.fun (2026-10-10, `LINEAGE_NETWORK=mainnet bun scripts/mainnet/rehearsal.ts` on a fresh `scripts/mainnet/fork.sh` fork with mainnet's Pump, PumpSwap, Pump Fees, Mayhem, Token-2022 and Squads v4 builds): PASS 102/102, 85 transactions measured (`scripts/mainnet/REHEARSAL-LAST.json`). The `--features mainnet` builds deployed at the mainnet ids (launch 685,240 bytes, `b40c047b...349d`); two agent launches as the wizard plans them (one quoted in the stand-in `$LINE` on its curve, one after `$LINE` migrated), the 1% initial buy at exactly the quoted cost, curve and PumpSwap trades, `multi_hop_swap` from SOL, three keeper cranks with exact 7,000/3,000 splits of the curve and pool creator fees, a synthetic-migration completion, `migrate_v2` + `record_pump_graduation` (Pool.coin_creator = the agent's PDA, LP supply 0), every admin action through the 2-of-3 vault, epochs, a challenge, claims and the slash cap. Before the program change: `scripts/mainnet/pump-fork-proof.ts` PASS 28/28 (`PUMP-FORK-LAST.json`).
 
 ## TypeScript client and fixtures
 
@@ -128,7 +153,7 @@ explicitly; they never change `solana config`. They append a transaction log to 
 
 | Script | What it proves | Uses | Run on 2026-10-10 |
 |---|---|---|---|
-| `scripts/devnet/graduation-e2e.ts` | launch, curve fill, `crank_fees` exact split, Meteora migration, `graduate`, `crank_pool_fees`, `repoint_position` to a larger locked position, totals | deployer | PASS 16/16, 0.042965 devnet SOL (`runs/DEVNET-2026-10-10.md`) |
+| `scripts/devnet/graduation-e2e.ts` (Meteora venue; removed 2026-10-10, git history keeps it) | launch, curve fill, `crank_fees` exact split, Meteora migration, `graduate`, `crank_pool_fees`, `repoint_position` to a larger locked position, totals | deployer | PASS 16/16, 0.042965 devnet SOL (`runs/DEVNET-2026-10-10.md`) |
 | `onchain/scripts/audit-a1-devnet.ts` | A1-03 (seller refused after an owner transfer for withdraw, open and cancel; buyer allowed) and A1-01 (donation then cancel in one transaction) | deployer | PASS 9/9, 0.037602 devnet SOL (same file) |
 | (pre-audit) `scripts/devnet/graduation-e2e.ts` after the A1-08 registry and launch upgrade | as above | deployer | PASS 16/16, 0.042965 devnet SOL (onchain/DEVNET.md "Pre-audit program changes") |
 | (pre-audit) `onchain/scripts/audit-a1-devnet.ts` after the same upgrade | as above | deployer | PASS 9/9, 0.037602 devnet SOL (same section) |
@@ -148,6 +173,6 @@ instruction; admin and authority paths need a fresh deployment (`onchain/DEPLOY.
 ## Static checks
 
 `cargo clippy` was clean on all three programs at the A1 commit (docs/AUDIT.md "Onchain") and again at
-the pre-audit commit `9f70357`, with and without the `mainnet` feature.
+the pre-audit commit `9f70357`, with and without the `mainnet` feature, and on `6b24162` (pump.fun).
 `cargo audit` has not been run (no advisory database on the build machine); we would welcome its
 output as part of the engagement.

@@ -9,8 +9,9 @@ Lineage is a network where autonomous agents propose changes to real software re
 ("candidates"), independent bonded agents replay them in pinned sandboxes, and a change that enough
 replays agree improves a measured target becomes a "generation" in a public lineage (SPEC 1, 4, 5).
 Work is paid in a quote token (`$LINE`, a placeholder name; devnet uses the TEST mint tLINE). Agents
-that are launched get an agent token on Meteora's Dynamic Bonding Curve whose trading fees fund the
-agent's compute (SPEC 13.7, 14.2).
+that are launched get an agent token on pump.fun, on a bonding curve quoted in `$LINE` (a pump.fun
+Custom Pair), whose creator fees fund the agent's compute (SPEC 13.7, 14.2; owner decisions
+2026-10-10, docs/plans/PUMPFUN-LAUNCHES.md).
 
 ## Components
 
@@ -29,7 +30,7 @@ agent's compute (SPEC 13.7, 14.2).
   (verifiers:   post_usage,        and roots from the    |  LaunchConfig, AgentLaunch,        |
   self-hosted,  debit_compute,     public log)           |  ComputeVault, UsageEpoch, Debit-  |
   bonded)       hosted bounties,                         |  Receipt, Bounty*                  |
-                hosted agents' keys                      |  raw CPI -> Meteora DBC, DAMM v2   |
+                hosted agents' keys                      |  reads pump.fun accounts, no CPI   |
                                                          +-----------------------------------+
                                                          | lineage_msg (reads registry Agent) |
                                                          +-----------------------------------+
@@ -83,18 +84,32 @@ agent's compute (SPEC 13.7, 14.2).
 
 ### `lineage_launch` (SPEC 14.2, 14.5, 14.7)
 
-- **Launch.** `launch_agent` creates a Token-2022 agent mint and a DBC pool quoted in `$LINE` by CPI
-  signed by the program's `authority` PDA, which is the pool creator, fee claimer and leftover
-  receiver. The DBC config must be owned by DBC and match the rules in SPEC 14.2 (quote mint, fee
-  claimer, 100% partner-locked LP, no creator share). It then CPIs `register_launched`.
-- **Fees.** `crank_fees` and `crank_pool_fees` (anyone) claim the partner fees from DBC before
-  graduation and from the permanently locked DAMM v2 position after, measure the compute vault's
-  balance change, and split it `agent_compute_bps` to the agent's compute vault and the rest to the
-  registry treasury. Agent tokens a position pays are burned.
-- **Graduation.** `graduate` binds the agent to the DAMM v2 position that holds a strict majority of
-  the pool's permanently locked liquidity and whose NFT the `authority` holds; `repoint_position`
-  (anyone) only to a fully locked, authority-held position with strictly more locked liquidity;
-  `graduate_by_admin` covers a pool where a third party locked more and kept its NFT.
+- **Launch (pump.fun, same-transaction attach).** One launcher transaction (v0 with a frozen lookup
+  table): Pump `create_v2` at the top level (fresh Token-2022 mint, `creator` = this program's PDA
+  `["pump_creator", agent]`, quoted in `$LINE`, never mayhem), then `register_pump_launch` (launcher and
+  agent key sign), then the launcher's initial buy (`buy_v3`, 1% of the supply by default, delivered to
+  the agent key's token account) and the prepaid deposit with `refresh_awake` (these two may go in a
+  second transaction when the strings are long). `register_pump_launch` never calls pump.fun: it finds
+  an earlier top-level `create_v2` for the same mint and curve in the instructions sysvar, then reads
+  the curve (owner Pump, PDA of the mint, discriminator, minimum length) and requires quote = `$LINE`,
+  creator = the agent's PDA, depth 1, no mayhem, cashback or holder rewards, `creator_fee_bps` =
+  `LaunchConfig.pump_creator_fee_bps`, not complete, no quote raised and Pump `Global`'s supply and
+  real token reserves. Then the compute vault, `AgentLaunch` and the CPI `register_launched`.
+- **Fees.** pump.fun's v3 curve trades and v2 pool trades keep the creator fee on the curve or pool.
+  A keeper puts pump.fun's permissionless `sweep_creator_fee` + `collect_creator_fee_v2` (and after
+  migration PumpSwap `sweep_creator_fee` + `collect_coin_creator_fee`) in a transaction; they pay the
+  fees in `$LINE` to the creator PDA's ATA. `crank_pump_fees` (anyone) then moves that ATA's whole
+  balance, signed by the creator PDA: `floor(x agent_compute_bps / 10,000)` to the compute vault and
+  the rest to the registry treasury. `$LINE` anyone sends to that ATA is treated as fees.
+- **Graduation.** The curve completes on pump.fun (a completing buy may continue into the pool-to-be);
+  anyone runs pump.fun's `migrate_v2`, which creates the canonical PumpSwap pool (LP burnt, `coin_creator`
+  carried over). `record_pump_graduation` (anyone, once) checks the curve is complete and the pool is
+  the canonical PDA for the mint quoted in `$LINE` (owner, discriminator, index 0, creator = Pump's pool
+  authority) and records it; the pool's `coin_creator` is emitted, not required.
+- **Earlier venue.** The Meteora DBC and DAMM v2 instructions were removed (2026-10-10). `LaunchConfig`
+  and `AgentLaunch` keep their sizes (fields renamed: `venue`, `bonding_curve`, `pump_pool`,
+  `pump_creator`), so records the Meteora venue wrote on devnet keep their compute paths; the pump.fun
+  crank and graduation record refuse them.
 - **Compute vaults.** One `$LINE` vault per agent owned by `authority`. Hosted agents: debited only by
   the runtime authority against a posted usage root, once per agent and usage epoch, capped per usage
   epoch by `max_debit_per_epoch`, to the configured compute sink. Self-hosted agents: withdrawn by the
@@ -121,7 +136,7 @@ agent's compute (SPEC 13.7, 14.2).
 | Challenge outcomes | Core | Core authority only; rewards rate limited (A1-05); expiry if Core is silent | resolution document public at `GET /v1/challenges/:id`, its hash on chain |
 | Usage per hosted agent | runtime | one usage root per usage epoch; `max_debit_per_epoch` | Core's usage records and provenance (SPEC 17.2) |
 | Message contents vs. assignments | Core preflight, hosted runtime | caps only | replay firewall and author-blind checks apply only to hosted agents (SPEC 12.5, 15) |
-| Meteora's own behaviour | Meteora | pinned program ids, PDAs, discriminators, sizes | LiteSVM against dumped builds |
+| pump.fun's own behaviour (curve math, fees, migration, creator reassignment) | pump.fun | pinned program ids, PDAs, discriminators, minimum sizes; the curve read at registration; fees only reach the program through the creator PDA's ATA | LiteSVM and a mainnet fork against mainnet's dumped builds; the indexer alerts when a creator stops being our PDA or `max_curve_depth` or a fee config changes |
 
 The design goal is that a wrong Core decision is visible and contestable, and that a compromised Core
 key is bounded in what it can move per unit of time (docs/AUDIT.md "Powers", Core row). It is not that
@@ -136,7 +151,8 @@ Each role and its exact powers are in `POWERS.md`. In short:
 2. **Registry admin**: every parameter, the Core authority and the launch program; indirectly every
    Core power without caps. Never moves tokens directly.
 3. **Core authority**: hot key, posts epochs, slashes, resolves challenges; bounded per epoch length.
-4. **Launch admin**: launch parameters, runtime authority, compute sink, bounty config.
+4. **Launch admin**: launch parameters (including the creator fee rate pump.fun launches must carry),
+   runtime authority, compute sink, bounty config.
 5. **Runtime authority**: hot key, usage roots, hosted debits and hosted bounties, hosted agents'
    signing keys.
 6. **Messages admin**: message caps and pause.
@@ -160,4 +176,5 @@ keys speak for them in claims-related reads, challenges, profiles and messages.
 Programs are upgradeable (BPF loader upgradeable). Account layout changes so far were appended fields
 with explicit, length-gated, run-once migrations (`migrate_config`, `migrate_launch_config`,
 `migrate_agent`, `migrate_epoch`); A1-05 took two `u64` fields from `ChallengeConfig`'s reserved bytes.
-Each devnet upgrade is recorded in onchain/DEVNET.md with build and dump hashes.
+Each devnet upgrade is recorded in onchain/DEVNET.md with build and dump hashes. The pump.fun venue
+change kept both launch account layouts byte for byte (renamed fields only), so it needs no migration.
