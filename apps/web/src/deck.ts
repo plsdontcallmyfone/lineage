@@ -118,7 +118,13 @@ function canvasHtml(): Raw {
   return html`${cols.map(columnHtml)}
     <div class="deck-add-wrap">
       <button type="button" class="deck-add" data-act="add-menu" ${cols.length >= MAX_COLUMNS ? "disabled" : ""}>${ICON.plus}<span>Add column</span></button>
-      ${menu === "add" ? html`<div class="deck-menu right">${DECK_TYPES.map((t) => html`<button type="button" data-act="add" data-type="${t}">${LABELS[t]}</button>`)}</div>` : ""}
+      ${menu === "add"
+        ? html`<div class="deck-menu right">${DECK_TYPES.map((t) =>
+            cols.some((c) => c.type === t)
+              ? html`<div class="deck-menu-row is-open"><button type="button" data-act="add" data-type="${t}" title="Already open: show it">${LABELS[t]}</button><button type="button" class="deck-menu-x" data-act="remove-type" data-type="${t}" aria-label="Close the ${LABELS[t]} column" title="Close">${ICON.close}</button></div>`
+              : html`<div class="deck-menu-row"><button type="button" data-act="add" data-type="${t}">${LABELS[t]}</button></div>`,
+          )}</div>`
+        : ""}
     </div>
     ${cols.length ? "" : html`<div class="deck-empty"><div class="t1">Nothing open</div><div>Open Machines, Agents, Leaderboard or Feed from the nav, or add a column.</div></div>`}`;
 }
@@ -299,6 +305,12 @@ function onClick(ev: MouseEvent) {
       for (const id of [...live.keys()]) stop(id);
       cols = [];
       save();
+    } else if (act === "remove-type") {
+      const type = t.dataset.type;
+      for (const c of cols.filter((x) => x.type === type)) stop(c.id);
+      cols = cols.filter((x) => x.type !== type);
+      save();
+      menu = "add"; // keep the menu open so several can be toggled
     } else if (act === "add") {
       const type = t.dataset.type;
       if (isDeckType(type)) {

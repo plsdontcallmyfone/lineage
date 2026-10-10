@@ -151,14 +151,14 @@ code { font-family: var(--mono); color: var(--ts); background: var(--bg3); borde
    (main.ts toggles .is-scrolled). Its total height never changes, so the content under it stays put. */
 .top { position: sticky; top: 0; z-index: 100; padding: 0; transition: padding .28s cubic-bezier(.22,1,.36,1); }
 .top-in {
-  position: relative; padding: 0 var(--pad-x); height: var(--hdr-h); display: flex; align-items: center; gap: 28px;
+  position: relative; padding: 0 calc(var(--pad-x) + 28px); height: var(--hdr-h); display: flex; align-items: center; gap: 22px;
   background: var(--hdr-bg); border: 1px solid transparent; border-bottom-color: var(--border); border-radius: 0;
   backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px);
   transition: height .28s cubic-bezier(.22,1,.36,1), padding .28s cubic-bezier(.22,1,.36,1), border-radius .28s cubic-bezier(.22,1,.36,1), background .28s, border-color .28s, box-shadow .28s;
 }
-.top.is-scrolled { padding: 6px var(--pad-x) 0; }
+.top.is-scrolled { padding: 6px max(calc(var(--pad-x) + 56px), 9vw) 0; }
 .top.is-scrolled .top-in {
-  height: calc(var(--hdr-h) - 6px); padding: 0 10px 0 22px; border-radius: 9999px;
+  height: calc(var(--hdr-h) - 6px); padding: 0 8px 0 16px; gap: 14px; border-radius: 9999px;
   background: color-mix(in srgb, var(--bg3) 82%, transparent); border-color: var(--glass-border); box-shadow: var(--glass-shadow), 0 12px 32px -12px #0008;
 }
 .brand { display: flex; align-items: center; gap: 10px; font-family: var(--wordmark); font-synthesis: none; -webkit-text-stroke: .02em currentColor; text-transform: uppercase; letter-spacing: .04em; font-size: 15px; font-weight: 400; white-space: nowrap; color: var(--tp); }
@@ -170,12 +170,14 @@ code { font-family: var(--mono); color: var(--ts); background: var(--bg3); borde
 }
 .nav { display: flex; gap: 2px; overflow-x: auto; scrollbar-width: none; }
 .nav::-webkit-scrollbar { display: none; }
-.nav a { position: relative; padding: 8px 12px; font: 500 14px/1 var(--sans); letter-spacing: -0.01em; color: var(--ts); white-space: nowrap; transition: color .15s; }
-.top.is-scrolled .nav a { color: var(--ts); }
+.nav a { position: relative; padding: 8px 10px; font: 500 14px/1 var(--sans); letter-spacing: -0.01em; color: var(--ts); white-space: nowrap; transition: color .15s; }
+.top.is-scrolled .nav a { color: var(--ts); padding: 8px 8px; }
+.top.is-scrolled .nav a[aria-current="page"]::after { left: 8px; right: 8px; }
+.top.is-scrolled .top-right { gap: 6px; }
 .top.is-scrolled .nav a[aria-current="page"] { color: var(--tp); }
 .nav a:hover { color: var(--ts); }
 .nav a[aria-current="page"] { color: var(--tp); }
-.nav a[aria-current="page"]::after { content: ""; position: absolute; left: 12px; right: 12px; bottom: 2px; height: 1px; background: var(--ac); }
+.nav a[aria-current="page"]::after { content: ""; position: absolute; left: 10px; right: 10px; bottom: 2px; height: 1px; background: var(--ac); }
 .top-right { margin-left: auto; display: flex; align-items: center; gap: 8px; }
 .live { display: inline-flex; align-items: center; gap: 7px; height: 28px; padding: 0 12px; border-radius: 9999px; font: 400 11px/1 var(--mono); letter-spacing: .06em; text-transform: uppercase; color: var(--tt); background: var(--bg3); border: 1px solid var(--border); white-space: nowrap; }
 .live i { width: 6px; height: 6px; border-radius: 50%; background: var(--tt); }
@@ -422,6 +424,7 @@ details.more[open] summary { border-bottom: 1px solid var(--border); }
   :root { --pad-x: 16px; }
   .top-in { gap: 12px; height: auto; min-height: var(--hdr-h); flex-wrap: wrap; padding-top: 8px; padding-bottom: 8px; }
   .top.is-scrolled { padding: 6px 10px 0; }
+  .top-in { padding-left: var(--pad-x); padding-right: var(--pad-x); }
   .top.is-scrolled .top-in { height: auto; min-height: calc(var(--hdr-h) - 6px); padding: 6px 14px; border-radius: 22px; }
   .nav { order: 3; width: 100%; margin: 0 -6px; }
   .brand .ph { display: none; }
@@ -1129,6 +1132,12 @@ a.eco-btn { text-decoration: none; }
 .deck-add-wrap .deck-menu { top: 0; left: auto; right: calc(100% + 8px); } /* beside the rail, at its top */
 .deck-menu button { display: block; white-space: nowrap; width: 100%; border: 0; border-radius: 5px; background: transparent; color: var(--ts); text-align: left; padding: 8px 12px; font-size: 13px; cursor: pointer; }
 .deck-menu button:hover { background: var(--ac-dim); color: var(--tp); }
+.deck-menu-row { display: flex; align-items: center; gap: 2px; }
+.deck-menu-row > button:first-child { flex: 1; }
+.deck-menu-row.is-open > button:first-child { opacity: .45; }
+.deck-menu-row.is-open:hover > button:first-child { opacity: .75; }
+.deck-menu .deck-menu-x { width: 28px; height: 28px; flex: none; display: grid; place-items: center; padding: 0; color: var(--tt); }
+.deck-menu .deck-menu-x:hover { background: var(--btn-p-bg); color: var(--btn-p-fg); }
 .deck-add-wrap { height: 100%; flex-shrink: 0; }
 .deck-add { height: 100%; width: 48px; border: 1px dashed var(--border-h); border-radius: var(--radius); background: transparent; display: flex; align-items: center; flex-direction: column; gap: 12px; padding: 14px 0 0; color: var(--tt); cursor: pointer; transition: border-color .15s, color .15s, background .15s; }
 .deck-add span { writing-mode: vertical-rl; font: 400 11px/1 var(--mono); letter-spacing: .1em; text-transform: uppercase; }
