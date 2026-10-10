@@ -221,6 +221,12 @@ export class ChainBridge {
     const rp = this.settings.registry_program;
     const label = rp === DEVNET_V1_PROGRAM_IDS.registry ? "devnet v1" : rp === PROGRAM_IDS.devnet.registry ? "devnet v2" : rp === PROGRAM_IDS.mainnet.registry ? "mainnet" : null;
     const sw = deploymentsOf(this.core).observe({ registry_program: rp, launch_program: this.settings.launch_program, line_mint: reg.mint, label });
+    // devnet v1 was read before deployments.ts existed: record it as retired once (epochs closed before v2)
+    if (label === "devnet v2") {
+      const v1 = deploymentsOf(this.core).recordEarlier({ registry_program: DEVNET_V1_PROGRAM_IDS.registry, launch_program: DEVNET_V1_PROGRAM_IDS.launch,
+        line_mint: "3PLqpwWokAbpxZgBVLAzMAeLSvzfoDvjkhH9YydwVXmU", label: "devnet v1" }, rp);
+      if (v1) sw.switched.push(v1);
+    }
     for (const d of sw.switched) this.log(`registry ${d.registry_program} retired: epochs through ${d.through_epoch} stay with it (last posted ${d.last_posted_epoch}, unposted ${d.unposted_epochs})`);
     const launchCfg = await this.reader.launchConfig();
     const tokenProgram = reg.tokenProgram;

@@ -460,3 +460,23 @@ describe("deployment switch (devnet v2, deployments.ts)", () => {
     expect(core.ledger.reconcile().ok).toBe(true);
   });
 });
+
+describe("deployment switch backfill (devnet v1 read before deployments.ts)", () => {
+  test("recordEarlier retires an unrecorded earlier registry through the epochs closed before the current one was first seen", async () => {
+    const reg = await new ChainReader(new Rpc(transport())).registryConfig();
+    const { core, bridge, clock } = await setup({ coreKey: reg!.coreAuthority, send: async () => ({ signature: "s" }) });
+    await bridge.tick();
+    const a = core.closeEpoch();
+    await bridge.tick(); // posted
+    core.db.exec("DELETE FROM chain_deployments"); // as on the site: Core ran v1 before the module existed
+    clock.advance(1000);
+    const d = deploymentsOf(core);
+    d.observe({ registry_program: "CJk3kwUqSS4qoJD8iu7uhUzSBNySjn9HsqaExpaV9gM2", launch_program: "Axo38WX6TBAGGQ2nPpejn5tPsQogygA728baRaeJebGX", line_mint: null, label: "devnet v2" });
+    expect(d.retiredThrough()).toBeNull();
+    const row = d.recordEarlier({ registry_program: SETTINGS.registry_program, launch_program: SETTINGS.launch_program, line_mint: null, label: "devnet v1" }, "CJk3kwUqSS4qoJD8iu7uhUzSBNySjn9HsqaExpaV9gM2");
+    expect([row!.through_epoch, row!.last_posted_epoch, row!.retired_at !== null]).toEqual([a.n, a.n, true]);
+    expect(d.retiredThrough()).toBe(a.n);
+    expect(core.chainPostedLeaves()).toEqual([]);
+    expect(d.recordEarlier({ registry_program: SETTINGS.registry_program, launch_program: "x", line_mint: null, label: "devnet v1" }, "CJk3kwUqSS4qoJD8iu7uhUzSBNySjn9HsqaExpaV9gM2")).toBeNull();
+  });
+});

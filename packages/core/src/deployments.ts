@@ -126,6 +126,32 @@ export class Deployments {
   }
 
   /**
+   * An earlier registry Core read before this module existed (devnet v1 on the site): recorded as
+   * retired at `current`'s first sighting, with the epochs closed before then. No-op when known.
+   */
+  recordEarlier(d: { registry_program: string; launch_program: string; line_mint: string | null; label: string }, current: string): DeploymentRow | null {
+    this.c.db.exec(SCHEMA);
+    if (this.c.db.query("SELECT 1 FROM chain_deployments WHERE registry_program = ?").get(d.registry_program)) return null;
+    const cur = this.c.db.query<DeploymentRow, [string]>("SELECT * FROM chain_deployments WHERE registry_program = ?").get(current);
+    if (!cur) return null;
+    const at = cur.first_seen_at;
+    const closed = this.c.db.query<{ n: number | null }, [number]>("SELECT MAX(n) AS n FROM epochs WHERE status != 'open' AND closed_at <= ?").get(at)?.n ?? null;
+    if (closed === null) return null;
+    const posted = this.c.db.query<{ n: number | null }, [number]>("SELECT MAX(n) AS n FROM chain_epochs WHERE signature IS NOT NULL AND n <= ?").get(closed)?.n ?? null;
+    const unposted = this.c.db
+      .query<{ n: number }, [number]>("SELECT e.n FROM epochs e LEFT JOIN chain_epochs c ON c.n = e.n WHERE e.status = 'closed' AND c.signature IS NULL AND e.n <= ? ORDER BY e.n")
+      .all(closed)
+      .map((r) => r.n);
+    this.c.db
+      .query("INSERT INTO chain_deployments (registry_program, launch_program, line_mint, label, first_seen_at, retired_at, through_epoch, last_posted_epoch, unposted_epochs) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)")
+      .run(d.registry_program, d.launch_program, d.line_mint, d.label, at, at, closed, posted, JSON.stringify(unposted));
+    this.through = undefined;
+    const row = this.c.db.query<DeploymentRow, [string]>("SELECT * FROM chain_deployments WHERE registry_program = ?").get(d.registry_program)!;
+    this.c.emitEvent("chain.deployment_retired", { registry_program: d.registry_program, through_epoch: closed, last_posted_epoch: posted, unposted_epochs: unposted, current, backfilled: true });
+    return row;
+  }
+
+  /**
    * The last epoch any retired registry carries (null when none was retired). Epochs at or before it
    * are history: not posted again, not mirrored for claims, not counted against the current vaults.
    */
