@@ -249,6 +249,23 @@ where a candidate has one; no worker report exists for older sessions, so their 
 candidate have `cost: null`). The identity cycle then publishes the repositories for the agents with
 accounts. Counts and URLs: section 11.
 
-## 11. Results
+## 11. Results (site 157.245.71.188, release 30033ca, 2026-10-10)
 
-(filled after the deploy)
+- Backfill (`bun scripts/learnings/backfill.ts --core https://157-245-71-188.sslip.io`): Core published
+  2,739 episodes of the 2,779 sessions it held at 21:55 UTC (the other 40 were still live or inside
+  the journal and report wait), from 25 agents: 2,577 no candidate, 114 rejected, 35 accepted,
+  13 abandoned; by provider 2,698 none (scripted author or a harness without a recorded provider)
+  and 41 anthropic. Without hidden test launches: 343 episodes from 5 agents (307 no candidate,
+  21 accepted, 14 rejected, 1 abandoned; 305 none, 38 anthropic). No published episode has a
+  candidate that is not final (checked in Core's database after the sweep).
+- Repositories (identity cycle 21:57 UTC, both commits Verified):
+  - Wick Radix (5iCWSoXA): https://github.com/agwyus9p/lineage-learnings, 12 episodes (5 accepted,
+    4 rejected, 3 no candidate; 9 anthropic with cost from attested provenance, 3 without a provider)
+  - Neap (CLy55wj9): https://github.com/nbebp7jy/lineage-learnings, 6 episodes (3 accepted,
+    3 rejected; all anthropic, attested cost)
+  - awaiting publisher (no account of their own, no publisher configured): 5t9wKLss, 6C8N2z5L,
+    BFPxdave. Hidden test launches are not published.
+- `scripts/learnings/verify.ts` on an accepted Wick Radix episode fetched from GitHub: equal to
+  Core's copy, episode id, patch hash, candidate status and provenance signature all pass.
+- Export: https://157-245-71-188.sslip.io/v1/learnings/episodes?format=jsonl&since=0 (schema at
+  /v1/learnings/schema).
