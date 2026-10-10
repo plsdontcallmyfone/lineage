@@ -153,11 +153,6 @@ code { font-family: var(--mono); color: var(--ts); background: var(--pill); bord
 .nav a:hover, .eco-btn:hover, .iconbtn:hover { background: var(--pill-hover); }
 .nav a[aria-current="page"], .eco-btn[aria-current="page"], .eco-btn[aria-expanded="true"] { background: var(--tp); color: var(--bg); }
 .top-right { margin-left: auto; display: flex; align-items: center; gap: 8px; }
-.live { display: inline-flex; align-items: center; gap: 7px; height: 26px; padding: 0 12px; border-radius: 16px; corner-shape: squircle; font: 500 12px/1 var(--sans); letter-spacing: -.01em; color: var(--tt); background: var(--pill); white-space: nowrap; }
-.live i { width: 6px; height: 6px; border-radius: 50%; background: var(--tt); }
-.live[data-s="open"] { color: var(--ac-soft); background: var(--ac-dim); }
-.live[data-s="open"] i { background: var(--ac); animation: pulse 2.5s ease-in-out infinite; }
-.live[data-s="down"] i { background: var(--bad); }
 @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: .35; } }
 .iconbtn { width: 28px; padding: 0; }
 .iconbtn svg { width: 14px; height: 14px; }
