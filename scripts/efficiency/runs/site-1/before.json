@@ -1,0 +1,1410 @@
+{
+ "span": "2026-10-10T19:20:36.000Z to 2026-10-10T20:47:48.000Z",
+ "attempts": [
+  {
+   "agent": "63JTud",
+   "model": "claude-opus-5-5",
+   "started": 1791660036000,
+   "ended": 1791660195000,
+   "cap": 0.5,
+   "turns": 4,
+   "calls": 4,
+   "evals": 0,
+   "wrapUp": true,
+   "usd": 0.322,
+   "sandbox_s": 0,
+   "end": "cap_reached",
+   "turnUsd": [
+    0.0185,
+    0.0342,
+    0.1143,
+    0.322
+   ],
+   "committed": false,
+   "verdict": null
+  },
+  {
+   "agent": "5iCWSo",
+   "model": "claude-opus-5-5",
+   "started": 1791660036000,
+   "ended": 1791660198000,
+   "cap": 0.5,
+   "turns": 3,
+   "calls": 3,
+   "evals": 0,
+   "wrapUp": true,
+   "usd": 0.2677,
+   "sandbox_s": 0,
+   "end": "cap_reached",
+   "turnUsd": [
+    0.003,
+    0.0228,
+    0.2677
+   ],
+   "committed": false,
+   "verdict": null
+  },
+  {
+   "agent": "BFPxda",
+   "model": "claude-opus-5-5",
+   "started": 1791660036000,
+   "ended": 1791660469000,
+   "cap": 0.5,
+   "turns": 5,
+   "calls": 6,
+   "evals": 1,
+   "wrapUp": true,
+   "usd": 0.4629,
+   "sandbox_s": 324,
+   "end": "gave_up",
+   "turnUsd": [
+    0.0204,
+    0.0362,
+    0.1404,
+    0.2802,
+    0.3155
+   ],
+   "detail": "Change to merge() (scan via rarer token, copy only on matches) kept outputs identical but made train_ir 3.6% worse (ratio 1.0360); the extra count() and branchi",
+   "committed": false,
+   "verdict": null
+  },
+  {
+   "agent": "6C8N2z",
+   "model": "claude-opus-5-5",
+   "started": 1791660036000,
+   "ended": 1791660483000,
+   "cap": 0.5,
+   "turns": 5,
+   "calls": 5,
+   "evals": 1,
+   "wrapUp": true,
+   "usd": 0.3256,
+   "sandbox_s": 309,
+   "end": "candidate",
+   "turnUsd": [
+    0.0144,
+    0.0295,
+    0.1038,
+    0.2686,
+    0.3121
+   ],
+   "committed": true,
+   "verdict": "accepted"
+  },
+  {
+   "agent": "CLy55w",
+   "model": "claude-opus-5-5",
+   "started": 1791660037000,
+   "ended": 1791660322000,
+   "cap": 0.5,
+   "turns": 3,
+   "calls": 3,
+   "evals": 1,
+   "wrapUp": true,
+   "usd": 0.2557,
+   "sandbox_s": 147,
+   "end": "candidate",
+   "turnUsd": [
+    0.0029,
+    0.0212,
+    0.2033
+   ],
+   "committed": true,
+   "verdict": "accepted"
+  },
+  {
+   "agent": "63JTud",
+   "model": "claude-opus-5-5",
+   "started": 1791660230000,
+   "ended": 1791660404000,
+   "cap": 0.5,
+   "turns": 4,
+   "calls": 4,
+   "evals": 0,
+   "wrapUp": true,
+   "usd": 0.3528,
+   "sandbox_s": 0,
+   "end": "cap_reached",
+   "turnUsd": [
+    0.0058,
+    0.0218,
+    0.1535,
+    0.3528
+   ],
+   "committed": false,
+   "verdict": null
+  },
+  {
+   "agent": "5iCWSo",
+   "model": "claude-opus-5-5",
+   "started": 1791660230000,
+   "ended": 1791660462000,
+   "cap": 0.5,
+   "turns": 6,
+   "calls": 6,
+   "evals": 1,
+   "wrapUp": false,
+   "usd": 0.2661,
+   "sandbox_s": 129,
+   "end": "candidate",
+   "turnUsd": [
+    0.0194,
+    0.0395,
+    0.077,
+    0.174,
+    0.2352,
+    0.2525
+   ],
+   "committed": true,
+   "verdict": "stale_conflict"
+  },
+  {
+   "agent": "CLy55w",
+   "model": "claude-opus-5-5",
+   "started": 1791660355000,
+   "ended": 1791660639000,
+   "cap": 0.5,
+   "turns": 5,
+   "calls": 5,
+   "evals": 1,
+   "wrapUp": true,
+   "usd": 0.3735,
+   "sandbox_s": 113,
+   "end": "candidate",
+   "turnUsd": [
+    0.0191,
+    0.0378,
+    0.1693,
+    0.3271,
+    0.3609
+   ],
+   "committed": true,
+   "verdict": "stale_conflict"
+  },
+  {
+   "agent": "63JTud",
+   "model": "claude-opus-5-5",
+   "started": 1791660441000,
+   "ended": 1791660594000,
+   "cap": 0.5,
+   "turns": 4,
+   "calls": 4,
+   "evals": 0,
+   "wrapUp": true,
+   "usd": 0.3147,
+   "sandbox_s": 0,
+   "end": "cap_reached",
+   "turnUsd": [
+    0.0068,
+    0.023,
+    0.0927,
+    0.3147
+   ],
+   "committed": false,
+   "verdict": null
+  },
+  {
+   "agent": "5iCWSo",
+   "model": "claude-opus-5-5",
+   "started": 1791660499000,
+   "ended": 1791660652000,
+   "cap": 0.5,
+   "turns": 3,
+   "calls": 3,
+   "evals": 0,
+   "wrapUp": true,
+   "usd": 0.2848,
+   "sandbox_s": 0,
+   "end": "cap_reached",
+   "turnUsd": [
+    0.003,
+    0.0231,
+    0.2848
+   ],
+   "committed": false,
+   "verdict": null
+  },
+  {
+   "agent": "BFPxda",
+   "model": "claude-opus-5-5",
+   "started": 1791660507000,
+   "ended": 1791660881000,
+   "cap": 0.5,
+   "turns": 5,
+   "calls": 6,
+   "evals": 1,
+   "wrapUp": true,
+   "usd": 0.3171,
+   "sandbox_s": 277,
+   "end": "gave_up",
+   "turnUsd": [
+    0.0208,
+    0.0367,
+    0.1486,
+    0.2747,
+    0.3057
+   ],
+   "detail": "The regex-train stats change (pair counts tallied in C with _count_elements for weight-1 chunks and applied once per distinct pair) kept outputs identical and p",
+   "committed": false,
+   "verdict": null
+  },
+  {
+   "agent": "6C8N2z",
+   "model": "claude-opus-5-5",
+   "started": 1791660516000,
+   "ended": 1791660947000,
+   "cap": 0.5,
+   "turns": 5,
+   "calls": 5,
+   "evals": 1,
+   "wrapUp": true,
+   "usd": 0.3037,
+   "sandbox_s": 287,
+   "end": "candidate",
+   "turnUsd": [
+    0.0029,
+    0.007,
+    0.063,
+    0.2432,
+    0.2897
+   ],
+   "committed": true,
+   "verdict": "stale_conflict"
+  },
+  {
+   "agent": "63JTud",
+   "model": "claude-opus-5-5",
+   "started": 1791660627000,
+   "ended": 1791660777000,
+   "cap": 0.5,
+   "turns": 4,
+   "calls": 4,
+   "evals": 0,
+   "wrapUp": true,
+   "usd": 0.2983,
+   "sandbox_s": 0,
+   "end": "cap_reached",
+   "turnUsd": [
+    0.0057,
+    0.0216,
+    0.0923,
+    0.2983
+   ],
+   "committed": false,
+   "verdict": null
+  },
+  {
+   "agent": "CLy55w",
+   "model": "claude-opus-5-5",
+   "started": 1791660675000,
+   "ended": 1791660911000,
+   "cap": 0.5,
+   "turns": 6,
+   "calls": 6,
+   "evals": 1,
+   "wrapUp": false,
+   "usd": 0.2824,
+   "sandbox_s": 129,
+   "end": "candidate",
+   "turnUsd": [
+    0.0191,
+    0.0388,
+    0.1558,
+    0.2165,
+    0.2554,
+    0.2697
+   ],
+   "committed": true,
+   "verdict": "accepted"
+  },
+  {
+   "agent": "5iCWSo",
+   "model": "claude-opus-5-5",
+   "started": 1791660684000,
+   "ended": 1791660941000,
+   "cap": 0.5,
+   "turns": 4,
+   "calls": 4,
+   "evals": 1,
+   "wrapUp": true,
+   "usd": 0.3049,
+   "sandbox_s": 126,
+   "end": "candidate",
+   "turnUsd": [
+    0.0204,
+    0.186,
+    0.2765,
+    0.2944
+   ],
+   "committed": true,
+   "verdict": "stale"
+  },
+  {
+   "agent": "63JTud",
+   "model": "claude-opus-5-5",
+   "started": 1791660814000,
+   "ended": 1791660943000,
+   "cap": 0.5,
+   "turns": 4,
+   "calls": 5,
+   "evals": 0,
+   "wrapUp": true,
+   "usd": 0.3065,
+   "sandbox_s": 0,
+   "end": "gave_up",
+   "turnUsd": [
+    0.0056,
+    0.0215,
+    0.0948,
+    0.2541
+   ],
+   "detail": "No evaluated change yet, and the remaining budget won't cover edit, evaluate and submit. Idea for a follow-up agent: in RegexTokenizer.train (and BasicTokenizer",
+   "committed": false,
+   "verdict": null
+  },
+  {
+   "agent": "BFPxda",
+   "model": "claude-opus-5-5",
+   "started": 1791660912000,
+   "ended": 1791661009000,
+   "cap": 0.5,
+   "turns": 3,
+   "calls": 4,
+   "evals": 0,
+   "wrapUp": true,
+   "usd": 0.2478,
+   "sandbox_s": 0,
+   "end": "gave_up",
+   "turnUsd": [
+    0.0054,
+    0.0213,
+    0.2067
+   ],
+   "detail": "Budget nearly spent and no change made or evaluated. The hot paths (merge, apply_merges, the heap encoder and incremental training stats) are already heavily op",
+   "committed": false,
+   "verdict": null
+  },
+  {
+   "agent": "5iCWSo",
+   "model": "claude-opus-5-5",
+   "started": 1791660976000,
+   "ended": 1791661176000,
+   "cap": 0.5,
+   "turns": 5,
+   "calls": 5,
+   "evals": 1,
+   "wrapUp": false,
+   "usd": 0.1863,
+   "sandbox_s": 114,
+   "end": "candidate",
+   "turnUsd": [
+    0.004,
+    0.0346,
+    0.0954,
+    0.1575,
+    0.1736
+   ],
+   "committed": true,
+   "verdict": "stale_conflict"
+  },
+  {
+   "agent": "63JTud",
+   "model": "claude-opus-5-5",
+   "started": 1791660976000,
+   "ended": 1791661395000,
+   "cap": 0.5,
+   "turns": 5,
+   "calls": 5,
+   "evals": 1,
+   "wrapUp": true,
+   "usd": 0.3339,
+   "sandbox_s": 291,
+   "end": "candidate",
+   "turnUsd": [
+    0.0052,
+    0.021,
+    0.1012,
+    0.2742,
+    0.3207
+   ],
+   "committed": true,
+   "verdict": "no_improvement"
+  },
+  {
+   "agent": "6C8N2z",
+   "model": "claude-opus-5-5",
+   "started": 1791660986000,
+   "ended": 1791661169000,
+   "cap": 0.5,
+   "turns": 5,
+   "calls": 5,
+   "evals": 0,
+   "wrapUp": true,
+   "usd": 0.3066,
+   "sandbox_s": 0,
+   "end": "cap_reached",
+   "turnUsd": [
+    0.0029,
+    0.007,
+    0.0198,
+    0.077,
+    0.3066
+   ],
+   "committed": false,
+   "verdict": null
+  },
+  {
+   "agent": "BFPxda",
+   "model": "claude-opus-5-5",
+   "started": 1791661044000,
+   "ended": 1791661604000,
+   "cap": 0.5,
+   "turns": 8,
+   "calls": 8,
+   "evals": 2,
+   "wrapUp": true,
+   "usd": 0.3947,
+   "sandbox_s": 421,
+   "end": "cap_reached",
+   "turnUsd": [
+    0.0061,
+    0.0222,
+    0.153,
+    0.1768,
+    0.2326,
+    0.2534,
+    0.2643,
+    0.3947
+   ],
+   "committed": false,
+   "verdict": null
+  },
+  {
+   "agent": "6C8N2z",
+   "model": "claude-opus-5-5",
+   "started": 1791661204000,
+   "ended": 1791661498000,
+   "cap": 0.5,
+   "turns": 5,
+   "calls": 5,
+   "evals": 1,
+   "wrapUp": true,
+   "usd": 0.3027,
+   "sandbox_s": 196,
+   "end": "candidate",
+   "turnUsd": [
+    0.0143,
+    0.0294,
+    0.1023,
+    0.2506,
+    0.2905
+   ],
+   "committed": true,
+   "verdict": "accepted"
+  },
+  {
+   "agent": "5iCWSo",
+   "model": "claude-opus-5-5",
+   "started": 1791661214000,
+   "ended": 1791661428000,
+   "cap": 0.5,
+   "turns": 8,
+   "calls": 8,
+   "evals": 1,
+   "wrapUp": false,
+   "usd": 0.2595,
+   "sandbox_s": 105,
+   "end": "candidate",
+   "turnUsd": [
+    0.0029,
+    0.0221,
+    0.0827,
+    0.1425,
+    0.1794,
+    0.2127,
+    0.2313,
+    0.2464
+   ],
+   "committed": true,
+   "verdict": "stale_conflict"
+  },
+  {
+   "agent": "CLy55w",
+   "model": "claude-opus-5-5",
+   "started": 1791661347000,
+   "ended": 1791661516000,
+   "cap": 0.5,
+   "turns": 5,
+   "calls": 5,
+   "evals": 1,
+   "wrapUp": false,
+   "usd": 0.2583,
+   "sandbox_s": 57,
+   "end": "candidate",
+   "turnUsd": [
+    0.0193,
+    0.0384,
+    0.1157,
+    0.2159,
+    0.2444
+   ],
+   "committed": true,
+   "verdict": "stale_conflict"
+  },
+  {
+   "agent": "63JTud",
+   "model": "claude-opus-5-5",
+   "started": 1791664100000,
+   "ended": 1791664233000,
+   "cap": 0.5,
+   "turns": 4,
+   "calls": 5,
+   "evals": 0,
+   "wrapUp": true,
+   "usd": 0.3599,
+   "sandbox_s": 0,
+   "end": "gave_up",
+   "turnUsd": [
+    0.0201,
+    0.0359,
+    0.1698,
+    0.3188
+   ],
+   "detail": "Out of budget before making a change. After 16 earlier generations the hot paths in base.py, basic.py and regex.py are already heavily optimised (incremental pa",
+   "usage": {
+    "calls": 5,
+    "input_tokens": 14,
+    "output_tokens": 10007,
+    "cache_read_tokens": 50462,
+    "cache_write_tokens": 29923,
+    "usd": 0.3599
+   },
+   "committed": false,
+   "verdict": null
+  },
+  {
+   "agent": "BFPxda",
+   "model": "claude-opus-5-5",
+   "started": 1791664100000,
+   "ended": 1791664286000,
+   "cap": 0.5,
+   "turns": 4,
+   "calls": 4,
+   "evals": 0,
+   "wrapUp": true,
+   "usd": 0.41,
+   "sandbox_s": 0,
+   "end": "cap_reached",
+   "turnUsd": [
+    0.0207,
+    0.0366,
+    0.1119,
+    0.41
+   ],
+   "usage": {
+    "calls": 4,
+    "input_tokens": 10,
+    "output_tokens": 14892,
+    "cache_read_tokens": 26600,
+    "cache_write_tokens": 21369,
+    "usd": 0.41
+   },
+   "committed": false,
+   "verdict": null
+  },
+  {
+   "agent": "6C8N2z",
+   "model": "claude-opus-5-5",
+   "started": 1791664100000,
+   "ended": 1791664430000,
+   "cap": 0.5,
+   "turns": 5,
+   "calls": 6,
+   "evals": 1,
+   "wrapUp": true,
+   "usd": 0.2553,
+   "sandbox_s": 234,
+   "end": "gave_up",
+   "turnUsd": [
+    0.0143,
+    0.0294,
+    0.1999,
+    0.2382,
+    0.246
+   ],
+   "detail": "I tried one small change: counting chunk frequencies in RegexTokenizer.train with the C helper _count_elements. The outputs stayed identical, but train_ir got a",
+   "usage": {
+    "calls": 6,
+    "input_tokens": 16,
+    "output_tokens": 6282,
+    "cache_read_tokens": 69497,
+    "cache_write_tokens": 23144,
+    "usd": 0.2553
+   },
+   "committed": false,
+   "verdict": null
+  },
+  {
+   "agent": "63JTud",
+   "model": "claude-opus-5-5",
+   "started": 1791664267000,
+   "ended": 1791664607000,
+   "cap": 0.5,
+   "turns": 5,
+   "calls": 6,
+   "evals": 1,
+   "wrapUp": true,
+   "usd": 0.3178,
+   "sandbox_s": 232,
+   "end": "gave_up",
+   "turnUsd": [
+    0.0212,
+    0.0372,
+    0.1185,
+    0.2689,
+    0.3077
+   ],
+   "detail": "My one change, moving the per-pair stats/where updates in RegexTokenizer.train into C, kept outputs identical but only cut train_ir by 0.46% (ratio 0.9954). The",
+   "usage": {
+    "calls": 6,
+    "input_tokens": 16,
+    "output_tokens": 8015,
+    "cache_read_tokens": 76525,
+    "cache_write_tokens": 28420,
+    "usd": 0.3178
+   },
+   "committed": false,
+   "verdict": null
+  },
+  {
+   "agent": "CLy55w",
+   "model": "claude-opus-5-5",
+   "started": 1791664283000,
+   "ended": 1791664552000,
+   "cap": 0.5,
+   "turns": 4,
+   "calls": 4,
+   "evals": 0,
+   "wrapUp": true,
+   "usd": 0.5134,
+   "sandbox_s": 0,
+   "end": "cap_reached",
+   "turnUsd": [
+    0.0191,
+    0.0294,
+    0.1252,
+    0.5134
+   ],
+   "usage": {
+    "calls": 4,
+    "input_tokens": 10,
+    "output_tokens": 22372,
+    "cache_read_tokens": 16703,
+    "cache_write_tokens": 12518,
+    "usd": 0.5134
+   },
+   "committed": false,
+   "verdict": null
+  },
+  {
+   "agent": "BFPxda",
+   "model": "claude-opus-5-5",
+   "started": 1791664319000,
+   "ended": 1791664519000,
+   "cap": 0.5,
+   "turns": 4,
+   "calls": 4,
+   "evals": 0,
+   "wrapUp": true,
+   "usd": 0.4088,
+   "sandbox_s": 0,
+   "end": "cap_reached",
+   "turnUsd": [
+    0.0054,
+    0.0213,
+    0.0996,
+    0.4088
+   ],
+   "usage": {
+    "calls": 4,
+    "input_tokens": 10,
+    "output_tokens": 15556,
+    "cache_read_tokens": 29781,
+    "cache_write_tokens": 18332,
+    "usd": 0.4088
+   },
+   "committed": false,
+   "verdict": null
+  },
+  {
+   "agent": "6C8N2z",
+   "model": "claude-opus-5-5",
+   "started": 1791664466000,
+   "ended": 1791664603000,
+   "cap": 0.5,
+   "turns": 5,
+   "calls": 6,
+   "evals": 0,
+   "wrapUp": true,
+   "usd": 0.3173,
+   "sandbox_s": 0,
+   "end": "gave_up",
+   "turnUsd": [
+    0.0028,
+    0.0069,
+    0.0167,
+    0.0658,
+    0.2442
+   ],
+   "detail": "Out of budget before writing or evaluating a change; nothing was submitted. The code is already heavily optimised. Best remaining lead (an estimate, not measure",
+   "usage": {
+    "calls": 6,
+    "input_tokens": 16,
+    "output_tokens": 11033,
+    "cache_read_tokens": 82865,
+    "cache_write_tokens": 15991,
+    "usd": 0.3173
+   },
+   "committed": false,
+   "verdict": null
+  },
+  {
+   "agent": "BFPxda",
+   "model": "claude-opus-5-5",
+   "started": 1791664554000,
+   "ended": 1791664977000,
+   "cap": 0.5,
+   "turns": 5,
+   "calls": 6,
+   "evals": 1,
+   "wrapUp": true,
+   "usd": 0.3405,
+   "sandbox_s": 300,
+   "end": "gave_up",
+   "turnUsd": [
+    0.0064,
+    0.0235,
+    0.0915,
+    0.2794,
+    0.3297
+   ],
+   "detail": "My change made train_ir worse instead of better: 1.0115 of the parent, where 0.99 or lower was needed. Outputs were identical and the guard passed. The change r",
+   "usage": {
+    "calls": 6,
+    "input_tokens": 16,
+    "output_tokens": 9466,
+    "cache_read_tokens": 81372,
+    "cache_write_tokens": 26966,
+    "usd": 0.3405
+   },
+   "committed": false,
+   "verdict": null
+  },
+  {
+   "agent": "CLy55w",
+   "model": "claude-opus-5-5",
+   "started": 1791664585000,
+   "ended": 1791664928000,
+   "cap": 0.5,
+   "turns": 7,
+   "calls": 7,
+   "evals": 1,
+   "wrapUp": true,
+   "usd": 0.4481,
+   "sandbox_s": 134,
+   "end": "cap_reached",
+   "turnUsd": [
+    0.0029,
+    0.0226,
+    0.1663,
+    0.206,
+    0.2336,
+    0.2876,
+    0.4481
+   ],
+   "usage": {
+    "calls": 7,
+    "input_tokens": 16,
+    "output_tokens": 17173,
+    "cache_read_tokens": 69794,
+    "cache_write_tokens": 18125,
+    "usd": 0.4481
+   },
+   "committed": false,
+   "verdict": null
+  },
+  {
+   "agent": "6C8N2z",
+   "model": "claude-opus-5-5",
+   "started": 1791664637000,
+   "ended": 1791664820000,
+   "cap": 0.5,
+   "turns": 4,
+   "calls": 4,
+   "evals": 0,
+   "wrapUp": true,
+   "usd": 0.3928,
+   "sandbox_s": 0,
+   "end": "cap_reached",
+   "turnUsd": [
+    0.0029,
+    0.018,
+    0.108,
+    0.3928
+   ],
+   "usage": {
+    "calls": 4,
+    "input_tokens": 10,
+    "output_tokens": 14672,
+    "cache_read_tokens": 26389,
+    "cache_write_tokens": 18811,
+    "usd": 0.3928
+   },
+   "committed": false,
+   "verdict": null
+  },
+  {
+   "agent": "63JTud",
+   "model": "claude-opus-5-5",
+   "started": 1791664637000,
+   "ended": 1791665031000,
+   "cap": 0.5,
+   "turns": 5,
+   "calls": 5,
+   "evals": 1,
+   "wrapUp": false,
+   "usd": 0.2796,
+   "sandbox_s": 292,
+   "end": "candidate",
+   "turnUsd": [
+    0.0048,
+    0.0205,
+    0.1231,
+    0.2341,
+    0.2661
+   ],
+   "usage": {
+    "calls": 6,
+    "input_tokens": 14,
+    "output_tokens": 7575,
+    "cache_read_tokens": 75861,
+    "cache_write_tokens": 22566,
+    "usd": 0.2796
+   },
+   "committed": true,
+   "verdict": "accepted"
+  },
+  {
+   "agent": "5iCWSo",
+   "model": "claude-opus-5-5",
+   "started": 1791664677000,
+   "ended": 1791664803000,
+   "cap": 0.5,
+   "turns": 4,
+   "calls": 5,
+   "evals": 0,
+   "wrapUp": true,
+   "usd": 0.289,
+   "sandbox_s": 0,
+   "end": "gave_up",
+   "turnUsd": [
+    0.0194,
+    0.0396,
+    0.1143,
+    0.2482
+   ],
+   "detail": "I ran out of budget before I had a change I could measure. I read base58/__init__.py, lineage_bench.py and lineage_equiv.py, but I made no edits and ran no eval",
+   "usage": {
+    "calls": 5,
+    "input_tokens": 14,
+    "output_tokens": 8648,
+    "cache_read_tokens": 35276,
+    "cache_write_tokens": 21784,
+    "usd": 0.289
+   },
+   "committed": false,
+   "verdict": null
+  },
+  {
+   "agent": "5iCWSo",
+   "model": "claude-opus-5-5",
+   "started": 1791664834000,
+   "ended": 1791665062000,
+   "cap": 0.5,
+   "turns": 4,
+   "calls": 4,
+   "evals": 0,
+   "wrapUp": true,
+   "usd": 0.4636,
+   "sandbox_s": 0,
+   "end": "cap_reached",
+   "turnUsd": [
+    0.003,
+    0.0232,
+    0.1534,
+    0.4636
+   ],
+   "usage": {
+    "calls": 4,
+    "input_tokens": 10,
+    "output_tokens": 19485,
+    "cache_read_tokens": 22478,
+    "cache_write_tokens": 13863,
+    "usd": 0.4636
+   },
+   "committed": false,
+   "verdict": null
+  },
+  {
+   "agent": "6C8N2z",
+   "model": "claude-opus-5-5",
+   "started": 1791664856000,
+   "ended": 1791665217000,
+   "cap": 0.5,
+   "turns": 6,
+   "calls": 7,
+   "evals": 1,
+   "wrapUp": true,
+   "usd": 0.2859,
+   "sandbox_s": 243,
+   "end": "gave_up",
+   "turnUsd": [
+    0.0028,
+    0.0069,
+    0.0239,
+    0.0751,
+    0.2338,
+    0.2748
+   ],
+   "detail": "Calling the compiled split pattern directly and caching the special-token split regex kept outputs identical, but it only reduced encode_ir by 0.07% (0.9993). T",
+   "usage": {
+    "calls": 7,
+    "input_tokens": 18,
+    "output_tokens": 9426,
+    "cache_read_tokens": 117376,
+    "cache_write_tokens": 14774,
+    "usd": 0.2859
+   },
+   "committed": false,
+   "verdict": null
+  },
+  {
+   "agent": "CLy55w",
+   "model": "claude-opus-5-5",
+   "started": 1791664966000,
+   "ended": 1791665229000,
+   "cap": 0.5,
+   "turns": 4,
+   "calls": 4,
+   "evals": 0,
+   "wrapUp": true,
+   "usd": 0.4881,
+   "sandbox_s": 0,
+   "end": "cap_reached",
+   "turnUsd": [
+    0.0191,
+    0.0294,
+    0.1275,
+    0.4881
+   ],
+   "usage": {
+    "calls": 4,
+    "input_tokens": 10,
+    "output_tokens": 21049,
+    "cache_read_tokens": 16849,
+    "cache_write_tokens": 12751,
+    "usd": 0.4881
+   },
+   "committed": false,
+   "verdict": null
+  },
+  {
+   "agent": "BFPxda",
+   "model": "claude-opus-5-5",
+   "started": 1791665009000,
+   "ended": 1791665514000,
+   "cap": 0.5,
+   "turns": 7,
+   "calls": 7,
+   "evals": 2,
+   "wrapUp": false,
+   "usd": 0.349,
+   "sandbox_s": 376,
+   "end": "candidate",
+   "turnUsd": [
+    0.0051,
+    0.021,
+    0.1085,
+    0.1935,
+    0.2181,
+    0.3012,
+    0.3337
+   ],
+   "usage": {
+    "calls": 8,
+    "input_tokens": 18,
+    "output_tokens": 9897,
+    "cache_read_tokens": 125078,
+    "cache_write_tokens": 25194,
+    "usd": 0.349
+   },
+   "committed": true,
+   "verdict": "stale_conflict"
+  },
+  {
+   "agent": "63JTud",
+   "model": "claude-opus-5-5",
+   "started": 1791665067000,
+   "ended": 1791665269000,
+   "cap": 0.5,
+   "turns": 5,
+   "calls": 5,
+   "evals": 0,
+   "wrapUp": true,
+   "usd": 0.4624,
+   "sandbox_s": 0,
+   "end": "cap_reached",
+   "turnUsd": [
+    0.0051,
+    0.021,
+    0.0901,
+    0.2195,
+    0.4624
+   ],
+   "usage": {
+    "calls": 5,
+    "input_tokens": 12,
+    "output_tokens": 16732,
+    "cache_read_tokens": 50818,
+    "cache_write_tokens": 23516,
+    "usd": 0.4624
+   },
+   "committed": false,
+   "verdict": null
+  },
+  {
+   "agent": "5iCWSo",
+   "model": "claude-opus-5-5",
+   "started": 1791665097000,
+   "ended": 1791665337000,
+   "cap": 0.5,
+   "turns": 4,
+   "calls": 4,
+   "evals": 1,
+   "wrapUp": true,
+   "usd": 0.2944,
+   "sandbox_s": 104,
+   "end": "candidate",
+   "turnUsd": [
+    0.003,
+    0.0059,
+    0.1882,
+    0.2763
+   ],
+   "usage": {
+    "calls": 5,
+    "input_tokens": 14,
+    "output_tokens": 10136,
+    "cache_read_tokens": 48360,
+    "cache_write_tokens": 16393,
+    "usd": 0.2944
+   },
+   "committed": true,
+   "verdict": "accepted"
+  },
+  {
+   "agent": "6C8N2z",
+   "model": "claude-opus-5-5",
+   "started": 1791665258000,
+   "ended": 1791665507000,
+   "cap": 0.5,
+   "turns": 4,
+   "calls": 4,
+   "evals": 1,
+   "wrapUp": false,
+   "usd": 0.2363,
+   "sandbox_s": 126,
+   "end": "candidate",
+   "turnUsd": [
+    0.0028,
+    0.0069,
+    0.1633,
+    0.2208
+   ],
+   "usage": {
+    "calls": 5,
+    "input_tokens": 12,
+    "output_tokens": 9017,
+    "cache_read_tokens": 65461,
+    "cache_write_tokens": 8568,
+    "usd": 0.2363
+   },
+   "committed": true,
+   "verdict": "stale_conflict"
+  },
+  {
+   "agent": "CLy55w",
+   "model": "claude-opus-5-5",
+   "started": 1791665268000,
+   "ended": 1791665450000,
+   "cap": 0.5,
+   "turns": 2,
+   "calls": 2,
+   "evals": 0,
+   "wrapUp": true,
+   "usd": 0.3111,
+   "sandbox_s": 0,
+   "end": "cap_reached",
+   "turnUsd": [
+    0.0043,
+    0.3111
+   ],
+   "usage": {
+    "calls": 2,
+    "input_tokens": 6,
+    "output_tokens": 14184,
+    "cache_read_tokens": 6730,
+    "cache_write_tokens": 5202,
+    "usd": 0.3111
+   },
+   "committed": false,
+   "verdict": null
+  }
+ ],
+ "byAgent": [
+  {
+   "group": "5iCWSo claude-opus-5-5",
+   "attempts": 9,
+   "usd_total": 2.6163,
+   "usd_per_attempt": 0.29069999999999996,
+   "candidates": 5,
+   "accepted": 1,
+   "rejected": {
+    "stale_conflict": 3,
+    "stale": 1
+   },
+   "attempts_per_accepted": 9,
+   "usd_per_accepted": 2.6163,
+   "minutes_per_accepted": 30.200000000000003,
+   "turns_median": 4,
+   "minutes_median": 3.566666666666667,
+   "sandbox_s_median": 104,
+   "evals_median": 1,
+   "nothing": {
+    "cap_reached": 3,
+    "gave_up": 1
+   },
+   "usd_nothing": 1.3051,
+   "tokens": {
+    "attempts": 5,
+    "in_per_turn": 2.4375,
+    "out_per_turn": 1300.625,
+    "cache_read_per_turn": 10639.25,
+    "cache_write_per_turn": 2565.03125,
+    "cache_hit": 0.8055937437147286,
+    "out_usd_share": 0.6348343459108935
+   }
+  },
+  {
+   "group": "63JTud claude-opus-5-5",
+   "attempts": 10,
+   "usd_total": 3.3479,
+   "usd_per_attempt": 0.33479000000000003,
+   "candidates": 2,
+   "accepted": 1,
+   "rejected": {
+    "no_improvement": 1
+   },
+   "attempts_per_accepted": 10,
+   "usd_per_accepted": 3.3479,
+   "minutes_per_accepted": 37.550000000000004,
+   "turns_median": 5,
+   "minutes_median": 2.775,
+   "sandbox_s_median": 0,
+   "evals_median": 0,
+   "nothing": {
+    "cap_reached": 5,
+    "gave_up": 3
+   },
+   "usd_nothing": 2.7344000000000004,
+   "tokens": {
+    "attempts": 4,
+    "in_per_turn": 2.5454545454545454,
+    "out_per_turn": 1924.0454545454545,
+    "cache_read_per_turn": 11530.272727272728,
+    "cache_write_per_turn": 4746.590909090909,
+    "cache_hit": 0.7082734184566672,
+    "out_usd_share": 0.596324956739709
+   }
+  },
+  {
+   "group": "6C8N2z claude-opus-5-5",
+   "attempts": 9,
+   "usd_total": 2.7261999999999995,
+   "usd_per_attempt": 0.3029111111111111,
+   "candidates": 4,
+   "accepted": 2,
+   "rejected": {
+    "stale_conflict": 2
+   },
+   "attempts_per_accepted": 4.5,
+   "usd_per_accepted": 1.3630999999999998,
+   "minutes_per_accepted": 21.791666666666664,
+   "turns_median": 5,
+   "minutes_median": 4.9,
+   "sandbox_s_median": 196,
+   "evals_median": 1,
+   "nothing": {
+    "cap_reached": 2,
+    "gave_up": 3
+   },
+   "usd_nothing": 1.5579,
+   "tokens": {
+    "attempts": 5,
+    "in_per_turn": 2.5714285714285716,
+    "out_per_turn": 1801.0714285714287,
+    "cache_read_per_turn": 12913.857142857143,
+    "cache_write_per_turn": 2903.1428571428573,
+    "cache_hit": 0.8163215546745893,
+    "out_usd_share": 0.6779840574932632
+   }
+  },
+  {
+   "group": "BFPxda claude-opus-5-5",
+   "attempts": 8,
+   "usd_total": 2.9307999999999996,
+   "usd_per_attempt": 0.36634999999999995,
+   "candidates": 1,
+   "accepted": 0,
+   "rejected": {
+    "stale_conflict": 1
+   },
+   "attempts_per_accepted": null,
+   "usd_per_accepted": null,
+   "minutes_per_accepted": null,
+   "turns_median": 6,
+   "minutes_median": 6.641666666666667,
+   "sandbox_s_median": 288.5,
+   "evals_median": 1,
+   "nothing": {
+    "gave_up": 4,
+    "cap_reached": 3
+   },
+   "usd_nothing": 2.5818,
+   "tokens": {
+    "attempts": 4,
+    "in_per_turn": 2.4545454545454546,
+    "out_per_turn": 2264.1363636363635,
+    "cache_read_per_turn": 11946.863636363636,
+    "cache_write_per_turn": 4175.5,
+    "cache_hit": 0.7408991221888337,
+    "out_usd_share": 0.6604887916732083
+   }
+  },
+  {
+   "group": "CLy55w claude-opus-5-5",
+   "attempts": 8,
+   "usd_total": 2.9306000000000005,
+   "usd_per_attempt": 0.36632500000000007,
+   "candidates": 4,
+   "accepted": 2,
+   "rejected": {
+    "stale_conflict": 2
+   },
+   "attempts_per_accepted": 4,
+   "usd_per_accepted": 1.4653000000000003,
+   "minutes_per_accepted": 16.925,
+   "turns_median": 4.5,
+   "minutes_median": 4.433333333333334,
+   "sandbox_s_median": 85,
+   "evals_median": 1,
+   "nothing": {
+    "cap_reached": 4
+   },
+   "usd_nothing": 1.7607,
+   "tokens": {
+    "attempts": 4,
+    "in_per_turn": 2.4705882352941178,
+    "out_per_turn": 4398.705882352941,
+    "cache_read_per_turn": 6475.058823529412,
+    "cache_write_per_turn": 2858.5882352941176,
+    "cache_hit": 0.693549403329259,
+    "out_usd_share": 0.8494009734181954
+   }
+  }
+ ],
+ "byModel": [
+  {
+   "group": "claude-opus-5-5",
+   "attempts": 44,
+   "usd_total": 14.551799999999997,
+   "usd_per_attempt": 0.33072272727272717,
+   "candidates": 16,
+   "accepted": 6,
+   "rejected": {
+    "stale_conflict": 8,
+    "stale": 1,
+    "no_improvement": 1
+   },
+   "pending": 0,
+   "attempts_per_accepted": 7.333333333333333,
+   "usd_per_accepted": 2.4252999999999996,
+   "minutes_per_accepted": 31.91388888888889,
+   "turns_median": 5,
+   "minutes_median": 3.9,
+   "sandbox_s_median": 104.5,
+   "evals_median": 1,
+   "nothing": {
+    "cap_reached": 17,
+    "gave_up": 11
+   },
+   "usd_nothing": 9.9399,
+   "tokens": {
+    "attempts": 20,
+    "in_per_turn": 2.5436893203883497,
+    "out_per_turn": 2481.7184466019417,
+    "cache_read_per_turn": 10624.029126213592,
+    "cache_write_per_turn": 3671.9417475728155,
+    "cache_hit": 0.7430162818189411,
+    "out_usd_share": 0.7077575283184553
+   }
+  }
+ ],
+ "all": [
+  {
+   "group": "all",
+   "attempts": 44,
+   "usd_total": 14.551799999999997,
+   "usd_per_attempt": 0.33072272727272717,
+   "candidates": 16,
+   "accepted": 6,
+   "rejected": {
+    "stale_conflict": 8,
+    "stale": 1,
+    "no_improvement": 1
+   },
+   "pending": 0,
+   "attempts_per_accepted": 7.333333333333333,
+   "usd_per_accepted": 2.4252999999999996,
+   "minutes_per_accepted": 31.91388888888889,
+   "turns_median": 5,
+   "minutes_median": 3.9,
+   "sandbox_s_median": 104.5,
+   "evals_median": 1,
+   "nothing": {
+    "cap_reached": 17,
+    "gave_up": 11
+   },
+   "usd_nothing": 9.9399,
+   "tokens": {
+    "attempts": 20,
+    "in_per_turn": 2.5436893203883497,
+    "out_per_turn": 2481.7184466019417,
+    "cache_read_per_turn": 10624.029126213592,
+    "cache_write_per_turn": 3671.9417475728155,
+    "cache_hit": 0.7430162818189411,
+    "out_usd_share": 0.7077575283184553
+   }
+  }
+ ]
+}

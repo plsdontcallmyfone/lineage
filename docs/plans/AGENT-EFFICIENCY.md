@@ -193,4 +193,37 @@ cannot conflict with itself); it is judged on the site by the stale conflict cou
 
 ## 4. Site after the change
 
-PENDING
+Deployed 2026-10-10: a000a8b at 20:57 UTC (effort medium, bounded cap mode, series), 3187bf4 at
+21:56 (plus the cache keep-alive at 240 s, commit 997e81b), 8101c82 at 22:48 (series falls back to the
+tip when the pending candidate no longer applies; before it, 20 attempts failed at once with no
+model spend and backed agents off for up to 8 minutes). Same script, same columns; verdicts read
+23:16 UTC. Before = the window just before the change (19:20 to 20:57, site settings effort high,
+projected; the 2026-10-09/10 baseline in section 1 is the longer reference).
+
+| window | attempts | USD/attempt | attempts per accepted | USD per accepted | attempt min per accepted | min/attempt (median) | ended with nothing | USD on nothing | rejected by replay | tokens per call in / out / read / write | cache hit | output share |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| section 1 baseline (22:23 to 19:14) | 49 | 0.3307 | 2.72 | 0.9002 | 10.4 | 3.6 | 23 (cap 22, gave up 1) | 9.3701 | 8/26 | 2 / 1181 / 11238 / 3208 | 78% | 56% |
+| before (19:20 to 20:57) | 44 | 0.3307 | 7.33 | 2.4253 | 31.9 | 3.9 | 28 (cap 17, gave up 11) | 9.9399 | 10/16 | 3 / 2482 / 10624 / 3672 | 74% | 71% |
+| after (20:57 to 23:10) | 62 | 0.2327 | 7.75 | 1.8036 | 30.3 | 3.8 | 37 (cap 12, gave up 5, failed 20 at 0 USD) | 7.0661 | 12/25, 5 pending | 2 / 1493 / 14179 / 4028 | 78% | 57% |
+| after, with keep-alive (21:57 to 23:10) | 52 | 0.2109 | 10.40 | 2.1937 | 35.0 | 3.1 | 32 (cap 8, gave up 4, failed 20 at 0 USD) | 5.0119 | 10/20, 5 pending | 3 / 1516 / 14979 / 3931 | 79% | 57% |
+
+Reading, against the window just before:
+
+- USD per attempt fell 30% (0.3307 to 0.2327) and output tokens per call 40% (2482 to 1493); USD per
+  accepted generation fell 26% (2.4253 to 1.8036). Cap stops fell from 17 of 44 attempts to 12 of 62.
+- The keep-alive fired 13 times (each a cache read of 18612 to 31484 tokens, 0 written, instead of a rewrite of that prefix);
+  the median self-evaluation time also fell (104.5 to 65.5 s) as fewer agents evaluated at once, so
+  the cache-write column alone does not isolate it.
+- The 20 `failed` attempts are the series gap fixed in 8101c82 (0 USD each, but they count as
+  attempts, which is why attempts per accepted did not improve). Stale conflicts did not go away:
+  7 in the after window, most between agents (four agents author on the same minbpe lineage),
+  which stacking on one's own candidate does not address.
+- The hours are not like for like: other lanes changed the site in the same hours (desktops required
+  for every attempt, a 30 USD global day cap on all spend, several deploys that restarted the
+  runtime), the before window was already much worse than the section 1 baseline, and 5 candidates
+  were still pending. The windows are 1.5 and 2.2 hours; a day of data is the real test
+  (`bun scripts/efficiency/baseline.ts --fetch <dir> --since 2026-10-10T22:48:00Z`).
+
+Follow-ups for the lanes that own them: reuse the parent's measurements across attempts
+(packages/sandbox), cross-agent conflicts on one lineage (intents or scheduling, runtime), and the
+OpenAI-compatible proposer's cap mode.
