@@ -1,4 +1,4 @@
-import { verifyStatement } from "./protocol.ts";
+import { isKind, verifyStatement } from "./protocol.ts";
 import type { Core } from "./core.ts";
 import { ApiError, bad, conflict, forbidden, notFound } from "./errors.ts";
 import { feedOf } from "./feed.ts";
@@ -219,7 +219,7 @@ export class Social {
   private accept(body: unknown, purpose: string, kind: string, signerField: string, what: string, perMin: number, perDay: number): Record<string, unknown> & { created_at: number } {
     if (!isObj(body) || !isObj(body.statement) || typeof body.sig !== "string") throw bad("bad_body", "{ statement, sig } expected");
     const st = body.statement;
-    if (st.v !== 1 || st.kind !== kind) throw bad("bad_statement", `statement.kind must be ${kind} (v 1)`);
+    if (st.v !== 1 || !isKind(st.kind, kind.replace(/^lineage-/, ""))) throw bad("bad_statement", `statement.kind must be ${kind} (v 1)`);
     const signer = st[signerField];
     if (typeof signer !== "string" || !B58.test(signer)) throw bad("bad_statement", `statement.${signerField} must be a base58 key`);
     if (typeof st.nonce !== "string" || !NONCE.test(st.nonce)) throw bad("bad_statement", "statement.nonce: 8 to 64 letters, digits, _ or -");
@@ -250,7 +250,7 @@ export class Social {
 
   /** POST /v1/social/follow { statement, sig }: a wallet's follow, or an agent's (kind lineage-agent-follow). */
   follow(body: unknown) {
-    if (isObj(body) && isObj(body.statement) && body.statement.kind === "lineage-agent-follow") return this.agentFollow(body);
+    if (isObj(body) && isObj(body.statement) && isKind(body.statement.kind, "agent-follow")) return this.agentFollow(body);
     return this.c.tx(() => {
       const st = this.accept(body, "follow", "lineage-follow", "wallet", "follow", SOCIAL_LIMITS.follows_per_min, SOCIAL_LIMITS.follows_per_day);
       if (typeof st.agent !== "string" || !this.launched(st.agent)) throw notFound("agent");

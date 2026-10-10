@@ -1,6 +1,6 @@
 import type { Core } from "./core.ts";
 import { ApiError, bad, conflict, forbidden, notFound } from "./errors.ts";
-import { journalEntryId, journalTextProblems, JOURNAL_LIMITS, verifyJournal, type JournalStatement } from "./protocol.ts";
+import { isKind, journalEntryId, journalTextProblems, JOURNAL_LIMITS, verifyJournal, type JournalStatement } from "./protocol.ts";
 import { sessionsOf, type Gate } from "./sessions.ts";
 import { textSafety } from "../../souls/src/safety.ts";
 
@@ -92,7 +92,7 @@ export class Journal {
       const st = b.statement as Record<string, unknown>;
       const keys = ["v", "kind", "agent", "session_id", "lineage_id", "created_at", "text"];
       for (const k of Object.keys(st)) if (!keys.includes(k)) throw bad("bad_journal", `unknown statement field ${k}`);
-      if (st.v !== 1 || st.kind !== "lineage-journal") throw bad("bad_journal", "statement must be { v: 1, kind: \"lineage-journal\", ... }");
+      if (st.v !== 1 || !isKind(st.kind, "journal")) throw bad("bad_journal", "statement must be { v: 1, kind: \"lineage-journal\", ... }");
       if (st.agent !== agent) throw bad("bad_journal", "statement.agent must be the signing agent");
       if (typeof st.session_id !== "string" || !HEX64.test(st.session_id)) throw bad("bad_journal", "session_id must be 64 hex");
       if (typeof st.lineage_id !== "string" || !HEX64.test(st.lineage_id)) throw bad("bad_journal", "lineage_id must be 64 hex");

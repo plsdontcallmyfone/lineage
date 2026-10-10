@@ -1,6 +1,6 @@
 import type { Core } from "./core.ts";
 import { bad, conflict, forbidden, notFound } from "./errors.ts";
-import { canonicalJson, canonicalUrl, repoId, verifyStatement } from "./protocol.ts";
+import { canonicalJson, canonicalUrl, isKind, repoId, verifyStatement } from "./protocol.ts";
 
 // Upstream policy (SPEC 16, plan W2): the opt-in registry, the PR bot's eligibility rule and
 // upstream-merge detection.
@@ -463,7 +463,7 @@ export class Upstream {
   async optIn(body: unknown) {
     const b = body as any;
     const st = b?.statement as OptInStatement;
-    if (!st || st.v !== 1 || st.kind !== "lineage-upstream-optin" || typeof st.repo !== "string" || typeof st.maintainer !== "string" || typeof st.key !== "string")
+    if (!st || st.v !== 1 || !isKind(st.kind, "upstream-optin") || typeof st.repo !== "string" || typeof st.maintainer !== "string" || typeof st.key !== "string")
       throw bad("bad_statement", "statement { v: 1, kind: lineage-upstream-optin, repo, maintainer, key, max_prs_per_week, kinds, contact, created_at } expected");
     if (!Number.isInteger(st.max_prs_per_week) || st.max_prs_per_week < 0 || st.max_prs_per_week > 100) throw bad("bad_statement", "max_prs_per_week must be an integer from 0 to 100");
     if (st.kinds !== null && (!Array.isArray(st.kinds) || !st.kinds.length || st.kinds.some((k) => !KINDS.includes(k)))) throw bad("bad_statement", `kinds must be null or a list of ${KINDS.join(", ")}`);

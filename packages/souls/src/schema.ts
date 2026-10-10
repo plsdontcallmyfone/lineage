@@ -73,7 +73,7 @@ export interface SoulIdentity {
 
 export interface SoulDoc {
   v: typeof SOUL_V;
-  kind: typeof SOUL_KIND;
+  kind: typeof SOUL_KIND | "units-soul";
   agent: string;
   seq: number;
   /** digest of the version this one replaces, null for seq 1 */
@@ -266,7 +266,7 @@ export function validateSoul(doc: unknown): string[] {
       errs.push("soul.model: { provider, id } from the model registry");
   }
   if (doc.v !== SOUL_V) errs.push(`soul.v: must be ${SOUL_V}`);
-  if (doc.kind !== SOUL_KIND) errs.push(`soul.kind: must be ${SOUL_KIND}`);
+  if (doc.kind !== SOUL_KIND && doc.kind !== "units-soul") errs.push(`soul.kind: must be ${SOUL_KIND}`);
   if (typeof doc.agent !== "string" || !B58.test(doc.agent)) errs.push("soul.agent: a base58 agent id");
   if (!Number.isInteger(doc.seq) || (doc.seq as number) < 1 || (doc.seq as number) > 0xffffffff) errs.push("soul.seq: an integer from 1 (u32, the set_profile seq)");
   if (doc.seq === 1 && doc.prev !== null) errs.push("soul.prev: null for seq 1");

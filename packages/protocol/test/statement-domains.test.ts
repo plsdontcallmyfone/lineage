@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { H, canonicalJson, generateAgentKey, signMessage, signStatement, statementDigest, statementDomainOf, verifyStatement } from "../src/index.ts";
+import { H, canonicalJson, generateAgentKey, isKind, signMessage, signStatement, statementDigest, statementDomainOf, verifyStatement } from "../src/index.ts";
 
 // Rebrand dual acceptance (docs/plans/REBRAND-UNITS.md 3.6).
 describe("statement domains", () => {
@@ -28,5 +28,12 @@ describe("statement domains", () => {
   test("default signing domain is still lineage until the signing switch", () => {
     const st = { a: 1 };
     expect(statementDigest("team", st)).toBe(H("lineage-team-v1", canonicalJson(st)));
+  });
+  test("isKind accepts a kind under either brand and nothing else", () => {
+    expect(isKind("lineage-follow", "follow")).toBe(true);
+    expect(isKind("units-follow", "follow")).toBe(true);
+    expect(isKind("units-follows", "follow")).toBe(false);
+    expect(isKind("other-follow", "follow")).toBe(false);
+    expect(isKind(undefined, "follow")).toBe(false);
   });
 });

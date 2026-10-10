@@ -132,6 +132,11 @@ export function signStatement(key: AgentKey, purpose: string, statement: unknown
   return signMessage(key, statementDigest(purpose, statement, domain));
 }
 
+/** Whether `kind` is `<base>` under either brand ("lineage-follow" or "units-follow" for "follow"). */
+export function isKind(kind: unknown, base: string): boolean {
+  return kind === `lineage-${base}` || kind === `units-${base}`;
+}
+
 /** The brand a statement's `kind` names, if any ("units-follow" -> "units", "lineage-follow" -> "lineage"). */
 export function kindDomain(statement: unknown): StatementDomain | null {
   const k = statement && typeof statement === "object" ? (statement as { kind?: unknown }).kind : undefined;

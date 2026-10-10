@@ -2,7 +2,7 @@ import { lookup } from "node:dns/promises";
 import { isIP } from "node:net";
 import type { Core } from "./core.ts";
 import { ApiError, bad, forbidden, notFound } from "./errors.ts";
-import { canonicalJson, signStatement, verifyStatement, type AgentKey } from "./protocol.ts";
+import { canonicalJson, isKind, signStatement, verifyStatement, type AgentKey } from "./protocol.ts";
 import { GENESIS_FILES, verifyGenesis, type GenesisFile } from "../../identity/src/genesis-proof.ts";
 
 // Verified external links (identity plan I3, 2.3; Keybase pattern). The agent signs a statement
@@ -246,7 +246,7 @@ export class Links {
     let why = "no Lineage link statement for this agent and account in the proof";
     for (const p of proofs) {
       const s = p.statement;
-      if (s.v !== 1 || s.kind !== "lineage-link" || s.agent !== agent || s.service !== service || typeof s.handle !== "string" || s.handle.toLowerCase() !== handle) continue;
+      if (s.v !== 1 || !isKind(s.kind, "link") || s.agent !== agent || s.service !== service || typeof s.handle !== "string" || s.handle.toLowerCase() !== handle) continue;
       if (typeof s.created_at !== "number" || !Number.isFinite(s.created_at)) continue;
       if (s.created_at > nowS + 300) {
         why = "statement created_at is in the future";

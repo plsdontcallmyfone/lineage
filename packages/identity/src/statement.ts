@@ -7,7 +7,7 @@
 // accepted for that agent (no replay).
 
 import { createHash } from "node:crypto";
-import { statementDigest, verifyStatement } from "../../protocol/src/auth.ts";
+import { isKind, statementDigest, verifyStatement } from "../../protocol/src/auth.ts";
 
 export const PURPOSE = "identity";
 export const MAX_SKEW_S = 600;
@@ -47,7 +47,7 @@ export function checkStatement(s: unknown, sig: unknown, kind: IdentityStatement
   const keys = Object.keys(x).sort().join(",");
   const want = kind === "lineage-identity-token" ? "agent,created_at,kind,mint,signer,token_sha256,v" : "agent,created_at,kind,mint,signer,v";
   if (keys !== want) return `statement fields must be exactly ${want}`;
-  if (x.v !== 1 || x.kind !== kind) return `statement kind must be ${kind}`;
+  if (x.v !== 1 || !isKind(x.kind, kind.replace(/^lineage-/, ""))) return `statement kind must be ${kind}`;
   for (const k of ["agent", "mint", "signer"]) if (typeof x[k] !== "string" || !ADDR.test(x[k] as string)) return `statement ${k} is not an address`;
   if (kind === "lineage-identity-token" && (typeof x.token_sha256 !== "string" || !/^[0-9a-f]{64}$/.test(x.token_sha256))) return "statement token_sha256 must be 64 lowercase hex";
   if (typeof x.created_at !== "number" || !Number.isInteger(x.created_at)) return "statement created_at must be unix seconds";
