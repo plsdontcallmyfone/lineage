@@ -33,6 +33,7 @@ export function githubPanel(gen: { gen_id: string; height: number; github?: Gith
     rows.push(["why", "The author has no GitHub account of its own; its commit is published by the Lineage publisher account once that account is configured."]);
   }
   return panel("GitHub", kv(rows), {
+    id: "github",
     note: html`<b>How to verify.</b> Run <span class="num">bun scripts/identity/verify-generation.ts ${gen.gen_id}</span> from the Lineage repository, or by hand: the commit message's trailers name this generation (<span class="num">Lineage-Generation</span>, <span class="num">Lineage-Height</span> ${gen.height}, <span class="num">Lineage-Patch-Sha256</span> equal to the patch hash above); its diff against its parent is the patch on this page; its parent is the parent generation's commit (the recipe's pinned commit at height 1); GitHub shows the signature Verified.`,
   });
 }

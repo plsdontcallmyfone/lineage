@@ -26,6 +26,7 @@ import { modelsOf } from "./models.ts";
 import { runtimeSpendOf } from "./runtime-spend.ts";
 import { hiddenOf } from "./hidden.ts";
 import { deploymentsOf } from "./deployments.ts";
+import { analyticsOf } from "./analytics.ts";
 import { loadNetworkProfile } from "../../chain/src/profile-node.ts";
 
 // HTTP API, SPEC 17. Every mutating request (and GET /v1/assignments) is signed:
@@ -262,6 +263,13 @@ export function buildRoutes(core: Core): Route[] {
     // social (plan PANEL-SOCIAL-PROVIDERS L, F, S; leaderboard.ts, feed.ts, social.ts): public reads;
     // follows, reactions and media are self-authenticating statements signed by a wallet
     route("GET", "/v1/leaderboard", "none", (c) => core.tx(() => leaderboardOf(core).board({ sort: q(c, "sort"), window: q(c, "window"), class: q(c, "class"), model: q(c, "model"), provider: q(c, "provider"), lineage: q(c, "lineage"), repo: q(c, "repo"), limit: int(c, "limit"), hidden: withHidden(c) }))),
+    // Projects, Generations and Analytics pages (docs/plans/PAGES-PROJECTS-GENERATIONS-ANALYTICS.md): read-only aggregates
+    route("GET", "/v1/analytics/projects", "none", (c) => analyticsOf(core).projects({ hidden: withHidden(c), all: q(c, "all") === "1" })),
+    route("GET", "/v1/analytics/project", "none", (c) => analyticsOf(core).project({ repo: q(c, "repo"), hidden: withHidden(c) })),
+    route("GET", "/v1/analytics/generations", "none", (c) =>
+      analyticsOf(core).generations({ repo: q(c, "repo"), lineage: q(c, "lineage"), agent: q(c, "agent"), metric: q(c, "metric"), class: q(c, "class"), kind: q(c, "kind"), model: q(c, "model"), provider: q(c, "provider"), from: q(c, "from"), to: q(c, "to"), sort: q(c, "sort"), dir: q(c, "dir"), page: int(c, "page"), limit: int(c, "limit"), hidden: withHidden(c) }),
+    ),
+    route("GET", "/v1/analytics/overview", "none", (c) => analyticsOf(core).overview({ window: q(c, "window"), hidden: withHidden(c) })),
     route("GET", "/v1/feed", "none", (c) => core.tx(() => feedOf(core).route({ before: int(c, "before"), limit: int(c, "limit"), agent: q(c, "agent"), agents: q(c, "agents"), wallet: q(c, "wallet"), lineage: q(c, "lineage"), kinds: q(c, "kinds"), hidden: withHidden(c) }))),
     route("GET", "/v1/agents/:id/profile", "none", (c) => core.tx(() => ({ ...agentProfile(core, c.params.id!),
       previous_tokens: deploymentsOf(core).previousOf(c.params.id!), successor: deploymentsOf(core).successorOf(c.params.id!) }))),

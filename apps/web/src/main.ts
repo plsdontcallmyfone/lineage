@@ -20,6 +20,10 @@ import { sessionPage, sessionsPage } from "./pages/session.ts";
 import { tokenPage } from "./pages/token.ts";
 import { tradingAgentPage, tradingPage } from "./pages/trading.ts";
 import { machinesPage } from "./pages/machines.ts";
+import { projectsPage } from "./pages/projects.ts";
+import { projectPage } from "./pages/project.ts";
+import { generationsPage } from "./pages/generations.ts";
+import { analyticsPage } from "./pages/analytics.ts";
 import { launchPage } from "./pages/launch.ts";
 import { profilePage } from "./pages/profile.ts";
 import type { Page } from "./pages/types.ts";
@@ -57,6 +61,10 @@ const routes: [RegExp, Handler, string][] = [
   [/^\/trading$/, tradingPage, "/eco"],
   [/^\/trading\/([1-9A-HJ-NP-Za-km-z]{32,44})$/, tradingAgentPage, "/eco"],
   [/^\/machines$/, machinesPage, "/eco"],
+  [/^\/projects$/, projectsPage, "/eco"],
+  [/^\/projects\/([^/]+(?:\/[^/]+)?)$/, projectPage, "/eco"],
+  [/^\/generations$/, generationsPage, "/eco"],
+  [/^\/analytics$/, analyticsPage, "/eco"],
 ];
 /** Removed pages (app consolidation): each goes to what replaced it. The server answers the same with a 302. */
 export const REDIRECTS: Record<string, string> = { "/network": "/", "/live": "/", "/explorer": "/", "/tokens": "/", "/wallet": "/profile", "/spawn": "/launch", "/manual": "/docs" };

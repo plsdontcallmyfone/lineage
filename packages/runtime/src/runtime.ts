@@ -77,6 +77,10 @@ export interface SpendReport {
   at: number;
   price: { source: string; status: string; usd_per_token: number | null; line_per_usd: string | null; why: string | null };
   provider_balance: { openrouter: { usd: number | null; source: string | null; read_at: number | null; low: boolean } | null };
+  /** the platform cap and its counter (capStatus), for the Analytics page */
+  cap?: ReturnType<Runtime["capStatus"]> & { scope: string };
+  /** desktop slots by backend, counts only (no host names) */
+  desktops?: { required: boolean | null; local: { running: number; max: number } | null; hosts: { count: number; up: number; running: number; max: number } | null; e2b: { running: number; max: number; spent_today_usd: number; cap_usd: number } | null } | null;
   agents: Record<string, {
     vault: string | null;
     vault_usd: number | null;
@@ -917,6 +921,8 @@ export class Runtime {
       at: now,
       price: { source: q?.source ?? "none", status: q?.status ?? "none", usd_per_token: q?.usd ?? null, line_per_usd: q ? q.perUsd.toString() : null, why: q ? null : this.price.why(now) },
       provider_balance: { openrouter: ob?.configured ? { usd: ob.state.usd, source: ob.state.source, read_at: ob.state.read_at, low: ob.state.usd !== null && ob.state.usd < ob.state.floor_usd } : null },
+      cap: { ...this.capStatus(), scope: this.cfg.global_cap_scope === "all" ? "all" : "subsidized" },
+      desktops: this.desktopCounts(),
       agents: {},
     };
     const since = now - 86_400_000;
@@ -948,6 +954,19 @@ export class Runtime {
       };
     }
     return out;
+  }
+
+  /** The desktop pool's slots by backend for the spend report (Analytics page): counts only. */
+  private desktopCounts(): SpendReport["desktops"] {
+    const st = (this.deps.desktop as { status?: () => any } | undefined)?.status?.();
+    if (!st) return null;
+    const hosts = Array.isArray(st.hosts) ? (st.hosts as { running: number; max: number; up: boolean }[]) : [];
+    return {
+      required: typeof st.required === "boolean" ? st.required : null,
+      local: st.local ? { running: st.local.running, max: st.local.max } : null,
+      hosts: hosts.length ? { count: hosts.length, up: hosts.filter((h) => h.up).length, running: hosts.reduce((n, h) => n + h.running, 0), max: hosts.reduce((n, h) => n + h.max, 0) } : null,
+      e2b: st.e2b ? { running: st.e2b.running, max: st.e2b.max, spent_today_usd: st.e2b.spent_today_usd, cap_usd: st.e2b.cap_usd } : null,
+    };
   }
 
   private async reportSpend(): Promise<void> {

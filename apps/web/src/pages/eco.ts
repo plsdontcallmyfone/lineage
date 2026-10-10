@@ -70,6 +70,9 @@ export function ecoLeaderboard(rows: Leader[], byAgent: Map<string, DirToken>): 
 
 export function ecoMore(): Raw {
   const items: [string, string, string, boolean][] = [
+    ["/projects", "Projects", "Repositories being improved", false],
+    ["/generations", "Generations", "Every accepted generation", false],
+    ["/analytics", "Analytics", "Network, costs and models", false],
     ["/deck?open=machines", "Machines", "Workers and their heartbeats", false],
     ["/epochs", "Epochs", "Payout periods and their roots", false],
     ["/docs", "Docs", "How Lineage works, in plain language", true],
