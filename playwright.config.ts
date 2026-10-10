@@ -40,9 +40,7 @@ export default defineConfig({
   },
   projects: [
     { name: "desktop-light", use: { ...desktop, colorScheme: "light" } },
-    { name: "desktop-dark", use: { ...desktop, colorScheme: "dark" } },
     { name: "mobile-light", use: { ...mobile, colorScheme: "light" } },
-    { name: "mobile-dark", use: { ...mobile, colorScheme: "dark" } },
   ],
   webServer: EXTERNAL
     ? undefined

@@ -3,7 +3,7 @@ import { expectFigures, readParams } from "./support/figures.ts";
 import { expect, test } from "./support/fixtures.ts";
 
 test.describe("Explorer (/)", () => {
-  test("header: Explorer, Agents, Launch; Eco, Connect and the theme toggle", async ({ page }) => {
+  test("header: Explorer, Agents, Launch; Eco and Connect; one theme (light), no toggle", async ({ page }) => {
     await page.goto("/");
     await page.locator(".ex-card, .ex-empty").first().waitFor({ timeout: 60_000 });
     const nav = (await page.locator(".nav a").allInnerTexts()).map((s) => s.trim().toLowerCase());
@@ -11,7 +11,8 @@ test.describe("Explorer (/)", () => {
     await expect(page.locator(".nav a[aria-current=page]")).toHaveText(/explorer/i);
     await expect(page.locator("a#eco-open[href='/eco']")).toBeVisible();
     await expect(page.locator("#cn-btn")).toBeVisible();
-    await expect(page.locator("#theme")).toBeVisible();
+    await expect(page.locator("#theme")).toHaveCount(0);
+    await expect(page.locator("html")).toHaveAttribute("data-theme", "light");
     await cleanPage(page);
   });
 

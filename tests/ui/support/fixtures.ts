@@ -2,7 +2,7 @@ import { test as base, expect, type APIRequestContext, type Page } from "@playwr
 import { installMockWallet, testWallet, type TestWallet } from "./wallet.ts";
 
 // Fixtures every UI test gets (docs/UI-TESTS.md):
-//  - the app's theme follows the project's colorScheme (localStorage "lineage-theme", as the toggle sets it)
+//  - the app has one theme (light), so there is nothing to set per project
 //  - console errors and uncaught page errors are collected; a test fails on any that is not allow-listed
 //  - a write guard: every request that could change state is aborted and fails the test. Allowed are
 //    reads, devnet JSON-RPC reads and simulations through /chain/rpc, and routes a test answers itself
@@ -125,12 +125,6 @@ type Fixtures = {
 export const test = base.extend<Fixtures>({
   guard: [
     async ({ context, page }, use, info) => {
-      const dark = info.project.use.colorScheme === "dark";
-      await context.addInitScript((d: boolean) => {
-        try {
-          localStorage.setItem("lineage-theme", d ? "dark" : "light");
-        } catch {}
-      }, dark);
       const errors: string[] = [];
       const blocked: string[] = [];
       const allowed: RegExp[] = [];

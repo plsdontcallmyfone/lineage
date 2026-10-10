@@ -16,7 +16,7 @@ on Linux), about 200 MB.
 
     bun run test:ui                      # all projects, against a local dashboard on live site data
     bun run test:ui -- explorer          # one spec file (any name filter)
-    bun run test:ui -- --project desktop-dark
+    bun run test:ui -- --project desktop-light
     bun run test:ui:report               # open the HTML report of the last run
 
 By default Playwright starts the dashboard built from this tree,
@@ -32,7 +32,7 @@ site's Core and market indexer. Environment:
 | `UI_WORKERS` | `2` | parallel workers (the site's gate rate-limits reads per address) |
 | `UI_WALLET_KEY` | `~/.config/lineage/devnet/app-launch-test.json` | key of the mock wallet (see below) |
 
-Projects: `desktop-light`, `desktop-dark` (1280 px), `mobile-light`, `mobile-dark` (390 px). Retries: 1
+Projects: `desktop-light` (1280 px) and `mobile-light` (390 px); the app has one theme. Retries: 1
 locally, 2 in CI. A trace is kept on the first retry, a screenshot on failure.
 
 ## Reading the report
@@ -80,4 +80,4 @@ from the report or with `bunx playwright show-trace <trace.zip>`.
    wallet silently (`restoreSession` in `apps/web/wallet/standard.ts`). Clicking `#cn-btn` opens Privy's
    login modal (apps/web/privy/main.tsx), which a test cannot finish without a real Privy login; see
    `connect()` in `profile-launch.spec.ts`. Never press a button that sends.
-5. Run it in one project first (`bun run test:ui -- myspec --project desktop-light`), then all four.
+5. Run it in one project first (`bun run test:ui -- myspec --project desktop-light`), then both.
