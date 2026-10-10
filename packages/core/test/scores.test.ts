@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, test } from "bun:test";
 import { generateAgentKey } from "../src/protocol.ts";
-import { combineScores, mergeTradingConfig, temperamentFromSoul, TRADING_DEFAULTS, type RawComponents } from "../src/scores.ts";
+import { combineScores, mergeTradingConfig, storedPatch, temperamentFromSoul, TRADING_DEFAULTS, type RawComponents } from "../src/scores.ts";
 import { agentClient, authorLeaks, bare, diff, expectOk, honest, makeAuthor, result, runReplays, setup, submit, type Agent, type Env } from "./helpers.ts";
 
 // Plan T in Core: the published project score (public data only, author-blind), the admin-editable
@@ -187,5 +187,41 @@ describe("trade records and integrity rules (attempts to break each)", () => {
     expect((await e.admin.c.post("/v1/trades", trade(A.id, B.mint, "buy", now, { reason: "" }))).body.error).toBe("bad_reason");
     expect((await e.admin.c.post("/v1/trades", trade(A.id, B.mint, "buy", now, { score: undefined }))).body.error).toBe("bad_score");
     expect((await e.admin.c.post("/v1/trades", trade(A.id, generateAgentKey().id, "buy", now))).body.error).toBe("unknown_token");
+  });
+
+  test("exclusion flag: an excluded agent neither trades nor is traded, and records no decisions", async () => {
+    const { e, A, B } = await three();
+    const now = e.clock.now();
+    await expectOk(e.admin.c.post("/v1/admin/trading/config", { excluded_agents: { [B.id]: "standing TEST agent: never talks about tokens" } }));
+    expect((await e.admin.c.post("/v1/trades", trade(A.id, B.mint, "buy", now))).body.error).toBe("integrity_excluded");
+    expect((await e.admin.c.post("/v1/trades", trade(B.id, A.mint, "buy", now))).body.error).toBe("integrity_excluded");
+    expect((await e.admin.c.post("/v1/trades", { kind: "decision", ref: `decision:${B.id}:${now}`, agent: B.id, at: now, outcome: "hold", thesis: "x" })).body.error).toBe("integrity_excluded");
+    expect((await expectOk(e.anon.get(`/v1/agents/${B.id}/trades`))).excluded).toContain("TEST agent");
+    // lifting the flag (null) restores trading
+    await expectOk(e.admin.c.post("/v1/admin/trading/config", { excluded_agents: { [B.id]: null } }));
+    await expectOk(e.admin.c.post("/v1/trades", trade(A.id, B.mint, "buy", now)));
+  });
+
+  test("decision records: a hold or a refusal with its rule, public with its thesis", async () => {
+    const { e, A } = await three();
+    const now = e.clock.now();
+    const r = await expectOk(e.admin.c.post("/v1/trades", { kind: "decision", ref: `decision:${A.id}:${now}`, agent: A.id, at: now, outcome: "refused", rule: "temperament_size", thesis: "Big conviction.", action: "buy", mint: A.mint, size_pct: 50, model: "anthropic/x", analysis_usd: 0.01 }));
+    expect(r.rule).toBe("temperament_size");
+    expect((await e.admin.c.post("/v1/trades", { kind: "decision", ref: `decision:${A.id}:${now + 1}`, agent: A.id, at: now + 1, outcome: "refused", thesis: "" })).body.error).toBe("bad_rule");
+    expect((await e.admin.c.post("/v1/trades", { kind: "decision", ref: `decision:${A.id}:${now + 2}`, agent: A.id, at: now + 2, outcome: "filled", thesis: "" })).body.error).toBe("bad_outcome");
+    const page = await expectOk(e.anon.get(`/v1/agents/${A.id}/trades`));
+    expect(page.summary.decisions).toBe(1);
+    expect(page.records[0].thesis).toBe("Big conviction.");
+    expect(e.core.events(0, 5000).some((x) => x.type === "trade.decision")).toBe(true);
+  });
+});
+
+describe("config upgrades", () => {
+  test("a stored config of the first layout (score-threshold temperaments) still loads", () => {
+    const old = { max_trade_bps: 250, temperaments: { aggressive: { size_bps: 300, buy_threshold: 0.2, top_k: 4 } }, gone_key: 1 };
+    const c = mergeTradingConfig(TRADING_DEFAULTS, storedPatch(old));
+    expect(c.max_trade_bps).toBe(250);
+    expect(c.temperaments.aggressive.prompt.length).toBeGreaterThan(10);
+    expect(() => mergeTradingConfig(TRADING_DEFAULTS, old)).toThrow();
   });
 });

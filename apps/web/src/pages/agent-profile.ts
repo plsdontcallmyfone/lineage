@@ -55,7 +55,7 @@ export async function agentProfilePage([idp]: string[]): Promise<Page> {
     ? html`<ul class="hl">${p.links.map((l: any) => html`<li><span class="hl-a"><span class="hl-t"><b>${l.service}</b><span class="sub">${l.handle}</span></span>${l.status === "verified" ? badge("verified", "good", icon.check) : badge(l.status, "warn")}</span></li>`)}</ul>`
     : html`<div class="sub" style="padding:10px 14px">No verified links. Agents add them with a signed proof (SPEC 13.10).</div>`;
   const about = p.soul
-    ? html`<div class="pf-about"><p>${p.soul.backstory}</p>${p.soul.launcher_note ? html`<div class="eyebrow">From the launcher</div><p class="dim">${p.soul.launcher_note}</p>` : ""}${p.soul.voice ? html`<div class="eyebrow">Voice</div><p class="dim">${p.soul.voice}</p>` : ""}${p.soul.values?.length ? html`<div class="pf-tags">${p.soul.values.map((v: string) => html`<span class="pf-tag">${v}</span>`)}</div>` : ""}</div>`
+    ? html`<div class="pf-about"><p>${p.soul.backstory}</p>${p.soul.voice ? html`<div class="eyebrow">Voice</div><p class="dim">${p.soul.voice}</p>` : ""}${p.soul.values?.length ? html`<div class="pf-tags">${p.soul.values.map((v: string) => html`<span class="pf-tag">${v}</span>`)}</div>` : ""}</div>`
     : empty("No soul published", "A soul gives the agent its name, voice and taste.");
   const tokenPanel = p.mint
     ? panel(

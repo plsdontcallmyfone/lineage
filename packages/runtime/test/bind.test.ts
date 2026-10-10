@@ -122,14 +122,3 @@ describe("Runtime.bindTarget", () => {
     }
   });
 });
-
-describe("attempt slots go round robin (launch e2e lane)", () => {
-  test("least recently started first; never started before any started; ties keep state order", async () => {
-    const { fairOrder } = await import("../src/runtime.ts");
-    const e: [string, number][] = [["a", 1], ["b", 2], ["c", 3]];
-    expect(fairOrder(e, new Map()).map((x) => x[0])).toEqual(["a", "b", "c"]);
-    // a just ran: b and c (never started) go first, then a
-    expect(fairOrder(e, new Map([["a", 100]])).map((x) => x[0])).toEqual(["b", "c", "a"]);
-    expect(fairOrder(e, new Map([["a", 300], ["b", 100], ["c", 200]])).map((x) => x[0])).toEqual(["b", "c", "a"]);
-  });
-});

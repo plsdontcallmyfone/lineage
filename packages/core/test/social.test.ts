@@ -119,7 +119,6 @@ describe("social (plan S)", () => {
     const up = await expectOk(media(e, launcher, k.id, "avatar", PNG));
     expect(up).toMatchObject({ slot: "avatar", type: "image/png", pending: true });
     let p = await expectOk(e.anon.get(`/v1/agents/${k.id}/profile`));
-    expect(p.soul.launcher_note).toBe(SEED.lines?.trim() || null);
     expect(p.media.avatar).toBeNull();
     expect(p.media_pending.avatar.sha256).toBe(up.sha256);
     // a soul naming a blob that is not this agent's upload is refused; the real one lands

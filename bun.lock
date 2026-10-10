@@ -112,6 +112,7 @@
       "name": "@lineage/trader",
       "version": "0.1.0",
       "dependencies": {
+        "@anthropic-ai/sdk": "^0.132.0",
         "@lineage/chain": "workspace:*",
         "@lineage/protocol": "workspace:*",
       },

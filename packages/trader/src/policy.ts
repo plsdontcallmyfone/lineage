@@ -19,6 +19,8 @@ export interface TokenView {
   change_24h: number | null;
   /** where it trades now; null: not tradable */
   venue: "dbc" | "damm_v2" | "sim" | null;
+  /** the token's agent is excluded from trading (Core's trading config) */
+  excluded?: boolean;
 }
 
 export interface Position {
@@ -135,6 +137,7 @@ export function integrityRefusal(b: Book, t: TokenView): Refusal | null {
   if (t.agent === b.agent || (b.mint !== null && t.mint === b.mint)) return { mint: t.mint, side: null, rule: "integrity_own_token", detail: "an agent never trades its own token" };
   const mine = new Set(b.parties);
   if (t.parties.some((p) => mine.has(p))) return { mint: t.mint, side: null, rule: "integrity_same_party", detail: "the token's agent shares a launcher, owner or operator" };
+  if (t.excluded) return { mint: t.mint, side: null, rule: "integrity_excluded", detail: "the token's agent is excluded from trading" };
   return null;
 }
 
@@ -202,114 +205,148 @@ function fmtPct(x: number) {
 }
 
 /**
- * One tick for one agent. Sells first (stop-loss, take-profit, falling score, low score, rotation),
- * then buys in order of composite score. Ties break by mint, so the order is total.
+ * The deterministic risk exits, run before the agent's model each tick: a stop-loss sells the whole
+ * position, a take-profit sells take_profit_sell_bps of it. They are limits, not opinions: the model
+ * neither triggers nor delays them, and they pass every other check (minimum hold included).
  */
-export function decide(b0: Book, m: Market, cfg: TradingConfig, temp: TemperamentParams, now: number, globalLeft: number): Decision {
+export function riskExits(b0: Book, m: Market, cfg: TradingConfig, now: number, globalLeft: number): Decision {
   const b: Book = { ...b0, positions: Object.fromEntries(Object.entries(b0.positions).map(([k, v]) => [k, { ...v }])) };
   const refused: Refusal[] = [];
   const actions: Action[] = [];
   const equity = equityOf(b, m);
   const halt = haltCheck(b, equity, cfg);
-  if (halt) {
-    return { actions, refused: [{ mint: null, side: null, rule: halt.rule, detail: halt.reason }], halt, equity };
-  }
+  if (halt) return { actions, refused: [{ mint: null, side: null, rule: halt.rule, detail: halt.reason }], halt, equity };
   if (b.halted) return { actions, refused: [{ mint: null, side: null, rule: "halted", detail: `halted by ${b.halted.rule}` }], halt: null, equity };
   if (b.blackout) return { actions, refused: [{ mint: null, side: null, rule: "verdict_window", detail: "own candidate", private: true }], halt: null, equity };
-
-  // eligible universe and its ranking by composite score
-  const scored = m.tokens
-    .filter((t) => t.venue !== null && t.price !== null && !integrityRefusal(b, t))
-    .map((t) => {
-      const s = m.scores.get(t.agent);
-      const project = s?.now ?? 0;
-      const ref = s?.ref ?? null;
-      const c = composite(project, t.change_24h, cfg.momentum_weight);
-      return { t, used: { project, ref, delta: ref === null ? null : Math.round((project - ref) * 1e6) / 1e6, momentum: c.momentum, composite: c.composite, rank: null as number | null } };
-    })
-    .sort((x, y) => y.used.composite - x.used.composite || (x.t.mint < y.t.mint ? -1 : 1));
-  scored.forEach((s, i) => (s.used.rank = i + 1));
-  const byMint = new Map(scored.map((s) => [s.t.mint, s]));
-  const topK = new Set(scored.slice(0, temp.top_k).map((s) => s.t.mint));
-  let left = globalLeft;
-  let budget = temp.max_actions_per_tick;
-
-  const tryAct = (t: TokenView, side: "buy" | "sell", amount: bigint, rule: string, reason: string, used: ScoreUsed) => {
-    if (budget <= 0) return false;
-    const value = side === "buy" ? amount : valueOf(amount, t.price, t.decimals, m.lineDecimals);
-    const no = checkTrade(b, t, side, amount, value, equity, cfg, now, left, m.lineDecimals);
-    if (no) {
-      refused.push(no);
-      return false;
-    }
-    actions.push({ side, mint: t.mint, amount, rule, reason, score: used, value });
-    // reflect it in the book so later checks in this tick see it (at the mark price)
-    const p = b.positions[t.mint] ?? { mint: t.mint, qty: 0n, cost: 0n, opened_at: now, last_side: side, last_at: now };
-    if (side === "buy") {
-      const q = t.price ? BigInt(Math.floor((Number(amount) / 10 ** m.lineDecimals / t.price) * 10 ** t.decimals)) : 0n;
-      p.qty += q;
-      p.cost += amount;
-      b.line -= amount;
-    } else {
-      p.cost -= p.qty > 0n ? (p.cost * amount) / p.qty : 0n;
-      p.qty -= amount;
-      b.line += value;
-    }
-    p.last_side = side;
-    p.last_at = now;
-    b.positions[t.mint] = p;
-    left--;
-    budget--;
-    return true;
-  };
-
-  // ---------------------------------------------------------------- sells
   const tokOf = new Map(m.tokens.map((t) => [t.mint, t]));
-  for (const p of Object.values(b0.positions).sort((x, y) => (x.mint < y.mint ? -1 : 1))) {
+  let left = globalLeft;
+  for (const p of Object.values(b.positions).sort((x, y) => (x.mint < y.mint ? -1 : 1))) {
     if (p.qty <= 0n) continue;
     const t = tokOf.get(p.mint);
-    if (!t || t.price === null) continue;
-    const s = byMint.get(p.mint);
-    const used: ScoreUsed = s?.used ?? { project: m.scores.get(t.agent)?.now ?? 0, ref: null, delta: null, momentum: null, composite: 0, rank: null };
+    if (!t || t.price === null || p.cost <= 0n) continue;
     const mark = valueOf(p.qty, t.price, t.decimals, m.lineDecimals);
-    const pnl = p.cost > 0n ? Number(mark - p.cost) / Number(p.cost) : 0;
-    const held = now - p.opened_at;
-    if (p.cost > 0n && mark <= p.cost - bps(p.cost, cfg.stop_loss_bps)) {
-      tryAct(t, "sell", p.qty, "stop_loss", `marked ${fmtPct(pnl)} against cost; stop-loss at -${cfg.stop_loss_bps / 100}%`, used);
-    } else if (p.cost > 0n && mark >= p.cost + bps(p.cost, cfg.take_profit_bps)) {
+    const pnl = Number(mark - p.cost) / Number(p.cost);
+    const s = m.scores.get(t.agent);
+    const used: ScoreUsed = { project: s?.now ?? 0, ref: s?.ref ?? null, delta: null, momentum: null, composite: s?.now ?? 0, rank: null };
+    let act: Action | null = null;
+    if (mark <= p.cost - bps(p.cost, cfg.stop_loss_bps))
+      act = { side: "sell", mint: p.mint, amount: p.qty, rule: "stop_loss", reason: `marked ${fmtPct(pnl)} against cost; stop-loss at -${cfg.stop_loss_bps / 100}%`, score: used, value: mark };
+    else if (mark >= p.cost + bps(p.cost, cfg.take_profit_bps)) {
       const q = bps(p.qty, cfg.take_profit_sell_bps) || p.qty;
-      tryAct(t, "sell", q, "take_profit", `marked ${fmtPct(pnl)} against cost; take-profit at +${cfg.take_profit_bps / 100}% sells ${cfg.take_profit_sell_bps / 100}%`, used);
-    } else if (used.delta !== null && used.delta <= -temp.fall_threshold) {
-      tryAct(t, "sell", p.qty / 2n || p.qty, "score_falling", `project score fell ${used.delta.toFixed(3)} over the lookback (threshold ${temp.fall_threshold})`, used);
-    } else if (used.composite < temp.exit_threshold) {
-      tryAct(t, "sell", p.qty, "score_low", `composite score ${used.composite.toFixed(3)} below the exit threshold ${temp.exit_threshold}`, used);
-    } else if (temp.rotate_after_s !== null && held >= temp.rotate_after_s * 1000 && !topK.has(p.mint)) {
-      tryAct(t, "sell", p.qty / 2n || p.qty, "rotate", `held ${Math.floor(held / 60000)} min and ranked ${used.rank ?? "unranked"}, outside the top ${temp.top_k}`, used);
+      act = { side: "sell", mint: p.mint, amount: q, rule: "take_profit", reason: `marked ${fmtPct(pnl)} against cost; take-profit at +${cfg.take_profit_bps / 100}% sells ${cfg.take_profit_sell_bps / 100}%`, score: used, value: valueOf(q, t.price, t.decimals, m.lineDecimals) };
     }
-  }
-
-  // ---------------------------------------------------------------- buys
-  const size = bps(equity, Math.min(temp.size_bps, cfg.max_trade_bps));
-  for (const s of scored) {
-    if (budget <= 0) break;
-    const { t, used } = s;
-    const rising = used.delta !== null && used.delta >= temp.rise_threshold && used.composite >= temp.buy_threshold / 2;
-    const high = used.composite >= temp.buy_threshold;
-    if (!rising && !high) continue;
-    const p = b.positions[t.mint];
-    const held = p ? valueOf(p.qty, t.price, t.decimals, m.lineDecimals) : 0n;
-    const room = bps(equity, cfg.max_position_bps) - held;
-    let amount = size < room ? size : room;
-    if (amount > b.line) amount = b.line;
-    if (amount < BigInt(cfg.min_trade_line)) {
-      if (room < BigInt(cfg.min_trade_line)) continue; // already at the position limit: not a refusal worth publishing
-      refused.push({ mint: t.mint, side: "buy", rule: amount <= 0n ? "funds" : "min_trade", detail: `buy of ${amount} base units is below the minimum` });
+    if (!act) continue;
+    const no = checkTrade(b, t, "sell", act.amount, act.value, equity, cfg, now, left, m.lineDecimals);
+    if (no) {
+      refused.push(no);
       continue;
     }
-    const why = rising
-      ? `project score rose ${used.delta!.toFixed(3)} over the lookback to ${used.project.toFixed(3)} (rank ${used.rank})`
-      : `composite score ${used.composite.toFixed(3)} (project ${used.project.toFixed(3)}, rank ${used.rank}) at or above the buy threshold ${temp.buy_threshold}`;
-    tryAct(t, "buy", amount, rising ? "score_rising" : "score_high", why, used);
+    actions.push(act);
+    p.last_side = "sell";
+    p.last_at = now;
+    left--;
   }
   return { actions, refused, halt: null, equity };
+}
+
+// ------------------------------------------------------------------------------------------------
+// The agent's own decision (owner amendment 2026-10-10): its model writes a thesis and one decision.
+// The output is untrusted input: parsed strictly, every field checked, nothing clamped or resized.
+// A decision that breaks the schema or any limit is refused with the rule, never executed.
+
+export interface ModelDecision {
+  thesis: string;
+  action: "buy" | "sell" | "hold";
+  /** the token's mint; null for a hold */
+  token: string | null;
+  /** buy: percent of treasury equity; sell: percent of the position; hold: 0 */
+  size_pct: number;
+  reason: string;
+}
+
+export const DECISION_KEYS = ["thesis", "action", "token", "size_pct", "reason"] as const;
+export const THESIS_MAX = 1200;
+export const REASON_MAX = 280;
+
+/**
+ * Parses the model's text into a decision. Accepts exactly one JSON object (a single surrounding
+ * ```json fence is removed; nothing else is). Returns the decision or the refusal with its detail.
+ */
+export function parseDecision(text: string | null | undefined): { ok: true; decision: ModelDecision } | { ok: false; rule: "invalid_decision"; detail: string; thesis: string } {
+  const fail = (detail: string, thesis = "") => ({ ok: false as const, rule: "invalid_decision" as const, detail, thesis });
+  if (typeof text !== "string" || !text.trim()) return fail("the model returned no text");
+  let t = text.trim();
+  const fence = /^```(?:json)?\s*\n([\s\S]*?)\n```$/.exec(t);
+  if (fence) t = fence[1]!.trim();
+  let j: unknown;
+  try {
+    j = JSON.parse(t);
+  } catch {
+    return fail("the output is not one JSON object");
+  }
+  if (typeof j !== "object" || j === null || Array.isArray(j)) return fail("the output is not one JSON object");
+  const o = j as Record<string, unknown>;
+  const thesis = typeof o.thesis === "string" ? o.thesis.slice(0, THESIS_MAX) : "";
+  const keys = Object.keys(o);
+  const extra = keys.filter((k) => !(DECISION_KEYS as readonly string[]).includes(k));
+  if (extra.length) return fail(`unknown field(s): ${extra.slice(0, 5).join(", ")}`, thesis);
+  for (const k of DECISION_KEYS) if (!(k in o)) return fail(`missing field ${k}`, thesis);
+  if (typeof o.thesis !== "string" || o.thesis.trim().length < 20 || o.thesis.length > THESIS_MAX) return fail(`thesis must be 20 to ${THESIS_MAX} characters`, thesis);
+  if (typeof o.reason !== "string" || o.reason.trim().length < 5 || o.reason.length > REASON_MAX) return fail(`reason must be 5 to ${REASON_MAX} characters`, thesis);
+  if (/\u2014/.test(o.thesis + o.reason)) return fail("text contains an em dash", thesis);
+  if (o.action !== "buy" && o.action !== "sell" && o.action !== "hold") return fail("action must be buy, sell or hold", thesis);
+  if (typeof o.size_pct !== "number" || !Number.isFinite(o.size_pct)) return fail("size_pct must be a number", thesis);
+  if (o.action === "hold") {
+    if (o.token !== null) return fail("a hold names no token", thesis);
+    if (o.size_pct !== 0) return fail("a hold has size_pct 0", thesis);
+  } else {
+    if (typeof o.token !== "string" || !/^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(o.token)) return fail("token must be a mint address from the list", thesis);
+    if (!(o.size_pct > 0 && o.size_pct <= 100)) return fail("size_pct must be above 0 and at most 100", thesis);
+  }
+  return { ok: true, decision: { thesis: o.thesis.trim(), action: o.action, token: (o.token as string | null) ?? null, size_pct: o.size_pct, reason: o.reason.trim() } };
+}
+
+/**
+ * Turns a valid decision into one trade, or refuses it with the rule that refuses it. Sizes are
+ * computed exactly from the percent and checked as they are: a buy above the temperament's bound or
+ * any limit is refused, not shrunk.
+ */
+export function enforceDecision(
+  b: Book,
+  m: Market,
+  cfg: TradingConfig,
+  temp: TemperamentParams,
+  d: ModelDecision,
+  now: number,
+  globalLeft: number,
+): { ok: true; action: Action | null } | { ok: false; refusal: Refusal } {
+  if (d.action === "hold") return { ok: true, action: null };
+  const refuse = (rule: string, detail: string, mint: string | null = d.token) => ({ ok: false as const, refusal: { mint, side: d.action as "buy" | "sell", rule, detail } });
+  const t = m.tokens.find((x) => x.mint === d.token);
+  if (!t) return refuse("unknown_token", "the token is not in the market list the agent was given");
+  const equity = equityOf(b, m);
+  const halt = haltCheck(b, equity, cfg);
+  if (halt) return refuse(halt.rule, halt.reason);
+  const s = m.scores.get(t.agent);
+  const c = composite(s?.now ?? 0, t.change_24h, cfg.momentum_weight);
+  const score: ScoreUsed = { project: s?.now ?? 0, ref: s?.ref ?? null, delta: s?.ref == null ? null : Math.round(((s?.now ?? 0) - s.ref) * 1e6) / 1e6, momentum: c.momentum, composite: c.composite, rank: null };
+  // percent to base units, exactly (hundredths of a percent; finer input is refused, not rounded)
+  const raw = d.size_pct * 100;
+  if (!Number.isInteger(Math.round(raw * 1e6) / 1e6)) return refuse("invalid_decision", "size_pct has more than two decimals");
+  const bp = Math.round(raw);
+  let amount: bigint;
+  let value: bigint;
+  if (d.action === "buy") {
+    if (bp > temp.size_bps) return refuse("temperament_size", `buy of ${d.size_pct}% of treasury is above this temperament's ${temp.size_bps / 100}%`);
+    amount = bps(equity, bp);
+    value = amount;
+  } else {
+    const p = b.positions[t.mint];
+    if (!p || p.qty <= 0n) return refuse("no_position", "nothing held in this token");
+    amount = bp === 10_000 ? p.qty : bps(p.qty, bp);
+    value = valueOf(amount, t.price, t.decimals, m.lineDecimals);
+  }
+  const no = checkTrade(b, t, d.action, amount, value, equity, cfg, now, globalLeft, m.lineDecimals);
+  if (no) return { ok: false, refusal: no };
+  return { ok: true, action: { side: d.action, mint: t.mint, amount, rule: "agent_decision", reason: d.reason, score, value } };
 }

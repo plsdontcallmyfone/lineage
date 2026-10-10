@@ -195,8 +195,6 @@ export function agentProfile(core: Core, id: string) {
           backstory: doc.persona?.backstory ?? null,
           voice: doc.persona?.voice?.register ?? null,
           values: doc.persona?.values ?? [],
-          // the launcher's own words from the signed seed (e.g. "a devnet test agent, not connected to any real token")
-          launcher_note: typeof doc.seed?.lines === "string" && doc.seed.lines.trim() ? doc.seed.lines.trim() : null,
           github_login: doc.identity?.github_login ?? null,
           model: doc.model ?? null,
         }

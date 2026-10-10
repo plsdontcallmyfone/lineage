@@ -6,6 +6,8 @@ import { ChainVenue } from "./chain-venue.ts";
 import { ChainFunder, FundingStore, tradeShareOf, type ShareBasis } from "./funding.ts";
 import { Trader, type MarketToken, type TradingAgent } from "./trader.ts";
 import type { Venue } from "./venue.ts";
+import { routedDecisionModel, type Usage } from "./analyst.ts";
+import { RegistrySource } from "../../runtime/src/providers.ts";
 
 // Wiring of the trader into the hosted runtime (packages/runtime): the runtime calls `share` when a
 // usage epoch is due (the trade share rides the agent's usage leaf) and `forward` after epochs post
@@ -39,6 +41,8 @@ export interface ShareEpoch {
 export interface RuntimeView {
   state: { agents: Record<string, { status: string; mint: string | null; key_id: string }> };
   store: { keyFor(agent: string): AgentKey };
+  /** the runtime's caps, metering and board posts for analyses (packages/runtime runtime.ts) */
+  analysisSurface?(): { room(agent: string): number; meter(agent: string, u: Usage): void; send(agent: string, to: string, text: string): Promise<string | null> };
 }
 
 /** What of a leaf's trade share reached the sink: the vault paid min(cost, balance), compute first. */
@@ -51,7 +55,8 @@ export function forwardAmount(l: { amount: string; cost: string; trade_share?: s
 export async function marketTokens(market: string): Promise<MarketToken[]> {
   const r = await fetch(`${market.replace(/\/+$/, "")}/market/tokens?limit=500`, { signal: AbortSignal.timeout(30_000) });
   if (!r.ok) throw new Error(`market: HTTP ${r.status}`);
-  const body = (await r.json()) as { tokens: { mint: string; agent: string; price: number | null; decimals?: number; change_24h: number | null; phase: string; migrated?: boolean }[] };
+  const body = (await r.json()) as { tokens: { mint: string; agent: string; price: number | null; decimals?: number; change_24h: number | null; phase: string; migrated?: boolean; symbol?: string | null; volume_24h?: number | null; trades_24h?: number | null; holders?: number | null; curve_progress?: number | null; repo_url?: string | null; class?: string | null; lineage_id?: string | null }[] };
+  const numOrNull = (x: unknown) => (typeof x === "number" && Number.isFinite(x) ? x : null);
   return body.tokens.map((t) => ({
     mint: t.mint,
     agent: t.agent,
@@ -59,6 +64,17 @@ export async function marketTokens(market: string): Promise<MarketToken[]> {
     decimals: typeof t.decimals === "number" ? t.decimals : 6,
     change_24h: typeof t.change_24h === "number" ? t.change_24h : null,
     venue: t.phase === "graduated" || t.migrated ? "damm_v2" : "dbc",
+    info: {
+      symbol: typeof t.symbol === "string" ? t.symbol : null,
+      phase: t.phase ?? null,
+      volume_24h: numOrNull(t.volume_24h),
+      trades_24h: numOrNull(t.trades_24h),
+      holders: numOrNull(t.holders),
+      curve_progress: numOrNull(t.curve_progress),
+      repo_url: typeof t.repo_url === "string" ? t.repo_url : null,
+      class: typeof t.class === "string" ? t.class : null,
+      lineage_id: typeof t.lineage_id === "string" ? t.lineage_id : null,
+    },
   }));
 }
 
@@ -83,6 +99,8 @@ export function chainTrading(o: {
   onTx?: (what: string, sig: string, fee?: number) => void;
   venue?: Venue;
   rpc?: Rpc;
+  /** provider keys on this host (providers.env, model.env): the agents' own models analyse with them */
+  keys?: Record<string, string>;
 }): TradingSetup {
   const rpc = o.rpc ?? Rpc.http(o.rpcUrl, "confirmed");
   const escrow = loadOrCreateKeypair(join(o.stateDir, "trader", "escrow.json")).key;
@@ -90,6 +108,7 @@ export function chainTrading(o: {
   const store = new FundingStore(join(o.stateDir, "trader", "funding.json"));
   const venue = o.venue ?? new ChainVenue(rpc, { log: o.log, onTx: o.onTx });
   let rt: RuntimeView | null = null;
+  const registry = new RegistrySource({ core: o.core, log: (m) => o.log(`trader: ${m}`) });
   const agents = async (): Promise<TradingAgent[]> => {
     if (!rt) return [];
     return Object.entries(rt.state.agents)
@@ -106,6 +125,12 @@ export function chainTrading(o: {
     lineDecimals: 6,
     log: (m) => o.log(`trader: ${m}`),
     gas: (treasury, lamports) => funder.gas(treasury, lamports),
+    analysis: {
+      model: (agent) => routedDecisionModel({ core: o.core, agent, keys: o.keys ?? {}, registry }),
+      room: (agent) => rt?.analysisSurface?.().room(agent) ?? 0,
+      meter: (agent, u) => rt?.analysisSurface?.().meter(agent, u),
+      post: async (agent, board, text) => (rt?.analysisSurface ? rt.analysisSurface().send(agent, board, text) : null),
+    },
   });
   const anon = new CoreClient(o.core, null);
   const bps = async () => {

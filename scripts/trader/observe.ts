@@ -44,7 +44,7 @@ const runtimeHits = () => {
   const r = spawnSync(["ssh", "-i", join(homedir(), ".ssh/lineage_site"), "-o", "BatchMode=yes", `root@${HOST}`, "cat /var/lib/lineage/runtime/trader/trader.json"]);
   if (r.exitCode !== 0) return null;
   const s = JSON.parse(r.stdout.toString());
-  return { trades: s.trades as number, limit_hits: s.limit_hits as Record<string, number>, outbox: (s.outbox as unknown[]).length };
+  return { trades: s.trades as number, limit_hits: s.limit_hits as Record<string, number>, outbox: (s.outbox as unknown[]).length, analyses: (s.analyses ?? []) as any[], posts: (s.posts ?? []) as any[] };
 };
 
 const hits0 = runtimeHits();
@@ -166,6 +166,14 @@ const pnl = traders.map((a) => {
 });
 for (const p of pnl) log(`${p.agent.slice(0, 6)}: ${p.trades} trades (${p.buys} buys, ${p.sells} sells) ${JSON.stringify(p.rules)}; equity ${p.equity_first} -> ${p.equity_last}, change net of funding ${p.equity_change_net_of_funding}, realized ${p.realized_pnl} base units`);
 const hits1 = runtimeHits();
+// the agents' own analyses: decisions in the window (trades with a thesis, holds, refusals) and their board posts
+const analysed = window.filter((r) => (r.kind === "trade" && r.rule === "agent_decision") || r.kind === "decision");
+const analyses = analysed.map((r) => ({ agent: r.agent, at: new Date(r.at).toISOString(), outcome: r.kind === "trade" ? "filled" : r.outcome, rule: r.rule ?? null, action: r.kind === "trade" ? r.side : r.action, mint: r.mint ?? null, size_pct: r.decision?.size_pct ?? r.size_pct ?? null, model: r.model, usd: r.analysis_usd, record: `${SITE}/trading/${r.agent}#r${r.id}`, thesis: String(r.thesis ?? "").slice(0, 300) }));
+const posts = (hits1?.posts ?? []).filter((p) => p.at >= since && p.at <= end).map((p) => ({ agent: p.agent, at: new Date(p.at).toISOString(), msg_id: p.msg_id, board: `${SITE}/lineages/${p.board}`, ref: p.ref }));
+const analysisUsd = analysed.reduce((x, r) => x + (typeof r.analysis_usd === "number" ? r.analysis_usd : 0), 0);
+check("hosted agents analysed with their own models and published every decision", analysed.length > 0 && analysed.every((r) => typeof r.thesis === "string" && r.model), `${analysed.length} decisions, ${analysisUsd.toFixed(4)} USD`);
+check("every filled or refused decision was posted on the agent's board after its record", posts.length >= analysed.filter((r) => r.kind === "trade" || r.outcome === "refused").length && posts.every((p) => p.msg_id), `${posts.length} posts`);
+log(`analyses: ${analysed.length} (${analysed.filter((r) => r.kind === "trade").length} filled, ${analysed.filter((r) => r.outcome === "hold").length} holds, ${analysed.filter((r) => r.outcome === "refused").length} refused), ${analysisUsd.toFixed(4)} USD; ${posts.length} board posts`);
 const halts = window.filter((r) => r.kind === "halt").map((h) => ({ agent: h.agent, rule: h.rule, reason: h.reason, at: h.at }));
 log(`halts in the window: ${halts.length}; runtime limit refusals ${hits1 ? JSON.stringify(hits1.limit_hits) : "not read"}`);
 const pass = results.filter((r) => r.ok).length;
@@ -174,6 +182,7 @@ writeFileSync(
   join(import.meta.dir, "OBSERVE-LAST.json"),
   JSON.stringify({ site: SITE, window: { from: new Date(since).toISOString(), to: new Date(end).toISOString(), minutes: MIN }, config: cfg, pass, total: results.length, results, trades: trades.length, agents: traders.length, pnl, halts,
     fundings: window.filter((r) => r.kind === "funding").map((f) => ({ agent: f.agent, source: f.source, amount: f.amount, signature: f.signature })),
+    analyses, analysis_usd: analysisUsd, posts,
     runtime_limit_hits_before: hits0?.limit_hits ?? null, runtime_limit_hits_after: hits1?.limit_hits ?? null, problems }, null, 2),
 );
 process.exit(pass === results.length ? 0 : 1);

@@ -26,23 +26,16 @@ import { soulsOf } from "./souls.ts";
 export type Temperament = "aggressive" | "balanced" | "careful";
 export const TEMPERAMENTS: Temperament[] = ["aggressive", "balanced", "careful"];
 
-/** How a temperament trades, inside the risk limits (it can never exceed them). TEST values. */
+/**
+ * A temperament (plan T, owner amendment 2026-10-10): the agent's own model decides each round, and
+ * its temperament is part of the prompt. `size_bps` is also a hard bound the engine enforces: a
+ * careful agent's buy above it is refused like any other limit, never resized.
+ */
 export interface TemperamentParams {
-  /** size of one buy, bps of treasury equity (capped by max_trade_bps) */
+  /** most of one buy for this temperament, bps of treasury equity (and never above max_trade_bps) */
   size_bps: number;
-  /** buy a token whose composite score is at least this */
-  buy_threshold: number;
-  /** or whose project score rose at least this much over the lookback (and is at least half the buy threshold) */
-  rise_threshold: number;
-  /** sell half a position whose project score fell at least this much over the lookback */
-  fall_threshold: number;
-  /** sell all of a position whose composite score is below this */
-  exit_threshold: number;
-  /** trim a position held this long whose token is outside the top_k (null: never rotate) */
-  rotate_after_s: number | null;
-  top_k: number;
-  /** most trades one agent places per trader tick */
-  max_actions_per_tick: number;
+  /** what the agent's prompt says about its appetite for risk */
+  prompt: string;
 }
 
 export const SCORE_COMPONENTS = ["verified_gain_7d", "accepted_generations", "acceptance_rate", "sessions_24h", "leaderboard_rank", "follower_growth"] as const;
@@ -86,6 +79,16 @@ export interface TradingConfig {
   agent_temperament: Record<string, Temperament>;
   /** token account receiving optional launch allocations (memo names the agent); null: not offered */
   allocation_escrow: string | null;
+  /** agents that never trade and whose tokens are never traded (agent id -> public reason) */
+  excluded_agents: Record<string, string>;
+  /** each agent's own model analyses the public data and decides once per round */
+  analysis_enabled: boolean;
+  /** seconds between an agent's analysis rounds */
+  round_s: number;
+  /** most one round's model call may cost, USD (counts against the runtime's global and per-agent caps) */
+  analysis_max_usd: number;
+  /** how many tokens the analysis context lists (by project score), at most */
+  analysis_tokens: number;
 }
 
 /** TEST defaults (plan T table; the values the table leaves open are TEST values of this lane). */
@@ -113,13 +116,18 @@ export const TRADING_DEFAULTS: TradingConfig = {
   score_lookback_s: 3600,
   score_weights: { verified_gain_7d: 0.35, accepted_generations: 0.2, acceptance_rate: 0.15, sessions_24h: 0.15, leaderboard_rank: 0.1, follower_growth: 0.05 },
   temperaments: {
-    aggressive: { size_bps: 300, buy_threshold: 0.2, rise_threshold: 0.02, fall_threshold: 0.05, exit_threshold: 0.08, rotate_after_s: 1800, top_k: 4, max_actions_per_tick: 2 },
-    balanced: { size_bps: 200, buy_threshold: 0.35, rise_threshold: 0.05, fall_threshold: 0.05, exit_threshold: 0.15, rotate_after_s: 7200, top_k: 3, max_actions_per_tick: 1 },
-    careful: { size_bps: 100, buy_threshold: 0.5, rise_threshold: 0.08, fall_threshold: 0.04, exit_threshold: 0.25, rotate_after_s: null, top_k: 2, max_actions_per_tick: 1 },
+    aggressive: { size_bps: 300, prompt: "Aggressive: a willing buyer and a risk taker. Trade often; back the projects whose public work is strongest and getting stronger; take profits and cut losers without hesitation." },
+    balanced: { size_bps: 200, prompt: "Balanced: trade when the public record gives a clear reason; size moderately; hold otherwise." },
+    careful: { size_bps: 100, prompt: "Careful: trade rarely and small; buy only clear quality; hold when in doubt." },
   },
   default_temperament: "aggressive",
   agent_temperament: {},
   allocation_escrow: null,
+  excluded_agents: {},
+  analysis_enabled: true,
+  round_s: 900,
+  analysis_max_usd: 0.05,
+  analysis_tokens: 20,
 };
 
 const isObj = (x: unknown): x is Record<string, unknown> => typeof x === "object" && x !== null && !Array.isArray(x);
@@ -187,10 +195,9 @@ export function mergeTradingConfig(base: TradingConfig, patch: unknown): Trading
       for (const [k, x] of Object.entries(v)) {
         if (!(k in cur)) throw new Error(`trading config: temperaments.${name}.${k} is unknown`);
         const ok =
-          k === "rotate_after_s" ? x === null || (typeof x === "number" && Number.isInteger(x) && x >= 0)
-          : k === "size_bps" ? typeof x === "number" && Number.isInteger(x) && x >= 0 && x <= 10_000
-          : k === "top_k" || k === "max_actions_per_tick" ? typeof x === "number" && Number.isInteger(x) && x >= 0 && x <= 100
-          : typeof x === "number" && x >= 0 && x <= 1;
+          k === "size_bps" ? typeof x === "number" && Number.isInteger(x) && x >= 0 && x <= 10_000
+          : k === "prompt" ? typeof x === "string" && x.length > 0 && x.length <= 500 && !/[\u2014]/.test(x)
+          : false;
         if (!ok) throw new Error(`trading config: temperaments.${name}.${k} is out of bounds`);
         (cur as unknown as Record<string, unknown>)[k] = x;
       }
@@ -210,11 +217,50 @@ export function mergeTradingConfig(base: TradingConfig, patch: unknown): Trading
       else c.agent_temperament[id] = t as Temperament;
     }
   }
+  if ("excluded_agents" in p) {
+    const a = p.excluded_agents;
+    if (!isObj(a)) throw new Error("trading config: excluded_agents maps agent ids to a reason (null removes)");
+    for (const [id, why] of Object.entries(a)) {
+      if (!B58.test(id)) throw new Error(`trading config: excluded_agents key ${id.slice(0, 50)} is not an agent id`);
+      if (why === null) delete c.excluded_agents[id];
+      else if (typeof why !== "string" || !why || why.length > 200) throw new Error(`trading config: excluded_agents.${id} is a reason of 1 to 200 characters, or null`);
+      else c.excluded_agents[id] = why;
+    }
+  }
+  if ("analysis_enabled" in p) {
+    if (typeof p.analysis_enabled !== "boolean") throw new Error("trading config: analysis_enabled is a boolean");
+    c.analysis_enabled = p.analysis_enabled;
+  }
+  int("round_s", 60, 7 * 86400);
+  int("analysis_tokens", 1, 60);
+  if ("analysis_max_usd" in p) {
+    const v = p.analysis_max_usd;
+    if (typeof v !== "number" || !(v > 0 && v <= 1)) throw new Error("trading config: analysis_max_usd is a number in (0, 1]");
+    c.analysis_max_usd = v;
+  }
   if ("allocation_escrow" in p) {
     if (p.allocation_escrow !== null && !(typeof p.allocation_escrow === "string" && B58.test(p.allocation_escrow))) throw new Error("trading config: allocation_escrow is an address or null");
     c.allocation_escrow = p.allocation_escrow as string | null;
   }
   return c;
+}
+
+/**
+ * A stored config written by an earlier layout: keys this version no longer knows are dropped (the
+ * score-threshold temperament fields of the first trading layout), so an upgrade never bricks the
+ * config. An admin patch is still checked strictly.
+ */
+export function storedPatch(raw: unknown): Record<string, unknown> {
+  if (!isObj(raw)) return {};
+  const out: Record<string, unknown> = {};
+  for (const [k, v] of Object.entries(raw)) if (k in TRADING_DEFAULTS) out[k] = v;
+  if (isObj(out.temperaments)) {
+    const t: Record<string, unknown> = {};
+    for (const [name, v] of Object.entries(out.temperaments))
+      if (TEMPERAMENTS.includes(name as Temperament) && isObj(v)) t[name] = Object.fromEntries(Object.entries(v).filter(([k]) => k === "size_bps" || k === "prompt"));
+    out.temperaments = t;
+  }
+  return out;
 }
 
 /**
@@ -378,7 +424,7 @@ export class Scores {
     const r = this.c.db.query<{ config: string }, []>("SELECT config FROM trading_config WHERE id = 1").get();
     if (!r) return structuredClone(TRADING_DEFAULTS);
     // stored as a patch over the defaults, so new fields get their defaults
-    return mergeTradingConfig(TRADING_DEFAULTS, JSON.parse(r.config));
+    return mergeTradingConfig(TRADING_DEFAULTS, storedPatch(JSON.parse(r.config)));
   }
 
   configView() {
@@ -390,7 +436,7 @@ export class Scores {
   setConfig(body: unknown) {
     return this.c.tx(() => {
       const cur = this.c.db.query<{ config: string }, []>("SELECT config FROM trading_config WHERE id = 1").get();
-      const stored = cur ? (JSON.parse(cur.config) as Record<string, unknown>) : {};
+      const stored = cur ? storedPatch(JSON.parse(cur.config)) : {};
       let merged: TradingConfig;
       try {
         merged = mergeTradingConfig(mergeTradingConfig(TRADING_DEFAULTS, stored), body);
@@ -552,6 +598,8 @@ export class Scores {
     const owner = this.agentOfMint(mint);
     if (!owner) throw bad("unknown_token", "the mint is not a launched agent's token");
     if (owner === agent) throw conflict("integrity_own_token", "an agent never trades its own token");
+    if (cfg.excluded_agents[agent]) throw conflict("integrity_excluded", `this agent is excluded from trading: ${cfg.excluded_agents[agent]}`);
+    if (cfg.excluded_agents[owner]) throw conflict("integrity_excluded", `the token's agent is excluded from trading: ${cfg.excluded_agents[owner]}`);
     const mine = this.parties(agent);
     for (const p of this.parties(owner)) if (mine.has(p)) throw conflict("integrity_same_party", "the token's agent shares a launcher, owner or operator with this agent");
     const halt = this.haltOf(agent, at);
@@ -602,12 +650,23 @@ export class Scores {
           sig = b.signature;
           break;
         }
+        case "decision": {
+          // an analysis round that did not trade: a hold, or a decision the engine refused
+          if (this.config().excluded_agents[b.agent]) throw conflict("integrity_excluded", "this agent is excluded from trading");
+          if (b.outcome !== "hold" && b.outcome !== "refused") throw bad("bad_outcome", "outcome: hold or refused (a filled decision is a trade record)");
+          if (typeof b.thesis !== "string" || b.thesis.length > 4000) throw bad("bad_thesis", "thesis: a string of at most 4000 characters (empty when the model gave none)");
+          if (b.outcome === "refused" && (typeof b.rule !== "string" || !b.rule)) throw bad("bad_rule", "a refused decision carries the rule that refused it");
+          if (b.mint !== null && b.mint !== undefined && (typeof b.mint !== "string" || !B58.test(b.mint))) throw bad("bad_mint", "mint");
+          mint = typeof b.mint === "string" ? b.mint : null;
+          side = b.action === "buy" || b.action === "sell" ? b.action : null;
+          break;
+        }
         case "halt":
           if (b.rule !== "daily_loss" && b.rule !== "max_drawdown") throw bad("bad_rule", "halt rule: daily_loss or max_drawdown");
           if (typeof b.reason !== "string" || !b.reason) throw bad("bad_reason", "reason");
           break;
         default:
-          throw bad("bad_kind", "kind: trade, funding or halt (resets are posted by the launcher, owner or admin)");
+          throw bad("bad_kind", "kind: trade, decision, funding or halt (resets are posted by the launcher, owner or admin)");
       }
       // the trader asks before it sends a trade, so Core's rules are checked before money moves
       if (b.dry_run === true) return { ok: true, dry_run: true };
@@ -616,7 +675,7 @@ export class Scores {
         .run(b.ref, b.kind, b.agent, mint, side, b.at, this.c.now(), sig, JSON.stringify(b));
       const row = this.c.db.query<RecRow, [number]>("SELECT * FROM trade_records WHERE id = ?").get(Number(r.lastInsertRowid))!;
       const v = view(row);
-      this.c.emitEvent(b.kind === "trade" ? "trade.executed" : b.kind === "funding" ? "trade.funded" : "trade.halted", v);
+      this.c.emitEvent(b.kind === "trade" ? "trade.executed" : b.kind === "funding" ? "trade.funded" : b.kind === "decision" ? "trade.decision" : "trade.halted", v);
       return v;
     });
   }
@@ -670,10 +729,12 @@ export class Scores {
       treasury: { key: this.c.identity.signingKey(agent), note: "the agent's current signing key (held by the hosted runtime) holds its trading treasury; separate from the compute vault" },
       temperament: this.temperamentOf(agent, cfg),
       halt: this.haltOf(agent),
+      excluded: cfg.excluded_agents[agent] ?? null,
       summary: {
         trades: n("trade"),
         buys: n("trade", "buy"),
         sells: n("trade", "sell"),
+        decisions: n("decision"),
         fundings: n("funding"),
         halts: n("halt"),
         funded_line: funded.toString(),

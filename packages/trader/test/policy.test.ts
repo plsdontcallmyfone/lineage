@@ -1,182 +1,184 @@
 import { describe, expect, test } from "bun:test";
 import { mergeTradingConfig, TRADING_DEFAULTS, type TradingConfig } from "../../core/src/scores.ts";
-import { checkTrade, composite, decide, equityOf, haltCheck, valueOf, type Book, type Market, type Position, type TokenView } from "../src/policy.ts";
+import { checkTrade, composite, enforceDecision, equityOf, haltCheck, parseDecision, riskExits, valueOf, type Book, type Market, type ModelDecision, type Position, type TokenView } from "../src/policy.ts";
 
-// Unit tests of the deterministic policy engine and of every risk limit (plan T exit).
+// Unit tests of the engine (plan T, owner amendment 2026-10-10): the decision schema the agent's model
+// must meet, every risk limit and integrity rule enforced on the model's decision (adversarial outputs
+// included: nothing is clamped, every bad decision is refused with its rule), and the risk exits.
 
 const NOW = Date.UTC(2026, 9, 10, 12);
 const L = 1_000_000n; // one tLINE in base units
 const cfg = (over: Record<string, unknown> = {}): TradingConfig => mergeTradingConfig(TRADING_DEFAULTS, over);
 const agg = TRADING_DEFAULTS.temperaments.aggressive;
+const careful = TRADING_DEFAULTS.temperaments.careful;
+const M = (i: number | string) => `Tok${i}x`.padEnd(40, "z");
 
 function tok(i: number, over: Partial<TokenView> = {}): TokenView {
-  return { mint: `M${i}`, agent: `A${i}`, parties: [`L${i}`], price: 1, decimals: 6, change_24h: 0, venue: "sim", ...over };
+  return { mint: M(i), agent: `A${i}`, parties: [`L${i}`], price: 1, decimals: 6, change_24h: 0, venue: "sim", ...over };
 }
 function book(over: Partial<Book> = {}): Book {
-  return { agent: "ME", mint: "MME", parties: ["LME"], line: 1000n * L, sol: 1_000_000_000n, positions: {}, day: { start: NOW - 3600_000, equity: 1000n * L, funded: 0n }, peak: 1000n * L, halted: null, blackout: false, ...over };
+  return { agent: "ME", mint: M("ME"), parties: ["LME"], line: 1000n * L, sol: 1_000_000_000n, positions: {}, day: { start: NOW - 3600_000, equity: 1000n * L, funded: 0n }, peak: 1000n * L, halted: null, blackout: false, ...over };
 }
-function market(tokens: TokenView[], scores: Record<string, [number, number | null]>): Market {
+function market(tokens: TokenView[], scores: Record<string, [number, number | null]> = {}): Market {
   return { tokens, scores: new Map(Object.entries(scores).map(([a, [now, ref]]) => [a, { now, ref }])), lineDecimals: 6 };
 }
 function pos(mint: string, qty: bigint, cost: bigint, over: Partial<Position> = {}): Position {
   return { mint, qty, cost, opened_at: NOW - 7200_000, last_side: "buy", last_at: NOW - 7200_000, ...over };
 }
+const dec = (over: Partial<ModelDecision> = {}): ModelDecision => ({ thesis: "Strong accepted work this week and rising volume.", action: "buy", token: M(1), size_pct: 3, reason: "best public record", ...over });
+const J = (o: unknown) => JSON.stringify(o);
 
-describe("policy", () => {
-  test("deterministic: the same inputs give the same decision", () => {
-    const m = market([tok(1), tok(2), tok(3)], { A1: [0.9, 0.8], A2: [0.5, 0.6], A3: [0.1, null] });
-    const a = decide(book(), m, cfg(), agg, NOW, 100);
-    const b = decide(book(), m, cfg(), agg, NOW, 100);
-    expect(JSON.stringify(a, (_, v) => (typeof v === "bigint" ? v.toString() : v))).toBe(JSON.stringify(b, (_, v) => (typeof v === "bigint" ? v.toString() : v)));
-    expect(a.actions.length).toBeGreaterThan(0);
+describe("decision schema (the model's output is untrusted)", () => {
+  test("a valid decision parses; a single json fence is allowed", () => {
+    const ok = parseDecision(J(dec()));
+    expect(ok.ok).toBe(true);
+    expect(parseDecision("```json\n" + J(dec()) + "\n```").ok).toBe(true);
+    expect(parseDecision(J({ thesis: "Nothing stands out against my positions today.", action: "hold", token: null, size_pct: 0, reason: "no edge" })).ok).toBe(true);
   });
+  const bad: [string, unknown][] = [
+    ["prose around the JSON", `I think so. ${J(dec())}`],
+    ["two objects", J(dec()) + J(dec())],
+    ["an array", J([dec()])],
+    ["an extra field", J({ ...dec(), max_trade_bps: 10000 })],
+    ["a missing field", J({ thesis: dec().thesis, action: "buy", token: M(1), size_pct: 3 })],
+    ["an unknown action", J(dec({ action: "short" as any }))],
+    ["a buy without a token", J(dec({ token: null }))],
+    ["a hold with a token", J(dec({ action: "hold", size_pct: 0 }))],
+    ["a hold with a size", J(dec({ action: "hold", token: null, size_pct: 1 }))],
+    ["size 0", J(dec({ size_pct: 0 }))],
+    ["a negative size", J(dec({ size_pct: -5 }))],
+    ["size above 100", J(dec({ size_pct: 101 }))],
+    ["size as a string", J({ ...dec(), size_pct: "3" })],
+    ["a non-finite size", J(dec()).replace('"size_pct":3', '"size_pct":1e400')],
+    ["a token that is no address", J(dec({ token: "../../etc" }))],
+    ["a thesis too short", J(dec({ thesis: "buy" }))],
+    ["a thesis too long", J(dec({ thesis: "x".repeat(1201) }))],
+    ["an em dash", J(dec({ reason: "best record — trust me" }))],
+    ["no text", ""],
+    ["not JSON", "{action: buy}"],
+  ];
+  for (const [name, text] of bad)
+    test(`refused: ${name}`, () => {
+      const r = parseDecision(text as string);
+      expect(r.ok).toBe(false);
+      if (!r.ok) expect(r.rule).toBe("invalid_decision");
+    });
+});
 
-  test("buys follow high and rising scores, biggest composite first; each carries rule, reason and score", () => {
-    const m = market([tok(1), tok(2), tok(3)], { A1: [0.9, 0.9], A2: [0.15, 0.1], A3: [0.05, 0.05] });
-    const d = decide(book(), m, cfg(), agg, NOW, 100);
-    expect(d.actions.map((a) => [a.side, a.mint, a.rule])).toEqual([
-      ["buy", "M1", "score_high"],
-      ["buy", "M2", "score_rising"],
-    ]);
-    for (const a of d.actions) {
-      expect(a.reason.length).toBeGreaterThan(10);
-      expect(a.score.project).toBeGreaterThan(0);
-      // max per trade: 3% of equity
-      expect(a.amount).toBe(30n * L);
-    }
+describe("every limit enforced on the model's decision (adversarial outputs are refused, never clamped)", () => {
+  const m = market([tok(1), tok(2), tok(3)], { A1: [0.9, null], A2: [0.5, null] });
+  const go = (d: Partial<ModelDecision>, b = book(), c = cfg(), t = agg, left = 100, mk = m) => enforceDecision(b, mk, c, t, dec(d), NOW, left);
+  const rule = (r: ReturnType<typeof enforceDecision>) => (r.ok ? "ok" : r.refusal.rule);
+
+  test("a buy inside every limit becomes one exact trade with the model's reason", () => {
+    const r = go({ size_pct: 3 });
+    expect(r.ok && r.action?.amount).toBe(30n * L);
+    expect(r.ok && r.action?.rule).toBe("agent_decision");
+    expect(r.ok && r.action?.reason).toBe("best public record");
   });
-
-  test("project quality dominates momentum", () => {
-    const good = composite(0.8, -0.5, 0.15).composite;
-    const hyped = composite(0.2, 0.5, 0.15).composite;
-    expect(good).toBeGreaterThan(hyped);
+  test("max per trade (3%): 3.01% is refused, not resized", () => expect(rule(go({ size_pct: 3.01 }))).toBe("temperament_size"));
+  test("the temperament's own bound: careful refuses 2%", () => expect(rule(go({ size_pct: 2 }, book(), cfg(), careful))).toBe("temperament_size"));
+  test("max per trade binds even when the temperament allows more", () => {
+    const c = cfg({ temperaments: { aggressive: { size_bps: 900 } } });
+    expect(rule(go({ size_pct: 5 }, book(), c, c.temperaments.aggressive))).toBe("max_trade");
   });
-
-  test("temperaments: careful trades less and smaller than aggressive", () => {
-    const m = market([tok(1), tok(2), tok(3)], { A1: [0.9, null], A2: [0.45, null], A3: [0.3, null] });
-    const a = decide(book(), m, cfg(), TRADING_DEFAULTS.temperaments.aggressive, NOW, 100);
-    const c = decide(book(), m, cfg(), TRADING_DEFAULTS.temperaments.careful, NOW, 100);
-    expect(a.actions.length).toBeGreaterThan(c.actions.length);
-    expect(c.actions[0]!.amount).toBeLessThan(a.actions[0]!.amount);
+  test("100% of treasury in one trade: refused", () => expect(rule(go({ size_pct: 100 }))).toBe("temperament_size"));
+  test("more than two decimals: refused, not rounded", () => expect(rule(go({ size_pct: 1.005 }))).toBe("invalid_decision"));
+  test("max position (10% per token)", () => {
+    const b = book({ line: 920n * L, positions: { [M(1)]: pos(M(1), 80n * L, 80n * L) } });
+    expect(rule(go({ size_pct: 2 }, b))).toBe("ok");
+    expect(rule(go({ size_pct: 2.1 }, b))).toBe("max_position");
   });
-
-  test("stop-loss sells all; take-profit sells part; falling and low scores sell; rotation trims outside the top", () => {
-    const t = [tok(1, { price: 0.8 }), tok(2, { price: 1.5 }), tok(3), tok(4), tok(5)];
-    const positions = {
-      M1: pos("M1", 50n * L, 50n * L), // marked 40 vs cost 50: -20%
-      M2: pos("M2", 40n * L, 40n * L), // marked 60 vs cost 40: +50%
-      M3: pos("M3", 40n * L, 40n * L),
-      M4: pos("M4", 40n * L, 40n * L),
-      M5: pos("M5", 40n * L, 40n * L),
-    };
-    const m = market(t, { A1: [0.9, 0.9], A2: [0.9, 0.9], A3: [0.5, 0.7], A4: [0, 0], A5: [0.3, 0.3] });
-    const d = decide(book({ positions }), m, cfg(), { ...agg, max_actions_per_tick: 10, top_k: 3 }, NOW, 100);
-    const by = Object.fromEntries(d.actions.filter((a) => a.side === "sell").map((a) => [a.mint, a]));
-    expect(by.M1!.rule).toBe("stop_loss");
-    expect(by.M1!.amount).toBe(50n * L);
-    expect(by.M2!.rule).toBe("take_profit");
-    expect(by.M2!.amount).toBe(20n * L); // take_profit_sell_bps 5000
-    expect(by.M3!.rule).toBe("score_falling");
-    expect(by.M4!.rule).toBe("score_low");
-    expect(by.M5!.rule).toBe("rotate");
+  test("max open positions (8)", () => {
+    const positions = Object.fromEntries([4, 5, 6, 7, 8, 9, 10, 11].map((i) => [M(i), pos(M(i), L, L)]));
+    const mk = market([tok(1), ...[4, 5, 6, 7, 8, 9, 10, 11].map((i) => tok(i))]);
+    expect(rule(go({ size_pct: 1 }, book({ positions }), cfg(), agg, 100, mk))).toBe("max_open_positions");
+  });
+  test("daily loss (5%) and drawdown (20%): refused, with the halt", () => {
+    expect(rule(go({}, book({ line: 940n * L })))).toBe("daily_loss");
+    expect(rule(go({}, book({ line: 790n * L, day: { start: NOW, equity: 790n * L, funded: 0n } }), cfg()))).toBe("max_drawdown");
+    expect(rule(go({}, book({ halted: { rule: "max_drawdown", since: NOW - 1, until: null } })))).toBe("halted");
+  });
+  test("cooldown (10 min) and minimum hold (30 min, opposite side)", () => {
+    expect(rule(go({}, book({ positions: { [M(1)]: pos(M(1), L, L, { last_at: NOW - 599_000 }) } })))).toBe("cooldown");
+    expect(rule(go({ action: "sell", size_pct: 100 }, book({ positions: { [M(1)]: pos(M(1), 10n * L, 10n * L, { last_at: NOW - 1799_000 }) } }), cfg({ cooldown_s: 0 })))).toBe("integrity_min_hold");
+  });
+  test("global trade rate, gas reserve, minimum trade, funds", () => {
+    expect(rule(go({}, book(), cfg(), agg, 0))).toBe("global_rate");
+    expect(rule(go({}, book({ sol: 1n })))).toBe("gas");
+    expect(rule(go({ size_pct: 0.09 }))).toBe("min_trade");
+    // equity is mostly a position here: 3% of equity is more cash than the treasury holds
+    const b = book({ line: 10n * L, positions: { [M(2)]: pos(M(2), 990n * L, 990n * L) } });
+    expect(rule(go({ size_pct: 3 }, b))).toBe("funds");
+  });
+  test("selling what is not held, or a token not in the list", () => {
+    expect(rule(go({ action: "sell", size_pct: 50 }))).toBe("no_position");
+    expect(rule(go({ token: M(99) }))).toBe("unknown_token");
+  });
+  test("a sell of a percent of the position is exact", () => {
+    const r = go({ action: "sell", size_pct: 25 }, book({ positions: { [M(1)]: pos(M(1), 40n * L, 40n * L) } }));
+    expect(r.ok && r.action?.amount).toBe(10n * L);
+  });
+  test("a hold trades nothing", () => {
+    const r = go({ action: "hold", token: null, size_pct: 0 });
+    expect(r.ok && r.action).toBeNull();
   });
 });
 
-describe("every risk limit", () => {
-  const T = tok(1);
-  const E = 1000n * L;
-  const go = (b: Book, side: "buy" | "sell", amount: bigint, c = cfg(), left = 100, t = T) => checkTrade(b, t, side, amount, side === "buy" ? amount : valueOf(amount, t.price, 6, 6), equityOf(b, market([t], {})), c, NOW, left);
+describe("integrity rules on the model's decision (attempts to break each)", () => {
+  const go = (d: Partial<ModelDecision>, mk: Market, b = book()) => enforceDecision(b, mk, cfg(), agg, dec(d), NOW, 100);
+  test("its own token, by mint, is refused", () => {
+    const r = go({ token: M("ME") }, market([tok(1), { ...tok(9), mint: M("ME"), agent: "ME" }]));
+    expect(!r.ok && r.refusal.rule).toBe("integrity_own_token");
+  });
+  test("a same-launcher agent's token is refused", () => {
+    const r = go({ token: M(1) }, market([tok(1, { parties: ["LME"] })]));
+    expect(!r.ok && r.refusal.rule).toBe("integrity_same_party");
+  });
+  test("an excluded agent's token is refused", () => {
+    const r = go({ token: M(1) }, market([tok(1, { excluded: true })]));
+    expect(!r.ok && r.refusal.rule).toBe("integrity_excluded");
+  });
+  test("during its own verdict window nothing trades and the refusal is private", () => {
+    const r = go({}, market([tok(1)]), book({ blackout: true }));
+    expect(!r.ok && r.refusal.rule).toBe("verdict_window");
+    expect(!r.ok && r.refusal.private).toBe(true);
+  });
+});
 
-  test("max position: 10% of treasury per token", () => {
-    const b = book({ line: 920n * L, positions: { M1: pos("M1", 80n * L, 80n * L) } });
-    expect(go(b, "buy", 20n * L)).toBeNull();
-    expect(go(b, "buy", 21n * L)?.rule).toBe("max_position");
+describe("risk exits and limits", () => {
+  test("stop-loss sells all at -15%, take-profit sells half at +40%, not before", () => {
+    const b = book({ positions: { [M(1)]: pos(M(1), 100n * L, 100n * L) } });
+    const at = (price: number) => riskExits(b, market([tok(1, { price })]), cfg(), NOW, 100).actions;
+    expect(at(0.86)).toHaveLength(0);
+    expect(at(0.85)[0]?.rule).toBe("stop_loss");
+    expect(at(0.85)[0]?.amount).toBe(100n * L);
+    expect(at(1.39)).toHaveLength(0);
+    expect(at(1.4)[0]?.rule).toBe("take_profit");
+    expect(at(1.4)[0]?.amount).toBe(50n * L);
   });
-  test("max per trade: 3% of treasury", () => {
-    expect(go(book(), "buy", 30n * L)).toBeNull();
-    expect(go(book(), "buy", 31n * L)?.rule).toBe("max_trade");
-  });
-  test("max open positions: 8", () => {
-    const positions = Object.fromEntries([2, 3, 4, 5, 6, 7, 8, 9].map((i) => [`M${i}`, pos(`M${i}`, L, L)]));
-    expect(go(book({ positions }), "buy", 10n * L)?.rule).toBe("max_open_positions");
-    expect(go(book({ positions: { ...positions, M1: pos("M1", L, L) } }), "buy", 10n * L)).toBeNull(); // adding to an open one is fine
-  });
-  test("daily loss: 5%, net of today's funding, then halt", () => {
-    const c = cfg();
-    expect(haltCheck(book({ day: { start: NOW, equity: E, funded: 0n } }), E - 50n * L, c)).toBeNull();
-    expect(haltCheck(book({ day: { start: NOW, equity: E, funded: 0n } }), E - 51n * L, c)?.rule).toBe("daily_loss");
-    // a deposit today does not hide a loss
-    expect(haltCheck(book({ day: { start: NOW, equity: E, funded: 100n * L }, peak: E + 100n * L }), E + 40n * L, c)?.rule).toBe("daily_loss");
-    // halted: nothing trades
-    const d = decide(book({ line: E - 60n * L }), market([T], { A1: [0.9, null] }), c, agg, NOW, 100);
-    expect(d.halt?.rule).toBe("daily_loss");
+  test("a stop-loss inside the minimum hold waits (the integrity rule binds the exits too)", () => {
+    const b = book({ positions: { [M(1)]: pos(M(1), 100n * L, 100n * L, { last_at: NOW - 60_000 }) } });
+    const d = riskExits(b, market([tok(1, { price: 0.5 })]), cfg({ cooldown_s: 0 }), NOW, 100);
     expect(d.actions).toHaveLength(0);
-  });
-  test("max drawdown: 20% from peak, halt until reset", () => {
-    const c = cfg({ daily_loss_bps: 10_000 });
-    expect(haltCheck(book({ peak: E }), E - 200n * L, c)).toBeNull();
-    expect(haltCheck(book({ peak: E }), E - 201n * L, c)?.rule).toBe("max_drawdown");
-    expect(go(book({ halted: { rule: "max_drawdown", since: NOW - 1, until: null } }), "buy", L)?.rule).toBe("halted");
-  });
-  test("stop-loss 15% and take-profit 40% trigger at their thresholds and not before", () => {
-    const m = (price: number) => market([tok(1, { price })], { A1: [0.9, 0.9] });
-    const b = book({ positions: { M1: pos("M1", 100n * L, 100n * L) } });
-    expect(decide(b, m(0.86), cfg(), agg, NOW, 100).actions.find((a) => a.side === "sell")).toBeUndefined();
-    expect(decide(b, m(0.85), cfg(), agg, NOW, 100).actions.find((a) => a.side === "sell")?.rule).toBe("stop_loss");
-    expect(decide(b, m(1.39), cfg(), agg, NOW, 100).actions.find((a) => a.side === "sell")).toBeUndefined();
-    expect(decide(b, m(1.4), cfg(), agg, NOW, 100).actions.find((a) => a.side === "sell")?.rule).toBe("take_profit");
-  });
-  test("per-agent cooldown: 10 min between trades in the same token", () => {
-    const b = book({ positions: { M1: pos("M1", L, L, { last_at: NOW - 599_000 }) } });
-    expect(go(b, "buy", L)?.rule).toBe("cooldown");
-    b.positions.M1!.last_at = NOW - 600_000;
-    expect(go(b, "buy", L)).toBeNull();
-  });
-  test("minimum hold: 30 min before the opposite side", () => {
-    const b = book({ positions: { M1: pos("M1", 10n * L, 10n * L, { last_at: NOW - 1799_000 }) } });
-    expect(go(b, "sell", 10n * L)?.rule).toBe("integrity_min_hold");
-    b.positions.M1!.last_at = NOW - 1800_000;
-    expect(go(b, "sell", 10n * L)).toBeNull();
-  });
-  test("global trade rate per epoch", () => {
-    expect(go(book(), "buy", L, cfg(), 0)?.rule).toBe("global_rate");
-    const d = decide(book(), market([tok(1), tok(2)], { A1: [0.9, null], A2: [0.9, null] }), cfg(), agg, NOW, 1);
-    expect(d.actions).toHaveLength(1);
-    expect(d.refused.some((r) => r.rule === "global_rate")).toBe(true);
-  });
-  test("gas reserve, minimum trade, funds", () => {
-    expect(go(book({ sol: 9_999_999n }), "buy", L)?.rule).toBe("gas");
-    expect(go(book(), "buy", L - 1n)?.rule).toBe("min_trade");
-    expect(go(book({ line: 5n * L }), "buy", 6n * L)?.rule).toBe("funds");
-  });
-  test("max slippage and max price impact are enforced at execution (see sim.test.ts)", () => {
-    expect(cfg().max_slippage_bps).toBe(200);
-    expect(cfg().max_impact_bps).toBe(100);
-  });
-});
-
-describe("integrity rules the policy enforces (attempts to break each)", () => {
-  test("never its own token, even at the top score", () => {
-    const m = market([tok(1, { agent: "ME", mint: "MME" }), tok(2)], { ME: [1, null], A2: [0.3, null] });
-    const d = decide(book(), m, cfg(), agg, NOW, 100);
-    expect(d.actions.map((a) => a.mint)).not.toContain("MME");
-    expect(checkTrade(book(), tok(1, { agent: "ME", mint: "MME" }), "buy", L, L, 1000n * L, cfg(), NOW, 100)?.rule).toBe("integrity_own_token");
-  });
-  test("never a token whose agent shares a launcher, owner or operator", () => {
-    const sib = tok(1, { parties: ["Lx", "LME"] });
-    const d = decide(book(), market([sib, tok(2)], { A1: [1, null], A2: [0.3, null] }), cfg(), agg, NOW, 100);
-    expect(d.actions.map((a) => a.mint)).not.toContain("M1");
-    expect(checkTrade(book(), sib, "buy", L, L, 1000n * L, cfg(), NOW, 100)?.rule).toBe("integrity_same_party");
-  });
-  test("no opposite side within the minimum hold, even for a stop-loss", () => {
-    const b = book({ positions: { M1: pos("M1", 100n * L, 100n * L, { opened_at: NOW - 60_000, last_at: NOW - 60_000 }) } });
-    const d = decide(b, market([tok(1, { price: 0.5 })], { A1: [0.9, 0.9] }), cfg({ cooldown_s: 0 }), agg, NOW, 100);
-    expect(d.actions.filter((a) => a.side === "sell")).toHaveLength(0);
     expect(d.refused.some((r) => r.rule === "integrity_min_hold")).toBe(true);
   });
-  test("no trading in the window around its own candidate's verdict; the refusal is private", () => {
-    const d = decide(book({ blackout: true }), market([tok(1)], { A1: [1, null] }), cfg(), agg, NOW, 100);
-    expect(d.actions).toHaveLength(0);
-    expect(d.refused.every((r) => r.private === true)).toBe(true);
+  test("daily loss is netted against today's funding; drawdown against the funded peak", () => {
+    const E = 1000n * L;
+    expect(haltCheck(book(), E - 50n * L, cfg())).toBeNull();
+    expect(haltCheck(book(), E - 51n * L, cfg())?.rule).toBe("daily_loss");
+    expect(haltCheck(book({ day: { start: NOW, equity: E, funded: 100n * L }, peak: E + 100n * L }), E + 40n * L, cfg())?.rule).toBe("daily_loss");
+    expect(haltCheck(book(), E - 201n * L, cfg({ daily_loss_bps: 10_000 }))?.rule).toBe("max_drawdown");
+  });
+  test("checkTrade: max position, per trade, cooldown boundaries", () => {
+    const t = tok(1);
+    const e = equityOf(book(), market([t]));
+    expect(checkTrade(book(), t, "buy", 30n * L, 30n * L, e, cfg(), NOW, 100)).toBeNull();
+    expect(checkTrade(book(), t, "buy", 31n * L, 31n * L, e, cfg(), NOW, 100)?.rule).toBe("max_trade");
+    expect(checkTrade(book({ positions: { [M(1)]: pos(M(1), L, L, { last_at: NOW - 600_000 }) } }), t, "buy", L, L, e, cfg(), NOW, 100)).toBeNull();
+  });
+  test("project quality dominates momentum in the published composite", () => {
+    expect(composite(0.8, -0.5, 0.15).composite).toBeGreaterThan(composite(0.2, 0.5, 0.15).composite);
+    expect(valueOf(2n * L, 1.5, 6, 6)).toBe(3n * L);
   });
 });
