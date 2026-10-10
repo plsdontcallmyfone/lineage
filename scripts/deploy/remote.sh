@@ -379,7 +379,8 @@ restore-test)
   [ -z "$(lsof -ti ":$PORT" 2>/dev/null)" ] || { echo "port $PORT is in use" >&2; exit 1; }
   systemctl stop lineage-restore-test 2>/dev/null || true
   rm -rf "$D"; install -d -m 0770 -o lineage-core -g lineage "$D"
-  RC() { runuser -u lineage-core -- env -i PATH=/usr/local/bin:/usr/bin:/bin HOME="$D" bash -c "$1"; }
+  RC() { runuser -u lineage-core -- env -i PATH=/usr/local/bin:/usr/bin:/bin HOME="$D" bash -c "cd $D && $1"; }
+  trap 'systemctl stop lineage-restore-test 2>/dev/null || true; systemctl reset-failed lineage-restore-test 2>/dev/null || true; rm -rf "$D"' EXIT
   RC "bash $REL/scripts/deploy/backup.sh verify '$F'"
   RC "bash $REL/scripts/deploy/backup.sh extract '$F' $D/data && tar -xOf <(zstd -q -d -c '$F') manifest.json > $D/manifest.json"
   jq 'del(.chain.core_authority_key) | .canaries_dir = "'"$D"'/no-canaries"' /etc/lineage-core/network.json > "$D/network.json"
@@ -400,14 +401,12 @@ restore-test)
     chk agents "$(echo "$S" | jq .agents)" "$(jq .tables.agents "$D/manifest.json")"
     chk candidates "$(echo "$S" | jq .candidates)" "$(jq .tables.candidates "$D/manifest.json")"
     chk open_epoch "$E" "$(jq .open_epoch "$D/manifest.json")"
-    L1="$(curl -fsS -m 10 "http://127.0.0.1:$PORT/v1/lineages" | jq -c '[.[].id] | sort')"
-    L2="$(runuser -u lineage-core -- sqlite3 -readonly "$D/data/core.db" 'select id from lineages order by id' | jq -R . | jq -sc 'sort')"
+    L1="$(curl -fsS -m 10 "http://127.0.0.1:$PORT/v1/lineages" | jq -c '[.[].lineage_id] | sort')"
+    L2="$(runuser -u lineage-core -- sqlite3 -readonly "$D/data/core.db" 'select lineage_id from lineages' | jq -R . | jq -sc 'sort')"
     chk lineage_ids "$(echo "$L1" | sha256sum | cut -c1-16)" "$(echo "$L2" | sha256sum | cut -c1-16)"
   else
     fail=1; echo "restored Core did not answer on $PORT"; journalctl -u lineage-restore-test -n 20 -o cat --no-pager
   fi
-  systemctl stop lineage-restore-test 2>/dev/null || true
-  rm -rf "$D"
   echo "restore test $(basename "$F"): $([ "$fail" = 0 ] && echo PASS || echo FAIL) ($pass ok, $fail failed)"
   [ "$fail" = 0 ]
   ;;

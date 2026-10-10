@@ -230,8 +230,8 @@ do_backup_pull() {
   f="$(r "ls -1t /var/lib/lineage/core-backups/core-*.tar.zst 2>/dev/null | head -1")"
   [ -n "$f" ] || { echo "no snapshot on the server yet (lineage-backup.timer runs hourly; 'remote.sh backup' makes one now)" >&2; exit 1; }
   size="$(r "stat -c %s $f")"
-  free="$(df -Pk "$(dirname "$dir")" 2>/dev/null | awk 'NR==2 {print $4 * 1024}')"
-  [ -z "$free" ] && free="$(df -Pk "$HOME" | awk 'NR==2 {print $4 * 1024}')"
+  install -d -m 700 "$dir"
+  free="$(df -Pk "$dir" | awk 'NR==2 {printf "%d", $4 * 1024}')"
   # the copy, plus the verify step's temporary extract (the database is several times the archive)
   if [ "$free" -lt $((size * 10 + 2 * 1024 * 1024 * 1024)) ]; then echo "not enough free disk here for $(basename "$f") ($size bytes)" >&2; exit 1; fi
   install -d -m 700 "$dir"

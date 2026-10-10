@@ -20,12 +20,12 @@ unzst() { zstd -q -d -c "$1"; }
 
 # table -> row count, as JSON, for a database file
 counts() {
-  local db="$1" t first=1
+  local db="$1" t first=1 ro="${RO--readonly}"
   printf '{'
-  for t in $(sqlite3 -readonly "$db" "select name from sqlite_master where type='table' and name not like 'sqlite_%' order by name"); do
+  for t in $(sqlite3 $ro "$db" "select name from sqlite_master where type='table' and name not like 'sqlite_%' order by name"); do
     [ $first = 1 ] || printf ','
     first=0
-    printf '"%s":%s' "$t" "$(sqlite3 -readonly "$db" "select count(*) from \"$t\"")"
+    printf '"%s":%s' "$t" "$(sqlite3 $ro "$db" "select count(*) from \"$t\"")"
   done
   printf '}'
 }
@@ -48,6 +48,8 @@ snapshot)
   mkdir -p "$T"
   trap 'rm -rf "$T"' EXIT
   sqlite3 "$DATA/core.db" ".timeout 60000" ".backup '$T/core.db'"
+  # a plain rollback-journal file, so the copy opens anywhere without -wal or -shm files
+  sqlite3 "$T/core.db" "pragma journal_mode=delete" >/dev/null
   [ "$(sqlite3 -readonly "$T/core.db" 'pragma integrity_check')" = ok ] || die "integrity_check failed on the copy"
   # contents only (no owner, group or mode bits: the snapshot directory has its own group)
   if [ -d "$DATA/blobs" ]; then cp -R "$DATA/blobs" "$T/blobs"; else mkdir "$T/blobs"; fi
@@ -71,9 +73,9 @@ verify)
   [ -f "$T/manifest.json" ] && [ -f "$T/core.db" ] || die "archive lacks manifest.json or core.db"
   WANT="$(sed -n 's/.*"core_db_sha256":"\([0-9a-f]*\)".*/\1/p' "$T/manifest.json")"
   [ "$(sha "$T/core.db")" = "$WANT" ] || die "core.db does not match the manifest"
-  [ "$(sqlite3 -readonly "$T/core.db" 'pragma integrity_check')" = ok ] || die "integrity_check failed"
+  [ "$(sqlite3 "$T/core.db" 'pragma integrity_check')" = ok ] || die "integrity_check failed"
   # every table count equals the manifest (the manifest's tables object, reformatted for comparison)
-  GOT="$(counts "$T/core.db")"
+  GOT="$(RO= counts "$T/core.db")"
   WANTC="$(sed -n 's/.*"tables":\({.*}\)}$/\1/p' "$T/manifest.json")"
   [ "$GOT" = "$WANTC" ] || die "table counts differ from the manifest"
   echo "verified $(basename "$F"): core.db sha256 and integrity ok, $(echo "$GOT" | tr ',' '\n' | wc -l | tr -d ' ') tables match the manifest, $(find "$T/blobs" -type f | wc -l | tr -d ' ') blobs"

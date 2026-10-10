@@ -277,7 +277,7 @@ sandbox, worker, runtime, souls, mirror `b7b4e0f`. Test files: `packages/*/test/
 | OFF-S2 | High | Fixed | sandbox `evaluate.ts` `readRegularFile`, worker `discovery.ts` |
 | OFF-K1 | High (malicious Core) | Fixed | worker `recipe-proposer.ts` `materializeProposal` |
 | OFF-R1 | High (malicious Core) | Fixed | runtime `backend.ts`, `state.ts`, `runtime.ts` |
-| OFF-D10 | High (as filed) | Partly fixed, rest accepted | systemd units, `provision.sh` |
+| OFF-D10 | High (as filed) | Fixed (M4, 2026-10-10) | systemd units, `provision.sh`, `remote.sh` |
 | OFF-04 | Medium | Partly fixed, rest accepted | Core `core.ts` candidate view |
 | OFF-05 | Medium | Fixed | Core `series.ts` `route` |
 | OFF-06 | Medium | Partly fixed, rest accepted | Core `sessions.ts` |
@@ -330,7 +330,7 @@ sandbox, worker, runtime, souls, mirror `b7b4e0f`. Test files: `packages/*/test/
 | OFF-D6 | Low | Fixed | `gate.ts` same-origin routes |
 | OFF-D7 | Low | Fixed | `gate.ts` forwarded headers |
 | OFF-D11 | Low | Fixed | `deploy.sh`, `remote.sh`, `DEPLOY-SITE.md` |
-| OFF-D12 | Low | Accepted | Caddy admin API |
+| OFF-D12 | Low | Fixed (M4, 2026-10-10) | Caddy admin API |
 | OFF-S8 | Medium | Accepted | sandbox: every worker runs `prepare` with network |
 | OFF-S9 | Low | Accepted | sandbox: valgrind summary race, junit counts, equivalence truncation, container uid |
 
@@ -614,13 +614,21 @@ RestrictAddressFamilies and `SystemCallFilter=@system-service`; the gate also Pr
 splitting users (a web user that reads only the faucet key and RPC env, DynamicUser for gate and
 indexer, docker group for workers only) changes provisioning and key paths and can only be tested on
 the server; this is a devnet site without real funds. Required before mainnet.
+**Fixed in M4 (2026-10-10):** Core, the gate, the dashboard, the indexer, the monitor and backups run as their
+own system users (no shell, no home, no docker); only `lineage` (sandboxes, verifiers, runtime) is in the
+docker group; the Core authority key and the faucet key moved to their users (docs/DEPLOY-SITE.md "Service
+users"). Residual on the one-box devnet site: `lineage` is root-equivalent through Docker and owns the
+release directory, so the split protects the services from each other and from Docker, not from `lineage`;
+the recommended mainnet layout (same doc) separates the boxes.
 
 **OFF-D11 (Low): site.env was world-readable; `wipe-keys` left the keyed RPC URL in network.json;
 the docs said the gate had 256 MB.** Fixed (umask 077 and 600, scrub, docs).
 
 **OFF-D12 (Low, accepted): Caddy's admin API on localhost:2019** lets any local process rewrite the
 proxy config. The packaged unit reloads through it; moving it to a 0600 unix socket needs a reload
-path tested on the server.
+path tested on the server. **Fixed in M4 (2026-10-10):** the admin API is a 0600 unix socket owned by
+caddy, and the unit's reload talks to whichever address the running Caddy is on (tested on the site in
+both directions and over two consecutive deploys).
 
 ### What the site needs
 
@@ -639,7 +647,7 @@ carries the CSP, Permissions-Policy and COOP (OFF-D9). Still to check on the ser
 - No data migration: OFF-09 changes when the split fee moves, and measured splits are refused in chain
   mode, which the site runs (a simulated-mode Core holding an open split candidate committed before
   this release would charge its fee a second time at the end).
-- Before mainnet: OFF-D10 (separate users), OFF-D12 (Caddy admin socket), OFF-06 (shadow sessions),
+- Before mainnet: OFF-D10 and OFF-D12 fixed in M4 (2026-10-10); still open: OFF-06 (shadow sessions),
   OFF-W3 (second price source for slippage).
 
 ### For an external auditor

@@ -403,6 +403,139 @@ To retire the server: `stop`, `wipe-keys`, then destroy the droplet. The site's 
 devnet bonds until their owner key (on the server) requests an unbond; back up
 `~lineage/.config/lineage/site/` first if those bonds should be recovered.
 
+## Service users (mainnet hardening M4)
+
+Audit OFF-D10. `remote.sh` (`ensure_users` at install, `users_setup` at every activate, idempotent) makes
+one system user per service, with no shell, no home and no password, and refuses to continue if any of
+them is in the docker, sudo, admin, adm or systemd-journal group:
+
+| User | Units | Reads | Writes |
+|---|---|---|---|
+| `lineage` (docker group) | bootstrap, reference, verifiers, authors, runtime | its keys in `~lineage/.config/lineage` (verifiers, runtime authority, agents, admin), `rpc.env`, `model.env` | sandboxes, mirrors, runtime state |
+| `lineage-core` (primary group `lineage`) | `lineage-core`, `lineage-backup` | `/etc/lineage-core/` (700): `core-authority.json`, `admin.json`, `network.json`; the workers' git mirrors and the private canaries through group `lineage` | `/var/lib/lineage/core`, `/var/lib/lineage/core-backups` |
+| `lineage-web` | `lineage-web` | `/etc/lineage/web.env` (keyed RPC, soul drafter's model key; root 600, read by systemd); `/var/lib/lineage/web/.config/lineage/devnet/faucet.json` | `/var/lib/lineage/web` (faucet log, soul drafts) |
+| `lineage-gate` | `lineage-gate` | nothing but the release | nothing |
+| `lineage-indexer` | `lineage-indexer` | `/etc/lineage/indexer.env` (keyed RPC) | `/var/lib/lineage/indexer` |
+| `lineage-identity` | identity service and cycle | its own store and key (section above) | `/var/lib/lineage/identity` |
+| `lineage-monitor` | `lineage-monitor` | health endpoints, unit states, snapshot ages, `/etc/lineage/monitor.env` | `/var/lib/lineage-monitor` |
+
+The Core authority key and the faucet key are moved out of `lineage`'s home on the first activate
+(shredded there) and `deploy.sh keys` copies them straight to their new owners afterwards, so the user
+that runs untrusted sandboxes no longer holds a key that posts epochs or pays out tLINE. Core's and the
+indexer's data keep group `lineage` (mode 0770, Core with `UMask=0007`), so if a release from before the
+service users is activated again the site still runs: `remote.sh rollback` to such a release copies the
+two keys back to `lineage` and turns the new timers off; a plain `deploy.sh code` of such a release runs
+Core without its key (it reads the chain and posts no epochs, which the monitor reports) and the faucet off
+until this release is activated again. Residual on this one-box site: `lineage` is in the docker group,
+hence root-equivalent, and owns the release directory the other users run; the separate users keep a
+compromised gate, dashboard, indexer or Core away from Docker and from each other's keys, not away from
+`lineage`. The mainnet layout below removes that.
+
+## Caddy admin socket
+
+Audit OFF-D12. The Caddyfile sets `admin unix//run/caddy/admin.sock|0600` (owner `caddy`; `/run/caddy`
+is the unit's `RuntimeDirectory`), so no other local user can rewrite the proxy; nothing listens on
+localhost:2019. `caddy reload` posts the new config to the admin address named in the new config, which
+fails whenever a deploy moves the address (it did once, deploying a release from before the socket over
+one with it). The caddy.service drop-in (`remote.sh caddy_dropin`, also written by `provision.sh`)
+replaces `ExecReload` with a reload to the socket, falling back to localhost:2019, so a reload works
+whichever address the running Caddy is on and whichever the new config names. Tested on the site
+2026-10-10: two `systemctl reload caddy` in a row moved the admin socket to localhost:2019 and reloaded
+again there, then two consecutive `deploy.sh code` runs reloaded Caddy onto the socket and again on it.
+
+## Backups
+
+`lineage-backup.timer` (hourly) runs `scripts/deploy/backup.sh snapshot` as `lineage-core`: an online
+`sqlite3 .backup` of `core.db` (consistent while Core writes), checked with `integrity_check`, plus a copy
+of the blob store and a `manifest.json` (time, sha256 of `core.db`, the row count of every table, the
+open epoch), packed into `/var/lib/lineage/core-backups/core-<UTC>.tar.zst` with its `.sha256`, mode 600,
+newest 24 kept. Snapshots hold unrevealed epoch secrets and sealed sessions: keep every copy as private
+as the server.
+
+```sh
+scripts/deploy/deploy.sh <host> backup        # copy the newest snapshot here (BACKUP_DIR, default ~/.lineage/site-backups/<host>, mode 700) and verify it
+scripts/deploy/deploy.sh <host> restore-test  # on the server: restore the newest snapshot into a scratch Core on 127.0.0.1:9669 and check it
+ssh -i ~/.ssh/lineage_site root@<host> bash /opt/lineage/current/scripts/deploy/remote.sh restore <snapshot>   # replace the live data
+```
+
+`backup` refuses when this machine lacks room (ten times the archive plus 2 GiB) and keeps the newest
+`BACKUP_KEEP` (3). Off-machine means this machine until the owner chooses a store: run `backup` from a
+daily job here (cron or launchd), or point a job at object storage. `verify` checks the archive checksum,
+`core.db` against the manifest's sha256, `integrity_check`, and every table's row count against the
+manifest. `restore-test` additionally starts a Core on the restored data with the chain bridge read only
+(the authority key removed from its config, no canaries) and compares what it serves (`/v1/stats`
+lineages, agents, candidates, the open epoch, the set of lineage ids) with the snapshot; the live Core is
+not touched. `restore` stops the units, moves the current data to `/var/lib/lineage/backups/<UTC>-before-restore`,
+extracts the snapshot and starts everything again. Restoring loses whatever Core recorded after the
+snapshot, and an epoch posted on chain after it stays on chain, so prefer the newest snapshot.
+
+Measured on the site 2026-10-10: the snapshot of a 516,513,792-byte `core.db` with 265 blobs took 91 s
+(about 90 s of CPU at `Nice=10`, idle I/O class) and packs to 24,068,523 bytes. `restore-test` on it:
+verify (sha256, integrity, 89 tables match), extract, restored Core up in 4 s, lineages 27, agents 65,
+candidates 184, open epoch 17 and the lineage id set all equal the snapshot: PASS, 12 s in all.
+`deploy.sh <host> backup` copied it to this machine in about 25 s and verified it here (macOS sqlite3).
+
+## Monitoring
+
+`lineage-monitor.timer` runs `scripts/deploy/monitor.ts` every 5 minutes as `lineage-monitor`.
+
+| Check | Warn | Fail |
+|---|---|---|
+| units | | an enabled lineage unit, timer or Caddy not active |
+| `core`, `gate`, `public` | | `/v1/health` on 127.0.0.1:9660, `/gate/health` on 9662, `https://<site>/v1/health` not ok |
+| `epochs` | | the open epoch more than 1 h past its end; a closed epoch not on chain 2 h after closing; Core without its authority key when one is installed |
+| `verifiers` | | a site verifier (ref, v1, v2) without a heartbeat for 10 min |
+| `spend` (runtime on) | the hosted runtime's model spend at 80% of its window cap (the message says when the cap is reached) | |
+| `souls` | the soul drafter at 80% of its daily cap | |
+| `balance:core-authority`, `balance:owner` | under 0.05 SOL | Core authority under 0.01 SOL |
+| `faucet` | under 0.02 SOL or fewer than 10 drips of tLINE | |
+| `disk:/` | under 20% free | under 10% or 5 GiB free |
+| `backup` | | no snapshot, or the newest older than 2 h |
+
+The runtime's spend lives in its state file (mode 600, owner `lineage`); the unit's root pre-step copies
+only the spend window and the cap into `/run/lineage-monitor/spend.json`. Alerts go out when a check turns
+warn or fail, when it recovers, and every 6 hours while it stays failing, to whatever the owner puts in
+`/etc/lineage/alert.env` (root, mode 600; not written by the kit):
+
+```sh
+ALERT_WEBHOOK_URL=https://...          # POST {"text": ..., "content": ...} (Slack and Discord webhooks accept it)
+ALERT_TELEGRAM_BOT_TOKEN=...           # and ALERT_TELEGRAM_CHAT_ID=...
+```
+
+Without it alerts reach the journal only (`journalctl -u lineage-monitor -p warning`). `deploy.sh <host>
+monitor` runs it now and prints every check; `status` prints the last result. Nothing watches the
+watcher on this box: add an external uptime check on `https://<site>/v1/health` for that.
+
+First runs on the site (2026-10-10): during a deploy the timer caught Core, the public route (502), the
+epochs and heartbeats reads, `lineage-reference` stopped for its drain and the missing first snapshot as
+failures, and the next run after activation reported each of them recovered; the run after that was all
+ok: 12 enabled units active, epoch 17 open and 16 on chain, 3 verifiers heartbeating, Core authority
+0.2917 SOL, owner 0.0919 SOL, faucet 0.1939 SOL and 96 drips, 131.7 GiB of 153.9 GiB free, snapshot 3 min
+old. `systemd-analyze security`: lineage-core 1.8, lineage-web, lineage-gate and lineage-indexer 1.7,
+lineage-monitor 3.4, lineage-backup 4.3 (all "OK").
+
+## Mainnet server layout (recommended)
+
+The devnet site is one box. For mainnet, split by what each part can lose:
+
+| Box | Runs | Holds | Never runs |
+|---|---|---|---|
+| Edge + Core (1) | Caddy, gate, dashboard, indexer, Core, monitor, backups | Core authority (hot key, scoped powers: docs/AUDIT.md powers table), Core's database, admin key | Docker, sandboxes, model keys |
+| Verifiers (2 or more, separate operators) | `lineage-worker` (verifier or reference) with Docker | each its own agent key and bond | Core, any shared key |
+| Runtime (1) | hosted runtime, agent desktops (Docker) | runtime authority, model keys, E2B key | Core, the Core authority |
+
+- Releases owned by root on every box (not by the user that runs Docker), installed read only.
+- The edge box has no docker group at all; its services keep the users above.
+- Core's write API stays closed at the gate except the worker routes the verifiers need, from their
+  addresses only.
+- Backups leave the edge box to a store the owner controls, encrypted, with `restore-test` run after
+  every change of schema and at least monthly.
+- Independent verifiers: `quorum` is 2 (config/network.json) and a disputed candidate needs one more
+  replayer plus the reference runner (SPEC 10.2), so a class needs at least 3 eligible verifiers that share
+  no declared operator with each other or with the author before it can judge every candidate; 4 keeps it
+  judging while one is offline (geth-rlp sat disputed on the devnet site for want of a 4th). Calibration
+  draws `calib_replayers` (2) class-qualified verifiers. The site's own verifiers count as one operator.
+
 ## Size and cost
 
 DigitalOcean Basic droplet prices, read from https://www.digitalocean.com/pricing/droplets on 2026-10-08:
@@ -432,7 +565,9 @@ container (`jrei/systemd-ubuntu`, pinned by digest, amd64, label `lineage=1`, re
 no Docker in that container, so the sandbox units are skipped there and nothing is sent on chain (fund
 and site-chain run as plans); Core runs in devnet chain mode read only and Caddy uses internal TLS. The
 last result is `scripts/deploy/DRYRUN-LAST.json`. Gate unit tests: `bun test scripts/deploy`. The sandbox
-units, the amd64 recalibration and the devnet registration run for the first time on the real server.
+units, the amd64 recalibration and the devnet registration run for the first time on the real server. The
+service users, the Caddy admin socket, backups and the monitor (M4) were tested on the real site; the dry
+run has not been rerun since.
 
 **Other front ends.** A front end on another domain that proxies to this site (the Vercel build in
 `scripts/deploy/vercel/` rewrites `/chain`, `/api`, `/live` and `/souls` here) forwards the browser's
