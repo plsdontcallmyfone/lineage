@@ -4,7 +4,7 @@ import type { AgentKey } from "@lineage/protocol";
 import { CoreClient } from "../../core/src/client.ts";
 import { TRADING_DEFAULTS, type Temperament, type TemperamentParams, type TradingConfig } from "../../core/src/scores.ts";
 import { enforceDecision, equityOf, parseDecision, riskExits, valueOf, type Action, type Book, type Market, type ModelDecision, type Position, type Refusal, type ScoreInput, type TokenView } from "./policy.ts";
-import { systemPrompt, userPrompt, type AnalysisInput, type DecisionModel, type MarketInfo, type PublicGen, type Usage } from "./analyst.ts";
+import { quoteWords, systemPrompt, userPrompt, type AnalysisInput, type DecisionModel, type MarketInfo, type PublicGen, type Usage } from "./analyst.ts";
 import type { TraderKey, Venue } from "./venue.ts";
 import { signedAgentFollow, type FollowContext } from "../../core/src/follow-context.ts";
 import { parseFollows, splitFollows, type FollowDecision } from "./follows.ts";
@@ -515,7 +515,7 @@ export class Trader {
     const tdec = market.tokens.find((t) => t.mint === d.token)?.decimals ?? 6;
     const outcome =
       o.outcome === "filled"
-        ? `Filled: ${d.action === "buy" ? `${(Number(o.amount_in) / 10 ** dec).toFixed(2)} tLINE for ${(Number(o.amount_out) / 10 ** tdec).toFixed(2)} ${sym}` : `${(Number(o.amount_in) / 10 ** tdec).toFixed(2)} ${sym} for ${(Number(o.amount_out) / 10 ** dec).toFixed(2)} tLINE`}.`
+        ? `Filled: ${d.action === "buy" ? `${(Number(o.amount_in) / 10 ** dec).toFixed(2)} ${quoteWords().q} for ${(Number(o.amount_out) / 10 ** tdec).toFixed(2)} ${sym}` : `${(Number(o.amount_in) / 10 ** tdec).toFixed(2)} ${sym} for ${(Number(o.amount_out) / 10 ** dec).toFixed(2)} ${quoteWords().q}`}.`
         : `Refused by the engine: ${o.rule}.`;
     const head = `Decision: ${d.action} ${sym} ${d.size_pct}% of ${d.action === "buy" ? "treasury" : "the position"}. ${outcome}`;
     const enc = new TextEncoder();

@@ -11,7 +11,7 @@ import { ixDisc, type Address } from "./codec.ts";
 import { REGISTRY_PROGRAM_ID, registryPdas } from "./registry.ts";
 import { Rpc } from "./rpc.ts";
 import { COMPUTE_BUDGET_PROGRAM, signBytes, type Signer } from "./tx.ts";
-import { assertDevnet, sendWire } from "./browser/client.ts";
+import { assertCluster, assertDevnet, DEVNET_GENESIS, sendWire } from "./browser/client.ts";
 import { decodeMessage, parseWire, placeSignature, type DecodedMessage } from "./browser/wire.ts";
 
 const SPKI = Buffer.from("302a300506032b6570032100", "hex");
@@ -87,10 +87,12 @@ export function cosign(wire: Uint8Array, key: Signer): Uint8Array {
 }
 
 /** `lineage-worker cosign --key <file> --tx <base64> [--rpc <url>] [--dry-run]` */
-export async function cosignCommand(o: { key: Signer; tx: string; rpcUrl: string; dryRun?: boolean; expectAgent?: Address; log?: (m: string) => void }) {
+export async function cosignCommand(o: { key: Signer; tx: string; rpcUrl: string; dryRun?: boolean; expectAgent?: Address; log?: (m: string) => void; genesis?: string }) {
   const log = o.log ?? console.log;
   const rpc = Rpc.http(o.rpcUrl, "confirmed");
-  await assertDevnet(rpc);
+  // the network profile's cluster (SPEC 14.10); devnet when the caller names none, as before
+  if (!o.genesis || o.genesis === DEVNET_GENESIS) await assertDevnet(rpc);
+  else await assertCluster(rpc, o.genesis);
   const wire = new Uint8Array(Buffer.from(o.tx.trim(), "base64"));
   const plan = inspectForCosign(wire, o.key.id, { expectAgent: o.expectAgent });
   for (const s of plan.summary) log(`  ${s}`);
@@ -108,6 +110,6 @@ export async function cosignCommand(o: { key: Signer; tx: string; rpcUrl: string
   const r = await sendWire(rpc, signed, lastValidBlockHeight, (s) => log(`  ${s}`));
   if (r.err) throw new Error(`transaction ${r.signature} failed: ${JSON.stringify(r.err)}`);
   log(`${plan.summary.some((x) => x.includes("rotate_agent_key")) ? "rotated" : "registered"}: ${r.signature} (slot ${r.slot})`);
-  log(`https://explorer.solana.com/tx/${r.signature}?cluster=devnet`);
+  log(`https://explorer.solana.com/tx/${r.signature}${!o.genesis || o.genesis === DEVNET_GENESIS ? "?cluster=devnet" : ""}`);
   return { signature: r.signature, sent: true };
 }

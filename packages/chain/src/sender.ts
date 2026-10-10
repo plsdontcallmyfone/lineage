@@ -1,6 +1,8 @@
 import type { Ix } from "./registry.ts";
 import type { Rpc } from "./rpc.ts";
 import { buildTransaction, computeBudget, type Signer } from "./tx.ts";
+import { priorityFee, writableAccounts } from "./fees.ts";
+import type { ConfirmPolicy, FeePolicy } from "./profile.ts";
 
 // Sign, send, confirm. A transaction is simulated first (so a program error comes back with its
 // logs and nothing is paid), then sent and rebroadcast until it lands or its blockhash expires; on
@@ -43,6 +45,26 @@ export interface SendResult {
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
+// The network profile's fee policy for every send of this process (profile-node.ts
+// applyNetworkProfile). Unset (devnet): exactly the behaviour before profiles, a price only when the
+// caller passes priorityMicroLamports. Mainnet: the recent-fees percentile, capped, unless the
+// caller passes its own price.
+let defaultFees: Extract<FeePolicy, { mode: "recent" }> | null = null;
+let defaultConfirm: ConfirmPolicy | null = null;
+export function setDefaultFeePolicy(fees: Extract<FeePolicy, { mode: "recent" }> | null, confirm: ConfirmPolicy | null = null) {
+  defaultFees = fees;
+  defaultConfirm = fees ? confirm : null;
+}
+export const defaultFeePolicy = () => defaultFees;
+
+/** The options a send uses after the profile's fee policy: a price read from recent fees when none was given. */
+export async function withProfileFees(rpc: Rpc, payer: string, ixs: Ix[], o: SendOptions): Promise<SendOptions> {
+  if (o.priorityMicroLamports !== undefined || !defaultFees) return o;
+  const f = await priorityFee(rpc, writableAccounts(ixs, payer), defaultFees);
+  o.log?.(`priority fee ${f.microLamports} micro-lamports per CU (${f.source}, ${f.samples} samples${f.cappedFrom !== undefined ? `, capped from ${f.cappedFrom}` : ""})`);
+  return { ...o, priorityMicroLamports: f.microLamports, rebroadcastMs: o.rebroadcastMs ?? defaultConfirm?.resend_ms };
+}
+
 export function withBudget(ixs: Ix[], o: SendOptions): Ix[] {
   const pre: Ix[] = [];
   if (o.computeUnits) pre.push(computeBudget.limit(o.computeUnits));
@@ -50,7 +72,8 @@ export function withBudget(ixs: Ix[], o: SendOptions): Ix[] {
   return [...pre, ...ixs];
 }
 
-export async function sendAndConfirm(rpc: Rpc, payer: Signer, ixs: Ix[], o: SendOptions = {}): Promise<SendResult> {
+export async function sendAndConfirm(rpc: Rpc, payer: Signer, ixs: Ix[], opts: SendOptions = {}): Promise<SendResult> {
+  const o = await withProfileFees(rpc, payer.id, ixs, opts);
   const all = withBudget(ixs, o);
   const attempts = o.attempts ?? 3;
   for (let attempt = 1; attempt <= attempts; attempt++) {

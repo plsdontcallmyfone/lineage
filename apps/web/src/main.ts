@@ -3,6 +3,7 @@ import { mountCharts } from "./chart.ts";
 import { ago, dur } from "./fmt.ts";
 import { esc, html } from "./html.ts";
 import { live, MAX_FEED } from "./live.ts";
+import { loadNetworkLabels } from "./market.ts";
 import { connectHtml, wireConnect } from "./connect.ts";
 import { agentPage } from "./pages/agents.ts";
 import { directoryPage } from "./pages/directory.ts";
@@ -398,3 +399,7 @@ fetch("/live/status")
 loadConfig().catch(() => {});
 connect();
 render();
+// network profile labels (SPEC 14.10): devnet changes nothing; mainnet re-renders with its quote symbol
+void loadNetworkLabels().then((changed) => {
+  if (changed) void render();
+});

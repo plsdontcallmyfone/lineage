@@ -34,6 +34,13 @@ export interface Session {
 }
 
 export const DEVNET_CHAIN = "solana:devnet";
+export const MAINNET_CHAIN = "solana:mainnet";
+// the Wallet Standard chain of the page's network profile (chain.ts sets it from /chain/config)
+let CHAIN = DEVNET_CHAIN;
+export const walletChain = () => CHAIN;
+export function setWalletChain(c: string) {
+  CHAIN = c;
+}
 const KEY = "lineage-wallet";
 
 interface Shared {
@@ -106,7 +113,7 @@ export function legacyOnly(): string[] {
 export async function connect(w: StdWallet, silent = false): Promise<StdAccount | null> {
   const r = await w.features["standard:connect"].connect(silent ? { silent: true } : undefined);
   const accounts: readonly StdAccount[] = r?.accounts ?? w.accounts;
-  return accounts.find((a) => a.chains?.includes?.(DEVNET_CHAIN) || !a.chains?.length) ?? accounts[0] ?? null;
+  return accounts.find((a) => a.chains?.includes?.(CHAIN) || !a.chains?.length) ?? accounts[0] ?? null;
 }
 
 export async function disconnect(w: StdWallet) {
@@ -213,9 +220,9 @@ export function restoreSession() {
 // ------------------------------------------------------------------------------------------------
 // signing
 
-/** The wallet signs `wire` (it may hold other signatures already) for devnet and returns the wire. */
+/** The wallet signs `wire` (it may hold other signatures already) for the profile's chain (devnet unless mainnet) and returns the wire. */
 export async function signTransaction(w: StdWallet, account: StdAccount, wire: Uint8Array): Promise<Uint8Array> {
-  const [out] = await w.features["solana:signTransaction"].signTransaction({ account, transaction: wire, chain: DEVNET_CHAIN });
+  const [out] = await w.features["solana:signTransaction"].signTransaction({ account, transaction: wire, chain: CHAIN });
   if (!out?.signedTransaction) throw new Error("the wallet returned no signed transaction");
   return new Uint8Array(out.signedTransaction);
 }

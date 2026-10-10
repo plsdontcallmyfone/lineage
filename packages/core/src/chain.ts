@@ -33,7 +33,9 @@ import type { ChainAgent, Core } from "./core.ts";
 // slashes) with the Core authority key. Every balance it exposes was read from chain at `slot`.
 
 export interface ChainSettings {
-  mode: "devnet";
+  /** the cluster; must equal the network profile's (config/profile.json, SPEC 14.10) */
+  mode: "devnet" | "mainnet";
+  /** devnet: required as before. mainnet: omit it (a keyed URL is a secret, not config); the profile's env endpoint is used. */
   rpc_url: string;
   registry_program: string;
   launch_program: string;
@@ -49,8 +51,8 @@ export function parseChainSettings(raw: unknown): ChainSettings | null {
   if (!raw || typeof raw !== "object") return null;
   const r = raw as Record<string, unknown>;
   if (r.mode === undefined || r.mode === "sim") return null;
-  if (r.mode !== "devnet") throw new Error(`chain.mode must be "sim" or "devnet", not ${JSON.stringify(r.mode)}`);
-  for (const k of ["rpc_url", "registry_program", "launch_program"]) if (typeof r[k] !== "string") throw new Error(`chain.${k} is required in chain mode`);
+  if (r.mode !== "devnet" && r.mode !== "mainnet") throw new Error(`chain.mode must be "sim", "devnet" or "mainnet", not ${JSON.stringify(r.mode)}`);
+  for (const k of [...(r.mode === "devnet" ? ["rpc_url"] : []), "registry_program", "launch_program"]) if (typeof r[k] !== "string") throw new Error(`chain.${k} is required in chain mode`);
   return r as unknown as ChainSettings;
 }
 

@@ -6,6 +6,7 @@ import { systemClock } from "./clock.ts";
 import { loadNetworkConfig } from "./config.ts";
 import { ChainReader, Rpc, rpcSlotSource } from "@lineage/chain";
 import { redactRpc } from "../../chain/src/endpoint.ts";
+import { applyNetworkProfile, rpcUrlFor } from "../../chain/src/profile-node.ts";
 import { ChainBridge, chainBootstrap, loadChainSettings } from "./chain.ts";
 import { erc8004Of } from "./erc8004.ts";
 import { Core } from "./core.ts";
@@ -76,13 +77,31 @@ if (busy) {
   process.exit(1);
 }
 
+// network profile (SPEC 14.10): devnet unless config/profile.json or LINEAGE_NETWORK says mainnet;
+// on mainnet every send prices compute units from recent fees (capped by config)
+const profile = applyNetworkProfile();
 const chainSettings = loadChainSettings(arg("chain") ?? configPath);
+if (chainSettings) {
+  if (chainSettings.mode !== profile.network) {
+    console.error(`chain.mode ${chainSettings.mode} differs from the network profile ${profile.network} (config/profile.json, LINEAGE_NETWORK); refusing to start`);
+    process.exit(2);
+  }
+  // mainnet: the keyed endpoint from env, never from a config file
+  if (profile.network === "mainnet") chainSettings.rpc_url = rpcUrlFor(profile);
+}
 let network = loadNetworkConfig(configPath);
 let firstEpoch = 0;
 let reader: ChainReader | null = null;
 if (chainSettings) {
   reader = new ChainReader(Rpc.http(chainSettings.rpc_url), chainSettings.registry_program, chainSettings.launch_program);
   const boot = await chainBootstrap(network, reader);
+  if (profile.network === "mainnet") {
+    const g = await reader.rpc.call<string>("getGenesisHash");
+    if (g !== profile.genesis) {
+      console.error(`RPC genesis ${g} is not the mainnet profile's; refusing to start`);
+      process.exit(2);
+    }
+  }
   network = boot.network;
   firstEpoch = boot.firstEpoch;
   console.log(`chain mode ${chainSettings.mode}: ${redactRpc(chainSettings.rpc_url)}, registry ${chainSettings.registry_program}, mint ${boot.registry.mint} (${boot.decimals} decimals), first epoch ${firstEpoch}`);

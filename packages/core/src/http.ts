@@ -22,6 +22,7 @@ import { msgchainOf, useChain } from "./msgchain.ts";
 import { verifyRequest } from "./protocol.ts";
 import { modelsOf } from "./models.ts";
 import { hiddenOf } from "./hidden.ts";
+import { loadNetworkProfile } from "../../chain/src/profile-node.ts";
 
 // HTTP API, SPEC 17. Every mutating request (and GET /v1/assignments) is signed:
 //   x-lineage-agent: <base58 ed25519 pubkey>
@@ -372,7 +373,11 @@ export function buildRoutes(core: Core): Route[] {
     route("POST", "/v1/admin/social/config", "admin", (c) => socialOf(core).setConfig(c.json())),
     route("POST", "/v1/admin/souls/library", "admin", (c) => core.tx(() => soulsOf(core).addLibrary(c.json()))),
     route("POST", "/v1/admin/links/recheck", "admin", (c) => linksOf(core).recheck(c.json())),
-    route("POST", "/v1/admin/faucet", "admin", (c) => core.faucet(c.json())),
+    // the simulated ledger's faucet; never on the mainnet profile (SPEC 14.10)
+    route("POST", "/v1/admin/faucet", "admin", (c) => {
+      if (!loadNetworkProfile().faucet) throw new ApiError(403, "no_faucet", "there is no faucet on mainnet");
+      return core.faucet(c.json());
+    }),
     route("POST", "/v1/admin/creator-rewards", "admin", (c) => core.creatorRewards(c.json())),
     route("POST", "/v1/admin/agent-fees", "admin", (c) => core.agentFees(c.json())),
     route("POST", "/v1/admin/usage", "runtime", (c) => core.usage(c.json())),

@@ -23,6 +23,7 @@ import {
   QUOTE,
   shortAddr,
   txLink,
+  explorerTx,
   type Candle,
   type Holders,
   type TokenDetail,
@@ -94,7 +95,7 @@ function tradesTable(d: Data): Raw {
       <td class="right nowrap">${fig(fmtPrice(r.price), r.price)}</td>
       <td class="hide-sm">${addrLink(r.trader)}</td>
       <td class="hide-sm dim">${r.venue === "damm" ? "DAMM v2" : r.venue === "dbc" ? "DBC" : r.venue}</td>
-      <td class="right nowrap">${r.time ? html`<a class="link" href="https://explorer.solana.com/tx/${r.signature}?cluster=devnet" target="_blank" rel="noopener" title="${r.signature}"><time data-ago="${r.time * 1000}"></time></a>` : txLink(r.signature)}</td></tr>`,
+      <td class="right nowrap">${r.time ? html`<a class="link" href="${explorerTx(r.signature)}" target="_blank" rel="noopener" title="${r.signature}"><time data-ago="${r.time * 1000}"></time></a>` : txLink(r.signature)}</td></tr>`,
   )}</tbody></table></div>`;
 }
 

@@ -8,15 +8,15 @@ import { parseRail, type OpenRouterRailConfig, type RailName } from "./rail.ts";
 // $LINE debits (launch values TBA, owner decision; the values in config/runtime.json are TEST values).
 
 export interface RuntimeConfig {
-  /** sim: agents, keys and usage live in a simulated Core; devnet: discovered and debited on chain. */
-  mode: "sim" | "devnet";
+  /** sim: agents, keys and usage live in a simulated Core; devnet (or mainnet): discovered and debited on chain. The chain mode must equal the network profile (config/profile.json, SPEC 14.10). */
+  mode: "sim" | "devnet" | "mainnet";
   /** Core base URL. */
   core: string;
   /** Where state, the lock and runtime-generated agent keys live. */
   state_dir: string;
   /** Runtime authority keypair (Solana JSON): signs provenance, posts usage (devnet: post_usage, debit_compute). */
   runtime_key: string;
-  /** devnet RPC; default packages/chain devnetRpcUrl(). */
+  /** chain RPC; default the network profile's (devnet: packages/chain devnetRpcUrl(); mainnet: LINEAGE_MAINNET_RPC). A keyed URL here is a secret. */
   rpc_url?: string;
   /** Claude proposer. */
   model: string;
@@ -106,7 +106,7 @@ const expand = (p: string) => (p.startsWith("~/") ? join(homedir(), p.slice(2)) 
 
 export function parseConfig(raw: Record<string, unknown>): RuntimeConfig {
   const c = { ...DEFAULTS, ...raw } as RuntimeConfig & { _note?: string };
-  if (c.mode !== "sim" && c.mode !== "devnet") throw new Error("runtime config: mode is sim or devnet");
+  if (c.mode !== "sim" && c.mode !== "devnet" && c.mode !== "mainnet") throw new Error("runtime config: mode is sim, devnet or mainnet");
   if (typeof c.core !== "string" || !c.core) throw new Error("runtime config: core is required");
   if (typeof c.runtime_key !== "string") throw new Error("runtime config: runtime_key is required");
   if (c.compute_price_line_per_sol !== undefined && (typeof c.compute_price_line_per_sol !== "string" || !/^\d+(\.\d+)?$/.test(c.compute_price_line_per_sol)))

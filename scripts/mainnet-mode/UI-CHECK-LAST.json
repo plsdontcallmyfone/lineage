@@ -1,0 +1,102 @@
+{
+ "at": "2026-10-10T14:17:36.135Z",
+ "passed": 19,
+ "checks": 19,
+ "results": [
+  {
+   "check": "devnet: gate says devnet only with the TEST mint",
+   "ok": true,
+   "detail": "Devnet only. Every transaction here is built for Solana devnet and nothing else.The RPC answers with devnet's genesis hash (EtWTRABZ…), checked again before every build. Any other cluster is refused. tLINE is the TEST mint 3PLq…VXmU with a fixed supply and no value; agent tokens launched here are TEST tokens too."
+  },
+  {
+   "check": "devnet: deposit in USD, allocation in tLINE",
+   "ok": true,
+   "detail": "Deposit (USD) | Allocation (tLINE)"
+  },
+  {
+   "check": "devnet: pay with tLINE; SOL and USDC unavailable",
+   "ok": true,
+   "detail": "LINE:on:tLINE,SOL:off:SOL (swap),USDC:off:USDC (swap)"
+  },
+  {
+   "check": "devnet: swap help says unavailable here",
+   "ok": true,
+   "detail": "SOL or USDC through Jupiter: unavailable here (Jupiter runs on mainnet only; this is devnet, which uses tLINE directly)."
+  },
+  {
+   "check": "devnet: trade box offers the faucet and TEST tokens",
+   "ok": true,
+   "detail": "Meteora DBC curve CTo8…zJ8u\n        Connect a wallet to trade\n        Connect\n        Devnet only, TEST tokens. Get tLINE from the faucet on your Profile."
+  },
+  {
+   "check": "devnet: /chain/config has the faucet and the devnet profile",
+   "ok": true,
+   "detail": "FX4UjRbmbLHJ6K6RTvYcV4bFA9Yai2qntnPNex31GiH6 devnet"
+  },
+  {
+   "check": "devnet: explorer links carry ?cluster=devnet",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "check": "devnet: no page errors",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "check": "mainnet: gate names mainnet, no devnet wording",
+   "ok": true,
+   "detail": "Refusing to build transactionsLineage is not deployed on mainnet yet (no mainnet state on this server). This page is set to mainnet only."
+  },
+  {
+   "check": "mainnet: the wallet regions show no TEST label, no faucet, no tLINE",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "check": "mainnet: deposit and allocation in the quote token (no USD without a price feed)",
+   "ok": true,
+   "detail": "Deposit (PYUSD) | Allocation (PYUSD)"
+  },
+  {
+   "check": "mainnet: pay with PYUSD, SOL or USDC (swap enabled)",
+   "ok": true,
+   "detail": "LINE:on:PYUSD,SOL:on:SOL (swap),USDC:on:USDC (swap)"
+  },
+  {
+   "check": "mainnet: swap help names the stand-in and the limits",
+   "ok": true,
+   "detail": "SOL or USDC is swapped to PYUSD (stand-in for $LINE) through Jupiter in the same transaction; slippage 100 bps (limit 300), price impact limit 2%. Route and minimum are shown before you sign."
+  },
+  {
+   "check": "mainnet: launch and trade wait for a mainnet deployment",
+   "ok": true,
+   "detail": "Trading is off: Lineage is not deployed on mainnet yet (no mainnet state on this server)."
+  },
+  {
+   "check": "mainnet: /chain/config has no faucet and the mainnet profile",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "check": "mainnet: no response the browser got carries the RPC key",
+   "ok": true,
+   "detail": "42 responses read"
+  },
+  {
+   "check": "mainnet: the RPC is shown redacted",
+   "ok": true,
+   "detail": "https://api.mainnet-beta.solana.com (keyed)"
+  },
+  {
+   "check": "mainnet: explorer links carry no cluster parameter",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "check": "mainnet: no page errors",
+   "ok": true,
+   "detail": ""
+  }
+ ]
+}

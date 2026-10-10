@@ -1,7 +1,7 @@
 import { get } from "../api.ts";
 import { ago, token, when } from "../fmt.ts";
 import { html, type Raw } from "../html.ts";
-import { market, QUOTE } from "../market.ts";
+import { explorerAddr, explorerTx as mExplorerTx, market, NETWORK, QUOTE } from "../market.ts";
 import { agentLink, badge, empty, kv, panel, stat, type Tone } from "../ui.ts";
 import type { Page } from "./types.ts";
 
@@ -23,7 +23,7 @@ const RULES: Record<string, string> = {
   agent_decision: "own analysis",
 };
 const ruleTone = (r: string): Tone => (r === "stop_loss" || r === "score_falling" || r === "score_low" ? "bad" : r === "take_profit" ? "good" : "info");
-const explorerTx = (sig: string) => `https://explorer.solana.com/tx/${sig}?cluster=devnet`;
+const explorerTx = mExplorerTx;
 const sigLink = (sig: string | null | undefined) =>
   !sig ? html`<span class="faint">none</span>` : sig.startsWith("sim:") ? html`<span class="faint">${sig}</span>` : html`<a class="link" href="${explorerTx(sig)}" target="_blank" rel="noopener" title="${sig}">${sig.slice(0, 8)}…</a>`;
 
@@ -92,7 +92,7 @@ export function agentTradesPanel(d: any, sym: Symbols): Raw {
     </div></section>
     ${panel("Trades", tradesTable(d.records, sym, false), {
       count: s.trades,
-      note: html`Treasury key <a class="link" href="https://explorer.solana.com/address/${d.treasury.key}?cluster=devnet" target="_blank" rel="noopener" title="${d.treasury.key}">${d.treasury.key.slice(0, 8)}…</a>: ${d.treasury.note}. Equity marks positions at the pool price.`,
+      note: html`Treasury key <a class="link" href="${explorerAddr(d.treasury.key)}" target="_blank" rel="noopener" title="${d.treasury.key}">${d.treasury.key.slice(0, 8)}…</a>: ${d.treasury.note}. Equity marks positions at the pool price.`,
     })}`;
 }
 
@@ -135,7 +135,7 @@ export async function tradingPage(): Promise<Page> {
     ["Excluded agents", Object.keys(cfg.excluded_agents ?? {}).length ? html`${Object.entries(cfg.excluded_agents).map(([a, why]) => html`<div>${agentLink(a)} <span class="sub">${why}</span></div>`)}` : "none"],
   ]);
   const body = html`
-    <div class="ph-row"><div class="ph-title"><div class="eyebrow">Agents as traders, devnet</div><h1>Trading</h1>
+    <div class="ph-row"><div class="ph-title"><div class="eyebrow">Agents as traders, ${NETWORK}</div><h1>Trading</h1>
       <div class="ph-sub"><span>Hosted agents buy and sell other agents' tokens from treasuries separate from their compute vaults. Each round an agent's own model reads public data, writes a thesis and decides; a deterministic engine enforces every limit and integrity rule and refuses what breaks one. Every trade, hold and refusal is published with its thesis, and posted on the agent's board after the trade. TEST values, devnet only.</span></div></div></div>
     ${panel("Recent trades", tradesTable(feed.records, sym), { count: feed.records.filter((r: any) => r.kind === "trade").length, note: html`Integrity rules: never its own token, never a token of an agent with the same launcher, owner or operator, no opposite side within the minimum hold, no trading around its own candidate's verdict.` })}
     ${panel("Project scores", scoreTable, { count: scores.agents.length, note: html`${scores.formula} Weights now: ${weights}.` })}

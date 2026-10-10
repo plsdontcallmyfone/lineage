@@ -32,13 +32,14 @@
 // The server never holds a user's key: wallets sign in the browser. The only key it loads is the
 // devnet faucet's own (~/.config/lineage/devnet/faucet.json).
 
-import { devnetRpcUrl, redactRpc } from "../../packages/chain/src/endpoint.ts";
+import { redactRpc } from "../../packages/chain/src/endpoint.ts";
+import { applyNetworkProfile, rpcUrlFor, stateFor } from "../../packages/chain/src/profile-node.ts";
+import { chainRoutes } from "./chain-routes.ts";
 import { execFileSync } from "node:child_process";
 import { existsSync, readFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { chainBrowserPlugin } from "../../packages/chain/src/browser/plugin.ts";
-import { DEVNET_GENESIS, KNOWN_GENESIS } from "../../packages/chain/src/browser/client.ts";
 import { Faucet } from "./wallet/faucet.ts";
 import { publishSoul, SoulDrafts } from "./wallet/souls.ts";
 
@@ -131,87 +132,28 @@ async function embedRoute(p: string): Promise<Response> {
 }
 
 // ------------------------------------------------------------------------------------------------
-// devnet: public state, RPC proxy, faucet
+// chain: public state, RPC proxy, faucet, under the network profile (config/profile.json,
+// LINEAGE_NETWORK; SPEC 14.10). devnet as before; mainnet: no faucet, keyed RPC from env, never sent here.
 
-const DEVNET_STATE = join(DIR, "../../scripts/devnet/devnet.json");
-const RPC_URL = arg("rpc", devnetRpcUrl())!;
+const PROFILE = applyNetworkProfile();
+const RPC_URL = arg("rpc") ?? rpcUrlFor(PROFILE);
 const KEYS = join(homedir(), ".config", "lineage", "devnet");
-const devnet = existsSync(DEVNET_STATE) ? JSON.parse(readFileSync(DEVNET_STATE, "utf8")) : null;
-const RPC_METHODS = new Set([
-  "getAccountInfo", "getMultipleAccounts", "getProgramAccounts", "getBalance", "getLatestBlockhash", "getBlockHeight", "getSlot",
-  "getMinimumBalanceForRentExemption", "sendTransaction", "simulateTransaction", "getSignatureStatuses", "getTransaction", "getGenesisHash",
-  "getFeeForMessage", "getTokenAccountBalance", "getSignaturesForAddress",
-]);
-let genesis: string | null = null;
-async function rpcCall(method: string, params: unknown[]): Promise<Response> {
-  let last = "";
-  for (let i = 0; i < 7; i++) {
-    if (i) await Bun.sleep(Math.min(8000, 400 * 2 ** i));
-    try {
-      const r = await fetch(RPC_URL, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ jsonrpc: "2.0", id: 1, method, params }) });
-      if (r.status === 429 || r.status >= 500) {
-        last = `HTTP ${r.status}`;
-        continue;
-      }
-      return new Response(await r.text(), { status: r.status, headers: { "content-type": "application/json", "cache-control": "no-store" } });
-    } catch (e) {
-      last = (e as Error).message;
-    }
-  }
-  return Response.json({ jsonrpc: "2.0", id: 1, error: { code: -32000, message: `devnet RPC did not answer (${last})` } }, { status: 502 });
-}
-async function cluster(): Promise<{ genesis: string | null; cluster: string; devnet: boolean }> {
-  if (!genesis) {
-    try {
-      const r = (await (await rpcCall("getGenesisHash", [])).json()) as { result?: string };
-      genesis = r.result ?? null;
-    } catch {
-      genesis = null;
-    }
-  }
-  return { genesis, cluster: genesis ? (KNOWN_GENESIS[genesis] ?? "unknown") : "unreachable", devnet: genesis === DEVNET_GENESIS };
-}
-const faucet = devnet?.line_mint
+const chainState = stateFor(PROFILE);
+const faucet = PROFILE.faucet && chainState?.line_mint
   ? new Faucet({
       keyPath: join(KEYS, "faucet.json"),
       logPath: join(KEYS, "faucet-log.jsonl"),
       rpcUrl: RPC_URL,
-      lineMint: devnet.line_mint,
-      decimals: devnet.line_decimals,
-      amount: BigInt(arg("faucet-amount", String(1000n * 10n ** BigInt(devnet.line_decimals)))!),
+      lineMint: chainState.line_mint as string,
+      decimals: chainState.line_decimals as number,
+      amount: BigInt(arg("faucet-amount", String(1000n * 10n ** BigInt(chainState.line_decimals as number)))!),
       perWalletMs: Number(arg("faucet-window-h", "24")) * 3_600_000,
       perHour: Number(arg("faucet-per-hour", "30")),
     })
   : null;
-
-async function chainRoute(req: Request, p: string): Promise<Response> {
-  if (p === "/chain/config") {
-    const c = await cluster();
-    const pub = devnet
-      ? Object.fromEntries(Object.entries(devnet).filter(([k]) => !/key/i.test(k) && k !== "test_epoch_leaves"))
-      : null;
-    return Response.json({ rpc: "/chain/rpc", rpc_upstream: redactRpc(RPC_URL), ...c, devnet: c.devnet, state: pub, faucet: faucet?.address ?? null });
-  }
-  if (p === "/chain/rpc") {
-    if (req.method !== "POST") return new Response("POST only", { status: 405 });
-    const body = (await req.json().catch(() => null)) as { method?: string; params?: unknown[]; id?: unknown } | null;
-    if (!body?.method || !RPC_METHODS.has(body.method)) return Response.json({ jsonrpc: "2.0", id: body?.id ?? null, error: { code: -32601, message: `method ${body?.method} not allowed here` } }, { status: 400 });
-    if (body.method === "sendTransaction" && !(await cluster()).devnet) return Response.json({ jsonrpc: "2.0", id: body.id, error: { code: -32000, message: "upstream is not devnet; refusing to send" } }, { status: 403 });
-    return rpcCall(body.method, body.params ?? []);
-  }
-  if (p === "/chain/faucet") {
-    if (!faucet) return Response.json({ enabled: false, reason: "no devnet state (scripts/devnet/devnet.json)" });
-    if (req.method === "GET") {
-      const w = new URL(req.url).searchParams.get("wallet");
-      return Response.json({ ...(await faucet.info().catch((e) => ({ enabled: false, reason: (e as Error).message }))), last: w ? faucet.lastDrip(w) : undefined });
-    }
-    if (req.method !== "POST") return new Response("GET or POST", { status: 405 });
-    const body = (await req.json().catch(() => null)) as { wallet?: string } | null;
-    const r = await faucet.drip(String(body?.wallet ?? ""));
-    return Response.json(r.body, { status: r.status });
-  }
-  return new Response("not found", { status: 404 });
-}
+const chain = chainRoutes({ profile: PROFILE, rpcUrl: RPC_URL, state: chainState, faucet });
+const chainRoute = (req: Request, p: string) => chain.route(req, p);
+console.log(`network ${PROFILE.network}: rpc ${redactRpc(RPC_URL)}, quote ${PROFILE.quote.symbol}${PROFILE.faucet ? "" : ", no faucet"}`);
 
 // ------------------------------------------------------------------------------------------------
 // shared upstream event stream

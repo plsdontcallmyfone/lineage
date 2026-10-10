@@ -42,7 +42,7 @@ export function corsFor(origin: string | null, env = process.env.LINEAGE_CORS_OR
   return ok ? { ...CORS, "access-control-allow-origin": origin!, vary: "Origin" } : { vary: "Origin" };
 }
 
-export function marketApi(db: Database, status: StatusSource, opts: { now?: () => number; corsOrigins?: string } = {}) {
+export function marketApi(db: Database, status: StatusSource, opts: { now?: () => number; corsOrigins?: string; quote?: string } = {}) {
   const handle = marketHandler(db, status, opts);
   return async function withCors(req: Request): Promise<Response> {
     const res = await handle(req);
@@ -53,7 +53,9 @@ export function marketApi(db: Database, status: StatusSource, opts: { now?: () =
   };
 }
 
-function marketHandler(db: Database, status: StatusSource, opts: { now?: () => number } = {}) {
+function marketHandler(db: Database, status: StatusSource, opts: { now?: () => number; quote?: string } = {}) {
+  // the quote token's symbol under the network profile (tLINE on devnet; SPEC 14.10)
+  const QUOTE = opts.quote ?? "tLINE";
   const now = opts.now ?? (() => Math.floor(Date.now() / 1000));
   const lineDecimals = () => Number((db.query("SELECT v FROM meta WHERE k = 'line_decimals'").get() as { v: string } | null)?.v ?? 6);
   ensureCoreSchema(db);
@@ -215,7 +217,7 @@ function marketHandler(db: Database, status: StatusSource, opts: { now?: () => n
         fees_to_compute: rows.reduce((n, r) => n + (r.fees_to_compute ?? 0), 0),
         hidden: (db.query("SELECT COUNT(*) AS n FROM hidden_mints").get() as { n: number }).n,
         core_synced_at: synced ? Number(synced) : null,
-        quote: "tLINE",
+        quote: QUOTE,
       });
     }
     if (parts[1] !== "tokens") return json({ error: "not found" }, 404);
@@ -255,7 +257,7 @@ function marketHandler(db: Database, status: StatusSource, opts: { now?: () => n
       const count = (f: (r: (typeof all)[number]) => string) => all.reduce<Record<string, number>>((m, r) => ((m[f(r)] = (m[f(r)] ?? 0) + 1), m), {});
       const offset = int("offset", 0);
       const limit = int("limit", rows.length || 1, 500);
-      return json({ tokens: rows.slice(offset, offset + limit), count: rows.length, total: all.length, offset, quote: "tLINE", sort: key[sort] ? sort : "newest",
+      return json({ tokens: rows.slice(offset, offset + limit), count: rows.length, total: all.length, offset, quote: QUOTE, sort: key[sort] ? sort : "newest",
         facets: { class: count((r) => facet(r.class)), model: count((r) => facet(r.model)) } });
     }
 
@@ -288,7 +290,7 @@ function marketHandler(db: Database, status: StatusSource, opts: { now?: () => n
           c.volume_base += r.base;
           c.trades++;
         }
-        return json({ mint: t.mint, tf, from, to, price: "pool price after each trade, tLINE per token", candles: out });
+        return json({ mint: t.mint, tf, from, to, price: `pool price after each trade, ${QUOTE} per token`, candles: out });
       }
       case "trades": {
         const limit = Math.max(1, int("limit", 50, 500));

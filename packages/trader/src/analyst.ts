@@ -4,6 +4,7 @@ import type { TemperamentParams, TradingConfig } from "../../core/src/scores.ts"
 import type { ProviderSpec } from "../../worker/src/proposers/providers.ts";
 import { normaliseUsage } from "../../worker/src/proposers/openai-compat.ts";
 import { resolveRoute, RegistrySource, soulModel } from "../../runtime/src/providers.ts";
+import { loadNetworkProfile } from "../../chain/src/profile-node.ts";
 import { followChoicesBlock, followedBlock, type FollowContext } from "../../core/src/follow-context.ts";
 import { followRules } from "./follows.ts";
 import { equityOf, valueOf, type Book, type Market, type ModelDecision, type TokenView } from "./policy.ts";
@@ -96,11 +97,17 @@ export function universe(i: AnalysisInput): TokenView[] {
     .slice(0, i.cfg.analysis_tokens);
 }
 
+/** The quote token and where it trades, from the network profile (SPEC 14.10): devnet keeps the TEST wording. */
+export function quoteWords(): { q: string; where: string } {
+  const p = loadNetworkProfile();
+  return p.test_labels ? { q: p.quote.symbol, where: `on devnet in TEST ${p.quote.symbol}` } : { q: p.quote.symbol, where: `on Solana mainnet in ${p.quote.symbol}` };
+}
+
 export function systemPrompt(i: AnalysisInput): string {
   const p = i.persona;
   return [
     p ? `You are ${p.name}, ${p.tagline}. Voice: ${p.register}. Values: ${p.values.slice(0, 5).join(", ")}.` : "You are a hosted Lineage agent.",
-    "Lineage agents improve real open-source code; each has a token that trades on devnet in TEST tLINE. You also manage a trading treasury and trade other agents' tokens actively, in both directions: back agents whose public work is strong and getting stronger, take profit on positions that have run up, and trim or exit positions whose project score or recent accepted work has weakened, rotating into stronger ones. Holding is fine when nothing has changed, but do not only buy.",
+    `Lineage agents improve real open-source code; each has a token that trades ${quoteWords().where}. You also manage a trading treasury and trade other agents' tokens actively, in both directions: back agents whose public work is strong and getting stronger, take profit on positions that have run up, and trim or exit positions whose project score or recent accepted work has weakened, rotating into stronger ones. Holding is fine when nothing has changed, but do not only buy.`,
     `Temperament: ${i.temp.prompt}`,
     "Rules you must follow:",
     "- Use only the facts in the message. Never invent numbers, events or people. Never mention anyone's unfinished or pending work.",
@@ -119,7 +126,7 @@ export function userPrompt(i: AnalysisInput): string {
   const cfg = i.cfg;
   const out: string[] = [];
   out.push(`Time: ${new Date(i.now).toISOString()}`);
-  out.push(`Your treasury: ${line(i.book.line, dec)} tLINE cash, equity ${line(eq, dec)} tLINE, realized P&L so far ${line(i.realized, dec)} tLINE.`);
+  out.push(`Your treasury: ${line(i.book.line, dec)} ${quoteWords().q} cash, equity ${line(eq, dec)} ${quoteWords().q}, realized P&L so far ${line(i.realized, dec)} ${quoteWords().q}.`);
   const pos = Object.values(i.book.positions).filter((p) => p.qty > 0n);
   if (pos.length) {
     out.push("Your positions:");
@@ -127,11 +134,11 @@ export function userPrompt(i: AnalysisInput): string {
       const t = i.market.tokens.find((x) => x.mint === p.mint);
       const mark = t ? valueOf(p.qty, t.price, t.decimals, dec) : 0n;
       const sym = i.info.get(p.mint)?.symbol ?? p.mint.slice(0, 6);
-      out.push(`- ${sym} ${p.mint}: value ${line(mark, dec)} tLINE, cost ${line(p.cost, dec)} tLINE, ${p.cost > 0n ? `${n4((Number(mark - p.cost) / Number(p.cost)) * 100)}%` : "n/a"} since bought; last ${p.last_side} ${Math.round((i.now - p.last_at) / 60000)} min ago`);
+      out.push(`- ${sym} ${p.mint}: value ${line(mark, dec)} ${quoteWords().q}, cost ${line(p.cost, dec)} ${quoteWords().q}, ${p.cost > 0n ? `${n4((Number(mark - p.cost) / Number(p.cost)) * 100)}%` : "n/a"} since bought; last ${p.last_side} ${Math.round((i.now - p.last_at) / 60000)} min ago`);
     }
   } else out.push("Your positions: none.");
   out.push(
-    `Limits the engine enforces: per trade at most ${cfg.max_trade_bps / 100}% of equity (and your temperament's ${i.temp.size_bps / 100}%); per token at most ${cfg.max_position_bps / 100}% of equity; at most ${cfg.max_open_positions} open positions; ${cfg.cooldown_s / 60} min between trades in the same token; ${cfg.min_hold_s / 60} min before the opposite side in the same token; stop-loss ${cfg.stop_loss_bps / 100}% and take-profit ${cfg.take_profit_bps / 100}% run automatically; slippage at most ${cfg.max_slippage_bps / 100}% and price impact at most ${cfg.max_impact_bps / 100}%; minimum trade ${line(BigInt(cfg.min_trade_line), dec)} tLINE.`,
+    `Limits the engine enforces: per trade at most ${cfg.max_trade_bps / 100}% of equity (and your temperament's ${i.temp.size_bps / 100}%); per token at most ${cfg.max_position_bps / 100}% of equity; at most ${cfg.max_open_positions} open positions; ${cfg.cooldown_s / 60} min between trades in the same token; ${cfg.min_hold_s / 60} min before the opposite side in the same token; stop-loss ${cfg.stop_loss_bps / 100}% and take-profit ${cfg.take_profit_bps / 100}% run automatically; slippage at most ${cfg.max_slippage_bps / 100}% and price impact at most ${cfg.max_impact_bps / 100}%; minimum trade ${line(BigInt(cfg.min_trade_line), dec)} ${quoteWords().q}.`,
   );
   out.push("Tokens you may trade (public data; project score 0 to 1 from final accepted work):");
   const gensBy = new Map<string, PublicGen[]>();
@@ -145,7 +152,7 @@ export function userPrompt(i: AnalysisInput): string {
       [
         `- ${info?.symbol ?? "?"} ${t.mint} (agent ${t.agent.slice(0, 8)}, ${info?.repo_url ?? "repo n/a"}${info?.class ? `, ${info.class}` : ""})`,
         `  score ${n4(sc?.now)}${sc?.ref !== null && sc?.ref !== undefined ? ` (was ${n4(sc.ref)})` : ""}; accepted generations ${comp?.accepted_generations?.raw ?? "n/a"}; verified gain 7 d ${n4(comp?.verified_gain_7d?.raw)}; acceptance rate ${n4(comp?.acceptance_rate?.raw)}; sessions 24 h ${comp?.sessions_24h?.raw ?? "n/a"}`,
-        `  price ${n4(t.price)} tLINE; 24 h change ${t.change_24h === null ? "n/a" : `${n4(t.change_24h * 100)}%`}; 24 h volume ${n4(info?.volume_24h)} tLINE in ${info?.trades_24h ?? "n/a"} trades; holders ${info?.holders ?? "n/a"}; ${info?.phase === "graduated" ? "graduated (DAMM v2)" : `curve progress ${n4((info?.curve_progress ?? 0) * 100)}%`}`,
+        `  price ${n4(t.price)} ${quoteWords().q}; 24 h change ${t.change_24h === null ? "n/a" : `${n4(t.change_24h * 100)}%`}; 24 h volume ${n4(info?.volume_24h)} ${quoteWords().q} in ${info?.trades_24h ?? "n/a"} trades; holders ${info?.holders ?? "n/a"}; ${info?.phase === "graduated" ? "graduated (DAMM v2)" : `curve progress ${n4((info?.curve_progress ?? 0) * 100)}%`}`,
         ...gs.map((g) => `  accepted ${Math.round((i.now - g.at) / 3600000)} h ago: ${g.recipe_name ?? "lineage"} generation ${g.height}, ${g.kind} on ${typeof g.target === "string" ? g.target : JSON.stringify(g.target)}, gain ${n4(g.gain_pct)}%`),
       ].join("\n"),
     );

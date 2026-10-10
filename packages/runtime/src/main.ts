@@ -12,7 +12,7 @@
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { keyFromSolanaJson } from "@lineage/protocol";
-import { devnetRpcUrl } from "../../chain/src/endpoint.ts";
+import { applyNetworkProfile, rpcUrlFor } from "../../chain/src/profile-node.ts";
 import { AnthropicProposer } from "../../worker/src/proposers/anthropic.ts";
 import { ChainBackend, SimBackend, type Backend } from "./backend.ts";
 import { loadConfig, loadModelEnv, windowStart, type RuntimeConfig } from "./config.ts";
@@ -39,13 +39,15 @@ function args(argv: string[]) {
   return out;
 }
 
+/** The network profile's RPC (devnet: devnetRpcUrl() as before; mainnet: the keyed env endpoint). */
+const chainRpc = () => rpcUrlFor(applyNetworkProfile());
 const loadKey = (p: string) => keyFromSolanaJson(JSON.parse(readFileSync(p, "utf8")));
 
 export function backendFor(cfg: RuntimeConfig, log: (m: string) => void, onTx?: (what: string, sig: string, fee?: number) => void): Backend {
   const key = loadKey(cfg.runtime_key);
   return cfg.mode === "sim"
     ? new SimBackend(cfg.core, key)
-    : new ChainBackend(key, { rpcUrl: cfg.rpc_url ?? devnetRpcUrl(), log: (m) => log(`  ${m}`), onTx: (w, r) => onTx?.(w, r.signature, r.fee) });
+    : new ChainBackend(key, { rpcUrl: cfg.rpc_url ?? chainRpc(), log: (m) => log(`  ${m}`), onTx: (w, r) => onTx?.(w, r.signature, r.fee) });
 }
 
 /** Devnet: hosted agents post their messages on chain (lineage_msg, SPEC 12.5), the runtime paying the fees. */
@@ -91,6 +93,10 @@ async function main() {
   if (!a.config) throw new Error("--config <file> is required");
   const cfg = loadConfig(a.config, a["max-candidates"] ? { max_candidates_per_agent: Number(a["max-candidates"]) } : {});
   addSecret(cfg.rpc_url);
+  // network profile (SPEC 14.10): a chain mode must be the profile's; mainnet sends price compute units from recent fees
+  const profile = applyNetworkProfile();
+  if (cfg.mode !== "sim" && cfg.mode !== profile.network) throw new Error(`runtime config mode ${cfg.mode} differs from the network profile ${profile.network} (config/profile.json, LINEAGE_NETWORK)`);
+  if (cfg.mode !== "sim" && !cfg.rpc_url) addSecret(chainRpc());
   // every line through redact, including the backend's and the messengers' (audit A2, OFF-R5)
   const log = (m: string) => console.log(redact(`[${new Date().toISOString().slice(11, 19)} runtime] ${m}`));
   switch (cmd) {
@@ -107,7 +113,7 @@ async function main() {
       // agents as traders (plan T): runtime.json "trading": { "enabled": true } on devnet
       const tcfg = (cfg as { trading?: TradingRuntimeConfig }).trading;
       const trading = tcfg?.enabled && backend instanceof ChainBackend
-        ? chainTrading({ core: cfg.core, stateDir: cfg.state_dir, runtimeKey: loadKey(cfg.runtime_key), rpcUrl: cfg.rpc_url ?? devnetRpcUrl(), rpc: backend.rpc, cfg: tcfg, keys, log, onTx: (w, s, f) => log(`tx ${w}: ${s} (fee ${f ?? "?"})`) })
+        ? chainTrading({ core: cfg.core, stateDir: cfg.state_dir, runtimeKey: loadKey(cfg.runtime_key), rpcUrl: cfg.rpc_url ?? chainRpc(), rpc: backend.rpc, cfg: tcfg, keys, log, onTx: (w, s, f) => log(`tx ${w}: ${s} (fee ${f ?? "?"})`) })
         : null;
       // agent desktops (SPEC 17.7): our server's slots first, then E2B within its day cap
       const desktops = desktopPool(cfg, log);
@@ -117,7 +123,7 @@ async function main() {
       await rt.start();
       // hosted launches bind from the Wallet page (bind.ts): the owner signs the rotation, this runtime co-signs
       const bindServer = cfg.bind_port && backend instanceof ChainBackend
-        ? serveBind(cfg.bind_port, withDesktops(desktops, bindHandler({ host: rt, send: chainCosign(cfg.rpc_url ?? devnetRpcUrl(), log), log })), log)
+        ? serveBind(cfg.bind_port, withDesktops(desktops, bindHandler({ host: rt, send: chainCosign(cfg.rpc_url ?? chainRpc(), log, applyNetworkProfile().genesis), log })), log)
         : desktops && (cfg.desktop_port ?? cfg.bind_port)
           ? serveBind((cfg.desktop_port ?? cfg.bind_port)!, withDesktops(desktops), log)
           : null;
@@ -157,11 +163,11 @@ async function main() {
       return;
     }
     case "cosign": {
-      if (cfg.mode !== "devnet") throw new Error("cosign is for devnet; in sim mode the owner posts the bind request with the agent's key");
+      if (cfg.mode === "sim") throw new Error("cosign is for chain mode; in sim mode the owner posts the bind request with the agent's key");
       const keyFile = join(cfg.state_dir, "keys", `${a.agent}.json`);
       if (!existsSync(keyFile)) throw new Error(`this runtime holds no key for ${a.agent}`);
       const { cosignCommand } = await import("../../chain/src/cosign.ts");
-      await cosignCommand({ key: loadKey(keyFile), tx: a.tx!, rpcUrl: cfg.rpc_url ?? devnetRpcUrl(), dryRun: a["dry-run"] === "true", expectAgent: a.agent });
+      await cosignCommand({ key: loadKey(keyFile), tx: a.tx!, rpcUrl: cfg.rpc_url ?? chainRpc(), dryRun: a["dry-run"] === "true", expectAgent: a.agent, genesis: applyNetworkProfile().genesis });
       return;
     }
     default:

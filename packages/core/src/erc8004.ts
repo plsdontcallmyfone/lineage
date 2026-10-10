@@ -1,4 +1,5 @@
 import { addressBytes, pda, REGISTRY_PROGRAM_ID } from "@lineage/chain";
+import { loadNetworkProfile } from "../../chain/src/profile-node.ts";
 import type { Core } from "./core.ts";
 import { linksOf } from "./links.ts";
 import { soulsOf } from "./souls.ts";
@@ -55,7 +56,8 @@ export const agentPda = (registryProgram: string, agent: string): string => pda(
 export class Erc8004 {
   opts: Erc8004Options;
   constructor(private readonly core: Core) {
-    const cluster = (process.env.LINEAGE_CLUSTER ?? "devnet") as keyof typeof SOLANA_CAIP2;
+    // LINEAGE_CLUSTER when set, else the network profile (config/profile.json, LINEAGE_NETWORK; SPEC 14.10)
+    const cluster = (process.env.LINEAGE_CLUSTER ?? loadNetworkProfile().network) as keyof typeof SOLANA_CAIP2;
     this.opts = {
       registryProgram: process.env.LINEAGE_REGISTRY_PROGRAM || REGISTRY_PROGRAM_ID,
       chain: SOLANA_CAIP2[cluster] ?? SOLANA_CAIP2.devnet,

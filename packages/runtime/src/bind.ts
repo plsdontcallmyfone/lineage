@@ -107,10 +107,10 @@ export function bindHandler(o: { host: BindHost; send: CosignSend; log?: (m: str
 }
 
 /** The production sender: lineage-chain's devnet co-sign path (checks again, simulates, sends, confirms). */
-export function chainCosign(rpcUrl: string, log: (m: string) => void): CosignSend {
+export function chainCosign(rpcUrl: string, log: (m: string) => void, genesis?: string): CosignSend {
   return async (key, tx, agent) => {
     const { cosignCommand } = await import("../../chain/src/cosign.ts");
-    const r = await cosignCommand({ key, tx, rpcUrl, expectAgent: agent, log: (m) => log(`  ${m}`) });
+    const r = await cosignCommand({ key, tx, rpcUrl, expectAgent: agent, log: (m) => log(`  ${m}`), genesis });
     return { signature: r.signature };
   };
 }

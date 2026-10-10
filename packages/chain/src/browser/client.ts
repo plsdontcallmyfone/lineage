@@ -24,6 +24,15 @@ export async function assertDevnet(rpc: Rpc): Promise<string> {
   return "devnet";
 }
 
+/** Throws unless the RPC answers with `genesis` (the network profile's cluster, SPEC 14.10). Returns the cluster name. */
+export async function assertCluster(rpc: Rpc, genesis: string): Promise<string> {
+  if (genesis === DEVNET_GENESIS) return assertDevnet(rpc);
+  const g = await rpc.call<string>("getGenesisHash", []);
+  const want = KNOWN_GENESIS[genesis] ?? genesis;
+  if (g !== genesis) throw new ClusterError(`RPC genesis ${g} is ${KNOWN_GENESIS[g] ?? "an unknown cluster"}, not ${want}: refusing to build transactions`);
+  return want;
+}
+
 export interface SimAccount {
   address: Address;
   writable: boolean;
@@ -116,5 +125,12 @@ export async function sendWire(rpc: Rpc, wire: Uint8Array, lastValidBlockHeight:
   }
 }
 
-export const explorerTx = (sig: string) => `https://explorer.solana.com/tx/${sig}?cluster=devnet`;
-export const explorerAddress = (a: Address) => `https://explorer.solana.com/address/${a}?cluster=devnet`;
+// explorer links follow the page's network profile (devnet until the page reads /chain/config)
+let explorerCluster: string | null = "devnet";
+/** Sets the ?cluster= of explorer links (null: mainnet, no parameter). */
+export function setExplorerCluster(c: string | null) {
+  explorerCluster = c;
+}
+const q = () => (explorerCluster ? `?cluster=${explorerCluster}` : "");
+export const explorerTx = (sig: string) => `https://explorer.solana.com/tx/${sig}${q()}`;
+export const explorerAddress = (a: Address) => `https://explorer.solana.com/address/${a}${q()}`;

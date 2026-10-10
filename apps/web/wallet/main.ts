@@ -67,11 +67,12 @@ import {
 import { checkSoul, soulDigest, soulSigningMessage, type SoulDoc, type SoulPersona } from "../../../packages/souls/src/doc.ts";
 import { esc, html, raw, type Raw } from "../src/html.ts";
 import { badge, banner, icon, kv, panel, stat } from "../src/ui.ts";
-import { budgetIxs, buildAndSimulate, loadChainCfg, parseUnits, reader, rpc, signAndSend, sol, units, devnetGate, type Built, type ChainCfg } from "./chain.ts";
-import { connectWallet, DEVNET_CHAIN, onSession, restoreSession, session, signsV0, startDiscovery, type StdAccount, type StdWallet } from "./standard.ts";
+import { budgetIxs, buildAndSimulate, isMainnet, loadChainCfg, NET, netName, parseUnits, qsym, reader, rpc, signAndSend, sol, testLabels, units, devnetGate, type Built, type ChainCfg } from "./chain.ts";
+import { connectWallet, onSession, walletChain, restoreSession, session, signsV0, startDiscovery, type StdAccount, type StdWallet } from "./standard.ts";
 export { mountTradeBox } from "./trade.ts";
 import { custodyHtml, ghClick, initGithubIdentity, showIdentity, submitLaunchToken } from "./identity.ts";
-import { depositBase, depositUsd, loadPrepay, P, prepayHelp, showCorePrepay } from "./prepay.ts";
+import { depositBase, depositNote, loadPrepay, P, prepayHelp, showCorePrepay, usdMode } from "./prepay.ts";
+import { payAsset, prepareSwapThen, routeLines, sendSwapPlan, simulatePlan, type PreparedSwap } from "./swap.ts";
 import { loadTradingEscrow, sendAllocation } from "./trading.ts";
 import { entryOf, isDefaultChoice, loadModels, modelChoice, modelsBody, onModelInput, priceText, withModel } from "./models.ts";
 import { launchSkeleton, profileSkeleton, stepNav, STEPS } from "./pages.ts";
@@ -124,7 +125,7 @@ const S = {
   sigs: [] as SigRow[],
   // launch
   repo: null as null | { url: string; state: "checking" | "ok" | "bad"; msg: string; gh?: any; lineage?: any; core?: "ok" | "down"; recipes?: any[] },
-  draft: null as null | { agent: WebKey; mint: WebKey; built: Built; args: any; ix: Ix; ixs: Ix[]; soul: SoulDoc | null; plan: LaunchPlan; builts: Built[]; deposit: bigint },
+  draft: null as null | { agent: WebKey; mint: WebKey; built: Built; args: any; ix: Ix; ixs: Ix[]; soul: SoulDoc | null; plan: LaunchPlan; builts: Built[]; deposit: bigint; swap?: { prepared: PreparedSwap; sim: Simulation; sig?: string } | null },
   launchOut: null as Raw | null,
   launched: null as null | { agent: WebKey; mint: string; sig: string; sigs?: string[]; deposit?: bigint; mode?: LaunchPlan["mode"] },
   // soul (SPEC 14.8): the agent key is made when the soul is drafted, so the soul names it
@@ -166,7 +167,7 @@ const lineMint = () => S.cfg!.state!.line_mint;
 const dbcConfig = () => S.lc?.dbcConfig ?? S.cfg!.state!.dbc_config;
 const me = () => S.account?.address ?? null;
 const tl = (base: bigint | null | undefined, min = 0) =>
-  base === null || base === undefined ? html`<span class="faint">TBA</span>` : html`<span class="num">${units(base, dec(), min)}</span><span class="unit">tLINE</span>`;
+  base === null || base === undefined ? html`<span class="faint">TBA</span>` : html`<span class="num">${units(base, dec(), min)}</span><span class="unit">${qsym()}</span>`;
 const short = (a: string) => (a.length > 12 ? `${a.slice(0, 4)}…${a.slice(-4)}` : a);
 const addr = (a: string | null | undefined, label?: string) =>
   a ? html`<a class="link nowrap" href="${explorerAddress(a)}" target="_blank" rel="noopener" title="${a}">${label ?? short(a)}</a>` : html`<span class="faint">none</span>`;
@@ -198,15 +199,25 @@ function logSig(label: string, signature: string, fee: number | undefined, ok: b
 function renderGate() {
   const c = S.cfg;
   const cl = S.root?.querySelector("#w-cluster");
-  if (cl) cl.innerHTML = c ? (c.devnet ? badge("devnet", "good", icon.check, `genesis ${c.genesis}`) : badge(c.cluster, "bad", icon.x)).s : "";
-  if (S.gate === "checking") return set("w-gate", banner("info", "Checking the cluster…", "The RPC's genesis hash must be devnet's before anything is built."));
-  if (S.gate !== "ok") return set("w-gate", banner("bad", "Refusing to build transactions", html`${S.gate} This milestone is devnet only.`));
+  if (cl) cl.innerHTML = c ? (c.genesis === NET.p.genesis ? badge(netName(), "good", icon.check, `genesis ${c.genesis}`) : badge(c.cluster, "bad", icon.x)).s : "";
+  if (S.gate === "checking") return set("w-gate", banner("info", "Checking the cluster…", `The RPC's genesis hash must be ${netName()}'s before anything is built.`));
+  if (S.gate !== "ok") return set("w-gate", banner("bad", "Refusing to build transactions", html`${S.gate} This page is set to ${netName()} only.`));
+  // mainnet (SPEC 14.10): no TEST wording; the quote token as configured, a stand-in until $LINE exists
+  if (isMainnet())
+    return set(
+      "w-gate",
+      banner(
+        "info",
+        html`Solana mainnet. Every transaction here is built for mainnet and nothing else.`,
+        html`The RPC answers with mainnet's genesis hash (${NET.p.genesis.slice(0, 8)}…), checked again before every build. Amounts are in ${qsym()} ${addr(lineMint())}${NET.p.quote.status === "stand-in" ? ", a stand-in for $LINE (TBA)" : ""}.`,
+      ),
+    );
   set(
     "w-gate",
     banner(
       "warn",
       html`Devnet only. Every transaction here is built for Solana devnet and nothing else.`,
-      html`The RPC answers with devnet's genesis hash (${DEVNET_GENESIS.slice(0, 8)}…), checked again before every build. Any other cluster is refused. tLINE is the TEST mint ${addr(lineMint())} with a fixed supply and no value; agent tokens launched here are TEST tokens too.`,
+      html`The RPC answers with devnet's genesis hash (${DEVNET_GENESIS.slice(0, 8)}…), checked again before every build. Any other cluster is refused. ${qsym()} is the TEST mint ${addr(lineMint())} with a fixed supply and no value; agent tokens launched here are TEST tokens too.`,
     ),
   );
 }
@@ -221,7 +232,7 @@ async function refreshBalances() {
   } catch (e) {
     S.walletErr = `balances: ${(e as Error).message}`;
   }
-  S.faucet = await fetch(`/chain/faucet?wallet=${a}`).then((r) => r.json()).catch(() => null);
+  S.faucet = NET.p.faucet ? await fetch(`/chain/faucet?wallet=${a}`).then((r) => r.json()).catch(() => null) : null;
   renderConn();
 }
 
@@ -230,29 +241,29 @@ function renderConn() {
   if (S.page !== "profile") return;
   if (!S.account) return;
   const f = S.faucet;
-  const devnetOk = !S.account.chains?.length || S.account.chains.includes(DEVNET_CHAIN);
+  const devnetOk = !S.account.chains?.length || S.account.chains.includes(walletChain());
   const next = f?.last && f?.per_wallet_hours ? f.last.at + f.per_wallet_hours * 3_600_000 : 0;
   const faucetBtn = !f?.enabled
-    ? btn("faucet", "Get tLINE", { disabled: f?.reason ?? "faucet not funded" })
+    ? btn("faucet", `Get ${qsym()}`, { disabled: f?.reason ?? "faucet not funded" })
     : next > Date.now()
-      ? btn("faucet", "Get tLINE", { disabled: `one drip per wallet every ${f.per_wallet_hours} h; next after ${new Date(next).toLocaleString()}` })
-      : btn("faucet", html`Get ${units(BigInt(f.amount), dec())} tLINE`, { primary: true });
+      ? btn("faucet", `Get ${qsym()}`, { disabled: `one drip per wallet every ${f.per_wallet_hours} h; next after ${new Date(next).toLocaleString()}` })
+      : btn("faucet", html`Get ${units(BigInt(f.amount), dec())} ${qsym()}`, { primary: true });
   const h = S.root?.querySelector("#me-h");
   if (h) h.textContent = short(S.account.address);
   set(
     "w-conn",
     html`<div class="stats wl-bal" style="--n:3">
-        ${stat("Address", html`<span title="${S.account.address}">${short(S.account.address)}</span> <button type="button" class="copy" data-copy="${S.account.address}" aria-label="Copy address">${icon.copy}</button>`, html`${S.wallet!.name}${devnetOk ? ", devnet" : ", devnet not offered"}`, "sm")}
-        ${stat("SOL", S.sol === null ? "TBA" : sol(S.sol), "devnet, for fees and rent", "sm")}
-        ${stat("tLINE", S.line === null ? "TBA" : units(S.line, dec()), "TEST mint, Token-2022", "sm")}
+        ${stat("Address", html`<span title="${S.account.address}">${short(S.account.address)}</span> <button type="button" class="copy" data-copy="${S.account.address}" aria-label="Copy address">${icon.copy}</button>`, html`${S.wallet!.name}${devnetOk ? `, ${netName()}` : `, ${netName()} not offered`}`, "sm")}
+        ${stat("SOL", S.sol === null ? "TBA" : sol(S.sol), `${netName()}, for fees and rent`, "sm")}
+        ${stat(`${qsym()}`, S.line === null ? "TBA" : units(S.line, dec()), testLabels() ? "TEST mint, Token-2022" : NET.p.quote.status === "stand-in" ? "stand-in for $LINE" : "quote token", "sm")}
       </div>
-      ${devnetOk ? "" : html`<div class="panel-b">${banner("bad", "This wallet account does not offer solana:devnet", "Pick an account or wallet that supports devnet. Nothing will be built for it.")}</div>`}
-      <div class="panel-b wl-row">
+      ${devnetOk ? "" : html`<div class="panel-b">${banner("bad", `This wallet account does not offer ${walletChain()}`, `Pick an account or wallet that supports ${netName()}. Nothing will be built for it.`)}</div>`}
+      ${NET.p.faucet ? html`<div class="panel-b wl-row">
         ${faucetBtn}
         <a class="wl-btn" href="https://faucet.solana.com/?cluster=devnet" target="_blank" rel="noopener">Devnet SOL faucet ${icon.ext}</a>
         ${btn("refresh", "Refresh")}
       </div>
-      <div class="panel-b wl-fine" style="padding-top:0">tLINE cannot be minted (its mint authority is revoked). The faucet is a devnet wallet of this server, ${f?.address ? addr(f.address) : "not set up"}, that transfers ${f?.amount ? units(BigInt(f.amount), dec()) : "TBA"} tLINE from the existing TEST supply, at most once per wallet every ${f?.per_wallet_hours ?? "TBA"} h and ${f?.per_hour ?? "TBA"} drips an hour; every drip is logged. SOL comes from the public devnet faucet.</div>
+      <div class="panel-b wl-fine" style="padding-top:0">${qsym()} cannot be minted (its mint authority is revoked). The faucet is a devnet wallet of this server, ${f?.address ? addr(f.address) : "not set up"}, that transfers ${f?.amount ? units(BigInt(f.amount), dec()) : "TBA"} ${qsym()} from the existing TEST supply, at most once per wallet every ${f?.per_wallet_hours ?? "TBA"} h and ${f?.per_hour ?? "TBA"} drips an hour; every drip is logged. SOL comes from the public devnet faucet.</div>` : html`<div class="panel-b wl-row">${btn("refresh", "Refresh")}</div>`}
       ${S.faucetMsg ?? ""}${S.walletErr ? html`<div class="panel-b">${errBox(S.walletErr)}</div>` : ""}`,
   );
 }
@@ -386,26 +397,32 @@ function workView(r: NonNullable<typeof S.repo>): Raw {
     })}</div>`;
 }
 
+/** What to do when the wallet holds too little of the quote token. */
+const topUp = () => (NET.p.faucet ? ` Get ${qsym()} from the faucet on your Profile.` : NET.p.swap ? " Pay with SOL or USDC (swapped through Jupiter), or add it to this wallet." : "");
+
+/** The on-chain name prefix: "TEST " on devnet, none on mainnet (no TEST labels, SPEC 14.10). */
+const namePrefix = () => (testLabels() ? "TEST " : "");
+
 function launchArgs() {
   const name = val("l_name");
   const symbol = val("l_symbol").toUpperCase();
   const cls = val("l_class") || "rust";
   const hosted = (S.root?.querySelector<HTMLInputElement>('input[name="l_hosted"]:checked')?.value ?? "hosted") === "hosted";
   const identity = S.root?.querySelector<HTMLInputElement>('input[name="l_identity"]:checked')?.value ?? "token";
-  if (!name || new TextEncoder().encode(`TEST ${name}`).length > 32) throw new Error("Agent name: 1 to 27 characters (the on-chain name is TEST + name, 32 bytes max).");
+  if (!name || new TextEncoder().encode(`${namePrefix()}${name}`).length > 32) throw new Error(testLabels() ? "Agent name: 1 to 27 characters (the on-chain name is TEST + name, 32 bytes max)." : "Agent name: 1 to 32 bytes.");
   if (!/^[A-Z0-9]{1,10}$/.test(symbol)) throw new Error("Symbol: 1 to 10 characters, A to Z and 0 to 9.");
   if (!S.repo || S.repo.state !== "ok") throw new Error("Target repository: enter a public GitHub https URL and wait for the check to pass.");
-  const uri = `https://lineage.invalid/devnet/agents/${symbol.toLowerCase()}.json?class=${cls}`;
-  return { name: `TEST ${name}`, symbol, uri, repoUrl: S.repo.url, identityMode: IDENTITY_MODE[identity as keyof typeof IDENTITY_MODE], hosted, cls, identity };
+  const uri = `https://lineage.invalid/${netName()}/agents/${symbol.toLowerCase()}.json?class=${cls}`;
+  return { name: `${namePrefix()}${name}`, symbol, uri, repoUrl: S.repo.url, identityMode: IDENTITY_MODE[identity as keyof typeof IDENTITY_MODE], hosted, cls, identity };
 }
 
 function labelFor(a: string, x: { agent?: string; mint?: string; pool?: string }): string {
   const L: Record<string, string> = {
     [me() ?? "-"]: "your wallet (launcher, fee payer)",
-    ...(me() ? { [ata(me()!, lineMint(), T22)]: "your tLINE account (deposit source)" } : {}),
+    ...(me() ? { [ata(me()!, lineMint(), T22)]: `your ${qsym()} account (deposit source)` } : {}),
     [launchPdas.config()]: "launch config",
     [launchPdas.authority()]: "launch authority PDA",
-    [lineMint()]: "tLINE mint (TEST)",
+    [lineMint()]: `${qsym()} mint${testLabels() ? " (TEST)" : ""}`,
     [dbcConfig()]: "DBC config",
     [registryPdas.config()]: "registry config",
     [registryPdas.treasury()]: "registry treasury",
@@ -597,7 +614,9 @@ async function launchReview() {
     const mint = keep ? S.draft!.mint : await generateWebKey();
     // prepaid credits (plan C): the deposit and refresh_awake ride in the launch transaction
     const deposit = depositBase(val("l_deposit"), dec());
-    if (S.line !== null && S.line < deposit) throw new Error(`Deposit: your wallet holds ${units(S.line, dec())} tLINE, the deposit is ${units(deposit, dec())}. Get tLINE from the faucet on your Profile.`);
+    // mainnet: the deposit may be paid in SOL or USDC, swapped by Jupiter to exactly the deposit first (SPEC 14.9)
+    const pay = payAsset(val("l_deposit_pay"));
+    if (pay === "LINE" && S.line !== null && S.line < deposit) throw new Error(`Deposit: your wallet holds ${units(S.line, dec())} ${qsym()}, the deposit is ${units(deposit, dec())}.${topUp()}`);
     const ix = launch.launchAgent({ launcher: me()!, agent: agent.id, agentMint: mint.id, lineMint: lineMint(), dbcConfig: dbcConfig(), lineTokenProgram: T22,
       args: { name: args.name, symbol: args.symbol, uri: args.uri, repoUrl: args.repoUrl, identityMode: args.identityMode, hosted: args.hosted } });
     const main = [ix, ...launch.prepay({ launcher: me()!, agent: agent.id, agentMint: mint.id, lineMint: lineMint(), amount: deposit, decimals: dec(), lineTokenProgram: T22 })];
@@ -609,7 +628,12 @@ async function launchReview() {
     // in a split the soul transaction is simulated once the first has landed (it needs the new Agent record)
     const builts = [await buildAndSimulate(me()!, plan.txs[0]!.ixs, 450_000, plan.txs[0]!.table)];
     const built = builts[0]!;
-    S.draft = { agent, mint, built, args, ix, ixs, soul, plan, builts, deposit };
+    let swap: { prepared: PreparedSwap; sim: Simulation } | null = null;
+    if (pay !== "LINE") {
+      const prepared = await prepareSwapThen({ pay, need: deposit, taker: me()!, action: [], cuLimit: 400_000 });
+      swap = { prepared, sim: await simulatePlan(prepared, me()!) };
+    }
+    S.draft = { agent, mint, built, args, ix, ixs, soul, plan, builts, deposit, swap };
     renderLaunchReview();
   } catch (e) {
     set("w-launch-out", html`<div class="panel-b">${errBox(e)}</div>`);
@@ -633,19 +657,23 @@ function renderLaunchReview() {
     ["Agent key", addr(d.agent.id)],
     ["Agent mint", addr(d.mint.id)],
     ["Soul", d.soul ? html`${d.soul.persona.name}, <span class="wl-hash">${soulDigest(d.soul)}</span> <span class="dim">set_profile seq ${d.soul.seq} ${d.plan.mode === "split" ? "in the second transaction" : "in this transaction"}</span>` : html`<span class="faint">none</span>`],
-    ["Deposit", html`${tl(d.deposit)} <span class="dim">${depositUsd(val("l_deposit"))} USD; transferChecked into the compute vault, then refresh_awake</span>`],
+    ["Deposit", html`${tl(d.deposit)} <span class="dim">${depositNote(val("l_deposit"))}${depositNote(val("l_deposit")) ? "; " : ""}transferChecked into the compute vault, then refresh_awake${d.swap ? `; paid in ${d.swap.prepared.pay}, swapped first` : ""}</span>`],
     ["Transaction", d.plan.mode === "split"
       ? html`<b>2 signatures</b> <span class="dim">(1) launch_agent + deposit + refresh_awake, ${d.plan.txs[0]!.size} bytes; (2) set_profile, ${d.plan.txs[1]!.size} bytes. One transaction does not fit 1232 bytes${P.table ? ", even as v0 with the lookup table" : ""}${signsV0(S.wallet!) ? "" : " and this wallet does not sign v0"}.</span>`
       : d.plan.mode === "v0"
         ? html`one v0 transaction, ${d.plan.txs[0]!.size} of 1232 bytes, reading the frozen lookup table ${addr(P.table!.address)}`
         : html`one transaction, ${d.plan.txs[0]!.size} of 1232 bytes`],
   ];
+  // paying by swap: the swap is simulated now; the launch is simulated again after the swap lands (it spends what the swap delivers)
+  const sw = d.swap;
+  const blocked = sw ? (sw.sim.err ? "the swap simulation failed" : false) : sim.err ? "the simulation failed; fix the inputs and review again" : false;
   set(
     "w-launch-out",
-    html`${sim.err ? html`<div class="panel-b">${errBox(`Simulation failed: ${JSON.stringify(sim.err)}`, sim.logs)}</div>` : html`<div class="panel-b wl-row"><span class="mark good">${icon.check} simulation succeeded on devnet</span></div>`}
+    html`${sw ? html`<div class="panel-b"><div class="eyebrow" style="margin-bottom:6px">Swap first (Jupiter), one more signature</div>${routeLines(sw.prepared)}${sw.sim.err ? errBox(`Swap simulation failed: ${JSON.stringify(sw.sim.err)}`, sw.sim.logs) : html`<span class="mark good">${icon.check} swap simulation succeeded on ${netName()}</span>`}</div>` : ""}
+      ${sim.err && sw ? html`<div class="panel-b wl-row"><span class="mark warn">${icon.warn} launch simulation before the swap: ${JSON.stringify(sim.err)}; it is simulated again after the swap lands and nothing is sent if it still fails</span></div>` : sim.err ? html`<div class="panel-b">${errBox(`Simulation failed: ${JSON.stringify(sim.err)}`, sim.logs)}</div>` : html`<div class="panel-b wl-row"><span class="mark good">${icon.check} simulation succeeded on ${netName()}</span></div>`}
       ${simTable(sim, { agent: d.agent.id, mint: d.mint.id }, me()!)}
       <div class="panel-b"><div class="eyebrow" style="margin-bottom:6px">launch_agent arguments</div>${kv(recordRows)}</div>
-      <div class="panel-b wl-row lz-launch">${btn("launch-sign", html`Launch${d.plan.mode === "split" ? " (2 signatures)" : ""}`, { primary: true, disabled: sim.err ? "the simulation failed; fix the inputs and review again" : false })}${btn("launch-review", "Simulate again")}<span class="wl-why">${S.wallet!.name} signs ${d.plan.mode === "split" ? "two transactions" : "one transaction"}; a hosted agent's binding is one more signature after it.</span></div>
+      <div class="panel-b wl-row lz-launch">${btn("launch-sign", html`Launch${d.plan.mode === "split" || sw ? ` (${(d.plan.mode === "split" ? 2 : 1) + (sw ? 1 : 0)} signatures)` : ""}`, { primary: true, disabled: blocked })}${btn("launch-review", "Simulate again")}<span class="wl-why">${S.wallet!.name} signs ${d.plan.mode === "split" ? "two transactions" : "one transaction"}; a hosted agent's binding is one more signature after it.</span></div>
       <div class="panel-b" id="w-launch-status"></div>`,
   );
 }
@@ -668,6 +696,17 @@ async function launchSign() {
       st("This launch is already on chain; reading it back instead of sending it again.");
     } else {
       const t0 = d.plan.txs[0]!;
+      if (d.swap && !d.swap.sig) {
+        // the swap first (mainnet), then the launch simulated again on the balance it delivered
+        const cs = await sendSwapPlan({ rpc, wallet: S.wallet!, account: S.account!, prepared: d.swap.prepared, onStatus: st });
+        d.swap.sig = cs[cs.length - 1]!.signature;
+        logSig(`swap ${d.swap.prepared.pay} to ${qsym()} for the deposit`, d.swap.sig, cs[cs.length - 1]!.fee, true);
+        await refreshBalances();
+      }
+      if (d.swap) {
+        const again = await buildAndSimulate(me()!, t0.ixs, 450_000, t0.table);
+        if (again.sim.err) throw Object.assign(new Error(`launch simulation after the swap failed: ${JSON.stringify(again.sim.err)}; nothing was sent (the swapped ${qsym()} stays in your wallet)`), { logs: again.sim.logs });
+      }
       const r = await signAndSend({ wallet: S.wallet!, account: S.account!, ixs: t0.ixs, units: 450_000, local: [d.agent, d.mint], onStatus: st, table: t0.table });
       const c = r.confirmed!;
       logSig(`launch_agent + deposit + refresh_awake ${d.args.symbol}`, c.signature, c.fee, !c.err);
@@ -702,7 +741,7 @@ async function launchSign() {
     mark("session", "wait", "after the agent is awake and bound");
     mark("verdict", "wait", "after the first candidate is replayed");
     // plan T: the optional trading allocation, a second transaction to the published escrow
-    const alloc = await sendAllocation({ wallet: S.wallet!, account: S.account!, agent: d.agent.id, lineMint: lineMint(), decimals: dec(), typed: val("l_alloc"), onStatus: st }).catch((e) => (console.warn(`trading allocation not sent: ${(e as Error).message}`), null));
+    const alloc = await sendAllocation({ wallet: S.wallet!, account: S.account!, agent: d.agent.id, lineMint: lineMint(), decimals: dec(), typed: val("l_alloc"), pay: val("l_alloc_pay"), onStatus: st }).catch((e) => (console.warn(`trading allocation not sent: ${(e as Error).message}`), null));
     if (alloc) logSig(`trading allocation ${d.args.symbol}`, alloc, undefined, true);
     if (d.soul) await publishLaunchedSoul(d.agent, d.soul);
     S.ghLaunch = d.args.identity === "token" ? await submitLaunchToken({ agent: d.agent, mint: d.mint.id }) : null;
@@ -732,7 +771,7 @@ async function renderLaunched() {
   const mi = mintAcc ? decodeMint(mintAcc.data) : null;
   set(
     "w-launch-out",
-    html`<div class="panel-b">${banner("info", html`Launched. ${txLink(L.sig, "View the transaction")}`, html`Everything below was read back from devnet after confirmation.`)}</div>
+    html`<div class="panel-b">${banner("info", html`Launched. ${txLink(L.sig, "View the transaction")}`, html`Everything below was read back from ${netName()} after confirmation.`)}</div>
       <div class="eyebrow wl-sub">AgentLaunch ${addr(launchPdas.agentLaunch(L.mint))}</div>
       ${kv([
         ["Agent", addr(l.agent)],
@@ -741,7 +780,7 @@ async function renderLaunched() {
         ["Repository", l.repoUrl],
         ["repo_id", html`<span class="wl-hash">${l.repoId}</span> ${l.repoId === repoId(l.repoUrl) ? html`<span class="mark good">${icon.check} equals protocol repoId</span>` : html`<span class="mark warn">${icon.warn} differs</span>`}`],
         ["Identity / runtime", `${["token", "purchased", "app"][l.identityMode]} / ${l.hosted ? "hosted" : "self-hosted"}`],
-        ["DBC pool", html`${addr(l.dbcPool)}${pv ? html` <span class="dim">creator ${pv.creator === launchPdas.authority() ? "launch authority PDA" : short(pv.creator)}, quote reserve ${units(pv.quoteReserve, dec())} tLINE</span>` : ""}`],
+        ["DBC pool", html`${addr(l.dbcPool)}${pv ? html` <span class="dim">creator ${pv.creator === launchPdas.authority() ? "launch authority PDA" : short(pv.creator)}, quote reserve ${units(pv.quoteReserve, dec())} ${qsym()}</span>` : ""}`],
         ["Compute vault", html`${addr(launchPdas.computeVault(l.agent))} ${tl(vaultBal)}`],
         ["Awake", l.awake ? html`yes ${L.deposit !== undefined ? html`<span class="dim">woken by the deposit in the launch transaction</span>` : ""}` : "no (vault below wake_threshold)"],
         ...(L.deposit !== undefined ? [["Prepaid", html`${tl(L.deposit)} deposited; ${L.mode === "split" ? html`2 transactions, soul in ${txLink(L.sigs![1]!)}` : L.mode === "v0" ? "one v0 transaction" : "one transaction"}<div id="w-prepay-core" class="dim">Core's check of the deposit follows its next chain sync.</div>`] as [string, unknown]] : []),
@@ -864,7 +903,7 @@ function renderVerifier() {
     const short0 = need !== null && S.line !== null && S.line < need;
     body = html`<div class="wl-fine">Not registered. Registering burns <b>${tl(p?.registerBurn)}</b> from your wallet (register_burn, read from the registry config) and creates the Agent record linking this key to your wallet as owner.</div>
       <label class="wl-field" style="margin-top:10px"><span class="eyebrow">Capabilities (output of <span class="num">lineage-worker doctor</span>)</span><textarea name="v_caps" rows="4" placeholder='{"arch":"arm64","cpus":10,...}'></textarea><span class="wl-help">Committed as H("caps", canonical JSON), the digest Core compares with what the worker declares. Leave empty to commit to no capabilities.</span></label>
-      <div class="wl-row" style="margin-top:10px">${btn("v-register", "Sign register as owner", { primary: true, disabled: !S.account ? "connect a wallet" : short0 ? `needs ${units(need!, dec())} tLINE to burn: use Get tLINE` : false })}</div>
+      <div class="wl-row" style="margin-top:10px">${btn("v-register", "Sign register as owner", { primary: true, disabled: !S.account ? "connect a wallet" : short0 ? `needs ${units(need!, dec())} ${qsym()} to burn: use Get ${qsym()}` : false })}</div>
       <div id="w-cosign">${S.partial && S.partial.agent === k ? cosignView() : ""}</div>`;
   } else {
     const now = Date.now() / 1000;
@@ -881,12 +920,12 @@ function renderVerifier() {
       ])}
       ${mine
         ? html`<div class="wl-2" style="margin-top:12px">
-            <div><label class="wl-field"><span class="eyebrow">Bond (tLINE)</span><input name="v_bond" inputmode="decimal" value="${p && rec.bond < p.minBond ? units(p.minBond - rec.bond, dec()) : ""}"></label>
+            <div><label class="wl-field"><span class="eyebrow">Bond (${qsym()})</span><input name="v_bond" inputmode="decimal" value="${p && rec.bond < p.minBond ? units(p.minBond - rec.bond, dec()) : ""}"></label>
               <div class="wl-row" style="margin-top:8px">${btn("v-bond", "Sign bond", { primary: true, disabled: rec.kind !== "verifier" ? "hosted launched agents never bond" : false })}</div></div>
-            <div><label class="wl-field"><span class="eyebrow">Unbond (tLINE)</span><input name="v_unbond" inputmode="decimal" value=""></label>
+            <div><label class="wl-field"><span class="eyebrow">Unbond (${qsym()})</span><input name="v_unbond" inputmode="decimal" value=""></label>
               <div class="wl-row" style="margin-top:8px">${btn("v-unbond", "Request unbond", { disabled: rec.bond === 0n ? "nothing bonded" : false })}${btn("v-withdraw", "Withdraw", { disabled: rec.unbondAmount === 0n ? "no pending unbond" : !ready ? `cooldown of ${p ? String(p.unbondCooldownS) : "TBA"} s not over` : false })}</div></div>
           </div>
-          <div class="wl-fine" style="margin-top:8px">Bonds move tLINE from your wallet to the bond vault ${addr(registryPdas.bondVault())}; they stay slashable until withdrawn after unbond_cooldown.</div>`
+          <div class="wl-fine" style="margin-top:8px">Bonds move ${qsym()} from your wallet to the bond vault ${addr(registryPdas.bondVault())}; they stay slashable until withdrawn after unbond_cooldown.</div>`
         : ""}
       <div id="w-vout">${S.vOut ?? ""}</div>`;
   }
@@ -925,7 +964,7 @@ function renderKit() {
     <ol class="wl-steps">
       <li>The registry's Agent record is keyed by the agent key (PDA <span class="num">agent</span> + key) and stores your wallet as <b>owner</b>. Register requires both signatures: the owner pays the burn, the agent key proves the worker holds it.</li>
       <li>Bond, unbond and withdraw are owner-only: your wallet signs them here; the worker key is not needed.</li>
-      <li>Rewards for replays go to <span class="num">agent:&lt;key&gt;:wallet</span>, paid to a tLINE account owned by the owner wallet (Claims and bounties on your Profile).</li>
+      <li>Rewards for replays go to <span class="num">agent:&lt;key&gt;:wallet</span>, paid to a ${qsym()} account owned by the owner wallet (Claims and bounties on your Profile).</li>
       <li>The worker key signs Core requests and commit-reveals; it never leaves the worker machine and is never typed into this page.</li>
     </ol></div>`,
   );
@@ -991,7 +1030,7 @@ async function watchRegistration(agent: string, lastValid: number) {
         const t = await rpc.getTransaction(sigs[0].signature).catch(() => null);
         logSig(`register ${short(agent)} (sent by lineage-worker cosign)`, sigs[0].signature, t?.meta?.fee, !sigs[0].err);
       }
-      S.vOut = html`<div class="panel-b">${banner("info", "Registered by the worker's co-signature.", html`Burned ${units(rec.burned, dec())} tLINE (Agent.burned)${supply0 !== null && supply1 !== null ? html`; tLINE supply fell by ${units(supply0 - supply1, dec())}` : ""}.`)}</div>`;
+      S.vOut = html`<div class="panel-b">${banner("info", "Registered by the worker's co-signature.", html`Burned ${units(rec.burned, dec())} ${qsym()} (Agent.burned)${supply0 !== null && supply1 !== null ? html`; ${qsym()} supply fell by ${units(supply0 - supply1, dec())}` : ""}.`)}</div>`;
       refreshBalances();
       loadNetwork();
       return renderVerifier();
@@ -1017,11 +1056,11 @@ async function vOwnerTx(kind: "bond" | "unbond" | "withdraw") {
   } else {
     const amt = parseUnits(val(kind === "bond" ? "v_bond" : "v_unbond"), dec());
     if (!amt) {
-      S.vOut = errBox("Enter a positive tLINE amount.");
+      S.vOut = errBox(`Enter a positive ${qsym()} amount.`);
       return renderVerifier();
     }
     ix = kind === "bond" ? registry.bond({ owner: me()!, agent, mint: lineMint(), ownerToken, amount: amt, tokenProgram: T22 }) : registry.requestUnbond({ owner: me()!, agent, amount: amt });
-    label = `${kind === "bond" ? "bond" : "request_unbond"} ${units(amt, dec())} tLINE`;
+    label = `${kind === "bond" ? "bond" : "request_unbond"} ${units(amt, dec())} ${qsym()}`;
   }
   try {
     const b = await buildAndSimulate(me()!, [ix]);
@@ -1035,10 +1074,10 @@ async function vOwnerTx(kind: "bond" | "unbond" | "withdraw") {
     const after = S.vrec!;
     const what =
       kind === "bond"
-        ? html`Bond ${units(before.bond, dec())} to ${units(after.bond, dec())} tLINE (read back).`
+        ? html`Bond ${units(before.bond, dec())} to ${units(after.bond, dec())} ${qsym()} (read back).`
         : kind === "unbond"
-          ? html`Pending unbond ${units(after.unbondAmount, dec())} tLINE, withdrawable from ${when(after.unbondReadyAt)}; the bond stays ${units(after.bond, dec())} tLINE and slashable until then (read back).`
-          : html`Bond ${units(before.bond, dec())} to ${units(after.bond, dec())} tLINE; withdrawn to your wallet (read back).`;
+          ? html`Pending unbond ${units(after.unbondAmount, dec())} ${qsym()}, withdrawable from ${when(after.unbondReadyAt)}; the bond stays ${units(after.bond, dec())} ${qsym()} and slashable until then (read back).`
+          : html`Bond ${units(before.bond, dec())} to ${units(after.bond, dec())} ${qsym()}; withdrawn to your wallet (read back).`;
     S.vOut = html`<div class="panel-b">${banner("info", html`${label}: ${txLink(c.signature)}`, what)}</div>`;
     refreshBalances();
   } catch (e) {
@@ -1058,7 +1097,7 @@ function renderIdentity() {
   let body: Raw;
   if (!k) body = html`<div class="dim">Enter an agent id (its original public key) to read its identity from the registry.</div>`;
   else if (rec === undefined) body = html`<div class="dim">Reading the registry…</div>`;
-  else if (rec === null) body = html`<div class="dim">No Agent record for this key on devnet.</div>`;
+  else if (rec === null) body = html`<div class="dim">No Agent record for this key on ${netName()}.</div>`;
   else {
     const revoked = rec.signingKey === null;
     body = html`${kv([
@@ -1302,7 +1341,7 @@ function renderClaims(agents: Map<string, string>) {
     html`<div class="stats" style="--n:3">
         ${stat("Linked agents", String(agents.size), "owned (verifier) or launched by this wallet", "sm")}
         ${stat("Leaves", String(c.rows.length), "in epochs posted on chain", "sm")}
-        ${stat("Claimable", html`${units(open.reduce((n, r) => n + r.amount, 0n), dec())}<span class="unit">tLINE</span>`, `${open.length} unclaimed ${open.length === 1 ? "leaf" : "leaves"}`, "sm")}
+        ${stat("Claimable", html`${units(open.reduce((n, r) => n + r.amount, 0n), dec())}<span class="unit">${qsym()}</span>`, `${open.length} unclaimed ${open.length === 1 ? "leaf" : "leaves"}`, "sm")}
       </div>
       ${c.note ? html`<div class="panel-b">${banner("warn", c.note)}</div>` : ""}
       ${c.rows.length
@@ -1342,7 +1381,7 @@ async function claim(i: number) {
     logSig(`claim epoch ${r.epoch} ${r.dest.split(":").pop()}`, cf.signature, cf.fee, !cf.err);
     if (cf.err) throw Object.assign(new Error(`claim failed: ${JSON.stringify(cf.err)}`), { logs: cf.logs });
     const b1 = (await reader.tokenBalance(destToken)) ?? 0n;
-    S.claimOut = html`<div class="panel-b">${banner("info", html`Claimed epoch ${r.epoch}: ${txLink(cf.signature)}`, html`${addr(destToken)} received ${units(b1 - b0, dec())} tLINE (read back)${b1 - b0 === r.amount ? ", exactly the leaf amount" : ""}.`)}</div>`;
+    S.claimOut = html`<div class="panel-b">${banner("info", html`Claimed epoch ${r.epoch}: ${txLink(cf.signature)}`, html`${addr(destToken)} received ${units(b1 - b0, dec())} ${qsym()} (read back)${b1 - b0 === r.amount ? ", exactly the leaf amount" : ""}.`)}</div>`;
     refreshBalances();
     await loadClaims();
   } catch (e) {
@@ -1395,7 +1434,7 @@ function renderBountyForm() {
       : html`<form class="wl-form panel-b" autocomplete="off" data-wallet-form="bounty">
         <label><span class="eyebrow">Paying agent (its compute vault)</span><select name="b_payer">${payers.map((l) => html`<option value="${l.agent}">${S.metas.get(l.mint)?.symbol ?? short(l.mint)} · ${short(l.agent)}</option>`)}</select></label>
         <div class="wl-2">
-          <label><span class="eyebrow">Amount (tLINE)</span><input name="b_amount" inputmode="decimal" placeholder="1"></label>
+          <label><span class="eyebrow">Amount (${qsym()})</span><input name="b_amount" inputmode="decimal" placeholder="1"></label>
           <label><span class="eyebrow">Deadline (hours from now)</span><input name="b_hours" inputmode="decimal" value="${String(Math.max(1, Math.min(72, Math.ceil(c.maxTtlS / 3600))))}"></label>
         </div>
         <label><span class="eyebrow">Payee agent</span><input name="b_payee" placeholder="leave empty: any agent credited as author" spellcheck="false"><span class="wl-help">A named payee is paid if credited in any role (author, reviewer, harness, finder); it must be a launched agent, since payment goes to its compute vault.</span></label>
@@ -1420,7 +1459,7 @@ function renderBounties() {
   if (S.bErr) return set("w-blist", html`<div class="panel-b">${S.bErr}</div>`);
   const list = S.bounties;
   if (!list) return set("w-blist", html`<div class="panel-b dim">Reading Bounty accounts…</div>`);
-  if (!list.length) return set("w-blist", html`<div class="panel-b dim">No bounty has been opened on devnet yet.</div>
+  if (!list.length) return set("w-blist", html`<div class="panel-b dim">No bounty has been opened on ${netName()} yet.</div>
     <div class="panel-b wl-row">${btn("b-reload", "Look again")}</div>`);
   const nowS = BigInt(Math.floor(Date.now() / 1000));
   const grace = BigInt(S.bcfg?.refundGraceS ?? 0);
@@ -1465,7 +1504,7 @@ async function bOpen() {
     const l = S.launches.find((x) => x.agent === payer);
     if (!l) throw new Error("pick a paying agent");
     const amount = parseUnits(val("b_amount"), dec());
-    if (!amount) throw new Error("enter a positive tLINE amount");
+    if (!amount) throw new Error(`enter a positive ${qsym()} amount`);
     const hours = Number(val("b_hours"));
     if (!(hours > 0)) throw new Error("enter the deadline in hours");
     const lineage = val("b_lineage").toLowerCase();
@@ -1489,7 +1528,7 @@ async function bOpen() {
     const ix = bounty.open({ opener: me()!, payer, payerMint: l.mint, lineMint: lineMint(), lineTokenProgram: T22,
       args: { bountyId, payee, amount, termsDigest: hashJson(terms), conditionKind: kind, lineageId: lineage, conditionValue: value, deadline } });
     const v0 = (await reader.tokenBalance(launchPdas.computeVault(payer))) ?? 0n;
-    const c = await bSend(`open_bounty ${units(amount, dec())} tLINE from ${short(payer)}`, [ix]);
+    const c = await bSend(`open_bounty ${units(amount, dec())} ${qsym()} from ${short(payer)}`, [ix]);
     const addrB = bountyPdas.bounty(payer, bountyId);
     const [acct, v1, esc0] = await Promise.all([reader.bounty(addrB), reader.tokenBalance(launchPdas.computeVault(payer)), reader.tokenBalance(bountyPdas.vault(addrB))]);
     // Core keeps the terms once it has mirrored the account (its next chain sync); try now, say so if not yet.
@@ -1501,7 +1540,7 @@ async function bOpen() {
       termsNote = html`Core did not answer; the terms digest is on chain.`;
     }
     S.bOut = html`<div class="panel-b">${banner("info", html`Opened bounty ${addr(addrB)}: ${txLink(c.signature)}`,
-      html`The compute vault went from ${units(v0, dec())} to ${units(v1 ?? 0n, dec())} tLINE and the escrow holds ${units(esc0 ?? 0n, dec())} tLINE (read back); qualifying generations from epoch ${String(acct?.minEpoch ?? "TBA")} on. ${termsNote}`)}</div>`;
+      html`The compute vault went from ${units(v0, dec())} to ${units(v1 ?? 0n, dec())} ${qsym()} and the escrow holds ${units(esc0 ?? 0n, dec())} ${qsym()} (read back); qualifying generations from epoch ${String(acct?.minEpoch ?? "TBA")} on. ${termsNote}`)}</div>`;
   } catch (e) {
     S.bOut = html`<div class="panel-b">${errBox(e, (e as any).logs)}</div>`;
   }
@@ -1555,7 +1594,7 @@ async function bRelease(key: string) {
     const c = await bSend(`release_bounty ${short(address)} to ${short(row.payee)}`, [ix], 400_000);
     const [after, v1] = await Promise.all([reader.bounty(address), reader.tokenBalance(launchPdas.computeVault(row.payee))]);
     S.bOut = html`<div class="panel-b">${banner("info", html`Released ${addr(address)}: ${txLink(c.signature)}`,
-      html`The payee's compute vault received ${units((v1 ?? 0n) - v0, dec())} tLINE${(v1 ?? 0n) - v0 === b.amount ? ", exactly the escrow" : ""}; status ${after?.status ?? "TBA"} (read back).`)}</div>`;
+      html`The payee's compute vault received ${units((v1 ?? 0n) - v0, dec())} ${qsym()}${(v1 ?? 0n) - v0 === b.amount ? ", exactly the escrow" : ""}; status ${after?.status ?? "TBA"} (read back).`)}</div>`;
     S.bRelease.delete(address);
   } catch (e) {
     S.bOut = html`<div class="panel-b">${errBox(e, (e as any).logs)}</div>`;
@@ -1576,7 +1615,7 @@ async function bBack(address: string, kind: "refund" | "cancel") {
     const c = await bSend(`${kind}_bounty ${short(address)}`, [ix]);
     const v1 = (await reader.tokenBalance(launchPdas.computeVault(b.payer))) ?? 0n;
     S.bOut = html`<div class="panel-b">${banner("info", html`${kind === "refund" ? "Refunded" : "Cancelled"} ${addr(address)}: ${txLink(c.signature)}`,
-      html`${units(v1 - v0, dec())} tLINE back in the paying agent's compute vault (read back).`)}</div>`;
+      html`${units(v1 - v0, dec())} ${qsym()} back in the paying agent's compute vault (read back).`)}</div>`;
   } catch (e) {
     S.bOut = html`<div class="panel-b">${errBox(e, (e as any).logs)}</div>`;
   }
@@ -1671,7 +1710,7 @@ function stepProblem(i: number): string | null {
     if (i === 0) {
       const name = val("l_name");
       if (!name) return "Name the coin.";
-      if (new TextEncoder().encode(`TEST ${name}`).length > 32) return "Name: at most 27 characters (the on-chain name is TEST + name, 32 bytes).";
+      if (new TextEncoder().encode(`${namePrefix()}${name}`).length > 32) return testLabels() ? "Name: at most 27 characters (the on-chain name is TEST + name, 32 bytes)." : "Name: at most 32 bytes.";
       if (!/^[A-Z0-9]{1,10}$/.test(val("l_symbol").toUpperCase())) return "Ticker: 1 to 10 characters, A to Z and 0 to 9.";
       if (S.image && (!IMG_TYPES.includes(S.image.type) || S.image.size > 256 * 1024)) return "Image: PNG, JPEG or WebP, at most 256 KB.";
       linksTyped();
@@ -1695,8 +1734,10 @@ function stepProblem(i: number): string | null {
       const dep = depositBase(val("l_deposit"), dec());
       const typed = val("l_alloc");
       const alloc = typed && typed !== "0" ? parseUnits(typed, dec()) : 0n;
-      if (alloc === null) return "Trading allocation: a positive tLINE amount, or leave it empty.";
-      if (S.line !== null && S.line < dep + alloc) return `Your wallet holds ${units(S.line, dec())} tLINE; the deposit${alloc ? " and the allocation" : " needs"}${alloc ? " need" : ""} ${units(dep + alloc, dec())}. Get tLINE from the faucet on your Profile.`;
+      if (alloc === null) return `Trading allocation: a positive ${qsym()} amount, or leave it empty.`;
+      // paid by swap (mainnet), that part needs no quote balance
+      const need = (payAsset(val("l_deposit_pay")) === "LINE" ? dep : 0n) + (payAsset(val("l_alloc_pay")) === "LINE" ? alloc : 0n);
+      if (S.line !== null && S.line < need) return `Your wallet holds ${units(S.line, dec())} ${qsym()}; the deposit${alloc ? " and the allocation" : " needs"}${alloc ? " need" : ""} ${units(need, dec())}.${topUp()}`;
       return null;
     }
   } catch (e) {
@@ -1798,7 +1839,7 @@ function renderReview() {
   set(
     "w-review",
     html`<div class="lz-review">
-      ${row("Coin", html`<b>TEST ${val("l_name")}</b> <span class="dim">${val("l_symbol").toUpperCase()}</span>`, 0)}
+      ${row("Coin", html`<b>${namePrefix()}${val("l_name")}</b> <span class="dim">${val("l_symbol").toUpperCase()}</span>`, 0)}
       ${row("Description", (S.root?.querySelector<HTMLTextAreaElement>('[name="l_desc"]')?.value ?? "").trim() || html`<span class="faint">none</span>`, 0)}
       ${row("Image", S.image ? `${S.image.name}, ${Math.ceil(S.image.size / 1024)} KB, uploaded as the avatar after the launch` : html`<span class="faint">none (generated pattern)</span>`, 0)}
       ${row("Links", links.length ? links.join(", ") : html`<span class="faint">none</span>`, 0)}
@@ -1810,8 +1851,8 @@ function renderReview() {
       ${row("Banner", S.bannerFile ? `${S.bannerFile.name}, ${Math.ceil(S.bannerFile.size / 1024)} KB` : html`<span class="faint">none</span>`, 2)}
       ${row("Runtime", hosted ? "hosted, bound to the hosted runtime after the launch" : "self-hosted, you run the worker", 2)}
       ${row("GitHub identity", identity === "purchased" ? "purchased account from the pool" : identity === "token" ? (val("l_token") ? "your token (bound after the launch)" : "your token, none pasted yet (app identity until you add one)") : "app identity", 3)}
-      ${row("Prepaid credits", dep === null ? "TBA" : html`${tl(dep)} <span class="dim">${depositUsd(val("l_deposit"))} USD</span>`, 4)}
-      ${row("Trading allocation", alloc && alloc !== "0" ? html`${alloc} tLINE <span class="dim">a second transaction after the launch</span>` : html`<span class="faint">none</span>`, 4)}
+      ${row("Prepaid credits", dep === null ? "TBA" : html`${tl(dep)} <span class="dim">${depositNote(val("l_deposit"))}${payAsset(val("l_deposit_pay")) !== "LINE" ? ` paid in ${val("l_deposit_pay")} (swap)` : ""}</span>`, 4)}
+      ${row("Trading allocation", alloc && alloc !== "0" ? html`${alloc} ${qsym()} <span class="dim">a second transaction after the launch</span>` : html`<span class="faint">none</span>`, 4)}
     </div>`,
   );
 }
@@ -1826,7 +1867,7 @@ function renderTrack() {
   const L = S.launched;
   if (!L) return set("w-launch-steps", "");
   const order: [string, string][] = [
-    ["confirmed", "Confirmed on devnet"],
+    ["confirmed", `Confirmed on ${netName()}`],
     ["vault", "Vault funded and awake"],
     ["github", "GitHub account"],
     ["runtime", "Runtime bound"],
@@ -1933,7 +1974,7 @@ function renderMine() {
   if (S.page !== "profile") return;
   if (S.launchesErr) return set("w-mine", html`<div class="panel-b">${S.launchesErr}</div>`);
   const mine = myAgents();
-  if (!mine.length) return set("w-mine", html`<div class="panel-b dim">This wallet has launched no agent on devnet yet. <a class="link" href="/launch">Launch one</a>.</div>`);
+  if (!mine.length) return set("w-mine", html`<div class="panel-b dim">This wallet has launched no agent on ${netName()} yet. <a class="link" href="/launch">Launch one</a>.</div>`);
   injectBuildingStyle();
   set(
     "w-mine",
@@ -2001,8 +2042,8 @@ async function renderManage() {
         <div id="me-up-out" class="wl-fine"></div>
       </div>
       <div class="me-sec"><div class="eyebrow">Fund trading</div>
-        <p class="wl-fine" id="me-fund-help">tLINE to the allocation escrow, with a memo naming this agent; the hosted runtime forwards it to the agent's trading treasury, separate from its compute vault.</p>
-        <div class="wl-row"><input name="m_alloc" inputmode="decimal" placeholder="tLINE" class="me-in">${btn("me-fund", "Sign and send", { primary: true, data: { agent: l.agent } })}</div>
+        <p class="wl-fine" id="me-fund-help">${qsym()} to the allocation escrow, with a memo naming this agent; the hosted runtime forwards it to the agent's trading treasury, separate from its compute vault.</p>
+        <div class="wl-row"><input name="m_alloc" inputmode="decimal" placeholder="${qsym()}" class="me-in">${btn("me-fund", "Sign and send", { primary: true, data: { agent: l.agent } })}</div>
         <div id="me-fund-out" class="wl-fine"></div>
       </div>
     </div>
@@ -2043,10 +2084,10 @@ async function renderHoldings() {
       html`<div class="tw"><table class="t"><thead><tr><th>Token</th><th class="right">Balance</th><th class="right">Value</th><th></th></tr></thead><tbody>
         ${rows.map((h) => html`<tr><td><b>${S.metas.get(h.mint)?.symbol ?? short(h.mint)}</b><div class="sub">${S.metas.get(h.mint)?.name ?? ""}</div></td>
           <td class="right num">${units(h.amount, h.d)}</td>
-          <td class="right">${h.v === null ? html`<span class="faint">TBA</span>` : html`<span class="num">${h.v.toLocaleString("en-US", { maximumFractionDigits: 4 })}</span><span class="unit">tLINE</span>`}</td>
+          <td class="right">${h.v === null ? html`<span class="faint">TBA</span>` : html`<span class="num">${h.v.toLocaleString("en-US", { maximumFractionDigits: 4 })}</span><span class="unit">${qsym()}</span>`}</td>
           <td class="right"><a class="wl-btn" href="/tokens/${h.mint}">Trade</a></td></tr>`)}
       </tbody></table></div>
-      <div class="panel-b wl-fine">${complete ? html`Total <b class="num">${total.toLocaleString("en-US", { maximumFractionDigits: 4 })}</b> tLINE at the indexer's last prices.` : "Some tokens have no indexed price, so no total is shown."}</div>`,
+      <div class="panel-b wl-fine">${complete ? html`Total <b class="num">${total.toLocaleString("en-US", { maximumFractionDigits: 4 })}</b> ${qsym()} at the indexer's last prices.` : "Some tokens have no indexed price, so no total is shown."}</div>`,
     );
   } catch (e) {
     set("w-hold", html`<div class="panel-b">${errBox(e)}</div>`);
@@ -2089,7 +2130,7 @@ function requireReady(): boolean {
     renderWizard();
     return false;
   }
-  if (S.account.chains?.length && !S.account.chains.includes(DEVNET_CHAIN)) return false;
+  if (S.account.chains?.length && !S.account.chains.includes(walletChain())) return false;
   return true;
 }
 
@@ -2127,7 +2168,7 @@ function paintProfileFrame() {
   if (!S.account) {
     const h = S.root?.querySelector("#me-h");
     if (h) h.textContent = "Your wallet";
-    set("w-conn", html`<div class="panel-b me-prompt"><div><div class="t1">Connect a wallet to see your profile</div><div class="dim">Your agents, holdings, follows, claims and bounties, read for the connected wallet only. Devnet.</div></div>${btn("me-connect", "Connect", { primary: true })}</div>`);
+    set("w-conn", html`<div class="panel-b me-prompt"><div><div class="t1">Connect a wallet to see your profile</div><div class="dim">Your agents, holdings, follows, claims and bounties, read for the connected wallet only. ${netName() === "devnet" ? "Devnet" : "Mainnet"}.</div></div>${btn("me-connect", "Connect", { primary: true })}</div>`);
   }
 }
 
@@ -2163,8 +2204,8 @@ async function onClick(ev: Event) {
         const r = await fetch("/chain/faucet", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ wallet: me() }) });
         const j = await r.json().catch(() => ({}));
         if (r.ok) {
-          logSig(`faucet: ${units(BigInt(j.amount), dec())} tLINE to you`, j.signature, j.fee, true);
-          S.faucetMsg = html`<div class="panel-b">${banner("info", html`Received ${units(BigInt(j.amount), dec())} tLINE: ${txLink(j.signature)}`)}</div>`;
+          logSig(`faucet: ${units(BigInt(j.amount), dec())} ${qsym()} to you`, j.signature, j.fee, true);
+          S.faucetMsg = html`<div class="panel-b">${banner("info", html`Received ${units(BigInt(j.amount), dec())} ${qsym()}: ${txLink(j.signature)}`)}</div>`;
         } else S.faucetMsg = html`<div class="panel-b">${errBox(j.message ?? `HTTP ${r.status}`)}</div>`;
         await refreshBalances();
         break;
@@ -2374,7 +2415,7 @@ async function boot(root: HTMLElement, page: "launch" | "profile", body: Raw) {
   renderSigs();
   try {
     S.cfg ??= await loadChainCfg();
-    if (!S.cfg.state) throw new Error("This server has no devnet state (scripts/devnet/devnet.json).");
+    if (!S.cfg.state) throw new Error(isMainnet() ? "Lineage is not deployed on mainnet yet (no mainnet state on this server)." : "This server has no devnet state (scripts/devnet/devnet.json).");
     await devnetGate();
     S.gate = "ok";
   } catch (e) {
@@ -2396,13 +2437,19 @@ export async function mountLaunch(root: HTMLElement) {
     S.image = S.bannerFile = null;
     track.clear();
   }
+  // the network profile first: the form's labels follow it (SPEC 14.10)
+  await loadChainCfg().catch(() => undefined);
   await boot(root, "launch", launchSkeleton());
   renderWizard();
   renderAvatar();
   if (S.gate !== "ok") return;
   await Promise.all([loadNetwork(), loadPrepay(S.cfg!.state as any), loadTradingEscrow(), loadTradingCfg(), loadModels().then(() => set("w-models", modelsBody()))]);
   const dep = S.root?.querySelector<HTMLInputElement>('[name="l_deposit"]');
-  if (dep && !dep.value && P.cfg) dep.value = P.cfg.default_usd;
+  // devnet: the USD default typed in, as before; mainnet (quote amounts): empty means Core's default, shown as the placeholder
+  if (dep && !dep.value && P.cfg) {
+    if (usdMode()) dep.value = P.cfg.default_usd;
+    else dep.placeholder = units(depositBase("", dec()), dec());
+  }
   renderPrepay();
   if (S.account) await refreshBalances();
   renderWizard();
@@ -2411,6 +2458,7 @@ export async function mountLaunch(root: HTMLElement) {
 /** Profile (/profile): the connected wallet only. */
 export async function mountProfile(root: HTMLElement) {
   S.manage = null;
+  await loadChainCfg().catch(() => undefined);
   await boot(root, "profile", profileSkeleton());
   paintProfileFrame();
   renderVerifier();

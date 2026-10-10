@@ -94,14 +94,15 @@ export const dbc = {
    * rest of the input with the buyer, so the buy that completes a curve uses PartialFill.
    */
   swap(a: { config: Address; pool: Address; agentMint: Address; lineMint: Address; trader: Address; lineAccount: Address; agentAccount: Address;
-    buy: boolean; amountIn: bigint; minOut: bigint; lineTokenProgram?: Address; mode?: number }): Ix {
+    buy: boolean; amountIn: bigint; minOut: bigint; lineTokenProgram?: Address; mode?: number; baseTokenProgram?: Address }): Ix {
     const [input, output] = a.buy ? [a.lineAccount, a.agentAccount] : [a.agentAccount, a.lineAccount];
     const baseVault = launchPdas.dbcVault(a.agentMint, a.pool);
     const quoteVault = launchPdas.dbcVault(a.lineMint, a.pool);
     return {
       programId: METEORA.dbcProgram,
+      // baseTokenProgram: agent mints are Token-2022; another DBC pool's base may be SPL Token (mainnet simulation, SPEC 14.10)
       keys: [r(METEORA.dbcPoolAuthority), r(a.config), w(a.pool), w(input), w(output), w(baseVault), w(quoteVault), r(a.agentMint), r(a.lineMint),
-        r(a.trader, true), r(TOKEN_2022_PROGRAM), r(a.lineTokenProgram ?? TOKEN_PROGRAM), r(METEORA.dbcProgram), r(dbcEventAuthority()),
+        r(a.trader, true), r(a.baseTokenProgram ?? TOKEN_2022_PROGRAM), r(a.lineTokenProgram ?? TOKEN_PROGRAM), r(METEORA.dbcProgram), r(dbcEventAuthority()),
         r(METEORA.dbcProgram)],
       data: new Writer().bytes(disc("swap2")).u64(a.amountIn).u64(a.minOut).u8(a.mode ?? 0).done(),
     };

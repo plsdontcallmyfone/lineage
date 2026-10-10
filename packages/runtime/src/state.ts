@@ -80,7 +80,7 @@ export interface ClosedEpoch {
 
 export interface RuntimeState {
   v: 1;
-  mode: "sim" | "devnet";
+  mode: "sim" | "devnet" | "mainnet";
   runtime: string;
   spent_usd_total: number;
   /**
@@ -101,7 +101,7 @@ export class StateStore {
   readonly keysDir: string;
   state: RuntimeState;
 
-  constructor(readonly dir: string, init: { mode: "sim" | "devnet"; runtime: string; now: number }) {
+  constructor(readonly dir: string, init: { mode: "sim" | "devnet" | "mainnet"; runtime: string; now: number }) {
     mkdirSync(dir, { recursive: true, mode: 0o700 });
     this.file = join(dir, "state.json");
     this.keysDir = join(dir, "keys");
@@ -215,7 +215,7 @@ function alive(pid: number): boolean {
 // ------------------------------------------------------------------------------------------------
 // secrets never reach logs
 
-const SECRET_ENV = ["ANTHROPIC_API_KEY", "ANTHROPIC_AUTH_TOKEN", "HELIUS_DEVNET_RPC", "LINEAGE_DEVNET_RPC", "LINEAGE_GITHUB_TOKEN", "GITHUB_TOKEN", "GH_TOKEN"];
+const SECRET_ENV = ["ANTHROPIC_API_KEY", "ANTHROPIC_AUTH_TOKEN", "HELIUS_DEVNET_RPC", "LINEAGE_DEVNET_RPC", "HELIUS_MAINNET_RPC", "LINEAGE_MAINNET_RPC", "LINEAGE_GITHUB_TOKEN", "GITHUB_TOKEN", "GH_TOKEN"];
 const extraSecrets = new Set<string>();
 
 /** Registers a secret that does not come from the environment (a keyed RPC URL in the config file). */

@@ -1,0 +1,40 @@
+{
+  "_note": "Network profile switch (M3, SPEC 14.10): the one place that says devnet or mainnet. Every service (Core, indexer, runtime, trader, the web server) and the pages (through /chain/config) read it; LINEAGE_NETWORK overrides `network` for one process (the site's env file). devnet is the default and behaves as before. mainnet: no faucet, no TEST labels, the quote token below, a keyed RPC from LINEAGE_MAINNET_RPC (or HELIUS_MAINNET_RPC in ~/.config/lineage/rpc.env; never printed, never sent to a browser, no public fallback), the Jupiter swap path on, priority fees from getRecentPrioritizationFees capped below. $LINE does not exist on mainnet yet: quote.mint is a stand-in (PYUSD, the same mint as config/swap.json target_mint) and quote.line_mint stays null (TBA) until the owner sets it and quote.status to live. No USD price feed is wired: usd_feed null means quote-token amounts only, no USD figures.",
+  "network": "devnet",
+  "profiles": {
+    "devnet": {
+      "cluster": "devnet",
+      "genesis": "EtWTRABZaYq6iMfeYKouRu166VU2xqa1wcaWoxPkrZBG",
+      "quote": { "source": "chain_state", "symbol": "tLINE", "status": "test" },
+      "state_file": "scripts/devnet/devnet.json",
+      "faucet": true,
+      "test_labels": true,
+      "swap": false,
+      "explorer_cluster": "devnet",
+      "usd_feed": null,
+      "fees": { "mode": "fixed", "cu_price_micro_lamports": 1 },
+      "confirm": { "poll_ms": 900, "resend_ms": 2500, "rebuilds": 0 }
+    },
+    "mainnet": {
+      "cluster": "mainnet-beta",
+      "genesis": "5eykt4UsFv8P8NJdTREpY1vzqKqZKvdpKuc147dw2N9d",
+      "quote": {
+        "source": "config",
+        "symbol": "PYUSD",
+        "mint": "2b1kV6DkPAnxd5ixfnxCpjxmKwqjjaYmCZfHsFu24GXo",
+        "decimals": 6,
+        "token_program": "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb",
+        "status": "stand-in",
+        "line_mint": null
+      },
+      "state_file": "scripts/mainnet/mainnet.json",
+      "faucet": false,
+      "test_labels": false,
+      "swap": true,
+      "explorer_cluster": null,
+      "usd_feed": null,
+      "fees": { "mode": "recent", "percentile": 75, "floor_micro_lamports": 1, "cap_micro_lamports": 200000 },
+      "confirm": { "poll_ms": 800, "resend_ms": 2000, "rebuilds": 1 }
+    }
+  }
+}

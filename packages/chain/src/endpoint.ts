@@ -10,7 +10,7 @@ import { join } from "node:path";
 
 export const PUBLIC_DEVNET_RPC = "https://api.devnet.solana.com";
 
-function fromEnvFile(path: string, key: string): string | null {
+export function fromEnvFile(path: string, key: string): string | null {
   if (!existsSync(path)) return null;
   for (const line of readFileSync(path, "utf8").split("\n")) {
     const m = /^\s*([A-Z0-9_]+)\s*=\s*(.*?)\s*$/.exec(line);

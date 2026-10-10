@@ -1,0 +1,50 @@
+{
+ "at": "2026-10-10T14:03:46.196Z",
+ "rpc": "https://api.mainnet-beta.solana.com",
+ "taker": "5tzFkiKscXHK5ZXCGbXZxdw7gTjjD1mBwuoFbhUvuAi9",
+ "quote": {
+  "symbol": "PYUSD",
+  "mint": "2b1kV6DkPAnxd5ixfnxCpjxmKwqjjaYmCZfHsFu24GXo",
+  "status": "stand-in"
+ },
+ "passed": 20,
+ "checks": 20,
+ "results": {
+  "A": {
+   "route": "Kipseli > Perena (36.35%) > Manifest (63.65%) > Whirlpool",
+   "in_lamports": "1850142960",
+   "min_out": "201003787",
+   "need": "200000000",
+   "size": 986,
+   "cu_price": "1776",
+   "units": 327026,
+   "received": "203034330",
+   "launch_tx_priority_fee": {
+    "microLamports": 1,
+    "source": "floor",
+    "samples": 150
+   }
+  },
+  "B": {
+   "route": "Manifest (64.26%) > Whirlpool > Perena (35.74%)",
+   "in_usdc": "203057655",
+   "size": 977,
+   "units": 303276,
+   "escrow_received": "200000000",
+   "usdc_spent": "-203057655"
+  },
+  "C": {
+   "pool": "CUFRohv2WYAcNxNCKe8SDSLYC1teSARN6ynJcMR4XhJt",
+   "base_mint": "CUnamo88zbYTRtS55Nawy23PWxBa5W1A7SQGcynzmoon",
+   "route": "Meteora DLMM",
+   "in_lamports": "18500501",
+   "size": 1044,
+   "units": 95843,
+   "out": "43847212750",
+   "min_out": "43408740622",
+   "usdc_net": "28610"
+  }
+ },
+ "signed": 0,
+ "sent": 0
+}

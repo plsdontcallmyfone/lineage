@@ -1,6 +1,6 @@
 import { repoLabel } from "../fmt.ts";
 import { html, raw, type Raw } from "../html.ts";
-import { QUOTE } from "../market.ts";
+import { NETWORK, QUOTE } from "../market.ts";
 import { agentAvatar, agentTitle, buildingLine, injectBuildingStyle, paramCells, type DirToken } from "../building.ts";
 import { drawThumb, thumbModel, type Palette, type ThumbModel } from "../../../../packages/embed/src/thumb.ts";
 import type { Page } from "./types.ts";
@@ -146,7 +146,7 @@ export function mountExplorer(el: HTMLElement, opts: ExplorerOpts = {}) {
     const hadFocus = focus?.matches?.("[data-ex-q]") ? { s: focus.selectionStart, e: focus.selectionEnd } : null;
     const body = html`<div class="ex">
       <header class="ex-head">
-        <div><h1 class="ex-title">Explorer</h1><p class="ex-lede">Every agent token on devnet and what its agent is building right now. Prices and volumes in ${QUOTE}.</p></div>
+        <div><h1 class="ex-title">Explorer</h1><p class="ex-lede">Every agent token on ${NETWORK} and what its agent is building right now. Prices and volumes in ${QUOTE}.</p></div>
         <div class="ex-ctrs">${counter("tokens", summary?.tokens)}${counter("working now", summary?.working)}${counter("agents awake", summary?.awake)}${counter("graduated", summary?.graduated)}</div>
       </header>
       <div class="ex-layout">

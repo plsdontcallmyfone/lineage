@@ -5,6 +5,8 @@
 // chain (wake_threshold, the wallet's tLINE, the frozen lookup table a v0 launch reads); none is
 // invented. lineage_launch does not enforce the minimum, so this form refuses a smaller deposit and
 // Core keeps an underfunded agent asleep (packages/core/src/prepay.ts).
+// Mainnet (SPEC 14.10): no USD figure without a real price feed, so the deposit is typed and shown in
+// the quote token; the minimum is Core's (min_usd at its line_per_usd), shown as a quote amount only.
 import {
   baseToUsdCents,
   cmpDec,
@@ -18,7 +20,7 @@ import {
 } from "../../../packages/chain/src/browser/index.ts";
 import { html, type Raw } from "../src/html.ts";
 import { badge } from "../src/ui.ts";
-import { rpc, units } from "./chain.ts";
+import { NET, qsym, rpc, units } from "./chain.ts";
 import { payWithControl } from "./swap.ts";
 
 export const P = {
@@ -62,11 +64,19 @@ export async function loadPrepay(state: { line_mint: string; dbc_config: string;
   }
 }
 
+/** USD figures are shown on devnet (the TEST rate, labelled) and wherever a real price feed exists; otherwise quote-token amounts only. */
+export const usdMode = () => NET.p.network === "devnet" || NET.p.usd_feed;
+
 export function prepayFieldset(): Raw {
   return html`<fieldset><legend class="eyebrow">Prepaid credits (plan C)</legend>
-      <label><span class="eyebrow">Deposit (USD)</span><input name="l_deposit" inputmode="decimal" autocomplete="off" placeholder="10"><span class="wl-help" id="w-prepay">Reading the prepay config from Core…</span></label>
-      ${payWithControl("l_deposit_pay", "tLINE")}
+      <label><span class="eyebrow">Deposit (${usdMode() ? "USD" : qsym()})</span><input name="l_deposit" inputmode="decimal" autocomplete="off" placeholder="${usdMode() ? "10" : ""}"><span class="wl-help" id="w-prepay">Reading the prepay config from Core…</span></label>
+      ${payWithControl("l_deposit_pay", qsym())}
     </fieldset>`;
+}
+
+/** The deposit as text for review rows: "<usd> USD" on devnet, nothing extra in quote mode. */
+export function depositNote(typed: string): string {
+  return usdMode() ? `${depositUsd(typed)} USD` : "";
 }
 
 /** The USD typed in the form, or the default when empty. */
@@ -78,6 +88,14 @@ export function depositUsd(typed: string): string {
 /** Validates the typed deposit; returns its base units or throws a message for the form. */
 export function depositBase(typed: string, decimals: number): bigint {
   if (!P.cfg) throw new Error(`Prepaid credits: Core's prepay config is not available (${P.err ?? "not loaded"}); a launch needs it for the minimum and the rate.`);
+  if (!usdMode()) {
+    const min = usdToBase(P.cfg.min_usd, P.cfg.line_per_usd, decimals);
+    const t = typed.trim().replace(/,/g, "");
+    const amount = t === "" ? usdToBase(P.cfg.default_usd, P.cfg.line_per_usd, decimals) : parseQuote(t, decimals);
+    if (amount === null) throw new Error(`Deposit: a ${qsym()} amount such as ${units(min, decimals)}.`);
+    if (amount < min) throw new Error(`Deposit: at least ${units(min, decimals)} ${qsym()} (Core's prepay minimum).`);
+    return amount;
+  }
   const usd = depositUsd(typed);
   if (!/^\d+(\.\d{1,2})?$/.test(usd)) throw new Error("Deposit: a dollar amount such as 10 or 12.50.");
   if (cmpDec(usd, P.cfg.min_usd) < 0) throw new Error(`Deposit: at least ${P.cfg.min_usd} USD (prepay.min_usd in Core's config).`);
@@ -88,6 +106,7 @@ export function depositBase(typed: string, decimals: number): bigint {
 export function prepayHelp(typed: string, o: { decimals: number; wake: bigint | null; balance: bigint | null }): Raw {
   if (!P.cfg) return html`<span class="mark warn">Prepay config TBA: ${P.err ?? "not loaded"}. Launch is disabled until Core answers.</span>`;
   const c = P.cfg;
+  if (!usdMode()) return quoteHelp(typed, o);
   const rate = html`${c.line_per_usd} tLINE per USD ${c.rate_status === "test" ? badge("TEST rate", "warn") : ""}`;
   let amount: bigint;
   try {
@@ -103,6 +122,32 @@ export function prepayHelp(typed: string, o: { decimals: number; wake: bigint | 
     ${o.balance !== null && o.balance < amount ? html`<span class="mark warn">your wallet holds ${units(o.balance, o.decimals)} tLINE</span>` : ""}`;
 }
 
+const parseQuote = (t: string, decimals: number): bigint | null => {
+  if (!/^\d+(\.\d+)?$/.test(t)) return null;
+  const [i, f = ""] = t.split(".");
+  if (f.length > decimals) return null;
+  const v = BigInt(i!) * 10n ** BigInt(decimals) + BigInt(f.padEnd(decimals, "0") || "0");
+  return v > 0n ? v : null;
+};
+
+/** Mainnet help line: quote-token amounts only (no USD without a price feed, no TEST labels). */
+function quoteHelp(typed: string, o: { decimals: number; wake: bigint | null; balance: bigint | null }): Raw {
+  const c = P.cfg!;
+  const sym = qsym();
+  let amount: bigint;
+  try {
+    amount = depositBase(typed, o.decimals);
+  } catch (e) {
+    return html`<span class="mark warn">${(e as Error).message}</span>`;
+  }
+  const min = usdToBase(c.min_usd, c.line_per_usd, o.decimals);
+  const b = firstRunBudget(c, amount, o.decimals);
+  return html`<b class="num">${units(amount, o.decimals)}</b> ${sym} into the agent's compute vault in the launch transaction; minimum ${units(min, o.decimals)} ${sym} (Core's prepay config), editable upward.
+    First-run budget at the runtime's published prices: ${b.attempts} attempts at the per-attempt cap.
+    ${o.wake !== null ? (amount >= o.wake ? html`<span class="mark good">wakes at once (wake_threshold ${units(o.wake, o.decimals)} ${sym})</span>` : html`<span class="mark warn">below wake_threshold ${units(o.wake, o.decimals)} ${sym}: the agent would stay asleep</span>`) : ""}
+    ${o.balance !== null && o.balance < amount ? html`<span class="mark warn">your wallet holds ${units(o.balance, o.decimals)} ${sym}; pay with SOL or USDC to swap it through Jupiter</span>` : ""}`;
+}
+
 /** After a launch: waits for Core's chain sync to record the deposit, then shows Core's check and its awake flag. */
 export async function showCorePrepay(agent: string, decimals: number, put: (r: Raw) => void, tries = 36, everyMs = 5000) {
   for (let i = 0; i < tries; i++) {
@@ -113,7 +158,7 @@ export async function showCorePrepay(agent: string, decimals: number, put: (r: R
         fetch(`/api/agents/${agent}?optional=1`).then((r) => (r.ok ? r.json() : null)).then((j) => (j?._miss ? null : j)),
       ]);
       if (p?.checked) {
-        put(html`<span data-prepay-core="${p.ok ? "ok" : "short"}">Core: deposit ${units(BigInt(p.deposit), decimals)} tLINE, minimum ${units(BigInt(p.min), decimals)}, ${p.ok ? html`<span class="mark good">meets the minimum</span>` : html`<span class="mark warn">below the minimum (asleep in Core until the vault holds it)</span>`}; refresh_awake ${p.woke_in_launch_tx ? "in" : "not in"} the launch transaction; awake in Core: <b data-core-awake="${String(!!a?.awake)}">${a?.awake ? "yes" : "no"}</b>.</span>`);
+        put(html`<span data-prepay-core="${p.ok ? "ok" : "short"}">Core: deposit ${units(BigInt(p.deposit), decimals)} ${qsym()}, minimum ${units(BigInt(p.min), decimals)}, ${p.ok ? html`<span class="mark good">meets the minimum</span>` : html`<span class="mark warn">below the minimum (asleep in Core until the vault holds it)</span>`}; refresh_awake ${p.woke_in_launch_tx ? "in" : "not in"} the launch transaction; awake in Core: <b data-core-awake="${String(!!a?.awake)}">${a?.awake ? "yes" : "no"}</b>.</span>`);
         return;
       }
       put(html`<span class="dim">Waiting for Core's chain sync to read the launch transaction (${i + 1})…</span>`);
