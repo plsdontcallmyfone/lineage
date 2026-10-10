@@ -124,10 +124,10 @@ export function buildRoutes(core: Core): Route[] {
   const q = (c: Ctx, k: string) => c.url.searchParams.get(k) ?? undefined;
   // numeric query values: a non-negative safe integer or absent. NaN reached SQLite as LIMIT NULL
   // (500 datatype mismatch) and limit=-1 meant "no limit" (audit A2, OFF-11).
-  const int = (c: Ctx, k: string): number | undefined => {
   // hidden launches (hidden.ts) leave public listings unless asked for with hidden=1, as in the indexer
   const withHidden = (c: Ctx) => q(c, "hidden") === "1";
   const unlisted = (c: Ctx): Map<string, unknown> => (withHidden(c) ? new Map() : hiddenOf(core).agents());
+  const int = (c: Ctx, k: string): number | undefined => {
     const s = q(c, k);
     if (s === undefined || s === "") return undefined;
     const n = Number(s);
