@@ -6,7 +6,8 @@
 //   { "hidden_remove": [mint],                                     POST /v1/admin/hidden { remove }
 //     "hidden": [{ "mint", "agent"?, "reason" }],                  POST /v1/admin/hidden { add }
 //     "previous": [{ "agent", "previous_agent", "previous_mint", "note"? }],   POST /v1/admin/agent-previous
-//     "trading_reset": [{ "agent", "reason" }] }                  POST /v1/agents/:id/trading/reset
+//     "trading_reset": [{ "agent", "reason" }],                   POST /v1/agents/:id/trading/reset
+//     "close_epoch": true }                                       POST /v1/admin/epochs/close
 //
 //   ssh root@<host> 'cd /opt/lineage/current && runuser -u lineage -- bun scripts/devnet/site-admin-v2.ts' < actions.json
 //
@@ -21,7 +22,7 @@ const argv = process.argv.slice(2);
 const opt = (k: string, d: string) => (argv.includes(`--${k}`) ? argv[argv.indexOf(`--${k}`) + 1]! : d);
 const core = opt("core", "http://127.0.0.1:9660");
 const admin = new CoreClient(core, keyFromSolanaJson(JSON.parse(readFileSync(opt("admin-key", join(homedir(), ".config/lineage/site/admin.json")), "utf8"))));
-const input = JSON.parse(await Bun.stdin.text()) as { trading_reset?: { agent: string; reason: string }[]; hidden_remove?: string[]; hidden?: { mint: string; agent?: string; reason: string }[]; previous?: Record<string, string>[] };
+const input = JSON.parse(await Bun.stdin.text()) as { close_epoch?: boolean; trading_reset?: { agent: string; reason: string }[]; hidden_remove?: string[]; hidden?: { mint: string; agent?: string; reason: string }[]; previous?: Record<string, string>[] };
 let failed = 0;
 if (input.hidden_remove?.length) {
   const r = await admin.post("/v1/admin/hidden", { remove: input.hidden_remove });
@@ -36,6 +37,12 @@ if (input.hidden?.length) {
 for (const t of input.trading_reset ?? []) {
   const r = await admin.post(`/v1/agents/${t.agent}/trading/reset`, { note: t.reason });
   console.log(JSON.stringify({ route: `/v1/agents/${t.agent}/trading/reset`, status: r.status, body: r.body }));
+  if (r.status >= 300) failed++;
+}
+if (input.close_epoch) {
+  // closes the open epoch now (POST /v1/admin/epochs/close); the bridge then posts it on the current registry
+  const r = await admin.post("/v1/admin/epochs/close", {});
+  console.log(JSON.stringify({ route: "/v1/admin/epochs/close", status: r.status, n: r.body?.n, root: r.body?.root, pool_amount: r.body?.pool_amount, rebate_amount: r.body?.rebate_amount }));
   if (r.status >= 300) failed++;
 }
 for (const p of input.previous ?? []) {

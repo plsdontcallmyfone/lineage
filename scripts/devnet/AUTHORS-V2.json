@@ -1,0 +1,121 @@
+[
+  {
+    "name": "base58-py",
+    "agent": "AQWpr4WbgqACxMyJUctuScpJMrSmdrVGKKDktt9RSCS9",
+    "mint": "Fp5LKxNugfJHyfKfPFGwjdy1ZAyxzjb7r36m7rG74oMR",
+    "launch_signature": "4puYBLVTUE9z6DALT3WUc12kn3cDuu3RRauJy3XdrmgoohiU8fc9Yyq1udiamABoq3sr8zEfQTeb73W8rJamyzzu",
+    "launch_fee": 15000
+  },
+  {
+    "name": "base58-rs",
+    "agent": "8LawGYFCMtru7mGjfnevaJ8ra3R2SjaZPRNLEJUR73xZ",
+    "mint": "AQNMJVqYQYY1SSXuBRrGJSDZhK1dxQqygF3WTTGcHqeD",
+    "launch_signature": "2QBjYKqQRDdStaFg7YXGEJC62ECf9UxDrAHrRCzXaiJ4speYvjWBTQwzNUBF8L9HAV3XyrZKz1a3WuVFojihxR33",
+    "launch_fee": 15000
+  },
+  {
+    "name": "bip39-go",
+    "agent": "37QkeLfzFPu1QcGpEi34mGuqFVeUAFFeQKm7PHZhmrmW",
+    "mint": "8ErCMjdg4YW7xgR2taivVDYB1cXQZc3iCRX5m4tS5KHb",
+    "launch_signature": "5NE97xcy5Rvuu4HqLCQvGorY1rKPjXG87GTuB6rzvctRTaTnwFusnvL9tr8qSh9i6CoxKuwXAbTiKikzNTFiPJ4t",
+    "launch_fee": 15000
+  },
+  {
+    "name": "bip39-py",
+    "agent": "CnDiAvbKjsArEDWQnAXZfDjFLF3Ddjg5hcegG2FTcpke",
+    "mint": "CzG87ESdzxy9nGZNLB8wc8ppTSoHXwQZNDmaP6QCBmHX",
+    "launch_signature": "H3VLXmrEMuj8pNTYBGE5VYb93dAuvakbdKmPKn9aYhYuBBHuPKcwqxsE4tKWfzxGVQStn8sXJc1TQv6EQ7oU1qE",
+    "launch_fee": 15000
+  },
+  {
+    "name": "bitcoin-base58",
+    "agent": "GM3a1mZStXjnosc5pC1Ft4cGRALrRwF4SVyH3KHqJM1w",
+    "mint": "7xNgsTrMgofX76xFkRjPj5ymWyMJNHxzkVoHRNR3vrum",
+    "launch_signature": "biRcGhxHtns83vFSfDFNwXgfWXQcUNdEuDduwHKXoANsuSvWpxfYHeyjzzga5GVshbAmpPjhiMdsK2XacW9krGg",
+    "launch_fee": 15000
+  },
+  {
+    "name": "btcd-bech32",
+    "agent": "Gx4CvAje4At4EkHdDeS4Nu75AeNNmWoBRsdS7oX7QAfo",
+    "mint": "25ssRNecX8XQ9sA7AByNXGuJFZ5jBaUyNzfEMGxGmTGr",
+    "launch_signature": "MS7HS9tZUiub1YCa4ooAjms3YwGDyt4vbQ4ZEx8f125P3BLunFbufW33HF8Upr6aCZvvfE9ueuqYc6GPcqVXYBx",
+    "launch_fee": 15000
+  },
+  {
+    "name": "geth-rlp",
+    "agent": "AUZD59yeeL6egU8VJD5JxVMong9JwVv9ozGFEPB4ybUs",
+    "mint": "5FThxPE9xoT6evjpYgKpUNHcHDk4H6wZQgwnbBsWn5QW",
+    "launch_signature": "4yRZCMkSeh8PBDrYpkzCkFF7wCgbGbEWXwJBBua9FWorEAjTFv8zwoitYswa8jJocVyoNsfiUZjXPmTXb9pKTFRD",
+    "launch_fee": 15000
+  },
+  {
+    "name": "hmac-sha256-rs",
+    "agent": "8BfNo5WG95XbZzSgjNQh3Uy9BaRftYixvuDg75dwPzj7",
+    "mint": "CWpkbVuKPYMoocKEScfEdTEUVFY4yWpMXBzTFeX751RM",
+    "launch_signature": "28u3oEmbmqzy1SgsJGVsLrgZyio7qAFT65AJP4ikXvv72fHtzUz5T5Tm9uhn9RRTrjmY2V9k1BWyfFNm8vcSvxfu",
+    "launch_fee": 15000
+  },
+  {
+    "name": "lc-text-splitters",
+    "agent": "6aix8bQHd2g3BEjLZ9PWXWT1xw8uCU9LaN7MghRQjDu7",
+    "mint": "5j4i2Svpz6mkJLJXJxMascfsbJYA8YyGdDXUw1V3ADMm",
+    "launch_signature": "44hKhwf7GsgEem9ytX6r7ugADeYc2RCAVndGWEXtogwtd1nr4zuXp8V9weabejnFB4i1PKntDRodMBaWstS7BUgL",
+    "launch_fee": 15000
+  },
+  {
+    "name": "llama2c",
+    "agent": "4Y7T4EV3RzqFrtEoX4sKzrKqvQcjs8eq7S3iV1ZgaDkp",
+    "mint": "CtYhQ5tsxiDC4UWgajGDZG8XKS9HqnEuwePbVcu2aqSa",
+    "launch_signature": "3iz2nfyKE3ozhCWm3xLRHejKJAToN9CMfP8QbR3m4mSJRpJ5tYvuZh4tLmEKrLHCiisSnJhqmegCRAvk27jw1MjK",
+    "launch_fee": 15000
+  },
+  {
+    "name": "md5-rs",
+    "agent": "J9uc4BfExQmHHjpDZgQ5wgGxfFfVr1TXCgj4GpdUePXZ",
+    "mint": "D25FCF18rUU38svES83giGh2EJPGVbXzRy1JE2znbv4c",
+    "launch_signature": "2LL3T1vfL1JBBWVrmDZy2hMFddqQ39KcmWFsyDSsQNz6CQpYjopKh6H815a21cu33c1enqrphewh4MhL8YytBP5E",
+    "launch_fee": 15000
+  },
+  {
+    "name": "ollama-tokenizer",
+    "agent": "3tUgqX5CZsKrthgMFvCvAJSj3Z2UtAxt8HEJS471WafB",
+    "mint": "5VjD63sMMnVxDyaCaUK8haPkDxCauHsGdFUNf2uepkYd",
+    "launch_signature": "4UAdmi5z5KGk4EkiUU7sDGPnpVnhCEgcSFeeyuu24BcAhCCRyE33hMkCTqcK2yLzohYN3ZMZbjoZCPbRgiW8D4e9",
+    "launch_fee": 15000
+  },
+  {
+    "name": "pyrlp",
+    "agent": "8qptXc7NvE3F4pV43nf3omWWMJDEFNVSPD1fXjjfQu7D",
+    "mint": "ffeRPySu3wqR1pS7m2ZUFV9dN16fguTPTqtPAi4CtN5",
+    "launch_signature": "2dXFKKLtd7K4ep11kuE7A9DJQx5BWU3vmV7hgsG9EyXV7bbFPFzQEcjHY5eBAMF21r1XHeHacfBSQhPuSf5yBRvL",
+    "launch_fee": 15000
+  },
+  {
+    "name": "solana-config",
+    "agent": "9K79Vc1ch1Fn6nfo9viBfMBqfyrmKyM75vTGZfF4VAqi",
+    "mint": "9mVZ4JZL6QxznECWH2K5ro3gpZe61zQiDPrX44C3XTFq",
+    "launch_signature": "3tbWB7ZCXew8Yxyn9Cb2S6FUM2iGWS4qhovds3pTCkoCe8UhXYP8qE79bCr9zeLADhtfF22ocX8Gyu4oFoxuTzX7",
+    "launch_fee": 15000
+  },
+  {
+    "name": "subword-nmt",
+    "agent": "23tifCFF44rSyrd2dbLk1JUEDxgbNdDpGRTTw6MLQCWs",
+    "mint": "3ucxvL4LuK4THPBAA6iFPLwM5XqAGU6EgEMPyQ9dxApH",
+    "launch_signature": "2nP5M4Tpq8z3EyLYkgMB2fv47GdDPBwGvsw8ZGbMe1bzSN6qRjY6oVuHEaFe4d3a2jZ9cKX1xnpu8LQ3DPh2NcwA",
+    "launch_fee": 15000
+  },
+  {
+    "name": "zig-charm",
+    "agent": "Hyw98ekkRC2FoyJM3dYPDp2Sps9BWLUSnWVTSPe37SgB",
+    "mint": "HKrXjFjPqt8C7PBfnYtyXiufL7xZMSXHcjATDLNAkybY",
+    "launch_signature": "2bCHBndjqXnA4sJ29MSNrLJdqQ2EfGPnHj4cxKK5cHLX4EcbBvMNVvP52UoxkTXkbSD35hPRj2F4iKRZUiwbqfRb",
+    "launch_fee": 15000
+  },
+  {
+    "name": "zig-clap",
+    "agent": "4vCPz2U3BATBnH9mGJUXtnXUVRVbeAKGXnvGeR29r9Er",
+    "mint": "CeHNSAnDm85uZ5KqY711s7wuwfK1Z92nyo3nHrj68P2h",
+    "launch_signature": "2ShLQDVuVWJ6QioJYGPQFNPNtxP6qTAbpTU5nKjmdexVEeVpWWNrLYMVtSab5zCMBKGba3uzKZNSFhuMuuHf6uW2",
+    "launch_fee": 15000
+  }
+]

@@ -52,6 +52,8 @@ const genesis = await rpc.call<string>("getGenesisHash", []);
 if (genesis !== DEVNET_GENESIS) throw new Error(`RPC genesis ${genesis} is not devnet; refusing`);
 const dep = loadKeypair(join(homedir(), ".config", "lineage", "devnet-deployer.json"));
 const launcher = loadKeypair(join(KEYS, "launcher.json"));
+// devnet v2: tLINE is the pump.fun coin held by the devnet treasury (the deployer pays the fees)
+const holder = devnet.pump_tline?.treasury ? loadKeypair(join(KEYS, "tline-pump-treasury.json")) : dep;
 
 function logTx(what: string, signature: string, fee?: number) {
   appendFileSync(LOGMD, `| ${new Date().toISOString().replace("T", " ").slice(0, 19)} | authors | ${what} | ${fee ?? "?"} | \`${signature}\` |\n`);
@@ -78,7 +80,8 @@ for (const name of names) {
   }
   const url = canonicalUrl(repo);
   const agent = keyFor(`agent-${name}.json`);
-  const mint = keyFor(`agent-${name}-mint.json`);
+  // devnet v2 (fresh deployment): a new mint key; the v1 mint (agent-<name>-mint.json) exists on chain already
+  const mint = keyFor(devnet.previous ? `agent-${name}-mint-v2.json` : `agent-${name}-mint.json`);
   const l = await reader.agentLaunch(mint.id);
   if (!l) {
     const bal = await rpc.getBalance(launcher.id);
@@ -94,8 +97,8 @@ for (const name of names) {
   const have = (await reader.tokenBalance(vault)) ?? 0n;
   if (have < WANT) {
     await send(`send ${WANT - have} tLINE base units to ${name} author's compute vault ${vault}`, dep, [
-      token.transferChecked(ata(dep.id, lineMint, T22), lineMint, vault, dep.id, WANT - have, DECIMALS, T22),
-    ]);
+      token.transferChecked(ata(holder.id, lineMint, T22), lineMint, vault, holder.id, WANT - have, DECIMALS, T22),
+    ], holder === dep ? {} : { signers: [holder] });
     await send(`refresh_awake for ${name} author ${agent.id}`, dep, [launch.refreshAwake({ agent: agent.id, agentMint: mint.id })]);
   } else log(`${name}: compute vault holds ${have}, ok`);
   out[name] = agent.id;
