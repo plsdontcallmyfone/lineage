@@ -31,6 +31,8 @@
 #   WITH_AUTHOR=1   also copy the TEST author agent keys and run lineage-author@<name> (scripted candidates)
 #   AUTHORS         recipes whose TEST author runs (default minbpe); launch their agents first with
 #                   scripts/deploy/site-authors.ts --recipes <same list> (keys agent-<name>.json here)
+#   KEEP_SITE_ENV   1 (default): LINEAGE_RECIPES, AUTHORS, WITH_RUNTIME, WITH_AUTHOR and EXTRA_ORIGINS left
+#                   unset keep the server's current site.env values; 0 falls back to the defaults
 #   DEPLOY_REF      commit to deploy (default HEAD; must be HEAD or an ancestor)
 #   DRY_RUN=1       test mode (scripts/deploy/dryrun.sh): no Docker, no keys from here, nothing sent on chain,
 #                   Caddy with internal TLS for SITE_NAMES (default localhost)
@@ -45,8 +47,6 @@ SSH_KEY="${SSH_KEY:-$HOME/.ssh/lineage_site}"
 SSH_PORT="${SSH_PORT:-22}"
 SSH_USER="${SSH_USER:-root}"
 DRY_RUN="${DRY_RUN:-0}"
-LINEAGE_RECIPES="${LINEAGE_RECIPES:-fixture-b58,base58-py,minbpe}"
-AUTHORS="${AUTHORS:-minbpe}"
 KEYS_LOCAL="$HOME/.config/lineage/devnet"
 SSH_OPTS=(-i "$SSH_KEY" -p "$SSH_PORT" -o IdentitiesOnly=yes -o BatchMode=yes -o ConnectTimeout=15 -o ServerAliveInterval=30)
 [ "${SSH_INSECURE_TEST:-0}" = 1 ] && SSH_OPTS+=(-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o LogLevel=ERROR)
@@ -54,6 +54,23 @@ SCP_OPTS=("${SSH_OPTS[@]/#-p/-P}")
 r() { env -u LC_CTYPE -u LC_ALL ssh "${SSH_OPTS[@]}" "$SSH_USER@$HOST" "$@"; }
 say() { printf '\n== %s\n' "$*"; }
 cd "$REPO"
+
+# Settings left unset keep the server's current values (a deploy without them must not switch the
+# runtime, authors, recipes or extra origins back to the defaults). KEEP_SITE_ENV=0 uses the defaults.
+if [ "${KEEP_SITE_ENV:-1}" = 1 ] && [ "$DRY_RUN" != 1 ]; then
+  CUR="$(r 'cat /etc/lineage/site.env 2>/dev/null' 2>/dev/null || true)"
+  cur() { printf '%s\n' "$CUR" | sed -n "s/^$1=//p" | tail -1; }
+  if [ -n "$CUR" ]; then
+    : "${LINEAGE_RECIPES:=$(cur LINEAGE_RECIPES)}" "${AUTHORS:=$(cur AUTHORS)}"
+    : "${WITH_RUNTIME:=$(cur WITH_RUNTIME)}" "${WITH_AUTHOR:=$(cur WITH_AUTHOR)}"
+    if [ -z "${EXTRA_ORIGINS:-}" ]; then
+      EXTRA_ORIGINS="$(cur GATE_ORIGINS | tr ',' '\n' | grep -vxF "$(printf 'https://%s\n' $(cur SITE_NAMES | tr ',' ' '))" | paste -sd, - || true)"
+    fi
+    echo "kept from the server's site.env where unset: recipes, authors, WITH_RUNTIME=${WITH_RUNTIME:-0}, WITH_AUTHOR=${WITH_AUTHOR:-0}, extra origins"
+  fi
+fi
+LINEAGE_RECIPES="${LINEAGE_RECIPES:-fixture-b58,base58-py,minbpe}"
+AUTHORS="${AUTHORS:-minbpe}"
 
 if [[ "$HOST" =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]]; then SSLIP="${HOST//./-}.sslip.io"; else SSLIP=""; fi
 if [ "$DRY_RUN" = 1 ]; then SITE_NAMES="${SITE_NAMES:-localhost}"; else SITE_NAMES="${SITE_NAMES:-$SSLIP${DOMAIN:+,$DOMAIN}}"; fi
