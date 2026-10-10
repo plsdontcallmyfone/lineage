@@ -1109,6 +1109,7 @@ a.eco-btn { text-decoration: none; }
 .deck-menu-wrap, .deck-add-wrap { position: relative; }
 .deck-menu { position: absolute; top: calc(100% + 4px); left: 0; z-index: 40; min-width: 200px; border: 1px solid var(--border); border-radius: 8px; background: var(--bg2); padding: 4px; box-shadow: var(--float-shadow); }
 .deck-menu.right { left: auto; right: 0; }
+.deck-add-wrap .deck-menu { top: 0; left: auto; right: calc(100% + 8px); } /* beside the rail, at its top */
 .deck-menu button { display: block; white-space: nowrap; width: 100%; border: 0; border-radius: 5px; background: transparent; color: var(--ts); text-align: left; padding: 8px 12px; font-size: 13px; cursor: pointer; }
 .deck-menu button:hover { background: var(--ac-dim); color: var(--tp); }
 .deck-add-wrap { height: 100%; flex-shrink: 0; }
