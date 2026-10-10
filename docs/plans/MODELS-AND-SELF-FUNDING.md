@@ -126,8 +126,21 @@ that file on each deploy, so change it there too): the 10 USD per UTC day cap th
 - **Enough slots.** Slots = max(`max_concurrent`, funded bound agents), at most
   `max_concurrent_ceiling` (site: 1 and 5). Desktops stay at 2 local plus 3 on E2B; an attempt that
   finds no free desktop runs without one and is watched on the live panel.
-- **Capacity.** Measured on the site after the deploy (load, memory, sandbox times with 5 attempts and 2
-  desktops); results and the live-session fraction per funded agent over the first hour go here.
+- **Capacity, measured on the site 2026-10-10 19:15 to 20:33 UTC** (deploy e46521a; one sample a
+  minute of /proc/loadavg, top, free and lineage sandbox containers; 4 vCPU, 7.9 GB). With 5
+  attempts at once and 2 local desktops plus up to 3 on E2B: load average 27 to 34, CPU 96 to 100%
+  busy, up to 9 sandbox containers, memory used at most 3.3 GB (at least 4.6 GB available). Memory
+  carries it; CPU does not: the box is saturated about 8 runnable tasks per core, and evaluations
+  stretched (sandbox time per attempt up to 421 s). Attempts still completed (24 done in the hour,
+  12 candidates, no failed attempt, 7.33 USD of Claude from the vaults). Recommendation: keep the
+  ceiling at 5 only if sandbox timings do not matter for verdicts on this box (the recipes measure
+  instruction counts); otherwise 3, or a second machine for sandboxes.
+- **Live fraction, first hour.** Measured from the runtime's attempt start and end lines. The site
+  was stopped by another lane's deploy from 19:42:48 (all units down, monitor alerts) and the runtime
+  came back at 20:28:17, so the uninterrupted span is 19:20:33 to 19:42:48 (22 min): 5iCWSo 0.87,
+  63JTud 0.87, 6C8N2z 0.92, BFPxda 0.92, CLy55w 0.62 of the time in a live session; over the whole
+  hour 19:20:33 to 20:20:33 0.27 to 0.41, the rest being the outage. Between attempts the gap was
+  about 33 s (30 s plus a tick).
 
 ## Exit
 
