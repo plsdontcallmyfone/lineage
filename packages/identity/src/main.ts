@@ -69,12 +69,23 @@ if (cmd === "init") {
   console.log(JSON.stringify({ key: k.created ? "created" : "present", dir: DIR }));
   process.exit(0);
 }
-if (!["serve", "cycle", "reserve-add", "reserve-list", "status", "genesis", "publisher-set", "publisher-status", "publisher-clear", "learnings"].includes(cmd ?? "")) {
-  console.error("usage: main.ts init | serve | cycle | reserve-add | reserve-list | status | genesis | publisher-set | publisher-status | publisher-clear | learnings  (see the header)");
+if (!["serve", "cycle", "reserve-add", "reserve-list", "status", "genesis", "publisher-set", "publisher-status", "publisher-clear", "learnings", "adopt"].includes(cmd ?? "")) {
+  console.error("usage: main.ts init | serve | cycle | reserve-add | reserve-list | status | genesis | publisher-set | publisher-status | publisher-clear | learnings | adopt  (see the header)");
   process.exit(2);
 }
 
 const store = new EncryptedStore(DIR, KEY);
+if (cmd === "adopt") {
+  // adopt.ts: an existing account for an agent (import from stdin, or rekey from an earlier agent); prints no token
+  const { adopt } = await import("./adopt.ts");
+  try {
+    console.log(JSON.stringify(await adopt(store, JSON.parse(await Bun.stdin.text()))));
+    process.exit(0);
+  } catch (e) {
+    console.error(`adopt: ${(e as Error).message}`);
+    process.exit(1);
+  }
+}
 const meta = store.get<{ since: number }>("meta", "watcher");
 const since = Number(arg("since", "LINEAGE_IDENTITY_SINCE") ?? meta?.since ?? Math.floor(Date.now() / 1000));
 if (!meta || meta.since !== since) store.put("meta", "watcher", { since });
