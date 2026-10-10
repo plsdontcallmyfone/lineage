@@ -75,6 +75,7 @@ of `~/.ssh/lineage_site`), then run deploy.sh with its address.
 | `lineage-author@<name>` (optional, one per name in `AUTHORS`) | TEST author agent of recipe `<name>`, scripted candidates | `lineage` | | 1 GB each |
 | `lineage-runtime` (optional, disabled) | hosted runtime (`packages/runtime`) | `lineage` | | 1 GB |
 | `lineage-backup.timer` | hourly Core snapshot (see "Backups") | `lineage-core` | | 512 MB |
+| `lineage-backup-state`, `lineage-backup-identity` (started with `lineage-backup`) | hourly secrets+state snapshot, age-encrypted (see "Backups") | `lineage`, `lineage-identity` | | 512 MB each |
 | `lineage-monitor.timer` | checks every 5 minutes, alerts (see "Monitoring") | `lineage-monitor` | | 256 MB |
 
 Only `lineage` is in the docker group: it runs the sandboxes and everything that starts containers. Every
@@ -411,12 +412,12 @@ them is in the docker, sudo, admin, adm or systemd-journal group:
 
 | User | Units | Reads | Writes |
 |---|---|---|---|
-| `lineage` (docker group) | bootstrap, reference, verifiers, authors, runtime | its keys in `~lineage/.config/lineage` (verifiers, runtime authority, agents, admin), `rpc.env`, `model.env` | sandboxes, mirrors, runtime state |
+| `lineage` (docker group) | bootstrap, reference, verifiers, authors, runtime, `lineage-backup-state` | its keys in `~lineage/.config/lineage` (verifiers, runtime authority, agents, admin), `rpc.env`, `model.env` | sandboxes, mirrors, runtime state |
 | `lineage-core` (primary group `lineage`) | `lineage-core`, `lineage-backup` | `/etc/lineage-core/` (700): `core-authority.json`, `admin.json`, `network.json`; the workers' git mirrors and the private canaries through group `lineage` | `/var/lib/lineage/core`, `/var/lib/lineage/core-backups` |
 | `lineage-web` | `lineage-web` | `/etc/lineage/web.env` (keyed RPC, soul drafter's model key; root 600, read by systemd); `/var/lib/lineage/web/.config/lineage/devnet/faucet.json` | `/var/lib/lineage/web` (faucet log, soul drafts) |
 | `lineage-gate` | `lineage-gate` | nothing but the release | nothing |
 | `lineage-indexer` | `lineage-indexer` | `/etc/lineage/indexer.env` (keyed RPC) | `/var/lib/lineage/indexer` |
-| `lineage-identity` | identity service and cycle | its own store and key (section above) | `/var/lib/lineage/identity` |
+| `lineage-identity` | identity service and cycle, `lineage-backup-identity` | its own store and key (section above) | `/var/lib/lineage/identity`, `/var/lib/lineage/identity-backups` |
 | `lineage-monitor` | `lineage-monitor` | health endpoints, unit states, snapshot ages, `/etc/lineage/monitor.env` | `/var/lib/lineage-monitor` |
 
 The Core authority key and the faucet key are moved out of `lineage`'s home on the first activate
@@ -445,35 +446,135 @@ again there, then two consecutive `deploy.sh code` runs reloaded Caddy onto the 
 
 ## Backups
 
-`lineage-backup.timer` (hourly) runs `scripts/deploy/backup.sh snapshot` as `lineage-core`: an online
-`sqlite3 .backup` of `core.db` (consistent while Core writes), checked with `integrity_check`, plus a copy
-of the blob store and a `manifest.json` (time, sha256 of `core.db`, the row count of every table, the
-open epoch), packed into `/var/lib/lineage/core-backups/core-<UTC>.tar.zst` with its `.sha256`, mode 600,
-newest 24 kept. Snapshots hold unrevealed epoch secrets and sealed sessions: keep every copy as private
-as the server.
+Two kinds of snapshot, both hourly from `lineage-backup.timer`, both kept 24 deep on the server, and both
+copied off the machine by `deploy.sh <host> backup` (daily from the owner's Mac by a launchd agent).
+
+| Kind | What | Written by | Where | Encrypted |
+|---|---|---|---|---|
+| Core | `core.db`, Core's blob store, a manifest (sha256, every table's row count, the open epoch) | `lineage-core` (`lineage-backup.service`) | `/var/lib/lineage/core-backups/core-<UTC>.tar.zst` | no (mode 600) |
+| secrets+state: `state` | the hosted runtime's agent signing keys (`runtime/keys/<agent id>.json`), `state.json`, `posts.json`, `trader/`, `bind-requests/`, `worker/`, the desktop session records and pending recording list (not the live stream dir or recordings), and the site's own keys made on the server (`~lineage/.config/lineage/site`: admin, owner, verifier-ref, verifier-v1, verifier-v2) | `lineage` (`lineage-backup-state.service`) | `/var/lib/lineage/state-backups/state-<UTC>.tar.zst.age` | age |
+| secrets+state: `identity` | the identity service's encrypted records (GitHub pool credentials, pasted tokens, cycle state) and its key file `/etc/lineage-identity/master.key` | `lineage-identity` (`lineage-backup-identity.service`) | `/var/lib/lineage/identity-backups/identity-<UTC>.tar.zst.age` | age |
+
+Not backed up, on purpose: the indexer's `market.db` (derived from chain: delete it and restart
+`lineage-indexer` and it backfills, see "Market indexer"); the keys and env files copied from the
+owner's machine (Core authority, faucet, runtime authority, agent keys, `rpc.env`, `model.env`,
+`e2b.env`, `providers.env`), which stay in `~/.config/lineage` here and are shipped again by `deploy.sh`;
+the sandboxes, mirrors and dependency caches (rebuilt).
+
+**Core snapshot.** `scripts/deploy/backup.sh snapshot` copies `core.db` with `VACUUM INTO` (one read
+transaction, consistent while Core writes), checks `integrity_check`, adds the blob store and the manifest
+and packs it with zstd, with a `.sha256` next to it. It used the sqlite3 shell's `.backup` until
+2026-10-10, which restarts whenever another connection writes the source: with Core writing more often
+than a copy of the 585 MB database takes, two runs that day timed out at 30 min (15:24 and 17:27 UTC) and
+the next took 29 min; `VACUUM INTO` copied the same database in 6 s.
+Snapshots hold unrevealed epoch secrets and sealed sessions: keep every copy as private as the server.
+
+**Secrets+state snapshot.** `backup.sh secrets <state|identity>` runs as the user that owns the data, so
+no service user can read another's files (M4 separation kept: `lineage-core` never sees the runtime
+keys, `lineage` never sees the identity store). It copies the part's files into the unit's RAM directory
+(`RuntimeDirectory`, mode 700), writes `SHA256SUMS` and `manifest.json`, and pipes the tar through zstd
+into `age -R /etc/lineage/backup-recipient.txt`. The recipient is the public half of an age identity
+that exists only on the owner's machine (`~/.config/lineage/backup-age.key`, mode 600, made once with
+`age-keygen -o`); `deploy.sh` derives the recipient from it and writes it to the server on every code
+ship (a different recipient already there is kept unless `BACKUP_RECIPIENT_REPLACE=1`). The server can
+write these snapshots but cannot read them. Without a recipient the two part units are skipped and the
+monitor warns (`backup:secrets`).
 
 ```sh
-scripts/deploy/deploy.sh <host> backup        # copy the newest snapshot here (BACKUP_DIR, default ~/.lineage/site-backups/<host>, mode 700) and verify it
-scripts/deploy/deploy.sh <host> restore-test  # on the server: restore the newest snapshot into a scratch Core on 127.0.0.1:9669 and check it
-ssh -i ~/.ssh/lineage_site root@<host> bash /opt/lineage/current/scripts/deploy/remote.sh restore <snapshot>   # replace the live data
+scripts/deploy/deploy.sh <host> backup        # newest Core + state + identity snapshots here (BACKUP_DIR, default ~/.lineage/site-backups/<host>, mode 700), each verified
+scripts/deploy/deploy.sh <host> restore-test  # Core into a scratch Core on the server, then the secrets parts decrypted here and compared with the live keys
+ssh -i ~/.ssh/lineage_site root@<host> bash /opt/lineage/current/scripts/deploy/remote.sh backup    # all three now (the timer's job)
+ssh -i ~/.ssh/lineage_site root@<host> bash /opt/lineage/current/scripts/deploy/remote.sh restore <snapshot>   # replace the live Core data
 ```
 
-`backup` refuses when this machine lacks room (ten times the archive plus 2 GiB) and keeps the newest
-`BACKUP_KEEP` (3). Off-machine means this machine until the owner chooses a store: run `backup` from a
-daily job here (cron or launchd), or point a job at object storage. `verify` checks the archive checksum,
-`core.db` against the manifest's sha256, `integrity_check`, and every table's row count against the
-manifest. `restore-test` additionally starts a Core on the restored data with the chain bridge read only
-(the authority key removed from its config, no canaries) and compares what it serves (`/v1/stats`
-lineages, agents, candidates, the open epoch, the set of lineage ids) with the snapshot; the live Core is
-not touched. `restore` stops the units, moves the current data to `/var/lib/lineage/backups/<UTC>-before-restore`,
+`backup` verifies the Core snapshot (archive checksum, `core.db` against the manifest's sha256,
+`integrity_check`, every table's row count) and each secrets part (checksum, decrypts with
+`BACKUP_AGE_KEY`, every file against `SHA256SUMS`, file count against the manifest; the decrypted copy
+lives in a mode 700 temporary directory and is deleted). It refuses when this machine lacks room (ten
+times the Core archive plus 2 GiB). Retention here: the newest `BACKUP_KEEP` (3) of each kind, or with
+`BACKUP_KEEP_DAYS=<n>` every copy younger than n days; the newest of each kind always stays.
+
+`restore-test` starts a Core on the restored data with the chain bridge read only (authority key
+removed from its config, no canaries) and compares what it serves (`/v1/stats?hidden=1` lineages,
+agents, candidates, the open epoch, the set of lineage ids) with the snapshot; the live Core is not
+touched. It then decrypts the newest `state` and `identity` parts here (the private key never leaves
+this machine), computes public facts with `scripts/deploy/backup-facts.ts` (public keys of the runtime
+agent keys and site keys; the identity key file's sha256; whether every identity record authenticates
+under that key) and compares them with the same facts read live on the server (`remote.sh secrets-facts`,
+run as the data's owner). Only public keys, a hash and record names are printed. A key made after the
+snapshot is reported, not failed; a key in the snapshot that differs from or is missing on the live
+server fails.
+
+`restore` stops the units, moves the current data to `/var/lib/lineage/backups/<UTC>-before-restore`,
 extracts the snapshot and starts everything again. Restoring loses whatever Core recorded after the
 snapshot, and an epoch posted on chain after it stays on chain, so prefer the newest snapshot.
 
-Measured on the site 2026-10-10: the snapshot of a 516,513,792-byte `core.db` with 265 blobs took 91 s
-(about 90 s of CPU at `Nice=10`, idle I/O class) and packs to 24,068,523 bytes. `restore-test` on it:
-verify (sha256, integrity, 89 tables match), extract, restored Core up in 4 s, lineages 27, agents 65,
-candidates 184, open epoch 17 and the lineage id set all equal the snapshot: PASS, 12 s in all.
-`deploy.sh <host> backup` copied it to this machine in about 25 s and verified it here (macOS sqlite3).
+### Daily copy to the owner's Mac
+
+`scripts/deploy/mac/install.sh` installs `com.lineage.backup-pull` (a launchd agent from
+`scripts/deploy/mac/com.lineage.backup-pull.plist`) that runs `scripts/deploy/mac/backup-pull.sh`, that
+is `deploy.sh 157.245.71.188 backup` with `BACKUP_KEEP_DAYS=14`, every day at 09:20 local (a run missed
+while the Mac sleeps happens on wake). Log: `~/.lineage/site-backups/pull.log`.
+
+```sh
+scripts/deploy/mac/install.sh 157.245.71.188 --run   # install (launchctl bootstrap gui/$UID) and run once now
+launchctl print gui/$(id -u)/com.lineage.backup-pull | grep -E 'last exit|runs'
+scripts/deploy/mac/install.sh --uninstall
+```
+
+### What the owner must keep safe
+
+- `~/.config/lineage/backup-age.key`: the only key that decrypts the secrets+state snapshots. Lose it and
+  those snapshots are noise; leak it and anyone holding a snapshot has the runtime's agent signing keys,
+  the site's admin, owner and verifier keys and the identity service's GitHub credentials. Keep one copy
+  offline (printed or on a separate encrypted drive), never on the server, never in the repo.
+- `~/.lineage/site-backups/<host>/`: Core snapshots are not encrypted (they hold unrevealed epoch
+  secrets); keep the directory private (mode 700) and out of cloud sync that others can read.
+- `~/.config/lineage/` as a whole (devnet keys, env files) and `~/.ssh/lineage_site`: a new server is
+  rebuilt from these plus the snapshots.
+
+### Disaster recovery
+
+A lost or destroyed server is rebuilt from this machine. Tested end to end on a fresh systemd container
+(the dry run image) with the site's real snapshots of 2026-10-10 18:28 UTC: the rebuilt box reported the
+same five site public keys as the live site, the eight runtime agent keys and five site keys equal the
+snapshot by public key, all 23 identity records authenticated under the restored key file, and its Core
+served lineages 27, agents 67, candidates 202 and open epoch 18, the snapshot's figures; then its own
+hourly snapshots and `restore-test` passed there (Core 5/5, secrets proof PASS).
+
+1. New Ubuntu 24.04 server with root ssh for `~/.ssh/lineage_site`; pull the newest copies first if the
+   old server still answers (`deploy.sh <old> backup`).
+2. `scripts/deploy/deploy.sh <new-ip> provision`
+3. `BACKUP_DIR=~/.lineage/site-backups/<old-ip> scripts/deploy/deploy.sh <new-ip> restore-secrets`:
+   decrypts the newest `state` and `identity` parts here and writes their files into place on the new
+   server, owned by `lineage` and `lineage-identity` with the modes they were saved with (it makes
+   `lineage-identity` if missing). It must run before the first code ship: otherwise `install` makes new
+   site keys and `identity_setup` a new identity key file, and it then refuses to overwrite them
+   (`RESTORE_REPLACE=1` keeps the replaced files in `/var/lib/lineage/backups/`).
+4. `BACKUP_DIR=~/.lineage/site-backups/<old-ip> scripts/deploy/deploy.sh <new-ip> restore-core`: copies
+   the newest local Core snapshot over, verifies it and, with no release active yet, only places
+   `core.db` and the blobs (it refuses if a `core.db` is there).
+5. `scripts/deploy/deploy.sh <new-ip> full` with the usual settings (`WITH_RUNTIME=1`, `WITH_AUTHOR=1`,
+   `AUTHORS`, `LINEAGE_RECIPES`, `EXTRA_ORIGINS`; a new server has no site.env to keep them from).
+   `install` reuses the restored site keys, `identity_setup` the restored key file, activate sets owners
+   and modes and starts Core on the restored data; the indexer backfills from chain; `site-chain.ts` is
+   idempotent (an agent already registered is not registered again, a bond already at the minimum is not
+   topped up), so with the restored keys it finds the site's verifiers as they are on chain. In the
+   rehearsal `fund` and `site-chain` ran as plans only (dry run), so that step is untested against devnet.
+6. Point DNS (`DOMAIN`) or the Vercel rewrites at the new IP, then `deploy.sh <new-ip> restore-test` and
+   reinstall the Mac agent for the new host (`scripts/deploy/mac/install.sh <new-ip>`).
+
+Whatever Core recorded after the Core snapshot is lost (up to an hour, or up to a day if only the Mac copy
+survives), and so is runtime state written after the state snapshot.
+
+Measured on the site 2026-10-10 (release ef15547): one `remote.sh backup` (all three snapshots) took 27 s.
+Core: a 589,004,800-byte `core.db` with 271 blobs packed to 19,898,877 bytes. `state`: 26 files, 394,963
+bytes, 18,754 bytes encrypted. `identity`: 24 files (23 records and the key file), 21,619 bytes, 18,597
+bytes encrypted. `restore-test`: Core PASS 5/5 (restored Core up in 4 s; lineages 27, agents 67,
+candidates 204, open epoch 18), secrets proof PASS (8 of 8 runtime agent keys and 5 of 5 site keys equal
+the live ones by public key; identity key file equal; 23 of 23 records authenticate), 36 s in all from
+this machine. The launchd agent's first run (kickstarted after install) pulled and verified all three,
+exit 0.
 
 ## Monitoring
 
@@ -491,6 +592,8 @@ candidates 184, open epoch 17 and the lineage id set all equal the snapshot: PAS
 | `faucet` | under 0.02 SOL or fewer than 10 drips of tLINE | |
 | `disk:/` | under 20% free | under 10% or 5 GiB free |
 | `backup` | | no snapshot, or the newest older than 2 h |
+| `backup:state`, `backup:identity` | | no encrypted snapshot of that part, or the newest older than 2 h |
+| `backup:secrets` | no age recipient on the server (runtime keys, site keys and identity data not backed up) | |
 
 The runtime's spend lives in its state file (mode 600, owner `lineage`); the unit's root pre-step copies
 only the spend window and the cap into `/run/lineage-monitor/spend.json`. Alerts go out when a check turns
