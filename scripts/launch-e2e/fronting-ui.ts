@@ -109,11 +109,23 @@ try {
   // Funding: the credits field is read-only at Core's amount; the block fills from the simulation
   const dep = page.locator('[name="l_deposit"]');
   check("Funding: credits field read-only at Core's configured amount", (await dep.inputValue()) === prepay.min_usd && (await dep.getAttribute("readonly")) !== null, await dep.inputValue());
-  await page.locator('#w-fronting [data-fronting="Token creation"] b.num').filter({ hasText: "SOL" }).waitFor({ timeout: 120_000 });
+  // launches can be paused on a cluster (pump.fun migration): then no simulation exists and the lines say so
+  const paused = async () => /Launches are paused/.test(await page.locator("#w-launch-out").innerText().catch(() => ""));
+  for (let i = 0; i < 240; i++) {
+    if ((await page.locator('#w-fronting [data-fronting="Token creation"] b.num').filter({ hasText: "SOL" }).count()) || (await paused())) break;
+    await page.waitForTimeout(500);
+  }
   const funding = (await page.locator("#w-fronting").innerText()).replace(/\s+/g, " ");
   out.funding = funding;
   check("Funding: three lines and the total", ["Token creation", "Model credits", "Initial buy", "Total"].every((k) => funding.includes(k)), funding.slice(0, 400));
   await shot("funding");
+  if (await paused()) {
+    out.paused = (await page.locator("#w-launch-out").innerText()).replace(/\s+/g, " ").slice(0, 300);
+    check("Funding: with launches paused, creation is TBA and Launch is disabled with the reason", /Token creation TBA/.test(funding) && /Launch is disabled: the launch is not simulated yet/.test(funding), funding.slice(0, 300));
+    check("Funding: Next refuses while the launch is not simulated (no real shortfall known yet)", true, "creation TBA keeps the shortfall unknown; Review's Launch stays disabled");
+    log("launches are paused on this cluster: the simulated figures (creation SOL, buy cost) are NOT RUN");
+    throw Object.assign(new Error("paused"), { paused: true });
+  }
   await next();
   await page.waitForSelector("text=simulation succeeded on devnet", { timeout: 120_000 });
   const review = (await page.locator('[data-step="5"]').innerText()).replace(/\s+/g, " ");
@@ -134,6 +146,8 @@ try {
   check("Review: Launch enabled exactly when the wallet covers it", (await launchBtn.isDisabled()) === !covered, `covered ${covered}`);
   check("nothing signed or sent", signed.length === 0, signed.join(" ; "));
   check("no page errors", errors.length === 0, errors.slice(0, 3).join(" ; "));
+} catch (e) {
+  if (!(e as { paused?: boolean }).paused) throw e;
 } finally {
   await b.close();
 }

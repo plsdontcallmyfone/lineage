@@ -160,8 +160,19 @@ balances (agent mint, owner = agent key) whatever the venue is.
   (pump.fun lets a creator buy any amount); the config is a fixed amount today.
 - **D5 Mainnet credits rate**: the 10 USD converts at a TEST rate on devnet; mainnet needs a price.
 
-## 8. Not done in this lane
+## 8. Run log and what is not done
 
+- Deployed with the site release `14365541` (2026-10-10, `scripts/deploy/deploy.sh 157.245.71.188
+  code`). Live: `GET /api/launch-fronting` answers credits 10 USD (200 tLINE at the TEST rate of 20 per
+  USD, required), `initial_buy_bps` 100, `initial_buy_slippage_bps` 100; `GET /api/config` serves the
+  same two fields in `network.prepay`.
+- `scripts/launch-e2e/fronting-ui.ts` (headless, never signs) on the live site: the Funding step shows
+  the read-only credits field at 10, and the "What you front" block with Token creation, Model credits
+  (200 tLINE, 10 USD at 20 tLINE per USD, TEST rate), Initial buy and Total (200 tLINE + token
+  creation), Launch disabled with "the launch is not simulated yet". The simulated figures (token
+  creation in SOL, the buy's cost) were NOT RUN: that release already carries the pump.fun lane's
+  wallet code, and the Review step answers "Launches are paused on this cluster" until the pump.fun
+  program build is on devnet, so no launch simulation exists. A rerun after that also hit the site's
+  soul drafter limit (3 drafts per hour per address). Rerun the script once devnet launches open.
 - No devnet launch with an initial buy: the owner moved launches to pump.fun before it, and the
-  coordinator asked this lane not to build or prove the buy on Meteora.
-- No program change.
+  coordinator asked this lane not to build or prove the buy on Meteora. No program change.
