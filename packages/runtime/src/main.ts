@@ -24,6 +24,7 @@ import { CoreClient } from "../../core/src/client.ts";
 import { availabilityOf, loadProviderKeys, loadProviderSpecs } from "../../worker/src/proposers/providers.ts";
 import { routedProposers } from "./providers.ts";
 import { bindHandler, chainCosign, serveBind } from "./bind.ts";
+import { withGenesis } from "./genesis.ts";
 import { anthropicClient } from "../../souls/src/generator.ts";
 import { chainTrading, type TradingRuntimeConfig } from "../../trader/src/glue.ts";
 import { desktopPool, startRecordingPublisher, withDesktops } from "./desktops.ts";
@@ -123,7 +124,7 @@ async function main() {
       await rt.start();
       // hosted launches bind from the Wallet page (bind.ts): the owner signs the rotation, this runtime co-signs
       const bindServer = cfg.bind_port && backend instanceof ChainBackend
-        ? serveBind(cfg.bind_port, withDesktops(desktops, bindHandler({ host: rt, send: chainCosign(cfg.rpc_url ?? chainRpc(), log, applyNetworkProfile().genesis), log })), log)
+        ? serveBind(cfg.bind_port, withGenesis(rt, withDesktops(desktops, bindHandler({ host: rt, send: chainCosign(cfg.rpc_url ?? chainRpc(), log, applyNetworkProfile().genesis), log })), log), log)
         : desktops && (cfg.desktop_port ?? cfg.bind_port)
           ? serveBind((cfg.desktop_port ?? cfg.bind_port)!, withDesktops(desktops), log)
           : null;
