@@ -77,6 +77,8 @@ const runtimeCfg = {
   compute_price_line_per_usd: "20",
   compute_price_line_per_sandbox_s: "0.002",
   max_concurrent: 1,
+  // agents as traders (plan T, owner direction 2026-10-09): devnet TEST tokens only, limits in Core's trading config
+  trading: { enabled: true, poll_s: 60, market: "http://127.0.0.1:9668" },
 };
 const runtimePath = join(OUT, "runtime.json");
 const runtimeText = JSON.stringify(runtimeCfg, null, 2) + "\n";
