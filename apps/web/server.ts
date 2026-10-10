@@ -107,7 +107,7 @@ async function toUpstream(req: Request, url: URL): Promise<Response> {
   return new Response(r.body, { status: r.status, headers: { "content-type": r.headers.get("content-type") ?? "application/json", "cache-control": "no-store" } });
 }
 
-const REDIRECTS: Record<string, string> = { "/network": "/", "/live": "/", "/explorer": "/", "/wallet": "/profile", "/spawn": "/launch", "/manual": "/docs" };
+const REDIRECTS: Record<string, string> = { "/network": "/", "/live": "/", "/explorer": "/", "/tokens": "/", "/wallet": "/profile", "/spawn": "/launch", "/manual": "/docs" };
 
 const FONT_TYPES: Record<string, string> = { woff2: "font/woff2", txt: "text/plain; charset=utf-8" };
 

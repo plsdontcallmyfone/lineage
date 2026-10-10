@@ -1,18 +1,20 @@
-import { dur, repoLabel } from "../fmt.ts";
+import { repoLabel } from "../fmt.ts";
 import { html, raw, type Raw } from "../html.ts";
-import { fmtAmount, shortAddr } from "../market.ts";
+import { QUOTE } from "../market.ts";
+import { agentAvatar, agentTitle, buildingLine, injectBuildingStyle, paramCells, type DirToken } from "../building.ts";
 import { drawThumb, thumbModel, type Palette, type ThumbModel } from "../../../../packages/embed/src/thumb.ts";
 import type { Page } from "./types.ts";
 
-// Explorer: the token directory (docs/plans/FRONTEND-EMBED.md, amendment 2, modelled on a coin
-// directory). Every agent token as a card: a live screen thumbnail of what its agent is building,
-// rank, state, name and ticker, market cap, fees to compute and age, the repository, its verified
-// generation count and the model that authors for it. Filters by target class and model, search,
-// sorts and state filters run in the market indexer (GET /market/tokens, /market/summary), which
-// joins the chain with Core. Every figure is the indexer's or Core's; what neither holds is TBA.
+// Explorer: the token directory (docs/plans/FRONTEND-EMBED.md, amendment 2, and APP-CONSOLIDATION.md
+// amendment 2026-10-10 (2)). Every listed agent token as a card: a live screen thumbnail of what its
+// agent is building, rank, state, name and ticker, then only price, market cap, 24h volume, 24h change
+// and what the agent is building (repository, live status, a link to the session). Hidden launches
+// are left out by the indexer. Filters by target class, search, sorts and state filters run in the
+// market indexer (GET /market/tokens, /market/summary), which joins the chain with Core. Every figure
+// is the indexer's or Core's; what neither holds is TBA.
 //
-// `mountExplorer(el, opts)` renders it into any element (the app's /explorer page, and the embed
-// kit's <lineage-explorer>). Styles are injected once, prefixed ex-, on the app's colour tokens with
+// `mountExplorer(el, opts)` renders it into any element (the app's home page, and the embed kit's
+// <lineage-explorer>). Styles are injected once, prefixed ex-, on the app's colour tokens with
 // fallbacks. Thumbnails use the embed kit's thumbnail drawing (packages/embed/src/thumb.ts) over the
 // session's public events and the file at its parent generation, both from Core.
 
@@ -23,37 +25,21 @@ export interface ExplorerOpts {
   core?: string | null;
   /** Where a card links (default /tokens/:mint). */
   tokenHref?: (mint: string) => string;
+  /** Where a card's session link goes (default /sessions/:id). */
+  sessionHref?: (id: string) => string;
   /** Cards per page (default 24). */
   pageSize?: number;
   /** Refresh period of counters and cards, ms (default 20000; 0 disables). */
   pollMs?: number;
 }
 
-export interface DirToken {
-  mint: string;
-  agent: string;
-  name: string | null;
-  symbol: string | null;
-  phase: "curve" | "graduated";
-  market_cap: number | null;
-  fees_to_compute: number | null;
-  created_at: number;
-  repo_url: string | null;
-  state: "working" | "awake" | "asleep" | "graduated" | null;
-  awake: boolean | null;
-  class: string | null;
-  model: string | null;
-  provider: string | null;
-  generations: number | null;
-  lineage_id: string | null;
-  session: { id: string; state: string; at: number | null } | null;
-}
+export type { DirToken };
 interface DirList {
   tokens: DirToken[];
   count: number;
   total: number;
   offset: number;
-  facets: { class: Record<string, number>; model: Record<string, number> };
+  facets: { class: Record<string, number> };
 }
 interface Summary {
   tokens: number;
@@ -74,40 +60,28 @@ export const CLASS_LABEL: Record<string, string> = {
   unknown: "Not set up yet",
 };
 const CLASS_ORDER = ["rust", "python", "solana", "zig", "cuda", "go", "cpp"];
-export const SORTS: [string, string][] = [["market_cap", "Top"], ["newest", "New"], ["fees", "Most fees"], ["verified", "Most verified"], ["awake", "Awake first"]];
+export const SORTS: [string, string][] = [["market_cap", "Top"], ["newest", "New"], ["volume", "Volume"], ["change", "Gainers"], ["awake", "Working first"]];
 export const STATES: [string, string][] = [["", "All"], ["awake", "Awake"], ["asleep", "Asleep"], ["graduated", "Graduated"]];
 const BADGE: Record<string, string> = { working: "Working", awake: "Awake", asleep: "Asleep", graduated: "Graduated" };
 
 const searchIcon = raw(`<svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" aria-hidden="true"><circle cx="7" cy="7" r="4.6"/><path d="M10.4 10.4L14 14"/></svg>`);
 
-const TBA = html`<span class="ex-tba">TBA</span>`;
-const fig = (n: number | null | undefined) => (n == null || !Number.isFinite(n) ? TBA : html`<span class="ex-num" title="${String(n)} tLINE">${fmtAmount(n)}</span>`);
-const age = (created: number, now = Date.now() / 1000) => dur(Math.max(0, Math.floor(now - created)));
-
 /** One card; `rank` is its 1-based place in the current sort. Pure markup (the screen is painted after mount). */
-export function cardHtml(t: DirToken, rank: number, href: string): Raw {
+export function cardHtml(t: DirToken, rank: number, href: string, sessionHref?: (id: string) => string): Raw {
   const st = t.state;
-  const model = t.model ?? null;
-  return html`<a class="ex-card" href="${href}" data-mint="${t.mint}" data-sym="${t.symbol ?? ""}">
+  return html`<div class="ex-card" data-mint="${t.mint}" data-sym="${t.symbol ?? ""}">
+    <a class="ex-cardlink" href="${href}" aria-label="${agentTitle(t)} ${t.symbol ? `$${t.symbol}` : ""}">
     <div class="ex-screen" data-screen="${t.session?.id ?? ""}" data-lineage="${t.lineage_id ?? ""}"><canvas aria-hidden="true"></canvas>
       <span class="ex-rank">#${String(rank).padStart(2, "0")}</span>
       ${st ? html`<span class="ex-state ${st}">${st === "working" ? html`<i></i>` : ""}${BADGE[st]}</span>` : ""}
     </div>
     <div class="ex-body">
-      <div class="ex-name"><span class="ex-n">${t.name ?? shortAddr(t.mint)}</span><span class="ex-tick">${t.symbol ? `$${t.symbol}` : ""}</span></div>
-      <div class="ex-stats">
-        <div><span>MCAP</span><b>${fig(t.market_cap)}</b></div>
-        <div><span>FEES TO COMPUTE</span><b>${fig(t.fees_to_compute)}</b></div>
-        <div><span>AGE</span><b class="ex-num" data-age="${t.created_at}">${age(t.created_at)}</b></div>
-      </div>
-      <div class="ex-unitline">MCAP and fees in tLINE</div>
-      <div class="ex-repo" title="${t.repo_url ?? ""}">${t.repo_url ? repoLabel(t.repo_url) : html`<span class="ex-tba">repository TBA</span>`}</div>
-      <div class="ex-foot">
-        <span class="ex-ver">${t.generations == null ? html`<span class="ex-tba">verified TBA</span>` : html`<b class="ex-num">${t.generations}</b> verified`}</span>
-        <span class="ex-model" title="${[t.provider, model].filter(Boolean).join(", ")}">${model ? html`${t.provider && t.provider !== model ? html`<span class="ex-prov">${t.provider}</span>` : ""}${model}` : t.provider ? t.provider : html`<span class="ex-tba">model TBA</span>`}</span>
-      </div>
+      <div class="ex-name">${agentAvatar(t.agent, t.avatar, 22, "ex-av")}<span class="ex-n">${agentTitle(t)}</span><span class="ex-tick">${t.symbol ? `$${t.symbol}` : ""}</span></div>
+      ${paramCells(t)}
     </div>
-  </a>`;
+    </a>
+    <div class="ex-bd">${buildingLine(t, { sessionHref })}</div>
+  </div>`;
 }
 
 export function mountExplorer(el: HTMLElement, opts: ExplorerOpts = {}) {
@@ -116,7 +90,8 @@ export function mountExplorer(el: HTMLElement, opts: ExplorerOpts = {}) {
   const C = opts.core === undefined ? "/api" : opts.core === null ? null : opts.core.replace(/\/+$/, "");
   const tokenHref = opts.tokenHref ?? ((m: string) => `/tokens/${m}`);
   const size = opts.pageSize ?? 24;
-  const st = { sort: "market_cap", state: "", cls: "", model: "", q: "", shown: size };
+  const sessionHref = opts.sessionHref;
+  const st = { sort: "market_cap", state: "", cls: "", q: "", shown: size };
   let alive = true;
   let seq = 0;
   let last: DirList | null = null;
@@ -132,7 +107,6 @@ export function mountExplorer(el: HTMLElement, opts: ExplorerOpts = {}) {
     const p = new URLSearchParams({ sort: st.sort, limit: String(st.shown) });
     if (st.state) p.set("state", st.state);
     if (st.cls) p.set("class", st.cls);
-    if (st.model) p.set("model", st.model);
     if (st.q.trim()) p.set("q", st.q.trim());
     return p;
   };
@@ -153,7 +127,7 @@ export function mountExplorer(el: HTMLElement, opts: ExplorerOpts = {}) {
   }
 
   const counter = (label: string, v: number | null | undefined) => html`<div class="ex-ctr"><b class="ex-num">${v == null ? "TBA" : v}</b><span>${label}</span></div>`;
-  const side = (title: string, key: "cls" | "model", facets: Record<string, number>, labels: (k: string) => string, order: string[]) => {
+  const side = (title: string, key: "cls", facets: Record<string, number>, labels: (k: string) => string, order: string[]) => {
     const keys = [...new Set([...order.filter((k) => facets[k] !== undefined), ...Object.keys(facets).sort()])];
     const total = Object.values(facets).reduce((a, b) => a + b, 0);
     return html`<div class="ex-side-g"><div class="ex-side-h">${title}</div>
@@ -169,13 +143,12 @@ export function mountExplorer(el: HTMLElement, opts: ExplorerOpts = {}) {
     const hadFocus = focus?.matches?.("[data-ex-q]") ? { s: focus.selectionStart, e: focus.selectionEnd } : null;
     const body = html`<div class="ex">
       <header class="ex-head">
-        <div><h1 class="ex-title">Explorer</h1><p class="ex-lede">Every agent token on devnet: what its agent is building right now, what it has verified, and what its trading fees pay for.</p></div>
-        <div class="ex-ctrs">${counter("tokens", summary?.tokens)}${counter("agents awake", summary?.awake)}${counter("verified generations", summary?.verified_generations)}${counter("graduated", summary?.graduated)}</div>
+        <div><h1 class="ex-title">Explorer</h1><p class="ex-lede">Every agent token on devnet and what its agent is building right now. Prices and volumes in ${QUOTE}.</p></div>
+        <div class="ex-ctrs">${counter("tokens", summary?.tokens)}${counter("working now", summary?.working)}${counter("agents awake", summary?.awake)}${counter("graduated", summary?.graduated)}</div>
       </header>
       <div class="ex-layout">
         <aside class="ex-side" aria-label="Filters">
           ${side("Works on", "cls", l?.facets.class ?? {}, (k) => CLASS_LABEL[k] ?? k, CLASS_ORDER)}
-          ${side("Model", "model", l?.facets.model ?? {}, (k) => (k === "unknown" ? "Unknown" : k), [])}
         </aside>
         <section class="ex-main">
           <div class="ex-tools">
@@ -188,7 +161,7 @@ export function mountExplorer(el: HTMLElement, opts: ExplorerOpts = {}) {
             <div class="ex-showing">${l ? html`Showing <b class="ex-num">${Math.min(l.tokens.length, l.count)}</b> of <b class="ex-num">${l.count}</b> token${l.count === 1 ? "" : "s"}${l.count !== l.total ? html` (${l.total} in all)` : ""}` : err ? "" : "Loading"}</div>
           </div>
           ${err ? html`<div class="ex-err">The market indexer did not answer: ${err}</div>` : ""}
-          <div class="ex-grid">${l ? (l.tokens.length ? l.tokens.map((t, i) => cardHtml(t, i + 1, tokenHref(t.mint))) : html`<div class="ex-empty">No token matches these filters.</div>`) : ""}</div>
+          <div class="ex-grid">${l ? (l.tokens.length ? l.tokens.map((t, i) => cardHtml(t, i + 1, tokenHref(t.mint), sessionHref)) : html`<div class="ex-empty">No token matches these filters.</div>`) : ""}</div>
           ${l && l.tokens.length < l.count ? html`<div class="ex-more"><button type="button" data-ex-more>Show more</button></div>` : ""}
         </section>
       </div>
@@ -304,7 +277,6 @@ export function mountExplorer(el: HTMLElement, opts: ExplorerOpts = {}) {
     if (b.dataset.exSort !== undefined) st.sort = b.dataset.exSort;
     else if (b.dataset.exState !== undefined) st.state = b.dataset.exState;
     else if (b.dataset.exCls !== undefined) st.cls = b.dataset.exCls;
-    else if (b.dataset.exModel !== undefined) st.model = b.dataset.exModel;
     else if (b.dataset.exMore !== undefined) {
       st.shown += size;
       return void load();
@@ -333,7 +305,7 @@ export function mountExplorer(el: HTMLElement, opts: ExplorerOpts = {}) {
   void load();
   return {
     reload: load,
-    setFilter: (f: Partial<Pick<typeof st, "sort" | "state" | "cls" | "model" | "q">>) => {
+    setFilter: (f: Partial<Pick<typeof st, "sort" | "state" | "cls" | "q">>) => {
       Object.assign(st, f);
       refilter();
     },
@@ -440,8 +412,10 @@ const CSS = `
 .ex-seg button[aria-pressed="true"]{background:var(--ac-dim);border-color:var(--ac-b);color:var(--ac)}
 .ex-showing{font:400 11px/1.6 var(--mono);letter-spacing:.04em;color:var(--ex-faint)}
 .ex-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:16px}
-.ex-card{display:flex;flex-direction:column;min-width:0;background:var(--bg2);border:1px solid var(--border);border-radius:8px;overflow:hidden;color:inherit;text-decoration:none;transition:border-color .18s,background .15s}
+.ex-card{display:flex;flex-direction:column;min-width:0;background:var(--bg2);border:1px solid var(--border);border-radius:8px;overflow:hidden;color:inherit;transition:border-color .18s,background .15s}
 .ex-card:hover{border-color:var(--border-h);background:color-mix(in srgb,var(--sb-hover),var(--bg2))}
+.ex-cardlink{display:flex;flex-direction:column;color:inherit;text-decoration:none;min-width:0}
+.ex-cardlink:focus-visible{outline:2px solid var(--ac);outline-offset:-2px}
 .ex-screen{position:relative;aspect-ratio:16/10;background:var(--ex-scr-bg);overflow:hidden;border-bottom:1px solid var(--border)}
 .ex-screen::after{content:"";position:absolute;inset:0;pointer-events:none;background:repeating-linear-gradient(0deg,#0000003d 0 1px,#0000 1px 3px)}
 .ex-screen canvas{display:block;width:100%;height:100%}
@@ -453,21 +427,12 @@ const CSS = `
 .ex-state.graduated{background:#a0c3ec26;border-color:#a0c3ec59;color:#cfe0f5}
 @keyframes ex-pulse{50%{opacity:.25}}
 @media (prefers-reduced-motion:reduce){.ex-state.working i{animation:none}.ex-card{transition:none}}
-.ex-body{display:flex;flex-direction:column;gap:10px;padding:12px 14px 14px;min-width:0}
-.ex-name{display:flex;align-items:baseline;gap:8px;min-width:0}
+.ex-body{display:flex;flex-direction:column;gap:12px;padding:12px 14px 12px;min-width:0}
+.ex-name{display:flex;align-items:center;gap:8px;min-width:0}
+.ex-av{width:22px;height:22px}
 .ex-n{font-weight:500;font-size:15px;color:var(--tp);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
 .ex-tick{font:400 11px/1.4 var(--mono);letter-spacing:.06em;color:var(--ex-faint);white-space:nowrap}
-.ex-stats{display:grid;grid-template-columns:1.1fr 1fr .8fr;gap:8px}
-.ex-stats>div{display:flex;flex-direction:column;justify-content:space-between;gap:3px;min-width:0}
-.ex-stats>div>span{font:400 9.5px/1.3 var(--mono);letter-spacing:.08em;text-transform:uppercase;color:var(--ex-faint)}
-.ex-stats b{font-size:13.5px;font-weight:500;color:var(--tp);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.ex-unitline{font:400 10px/1.4 var(--mono);color:var(--ex-faint);margin-top:-4px}
-.ex-repo{font-size:12.5px;color:var(--ex-dim);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.ex-foot{display:flex;justify-content:space-between;gap:8px;align-items:center;border-top:1px solid var(--border);padding-top:10px;font-size:12px;color:var(--ex-dim);min-width:0}
-.ex-ver{white-space:nowrap}
-.ex-ver b{color:var(--good);font-weight:500}
-.ex-model{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
-.ex-prov{color:var(--ex-faint);margin-right:5px}
+.ex-bd{border-top:1px solid var(--border);padding:10px 14px 12px;margin-top:auto}
 .ex-num{font-variant-numeric:tabular-nums}
 .ex-tba{color:var(--ex-faint);font-weight:400}
 .ex-empty{grid-column:1/-1;padding:36px;text-align:center;color:var(--ex-faint);border:1px solid var(--border);border-radius:8px;background:repeating-linear-gradient(-45deg,#0000,#0000 10px,#ffffff05 10px 11px)}
@@ -475,8 +440,8 @@ const CSS = `
 .ex-more{display:flex;justify-content:center}
 .ex-more button{font:400 13.5px/1 var(--sans);border:1px solid var(--border-h);background:transparent;color:var(--tp);border-radius:9999px;padding:10px 18px;cursor:pointer;transition:border-color .15s}
 .ex-more button:hover{border-color:var(--tp)}
-@media (max-width:1180px){.ex-grid{grid-template-columns:repeat(3,minmax(0,1fr))}}
-@media (max-width:980px){.ex-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media (max-width:1400px){.ex-grid{grid-template-columns:repeat(3,minmax(0,1fr))}}
+@media (max-width:1100px){.ex-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
 @media (max-width:760px){
   .ex-layout{grid-template-columns:minmax(0,1fr);gap:14px}
   .ex-side{position:static;gap:10px}
@@ -490,6 +455,7 @@ const CSS = `
 }`;
 
 function injectStyle() {
+  injectBuildingStyle();
   if (typeof document === "undefined" || document.getElementById("ex-style")) return;
   const s = document.createElement("style");
   s.id = "ex-style";

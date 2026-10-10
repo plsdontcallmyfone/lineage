@@ -4,6 +4,7 @@ import { html, type Raw } from "../html.ts";
 import { mount as mountLivePanel, type LivePanelHandle } from "../live-panel/index.ts";
 import { mountCommits } from "./commits.ts";
 import { feedPanel } from "./feed.ts";
+import { agentAvatar, agentTitle, buildingLine, hiddenNote, injectBuildingStyle, type DirToken } from "../building.ts";
 import {
   addrLink,
   amountFig,
@@ -23,7 +24,6 @@ import {
   shortAddr,
   txLink,
   type Candle,
-  type FeeCrank,
   type Holders,
   type TokenDetail,
   type Trade,
@@ -32,12 +32,14 @@ import { agentLink, empty, icon, kv, panel, stat } from "../ui.ts";
 import { unreachable } from "./tokens.ts";
 import type { Page } from "./types.ts";
 
-// One agent token (plan L3). The agent's live panel (L4) is the main element: its session in
-// progress, else its latest in replay, with earlier sessions listed. Around it, from the market
-// indexer: price candles in tLINE, recent trades, holders, curve progress and graduation, fee cranks
-// and the compute vault; from Core: the agent and the lineages on its repository. The trade box is
-// part of the wallet bundle (apps/web/wallet/trade.ts), loaded on demand: it signs in the browser
-// wallet and swaps on Meteora DBC before graduation and DAMM v2 after.
+// One agent token (plan L3; APP-CONSOLIDATION.md amendment 2026-10-10 (2)). Its figures are price,
+// market cap, 24 h volume and 24 h change, then what the agent is building (repository, live status,
+// a link to the session). The agent's live panel (L4) is the main element: its session in progress,
+// else its latest in replay. Around it, from the market indexer: price candles in tLINE, recent
+// trades, holders, curve progress and graduation; from Core: the agent and the lineages on its
+// repository. No fee figures are shown. A hidden launch still resolves here, marked as hidden. The
+// trade box is part of the wallet bundle (apps/web/wallet/trade.ts), loaded on demand: it signs in
+// the browser wallet and swaps on Meteora DBC before graduation and DAMM v2 after.
 //
 // Sections refresh in place every 15 s (and right after a trade) so the panel and the trade box keep
 // their state; nothing is re-rendered around them.
@@ -51,20 +53,18 @@ interface Data {
   tf: string;
   trades: Trade[];
   holders: Holders;
-  fees: FeeCrank[];
 }
 
 async function load(mint: string, tf?: string): Promise<Data> {
   const t = await market<TokenDetail>(`tokens/${mint}`);
   const f = tf ?? tfByMint.get(mint) ?? defaultTf(t.created_at);
   const sec = { "1m": 60, "5m": 300, "1h": 3600, "1d": 86400 }[f] ?? 3600;
-  const [c, tr, h, fe] = await Promise.all([
+  const [c, tr, h] = await Promise.all([
     market<{ candles: Candle[] }>(`tokens/${mint}/candles?tf=${f}&from=${t.created_at - sec}`),
     market<{ trades: Trade[] }>(`tokens/${mint}/trades?limit=25`),
     market<Holders>(`tokens/${mint}/holders?limit=20`),
-    market<{ cranks: FeeCrank[] }>(`tokens/${mint}/fees`),
   ]);
-  return { t, candles: c.candles, tf: f, trades: tr.trades, holders: h, fees: fe.cranks };
+  return { t, candles: c.candles, tf: f, trades: tr.trades, holders: h };
 }
 
 const sym = (t: TokenDetail) => t.symbol ?? "token";
@@ -73,13 +73,11 @@ const sym = (t: TokenDetail) => t.symbol ?? "token";
 // sections (each a plain function of the indexer's data)
 
 function statsRow(t: TokenDetail): Raw {
-  return html`<div class="stats mk-stats" style="--n:6">
+  return html`<div class="stats mk-stats" style="--n:4">
     ${stat("Price", priceFig(t.price, "price"), `${QUOTE} per ${sym(t)}`)}
     ${stat("Market cap", amountFig(t.market_cap, QUOTE, "market_cap"), html`supply ${fig(fmtAmount(t.supply), t.supply, undefined, "supply")}`)}
     ${stat("24h volume", amountFig(t.volume_24h, QUOTE, "volume_24h"), html`${fig(fmtInt(t.trades_24h), t.trades_24h, undefined, "trades_24h")} trades`)}
     ${stat("24h change", changeFig(t.change_24h, "change_24h"), "vs the price 24h ago")}
-    ${stat("Holders", t.holders === null ? html`<span class="faint" title="The indexer has not counted holders yet">TBA</span>` : fig(fmtInt(t.holders), t.holders, undefined, "holders"), "excluding pool vaults")}
-    ${stat("Trades", fig(fmtInt(t.trades), t.trades, undefined, "trades"), t.last_trade_at ? html`last ${when(t.last_trade_at * 1000)}` : "none yet")}
   </div>`;
 }
 
@@ -111,19 +109,7 @@ function holdersTable(d: Data): Raw {
   <div class="panel-note">${h.holders === null ? "Holder count TBA" : html`${fmtInt(h.holders)} holder${h.holders === 1 ? "" : "s"}`}, ${h.excludes} excluded${h.source ? `, counted from ${h.source}` : ""}${h.as_of ? html`, as of ${when(h.as_of * 1000)}` : ""}.</div>`;
 }
 
-function feesTable(d: Data): Raw {
-  if (!d.fees.length) return empty("No fee cranks yet", "Anyone may crank the pool's partner fees; each crank splits them between the agent's compute vault and the treasury.");
-  return html`<div class="tw"><table class="t mk-fees"><thead><tr><th>Source</th><th class="right">Fees</th><th class="right">To compute vault</th><th class="right hide-sm">To treasury</th><th class="right hide-sm">Vault after</th><th class="right">When</th></tr></thead><tbody>${d.fees.map(
-    (f) => html`<tr data-sig="${f.signature}"><td>${f.source === "damm_v2" ? "DAMM v2 pool" : "DBC curve"}</td>
-      <td class="right nowrap">${amountFig(f.amount, QUOTE)}</td>
-      <td class="right nowrap">${amountFig(f.to_vault, QUOTE)}</td>
-      <td class="right nowrap hide-sm">${amountFig(f.to_treasury, QUOTE)}</td>
-      <td class="right nowrap hide-sm">${amountFig(f.vault_balance_after, QUOTE)}</td>
-      <td class="right nowrap">${f.time ? html`<a class="link" href="https://explorer.solana.com/tx/${f.signature}?cluster=devnet" target="_blank" rel="noopener" title="${f.signature}"><time data-ago="${f.time * 1000}"></time></a>` : txLink(f.signature)}</td></tr>`,
-  )}</tbody></table></div>`;
-}
-
-const EVENT: Record<string, string> = { launch: "Launched on the DBC curve", migration: "Migrated to DAMM v2 by Meteora", graduated: "Graduated (lineage_launch)", repointed: "Position fees repointed to the agent" };
+const EVENT: Record<string, string> = { launch: "Launched on the DBC curve", migration: "Migrated to DAMM v2 by Meteora", graduated: "Graduated (lineage_launch)", repointed: "Pool position repointed to the agent" };
 
 function curveBody(t: TokenDetail): Raw {
   const grad = t.phase === "graduated";
@@ -144,17 +130,9 @@ function curveBody(t: TokenDetail): Raw {
     </div>`;
 }
 
-function feesBody(t: TokenDetail): Raw {
-  return html`<div class="stats mk-fstats" style="--n:2">
-      ${stat("Compute vault", amountFig(t.compute_vault.balance, QUOTE, "compute_balance"), t.awake === null ? "TBA" : t.awake ? "agent awake" : "agent asleep", "sm")}
-      ${stat("Fees claimed", amountFig(t.fees.claimed, QUOTE, "fees_claimed"), html`${fig(fmtInt(t.fees.cranks), t.fees.cranks, undefined, "cranks")} cranks`, "sm")}
-    </div>
-    ${kv([
-      ["To compute vault", amountFig(t.fees.to_compute, QUOTE, "fees_to_compute")],
-      ["To treasury", amountFig(t.fees.to_treasury, QUOTE, "fees_to_treasury")],
-      ["Spent on compute", amountFig(t.compute_vault.debited, QUOTE, "vault_debited")],
-      ["Vault address", addrLink(t.compute_vault.address)],
-    ])}`;
+/** What the agent is building: its live status or last verified improvement, the repository and the session link. */
+function buildingBody(t: TokenDetail): Raw {
+  return html`<div class="panel-b mk-building">${buildingLine(t as unknown as DirToken, { full: true })}</div>`;
 }
 
 function agentBody(t: TokenDetail, lineages: { lineage_id: string; recipe_name: string; height: number; status: string }[] | null, known: boolean): Raw {
@@ -188,17 +166,21 @@ export async function tokenPage([mint]: string[]): Promise<Page> {
     if (e instanceof ApiError && e.status === 404)
       return {
         title: "Token",
-        body: html`<div class="panel errorbox"><h1>Not an indexed agent token</h1><p>The market indexer has no agent token with the mint <span class="hash">${mint}</span>. A token launched a moment ago appears after the indexer's next pass.</p><p><a class="link" href="/tokens">All agent tokens</a></p></div>`,
+        body: html`<div class="panel errorbox"><h1>Not an indexed agent token</h1><p>The market indexer has no agent token with the mint <span class="hash">${mint}</span>. A token launched a moment ago appears after the indexer's next pass.</p><p><a class="link" href="/">All agent tokens</a></p></div>`,
       };
     throw e;
   }
   const t = d.t;
+  const dt = t as unknown as DirToken;
+  injectBuildingStyle();
   const ag = await agentLineages(t);
   const body = html`
-    <div class="ph-row"><div class="ph-title"><div class="crumbs"><a href="/tokens">Tokens</a><span>/</span><span>${t.symbol ?? shortAddr(t.mint)}</span></div>
-      <h1 class="mk-h1">${t.name ?? shortAddr(t.mint)} <span class="mk-h1sym">${t.symbol ?? ""}</span></h1>
-      <div class="ph-sub"><span id="mk-phase">${phaseBadge(t)}</span><span>launched ${when(t.created_at * 1000)}</span><span>agent ${agentLink(t.agent)}</span>${t.repo_url ? html`<span>${repoLink(t.repo_url)}</span>` : ""}</div></div></div>
+    <div class="ph-row"><div class="ph-title"><div class="crumbs"><a href="/">Explorer</a><span>/</span><span>${t.symbol ?? shortAddr(t.mint)}</span></div>
+      <h1 class="mk-h1">${agentAvatar(t.agent, dt.avatar, 36, "mk-av")}${t.name ?? shortAddr(t.mint)} <span class="mk-h1sym">${t.symbol ?? ""}</span></h1>
+      <div class="ph-sub"><span id="mk-phase">${phaseBadge(t)}</span><span>launched ${when(t.created_at * 1000)}</span><span>agent <a class="link" href="/agents/${t.agent}/profile">${agentTitle(dt)}</a></span>${t.repo_url ? html`<span>${repoLink(t.repo_url)}</span>` : ""}</div></div></div>
+    ${hiddenNote(dt.hidden)}
     <section class="panel mk-statspanel" id="mk-stats">${statsRow(t)}</section>
+    ${panel("What the agent is building", html`<div id="mk-building">${buildingBody(t)}</div>`, { cls: "mk-buildpanel", aside: html`<a class="link" href="/agents/${t.agent}/profile">Agent profile</a>` })}
     <div class="grid-main mk-grid" style="margin-top:16px">
       <div class="mk-main">
         ${panel(html`Agent at work`, html`<div id="mk-live" class="mk-live"></div>`, { cls: "mk-livepanel", aside: html`<a class="link" href="/agents/${t.agent}">Agent page</a>`, note: html`What this token's agent is doing: its authoring session live while it works, otherwise its latest session replayed. Edit text stays sealed until the candidate is final (SPEC 17.3).` })}
@@ -208,10 +190,9 @@ export async function tokenPage([mint]: string[]): Promise<Page> {
           { cls: "mk-pricepanel", aside: html`<span class="faint hide-xs">${QUOTE} per ${sym(t)}</span><div class="seg mk-tf" role="group" aria-label="Candle width">${TFS.map((f) => html`<button type="button" data-tf="${f}" aria-pressed="${String(f === d.tf)}">${f}</button>`)}</div>` },
         )}
         <section class="panel mk-activity">
-          <div class="panel-h"><div class="seg" data-tabs="mk-${t.mint}" role="group" aria-label="Activity"><button type="button" data-tab="trades" aria-pressed="true">Trades</button><button type="button" data-tab="holders" aria-pressed="false">Holders</button><button type="button" data-tab="fees" aria-pressed="false">Fee history</button></div><div class="aside hide-xs"><span class="faint">from the market indexer</span></div></div>
+          <div class="panel-h"><div class="seg" data-tabs="mk-${t.mint}" role="group" aria-label="Activity"><button type="button" data-tab="trades" aria-pressed="true">Trades</button><button type="button" data-tab="holders" aria-pressed="false">Holders</button></div><div class="aside hide-xs"><span class="faint">from the market indexer</span></div></div>
           <div data-pane="trades" id="mk-trades">${tradesTable(d)}</div>
           <div data-pane="holders" id="mk-holders" hidden>${holdersTable(d)}</div>
-          <div data-pane="fees" id="mk-feehist" hidden>${feesTable(d)}</div>
         </section>
         <div id="mk-commits"></div>
       </div>
@@ -219,7 +200,6 @@ export async function tokenPage([mint]: string[]): Promise<Page> {
         ${panel(html`Trade ${t.symbol ?? ""}`, html`<div id="mk-trade" class="mk-trade"><div class="panel-b dim">Loading the wallet module…</div></div>`, { cls: "mk-tradepanel" })}
         <div id="mk-feed"></div>
         ${panel("Curve and graduation", html`<div id="mk-curve">${curveBody(t)}</div>`, { cls: "mk-curvepanel" })}
-        ${panel("Fees and compute", html`<div id="mk-fees">${feesBody(t)}</div>`, { cls: "mk-feespanel", note: html`Each crank splits the pool's partner fees between the agent's compute vault, which pays for its work, and the treasury.` })}
         ${panel("Agent", html`<div id="mk-agent">${agentBody(t, ag.lineages, ag.known)}</div>`, { cls: "mk-agentpanel" })}
       </div>
     </div>`;
@@ -250,9 +230,8 @@ export async function tokenPage([mint]: string[]): Promise<Page> {
         set("mk-chart", chartBody(x));
         set("mk-trades", tradesTable(x));
         set("mk-holders", holdersTable(x));
-        set("mk-feehist", feesTable(x));
         set("mk-curve", curveBody(x.t));
-        set("mk-fees", feesBody(x.t));
+        set("mk-building", buildingBody(x.t));
         for (const b of root.querySelectorAll<HTMLElement>("[data-tf]")) b.setAttribute("aria-pressed", String(b.dataset.tf === x.tf));
         mountCandles(root);
         tradeBox?.update?.(x.t);

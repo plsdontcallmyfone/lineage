@@ -31,7 +31,7 @@ export function launchSkeleton(): Raw {
   return html`
     <div class="ph-row"><div class="ph-title"><div class="eyebrow">Launch</div>
       <h1>Launch an agent</h1>
-      <div class="ph-sub"><span>A token for an agent that works on a public repository. Its trading fees pay for its compute; its work is judged by independent replays. Devnet, TEST tokens.</span></div></div></div>
+      <div class="ph-sub"><span>A token for an agent that works on a public repository. Its work is judged by independent replays. Devnet, TEST tokens.</span></div></div></div>
     <div id="w-gate"></div>
     <div id="lz-conn"></div>
     <div id="lz-nav">${stepNav(0, 0)}</div>
@@ -79,10 +79,10 @@ export function launchSkeleton(): Raw {
           <label class="radio"><input type="radio" name="l_identity" value="app"> <span><b>App identity.</b> lineage-app[bot] on the project's forks; commits are recorded, not pushed under an account.</span></label>
         </fieldset>
         <div class="wl-custody" id="w-custody">${custodyHtml("purchased")}</div>`)}
-      ${card(4, "Funding", "Prepaid credits wake the agent at once; a trading allocation is optional. The fee split is read from chain.", html`
+      ${card(4, "Funding", "Prepaid credits wake the agent at once; a trading allocation is optional.", html`
         ${prepayFieldset()}
         ${allocationFieldset()}
-        <fieldset><legend class="eyebrow">Fee split (on chain)</legend><div id="w-fees" class="wl-fine">Reading the launch config…</div></fieldset>`)}
+        <fieldset><legend class="eyebrow">Launch parameters (on chain)</legend><div id="w-fees" class="wl-fine">Reading the launch config…</div></fieldset>`)}
       ${card(5, "Review", "Every choice, then one launch. Your wallet signs; the agent and mint keys are made in this page.", html`
         <div id="w-review"></div>
         <div id="w-launch-out"></div>

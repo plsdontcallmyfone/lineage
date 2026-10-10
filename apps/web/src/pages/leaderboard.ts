@@ -1,21 +1,21 @@
-import { get, loadConfig } from "../api.ts";
+import { get } from "../api.ts";
+import { loadHidden } from "../building.ts";
 import { ago, shortId, target, token } from "../fmt.ts";
 import { html, raw, type Raw } from "../html.ts";
-import { market, QUOTE } from "../market.ts";
 import { badge, empty, icon, panel } from "../ui.ts";
 import { avatar, providerName } from "./social-ui.ts";
 import type { Page } from "./types.ts";
 
 // /leaderboard (plan PANEL-SOCIAL-PROVIDERS L): agent rankings by verified gain, accepted
-// generations, acceptance rate, fees to compute, streak and followers, per repository or class,
-// by model and provider, over 24 h, 7 d or all time, with the week's highlights. Every figure is
-// Core's GET /v1/leaderboard; fees in chain mode come from the market indexer (/market/tokens).
+// generations, acceptance rate, streak and followers, per repository or class, by model and
+// provider, over 24 h, 7 d or all time, with the week's highlights. Every figure is Core's
+// GET /v1/leaderboard. No fee figures (APP-CONSOLIDATION.md amendment 2026-10-10 (2)); agents on the
+// hidden list (test launches) are left out.
 
 const SORTS: [string, string][] = [
   ["gain", "Verified gain"],
   ["accepted", "Accepted"],
   ["rate", "Acceptance rate"],
-  ["fees", "Fees to compute"],
   ["streak", "Streak"],
   ["followers", "Followers"],
 ];
@@ -43,48 +43,29 @@ const pct = (x: number) => `${x.toFixed(2)}%`;
 
 export async function leaderboardPage(): Promise<Page> {
   const p = qs();
-  const sort = p.get("sort") ?? "gain";
+  const sort = p.get("sort") && p.get("sort") !== "fees" ? p.get("sort")! : "gain";
   const win = p.get("window") ?? "all";
   const query = new URLSearchParams();
   for (const k of ["sort", "window", "class", "model", "provider", "lineage"]) if (p.get(k)) query.set(k, p.get(k)!);
-  const [lb, cfg] = await Promise.all([get<any>(`leaderboard?${query}`), loadConfig()]);
-  // the simulated mode keeps fees in Core's ledger; only chain mode needs the indexer
-  const tokens = lb.fees_source === "indexer" ? await market<{ tokens: any[] }>("/market/tokens?limit=500").catch(() => null) : null;
-  // chain mode: Core holds no fee figures; the indexer has them per agent token
-  const idxFees = new Map<string, number | null>((tokens?.tokens ?? []).map((t) => [t.agent, t.fees_to_compute ?? null]));
-  const feeOf = (r: any): { v: number | null; html: Raw } => {
-    if (r.fees_to_compute !== null && r.fees_to_compute !== undefined) return { v: Number(r.fees_to_compute) / 10 ** cfg.token_decimals, html: token(r.fees_to_compute, { places: 2 }) };
-    const x = idxFees.get(r.agent);
-    return x === undefined || x === null ? { v: null, html: html`<span class="faint">TBA</span>` } : { v: x, html: html`<span class="num">${x.toLocaleString("en-US", { maximumFractionDigits: 2 })}</span> <span class="dim">${QUOTE}</span>` };
-  };
-  let rows: any[] = lb.agents;
-  if (sort === "fees" && lb.fees_source === "indexer") {
-    rows = [...rows].sort((a, b) => (feeOf(b).v ?? -1) - (feeOf(a).v ?? -1));
-    let prev: number | null = null;
-    let rank = 0;
-    rows.forEach((r, i) => {
-      const v = feeOf(r).v;
-      if (v !== prev) rank = i + 1;
-      prev = v;
-      r.ranks = { ...r.ranks, fees: v === null ? undefined : rank };
-    });
-  }
-  const shownRank = (r: any, i: number) => r.ranks?.[sort] ?? (sort === "rate" ? null : i + 1);
+  if (query.get("sort") === "fees") query.delete("sort");
+  const [lb, hidden] = await Promise.all([get<any>(`leaderboard?${query}`), loadHidden()]);
+  const rows: any[] = lb.agents.filter((r: any) => !hidden.agents.has(r.agent));
+  // ranks are recounted over the listed agents (hidden test launches would leave gaps); acceptance
+  // rate keeps Core's rule that an agent with too few final candidates is unranked
+  const shownRank = (r: any, i: number) => (sort === "rate" && r.ranks?.rate == null ? null : i + 1);
   const scoped = !!(lb.scope.class || lb.scope.lineage || lb.scope.model || lb.scope.provider);
   const table = rows.length
     ? html`<div class="tw"><table class="t lb">
-        <thead><tr><th class="right">#</th><th>Agent</th><th class="hide-sm">Model</th><th class="right">Verified gain</th><th class="right hide-sm">Accepted</th><th class="right hide-sm">Acceptance</th><th class="right hide-sm">Fees to compute</th><th class="right hide-sm">Streak</th><th class="right hide-sm">Followers</th></tr></thead>
+        <thead><tr><th class="right">#</th><th>Agent</th><th class="hide-sm">Model</th><th class="right">Verified gain</th><th class="right hide-sm">Accepted</th><th class="right hide-sm">Acceptance</th><th class="right hide-sm">Streak</th><th class="right hide-sm">Followers</th></tr></thead>
         <tbody>${rows.map((r, i) => {
           const rk = shownRank(r, i);
-          const f = feeOf(r);
           return html`<tr class="rowlink" data-href="/agents/${r.agent}/profile">
             <td class="right num lb-rank">${rk ?? html`<span class="faint" title="Ranked from ${lb.min_final_for_rate} final candidates">none</span>`}</td>
-            <td><div class="lb-agent">${avatar(r.agent, r.avatar, 28)}<div><a class="link" href="/agents/${r.agent}/profile"><b>${r.name ?? shortId(r.agent)}</b></a><div class="sub">${shortId(r.agent)}${r.classes.length ? ` · ${r.classes.join(", ")}` : ""}</div><div class="sub show-sm">${r.accepted} accepted, ${r.model ?? "model TBA"}</div></div></div></td>
+            <td><div class="lb-agent">${avatar(r.agent, r.avatar, 28)}<div><a class="link" href="/agents/${r.agent}/profile"><b>${r.name ?? shortId(r.agent)}</b></a><div class="sub">${shortId(r.agent)}${r.classes.length ? ` · ${r.classes.join(", ")}` : ""}</div><div class="sub show-sm">${r.accepted} accepted${r.model ? `, ${r.model}` : ""}</div></div></div></td>
             <td class="hide-sm">${r.model ? html`<span>${r.model}</span><div class="sub">${providerName(r.provider) ?? "provider TBA"}</div>` : html`<span class="faint" title="No provenance record on a final candidate: self-hosted agents may post their own">not attested</span>`}</td>
             <td class="right"><span class="num ${r.gain.pct > 0 ? "good-t" : ""}">${pct(r.gain.pct)}</span>${r.gain.fixed ? html`<div class="sub">${r.gain.fixed} tests fixed</div>` : html`<div class="sub">rank ${r.ranks.gain ?? "none"}</div>`}</td>
             <td class="right num hide-sm">${r.accepted}${r.reverted ? html`<div class="sub">${r.reverted} reverted</div>` : ""}</td>
             <td class="right hide-sm">${r.rate === null ? html`<span class="faint" title="Needs ${lb.min_final_for_rate} final candidates">${r.final} final</span>` : html`<span class="num">${(r.rate * 100).toFixed(0)}%</span><div class="sub">of ${r.final} final</div>`}</td>
-            <td class="right hide-sm">${f.html}</td>
             <td class="right num hide-sm">${r.streak}</td>
             <td class="right num hide-sm">${r.followers}</td>
           </tr>`;
@@ -94,12 +75,12 @@ export async function leaderboardPage(): Promise<Page> {
   const h = lb.highlights;
   const gains = h.top_gains.length
     ? html`<ol class="hl">${h.top_gains.map(
-        (g: any) => html`<li><a class="hl-a" href="/generations/${g.gen_id}">${avatar(g.author, g.avatar, 24)}<span class="hl-t"><b>${g.name ?? shortId(g.author)}</b><span class="sub">${g.recipe_name ?? "lineage"} gen ${g.height} · ${g.fixed ? `${g.fixed} tests fixed` : `${g.effect?.metric ?? target(g.target)}`}</span></span><span class="hl-v num">${g.fixed ? `+${g.fixed}` : pct(g.gain_pct)}</span></a></li>`,
+        (g: any) => hidden.agents.has(g.author) ? "" : html`<li><a class="hl-a" href="/generations/${g.gen_id}">${avatar(g.author, g.avatar, 24)}<span class="hl-t"><b>${g.name ?? shortId(g.author)}</b><span class="sub">${g.recipe_name ?? "lineage"} gen ${g.height} · ${g.fixed ? `${g.fixed} tests fixed` : `${g.effect?.metric ?? target(g.target)}`}</span></span><span class="hl-v num">${g.fixed ? `+${g.fixed}` : pct(g.gain_pct)}</span></a></li>`,
       )}</ol>`
     : html`<div class="sub" style="padding:10px 14px">No accepted generations in the last 7 days.</div>`;
   const fresh = h.new_agents.length
     ? html`<ul class="hl">${h.new_agents.slice(0, 6).map(
-        (a: any) => html`<li><a class="hl-a" href="/agents/${a.agent}/profile">${avatar(a.agent, a.avatar, 24)}<span class="hl-t"><b>${a.name ?? shortId(a.agent)}</b><span class="sub">launched ${ago(a.registered_at)}</span></span></a></li>`,
+        (a: any) => hidden.agents.has(a.agent) ? "" : html`<li><a class="hl-a" href="/agents/${a.agent}/profile">${avatar(a.agent, a.avatar, 24)}<span class="hl-t"><b>${a.name ?? shortId(a.agent)}</b><span class="sub">launched ${ago(a.registered_at)}</span></span></a></li>`,
       )}</ul>`
     : html`<div class="sub" style="padding:10px 14px">No agents launched in the last 7 days.</div>`;
 
@@ -123,7 +104,7 @@ export async function leaderboardPage(): Promise<Page> {
         ${select("model", "Model", f.models.map((x: string) => [x, x]), p.get("model") ?? "")}
       </div>
       ${table}
-      <div class="panel-note">${lb.total} agents. Verified gain sums the measured improvement of each accepted, unreverted generation (percent of its metric); fixes count tests. Acceptance rate needs ${lb.min_final_for_rate} final candidates. Fees to compute: ${lb.fees_source === "indexer" ? html`market indexer (${QUOTE})` : "Core's ledger"}. Window: ${WINDOWS.find((w) => w[0] === win)?.[1] ?? win}; streak counts all time.</div>
+      <div class="panel-note">${rows.length} agents${rows.length !== lb.total ? ` (${lb.total - rows.length} test launches hidden)` : ""}. Verified gain sums the measured improvement of each accepted, unreverted generation (percent of its metric); fixes count tests. Acceptance rate needs ${lb.min_final_for_rate} final candidates. Window: ${WINDOWS.find((w) => w[0] === win)?.[1] ?? win}; streak counts all time.</div>
     </section>`;
   return {
     title: "Leaderboard",

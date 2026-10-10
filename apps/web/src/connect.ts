@@ -1,11 +1,13 @@
 import { connectWallet, disconnectWallet, discovered, legacyOnly, onSession, onWallets, restoreSession, session, startDiscovery } from "../wallet/standard.ts";
+import { agentAvatar, identicon } from "./building.ts";
 import { esc, html } from "./html.ts";
 import { icon } from "./ui.ts";
 
-// The header's Connect button (docs/plans/APP-CONSOLIDATION.md): Wallet Standard (Phantom, Solflare,
-// Backpack) through wallet/standard.ts, whose session every page shares. Disconnected, it connects
-// the only wallet at once or offers a menu of the wallets found; connected, it shows the short
-// address and a menu: Profile, Copy address, Disconnect. The choice persists across pages and
+// The header's Connect button (docs/plans/APP-CONSOLIDATION.md, amendment 2026-10-10 (2)): Wallet
+// Standard (Phantom, Solflare, Backpack) through wallet/standard.ts, whose session every page shares.
+// Disconnected, it connects the only wallet at once or offers a menu of the wallets found; connected,
+// it becomes a profile icon (the avatar of the first agent the wallet launched, else the wallet's
+// identicon) with a menu: My profile, Copy address, Disconnect. The choice persists across pages and
 // reloads (a silent reconnect on load). Nothing here signs anything.
 
 const short = (a: string) => `${a.slice(0, 4)}…${a.slice(-4)}`;
@@ -15,6 +17,22 @@ export function connectHtml() {
 }
 
 let root: HTMLElement | null = null;
+/** The wallet's first launched agent (market indexer, launcher=), for the profile icon. */
+const firstAgent = new Map<string, { agent: string; avatar: string | null; name: string | null } | null>();
+async function loadFirstAgent(address: string) {
+  if (firstAgent.has(address)) return;
+  firstAgent.set(address, null);
+  try {
+    const r = await fetch(`/market/tokens?launcher=${address}&sort=newest&limit=200`, { headers: { accept: "application/json" } });
+    const j = r.ok ? await r.json() : null;
+    const ts: any[] = Array.isArray(j?.tokens) ? j.tokens : [];
+    const t = ts.sort((a, b) => a.created_at - b.created_at)[0];
+    if (t) firstAgent.set(address, { agent: t.agent, avatar: t.avatar ?? null, name: t.agent_name ?? null });
+    paint();
+  } catch {
+    /* the identicon stays */
+  }
+}
 
 export function wireConnect(el: HTMLElement) {
   root = el;
@@ -46,12 +64,17 @@ function paint() {
   if (!b) return;
   const s = session();
   if (s.account) {
-    b.innerHTML = html`${s.wallet?.icon ? html`<img src="${s.wallet.icon}" alt="" width="16" height="16">` : ""}<span class="num">${short(s.account.address)}</span>`.s;
+    const addr = s.account.address;
+    void loadFirstAgent(addr);
+    const ag = firstAgent.get(addr);
+    b.innerHTML = (ag ? agentAvatar(ag.agent, ag.avatar, 28, "cn-av") : html`<img class="av cn-av" src="${identicon(addr)}" width="28" height="28" alt="">`).s;
     b.classList.add("on");
-    b.title = `${s.wallet?.name ?? "Wallet"} ${s.account.address}`;
+    b.setAttribute("aria-label", `Account menu, ${short(addr)}`);
+    b.title = `${s.wallet?.name ?? "Wallet"} ${addr}`;
   } else {
     b.textContent = s.restoring ? "Connecting…" : "Connect";
     b.classList.remove("on");
+    b.removeAttribute("aria-label");
     b.title = "Connect a Wallet Standard wallet (devnet)";
   }
   const m = root?.querySelector<HTMLElement>("#cn-menu");
@@ -64,7 +87,7 @@ function menu() {
   const s = session();
   if (s.account) {
     m.innerHTML = html`<div class="cn-who"><span class="eyebrow">${s.wallet?.name ?? "Wallet"}, devnet</span><span class="num" title="${s.account.address}">${short(s.account.address)}</span></div>
-      <a role="menuitem" href="/profile" data-cn="profile">${icon.agent} Profile</a>
+      <a role="menuitem" href="/profile" data-cn="profile">${icon.agent} My profile</a>
       <button type="button" role="menuitem" data-cn="copy">${icon.copy} Copy address</button>
       <button type="button" role="menuitem" data-cn="disconnect">${icon.x} Disconnect</button>`.s;
     return;

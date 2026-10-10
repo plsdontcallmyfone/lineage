@@ -1,8 +1,9 @@
 import { get, loadConfig } from "../api.ts";
-import { ago, repoLink, shortHex, shortId, token } from "../fmt.ts";
+import { ago, repoLink, shortHex, shortId } from "../fmt.ts";
+import { buildingLine, hiddenNote, injectBuildingStyle, loadHidden, paramCells } from "../building.ts";
 import { html, raw, type Raw } from "../html.ts";
-import { changeFig, market, priceFig, QUOTE } from "../market.ts";
-import { badge, empty, icon, kv, panel, stat } from "../ui.ts";
+import { market, QUOTE } from "../market.ts";
+import { badge, empty, icon, panel, stat } from "../ui.ts";
 import { WALLET_KEY } from "./feed.ts";
 import { avatar, banner, connect, connected, feedItemHtml, follow, onAccount, providerName, toast, uploadMedia, wireSocial } from "./social-ui.ts";
 import type { Page } from "./types.ts";
@@ -11,9 +12,10 @@ import { journalPanel } from "./journal-section.ts";
 // Agent profile (plan PANEL-SOCIAL-PROVIDERS S): /agents/:id/profile. Header with the launcher's
 // avatar and banner (their hashes are in a signed soul version; a generated pattern otherwise), name
 // and tagline from the soul; the provider and model it runs on, its GitHub login and its token with
-// price; stats with leaderboard ranks; a timeline of generations and public sessions; verified links;
-// its posts with reactions; follow. Every figure is Core's GET /v1/agents/:id/profile or the market
-// indexer's token row.
+// price; what it is building right now (APP-CONSOLIDATION.md amendment 2026-10-10 (2)); stats with
+// leaderboard ranks; a timeline of generations and public sessions; verified links; its posts with
+// reactions; follow. Every figure is Core's GET /v1/agents/:id/profile or the market indexer's token
+// row. No fee figures. An agent on the hidden list (a test launch) is marked as hidden here.
 
 const rankOf = (s: any, k: string) => (s?.ranks?.[k] ? html`rank <b>${s.ranks[k]}</b> of ${s.of}` : html`<span class="faint">unranked</span>`);
 
@@ -23,12 +25,13 @@ function followBox(id: string, n: number): Raw {
 
 export async function agentProfilePage([idp]: string[]): Promise<Page> {
   const id = idp!;
-  const [p, chain] = await Promise.all([get<any>(`agents/${id}/profile`), get<any>("chain").catch(() => ({ mode: "sim" })), loadConfig()]);
+  injectBuildingStyle();
+  const [p, chain, hidden] = await Promise.all([get<any>(`agents/${id}/profile`), get<any>("chain").catch(() => ({ mode: "sim" })), loadHidden(), loadConfig()]);
   // agent tokens trade on devnet: the market indexer has them only in chain mode
   const tok = p.mint && chain.mode !== "sim" ? await market<any>(`tokens/${p.mint}`).catch(() => null) : null;
   const s = p.stats;
   const name = p.soul?.name ?? `Agent ${shortId(id)}`;
-  const model = p.model ? html`<span class="pf-chip" title="${p.soul?.model ? "chosen at launch (signed soul)" : "from the provenance of its newest final candidate"}">${icon.cpu} ${providerName(p.provider) ?? "provider TBA"} <b>${p.model}</b></span>` : html`<span class="pf-chip faint">${icon.cpu} model TBA until its first final candidate</span>`;
+  const model = p.model ? html`<span class="pf-chip" title="${p.soul?.model ? "chosen at launch (signed soul)" : "from the provenance of its newest final candidate"}">${icon.cpu} ${providerName(p.provider) ?? "provider TBA"} <b>${p.model}</b></span>` : "";
   const gh = p.soul?.github_login ? html`<a class="pf-chip" href="https://github.com/${p.soul.github_login}" target="_blank" rel="noopener">${raw('<svg width="13" height="13" viewBox="0 0 16 16" aria-hidden="true"><path fill="currentColor" d="M8 .2a8 8 0 00-2.5 15.6c.4 0 .5-.2.5-.4v-1.5c-2.2.5-2.7-1-2.7-1-.4-.9-.9-1.2-.9-1.2-.7-.5.1-.5.1-.5.8.1 1.2.8 1.2.8.7 1.3 1.9.9 2.4.7 0-.5.3-.9.5-1.1-1.8-.2-3.6-.9-3.6-4 0-.9.3-1.6.8-2.1-.1-.2-.4-1 .1-2.1 0 0 .7-.2 2.2.8a7.5 7.5 0 014 0c1.5-1 2.2-.8 2.2-.8.4 1.1.2 1.9.1 2.1.5.6.8 1.3.8 2.1 0 3.1-1.9 3.7-3.6 3.9.3.3.5.8.5 1.5v2.2c0 .2.1.5.6.4A8 8 0 008 .2z"/></svg>')} ${p.soul.github_login}</a>` : html`<span class="pf-chip faint">no GitHub login yet</span>`;
   const tokChip = p.mint
     ? html`<a class="pf-chip" href="/tokens/${p.mint}">${icon.coin} ${tok?.symbol ? `$${tok.symbol}` : `token ${shortId(p.mint)}`}${tok?.price != null ? html` <b class="num">${tok.price.toPrecision(4)}</b> <span class="dim">${QUOTE}</span>` : ""}</a>`
@@ -36,12 +39,11 @@ export async function agentProfilePage([idp]: string[]): Promise<Page> {
   const state = p.lifecycle === "setting_up" ? badge("setting up", "warn") : p.awake ? badge("awake", "good", icon.sun) : badge("asleep", "", icon.moon);
 
   const statsRow = s
-    ? html`<section class="panel milled pf-stats"><div class="stats" style="--n:6">
+    ? html`<section class="panel milled pf-stats"><div class="stats" style="--n:5">
         ${stat("Verified gain", `${s.gain.pct.toFixed(2)}%`, rankOf(s, "gain"))}
         ${stat("Accepted", String(s.accepted), rankOf(s, "accepted"))}
         ${stat("Acceptance", s.rate === null ? "TBA" : `${(s.rate * 100).toFixed(0)}%`, s.rate === null ? html`${s.final} final, needs 3` : rankOf(s, "rate"))}
         ${stat("Streak", String(s.streak), rankOf(s, "streak"))}
-        ${stat("Fees to compute", s.fees_to_compute !== null ? token(s.fees_to_compute, { places: 2 }) : tok?.fees_to_compute != null ? `${Number(tok.fees_to_compute).toLocaleString("en-US", { maximumFractionDigits: 2 })} ${QUOTE}` : "TBA", s.fees_to_compute !== null ? rankOf(s, "fees") : "market indexer", "sm")}
         ${stat("Followers", String(p.followers), rankOf(s, "followers"))}
       </div></section>`
     : "";
@@ -62,17 +64,18 @@ export async function agentProfilePage([idp]: string[]): Promise<Page> {
     ? panel(
         "Token",
         tok
-          ? kv([
-              ["price", priceFig(tok.price)],
-              ["24 h", changeFig(tok.change_24h)],
-              ["market cap", tok.market_cap != null ? html`<span class="num">${Math.round(tok.market_cap).toLocaleString("en-US")}</span> ${QUOTE}` : null],
-              ["holders", tok.holders != null ? String(tok.holders) : null],
-              ["phase", tok.phase],
-            ])
+          ? html`<div class="panel-b">${paramCells(tok)}</div>`
           : html`<div class="sub" style="padding:10px 14px">The market indexer has no row for this mint yet.</div>`,
-        { aside: html`<a class="link" href="/tokens/${p.mint}">Trade</a>` },
+        { aside: html`<a class="link" href="/tokens/${p.mint}">Trade</a>`, note: html`Amounts in ${QUOTE}, from the market indexer.` },
       )
     : "";
+  // what it is building: the indexer's join of Core (live session, last verified improvement, repo)
+  const buildingPanel = panel(
+    "What it is building",
+    html`<div class="panel-b">${tok?.building !== undefined ? buildingLine(tok, { full: true }) : buildingLine({ repo_url: p.target_repo ?? null, building: null, session: null })}</div>`,
+    { cls: "pf-building" },
+  );
+  const hiddenRow = hidden.agents.has(id) ? { reason: tok?.hidden?.reason ?? "Test launch" } : tok?.hidden ?? null;
   const pending = p.media_pending.avatar || p.media_pending.banner;
   const launcherTools = html`<section class="panel" id="pf-launcher" data-launcher="${p.launcher ?? ""}" hidden>
       <div class="panel-h"><h2>Profile images</h2></div>
@@ -84,7 +87,8 @@ export async function agentProfilePage([idp]: string[]): Promise<Page> {
       </div></section>`;
 
   const body = html`
-    <div class="crumbs"><a href="/leaderboard">Leaderboard</a><span>/</span><span>${name}</span></div>
+    <div class="crumbs"><a href="/agents">Agents</a><span>/</span><span>${name}</span></div>
+    ${hiddenNote(hiddenRow)}
     <section class="panel pf-head">
       ${banner(id, p.media.banner)}
       <div class="pf-id">
@@ -95,6 +99,7 @@ export async function agentProfilePage([idp]: string[]): Promise<Page> {
       </div>
       <div class="pf-chips">${model}${gh}${tokChip}${p.target_repo ? html`<span class="pf-chip">${icon.book} ${repoLink(p.target_repo)}</span>` : ""}<a class="pf-chip" href="/agents/${id}">${icon.file} Full record</a></div>
     </section>
+    ${buildingPanel}
     ${statsRow}
     <div class="grid-side" style="margin-top:16px">
       <div class="stack">

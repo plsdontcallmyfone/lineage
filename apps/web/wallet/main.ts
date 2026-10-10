@@ -5,7 +5,7 @@
 //           planner, soul drafting, model registry, identity check, hosted bind)
 //   Profile (/profile, mountProfile, profile.ts renders it): the connected wallet's balances and
 //           faucet, its agents and their management (GitHub token rotate or revoke, images, trading
-//           allocation, fee crank, signing key), holdings, follows, claims and bounties (C6), and the
+//           allocation, signing key), holdings, follows, claims and bounties (C6), and the
 //           verifier registration kit
 // and the token page's trade box (trade.ts). The connection is the site's one wallet session
 // (standard.ts), owned by the header's Connect button. Every figure is read from chain (or from Core
@@ -76,6 +76,7 @@ import { loadTradingEscrow, sendAllocation } from "./trading.ts";
 import { entryOf, isDefaultChoice, loadModels, modelChoice, modelsBody, onModelInput, priceText, withModel } from "./models.ts";
 import { launchSkeleton, profileSkeleton, stepNav, STEPS } from "./pages.ts";
 import { feedItemHtml, uploadMedia } from "../src/pages/social-ui.ts";
+import { agentAvatar, agentTitle, buildingLine, injectBuildingStyle, paramCells, type DirToken } from "../src/building.ts";
 import { githubCallsLeft, spendGithubCall } from "../src/github.ts";
 
 const T22 = TOKEN_2022_PROGRAM;
@@ -269,21 +270,19 @@ async function loadNetwork() {
   renderNet();
 }
 
-/** Funding step: the fee split exactly as the LaunchConfig on chain holds it. */
+/** Funding step: the launch parameters exactly as the LaunchConfig on chain holds them (no fee figures, APP-CONSOLIDATION.md amendment 2026-10-10 (2)). */
 function renderNet() {
   const l = S.lc;
   if (!l || !S.reg) return set("w-fees", html`${banner("bad", "Programs not initialized on this cluster", "The registry or launch config account does not exist.")}`);
   set(
     "w-fees",
     html`<div class="params wl-params">
-      <div><span class="k">to the agent's compute vault</span><span class="v num">${(l.agentComputeBps / 100).toFixed(2)}%</span></div>
-      <div><span class="k">to the protocol treasury</span><span class="v num">${(l.protocolBps / 100).toFixed(2)}%</span></div>
       <div><span class="k">agent wakes at</span><span class="v">${tl(l.wakeThreshold)}</span></div>
       <div><span class="k">agent sleeps below</span><span class="v">${tl(l.sleepThreshold)}</span></div>
       <div><span class="k">graduates at</span><span class="v">${tl(l.migrationQuoteThreshold)}</span></div>
       <div><span class="k">launches paused</span><span class="v">${l.paused ? badge("paused", "bad") : badge("no", "good")}</span></div>
     </div>
-    <div class="wl-fine" style="margin-top:6px">Shares of the partner trading fees each <span class="num">crank_fees</span> claims from the curve (agent_compute_bps ${l.agentComputeBps}, protocol_bps ${l.protocolBps} in the LaunchConfig ${addr(launchPdas.config())}). The trading fee rate itself is set in the Meteora DBC config ${addr(l.dbcConfig)}; Meteora keeps its own share.</div>`,
+    <div class="wl-fine" style="margin-top:6px">Read from the LaunchConfig ${addr(launchPdas.config())}.</div>`,
   );
 }
 
@@ -817,7 +816,7 @@ async function downloadAgentKey() {
 }
 
 // ------------------------------------------------------------------------------------------------
-// launches on chain, and the fee crank (Profile, per agent)
+// launches on chain (Profile, per agent)
 
 async function loadLaunches() {
   try {
@@ -839,6 +838,7 @@ async function loadLaunches() {
     S.launchesErr = errBox(e);
   }
   if (S.page === "profile") {
+    mineRows.clear();
     renderMine();
     void renderHoldings();
   }
@@ -847,41 +847,6 @@ async function loadLaunches() {
 }
 
 const adec = (mint: string | null | undefined) => (mint ? (S.decimals.get(mint) ?? 6) : 6);
-
-async function crank(mint: string) {
-  const l = S.launches.find((x) => x.mint === mint);
-  if (!l || !requireReady()) return;
-  const out = (r: Raw) => set("me-crank-out", r);
-  out(html`<span class="dim">Building crank_fees…</span>`);
-  try {
-    const before = await Promise.all([reader.agentLaunch(l.mint), reader.tokenBalances([launchPdas.computeVault(l.agent), registryPdas.treasury()])]);
-    const ixs = [
-      token.createAtaIdempotent(me()!, launchPdas.authority(), l.mint, T22),
-      launch.crankFees({ agent: l.agent, agentMint: l.mint, lineMint: lineMint(), dbcConfig: l.dbcConfig, lineTokenProgram: T22 }),
-    ];
-    const sim = await buildAndSimulate(me()!, ixs, 400_000);
-    if (sim.sim.err) throw Object.assign(new Error(`simulation failed: ${JSON.stringify(sim.sim.err)}`), { logs: sim.sim.logs });
-    const r = await signAndSend({ wallet: S.wallet!, account: S.account!, ixs, units: 400_000, onStatus: (m) => out(html`<span class="dim">${m}</span>`) });
-    const c = r.confirmed!;
-    logSig(`crank_fees ${S.metas.get(l.mint)?.symbol ?? ""}`, c.signature, c.fee, !c.err);
-    if (c.err) throw Object.assign(new Error(`crank_fees failed: ${JSON.stringify(c.err)}`), { logs: c.logs });
-    const after = await Promise.all([reader.agentLaunch(l.mint), reader.tokenBalances([launchPdas.computeVault(l.agent), registryPdas.treasury()])]);
-    const fees = after[0]!.feesClaimed - before[0]!.feesClaimed;
-    const toC = after[0]!.toCompute - before[0]!.toCompute;
-    const toP = after[0]!.toProtocol - before[0]!.toProtocol;
-    const dV = (after[1][0] ?? 0n) - (before[1][0] ?? 0n);
-    const want = (fees * BigInt(S.lc!.agentComputeBps)) / 10_000n;
-    out(html`${banner("info", html`Cranked: ${txLink(c.signature)}`, "Split read back from the AgentLaunch counters and both token accounts.")}
-      ${kv([
-        ["Fees claimed", tl(fees)],
-        ["To compute vault", html`${tl(toC)} <span class="dim">vault balance +${units(dV, dec())}</span> ${toC === want ? html`<span class="mark good">${icon.check} floor(fees x ${S.lc!.agentComputeBps} / 10,000)</span>` : html`<span class="mark warn">${icon.warn} expected ${units(want, dec())}</span>`}`],
-        ["To treasury", html`${tl(toP)} ${toP === fees - toC ? html`<span class="mark good">${icon.check} the rest</span>` : ""}`],
-      ])}`);
-    void loadLaunches();
-  } catch (e) {
-    out(errBox(e, (e as any).logs));
-  }
-}
 
 // ------------------------------------------------------------------------------------------------
 // verifier (register needs the agent key: the worker co-signs)
@@ -1847,7 +1812,6 @@ function renderReview() {
       ${row("GitHub identity", identity === "purchased" ? "purchased account from the pool" : identity === "token" ? (val("l_token") ? "your token (bound after the launch)" : "your token, none pasted yet (app identity until you add one)") : "app identity", 3)}
       ${row("Prepaid credits", dep === null ? "TBA" : html`${tl(dep)} <span class="dim">${depositUsd(val("l_deposit"))} USD</span>`, 4)}
       ${row("Trading allocation", alloc && alloc !== "0" ? html`${alloc} tLINE <span class="dim">a second transaction after the launch</span>` : html`<span class="faint">none</span>`, 4)}
-      ${row("Fee split", S.lc ? `${(S.lc.agentComputeBps / 100).toFixed(2)}% to compute, ${(S.lc.protocolBps / 100).toFixed(2)}% to the protocol` : "TBA", 4)}
     </div>`,
   );
 }
@@ -1959,41 +1923,61 @@ function myAgents(): AgentLaunch[] {
   return a ? S.launches.filter((l) => l.launcher === a || S.owners.get(l.agent) === a) : [];
 }
 
+/** The market indexer's row per mint (price, market cap, volume, change, what the agent is building), for My agents. */
+const mineRows = new Map<string, DirToken | null>();
+
+// My agents leads the profile (APP-CONSOLIDATION.md amendment 2026-10-10 (2)): each agent this
+// wallet launched or owns, with its token's four figures and what it is building right now (the live
+// session, else its last verified improvement, and its repository), then its status and Manage.
 function renderMine() {
   if (S.page !== "profile") return;
   if (S.launchesErr) return set("w-mine", html`<div class="panel-b">${S.launchesErr}</div>`);
   const mine = myAgents();
   if (!mine.length) return set("w-mine", html`<div class="panel-b dim">This wallet has launched no agent on devnet yet. <a class="link" href="/launch">Launch one</a>.</div>`);
+  injectBuildingStyle();
   set(
     "w-mine",
-    html`<div class="tw"><table class="t me-agents"><thead><tr><th>Agent token</th><th>Status</th><th class="hide-sm">GitHub</th><th class="right">Vault</th><th class="hide-sm">Latest session</th><th></th></tr></thead><tbody>
-      ${mine.map((l) => {
-        const m = S.metas.get(l.mint);
-        const rec = S.records.get(l.agent);
-        const bound = l.hosted && !!rec?.signingKey && rec.signingKey !== l.agent;
-        return html`<tr data-agent="${l.agent}"><td><a class="link" href="/tokens/${l.mint}"><b>${m?.symbol ?? short(l.mint)}</b></a><div class="sub">${m?.name ?? ""} · <a class="link" href="/agents/${l.agent}/profile">${short(l.agent)}</a></div></td>
-          <td>${l.awake ? badge("awake", "good") : badge("asleep", "")} ${l.hosted ? (bound ? badge("bound", "good") : rec?.signingKey === null ? badge("key revoked", "bad") : badge("not bound", "warn")) : badge("self-hosted", "info")}</td>
-          <td class="hide-sm" id="me-gh-${l.agent}"><span class="faint">…</span></td>
-          <td class="right" id="me-v-${l.agent}"><span class="faint">…</span></td>
-          <td class="hide-sm" id="me-s-${l.agent}"><span class="faint">…</span></td>
-          <td class="right">${btn("me-manage", S.manage === l.agent ? "Close" : "Manage", { data: { agent: l.agent }, primary: S.manage !== l.agent })}</td></tr>`;
-      })}</tbody></table></div>`,
+    html`<div class="me-agents">${mine.map((l) => {
+      const m = S.metas.get(l.mint);
+      const rec = S.records.get(l.agent);
+      const t = mineRows.get(l.mint) ?? null;
+      const bound = l.hosted && !!rec?.signingKey && rec.signingKey !== l.agent;
+      const name = t ? agentTitle(t) : (m?.name ?? short(l.mint)).replace(/^TEST /, "");
+      return html`<article class="me-ag${t?.building?.live ? " live" : ""}" data-agent="${l.agent}">
+        <div class="me-ag-h">
+          <a href="/agents/${l.agent}/profile" aria-label="${name}, profile">${agentAvatar(l.agent, t?.avatar, 40)}</a>
+          <div class="me-ag-n"><a class="link" href="/agents/${l.agent}/profile"><b>${name}</b></a> <a class="dim" href="/tokens/${l.mint}">${m?.symbol ? `$${m.symbol}` : short(l.mint)}</a>
+            <div class="me-ag-st">${l.awake ? badge("awake", "good") : badge("asleep", "")} ${l.hosted ? (bound ? badge("bound", "good") : rec?.signingKey === null ? badge("key revoked", "bad") : badge("not bound", "warn")) : badge("self-hosted", "info")}${t?.hidden ? badge("hidden from listings", "") : ""}</div></div>
+          <div class="me-ag-act">${btn("me-manage", S.manage === l.agent ? "Close" : "Manage", { data: { agent: l.agent }, primary: S.manage !== l.agent })}</div>
+        </div>
+        <div class="me-ag-bd">${t ? buildingLine(t, { full: true }) : html`<span class="faint">Reading what it is building…</span>`}</div>
+        ${t ? paramCells(t) : ""}
+        <div class="me-ag-f"><span>Compute vault <b id="me-v-${l.agent}"><span class="faint">…</span></b></span><span>GitHub <span id="me-gh-${l.agent}"><span class="faint">…</span></span></span><a class="link" href="/tokens/${l.mint}">Token page</a></div>
+      </article>`;
+    })}</div>`,
   );
   void fillMine(mine);
 }
 
+let mineSeq = 0;
 async function fillMine(mine: AgentLaunch[]) {
+  const seq = ++mineSeq;
+  const missing = mine.filter((l) => !mineRows.has(l.mint));
+  if (missing.length) {
+    await Promise.all(
+      missing.map(async (l) => {
+        const r = await fetch(`/market/tokens/${l.mint}`, { headers: { accept: "application/json" } }).then((x) => (x.ok ? x.json() : null)).catch(() => null);
+        mineRows.set(l.mint, r);
+      }),
+    );
+    if (seq === mineSeq) return renderMine();
+  }
   const vaults = await reader.tokenBalances(mine.map((l) => launchPdas.computeVault(l.agent))).catch(() => mine.map(() => null));
   mine.forEach((l, i) => set(`me-v-${l.agent}`, tl(vaults[i])));
   await Promise.all(
     mine.map(async (l) => {
-      const [id, ss] = await Promise.all([
-        fetch(`/identity/agents/${l.agent}`, { cache: "no-store" }).then((r) => (r.ok ? r.json() : null)).catch(() => null),
-        fetch(`/api/sessions?agent=${l.agent}&limit=1`).then((r) => (r.ok ? r.json() : null)).catch(() => null),
-      ]);
+      const id = await fetch(`/identity/agents/${l.agent}`, { cache: "no-store" }).then((r) => (r.ok ? r.json() : null)).catch(() => null);
       set(`me-gh-${l.agent}`, id ? html`${id.login ? html`<a class="link" href="${id.profile_url}" target="_blank" rel="noopener">${id.login}</a> ` : ""}<span class="dim">${String(id.status).replace(/_/g, " ")}</span>` : html`<span class="faint">TBA</span>`);
-      const s0 = Array.isArray(ss) ? ss[0] : null;
-      set(`me-s-${l.agent}`, s0 ? html`<a class="link" href="/sessions/${s0.session_id}">${s0.session_id.slice(0, 8)}</a> <span class="dim">${s0.state}</span>` : html`<span class="faint">none yet</span>`);
     }),
   );
 }
@@ -2020,11 +2004,6 @@ async function renderManage() {
         <p class="wl-fine" id="me-fund-help">tLINE to the allocation escrow, with a memo naming this agent; the hosted runtime forwards it to the agent's trading treasury, separate from its compute vault.</p>
         <div class="wl-row"><input name="m_alloc" inputmode="decimal" placeholder="tLINE" class="me-in">${btn("me-fund", "Sign and send", { primary: true, data: { agent: l.agent } })}</div>
         <div id="me-fund-out" class="wl-fine"></div>
-      </div>
-      <div class="me-sec"><div class="eyebrow">Fees</div>
-        <p class="wl-fine">Claims the curve's partner fees and splits them: ${S.lc ? `${(S.lc.agentComputeBps / 100).toFixed(2)}%` : "TBA"} to this agent's compute vault, the rest to the protocol treasury. Any wallet may send it.</p>
-        <div class="wl-row">${btn("me-crank", "Crank fees", { data: { mint: l.mint } })}</div>
-        <div id="me-crank-out"></div>
       </div>
     </div>
     <div class="me-sub eyebrow">Signing key, owner and GitHub token</div>
@@ -2215,9 +2194,6 @@ async function onClick(ev: Event) {
         renderMine();
         await renderManage();
         S.root?.querySelector("#me-manage")?.scrollIntoView({ behavior: "smooth", block: "start" });
-        break;
-      case "me-crank":
-        await crank(b.dataset.mint!);
         break;
       case "me-fund": {
         if (!requireReady()) break;

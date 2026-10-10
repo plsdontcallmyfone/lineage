@@ -3,7 +3,11 @@
 // through /launch. chromium-headless-shell via playwright-core from a scratch directory (never a repo
 // dependency, never the owner's browser, no visible window).
 //
-//   --phase ui      at 1280 and 390 px, light and dark: the header, the Eco sidebar open, Explorer,
+//   --phase ui      at 1280 and 390 px, light and dark: the header (amendment 2026-10-10 (2): Explorer,
+//                   Agents, Launch; Eco page; profile icon after connect), Explorer cards with only
+//                   price, market cap, 24h volume, 24h change and what the agent is building, the
+//                   Agents directory and the Eco page without hidden launches, a hidden token marked,
+//                   no fee displays,
 //                   every Launch step (with a mock Wallet Standard wallet; the soul draft is answered
 //                   locally with a real soul document so no model is paid for), Profile connected and
 //                   disconnected, a token page's Commits panel, the docs; no console errors, no
@@ -133,6 +137,12 @@ async function phaseUi() {
   const wallet = loadKeypair(join(KEYS, "app-launch-test.json"));
   const persona = JSON.parse(readFileSync(join(ROOT, "scripts/launch-e2e/STATE.json"), "utf8")).soul_core.doc.persona;
   const { b, context } = await browser(wallet);
+  // the hidden list (Core GET /v1/hidden through the app's /api): listings must leave these out
+  const hid = (await fetch(`${BASE}/api/hidden`).then((r) => r.json()).catch(() => ({ hidden: [] }))).hidden as { mint: string; agent: string | null }[];
+  const hiddenMints = new Set(hid.map((h) => h.mint));
+  const hiddenAgents = new Set(hid.map((h) => h.agent).filter(Boolean) as string[]);
+  const hiddenSample = hid[0]?.mint ?? null;
+  log(`hidden list: ${hid.length} launches`);
   try {
     for (const width of [1280, 390]) {
       for (const dark of [false, true]) {
@@ -149,31 +159,45 @@ async function phaseUi() {
 
         // Explorer and the header
         await page.goto(`${BASE}/`);
-        await page.locator(".ex-card, .ex-empty, .ex-grid").first().waitFor({ timeout: 60_000 });
+        await page.locator(".ex-card, .ex-empty").first().waitFor({ timeout: 60_000 });
         const nav = (await page.locator(".nav a").allInnerTexts()).map((s: string) => s.trim().toLowerCase());
-        check(`${tag} header: Explorer, Launch, Profile; Eco, Connect, theme`, nav.join(",") === "explorer,launch,profile" && (await page.locator("#eco-open").isVisible()) && (await page.locator("#cn-btn").isVisible()) && (await page.locator("#theme").isVisible()), nav.join(","));
+        check(`${tag} header: Explorer, Agents, Launch; Eco, Connect, theme`, nav.join(",") === "explorer,agents,launch" && (await page.locator("a#eco-open[href='/eco']").isVisible()) && (await page.locator("#cn-btn").isVisible()) && (await page.locator("#theme").isVisible()), nav.join(","));
         check(`${tag} explorer is the home at /`, (await page.locator(".nav a[aria-current=page]").innerText()).trim().toLowerCase() === "explorer");
+        const card0 = (await page.locator(".ex-card").first().innerText()).replace(/\s+/g, " ");
+        const labels = (await page.locator(".ex-card").first().locator(".bd-params > div > span").allInnerTexts()).map((x: string) => x.trim().toLowerCase());
+        check(`${tag} explorer card: price, market cap, 24h volume, 24h change and what it is building`, labels.join(",") === "price,market cap,24h volume,24h change" && (await page.locator(".ex-card").first().locator(".bd-building").count()) === 1, `${labels.join(",")} | ${card0.slice(0, 200)}`);
+        const exText = (await page.locator(".ex-grid").innerText()).toLowerCase();
+        check(`${tag} explorer: no fee, model TBA or verified-count rows`, !/fee|model tba|verified/.test(exText));
+        const exMints = await page.locator(".ex-card").evaluateAll((els: Element[]) => els.map((e) => (e as HTMLElement).dataset.mint));
+        check(`${tag} explorer: hidden launches left out`, exMints.length > 0 && !exMints.some((m: string) => hiddenMints.has(m)), `${exMints.length} cards`);
         check(`${tag} explorer: no horizontal scroll`, await noHScroll(page));
         await shot(page, `${tag}-explorer`);
 
-        // Eco
+        // Agents
+        await page.click('.nav a[href="/agents"]');
+        await page.locator(".ag-card, .empty").first().waitFor({ timeout: 60_000 });
+        const agIds = await page.locator(".ag-card").evaluateAll((els: Element[]) => els.map((e) => (e as HTMLElement).dataset.agent));
+        check(`${tag} agents: a directory with avatar, tagline, building, token price and change`, agIds.length > 0 && (await page.locator(".ag-card").first().locator("img.av").count()) >= 1 && (await page.locator(".ag-card").first().locator(".bd-building").count()) === 1 && (await page.locator(".ag-card").first().locator(".ag-chg").count()) === 1, `${agIds.length} agents`);
+        check(`${tag} agents: hidden test agents left out`, !agIds.some((a: string) => hiddenAgents.has(a)));
+        check(`${tag} agents: no horizontal scroll`, await noHScroll(page));
+        await shot(page, `${tag}-agents`);
+
+        // Eco page
         await page.click("#eco-open");
-        await page.locator("#eco.on").waitFor();
-        await page.waitForFunction(() => [...document.querySelectorAll("[data-eco-fig] .num")].every((e) => e.textContent !== "…"), null, { timeout: 30_000 });
-        const figs = await page.locator("[data-eco-fig]").allInnerTexts();
-        check(`${tag} eco sidebar open with live figures`, figs.length === 4 && figs.filter((f: string) => /\d/.test(f)).length >= 3, figs.map((f: string) => f.replace(/\s+/g, " ")).join(" | "));
-        check(`${tag} eco: docs entry links to /docs`, (await page.locator('#eco a[href="/docs"]').count()) === 1);
+        await page.locator(".eco-page").waitFor({ timeout: 60_000 });
+        const secs = await page.locator(".eco-sec").evaluateAll((els: Element[]) => els.map((e) => e.id));
+        check(`${tag} eco page: agents, projects, leaderboard and feed`, ["eco-agents", "eco-projects", "eco-board", "eco-feed"].every((x) => secs.includes(x)) && new URL(page.url()).pathname === "/eco", secs.join(","));
+        const ecoAgents = await page.locator(".eco-page [data-agent], .eco-page a[href^='/agents/']").evaluateAll((els: Element[]) => els.map((e) => (e as HTMLElement).dataset.agent ?? (e.getAttribute("href") ?? "").split("/")[2]));
+        check(`${tag} eco page: hidden test agents left out`, !ecoAgents.some((a: string) => hiddenAgents.has(a)), `${new Set(ecoAgents).size} agents linked`);
+        check(`${tag} eco page: docs entry links to /docs`, (await page.locator('.eco-links a[href="/docs"]').count()) === 1);
+        check(`${tag} eco page: no horizontal scroll`, await noHScroll(page));
         await shot(page, `${tag}-eco`);
-        await page.keyboard.press("Escape");
-        check(`${tag} eco closes on Esc`, !(await page.locator("#eco.on").count()));
-        await page.click("#eco-open");
-        await page.locator("#eco.on").waitFor();
-        if (width > 600) {
-          await page.mouse.click(100, 500);
-          check(`${tag} eco closes on an outside click`, !(await page.locator("#eco.on").count()));
-        } else {
-          await page.click(".eco-x");
-          check(`${tag} eco closes with its button (full-height sheet on phones)`, !(await page.locator("#eco.on").count()));
+
+        // a hidden launch still resolves by direct link, marked
+        if (hiddenSample) {
+          await page.goto(`${BASE}/tokens/${hiddenSample}`);
+          await page.locator(".mk-statspanel").waitFor({ timeout: 60_000 });
+          check(`${tag} hidden token page resolves, marked hidden from listings`, /Hidden from listings/.test(await page.locator(".bd-hidden").innerText().catch(() => "")));
         }
 
         // Profile, disconnected
@@ -185,11 +209,12 @@ async function phaseUi() {
         // Connect from the header
         await page.click("#cn-btn");
         await page.locator("#cn-btn.on").waitFor({ timeout: 20_000 });
-        check(`${tag} connect: short address in the header`, (await page.locator("#cn-btn").innerText()).includes(wallet.id.slice(0, 4)));
-        await page.locator(".me-agents").waitFor({ timeout: 90_000 });
+        check(`${tag} connect: the button becomes a profile icon`, (await page.locator("#cn-btn.on img.cn-av").count()) === 1 && (await page.locator("#cn-btn").getAttribute("aria-label") ?? "").includes(wallet.id.slice(0, 4)));
+        await page.locator(".me-agents .me-ag").first().waitFor({ timeout: 90_000 });
         await page.waitForFunction(() => !document.querySelector(".wl-bal")?.textContent?.includes("TBA"), null, { timeout: 60_000 }).catch(() => {});
-        const mine = await page.locator(".me-agents tbody tr").count();
-        check(`${tag} profile connected: balances and my agents`, (await page.locator(".wl-bal").count()) === 1 && mine >= 1, `${mine} agents`);
+        await page.locator(".me-ag .bd-building").first().waitFor({ timeout: 60_000 });
+        const mine = await page.locator(".me-ag").count();
+        check(`${tag} profile connected: my agents first, each with what it is building and its token figures`, (await page.locator(".wl-bal").count()) === 1 && mine >= 1 && (await page.locator(".me-ag .bd-params").count()) >= 1, `${mine} agents`);
         await page.locator("#w-hold table, #w-hold [data-none]").first().waitFor({ timeout: 60_000 });
         await page.locator("#w-follow .me-follow, #w-follow [data-none]").first().waitFor({ timeout: 30_000 });
         check(`${tag} profile: no horizontal scroll`, await noHScroll(page));
@@ -197,7 +222,8 @@ async function phaseUi() {
         await page.locator('[data-act="me-manage"]').first().click();
         await page.locator("#me-manage:not([hidden]) #w-id .kv").first().waitFor({ timeout: 60_000 });
         await page.locator("#w-gh .kv, #w-gh .wl-fine").first().waitFor({ timeout: 30_000 }).catch(() => {});
-        check(`${tag} profile manage: images, fund trading, fees, signing key and GitHub token`, (await page.locator('[data-me-up="avatar"]').count()) === 1 && (await page.locator('[data-act="me-fund"]').count()) === 1 && (await page.locator('[data-act="me-crank"]').count()) === 1 && (await page.locator("#w-id .kv").count()) >= 1);
+        check(`${tag} profile manage: images, fund trading, signing key and GitHub token; no fee crank`, (await page.locator('[data-me-up="avatar"]').count()) === 1 && (await page.locator('[data-act="me-fund"]').count()) === 1 && (await page.locator('[data-act="me-crank"]').count()) === 0 && (await page.locator("#w-id .kv").count()) >= 1);
+        check(`${tag} profile: no fee rows`, !/fees? (claimed|to compute|split)|crank/i.test(await page.locator("#me-signed").innerText()));
         await shot(page, `${tag}-profile-manage`);
         // the connection persists across a reload
         await page.reload();
@@ -205,7 +231,7 @@ async function phaseUi() {
         check(`${tag} connection persists across a reload`, true);
         await page.click("#cn-btn");
         const menu = (await page.locator("#cn-menu").innerText()).replace(/\s+/g, " ");
-        check(`${tag} connected menu: Profile, Copy address, Disconnect`, /Profile/.test(menu) && /Copy address/.test(menu) && /Disconnect/.test(menu), menu);
+        check(`${tag} connected menu: My profile, Copy address, Disconnect`, /My profile/.test(menu) && /Copy address/.test(menu) && /Disconnect/.test(menu), menu);
         await shot(page, `${tag}-connect-menu`);
         await page.keyboard.press("Escape");
 
@@ -248,7 +274,7 @@ async function phaseUi() {
         await page.locator("#w-fees .wl-params").waitFor({ timeout: 30_000 });
         await page.locator("#w-prepay b.num").first().waitFor({ timeout: 30_000 });
         const fund = (await page.locator('[data-step="4"]').innerText()).replace(/\s+/g, " ");
-        check(`${tag} launch step 5: 10 USD default, first-run budget, fee split from chain`, (await page.locator('[name="l_deposit"]').inputValue()) === "10" && /First-run budget/.test(fund) && /compute vault/.test(fund), fund.slice(0, 240));
+        check(`${tag} launch step 5: 10 USD default, first-run budget, launch parameters from chain, no fee split`, (await page.locator('[name="l_deposit"]').inputValue()) === "10" && /First-run budget/.test(fund) && /agent wakes at/.test(fund) && !/fee split|treasury/i.test(fund), fund.slice(0, 240));
         await shot(page, `${tag}-launch-5-funding`);
         const nextOk = await page.locator('[data-act="lz-next"]:not([disabled])').count();
         if (!nextOk) check(`${tag} launch step 5: Next`, false, await page.locator(".lz-why").innerText().catch(() => ""));
@@ -271,6 +297,9 @@ async function phaseUi() {
         check(`${tag} token page: Commits panel with the Verified commit and the repo link`, /d02114a/.test(cm) && /Verified/.test(cm) && repoHref === "https://github.com/agwyus9p/base58" && (await page.locator('.cm-panel a[href^="/generations/"]').count()) > 0, cm.slice(0, 220));
         const tb = await page.locator(".mk-tb-acct").waitFor({ timeout: 90_000 }).then(() => true, () => false);
         check(`${tag} token page: trade box uses the header's connection`, tb && (await page.locator(".mk-tb-acct").innerText()).includes(wallet.id.slice(0, 4)));
+        const stl = (await page.locator(".mk-stats .stat .eyebrow").allInnerTexts()).map((x: string) => x.trim().toLowerCase());
+        check(`${tag} token page: price, market cap, 24h volume, 24h change and what the agent is building`, stl.join(",") === "price,market cap,24h volume,24h change" && (await page.locator(".mk-buildpanel .bd-building").count()) === 1, stl.join(","));
+        check(`${tag} token page: no fee history or fee panel`, !/fee history|fees and compute|fees to compute|crank/i.test(await page.locator("#main").innerText()));
         check(`${tag} token page: no horizontal scroll`, await noHScroll(page));
         await shot(page, `${tag}-token-commits`);
 
@@ -286,7 +315,7 @@ async function phaseUi() {
         await shot(page, `${tag}-docs`);
 
         // removed routes
-        for (const [from, to] of [["/network", "/"], ["/live", "/"], ["/wallet", "/profile"], ["/spawn", "/launch"], ["/manual", "/docs"]]) {
+        for (const [from, to] of [["/network", "/"], ["/live", "/"], ["/tokens", "/"], ["/wallet", "/profile"], ["/spawn", "/launch"], ["/manual", "/docs"]]) {
           await page.goto(`${BASE}${from}`);
           check(`${tag} ${from} redirects to ${to}`, new URL(page.url()).pathname === to, page.url());
         }

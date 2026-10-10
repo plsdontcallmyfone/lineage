@@ -3,9 +3,10 @@ import { mountCharts } from "./chart.ts";
 import { ago, dur } from "./fmt.ts";
 import { esc, html } from "./html.ts";
 import { live, MAX_FEED } from "./live.ts";
-import { closeEco, ecoHtml, toggleEco } from "./eco.ts";
 import { connectHtml, wireConnect } from "./connect.ts";
-import { agentPage, agentsPage } from "./pages/agents.ts";
+import { agentPage } from "./pages/agents.ts";
+import { directoryPage } from "./pages/directory.ts";
+import { ecoPage } from "./pages/eco.ts";
 import { agentProfilePage } from "./pages/agent-profile.ts";
 import { feedPage, followingPage } from "./pages/feed.ts";
 import { leaderboardPage } from "./pages/leaderboard.ts";
@@ -16,7 +17,6 @@ import { generationPage } from "./pages/generation.ts";
 import { lineagePage } from "./pages/lineage.ts";
 import { sessionPage, sessionsPage } from "./pages/session.ts";
 import { tokenPage } from "./pages/token.ts";
-import { tokensPage } from "./pages/tokens.ts";
 import { tradingAgentPage, tradingPage } from "./pages/trading.ts";
 import { machinesPage } from "./pages/machines.ts";
 import { launchPage } from "./pages/launch.ts";
@@ -28,33 +28,35 @@ import { icon, logo } from "./ui.ts";
 // routing
 
 type Handler = (params: string[]) => Promise<Page>;
-// The header has three destinations (Explorer, Launch, Profile); everything else is a deep link from
-// them or an entry of the Eco sidebar. The third column is the header item a page lights up.
+// The header (APP-CONSOLIDATION.md, amendment 2026-10-10 (2)): Explorer, Agents and Launch on the left,
+// Eco (the ecosystem page) and Connect on the right; after connecting, Connect becomes a profile icon
+// whose menu opens /profile. Everything else is a deep link from those pages. The third column is the
+// header item a page lights up.
 const routes: [RegExp, Handler, string][] = [
   [/^\/$/, explorerPage, "/"],
+  [/^\/agents$/, directoryPage, "/agents"],
   [/^\/launch$/, launchPage, "/launch"],
-  [/^\/profile$/, profilePage, "/profile"],
+  [/^\/eco$/, ecoPage, "/eco"],
+  [/^\/profile$/, profilePage, ""],
   [/^\/lineages\/([0-9a-f]{64})$/, lineagePage, "/"],
   [/^\/generations\/([0-9a-f]{64})$/, generationPage, "/"],
   [/^\/candidates\/([0-9a-f]{64})$/, candidatePage, "/"],
-  [/^\/agents$/, agentsPage, ""],
-  [/^\/agents\/([1-9A-HJ-NP-Za-km-z]{32,44})$/, agentPage, "/"],
-  [/^\/agents\/([1-9A-HJ-NP-Za-km-z]{32,44})\/profile$/, agentProfilePage, "/"],
-  [/^\/leaderboard$/, leaderboardPage, ""],
-  [/^\/feed$/, feedPage, ""],
-  [/^\/following$/, followingPage, ""],
-  [/^\/epochs$/, epochsPage, ""],
-  [/^\/epochs\/(\d+)$/, epochsPage, ""],
+  [/^\/agents\/([1-9A-HJ-NP-Za-km-z]{32,44})$/, agentPage, "/agents"],
+  [/^\/agents\/([1-9A-HJ-NP-Za-km-z]{32,44})\/profile$/, agentProfilePage, "/agents"],
+  [/^\/leaderboard$/, leaderboardPage, "/eco"],
+  [/^\/feed$/, feedPage, "/eco"],
+  [/^\/following$/, followingPage, "/eco"],
+  [/^\/epochs$/, epochsPage, "/eco"],
+  [/^\/epochs\/(\d+)$/, epochsPage, "/eco"],
   [/^\/sessions$/, sessionsPage, "/"],
   [/^\/(?:sessions|live\/agent)\/([0-9a-f]{64})$/, sessionPage, "/"],
-  [/^\/tokens$/, tokensPage, "/"],
   [/^\/tokens\/([1-9A-HJ-NP-Za-km-z]{32,44})$/, tokenPage, "/"],
-  [/^\/trading$/, tradingPage, ""],
-  [/^\/trading\/([1-9A-HJ-NP-Za-km-z]{32,44})$/, tradingAgentPage, ""],
-  [/^\/machines$/, machinesPage, ""],
+  [/^\/trading$/, tradingPage, "/eco"],
+  [/^\/trading\/([1-9A-HJ-NP-Za-km-z]{32,44})$/, tradingAgentPage, "/eco"],
+  [/^\/machines$/, machinesPage, "/eco"],
 ];
 /** Removed pages (app consolidation): each goes to what replaced it. The server answers the same with a 302. */
-export const REDIRECTS: Record<string, string> = { "/network": "/", "/live": "/", "/explorer": "/", "/wallet": "/profile", "/spawn": "/launch", "/manual": "/docs" };
+export const REDIRECTS: Record<string, string> = { "/network": "/", "/live": "/", "/explorer": "/", "/tokens": "/", "/wallet": "/profile", "/spawn": "/launch", "/manual": "/docs" };
 /** Selected tab per [data-tabs] group, kept across background re-renders. */
 const tabState = new Map<string, string>();
 let pollTimer: ReturnType<typeof setInterval> | null = null;
@@ -69,17 +71,16 @@ function shell() {
       <a class="brand" href="/">${logo}<span>Lineage</span><span class="ph">placeholder name</span></a>
       <nav class="nav" aria-label="Main">
         <a href="/" data-nav="/">Explorer</a>
+        <a href="/agents" data-nav="/agents">Agents</a>
         <a href="/launch" data-nav="/launch">Launch</a>
-        <a href="/profile" data-nav="/profile">Profile</a>
       </nav>
       <div class="top-right">
-        <button type="button" class="eco-btn" id="eco-open" aria-expanded="false" aria-controls="eco"><i class="eco-dot" id="live" data-s="${live.upstream}" title="Core event stream"></i>Eco</button>
+        <a class="eco-btn" id="eco-open" href="/eco" data-nav="/eco"><i class="eco-dot" id="live" data-s="${live.upstream}" title="Core event stream"></i>Eco</a>
         ${connectHtml()}
         <button class="iconbtn" id="theme" type="button" aria-label="Toggle colour theme">${icon.moon}</button>
       </div>
     </div></header>
     <main id="main" aria-live="polite"></main>
-    ${ecoHtml()}
     <footer class="foot"><span>Every figure is read from Core, the market indexer or devnet; values none of them holds show as TBA.</span><span>Token amounts in $LINE (placeholder), formatted with token_decimals from <span class="num">GET /v1/config</span>.</span><span id="core-url"></span></footer>`.s;
   updateThemeIcon();
   wireConnect(document.getElementById("cn")!);
@@ -305,8 +306,6 @@ document.addEventListener("click", (ev) => {
     );
     return;
   }
-  if (t.closest("#eco-open")) return toggleEco();
-  if (t.closest("[data-eco-close]")) return closeEco();
   if (ev.defaultPrevented || ev.button !== 0 || ev.metaKey || ev.ctrlKey || ev.shiftKey || ev.altKey) return;
   const a = t.closest<HTMLAnchorElement>("a[href]");
   if (a) {
@@ -314,7 +313,6 @@ document.addEventListener("click", (ev) => {
     // /docs is a separate static site (apps/docs): a full page load, outside the app shell
     if (url.origin === location.origin && !a.target && !url.pathname.startsWith("/api/") && !/^\/(docs|embed|assets)(\/|$)/.test(url.pathname)) {
       ev.preventDefault();
-      if (a.closest("#eco")) closeEco();
       if (url.pathname !== location.pathname) navigate(url.pathname + url.hash);
       else if (url.hash) {
         history.replaceState(null, "", url.hash);
@@ -349,9 +347,6 @@ document.addEventListener("mousemove", (ev) => {
 
 setInterval(tickTimes, 1000);
 
-document.addEventListener("keydown", (ev) => {
-  if (ev.key === "Escape") closeEco();
-});
 
 let rz: ReturnType<typeof setTimeout> | null = null;
 window.addEventListener("resize", () => {
