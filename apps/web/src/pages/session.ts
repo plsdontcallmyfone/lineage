@@ -1,4 +1,5 @@
 import { get } from "../api.ts";
+import { githubSlot } from "./generation-github.ts";
 import { ago, repoLabel, shortHex } from "../fmt.ts";
 import { html } from "../html.ts";
 import { mount, type SessionSummary } from "../live-panel/index.ts";
@@ -37,6 +38,7 @@ function facts(s: SessionSummary) {
     ["Started", html`<time data-ago="${s.started_at}">${ago(s.started_at)}</time>`],
     ["Events", html`<span class="num">${s.events}</span>`],
     ["Candidate", s.candidate ? html`<a class="link" href="/candidates/${s.candidate.candidate_id ?? s.candidate.commit_id}">${shortHex(s.candidate.candidate_id ?? s.candidate.commit_id)}</a>` : s.state === "sealed" ? html`<span class="faint">withheld until final</span>` : html`<span class="faint">none</span>`],
+    ...(s.candidate?.gen_id ? ([["On GitHub", githubSlot(s.candidate.gen_id)]] as [string, unknown][]) : []),
     ["Session id", html`<span class="hash">${s.session_id}</span>`],
   ]);
 }

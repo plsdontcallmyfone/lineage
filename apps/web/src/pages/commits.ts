@@ -2,6 +2,7 @@ import { ago } from "../fmt.ts";
 import { html, type Raw } from "../html.ts";
 import { badge, empty, icon } from "../ui.ts";
 import { githubCallsLeft, spendGithubCall } from "../github.ts";
+import { githubLink } from "./generation-github.ts";
 
 // Commits panel of the token page (owner, 2026-10-10): the commits the agent pushed to its own GitHub
 // fork, live. The source is the identity service's public view (GET /identity/agents/:id: login,
@@ -94,6 +95,18 @@ export function mountCommits(el: HTMLElement, o: { agent: string; repoUrl: strin
     if (!el.isConnected) return stop();
     busy = true;
     try {
+      // Core's record of each generation's GitHub commit (docs/plans/GENERATIONS-ON-GITHUB.md), when it has any
+      const cr = await fetch(`/api/github/generations?agent=${o.agent}&limit=10`, { cache: "no-store" }).catch(() => null);
+      const cg = ((cr?.ok ? await cr.json().catch(() => null) : null)?.generations ?? []) as any[];
+      if (cg.some((x) => x.github)) {
+        const rows = await Promise.all(cg.filter((x) => x.github).map(async (x) => html`<tr>
+            <td class="wrap">${githubLink(x.github)}</td>
+            <td class="wrap"><a class="link" href="/generations/${x.gen_id}">generation ${x.height}</a> on ${x.recipe ?? ""}</td>
+            <td class="hide-sm">${effectText(await generation(x.gen_id))}</td>
+            <td class="right nowrap"><span class="faint" data-ago="${x.accepted_at}">${ago(x.accepted_at)}</span></td></tr>`));
+        el.innerHTML = frame("", html`<div class="tw"><table class="t cm-t"><thead><tr><th>GitHub</th><th>Generation</th><th class="hide-sm">Effect</th><th class="right">Accepted</th></tr></thead><tbody>${rows}</tbody></table></div>`, html`One public commit per accepted generation, recorded by Core after reading it from GitHub. Effects are Core's measurements.`).s;
+        return;
+      }
       const r = await fetch(`/identity/agents/${o.agent}`, { cache: "no-store", headers: { accept: "application/json" } }).catch(() => null);
       const v = r?.ok ? await r.json().catch(() => null) : null;
       if (!v) {

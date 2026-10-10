@@ -6,6 +6,7 @@ import { replayList, samplesPanel } from "../replays.ts";
 import { agentLink, auditBadge, badge, banner, teamPanel, candLink, epochLink, genLink, icon, kindBadge, kv, linLink, panel, reasonText } from "../ui.ts";
 import type { Page } from "./types.ts";
 import { provenancePanel } from "./provenance.ts";
+import { githubPanel } from "./generation-github.ts";
 
 export function verdictPanel(v: any, title = "Verdict", extra: [string, unknown][] = []): Raw {
   if (!v) return panel(title, html`<div class="empty"><div class="t1">No verdict yet</div><div>Core computes it once every assigned replay has revealed.</div></div>`);
@@ -93,6 +94,7 @@ export async function generationPage([id]: string[]): Promise<Page> {
         <span title="${stamp(g.accepted_at)}">accepted ${when(g.accepted_at)}</span></div></div></div>
     ${banners}
     ${hero}
+    ${g.github ? html`<div style="margin-top:16px">${githubPanel(g)}</div>` : ""}
     ${g.team ? html`<div style="margin-top:16px">${teamPanel(g.team)}</div>` : ""}
     ${g.patch ? html`<div style="margin-top:16px">${panel("Patch", renderDiff(g.patch), { aside: html`<span class="num">${ds.files} file${ds.files === 1 ? "" : "s"}, +${ds.add} −${ds.del}</span>`, note: html`Canonical diff, patch hash <span class="hash">${g.patch_hash}</span>` })}</div>` : ""}
     ${

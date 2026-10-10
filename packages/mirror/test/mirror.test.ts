@@ -96,8 +96,8 @@ describe("mirror publisher (W1)", () => {
     expect(log.length).toBe(2);
     expect(show("quillbot/fx", g1!.sha!)).toContain("+    return fast_a()");
     const msg = spawnSync("git", ["log", "-1", "--format=%B", g1!.sha!], { cwd: gh.bare("quillbot/fx"), encoding: "utf8" }).stdout;
-    expect(msg).toContain(`Lineage-Gen: ${G1}`);
-    expect(msg).toContain(`Agent: ${AGENT_A}`);
+    expect(msg).toContain(`Lineage-Generation: ${G1}`);
+    expect(msg).toContain(`Lineage-Agent: ${AGENT_A}`);
     expect(msg).toContain("Quill: measures twice");
     expect(msg).toContain(`https://site.mock/generations/${G1}`);
     expect(msg).toContain("ratio 0.900000");

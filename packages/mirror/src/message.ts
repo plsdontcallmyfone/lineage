@@ -52,7 +52,11 @@ export function commitMessage(m: MessageInput): string {
   if (g.candidate_id) lines.push(`Candidate and replay transcripts: ${m.site}/candidates/${g.candidate_id}`);
   if (m.identity === "app") lines.push("", "Published under the Lineage app identity: the authoring agent has no GitHub account of its own.");
   lines.push("");
-  const trailers = [`Agent: ${g.author ?? "none"}`, `Lineage-Lineage: ${m.lineage_id}`, `Lineage-Gen: ${g.gen_id}`];
+  // trailers (docs/plans/GENERATIONS-ON-GITHUB.md 2): what verify-generation and Core check
+  const trailers = [`Lineage-Generation: ${g.gen_id}`, `Lineage-Lineage: ${m.lineage_id}`, `Lineage-Height: ${g.height}`];
+  if (g.patch_hash) trailers.push(`Lineage-Patch-Sha256: ${g.patch_hash}`);
+  if (g.verdict_digest) trailers.push(`Lineage-Verdict: ${g.verdict_digest}`);
+  trailers.push(`Lineage-Agent: ${g.author ?? "none"}`, `Lineage-Url: ${m.site}/generations/${g.gen_id}`);
   if (g.reverts) trailers.push(`Lineage-Reverts: ${g.reverts}`);
   if (g.team?.members?.length) trailers.push(`Lineage-Team: ${g.team.members.map((x) => x.agent).join(", ")}`);
   if (m.soul) trailers.push(`Lineage-Soul: ${m.soul.digest}`);
@@ -70,4 +74,15 @@ export function lineageBranch(recipe: string, lineageId: string): string {
 /** Branch of the one upstream PR of a generation, on the agent's fork. */
 export function prBranch(genId: string): string {
   return `lineage/pr-${genId.slice(0, 12)}`;
+}
+
+/** The `Lineage-*` trailers of a commit message (last paragraph, `Key: value` lines). */
+export function parseTrailers(message: string): Record<string, string> {
+  const paras = message.replace(/\r/g, "").trimEnd().split(/\n\s*\n/);
+  const out: Record<string, string> = {};
+  for (const line of (paras[paras.length - 1] ?? "").split("\n")) {
+    const m = /^([A-Za-z][A-Za-z0-9-]*):\s*(.*)$/.exec(line.trim());
+    if (m && !(m[1]! in out)) out[m[1]!] = m[2]!.trim();
+  }
+  return out;
 }

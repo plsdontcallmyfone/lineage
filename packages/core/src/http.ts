@@ -7,6 +7,7 @@ import { recipeProposalsOf } from "./recipe-proposals.ts";
 import { linksOf } from "./links.ts";
 import { prepayOf } from "./prepay.ts";
 import { upstreamOf } from "./upstream.ts";
+import { genGithubOf } from "./gen-github.ts";
 import { erc8004Of } from "./erc8004.ts";
 import { sessionsOf } from "./sessions.ts";
 import { journalOf } from "./journal.ts";
@@ -170,7 +171,10 @@ export function buildRoutes(core: Core): Route[] {
         .listActivity({ lineage: q(c, "lineage"), agent: q(c, "agent"), since: int(c, "since"), limit: int(c, "limit") }, c.agent)
         .filter((e) => !e.agent || !off.has(e.agent));
     }),
-    route("GET", "/v1/generations/:id", "none", (c) => core.generationView(c.params.id!)),
+    route("GET", "/v1/generations/:id", "none", (c) => ({ ...core.generationView(c.params.id!), github: genGithubOf(core).view(c.params.id!) })),
+    // generations on GitHub (docs/plans/GENERATIONS-ON-GITHUB.md 3): the identity cycle records, Core checks on GitHub
+    route("GET", "/v1/github/generations", "none", (c) => genGithubOf(core).list({ agent: q(c, "agent"), lineage: q(c, "lineage"), limit: int(c, "limit") })),
+    route("POST", "/v1/github/generations", "runtime", (c) => genGithubOf(core).record(c.json())),
     // authoring sessions (SPEC 17.3, src/sessions.ts): navigation live, edit contents gated
     route("GET", "/v1/sessions", "optional", (c) =>
       core.tx(() => {

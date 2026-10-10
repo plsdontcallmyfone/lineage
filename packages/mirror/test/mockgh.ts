@@ -85,7 +85,7 @@ export class MockGitHub {
 
   private allowedSigners(): string {
     const f = join(this.root, "_allowed_signers");
-    writeFileSync(f, this.users.map((u) => `${u.id}+${u.login}@users.noreply.github.com ${u.signingKey}`).join("\n") + "\n");
+    writeFileSync(f, this.users.filter((u) => u.signingKey).map((u) => `${u.id}+${u.login}@users.noreply.github.com ${u.signingKey}`).join("\n") + "\n");
     return f;
   }
 
@@ -98,12 +98,24 @@ export class MockGitHub {
     const json = (d: unknown, status = 200) => new Response(JSON.stringify(d), { status, headers: { "content-type": "application/json" } });
     const nf = () => json({ message: "Not Found" }, 404);
     let m: RegExpExecArray | null;
-    if (!me) return json({ message: "Bad credentials" }, 401);
+    // public reads (verify-generation runs without a token)
+    const anonymous = method === "GET" && /^\/repos\/[^/]+\/[^/]+\/commits\/[0-9a-f]{40}$/.test(path);
+    if (!me && !anonymous) return json({ message: "Bad credentials" }, 401);
+    if (me && path === "/user" && method === "GET") return json({ login: me.login, id: me.id }, 200);
+    if (me && path === "/user/ssh_signing_keys" && method === "GET") return json(me.signingKey ? [{ id: me.id * 10, title: "key", key: me.signingKey }] : []);
+    if (me && path === "/user/ssh_signing_keys" && method === "POST") {
+      me.signingKey = String(JSON.parse(String(init?.body ?? "{}")).key ?? "");
+      return json({ id: me.id * 10 }, 201);
+    }
+    if (me && /^\/user\/ssh_signing_keys\/\d+$/.test(path) && method === "DELETE") {
+      me.signingKey = "";
+      return new Response(null, { status: 204 });
+    }
 
     if ((m = /^\/repos\/([^/]+\/[^/]+)\/forks$/.exec(path)) && method === "POST") {
       const up = m[1]!;
       if (!existsSync(this.bare(up))) return nf();
-      const fork = `${me.login}/${up.split("/")[1]}`;
+      const fork = `${me!.login}/${up.split("/")[1]}`;
       if (!existsSync(this.bare(fork))) {
         mkdirSync(join(this.bare(fork), ".."), { recursive: true });
         sh(this.root, ["clone", "-q", "--bare", this.bare(up), this.bare(fork)]);
@@ -135,7 +147,8 @@ export class MockGitHub {
         verification = ok ? { verified: true, reason: "valid" } : { verified: false, reason: "unknown_key" };
       }
       const files = this.commitFiles(bare, m[2]!);
-      return json({ sha: m[2], html_url: `https://github.com/${m[1]}/commit/${m[2]}`, commit: { verification, message: sh(bare, ["log", "-1", "--format=%B", m[2]!]).out }, files });
+      const parents = sh(bare, ["log", "-1", "--format=%P", m[2]!]).out.split(" ").filter(Boolean).map((sha) => ({ sha }));
+      return json({ sha: m[2], html_url: `https://github.com/${m[1]}/commit/${m[2]}`, parents, commit: { verification, message: sh(bare, ["log", "-1", "--format=%B", m[2]!]).out }, files });
     }
     if ((m = /^\/repos\/([^/]+\/[^/]+)\/commits$/.exec(path))) {
       const bare = this.bare(m[1]!);
@@ -149,7 +162,7 @@ export class MockGitHub {
     }
     if ((m = /^\/repos\/([^/]+\/[^/]+)\/pulls$/.exec(path)) && method === "POST") {
       const body = JSON.parse(String(init?.body ?? "{}"));
-      const pr: MockPull = { number: this.pulls.length + 1, repo: m[1]!, head: body.head, base: body.base, title: body.title, body: body.body, state: "open", merged: false, user: me.login };
+      const pr: MockPull = { number: this.pulls.length + 1, repo: m[1]!, head: body.head, base: body.base, title: body.title, body: body.body, state: "open", merged: false, user: me!.login };
       this.pulls.push(pr);
       return json(this.pullJson(pr), 201);
     }
