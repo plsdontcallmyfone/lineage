@@ -4,6 +4,8 @@
 // scheme="light" on an element forces one. The default face is a sans stack (never monospace); set
 // --lineage-font: inherit to take the host page's font.
 
+import { BUILDING_CSS } from "../../../apps/web/src/building.ts";
+
 const LIGHT = `--_bg: var(--lineage-bg, #fbfaf8); --_fg: var(--lineage-fg, #1c1b19); --_muted: var(--lineage-muted, #6b665f); --_accent: var(--lineage-accent, #d9561a);`;
 const DARK = `--_bg: var(--lineage-bg, #121211); --_fg: var(--lineage-fg, #ecebe8); --_muted: var(--lineage-muted, #9d978f); --_accent: var(--lineage-accent, #ff7a2e);`;
 
@@ -221,4 +223,24 @@ export const PALETTE = `
 .it .d { color: var(--dim); font-size: 12.5px; margin-left: auto; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .trig { display: inline-flex; align-items: center; gap: 8px; height: 32px; padding: 0 12px; border-radius: 16px; border: 1px solid var(--_line); background: var(--_panel); cursor: pointer; font-size: 12.5px; }
 .trig kbd { font: inherit; font-size: 11px; padding: 1px 5px; border-radius: 4px; border: 1px solid var(--_line); color: var(--dim); }
+`;
+
+/* Token parameters (price, market cap, 24h volume, 24h change) and what the agent is building: the
+   app's own bd- markup and styles (apps/web/src/building.ts), with the app's colour tokens mapped onto
+   the kit's. */
+export const PARAMS = `
+:host { --tp: var(--_fg); --ts: color-mix(in oklab, var(--_fg) 78%, var(--_bg)); --tt: var(--dim); --ac: var(--_accent); --bg2: var(--_panel); --border: var(--_line); --sans: var(--_font); }
+${BUILDING_CSS}
+.bd-live { color: var(--_accent); }
+.mk-chg.up { color: var(--good); } .mk-chg.down { color: var(--bad); }
+.params .bd-params { padding: 10px 12px; border: 1px solid var(--_line); border-radius: var(--_radius); background: var(--_panel); }
+.card .meta { grid-template-columns: minmax(0, 1fr); }
+.card .meta > *, .params, .building { min-width: 0; }
+.card .params .bd-params { grid-template-columns: repeat(2, minmax(0, 1fr)); row-gap: 8px; padding: 0; border: 0; background: none; }
+.card .bd-params b { font-size: 13px; }
+.card .building { font-size: 12px; }
+.building .bd-building { font-size: 12.5px; }
+.thead .params { margin-top: 2px; }
+section > .building { margin-bottom: 10px; }
+.tokstats { display: grid; gap: 10px; }
 `;

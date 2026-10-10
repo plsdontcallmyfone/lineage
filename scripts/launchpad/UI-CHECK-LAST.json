@@ -1,66 +1,86 @@
 {
-  "at": "2026-10-09T16:23:16.610Z",
-  "web": "http://127.0.0.1:9663",
-  "market": "http://127.0.0.1:9668",
+  "at": "2026-10-10T13:59:25.744Z",
+  "web": "https://157-245-71-188.sslip.io",
+  "market": "https://157-245-71-188.sslip.io",
   "mints": [
     "AbBT1Mh3mQJgMfVVfKj8zUZhD4mLw5NqbJptFUacb9Zz",
     "3AvZ77ZdVPx7yxtqA4UP11DoaPdjdgP3AUbkSnidsmY4"
   ],
-  "pass": 124,
-  "total": 124,
+  "pass": 140,
+  "total": 152,
   "results": [
     {
-      "check": "/tokens 1280 light: one row per indexed token",
+      "check": "/ 1280 light: one card per listed token",
       "ok": true,
-      "detail": "34 rows, 34 tokens"
+      "detail": "5 cards, 5 tokens"
     },
     {
-      "check": "/tokens 1280 light: sorted by market_cap as the indexer sorts (market_cap)",
+      "check": "/ 1280 light: sorted by newest as the indexer sorts",
       "ok": true,
-      "detail": "AbBT1Mh3mQJgMfVVfKj8zUZhD4mLw5NqbJptFUacb9Zz,3AvZ77ZdVPx7yxtqA4UP11DoaPdjdgP3AUbkSnidsmY4,9vgxbHXpDQAvnzLUxsAhS7fMhw37ow4qdS1WAW5Nqoyk"
+      "detail": "52PNQS,A8YeMN,2QLZMM"
     },
     {
-      "check": "/tokens 1280 light: sorted by volume as the indexer sorts (volume_24h)",
+      "check": "/ 1280 light: sorted by volume as the indexer sorts",
       "ok": true,
-      "detail": "AbBT1Mh3mQJgMfVVfKj8zUZhD4mLw5NqbJptFUacb9Zz,3AvZ77ZdVPx7yxtqA4UP11DoaPdjdgP3AUbkSnidsmY4,1wj1WJDaGugaSwEvPL9aSZ4okmAQ9shLjyC4e7d1Dhb"
+      "detail": "2QLZMM,3AvZ77,A8YeMN"
     },
     {
-      "check": "/tokens 1280 light: sorted by newest as the indexer sorts (created_at)",
+      "check": "/ 1280 light: sorted by change as the indexer sorts",
       "ok": true,
-      "detail": "8rU2Nb8KbdLBedycnRauCunVGWrCVUN5on2XUiYP6maV,785uP7E9DLoJZBVnMovGzGnQCoXrL6uBSphnhETdX2qf,D5zwa5RooWojRxfExaavxAW3DbcBgiZkqPBpgdFiBcyt"
+      "detail": "2QLZMM,3AvZ77,A8YeMN"
     },
     {
-      "check": "/tokens 1280 light: sorted by progress as the indexer sorts (curve_progress)",
+      "check": "/ 1280 light: sorted by market_cap as the indexer sorts",
       "ok": true,
-      "detail": "AbBT1Mh3mQJgMfVVfKj8zUZhD4mLw5NqbJptFUacb9Zz,3AvZ77ZdVPx7yxtqA4UP11DoaPdjdgP3AUbkSnidsmY4,9vgxbHXpDQAvnzLUxsAhS7fMhw37ow4qdS1WAW5Nqoyk"
+      "detail": "3AvZ77,9vgxbH,2QLZMM"
     },
     {
-      "check": "/tokens 1280 light row AbBT1M: 6 figures equal the indexer's",
-      "ok": true,
-      "detail": ""
-    },
-    {
-      "check": "/tokens 1280 light row 3AvZ77: 6 figures equal the indexer's",
+      "check": "/ 1280 light: cards show only price, market cap, 24h volume, 24h change and what the agent is building, equal to the indexer's",
       "ok": true,
       "detail": ""
     },
     {
-      "check": "/tokens 1280 light: no horizontal page scroll",
+      "check": "/ 1280 light: no fee figure, fee split or compute vault",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "/ 1280 light: no horizontal page scroll",
       "ok": true,
       "detail": "scrollWidth 1280, body 1280, viewport 1280"
     },
     {
-      "check": "/tokens 1280 light: no monospace text",
+      "check": "/ 1280 light: no monospace text",
+      "ok": false,
+      "detail": "SPAN., SPAN.ph, A., A., A."
+    },
+    {
+      "check": "/ 1280 light: no console errors or failed requests",
       "ok": true,
       "detail": ""
     },
     {
-      "check": "/tokens 1280 light: no console errors or failed requests",
+      "check": "/tokens/AbBT1M 1280 light: 8 figures equal the indexer's",
       "ok": true,
       "detail": ""
     },
     {
-      "check": "/tokens/AbBT1M 1280 light: 16 figures equal the indexer's",
+      "check": "/tokens/AbBT1M 1280 light: stats are price, market cap, 24h volume, 24h change",
+      "ok": true,
+      "detail": "Price|Market cap|24h volume|24h change"
+    },
+    {
+      "check": "/tokens/AbBT1M 1280 light: says what the agent is building",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "/tokens/AbBT1M 1280 light: no fee history, fee panel or compute vault",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "/tokens/AbBT1M 1280 light: no fee wording outside the agent's own session",
       "ok": true,
       "detail": ""
     },
@@ -82,12 +102,7 @@
     {
       "check": "/tokens/AbBT1M 1280 light: first trade amounts",
       "ok": true,
-      "detail": "Sell 47.11 23.52 0.499316 Cmzf…aCAg DAMM v2 1m ago"
-    },
-    {
-      "check": "/tokens/AbBT1M 1280 light: fee history is the indexer's",
-      "ok": true,
-      "detail": "3 cranks"
+      "detail": "Sell 47.11 23.52 0.499316 Cmzf…aCAg DAMM v2 21h 36m ago"
     },
     {
       "check": "/tokens/AbBT1M 1280 light: holders are the indexer's",
@@ -97,12 +112,12 @@
     {
       "check": "/tokens/AbBT1M 1280 light: price chart draws the indexer's candles",
       "ok": true,
-      "detail": "3 candles"
+      "detail": "2 candles"
     },
     {
-      "check": "/tokens/AbBT1M 1280 light: live panel (agent mode) shows the agent's live session, earlier ones listed",
+      "check": "/tokens/AbBT1M 1280 light: live panel mounted",
       "ok": true,
-      "detail": "Live, 12 listed, current 17310346, Core newest 17310346"
+      "detail": "idle No sessions"
     },
     {
       "check": "/tokens/AbBT1M 1280 light: no horizontal page scroll",
@@ -111,8 +126,8 @@
     },
     {
       "check": "/tokens/AbBT1M 1280 light: no monospace text",
-      "ok": true,
-      "detail": ""
+      "ok": false,
+      "detail": "SPAN., SPAN.ph, A., A., A."
     },
     {
       "check": "/tokens/AbBT1M 1280 light: no console errors or failed requests",
@@ -120,7 +135,27 @@
       "detail": ""
     },
     {
-      "check": "/tokens/3AvZ77 1280 light: 17 figures equal the indexer's",
+      "check": "/tokens/3AvZ77 1280 light: 9 figures equal the indexer's",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "/tokens/3AvZ77 1280 light: stats are price, market cap, 24h volume, 24h change",
+      "ok": true,
+      "detail": "Price|Market cap|24h volume|24h change"
+    },
+    {
+      "check": "/tokens/3AvZ77 1280 light: says what the agent is building",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "/tokens/3AvZ77 1280 light: no fee history, fee panel or compute vault",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "/tokens/3AvZ77 1280 light: no fee wording outside the agent's own session",
       "ok": true,
       "detail": ""
     },
@@ -137,32 +172,27 @@
     {
       "check": "/tokens/3AvZ77 1280 light: recent trades are the indexer's",
       "ok": true,
-      "detail": "23 rows, 23 indexed"
+      "detail": "25 rows, 25 indexed"
     },
     {
       "check": "/tokens/3AvZ77 1280 light: first trade amounts",
       "ok": true,
-      "detail": "Sell 474.55 23.52 0.0495684 Cmzf…aCAg DBC 4m ago"
-    },
-    {
-      "check": "/tokens/3AvZ77 1280 light: fee history is the indexer's",
-      "ok": true,
-      "detail": "10 cranks"
+      "detail": "Sell 18.98 0.9409 0.0495682 9EGv…ub3e DBC 14h 14m ago"
     },
     {
       "check": "/tokens/3AvZ77 1280 light: holders are the indexer's",
       "ok": true,
-      "detail": "2 holders"
+      "detail": "3 holders"
     },
     {
       "check": "/tokens/3AvZ77 1280 light: price chart draws the indexer's candles",
       "ok": true,
-      "detail": "6 candles"
+      "detail": "7 candles"
     },
     {
-      "check": "/tokens/3AvZ77 1280 light: live panel (agent mode) says the agent has no session yet",
+      "check": "/tokens/3AvZ77 1280 light: live panel mounted",
       "ok": true,
-      "detail": "This agent has no authoring session yet. The panel goes live as soon as it starts working on a lineage."
+      "detail": "replay Replay"
     },
     {
       "check": "/tokens/3AvZ77 1280 light: no horizontal page scroll",
@@ -171,8 +201,8 @@
     },
     {
       "check": "/tokens/3AvZ77 1280 light: no monospace text",
-      "ok": true,
-      "detail": ""
+      "ok": false,
+      "detail": "SPAN., SPAN.ph, A., A., A."
     },
     {
       "check": "/tokens/3AvZ77 1280 light: no console errors or failed requests",
@@ -180,27 +210,57 @@
       "detail": ""
     },
     {
-      "check": "/tokens 1280 dark: one row per indexed token",
+      "check": "/ 1280 dark: one card per listed token",
       "ok": true,
-      "detail": "34 rows, 34 tokens"
+      "detail": "5 cards, 5 tokens"
     },
     {
-      "check": "/tokens 1280 dark: no horizontal page scroll",
+      "check": "/ 1280 dark: cards show only price, market cap, 24h volume, 24h change and what the agent is building, equal to the indexer's",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "/ 1280 dark: no fee figure, fee split or compute vault",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "/ 1280 dark: no horizontal page scroll",
       "ok": true,
       "detail": "scrollWidth 1280, body 1280, viewport 1280"
     },
     {
-      "check": "/tokens 1280 dark: no monospace text",
+      "check": "/ 1280 dark: no monospace text",
+      "ok": false,
+      "detail": "SPAN., SPAN.ph, A., A., A."
+    },
+    {
+      "check": "/ 1280 dark: no console errors or failed requests",
       "ok": true,
       "detail": ""
     },
     {
-      "check": "/tokens 1280 dark: no console errors or failed requests",
+      "check": "/tokens/AbBT1M 1280 dark: 8 figures equal the indexer's",
       "ok": true,
       "detail": ""
     },
     {
-      "check": "/tokens/AbBT1M 1280 dark: 16 figures equal the indexer's",
+      "check": "/tokens/AbBT1M 1280 dark: stats are price, market cap, 24h volume, 24h change",
+      "ok": true,
+      "detail": "Price|Market cap|24h volume|24h change"
+    },
+    {
+      "check": "/tokens/AbBT1M 1280 dark: says what the agent is building",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "/tokens/AbBT1M 1280 dark: no fee history, fee panel or compute vault",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "/tokens/AbBT1M 1280 dark: no fee wording outside the agent's own session",
       "ok": true,
       "detail": ""
     },
@@ -222,12 +282,7 @@
     {
       "check": "/tokens/AbBT1M 1280 dark: first trade amounts",
       "ok": true,
-      "detail": "Sell 47.11 23.52 0.499316 Cmzf…aCAg DAMM v2 1m ago"
-    },
-    {
-      "check": "/tokens/AbBT1M 1280 dark: fee history is the indexer's",
-      "ok": true,
-      "detail": "3 cranks"
+      "detail": "Sell 47.11 23.52 0.499316 Cmzf…aCAg DAMM v2 21h 37m ago"
     },
     {
       "check": "/tokens/AbBT1M 1280 dark: holders are the indexer's",
@@ -237,12 +292,12 @@
     {
       "check": "/tokens/AbBT1M 1280 dark: price chart draws the indexer's candles",
       "ok": true,
-      "detail": "3 candles"
+      "detail": "2 candles"
     },
     {
-      "check": "/tokens/AbBT1M 1280 dark: live panel (agent mode) shows the agent's latest session, earlier ones listed",
+      "check": "/tokens/AbBT1M 1280 dark: live panel mounted",
       "ok": true,
-      "detail": "Live, 12 listed, current 61964629, Core newest 61964629"
+      "detail": "idle No sessions"
     },
     {
       "check": "/tokens/AbBT1M 1280 dark: no horizontal page scroll",
@@ -251,8 +306,8 @@
     },
     {
       "check": "/tokens/AbBT1M 1280 dark: no monospace text",
-      "ok": true,
-      "detail": ""
+      "ok": false,
+      "detail": "SPAN., SPAN.ph, A., A., A."
     },
     {
       "check": "/tokens/AbBT1M 1280 dark: no console errors or failed requests",
@@ -260,7 +315,27 @@
       "detail": ""
     },
     {
-      "check": "/tokens/3AvZ77 1280 dark: 17 figures equal the indexer's",
+      "check": "/tokens/3AvZ77 1280 dark: 9 figures equal the indexer's",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "/tokens/3AvZ77 1280 dark: stats are price, market cap, 24h volume, 24h change",
+      "ok": true,
+      "detail": "Price|Market cap|24h volume|24h change"
+    },
+    {
+      "check": "/tokens/3AvZ77 1280 dark: says what the agent is building",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "/tokens/3AvZ77 1280 dark: no fee history, fee panel or compute vault",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "/tokens/3AvZ77 1280 dark: no fee wording outside the agent's own session",
       "ok": true,
       "detail": ""
     },
@@ -277,32 +352,27 @@
     {
       "check": "/tokens/3AvZ77 1280 dark: recent trades are the indexer's",
       "ok": true,
-      "detail": "23 rows, 23 indexed"
+      "detail": "25 rows, 25 indexed"
     },
     {
       "check": "/tokens/3AvZ77 1280 dark: first trade amounts",
       "ok": true,
-      "detail": "Sell 474.55 23.52 0.0495684 Cmzf…aCAg DBC 4m ago"
-    },
-    {
-      "check": "/tokens/3AvZ77 1280 dark: fee history is the indexer's",
-      "ok": true,
-      "detail": "10 cranks"
+      "detail": "Sell 18.98 0.9409 0.0495682 9EGv…ub3e DBC 14h 14m ago"
     },
     {
       "check": "/tokens/3AvZ77 1280 dark: holders are the indexer's",
       "ok": true,
-      "detail": "2 holders"
+      "detail": "3 holders"
     },
     {
       "check": "/tokens/3AvZ77 1280 dark: price chart draws the indexer's candles",
       "ok": true,
-      "detail": "6 candles"
+      "detail": "7 candles"
     },
     {
-      "check": "/tokens/3AvZ77 1280 dark: live panel (agent mode) says the agent has no session yet",
+      "check": "/tokens/3AvZ77 1280 dark: live panel mounted",
       "ok": true,
-      "detail": "This agent has no authoring session yet. The panel goes live as soon as it starts working on a lineage."
+      "detail": "replay Replay"
     },
     {
       "check": "/tokens/3AvZ77 1280 dark: no horizontal page scroll",
@@ -311,8 +381,8 @@
     },
     {
       "check": "/tokens/3AvZ77 1280 dark: no monospace text",
-      "ok": true,
-      "detail": ""
+      "ok": false,
+      "detail": "SPAN., SPAN.ph, A., A., A."
     },
     {
       "check": "/tokens/3AvZ77 1280 dark: no console errors or failed requests",
@@ -320,57 +390,77 @@
       "detail": ""
     },
     {
-      "check": "/tokens 390 light: one row per indexed token",
+      "check": "/ 390 light: one card per listed token",
       "ok": true,
-      "detail": "34 rows, 34 tokens"
+      "detail": "5 cards, 5 tokens"
     },
     {
-      "check": "/tokens 390 light: sorted by market_cap as the indexer sorts (market_cap)",
+      "check": "/ 390 light: sorted by newest as the indexer sorts",
       "ok": true,
-      "detail": "AbBT1Mh3mQJgMfVVfKj8zUZhD4mLw5NqbJptFUacb9Zz,3AvZ77ZdVPx7yxtqA4UP11DoaPdjdgP3AUbkSnidsmY4,9vgxbHXpDQAvnzLUxsAhS7fMhw37ow4qdS1WAW5Nqoyk"
+      "detail": "52PNQS,A8YeMN,2QLZMM"
     },
     {
-      "check": "/tokens 390 light: sorted by volume as the indexer sorts (volume_24h)",
+      "check": "/ 390 light: sorted by volume as the indexer sorts",
       "ok": true,
-      "detail": "AbBT1Mh3mQJgMfVVfKj8zUZhD4mLw5NqbJptFUacb9Zz,3AvZ77ZdVPx7yxtqA4UP11DoaPdjdgP3AUbkSnidsmY4,1wj1WJDaGugaSwEvPL9aSZ4okmAQ9shLjyC4e7d1Dhb"
+      "detail": "2QLZMM,3AvZ77,A8YeMN"
     },
     {
-      "check": "/tokens 390 light: sorted by newest as the indexer sorts (created_at)",
+      "check": "/ 390 light: sorted by change as the indexer sorts",
       "ok": true,
-      "detail": "8rU2Nb8KbdLBedycnRauCunVGWrCVUN5on2XUiYP6maV,785uP7E9DLoJZBVnMovGzGnQCoXrL6uBSphnhETdX2qf,D5zwa5RooWojRxfExaavxAW3DbcBgiZkqPBpgdFiBcyt"
+      "detail": "2QLZMM,3AvZ77,A8YeMN"
     },
     {
-      "check": "/tokens 390 light: sorted by progress as the indexer sorts (curve_progress)",
+      "check": "/ 390 light: sorted by market_cap as the indexer sorts",
       "ok": true,
-      "detail": "AbBT1Mh3mQJgMfVVfKj8zUZhD4mLw5NqbJptFUacb9Zz,3AvZ77ZdVPx7yxtqA4UP11DoaPdjdgP3AUbkSnidsmY4,9vgxbHXpDQAvnzLUxsAhS7fMhw37ow4qdS1WAW5Nqoyk"
+      "detail": "3AvZ77,9vgxbH,2QLZMM"
     },
     {
-      "check": "/tokens 390 light row AbBT1M: 6 figures equal the indexer's",
-      "ok": true,
-      "detail": ""
-    },
-    {
-      "check": "/tokens 390 light row 3AvZ77: 6 figures equal the indexer's",
+      "check": "/ 390 light: cards show only price, market cap, 24h volume, 24h change and what the agent is building, equal to the indexer's",
       "ok": true,
       "detail": ""
     },
     {
-      "check": "/tokens 390 light: no horizontal page scroll",
+      "check": "/ 390 light: no fee figure, fee split or compute vault",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "/ 390 light: no horizontal page scroll",
       "ok": true,
       "detail": "scrollWidth 390, body 390, viewport 390"
     },
     {
-      "check": "/tokens 390 light: no monospace text",
+      "check": "/ 390 light: no monospace text",
+      "ok": false,
+      "detail": "SPAN., SPAN.ph, A., A., A."
+    },
+    {
+      "check": "/ 390 light: no console errors or failed requests",
       "ok": true,
       "detail": ""
     },
     {
-      "check": "/tokens 390 light: no console errors or failed requests",
+      "check": "/tokens/AbBT1M 390 light: 8 figures equal the indexer's",
       "ok": true,
       "detail": ""
     },
     {
-      "check": "/tokens/AbBT1M 390 light: 16 figures equal the indexer's",
+      "check": "/tokens/AbBT1M 390 light: stats are price, market cap, 24h volume, 24h change",
+      "ok": true,
+      "detail": "Price|Market cap|24h volume|24h change"
+    },
+    {
+      "check": "/tokens/AbBT1M 390 light: says what the agent is building",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "/tokens/AbBT1M 390 light: no fee history, fee panel or compute vault",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "/tokens/AbBT1M 390 light: no fee wording outside the agent's own session",
       "ok": true,
       "detail": ""
     },
@@ -392,12 +482,7 @@
     {
       "check": "/tokens/AbBT1M 390 light: first trade amounts",
       "ok": true,
-      "detail": "Sell 47.11 23.52 0.499316 Cmzf…aCAg DAMM v2 1m ago"
-    },
-    {
-      "check": "/tokens/AbBT1M 390 light: fee history is the indexer's",
-      "ok": true,
-      "detail": "3 cranks"
+      "detail": "Sell 47.11 23.52 0.499316 Cmzf…aCAg DAMM v2 21h 37m ago"
     },
     {
       "check": "/tokens/AbBT1M 390 light: holders are the indexer's",
@@ -407,12 +492,12 @@
     {
       "check": "/tokens/AbBT1M 390 light: price chart draws the indexer's candles",
       "ok": true,
-      "detail": "3 candles"
+      "detail": "2 candles"
     },
     {
-      "check": "/tokens/AbBT1M 390 light: live panel (agent mode) shows the agent's latest session, earlier ones listed",
+      "check": "/tokens/AbBT1M 390 light: live panel mounted",
       "ok": true,
-      "detail": "Paused, 12 listed, current 184124e6, Core newest 184124e6"
+      "detail": "idle No sessions"
     },
     {
       "check": "/tokens/AbBT1M 390 light: no horizontal page scroll",
@@ -421,8 +506,8 @@
     },
     {
       "check": "/tokens/AbBT1M 390 light: no monospace text",
-      "ok": true,
-      "detail": ""
+      "ok": false,
+      "detail": "SPAN., SPAN.ph, A., A., A."
     },
     {
       "check": "/tokens/AbBT1M 390 light: no console errors or failed requests",
@@ -430,7 +515,27 @@
       "detail": ""
     },
     {
-      "check": "/tokens/3AvZ77 390 light: 17 figures equal the indexer's",
+      "check": "/tokens/3AvZ77 390 light: 9 figures equal the indexer's",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "/tokens/3AvZ77 390 light: stats are price, market cap, 24h volume, 24h change",
+      "ok": true,
+      "detail": "Price|Market cap|24h volume|24h change"
+    },
+    {
+      "check": "/tokens/3AvZ77 390 light: says what the agent is building",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "/tokens/3AvZ77 390 light: no fee history, fee panel or compute vault",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "/tokens/3AvZ77 390 light: no fee wording outside the agent's own session",
       "ok": true,
       "detail": ""
     },
@@ -447,32 +552,27 @@
     {
       "check": "/tokens/3AvZ77 390 light: recent trades are the indexer's",
       "ok": true,
-      "detail": "23 rows, 23 indexed"
+      "detail": "25 rows, 25 indexed"
     },
     {
       "check": "/tokens/3AvZ77 390 light: first trade amounts",
       "ok": true,
-      "detail": "Sell 474.55 23.52 0.0495684 Cmzf…aCAg DBC 4m ago"
-    },
-    {
-      "check": "/tokens/3AvZ77 390 light: fee history is the indexer's",
-      "ok": true,
-      "detail": "10 cranks"
+      "detail": "Sell 18.98 0.9409 0.0495682 9EGv…ub3e DBC 14h 14m ago"
     },
     {
       "check": "/tokens/3AvZ77 390 light: holders are the indexer's",
       "ok": true,
-      "detail": "2 holders"
+      "detail": "3 holders"
     },
     {
       "check": "/tokens/3AvZ77 390 light: price chart draws the indexer's candles",
       "ok": true,
-      "detail": "6 candles"
+      "detail": "7 candles"
     },
     {
-      "check": "/tokens/3AvZ77 390 light: live panel (agent mode) says the agent has no session yet",
+      "check": "/tokens/3AvZ77 390 light: live panel mounted",
       "ok": true,
-      "detail": "This agent has no authoring session yet. The panel goes live as soon as it starts working on a lineage."
+      "detail": "replay Replay"
     },
     {
       "check": "/tokens/3AvZ77 390 light: no horizontal page scroll",
@@ -481,8 +581,8 @@
     },
     {
       "check": "/tokens/3AvZ77 390 light: no monospace text",
-      "ok": true,
-      "detail": ""
+      "ok": false,
+      "detail": "SPAN., SPAN.ph, A., A., A."
     },
     {
       "check": "/tokens/3AvZ77 390 light: no console errors or failed requests",
@@ -490,27 +590,57 @@
       "detail": ""
     },
     {
-      "check": "/tokens 390 dark: one row per indexed token",
+      "check": "/ 390 dark: one card per listed token",
       "ok": true,
-      "detail": "34 rows, 34 tokens"
+      "detail": "5 cards, 5 tokens"
     },
     {
-      "check": "/tokens 390 dark: no horizontal page scroll",
+      "check": "/ 390 dark: cards show only price, market cap, 24h volume, 24h change and what the agent is building, equal to the indexer's",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "/ 390 dark: no fee figure, fee split or compute vault",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "/ 390 dark: no horizontal page scroll",
       "ok": true,
       "detail": "scrollWidth 390, body 390, viewport 390"
     },
     {
-      "check": "/tokens 390 dark: no monospace text",
+      "check": "/ 390 dark: no monospace text",
+      "ok": false,
+      "detail": "SPAN., SPAN.ph, A., A., A."
+    },
+    {
+      "check": "/ 390 dark: no console errors or failed requests",
       "ok": true,
       "detail": ""
     },
     {
-      "check": "/tokens 390 dark: no console errors or failed requests",
+      "check": "/tokens/AbBT1M 390 dark: 8 figures equal the indexer's",
       "ok": true,
       "detail": ""
     },
     {
-      "check": "/tokens/AbBT1M 390 dark: 16 figures equal the indexer's",
+      "check": "/tokens/AbBT1M 390 dark: stats are price, market cap, 24h volume, 24h change",
+      "ok": true,
+      "detail": "Price|Market cap|24h volume|24h change"
+    },
+    {
+      "check": "/tokens/AbBT1M 390 dark: says what the agent is building",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "/tokens/AbBT1M 390 dark: no fee history, fee panel or compute vault",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "/tokens/AbBT1M 390 dark: no fee wording outside the agent's own session",
       "ok": true,
       "detail": ""
     },
@@ -532,12 +662,7 @@
     {
       "check": "/tokens/AbBT1M 390 dark: first trade amounts",
       "ok": true,
-      "detail": "Sell 47.11 23.52 0.499316 Cmzf…aCAg DAMM v2 1m ago"
-    },
-    {
-      "check": "/tokens/AbBT1M 390 dark: fee history is the indexer's",
-      "ok": true,
-      "detail": "3 cranks"
+      "detail": "Sell 47.11 23.52 0.499316 Cmzf…aCAg DAMM v2 21h 37m ago"
     },
     {
       "check": "/tokens/AbBT1M 390 dark: holders are the indexer's",
@@ -547,12 +672,12 @@
     {
       "check": "/tokens/AbBT1M 390 dark: price chart draws the indexer's candles",
       "ok": true,
-      "detail": "3 candles"
+      "detail": "2 candles"
     },
     {
-      "check": "/tokens/AbBT1M 390 dark: live panel (agent mode) shows the agent's latest session, earlier ones listed",
+      "check": "/tokens/AbBT1M 390 dark: live panel mounted",
       "ok": true,
-      "detail": "Paused, 12 listed, current 62aa66ab, Core newest 62aa66ab"
+      "detail": "idle No sessions"
     },
     {
       "check": "/tokens/AbBT1M 390 dark: no horizontal page scroll",
@@ -561,8 +686,8 @@
     },
     {
       "check": "/tokens/AbBT1M 390 dark: no monospace text",
-      "ok": true,
-      "detail": ""
+      "ok": false,
+      "detail": "SPAN., SPAN.ph, A., A., A."
     },
     {
       "check": "/tokens/AbBT1M 390 dark: no console errors or failed requests",
@@ -570,7 +695,27 @@
       "detail": ""
     },
     {
-      "check": "/tokens/3AvZ77 390 dark: 17 figures equal the indexer's",
+      "check": "/tokens/3AvZ77 390 dark: 9 figures equal the indexer's",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "/tokens/3AvZ77 390 dark: stats are price, market cap, 24h volume, 24h change",
+      "ok": true,
+      "detail": "Price|Market cap|24h volume|24h change"
+    },
+    {
+      "check": "/tokens/3AvZ77 390 dark: says what the agent is building",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "/tokens/3AvZ77 390 dark: no fee history, fee panel or compute vault",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "/tokens/3AvZ77 390 dark: no fee wording outside the agent's own session",
       "ok": true,
       "detail": ""
     },
@@ -587,32 +732,27 @@
     {
       "check": "/tokens/3AvZ77 390 dark: recent trades are the indexer's",
       "ok": true,
-      "detail": "23 rows, 23 indexed"
+      "detail": "25 rows, 25 indexed"
     },
     {
       "check": "/tokens/3AvZ77 390 dark: first trade amounts",
       "ok": true,
-      "detail": "Sell 474.55 23.52 0.0495684 Cmzf…aCAg DBC 4m ago"
-    },
-    {
-      "check": "/tokens/3AvZ77 390 dark: fee history is the indexer's",
-      "ok": true,
-      "detail": "10 cranks"
+      "detail": "Sell 18.98 0.9409 0.0495682 9EGv…ub3e DBC 14h 14m ago"
     },
     {
       "check": "/tokens/3AvZ77 390 dark: holders are the indexer's",
       "ok": true,
-      "detail": "2 holders"
+      "detail": "3 holders"
     },
     {
       "check": "/tokens/3AvZ77 390 dark: price chart draws the indexer's candles",
       "ok": true,
-      "detail": "6 candles"
+      "detail": "7 candles"
     },
     {
-      "check": "/tokens/3AvZ77 390 dark: live panel (agent mode) says the agent has no session yet",
+      "check": "/tokens/3AvZ77 390 dark: live panel mounted",
       "ok": true,
-      "detail": "This agent has no authoring session yet. The panel goes live as soon as it starts working on a lineage."
+      "detail": "replay Replay"
     },
     {
       "check": "/tokens/3AvZ77 390 dark: no horizontal page scroll",
@@ -621,8 +761,8 @@
     },
     {
       "check": "/tokens/3AvZ77 390 dark: no monospace text",
-      "ok": true,
-      "detail": ""
+      "ok": false,
+      "detail": "SPAN., SPAN.ph, A., A., A."
     },
     {
       "check": "/tokens/3AvZ77 390 dark: no console errors or failed requests",

@@ -3,6 +3,8 @@
 //  1. the demo page (/embed/demo.html on a running dashboard) at 1280 and 390 px: every element
 //     renders live data, no horizontal page scroll, no console errors, no monospace text inside the
 //     kit, the terminal answers (did you mean, ask, how, watch switches the paired screen);
+//     token figures are only price, market cap, 24h volume, 24h change and what the agent is building
+//     (APP-CONSOLIDATION.md amendment 2026-10-10 (2)), equal to the indexer's, and no fee figure shows;
 //  2. the kit on a host page is covered by the demo page served at /embed/demo.html.
 //
 // playwright-core is not a repo dependency: pass its location.
@@ -10,6 +12,7 @@
 //     [--api https://<site>] [--shots <dir>]
 import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
+import { fmtAmount, fmtChange, fmtPrice } from "../../../apps/web/src/market.ts";
 
 const arg = (n: string, d?: string) => (process.argv.includes(`--${n}`) ? process.argv[process.argv.indexOf(`--${n}`) + 1]! : d);
 const PW = arg("pw") ?? process.env.LINEAGE_PLAYWRIGHT;
@@ -21,6 +24,15 @@ const SHOTS = arg("shots", join(import.meta.dir, "../.shots"))!;
 mkdirSync(SHOTS, { recursive: true });
 
 const results: { check: string; ok: boolean; detail: string }[] = [];
+/** GET JSON; a transient 502/503/504 from the site's gateway is retried a few times */
+const j = async (u: string): Promise<any> => {
+  for (let i = 0; ; i++) {
+    const r = await fetch(u);
+    if (r.ok) return r.json();
+    if (i >= 3 || ![502, 503, 504].includes(r.status)) throw new Error(`${u}: HTTP ${r.status}`);
+    await new Promise((res) => setTimeout(res, 1500 * (i + 1)));
+  }
+};
 const check = (name: string, ok: boolean, detail = "") => {
   results.push({ check: name, ok, detail });
   console.log(`${ok ? "PASS" : "FAIL"} ${name}${detail ? `: ${detail}` : ""}`);
@@ -46,6 +58,12 @@ const shadowCount = (tag: string, sel: string) => `(() => [...document.querySele
 
 /** Scrolls through the page so lazily drawn stills (IntersectionObserver) come into view. */
 const SCROLL_ALL = `(async () => { for (let y = 0; y < document.documentElement.scrollHeight; y += 500) { scrollTo(0, y); await new Promise((r) => setTimeout(r, 250)); } scrollTo(0, 0); })()`;
+
+/** The bd- parameter labels and texts inside one element's shadow root, per block. */
+const paramsIn = (host: string) => `(() => [...document.querySelectorAll(${JSON.stringify(host)})].flatMap((h) => h.shadowRoot ? [...h.shadowRoot.querySelectorAll(".bd-params")].map((p) => ({ mint: p.closest("[data-mint]")?.dataset.mint ?? h.getAttribute("mint"), cells: [...p.children].map((d) => [d.querySelector("span").textContent.trim(), d.querySelector("b").textContent.trim()]) })) : []))()`;
+const PARAM_LABELS = ["Price", "Market cap", "24h volume", "24h change"];
+/** Any fee wording in the kit's visible text (the terminal's fixed answers excepted: they explain the mechanism, no figures). */
+const FEE_PROBE = `(() => { let t = ""; for (const h of document.querySelectorAll("lineage-reel, lineage-token, lineage-stats, lineage-how, lineage-leaderboard")) t += h.shadowRoot ? h.shadowRoot.textContent : ""; const m = t.match(/[^.]{0,40}\\b(fees?|fee split|to compute|compute vault|treasury|cranks?)\\b[^.]{0,40}/i); return m ? m[0] : null; })()`;
 
 async function waitFor(page: any, expr: string, ms = 30_000) {
   const t0 = Date.now();
@@ -74,6 +92,48 @@ for (const width of [1280, 390]) {
   check(`${w}: token block`, await waitFor(page, `${shadowCount("lineage-token", ".thead")} === 1 && ${shadowCount("lineage-token", ".lp")} === 1`, 40_000));
   check(`${w}: how, six steps with figures`, await waitFor(page, `${shadowCount("lineage-how", ".step .f")} === 6`));
   check(`${w}: stats`, await waitFor(page, `${shadowCount("lineage-stats", ".stat")} === 8`));
+  const statKeys = await page.evaluate(`[...document.querySelectorAll("lineage-stats")].flatMap((h) => [...h.shadowRoot.querySelectorAll(".stat")].map((s) => s.dataset.k))`);
+  check(`${w}: stats keys have no fee figure`, statKeys.length === 8 && !statKeys.some((k: string) => /fee/.test(k)), statKeys.join(","));
+  // token parameters: the reel cards and the token block, each the four figures in order plus the building line
+  {
+    const rows = (await j(`${API}/market/tokens?sort=newest`)).tokens as any[];
+    const want = (t: any) => [fmtPrice(t.price), fmtAmount(t.market_cap), fmtAmount(t.volume_24h), fmtChange(t.change_24h)];
+    for (const host of ["lineage-reel", "lineage-token"]) {
+      const blocks = (await page.evaluate(paramsIn(host))) as { mint: string; cells: [string, string][] }[];
+      const bad = blocks.filter((b) => JSON.stringify(b.cells.map((c) => c[0])) !== JSON.stringify(PARAM_LABELS));
+      check(`${w}: ${host} shows only price, market cap, 24h volume, 24h change`, blocks.length > 0 && bad.length === 0, `${blocks.length} blocks${bad.length ? `, bad ${JSON.stringify(bad[0]!.cells)}` : ""}`);
+      let off: string[] = [];
+      for (let attempt = 0; attempt < 2; attempt++) {
+        const fresh = attempt ? ((await j(`${API}/market/tokens?sort=newest`)).tokens as any[]) : rows;
+        const now = attempt ? ((await page.evaluate(paramsIn(host))) as typeof blocks) : blocks;
+        off = [];
+        for (const b of now) {
+          // a mint left out of the listing (hidden) is compared with its own detail row
+          const t = fresh.find((x) => x.mint === b.mint) ?? (await j(`${API}/market/tokens/${b.mint}`).catch(() => null));
+          if (!t) {
+            off.push(`${b.mint}: not in the indexer`);
+            continue;
+          }
+          const got = b.cells.map((c) => c[1].replace(/\s*tLINE$/, ""));
+          if (JSON.stringify(got) !== JSON.stringify(want(t))) off.push(`${b.mint.slice(0, 6)} page ${got.join("|")} indexer ${want(t).join("|")}`);
+        }
+        if (!off.length) break;
+        await page.waitForTimeout(20_000);
+      }
+      check(`${w}: ${host} figures equal the indexer's`, off.length === 0, off.slice(0, 2).join("; "));
+      const bd = await page.evaluate(shadowCount(host, ".bd-building"));
+      check(`${w}: ${host} says what the agent is building`, bd >= blocks.length && bd > 0, `${bd} building lines`);
+    }
+    const fee = await page.evaluate(FEE_PROBE);
+    check(`${w}: no fee figures, splits or compute vault in the kit`, fee === null, fee ?? "");
+    // <lineage-stats mint=> the same five for one token
+    const mint = rows[0]?.mint;
+    await page.evaluate(`(() => { const e = document.createElement("lineage-stats"); e.id = "tokstats"; e.setAttribute("mint", ${JSON.stringify(mint)}); document.body.appendChild(e); })()`);
+    const ok = await waitFor(page, `${shadowCount("#tokstats", ".bd-params > div")} === 4 && ${shadowCount("#tokstats", ".bd-building")} === 1`);
+    const cells = ((await page.evaluate(paramsIn("#tokstats"))) as { cells: [string, string][] }[])[0]?.cells ?? [];
+    check(`${w}: <lineage-stats mint> shows the five token parameters`, ok && JSON.stringify(cells.map((c) => c[0])) === JSON.stringify(PARAM_LABELS), cells.map((c) => c.join(" ")).join(", "));
+    await page.evaluate(`document.getElementById("tokstats").remove()`);
+  }
   const noUsd = await page.evaluate(`(() => { let t = ""; for (const h of document.querySelectorAll("lineage-reel, lineage-token, lineage-stats, lineage-how")) t += h.shadowRoot ? h.shadowRoot.textContent : ""; return !/\\$\\s?\\d|USD|\\u2014/.test(t); })()`);
   check(`${w}: no USD, no em dash`, noUsd);
   if (width === 1280) {
@@ -83,9 +143,9 @@ for (const width of [1280, 390]) {
     await input.fill("tokns");
     await input.press("Enter");
     check("terminal: did you mean", await waitFor(page, `document.querySelector("lineage-terminal").shadowRoot.textContent.includes("did you mean")`));
-    await input.fill("ask where do the fees go");
+    await input.fill("ask how is a change verified");
     await input.press("Enter");
-    check("terminal: ask answers with a follow-up", await waitFor(page, `document.querySelector("lineage-terminal").shadowRoot.textContent.includes("Next: What is the compute vault?")`));
+    check("terminal: ask answers with a follow-up", await waitFor(page, `document.querySelector("lineage-terminal").shadowRoot.textContent.includes("Next: What stops a verifier from lying?")`));
     await input.fill("how");
     await input.press("Enter");
     await page.waitForTimeout(400);
@@ -103,6 +163,9 @@ for (const width of [1280, 390]) {
     check("terminal: tab completion", (await input.inputValue()) === "stats ");
     await page.evaluate(`Lineage.terminal.openAndRun("stats")`);
     check("terminal: Lineage.terminal.openAndRun", await waitFor(page, `document.querySelector("lineage-terminal").shadowRoot.textContent.includes("Verified generations")`));
+    check("terminal: stats has no fee row", !/fees? routed|to compute/i.test(await page.evaluate(`document.querySelector("lineage-terminal").shadowRoot.querySelector(".out").textContent`)));
+    await page.evaluate(`Lineage.terminal.openAndRun("agent ${t.symbol}")`);
+    check("terminal: agent shows price, market cap, 24h volume, 24h change, building", await waitFor(page, `(() => { const o = document.querySelector("lineage-terminal").shadowRoot.querySelector(".out").lastElementChild?.parentElement.textContent ?? ""; return ["Price", "Market cap", "24h volume", "24h change", "Building"].every((k) => o.includes(k)); })()`), t.symbol);
     await page.keyboard.press("Meta+k");
     check("palette: Cmd K opens", await waitFor(page, `!document.querySelector("lineage-palette").shadowRoot.querySelector(".ov").hidden`));
     await page.screenshot({ path: join(SHOTS, "demo-palette-1280.png") });

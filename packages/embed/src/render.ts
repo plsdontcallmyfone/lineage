@@ -1,11 +1,14 @@
 import { esc } from "../../../apps/web/src/html.ts";
-import { fmtAmount, fmtChange, fmtInt, fmtPrice, fmtProgress, QUOTE, shortAddr } from "../../../apps/web/src/market.ts";
+import { fmtAmount, fmtInt, fmtPrice, fmtProgress, QUOTE, shortAddr } from "../../../apps/web/src/market.ts";
+import { buildingLine, paramCells, type Building } from "../../../apps/web/src/building.ts";
 import type { Card, SessionEvent, Stats, TokenDetail } from "./client.ts";
-import type { FeeCrank, Holders, Trade } from "./client.ts";
+import type { Holders, Trade } from "./client.ts";
 
 // Pure render functions (strings in, strings out) for the elements, so they can be tested without a
 // DOM. Every figure is the API's own value through the dashboard's formatters (apps/web/src/market.ts);
-// a figure that does not exist renders as TBA, never as a guess.
+// a figure that does not exist renders as TBA, never as a guess. A token shows only price, market cap,
+// 24h volume, 24h change and what its agent is building (APP-CONSOLIDATION.md amendment 2026-10-10
+// (2)), through the app's own markup (apps/web/src/building.ts); no fee figure is shown anywhere.
 
 export { esc };
 
@@ -68,9 +71,22 @@ export function sessionLine(c: Card): string {
 
 export interface CardOpts {
   href: string;
+  /** where the building line's session link goes (default: no link) */
+  sessionHref?: (id: string) => string;
   look: "plain" | "dither";
   /** absolute position in a timeline */
   style?: string;
+}
+
+/** The four market figures (price, market cap, 24h volume, 24h change), the app's markup. */
+export function tokenParams(t: { price: number | null; market_cap: number | null; volume_24h: number | null; change_24h: number | null }, o: { unit?: boolean } = {}): string {
+  return String(paramCells(t, o));
+}
+
+/** What the agent is building (live line or last verified improvement, repository, session link), the app's markup. Links open a new tab. */
+export function building(t: { repo_url: string | null; building?: Building | null; session?: { id: string } | null }, o: { sessionHref?: (id: string) => string; full?: boolean } = {}): string {
+  const h = String(buildingLine({ repo_url: t.repo_url, building: t.building ?? null, session: (t.session ?? null) as any }, { link: !!o.sessionHref, full: o.full, sessionHref: o.sessionHref }));
+  return h.replace(/<a class="bd-sess"/g, '<a class="bd-sess" target="_blank" rel="noopener"');
 }
 
 export function cardHtml(c: Card, o: CardOpts): string {
@@ -83,9 +99,8 @@ export function cardHtml(c: Card, o: CardOpts): string {
   <div class="meta" part="meta">
     <div class="id"><span class="sym" part="ticker">${esc(label)}</span><span class="name" part="name">${esc(c.name ?? "")}</span></div>
     ${c.tagline ? `<p class="tag" part="description">${esc(c.tagline)}</p>` : ""}
-    <div class="line"><span class="repo" title="${esc(c.repo ?? "")}">${esc(repoLabel(c.repo) || "repository TBA")}</span></div>
-    <div class="line figs"><span class="mc"><span class="k">Mcap</span> <b class="num">${esc(fmtAmount(c.market_cap))}</b>${c.market_cap == null ? "" : ` <span class="u">${QUOTE}</span>`}</span>${progressHtml(c.curve_progress)}</div>
-    <div class="cap" part="caption">${esc(sessionLine(c))}</div>
+    <div class="params" part="params">${tokenParams(c)}</div>
+    <div class="building" part="building">${building({ repo_url: c.repo, building: c.building, session: null }, { sessionHref: o.sessionHref })}</div>
   </div>
 </article>`;
 }
@@ -132,7 +147,7 @@ export const STAT_ITEMS: { key: keyof Stats; label: string; unit?: string; fmt?:
   { key: "tokens", label: "Agent tokens" },
   { key: "agents_working", label: "Agents working now" },
   { key: "generations", label: "Verified generations" },
-  { key: "fees_to_compute", label: "Fees to compute", unit: QUOTE, fmt: fmtAmount },
+  { key: "volume_24h", label: "24h volume", unit: QUOTE, fmt: fmtAmount },
 ];
 
 export function statsHtml(s: Stats, keys: (keyof Stats)[] = STAT_ITEMS.map((x) => x.key)): string {
@@ -156,11 +171,11 @@ export interface Step {
 export function howSteps(s: Stats): Step[] {
   return [
     { n: 1, title: "Launch", body: "Anyone launches an agent token on a Meteora bonding curve quoted in tLINE, and names the public repository the agent will improve.", figure: { label: "tokens launched", value: fig(s.tokens) } },
-    { n: 2, title: "Fees fund compute", body: "Trades pay fees. A permissionless crank sends the agent's share of them into its compute vault, the rest to the treasury.", figure: { label: "routed to compute vaults", value: fig(s.fees_to_compute, fmtAmount), unit: QUOTE } },
+    { n: 2, title: "Trading funds compute", body: "Trading the agent's token pays for its work: the agent's share of each trade goes to its own vault on chain.", figure: { label: "traded in the last 24h", value: fig(s.volume_24h, fmtAmount), unit: QUOTE } },
     { n: 3, title: "The agent works", body: "The vault pays for model tokens and sandbox time. The agent reads the repository, edits it and measures the change, live on its screen.", figure: { label: "agents working now", value: fig(s.agents_working) } },
     { n: 4, title: "Blind replay", body: "Independent verifiers rebuild, test and measure every candidate without knowing who wrote it, and commit their results before revealing them.", figure: { label: "candidates submitted", value: fig(s.candidates) } },
     { n: 5, title: "Accepted generation", body: "A change the replays agree on, that passes the tests and beats the metric by the recipe's minimum, becomes the lineage's next generation.", figure: { label: "verified generations", value: fig(s.generations) } },
-    { n: 6, title: "Graduation", body: "When the curve fills, the token migrates to a Meteora DAMM v2 pool with its liquidity locked, and that pool's fees keep flowing to the agent's vault.", figure: { label: "graduated to DAMM v2", value: fig(s.graduated) } },
+    { n: 6, title: "Graduation", body: "When the curve fills, the token migrates to a Meteora DAMM v2 pool with its liquidity locked, and trading there keeps funding the agent's vault.", figure: { label: "graduated to DAMM v2", value: fig(s.graduated) } },
   ];
 }
 
@@ -190,19 +205,11 @@ const ext = extLink;
 
 export function tokenHeadHtml(t: TokenDetail, tagline: string | null, tradeHref: string): string {
   const phase = t.phase === "graduated" ? "Graduated, DAMM v2" : t.migrated ? "Migrated, graduation pending" : "Bonding curve";
-  const kv = (k: string, v: string, u = "") => `<div class="kv"><span class="k">${esc(k)}</span><b class="num">${esc(v)}</b>${u && v !== "TBA" ? `<span class="u">${esc(u)}</span>` : ""}</div>`;
   return `<header class="thead" part="header">
     <div class="tid"><span class="sym" part="ticker">${esc(t.symbol ?? shortAddr(t.mint))}</span><span class="name" part="name">${esc(t.name ?? "")}</span><span class="badge" data-phase="${esc(t.phase)}">${esc(phase)}</span></div>
     ${tagline ? `<p class="tag" part="description">${esc(tagline)}</p>` : ""}
     <div class="sub">${t.repo_url ? ext(t.repo_url, repoLabel(t.repo_url)) : ""}<span>launched ${esc(ago(t.created_at))}</span>${ext(explorer("address", t.mint), shortAddr(t.mint), t.mint)}</div>
-    <div class="kvs">
-      ${kv("Price", fmtPrice(t.price), QUOTE)}
-      ${kv("Market cap", fmtAmount(t.market_cap), QUOTE)}
-      ${kv("24h volume", fmtAmount(t.volume_24h), QUOTE)}
-      ${kv("24h change", fmtChange(t.change_24h))}
-      ${kv("Holders", fmtInt(t.holders))}
-      ${kv("Compute vault", fmtAmount(t.compute_vault.balance), QUOTE)}
-    </div>
+    <div class="params" part="params">${tokenParams(t, { unit: true })}</div>
     <div class="curve">${progressHtml(t.curve_progress)}<span class="faint">${t.phase === "graduated" ? `DAMM v2 pool ${esc(shortAddr(t.pools.damm_pool))}` : `${esc(fmtAmount(t.quote_reserve))} of ${esc(fmtAmount(t.migration_threshold))} ${QUOTE} to graduation`}</span><a class="btn" part="trade" href="${esc(tradeHref)}" target="_blank" rel="noopener">Trade on Lineage</a></div>
   </header>`;
 }
@@ -221,18 +228,5 @@ export function holdersHtml(h: Holders): string {
   if (!h.top.length) return `<p class="none">No holders outside the pool vaults yet.</p>`;
   return `<table class="tbl" part="holders"><thead><tr><th>Holder</th><th class="r">Tokens</th><th class="r">Share</th></tr></thead><tbody>${h.top
     .map((x) => `<tr><td>${ext(explorer("address", x.owner), shortAddr(x.owner), x.owner)}</td><td class="r num">${esc(fmtAmount(x.amount))}</td><td class="r num">${x.share == null ? "TBA" : esc(`${(x.share * 100).toFixed(2)}%`)}</td></tr>`)
-    .join("")}</tbody></table>`;
-}
-
-export function feesHtml(f: { cranks: FeeCrank[]; totals_onchain: any }): string {
-  const tot = f.totals_onchain ?? {};
-  const head = `<p class="faint">On chain so far: ${esc(fmtAmount(tot.to_vault))} ${QUOTE} to the compute vault, ${esc(fmtAmount(tot.to_treasury))} ${QUOTE} to the treasury.</p>`;
-  if (!f.cranks.length) return `${head}<p class="none">No fee cranks yet.</p>`;
-  return `${head}<table class="tbl" part="fees"><thead><tr><th>Time</th><th>Pool</th><th class="r">To vault</th><th class="r hide-sm">To treasury</th><th class="hide-sm">Tx</th></tr></thead><tbody>${f.cranks
-    .slice(0, 10)
-    .map(
-      (c) =>
-        `<tr><td>${esc(ago(c.time))}</td><td>${c.source === "damm_v2" ? "DAMM v2" : "DBC"}</td><td class="r num">${esc(fmtAmount(c.to_vault))}</td><td class="r num hide-sm">${esc(fmtAmount(c.to_treasury))}</td><td class="hide-sm">${ext(explorer("tx", c.signature), shortAddr(c.signature), c.signature)}</td></tr>`,
-    )
     .join("")}</tbody></table>`;
 }

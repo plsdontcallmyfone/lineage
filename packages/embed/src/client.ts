@@ -1,6 +1,7 @@
 import { ApiError } from "../../../apps/web/src/api.ts";
 import type { SessionSummary } from "../../../apps/web/src/live-panel/index.ts";
-import type { Candle, FeeCrank, Holders, TokenDetail, TokenSummary, Trade } from "../../../apps/web/src/market.ts";
+import type { Building } from "../../../apps/web/src/building.ts";
+import type { Candle, Holders, TokenDetail, TokenSummary, Trade } from "../../../apps/web/src/market.ts";
 
 // The embed kit's data client (docs/plans/FRONTEND-EMBED.md): plain JSON from Core and the market
 // indexer, nothing computed that the API does not serve except sums and counts over its own rows.
@@ -15,7 +16,7 @@ import type { Candle, FeeCrank, Holders, TokenDetail, TokenSummary, Trade } from
 // Core directly at http://127.0.0.1:9660/v1.
 
 export { ApiError };
-export type { Candle, FeeCrank, Holders, SessionSummary, TokenDetail, TokenSummary, Trade };
+export type { Building, Candle, Holders, SessionSummary, TokenDetail, TokenSummary, Trade };
 
 export interface Bases {
   core: string;
@@ -101,6 +102,10 @@ export interface Card {
   phase: "curve" | "graduated";
   market_cap: number | null;
   price: number | null;
+  volume_24h: number | null;
+  change_24h: number | null;
+  /** what the agent is building, as the indexer joins it from Core (null when the indexer has no Core row) */
+  building: Building | null;
   curve_progress: number | null;
   created_at: number;
   state: CardState;
@@ -115,8 +120,8 @@ export interface Stats {
   agents_working: number | null;
   generations: number | null;
   candidates: number | null;
-  /** tLINE routed to compute vaults by fee cranks, summed over every token's on-chain totals; null when unknown */
-  fees_to_compute: number | null;
+  /** tLINE traded in the last 24 hours, summed over the indexer's listed tokens; null when unknown */
+  volume_24h: number | null;
   sessions_live: number | null;
 }
 
@@ -157,6 +162,9 @@ export function buildCards(tokens: TokenSummary[], souls: Map<string, Soul | nul
       phase: t.phase,
       market_cap: t.market_cap,
       price: t.price,
+      volume_24h: t.volume_24h ?? null,
+      change_24h: t.change_24h ?? null,
+      building: (t as TokenSummary & { building?: Building | null }).building ?? null,
       curve_progress: t.curve_progress,
       created_at: t.created_at,
       state: cardState(t.phase, session, sessions !== null),
@@ -270,9 +278,6 @@ export class LineageClient {
   holders(mint: string, limit = 10): Promise<Holders> {
     return this.market(`tokens/${mint}/holders?limit=${limit}`);
   }
-  fees(mint: string): Promise<{ cranks: FeeCrank[]; totals_onchain: any; compute_vault: any }> {
-    return this.market(`tokens/${mint}/fees`);
-  }
   /** The token whose ticker (symbol) is `sym`, case-insensitive, or null. */
   async bySymbol(sym: string): Promise<TokenSummary | null> {
     const s = sym.replace(/^\$/, "").toLowerCase();
@@ -323,25 +328,13 @@ export class LineageClient {
   }
 
   /** Network counters, each from Core or the indexer; a figure that could not be read is null. */
-  stats(o: { fees?: boolean } = {}): Promise<Stats> {
-    return this.cached(`stats:${o.fees ? 1 : 0}`, async () => {
+  stats(): Promise<Stats> {
+    return this.cached("stats", async () => {
       const [core, tokens, live] = await Promise.all([
         this.core<any>("stats").catch(() => null),
         this.tokens().catch(() => null),
         this.sessions({ state: "live", limit: 500 }).catch(() => null),
       ]);
-      let fees: number | null = null;
-      if (o.fees && tokens) {
-        let sum = 0;
-        let ok = true;
-        await pool(tokens, 6, async (t) => {
-          const d = await this.token(t.mint).catch(() => null);
-          // a token never cranked has routed nothing yet (to_compute null, 0 cranks)
-          if (!d) ok = false;
-          else sum += d.fees.to_compute ?? 0;
-        });
-        fees = ok ? sum : null;
-      }
       const working = live ? new Set(live.filter((s) => s.state === "live" && s.agent).map((s) => s.agent)).size : null;
       return {
         tokens: tokens ? tokens.length : null,
@@ -349,7 +342,7 @@ export class LineageClient {
         agents_working: working,
         generations: typeof core?.generations === "number" ? core.generations : null,
         candidates: typeof core?.candidates === "number" ? core.candidates : null,
-        fees_to_compute: fees,
+        volume_24h: tokens ? tokens.reduce((n, t) => n + (Number.isFinite(t.volume_24h) ? t.volume_24h : 0), 0) : null,
         sessions_live: live ? live.filter((s) => s.state === "live").length : null,
       };
     });

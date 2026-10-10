@@ -76,19 +76,19 @@ describe("client", () => {
       resolveBases({ api: "https://s" }, ""),
       fakeFetch({
         "/api/stats": { generations: 20, candidates: 82 },
-        "/market/tokens?sort=newest": { tokens: [tok({}), tok({ mint: "M2", agent: "A2", phase: "graduated" })] },
+        "/market/tokens?sort=newest": { tokens: [tok({ volume_24h: 12.5 }), tok({ mint: "M2", agent: "A2", phase: "graduated", volume_24h: 2 })] },
         "sessions?state=live&limit=500": [sess({ state: "live" }), sess({ session_id: "s2", state: "live" }), sess({ session_id: "s3", state: "live", agent: "A2" })],
-        "/market/tokens/M1": { fees: { to_compute: 12.5, cranks: 2 } },
-        "/market/tokens/M2": { fees: { to_compute: null, cranks: 0 } },
       }),
     );
-    expect(await c.stats({ fees: true })).toEqual({ tokens: 2, graduated: 1, agents_working: 2, generations: 20, candidates: 82, fees_to_compute: 12.5, sessions_live: 3 });
+    const st = await c.stats();
+    expect(st).toEqual({ tokens: 2, graduated: 1, agents_working: 2, generations: 20, candidates: 82, volume_24h: 14.5, sessions_live: 3 });
+    expect(Object.keys(st).some((k) => /fee/.test(k))).toBe(false);
     const down = new LineageClient(resolveBases({ api: "https://s" }, ""), fakeFetch({}));
     down.retryDelays = [];
-    const s = await down.stats({ fees: true });
+    const s = await down.stats();
     expect(s.tokens).toBeNull();
     expect(s.generations).toBeNull();
-    expect(s.fees_to_compute).toBeNull();
+    expect(s.volume_24h).toBeNull();
   });
 });
 
@@ -105,9 +105,26 @@ describe("render", () => {
     expect(h).toContain("karpathy/minbpe");
     expect(cardHtml({ ...card, tagline: "Faster BPE." }, { href: "#", look: "plain" })).toContain('<p class="tag" part="description">Faster BPE.</p>');
   });
+  test("card: only price, market cap, 24h volume, 24h change and what the agent is building; no fees", () => {
+    const b = { repo: "https://github.com/karpathy/minbpe", live: false, session_id: "s9", file: null, last: { gen_id: "g", lineage_id: "l", metric: "encode_ir", ratio: 0.9, fixed: null, at: null } };
+    const h = cardHtml({ ...card, price: 0.05, volume_24h: 120, change_24h: 0.1, building: b }, { href: "#", look: "plain", sessionHref: (id) => `https://s/sessions/${id}` });
+    const labels = [...h.matchAll(/<div><span>([^<]+)<\/span><b>/g)].map((m) => m[1]);
+    expect(labels).toEqual(["Price", "Market cap", "24h volume", "24h change"]);
+    expect(h).toContain("Last improvement: <b>encode_ir -10%</b>");
+    expect(h).toContain('href="https://s/sessions/s9"');
+    expect(h).toContain('target="_blank"');
+    expect(h).not.toMatch(/fee|compute vault|treasury|split/i);
+  });
+  test("token header: the four figures, no holders count, no compute vault, no fees", () => {
+    const t = { ...tok({ volume_24h: 3, change_24h: -0.02 }), compute_vault: { balance: 9 }, pools: { damm_pool: null }, fees: { to_compute: 1 } } as any;
+    const h = tokenHeadHtml(t, null, "#");
+    const labels = [...h.matchAll(/<div><span>([^<]+)<\/span><b>/g)].map((m) => m[1]);
+    expect(labels).toEqual(["Price", "Market cap", "24h volume", "24h change"]);
+    expect(h).not.toMatch(/fee|compute vault|treasury|holders/i);
+  });
   test("figures that do not exist render as TBA", () => {
     expect(cardHtml({ ...card, market_cap: null, curve_progress: null }, { href: "#", look: "plain" })).toContain("TBA");
-    expect(statsHtml({ tokens: null, graduated: null, agents_working: 0, generations: 3, candidates: null, fees_to_compute: null, sessions_live: 0 })).toMatch(/TBA[\s\S]*>0<[\s\S]*>3</);
+    expect(statsHtml({ tokens: null, graduated: null, agents_working: 0, generations: 3, candidates: null, volume_24h: null, sessions_live: 0 })).toMatch(/TBA[\s\S]*>0<[\s\S]*>3</);
   });
   test("link template", () => {
     expect(linkFor("/coin/{mint}?t={symbol}", "https://s", { mint: "M1", agent: "A", symbol: "TX" })).toBe("/coin/M1?t=TX");
@@ -124,9 +141,10 @@ describe("render", () => {
     expect(width).toBeGreaterThan(Math.max(...xs));
   });
   test("how: six steps, each with a live figure", () => {
-    const s = howSteps({ tokens: 34, graduated: 1, agents_working: 2, generations: 20, candidates: 82, fees_to_compute: null, sessions_live: 2 });
+    const s = howSteps({ tokens: 34, graduated: 1, agents_working: 2, generations: 20, candidates: 82, volume_24h: null, sessions_live: 2 });
     expect(s).toHaveLength(6);
     expect(s.map((x) => x.figure!.value)).toEqual(["34", "TBA", "2", "82", "20", "1"]);
+    expect(s.map((x) => x.figure!.label).join(" ")).not.toMatch(/fee/i);
   });
   test("event lines", () => {
     expect(describeEvent({ seq: 1, kind: "edit", at: 0, path: "a.py", start_line: 3, end_line: 5 })).toBe("Editing a.py, lines 3 to 5, text sealed until the verdict");
@@ -169,7 +187,7 @@ describe("terminal", () => {
       bySymbol: async (s) => (s.toUpperCase() === "TMBPE" ? tok({}) : null),
       soul: async () => null,
       sessions: async () => [{ state: "live", recipe_name: "minbpe", events: 4, agent: "A1" }],
-      stats: async () => ({ tokens: 2, graduated: 1, agents_working: 1, generations: 20, candidates: 82, fees_to_compute: 3, sessions_live: 1 }),
+      stats: async () => ({ tokens: 2, graduated: 1, agents_working: 1, generations: 20, candidates: 82, volume_24h: 3, sessions_live: 1 }),
       generation: async (id) => ({ gen_id: id, height: 4, effect: { metric: "encode_ir", ratio: 0.0927 }, replays: [{}, {}], accepted_at: 1, candidate_id: "cand1", entry_type: "patch" }),
       lineages: async () => [{ lineage_id: "l1", recipe_name: "minbpe", tip: "f".repeat(64), gen0: "0".repeat(64) }],
       ...over,
@@ -211,6 +229,14 @@ describe("terminal", () => {
     const h = (await run("tokens", env())).html.join("");
     expect(h).toContain("5,000,000 tLINE");
     expect(h).toContain("TBA tLINE");
+  });
+  test("stats and agent: no fee rows; agent shows the five token parameters", async () => {
+    const st = (await run("stats", env())).html.join("");
+    expect(st).toContain("24h volume, all tokens");
+    expect(st).not.toMatch(/fee/i);
+    const a = (await run("agent tmbpe", env())).html.join("");
+    for (const k of ["Price", "Market cap", "24h volume", "24h change", "Building"]) expect(a).toContain(`>${k}<`);
+    expect(a).not.toMatch(/fee|Phase/i);
   });
   test("ours: none configured says so; configured lists them", async () => {
     expect((await run("ours", env())).html.join("")).toContain("No official tokens are configured");

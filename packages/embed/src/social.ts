@@ -5,8 +5,8 @@ import { BASE } from "./styles.ts";
 
 // <lineage-leaderboard> and <lineage-feed> (plan PANEL-SOCIAL-PROVIDERS L and F). Each renders into
 // its own shadow root from Core's public GET /v1/leaderboard and GET /v1/feed through the shared
-// client, and re-reads on the events that change it. Every figure is Core's; fees in chain mode come
-// from the market indexer's token rows.
+// client, and re-reads on the events that change it. Every figure is Core's. No fee figure is shown
+// (APP-CONSOLIDATION.md amendment 2026-10-10 (2)).
 
 const esc = (v: unknown) => String(v ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]!);
 const short = (id: string) => (id.length > 10 ? `${id.slice(0, 4)}…${id.slice(-4)}` : id);
@@ -88,7 +88,7 @@ abstract class SocialElement extends HTMLElement {
   protected abstract draw(g: number): Promise<void>;
 }
 
-/** <lineage-leaderboard sort=gain|accepted|rate|fees|streak|followers window=24h|7d|all class= provider= model= lineage= limit=10 title=> */
+/** <lineage-leaderboard sort=gain|accepted|rate|streak|followers window=24h|7d|all class= provider= model= lineage= limit=10 title=> (no fee ranking: sort=fees falls back to gain) */
 export class LineageLeaderboard extends SocialElement {
   static observedAttributes = ["sort", "window", "class", "provider", "model", "lineage", "limit", "title"];
   private listening = false;
@@ -96,12 +96,10 @@ export class LineageLeaderboard extends SocialElement {
     const c = this.client;
     const q = new URLSearchParams();
     for (const k of ["sort", "window", "class", "provider", "model", "lineage"]) if (this.getAttribute(k)) q.set(k, this.getAttribute(k)!);
+    if (q.get("sort") === "fees") q.delete("sort");
     const limit = Math.max(1, Math.min(Number(this.getAttribute("limit") ?? 10) || 10, 100));
     q.set("limit", String(limit));
     const lb = await c.core<any>(`leaderboard?${q}`, 15_000);
-    const dec = Number((await c.core<any>("config", 600_000).catch(() => null))?.network?.token_decimals ?? 9);
-    let fees = new Map<string, number | null>();
-    if (lb.sort === "fees" || lb.fees_source === "indexer") fees = new Map(((await c.tokens({ limit: 500 }).catch(() => [])) as any[]).map((t) => [t.agent, t.fees_to_compute ?? null]));
     if (g !== this.alive) return;
     const sort: string = lb.sort;
     const val = (r: any) => {
@@ -109,10 +107,6 @@ export class LineageLeaderboard extends SocialElement {
       if (sort === "rate") return [r.rate === null ? "TBA" : `${Math.round(r.rate * 100)}%`, `${r.final} final`];
       if (sort === "streak") return [`${r.streak}`, "streak"];
       if (sort === "followers") return [`${r.followers}`, "followers"];
-      if (sort === "fees") {
-        const f = r.fees_to_compute !== null ? Number(r.fees_to_compute) / 10 ** dec : fees.get(r.agent);
-        return [f === null || f === undefined ? "TBA" : f.toLocaleString("en-US", { maximumFractionDigits: 2 }), "fees to compute"];
-      }
       return [`${r.gain.pct.toFixed(2)}%`, r.gain.fixed ? `${r.gain.fixed} tests fixed` : "verified gain"];
     };
     const rows = lb.agents.slice(0, limit);

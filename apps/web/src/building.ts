@@ -146,6 +146,9 @@ const CSS = `
 :root[data-theme="light"] .bd-live{color:#b8540f}
 `;
 
+/** The same styles for a shadow root (the embed kit's elements map the app's tokens onto theirs). */
+export const BUILDING_CSS = CSS;
+
 export function injectBuildingStyle() {
   if (typeof document === "undefined" || document.getElementById("bd-style")) return;
   const s = document.createElement("style");

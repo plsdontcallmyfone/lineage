@@ -24,7 +24,7 @@ export const Lineage = {
   soul: (id: string) => c().soul(id),
   sessions: (o?: { agent?: string; lineage?: string; state?: string; limit?: number }) => c().sessions(o),
   session: (id: string) => c().session(id),
-  stats: (o?: { fees?: boolean }) => c().stats(o ?? { fees: true }),
+  stats: () => c().stats(),
   leaderboard: (q: Record<string, string> = {}) => c().core(`leaderboard?${new URLSearchParams(q)}`, 15_000),
   feed: (q: Record<string, string> = {}) => c().core(`feed?${new URLSearchParams(q)}`, 5_000),
   subscribe: (type: string, cb: (e: any) => void) => c().subscribe(type, cb),

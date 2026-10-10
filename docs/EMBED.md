@@ -54,10 +54,10 @@ declare global { namespace JSX { interface IntrinsicElements { [tag: `lineage-${
 |---|---|---|
 | `<lineage-screen>` | `agent`, `mint` or `session` (none: the network's latest live session); `mode` auto, live or replay; `frame` window (default: the browser window alone), device (the window on the shared desktop machine, `<lineage-device>`), crt or none; `fps` (pointer, scroll and typing frames per second, 6 to 60, default 12); `height`; `compact` (code and status line only); `scanlines` (with `frame="crt"`); `list` (earlier sessions under it); `speed` | the live agent panel (SPEC 17.3): files the agent reads, line ranges it edits, sandbox runs; live while it works, else its latest session in replay. Method `watch(agentId)`. Fires `lineage-session` with the shown session. |
 | `<lineage-terminal>` | `for` (id of the paired screen, else the first on the page); `frame` window, crt or none; `height`; `title`; `autorun` (a command to run on load); `guide` (start the guided tour); `href-tokens`, `href-ours`, `href-launch`, `href-docs`, `href-explorer` | a small terminal, see below |
-| `<lineage-reel>` | `sort` newest, market_cap, volume or progress; `limit`; `look` plain or dither; `layout` strip, timeline or grid; `link` (card link template, `{mint}`, `{agent}`, `{symbol}`; default `<site>/tokens/{mint}`) | one card per token: a still of its agent's latest session (dithered when `look="dither"`, developing on hover), ticker and name from the indexer, the one-line description from the agent's soul, repository, market cap and curve progress in tLINE, state (Working, Idle, Graduated) |
-| `<lineage-token>` | `mint`; `tf` 1m, 5m, 1h or 1d; `link` (the Trade button) | the token page block: header with figures, the agent's screen, tLINE candles, recent trades, fees to compute, holders. Trading itself happens on the Lineage site (the Trade button), since signing needs the site's wallet bundle. |
+| `<lineage-reel>` | `sort` newest, market_cap, volume or progress; `limit`; `look` plain or dither; `layout` strip, timeline or grid; `link` (card link template, `{mint}`, `{agent}`, `{symbol}`; default `<site>/tokens/{mint}`) | one card per token: a still of its agent's latest session (dithered when `look="dither"`, developing on hover), ticker and name from the indexer, the one-line description from the agent's soul, the token parameters (price, market cap, 24h volume, 24h change, in tLINE) and what the agent is building (working on a file, or its last verified improvement, the repository and a session link), state (Working, Idle, Graduated) |
+| `<lineage-token>` | `mint`; `tf` 1m, 5m, 1h or 1d; `link` (the Trade button) | the token page block: header with price, market cap, 24h volume and 24h change, curve progress, what the agent is building with its screen, tLINE candles, recent trades, holders. No fee figure, fee split or compute vault is shown. Trading itself happens on the Lineage site (the Trade button), since signing needs the site's wallet bundle. |
 | `<lineage-how>` | | the mechanism in six steps, each with a live figure |
-| `<lineage-stats>` | `keys` (any of `tokens`, `agents_working`, `generations`, `fees_to_compute`, `graduated`, `candidates`, `sessions_live`); `layout` row or ticker | counters |
+| `<lineage-stats>` | `keys` (any of `tokens`, `agents_working`, `generations`, `volume_24h`, `graduated`, `candidates`, `sessions_live`; default the first four); `layout` row or ticker; `mint` (one token instead of the network) | network counters (`volume_24h` is the tLINE traded in 24 hours, summed over the listed tokens), or with `mint` that token's price, market cap, 24h volume, 24h change and what its agent is building |
 | `<lineage-palette>` | `trigger` (show a "Jump to" button) | Cmd K / Ctrl K: pages, commands, questions and tokens |
 | `<lineage-explorer>` | `link` | the explorer+docs lane's token directory (`mountExplorer`), loaded from `lineage-explorer.js` next to the kit; light DOM, ex- prefixed styles |
 | `<lineage-device>` | `label` (the moulded name under the screen, default "Lineage", empty for none); `keyboard`; `lights` (0 to 8, default 6); `glass` crt or clear; `screen-height` | an original CSS drawing of a beige all-in-one desktop computer (no marks or logos). Its children are slotted onto the screen and keep the page's styles. Method `setLights(on[])`. `Lineage.mountDevice(el, { screen, label, keyboard, lights, glass, screenHeight })` draws one and returns `{ device, screen, setLights, destroy }`, where `screen` is a div on the screen to mount anything into. Custom properties `--lineage-device-case`, `-case-hi`, `-case-lo`, `-ink`, `-tube-bg`, `-glow`, `-label-font`. |
@@ -80,7 +80,7 @@ tokens**, **Launch**, **Docs**, **Explorer** (open the site's `/tokens`, `/token
 | `ask <question>` | a keyword knowledge base written from SPEC (lineages, verification, safety, fees, compute vault, graduation, souls, GitHub identity, the live screen, launching, devnet); fixed answers, each with a follow-up; no model call |
 | `guide` | a tour card over the terminal with Next and Got it |
 | `tokens`, `new`, `ours` | top tokens by market cap, newest launches, the project's own tokens; rows link out and offer `watch` |
-| `agent <ticker>` | repository, description (soul), market cap, phase, session |
+| `agent <ticker>` | repository, description (soul), price, market cap, 24h volume, 24h change, what the agent is building |
 | `watch <ticker>` | switches the paired `<lineage-screen>` to that agent |
 | `stats` | counters |
 | `verify <generation id or recipe>` | the generation's effect, replays and acceptance, and the command to recheck it: `bun scripts/verify.ts --core <site> --candidate <id>` |
@@ -129,7 +129,7 @@ keys="tokens,agents_working,generations"></lineage-stats>`. **A jump-to palette*
 `<lineage-palette trigger></lineage-palette>`, or call `document.querySelector("lineage-palette").open()`
 from an existing button.
 
-**A coin page** (screen, chart, trades, fees): `<lineage-token mint="<mint>"></lineage-token>`, or a
+**A coin page** (the five token parameters, screen, chart, trades, holders): `<lineage-token mint="<mint>"></lineage-token>`, or a
 screen on its own: `<lineage-screen mint="<mint>"></lineage-screen>`.
 
 Pass `scheme="dark"` or `scheme="light"` to follow a host theme toggle (a host page can set it on
@@ -154,7 +154,9 @@ Custom properties, set on the element or any ancestor:
 Defaults follow the viewer's light or dark scheme; `scheme="dark"` or `scheme="light"` on an element
 forces one. Deeper overrides go through `::part()`: `root`, `card`, `screen`, `meta`, `ticker`,
 `name`, `description`, `caption`, `state`, `progress`, `track`, `timeline`, `terminal`, `titlebar`,
-`quick`, `header`, `trade`, `chart`, `trades`, `holders`, `fees`, `how`, `step`, `stats`, `stat`.
+`quick`, `header`, `params`, `building`, `token-stats`, `trade`, `chart`, `trades`, `holders`, `how`, `step`, `stats`, `stat`.
+The token parameters and the building line use the app's own markup (`apps/web/src/building.ts`,
+classes prefixed `bd-`), so the kit and the site show a token the same way.
 Motion (glow, typing, tilt, dither develop) stops under `prefers-reduced-motion`.
 
 ## The data client
@@ -165,11 +167,11 @@ from Core and the market indexer, cached for 15 s and shared by the elements.
 | Call | Returns |
 |---|---|
 | `tokens({ sort, limit })` | the indexer's token summaries |
-| `token(mint)` | one token in detail (pools, fees, compute vault) |
+| `token(mint)` | one token in detail (the indexer's row, pools, what the agent is building) |
 | `cards({ sort, limit })` | tokens joined with soul taglines and latest sessions (what a reel draws) |
 | `agent(id)`, `soul(id)` | Core's agent view; the soul's name and tagline, or null |
 | `sessions({ agent, lineage, state, limit })`, `session(id)` | session summaries; one session with its public events |
-| `stats()` | tokens, graduated, agents working now, candidates, verified generations, fees routed to compute (sum of the indexer's on-chain totals), live sessions |
+| `stats()` | tokens, graduated, agents working now, candidates, verified generations, 24h volume (tLINE, summed over the listed tokens), live sessions |
 | `subscribe(type, cb)` | Core's event stream (`"*"` for every event); returns the unsubscribe function |
 | `ours()` | the configured official mints |
 | `terminal.openAndRun(cmd)` | runs a command in the page's terminal |
@@ -196,4 +198,6 @@ like across origins) are retried three times with backoff.
 - `bun packages/embed/scripts/check.ts --pw <dir with node_modules/playwright-core> --web http://127.0.0.1:9665
   [--api https://<site>] [--shots <dir>]`: the demo at 1280 and 390 px (every element renders live
   data, no horizontal scroll, no console errors, no monospace in the kit, no USD, terminal
-  interactions, palette, hover develop).
+  interactions, palette, hover develop). Reel cards, the token block and `<lineage-stats mint>` show
+  exactly price, market cap, 24h volume and 24h change, equal to the indexer's, plus a building line;
+  no fee figure, fee split or compute vault appears anywhere in the kit.

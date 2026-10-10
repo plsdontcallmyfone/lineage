@@ -4,8 +4,8 @@ import { defaultTf, renderCandles } from "../../../apps/web/src/market.ts";
 import type { Card, LineageClient, SessionView } from "./client.ts";
 import { pool } from "./client.ts";
 import { getClient, onConfigure, ourMints } from "./config.ts";
-import { cardHtml, esc, howSteps, feesHtml, holdersHtml, howHtml, linkFor, statsHtml, timelineLayout, tokenHeadHtml, tradesHtml, STAT_ITEMS } from "./render.ts";
-import { BASE, HOW, PALETTE, REEL, SCREEN, STATS, TERMINAL, TOKEN } from "./styles.ts";
+import { building, cardHtml, esc, howSteps, holdersHtml, howHtml, linkFor, statsHtml, timelineLayout, tokenHeadHtml, tokenParams, tradesHtml, STAT_ITEMS } from "./render.ts";
+import { BASE, HOW, PALETTE, PARAMS, REEL, SCREEN, STATS, TERMINAL, TOKEN } from "./styles.ts";
 import { COMMANDS, complete, FACTS, run, stepHtml, TUBES, type TermEnv } from "./terminal.ts";
 import { dither, drawThumb, thumbModel, type Palette } from "./thumb.ts";
 import type { Stats } from "./client.ts";
@@ -143,7 +143,7 @@ function paletteOf(el: Element): Palette {
 /** <lineage-reel sort= limit= look=plain|dither layout=strip|timeline|grid link=> */
 export class LineageReel extends LineageElement {
   static observedAttributes = ["sort", "limit", "look", "layout", "link"];
-  protected css = REEL;
+  protected css = REEL + PARAMS;
   private io: IntersectionObserver | null = null;
   private unsub: (() => void)[] = [];
   private cards: Card[] = [];
@@ -186,7 +186,7 @@ export class LineageReel extends LineageElement {
     const layout = this.getAttribute("layout") ?? "strip";
     const site = this.client.bases.site;
     const link = this.getAttribute("link");
-    const one = (c: Card, style?: string) => cardHtml(c, { href: linkFor(link, site, c), look, style });
+    const one = (c: Card, style?: string) => cardHtml(c, { href: linkFor(link, site, c), look, style, sessionHref: (id) => this.client.href(`/sessions/${id}`) });
     if (!this.cards.length) {
       this.box.innerHTML = `<p class="none">No agent tokens yet.</p>`;
       return;
@@ -312,10 +312,10 @@ function debounce(f: () => unknown, ms: number) {
 
 // ------------------------------------------------------------------------------------------- token
 
-/** <lineage-token mint= tf=> the token page block: header, screen, chart, trades, holders, fees. */
+/** <lineage-token mint= tf=> the token page block: header with price, market cap, 24h volume and 24h change, what the agent is building with its screen, chart, trades, holders. */
 export class LineageToken extends LineageElement {
   static observedAttributes = ["mint", "tf", "link"];
-  protected css = SCREEN + TOKEN;
+  protected css = SCREEN + TOKEN + PARAMS;
   private panel: LivePanelHandle | null = null;
   private ro: ResizeObserver | null = null;
   private timer: ReturnType<typeof setInterval> | null = null;
@@ -329,25 +329,21 @@ export class LineageToken extends LineageElement {
     const c = this.client;
     const t = await c.token(mint);
     const tf = this.getAttribute("tf") ?? defaultTf(t.created_at);
-    const [soul, candles, trades, holders, fees] = await Promise.all([
+    const [soul, candles, trades, holders] = await Promise.all([
       c.soul(t.agent).catch(() => null),
       c.candles(mint, tf).catch(() => ({ tf, candles: [] })),
       c.trades(mint, 15).catch(() => ({ trades: [] })),
       c.holders(mint, 10).catch(() => null),
-      c.fees(mint).catch(() => null),
     ]);
     if (g !== this.alive) return;
     const trade = linkFor(this.getAttribute("link"), c.bases.site, { mint, agent: t.agent, symbol: t.symbol });
     this.box.innerHTML = `${tokenHeadHtml(t, soul?.tagline ?? null, trade)}
       <div class="grid">
-        <section><h3>What the agent is building</h3><div class="screen"></div></section>
+        <section><h3>What the agent is building</h3><div class="building" part="building">${building(t as any, { full: true, sessionHref: (id) => c.href(`/sessions/${id}`) })}</div><div class="screen"></div></section>
         <section><h3>Price in tLINE, ${esc(tf)} candles</h3><div class="chart" part="chart"></div>
           <h3>Recent trades</h3>${tradesHtml(trades.trades)}</section>
       </div>
-      <div class="grid">
-        <section><h3>Fees to compute</h3>${fees ? feesHtml(fees) : '<p class="none">Fee history did not load.</p>'}</section>
-        <section><h3>Holders</h3>${holders ? holdersHtml(holders) : '<p class="none">Holders did not load.</p>'}</section>
-      </div>`;
+      <section><h3>Holders</h3>${holders ? holdersHtml(holders) : '<p class="none">Holders did not load.</p>'}</section>`;
     this.panel = mountPanel(this.box.querySelector<HTMLElement>(".screen")!, { agent: t.agent, height: matchMedia("(max-width: 760px)").matches ? 320 : 400, io: panelIO(c, this.root) });
     const chart = this.box.querySelector<HTMLElement>(".chart")!;
     const draw = () => (chart.innerHTML = renderCandles({ tf, candles: candles.candles, start: t.start_price }, chart.clientWidth, chart.clientHeight));
@@ -376,7 +372,7 @@ export class LineageHow extends LineageElement {
   private timer: ReturnType<typeof setInterval> | null = null;
   protected async start(g: number) {
     const draw = async () => {
-      const s = await this.client.stats({ fees: true });
+      const s = await this.client.stats();
       if (g === this.alive) this.box.innerHTML = howHtml(s);
     };
     await draw();
@@ -387,17 +383,27 @@ export class LineageHow extends LineageElement {
   }
 }
 
-/** <lineage-stats keys="tokens,agents_working,generations,fees_to_compute" layout=row|ticker> */
+/**
+ * <lineage-stats keys="tokens,agents_working,generations,volume_24h" layout=row|ticker> network counters;
+ * <lineage-stats mint=> one token's parameters instead: price, market cap, 24h volume, 24h change and
+ * what its agent is building.
+ */
 export class LineageStats extends LineageElement {
-  static observedAttributes = ["keys", "layout"];
-  protected css = STATS;
+  static observedAttributes = ["keys", "layout", "mint"];
+  protected css = STATS + PARAMS;
   private timer: ReturnType<typeof setInterval> | null = null;
   private unsub: (() => void) | null = null;
   protected async start(g: number) {
+    const mint = this.getAttribute("mint");
     const keys = (this.getAttribute("keys") ?? STAT_ITEMS.map((x) => x.key).join(",")).split(",").map((s) => s.trim()).filter(Boolean) as (keyof Stats)[];
-    const fees = keys.includes("fees_to_compute");
     const draw = async () => {
-      const s = await this.client.stats({ fees });
+      if (mint) {
+        const t = await this.client.market<any>(`tokens/${mint}`, 0);
+        if (g === this.alive)
+          this.box.innerHTML = `<div class="tokstats" part="token-stats"><div class="params" part="params">${tokenParams(t, { unit: true })}</div><div class="building" part="building">${building(t, { sessionHref: (id) => this.client.href(`/sessions/${id}`) })}</div></div>`;
+        return;
+      }
+      const s = await this.client.stats();
       if (g === this.alive) this.box.innerHTML = statsHtml(s, keys);
     };
     await draw();
@@ -574,7 +580,7 @@ export class LineageTerminal extends LineageElement {
       if (o.watch) this.watch(o.watch.agent, o.watch.label);
       if (o.how !== undefined) {
         this.how = o.how - 1;
-        this.stats = await this.client.stats({ fees: true });
+        this.stats = await this.client.stats();
         await this.stepHow();
       }
       if (o.guide) await this.guide(0);
@@ -584,7 +590,7 @@ export class LineageTerminal extends LineageElement {
   }
 
   private async stepHow() {
-    if (!this.stats) this.stats = await this.client.stats({ fees: true });
+    if (!this.stats) this.stats = await this.client.stats();
     this.how++;
     this.print([stepHtml(this.stats, this.how)]);
     if (this.how >= 5) return this.endHow();
@@ -601,7 +607,7 @@ export class LineageTerminal extends LineageElement {
   }
 
   private async guide(i: number) {
-    const s = this.stats ?? (this.stats = await this.client.stats({ fees: true }).catch(() => null));
+    const s = this.stats ?? (this.stats = await this.client.stats().catch(() => null));
     const steps = s ? howSteps(s) : [];
     const box = this.q(".guide");
     if (!steps.length || i >= steps.length) {

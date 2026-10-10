@@ -1,4 +1,5 @@
-import { fmtAmount, fmtInt, fmtProgress, QUOTE, shortAddr } from "../../../apps/web/src/market.ts";
+import { effectText, type Building } from "../../../apps/web/src/building.ts";
+import { fmtAmount, fmtChange, fmtInt, fmtPrice, QUOTE, shortAddr } from "../../../apps/web/src/market.ts";
 import type { Stats, TokenSummary } from "./client.ts";
 import { esc, extLink, howSteps, repoLabel } from "./render.ts";
 
@@ -12,7 +13,7 @@ export interface TermClient {
   bySymbol(sym: string): Promise<TokenSummary | null>;
   soul(agent: string): Promise<{ tagline: string | null; name: string | null } | null>;
   sessions(o: { agent?: string; state?: string; limit?: number }): Promise<{ state: string; recipe_name: string | null; events: number; agent: string | null }[]>;
-  stats(o?: { fees?: boolean }): Promise<Stats>;
+  stats(): Promise<Stats>;
   generation(id: string): Promise<any>;
   lineages(): Promise<any[]>;
 }
@@ -189,6 +190,16 @@ export function stepHtml(s: Stats, i: number): string {
   return `<div class="step"><span class="n">${st.n}/${steps.length}</span> <b>${esc(st.title)}.</b> ${esc(st.body)}${f}</div>`;
 }
 
+/** What the agent is building, in words: the indexer's building join, else its latest Core session. */
+export function buildingText(t: TokenSummary & { building?: Building | null }, s: { state: string; recipe_name: string | null } | null): string {
+  const b = t.building ?? null;
+  const repo = repoLabel(b?.repo ?? t.repo_url);
+  if (b?.live) return `working on ${b.file ? b.file.split("/").pop() : "a change"}${repo ? ` in ${repo}` : ""}`;
+  if (b?.last) return `last improvement: ${effectText(b.last)}`;
+  if (s) return `${s.state === "live" ? "live" : `last session ${s.state}`} on ${s.recipe_name ?? "a lineage"}`;
+  return b ? "no verified improvement yet" : "TBA";
+}
+
 function tokenRows(ts: TokenSummary[], links: TermLinks): string[] {
   if (!ts.length) return [`<span class="dim">No tokens yet.</span>`];
   return ts.map((t) =>
@@ -196,7 +207,7 @@ function tokenRows(ts: TokenSummary[], links: TermLinks): string[] {
       `<span class="c">${a(links.token(t.mint), t.symbol ?? shortAddr(t.mint))}</span>`,
       `<span class="d">${esc(t.name ?? "")}</span>`,
       `<span class="n">${esc(fmtAmount(t.market_cap))} ${QUOTE}</span>`,
-      `<span class="n">${esc(t.phase === "graduated" ? "graduated" : `curve ${fmtProgress(t.curve_progress)}`)}</span>`,
+      `<span class="n">${esc(fmtChange(t.change_24h))}</span>`,
       `<span class="x">${cmdBtn(`watch ${t.symbol ?? ""}`, "watch")}</span>`,
     ]),
   );
@@ -255,7 +266,7 @@ export async function run(input: string, env: TermEnv): Promise<Out> {
       return { html: [arg ? `Searching the explorer for ${esc(arg)}.` : "Opening the explorer."], nav: url };
     }
     case "stats": {
-      const s = await client.stats({ fees: true });
+      const s = await client.stats();
       const f = (v: number | null, fmt = fmtInt) => (v == null ? "TBA" : fmt(v));
       return {
         html: [
@@ -264,7 +275,7 @@ export async function run(input: string, env: TermEnv): Promise<Out> {
           row([`<span class="d">Agents working now</span>`, `<span class="n"><b>${f(s.agents_working)}</b></span>`]),
           row([`<span class="d">Candidates submitted</span>`, `<span class="n"><b>${f(s.candidates)}</b></span>`]),
           row([`<span class="d">Verified generations</span>`, `<span class="n"><b>${f(s.generations)}</b></span>`]),
-          row([`<span class="d">Fees routed to compute</span>`, `<span class="n"><b>${f(s.fees_to_compute, fmtAmount)}</b>${s.fees_to_compute == null ? "" : ` ${QUOTE}`}</span>`]),
+          row([`<span class="d">24h volume, all tokens</span>`, `<span class="n"><b>${f(s.volume_24h, fmtAmount)}</b>${s.volume_24h == null ? "" : ` ${QUOTE}`}</span>`]),
         ],
       };
     }
@@ -283,9 +294,11 @@ export async function run(input: string, env: TermEnv): Promise<Out> {
           ...(soul?.tagline ? [`<span class="ans">${esc(soul.tagline)}</span>`] : []),
           row([`<span class="d">Repository</span>`, `<span class="n">${t.repo_url ? a(t.repo_url, repoLabel(t.repo_url)) : "TBA"}</span>`]),
           row([`<span class="d">Agent</span>`, `<span class="n" title="${esc(t.agent)}">${esc(shortAddr(t.agent))}</span>`]),
-          row([`<span class="d">Market cap</span>`, `<span class="n">${esc(fmtAmount(t.market_cap))} ${QUOTE}</span>`]),
-          row([`<span class="d">Phase</span>`, `<span class="n">${esc(t.phase === "graduated" ? "graduated, DAMM v2" : `bonding curve, ${fmtProgress(t.curve_progress)}`)}</span>`]),
-          row([`<span class="d">Session</span>`, `<span class="n">${s ? esc(`${s.state === "live" ? "live" : `last ${s.state}`} on ${s.recipe_name ?? "a lineage"}`) : "none yet"}</span>`]),
+          row([`<span class="d">Price</span>`, `<span class="n">${esc(fmtPrice(t.price))}${t.price == null ? "" : ` ${QUOTE}`}</span>`]),
+          row([`<span class="d">Market cap</span>`, `<span class="n">${esc(fmtAmount(t.market_cap))}${t.market_cap == null ? "" : ` ${QUOTE}`}</span>`]),
+          row([`<span class="d">24h volume</span>`, `<span class="n">${esc(fmtAmount(t.volume_24h))}${t.volume_24h == null ? "" : ` ${QUOTE}`}</span>`]),
+          row([`<span class="d">24h change</span>`, `<span class="n">${esc(fmtChange(t.change_24h))}</span>`]),
+          row([`<span class="d">Building</span>`, `<span class="n">${esc(buildingText(t, s))}</span>`]),
           `${cmdBtn(`watch ${label}`, "watch")} ${a(links.token(t.mint), "token page")}`,
         ],
       };
