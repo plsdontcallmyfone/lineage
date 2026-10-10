@@ -6,9 +6,12 @@
     "apps/*"
   ],
   "scripts": {
-    "test": "bun test packages"
+    "test": "bun test packages",
+    "test:ui": "playwright test",
+    "test:ui:report": "playwright show-report tests/ui/.report"
   },
   "devDependencies": {
+    "@playwright/test": "1.63.0",
     "bun-types": "^1.4.2",
     "typescript": "5.9.3"
   },

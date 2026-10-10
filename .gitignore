@@ -8,3 +8,7 @@ work/
 .lineage/
 .lineage-net/
 apps/web/dist/
+
+# Playwright UI suite (docs/UI-TESTS.md)
+tests/ui/.report/
+tests/ui/.results/
