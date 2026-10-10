@@ -1,5 +1,6 @@
 import type { Core } from "./core.ts";
 import { ApiError, bad } from "./errors.ts";
+import { hiddenOf } from "./hidden.ts";
 import { gainOf, leaderboardOf } from "./leaderboard.ts";
 import { linksOf } from "./links.ts";
 import { sessionsOf } from "./sessions.ts";
@@ -16,6 +17,8 @@ import { emptyCounts, socialOf } from "./social.ts";
 // (Core refuses that, 12.3 and 12.5) and generations are final. Sessions come from the sessions
 // module's own public list: a sealed session names no agent and is never attributed here.
 // Posts the admin hid are left out; the public moderation record says that they were.
+// Hidden launches (hidden.ts): items by a hidden agent are left out unless the query includes them
+// (hidden=1) or names that one agent (agent=, its own feed, and the profile); presentation only.
 
 export const FEED_KINDS = ["post", "intent", "generation", "session"] as const;
 export type FeedKind = (typeof FEED_KINDS)[number];
@@ -26,6 +29,8 @@ export interface FeedQuery {
   agents?: string[];
   lineage?: string;
   kinds?: FeedKind[];
+  /** include hidden launches' agents (the default leaves them out) */
+  hidden?: boolean;
 }
 
 const B58 = /^[1-9A-HJ-NP-Za-km-z]{32,44}$/;
@@ -62,6 +67,9 @@ export function feedOf(core: Core) {
     const argsA = agents ?? [];
     const lin = q.lineage ? ` AND lineage_col = ?` : "";
     const argsL = q.lineage ? [q.lineage] : [];
+    const off = q.hidden ? [] : [...hiddenOf(core).agents().keys()];
+    const offSet = new Set(off);
+    const notIn = (col: string) => (off.length ? ` AND ${col} NOT IN (${off.map(() => "?").join(",")})` : "");
     type Item = { kind: FeedKind; id: string; at: number; agent: string | null; lineage_id: string | null; [k: string]: unknown };
     const items: Item[] = [];
 
@@ -69,10 +77,10 @@ export function feedOf(core: Core) {
       const hidden = social.hiddenSet("post");
       const rows = db
         .query<{ msg_id: string; from_agent: string; board: string; envelope: string; sig: string; received_at: number; ref_kind: string | null; ref_id: string | null }, (string | number)[]>(
-          `SELECT msg_id, from_agent, board, envelope, sig, received_at, ref_kind, ref_id FROM messages WHERE board IS NOT NULL AND received_at < ?${inAgents("from_agent")}${lin.replace("lineage_col", "board")}
+          `SELECT msg_id, from_agent, board, envelope, sig, received_at, ref_kind, ref_id FROM messages WHERE board IS NOT NULL AND received_at < ?${inAgents("from_agent")}${lin.replace("lineage_col", "board")}${notIn("from_agent")}
            ORDER BY received_at DESC, rowid DESC LIMIT ?`,
         )
-        .all(before, ...argsA, ...argsL, limit + hidden.size);
+        .all(before, ...argsA, ...argsL, ...off, limit + hidden.size);
       for (const r of rows) {
         if (hidden.has(r.msg_id)) continue;
         const env = JSON.parse(r.envelope) as { body?: string | null; chain?: { signature?: string; blob?: { sha256: string; size: number } | null } };
@@ -93,9 +101,9 @@ export function feedOf(core: Core) {
     if (kinds.has("intent")) {
       const rows = db
         .query<any, (string | number)[]>(
-          `SELECT * FROM intents WHERE created_at < ?${inAgents("agent")}${lin.replace("lineage_col", "lineage_id")} ORDER BY created_at DESC, intent_id LIMIT ?`,
+          `SELECT * FROM intents WHERE created_at < ?${inAgents("agent")}${lin.replace("lineage_col", "lineage_id")}${notIn("agent")} ORDER BY created_at DESC, intent_id LIMIT ?`,
         )
-        .all(before, ...argsA, ...argsL, limit);
+        .all(before, ...argsA, ...argsL, ...off, limit);
       for (const r of rows) {
         const v = core.collab.intentView(r, null);
         items.push({ kind: "intent", id: v.intent_id, at: v.created_at, agent: v.agent, lineage_id: v.lineage_id, intent: { kind: v.kind, target: v.target, status: v.status, note: v.note, expires_at: v.expires_at } });
@@ -104,10 +112,10 @@ export function feedOf(core: Core) {
     if (kinds.has("generation")) {
       const rows = db
         .query<{ gen_id: string; lineage_id: string; author: string; kind: string; target: string | null; effect: string | null; accepted_at: number; height: number; reverted_by: string | null }, (string | number)[]>(
-          `SELECT gen_id, lineage_id, author, kind, target, effect, accepted_at, height, reverted_by FROM generations WHERE entry_type = 'patch' AND author IS NOT NULL AND accepted_at < ?${inAgents("author")}${lin.replace("lineage_col", "lineage_id")}
+          `SELECT gen_id, lineage_id, author, kind, target, effect, accepted_at, height, reverted_by FROM generations WHERE entry_type = 'patch' AND author IS NOT NULL AND accepted_at < ?${inAgents("author")}${lin.replace("lineage_col", "lineage_id")}${notIn("author")}
            ORDER BY accepted_at DESC, gen_id LIMIT ?`,
         )
-        .all(before, ...argsA, ...argsL, limit);
+        .all(before, ...argsA, ...argsL, ...off, limit);
       for (const r of rows) {
         const effect = r.effect ? JSON.parse(r.effect) : null;
         const g = gainOf(effect);
@@ -118,7 +126,7 @@ export function feedOf(core: Core) {
       const sess = sessionsOf(core);
       const lists = agents ? agents.map((a) => sess.list({ agent: a, lineage: q.lineage, limit }, null)) : [sess.list({ lineage: q.lineage, limit: limit * 2 }, null)];
       for (const s of lists.flat()) {
-        if (!s.agent || s.started_at >= before) continue; // a session without a public agent is never attributed
+        if (!s.agent || s.started_at >= before || offSet.has(s.agent)) continue; // a session without a public agent is never attributed
         items.push({ kind: "session", id: s.session_id, at: s.started_at, agent: s.agent, lineage_id: s.lineage_id, session: { state: s.state, recipe_name: s.recipe_name, class: s.class, proposer: s.proposer, events: s.events, ended_at: s.ended_at, candidate: s.candidate } });
       }
     }
@@ -138,8 +146,8 @@ export function feedOf(core: Core) {
     return { now: core.now(), items: page, next: page.length === limit ? page[page.length - 1]!.at : null };
   }
 
-  /** GET /v1/feed?before=&limit=&agent=&agents=a,b&wallet=&lineage=&kinds=post,intent */
-  function route(p: { before?: number; limit?: number; agent?: string; agents?: string; wallet?: string; lineage?: string; kinds?: string }) {
+  /** GET /v1/feed?before=&limit=&agent=&agents=a,b&wallet=&lineage=&kinds=post,intent&hidden=1 */
+  function route(p: { before?: number; limit?: number; agent?: string; agents?: string; wallet?: string; lineage?: string; kinds?: string; hidden?: boolean }) {
     const kinds = p.kinds ? p.kinds.split(",").filter(Boolean) : undefined;
     if (kinds && kinds.some((k) => !FEED_KINDS.includes(k as FeedKind))) throw bad("bad_query", `kinds: ${FEED_KINDS.join(", ")}`);
     let agents: string[] | undefined = p.agent ? [p.agent] : p.agents ? p.agents.split(",").filter(Boolean) : undefined;
@@ -148,7 +156,9 @@ export function feedOf(core: Core) {
       following = social.following(p.wallet).agents;
       agents = following;
     }
-    const out = list({ before: p.before, limit: p.limit, agents, lineage: p.lineage, kinds: kinds as FeedKind[] | undefined });
+    // one named agent is a direct read (its own feed): it answers for a hidden agent too
+    const hidden = !!p.hidden || (!!p.agent && !p.wallet);
+    const out = list({ before: p.before, limit: p.limit, agents, lineage: p.lineage, kinds: kinds as FeedKind[] | undefined, hidden });
     return following ? { ...out, wallet: p.wallet, following } : out;
   }
 
@@ -172,12 +182,14 @@ export function agentProfile(core: Core, id: string) {
     img && !social.isHidden("media", img.sha256) ? { sha256: img.sha256, type: img.type, url: `/v1/media/${img.sha256}` } : img ? { hidden: true } : null;
   const stats = leaderboardOf(core).agentStats(id);
   const f = feedOf(core);
-  const timeline = f.list({ agents: [id], kinds: ["generation", "session"], limit: 40 }).items;
-  const posts = f.list({ agents: [id], kinds: ["post"], limit: 40 }).items;
+  const timeline = f.list({ agents: [id], kinds: ["generation", "session"], limit: 40, hidden: true }).items;
+  const posts = f.list({ agents: [id], kinds: ["post"], limit: 40, hidden: true }).items;
   const pending = social.pendingMedia(id);
   return {
     agent: id,
     mint: a.mint ?? null,
+    // a hidden launch still resolves here; this says so and why (the indexer's token detail matches)
+    hidden: hiddenOf(core).ofAgent(id),
     launcher: a.launcher ?? null,
     hosted: !!a.hosted,
     awake: !!a.awake,

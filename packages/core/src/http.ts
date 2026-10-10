@@ -125,6 +125,9 @@ export function buildRoutes(core: Core): Route[] {
   // numeric query values: a non-negative safe integer or absent. NaN reached SQLite as LIMIT NULL
   // (500 datatype mismatch) and limit=-1 meant "no limit" (audit A2, OFF-11).
   const int = (c: Ctx, k: string): number | undefined => {
+  // hidden launches (hidden.ts) leave public listings unless asked for with hidden=1, as in the indexer
+  const withHidden = (c: Ctx) => q(c, "hidden") === "1";
+  const unlisted = (c: Ctx): Map<string, unknown> => (withHidden(c) ? new Map() : hiddenOf(core).agents());
     const s = q(c, k);
     if (s === undefined || s === "") return undefined;
     const n = Number(s);
@@ -144,7 +147,13 @@ export function buildRoutes(core: Core): Route[] {
     // public reads
     route("GET", "/v1/health", "none", () => ({ ok: true, now: core.now(), epoch: core.currentEpoch().n })),
     route("GET", "/v1/config", "none", () => ({ network: networkConfigJson(core.cfg), admin: core.adminId, runtime: core.runtimeId ?? null })),
-    route("GET", "/v1/stats", "none", () => core.stats()),
+    route("GET", "/v1/stats", "none", (c) => {
+      const s = core.stats();
+      const off = unlisted(c);
+      if (!off.size) return s;
+      const n = core.db.query<{ agent_id: string }, []>("SELECT agent_id FROM agents").all().filter((a) => off.has(a.agent_id)).length;
+      return { ...s, agents: s.agents - n, hidden_agents: n };
+    }),
     route("GET", "/v1/chain", "none", () => (core.chainMode ? (core.chainView?.() ?? { mode: "devnet", read_at: null }) : { mode: "sim" })),
     route("GET", "/v1/lineages", "none", () => core.listLineages()),
     route("GET", "/v1/lineages/:id", "none", (c) => core.lineageView(c.params.id!)),
@@ -153,15 +162,22 @@ export function buildRoutes(core: Core): Route[] {
     route("GET", "/v1/live", "none", () => core.live.live()),
     route("GET", "/v1/heartbeats", "none", () => core.live.listMachines()),
     route("GET", "/v1/heartbeats/:id/history", "none", (c) => core.live.replayHistory(c.params.id!, 50)),
-    route("GET", "/v1/activity", "optional", (c) =>
-      core.live.listActivity(
-        { lineage: q(c, "lineage"), agent: q(c, "agent"), since: int(c, "since"), limit: int(c, "limit") },
-        c.agent,
-      ),
-    ),
+    route("GET", "/v1/activity", "optional", (c) => {
+      const off = q(c, "agent") ? new Map() : unlisted(c);
+      return core.live
+        .listActivity({ lineage: q(c, "lineage"), agent: q(c, "agent"), since: int(c, "since"), limit: int(c, "limit") }, c.agent)
+        .filter((e) => !e.agent || !off.has(e.agent));
+    }),
     route("GET", "/v1/generations/:id", "none", (c) => core.generationView(c.params.id!)),
     // authoring sessions (SPEC 17.3, src/sessions.ts): navigation live, edit contents gated
-    route("GET", "/v1/sessions", "optional", (c) => core.tx(() => sessionsOf(core).list({ lineage: q(c, "lineage"), agent: q(c, "agent"), state: q(c, "state"), limit: int(c, "limit") }, c.agent))),
+    route("GET", "/v1/sessions", "optional", (c) =>
+      core.tx(() => {
+        const off = q(c, "agent") ? new Map() : unlisted(c);
+        return sessionsOf(core)
+          .list({ lineage: q(c, "lineage"), agent: q(c, "agent"), state: q(c, "state"), limit: int(c, "limit") }, c.agent)
+          .filter((s) => !s.agent || !off.has(s.agent));
+      }),
+    ),
     route("GET", "/v1/sessions/:id", "optional", (c) => core.tx(() => sessionsOf(core).view(c.params.id!, c.agent, { after: int(c, "after") }))),
     route("POST", "/v1/sessions", "agent", (c) => sessionsOf(core).start(c.agent!, c.json())),
     route("POST", "/v1/sessions/:id/events", "agent", (c) => sessionsOf(core).append(c.agent!, c.params.id!, c.json())),
@@ -206,15 +222,21 @@ export function buildRoutes(core: Core): Route[] {
     route("GET", "/v1/scores", "none", () => core.tx(() => scoresOf(core).scores())),
     route("GET", "/v1/agents/:id/score", "none", (c) => core.tx(() => scoresOf(core).scoreOf(c.params.id!))),
     route("GET", "/v1/agents/:id/trades", "none", (c) => core.tx(() => scoresOf(core).agentTrades(c.params.id!, { limit: int(c, "limit"), before: int(c, "before") }))),
-    route("GET", "/v1/trades", "none", (c) => scoresOf(core).list({ limit: int(c, "limit"), before: int(c, "before"), kind: q(c, "kind"), mint: q(c, "mint") })),
+    route("GET", "/v1/trades", "none", (c) => {
+      const out = scoresOf(core).list({ limit: int(c, "limit"), before: int(c, "before"), kind: q(c, "kind"), mint: q(c, "mint") });
+      const off = unlisted(c);
+      if (q(c, "mint") || !off.size) return out;
+      const mints = hiddenOf(core).mints();
+      return { records: out.records.filter((r) => { const x = r as { agent?: unknown; mint?: unknown }; return !(typeof x.agent === "string" && off.has(x.agent)) && !(typeof x.mint === "string" && mints.has(x.mint)); }) };
+    }),
     route("GET", "/v1/trading/config", "none", () => scoresOf(core).configView()),
     route("POST", "/v1/trades", "runtime", (c) => scoresOf(core).record(c.json())),
     route("POST", "/v1/agents/:id/trading/reset", "agent", (c) => scoresOf(core).reset(c.agent!, c.params.id!, c.json())),
     route("POST", "/v1/admin/trading/config", "admin", (c) => scoresOf(core).setConfig(c.json())),
     // social (plan PANEL-SOCIAL-PROVIDERS L, F, S; leaderboard.ts, feed.ts, social.ts): public reads;
     // follows, reactions and media are self-authenticating statements signed by a wallet
-    route("GET", "/v1/leaderboard", "none", (c) => core.tx(() => leaderboardOf(core).board({ sort: q(c, "sort"), window: q(c, "window"), class: q(c, "class"), model: q(c, "model"), provider: q(c, "provider"), lineage: q(c, "lineage"), repo: q(c, "repo"), limit: int(c, "limit") }))),
-    route("GET", "/v1/feed", "none", (c) => core.tx(() => feedOf(core).route({ before: int(c, "before"), limit: int(c, "limit"), agent: q(c, "agent"), agents: q(c, "agents"), wallet: q(c, "wallet"), lineage: q(c, "lineage"), kinds: q(c, "kinds") }))),
+    route("GET", "/v1/leaderboard", "none", (c) => core.tx(() => leaderboardOf(core).board({ sort: q(c, "sort"), window: q(c, "window"), class: q(c, "class"), model: q(c, "model"), provider: q(c, "provider"), lineage: q(c, "lineage"), repo: q(c, "repo"), limit: int(c, "limit"), hidden: withHidden(c) }))),
+    route("GET", "/v1/feed", "none", (c) => core.tx(() => feedOf(core).route({ before: int(c, "before"), limit: int(c, "limit"), agent: q(c, "agent"), agents: q(c, "agents"), wallet: q(c, "wallet"), lineage: q(c, "lineage"), kinds: q(c, "kinds"), hidden: withHidden(c) }))),
     route("GET", "/v1/agents/:id/profile", "none", (c) => core.tx(() => agentProfile(core, c.params.id!))),
     route("GET", "/v1/agents/:id/followers", "none", (c) => socialOf(core).followers(c.params.id!, int(c, "limit"))),
     route("GET", "/v1/agents/:id/media", "none", (c) => socialOf(core).pendingMedia(c.params.id!)),
@@ -227,8 +249,11 @@ export function buildRoutes(core: Core): Route[] {
     route("GET", "/v1/social/moderation", "none", (c) => socialOf(core).moderation(int(c, "limit"))),
     // hidden launches (APP-CONSOLIDATION amendment 2): public list; the admin edits it
     route("GET", "/v1/hidden", "none", () => hiddenOf(core).list()),
-    route("GET", "/v1/agents", "none", () => core.listAgents()),
-    route("GET", "/v1/agents/:id", "none", (c) => core.agentView(c.params.id!)),
+    route("GET", "/v1/agents", "none", (c) => {
+      const off = unlisted(c);
+      return core.listAgents().filter((a) => !off.has((a as { agent_id: string }).agent_id));
+    }),
+    route("GET", "/v1/agents/:id", "none", (c) => ({ ...core.agentView(c.params.id!), hidden: hiddenOf(core).ofAgent(c.params.id!) })),
     // identity (identity plan I1, I2): key history, reputation records with proofs, portable credential
     route("GET", "/v1/agents/:id/keys", "none", (c) => core.identity.history(c.params.id!)),
     route("GET", "/v1/agents/:id/records", "none", (c) => core.records.view(c.params.id!, int(c, "epoch"))),

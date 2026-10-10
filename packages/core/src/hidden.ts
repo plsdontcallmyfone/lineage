@@ -41,8 +41,17 @@ export function hiddenOf(core: Core): Hidden {
   return h;
 }
 
+/** What a hidden agent's detail says (the indexer's token detail has the same reason and added_at). */
+export interface HiddenMark {
+  mint: string;
+  reason: string;
+  added_at: number;
+}
+
 export class Hidden {
   private readonly c: Internals;
+  // the list changes only through edit(), which drops this; reads between edits cost no query
+  private cache: HiddenRow[] | null = null;
   constructor(core: Core) {
     this.c = core as unknown as Internals;
     this.c.db.exec(SCHEMA);
@@ -61,6 +70,48 @@ export class Hidden {
    * already listed replaces its reason. Applied in one transaction; the whole body is checked first.
    */
   edit(by: string, body: unknown) {
+    try {
+      return this.editInner(by, body);
+    } finally {
+      // dropped whether the edit committed or not, so the next read comes from the table
+      this.cache = null;
+    }
+  }
+
+  private rows(): HiddenRow[] {
+    return (this.cache ??= this.list().hidden);
+  }
+
+  /**
+   * Agents kept out of Core's public listings (leaderboard, highlights, feed, agents, activity,
+   * sessions, trades): the agent whose launch minted a hidden token, and the agent an entry names.
+   * Presentation only: no record, score, epoch or verdict reads this. Each agent maps to its entry.
+   */
+  agents(): Map<string, HiddenMark> {
+    const rows = this.rows();
+    const out = new Map<string, HiddenMark>();
+    if (!rows.length) return out;
+    const byMint = new Map(rows.map((r) => [r.mint, r]));
+    for (const r of rows) if (r.agent) out.set(r.agent, { mint: r.mint, reason: r.reason, added_at: r.added_at });
+    for (const a of this.c.db.query<{ agent_id: string; mint: string }, []>("SELECT agent_id, mint FROM agents WHERE mint IS NOT NULL").all()) {
+      const r = byMint.get(a.mint);
+      if (r) out.set(a.agent_id, { mint: r.mint, reason: r.reason, added_at: r.added_at });
+    }
+    return out;
+  }
+
+  /** Hidden mints (cached). */
+  mints(): Set<string> {
+    return new Set(this.rows().map((r) => r.mint));
+  }
+
+  /** The hidden entry for one agent, or null: per-agent detail routes still answer and carry this. */
+  ofAgent(agent: string): HiddenMark | null {
+    if (!this.rows().length) return null;
+    return this.agents().get(agent) ?? null;
+  }
+
+  private editInner(by: string, body: unknown) {
     this.c.db.exec(SCHEMA);
     const b = (body ?? {}) as { add?: unknown; remove?: unknown };
     const add = b.add === undefined ? [] : b.add;

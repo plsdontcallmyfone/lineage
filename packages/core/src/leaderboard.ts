@@ -1,5 +1,6 @@
 import type { Core } from "./core.ts";
 import { bad } from "./errors.ts";
+import { hiddenOf } from "./hidden.ts";
 import { socialOf } from "./social.ts";
 
 // Leaderboards (plan PANEL-SOCIAL-PROVIDERS L). Every figure is computed from Core's own records:
@@ -13,6 +14,8 @@ import { socialOf } from "./social.ts";
 // commit moves no figure and no rank until its candidate is final (tested in social.test.ts).
 // Agents are listed as `GET /v1/agents` lists them: a shadow (canary) identity is indistinguishable
 // until it is revealed, and a revealed one is left out like on the agents page.
+// Hidden launches (hidden.ts) are left out of rankings, facets and highlights unless the query asks
+// for them (hidden=1, as the market indexer's directory); presentation only, no figure changes.
 
 export const WINDOWS: Record<string, number | null> = { "24h": 86_400_000, "7d": 7 * 86_400_000, all: null };
 export const SORTS = ["gain", "accepted", "rate", "fees", "streak", "followers"] as const;
@@ -62,7 +65,10 @@ export interface AgentRow {
   streak: number;
   followers: number;
   last_accepted_at: number | null;
-  ranks: Partial<Record<Sort, number>>;
+  /** competition ranks among listed agents; a metric at 0 or without a value has none; null for a hidden agent */
+  ranks: Partial<Record<Sort, number>> | null;
+  /** true where another listed agent has the same value (and so the same rank) */
+  tied: Partial<Record<Sort, boolean>>;
 }
 
 interface Gen {
@@ -158,14 +164,23 @@ export function leaderboardOf(core: Core) {
     return out;
   }
 
+  /** Agents a listing leaves out: hidden launches unless included, minus one agent shown anyway. */
+  function hiddenAgents(include: boolean | undefined, show?: string): Set<string> {
+    if (include) return new Set();
+    const out = new Set(hiddenOf(core).agents().keys());
+    if (show) out.delete(show);
+    return out;
+  }
+
   /** Rows for every listed launched agent within the scope and window (unsorted, no ranks yet). */
-  function rows(q: { window?: string; lineage?: string; repo?: string; class?: string } = {}): AgentRow[] {
+  function rows(q: { window?: string; lineage?: string; repo?: string; class?: string; hidden?: boolean; show?: string } = {}): AgentRow[] {
     const span = WINDOWS[q.window ?? "all"];
     if (span === undefined) throw bad("bad_query", "window: 24h, 7d or all");
     const now = core.now();
     const since = span === null ? 0 : now - span;
     const scope = lineageScope(q);
     const hidden = revealedShadows();
+    for (const a of hiddenAgents(q.hidden, q.show)) hidden.add(a);
     const agents = db
       .query<{ agent_id: string; mint: string | null; hosted: number; registered_at: number; target_repo: string | null }, []>(
         "SELECT agent_id, mint, hosted, registered_at, target_repo FROM agents WHERE kind = 'launched' ORDER BY registered_at, agent_id",
@@ -245,6 +260,7 @@ export function leaderboardOf(core: Core) {
         followers: followers.get(a.agent_id) ?? 0,
         last_accepted_at: gs.length ? Math.max(...gs.map((g) => g.accepted_at)) : null,
         ranks: {},
+        tied: {},
       });
     }
     return out;
@@ -259,20 +275,26 @@ export function leaderboardOf(core: Core) {
     followers: (r) => r.followers,
   };
 
-  /** Competition ranks (1, 2, 2, 4) per metric; an agent with no value (rate below the minimum, fees unknown) has no rank. */
+  /**
+   * Competition ranks (1, 2, 2, 4) per metric, equal values sharing a rank and marked tied. An agent
+   * with no value (rate below the minimum, fees unknown) or a value of 0 (no followers, no streak)
+   * has no rank: a rank among agents that all have nothing says nothing.
+   */
   function rank(rs: AgentRow[]) {
     for (const s of SORTS) {
       const vals = rs.map((r) => metric[s](r));
       for (let i = 0; i < rs.length; i++) {
         const v = vals[i];
-        if (v === null || v === undefined) continue;
-        rs[i]!.ranks[s] = 1 + vals.filter((w) => w !== null && w !== undefined && w > v).length;
+        if (v === null || v === undefined || v === 0) continue;
+        const r = rs[i]!;
+        (r.ranks ??= {})[s] = 1 + vals.filter((w) => w !== null && w !== undefined && w > v).length;
+        if (vals.some((w, j) => j !== i && w === v)) r.tied[s] = true;
       }
     }
   }
 
-  /** GET /v1/leaderboard?sort=&window=&class=&model=&provider=&lineage=&repo=&limit= */
-  function board(q: { sort?: string; window?: string; class?: string; model?: string; provider?: string; lineage?: string; repo?: string; limit?: number }) {
+  /** GET /v1/leaderboard?sort=&window=&class=&model=&provider=&lineage=&repo=&limit=&hidden=1 */
+  function board(q: { sort?: string; window?: string; class?: string; model?: string; provider?: string; lineage?: string; repo?: string; limit?: number; hidden?: boolean }) {
     const sort = (q.sort ?? "gain") as Sort;
     if (!SORTS.includes(sort)) throw bad("bad_query", `sort: ${SORTS.join(", ")}`);
     let rs = rows(q);
@@ -281,7 +303,7 @@ export function leaderboardOf(core: Core) {
     rank(rs);
     const key = metric[sort];
     rs.sort((a, b) => (key(b) ?? -Infinity) - (key(a) ?? -Infinity) || b.accepted - a.accepted || a.registered_at - b.registered_at || (a.agent < b.agent ? -1 : 1));
-    const all = rows({});
+    const all = rows({ hidden: q.hidden });
     const facets = {
       classes: [...new Set(all.flatMap((r) => r.classes))].sort(),
       models: [...new Set(all.map((r) => r.model).filter((x): x is string => !!x))].sort(),
@@ -297,19 +319,21 @@ export function leaderboardOf(core: Core) {
       sort,
       window: q.window ?? "all",
       scope: { class: q.class ?? null, lineage: q.lineage ?? null, repo: q.repo ?? null, model: q.model ?? null, provider: q.provider ?? null },
+      hidden_included: !!q.hidden,
       min_final_for_rate: MIN_FINAL_FOR_RATE,
       fees_source: core.chainMode ? "indexer" : "core ledger",
       agents: rs.slice(0, Math.max(1, Math.min(q.limit ?? 100, 500))),
       total: rs.length,
       facets,
-      highlights: highlights(),
+      highlights: highlights(q.hidden),
     };
   }
 
   /** Weekly highlights: the largest verified gains of the last 7 days and agents launched in them. */
-  function highlights() {
+  function highlights(include?: boolean) {
     const since = core.now() - 7 * 86_400_000;
     const hidden = revealedShadows();
+    for (const a of hiddenAgents(include)) hidden.add(a);
     const top = gens({ lineages: null })
       .filter((g) => g.accepted_at >= since && !g.reverted_by && !hidden.has(g.author))
       .map((g) => ({ g, x: gainOf(g.effect ? JSON.parse(g.effect) : null) }))
@@ -332,18 +356,27 @@ export function leaderboardOf(core: Core) {
         accepted_at: g.accepted_at,
       }));
     const fresh = db
-      .query<{ agent_id: string; registered_at: number; mint: string | null }, [number]>("SELECT agent_id, registered_at, mint FROM agents WHERE kind = 'launched' AND registered_at >= ? ORDER BY registered_at DESC LIMIT 12")
+      .query<{ agent_id: string; registered_at: number; mint: string | null }, [number]>("SELECT agent_id, registered_at, mint FROM agents WHERE kind = 'launched' AND registered_at >= ? ORDER BY registered_at DESC, agent_id")
       .all(since)
       .filter((a) => !hidden.has(a.agent_id))
+      .slice(0, 12)
       .map((a) => ({ agent: a.agent_id, name: soulInfo(a.agent_id).name, avatar: socialOf(core).avatarOf(a.agent_id), mint: a.mint, registered_at: a.registered_at }));
     return { since, top_gains: top, new_agents: fresh };
   }
 
-  /** One agent's figures and ranks on the global all-time board (profile page). */
+  /**
+   * One agent's figures and ranks on the global all-time board (profile page). Ranks and `of` count
+   * listed agents only; a hidden agent keeps its figures and has no ranks (null).
+   */
   function agentStats(agent: string) {
-    const rs = rows({});
-    rank(rs);
-    return { of: rs.length, row: rs.find((r) => r.agent === agent) ?? null };
+    const listed = rows({});
+    rank(listed);
+    let row = listed.find((r) => r.agent === agent) ?? null;
+    if (!row && hiddenOf(core).ofAgent(agent)) {
+      row = rows({ show: agent }).find((r) => r.agent === agent) ?? null;
+      if (row) row.ranks = null;
+    }
+    return { of: listed.length, row };
   }
 
   return { board, agentStats, rows };
