@@ -627,6 +627,7 @@ export class Scores {
       const a = this.c.db.query<{ kind: string; hosted: number }, [string]>("SELECT kind, hosted FROM agents WHERE agent_id = ?").get(b.agent);
       if (!a || a.kind !== "launched") throw notFound("launched agent");
       if (!a.hosted) throw forbidden("not_hosted", "only hosted agents trade through the runtime");
+      if (this.config().excluded_agents[b.agent] && b.kind !== "halt") throw conflict("integrity_excluded", "this agent is excluded from trading; nothing is recorded for it");
       let mint: string | null = null;
       let side: string | null = null;
       let sig: string | null = null;

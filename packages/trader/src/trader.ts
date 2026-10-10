@@ -259,6 +259,8 @@ export class Trader {
   }
 
   async tickAgent(a: TradingAgent, cfg: TradingConfig, market: Market, myParties: string[]): Promise<{ trades: number; refused: Refusal[] }> {
+    // an excluded agent is not touched at all: no balances, no gas, no analysis, no record, no post
+    if (cfg.excluded_agents[a.agent]) return { trades: 0, refused: [] };
     const now = this.now();
     this.lastParties.set(a.agent, myParties);
     const bs = this.bookState(a.agent);
@@ -313,7 +315,6 @@ export class Trader {
     const temperament = this.temperamentOf(a.agent, cfg, (tr.body?.temperament?.temperament as Temperament | undefined) ?? null);
     const temp = cfg.temperaments[temperament] ?? TRADING_DEFAULTS.temperaments.aggressive;
     const realized = typeof tr.body?.summary?.realized_pnl_line === "string" ? BigInt(tr.body.summary.realized_pnl_line) : 0n;
-    if (cfg.excluded_agents[a.agent]) return { trades: 0, refused: [] }; // never trades, never analyses, never posts about tokens
     // deterministic risk exits first (stop-loss, take-profit): limits, not opinions
     const d = riskExits(book, market, cfg, now, this.globalLeft(cfg));
     for (const r of d.refused) this.hit(r);

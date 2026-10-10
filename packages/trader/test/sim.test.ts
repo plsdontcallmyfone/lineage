@@ -181,6 +181,8 @@ describe("simulated market with the agents' own (scripted, partly adversarial) d
     // the excluded agent never analysed, never traded, and nobody traded its token
     expect(w.calls.some((c) => c.agent === excluded.id)).toBe(false);
     expect(recs.some((x) => x.agent === excluded.id)).toBe(false);
+    // not even gas or a balance read: its treasury was never touched
+    expect(w.venue.wallet(excluded.key.id).sol).toBe(1_000_000_000n);
     expect(trades.some((t) => t.mint === excluded.mint)).toBe(false);
     // every round's cost was capped at the configured per-round cap and metered
     expect(w.calls.every((c) => c.maxUsd === cfg.analysis_max_usd)).toBe(true);
