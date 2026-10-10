@@ -170,12 +170,12 @@ code { font-family: var(--mono); color: var(--ts); background: var(--bg3); borde
 }
 .nav { display: flex; gap: 2px; overflow-x: auto; scrollbar-width: none; }
 .nav::-webkit-scrollbar { display: none; }
-.nav a { position: relative; padding: 8px 10px; font: 400 11px/1 var(--mono); letter-spacing: .1em; text-transform: uppercase; color: var(--tt); white-space: nowrap; transition: color .15s; }
+.nav a { position: relative; padding: 8px 12px; font: 500 14px/1 var(--sans); letter-spacing: -0.01em; color: var(--ts); white-space: nowrap; transition: color .15s; }
 .top.is-scrolled .nav a { color: var(--ts); }
 .top.is-scrolled .nav a[aria-current="page"] { color: var(--tp); }
 .nav a:hover { color: var(--ts); }
 .nav a[aria-current="page"] { color: var(--tp); }
-.nav a[aria-current="page"]::after { content: ""; position: absolute; left: 10px; right: 10px; bottom: 2px; height: 1px; background: var(--ac); }
+.nav a[aria-current="page"]::after { content: ""; position: absolute; left: 12px; right: 12px; bottom: 2px; height: 1px; background: var(--ac); }
 .top-right { margin-left: auto; display: flex; align-items: center; gap: 8px; }
 .live { display: inline-flex; align-items: center; gap: 7px; height: 28px; padding: 0 12px; border-radius: 9999px; font: 400 11px/1 var(--mono); letter-spacing: .06em; text-transform: uppercase; color: var(--tt); background: var(--bg3); border: 1px solid var(--border); white-space: nowrap; }
 .live i { width: 6px; height: 6px; border-radius: 50%; background: var(--tt); }
@@ -867,7 +867,7 @@ a.pf-chip:hover { background: var(--panel-3); text-decoration: none; }
 
 .eco-btn, .cn-btn {
   height: 36px; display: inline-flex; align-items: center; gap: 8px; padding: 0 14px; border-radius: 9999px; cursor: pointer; white-space: nowrap;
-  font: 400 11px/1 var(--mono); letter-spacing: .1em; text-transform: uppercase; color: var(--ts);
+  font: 500 13.5px/1 var(--sans); letter-spacing: -0.01em; color: var(--ts);
   border: 1px solid var(--glass-border); background: var(--glass-bg); box-shadow: var(--glass-shadow);
   backdrop-filter: blur(8px) saturate(1.4); -webkit-backdrop-filter: blur(8px) saturate(1.4); transition: border-color .15s, color .15s;
 }
