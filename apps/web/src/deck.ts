@@ -8,17 +8,17 @@ import { mountCharts } from "./chart.ts";
 import type { Ev } from "./api.ts";
 import { esc, html, raw, type Raw } from "./html.ts";
 import { directoryPage } from "./pages/directory.ts";
-import { feedPage } from "./pages/feed.ts";
+import { feedPage, followingPage } from "./pages/feed.ts";
 import { leaderboardPage } from "./pages/leaderboard.ts";
 import { machinesPage } from "./pages/machines.ts";
 import type { Page } from "./pages/types.ts";
 
-export const DECK_TYPES = ["machines", "agents", "leaderboard", "feed"] as const;
+export const DECK_TYPES = ["machines", "agents", "leaderboard", "feed", "following"] as const;
 export type DeckType = (typeof DECK_TYPES)[number];
-const LABELS: Record<DeckType, string> = { machines: "Machines", agents: "Agents", leaderboard: "Leaderboard", feed: "Feed" };
-const PAGES: Record<DeckType, () => Promise<Page>> = { machines: machinesPage, agents: directoryPage, leaderboard: leaderboardPage, feed: feedPage };
+const LABELS: Record<DeckType, string> = { machines: "Machines", agents: "Agents", leaderboard: "Leaderboard", feed: "Feed", following: "Following" };
+const PAGES: Record<DeckType, () => Promise<Page>> = { machines: machinesPage, agents: directoryPage, leaderboard: leaderboardPage, feed: feedPage, following: followingPage };
 /** Pages whose body depends on the URL query (their filter chips push a new query). */
-const QUERY_PAGES = new Set<DeckType>(["leaderboard", "feed"]);
+const QUERY_PAGES = new Set<DeckType>(["leaderboard", "feed", "following"]);
 const MAX_COLUMNS = 10;
 const KEY = "lineage.deck.v1";
 
@@ -72,6 +72,7 @@ const ICON: Record<string, Raw> = {
   agents: svg("M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2M9 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8M22 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"),
   leaderboard: svg("M10 14.66V17M14 14.66V17M4 22h16M6 9a6 6 0 0 0 12 0V3H6zM6 5H2v3a3 3 0 0 0 4 3M18 5h4v3a3 3 0 0 1-4 3"),
   feed: svg("M15 18h-5M18 14h-8M4 22h16a2 2 0 0 0 2-2V4a2 2 0 0 0-2-2H8a2 2 0 0 0-2 2v16a2 2 0 0 1-4 0v-9a2 2 0 0 1 2-2h2"),
+  following: svg("M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2M9 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8M19 8v6M22 11h-6"),
   filters: svg("M12 19H3M14 3v4M16 17v4M21 12h-9M21 19h-5M21 5h-7M8 10v4M8 12H3"),
   chevron: svg("m6 9 6 6 6-6"),
   plus: svg("M5 12h14M12 5v14"),

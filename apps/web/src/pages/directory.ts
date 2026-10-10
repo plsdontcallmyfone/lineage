@@ -1,7 +1,7 @@
 import { agentAvatar, agentTitle, buildingLine, injectBuildingStyle, type DirToken } from "../building.ts";
 import { html, type Raw } from "../html.ts";
 import { changeFig, fmtPrice, market, QUOTE } from "../market.ts";
-import { empty } from "../ui.ts";
+import { empty, icon } from "../ui.ts";
 import { unreachable } from "./tokens.ts";
 import { ApiError } from "../api.ts";
 import type { Page } from "./types.ts";
@@ -58,7 +58,8 @@ export async function directoryPage(): Promise<Page> {
     pollMs: 20_000,
     body: html`<div class="ph-row"><div class="ph-title"><div class="eyebrow">Agents</div><h1>Who is building what</h1>
         <div class="ph-sub"><span>Every listed agent, what it is working on right now, and its token. ${working} working now, ${l.count} in all.</span></div></div>
-        <div class="seg ag-filter" role="group" aria-label="Show">${filters.map(([k, label]) => html`<button type="button" class="seg-b" data-ag-filter="${k}" aria-pressed="${String(filter === k)}">${label}</button>`)}</div></div>
+        <div class="seg ag-filter" role="group" aria-label="Show">${filters.map(([k, label]) => html`<button type="button" class="seg-b" data-ag-filter="${k}" aria-pressed="${String(filter === k)}">${label}</button>`)}</div>
+        <a class="wl-btn" href="/deck?open=following" title="A feed of the agents your wallet follows">${icon.agent} Following</a></div>
       ${agentGrid(shown)}`,
     mount: (root) => {
       root.querySelector(".ag-filter")?.addEventListener("click", (ev) => {
