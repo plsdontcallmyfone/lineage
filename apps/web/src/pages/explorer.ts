@@ -35,6 +35,8 @@ export interface ExplorerOpts {
   pollMs?: number;
   /** Hovering a card shows the agent's live desktop in its screen: mounts it and returns a teardown (default none). */
   hoverPanel?: (el: HTMLElement, agent: string) => () => void;
+  /** Hand-drawn marks from /doodles/ around the head (the app only; default off). */
+  doodles?: boolean;
 }
 
 export type { DirToken };
@@ -150,10 +152,10 @@ export function mountExplorer(el: HTMLElement, opts: ExplorerOpts = {}) {
       <header class="ex-head">
         <div class="ex-hero">
           <div class="ex-eyebrow"><i class="ex-pulse"></i>Token directory <span>·</span> ${NETWORK}</div>
-          <h1 class="ex-title">Explorer</h1>
+          <h1 class="ex-title">${opts.doodles ? html`<span class="ex-tw">Explorer<img class="ex-dd ex-dd-wow" src="/doodles/wow.svg" alt="" aria-hidden="true"></span>` : "Explorer"}</h1>
           <p class="ex-lede">Every agent token and what its agent is building right now. Prices and volumes in ${QUOTE}.</p>
         </div>
-        <div class="ex-ctrs">${counter("Tokens", summary?.tokens)}${counter("Working now", summary?.working, true)}${counter("Agents awake", summary?.awake)}${counter("Graduated", summary?.graduated)}</div>
+        <div class="ex-ctrs">${opts.doodles ? html`<img class="ex-dd ex-dd-arrow" src="/doodles/arrow.svg" alt="" aria-hidden="true">` : ""}${counter("Tokens", summary?.tokens)}${counter("Working now", summary?.working, true)}${counter("Agents awake", summary?.awake)}${counter("Graduated", summary?.graduated)}</div>
       </header>
       <div class="ex-layout">
         <aside class="ex-side" aria-label="Filters">
@@ -422,6 +424,7 @@ export async function explorerPage(): Promise<Page> {
     mount: (root) => {
       mounted?.destroy();
       mounted = mountExplorer(root.querySelector<HTMLElement>("#ex-root")!, {
+        doodles: true,
         // hovering a card: the agent's desktop (its session live, else its idle state: live only) in the machine frame
         hoverPanel: (wrap, agent) => {
           // the machine renders at its natural width in a box, and the box is scaled to fit the card's screen
@@ -456,7 +459,7 @@ const CSS = `
   --ex-scr-bg:#0a0908;--ex-scr-panel:#1a1c20;--ex-scr-fg:#e6e8ec;--ex-scr-muted:#7a808c;--ex-scr-accent:var(--ac);
   font-family:var(--sans);color:var(--ex-text);min-width:0;display:flex;flex-direction:column;gap:22px}
 .ex-loading{padding:40px 0;color:var(--ex-faint)}
-.ex-head{position:relative;display:flex;justify-content:space-between;align-items:flex-end;gap:24px 40px;flex-wrap:wrap;padding:36px 32px 32px;border-radius:22px;corner-shape:squircle;overflow:hidden;background:var(--bg2);box-shadow:var(--card-glow)}
+.ex-head{position:relative;display:flex;justify-content:space-between;align-items:flex-end;gap:24px 40px;flex-wrap:wrap;padding:36px 32px 32px;border-radius:22px;corner-shape:squircle;background:var(--bg2);box-shadow:var(--card-glow)}
 .ex-hero{position:relative;z-index:1;min-width:0;max-width:620px}
 .ex-eyebrow{display:inline-flex;align-items:center;gap:8px;font:500 12px/1 var(--sans);letter-spacing:-.01em;color:var(--tt);margin-bottom:14px}
 .ex-eyebrow span{opacity:.6}
@@ -464,6 +467,10 @@ const CSS = `
 .ex-title{margin:0;font-family:var(--display);font-size:clamp(44px,5.6vw,80px);line-height:1;font-weight:500;letter-spacing:-.04em}
 .ex-lede{margin:18px 0 0;color:var(--tt);font-size:18px;max-width:560px;line-height:26px}
 .ex-ctrs{position:relative;z-index:1;display:grid;grid-template-columns:repeat(4,minmax(0,auto));gap:0}
+.ex-tw{position:relative;display:inline-block}
+.ex-dd{position:absolute;z-index:4;display:block;height:auto;max-width:none;pointer-events:none;user-select:none} /* plnty's doodles: the wow by the title, the arrow at the live counter */
+.ex-dd-wow{width:140px;left:calc(100% + 14px);top:-38px}
+.ex-dd-arrow{width:40px;left:calc(25% + 8px);top:-66px}
 .ex-ctr{display:flex;flex-direction:column;gap:10px;padding:2px 26px;min-width:0;border-left:1px solid var(--border)}
 .ex-ctr:first-child{border-left:0;padding-left:0}
 .ex-ctr span{display:inline-flex;align-items:center;gap:7px;font:500 12px/1 var(--sans);letter-spacing:-.01em;color:var(--tt);white-space:nowrap}
@@ -537,6 +544,7 @@ const CSS = `
   .ex-side-h{width:100%;padding:0 0 4px}
   .ex-side button{background:var(--pill);font-size:13px;padding:6px 10px}
   .ex-head{padding:22px 18px}
+  .ex-dd{display:none}
   .ex-ctrs{grid-template-columns:repeat(2,minmax(0,1fr));width:100%;row-gap:18px}
   .ex-ctr{padding:2px 14px}
   .ex-ctr:nth-child(odd){border-left:0;padding-left:0}

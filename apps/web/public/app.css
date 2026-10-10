@@ -1,7 +1,6 @@
 /* Lineage app, styled after the plnty scrape (public/plnty): warm off-white surface, ink type, beige
-   pills, purple call to action, squircle corners. Light is the default; dark (data-theme absent) is the
-   same palette in ink. Tokens first; the dashboard's older token names are aliases of the short ones so
-   every page keeps working. Suisse Intl for text, KMR Apparat for display (headings, figures, wordmark),
+   pills, purple call to action, squircle corners. One theme, light. Tokens first; the dashboard's older
+   token names are aliases of the short ones so every page keeps working. Suisse Intl for text, KMR Apparat for display (headings, figures, wordmark),
    self-hosted from /fonts/ (see public/fonts/OFL.txt: these two are not OFL). No monospace face: --mono
    is the text face with tabular figures. */
 
@@ -13,88 +12,8 @@
 @font-face { font-family: "KMR Apparat"; src: url("/fonts/KMR-Apparat-Regular.woff2") format("woff2"); font-weight: 400; font-display: swap; }
 @font-face { font-family: "KMR Apparat"; src: url("/fonts/KMR-Apparat-Medium.woff2") format("woff2"); font-weight: 500 700; font-display: swap; }
 
-/* dark: plnty's ink palette (its ticker, mobile menu and dark pills) */
+/* plnty's homepage tokens; the app has one theme (light) */
 :root {
-  color-scheme: dark;
-  --bg: #1a1a19;
-  --bg2: #232322;
-  --bg3: #2d2d2b;
-  --border: #33332f;
-  --border-h: #f8f8f840;
-  --tp: #f8f8f8;
-  --ts: #cac7bf;
-  --tt: #8f8c85;
-  --tt-aa: #9c9890;
-  --ac: #a68aff;
-  --ac-soft: #c9b8ff;
-  --sel: #d9cdff;
-  --sel-ink: #1a1a19;
-  --ac-dim: #a68aff1f;
-  --ac-b: #a68aff52;
-  --sb-hover: #f8f8f80d;
-  --hdr-bg: #1a1a19;
-  --btn-p-bg: #e6e3dc;
-  --btn-p-fg: #1a1a19;
-  --pill: #2d2d2b;
-  --pill-hover: #3a3a37;
-  --pill-ink: #f8f8f8;
-  --cta: #a68aff;
-  --cta-hover: #7b54f5;
-  --cta-ink: #1f0838;
-  --scan: transparent;
-  --glass-bg: var(--pill);
-  --glass-border: transparent;
-  --glass-shadow: none;
-  --float-shadow: 0 12px 32px #0006, 0 2px 8px #00000040;
-  --card-glow: inset 0 0 16px 0 #1a1a19;
-
-  --good: #79a636;
-  --bad: #ff5f57;
-  --warn: #e3b210;
-  --sans: "Suisse Intl", -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
-  --display: "KMR Apparat", var(--sans);
-  --serif: "Suisse Works", "Times New Roman", serif; /* italic quotes only */
-  --mono: var(--sans);
-  --wordmark: var(--display);
-
-  /* aliases used throughout the pages */
-  --page: var(--bg);
-  --panel: var(--bg2);
-  --panel-2: var(--bg3);
-  --panel-3: #383835;
-  --line: var(--border);
-  --line-soft: var(--border);
-  --text: var(--tp);
-  --dim: var(--ts);
-  --faint: var(--tt-aa);
-  --accent: var(--ac);
-  --accent-ink: var(--ac-soft);
-  --accent-soft: var(--ac-dim);
-  --good-soft: color-mix(in srgb, var(--good) 14%, transparent);
-  --warn-soft: color-mix(in srgb, var(--warn) 14%, transparent);
-  --bad-soft: color-mix(in srgb, var(--bad) 14%, transparent);
-  --info-soft: var(--ac-dim);
-  --series-1: #76c1f5;
-  --series-2: var(--ac);
-  --grid: var(--border);
-  --axis: var(--border-h);
-  --diff-add: color-mix(in srgb, var(--good) 16%, var(--bg2));
-  --diff-add-ink: #b7dc7c;
-  --diff-del: color-mix(in srgb, var(--bad) 14%, var(--bg2));
-  --diff-del-ink: #ffa198;
-  --diff-hunk: var(--ac-dim);
-  --shadow: none;
-  --radius: 14px;
-  --radius-sm: 10px;
-  --font: var(--sans);
-  --pad-x: 24px;
-  --hdr-h: 60px;
-  --ease-soft: cubic-bezier(.16, 1, .3, 1);
-  --ease-back: cubic-bezier(.34, 2.4, .64, 1);
-}
-
-/* light (the default, set by index.html unless the visitor chose dark): plnty's homepage tokens */
-:root[data-theme="light"] {
   color-scheme: light;
   --bg: #f8f8f8;
   --bg2: #e6e5e1;
@@ -121,16 +40,58 @@
   --cta: #a68aff;
   --cta-hover: #7b54f5;
   --cta-ink: #47146e;
+  --scan: transparent;
+  --glass-bg: var(--pill);
+  --glass-border: transparent;
+  --glass-shadow: none;
   --float-shadow: 0 12px 32px #18140e22, 0 2px 8px #18140e14;
   --card-glow: inset 0 0 16px 0 #f8f8f8;
+
   --good: #4f7a12;
   --bad: #c62828;
   --warn: #9a6b00;
+  --sans: "Suisse Intl", -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+  --display: "KMR Apparat", var(--sans);
+  --serif: "Suisse Works", "Times New Roman", serif; /* italic quotes only */
+  --mono: var(--sans);
+  --wordmark: var(--display);
+
+  /* aliases used throughout the pages */
+  --page: var(--bg);
+  --panel: var(--bg2);
+  --panel-2: var(--bg3);
   --panel-3: #d1cfc9;
+  --line: var(--border);
+  --line-soft: var(--border);
+  --text: var(--tp);
+  --dim: var(--ts);
+  --faint: var(--tt-aa);
+  --accent: var(--ac);
+  --accent-ink: var(--ac-soft);
+  --accent-soft: var(--ac-dim);
+  --good-soft: color-mix(in srgb, var(--good) 14%, transparent);
+  --warn-soft: color-mix(in srgb, var(--warn) 14%, transparent);
+  --bad-soft: color-mix(in srgb, var(--bad) 14%, transparent);
+  --info-soft: var(--ac-dim);
   --series-1: #2ba1f2;
+  --series-2: var(--ac);
+  --grid: var(--border);
+  --axis: var(--border-h);
+  --diff-add: color-mix(in srgb, var(--good) 16%, var(--bg2));
   --diff-add-ink: #3d5f0c;
+  --diff-del: color-mix(in srgb, var(--bad) 14%, var(--bg2));
   --diff-del-ink: #a0111f;
+  --diff-hunk: var(--ac-dim);
+  --shadow: none;
+  --radius: 14px;
+  --radius-sm: 10px;
+  --font: var(--sans);
+  --pad-x: 24px;
+  --hdr-h: 60px;
+  --ease-soft: cubic-bezier(.16, 1, .3, 1);
+  --ease-back: cubic-bezier(.34, 2.4, .64, 1);
 }
+
 
 * { box-sizing: border-box; }
 html { -webkit-text-size-adjust: 100%; scrollbar-width: thin; scrollbar-color: var(--bg3) transparent; }
@@ -206,6 +167,12 @@ main { padding: 28px var(--pad-x) 80px; min-height: calc(100vh - var(--hdr-h)); 
 .foot .num { font-family: var(--mono); }
 
 /* ---------------------------------------------------------------- page header */
+
+/* plnty's doodles (public/doodles), pinned beside a title; hidden on narrow screens like plnty does */
+.dd-wrap { position: relative; display: inline-block; }
+.dd { position: absolute; z-index: 4; display: block; height: auto; max-width: none; pointer-events: none; user-select: none; }
+.dd-wow { width: 140px; left: calc(100% + 14px); top: -38px; }
+@media (max-width: 860px) { .dd { display: none; } }
 
 .ph-row { display: flex; align-items: flex-end; justify-content: space-between; gap: 16px; margin: 24px 0 32px; flex-wrap: wrap; }
 .ph-title { display: flex; flex-direction: column; gap: 8px; min-width: 0; }

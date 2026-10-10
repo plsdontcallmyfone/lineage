@@ -66,13 +66,12 @@ export function startPrivy(open: boolean): Promise<Api> {
   const host = document.createElement("div");
   host.id = "privy-root";
   document.body.appendChild(host);
-  const dark = document.documentElement.getAttribute("data-theme") !== "light";
   createRoot(host).render(
     <PrivyProvider
       appId={APP_ID}
       config={{
         loginMethods: ["wallet", "email"],
-        appearance: { theme: dark ? "dark" : "light", accentColor: dark ? "#ff7a17" : "#e06510", walletChainType: "solana-only", showWalletLoginFirst: true, walletList: ["detected_solana_wallets", "phantom", "solflare", "backpack", "wallet_connect_qr_solana"] },
+        appearance: { theme: "light", accentColor: "#7b54f5", walletChainType: "solana-only", showWalletLoginFirst: true, walletList: ["detected_solana_wallets", "phantom", "solflare", "backpack", "wallet_connect_qr_solana"] },
         externalWallets: { solana: { connectors: toSolanaWalletConnectors({ shouldAutoConnect: true }) } },
         embeddedWallets: { solana: { createOnLogin: "users-without-wallets" }, ethereum: { createOnLogin: "off" } },
         solana: { rpcs: { "solana:devnet": { rpc: createSolanaRpc(DEVNET_RPC), rpcSubscriptions: createSolanaRpcSubscriptions(DEVNET_RPC.replace(/^http/, "ws")), blockExplorerUrl: "https://explorer.solana.com/?cluster=devnet" } } },

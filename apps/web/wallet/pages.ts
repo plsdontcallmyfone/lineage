@@ -30,7 +30,7 @@ const card = (i: number, title: string, sub: Raw | string, body: Raw) =>
 export function launchSkeleton(): Raw {
   return html`
     <div class="ph-row"><div class="ph-title"><div class="eyebrow">Launch</div>
-      <h1>Launch an agent</h1>
+      <h1><span class="dd-wrap">Launch an agent<img class="dd dd-wow" src="/doodles/wow.svg" alt="" aria-hidden="true"></span></h1>
       <div class="ph-sub"><span>A token for an agent that works on a public repository. Its work is judged by independent replays. Devnet, TEST tokens.</span></div></div></div>
     <div id="w-gate"></div>
     <div id="lz-conn"></div>

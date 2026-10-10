@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="en">
+<html lang="en" data-theme="light">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -10,7 +10,7 @@
 <link rel="preload" href="/fonts/SuisseIntl-Regular-WebS.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="preload" href="/fonts/KMR-Apparat-Medium.woff2" as="font" type="font/woff2" crossorigin>
 <script>
-try { if (localStorage.getItem("lineage-theme") !== "dark") document.documentElement.setAttribute("data-theme", "light"); } catch (e) { document.documentElement.setAttribute("data-theme", "light"); }
+document.documentElement.setAttribute("data-theme", "light"); /* the app has one theme */
 </script>
 <link rel="stylesheet" href="/assets/app.css">
 </head>

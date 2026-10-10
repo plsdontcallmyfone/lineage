@@ -33,6 +33,7 @@ writeFileSync(join(OUT, "assets/privy.js"), await bundle(join(WEB, "privy/main.t
 cpSync(join(WEB, "public/app.css"), join(OUT, "assets/app.css"));
 cpSync(join(WEB, "public/favicon.svg"), join(OUT, "favicon.svg"));
 cpSync(join(WEB, "public/fonts"), join(OUT, "fonts"), { recursive: true });
+cpSync(join(WEB, "public/doodles"), join(OUT, "doodles"), { recursive: true });
 // The dashboard's shell is the page for "/" and the rewrite target for every client-side route.
 cpSync(join(WEB, "public/index.html"), join(OUT, "index.html"));
 cpSync(join(WEB, "public/index.html"), join(OUT, "app.html"));

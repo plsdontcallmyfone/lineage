@@ -23,7 +23,7 @@ import { machinesPage } from "./pages/machines.ts";
 import { launchPage } from "./pages/launch.ts";
 import { profilePage } from "./pages/profile.ts";
 import type { Page } from "./pages/types.ts";
-import { icon, logo } from "./ui.ts";
+import { logo } from "./ui.ts";
 import { deckPage, deckSync } from "./deck.ts";
 
 // ------------------------------------------------------------------------------------------------
@@ -80,12 +80,10 @@ function shell() {
       <div class="top-right">
         <a class="eco-btn" id="eco-open" href="/eco" data-nav="/eco"><i class="eco-dot" id="live" data-s="${live.upstream}" title="Core event stream"></i>Eco</a>
         ${connectHtml()}
-        <button class="iconbtn" id="theme" type="button" aria-label="Toggle colour theme">${icon.moon}</button>
       </div>
     </div></header>
     <main id="main" aria-live="polite"></main>
     <footer class="foot"><span>Every figure is read from Core, the market indexer or devnet; values none of them holds show as TBA.</span><span>Token amounts in $LINE (placeholder), formatted with token_decimals from <span class="num">GET /v1/config</span>.</span><span id="core-url"></span></footer>`.s;
-  updateThemeIcon();
   wireConnect(document.getElementById("cn")!);
 }
 
@@ -274,31 +272,10 @@ async function connect() {
 }
 
 // ------------------------------------------------------------------------------------------------
-// theme, tooltips, clicks, timers
-
-/** Light is the default (index.html sets data-theme="light" unless the visitor chose dark); dark is the attribute absent. */
-function isDark() {
-  return document.documentElement.getAttribute("data-theme") !== "light";
-}
-function updateThemeIcon() {
-  const b = document.getElementById("theme");
-  if (b) b.innerHTML = (isDark() ? icon.sun : icon.moon).s;
-}
+// tooltips, clicks, timers (the app has one theme, light: index.html sets data-theme="light")
 
 document.addEventListener("click", (ev) => {
   const t = ev.target as HTMLElement;
-  if (t.closest("#theme")) {
-    const next = isDark() ? "light" : "dark";
-    if (next === "light") document.documentElement.setAttribute("data-theme", "light");
-    else document.documentElement.removeAttribute("data-theme");
-    try {
-      localStorage.setItem("lineage-theme", next);
-    } catch {
-      /* storage blocked */
-    }
-    updateThemeIcon();
-    return;
-  }
   const tabBtn = t.closest<HTMLElement>("[data-tab]");
   const tabGroup = tabBtn?.closest<HTMLElement>("[data-tabs]");
   if (tabBtn && tabGroup) {

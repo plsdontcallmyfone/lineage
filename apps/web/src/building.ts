@@ -130,7 +130,7 @@ const CSS = `
 .bd-building{display:flex;flex-direction:column;gap:6px;min-width:0;font-size:12.5px;line-height:1.45;color:var(--ts)}
 .bd-building b{font-weight:500;color:var(--tp)}
 .bd-live,.bd-last{display:block;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.bd-live{color:var(--ac-soft)}
+.bd-live{color:var(--ac)}
 .bd-live b{color:var(--tp)}
 .bd-live i{display:inline-block;width:6px;height:6px;border-radius:50%;background:var(--ac);margin-right:7px;vertical-align:1px;animation:bd-pulse 1.4s ease-in-out infinite}
 .bd-none{color:var(--tt)}
@@ -143,7 +143,6 @@ const CSS = `
 @keyframes bd-pulse{50%{opacity:.25}}
 @media (prefers-reduced-motion:reduce){.bd-live i{animation:none}}
 @media (max-width:420px){.bd-params{grid-template-columns:repeat(2,minmax(0,1fr));row-gap:10px}}
-:root[data-theme="light"] .bd-live{color:var(--ac)}
 `;
 
 /** The same styles for a shadow root (the embed kit's elements map the app's tokens onto theirs). */

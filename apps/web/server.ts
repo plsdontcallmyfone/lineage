@@ -20,7 +20,8 @@
 //   /embed/lineage-embed.js   the embed kit (packages/embed, built at startup; rebuilt per request with --dev), CORS *
 //   /embed/lineage-explorer.js  <lineage-explorer>'s module, loaded on demand by the kit
 //   /embed/demo.html          the kit's demo page (every element, two themes)
-//   /fonts/<file>      self-hosted fonts (public/fonts, SIL OFL 1.1, licenses in public/fonts/OFL.txt)
+//   /fonts/<file>      self-hosted fonts (public/fonts, licenses in public/fonts/OFL.txt)
+//   /doodles/<file>    hand-drawn SVG marks from the plnty scrape (public/doodles)
 //   /network, /live, /explorer, /wallet, /spawn, /manual   302 to what replaced them (app consolidation)
 //   everything else    index.html (client-side routing; the Explorer is /)
 //
@@ -324,7 +325,7 @@ const indexHtml = () => Bun.file(join(DIR, "public/index.html"));
 // Page security headers (audit A2), the same policy Caddy sets on the site (scripts/deploy/caddy/Caddyfile.tmpl);
 // the hash is the inline theme script in public/index.html (gate.test.ts checks both stay in step).
 const PAGE_CSP =
-  "default-src 'self'; script-src 'self' https://challenges.cloudflare.com 'sha256-WA1cn8Ysrccmd3KDsW1RTydga9iJYWj4oqdYLuRDBGo='; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com https://fonts.privy.io; img-src 'self' data: blob: https:; media-src 'self' blob:; connect-src 'self' https://api.github.com https://auth.privy.io https://*.rpc.privy.systems https://api.devnet.solana.com wss://api.devnet.solana.com wss://relay.walletconnect.com wss://relay.walletconnect.org https://explorer-api.walletconnect.com; frame-src https://auth.privy.io https://verify.walletconnect.com https://verify.walletconnect.org https://challenges.cloudflare.com; child-src https://auth.privy.io https://verify.walletconnect.com https://verify.walletconnect.org; object-src 'none'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'";
+  "default-src 'self'; script-src 'self' https://challenges.cloudflare.com 'sha256-q2c/Ljs7mm4Cb9opxfKMH7RGkjkXZyTffr036UKMi2k='; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com https://fonts.privy.io; img-src 'self' data: blob: https:; media-src 'self' blob:; connect-src 'self' https://api.github.com https://auth.privy.io https://*.rpc.privy.systems https://api.devnet.solana.com wss://api.devnet.solana.com wss://relay.walletconnect.com wss://relay.walletconnect.org https://explorer-api.walletconnect.com; frame-src https://auth.privy.io https://verify.walletconnect.com https://verify.walletconnect.org https://challenges.cloudflare.com; child-src https://auth.privy.io https://verify.walletconnect.com https://verify.walletconnect.org; object-src 'none'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'";
 const PAGE_HEADERS = { "content-type": "text/html; charset=utf-8", "content-security-policy": PAGE_CSP, "x-content-type-options": "nosniff", "x-frame-options": "DENY", "referrer-policy": "strict-origin-when-cross-origin" };
 
 const server = Bun.serve({
@@ -422,6 +423,12 @@ const server = Bun.serve({
       const f = Bun.file(join(DIR, "public/fonts", font[1]!));
       if (!(await f.exists())) return new Response("not found", { status: 404 });
       return new Response(f, { headers: { "content-type": FONT_TYPES[font[2]!]!, "cache-control": "public, max-age=86400" } });
+    }
+    const doodle = /^\/doodles\/([a-z-]+\.svg)$/.exec(p);
+    if (doodle) {
+      const f = Bun.file(join(DIR, "public/doodles", doodle[1]!));
+      if (!(await f.exists())) return new Response("not found", { status: 404 });
+      return new Response(f, { headers: { "content-type": "image/svg+xml", "cache-control": "public, max-age=86400" } });
     }
     return new Response(indexHtml(), { headers: PAGE_HEADERS });
   },
