@@ -64,3 +64,20 @@ describe("the agent's model, per-round cap and metering", () => {
     expect(r2.usage.usd).toBeCloseTo((1000 * 0.3 + 100 * 1.2) / 1e6, 9);
   });
 });
+
+describe("analysis model override (owner 2026-10-10: a cheaper model for trading)", () => {
+  test("the trading config's analysis_model replaces the soul's model; null keeps the soul's", async () => {
+    const { routedDecisionModel } = await import("../src/analyst.ts");
+    const reg = JSON.parse(await Bun.file(new URL("../../../config/models.json", import.meta.url)).text());
+    const registry = { get: async () => reg };
+    const soul = { model: { provider: "anthropic", id: "claude-opus-5-5" } };
+    const fetchSoul = (async () => Response.json({ doc: soul })) as unknown as typeof fetch;
+    const fake = () => ({ messages: { create: async () => ({}) } });
+    const keys = { anthropic: "test-key" };
+    const over = await routedDecisionModel({ core: "http://core.test", agent: "A", keys, registry, override: { provider: "anthropic", id: "claude-sonnet-5-5" }, anthropic: fake, fetch: fetchSoul });
+    expect(over.model?.id).toBe("anthropic/claude-sonnet-5-5");
+    expect(mergeTradingConfig({}).analysis_model).toEqual({ provider: "anthropic", id: "claude-sonnet-5-5" });
+    expect(mergeTradingConfig({ analysis_model: null }).analysis_model).toBeNull();
+    expect(() => mergeTradingConfig({ analysis_model: { provider: "Bad Provider", id: "x" } })).toThrow(/analysis_model/);
+  });
+});

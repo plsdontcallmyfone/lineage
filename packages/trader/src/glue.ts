@@ -126,7 +126,7 @@ export function chainTrading(o: {
     log: (m) => o.log(`trader: ${m}`),
     gas: (treasury, lamports) => funder.gas(treasury, lamports),
     analysis: {
-      model: (agent) => routedDecisionModel({ core: o.core, agent, keys: o.keys ?? {}, registry }),
+      model: (agent, override) => routedDecisionModel({ core: o.core, agent, keys: o.keys ?? {}, registry, override }),
       room: (agent) => rt?.analysisSurface?.().room(agent) ?? 0,
       meter: (agent, u) => rt?.analysisSurface?.().meter(agent, u),
       post: async (agent, board, text) => (rt?.analysisSurface ? rt.analysisSurface().send(agent, board, text) : null),

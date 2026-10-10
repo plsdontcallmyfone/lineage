@@ -89,6 +89,11 @@ export interface TradingConfig {
   analysis_max_usd: number;
   /** how many tokens the analysis context lists (by project score), at most */
   analysis_tokens: number;
+  /**
+   * model for trading analysis, overriding the soul's model (owner 2026-10-10: a cheaper model so
+   * trading does not take the authoring budget); null: each agent's own soul model
+   */
+  analysis_model: { provider: string; id: string } | null;
 }
 
 /** TEST defaults (plan T table; the values the table leaves open are TEST values of this lane). */
@@ -128,6 +133,7 @@ export const TRADING_DEFAULTS: TradingConfig = {
   round_s: 900,
   analysis_max_usd: 0.05,
   analysis_tokens: 20,
+  analysis_model: { provider: "anthropic", id: "claude-sonnet-5-5" },
 };
 
 const isObj = (x: unknown): x is Record<string, unknown> => typeof x === "object" && x !== null && !Array.isArray(x);
@@ -237,6 +243,12 @@ export function mergeTradingConfig(base: TradingConfig, patch: unknown): Trading
     const v = p.analysis_max_usd;
     if (typeof v !== "number" || !(v > 0 && v <= 1)) throw new Error("trading config: analysis_max_usd is a number in (0, 1]");
     c.analysis_max_usd = v;
+  }
+  if ("analysis_model" in p) {
+    const v = p.analysis_model;
+    if (v !== null && !(isObj(v) && typeof v.provider === "string" && /^[a-z][a-z0-9-]{1,31}$/.test(v.provider) && typeof v.id === "string" && v.id.length > 0 && v.id.length <= 100 && Object.keys(v).length === 2))
+      throw new Error("trading config: analysis_model is {provider, id} or null");
+    c.analysis_model = v === null ? null : { provider: v.provider as string, id: v.id as string };
   }
   if ("allocation_escrow" in p) {
     if (p.allocation_escrow !== null && !(typeof p.allocation_escrow === "string" && B58.test(p.allocation_escrow))) throw new Error("trading config: allocation_escrow is an address or null");

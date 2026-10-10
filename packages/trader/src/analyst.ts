@@ -202,8 +202,9 @@ export function openaiDecisionModel(m: ModelEntry, p: ProviderSpec, key: string,
 }
 
 /** The agent's model from its soul, or null with why (a provider without a key is never substituted). */
-export async function routedDecisionModel(o: { core: string; agent: string; keys: Record<string, string>; registry: RegistrySource; anthropic?: (key: string) => { messages: { create(p: any): Promise<any> } }; fetch?: typeof fetch }): Promise<{ model: DecisionModel } | { model: null; why: string }> {
-  const r = resolveRoute(await o.registry.get(), await soulModel(o.core, o.agent, o.fetch), o.keys);
+export async function routedDecisionModel(o: { core: string; agent: string; keys: Record<string, string>; registry: RegistrySource; override?: { provider: string; id: string } | null; anthropic?: (key: string) => { messages: { create(p: any): Promise<any> } }; fetch?: typeof fetch }): Promise<{ model: DecisionModel } | { model: null; why: string }> {
+  const choice = o.override ?? (await soulModel(o.core, o.agent, o.fetch));
+  const r = resolveRoute(await o.registry.get(), choice as Parameters<typeof resolveRoute>[1], o.keys);
   if (!r.ok) return { model: null, why: r.why };
   if (r.provider.adapter === "anthropic") return { model: anthropicDecisionModel(r.model, o.anthropic ? o.anthropic(r.key) : new Anthropic({ apiKey: r.key, maxRetries: 2 })) };
   return { model: openaiDecisionModel(r.model, r.provider, r.key, o.fetch) };
