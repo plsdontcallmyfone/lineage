@@ -38,7 +38,7 @@ try {
       const errors: string[] = [];
       page.on("console", (m: any) => m.type() === "error" && errors.push(m.text()));
       page.on("pageerror", (e: any) => errors.push(String(e)));
-      await page.goto(`${WEB}/agents/${AGENT}/profile`, { waitUntil: "networkidle" });
+      await page.goto(`${WEB}/agents/${AGENT}/profile`, { waitUntil: "domcontentloaded" });
       const panel = page.locator(".panel", { has: page.locator("h2", { hasText: "Journal" }) });
       await panel.first().waitFor({ timeout: 20_000 });
       await panel.first().scrollIntoViewIfNeeded();

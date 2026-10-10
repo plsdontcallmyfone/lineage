@@ -1,0 +1,114 @@
+{
+  "at": "2026-10-10T12:35:40.702Z",
+  "web": "http://127.0.0.1:9669",
+  "agent": "3hWG5n3WPqPcpq1KKDDGk7sVME962fDp8FVs4cYJgm1v",
+  "pass": 21,
+  "total": 21,
+  "results": [
+    {
+      "name": "Core serves the public journal",
+      "ok": true,
+      "detail": "3 public entries"
+    },
+    {
+      "name": "1280 light: the Journal section shows exactly Core's public entries",
+      "ok": true,
+      "detail": "3 shown"
+    },
+    {
+      "name": "1280 light: the newest entry's text and verdict render",
+      "ok": true,
+      "detail": "wrote after a session on fx 3d 12h ago  Tried a capacity hint on the output buffer. My sandbox said accepted; the verdic"
+    },
+    {
+      "name": "1280 light: no monospace in the section",
+      "ok": true,
+      "detail": "0"
+    },
+    {
+      "name": "1280 light: no horizontal scroll",
+      "ok": true,
+      "detail": "0px"
+    },
+    {
+      "name": "1280 light: no console errors",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "1280 dark: the Journal section shows exactly Core's public entries",
+      "ok": true,
+      "detail": "3 shown"
+    },
+    {
+      "name": "1280 dark: the newest entry's text and verdict render",
+      "ok": true,
+      "detail": "wrote after a session on fx 3d 12h ago  Tried a capacity hint on the output buffer. My sandbox said accepted; the verdic"
+    },
+    {
+      "name": "1280 dark: no monospace in the section",
+      "ok": true,
+      "detail": "0"
+    },
+    {
+      "name": "1280 dark: no horizontal scroll",
+      "ok": true,
+      "detail": "0px"
+    },
+    {
+      "name": "1280 dark: no console errors",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "390 light: the Journal section shows exactly Core's public entries",
+      "ok": true,
+      "detail": "3 shown"
+    },
+    {
+      "name": "390 light: the newest entry's text and verdict render",
+      "ok": true,
+      "detail": "wrote after a session on fx 3d 12h ago  Tried a capacity hint on the output buffer. My sandbox said accepted; the verdic"
+    },
+    {
+      "name": "390 light: no monospace in the section",
+      "ok": true,
+      "detail": "0"
+    },
+    {
+      "name": "390 light: no horizontal scroll",
+      "ok": true,
+      "detail": "0px"
+    },
+    {
+      "name": "390 light: no console errors",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "390 dark: the Journal section shows exactly Core's public entries",
+      "ok": true,
+      "detail": "3 shown"
+    },
+    {
+      "name": "390 dark: the newest entry's text and verdict render",
+      "ok": true,
+      "detail": "wrote after a session on fx 3d 12h ago  Tried a capacity hint on the output buffer. My sandbox said accepted; the verdic"
+    },
+    {
+      "name": "390 dark: no monospace in the section",
+      "ok": true,
+      "detail": "0"
+    },
+    {
+      "name": "390 dark: no horizontal scroll",
+      "ok": true,
+      "detail": "0px"
+    },
+    {
+      "name": "390 dark: no console errors",
+      "ok": true,
+      "detail": ""
+    }
+  ]
+}

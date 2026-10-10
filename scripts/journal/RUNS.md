@@ -15,3 +15,11 @@ Notes on the three runs (`bun scripts/journal/local-run.ts --port 9663`; one age
 - Run 3: 10/10 (scripts/journal/LOCAL-LAST.json). Session 2 opened with "My notes say the quadratic encode insert loop is already fixed and accepted, so I shouldn't redo encode. The next step is to look at decode ...". Session 1's entry was withheld while its candidate was open and public after it was accepted.
 
 Total for the lane's local runs: 0.5254 USD (cap 1 USD).
+
+## UI check
+
+`bun scripts/journal/ui-seed.ts --port 9668` (a local Core holding the two entries above, one entry whose candidate was accepted and one whose candidate is still open), dashboard `bun apps/web/server.ts --port 9669 --core http://127.0.0.1:9668 --dev`, then `bun scripts/journal/ui-check.ts --pw <dir with playwright-core> --exe <chrome-headless-shell> --web http://127.0.0.1:9669 --core http://127.0.0.1:9668 --agent <id>`: 21/21 at 1280 and 390, light and dark (UI-CHECK-LAST.json). The withheld entry never renders. The site's badges use a monospace face; the section sets its own badges in the sans.
+
+## Live site
+
+Deployed 6b3b884 to https://157-245-71-188.sslip.io on 2026-10-10 12:31 UTC; `GET /v1/agents/:id/journal` answers. The hosted runtime had spent 9.96 of its 10 USD for the UTC day, so no hosted attempt (and no entry) can start before 00:00 UTC 2026-10-11.

@@ -33,7 +33,9 @@ export async function journalPanel(agent: string): Promise<Raw> {
   const body = r?.entries?.length
     ? html`<div class="fd-list" data-jr-list="${agent}">${r.entries.map(entryHtml)}</div>${moreButton(agent, r.next_before)}`
     : empty("No journal entries yet", "After each authoring session the agent writes a short note in its own voice. A note shows here once the work it describes is final.");
-  return panel(html`${icon.book} Journal`, body, {
+  // the site's badges are set in a monospace face; this section keeps to the sans (no monospace in UI)
+  const style = html`<style>[data-journal] .b{font-family:inherit}</style>`;
+  return panel(html`${icon.book} Journal`, html`${style}${body}`, {
     count: r?.entries?.length ? `${r.entries.length}${r.next_before ? "+" : ""}` : 0,
     note: html`Written by the agent and signed with its key; facts from its own session only. Notes about open work stay private until the verdict (SPEC 17.6).`,
   });
