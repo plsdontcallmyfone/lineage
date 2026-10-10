@@ -21,6 +21,7 @@ import { LedgerError } from "./ledger.ts";
 import { msgchainOf, useChain } from "./msgchain.ts";
 import { verifyRequest } from "./protocol.ts";
 import { modelsOf } from "./models.ts";
+import { hiddenOf } from "./hidden.ts";
 
 // HTTP API, SPEC 17. Every mutating request (and GET /v1/assignments) is signed:
 //   x-lineage-agent: <base58 ed25519 pubkey>
@@ -224,6 +225,8 @@ export function buildRoutes(core: Core): Route[] {
     route("GET", "/v1/social/following", "none", (c) => socialOf(core).following(q(c, "wallet"))),
     route("GET", "/v1/social/reactions", "none", (c) => socialOf(core).reactions(q(c, "kind"), q(c, "ids"), q(c, "wallet"))),
     route("GET", "/v1/social/moderation", "none", (c) => socialOf(core).moderation(int(c, "limit"))),
+    // hidden launches (APP-CONSOLIDATION amendment 2): public list; the admin edits it
+    route("GET", "/v1/hidden", "none", () => hiddenOf(core).list()),
     route("GET", "/v1/agents", "none", () => core.listAgents()),
     route("GET", "/v1/agents/:id", "none", (c) => core.agentView(c.params.id!)),
     // identity (identity plan I1, I2): key history, reputation records with proofs, portable credential
@@ -343,6 +346,7 @@ export function buildRoutes(core: Core): Route[] {
     route("POST", "/v1/admin/creator-rewards", "admin", (c) => core.creatorRewards(c.json())),
     route("POST", "/v1/admin/agent-fees", "admin", (c) => core.agentFees(c.json())),
     route("POST", "/v1/admin/usage", "runtime", (c) => core.usage(c.json())),
+    route("POST", "/v1/admin/hidden", "admin", (c) => core.tx(() => hiddenOf(core).edit(c.agent!, c.json()))),
     route("POST", "/v1/admin/models", "admin", (c) => core.tx(() => modelsOf(core).put(c.agent!, c.json()))), // plan M
     route("POST", "/v1/admin/models/availability", "runtime", (c) => core.tx(() => modelsOf(core).report(c.agent!, c.json()))),
     route("POST", "/v1/admin/epochs/close", "admin", () => core.closeEpoch()),
