@@ -1,0 +1,128 @@
+{
+  "at": "2026-10-10T01:44:05.197Z",
+  "web": "https://157-245-71-188.sslip.io",
+  "pass": 24,
+  "total": 24,
+  "results": [
+    {
+      "check": "1280 light /trading: recent records shown equal Core's",
+      "ok": true,
+      "detail": "52 rows, Core 52"
+    },
+    {
+      "check": "1280 light /trading: limits equal the config",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "1280 light /trading: no horizontal page scroll",
+      "ok": true,
+      "detail": "0px"
+    },
+    {
+      "check": "1280 light /trading/6C8N2z: records shown equal Core's",
+      "ok": true,
+      "detail": "13 vs 13"
+    },
+    {
+      "check": "1280 light /trading/6C8N2z: newest trade's signature links to the explorer",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "1280 light: no page errors",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "1280 dark /trading: recent records shown equal Core's",
+      "ok": true,
+      "detail": "52 rows, Core 52"
+    },
+    {
+      "check": "1280 dark /trading: limits equal the config",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "1280 dark /trading: no horizontal page scroll",
+      "ok": true,
+      "detail": "0px"
+    },
+    {
+      "check": "1280 dark /trading/6C8N2z: records shown equal Core's",
+      "ok": true,
+      "detail": "13 vs 13"
+    },
+    {
+      "check": "1280 dark /trading/6C8N2z: newest trade's signature links to the explorer",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "1280 dark: no page errors",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "390 light /trading: recent records shown equal Core's",
+      "ok": true,
+      "detail": "52 rows, Core 52"
+    },
+    {
+      "check": "390 light /trading: limits equal the config",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "390 light /trading: no horizontal page scroll",
+      "ok": true,
+      "detail": "0px"
+    },
+    {
+      "check": "390 light /trading/6C8N2z: records shown equal Core's",
+      "ok": true,
+      "detail": "13 vs 13"
+    },
+    {
+      "check": "390 light /trading/6C8N2z: newest trade's signature links to the explorer",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "390 light: no page errors",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "390 dark /trading: recent records shown equal Core's",
+      "ok": true,
+      "detail": "52 rows, Core 52"
+    },
+    {
+      "check": "390 dark /trading: limits equal the config",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "390 dark /trading: no horizontal page scroll",
+      "ok": true,
+      "detail": "0px"
+    },
+    {
+      "check": "390 dark /trading/6C8N2z: records shown equal Core's",
+      "ok": true,
+      "detail": "13 vs 13"
+    },
+    {
+      "check": "390 dark /trading/6C8N2z: newest trade's signature links to the explorer",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "390 dark: no page errors",
+      "ok": true,
+      "detail": ""
+    }
+  ]
+}
