@@ -4,11 +4,15 @@ Description=Lineage dashboard and Wallet page on 127.0.0.1:9661
 After=lineage-core.service
 
 [Service]
-User=lineage
-Group=lineage
+User=lineage-web
+Group=lineage-web
 WorkingDirectory=/opt/lineage/current
-Environment=HOME=/home/lineage LINEAGE_HOME=/home/lineage/.lineage PATH=/usr/local/bin:/usr/bin:/bin
+# its own home: the faucet key and log, the soul drafts' state (remote.sh users_setup)
+Environment=HOME=/var/lib/lineage/web LINEAGE_HOME=/var/lib/lineage/web/.lineage PATH=/usr/local/bin:/usr/bin:/bin
+Environment=BUN_RUNTIME_TRANSPILER_CACHE_PATH=0
 EnvironmentFile=-/etc/lineage/site.env
+# LINEAGE_DEVNET_RPC and ANTHROPIC_API_KEY (soul drafts), root-owned, read by systemd
+EnvironmentFile=-/etc/lineage/web.env
 NoNewPrivileges=yes
 PrivateTmp=yes
 # audit A2: this unit needs no Docker, devices, namespaces or raw sockets
@@ -29,7 +33,9 @@ RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX AF_NETLINK
 SystemCallArchitectures=native
 SystemCallFilter=@system-service
 SystemCallErrorNumber=EPERM
-ProtectSystem=full
+ProtectSystem=strict
+ReadWritePaths=/var/lib/lineage/web
+ProtectHome=yes
 Restart=always
 RestartSec=5
 StandardOutput=journal

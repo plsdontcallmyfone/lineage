@@ -31,6 +31,10 @@ mkdirSync(OUT, { recursive: true });
 
 const devnet = JSON.parse(readFileSync(join(ROOT, "scripts/devnet/devnet.json"), "utf8"));
 const net = JSON.parse(readFileSync(join(ROOT, "config/network.json"), "utf8"));
+// The Core authority key: on a site with service users (remote.sh users_setup) it lives in
+// /etc/lineage-core, which this user cannot read, so remote.sh names it in LINEAGE_SITE_CORE_KEY;
+// otherwise the copy in this user's home (older layout, local dry runs).
+const coreKeyEnv = process.env.LINEAGE_SITE_CORE_KEY || "";
 const coreKey = join(HOME_CFG, "devnet", "core-authority.json");
 Object.assign(net, {
   _note: "Lineage public devnet site. M1 TEST values from config/network.json; epoch length daily so each post_epoch (about 0.0015 devnet SOL) happens once a day.",
@@ -44,7 +48,7 @@ Object.assign(net, {
     registry_program: devnet.registry_program,
     launch_program: devnet.launch_program,
     line_mint: devnet.line_mint,
-    ...(existsSync(coreKey) ? { core_authority_key: "~/.config/lineage/devnet/core-authority.json" } : {}),
+    ...(coreKeyEnv ? { core_authority_key: coreKeyEnv } : existsSync(coreKey) ? { core_authority_key: "~/.config/lineage/devnet/core-authority.json" } : {}),
     poll_ms: Number(process.env.LINEAGE_SITE_POLL_MS ?? 20000),
   },
 });

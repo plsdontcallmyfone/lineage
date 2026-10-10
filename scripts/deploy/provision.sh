@@ -6,7 +6,8 @@
 #   bash provision.sh [--no-docker]
 #
 # Installs: base packages, the unprivileged user `lineage` (root's authorized keys, no password, no
-# sudo), ufw (deny incoming; 22, 80, 443), fail2ban for sshd, unattended security upgrades, a
+# sudo; the only user in the docker group: it runs the sandboxes, verifiers and the hosted runtime; the
+# services' own users are made by remote.sh, see its users_setup), ufw (deny incoming; 22, 80, 443), fail2ban for sshd, unattended security upgrades, a
 # swapfile when RAM is under 8 GiB (not inside a container), journald size cap, Docker (docker.io
 # from Ubuntu, `lineage` in the docker group; skipped with --no-docker, which the dry run uses),
 # Bun pinned to BUN_VERSION (checksum verified against the release's SHASUMS256.txt) and Caddy from
@@ -139,7 +140,8 @@ if ! command -v caddy >/dev/null; then
   fi
 fi
 install -d /etc/systemd/system/caddy.service.d
-printf '[Service]\nMemoryMax=256M\n' > /etc/systemd/system/caddy.service.d/lineage.conf
+# /run/caddy holds the admin socket (Caddyfile.tmpl; remote.sh activate writes the same drop-in)
+printf '[Service]\nMemoryMax=256M\nRuntimeDirectory=caddy\nRuntimeDirectoryMode=0750\n' > /etc/systemd/system/caddy.service.d/lineage.conf
 systemctl daemon-reload
 systemctl enable caddy >/dev/null 2>&1 || true
 echo "caddy $(caddy version | awk '{print $1}')"

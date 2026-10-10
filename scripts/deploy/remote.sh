@@ -11,6 +11,11 @@
 #                                taken when the current release was activated)
 #   remote.sh stop | start       stop (and disable) or start every lineage unit and Caddy
 #   remote.sh status             units, memory, health, balances (site-status.ts), disk
+#   remote.sh backup             a Core snapshot now (lineage-backup.service; hourly by its timer)
+#   remote.sh monitor            run the monitor now and print every check
+#   remote.sh restore-test [f]   restore a snapshot (default the newest) into a scratch Core on 127.0.0.1:9669
+#                                and check it serves the snapshot's data; the live Core is not touched
+#   remote.sh restore <f>        replace Core's data with a snapshot (the replaced data is kept)
 #   remote.sh wipe-keys          delete the keys copied from the owner's machine (before destroying the box)
 #
 # Settings come from /etc/lineage/site.env, which deploy.sh writes: SITE_NAMES, LINEAGE_RECIPES,
@@ -28,6 +33,8 @@ AUTHORS="${AUTHORS:-minbpe}"; AUTHORS="${AUTHORS//,/ }"
 all_authors() { systemctl list-units --all --plain --no-legend 'lineage-author@*' 2>/dev/null | awk '{print $1}'; echo lineage-author; }
 CORE_UNITS=(lineage-core lineage-web lineage-gate lineage-indexer lineage-identity)
 IDENTITY_TIMER=lineage-identity-cycle.timer
+# Core snapshots for off-machine backups, and the monitor (docs/DEPLOY-SITE.md "Backups", "Monitoring")
+HARDEN_TIMERS=(lineage-backup.timer lineage-monitor.timer)
 WORKER_UNITS=(lineage-reference lineage-verifier@v1 lineage-verifier@v2)
 
 as_lineage() {
@@ -59,6 +66,94 @@ identity_setup() {
     /usr/local/bin/bun "$REL/packages/identity/src/main.ts" init --dir "$ID" --key /etc/lineage-identity/master.key
 }
 
+# Service users (audit OFF-D10, plan M4). Only `lineage` (sandbox, verifier, reference, bootstrap,
+# authors, hosted runtime) is in the docker group. The internet-facing services and Core run as their
+# own system users with no login shell, no home and no docker:
+#   lineage-gate     the gate (reads nothing but the release)
+#   lineage-web      the dashboard: the faucet key (moved here from lineage's home), the keyed RPC
+#                    URL and the soul drafter's model key (in /etc/lineage/web.env, read by systemd)
+#   lineage-indexer  the market indexer: its database, the keyed RPC URL (/etc/lineage/indexer.env)
+#   lineage-core     Core: its database, the Core authority key (moved here), a copy of the admin key
+#                    and its network.json, all in /etc/lineage-core (700); member of group lineage only to
+#                    read the workers' git mirrors (the tree view) and the private canaries
+#   lineage-monitor  the monitor timer (reads health endpoints, unit states, backup ages)
+# Core's and the indexer's data stay group `lineage` (dirs 2770, Core runs with UMask 0007), so a release
+# from before the split still runs on the same data if one is activated; it then has no Core authority
+# key (Core reads the chain without posting) and no faucet until this release is activated again.
+SERVICE_USERS=(lineage-core lineage-web lineage-gate lineage-indexer lineage-monitor)
+ensure_users() {
+  local u
+  for u in "${SERVICE_USERS[@]}"; do
+    id "$u" >/dev/null 2>&1 || useradd --system --no-create-home --home-dir /nonexistent --shell /usr/sbin/nologin --user-group "$u"
+  done
+  id -nG lineage-core | tr ' ' '\n' | grep -qx lineage || usermod -aG lineage lineage-core
+  for u in "${SERVICE_USERS[@]}" lineage-identity; do
+    id "$u" >/dev/null 2>&1 || continue
+    if id -nG "$u" | tr ' ' '\n' | grep -qx -E 'docker|sudo|admin|adm|systemd-journal'; then echo "$u is in a privileged group ($(id -nG "$u")); refusing" >&2; exit 1; fi
+  done
+  install -d -m 700 -o lineage-core -g lineage-core /etc/lineage-core
+  install -d -m 755 /etc/lineage
+}
+# site-config.ts runs as lineage; the Core key it names is the service user's copy when there is one
+site_config() {
+  as_lineage "cd $1 && LINEAGE_SITE_CORE_KEY=$([ -f /etc/lineage-core/core-authority.json ] && echo /etc/lineage-core/core-authority.json) bun scripts/deploy/site-config.ts --out /var/lib/lineage/site"
+}
+# move_secret <from> <to> <owner>: a key leaves lineage's home for the one service that uses it
+move_secret() {
+  local from="$1" to="$2" owner="$3"
+  [ -f "$from" ] || return 0
+  if [ ! -f "$to" ] || ! cmp -s "$from" "$to"; then install -m 600 -o "$owner" -g "$owner" "$from" "$to.tmp" && mv "$to.tmp" "$to"; fi
+  shred -u "$from" 2>/dev/null || rm -f "$from"
+  echo "moved $(basename "$from") to $owner"
+}
+# env_line <file> <key in file> <key out>: one KEY=value line, nothing printed
+env_line() { [ -f "$1" ] && sed -n "s/^[[:space:]]*$2[[:space:]]*=[[:space:]]*/$3=/p" "$1" | head -1 || true; }
+users_setup() {
+  local REL="$1" LH=/home/lineage/.config/lineage WEB=/var/lib/lineage/web
+  ensure_users
+  # Core: data, keys, config
+  install -d -m 2770 -o lineage-core -g lineage /var/lib/lineage/core
+  chown -R lineage-core:lineage /var/lib/lineage/core
+  chmod -R g+rwX /var/lib/lineage/core
+  find /var/lib/lineage/core -type d -exec chmod g+s {} +
+  move_secret "$LH/devnet/core-authority.json" /etc/lineage-core/core-authority.json lineage-core
+  [ -f "$LH/site/admin.json" ] && install -m 600 -o lineage-core -g lineage-core "$LH/site/admin.json" /etc/lineage-core/admin.json
+  # site-config.ts (run as lineage) renders network.json; Core reads its own copy
+  site_config "$REL"
+  install -m 600 -o lineage-core -g lineage-core /var/lib/lineage/site/network.json /etc/lineage-core/network.json
+  # private canaries: Core reads them through group lineage
+  chmod -R g+rX /var/lib/lineage/canaries 2>/dev/null || true
+  # indexer
+  install -d -m 2770 -o lineage-indexer -g lineage /var/lib/lineage/indexer
+  chown -R lineage-indexer:lineage /var/lib/lineage/indexer
+  # web: its own home with the faucet key and log and the soul drafts' state; RPC and model key by env
+  install -d -m 700 -o lineage-web -g lineage-web "$WEB" "$WEB/.config" "$WEB/.config/lineage" "$WEB/.config/lineage/devnet" "$WEB/.lineage" "$WEB/.lineage/web"
+  move_secret "$LH/devnet/faucet.json" "$WEB/.config/lineage/devnet/faucet.json" lineage-web
+  if [ -f "$LH/devnet/faucet-log.jsonl" ]; then install -m 600 -o lineage-web -g lineage-web "$LH/devnet/faucet-log.jsonl" "$WEB/.config/lineage/devnet/faucet-log.jsonl" && rm -f "$LH/devnet/faucet-log.jsonl"; fi
+  local sd=/home/lineage/.lineage/web/soul-drafts.jsonl
+  if [ -f "$sd" ] && [ ! -f "$WEB/.lineage/web/soul-drafts.jsonl" ]; then install -m 600 -o lineage-web -g lineage-web "$sd" "$WEB/.lineage/web/soul-drafts.jsonl"; fi
+  ( umask 077
+    { env_line "$LH/rpc.env" HELIUS_DEVNET_RPC LINEAGE_DEVNET_RPC; env_line "$LH/model.env" ANTHROPIC_API_KEY ANTHROPIC_API_KEY; } > /etc/lineage/web.env
+    env_line "$LH/rpc.env" HELIUS_DEVNET_RPC LINEAGE_DEVNET_RPC > /etc/lineage/indexer.env )
+  chmod 600 /etc/lineage/web.env /etc/lineage/indexer.env
+  # monitor: what to watch (public keys and names only; alert sinks are the owner's /etc/lineage/alert.env)
+  local pk=/var/lib/lineage/site/pubkeys.json
+  if [ -f "$pk" ]; then
+    ( umask 022
+      printf 'MONITOR_SITE=https://%s\n' "${SITE_NAMES%%,*}"
+      printf 'MONITOR_VERIFIERS=%s\n' "$(jq -r '[.site["verifier-ref"], .site["verifier-v1"], .site["verifier-v2"]] | map(select(.)) | join(",")' "$pk")"
+      printf 'MONITOR_BALANCES=core-authority:%s,owner:%s\n' "$(jq -r '.core_authority // empty' "$REL/scripts/devnet/devnet.json")" "$(jq -r '.site.owner // empty' "$pk")"
+      printf 'MONITOR_RUNTIME=%s\n' "${WITH_RUNTIME:-0}"
+      printf 'MONITOR_CORE_SIGNING=%s\n' "$([ -f /etc/lineage-core/core-authority.json ] && echo 1 || echo 0)"
+      printf 'MONITOR_DRY_RUN=%s\n' "$DRY_RUN" ) > /etc/lineage/monitor.env
+  fi
+  install -d -m 2750 -o lineage-core -g lineage-monitor /var/lib/lineage/core-backups
+  echo "service users: $(for u in "${SERVICE_USERS[@]}" lineage-identity lineage; do id "$u" >/dev/null 2>&1 && printf '%s(%s) ' "$u" "$(id -nG "$u" | tr ' ' ',')"; done)"
+}
+
+# the user the installed Core unit runs as (lineage before the service users, lineage-core after)
+core_user() { sed -n 's/^User=//p' /etc/systemd/system/lineage-core.service 2>/dev/null | head -1; }
+
 optional_units() {
   local u=()
   [ "${WITH_RUNTIME:-0}" = 1 ] && u+=(lineage-runtime)
@@ -70,6 +165,7 @@ case "$CMD" in
 install)
   SHA="$1"; REL="$BASE/releases/$SHA"
   [ -f "$BASE/incoming.bundle" ] || { echo "no bundle at $BASE/incoming.bundle" >&2; exit 1; }
+  ensure_users   # the keys step may copy keys straight to a service user before activate
   chown lineage:lineage "$BASE/incoming.bundle"
   if [ ! -d "$REL/.git" ]; then
     as_lineage "git clone -q --no-checkout $BASE/incoming.bundle $REL && cd $REL && git -c advice.detachedHead=false checkout -q $SHA"
@@ -119,7 +215,7 @@ install)
   fi
   as_lineage "cd $REL && bun scripts/deploy/site-keys.ts init" > /var/lib/lineage/site/pubkeys.json
   chown lineage:lineage /var/lib/lineage/site/pubkeys.json
-  as_lineage "cd $REL && bun scripts/deploy/site-config.ts --out /var/lib/lineage/site"
+  site_config "$REL"
   echo "PUBKEYS $(cat /var/lib/lineage/site/pubkeys.json)"
   ;;
 chain)
@@ -130,7 +226,7 @@ activate)
   SHA="$1"; REL="$BASE/releases/$SHA"
   [ -d "$REL" ] || { echo "no release $SHA" >&2; exit 1; }
   OLD="$(readlink "$BASE/current" 2>/dev/null || true)"
-  as_lineage "cd $REL && bun scripts/deploy/site-config.ts --out /var/lib/lineage/site"
+  site_config "$REL"
   # the new units first, so the stop below already uses their drain allowance (TimeoutStopSec)
   install -m 644 "$REL"/scripts/deploy/systemd/*.service "$REL"/scripts/deploy/systemd/*.timer /etc/systemd/system/ && systemctl daemon-reload
   if [ -n "$OLD" ] && [ "$OLD" != "$REL" ]; then
@@ -149,7 +245,15 @@ activate)
   ln -sfn "$REL" "$BASE/current.new" && mv -Tf "$BASE/current.new" "$BASE/current"
   install -m 644 "$REL"/scripts/deploy/systemd/*.service "$REL"/scripts/deploy/systemd/*.timer /etc/systemd/system/
   identity_setup "$REL"
-  # Caddy
+  users_setup "$REL"
+  # Caddy. Its admin API listens on a unix socket in /run/caddy (mode 0600, owner caddy) instead of
+  # localhost:2019, so other local users cannot rewrite the proxy (audit OFF-D12); the packaged unit's
+  # `caddy reload` (User=caddy) reads that address from the new config. Moving the admin endpoint needs
+  # one restart, since the running Caddy would be asked to reload over an address it is not on yet.
+  install -d /etc/systemd/system/caddy.service.d
+  printf '[Service]\nMemoryMax=256M\nRuntimeDirectory=caddy\nRuntimeDirectoryMode=0750\n' > /etc/systemd/system/caddy.service.d/lineage.conf
+  CADDY_RESTART=0
+  grep -q 'admin unix//' /etc/caddy/Caddyfile 2>/dev/null || CADDY_RESTART=1
   SITES="${SITE_NAMES:-localhost}"
   if [ "$DRY_RUN" = 1 ]; then TLS="	tls internal"; GLOBAL="	local_certs"; else TLS=""; GLOBAL="${ACME_EMAIL:+	email $ACME_EMAIL}"; fi
   install -d -o caddy -g caddy /var/log/caddy
@@ -160,8 +264,8 @@ activate)
   systemctl daemon-reload
   systemctl enable -q "${CORE_UNITS[@]}" caddy
   systemctl restart "${CORE_UNITS[@]}"
-  systemctl reload-or-restart caddy
-  systemctl enable -q --now "$IDENTITY_TIMER"
+  if [ "$CADDY_RESTART" = 1 ]; then systemctl restart caddy; else systemctl reload-or-restart caddy; fi
+  systemctl enable -q --now "$IDENTITY_TIMER" "${HARDEN_TIMERS[@]}"
   if [ "$DRY_RUN" = 1 ]; then
     echo "dry run: lineage-bootstrap, lineage-reference, lineage-verifier@v1, lineage-verifier@v2, lineage-runtime, lineage-author@* SKIPPED (sandbox units need Docker)"
   else
@@ -185,7 +289,7 @@ rollback)
     M="/var/lib/lineage/backups/$(date -u +%Y%m%dT%H%M%SZ)-before-rollback"
     install -d -o lineage -g lineage "$M"
     mv /var/lib/lineage/core/core.db* "$M"/ 2>/dev/null || true
-    install -o lineage -g lineage -m 640 "$BK/core.db" /var/lib/lineage/core/core.db
+    install -o "$(core_user)" -g lineage -m 660 "$BK/core.db" /var/lib/lineage/core/core.db
     echo "data restored from $BK (the replaced data is in $M)"
   fi
   ln -sfn "$PREV" "$BASE/current.new" && mv -Tf "$BASE/current.new" "$BASE/current"
@@ -193,22 +297,33 @@ rollback)
   install -m 644 "$PREV"/scripts/deploy/systemd/*.service /etc/systemd/system/
   ls "$PREV"/scripts/deploy/systemd/*.timer >/dev/null 2>&1 && install -m 644 "$PREV"/scripts/deploy/systemd/*.timer /etc/systemd/system/
   systemctl daemon-reload
+  if [ "$(core_user)" = lineage ]; then
+    # back to a release from before the service users: it runs everything as lineage and finds its
+    # keys in lineage's home, so they are copied back there (the data is group lineage already)
+    LH=/home/lineage/.config/lineage
+    [ -f /etc/lineage-core/core-authority.json ] && install -m 600 -o lineage -g lineage /etc/lineage-core/core-authority.json "$LH/devnet/core-authority.json"
+    [ -f /var/lib/lineage/web/.config/lineage/devnet/faucet.json ] && install -m 600 -o lineage -g lineage /var/lib/lineage/web/.config/lineage/devnet/faucet.json "$LH/devnet/faucet.json"
+    chown -R lineage:lineage /var/lib/lineage/core /var/lib/lineage/indexer
+    as_lineage "cd $PREV && bun scripts/deploy/site-config.ts --out /var/lib/lineage/site"
+    systemctl disable -q --now "${HARDEN_TIMERS[@]}" 2>/dev/null || true
+    echo "previous release predates the service users: keys copied back to lineage, backup and monitor timers off"
+  fi
   systemctl start "${CORE_UNITS[@]}"
   [ "$DRY_RUN" = 1 ] || systemctl start "${WORKER_UNITS[@]}" $(optional_units)
   echo "rolled back to $(basename "$PREV")"
   ;;
 stop)
-  systemctl disable -q --now "$IDENTITY_TIMER" lineage-identity-cycle lineage-runtime $(all_authors) lineage-bootstrap "${WORKER_UNITS[@]}" "${CORE_UNITS[@]}" caddy 2>/dev/null || true
+  systemctl disable -q --now "${HARDEN_TIMERS[@]}" "$IDENTITY_TIMER" lineage-identity-cycle lineage-runtime $(all_authors) lineage-bootstrap "${WORKER_UNITS[@]}" "${CORE_UNITS[@]}" caddy 2>/dev/null || true
   echo "stopped: every lineage unit and Caddy (disabled; 'start' brings them back)"
   ;;
 start)
-  systemctl enable -q --now "${CORE_UNITS[@]}" caddy "$IDENTITY_TIMER"
+  systemctl enable -q --now "${CORE_UNITS[@]}" caddy "$IDENTITY_TIMER" "${HARDEN_TIMERS[@]}"
   [ "$DRY_RUN" = 1 ] || systemctl enable -q --now "${WORKER_UNITS[@]}" $(optional_units)
   echo "started"
   ;;
 status)
   echo "release   $(basename "$(readlink "$BASE/current" 2>/dev/null || echo none)") (previous $(basename "$(cat "$BASE/previous" 2>/dev/null || echo none)"))"
-  for u in "${CORE_UNITS[@]}" "$IDENTITY_TIMER" caddy lineage-bootstrap "${WORKER_UNITS[@]}" lineage-runtime $(all_authors | sort -u); do
+  for u in "${CORE_UNITS[@]}" "$IDENTITY_TIMER" "${HARDEN_TIMERS[@]}" caddy lineage-bootstrap "${WORKER_UNITS[@]}" lineage-runtime $(all_authors | sort -u); do
     st=$(systemctl is-active "$u" 2>/dev/null || true)
     mem=$(systemctl show -p MemoryCurrent --value "$u" 2>/dev/null || echo "")
     [[ "$mem" =~ ^[0-9]+$ ]] && mem="$((mem / 1048576)) MiB" || mem="-"
@@ -220,6 +335,82 @@ status)
   df -h / | tail -1 | awk '{print "disk      " $4 " free of " $2 " (" $5 " used)"}'
   free -m | awk '/Mem:/ {print "memory    " $7 " MiB available of " $2}'
   command -v docker >/dev/null && docker system df --format '{{.Type}} {{.Size}}' 2>/dev/null | sed 's/^/docker    /' || true
+  echo "--"
+  N="$(ls -1t /var/lib/lineage/core-backups/core-*.tar.zst 2>/dev/null | head -1)"
+  [ -n "$N" ] && echo "backup    $(basename "$N") $(du -h "$N" | cut -f1), $(ls -1 /var/lib/lineage/core-backups/core-*.tar.zst | wc -l) kept" || echo "backup    none yet"
+  M=/var/lib/lineage-monitor/state.json
+  if [ -f "$M" ]; then
+    echo "monitor   $(jq -r '.worst + " at " + .at' "$M")"
+    jq -r '.checks[] | select(.level != "ok") | "  " + .level + " " + .id + ": " + .msg' "$M"
+  else echo "monitor   no run yet"; fi
+  for u in lineage "${SERVICE_USERS[@]}" lineage-identity; do id "$u" >/dev/null 2>&1 && printf '%-16s %s\n' "$u" "$(id -nG "$u" | tr ' ' ',')"; done | sed 's/^/user      /'
+  ;;
+backup)
+  # a snapshot now (the hourly timer's job), then the newest one
+  systemctl start lineage-backup.service
+  journalctl -u lineage-backup -n 1 -o cat --no-pager
+  ;;
+monitor)
+  systemctl start lineage-monitor.service || true
+  jq -r '"monitor " + .worst + " at " + .at, (.checks[] | "  " + (.level | . + "    "[0:(5 - length)]) + .id + ": " + .msg)' /var/lib/lineage-monitor/state.json
+  ;;
+restore-test)
+  # restores a snapshot into a scratch Core on 127.0.0.1:9669 (read-only chain bridge, no Core key) and
+  # checks that it serves the snapshot's data; the live Core and its data are not touched
+  F="${1:-$(ls -1t /var/lib/lineage/core-backups/core-*.tar.zst 2>/dev/null | head -1)}"
+  [ -f "$F" ] || { echo "no snapshot" >&2; exit 1; }
+  REL="$(readlink -f "$BASE/current")" D=/var/lib/lineage/restore-test PORT=9669
+  [ -z "$(lsof -ti ":$PORT" 2>/dev/null)" ] || { echo "port $PORT is in use" >&2; exit 1; }
+  systemctl stop lineage-restore-test 2>/dev/null || true
+  rm -rf "$D"; install -d -m 2770 -o lineage-core -g lineage "$D"
+  RC() { runuser -u lineage-core -- env -i PATH=/usr/local/bin:/usr/bin:/bin HOME="$D" bash -c "$1"; }
+  RC "bash $REL/scripts/deploy/backup.sh verify '$F'"
+  RC "bash $REL/scripts/deploy/backup.sh extract '$F' $D/data && tar -xOf <(zstd -q -d -c '$F') manifest.json > $D/manifest.json"
+  jq 'del(.chain.core_authority_key) | .canaries_dir = "'"$D"'/no-canaries"' /etc/lineage-core/network.json > "$D/network.json"
+  chown lineage-core:lineage-core "$D/network.json"; chmod 600 "$D/network.json"
+  T0=$(date +%s)
+  systemd-run -q --unit lineage-restore-test --uid=lineage-core --gid=lineage-core -p UMask=0007 -p WorkingDirectory="$REL" \
+    -p Environment="HOME=$D LINEAGE_HOME=/home/lineage/.lineage BUN_RUNTIME_TRANSPILER_CACHE_PATH=0 GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=safe.directory GIT_CONFIG_VALUE_0=*" \
+    /usr/local/bin/bun packages/core/src/main.ts --data "$D/data" --port $PORT --host 127.0.0.1 --config "$D/network.json" \
+      --admin-key /etc/lineage-core/admin.json --runtime-key /var/lib/lineage/site/runtime-authority.pub --canaries-dir "$D/no-canaries"
+  ok=0; for i in $(seq 1 60); do curl -fsS -m 3 "http://127.0.0.1:$PORT/v1/health" >/dev/null 2>&1 && { ok=1; break; }; sleep 1; done
+  if [ "$ok" = 1 ]; then
+    S="$(curl -fsS -m 10 "http://127.0.0.1:$PORT/v1/stats")"
+    E="$(curl -fsS -m 10 "http://127.0.0.1:$PORT/v1/epochs/current" | jq .n)"
+    pass=0 fail=0
+    chk() { if [ "$2" = "$3" ]; then pass=$((pass + 1)); echo "  ok   $1 $2"; else fail=$((fail + 1)); echo "  FAIL $1: restored Core $2, snapshot $3"; fi; }
+    echo "restored Core up in $(( $(date +%s) - T0 )) s"
+    chk lineages "$(echo "$S" | jq .lineages)" "$(jq .tables.lineages "$D/manifest.json")"
+    chk agents "$(echo "$S" | jq .agents)" "$(jq .tables.agents "$D/manifest.json")"
+    chk candidates "$(echo "$S" | jq .candidates)" "$(jq .tables.candidates "$D/manifest.json")"
+    chk open_epoch "$E" "$(jq .open_epoch "$D/manifest.json")"
+    L1="$(curl -fsS -m 10 "http://127.0.0.1:$PORT/v1/lineages" | jq -c '[.[].id] | sort')"
+    L2="$(runuser -u lineage-core -- sqlite3 -readonly "$D/data/core.db" 'select id from lineages order by id' | jq -R . | jq -sc 'sort')"
+    chk lineage_ids "$(echo "$L1" | sha256sum | cut -c1-16)" "$(echo "$L2" | sha256sum | cut -c1-16)"
+  else
+    fail=1; echo "restored Core did not answer on $PORT"; journalctl -u lineage-restore-test -n 20 -o cat --no-pager
+  fi
+  systemctl stop lineage-restore-test 2>/dev/null || true
+  rm -rf "$D"
+  echo "restore test $(basename "$F"): $([ "$fail" = 0 ] && echo PASS || echo FAIL) ($pass ok, $fail failed)"
+  [ "$fail" = 0 ]
+  ;;
+restore)
+  # replaces Core's live data with a snapshot (the replaced data is kept in /var/lib/lineage/backups)
+  F="${1:-}"; [ -f "$F" ] || { echo "usage: remote.sh restore <snapshot.tar.zst>" >&2; exit 2; }
+  REL="$(readlink -f "$BASE/current")"
+  runuser -u lineage-core -- env -i PATH=/usr/local/bin:/usr/bin:/bin bash "$REL/scripts/deploy/backup.sh" verify "$F"
+  systemctl stop lineage-backup.timer lineage-runtime $(all_authors) "${WORKER_UNITS[@]}" "${CORE_UNITS[@]}" 2>/dev/null || true
+  M="/var/lib/lineage/backups/$(date -u +%Y%m%dT%H%M%SZ)-before-restore"
+  install -d -o lineage -g lineage "$M"
+  mv /var/lib/lineage/core/core.db* /var/lib/lineage/core/blobs "$M"/ 2>/dev/null || true
+  install -d -m 2770 -o lineage-core -g lineage /var/lib/lineage/core/.restore
+  runuser -u lineage-core -- env -i PATH=/usr/local/bin:/usr/bin:/bin bash "$REL/scripts/deploy/backup.sh" extract "$F" /var/lib/lineage/core/.restore
+  mv /var/lib/lineage/core/.restore/core.db /var/lib/lineage/core/.restore/blobs /var/lib/lineage/core/ && rmdir /var/lib/lineage/core/.restore
+  chown -R "$(core_user)":lineage /var/lib/lineage/core; chmod -R g+rwX /var/lib/lineage/core
+  systemctl start "${CORE_UNITS[@]}" lineage-backup.timer
+  [ "$DRY_RUN" = 1 ] || systemctl start "${WORKER_UNITS[@]}" $(optional_units)
+  echo "restored $(basename "$F") (the replaced data is in $M)"
   ;;
 wipe-keys)
   for p in /home/lineage/.config/lineage/devnet/{core-authority,faucet,runtime-authority}.json /home/lineage/.config/lineage/devnet/agent-*.json; do
@@ -245,11 +436,17 @@ json.dump(c, open(p, "w"), indent=2)
 PY
   fi
   rm -f /etc/lineage-identity/core-key.json /etc/lineage-identity/identity.env
+  # the service users' copies (users_setup): Core authority, faucet, keyed RPC and model key env files
+  for p in /etc/lineage-core/core-authority.json /var/lib/lineage/web/.config/lineage/devnet/faucet.json; do
+    [ -f "$p" ] && { shred -u "$p" 2>/dev/null || rm -f "$p"; echo "removed $p"; }
+  done
+  rm -f /etc/lineage/web.env /etc/lineage/indexer.env
+  [ -f /etc/lineage-core/network.json ] && jq '.chain.rpc_url = "https://api.devnet.solana.com" | del(.chain.core_authority_key)' /etc/lineage-core/network.json > /etc/lineage-core/network.json.tmp && mv /etc/lineage-core/network.json.tmp /etc/lineage-core/network.json && chown lineage-core:lineage-core /etc/lineage-core/network.json && chmod 600 /etc/lineage-core/network.json
   echo "copied keys removed; the site's own keys stay in /home/lineage/.config/lineage/site"
   echo "the identity store /var/lib/lineage/identity and its key /etc/lineage-identity/master.key stay; delete both before destroying the box"
   ;;
 *)
-  echo "usage: remote.sh install|chain|activate <sha> | rollback [--with-data] | stop | start | status | wipe-keys" >&2
+  echo "usage: remote.sh install|chain|activate <sha> | rollback [--with-data] | stop | start | status | backup | monitor | restore-test [snapshot] | restore <snapshot> | wipe-keys" >&2
   exit 2
   ;;
 esac

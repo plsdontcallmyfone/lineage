@@ -4,10 +4,10 @@ Description=Lineage gate (rate limits, CORS, allowlists) on 127.0.0.1:9662, the 
 After=lineage-web.service
 
 [Service]
-User=lineage
-Group=lineage
+User=lineage-gate
+Group=lineage-gate
 WorkingDirectory=/opt/lineage/current
-Environment=HOME=/home/lineage LINEAGE_HOME=/home/lineage/.lineage PATH=/usr/local/bin:/usr/bin:/bin
+Environment=HOME=/tmp PATH=/usr/local/bin:/usr/bin:/bin
 EnvironmentFile=-/etc/lineage/site.env
 NoNewPrivileges=yes
 PrivateTmp=yes
@@ -32,7 +32,7 @@ SystemCallErrorNumber=EPERM
 # the gate reads nothing under /home
 ProtectHome=yes
 Environment=BUN_RUNTIME_TRANSPILER_CACHE_PATH=0
-ProtectSystem=full
+ProtectSystem=strict
 Restart=always
 RestartSec=5
 StandardOutput=journal

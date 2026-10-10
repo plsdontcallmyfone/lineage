@@ -1,25 +1,53 @@
 # Installed by scripts/deploy/remote.sh. Lineage public devnet site, docs/DEPLOY-SITE.md.
+# Runs as lineage-core (no docker, no login; audit OFF-D10): its data in /var/lib/lineage/core, its keys
+# and network.json in /etc/lineage-core (remote.sh users_setup). Group lineage gives it read access to the
+# workers' git mirrors (the tree view, LINEAGE_HOME) and the private canaries; nothing in /home is
+# writable and lineage's key directory is hidden.
 [Unit]
 Description=Lineage Core (devnet chain mode) on 127.0.0.1:9660
 After=network-online.target
 Wants=network-online.target
 
 [Service]
-User=lineage
-Group=lineage
+User=lineage-core
+Group=lineage-core
+UMask=0007
 WorkingDirectory=/opt/lineage/current
-Environment=HOME=/home/lineage LINEAGE_HOME=/home/lineage/.lineage PATH=/usr/local/bin:/usr/bin:/bin
+Environment=HOME=/var/lib/lineage/core LINEAGE_HOME=/home/lineage/.lineage PATH=/usr/local/bin:/usr/bin:/bin
+Environment=BUN_RUNTIME_TRANSPILER_CACHE_PATH=0
+# the mirrors belong to lineage; git refuses another owner's repository unless it is marked safe
+Environment=GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=safe.directory GIT_CONFIG_VALUE_0=*
 EnvironmentFile=-/etc/lineage/site.env
 NoNewPrivileges=yes
 PrivateTmp=yes
-ProtectSystem=full
+PrivateDevices=yes
+ProtectSystem=strict
+ReadWritePaths=/var/lib/lineage/core
+ProtectHome=read-only
+InaccessiblePaths=-/home/lineage/.config -/home/lineage/.ssh
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectKernelLogs=yes
+ProtectControlGroups=yes
+ProtectClock=yes
+ProtectHostname=yes
+RestrictNamespaces=yes
+RestrictSUIDSGID=yes
+RestrictRealtime=yes
+LockPersonality=yes
+CapabilityBoundingSet=
+AmbientCapabilities=
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX AF_NETLINK
+SystemCallArchitectures=native
+SystemCallFilter=@system-service
+SystemCallErrorNumber=EPERM
 Restart=always
 RestartSec=5
 StandardOutput=journal
 StandardError=journal
 MemoryMax=1G
 TasksMax=512
-ExecStart=/usr/local/bin/bun packages/core/src/main.ts --data /var/lib/lineage/core --port 9660 --host 127.0.0.1 --config /var/lib/lineage/site/network.json --admin-key /home/lineage/.config/lineage/site/admin.json --runtime-key /var/lib/lineage/site/runtime-authority.pub --canaries-dir /var/lib/lineage/canaries
+ExecStart=/usr/local/bin/bun packages/core/src/main.ts --data /var/lib/lineage/core --port 9660 --host 127.0.0.1 --config /etc/lineage-core/network.json --admin-key /etc/lineage-core/admin.json --runtime-key /var/lib/lineage/site/runtime-authority.pub --canaries-dir /var/lib/lineage/canaries
 
 [Install]
 WantedBy=multi-user.target

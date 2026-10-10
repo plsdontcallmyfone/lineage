@@ -2,11 +2,12 @@
 # The site list is "<ip-with-dashes>.sslip.io" plus DOMAIN when given (Let's Encrypt certificates), or
 # "localhost" with internal TLS in the dry run. Everything goes to the gate on 127.0.0.1:9662 (which sends
 # /market/* on to the market indexer on 127.0.0.1:9668).
-# The admin API stays on localhost:2019: the packaged caddy.service reloads through it (`caddy reload`),
-# which remote.sh uses. Any local process can reach it; moving it to a 0600 unix socket needs a reload
-# path tested on the server first (audit A2, accepted for now).
+# The admin API listens on a unix socket, mode 0600, owner caddy, in /run/caddy (RuntimeDirectory in the
+# caddy.service drop-in remote.sh writes), not on localhost:2019 where any local process could rewrite
+# the proxy (audit OFF-D12). The packaged unit's `caddy reload` runs as caddy and reads this address
+# from the config it loads.
 {
-	admin localhost:2019
+	admin unix//run/caddy/admin.sock|0600
 @GLOBAL@
 }
 

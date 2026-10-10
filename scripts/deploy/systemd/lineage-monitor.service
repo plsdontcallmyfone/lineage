@@ -1,0 +1,37 @@
+# Installed by scripts/deploy/remote.sh. Lineage public devnet site, docs/DEPLOY-SITE.md "Monitoring".
+# scripts/deploy/monitor.ts as lineage-monitor (no docker, no home). The root pre-step copies only the
+# hosted runtime's spend window and cap out of its state (mode 600, owner lineage) for the check.
+[Unit]
+Description=Lineage monitor
+After=network-online.target lineage-core.service
+
+[Service]
+Type=oneshot
+User=lineage-monitor
+Group=lineage-monitor
+WorkingDirectory=/opt/lineage/current
+Environment=HOME=/var/lib/lineage-monitor PATH=/usr/local/bin:/usr/bin:/bin BUN_RUNTIME_TRANSPILER_CACHE_PATH=0
+# what to watch (public keys, site URL; written by remote.sh) and where to alert (owner-written, optional)
+EnvironmentFile=-/etc/lineage/monitor.env
+EnvironmentFile=-/etc/lineage/alert.env
+StateDirectory=lineage-monitor
+RuntimeDirectory=lineage-monitor
+UMask=0022
+ExecStartPre=+/bin/sh -c 'jq -c -s "{window: .[0].window, cap_usd: .[1].global_max_usd}" /var/lib/lineage/runtime/state.json /var/lib/lineage/site/runtime.json > /run/lineage-monitor/spend.json 2>/dev/null || rm -f /run/lineage-monitor/spend.json'
+NoNewPrivileges=yes
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectSystem=strict
+ProtectHome=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectKernelLogs=yes
+ProtectControlGroups=yes
+RestrictNamespaces=yes
+RestrictSUIDSGID=yes
+LockPersonality=yes
+CapabilityBoundingSet=
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX AF_NETLINK
+MemoryMax=256M
+TimeoutStartSec=120
+ExecStart=/usr/local/bin/bun scripts/deploy/monitor.ts --state /var/lib/lineage-monitor/state.json

@@ -14,6 +14,11 @@
 #   rollback        previous release (code only); `rollback --with-data` also restores its data backup
 #   stop | start    stop and disable every lineage unit and Caddy, or start them again
 #   wipe-keys       remove the keys copied from here (before destroying the server)
+#   backup          copy the server's newest Core snapshot off the machine to BACKUP_DIR (default
+#                   ~/.lineage/site-backups/<host>, mode 700) and verify it here (checksum, archive,
+#                   integrity, table counts); keeps the newest BACKUP_KEEP (default 3)
+#   restore-test    on the server: restore the newest snapshot into a scratch Core and check what it serves
+#   monitor         on the server: run the monitor now and print every check
 #
 # Environment:
 #   SSH_KEY (default ~/.ssh/lineage_site), SSH_PORT (22), SSH_USER (root)
@@ -34,7 +39,7 @@
 # are never printed: keys are compared and reported by public key only.
 set -euo pipefail
 HOST="${1:-}"; MODE="${2:-full}"; EXTRA="${3:-}"
-[ -n "$HOST" ] || { sed -n '2,32p' "$0"; exit 2; }
+[ -n "$HOST" ] || { sed -n '2,37p' "$0"; exit 2; }
 REPO="$(cd "$(dirname "$0")/../.." && pwd)"
 SSH_KEY="${SSH_KEY:-$HOME/.ssh/lineage_site}"
 SSH_PORT="${SSH_PORT:-22}"
@@ -111,17 +116,25 @@ do_ship() {
 }
 
 pub_local() { bun "$REPO/scripts/deploy/site-keys.ts" pub "$1" | bun -e 'const j=JSON.parse(await Bun.stdin.text()); console.log(Object.values(j)[0] ?? "")'; }
-pub_remote() { r "f=/home/lineage/.config/lineage/$1; if [ -f \$f ]; then runuser -u lineage -- env HOME=/home/lineage /usr/local/bin/bun /opt/lineage/releases/$SHA/scripts/deploy/site-keys.ts pub \$f; else echo '{}'; fi" | bun -e 'const j=JSON.parse(await Bun.stdin.text()); console.log(Object.values(j)[0] ?? "")'; }
-# put_key <local file> <remote path under ~lineage/.config/lineage> <expected pubkey or empty>
+# pub_remote <path> [owner]: a relative path is under ~lineage/.config/lineage (owner lineage)
+pub_remote() {
+  local f="$1" o="${2:-lineage}"
+  [[ "$f" = /* ]] || f="/home/lineage/.config/lineage/$f"
+  r "if [ -f $f ]; then runuser -u $o -- env HOME=/tmp BUN_RUNTIME_TRANSPILER_CACHE_PATH=0 /usr/local/bin/bun /opt/lineage/releases/$SHA/scripts/deploy/site-keys.ts pub $f; else echo '{}'; fi" | bun -e 'const j=JSON.parse(await Bun.stdin.text()); console.log(Object.values(j)[0] ?? "")'
+}
+# put_key <local file> <remote path> <expected pubkey or empty> [owner]: a relative remote path is under
+# ~lineage/.config/lineage; an absolute one belongs to a service user (remote.sh users_setup), e.g. the
+# Core authority key in /etc/lineage-core (owner lineage-core) and the faucet in lineage-web's home
 put_key() {
-  local src="$1" dst="$2" want="$3" have there
+  local src="$1" dst="$2" want="$3" owner="${4:-lineage}" have there abs
   [ -f "$src" ] || { echo "missing $src" >&2; return 1; }
   have="$(pub_local "$src")"
   if [ -n "$want" ] && [ "$have" != "$want" ]; then echo "$src holds $have, expected $want; not copied" >&2; return 1; fi
-  there="$(pub_remote "$dst")"
+  there="$(pub_remote "$dst" "$owner")"
   if [ "$there" = "$have" ]; then echo "key $dst: already on the server ($have)"; return 0; fi
   if [ -n "$there" ]; then echo "key $dst: the server holds a different key ($there); not replaced" >&2; return 1; fi
-  r "umask 077; d=/home/lineage/.config/lineage/\$(dirname $dst); install -d -m 700 -o lineage -g lineage \$d; cat > /home/lineage/.config/lineage/$dst.tmp && chown lineage:lineage /home/lineage/.config/lineage/$dst.tmp && chmod 600 /home/lineage/.config/lineage/$dst.tmp && mv /home/lineage/.config/lineage/$dst.tmp /home/lineage/.config/lineage/$dst" < "$src"
+  abs="$dst"; [[ "$abs" = /* ]] || abs="/home/lineage/.config/lineage/$dst"
+  r "umask 077; install -d -m 700 -o $owner -g $owner \$(dirname $abs); cat > $abs.tmp && chown $owner:$owner $abs.tmp && chmod 600 $abs.tmp && mv $abs.tmp $abs" < "$src"
   echo "key $dst: copied ($have)"
 }
 # put_secret <local file> <remote path>: env files with no public half; content never shown
@@ -137,8 +150,9 @@ do_keys() {
   local dj="$REPO/scripts/devnet/devnet.json" ca rt
   ca="$(bun -e "console.log(JSON.parse(await Bun.file('$dj').text()).core_authority)")"
   rt="$(bun -e "console.log(JSON.parse(await Bun.file('$dj').text()).runtime_authority)")"
-  put_key "$KEYS_LOCAL/core-authority.json" devnet/core-authority.json "$ca"
-  put_key "$KEYS_LOCAL/faucet.json" devnet/faucet.json ""
+  # Core's and the faucet's keys go to their service users, never to lineage (audit OFF-D10)
+  put_key "$KEYS_LOCAL/core-authority.json" /etc/lineage-core/core-authority.json "$ca" lineage-core
+  put_key "$KEYS_LOCAL/faucet.json" /var/lib/lineage/web/.config/lineage/devnet/faucet.json "" lineage-web
   [ -f "$HOME/.config/lineage/rpc.env" ] && put_secret "$HOME/.config/lineage/rpc.env" rpc.env
   [ "${WITH_RUNTIME:-0}" = 1 ] && do_runtime_secrets
   if [ "${WITH_AUTHOR:-0}" = 1 ]; then
@@ -209,6 +223,29 @@ do_activate() {
   echo "site: $(echo "$SITE_NAMES" | tr ',' '\n' | sed 's|^|https://|' | paste -sd' ' -)"
 }
 
+# Off-machine copy of the newest Core snapshot (docs/DEPLOY-SITE.md "Backups"). Snapshots hold unrevealed
+# epoch secrets: the directory is mode 700 and nothing is printed from them.
+do_backup_pull() {
+  local dir="${BACKUP_DIR:-$HOME/.lineage/site-backups/$HOST}" keep="${BACKUP_KEEP:-3}" f size free
+  f="$(r "ls -1t /var/lib/lineage/core-backups/core-*.tar.zst 2>/dev/null | head -1")"
+  [ -n "$f" ] || { echo "no snapshot on the server yet (lineage-backup.timer runs hourly; 'remote.sh backup' makes one now)" >&2; exit 1; }
+  size="$(r "stat -c %s $f")"
+  free="$(df -Pk "$(dirname "$dir")" 2>/dev/null | awk 'NR==2 {print $4 * 1024}')"
+  [ -z "$free" ] && free="$(df -Pk "$HOME" | awk 'NR==2 {print $4 * 1024}')"
+  # the copy, plus the verify step's temporary extract (the database is several times the archive)
+  if [ "$free" -lt $((size * 10 + 2 * 1024 * 1024 * 1024)) ]; then echo "not enough free disk here for $(basename "$f") ($size bytes)" >&2; exit 1; fi
+  install -d -m 700 "$dir"
+  if [ -f "$dir/$(basename "$f")" ]; then echo "already here: $dir/$(basename "$f")"
+  else
+    env -u LC_CTYPE -u LC_ALL scp -q "${SCP_OPTS[@]}" "$SSH_USER@$HOST:$f" "$SSH_USER@$HOST:$f.sha256" "$dir/"
+    chmod 600 "$dir/$(basename "$f")" "$dir/$(basename "$f").sha256"
+    echo "copied $(basename "$f") ($(du -h "$dir/$(basename "$f")" | cut -f1)) to $dir"
+  fi
+  bash "$REPO/scripts/deploy/backup.sh" verify "$dir/$(basename "$f")"
+  ls -1t "$dir"/core-*.tar.zst | tail -n +$((keep + 1)) | while read -r old; do rm -f "$old" "$old.sha256"; done
+  echo "kept here: $(ls -1 "$dir"/core-*.tar.zst | wc -l | tr -d ' ') snapshot(s)"
+}
+
 case "$MODE" in
   full)
     do_provision; do_ship; do_keys; do_fund; do_activate
@@ -219,6 +256,8 @@ case "$MODE" in
   fund) do_fund ;;
   status) r "bash /opt/lineage/current/scripts/deploy/remote.sh status" ;;
   rollback) r "bash /opt/lineage/current/scripts/deploy/remote.sh rollback $EXTRA" ;;
-  stop|start|wipe-keys) r "bash /opt/lineage/current/scripts/deploy/remote.sh $MODE" ;;
+  stop|start|wipe-keys|monitor) r "bash /opt/lineage/current/scripts/deploy/remote.sh $MODE" ;;
+  restore-test) r "bash /opt/lineage/current/scripts/deploy/remote.sh restore-test $EXTRA" ;;
+  backup) do_backup_pull ;;
   *) echo "unknown mode $MODE" >&2; exit 2 ;;
 esac
