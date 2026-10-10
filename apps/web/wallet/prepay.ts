@@ -32,7 +32,7 @@ export const P = {
 };
 
 /** Reads Core's prepay config and the launch lookup table (devnet.json `launch_lookup_table`), checking the table is frozen with the expected content. */
-export async function loadPrepay(state: { line_mint: string; dbc_config: string; line_token_program: string; launch_lookup_table?: unknown }) {
+export async function loadPrepay(state: { line_mint: string; line_token_program: string; launch_lookup_table?: unknown; line_pool?: { pool: string; baseVault: string; quoteVault: string } }) {
   try {
     const r = await fetch("/api/config");
     if (!r.ok) throw new Error(`Core /v1/config: HTTP ${r.status}`);
@@ -54,7 +54,7 @@ export async function loadPrepay(state: { line_mint: string; dbc_config: string;
     const acc = await rpc.getAccountInfo(at);
     if (!acc) throw new Error("not found on chain");
     const t = decodeLookupTable(acc.data);
-    const want = launchTableAddresses({ lineMint: state.line_mint, dbcConfig: state.dbc_config, lineTokenProgram: state.line_token_program });
+    const want = launchTableAddresses({ lineMint: state.line_mint, lineTokenProgram: state.line_token_program, linePool: state.line_pool });
     if (t.authority !== null) throw new Error("not frozen");
     if (t.addresses.length !== want.length || t.addresses.some((a, i) => a !== want[i])) throw new Error("content differs from the expected launch accounts");
     P.table = { address: at, addresses: t.addresses };

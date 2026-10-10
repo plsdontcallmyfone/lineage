@@ -41,7 +41,8 @@ export interface DevnetPublic {
   line_mint: string;
   line_token_program: string;
   line_decimals: number;
-  dbc_config: string;
+  /** $LINE's canonical PumpSwap pool and vaults once $LINE has migrated (pump.fun launches name them) */
+  line_pool?: { pool: string; baseVault: string; quoteVault: string };
   [k: string]: unknown;
 }
 export interface ChainCfg {

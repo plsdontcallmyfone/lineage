@@ -19,10 +19,9 @@ import {
   canonicalJson,
   canonicalUrl,
   claimFromCoreProof,
-  dbc,
   decodeAgent,
   decodeAgentLaunch,
-  decodeDbcPool,
+  decodeBondingCurve,
   decodeMint,
   decodeT22Metadata,
   decodeTokenAccount,
@@ -34,7 +33,10 @@ import {
   IDENTITY_MODE,
   launch,
   launchPdas,
-  METEORA,
+  MAX_LAUNCH_STRINGS,
+  PUMP,
+  pumpLaunchMain,
+  pumpPdas,
   accountDisc,
   bounty,
   bountyPdas,
@@ -59,7 +61,7 @@ import {
   type RegistryConfig,
   type Simulation,
   type WebKey,
-  type DbcPoolView,
+  type BondingCurve,
   type Ix,
   planLaunch,
   type LaunchPlan,
@@ -73,6 +75,7 @@ export { mountTradeBox } from "./trade.ts";
 import { custodyHtml, ghClick, initGithubIdentity, showIdentity, submitLaunchToken } from "./identity.ts";
 import { depositBase, depositNote, loadPrepay, P, prepayHelp, showCorePrepay, usdMode } from "./prepay.ts";
 import { costsFromSim, frontingBlock, initialBuyFor, type InitialBuy } from "./fronting.ts";
+import { registerPumpInitialBuy } from "./pump-venue.ts";
 import { frontingShortfall, type FrontingCosts } from "../../../packages/chain/src/browser/index.ts";
 import { payAsset, prepareSwapThen, routeLines, sendSwapPlan, simulatePlan, type PreparedSwap } from "./swap.ts";
 import { loadTradingEscrow, sendAllocation } from "./trading.ts";
@@ -122,7 +125,7 @@ const S = {
   /** agent -> current registry owner (the launcher until an owner transfer); bounty powers follow it (audit A1-03) */
   owners: new Map<string, string>(),
   metas: new Map<string, MintMeta | null>(),
-  pools: new Map<string, DbcPoolView | null>(),
+  pools: new Map<string, BondingCurve | null>(),
   decimals: new Map<string, number>(),
   sigs: [] as SigRow[],
   // launch
@@ -166,8 +169,9 @@ const S = {
 
 const dec = () => S.cfg?.state?.line_decimals ?? 6;
 const lineMint = () => S.cfg!.state!.line_mint;
-const dbcConfig = () => S.lc?.dbcConfig ?? S.cfg!.state!.dbc_config;
 const me = () => S.account?.address ?? null;
+/** $LINE's canonical PumpSwap pool and vaults once $LINE has migrated (Core's state.line_pool), else its curve is the quote. */
+const linePool = () => (S.cfg?.state as { line_pool?: { pool: string; baseVault: string; quoteVault: string } } | undefined)?.line_pool;
 const tl = (base: bigint | null | undefined, min = 0) =>
   base === null || base === undefined ? html`<span class="faint">TBA</span>` : html`<span class="num">${units(base, dec(), min)}</span><span class="unit">${qsym()}</span>`;
 const short = (a: string) => (a.length > 12 ? `${a.slice(0, 4)}…${a.slice(-4)}` : a);
@@ -265,7 +269,7 @@ function renderConn() {
         <a class="wl-btn" href="https://faucet.solana.com/?cluster=devnet" target="_blank" rel="noopener">Devnet SOL faucet ${icon.ext}</a>
         ${btn("refresh", "Refresh")}
       </div>
-      <div class="panel-b wl-fine" style="padding-top:0">${qsym()} cannot be minted (its mint authority is revoked). The faucet is a devnet wallet of this server, ${f?.address ? addr(f.address) : "not set up"}, that transfers ${f?.amount ? units(BigInt(f.amount), dec()) : "TBA"} ${qsym()} from the existing TEST supply, at most once per wallet every ${f?.per_wallet_hours ?? "TBA"} h and ${f?.per_hour ?? "TBA"} drips an hour; every drip is logged. SOL comes from the public devnet faucet.</div>` : html`<div class="panel-b wl-row">${btn("refresh", "Refresh")}</div>`}
+      <div class="panel-b wl-fine" style="padding-top:0">Devnet only. ${qsym()} is a pump.fun coin on devnet, so it cannot be minted. The faucet is a devnet treasury of this server, ${f?.address ? addr(f.address) : "not set up"}, holding ${qsym()} bought on its pump.fun curve with devnet SOL; it sends ${f?.amount ? units(BigInt(f.amount), dec()) : "TBA"} ${qsym()}${f?.sol_drip_lamports && f.sol_drip_lamports !== "0" ? html` and ${sol(BigInt(f.sol_drip_lamports))} devnet SOL` : ""}, at most once per wallet every ${f?.per_wallet_hours ?? "TBA"} h and ${f?.per_hour ?? "TBA"} drips an hour; every drip is logged. More SOL comes from the public devnet faucet.</div>` : html`<div class="panel-b wl-row">${btn("refresh", "Refresh")}</div>`}
       ${S.faucetMsg ?? ""}${S.walletErr ? html`<div class="panel-b">${errBox(S.walletErr)}</div>` : ""}`,
   );
 }
@@ -292,7 +296,7 @@ function renderNet() {
     html`<div class="params wl-params">
       <div><span class="k">agent wakes at</span><span class="v">${tl(l.wakeThreshold)}</span></div>
       <div><span class="k">agent sleeps below</span><span class="v">${tl(l.sleepThreshold)}</span></div>
-      <div><span class="k">graduates at</span><span class="v">${tl(l.migrationQuoteThreshold)}</span></div>
+      <div><span class="k">venue</span><span class="v">pump.fun, quoted in ${qsym()}; curve, fees and graduation are pump.fun's</span></div>
       <div><span class="k">launches paused</span><span class="v">${l.paused ? badge("paused", "bad") : badge("no", "good")}</span></div>
     </div>
     <div class="wl-fine" style="margin-top:6px">Read from the LaunchConfig ${addr(launchPdas.config())}.</div>`,
@@ -415,6 +419,8 @@ function launchArgs() {
   if (!/^[A-Z0-9]{1,10}$/.test(symbol)) throw new Error("Symbol: 1 to 10 characters, A to Z and 0 to 9.");
   if (!S.repo || S.repo.state !== "ok") throw new Error("Target repository: enter a public GitHub https URL and wait for the check to pass.");
   const uri = `https://lineage.invalid/${netName()}/agents/${symbol.toLowerCase()}.json?class=${cls}`;
+  const strings = new TextEncoder().encode(`${namePrefix()}${name}${symbol}${uri}${S.repo.url}`).length;
+  if (strings > MAX_LAUNCH_STRINGS) throw new Error(`Name, symbol, metadata URI and repository URL take ${strings} bytes; one launch transaction holds ${MAX_LAUNCH_STRINGS}.`);
   return { name: `${namePrefix()}${name}`, symbol, uri, repoUrl: S.repo.url, identityMode: IDENTITY_MODE[identity as keyof typeof IDENTITY_MODE], hosted, cls, identity };
 }
 
@@ -425,14 +431,16 @@ function labelFor(a: string, x: { agent?: string; mint?: string; pool?: string }
     [launchPdas.config()]: "launch config",
     [launchPdas.authority()]: "launch authority PDA",
     [lineMint()]: `${qsym()} mint${testLabels() ? " (TEST)" : ""}`,
-    [dbcConfig()]: "DBC config",
     [registryPdas.config()]: "registry config",
     [registryPdas.treasury()]: "registry treasury",
     [REGISTRY_PROGRAM_ID]: "lineage_registry",
     [LAUNCH_PROGRAM_ID]: "lineage_launch",
-    [METEORA.dbcProgram]: "Meteora DBC",
-    [METEORA.dbcPoolAuthority]: "DBC pool authority",
-    [METEORA.dbcEventAuthority]: "DBC event authority",
+    [PUMP.program]: "pump.fun (Pump)",
+    [PUMP.global]: "Pump global",
+    [PUMP.mayhem]: "Pump mayhem program (named by every create_v2)",
+    [PUMP.quoteControl]: "Pump quote control",
+    [PUMP.feeConfig]: "Pump fee config",
+    [pumpPdas.bondingCurve(lineMint())]: `${qsym()} bonding curve (the quote)`,
     [T22]: "Token-2022",
     TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA: "SPL Token",
     "11111111111111111111111111111111": "System",
@@ -441,17 +449,17 @@ function labelFor(a: string, x: { agent?: string; mint?: string; pool?: string }
   };
   if (x.agent) {
     L[x.agent] = "agent key (new, this page)";
+    L[launchPdas.pumpCreator(x.agent)] = "agent's pump.fun creator PDA (its fees accrue here)";
     L[launchPdas.computeVault(x.agent)] = "compute vault (new)";
     L[registryPdas.agent(x.agent)] = "registry Agent record";
   }
   if (x.mint) {
     L[x.mint] = "agent token mint (new, this page)";
     L[launchPdas.agentLaunch(x.mint)] = "AgentLaunch (new)";
-    const pool = launchPdas.dbcPool(dbcConfig(), x.mint, lineMint());
-    L[pool] = "DBC pool";
-    L[launchPdas.dbcVault(x.mint, pool)] = "DBC base vault";
-    L[launchPdas.dbcVault(lineMint(), pool)] = "DBC quote vault";
-    L[ata(launchPdas.authority(), x.mint, T22)] = "authority's agent-token account";
+    const curve = pumpPdas.bondingCurve(x.mint);
+    L[curve] = "pump.fun bonding curve (new)";
+    L[ata(curve, x.mint, T22)] = "curve's agent-token account (new)";
+    L[ata(curve, lineMint(), T22)] = `curve's ${qsym()} account (new)`;
   }
   return L[a] ?? "";
 }
@@ -593,6 +601,11 @@ async function publishLaunchedSoul(agent: WebKey, doc: SoulDoc) {
 async function launchReview() {
   if (!requireReady()) return;
   S.launchOut = null;
+  // launches are pump.fun only (owner decisions 2026-10-10); a cluster whose lineage_launch is still the Meteora build cannot take one
+  if (S.lc && S.lc.venue !== PUMP.program) {
+    set("w-launch-out", html`<div class="panel-b">${banner("bad", "Launches are paused on this cluster", "Agent tokens now launch on pump.fun; this cluster's lineage_launch still runs the earlier Meteora build. Existing tokens stay readable.")}</div>`);
+    return;
+  }
   let args;
   try {
     args = launchArgs();
@@ -619,16 +632,18 @@ async function launchReview() {
     // mainnet: the deposit may be paid in SOL or USDC, swapped by Jupiter to exactly the deposit first (SPEC 14.9)
     const pay = payAsset(val("l_deposit_pay"));
     if (pay === "LINE" && S.line !== null && S.line < deposit) throw new Error(`Deposit: your wallet holds ${units(S.line, dec())} ${qsym()}, the deposit is ${units(deposit, dec())}.${topUp()}`);
-    const ix = launch.launchAgent({ launcher: me()!, agent: agent.id, agentMint: mint.id, lineMint: lineMint(), dbcConfig: dbcConfig(), lineTokenProgram: T22,
-      args: { name: args.name, symbol: args.symbol, uri: args.uri, repoUrl: args.repoUrl, identityMode: args.identityMode, hosted: args.hosted } });
-    const main = [ix, ...launch.prepay({ launcher: me()!, agent: agent.id, agentMint: mint.id, lineMint: lineMint(), amount: deposit, decimals: dec(), lineTokenProgram: T22 })];
+    // pump.fun (owner decisions 2026-10-10): create_v2 at the top level, then register_pump_launch in the same transaction
+    const main = pumpLaunchMain({ launcher: me()!, agent: agent.id, agentMint: mint.id, line: { mint: lineMint(), tokenProgram: T22, pool: linePool() }, name: args.name,
+      symbol: args.symbol, uri: args.uri, args: { repoUrl: args.repoUrl, identityMode: args.identityMode, hosted: args.hosted }, creatorFeeBps: S.lc?.pumpCreatorFeeBps ?? 0n });
+    const ix = main[1]!;
+    const rest = launch.prepay({ launcher: me()!, agent: agent.id, agentMint: mint.id, lineMint: lineMint(), amount: deposit, decimals: dec(), lineTokenProgram: T22 });
     // the soul's digest goes on chain with the launch, signed by the agent key (its signing key until a rotation)
     const soulIx = soul ? registry.setProfile({ signingKey: agent.id, agent: agent.id, digest: soulDigest(soul), seq: soul.seq }) : null;
-    const ixs = soulIx ? [...main, soulIx] : main;
+    const ixs = soulIx ? [...main, ...rest, soulIx] : [...main, ...rest];
     // one legacy transaction; over 1232 bytes a v0 one with the frozen lookup table; still over, launch + deposit + wake first and the soul second
     // launch fronting (docs/plans/LAUNCH-FRONTING.md): the venue's initial buy, in the launch transaction when it fits
     const buy = await initialBuyFor({ launcher: me()!, agent: agent.id, agentMint: mint.id }, P.cfg);
-    const plan = planLaunch({ payer: me()!, main, buy: buy?.ixs ?? [], soul: soulIx, budget: budgetIxs(450_000), table: P.table, v0: signsV0(S.wallet!) });
+    const plan = planLaunch({ payer: me()!, main, buy: buy?.ixs ?? [], rest, soul: soulIx, budget: budgetIxs(450_000), table: P.table, v0: signsV0(S.wallet!) });
     // in a split the soul transaction is simulated once the first has landed (it needs the new Agent record)
     const builts = [await buildAndSimulate(me()!, plan.txs[0]!.ixs, 450_000, plan.txs[0]!.table)];
     const built = builts[0]!;
@@ -668,7 +683,7 @@ function renderLaunchReview() {
     ["Soul", d.soul ? html`${d.soul.persona.name}, <span class="wl-hash">${soulDigest(d.soul)}</span> <span class="dim">set_profile seq ${d.soul.seq} ${d.plan.mode === "split" ? "in the second transaction" : "in this transaction"}</span>` : html`<span class="faint">none</span>`],
     ["Deposit", html`${tl(d.deposit)} <span class="dim">${depositNote(val("l_deposit"))}${depositNote(val("l_deposit")) ? "; " : ""}transferChecked into the compute vault, then refresh_awake${d.swap ? `; paid in ${d.swap.prepared.pay}, swapped first` : ""}</span>`],
     ["Transaction", d.plan.mode === "split"
-      ? html`<b>2 signatures</b> <span class="dim">(1) launch_agent + deposit + refresh_awake, ${d.plan.txs[0]!.size} bytes; (2) set_profile, ${d.plan.txs[1]!.size} bytes. One transaction does not fit 1232 bytes${P.table ? ", even as v0 with the lookup table" : ""}${signsV0(S.wallet!) ? "" : " and this wallet does not sign v0"}.</span>`
+      ? html`<b>2 signatures</b> <span class="dim">(1) create_v2 + register_pump_launch${d.plan.buyTx === 0 ? " + initial buy" : ""}, ${d.plan.txs[0]!.size} bytes; (2) ${d.plan.buyTx === 1 ? "initial buy + " : ""}deposit + refresh_awake${d.soul ? " + set_profile" : ""}, ${d.plan.txs[1]!.size} bytes. One transaction does not fit 1232 bytes${P.table ? ", even as v0 with the lookup table" : ""}${signsV0(S.wallet!) ? "" : " and this wallet does not sign v0"}.</span>`
       : d.plan.mode === "v0"
         ? html`one v0 transaction, ${d.plan.txs[0]!.size} of 1232 bytes, reading the frozen lookup table ${addr(P.table!.address)}`
         : html`one transaction, ${d.plan.txs[0]!.size} of 1232 bytes`],
@@ -683,7 +698,7 @@ function renderLaunchReview() {
       ${sim.err && sw ? html`<div class="panel-b wl-row"><span class="mark warn">${icon.warn} launch simulation before the swap: ${JSON.stringify(sim.err)}; it is simulated again after the swap lands and nothing is sent if it still fails</span></div>` : sim.err ? html`<div class="panel-b">${errBox(`Simulation failed: ${JSON.stringify(sim.err)}`, sim.logs)}</div>` : html`<div class="panel-b wl-row"><span class="mark good">${icon.check} simulation succeeded on ${netName()}</span></div>`}
       <div class="panel-b"><div class="eyebrow" style="margin-bottom:6px">What you front</div>${frontingHtml()}</div>
       ${simTable(sim, { agent: d.agent.id, mint: d.mint.id }, me()!)}
-      <div class="panel-b"><div class="eyebrow" style="margin-bottom:6px">launch_agent arguments</div>${kv(recordRows)}</div>
+      <div class="panel-b"><div class="eyebrow" style="margin-bottom:6px">register_pump_launch arguments</div>${kv(recordRows)}</div>
       <div class="panel-b wl-row lz-launch">${btn("launch-sign", html`Launch${d.plan.mode === "split" || sw ? ` (${(d.plan.mode === "split" ? 2 : 1) + (sw ? 1 : 0)} signatures)` : ""}`, { primary: true, disabled: blocked })}${btn("launch-review", "Simulate again")}<span class="wl-why">${S.wallet!.name} signs ${d.plan.mode === "split" ? "two transactions" : "one transaction"}; a hosted agent's binding is one more signature after it.</span></div>
       <div class="panel-b" id="w-launch-status"></div>`,
   );
@@ -720,8 +735,8 @@ async function launchSign() {
       }
       const r = await signAndSend({ wallet: S.wallet!, account: S.account!, ixs: t0.ixs, units: 450_000, local: [d.agent, d.mint], onStatus: st, table: t0.table });
       const c = r.confirmed!;
-      logSig(`launch_agent + deposit + refresh_awake ${d.args.symbol}`, c.signature, c.fee, !c.err);
-      if (c.err) throw Object.assign(new Error(`launch_agent failed on chain: ${JSON.stringify(c.err)}`), { logs: c.logs });
+      logSig(`create_v2 + register_pump_launch ${d.args.symbol}`, c.signature, c.fee, !c.err);
+      if (c.err) throw Object.assign(new Error(`the launch failed on chain: ${JSON.stringify(c.err)}`), { logs: c.logs });
       sig = c.signature;
     }
     const sigs = [sig];
@@ -779,8 +794,8 @@ async function renderLaunched() {
   set("w-launch-out", html`<div class="panel-b dim">Confirmed in ${txLink(L.sig)}. Reading the launch back from chain…</div>`);
   const [l, rec, mintAcc] = await Promise.all([reader.agentLaunch(L.mint), reader.agent(L.agent.id), rpc.getAccountInfo(L.mint)]);
   if (!l) return set("w-launch-out", html`<div class="panel-b">${errBox("AgentLaunch not found after confirmation")}</div>`);
-  const pool = await rpc.getAccountInfo(l.dbcPool);
-  const pv = pool ? decodeDbcPool(pool.data) : null;
+  const curveAcc = await rpc.getAccountInfo(l.bondingCurve);
+  const pv = curveAcc && l.venue === "pump" ? decodeBondingCurve(curveAcc.data) : null;
   const vaultBal = await reader.tokenBalance(launchPdas.computeVault(l.agent));
   const meta = mintAcc ? decodeT22Metadata(mintAcc.data) : null;
   const mi = mintAcc ? decodeMint(mintAcc.data) : null;
@@ -795,7 +810,7 @@ async function renderLaunched() {
         ["Repository", l.repoUrl],
         ["repo_id", html`<span class="wl-hash">${l.repoId}</span> ${l.repoId === repoId(l.repoUrl) ? html`<span class="mark good">${icon.check} equals protocol repoId</span>` : html`<span class="mark warn">${icon.warn} differs</span>`}`],
         ["Identity / runtime", `${["token", "purchased", "app"][l.identityMode]} / ${l.hosted ? "hosted" : "self-hosted"}`],
-        ["DBC pool", html`${addr(l.dbcPool)}${pv ? html` <span class="dim">creator ${pv.creator === launchPdas.authority() ? "launch authority PDA" : short(pv.creator)}, quote reserve ${units(pv.quoteReserve, dec())} ${qsym()}</span>` : ""}`],
+        ["pump.fun curve", html`${addr(l.bondingCurve)}${pv ? html` <span class="dim">creator ${pv.creator === launchPdas.pumpCreator(l.agent) ? "the agent's creator PDA" : short(pv.creator)}, quoted in ${pv.quoteMint === lineMint() ? qsym() : short(pv.quoteMint)}, raised ${units(pv.realQuoteReserves, dec())} ${qsym()}</span>` : ""}`],
         ["Compute vault", html`${addr(launchPdas.computeVault(l.agent))} ${tl(vaultBal)}`],
         ["Awake", l.awake ? html`yes ${L.deposit !== undefined ? html`<span class="dim">woken by the deposit in the launch transaction</span>` : ""}` : "no (vault below wake_threshold)"],
         ...(L.deposit !== undefined ? [["Prepaid", html`${tl(L.deposit)} deposited; ${L.mode === "split" ? html`2 transactions, soul in ${txLink(L.sigs![1]!)}` : L.mode === "v0" ? "one v0 transaction" : "one transaction"}<div id="w-prepay-core" class="dim">Core's check of the deposit follows its next chain sync.</div>`] as [string, unknown]] : []),
@@ -879,13 +894,13 @@ async function loadLaunches() {
     S.owners = new Map(agents.map((a) => [a.agent, a.owner]));
     S.records = new Map(agents.map((a) => [a.agent, a]));
     const mints = S.launches.map((l) => l.mint);
-    const pools = S.launches.map((l) => l.dbcPool);
+    const pools = S.launches.map((l) => l.bondingCurve);
     const accs = await rpc.getMultipleAccounts([...mints, ...pools]);
     mints.forEach((m, i) => {
       S.metas.set(m, accs[i] ? decodeT22Metadata(accs[i]!.data) : null);
       if (accs[i]) S.decimals.set(m, decodeMint(accs[i]!.data).decimals);
     });
-    pools.forEach((p, i) => S.pools.set(p, accs[mints.length + i] ? decodeDbcPool(accs[mints.length + i]!.data) : null));
+    pools.forEach((p, i) => S.pools.set(p, accs[mints.length + i] && S.launches[i]!.venue === "pump" ? decodeBondingCurve(accs[mints.length + i]!.data) : null));
     S.launches.sort((a, b) => Number(b.createdAt - a.createdAt));
     S.launchesErr = null;
   } catch (e) {
@@ -2491,6 +2506,8 @@ export async function mountLaunch(root: HTMLElement) {
   renderWizard();
   renderAvatar();
   if (S.gate !== "ok") return;
+  // the pump.fun venue registers its initial buy with launch fronting (pump-venue.ts)
+  registerPumpInitialBuy({ lineMint, linePool, creatorFeeBps: () => S.lc?.pumpCreatorFeeBps ?? 0n });
   await Promise.all([loadNetwork(), loadPrepay(S.cfg!.state as any), loadTradingEscrow(), loadTradingCfg(), loadModels().then(() => set("w-models", modelsBody()))]);
   const dep = S.root?.querySelector<HTMLInputElement>('[name="l_deposit"]');
   // devnet: the USD default typed in, as before; mainnet (quote amounts): empty means Core's default, shown as the placeholder

@@ -160,6 +160,7 @@ const faucet = PROFILE.faucet && chainState?.line_mint
       amount: BigInt(arg("faucet-amount", String(1000n * 10n ** BigInt(chainState.line_decimals as number)))!),
       perWalletMs: Number(arg("faucet-window-h", "24")) * 3_600_000,
       perHour: Number(arg("faucet-per-hour", "30")),
+      solLamports: BigInt(Math.round(Number(arg("faucet-sol", "0.02")) * 1e9)),
     })
   : null;
 const chain = chainRoutes({ profile: PROFILE, rpcUrl: RPC_URL, state: chainState, faucet });

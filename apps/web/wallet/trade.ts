@@ -1,9 +1,11 @@
 // Trade box for the token page (plan L3): buy and sell one agent token with a Wallet Standard
-// wallet, on the Meteora DBC curve before graduation and on the DAMM v2 pool after. Part of the
+// wallet, on its pump.fun bonding curve (Pump buy_exact_quote_in_v3 / sell_v3) before graduation and
+// on its canonical PumpSwap pool (buy_exact_quote_in_v2 / sell_v2) after (owner decisions 2026-10-10).
+// Tokens launched on the earlier Meteora venue (devnet history) are read only here. Part of the
 // wallet bundle (/assets/wallet.js), so the dashboard bundle carries no transaction code.
 //
-// The venue is read from chain (AgentLaunch.graduated and the DBC pool's migration flag), never
-// from the indexer. Every quote is a simulation of the exact transaction the wallet will be asked to
+// The venue is read from chain (AgentLaunch.venue and graduated, the bonding curve and the pool),
+// never from the indexer. Every quote is a simulation of the exact transaction the wallet will be asked to
 // sign on the profile's cluster; the minimum out is the simulated output less the slippage
 // tolerance. The wallet signs, the page sends and confirms. Balances are read back from chain after
 // the trade. Mainnet (SPEC 14.9, 14.10): a buy may pay in SOL or USDC, swapped by Jupiter to the
@@ -11,18 +13,21 @@
 import "../../../packages/chain/src/browser/buffer.ts";
 import {
   ata,
-  damm,
-  dbc,
+  curveMigrated,
   decodeAgentLaunch,
-  decodeDbcPool,
+  decodeBondingCurve,
   decodeTokenAccount,
   explorerAddress,
   explorerTx,
   launchPdas,
+  pump,
+  PUMP,
+  pumpAmm,
+  pumpPdas,
   token,
   TOKEN_2022_PROGRAM,
   type AgentLaunch,
-  type DbcPoolView,
+  type BondingCurve,
   type Ix,
 } from "../../../packages/chain/src/browser/index.ts";
 import { esc, html, raw, type Raw } from "../src/html.ts";
@@ -51,7 +56,8 @@ export interface TradeBoxHandle {
   destroy(): void;
 }
 
-type Venue = { kind: "dbc"; pool: string; config: string } | { kind: "damm"; pool: string };
+/** curve: on its bonding curve; pool: on its PumpSwap pool; waiting: curve complete, migration pending; legacy: a Meteora-era token (read only). */
+type Venue = { kind: "curve"; pool: string } | { kind: "pool"; pool: string } | { kind: "waiting"; pool: string } | { kind: "legacy"; pool: string };
 
 export function mountTradeBox(el: HTMLElement, opts: TradeBoxOptions): TradeBoxHandle {
   const box = new Box(el, opts);
@@ -67,7 +73,7 @@ class Box {
   private la: AgentLaunch | null = null;
   /** the mint's decimals read from chain in readVenue (audit A2 OFF-W1); null until read */
   private dec: number | null = null;
-  private pool: DbcPoolView | null = null;
+  private curve: BondingCurve | null = null;
   private venue: Venue | null = null;
   private sol: bigint | null = null;
   private line: bigint | null = null;
@@ -160,12 +166,17 @@ class Box {
     if (!accs[0]) throw new Error(`No AgentLaunch account for this mint on ${netName()}.`);
     this.dec = tradeDecimals(accs[1]?.data, this.t.decimals);
     const la = decodeAgentLaunch(accs[0].data);
-    const p = (await rpc.getMultipleAccounts([la.dbcPool]))[0];
     this.la = la;
-    this.pool = p ? decodeDbcPool(p.data) : null;
-    if (la.graduated) this.venue = { kind: "damm", pool: la.dammPool };
-    else if (this.pool?.isMigrated) this.venue = { kind: "damm", pool: launchPdas.dammPool(la.mint, this.lineMint()) };
-    else this.venue = { kind: "dbc", pool: la.dbcPool, config: la.dbcConfig };
+    if (la.venue === "meteora") {
+      this.venue = { kind: "legacy", pool: la.bondingCurve };
+      return;
+    }
+    const pool = pumpPdas.pool(la.mint, this.lineMint());
+    const [c, p] = await rpc.getMultipleAccounts([la.bondingCurve, pool]);
+    this.curve = c ? decodeBondingCurve(c.data) : null;
+    if (la.graduated || p || (this.curve && curveMigrated(this.curve))) this.venue = { kind: "pool", pool };
+    else if (this.curve?.complete) this.venue = { kind: "waiting", pool };
+    else this.venue = { kind: "curve", pool: la.bondingCurve };
   }
 
   private async readBalances() {
@@ -183,11 +194,16 @@ class Box {
     const lm = this.lineMint();
     const lineAccount = ata(a, lm, T22);
     const agentAccount = ata(a, this.t.mint, T22);
-    const pre = [token.createAtaIdempotent(a, a, lm, T22), token.createAtaIdempotent(a, a, this.t.mint, T22)];
-    const swap =
-      v.kind === "dbc"
-        ? dbc.swap({ config: v.config, pool: v.pool, agentMint: this.t.mint, lineMint: lm, trader: a, lineAccount, agentAccount, buy, amountIn, minOut, lineTokenProgram: T22 })
-        : damm.swap({ pool: v.pool, agentMint: this.t.mint, lineMint: lm, trader: a, lineAccount, agentAccount, buy, amountIn, minOut, lineTokenProgram: T22 });
+    // the buyback recipient's $LINE account must exist for every pump.fun trade in $LINE (anyone may create it)
+    const pre = [token.createAtaIdempotent(a, a, lm, T22), token.createAtaIdempotent(a, a, this.t.mint, T22),
+      token.createAtaIdempotent(a, PUMP.buybackRecipients[0], lm, T22)];
+    if (v.kind !== "curve" && v.kind !== "pool") throw new Error(v.kind === "legacy" ? "This token was launched on the earlier Meteora venue and is read only here." :
+      "The curve is complete; trading resumes on PumpSwap once anyone runs the migration.");
+    const t = { mint: this.t.mint, quoteMint: lm, quoteTokenProgram: T22, user: a, userBase: agentAccount, userQuote: lineAccount };
+    const swap = v.kind === "curve"
+      ? buy ? pump.buyExactQuoteInV3({ ...t, spendableQuoteIn: amountIn, minTokensOut: minOut }) : pump.sellV3({ ...t, amount: amountIn, minQuoteOut: minOut })
+      : buy ? pumpAmm.buyExactQuoteInV2({ ...t, pool: v.pool, spendableQuoteIn: amountIn, minBaseOut: minOut })
+      : pumpAmm.sellV2({ ...t, pool: v.pool, baseIn: amountIn, minQuoteOut: minOut });
     return [...pre, swap];
   }
 
@@ -285,7 +301,7 @@ class Box {
     this.swapQ = null;
     this.amount = "";
     await this.readBalances();
-    this.msg = html`<div class="mk-tb-done" data-sig="${c.signature}">${banner("info", html`Paid in ${q.prepared.pay}, bought on ${this.venue?.kind === "damm" ? "DAMM v2" : "the curve"}: <a class="link" href="${explorerTx(c.signature)}" target="_blank" rel="noopener" title="${c.signature}">${c.signature.slice(0, 8)}… ${icon.ext}</a>`, "Your balances are read back from chain.")}</div>`;
+    this.msg = html`<div class="mk-tb-done" data-sig="${c.signature}">${banner("info", html`Paid in ${q.prepared.pay}, bought on ${this.venue?.kind === "pool" ? "PumpSwap" : "the curve"}: <a class="link" href="${explorerTx(c.signature)}" target="_blank" rel="noopener" title="${c.signature}">${c.signature.slice(0, 8)}… ${icon.ext}</a>`, "Your balances are read back from chain.")}</div>`;
     this.render();
     this.opts.onTrade?.(c.signature, "buy");
   }
@@ -305,7 +321,7 @@ class Box {
     this.quote = null;
     this.amount = "";
     await this.readBalances();
-    this.msg = html`<div class="mk-tb-done" data-sig="${c.signature}">${banner("info", html`${q.side === "buy" ? "Bought" : "Sold"} on ${this.venue?.kind === "damm" ? "DAMM v2" : "the curve"}: <a class="link" href="${explorerTx(c.signature)}" target="_blank" rel="noopener" title="${c.signature}">${c.signature.slice(0, 8)}… ${icon.ext}</a>`, "Your balances are read back from chain. The trade list and price update when the indexer has read it.")}</div>`;
+    this.msg = html`<div class="mk-tb-done" data-sig="${c.signature}">${banner("info", html`${q.side === "buy" ? "Bought" : "Sold"} on ${this.venue?.kind === "pool" ? "PumpSwap" : "the curve"}: <a class="link" href="${explorerTx(c.signature)}" target="_blank" rel="noopener" title="${c.signature}">${c.signature.slice(0, 8)}… ${icon.ext}</a>`, "Your balances are read back from chain. The trade list and price update when the indexer has read it.")}</div>`;
     this.render();
     this.opts.onTrade?.(c.signature, q.side);
   }
@@ -314,6 +330,7 @@ class Box {
 
   private ready(): boolean {
     if (this.gate !== "ok" || !this.venue) return false;
+    if (this.venue.kind === "legacy" || this.venue.kind === "waiting") return false;
     if (!this.account || !this.wallet) return false;
     if (this.account.chains?.length && !this.account.chains.includes(walletChain())) {
       this.err = this.errBox(`This wallet account does not offer ${walletChain()}.`);
@@ -337,9 +354,11 @@ class Box {
     const v = this.venue;
     if (!v) return html`<span class="faint">reading the pool from ${netName()}…</span>`;
     const pool = html`<a class="link" href="${explorerAddress(v.pool)}" target="_blank" rel="noopener" title="${v.pool}">${v.pool.slice(0, 4)}…${v.pool.slice(-4)}</a>`;
-    return v.kind === "dbc"
-      ? html`<span class="b info">Meteora DBC curve</span> ${pool}`
-      : html`<span class="b good">Meteora DAMM v2</span> ${pool}${this.la && !this.la.graduated ? html` <span class="faint">(migrated, graduation pending)</span>` : ""}`;
+    if (v.kind === "legacy") return html`<span class="b warn">Meteora (earlier venue), read only</span> ${pool}`;
+    if (v.kind === "waiting") return html`<span class="b warn">pump.fun curve complete</span> <span class="faint">trading resumes on PumpSwap after the migration</span>`;
+    return v.kind === "curve"
+      ? html`<span class="b info">pump.fun bonding curve</span> ${pool}`
+      : html`<span class="b good">PumpSwap pool</span> ${pool}${this.la && !this.la.graduated ? html` <span class="faint">(migrated, graduation record pending)</span>` : ""}`;
   }
 
   private render() {
@@ -349,6 +368,7 @@ class Box {
     let body: Raw;
     if (this.gate === "checking") body = html`<div class="dim">Checking that the RPC is ${netName()}…</div>`;
     else if (this.gate !== "ok") body = this.errBox(`Trading is off: ${this.gate}`);
+    else if (this.venue?.kind === "legacy" || this.venue?.kind === "waiting") body = html`<div class="mk-tb-venue">${this.venueLine()}</div>`;
     else if (!this.account) {
       body = html`<div class="mk-tb-venue">${this.venueLine()}</div>
         <div class="eyebrow" style="margin:12px 0 8px">Connect a wallet to trade</div>

@@ -1,7 +1,9 @@
-// Server-side tLINE faucet for devnet (wallet UI lane). The TEST mint's authority is revoked, so
-// nothing is minted: the faucet wallet (~/.config/lineage/devnet/faucet.json, funded once from the
-// supply holder by apps/web/scripts/fund-faucet.ts) transfers a small fixed amount. One drip per
-// wallet per window, a global hourly cap, every drip appended to a JSONL log. It never sends SOL.
+// Server-side devnet faucet. tLINE is a pump.fun coin on devnet (owner decision 2026-10-10): its mint
+// authority is revoked by pump.fun, so nothing is minted. The faucet wallet
+// (~/.config/lineage/devnet/faucet.json) is a devnet treasury holding tLINE bought on tLINE's own
+// pump.fun curve with devnet SOL (scripts/devnet/pump-setup.ts), and transfers a small fixed amount,
+// plus a small devnet SOL drip for fees when `solLamports` is set. One drip per wallet per window, a
+// global hourly cap, every drip appended to a JSONL log. Devnet only (genesis checked).
 import { appendFileSync, existsSync, readFileSync } from "node:fs";
 import {
   addressBytes,
@@ -10,6 +12,7 @@ import {
   loadKeypair,
   Rpc,
   sendAndConfirm,
+  system,
   token,
   TOKEN_2022_PROGRAM,
   TxError,
@@ -25,6 +28,8 @@ export interface FaucetOptions {
   decimals: number;
   /** Base units per drip. */
   amount: bigint;
+  /** Devnet lamports sent with each drip (0: none). */
+  solLamports?: bigint;
   perWalletMs: number;
   perHour: number;
 }
@@ -33,6 +38,8 @@ interface Drip {
   at: number;
   wallet: string;
   amount: string;
+  /** devnet lamports sent with the drip */
+  sol?: string;
   signature: string;
   fee?: number;
 }
@@ -69,7 +76,8 @@ export class Faucet {
     const line = acct ? new DataView(acct.data.buffer, acct.data.byteOffset + 64, 8).getBigUint64(0, true) : 0n;
     const hourAgo = Date.now() - 3_600_000;
     return {
-      enabled: line >= this.o.amount && sol > 5_000_000n,
+      enabled: line >= this.o.amount && sol > 5_000_000n + (this.o.solLamports ?? 0n),
+      sol_drip_lamports: (this.o.solLamports ?? 0n).toString(),
       address: this.key.id,
       token_account: tokenAccount,
       sol_lamports: sol.toString(),
@@ -114,8 +122,9 @@ export class Faucet {
       const r = await sendAndConfirm(this.rpc, this.key, [
         token.createAtaIdempotent(this.key.id, wallet, this.o.lineMint, T22),
         token.transferChecked(from, this.o.lineMint, ata(wallet, this.o.lineMint, T22), this.key.id, this.o.amount, this.o.decimals, T22),
+        ...(this.o.solLamports ? [system.transfer(this.key.id, wallet, this.o.solLamports)] : []),
       ]);
-      const d: Drip = { at: Date.now(), wallet, amount: this.o.amount.toString(), signature: r.signature, fee: r.fee };
+      const d: Drip = { at: Date.now(), wallet, amount: this.o.amount.toString(), sol: (this.o.solLamports ?? 0n).toString(), signature: r.signature, fee: r.fee };
       this.drips.push(d);
       appendFileSync(this.o.logPath, JSON.stringify(d) + "\n", { mode: 0o600 });
       console.log(`[faucet] ${this.o.amount} base units of tLINE to ${wallet}: ${r.signature}`);
