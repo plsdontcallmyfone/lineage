@@ -76,8 +76,8 @@ describe("analysis model override (owner 2026-10-10: a cheaper model for trading
     const keys = { anthropic: "test-key" };
     const over = await routedDecisionModel({ core: "http://core.test", agent: "A", keys, registry, override: { provider: "anthropic", id: "claude-sonnet-5-5" }, anthropic: fake, fetch: fetchSoul });
     expect(over.model?.id).toBe("anthropic/claude-sonnet-5-5");
-    expect(mergeTradingConfig({}).analysis_model).toEqual({ provider: "anthropic", id: "claude-sonnet-5-5" });
-    expect(mergeTradingConfig({ analysis_model: null }).analysis_model).toBeNull();
-    expect(() => mergeTradingConfig({ analysis_model: { provider: "Bad Provider", id: "x" } })).toThrow(/analysis_model/);
+    expect(mergeTradingConfig(TRADING_DEFAULTS, {}).analysis_model).toEqual({ provider: "anthropic", id: "claude-sonnet-5-5" });
+    expect(mergeTradingConfig(TRADING_DEFAULTS, { analysis_model: null }).analysis_model).toBeNull();
+    expect(() => mergeTradingConfig(TRADING_DEFAULTS, { analysis_model: { provider: "Bad Provider", id: "x" } })).toThrow(/analysis_model/);
   });
 });
