@@ -1,5 +1,6 @@
 import type { Core } from "./core.ts";
 import { bad, notFound } from "./errors.ts";
+import { brandNeutralTrailers } from "./protocol.ts";
 
 // Generations on GitHub (docs/plans/GENERATIONS-ON-GITHUB.md 3). The identity cycle publishes every
 // accepted generation as a signed commit and reports it here; Core reads the commit from the GitHub
@@ -85,7 +86,7 @@ export function trailersOf(message: string): Record<string, string> {
     const m = /^([A-Za-z][A-Za-z0-9-]*):\s*(.*)$/.exec(line.trim());
     if (m && !(m[1]! in out)) out[m[1]!] = m[2]!.trim();
   }
-  return out;
+  return brandNeutralTrailers(out);
 }
 
 const isGithubRepo = (url: string) => /^https:\/\/github\.com\/[^/]+\/[^/]+?(?:\.git)?\/?$/.test(url);

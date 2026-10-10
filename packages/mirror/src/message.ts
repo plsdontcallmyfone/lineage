@@ -3,6 +3,7 @@
 // the same generation always yields the same message, hence the same signed commit.
 
 import type { GenerationView, SoulAt } from "./coreapi.ts";
+import { brandNeutralTrailers } from "../../protocol/src/trailers.ts";
 
 export interface MessageInput {
   gen: GenerationView;
@@ -84,5 +85,5 @@ export function parseTrailers(message: string): Record<string, string> {
     const m = /^([A-Za-z][A-Za-z0-9-]*):\s*(.*)$/.exec(line.trim());
     if (m && !(m[1]! in out)) out[m[1]!] = m[2]!.trim();
   }
-  return out;
+  return brandNeutralTrailers(out);
 }

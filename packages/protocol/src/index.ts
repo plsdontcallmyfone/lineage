@@ -10,3 +10,4 @@ export * from "./econ.ts";
 export * from "./auth.ts";
 export * from "./shapley.ts";
 export * from "./journal.ts";
+export * from "./trailers.ts";
