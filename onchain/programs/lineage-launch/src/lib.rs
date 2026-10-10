@@ -1,19 +1,20 @@
-//! `lineage_launch` (SPEC 14.2): agent tokens on Meteora DBC quoted in `$LINE`. This program's
-//! authority PDA is the DBC pool creator, the fee claimer and the leftover receiver, and after
-//! Meteora's migration it holds the DAMM v2 position NFT whose liquidity DBC locked permanently,
-//! so only this program can claim an agent token's fees. `crank_fees` / `crank_pool_fees` split
-//! them between the agent's compute vault (`agent_compute_bps`) and the registry treasury
-//! (`protocol_bps`).
+//! `lineage_launch` (SPEC 14.2): agent tokens on pump.fun quoted in `$LINE` (owner decisions
+//! 2026-10-10, docs/plans/PUMPFUN-LAUNCHES.md). The launcher's transaction calls pump.fun's
+//! `create_v2` at the top level with `creator` = this program's PDA ["pump_creator", agent];
+//! `register_pump_launch` then checks the new bonding curve and the same transaction's `create_v2`
+//! and records the launch. This program never calls pump.fun. pump.fun's permissionless sweeps and
+//! collects pay the creator fees in `$LINE` to the creator PDA's ATA, and `crank_pump_fees` splits
+//! that balance between the agent's compute vault (`agent_compute_bps`) and the registry treasury
+//! (`protocol_bps`). Records written by the earlier Meteora venue keep their bytes (devnet history).
 use anchor_lang::prelude::*;
 use anchor_lang::solana_program::bpf_loader_upgradeable;
-use anchor_spl::token_2022::Token2022;
-use anchor_spl::token_interface::{self, Burn, Mint, TokenAccount, TokenInterface, TransferChecked};
+use anchor_spl::token_interface::{self, Mint, TokenAccount, TokenInterface, TransferChecked};
 use lineage_registry::leaf;
 
 pub mod bounty;
-pub mod meteora;
+pub mod pump;
 pub use bounty::*;
-use meteora as mt;
+use pump as pf;
 
 // Network ids by build feature, as in lineage_registry: devnet by default, `mainnet` for mainnet.
 #[cfg(not(feature = "mainnet"))]
@@ -28,14 +29,14 @@ pub const COMPUTE_SEED: &[u8] = lineage_registry::COMPUTE_SEED;
 pub const USAGE_SEED: &[u8] = b"usage";
 pub const DEBIT_SEED: &[u8] = b"debit";
 pub const BPS: u64 = 10_000;
-/// Longest repository URL and metadata URI `launch_agent` accepts on their own.
+/// Longest repository URL `register_pump_launch` accepts.
 pub const MAX_URL: usize = 200;
-pub const MAX_URI: usize = 200;
-/// Most bytes of name + symbol + metadata URI + repository URL together, so that any accepted
-/// `launch_agent` fits one 1,232-byte transaction with three distinct signers (launcher, agent,
-/// mint) and both compute budget instructions: 1,232 minus the 1,005 bytes of everything else,
-/// measured by `longest_launch_fits_one_transaction`.
-pub const MAX_LAUNCH_STRINGS: usize = 227;
+/// PDA ["pump_creator", agent]: the pump.fun `creator` of the agent's coin, so fees accrue per agent.
+pub const PUMP_CREATOR_SEED: &[u8] = b"pump_creator";
+/// `AgentLaunch.venue` of a pump.fun launch (a Meteora-era record holds its DBC config there).
+pub const VENUE_PUMP: Pubkey = pf::PUMP_PROGRAM_ID;
+/// A pump.fun coin quoted in a pump coin has curve depth 1 (`max_curve_depth` 1 on mainnet 2026-10-10).
+pub const PUMP_QUOTED_DEPTH: u8 = 1;
 pub const MAX_PROOF: usize = 32;
 pub const IDENTITY_TOKEN: u8 = 0;
 pub const IDENTITY_PURCHASED: u8 = 1;
@@ -49,8 +50,6 @@ pub mod lineage_launch {
     pub fn initialize_launch(ctx: Context<InitializeLaunch>, args: LaunchConfigArgs) -> Result<()> {
         args.validate()?;
         lineage_registry::check_mint_extensions(&ctx.accounts.line_mint.to_account_info())?;
-        let authority = ctx.accounts.authority.key();
-        let view = mt::check_dbc_config(&ctx.accounts.dbc_config, &ctx.accounts.line_mint.key(), &ctx.accounts.line_token_program.key(), &authority)?;
         let c = &mut ctx.accounts.launch_config;
         c.line_mint = ctx.accounts.line_mint.key();
         c.line_token_program = ctx.accounts.line_token_program.key();
@@ -60,21 +59,16 @@ pub mod lineage_launch {
         c.last_usage_epoch = 0;
         c.usage_anchor = 0;
         c.usage_anchor_ts = 0;
-        apply_args(c, &args, ctx.accounts.dbc_config.key(), &view);
-        emit!(LaunchConfigSet { args, dbc_config: c.dbc_config });
+        apply_args(c, &args);
+        emit!(LaunchConfigSet { args });
         Ok(())
     }
 
-    /// Admin: every field (a new DBC config is checked the same way as at initialize).
+    /// Admin: every field, including the creator fee rate pump.fun launches must carry.
     pub fn set_launch_config(ctx: Context<SetLaunchConfig>, args: LaunchConfigArgs) -> Result<()> {
         args.validate()?;
-        let c = &ctx.accounts.launch_config;
-        let authority = Pubkey::create_program_address(&[AUTHORITY_SEED, &[c.authority_bump]], &crate::ID).map_err(|_| error!(LaunchError::Unauthorized))?;
-        let view = mt::check_dbc_config(&ctx.accounts.dbc_config, &c.line_mint, &c.line_token_program, &authority)?;
-        let key = ctx.accounts.dbc_config.key();
-        let c = &mut ctx.accounts.launch_config;
-        apply_args(c, &args, key, &view);
-        emit!(LaunchConfigSet { args, dbc_config: key });
+        apply_args(&mut ctx.accounts.launch_config, &args);
+        emit!(LaunchConfigSet { args });
         Ok(())
     }
 
@@ -97,42 +91,32 @@ pub mod lineage_launch {
         Ok(())
     }
 
-    /// The launcher creates an agent token: DBC pool on the configured config (creator and fee
-    /// claimer = our authority PDA), the agent's compute vault, the `AgentLaunch` record, and the
-    /// registry's `Agent` through `register_launched`. The agent key co-signs: one agent per key,
-    /// and nobody can launch a token for a key they do not hold.
-    pub fn launch_agent(ctx: Context<LaunchAgent>, args: LaunchArgs) -> Result<()> {
+    /// The launcher registers the agent coin its transaction just created on pump.fun: an earlier
+    /// top-level instruction of the same transaction is Pump `create_v2` for `agent_mint`, and the
+    /// bonding curve it wrote is quoted in `$LINE`, has this agent's creator PDA as `creator`, depth
+    /// 1, no mayhem, cashback or holder rewards, the configured creator fee rate, Global's supply and
+    /// no trade yet. Then the compute vault, the `AgentLaunch` record and the registry's `Agent`
+    /// (`register_launched`). The agent key co-signs: one agent per key, and nobody can launch a
+    /// token for a key they do not hold.
+    pub fn register_pump_launch(ctx: Context<RegisterPumpLaunch>, args: PumpLaunchArgs) -> Result<()> {
         let c = &ctx.accounts.launch_config;
         require!(!c.paused, LaunchError::Paused);
-        require!(!args.name.is_empty() && args.name.len() <= 32 && !args.symbol.is_empty() && args.symbol.len() <= 10 && args.uri.len() <= MAX_URI,
-            LaunchError::InvalidArgs);
-        require!(args.name.len() + args.symbol.len() + args.uri.len() + args.repo_url.len() <= MAX_LAUNCH_STRINGS, LaunchError::InvalidArgs);
         require!(args.identity_mode <= IDENTITY_APP, LaunchError::InvalidArgs);
         check_canonical_url(args.repo_url.as_bytes())?;
-        let authority = ctx.accounts.authority.key();
-        mt::check_dbc_config(&ctx.accounts.dbc_config, &c.line_mint, &c.line_token_program, &authority)?;
-        let seeds: &[&[u8]] = &[AUTHORITY_SEED, &[c.authority_bump]];
-        mt::dbc_initialize_pool(mt::DbcInitAccounts {
-            config: &ctx.accounts.dbc_config,
-            pool_authority: &ctx.accounts.dbc_pool_authority,
-            creator: &ctx.accounts.authority,
-            base_mint: &ctx.accounts.agent_mint,
-            quote_mint: &ctx.accounts.line_mint.to_account_info(),
-            pool: &ctx.accounts.dbc_pool,
-            base_vault: &ctx.accounts.dbc_base_vault,
-            quote_vault: &ctx.accounts.dbc_quote_vault,
-            payer: &ctx.accounts.launcher.to_account_info(),
-            token_quote_program: &ctx.accounts.line_token_program.to_account_info(),
-            token_program: &ctx.accounts.token_2022_program.to_account_info(),
-            system_program: &ctx.accounts.system_program.to_account_info(),
-            event_authority: &ctx.accounts.dbc_event_authority,
-            program: &ctx.accounts.dbc_program,
-        }, &args.name, &args.symbol, &args.uri, &[seeds])?;
-        let pool = mt::read_dbc_pool(&ctx.accounts.dbc_pool)?;
-        require!(pool.config == ctx.accounts.dbc_config.key() && pool.creator == authority && pool.base_mint == ctx.accounts.agent_mint.key()
-            && pool.base_vault == ctx.accounts.dbc_base_vault.key() && pool.quote_vault == ctx.accounts.dbc_quote_vault.key(),
-            LaunchError::MeteoraAccountInvalid);
+        let mint = ctx.accounts.agent_mint.key();
+        let curve_info = ctx.accounts.bonding_curve.to_account_info();
+        let curve = pf::read_curve(&curve_info, &mint)?;
+        require!(pf::created_in_this_tx(&ctx.accounts.instructions.to_account_info(), &mint, &curve_info.key())?, LaunchError::NotCreatedInThisTx);
+        require_keys_eq!(curve.quote_mint, c.line_mint, LaunchError::PumpWrongQuote);
+        require_keys_eq!(curve.creator, ctx.accounts.pump_creator.key(), LaunchError::PumpWrongCreator);
+        require!(curve.depth == PUMP_QUOTED_DEPTH && !curve.is_mayhem_mode && !curve.is_cashback_coin && !curve.is_holder_reward,
+            LaunchError::PumpCurveInvalid);
+        require!(curve.creator_fee_bps == c.pump_creator_fee_bps, LaunchError::PumpCreatorFee);
+        let (initial_real, total_supply) = pf::read_global_supply(&ctx.accounts.pump_global)?;
+        require!(!curve.complete && curve.real_quote_reserves == 0 && curve.real_token_reserves == initial_real && curve.token_total_supply == total_supply,
+            LaunchError::PumpCurveInvalid);
 
+        let seeds: &[&[u8]] = &[AUTHORITY_SEED, &[c.authority_bump]];
         lineage_registry::cpi::register_launched(
             CpiContext::new_with_signer(ctx.accounts.registry_program.to_account_info(), lineage_registry::cpi::accounts::RegisterLaunched {
                 config: ctx.accounts.registry_config.to_account_info(),
@@ -144,24 +128,24 @@ pub mod lineage_launch {
             lineage_registry::RegisterLaunchedArgs {
                 agent: ctx.accounts.agent.key(),
                 owner: ctx.accounts.launcher.key(),
-                mint: ctx.accounts.agent_mint.key(),
+                mint,
                 hosted: args.hosted,
             },
         )?;
 
         let l = &mut ctx.accounts.agent_launch;
         l.agent = ctx.accounts.agent.key();
-        l.mint = ctx.accounts.agent_mint.key();
+        l.mint = mint;
         l.launcher = ctx.accounts.launcher.key();
         l.repo_id = leaf::repo_id(args.repo_url.as_bytes());
         l.repo_url = args.repo_url;
         l.identity_mode = args.identity_mode;
         l.hosted = args.hosted;
-        l.dbc_config = ctx.accounts.dbc_config.key();
-        l.dbc_pool = ctx.accounts.dbc_pool.key();
-        l.damm_pool = Pubkey::default();
-        l.position = Pubkey::default();
-        l.position_nft_account = Pubkey::default();
+        l.venue = VENUE_PUMP;
+        l.bonding_curve = curve_info.key();
+        l.pump_pool = Pubkey::default();
+        l.pump_creator = ctx.accounts.pump_creator.key();
+        l.reserved = Pubkey::default();
         l.graduated = false;
         l.awake = false;
         l.created_at = Clock::get()?.unix_timestamp;
@@ -172,131 +156,74 @@ pub mod lineage_launch {
         l.withdrawn = 0;
         l.bump = ctx.bumps.agent_launch;
         l.compute_bump = ctx.bumps.compute_vault;
-        emit!(AgentLaunched { agent: l.agent, mint: l.mint, launcher: l.launcher, dbc_pool: l.dbc_pool, repo_id: l.repo_id,
-            identity_mode: l.identity_mode, hosted: l.hosted });
+        emit!(PumpLaunched { agent: l.agent, mint: l.mint, launcher: l.launcher, bonding_curve: l.bonding_curve, pump_creator: l.pump_creator,
+            repo_id: l.repo_id, identity_mode: l.identity_mode, hosted: l.hosted });
         Ok(())
     }
 
-    /// Anyone, before or after graduation: claims the DBC partner fees (and the partner's surplus
-    /// once the curve overshoots its own config's threshold) into the agent's compute vault and
-    /// moves `protocol_bps` of them to the registry treasury. compute = floor(fees x
-    /// agent_compute_bps / 10,000), protocol = the rest. Fees and surplus left on the curve when
-    /// Meteora migrates stay claimable here after `graduate`.
-    pub fn crank_fees(ctx: Context<CrankFees>) -> Result<()> {
+    /// Anyone: splits the `$LINE` that pump.fun's sweeps and collects paid into the agent's creator
+    /// PDA ATA (the keeper puts Pump `sweep_creator_fee` + `collect_creator_fee_v2`, and after
+    /// migration PumpSwap `sweep_creator_fee` + `collect_coin_creator_fee`, before it in the same
+    /// transaction). compute = floor(balance x agent_compute_bps / 10,000) to the compute vault,
+    /// protocol = the rest to the registry treasury, both signed by the creator PDA. `$LINE` anyone
+    /// sends to that ATA is treated as fees.
+    pub fn crank_pump_fees(ctx: Context<CrankPumpFees>) -> Result<()> {
         let c = &ctx.accounts.launch_config;
         require!(!c.paused, LaunchError::Paused);
-        let pool = mt::read_dbc_pool(&ctx.accounts.dbc_pool)?;
-        let threshold = mt::dbc_config_threshold(&ctx.accounts.dbc_config)?;
-        let seeds: &[&[u8]] = &[AUTHORITY_SEED, &[c.authority_bump]];
-        let (base_mint, quote_mint) = (ctx.accounts.agent_mint.to_account_info(), ctx.accounts.line_mint.to_account_info());
-        let (t22, ltp) = (ctx.accounts.token_2022_program.to_account_info(), ctx.accounts.line_token_program.to_account_info());
-        let (base_dest, quote_dest) = (ctx.accounts.authority_agent_token.to_account_info(), ctx.accounts.compute_vault.to_account_info());
-        let a = mt::DbcClaimAccounts {
-            pool_authority: &ctx.accounts.dbc_pool_authority,
-            config: &ctx.accounts.dbc_config,
-            pool: &ctx.accounts.dbc_pool,
-            base_destination: &base_dest,
-            quote_destination: &quote_dest,
-            base_vault: &ctx.accounts.dbc_base_vault,
-            quote_vault: &ctx.accounts.dbc_quote_vault,
-            base_mint: &base_mint,
-            quote_mint: &quote_mint,
-            fee_claimer: &ctx.accounts.authority,
-            token_base_program: &t22,
-            token_quote_program: &ltp,
-            event_authority: &ctx.accounts.dbc_event_authority,
-            program: &ctx.accounts.dbc_program,
-        };
-        let before = ctx.accounts.compute_vault.amount;
-        mt::dbc_claim_trading_fee(&a, &[seeds])?;
-        if pool.quote_reserve > threshold && pool.is_partner_withdraw_surplus == 0 && pool.migration_progress >= 1 {
-            mt::dbc_partner_withdraw_surplus(&a, &[seeds])?;
-        }
-        ctx.accounts.compute_vault.reload()?;
-        let fees = ctx.accounts.compute_vault.amount.checked_sub(before).ok_or(LaunchError::CustodyMismatch)?;
+        let fees = ctx.accounts.creator_line_token.amount;
         require!(fees > 0, LaunchError::NothingToClaim);
-        split_fees(&ctx.accounts.launch_config, &mut ctx.accounts.agent_launch, &mut ctx.accounts.compute_vault, &ctx.accounts.treasury,
-            &ctx.accounts.line_mint, &ctx.accounts.line_token_program, &ctx.accounts.authority, fees, false)
-    }
-
-    /// Anyone, once, after Meteora's migration: records the DAMM v2 pool and DBC's migration
-    /// position, whose NFT our authority holds and whose liquidity is all permanently locked.
-    /// Anyone can hand our authority a position NFT, so holding it proves nothing; DBC's
-    /// migration position is told apart by size: it must hold a strict majority of all the
-    /// liquidity permanently locked in the pool. A forged dust position fails that, and a third
-    /// party can only displace the migration position by locking more liquidity than it holds
-    /// and giving it to us (see `repoint_position`), which only adds to the agent's fees.
-    pub fn graduate(ctx: Context<Graduate>) -> Result<()> {
-        graduate_checked(ctx.accounts, true)
-    }
-
-    /// Admin escape hatch: `graduate` without the majority rule, for a pool where a third party
-    /// permanently locked more liquidity than DBC's migration and kept the NFT. Every other
-    /// check is the same (our authority holds the position, all of it permanently locked).
-    pub fn graduate_by_admin(ctx: Context<GraduateByAdmin>) -> Result<()> {
-        graduate_checked(&mut ctx.accounts.g, false)
-    }
-
-    /// Anyone, after graduation: moves `crank_pool_fees` to another position on the same pool
-    /// that our authority holds, fully permanently locked, with strictly more locked liquidity
-    /// than the recorded one. Crank the recorded position first; its later fees stay unclaimed.
-    pub fn repoint_position(ctx: Context<RepointPosition>) -> Result<()> {
-        let l = &ctx.accounts.agent_launch;
-        require!(l.graduated, LaunchError::WrongPhase);
-        let current = mt::read_damm_position(&ctx.accounts.current_position)?;
-        let locked = held_locked_position(&ctx.accounts.position, &ctx.accounts.position_nft_account, &l.damm_pool, &ctx.accounts.authority.key())?;
-        require!(locked > current.permanent_locked_liquidity, LaunchError::NotMigrationPosition);
+        let to_compute = (fees as u128 * c.agent_compute_bps as u128 / BPS as u128) as u64;
+        let to_protocol = fees - to_compute;
+        let agent = ctx.accounts.agent_launch.agent;
+        let bump = [ctx.bumps.pump_creator];
+        let seeds: &[&[u8]] = &[PUMP_CREATOR_SEED, agent.as_ref(), &bump];
+        for (to, amount) in [(ctx.accounts.compute_vault.to_account_info(), to_compute), (ctx.accounts.treasury.to_account_info(), to_protocol)] {
+            if amount > 0 {
+                token_interface::transfer_checked(
+                    CpiContext::new_with_signer(ctx.accounts.line_token_program.to_account_info(), TransferChecked {
+                        from: ctx.accounts.creator_line_token.to_account_info(),
+                        mint: ctx.accounts.line_mint.to_account_info(),
+                        to,
+                        authority: ctx.accounts.pump_creator.to_account_info(),
+                    }, &[seeds]),
+                    amount,
+                    ctx.accounts.line_mint.decimals,
+                )?;
+            }
+        }
+        ctx.accounts.compute_vault.reload()?;
+        let balance = ctx.accounts.compute_vault.amount;
         let l = &mut ctx.accounts.agent_launch;
-        l.position = ctx.accounts.position.key();
-        l.position_nft_account = ctx.accounts.position_nft_account.key();
-        emit!(Graduated { agent: l.agent, mint: l.mint, damm_pool: l.damm_pool, position: l.position, locked_liquidity: locked });
+        l.fees_claimed = l.fees_claimed.saturating_add(fees);
+        l.to_compute = l.to_compute.saturating_add(to_compute);
+        l.to_protocol = l.to_protocol.saturating_add(to_protocol);
+        update_awake(l, balance, c);
+        emit!(FeesCranked { agent: l.agent, mint: l.mint, fees, to_compute, to_protocol, pool_fees: l.graduated, balance, awake: l.awake });
         Ok(())
     }
 
-    /// Anyone, after graduation: claims the locked position's DAMM v2 fees and splits the `$LINE`
-    /// part like `crank_fees`. Any agent tokens the position paid are burned (the program never
-    /// keeps agent tokens).
-    pub fn crank_pool_fees(ctx: Context<CrankPoolFees>) -> Result<()> {
-        let c = &ctx.accounts.launch_config;
-        require!(!c.paused, LaunchError::Paused);
-        require!(ctx.accounts.agent_launch.graduated, LaunchError::WrongPhase);
-        let seeds: &[&[u8]] = &[AUTHORITY_SEED, &[c.authority_bump]];
-        let before_line = ctx.accounts.compute_vault.amount;
-        let before_agent = ctx.accounts.authority_agent_token.amount;
-        let (am, lm) = (ctx.accounts.agent_mint.to_account_info(), ctx.accounts.line_mint.to_account_info());
-        let (t22, ltp) = (ctx.accounts.token_2022_program.to_account_info(), ctx.accounts.line_token_program.to_account_info());
-        let (da, db) = (ctx.accounts.authority_agent_token.to_account_info(), ctx.accounts.compute_vault.to_account_info());
-        mt::damm_claim_position_fee(&mt::DammClaimAccounts {
-            pool_authority: &ctx.accounts.damm_pool_authority,
-            pool: &ctx.accounts.damm_pool,
-            position: &ctx.accounts.position,
-            dest_a: &da,
-            dest_b: &db,
-            token_a_vault: &ctx.accounts.damm_token_a_vault,
-            token_b_vault: &ctx.accounts.damm_token_b_vault,
-            token_a_mint: &am,
-            token_b_mint: &lm,
-            nft_account: &ctx.accounts.position_nft_account,
-            owner: &ctx.accounts.authority,
-            token_a_program: &t22,
-            token_b_program: &ltp,
-            event_authority: &ctx.accounts.damm_event_authority,
-            program: &ctx.accounts.damm_program,
-        }, &[seeds])?;
-        ctx.accounts.compute_vault.reload()?;
-        ctx.accounts.authority_agent_token.reload()?;
-        let fees = ctx.accounts.compute_vault.amount.checked_sub(before_line).ok_or(LaunchError::CustodyMismatch)?;
-        let stray = ctx.accounts.authority_agent_token.amount.checked_sub(before_agent).ok_or(LaunchError::CustodyMismatch)?;
-        require!(fees + stray > 0, LaunchError::NothingToClaim);
-        if stray > 0 {
-            token_interface::burn(CpiContext::new_with_signer(t22, Burn { mint: am, from: da, authority: ctx.accounts.authority.to_account_info() },
-                &[seeds]), stray)?;
-        }
-        if fees == 0 {
-            return Ok(());
-        }
-        split_fees(&ctx.accounts.launch_config, &mut ctx.accounts.agent_launch, &mut ctx.accounts.compute_vault, &ctx.accounts.treasury,
-            &ctx.accounts.line_mint, &ctx.accounts.line_token_program, &ctx.accounts.authority, fees, true)
+    /// Anyone, once: records graduation after pump.fun's migration. The curve is complete and the
+    /// pool is the canonical PumpSwap pool of the agent's mint quoted in `$LINE` (address, owner,
+    /// discriminator, index 0, creator = Pump's pool authority for the mint). Fees keep flowing
+    /// through `crank_pump_fees`; the pool's `coin_creator` is reported, not required, so a
+    /// pump.fun reassignment shows in the event instead of blocking the record.
+    pub fn record_pump_graduation(ctx: Context<RecordPumpGraduation>) -> Result<()> {
+        let l = &ctx.accounts.agent_launch;
+        require!(l.venue == VENUE_PUMP && !l.graduated, LaunchError::WrongPhase);
+        let curve = pf::read_curve(&ctx.accounts.bonding_curve, &l.mint)?;
+        require!(curve.complete, LaunchError::NotMigrated);
+        let line_mint = ctx.accounts.launch_config.line_mint;
+        let (address, pool_authority) = pf::canonical_pool(&l.mint, &line_mint);
+        require_keys_eq!(ctx.accounts.pool.key(), address, LaunchError::PumpPoolUnexpected);
+        let pool = pf::read_pool(&ctx.accounts.pool)?;
+        require!(pool.index == 0 && pool.creator == pool_authority && pool.base_mint == l.mint && pool.quote_mint == line_mint,
+            LaunchError::PumpPoolUnexpected);
+        let l = &mut ctx.accounts.agent_launch;
+        l.graduated = true;
+        l.pump_pool = address;
+        emit!(PumpGraduated { agent: l.agent, mint: l.mint, pool: address, coin_creator: pool.coin_creator,
+            creator_is_ours: pool.coin_creator == l.pump_creator });
+        Ok(())
     }
 
     /// Hosted runtime authority, once per epoch: the Merkle root of that epoch's usage records
@@ -437,73 +364,6 @@ pub mod lineage_launch {
     }
 }
 
-fn graduate_checked(a: &mut Graduate, majority: bool) -> Result<()> {
-    let l = &a.agent_launch;
-    require!(!l.graduated, LaunchError::WrongPhase);
-    let st = mt::read_dbc_pool(&a.dbc_pool)?;
-    require!(st.is_migrated == 1 && st.migration_progress == mt::DBC_MIGRATION_CREATED_POOL, LaunchError::NotMigrated);
-    let pool = mt::read_damm_pool(&a.damm_pool)?;
-    let line_mint = a.launch_config.line_mint;
-    require!(pool.token_a_mint == l.mint && pool.token_b_mint == line_mint && pool.creator == mt::DBC_POOL_AUTHORITY, LaunchError::DammPoolUnexpected);
-    mt::check_dbc_only_damm_config(&a.damm_config)?;
-    require_keys_eq!(a.damm_pool.key(), mt::damm_pool_address(&a.damm_config.key(), &pool.token_a_mint, &pool.token_b_mint),
-        LaunchError::DammPoolUnexpected);
-    let locked = held_locked_position(&a.position, &a.position_nft_account, &a.damm_pool.key(),
-        &a.authority.key())?;
-    require!(!majority || locked > pool.permanent_lock_liquidity / 2, LaunchError::NotMigrationPosition);
-    let l = &mut a.agent_launch;
-    l.graduated = true;
-    l.damm_pool = a.damm_pool.key();
-    l.position = a.position.key();
-    l.position_nft_account = a.position_nft_account.key();
-    emit!(Graduated { agent: l.agent, mint: l.mint, damm_pool: l.damm_pool, position: l.position, locked_liquidity: locked });
-    Ok(())
-}
-
-/// A DAMM v2 position on `pool` whose NFT `authority` holds (DAMM v2's NFT account PDA, a
-/// Token-2022 account holding the one NFT) with all its liquidity permanently locked; returns
-/// that liquidity.
-fn held_locked_position(position: &AccountInfo, nft_account: &AccountInfo, pool: &Pubkey, authority: &Pubkey) -> Result<u128> {
-    use anchor_spl::token_2022::spl_token_2022::{extension::StateWithExtensions, state::Account as T22Account};
-    let p = mt::read_damm_position(position)?;
-    require!(p.pool == *pool, LaunchError::DammPositionInvalid);
-    require_keys_eq!(nft_account.key(), mt::position_nft_account(&p.nft_mint), LaunchError::DammPositionInvalid);
-    require_keys_eq!(*nft_account.owner, anchor_spl::token_2022::ID, LaunchError::DammPositionInvalid);
-    let data = nft_account.try_borrow_data()?;
-    let acct = StateWithExtensions::<T22Account>::unpack(&data).map_err(|_| error!(LaunchError::DammPositionInvalid))?;
-    require!(acct.base.mint == p.nft_mint && acct.base.owner == *authority && acct.base.amount == 1, LaunchError::DammPositionInvalid);
-    require!(p.unlocked_liquidity == 0 && p.vested_liquidity == 0 && p.permanent_locked_liquidity > 0, LaunchError::DammPositionInvalid);
-    Ok(p.permanent_locked_liquidity)
-}
-
-#[allow(clippy::too_many_arguments)]
-fn split_fees<'info>(c: &LaunchConfig, l: &mut AgentLaunch, compute_vault: &mut Box<InterfaceAccount<'info, TokenAccount>>,
-    treasury: &InterfaceAccount<'info, TokenAccount>, line_mint: &InterfaceAccount<'info, Mint>, token_program: &Interface<'info, TokenInterface>,
-    authority: &UncheckedAccount<'info>, fees: u64, pool_fees: bool) -> Result<()> {
-    let to_compute = (fees as u128 * c.agent_compute_bps as u128 / BPS as u128) as u64;
-    let to_protocol = fees - to_compute;
-    if to_protocol > 0 {
-        let seeds: &[&[u8]] = &[AUTHORITY_SEED, &[c.authority_bump]];
-        token_interface::transfer_checked(
-            CpiContext::new_with_signer(token_program.to_account_info(), TransferChecked {
-                from: compute_vault.to_account_info(),
-                mint: line_mint.to_account_info(),
-                to: treasury.to_account_info(),
-                authority: authority.to_account_info(),
-            }, &[seeds]),
-            to_protocol,
-            line_mint.decimals,
-        )?;
-    }
-    compute_vault.reload()?;
-    l.fees_claimed = l.fees_claimed.saturating_add(fees);
-    l.to_compute = l.to_compute.saturating_add(to_compute);
-    l.to_protocol = l.to_protocol.saturating_add(to_protocol);
-    update_awake(l, compute_vault.amount, c);
-    emit!(FeesCranked { agent: l.agent, mint: l.mint, fees, to_compute, to_protocol, pool_fees, balance: compute_vault.amount, awake: l.awake });
-    Ok(())
-}
-
 /// Hysteresis (SPEC 13.7): asleep below `sleep_threshold`, awake again from `wake_threshold`.
 pub(crate) fn update_awake(l: &mut AgentLaunch, balance: u64, c: &LaunchConfig) {
     if l.awake && balance < c.sleep_threshold {
@@ -522,7 +382,7 @@ fn check_canonical_url(u: &[u8]) -> Result<()> {
     Ok(())
 }
 
-fn apply_args(c: &mut LaunchConfig, a: &LaunchConfigArgs, dbc_config: Pubkey, view: &mt::DbcConfigView) {
+fn apply_args(c: &mut LaunchConfig, a: &LaunchConfigArgs) {
     c.admin = a.admin;
     c.runtime_authority = a.runtime_authority;
     c.registry_program = lineage_registry::ID;
@@ -533,9 +393,9 @@ fn apply_args(c: &mut LaunchConfig, a: &LaunchConfigArgs, dbc_config: Pubkey, vi
     c.sleep_threshold = a.sleep_threshold;
     c.wake_threshold = a.wake_threshold;
     c.paused = a.paused;
-    c.dbc_config = dbc_config;
-    c.migration_quote_threshold = view.migration_quote_threshold;
-    c.sqrt_start_price = view.sqrt_start_price;
+    c.venue = VENUE_PUMP;
+    c.pump_creator_fee_bps = a.pump_creator_fee_bps;
+    c.reserved = 0;
 }
 
 // ---------- state ----------
@@ -554,11 +414,14 @@ pub struct LaunchConfigArgs {
     pub paused: bool,
     /// Most the runtime may debit across all compute vaults for one usage epoch; 0 = no cap.
     pub max_debit_per_epoch: u64,
+    /// The `creator_fee_bps` every pump.fun launch must be created with: 0 = pump.fun's standard
+    /// schedule (owner decision 2026-10-10), else a rate pump.fun accepts (`max_configurable_creator_fee_bps`).
+    pub pump_creator_fee_bps: u64,
 }
 impl LaunchConfigArgs {
     fn validate(&self) -> Result<()> {
         require!(self.agent_compute_bps as u64 + self.protocol_bps as u64 == BPS, LaunchError::InvalidArgs);
-        require!(self.sleep_threshold <= self.wake_threshold, LaunchError::InvalidArgs);
+        require!(self.sleep_threshold <= self.wake_threshold && self.pump_creator_fee_bps <= BPS, LaunchError::InvalidArgs);
         require!(self.admin != Pubkey::default() && self.runtime_authority != Pubkey::default() && self.compute_sink != Pubkey::default(),
             LaunchError::InvalidArgs);
         Ok(())
@@ -578,15 +441,16 @@ pub struct LaunchConfig {
     pub line_mint: Pubkey,
     pub line_token_program: Pubkey,
     pub compute_sink: Pubkey,
-    /// The one DBC config launches use; its curve is the launch curve.
-    pub dbc_config: Pubkey,
+    /// Always Pump's program id (the venue; a Meteora-era config held its DBC config here).
+    pub venue: Pubkey,
     pub agent_compute_bps: u16,
     pub protocol_bps: u16,
     pub sleep_threshold: u64,
     pub wake_threshold: u64,
-    /// Read from the DBC config when it was set (for display; DBC enforces it).
-    pub migration_quote_threshold: u64,
-    pub sqrt_start_price: u128,
+    /// `creator_fee_bps` a launch's curve must carry (LaunchConfigArgs).
+    pub pump_creator_fee_bps: u64,
+    /// Zero (a Meteora-era config held the DBC start price here).
+    pub reserved: u128,
     pub paused: bool,
     pub bump: u8,
     pub authority_bump: u8,
@@ -610,11 +474,16 @@ pub struct AgentLaunch {
     pub repo_url: String,
     pub identity_mode: u8,
     pub hosted: bool,
-    pub dbc_config: Pubkey,
-    pub dbc_pool: Pubkey,
-    pub damm_pool: Pubkey,
-    pub position: Pubkey,
-    pub position_nft_account: Pubkey,
+    /// `VENUE_PUMP` for a pump.fun launch. Records the Meteora venue wrote (devnet history) keep
+    /// the same byte layout: their DBC config, DBC pool, DAMM v2 pool, position and position NFT
+    /// account sit in these five fields, and no instruction of this build acts on them.
+    pub venue: Pubkey,
+    pub bonding_curve: Pubkey,
+    /// The canonical PumpSwap pool, once `record_pump_graduation` ran.
+    pub pump_pool: Pubkey,
+    /// PDA ["pump_creator", agent]: the coin's pump.fun creator.
+    pub pump_creator: Pubkey,
+    pub reserved: Pubkey,
     pub graduated: bool,
     pub awake: bool,
     pub created_at: i64,
@@ -648,10 +517,7 @@ pub struct DebitReceipt {
 }
 
 #[derive(AnchorSerialize, AnchorDeserialize, Clone, Debug)]
-pub struct LaunchArgs {
-    pub name: String,
-    pub symbol: String,
-    pub uri: String,
+pub struct PumpLaunchArgs {
     pub repo_url: String,
     pub identity_mode: u8,
     pub hosted: bool,
@@ -681,8 +547,6 @@ pub struct InitializeLaunch<'info> {
     pub authority: UncheckedAccount<'info>,
     #[account(mint::token_program = line_token_program)]
     pub line_mint: Box<InterfaceAccount<'info, Mint>>,
-    /// CHECK: checked by `check_dbc_config`.
-    pub dbc_config: UncheckedAccount<'info>,
     pub line_token_program: Interface<'info, TokenInterface>,
     pub system_program: Program<'info, System>,
 }
@@ -692,8 +556,6 @@ pub struct SetLaunchConfig<'info> {
     #[account(mut, seeds = [LAUNCH_CONFIG_SEED], bump = launch_config.bump, has_one = admin @ LaunchError::Unauthorized)]
     pub launch_config: Box<Account<'info, LaunchConfig>>,
     pub admin: Signer<'info>,
-    /// CHECK: checked by `check_dbc_config`.
-    pub dbc_config: UncheckedAccount<'info>,
 }
 
 #[derive(Accounts)]
@@ -707,31 +569,26 @@ pub struct MigrateLaunchConfig<'info> {
 }
 
 #[derive(Accounts)]
-pub struct LaunchAgent<'info> {
-    #[account(seeds = [LAUNCH_CONFIG_SEED], bump = launch_config.bump, has_one = line_mint, has_one = dbc_config)]
+pub struct RegisterPumpLaunch<'info> {
+    #[account(seeds = [LAUNCH_CONFIG_SEED], bump = launch_config.bump, has_one = line_mint)]
     pub launch_config: Box<Account<'info, LaunchConfig>>,
-    /// CHECK: PDA signer (DBC creator and fee claimer).
+    /// CHECK: PDA signer of the registry's `register_launched`.
     #[account(seeds = [AUTHORITY_SEED], bump = launch_config.authority_bump)]
     pub authority: UncheckedAccount<'info>,
     #[account(mut)]
     pub launcher: Signer<'info>,
     pub agent: Signer<'info>,
-    /// CHECK: fresh keypair; DBC creates the Token-2022 mint.
-    #[account(mut)]
-    pub agent_mint: Signer<'info>,
+    /// CHECK: the mint the same transaction's `create_v2` created (checked through its curve and the instructions sysvar).
+    pub agent_mint: UncheckedAccount<'info>,
     #[account(mint::token_program = line_token_program)]
     pub line_mint: Box<InterfaceAccount<'info, Mint>>,
-    /// CHECK: the configured DBC config (has_one), re-checked in the handler.
-    pub dbc_config: UncheckedAccount<'info>,
-    /// CHECK: created by DBC.
-    #[account(mut)]
-    pub dbc_pool: UncheckedAccount<'info>,
-    /// CHECK: created by DBC.
-    #[account(mut)]
-    pub dbc_base_vault: UncheckedAccount<'info>,
-    /// CHECK: created by DBC.
-    #[account(mut)]
-    pub dbc_quote_vault: UncheckedAccount<'info>,
+    /// CHECK: read by `pump::read_curve` (owner Pump, PDA of the mint, discriminator, length).
+    pub bonding_curve: UncheckedAccount<'info>,
+    /// CHECK: Pump's Global (address, owner, discriminator checked by `pump::read_global_supply`).
+    pub pump_global: UncheckedAccount<'info>,
+    /// CHECK: PDA ["pump_creator", agent]; the curve's creator must be this address.
+    #[account(seeds = [PUMP_CREATOR_SEED, agent.key().as_ref()], bump)]
+    pub pump_creator: UncheckedAccount<'info>,
     #[account(init, payer = launcher, space = 8 + AgentLaunch::INIT_SPACE, seeds = [AGENT_LAUNCH_SEED, agent_mint.key().as_ref()], bump)]
     pub agent_launch: Box<Account<'info, AgentLaunch>>,
     #[account(init, payer = launcher, seeds = [COMPUTE_SEED, agent.key().as_ref()], bump, token::mint = line_mint, token::authority = authority,
@@ -745,159 +602,49 @@ pub struct LaunchAgent<'info> {
     /// CHECK: the registry program id (a constant).
     #[account(executable, address = lineage_registry::ID)]
     pub registry_program: UncheckedAccount<'info>,
-    /// CHECK: fixed address.
-    #[account(address = mt::DBC_POOL_AUTHORITY)]
-    pub dbc_pool_authority: UncheckedAccount<'info>,
-    /// CHECK: fixed address.
-    #[account(address = mt::DBC_EVENT_AUTHORITY)]
-    pub dbc_event_authority: UncheckedAccount<'info>,
-    /// CHECK: fixed address.
-    #[account(address = mt::DBC_PROGRAM_ID)]
-    pub dbc_program: UncheckedAccount<'info>,
+    /// CHECK: the instructions sysvar (address).
+    #[account(address = anchor_lang::solana_program::sysvar::instructions::ID)]
+    pub instructions: UncheckedAccount<'info>,
     pub line_token_program: Interface<'info, TokenInterface>,
-    pub token_2022_program: Program<'info, Token2022>,
     pub system_program: Program<'info, System>,
 }
 
 /// The registry's treasury token account: PDA ["treasury"] of the registry program.
-fn is_registry_treasury(_c: &LaunchConfig, key: &Pubkey) -> bool {
+fn is_registry_treasury(key: &Pubkey) -> bool {
     Pubkey::find_program_address(&[lineage_registry::TREASURY_SEED], &lineage_registry::ID).0 == *key
 }
 
 #[derive(Accounts)]
-pub struct CrankFees<'info> {
+pub struct CrankPumpFees<'info> {
     #[account(seeds = [LAUNCH_CONFIG_SEED], bump = launch_config.bump, has_one = line_mint)]
     pub launch_config: Box<Account<'info, LaunchConfig>>,
-    /// CHECK: PDA signer.
-    #[account(seeds = [AUTHORITY_SEED], bump = launch_config.authority_bump)]
-    pub authority: UncheckedAccount<'info>,
-    #[account(mut, seeds = [AGENT_LAUNCH_SEED, agent_launch.mint.as_ref()], bump = agent_launch.bump, has_one = dbc_config, has_one = dbc_pool)]
+    #[account(mut, seeds = [AGENT_LAUNCH_SEED, agent_launch.mint.as_ref()], bump = agent_launch.bump,
+        constraint = agent_launch.venue == VENUE_PUMP @ LaunchError::WrongPhase, has_one = pump_creator)]
     pub agent_launch: Box<Account<'info, AgentLaunch>>,
-    /// CHECK: has_one.
-    pub dbc_config: UncheckedAccount<'info>,
-    /// CHECK: has_one; read with owner and discriminator checks.
-    #[account(mut)]
-    pub dbc_pool: UncheckedAccount<'info>,
-    /// CHECK: DBC checks it against the pool.
-    #[account(mut)]
-    pub dbc_base_vault: UncheckedAccount<'info>,
-    /// CHECK: DBC checks it against the pool.
-    #[account(mut)]
-    pub dbc_quote_vault: UncheckedAccount<'info>,
-    #[account(address = agent_launch.mint)]
-    pub agent_mint: Box<InterfaceAccount<'info, Mint>>,
-    #[account(mint::token_program = line_token_program)]
-    pub line_mint: Box<InterfaceAccount<'info, Mint>>,
-    /// The authority's agent-token ATA (DBC's base destination; receives nothing here).
-    #[account(mut, associated_token::mint = agent_mint, associated_token::authority = authority, associated_token::token_program = token_2022_program)]
-    pub authority_agent_token: Box<InterfaceAccount<'info, TokenAccount>>,
+    /// CHECK: PDA ["pump_creator", agent] (seeds and has_one), signer of the transfers out of its ATA.
+    #[account(seeds = [PUMP_CREATOR_SEED, agent_launch.agent.as_ref()], bump)]
+    pub pump_creator: UncheckedAccount<'info>,
+    #[account(mut, associated_token::mint = line_mint, associated_token::authority = pump_creator, associated_token::token_program = line_token_program)]
+    pub creator_line_token: Box<InterfaceAccount<'info, TokenAccount>>,
     #[account(mut, seeds = [COMPUTE_SEED, agent_launch.agent.as_ref()], bump = agent_launch.compute_bump)]
     pub compute_vault: Box<InterfaceAccount<'info, TokenAccount>>,
-    #[account(mut, constraint = is_registry_treasury(&launch_config, &treasury.key()) @ LaunchError::WrongTreasury)]
+    #[account(mut, constraint = is_registry_treasury(&treasury.key()) @ LaunchError::WrongTreasury)]
     pub treasury: Box<InterfaceAccount<'info, TokenAccount>>,
-    /// CHECK: fixed address.
-    #[account(address = mt::DBC_POOL_AUTHORITY)]
-    pub dbc_pool_authority: UncheckedAccount<'info>,
-    /// CHECK: fixed address.
-    #[account(address = mt::DBC_EVENT_AUTHORITY)]
-    pub dbc_event_authority: UncheckedAccount<'info>,
-    /// CHECK: fixed address.
-    #[account(address = mt::DBC_PROGRAM_ID)]
-    pub dbc_program: UncheckedAccount<'info>,
-    pub line_token_program: Interface<'info, TokenInterface>,
-    pub token_2022_program: Program<'info, Token2022>,
-}
-
-#[derive(Accounts)]
-pub struct Graduate<'info> {
-    #[account(seeds = [LAUNCH_CONFIG_SEED], bump = launch_config.bump)]
-    pub launch_config: Box<Account<'info, LaunchConfig>>,
-    /// CHECK: PDA (holder of the position NFT).
-    #[account(seeds = [AUTHORITY_SEED], bump = launch_config.authority_bump)]
-    pub authority: UncheckedAccount<'info>,
-    #[account(mut, seeds = [AGENT_LAUNCH_SEED, agent_launch.mint.as_ref()], bump = agent_launch.bump, has_one = dbc_pool)]
-    pub agent_launch: Box<Account<'info, AgentLaunch>>,
-    /// CHECK: has_one; read with checks.
-    pub dbc_pool: UncheckedAccount<'info>,
-    /// CHECK: read with owner, discriminator, size and address checks.
-    pub damm_pool: UncheckedAccount<'info>,
-    /// CHECK: read with owner, discriminator and size checks.
-    pub position: UncheckedAccount<'info>,
-    /// CHECK: DAMM v2's NFT account PDA for the position, held by the authority (checked).
-    pub position_nft_account: UncheckedAccount<'info>,
-    /// CHECK: must be a DBC-only DAMM v2 config (checked).
-    pub damm_config: UncheckedAccount<'info>,
-}
-
-#[derive(Accounts)]
-pub struct GraduateByAdmin<'info> {
-    pub g: Graduate<'info>,
-    #[account(address = g.launch_config.admin @ LaunchError::Unauthorized)]
-    pub admin: Signer<'info>,
-}
-
-#[derive(Accounts)]
-pub struct RepointPosition<'info> {
-    #[account(seeds = [LAUNCH_CONFIG_SEED], bump = launch_config.bump)]
-    pub launch_config: Box<Account<'info, LaunchConfig>>,
-    /// CHECK: PDA (holder of the position NFTs).
-    #[account(seeds = [AUTHORITY_SEED], bump = launch_config.authority_bump)]
-    pub authority: UncheckedAccount<'info>,
-    #[account(mut, seeds = [AGENT_LAUNCH_SEED, agent_launch.mint.as_ref()], bump = agent_launch.bump)]
-    pub agent_launch: Box<Account<'info, AgentLaunch>>,
-    /// CHECK: the recorded position (address), read with owner, discriminator and size checks.
-    #[account(address = agent_launch.position)]
-    pub current_position: UncheckedAccount<'info>,
-    /// CHECK: read with owner, discriminator and size checks.
-    pub position: UncheckedAccount<'info>,
-    /// CHECK: DAMM v2's NFT account PDA for the position, held by the authority (checked).
-    pub position_nft_account: UncheckedAccount<'info>,
-}
-
-#[derive(Accounts)]
-pub struct CrankPoolFees<'info> {
-    #[account(seeds = [LAUNCH_CONFIG_SEED], bump = launch_config.bump, has_one = line_mint)]
-    pub launch_config: Box<Account<'info, LaunchConfig>>,
-    /// CHECK: PDA signer.
-    #[account(seeds = [AUTHORITY_SEED], bump = launch_config.authority_bump)]
-    pub authority: UncheckedAccount<'info>,
-    #[account(mut, seeds = [AGENT_LAUNCH_SEED, agent_launch.mint.as_ref()], bump = agent_launch.bump, has_one = damm_pool, has_one = position,
-        has_one = position_nft_account)]
-    pub agent_launch: Box<Account<'info, AgentLaunch>>,
-    /// CHECK: has_one; DAMM v2 checks vaults and mints against it.
-    pub damm_pool: UncheckedAccount<'info>,
-    /// CHECK: has_one.
-    #[account(mut)]
-    pub position: UncheckedAccount<'info>,
-    /// CHECK: has_one.
-    pub position_nft_account: UncheckedAccount<'info>,
-    /// CHECK: DAMM v2 checks it against the pool.
-    #[account(mut)]
-    pub damm_token_a_vault: UncheckedAccount<'info>,
-    /// CHECK: DAMM v2 checks it against the pool.
-    #[account(mut)]
-    pub damm_token_b_vault: UncheckedAccount<'info>,
-    #[account(mut, address = agent_launch.mint)]
-    pub agent_mint: Box<InterfaceAccount<'info, Mint>>,
     #[account(mint::token_program = line_token_program)]
     pub line_mint: Box<InterfaceAccount<'info, Mint>>,
-    #[account(mut, associated_token::mint = agent_mint, associated_token::authority = authority, associated_token::token_program = token_2022_program)]
-    pub authority_agent_token: Box<InterfaceAccount<'info, TokenAccount>>,
-    #[account(mut, seeds = [COMPUTE_SEED, agent_launch.agent.as_ref()], bump = agent_launch.compute_bump)]
-    pub compute_vault: Box<InterfaceAccount<'info, TokenAccount>>,
-    #[account(mut, constraint = is_registry_treasury(&launch_config, &treasury.key()) @ LaunchError::WrongTreasury)]
-    pub treasury: Box<InterfaceAccount<'info, TokenAccount>>,
-    /// CHECK: fixed address.
-    #[account(address = mt::DAMM_POOL_AUTHORITY)]
-    pub damm_pool_authority: UncheckedAccount<'info>,
-    /// CHECK: fixed address.
-    #[account(address = mt::DAMM_EVENT_AUTHORITY)]
-    pub damm_event_authority: UncheckedAccount<'info>,
-    /// CHECK: fixed address.
-    #[account(address = mt::DAMM_V2_PROGRAM_ID)]
-    pub damm_program: UncheckedAccount<'info>,
     pub line_token_program: Interface<'info, TokenInterface>,
-    pub token_2022_program: Program<'info, Token2022>,
+}
+
+#[derive(Accounts)]
+pub struct RecordPumpGraduation<'info> {
+    #[account(seeds = [LAUNCH_CONFIG_SEED], bump = launch_config.bump)]
+    pub launch_config: Box<Account<'info, LaunchConfig>>,
+    #[account(mut, seeds = [AGENT_LAUNCH_SEED, agent_launch.mint.as_ref()], bump = agent_launch.bump, has_one = bonding_curve)]
+    pub agent_launch: Box<Account<'info, AgentLaunch>>,
+    /// CHECK: has_one; read by `pump::read_curve`.
+    pub bonding_curve: UncheckedAccount<'info>,
+    /// CHECK: the canonical pool's address, owner, discriminator and fields are checked.
+    pub pool: UncheckedAccount<'info>,
 }
 
 #[derive(Accounts)]
@@ -980,14 +727,14 @@ pub struct RefreshAwake<'info> {
 #[event]
 pub struct LaunchConfigSet {
     pub args: LaunchConfigArgs,
-    pub dbc_config: Pubkey,
 }
 #[event]
-pub struct AgentLaunched {
+pub struct PumpLaunched {
     pub agent: Pubkey,
     pub mint: Pubkey,
     pub launcher: Pubkey,
-    pub dbc_pool: Pubkey,
+    pub bonding_curve: Pubkey,
+    pub pump_creator: Pubkey,
     pub repo_id: [u8; 32],
     pub identity_mode: u8,
     pub hosted: bool,
@@ -1004,12 +751,12 @@ pub struct FeesCranked {
     pub awake: bool,
 }
 #[event]
-pub struct Graduated {
+pub struct PumpGraduated {
     pub agent: Pubkey,
     pub mint: Pubkey,
-    pub damm_pool: Pubkey,
-    pub position: Pubkey,
-    pub locked_liquidity: u128,
+    pub pool: Pubkey,
+    pub coin_creator: Pubkey,
+    pub creator_is_ours: bool,
 }
 #[event]
 pub struct UsagePosted {
@@ -1043,30 +790,32 @@ pub enum LaunchError {
     InvalidArgs,
     #[msg("repository URL must be a canonical https URL")]
     InvalidUrl,
-    #[msg("DBC config does not meet the launch requirements")]
-    DbcConfigInvalid,
-    #[msg("Meteora account invalid")]
-    MeteoraAccountInvalid,
+    #[msg("pump.fun account invalid")]
+    PumpAccountInvalid,
     #[msg("wrong phase for this instruction")]
     WrongPhase,
-    #[msg("DBC pool has not migrated")]
+    #[msg("bonding curve is not complete")]
     NotMigrated,
-    #[msg("unexpected DAMM v2 pool")]
-    DammPoolUnexpected,
-    #[msg("invalid DAMM v2 position")]
-    DammPositionInvalid,
+    #[msg("not the canonical PumpSwap pool of this coin quoted in $LINE")]
+    PumpPoolUnexpected,
     #[msg("nothing to claim")]
     NothingToClaim,
-    #[msg("token balance moved unexpectedly")]
-    CustodyMismatch,
+    #[msg("no Pump create_v2 for this mint earlier in this transaction")]
+    NotCreatedInThisTx,
+    #[msg("curve is not quoted in $LINE")]
+    PumpWrongQuote,
+    #[msg("curve creator is not this agent's creator PDA")]
+    PumpWrongCreator,
+    #[msg("curve is not a fresh depth-1 coin without mayhem, cashback or holder rewards at Global's supply")]
+    PumpCurveInvalid,
+    #[msg("curve creator fee rate differs from the configured one")]
+    PumpCreatorFee,
     #[msg("treasury is not the registry's")]
     WrongTreasury,
     #[msg("invalid Merkle proof")]
     BadProof,
     #[msg("hosted agents cannot withdraw compute")]
     Hosted,
-    #[msg("position does not hold the majority of the pool's locked liquidity")]
-    NotMigrationPosition,
     #[msg("usage epochs must be posted in sequence and not ahead of the clock")]
     UsageOrder,
     #[msg("only hosted agents are debited")]

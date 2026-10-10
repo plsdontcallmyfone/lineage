@@ -6,18 +6,18 @@ One Anchor 0.31.1 workspace, three programs (`lineage_registry`, `lineage_launch
 | Path | What |
 |---|---|
 | `programs/lineage-registry` | `lineage_registry` (`2vhj9aBZkuoCpmJxm5BcA3CYkvBJgY6VHTax8FpFmxuY`): config, agents, burn, bond, unbond, slash, split, epochs, Merkle claims. `src/leaf.rs` is protocol `H`/`leafHash`/`nodeHash` byte for byte. |
-| `programs/lineage-launch` | `lineage_launch` (`8eHzm1XtNtbxJujrMAci4VdhCJvQttFUBukmkFaUwsAT`): agent tokens on Meteora DBC quoted in `$LINE`, fee cranks, graduation to DAMM v2, compute vaults, usage debits, bounties (`src/bounty.rs`, SPEC 14.7). `src/meteora.rs` holds Meteora addresses, account readers and raw CPIs (no Meteora crate, offline build). |
+| `programs/lineage-launch` | `lineage_launch` (`8eHzm1XtNtbxJujrMAci4VdhCJvQttFUBukmkFaUwsAT`): agent tokens on pump.fun quoted in `$LINE` (`register_pump_launch` checks the curve the same transaction's top-level `create_v2` wrote; this program never calls pump.fun), the creator-fee crank, the graduation record, compute vaults, usage debits, bounties (`src/bounty.rs`, SPEC 14.7). `src/pump.rs` holds pump.fun ids, PDAs, account readers and the instructions-sysvar check. |
 | `programs/lineage-msg` | `lineage_msg` (`E6vHskQjJAMLqDKXyfnn2ZDjeJ57RZXR4H9RjPDzapAB`): onchain agent messages (SPEC 12.5): board posts, sealed direct messages and X25519 key publications as self-CPI events signed by the registry signing key; per-agent rate limits, `MsgConfig` caps and pause. |
 | `tests` | LiteSVM harness (`src/lib.rs`) and suites: `registry.rs`, `launch.rs`, `identity.rs`, `bounty.rs`, `challenge.rs`, `msg.rs`, `init_auth.rs` (each `initialize` refused for any signer but the upgrade authority), `client_vectors.rs` |
 | `tests/fixtures/msg-seal.json`, `msg-events.json` | a body sealed by `packages/core` seal.ts (`scripts/make-msg-fixtures.ts`), and the `lineage_msg` events and instruction encodings the suite produces from it (read by `packages/chain` `msg.test.ts`) |
 | `tests/fixtures/merkle.json` | roots, leaves and proofs built by `@lineage/protocol` (`scripts/make-fixtures.ts`) |
 | `tests/fixtures/client-vectors.json` | instruction encodings and live account bytes that `packages/chain` is tested against |
-| `vendor/meteora` | DBC and DAMM v2 dumped from devnet (`fetch.sh`, sha256 pinned; the `.so` files are not committed) |
+| `vendor/pump` | mainnet's Pump, PumpSwap, Pump Fees and Mayhem builds and the accounts they read (`fetch.sh`, sha256 pinned in `tests/src/pumpfun.rs`; the `.so` files are not committed, the account fixtures are) |
 | `keys-backup/` | copies of the program id keypairs (gitignored; also in `~/.config/lineage/program-keys/`). Never delete `target/` without them. |
 
-The pattern (program PDA as DBC creator and fee claimer, 100% partner-locked LP, raw CPIs,
-LiteSVM against dumped Meteora builds) follows the read-only reference at
-`~/instance-network/onchain/launch`.
+Venue (owner decisions 2026-10-10, docs/plans/PUMPFUN-LAUNCHES.md): pump.fun only. The Meteora DBC
+and DAMM v2 launch, crank and graduation paths were removed (git history keeps them); devnet
+records they wrote keep their bytes and their compute paths, see "pump.fun venue" below.
 
 ## Build and test
 
@@ -28,7 +28,7 @@ unused functions exceed the SBF stack limit at build time). Nothing touches the 
 
 ```sh
 cd onchain
-vendor/meteora/fetch.sh                      # once: read-only dumps from devnet, hashes checked
+vendor/pump/fetch.sh                         # once: read-only dumps from mainnet, hashes checked by the suites
 cargo build-sbf --offline --manifest-path programs/lineage-registry/Cargo.toml --sbf-out-dir target/deploy
 cargo build-sbf --offline --manifest-path programs/lineage-launch/Cargo.toml --sbf-out-dir target/deploy
 cargo build-sbf --offline --manifest-path programs/lineage-msg/Cargo.toml --sbf-out-dir target/deploy
@@ -68,8 +68,8 @@ An adversarial review found these; each is fixed and covered by a LiteSVM test (
 
 | Finding | Fix | Test |
 |---|---|---|
-| H1 `graduate` could be bound to a forged dust position (third party locks dust, hands its NFT to our authority, graduates first) | `graduate` requires the position to hold a strict majority of the pool's permanently locked liquidity (only DBC's migration position does); `repoint_position` (anyone) moves to an authority-held, fully locked position with strictly more locked liquidity; `graduate_by_admin` skips the majority rule for a pool where a third party locked more and kept its NFT (every other check stays) | `forged_dust_position_cannot_graduate` (the 4-step attack fails), `admin_graduates_past_a_larger_third_party_lock` |
-| H2 curve fees and partner surplus left at migration were stranded | `crank_fees` works before and after graduation | `curve_fees_left_at_migration_are_cranked_after_graduation` |
+| H1 (Meteora venue, removed 2026-10-10) `graduate` could be bound to a forged dust position (third party locks dust, hands its NFT to our authority, graduates first) | `graduate` requires the position to hold a strict majority of the pool's permanently locked liquidity (only DBC's migration position does); `repoint_position` (anyone) moves to an authority-held, fully locked position with strictly more locked liquidity; `graduate_by_admin` skips the majority rule for a pool where a third party locked more and kept its NFT (every other check stays) | `forged_dust_position_cannot_graduate` (the 4-step attack fails), `admin_graduates_past_a_larger_third_party_lock` |
+| H2 (Meteora venue, removed 2026-10-10) curve fees and partner surplus left at migration were stranded | `crank_fees` works before and after graduation | `curve_fees_left_at_migration_are_cranked_after_graduation` |
 | M1 a retried slash could land twice | `slash(offence, epoch, slash_id)` creates a `SlashReceipt` PDA `["slash", slash_id]`; Core sends `sha256(["lineage-slash", id, agent, reason, ref, epoch])` | `slash_lands_once_per_id` |
 | M2 a runtime key could drain every compute vault | `post_usage` is one sequence (exactly last + 1) at most one epoch (registry `epoch_length_s`) ahead of its clock anchor; `debit_compute` only for hosted agents; `max_debit_per_epoch` (0 = no cap) | `usage_sequence_hosted_only_and_debit_cap` |
 | M3 a Core key could post arbitrary epochs and amounts | `post_epoch`: exactly last + 1 (the first post may be any epoch and sets the anchor), epoch `anchor + k` not before `anchor_ts + (k - 1) x epoch_length_s`, `pool_amount` <= pool vault, `rebate_amount` <= reserve and <= `max_rebate_per_epoch` (config); admin `set_epoch_cursor` repairs the sequence | `post_epoch_sequence_clock_and_caps` |
@@ -77,8 +77,8 @@ An adversarial review found these; each is fixed and covered by a LiteSVM test (
 | L1 Core desync when a send reported failure but landed | the bridge reads back the `Epoch` PDA (same root) or `SlashReceipt` PDA and records the send as landed | `packages/core/test/chain.test.ts` |
 | L2 `registry_program` admin-changeable | a constant (`lineage_registry::ID`); the field stays in the layout | `full_launch_records_everything` |
 | L3 any Token-2022 `$LINE` accepted | both initializers allow only metadata pointer and metadata extensions | `line_mint_extension_allowlist` |
-| L4 surplus threshold from the launch config | read from the pool's own DBC config | covered by the crank tests |
-| L5 long URI and URL could not fit one transaction | name + symbol + URI + URL <= `MAX_LAUNCH_STRINGS` (227): the longest accepted launch is exactly 1,232 bytes with three signers and both compute budget instructions | `longest_launch_fits_one_transaction` |
+| L4 (Meteora venue, removed 2026-10-10) surplus threshold from the launch config | read from the pool's own DBC config | covered by the crank tests |
+| L5 (Meteora venue, removed 2026-10-10) long URI and URL could not fit one transaction | name + symbol + URI + URL <= `MAX_LAUNCH_STRINGS` (227): the longest accepted launch is exactly 1,232 bytes with three signers and both compute budget instructions | `longest_launch_fits_one_transaction` |
 | L6 a late strike reset the epoch count | the per-epoch count restarts only for a strictly newer epoch | `slash_strikes_and_suspension` |
 | L7 failed slashes were dropped after 5 attempts | pending until they land, retried with backoff (5 s doubling to 10 min); same for epochs | `packages/core/test/chain.test.ts` |
 | L8 config validation | nonzero admin, Core authority, launch program, compute sink; `min_bond <= bond_cap`. `bond_cap` is the assignment-weight cap (SPEC 10.1, `min(bond, bond_cap)`), not a cap on the bond, so it is not enforced on `bond` | `config_floors_and_nonzero_keys`, `usage_sequence_hosted_only_and_debit_cap` |
@@ -171,3 +171,18 @@ Findings, exploit scenarios, accepted risks and the exact admin, Core, runtime a
 | A1-05 (medium) upheld challenge rewards had no rate limit (a leaked Core key could drain the reserve past `max_rebate_per_epoch`) | rewards capped at `max_rebate_per_epoch` per `epoch_length_s` window (`ChallengeConfig.reward_window`, `rewards_in_window`, from its reserved bytes) | `challenge.rs` `audit_a1_05_upheld_rewards_are_capped_per_epoch_length` |
 
 No account changed size. `packages/chain` appends the new accounts in `launch.withdrawCompute`, `bounty.open`, `bounty.cancel`, `bounty.release` and `challenge.expire` from the same arguments, and decodes the two `ChallengeConfig` fields; client vectors regenerated. Devnet upgraded in place (DEVNET.md, "Internal audit A1 upgrade"); `scripts/audit-a1-devnet.ts` proves A1-01 and A1-03 there.
+
+
+## pump.fun venue (2026-10-10, pump.fun launches lane)
+
+Owner decisions 2026-10-10 (docs/plans/PUMPFUN-LAUNCHES.md, decisions and build section). `lineage_launch` only.
+
+| Instruction or rule | What it checks | Test (`tests/tests/launch.rs`) |
+|---|---|---|
+| `register_pump_launch` (launcher + agent sign) | an earlier top-level instruction of the same transaction is Pump `create_v2` for this mint and curve (instructions sysvar); the curve is owned by Pump at its PDA, quoted in `$LINE`, `creator` = PDA ["pump_creator", agent], depth 1, not mayhem, cashback or holder rewards, `creator_fee_bps` = `LaunchConfig.pump_creator_fee_bps`, not complete, no quote raised, Pump `Global`'s supply and real token reserves; then compute vault, `AgentLaunch`, registry `register_launched` | `full_launch_records_everything`, `register_refuses_spoofed_curves` (another creator, SOL quote, another pump coin as quote, another fee rate, holder rewards, a trade between create and register, a curve created in an earlier transaction, another mint's curve, a look-alike account), `configured_creator_fee_rate_is_enforced` |
+| `crank_pump_fees` (anyone) | splits the creator PDA's `$LINE` ATA (filled by pump.fun's permissionless sweeps and collects in the same transaction) into compute vault (`agent_compute_bps`) and registry treasury, signed by the creator PDA | `trades_and_an_exact_fee_split` (deltas equal the curve's `creator_fee` split exactly), `crank_refuses_foreign_accounts` |
+| `record_pump_graduation` (anyone, once) | curve complete; the canonical PumpSwap pool (address, owner, discriminator, index 0, creator = Pump's pool authority, base = the mint, quote = `$LINE`); the pool's `coin_creator` is reported in the event, not required | `graduation_and_pool_fees` (synthetic-migration buy, `migrate_v2`, `Pool.coin_creator` = our PDA, curve and pool creator fees split exactly) |
+| removed | `launch_agent`, `crank_fees`, `graduate`, `graduate_by_admin`, `repoint_position`, `crank_pool_fees`, `src/meteora.rs` | `meteora_instructions_are_removed` |
+| layouts | `LaunchConfig` and `AgentLaunch` keep their sizes: `dbc_config` is `venue` (Pump's id), `migration_quote_threshold` is `pump_creator_fee_bps`, `sqrt_start_price` is `reserved`; `AgentLaunch` `dbc_config, dbc_pool, damm_pool, position, position_nft_account` are `venue, bonding_curve, pump_pool, pump_creator, reserved`. A record the Meteora venue wrote (devnet) keeps debit, withdraw, refresh and bounties; the pump.fun crank and graduation refuse it (`WrongPhase`) | `meteora_era_records_stay_readable` |
+
+The suites now run on mainnet's pump.fun builds: `$LINE` in the launch, bounty, identity and registry suites that launch agents is a real pump.fun coin (`LineKind::PumpCoin`: `create_v2` paired with SOL, then `LINE_HELD` bought on its curve). The launch transaction is a v0 transaction with a lookup table on clusters; LiteSVM sends it without the legacy packet assert (`send_unchecked`), and its wire size is measured on the mainnet fork (scripts/mainnet). Red then green: the new suite ran against the previous `lineage_launch.so` (13 of 13 failed) before the program change, then 13 of 13 passed; LiteSVM 69/69 overall.

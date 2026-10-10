@@ -1,8 +1,8 @@
-//! LiteSVM harness shared by the suites in `tests/`: loads the two compiled programs from
-//! `target/deploy` (build them first with `cargo build-sbf`, see onchain/README.md), the real
-//! Meteora DBC and DAMM v2 programs dumped from devnet (`vendor/meteora`, hashes pinned), and
-//! LiteSVM's bundled SPL Token, Token-2022 and ATA programs.
-#![allow(clippy::too_many_arguments)]
+//! LiteSVM harness shared by the suites in `tests/`: loads the compiled programs from
+//! `target/deploy` (build them first with `cargo build-sbf`, see onchain/README.md), mainnet's
+//! pump.fun programs and accounts (`vendor/pump`, hashes pinned; `pumpfun.rs`), and LiteSVM's
+//! bundled SPL Token, Token-2022 and ATA programs.
+#![allow(clippy::too_many_arguments, clippy::result_large_err)]
 use anchor_lang::prelude::Clock;
 pub use anchor_lang::prelude::Pubkey;
 use anchor_lang::solana_program::instruction::{AccountMeta, Instruction};
@@ -15,36 +15,23 @@ pub use litesvm::LiteSVM;
 pub use solana_keypair::Keypair;
 pub use solana_signer::Signer;
 use solana_transaction::Transaction;
+
+pub mod pumpfun;
+pub use pumpfun as pf;
 use spl_token_2022::extension::StateWithExtensions;
 use spl_token_2022::state::{Account as T22Account, Mint as T22Mint};
 
 pub const T22: Pubkey = spl_token_2022::ID;
 pub const TOKEN: Pubkey = anchor_spl::token::ID;
-pub const DBC: Pubkey = ll::meteora::DBC_PROGRAM_ID;
-pub const DAMM: Pubkey = ll::meteora::DAMM_V2_PROGRAM_ID;
 pub const ATA_PROGRAM: Pubkey = anchor_lang::solana_program::pubkey!("ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL");
-pub const DAMM_DYNAMIC_CONFIG: Pubkey = anchor_lang::solana_program::pubkey!("A8gMrEPJkacWkcb3DGwtJwTe16HktSEfvwtuDh2MCtck");
 pub const NOW: i64 = 1_900_000_000;
 pub const DECIMALS: u8 = 6;
 pub const ONE: u64 = 1_000_000;
 pub const LINE_SUPPLY: u64 = 1_000_000_000 * ONE;
 
-pub const DBC_SO_SHA256: &str = "5edf76d972abaf355048db5d9003bc4dfa843cd98a5f93785430dac371678ad3";
-pub const DAMM_SO_SHA256: &str = "82bb9375921bb8007551cb65f9ca43b191597496cc9922926468b36671081ec2";
-/// The mainnet builds (`vendor/meteora/mainnet/fetch.sh`, read 2026-10-10; DBC last deployed in
-/// mainnet slot 445,503,633, DAMM v2 in 445,230,614). `METEORA_BUILD=mainnet` runs every suite on them.
-pub const DBC_MAINNET_SO_SHA256: &str = "4c26a8a5da99f8ce932fa0300c46675b527090021fbb74214c9486bedda9f23b";
-pub const DAMM_MAINNET_SO_SHA256: &str = "4d5b920baebc090f89b2e8796a3452ed067c9667a143058c96a312f2c1e6848b";
-
-/// The Meteora builds the suites load: the devnet pins by default, the mainnet ones with
-/// `METEORA_BUILD=mainnet` (the DAMM v2 config account is the same bytes on both clusters).
-fn meteora_builds() -> [(std::path::PathBuf, &'static str); 2] {
-    if std::env::var("METEORA_BUILD").as_deref() == Ok("mainnet") {
-        [(manifest("../vendor/meteora/mainnet/dbc.so"), DBC_MAINNET_SO_SHA256), (manifest("../vendor/meteora/mainnet/damm_v2.so"), DAMM_MAINNET_SO_SHA256)]
-    } else {
-        [(manifest("../vendor/meteora/dbc.so"), DBC_SO_SHA256), (manifest("../vendor/meteora/damm_v2.so"), DAMM_SO_SHA256)]
-    }
-}
+/// `$LINE` base units a `LineKind::PumpCoin` setup buys on `$LINE`'s own curve for the admin (its
+/// curve holds 793,100,000 tokens; this leaves it uncompleted).
+pub const LINE_HELD: u64 = 700_000_000 * ONE;
 
 // ---------- transactions ----------
 
@@ -59,6 +46,19 @@ pub fn send(svm: &mut LiteSVM, payer: &Keypair, extra: &[&Keypair], ixs: Vec<Ins
     let tx = Transaction::new_signed_with_payer(&ixs, Some(&payer.pubkey()), &signers, svm.latest_blockhash());
     let wire = bincode::serialize(&tx).unwrap();
     assert!(wire.len() <= 1232, "transaction exceeds packet limit: {}", wire.len());
+    svm.send_transaction(tx)
+}
+/// `send` without the legacy packet assert: the pump.fun launch transaction is a v0 transaction with
+/// a lookup table on clusters (its size is measured on the mainnet fork, scripts/mainnet).
+pub fn send_unchecked(svm: &mut LiteSVM, payer: &Keypair, extra: &[&Keypair], ixs: Vec<Instruction>) -> TransactionResult {
+    svm.expire_blockhash();
+    let mut signers = vec![payer];
+    for s in extra {
+        if !signers.iter().any(|e| e.pubkey() == s.pubkey()) {
+            signers.push(*s);
+        }
+    }
+    let tx = Transaction::new_signed_with_payer(&ixs, Some(&payer.pubkey()), &signers, svm.latest_blockhash());
     svm.send_transaction(tx)
 }
 pub fn tx_size(payer: &Keypair, extra: &[&Keypair], ixs: &[Instruction]) -> usize {
@@ -155,12 +155,26 @@ pub enum LineKind {
     Classic,
     /// Token-2022 with a metadata pointer and metadata, as Pump.fun create_v2 mints.
     Pump,
+    /// A real pump.fun coin (`create_v2`, paired with SOL, not mayhem) on mainnet's Pump build; the
+    /// holder buys `LINE_HELD` on its curve. The only kind agent coins can be quoted in.
+    PumpCoin,
 }
 
 /// `$LINE`: full supply to a holder, then the mint authority revoked.
 pub fn create_line(svm: &mut LiteSVM, payer: &Keypair, kind: LineKind) -> (Pubkey, Pubkey) {
     use spl_token_2022::extension::{metadata_pointer, ExtensionType};
     let mint = Keypair::new();
+    if let LineKind::PumpCoin = kind {
+        let m = mint.pubkey();
+        ok(send(svm, payer, &[&mint], vec![cu(400_000), pf::create_v2_ix(&m, &payer.pubkey(), &payer.pubkey(), "Lineage", "LINE", &pf::Quote::Sol, false, 0,
+            false)]));
+        let holder = ata_for(svm, payer, &payer.pubkey(), &m);
+        let cap = pf::buy_cap(svm, &m, LINE_HELD);
+        ok(send(svm, payer, &[], vec![cu(400_000), pf::buy_v3_ix(&m, &pf::WSOL, &TOKEN, &payer.pubkey(), LINE_HELD, cap)]));
+        // trades in $LINE pay the buyback part of the protocol fee to buyback recipient 0's $LINE ATA
+        ok(send(svm, payer, &[], vec![create_ata_ix(&payer.pubkey(), &pf::BUYBACK0, &m, &T22)]));
+        return (m, holder);
+    }
     match kind {
         LineKind::Classic => {
             let rent = svm.minimum_balance_for_rent_exemption(82);
@@ -185,6 +199,7 @@ pub fn create_line(svm: &mut LiteSVM, payer: &Keypair, kind: LineKind) -> (Pubke
                 init_meta,
             ]));
         }
+        LineKind::PumpCoin => unreachable!(),
     }
     let program = program_of(svm, &mint.pubkey());
     let holder = ata_for(svm, payer, &payer.pubkey(), &mint.pubkey());
@@ -206,12 +221,6 @@ fn token_metadata_initialize_data(name: &str, symbol: &str, uri: &str) -> Vec<u8
 
 // ---------- environment ----------
 
-fn check_sha(path: &std::path::Path, want: &str) {
-    use sha2::Digest;
-    let bytes = std::fs::read(path).unwrap_or_else(|_| panic!("{} missing: run onchain/vendor/meteora/fetch.sh", path.display()));
-    let got: String = sha2::Sha256::digest(&bytes).iter().map(|b| format!("{b:02x}")).collect();
-    assert_eq!(got, want, "{} is not the pinned build", path.display());
-}
 
 /// Upgradeable-loader ProgramData naming `authority` for `program`, so initialize is checked as on a cluster.
 pub fn install_program_data(svm: &mut LiteSVM, program: &Pubkey, authority: &Pubkey) -> Pubkey {
@@ -229,15 +238,7 @@ pub fn fresh_svm() -> LiteSVM {
     let mut svm = LiteSVM::new();
     svm.add_program_from_file(lr::ID, manifest("../target/deploy/lineage_registry.so")).expect("build lineage_registry first (cargo build-sbf)");
     svm.add_program_from_file(ll::ID, manifest("../target/deploy/lineage_launch.so")).expect("build lineage_launch first (cargo build-sbf)");
-    let [(dbc, dbc_sha), (damm, damm_sha)] = meteora_builds();
-    check_sha(&dbc, dbc_sha);
-    check_sha(&damm, damm_sha);
-    svm.add_program_from_file(DBC, dbc).unwrap();
-    svm.add_program_from_file(DAMM, damm).unwrap();
-    let data = std::fs::read(manifest("../vendor/meteora/damm_v2_dynamic_config.bin")).unwrap();
-    svm.set_account(DAMM_DYNAMIC_CONFIG, solana_account::Account { lamports: 2_316_480, data, owner: DAMM, executable: false, rent_epoch: 0 }).unwrap();
-    // DBC lends rent from its pool authority during migration (devnet holds about 99 SOL there).
-    svm.airdrop(&ll::meteora::DBC_POOL_AUTHORITY, 1_000_000_000).unwrap();
+    pf::install(&mut svm);
     set_clock(&mut svm, NOW);
     svm
 }
@@ -279,7 +280,6 @@ pub struct Env {
     /// Holds the whole `$LINE` supply (the admin's ATA).
     pub line_holder: Pubkey,
     pub compute_sink: Pubkey,
-    pub dbc_config: Pubkey,
 }
 
 /// TEST value: the most rebate one `post_epoch` may move.
@@ -369,124 +369,28 @@ pub fn launch_args(admin: &Pubkey, runtime: &Pubkey, compute_sink: &Pubkey) -> l
     ll::LaunchConfigArgs {
         admin: *admin, runtime_authority: *runtime, compute_sink: *compute_sink,
         agent_compute_bps: 7000, protocol_bps: 3000, sleep_threshold: 1_000 * ONE, wake_threshold: 2_000 * ONE, paused: false, max_debit_per_epoch: 0,
+        pump_creator_fee_bps: 0,
     }
 }
-pub fn launch_init_ix(signer: Pubkey, args: ll::LaunchConfigArgs, line_mint: Pubkey, line_program: Pubkey, dbc_config: Pubkey) -> Instruction {
+pub fn launch_init_ix(signer: Pubkey, args: ll::LaunchConfigArgs, line_mint: Pubkey, line_program: Pubkey) -> Instruction {
     Instruction {
         program_id: ll::ID,
         accounts: ll::accounts::InitializeLaunch {
             launch_config: launch_config(), upgrade_authority: signer, program_data: pda_of(&[ll::ID.as_ref()], &bpf_loader_upgradeable::ID),
-            authority: launch_authority(), line_mint, dbc_config, line_token_program: line_program, system_program: system_program::ID,
+            authority: launch_authority(), line_mint, line_token_program: line_program, system_program: system_program::ID,
         }.to_account_metas(None),
         data: ll::instruction::InitializeLaunch { args }.data(),
     }
 }
-pub fn set_launch_config_ix(admin: Pubkey, args: ll::LaunchConfigArgs, dbc_config: Pubkey) -> Instruction {
+pub fn set_launch_config_ix(admin: Pubkey, args: ll::LaunchConfigArgs) -> Instruction {
     Instruction {
         program_id: ll::ID,
-        accounts: ll::accounts::SetLaunchConfig { launch_config: launch_config(), admin, dbc_config }.to_account_metas(None),
+        accounts: ll::accounts::SetLaunchConfig { launch_config: launch_config(), admin }.to_account_metas(None),
         data: ll::instruction::SetLaunchConfig { args }.data(),
     }
 }
 
-// ---------- DBC config (ConfigParameters, Borsh, in create_config's field order) ----------
-
-#[derive(Clone, Copy)]
-pub struct DbcParams {
-    pub cliff_fee_numerator: u64,
-    pub collect_fee_mode: u8,
-    pub migration_option: u8,
-    pub token_type: u8,
-    pub partner_locked: u8,
-    pub creator_locked: u8,
-    pub threshold: u64,
-    pub sqrt_start: u128,
-    pub creator_trading_fee: u8,
-    pub migrated_fee_bps: u16,
-    pub supply: u64,
-    pub curve: (u128, u128),
-}
-/// A flat 3% curve, Token-2022 agent mints with 6 decimals and a fixed 100M supply, fees in the
-/// quote token, DAMM v2 with 100% of the LP permanently locked to the partner. Curve numbers are
-/// the reference program's standard curve at its test reference price (start sqrt price
-/// floor(sqrt(0.05) x 2^64), one segment to 4x, threshold 15,999,999.999792 quote): test values,
-/// not launch values (SPEC 20 question 2).
-pub fn standard_dbc_params() -> DbcParams {
-    DbcParams {
-        cliff_fee_numerator: 30_000_000,
-        collect_fee_mode: 0,
-        migration_option: 1,
-        token_type: 1,
-        partner_locked: 100,
-        creator_locked: 0,
-        threshold: 15_999_999_999_792,
-        sqrt_start: 4_124_817_371_235_594_858,
-        creator_trading_fee: 0,
-        migrated_fee_bps: 300,
-        supply: 100_000_000 * ONE,
-        curve: (16_499_269_484_942_379_432, 439_980_519_592_732_705_252_230_013_543_952),
-    }
-}
-pub fn encode_params(p: &DbcParams) -> Vec<u8> {
-    let mut d = Vec::new();
-    d.extend_from_slice(&p.cliff_fee_numerator.to_le_bytes());
-    d.extend_from_slice(&0u16.to_le_bytes()); // number_of_period
-    d.extend_from_slice(&0u64.to_le_bytes()); // period_frequency
-    d.extend_from_slice(&0u64.to_le_bytes()); // reduction_factor
-    d.push(0); // base fee mode: linear scheduler (flat with no periods)
-    d.push(0); // dynamic_fee: None
-    d.extend_from_slice(&[p.collect_fee_mode, p.migration_option, 1 /* timestamp */, p.token_type, DECIMALS]);
-    d.extend_from_slice(&[100 - p.partner_locked - p.creator_locked, p.partner_locked, 0, p.creator_locked]);
-    d.extend_from_slice(&p.threshold.to_le_bytes());
-    d.extend_from_slice(&p.sqrt_start.to_le_bytes());
-    d.extend_from_slice(&[0u8; 40]); // locked_vesting
-    d.push(6); // migration_fee_option: Customizable
-    d.push(1); // token_supply: Some
-    d.extend_from_slice(&p.supply.to_le_bytes());
-    d.extend_from_slice(&p.supply.to_le_bytes());
-    d.push(p.creator_trading_fee);
-    d.push(1); // token_update_authority: Immutable
-    d.extend_from_slice(&[0, 0]); // migration_fee
-    d.extend_from_slice(&[0, 0]); // migrated_pool_fee: collect mode, dynamic fee
-    d.extend_from_slice(&p.migrated_fee_bps.to_le_bytes());
-    d.extend_from_slice(&0u64.to_le_bytes()); // pool_creation_fee
-    d.extend_from_slice(&[0u8; 13]); // partner liquidity vesting
-    d.extend_from_slice(&[0u8; 13]); // creator liquidity vesting
-    d.push(0); // migrated_pool_base_fee_mode
-    d.extend_from_slice(&[0u8; 16]); // market cap scheduler params
-    d.push(0); // enable_first_swap_with_min_fee
-    d.extend_from_slice(&0u16.to_le_bytes()); // compounding_fee_bps
-    d.extend_from_slice(&[0, 0]); // padding
-    d.extend_from_slice(&1u32.to_le_bytes());
-    d.extend_from_slice(&p.curve.0.to_le_bytes());
-    d.extend_from_slice(&p.curve.1.to_le_bytes());
-    d
-}
-pub fn mt_disc(name: &str) -> [u8; 8] {
-    anchor_lang::solana_program::hash::hash(name.as_bytes()).to_bytes()[..8].try_into().unwrap()
-}
-pub fn dbc_event_authority() -> Pubkey {
-    pda_of(&[b"__event_authority"], &DBC)
-}
-pub fn damm_event_authority() -> Pubkey {
-    pda_of(&[b"__event_authority"], &DAMM)
-}
-pub fn create_dbc_config(svm: &mut LiteSVM, payer: &Keypair, quote_mint: &Pubkey, fee_claimer: &Pubkey, p: &DbcParams) -> (TransactionResult, Pubkey) {
-    let config = Keypair::new();
-    let mut data = mt_disc("global:create_config").to_vec();
-    data.extend(encode_params(p));
-    let ix = Instruction {
-        program_id: DBC,
-        accounts: vec![AccountMeta::new(config.pubkey(), true), AccountMeta::new_readonly(*fee_claimer, false),
-            AccountMeta::new_readonly(*fee_claimer, false), AccountMeta::new_readonly(*quote_mint, false),
-            AccountMeta::new(payer.pubkey(), true), AccountMeta::new_readonly(system_program::ID, false),
-            AccountMeta::new_readonly(dbc_event_authority(), false), AccountMeta::new_readonly(DBC, false)],
-        data,
-    };
-    (send(svm, payer, &[&config], vec![ix]), config.pubkey())
-}
-
-/// Both programs initialized against one `$LINE` mint and the standard DBC config.
+/// Both programs initialized against one `$LINE` mint.
 pub fn setup(kind: LineKind) -> Env {
     let mut svm = fresh_svm();
     let admin = Keypair::new();
@@ -504,13 +408,11 @@ pub fn setup(kind: LineKind) -> Env {
     let stranger = funded(&mut svm);
     rejects(send(&mut svm, &stranger, &[], vec![registry_init_ix(stranger.pubkey(), args, line_mint, line_program)]), "Unauthorized");
     ok(send(&mut svm, &admin, &[], vec![registry_init_ix(admin.pubkey(), args, line_mint, line_program)]));
-    let (r, dbc_config) = create_dbc_config(&mut svm, &admin, &line_mint, &launch_authority(), &standard_dbc_params());
-    ok(r);
     let compute_sink = ata_for(&mut svm, &admin, &runtime.pubkey(), &line_mint);
     let largs = launch_args(&admin.pubkey(), &runtime.pubkey(), &compute_sink);
-    rejects(send(&mut svm, &stranger, &[], vec![launch_init_ix(stranger.pubkey(), largs, line_mint, line_program, dbc_config)]), "Unauthorized");
-    ok(send(&mut svm, &admin, &[], vec![launch_init_ix(admin.pubkey(), largs, line_mint, line_program, dbc_config)]));
-    Env { svm, admin, core, runtime, line_mint, line_program, line_holder, compute_sink, dbc_config }
+    rejects(send(&mut svm, &stranger, &[], vec![launch_init_ix(stranger.pubkey(), largs, line_mint, line_program)]), "Unauthorized");
+    ok(send(&mut svm, &admin, &[], vec![launch_init_ix(admin.pubkey(), largs, line_mint, line_program)]));
+    Env { svm, admin, core, runtime, line_mint, line_program, line_holder, compute_sink }
 }
 
 impl Env {
@@ -718,7 +620,7 @@ impl Env {
     }
 }
 
-// ---------- launches ----------
+// ---------- launches (pump.fun) ----------
 
 pub struct Launched {
     pub agent: Keypair,
@@ -726,132 +628,114 @@ pub struct Launched {
     pub launcher_line: Pubkey,
     pub mint: Pubkey,
     pub launch: Pubkey,
-    pub dbc_pool: Pubkey,
-    pub dbc_base_vault: Pubkey,
-    pub dbc_quote_vault: Pubkey,
+    pub bonding_curve: Pubkey,
     pub compute_vault: Pubkey,
-    pub authority_agent_token: Pubkey,
+    pub pump_creator: Pubkey,
+    /// The creator PDA's `$LINE` ATA, where pump.fun's collects pay.
+    pub creator_line_token: Pubkey,
 }
-pub fn max_min(a: &Pubkey, b: &Pubkey) -> (Pubkey, Pubkey) {
-    if a > b { (*a, *b) } else { (*b, *a) }
+pub fn pump_creator(agent: &Pubkey) -> Pubkey {
+    lpda(&[ll::PUMP_CREATOR_SEED, agent.as_ref()])
 }
-pub fn dbc_pool_of(dbc_config: &Pubkey, mint: &Pubkey, line: &Pubkey) -> Pubkey {
-    let (hi, lo) = max_min(mint, line);
-    pda_of(&[b"pool", dbc_config.as_ref(), hi.as_ref(), lo.as_ref()], &DBC)
+pub fn default_launch_args() -> ll::PumpLaunchArgs {
+    ll::PumpLaunchArgs { repo_url: "https://github.com/lineage-test/base58".into(), identity_mode: ll::IDENTITY_APP, hosted: true }
 }
-pub fn default_launch_args() -> ll::LaunchArgs {
-    ll::LaunchArgs {
-        name: "Base58 Agent".into(),
-        symbol: "B58A".into(),
-        uri: "https://example.invalid/agents/b58a.json".into(),
-        repo_url: "https://github.com/lineage-test/base58".into(),
-        identity_mode: ll::IDENTITY_APP,
-        hosted: true,
-    }
+/// How a test's `create_v2` differs from an honest launch (attack tests).
+#[derive(Clone, Copy, Default)]
+pub struct CreateShape {
+    pub creator: Option<Pubkey>,
+    pub quote: Option<Pubkey>,
+    pub creator_fee_bps: u64,
+    pub holder_reward: bool,
 }
 impl Env {
-    pub fn launch_ix(&self, launcher: &Pubkey, agent: &Pubkey, mint: &Pubkey, args: ll::LaunchArgs) -> Instruction {
-        let dbc_pool = dbc_pool_of(&self.dbc_config, mint, &self.line_mint);
+    pub fn create_ix(&self, launcher: &Pubkey, agent: &Pubkey, mint: &Pubkey, shape: CreateShape) -> Instruction {
+        let quote = shape.quote.unwrap_or(self.line_mint);
+        let q = if quote == pf::WSOL { pf::Quote::Sol } else { pf::Quote::Coin { mint: quote, pool: None } };
+        pf::create_v2_ix(mint, launcher, &shape.creator.unwrap_or(pump_creator(agent)), "Base58 Agent", "B58A", &q, false, shape.creator_fee_bps,
+            shape.holder_reward)
+    }
+    pub fn register_launch_ix(&self, launcher: &Pubkey, agent: &Pubkey, mint: &Pubkey, args: ll::PumpLaunchArgs) -> Instruction {
         Instruction {
             program_id: ll::ID,
-            accounts: ll::accounts::LaunchAgent {
+            accounts: ll::accounts::RegisterPumpLaunch {
                 launch_config: launch_config(), authority: launch_authority(), launcher: *launcher, agent: *agent, agent_mint: *mint,
-                line_mint: self.line_mint, dbc_config: self.dbc_config, dbc_pool,
-                dbc_base_vault: pda_of(&[b"token_vault", mint.as_ref(), dbc_pool.as_ref()], &DBC),
-                dbc_quote_vault: pda_of(&[b"token_vault", self.line_mint.as_ref(), dbc_pool.as_ref()], &DBC),
-                agent_launch: agent_launch(mint), compute_vault: compute_vault(agent), registry_config: registry_config(),
-                agent_record: agent_record(agent), registry_program: lr::ID, dbc_pool_authority: ll::meteora::DBC_POOL_AUTHORITY,
-                dbc_event_authority: ll::meteora::DBC_EVENT_AUTHORITY, dbc_program: DBC, line_token_program: self.line_program,
-                token_2022_program: T22, system_program: system_program::ID,
+                line_mint: self.line_mint, bonding_curve: pf::curve_of(mint), pump_global: pf::GLOBAL, pump_creator: pump_creator(agent),
+                agent_launch: agent_launch(mint), compute_vault: compute_vault(agent), registry_config: registry_config(), agent_record: agent_record(agent),
+                registry_program: lr::ID, instructions: anchor_lang::solana_program::sysvar::instructions::ID, line_token_program: self.line_program,
+                system_program: system_program::ID,
             }.to_account_metas(None),
-            data: ll::instruction::LaunchAgent { args }.data(),
+            data: ll::instruction::RegisterPumpLaunch { args }.data(),
         }
     }
-    pub fn try_launch(&mut self, launcher: &Keypair, agent: &Keypair, mint: &Keypair, args: ll::LaunchArgs) -> TransactionResult {
-        let ix = self.launch_ix(&launcher.pubkey(), &agent.pubkey(), &mint.pubkey(), args);
-        send(&mut self.svm, launcher, &[agent, mint], vec![cu(400_000), ix])
+    /// The launch transaction: compute budget, `create_v2` at the top level, `register_pump_launch`.
+    /// Its wire size is proven on the mainnet fork as v0 (scripts/mainnet); here it is sent without
+    /// the legacy packet assert.
+    pub fn try_launch(&mut self, launcher: &Keypair, agent: &Keypair, mint: &Keypair, args: ll::PumpLaunchArgs) -> TransactionResult {
+        let ixs = vec![cu(600_000), self.create_ix(&launcher.pubkey(), &agent.pubkey(), &mint.pubkey(), CreateShape::default()),
+            self.register_launch_ix(&launcher.pubkey(), &agent.pubkey(), &mint.pubkey(), args)];
+        send_unchecked(&mut self.svm, launcher, &[agent, mint], ixs)
     }
-    pub fn launch_agent(&mut self, agent: Keypair, args: ll::LaunchArgs) -> Launched {
+    pub fn launch_agent(&mut self, agent: Keypair, args: ll::PumpLaunchArgs) -> Launched {
         let (launcher, launcher_line) = self.wallet(0);
         let mint = Keypair::new();
         ok(self.try_launch(&launcher, &agent, &mint, args));
-        let m = mint.pubkey();
-        let dbc_pool = dbc_pool_of(&self.dbc_config, &m, &self.line_mint);
-        let a = launch_authority();
-        let admin = self.admin.insecure_clone();
-        ok(send(&mut self.svm, &admin, &[], vec![create_ata_ix(&admin.pubkey(), &a, &m, &T22)]));
+        self.launched(agent, launcher, launcher_line, mint.pubkey())
+    }
+    pub fn launched(&mut self, agent: Keypair, launcher: Keypair, launcher_line: Pubkey, m: Pubkey) -> Launched {
+        let pc = pump_creator(&agent.pubkey());
         Launched {
             launch: agent_launch(&m),
             compute_vault: compute_vault(&agent.pubkey()),
+            bonding_curve: pf::curve_of(&m),
+            creator_line_token: ata(&pc, &self.line_mint, &self.line_program),
+            pump_creator: pc,
             agent,
             launcher,
             launcher_line,
             mint: m,
-            dbc_pool,
-            dbc_base_vault: pda_of(&[b"token_vault", m.as_ref(), dbc_pool.as_ref()], &DBC),
-            dbc_quote_vault: pda_of(&[b"token_vault", self.line_mint.as_ref(), dbc_pool.as_ref()], &DBC),
-            authority_agent_token: ata(&a, &m, &T22),
         }
     }
-    pub fn crank_fees_ix(&self, l: &Launched) -> Instruction {
+    pub fn crank_ix(&self, l: &Launched) -> Instruction {
         Instruction {
             program_id: ll::ID,
-            accounts: ll::accounts::CrankFees {
-                launch_config: launch_config(), authority: launch_authority(), agent_launch: l.launch, dbc_config: self.dbc_config,
-                dbc_pool: l.dbc_pool, dbc_base_vault: l.dbc_base_vault, dbc_quote_vault: l.dbc_quote_vault, agent_mint: l.mint,
-                line_mint: self.line_mint, authority_agent_token: l.authority_agent_token, compute_vault: l.compute_vault, treasury: treasury(),
-                dbc_pool_authority: ll::meteora::DBC_POOL_AUTHORITY, dbc_event_authority: ll::meteora::DBC_EVENT_AUTHORITY, dbc_program: DBC,
-                line_token_program: self.line_program, token_2022_program: T22,
+            accounts: ll::accounts::CrankPumpFees {
+                launch_config: launch_config(), agent_launch: l.launch, pump_creator: l.pump_creator, creator_line_token: l.creator_line_token,
+                compute_vault: l.compute_vault, treasury: treasury(), line_mint: self.line_mint, line_token_program: self.line_program,
             }.to_account_metas(None),
-            data: ll::instruction::CrankFees {}.data(),
+            data: ll::instruction::CrankPumpFees {}.data(),
         }
     }
+    /// A keeper's crank: pump.fun's sweep + collect (and the pool's after migration), then `crank_pump_fees`.
     pub fn crank_fees(&mut self, l: &Launched) -> TransactionResult {
         let k = funded(&mut self.svm);
-        let ix = self.crank_fees_ix(l);
-        send(&mut self.svm, &k, &[], vec![cu(400_000), ix])
+        let line = self.line_mint;
+        let mut ixs = vec![cu(600_000), create_ata_ix(&k.pubkey(), &l.pump_creator, &line, &self.line_program),
+            pf::sweep_creator_fee_ix(&k.pubkey(), &l.mint, &line, &l.pump_creator), pf::collect_creator_fee_v2_ix(&l.pump_creator, &line)];
+        let pool = pf::pool_of(&l.mint, &line);
+        if self.svm.get_account(&pool).is_some() {
+            ixs.extend(pf::amm_sweep_and_collect_ixs(&k.pubkey(), &pool, &line, &l.pump_creator));
+        }
+        ixs.push(self.crank_ix(l));
+        send(&mut self.svm, &k, &[], ixs)
     }
-    /// A third party swaps on the agent's DBC curve (buy: `$LINE` in).
-    pub fn dbc_swap(&mut self, l: &Launched, trader: &Keypair, line_acct: &Pubkey, agent_acct: &Pubkey, buy: bool, amount_in: u64, min_out: u64,
-        mode: u8) -> TransactionResult {
-        let (input, output) = if buy { (*line_acct, *agent_acct) } else { (*agent_acct, *line_acct) };
-        let mut data = mt_disc("global:swap2").to_vec();
-        data.extend_from_slice(&amount_in.to_le_bytes());
-        data.extend_from_slice(&min_out.to_le_bytes());
-        data.push(mode);
-        let ix = Instruction {
-            program_id: DBC,
-            accounts: vec![AccountMeta::new_readonly(ll::meteora::DBC_POOL_AUTHORITY, false), AccountMeta::new_readonly(self.dbc_config, false),
-                AccountMeta::new(l.dbc_pool, false), AccountMeta::new(input, false), AccountMeta::new(output, false),
-                AccountMeta::new(l.dbc_base_vault, false), AccountMeta::new(l.dbc_quote_vault, false),
-                AccountMeta::new_readonly(l.mint, false), AccountMeta::new_readonly(self.line_mint, false),
-                AccountMeta::new_readonly(trader.pubkey(), true), AccountMeta::new_readonly(T22, false),
-                AccountMeta::new_readonly(self.line_program, false), AccountMeta::new_readonly(DBC, false),
-                AccountMeta::new_readonly(dbc_event_authority(), false), AccountMeta::new_readonly(DBC, false)],
-            data,
-        };
-        send(&mut self.svm, trader, &[], vec![cu(400_000), ix])
-    }
-    /// A trader with `line` of `$LINE` and an agent-token ATA.
+    /// A trader with `line` of `$LINE`, an agent-token ATA, and the buyback recipient's `$LINE` ATA in place.
     pub fn trader(&mut self, l: &Launched, line: u64) -> (Keypair, Pubkey, Pubkey) {
         let (k, la) = self.wallet(line);
         let admin = self.admin.insecure_clone();
         let aa = ata_for(&mut self.svm, &admin, &k.pubkey(), &l.mint);
         (k, la, aa)
     }
-}
-
-/// DBC VirtualPool fields read by the suites (offsets include the discriminator).
-pub struct DbcView {
-    pub quote_reserve: u64,
-    pub protocol_quote_fee: u64,
-    pub partner_quote_fee: u64,
-    pub migration_progress: u8,
-}
-pub fn dbc_view(svm: &LiteSVM, pool: &Pubkey) -> DbcView {
-    let d = svm.get_account(pool).unwrap().data;
-    let u = |o: usize| u64::from_le_bytes(d[o..o + 8].try_into().unwrap());
-    DbcView { quote_reserve: u(240), protocol_quote_fee: u(256), partner_quote_fee: u(272), migration_progress: d[308] }
+    /// Buys exactly `amount` agent tokens on the curve with `$LINE` (`buy_v3`).
+    pub fn curve_buy(&mut self, l: &Launched, trader: &Keypair, amount: u64) -> TransactionResult {
+        let cap = pf::buy_cap(&self.svm, &l.mint, amount);
+        let ix = pf::buy_v3_ix(&l.mint, &self.line_mint, &self.line_program, &trader.pubkey(), amount, cap);
+        send(&mut self.svm, trader, &[], vec![cu(400_000), ix])
+    }
+    pub fn curve_sell(&mut self, l: &Launched, trader: &Keypair, amount: u64) -> TransactionResult {
+        let ix = pf::sell_v3_ix(&l.mint, &self.line_mint, &self.line_program, &trader.pubkey(), amount, 1);
+        send(&mut self.svm, trader, &[], vec![cu(400_000), ix])
+    }
 }
 
 // ---------- fixtures from the TypeScript protocol code ----------

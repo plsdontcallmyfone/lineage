@@ -94,12 +94,10 @@ fn registry_initialize_only_by_upgrade_authority() {
 #[test]
 fn launch_initialize_only_by_upgrade_authority() {
     let Fresh { mut svm, admin, stranger, line_mint, line_program } = fresh();
-    let (r, dbc_config) = create_dbc_config(&mut svm, &admin, &line_mint, &launch_authority(), &standard_dbc_params());
-    ok(r);
     let sink = ata_for(&mut svm, &admin, &stranger.pubkey(), &line_mint);
     // The stranger names itself admin, runtime authority and compute sink owner.
     let theirs = launch_args(&stranger.pubkey(), &stranger.pubkey(), &sink);
-    let ix = launch_init_ix(stranger.pubkey(), theirs, line_mint, line_program, dbc_config);
+    let ix = launch_init_ix(stranger.pubkey(), theirs, line_mint, line_program);
     rejects(send(&mut svm, &stranger, &[], vec![ix.clone()]), "Unauthorized");
     let decoy = decoy_program_data(&mut svm, &stranger.pubkey());
     rejects(send(&mut svm, &stranger, &[], vec![with_program_data(ix, &ll::ID, decoy)]), "ConstraintSeeds");
@@ -108,12 +106,12 @@ fn launch_initialize_only_by_upgrade_authority() {
     let runtime = Keypair::new();
     let admin_sink = ata_for(&mut svm, &admin, &runtime.pubkey(), &line_mint);
     let ours = launch_args(&admin.pubkey(), &runtime.pubkey(), &admin_sink);
-    ok(send(&mut svm, &admin, &[], vec![launch_init_ix(admin.pubkey(), ours, line_mint, line_program, dbc_config)]));
+    ok(send(&mut svm, &admin, &[], vec![launch_init_ix(admin.pubkey(), ours, line_mint, line_program)]));
     let c: ll::LaunchConfig = read(&svm, &launch_config());
     assert_eq!(c.admin, admin.pubkey());
     assert_eq!(c.runtime_authority, runtime.pubkey());
-    rejects(send(&mut svm, &stranger, &[], vec![launch_init_ix(stranger.pubkey(), theirs, line_mint, line_program, dbc_config)]), "already in use");
-    rejects(send(&mut svm, &admin, &[], vec![launch_init_ix(admin.pubkey(), theirs, line_mint, line_program, dbc_config)]), "already in use");
+    rejects(send(&mut svm, &stranger, &[], vec![launch_init_ix(stranger.pubkey(), theirs, line_mint, line_program)]), "already in use");
+    rejects(send(&mut svm, &admin, &[], vec![launch_init_ix(admin.pubkey(), theirs, line_mint, line_program)]), "already in use");
     let c: ll::LaunchConfig = read(&svm, &launch_config());
     assert_eq!(c.admin, admin.pubkey());
 }

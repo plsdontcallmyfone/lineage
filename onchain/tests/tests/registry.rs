@@ -217,7 +217,7 @@ fn claim_args(f: &serde_json::Value, i: usize) -> (lr::ClaimArgs, u8, Pubkey) {
 
 #[test]
 fn epoch_post_and_claim_with_a_typescript_root() {
-    for kind in [LineKind::Classic, LineKind::Pump] {
+    for kind in [LineKind::PumpCoin] {
         let mut e = setup(kind);
         let f = fixtures();
         let epoch = f["payout"]["epoch"].as_u64().unwrap();
@@ -330,7 +330,7 @@ fn over_claim_is_refused() {
 
 #[test]
 fn pause_and_config_are_admin_only() {
-    let mut e = setup(LineKind::Classic);
+    let mut e = setup(LineKind::PumpCoin);
     let admin = e.admin.insecure_clone();
     let (owner, owner_token) = e.wallet(10_000 * ONE);
     let ix = e.admin_ix(&owner.pubkey(), lr::instruction::Pause { paused: true }.data());
@@ -517,13 +517,12 @@ fn line_mint_extension_allowlist() {
     let fee_mint = create_fee_mint(&mut svm, &admin);
     let args = config_args(&admin.pubkey(), &Pubkey::new_unique());
     rejects(send(&mut svm, &admin, &[], vec![registry_init_ix(admin.pubkey(), args, fee_mint, T22)]), "MintExtension");
-    let (r, dbc_config) = create_dbc_config(&mut svm, &admin, &fee_mint, &launch_authority(), &standard_dbc_params());
-    if r.is_ok() {
-        let largs = launch_args(&admin.pubkey(), &Pubkey::new_unique(), &Pubkey::new_unique());
-        rejects(send(&mut svm, &admin, &[], vec![launch_init_ix(admin.pubkey(), largs, fee_mint, T22, dbc_config)]), "MintExtension");
-    }
-    // The Pump.fun shape (metadata pointer + metadata) is accepted: `setup(LineKind::Pump)`.
+    let largs = launch_args(&admin.pubkey(), &Pubkey::new_unique(), &Pubkey::new_unique());
+    rejects(send(&mut svm, &admin, &[], vec![launch_init_ix(admin.pubkey(), largs, fee_mint, T22)]), "MintExtension");
+    // The Pump.fun shape (metadata pointer + metadata) is accepted, as is a real pump.fun coin.
     let e = setup(LineKind::Pump);
+    assert_eq!(e.rconfig().mint, e.line_mint);
+    let e = setup(LineKind::PumpCoin);
     assert_eq!(e.rconfig().mint, e.line_mint);
 }
 

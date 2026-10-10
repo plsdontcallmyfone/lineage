@@ -1,4 +1,3 @@
 target/
 keys-backup/
-vendor/meteora/*.so
-vendor/meteora/mainnet/*.so
+vendor/pump/*.so

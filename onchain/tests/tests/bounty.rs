@@ -59,15 +59,13 @@ fn fx_key(fx: &Value, name: &str) -> Pubkey {
 }
 
 fn world() -> World {
-    let mut e = setup(LineKind::Pump);
+    let mut e = setup(LineKind::PumpCoin);
     let fx = fixtures();
     let mut args = default_launch_args();
     let p = e.launch_agent(seeded(31), args.clone());
     args.hosted = false;
-    args.symbol = "SELF".into();
     let s = e.launch_agent(seeded(32), args.clone());
     args.hosted = true;
-    args.symbol = "HOST".into();
     let h = e.launch_agent(seeded(33), args);
     for (l, k) in [(&p, "P"), (&s, "S"), (&h, "H")] {
         assert_eq!(l.agent.pubkey(), fx_key(&fx, k));

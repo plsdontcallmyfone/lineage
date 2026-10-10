@@ -48,7 +48,6 @@ fn instruction_vectors() -> Vec<Value> {
         line_program: TOKEN,
         line_holder: k(5),
         compute_sink: k(10),
-        dbc_config: k(8),
     };
     let (owner, agent, mint, launcher) = (k(5), k(6), k(7), k(9));
     let mut p = test_params();
@@ -112,61 +111,33 @@ fn instruction_vectors() -> Vec<Value> {
     v.push(ix_json("registry.expire_challenge", &env.expire_challenge_ix(lr::KIND_VERDICT, &[0x3c; 32], 9, &owner_token)));
 
     let largs = ll::LaunchConfigArgs { admin: k(1), runtime_authority: k(3), compute_sink: k(10), agent_compute_bps: 7000,
-        protocol_bps: 3000, sleep_threshold: 1, wake_threshold: 2, paused: false, max_debit_per_epoch: 4_242 };
-    v.push(ix_json("launch.initialize_launch", &launch_init_ix(k(1), largs, env.line_mint, TOKEN, env.dbc_config)));
-    v.push(ix_json("launch.set_launch_config", &set_launch_config_ix(k(1), largs, env.dbc_config)));
-    v.push(ix_json("launch.launch_agent", &env.launch_ix(&launcher, &agent, &mint, default_launch_args())));
-    let dbc_pool = dbc_pool_of(&env.dbc_config, &mint, &env.line_mint);
+        protocol_bps: 3000, sleep_threshold: 1, wake_threshold: 2, paused: false, max_debit_per_epoch: 4_242, pump_creator_fee_bps: 150 };
+    v.push(ix_json("launch.initialize_launch", &launch_init_ix(k(1), largs, env.line_mint, TOKEN)));
+    v.push(ix_json("launch.set_launch_config", &set_launch_config_ix(k(1), largs)));
+    v.push(ix_json("launch.register_pump_launch", &env.register_launch_ix(&launcher, &agent, &mint, default_launch_args())));
     let l = Launched {
         agent: seeded(6),
         launcher: seeded(9),
         launcher_line: ata(&launcher, &env.line_mint, &TOKEN),
         mint,
         launch: agent_launch(&mint),
-        dbc_pool,
-        dbc_base_vault: pda_of(&[b"token_vault", mint.as_ref(), dbc_pool.as_ref()], &DBC),
-        dbc_quote_vault: pda_of(&[b"token_vault", env.line_mint.as_ref(), dbc_pool.as_ref()], &DBC),
+        bonding_curve: pf::curve_of(&mint),
         compute_vault: compute_vault(&agent),
-        authority_agent_token: ata(&launch_authority(), &mint, &T22),
+        pump_creator: pump_creator(&agent),
+        creator_line_token: ata(&pump_creator(&agent), &env.line_mint, &TOKEN),
     };
-    v.push(ix_json("launch.crank_fees", &env.crank_fees_ix(&l)));
-    let (damm_pool, position, nft, va, vb) = (k(12), k(13), k(14), k(15), k(16));
-    v.push(ix_json("launch.graduate", &Instruction {
+    v.push(ix_json("launch.crank_pump_fees", &env.crank_ix(&l)));
+    v.push(ix_json("launch.record_pump_graduation", &Instruction {
         program_id: ll::ID,
-        accounts: ll::accounts::Graduate { launch_config: launch_config(), authority: launch_authority(), agent_launch: l.launch, dbc_pool,
-            damm_pool, position, position_nft_account: nft, damm_config: DAMM_DYNAMIC_CONFIG }.to_account_metas(None),
-        data: ll::instruction::Graduate {}.data(),
-    }));
-    v.push(ix_json("launch.graduate_by_admin", &Instruction {
-        program_id: ll::ID,
-        accounts: ll::accounts::GraduateByAdmin {
-            g: ll::accounts::Graduate { launch_config: launch_config(), authority: launch_authority(), agent_launch: l.launch, dbc_pool,
-                damm_pool, position, position_nft_account: nft, damm_config: DAMM_DYNAMIC_CONFIG },
-            admin: k(1),
-        }.to_account_metas(None),
-        data: ll::instruction::GraduateByAdmin {}.data(),
-    }));
-    v.push(ix_json("launch.repoint_position", &Instruction {
-        program_id: ll::ID,
-        accounts: ll::accounts::RepointPosition { launch_config: launch_config(), authority: launch_authority(), agent_launch: l.launch,
-            current_position: position, position: k(15), position_nft_account: k(16) }.to_account_metas(None),
-        data: ll::instruction::RepointPosition {}.data(),
+        accounts: ll::accounts::RecordPumpGraduation { launch_config: launch_config(), agent_launch: l.launch, bonding_curve: l.bonding_curve,
+            pool: pf::pool_of(&mint, &env.line_mint) }.to_account_metas(None),
+        data: ll::instruction::RecordPumpGraduation {}.data(),
     }));
     v.push(ix_json("launch.migrate_launch_config", &Instruction {
         program_id: ll::ID,
         accounts: ll::accounts::MigrateLaunchConfig { launch_config: launch_config(), admin: k(1),
             system_program: anchor_lang::solana_program::system_program::ID }.to_account_metas(None),
         data: ll::instruction::MigrateLaunchConfig { max_debit_per_epoch: 8_888 }.data(),
-    }));
-    v.push(ix_json("launch.crank_pool_fees", &Instruction {
-        program_id: ll::ID,
-        accounts: ll::accounts::CrankPoolFees {
-            launch_config: launch_config(), authority: launch_authority(), agent_launch: l.launch, damm_pool, position, position_nft_account: nft,
-            damm_token_a_vault: va, damm_token_b_vault: vb, agent_mint: mint, line_mint: env.line_mint, authority_agent_token: l.authority_agent_token,
-            compute_vault: l.compute_vault, treasury: treasury(), damm_pool_authority: ll::meteora::DAMM_POOL_AUTHORITY,
-            damm_event_authority: ll::meteora::DAMM_EVENT_AUTHORITY, damm_program: DAMM, line_token_program: TOKEN, token_2022_program: T22,
-        }.to_account_metas(None),
-        data: ll::instruction::CrankPoolFees {}.data(),
     }));
     let epoch = 3u64;
     v.push(ix_json("launch.post_usage", &Instruction {
@@ -247,7 +218,7 @@ fn instruction_vectors() -> Vec<Value> {
 }
 
 fn account_snapshots() -> Vec<Value> {
-    let mut e = setup(LineKind::Pump);
+    let mut e = setup(LineKind::PumpCoin);
     let (owner, owner_token) = e.wallet(20_000 * ONE);
     let agent = Keypair::new();
     e.register_verifier(&owner, &agent);
@@ -373,15 +344,16 @@ fn account_snapshots() -> Vec<Value> {
             "recordRoot": hex(&ep.record_root), "rebateAmount": ep.rebate_amount.to_string(), "claimedAmount": ep.claimed_amount.to_string() } }),
         json!({ "type": "LaunchConfig", "data": raw(&launch_config()), "fields": {
             "admin": lc.admin.to_string(), "runtimeAuthority": lc.runtime_authority.to_string(), "lineMint": lc.line_mint.to_string(),
-            "dbcConfig": lc.dbc_config.to_string(), "agentComputeBps": lc.agent_compute_bps, "protocolBps": lc.protocol_bps,
+            "venue": lc.venue.to_string(), "agentComputeBps": lc.agent_compute_bps, "protocolBps": lc.protocol_bps,
             "sleepThreshold": lc.sleep_threshold.to_string(), "wakeThreshold": lc.wake_threshold.to_string(),
-            "migrationQuoteThreshold": lc.migration_quote_threshold.to_string(), "sqrtStartPrice": lc.sqrt_start_price.to_string(), "paused": lc.paused,
+            "pumpCreatorFeeBps": lc.pump_creator_fee_bps.to_string(), "reserved": lc.reserved.to_string(), "paused": lc.paused,
             "registryProgram": lc.registry_program.to_string(), "maxDebitPerEpoch": lc.max_debit_per_epoch.to_string(),
             "usageEpochsPosted": lc.usage_epochs_posted.to_string(), "lastUsageEpoch": lc.last_usage_epoch.to_string(),
             "usageAnchor": lc.usage_anchor.to_string(), "usageAnchorTs": lc.usage_anchor_ts.to_string() } }),
         json!({ "type": "AgentLaunch", "data": raw(&l.launch), "fields": {
             "agent": la.agent.to_string(), "mint": la.mint.to_string(), "launcher": la.launcher.to_string(), "repoId": hex(&la.repo_id),
-            "repoUrl": la.repo_url, "identityMode": la.identity_mode, "hosted": la.hosted, "dbcPool": la.dbc_pool.to_string(), "graduated": la.graduated,
+            "repoUrl": la.repo_url, "identityMode": la.identity_mode, "hosted": la.hosted, "venue": la.venue.to_string(), "bondingCurve": la.bonding_curve.to_string(), "pumpPool": la.pump_pool.to_string(),
+            "pumpCreator": la.pump_creator.to_string(), "graduated": la.graduated,
             "awake": la.awake, "createdAt": la.created_at.to_string() } }),
         json!({ "type": "SlashReceipt", "address": slash_receipt(&sl_id).to_string(), "data": raw(&slash_receipt(&sl_id)), "fields": {
             "slashId": hex(&sr.slash_id), "agent": sr.agent.to_string(), "offence": sr.offence, "epoch": sr.epoch.to_string(),

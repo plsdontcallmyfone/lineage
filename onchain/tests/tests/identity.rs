@@ -14,7 +14,7 @@ fn verifier(e: &mut Env) -> (Keypair, Pubkey, Keypair) {
 
 #[test]
 fn new_records_start_as_v2_with_the_agent_key() {
-    let mut e = setup(LineKind::Classic);
+    let mut e = setup(LineKind::PumpCoin);
     let (owner, _, agent) = verifier(&mut e);
     let a = e.agent(&agent.pubkey());
     assert_eq!((a.signing_key, a.key_seq, a.key_changed_at, a.profile_seq, a.pending_owner, a.owner_since), (agent.pubkey(), 0, 0, 0, Pubkey::default(), NOW));
