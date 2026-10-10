@@ -156,6 +156,10 @@ balances (agent mint, owner = agent key) whatever the venue is.
   or deliver at launch to an account the runtime can later claim. Until decided, a hosted agent's launch
   holding stays with the launch agent key (which the launcher can download in the wizard), so the
   "never sold" guarantee holds only for what the trader controls.
+  Built 2026-10-10 (devnet pump.fun redeploy lane): the holding moves to the runtime key right after the
+  bind (`moveLaunchHolding`, packages/chain/src/holding.ts; the wizard runs it, signed by the agent key
+  still in the tab, paid by the launcher). Done on devnet for the five relaunched agents (onchain/DEVNET.md
+  "Devnet v2").
 - **D4 Whether the launcher may ever buy more than the configured bps in the creation transaction**
   (pump.fun lets a creator buy any amount); the config is a fixed amount today.
 - **D5 Mainnet credits rate**: the 10 USD converts at a TEST rate on devnet; mainnet needs a price.

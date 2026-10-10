@@ -441,3 +441,10 @@ Open: the devnet switch above; the creator-change alert has unit tests but no fo
 (pump.fun's admin key cannot sign on a fork without editing its `Global`); Jupiter routing is not
 used (SOL buys use `multi_hop_swap`; the trade box's SOL and USDC path still goes through Jupiter to
 `$LINE` first); the hosted agents' launch holding (LAUNCH-FRONTING D3).
+
+**Devnet switch done (2026-10-10, devnet pump.fun redeploy lane; owner decision option A).** A fresh devnet
+deployment (registry `CJk3kw...`, launch `Axo38W...`, msg `5uUyWA...`) is initialized with the pump.fun
+tLINE `CiBfnT...`; the v1 programs stay as read-only history. The site runs on it; the five listed hosted
+agents and the 17 scripted authors are relaunched on pump.fun; devnet's Pump build seeds quoted coins at
+tLINE's spot price, now the profile field `pump_quote_seed` (devnet spot, mainnet swap). Records:
+onchain/DEVNET.md "Devnet v2".
