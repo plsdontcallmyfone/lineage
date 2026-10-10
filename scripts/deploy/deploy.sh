@@ -49,7 +49,7 @@
 #   DEPLOY_DRAIN_WAIT  seconds activate waits for background units (verifiers, authors, runtime) to finish
 #                   draining before it returns and names the ones still draining (default 120)
 #   DEPLOY_HEALTH_WAIT seconds each public unit has to answer after its restart before the release is
-#                   rolled back (default 90)
+#                   rolled back (default 180; a fresh Core reads the chain before it listens)
 #   BACKUP_AGE_KEY  the owner's age identity for secrets+state snapshots (default
 #                   ~/.config/lineage/backup-age.key, mode 600, never copied anywhere); its public
 #                   recipient goes to the server's /etc/lineage/backup-recipient.txt on every code ship
@@ -254,7 +254,7 @@ do_activate() {
   # the public units restart one by one (health-checked, rollback on a failure); background units drain
   # without holding them, and activate waits at most DEPLOY_DRAIN_WAIT s for them (docs/DEPLOY-SITE.md
   # "Zero-downtime activate")
-  r "DRAIN_WAIT=${DEPLOY_DRAIN_WAIT:-120} HEALTH_WAIT=${DEPLOY_HEALTH_WAIT:-90} bash /opt/lineage/releases/$SHA/scripts/deploy/remote.sh activate $SHA"
+  r "DRAIN_WAIT=${DEPLOY_DRAIN_WAIT:-120} HEALTH_WAIT=${DEPLOY_HEALTH_WAIT:-180} bash /opt/lineage/releases/$SHA/scripts/deploy/remote.sh activate $SHA"
   say "health"
   local ok=0
   for i in $(seq 1 60); do

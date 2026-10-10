@@ -225,7 +225,7 @@ optional_units() {
 #                     draining and returns.
 PUBLIC_UNITS=(lineage-core lineage-indexer lineage-identity lineage-web lineage-gate)
 DRAIN_WAIT="${DRAIN_WAIT:-120}"     # seconds activate waits for background units to finish draining
-HEALTH_WAIT="${HEALTH_WAIT:-90}"    # seconds each public unit has to answer after its restart
+HEALTH_WAIT="${HEALTH_WAIT:-180}"   # seconds each public unit has to answer after its restart (a fresh Core reads the chain first)
 health_url() {
   case "$1" in
     lineage-core) echo http://127.0.0.1:9660/v1/health ;;
@@ -239,12 +239,13 @@ now_ms() { date +%s%3N; }
 # restart_checked <unit>: restart one public unit and wait until it answers (200; the indexer: any HTTP
 # answer, it may still be catching up). 1 when it does not within HEALTH_WAIT seconds.
 restart_checked() {
-  local u="$1" t0 code url i
+  local u="$1" t0 code url
   t0=$(now_ms)
   systemctl restart "$u" || { echo "  $u: restart failed" >&2; return 1; }
   if [ "$(systemctl show -p ConditionResult --value "$u")" = no ]; then echo "  $u skipped (unit condition not met)"; return 0; fi
   url="$(health_url "$u")"
-  for i in $(seq 1 $((HEALTH_WAIT * 4))); do
+  local until=$(( $(date +%s) + HEALTH_WAIT ))
+  while [ "$(date +%s)" -lt "$until" ]; do
     code="$(curl -s -m 3 -o /dev/null -w '%{http_code}' "$url" 2>/dev/null || true)"
     if [ "$u" = lineage-indexer ] && [ -n "$code" ] && [ "$code" != 000 ]; then break; fi
     [ "$code" = 200 ] && break
