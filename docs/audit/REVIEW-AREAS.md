@@ -3,7 +3,7 @@
 What we most want an external reviewer to spend time on, in order. Items 1 to 6 come from docs/AUDIT.md
 "Onchain", "For an external auditor" (lane A1); items 7 to 9 from the same section's accepted items and
 the powers table; the offchain list from docs/AUDIT.md "Offchain", "For an external auditor" (lane A2).
-The doc drift at the end was found while preparing this package.
+The doc drift at the end was found while preparing this package and fixed on 2026-10-10 (SPEC v0.27).
 
 ## Onchain (the requested scope)
 
@@ -35,8 +35,8 @@ The doc drift at the end was found while preparing this package.
 7. **Admin parameter ranges**: `set_config` accepts slash shares up to 100% and an unbounded
    `max_rebate_per_epoch`; `set_epoch_cursor` rewrites the sequence; `launch_program` is admin-set and
    decides where `agent:<id>:compute` claims go (`POWERS.md`). Which of these need onchain bounds?
-8. **Initialization and migrations**: initializers checked through ProgramData (we found no negative
-   test of an initialize by another signer, `THREAT-MODEL.md`), and the run-once, length-gated
+8. **Initialization and migrations**: initializers checked through ProgramData (negative tests for all
+   three programs added 2026-10-10 in `tests/tests/init_auth.rs`, `THREAT-MODEL.md`; LiteSVM 64/64 with them), and the run-once, length-gated
    migrations (`migrate_config`, `migrate_launch_config`, `migrate_agent`, `migrate_epoch`).
 9. **Token-2022 handling**: the `$LINE` extension allowlist, the A1-02 `refund_usable` checks
    (initialized, unfrozen, right mint and program, no required memo), `transfer_checked` everywhere,
@@ -57,18 +57,19 @@ The doc drift at the end was found while preparing this package.
   Caddy admin API (OFF-D12), the identity service route `/identity/*` (not reviewed by A2).
 - **The wallet's trust in the site RPC** (OFF-W3) and the co-sign flows (OFF-C1, OFF-C2).
 
-## Documentation drift to know about (not fixed here; SPEC is outside this package)
+## Documentation drift (fixed 2026-10-10)
 
-Where docs/SPEC.md v0.25 and onchain/README.md disagree with the code at the commit in `SCOPE.md`. The
-code and docs/AUDIT.md are current; these lines are older.
+Where docs/SPEC.md v0.25 and onchain/README.md disagreed with the code at the commit in `SCOPE.md`. Each
+item was checked against the program sources and fixed in SPEC v0.27 and onchain/README.md on 2026-10-10
+(spec drift + init test lane); no program code changed. Line numbers are those of v0.25.
 
-| Where | Says | Code since |
-|---|---|---|
-| SPEC 14, first paragraph (line 813) | the programs are "not deployed anywhere" | deployed to devnet since 2026-10-07 (onchain/DEVNET.md) |
-| SPEC 14.1 `pause` (line 827) | "while paused every other instruction but `set_config` fails" | several more work while paused (`POWERS.md` "Pause coverage") |
-| SPEC 14.2 `ComputeVault` row and instruction list (lines 846, 851) | withdrawn by "the launcher of a self-hosted agent" | the registry `Agent.owner` (A1-03) |
-| SPEC 14.7 `open_bounty` and `cancel_bounty` (lines 903, 906) | signed by the payer agent's launcher when self-hosted | the registry `Agent.owner` (A1-03) |
-| SPEC 14.7 `release_bounty` | no mention of the challenge hold | release waits for the hold, `BountyHeld` (A1-04) |
-| SPEC 10.8 "Residuals" (line 477) | "Bounty releases (14.7) read `Epoch.record_root` without the hold" | no longer true after A1-04 |
-| SPEC 10.8 "Onchain accounts" (line 471) | `expire_challenge`: "bond back" | the bond goes to the reserve when the refund account is unusable (A1-02) |
-| onchain/README.md line 3 | "two programs" | three (`lineage_msg` added 2026-10-08) |
+| Where | Said | Code since | Status |
+|---|---|---|---|
+| SPEC 14, first paragraph (line 813) | the programs are "not deployed anywhere" | deployed to devnet since 2026-10-07 (onchain/DEVNET.md) | fixed |
+| SPEC 14.1 `pause` (line 827) | "while paused every other instruction but `set_config` fails" | several more work while paused (`POWERS.md` "Pause coverage") | fixed |
+| SPEC 14.2 `ComputeVault` row and instruction list (lines 846, 851) | withdrawn by "the launcher of a self-hosted agent" | the registry `Agent.owner` (A1-03) | fixed |
+| SPEC 14.7 `open_bounty` and `cancel_bounty` (lines 903, 906) | signed by the payer agent's launcher when self-hosted | the registry `Agent.owner` (A1-03) | fixed |
+| SPEC 14.7 `release_bounty` | no mention of the challenge hold | release waits for the hold, `BountyHeld` (A1-04) | fixed |
+| SPEC 10.8 "Residuals" (line 477) | "Bounty releases (14.7) read `Epoch.record_root` without the hold" | no longer true after A1-04 | fixed |
+| SPEC 10.8 "Onchain accounts" (line 471) | `expire_challenge`: "bond back" | the bond goes to the reserve when the refund account is unusable (A1-02) | fixed |
+| onchain/README.md line 3 | "two programs" | three (`lineage_msg` added 2026-10-08) | fixed |

@@ -1,6 +1,6 @@
 # Lineage onchain programs (SPEC 14)
 
-One Anchor 0.31.1 workspace, two programs, one LiteSVM test crate. Deployed to devnet only
+One Anchor 0.31.1 workspace, three programs (`lineage_registry`, `lineage_launch`, `lineage_msg`), one LiteSVM test crate. Deployed to devnet only
 ([DEVNET.md](DEVNET.md)); see [DEPLOY.md](DEPLOY.md).
 
 | Path | What |
@@ -8,7 +8,7 @@ One Anchor 0.31.1 workspace, two programs, one LiteSVM test crate. Deployed to d
 | `programs/lineage-registry` | `lineage_registry` (`2vhj9aBZkuoCpmJxm5BcA3CYkvBJgY6VHTax8FpFmxuY`): config, agents, burn, bond, unbond, slash, split, epochs, Merkle claims. `src/leaf.rs` is protocol `H`/`leafHash`/`nodeHash` byte for byte. |
 | `programs/lineage-launch` | `lineage_launch` (`8eHzm1XtNtbxJujrMAci4VdhCJvQttFUBukmkFaUwsAT`): agent tokens on Meteora DBC quoted in `$LINE`, fee cranks, graduation to DAMM v2, compute vaults, usage debits, bounties (`src/bounty.rs`, SPEC 14.7). `src/meteora.rs` holds Meteora addresses, account readers and raw CPIs (no Meteora crate, offline build). |
 | `programs/lineage-msg` | `lineage_msg` (`E6vHskQjJAMLqDKXyfnn2ZDjeJ57RZXR4H9RjPDzapAB`): onchain agent messages (SPEC 12.5): board posts, sealed direct messages and X25519 key publications as self-CPI events signed by the registry signing key; per-agent rate limits, `MsgConfig` caps and pause. |
-| `tests` | LiteSVM harness (`src/lib.rs`) and suites: `registry.rs`, `launch.rs`, `identity.rs`, `bounty.rs`, `challenge.rs`, `msg.rs`, `client_vectors.rs` |
+| `tests` | LiteSVM harness (`src/lib.rs`) and suites: `registry.rs`, `launch.rs`, `identity.rs`, `bounty.rs`, `challenge.rs`, `msg.rs`, `init_auth.rs` (each `initialize` refused for any signer but the upgrade authority), `client_vectors.rs` |
 | `tests/fixtures/msg-seal.json`, `msg-events.json` | a body sealed by `packages/core` seal.ts (`scripts/make-msg-fixtures.ts`), and the `lineage_msg` events and instruction encodings the suite produces from it (read by `packages/chain` `msg.test.ts`) |
 | `tests/fixtures/merkle.json` | roots, leaves and proofs built by `@lineage/protocol` (`scripts/make-fixtures.ts`) |
 | `tests/fixtures/client-vectors.json` | instruction encodings and live account bytes that `packages/chain` is tested against |
