@@ -4,6 +4,7 @@ import { QUOTE } from "../market.ts";
 import { agentAvatar, agentTitle, buildingLine, injectBuildingStyle, paramCells, type DirToken } from "../building.ts";
 import { drawThumb, thumbModel, type Palette, type ThumbModel } from "../../../../packages/embed/src/thumb.ts";
 import type { Page } from "./types.ts";
+import { mount as mountLivePanel } from "../live-panel/index.ts";
 
 // Explorer: the token directory (docs/plans/FRONTEND-EMBED.md, amendment 2, and APP-CONSOLIDATION.md
 // amendment 2026-10-10 (2)). Every listed agent token as a card: a live screen thumbnail of what its
@@ -31,6 +32,8 @@ export interface ExplorerOpts {
   pageSize?: number;
   /** Refresh period of counters and cards, ms (default 20000; 0 disables). */
   pollMs?: number;
+  /** Hovering a card shows the agent's live desktop in its screen: mounts it and returns a teardown (default none). */
+  hoverPanel?: (el: HTMLElement, agent: string) => () => void;
 }
 
 export type { DirToken };
@@ -69,7 +72,7 @@ const searchIcon = raw(`<svg width="15" height="15" viewBox="0 0 16 16" fill="no
 /** One card; `rank` is its 1-based place in the current sort. Pure markup (the screen is painted after mount). */
 export function cardHtml(t: DirToken, rank: number, href: string, sessionHref?: (id: string) => string): Raw {
   const st = t.state;
-  return html`<div class="ex-card" data-mint="${t.mint}" data-sym="${t.symbol ?? ""}">
+  return html`<div class="ex-card" data-mint="${t.mint}" data-sym="${t.symbol ?? ""}" data-agent="${t.agent}">
     <a class="ex-cardlink" href="${href}" aria-label="${agentTitle(t)} ${t.symbol ? `$${t.symbol}` : ""}">
     <div class="ex-screen" data-screen="${t.session?.id ?? ""}" data-lineage="${t.lineage_id ?? ""}"><canvas aria-hidden="true"></canvas>
       <span class="ex-rank">#${String(rank).padStart(2, "0")}</span>
@@ -295,8 +298,43 @@ export function mountExplorer(el: HTMLElement, opts: ExplorerOpts = {}) {
     if (!el.isConnected) return destroy();
     if (!document.hidden && !el.contains(document.activeElement)) void load();
   }, opts.pollMs ?? 20_000);
+  // ---- hover: the agent's live desktop over the card's screen (pointer devices only, one at a time)
+  let hover: { card: HTMLElement; down: () => void } | null = null;
+  let hoverTimer: ReturnType<typeof setTimeout> | null = null;
+  const unhover = () => {
+    if (hoverTimer) clearTimeout(hoverTimer);
+    hoverTimer = null;
+    if (!hover) return;
+    hover.down();
+    hover.card.querySelector(".ex-livewrap")?.remove();
+    hover.card.classList.remove("is-live");
+    hover = null;
+  };
+  if (opts.hoverPanel && typeof matchMedia === "function" && matchMedia("(hover: hover)").matches) {
+    el.addEventListener("pointerover", (ev) => {
+      const card = (ev.target as HTMLElement).closest<HTMLElement>(".ex-card");
+      if (!card || !card.dataset.agent || hover?.card === card) return;
+      unhover();
+      hoverTimer = setTimeout(() => {
+        hoverTimer = null;
+        const screen = card.querySelector<HTMLElement>(".ex-screen");
+        if (!screen || !card.isConnected) return;
+        const wrap = document.createElement("div");
+        wrap.className = "ex-livewrap";
+        screen.appendChild(wrap);
+        card.classList.add("is-live");
+        hover = { card, down: opts.hoverPanel!(wrap, card.dataset.agent!) };
+      }, 220);
+    });
+    el.addEventListener("pointerout", (ev) => {
+      const card = (ev.target as HTMLElement).closest<HTMLElement>(".ex-card");
+      const to = ev.relatedTarget as HTMLElement | null;
+      if (card && (!to || !card.contains(to))) unhover();
+    });
+  }
   function destroy() {
     alive = false;
+    unhover();
     if (timer) clearInterval(timer);
     io?.disconnect();
   }
@@ -373,7 +411,13 @@ export async function explorerPage(): Promise<Page> {
     body: html`<div id="ex-root"></div>`,
     mount: (root) => {
       mounted?.destroy();
-      mounted = mountExplorer(root.querySelector<HTMLElement>("#ex-root")!);
+      mounted = mountExplorer(root.querySelector<HTMLElement>("#ex-root")!, {
+        // hovering a card: the agent's desktop (its session live, else its latest replayed) in the machine frame
+        hoverPanel: (wrap, agent) => {
+          const h = mountLivePanel(wrap, { agent, frame: "device", list: false, fps: 12 });
+          return () => h.destroy();
+        },
+      });
     },
   };
 }
@@ -419,6 +463,12 @@ const CSS = `
 .ex-screen{position:relative;aspect-ratio:16/10;background:var(--ex-scr-bg);overflow:hidden;border-bottom:1px solid var(--border)}
 .ex-screen::after{content:"";position:absolute;inset:0;pointer-events:none;background:repeating-linear-gradient(0deg,#0000003d 0 1px,#0000 1px 3px)}
 .ex-screen canvas{display:block;width:100%;height:100%}
+.ex-livewrap{position:absolute;inset:0;z-index:2;display:flex;align-items:center;justify-content:center;overflow:hidden;background:var(--ex-scr-bg);animation:ex-fade .3s ease-out} /* the agent's live desktop, over the still */
+.ex-livewrap>*{width:100%}
+.ex-livewrap .lp{border-radius:0;border:0;box-shadow:none}
+.ex-livewrap .lp-list,.ex-livewrap .lp-run,.ex-livewrap .lp-say{display:none}
+@keyframes ex-fade{from{opacity:0}to{opacity:1}}
+@media (prefers-reduced-motion:reduce){.ex-livewrap{animation:none}}
 .ex-rank{position:absolute;left:8px;bottom:8px;z-index:1;font:400 10px/1 var(--mono);letter-spacing:.06em;color:#fff;background:rgba(0,0,0,.6);border:1px solid #ffffff1a;padding:4px 7px;border-radius:9999px;font-variant-numeric:tabular-nums}
 .ex-state{position:absolute;right:8px;bottom:8px;z-index:1;display:inline-flex;align-items:center;gap:5px;font:400 10px/1 var(--mono);letter-spacing:.08em;text-transform:uppercase;padding:4px 8px;border-radius:9999px;background:rgba(0,0,0,.6);border:1px solid #ffffff1a;color:#e6e8ec}
 .ex-state.working{background:#ff7a1726;border-color:#ff7a1759;color:#ffc285}
