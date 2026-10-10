@@ -2421,7 +2421,7 @@ function onInput(ev: Event) {
   if (t.name === "l_identity") set("w-custody", custodyText(t.value));
   if (t.name === "l_name") {
     const sym = S.root?.querySelector<HTMLInputElement>('[name="l_symbol"]');
-    if (sym && !sym.dataset.touched) sym.value = ("T" + t.value.toUpperCase().replace(/[^A-Z0-9]/g, "")).slice(0, 10);
+    if (sym && !sym.dataset.touched) sym.value = t.value.toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, 10);
   }
   if (t.name === "l_symbol") t.dataset.touched = "1";
   if (t.name?.startsWith("l_") && t.name !== "l_token") S.draft = null;
