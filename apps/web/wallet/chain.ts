@@ -20,8 +20,8 @@ import {
   missingSigners,
   parseWire,
   placeSignature,
+  httpTransport,
   Rpc,
-  RpcError,
   sameBytes,
   sendWire,
   simulateDetailed,
@@ -65,13 +65,34 @@ export const testLabels = () => NET.p.test_labels;
 /** The cluster name for copy ("devnet", "mainnet"). */
 export const netName = () => (NET.p.network === "devnet" ? "devnet" : "mainnet");
 
-let id = 0;
+// Busy chain reads (the site gate's 429, an upstream 5xx): retried with backoff (Retry-After when
+// given); listeners show a readable line while it lasts, and an exhausted retry ends in a readable
+// error, never "undefined" (packages/chain rpcErrorOf handles the gate's string `error`).
+const busyListeners = new Set<(s: string | null) => void>();
+/** Subscribes to the "chain reads are busy" line (null when a read went through again). */
+export function onRpcBusy(fn: (s: string | null) => void): () => void {
+  busyListeners.add(fn);
+  return () => busyListeners.delete(fn);
+}
+let busy = false;
+const setBusy = (s: string | null) => {
+  if (!s && !busy) return;
+  busy = !!s;
+  for (const fn of busyListeners) fn(s);
+};
+const pageTransport = httpTransport("/chain/rpc", {
+  retries: 5,
+  onRetry: (attempt, waitMs) => setBusy(`Chain reads are busy, retrying (${attempt} of 5, in ${Math.ceil(waitMs / 1000)} s)…`),
+});
 export const rpc = new Rpc(async (method, params) => {
-  const res = await fetch("/chain/rpc", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ jsonrpc: "2.0", id: ++id, method, params }) });
-  const body = (await res.json().catch(() => null)) as { result?: unknown; error?: { message: string; code: number; data?: unknown } } | null;
-  if (!body) throw new RpcError(`${method}: HTTP ${res.status}`);
-  if (body.error) throw new RpcError(`${method}: ${body.error.message}`, body.error.code, body.error.data);
-  return body.result;
+  try {
+    const r = await pageTransport(method, params);
+    setBusy(null);
+    return r;
+  } catch (e) {
+    setBusy(null);
+    throw e;
+  }
 }, "confirmed");
 export const reader = new ChainReader(rpc);
 

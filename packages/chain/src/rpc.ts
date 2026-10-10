@@ -15,15 +15,53 @@ export class RpcError extends Error {
   }
 }
 
+/** True when an HTTP status is worth retrying (rate limited or the upstream is briefly down). */
+export const retryableStatus = (status: number) => status === 429 || status >= 500;
+
+/** Readable message when chain reads stay rate limited after the retries. */
+export const BUSY_MESSAGE = "chain reads are busy (rate limited); try again in a moment";
+
+/**
+ * The error of a JSON-RPC answer, whatever its shape: the standard `{error: {message, code, data}}`,
+ * a gate's `{error: "rate_limited", message}` (a string error with a top-level message), a bare
+ * `{message}` on a non-2xx status, or no JSON body. Null when the answer carries a result.
+ */
+export function rpcErrorOf(method: string, status: number, body: unknown): RpcError | null {
+  const b = body && typeof body === "object" ? (body as Record<string, unknown>) : null;
+  if (status === 429 || (b && b.error === "rate_limited")) return new RpcError(`${method}: ${BUSY_MESSAGE}`, 429);
+  if (!b) return new RpcError(`${method}: HTTP ${status}`, status);
+  const e = b.error;
+  if (e && typeof e === "object") {
+    const o = e as { message?: unknown; code?: unknown; data?: unknown };
+    return new RpcError(`${method}: ${typeof o.message === "string" && o.message ? o.message : `RPC error${typeof o.code === "number" ? ` ${o.code}` : ""}`}`, typeof o.code === "number" ? o.code : undefined, o.data);
+  }
+  if (typeof e === "string" && e) return new RpcError(`${method}: ${typeof b.message === "string" && b.message ? b.message : e}`);
+  if (status >= 400) return new RpcError(`${method}: ${typeof b.message === "string" && b.message ? b.message : `HTTP ${status}`}`, status);
+  if (!("result" in b)) return new RpcError(`${method}: no result in the answer`);
+  return null;
+}
+
+/** Wait before retry `attempt` (1-based): Retry-After when the server sent one (capped), else exponential. */
+export function retryDelayMs(attempt: number, retryAfter: string | null, capMs = 8000): number {
+  const ra = retryAfter !== null && /^\d+(\.\d+)?$/.test(retryAfter.trim()) ? Number(retryAfter) * 1000 : NaN;
+  return Math.min(capMs, Number.isFinite(ra) ? ra : 400 * 2 ** (attempt - 1));
+}
+
 /** HTTP JSON-RPC with retries on 429, 5xx and network errors (not on RPC-level errors). */
-export function httpTransport(url: string, opts: { retries?: number; fetch?: typeof fetch } = {}): Transport {
+export function httpTransport(url: string, opts: { retries?: number; fetch?: typeof fetch; sleep?: (ms: number) => Promise<void>; onRetry?: (attempt: number, waitMs: number, why: string) => void } = {}): Transport {
   const f = opts.fetch ?? fetch;
   const retries = opts.retries ?? 5;
+  const sleep = opts.sleep ?? ((ms: number) => new Promise<void>((r) => setTimeout(r, ms)));
   let id = 0;
   return async (method, params) => {
     let lastErr: unknown;
+    let retryAfter: string | null = null;
     for (let attempt = 0; attempt <= retries; attempt++) {
-      if (attempt > 0) await new Promise((r) => setTimeout(r, Math.min(8000, 400 * 2 ** (attempt - 1))));
+      if (attempt > 0) {
+        const wait = retryDelayMs(attempt, retryAfter);
+        opts.onRetry?.(attempt, wait, lastErr instanceof Error ? lastErr.message : String(lastErr));
+        await sleep(wait);
+      }
       let res: Response;
       try {
         res = await f(url, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ jsonrpc: "2.0", id: ++id, method, params }) });
@@ -31,13 +69,15 @@ export function httpTransport(url: string, opts: { retries?: number; fetch?: typ
         lastErr = e;
         continue;
       }
-      if (res.status === 429 || res.status >= 500) {
-        lastErr = new RpcError(`${method}: HTTP ${res.status}`);
+      const body = await res.json().catch(() => null);
+      if (retryableStatus(res.status)) {
+        retryAfter = res.headers?.get?.("retry-after") ?? null;
+        lastErr = rpcErrorOf(method, res.status, body) ?? new RpcError(`${method}: HTTP ${res.status}`, res.status);
         continue;
       }
-      const body = (await res.json()) as { result?: unknown; error?: { message: string; code: number; data?: unknown } };
-      if (body.error) throw new RpcError(`${method}: ${body.error.message}`, body.error.code, body.error.data);
-      return body.result;
+      const err = rpcErrorOf(method, res.status, body);
+      if (err) throw err;
+      return (body as { result: unknown }).result;
     }
     throw lastErr instanceof Error ? lastErr : new RpcError(`${method}: failed`);
   };

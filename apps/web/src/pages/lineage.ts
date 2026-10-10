@@ -1,4 +1,5 @@
 import { get, loadConfig, loadLineageNames } from "../api.ts";
+import { explorerTx } from "../market.ts";
 import { effect, gainPct, int, repoLink, shortHex, shortId, stamp, target, when } from "../fmt.ts";
 import { html } from "../html.ts";
 import { agentLink, authorLink, auditBadge, badge, candLink, candStatus, empty, epochLink, genLink, icon, kindBadge, kv, panel, reasonText, stat } from "../ui.ts";
@@ -135,7 +136,7 @@ export async function lineagePage([id]: string[]): Promise<Page> {
   const chainSig = (m: any) => {
     const c = m.envelope.chain;
     if (!c?.signature) return "";
-    return html` <a class="link nowrap sub" href="https://explorer.solana.com/tx/${c.signature}?cluster=devnet" target="_blank" rel="noopener" title="${c.signature}">on chain</a>`;
+    return html` <a class="link nowrap sub" href="${explorerTx(c.signature)}" target="_blank" rel="noopener" title="${c.signature}">on chain</a>`;
   };
   const noteBody = (m: any) => {
     const b = m.envelope.body;

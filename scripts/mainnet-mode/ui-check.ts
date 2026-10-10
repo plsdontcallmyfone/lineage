@@ -88,6 +88,19 @@ async function run(net: "devnet" | "mainnet", base: string) {
     check("mainnet: the RPC is shown redacted", cfg.rpc_upstream === "https://api.mainnet-beta.solana.com (keyed)", cfg.rpc_upstream);
     check("mainnet: explorer links carry no cluster parameter", !/cluster=devnet/.test(await page.content()));
   }
+  if (net === "devnet") {
+    // the site gate's 429 body ({error: "rate_limited", message}): a readable busy line while it retries, then the page carries on
+    let n = 0;
+    await page.route("**/chain/rpc", (route: any) =>
+      n++ < 3 ? route.fulfill({ status: 429, contentType: "application/json", body: JSON.stringify({ error: "rate_limited", message: "slow down" }) }) : route.continue());
+    await page.goto(`${base}/launch`, { waitUntil: "domcontentloaded" });
+    const busy = await page.waitForFunction(() => { const el = document.querySelector("#w-busy") as HTMLElement | null; return el && !el.hidden ? el.textContent : null; }, null, { timeout: 30_000 }).then((h: any) => h.jsonValue()).catch(() => "");
+    check("devnet: rate-limited chain reads show a readable busy line", /^Chain reads are busy, retrying/.test(busy ?? ""), busy ?? "");
+    await page.waitForFunction(() => (document.querySelector("#w-busy") as HTMLElement | null)?.hidden === true && /Devnet only/.test(document.querySelector("#w-gate")?.textContent ?? ""), null, { timeout: 60_000 }).catch(() => {});
+    const after = (await page.locator("#w-gate").textContent()) ?? "";
+    check("devnet: after the retries the page reads chain as usual (no raw undefined)", /Devnet only/.test(after) && !/undefined/.test(await page.evaluate(() => document.body.textContent ?? "")), after.slice(0, 80));
+    await page.unroute("**/chain/rpc");
+  }
   check(`${net}: no page errors`, errors.length === 0, errors.join("; "));
   await ctx.close();
 }

@@ -67,7 +67,7 @@ import {
 import { checkSoul, soulDigest, soulSigningMessage, type SoulDoc, type SoulPersona } from "../../../packages/souls/src/doc.ts";
 import { esc, html, raw, type Raw } from "../src/html.ts";
 import { badge, banner, icon, kv, panel, stat } from "../src/ui.ts";
-import { budgetIxs, buildAndSimulate, isMainnet, loadChainCfg, NET, netName, parseUnits, qsym, reader, rpc, signAndSend, sol, testLabels, units, devnetGate, type Built, type ChainCfg } from "./chain.ts";
+import { budgetIxs, buildAndSimulate, onRpcBusy, isMainnet, loadChainCfg, NET, netName, parseUnits, qsym, reader, rpc, signAndSend, sol, testLabels, units, devnetGate, type Built, type ChainCfg } from "./chain.ts";
 import { connectWallet, onSession, walletChain, restoreSession, session, signsV0, startDiscovery, type StdAccount, type StdWallet } from "./standard.ts";
 export { mountTradeBox } from "./trade.ts";
 import { custodyHtml, ghClick, initGithubIdentity, showIdentity, submitLaunchToken } from "./identity.ts";
@@ -2395,6 +2395,7 @@ function renderPrepay() {
 }
 
 let unsubSession: (() => void) | null = null;
+let unsubBusy: (() => void) | null = null;
 
 /** Shared start of both pages: listeners, the cluster gate, the session. */
 async function boot(root: HTMLElement, page: "launch" | "profile", body: Raw) {
@@ -2402,6 +2403,15 @@ async function boot(root: HTMLElement, page: "launch" | "profile", body: Raw) {
   S.page = page;
   initGithubIdentity({ root: () => S.root, wallet: () => S.wallet, account: () => S.account });
   root.innerHTML = body.s;
+  // a readable line while chain reads are rate limited and being retried (never a raw RPC error)
+  root.insertAdjacentHTML("afterbegin", '<div id="w-busy" class="wl-fine" role="status" aria-live="polite" hidden></div>');
+  unsubBusy?.();
+  unsubBusy = onRpcBusy((m) => {
+    const el = S.root?.querySelector<HTMLElement>("#w-busy");
+    if (!el) return;
+    el.hidden = !m;
+    el.textContent = m ?? "";
+  });
   root.addEventListener("click", onClick);
   root.addEventListener("input", onInput);
   root.addEventListener("change", onInput);

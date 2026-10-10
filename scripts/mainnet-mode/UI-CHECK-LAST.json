@@ -1,7 +1,7 @@
 {
- "at": "2026-10-10T14:17:36.135Z",
- "passed": 19,
- "checks": 19,
+ "at": "2026-10-10T15:56:48.038Z",
+ "passed": 21,
+ "checks": 21,
  "results": [
   {
    "check": "devnet: gate says devnet only with the TEST mint",
@@ -37,6 +37,16 @@
    "check": "devnet: explorer links carry ?cluster=devnet",
    "ok": true,
    "detail": ""
+  },
+  {
+   "check": "devnet: rate-limited chain reads show a readable busy line",
+   "ok": true,
+   "detail": "Chain reads are busy, retrying (1 of 5, in 1 s)…"
+  },
+  {
+   "check": "devnet: after the retries the page reads chain as usual (no raw undefined)",
+   "ok": true,
+   "detail": "Devnet only. Every transaction here is built for Solana devnet and nothing else."
   },
   {
    "check": "devnet: no page errors",
@@ -81,7 +91,7 @@
   {
    "check": "mainnet: no response the browser got carries the RPC key",
    "ok": true,
-   "detail": "42 responses read"
+   "detail": "48 responses read"
   },
   {
    "check": "mainnet: the RPC is shown redacted",

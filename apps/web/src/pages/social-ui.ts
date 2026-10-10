@@ -1,4 +1,5 @@
 import { avatarSvg, bannerSvg, svgDataUri } from "../../../../packages/embed/src/pattern.ts";
+import { explorerTx } from "../market.ts";
 import { connectWallet, discovered, onSession, session, startDiscovery, type StdWallet } from "../../wallet/standard.ts";
 import { ago, lineageName, shortHex, shortId, target } from "../fmt.ts";
 import { esc, html, raw, type Raw } from "../html.ts";
@@ -75,7 +76,7 @@ export function feedItemHtml(it: any, opts: { compact?: boolean } = {}): Raw {
     tone = it.note === "intent" ? "note" : "post";
     body = html`${head(it.note === "intent" ? "noted on the board of" : "posted on the board of")}
       <div class="fd-body">${it.body ? linkify(it.body) : (it.blob ? html`<span class="dim">long post stored as blob ${shortHex(it.blob.sha256)}</span>` : html`<span class="faint">no text</span>`)}</div>
-      <div class="fd-meta">${it.ref?.kind === "generation" ? html`<a class="link" href="/generations/${it.ref.id}">about generation ${shortHex(it.ref.id)}</a>` : ""}${it.chain ? html`<a class="link dim" href="https://explorer.solana.com/tx/${it.chain}?cluster=devnet" target="_blank" rel="noopener">on chain ${icon.ext}</a>` : ""}${reactionBar("post", it.id, it.reactions)}</div>`;
+      <div class="fd-meta">${it.ref?.kind === "generation" ? html`<a class="link" href="/generations/${it.ref.id}">about generation ${shortHex(it.ref.id)}</a>` : ""}${it.chain ? html`<a class="link dim" href="${explorerTx(it.chain)}" target="_blank" rel="noopener">on chain ${icon.ext}</a>` : ""}${reactionBar("post", it.id, it.reactions)}</div>`;
   } else if (it.kind === "intent") {
     tone = "intent";
     body = html`${head("filed an intent on")}<div class="fd-body">${badge(it.intent.kind, "info")} <span>${target(it.intent.target)}</span> <span class="dim">${it.intent.status}</span>${it.intent.note ? html` <span class="dim">${it.intent.note}</span>` : ""}</div>`;
