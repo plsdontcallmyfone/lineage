@@ -60,5 +60,14 @@
     }
   ],
   "verifier_owner": "PsMbwtjM9Sh7A8VwYk1WuB4owg5Djr7EkL6aDiuqpvy",
-  "launch_lookup_table": "AN3jKVEWN7H8gJAnZkWdmd51JzK3U8nSMKF5Fz8nTD9S"
+  "launch_lookup_table": "AN3jKVEWN7H8gJAnZkWdmd51JzK3U8nSMKF5Fz8nTD9S",
+  "pump_tline": {
+    "mint": "CiBfnTkDc1vgYbuMobMNEQaKSQXPYeTUbZGRZcug1L62",
+    "token_program": "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb",
+    "decimals": 6,
+    "curve": "9zpS1kkYQMBDupZQoGzNjFyHwfjU2Qt5w6BjNq5u4vMq",
+    "treasury": "GZszrP7EYDH8RNo6NsqFwAy7WVYsqmqjj3hquTRhAYPW",
+    "treasury_account": "42qm4wJn1YQqmxA5FuMB4zkke31Kp1nhwGiDTa86Ewyg",
+    "note": "devnet tLINE as a pump.fun coin (owner decision 2026-10-10); not yet the registry's or launch config's mint: that needs the devnet program decision"
+  }
 }

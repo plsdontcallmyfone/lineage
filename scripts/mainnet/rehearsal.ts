@@ -541,8 +541,9 @@ async function step7() {
   // $LINE itself migrates; a launch quoted in the migrated $LINE names its pool (the second table) and trades through it
   const lc = await curveOf(lineMint);
   const lq = quoteCurveBuyExactOut(await G(), await FC(), lc, lc.realTokenReserves + 1_000_000n * ONE, (await reader.tokenBalance(ata(pumpPdas.bondingCurve(lineMint), lineMint, T22)))!);
-  await send("3", "$LINE stand-in: completing buy (SOL), then migrate_v2 to PumpSwap", dep, [
-    pump.buyV3({ mint: lineMint, quoteMint: PUMP.wsol, user: dep.id, amount: lc.realTokenReserves + 1_000_000n * ONE, maxQuoteIn: (lq.quoteIn * 101n) / 100n }),
+  await send("7", "$LINE stand-in: completing buy with SOL (synthetic migration)", dep, [
+    pump.buyV3({ mint: lineMint, quoteMint: PUMP.wsol, user: dep.id, amount: lc.realTokenReserves + 1_000_000n * ONE, maxQuoteIn: (lq.quoteIn * 101n) / 100n })], { computeUnits: 400_000 });
+  await send("7", "$LINE stand-in: migrate_v2 to PumpSwap (permissionless)", dep, [
     pump.migrateV2({ user: dep.id, mint: lineMint, quoteMint: PUMP.wsol, withdrawAuthority: (await G()).withdrawAuthority, quoteTokenProgram: TOKEN_PROGRAM })], { computeUnits: 900_000 });
   const lp = (await linePoolNow())!;
   check("7: $LINE migrated: its canonical PumpSwap pool is quoted in WSOL", !!lp);

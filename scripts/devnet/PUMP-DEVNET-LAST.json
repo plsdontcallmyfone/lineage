@@ -1,0 +1,118 @@
+{
+  "ran_at": "2026-10-10T20:53:32.500Z",
+  "cluster": "devnet",
+  "tline": {
+    "mint": "CiBfnTkDc1vgYbuMobMNEQaKSQXPYeTUbZGRZcug1L62",
+    "curve": "9zpS1kkYQMBDupZQoGzNjFyHwfjU2Qt5w6BjNq5u4vMq",
+    "treasury": "GZszrP7EYDH8RNo6NsqFwAy7WVYsqmqjj3hquTRhAYPW",
+    "treasury_account": "42qm4wJn1YQqmxA5FuMB4zkke31Kp1nhwGiDTa86Ewyg"
+  },
+  "pump_global": {
+    "max_curve_depth": 1,
+    "creator_fee_configurable": false,
+    "token_total_supply": "1000000000000000"
+  },
+  "proof_coin": {
+    "mint": "GGFWMn7wtgdnJVvPwADFdQo8atq9xsPA5zBdiFfvDMWT",
+    "creator_pda": "2XqopvS81bAaL1o2ybJq5PA3w1AzpT5SdCoJfSq76S3Q",
+    "agent": "4qrSHgEvgPAcNT6MTSZ2ACMxzeXFLz9F6nU5Hb4Z84td"
+  },
+  "pass": 6,
+  "checks": [
+    {
+      "name": "devnet Pump Global: create_v2 enabled, max_curve_depth >= 1",
+      "ok": true,
+      "detail": "max_curve_depth 1, creator_fee_configurable false, total supply 1000000000000000"
+    },
+    {
+      "name": "tLINE: pump.fun coin quoted in SOL (zero key), depth 0, not mayhem; Token-2022, no mint or freeze authority",
+      "ok": true,
+      "detail": "mint CiBfnTkDc1vgYbuMobMNEQaKSQXPYeTUbZGRZcug1L62, supply 1000000000000000"
+    },
+    {
+      "name": "devnet treasury holds the tLINE it bought",
+      "ok": true,
+      "detail": "460000000000000"
+    },
+    {
+      "name": "coin: quoted in tLINE, creator = the PDA, depth 1, not mayhem, creator_fee_bps 0",
+      "ok": true,
+      "detail": "virtual quote 350204100320775"
+    },
+    {
+      "name": "the curve holds exactly the creator fees of its trade events",
+      "ok": true,
+      "detail": "52351572540 tLINE base units"
+    },
+    {
+      "name": "the PDA's tLINE account holds exactly the swept creator fees (no creator signature)",
+      "ok": true,
+      "detail": "52351572540"
+    }
+  ],
+  "txs": [
+    {
+      "step": "2: the devnet treasury GZszrP7EYDH8RNo6NsqFwAy7WVYsqmqjj3hquTRhAYPW buys 430000000 tLINE on its curve with 0.730665207 devnet SOL (buy_v3; the deployer pays)",
+      "signature": "3ibo8ZfZuaqnQyi6ptveGSVxgxQA29Mhy69SuoBjwRpJWvhnRUdDYVDiC1EEJH9oCkPavsUFxWQyDKj3KgsJzAyT",
+      "fee": 5000,
+      "cu": 73608,
+      "payer_delta_lamports": "730670207"
+    },
+    {
+      "step": "3: buyback recipient 0's tLINE account (anyone may create it) and the deployer's tLINE account",
+      "signature": "UCxwAnaGHGcJ9V8nL2FXPvYuWPuJxLj7d23GhxnRCMUEqwB7bGYdkwMzwN3LJUXhbHnkx98EEnnXqYu2ttawoDq",
+      "fee": 5000,
+      "cu": 10313,
+      "payer_delta_lamports": "5000"
+    },
+    {
+      "step": "3: create an agent-shaped coin quoted in tLINE (create_v2, pump-coin quote, creator = PDA)",
+      "signature": "3iZRfTiJBj7VD5DzJzjp9LWJchw4xySwTiKywvjaWXMF8V28kvkyvx16Lkx4SrRBHxshfe8uKEGVH26hHZ5SAZYC",
+      "fee": 10000,
+      "cu": 149299,
+      "payer_delta_lamports": "7106760"
+    },
+    {
+      "step": "4: the deployer buys 2,000,000 tLINE to trade with",
+      "signature": "3Cr2bbkHS2hJfb6WwUwm6ohtyQojaxQLzVcewBDfJ1d1WDw4GUtHuwL4vQiXTdsBheNGjzpk7fazQPK3sM3sMQi8",
+      "fee": 5000,
+      "cu": 67652,
+      "payer_delta_lamports": "5806271"
+    },
+    {
+      "step": "4: buy_exact_quote_in_v3 (500,000 tLINE)",
+      "signature": "3dJ6unBtjieK1gmDi4DZXDucWb3VwzdEZD8b7dukSnRzhNC5zm3s6ZZYrUnoWJp7bmFX2K6YPAG5pZTDgZfPWSV3",
+      "fee": 5000,
+      "cu": 94770,
+      "payer_delta_lamports": "1518840"
+    },
+    {
+      "step": "4: sell_v3 (half)",
+      "signature": "198Gmu2JN1KNnfEVc96ocLvKkC2xJ7rMPvr77hpr1oTJEFoz3kMbzp4o76mPBpVD6hmwgHv31dbyN3uv2A41a9B",
+      "fee": 5000,
+      "cu": 75237,
+      "payer_delta_lamports": "5000"
+    },
+    {
+      "step": "4: multi_hop_swap SOL -> tLINE curve -> coin curve (0.05 SOL)",
+      "signature": "25HUSDE8FCXUNceJ7ij84PqpXQU3o2wPsuReA3Bi1bYqy13QfKKKwwaoiW9PDdd6GjAKwdv9UFtE68cBumPD9ELg",
+      "fee": 5000,
+      "cu": 171531,
+      "payer_delta_lamports": "52839640"
+    },
+    {
+      "step": "5: fund a keeper key (0.03 devnet SOL)",
+      "signature": "3LXtTuZZAt6Tk51dMJrE1ThED81bdMDPTqmqmZU8CySEBY4aqjSA4RJkPpnuMykq5VuuooVUUeJqTykozvdKbbek",
+      "fee": 5000,
+      "cu": 150,
+      "payer_delta_lamports": "30005000"
+    },
+    {
+      "step": "5: keeper: create the PDA's tLINE account, sweep_creator_fee, collect_creator_fee_v2",
+      "signature": "2KChvfLXj9Y5mdHXLYxTvxKNWpDCN5WcbQvi2pnrmorp4Lr59PB2qXkswXN1LijPTrsL1rUrKMRikba3gK84opH5",
+      "fee": 5000,
+      "cu": 104440,
+      "payer_delta_lamports": "3032680"
+    }
+  ]
+}
