@@ -1168,3 +1168,40 @@ a.eco-btn { text-decoration: none; }
   .deck-canvas { scroll-snap-type: x mandatory; }
   .deck-column { scroll-snap-align: start; }
 }
+
+/* ---------------------------------------------------------------- header actions: one capsule toolbar, and a smaller scrolled header */
+
+.top-right { gap: 2px; padding: 3px; border-radius: 9999px; background: color-mix(in srgb, var(--bg3) 70%, transparent); border: 1px solid var(--border); }
+.top-right .eco-btn, .top-right .cn-btn, .top-right .iconbtn {
+  height: 30px; border: 0; background: transparent; box-shadow: none; backdrop-filter: none; -webkit-backdrop-filter: none;
+  border-radius: 9999px; color: var(--ts); transition: background .15s, color .15s;
+}
+.top-right .eco-btn { padding: 0 12px 0 10px; gap: 7px; font: 500 13px/1 var(--sans); }
+.top-right .cn-btn { padding: 0 14px; font: 500 13px/1 var(--sans); }
+.top-right .cn-btn:not(.on) { background: var(--btn-p-bg); color: var(--btn-p-fg); }
+.top-right .cn-btn:not(.on):hover { opacity: .88; background: var(--btn-p-bg); color: var(--btn-p-fg); }
+.top-right .cn-btn.on { width: 30px; padding: 0; }
+.top-right .cn-btn.on .cn-av { width: 24px; height: 24px; box-shadow: 0 0 0 1px var(--border-h); }
+.top-right .iconbtn { width: 30px; color: var(--tt); }
+.top-right .iconbtn svg { width: 14px; height: 14px; }
+.top-right .eco-btn:hover, .top-right .cn-btn.on:hover, .top-right .iconbtn:hover,
+.top-right .eco-btn[aria-expanded="true"], .top-right .cn-btn.on[aria-expanded="true"] { background: var(--sb-hover); color: var(--tp); border-color: transparent; }
+.top-right .eco-btn[aria-current="page"] { background: var(--ac-dim); color: var(--tp); }
+.top-right .eco-dot { width: 7px; height: 7px; box-shadow: 0 0 0 3px color-mix(in srgb, currentColor 0%, transparent); }
+.top-right .eco-dot[data-s="open"] { box-shadow: 0 0 6px color-mix(in srgb, var(--ac) 70%, transparent); }
+
+/* scrolled: a shorter, narrower pill, smaller type and controls */
+.top.is-scrolled { padding-top: 8px; padding-bottom: 4px; padding-left: max(calc(var(--pad-x) + 120px), 16vw); padding-right: max(calc(var(--pad-x) + 120px), 16vw); }
+.top.is-scrolled .top-in { height: 44px; padding: 0 5px 0 14px; gap: 10px; }
+.top.is-scrolled .nav a { font-size: 13px; padding: 6px 7px; }
+.top.is-scrolled .brand { font-size: 13px; }
+.top.is-scrolled .brand .ph { display: none; }
+.top.is-scrolled .brand svg { width: 15px; height: 15px; }
+.top.is-scrolled .top-right { padding: 2px; background: transparent; border-color: transparent; }
+.top.is-scrolled .top-right .eco-btn, .top.is-scrolled .top-right .cn-btn, .top.is-scrolled .top-right .iconbtn { height: 30px; }
+.top.is-scrolled .top-right .eco-btn, .top.is-scrolled .top-right .cn-btn:not(.on) { font-size: 12.5px; }
+@media (max-width: 1100px) { .top.is-scrolled { padding-left: var(--pad-x); padding-right: var(--pad-x); } }
+@media (max-width: 760px) {
+  .top.is-scrolled { padding: 6px 10px 9px; }
+  .top.is-scrolled .top-in { height: auto; padding: 5px 6px 5px 12px; }
+}
