@@ -55,7 +55,7 @@ export function backendFor(cfg: RuntimeConfig, log: (m: string) => void, onTx?: 
     : new ChainBackend(key, { rpcUrl: cfg.rpc_url ?? chainRpc(), log: (m) => log(`  ${m}`), onTx: (w, r) => onTx?.(w, r.signature, r.fee) });
 }
 
-/** Devnet: hosted agents post their messages on chain (lineage_msg, SPEC 12.5), the runtime paying the fees. */
+/** Devnet: hosted agents post their messages on chain (units_msg, SPEC 12.5), the runtime paying the fees. */
 export function chainMessengers(cfg: RuntimeConfig, backend: Backend, log: (m: string) => void): RuntimeDeps["messenger"] {
   if (!(backend instanceof ChainBackend)) return undefined;
   const payer = loadKey(cfg.runtime_key);

@@ -3,7 +3,7 @@
 // this lane (its own launch on the minbpe repository, so other lanes' runs of the minbpe TEST agent
 // are untouched), Core in chain mode with the runtime authority, the onchain-bonded TEST verifiers,
 // and `lineage-runtime run` in devnet mode as its own process:
-//   1. the runtime discovers the agent from lineage_launch and generates its own key; the TEST owner
+//   1. the runtime discovers the agent from units_launch and generates its own key; the TEST owner
 //      signs rotate_agent_key the way the Wallet page does (unsigned wire, owner signature), and
 //      `lineage-runtime cosign` adds the new key's signature and sends it (the launch key stays here);
 //   2. Claude authors on minbpe; the onchain-bonded verifiers replay; the runtime meters every

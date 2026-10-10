@@ -43,7 +43,7 @@ Engineering items, with their evidence:
 | Upgrade authority, all three programs | Squads v4 vault | moved from the deployer right after initialization (step 6) |
 | Registry admin (`Config.admin`) | the vault | set at `initialize`; the deployer never holds it |
 | Launch admin (`LaunchConfig.admin`, also bounty config) | the vault | set at `initialize_launch` |
-| Messages admin (`MsgConfig.admin`) | the vault | set at `lineage_msg::initialize` |
+| Messages admin (`MsgConfig.admin`) | the vault | set at `units_msg::initialize` |
 | Compute sink | the vault's `$LINE` token account | audit A1-11: not the runtime's own account |
 | Multisig config authority | none (autonomous) | member, threshold and time lock changes go through the same proposals and time lock |
 | Multisig rent collector | the vault | executed proposals' rent can be reclaimed to it |
@@ -74,15 +74,15 @@ From the A1 powers table, checked against the code paths the rehearsal ran:
 
 Owner decision 2026-10-10: **fresh mainnet ids**, selected at build time (SPEC 14.11). The default
 build declares the devnet ids; `cargo build-sbf --features mainnet` declares the mainnet ids, and
-`lineage_launch` and `lineage_msg` forward the feature so all three agree. `onchain/Anchor.toml`
+`units_launch` and `units_msg` forward the feature so all three agree. `onchain/Anchor.toml`
 `[programs.mainnet]`, `packages/chain` `PROGRAM_IDS.mainnet` and `config/profile.json`
 `profiles.mainnet.programs` carry them.
 
 | Program | Mainnet id | Keypair (mode 600, never committed) |
 |---|---|---|
-| `lineage_registry` | `3GeaTsBUsaXCJ7Dru9tDHiKnVBsoHE6yiTdqqj42JHay` | `~/.config/lineage/mainnet/registry-program-keypair.json` |
-| `lineage_launch` | `2vwKsTZm5doa3ahBmpm8Sv3sKPD76Fq2ZZENbNW5BYBq` | `~/.config/lineage/mainnet/launch-program-keypair.json` |
-| `lineage_msg` | `jmcb7cBA8aJ5Zra8V6gUsEbgKAoG3h5d2CNpmKsRdky` | `~/.config/lineage/mainnet/msg-program-keypair.json` |
+| `units_registry` | `3GeaTsBUsaXCJ7Dru9tDHiKnVBsoHE6yiTdqqj42JHay` | `~/.config/lineage/mainnet/registry-program-keypair.json` |
+| `units_launch` | `2vwKsTZm5doa3ahBmpm8Sv3sKPD76Fq2ZZENbNW5BYBq` | `~/.config/lineage/mainnet/launch-program-keypair.json` |
+| `units_msg` | `jmcb7cBA8aJ5Zra8V6gUsEbgKAoG3h5d2CNpmKsRdky` | `~/.config/lineage/mainnet/msg-program-keypair.json` |
 
 Made 2026-10-10 with `solana-keygen new --no-bip39-passphrase` on the development machine; only the
 public keys were printed. They exist only there: **the owner must back the three files up offline**
@@ -131,7 +131,7 @@ df -h /                                                         # at least 5 GB 
 cp onchain/target/deploy/*-keypair.json ~/.config/lineage/program-keys/   # devnet id keypairs: backup before any build
 ls -l ~/.config/lineage/mainnet/*-program-keypair.json          # the mainnet id keypairs (and the owner's offline copies)
 cd onchain
-for p in lineage-registry lineage-launch lineage-msg; do
+for p in units-registry units-launch units-msg; do
   cargo build-sbf --offline --manifest-path programs/$p/Cargo.toml --features mainnet --sbf-out-dir target/mainnet; done
 rm -f target/mainnet/*-keypair.json                             # throwaway keypairs cargo build-sbf wrote; not the mainnet ids
 shasum -a 256 target/mainnet/*.so && wc -c target/mainnet/*.so  # compare with the audited mainnet hashes (docs/audit/BUILD-AND-TEST.md)
@@ -191,8 +191,8 @@ bun scripts/mainnet/initialize.ts init --params $PARAMS --payer $K/deployer.json
 # prints the launch lookup table address; re-running with --lookup-table <it> resumes without a second table
 ```
 
-This checks `$LINE` is a pump.fun coin paired with SOL or USDC and not mayhem, then runs `lineage_registry::initialize`, the compute sink account,
-`initialize_launch`, `lineage_msg::initialize` and the launch lookup table (create, extend, freeze),
+This checks `$LINE` is a pump.fun coin paired with SOL or USDC and not mayhem, then runs `units_registry::initialize`, the compute sink account,
+`initialize_launch`, `units_msg::initialize` and the launch lookup table (create, extend, freeze),
 each read back.
 
 ### 6. Hand the upgrade authority to the vault

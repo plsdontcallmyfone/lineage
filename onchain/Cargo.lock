@@ -1698,52 +1698,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "lineage-launch"
-version = "0.1.0"
-dependencies = [
- "anchor-lang",
- "anchor-spl",
- "lineage-registry",
-]
-
-[[package]]
-name = "lineage-msg"
-version = "0.1.0"
-dependencies = [
- "anchor-lang",
- "lineage-registry",
-]
-
-[[package]]
-name = "lineage-onchain-tests"
-version = "0.1.0"
-dependencies = [
- "anchor-lang",
- "anchor-spl",
- "bincode",
- "lineage-launch",
- "lineage-msg",
- "lineage-registry",
- "litesvm",
- "serde_json",
- "sha2 0.10.9",
- "solana-account",
- "solana-compute-budget-interface",
- "solana-keypair",
- "solana-signer",
- "solana-transaction",
- "spl-token-2022",
-]
-
-[[package]]
-name = "lineage-registry"
-version = "0.1.0"
-dependencies = [
- "anchor-lang",
- "anchor-spl",
-]
-
-[[package]]
 name = "litemap"
 version = "0.8.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -5023,6 +4977,52 @@ name = "unicode-segmentation"
 version = "1.13.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c6f5d3c3b1bf09027a88a6bc961fc00497d651009560b5463668dc81b0fa87a8"
+
+[[package]]
+name = "units-launch"
+version = "0.1.0"
+dependencies = [
+ "anchor-lang",
+ "anchor-spl",
+ "units-registry",
+]
+
+[[package]]
+name = "units-msg"
+version = "0.1.0"
+dependencies = [
+ "anchor-lang",
+ "units-registry",
+]
+
+[[package]]
+name = "units-onchain-tests"
+version = "0.1.0"
+dependencies = [
+ "anchor-lang",
+ "anchor-spl",
+ "bincode",
+ "litesvm",
+ "serde_json",
+ "sha2 0.10.9",
+ "solana-account",
+ "solana-compute-budget-interface",
+ "solana-keypair",
+ "solana-signer",
+ "solana-transaction",
+ "spl-token-2022",
+ "units-launch",
+ "units-msg",
+ "units-registry",
+]
+
+[[package]]
+name = "units-registry"
+version = "0.1.0"
+dependencies = [
+ "anchor-lang",
+ "anchor-spl",
+]
 
 [[package]]
 name = "universal-hash"

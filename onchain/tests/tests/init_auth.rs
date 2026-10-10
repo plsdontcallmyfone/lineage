@@ -1,5 +1,5 @@
 //! Front-running the one-time initializers (docs/audit/THREAT-MODEL.md, REVIEW-AREAS.md item 8):
-//! `lineage_registry::initialize`, `lineage_launch::initialize_launch` and `lineage_msg::initialize`
+//! `units_registry::initialize`, `units_launch::initialize_launch` and `units_msg::initialize`
 //! are gated on the upgrade authority read from the program's ProgramData. For each program, on a
 //! fresh state: another signer is refused with the real ProgramData; another signer is refused when
 //! it passes a ProgramData that does name it (another program's, at the wrong address); nothing is
@@ -8,8 +8,8 @@
 use anchor_lang::solana_program::bpf_loader_upgradeable;
 use anchor_lang::solana_program::instruction::Instruction;
 use anchor_lang::{system_program, InstructionData, ToAccountMetas};
-use lineage_msg as lm;
-use lineage_onchain_tests::*;
+use units_msg as lm;
+use units_onchain_tests::*;
 
 struct Fresh {
     svm: LiteSVM,
@@ -22,7 +22,7 @@ struct Fresh {
 /// Programs loaded, ProgramData of all three naming `admin`, nothing initialized.
 fn fresh() -> Fresh {
     let mut svm = fresh_svm();
-    svm.add_program_from_file(lm::ID, manifest("../target/deploy/lineage_msg.so")).expect("build lineage_msg first (cargo build-sbf)");
+    svm.add_program_from_file(lm::ID, manifest("../target/deploy/units_msg.so")).expect("build units_msg first (cargo build-sbf)");
     let admin = funded(&mut svm);
     let stranger = funded(&mut svm);
     let (line_mint, _) = create_line(&mut svm, &admin, LineKind::Classic);

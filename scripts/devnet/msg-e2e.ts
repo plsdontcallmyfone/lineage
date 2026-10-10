@@ -1,5 +1,5 @@
 #!/usr/bin/env bun
-// Onchain messages on devnet (SPEC 12.5, lineage_msg). Proves, against the deployed program:
+// Onchain messages on devnet (SPEC 12.5, units_msg). Proves, against the deployed program:
 //   1. MsgConfig is initialized with TEST caps by the upgrade authority (the Lineage deployer).
 //   2. Two launched TEST agents on one repository (whose current registry signing keys are held in
 //      ~/.config/lineage/devnet) publish their X25519 keys, post board notes (one inline,
@@ -54,12 +54,12 @@ async function main() {
   const state = loadState();
   const dep = deployer();
   const program = await rpc.getAccountInfo(MSG_PROGRAM_ID);
-  pass("lineage_msg is deployed and executable", !!program?.executable, MSG_PROGRAM_ID);
+  pass("units_msg is deployed and executable", !!program?.executable, MSG_PROGRAM_ID);
 
   // 1. MsgConfig (TEST caps), once
   let cfg = await readMsgConfig(rpc);
   if (!cfg) {
-    await send(STEP, "lineage_msg initialize (TEST caps: 20 per 60 s, 500 per day, 568-byte inline, 1 MiB blobs)", dep, [
+    await send(STEP, "units_msg initialize (TEST caps: 20 per 60 s, 500 per day, 568-byte inline, 1 MiB blobs)", dep, [
       msg.initialize({ upgradeAuthority: dep.id, args: { admin: dep.id, paused: false, ...TEST_CAPS } }),
     ]);
     cfg = await readMsgConfig(rpc);
@@ -145,7 +145,7 @@ async function main() {
   // every message transaction is logged to onchain/DEVNET.md as it lands (the fee column is what the payer spent)
   const onFee = (f: ChainFee) => {
     fees.push(f);
-    logTx(STEP, `lineage_msg ${f.what} by ${f.agent} (fee payer ${payer.id})`, { signature: f.signature, slot: 0, fee: f.lamports, logs: [] } as SendResult);
+    logTx(STEP, `units_msg ${f.what} by ${f.agent} (fee payer ${payer.id})`, { signature: f.signature, slot: 0, fee: f.lamports, logs: [] } as SendResult);
   };
   const messenger = (k: Signer, agent: string) => new ChainMessenger({ rpc, payer, key: k, agent, core: CORE, onFee, log: (m) => log(`  ${agent.slice(0, 6)} ${m}`) });
   const ma = messenger(A, AID);
@@ -156,7 +156,7 @@ async function main() {
   await ma.publishKey(ka);
   const stB = await readMsgState(rpc, BID);
   pass("B's X25519 key is published on chain (AgentMsgState)", stB?.encKey === kb.public, `${kb.public} seq ${stB?.encKeySeq}`);
-  const note = `onchain board note from ${AID.slice(0, 6)} at ${new Date().toISOString()}: lineage_msg devnet proof`;
+  const note = `onchain board note from ${AID.slice(0, 6)} at ${new Date().toISOString()}: units_msg devnet proof`;
   const longNote = `long note (blob): ${"the board carries a sha256 and size on chain; the text lives in Core's content-addressed store. ".repeat(8)}`;
   const secret = `sealed for ${BID.slice(0, 6)} only: the runtime paid the fee, ${AID.slice(0, 6)} signed. ${Date.now()}`;
   const id1 = await ma.send(`board:${L}`, note);

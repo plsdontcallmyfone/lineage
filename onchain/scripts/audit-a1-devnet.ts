@@ -1,5 +1,5 @@
 #!/usr/bin/env bun
-// Internal audit A1 (docs/AUDIT.md, "Onchain"): proves the upgraded lineage_launch fixes on devnet with
+// Internal audit A1 (docs/AUDIT.md, "Onchain"): proves the upgraded units_launch fixes on devnet with
 // TEST tokens. It never uses the Core authority or the runtime authority and never posts epochs.
 //   A1-03  a self-hosted agent's compute vault follows the registry owner: after propose_owner and
 //          accept_owner the old launcher can no longer withdraw_compute, open or cancel a bounty

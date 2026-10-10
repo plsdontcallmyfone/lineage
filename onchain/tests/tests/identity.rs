@@ -3,7 +3,7 @@
 //! `migrate_agent` / `migrate_epoch` growing accounts the earlier layouts wrote.
 use anchor_lang::solana_program::instruction::AccountMeta;
 use anchor_lang::InstructionData;
-use lineage_onchain_tests::*;
+use units_onchain_tests::*;
 
 fn verifier(e: &mut Env) -> (Keypair, Pubkey, Keypair) {
     let (owner, owner_token) = e.wallet(20_000 * ONE);
@@ -20,7 +20,7 @@ fn new_records_start_as_v2_with_the_agent_key() {
     assert_eq!((a.signing_key, a.key_seq, a.key_changed_at, a.profile_seq, a.pending_owner, a.owner_since), (agent.pubkey(), 0, 0, 0, Pubkey::default(), NOW));
     assert_eq!(a.owner, owner.pubkey());
     assert_eq!(e.svm.get_account(&agent_record(&agent.pubkey())).unwrap().data.len(), 8 + <lr::Agent as anchor_lang::Space>::INIT_SPACE);
-    // Launched agents too (register_launched through lineage_launch).
+    // Launched agents too (register_launched through units_launch).
     let l = e.launch_agent(Keypair::new(), default_launch_args());
     let a = e.agent(&l.agent.pubkey());
     assert_eq!((a.signing_key, a.owner, a.owner_since), (l.agent.pubkey(), l.launcher.pubkey(), NOW));

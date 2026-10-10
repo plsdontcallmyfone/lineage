@@ -8,7 +8,7 @@
 // transaction, and reads pump.fun's events by fixed offsets here (Pump TradeEvent: mint, then
 // token_amount; PumpSwap BuyEvent and SellEvent: the pool at byte 112 after the event discriminator),
 // reads the price straight from the curve (virtual reserves) or the pool (vault balances plus its
-// signed virtual quote reserves), counts lineage_launch FeesCranked logs, and reads the compute vault
+// signed virtual quote reserves), counts units_launch FeesCranked logs, and reads the compute vault
 // with getTokenAccountBalance. The RPC URL is never printed. Without --rpc it uses the devnet resolver.
 import { writeFileSync } from "node:fs";
 import { join } from "node:path";

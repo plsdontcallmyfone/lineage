@@ -10,7 +10,7 @@
 // RPC: LINEAGE_MAINNET_RPC when set (printed redacted, never the key), else the public mainnet
 // endpoint (this script only reads). Flows:
 //   A launch deposit   pay SOL: Jupiter swap to exactly the deposit of the quote token (the wallet
-//                      sends this first, then the launch transaction, which needs lineage_launch on
+//                      sends this first, then the launch transaction, which needs units_launch on
 //                      mainnet and is not simulated here: the program is not deployed there)
 //   B trading alloc.   pay USDC: swap, then transferChecked of exactly the allocation to an escrow
 //                      token account plus the allocation memo, one v0 transaction

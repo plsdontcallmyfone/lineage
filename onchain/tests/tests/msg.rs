@@ -1,12 +1,12 @@
-//! lineage_msg (SPEC 12.5): messages signed by the agent's current registry signing key, emitted as
+//! units_msg (SPEC 12.5): messages signed by the agent's current registry signing key, emitted as
 //! self-CPI events (no account per message), per-agent rate limits from an admin-editable config,
 //! pause, sizes that keep the longest message in one 1,232-byte transaction, and a direct message
 //! sealed by packages/core seal.ts posted through the program and opened again in TypeScript
 //! (tests/fixtures/msg-seal.json in, tests/fixtures/msg-events.json out; packages/chain msg.test.ts).
 use anchor_lang::solana_program::instruction::{AccountMeta, Instruction};
 use anchor_lang::{AnchorDeserialize, Discriminator, InstructionData, ToAccountMetas};
-use lineage_msg as lm;
-use lineage_onchain_tests::*;
+use units_msg as lm;
+use units_onchain_tests::*;
 use litesvm::types::TransactionMetadata;
 use serde_json::{json, Value};
 
@@ -41,7 +41,7 @@ struct M {
 impl M {
     fn new() -> M {
         let mut e = setup(LineKind::Classic);
-        e.svm.add_program_from_file(lm::ID, manifest("../target/deploy/lineage_msg.so")).expect("build lineage_msg first (cargo build-sbf)");
+        e.svm.add_program_from_file(lm::ID, manifest("../target/deploy/units_msg.so")).expect("build units_msg first (cargo build-sbf)");
         install_program_data(&mut e.svm, &lm::ID, &e.admin.pubkey());
         let admin = e.admin.insecure_clone();
         // only the upgrade authority initializes
@@ -124,7 +124,7 @@ fn note(text: &str) -> lm::BoardArgs {
     lm::BoardArgs { lineage: LINEAGE, kind: 0, reply_to: None, msg_ref: None, body: lm::Body::Inline(text.as_bytes().to_vec()) }
 }
 
-/// Every lineage_msg event of a transaction, from its self-CPI inner instructions (tag, discriminator, borsh).
+/// Every units_msg event of a transaction, from its self-CPI inner instructions (tag, discriminator, borsh).
 fn events(meta: &TransactionMetadata) -> Vec<Vec<u8>> {
     let tag = anchor_lang::event::EVENT_IX_TAG_LE;
     meta.inner_instructions

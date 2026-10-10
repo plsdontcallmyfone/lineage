@@ -9,7 +9,7 @@
 // $LINE does not exist on mainnet yet, so the target is config/swap.json's stand-in mint. The
 // deposit is the launch deposit's transferChecked (packages/chain launch.prepay) into a stand-in
 // compute vault: the associated token account of launchPdas.computeVault(agent) for a sample agent
-// address, created idempotently in the same transaction, because lineage_launch is not deployed on
+// address, created idempotently in the same transaction, because units_launch is not deployed on
 // mainnet (refresh_awake is left out for the same reason). --record writes the Jupiter responses
 // to packages/chain/test/fixtures/ for the unit tests.
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";

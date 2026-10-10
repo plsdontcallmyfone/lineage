@@ -19,7 +19,7 @@ const POOL2 = pumpPdas.pool(A2, LINE);
 
 const u64 = (n: bigint) => { const b = new Uint8Array(8); new DataView(b.buffer).setBigUint64(0, n, true); return b; };
 const cat = (...p: Uint8Array[]) => { const o = new Uint8Array(p.reduce((n, x) => n + x.length, 0)); let i = 0; for (const x of p) { o.set(x, i); i += x.length; } return o; };
-/** An AgentLaunch account (onchain/programs/lineage-launch/src/lib.rs) of a pump.fun launch. */
+/** An AgentLaunch account (onchain/programs/units-launch/src/lib.rs) of a pump.fun launch. */
 function agentLaunch(agent: string, mint: string, creator: string, graduated: boolean, l: { fees: bigint; toCompute: bigint }) {
   const url = new TextEncoder().encode("https://github.com/lineage-test/base58");
   const k = (a: string) => addressBytes(a);
@@ -160,7 +160,7 @@ describe("ingest", () => {
     const { db, ix } = setup();
     for (const a of [pumpPdas.bondingCurve(A1), pumpPdas.bondingCurve(A2), POOL2]) await ix.syncSource(a);
     await ix.refreshState();
-    // a crank of A2 by lineage_launch (the proof ran before our program change, so the log is added here)
+    // a crank of A2 by units_launch (the proof ran before our program change, so the log is added here)
     const last = FX.txs.find((t) => t.step === "9d")!;
     const crank = withLog(last.tx, feesCranked(AGENT2, A2, 295_621_266_363n, 206_934_886_454n, true, 206_934_886_454n));
     crank.transaction.signatures = ["CrankSig1111111111111111111111111111111111111111111111111111111111111111111111111111"];

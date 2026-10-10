@@ -161,7 +161,7 @@ export class ChainBackend implements Backend {
   private async config(fresh = false): Promise<LaunchConfig> {
     if (!this.cfg || fresh) {
       const c = await this.reader.launchConfig();
-      if (!c) throw new Error("lineage_launch is not initialized on this cluster");
+      if (!c) throw new Error("units_launch is not initialized on this cluster");
       this.cfg = c;
     }
     return this.cfg;
@@ -172,7 +172,7 @@ export class ChainBackend implements Backend {
     if (c.runtimeAuthority !== this.runtimeKey.id) throw new Error(`LaunchConfig.runtime_authority is ${c.runtimeAuthority}, not this runtime's key ${this.runtimeKey.id}`);
     const mint = await this.reader.mint(c.lineMint);
     const reg = await this.reader.registryConfig();
-    if (!reg) throw new Error("lineage_registry is not initialized on this cluster");
+    if (!reg) throw new Error("units_registry is not initialized on this cluster");
     this.epochLengthS = reg.params.epochLengthS;
     return { decimals: mint!.decimals, sleepThreshold: c.sleepThreshold, wakeThreshold: c.wakeThreshold, maxDebitPerEpoch: c.maxDebitPerEpoch && c.maxDebitPerEpoch > 0n ? c.maxDebitPerEpoch : null };
   }

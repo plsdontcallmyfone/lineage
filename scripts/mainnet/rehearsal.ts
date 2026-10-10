@@ -106,9 +106,9 @@ const DEPLOY = join(ROOT, "onchain", "target", profile.network === "mainnet" ? "
 const idKey = (name: string) =>
   profile.network === "mainnet" ? join(homedir(), ".config", "lineage", "mainnet", `${name}-program-keypair.json`) : join(ROOT, "onchain", "target", "deploy", `lineage_${name}-keypair.json`);
 const PROGRAMS = {
-  registry: { id: IDS.registry, so: "lineage_registry.so", key: idKey("registry") },
-  launch: { id: IDS.launch, so: "lineage_launch.so", key: idKey("launch") },
-  msg: { id: IDS.msg, so: "lineage_msg.so", key: idKey("msg") },
+  registry: { id: IDS.registry, so: "units_registry.so", key: idKey("registry") },
+  launch: { id: IDS.launch, so: "units_launch.so", key: idKey("launch") },
+  msg: { id: IDS.msg, so: "units_msg.so", key: idKey("msg") },
 };
 const reader = new ChainReader(fork);
 const out: Record<string, unknown> = { started: new Date().toISOString(), fork: FORK_URL, params: "scripts/mainnet/fork-params.json", profile: profile.network,
@@ -244,7 +244,7 @@ async function step1() {
   const before = await forkRent(45 + msgLen);
   const after = await forkRent((await fork.getAccountInfo(programDataAddress(fresh)))!.data.length);
   const extendFee = e0 - e1 - (after - before);
-  out.extend_10240 = { fee_lamports: extendFee.toString(), on: "a throwaway copy of lineage_msg", mainnet_rent_added: ((await mainnetRent(45 + 10240 + msgLen)) - (await mainnetRent(45 + msgLen))).toString(),
+  out.extend_10240 = { fee_lamports: extendFee.toString(), on: "a throwaway copy of units_msg", mainnet_rent_added: ((await mainnetRent(45 + 10240 + msgLen)) - (await mainnetRent(45 + msgLen))).toString(),
     per_program_mainnet_rent_added: Object.fromEntries(await Promise.all(Object.entries(PROGRAMS).map(async ([n, p]) => {
       const l = readFileSync(join(DEPLOY, p.so)).length;
       return [n, ((await mainnetRent(45 + 10240 + l)) - (await mainnetRent(45 + l))).toString()];
@@ -358,7 +358,7 @@ async function step5() {
   await viaSquads("set_launch_config (max_debit_per_epoch 500 units, pump_creator_fee_bps 0)", adminActions.launchSetConfig(ms.vault, { ...launchArgs(P, ms.vault), maxDebitPerEpoch: 500n * ONE }));
   const lc5 = (await reader.launchConfig())!;
   check("5: launch set_config applied (venue pump.fun, creator fee rate pump.fun's default)", lc5.maxDebitPerEpoch === 500n * ONE && lc5.venue === PUMP.program && lc5.pumpCreatorFeeBps === 0n);
-  await viaSquads("lineage_msg set_config (max_per_day 400)", adminActions.msgSetConfig(ms.vault, { admin: ms.vault, ...P.msg, maxPerDay: 400 }));
+  await viaSquads("units_msg set_config (max_per_day 400)", adminActions.msgSetConfig(ms.vault, { admin: ms.vault, ...P.msg, maxPerDay: 400 }));
   await viaSquads("registry pause", adminActions.registryPause(ms.vault, true));
   check("5: registry paused by the vault", (await reader.registryConfig())!.paused === true);
   await viaSquads("registry unpause", adminActions.registryPause(ms.vault, false));
@@ -391,10 +391,10 @@ async function step6() {
   cli(["program", "write-buffer", so, "--buffer", bufKp, "--buffer-authority", join(KEYS, "deployer.json"), "--fee-payer", join(KEYS, "deployer.json")]);
   cli(["program", "set-buffer-authority", buffer, "--buffer-authority", join(KEYS, "deployer.json"), "--new-buffer-authority", ms.vault]);
   check("6: buffer authority handed to the vault", decodeLoaderAuthority((await fork.getAccountInfo(buffer))!.data) === ms.vault);
-  await viaSquads("upgrade lineage_msg from buffer", adminActions.upgradeProgram(ms.vault, { program: PROGRAMS.msg.id, buffer, spill: dep.id }));
+  await viaSquads("upgrade units_msg from buffer", adminActions.upgradeProgram(ms.vault, { program: PROGRAMS.msg.id, buffer, spill: dep.id }));
   const local = readFileSync(so);
   const now = (await programBytes(fork, PROGRAMS.msg.id)).subarray(0, local.length);
-  check("6: lineage_msg upgraded by the multisig: code equals the build, authority still the vault, buffer closed",
+  check("6: units_msg upgraded by the multisig: code equals the build, authority still the vault, buffer closed",
     sha(now) === sha(local) && decodeLoaderAuthority((await fork.getAccountInfo(programDataAddress(PROGRAMS.msg.id)))!.data) === ms.vault &&
     (await fork.getAccountInfo(buffer)) === null);
   await checkHandover(fork, (n, ok, d) => check(`6: handover: ${n}`, ok, d), ms.vault, P);

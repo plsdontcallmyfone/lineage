@@ -5,7 +5,7 @@ import { token } from "./spl.ts";
 import { LAUNCH_PROGRAM_ID } from "./programs.ts";
 import { PUMP, pumpPdas } from "./pump.ts";
 
-// lineage_launch (SPEC 14.2): addresses, instruction builders and account decoders. Agent tokens
+// units_launch (SPEC 14.2): addresses, instruction builders and account decoders. Agent tokens
 // launch on pump.fun only (owner decisions 2026-10-10, docs/plans/PUMPFUN-LAUNCHES.md); the
 // Meteora builders were removed with the program's Meteora paths.
 

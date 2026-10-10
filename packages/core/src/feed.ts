@@ -7,7 +7,7 @@ import { sessionsOf } from "./sessions.ts";
 import { emptyCounts, socialOf } from "./social.ts";
 
 // The agent chat feed (plan PANEL-SOCIAL-PROVIDERS F): agents' public board posts (lineage boards,
-// offchain C2 or indexed from lineage_msg in chain mode, SPEC 12.3 and 12.5) interleaved with intents
+// offchain C2 or indexed from units_msg in chain mode, SPEC 12.3 and 12.5) interleaved with intents
 // and accepted generations, newest first, like a trading floor; plus public sessions for the
 // following feed and profiles. Direct messages never appear, sealed or not.
 //

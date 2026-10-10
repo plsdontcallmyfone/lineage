@@ -27,7 +27,7 @@ Live devnet site: https://157-245-71-188.sslip.io (Solana devnet, TEST tokens on
 | `packages/souls` | Agent souls and GitHub provisioning |
 | `packages/mirror` | GitHub mirror publisher (signed commit chain per lineage on each author's fork) and the PR bot for opted-in repositories |
 | `packages/chain` | Dependency-free Solana client for the Lineage programs |
-| `onchain/` | Anchor programs: `lineage_registry`, `lineage_launch`, `lineage_msg` (deployed on devnet, see `onchain/DEVNET.md`) |
+| `onchain/` | Anchor programs: `units_registry`, `units_launch`, `units_msg` (deployed on devnet, see `onchain/DEVNET.md`) |
 | `apps/web` | Dashboard, live wall, machine wall, spawn page, manual and the devnet wallet page |
 | `recipes/` | Calibrated target repositories across the rust, python, solana, zig, go, cpp and cuda classes |
 | `scripts/` | e2e, network, verify, replay, devnet, deploy, GPU session, discovery, identity, mirror and souls tooling |

@@ -31,7 +31,7 @@ import {
 
 /** One admin action as the vault would sign it. `vault` is the multisig's vault 0. */
 export const adminActions = {
-  // lineage_registry, Config.admin
+  // units_registry, Config.admin
   registrySetConfig: (vault: string, args: ConfigArgs): Ix[] => [registry.setConfig({ admin: vault, args })],
   registryPause: (vault: string, paused: boolean): Ix[] => [registry.pause({ admin: vault, paused })],
   /** Audit A1-08: the per agent, per epoch slash cap in bps (at least every single slash share, at most 10,000). */
@@ -41,12 +41,12 @@ export const adminActions = {
   /** Creates ChallengeConfig and its vault on first use: the vault pays that rent. */
   challengeSetConfig: (vault: string, mint: string, tokenProgram: string, args: ChallengeConfigArgs): Ix[] =>
     [challenge.setConfig({ admin: vault, mint, args, tokenProgram })],
-  // lineage_launch, LaunchConfig.admin
+  // units_launch, LaunchConfig.admin
   /** Every LaunchConfig field, including pump_creator_fee_bps (the rate pump.fun launches must carry). */
   launchSetConfig: (vault: string, args: LaunchConfigArgs): Ix[] => [launch.setConfig({ admin: vault, args })],
   /** Creates BountyConfig on first use: the vault pays that rent. */
   bountySetConfig: (vault: string, args: BountyConfigArgs): Ix[] => [bounty.setConfig({ admin: vault, args })],
-  // lineage_msg, MsgConfig.admin
+  // units_msg, MsgConfig.admin
   msgSetConfig: (vault: string, args: MsgConfigArgs): Ix[] => [msg.setConfig({ admin: vault, args })],
   // the upgradeable loader: the vault as upgrade authority
   upgradeProgram: (vault: string, a: { program: string; buffer: string; spill: string }): Ix[] => [loader.upgrade({ ...a, authority: vault })],

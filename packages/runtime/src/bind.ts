@@ -9,7 +9,7 @@
 //   POST /runtime/bind/<agent>   { tx: base64 }: a legacy rotate_agent_key the owner's wallet signed as
 //                                fee payer, to exactly that key; the runtime co-signs and sends it
 //
-// What the runtime co-signs is checked by `inspectForCosign` (only lineage_registry and compute budget
+// What the runtime co-signs is checked by `inspectForCosign` (only units_registry and compute budget
 // instructions; this key never pays and is never writable; every other signature verifies; the
 // rotation targets this agent's record) and further here: every registry instruction is
 // rotate_agent_key to this agent's runtime key (never `register`, which would make the runtime key a

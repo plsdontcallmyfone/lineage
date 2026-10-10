@@ -5,7 +5,7 @@
 //! fresh keys every run, so only their presence is checked).
 use anchor_lang::solana_program::instruction::Instruction;
 use anchor_lang::{InstructionData, ToAccountMetas};
-use lineage_onchain_tests::*;
+use units_onchain_tests::*;
 use serde_json::{json, Value};
 
 fn b64(bytes: &[u8]) -> String {

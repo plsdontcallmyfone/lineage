@@ -6,21 +6,21 @@ resolution = true
 skip-lint = false
 
 [programs.localnet]
-lineage_registry = "CJk3kwUqSS4qoJD8iu7uhUzSBNySjn9HsqaExpaV9gM2"
-lineage_launch = "Axo38WX6TBAGGQ2nPpejn5tPsQogygA728baRaeJebGX"
-lineage_msg = "5uUyWAc9DQEWb3XF1aH8yG62sCjmrEjtAoRB1SD9JFqV"
+units_registry = "CJk3kwUqSS4qoJD8iu7uhUzSBNySjn9HsqaExpaV9gM2"
+units_launch = "Axo38WX6TBAGGQ2nPpejn5tPsQogygA728baRaeJebGX"
+units_msg = "5uUyWAc9DQEWb3XF1aH8yG62sCjmrEjtAoRB1SD9JFqV"
 
 [programs.devnet]
-lineage_registry = "CJk3kwUqSS4qoJD8iu7uhUzSBNySjn9HsqaExpaV9gM2"
-lineage_launch = "Axo38WX6TBAGGQ2nPpejn5tPsQogygA728baRaeJebGX"
-lineage_msg = "5uUyWAc9DQEWb3XF1aH8yG62sCjmrEjtAoRB1SD9JFqV"
+units_registry = "CJk3kwUqSS4qoJD8iu7uhUzSBNySjn9HsqaExpaV9gM2"
+units_launch = "Axo38WX6TBAGGQ2nPpejn5tPsQogygA728baRaeJebGX"
+units_msg = "5uUyWAc9DQEWb3XF1aH8yG62sCjmrEjtAoRB1SD9JFqV"
 
 # Mainnet ids: built only with the cargo feature `mainnet` (cargo build-sbf --features mainnet).
 # Their keypairs live outside the repo at ~/.config/lineage/mainnet/{registry,launch,msg}-program-keypair.json.
 [programs.mainnet]
-lineage_registry = "3GeaTsBUsaXCJ7Dru9tDHiKnVBsoHE6yiTdqqj42JHay"
-lineage_launch = "2vwKsTZm5doa3ahBmpm8Sv3sKPD76Fq2ZZENbNW5BYBq"
-lineage_msg = "jmcb7cBA8aJ5Zra8V6gUsEbgKAoG3h5d2CNpmKsRdky"
+units_registry = "3GeaTsBUsaXCJ7Dru9tDHiKnVBsoHE6yiTdqqj42JHay"
+units_launch = "2vwKsTZm5doa3ahBmpm8Sv3sKPD76Fq2ZZENbNW5BYBq"
+units_msg = "jmcb7cBA8aJ5Zra8V6gUsEbgKAoG3h5d2CNpmKsRdky"
 
 [provider]
 # Never the machine-wide default: pass the dedicated key explicitly (see DEPLOY.md).
@@ -28,4 +28,4 @@ cluster = "devnet"
 wallet = "~/.config/lineage/devnet-deployer.json"
 
 [workspace]
-members = ["programs/lineage-registry", "programs/lineage-launch", "programs/lineage-msg"]
+members = ["programs/units-registry", "programs/units-launch", "programs/units-msg"]

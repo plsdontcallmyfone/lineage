@@ -33,7 +33,7 @@ const ixJson = (name: string, ix: Ix) => ({ name, program: ix.programId, keys: i
 const h32 = (b: number) => bytesToHex(new Uint8Array(32).fill(b));
 const b58of = (b: number) => base58Encode(new Uint8Array(32).fill(b));
 
-describe("lineage_msg client", () => {
+describe("units_msg client", () => {
   test("instruction encodings equal the program's (msg-events.json)", () => {
     const [payer, signer, agent, rec, admin] = [k(1), k(2), k(3), k(4), k(5)];
     const args = { admin, paused: true, windowS: 60, maxPerWindow: 20, maxPerDay: 500, maxInline: 568, maxBlob: 1 << 20 };

@@ -1,4 +1,4 @@
-//! `lineage_registry` (SPEC 14.1): agent identities, burns, bonds, slashing, the treasury split
+//! `units_registry` (SPEC 14.1): agent identities, burns, bonds, slashing, the treasury split
 //! and epoch payouts by Merkle claim. Token-interface based: `$LINE` may be an SPL Token or a
 //! Token-2022 mint.
 use anchor_lang::prelude::*;
@@ -11,8 +11,8 @@ pub mod leaf;
 pub use challenge::*;
 
 // The program id selects by network at build time: devnet (the default build) or, with the cargo
-// feature `mainnet`, the fresh mainnet id (SPEC 14, "Program ids"). `lineage_launch` and
-// `lineage_msg` forward the feature, so all three agree.
+// feature `mainnet`, the fresh mainnet id (SPEC 14, "Program ids"). `units_launch` and
+// `units_msg` forward the feature, so all three agree.
 #[cfg(not(feature = "mainnet"))]
 declare_id!("CJk3kwUqSS4qoJD8iu7uhUzSBNySjn9HsqaExpaV9gM2");
 #[cfg(feature = "mainnet")]
@@ -29,9 +29,9 @@ pub const AGENT_SEED: &[u8] = b"agent";
 pub const EPOCH_SEED: &[u8] = b"epoch";
 pub const CLAIM_SEED: &[u8] = b"claim";
 pub const SLASH_SEED: &[u8] = b"slash";
-/// Seeds of `lineage_launch`'s signer PDA; `register_launched` requires it as a signer.
+/// Seeds of `units_launch`'s signer PDA; `register_launched` requires it as a signer.
 pub const LAUNCH_AUTHORITY_SEED: &[u8] = b"authority";
-/// Seeds of `lineage_launch`'s compute vault for an agent: ["compute", agent].
+/// Seeds of `units_launch`'s compute vault for an agent: ["compute", agent].
 pub const COMPUTE_SEED: &[u8] = b"compute";
 
 pub const BPS: u64 = 10_000;
@@ -44,7 +44,7 @@ pub const OFFENCE_ABANDON: u8 = 3;
 pub const MAX_PROOF: usize = 32;
 
 #[program]
-pub mod lineage_registry {
+pub mod units_registry {
     use super::*;
 
     /// Once, by the program's upgrade authority (checked through ProgramData, so nobody can
@@ -188,7 +188,7 @@ pub mod lineage_registry {
         Ok(())
     }
 
-    /// Only through `lineage_launch::launch_agent`: its authority PDA must sign.
+    /// Only through `units_launch::launch_agent`: its authority PDA must sign.
     pub fn register_launched(ctx: Context<RegisterLaunched>, args: RegisterLaunchedArgs) -> Result<()> {
         let c = &ctx.accounts.config;
         require!(!c.paused, RegistryError::Paused);
@@ -1001,7 +1001,7 @@ pub struct Register<'info> {
 pub struct RegisterLaunched<'info> {
     #[account(seeds = [CONFIG_SEED], bump = config.bump)]
     pub config: Box<Account<'info, Config>>,
-    /// `lineage_launch`'s authority PDA (checked in the handler against `config.launch_program`).
+    /// `units_launch`'s authority PDA (checked in the handler against `config.launch_program`).
     pub launch_authority: Signer<'info>,
     #[account(mut)]
     pub payer: Signer<'info>,
@@ -1341,7 +1341,7 @@ pub enum RegistryError {
     NoUnbond,
     #[msg("unbond cooldown has not passed")]
     Cooldown,
-    #[msg("register_launched must be signed by lineage_launch's authority")]
+    #[msg("register_launched must be signed by units_launch's authority")]
     NotLaunchProgram,
     #[msg("epochs must be posted in increasing order")]
     EpochOrder,

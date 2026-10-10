@@ -1,8 +1,8 @@
-//! lineage_registry on LiteSVM: Merkle leaves equal to the TypeScript protocol's, register (burn),
+//! units_registry on LiteSVM: Merkle leaves equal to the TypeScript protocol's, register (burn),
 //! bond, unbond cooldown, slash and strikes, split, epoch post and claim with a root built by
 //! `@lineage/protocol`, double-claim and wrong-signer refusals, pause, set_config.
 use anchor_lang::InstructionData;
-use lineage_onchain_tests::*;
+use units_onchain_tests::*;
 
 fn fixture_leaf(f: &serde_json::Value, i: usize) -> (Pubkey, String, u64, [u8; 32], Vec<[u8; 32]>) {
     let l = &f["payout"]["leaves"][i];

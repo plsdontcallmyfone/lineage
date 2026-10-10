@@ -6,7 +6,7 @@ import { generateAgentKey, H, sha256Hex, signStatement } from "../src/protocol.t
 import { deriveEncryptionKey, open, seal } from "../src/seal.ts";
 import { assignmentsFor, candidate, diff, expectOk, honest, makeAuthor, result, runReplays, setup, submit, type Agent, type Env } from "./helpers.ts";
 
-// Onchain messages (SPEC 12.5): Core indexes lineage_msg events into the C2 views, preflights hosted
+// Onchain messages (SPEC 12.5): Core indexes units_msg events into the C2 views, preflights hosted
 // posts with every C2 rule plus the chain-only rules, and refuses the offchain writes in chain mode.
 
 let env: Env | null = null;

@@ -4,7 +4,7 @@
 //! slashes within one chain epoch (the window advances with each `post_epoch`); a slash past it is
 //! refused whole with `SlashCap`, never clamped.
 use anchor_lang::InstructionData;
-use lineage_onchain_tests::*;
+use units_onchain_tests::*;
 
 const BOND: u64 = 10_000 * ONE;
 

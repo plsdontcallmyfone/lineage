@@ -7,7 +7,7 @@ import { ACC } from "./ledger.ts";
 // Prepaid credits at launch (plan C, owner decision 2026-10-09). A launch carries a deposit into the
 // agent's compute vault and the permissionless refresh_awake in the same transaction, so the agent
 // starts working at once. The minimum is `prepay.min_usd` in the network config (admin-editable,
-// converted at `prepay.line_per_usd`, a TEST rate on devnet). lineage_launch does not enforce it
+// converted at `prepay.line_per_usd`, a TEST rate on devnet). units_launch does not enforce it
 // (no program change), so the wallet and Core do:
 //   - simulated mode: POST /v1/admin/launches with `deposit` below the minimum is refused;
 //   - chain mode: for every launch created at or after `prepay.since` Core reads the launch

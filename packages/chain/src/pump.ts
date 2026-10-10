@@ -137,7 +137,7 @@ export interface BondingCurve {
   postCompleteBaseOut: bigint;
   postCompleteQuoteIn: bigint;
 }
-/** Byte offsets (with the 8-byte discriminator) lineage_launch reads; checked against the fork's accounts. */
+/** Byte offsets (with the 8-byte discriminator) units_launch reads; checked against the fork's accounts. */
 export const BONDING_CURVE_OFFSETS = {
   virtualTokenReserves: 8, virtualQuoteReserves: 16, realTokenReserves: 24, realQuoteReserves: 32, tokenTotalSupply: 40, complete: 48,
   creator: 49, isMayhemMode: 81, isCashbackCoin: 82, quoteMint: 83, creatorFeeBps: 115, canEditCreatorFee: 123, isHolderReward: 124,

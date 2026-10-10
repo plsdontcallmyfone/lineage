@@ -1,0 +1,30 @@
+[package]
+name = "units-launch"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[lib]
+crate-type = ["cdylib", "lib"]
+name = "units_launch"
+
+[features]
+default = []
+no-entrypoint = []
+no-idl = []
+no-log-ix-name = []
+cpi = ["no-entrypoint"]
+idl-build = ["anchor-lang/idl-build", "anchor-spl/idl-build", "units-registry/idl-build"]
+anchor-debug = []
+custom-heap = []
+custom-panic = []
+# Build for mainnet: the mainnet program ids (declare_id!). Devnet stays the default.
+mainnet = ["units-registry/mainnet"]
+
+[dependencies]
+anchor-lang = { version = "=0.31.1", features = ["init-if-needed"] }
+anchor-spl = { version = "=0.31.1", default-features = false, features = ["token", "token_2022", "token_2022_extensions", "associated_token"] }
+units-registry = { path = "../units-registry", features = ["cpi"] }
+
+[lints.rust]
+unexpected_cfgs = { level = "allow" }

@@ -1,5 +1,5 @@
 // pump.ts against bytes mainnet's pump.fun programs wrote on the mainnet fork (fixtures/pump-fork.json,
-// recorded from scripts/mainnet/pump-fork-proof.ts): account decoders, the offsets lineage_launch
+// recorded from scripts/mainnet/pump-fork-proof.ts): account decoders, the offsets units_launch
 // reads, event decoding of the self-CPI events, fee schedules, PDAs and the quote math.
 import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
@@ -18,7 +18,7 @@ describe("pump.fun accounts", () => {
     expect([g.tokenTotalSupply, g.initialRealTokenReserves, g.initialVirtualTokenReserves]).toEqual([1_000_000_000_000_000n, 793_100_000_000_000n, 1_073_000_000_000_000n]);
     expect(g.buybackFeeRecipients).toEqual([...c.PUMP.buybackRecipients]);
   });
-  test("BondingCurve: an agent coin quoted in $LINE with our creator PDA, depth 1, at the offsets lineage_launch reads", () => {
+  test("BondingCurve: an agent coin quoted in $LINE with our creator PDA, depth 1, at the offsets units_launch reads", () => {
     const d = b64(fx.accounts.a1_curve);
     const k = c.decodeBondingCurve(d);
     expect([k.quoteMint, k.creator, k.depth, k.isMayhemMode, k.isCashbackCoin, k.isHolderReward, k.creatorFeeBps]).toEqual([line, fx.creator_pdas.a1, 1, false, false, false, 0n]);

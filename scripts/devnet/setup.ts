@@ -4,9 +4,9 @@
 //   a  TEST $LINE as a real pump.fun coin (create_v2 paired with SOL, never mayhem; owner decisions
 //      2026-10-10), the supply holder (the deployer) buying the tLINE the steps need on its curve
 //      (nothing can be minted: pump.fun revokes the mint authority)
-//   b  lineage_registry::initialize with config/network.json params (paramsFromNetworkJson)
+//   b  units_registry::initialize with config/network.json params (paramsFromNetworkJson)
 //   c  the frozen launch lookup table (launchTableAddresses: pump.fun's fixed accounts, $LINE's quote accounts, ours)
-//   d  lineage_launch::initialize_launch (pump_creator_fee_bps 0: pump.fun's default)
+//   d  units_launch::initialize_launch (pump_creator_fee_bps 0: pump.fun's default)
 //   e  an agent launch on pump.fun targeting https://github.com/karpathy/minbpe (create_v2 +
 //      register_pump_launch in one transaction), trades on its curve from a test trader, the fee
 //      crank (pump.fun's sweep + collect, then crank_pump_fees) with the exact split verified against
@@ -15,11 +15,11 @@
 //   g  Agent v2 and Epoch.record_root (identity plan I1, I2): every Agent record and Epoch account an
 //      earlier registry layout wrote is grown in place (migrate_agent, migrate_epoch; the deployer
 //      pays the added rent) and read back
-//   h  bounties (plan C6): lineage_launch's BountyConfig set with TEST values (set_bounty_config,
+//   h  bounties (plan C6): units_launch's BountyConfig set with TEST values (set_bounty_config,
 //      launch admin) and read back
 //   i  a second TEST agent, hosted, on the same repository, whose compute vault funds devnet bounties
 //      (100 tLINE sent to its vault by transfer); the runtime authority opens its bounties
-//   m  lineage_msg's MsgConfig with TEST caps (msg-e2e.ts's values)
+//   m  units_msg's MsgConfig with TEST caps (msg-e2e.ts's values)
 // Devnet v2 (2026-10-10, fresh deployment bound to the pump.fun tLINE): run with --only a,b,c,d,h,m;
 // e, f and i are the original wiring proofs (a test launch, a test verifier, a test epoch 0 that would
 // anchor the registry's epoch numbering at 0 instead of Core's next epoch), not part of the site's setup.
@@ -147,7 +147,7 @@ async function stepA() {
 async function stepB() {
   let c = await reader.registryConfig();
   if (!c) {
-    await send("b", "lineage_registry::initialize (admin = deployer, Core authority, params from config/network.json)", dep, [
+    await send("b", "units_registry::initialize (admin = deployer, Core authority, params from config/network.json)", dep, [
       registry.initialize({
         upgradeAuthority: dep.id,
         mint: lineMint.id,
@@ -158,14 +158,14 @@ async function stepB() {
     c = await reader.registryConfig();
   } else log("b: registry config exists, skipping initialize");
   if (c && c.maxRebatePerEpoch === null) {
-    await send("b", `lineage_registry::migrate_config (grow Config to the review-fix layout, max_rebate_per_epoch ${MAX_REBATE_PER_EPOCH})`, dep, [
+    await send("b", `units_registry::migrate_config (grow Config to the review-fix layout, max_rebate_per_epoch ${MAX_REBATE_PER_EPOCH})`, dep, [
       registry.migrateConfig({ admin: dep.id, maxRebatePerEpoch: MAX_REBATE_PER_EPOCH }),
     ]);
     c = await reader.registryConfig();
   }
   const same = (a: unknown, b: unknown) => JSON.stringify(a, (_, v) => (typeof v === "bigint" ? v.toString() : v)) === JSON.stringify(b, (_, v) => (typeof v === "bigint" ? v.toString() : v));
   if (c && (!same(c.params, params) || c.maxRebatePerEpoch !== MAX_REBATE_PER_EPOCH)) {
-    await send("b", "lineage_registry::set_config (params: epoch_length_s 300 so unbond_cooldown_s 600 meets the 2-epoch floor; rebate cap)", dep, [
+    await send("b", "units_registry::set_config (params: epoch_length_s 300 so unbond_cooldown_s 600 meets the 2-epoch floor; rebate cap)", dep, [
       registry.setConfig({ admin: dep.id, args: { admin: dep.id, coreAuthority: core.id, launchProgram: state.launch_program, params, maxRebatePerEpoch: MAX_REBATE_PER_EPOCH } }),
     ]);
     c = await reader.registryConfig();
@@ -210,7 +210,7 @@ async function stepD() {
   const wake = (BigInt(net.wake_threshold) * ONE) / 10n ** BigInt(net.token_decimals);
   if (!lc) {
     await send("d", `create the compute sink ${computeSink} (runtime authority's tLINE ATA)`, dep, [token.createAtaIdempotent(dep.id, runtime.id, lineMint.id, T22)]);
-    await send("d", "lineage_launch::initialize_launch (admin = deployer, runtime authority, 7000/3000 split, sleep/wake from network.json)", dep, [
+    await send("d", "units_launch::initialize_launch (admin = deployer, runtime authority, 7000/3000 split, sleep/wake from network.json)", dep, [
       launch.initialize({
         upgradeAuthority: dep.id,
         lineMint: lineMint.id,
@@ -225,7 +225,7 @@ async function stepD() {
     lc = await reader.launchConfig();
   } else log("d: launch config exists, skipping");
   if (lc && lc.maxDebitPerEpoch === null) {
-    await send("d", `lineage_launch::migrate_launch_config (grow LaunchConfig to the review-fix layout, max_debit_per_epoch ${MAX_DEBIT_PER_EPOCH})`, dep, [
+    await send("d", `units_launch::migrate_launch_config (grow LaunchConfig to the review-fix layout, max_debit_per_epoch ${MAX_DEBIT_PER_EPOCH})`, dep, [
       launch.migrateConfig({ admin: dep.id, maxDebitPerEpoch: MAX_DEBIT_PER_EPOCH }),
     ]);
     lc = await reader.launchConfig();
@@ -428,12 +428,12 @@ async function stepG() {
     }), `${eAfter.length} epochs, ${epochs.filter((x) => x.version === 1).length} migrated now`);
 }
 
-// ------------------------------------------------------------------ m: lineage_msg config
+// ------------------------------------------------------------------ m: units_msg config
 const MSG_TEST_CAPS = { windowS: 60, maxPerWindow: 20, maxPerDay: 500, maxInline: 568, maxBlob: 1 << 20 };
 async function stepM() {
   const cur = await readMsgConfig(rpc);
   if (!cur)
-    await send("m", "lineage_msg initialize (TEST caps: 20 per 60 s, 500 per day, 568-byte inline, 1 MiB blobs)", dep, [
+    await send("m", "units_msg initialize (TEST caps: 20 per 60 s, 500 per day, 568-byte inline, 1 MiB blobs)", dep, [
       msg.initialize({ upgradeAuthority: dep.id, args: { admin: dep.id, paused: false, ...MSG_TEST_CAPS } }),
     ]);
   else log("m: MsgConfig exists, skipping");

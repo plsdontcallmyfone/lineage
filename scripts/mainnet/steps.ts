@@ -175,7 +175,7 @@ export async function initializeAll(rpc: Rpc, send: Send, check: Check, deployer
     check(`${name}: upgrade authority is the deployer (initialize needs it) or the registry is already initialized`, a === deployer.id || (await reader.registryConfig()) !== null, `${a}`);
   }
   if (!(await reader.registryConfig()))
-    await send("lineage_registry::initialize (admin = vault)", deployer, [registry.initialize({ upgradeAuthority: deployer.id, mint: p.line_mint, tokenProgram: T, args: registryArgs(p, vault) })]);
+    await send("units_registry::initialize (admin = vault)", deployer, [registry.initialize({ upgradeAuthority: deployer.id, mint: p.line_mint, tokenProgram: T, args: registryArgs(p, vault) })]);
   const c = (await reader.registryConfig())!;
   check("registry: admin = vault, Core authority, mint", c.admin === vault && c.coreAuthority === p.core_authority && c.mint === p.line_mint && c.maxRebatePerEpoch === p.max_rebate_per_epoch);
   const lineCurve = await rpc.getAccountInfo(pumpPdas.bondingCurve(p.line_mint));
@@ -185,13 +185,13 @@ export async function initializeAll(rpc: Rpc, send: Send, check: Check, deployer
   if (!(await rpc.getAccountInfo(computeSink(p, vault))))
     await send("compute sink: the vault's $LINE token account", deployer, [token.createAtaIdempotent(deployer.id, vault, p.line_mint, T)]);
   if (!(await reader.launchConfig()))
-    await send("lineage_launch::initialize_launch (admin = vault, sink = vault's account)", deployer, [
+    await send("units_launch::initialize_launch (admin = vault, sink = vault's account)", deployer, [
       launch.initialize({ upgradeAuthority: deployer.id, lineMint: p.line_mint, lineTokenProgram: T, args: launchArgs(p, vault) })]);
   const lc = (await reader.launchConfig())!;
   check("launch: admin = vault, sink = vault's account, runtime authority, debit cap", lc.admin === vault && lc.computeSink === computeSink(p, vault) &&
     lc.runtimeAuthority === p.runtime_authority && lc.maxDebitPerEpoch === p.max_debit_per_epoch && lc.venue === PUMP.program && lc.pumpCreatorFeeBps === p.pump_creator_fee_bps);
   if (!(await rpc.getAccountInfo(msgPdas.config())))
-    await send("lineage_msg::initialize (admin = vault)", deployer, [msg.initialize({ upgradeAuthority: deployer.id, args: { admin: vault, ...p.msg } })]);
+    await send("units_msg::initialize (admin = vault)", deployer, [msg.initialize({ upgradeAuthority: deployer.id, args: { admin: vault, ...p.msg } })]);
   const mc = await readMsgConfig(rpc);
   check("messages: admin = vault", mc?.admin === vault, `${mc?.admin}`);
   const want = launchTableAddresses({ lineMint: p.line_mint, lineTokenProgram: T, linePool: p.line_pool });

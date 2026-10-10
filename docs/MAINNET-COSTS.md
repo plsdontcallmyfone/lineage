@@ -8,10 +8,10 @@ a fork airdrop, every other key a throwaway, and the three mainnet program id ke
 transaction, its signature on the fork, its accounts and their sizes, is
 `scripts/mainnet/REHEARSAL-LAST.json` (outcome PASS, 102 of 102 checks, 85 transactions measured, plus
 the deploy transactions summed per program).
-Builds (`onchain/target/mainnet`, the hashes in docs/audit/BUILD-AND-TEST.md): `lineage_registry.so`
-732,472 bytes (`ea000f21...ecb6`) at `3GeaTsBUsaXCJ7Dru9tDHiKnVBsoHE6yiTdqqj42JHay`, `lineage_launch.so`
+Builds (`onchain/target/mainnet`, the hashes in docs/audit/BUILD-AND-TEST.md): `units_registry.so`
+732,472 bytes (`ea000f21...ecb6`) at `3GeaTsBUsaXCJ7Dru9tDHiKnVBsoHE6yiTdqqj42JHay`, `units_launch.so`
 685,240 bytes (`b40c047b...349d`, the pump.fun build)
-at `2vwKsTZm5doa3ahBmpm8Sv3sKPD76Fq2ZZENbNW5BYBq`, `lineage_msg.so` 342,600 bytes (`f633adc2...287f`)
+at `2vwKsTZm5doa3ahBmpm8Sv3sKPD76Fq2ZZENbNW5BYBq`, `units_msg.so` 342,600 bytes (`f633adc2...287f`)
 at `jmcb7cBA8aJ5Zra8V6gUsEbgKAoG3h5d2CNpmKsRdky`. Step 0 checks each build embeds the mainnet ids
 only and each id keypair is its id.
 
@@ -56,7 +56,7 @@ only and each id keypair is its id.
 | **Everything before the first launch** | | **8.991183920** spent, **10.690668280** held at the peak |
 
 The deployer holding 10.690668280 SOL before the first deploy covers the initialization afterwards
-(1.734382440 is left after the deploys). The pump.fun build of `lineage_launch` is 59,976 bytes smaller
+(1.734382440 is left after the deploys). The pump.fun build of `units_launch` is 59,976 bytes smaller
 than the Meteora build (745,216), so it locks 0.304678080 less ProgramData rent; the run before the
 change measured 9.261258920 spent and 11.303959440 at the peak. Priority fees are not included; the owner sets them (TBA).
 The earlier run on the devnet-id builds of commit `d9161de` (723,776, 744,448 and 342,200 bytes)
@@ -67,9 +67,9 @@ rent, pay 0.000045000 more in fees (9 more write transactions) and raise the pea
 
 | Program | `.so` bytes | ProgramData bytes | ProgramData rent | Program account | Buffer rent (refunded) | Transactions | Fees | Locked after | Spent | Peak during |
 |---|---|---|---|---|---|---|---|---|---|---|
-| lineage_registry | 732,472 | 732,517 | 3.721836600 | 0.000833120 | 3.721795960 | 726 | 0.003640000 | 3.722669720 | 3.726309720 | 7.448105680 |
-| lineage_launch | 685,240 | 685,285 | 3.481898040 | 0.000833120 | 3.481857400 | 680 | 0.003410000 | 3.482731160 | 3.486141160 | 6.967998560 |
-| lineage_msg | 342,600 | 342,645 | 1.741286840 | 0.000833120 | 1.741246200 | 341 | 0.001715000 | 1.742119960 | 1.743834960 | 3.485081160 |
+| units_registry | 732,472 | 732,517 | 3.721836600 | 0.000833120 | 3.721795960 | 726 | 0.003640000 | 3.722669720 | 3.726309720 | 7.448105680 |
+| units_launch | 685,240 | 685,285 | 3.481898040 | 0.000833120 | 3.481857400 | 680 | 0.003410000 | 3.482731160 | 3.486141160 | 6.967998560 |
+| units_msg | 342,600 | 342,645 | 1.741286840 | 0.000833120 | 1.741246200 | 341 | 0.001715000 | 1.742119960 | 1.743834960 | 3.485081160 |
 
 Each deploy's last transaction carries two signatures (the deployer and the program id keypair), so
 fees are one signature more than 5,000 x transactions. The rent figures equal the ones read with
@@ -100,10 +100,10 @@ multisig proposal (section 3). The headroom choice is the owner's (TBA).
 | Transaction | Accounts created (bytes) | Compute units | SOL |
 |---|---|---|---|
 | Squads `multisig_create_v2`, 2 of 3, time lock, autonomous (mainnet creation fee read 2026-10-10: 0 lamports) | multisig (231) | 22,630 | 0.001833720 |
-| `lineage_registry::initialize` (admin = vault; sets the default slash cap) | Config (287, two bytes more for the A1-08 cap), five token vaults (165 each) | 114,786 | 0.009555400 |
+| `units_registry::initialize` (admin = vault; sets the default slash cap) | Config (287, two bytes more for the A1-08 cap), five token vaults (165 each) | 114,786 | 0.009555400 |
 | Compute sink: the vault's `$LINE` token account | token account (170) | 18,717 | 0.001518840 |
-| `lineage_launch::initialize_launch` (admin = vault; checks `$LINE` is a pump.fun coin paired with SOL or USDC, not mayhem) | LaunchConfig (319) | 27,969 | 0.002275760 |
-| `lineage_msg::initialize` (admin = vault) | MsgConfig (58) | 20,204 | 0.000949880 |
+| `units_launch::initialize_launch` (admin = vault; checks `$LINE` is a pump.fun coin paired with SOL or USDC, not mayhem) | LaunchConfig (319) | 27,969 | 0.002275760 |
+| `units_msg::initialize` (admin = vault) | MsgConfig (58) | 20,204 | 0.000949880 |
 | Launch lookup table, create + extend (21 addresses: ours and pump.fun's fixed and `$LINE` quote accounts) | table (728) | 22,450 | 0.004353480 |
 | Launch lookup table, freeze | | 1,517 | 0.000005000 |
 | `set-upgrade-authority` x 3 | | | 0.000015000 |
@@ -113,7 +113,7 @@ There is no DBC config any more (0.005984080 in the Meteora run). Once `$LINE` h
 PumpSwap a launch also names its pool and two vaults: a second table with those 3 more addresses
 (24, 824 bytes) cost 0.004841160 on the fork.
 
-Compute units differ from the run at the devnet ids (for example `lineage_registry::initialize`
+Compute units differ from the run at the devnet ids (for example `units_registry::initialize`
 125,141 there): PDA bump searches depend on the program id.
 
 Paid by the vault inside its first two proposals: BountyConfig (76 bytes) 0.001036320, ChallengeConfig

@@ -9,10 +9,10 @@ import { DEVNET_PUBLIC_PROFILE, publicProfile, selectProfile } from "../src/prof
 const anchorToml = readFileSync(new URL("../../../onchain/Anchor.toml", import.meta.url), "utf8");
 const section = (name: string) => {
   const m = anchorToml.match(new RegExp(`\\[programs\\.${name}\\]\\n([^\\[]*)`));
-  return Object.fromEntries([...(m?.[1] ?? "").matchAll(/lineage_(\w+) = "(\w+)"/g)].map((x) => [x[1], x[2]]));
+  return Object.fromEntries([...(m?.[1] ?? "").matchAll(/units_(\w+) = "(\w+)"/g)].map((x) => [x[1], x[2]]));
 };
 const declared = (prog: string, feature: "devnet" | "mainnet") => {
-  const src = readFileSync(new URL(`../../../onchain/programs/lineage-${prog}/src/lib.rs`, import.meta.url), "utf8");
+  const src = readFileSync(new URL(`../../../onchain/programs/units-${prog}/src/lib.rs`, import.meta.url), "utf8");
   const cfg = feature === "mainnet" ? '#[cfg(feature = "mainnet")]' : '#[cfg(not(feature = "mainnet"))]';
   return src.split(cfg + "\ndeclare_id!(\"")[1]?.split('"')[0];
 };

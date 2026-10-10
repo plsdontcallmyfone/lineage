@@ -1,4 +1,4 @@
-//! `lineage_launch` (SPEC 14.2): agent tokens on pump.fun quoted in `$LINE` (owner decisions
+//! `units_launch` (SPEC 14.2): agent tokens on pump.fun quoted in `$LINE` (owner decisions
 //! 2026-10-10, docs/plans/PUMPFUN-LAUNCHES.md). The launcher's transaction calls pump.fun's
 //! `create_v2` at the top level with `creator` = this program's PDA ["pump_creator", agent];
 //! `register_pump_launch` then checks the new bonding curve and the same transaction's `create_v2`
@@ -9,23 +9,23 @@
 use anchor_lang::prelude::*;
 use anchor_lang::solana_program::bpf_loader_upgradeable;
 use anchor_spl::token_interface::{self, Mint, TokenAccount, TokenInterface, TransferChecked};
-use lineage_registry::leaf;
+use units_registry::leaf;
 
 pub mod bounty;
 pub mod pump;
 pub use bounty::*;
 use pump as pf;
 
-// Network ids by build feature, as in lineage_registry: devnet by default, `mainnet` for mainnet.
+// Network ids by build feature, as in units_registry: devnet by default, `mainnet` for mainnet.
 #[cfg(not(feature = "mainnet"))]
 declare_id!("Axo38WX6TBAGGQ2nPpejn5tPsQogygA728baRaeJebGX");
 #[cfg(feature = "mainnet")]
 declare_id!("2vwKsTZm5doa3ahBmpm8Sv3sKPD76Fq2ZZENbNW5BYBq");
 
 pub const LAUNCH_CONFIG_SEED: &[u8] = b"launch_config";
-pub const AUTHORITY_SEED: &[u8] = lineage_registry::LAUNCH_AUTHORITY_SEED;
+pub const AUTHORITY_SEED: &[u8] = units_registry::LAUNCH_AUTHORITY_SEED;
 pub const AGENT_LAUNCH_SEED: &[u8] = b"agent_launch";
-pub const COMPUTE_SEED: &[u8] = lineage_registry::COMPUTE_SEED;
+pub const COMPUTE_SEED: &[u8] = units_registry::COMPUTE_SEED;
 pub const USAGE_SEED: &[u8] = b"usage";
 pub const DEBIT_SEED: &[u8] = b"debit";
 pub const BPS: u64 = 10_000;
@@ -43,13 +43,13 @@ pub const IDENTITY_PURCHASED: u8 = 1;
 pub const IDENTITY_APP: u8 = 2;
 
 #[program]
-pub mod lineage_launch {
+pub mod units_launch {
     use super::*;
 
     /// Once, by the upgrade authority (through ProgramData).
     pub fn initialize_launch(ctx: Context<InitializeLaunch>, args: LaunchConfigArgs) -> Result<()> {
         args.validate()?;
-        lineage_registry::check_mint_extensions(&ctx.accounts.line_mint.to_account_info())?;
+        units_registry::check_mint_extensions(&ctx.accounts.line_mint.to_account_info())?;
         let c = &mut ctx.accounts.launch_config;
         c.line_mint = ctx.accounts.line_mint.key();
         c.line_token_program = ctx.accounts.line_token_program.key();
@@ -83,10 +83,10 @@ pub mod lineage_launch {
             require!(d[..8] == *LaunchConfig::DISCRIMINATOR, LaunchError::InvalidArgs);
             require!(d[8..40] == ctx.accounts.admin.key().to_bytes(), LaunchError::Unauthorized);
         }
-        lineage_registry::grow(&info, &ctx.accounts.admin.to_account_info(), &ctx.accounts.system_program.to_account_info(), new_len)?;
+        units_registry::grow(&info, &ctx.accounts.admin.to_account_info(), &ctx.accounts.system_program.to_account_info(), new_len)?;
         let mut c = LaunchConfig::try_deserialize(&mut &info.try_borrow_data()?[..])?;
         c.max_debit_per_epoch = max_debit_per_epoch;
-        c.registry_program = lineage_registry::ID;
+        c.registry_program = units_registry::ID;
         c.try_serialize(&mut &mut info.try_borrow_mut_data()?[..])?;
         Ok(())
     }
@@ -117,15 +117,15 @@ pub mod lineage_launch {
             LaunchError::PumpCurveInvalid);
 
         let seeds: &[&[u8]] = &[AUTHORITY_SEED, &[c.authority_bump]];
-        lineage_registry::cpi::register_launched(
-            CpiContext::new_with_signer(ctx.accounts.registry_program.to_account_info(), lineage_registry::cpi::accounts::RegisterLaunched {
+        units_registry::cpi::register_launched(
+            CpiContext::new_with_signer(ctx.accounts.registry_program.to_account_info(), units_registry::cpi::accounts::RegisterLaunched {
                 config: ctx.accounts.registry_config.to_account_info(),
                 launch_authority: ctx.accounts.authority.to_account_info(),
                 payer: ctx.accounts.launcher.to_account_info(),
                 agent_record: ctx.accounts.agent_record.to_account_info(),
                 system_program: ctx.accounts.system_program.to_account_info(),
             }, &[seeds]),
-            lineage_registry::RegisterLaunchedArgs {
+            units_registry::RegisterLaunchedArgs {
                 agent: ctx.accounts.agent.key(),
                 owner: ctx.accounts.launcher.key(),
                 mint,
@@ -385,7 +385,7 @@ fn check_canonical_url(u: &[u8]) -> Result<()> {
 fn apply_args(c: &mut LaunchConfig, a: &LaunchConfigArgs) {
     c.admin = a.admin;
     c.runtime_authority = a.runtime_authority;
-    c.registry_program = lineage_registry::ID;
+    c.registry_program = units_registry::ID;
     c.compute_sink = a.compute_sink;
     c.max_debit_per_epoch = a.max_debit_per_epoch;
     c.agent_compute_bps = a.agent_compute_bps;
@@ -436,7 +436,7 @@ pub const LAUNCH_CONFIG_V1_TAIL: usize = 8 * 5;
 pub struct LaunchConfig {
     pub admin: Pubkey,
     pub runtime_authority: Pubkey,
-    /// Always `lineage_registry`'s id (a constant; kept in the layout for readers).
+    /// Always `units_registry`'s id (a constant; kept in the layout for readers).
     pub registry_program: Pubkey,
     pub line_mint: Pubkey,
     pub line_token_program: Pubkey,
@@ -600,7 +600,7 @@ pub struct RegisterPumpLaunch<'info> {
     #[account(mut)]
     pub agent_record: UncheckedAccount<'info>,
     /// CHECK: the registry program id (a constant).
-    #[account(executable, address = lineage_registry::ID)]
+    #[account(executable, address = units_registry::ID)]
     pub registry_program: UncheckedAccount<'info>,
     /// CHECK: the instructions sysvar (address).
     #[account(address = anchor_lang::solana_program::sysvar::instructions::ID)]
@@ -611,7 +611,7 @@ pub struct RegisterPumpLaunch<'info> {
 
 /// The registry's treasury token account: PDA ["treasury"] of the registry program.
 fn is_registry_treasury(key: &Pubkey) -> bool {
-    Pubkey::find_program_address(&[lineage_registry::TREASURY_SEED], &lineage_registry::ID).0 == *key
+    Pubkey::find_program_address(&[units_registry::TREASURY_SEED], &units_registry::ID).0 == *key
 }
 
 #[derive(Accounts)]
@@ -653,8 +653,8 @@ pub struct PostUsage<'info> {
     #[account(mut, seeds = [LAUNCH_CONFIG_SEED], bump = launch_config.bump, has_one = runtime_authority @ LaunchError::Unauthorized)]
     pub launch_config: Box<Account<'info, LaunchConfig>>,
     /// The registry's Config (its `epoch_length_s` bounds the usage sequence).
-    #[account(seeds = [lineage_registry::CONFIG_SEED], bump = registry_config.bump, seeds::program = lineage_registry::ID)]
-    pub registry_config: Box<Account<'info, lineage_registry::Config>>,
+    #[account(seeds = [units_registry::CONFIG_SEED], bump = registry_config.bump, seeds::program = units_registry::ID)]
+    pub registry_config: Box<Account<'info, units_registry::Config>>,
     #[account(mut)]
     pub runtime_authority: Signer<'info>,
     #[account(init, payer = runtime_authority, space = 8 + UsageEpoch::INIT_SPACE, seeds = [USAGE_SEED, &epoch.to_le_bytes()], bump)]
@@ -708,8 +708,8 @@ pub struct WithdrawCompute<'info> {
     pub line_mint: Box<InterfaceAccount<'info, Mint>>,
     pub line_token_program: Interface<'info, TokenInterface>,
     /// The registry's `Agent` of this agent (owner program and PDA checked): its `owner` withdraws.
-    #[account(seeds = [lineage_registry::AGENT_SEED, agent_launch.agent.as_ref()], bump = agent_record.bump, seeds::program = lineage_registry::ID)]
-    pub agent_record: Box<Account<'info, lineage_registry::Agent>>,
+    #[account(seeds = [units_registry::AGENT_SEED, agent_launch.agent.as_ref()], bump = agent_record.bump, seeds::program = units_registry::ID)]
+    pub agent_record: Box<Account<'info, units_registry::Agent>>,
 }
 
 #[derive(Accounts)]

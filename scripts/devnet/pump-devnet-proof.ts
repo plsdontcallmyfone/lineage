@@ -3,9 +3,9 @@
 // as a pump.fun coin paired with SOL (never mayhem) with the devnet deployer, buys tLINE on its own
 // curve for the devnet treasury, then proves devnet's Pump build (which differs from mainnet's,
 // docs/plans/PUMPFUN-LAUNCHES.md 4.5) with an agent-shaped coin quoted in tLINE: creator = a
-// lineage_launch "pump_creator" PDA, curve trades, multi_hop_swap from SOL, and the permissionless
+// units_launch "pump_creator" PDA, curve trades, multi_hop_swap from SOL, and the permissionless
 // sweep + collect landing exactly the trade events' creator fees in the PDA's tLINE account. It does
-// not call lineage_launch (devnet's registry and launch config are bound to the earlier tLINE). Idempotent:
+// not call units_launch (devnet's registry and launch config are bound to the earlier tLINE). Idempotent:
 // the tLINE mint and treasury holding are reused when they exist. Writes scripts/devnet/PUMP-DEVNET-LAST.json
 // and the `pump_tline` block of scripts/devnet/devnet.json.
 //
@@ -110,7 +110,7 @@ if ((await bal(tAta)) < WANT) {
 }
 check("devnet treasury holds the tLINE it bought", (await bal(tAta)) >= WANT, `${await bal(tAta)}`);
 
-// ---- 3. an agent-shaped coin quoted in tLINE, creator = a lineage_launch pump_creator PDA (devnet launch id)
+// ---- 3. an agent-shaped coin quoted in tLINE, creator = a units_launch pump_creator PDA (devnet launch id)
 const agent = key(`pump-proof-agent-${Date.now()}`);
 const P = pda(PROGRAM_IDS.devnet.launch, "pump_creator", addressBytes(agent.id));
 const coin = key(`pump-proof-coin-${Date.now()}`);

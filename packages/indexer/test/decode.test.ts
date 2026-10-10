@@ -71,8 +71,8 @@ describe("creator fees: income at the trades, payouts at the sweeps", () => {
   });
 });
 
-describe("lineage_launch events", () => {
-  test("FeesCranked, PumpGraduated and PumpLaunched from lineage_launch's own frame", () => {
+describe("units_launch events", () => {
+  test("FeesCranked, PumpGraduated and PumpLaunched from units_launch's own frame", () => {
     const t = withLog(withLog(withLog(tx("9d"), feesCranked(A2, A2, 100n, 70n, true, 1234n)), pumpGraduated(A2, A2, pumpPdas.pool(A2, LINE), FX.creator_pdas.a2,
       true)), pumpLaunched(A2, A2, LINE, pumpPdas.bondingCurve(A2), FX.creator_pdas.a2));
     const d = decodeTx(t, ctxOf(A2));

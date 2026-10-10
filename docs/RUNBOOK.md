@@ -106,11 +106,11 @@ Calibration results are committed in `recipes/<name>/calibration.json`; `check-c
 ```sh
 cd onchain
 cargo test --offline -p lineage-onchain-tests     # 56 LiteSVM tests against target/deploy/*.so (bounty 10, challenge 6, client vectors 1, identity 7, launch 13, msg 6, registry 13); about 60 s from a cold target dir
-cargo test --offline -p lineage-registry --lib    # leaf encoder
+cargo test --offline -p units-registry --lib    # leaf encoder
 cd .. && bun onchain/scripts/make-fixtures.ts --check
 ```
 
-The LiteSVM suites load `onchain/target/deploy/*.so` (`lineage_registry`, `lineage_launch`, `lineage_msg`), so build the three programs first (`onchain/README.md`), or copy the `.so` files of a tree that has them; a clean clone has neither those nor `vendor/meteora/*.so`. Never delete `onchain/target` without the program keypairs backed up (`onchain/keys-backup/`).
+The LiteSVM suites load `onchain/target/deploy/*.so` (`units_registry`, `units_launch`, `units_msg`), so build the three programs first (`onchain/README.md`), or copy the `.so` files of a tree that has them; a clean clone has neither those nor `vendor/meteora/*.so`. Never delete `onchain/target` without the program keypairs backed up (`onchain/keys-backup/`).
 
 ## 6. Dashboard
 

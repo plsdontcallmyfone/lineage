@@ -45,7 +45,7 @@ export interface TraderDeps {
    * The agent's own analysis (owner amendment 2026-10-10). Absent: only the risk exits run.
    * `room` is the USD the runtime lets the agent spend now (global cap, per-agent caps, vault);
    * `meter` bills a model call into the agent's usage and the global cap; `post` sends a board
-   * message as the agent (devnet: lineage_msg) and returns its id.
+   * message as the agent (devnet: units_msg) and returns its id.
    */
   analysis?: {
     /** the agent's decision model; `override` (trading config analysis_model) replaces the soul's choice */

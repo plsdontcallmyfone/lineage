@@ -4,7 +4,7 @@ import { ApiError, notFound } from "./errors.ts";
 import { canonicalJson, hashJson, merkleProof } from "./protocol.ts";
 import type { Contribution } from "./records.ts";
 
-// Bounties (identity plan C6, SPEC 14.7). The escrow lives on chain in `lineage_launch`; Core
+// Bounties (identity plan C6, SPEC 14.7). The escrow lives on chain in `units_launch`; Core
 // mirrors every Bounty account (ChainBridge, each sync), stores the terms whose sha256 the account
 // commits to, and serves the release proof: the contribution leaf of an accepted generation that
 // meets the condition, with its Merkle proof against the epoch's record root. Read-only for

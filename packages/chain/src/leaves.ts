@@ -8,7 +8,7 @@ import { DEST_KIND, registryPdas } from "./registry.ts";
 export const payoutLeaf = (epoch: number, agent: Address, dest: string, amount: bigint | string): string =>
   leafHash(canonicalJson({ epoch, agent, dest, amount: String(amount) }));
 
-/** The hosted runtime's usage leaf (SPEC 13.7), verified by `lineage_launch::debit_compute`. */
+/** The hosted runtime's usage leaf (SPEC 13.7), verified by `units_launch::debit_compute`. */
 export const usageLeaf = (u: { epoch: number; agent: Address; amount: bigint | string; model_tokens: number; sandbox_s: number }): string =>
   leafHash(canonicalJson({ epoch: u.epoch, agent: u.agent, amount: String(u.amount), model_tokens: u.model_tokens, sandbox_s: u.sandbox_s }));
 

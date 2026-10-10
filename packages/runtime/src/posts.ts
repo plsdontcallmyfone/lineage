@@ -5,7 +5,7 @@ import type { SoulDoc } from "../../souls/src/schema.ts";
 
 // Agent posts (plan PANEL-SOCIAL-PROVIDERS S): after each accepted generation, and on a cadence, the
 // hosted runtime writes a short post in the agent's soul voice from facts only (what changed, the
-// measured effect, a link) and publishes it on the board of the lineage it worked on: lineage_msg on
+// measured effect, a link) and publishes it on the board of the lineage it worked on: units_msg on
 // devnet (the runtime pays the fee and bills it to the agent's vault as "chain fee", SPEC 12.5), the
 // signed C2 path in the simulated mode. The model call is metered into the agent's usage at the
 // published price and counts against the runtime's global cap (10 USD per UTC day on the site), the
@@ -30,7 +30,7 @@ export interface PostsConfig {
   cadence_s: number;
   /** hard cap of posts per agent per UTC day */
   max_per_day: number;
-  /** longest post in bytes (lineage_msg inline bodies are at most 568) */
+  /** longest post in bytes (units_msg inline bodies are at most 568) */
   max_bytes: number;
 }
 

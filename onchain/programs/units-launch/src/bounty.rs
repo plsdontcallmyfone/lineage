@@ -6,11 +6,11 @@
 //!
 //! The contribution leaf is Core's (packages/core/src/records.ts `contributionLeaf`):
 //! `leafHash(canonicalJson({ epoch, gen_id, lineage_id, target, candidate_commitment, members:
-//! [{ agent, role, share_bps }], finder }))`, rebuilt here byte for byte with `lineage_registry::leaf`.
+//! [{ agent, role, share_bps }], finder }))`, rebuilt here byte for byte with `units_registry::leaf`.
 use anchor_lang::prelude::*;
 use anchor_lang::solana_program::hash::hashv;
 use anchor_spl::token_interface::{self, CloseAccount, Mint, TokenAccount, TokenInterface, TransferChecked};
-use lineage_registry::leaf::{self, Hash};
+use units_registry::leaf::{self, Hash};
 
 use crate::{update_awake, AgentLaunch, LaunchConfig, LaunchError, AGENT_LAUNCH_SEED, AUTHORITY_SEED, BPS, COMPUTE_SEED, LAUNCH_CONFIG_SEED, MAX_PROOF};
 
@@ -165,7 +165,7 @@ pub(crate) fn set_bounty_config(ctx: Context<SetBountyConfig>, args: BountyConfi
 /// The signer allowed to act for a payer agent: the hosted runtime if hosted, otherwise the agent's
 /// current registry owner (the launcher until a `propose_owner` / `accept_owner` transfer; audit
 /// A1-03: `AgentLaunch.launcher` is fixed at launch and kept the seller in control after a sale).
-fn check_opener(c: &LaunchConfig, payer: &AgentLaunch, record: &lineage_registry::Agent, opener: &Pubkey) -> Result<()> {
+fn check_opener(c: &LaunchConfig, payer: &AgentLaunch, record: &units_registry::Agent, opener: &Pubkey) -> Result<()> {
     require_keys_eq!(record.agent, payer.agent, LaunchError::Unauthorized);
     let want = if payer.hosted { c.runtime_authority } else { record.owner };
     require_keys_eq!(*opener, want, LaunchError::Unauthorized);
@@ -293,7 +293,7 @@ pub(crate) fn release_bounty(ctx: Context<ReleaseBounty>, args: ReleaseArgs) -> 
     // The registry's payout hold applies to record roots too (audit A1-04): nothing is released on an
     // epoch inside its challenge window or while a challenge on it is open, so a root an upheld
     // challenge corrects has paid nothing.
-    lineage_registry::challenge::check_claim_hold(&ctx.accounts.challenge_config.to_account_info(), &ctx.accounts.challenge_gate.to_account_info(),
+    units_registry::challenge::check_claim_hold(&ctx.accounts.challenge_config.to_account_info(), &ctx.accounts.challenge_gate.to_account_info(),
         ep, Clock::get()?.unix_timestamp).map_err(|_| error!(LaunchError::BountyHeld))?;
     // Condition.
     require!(args.lineage_id == b.lineage_id, LaunchError::BountyCondition);
@@ -545,8 +545,8 @@ pub struct OpenBounty<'info> {
     #[account(seeds = [BOUNTY_CONFIG_SEED], bump = bounty_config.bump)]
     pub bounty_config: Box<Account<'info, BountyConfig>>,
     /// The registry's Config: its epoch cursor sets `min_epoch`.
-    #[account(seeds = [lineage_registry::CONFIG_SEED], bump = registry_config.bump, seeds::program = lineage_registry::ID)]
-    pub registry_config: Box<Account<'info, lineage_registry::Config>>,
+    #[account(seeds = [units_registry::CONFIG_SEED], bump = registry_config.bump, seeds::program = units_registry::ID)]
+    pub registry_config: Box<Account<'info, units_registry::Config>>,
     /// Launcher (self-hosted payer) or runtime authority (hosted payer); pays the rent.
     #[account(mut)]
     pub opener: Signer<'info>,
@@ -570,8 +570,8 @@ pub struct OpenBounty<'info> {
     pub line_token_program: Interface<'info, TokenInterface>,
     pub system_program: Program<'info, System>,
     /// The payer's registry `Agent`: a self-hosted payer's opener is its current `owner` (audit A1-03).
-    #[account(seeds = [lineage_registry::AGENT_SEED, payer_launch.agent.as_ref()], bump = payer_record.bump, seeds::program = lineage_registry::ID)]
-    pub payer_record: Box<Account<'info, lineage_registry::Agent>>,
+    #[account(seeds = [units_registry::AGENT_SEED, payer_launch.agent.as_ref()], bump = payer_record.bump, seeds::program = units_registry::ID)]
+    pub payer_record: Box<Account<'info, units_registry::Agent>>,
 }
 
 #[derive(Accounts)]
@@ -595,8 +595,8 @@ pub struct ReleaseBounty<'info> {
     #[account(mut)]
     pub opener: UncheckedAccount<'info>,
     /// The registry's Epoch for `args.epoch` (owner = registry via the account type, address = its PDA).
-    #[account(seeds = [lineage_registry::EPOCH_SEED, &args.epoch.to_le_bytes()], bump = registry_epoch.bump, seeds::program = lineage_registry::ID)]
-    pub registry_epoch: Box<Account<'info, lineage_registry::Epoch>>,
+    #[account(seeds = [units_registry::EPOCH_SEED, &args.epoch.to_le_bytes()], bump = registry_epoch.bump, seeds::program = units_registry::ID)]
+    pub registry_epoch: Box<Account<'info, units_registry::Epoch>>,
     #[account(mut, seeds = [AGENT_LAUNCH_SEED, payee_launch.mint.as_ref()], bump = payee_launch.bump)]
     pub payee_launch: Box<Account<'info, AgentLaunch>>,
     #[account(mut, seeds = [COMPUTE_SEED, payee_launch.agent.as_ref()], bump = payee_launch.compute_bump)]
@@ -613,11 +613,11 @@ pub struct ReleaseBounty<'info> {
     pub system_program: Program<'info, System>,
     /// CHECK: the registry's `ChallengeConfig` PDA, read only if it exists (audit A1-04: a release
     /// waits for the epoch's challenge window, as a claim does).
-    #[account(seeds = [lineage_registry::CHALLENGE_CONFIG_SEED], bump, seeds::program = lineage_registry::ID)]
+    #[account(seeds = [units_registry::CHALLENGE_CONFIG_SEED], bump, seeds::program = units_registry::ID)]
     pub challenge_config: UncheckedAccount<'info>,
     /// CHECK: the registry's `ChallengeGate` PDA of `args.epoch`, read only if it exists (no release
     /// while a challenge on the epoch is open).
-    #[account(seeds = [lineage_registry::GATE_SEED, &args.epoch.to_le_bytes()], bump, seeds::program = lineage_registry::ID)]
+    #[account(seeds = [units_registry::GATE_SEED, &args.epoch.to_le_bytes()], bump, seeds::program = units_registry::ID)]
     pub challenge_gate: UncheckedAccount<'info>,
 }
 
@@ -650,13 +650,13 @@ pub struct RefundBounty<'info> {
 #[derive(Accounts)]
 pub struct CancelBounty<'info> {
     pub r: RefundBounty<'info>,
-    #[account(seeds = [lineage_registry::CONFIG_SEED], bump = registry_config.bump, seeds::program = lineage_registry::ID)]
-    pub registry_config: Box<Account<'info, lineage_registry::Config>>,
+    #[account(seeds = [units_registry::CONFIG_SEED], bump = registry_config.bump, seeds::program = units_registry::ID)]
+    pub registry_config: Box<Account<'info, units_registry::Config>>,
     /// The payer's current registry owner (self-hosted) or the runtime authority (hosted).
     pub signer: Signer<'info>,
     /// The payer's registry `Agent` (audit A1-03).
-    #[account(seeds = [lineage_registry::AGENT_SEED, r.bounty.payer.as_ref()], bump = payer_record.bump, seeds::program = lineage_registry::ID)]
-    pub payer_record: Box<Account<'info, lineage_registry::Agent>>,
+    #[account(seeds = [units_registry::AGENT_SEED, r.bounty.payer.as_ref()], bump = payer_record.bump, seeds::program = units_registry::ID)]
+    pub payer_record: Box<Account<'info, units_registry::Agent>>,
 }
 
 // ---------- events ----------

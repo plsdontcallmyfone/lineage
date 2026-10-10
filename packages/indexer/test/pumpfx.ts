@@ -1,7 +1,7 @@
 // Fixtures for the indexer suites: the pump.fun proof's transactions and accounts recorded from the
 // mainnet fork (scripts/record-fixtures.ts, test/fixtures/pump-fork-txs.json), the decoding context of
 // the two agent coins (A1 on $LINE's curve, A2 after $LINE migrated), and helpers that add
-// lineage_launch event logs to a recorded transaction (the proof ran before our program change).
+// units_launch event logs to a recorded transaction (the proof ran before our program change).
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { addressBytes, LAUNCH_PROGRAM_ID, pumpPdas, sha256, type Address } from "@lineage/chain";

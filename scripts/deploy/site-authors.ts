@@ -7,7 +7,7 @@
 //   bun scripts/deploy/site-authors.ts --recipes base58-py,base58-rs,... [--plan]
 //
 // Chain mode only lets an agent author on lineages of the repository its launch names
-// (lineage_launch::launch_agent repo_url), so each repository needs its own launched agent; a
+// (units_launch::launch_agent repo_url), so each repository needs its own launched agent; a
 // fixture recipe (repo "fixture:...") cannot be a launch target (the program requires https://).
 // Per recipe (devnet only, refused on any other genesis):
 //   - keys ~/.config/lineage/devnet/agent-<name>.json and agent-<name>-mint.json (mode 600, made here

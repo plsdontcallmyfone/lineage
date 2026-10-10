@@ -5,7 +5,7 @@
 //! signer, revoked key, late challenges, forged subjects, a stranger resolving, a refund redirected,
 //! a correction smuggled into a slash or a failed resolution, double resolution.
 use anchor_lang::InstructionData;
-use lineage_onchain_tests::*;
+use units_onchain_tests::*;
 
 const WINDOW: i64 = 600;
 const BOND: u64 = 2 * ONE;

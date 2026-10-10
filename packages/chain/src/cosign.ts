@@ -1,5 +1,5 @@
 // Agent-key co-signing for transactions a browser wallet built and signed first (wallet UI lane).
-// `lineage_registry::register` needs both the owner wallet and the agent key; the agent key lives
+// `units_registry::register` needs both the owner wallet and the agent key; the agent key lives
 // with the worker and never enters a page. The page builds the transaction, the wallet signs as
 // owner and fee payer, and `lineage-worker cosign` checks what it is about to sign, adds the agent
 // signature and sends it. Devnet only in this milestone. The same flow co-signs
@@ -59,17 +59,17 @@ export function inspectForCosign(wire: Uint8Array, agent: Address, opts: { expec
       else throw new Error(`refusing to co-sign: compute budget instruction outside the allowed limit (${COSIGN_MAX_CU_LIMIT} units) and price (${COSIGN_MAX_CU_PRICE})`);
       continue;
     }
-    if (ix.programId !== REGISTRY_PROGRAM_ID) throw new Error(`refusing to co-sign: instruction for program ${ix.programId} (only lineage_registry and compute budget)`);
+    if (ix.programId !== REGISTRY_PROGRAM_ID) throw new Error(`refusing to co-sign: instruction for program ${ix.programId} (only units_registry and compute budget)`);
     const name = Object.keys(COSIGNABLE).find((n) => ix.data.length >= 8 && ixDisc(n).every((x, i) => x === ix.data[i]));
-    if (!name) throw new Error("refusing to co-sign: a lineage_registry instruction other than register or rotate_agent_key");
+    if (!name) throw new Error("refusing to co-sign: a units_registry instruction other than register or rotate_agent_key");
     const a = ix.accounts[COSIGNABLE[name]!]!.pubkey;
     if (a !== agent) throw new Error(`refusing to co-sign: ${name} names ${a}, not ${agent}`);
     // a rotation requested for agent A must rotate A's record, not another agent the owner holds (OFF-C2)
     if (name === "rotate_agent_key" && opts.expectAgent && ix.accounts[3]!.pubkey !== registryPdas.agent(opts.expectAgent))
       throw new Error(`refusing to co-sign: rotate_agent_key targets agent record ${ix.accounts[3]!.pubkey}, not the record of ${opts.expectAgent}`);
     summary.push(name === "rotate_agent_key"
-      ? `lineage_registry::rotate_agent_key of agent record ${ix.accounts[3]!.pubkey} to new key ${a}, owner ${ix.accounts[1]!.pubkey}`
-      : `lineage_registry::${name} agent ${a} owner ${ix.accounts[1]!.pubkey}`);
+      ? `units_registry::rotate_agent_key of agent record ${ix.accounts[3]!.pubkey} to new key ${a}, owner ${ix.accounts[1]!.pubkey}`
+      : `units_registry::${name} agent ${a} owner ${ix.accounts[1]!.pubkey}`);
     found = true;
   }
   if (!found) throw new Error("no register or rotate_agent_key instruction for this key");

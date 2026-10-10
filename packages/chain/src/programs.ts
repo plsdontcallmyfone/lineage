@@ -76,11 +76,11 @@ export function programIds(network: string): ProgramIds {
   return PROGRAM_IDS[network];
 }
 
-/** lineage_registry id of the active network (devnet until a profile is applied). */
+/** units_registry id of the active network (devnet until a profile is applied). */
 export let REGISTRY_PROGRAM_ID: Address = PROGRAM_IDS.devnet.registry;
-/** lineage_launch id of the active network (devnet until a profile is applied). */
+/** units_launch id of the active network (devnet until a profile is applied). */
 export let LAUNCH_PROGRAM_ID: Address = PROGRAM_IDS.devnet.launch;
-/** lineage_msg id of the active network (devnet until a profile is applied). */
+/** units_msg id of the active network (devnet until a profile is applied). */
 export let MSG_PROGRAM_ID: Address = PROGRAM_IDS.devnet.msg;
 let activeNetwork: ProgramNetwork = "devnet";
 

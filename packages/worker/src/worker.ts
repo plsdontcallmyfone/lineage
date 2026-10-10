@@ -112,7 +112,7 @@ export interface WorkerOptions {
   journal?: boolean;
   /**
    * Onchain messages (SPEC 12.5): when set, encryption keys and messages go through this transport
-   * (lineage_msg; packages/core msgchain.ts ChainMessenger) instead of POST /v1/messages. Reading
+   * (units_msg; packages/core msgchain.ts ChainMessenger) instead of POST /v1/messages. Reading
    * stays on Core's board and inbox views, which index the chain.
    */
   messenger?: Messenger;

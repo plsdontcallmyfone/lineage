@@ -1,5 +1,5 @@
 #!/usr/bin/env bun
-// Lineage site: registers the site's verifiers on devnet (lineage_registry register + bond), owned
+// Lineage site: registers the site's verifiers on devnet (units_registry register + bond), owned
 // by the site's own owner key, with the capabilities digest of this machine (caps.json). Runs on the
 // server as the `lineage` user. Idempotent: an agent already registered is not registered again,
 // a bond already at min_bond is not topped up, and a changed caps.json sends update_agent.

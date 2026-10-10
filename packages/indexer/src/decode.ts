@@ -3,7 +3,7 @@ import { decodePumpEvent, ixDisc, LAUNCH_PROGRAM_ID, PUMP, pumpPdas, sha256, toA
 
 // Decodes one confirmed transaction (getTransaction, encoding "json") into the market records of one
 // agent token on pump.fun (owner decisions 2026-10-10, docs/plans/PUMPFUN-LAUNCHES.md 6.6): trades on
-// its bonding curve and on its canonical PumpSwap pool, creator fee income and sweeps, lineage_launch
+// its bonding curve and on its canonical PumpSwap pool, creator fee income and sweeps, units_launch
 // fee cranks, and lifecycle events (launch, completion, migration, graduation). Pure: no RPC, so tests
 // replay transactions recorded on the mainnet fork.
 //
@@ -71,7 +71,7 @@ export interface TokenCtx {
   pool: Address;
   baseDecimals: number;
   quoteDecimals: number;
-  /** lineage_launch's id (default: the active profile's). */
+  /** units_launch's id (default: the active profile's). */
   launchProgram?: Address;
 }
 
@@ -157,7 +157,7 @@ export function amountsToPrice(baseRaw: bigint, quoteRaw: bigint, baseDecimals: 
 const u64 = (d: Uint8Array, o: number) => new DataView(d.buffer, d.byteOffset, d.length).getBigUint64(o, true);
 const key = (d: Uint8Array, o: number) => toAddress(d.subarray(o, o + 32));
 
-/** lineage_launch FeesCranked (onchain/programs/lineage-launch/src/lib.rs). */
+/** units_launch FeesCranked (onchain/programs/units-launch/src/lib.rs). */
 export function decodeFeesCranked(b: Uint8Array) {
   return {
     agent: key(b, 0), mint: key(b, 32), fees: u64(b, 64), toCompute: u64(b, 72), toProtocol: u64(b, 80), poolFees: b[88] === 1,
@@ -306,7 +306,7 @@ export function decodeTx(tx: RawTx, ctx: TokenCtx): Decoded {
     }
   }
 
-  // ---- lineage_launch events (Anchor emit! logs) ----
+  // ---- units_launch events (Anchor emit! logs) ----
   let fi = 0;
   for (const b of programData(tx.meta.logMessages ?? [], ctx.launchProgram ?? LAUNCH_PROGRAM_ID)) {
     const d = hex(b.subarray(0, 8));

@@ -4,9 +4,9 @@ import { LAUNCH_PROGRAM_ID, launchPdas } from "./launch.ts";
 import { SYSTEM_PROGRAM, TOKEN_PROGRAM, u64le, pda } from "./pda.ts";
 import { r, registryPdas, w, type Ix } from "./registry.ts";
 
-// Bounties (identity plan C6, SPEC 14.7), in lineage_launch: escrow from a compute vault, released
+// Bounties (identity plan C6, SPEC 14.7), in units_launch: escrow from a compute vault, released
 // by Core's contribution leaf proven against the registry's Epoch.record_root, into the payee's
-// compute vault. Account order and encodings match onchain/programs/lineage-launch/src/bounty.rs;
+// compute vault. Account order and encodings match onchain/programs/units-launch/src/bounty.rs;
 // onchain/tests/fixtures/client-vectors.json pins them.
 
 const data = (name: string) => new Writer().bytes(ixDisc(name));

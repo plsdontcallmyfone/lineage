@@ -19,8 +19,8 @@ import type { Ix } from "./registry.ts";
 import { token } from "./spl.ts";
 
 // An agent launch on pump.fun (owner decisions 2026-10-10, docs/plans/PUMPFUN-LAUNCHES.md): Pump
-// create_v2 at the top level (creator = the agent's lineage_launch PDA, quoted in $LINE, never
-// mayhem), then lineage_launch register_pump_launch in the same transaction, then the launcher's
+// create_v2 at the top level (creator = the agent's units_launch PDA, quoted in $LINE, never
+// mayhem), then units_launch register_pump_launch in the same transaction, then the launcher's
 // initial buy (launch fronting, docs/plans/LAUNCH-FRONTING.md section 6 option B) delivered to the
 // agent key. The fee crank's harvest + crank_pump_fees, and the graduation record.
 

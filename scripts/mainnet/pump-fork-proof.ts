@@ -1,11 +1,11 @@
 #!/usr/bin/env bun
-// pump.fun proof on a local fork of mainnet, before any lineage_launch change (docs/plans/PUMPFUN-LAUNCHES.md
+// pump.fun proof on a local fork of mainnet, before any units_launch change (docs/plans/PUMPFUN-LAUNCHES.md
 // section 7 P1, owner decisions 2026-10-10). Runs mainnet's own Pump, PumpSwap, Pump Fees and Mayhem
 // builds with mainnet's Global, fee configs and quote control (scripts/mainnet/fork.sh). Nothing is
 // sent to mainnet; every key is a throwaway in MAINNET_FORK_KEYS and every lamport a fork airdrop.
 //
 //   1  a stand-in $LINE: create_v2 paired with SOL, not mayhem
-//   2  agent coin A1 quoted in $LINE while $LINE is on its curve: creator = a lineage_launch PDA
+//   2  agent coin A1 quoted in $LINE while $LINE is on its curve: creator = a units_launch PDA
 //      ["pump_creator", agent], creator_fee_bps 0 (pump.fun's default), with the launcher's initial buy
 //      (1% of supply) in the same transaction, delivered to the agent's treasury wallet
 //   3  curve trades on A1 (buy_v3, buy_exact_quote_in_v3, sell_v3) and multi_hop_swap SOL -> $LINE curve -> A1

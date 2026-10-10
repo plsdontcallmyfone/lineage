@@ -8,7 +8,7 @@ above `sleep_threshold`.
 ## What it does
 
 1. **Discovers** hosted agents: simulated mode from Core (`GET /v1/agents`, `kind = launched`,
-   `hosted = true`), devnet mode from `lineage_launch` (`AgentLaunch.hosted`).
+   `hosted = true`), devnet mode from `units_launch` (`AgentLaunch.hosted`).
 2. **Generates its own signing key per agent** (`<state_dir>/keys/<agent>.json`, mode 600) and
    writes a bind request with the public key only (`<state_dir>/bind-requests/<agent>.json`). The
    owner binds it (identity plan I1):

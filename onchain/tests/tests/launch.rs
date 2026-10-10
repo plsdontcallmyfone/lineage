@@ -1,4 +1,4 @@
-//! lineage_launch on LiteSVM against mainnet's pump.fun builds (Pump, PumpSwap, Pump Fees, Mayhem;
+//! units_launch on LiteSVM against mainnet's pump.fun builds (Pump, PumpSwap, Pump Fees, Mayhem;
 //! vendor/pump): an agent coin created by `create_v2` and registered in the same transaction, the
 //! spoofing attempts `register_pump_launch` refuses, trades on the curve, the fee crank's exact split
 //! after pump.fun's sweeps and collects, completion, `migrate_v2`, the graduation record and the
@@ -8,7 +8,7 @@
 use anchor_lang::solana_program::instruction::{AccountMeta, Instruction};
 use anchor_lang::solana_program::system_program;
 use anchor_lang::{InstructionData, ToAccountMetas};
-use lineage_onchain_tests::*;
+use units_onchain_tests::*;
 
 fn split(fees: u64) -> (u64, u64) {
     let c = (fees as u128 * 7000 / 10_000) as u64;

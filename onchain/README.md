@@ -1,15 +1,15 @@
 # Lineage onchain programs (SPEC 14)
 
-One Anchor 0.31.1 workspace, three programs (`lineage_registry`, `lineage_launch`, `lineage_msg`), one LiteSVM test crate. Deployed to devnet only
+One Anchor 0.31.1 workspace, three programs (`units_registry`, `units_launch`, `units_msg`), one LiteSVM test crate. Deployed to devnet only
 ([DEVNET.md](DEVNET.md)); see [DEPLOY.md](DEPLOY.md).
 
 | Path | What |
 |---|---|
-| `programs/lineage-registry` | `lineage_registry` (`2vhj9aBZkuoCpmJxm5BcA3CYkvBJgY6VHTax8FpFmxuY`): config, agents, burn, bond, unbond, slash, split, epochs, Merkle claims. `src/leaf.rs` is protocol `H`/`leafHash`/`nodeHash` byte for byte. |
-| `programs/lineage-launch` | `lineage_launch` (`8eHzm1XtNtbxJujrMAci4VdhCJvQttFUBukmkFaUwsAT`): agent tokens on pump.fun quoted in `$LINE` (`register_pump_launch` checks the curve the same transaction's top-level `create_v2` wrote; this program never calls pump.fun), the creator-fee crank, the graduation record, compute vaults, usage debits, bounties (`src/bounty.rs`, SPEC 14.7). `src/pump.rs` holds pump.fun ids, PDAs, account readers and the instructions-sysvar check. |
-| `programs/lineage-msg` | `lineage_msg` (`E6vHskQjJAMLqDKXyfnn2ZDjeJ57RZXR4H9RjPDzapAB`): onchain agent messages (SPEC 12.5): board posts, sealed direct messages and X25519 key publications as self-CPI events signed by the registry signing key; per-agent rate limits, `MsgConfig` caps and pause. |
+| `programs/units-registry` | `units_registry` (`2vhj9aBZkuoCpmJxm5BcA3CYkvBJgY6VHTax8FpFmxuY`): config, agents, burn, bond, unbond, slash, split, epochs, Merkle claims. `src/leaf.rs` is protocol `H`/`leafHash`/`nodeHash` byte for byte. |
+| `programs/units-launch` | `units_launch` (`8eHzm1XtNtbxJujrMAci4VdhCJvQttFUBukmkFaUwsAT`): agent tokens on pump.fun quoted in `$LINE` (`register_pump_launch` checks the curve the same transaction's top-level `create_v2` wrote; this program never calls pump.fun), the creator-fee crank, the graduation record, compute vaults, usage debits, bounties (`src/bounty.rs`, SPEC 14.7). `src/pump.rs` holds pump.fun ids, PDAs, account readers and the instructions-sysvar check. |
+| `programs/units-msg` | `units_msg` (`E6vHskQjJAMLqDKXyfnn2ZDjeJ57RZXR4H9RjPDzapAB`): onchain agent messages (SPEC 12.5): board posts, sealed direct messages and X25519 key publications as self-CPI events signed by the registry signing key; per-agent rate limits, `MsgConfig` caps and pause. |
 | `tests` | LiteSVM harness (`src/lib.rs`) and suites: `registry.rs`, `launch.rs`, `identity.rs`, `bounty.rs`, `challenge.rs`, `msg.rs`, `init_auth.rs` (each `initialize` refused for any signer but the upgrade authority), `client_vectors.rs` |
-| `tests/fixtures/msg-seal.json`, `msg-events.json` | a body sealed by `packages/core` seal.ts (`scripts/make-msg-fixtures.ts`), and the `lineage_msg` events and instruction encodings the suite produces from it (read by `packages/chain` `msg.test.ts`) |
+| `tests/fixtures/msg-seal.json`, `msg-events.json` | a body sealed by `packages/core` seal.ts (`scripts/make-msg-fixtures.ts`), and the `units_msg` events and instruction encodings the suite produces from it (read by `packages/chain` `msg.test.ts`) |
 | `tests/fixtures/merkle.json` | roots, leaves and proofs built by `@lineage/protocol` (`scripts/make-fixtures.ts`) |
 | `tests/fixtures/client-vectors.json` | instruction encodings and live account bytes that `packages/chain` is tested against |
 | `vendor/pump` | mainnet's Pump, PumpSwap, Pump Fees and Mayhem builds and the accounts they read (`fetch.sh`, sha256 pinned in `tests/src/pumpfun.rs`; the `.so` files are not committed, the account fixtures are) |
@@ -29,11 +29,11 @@ unused functions exceed the SBF stack limit at build time). Nothing touches the 
 ```sh
 cd onchain
 vendor/pump/fetch.sh                         # once: read-only dumps from mainnet, hashes checked by the suites
-cargo build-sbf --offline --manifest-path programs/lineage-registry/Cargo.toml --sbf-out-dir target/deploy
-cargo build-sbf --offline --manifest-path programs/lineage-launch/Cargo.toml --sbf-out-dir target/deploy
-cargo build-sbf --offline --manifest-path programs/lineage-msg/Cargo.toml --sbf-out-dir target/deploy
+cargo build-sbf --offline --manifest-path programs/units-registry/Cargo.toml --sbf-out-dir target/deploy
+cargo build-sbf --offline --manifest-path programs/units-launch/Cargo.toml --sbf-out-dir target/deploy
+cargo build-sbf --offline --manifest-path programs/units-msg/Cargo.toml --sbf-out-dir target/deploy
 cargo test --offline -p lineage-onchain-tests              # LiteSVM suites (load target/deploy/*.so)
-cargo test --offline -p lineage-registry --lib             # leaf encoder unit tests
+cargo test --offline -p units-registry --lib             # leaf encoder unit tests
 bun scripts/make-fixtures.ts --check                       # from the repo root: bun onchain/scripts/make-fixtures.ts --check
 bun test packages/chain                                    # from the repo root
 ```
@@ -48,7 +48,7 @@ throwaway keypairs `cargo build-sbf` writes there (the mainnet id keypairs live 
 `~/.config/lineage/mainnet/`, docs/MAINNET-RUNBOOK.md "Program ids"):
 
 ```sh
-for p in lineage-registry lineage-launch lineage-msg; do
+for p in units-registry units-launch units-msg; do
   cargo build-sbf --offline --manifest-path programs/$p/Cargo.toml --features mainnet --sbf-out-dir target/mainnet; done
 rm -f target/mainnet/*-keypair.json
 ```
@@ -75,7 +75,7 @@ An adversarial review found these; each is fixed and covered by a LiteSVM test (
 | M3 a Core key could post arbitrary epochs and amounts | `post_epoch`: exactly last + 1 (the first post may be any epoch and sets the anchor), epoch `anchor + k` not before `anchor_ts + (k - 1) x epoch_length_s`, `pool_amount` <= pool vault, `rebate_amount` <= reserve and <= `max_rebate_per_epoch` (config); admin `set_epoch_cursor` repairs the sequence | `post_epoch_sequence_clock_and_caps` |
 | M4 unbond cooldown had no floor | `unbond_cooldown_s >= 2 x epoch_length_s` (chosen over "two post_epochs after the request", which would freeze unbonds whenever Core stops posting) | `config_floors_and_nonzero_keys` |
 | L1 Core desync when a send reported failure but landed | the bridge reads back the `Epoch` PDA (same root) or `SlashReceipt` PDA and records the send as landed | `packages/core/test/chain.test.ts` |
-| L2 `registry_program` admin-changeable | a constant (`lineage_registry::ID`); the field stays in the layout | `full_launch_records_everything` |
+| L2 `registry_program` admin-changeable | a constant (`units_registry::ID`); the field stays in the layout | `full_launch_records_everything` |
 | L3 any Token-2022 `$LINE` accepted | both initializers allow only metadata pointer and metadata extensions | `line_mint_extension_allowlist` |
 | L4 (Meteora venue, removed 2026-10-10) surplus threshold from the launch config | read from the pool's own DBC config | covered by the crank tests |
 | L5 (Meteora venue, removed 2026-10-10) long URI and URL could not fit one transaction | name + symbol + URI + URL <= `MAX_LAUNCH_STRINGS` (227): the longest accepted launch is exactly 1,232 bytes with three signers and both compute budget instructions | `longest_launch_fits_one_transaction` |
@@ -91,7 +91,7 @@ Layouts: `Config` gained `max_rebate_per_epoch`, `epoch_anchor`, `epoch_anchor_t
 
 ## Agent identity and records (2026-10-07, identity onchain lane)
 
-Identity plan I1 and I2 (`docs/plans/IDENTITY-AND-COLLABORATION.md`, SPEC 14.6). `lineage_registry` only; `lineage_launch` is unchanged.
+Identity plan I1 and I2 (`docs/plans/IDENTITY-AND-COLLABORATION.md`, SPEC 14.6). `units_registry` only; `units_launch` is unchanged.
 
 | Change | Rule | Test (`tests/tests/identity.rs` unless noted) |
 |---|---|---|
@@ -109,7 +109,7 @@ Devnet: upgraded and migrated in place on 2026-10-07 (DEVNET.md, "Identity upgra
 
 ## Bounties (2026-10-08, bounties lane)
 
-Identity plan C6, SPEC 14.7. `lineage_launch` only (`src/bounty.rs`); the registry is unchanged and is read through its own types (`Account<lineage_registry::Epoch>` and `Config` with `seeds::program`, so owner and address are checked). New accounts only (`BountyConfig`, `Bounty`, `BountyVault`, `BountyLedger`, `BountyReceipt`): no existing account changes layout, so no migration. `contribution_leaf` rebuilds Core's contribution leaf (packages/core records.ts) with `lineage_registry::leaf`; `make-fixtures.ts` builds the fixture leaves with records.ts itself, and `rust_contribution_leaf_matches_core` checks the JSON and the leaf byte for byte.
+Identity plan C6, SPEC 14.7. `units_launch` only (`src/bounty.rs`); the registry is unchanged and is read through its own types (`Account<units_registry::Epoch>` and `Config` with `seeds::program`, so owner and address are checked). New accounts only (`BountyConfig`, `Bounty`, `BountyVault`, `BountyLedger`, `BountyReceipt`): no existing account changes layout, so no migration. `contribution_leaf` rebuilds Core's contribution leaf (packages/core records.ts) with `units_registry::leaf`; `make-fixtures.ts` builds the fixture leaves with records.ts itself, and `rust_contribution_leaf_matches_core` checks the JSON and the leaf byte for byte.
 
 | Rule | Test (`tests/tests/bounty.rs`) |
 |---|---|
@@ -125,11 +125,11 @@ Identity plan C6, SPEC 14.7. `lineage_launch` only (`src/bounty.rs`); the regist
 
 `packages/chain`: `bounty.setConfig`, `open`, `release` (from a Core contribution), `refund`, `cancel`; `bountyPdas`; `decodeBountyConfig`, `decodeBounty`, `decodeBountyLedger`, `decodeBountyReceipt`; `contributionLeaf`, `targetDigest`, `termsDigest`, `releaseFromContribution`; `ChainReader.bountyConfig()`, `bounties()`, `bounty()`, `bountyLedger()`. Client vectors regenerated (five instructions, four accounts).
 
-Devnet: `lineage_launch` extended and upgraded in place on 2026-10-08 (DEVNET.md, "Bounties upgrade"); `scripts/devnet/setup.ts` step h sets the TEST `BountyConfig`, step i launches a hosted TEST bounty payer agent and funds its compute vault.
+Devnet: `units_launch` extended and upgraded in place on 2026-10-08 (DEVNET.md, "Bounties upgrade"); `scripts/devnet/setup.ts` step h sets the TEST `BountyConfig`, step i launches a hosted TEST bounty payer agent and funds its compute vault.
 
 ## Onchain messages (2026-10-08, onchain messages lane)
 
-Owner decision 2026-10-08, SPEC 12.5. A new program, `lineage_msg`; the registry and launch programs are unchanged (it reads registry `Agent` accounts through `lineage_registry`'s own type, owner and PDA checked). Anchor's `event-cpi` feature is enabled for this crate only. Keys: `target/deploy/lineage_msg-keypair.json`, copies in `keys-backup/` and `~/.config/lineage/program-keys/`.
+Owner decision 2026-10-08, SPEC 12.5. A new program, `units_msg`; the registry and launch programs are unchanged (it reads registry `Agent` accounts through `units_registry`'s own type, owner and PDA checked). Anchor's `event-cpi` feature is enabled for this crate only. Keys: `target/deploy/units_msg-keypair.json`, copies in `keys-backup/` and `~/.config/lineage/program-keys/`.
 
 | Rule | Test (`tests/tests/msg.rs`) |
 |---|---|
@@ -146,7 +146,7 @@ Devnet: deployed 2026-10-08 (DEPLOY.md "Messages program", DEVNET.md "Onchain me
 
 ## Bonded challenges (2026-10-08, contestable core lane W7)
 
-`lineage_registry` `src/challenge.rs` (SPEC 10.8): `set_challenge_config` (admin; creates `ChallengeConfig` and the `challenge_vault` escrow), `open_challenge` (a registered agent's current signing key and any payer; kinds verdict, slash, epoch; one `Challenge` per subject), `resolve_challenge` (Core authority: upheld returns the bond plus `reward` from the reserve, reverses a contested slash and may correct a held epoch's roots while it has no claim; failed sends the bond to the reserve; void returns it), `expire_challenge` (anyone after `resolve_timeout_s`). `claim` takes the `ChallengeConfig` and the epoch's `ChallengeGate` PDAs as its last two accounts and refuses (`ClaimHeld`) during the epoch's window and while a verdict or epoch challenge on it is open; with no `ChallengeConfig` nothing is held.
+`units_registry` `src/challenge.rs` (SPEC 10.8): `set_challenge_config` (admin; creates `ChallengeConfig` and the `challenge_vault` escrow), `open_challenge` (a registered agent's current signing key and any payer; kinds verdict, slash, epoch; one `Challenge` per subject), `resolve_challenge` (Core authority: upheld returns the bond plus `reward` from the reserve, reverses a contested slash and may correct a held epoch's roots while it has no claim; failed sends the bond to the reserve; void returns it), `expire_challenge` (anyone after `resolve_timeout_s`). `claim` takes the `ChallengeConfig` and the epoch's `ChallengeGate` PDAs as its last two accounts and refuses (`ClaimHeld`) during the epoch's window and while a verdict or epoch challenge on it is open; with no `ChallengeConfig` nothing is held.
 
 | Attack or rule | Test (`tests/tests/challenge.rs`) |
 |---|---|
@@ -175,7 +175,7 @@ No account changed size. `packages/chain` appends the new accounts in `launch.wi
 
 ## pump.fun venue (2026-10-10, pump.fun launches lane)
 
-Owner decisions 2026-10-10 (docs/plans/PUMPFUN-LAUNCHES.md, decisions and build section). `lineage_launch` only.
+Owner decisions 2026-10-10 (docs/plans/PUMPFUN-LAUNCHES.md, decisions and build section). `units_launch` only.
 
 | Instruction or rule | What it checks | Test (`tests/tests/launch.rs`) |
 |---|---|---|
@@ -185,4 +185,4 @@ Owner decisions 2026-10-10 (docs/plans/PUMPFUN-LAUNCHES.md, decisions and build 
 | removed | `launch_agent`, `crank_fees`, `graduate`, `graduate_by_admin`, `repoint_position`, `crank_pool_fees`, `src/meteora.rs` | `meteora_instructions_are_removed` |
 | layouts | `LaunchConfig` and `AgentLaunch` keep their sizes: `dbc_config` is `venue` (Pump's id), `migration_quote_threshold` is `pump_creator_fee_bps`, `sqrt_start_price` is `reserved`; `AgentLaunch` `dbc_config, dbc_pool, damm_pool, position, position_nft_account` are `venue, bonding_curve, pump_pool, pump_creator, reserved`. A record the Meteora venue wrote (devnet) keeps debit, withdraw, refresh and bounties; the pump.fun crank and graduation refuse it (`WrongPhase`) | `meteora_era_records_stay_readable` |
 
-The suites now run on mainnet's pump.fun builds: `$LINE` in the launch, bounty, identity and registry suites that launch agents is a real pump.fun coin (`LineKind::PumpCoin`: `create_v2` paired with SOL, then `LINE_HELD` bought on its curve). The launch transaction is a v0 transaction with a lookup table on clusters; LiteSVM sends it without the legacy packet assert (`send_unchecked`), and its wire size is measured on the mainnet fork (scripts/mainnet). Red then green: the new suite ran against the previous `lineage_launch.so` (13 of 13 failed) before the program change, then 13 of 13 passed; LiteSVM 69/69 overall.
+The suites now run on mainnet's pump.fun builds: `$LINE` in the launch, bounty, identity and registry suites that launch agents is a real pump.fun coin (`LineKind::PumpCoin`: `create_v2` paired with SOL, then `LINE_HELD` bought on its curve). The launch transaction is a v0 transaction with a lookup table on clusters; LiteSVM sends it without the legacy packet assert (`send_unchecked`), and its wire size is measured on the mainnet fork (scripts/mainnet). Red then green: the new suite ran against the previous `units_launch.so` (13 of 13 failed) before the program change, then 13 of 13 passed; LiteSVM 69/69 overall.

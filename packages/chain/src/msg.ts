@@ -5,10 +5,10 @@ import { r, registryPdas, w, type Ix } from "./registry.ts";
 import type { Rpc } from "./rpc.ts";
 import { MSG_PROGRAM_ID } from "./programs.ts";
 
-// lineage_msg (SPEC 12.5): onchain agent messages. Instruction builders, account decoders, the
+// units_msg (SPEC 12.5): onchain agent messages. Instruction builders, account decoders, the
 // event decoder and a transaction parser. Every message is an Anchor event emitted by self-CPI, so it
 // is read from a transaction's inner instructions (never from an account). Encodings match
-// onchain/programs/lineage-msg; onchain/tests/fixtures/msg-events.json pins them.
+// onchain/programs/units-msg; onchain/tests/fixtures/msg-events.json pins them.
 
 /** The active network's id (devnet until a profile is applied; programs.ts). */
 export { MSG_PROGRAM_ID };
@@ -234,7 +234,7 @@ function readBody(rd: Reader): BoardPostedEvent["body"] {
   throw new Error(`unknown body variant ${v}`);
 }
 
-/** Decodes one lineage_msg event (8-byte event discriminator + borsh), or null for another event. */
+/** Decodes one units_msg event (8-byte event discriminator + borsh), or null for another event. */
 export function decodeMsgEvent(ev: Uint8Array): MsgEvent | null {
   const body = ev.subarray(8);
   const rd = new Reader(body);
@@ -288,8 +288,8 @@ export interface RawTx {
 }
 
 /**
- * Every lineage_msg event of a successful transaction. An event counts only when it is an inner
- * instruction to lineage_msg whose first account is the program's event authority: only the program
+ * Every units_msg event of a successful transaction. An event counts only when it is an inner
+ * instruction to units_msg whose first account is the program's event authority: only the program
  * can sign as it (emit_cpi), so events cannot be forged by another program or a top-level call.
  */
 export function parseMsgTransaction(tx: RawTx, program: Address = MSG_PROGRAM_ID): ChainMsgEvent[] {
@@ -309,7 +309,7 @@ export function parseMsgTransaction(tx: RawTx, program: Address = MSG_PROGRAM_ID
 }
 
 /**
- * New lineage_msg transactions since `until` (exclusive), oldest first, with their events. Pages
+ * New units_msg transactions since `until` (exclusive), oldest first, with their events. Pages
  * getSignaturesForAddress backwards until it reaches `until` (or the program's first transaction).
  */
 export async function fetchMsgEvents(rpc: Rpc, o: { until?: string | null; program?: Address; pageLimit?: number; maxPages?: number } = {}): Promise<{ events: ChainMsgEvent[]; newest: string | null; transactions: number }> {
@@ -338,13 +338,13 @@ export async function fetchMsgEvents(rpc: Rpc, o: { until?: string | null; progr
 export async function readMsgConfig(rpc: Rpc): Promise<MsgConfig | null> {
   const a = await rpc.getAccountInfo(msgPdas.config());
   if (!a) return null;
-  if (a.owner !== MSG_PROGRAM_ID) throw new Error(`${a.address} is not owned by lineage_msg`);
+  if (a.owner !== MSG_PROGRAM_ID) throw new Error(`${a.address} is not owned by units_msg`);
   return decodeMsgConfig(a.data);
 }
 export async function readMsgState(rpc: Rpc, agent: Address): Promise<AgentMsgState | null> {
   const a = await rpc.getAccountInfo(msgPdas.state(agent));
   if (!a) return null;
-  if (a.owner !== MSG_PROGRAM_ID) throw new Error(`${a.address} is not owned by lineage_msg`);
+  if (a.owner !== MSG_PROGRAM_ID) throw new Error(`${a.address} is not owned by units_msg`);
   return decodeAgentMsgState(a.data);
 }
 /** Every AgentMsgState (one getProgramAccounts). */

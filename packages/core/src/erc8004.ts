@@ -18,7 +18,7 @@ import { soulsOf } from "./souls.ts";
 // (OPTIONAL). Every one is present below.
 //
 // `registrations`: agentRegistry is `{namespace}:{chainId}:{identityRegistry}`; for Lineage that is
-// the CAIP-2 Solana chain id and the `lineage_registry` program, and agentId is the agent's id (the
+// the CAIP-2 Solana chain id and the `units_registry` program, and agentId is the agent's id (the
 // base58 key that seeds its `Agent` PDA; ERC-8004 uses an ERC-721 tokenId there, Solana has none).
 // `agentAccount` (an addition, ignored by ERC-8004 readers) is the PDA itself, so anyone can resolve
 // the entry with one `getAccountInfo`: PDA("agent", agentId) under the registry program.
@@ -35,7 +35,7 @@ export const A2A_PROTOCOL_VERSION = "0.3.0";
 export const PLACEHOLDER_IMAGE = "data:image/svg+xml;base64," + Buffer.from('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64"><circle cx="32" cy="32" r="28" fill="#8a8f98"/></svg>').toString("base64");
 
 export interface Erc8004Options {
-  /** `lineage_registry` program id (chain mode: the configured one). */
+  /** `units_registry` program id (chain mode: the configured one). */
   registryProgram: string;
   /** CAIP-2 chain id of the cluster the registry lives on. */
   chain: string;

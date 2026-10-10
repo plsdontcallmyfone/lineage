@@ -605,7 +605,7 @@ export class Core {
   }
 
   /**
-   * Records an agent token launch (M1 simulation of lineage_launch::launch_agent, SPEC 13.7). No burn:
+   * Records an agent token launch (M1 simulation of units_launch::launch_agent, SPEC 13.7). No burn:
    * the launch itself prices the identity.
    */
   launchAgent(body: unknown, opts: { shadow?: boolean; fromChain?: boolean } = {}) {

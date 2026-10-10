@@ -48,7 +48,7 @@ export class ChainVenue implements Venue {
   private async config(): Promise<LaunchConfig> {
     if (!this.lc) {
       this.lc = await this.reader.launchConfig();
-      if (!this.lc) throw new Error("lineage_launch is not initialized on this cluster");
+      if (!this.lc) throw new Error("units_launch is not initialized on this cluster");
     }
     return this.lc;
   }

@@ -1,7 +1,7 @@
-//! lineage_msg (SPEC 12.5): agent-to-agent messages as signed onchain instructions.
+//! units_msg (SPEC 12.5): agent-to-agent messages as signed onchain instructions.
 //!
 //! Every message is one instruction signed by the agent's current registry signing key
-//! (`lineage_registry::Agent.signing_key`, rotation-aware; a revoked key is refused). Any account may
+//! (`units_registry::Agent.signing_key`, rotation-aware; a revoked key is refused). Any account may
 //! pay the fee (the hosted runtime pays for hosted agents). Messages are not stored in accounts: each
 //! is an Anchor event emitted by self-CPI (`emit_cpi!`), so it lives in the transaction's inner
 //! instructions, readable by anyone from the ledger, with no rent per message. The only state is one
@@ -18,9 +18,9 @@
 //! runtime enforce both for hosted agents before anything is sent.
 use anchor_lang::prelude::*;
 use anchor_lang::solana_program::bpf_loader_upgradeable;
-use lineage_registry::Agent as RegistryAgent;
+use units_registry::Agent as RegistryAgent;
 
-// Network ids by build feature, as in lineage_registry: devnet by default, `mainnet` for mainnet.
+// Network ids by build feature, as in units_registry: devnet by default, `mainnet` for mainnet.
 #[cfg(not(feature = "mainnet"))]
 declare_id!("5uUyWAc9DQEWb3XF1aH8yG62sCjmrEjtAoRB1SD9JFqV");
 #[cfg(feature = "mainnet")]
@@ -45,7 +45,7 @@ pub const REF_FINDING: u8 = 4;
 pub const REF_BOUNTY: u8 = 5;
 
 #[program]
-pub mod lineage_msg {
+pub mod units_msg {
     use super::*;
 
     /// The program's upgrade authority creates the config once.
@@ -337,8 +337,8 @@ pub struct Post<'info> {
     pub payer: Signer<'info>,
     /// The agent's current registry signing key.
     pub signer: Signer<'info>,
-    #[account(seeds = [lineage_registry::AGENT_SEED, registry_agent.agent.as_ref()], bump = registry_agent.bump,
-        seeds::program = lineage_registry::ID)]
+    #[account(seeds = [units_registry::AGENT_SEED, registry_agent.agent.as_ref()], bump = registry_agent.bump,
+        seeds::program = units_registry::ID)]
     pub registry_agent: Box<Account<'info, RegistryAgent>>,
     #[account(seeds = [MSG_CONFIG_SEED], bump = config.bump)]
     pub config: Account<'info, MsgConfig>,
@@ -355,8 +355,8 @@ pub struct PostDm<'info> {
     #[account(mut)]
     pub payer: Signer<'info>,
     pub signer: Signer<'info>,
-    #[account(seeds = [lineage_registry::AGENT_SEED, registry_agent.agent.as_ref()], bump = registry_agent.bump,
-        seeds::program = lineage_registry::ID)]
+    #[account(seeds = [units_registry::AGENT_SEED, registry_agent.agent.as_ref()], bump = registry_agent.bump,
+        seeds::program = units_registry::ID)]
     pub registry_agent: Box<Account<'info, RegistryAgent>>,
     #[account(seeds = [MSG_CONFIG_SEED], bump = config.bump)]
     pub config: Account<'info, MsgConfig>,

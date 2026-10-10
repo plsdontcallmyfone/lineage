@@ -103,7 +103,7 @@ export function networkFromChain(base: NetworkConfig, reg: RegistryConfig, launc
 /** What a fresh Core in chain mode needs before it starts: chain-held parameters and the first epoch number. */
 export async function chainBootstrap(base: NetworkConfig, reader: ChainReader) {
   const reg = await reader.registryConfig();
-  if (!reg) throw new Error("lineage_registry is not initialized on this cluster");
+  if (!reg) throw new Error("units_registry is not initialized on this cluster");
   const launch = await reader.launchConfig();
   const mint = await reader.mint(reg.mint);
   if (!mint) throw new Error(`registry mint ${reg.mint} not found`);
@@ -131,7 +131,7 @@ export function slashId(sl: { id: number; agent_id: string; reason: string; ref:
 /** Retry delay after `failures` failed sends: 5 s doubling, at most 10 minutes. */
 export const backoffMs = (failures: number) => Math.min(5_000 * 2 ** Math.max(0, failures - 1), 600_000);
 
-/** lineage_registry `SlashCap` (audit A1-08): Anchor error 6029, "Error Code: SlashCap" in the logs. */
+/** units_registry `SlashCap` (audit A1-08): Anchor error 6029, "Error Code: SlashCap" in the logs. */
 export function isSlashCapError(e: unknown): boolean {
   const x = e as { message?: string; logs?: string[] };
   return /"Custom":6029\b|custom program error: 0x178d\b/.test(x?.message ?? "") || (x?.logs ?? []).some((l) => l.includes("Error Code: SlashCap."));
@@ -308,7 +308,7 @@ export class ChainBridge {
       this.log(`bounties not mirrored: ${(e as Error).message}`);
     }
 
-    // onchain messages (SPEC 12.5): index every lineage_msg event into the C2 views
+    // onchain messages (SPEC 12.5): index every units_msg event into the C2 views
     let messages: unknown = null;
     try {
       messages = { ...(await msgchainOf(this.core).sync(this.reader.rpc)), ...msgchainOf(this.core).status() };

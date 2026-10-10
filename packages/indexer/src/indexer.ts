@@ -25,9 +25,9 @@ import { storeDecoded } from "./db.ts";
 import { decodeTx, type RawTx, type TokenCtx } from "./decode.ts";
 
 // Ingest (pump.fun only, owner decisions 2026-10-10). Discovery: every AgentLaunch account of
-// lineage_launch (getProgramAccounts). Sources of a pump.fun launch: its bonding curve, its canonical
+// units_launch (getProgramAccounts). Sources of a pump.fun launch: its bonding curve, its canonical
 // PumpSwap pool once pump.fun migrated it, its mint (transfers and account changes outside the venue,
-// for holder balances) and its AgentLaunch account (lineage_launch instructions such as the fee crank
+// for holder balances) and its AgentLaunch account (units_launch instructions such as the fee crank
 // and the graduation record). Records the Meteora venue wrote (devnet history) are kept as read-only
 // rows: their stored trades stay, nothing new is ingested for them. Each source is backfilled and then
 // polled with getSignaturesForAddress (`until` the newest signature already ingested, paged with
@@ -95,7 +95,7 @@ export class Indexer {
   /** Finds every agent token and registers its sources. */
   async discover(): Promise<number> {
     const cfgAcc = await this.rpc.getAccountInfo(launchPdas.config());
-    if (!cfgAcc) throw new Error("lineage_launch LaunchConfig not found");
+    if (!cfgAcc) throw new Error("units_launch LaunchConfig not found");
     const cfg = decodeLaunchConfig(cfgAcc.data);
     this.lineMint = cfg.lineMint;
     this.lineTokenProgram = cfg.lineTokenProgram;

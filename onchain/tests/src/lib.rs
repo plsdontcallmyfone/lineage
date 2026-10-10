@@ -8,8 +8,8 @@ pub use anchor_lang::prelude::Pubkey;
 use anchor_lang::solana_program::instruction::{AccountMeta, Instruction};
 use anchor_lang::solana_program::{bpf_loader_upgradeable, system_instruction, system_program};
 use anchor_lang::{AccountDeserialize, InstructionData, ToAccountMetas};
-pub use lineage_launch as ll;
-pub use lineage_registry as lr;
+pub use units_launch as ll;
+pub use units_registry as lr;
 use litesvm::types::{TransactionMetadata, TransactionResult};
 pub use litesvm::LiteSVM;
 pub use solana_keypair::Keypair;
@@ -236,8 +236,8 @@ pub fn install_program_data(svm: &mut LiteSVM, program: &Pubkey, authority: &Pub
 
 pub fn fresh_svm() -> LiteSVM {
     let mut svm = LiteSVM::new();
-    svm.add_program_from_file(lr::ID, manifest("../target/deploy/lineage_registry.so")).expect("build lineage_registry first (cargo build-sbf)");
-    svm.add_program_from_file(ll::ID, manifest("../target/deploy/lineage_launch.so")).expect("build lineage_launch first (cargo build-sbf)");
+    svm.add_program_from_file(lr::ID, manifest("../target/deploy/units_registry.so")).expect("build units_registry first (cargo build-sbf)");
+    svm.add_program_from_file(ll::ID, manifest("../target/deploy/units_launch.so")).expect("build units_launch first (cargo build-sbf)");
     pf::install(&mut svm);
     set_clock(&mut svm, NOW);
     svm

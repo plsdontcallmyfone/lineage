@@ -95,7 +95,7 @@ export class ChainFunder {
   async config() {
     if (!this.lc) {
       this.lc = await this.reader.launchConfig();
-      if (!this.lc) throw new Error("lineage_launch is not initialized");
+      if (!this.lc) throw new Error("units_launch is not initialized");
       this.decimals = (await this.reader.mint(this.lc.lineMint))!.decimals;
     }
     return { lc: this.lc, decimals: this.decimals! };

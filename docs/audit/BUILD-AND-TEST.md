@@ -37,9 +37,9 @@ own keypairs, which only matter for deploying.
 ```sh
 cd onchain
 vendor/pump/fetch.sh
-cargo build-sbf --offline --manifest-path programs/lineage-registry/Cargo.toml --sbf-out-dir target/deploy
-cargo build-sbf --offline --manifest-path programs/lineage-launch/Cargo.toml   --sbf-out-dir target/deploy
-cargo build-sbf --offline --manifest-path programs/lineage-msg/Cargo.toml      --sbf-out-dir target/deploy
+cargo build-sbf --offline --manifest-path programs/units-registry/Cargo.toml --sbf-out-dir target/deploy
+cargo build-sbf --offline --manifest-path programs/units-launch/Cargo.toml   --sbf-out-dir target/deploy
+cargo build-sbf --offline --manifest-path programs/units-msg/Cargo.toml      --sbf-out-dir target/deploy
 shasum -a 256 target/deploy/*.so
 ```
 
@@ -58,7 +58,7 @@ unchanged (`7287a911...6ede` 732,472 bytes, `ebdccd34...9b81` 342,600 bytes). No
 The mainnet build (same sources, cargo feature `mainnet`, SPEC 14.11):
 
 ```sh
-for p in lineage-registry lineage-launch lineage-msg; do
+for p in units-registry units-launch units-msg; do
   cargo build-sbf --offline --manifest-path programs/$p/Cargo.toml --features mainnet --sbf-out-dir target/mainnet; done
 rm target/mainnet/*-keypair.json   # cargo build-sbf writes throwaway id keypairs; they are NOT the mainnet ids
 ```
@@ -76,9 +76,9 @@ has not been set up yet.
 
 ```sh
 cd onchain
-cargo test --offline -p lineage-onchain-tests       # loads target/deploy/*.so and the pump.fun dumps
-cargo test --offline -p lineage-registry --lib      # leaf encoder unit tests
-cargo test --offline -p lineage-launch --lib        # bounty target JSON unit test
+cargo test --offline -p units-onchain-tests       # loads target/deploy/*.so and the pump.fun dumps
+cargo test --offline -p units-registry --lib      # leaf encoder unit tests
+cargo test --offline -p units-launch --lib        # bounty target JSON unit test
 ```
 
 The suites run the compiled `.so` files, so rebuild the programs after any source change.

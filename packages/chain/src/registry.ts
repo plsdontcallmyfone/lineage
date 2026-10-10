@@ -2,7 +2,7 @@ import { addressBytes, hexToBytes, ixDisc, Reader, Writer, type Address } from "
 import { BPF_LOADER_UPGRADEABLE, pda, SYSTEM_PROGRAM, TOKEN_PROGRAM, u64le } from "./pda.ts";
 import { REGISTRY_PROGRAM_ID } from "./programs.ts";
 
-// lineage_registry (SPEC 14.1): addresses, instruction builders and account decoders. Account
+// units_registry (SPEC 14.1): addresses, instruction builders and account decoders. Account
 // order and encodings match the Anchor program; onchain/tests/fixtures/client-vectors.json pins them.
 
 /** The active network's id (devnet until a profile is applied; programs.ts). */

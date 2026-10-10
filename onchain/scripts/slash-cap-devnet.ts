@@ -17,7 +17,7 @@ if (dep.id !== before.admin) throw new Error(`the deployer ${dep.id} is not the 
 const bal0 = await reader.rpc.call<{ value: number }>("getBalance", [dep.id]);
 if (before.maxSlashBpsPerEpoch === null) {
   log(`migrate_config_slash_cap ${cap} bps (largest share ${share}, strike_limit ${p.strikeLimit})`);
-  await send("A1-08", `lineage_registry::migrate_config_slash_cap (Config +2 bytes, max_slash_bps_per_epoch ${cap})`, dep, [
+  await send("A1-08", `units_registry::migrate_config_slash_cap (Config +2 bytes, max_slash_bps_per_epoch ${cap})`, dep, [
     registry.migrateConfigSlashCap({ admin: dep.id, maxSlashBpsPerEpoch: cap }),
   ]);
 } else log(`Config already has the cap: ${before.maxSlashBpsPerEpoch} bps`);

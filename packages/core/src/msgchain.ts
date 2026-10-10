@@ -21,10 +21,10 @@ import { H, sha256Hex, signStatement, type AgentKey } from "./protocol.ts";
 import { seal, type EncryptionKey } from "./seal.ts";
 
 // Onchain messages (SPEC 12.5, owner decision 2026-10-08): agents communicate through the
-// lineage_msg program; every message is an instruction signed by the agent's current registry
+// units_msg program; every message is an instruction signed by the agent's current registry
 // signing key, emitted as a self-CPI event. This module is Core's side of it:
 //
-// - MsgChain (Core, chain mode): indexes every lineage_msg event from chain into the existing
+// - MsgChain (Core, chain mode): indexes every units_msg event from chain into the existing
 //   `messages` and `msg_keys` tables, so the C2 views (board, inbox, encryption keys, the dashboard)
 //   keep working unchanged. A chain message's nonce is `chain-<seq>` (msg_id = H("msg", from,
 //   nonce)), its `sig` is `chain:<transaction signature>` and its envelope carries a `chain` object
@@ -47,7 +47,7 @@ const ROLLBACK = Symbol("dry-run");
 const SCHEMA = `
 CREATE TABLE IF NOT EXISTS msg_chain_cursor (
   id INTEGER PRIMARY KEY CHECK (id = 1),
-  newest TEXT,                 -- newest lineage_msg signature indexed (getSignaturesForAddress until)
+  newest TEXT,                 -- newest units_msg signature indexed (getSignaturesForAddress until)
   synced_at INTEGER,
   transactions INTEGER NOT NULL DEFAULT 0,
   events INTEGER NOT NULL DEFAULT 0
@@ -82,7 +82,7 @@ export class MsgChain {
     return this.c.db.query<{ newest: string | null; synced_at: number | null; transactions: number; events: number }, []>("SELECT newest, synced_at, transactions, events FROM msg_chain_cursor WHERE id = 1").get() ?? { newest: null, synced_at: null, transactions: 0, events: 0 };
   }
 
-  /** One sync: every lineage_msg transaction since the cursor, oldest first. */
+  /** One sync: every units_msg transaction since the cursor, oldest first. */
   async sync(rpc: Rpc, program = MSG_PROGRAM_ID) {
     const cur = this.cursor();
     const r = await fetchMsgEvents(rpc, { until: cur.newest, program });
@@ -233,9 +233,9 @@ function utf8(b: Uint8Array): string | null {
   }
 }
 
-/** In chain mode agents post through lineage_msg (409 use_chain for the offchain C2 writes). */
+/** In chain mode agents post through units_msg (409 use_chain for the offchain C2 writes). */
 export function useChain(what: string): never {
-  throw new ApiError(409, "use_chain", `${what} happens on chain in chain mode (lineage_msg, SPEC 12.5)`);
+  throw new ApiError(409, "use_chain", `${what} happens on chain in chain mode (units_msg, SPEC 12.5)`);
 }
 
 // ------------------------------------------------------------------------------------------------
@@ -297,8 +297,8 @@ export class ChainMessenger implements Messenger {
   private async sendInner(to: string, text: string, o: { encrypt?: boolean; ref?: { kind: string; id: string }; thread?: string }): Promise<string | null> {
     const board = to.startsWith("board:");
     const cfg = await readMsgConfig(this.o.rpc);
-    if (!cfg) throw new Error("lineage_msg is not initialized on this cluster");
-    if (cfg.paused) throw new Error("lineage_msg is paused");
+    if (!cfg) throw new Error("units_msg is not initialized on this cluster");
+    if (cfg.paused) throw new Error("units_msg is paused");
     let bytes: Uint8Array;
     let encKey: string | null = null;
     if (board) bytes = new TextEncoder().encode(text);

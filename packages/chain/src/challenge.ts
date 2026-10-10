@@ -2,7 +2,7 @@ import { hexToBytes, ixDisc, Reader, Writer, type Address } from "./codec.ts";
 import { SYSTEM_PROGRAM, TOKEN_PROGRAM, u64le } from "./pda.ts";
 import { r, REGISTRY_PROGRAM_ID, registryPdas, w, type Ix } from "./registry.ts";
 
-// Bonded challenges (SPEC 10.8), in lineage_registry (onchain/programs/lineage-registry/src/challenge.rs):
+// Bonded challenges (SPEC 10.8), in units_registry (onchain/programs/units-registry/src/challenge.rs):
 // a registered agent contests a final verdict, a slash or an epoch root by bonding `$LINE`; Core
 // records its resolution with the Core authority. Account order and encodings match the program;
 // onchain/tests/fixtures/client-vectors.json pins them.
