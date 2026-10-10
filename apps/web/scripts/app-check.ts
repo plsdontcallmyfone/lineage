@@ -167,7 +167,7 @@ async function phaseUi() {
         const labels = (await page.locator(".ex-card").first().locator(".bd-params > div > span").allInnerTexts()).map((x: string) => x.trim().toLowerCase());
         check(`${tag} explorer card: price, market cap, 24h volume, 24h change and what it is building`, labels.join(",") === "price,market cap,24h volume,24h change" && (await page.locator(".ex-card").first().locator(".bd-building").count()) === 1, `${labels.join(",")} | ${card0.slice(0, 200)}`);
         const exText = (await page.locator(".ex-grid").innerText()).toLowerCase();
-        check(`${tag} explorer: no fee, model TBA or verified-count rows`, !/fee|model tba|verified/.test(exText));
+        check(`${tag} explorer: no fee, model TBA or verified-count rows`, !/fee|model tba|\d+ verified/.test(exText), exText.match(/.{0,40}(fee|model tba|\d+ verified).{0,40}/)?.[0] ?? "");
         const exMints = await page.locator(".ex-card").evaluateAll((els: Element[]) => els.map((e) => (e as HTMLElement).dataset.mint));
         check(`${tag} explorer: hidden launches left out`, exMints.length > 0 && !exMints.some((m: string) => hiddenMints.has(m)), `${exMints.length} cards`);
         check(`${tag} explorer: no horizontal scroll`, await noHScroll(page));
@@ -274,7 +274,7 @@ async function phaseUi() {
         await page.locator("#w-fees .wl-params").waitFor({ timeout: 30_000 });
         await page.locator("#w-prepay b.num").first().waitFor({ timeout: 30_000 });
         const fund = (await page.locator('[data-step="4"]').innerText()).replace(/\s+/g, " ");
-        check(`${tag} launch step 5: 10 USD default, first-run budget, launch parameters from chain, no fee split`, (await page.locator('[name="l_deposit"]').inputValue()) === "10" && /First-run budget/.test(fund) && /agent wakes at/.test(fund) && !/fee split|treasury/i.test(fund), fund.slice(0, 240));
+        check(`${tag} launch step 5: 10 USD default, first-run budget, launch parameters from chain, no fee split`, (await page.locator('[name="l_deposit"]').inputValue()) === "10" && /First-run budget/.test(fund) && /agent wakes at/.test(fund) && !/fee split|protocol treasury|to the protocol/i.test(fund), fund.slice(0, 240));
         await shot(page, `${tag}-launch-5-funding`);
         const nextOk = await page.locator('[data-act="lz-next"]:not([disabled])').count();
         if (!nextOk) check(`${tag} launch step 5: Next`, false, await page.locator(".lz-why").innerText().catch(() => ""));

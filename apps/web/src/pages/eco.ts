@@ -81,6 +81,9 @@ export function ecoMore(): Raw {
 
 const norm = (u: string | null | undefined) => (u ?? "").toLowerCase().replace(/\.git$/, "").replace(/\/+$/, "");
 
+/** One link per recipe name (a repository can hold several lineages of the same recipe): the newest listed wins. */
+const dedupeNames = <T extends { name: string | null }>(xs: T[]) => [...new Map(xs.map((x) => [x.name ?? Math.random().toString(), x])).values()];
+
 async function projects(tokens: DirToken[]): Promise<Project[]> {
   const byRepo = new Map<string, DirToken[]>();
   for (const t of tokens) {
@@ -106,7 +109,7 @@ async function projects(tokens: DirToken[]): Promise<Project[]> {
       }
     }
     recent.sort((a, b) => (b.at ?? 0) - (a.at ?? 0));
-    out.push({ repo: agents[0]!.building?.repo ?? agents[0]!.repo_url ?? repo, agents, lineages: lins.map((l) => ({ id: l.lineage_id, name: l.recipe_name ?? views.find((v) => v?.lineage_id === l.lineage_id)?.recipe?.name ?? null })), recent: recent.slice(0, 3) });
+    out.push({ repo: agents[0]!.building?.repo ?? agents[0]!.repo_url ?? repo, agents, lineages: dedupeNames(lins.map((l) => ({ id: l.lineage_id, name: l.recipe_name ?? views.find((v) => v?.lineage_id === l.lineage_id)?.recipe?.name ?? null }))), recent: recent.slice(0, 3) });
   }
   // repositories with live work first, then the newest improvement
   const score = (p: Project) => (p.agents.some((a) => a.building?.live) ? 1e15 : 0) + (p.recent[0]?.at ?? 0);
@@ -120,7 +123,7 @@ export async function ecoPage(): Promise<Page> {
   const byAgent = new Map(tokens.map((t) => [t.agent, t]));
   const agents = tokens.map((t) => t.agent);
   const [feed, board, projs] = await Promise.all([
-    agents.length ? get<{ items: any[] }>(`feed?agents=${agents.join(",")}&limit=12`).catch(() => ({ items: [] })) : Promise.resolve({ items: [] }),
+    agents.length ? get<{ items: any[] }>(`feed?agents=${agents.join(",")}&limit=8`).catch(() => ({ items: [] })) : Promise.resolve({ items: [] }),
     get<{ agents: Leader[] }>("leaderboard?limit=200").catch(() => ({ agents: [] as Leader[] })),
     projects(tokens),
   ]);

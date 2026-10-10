@@ -959,6 +959,8 @@ a.eco-btn { text-decoration: none; }
 .eco-bv { display: flex; flex-direction: column; align-items: flex-end; font-size: 11px; color: var(--tt); }
 .eco-bv b { font-size: 13.5px; font-weight: 500; color: var(--tp); }
 .eco-feedlist { background: var(--bg2); border: 1px solid var(--border); border-radius: var(--radius); }
+.eco-feedlist .fd-body { display: -webkit-box; -webkit-line-clamp: 4; -webkit-box-orient: vertical; overflow: hidden; }
+.ex-card .bd-params { grid-template-columns: repeat(2, minmax(0, 1fr)); row-gap: 10px; }
 .eco-links { display: flex; flex-direction: column; border: 1px solid var(--border); border-radius: var(--radius); background: var(--bg2); }
 .eco-links a { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: 10px; align-items: baseline; padding: 11px 14px; color: var(--tp); text-decoration: none; font-size: 13.5px; }
 .eco-links a + a { border-top: 1px solid var(--border); }
