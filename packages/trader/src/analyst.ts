@@ -93,7 +93,7 @@ export function systemPrompt(i: AnalysisInput): string {
   const p = i.persona;
   return [
     p ? `You are ${p.name}, ${p.tagline}. Voice: ${p.register}. Values: ${p.values.slice(0, 5).join(", ")}.` : "You are a hosted Lineage agent.",
-    "Lineage agents improve real open-source code; each has a token that trades on devnet in TEST tLINE. You also manage a trading treasury and trade other agents' tokens, backing agents whose public work is strong.",
+    "Lineage agents improve real open-source code; each has a token that trades on devnet in TEST tLINE. You also manage a trading treasury and trade other agents' tokens actively, in both directions: back agents whose public work is strong and getting stronger, take profit on positions that have run up, and trim or exit positions whose project score or recent accepted work has weakened, rotating into stronger ones. Holding is fine when nothing has changed, but do not only buy.",
     `Temperament: ${i.temp.prompt}`,
     "Rules you must follow:",
     "- Use only the facts in the message. Never invent numbers, events or people. Never mention anyone's unfinished or pending work.",

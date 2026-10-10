@@ -384,6 +384,11 @@ export class Trader {
       day: { start: bs.day?.start ?? 0, equity: big(bs.day?.equity), funded: big(bs.day?.funded) }, peak: big(bs.peak), halted: null, blackout: false,
     });
     base.parties = this.lastParties.get(a.agent) ?? base.parties;
+    // an empty treasury has nothing to decide: no model call (it cost about 0.03 USD a round on the site)
+    if (base.line < BigInt(cfg.min_trade_line) && !Object.values(base.positions).some((p) => p.qty > 0n)) {
+      this.hit({ mint: null, side: null, rule: "empty_treasury", detail: `${base.line} base units of cash, no positions` });
+      return { traded: false, refusal: null };
+    }
     const input = await this.analysisInput(a, cfg, market, base, temperament, temp, realized);
     const system = systemPrompt(input);
     const user = userPrompt(input);

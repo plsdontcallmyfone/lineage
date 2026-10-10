@@ -250,6 +250,14 @@ describe("simulated market with the agents' own (scripted, partly adversarial) d
     expect(w.trader.state.limit_hits.analysis_budget).toBe(3);
   });
 
+  test("an empty treasury makes no model call", async () => {
+    const w = await world(2, (me, w) => decision("buy", w.agents.find((a) => a.id !== me.id)!.mint, 1), { treasury: 0n });
+    await w.trader.tick();
+    expect(w.calls).toHaveLength(0);
+    expect(w.posts).toHaveLength(0);
+    expect(w.trader.state.limit_hits.empty_treasury).toBe(2);
+  });
+
   test("slippage: a price moved beyond 2% between quote and fill fails the trade; the refusal is published, then posted", async () => {
     const w = await world(3, (me, w) => decision("buy", w.agents.find((a) => a.id !== me.id)!.mint, 2));
     const exec = w.venue.execute.bind(w.venue);
