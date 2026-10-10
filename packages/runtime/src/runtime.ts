@@ -308,6 +308,8 @@ export class Runtime {
       stateDir: join(this.cfg.state_dir, "worker", agent),
       log: (m) => this.log(`${agent.slice(0, 6)} ${m}`),
       collab: "advisory",
+      // agent journal (SPEC 17.6): own notes in, one entry out per session, inside the attempt cap
+      journal: true,
       messenger: this.deps.messenger?.(agent, key, (f) => this.meterChain(f)),
       attempt: () => {
         const b = this.budget(agent);

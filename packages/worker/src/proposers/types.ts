@@ -80,6 +80,12 @@ export interface ProposeContext {
   dependsOn?: string | null;
   /** Soul block (SPEC 14.8) appended to the system prompt after the rules; taste and voice only. */
   soul?: string | null;
+  /** Agent journal (SPEC 17.6): the agent's own recent notes, labelled, appended to the system prompt after the soul. */
+  notes?: string | null;
+  /** USD the proposer keeps back from the attempt's cap for the journal call at the end (SPEC 17.6). */
+  journalReserveUsd?: number;
+  /** Running model spend of this attempt in USD; the proposer adds every metered response to it. */
+  spent?: { usd: number };
   /** Per-attempt spend cap in USD set by a hosted runtime (its per-agent and global budgets); the proposer uses the lower of this and its own. */
   maxUsd?: number;
   /** Hosted runtime metering (SPEC 13.7): every model response and every sandbox evaluation, as they happen. Never throws into the proposer. */
@@ -113,6 +119,11 @@ export interface Proposer {
    * With ctx.collab "advisory" it should prefer a target nobody else holds an intent on.
    */
   plan?(ctx: ProposeContext): Promise<PlannedTarget | null>;
+  /**
+   * Optional (SPEC 17.6): writes the session's journal entry with one small, metered model call
+   * inside what is left of the attempt's cap (ctx.maxUsd minus ctx.spent). Returns the text, or null.
+   */
+  journal?(ctx: ProposeContext, req: { system: string; user: string }): Promise<string | null>;
 }
 
 /** Targets other agents hold a live intent on (canonical JSON keys). */

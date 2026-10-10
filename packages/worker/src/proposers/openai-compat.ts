@@ -144,7 +144,8 @@ export class OpenAICompatProposer implements Proposer {
   async propose(ctx: ProposeContext): Promise<Proposal | null> {
     const o = this.o;
     const p = o.provider;
-    const cap = Math.min(o.max_usd, ctx.maxUsd ?? Infinity);
+    // the journal call at the end of the session (SPEC 17.6) keeps its reserve out of the authoring loop
+    const cap = Math.min(o.max_usd, ctx.maxUsd ?? Infinity) - (ctx.journalReserveUsd ?? 0);
     const usage = { input_tokens: 0, output_tokens: 0, cache_read_tokens: 0, cache_write_tokens: 0, usd: 0 };
     let lastTurnUsd = 0;
     let warned = false;
@@ -165,6 +166,7 @@ export class OpenAICompatProposer implements Proposer {
       usage.cache_read_tokens += n.usage.cache_read_tokens;
       usage.cache_write_tokens += n.usage.cache_write_tokens;
       usage.usd += usd;
+      if (ctx.spent) ctx.spent.usd += usd;
       lastTurnUsd = usd;
       try {
         ctx.meter?.model({ ...n.usage, usd, model });
@@ -261,5 +263,43 @@ export class OpenAICompatProposer implements Proposer {
     }
     ctx.log(`${tag}: turn limit reached`);
     return null;
+  }
+
+  /** The session's journal entry (SPEC 17.6): one small call, metered, inside what is left of the attempt's cap. */
+  async journal(ctx: ProposeContext, req: { system: string; user: string }): Promise<string | null> {
+    const o = this.o;
+    const left = Math.min(o.max_usd, ctx.maxUsd ?? Infinity) - (ctx.spent?.usd ?? 0);
+    const promptChars = req.system.length + req.user.length;
+    const rate = rateFor(o.model, (o.now ?? (() => new Date()))(), promptChars)!;
+    // worst case: every input character a token, the rest of the room for output (reasoning included)
+    const inputUsd = (promptChars * Math.max(rate.input, rate.cache_write ?? rate.input)) / 1e6;
+    const maxTokens = Math.min(4000, Math.floor(((left - inputUsd) * 1e6) / rate.output));
+    if (!(maxTokens >= 400)) {
+      ctx.log(`${o.provider.id}: journal skipped, ${left.toFixed(4)} USD left of the attempt's cap`);
+      return null;
+    }
+    const res = await this.call({
+      model: o.model.id,
+      messages: [
+        { role: "system", content: req.system },
+        { role: "user", content: req.user },
+      ],
+      [o.provider.token_param ?? "max_tokens"]: maxTokens,
+      ...(o.provider.extra_body ?? {}),
+    });
+    const n = normaliseUsage(res.usage);
+    let usd = usdFor(rateFor(o.model, (o.now ?? (() => new Date()))(), n.prompt)!, n.usage);
+    if (n.bad) usd = Math.max(usd, left, 0);
+    if (ctx.spent) ctx.spent.usd += usd;
+    try {
+      ctx.meter?.model({ ...n.usage, usd, model: res.model ?? o.model.id });
+    } catch {
+      /* metering must not change the entry */
+    }
+    ctx.log(`${o.provider.id}: journal call ${usd.toFixed(4)} USD`);
+    const choice = res.choices?.[0];
+    if (!choice?.message || choice.finish_reason === "length" || choice.finish_reason === "content_filter") return null;
+    const text = typeof choice.message.content === "string" ? choice.message.content.replace(/<think>[\s\S]*?<\/think>/g, "").trim() : "";
+    return text || null;
   }
 }

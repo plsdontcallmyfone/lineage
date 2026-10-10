@@ -150,7 +150,7 @@ Rules that matter:
 - Do not weaken behaviour the tests do not cover; the equivalence harness will catch it.
 - Read the hot code before editing. Prefer one clear algorithmic or allocation improvement over many micro-edits.
 - Use evaluate before submit. If evaluate does not report accepted, either fix the change or give_up. Submitting a change that fails costs your agent its compute for nothing.
-- Be efficient with tool calls; your compute is metered.${ctx.soul ? `\n${ctx.soul}` : ""}`;
+- Be efficient with tool calls; your compute is metered.${ctx.soul ? `\n${ctx.soul}` : ""}${ctx.notes ? `\n${ctx.notes}` : ""}`;
 }
 
 /** The first user turn: open findings and other agents' intents (shared by every adapter). */
@@ -186,8 +186,9 @@ export class AnthropicProposer implements Proposer {
 
   async propose(ctx: ProposeContext): Promise<Proposal | null> {
     const o = this.opts;
-    // a hosted runtime may lower the cap for one attempt (its per-agent and global budgets)
-    const cap = Math.min(o.max_usd, ctx.maxUsd ?? Infinity);
+    // a hosted runtime may lower the cap for one attempt (its per-agent and global budgets); the
+    // journal call at the end of the session (SPEC 17.6) keeps its reserve out of the authoring loop
+    const cap = Math.min(o.max_usd, ctx.maxUsd ?? Infinity) - (ctx.journalReserveUsd ?? 0);
     const usage = { input_tokens: 0, output_tokens: 0, cache_read_tokens: 0, cache_write_tokens: 0, usd: 0 };
     let lastTurnUsd = 0;
     let lastInput = 0;
@@ -218,6 +219,7 @@ export class AnthropicProposer implements Proposer {
       usage.cache_read_tokens += d.cache_read_tokens;
       usage.cache_write_tokens += d.cache_write_tokens;
       usage.usd += usd;
+      if (ctx.spent) ctx.spent.usd += usd;
       lastTurnUsd = usd;
       try {
         ctx.meter?.model({ ...d, usd, model });
@@ -325,6 +327,46 @@ export class AnthropicProposer implements Proposer {
     }
     ctx.log("anthropic: turn limit reached");
     return null;
+  }
+
+  /** The session's journal entry (SPEC 17.6): one small call, metered, inside what is left of the attempt's cap. */
+  async journal(ctx: ProposeContext, req: { system: string; user: string }): Promise<string | null> {
+    const o = this.opts;
+    const left = Math.min(o.max_usd, ctx.maxUsd ?? Infinity) - (ctx.spent?.usd ?? 0);
+    const p = o.prices;
+    // worst case: every input character a token at the cache-write rate, the rest of the room for output
+    const inputUsd = ((req.system.length + req.user.length) * Math.max(p.input, p.cache_write)) / 1e6;
+    const maxTokens = Math.min(3000, Math.floor(((left - inputUsd) * 1e6) / p.output));
+    if (!(maxTokens >= 400)) {
+      ctx.log(`anthropic: journal skipped, ${left.toFixed(4)} USD left of the attempt's cap`);
+      return null;
+    }
+    const res = await this.client.beta.messages.create({
+      model: o.model,
+      max_tokens: maxTokens,
+      betas: ["server-side-fallback-2026-07-01"],
+      fallbacks: "default",
+      ...(NO_ADAPTIVE.test(o.model) ? {} : { thinking: { type: "adaptive" as const }, output_config: { effort: "low" as const } }),
+      system: req.system,
+      messages: [{ role: "user", content: req.user }],
+    });
+    const model = res.model ?? o.model;
+    const base = model.replace(/-\d{8}$/, "");
+    const pr = model === o.model || base === o.model ? p : (MODEL_PRICES[model] ?? MODEL_PRICES[base] ?? PRICE_CEILING);
+    const n = (v: unknown) => (typeof v === "number" && Number.isFinite(v) && v >= 0 ? Math.floor(v) : 0);
+    const u = res.usage;
+    const d = { input_tokens: n(u?.input_tokens), output_tokens: n(u?.output_tokens) || maxTokens, cache_read_tokens: n(u?.cache_read_input_tokens), cache_write_tokens: n(u?.cache_creation_input_tokens) };
+    const usd = (d.input_tokens * pr.input + d.output_tokens * pr.output + d.cache_read_tokens * pr.cache_read + d.cache_write_tokens * pr.cache_write) / 1e6;
+    if (ctx.spent) ctx.spent.usd += usd;
+    try {
+      ctx.meter?.model({ ...d, usd, model });
+    } catch {
+      /* metering must not change the entry */
+    }
+    ctx.log(`anthropic: journal call ${usd.toFixed(4)} USD`);
+    if (res.stop_reason !== "end_turn") return null;
+    const text = res.content.map((b) => (b.type === "text" ? b.text : "")).join("").trim();
+    return text || null;
   }
 }
 

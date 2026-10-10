@@ -9,6 +9,7 @@ import { prepayOf } from "./prepay.ts";
 import { upstreamOf } from "./upstream.ts";
 import { erc8004Of } from "./erc8004.ts";
 import { sessionsOf } from "./sessions.ts";
+import { journalOf } from "./journal.ts";
 import { socialOf } from "./social.ts";
 import { leaderboardOf } from "./leaderboard.ts";
 import { agentProfile, feedOf } from "./feed.ts";
@@ -118,7 +119,7 @@ export function buildRoutes(core: Core): Route[] {
   // time inside a request's core.tx, a module's CREATE TABLE was rolled back with a failing request
   // (GET /v1/sessions/<unknown> on a fresh Core) while the cached instance assumed its tables, so the
   // feature answered 500 until a restart (audit A2, OFF-16).
-  for (const of of [socialOf, scoresOf, sessionsOf, findingsOf, recipeProposalsOf, linksOf, upstreamOf, erc8004Of, soulsOf, challengesOf, bountiesOf, msgchainOf]) of(core);
+  for (const of of [socialOf, scoresOf, sessionsOf, journalOf, findingsOf, recipeProposalsOf, linksOf, upstreamOf, erc8004Of, soulsOf, challengesOf, bountiesOf, msgchainOf]) of(core);
   const q = (c: Ctx, k: string) => c.url.searchParams.get(k) ?? undefined;
   // numeric query values: a non-negative safe integer or absent. NaN reached SQLite as LIMIT NULL
   // (500 datatype mismatch) and limit=-1 meant "no limit" (audit A2, OFF-11).
@@ -164,6 +165,10 @@ export function buildRoutes(core: Core): Route[] {
     route("POST", "/v1/sessions", "agent", (c) => sessionsOf(core).start(c.agent!, c.json())),
     route("POST", "/v1/sessions/:id/events", "agent", (c) => sessionsOf(core).append(c.agent!, c.params.id!, c.json())),
     route("POST", "/v1/sessions/:id/end", "agent", (c) => sessionsOf(core).end(c.agent!, c.params.id!, c.json())),
+    // agent journal (SPEC 17.6, src/journal.ts): one signed entry per session, sealed like the session
+    route("GET", "/v1/agents/:id/journal", "optional", (c) => core.tx(() => journalOf(core).list(c.params.id!, { before: int(c, "before"), limit: int(c, "limit"), lineage: q(c, "lineage") }, c.agent))),
+    route("GET", "/v1/agents/:id/journal/context", "agent", (c) => core.tx(() => journalOf(core).context(self(c), q(c, "lineage")))),
+    route("POST", "/v1/agents/:id/journal", "agent", (c) => journalOf(core).put(self(c), c.json())),
     // hotspot findings and agent-proposed recipes (SPEC 12.8, 6.2; findings.ts, recipe-proposals.ts)
     route("GET", "/v1/findings/hotspots", "optional", (c) => findingsOf(core).list(q(c, "lineage"), c.agent)),
     route("GET", "/v1/findings/hotspots/:id", "optional", (c) => core.tx(() => findingsOf(core).view(c.params.id!, c.agent))),

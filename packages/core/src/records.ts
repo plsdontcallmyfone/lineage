@@ -1,6 +1,7 @@
 import type { Core } from "./core.ts";
 import { slashId } from "./chain.ts";
 import { notFound } from "./errors.ts";
+import { journalOf } from "./journal.ts";
 import { canonicalJson, hashJson, leafHash, merkleProof, merkleRoot, signStatement, verifyProof, type AgentKey } from "./protocol.ts";
 
 // Reputation records and contribution leaves (identity plan I2, SPEC 13.10, 14.1). At every epoch
@@ -47,7 +48,7 @@ export const RECORDS_SCHEMA = `
   );
   CREATE INDEX IF NOT EXISTS contributions_epoch ON contributions(epoch);
   CREATE TABLE IF NOT EXISTS record_marks (
-    kind TEXT NOT NULL,                  -- cand | gen | revert | audit | strike | slash | qual
+    kind TEXT NOT NULL,                  -- cand | gen | revert | audit | strike | slash | qual | journal
     id TEXT NOT NULL,
     epoch INTEGER NOT NULL,              -- the epoch whose records counted it
     PRIMARY KEY (kind, id)
@@ -82,7 +83,16 @@ export interface VerifierRecord {
   replay_units: number;
   qualifications: { lineage_id: string; status: string }[];
 }
-export type AgentRecordDoc = AuthorRecord | VerifierRecord;
+/** Journal entries (SPEC 17.6) that became public in the epoch: their entry ids (statement hashes), sorted. */
+export interface JournalRecord {
+  v: 1;
+  epoch: number;
+  agent: string;
+  role: "journal";
+  lineage_id: null;
+  entries: string[];
+}
+export type AgentRecordDoc = AuthorRecord | VerifierRecord | JournalRecord;
 export interface Contribution {
   epoch: number;
   gen_id: string;
@@ -289,6 +299,9 @@ export class Records {
       r.strikes = sortObj(r.strikes);
       docs.push(r);
     }
+    // journal entries public by now and not yet counted (SPEC 17.6); shadows keep none
+    for (const [agent, entries] of journalOf(this.c as unknown as Core).forRecords((id) => mark("journal", id)))
+      if (!this.isShadow(agent)) docs.push({ v: 1, epoch: n, agent, role: "journal", lineage_id: null, entries });
     const leaves: string[] = [];
     db.query("DELETE FROM records WHERE epoch = ?").run(n);
     db.query("DELETE FROM contributions WHERE epoch = ?").run(n);
@@ -431,7 +444,7 @@ export function credentialTotals(agent: string, epochs: { leaves: CredentialLeaf
         t.expired += r.candidates.expired;
         t.reverted += r.reverted.length;
         t.author_units = units6(t.author_units + r.accepted.reduce((s, a) => s + a.author_units, 0));
-      } else {
+      } else if (r.role === "verifier") {
         t.replays += r.replays.assigned ?? 0;
         t.replays_counted += r.replays.counted ?? 0;
         t.replays_minority += r.replays.minority ?? 0;

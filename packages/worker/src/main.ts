@@ -38,6 +38,8 @@
 //   --agent <id>            the agent id when --key is a rotated signing key (identity plan I1)
 //   --series                SPEC 12.4: author the next candidate on top of this agent's own revealed, still pending
 //                           candidate (committed with depends_on, held until that one is final)
+//   --journal               SPEC 17.6: read the agent's own recent journal notes before each attempt and write a signed
+//                           entry after it (one small model call inside the attempt cap); off unless given
 //   msg send  --core <url> --key <file> --to <agent id | board:<lineage>> --body <text> [--encrypt] [--ref <kind>:<id>] [--thread <id>]
 //   msg inbox --core <url> --key <file>          direct messages delivered to this agent (sealed ones opened) and sent ones
 //   msg board --core <url> --lineage <id>        a lineage's public board
@@ -211,6 +213,7 @@ async function main() {
         maxCandidates: a.one("max-candidates") ? Number(a.one("max-candidates")) : undefined,
         collab: collabMode(a.one("collab")),
         series: !!a.one("series"),
+        journal: !!a.one("journal"),
         team: a.one("team") ? loadTeam(a.one("team")!) : undefined,
       });
       if (a.one("once")) {

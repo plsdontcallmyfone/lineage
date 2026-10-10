@@ -36,6 +36,7 @@ import { doctor } from "./doctor.ts";
 import { RecipeBook } from "./recipes.ts";
 import { proposerSoulBlock, type SoulDoc } from "@lineage/souls";
 import { Telemetry } from "./telemetry.ts";
+import { checkEntry, FactsLog, journalPrompt, JOURNAL_RESERVE_USD, notesBlock, readNotes, storeEntry } from "./journal.ts";
 import { writeSecret } from "./secret-file.ts";
 import { SessionRecorder } from "./session.ts";
 import { measureCoalitions, type SplitAssignment } from "./split.ts";
@@ -96,6 +97,12 @@ export interface WorkerOptions {
    */
   soul?: false | (() => Promise<string | null> | string | null);
   /**
+   * Agent journal (SPEC 17.6): before each attempt read the agent's own recent notes into the
+   * proposer's context, and after it write one signed entry in the soul's voice (a small model call
+   * inside the attempt's cap). The hosted runtime turns it on; self-hosted workers opt in.
+   */
+  journal?: boolean;
+  /**
    * Onchain messages (SPEC 12.5): when set, encryption keys and messages go through this transport
    * (lineage_msg; packages/core msgchain.ts ChainMessenger) instead of POST /v1/messages. Reading
    * stays on Core's board and inbox views, which index the chain.
@@ -148,6 +155,7 @@ export class Worker {
   /** Reveals in flight, shared by the main loop and the reveal timer so neither sends one twice. */
   private revealing = new Set<string>();
   /** Patches this worker revealed, by commit id: what a stacked candidate builds on (SPEC 12.4). */
+  private soulDoc: SoulDoc | null = null;
   private mine = new Map<string, { lineage_id: string; patch: string; at: number }>();
   /** Profile replays of hotspot claims (SPEC 12.8) and calibration replays of proposed recipes (SPEC 6.2). */
   private profiles: DiscoveryAgent;
@@ -388,7 +396,8 @@ export class Worker {
     try {
       if (typeof this.opts.soul === "function") return (await this.opts.soul()) ?? null;
       const r = await this.client.get(`/v1/agents/${this.id}/soul`);
-      return r.status === 200 && r.body?.doc ? proposerSoulBlock(r.body.doc as SoulDoc) : null;
+      this.soulDoc = r.status === 200 && r.body?.doc ? (r.body.doc as SoulDoc) : null;
+      return this.soulDoc ? proposerSoulBlock(this.soulDoc) : null;
     } catch {
       return null;
     }
@@ -414,6 +423,10 @@ export class Worker {
     const session = new SessionRecorder(this.client, this.log, { enabled: this.opts.telemetry !== false });
     await session.start(where, proposer.name);
     let sessionCommit: string | null = null;
+    // agent journal (SPEC 17.6): the session's own facts, and the context for the entry at the end
+    const journal = this.opts.journal === true && this.opts.telemetry !== false;
+    const facts = journal ? new FactsLog() : null;
+    let jctx: ProposeContext | null = null;
     try {
       const dir = join(work, "src");
       materialize(loaded.recipe.repo, loaded.recipe.commit, loaded.overlayDir, dir);
@@ -441,14 +454,21 @@ export class Worker {
         seed,
         log: this.log,
         activity: (e) => this.telemetry.activity(where, e),
-        session: (e) => session.push(e),
+        session: (e) => {
+          session.push(e);
+          facts?.push(e);
+        },
         onPhase: this.telemetry.onPhase,
         self: this.id,
         collab,
         dependsOn: stack?.commit_id ?? null,
         soul: await this.soulBlock(),
+        notes: journal ? notesBlock(await readNotes(this.client, this.id, view.lineage_id), view.lineage_id) : null,
+        journalReserveUsd: journal && proposer.journal ? JOURNAL_RESERVE_USD : 0,
+        spent: { usd: 0 },
         ...budget,
       };
+      jctx = ctx;
       if (collab !== "off") {
         // intents are advisory (SPEC 12.1): reading or filing one never blocks authoring
         ctx.intents = await this.intentsOn(view.lineage_id);
@@ -465,10 +485,14 @@ export class Worker {
         }
       }
       const proposal = await proposer.propose(ctx);
-      if (!proposal) return null;
+      if (!proposal) {
+        facts?.outcome("no candidate: the session stopped without submitting a change");
+        return null;
+      }
       if (proposal.usage) this.log(`author: model spend ${proposal.usage.usd.toFixed(4)} USD (${proposal.usage.input_tokens} in, ${proposal.usage.output_tokens} out, ${proposal.usage.cache_read_tokens} cache read)`);
       const raw = diffWorkingTree(dir);
       if (!raw.trim()) {
+        facts?.outcome("no candidate: the working tree had no change to submit");
         this.log("author: proposer made no change");
         return null;
       }
@@ -497,12 +521,46 @@ export class Worker {
       this.mine.set(committed.commit_id, { lineage_id: view.lineage_id, patch, at: Date.now() });
       this.submitted++;
       this.log(`author: ${proposal.kind} on ${JSON.stringify(proposal.target)} (${g.lines} lines) -> ${revealed.status}${revealed.reason ? ` (${revealed.reason})` : ""}`);
+      facts?.outcome(`submitted a ${proposal.kind} candidate on ${Array.isArray(proposal.target) ? proposal.target.join(", ") : proposal.target} (${g.lines} changed lines); it was committed and revealed (status ${revealed.status}${revealed.reason ? `, ${revealed.reason}` : ""}); its verdict comes later from independent replays`);
       return committed.commit_id;
+    } catch (e) {
+      facts?.outcome(`the attempt failed: ${(e as Error).message.slice(0, 200)}`);
+      throw e;
     } finally {
+      const sid = session.id;
       await session.end(sessionCommit);
+      if (facts && jctx && sid && !facts.empty) await this.writeJournal(proposer, jctx, facts, sid, view.lineage_id, loaded.recipe);
       removeTree(work);
       this.telemetry.idle();
       void this.telemetry.flush();
+    }
+  }
+
+  /**
+   * The session's journal entry (SPEC 17.6): one model call by the proposer in the soul's voice from
+   * the session's facts, at most one repair, checked (format, safety, every number in the facts),
+   * signed with purpose `journal` and stored in Core. Never throws: a missing entry costs nothing.
+   */
+  private async writeJournal(proposer: Proposer, ctx: ProposeContext, facts: FactsLog, sessionId: string, lineageId: string, recipe: { name: string; repo: string }): Promise<void> {
+    if (!proposer.journal) return;
+    try {
+      const f = facts.text(`Session on the ${recipe.name} lineage (repository ${recipe.repo}).`);
+      const req = journalPrompt(this.soulDoc, f);
+      let text = (await proposer.journal(ctx, req))?.trim() ?? null;
+      let problems = text ? checkEntry(text, f) : ["no text"];
+      if (text && problems.length) {
+        this.log(`journal: draft refused (${problems.slice(0, 3).join("; ")}), one repair`);
+        text = (await proposer.journal(ctx, { system: req.system, user: `${req.user}\n\nYour draft:\n${text}\n\nIt was refused for: ${problems.join("; ")}. Write it again and fix these problems.` }))?.trim() ?? null;
+        problems = text ? checkEntry(text, f) : ["no text"];
+      }
+      if (!text || problems.length) {
+        this.log(`journal: no entry (${problems.slice(0, 3).join("; ")})`);
+        return;
+      }
+      const id = await storeEntry(this.client, this.opts.key, this.id, { session_id: sessionId, lineage_id: lineageId, text }, this.log);
+      if (id) this.log(`journal: entry ${id.slice(0, 10)} stored (${text.length} chars, attempt spend ${(ctx.spent?.usd ?? 0).toFixed(4)} USD)`);
+    } catch (e) {
+      this.log(`journal: no entry (${(e as Error).message.slice(0, 200)})`);
     }
   }
 
