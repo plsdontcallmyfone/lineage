@@ -11,7 +11,7 @@ import { html, raw, type Raw } from "../src/html.ts";
 interface ModelsView {
   registry: ModelRegistry | null;
   availability: { providers: Record<string, boolean>; reported_at: number | null };
-  models: { provider: string; id: string; pickable: boolean; why: string | null }[];
+  models: { provider: string; id: string; pickable: boolean; why: string | null; via?: "direct" | "openrouter" | null; route?: { id: string; rate: Rate; tiers: { up_to_input_tokens: number; rate: Rate }[] | null; note: string | null; funding_fee_bps: number } | null }[];
 }
 
 export const M = {
@@ -89,7 +89,7 @@ function caveats(m: ModelEntry): string[] {
 
 export function modelFieldset(): Raw {
   return html`<fieldset><legend class="eyebrow">Model</legend>
-    <div class="wl-fine" style="margin-bottom:8px">The model the agent runs. Pick the provider, then the model. Its compute vault is charged at the price shown, read from the provider's own pricing page on the date given; the hosted runtime's daily cap covers every provider. The choice goes into the soul the agent key signs, and every candidate's provenance record names the model that ran.</div>
+    <div class="wl-fine" style="margin-bottom:8px">The model the agent runs. Pick the provider, then the model. Its own compute vault pays at the price shown, read from the provider's own pricing page on the date given (or OpenRouter's, plus its credit fee, where the model runs through OpenRouter); there is no platform cap on what the vault pays. The choice goes into the soul the agent key signs, and every candidate's provenance record names the model that ran.</div>
     <div id="w-models">${M.view || M.err ? modelsBody() : html`<div class="wl-fine">Reading the model registry…</div>`}</div>
   </fieldset>`;
 }
@@ -99,12 +99,12 @@ export function modelsBody(): Raw {
   const reg = M.view.registry;
   const avail = M.view.availability.providers;
   const prov = reg.providers.find((p) => p.id === M.provider) ?? reg.providers[0]!;
-  const models = reg.models.filter((m) => m.provider === prov.id && m.enabled !== false);
+  const models = reg.models.filter((m) => m.provider === prov.id && (m.enabled !== false || M.view!.models.some((v) => v.provider === m.provider && v.id === m.id && v.pickable)));
   const anyPick = M.view.models.some((m) => m.pickable);
   return html`<div class="wl-prov" role="radiogroup" aria-label="Provider">
       ${reg.providers.map((p) => {
-        const on = !!avail[p.id] && p.adapter !== "none";
-        const n = reg.models.filter((m) => m.provider === p.id && m.enabled !== false).length;
+        const n = M.view!.models.filter((m) => m.provider === p.id && m.pickable).length;
+        const on = n > 0 || (!!avail[p.id] && p.adapter !== "none");
         return html`<label class="wl-prov-i${p.id === prov.id ? " on" : ""}${on ? "" : " off"}">
           <input type="radio" name="l_provider" value="${p.id}"${p.id === prov.id ? raw(" checked") : ""}>
           <span class="wl-mono" style="--h:${hue(p.id)}" aria-hidden="true">${mono(p)}</span>
@@ -123,7 +123,7 @@ export function modelsBody(): Raw {
           <span class="wl-model-t"><span><b>${m.name}</b> <span class="dim">${m.id}</span>${isDefaultChoice({ provider: m.provider, id: m.id }) ? html` <span class="mark">default</span>` : ""}</span>
             ${cv.length ? html`<span class="wl-fine">${cv.join(". ")}</span>` : ""}
             ${ok ? "" : html`<span class="wl-fine">Cannot be picked: ${v?.why ?? "unknown"}.</span>`}</span>
-          <span class="wl-model-p num">${priceText(m)}</span>
+          <span class="wl-model-p num">${v?.via === "openrouter" && v.route ? html`${rateText(v.route.tiers?.length ? v.route.tiers[0]!.rate : v.route.rate)} per 1M tokens<span class="wl-fine">via OpenRouter, plus its ${v.route.funding_fee_bps / 100}% credit fee</span>` : priceText(m)}</span>
         </label>`;
       })}
     </div>

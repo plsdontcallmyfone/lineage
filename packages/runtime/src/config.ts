@@ -25,7 +25,8 @@ export interface RuntimeConfig {
   max_evals: number;
   /** Spend control (USD of model usage). */
   attempt_max_usd: number;
-  agent_epoch_max_usd: number;
+  /** Optional per-agent cap per usage epoch; null or absent = none (owner decision 2026-10-10: the vault pays, no cap). */
+  agent_epoch_max_usd?: number | null;
   /**
    * Cap on this runtime's model spend across all agents (persisted across restarts). Without
    * `global_window_s` it is a lifetime cap; with it, it is a cap per window (below).
@@ -37,6 +38,19 @@ export interface RuntimeConfig {
    * null: `global_max_usd` caps the runtime's lifetime spend.
    */
   global_window_s?: number | null;
+  /**
+   * What the global cap counts (plan MODELS-AND-SELF-FUNDING): "subsidized" (default) only spend the
+   * vaults could not pay (each usage leaf's shortfall), so self-funded agents are never blocked by it;
+   * "all" every metered USD, as before 2026-10-10 (a kill switch the owner can set without code).
+   */
+  global_cap_scope?: "subsidized" | "all";
+  /** Mainnet: the quote token's live USD price (price.ts); devnet and sim use compute_price_line_per_usd. */
+  price?: { api?: string; max_age_s?: number; min_usd: number; max_usd: number; refresh_s?: number } | null;
+  /** OpenRouter balance checks (provider-balance.ts): seconds between reads (default 300) and the alert floor in USD (default 5). */
+  openrouter_check_s?: number;
+  openrouter_floor_usd?: number;
+  /** Seconds between spend reports to Core (vault, burn, runway per agent; default 60; 0 = off). */
+  spend_report_s?: number;
   /** An attempt whose allowed spend would be lower than this is not started. */
   min_attempt_usd: number;
   /** Published compute prices, whole $LINE as decimal strings. TEST values until the owner sets launch values. */
@@ -92,8 +106,9 @@ export const DEFAULTS: Omit<RuntimeConfig, "mode" | "core" | "runtime_key" | "co
   max_turns: 40,
   max_evals: 4,
   attempt_max_usd: 1,
-  agent_epoch_max_usd: 5,
+  agent_epoch_max_usd: null,
   global_max_usd: 10,
+  global_cap_scope: "subsidized",
   min_attempt_usd: 0.05,
   sandbox_reserve_s: 600,
   usage_epoch_s: 3600,
@@ -113,8 +128,11 @@ export function parseConfig(raw: Record<string, unknown>): RuntimeConfig {
     throw new Error("runtime config: compute_price_line_per_sol is a decimal string of whole $LINE");
   for (const k of ["compute_price_line_per_usd", "compute_price_line_per_sandbox_s"] as const)
     if (typeof c[k] !== "string" || !/^\d+(\.\d+)?$/.test(c[k])) throw new Error(`runtime config: ${k} is a decimal string of whole $LINE`);
-  for (const k of ["attempt_max_usd", "agent_epoch_max_usd", "global_max_usd", "min_attempt_usd"] as const)
+  for (const k of ["attempt_max_usd", "global_max_usd", "min_attempt_usd"] as const)
     if (typeof c[k] !== "number" || !(c[k] >= 0)) throw new Error(`runtime config: ${k} must be a non-negative number`);
+  if (c.agent_epoch_max_usd !== undefined && c.agent_epoch_max_usd !== null && !(typeof c.agent_epoch_max_usd === "number" && c.agent_epoch_max_usd >= 0)) throw new Error("runtime config: agent_epoch_max_usd must be a non-negative number or null");
+  if (c.global_cap_scope !== "subsidized" && c.global_cap_scope !== "all") throw new Error('runtime config: global_cap_scope is "subsidized" or "all"');
+  if (c.price !== undefined && c.price !== null && !(typeof c.price.min_usd === "number" && typeof c.price.max_usd === "number" && c.price.min_usd > 0 && c.price.max_usd > c.price.min_usd)) throw new Error("runtime config: price needs min_usd < max_usd, both positive (the sanity band)");
   if (c.global_window_s !== undefined && c.global_window_s !== null && !(Number.isInteger(c.global_window_s) && c.global_window_s >= 60))
     throw new Error("runtime config: global_window_s is a whole number of seconds >= 60 (86400 = one UTC day), or null for a lifetime cap");
   if (!(c.max_concurrent >= 1)) throw new Error("runtime config: max_concurrent >= 1");

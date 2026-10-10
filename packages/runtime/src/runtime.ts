@@ -13,6 +13,8 @@ import { AgentPoster, emptyPostState, POSTS_DEFAULTS, type PostState } from "./p
 import type { ModelClient, Usage as SoulUsage } from "../../souls/src/generator.ts";
 import type { DesktopProvider } from "../../desktop/src/pool.ts";
 import { existsSync, readFileSync, renameSync } from "node:fs";
+import { FixedPrice, type PriceSource, type QuotePrice } from "./price.ts";
+import type { OpenRouterBalance } from "./provider-balance.ts";
 
 /** A spend figure for logs; a corrupt record shows as such (the caps then refuse every attempt). */
 const usd4 = (x: unknown) => (typeof x === "number" && Number.isFinite(x) ? x.toFixed(4) : `unknown (${String(x)})`);
@@ -52,12 +54,47 @@ export interface RuntimeDeps {
   postClient?: ModelClient;
   /** Agent desktops (SPEC 17.7, packages/desktop): a live desktop per attempt when a slot is free. */
   desktop?: DesktopProvider;
+  /**
+   * Plan MODELS-AND-SELF-FUNDING. `route`: which model and route an agent runs on now (the routed
+   * proposers resolve it from the soul); `providerBalance`: OpenRouter's balance gate; `price`: the
+   * quote token's price (default the configured TEST rate); `report`: posts the spend summary to Core.
+   */
+  route?: (agent: string) => Promise<AgentRoute | null>;
+  providerBalance?: OpenRouterBalance;
+  price?: PriceSource;
+  report?: (body: SpendReport) => Promise<void>;
+}
+
+export interface AgentRoute {
+  via: "direct" | "openrouter" | null;
+  model: { provider: string; id: string } | null;
+  why: string | null;
+}
+
+/** What the runtime publishes per agent (GET /v1/agents/:id/spend): real figures only, null when not known. */
+export interface SpendReport {
+  at: number;
+  price: { source: string; status: string; usd_per_token: number | null; line_per_usd: string | null; why: string | null };
+  provider_balance: { openrouter: { usd: number | null; source: string | null; read_at: number | null; low: boolean } | null };
+  agents: Record<string, {
+    vault: string | null;
+    vault_usd: number | null;
+    burn_per_h: string | null;
+    burn_usd_per_h: number | null;
+    burn_window_s: number | null;
+    runway_h: number | null;
+    model: { provider: string; id: string } | null;
+    via: "direct" | "openrouter" | null;
+    waiting: string | null;
+  }>;
 }
 
 interface Attempt {
   agent: string;
   maxUsd: number;
   totals: AttemptTotals;
+  /** the route the attempt was started on (OpenRouter attempts hold part of its balance) */
+  via?: "direct" | "openrouter" | null;
 }
 
 interface Running {
@@ -106,6 +143,13 @@ export class Runtime {
   private poster: AgentPoster | null = null;
   private postState: PostState = emptyPostState();
   private postsRun: Promise<void> | null = null;
+  /** plan MODELS-AND-SELF-FUNDING */
+  private price!: PriceSource;
+  private routes = new Map<string, { at: number; r: AgentRoute }>();
+  /** USD held for an analysis or post that asked for room and has not metered yet */
+  private holds = new Map<string, { usd: number; until: number; via: AgentRoute["via"] }>();
+  private waiting = new Map<string, string>();
+  private lastReport = 0;
 
   constructor(readonly cfg: RuntimeConfig, private deps: RuntimeDeps) {
     const sink = deps.log ?? ((m: string) => console.log(`[${new Date().toISOString().slice(11, 19)} runtime] ${m}`));
@@ -133,6 +177,9 @@ export class Runtime {
   async start(): Promise<void> {
     this.limits = await this.deps.backend.init();
     this.prices = resolvePrices(this.cfg, this.limits.decimals);
+    this.price = this.deps.price ?? new FixedPrice(this.cfg.compute_price_line_per_usd, this.limits.decimals);
+    await this.price.refresh();
+    this.applyPrice();
     this.startPoster();
     this.state.runs.push({ started_at: this.now(), stopped_at: null, spent_usd: 0, pid: process.pid });
     this.save();
@@ -141,9 +188,19 @@ export class Runtime {
     const capText = cap.window_s
       ? `global cap ${cap.max_usd} USD per ${cap.window_s} s window (${cap.window_s === 86400 ? "UTC day" : "aligned to the Unix epoch"}), this window ${new Date(cap.window_start!).toISOString()} to ${new Date(cap.window_end!).toISOString()} spent ${usd4(cap.spent_usd)}; lifetime ${usd4(this.state.spent_usd_total)} USD`
       : `spent so far ${usd4(this.state.spent_usd_total)} of ${this.cfg.global_max_usd} USD (lifetime cap)`;
+    const q = this.price.current(this.now());
     this.log(
-      `started (${this.cfg.mode}, runtime ${this.deps.runtimeKey.id}, pid ${process.pid}); prices ${this.cfg.compute_price_line_per_usd} $LINE per USD and ${this.cfg.compute_price_line_per_sandbox_s} per sandbox second (TEST values); ${capText}${unposted ? `; recovering ${unposted} unposted usage epoch(s)` : ""}`,
+      `started (${this.cfg.mode}, runtime ${this.deps.runtimeKey.id}, pid ${process.pid}); prices ${q?.status === "live" ? `${q.perUsd} base units per USD (live, ${q.source})` : q ? `${this.cfg.compute_price_line_per_usd} $LINE per USD (TEST value)` : `no quote price yet (${this.price.why(this.now())})`} and ${this.cfg.compute_price_line_per_sandbox_s} per sandbox second; vault-funded spend has no global cap, the ${this.cfg.global_cap_scope === "all" ? "global cap counts every USD" : "global cap counts subsidized spend only"}: ${capText}${unposted ? `; recovering ${unposted} unposted usage epoch(s)` : ""}`,
     );
+  }
+
+  /** The quote price in force (plan MODELS-AND-SELF-FUNDING), copied into `prices` when fresh. */
+  private applyPrice(): QuotePrice | null {
+    // before start() (tests that set prices directly): the configured rate in `prices`
+    if (!this.price) return this.prices ? { perUsd: this.prices.perUsd, usd: null, source: "config", status: "test", at: 0 } : null;
+    const q = this.price.current(this.now());
+    if (q && this.prices) this.prices = { ...this.prices, perUsd: q.perUsd };
+    return q;
   }
 
   // ------------------------------------------------------------------ budgets
@@ -219,42 +276,82 @@ export class Runtime {
 
   private globalLeft(): number {
     let reserved = 0;
-    for (const a of this.attempts.values()) reserved += Math.max(0, a.maxUsd - a.totals.usd);
+    // only "all" counts open reserves: in "subsidized" scope no attempt draws on the cap
+    if (this.cfg.global_cap_scope === "all") for (const a of this.attempts.values()) reserved += Math.max(0, a.maxUsd - a.totals.usd);
     // a non-finite or negative total (NaN usage saved as null) must not reset the cap (audit A2, OFF-R3)
     const total = this.state.spent_usd_total;
     if (typeof total !== "number" || !Number.isFinite(total) || total < 0) return 0;
     const w = this.spendWindow();
-    const spent = w ? w.usd : total;
+    const spent = w ? w.usd : this.cfg.global_cap_scope === "all" ? total : (this.state.subsidized_usd_total ?? 0);
     if (typeof spent !== "number" || !Number.isFinite(spent) || spent < 0) return 0;
     return this.cfg.global_max_usd - spent - reserved;
   }
 
+  /** Base units the agent's running attempt still holds (unspent model reserve and sandbox reserve) plus open holds. */
+  private reservedLine(agent: string): bigint {
+    let line = 0n;
+    const a = this.attempts.get(agent);
+    if (a) line += costOf(this.prices, Math.max(0, a.maxUsd - a.totals.usd), Math.max(0, this.cfg.sandbox_reserve_s - a.totals.sandbox_s));
+    const h = this.holds.get(agent);
+    if (h && h.until > this.now()) line += costOf(this.prices, h.usd, 0);
+    return line;
+  }
+
+  /** USD the OpenRouter balance still covers after the reserves of running OpenRouter attempts and holds; null: unknown or not used. */
+  private providerRoom(): number | null {
+    const b = this.deps.providerBalance?.room();
+    if (b === null || b === undefined) return null;
+    let held = 0;
+    for (const a of this.attempts.values()) if (a.via === "openrouter") held += Math.max(0, a.maxUsd - a.totals.usd);
+    for (const h of this.holds.values()) if (h.via === "openrouter" && h.until > this.now()) held += h.usd;
+    return b - held;
+  }
+
+  /** The cached route of an agent (refreshed in refreshAgents); null when unknown. */
+  routeOf(agent: string): AgentRoute | null {
+    return this.routes.get(agent)?.r ?? null;
+  }
+
   /**
-   * The most an attempt for `agent` may spend now (USD), or null with the reason. Lowest of: the
-   * per-attempt cap, what the compute vault still pays at the published price after what it already
-   * owes and a sandbox reserve, the per-agent epoch cap, the onchain max_debit_per_epoch left this
-   * epoch, and the global runtime cap.
+   * The most an attempt (or a post or analysis, with `sandbox` false) for `agent` may spend now (USD),
+   * or null with the reason (plan MODELS-AND-SELF-FUNDING, owner decision 2026-10-10: the agent's own
+   * vault pays and there is no platform cap on it). Lowest of: the per-attempt cap, what the vault
+   * still pays at the current quote price after what it already owes, what its running attempt and
+   * holds still reserve, and a sandbox reserve; the optional per-agent epoch cap; the onchain
+   * max_debit_per_epoch left this epoch; for an OpenRouter-routed model, what OpenRouter's known
+   * balance still covers; and only with global_cap_scope "all", the global window.
    */
-  budget(agent: string): { usd: number } | { usd: null; why: string; vault: boolean } {
+  budget(agent: string, o: { sandbox?: boolean; cap?: number } = {}): { usd: number } | { usd: null; why: string; vault: boolean } {
     const v = this.vaults.get(agent);
     if (!v) return { usd: null, why: "vault unknown", vault: false };
     if (!v.awake) return { usd: null, why: "asleep", vault: true };
-    const avail = v.balance - this.owed(agent);
+    if (!this.applyPrice()) return { usd: null, why: `waiting for a quote price (${this.price?.why(this.now()) ?? "none"})`, vault: false };
+    const avail = v.balance - this.owed(agent) - this.reservedLine(agent);
     let line = avail;
     if (this.limits.maxDebitPerEpoch !== null) {
       let epochOwed = 0n;
       for (const u of Object.values(this.state.open.usage)) epochOwed += this.usageCost(u);
+      for (const a of this.attempts.keys()) epochOwed += this.reservedLine(a);
       const left = this.limits.maxDebitPerEpoch - epochOwed;
       if (left < line) line = left;
     }
-    const fromVault = usdFor(this.prices, line, this.cfg.sandbox_reserve_s);
+    const fromVault = usdFor(this.prices, line, o.sandbox === false ? 0 : this.cfg.sandbox_reserve_s);
     const used = this.usageOf(agent).usd;
-    const epochLeft = typeof used === "number" && Number.isFinite(used) && used >= 0 ? this.cfg.agent_epoch_max_usd - used : 0;
-    const g = this.globalLeft();
-    const usd = Math.min(this.cfg.attempt_max_usd, fromVault, epochLeft, g);
-    if (!Number.isFinite(usd) || !Number.isFinite(epochLeft)) return { usd: null, why: "spend record is not a finite number; refusing to start an attempt", vault: false };
-    if (usd < this.cfg.min_attempt_usd) {
-      const why = g === usd ? `global runtime cap (${this.cfg.global_max_usd} USD${this.cfg.global_window_s ? ` per ${this.cfg.global_window_s} s window` : ""}) reached` : epochLeft === usd ? "per-agent epoch cap reached" : `compute vault exhausted (${avail} base units unowed)`;
+    const epochCap = this.cfg.agent_epoch_max_usd;
+    const epochLeft = epochCap === null || epochCap === undefined ? Infinity : typeof used === "number" && Number.isFinite(used) && used >= 0 ? epochCap - used : 0;
+    if (typeof used !== "number" || !Number.isFinite(used)) return { usd: null, why: "spend record is not a finite number; refusing to start an attempt", vault: false };
+    const g = this.cfg.global_cap_scope === "all" ? this.globalLeft() : Infinity;
+    const route = this.routeOf(agent);
+    const pr = route?.via === "openrouter" ? this.providerRoom() : null;
+    const prov = pr === null ? Infinity : pr;
+    const usd = Math.min(o.cap ?? this.cfg.attempt_max_usd, fromVault, epochLeft, g, prov);
+    if (Number.isNaN(usd)) return { usd: null, why: "spend record is not a finite number; refusing to start an attempt", vault: false };
+    if (!(usd >= (o.sandbox === false ? Math.min(this.cfg.min_attempt_usd, o.cap ?? Infinity) : this.cfg.min_attempt_usd))) {
+      const why =
+        prov === usd ? `provider balance low (OpenRouter has ${(this.deps.providerBalance?.room() ?? 0).toFixed(2)} USD, ${Math.max(0, prov).toFixed(4)} free of running reserves)`
+        : g === usd ? `global runtime cap (${this.cfg.global_max_usd} USD${this.cfg.global_window_s ? ` per ${this.cfg.global_window_s} s window` : ""}) reached`
+        : epochLeft === usd ? "per-agent epoch cap reached"
+        : `compute vault exhausted (${avail} base units unowed)`;
       return { usd: null, why, vault: fromVault === usd };
     }
     return { usd };
@@ -278,7 +375,7 @@ export class Runtime {
         s.usd += u.usd;
         if (!s.models.includes(u.model)) s.models.push(u.model);
         this.state.spent_usd_total += u.usd;
-        const w = this.spendWindow();
+        const w = this.cfg.global_cap_scope === "all" ? this.spendWindow() : null;
         if (w) w.usd += u.usd;
         this.runSpent += u.usd;
         const run = this.state.runs[this.state.runs.length - 1];
@@ -292,6 +389,14 @@ export class Runtime {
       },
       harness: (h) => {
         a.totals.proposer = h; // plan M: provenance attests the harness and provider that ran
+      },
+      route: (r) => {
+        a.totals.route = { via: r.via, model: r.model, upstream: a.totals.route?.upstream ?? [] }; // provenance attests the route that ran
+        a.via = r.via;
+      },
+      upstream: (name) => {
+        const rt = (a.totals.route ??= { via: "openrouter", model: { provider: "", id: "" }, upstream: [] });
+        if (!rt.upstream.includes(name) && rt.upstream.length < 8) rt.upstream.push(name);
       },
     };
   }
@@ -319,10 +424,12 @@ export class Runtime {
         const b = this.budget(agent);
         if (b.usd === null) {
           this.log(`${agent.slice(0, 6)} attempt not started: ${b.why}`);
+          this.waiting.set(agent, b.why);
           if (b.vault) this.exhausted.add(agent);
           return null;
         }
-        const a: Attempt = { agent, maxUsd: b.usd, totals: { input_tokens: 0, output_tokens: 0, cache_read_tokens: 0, cache_write_tokens: 0, usd: 0, sandbox_s: 0, models: [], started_at: this.now(), finished_at: 0 } };
+        this.waiting.delete(agent);
+        const a: Attempt = { agent, maxUsd: b.usd, via: this.routeOf(agent)?.via ?? null, totals: { input_tokens: 0, output_tokens: 0, cache_read_tokens: 0, cache_write_tokens: 0, usd: 0, sandbox_s: 0, models: [], started_at: this.now(), finished_at: 0 } };
         this.attempts.set(agent, a);
         this.usageOf(agent).attempts++;
         this.save();
@@ -404,6 +511,11 @@ export class Runtime {
       if (await b.refreshAwake(h, v, this.limits.wakeThreshold, this.limits.sleepThreshold)) v = await b.vault(h);
       this.vaults.set(agent, v);
       if (before && before.awake !== v.awake) this.log(`agent ${agent} is ${v.awake ? "awake" : "asleep"} (compute vault ${v.balance} base units)`);
+      // the model and route the agent runs on now (its soul, the keys on this host), refreshed every minute
+      if (this.deps.route && (this.now() - (this.routes.get(agent)?.at ?? -Infinity) >= 60_000)) {
+        const r = await this.deps.route(agent).catch(() => null);
+        if (r) this.routes.set(agent, { at: this.now(), r });
+      }
       // exhausted until the vault can pay for an attempt again (new fees, or a debit lowered what it owes)
       if (this.exhausted.has(agent) && this.budget(agent).usd !== null) this.exhausted.delete(agent);
     }
@@ -419,9 +531,10 @@ export class Runtime {
       const v = this.vaults.get(agent);
       if (!v?.awake || this.exhausted.has(agent)) continue;
       if ((this.misses.get(agent)?.until ?? 0) > this.now()) continue;
-      if (this.budget(agent).usd === null) {
-        const b = this.budget(agent);
-        if (b.usd === null && b.vault) this.exhausted.add(agent);
+      const b = this.budget(agent);
+      if (b.usd === null) {
+        if (b.vault) this.exhausted.add(agent);
+        this.waiting.set(agent, b.why);
         continue;
       }
       this.lastStarted.set(agent, this.now());
@@ -437,6 +550,8 @@ export class Runtime {
       commit = await w.authorOnce();
     } catch (e) {
       this.log(`${agent.slice(0, 6)} attempt failed: ${(e as Error).message}`);
+      // OpenRouter 402: its credits cannot cover requests; routed attempts wait until a top-up shows
+      if ((e as { noCredits?: boolean }).noCredits && (e as { provider?: string }).provider === "openrouter") this.deps.providerBalance?.markNoCredits();
     }
     const a = this.attempts.get(agent);
     this.attempts.delete(agent);
@@ -543,20 +658,23 @@ export class Runtime {
     await this.poster.tick(bound);
   }
 
-  /** USD a post may spend for `agent` now: the global cap, the agent's epoch cap and what its vault pays. */
-  private postRoom(agent: string): number {
-    const v = this.vaults.get(agent);
-    if (!v?.awake) return 0;
-    const avail = v.balance - this.owed(agent);
-    const fromVault = usdFor(this.prices, avail, 0);
-    const used = this.usageOf(agent).usd;
-    const epochLeft = typeof used === "number" && Number.isFinite(used) && used >= 0 ? this.cfg.agent_epoch_max_usd - used : 0;
-    const r = Math.min(fromVault, epochLeft, this.globalLeft());
-    return Number.isFinite(r) && r > 0 ? r : 0;
+  /**
+   * USD a post or analysis may spend for `agent` now: the same budget as an attempt without the
+   * sandbox reserve (its vault after what it owes and what its running attempt still holds, the
+   * OpenRouter balance for a routed model). With `reserve`, that much is held until the call is
+   * metered (or 5 minutes pass), so an attempt starting meanwhile cannot spend it too.
+   */
+  private postRoom(agent: string, reserve?: number): number {
+    const b = this.budget(agent, { sandbox: false, cap: Infinity });
+    const r = b.usd ?? 0;
+    if (!(Number.isFinite(r) && r > 0)) return 0;
+    if (reserve !== undefined && reserve > 0 && r >= reserve) this.holds.set(agent, { usd: reserve, until: this.now() + 300_000, via: this.routeOf(agent)?.via ?? null });
+    return r;
   }
 
   /** A post's model call: into the agent's usage (billed to its vault with the epoch) and the global cap. */
   private meterPost(agent: string, u: SoulUsage): void {
+    this.holds.delete(agent);
     const s = this.usageOf(agent);
     s.input_tokens += u.input_tokens;
     s.output_tokens += u.output_tokens;
@@ -565,7 +683,7 @@ export class Runtime {
     s.usd += u.usd;
     for (const m of u.models) if (!s.models.includes(m)) s.models.push(m);
     this.state.spent_usd_total += u.usd;
-    const w = this.spendWindow();
+    const w = this.cfg.global_cap_scope === "all" ? this.spendWindow() : null;
     if (w) w.usd += u.usd;
     this.runSpent += u.usd;
     const run = this.state.runs[this.state.runs.length - 1];
@@ -580,7 +698,7 @@ export class Runtime {
    */
   analysisSurface() {
     return {
-      room: (agent: string) => this.postRoom(agent),
+      room: (agent: string, reserve?: number) => this.postRoom(agent, reserve),
       meter: (agent: string, u: SoulUsage) => this.meterPost(agent, u),
       send: (agent: string, to: string, text: string) => this.worker(agent).send(to, text),
     };
@@ -621,7 +739,10 @@ export class Runtime {
     const due = this.now() - open.opened_at >= this.cfg.usage_epoch_s * 1000;
     const drained = this.cfg.close_when_exhausted && used.some(([a]) => this.exhausted.has(a) && !this.running.has(a));
     const pending = this.state.closed.some((e) => !e.done);
-    if (used.length && !pending && (due || drained || force)) {
+    // no quote price (mainnet feed stale or out of band): the epoch stays open, no amount is invented
+    const priced = !!this.applyPrice();
+    if (used.length && !pending && (due || drained || force) && !priced) this.log(`usage epoch not closed: waiting for a quote price (${this.price.why(this.now())})`);
+    if (used.length && !pending && (due || drained || force) && priced) {
       const next = await this.deps.backend.nextEpoch(open.period);
       if (this.now() / 1000 >= next.earliestS) {
         const leaves: ClosedEpoch["leaves"] = [];
@@ -633,6 +754,20 @@ export class Runtime {
           leaves.push({ agent, amount: amount.toString(), cost: cost.toString(), model_tokens: modelTokens(u), sandbox_s: Math.ceil(u.sandbox_s), usd: u.usd, chain_lamports: u.chain_lamports ?? 0, ...(u.trade_share ? { trade_share: u.trade_share, trade_basis: u.trade_basis } : {}) });
         }
         this.state.closed.push({ epoch: next.epoch, opened_at: open.opened_at, closed_at: this.now(), leaves, root: null, post: null, debits: {}, done: false });
+        // subsidized spend (plan MODELS-AND-SELF-FUNDING): what the vaults could not pay, in USD, is what the global cap counts
+        if (this.cfg.global_cap_scope !== "all") {
+          let short = 0;
+          for (const l of leaves) {
+            const gap = BigInt(l.cost) - BigInt(l.amount);
+            if (gap > 0n && this.prices.perUsd > 0n) short += Number((gap * 1_000_000n) / this.prices.perUsd) / 1e6;
+          }
+          if (short > 0) {
+            this.state.subsidized_usd_total = (this.state.subsidized_usd_total ?? 0) + short;
+            const w = this.spendWindow();
+            if (w) w.usd += short;
+            this.log(`usage epoch ${next.epoch}: ${short.toFixed(4)} USD the vaults could not pay counts as subsidized spend`);
+          }
+        }
         this.state.open = { period: open.period + 1, opened_at: this.now(), usage: {} };
         this.save();
         this.log(`usage epoch ${next.epoch} closed: ${leaves.map((l) => `${l.agent.slice(0, 6)} ${l.amount} base units (${l.usd.toFixed(4)} USD, ${l.model_tokens} tokens, ${l.sandbox_s} s)`).join("; ")}`);
@@ -660,7 +795,11 @@ export class Runtime {
 
   async tick(): Promise<void> {
     try {
+      await this.price.refresh();
+      await this.deps.providerBalance?.refresh();
+      this.state.provider_balance = this.deps.providerBalance ? { openrouter: { ...this.deps.providerBalance.state, configured: this.deps.providerBalance.configured } } : undefined;
       await this.refreshAgents();
+      await this.reportSpend();
       if (this.pendingProvenance.length) await this.flushProvenance();
       if (!this.posting) {
         this.posting = this.epochs().finally(() => (this.posting = null));
@@ -719,6 +858,61 @@ export class Runtime {
     this.save();
     this.lock.release();
     this.log(`stopped; this run spent ${this.runSpent.toFixed(4)} USD of model usage, ${usd4(this.state.spent_usd_total)} USD in total`);
+  }
+
+  // ------------------------------------------------------------------ spend report (plan MODELS-AND-SELF-FUNDING)
+
+  /**
+   * Per bound agent: vault, its USD value at the price in force, burn per hour over the last 24 h of
+   * closed usage epochs (public anyway; open usage is left out so nothing hints at an attempt in
+   * progress), runway = vault / burn, the model and route, and why it waits. Null where not known.
+   */
+  spendReport(): SpendReport {
+    const now = this.now();
+    const q = this.applyPrice();
+    const ob = this.deps.providerBalance;
+    const out: SpendReport = {
+      at: now,
+      price: { source: q?.source ?? "none", status: q?.status ?? "none", usd_per_token: q?.usd ?? null, line_per_usd: q ? q.perUsd.toString() : null, why: q ? null : this.price.why(now) },
+      provider_balance: { openrouter: ob?.configured ? { usd: ob.state.usd, source: ob.state.source, read_at: ob.state.read_at, low: ob.state.usd !== null && ob.state.usd < ob.state.floor_usd } : null },
+      agents: {},
+    };
+    const since = now - 86_400_000;
+    for (const [agent, st] of Object.entries(this.state.agents)) {
+      if (st.status !== "bound") continue;
+      const v = this.vaults.get(agent);
+      let burn = 0n;
+      let first = Infinity;
+      for (const e of this.state.closed) {
+        if (e.closed_at < since) continue;
+        const l = e.leaves.find((x) => x.agent === agent);
+        if (!l) continue;
+        burn += BigInt(l.cost);
+        first = Math.min(first, Math.max(e.opened_at, since));
+      }
+      const spanS = Number.isFinite(first) ? Math.max(3600, (now - first) / 1000) : null;
+      const perH = spanS && burn > 0n ? (burn * 3600n) / BigInt(Math.ceil(spanS)) : null;
+      const r = this.routeOf(agent);
+      out.agents[agent] = {
+        vault: v ? v.balance.toString() : null,
+        vault_usd: v && q ? usdFor(this.prices, v.balance, 0) : null,
+        burn_per_h: perH !== null ? perH.toString() : null,
+        burn_usd_per_h: perH !== null && q ? usdFor(this.prices, perH, 0) : null,
+        burn_window_s: spanS && burn > 0n ? Math.ceil(spanS) : null,
+        runway_h: v && perH && perH > 0n ? Number((v.balance * 1000n) / perH) / 1000 : null,
+        model: r?.model ?? null,
+        via: r?.via ?? null,
+        waiting: !v ? "vault not read yet" : !v.awake ? "asleep (vault below the wake threshold)" : this.waiting.get(agent) ?? (r && !r.via ? r.why : null),
+      };
+    }
+    return out;
+  }
+
+  private async reportSpend(): Promise<void> {
+    const every = (this.cfg.spend_report_s ?? 60) * 1000;
+    if (!this.deps.report || every <= 0 || this.now() - this.lastReport < every) return;
+    this.lastReport = this.now();
+    await this.deps.report(this.spendReport()).catch((e) => this.log(`spend report not sent: ${(e as Error).message}`));
   }
 
   /** A public summary (no keys, no secrets). */

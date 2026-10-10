@@ -98,6 +98,10 @@ export interface Meter {
   sandbox(seconds: number): void;
   /** Which harness and provider ran the attempt (plan M); provenance attests it. Optional. */
   harness?(h: { name: string; version: string; digest: string; provider: string }): void;
+  /** A router's upstream host for a response (OpenRouter's `provider`); provenance lists them. Optional. */
+  upstream?(name: string): void;
+  /** The route the attempt runs on (plan MODELS-AND-SELF-FUNDING): direct or OpenRouter, for the soul's model. Optional. */
+  route?(r: { via: "direct" | "openrouter"; model: { provider: string; id: string }; requested: string }): void;
 }
 
 export interface Proposal {

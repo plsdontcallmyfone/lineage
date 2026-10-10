@@ -50,7 +50,8 @@ export interface TraderDeps {
   analysis?: {
     /** the agent's decision model; `override` (trading config analysis_model) replaces the soul's choice */
     model(agent: string, override?: { provider: string; id: string } | null): Promise<{ model: DecisionModel } | { model: null; why: string }>;
-    room(agent: string): number;
+    /** USD room under the runtime's budget; with `reserve`, the runtime holds that much until the round meters */
+    room(agent: string, reserve?: number): number;
     meter(agent: string, u: Usage): void;
     post(agent: string, board: string, text: string): Promise<string | null>;
   };
@@ -369,7 +370,7 @@ export class Trader {
   private async round(a: TradingAgent, cfg: TradingConfig, market: Market, temperament: Temperament, temp: TemperamentParams, realized: bigint): Promise<{ traded: boolean; refusal: Refusal | null }> {
     const an = this.d.analysis!;
     const now = this.now();
-    const room = an.room(a.agent);
+    const room = an.room(a.agent, cfg.analysis_max_usd);
     if (!(room >= cfg.analysis_max_usd)) {
       this.hit({ mint: null, side: null, rule: "analysis_budget", detail: `${room} USD of room` });
       this.log(`${a.agent.slice(0, 6)} analysis waits: ${room.toFixed(4)} USD of room under the caps, a round may cost ${cfg.analysis_max_usd}`);

@@ -53,8 +53,8 @@ function stubBackend(agents: string[]): Backend {
   };
 }
 
-function runtimeIn(dir: string, backend: Backend) {
-  const cfg = parseConfig({ mode: "sim", core: "http://127.0.0.1:9", runtime_key: "k", state_dir: dir, compute_price_line_per_usd: "1", compute_price_line_per_sandbox_s: "0" });
+function runtimeIn(dir: string, backend: Backend, over: Record<string, unknown> = {}) {
+  const cfg = parseConfig({ mode: "sim", core: "http://127.0.0.1:9", runtime_key: "k", state_dir: dir, compute_price_line_per_usd: "1", compute_price_line_per_sandbox_s: "0", ...over });
   const runtimeKey = generateAgentKey();
   return new Runtime(cfg, { backend, runtimeKey, proposer: () => ({ name: "none", propose: async () => null }), log: () => {}, telemetry: false });
 }
@@ -106,7 +106,8 @@ describe("OFF-K3, OFF-K4, OFF-R3 spend that is billed is always metered and caps
 
   test("a NaN spend record (saved as null) does not reset the global or epoch caps", async () => {
     const d = scratch();
-    const rt = runtimeIn(d, stubBackend([]));
+    // scope "all" (the kill switch): the global cap counts every USD, so a corrupt total must refuse
+    const rt = runtimeIn(d, stubBackend([]), { global_cap_scope: "all" });
     const agent = generateAgentKey().id;
     const r = rt as unknown as { state: { spent_usd_total: number }; vaults: Map<string, unknown>; prices: unknown; limits: unknown };
     try {

@@ -21,6 +21,7 @@ import { LedgerError } from "./ledger.ts";
 import { msgchainOf, useChain } from "./msgchain.ts";
 import { verifyRequest } from "./protocol.ts";
 import { modelsOf } from "./models.ts";
+import { runtimeSpendOf } from "./runtime-spend.ts";
 import { hiddenOf } from "./hidden.ts";
 import { loadNetworkProfile } from "../../chain/src/profile-node.ts";
 
@@ -209,6 +210,7 @@ export function buildRoutes(core: Core): Route[] {
     // hosted runtime (SPEC 17.2, identity plan I5): provenance once final, public usage records per agent
     route("GET", "/v1/candidates/:id/provenance", "optional", (c) => core.hosted.view(c.params.id!, c.agent)),
     route("GET", "/v1/agents/:id/usage", "none", (c) => core.hosted.usageOf(c.params.id!, int(c, "limit"))),
+    route("GET", "/v1/agents/:id/spend", "none", (c) => runtimeSpendOf(core).of(c.params.id!)), // vault, burn, runway (plan MODELS-AND-SELF-FUNDING)
     // collaboration (SPEC 12.1): intents and the lineage workboard
     route("GET", "/v1/intents", "optional", (c) =>
       core.collab.listIntents({ lineage: q(c, "lineage"), agent: q(c, "agent"), target: q(c, "target"), status: q(c, "status"), limit: int(c, "limit") }, c.agent),
@@ -386,6 +388,10 @@ export function buildRoutes(core: Core): Route[] {
     route("POST", "/v1/admin/hidden", "admin", (c) => core.tx(() => hiddenOf(core).edit(c.agent!, c.json()))),
     route("POST", "/v1/admin/models", "admin", (c) => core.tx(() => modelsOf(core).put(c.agent!, c.json()))), // plan M
     route("POST", "/v1/admin/models/availability", "runtime", (c) => core.tx(() => modelsOf(core).report(c.agent!, c.json()))),
+    route("POST", "/v1/admin/runtime/spend", "runtime", (c) => {
+      const spend = runtimeSpendOf(core); // its tables are made outside the transaction, so a refused report cannot roll them back
+      return core.tx(() => spend.report(c.agent!, c.json()));
+    }),
     route("POST", "/v1/admin/epochs/close", "admin", () => core.closeEpoch()),
     route("POST", "/v1/admin/tick", "admin", () => (core.tick(), { ok: true, now: core.now() })),
     route("POST", "/v1/admin/chain/sync", "admin", async () => {

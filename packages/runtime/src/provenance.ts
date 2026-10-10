@@ -17,6 +17,8 @@ export interface AttemptTotals {
   finished_at: number;
   /** the harness and provider that ran (plan M); absent: the Anthropic proposer */
   proposer?: { name: string; version: string; digest: string; provider: string };
+  /** plan MODELS-AND-SELF-FUNDING: the soul's model and the route that ran it (OpenRouter: its upstream hosts) */
+  route?: { via: "direct" | "openrouter"; model: { provider: string; id: string }; upstream: string[] };
 }
 
 export interface ProvenanceRecord {
@@ -28,6 +30,8 @@ export interface ProvenanceRecord {
   proposer: { name: string; version: string };
   /** model provider (plan M): models[] are that provider's ids as its API reported them */
   provider?: string;
+  /** the model the agent's soul names and the route that ran it (direct, or OpenRouter with the upstream hosts it reported) */
+  route?: { via: "direct" | "openrouter"; model: { provider: string; id: string }; upstream: string[] };
   worker_version: string;
   harness_digest: string;
   recipe_id: string;
@@ -58,6 +62,7 @@ export function provenanceRecord(a: {
     models: t.models.length ? [...t.models].sort() : [a.requestedModel],
     proposer: { name: t.proposer?.name ?? "anthropic", version: t.proposer?.version ?? PROPOSER_VERSION },
     provider: t.proposer?.provider ?? "anthropic",
+    ...(t.route ? { route: { via: t.route.via, model: t.route.model, upstream: [...t.route.upstream].sort() } } : {}),
     worker_version: WORKER_VERSION,
     harness_digest: t.proposer?.digest ?? HARNESS_DIGEST,
     recipe_id: a.recipe_id,

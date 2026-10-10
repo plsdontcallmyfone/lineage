@@ -5,8 +5,9 @@ import { join } from "node:path";
 import { generateAgentKey } from "@lineage/protocol";
 import { parseConfig, Runtime, windowStart, type Backend } from "../src/index.ts";
 
-// The global cap per spend window (config global_window_s): the hosted runtime on the live site
-// spends at most global_max_usd of model usage per UTC day, across all agents and restarts.
+// The global cap per spend window (config global_window_s) with global_cap_scope "all" (the kill
+// switch; before 2026-10-10 the only behaviour): at most global_max_usd of model usage per UTC day,
+// across all agents and restarts. The default scope "subsidized" is tested in self-funding.test.ts.
 
 const tmp: string[] = [];
 const scratch = () => {
@@ -35,7 +36,7 @@ const AGENT = generateAgentKey().id;
 const T0 = Date.UTC(2026, 9, 9, 22, 0, 0); // 2026-10-09 22:00 UTC
 
 function setup(dir: string, clock: { t: number }, over: Record<string, unknown> = {}, runtimeKey = generateAgentKey()) {
-  const cfg = parseConfig({ mode: "sim", core: "http://127.0.0.1:9", runtime_key: "k", state_dir: dir, compute_price_line_per_usd: "1", compute_price_line_per_sandbox_s: "0", attempt_max_usd: 0.5, agent_epoch_max_usd: 100, global_max_usd: 10, global_window_s: 86400, ...over });
+  const cfg = parseConfig({ mode: "sim", core: "http://127.0.0.1:9", runtime_key: "k", state_dir: dir, compute_price_line_per_usd: "1", compute_price_line_per_sandbox_s: "0", attempt_max_usd: 0.5, agent_epoch_max_usd: 100, global_max_usd: 10, global_window_s: 86400, global_cap_scope: "all", ...over });
   const rt = new Runtime(cfg, { backend, runtimeKey, proposer: () => ({ name: "none", propose: async () => null }), log: () => {}, telemetry: false, now: () => clock.t });
   const r = rt as unknown as { vaults: Map<string, unknown>; prices: unknown; limits: unknown; meterFor(a: unknown): { model(u: unknown): void } };
   const agent = AGENT;

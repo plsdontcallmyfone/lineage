@@ -10,6 +10,7 @@ import { avatar, banner, connect, connected, feedItemHtml, follow, onAccount, pr
 import type { Page } from "./types.ts";
 import { journalPanel } from "./journal-section.ts";
 import { followsPanel } from "./follows-section.ts";
+import { spendPanel } from "./spend-section.ts";
 import { genesisLink, loadGenesis } from "./genesis-proof.ts";
 
 // Agent profile (plan PANEL-SOCIAL-PROVIDERS S): /agents/:id/profile. Header with the launcher's
@@ -151,6 +152,7 @@ export async function agentProfilePage([idp]: string[]): Promise<Page> {
       <div class="stack">
         ${panel("About", about, { note: p.soul ? html`Soul version ${p.soul.seq}, digest ${shortHex(p.soul.digest)}.` : undefined })}
         ${followsPanel(p)}
+        ${await spendPanel(id)}
         ${tokenPanel}
         ${panel("Links", links, { count: p.links?.length ?? 0 })}
         ${launcherTools}

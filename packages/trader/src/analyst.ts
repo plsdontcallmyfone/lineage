@@ -195,24 +195,27 @@ export function anthropicDecisionModel(m: ModelEntry, client: { messages: { crea
   };
 }
 
-export function openaiDecisionModel(m: ModelEntry, p: ProviderSpec, key: string, f: typeof fetch = fetch): DecisionModel {
+export function openaiDecisionModel(m: ModelEntry, p: ProviderSpec, key: string, f: typeof fetch = fetch, route: { fee_factor: number; request_extra: Record<string, unknown> } = { fee_factor: 1, request_extra: {} }): DecisionModel {
   return {
     id: `${p.id}/${m.id}`,
     async complete(o) {
       const usage = emptyUsage();
-      const a = outputAllowance(m, o.system, o.user, o.maxUsd);
+      // a routed provider's funding fee comes off the room first (plan MODELS-AND-SELF-FUNDING)
+      const a = outputAllowance(m, o.system, o.user, o.maxUsd / route.fee_factor);
       if (!a) return { text: null, usage, error: "the round's cost cap is too low for one call" };
       const r = await f(`${p.base_url.replace(/\/+$/, "")}/chat/completions`, {
         method: "POST",
-        headers: { "content-type": "application/json", authorization: `Bearer ${key}` },
-        body: JSON.stringify({ model: m.id, messages: [{ role: "system", content: o.system }, { role: "user", content: o.user }], [p.token_param ?? "max_tokens"]: a.maxTokens, ...(p.extra_body ?? {}) }),
+        headers: { "content-type": "application/json", authorization: `Bearer ${key}`, ...(p.headers ?? {}) },
+        body: JSON.stringify({ model: m.id, messages: [{ role: "system", content: o.system }, { role: "user", content: o.user }], [p.token_param ?? "max_tokens"]: a.maxTokens, ...(p.extra_body ?? {}), ...route.request_extra }),
       });
       const j = (await r.json().catch(() => null)) as any;
       if (!r.ok || !j) return { text: null, usage, error: `${p.id}: HTTP ${r.status}` };
       const nu = normaliseUsage(j.usage);
       // usage the provider did not report is charged as the whole allowance, never as zero
       const u: TokenUsage = nu.bad ? { input_tokens: Math.ceil((o.system.length + o.user.length) / CHARS_PER_TOKEN), output_tokens: a.maxTokens, cache_read_tokens: 0, cache_write_tokens: 0 } : nu.usage;
-      Object.assign(usage, u, { usd: usdFor(a.rate, u), calls: 1, models: [m.id] });
+      const cost = j.usage?.cost;
+      const charged = p.reported_cost && !nu.bad && typeof cost === "number" && Number.isFinite(cost) && cost >= 0 ? cost : usdFor(a.rate, u);
+      Object.assign(usage, u, { usd: charged * route.fee_factor, calls: 1, models: [m.id] });
       const c = j.choices?.[0];
       if (c?.finish_reason && c.finish_reason !== "stop") return { text: null, usage, error: `stopped: ${c.finish_reason}` };
       return { text: typeof c?.message?.content === "string" ? c.message.content.trim() : null, usage };
@@ -226,7 +229,7 @@ export async function routedDecisionModel(o: { core: string; agent: string; keys
   const r = resolveRoute(await o.registry.get(), choice as Parameters<typeof resolveRoute>[1], o.keys);
   if (!r.ok) return { model: null, why: r.why };
   if (r.provider.adapter === "anthropic") return { model: anthropicDecisionModel(r.model, o.anthropic ? o.anthropic(r.key) : new Anthropic({ apiKey: r.key, maxRetries: 2 })) };
-  return { model: openaiDecisionModel(r.model, r.provider, r.key, o.fetch) };
+  return { model: openaiDecisionModel(r.model, r.provider, r.key, o.fetch, { fee_factor: r.fee_factor, request_extra: r.request_extra }) };
 }
 
 export type { ModelDecision };

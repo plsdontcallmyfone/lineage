@@ -21,6 +21,14 @@ export interface ProviderSpec {
   echo_reasoning?: boolean;
   /** extra request fields the provider documents for this use */
   extra_body?: Record<string, unknown>;
+  /** extra request headers (OpenRouter's app identification) */
+  headers?: Record<string, string>;
+  /** assistant message fields sent back verbatim on the next turn of a tool loop (OpenRouter's reasoning_details) */
+  echo_fields?: string[];
+  /** the response's usage.cost is what was charged (USD credits): meter that, times the route's funding fee */
+  reported_cost?: boolean;
+  /** a router in front of other providers (OpenRouter): never a model's own provider */
+  router?: boolean;
   max_tokens?: number;
   /** what the provider's API documentation says that shaped the settings above */
   docs: string;
@@ -97,6 +105,21 @@ export const PROVIDERS: Record<string, ProviderSpec> = {
     token_param: "max_completion_tokens",
     docs: "https://platform.minimax.io/docs/api-reference/text-openai-api",
   },
+  openrouter: {
+    id: "openrouter",
+    adapter: "openai",
+    base_url: "https://openrouter.ai/api/v1",
+    key_env: "OPENROUTER_API_KEY",
+    // read 2026-10-10: POST /api/v1/chat/completions, bearer key, OpenAI tool calls; usage.cost is the
+    // credits charged (Usage Accounting); reasoning goes back unmodified in reasoning_details on assistant
+    // turns of a tool loop; HTTP-Referer and X-OpenRouter-Title identify the app; a 200 may carry only
+    // an error object; 402 means the credits cannot cover the request
+    headers: { "HTTP-Referer": "https://github.com/plsdontcallmyfone/lineage", "X-OpenRouter-Title": "Lineage" },
+    echo_fields: ["reasoning_details"],
+    reported_cost: true,
+    router: true,
+    docs: "https://openrouter.ai/docs/api/api-reference/chat/create-a-chat-completion",
+  },
 };
 
 export const PROVIDERS_ENV = join(homedir(), ".config/lineage/providers.env");
@@ -108,6 +131,9 @@ const TEMPLATE = `# Lineage provider keys (plan M). Fill the ones you have; an e
 ${Object.values(PROVIDERS)
   .map((p) => `${p.key_env}=`)
   .join("\n")}
+# Optional: OpenRouter management key (balance check via GET /api/v1/credits); without it the
+# runtime reads the inference key's own limit (GET /api/v1/key), unknown when the key has no limit
+OPENROUTER_MANAGEMENT_KEY=
 # Optional: Alibaba's per-workspace endpoint, https://<WorkspaceId>.ap-southeast-1.maas.aliyuncs.com/compatible-mode/v1
 DASHSCOPE_BASE_URL=
 `;
@@ -135,6 +161,8 @@ export function loadProviderKeys(opts: { path?: string; modelEnv?: string; creat
   const env = { ...(existsSync(opts.modelEnv ?? MODEL_ENV) ? parseEnv(readFileSync(opts.modelEnv ?? MODEL_ENV, "utf8")) : {}), ...(existsSync(path) ? parseEnv(readFileSync(path, "utf8")) : {}) };
   const keys: Record<string, string> = {};
   for (const p of Object.values(PROVIDERS)) if (env[p.key_env]) keys[p.id] = env[p.key_env]!;
+  // not a provider: only the balance monitor reads it (plan MODELS-AND-SELF-FUNDING)
+  if (env.OPENROUTER_MANAGEMENT_KEY) keys["openrouter-management"] = env.OPENROUTER_MANAGEMENT_KEY;
   return keys;
 }
 

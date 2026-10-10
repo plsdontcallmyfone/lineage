@@ -90,6 +90,10 @@ export interface RuntimeState {
    */
   window?: { start: number; window_s: number; usd: number };
   windows?: { start: number; window_s: number; usd: number }[];
+  /** plan MODELS-AND-SELF-FUNDING: USD of usage the vaults could not pay (leaf shortfalls), lifetime */
+  subsidized_usd_total?: number;
+  /** the OpenRouter balance as last read (the monitor alerts on it; no key in it) */
+  provider_balance?: { openrouter: { usd: number | null; source: string | null; read_at: number | null; error: string | null; floor_usd: number; configured: boolean } };
   agents: Record<string, AgentState>;
   open: { period: number; opened_at: number; usage: Record<string, AgentUsage> };
   closed: ClosedEpoch[];

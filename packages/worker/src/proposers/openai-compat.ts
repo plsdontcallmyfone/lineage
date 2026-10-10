@@ -34,6 +34,10 @@ export interface OpenAICompatOptions {
   fetch?: typeof fetch;
   now?: () => Date;
   sleep?: (ms: number) => Promise<void>;
+  /** routed providers (OpenRouter): the funding fee factor on top of the charged cost (1 + fee_bps / 10^4) */
+  fee_factor?: number;
+  /** extra request fields for this model on this route (OpenRouter's provider.max_price) */
+  request_extra?: Record<string, unknown>;
 }
 
 /** An error the provider answered with (HTTP status and its message; never the request). */
@@ -46,8 +50,14 @@ export class ProviderError extends Error {
   ) {
     super(`${provider}: HTTP ${status}${code ? ` ${code}` : ""}: ${message}`);
   }
+  /** seconds the provider asked to wait (Retry-After), when it did */
+  retryAfterS: number | null = null;
   get retryable() {
-    return this.status === 429 || this.status >= 500;
+    return this.status === 429 || this.status >= 500 || (this.status === 402 && this.retryAfterS !== null);
+  }
+  /** the provider's prepaid credits cannot cover the request (OpenRouter 402 without Retry-After) */
+  get noCredits() {
+    return this.status === 402 && this.retryAfterS === null;
   }
 }
 
@@ -66,6 +76,8 @@ interface ChatMessage {
 }
 interface ChatResponse {
   model?: string;
+  /** OpenRouter: the upstream host that served the response */
+  provider?: string;
   choices?: { message?: ChatMessage; finish_reason?: string | null }[];
   usage?: Record<string, unknown> | null;
   error?: { message?: string; code?: string | number; type?: string };
@@ -109,7 +121,19 @@ export class OpenAICompatProposer implements Proposer {
     if (opts.model.provider !== opts.provider.id) throw new Error(`model ${opts.model.id} belongs to ${opts.model.provider}, not ${opts.provider.id}`);
     if (opts.model.status !== "verified" || !opts.model.rate) throw new Error(`model ${opts.model.id} has no registry price; it cannot be metered`);
     this.name = `openai-compat:${opts.provider.id}`;
-    this.o = { max_turns: 40, max_evals: 4, max_tokens: opts.provider.max_tokens ?? 32000, ...opts };
+    this.o = { max_turns: 40, max_evals: 4, max_tokens: opts.provider.max_tokens ?? 32000, fee_factor: 1, request_extra: {}, ...opts };
+  }
+
+  /**
+   * USD a response is metered at: the provider's charged usage.cost where it reports one (OpenRouter),
+   * else the registry rate, times the route's funding fee; `bad` when the token counts are unusable.
+   */
+  private priced(raw: Record<string, unknown> | null | undefined): { usage: TokenUsage; usd: number; bad: boolean } {
+    const n = normaliseUsage(raw);
+    const cost = raw?.cost;
+    const reported = this.o.provider.reported_cost && typeof cost === "number" && Number.isFinite(cost) && cost >= 0 ? cost : null;
+    const usd = (reported ?? usdFor(rateFor(this.o.model, (this.o.now ?? (() => new Date()))(), n.prompt)!, n.usage)) * this.o.fee_factor;
+    return { usage: n.usage, usd, bad: n.bad && reported === null };
   }
 
   private async call(body: Record<string, unknown>): Promise<ChatResponse> {
@@ -121,8 +145,8 @@ export class OpenAICompatProposer implements Proposer {
       if (i) await sleep(1000 * 3 ** (i - 1));
       const r = await f(`${p.base_url.replace(/\/+$/, "")}/chat/completions`, {
         method: "POST",
-        headers: { "content-type": "application/json", authorization: `Bearer ${this.o.apiKey}` },
-        body: JSON.stringify(body),
+        headers: { "content-type": "application/json", authorization: `Bearer ${this.o.apiKey}`, ...(p.headers ?? {}) },
+        body: JSON.stringify({ ...body, ...this.o.request_extra }),
       });
       const text = await r.text();
       let j: unknown = text;
@@ -133,10 +157,17 @@ export class OpenAICompatProposer implements Proposer {
       }
       // MiniMax reports some errors as HTTP 200 with base_resp.status_code != 0
       const br = (j as ChatResponse | null)?.base_resp;
-      if (r.ok && !(br && br.status_code)) return j as ChatResponse;
+      // OpenRouter: a 200 whose body holds only an error object (the provider failed after the headers)
+      const errOnly = r.ok && !!(j as ChatResponse | null)?.error && !Array.isArray((j as ChatResponse | null)?.choices);
+      if (r.ok && !(br && br.status_code) && !errOnly) return j as ChatResponse;
       const e = errorOf(r.status, j);
-      last = new ProviderError(p.id, r.ok ? 400 : r.status, e.code, e.message);
+      const code = errOnly ? Number((j as ChatResponse).error!.code) : NaN;
+      last = new ProviderError(p.id, !r.ok ? r.status : errOnly ? (Number.isInteger(code) && code >= 400 ? code : 502) : 400, e.code, e.message);
+      const rah = r.headers?.get?.("retry-after");
+      const ra = rah === null || rah === undefined || rah === "" ? NaN : Number(rah);
+      if (Number.isFinite(ra) && ra >= 0) last.retryAfterS = ra;
       if (!last.retryable) throw last;
+      if (last.retryAfterS !== null) await sleep(Math.min(30, last.retryAfterS) * 1000);
     }
     throw last!;
   }
@@ -156,9 +187,8 @@ export class OpenAICompatProposer implements Proposer {
       /* ignore */
     }
     const meter = (raw: Record<string, unknown> | null | undefined, model: string) => {
-      const n = normaliseUsage(raw);
-      const rate = rateFor(o.model, (o.now ?? (() => new Date()))(), n.prompt)!;
-      let usd = usdFor(rate, n.usage);
+      const n = this.priced(raw);
+      let usd = n.usd;
       // a response without usable counts is charged the rest of the cap, so the attempt stops (as audit A2, OFF-K4)
       if (n.bad) usd = Math.max(usd, cap - usage.usd, 0);
       usage.input_tokens += n.usage.input_tokens;
@@ -195,6 +225,13 @@ export class OpenAICompatProposer implements Proposer {
       };
       const res = await this.call(body);
       meter(res.usage, res.model ?? o.model.id);
+      if (typeof res.provider === "string" && res.provider) {
+        try {
+          ctx.meter?.upstream?.(res.provider.slice(0, 60));
+        } catch {
+          /* ignore */
+        }
+      }
       const choice = res.choices?.[0];
       const msg = choice?.message;
       if (!msg) throw new ProviderError(p.id, 502, null, "response has no choices");
@@ -214,6 +251,7 @@ export class OpenAICompatProposer implements Proposer {
       // signatures ride on them), the reasoning only where the provider requires it in a tool loop
       const back: ChatMessage = { role: "assistant", content: msg.content ?? null, tool_calls: calls };
       if (p.echo_reasoning && typeof msg.reasoning_content === "string") back.reasoning_content = msg.reasoning_content;
+      for (const k of p.echo_fields ?? []) if (msg[k] !== undefined && msg[k] !== null) back[k] = msg[k];
       messages.push(back);
       let submitted: Proposal | null = null;
       let gaveUp = false;
@@ -272,8 +310,8 @@ export class OpenAICompatProposer implements Proposer {
     const promptChars = req.system.length + req.user.length;
     const rate = rateFor(o.model, (o.now ?? (() => new Date()))(), promptChars)!;
     // worst case: every input character a token, the rest of the room for output (reasoning included)
-    const inputUsd = (promptChars * Math.max(rate.input, rate.cache_write ?? rate.input)) / 1e6;
-    const maxTokens = Math.min(4000, Math.floor(((left - inputUsd) * 1e6) / rate.output));
+    const inputUsd = ((promptChars * Math.max(rate.input, rate.cache_write ?? rate.input)) / 1e6) * o.fee_factor;
+    const maxTokens = Math.min(4000, Math.floor(((left - inputUsd) * 1e6) / (rate.output * o.fee_factor)));
     if (!(maxTokens >= 400)) {
       ctx.log(`${o.provider.id}: journal skipped, ${left.toFixed(4)} USD left of the attempt's cap`);
       return null;
@@ -287,8 +325,8 @@ export class OpenAICompatProposer implements Proposer {
       [o.provider.token_param ?? "max_tokens"]: maxTokens,
       ...(o.provider.extra_body ?? {}),
     });
-    const n = normaliseUsage(res.usage);
-    let usd = usdFor(rateFor(o.model, (o.now ?? (() => new Date()))(), n.prompt)!, n.usage);
+    const n = this.priced(res.usage);
+    let usd = n.usd;
     if (n.bad) usd = Math.max(usd, left, 0);
     if (ctx.spent) ctx.spent.usd += usd;
     try {

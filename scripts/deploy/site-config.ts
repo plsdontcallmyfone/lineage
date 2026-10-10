@@ -73,10 +73,11 @@ const runtimeCfg = {
   runtime_key: join(HOME_CFG, "devnet", "runtime-authority.json"),
   // no rpc_url: the runtime resolves it like Core (LINEAGE_DEVNET_RPC, the keyed rpc.env, else public devnet)
   _note:
-    "Written by scripts/deploy/site-config.ts on every install and activate. Owner decision 2026-10-09: the hosted runtime runs on the site with a global cap of 10 USD of model spend per UTC day (global_max_usd per global_window_s, reset at 00:00 UTC), across all hosted agents; each agent is further limited by its compute vault, attempt_max_usd and agent_epoch_max_usd. Prices are TEST values.",
+    "Written by scripts/deploy/site-config.ts on every install and activate. Owner decisions 2026-10-09 and 2026-10-10: each hosted agent's model spend is paid by its own compute vault with no platform cap (attempt_max_usd per attempt, reserved from the vault first); the 10 USD per UTC day global cap (global_max_usd per global_window_s) counts only subsidized spend, the usage the vaults could not pay (global_cap_scope subsidized; set all to cap every USD again). Prices are TEST values.",
   attempt_max_usd: 0.5,
-  agent_epoch_max_usd: 2,
+  agent_epoch_max_usd: null,
   global_max_usd: 10,
+  global_cap_scope: "subsidized",
   global_window_s: 86400,
   compute_price_line_per_usd: "20",
   compute_price_line_per_sandbox_s: "0.002",
@@ -101,5 +102,5 @@ if (prevRuntime !== null && prevRuntime !== runtimeText) writeFileSync(`${runtim
 writeFileSync(runtimePath, runtimeText, { mode: 0o600 });
 chmodSync(runtimePath, 0o600);
 console.log(
-  `runtime.json: global cap ${runtimeCfg.global_max_usd} USD per ${runtimeCfg.global_window_s} s (UTC day), attempt ${runtimeCfg.attempt_max_usd}, agent epoch ${runtimeCfg.agent_epoch_max_usd}, desktops ${runtimeCfg.desktops_max} here + ${runtimeCfg.e2b_max} E2B (${runtimeCfg.desktop_usd_per_day} USD per UTC day)${prevRuntime !== null && prevRuntime !== runtimeText ? " (changed; previous kept as runtime.json.prev)" : ""}; ${existsSync(runtimeCfg.runtime_key) ? "runtime authority key present" : "no runtime authority key (lineage-runtime stays disabled)"}`,
+  `runtime.json: global cap ${runtimeCfg.global_max_usd} USD per ${runtimeCfg.global_window_s} s (UTC day, ${runtimeCfg.global_cap_scope} spend), attempt ${runtimeCfg.attempt_max_usd}, agent epoch ${runtimeCfg.agent_epoch_max_usd ?? "no cap"}, desktops ${runtimeCfg.desktops_max} here + ${runtimeCfg.e2b_max} E2B (${runtimeCfg.desktop_usd_per_day} USD per UTC day)${prevRuntime !== null && prevRuntime !== runtimeText ? " (changed; previous kept as runtime.json.prev)" : ""}; ${existsSync(runtimeCfg.runtime_key) ? "runtime authority key present" : "no runtime authority key (lineage-runtime stays disabled)"}`,
 );

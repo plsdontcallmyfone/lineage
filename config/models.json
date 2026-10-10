@@ -1,6 +1,6 @@
 {
   "v": 1,
-  "_note": "Model registry seed (plan M). USD per 1M tokens, each read from the provider's own pricing page on read_on. Core serves it at GET /v1/models; the admin replaces it with POST /v1/admin/models. Never copy a figure here without reading the provider's page.",
+  "_note": "Model registry seed (plan M). USD per 1M tokens, each read from the provider's own pricing page on read_on. Core serves it at GET /v1/models; the admin replaces it with POST /v1/admin/models. Never copy a figure here without reading the provider's page. routes.openrouter: OpenRouter model id and OpenRouter's own listed price (GET https://openrouter.ai/api/v1/models, read on routing.openrouter.read_on), used only when the provider's own key is absent; routing.openrouter.funding_fee_bps is added on top.",
   "default": {
     "provider": "anthropic",
     "id": "claude-opus-5-5"
@@ -191,7 +191,35 @@
             "cached_input": 1
           }
         }
-      ]
+      ],
+      "routes": {
+        "openrouter": {
+          "id": "openai/gpt-5.5",
+          "rate": {
+            "input": 5.0,
+            "output": 30.0,
+            "cached_input": 0.5
+          },
+          "tiers": [
+            {
+              "up_to_input_tokens": 272000,
+              "rate": {
+                "input": 5.0,
+                "output": 30.0,
+                "cached_input": 0.5
+              }
+            },
+            {
+              "up_to_input_tokens": 100000000,
+              "rate": {
+                "input": 10.0,
+                "output": 45.0,
+                "cached_input": 1.0
+              }
+            }
+          ]
+        }
+      }
     },
     {
       "id": "gpt-5.1",
@@ -202,6 +230,16 @@
         "input": 1.25,
         "output": 10,
         "cached_input": 0.125
+      },
+      "routes": {
+        "openrouter": {
+          "id": "openai/gpt-5.1",
+          "rate": {
+            "input": 1.25,
+            "output": 10.0,
+            "cached_input": 0.125
+          }
+        }
       }
     },
     {
@@ -213,6 +251,16 @@
         "input": 0.25,
         "output": 2,
         "cached_input": 0.025
+      },
+      "routes": {
+        "openrouter": {
+          "id": "openai/gpt-5-mini",
+          "rate": {
+            "input": 0.25,
+            "output": 2.0,
+            "cached_input": 0.025
+          }
+        }
       }
     },
     {
@@ -224,6 +272,16 @@
         "input": 2,
         "output": 8,
         "cached_input": 0.5
+      },
+      "routes": {
+        "openrouter": {
+          "id": "openai/gpt-4.1",
+          "rate": {
+            "input": 2.0,
+            "output": 8.0,
+            "cached_input": 0.5
+          }
+        }
       }
     },
     {
@@ -256,7 +314,38 @@
             "cache_write": 5
           }
         }
-      ]
+      ],
+      "routes": {
+        "openrouter": {
+          "id": "openai/gpt-6-sol",
+          "rate": {
+            "input": 2.0,
+            "output": 10.0,
+            "cached_input": 0.2,
+            "cache_write": 2.5
+          },
+          "tiers": [
+            {
+              "up_to_input_tokens": 272000,
+              "rate": {
+                "input": 2.0,
+                "output": 10.0,
+                "cached_input": 0.2,
+                "cache_write": 2.5
+              }
+            },
+            {
+              "up_to_input_tokens": 100000000,
+              "rate": {
+                "input": 4.0,
+                "output": 15.0,
+                "cached_input": 0.4,
+                "cache_write": 5.0
+              }
+            }
+          ]
+        }
+      }
     },
     {
       "id": "gpt-6-luna",
@@ -288,7 +377,38 @@
             "cache_write": 0.25
           }
         }
-      ]
+      ],
+      "routes": {
+        "openrouter": {
+          "id": "openai/gpt-6-luna",
+          "rate": {
+            "input": 0.1,
+            "output": 0.5,
+            "cached_input": 0.01,
+            "cache_write": 0.125
+          },
+          "tiers": [
+            {
+              "up_to_input_tokens": 272000,
+              "rate": {
+                "input": 0.1,
+                "output": 0.5,
+                "cached_input": 0.01,
+                "cache_write": 0.125
+              }
+            },
+            {
+              "up_to_input_tokens": 100000000,
+              "rate": {
+                "input": 0.2,
+                "output": 0.75,
+                "cached_input": 0.02,
+                "cache_write": 0.25
+              }
+            }
+          ]
+        }
+      }
     },
     {
       "id": "gpt-6-astra",
@@ -302,7 +422,38 @@
         "cached_input": 1,
         "cache_write": 12.5
       },
-      "note": "Not offered: OpenAI's Chat Completions does not support function calling with this model (Responses API only)."
+      "note": "Not offered: OpenAI's Chat Completions does not support function calling with this model (Responses API only).",
+      "routes": {
+        "openrouter": {
+          "id": "openai/gpt-6-astra",
+          "rate": {
+            "input": 10.0,
+            "output": 50.0,
+            "cached_input": 1.0,
+            "cache_write": 12.5
+          },
+          "tiers": [
+            {
+              "up_to_input_tokens": 272000,
+              "rate": {
+                "input": 10.0,
+                "output": 50.0,
+                "cached_input": 1.0,
+                "cache_write": 12.5
+              }
+            },
+            {
+              "up_to_input_tokens": 100000000,
+              "rate": {
+                "input": 20.0,
+                "output": 75.0,
+                "cached_input": 2.0,
+                "cache_write": 25.0
+              }
+            }
+          ]
+        }
+      }
     },
     {
       "id": "gpt-6.1-sol",
@@ -316,7 +467,38 @@
         "cached_input": 0.1,
         "cache_write": 2.5
       },
-      "note": "Not offered: OpenAI's Chat Completions does not support function calling with this model (Responses API only)."
+      "note": "Not offered: OpenAI's Chat Completions does not support function calling with this model (Responses API only).",
+      "routes": {
+        "openrouter": {
+          "id": "openai/gpt-6.1-sol",
+          "rate": {
+            "input": 2.0,
+            "output": 10.0,
+            "cached_input": 0.1,
+            "cache_write": 2.5
+          },
+          "tiers": [
+            {
+              "up_to_input_tokens": 272000,
+              "rate": {
+                "input": 2.0,
+                "output": 10.0,
+                "cached_input": 0.1,
+                "cache_write": 2.5
+              }
+            },
+            {
+              "up_to_input_tokens": 100000000,
+              "rate": {
+                "input": 4.0,
+                "output": 15.0,
+                "cached_input": 0.2,
+                "cache_write": 5.0
+              }
+            }
+          ]
+        }
+      }
     },
     {
       "id": "gemini-3.8-flash",
@@ -328,7 +510,18 @@
         "output": 3.75,
         "cached_input": 0.075
       },
-      "note": "Output includes thinking. Google prints that from Jan 1, 2027 this becomes 1.50 / 7.50 (cached 0.15). Gemini 3.5 Flash is deprecated and routed to 3.6 Flash."
+      "note": "Output includes thinking. Google prints that from Jan 1, 2027 this becomes 1.50 / 7.50 (cached 0.15). Gemini 3.5 Flash is deprecated and routed to 3.6 Flash.",
+      "routes": {
+        "openrouter": {
+          "id": "google/gemini-3.8-flash",
+          "rate": {
+            "input": 0.75,
+            "output": 3.75,
+            "cached_input": 0.075,
+            "cache_write": 0.0416666667
+          }
+        }
+      }
     },
     {
       "id": "gemini-3.5-flash-lite",
@@ -339,6 +532,17 @@
         "input": 0.3,
         "output": 2.5,
         "cached_input": 0.03
+      },
+      "routes": {
+        "openrouter": {
+          "id": "google/gemini-3.5-flash-lite",
+          "rate": {
+            "input": 0.3,
+            "output": 2.5,
+            "cached_input": 0.03,
+            "cache_write": 0.0833333333
+          }
+        }
       }
     },
     {
@@ -369,7 +573,38 @@
           }
         }
       ],
-      "note": "Preview model; the only Pro model on the page."
+      "note": "Preview model; the only Pro model on the page.",
+      "routes": {
+        "openrouter": {
+          "id": "google/gemini-3.1-pro-preview",
+          "rate": {
+            "input": 2.0,
+            "output": 12.0,
+            "cached_input": 0.2,
+            "cache_write": 0.375
+          },
+          "tiers": [
+            {
+              "up_to_input_tokens": 200000,
+              "rate": {
+                "input": 2.0,
+                "output": 12.0,
+                "cached_input": 0.2,
+                "cache_write": 0.375
+              }
+            },
+            {
+              "up_to_input_tokens": 100000000,
+              "rate": {
+                "input": 4.0,
+                "output": 18.0,
+                "cached_input": 0.4,
+                "cache_write": 0.375
+              }
+            }
+          ]
+        }
+      }
     },
     {
       "id": "deepseek-flash",
@@ -412,7 +647,18 @@
           }
         ]
       },
-      "note": "Off-peak rate shown; peak 01:00 to 04:00 and 06:00 to 10:00 UTC, Monday to Friday, is double."
+      "note": "Off-peak rate shown; peak 01:00 to 04:00 and 06:00 to 10:00 UTC, Monday to Friday, is double.",
+      "routes": {
+        "openrouter": {
+          "id": "deepseek/deepseek-v4.1-flash",
+          "rate": {
+            "input": 0.3,
+            "output": 1.2,
+            "cached_input": 0.006
+          },
+          "note": "DeepSeek names this model DeepSeek Flash (V4.1); OpenRouter lists it as deepseek-v4.1-flash."
+        }
+      }
     },
     {
       "id": "deepseek-v4-pro",
@@ -455,7 +701,18 @@
           }
         ]
       },
-      "note": "Off-peak rate shown; peak 01:00 to 04:00 and 06:00 to 10:00 UTC, Monday to Friday, is double."
+      "note": "Off-peak rate shown; peak 01:00 to 04:00 and 06:00 to 10:00 UTC, Monday to Friday, is double.",
+      "routes": {
+        "openrouter": {
+          "id": "deepseek/deepseek-v4-pro",
+          "rate": {
+            "input": 0.2088,
+            "output": 0.4176,
+            "cached_input": 0.0174
+          },
+          "note": "OpenRouter serves this id as the 0423 snapshot (deepseek-v4-pro-20260423); a 0813 snapshot is listed separately."
+        }
+      }
     },
     {
       "id": "qwen3.8-max",
@@ -466,6 +723,17 @@
         "input": 2,
         "output": 6,
         "cached_input": 0.4
+      },
+      "routes": {
+        "openrouter": {
+          "id": "qwen/qwen3.8-max-0902",
+          "rate": {
+            "input": 2.0,
+            "output": 6.0,
+            "cached_input": 0.25
+          },
+          "note": "OpenRouter lists no undated Qwen3.8 Max; this is its 0902 snapshot."
+        }
       }
     },
     {
@@ -477,6 +745,16 @@
         "input": 0.15,
         "output": 0.47,
         "cached_input": 0.03
+      },
+      "routes": {
+        "openrouter": {
+          "id": "qwen/qwen3.8-flash",
+          "rate": {
+            "input": 0.15,
+            "output": 0.47,
+            "cached_input": 0.016
+          }
+        }
       }
     },
     {
@@ -489,6 +767,16 @@
         "output": 15,
         "cached_input": 0.3,
         "cache_write": 3
+      },
+      "routes": {
+        "openrouter": {
+          "id": "moonshotai/kimi-k3",
+          "rate": {
+            "input": 0.5,
+            "output": 13.5,
+            "cached_input": 0.28
+          }
+        }
       }
     },
     {
@@ -500,6 +788,16 @@
         "input": 0.95,
         "output": 4,
         "cached_input": 0.16
+      },
+      "routes": {
+        "openrouter": {
+          "id": "moonshotai/kimi-k2.6",
+          "rate": {
+            "input": 0.4344,
+            "output": 2.45,
+            "cached_input": 0.1077
+          }
+        }
       }
     },
     {
@@ -511,6 +809,16 @@
         "input": 1.4,
         "output": 4.4,
         "cached_input": 0.26
+      },
+      "routes": {
+        "openrouter": {
+          "id": "z-ai/glm-5.3",
+          "rate": {
+            "input": 0.039,
+            "output": 4.8,
+            "cached_input": 0.038
+          }
+        }
       }
     },
     {
@@ -522,6 +830,16 @@
         "input": 0.15,
         "output": 0.5,
         "cached_input": 0.03
+      },
+      "routes": {
+        "openrouter": {
+          "id": "z-ai/glm-5.3-flash",
+          "rate": {
+            "input": 0.15,
+            "output": 0.5,
+            "cached_input": 0.03
+          }
+        }
       }
     },
     {
@@ -552,7 +870,17 @@
           }
         }
       ],
-      "note": "MiniMax's own \"Permanent 50% off\" label: list price 0.60 / 2.40 (cache read 0.12) up to 512K input tokens."
+      "note": "MiniMax's own \"Permanent 50% off\" label: list price 0.60 / 2.40 (cache read 0.12) up to 512K input tokens.",
+      "routes": {
+        "openrouter": {
+          "id": "minimax/minimax-m3",
+          "rate": {
+            "input": 0.3,
+            "output": 1.2,
+            "cached_input": 0.06
+          }
+        }
+      }
     },
     {
       "id": "MiniMax-M2.7",
@@ -565,7 +893,17 @@
         "cached_input": 0.06,
         "cache_write": 0.375
       },
-      "note": "No discount label on this row as read 2026-10-09 (the Stags registry, read 2026-09-22, recorded a 50% discount label against a 0.60 / 2.40 list price)."
+      "note": "No discount label on this row as read 2026-10-09 (the Stags registry, read 2026-09-22, recorded a 50% discount label against a 0.60 / 2.40 list price).",
+      "routes": {
+        "openrouter": {
+          "id": "minimax/minimax-m2.7",
+          "rate": {
+            "input": 0.21,
+            "output": 0.84,
+            "cached_input": 0.042
+          }
+        }
+      }
     },
     {
       "id": "llama",
@@ -574,6 +912,33 @@
       "status": "no_price",
       "rate": null,
       "note": "No first-party per-token price is published."
+    },
+    {
+      "id": "llama-4-maverick",
+      "provider": "meta",
+      "name": "Llama 4 Maverick",
+      "status": "no_price",
+      "rate": null,
+      "note": "Meta publishes no per-token price; runs only through OpenRouter, at OpenRouter's listed price (not a Meta price).",
+      "routes": {
+        "openrouter": {
+          "id": "meta-llama/llama-4-maverick",
+          "rate": {
+            "input": 0.1875,
+            "output": 0.6525,
+            "cached_input": 0.05
+          }
+        }
+      }
     }
-  ]
+  ],
+  "routing": {
+    "openrouter": {
+      "name": "OpenRouter",
+      "pricing_url": "https://openrouter.ai/api/v1/models",
+      "read_on": "2026-10-10",
+      "funding_fee_bps": 550,
+      "funding_note": "OpenRouter adds no markup to provider prices and charges a fee when credits are bought (openrouter.ai/docs/faq, read 2026-10-10): card 5.5% (0.80 USD minimum), crypto (USDC) 5%. 550 assumes card top-ups; set 500 when the treasury tops up in USDC."
+    }
+  }
 }

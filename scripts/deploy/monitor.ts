@@ -39,7 +39,14 @@ export interface Inputs {
   heartbeats: { agent_id: string; last_seen: number }[] | null;
   verifiers: { name: string; id: string }[];
   /** runtime spend window and cap (extracted by the unit's root pre-step) */
-  spend: { window?: { start: number; window_s: number; usd: number } | null; cap_usd?: number } | null;
+  spend: {
+    window?: { start: number; window_s: number; usd: number } | null;
+    cap_usd?: number;
+    /** "subsidized" (default since 2026-10-10: the window counts only usage the vaults could not pay) or "all" */
+    scope?: string | null;
+    /** OpenRouter's balance as the runtime last read it (plan MODELS-AND-SELF-FUNDING) */
+    provider?: { openrouter?: { usd: number | null; source: string | null; read_at: number | null; error: string | null; floor_usd: number; configured: boolean } | null } | null;
+  } | null;
   runtimeEnabled: boolean;
   souls: { enabled?: boolean; daily_usd?: number; spent_today_usd?: number } | null;
   /** name -> lamports (null when the read failed) */
@@ -135,7 +142,14 @@ export function evaluate(i: Inputs): Check[] {
     else {
       const current = w && i.now < w.start + w.window_s * 1000 ? w.usd : 0;
       const f = cap > 0 ? current / cap : 0;
-      add("spend", f >= LIMITS.spendWarn ? "warn" : "ok", `runtime model spend ${current.toFixed(4)} of ${cap} USD this window${f >= 1 ? " (cap reached: hosted agents pause until the window resets)" : ""}`);
+      const all = i.spend.scope === "all";
+      add("spend", f >= LIMITS.spendWarn ? "warn" : "ok", `runtime ${all ? "model" : "subsidized"} spend ${current.toFixed(4)} of ${cap} USD this window${f >= 1 ? (all ? " (cap reached: hosted agents pause until the window resets)" : " (cap reached: vault-funded agents keep running)") : ""}`);
+    }
+    // OpenRouter's prepaid balance (routed models): below the floor, routed attempts wait for a top-up
+    const o = i.spend?.provider?.openrouter;
+    if (o?.configured) {
+      if (o.usd === null) add("provider:openrouter", o.error ? "warn" : "ok", o.error ? `OpenRouter balance not readable: ${o.error}` : "OpenRouter balance unknown (key without a credit limit and no management key)");
+      else add("provider:openrouter", o.usd < o.floor_usd ? "warn" : "ok", `OpenRouter balance ${o.usd.toFixed(2)} USD (floor ${o.floor_usd})${o.usd < o.floor_usd ? ": routed attempts wait; top up with USDC or card at openrouter.ai/settings/credits" : ""}`);
     }
   }
   if (i.souls?.enabled && i.souls.daily_usd) {

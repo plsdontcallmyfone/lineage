@@ -37,7 +37,7 @@
 #   DOMAIN          optional real domain (its A record must point at the server) served next to <ip>.sslip.io
 #   ACME_EMAIL      optional email for Let's Encrypt
 #   LINEAGE_RECIPES recipes to serve (default fixture-b58,base58-py,minbpe), re-pinned to the server's arch
-#   WITH_RUNTIME=1  also copy the runtime authority key and model.env (modes full, keys and code) and run
+#   WITH_RUNTIME=1  also copy the runtime authority key, model.env and providers.env (modes full, keys and code) and run
 #                   lineage-runtime (real model spend, capped per UTC day in runtime.json by site-config.ts);
 #                   e2b.env too when it holds a key (agent desktops' E2B overflow, capped per UTC day)
 #   WITH_AUTHOR=1   also copy the TEST author agent keys and run lineage-author@<name> (scripted candidates)
@@ -208,6 +208,13 @@ do_runtime_secrets() {
   put_key "$KEYS_LOCAL/runtime-authority.json" devnet/runtime-authority.json "$rt"
   grep -qE '^[[:space:]]*ANTHROPIC_(API_KEY|AUTH_TOKEN)[[:space:]]*=' "$HOME/.config/lineage/model.env" || { echo "model.env holds no ANTHROPIC_API_KEY; not copied" >&2; return 1; }
   put_secret "$HOME/.config/lineage/model.env" model.env
+  # other model providers and OpenRouter (plan MODELS-AND-SELF-FUNDING): providers.env when it holds any key;
+  # the runtime re-reads it every minute, so a key added later only needs this copy (no restart, no code)
+  if grep -qE '^[[:space:]]*[A-Z0-9_]+_(API_KEY|MANAGEMENT_KEY)[[:space:]]*=[[:space:]]*[^[:space:]]' "$HOME/.config/lineage/providers.env" 2>/dev/null; then
+    put_secret "$HOME/.config/lineage/providers.env" providers.env
+  else
+    echo "providers.env holds no key; not copied (Anthropic only, from model.env)"
+  fi
   # agent desktops' E2B overflow (SPEC 17.7): only when the file holds a key; without it E2B stays off
   if grep -qE '^[[:space:]]*E2B_API_KEY[[:space:]]*=[[:space:]]*[^[:space:]]' "$HOME/.config/lineage/e2b.env" 2>/dev/null; then
     put_secret "$HOME/.config/lineage/e2b.env" e2b.env

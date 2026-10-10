@@ -42,7 +42,7 @@ export interface RuntimeView {
   state: { agents: Record<string, { status: string; mint: string | null; key_id: string }> };
   store: { keyFor(agent: string): AgentKey };
   /** the runtime's caps, metering and board posts for analyses (packages/runtime runtime.ts) */
-  analysisSurface?(): { room(agent: string): number; meter(agent: string, u: Usage): void; send(agent: string, to: string, text: string): Promise<string | null> };
+  analysisSurface?(): { room(agent: string, reserve?: number): number; meter(agent: string, u: Usage): void; send(agent: string, to: string, text: string): Promise<string | null> };
 }
 
 /** What of a leaf's trade share reached the sink: the vault paid min(cost, balance), compute first. */
@@ -127,7 +127,7 @@ export function chainTrading(o: {
     gas: (treasury, lamports) => funder.gas(treasury, lamports),
     analysis: {
       model: (agent, override) => routedDecisionModel({ core: o.core, agent, keys: o.keys ?? {}, registry, override }),
-      room: (agent) => rt?.analysisSurface?.().room(agent) ?? 0,
+      room: (agent, reserve) => rt?.analysisSurface?.().room(agent, reserve) ?? 0,
       meter: (agent, u) => rt?.analysisSurface?.().meter(agent, u),
       post: async (agent, board, text) => (rt?.analysisSurface ? rt.analysisSurface().send(agent, board, text) : null),
     },

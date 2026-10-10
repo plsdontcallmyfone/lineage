@@ -46,9 +46,41 @@ export interface ModelEntry {
   tiers?: { up_to_input_tokens: number; rate: Rate }[] | null;
   /** caveat shown with the price, in the provider's terms */
   note?: string | null;
-  /** off: listed but not offered at launch */
+  /** off: the direct API cannot run it (a route below may still offer it) */
   enabled?: boolean;
+  /**
+   * Other ways this host may reach the same model when the provider's own key is absent (plan
+   * MODELS-AND-SELF-FUNDING). `openrouter`: OpenRouter's model id and OpenRouter's own listed price
+   * (USD per 1M tokens, read on `routing.openrouter.read_on`); its funding fee is applied on top.
+   */
+  routes?: { openrouter?: OpenRouterRoute | null } | null;
 }
+
+export interface OpenRouterRoute {
+  /** OpenRouter model id, e.g. "openai/gpt-5.5" */
+  id: string;
+  rate: Rate;
+  tiers?: { up_to_input_tokens: number; rate: Rate }[] | null;
+  /** off: listed but not offered through OpenRouter */
+  enabled?: boolean;
+  /** caveat about this route (snapshot naming), in OpenRouter's terms */
+  note?: string | null;
+}
+
+/** How a routed provider is paid (plan MODELS-AND-SELF-FUNDING): its listed prices, plus the fee to buy its credits. */
+export interface RoutingEntry {
+  name: string;
+  /** where the route prices were read, and the day */
+  pricing_url: string;
+  read_on: string;
+  /** fee charged when the treasury buys credits, basis points on top of usage cost (card 550, crypto 500 as read) */
+  funding_fee_bps: number;
+  /** what the fee figure is (method and source) */
+  funding_note?: string | null;
+}
+
+/** Which way a model runs on this host. */
+export type RouteVia = "direct" | "openrouter";
 
 export interface ProviderEntry {
   id: string;
@@ -69,6 +101,8 @@ export interface ModelRegistry {
   default: { provider: string; id: string };
   providers: ProviderEntry[];
   models: ModelEntry[];
+  /** routed providers (OpenRouter): price source and funding fee */
+  routing?: { openrouter?: RoutingEntry | null } | null;
 }
 
 /** What an agent's profile records (soul `model`), and what provenance attests. */
@@ -147,7 +181,31 @@ export function checkRegistry(raw: unknown): string[] {
       }
     }
     if (m.note !== undefined && m.note !== null && (typeof m.note !== "string" || m.note.length > 400 || /\u2014/.test(m.note))) errs.push(`${path}.note: up to 400 characters, no em dashes`);
+    const orr = m.routes?.openrouter;
+    if (orr) {
+      if (typeof orr.id !== "string" || !/^[a-z0-9][a-z0-9._-]{0,40}\/[A-Za-z0-9][A-Za-z0-9._:-]{0,80}$/.test(orr.id)) errs.push(`${path}.routes.openrouter.id: an OpenRouter model id (vendor/model)`);
+      checkRate(errs, `${path}.routes.openrouter.rate`, orr.rate);
+      if (orr.tiers) {
+        let prev = 0;
+        if (!Array.isArray(orr.tiers)) errs.push(`${path}.routes.openrouter.tiers: a list or null`);
+        else orr.tiers.forEach((t, j) => {
+          if (!(Number.isInteger(t.up_to_input_tokens) && t.up_to_input_tokens > prev)) errs.push(`${path}.routes.openrouter.tiers[${j}].up_to_input_tokens: increasing integers`);
+          prev = t.up_to_input_tokens;
+          checkRate(errs, `${path}.routes.openrouter.tiers[${j}].rate`, t.rate);
+        });
+      }
+      if (orr.note != null && (typeof orr.note !== "string" || orr.note.length > 400 || /\u2014/.test(orr.note))) errs.push(`${path}.routes.openrouter.note: up to 400 characters, no em dashes`);
+      if (!r.routing?.openrouter) errs.push(`${path}.routes.openrouter: registry.routing.openrouter (price source and funding fee) is required`);
+    }
   });
+  const ro = r.routing?.openrouter;
+  if (ro) {
+    if (typeof ro.name !== "string" || !ro.name.trim() || ro.name.length > 40) errs.push("routing.openrouter.name: 1 to 40 characters");
+    if (typeof ro.pricing_url !== "string" || !/^https:\/\/\S{3,300}$/.test(ro.pricing_url)) errs.push("routing.openrouter.pricing_url: an https URL");
+    if (typeof ro.read_on !== "string" || !DAY.test(ro.read_on)) errs.push("routing.openrouter.read_on: YYYY-MM-DD");
+    if (!(Number.isInteger(ro.funding_fee_bps) && ro.funding_fee_bps >= 0 && ro.funding_fee_bps <= 5000)) errs.push("routing.openrouter.funding_fee_bps: whole basis points, 0 to 5000");
+    if (ro.funding_note != null && (typeof ro.funding_note !== "string" || ro.funding_note.length > 400 || /\u2014/.test(ro.funding_note))) errs.push("routing.openrouter.funding_note: up to 400 characters, no em dashes");
+  }
   if (!validChoice(r.default)) errs.push("registry.default: { provider, id }");
   else {
     const d = findModel(r, r.default);
@@ -208,12 +266,57 @@ export interface Availability {
   by: string | null;
 }
 
-/** Whether a model can be picked at launch, with the reason when not. */
-export function pickable(r: ModelRegistry, m: ModelEntry, avail: Availability): { ok: boolean; why: string | null } {
+/** Whether the model's own provider API can run it (priced there, offered, an adapter exists). */
+export function directRunnable(r: ModelRegistry, m: ModelEntry): { ok: boolean; why: string | null } {
   const p = findProvider(r, m.provider);
   if (!p || p.adapter === "none") return { ok: false, why: "no first-party API this network can call" };
-  if (m.status !== "verified") return { ok: false, why: "no first-party per-token price published" };
-  if (m.enabled === false) return { ok: false, why: "not offered" };
-  if (!avail.providers[m.provider]) return { ok: false, why: "no key on the hosted runtime" };
+  if (m.status !== "verified" || !m.rate) return { ok: false, why: "no first-party per-token price published" };
+  if (m.enabled === false) return { ok: false, why: m.note ?? "not offered" };
   return { ok: true, why: null };
+}
+
+/** The OpenRouter route of a model, when it has one this network may use (never for Anthropic, which stays direct). */
+export function openrouterRoute(r: ModelRegistry, m: ModelEntry): OpenRouterRoute | null {
+  const o = m.routes?.openrouter;
+  if (!o || o.enabled === false || m.provider === "anthropic" || !r.routing?.openrouter) return null;
+  return o;
+}
+
+/**
+ * Which route a model runs on given the providers with a key: direct when its provider has a key and
+ * the direct API runs it, else OpenRouter when that key is present and the model has a route, else
+ * none (with why). Shared by Core (pickable), the runtime (routing) and the launch form.
+ */
+export function routeOf(r: ModelRegistry, m: ModelEntry, keys: Record<string, boolean>): { via: RouteVia; why: null } | { via: null; why: string } {
+  const d = directRunnable(r, m);
+  if (d.ok && keys[m.provider]) return { via: "direct", why: null };
+  const o = openrouterRoute(r, m);
+  if (o && keys.openrouter) return { via: "openrouter", why: null };
+  if (!d.ok && !o) return { via: null, why: d.why ?? "not offered" };
+  if (d.ok && o) return { via: null, why: `no key on the hosted runtime (neither ${m.provider} nor OpenRouter)` };
+  if (d.ok) return { via: null, why: "no key on the hosted runtime" };
+  return { via: null, why: `${d.why}; OpenRouter route needs its key on the hosted runtime` };
+}
+
+/** Whether a model may be named in a soul at all (some route can run it once a key exists). */
+export function offerable(r: ModelRegistry, m: ModelEntry): boolean {
+  return directRunnable(r, m).ok || !!openrouterRoute(r, m);
+}
+
+/** Rate of a route: the model's own, or OpenRouter's listed one (with its tiers). */
+export function routeEntry(r: ModelRegistry, m: ModelEntry, via: RouteVia): ModelEntry {
+  if (via === "direct") return m;
+  const o = openrouterRoute(r, m)!;
+  return { ...m, id: o.id, provider: "openrouter", status: "verified", rate: o.rate, tiers: o.tiers ?? null, peak: null };
+}
+
+/** Funding fee multiplier of a route (1 for direct). */
+export function routeFeeFactor(r: ModelRegistry, via: RouteVia): number {
+  return via === "openrouter" ? 1 + (r.routing?.openrouter?.funding_fee_bps ?? 0) / 10_000 : 1;
+}
+
+/** Whether a model can be picked at launch, with the reason when not, and the route it would run on. */
+export function pickable(r: ModelRegistry, m: ModelEntry, avail: Availability): { ok: boolean; why: string | null; via: RouteVia | null } {
+  const x = routeOf(r, m, avail.providers);
+  return x.via ? { ok: true, why: null, via: x.via } : { ok: false, why: x.why, via: null };
 }

@@ -22,7 +22,10 @@ import { checkCorePrices, CreditMonitor, monitorStatePath, railClient, railModel
 import { ChainMessenger } from "../../core/src/msgchain.ts";
 import { CoreClient } from "../../core/src/client.ts";
 import { availabilityOf, loadProviderKeys, loadProviderSpecs } from "../../worker/src/proposers/providers.ts";
-import { routedProposers } from "./providers.ts";
+import { reloadKeys, resolveRoute, routedProposers, RegistrySource, soulModel } from "./providers.ts";
+import { OpenRouterBalance } from "./provider-balance.ts";
+import { JupiterPrice } from "./price.ts";
+import type { AgentRoute } from "./runtime.ts";
 import { bindHandler, chainCosign, serveBind } from "./bind.ts";
 import { withGenesis } from "./genesis.ts";
 import { anthropicClient } from "../../souls/src/generator.ts";
@@ -66,6 +69,29 @@ export function chainMessengers(cfg: RuntimeConfig, backend: Backend, log: (m: s
 export function hostedProposers(cfg: RuntimeConfig, keys: Record<string, string>) {
   if ((cfg.rail ?? "anthropic") === "openrouter") return claudeProposer(cfg);
   return routedProposers({ core: cfg.core, keys, providers: loadProviderSpecs(), attempt_max_usd: cfg.attempt_max_usd, effort: cfg.effort, max_turns: cfg.max_turns, max_evals: cfg.max_evals });
+}
+
+/** The model and route an agent runs on now (plan MODELS-AND-SELF-FUNDING), for the runtime's gates and spend report. */
+export function routeResolver(core: string, keys: Record<string, string>, registry: RegistrySource): (agent: string) => Promise<AgentRoute> {
+  return async (agent) => {
+    const r = resolveRoute(await registry.get(), await soulModel(core, agent), keys);
+    return r.ok ? { via: r.via, model: { provider: r.chosen.provider, id: r.chosen.id }, why: null } : { via: null, model: r.choice, why: r.why };
+  };
+}
+
+/**
+ * Re-reads providers.env every minute: a key the owner adds (or removes) is used from the next
+ * attempt and Core is told, so the launch form offers its models with no restart or code change.
+ */
+export function watchProviderKeys(cfg: RuntimeConfig, keys: Record<string, string>, log: (m: string) => void, every_ms = 60_000): () => void {
+  const t = setInterval(() => {
+    try {
+      if (reloadKeys(keys, loadProviderKeys({ create: false }))) void reportAvailability(cfg, keys, log);
+    } catch (e) {
+      log(`providers.env not re-read: ${(e as Error).message}`);
+    }
+  }, every_ms);
+  return () => clearInterval(t);
 }
 
 /** Tells Core which providers have a key on this host (never the keys); the launch form offers only those. */
@@ -118,7 +144,25 @@ async function main() {
         : null;
       // agent desktops (SPEC 17.7): our server's slots first, then E2B within its day cap
       const desktops = desktopPool(cfg, log);
-      const rt = new Runtime(cfg, { backend, runtimeKey: loadKey(cfg.runtime_key), proposer: hostedProposers(cfg, keys), log, messenger: chainMessengers(cfg, backend, log), postClient: postClient(), trading: trading?.hooks, desktop: desktops ?? undefined });
+      // plan MODELS-AND-SELF-FUNDING: routes per agent, OpenRouter's balance, the quote price, the spend report
+      const stopKeys = watchProviderKeys(cfg, keys, log);
+      const reg = new RegistrySource({ core: cfg.core, log });
+      const providerBalance = new OpenRouterBalance({ keys, floor_usd: cfg.openrouter_floor_usd ?? 5, check_s: cfg.openrouter_check_s, log });
+      const quote = applyNetworkProfile().quote;
+      if (cfg.mode === "mainnet" && (!quote.mint || quote.decimals === undefined)) throw new Error("mainnet runtime: the network profile's quote token needs mint and decimals for its USD price");
+      const price = cfg.mode === "mainnet"
+        ? new JupiterPrice({ mint: quote.mint!, decimals: quote.decimals!, api: cfg.price?.api, max_age_s: cfg.price?.max_age_s, min_usd: cfg.price?.min_usd ?? 0.95, max_usd: cfg.price?.max_usd ?? 1.05, refresh_s: cfg.price?.refresh_s })
+        : undefined;
+      const reporter = new CoreClient(cfg.core, loadKey(cfg.runtime_key));
+      const rt = new Runtime(cfg, {
+        backend, runtimeKey: loadKey(cfg.runtime_key), proposer: hostedProposers(cfg, keys), log, messenger: chainMessengers(cfg, backend, log), postClient: postClient(), trading: trading?.hooks, desktop: desktops ?? undefined,
+        route: (cfg.rail ?? "anthropic") === "anthropic" ? routeResolver(cfg.core, keys, reg) : undefined,
+        providerBalance, price,
+        report: async (body) => {
+          const r = await reporter.post("/v1/admin/runtime/spend", body);
+          if (r.status >= 300) throw new Error(`HTTP ${r.status} ${JSON.stringify(r.body).slice(0, 200)}`);
+        },
+      });
       trading?.attach(rt);
       const stopTrading = trading?.start() ?? (() => {});
       await rt.start();
@@ -134,6 +178,7 @@ async function main() {
         if (++signals > 1) process.exit(130); // state is persisted after every step; a second signal leaves now
         log("signal: graceful stop (send again to leave at once)");
         stopMonitor();
+        stopKeys();
         stopTrading();
         stopPublisher();
         bindServer?.stop(true);

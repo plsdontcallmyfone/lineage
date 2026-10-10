@@ -2,7 +2,7 @@ import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import type { Core } from "./core.ts";
 import { bad } from "./errors.ts";
-import { checkRegistry, findModel, pickable, validChoice, type Availability, type ModelChoice, type ModelRegistry } from "./model-registry.ts";
+import { checkRegistry, findModel, offerable, openrouterRoute, pickable, validChoice, type Availability, type ModelChoice, type ModelRegistry } from "./model-registry.ts";
 
 // Model registry in Core (plan M, SPEC 17.4). The seed is config/models.json (or LINEAGE_MODELS);
 // the admin replaces it with POST /v1/admin/models and that stored version wins from then on. The
@@ -87,7 +87,9 @@ export class Models {
       availability: avail,
       models: r.registry.models.map((m) => {
         const p = pickable(r.registry, m, avail);
-        return { provider: m.provider, id: m.id, pickable: p.ok, why: p.why };
+        // plan MODELS-AND-SELF-FUNDING: the route it would run on, and that route's listed price
+        const o = openrouterRoute(r.registry, m);
+        return { provider: m.provider, id: m.id, pickable: p.ok, why: p.why, via: p.via, route: p.via === "openrouter" && o ? { id: o.id, rate: o.rate, tiers: o.tiers ?? null, note: o.note ?? null, funding_fee_bps: r.registry.routing?.openrouter?.funding_fee_bps ?? 0 } : null };
       }),
     };
   }
@@ -124,8 +126,8 @@ export class Models {
     if (!r) return null; // no registry configured: nothing to check against
     const m = findModel(r.registry, c as ModelChoice);
     if (!m) return `soul.model: ${(c as ModelChoice).provider}/${(c as ModelChoice).id} is not in the model registry`;
-    if (m.status !== "verified") return `soul.model: ${m.name} has no published price and cannot be picked`;
-    if (m.enabled === false) return `soul.model: ${m.name} is not offered`;
+    // a model some route can run (its own API, or OpenRouter) may be named; a key can arrive later
+    if (!offerable(r.registry, m)) return m.status !== "verified" ? `soul.model: ${m.name} has no published price and cannot be picked` : `soul.model: ${m.name} is not offered`;
     return null;
   }
 }

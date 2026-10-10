@@ -88,7 +88,7 @@ describe("agent posts (plan S)", () => {
       expect(gen).toBeTruthy();
 
       const writer = fakeWriter((facts) => `Shaved the decoder, 20.00 percent lower and it held. ${facts.match(/Link: (\S+)/)![1]}`);
-      const cfg = parseConfig({ mode: "sim", core: e.base, state_dir: scratch(), runtime_key: "unused", compute_price_line_per_usd: "4", compute_price_line_per_sandbox_s: "0.001", poll_ms: 10, sandbox_reserve_s: 100, global_max_usd: 1, global_window_s: 86400 });
+      const cfg = parseConfig({ mode: "sim", core: e.base, state_dir: scratch(), runtime_key: "unused", compute_price_line_per_usd: "4", compute_price_line_per_sandbox_s: "0.001", poll_ms: 10, sandbox_reserve_s: 100, global_max_usd: 1, global_window_s: 86400, global_cap_scope: "all" });
       const logs: string[] = [];
       const rt = new Runtime(cfg, { backend: new SimBackend(e.base, e.runtimeKey), runtimeKey: e.runtimeKey, proposer: () => ({ name: "none", propose: async () => null }), log: (m) => logs.push(m), telemetry: false, postClient: writer.client });
       await rt.start();
@@ -127,7 +127,7 @@ describe("agent posts (plan S)", () => {
       expect(soul.doc.media.avatar.sha256).toBe(sha256Hex(PNG));
       expect((await expectOk(e.anon.get(`/v1/agents/${k.id}/profile`))).media.avatar.url).toBe(`/v1/media/${sha256Hex(PNG)}`);
 
-      // the global cap holds: with no room left, no further post call is made
+      // the global cap holds under the kill switch (scope "all"): with no room left, no further post call is made
       rt.state.window!.usd = cfg.global_max_usd;
       const c2 = await submit(e as any, { ...a, c: new CoreClient(e.base, { ...rt.store.keyFor(k.id), agent: k.id } as any, () => e.clock.now()) } as any, diff("posts_two"));
       await runReplays(e as any, c2.candidate_id, honest(result({}, 700)));

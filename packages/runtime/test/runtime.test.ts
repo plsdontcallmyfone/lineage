@@ -226,9 +226,10 @@ describe("hosted runtime, simulated mode", () => {
       await rt.tick();
       expect((rt.budget(author.id).usd ?? 0) > 0).toBe(true);
       expect(logs.some((l) => l.includes("is awake"))).toBe(true);
-      // the global cap holds across restarts
-      rt.state.spent_usd_total = cfg.global_max_usd;
-      expect(rt.budget(author.id)).toEqual(expect.objectContaining({ usd: null }));
+      // owner decision 2026-10-10: the global cap counts only subsidized spend, so spend the vault
+      // paid (even past the cap) never stops a vault-funded agent
+      rt.state.spent_usd_total = cfg.global_max_usd * 3;
+      expect((rt.budget(author.id).usd ?? 0) > 0).toBe(true);
       await rt.stop({ flush: false });
       expect(logs.join("\n")).not.toMatch(/sk-ant-/);
     } finally {

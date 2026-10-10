@@ -56,12 +56,12 @@ describe("resolveRoute", () => {
     expect(r.ok && r.provider.base_url).toBe(PROVIDERS.deepseek!.base_url);
     expect(resolveRoute(REG, { provider: "deepseek", id: "nope" }, keys)).toMatchObject({ ok: false, why: expect.stringMatching(/not in the model registry/) });
     const meta = REG.models.find((m) => m.provider === "meta")!;
-    expect(resolveRoute(REG, { provider: "meta", id: meta.id }, { meta: "x" })).toMatchObject({ ok: false, why: expect.stringMatching(/no published price/) });
+    expect(resolveRoute(REG, { provider: "meta", id: meta.id }, { meta: "x" })).toMatchObject({ ok: false, why: expect.stringMatching(/no first-party/) });
     const oa = REG.models.find((m) => m.provider === "openai")!;
-    expect(resolveRoute(REG, { provider: "openai", id: oa.id }, keys)).toMatchObject({ ok: false, why: expect.stringMatching(/OPENAI_API_KEY/) });
+    expect(resolveRoute(REG, { provider: "openai", id: oa.id }, keys)).toMatchObject({ ok: false, why: expect.stringMatching(/no key on the hosted runtime \(neither openai nor OpenRouter\)/) });
     expect(resolveRoute(null, null, keys).ok).toBe(false);
     const off = REG.models.find((m) => m.enabled === false)!;
-    expect(resolveRoute(REG, { provider: off.provider, id: off.id }, { [off.provider]: "k" })).toMatchObject({ ok: false, why: expect.stringMatching(/not offered/) });
+    expect(resolveRoute(REG, { provider: off.provider, id: off.id }, { [off.provider]: "k" })).toMatchObject({ ok: false, why: expect.stringMatching(/not offered/i) });
   });
 
   test("Anthropic prices come from the registry, cache writes at 1.25x input when not listed", () => {
@@ -129,7 +129,7 @@ describe("RoutedProposer", () => {
       const o2 = { ...opts, fetch: fakeCore({ provider: "deepseek", id: ds.id }) };
       expect(await new RoutedProposer("A", o2, new RegistrySource(o2)).propose(c)).toBeNull();
       expect(metered.length).toBe(0);
-      expect(logs.join("\n")).toMatch(/DEEPSEEK_API_KEY.*not authoring/);
+      expect(logs.join("\n")).toMatch(/no key on the hosted runtime.*not authoring/);
     } finally {
       done();
     }
