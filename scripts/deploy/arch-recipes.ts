@@ -16,10 +16,13 @@
 // recipes/<name>/overlay (amd64: the Go harness entry stubs, entry_amd64.s next to entry_arm64.s;
 // bitcoin-base58's Makefile), and scripts/deploy/<arch>/<name>.replace.json ([[from, to], ...]) is
 // applied to its recipe.yml (amd64: the zig recipes' -target aarch64-linux-musl becomes x86_64).
+// The images are built by scripts/local-images.ts --build, which tags them as the recipes pin them.
+// A local pin map it writes (local tests, unchanged recipe ids) does not affect this script: here
+// the recipe file itself is re-pinned, so the recipe id changes.
 // --check only prints what it would change. Prints { name: recipe_id } as JSON on the last line.
 import { cpSync, existsSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { loadRecipe } from "@lineage/sandbox";
+import { loadRecipe, localImageId } from "@lineage/sandbox";
 import { doctor } from "../../packages/worker/src/doctor.ts";
 
 const ROOT = join(import.meta.dir, "..", "..");
@@ -38,9 +41,8 @@ for (const name of names) {
   const m = /^image:\s*"?([^"@\s]+)@sha256:([0-9a-f]{64})"?\s*$/m.exec(text);
   if (!m) throw new Error(`${name}: no pinned image line`);
   const ref = m[1]!;
-  const insp = Bun.spawnSync(["docker", "image", "inspect", "--format", "{{.Id}}", ref], { stdout: "pipe", stderr: "pipe" });
-  const local = insp.stdout.toString().trim().replace(/^sha256:/, "");
-  if (insp.exitCode !== 0 || !/^[0-9a-f]{64}$/.test(local)) throw new Error(`${name}: image ${ref} is not built here (docker build -t ${ref} images/<class>)`);
+  const local = localImageId(ref);
+  if (!local) throw new Error(`${name}: image ${ref} is not built here (bun scripts/local-images.ts --build ${name})`);
   const replFile = join(import.meta.dir, arch, `${name}.replace.json`);
   const repl: [string, string][] = arch !== "arm64" && existsSync(replFile) ? JSON.parse(readFileSync(replFile, "utf8")) : [];
   const next = repl

@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
-import { calibrate, evaluate, imageDigest, loadRecipe, prepareDeps, runContainer, runnableImage } from "../src/index.ts";
+import { calibrate, evaluate, imageDigest, loadRecipe, prepareDeps, readLocalImageMap, runContainer, runnableImage } from "../src/index.ts";
 
 // Real Docker integration tests. Skipped when Docker is not reachable.
 const dockerUp = Bun.spawnSync(["docker", "info"]).exitCode === 0;
@@ -32,8 +32,14 @@ d("sandbox (docker)", () => {
     expect(t.exit).toBe(124);
   }, 60_000);
 
-  test("image is pinned to the recipe digest", async () => {
-    expect(await imageDigest(loaded.recipe.image)).toBe(loaded.recipe.image.split("@")[1]!);
+  test("image is pinned to the recipe digest (or its explicit local rebuild)", async () => {
+    // committed id when Docker has it; on a fresh clone, the rebuild named by the local pin map
+    expect(await imageDigest(loaded.recipe.image)).toBe(runnableImage(loaded.recipe.image));
+    const pinned = loaded.recipe.image.split("@")[1]!;
+    if (runnableImage(loaded.recipe.image) !== pinned) {
+      const entry = readLocalImageMap().images[pinned.replace(/^sha256:/, "")];
+      expect(entry && `sha256:${entry.local}`).toBe(runnableImage(loaded.recipe.image));
+    }
   });
 
   test("calibration and a full replay are deterministic across runs", async () => {

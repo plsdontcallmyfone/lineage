@@ -27,7 +27,17 @@ docker build -t lineage/solana:m1 images/solana
 # cuda: only on an amd64 host with an NVIDIA GPU, see images/cuda/Dockerfile
 ```
 
-Recipes pin images by id (`name@sha256:<id>`). An image you build locally gets a different id than the one recorded in `recipes/*/recipe.yml` unless the base image and package versions match exactly; if `loadRecipe` or a replay reports the image as unavailable, rebuild the recipe ids with your local image ids (the recipe id then changes too, which is correct: a different image is a different recipe). M2 publishes the images to a registry so every worker pulls the same bytes. `docker images --no-trunc` shows whether your ids match the recipes.
+Recipes pin images by id (`name@sha256:<id>`). Docker builds are not reproducible, so an image you build gets a different id than the one recorded in `recipes/*/recipe.yml`; the committed ids exist only on a machine that still has the original images. `docker images --no-trunc` shows whether your ids match the recipes. If they do not, see the next section. M2 publishes the images to a registry so every worker pulls the same bytes.
+
+## Fresh clone or lost images
+
+```sh
+bun scripts/local-images.ts --build --skip solana   # drop --skip solana for the solana recipes
+```
+
+This builds every image class the recipes need from `images/<class>` with the tags above (labelled `lineage=1`; cuda is left out unless you name its recipes), then writes this machine's local pin map, `~/.lineage/local-images.json` (outside the repository; `LINEAGE_LOCAL_IMAGES=<path>` moves it), from each committed image id to the id built here. Name recipes to build only their classes (`bun scripts/local-images.ts --build fixture-b58 minbpe`); without `--build` it only maps images already tagged here. The sandbox uses the map when, and only when, a recipe's committed id is absent here and the map names a local image that exists, and prints a `[lineage] local image rebuild` line naming both ids.
+
+Recipe ids do not change: the recipe file is untouched, so tests, canaries and the e2e run on their committed recipe ids, and the evidence records the local id as `env.image_digest`. That is for local tests and development only. A worker that submits to a real Core must not run on a substitute: set `LINEAGE_LOCAL_IMAGES=off` there and re-pin with `bun scripts/deploy/arch-recipes.ts <names>`, which writes the local id into the recipe, so the recipe id changes and Core calibrates it as a new recipe (a different image is a different recipe). On an amd64 machine the arm64 recipes refuse to run either way; `arch-recipes.ts` is the only path there.
 
 ## 1. Unit and integration tests, typecheck
 

@@ -1,6 +1,7 @@
 import { randomBytes } from "node:crypto";
 import { mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import type { Limits } from "@lineage/protocol";
+import { resolvePinnedImage } from "./local-images.ts";
 
 // Docker runner, SPEC section 8. Every container is labelled lineage=1 so cleanup never touches
 // anything else on the machine.
@@ -150,19 +151,20 @@ export async function runContainer(spec: RunSpec): Promise<RunResult> {
 }
 
 export async function imageDigest(image: string): Promise<string> {
-  const ref = image.includes("@") ? image.slice(image.indexOf("@") + 1) : image;
+  // a pinned id absent here runs on the local rebuild named by the local pin map (local-images.ts)
+  const ref = resolvePinnedImage(image);
   const p = Bun.spawnSync(["docker", "image", "inspect", "--format", "{{.Id}}", ref]);
   if (p.exitCode === 0) return p.stdout.toString().trim();
   if (image.includes("@")) {
     const pull = Bun.spawnSync(["docker", "pull", image]);
     if (pull.exitCode === 0) return imageDigest(image.slice(0, image.indexOf("@")) + "@" + ref);
   }
-  throw new Error(`image not available: ${image}`);
+  throw new Error(`image not available: ${image} (fresh clone or lost images: bun scripts/local-images.ts --build, RUNBOOK "Fresh clone or lost images")`);
 }
 
-/** The image reference to run: the pinned id when the recipe carries one. */
+/** The image reference to run: the pinned id when the recipe carries one (or its local rebuild). */
 export function runnableImage(image: string): string {
-  return image.includes("@") ? image.slice(image.indexOf("@") + 1) : image;
+  return resolvePinnedImage(image);
 }
 
 /** Removes leftover containers of ours only (crashed runs). */
@@ -174,7 +176,7 @@ export function cleanupLineageContainers(): void {
 
 /** Architecture of a local image ("amd64" or "arm64"), as Docker reports it. */
 export function imageArch(image: string): string {
-  const ref = image.includes("@") ? image.slice(image.indexOf("@") + 1) : image;
+  const ref = resolvePinnedImage(image);
   const p = Bun.spawnSync(["docker", "image", "inspect", "--format", "{{.Architecture}}", ref]);
   if (p.exitCode !== 0) throw new Error(`image not available: ${image}`);
   return p.stdout.toString().trim();

@@ -4,3 +4,4 @@ export * from "./recipe.ts";
 export * from "./repo.ts";
 export * from "./evaluate.ts";
 export * from "./fsafe.ts";
+export * from "./local-images.ts";
