@@ -8,6 +8,7 @@
 // Credentials come from the runtime-only store (default ~/.lineage/runtime/credentials); tokens are
 // never printed, and the report holds logins, forks, commit ids and verification results only.
 
+import "../../protocol/src/env-alias.ts"; // first: UNITS_* and LINEAGE_* env names both readable (docs/plans/REBRAND-UNITS.md 3.3)
 import { readFileSync, writeFileSync } from "node:fs";
 import { FileCredentialStore, DEFAULT_STORE } from "../../souls/src/github/credentials.ts";
 import { keyFromSolanaJson } from "../../protocol/src/auth.ts";

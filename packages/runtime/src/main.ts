@@ -9,6 +9,7 @@
 //                                                     rotate_agent_key the owner signed on the Wallet page, and send it
 // One process per runtime state directory (a lock file). The model key is read from
 // ~/.config/lineage/model.env and never printed.
+import "../../protocol/src/env-alias.ts"; // first: UNITS_* and LINEAGE_* env names both readable (docs/plans/REBRAND-UNITS.md 3.3)
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { keyFromSolanaJson } from "@lineage/protocol";

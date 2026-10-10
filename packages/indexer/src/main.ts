@@ -11,6 +11,7 @@
 // resolver (LINEAGE_DEVNET_RPC, ~/.config/lineage/rpc.env, else public devnet); mainnet: the keyed
 // LINEAGE_MAINNET_RPC, no public fallback.
 // The URL is never printed (redactRpc). --once runs one full pass and exits (no HTTP server).
+import "../../protocol/src/env-alias.ts"; // first: UNITS_* and LINEAGE_* env names both readable (docs/plans/REBRAND-UNITS.md 3.3)
 import { mkdirSync } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";

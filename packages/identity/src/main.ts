@@ -31,6 +31,7 @@
 //   --signer   LINEAGE_GENESIS_SIGNER hosted runtime base     (default http://127.0.0.1:9667; signs genesis proofs)
 // Tokens are never printed.
 
+import "../../protocol/src/env-alias.ts"; // first: UNITS_* and LINEAGE_* env names both readable (docs/plans/REBRAND-UNITS.md 3.3)
 import { ChainReader, Rpc } from "../../chain/src/index.ts";
 import { devnetRpcUrl, redactRpc } from "../../chain/src/endpoint.ts";
 import type { SoulDoc } from "../../souls/src/schema.ts";

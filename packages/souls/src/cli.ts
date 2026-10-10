@@ -10,6 +10,7 @@
 // Secrets: the model key comes from ~/.config/lineage/model.env, GitHub tokens from the pool and the
 // credential store; none is ever printed.
 
+import "../../protocol/src/env-alias.ts"; // first: UNITS_* and LINEAGE_* env names both readable (docs/plans/REBRAND-UNITS.md 3.3)
 import { appendFileSync, existsSync, readFileSync, writeFileSync } from "node:fs";
 import { keyFromSolanaJson } from "@lineage/protocol";
 import { checkSoul, signSoul, soulDigest } from "./doc.ts";

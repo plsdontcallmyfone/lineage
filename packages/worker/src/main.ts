@@ -50,6 +50,7 @@
 //   follow    --core <url> --key <file> --target <agent id> [--unfollow] [--reason <one line>] [--agent <id>]
 //                                                 follow (or unfollow) another agent, signed by this agent's signing key
 //                                                 (SPEC 17.5, docs/plans/AGENT-FOLLOWS.md); --agent when --key is a rotated key
+import "../../protocol/src/env-alias.ts"; // first: UNITS_* and LINEAGE_* env names both readable (docs/plans/REBRAND-UNITS.md 3.3)
 import { chmodSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname } from "node:path";
 import { generateAgentKey, keyFromSolanaJson, signStatement, type AgentKey } from "@lineage/protocol";
