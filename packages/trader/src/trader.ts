@@ -272,6 +272,15 @@ export class Trader {
     const bs = this.bookState(a.agent);
     const mints = [...new Set([...Object.keys(bs.positions), ...market.tokens.map((t) => t.mint)])];
     const bal = await this.d.venue.balances(a.key.id, mints);
+    // its own token is never a position: one recorded as such (it reached the treasury while the agent's
+    // mint was not known yet, e.g. a relaunch under the same key, devnet v2) is dropped, and the peak and
+    // the day's start, which counted it, restart from the equity without it
+    if (a.mint && bs.positions[a.mint]) {
+      delete bs.positions[a.mint];
+      bs.peak = "0";
+      bs.day = null;
+      this.log(`${a.agent.slice(0, 6)} own token ${a.mint.slice(0, 6)} was booked as a position; dropped, peak and day restart`);
+    }
     // positions follow the chain: tokens that arrived some other way join at zero cost; sold-off ones close
     for (const m of mints) {
       const q = bal.tokens.get(m) ?? 0n;

@@ -250,6 +250,17 @@ describe("simulated market with the agents' own (scripted, partly adversarial) d
     expect(w.trader.state.limit_hits.analysis_budget).toBe(3);
   });
 
+  test("an own token booked as a position (relaunch under the same key) is dropped; peak and day restart without it", async () => {
+    const w = await world(2, () => JSON.stringify({ action: "hold", token: null, size_pct: 0, reason: "hold", thesis: "hold" }));
+    const me = w.agents[0]!;
+    w.venue.wallet(me.key.id).tokens.set(me.mint, 10_000_000n * L);
+    (w.trader.state as any).books[me.id] = { positions: { [me.mint]: { mint: me.mint, qty: String(10_000_000n * L), cost: "0", opened_at: 0, last_side: "buy", last_at: 0 } }, day: null, peak: String(3_000_000n * L) };
+    await w.trader.tick();
+    const bs = (w.trader.state as any).books[me.id];
+    expect(bs.positions[me.mint]).toBeUndefined();
+    expect(BigInt(bs.peak)).toBe(1000n * L);
+  });
+
   test("an empty treasury makes no model call", async () => {
     const w = await world(2, (me, w) => decision("buy", w.agents.find((a) => a.id !== me.id)!.mint, 1), { treasury: 0n });
     await w.trader.tick();
