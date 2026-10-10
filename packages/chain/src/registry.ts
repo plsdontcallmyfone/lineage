@@ -4,6 +4,7 @@ import { BPF_LOADER_UPGRADEABLE, pda, SYSTEM_PROGRAM, TOKEN_PROGRAM, u64le } fro
 // lineage_registry (SPEC 14.1): addresses, instruction builders and account decoders. Account
 // order and encodings match the Anchor program; onchain/tests/fixtures/client-vectors.json pins them.
 
+/** The devnet id (the default build). The mainnet id is `PROGRAM_IDS.mainnet.registry` (programs.ts). */
 export const REGISTRY_PROGRAM_ID: Address = "2vhj9aBZkuoCpmJxm5BcA3CYkvBJgY6VHTax8FpFmxuY";
 
 export interface AccountMeta {
@@ -136,6 +137,21 @@ export const registry = {
       programId: P,
       keys: [w(registryPdas.config()), r(a.admin, true)],
       data: data("set_epoch_cursor").u64(a.epochsPosted).u64(a.lastEpoch).u64(a.anchor).i64(a.anchorTs).done(),
+    };
+  },
+  /**
+   * Admin (audit A1-08): the most one agent may lose to slashes within one chain epoch, in basis
+   * points of its bond at stake in that epoch; at least every single slash share, at most 10,000.
+   */
+  setSlashCap(a: { admin: Address; maxSlashBpsPerEpoch: number }): Ix {
+    return { programId: P, keys: [w(registryPdas.config()), r(a.admin, true)], data: data("set_slash_cap").u16(a.maxSlashBpsPerEpoch).done() };
+  },
+  /** Admin, once: grows a Config written before the slash cap by its two bytes and sets the cap. */
+  migrateConfigSlashCap(a: { admin: Address; maxSlashBpsPerEpoch: number }): Ix {
+    return {
+      programId: P,
+      keys: [w(registryPdas.config()), w(a.admin, true), r(SYSTEM_PROGRAM)],
+      data: data("migrate_config_slash_cap").u16(a.maxSlashBpsPerEpoch).done(),
     };
   },
   /** Admin, once: grows a Config written by the first deployed layout to the current one. */
@@ -276,6 +292,8 @@ export interface RegistryConfig {
   /** post_epoch's clock anchor: epoch `epochAnchor` was posted at `epochAnchorTs`. */
   epochAnchor: bigint | null;
   epochAnchorTs: bigint | null;
+  /** Audit A1-08: the per agent, per epoch slash cap in bps; null on a Config written before it (`migrate_config_slash_cap`). */
+  maxSlashBpsPerEpoch: number | null;
 }
 export function decodeConfig(d: Uint8Array): RegistryConfig {
   const rd = new Reader(d).expect("Config");
@@ -286,7 +304,8 @@ export function decodeConfig(d: Uint8Array): RegistryConfig {
   rd.u8(); // bump
   rd.u8(); // vault_authority_bump
   const v2 = rd.remaining() >= 24;
-  return { ...head, maxRebatePerEpoch: v2 ? rd.u64() : null, epochAnchor: v2 ? rd.u64() : null, epochAnchorTs: v2 ? rd.i64() : null };
+  const tail = { maxRebatePerEpoch: v2 ? rd.u64() : null, epochAnchor: v2 ? rd.u64() : null, epochAnchorTs: v2 ? rd.i64() : null };
+  return { ...head, ...tail, maxSlashBpsPerEpoch: v2 && rd.remaining() >= 2 ? rd.u16() : null };
 }
 
 export interface SlashReceipt {
@@ -335,6 +354,9 @@ export interface AgentRecord {
   profileSeq: number;
   pendingOwner: Address | null;
   ownerSince: bigint;
+  /** Audit A1-08: the chain epoch window (`Config.epochs_posted`) of `slashedInWindow`, and what was slashed in it. */
+  slashWindow: bigint;
+  slashedInWindow: bigint;
 }
 /** Bytes Agent v2 appended to the first layout. */
 export const AGENT_V2_TAIL = 32 + 4 + 8 + 32 + 4 + 32 + 8 + 32;
@@ -350,7 +372,8 @@ export function decodeAgent(d: Uint8Array): AgentRecord {
   };
   rd.u8(); // bump
   if (rd.remaining() < AGENT_V2_TAIL)
-    return { ...v1, version: 1, signingKey: v1.agent, keySeq: 0, keyChangedAt: 0n, profileDigest: null, profileSeq: 0, pendingOwner: null, ownerSince: v1.registeredAt };
+    return { ...v1, version: 1, signingKey: v1.agent, keySeq: 0, keyChangedAt: 0n, profileDigest: null, profileSeq: 0, pendingOwner: null, ownerSince: v1.registeredAt,
+      slashWindow: 0n, slashedInWindow: 0n };
   const signingKey = rd.address();
   const keySeq = rd.u32();
   const keyChangedAt = rd.i64();
@@ -358,8 +381,10 @@ export function decodeAgent(d: Uint8Array): AgentRecord {
   const profileSeq = rd.u32();
   const pendingOwner = rd.address();
   const ownerSince = rd.i64();
+  const slashWindow = rd.u64();
+  const slashedInWindow = rd.u64();
   return {
-    ...v1, version: 2, signingKey: signingKey === DEFAULT_ADDRESS ? null : signingKey, keySeq, keyChangedAt,
+    ...v1, version: 2, slashWindow, slashedInWindow, signingKey: signingKey === DEFAULT_ADDRESS ? null : signingKey, keySeq, keyChangedAt,
     profileDigest: profileDigest === ZERO_HEX ? null : profileDigest, profileSeq, pendingOwner: pendingOwner === DEFAULT_ADDRESS ? null : pendingOwner, ownerSince,
   };
 }

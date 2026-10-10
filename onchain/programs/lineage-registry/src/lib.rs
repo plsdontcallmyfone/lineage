@@ -10,7 +10,13 @@ pub mod leaf;
 
 pub use challenge::*;
 
+// The program id selects by network at build time: devnet (the default build) or, with the cargo
+// feature `mainnet`, the fresh mainnet id (SPEC 14, "Program ids"). `lineage_launch` and
+// `lineage_msg` forward the feature, so all three agree.
+#[cfg(not(feature = "mainnet"))]
 declare_id!("2vhj9aBZkuoCpmJxm5BcA3CYkvBJgY6VHTax8FpFmxuY");
+#[cfg(feature = "mainnet")]
+declare_id!("3GeaTsBUsaXCJ7Dru9tDHiKnVBsoHE6yiTdqqj42JHay");
 
 pub const CONFIG_SEED: &[u8] = b"config";
 pub const VAULT_AUTHORITY_SEED: &[u8] = b"vault_authority";
@@ -61,6 +67,7 @@ pub mod lineage_registry {
         c.max_rebate_per_epoch = args.max_rebate_per_epoch;
         c.epoch_anchor = 0;
         c.epoch_anchor_ts = 0;
+        c.max_slash_bps_per_epoch = default_slash_cap(&args.params);
         emit!(ConfigSet { admin: c.admin, core_authority: c.core_authority, launch_program: c.launch_program, params: c.params });
         Ok(())
     }
@@ -70,12 +77,26 @@ pub mod lineage_registry {
     pub fn set_config(ctx: Context<AdminOnly>, args: ConfigArgs) -> Result<()> {
         args.validate()?;
         let c = &mut ctx.accounts.config;
+        // every single slash must fit a fresh window of the cap (A1-08); raise the cap first
+        require!(max_slash_share(&args.params) <= c.max_slash_bps_per_epoch, RegistryError::SlashCapBelowShare);
         c.admin = args.admin;
         c.core_authority = args.core_authority;
         c.launch_program = args.launch_program;
         c.params = args.params;
         c.max_rebate_per_epoch = args.max_rebate_per_epoch;
         emit!(ConfigSet { admin: c.admin, core_authority: c.core_authority, launch_program: c.launch_program, params: c.params });
+        Ok(())
+    }
+
+    /// Admin (audit A1-08): the most one agent's bond may lose to slashes within one epoch, in basis
+    /// points of the bond at stake in that epoch (its bond plus what was slashed in the epoch). The
+    /// epoch is the chain's: it advances with each `post_epoch`. It may not sit below any single
+    /// offence share, so every slash fits an epoch of its own; 10,000 lifts the cap.
+    pub fn set_slash_cap(ctx: Context<AdminOnly>, max_slash_bps_per_epoch: u16) -> Result<()> {
+        let c = &mut ctx.accounts.config;
+        check_slash_cap(&c.params, max_slash_bps_per_epoch)?;
+        c.max_slash_bps_per_epoch = max_slash_bps_per_epoch;
+        emit!(SlashCapSet { max_slash_bps_per_epoch });
         Ok(())
     }
 
@@ -106,7 +127,7 @@ pub mod lineage_registry {
     pub fn migrate_config(ctx: Context<MigrateConfig>, max_rebate_per_epoch: u64) -> Result<()> {
         let info = ctx.accounts.config.to_account_info();
         let new_len = 8 + Config::INIT_SPACE;
-        require!(info.data_len() == new_len - CONFIG_V1_TAIL, RegistryError::InvalidParams);
+        require!(info.data_len() == new_len - CONFIG_V1_TAIL - CONFIG_V2_TAIL, RegistryError::InvalidParams);
         {
             let d = info.try_borrow_data()?;
             require!(d[..8] == *Config::DISCRIMINATOR, RegistryError::InvalidParams);
@@ -117,8 +138,29 @@ pub mod lineage_registry {
         c.max_rebate_per_epoch = max_rebate_per_epoch;
         c.epoch_anchor = c.last_epoch;
         c.epoch_anchor_ts = Clock::get()?.unix_timestamp;
+        c.max_slash_bps_per_epoch = default_slash_cap(&c.params);
         c.try_serialize(&mut &mut info.try_borrow_mut_data()?[..])?;
         emit!(EpochCursorSet { epochs_posted: c.epochs_posted, last_epoch: c.last_epoch, anchor: c.epoch_anchor, anchor_ts: c.epoch_anchor_ts });
+        Ok(())
+    }
+
+    /// Admin, once: grows a `Config` written before the slash cap (audit A1-08) by its two bytes and
+    /// sets the cap (checked as in `set_slash_cap`). The admin pays the added rent.
+    pub fn migrate_config_slash_cap(ctx: Context<MigrateConfig>, max_slash_bps_per_epoch: u16) -> Result<()> {
+        let info = ctx.accounts.config.to_account_info();
+        let new_len = 8 + Config::INIT_SPACE;
+        require!(info.data_len() == new_len - CONFIG_V2_TAIL, RegistryError::InvalidParams);
+        {
+            let d = info.try_borrow_data()?;
+            require!(d[..8] == *Config::DISCRIMINATOR, RegistryError::InvalidParams);
+            require!(d[8..40] == ctx.accounts.admin.key().to_bytes(), RegistryError::Unauthorized);
+        }
+        grow(&info, &ctx.accounts.admin.to_account_info(), &ctx.accounts.system_program.to_account_info(), new_len)?;
+        let mut c = Config::try_deserialize(&mut &info.try_borrow_data()?[..])?;
+        check_slash_cap(&c.params, max_slash_bps_per_epoch)?;
+        c.max_slash_bps_per_epoch = max_slash_bps_per_epoch;
+        c.try_serialize(&mut &mut info.try_borrow_mut_data()?[..])?;
+        emit!(SlashCapSet { max_slash_bps_per_epoch });
         Ok(())
     }
 
@@ -232,6 +274,11 @@ pub mod lineage_registry {
     /// `strike_limit` in one epoch suspends the agent through the next epoch.
     /// `slash_id` is Core's id for this slash (32 bytes); its `SlashReceipt` PDA makes a retried
     /// transaction land at most once.
+    /// Audit A1-08: within one chain epoch (the window advances with each `post_epoch`), the
+    /// amounts slashed from one agent may total at most `max_slash_bps_per_epoch` of the bond at
+    /// stake in that epoch; a slash that would pass it is refused whole (`SlashCap`, nothing moves,
+    /// no strike), never clamped. Core sends it again after the next epoch post. Strikes without
+    /// an amount (abandon, or an empty bond) are never refused.
     pub fn slash(ctx: Context<Slash>, offence: u8, epoch: u64, slash_id: [u8; 32]) -> Result<()> {
         let c = &ctx.accounts.config;
         require!(!c.paused, RegistryError::Paused);
@@ -244,6 +291,13 @@ pub mod lineage_registry {
         };
         let bond = ctx.accounts.agent_record.bond;
         let amount = (bond as u128 * bps as u128 / BPS as u128) as u64;
+        let window = c.epochs_posted;
+        let in_window = if ctx.accounts.agent_record.slash_window == window { ctx.accounts.agent_record.slashed_in_window } else { 0 };
+        if amount > 0 {
+            let at_stake = bond as u128 + in_window as u128;
+            let limit = at_stake * c.max_slash_bps_per_epoch as u128 / BPS as u128;
+            require!(in_window as u128 + amount as u128 <= limit, RegistryError::SlashCap);
+        }
         if amount > 0 {
             let seeds: &[&[u8]] = &[VAULT_AUTHORITY_SEED, &[c.vault_authority_bump]];
             vault_transfer(&ctx.accounts.token_program, &ctx.accounts.bond_vault, &ctx.accounts.mint, &ctx.accounts.reserve_vault,
@@ -254,6 +308,8 @@ pub mod lineage_registry {
         a.bond -= amount;
         a.unbond_amount = a.unbond_amount.min(a.bond);
         a.slashed_total = a.slashed_total.saturating_add(amount);
+        a.slash_window = window;
+        a.slashed_in_window = in_window.saturating_add(amount);
         a.strikes_total = a.strikes_total.saturating_add(1);
         // The per-epoch count restarts only for a strictly newer epoch; a late strike for an
         // older epoch counts in the total but never resets or inflates the current epoch's count.
@@ -446,7 +502,9 @@ pub mod lineage_registry {
         a.profile_seq = 0;
         a.pending_owner = Pubkey::default();
         a.owner_since = a.registered_at;
-        a.v2_reserved = [0; 32];
+        a.slash_window = 0;
+        a.slashed_in_window = 0;
+        a.v2_reserved = [0; 16];
         a.try_serialize(&mut &mut info.try_borrow_mut_data()?[..])?;
         emit!(AgentMigrated { agent: a.agent });
         Ok(())
@@ -579,7 +637,26 @@ fn init_agent(a: &mut Agent, agent: Pubkey, owner: Pubkey, kind: u8, mint: Pubke
     a.profile_seq = 0;
     a.pending_owner = Pubkey::default();
     a.owner_since = a.registered_at;
-    a.v2_reserved = [0; 32];
+    a.slash_window = 0;
+    a.slashed_in_window = 0;
+    a.v2_reserved = [0; 16];
+    Ok(())
+}
+
+/// The largest single slash share of `p` (A1-08: the cap may not sit below it).
+pub fn max_slash_share(p: &Params) -> u16 {
+    p.canary_slash_bps.max(p.minority_slash_bps).max(p.reveal_slash_bps)
+}
+
+/// The cap `initialize` and `migrate_config` set: room for `strike_limit` slashes of the largest
+/// share in one epoch (the strike that suspends the agent still lands), at most the whole bond.
+pub fn default_slash_cap(p: &Params) -> u16 {
+    (max_slash_share(p) as u64 * (p.strike_limit.max(1) as u64)).min(BPS) as u16
+}
+
+fn check_slash_cap(p: &Params, cap: u16) -> Result<()> {
+    require!(cap as u64 <= BPS, RegistryError::InvalidParams);
+    require!(cap >= max_slash_share(p), RegistryError::SlashCapBelowShare);
     Ok(())
 }
 
@@ -689,6 +766,8 @@ impl ConfigArgs {
 
 /// Bytes `Config` gained after the first devnet layout (`migrate_config`).
 pub const CONFIG_V1_TAIL: usize = 8 + 8 + 8;
+/// Bytes `Config` gained with the slash cap, audit A1-08 (`migrate_config_slash_cap`).
+pub const CONFIG_V2_TAIL: usize = 2;
 
 #[account]
 #[derive(InitSpace)]
@@ -709,6 +788,9 @@ pub struct Config {
     /// `anchor + k` (k >= 2) may not be posted before `anchor_ts + (k - 1) x epoch_length_s`.
     pub epoch_anchor: u64,
     pub epoch_anchor_ts: i64,
+    /// Audit A1-08: the most one agent may lose to slashes within one chain epoch, in basis points
+    /// of its bond at stake in that epoch (`set_slash_cap`, `migrate_config_slash_cap`).
+    pub max_slash_bps_per_epoch: u16,
 }
 
 #[account]
@@ -755,8 +837,13 @@ pub struct Agent {
     /// Unix seconds since the current owner controls the agent (registration, or the last
     /// `accept_owner`): the credential's `controller_since`.
     pub owner_since: i64,
-    /// Room for an attestation pointer (SAS or ERC-8004 id) without another migration.
-    pub v2_reserved: [u8; 32],
+    /// Audit A1-08 (carved from the v2 reserve, so no migration): the chain epoch window
+    /// (`Config.epochs_posted` when it was written) of `slashed_in_window`.
+    pub slash_window: u64,
+    /// Amount slashed from this agent in `slash_window`.
+    pub slashed_in_window: u64,
+    /// Room left for another pointer without another migration.
+    pub v2_reserved: [u8; 16],
 }
 
 /// Bytes `Agent` gained in v2 (`migrate_agent`): 32 + 4 + 8 + 32 + 4 + 32 + 8 + 32.
@@ -1128,6 +1215,10 @@ pub struct EpochCursorSet {
     pub anchor_ts: i64,
 }
 #[event]
+pub struct SlashCapSet {
+    pub max_slash_bps_per_epoch: u16,
+}
+#[event]
 pub struct Paused {
     pub paused: bool,
 }
@@ -1290,4 +1381,8 @@ pub enum RegistryError {
     ChallengeOutcome,
     #[msg("challenge resolve timeout has not passed")]
     ChallengeTimeout,
+    #[msg("slash above max_slash_bps_per_epoch for this agent in this epoch")]
+    SlashCap,
+    #[msg("max_slash_bps_per_epoch below a slash share")]
+    SlashCapBelowShare,
 }

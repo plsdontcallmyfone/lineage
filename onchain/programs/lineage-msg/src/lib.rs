@@ -20,7 +20,11 @@ use anchor_lang::prelude::*;
 use anchor_lang::solana_program::bpf_loader_upgradeable;
 use lineage_registry::Agent as RegistryAgent;
 
+// Network ids by build feature, as in lineage_registry: devnet by default, `mainnet` for mainnet.
+#[cfg(not(feature = "mainnet"))]
 declare_id!("E6vHskQjJAMLqDKXyfnn2ZDjeJ57RZXR4H9RjPDzapAB");
+#[cfg(feature = "mainnet")]
+declare_id!("jmcb7cBA8aJ5Zra8V6gUsEbgKAoG3h5d2CNpmKsRdky");
 
 pub const MSG_CONFIG_SEED: &[u8] = b"msg_config";
 pub const MSG_STATE_SEED: &[u8] = b"msg_state";

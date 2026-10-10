@@ -3,6 +3,8 @@
 // and resolve the RPC with profile-node.ts. The public view never carries an RPC URL: the browser
 // talks to the web server's /chain/rpc proxy, which holds the keyed endpoint.
 
+import { PROGRAM_IDS, type ProgramIds } from "./programs.ts";
+
 export type NetworkName = "devnet" | "mainnet";
 export const NETWORKS: readonly NetworkName[] = ["devnet", "mainnet"];
 
@@ -45,6 +47,8 @@ export interface NetworkProfile {
   usd_feed: string | null;
   fees: FeePolicy;
   confirm: ConfirmPolicy;
+  /** registry, launch and msg program ids of this network: the ones its build declares (programs.ts, cargo feature `mainnet`) */
+  programs: ProgramIds;
 }
 
 const isObj = (v: unknown): v is Record<string, unknown> => !!v && typeof v === "object" && !Array.isArray(v);
@@ -93,6 +97,19 @@ function parseConfirm(c: unknown, where: string): ConfirmPolicy {
   return { poll_ms: c.poll_ms as number, resend_ms: c.resend_ms as number, rebuilds: c.rebuilds as number };
 }
 
+/**
+ * The profile's `programs` block. The ids are fixed by the program builds (declare_id! per cargo
+ * feature), so the block may only restate them: absent means the build's ids, a different id is refused.
+ */
+function parsePrograms(network: NetworkName, raw: unknown, where: string): ProgramIds {
+  const want = PROGRAM_IDS[network];
+  if (raw === undefined) return { ...want };
+  if (!isObj(raw)) throw new Error(`${where}.programs must be an object`);
+  for (const k of ["registry", "launch", "msg"] as const)
+    if (raw[k] !== want[k]) throw new Error(`${where}.programs.${k} must be ${want[k]}, the id the ${network} build declares`);
+  return { ...want };
+}
+
 /** Parses one profile block. */
 export function parseProfile(network: NetworkName, raw: unknown): NetworkProfile {
   const where = `profiles.${network}`;
@@ -112,6 +129,7 @@ export function parseProfile(network: NetworkName, raw: unknown): NetworkProfile
     usd_feed: typeof raw.usd_feed === "string" && raw.usd_feed ? raw.usd_feed : null,
     fees: parseFees(raw.fees, where),
     confirm: parseConfirm(raw.confirm, where),
+    programs: parsePrograms(network, raw.programs, where),
   };
   // mainnet guards: these are the properties M3 promises, refused here rather than trusted
   if (network === "mainnet") {
@@ -145,6 +163,7 @@ export interface PublicProfile {
   usd_feed: boolean;
   fees: FeePolicy;
   confirm: ConfirmPolicy;
+  programs: ProgramIds;
 }
 
 export function publicProfile(p: NetworkProfile): PublicProfile {
@@ -160,6 +179,7 @@ export function publicProfile(p: NetworkProfile): PublicProfile {
     usd_feed: !!p.usd_feed,
     fees: p.fees,
     confirm: p.confirm,
+    programs: p.programs,
   };
 }
 
@@ -176,6 +196,7 @@ export const DEVNET_PUBLIC_PROFILE: PublicProfile = {
   usd_feed: false,
   fees: { mode: "fixed", cu_price_micro_lamports: 1 },
   confirm: { poll_ms: 900, resend_ms: 2500, rebuilds: 0 },
+  programs: { ...PROGRAM_IDS.devnet },
 };
 
 /** explorer.solana.com link for a transaction or address under this profile. */

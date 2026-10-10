@@ -15,6 +15,13 @@ lineage_registry = "2vhj9aBZkuoCpmJxm5BcA3CYkvBJgY6VHTax8FpFmxuY"
 lineage_launch = "8eHzm1XtNtbxJujrMAci4VdhCJvQttFUBukmkFaUwsAT"
 lineage_msg = "E6vHskQjJAMLqDKXyfnn2ZDjeJ57RZXR4H9RjPDzapAB"
 
+# Mainnet ids: built only with the cargo feature `mainnet` (cargo build-sbf --features mainnet).
+# Their keypairs live outside the repo at ~/.config/lineage/mainnet/{registry,launch,msg}-program-keypair.json.
+[programs.mainnet]
+lineage_registry = "3GeaTsBUsaXCJ7Dru9tDHiKnVBsoHE6yiTdqqj42JHay"
+lineage_launch = "2vwKsTZm5doa3ahBmpm8Sv3sKPD76Fq2ZZENbNW5BYBq"
+lineage_msg = "jmcb7cBA8aJ5Zra8V6gUsEbgKAoG3h5d2CNpmKsRdky"
+
 [provider]
 # Never the machine-wide default: pass the dedicated key explicitly (see DEPLOY.md).
 cluster = "devnet"

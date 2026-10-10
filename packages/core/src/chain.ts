@@ -128,6 +128,12 @@ export function slashId(sl: { id: number; agent_id: string; reason: string; ref:
 /** Retry delay after `failures` failed sends: 5 s doubling, at most 10 minutes. */
 export const backoffMs = (failures: number) => Math.min(5_000 * 2 ** Math.max(0, failures - 1), 600_000);
 
+/** lineage_registry `SlashCap` (audit A1-08): Anchor error 6029, "Error Code: SlashCap" in the logs. */
+export function isSlashCapError(e: unknown): boolean {
+  const x = e as { message?: string; logs?: string[] };
+  return /"Custom":6029\b|custom program error: 0x178d\b/.test(x?.message ?? "") || (x?.logs ?? []).some((l) => l.includes("Error Code: SlashCap."));
+}
+
 export class ChainBridge {
   readonly reader: ChainReader;
   private running: Promise<unknown> | null = null;
@@ -154,6 +160,8 @@ export class ChainBridge {
   private log: (m: string) => void;
   /** Failed sends by key ("slash:<id>", "epoch:<n>"): count and the earliest next attempt (Core clock, ms). */
   private retry = new Map<string, { failures: number; at: number }>();
+  /** Slashes the registry's per epoch cap refused (A1-08), by key: the `epochs_posted` they wait to see pass. */
+  private capped = new Map<string, bigint>();
   private due(key: string) {
     const r = this.retry.get(key);
     return !r || this.core.now() >= r.at;
@@ -208,7 +216,7 @@ export class ChainBridge {
     if (!reg) throw new Error("registry not initialized");
     const launchCfg = await this.reader.launchConfig();
     const tokenProgram = reg.tokenProgram;
-    if (this.send && this.coreKeyId === reg.coreAuthority) await this.sendSlashes(reg.mint, tokenProgram);
+    if (this.send && this.coreKeyId === reg.coreAuthority) await this.sendSlashes(reg.mint, tokenProgram, reg.epochsPosted);
 
     // claims made on chain for epochs Core posted (before the vault read, so a compute leaf is counted once)
     for (const { n, leaves } of this.core.chainPostedLeaves()) {
@@ -392,10 +400,14 @@ export class ChainBridge {
    * it landed: on a send error the SlashReceipt PDA is read back, and a slash that did not land
    * stays pending and is retried with backoff (the receipt refuses a second landing).
    */
-  private async sendSlashes(mint: string, tokenProgram: string) {
+  private async sendSlashes(mint: string, tokenProgram: string, epochsPosted: bigint) {
     for (const sl of this.core.chainPendingSlashes()) {
       const key = `slash:${sl.id}`;
-      if (!this.due(key)) continue;
+      // A slash past the agent's per epoch cap (A1-08) waits for the next epoch post, then the
+      // same id is sent again; it is never dropped and never clamped.
+      const capWindow = this.capped.get(key);
+      if (capWindow !== undefined && capWindow === epochsPosted) continue;
+      if (capWindow === undefined && !this.due(key)) continue;
       const id = slashId(sl);
       try {
         const r = await this.send!(`slash ${sl.agent_id}`, [
@@ -403,6 +415,7 @@ export class ChainBridge {
         ]);
         this.core.chainSlashResult(sl.id, { signature: r.signature });
         this.retry.delete(key);
+        this.capped.delete(key);
       } catch (e) {
         const receipt = await this.reader.slashReceipt(id).catch(() => null);
         if (receipt && receipt.agent === sl.agent_id) {
@@ -410,6 +423,13 @@ export class ChainBridge {
           this.retry.delete(key);
           continue;
         }
+        if (isSlashCapError(e)) {
+          this.core.chainSlashResult(sl.id, { error: `slash cap: refused in chain epoch window ${epochsPosted}, sent again after the next epoch post` });
+          this.capped.set(key, epochsPosted);
+          this.retry.delete(key);
+          continue;
+        }
+        this.capped.delete(key);
         this.core.chainSlashResult(sl.id, { error: (e as Error).message });
         this.failed(key);
       }

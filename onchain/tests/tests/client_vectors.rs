@@ -73,6 +73,13 @@ fn instruction_vectors() -> Vec<Value> {
                 .to_account_metas(None),
             data: lr::instruction::MigrateConfig { max_rebate_per_epoch: 654_321 }.data(),
         }),
+        ix_json("registry.set_slash_cap", &env.admin_ix(&k(1), lr::instruction::SetSlashCap { max_slash_bps_per_epoch: 4_321 }.data())),
+        ix_json("registry.migrate_config_slash_cap", &Instruction {
+            program_id: lr::ID,
+            accounts: lr::accounts::MigrateConfig { config: registry_config(), admin: k(1), system_program: anchor_lang::solana_program::system_program::ID }
+                .to_account_metas(None),
+            data: lr::instruction::MigrateConfigSlashCap { max_slash_bps_per_epoch: 2_500 }.data(),
+        }),
         ix_json("registry.split", &env.split_ix()),
         ix_json("registry.post_epoch", &env.post_epoch_ix(&k(2), lr::PostEpochArgs { epoch: 9, payout_root: [1; 32], lineage_root: [2; 32], record_root: [3; 32],
             total_units_micro: 3_500_000, pool_amount: 10, rebate_amount: 20 })),
@@ -353,14 +360,14 @@ fn account_snapshots() -> Vec<Value> {
             "poolBps": c.params.pool_bps, "unbondCooldownS": c.params.unbond_cooldown_s.to_string(), "quorum": c.params.quorum,
             "authorRewardTo": c.params.author_reward_to, "finderShareBps": c.params.finder_share_bps, "epochLengthS": c.params.epoch_length_s,
             "maxRebatePerEpoch": c.max_rebate_per_epoch.to_string(), "epochAnchor": c.epoch_anchor.to_string(),
-            "epochAnchorTs": c.epoch_anchor_ts.to_string() } }),
+            "epochAnchorTs": c.epoch_anchor_ts.to_string(), "maxSlashBpsPerEpoch": c.max_slash_bps_per_epoch } }),
         json!({ "type": "Agent", "data": raw(&agent_record(&agent.pubkey())), "fields": {
             "agent": a.agent.to_string(), "owner": a.owner.to_string(), "kind": a.kind, "hosted": a.hosted, "burned": a.burned.to_string(),
             "bond": a.bond.to_string(), "unbondAmount": a.unbond_amount.to_string(), "unbondReadyAt": a.unbond_ready_at.to_string(),
             "operator": hex(&a.operator), "capabilities": hex(&a.capabilities), "registeredAt": a.registered_at.to_string(),
             "signingKey": a.signing_key.to_string(), "keySeq": a.key_seq, "keyChangedAt": a.key_changed_at.to_string(),
             "profileDigest": hex(&a.profile_digest), "profileSeq": a.profile_seq, "pendingOwner": a.pending_owner.to_string(),
-            "ownerSince": a.owner_since.to_string() } }),
+            "ownerSince": a.owner_since.to_string(), "slashWindow": a.slash_window.to_string(), "slashedInWindow": a.slashed_in_window.to_string() } }),
         json!({ "type": "Epoch", "data": raw(&epoch_pda(4)), "fields": {
             "epoch": ep.epoch.to_string(), "payoutRoot": hex(&ep.payout_root), "lineageRoot": hex(&ep.lineage_root), "totalPayable": ep.total_payable.to_string(),
             "recordRoot": hex(&ep.record_root), "rebateAmount": ep.rebate_amount.to_string(), "claimedAmount": ep.claimed_amount.to_string() } }),

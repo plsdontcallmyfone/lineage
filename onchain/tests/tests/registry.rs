@@ -536,7 +536,7 @@ fn migrate_config_from_the_first_layout() {
     let key = registry_config();
     let mut acct = e.svm.get_account(&key).unwrap();
     let full = acct.data.clone();
-    acct.data.truncate(full.len() - lr::CONFIG_V1_TAIL);
+    acct.data.truncate(full.len() - lr::CONFIG_V1_TAIL - lr::CONFIG_V2_TAIL);
     acct.lamports = e.svm.minimum_balance_for_rent_exemption(acct.data.len());
     e.svm.set_account(key, acct).unwrap();
     // The old layout does not deserialize: everything but the migration fails until it runs.
@@ -554,6 +554,7 @@ fn migrate_config_from_the_first_layout() {
     let c = e.rconfig();
     assert_eq!((c.max_rebate_per_epoch, c.epochs_posted, c.last_epoch, c.epoch_anchor, c.epoch_anchor_ts), (77, 1, 0, 0, NOW + 5));
     assert_eq!(c.params, test_params());
+    assert_eq!(c.max_slash_bps_per_epoch, 7_500, "the default slash cap (A1-08): strike_limit x the largest share");
     assert_eq!(e.svm.get_account(&key).unwrap().data.len(), full.len());
     // Once only: the account already has the new length.
     rejects(send(&mut e.svm, &admin, &[], vec![ix(admin.pubkey())]), "InvalidParams");

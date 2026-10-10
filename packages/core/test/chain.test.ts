@@ -321,6 +321,64 @@ describe("slashes and posts that report failure (review M1, L1, L7)", () => {
     expect(core.chainPendingSlashes().length).toBe(0);
   });
 
+  test("a slash the registry's per epoch cap refuses (A1-08) waits for the next epoch post, then lands with the same id", async () => {
+    const reg = await new ChainReader(new Rpc(transport())).registryConfig();
+    const cfgKey = registryPdas.config();
+    const recorded = (await fixtureTransport(fx.responses)("getAccountInfo", [cfgKey, { encoding: "base64", commitment: "confirmed" }])) as { value: { data: [string, string] } };
+    const cfgBytes = new Uint8Array(Buffer.from(recorded.value.data[0], "base64"));
+    // epochs_posted sits after the discriminator, five keys, Params (74 bytes) and paused
+    const EP = 8 + 5 * 32 + 74 + 1;
+    let epochsPosted = reg!.epochsPosted;
+    const extra = (m: string, p: unknown[]) => {
+      if (m === "getAccountInfo" && p[0] === cfgKey) {
+        const d = cfgBytes.slice();
+        new DataView(d.buffer).setBigUint64(EP, epochsPosted, true);
+        return { value: { ...recorded.value, data: [Buffer.from(d).toString("base64"), "base64"] } };
+      }
+      if (m === "getAccountInfo" && typeof p[0] === "string" && p[0] !== cfgKey && receiptPdas.has(p[0])) return { value: null };
+      return undefined;
+    };
+    const receiptPdas = new Set<string>();
+    let sends = 0;
+    let capped = true;
+    const { core, bridge, clock } = await setup({
+      coreKey: reg!.coreAuthority, extra,
+      send: async (label, ixs) => {
+        if (!label.startsWith("slash")) return { signature: "other" };
+        sends++;
+        receiptPdas.add(ixs[0]!.keys[2]!.pubkey);
+        if (capped) {
+          const err = Object.assign(new Error('simulation failed: {"InstructionError":[0,{"Custom":6029}]}'), {
+            logs: ["Program log: AnchorError occurred. Error Code: SlashCap. Error Number: 6029. Error Message: slash above max_slash_bps_per_epoch for this agent in this epoch."] });
+          throw err;
+        }
+        return { signature: "afterPost" };
+      },
+    });
+    expect((await bridge.reader.registryConfig())!.epochsPosted).toBe(epochsPosted);
+    await bridge.tick();
+    core.tx(() => (core as any).slash(VERIFIER, 500, "minority", "cand-cap"));
+    const sl = core.db.query<{ id: number }, []>("SELECT id FROM slashes").get()!;
+    await bridge.tick();
+    expect(sends).toBe(1);
+    const row = () => core.db.query<{ signature: string | null; error: string | null }, [number]>("SELECT signature, error FROM chain_slashes WHERE slash_id = ?").get(sl.id)!;
+    expect(row().error).toContain("slash cap");
+    // no backoff resends while the chain is in the same epoch window, however long it waits
+    for (let i = 0; i < 4; i++) {
+      clock.advance(backoffMs(10));
+      await bridge.tick();
+    }
+    expect(sends).toBe(1);
+    expect(core.chainPendingSlashes().length).toBe(1);
+    // the next epoch post opens a new window: sent again, same id, lands
+    epochsPosted += 1n;
+    capped = false;
+    await bridge.tick();
+    expect(sends).toBe(2);
+    expect(row().signature).toBe("afterPost");
+    expect(core.chainPendingSlashes().length).toBe(0);
+  });
+
   test("post_epoch reported failed but landed (Epoch PDA holds Core's root) is recorded as posted", async () => {
     const reg = await new ChainReader(new Rpc(transport())).registryConfig();
     let landed: { pda: string; data: Uint8Array } | null = null;

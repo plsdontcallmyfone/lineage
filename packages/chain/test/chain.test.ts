@@ -95,6 +95,8 @@ describe("instruction builders equal the Anchor encodings", () => {
     ["registry.slash", () => registry.slash({ coreAuthority: k(2), agent, mint: line, offence: OFFENCE.minority, epoch: 42, slashId: fill(0x5a) })],
     ["registry.set_epoch_cursor", () => registry.setEpochCursor({ admin: k(1), epochsPosted: 3, lastEpoch: 9, anchor: 7, anchorTs: 1_900_000_123 })],
     ["registry.migrate_config", () => registry.migrateConfig({ admin: k(1), maxRebatePerEpoch: 654_321n })],
+    ["registry.set_slash_cap", () => registry.setSlashCap({ admin: k(1), maxSlashBpsPerEpoch: 4_321 })],
+    ["registry.migrate_config_slash_cap", () => registry.migrateConfigSlashCap({ admin: k(1), maxSlashBpsPerEpoch: 2_500 })],
     ["registry.split", () => registry.split({ mint: line })],
     ["registry.post_epoch", () => registry.postEpoch({ coreAuthority: k(2), mint: line, epoch: 9, payoutRoot: fill(1), lineageRoot: fill(2),
       recordRoot: fill(3), totalUnitsMicro: 3_500_000n, poolAmount: 10n, rebateAmount: 20n })],
@@ -164,9 +166,13 @@ describe("account decoders read live LiteSVM accounts", () => {
       f.quorum, f.authorRewardTo, f.finderShareBps]);
     expect([c.params.epochLengthS, String(c.maxRebatePerEpoch), String(c.epochAnchor), String(c.epochAnchorTs)]).toEqual([f.epochLengthS,
       f.maxRebatePerEpoch, f.epochAnchor, f.epochAnchorTs]);
-    // A Config the first layout wrote (24 bytes shorter) still decodes, without the new fields.
-    const old = decodeConfig(raw("Config").subarray(0, raw("Config").length - 24));
-    expect([old.admin, old.lastEpoch, old.maxRebatePerEpoch, old.epochAnchor]).toEqual([c.admin, c.lastEpoch, null, null]);
+    expect(c.maxSlashBpsPerEpoch).toBe(f.maxSlashBpsPerEpoch);
+    // A Config written before the slash cap (2 bytes shorter) decodes without it (audit A1-08).
+    const v2 = decodeConfig(raw("Config").subarray(0, raw("Config").length - 2));
+    expect([String(v2.maxRebatePerEpoch), v2.maxSlashBpsPerEpoch]).toEqual([f.maxRebatePerEpoch, null]);
+    // A Config the first layout wrote (26 bytes shorter) still decodes, without the new fields.
+    const old = decodeConfig(raw("Config").subarray(0, raw("Config").length - 26));
+    expect([old.admin, old.lastEpoch, old.maxRebatePerEpoch, old.epochAnchor, old.maxSlashBpsPerEpoch]).toEqual([c.admin, c.lastEpoch, null, null, null]);
   });
   test("SlashReceipt", () => {
     const r = decodeSlashReceipt(raw("SlashReceipt"));
@@ -186,6 +192,9 @@ describe("account decoders read live LiteSVM accounts", () => {
     expect([a.version, a.signingKey, a.keySeq, String(a.keyChangedAt), a.profileDigest, a.profileSeq, a.pendingOwner, String(a.ownerSince)]).toEqual([2,
       f.signingKey, f.keySeq, f.keyChangedAt, f.profileDigest, f.profileSeq, f.pendingOwner, f.ownerSince]);
     expect(a.signingKey).not.toBe(a.agent);
+    // Audit A1-08: the slash window fields (the snapshot agent was slashed once).
+    expect([String(a.slashWindow), String(a.slashedInWindow)]).toEqual([f.slashWindow, f.slashedInWindow]);
+    expect(a.slashedInWindow > 0n).toBe(true);
     // A v1 record (the first layout) decodes with the values migrate_agent will write.
     const old = decodeAgent(raw("Agent").subarray(0, raw("Agent").length - AGENT_V2_TAIL));
     expect([old.version, old.signingKey, old.keySeq, old.pendingOwner, old.ownerSince, old.bond]).toEqual([1, a.agent, 0, null, a.registeredAt, a.bond]);

@@ -17,3 +17,4 @@ export * from "./readers.ts";
 export * from "./slots.ts";
 export * from "./swap.ts";
 export * from "./squads.ts";
+export * from "./programs.ts";

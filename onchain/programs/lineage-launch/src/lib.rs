@@ -15,7 +15,11 @@ pub mod meteora;
 pub use bounty::*;
 use meteora as mt;
 
+// Network ids by build feature, as in lineage_registry: devnet by default, `mainnet` for mainnet.
+#[cfg(not(feature = "mainnet"))]
 declare_id!("8eHzm1XtNtbxJujrMAci4VdhCJvQttFUBukmkFaUwsAT");
+#[cfg(feature = "mainnet")]
+declare_id!("2vwKsTZm5doa3ahBmpm8Sv3sKPD76Fq2ZZENbNW5BYBq");
 
 pub const LAUNCH_CONFIG_SEED: &[u8] = b"launch_config";
 pub const AUTHORITY_SEED: &[u8] = lineage_registry::LAUNCH_AUTHORITY_SEED;
@@ -408,8 +412,9 @@ pub mod lineage_launch {
         bounty::set_bounty_config(ctx, args)
     }
 
-    /// The payer agent's launcher (self-hosted) or the runtime authority (hosted): escrows
-    /// `amount` from the agent's compute vault, capped per window by `max_bounty_out_bps`.
+    /// The payer agent's current registry owner (self-hosted; the launcher until an owner
+    /// transfer, audit A1-03) or the runtime authority (hosted): escrows `amount` from the agent's
+    /// compute vault, capped per window by `max_bounty_out_bps`.
     pub fn open_bounty(ctx: Context<OpenBounty>, args: OpenBountyArgs) -> Result<()> {
         bounty::open_bounty(ctx, args)
     }

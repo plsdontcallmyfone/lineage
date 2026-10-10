@@ -11,6 +11,7 @@
       "test_labels": true,
       "swap": false,
       "explorer_cluster": "devnet",
+      "programs": { "registry": "2vhj9aBZkuoCpmJxm5BcA3CYkvBJgY6VHTax8FpFmxuY", "launch": "8eHzm1XtNtbxJujrMAci4VdhCJvQttFUBukmkFaUwsAT", "msg": "E6vHskQjJAMLqDKXyfnn2ZDjeJ57RZXR4H9RjPDzapAB" },
       "usd_feed": null,
       "fees": { "mode": "fixed", "cu_price_micro_lamports": 1 },
       "confirm": { "poll_ms": 900, "resend_ms": 2500, "rebuilds": 0 }
@@ -32,6 +33,7 @@
       "test_labels": false,
       "swap": true,
       "explorer_cluster": null,
+      "programs": { "registry": "3GeaTsBUsaXCJ7Dru9tDHiKnVBsoHE6yiTdqqj42JHay", "launch": "2vwKsTZm5doa3ahBmpm8Sv3sKPD76Fq2ZZENbNW5BYBq", "msg": "jmcb7cBA8aJ5Zra8V6gUsEbgKAoG3h5d2CNpmKsRdky" },
       "usd_feed": null,
       "fees": { "mode": "recent", "percentile": 75, "floor_micro_lamports": 1, "cap_micro_lamports": 200000 },
       "confirm": { "poll_ms": 800, "resend_ms": 2000, "rebuilds": 1 }
