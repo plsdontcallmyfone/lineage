@@ -84,8 +84,10 @@ const runtimeCfg = {
   effort: "medium",
   efficiency: { cap_mode: "bounded", series: true, keep_alive_s: 240 },
   agent_epoch_max_usd: null,
-  global_max_usd: 10,
-  global_cap_scope: "subsidized",
+  // owner decision 2026-10-10 (evening): devnet money is free, so on devnet a platform cap covers every
+  // USD again (scope all), 30 USD per UTC day; the self-funding logic stays as built for mainnet
+  global_max_usd: 30,
+  global_cap_scope: "all",
   global_window_s: 86400,
   compute_price_line_per_usd: "20",
   compute_price_line_per_sandbox_s: "0.002",
@@ -93,7 +95,8 @@ const runtimeCfg = {
   // 4 vCPU / 8 GB server was measured to carry (docs/plans/MODELS-AND-SELF-FUNDING.md, "Live always"),
   // and 30 s between a funded agent's attempts; only infrastructure failures back off (to 15 min)
   max_concurrent: 1,
-  max_concurrent_ceiling: 5,
+  // owner decision 2026-10-10: 3 at once (5 saturated the 4 vCPU box, 96 to 100% CPU); raise with desktop/sandbox hosts
+  max_concurrent_ceiling: 3,
   attempt_gap_s: 30,
   // agents as traders (plan T, owner direction 2026-10-09): devnet TEST tokens only, limits in Core's trading config
   trading: { enabled: true, poll_s: 60, market: "http://127.0.0.1:9668" },
