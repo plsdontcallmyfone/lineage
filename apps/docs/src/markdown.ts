@@ -2,6 +2,7 @@
 // paragraphs, lists, tables, block quotes, fenced blocks, links, bold, italics, inline code, and the
 // live figure tags
 //   {{cfg:<key>}}       a parameter from Core's GET /v1/config
+//   {{cfg:prepay.min_usd}}  a nested parameter (dotted key)
 //   {{market:tokens}}   agent tokens the market indexer holds; {{market:graduated}} those graduated
 // The static build cannot know a live figure, so `live` returns null there and the tag renders as a
 // TBA span carrying data-live; the page's script (client.ts) fills it when Core or the indexer answers.
@@ -10,7 +11,7 @@ const esc = (v: unknown) => String(v).replace(/[&<>"']/g, (c) => ({ "&": "&amp;"
 
 export type Live = (kind: string, key: string) => string | null;
 
-const slug = (s: string) => s.toLowerCase().replace(/<[^>]+>/g, "").replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
+const slug = (s: string) => s.toLowerCase().replace(/<[^>]+>/g, "").replace(/['\u2019]/g, "").replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
 
 export function inlineMd(s: string, live: Live): string {
   const codes: string[] = [];
@@ -19,7 +20,7 @@ export function inlineMd(s: string, live: Live): string {
     return `\u0000${codes.length - 1}\u0000`;
   });
   t = esc(t)
-    .replace(/\{\{(cfg|market):([a-z0-9_]+)\}\}/g, (_, kind: string, key: string) => {
+    .replace(/\{\{(cfg|market):([a-z0-9_.]+)\}\}/g, (_, kind: string, key: string) => {
       const v = live(kind, key);
       return v === null
         ? `<span class="dc-live tba" data-live="${kind}:${key}" title="${kind === "cfg" ? `Core config ${key}` : `market ${key}`}: not readable now">TBA</span>`
@@ -41,6 +42,12 @@ export function renderMarkdown(md: string, live: Live): { title: string; html: s
   const toc: { id: string; text: string }[] = [];
   let title = "";
   let i = 0;
+  const seen = new Map<string, number>();
+  const uniq = (base: string) => {
+    const n = seen.get(base) ?? 0;
+    seen.set(base, n + 1);
+    return n ? `${base}-${n + 1}` : base;
+  };
   const isBlockStart = (l: string) => /^(#{1,4} |\||```|>|\s*- |\s*\d+\. )/.test(l);
   while (i < lines.length) {
     const l = lines[i]!;
@@ -61,7 +68,7 @@ export function renderMarkdown(md: string, live: Live): { title: string; html: s
       const text = inlineMd(h[2]!, live);
       if (level === 1) title = h[2]!;
       else {
-        const id = slug(h[2]!);
+        const id = uniq(slug(h[2]!) || "section");
         if (level === 2) toc.push({ id, text: h[2]! });
         out.push(`<h${level} id="${id}">${text}</h${level}>`);
       }
