@@ -1,4 +1,7 @@
-Fonts in this folder are licensed under the SIL Open Font License, Version 1.1.
+Fonts in this folder are licensed under the SIL Open Font License, Version 1.1, EXCEPT:
+  SuisseIntl-*.woff2, SuisseWorks-*.woff2 and KMR-Apparat-*.woff2, commercial fonts copied
+  from the plnty scrape (apps/web/public/plnty/fonts) for the app restyle. No licence for them is
+  held in this repo; the owner must license them or swap --sans/--display in app.css before launch.
 Each font's license follows, verbatim, as shipped by its source.
 
   Geist-Variable.woff2, GeistMono-Variable.woff2

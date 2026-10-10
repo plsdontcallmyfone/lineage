@@ -122,17 +122,17 @@ export const hiddenNote = (h: { reason: string } | null | undefined) =>
 const CSS = `
 .bd-params{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px}
 .bd-params>div{display:flex;flex-direction:column;gap:3px;min-width:0}
-.bd-params>div>span{font:500 10px/1.3 var(--sans);letter-spacing:.08em;text-transform:uppercase;color:var(--tt)}
-.bd-params b{font-size:13.5px;font-weight:500;color:var(--tp);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.bd-params>div>span{font:500 12px/1.3 var(--sans);letter-spacing:-.01em;color:var(--tt)}
+.bd-params b{font-family:var(--display);font-size:15px;letter-spacing:-.02em;font-weight:500;color:var(--tp);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .bd-num{font-variant-numeric:tabular-nums}
 .bd-unit{margin-left:4px;font-size:11px;font-weight:400;color:var(--tt)}
 .bd-tba{color:var(--tt);font-weight:400}
 .bd-building{display:flex;flex-direction:column;gap:6px;min-width:0;font-size:12.5px;line-height:1.45;color:var(--ts)}
 .bd-building b{font-weight:500;color:var(--tp)}
 .bd-live,.bd-last{display:block;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.bd-live{color:var(--ac-soft,#ffc285)}
+.bd-live{color:var(--ac-soft)}
 .bd-live b{color:var(--tp)}
-.bd-live i{display:inline-block;width:6px;height:6px;border-radius:50%;background:var(--ac);box-shadow:0 0 6px var(--ac);margin-right:7px;vertical-align:1px;animation:bd-pulse 1.4s ease-in-out infinite}
+.bd-live i{display:inline-block;width:6px;height:6px;border-radius:50%;background:var(--ac);margin-right:7px;vertical-align:1px;animation:bd-pulse 1.4s ease-in-out infinite}
 .bd-none{color:var(--tt)}
 .bd-repo{display:flex;justify-content:space-between;align-items:baseline;gap:10px;min-width:0;color:var(--tt)}
 .bd-repo>span{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
@@ -143,7 +143,7 @@ const CSS = `
 @keyframes bd-pulse{50%{opacity:.25}}
 @media (prefers-reduced-motion:reduce){.bd-live i{animation:none}}
 @media (max-width:420px){.bd-params{grid-template-columns:repeat(2,minmax(0,1fr));row-gap:10px}}
-:root[data-theme="light"] .bd-live{color:#b8540f}
+:root[data-theme="light"] .bd-live{color:var(--ac)}
 `;
 
 /** The same styles for a shadow root (the embed kit's elements map the app's tokens onto theirs). */

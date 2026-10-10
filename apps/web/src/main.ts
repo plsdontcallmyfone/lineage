@@ -276,7 +276,7 @@ async function connect() {
 // ------------------------------------------------------------------------------------------------
 // theme, tooltips, clicks, timers
 
-/** Dark is the default; light is opted into with data-theme="light". */
+/** Light is the default (index.html sets data-theme="light" unless the visitor chose dark); dark is the attribute absent. */
 function isDark() {
   return document.documentElement.getAttribute("data-theme") !== "light";
 }
@@ -363,7 +363,7 @@ document.addEventListener("mousemove", (ev) => {
 
 setInterval(tickTimes, 1000);
 
-// the header folds into a floating pill once the page scrolls (app.css .top.is-scrolled)
+// once the page scrolls, the content under the header is blurred (app.css .top.is-scrolled)
 {
   let raf = 0;
   const onScroll = () => {
