@@ -16,7 +16,7 @@ test.describe("Token page (/tokens/:mint)", () => {
       await page.goto(`/tokens/${t.mint}`);
       await page.locator(".mk-statspanel .mk-stats").waitFor({ timeout: 60_000 });
       const labels = (await page.locator(".mk-stats .stat .eyebrow").allInnerTexts()).map((x) => x.trim().toLowerCase());
-      expect(labels).toEqual(["price", "market cap", "24h volume", "24h change"]);
+      expect(labels).toEqual(["market cap", "price", "24h volume", "24h change", "holders"]);
       const detail = await data.token(t.mint);
       const figs = await page.locator(".mk-stats").evaluate((el) =>
         ["price", "market_cap", "volume_24h", "change_24h"].map((f) => {
@@ -32,17 +32,25 @@ test.describe("Token page (/tokens/:mint)", () => {
     }
   });
 
-  test("panels: building, agent at work, price, trades, commits and the trade box", async ({ page, data }) => {
+  test("panels: head, feed | chart (or the computer) | trade, holders, transactions; curve, agent and commits", async ({ page, data }) => {
     const t = await pickToken(data);
     await page.goto(`/tokens/${t.mint}`);
     await page.locator(".mk-statspanel").waitFor({ timeout: 60_000 });
-    for (const p of [".mk-buildpanel", ".mk-livepanel", ".mk-pricepanel", ".mk-activity", ".mk-tradepanel", ".mk-curvepanel", ".mk-agentpanel"]) await expect(page.locator(p)).toBeVisible();
+    for (const p of [".mk-buildpanel", ".mk-pricepanel", ".mk-tradepanel", ".mk-holderspanel", ".mk-activity", ".mk-curvepanel", ".mk-agentpanel"]) await expect(page.locator(p)).toBeVisible();
+    // the chart (Lightweight Charts canvas) by default; the toggle swaps it for the agent's computer and back
+    await expect(page.locator("#mk-chart canvas").first()).toBeVisible();
+    await expect(page.locator(".mk-livepanel")).toBeHidden();
+    await page.locator("[data-view-b=computer]").click();
+    await expect(page.locator(".mk-livepanel")).toBeVisible();
+    await expect(page.locator("#mk-chart")).toBeHidden();
+    await page.locator("[data-view-b=chart]").click();
+    await expect(page.locator("#mk-chart canvas").first()).toBeVisible();
     await page.locator(".cm-panel table, .cm-panel .empty, .cm-panel .banner").first().waitFor({ timeout: 60_000 });
     const repo = t.building?.repo ?? t.repo_url;
     if (repo) await expect(page.locator(".mk-buildpanel .bd-repo > span")).toHaveAttribute("title", repo);
-    // trades table rows are the indexer's trades for this mint
+    // transaction rows are the indexer's trades for this mint
     const trades = await data.get(`/market/tokens/${t.mint}/trades?limit=50`).catch(() => null);
-    if (trades?.trades?.length) await expect(page.locator(".mk-trades tbody tr").first()).toHaveAttribute("data-sig", trades.trades[0].signature);
+    if (trades?.trades?.length) await expect(page.locator(".mk-trades > li").first()).toHaveAttribute("data-sig", trades.trades[0].signature);
     await cleanPage(page);
   });
 
@@ -86,7 +94,7 @@ test.describe("Agent profile (/agents/:id/profile)", () => {
     const block = page.locator(".panel .bd-params");
     await expect(block).toHaveCount(1);
     const { labels, figs } = await readParams(block);
-    expect(labels).toEqual(["price", "market cap", "24h volume", "24h change"]);
+    expect(labels).toEqual(["market cap", "price", "24h volume", "24h change", "holders"]);
     expectFigures(`${t.symbol} profile`, figs, detail);
     await expect(page.locator("#main")).not.toContainText(/fees? (claimed|to compute|split)|crank/i);
     await cleanPage(page);

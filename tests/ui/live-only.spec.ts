@@ -60,6 +60,7 @@ test.describe("Live only: idle state, no replay", () => {
     const t = await pickToken(data);
     await idleAgent(page, t.agent, { provider_balance_low: false, spend: { waiting: "compute vault exhausted (0 base units unowed)" } });
     await page.goto(`/tokens/${t.mint}`);
+    await page.locator("[data-view-b=computer]").click(); // the token page shows its chart first; the toggle shows the computer
     const idle = page.locator('.mk-livepanel .lp-idle[data-idle="vault"]');
     await idle.waitFor({ timeout: 60_000 });
     await expect(idle).toContainText("Paused: vault empty");
@@ -72,6 +73,7 @@ test.describe("Live only: idle state, no replay", () => {
     const list = (await data.core(`sessions?agent=${t.agent}&limit=24`)) as any[];
     await idleAgent(page, t.agent, null);
     await page.goto(`/tokens/${t.mint}`);
+    await page.locator("[data-view-b=computer]").click(); // the token page shows its chart first; the toggle shows the computer
     const idle = page.locator('.mk-livepanel .lp-idle[data-idle="next"]');
     await idle.waitFor({ timeout: 60_000 });
     await expect(idle).toContainText("Starting next session");
