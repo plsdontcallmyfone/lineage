@@ -1,6 +1,7 @@
 #!/usr/bin/env bun
 // lineage-runtime CLI (SPEC 17.2).
 //   run      --config <file> [--max-candidates <n>]   run every hosted agent until SIGINT or SIGTERM
+//                                                     (devnet with bind_port: also the bind endpoint, bind.ts)
 //   status   --config <file>                          print the persisted state summary (no keys) and the global cap: window and spend counter
 //   bind-request --config <file> --agent <id>         what the owner needs to bind the agent to this runtime's key
 //   cosign   --config <file> --agent <id> --tx <base64> [--dry-run]
@@ -22,6 +23,7 @@ import { ChainMessenger } from "../../core/src/msgchain.ts";
 import { CoreClient } from "../../core/src/client.ts";
 import { availabilityOf, loadProviderKeys, loadProviderSpecs } from "../../worker/src/proposers/providers.ts";
 import { routedProposers } from "./providers.ts";
+import { bindHandler, chainCosign, serveBind } from "./bind.ts";
 import { anthropicClient } from "../../souls/src/generator.ts";
 import { chainTrading, type TradingRuntimeConfig } from "../../trader/src/glue.ts";
 
@@ -110,12 +112,15 @@ async function main() {
       trading?.attach(rt);
       const stopTrading = trading?.start() ?? (() => {});
       await rt.start();
+      // hosted launches bind from the Wallet page (bind.ts): the owner signs the rotation, this runtime co-signs
+      const bindServer = cfg.bind_port && backend instanceof ChainBackend ? serveBind(cfg.bind_port, bindHandler({ host: rt, send: chainCosign(cfg.rpc_url ?? devnetRpcUrl(), log), log }), log) : null;
       let signals = 0;
       const onSignal = () => {
         if (++signals > 1) process.exit(130); // state is persisted after every step; a second signal leaves now
         log("signal: graceful stop (send again to leave at once)");
         stopMonitor();
         stopTrading();
+        bindServer?.stop(true);
         void rt.stop().then(() => process.exit(0));
       };
       process.on("SIGINT", onSignal);

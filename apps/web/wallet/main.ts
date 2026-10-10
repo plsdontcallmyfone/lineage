@@ -757,14 +757,56 @@ async function renderLaunched() {
         ["Soul on chain", rec?.profileDigest ? html`<span class="wl-hash">${rec.profileDigest}</span> seq ${rec.profileSeq} ${S.soul?.doc && rec.profileDigest === soulDigest(S.soul.doc) ? html`<span class="mark good">${icon.check} equals the soul you signed</span>` : ""}` : html`<span class="faint">none</span>`],
         ["Soul in Core", S.soulPub ?? html`<span class="faint">none</span>`],
         ["GitHub identity", html`${S.ghLaunch ?? ""}<div id="w-gh-launch"><span class="dim">Reading the identity service…</span></div>`],
+        ...(l.hosted ? [["Hosted runtime", html`<div id="w-rt-bind"><span class="dim">Asking the hosted runtime for its key…</span></div>`] as [string, unknown]] : []),
       ])}
       <div class="panel-b">
         <div class="wl-row">${btn("download-agent-key", "Download agent key (keypair JSON)", { primary: true })}${btn("goto-trade", "Trade on its curve")}</div>
-        <div class="wl-fine">The agent key exists only in this tab. ${l.hosted ? "The hosted runtime's key handover ships with the runtime (TBA); keep the file." : "A self-hosted worker runs with it:"} <span class="num">${W} run --core &lt;core&gt; --key &lt;file&gt;</span>. Leaving the page drops it.</div>
+        <div class="wl-fine">The agent key exists only in this tab. ${l.hosted ? "Once bound, the hosted runtime's own key speaks for the agent and this key no longer does; keep the file to rotate back to it later." : "A self-hosted worker runs with it:"} <span class="num">${W} run --core &lt;core&gt; --key &lt;file&gt;</span>. Leaving the page drops it.</div>
       </div>`,
   );
   showIdentity("w-gh-launch", l.agent, l.mint, false);
   if (L.deposit !== undefined) void showCorePrepay(l.agent, dec(), (r) => set("w-prepay-core", r));
+  if (l.hosted) void bindHosted(l.agent);
+}
+
+// A hosted launch binds to the site's hosted runtime (packages/runtime/src/bind.ts): the runtime made
+// its own key for the agent; the owner's wallet signs rotate_agent_key to it, and the runtime checks
+// the transaction, co-signs as the new key and sends it. The launcher's agent key never leaves this tab.
+async function bindHosted(agent: string) {
+  const out = (r: Raw | string) => set("w-rt-bind", r);
+  const retry = () => btn("rt-bind", "Bind to the hosted runtime");
+  try {
+    let t: { new_key: string; status: string } | null = null;
+    // the runtime reads the launch from chain; a few seconds of RPC lag are normal right after it lands
+    for (let i = 0; i < 20 && !t; i++) {
+      const r = await fetch(`/runtime/bind/${agent}`, { headers: { accept: "application/json" } });
+      const j = await r.json().catch(() => ({}));
+      if (r.ok) t = j;
+      else if (r.status !== 404 && r.status !== 503 && r.status !== 429) throw new Error(j.message ?? j.error ?? `the hosted runtime answered HTTP ${r.status}`);
+      else await new Promise((res) => setTimeout(res, 3000));
+    }
+    if (!t) throw new Error("the hosted runtime has not seen this launch yet");
+    const rec0 = await reader.agent(agent);
+    if (t.status === "bound" || rec0?.signingKey === t.new_key)
+      return out(html`<span class="mark good">${icon.check} bound</span> <span class="dim">signing key ${addr(t.new_key)} (the hosted runtime's)</span>`);
+    if (!requireReady()) return out(html`${retry()} <span class="dim">connect the launcher wallet</span>`);
+    if (rec0 && rec0.owner !== me()) return out(html`<span class="dim">only the owner ${addr(rec0.owner)} can bind it</span>`);
+    out(html`<span class="dim">Sign the binding: your wallet signs <span class="num">rotate_agent_key</span> as owner, to the runtime's key ${addr(t.new_key)}; the runtime co-signs and sends it.</span>`);
+    const ix = registry.rotateAgentKey({ owner: me()!, agent, newKey: t.new_key });
+    const r = await signAndSend({ wallet: S.wallet!, account: S.account!, ixs: [ix], leaveFor: t.new_key, onStatus: (m) => out(html`<span class="dim">${m}</span>`) });
+    out(html`<span class="dim">Signed. The hosted runtime is co-signing and sending…</span>`);
+    const p = await fetch(`/runtime/bind/${agent}`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ tx: base64Encode(r.partial!) }) });
+    const j = await p.json().catch(() => ({}));
+    if (!p.ok) throw new Error(j.message ?? j.error ?? `HTTP ${p.status}`);
+    const t2 = await rpc.getTransaction(j.signature).catch(() => null);
+    logSig(`rotate_agent_key ${short(agent)} to the hosted runtime (co-signed by the runtime)`, j.signature, t2?.meta?.fee, true);
+    const rec = await reader.agent(agent);
+    out(rec?.signingKey === t.new_key
+      ? html`<span class="mark good">${icon.check} bound</span> ${txLink(j.signature)} <span class="dim">signing key ${addr(t.new_key)} (the hosted runtime's), key changes ${rec.keySeq}; it starts on the runtime's next pass</span>`
+      : html`<span class="mark warn">${icon.warn} sent ${txLink(j.signature)}, the registry has not shown the new key yet</span>`);
+  } catch (e) {
+    out(html`${errBox(e, (e as any).logs)}<div class="wl-row" style="margin-top:6px">${retry()}</div>`);
+  }
 }
 
 async function downloadAgentKey() {
@@ -1884,6 +1926,9 @@ async function onClick(ev: Event) {
         break;
       case "i-rotate":
         await iRotate();
+        break;
+      case "rt-bind":
+        if (S.launched) await bindHosted(S.launched.agent.id);
         break;
       case "i-revoke":
         await iTx("revoke");

@@ -66,6 +66,8 @@ export interface RuntimeConfig {
   openrouter?: OpenRouterRailConfig | null;
   /** Agent posts (plan S, posts.ts): defaults POSTS_DEFAULTS; `{ "enabled": false }` keeps only media folding. */
   posts?: Partial<import("./posts.ts").PostsConfig>;
+  /** devnet: serve the bind endpoint (bind.ts) on 127.0.0.1 at this port, so hosted launches bind from the Wallet page; absent = off. */
+  bind_port?: number;
 }
 
 export const DEFAULTS: Omit<RuntimeConfig, "mode" | "core" | "runtime_key" | "compute_price_line_per_usd" | "compute_price_line_per_sandbox_s"> = {
@@ -101,6 +103,7 @@ export function parseConfig(raw: Record<string, unknown>): RuntimeConfig {
   if (c.global_window_s !== undefined && c.global_window_s !== null && !(Number.isInteger(c.global_window_s) && c.global_window_s >= 60))
     throw new Error("runtime config: global_window_s is a whole number of seconds >= 60 (86400 = one UTC day), or null for a lifetime cap");
   if (!(c.max_concurrent >= 1)) throw new Error("runtime config: max_concurrent >= 1");
+  if (c.bind_port !== undefined && !(Number.isInteger(c.bind_port) && c.bind_port > 0 && c.bind_port < 65536)) throw new Error("runtime config: bind_port is a TCP port");
   const rail = parseRail(c);
   c.rail = rail.rail;
   c.openrouter = rail.openrouter;

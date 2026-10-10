@@ -38,6 +38,8 @@ export interface Backend {
   /** The key that currently speaks for `agent` (null: revoked). */
   signingKey(agent: string): Promise<string | null>;
   vault(a: HostedAgent): Promise<Vault>;
+  /** One agent when it is a hosted launch (the bind endpoint asks before discovery has seen it); optional. */
+  hostedAgent?(agent: string): Promise<HostedAgent | null>;
   /** What the owner needs to bind the agent to `key` (public data only). */
   bindRequest(agent: string, key: AgentKey): Promise<Record<string, unknown>>;
   /** devnet: the epoch number the next post must use and the earliest unix second it may land; sim: the next period. */
@@ -178,6 +180,14 @@ export class ChainBackend implements Backend {
   async discover(): Promise<HostedAgent[]> {
     const all = await this.reader.launches();
     return all.filter((l) => l.hosted).map((l) => ({ agent: l.agent, mint: l.mint, launcher: l.launcher, target_repo: l.repoUrl }));
+  }
+
+  async hostedAgent(agent: string): Promise<HostedAgent | null> {
+    const rec = await this.reader.agent(agent);
+    if (!rec || rec.kind !== "launched" || !rec.hosted) return null;
+    const l = await this.reader.agentLaunch(rec.mint);
+    if (!l || l.agent !== agent || !l.hosted) return null;
+    return { agent, mint: l.mint, launcher: l.launcher, target_repo: l.repoUrl };
   }
 
   async signingKey(agent: string) {

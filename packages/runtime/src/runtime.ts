@@ -310,6 +310,40 @@ export class Runtime {
     return w;
   }
 
+  /** A newly seen hosted agent: its runtime key (made once) and the bind request for its owner. */
+  private async adopt(h: HostedAgent): Promise<void> {
+    const key = this.store.keyFor(h.agent);
+    this.state.agents[h.agent] = { key_id: key.id, key_file: this.store.keyFile(h.agent), status: "awaiting_owner", discovered_at: this.now(), bound_at: null, mint: h.mint, target_repo: h.target_repo, candidates: 0 };
+    this.save();
+    const req = await this.deps.backend.bindRequest(h.agent, key);
+    const dir = join(this.cfg.state_dir, "bind-requests");
+    mkdirSync(dir, { recursive: true });
+    writeFileSync(join(dir, `${h.agent}.json`), JSON.stringify(req, null, 2));
+    this.log(`discovered hosted agent ${h.agent} (${h.target_repo ?? "no target"}); generated runtime key ${key.id}; waiting for the owner to bind it`);
+  }
+
+  /**
+   * The bind endpoint (bind.ts): the runtime key a hosted agent's owner rotates to. An agent the
+   * runtime has not discovered yet is read from chain at once and adopted when it is a hosted launch;
+   * null when it is not one.
+   */
+  async bindTarget(agent: string): Promise<{ agent: string; new_key: string; status: string } | null> {
+    if (!isAgentId(agent)) return null;
+    if (!this.state.agents[agent]) {
+      const h = await this.deps.backend.hostedAgent?.(agent);
+      if (!h || h.agent !== agent) return null;
+      this.hosted.set(agent, h);
+      if (!this.state.agents[agent]) await this.adopt(h);
+    }
+    const st = this.state.agents[agent]!;
+    return { agent, new_key: st.key_id, status: st.status };
+  }
+
+  /** The runtime key of an agent this runtime adopted (never makes one). */
+  keyOf(agent: string): AgentKey | null {
+    return this.state.agents[agent] ? this.store.keyFor(agent) : null;
+  }
+
   /** Discovery, binding and vault reads. */
   private async refreshAgents(): Promise<void> {
     const b = this.deps.backend;
@@ -322,14 +356,7 @@ export class Runtime {
         }
         this.hosted.set(h.agent, h);
         if (this.state.agents[h.agent]) continue;
-        const key = this.store.keyFor(h.agent);
-        this.state.agents[h.agent] = { key_id: key.id, key_file: this.store.keyFile(h.agent), status: "awaiting_owner", discovered_at: this.now(), bound_at: null, mint: h.mint, target_repo: h.target_repo, candidates: 0 };
-        this.save();
-        const req = await b.bindRequest(h.agent, key);
-        const dir = join(this.cfg.state_dir, "bind-requests");
-        mkdirSync(dir, { recursive: true });
-        writeFileSync(join(dir, `${h.agent}.json`), JSON.stringify(req, null, 2));
-        this.log(`discovered hosted agent ${h.agent} (${h.target_repo ?? "no target"}); generated runtime key ${key.id}; waiting for the owner to bind it`);
+        await this.adopt(h);
       }
     }
     for (const [agent, st] of Object.entries(this.state.agents)) {

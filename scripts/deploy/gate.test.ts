@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { classify, clientIp, clientKey, Limiter, LIMITS, MAX_BUCKETS, originAllowed, readCapped, StreamSlots, upstreamHeaders } from "./gate.ts";
+import { classify, clientIp, clientKey, Limiter, LIMITS, MAX_BODY, MAX_BUCKETS, MEDIA_MAX_BODY, originAllowed, readCapped, SOCIAL_MAX_BODY, StreamSlots, upstreamHeaders } from "./gate.ts";
 
 describe("classify", () => {
   test("Core public reads pass, admin does not", () => {
@@ -162,4 +162,81 @@ test("OFF-D9 the page CSP allows exactly the inline theme script of index.html, 
     expect(csp).toContain("frame-ancestors 'none'");
     expect(csp).not.toContain("unsafe-eval");
   }
+});
+
+// ---------------------------------------------------------------------------------------------
+// launch e2e lane: social writes (plan S) reach the dashboard through the gate
+
+describe("social writes", () => {
+  const agent = "6C8N2z5L4dQ1yWn3bSPAsoGq2nXyWkJk6V3m4cLZb6dE";
+  test("follow, react and media are same-origin POSTs in their own class with their own body caps", () => {
+    expect(classify("POST", "/social/follow")).toMatchObject({ klass: "social", upstream: "web", sameOrigin: true, cors: false, maxBody: SOCIAL_MAX_BODY });
+    expect(classify("POST", "/social/react")).toMatchObject({ klass: "social", sameOrigin: true, maxBody: SOCIAL_MAX_BODY });
+    expect(classify("POST", `/social/media/${agent}`)).toMatchObject({ klass: "social", sameOrigin: true, maxBody: MEDIA_MAX_BODY });
+    expect(SOCIAL_MAX_BODY).toBeLessThan(MAX_BODY);
+    expect(MEDIA_MAX_BODY).toBeGreaterThanOrEqual(1_400_000);
+    expect(MEDIA_MAX_BODY).toBeLessThanOrEqual(1_600_000);
+    expect(LIMITS.social.burst).toBeLessThan(LIMITS.api.burst);
+  });
+  test("anything else under /social is refused", () => {
+    for (const p of ["/social/hide", "/social/media/../admin", "/social/media/0OIl", "/social/follow/x", "/social/media/"]) expect(classify("POST", p)).toEqual({ refuse: 405, why: "method" });
+    expect(classify("PUT", "/social/follow")).toEqual({ refuse: 405, why: "method" });
+    expect(classify("POST", "/v1/social/follow")).toEqual({ refuse: 405, why: "method" });
+    expect(classify("POST", "/v1/admin/social/hide")).toEqual({ refuse: 405, why: "method" });
+  });
+
+  test("a running gate forwards a listed origin, refuses others, caps bodies and rate-limits the class", async () => {
+    const seen: { path: string; bytes: number }[] = [];
+    const up = Bun.serve({
+      port: 0,
+      hostname: "127.0.0.1",
+      async fetch(req) {
+        seen.push({ path: new URL(req.url).pathname, bytes: (await req.arrayBuffer()).byteLength });
+        return Response.json({ ok: true });
+      },
+    });
+    const proc = Bun.spawn(["bun", `${import.meta.dir}/gate.ts`, "--port", "0", "--web", `http://127.0.0.1:${up.port}`, "--core", `http://127.0.0.1:${up.port}`, "--origin", "https://site.example,https://other.example"], { stdout: "pipe", stderr: "inherit" });
+    try {
+      const reader = proc.stdout.getReader();
+      let out = "";
+      while (!/on http:\/\/[^:]+:(\d+)/.test(out)) {
+        const r = await reader.read();
+        if (r.done) throw new Error("gate exited");
+        out += new TextDecoder().decode(r.value);
+      }
+      const base = `http://127.0.0.1:${/on http:\/\/[^:]+:(\d+)/.exec(out)![1]}`;
+      const post = (path: string, body: string, origin: string | null, ip = "1.1.1.1") =>
+        fetch(`${base}${path}`, { method: "POST", headers: { "content-type": "application/json", "x-forwarded-for": ip, ...(origin ? { origin } : {}) }, body });
+      expect((await post("/social/follow", "{}", "https://site.example")).status).toBe(200);
+      expect((await post("/social/react", "{}", "https://other.example")).status).toBe(200);
+      expect((await post("/social/follow", "{}", "https://evil.example")).status).toBe(403);
+      expect((await post("/social/follow", "{}", null)).status).toBe(403);
+      expect((await post("/social/react", "x".repeat(SOCIAL_MAX_BODY + 1), "https://site.example", "2.2.2.2")).status).toBe(413);
+      const img = "x".repeat(1_000_000);
+      expect((await post(`/social/media/${agent}`, img, "https://site.example", "3.3.3.3")).status).toBe(200);
+      expect((await post(`/social/media/${agent}`, "x".repeat(MEDIA_MAX_BODY + 1), "https://site.example", "3.3.3.3")).status).toBe(413);
+      expect(seen.map((s) => s.path)).toEqual(["/social/follow", "/social/react", `/social/media/${agent}`]);
+      expect(seen[2]!.bytes).toBe(1_000_000);
+      // the class bucket: burst passes, the next is 429
+      let last = 0;
+      for (let i = 0; i <= LIMITS.social.burst; i++) last = (await post("/social/react", "{}", "https://site.example", "4.4.4.4")).status;
+      expect(last).toBe(429);
+      // another class from the same address is unaffected
+      expect((await fetch(`${base}/api/lineages`, { headers: { "x-forwarded-for": "4.4.4.4" } })).status).toBe(200);
+    } finally {
+      proc.kill();
+      up.stop(true);
+    }
+  }, 20_000);
+});
+
+describe("hosted runtime bind", () => {
+  const agent = "6C8N2z5L4dQ1yWn3bSPAsoGq2nXyWkJk6V3m4cLZb6dE";
+  test("GET and POST /runtime/bind/:agent go to the runtime in their own class; POST is same origin", () => {
+    expect(classify("GET", `/runtime/bind/${agent}`)).toMatchObject({ klass: "bind", upstream: "runtime", sameOrigin: false, cors: false });
+    expect(classify("POST", `/runtime/bind/${agent}`)).toMatchObject({ klass: "bind", upstream: "runtime", sameOrigin: true, maxBody: SOCIAL_MAX_BODY });
+    for (const p of ["/runtime/bind/0OIl", "/runtime/health", "/runtime/bind/", `/runtime/bind/${agent}/x`]) expect(classify("POST", p)).toEqual({ refuse: 405, why: "method" });
+    expect(classify("PUT", `/runtime/bind/${agent}`)).toEqual({ refuse: 405, why: "method" });
+    expect(classify("GET", "/runtime/health")).toMatchObject({ klass: "page", upstream: "web" });
+  });
 });

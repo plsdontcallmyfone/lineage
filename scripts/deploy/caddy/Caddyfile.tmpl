@@ -37,8 +37,14 @@
 		Cross-Origin-Opener-Policy same-origin
 		-Server
 	}
-	request_body {
+	# a launcher's profile image (POST /social/media/<agent>, base64 in JSON) may be up to 1.5 MB; the gate
+	# caps it again per route
+	@not_media not path /social/media/*
+	request_body @not_media {
 		max_size 256KB
+	}
+	request_body /social/media/* {
+		max_size 1600KB
 	}
 	# /market/* goes through the gate like everything else (rate limits per client; audit A2), which
 	# sends it on to the market indexer (packages/indexer, lineage-indexer.service) on 127.0.0.1:9668

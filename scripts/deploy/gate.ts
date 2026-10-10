@@ -15,14 +15,22 @@
 //   POST /chain/rpc           devnet JSON-RPC proxy (web keeps its method allowlist); same origin only
 //   POST /chain/faucet        tLINE faucet (web keeps its per-wallet and hourly limits); same origin only
 //                             (an Origin header is required: browsers always send one on POST)
+//   POST /social/follow, /social/react, /social/media/:agent   wallet-signed social statements (Core
+//                             verifies each signature); same origin only; own class; bodies capped at
+//                             8 KB, or 1.5 MB for a launcher's image (base64 in JSON)
+//   GET, POST /runtime/bind/:agent   the hosted runtime's bind endpoint (packages/runtime/src/bind.ts):
+//                             the runtime key a hosted launch rotates to, and the owner-signed rotation
+//                             it co-signs; POST same origin only (a browser sends no Origin on a
+//                             same-origin GET; GET only reads, or makes the key of a real hosted launch); own class
 //   POST /souls/*             refused: drafts spend the model key; opening them is an owner decision
 //   GET  everything else      dashboard pages and assets
 //   GET  /gate/health         { ok } (no counters: they told an attacker how close the caps were)
 // Client address: the last X-Forwarded-For entry (Caddy sets it to the peer it saw), else the socket.
 // Limits key on clientKey(): an IPv6 address counts as its /64, an IPv4-mapped one as the IPv4.
 //   [--indexer http://127.0.0.1:9668]   the market indexer upstream for /market/*
+//   [--runtime http://127.0.0.1:9667]   the hosted runtime's bind endpoint for /runtime/bind/*
 
-export type Klass = "v1" | "api" | "rpc" | "faucet" | "terms" | "page" | "market";
+export type Klass = "v1" | "api" | "rpc" | "faucet" | "terms" | "page" | "market" | "social" | "bind";
 export const LIMITS: Record<Klass, { perMin: number; burst: number }> = {
   v1: { perMin: 120, burst: 60 },
   api: { perMin: 240, burst: 120 },
@@ -31,10 +39,17 @@ export const LIMITS: Record<Klass, { perMin: number; burst: number }> = {
   terms: { perMin: 10, burst: 5 },
   page: { perMin: 600, burst: 200 },
   market: { perMin: 240, burst: 120 },
+  // follows, reactions and images: a person clicks these; Core keeps its own per-wallet limits too
+  social: { perMin: 20, burst: 10 },
+  // a hosted launch binds once; the page polls the key for a few seconds after its launch
+  bind: { perMin: 30, burst: 15 },
 };
 export const MAX_STREAMS_PER_IP = 4;
 export const MAX_STREAMS = 400;
 export const MAX_BODY = 64 * 1024;
+/** Social statements (follow, react) are small; a launcher image is at most 1 MB of bytes, base64 in JSON. */
+export const SOCIAL_MAX_BODY = 8 * 1024;
+export const MEDIA_MAX_BODY = 1_500_000;
 /** A request body must arrive within this many ms (slowloris). */
 export const BODY_TIMEOUT_MS = 10_000;
 /** Most distinct rate-limit buckets held at once; beyond it the stalest are evicted. */
@@ -42,19 +57,25 @@ export const MAX_BUCKETS = 50_000;
 
 export interface Route {
   klass: Klass;
-  upstream: "web" | "core" | "indexer";
+  upstream: "web" | "core" | "indexer" | "runtime";
   cors: boolean;
   stream: boolean;
   sameOrigin: boolean;
+  /** Body cap for this route when it differs from MAX_BODY. */
+  maxBody?: number;
 }
 
 /** Decides what a request is, or the status to refuse it with. Pure; tested in gate.test.ts. */
 export function classify(method: string, path: string): Route | { refuse: number; why: string } {
+  if (/^\/runtime\/bind\/[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(path) && (method === "GET" || method === "POST"))
+    return { klass: "bind", upstream: "runtime", cors: false, stream: false, sameOrigin: method === "POST", maxBody: SOCIAL_MAX_BODY };
   const terms = /^\/(v1|api)\/bounties\/[1-9A-HJ-NP-Za-km-z]{32,44}\/terms$/.test(path);
   if (method === "PUT") return terms ? { klass: "terms", upstream: path.startsWith("/v1/") ? "core" : "web", cors: true, stream: false, sameOrigin: false } : { refuse: 405, why: "method" };
   if (method === "POST") {
     if (path === "/chain/rpc") return { klass: "rpc", upstream: "web", cors: false, stream: false, sameOrigin: true };
     if (path === "/chain/faucet") return { klass: "faucet", upstream: "web", cors: false, stream: false, sameOrigin: true };
+    if (path === "/social/follow" || path === "/social/react") return { klass: "social", upstream: "web", cors: false, stream: false, sameOrigin: true, maxBody: SOCIAL_MAX_BODY };
+    if (/^\/social\/media\/[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(path)) return { klass: "social", upstream: "web", cors: false, stream: false, sameOrigin: true, maxBody: MEDIA_MAX_BODY };
     return { refuse: 405, why: "method" };
   }
   if (method !== "GET" && method !== "HEAD") return { refuse: 405, why: "method" };
@@ -234,6 +255,7 @@ if (import.meta.main) {
     web: arg("web", "http://127.0.0.1:9661").replace(/\/+$/, ""),
     core: arg("core", "http://127.0.0.1:9660").replace(/\/+$/, ""),
     indexer: arg("indexer", "http://127.0.0.1:9668").replace(/\/+$/, ""),
+    runtime: arg("runtime", "http://127.0.0.1:9667").replace(/\/+$/, ""),
   };
   const ORIGINS = arg("origin", "").split(",").map((s) => s.trim()).filter(Boolean);
   const limiter = new Limiter();
@@ -260,11 +282,12 @@ if (import.meta.main) {
       if (r.sameOrigin && !originAllowed(req.headers.get("origin"), req.headers.get("host"), ORIGINS)) return refuse(403, "cross_origin");
       const t = limiter.take(ip, r.klass);
       if (!t.ok) return refuse(429, "rate_limited", { "retry-after": String(t.retryS) }, r.cors);
+      const maxBody = r.maxBody ?? MAX_BODY;
       const len = Number(req.headers.get("content-length") ?? 0);
-      if (len > MAX_BODY) return refuse(413, "body_too_large", {}, r.cors);
+      if (len > maxBody) return refuse(413, "body_too_large", {}, r.cors);
       let body: Uint8Array | undefined;
       if (req.method === "POST" || req.method === "PUT") {
-        const b = await readCapped(req.body);
+        const b = await readCapped(req.body, maxBody);
         if (!b.ok) return refuse(b.status, b.status === 413 ? "body_too_large" : "body_timeout", {}, r.cors);
         body = b.bytes;
       }

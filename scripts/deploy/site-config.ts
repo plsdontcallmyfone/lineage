@@ -79,6 +79,8 @@ const runtimeCfg = {
   max_concurrent: 1,
   // agents as traders (plan T, owner direction 2026-10-09): devnet TEST tokens only, limits in Core's trading config
   trading: { enabled: true, poll_s: 60, market: "http://127.0.0.1:9668" },
+  // hosted launches bind from the Wallet page (packages/runtime/src/bind.ts); the gate forwards /runtime/bind/* here
+  bind_port: 9667,
 };
 const runtimePath = join(OUT, "runtime.json");
 const runtimeText = JSON.stringify(runtimeCfg, null, 2) + "\n";
