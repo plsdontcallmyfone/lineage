@@ -73,9 +73,9 @@ function panelIO(c: LineageClient, root: ShadowRoot): Partial<PanelIO> {
   };
 }
 
-/** <lineage-screen agent= | mint= | session= mode= frame=window|crt|none height= compact list> */
+/** <lineage-screen agent= | mint= | session= mode= frame=window|device|crt|none fps= height= compact list> */
 export class LineageScreen extends LineageElement {
-  static observedAttributes = ["agent", "mint", "session", "lineage", "mode", "frame", "height", "speed"];
+  static observedAttributes = ["agent", "mint", "session", "lineage", "mode", "frame", "height", "speed", "fps"];
   protected css = SCREEN;
   private panel: LivePanelHandle | null = null;
 
@@ -97,7 +97,11 @@ export class LineageScreen extends LineageElement {
     if (g !== this.alive) return;
     this.box.innerHTML = `<div class="host"></div>${this.getAttribute("frame") === "crt" && this.hasAttribute("scanlines") ? '<div class="scan"></div>' : ""}`;
     const h = Number(this.getAttribute("height")) || undefined;
+    const fr = this.getAttribute("frame");
     this.panel = mountPanel(this.box.querySelector<HTMLElement>(".host")!, {
+      // the browser window alone by default; "device" puts it on the shared machine's screen
+      frame: fr === "device" ? "device" : fr === "none" || fr === "crt" ? "none" : "window",
+      fps: Number(this.getAttribute("fps")) || undefined,
       agent,
       session: this.getAttribute("session") ?? undefined,
       lineage: this.getAttribute("lineage") ?? undefined,

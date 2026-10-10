@@ -1,32 +1,37 @@
+import { mountDevice, type DeviceHandle } from "../../../../packages/embed/src/device.ts";
 import { ApiError, get } from "../api.ts";
 import { fileAt } from "../code.ts";
 import { esc } from "../html.ts";
+import { addressOf, C, favicon, repoParts, titleOf, type Place } from "./chrome.ts";
+import { ARROW, IBEAM, moveMs, movePath, typingChunks, type CursorKind, type Pt } from "./cursor.ts";
 import { ensureStyle } from "./style.ts";
 
-// Live agent panel (SPEC 17.3, plan L4): a browser-style window with an orange glow and an orange
-// cursor that shows one authoring session: a tab for the repository and one per file the agent
-// touched, a code view where the cursor moves to the lines it reads and its edits type in, and a run
-// strip with its own sandbox runs and the network's verdict.
+// Live agent panel (SPEC 17.3, plans L4 and P): one authoring session shown as a desktop browser
+// window in the style of Chrome, by default on the screen of the shared retro desktop machine
+// (packages/embed/src/device.ts). The repository opens as a code host's file view; the pointer is a
+// system arrow (an I-beam over text) that moves on eased curves in stepped frames, clicks tabs, opens
+// new ones, types addresses and searches, scrolls to the lines the agent reads and drag-selects
+// them, and types the agent's edits with a human rhythm. Sandbox runs open as an internal "sandbox"
+// page. Under the machine: what the agent is doing, replay controls, and the runs and verdict.
 //
 // Everything shown is read from Core: the session's events (GET /v1/sessions/:id), files at the
-// session's generation (GET /v1/lineages/:id/file), the candidate and its replays once final.
+// session's parent generation (GET /v1/lineages/:id/file), the candidate and its replays once final.
 // Edit contents arrive only when Core's gate opens them; until then an edit shows as a sealed range.
-//
-// Embedding (the token page, L3):
+// Addresses are the repository host's own URL shapes for the place the agent is looking.
 //
 //   import { mount } from "./live-panel/index.ts";
-//   const panel = mount(el, { agent });            // the agent's live session, else its latest in replay
-//   const panel = mount(el, { session, mode: "replay", speed: 2 });
+//   const panel = mount(el, { agent });                       // its live session, else its latest
+//   const panel = mount(el, { session, mode: "replay", speed: 2, frame: "window", fps: 24 });
 //   panel.destroy();
 //
+// frame: "device" (default: the window on the machine's screen), "window" (the window alone) or
+// "none" (the window without its outer shadow and corners, for hosts that draw their own frame).
+// fps: pointer, scroll and typing frames per second, 6 to 60 (default 12).
 // Outside the dashboard (the embed kit, packages/embed) pass `io`: where Core, blobs and the event
 // stream live, how links to Lineage pages are written, and the shadow root to put the styles in.
-//
-// mode "auto" (default) follows a live session and replays a finished one; it switches to the newest
-// session of the mounted agent or lineage when one starts, and replays a session from the start
-// with its edits once its gate opens.
 
 export type PanelMode = "auto" | "live" | "replay";
+export type PanelFrame = "device" | "window" | "none";
 
 export interface LivePanelOptions {
   /** one session by id */
@@ -40,8 +45,12 @@ export interface LivePanelOptions {
   speed?: number;
   /** show the list of earlier sessions under the window (agent and lineage mounts; default true) */
   list?: boolean;
-  /** code view height in px (default 440, 360 on narrow screens) */
+  /** page area height in px for frame "window" and "none" (default 440, 360 on narrow screens); the device keeps its screen's proportions */
   height?: number;
+  /** the machine, the window alone, or no outer frame (default "device") */
+  frame?: PanelFrame;
+  /** animation frames per second for the pointer, scrolling and typing, 6 to 60 (default 12) */
+  fps?: number;
   /** called whenever the shown session changes or its summary updates */
   onSession?: (s: SessionSummary | null) => void;
   /** data and link access; defaults to the dashboard's own (/api, /live/events, same-origin links) */
@@ -159,39 +168,28 @@ interface Run {
 }
 
 const PHASES = ["prepare", "build", "test", "equivalence", "metrics"];
+/** A phase's time: from its first event to the first event of a later phase (a phase repeats once per side). */
+function phaseMs(phases: { phase: string; at: number }[], p: string): number | null {
+  const first = phases.findIndex((x) => x.phase === p);
+  const last = phases.map((x) => x.phase).lastIndexOf(p);
+  const next = phases[last + 1];
+  return first >= 0 && next ? next.at - phases[first]!.at : null;
+}
 const SPEEDS = [0.5, 1, 2, 4, 8];
 const HOME = "@repo";
-
-const svg = (d: string, vb = "0 0 16 16") => `<svg viewBox="${vb}" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${d}</svg>`;
-const I = {
-  file: svg('<path d="M4 1.8h5l3 3v9.4H4z"/><path d="M9 1.8v3h3"/>'),
-  branch: svg('<circle cx="4.5" cy="3.5" r="1.7"/><circle cx="4.5" cy="12.5" r="1.7"/><circle cx="11.5" cy="5.5" r="1.7"/><path d="M4.5 5.2v5.6M11.5 7.2c0 2.5-2.2 3-5 3.6"/>'),
-  lock: svg('<rect x="3.5" y="7" width="9" height="6.5" rx="1.5"/><path d="M5.5 7V5a2.5 2.5 0 015 0v2"/>'),
-  play: svg('<path d="M5 3.2v9.6l7.5-4.8z" fill="currentColor" stroke="none"/>'),
-  pause: svg('<path d="M5 3.5v9M11 3.5v9" stroke-width="2.2"/>'),
-  restart: svg('<path d="M3 3v4h4"/><path d="M3.4 9.5A5 5 0 103.9 5"/>'),
-  eye: svg('<path d="M1.5 8s2.4-4.5 6.5-4.5S14.5 8 14.5 8 12.1 12.5 8 12.5 1.5 8 1.5 8z"/><circle cx="8" cy="8" r="1.8"/>'),
-  search: svg('<circle cx="7" cy="7" r="4.2"/><path d="M10.2 10.2L14 14"/>'),
-  pen: svg('<path d="M10.8 2.7l2.5 2.5-7.6 7.6-3.2.7.7-3.2z"/>'),
-  list: svg('<path d="M5.5 4h8M5.5 8h8M5.5 12h8M2.5 4h.01M2.5 8h.01M2.5 12h.01"/>'),
-  scale: svg('<path d="M8 2v12M3 14h10M4 5h8M4 5l-2 5h4zM12 5l-2 5h4z"/>'),
-  check: svg('<path d="M3.5 8.5l3 3 6-7"/>'),
-  x: svg('<path d="M4.5 4.5l7 7M11.5 4.5l-7 7"/>'),
-  chat: svg('<path d="M2.5 3.5h11v7h-6l-3 2.5v-2.5h-2z"/>'),
-  live: svg('<circle cx="8" cy="8" r="2.5" fill="currentColor" stroke="none"/>'),
-  info: svg('<circle cx="8" cy="8" r="6.2"/><path d="M8 7.2v4M8 4.8v.4"/>'),
-};
-const POINTER = `<svg viewBox="0 0 20 22" aria-hidden="true"><path d="M2 1.5l15 8.2-6.6 1.6-3.3 6.6z" fill="var(--lp-o)" stroke="#fff" stroke-width="1.4" stroke-linejoin="round"/></svg>`;
+const SEARCH = "@search";
+const SANDBOX = "@sandbox";
+/** the narrowest the window is laid out; a smaller screen shows it scaled down, like a picture of a real window */
+const MIN_W = 560;
 
 const base = (p: string) => p.split("/").pop() || p;
-const repoLabel = (u: string | null) => (u ? u.replace(/^https?:\/\/(www\.)?github\.com\//, "").replace(/\.git$/, "") : "repository");
 const mmss = (ms: number) => {
   const s = Math.max(0, Math.round(ms / 1000));
   return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
 };
 const secs = (ms: number) => (ms < 1000 ? `${ms} ms` : ms < 60_000 ? `${(ms / 1000).toFixed(1)} s` : `${Math.floor(ms / 60_000)} min ${Math.round((ms % 60_000) / 1000)} s`);
 const range = (e: SEv) => (e.start_line ? (e.end_line && e.end_line !== e.start_line ? `lines ${e.start_line} to ${e.end_line}` : `line ${e.start_line}`) : "");
-const who = (p: string) => (p === "anthropic" ? "Claude" : p === "scripted" ? "Scripted author" : p);
+const who = (p: string) => (p === "anthropic" ? "Claude" : p === "scripted" ? "Scripted author" : p === "routed" ? "Routed model" : p);
 const ago = (t: number) => {
   const s = Math.round((Date.now() - t) / 1000);
   return s < 60 ? `${s}s ago` : s < 3600 ? `${Math.round(s / 60)}m ago` : s < 86400 ? `${Math.round(s / 3600)}h ago` : `${Math.round(s / 86400)}d ago`;
@@ -231,14 +229,24 @@ class Panel {
   private speed: number;
   private gen = 0;
   private files = new Map<string, FileState>();
-  private tabs: string[] = [];
+  /** open tabs in order: HOME, file paths, SEARCH, SANDBOX, and "@new" while one is being opened */
+  private tabs: string[] = [HOME];
   private active = HOME;
+  private loading: string | null = null;
+  /** the omnibox while the pointer types into it */
+  private omni: { text: string; caret: boolean } | null = null;
+  /** the site's search field while the pointer types into it */
+  private findText: string | null = null;
+  /** the focus ring: what the agent is acting on */
+  private ring: "omni" | "find" | "code" | `tab:${string}` | null = null;
   private hl: { path: string; start: number; end: number; cls: string } | null = null;
+  /** a text selection being dragged or held (code lines) */
+  private sel: { path: string; start: number; end: number } | null = null;
   private typing: { path: string; at: number; lines: string[]; oldCount: number } | null = null;
-  private cursorAt: { path: string; line: number; caret?: boolean } | null = null;
   private runs: Run[] = [];
-  private say: { html: string; at: number; icon: string } | null = null;
+  private say: { html: string; at: number } | null = null;
   private search: { q: string; m: number | undefined } | null = null;
+  private listing: { path: string; count: number } | null = null;
   private outOpen = new Set<string>();
   private es: EventSource | null = null;
   private poll: ReturnType<typeof setInterval> | null = null;
@@ -248,7 +256,15 @@ class Panel {
   private others: SessionSummary[] = [];
   private network: { cand: any; transcripts: Map<string, any> } | null = null;
   private reduced = typeof matchMedia === "function" && matchMedia("(prefers-reduced-motion: reduce)").matches;
+  private fps: number;
+  private frame: PanelFrame;
+  private cur: Pt & { kind: CursorKind; on: boolean } = { x: 0, y: 0, kind: "arrow", on: false };
+  private scale = 1;
+  private device: DeviceHandle | null = null;
+  private ro: ResizeObserver | null = null;
+  private mo: MutationObserver | null = null;
   private root!: HTMLElement;
+  private win!: HTMLElement;
   private io: PanelIO;
   private a = (path: string) => `href="${esc(this.io.href(path))}"${this.io.linkAttrs ? ` ${this.io.linkAttrs}` : ""}`;
   private q = <T extends HTMLElement = HTMLElement>(sel: string) => this.root.querySelector<T>(sel)!;
@@ -260,21 +276,38 @@ class Panel {
     this.io = { ...DEFAULT_IO, styleRoot: DEFAULT_IO.styleRoot, ...(opts.io ?? {}) };
     this.want = opts.mode ?? "auto";
     this.speed = SPEEDS.includes(opts.speed ?? 1) ? (opts.speed ?? 1) : 1;
+    this.fps = Math.max(6, Math.min(60, Math.round(opts.fps ?? 12)));
+    this.frame = opts.frame === "window" || opts.frame === "none" ? opts.frame : "device";
   }
 
   // ------------------------------------------------------------------------------------------- setup
 
   async init() {
-    this.host.innerHTML = `<div class="lp" data-active="0" role="region" aria-label="Agent session">
-      <div class="lp-tabs"><div class="lp-dots" aria-hidden="true"><i></i><i></i><i></i></div><div class="lp-tabrow" role="tablist" aria-label="Files"></div><span class="lp-state" data-s="idle"><i></i><span>Loading</span></span></div>
-      <div class="lp-bar"><div class="lp-addr">${I.branch}<span class="p"></span><span class="rng"></span></div><div class="lp-find" role="status">${I.search}<span class="q"></span><span class="m"></span></div><div class="lp-ctl"></div></div>
-      <div class="lp-prog" role="slider" tabindex="0" aria-label="Replay position" aria-valuemin="0" hidden><i></i></div>
-      <div class="lp-banner" hidden>${I.info}<span></span></div>
-      <div class="lp-view" style="${this.opts.height ? `--lp-h:${this.opts.height}px` : ""}"><div class="lp-code" tabindex="0" aria-label="Code"><div class="lp-lines"></div><div class="lp-cursor" aria-hidden="true">${POINTER}<span class="tag"></span></div></div><div class="lp-home" hidden></div><div class="lp-msg" hidden></div></div>
-      <div class="lp-say" aria-live="polite"><span class="ic">${I.eye}</span><span class="t"></span><span class="tm"></span></div>
+    this.host.innerHTML = `<div class="lp" data-frame="${this.frame}" data-active="0" role="region" aria-label="Agent session">
+      <div class="lp-stage"></div>
+      <div class="lp-deck">
+        <div class="lp-say" aria-live="polite"><span class="lp-state" data-s="idle"><i></i><span>Loading</span></span><span class="t"></span><span class="tm"></span></div>
+        <div class="lp-prog" role="slider" tabindex="0" aria-label="Replay position" aria-valuemin="0" hidden><i></i></div>
+        <div class="lp-ctlrow"><div class="lp-banner" hidden></div><div class="lp-ctl"></div></div>
+      </div>
       <div class="lp-run"></div>
     </div>${this.opts.list === false || this.opts.session ? "" : '<div class="lp-list" aria-label="Sessions"></div>'}`;
     this.root = this.host.querySelector(".lp")!;
+    const fit = document.createElement("div");
+    fit.className = "lp-fit";
+    fit.innerHTML = `<div class="cr" data-scheme="light">
+      <div class="cr-strip"><span class="cr-lights" aria-hidden="true"><i></i><i></i><i></i></span><div class="cr-tabs" role="tablist" aria-label="Tabs"></div><span class="cr-ib cr-tsearch" aria-hidden="true">${C.chevron}</span></div>
+      <div class="cr-tool"><span class="cr-ib" aria-hidden="true">${C.back}</span><span class="cr-ib off" aria-hidden="true">${C.fwd}</span><span class="cr-ib" aria-hidden="true">${C.reload}</span>
+        <div class="cr-omni" role="status" aria-label="Address"><span class="cr-site">${C.tune}</span><span class="cr-url"></span><span class="cr-star" aria-hidden="true">${C.star}</span></div>
+        <span class="cr-ib" aria-hidden="true">${C.puzzle}</span><span class="cr-avatar" aria-hidden="true"></span><span class="cr-ib" aria-hidden="true">${C.kebab}</span></div>
+      <div class="cr-page"><div class="cr-doc"></div></div>
+      <div class="cr-cursor" aria-hidden="true" data-on="0"></div>
+    </div>`;
+    this.win = fit.querySelector(".cr")!;
+    const stage = this.q(".lp-stage");
+    if (this.frame === "device") {
+      this.device = mountDevice(stage, { screen: fit, glass: "clear", lights: PHASES.length });
+    } else stage.appendChild(fit);
     this.root.addEventListener("click", (ev) => this.onClick(ev));
     this.host.addEventListener("click", (ev) => {
       const b = (ev.target as HTMLElement).closest<HTMLElement>("[data-sess]");
@@ -289,6 +322,19 @@ class Panel {
       if (ev.key === "ArrowRight") void this.seek(Math.min(this.events.length, this.idx + 5));
       else if (ev.key === "ArrowLeft") void this.seek(Math.max(0, this.idx - 5));
     });
+    this.layout();
+    this.theme();
+    if (typeof ResizeObserver === "function") {
+      this.ro = new ResizeObserver(() => this.layout());
+      this.ro.observe(stage);
+    }
+    if (typeof MutationObserver === "function") {
+      this.mo = new MutationObserver(() => this.theme());
+      this.mo.observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme", "class"] });
+      const shadowHost = (this.io.styleRoot as ShadowRoot).host;
+      if (shadowHost) this.mo.observe(shadowHost, { attributes: true, attributeFilter: ["scheme"] });
+    }
+    if (typeof matchMedia === "function") matchMedia("(prefers-color-scheme: dark)").addEventListener?.("change", () => this.theme());
     this.connect();
     this.poll = setInterval(() => {
       if (!this.host.isConnected) return this.destroy();
@@ -307,7 +353,34 @@ class Panel {
     this.dead = true;
     this.gen++;
     this.es?.close();
+    this.ro?.disconnect();
+    this.mo?.disconnect();
     if (this.poll) clearInterval(this.poll);
+  }
+
+  /** Sizes the window: laid out at least MIN_W wide and scaled down to the space it has. */
+  private layout() {
+    const fit = this.win.parentElement as HTMLElement;
+    const avail = Math.max(1, (this.frame === "device" ? (this.device?.screen ?? fit) : this.q(".lp-stage")).clientWidth || fit.clientWidth || 640);
+    const w = Math.max(avail, MIN_W);
+    const k = avail / w;
+    const narrow = typeof matchMedia === "function" && matchMedia("(max-width: 760px)").matches;
+    // the machine's screen keeps a fixed shape (about 4:3 on a wide page, a little taller when narrow)
+    const h = this.frame === "device" ? Math.round(w * (narrow ? 0.86 : 0.7)) : 84 + (this.opts.height ?? (narrow ? 360 : 440)) / (narrow ? k : 1);
+    this.scale = k;
+    this.win.style.width = `${w}px`;
+    this.win.style.height = `${Math.round(h)}px`;
+    this.win.style.transform = k < 1 ? `scale(${k})` : "";
+    fit.style.height = `${Math.round(h * k)}px`;
+  }
+
+  /** Light or dark, from the text color the panel inherits (the dashboard theme or the embed's scheme). */
+  private theme() {
+    const c = getComputedStyle(this.host).color;
+    const m = /rgba?\(([^)]+)\)/.exec(c);
+    const [r, g, b] = (m?.[1] ?? "0,0,0").split(/[\s,/]+/).map(Number) as [number, number, number];
+    const lum = (0.2126 * r + 0.7152 * g + 0.0722 * b) / 255;
+    this.win.dataset.scheme = lum > 0.5 ? "dark" : "light";
   }
 
   private listQuery() {
@@ -325,7 +398,7 @@ class Panel {
       this.setState("idle", "No sessions");
       this.message(
         this.opts.agent
-          ? "<b>This agent has no authoring session yet.</b> The panel goes live as soon as it starts working on a lineage."
+          ? "<b>This agent has no authoring session yet.</b> The window goes live as soon as it starts working on a lineage."
           : "<b>No authoring sessions yet.</b> A session appears here as soon as an agent starts working.",
       );
       this.renderList();
@@ -395,7 +468,7 @@ class Panel {
         if (summary.state === "final" && summary.candidate && !this.network) void this.loadNetwork();
         this.renderState();
         this.renderRun();
-        this.renderHome();
+        if (this.active === HOME) this.renderDoc();
       } catch {
         /* keep the last good state; the next poll retries */
       } finally {
@@ -485,14 +558,22 @@ class Panel {
   private reset() {
     this.idx = 0;
     this.files.clear();
-    this.tabs = [];
+    this.tabs = [HOME];
     this.active = HOME;
+    this.loading = null;
+    this.omni = null;
+    this.findText = null;
+    this.ring = null;
     this.hl = null;
+    this.sel = null;
     this.typing = null;
-    this.cursorAt = null;
     this.runs = [];
     this.say = null;
     this.search = null;
+    this.listing = null;
+    this.cur.on = false;
+    this.drawCursor();
+    this.device?.setLights([]);
   }
 
   private play() {
@@ -509,6 +590,13 @@ class Panel {
     this.renderState();
   }
 
+  /** How much faster than real time animations run: the replay speed, or catch-up in live mode. */
+  private pace() {
+    if (this.mode !== "live") return this.speed;
+    const backlog = this.events.length - this.idx;
+    return backlog > 20 ? 6 : backlog > 6 ? 2.5 : 1;
+  }
+
   private async pump(g: number) {
     while (!this.dead && g === this.gen && this.playing && this.idx < this.events.length) {
       const e = this.events[this.idx++]!;
@@ -517,14 +605,14 @@ class Panel {
       this.renderProgress();
       const next = this.events[this.idx];
       // replay keeps the session's rhythm with idle gaps compressed; live catches up when behind
-      const backlog = this.events.length - this.idx;
       const gap = next ? Math.min(Math.max(next.at - e.at, 120), 1600) : 0;
-      const pace = this.mode === "live" ? (backlog > 20 ? 6 : backlog > 6 ? 2.5 : 1) : this.speed;
-      await this.wait(this.mode === "live" ? Math.min(gap, 600) / pace : gap / pace, g);
+      await this.wait(this.mode === "live" ? Math.min(gap, 600) / this.pace() : gap / this.pace(), g);
     }
     if (g !== this.gen || this.dead) return;
     if (this.mode === "replay" && this.idx >= this.events.length) {
       this.playing = false;
+      this.ring = null;
+      this.renderChrome();
       this.renderControls();
     }
     this.renderState();
@@ -543,6 +631,8 @@ class Panel {
       this.idx = i + 1;
     }
     this.renderAll();
+    this.reveal();
+    this.settleCursor();
   }
 
   private async seek(to: number) {
@@ -561,7 +651,6 @@ class Panel {
       f = { path, lines: null, note: null, edited: new Set(), sealed: [], touched: 0 };
       this.files.set(path, f);
     }
-    if (!this.tabs.includes(path)) this.tabs.push(path);
     return f;
   }
 
@@ -579,31 +668,328 @@ class Panel {
     else f.lines = r.text.replace(/\n$/, "").split("\n");
   }
 
+  // ------------------------------------------------------------------------------------------- pointer
+
+  /** One animation frame (real time; the replay speed changes how many frames a motion takes). */
+  private tick(g: number) {
+    return this.wait(1000 / this.fps, g);
+  }
+
+  /** A point on an element, in the window's own coordinates. */
+  private pt(el: Element | null, fx = 0.5, fy = 0.5): Pt | null {
+    if (!el) return null;
+    const w = this.win.getBoundingClientRect();
+    const r = el.getBoundingClientRect();
+    if (!r.width && !r.height) return null;
+    return { x: (r.left - w.left + r.width * fx) / this.scale, y: (r.top - w.top + r.height * fy) / this.scale };
+  }
+
+  private drawCursor(pressed = false) {
+    const el = this.win?.querySelector<HTMLElement>(".cr-cursor");
+    if (!el) return;
+    if (el.dataset.kind !== this.cur.kind) {
+      el.innerHTML = this.cur.kind === "ibeam" ? IBEAM : ARROW;
+      el.dataset.kind = this.cur.kind;
+    }
+    el.dataset.on = this.cur.on ? "1" : "0";
+    el.dataset.pressed = pressed ? "1" : "0";
+    // hot spots: the arrow's tip, the I-beam's middle
+    const [ox, oy] = this.cur.kind === "ibeam" ? [5.5, 10] : [1.5, 1.5];
+    el.style.transform = `translate(${Math.round(this.cur.x - ox)}px, ${Math.round(this.cur.y - oy)}px)`;
+  }
+
+  /** Moves the pointer to p on a bowed, eased path in stepped frames; instant without animation. */
+  private async moveTo(p: Pt | null, kind: CursorKind, anim: boolean, g: number) {
+    if (!p) return;
+    if (!this.cur.on) {
+      // the pointer comes in from where it last rested, or from the lower right of the window
+      this.cur.x = this.cur.x || this.win.clientWidth * 0.82;
+      this.cur.y = this.cur.y || this.win.clientHeight * 0.9;
+      this.cur.on = true;
+    }
+    if (!anim) {
+      Object.assign(this.cur, p, { kind });
+      this.drawCursor();
+      return;
+    }
+    const from = { x: this.cur.x, y: this.cur.y };
+    const bow = ((Math.round(from.x + p.y) % 7) - 3) / 26; // a different, stable curve per move
+    const path = movePath(from, p, moveMs(from, p) / this.pace(), this.fps, bow);
+    for (let i = 0; i < path.length; i++) {
+      Object.assign(this.cur, path[i]!);
+      // the shape changes as it crosses onto text, near the end of the move
+      if (i >= path.length - 2) this.cur.kind = kind;
+      this.drawCursor();
+      await this.tick(g);
+      if (g !== this.gen) return;
+    }
+  }
+
+  private async click(target: HTMLElement | null, anim: boolean, g: number) {
+    if (!anim || !target) return;
+    target.classList.add("pressed");
+    this.drawCursor(true);
+    await this.tick(g);
+    target.classList.remove("pressed");
+    this.drawCursor(false);
+    await this.tick(g);
+  }
+
+  /** Scrolls the page so line n sits about a third down, in stepped frames. */
+  private async scrollToLine(n: number, anim: boolean, g: number) {
+    const page = this.win.querySelector<HTMLElement>(".cr-page")!;
+    const line = page.querySelector<HTMLElement>(`.lp-l[data-n="${n}"]`);
+    if (!line) return;
+    const p = page.getBoundingClientRect();
+    const l = line.getBoundingClientRect();
+    const rel = (l.top - p.top) / this.scale;
+    // already comfortably in view: leave the page where it is
+    if (rel > 40 && rel < page.clientHeight * 0.6) return;
+    const y = rel + page.scrollTop;
+    const top = Math.max(0, Math.min(page.scrollHeight - page.clientHeight, y - page.clientHeight / 3));
+    if (Math.abs(top - page.scrollTop) < 4) return;
+    if (!anim) {
+      page.scrollTop = top;
+      return;
+    }
+    const from = page.scrollTop;
+    const frames = Math.max(2, Math.round((Math.min(700, 260 + Math.abs(top - from) * 0.25) / 1000 / this.pace()) * this.fps));
+    for (let i = 1; i <= frames; i++) {
+      const t = i / frames;
+      page.scrollTop = from + (top - from) * (1 - Math.pow(1 - t, 3));
+      await this.tick(g);
+      if (g !== this.gen) return;
+    }
+  }
+
+  /** Types text into a field with a human rhythm, calling set with each prefix. */
+  private async typeText(text: string, set: (s: string) => void, anim: boolean, g: number, capMs = 1100) {
+    if (!anim) return set(text);
+    let n = 0;
+    for (const k of typingChunks(text, this.fps, capMs / this.pace(), text.length)) {
+      n += k;
+      set(text.slice(0, n));
+      await this.tick(g);
+      if (g !== this.gen) return;
+    }
+  }
+
+  /** Scrolls the open file to what matters in it: the selection, else the first changed or sealed line. */
+  private reveal() {
+    const f = this.files.get(this.active);
+    if (!f?.lines) return;
+    const s = this.sel?.path === f.path ? this.sel : this.hl?.path === f.path ? this.hl : null;
+    const n = s?.start ?? (f.edited.size ? Math.min(...f.edited) : f.sealed[0]?.start);
+    if (n) void this.scrollToLine(n, false, this.gen);
+  }
+
+  /** Where the pointer rests after a jump (seek, live catch-up): on the selection or the hidden. */
+  private settleCursor() {
+    const s = this.sel ?? (this.hl ? { path: this.hl.path, start: this.hl.start, end: this.hl.end } : null);
+    if (s && s.path === this.active) {
+      const p = this.pt(this.win.querySelector(`.lp-l[data-n="${s.start}"] .lp-c`), 0, 0.5);
+      if (p) {
+        Object.assign(this.cur, p, { kind: "ibeam" as CursorKind, on: true });
+        this.drawCursor();
+        return;
+      }
+    }
+    this.cur.on = false;
+    this.drawCursor();
+  }
+
+  // ------------------------------------------------------------------------------------------- browsing
+
+  /**
+   * Brings a tab to the front the way a person does: clicks it if it is open, else opens a new tab
+   * and types the address (or, for a search, types into the site's search field).
+   */
+  private async openTab(id: string, anim: boolean, g: number) {
+    if (this.active === id && this.tabs.includes(id)) return;
+    if (this.tabs.includes(id)) {
+      if (anim) {
+        const tab = this.tabEl(id);
+        this.ring = `tab:${id}`;
+        this.renderTabs();
+        await this.moveTo(this.pt(this.tabEl(id), 0.35, 0.5), "arrow", anim, g);
+        if (g !== this.gen) return;
+        await this.click(this.tabEl(id) ?? tab, anim, g);
+      }
+      this.active = id;
+      this.ring = null;
+      if (anim) this.renderChrome();
+      return;
+    }
+    if (!anim) {
+      this.tabs.push(id);
+      this.active = id;
+      return;
+    }
+    if (id === SEARCH) {
+      // the site's own search field, on a page of the site
+      if (this.active === SANDBOX || this.active === "@new") await this.openTab(HOME, anim, g);
+      if (g !== this.gen) return;
+      const field = this.win.querySelector<HTMLElement>(".gh-find");
+      await this.moveTo(this.pt(field, 0.3, 0.5), "ibeam", anim, g);
+      if (g !== this.gen) return;
+      await this.click(field, anim, g);
+      this.ring = "find";
+      this.findText = "";
+      this.renderDoc();
+      await this.typeText(this.search?.q ?? "", (s) => ((this.findText = s), this.paintFind()), anim, g);
+      if (g !== this.gen) return;
+      await this.tick(g);
+      this.findText = null;
+      this.ring = null;
+      this.tabs.push(id);
+      this.active = id;
+      await this.loadingBeat(id, g);
+      return;
+    }
+    // a new tab, then the address
+    const plus = this.win.querySelector<HTMLElement>(".cr-new");
+    await this.moveTo(this.pt(plus), "arrow", anim, g);
+    if (g !== this.gen) return;
+    await this.click(plus, anim, g);
+    this.tabs.push("@new");
+    this.active = "@new";
+    this.ring = "omni";
+    this.omni = { text: "", caret: true };
+    this.renderChrome();
+    const place = this.placeOf(id);
+    const addr = addressOf(this.summary?.repo ?? null, this.summary?.commit ?? "", place);
+    await this.typeText(`${addr.host}${addr.rest}`, (s) => ((this.omni = { text: s, caret: true }), this.renderOmni()), anim, g, 850);
+    if (g !== this.gen) return;
+    await this.tick(g);
+    this.tabs[this.tabs.indexOf("@new")] = id;
+    this.active = id;
+    this.omni = null;
+    this.ring = null;
+    await this.loadingBeat(id, g);
+  }
+
+  /** The spinner in the tab for a moment while the page "loads". */
+  private async loadingBeat(id: string, g: number) {
+    this.loading = id;
+    this.renderChrome();
+    for (let i = 0; i < Math.max(2, Math.round((0.32 / this.pace()) * this.fps)); i++) {
+      await this.tick(g);
+      if (g !== this.gen) return;
+    }
+    this.loading = null;
+    this.renderChrome();
+  }
+
+  /** Drag-selects lines a to b of the active file with the I-beam, extending the selection frame by frame. */
+  private async dragSelect(path: string, a: number, b: number, anim: boolean, g: number) {
+    if (!anim) {
+      this.sel = { path, start: a, end: b };
+      return;
+    }
+    await this.scrollToLine(a, anim, g);
+    if (g !== this.gen) return;
+    const startEl = this.win.querySelector(`.lp-l[data-n="${a}"] .lp-c`);
+    await this.moveTo(this.pt(startEl, 0, 0.5), "ibeam", anim, g);
+    if (g !== this.gen) return;
+    this.ring = "code";
+    // drag over the lines that fit on the page; a longer range finishes as the page auto-scrolls
+    const page = this.win.querySelector<HTMLElement>(".cr-page")!;
+    const lh = this.win.querySelector<HTMLElement>(".lp-l")?.offsetHeight || 20;
+    const fits = Math.max(1, Math.floor(page.clientHeight / lh) - 6);
+    const last = Math.min(b, a + fits);
+    const frames = Math.max(2, Math.round((Math.min(900, 180 + (last - a) * 35) / 1000 / this.pace()) * this.fps));
+    const startPt = { x: this.cur.x, y: this.cur.y };
+    for (let i = 1; i <= frames; i++) {
+      const t = 1 - Math.pow(1 - i / frames, 2);
+      const n = Math.round(a + (last - a) * t);
+      this.sel = { path, start: a, end: n };
+      this.paintMarks();
+      const endEl = this.win.querySelector(`.lp-l[data-n="${n}"] .lp-c`);
+      const p = this.pt(endEl, 1, 0.5);
+      if (p) {
+        this.cur.x = startPt.x + (Math.min(p.x, startPt.x + 420) - startPt.x) * t;
+        this.cur.y = p.y;
+        this.drawCursor(true);
+      }
+      await this.tick(g);
+      if (g !== this.gen) return;
+    }
+    this.sel = { path, start: a, end: b };
+    this.drawCursor(false);
+    this.paintMarks();
+  }
+
+  private placeOf(id: string): Place {
+    if (id === HOME) return { kind: "home" };
+    if (id === "@new") return { kind: "new" };
+    if (id === SEARCH) return { kind: "search", q: this.search?.q ?? "" };
+    if (id === SANDBOX) return { kind: "sandbox", run: Math.max(1, this.runs.length) };
+    const h = this.sel && this.sel.path === id ? this.sel : this.hl && this.hl.path === id ? this.hl : null;
+    return { kind: "file", path: id, start: h?.start, end: h?.end };
+  }
+
+  // ------------------------------------------------------------------------------------------- events
+
   private async apply(e: SEv, animate: boolean, g: number) {
     const anim = animate && !this.reduced;
-    const slow = (ms: number) => (animate ? this.wait(ms / (this.mode === "live" ? 1 : this.speed), g) : Promise.resolve());
-    if (e.kind !== "search") this.search = null;
+    const slow = (ms: number) => (animate ? this.wait(ms / this.pace(), g) : Promise.resolve());
     const sayAt = e.at;
+    const show = () => animate && this.renderAll();
     switch (e.kind) {
       case "list":
-        this.say = { icon: I.list, at: sayAt, html: `Listed <b>${esc(e.count ?? 0)}</b> files under <b>${esc(e.path === "." ? "the repository root" : e.path)}</b>` };
+        this.listing = { path: e.path ?? ".", count: e.count ?? 0 };
+        this.say = { at: sayAt, html: `Listed <b>${esc(e.count ?? 0)}</b> files under <b>${esc(e.path === "." ? "the repository root" : e.path)}</b>` };
         if (animate) this.renderSay();
+        await this.openTab(HOME, anim, g);
+        if (g !== this.gen) return;
+        show();
+        if (anim) await this.moveTo(this.pt(this.win.querySelector(".gh-files"), 0.4, 0.3), "arrow", anim, g);
+        await slow(400);
         return;
       case "search":
         this.search = { q: e.query ?? "", m: e.matches };
-        this.say = { icon: I.search, at: sayAt, html: `Searched the repository for <b>${esc(e.query)}</b>${e.matches !== undefined ? `, ${esc(e.matches)} matching lines` : ""}` };
-        if (animate) (this.renderBar(), this.renderSay(), await slow(500));
+        this.say = { at: sayAt, html: `Searched the repository for <b>${esc(e.query)}</b>${e.matches !== undefined ? `, ${esc(e.matches)} matching lines` : ""}` };
+        if (animate) this.renderSay();
+        if (this.tabs.includes(SEARCH) && anim) {
+          // a new query in the open results page's own search field
+          await this.openTab(SEARCH, anim, g);
+          if (g !== this.gen) return;
+          const field = this.win.querySelector<HTMLElement>(".gh-find");
+          await this.moveTo(this.pt(field, 0.3, 0.5), "ibeam", anim, g);
+          await this.click(field, anim, g);
+          this.ring = "find";
+          this.findText = "";
+          this.paintFind();
+          await this.typeText(e.query ?? "", (s) => ((this.findText = s), this.paintFind()), anim, g);
+          if (g !== this.gen) return;
+          this.findText = null;
+          this.ring = null;
+          await this.loadingBeat(SEARCH, g);
+        } else await this.openTab(SEARCH, anim, g);
+        if (g !== this.gen) return;
+        show();
+        await slow(600);
         return;
       case "read": {
         const f = this.file(e.path!);
         f.touched++;
         await this.loadFile(f, false);
         if (g !== this.gen) return;
-        this.active = f.path;
-        this.hl = { path: f.path, start: e.start_line ?? 1, end: e.end_line ?? e.start_line ?? 1, cls: "hl" };
-        this.cursorAt = { path: f.path, line: e.start_line ?? 1 };
-        this.say = { icon: I.eye, at: sayAt, html: `Reading <b>${esc(e.path)}</b>${range(e) ? `, ${esc(range(e))}` : ""}` };
-        if (animate) (this.renderAll(), await slow(700));
+        this.say = { at: sayAt, html: `Reading <b>${esc(e.path)}</b>${range(e) ? `, ${esc(range(e))}` : ""}` };
+        if (animate) this.renderSay();
+        this.sel = null;
+        this.hl = null;
+        await this.openTab(f.path, anim, g);
+        if (g !== this.gen) return;
+        const a = e.start_line ?? 1;
+        const b = e.end_line ?? a;
+        show();
+        if (f.lines) await this.dragSelect(f.path, a, b, anim, g);
+        if (g !== this.gen) return;
+        this.hl = { path: f.path, start: a, end: b, cls: "hl" };
+        if (animate) (this.renderOmni(), this.renderTabs(), this.paintMarks());
+        if (this.reduced && animate) this.settleCursor();
+        await slow(650);
         return;
       }
       case "edit":
@@ -613,33 +999,52 @@ class Panel {
         f.touched++;
         await this.loadFile(f, e.kind !== "edit");
         if (g !== this.gen) return;
-        this.active = f.path;
         const start = e.start_line ?? 1;
         const label = e.kind === "patch" ? (e.label ?? "Applying a patch") : e.kind === "write" ? "Writing" : "Editing";
+        this.sel = null;
+        this.hl = null;
         if (e.after === undefined) {
           // sealed: the range is public, the text is not
           const end = e.end_line ?? start;
+          this.say = { at: sayAt, html: `${esc(label)} <b>${esc(e.path)}</b>${range(e) ? `, ${esc(range(e))}` : ""}. The new text is sealed until the candidate is final` };
+          if (animate) this.renderSay();
+          await this.openTab(f.path, anim, g);
+          if (g !== this.gen) return;
+          show();
+          if (f.lines) await this.dragSelect(f.path, start, end, anim, g);
+          if (g !== this.gen) return;
           f.sealed.push({ start, end });
+          this.sel = null;
           this.hl = { path: f.path, start, end, cls: "sealed" };
-          this.cursorAt = { path: f.path, line: start };
-          this.say = { icon: I.lock, at: sayAt, html: `${esc(label)} <b>${esc(e.path)}</b>${range(e) ? `, ${esc(range(e))}` : ""}. New text sealed until the candidate is final` };
-          if (animate) (this.renderAll(), await slow(800));
+          if (animate) (this.renderTabs(), this.renderDoc());
+          if (this.reduced && animate) this.settleCursor();
+          await slow(800);
           return;
         }
-        this.say = { icon: I.pen, at: sayAt, html: `${esc(label)} <b>${esc(e.path)}</b>${range(e) ? `, ${esc(range(e))}` : ""}${e.truncated ? " (text truncated by the worker)" : ""}` };
+        this.say = { at: sayAt, html: `${esc(label)} <b>${esc(e.path)}</b>${range(e) ? `, ${esc(range(e))}` : ""}${e.truncated ? " (text truncated by the worker)" : ""}` };
+        if (animate) this.renderSay();
+        await this.openTab(f.path, anim, g);
+        if (g !== this.gen) return;
+        if (animate) show();
         await this.edit(f, e, anim, animate, g);
         return;
       }
       case "evaluate":
         this.runs.push({ target: e.target ?? "", kind: e.eval_kind ?? null, at: e.at, phases: [], outcome: null, sealed: false, output: null, steps: undefined, done: false });
-        this.say = { icon: I.scale, at: sayAt, html: `Measuring the change in the sandbox${e.target ? `, target <b>${esc(e.target)}</b>` : ""}` };
-        if (animate) (this.renderRun(), this.renderSay(), await slow(400));
+        this.say = { at: sayAt, html: `Measuring the change in the sandbox${e.target ? `, target <b>${esc(e.target)}</b>` : ""}` };
+        this.lights();
+        if (animate) (this.renderSay(), this.renderRun());
+        await this.openTab(SANDBOX, anim, g);
+        if (g !== this.gen) return;
+        show();
+        await slow(400);
         return;
       case "phase": {
         const r = this.runs.at(-1);
         if (r) r.phases.push({ phase: e.phase!, at: e.at });
-        this.say = { icon: I.scale, at: sayAt, html: `Sandbox: <b>${esc(e.phase)}</b>` };
-        if (animate) (this.renderRun(), this.renderSay(), await slow(250));
+        this.say = { at: sayAt, html: `Sandbox: <b>${esc(e.phase)}</b>` };
+        this.lights();
+        if (animate) (this.renderRun(), this.renderSay(), this.active === SANDBOX && this.renderDoc(), await slow(250));
         return;
       }
       case "result": {
@@ -651,32 +1056,39 @@ class Panel {
           r.output = e.output ?? null;
           r.steps = e.steps;
         }
-        this.say = { icon: I.scale, at: sayAt, html: e.sealed ? "Sandbox run finished. Its output is sealed until the candidate is final" : `Sandbox run finished: <b>${esc(e.outcome ?? "done")}</b>` };
-        if (animate) (this.renderRun(), this.renderSay(), await slow(500));
+        this.say = { at: sayAt, html: e.sealed ? "Sandbox run finished. Its output is sealed until the candidate is final" : `Sandbox run finished: <b>${esc(e.outcome ?? "done")}</b>` };
+        this.lights();
+        if (animate) (this.renderRun(), this.renderSay(), this.active === SANDBOX && this.renderDoc(), await slow(500));
         return;
       }
       case "note":
         if (e.text) {
-          this.say = { icon: I.chat, at: sayAt, html: `<q>${esc(e.text.replace(/\s+/g, " ").slice(0, 400))}</q>` };
+          this.say = { at: sayAt, html: `<q>${esc(e.text.replace(/\s+/g, " ").slice(0, 400))}</q>` };
           if (animate) (this.renderSay(), await slow(Math.min(2200, 500 + e.text.length * 8)));
         }
         return;
       case "submit":
-        this.say = { icon: I.check, at: sayAt, html: `Submitted the change as a candidate${e.reason ? `: <q>${esc(e.reason.slice(0, 300))}</q>` : ""}` };
+        this.say = { at: sayAt, html: `Submitted the change as a candidate${e.reason ? `: <q>${esc(e.reason.slice(0, 300))}</q>` : ""}` };
         if (animate) this.renderSay();
         return;
       case "give_up":
-        this.say = { icon: I.x, at: sayAt, html: `Stopped without submitting${e.reason ? `: <q>${esc(e.reason.slice(0, 300))}</q>` : ""}` };
+        this.say = { at: sayAt, html: `Stopped without submitting${e.reason ? `: <q>${esc(e.reason.slice(0, 300))}</q>` : ""}` };
         if (animate) this.renderSay();
         return;
     }
   }
 
-  /** Applies an open edit to the file, typing the new text in when animating. */
+  /** The machine's indicator lights: the sandbox phases the current run has reached. */
+  private lights() {
+    const r = this.runs.at(-1);
+    const seen = new Set(r?.phases.map((p) => p.phase) ?? []);
+    this.device?.setLights(r ? PHASES.map((p) => seen.has(p) || (r.done && !r.sealed && r.outcome === "accepted")) : []);
+  }
+
+  /** Applies an open edit to the file, selecting the old text and typing the new text in when animating. */
   private async edit(f: FileState, e: SEv, anim: boolean, animate: boolean, g: number) {
     if (!f.lines) f.lines = f.note ? null : [];
     if (!f.lines) {
-      this.cursorAt = { path: f.path, line: e.start_line ?? 1 };
       if (animate) this.renderAll();
       return;
     }
@@ -712,24 +1124,34 @@ class Panel {
     const newRegion = (prefix + after + suffix).split("\n");
     const replaceWith = e.kind !== "edit" && after === "" && (e.lines_after ?? 0) === 0 ? [] : newRegion;
     if (anim) {
+      // select what goes, then type over it
+      if (oldCount && at <= lines.length) await this.dragSelect(f.path, at, Math.min(lines.length, at + oldCount - 1), anim, g);
+      else await this.scrollToLine(Math.min(at, Math.max(1, lines.length)), anim, g);
+      if (g !== this.gen) return;
+      this.sel = null;
       this.hl = { path: f.path, start: at, end: at + Math.max(oldCount, 1) - 1, cls: "del" };
-      this.cursorAt = { path: f.path, line: at };
-      this.renderAll();
-      await this.wait(oldCount ? 420 / (this.mode === "live" ? 1 : this.speed) : 120, g);
+      this.paintMarks();
+      await this.wait(oldCount ? 300 / this.pace() : 80, g);
       if (g !== this.gen) return;
       this.hl = null;
-      // type the new text in, in chunks, at most about 2.4 s per edit at 1x
-      const total = after.length;
-      const frames = Math.max(1, Math.min(60, Math.ceil(total / 3)));
-      for (let k = 1; k <= frames; k++) {
-        const n = Math.round((total * k) / frames);
-        this.typing = { path: f.path, at, lines: (prefix + after.slice(0, n)).split("\n"), oldCount };
-        this.cursorAt = { path: f.path, line: at + this.typing.lines.length - 1, caret: true };
-        this.renderCode();
-        await this.wait(Math.min(40, 2400 / frames) / (this.mode === "live" ? 1 : this.speed), g);
-        if (g !== this.gen) return;
-      }
+      // the pointer hides while typing, as it does on a desktop
+      this.cur.on = false;
+      this.drawCursor();
+      this.ring = "code";
+      await this.typeText(
+        after,
+        (s) => {
+          this.typing = { path: f.path, at, lines: (prefix + s).split("\n"), oldCount };
+          this.renderDoc();
+          this.keepCaretInView();
+        },
+        anim,
+        g,
+        2600,
+      );
+      if (g !== this.gen) return;
       this.typing = null;
+      this.ring = null;
     }
     const oldRegion = lines.slice(at - 1, at - 1 + oldCount);
     lines.splice(at - 1, oldCount, ...replaceWith);
@@ -744,8 +1166,25 @@ class Panel {
     while (suf < oldRegion.length - pre && suf < replaceWith.length - pre && oldRegion[oldRegion.length - 1 - suf] === replaceWith[replaceWith.length - 1 - suf]) suf++;
     for (let n = at + pre; n < at + replaceWith.length - suf; n++) f.edited.add(n);
     if (pre + suf >= replaceWith.length && oldRegion.length > replaceWith.length) f.edited.add(Math.min(at + pre, Math.max(1, lines.length)));
-    this.cursorAt = { path: f.path, line: Math.max(1, at + pre, at + replaceWith.length - 1 - suf) };
-    if (animate) this.renderAll();
+    if (animate) {
+      this.renderAll();
+      if (this.reduced) await this.scrollToLine(at, false, g);
+    }
+  }
+
+  private keepCaretInView() {
+    const caret = this.win.querySelector<HTMLElement>(".lp-caret");
+    const page = this.win.querySelector<HTMLElement>(".cr-page")!;
+    if (!caret) return;
+    const c = caret.getBoundingClientRect();
+    const p = page.getBoundingClientRect();
+    const y = (c.top - p.top) / this.scale;
+    if (y > page.clientHeight - 60) page.scrollTop += y - page.clientHeight + 120;
+    const code = caret.closest<HTMLElement>(".gh-code");
+    if (code) {
+      const cx = (c.left - code.getBoundingClientRect().left) / this.scale;
+      if (cx > code.clientWidth - 40) code.scrollLeft += cx - code.clientWidth + 120;
+    }
   }
 
   // ------------------------------------------------------------------------------------------- view
@@ -753,11 +1192,11 @@ class Panel {
   private onClick(ev: Event) {
     const t = ev.target as HTMLElement;
     const tab = t.closest<HTMLElement>("[data-tab]");
-    if (tab) {
+    if (tab && this.tabs.includes(tab.dataset.tab!)) {
       this.active = tab.dataset.tab!;
-      this.renderTabs();
-      this.renderCode();
-      this.renderBar();
+      this.renderChrome();
+      this.reveal();
+      this.settleCursor();
       return;
     }
     const act = t.closest<HTMLElement>("[data-act]")?.dataset.act;
@@ -778,20 +1217,24 @@ class Panel {
   }
 
   private message(h: string | null) {
-    const m = this.q(".lp-msg");
-    m.hidden = !h;
-    m.innerHTML = h ? `<div>${h}</div>` : "";
+    if (!h) return;
+    this.win.querySelector(".cr-doc")!.innerHTML = `<div class="pg-msg"><div>${h}</div></div>`;
   }
 
   private renderAll() {
     this.renderState();
-    this.renderTabs();
-    this.renderBar();
+    this.renderChrome();
     this.renderControls();
     this.renderProgress();
-    this.renderCode();
     this.renderSay();
     this.renderRun();
+  }
+
+  /** The window: tabs, toolbar and the page. */
+  private renderChrome() {
+    this.renderTabs();
+    this.renderOmni();
+    this.renderDoc();
   }
 
   private setState(s: string, text: string) {
@@ -810,47 +1253,243 @@ class Panel {
     let text = "";
     if (this.unsealedNote) text = s.state === "final" ? "The candidate is final, so its edits are public. Replaying the session with them." : "The attempt ended without a candidate, so its edits are public. Replaying the session with them.";
     else if (!s.open && s.state === "sealed") text = "This session committed a candidate that is still being replayed. Its edits stay sealed until the verdict.";
-    else if (!s.open && s.state === "live") text = "Live: reads, searches, edited line ranges and sandbox phases show as they happen. Edit text is sealed until the attempt's candidate is final.";
+    else if (!s.open && s.state === "live") text = "Reads, searches, edited line ranges and sandbox phases show as they happen. Edit text is sealed until the attempt's candidate is final.";
     banner.hidden = !text;
-    banner.querySelector("span")!.textContent = text;
+    banner.textContent = text;
+    const av = this.win.querySelector<HTMLElement>(".cr-avatar")!;
+    av.textContent = who(s.proposer).slice(0, 1).toUpperCase();
+    av.title = who(s.proposer);
+  }
+
+  private tabEl(id: string) {
+    return this.win.querySelector<HTMLElement>(`.cr-tab[data-tab="${CSS.escape(id)}"]`);
   }
 
   private renderTabs() {
     const s = this.summary;
-    const row = this.q(".lp-tabrow");
-    const tab = (id: string, label: string, icon: string, extra = "") =>
-      `<button type="button" class="lp-tab" role="tab" data-tab="${esc(id)}" aria-selected="${this.active === id}" title="${esc(id === HOME ? repoLabel(s?.repo ?? null) : id)}">${icon}<span class="n">${esc(label)}</span>${extra}</button>`;
-    row.innerHTML =
-      tab(HOME, s ? `${repoLabel(s.repo).split("/").pop()} @ gen ${s.height ?? "?"}` : "repository", I.branch) +
-      this.tabs
-        .map((p) => {
-          const f = this.files.get(p)!;
-          const mark = f.sealed.length ? `<span style="color:var(--lp-o-ink);display:inline-flex">${I.lock}</span>` : f.edited.size ? '<span class="dot" title="edited"></span>' : "";
-          return tab(p, base(p), I.file, mark);
-        })
-        .join("");
-    row.querySelector<HTMLElement>('[aria-selected="true"]')?.scrollIntoView({ block: "nearest", inline: "nearest" });
+    const row = this.win.querySelector<HTMLElement>(".cr-tabs")!;
+    const host = repoParts(s?.repo ?? null).host;
+    const parts: string[] = [];
+    this.tabs.forEach((id, i) => {
+      const place = this.placeOf(id);
+      const title = s ? titleOf(s.repo, s.commit, place) : "Loading";
+      const sel = id === this.active;
+      const prevSel = this.tabs[i - 1] === this.active;
+      if (i > 0 && !sel && !prevSel) parts.push('<span class="cr-sep" aria-hidden="true"></span>');
+      else if (i > 0) parts.push('<span class="cr-sep off" aria-hidden="true"></span>');
+      const f = this.files.get(id);
+      const mark = f?.sealed.length ? `<span class="cr-mark" title="sealed edits">${C.lock}</span>` : f?.edited.size ? '<span class="cr-dot" title="edited"></span>' : "";
+      const fav = this.loading === id ? '<span class="cr-fav cr-spin" aria-hidden="true"></span>' : favicon(id === SANDBOX ? "sandbox" : id === "@new" ? "new" : "site", host || "r");
+      parts.push(
+        `<button type="button" class="cr-tab${this.ring === `tab:${id}` ? " ring" : ""}" role="tab" data-tab="${esc(id)}" aria-selected="${sel}" title="${esc(title)}">${fav}<span class="cr-t">${esc(id === HOME || id === SEARCH || id === SANDBOX || id === "@new" ? title : base(id))}</span>${mark}<span class="cr-x" aria-hidden="true">${C.close}</span></button>`,
+      );
+    });
+    parts.push(`<span class="cr-ib cr-new" aria-hidden="true">${C.plus}</span>`);
+    row.innerHTML = parts.join("");
+    // narrow tabs keep their close button only on the active one, as the browser does
+    row.dataset.many = this.tabs.length > 4 ? "1" : "0";
   }
 
-  private renderBar() {
+  private renderOmni() {
     const s = this.summary;
-    const addr = this.q(".lp-addr .p");
-    const rng = this.q(".lp-addr .rng");
-    const repo = repoLabel(s?.repo ?? null);
-    if (this.active === HOME) {
-      addr.innerHTML = `<b>${esc(repo)}</b> <span>lineage/${esc(s?.recipe_name ?? "")}</span>`;
-      rng.textContent = "";
-    } else {
-      addr.innerHTML = `${esc(repo)} / <b>${esc(this.active)}</b>`;
-      const h = this.hl && this.hl.path === this.active ? this.hl : null;
-      rng.textContent = h ? (h.end > h.start ? `${h.start} to ${h.end}` : `${h.start}`) : "";
+    const box = this.win.querySelector<HTMLElement>(".cr-omni")!;
+    const url = box.querySelector<HTMLElement>(".cr-url")!;
+    box.classList.toggle("ring", this.ring === "omni");
+    if (this.omni) {
+      box.dataset.edit = "1";
+      url.innerHTML = this.omni.text ? `<span class="h">${esc(this.omni.text)}</span><span class="cr-caret"></span>` : `<span class="cr-caret"></span><span class="ph">Search or type a URL</span>`;
+      return;
     }
-    const find = this.q(".lp-find");
-    find.dataset.on = this.search ? "1" : "0";
-    if (this.search) {
-      find.querySelector(".q")!.textContent = this.search.q;
-      find.querySelector(".m")!.textContent = this.search.m !== undefined ? `${this.search.m} lines` : "";
+    box.dataset.edit = "0";
+    if (!s || this.active === "@new") {
+      url.innerHTML = `<span class="ph">Search or type a URL</span>`;
+      return;
     }
+    const a = addressOf(s.repo, s.commit, this.placeOf(this.active));
+    box.querySelector(".cr-site")!.innerHTML = a.secure ? C.tune : C.term;
+    url.innerHTML = `<span class="h">${esc(a.host)}</span><span class="r">${esc(a.rest)}</span>`;
+  }
+
+  /** The site's search field, repainted alone while the pointer types into it. */
+  private paintFind() {
+    const f = this.win.querySelector<HTMLElement>(".gh-find");
+    if (!f) return;
+    f.classList.toggle("ring", this.ring === "find");
+    const v = this.findText ?? (this.active === SEARCH ? (this.search?.q ?? "") : "");
+    f.querySelector(".v")!.innerHTML = this.findText !== null ? `${esc(v)}<span class="cr-caret"></span>` : v ? esc(v) : `<span class="ph">Type / to search</span>`;
+  }
+
+  /** The page in the active tab. */
+  private renderDoc() {
+    const s = this.summary;
+    const doc = this.win.querySelector<HTMLElement>(".cr-doc")!;
+    const page = this.win.querySelector<HTMLElement>(".cr-page")!;
+    if (!s) return;
+    const key = `${this.active}`;
+    const keepScroll = page.dataset.k === key;
+    const top = page.scrollTop;
+    const codeLeft = doc.querySelector<HTMLElement>(".gh-code")?.scrollLeft ?? 0;
+    page.dataset.k = key;
+    page.dataset.kind = this.active === SANDBOX ? "sandbox" : this.active === "@new" ? "new" : "site";
+    if (this.active === "@new") doc.innerHTML = `<div class="pg-new"></div>`;
+    else if (this.active === SANDBOX) doc.innerHTML = this.sandboxHtml();
+    else if (this.active === SEARCH) doc.innerHTML = this.siteHead() + this.searchHtml();
+    else if (this.active === HOME) doc.innerHTML = this.siteHead() + this.homeHtml();
+    else doc.innerHTML = this.siteHead() + this.fileHtml(this.active);
+    if (keepScroll) page.scrollTop = top;
+    else page.scrollTop = 0;
+    const code = doc.querySelector<HTMLElement>(".gh-code");
+    if (code && keepScroll) code.scrollLeft = codeLeft;
+    this.paintFind();
+    // a file still loading (after a jump): load and redraw
+    const f = this.files.get(this.active);
+    if (f && !f.lines && !f.note) void this.loadFile(f, false).then(() => this.active === f.path && (this.renderDoc(), this.settleCursor()));
+  }
+
+  /** The code host's page header: repository, the search field and the section tabs. */
+  private siteHead() {
+    const s = this.summary!;
+    const r = repoParts(s.repo);
+    const [owner, name] = r.path.includes("/") ? [r.path.slice(0, r.path.lastIndexOf("/")), r.path.slice(r.path.lastIndexOf("/") + 1)] : ["", r.path];
+    return `<header class="gh-top"><span class="gh-menu" aria-hidden="true"><i></i><i></i><i></i></span><span class="gh-repo">${owner ? `<span>${esc(owner)}</span><span class="sl">/</span>` : ""}<b>${esc(name)}</b></span>
+      <span class="gh-find${this.ring === "find" ? " ring" : ""}">${C.search}<span class="v"></span></span></header>
+      <nav class="gh-nav"><span aria-current="page">${C.repo}Code</span><span>Issues</span><span>Pull requests</span><span>Actions</span></nav>`;
+  }
+
+  private homeHtml() {
+    const s = this.summary!;
+    const r = repoParts(s.repo);
+    const kv = (k: string, v: string) => `<div><dt>${esc(k)}</dt><dd>${v}</dd></div>`;
+    const files = this.tabs
+      .filter((p) => this.files.has(p))
+      .map((p) => {
+        const f = this.files.get(p)!;
+        const what = f.sealed.length ? `${f.sealed.length} sealed ${f.sealed.length === 1 ? "edit" : "edits"}` : f.edited.size ? `${f.edited.size} lines changed` : `${f.touched} ${f.touched === 1 ? "read" : "reads"}`;
+        return `<button type="button" class="gh-row" data-tab="${esc(p)}">${C.file}<span class="p">${esc(p)}</span><span class="c">${esc(what)}</span></button>`;
+      })
+      .join("");
+    const agent = s.agent ? `<a ${this.a(`/agents/${s.agent}`)}>${esc(s.agent.slice(0, 6))}...${esc(s.agent.slice(-4))}</a>` : `<span title="Hidden while the session's candidate is open (SPEC 10.7)">withheld</span>`;
+    const listed = this.listing ? `<div class="gh-row gh-note">${C.folder}<span class="p">${esc(this.listing.path === "." ? r.path.split("/").pop() : this.listing.path)}</span><span class="c">${esc(this.listing.count)} files listed by the agent</span></div>` : "";
+    return `<div class="gh-wrap gh-home">
+      <div class="gh-bar"><span class="gh-btn">${C.branch}<b>${esc(s.commit.slice(0, 7))}</b></span><span class="dim">generation ${esc(s.height ?? "?")} of lineage ${esc(s.recipe_name ?? "")}</span></div>
+      <div class="gh-box gh-files"><div class="gh-bh"><span class="gh-av">${esc(who(s.proposer).slice(0, 1))}</span><b>${esc(who(s.proposer))}</b><span class="dim">authoring session, ${esc(this.events.length)} events</span></div>
+        ${listed}${files || (listed ? "" : `<div class="gh-row gh-note"><span class="p dim">No file opened yet.</span></div>`)}</div>
+      <dl class="gh-about">
+        ${kv("Agent", agent)}
+        ${kv("Lineage", `<a ${this.a(`/lineages/${s.lineage_id}`)}>${esc(s.recipe_name ?? s.lineage_id.slice(0, 8))}</a>`)}
+        ${kv("Parent", `<a ${this.a(`/generations/${s.gen_id}`)} title="${esc(s.gen_id)}">gen ${esc(s.height ?? "?")}</a>`)}
+        ${kv("Started", esc(new Date(s.started_at).toLocaleString()))}
+        ${kv("Duration", esc(mmss((s.ended_at ?? s.last_at) - s.started_at)))}
+      </dl></div>`;
+  }
+
+  private fileHtml(path: string) {
+    const s = this.summary!;
+    const f = this.files.get(path);
+    const r = repoParts(s.repo);
+    const segs = path.split("/");
+    const crumbs = `<span>${esc(r.path.split("/").pop())}</span>${segs.map((x, i) => `<span class="sl">/</span>${i === segs.length - 1 ? `<b>${esc(x)}</b>` : `<span>${esc(x)}</span>`}`).join("")}`;
+    let body: string;
+    let count = "";
+    if (!f || (!f.lines && !f.note)) body = `<div class="pg-msg"><div>Loading ${esc(path)}</div></div>`;
+    else if (!f.lines) body = `<div class="pg-msg"><div><b>${esc(f.path)}</b>: ${esc(f.note)}</div></div>`;
+    else {
+      count = `${f.lines.length} lines`;
+      body = `<div class="gh-code${this.ring === "code" ? " ring" : ""}"><div class="lp-lines">${this.linesHtml(f)}</div></div>`;
+    }
+    return `<div class="gh-wrap"><div class="gh-crumbs">${crumbs}</div>
+      <div class="gh-box gh-file"><div class="gh-bh"><span class="gh-seg"><span aria-pressed="true">Code</span><span>Blame</span></span><span class="dim">${esc(count)}</span><span class="sp"></span><span class="gh-btn">Raw</span><span class="gh-btn gh-ico">${C.copy}</span></div>${body}</div></div>`;
+  }
+
+  private linesHtml(f: FileState) {
+    let view = f.lines!.map((t, i) => ({ t, n: i + 1, cls: f.edited.has(i + 1) ? "edited" : "", caret: false }));
+    for (const r of f.sealed) for (let n = r.start; n <= r.end && n <= view.length; n++) view[n - 1]!.cls = "sealed";
+    const ty = this.typing && this.typing.path === f.path ? this.typing : null;
+    if (ty) {
+      const typed = ty.lines.map((t, i) => ({ t, n: ty.at + i, cls: "typing", caret: i === ty.lines.length - 1 }));
+      view = [...view.slice(0, ty.at - 1), ...typed, ...view.slice(ty.at - 1 + ty.oldCount).map((x) => ({ ...x, n: x.n - ty.oldCount + typed.length }))];
+    }
+    const h = this.hl && this.hl.path === f.path ? this.hl : null;
+    const sel = this.sel && this.sel.path === f.path ? this.sel : null;
+    const html: string[] = [];
+    for (const v of view) {
+      let cls = h && v.n >= h.start && v.n <= h.end ? h.cls : v.cls;
+      if (sel && v.n >= sel.start && v.n <= sel.end) cls += " sel";
+      html.push(`<div class="lp-l${cls ? " " + cls.trim() : ""}" data-n="${v.n}"><span class="lp-n">${v.n}</span><span class="lp-c">${lineHtml(v.t, v.caret)}</span></div>`);
+    }
+    if (h && h.cls === "sealed") {
+      // a sealed range past the parent's end still shows
+      for (let n = view.length + 1; n <= Math.min(h.end, view.length + 3); n++) html.push(`<div class="lp-l sealed" data-n="${n}"><span class="lp-n">${n}</span><span class="lp-c"></span></div>`);
+      const i = html.findIndex((x) => x.includes(`data-n="${h.start}"`));
+      if (i >= 0) html[i] = html[i]!.replace(/<\/div>$/, `<span class="lp-seal">${C.lock} sealed until the candidate is final</span></div>`);
+    }
+    return html.join("");
+  }
+
+  /** Repaints only the line marks (selection, highlight) of the open file: cheap enough for every drag frame. */
+  private paintMarks() {
+    const box = this.win.querySelector<HTMLElement>(".lp-lines");
+    const f = this.files.get(this.active);
+    if (!box || !f?.lines) return;
+    const h = this.hl && this.hl.path === f.path ? this.hl : null;
+    const sel = this.sel && this.sel.path === f.path ? this.sel : null;
+    for (const el of box.children as HTMLCollectionOf<HTMLElement>) {
+      const n = Number(el.dataset.n);
+      el.classList.toggle("sel", !!sel && n >= sel.start && n <= sel.end);
+      el.classList.toggle("hl", !!h && h.cls === "hl" && n >= h.start && n <= h.end);
+      el.classList.toggle("del", !!h && h.cls === "del" && n >= h.start && n <= h.end);
+    }
+    this.win.querySelector(".gh-code")?.classList.toggle("ring", this.ring === "code");
+  }
+
+  private searchHtml() {
+    const q = this.search?.q ?? "";
+    // matches in the files this session has opened, so the page shows real lines; the agent's count covers the whole repository
+    let re: RegExp | null = null;
+    try {
+      re = q ? new RegExp(q, "i") : null;
+    } catch {
+      re = null;
+    }
+    const groups: string[] = [];
+    let shown = 0;
+    for (const [path, f] of this.files) {
+      if (!f.lines || shown >= 12) continue;
+      const hits: string[] = [];
+      f.lines.forEach((t, i) => {
+        if (shown >= 12 || !(re ? re.test(t) : t.includes(q))) return;
+        shown++;
+        hits.push(`<div class="lp-l"><span class="lp-n">${i + 1}</span><span class="lp-c">${lineHtml(t)}</span></div>`);
+      });
+      if (hits.length) groups.push(`<div class="gh-box gh-hit"><div class="gh-bh">${C.file}<b>${esc(path)}</b></div><div class="gh-code"><div class="lp-lines">${hits.join("")}</div></div></div>`);
+    }
+    const m = this.search?.m;
+    return `<div class="gh-wrap"><div class="gh-sr"><b>${m !== undefined ? `${esc(m)} matching lines` : "Results"}</b><span class="dim">for ${esc(q)} in this repository</span></div>
+      ${groups.length ? `<div class="dim gh-sub">In the files this session has opened:</div>${groups.join("")}` : `<div class="pg-msg sm"><div>The matching lines are in files this session has not opened.</div></div>`}</div>`;
+  }
+
+  private sandboxHtml() {
+    const runs = this.runs;
+    if (!runs.length) return `<div class="pg-msg"><div>No sandbox run yet.</div></div>`;
+    const r = runs.at(-1)!;
+    const n = runs.length;
+    const rows = PHASES.filter((p) => p !== "equivalence" || r.phases.some((x) => x.phase === p))
+      .map((p) => {
+        const idx = r.phases.findIndex((x) => x.phase === p);
+        const cur = !r.done && r.phases.at(-1)?.phase === p;
+        const st = idx < 0 ? "wait" : cur ? "on" : "done";
+        const ms = phaseMs(r.phases, p);
+        const t = ms !== null ? secs(ms) : "";
+        return `<div class="sb-l" data-s="${st}"><span class="sb-i">${st === "done" ? C.check : st === "on" ? '<i class="sb-spin"></i>' : ""}</span><span class="sb-p">${esc(p)}</span><span class="sb-t">${esc(t)}</span></div>`;
+      })
+      .join("");
+    const out = r.done
+      ? r.sealed
+        ? `<div class="sb-out sealed">${C.lock}<span>Output sealed until the candidate is final</span></div>`
+        : `<div class="sb-res ${r.outcome === "accepted" ? "ok" : "bad"}">${r.outcome === "accepted" ? C.check : C.x}<b>${esc(r.outcome ?? "done")}</b></div>${r.output ? `<pre class="sb-out">${esc(r.output)}</pre>` : ""}`
+      : "";
+    return `<div class="sb"><div class="sb-h"><span class="sb-ic">${C.term}</span><div><b>Sandbox</b><div class="dim">Run ${n}${n > 1 ? ` of ${n}` : ""}, ${esc(r.kind ?? "")} ${esc(r.target)}</div></div></div>
+      <div class="sb-term">${rows}${out}</div></div>`;
   }
 
   private renderControls() {
@@ -861,11 +1500,11 @@ class Panel {
       return;
     }
     if (this.mode === "live") {
-      ctl.innerHTML = `<span class="lp-none">${esc(who(s.proposer))}${s.state === "live" ? ", following live" : ""}</span><button type="button" class="lp-btn" data-act="replay">${I.restart} Replay</button>`;
+      ctl.innerHTML = `<span class="lp-none">${esc(who(s.proposer))}${s.state === "live" ? ", following live" : ""}</span><button type="button" class="lp-btn" data-act="replay">${C.restart} Replay</button>`;
       return;
     }
-    const playBtn = this.playing ? `<button type="button" class="lp-btn" data-act="pause" aria-label="Pause">${I.pause}</button>` : `<button type="button" class="lp-btn" data-act="play" aria-label="Play"${this.idx >= this.events.length && this.events.length ? " disabled title=\"At the end; restart to replay\"" : ""}>${I.play}</button>`;
-    ctl.innerHTML = `${playBtn}<button type="button" class="lp-btn" data-act="restart" aria-label="Restart">${I.restart}</button><span class="lp-seg" role="group" aria-label="Speed">${SPEEDS.map((x) => `<button type="button" data-speed="${x}" aria-pressed="${x === this.speed}">${x}x</button>`).join("")}</span>${s.state === "live" ? `<button type="button" class="lp-btn" data-act="live">${I.live} Live</button>` : ""}`;
+    const playBtn = this.playing ? `<button type="button" class="lp-btn" data-act="pause" aria-label="Pause">${C.pause}</button>` : `<button type="button" class="lp-btn" data-act="play" aria-label="Play"${this.idx >= this.events.length && this.events.length ? ' disabled title="At the end; restart to replay"' : ""}>${C.play}</button>`;
+    ctl.innerHTML = `${playBtn}<button type="button" class="lp-btn" data-act="restart" aria-label="Restart">${C.restart}</button><span class="lp-seg" role="group" aria-label="Speed">${SPEEDS.map((x) => `<button type="button" data-speed="${x}" aria-pressed="${x === this.speed}">${x}x</button>`).join("")}</span>${s.state === "live" ? `<button type="button" class="lp-btn" data-act="live"><i class="lp-livedot"></i> Live</button>` : ""}`;
   }
 
   private renderProgress() {
@@ -882,124 +1521,12 @@ class Panel {
     const say = this.q(".lp-say");
     const s = this.summary;
     if (!this.say || !s) {
-      say.querySelector(".ic")!.innerHTML = I.eye;
       say.querySelector(".t")!.innerHTML = s ? (this.events.length ? "Starting" : s.state === "live" ? "Waiting for the agent's first tool call" : "This session recorded no events") : "";
       say.querySelector(".tm")!.textContent = "";
       return;
     }
-    say.querySelector(".ic")!.innerHTML = this.say.icon;
     say.querySelector(".t")!.innerHTML = this.say.html;
     say.querySelector(".tm")!.textContent = `+${mmss(this.say.at - s.started_at)}`;
-  }
-
-  private renderHome() {
-    const home = this.q(".lp-home");
-    const s = this.summary;
-    if (!s || this.active !== HOME) {
-      home.hidden = true;
-      return;
-    }
-    home.hidden = false;
-    const kv = (k: string, v: string, title = "") => `<div><div class="k">${esc(k)}</div><div class="v"${title ? ` title="${esc(title)}"` : ""}>${v}</div></div>`;
-    const files = this.tabs
-      .map((p) => {
-        const f = this.files.get(p)!;
-        const what = f.sealed.length ? `${f.sealed.length} sealed edits` : f.edited.size ? `${f.edited.size} lines changed` : `${f.touched} reads`;
-        return `<button type="button" data-tab="${esc(p)}">${I.file}<span class="p">${esc(p)}</span><span class="c">${esc(what)}</span></button>`;
-      })
-      .join("");
-    const agent = s.agent ? `<a class="link" ${this.a(`/agents/${s.agent}`)}>${esc(s.agent.slice(0, 6))}...${esc(s.agent.slice(-4))}</a>` : `<span title="Hidden while the session's candidate is open (SPEC 10.7)">withheld</span>`;
-    home.innerHTML = `<h3>${esc(who(s.proposer))} on ${esc(s.recipe_name ?? "lineage")}</h3>
-      <div class="sub">${esc(s.repo ?? "")} at commit ${esc(s.commit.slice(0, 10))}, generation ${esc(s.height ?? "?")}</div>
-      <div class="lp-kv">
-        ${kv("Agent", agent)}
-        ${kv("Lineage", `<a class="link" ${this.a(`/lineages/${s.lineage_id}`)}>${esc(s.recipe_name ?? s.lineage_id.slice(0, 8))}</a>`)}
-        ${kv("Parent", `<a class="link" ${this.a(`/generations/${s.gen_id}`)} title="${esc(s.gen_id)}">gen ${esc(s.height ?? "?")}</a>`)}
-        ${kv("Started", esc(new Date(s.started_at).toLocaleString()))}
-        ${kv("Events", esc(this.events.length))}
-        ${kv("Duration", esc(mmss((s.ended_at ?? s.last_at) - s.started_at)))}
-      </div>
-      ${files ? `<div class="lp-files">${files}</div>` : `<div class="lp-none" style="margin-top:14px">No file opened yet.</div>`}`;
-  }
-
-  private renderCode() {
-    const home = this.q(".lp-home");
-    const code = this.q(".lp-code");
-    const box = this.q(".lp-lines");
-    const cursor = this.q(".lp-cursor");
-    if (!this.summary) return;
-    this.message(null);
-    if (this.active === HOME) {
-      code.hidden = true;
-      this.renderHome();
-      return;
-    }
-    home.hidden = true;
-    code.hidden = false;
-    const f = this.files.get(this.active);
-    if (!f) return;
-    if (!f.lines) {
-      box.innerHTML = "";
-      cursor.dataset.on = "0";
-      if (f.note) this.message(`<b>${esc(f.path)}</b>: ${esc(f.note)}`);
-      else {
-        // apply() without animation skips loading; load now and redraw
-        void this.loadFile(f, false).then(() => this.active === f.path && this.renderCode());
-      }
-      return;
-    }
-    let view = f.lines.map((t, i) => ({ t, n: i + 1, cls: f.edited.has(i + 1) ? "edited" : "", caret: false }));
-    for (const r of f.sealed) for (let n = r.start; n <= r.end && n <= view.length; n++) view[n - 1]!.cls = "sealed";
-    const ty = this.typing && this.typing.path === f.path ? this.typing : null;
-    if (ty) {
-      const typed = ty.lines.map((t, i) => ({ t, n: ty.at + i, cls: "typing", caret: i === ty.lines.length - 1 }));
-      view = [...view.slice(0, ty.at - 1), ...typed, ...view.slice(ty.at - 1 + ty.oldCount).map((x) => ({ ...x, n: x.n - ty.oldCount + typed.length }))];
-    }
-    const h = this.hl && this.hl.path === f.path ? this.hl : null;
-    const html: string[] = [];
-    for (const v of view) {
-      const cls = h && v.n >= h.start && v.n <= h.end ? h.cls : v.cls;
-      html.push(`<div class="lp-l${cls ? " " + cls : ""}" data-n="${v.n}"><span class="lp-n">${v.n}</span><span class="lp-c">${lineHtml(v.t, v.caret)}</span></div>`);
-    }
-    if (h && h.cls === "sealed") {
-      // a sealed range past the parent's end still gets its label
-      for (let n = view.length + 1; n <= Math.min(h.end, view.length + 3); n++) html.push(`<div class="lp-l sealed" data-n="${n}"><span class="lp-n">${n}</span><span class="lp-c"></span></div>`);
-    }
-    box.innerHTML = html.join("");
-    if (h?.cls === "sealed") {
-      const first = box.querySelector<HTMLElement>(`[data-n="${h.start}"]`);
-      if (first) first.insertAdjacentHTML("beforeend", `<span class="lp-seal">${I.lock} edit sealed until the candidate is final</span>`);
-    }
-    this.placeCursor();
-  }
-
-  private placeCursor() {
-    const code = this.q(".lp-code");
-    const cursor = this.q(".lp-cursor");
-    const c = this.cursorAt;
-    const tag = cursor.querySelector(".tag")!;
-    tag.textContent = this.summary ? who(this.summary.proposer) : "";
-    if (!c || c.path !== this.active) {
-      cursor.dataset.on = "0";
-      return;
-    }
-    const line = this.q(".lp-lines").querySelector<HTMLElement>(`[data-n="${c.line}"]`) ?? this.q(".lp-lines").querySelector<HTMLElement>(".lp-l:last-child");
-    if (!line) return;
-    const caret = c.caret ? line.querySelector<HTMLElement>(".lp-caret") : null;
-    const target = caret ?? line.querySelector<HTMLElement>(".lp-c")!;
-    const lr = line.getBoundingClientRect();
-    const tr = target.getBoundingClientRect();
-    const ind = line.querySelector<HTMLElement>(".lp-i")?.getBoundingClientRect().width ?? 0;
-    const x = line.offsetLeft + (tr.left - lr.left) + (caret ? 0 : ind) + 2;
-    const y = line.offsetTop + 4;
-    cursor.style.transform = `translate(${Math.round(x)}px, ${Math.round(y)}px)`;
-    cursor.dataset.on = "1";
-    // keep the line in view, about a third from the top
-    const top = line.offsetTop - code.clientHeight / 3;
-    if (line.offsetTop < code.scrollTop + 30 || line.offsetTop > code.scrollTop + code.clientHeight - 60) code.scrollTo({ top: Math.max(0, top), behavior: this.reduced || c.caret ? "auto" : "smooth" });
-    const left = x - code.clientWidth + 160;
-    if (left > code.scrollLeft) code.scrollLeft = left;
-    else if (x < code.scrollLeft + 40) code.scrollLeft = Math.max(0, x - 80);
   }
 
   private renderRun() {
@@ -1021,15 +1548,14 @@ class Panel {
       const chips = PHASES.filter((p) => p !== "equivalence" || seen.has(p))
         .map((p) => {
           const st = p === cur ? "on" : seen.has(p) ? "done" : "wait";
-          const idx = r.phases.findIndex((x) => x.phase === p);
-          const nextAt = r.phases[idx + 1]?.at;
-          const t = idx >= 0 && nextAt ? ` ${secs(nextAt - r.phases[idx]!.at)}` : "";
-          return `<span data-s="${st}">${st === "done" ? I.check : st === "on" ? "<i></i>" : ""}${p}${esc(t)}</span>`;
+          const ms = phaseMs(r.phases, p);
+          const t = ms !== null ? ` ${secs(ms)}` : "";
+          return `<span data-s="${st}">${st === "done" ? C.check : st === "on" ? "<i></i>" : ""}${p}${esc(t)}</span>`;
         })
         .join("");
       const verdict = r.done
         ? r.sealed
-          ? `<span class="lp-none" style="display:inline-flex;gap:4px;align-items:center">${I.lock} output sealed</span>`
+          ? `<span class="lp-none" style="display:inline-flex;gap:4px;align-items:center">${C.lock} output sealed</span>`
           : `<b class="${r.outcome === "accepted" ? "lp-ok" : "lp-bad"}">${esc(r.outcome ?? "done")}</b>`
         : `<span class="lp-none">running</span>`;
       const key = `run${n}`;

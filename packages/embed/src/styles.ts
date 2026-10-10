@@ -36,15 +36,9 @@ button, input { font: inherit; color: inherit; }
 
 export const SCREEN = `
 .wrap { position: relative; }
-:host([frame="crt"]) .lp, :host([frame="none"]) .lp { border: 0; border-radius: 0; box-shadow: none; }
-:host([frame="crt"]) .lp::before, :host([frame="none"]) .lp::before { display: none; }
-:host([frame="crt"]) .lp-dots, :host([frame="none"]) .lp-dots { display: none; }
-:host([frame="crt"]) .lp-tabs, :host([frame="crt"]) .lp-run, :host([frame="none"]) .lp-tabs, :host([frame="none"]) .lp-run { border-radius: 0; }
-:host([frame="crt"]) .lp { --lp-code: color-mix(in oklab, var(--_bg) 92%, black); }
-:host([frame="crt"]) .scan { position: absolute; inset: 0; pointer-events: none; z-index: 5;
+:host([frame="crt"]) .scan { position: absolute; inset: 0; pointer-events: none; z-index: 30;
   background: repeating-linear-gradient(0deg, rgba(0,0,0,.16) 0 1px, transparent 1px 3px); mix-blend-mode: multiply; }
-:host([compact]) .lp-run, :host([compact]) .lp-banner, :host([compact]) .lp-list, :host([compact]) .lp-prog { display: none; }
-:host([compact]) .lp-say { border-radius: 0 0 11px 11px; }
+:host([compact]) .lp-run, :host([compact]) .lp-banner, :host([compact]) .lp-list, :host([compact]) .lp-prog, :host([compact]) .lp-ctlrow { display: none; }
 `;
 
 export const REEL = `

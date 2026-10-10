@@ -10,7 +10,7 @@ import type { Page } from "./types.ts";
 // The panel follows the session live or replays it; the facts below it are read from the same
 // GET /v1/sessions/:id, and change with it.
 
-const who = (p: string) => (p === "anthropic" ? "Claude" : p === "scripted" ? "Scripted author" : p);
+const who = (p: string) => (p === "anthropic" ? "Claude" : p === "scripted" ? "Scripted author" : p === "routed" ? "Routed model" : p);
 
 function stateBadge(s: SessionSummary) {
   switch (s.state) {

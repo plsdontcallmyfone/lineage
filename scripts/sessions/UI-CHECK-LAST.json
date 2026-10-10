@@ -1,0 +1,642 @@
+{
+  "at": "2026-10-10T02:21:32.073Z",
+  "web": "http://127.0.0.1:9662",
+  "sessions": [
+    "60105fb1a7d809033250f358aed3c4fed1de1f46c65d749d2085206ffb8a8979",
+    "b37d35f497fd79b188041b2e9a971b4305c541a364fcfc55af68414ca5ac9778"
+  ],
+  "passed": 126,
+  "total": 126,
+  "checks": [
+    {
+      "check": "anthropic-60105fb1 1280 light: machine with a browser window",
+      "ok": true,
+      "detail": "device true, 3 window controls, 2 tabs"
+    },
+    {
+      "check": "anthropic-60105fb1 1280 light: window follows the theme",
+      "ok": true,
+      "detail": "light"
+    },
+    {
+      "check": "anthropic-60105fb1 1280 light: pointer is a system arrow or I-beam",
+      "ok": true,
+      "detail": "arrow, rgb(0, 0, 0) #000"
+    },
+    {
+      "check": "anthropic-60105fb1 1280 light: stepped pointer motion (about 12 fps)",
+      "ok": true,
+      "detail": "10 positions in 3 s"
+    },
+    {
+      "check": "anthropic-60105fb1 1280 light: omnibox shows where the agent is looking",
+      "ok": true,
+      "detail": "github.com/karpathy/minbpe/blob/1acefe8/lineage_bench.py#L1-L107"
+    },
+    {
+      "check": "anthropic-60105fb1 1280 light: replay reached the end",
+      "ok": true,
+      "detail": "23/23"
+    },
+    {
+      "check": "anthropic-60105fb1 1280 light: tabs and code rendered",
+      "ok": true,
+      "detail": "7 tabs, 273 lines"
+    },
+    {
+      "check": "anthropic-60105fb1 1280 light: edits typed in (open session)",
+      "ok": true,
+      "detail": "10 edited lines"
+    },
+    {
+      "check": "anthropic-60105fb1 1280 light: runs and verdict under the machine",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "anthropic-60105fb1 1280 light: no horizontal page scroll",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "anthropic-60105fb1 1280 light: no monospace",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "anthropic-60105fb1 1280 light: no console errors",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "anthropic-60105fb1 1280 dark: machine with a browser window",
+      "ok": true,
+      "detail": "device true, 3 window controls, 2 tabs"
+    },
+    {
+      "check": "anthropic-60105fb1 1280 dark: window follows the theme",
+      "ok": true,
+      "detail": "dark"
+    },
+    {
+      "check": "anthropic-60105fb1 1280 dark: pointer is a system arrow or I-beam",
+      "ok": true,
+      "detail": "arrow, rgb(0, 0, 0) #000"
+    },
+    {
+      "check": "anthropic-60105fb1 1280 dark: stepped pointer motion (about 12 fps)",
+      "ok": true,
+      "detail": "10 positions in 3 s"
+    },
+    {
+      "check": "anthropic-60105fb1 1280 dark: omnibox shows where the agent is looking",
+      "ok": true,
+      "detail": "github.com/karpathy/minbpe/blob/1acefe8/lineage_bench.py#L1-L107"
+    },
+    {
+      "check": "anthropic-60105fb1 1280 dark: replay reached the end",
+      "ok": true,
+      "detail": "23/23"
+    },
+    {
+      "check": "anthropic-60105fb1 1280 dark: tabs and code rendered",
+      "ok": true,
+      "detail": "7 tabs, 273 lines"
+    },
+    {
+      "check": "anthropic-60105fb1 1280 dark: edits typed in (open session)",
+      "ok": true,
+      "detail": "10 edited lines"
+    },
+    {
+      "check": "anthropic-60105fb1 1280 dark: runs and verdict under the machine",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "anthropic-60105fb1 1280 dark: no horizontal page scroll",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "anthropic-60105fb1 1280 dark: no monospace",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "anthropic-60105fb1 1280 dark: no console errors",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "anthropic-60105fb1 390 light: machine with a browser window",
+      "ok": true,
+      "detail": "device true, 3 window controls, 2 tabs"
+    },
+    {
+      "check": "anthropic-60105fb1 390 light: window follows the theme",
+      "ok": true,
+      "detail": "light"
+    },
+    {
+      "check": "anthropic-60105fb1 390 light: pointer is a system arrow or I-beam",
+      "ok": true,
+      "detail": "arrow, rgb(0, 0, 0) #000"
+    },
+    {
+      "check": "anthropic-60105fb1 390 light: stepped pointer motion (about 12 fps)",
+      "ok": true,
+      "detail": "10 positions in 3 s"
+    },
+    {
+      "check": "anthropic-60105fb1 390 light: omnibox shows where the agent is looking",
+      "ok": true,
+      "detail": "github.com/karpathy/minbpe/blob/1acefe8/lineage_bench.py#L1-L107"
+    },
+    {
+      "check": "anthropic-60105fb1 390 light: replay reached the end",
+      "ok": true,
+      "detail": "23/23"
+    },
+    {
+      "check": "anthropic-60105fb1 390 light: tabs and code rendered",
+      "ok": true,
+      "detail": "7 tabs, 273 lines"
+    },
+    {
+      "check": "anthropic-60105fb1 390 light: edits typed in (open session)",
+      "ok": true,
+      "detail": "10 edited lines"
+    },
+    {
+      "check": "anthropic-60105fb1 390 light: runs and verdict under the machine",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "anthropic-60105fb1 390 light: no horizontal page scroll",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "anthropic-60105fb1 390 light: no monospace",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "anthropic-60105fb1 390 light: no console errors",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "anthropic-60105fb1 390 dark: machine with a browser window",
+      "ok": true,
+      "detail": "device true, 3 window controls, 2 tabs"
+    },
+    {
+      "check": "anthropic-60105fb1 390 dark: window follows the theme",
+      "ok": true,
+      "detail": "dark"
+    },
+    {
+      "check": "anthropic-60105fb1 390 dark: pointer is a system arrow or I-beam",
+      "ok": true,
+      "detail": "arrow, rgb(0, 0, 0) #000"
+    },
+    {
+      "check": "anthropic-60105fb1 390 dark: stepped pointer motion (about 12 fps)",
+      "ok": true,
+      "detail": "10 positions in 3 s"
+    },
+    {
+      "check": "anthropic-60105fb1 390 dark: omnibox shows where the agent is looking",
+      "ok": true,
+      "detail": "github.com/karpathy/minbpe/blob/1acefe8/lineage_bench.py#L1-L107"
+    },
+    {
+      "check": "anthropic-60105fb1 390 dark: replay reached the end",
+      "ok": true,
+      "detail": "23/23"
+    },
+    {
+      "check": "anthropic-60105fb1 390 dark: tabs and code rendered",
+      "ok": true,
+      "detail": "7 tabs, 273 lines"
+    },
+    {
+      "check": "anthropic-60105fb1 390 dark: edits typed in (open session)",
+      "ok": true,
+      "detail": "10 edited lines"
+    },
+    {
+      "check": "anthropic-60105fb1 390 dark: runs and verdict under the machine",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "anthropic-60105fb1 390 dark: no horizontal page scroll",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "anthropic-60105fb1 390 dark: no monospace",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "anthropic-60105fb1 390 dark: no console errors",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "anthropic-60105fb1 reduced motion: pointer jumps without in-between frames",
+      "ok": true,
+      "detail": "1,1,1,1"
+    },
+    {
+      "check": "anthropic-60105fb1 reduced motion: no blinking or spinning",
+      "ok": true,
+      "detail": "0"
+    },
+    {
+      "check": "anthropic-60105fb1 reduced motion: no console errors",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "routed-b37d35f4 1280 light: machine with a browser window",
+      "ok": true,
+      "detail": "device true, 3 window controls, 2 tabs"
+    },
+    {
+      "check": "routed-b37d35f4 1280 light: window follows the theme",
+      "ok": true,
+      "detail": "light"
+    },
+    {
+      "check": "routed-b37d35f4 1280 light: pointer is a system arrow or I-beam",
+      "ok": true,
+      "detail": "arrow, rgb(0, 0, 0) #000"
+    },
+    {
+      "check": "routed-b37d35f4 1280 light: stepped pointer motion (about 12 fps)",
+      "ok": true,
+      "detail": "10 positions in 3 s"
+    },
+    {
+      "check": "routed-b37d35f4 1280 light: omnibox shows where the agent is looking",
+      "ok": true,
+      "detail": "github.com/karpathy/minbpe/blob/1acefe8/lineage_bench.py#L1-L107"
+    },
+    {
+      "check": "routed-b37d35f4 1280 light: replay reached the end",
+      "ok": true,
+      "detail": "38/38"
+    },
+    {
+      "check": "routed-b37d35f4 1280 light: tabs and code rendered",
+      "ok": true,
+      "detail": "7 tabs, 343 lines"
+    },
+    {
+      "check": "routed-b37d35f4 1280 light: edits typed in (open session)",
+      "ok": true,
+      "detail": "69 edited lines"
+    },
+    {
+      "check": "routed-b37d35f4 1280 light: runs and verdict under the machine",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "routed-b37d35f4 1280 light: no horizontal page scroll",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "routed-b37d35f4 1280 light: no monospace",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "routed-b37d35f4 1280 light: no console errors",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "routed-b37d35f4 1280 dark: machine with a browser window",
+      "ok": true,
+      "detail": "device true, 3 window controls, 2 tabs"
+    },
+    {
+      "check": "routed-b37d35f4 1280 dark: window follows the theme",
+      "ok": true,
+      "detail": "dark"
+    },
+    {
+      "check": "routed-b37d35f4 1280 dark: pointer is a system arrow or I-beam",
+      "ok": true,
+      "detail": "arrow, rgb(0, 0, 0) #000"
+    },
+    {
+      "check": "routed-b37d35f4 1280 dark: stepped pointer motion (about 12 fps)",
+      "ok": true,
+      "detail": "11 positions in 3 s"
+    },
+    {
+      "check": "routed-b37d35f4 1280 dark: omnibox shows where the agent is looking",
+      "ok": true,
+      "detail": "github.com/karpathy/minbpe/blob/1acefe8/lineage_bench.py#L1-L107"
+    },
+    {
+      "check": "routed-b37d35f4 1280 dark: replay reached the end",
+      "ok": true,
+      "detail": "38/38"
+    },
+    {
+      "check": "routed-b37d35f4 1280 dark: tabs and code rendered",
+      "ok": true,
+      "detail": "7 tabs, 343 lines"
+    },
+    {
+      "check": "routed-b37d35f4 1280 dark: edits typed in (open session)",
+      "ok": true,
+      "detail": "69 edited lines"
+    },
+    {
+      "check": "routed-b37d35f4 1280 dark: runs and verdict under the machine",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "routed-b37d35f4 1280 dark: no horizontal page scroll",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "routed-b37d35f4 1280 dark: no monospace",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "routed-b37d35f4 1280 dark: no console errors",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "routed-b37d35f4 390 light: machine with a browser window",
+      "ok": true,
+      "detail": "device true, 3 window controls, 2 tabs"
+    },
+    {
+      "check": "routed-b37d35f4 390 light: window follows the theme",
+      "ok": true,
+      "detail": "light"
+    },
+    {
+      "check": "routed-b37d35f4 390 light: pointer is a system arrow or I-beam",
+      "ok": true,
+      "detail": "arrow, rgb(0, 0, 0) #000"
+    },
+    {
+      "check": "routed-b37d35f4 390 light: stepped pointer motion (about 12 fps)",
+      "ok": true,
+      "detail": "10 positions in 3 s"
+    },
+    {
+      "check": "routed-b37d35f4 390 light: omnibox shows where the agent is looking",
+      "ok": true,
+      "detail": "github.com/karpathy/minbpe/blob/1acefe8/lineage_bench.py#L1-L107"
+    },
+    {
+      "check": "routed-b37d35f4 390 light: replay reached the end",
+      "ok": true,
+      "detail": "38/38"
+    },
+    {
+      "check": "routed-b37d35f4 390 light: tabs and code rendered",
+      "ok": true,
+      "detail": "7 tabs, 343 lines"
+    },
+    {
+      "check": "routed-b37d35f4 390 light: edits typed in (open session)",
+      "ok": true,
+      "detail": "69 edited lines"
+    },
+    {
+      "check": "routed-b37d35f4 390 light: runs and verdict under the machine",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "routed-b37d35f4 390 light: no horizontal page scroll",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "routed-b37d35f4 390 light: no monospace",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "routed-b37d35f4 390 light: no console errors",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "routed-b37d35f4 390 dark: machine with a browser window",
+      "ok": true,
+      "detail": "device true, 3 window controls, 2 tabs"
+    },
+    {
+      "check": "routed-b37d35f4 390 dark: window follows the theme",
+      "ok": true,
+      "detail": "dark"
+    },
+    {
+      "check": "routed-b37d35f4 390 dark: pointer is a system arrow or I-beam",
+      "ok": true,
+      "detail": "arrow, rgb(0, 0, 0) #000"
+    },
+    {
+      "check": "routed-b37d35f4 390 dark: stepped pointer motion (about 12 fps)",
+      "ok": true,
+      "detail": "10 positions in 3 s"
+    },
+    {
+      "check": "routed-b37d35f4 390 dark: omnibox shows where the agent is looking",
+      "ok": true,
+      "detail": "github.com/karpathy/minbpe/blob/1acefe8/lineage_bench.py#L1-L107"
+    },
+    {
+      "check": "routed-b37d35f4 390 dark: replay reached the end",
+      "ok": true,
+      "detail": "38/38"
+    },
+    {
+      "check": "routed-b37d35f4 390 dark: tabs and code rendered",
+      "ok": true,
+      "detail": "7 tabs, 343 lines"
+    },
+    {
+      "check": "routed-b37d35f4 390 dark: edits typed in (open session)",
+      "ok": true,
+      "detail": "69 edited lines"
+    },
+    {
+      "check": "routed-b37d35f4 390 dark: runs and verdict under the machine",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "routed-b37d35f4 390 dark: no horizontal page scroll",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "routed-b37d35f4 390 dark: no monospace",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "routed-b37d35f4 390 dark: no console errors",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "routed-b37d35f4 reduced motion: pointer jumps without in-between frames",
+      "ok": true,
+      "detail": "1,1,1,1"
+    },
+    {
+      "check": "routed-b37d35f4 reduced motion: no blinking or spinning",
+      "ok": true,
+      "detail": "0"
+    },
+    {
+      "check": "routed-b37d35f4 reduced motion: no console errors",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "token page 1280: machine with the window, no horizontal scroll",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "token page 1280: no console errors",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "token page 390: machine with the window, no horizontal scroll",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "token page 390: no console errors",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "embed 1280 light: screen frame=window is the window alone",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "embed 1280 light: screen frame=device is on the machine",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "embed 1280 light: reel thumbnails drawn",
+      "ok": true,
+      "detail": "4 canvases"
+    },
+    {
+      "check": "embed 1280 light: no horizontal page scroll",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "embed 1280 light: no console errors",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "embed 1280 dark: screen frame=window is the window alone",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "embed 1280 dark: screen frame=device is on the machine",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "embed 1280 dark: reel thumbnails drawn",
+      "ok": true,
+      "detail": "4 canvases"
+    },
+    {
+      "check": "embed 1280 dark: no horizontal page scroll",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "embed 1280 dark: no console errors",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "embed 390 light: screen frame=window is the window alone",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "embed 390 light: screen frame=device is on the machine",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "embed 390 light: reel thumbnails drawn",
+      "ok": true,
+      "detail": "4 canvases"
+    },
+    {
+      "check": "embed 390 light: no horizontal page scroll",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "embed 390 light: no console errors",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "embed 390 dark: screen frame=window is the window alone",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "embed 390 dark: screen frame=device is on the machine",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "embed 390 dark: reel thumbnails drawn",
+      "ok": true,
+      "detail": "4 canvases"
+    },
+    {
+      "check": "embed 390 dark: no horizontal page scroll",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "embed 390 dark: no console errors",
+      "ok": true,
+      "detail": ""
+    }
+  ]
+}

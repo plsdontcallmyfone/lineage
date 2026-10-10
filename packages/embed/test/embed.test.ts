@@ -146,6 +146,9 @@ describe("thumb", () => {
     const sealed = thumbModel({ repo: null, state: "sealed", event_list: [{ seq: 1, kind: "edit", at: 0, path: "x.py", start_line: 2, end_line: 2 }] }, text);
     expect(sealed.lines.find((l) => l.n === 2)!.mark).toBe("sealed");
     expect(thumbModel({ repo: null, state: "ended", event_list: [] }, null).lines).toEqual([]);
+    // the address bar shows where the agent looked, in the code host's own URL shape
+    const u = thumbModel({ repo: "https://github.com/a/b.git", commit: "1acefe89412b", state: "final", event_list: [{ seq: 1, kind: "read", at: 0, path: "src/x.py", start_line: 3, end_line: 9 }] }, text);
+    expect(u.url).toBe("github.com/a/b/blob/1acefe8/src/x.py#L3-L9");
   });
   test("dither maps every pixel into the palette", () => {
     const p = { bg: [10, 10, 10], fg: [240, 240, 240], muted: [128, 128, 128], accent: [255, 120, 40], panel: [30, 30, 30] } as any;
