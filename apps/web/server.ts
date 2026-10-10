@@ -88,6 +88,16 @@ async function buildWallet(): Promise<string> {
 }
 walletBundle = await buildWallet();
 
+// the Privy login island (apps/web/privy/main.tsx, React), built on first request: it is large and
+// only loaded when a visitor clicks Connect
+let privyBundle: Promise<string> | null = null;
+async function buildPrivy(): Promise<string> {
+  const out = await Bun.build({ entrypoints: [join(DIR, "privy/main.tsx")], target: "browser", format: "esm", minify: !DEV, sourcemap: "none",
+    define: { "process.env.NODE_ENV": JSON.stringify(DEV ? "development" : "production"), global: "globalThis" } });
+  if (!out.success) throw new Error(out.logs.map((l) => String(l)).join("\n"));
+  return await out.outputs[0]!.text();
+}
+
 // docs site (apps/docs): static files built in memory, served at /docs outside the app shell
 const { buildDocs, docsLookup } = await import("../../scripts/docs/build.ts");
 let docs = await buildDocs({ base: "/docs" });
@@ -314,7 +324,7 @@ const indexHtml = () => Bun.file(join(DIR, "public/index.html"));
 // Page security headers (audit A2), the same policy Caddy sets on the site (scripts/deploy/caddy/Caddyfile.tmpl);
 // the hash is the inline theme script in public/index.html (gate.test.ts checks both stay in step).
 const PAGE_CSP =
-  "default-src 'self'; script-src 'self' 'sha256-63H06+4kOPnJGg/D6siH2d7URozVzLhxtBaUeqTsuPE='; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: blob: https:; media-src 'self' blob:; connect-src 'self' https://api.github.com; object-src 'none'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'";
+  "default-src 'self'; script-src 'self' https://challenges.cloudflare.com 'sha256-63H06+4kOPnJGg/D6siH2d7URozVzLhxtBaUeqTsuPE='; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com https://fonts.privy.io; img-src 'self' data: blob: https:; media-src 'self' blob:; connect-src 'self' https://api.github.com https://auth.privy.io https://*.rpc.privy.systems https://api.devnet.solana.com wss://api.devnet.solana.com wss://relay.walletconnect.com wss://relay.walletconnect.org https://explorer-api.walletconnect.com; frame-src https://auth.privy.io https://verify.walletconnect.com https://verify.walletconnect.org https://challenges.cloudflare.com; child-src https://auth.privy.io https://verify.walletconnect.com https://verify.walletconnect.org; object-src 'none'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'";
 const PAGE_HEADERS = { "content-type": "text/html; charset=utf-8", "content-security-policy": PAGE_CSP, "x-content-type-options": "nosniff", "x-frame-options": "DENY", "referrer-policy": "strict-origin-when-cross-origin" };
 
 const server = Bun.serve({
@@ -399,6 +409,11 @@ const server = Bun.serve({
     if (p === "/assets/wallet.js") {
       if (DEV) walletBundle = await buildWallet().catch((e) => `console.error(${JSON.stringify(String(e))})`);
       return new Response(walletBundle, { headers: { "content-type": "text/javascript; charset=utf-8", "cache-control": DEV ? "no-store" : "public, max-age=60" } });
+    }
+    if (p === "/assets/privy.js") {
+      if (DEV || !privyBundle) privyBundle = buildPrivy();
+      const js = await privyBundle.catch((e) => `throw new Error(${JSON.stringify(String(e))})`);
+      return new Response(js, { headers: { "content-type": "text/javascript; charset=utf-8", "cache-control": DEV ? "no-store" : "public, max-age=300" } });
     }
     if (p === "/assets/app.css") return new Response(Bun.file(join(DIR, "public/app.css")), { headers: { "content-type": "text/css; charset=utf-8" } });
     if (p === "/favicon.svg") return new Response(Bun.file(join(DIR, "public/favicon.svg")), { headers: { "content-type": "image/svg+xml" } });

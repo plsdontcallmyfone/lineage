@@ -182,7 +182,28 @@ export async function connectWallet(name?: string, silent = false): Promise<StdA
   }
 }
 
+/** A wallet connected elsewhere (the Privy island) becomes the site's session; `via` is remembered for the next load. */
+export function adoptWallet(w: StdWallet, account: StdAccount, via: string) {
+  try {
+    localStorage.setItem(KEY, via);
+  } catch {
+    /* storage blocked */
+  }
+  G.unsubChange?.();
+  G.unsubChange = onChange(w, () => {
+    const a = w.accounts[0];
+    if (a && a.address !== G.session.account?.address) emit({ account: a });
+  });
+  emit({ wallet: w, account, error: null, restoring: false });
+}
+/** Runs on every disconnect (the Privy island logs out with it); kept on the shared state so every bundle sees it. */
+export function setDisconnectHook(f: () => Promise<void>) {
+  (G as any).disconnectHook = f;
+}
+
 export async function disconnectWallet(tellWallet = true) {
+  const hook: (() => Promise<void>) | null = (G as any).disconnectHook ?? null;
+  if (hook) await hook().catch(() => undefined);
   const w = G.session.wallet;
   G.unsubChange?.();
   G.unsubChange = null;

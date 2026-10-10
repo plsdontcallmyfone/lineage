@@ -1,4 +1,4 @@
-import { connectWallet, disconnectWallet, discovered, legacyOnly, onSession, onWallets, restoreSession, session, startDiscovery } from "../wallet/standard.ts";
+import { connectWallet, disconnectWallet, discovered, legacyOnly, onSession, onWallets, rememberedWallet, restoreSession, session, startDiscovery } from "../wallet/standard.ts";
 import { agentAvatar, identicon } from "./building.ts";
 import { esc, html } from "./html.ts";
 import { icon } from "./ui.ts";
@@ -17,6 +17,26 @@ export function connectHtml() {
 }
 
 let root: HTMLElement | null = null;
+
+// Privy (owner, 2026-10-10): Connect opens Privy's login modal, loaded on demand (/assets/privy.js,
+// a React island; apps/web/privy/main.tsx). A visitor who logged in with Privy before is restored
+// silently on load. If the island cannot load, the Wallet Standard menu below is the fallback.
+type PrivyMod = { startPrivy: (open: boolean) => Promise<unknown> };
+let privy: Promise<PrivyMod> | null = null;
+const PRIVY_URL = "/assets/privy.js"; // through a variable, so the bundler leaves the import to the browser
+const loadPrivy = () => (privy ??= import(/* @vite-ignore */ PRIVY_URL) as Promise<PrivyMod>);
+async function openPrivy(): Promise<boolean> {
+  try {
+    const b = root?.querySelector<HTMLElement>("#cn-btn");
+    if (b && !session().account) b.textContent = "Opening…";
+    await (await loadPrivy()).startPrivy(true);
+    paint(); // the modal is up; the button goes back to its label
+    return true;
+  } catch {
+    paint();
+    return false;
+  }
+}
 /** The wallet's first launched agent (market indexer, launcher=), for the profile icon. */
 const firstAgent = new Map<string, { agent: string; avatar: string | null; name: string | null } | null>();
 async function loadFirstAgent(address: string) {
@@ -39,7 +59,8 @@ export function wireConnect(el: HTMLElement) {
   startDiscovery();
   onSession(paint);
   onWallets(paint);
-  restoreSession();
+  if (rememberedWallet() === "privy") void loadPrivy().then((m) => m.startPrivy(false)).catch(() => {});
+  else restoreSession();
   paint();
   el.addEventListener("click", onClick);
   document.addEventListener("click", (ev) => {
@@ -75,7 +96,7 @@ function paint() {
     b.textContent = s.restoring ? "Connecting…" : "Connect";
     b.classList.remove("on");
     b.removeAttribute("aria-label");
-    b.title = "Connect a Wallet Standard wallet (devnet)";
+    b.title = "Connect a wallet or sign in with email (Privy, devnet)";
   }
   const m = root?.querySelector<HTMLElement>("#cn-menu");
   if (m && !m.hidden) menu();
@@ -106,6 +127,8 @@ async function onClick(ev: Event) {
   const t = ev.target as HTMLElement;
   if (t.closest("#cn-btn")) {
     const s = session();
+    // disconnected: Privy's modal; the Wallet Standard menu only if Privy did not load
+    if (!s.account && (await openPrivy())) return;
     const ws = discovered();
     // one wallet and nothing connected: connect at once, no menu
     if (!s.account && ws.length === 1) {

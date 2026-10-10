@@ -28,6 +28,8 @@ async function bundle(entry: string, extra: Partial<Parameters<typeof Bun.build>
 }
 writeFileSync(join(OUT, "assets/app.js"), await bundle(join(WEB, "src/main.ts")));
 writeFileSync(join(OUT, "assets/wallet.js"), await bundle(join(WEB, "wallet/main.ts"), { format: "esm", plugins: [chainBrowserPlugin] }));
+// the Privy login island (React), loaded on demand by the Connect button
+writeFileSync(join(OUT, "assets/privy.js"), await bundle(join(WEB, "privy/main.tsx"), { format: "esm", define: { "process.env.NODE_ENV": JSON.stringify("production"), global: "globalThis" } }));
 cpSync(join(WEB, "public/app.css"), join(OUT, "assets/app.css"));
 cpSync(join(WEB, "public/favicon.svg"), join(OUT, "favicon.svg"));
 cpSync(join(WEB, "public/fonts"), join(OUT, "fonts"), { recursive: true });

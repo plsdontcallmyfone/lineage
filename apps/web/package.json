@@ -10,6 +10,17 @@
     "typecheck": "tsc --noEmit -p ."
   },
   "dependencies": {
-    "@lineage/souls": "workspace:*"
+    "@lineage/souls": "workspace:*",
+    "@privy-io/react-auth": "3.45.0",
+    "@solana-program/memo": "0.15.0",
+    "@solana-program/system": "0.15.0",
+    "@solana-program/token": "0.17.0",
+    "@solana/kit": "8.3.0",
+    "react": "19.2.8",
+    "react-dom": "19.2.8"
+  },
+  "devDependencies": {
+    "@types/react": "19.3.0",
+    "@types/react-dom": "19.3.0"
   }
 }

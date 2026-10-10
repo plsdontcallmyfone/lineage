@@ -157,7 +157,7 @@ test("OFF-D9 the page CSP allows exactly the inline theme script of index.html, 
   for (const f of ["scripts/deploy/caddy/Caddyfile.tmpl", "apps/web/server.ts"]) {
     const src = readFileSync(join(root, f), "utf8");
     const csp = /default-src 'self';[^"]*/.exec(src)?.[0] ?? "";
-    expect(csp).toContain(`script-src 'self' ${inline[0]};`);
+    expect(csp).toContain(`script-src 'self' https://challenges.cloudflare.com ${inline[0]};`); // Privy's email login loads Cloudflare Turnstile
     expect(csp).toContain("object-src 'none'");
     expect(csp).toContain("frame-ancestors 'none'");
     expect(csp).not.toContain("unsafe-eval");

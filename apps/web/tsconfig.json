@@ -1,5 +1,19 @@
 {
   "extends": "../../tsconfig.json",
-  "compilerOptions": { "lib": ["ES2022", "DOM", "DOM.Iterable"], "noUncheckedIndexedAccess": true },
-  "include": ["src/**/*.ts", "wallet/**/*.ts", "server.ts", "scripts/**/*.ts"]
+  "compilerOptions": {
+    "lib": [
+      "ES2022",
+      "DOM",
+      "DOM.Iterable"
+    ],
+    "noUncheckedIndexedAccess": true,
+    "jsx": "react-jsx"
+  },
+  "include": [
+    "src/**/*.ts",
+    "wallet/**/*.ts",
+    "server.ts",
+    "scripts/**/*.ts",
+    "privy/**/*.tsx"
+  ]
 }
