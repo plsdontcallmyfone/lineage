@@ -392,14 +392,20 @@ activate)
   if [ "$DRY_RUN" = 1 ]; then TLS="	tls internal"; GLOBAL="	local_certs"; else TLS=""; GLOBAL="${ACME_EMAIL:+	email $ACME_EMAIL}"; fi
   install -d -o caddy -g caddy /var/log/caddy
   sed -e "s|@SITES@|${SITES//,/, }|" -e "s|@TLS@|$TLS|" -e "s|@GLOBAL@|$GLOBAL|" "$REL/scripts/deploy/caddy/Caddyfile.tmpl" > /etc/caddy/Caddyfile.new
+  # Caddy before 2.8 (Ubuntu's package, provision.sh's fallback when the Caddy apt repository refuses)
+  # takes the `|0600` socket mode as part of the file name, and its reloads then reach no admin socket;
+  # /run/caddy is 0750 caddy:caddy either way, so no other local user can reach the socket
+  read -r CMAJ CMIN < <(caddy version | sed -n 's/^v\{0,1\}\([0-9]*\)\.\([0-9]*\).*/\1 \2/p') || true
+  if [ "${CMAJ:-2}" = 2 ] && [ "${CMIN:-99}" -lt 8 ]; then sed -i 's#admin.sock|0600#admin.sock#' /etc/caddy/Caddyfile.new; echo "caddy $CMAJ.$CMIN: admin socket without a mode suffix"; fi
   caddy validate --config /etc/caddy/Caddyfile.new --adapter caddyfile >/dev/null 2>&1 || { caddy validate --config /etc/caddy/Caddyfile.new --adapter caddyfile; exit 1; }
   [ -f /etc/caddy/Caddyfile ] && cp -p /etc/caddy/Caddyfile /etc/caddy/Caddyfile.prev
   mv /etc/caddy/Caddyfile.new /etc/caddy/Caddyfile
   chown -R caddy:caddy /var/log/caddy   # `caddy validate` above ran as root and may have created the log file
   systemctl daemon-reload
   systemctl enable -q "${CORE_UNITS[@]}" caddy
-  # Caddy first: the new config's dial retries cover the gate's restart below (graceful reload)
-  systemctl reload-or-restart caddy
+  # Caddy first: the new config's dial retries cover the gate's restart below (graceful reload; a
+  # restart only when the running Caddy cannot be reached to reload, about a second of refused connections)
+  systemctl reload-or-restart caddy || { echo "caddy reload failed; restarting it"; systemctl restart caddy; }
   # 2. background units start draining now, in parallel, and never hold the public restart
   mapfile -t BG < <(active_background)
   [ ${#BG[@]} -gt 0 ] && { systemctl stop --no-block "${BG[@]}"; echo "background draining (no wait): ${BG[*]}"; }
