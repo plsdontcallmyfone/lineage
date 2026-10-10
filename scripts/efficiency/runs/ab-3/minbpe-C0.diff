@@ -1,0 +1,57 @@
+diff --git a/minbpe/regex.py b/minbpe/regex.py
+--- a/minbpe/regex.py
++++ b/minbpe/regex.py
+@@ -100,21 +100,45 @@ class RegexTokenizer(Tokenizer):
+             # replace all occurrences of pair in the chunks that hold both
+             # tokens, updating pair counts by the difference
+             p0, p1 = pair
+-            touched = []
++            touched = [pair]
+             # a merged pair never reappears, so its chunk set can be dropped
+             for k in where.pop(pair, ()):
+                 old = ids[k]
+                 new = merge(old, pair, idx)
+-                if len(new) == len(old):
++                n_old = len(old)
++                n_merged = n_old - len(new) # occurrences of idx in new
++                if not n_merged:
+                     continue
+                 ids[k] = new
+                 w = weights[k]
+-                for p in zip(old, old[1:]):
+-                    stats[p] -= w
+-                    touched.append(p)
+-                for p in zip(new, new[1:]):
+-                    stats[p] = stats_get(p, 0) + w
+-                    where[p].add(k)
++                # only the pairs touching a merged occurrence change (idx is
++                # fresh, so every other pair of new was already in old and
++                # k is already in its chunk set)
++                index = new.index
++                prev = -2
++                q = -1
++                for m in range(n_merged):
++                    q = index(idx, q + 1)
++                    j = q + m # position of this occurrence in old
++                    if q and prev != q - 1:
++                        # left neighbour untouched (an adjacent previous
++                        # occurrence already handled the pair between them)
++                        a = new[q-1]
++                        p = (a, p0)
++                        stats[p] -= w
++                        touched.append(p)
++                        p = (a, idx)
++                        stats[p] = stats_get(p, 0) + w
++                        where[p].add(k)
++                    if j + 2 < n_old:
++                        p = (p1, old[j+2])
++                        stats[p] -= w
++                        touched.append(p)
++                        p = (idx, new[q+1])
++                        stats[p] = stats_get(p, 0) + w
++                        where[p].add(k)
++                    prev = q
++                stats[pair] -= w * n_merged
+             for p in touched:
+                 if stats_get(p) == 0:
+                     del stats[p]

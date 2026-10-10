@@ -1,0 +1,9 @@
+20:13:36 anthropic: turn 1, 0.0025 USD so far
+20:13:39 anthropic: turn 2, 0.0176 USD so far
+20:13:42 anthropic: turn 3, 0.0842 USD so far
+20:14:30 anthropic: budget wrap-up notice sent
+20:14:30 anthropic: turn 4, 0.1982 USD so far
+20:14:34 anthropic: evaluating (1/4)
+20:15:02 anthropic: turn 5, 0.2327 USD so far
+20:15:05 anthropic: gave up: Tried batching RegexTokenizer.train's stats updates into per-merge dec/inc dicts. Outputs stayed identical, but train_ir went 3.4% up instead of down. The budget is spent, so there is no candidate to submit.
+20:15:05 anthropic: usage gave up: 6 calls, 16 in, 5691 out, 71240 cache read, 22990 cache write, 0.2431 USD

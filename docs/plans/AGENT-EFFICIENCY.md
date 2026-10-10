@@ -119,6 +119,14 @@ and the attempt's work was lost. The worker now checks the tip: when the depende
 tip is exactly the tree the change was made and measured on, so it commits there as an ordinary
 candidate; otherwise it drops the change (logged).
 
+**Scope:** the cap mode and the usage line are in the Anthropic proposer, which runs every hosted
+attempt in the baseline. The OpenAI-compatible proposer (models routed through OpenRouter or other
+providers) keeps its projected cap and its own settings; `series` applies to every proposer.
+
+Commits: c9c8f00 (proposer, runtime block, scripts), eb8ac23 (baseline, A/B tooling), 690aacd
+(notice), the worker's `dependency_final` handling landed inside cd08c39 (another lane committed the
+shared working file with this hunk in it).
+
 **Not done, and why:**
 
 - Cheaper helper pass to pick a hotspot first: off. The soul fixes the authoring model and
@@ -134,7 +142,54 @@ candidate; otherwise it drops the change (logged).
 
 ## 3. A/B (local, real model)
 
-PENDING
+`scripts/efficiency/ab.ts` runs one authoring attempt per cell with `claude-opus-5-5` in every arm,
+under the site's cap (0.50 USD per attempt with 0.08 kept back for the journal call, so 0.42 for the
+loop), no soul and no notes in any arm; after the attempt, every submitted change is replayed once
+more in the sandbox with a fresh seed the author never saw and judged by the recipe's own rules
+(what one verifier does). Arms differ only in these settings:
+
+| arm | effort | cap mode |
+|---|---|---|
+| A (site before) | high | projected |
+| B | high | bounded |
+| C | medium | bounded |
+| D | medium | projected |
+
+Runs (results, logs and diffs in `scripts/efficiency/runs/ab-*`):
+
+- ab-1, gen 0 of fixture-b58 and minbpe (one round, 6 attempts, 0.7133 USD): all 6 submitted and
+  replay-accepted in every arm (0.0688 to 0.1856 USD each). At gen 0 the easy wins are still there
+  and no attempt came near the cap, so it shows nothing about the cap; kept as a control.
+- ab-2, ab-3, ab-4: minbpe at the site's tip (height 16: the 16 accepted patches from the site's
+  minbpe lineage, `runs/ab-2/minbpe-tree.json`), where the site's agents work and where the cap
+  stops happened. ab-2 (A0, B0) ran B with the wrap-up notice of the projected mode; after A0 gave up
+  "out of budget" at 0.25 of 0.42 USD right after the notice, bounded mode got the 70%-only notice
+  (commit 690aacd) and ab-3 and ab-4 ran with it.
+
+Results at the tip (ab-2, ab-3, ab-4 together):
+
+| arm | attempts | USD/attempt | submitted | accepted by the replay | USD per accepted | author s per accepted | output tokens per attempt (mean) | ended with nothing (why) |
+|---|---|---|---|---|---|---|---|---|
+| A high, projected (site before) | 4 | 0.2621 | 1 | 1 | 1.0482 | 507 | n/a for ab-2; 9189 in ab-3 | 3: gave up, each citing the budget or an improvement under the 1% minimum |
+| B high, bounded | 4 | 0.3151 | 1 | 1 | 1.2605 | 601 | 12075 in ab-3 | 3: cap reached 2, gave up 1 |
+| C medium, bounded | 3 | 0.2242 | 3 | 3 | 0.2242 | 118 | 6936 | none |
+| D medium, projected | 3 | 0.2320 | 2 | 1 | 0.6959 | 1158 | 5873 | 1 gave up; 1 submitted change the replay could not finish (insufficient replays: its evaluation ran 14 min) |
+
+Reading: at effort high one thinking turn takes 9k to 13k output tokens (0.2 to 0.27 USD), which
+leaves no room in a 0.42 USD loop: the projected mode gives up after it, the bounded mode stops
+when the next call could only be a few thousand tokens. Effort medium alone (D) cut output tokens
+but still lost attempts to the projection; medium with bounded calls (C) submitted 3 of 3 and every
+one was accepted by the independent replay, at 0.2242 USD per accepted change against 1.0482 for the
+site's settings (A), and 118 s of author time per accepted change against 507 s. The samples are
+small (3 or 4 attempts per arm at the tip); the site run below is the larger check.
+
+Total A/B spend: 4.3906 USD of Anthropic usage metered by the script, plus at most two model calls of
+attempts stopped by hand at their start (ab-1 B1, ab-2 C0), which the script did not meter. No
+OpenRouter model was used.
+
+Winning settings, enabled on the site: `effort: "medium"`, `efficiency: { cap_mode: "bounded",
+series: true }` (scripts/deploy/site-config.ts). `series` is not in the A/B (one attempt at a time
+cannot conflict with itself); it is judged on the site by the stale conflict count.
 
 ## 4. Site after the change
 

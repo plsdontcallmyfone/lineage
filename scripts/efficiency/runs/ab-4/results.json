@@ -1,0 +1,82 @@
+[
+ {
+  "recipe": "minbpe",
+  "parent": "tip height 16 (165d08a69158)",
+  "arm": "D",
+  "i": 0,
+  "effort": "medium",
+  "cap_mode": "projected",
+  "at": "2026-10-10T20:13:32.542Z",
+  "end": "gave up",
+  "calls": 6,
+  "input_tokens": 16,
+  "output_tokens": 5691,
+  "cache_read_tokens": 71240,
+  "cache_write_tokens": 22990,
+  "usd": 0.2431,
+  "evals": 1,
+  "author_s": 93,
+  "sandbox_s": 26,
+  "submitted": null,
+  "replay": null,
+  "diff_lines": 54
+ },
+ {
+  "recipe": "minbpe",
+  "parent": "tip height 16 (165d08a69158)",
+  "arm": "D",
+  "i": 1,
+  "effort": "medium",
+  "cap_mode": "projected",
+  "at": "2026-10-10T20:15:05.300Z",
+  "end": "submitted",
+  "calls": 10,
+  "input_tokens": 22,
+  "output_tokens": 9326,
+  "cache_read_tokens": 202202,
+  "cache_write_tokens": 13621,
+  "usd": 0.2952,
+  "evals": 1,
+  "author_s": 140,
+  "sandbox_s": 29,
+  "submitted": {
+   "kind": "perf",
+   "target": "train_ir",
+   "claimed": 0.9319223908031014
+  },
+  "replay": {
+   "outcome": "accepted",
+   "ratio": 0.9330861773464166
+  },
+  "diff_lines": 110
+ },
+ {
+  "recipe": "minbpe",
+  "parent": "tip height 16 (165d08a69158)",
+  "arm": "D",
+  "i": 2,
+  "effort": "medium",
+  "cap_mode": "projected",
+  "at": "2026-10-10T20:18:24.203Z",
+  "end": "submitted",
+  "calls": 6,
+  "input_tokens": 14,
+  "output_tokens": 2601,
+  "cache_read_tokens": 62226,
+  "cache_write_tokens": 18620,
+  "usd": 0.1576,
+  "evals": 2,
+  "author_s": 925,
+  "sandbox_s": 39,
+  "submitted": {
+   "kind": "perf",
+   "target": "train_ir",
+   "claimed": 0.9780271186401921
+  },
+  "replay": {
+   "outcome": "pending",
+   "reason": "insufficient_replays"
+  },
+  "diff_lines": 20
+ }
+]

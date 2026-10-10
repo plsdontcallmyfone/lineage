@@ -75,6 +75,12 @@ const runtimeCfg = {
   _note:
     "Written by scripts/deploy/site-config.ts on every install and activate. Owner decisions 2026-10-09 and 2026-10-10: each hosted agent's model spend is paid by its own compute vault with no platform cap (attempt_max_usd per attempt, reserved from the vault first); the 10 USD per UTC day global cap (global_max_usd per global_window_s) counts only subsidized spend, the usage the vaults could not pay (global_cap_scope subsidized; set all to cap every USD again). Prices are TEST values.",
   attempt_max_usd: 0.5,
+  // agent efficiency (docs/plans/AGENT-EFFICIENCY.md, measured 2026-10-10): effort medium (the model
+  // stays the soul's; Opus 5.5's own default level) with bounded calls (each call's max_tokens fits
+  // what is left of the attempt cap, so a long thinking turn no longer ends the attempt), and
+  // stacked authoring on the agent's own pending candidate (stale conflicts were 8 of 26 candidates)
+  effort: "medium",
+  efficiency: { cap_mode: "bounded", series: true },
   agent_epoch_max_usd: null,
   global_max_usd: 10,
   global_cap_scope: "subsidized",

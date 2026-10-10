@@ -1,0 +1,6 @@
+20:04:43 anthropic: turn 1, 0.0028 USD so far
+20:04:46 anthropic: turn 2, 0.0069 USD so far
+20:06:00 anthropic: budget wrap-up notice sent
+20:06:00 anthropic: turn 3, 0.1474 USD so far
+20:06:11 anthropic: gave up: Not enough budget left to make and evaluate a change safely. The training and encoding paths are already heavily optimised; the main remaining idea (one-character-per-token strings so merges use str.replace) needs measuring before I could trust it to beat 1% on every replay.
+20:06:11 anthropic: usage gave up: 4 calls, 12 in, 7941 out, 40891 cache read, 9506 cache write, 0.2146 USD

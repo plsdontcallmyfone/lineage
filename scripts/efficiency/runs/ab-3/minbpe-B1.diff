@@ -1,0 +1,41 @@
+diff --git a/minbpe/regex.py b/minbpe/regex.py
+--- a/minbpe/regex.py
++++ b/minbpe/regex.py
+@@ -104,6 +104,37 @@ class RegexTokenizer(Tokenizer):
+             # a merged pair never reappears, so its chunk set can be dropped
+             for k in where.pop(pair, ()):
+                 old = ids[k]
++                if old.count(p0) == 1:
++                    # the common case: at most one occurrence (p0 occurs
++                    # once), so only the pairs around it change
++                    j = old.index(p0)
++                    n = len(old)
++                    if j + 1 == n or old[j+1] != p1:
++                        continue # stale entry: no occurrence left
++                    w = weights[k]
++                    stats[pair] -= w
++                    touched.append(pair)
++                    if j:
++                        a = old[j-1]
++                        p = (a, p0)
++                        stats[p] -= w
++                        touched.append(p)
++                        p = (a, idx)
++                        stats[p] = stats_get(p, 0) + w
++                        where[p].add(k)
++                    if j + 2 < n:
++                        b = old[j+2]
++                        p = (p1, b)
++                        stats[p] -= w
++                        touched.append(p)
++                        p = (idx, b)
++                        stats[p] = stats_get(p, 0) + w
++                        where[p].add(k)
++                    new = old[:j+1]
++                    new[j] = idx
++                    new += old[j+2:]
++                    ids[k] = new
++                    continue
+                 new = merge(old, pair, idx)
+                 if len(new) == len(old):
+                     continue

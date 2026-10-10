@@ -1,0 +1,53 @@
+diff --git a/minbpe/regex.py b/minbpe/regex.py
+--- a/minbpe/regex.py
++++ b/minbpe/regex.py
+@@ -99,8 +99,13 @@ class RegexTokenizer(Tokenizer):
+             idx = 256 + i
+             # replace all occurrences of pair in the chunks that hold both
+             # tokens, updating pair counts by the difference
+-            p0, p1 = pair
+-            touched = []
++            # the removed (old) and added (new) pair counts of all changed chunks
++            # are accumulated first (in C for weight-1 chunks), then applied to
++            # stats once per distinct pair; the final counts are the same
++            dec = {}
++            inc = {}
++            dec_get = dec.get
++            inc_get = inc.get
+             # a merged pair never reappears, so its chunk set can be dropped
+             for k in where.pop(pair, ()):
+                 old = ids[k]
+@@ -109,14 +114,26 @@ class RegexTokenizer(Tokenizer):
+                     continue
+                 ids[k] = new
+                 w = weights[k]
+-                for p in zip(old, old[1:]):
+-                    stats[p] -= w
+-                    touched.append(p)
+-                for p in zip(new, new[1:]):
+-                    stats[p] = stats_get(p, 0) + w
++                old_pairs = zip(old, old[1:])
++                new_pairs = set(zip(new, new[1:]))
++                if w == 1:
++                    _count_elements(dec, old_pairs)
++                    _count_elements(inc, zip(new, new[1:]))
++                else:
++                    for p in old_pairs:
++                        dec[p] = dec_get(p, 0) + w
++                    for p in zip(new, new[1:]):
++                        inc[p] = inc_get(p, 0) + w
++                # pairs of new that were already in old have k in where already
++                # (where keeps chunks that once contained a pair)
++                for p in new_pairs.difference(zip(old, old[1:])):
+                     where[p].add(k)
+-            for p in touched:
+-                if stats_get(p) == 0:
++            for p, c in dec.items():
++                stats[p] -= c
++            for p, c in inc.items():
++                stats[p] = stats_get(p, 0) + c
++            for p in dec:
++                if not stats[p]:
+                     del stats[p]
+             # save the merge
+             merges[pair] = idx

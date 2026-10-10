@@ -1,0 +1,6 @@
+20:00:00 anthropic: turn 1, 0.0028 USD so far
+20:00:03 anthropic: turn 2, 0.0069 USD so far
+20:00:08 anthropic: turn 3, 0.0172 USD so far
+20:02:20 anthropic: turn 4, 0.2896 USD so far
+20:02:20 anthropic: spend cap reached (0.2896 USD spent, cap 0.4200, next call could only have 3158 output tokens)
+20:02:20 anthropic: usage cap reached: 4 calls, 10 in, 13256 out, 40891 cache read, 3243 cache write, 0.2896 USD

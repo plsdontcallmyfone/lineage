@@ -1,0 +1,59 @@
+diff --git a/minbpe/basic.py b/minbpe/basic.py
+--- a/minbpe/basic.py
++++ b/minbpe/basic.py
+@@ -95,10 +95,12 @@ class BasicTokenizer(Tokenizer):
+             # mint a new token: assign it the next available id
+             idx = 256 + i
+             # replace all occurrences of pair in ids with idx
+-            new = merge(ids, pair, idx)
+-            _update_stats(stats, ids, new, pair, idx)
++            ic = chr(idx)
++            new = ids.replace(pair[0] + pair[1], ic)
++            _update_stats(stats, ids, new, pair, ic)
+             ids = new
+-            # save the merge
++            # save the merge (as token ids)
++            pair = (ord(pair[0]), ord(pair[1]))
+             merges[pair] = idx
+             vocab[idx] = vocab[pair[0]] + vocab[pair[1]]
+             # prints
+diff --git a/minbpe/regex.py b/minbpe/regex.py
+--- a/minbpe/regex.py
++++ b/minbpe/regex.py
+@@ -50,7 +50,10 @@ class RegexTokenizer(Tokenizer):
+         chunk_counts = {}
+         for ch in text_chunks:
+             chunk_counts[ch] = chunk_counts.get(ch, 0) + 1
+-        ids = [list(ch.encode("utf-8")) for ch in chunk_counts]
++        # each chunk is held as a str whose code points are its token ids
++        # (bytes 0..255 via latin-1, new tokens via chr), so merging a pair is
++        # one str.replace in C (non-overlapping, left to right, like merge())
++        ids = [ch.encode("utf-8").decode("latin-1") for ch in chunk_counts]
+         weights = list(chunk_counts.values())
+ 
+         # count the number of times every consecutive pair appears (once);
+@@ -100,11 +103,13 @@ class RegexTokenizer(Tokenizer):
+             # replace all occurrences of pair in the chunks that hold both
+             # tokens, updating pair counts by the difference
+             p0, p1 = pair
++            pc = p0 + p1
++            ic = chr(idx)
+             touched = []
+             # a merged pair never reappears, so its chunk set can be dropped
+             for k in where.pop(pair, ()):
+                 old = ids[k]
+-                new = merge(old, pair, idx)
++                new = old.replace(pc, ic)
+                 if len(new) == len(old):
+                     continue
+                 ids[k] = new
+@@ -118,7 +123,8 @@ class RegexTokenizer(Tokenizer):
+             for p in touched:
+                 if stats_get(p) == 0:
+                     del stats[p]
+-            # save the merge
++            # save the merge (as token ids)
++            pair = (ord(p0), ord(p1))
+             merges[pair] = idx
+             vocab[idx] = vocab[pair[0]] + vocab[pair[1]]
+             # prints

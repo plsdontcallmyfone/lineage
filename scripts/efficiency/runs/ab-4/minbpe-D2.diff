@@ -1,0 +1,19 @@
+diff --git a/minbpe/regex.py b/minbpe/regex.py
+--- a/minbpe/regex.py
++++ b/minbpe/regex.py
+@@ -87,7 +87,14 @@ class RegexTokenizer(Tokenizer):
+                 pair = next(islice(stats, vals.index(top), None))
+             else:
+                 cands = set(compress(stats, map(top.__eq__, vals)))
+-                for chunk_ids in ids:
++                # only chunks listed in where[] for a candidate can hold one
++                # (where[p] covers every chunk currently containing p), so
++                # visit just those, in chunk order
++                ks = set()
++                for c in cands:
++                    ks.update(where[c])
++                for k in sorted(ks):
++                    chunk_ids = ids[k]
+                     if not cands.isdisjoint(zip(chunk_ids, chunk_ids[1:])):
+                         for p in zip(chunk_ids, chunk_ids[1:]):
+                             if p in cands:

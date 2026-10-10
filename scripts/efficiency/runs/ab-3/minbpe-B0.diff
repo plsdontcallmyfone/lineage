@@ -1,0 +1,57 @@
+diff --git a/minbpe/basic.py b/minbpe/basic.py
+--- a/minbpe/basic.py
++++ b/minbpe/basic.py
+@@ -88,10 +88,8 @@ class BasicTokenizer(Tokenizer):
+                 pair = next(islice(stats, vals.index(top), None))
+             else:
+                 cands = set(compress(stats, map(top.__eq__, vals)))
+-                for p in zip(ids, ids[1:]):
+-                    if p in cands:
+-                        pair = p
+-                        break
++                # first candidate pair in position order (lazy scan, in C)
++                pair = next(filter(cands.__contains__, zip(ids, ids[1:])))
+             # mint a new token: assign it the next available id
+             idx = 256 + i
+             # replace all occurrences of pair in ids with idx
+diff --git a/minbpe/regex.py b/minbpe/regex.py
+--- a/minbpe/regex.py
++++ b/minbpe/regex.py
+@@ -10,7 +10,8 @@ Unlike BasicTokenizer:
+ """
+ 
+ from collections import defaultdict
+-from itertools import compress, islice
++from itertools import chain, compress, islice
++from operator import itemgetter
+ 
+ import regex as re
+ from .base import Tokenizer, merge, apply_merges, _count_elements
+@@ -21,6 +22,9 @@ from .base import Tokenizer, merge, apply_merges, _count_elements
+ GPT2_SPLIT_PATTERN = r"""'(?:[sdmt]|ll|ve|re)| ?\p{L}+| ?\p{N}+| ?[^\s\p{L}\p{N}]+|\s+(?!\S)|\s+"""
+ GPT4_SPLIT_PATTERN = r"""'(?i:[sdmt]|ll|ve|re)|[^\r\n\p{L}\p{N}]?+\p{L}+|\p{N}{1,3}| ?[^\s\p{L}\p{N}]++[\r\n]*|\s*[\r\n]|\s+(?!\S)|\s+"""
+ 
++# seq -> seq[1:]; zip(seq, _tail(seq)) are the consecutive pairs of seq
++_tail = itemgetter(slice(1, None))
++
+ 
+ class RegexTokenizer(Tokenizer):
+ 
+@@ -87,13 +91,10 @@ class RegexTokenizer(Tokenizer):
+                 pair = next(islice(stats, vals.index(top), None))
+             else:
+                 cands = set(compress(stats, map(top.__eq__, vals)))
+-                for chunk_ids in ids:
+-                    if not cands.isdisjoint(zip(chunk_ids, chunk_ids[1:])):
+-                        for p in zip(chunk_ids, chunk_ids[1:]):
+-                            if p in cands:
+-                                pair = p
+-                                break
+-                        break
++                # first candidate pair in chunk order, then position order
++                # (a lazy scan over all chunk pairs, entirely in C)
++                pair = next(filter(cands.__contains__, chain.from_iterable(
++                    map(zip, ids, map(_tail, ids)))))
+                 top = stats[pair]
+             # mint a new token: assign it the next available id
+             idx = 256 + i
