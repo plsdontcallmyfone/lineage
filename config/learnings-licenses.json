@@ -1,0 +1,174 @@
+{
+  "v": 1,
+  "_note": "Written by scripts/learnings/licenses.ts from GitHub's licence detection; spdx null or NOASSERTION means not determined.",
+  "repos": [
+    {
+      "repo": "https://github.com/bitcoin/bitcoin",
+      "spdx": "MIT",
+      "name": "MIT License",
+      "url": "https://github.com/bitcoin/bitcoin/blob/master/COPYING",
+      "source": "GitHub API /repos/bitcoin/bitcoin/license",
+      "read_on": "2026-10-10"
+    },
+    {
+      "repo": "https://github.com/btcsuite/btcd",
+      "spdx": "ISC",
+      "name": "ISC License",
+      "url": "https://github.com/btcsuite/btcd/blob/master/LICENSE",
+      "source": "GitHub API /repos/btcsuite/btcd/license",
+      "read_on": "2026-10-10"
+    },
+    {
+      "repo": "https://github.com/cosmos/go-bip39",
+      "spdx": "MIT",
+      "name": "MIT License",
+      "url": "https://github.com/cosmos/go-bip39/blob/master/LICENSE",
+      "source": "GitHub API /repos/cosmos/go-bip39/license",
+      "read_on": "2026-10-10"
+    },
+    {
+      "repo": "https://github.com/debris/base58",
+      "spdx": null,
+      "name": null,
+      "url": null,
+      "source": "GitHub API /repos/debris/base58/license (404: no licence file detected)",
+      "read_on": "2026-10-10"
+    },
+    {
+      "repo": "https://github.com/ethereum/go-ethereum",
+      "spdx": "LGPL-3.0",
+      "name": "GNU Lesser General Public License v3.0",
+      "url": "https://github.com/ethereum/go-ethereum/blob/master/COPYING",
+      "source": "GitHub API /repos/ethereum/go-ethereum/license",
+      "read_on": "2026-10-10"
+    },
+    {
+      "repo": "https://github.com/ethereum/pyrlp",
+      "spdx": "MIT",
+      "name": "MIT License",
+      "url": "https://github.com/ApeWorX/pyrlp/blob/main/LICENSE",
+      "source": "GitHub API /repos/ethereum/pyrlp/license",
+      "read_on": "2026-10-10"
+    },
+    {
+      "repo": "https://github.com/hejsil/zig-clap",
+      "spdx": "MIT",
+      "name": "MIT License",
+      "url": "https://github.com/Hejsil/zig-clap/blob/master/LICENSE",
+      "source": "GitHub API /repos/hejsil/zig-clap/license",
+      "read_on": "2026-10-10"
+    },
+    {
+      "repo": "https://github.com/jedisct1/rust-hmac-sha256",
+      "spdx": "ISC",
+      "name": "ISC License",
+      "url": "https://github.com/jedisct1/rust-hmac-sha256/blob/master/LICENSE",
+      "source": "GitHub API /repos/jedisct1/rust-hmac-sha256/license",
+      "read_on": "2026-10-10"
+    },
+    {
+      "repo": "https://github.com/jedisct1/zig-charm",
+      "spdx": "MIT",
+      "name": "MIT License",
+      "url": "https://github.com/jedisct1/zig-charm/blob/main/LICENSE",
+      "source": "GitHub API /repos/jedisct1/zig-charm/license",
+      "read_on": "2026-10-10"
+    },
+    {
+      "repo": "https://github.com/karpathy/llama2.c",
+      "spdx": "MIT",
+      "name": "MIT License",
+      "url": "https://github.com/karpathy/llama2.c/blob/master/LICENSE",
+      "source": "GitHub API /repos/karpathy/llama2.c/license",
+      "read_on": "2026-10-10"
+    },
+    {
+      "repo": "https://github.com/karpathy/llm.c",
+      "spdx": "MIT",
+      "name": "MIT License",
+      "url": "https://github.com/karpathy/llm.c/blob/master/LICENSE",
+      "source": "GitHub API /repos/karpathy/llm.c/license",
+      "read_on": "2026-10-10"
+    },
+    {
+      "repo": "https://github.com/karpathy/minbpe",
+      "spdx": "MIT",
+      "name": "MIT License",
+      "url": "https://github.com/karpathy/minbpe/blob/master/LICENSE",
+      "source": "GitHub API /repos/karpathy/minbpe/license",
+      "read_on": "2026-10-10"
+    },
+    {
+      "repo": "https://github.com/keis/base58",
+      "spdx": "MIT",
+      "name": "MIT License",
+      "url": "https://github.com/keis/base58/blob/master/COPYING",
+      "source": "GitHub API /repos/keis/base58/license",
+      "read_on": "2026-10-10"
+    },
+    {
+      "repo": "https://github.com/langchain-ai/langchain",
+      "spdx": "MIT",
+      "name": "MIT License",
+      "url": "https://github.com/langchain-ai/langchain/blob/master/LICENSE",
+      "source": "GitHub API /repos/langchain-ai/langchain/license",
+      "read_on": "2026-10-10"
+    },
+    {
+      "repo": "https://github.com/ollama/ollama",
+      "spdx": "MIT",
+      "name": "MIT License",
+      "url": "https://github.com/ollama/ollama/blob/main/LICENSE",
+      "source": "GitHub API /repos/ollama/ollama/license",
+      "read_on": "2026-10-10"
+    },
+    {
+      "repo": "https://github.com/rsennrich/subword-nmt",
+      "spdx": "MIT",
+      "name": "MIT License",
+      "url": "https://github.com/rsennrich/subword-nmt/blob/master/LICENSE",
+      "source": "GitHub API /repos/rsennrich/subword-nmt/license",
+      "read_on": "2026-10-10"
+    },
+    {
+      "repo": "https://github.com/sipa/bech32",
+      "spdx": null,
+      "name": null,
+      "url": null,
+      "source": "GitHub API /repos/sipa/bech32/license (404: no licence file detected)",
+      "read_on": "2026-10-10"
+    },
+    {
+      "repo": "https://github.com/solana-program/config",
+      "spdx": "Apache-2.0",
+      "name": "Apache License 2.0",
+      "url": "https://github.com/solana-program/config/blob/main/LICENSE",
+      "source": "GitHub API /repos/solana-program/config/license",
+      "read_on": "2026-10-10"
+    },
+    {
+      "repo": "https://github.com/solana-program/record",
+      "spdx": "Apache-2.0",
+      "name": "Apache License 2.0",
+      "url": "https://github.com/solana-program/record/blob/main/LICENSE",
+      "source": "GitHub API /repos/solana-program/record/license",
+      "read_on": "2026-10-10"
+    },
+    {
+      "repo": "https://github.com/stainless-steel/md5",
+      "spdx": "NOASSERTION",
+      "name": "Other",
+      "url": "https://github.com/stainless-steel/md5/blob/main/LICENSE.md",
+      "source": "GitHub API /repos/stainless-steel/md5/license",
+      "read_on": "2026-10-10"
+    },
+    {
+      "repo": "https://github.com/trezor/python-mnemonic",
+      "spdx": "MIT",
+      "name": "MIT License",
+      "url": "https://github.com/trezor/python-mnemonic/blob/master/LICENSE",
+      "source": "GitHub API /repos/trezor/python-mnemonic/license",
+      "read_on": "2026-10-10"
+    }
+  ]
+}

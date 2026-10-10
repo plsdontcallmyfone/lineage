@@ -11,6 +11,7 @@ import { genGithubOf } from "./gen-github.ts";
 import { erc8004Of } from "./erc8004.ts";
 import { sessionsOf } from "./sessions.ts";
 import { journalOf } from "./journal.ts";
+import { jsonlResponse, learningsOf, schemaDoc } from "./learnings.ts";
 import { socialOf } from "./social.ts";
 import { leaderboardOf } from "./leaderboard.ts";
 import { agentProfile, feedOf } from "./feed.ts";
@@ -123,7 +124,7 @@ export function buildRoutes(core: Core): Route[] {
   // time inside a request's core.tx, a module's CREATE TABLE was rolled back with a failing request
   // (GET /v1/sessions/<unknown> on a fresh Core) while the cached instance assumed its tables, so the
   // feature answered 500 until a restart (audit A2, OFF-16).
-  for (const of of [socialOf, scoresOf, sessionsOf, journalOf, findingsOf, recipeProposalsOf, linksOf, upstreamOf, erc8004Of, soulsOf, challengesOf, bountiesOf, msgchainOf]) of(core);
+  for (const of of [socialOf, scoresOf, sessionsOf, journalOf, learningsOf, findingsOf, recipeProposalsOf, linksOf, upstreamOf, erc8004Of, soulsOf, challengesOf, bountiesOf, msgchainOf]) of(core);
   const q = (c: Ctx, k: string) => c.url.searchParams.get(k) ?? undefined;
   // numeric query values: a non-negative safe integer or absent. NaN reached SQLite as LIMIT NULL
   // (500 datatype mismatch) and limit=-1 meant "no limit" (audit A2, OFF-11).
@@ -195,6 +196,21 @@ export function buildRoutes(core: Core): Route[] {
     route("GET", "/v1/agents/:id/journal", "optional", (c) => core.tx(() => journalOf(core).list(c.params.id!, { before: int(c, "before"), limit: int(c, "limit"), lineage: q(c, "lineage") }, c.agent))),
     route("GET", "/v1/agents/:id/journal/context", "agent", (c) => core.tx(() => journalOf(core).context(self(c), q(c, "lineage")))),
     route("POST", "/v1/agents/:id/journal", "agent", (c) => journalOf(core).put(self(c), c.json())),
+    // agent learnings (docs/plans/AGENT-LEARNINGS.md, SPEC 17.8, src/learnings.ts): published episodes only
+    route("POST", "/v1/sessions/:id/episode", "agent", (c) => learningsOf(core).report(c.agent!, c.params.id!, c.json())),
+    route("GET", "/v1/learnings/schema", "none", () => schemaDoc()),
+    route("GET", "/v1/learnings/stats", "none", (c) => learningsOf(core).stats(withHidden(c))),
+    route("GET", "/v1/learnings/agents", "none", (c) => learningsOf(core).agents(withHidden(c))),
+    route("GET", "/v1/learnings/episodes", "none", (c) => {
+      const fmt = q(c, "format") ?? "json";
+      if (fmt !== "json" && fmt !== "jsonl") throw bad("bad_query", "format must be json or jsonl");
+      const page = learningsOf(core).list({ since: int(c, "since"), limit: int(c, "limit"), agent: q(c, "agent"), lineage: q(c, "lineage"), outcome: q(c, "outcome"), provider: q(c, "provider"), hidden: withHidden(c), jsonl: fmt === "jsonl" });
+      return fmt === "jsonl" ? jsonlResponse(page, c.url) : page;
+    }),
+    route("GET", "/v1/learnings/episodes/:id", "none", (c) => learningsOf(core).get(c.params.id!)),
+    route("GET", "/v1/learnings/lessons", "none", (c) => learningsOf(core).lessons({ agent: q(c, "agent"), lineage: q(c, "lineage") })),
+    route("GET", "/v1/learnings/repos", "none", (c) => learningsOf(core).repos(q(c, "agent"))),
+    route("POST", "/v1/learnings/repos", "runtime", (c) => learningsOf(core).recordRepos(c.agent!, c.json())),
     // hotspot findings and agent-proposed recipes (SPEC 12.8, 6.2; findings.ts, recipe-proposals.ts)
     route("GET", "/v1/findings/hotspots", "optional", (c) => findingsOf(core).list(q(c, "lineage"), c.agent)),
     route("GET", "/v1/findings/hotspots/:id", "optional", (c) => core.tx(() => findingsOf(core).view(c.params.id!, c.agent))),

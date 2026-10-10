@@ -27,6 +27,8 @@ export interface ProfileCommitOptions {
   /** the commit's tree is exactly the planned files (pool accounts); otherwise they are written over the head's tree */
   replaceTree: boolean;
   message: string;
+  /** repository name under the account; the profile repository <login> by default (agent learnings use lineage-learnings) */
+  repoName?: string;
   description?: string;
   homepage?: string;
   apiBase?: string;
@@ -54,7 +56,9 @@ export interface ProfileCommitResult {
 export async function profileRepoCommit(o: ProfileCommitOptions): Promise<ProfileCommitResult> {
   const log = o.log ?? (() => {});
   const login = o.cred.login;
-  const repo = `${login}/${login}`;
+  const name = o.repoName ?? login;
+  if (!/^[A-Za-z0-9._-]{1,100}$/.test(name)) throw new Error(`bad repository name ${JSON.stringify(name)}`);
+  const repo = `${login}/${name}`;
   const gh = new GitHub({ token: o.cred.token, base: o.apiBase, fetch: o.fetch });
   const gitBase = (o.gitBase ?? "https://github.com").replace(/\/$/, "");
 
@@ -62,7 +66,7 @@ export async function profileRepoCommit(o: ProfileCommitOptions): Promise<Profil
   let created = false;
   if (!info || info.message) {
     const r = await gh.request<{ full_name: string; default_branch?: string }>("POST", "/user/repos", {
-      name: login, description: o.description ?? "", homepage: o.homepage ?? "", private: false, auto_init: false, has_issues: false, has_wiki: false, has_projects: false,
+      name, description: o.description ?? "", homepage: o.homepage ?? "", private: false, auto_init: false, has_issues: false, has_wiki: false, has_projects: false,
     });
     info = { full_name: r.data?.full_name ?? repo, fork: false, archived: false, private: false, default_branch: r.data?.default_branch };
     created = true;

@@ -12,6 +12,9 @@
 //                                      reserved/pool/reserve/agent logins, signing key registered, stored
 //                                      encrypted (docs/plans/GENERATIONS-ON-GITHUB.md 1.1)
 //   main.ts publisher-status | publisher-clear
+//   main.ts learnings [--agent <id>] [--force] [--dry-run]
+//                                      publish agents' learnings repositories <login>/lineage-learnings
+//                                      (docs/plans/AGENT-LEARNINGS.md 7); also run at the end of every cycle
 //   main.ts genesis --agent <id> [--no-token | --with-token] [--force] [--sign-key <keypair.json>] [--readme]
 //                                      publish (or re-publish) the agent's GitHub genesis repository
 //                                      (docs/plans/GITHUB-GENESIS.md); --readme refreshes only the status
@@ -39,6 +42,8 @@ import { clearPublisher, publisherPublic, setPublisher } from "./publisher.ts";
 import { tokenShapeOk } from "./github-token.ts";
 import { errText } from "./redact.ts";
 import { GenesisRunner, httpSources } from "./genesis.ts";
+import { httpLearningsSources, LearningsPublisher } from "./learnings.ts";
+import { CoreClient } from "../../core/src/client.ts";
 import { handler } from "./http.ts";
 import { safeLog } from "./redact.ts";
 import { IdentityService } from "./service.ts";
@@ -64,8 +69,8 @@ if (cmd === "init") {
   console.log(JSON.stringify({ key: k.created ? "created" : "present", dir: DIR }));
   process.exit(0);
 }
-if (!["serve", "cycle", "reserve-add", "reserve-list", "status", "genesis", "publisher-set", "publisher-status", "publisher-clear"].includes(cmd ?? "")) {
-  console.error("usage: main.ts init | serve | cycle | reserve-add | reserve-list | status | genesis | publisher-set | publisher-status | publisher-clear  (see the header)");
+if (!["serve", "cycle", "reserve-add", "reserve-list", "status", "genesis", "publisher-set", "publisher-status", "publisher-clear", "learnings"].includes(cmd ?? "")) {
+  console.error("usage: main.ts init | serve | cycle | reserve-add | reserve-list | status | genesis | publisher-set | publisher-status | publisher-clear | learnings  (see the header)");
   process.exit(2);
 }
 
@@ -95,6 +100,31 @@ const genesis = new GenesisRunner({
   sources: httpSources({ core: CORE, indexer: arg("indexer", "LINEAGE_INDEXER", "http://127.0.0.1:9668"), runtime: arg("signer", "LINEAGE_GENESIS_SIGNER", "http://127.0.0.1:9667"), log }),
 });
 svc.afterReady = (a) => genesis.run(a);
+
+function learningsPublisher(): LearningsPublisher {
+  const keyFile = arg("core-key", "LINEAGE_IDENTITY_CORE_KEY");
+  let post: ((path: string, body: unknown) => Promise<{ status: number; body: any }>) | null = null;
+  if (keyFile) {
+    const raw = JSON.parse(readFileSync(keyFile, "utf8"));
+    const cc = new CoreClient(CORE, Array.isArray(raw) ? keyFromSolanaJson(raw) : raw);
+    post = (path, body) => cc.post(path, body);
+  }
+  return new LearningsPublisher({ svc, sources: httpLearningsSources({ core: CORE, post }), site: SITE, log });
+}
+async function runLearnings(): Promise<boolean> {
+  try {
+    const agent = arg("agent");
+    const s = await learningsPublisher().tick({ agents: agent ? [agent] : undefined, force: flag("force"), dryRun: flag("dry-run") });
+    log(`learnings: ${s.agents} agents with episodes, ${s.published.length} repositories committed, ${s.unchanged} unchanged, ${s.rate_limited} rate limited, ${s.awaiting.length} awaiting publisher, ${s.failed.length} failed`);
+    if (cmd === "learnings") console.log(JSON.stringify(s, null, 2));
+    return s.failed.length === 0;
+  } catch (e) {
+    log(`learnings: ${errText(e)}`);
+    return false;
+  }
+}
+
+if (cmd === "learnings") process.exit((await runLearnings()) ? 0 : 1);
 
 if (cmd === "genesis") {
   const agent = arg("agent");
@@ -155,6 +185,7 @@ if (cmd === "reserve-add") {
 } else if (cmd === "cycle") {
   const s = await cycleOnce({ svc, core: CORE, site: SITE ?? undefined, coreKeyFile: arg("core-key", "LINEAGE_IDENTITY_CORE_KEY") ?? null, dryRun: flag("dry-run"), force: flag("force"), log });
   log(`cycle done: ${s.agents} agents, ${s.lineages.length} lineages built, ${s.skipped_unchanged} unchanged, ${s.published} published (${s.verified} verified), ${s.prs.filter((p) => p.action === "opened").length} PRs opened, ${s.rejected.length} rejected, GitHub records ${s.recorded} recorded + ${s.awaiting} awaiting publisher${s.publisher ? ` (publisher ${s.publisher})` : " (no publisher)"}, ${s.record_failures.length} not recorded${s.error ? `, error: ${s.error}` : ""}`);
+  await runLearnings();
   process.exit(s.error ? 1 : 0);
 } else {
   const port = Number(arg("port", "LINEAGE_IDENTITY_PORT", "9665"));

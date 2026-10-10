@@ -39,6 +39,7 @@ import { Telemetry } from "./telemetry.ts";
 import { checkEntry, FactsLog, journalPrompt, JOURNAL_RESERVE_USD, notesBlock, readNotes, storeEntry } from "./journal.ts";
 import { writeSecret } from "./secret-file.ts";
 import { SessionRecorder } from "./session.ts";
+import { EpisodeCapture } from "./episode.ts";
 import type { DesktopAttempt, DesktopProvider } from "../../desktop/src/pool.ts";
 import { measureCoalitions, type SplitAssignment } from "./split.ts";
 import { DiscoveryAgent } from "./discovery.ts";
@@ -433,6 +434,9 @@ export class Worker {
     // agent journal (SPEC 17.6): the session's own facts, and the context for the entry at the end
     const journal = this.opts.journal === true && this.opts.telemetry !== false;
     const facts = journal ? new FactsLog() : null;
+    // agent learnings (docs/plans/AGENT-LEARNINGS.md 1.1): what only the worker sees, reported after the end
+    const episode = new EpisodeCapture();
+    const outcome = (s: string) => (facts?.outcome(s), episode.outcome(s));
     let jctx: ProposeContext | null = null;
     let desk: DesktopAttempt | null = null;
     try {
@@ -492,6 +496,7 @@ export class Worker {
         spent: { usd: 0 },
         ...budget,
       };
+      ctx.meter = episode.wrap(ctx.meter);
       jctx = ctx;
       if (collab !== "off") {
         // intents are advisory (SPEC 12.1): reading or filing one never blocks authoring
@@ -502,6 +507,7 @@ export class Worker {
         ctx.inbox = await this.readInbox();
         if (proposer.plan) {
           ctx.planned = await proposer.plan(ctx);
+          episode.plan(ctx.planned);
           if (ctx.planned) {
             const intent = await this.fileIntent(view.lineage_id, tree.gen_id, ctx.planned);
             if (intent) await this.send(`board:${view.lineage_id}`, intentNote({ kind: ctx.planned.kind, target: this.normTarget(ctx.planned), tip: tree.gen_id }), { ref: { kind: "intent", id: intent } });
@@ -510,13 +516,13 @@ export class Worker {
       }
       const proposal = await proposer.propose(ctx);
       if (!proposal) {
-        facts?.outcome("no candidate: the session stopped without submitting a change");
+        outcome("no candidate: the session stopped without submitting a change");
         return null;
       }
       if (proposal.usage) this.log(`author: model spend ${proposal.usage.usd.toFixed(4)} USD (${proposal.usage.input_tokens} in, ${proposal.usage.output_tokens} out, ${proposal.usage.cache_read_tokens} cache read)`);
       const raw = diffWorkingTree(dir);
       if (!raw.trim()) {
-        facts?.outcome("no candidate: the working tree had no change to submit");
+        outcome("no candidate: the working tree had no change to submit");
         this.log("author: proposer made no change");
         return null;
       }
@@ -544,7 +550,7 @@ export class Worker {
         const same = tip.patches.length === parentPatches.length && tip.patches.every((p: { patch: string }, i: number) => p.patch === parentPatches[i]);
         if (!same) {
           this.log(`series: pending ${stack.commit_id.slice(0, 10)} became final without becoming the tip; change dropped`);
-          facts?.outcome("no candidate: the pending candidate this change was built on was not accepted, so the change had no parent");
+          outcome("no candidate: the pending candidate this change was built on was not accepted, so the change had no parent");
           return null;
         }
         this.log(`series: ${stack.commit_id.slice(0, 10)} was accepted while authoring; committing on the new tip ${String(tip.gen_id).slice(0, 10)}`);
@@ -558,15 +564,16 @@ export class Worker {
       this.mine.set(committed.commit_id, { lineage_id: view.lineage_id, patch, at: Date.now() });
       this.submitted++;
       this.log(`author: ${proposal.kind} on ${JSON.stringify(proposal.target)} (${g.lines} lines) -> ${revealed.status}${revealed.reason ? ` (${revealed.reason})` : ""}`);
-      facts?.outcome(`submitted a ${proposal.kind} candidate on ${Array.isArray(proposal.target) ? proposal.target.join(", ") : proposal.target} (${g.lines} changed lines); it was committed and revealed (status ${revealed.status}${revealed.reason ? `, ${revealed.reason}` : ""}); its verdict comes later from independent replays`);
+      outcome(`submitted a ${proposal.kind} candidate on ${Array.isArray(proposal.target) ? proposal.target.join(", ") : proposal.target} (${g.lines} changed lines); it was committed and revealed (status ${revealed.status}${revealed.reason ? `, ${revealed.reason}` : ""}); its verdict comes later from independent replays`);
       return committed.commit_id;
     } catch (e) {
-      facts?.outcome(`the attempt failed: ${(e as Error).message.slice(0, 200)}`);
+      outcome(`the attempt failed: ${(e as Error).message.slice(0, 200)}`);
       throw e;
     } finally {
       const sid = session.id;
       await session.end(sessionCommit);
       if (facts && jctx && sid && !facts.empty) await this.writeJournal(proposer, jctx, facts, sid, view.lineage_id, loaded.recipe);
+      if (sid && this.opts.telemetry !== false) await episode.post(this.client, sid, this.log);
       if (desk) await desk.end().catch((e) => this.log(`desktop end: ${(e as Error).message}`));
       removeTree(work);
       this.telemetry.idle();
