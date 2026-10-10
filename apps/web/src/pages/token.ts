@@ -42,7 +42,7 @@ import type { Page } from "./types.ts";
 // the right the trade box, the holders and the transactions. Figures come from the market indexer, the
 // agent and the lineages on its repository from Core. No fee figures are shown. A hidden launch still resolves here, marked as hidden. The
 // trade box is part of the wallet bundle (apps/web/wallet/trade.ts), loaded on demand: it signs in
-// the browser wallet and swaps on Meteora DBC before graduation and DAMM v2 after.
+// the browser wallet and trades on the pump.fun curve before graduation and the PumpSwap pool after.
 //
 // Sections refresh in place every 15 s (and right after a trade) so the panel and the trade box keep
 // their state; nothing is re-rendered around them.
@@ -91,7 +91,7 @@ function tradesTable(d: Data): Raw {
   return html`<ul class="tk-rows mk-trades">${d.trades.map(
     (r) => html`<li data-sig="${r.signature}">
       <div class="tk-row-main"><span class="mk-side ${r.side}">${r.side === "buy" ? "Bought" : "Sold"}</span> ${fig(fmtAmount(r.base_amount), r.base_amount)} ${sym(d.t)} for ${fig(fmtAmount(r.quote_amount), r.quote_amount)} ${QUOTE}</div>
-      <div class="tk-row-sub">at ${fig(fmtPrice(r.price), r.price)} · ${addrLink(r.trader)} · ${r.venue === "damm" ? "DAMM v2" : r.venue === "dbc" ? "DBC" : r.venue}${r.time ? html` · <time data-ago="${r.time * 1000}"></time>` : ""}</div>
+      <div class="tk-row-sub">at ${fig(fmtPrice(r.price), r.price)} · ${addrLink(r.trader)} · ${r.venue === "pool" ? "PumpSwap" : r.venue === "curve" ? "curve" : r.venue === "damm" ? "DAMM v2" : r.venue === "dbc" ? "DBC" : r.venue}${r.time ? html` · <time data-ago="${r.time * 1000}"></time>` : ""}</div>
       <a class="tk-row-tx" href="${explorerTx(r.signature)}" target="_blank" rel="noopener" title="${r.signature}">tx ${icon.ext}</a></li>`,
   )}</ul>`;
 }
@@ -109,7 +109,8 @@ function holdersTable(d: Data): Raw {
   <div class="panel-note">${h.excludes} excluded${h.source ? `, counted from ${h.source}` : ""}.</div>`;
 }
 
-const EVENT: Record<string, string> = { launch: "Launched on the DBC curve", migration: "Migrated to DAMM v2 by Meteora", graduated: "Graduated (lineage_launch)", repointed: "Pool position repointed to the agent" };
+const EVENT_METEORA: Record<string, string> = { launch: "Launched on the DBC curve", migration: "Migrated to DAMM v2 by Meteora", graduated: "Graduated (lineage_launch)", repointed: "Pool position repointed to the agent" };
+const EVENT_PUMP: Record<string, string> = { launch: "Launched on the pump.fun curve", migration: "Migrated to PumpSwap by pump.fun", graduated: "Graduated (lineage_launch)" };
 
 function curveBody(t: TokenDetail): Raw {
   const grad = t.phase === "graduated";
@@ -119,10 +120,13 @@ function curveBody(t: TokenDetail): Raw {
     { k: "graduated", done: grad },
   ];
   const evs = new Map(t.events.map((e) => [e.kind, e]));
+  const met = t.venue === "meteora";
+  const EVENT = met ? EVENT_METEORA : EVENT_PUMP;
   return html`<div class="panel-b mk-curve">
       <div class="mk-curve-h"><span class="eyebrow">Curve progress</span>${phaseBadge(t)}</div>
       <div class="mk-curve-bar">${progressBar(t.curve_progress, "curve_progress")}</div>
-      <div class="mk-curve-n dim">${grad ? html`The curve filled at ${amountFig(t.migration_threshold, QUOTE, "migration_threshold")}; trading continues on the DAMM v2 pool.` : html`${amountFig(t.quote_reserve, QUOTE, "quote_reserve")} of ${amountFig(t.migration_threshold, QUOTE, "migration_threshold")} raised; at the threshold Meteora migrates the pool to DAMM v2.`}</div>
+      <div class="mk-curve-n dim">${!met ? (grad ? html`The pump.fun curve sold out; trading continues on the PumpSwap pool.` : html`${amountFig(t.quote_reserve, QUOTE, "quote_reserve")} raised; when the curve sells out pump.fun migrates it to PumpSwap.`)
+        : grad ? html`The curve filled at ${amountFig(t.migration_threshold, QUOTE, "migration_threshold")}; trading continued on the DAMM v2 pool. Launched on the earlier Meteora venue: read only.` : html`${amountFig(t.quote_reserve, QUOTE, "quote_reserve")} of ${amountFig(t.migration_threshold, QUOTE, "migration_threshold")} raised on the earlier Meteora venue: read only.`}</div>
       <ol class="mk-steps">${steps.map((s) => {
         const e = evs.get(s.k);
         return html`<li class="${s.done ? "done" : ""}"><i>${s.done ? icon.check : ""}</i><div><div>${EVENT[s.k]}</div><div class="sub faint">${e ? html`${e.time ? when(e.time * 1000) : ""} ${txLink(e.signature)}` : s.done ? "transaction not indexed" : "not yet"}</div></div></li>`;

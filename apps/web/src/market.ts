@@ -50,6 +50,9 @@ export interface TokenSummary {
   launcher: string;
   repo_url: string | null;
   state_at: number | null;
+  /** "pump" (pump.fun) or "meteora" (the earlier venue, devnet history, read only); from the indexer */
+  venue?: "pump" | "meteora";
+  read_only?: boolean;
 }
 
 export interface TokenDetail extends TokenSummary {
@@ -191,8 +194,8 @@ export function changeFig(n: number | null | undefined, field?: string): Raw {
   return html`<span class="num mk-chg ${n! > 0 ? "up" : n! < 0 ? "down" : ""}" data-v="${n}"${field ? raw(` data-f="${esc(field)}"`) : ""} title="${String(n)}">${t}</span>`;
 }
 
-export function phaseBadge(t: Pick<TokenSummary, "phase" | "migrated">): Raw {
-  if (t.phase === "graduated") return html`<span class="b good mk-phase" data-phase="graduated">Graduated, DAMM v2</span>`;
+export function phaseBadge(t: Pick<TokenSummary, "phase" | "migrated"> & { venue?: string }): Raw {
+  if (t.phase === "graduated") return html`<span class="b good mk-phase" data-phase="graduated">Graduated, ${t.venue === "meteora" ? "DAMM v2" : "PumpSwap"}</span>`;
   if (t.migrated) return html`<span class="b warn mk-phase" data-phase="migrated">Migrated, graduation pending</span>`;
   return html`<span class="b info mk-phase" data-phase="curve">Bonding curve</span>`;
 }

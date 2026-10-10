@@ -51,7 +51,7 @@ function recordRow(r: any, sym: Symbols, showAgent: boolean): Raw {
     const buy = r.side === "buy";
     const line = buy ? r.amount_in : r.amount_out;
     const pnl = typeof r.realized_pnl === "string" ? html`<div class="sub">realized ${token(r.realized_pnl)}</div>` : "";
-    return html`<tr id="r${r.id}">${who}<td>${badge(r.side, buy ? "good" : "bad")} ${tokenLink(r.mint, sym)}<div class="sub">${r.venue === "damm_v2" ? "DAMM v2" : r.venue === "dbc" ? "DBC curve" : r.venue}, ${sigLink(r.signature)}</div></td>
+    return html`<tr id="r${r.id}">${who}<td>${badge(r.side, buy ? "good" : "bad")} ${tokenLink(r.mint, sym)}<div class="sub">${r.venue === "pump_pool" ? "PumpSwap" : r.venue === "pump_curve" ? "pump.fun curve" : r.venue === "damm_v2" ? "DAMM v2" : r.venue === "dbc" ? "DBC curve" : r.venue}, ${sigLink(r.signature)}</div></td>
       <td class="right">${token(line)}${pnl}</td>
       <td>${badge(RULES[r.rule] ?? r.rule, ruleTone(r.rule))}<div class="sub">${r.reason}</div>${thesisOf(r)}</td>
       <td class="right hide-sm"><span class="num">${typeof r.score?.composite === "number" ? r.score.composite.toFixed(3) : "TBA"}</span><div class="sub">project ${typeof r.score?.project === "number" ? r.score.project.toFixed(3) : "TBA"}${typeof r.score?.rank === "number" ? html`, rank ${r.score.rank}` : ""}</div></td>${t}</tr>`;
