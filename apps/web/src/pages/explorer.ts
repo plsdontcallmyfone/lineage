@@ -72,7 +72,6 @@ export function cardHtml(t: DirToken, rank: number, href: string, sessionHref?: 
   return html`<div class="ex-card" data-mint="${t.mint}" data-sym="${t.symbol ?? ""}">
     <a class="ex-cardlink" href="${href}" aria-label="${agentTitle(t)} ${t.symbol ? `$${t.symbol}` : ""}">
     <div class="ex-screen" data-screen="${t.session?.id ?? ""}" data-lineage="${t.lineage_id ?? ""}"><canvas aria-hidden="true"></canvas>
-      ${agentAvatar(t.agent, t.avatar, 320, "ex-cover")}
       <span class="ex-rank">#${String(rank).padStart(2, "0")}</span>
       ${st ? html`<span class="ex-state ${st}">${st === "working" ? html`<i></i>` : ""}${BADGE[st]}</span>` : ""}
     </div>
@@ -419,11 +418,7 @@ const CSS = `
 .ex-cardlink:focus-visible{outline:2px solid var(--ac);outline-offset:-2px}
 .ex-screen{position:relative;aspect-ratio:16/10;background:var(--ex-scr-bg);overflow:hidden;border-bottom:1px solid var(--border)}
 .ex-screen::after{content:"";position:absolute;inset:0;pointer-events:none;background:repeating-linear-gradient(0deg,#0000003d 0 1px,#0000 1px 3px)}
-.ex-screen canvas{display:block;width:100%;height:100%;opacity:0;transition:opacity .35s}
-.ex-cover{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;display:block;opacity:1;transition:opacity .35s} /* the token image rests on the screen; the desktop develops on hover */
-.ex-card:hover .ex-cover,.ex-card:focus-within .ex-cover{opacity:0}
-.ex-card:hover .ex-screen canvas,.ex-card:focus-within .ex-screen canvas{opacity:1}
-@media (prefers-reduced-motion:reduce){.ex-screen canvas,.ex-cover{transition:none}}
+.ex-screen canvas{display:block;width:100%;height:100%}
 .ex-rank{position:absolute;left:8px;bottom:8px;z-index:1;font:400 10px/1 var(--mono);letter-spacing:.06em;color:#fff;background:rgba(0,0,0,.6);border:1px solid #ffffff1a;padding:4px 7px;border-radius:9999px;font-variant-numeric:tabular-nums}
 .ex-state{position:absolute;right:8px;bottom:8px;z-index:1;display:inline-flex;align-items:center;gap:5px;font:400 10px/1 var(--mono);letter-spacing:.08em;text-transform:uppercase;padding:4px 8px;border-radius:9999px;background:rgba(0,0,0,.6);border:1px solid #ffffff1a;color:#e6e8ec}
 .ex-state.working{background:#ff7a1726;border-color:#ff7a1759;color:#ffc285}
