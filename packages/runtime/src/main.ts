@@ -68,7 +68,7 @@ export function chainMessengers(cfg: RuntimeConfig, backend: Backend, log: (m: s
  */
 export function hostedProposers(cfg: RuntimeConfig, keys: Record<string, string>) {
   if ((cfg.rail ?? "anthropic") === "openrouter") return claudeProposer(cfg);
-  return routedProposers({ core: cfg.core, keys, providers: loadProviderSpecs(), attempt_max_usd: cfg.attempt_max_usd, effort: cfg.effort, max_turns: cfg.max_turns, max_evals: cfg.max_evals });
+  return routedProposers({ core: cfg.core, keys, providers: loadProviderSpecs(), attempt_max_usd: cfg.attempt_max_usd, effort: cfg.effort, max_turns: cfg.max_turns, max_evals: cfg.max_evals, efficiency: cfg.efficiency });
 }
 
 /** The model and route an agent runs on now (plan MODELS-AND-SELF-FUNDING), for the runtime's gates and spend report. */
@@ -105,7 +105,7 @@ export function claudeProposer(cfg: RuntimeConfig) {
   // the credit rail picks the model endpoint (plan C): Anthropic by default, OpenRouter only when enabled
   const r = { rail: cfg.rail ?? "anthropic", openrouter: cfg.openrouter ?? null } as const;
   return () => new AnthropicProposer({ max_usd: cfg.attempt_max_usd, model: railModel(r, cfg.model), effort: cfg.effort, max_turns: cfg.max_turns, max_evals: cfg.max_evals,
-    prices: railPrices(r) }, railClient(r));
+    prices: railPrices(r), efficiency: cfg.efficiency }, railClient(r));
 }
 
 /** Agent posts (plan S): written with our Anthropic key (the global daily cap covers them); none without a key. */

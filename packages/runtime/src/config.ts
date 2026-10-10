@@ -2,6 +2,7 @@ import { existsSync, readFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { parseRail, type OpenRouterRailConfig, type RailName } from "./rail.ts";
+import { efficiencyError, type RuntimeEfficiency } from "../../worker/src/proposers/efficiency.ts";
 
 // Hosted runtime configuration (SPEC 17.2). Prices and caps are configuration, never constants:
 // `compute_price_*` is the published rate at which model spend and sandbox time are converted into
@@ -23,6 +24,8 @@ export interface RuntimeConfig {
   effort: "low" | "medium" | "high" | "xhigh" | "max";
   max_turns: number;
   max_evals: number;
+  /** Attempt efficiency (docs/plans/AGENT-EFFICIENCY.md): the proposer's cap mode and usage log, and stacked authoring on the agent's own pending candidate. Absent: all off. */
+  efficiency?: RuntimeEfficiency;
   /** Spend control (USD of model usage). */
   attempt_max_usd: number;
   /** Optional per-agent cap per usage epoch; null or absent = none (owner decision 2026-10-10: the vault pays, no cap). */
@@ -151,6 +154,10 @@ export function parseConfig(raw: Record<string, unknown>): RuntimeConfig {
   if (c.recordings !== undefined && typeof c.recordings !== "boolean") throw new Error("runtime config: recordings is true or false");
   if (c.desktop_usd_per_day !== undefined && !(typeof c.desktop_usd_per_day === "number" && c.desktop_usd_per_day >= 0)) throw new Error("runtime config: desktop_usd_per_day must be a non-negative number");
   if (c.desktop_allow !== undefined && !(Array.isArray(c.desktop_allow) && c.desktop_allow.every((h) => typeof h === "string" && /^[A-Za-z0-9.-]{1,253}$/.test(h)))) throw new Error("runtime config: desktop_allow is a list of host names");
+  if (c.efficiency !== undefined) {
+    const err = efficiencyError(c.efficiency);
+    if (err) throw new Error(`runtime config: ${err}`);
+  }
   const rail = parseRail(c);
   c.rail = rail.rail;
   c.openrouter = rail.openrouter;

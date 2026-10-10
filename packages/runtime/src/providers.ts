@@ -3,6 +3,7 @@ import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { checkRegistry, findModel, routeEntry, routeFeeFactor, routeOf, validChoice, type ModelChoice, type ModelEntry, type ModelRegistry, type RouteVia } from "../../core/src/model-registry.ts";
 import { AnthropicProposer } from "../../worker/src/proposers/anthropic.ts";
+import type { EfficiencyOptions } from "../../worker/src/proposers/efficiency.ts";
 import { OpenAICompatProposer } from "../../worker/src/proposers/openai-compat.ts";
 import { PROVIDERS, type ProviderSpec } from "../../worker/src/proposers/providers.ts";
 import type { Proposal, ProposeContext, Proposer } from "../../worker/src/proposers/types.ts";
@@ -26,6 +27,8 @@ export interface RoutingOptions {
   effort: "low" | "medium" | "high" | "xhigh" | "max";
   max_turns: number;
   max_evals: number;
+  /** Attempt efficiency settings for the Anthropic proposer (docs/plans/AGENT-EFFICIENCY.md). */
+  efficiency?: EfficiencyOptions;
   fetch?: typeof fetch;
   /** tests: model clients */
   anthropicClient?: Anthropic;
@@ -158,7 +161,7 @@ export class RoutedProposer implements Proposer {
     const delegate: Proposer =
       r.provider.adapter === "anthropic"
         ? new AnthropicProposer(
-            { max_usd: this.o.attempt_max_usd, model: r.model.id, effort: this.o.effort, max_turns: this.o.max_turns, max_evals: this.o.max_evals, prices: anthropicPrices(r.model) },
+            { max_usd: this.o.attempt_max_usd, model: r.model.id, effort: this.o.effort, max_turns: this.o.max_turns, max_evals: this.o.max_evals, prices: anthropicPrices(r.model), efficiency: this.o.efficiency },
             this.o.anthropicClient ?? new Anthropic({ apiKey: r.key }),
           )
         : new OpenAICompatProposer({ provider: r.provider, apiKey: r.key, model: r.model, max_usd: this.o.attempt_max_usd, max_turns: this.o.max_turns, max_evals: this.o.max_evals, fetch: this.o.providerFetch, fee_factor: r.fee_factor, request_extra: r.request_extra });

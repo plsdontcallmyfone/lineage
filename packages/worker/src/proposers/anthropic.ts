@@ -1,5 +1,6 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { wrapUpNotice } from "./budget.ts";
+import { DEFAULT_MIN_TURN_TOKENS, MAX_TURN_TOKENS, contentChars, turnAllowance, type EfficiencyOptions } from "./efficiency.ts";
 import { existsSync, lstatSync, readdirSync, readFileSync, realpathSync, statSync, writeFileSync } from "node:fs";
 import { dirname, join, normalize, relative, resolve, sep } from "node:path";
 import { canonicalizeDiff, guard, judge, matchesAny, sha256Hex, type CandidateKind, type CandidateView } from "@lineage/protocol";
@@ -20,6 +21,8 @@ export interface AnthropicProposerOptions {
   max_evals?: number;
   /** price table in USD per million tokens; defaults are the published rates for the default model */
   prices?: { input: number; output: number; cache_read: number; cache_write: number };
+  /** Attempt efficiency settings (docs/plans/AGENT-EFFICIENCY.md); all off by default. */
+  efficiency?: EfficiencyOptions;
 }
 
 /** claude-opus-5-5 published rates (USD per million tokens); cache writes at 1.25x input. */
@@ -172,7 +175,7 @@ export const HARNESS_DIGEST = sha256Hex(new TextEncoder().encode(JSON.stringify(
 export class AnthropicProposer implements Proposer {
   readonly name = "anthropic";
   private client: Anthropic;
-  private opts: Required<Omit<AnthropicProposerOptions, "prices">> & { prices: NonNullable<AnthropicProposerOptions["prices"]> };
+  private opts: Required<Omit<AnthropicProposerOptions, "prices" | "efficiency">> & { prices: NonNullable<AnthropicProposerOptions["prices"]>; efficiency: EfficiencyOptions };
 
   constructor(opts: AnthropicProposerOptions, client?: Anthropic) {
     this.client = client ?? new Anthropic();
@@ -183,6 +186,7 @@ export class AnthropicProposer implements Proposer {
       max_turns: opts.max_turns ?? 40,
       max_evals: opts.max_evals ?? 4,
       prices: opts.prices ?? OPUS_55,
+      efficiency: opts.efficiency ?? {},
     };
   }
 
@@ -236,16 +240,41 @@ export class AnthropicProposer implements Proposer {
       /* metering must not change what the model sees */
     }
     const messages: Anthropic.Beta.BetaMessageParam[] = [{ role: "user", content: openingMessage(ctx) }];
+    const eff = o.efficiency;
+    const bounded = eff.cap_mode === "bounded";
+    let calls = 0;
+    // every exit logs the attempt's token breakdown (measurement for docs/plans/AGENT-EFFICIENCY.md)
+    const end = <T>(why: string, v: T): T => {
+      if (eff.log_usage !== false)
+        ctx.log(`anthropic: usage ${why}: ${calls} calls, ${usage.input_tokens} in, ${usage.output_tokens} out, ${usage.cache_read_tokens} cache read, ${usage.cache_write_tokens} cache write, ${usage.usd.toFixed(4)} USD`);
+      return v;
+    };
+    // bounded cap mode: what the next call adds to the context, and when the cache was last touched
+    let prefixTokens = 0;
+    let outTokens = 0;
+    let newChars = systemPrompt(ctx).length + JSON.stringify(TOOLS).length + contentChars(messages[0]!.content);
+    let lastCallAt = 0;
 
     for (let turn = 0; turn < o.max_turns; turn++) {
-      // projected: the next turn is assumed to cost what the last one did, so the cap holds before a turn, not after it
-      if (usage.usd >= cap || usage.usd + lastTurnUsd > cap) {
+      let maxTokens = MAX_TURN_TOKENS;
+      if (bounded) {
+        // the automatic cache lives 5 minutes from the last read; past 4.5 min price the prefix as a write
+        const cold = turn === 0 || Date.now() - lastCallAt > 270_000;
+        maxTokens = turnAllowance({ room: cap - usage.usd, prefixTokens, outTokens, newChars, cold, prices: o.prices });
+        if (maxTokens < (eff.min_turn_tokens ?? DEFAULT_MIN_TURN_TOKENS)) {
+          ctx.log(`anthropic: spend cap reached (${usage.usd.toFixed(4)} USD spent, cap ${cap.toFixed(4)}, next call could only have ${maxTokens} output tokens)`);
+          return end("cap reached", null);
+        }
+      } else if (usage.usd >= cap || usage.usd + lastTurnUsd > cap) {
+        // projected: the next turn is assumed to cost what the last one did, so the cap holds before a turn, not after it
         ctx.log(`anthropic: spend cap reached (${usage.usd.toFixed(4)} USD spent, cap ${cap.toFixed(4)})`);
-        return null;
+        return end("cap reached", null);
       }
+      lastCallAt = Date.now();
+      calls++;
       const stream = this.client.beta.messages.stream({
         model: o.model,
-        max_tokens: 64000,
+        max_tokens: maxTokens,
         betas: ["server-side-fallback-2026-07-01"],
         fallbacks: "default",
         // adaptive thinking and effort exist on the 4.6-and-later models; Haiku 4.5 answers 400 to them (plan M real session)
@@ -264,7 +293,7 @@ export class AnthropicProposer implements Proposer {
         // stream saw, or at worst the last turn's input plus the full output allowance, so these turns
         // cannot run past the caps unmetered (audit A2, OFF-K3)
         const seen = (stream as unknown as { currentMessage?: { usage?: Anthropic.Beta.BetaUsage; model?: string } }).currentMessage;
-        const est = { input_tokens: lastInput, output_tokens: 64000, cache_read_input_tokens: 0, cache_creation_input_tokens: 0 } as Anthropic.Beta.BetaUsage;
+        const est = { input_tokens: lastInput, output_tokens: maxTokens, cache_read_input_tokens: 0, cache_creation_input_tokens: 0 } as Anthropic.Beta.BetaUsage;
         const su = seen?.usage;
         const partial = su && typeof su.output_tokens === "number" && su.output_tokens > 0 && typeof su.input_tokens === "number";
         addUsage(partial ? su : est, seen?.model ?? o.model);
@@ -272,26 +301,34 @@ export class AnthropicProposer implements Proposer {
         continue;
       }
       addUsage(message.usage, message.model ?? o.model);
+      prefixTokens = lastInput;
+      outTokens = typeof message.usage?.output_tokens === "number" ? message.usage.output_tokens : maxTokens;
+      newChars = 0;
       if (message.stop_reason === "refusal") {
         ctx.log(`anthropic: refusal (${message.stop_details?.category ?? "no category"})`);
-        return null;
+        return end("refusal", null);
+      }
+      // bounded: a response cut at its allowance means the cap is spent; its tool calls cannot run
+      if (bounded && message.stop_reason === "max_tokens" && maxTokens < MAX_TURN_TOKENS) {
+        ctx.log(`anthropic: spend cap reached (${usage.usd.toFixed(4)} USD spent, cap ${cap.toFixed(4)}, response cut at its ${maxTokens} token allowance)`);
+        return end("cap reached", null);
       }
       if (message.stop_reason === "pause_turn") {
         messages.push({ role: "assistant", content: message.content });
         continue;
       }
       for (const b of message.content) if (b.type === "text" && b.text.trim()) tools.session({ kind: "note", text: clip(b.text, 8000).text });
-      const calls = message.content.filter((b): b is Anthropic.Beta.BetaToolUseBlock => b.type === "tool_use");
-      if (calls.length === 0) {
+      const toolCalls = message.content.filter((b): b is Anthropic.Beta.BetaToolUseBlock => b.type === "tool_use");
+      if (toolCalls.length === 0) {
         ctx.log("anthropic: ended without submit");
-        return null;
+        return end("no submit", null);
       }
       if (message.stop_reason === "max_tokens") throw new Error("tool input truncated at max_tokens");
       messages.push({ role: "assistant", content: message.content });
       const results: Anthropic.Beta.BetaToolResultBlockParam[] = [];
       let submitted: Proposal | null = null;
       let gaveUp = false;
-      for (const call of calls) {
+      for (const call of toolCalls) {
         const input = (call.input ?? {}) as ToolInput;
         if (call.name === "submit") {
           const v = tools.validateSubmit(input);
@@ -317,18 +354,20 @@ export class AnthropicProposer implements Proposer {
           results.push({ type: "tool_result", tool_use_id: call.id, is_error: true, content: (e as Error).message });
         }
       }
-      if (submitted) return { ...submitted, usage };
-      if (gaveUp) return null;
+      if (submitted) return end("submitted", { ...submitted, usage });
+      if (gaveUp) return end("gave up", null);
       const notice = warned ? null : wrapUpNotice(usage.usd, cap, lastTurnUsd);
       if (notice) {
         warned = true;
         ctx.log("anthropic: budget wrap-up notice sent");
       }
-      messages.push({ role: "user", content: notice ? [...results, { type: "text", text: notice }] : results });
+      const next: Anthropic.Beta.BetaContentBlockParam[] = notice ? [...results, { type: "text", text: notice }] : results;
+      newChars = contentChars(next);
+      messages.push({ role: "user", content: next });
       ctx.log(`anthropic: turn ${turn + 1}, ${usage.usd.toFixed(4)} USD so far`);
     }
     ctx.log("anthropic: turn limit reached");
-    return null;
+    return end("turn limit", null);
   }
 
   /** The session's journal entry (SPEC 17.6): one small call, metered, inside what is left of the attempt's cap. */
