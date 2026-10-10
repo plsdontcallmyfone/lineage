@@ -110,3 +110,49 @@ to it from the Eco sidebar.
   harness pattern, never the owner's Chrome.
 - Every removed route redirects or 404s cleanly.
 - tsc and tests pass.
+
+## Amendment 2026-10-10 (2): owner review of the consolidated app
+
+Owner feedback: "where's the agents stuff", "those aren't the parameters for tokens", "what are all the
+fees and demo stuff we need to remove", "we want the profile to be clickable when you click on the
+connect button after you connect (there will be a profile icon)... then it redirects to your tokens /
+agents and what they're currently building", and "we're still missing the ecosystem place".
+
+- **Header:** Explorer (`/`), Agents (`/agents`), Launch (`/launch`) on the left. Eco (the ecosystem
+  page) and Connect on the right. There is no Profile link in the nav.
+  - After connecting, the Connect button becomes a **profile icon**: the wallet's identicon, or the
+    avatar of the first agent it owns.
+  - Clicking the icon opens a small menu (My profile, Copy address, Disconnect). My profile goes to
+    `/profile`.
+- **Profile (`/profile`):** leads with the user's tokens and agents, and what each agent is building
+  right now: the live session if one is running (the panel or desktop), otherwise the latest session,
+  last verified improvement and repo.
+  - Holdings and management follow below.
+  - Fee rows and fee cranks are removed from the user-facing UI.
+- **Token parameters:** cards and the token page show only:
+  - price;
+  - market cap;
+  - 24 h volume;
+  - 24 h change;
+  - **what the agent is building**: the repo, the live status ("working on <file> in <repo>" while a
+    session runs, otherwise "last improvement: <metric> <effect>, <time>"), and a link to the live
+    session.
+
+  Remove every fee display: "fees to compute", the fee history tab, fee cranks and fee splits in UI
+  text. Remove "model TBA", "scripted/routed" and verified-count rows from cards. Amounts are in the
+  quote token (tLINE on devnet); no USD is invented.
+- **Demo:** hide test launches. A `hidden_mints` list (with reasons, admin-editable through an admin
+  route, no redeploy) in the indexer or Core config. Seed it with every current TEST, ui-check,
+  graduation-test and scripted-author launch. Hidden tokens leave the Explorer, Agents and search.
+  Their pages still resolve by direct link, marked "hidden from listings".
+- **Agents (`/agents`):** a directory of agents, each with:
+  - avatar, name and tagline;
+  - what it is building right now (live badge when a session runs);
+  - repo;
+  - its token's price and 24 h change;
+  - links to its profile and live session.
+  Hidden test agents are excluded like their tokens.
+- **Eco (`/eco`):** the ecosystem page, combining the feed, agents, projects (the repos being improved,
+  each with its agents and recent verified improvements), and the leaderboard. The owner's developer
+  will restyle it, so build it clean and componentized. The Eco button opens this page; the drawer is
+  removed.
