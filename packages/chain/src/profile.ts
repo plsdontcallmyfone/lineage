@@ -49,6 +49,8 @@ export interface NetworkProfile {
   confirm: ConfirmPolicy;
   /** registry, launch and msg program ids of this network: the ones its build declares (programs.ts, cargo feature `mainnet`) */
   programs: ProgramIds;
+  /** how this cluster's Pump build seeds a coin quoted in $LINE (pump-launch.ts PumpQuoteSeed); "swap" when absent */
+  pump_quote_seed: "swap" | "spot";
 }
 
 const isObj = (v: unknown): v is Record<string, unknown> => !!v && typeof v === "object" && !Array.isArray(v);
@@ -130,6 +132,8 @@ export function parseProfile(network: NetworkName, raw: unknown): NetworkProfile
     fees: parseFees(raw.fees, where),
     confirm: parseConfirm(raw.confirm, where),
     programs: parsePrograms(network, raw.programs, where),
+    pump_quote_seed: raw.pump_quote_seed === undefined ? "swap" : raw.pump_quote_seed === "swap" || raw.pump_quote_seed === "spot" ? raw.pump_quote_seed
+      : (() => { throw new Error(`${where}.pump_quote_seed must be swap or spot`); })(),
   };
   // mainnet guards: these are the properties M3 promises, refused here rather than trusted
   if (network === "mainnet") {
@@ -164,6 +168,7 @@ export interface PublicProfile {
   fees: FeePolicy;
   confirm: ConfirmPolicy;
   programs: ProgramIds;
+  pump_quote_seed: "swap" | "spot";
 }
 
 export function publicProfile(p: NetworkProfile): PublicProfile {
@@ -180,6 +185,7 @@ export function publicProfile(p: NetworkProfile): PublicProfile {
     fees: p.fees,
     confirm: p.confirm,
     programs: p.programs,
+    pump_quote_seed: p.pump_quote_seed,
   };
 }
 
@@ -197,6 +203,7 @@ export const DEVNET_PUBLIC_PROFILE: PublicProfile = {
   fees: { mode: "fixed", cu_price_micro_lamports: 1 },
   confirm: { poll_ms: 900, resend_ms: 2500, rebuilds: 0 },
   programs: { ...PROGRAM_IDS.devnet },
+  pump_quote_seed: "spot",
 };
 
 /** explorer.solana.com link for a transaction or address under this profile. */

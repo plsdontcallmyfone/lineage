@@ -123,6 +123,33 @@ describe("Runtime.bindTarget", () => {
   });
 });
 
+describe("relaunch under the same agent key (devnet v2)", () => {
+  test("discovery moves a known agent to its new mint and keeps its runtime key", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "lineage-bind-"));
+    try {
+      const oldMint = generateAgentKey().id, newMint = generateAgentKey().id;
+      let mint = oldMint;
+      const backend = {
+        mode: "devnet",
+        hostedAgent: async () => ({ agent: agent.id, mint, launcher: owner.id, target_repo: "https://github.com/keis/base58" }),
+        discover: async () => [{ agent: agent.id, mint, launcher: owner.id, target_repo: "https://github.com/keis/base58" }],
+        bindRequest: async (a: string, k: AgentKey) => ({ agent: a, new_key: k.id }),
+        signingKey: async () => null,
+      } as unknown as Backend;
+      const cfg = parseConfig({ mode: "devnet", core: "http://127.0.0.1:1", runtime_key: "/dev/null", state_dir: dir, compute_price_line_per_usd: "20", compute_price_line_per_sandbox_s: "0.002" });
+      const rt = new Runtime(cfg, { backend, runtimeKey, proposer: () => ({ name: "none", propose: async () => null }), log: () => {}, telemetry: false });
+      const k = (await rt.bindTarget(agent.id))!.new_key;
+      expect(rt.state.agents[agent.id]?.mint).toBe(oldMint);
+      mint = newMint;
+      await (rt as any).refreshAgents();
+      expect(rt.state.agents[agent.id]?.mint).toBe(newMint);
+      expect(rt.keyOf(agent.id)?.id).toBe(k);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+});
+
 describe("attempt slots go round robin (launch e2e lane)", () => {
   test("least recently started first; never started before any started; ties keep state order", async () => {
     const { fairOrder } = await import("../src/runtime.ts");

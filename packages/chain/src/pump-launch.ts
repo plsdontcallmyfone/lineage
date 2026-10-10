@@ -77,7 +77,7 @@ export function pumpInitialBuy(a: { launcher: Address; agent: Address; agentMint
  * `pumpQuoteReserves`; the launch simulation stays the authority.
  */
 export function pumpQuotedCurve(g: PumpGlobal, line: { curve: BondingCurve; pool?: { pool: PumpPool; baseReserve: bigint; quoteReserve: bigint } }, creator: Address,
-  lineMint: Address, creatorFeeBps = 0n): BondingCurve {
+  lineMint: Address, creatorFeeBps = 0n, seedRule: PumpQuoteSeed = "swap"): BondingCurve {
   const c = line.curve;
   if (c.isMayhemMode || c.depth > 0) throw new Error("$LINE cannot be a quote: mayhem or depth > 0");
   let base: bigint, quote: bigint;
@@ -93,8 +93,9 @@ export function pumpQuotedCurve(g: PumpGlobal, line: { curve: BondingCurve; pool
   const target = c.quoteMint === "11111111111111111111111111111111" ? g.initialVirtualSolReserves : g.initialVirtualQuoteReserves;
   const tradable = g.initialVirtualTokenReserves - g.initialRealTokenReserves;
   const input = (target * g.initialRealTokenReserves) / tradable;
-  const raise = (input * base) / (quote + input);
-  const seed = (raise * tradable) / g.initialRealTokenReserves;
+  // "swap": the reference raise bought on $LINE's curve (mainnet's build, fork proof); "spot": devnet's
+  // build prices the target at $LINE's spot price, seed = target x base / quote (measured 2026-10-10)
+  const seed = seedRule === "spot" ? (target * base) / quote : (((input * base) / (quote + input)) * tradable) / g.initialRealTokenReserves;
   if (seed < 1n) throw new Error("QuoteReservesOutOfRange: $LINE is priced so high the seed rounds to zero");
   return {
     virtualTokenReserves: g.initialVirtualTokenReserves, virtualQuoteReserves: seed, realTokenReserves: g.initialRealTokenReserves, realQuoteReserves: 0n,
@@ -103,6 +104,13 @@ export function pumpQuotedCurve(g: PumpGlobal, line: { curve: BondingCurve; pool
     postCompleteQuoteIn: 0n,
   };
 }
+
+/**
+ * How a cluster's Pump build seeds the curve of a coin quoted in $LINE: "swap" (mainnet, pump-sdk
+ * 4.0.0, proven on the mainnet fork) or "spot" (devnet's build: the launch of 2026-10-10 asked exactly
+ * the spot-seeded quote). The network profile says which (pump_quote_seed).
+ */
+export type PumpQuoteSeed = "swap" | "spot";
 
 /** The initial buy's curve quote on the curve create_v2 is about to write (fees included). */
 export function quoteInitialBuy(g: PumpGlobal, fc: PumpFeeConfig, fresh: BondingCurve, amountOut: bigint): bigint {

@@ -26,7 +26,7 @@ const T22 = TOKEN_2022_PROGRAM;
 
 /** Registers the pump.fun initial buy with the wizard. `lineMint` is $LINE; `linePool` its pool once migrated; `creatorFeeBps` the LaunchConfig value. */
 export function registerPumpInitialBuy(o: { lineMint: () => string; linePool: () => { pool: string; baseVault: string; quoteVault: string } | undefined;
-  creatorFeeBps: () => bigint }) {
+  creatorFeeBps: () => bigint; quoteSeed?: () => "swap" | "spot" }) {
   const global = async () => {
     const g = await rpc.getAccountInfo(PUMP.global);
     if (!g) throw new Error("pump.fun's Global account is not on this cluster");
@@ -42,7 +42,7 @@ export function registerPumpInitialBuy(o: { lineMint: () => string; linePool: ()
       const G = decodePumpGlobal(g.data);
       const pool = lp && poolA && baseA && quoteA
         ? { pool: decodePumpPool(poolA.data), baseReserve: decodeTokenAccount(baseA.data).amount, quoteReserve: decodeTokenAccount(quoteA.data).amount } : undefined;
-      const fresh = pumpQuotedCurve(G, { curve: decodeBondingCurve(curveA.data), pool }, launchPdas.pumpCreator(agent), line, o.creatorFeeBps());
+      const fresh = pumpQuotedCurve(G, { curve: decodeBondingCurve(curveA.data), pool }, launchPdas.pumpCreator(agent), line, o.creatorFeeBps(), o.quoteSeed?.() ?? "swap");
       const quote = quoteInitialBuy(G, decodePumpFeeConfig(fcA.data), fresh, amountOut);
       const maxIn = maxBuyInput(quote, slippageBps);
       return {

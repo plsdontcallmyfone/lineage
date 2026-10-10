@@ -502,7 +502,16 @@ export class Runtime {
           continue;
         }
         this.hosted.set(h.agent, h);
-        if (this.state.agents[h.agent]) continue;
+        const known = this.state.agents[h.agent];
+        if (known) {
+          // relaunched under the same agent key on a new deployment (devnet v2): its new token from now on
+          if (h.mint && known.mint !== h.mint) {
+            this.log(`agent ${h.agent} relaunched: mint ${known.mint ?? "none"} -> ${h.mint}`);
+            known.mint = h.mint;
+            this.save();
+          }
+          continue;
+        }
         await this.adopt(h);
       }
     }

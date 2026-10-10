@@ -115,7 +115,7 @@ const prepay = parsePrepayConfig(net.prepay);
 const ONE = 1_000_000n;
 
 async function site<T = any>(path: string, init?: RequestInit): Promise<{ status: number; body: T }> {
-  const r = await fetch(`${SITE}${path}`, { ...init, headers: { accept: "application/json", ...(init?.headers ?? {}) }, signal: AbortSignal.timeout(30_000) });
+  const r = await fetch(`${SITE}${path}`, { ...init, headers: { accept: "application/json", ...(init?.method && init.method !== "GET" ? { origin: SITE } : {}), ...(init?.headers ?? {}) }, signal: AbortSignal.timeout(30_000) });
   return { status: r.status, body: (await r.json().catch(() => null)) as T };
 }
 
@@ -152,7 +152,8 @@ async function resolve(s: Spec): Promise<{ row: Row; agent: Signer; mint: Signer
 async function buyQuote(agentId: string) {
   const [gA, fcA, curveA] = await rpc.getMultipleAccounts([PUMP.global, PUMP.feeConfig, pumpPdas.bondingCurve(LINE)]);
   const g = decodePumpGlobal(gA!.data);
-  const fresh = pumpQuotedCurve(g, { curve: decodeBondingCurve(curveA!.data) }, launchPdas.pumpCreator(agentId), LINE, 0n);
+  const seedRule = JSON.parse(readFileSync(join(ROOT, "config/profile.json"), "utf8")).profiles.devnet.pump_quote_seed ?? "swap";
+  const fresh = pumpQuotedCurve(g, { curve: decodeBondingCurve(curveA!.data) }, launchPdas.pumpCreator(agentId), LINE, 0n, seedRule);
   const amountOut = initialBuyAmount(g.tokenTotalSupply, prepay.initial_buy_bps);
   const quote = quoteInitialBuy(g, decodePumpFeeConfig(fcA!.data), fresh, amountOut);
   return { amountOut, quote, maxIn: maxBuyInput(quote, prepay.initial_buy_slippage_bps) };
@@ -253,7 +254,8 @@ async function afterOne(s: Spec) {
   // 2. the soul of a relaunch under a new key, stored in Core while the agent key still signs for it
   const soulFile = join(import.meta.dir, `relaunch-v2-soul-${s.sym}.json`);
   if (!s.same && existsSync(soulFile) && !row.soul?.stored) {
-    const r = await site(`/v1/agents/${row.agent}/soul`, { method: "PUT", headers: { "content-type": "application/json" }, body: readFileSync(soulFile, "utf8") });
+    // the launch page's path: POST /souls/publish (the dashboard PUTs it to Core; the gate allows only this)
+    const r = await site(`/souls/publish`, { method: "POST", headers: { "content-type": "application/json" }, body: readFileSync(soulFile, "utf8") });
     if (r.status >= 300) throw new Error(`${s.sym}: soul PUT ${r.status} ${JSON.stringify(r.body)}`);
     row.soul = { ...row.soul!, stored: true };
     save();
@@ -298,7 +300,12 @@ async function afterOne(s: Spec) {
 
 try {
   if (phase === "plan") await plan();
-  else if (phase === "launch") for (const s of AGENTS.filter((x) => !only || only.has(x.sym))) await launchOne(s);
+  else if (phase === "launch")
+    for (const s of AGENTS.filter((x) => !only || only.has(x.sym)))
+      await launchOne(s).catch((e) => {
+        for (const l of (e as { logs?: string[] }).logs ?? []) console.error(`    ${l}`);
+        throw e;
+      });
   else if (phase === "after") for (const s of AGENTS.filter((x) => !only || only.has(x.sym))) await afterOne(s);
   else throw new Error(`unknown phase ${phase}`);
 } finally {

@@ -12,6 +12,7 @@
       "swap": false,
       "explorer_cluster": "devnet",
       "programs": { "registry": "CJk3kwUqSS4qoJD8iu7uhUzSBNySjn9HsqaExpaV9gM2", "launch": "Axo38WX6TBAGGQ2nPpejn5tPsQogygA728baRaeJebGX", "msg": "5uUyWAc9DQEWb3XF1aH8yG62sCjmrEjtAoRB1SD9JFqV" },
+      "pump_quote_seed": "spot",
       "usd_feed": null,
       "fees": { "mode": "fixed", "cu_price_micro_lamports": 1 },
       "confirm": { "poll_ms": 900, "resend_ms": 2500, "rebuilds": 0 }

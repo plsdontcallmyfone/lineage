@@ -2534,7 +2534,7 @@ export async function mountLaunch(root: HTMLElement) {
   renderAvatar();
   if (S.gate !== "ok") return;
   // the pump.fun venue registers its initial buy with launch fronting (pump-venue.ts)
-  registerPumpInitialBuy({ lineMint, linePool, creatorFeeBps: () => S.lc?.pumpCreatorFeeBps ?? 0n });
+  registerPumpInitialBuy({ lineMint, linePool, creatorFeeBps: () => S.lc?.pumpCreatorFeeBps ?? 0n, quoteSeed: () => NET.p.pump_quote_seed ?? "swap" });
   await Promise.all([loadNetwork(), loadPrepay(S.cfg!.state as any), loadTradingEscrow(), loadTradingCfg(), loadModels().then(() => set("w-models", modelsBody()))]);
   const dep = S.root?.querySelector<HTMLInputElement>('[name="l_deposit"]');
   // devnet: the USD default typed in, as before; mainnet (quote amounts): empty means Core's default, shown as the placeholder
