@@ -103,26 +103,56 @@ export function verifyMessage(id: string, sig: string, message: string): boolean
 // -------------------------------------------------------------------------------------------------
 // Domain-separated statements (plan IDENTITY-AND-COLLABORATION 2.2). Agent keys are also Solana
 // keys, so an agent never signs bytes someone else chose: every signed statement is the 64-hex
-// digest H("lineage-<purpose>-v1", canonicalJson(statement)), which can never parse as a Solana
+// digest H("<domain>-<purpose>-v1", canonicalJson(statement)), which can never parse as a Solana
 // transaction message or an SSH signature blob.
+//
+// Rebrand (docs/plans/REBRAND-UNITS.md 3.6): the domain was "lineage" and becomes "units". Verifiers
+// accept both, so every signature made before the switch stays valid; SIGN_DOMAIN is what new
+// signatures use, and it moves to "units" only after the verifiers that read them are deployed. A
+// statement whose `kind` names one brand ("units-..." or "lineage-...") verifies only under that
+// brand's domain, so an old signature can never be relabelled.
 
 const PURPOSE = /^[a-z][a-z0-9-]{0,31}$/;
 
-/** The exact message a statement signature covers. */
-export function statementDigest(purpose: string, statement: unknown): string {
+export type StatementDomain = "lineage" | "units";
+/** Every domain a statement signature is accepted under, newest first. */
+export const STATEMENT_DOMAINS: readonly StatementDomain[] = ["units", "lineage"];
+/** The domain new signatures use (moves to "units" in the signing switch, REBRAND-UNITS.md 5 step 6). */
+export const SIGN_DOMAIN: StatementDomain = "lineage";
+
+/** The exact message a statement signature covers (under SIGN_DOMAIN unless a domain is given). */
+export function statementDigest(purpose: string, statement: unknown, domain: StatementDomain = SIGN_DOMAIN): string {
   if (!PURPOSE.test(purpose)) throw new Error("statement purpose must be 1-32 lowercase letters, digits or dashes");
-  return H(`lineage-${purpose}-v1`, canonicalJson(statement));
+  if (!STATEMENT_DOMAINS.includes(domain)) throw new Error("unknown statement domain");
+  return H(`${domain}-${purpose}-v1`, canonicalJson(statement));
 }
 
 /** Signs a statement for one purpose (team, intent, rotate, profile, link, msg, provenance, credential). */
-export function signStatement(key: AgentKey, purpose: string, statement: unknown): string {
-  return signMessage(key, statementDigest(purpose, statement));
+export function signStatement(key: AgentKey, purpose: string, statement: unknown, domain: StatementDomain = SIGN_DOMAIN): string {
+  return signMessage(key, statementDigest(purpose, statement, domain));
+}
+
+/** The brand a statement's `kind` names, if any ("units-follow" -> "units", "lineage-follow" -> "lineage"). */
+export function kindDomain(statement: unknown): StatementDomain | null {
+  const k = statement && typeof statement === "object" ? (statement as { kind?: unknown }).kind : undefined;
+  if (typeof k !== "string") return null;
+  for (const d of STATEMENT_DOMAINS) if (k.startsWith(`${d}-`)) return d;
+  return null;
+}
+
+/** The domain a valid signature was made under, or null when it verifies under none it may use. */
+export function statementDomainOf(id: string, sig: string, purpose: string, statement: unknown): StatementDomain | null {
+  const pinned = kindDomain(statement);
+  for (const d of pinned ? [pinned] : STATEMENT_DOMAINS) {
+    try {
+      if (verifyMessage(id, sig, statementDigest(purpose, statement, d))) return d;
+    } catch {
+      return null;
+    }
+  }
+  return null;
 }
 
 export function verifyStatement(id: string, sig: string, purpose: string, statement: unknown): boolean {
-  try {
-    return verifyMessage(id, sig, statementDigest(purpose, statement));
-  } catch {
-    return false;
-  }
+  return statementDomainOf(id, sig, purpose, statement) !== null;
 }
