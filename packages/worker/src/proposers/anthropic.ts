@@ -254,6 +254,29 @@ export class AnthropicProposer implements Proposer {
     let outTokens = 0;
     let newChars = systemPrompt(ctx).length + JSON.stringify(TOOLS).length + contentChars(messages[0]!.content);
     let lastCallAt = 0;
+    let lastRequest: Omit<Anthropic.Beta.MessageCreateParamsNonStreaming, "max_tokens"> | null = null;
+    // keep-alive (efficiency.keep_alive_s): while a tool runs (an evaluation takes 2 to 6 minutes on the
+    // site), re-send the last request with max_tokens 0 before the 5 minute cache entry expires, so the
+    // next turn reads the prefix (0.20 USD per million tokens) instead of writing it again (5.00)
+    const keepAliveMs = (eff.keep_alive_s ?? 0) * 1000;
+    let pinging: Promise<void> | null = null;
+    const ping = async () => {
+      if (!lastRequest || pinging || Date.now() - lastCallAt < keepAliveMs) return;
+      const started = Date.now();
+      pinging = (async () => {
+        try {
+          const res = await this.client.beta.messages.create({ ...lastRequest!, max_tokens: 0 });
+          addUsage(res.usage, res.model ?? o.model);
+          lastCallAt = started;
+          ctx.log(`anthropic: cache keep-alive, ${res.usage?.cache_read_input_tokens ?? 0} tokens read, ${res.usage?.cache_creation_input_tokens ?? 0} written`);
+        } catch (e) {
+          ctx.log(`anthropic: cache keep-alive failed: ${(e as Error).message.slice(0, 200)}`);
+          lastRequest = null; // do not retry a request shape the API refused
+        }
+      })();
+      await pinging;
+      pinging = null;
+    };
 
     for (let turn = 0; turn < o.max_turns; turn++) {
       let maxTokens = MAX_TURN_TOKENS;
@@ -272,18 +295,19 @@ export class AnthropicProposer implements Proposer {
       }
       lastCallAt = Date.now();
       calls++;
-      const stream = this.client.beta.messages.stream({
+      const params = {
         model: o.model,
-        max_tokens: maxTokens,
         betas: ["server-side-fallback-2026-07-01"],
-        fallbacks: "default",
+        fallbacks: "default" as const,
         // adaptive thinking and effort exist on the 4.6-and-later models; Haiku 4.5 answers 400 to them (plan M real session)
         ...(NO_ADAPTIVE.test(o.model) ? {} : { thinking: { type: "adaptive" as const }, output_config: { effort: o.effort } }),
-        cache_control: { type: "ephemeral" },
+        cache_control: { type: "ephemeral" as const },
         system: systemPrompt(ctx),
         tools: TOOLS,
-        messages,
-      });
+      };
+      // the request as sent, for a cache keep-alive while a slow tool runs (efficiency.keep_alive_s)
+      lastRequest = { ...params, messages: messages.slice() };
+      const stream = this.client.beta.messages.stream({ ...params, max_tokens: maxTokens, messages });
       let message: Anthropic.Beta.BetaMessage;
       try {
         message = await stream.finalMessage();
@@ -347,11 +371,15 @@ export class AnthropicProposer implements Proposer {
           results.push({ type: "tool_result", tool_use_id: call.id, content: "ok" });
           continue;
         }
+        const timer = keepAliveMs > 0 ? setInterval(() => void ping(), Math.min(15_000, Math.max(10, keepAliveMs / 4))) : null;
         try {
           const out = await tools.run(call.name, input);
           results.push({ type: "tool_result", tool_use_id: call.id, content: out });
         } catch (e) {
           results.push({ type: "tool_result", tool_use_id: call.id, is_error: true, content: (e as Error).message });
+        } finally {
+          if (timer) clearInterval(timer);
+          if (pinging) await pinging;
         }
       }
       if (submitted) return end("submitted", { ...submitted, usage });

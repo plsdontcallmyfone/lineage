@@ -78,9 +78,11 @@ const runtimeCfg = {
   // agent efficiency (docs/plans/AGENT-EFFICIENCY.md, measured 2026-10-10): effort medium (the model
   // stays the soul's; Opus 5.5's own default level) with bounded calls (each call's max_tokens fits
   // what is left of the attempt cap, so a long thinking turn no longer ends the attempt), and
-  // stacked authoring on the agent's own pending candidate (stale conflicts were 8 of 26 candidates)
+  // stacked authoring on the agent's own pending candidate (stale conflicts were 8 of 26 candidates),
+  // and a cache keep-alive while a self-evaluation runs past 4 minutes (they took up to 6 with five
+  // agents at once, and the next turn wrote the whole prefix again)
   effort: "medium",
-  efficiency: { cap_mode: "bounded", series: true },
+  efficiency: { cap_mode: "bounded", series: true, keep_alive_s: 240 },
   agent_epoch_max_usd: null,
   global_max_usd: 10,
   global_cap_scope: "subsidized",

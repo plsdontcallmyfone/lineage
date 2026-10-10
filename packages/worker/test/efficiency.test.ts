@@ -148,3 +148,46 @@ describe("runtime efficiency block", () => {
     expect(efficiencyError([])).toContain("object");
   });
 });
+
+describe("cache keep-alive while a tool runs", () => {
+  test("re-sends the last request with max_tokens 0 and meters it; off by default", async () => {
+    const { ToolBox } = await import("../src/proposers/anthropic.ts");
+    const orig = ToolBox.prototype.run;
+    ToolBox.prototype.run = async function (name: string, input: Record<string, unknown>) {
+      await Bun.sleep(250); // a slow evaluation
+      return orig.call(this, name, input);
+    };
+    try {
+      for (const keep of [0.05, 0]) {
+        const { c, logs, done } = ctx();
+        try {
+          const { client, requests } = fake([
+            { content: [use("t1", "list_files", { dir: "." })], out: 100 },
+            { content: [use("t2", "give_up", { reason: "done" })], out: 100 },
+          ]);
+          const creates: any[] = [];
+          (client as any).beta.messages.create = async (req: any) => {
+            creates.push(req);
+            return { model: req.model, content: [], stop_reason: "max_tokens", usage: { input_tokens: 5, output_tokens: 0, cache_read_input_tokens: 9000, cache_creation_input_tokens: 0 } };
+          };
+          await new AnthropicProposer({ max_usd: 1, efficiency: { keep_alive_s: keep } }, client).propose(c);
+          expect(requests.length).toBe(2);
+          if (keep) {
+            expect(creates.length).toBeGreaterThan(0);
+            expect(creates[0].max_tokens).toBe(0);
+            expect(creates[0].stream).toBeUndefined();
+            // the request as sent: it ends with the user turn, never with the assistant turn just received
+            expect(creates[0].messages.at(-1).role).toBe("user");
+            expect(logs.join("\n")).toContain("cache keep-alive, 9000 tokens read");
+            const u = logs.find((l) => l.startsWith("anthropic: usage gave up"))!;
+            expect(Number(u.match(/(\d+) cache read/)![1])).toBeGreaterThanOrEqual(9000);
+          } else expect(creates.length).toBe(0);
+        } finally {
+          done();
+        }
+      }
+    } finally {
+      ToolBox.prototype.run = orig;
+    }
+  });
+});

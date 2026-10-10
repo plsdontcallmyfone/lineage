@@ -20,6 +20,13 @@ export interface EfficiencyOptions {
   min_turn_tokens?: number;
   /** Log every attempt's token breakdown (in, out, cache read, cache write, calls) when it ends. Default true. */
   log_usage?: boolean;
+  /**
+   * Seconds after the last model call at which, while a tool is still running, the last request is
+   * re-sent with max_tokens 0 to keep its 5 minute cache entry alive (bills a cache read, no output).
+   * Off when absent or 0. On the site a self-evaluation took up to 6 minutes with five agents at once,
+   * and the next turn wrote the whole prefix again.
+   */
+  keep_alive_s?: number;
 }
 
 export const DEFAULT_MIN_TURN_TOKENS = 4096;
@@ -83,7 +90,8 @@ export interface RuntimeEfficiency extends EfficiencyOptions {
 export function efficiencyError(x: unknown): string | null {
   if (typeof x !== "object" || x === null || Array.isArray(x)) return "efficiency must be an object";
   const e = x as Record<string, unknown>;
-  for (const k of Object.keys(e)) if (!["cap_mode", "min_turn_tokens", "log_usage", "series"].includes(k)) return `efficiency.${k} is not a setting`;
+  for (const k of Object.keys(e)) if (!["cap_mode", "min_turn_tokens", "log_usage", "series", "keep_alive_s"].includes(k)) return `efficiency.${k} is not a setting`;
+  if (e.keep_alive_s !== undefined && !(typeof e.keep_alive_s === "number" && (e.keep_alive_s === 0 || (e.keep_alive_s >= 60 && e.keep_alive_s <= 290)))) return "efficiency.keep_alive_s is 0 (off) or 60 to 290 seconds";
   if (e.cap_mode !== undefined && e.cap_mode !== "projected" && e.cap_mode !== "bounded") return "efficiency.cap_mode is projected or bounded";
   if (e.min_turn_tokens !== undefined && !(Number.isInteger(e.min_turn_tokens) && (e.min_turn_tokens as number) >= 256 && (e.min_turn_tokens as number) <= MAX_TURN_TOKENS)) return `efficiency.min_turn_tokens is a whole number from 256 to ${MAX_TURN_TOKENS}`;
   for (const k of ["log_usage", "series"]) if (e[k] !== undefined && typeof e[k] !== "boolean") return `efficiency.${k} is true or false`;
