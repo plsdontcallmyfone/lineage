@@ -9,7 +9,7 @@
 //   bun scripts/mainnet/propose.ts print   --multisig <addr> <action> <args.json>   (the inner instructions, base64, nothing sent)
 //
 // Actions are adminActions in admin.ts: registrySetConfig, registryPause, registrySetSlashCap, registrySetEpochCursor,
-// challengeSetConfig, launchSetConfig, bountySetConfig, graduateByAdmin, msgSetConfig,
+// challengeSetConfig, launchSetConfig, bountySetConfig, msgSetConfig,
 // upgradeProgram, setUpgradeAuthority. args.json holds that action's argument object (bigints as
 // strings with an n suffix, such as "1000000n"; see admin.ts for each shape). `execute` reads the stored
 // vault transaction, prints its instructions and executes exactly that.

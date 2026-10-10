@@ -42,11 +42,10 @@ export const adminActions = {
   challengeSetConfig: (vault: string, mint: string, tokenProgram: string, args: ChallengeConfigArgs): Ix[] =>
     [challenge.setConfig({ admin: vault, mint, args, tokenProgram })],
   // lineage_launch, LaunchConfig.admin
-  launchSetConfig: (vault: string, dbcConfig: string, args: LaunchConfigArgs): Ix[] => [launch.setConfig({ admin: vault, dbcConfig, args })],
+  /** Every LaunchConfig field, including pump_creator_fee_bps (the rate pump.fun launches must carry). */
+  launchSetConfig: (vault: string, args: LaunchConfigArgs): Ix[] => [launch.setConfig({ admin: vault, args })],
   /** Creates BountyConfig on first use: the vault pays that rent. */
   bountySetConfig: (vault: string, args: BountyConfigArgs): Ix[] => [bounty.setConfig({ admin: vault, args })],
-  graduateByAdmin: (vault: string, a: { agentMint: string; dbcPool: string; dammPool: string; position: string; positionNftAccount: string }): Ix[] =>
-    [launch.graduateByAdmin({ admin: vault, ...a })],
   // lineage_msg, MsgConfig.admin
   msgSetConfig: (vault: string, args: MsgConfigArgs): Ix[] => [msg.setConfig({ admin: vault, args })],
   // the upgradeable loader: the vault as upgrade authority

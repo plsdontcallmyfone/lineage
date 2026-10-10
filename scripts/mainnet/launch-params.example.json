@@ -1,5 +1,5 @@
 {
-  "_note": "Mainnet launch values. Every TBA is the owner's decision (docs/MAINNET-RUNBOOK.md, go/no-go). initialize.ts refuses this file while any value is TBA. Integers above 2^53 and u64 amounts are strings with an n suffix, in base units of $LINE.",
+  "_note": "Mainnet launch values. Every TBA is the owner's decision (docs/MAINNET-RUNBOOK.md, go/no-go). initialize.ts refuses this file while any value is TBA. Integers above 2^53 and u64 amounts are strings with an n suffix, in base units of $LINE. line_mint must be a pump.fun coin paired with SOL or USDC and never mayhem mode (initialize.ts checks its bonding curve); line_pool (its canonical PumpSwap pool and vaults) is added once $LINE has migrated. pump_creator_fee_bps 0n is pump.fun's default (owner decision 2026-10-10).",
   "multisig": {
     "members": [
       "TBA",
@@ -25,21 +25,7 @@
     "maxInline": "TBA",
     "maxBlob": "TBA"
   },
-  "dbc": {
-    "cliffFeeNumerator": "TBA",
-    "collectFeeMode": "TBA",
-    "migrationOption": "TBA",
-    "tokenType": "TBA",
-    "tokenDecimals": "TBA",
-    "partnerLocked": "TBA",
-    "creatorLocked": "TBA",
-    "threshold": "TBA",
-    "sqrtStart": "TBA",
-    "creatorTradingFee": "TBA",
-    "migratedFeeBps": "TBA",
-    "supply": "TBA",
-    "curve": "TBA"
-  },
+  "pump_creator_fee_bps": "0n",
   "bounty": {
     "maxBountyOutBps": "TBA",
     "selfHostedInCap": "TBA",

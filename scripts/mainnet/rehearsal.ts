@@ -3,16 +3,18 @@
 // mainnet and no real key signs anything: every key is a throwaway in MAINNET_FORK_KEYS and every
 // lamport is a fork airdrop. Mainnet is only read (program bytes, Squads program config, rent).
 //
-//   0  the fork runs mainnet's exact Meteora DBC, DAMM v2, Token-2022 and Squads v4 builds; our ids are still empty
+//   0  the fork runs mainnet's exact pump.fun (Pump, PumpSwap, Pump Fees, Mayhem), Token-2022 and Squads v4 builds; our ids are still empty
 //   1  deploy: write-buffer + deploy of each build at the active profile's id with its id keypair, exactly
 //      as the runbook does (LINEAGE_NETWORK=mainnet: onchain/target/mainnet builds, the mainnet ids, the
 //      keypairs in ~/.config/lineage/mainnet signing on this local fork only), and its cost
 //   2  Squads v4: a 2-of-3 multisig with a time lock; its vault is every admin and, later, the upgrade authority
-//   3  a stand-in $LINE quote mint (Token-2022, metadata, fixed supply) until the real one exists
+//   3  a stand-in $LINE: a pump.fun coin paired with SOL, never mayhem (create_v2), bought on its own curve
 //   4  initialize registry, launch and messages with admin = the vault (mainnet-shaped values, owner values TBA)
 //   5  every onchain admin action through propose, approve (2 of 3), time lock, execute (incl. set_slash_cap)
 //   6  upgrade authority to the vault, then an upgrade executed by the multisig
-//   7  launch, trades, fee crank, graduation on mainnet DBC to DAMM v2 (permissionless and by admin)
+//   7  pump.fun launches exactly as the wizard plans them (create_v2 + register_pump_launch + 1% initial buy + deposit),
+//      curve trades, multi_hop_swap from SOL, the keeper crank's exact split, completion, migrate_v2 + record_pump_graduation,
+//      PumpSwap trades and pool fees, then $LINE's own migration and a launch quoted in the migrated $LINE
 //   8  verifier, epoch post, a challenge opened and resolved, claims after the window, slashes up to the
 //      cap and one refused past it (A1-08)
 // Writes scripts/mainnet/REHEARSAL-LAST.json (every transaction with its exact cost, every check).
@@ -23,7 +25,7 @@ import { createHash } from "node:crypto";
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
-import { canonicalUrl, H, merkleProof, merkleRoot, proportionalSplit } from "@lineage/protocol";
+import { base58Decode, canonicalUrl, H, merkleProof, merkleRoot, proportionalSplit } from "@lineage/protocol";
 import {
   ata,
   CHALLENGE_KIND,
@@ -32,53 +34,70 @@ import {
   ChainReader,
   addressBytes,
   claimFromCoreProof,
-  damm,
-  dammPdas,
-  dbc,
+  computeBudget,
   decodeAgentLaunch,
-  decodeDammPool,
-  decodeDammPosition,
-  decodeDbcPool,
+  decodeBondingCurve,
   decodeLoaderAuthority,
   decodeLookupTable,
+  decodePumpEvent,
+  decodePumpFeeConfig,
+  decodePumpGlobal,
+  decodePumpPool,
   decodeSquadsProgramConfig,
   epochSubject,
   IDENTITY_MODE,
+  initialBuyAmount,
   launch,
   launchPdas,
   launchTableAddresses,
-  lookupTable,
-  METEORA,
+  maxBuyInput,
   msg,
   OFFENCE,
+  parsePrepayConfig,
+  planLaunch,
   PROGRAM_IDS,
   paramsFromNetworkJson,
   payoutLeaf,
   programDataAddress,
+  pump,
+  PUMP,
+  pumpAmm,
+  pumpCrankIxs,
+  pumpGraduateIxs,
+  pumpInitialBuy,
+  pumpLaunchMain,
+  pumpPdas,
+  pumpQuotedCurve,
+  quoteCurveBuyExactOut,
+  quoteInitialBuy,
   registry,
   registryPdas,
+  requiredCredits,
   SQUADS_PERM,
   SQUADS_PROGRAM_ID,
   squads,
   squadsPdas,
-  standardDbcParams,
   system,
-  T22_MINT_WITH_POINTER,
   token,
   TOKEN_2022_PROGRAM,
-  tokenMetadataLen,
+  TOKEN_PROGRAM,
+  createV2,
   type Ix,
+  type LookupTable,
+  type PumpEvent,
   type Signer,
 } from "@lineage/chain";
 import { checkEndpoint, createMultisig, initializeAll, launchArgs, parseLaunchParams, programIdsNow, registryArgs, checkHandover, useActiveProfile } from "./steps.ts";
 import { adminActions, approve, execute, multisigState, proposalState, propose, proposeConfig, type Ms } from "./admin.ts";
-import { airdrop, assertFork, check, checks, fork, FORK_URL, forkKey, forkNow, forkRent, KEYS, log, mainnet, mainnetRent, refused, rows, send, sleep, sol } from "./lib.ts";
+import { airdrop, assertFork, check, checks, fork, FORK_URL, forkKey, forkNow, forkRent, forkTable, KEYS, log, mainnet, mainnetRent, refused, rows, send, sendV0, sleep, sol } from "./lib.ts";
 
 const ROOT = join(import.meta.dir, "..", "..");
 const T22 = TOKEN_2022_PROGRAM;
 const DECIMALS = 6;
 const ONE = 10n ** BigInt(DECIMALS);
 const SUPPLY = 1_000_000_000n * ONE;
+/** $LINE the deployer buys on the stand-in's own curve (it holds 793,100,000; this leaves it uncompleted). */
+const LINE_HELD = 600_000_000n * ONE;
 // Program ids, builds and id keypairs follow the active network profile (LINEAGE_NETWORK): mainnet
 // deploys the `--features mainnet` builds at the mainnet ids; devnet the default builds at the devnet ids.
 const profile = useActiveProfile();
@@ -107,7 +126,6 @@ const trader = forkKey("trader");
 const vOwner = forkKey("verifier-owner");
 const verifier = forkKey("verifier");
 const lineMintKey = forkKey("line-mint");
-const dbcConfigKey = forkKey("dbc-config");
 const lineMint = lineMintKey.id;
 const ms: Ms = { multisig: squadsPdas.multisig(createKey.id), vault: "" };
 ms.vault = squadsPdas.vault(ms.multisig, 0);
@@ -152,7 +170,7 @@ async function step0() {
     check(`0: no program at ${p.id.slice(0, 6)}... on the fork yet (the deploy below is the first)`, (await fork.getAccountInfo(p.id)) === null);
   }
   const fromMainnet: Record<string, string> = {};
-  for (const [name, id] of [["Meteora DBC", METEORA.dbcProgram], ["Meteora DAMM v2", METEORA.dammV2Program], ["Token-2022", T22], ["Squads v4", SQUADS_PROGRAM_ID]] as const) {
+  for (const [name, id] of [["Pump", PUMP.program], ["PumpSwap", PUMP.amm], ["Pump Fees", PUMP.fees], ["Mayhem", PUMP.mayhem], ["Token-2022", T22], ["Squads v4", SQUADS_PROGRAM_ID]] as const) {
     const [f, m] = [trimZeros(await programBytes(fork, id)), trimZeros(await programBytes(mainnet, id))];
     fromMainnet[name] = sha(m);
     check(`0: fork ${name} is mainnet's build`, sha(f) === sha(m), sha(m).slice(0, 16));
@@ -251,20 +269,18 @@ async function step2() {
 // ---------------------------------------------------------------- 3: stand-in quote mint
 const LINE_META = { name: "Lineage stand-in LINE (fork)", symbol: "sLINE", uri: "https://lineage.invalid/fork/stand-in-line.json" };
 async function step3() {
-  const lamports = await fork.getMinimumBalanceForRentExemption(T22_MINT_WITH_POINTER + tokenMetadataLen(LINE_META.name, LINE_META.symbol, LINE_META.uri));
-  await send("3", "create the stand-in $LINE mint (Token-2022, metadata pointer + metadata, 6 decimals)", dep, [
-    system.createAccount(dep.id, lineMint, lamports, T22_MINT_WITH_POINTER, T22),
-    token.initializeMetadataPointer(lineMint, dep.id, lineMint),
-    token.initializeMint2(lineMint, DECIMALS, dep.id, T22),
-    token.initializeTokenMetadata(lineMint, dep.id, dep.id, LINE_META.name, LINE_META.symbol, LINE_META.uri),
-  ], { signers: [lineMintKey] });
-  await send("3", "mint the fixed supply to the deployer, then revoke the mint authority", dep, [
-    token.createAtaIdempotent(dep.id, dep.id, lineMint, T22),
-    token.mintTo(lineMint, ata(dep.id, lineMint, T22), dep.id, SUPPLY, T22),
-    token.revokeMintAuthority(lineMint, dep.id, T22),
-  ]);
+  await send("3", "create the stand-in $LINE: pump.fun create_v2 paired with SOL, not mayhem", dep, [
+    createV2({ mint: lineMint, user: dep.id, creator: dep.id, name: LINE_META.name, symbol: LINE_META.symbol, uri: LINE_META.uri, quote: { kind: "sol" } })],
+    { signers: [lineMintKey], computeUnits: 400_000 });
+  const c = decodeBondingCurve((await fork.getAccountInfo(pumpPdas.bondingCurve(lineMint)))!.data);
+  const g = decodePumpGlobal((await fork.getAccountInfo(PUMP.global))!.data);
+  const q = quoteCurveBuyExactOut(g, decodePumpFeeConfig((await fork.getAccountInfo(PUMP.feeConfig))!.data), c, LINE_HELD, SUPPLY);
+  await send("3", `buy ${LINE_HELD / ONE} stand-in $LINE on its own curve with SOL (buy_v3)`, dep, [token.createAtaIdempotent(dep.id, dep.id, lineMint, T22),
+    pump.buyV3({ mint: lineMint, quoteMint: PUMP.wsol, user: dep.id, amount: LINE_HELD, maxQuoteIn: (q.quoteIn * 101n) / 100n })], { computeUnits: 300_000 });
   const m = (await reader.mint(lineMint))!;
-  check("3: stand-in mint: Token-2022, fixed supply, no mint or freeze authority", m.tokenProgram === T22 && m.supply === SUPPLY && m.mintAuthority === null && m.freezeAuthority === null);
+  check("3: stand-in $LINE: a pump.fun coin (Token-2022, 1e15 supply, no mint or freeze authority), quoted in SOL, depth 0, not mayhem",
+    m.tokenProgram === T22 && m.supply === SUPPLY && m.mintAuthority === null && m.freezeAuthority === null && c.quoteMint === "11111111111111111111111111111111" && c.depth === 0 && !c.isMayhemMode);
+  check("3: the deployer holds the bought $LINE", (await reader.tokenBalance(ata(dep.id, lineMint, T22))) === LINE_HELD);
 }
 
 // ---------------------------------------------------------------- 4: initialize with admin = the vault
@@ -278,7 +294,7 @@ const TIME_LOCK_S = P.multisig.time_lock_s;
 const CHALLENGE_WINDOW_S = Number(P.challenge.windowS);
 
 async function step4() {
-  const r = await initializeAll(fork, (w, p, i, o) => send("4", w, p, i, o), check, dep, dbcConfigKey, P, ms.vault);
+  const r = await initializeAll(fork, (w, p, i, o) => send("4", w, p, i, o), check, dep, P, ms.vault);
   out.launch_lookup_table = r.lookupTable;
 }
 
@@ -339,8 +355,9 @@ async function step5() {
   await viaSquads(`registry set_slash_cap (${SLASH_CAP_BPS} bps: one largest-share slash per agent per epoch)`, adminActions.registrySetSlashCap(ms.vault, SLASH_CAP_BPS));
   check("5: set_slash_cap applied by the vault", (await reader.registryConfig())!.maxSlashBpsPerEpoch === SLASH_CAP_BPS, `${capDefault} -> ${SLASH_CAP_BPS} bps`);
   out.slash_cap = { default_bps: capDefault, set_bps: SLASH_CAP_BPS };
-  await viaSquads("set_launch_config (max_debit_per_epoch 500 units)", adminActions.launchSetConfig(ms.vault, dbcConfigKey.id, { ...launchArgs(P, ms.vault), maxDebitPerEpoch: 500n * ONE }));
-  check("5: launch set_config applied", (await reader.launchConfig())!.maxDebitPerEpoch === 500n * ONE);
+  await viaSquads("set_launch_config (max_debit_per_epoch 500 units, pump_creator_fee_bps 0)", adminActions.launchSetConfig(ms.vault, { ...launchArgs(P, ms.vault), maxDebitPerEpoch: 500n * ONE }));
+  const lc5 = (await reader.launchConfig())!;
+  check("5: launch set_config applied (venue pump.fun, creator fee rate pump.fun's default)", lc5.maxDebitPerEpoch === 500n * ONE && lc5.venue === PUMP.program && lc5.pumpCreatorFeeBps === 0n);
   await viaSquads("lineage_msg set_config (max_per_day 400)", adminActions.msgSetConfig(ms.vault, { admin: ms.vault, ...P.msg, maxPerDay: 400 }));
   await viaSquads("registry pause", adminActions.registryPause(ms.vault, true));
   check("5: registry paused by the vault", (await reader.registryConfig())!.paused === true);
@@ -383,7 +400,7 @@ async function step6() {
   await checkHandover(fork, (n, ok, d) => check(`6: handover: ${n}`, ok, d), ms.vault, P);
 }
 
-// ---------------------------------------------------------------- 7: launches, trades, graduation
+// ---------------------------------------------------------------- 7: pump.fun launches, trades, fees, graduation
 const lineOf = (owner: string) => ata(owner, lineMint, T22);
 async function giveLine(to: string, amount: bigint, label: string) {
   await send("7", `send ${amount / ONE} stand-in $LINE to ${label}`, dep, [
@@ -391,78 +408,153 @@ async function giveLine(to: string, amount: bigint, label: string) {
     token.transferChecked(lineOf(dep.id), lineMint, lineOf(to), dep.id, amount, DECIMALS, T22),
   ]);
 }
-async function launchOne(tag: string, symbol: string) {
-  const agent = forkKey(`agent-${tag}`), mintK = forkKey(`agent-${tag}-mint`);
-  const r = await send("7", `launch_agent ${symbol} (one transaction: registry Agent, AgentLaunch, DBC pool, compute vault)`, launcher, [
-    launch.launchAgent({ launcher: launcher.id, agent: agent.id, agentMint: mintK.id, lineMint, dbcConfig: dbcConfigKey.id, lineTokenProgram: T22,
-      args: { name: `Fork rehearsal ${symbol}`, symbol, uri: `https://lineage.invalid/fork/${tag}.json`, repoUrl: canonicalUrl("https://github.com/karpathy/minbpe"),
-        identityMode: IDENTITY_MODE.app, hosted: false } }),
-  ], { signers: [agent, mintK], computeUnits: 400_000 });
-  const la = (await reader.agentLaunch(mintK.id))!;
-  check(`7: ${symbol} launched (AgentLaunch + registry Agent)`, la.agent === agent.id && !!(await reader.agent(agent.id)));
-  return { agent, mint: mintK.id, cost: r.cost, pool: launchPdas.dbcPool(dbcConfigKey.id, mintK.id, lineMint) };
+const G = async () => decodePumpGlobal((await fork.getAccountInfo(PUMP.global))!.data);
+const FC = async () => decodePumpFeeConfig((await fork.getAccountInfo(PUMP.feeConfig))!.data);
+const curveOf = async (mint: string) => decodeBondingCurve((await fork.getAccountInfo(pumpPdas.bondingCurve(mint)))!.data);
+const split = (fees: bigint) => {
+  const c = (fees * BigInt(net.agent_compute_bps)) / 10_000n;
+  return [c, fees - c] as const;
+};
+async function events(sig: string): Promise<PumpEvent[]> {
+  const t = await fork.call<{ meta: { innerInstructions: { instructions: { data: string }[] }[] } }>("getTransaction",
+    [sig, { encoding: "json", commitment: "confirmed", maxSupportedTransactionVersion: 0 }]);
+  return (t.meta.innerInstructions ?? []).flatMap((g) => g.instructions.map((i) => decodePumpEvent(base58Decode(i.data)))).filter((e): e is PumpEvent => e !== null);
 }
-async function fillAndMigrate(l: Awaited<ReturnType<typeof launchOne>>, tag: string) {
-  const t = (await fork.getAccountInfo(dbcConfigKey.id))!.data;
-  const threshold = new DataView(t.buffer, t.byteOffset, t.length).getBigUint64(264, true);
-  await send("7", `create the trader's ${tag} token account and the authority's`, trader, [
-    token.createAtaIdempotent(trader.id, trader.id, l.mint, T22), token.createAtaIdempotent(trader.id, launchPdas.authority(), l.mint, T22)]);
-  const swap = (buy: boolean, amountIn: bigint, mode = 0) => dbc.swap({ config: dbcConfigKey.id, pool: l.pool, agentMint: l.mint, lineMint, trader: trader.id,
-    lineAccount: lineOf(trader.id), agentAccount: ata(trader.id, l.mint, T22), buy, amountIn, minOut: 1n, lineTokenProgram: T22, mode });
-  await send("7", `DBC buy on ${tag} (100,000 stand-in $LINE)`, trader, [swap(true, 100_000n * ONE)], { computeUnits: 300_000 });
-  const held = (await reader.tokenBalance(ata(trader.id, l.mint, T22)))!;
-  await send("7", `DBC sell on ${tag} (half)`, trader, [swap(false, held / 2n)], { computeUnits: 300_000 });
-  await send("7", `DBC fill on ${tag} to the migration threshold (PartialFill)`, trader, [swap(true, (threshold * 110n) / 100n, 1)], { computeUnits: 400_000 });
-  const v = decodeDbcPool((await fork.getAccountInfo(l.pool))!.data);
-  check(`7: ${tag} curve complete on mainnet DBC`, v.quoteReserve >= threshold && v.migrationProgress === 2, `reserve ${v.quoteReserve}, threshold ${threshold}`);
-  const [c0, t0] = await reader.tokenBalances([launchPdas.computeVault(l.agent.id), registryPdas.treasury()]);
-  await send("7", `crank_fees on ${tag} (curve partner fees, exact split)`, trader, [
-    launch.crankFees({ agent: l.agent.id, agentMint: l.mint, lineMint, dbcConfig: dbcConfigKey.id, lineTokenProgram: T22 })], { computeUnits: 400_000 });
-  const [c1, t1] = await reader.tokenBalances([launchPdas.computeVault(l.agent.id), registryPdas.treasury()]);
-  const fees = c1! - c0! + (t1! - t0!);
-  check(`7: ${tag} crank_fees split exactly ${net.agent_compute_bps}/${net.protocol_bps}`, fees > 0n && c1! - c0! === (fees * BigInt(net.agent_compute_bps)) / 10_000n, `fees ${fees}`);
-  const n1 = forkKey(`${tag}-nft1`), n2 = forkKey(`${tag}-nft2`);
-  const dammPool = launchPdas.dammPool(l.mint, lineMint);
-  await send("7", `Meteora migration_damm_v2 on ${tag} (permissionless, mainnet DBC to mainnet DAMM v2, config ${METEORA.dammDynamicConfig.slice(0, 6)})`, trader, [
-    dbc.migrationDammV2({ dbcPool: l.pool, dbcConfig: dbcConfigKey.id, agentMint: l.mint, lineMint, firstNftMint: n1.id, secondNftMint: n2.id, payer: trader.id, lineTokenProgram: T22 }),
-  ], { signers: [n1, n2], computeUnits: 1_400_000 });
-  const pool = decodeDammPool((await fork.getAccountInfo(dammPool))!.data);
-  check(`7: ${tag} migrated to a DAMM v2 pool created by DBC's pool authority`, pool.creator === METEORA.dbcPoolAuthority && pool.tokenAMint === l.mint && pool.tokenBMint === lineMint,
-    `liquidity ${pool.liquidity}, permanently locked ${pool.permanentLockLiquidity}`);
-  const positions = [];
-  for (const m of [n1, n2]) {
-    const a = await fork.getAccountInfo(dammPdas.position(m.id));
-    if (a && a.owner === METEORA.dammV2Program) positions.push({ position: dammPdas.position(m.id), nftAccount: dammPdas.positionNftAccount(m.id), ...decodeDammPosition(a.data) });
+const linePoolNow = async () => {
+  const pool = pumpPdas.pool(lineMint, PUMP.wsol);
+  const a = await fork.getAccountInfo(pool);
+  if (!a) return undefined;
+  const p = decodePumpPool(a.data);
+  return { pool, baseVault: p.poolBaseTokenAccount, quoteVault: p.poolQuoteTokenAccount };
+};
+let launchTable: LookupTable | null = null;
+async function tableFor(linePool?: { pool: string; baseVault: string; quoteVault: string }): Promise<LookupTable> {
+  if (!linePool && launchTable) return launchTable;
+  if (!linePool) {
+    const t = decodeLookupTable((await fork.getAccountInfo(out.launch_lookup_table as string))!.data);
+    return (launchTable = { address: out.launch_lookup_table as string, addresses: t.addresses });
   }
-  const mig = positions.sort((a, b) => (b.permanentLockedLiquidity > a.permanentLockedLiquidity ? 1 : -1))[0]!;
-  return { dammPool, mig };
+  return forkTable("7", dep, launchTableAddresses({ lineMint, lineTokenProgram: T22, linePool }));
+}
+
+/** One agent launch on pump.fun exactly as the wizard plans it: create_v2 + register_pump_launch + the 1% initial buy + deposit + wake. */
+async function launchOne(tag: string, symbol: string, linePool?: { pool: string; baseVault: string; quoteVault: string }) {
+  const agent = forkKey(`agent-${tag}`), mintK = forkKey(`agent-${tag}-mint-${Date.now()}`);
+  const g = await G(), fc = await FC();
+  const lc = await curveOf(lineMint);
+  const pool = linePool ? { pool: decodePumpPool((await fork.getAccountInfo(linePool.pool))!.data), baseReserve: (await reader.tokenBalance(linePool.baseVault))!,
+    quoteReserve: (await reader.tokenBalance(linePool.quoteVault))! } : undefined;
+  const fresh = pumpQuotedCurve(g, { curve: lc, pool }, launchPdas.pumpCreator(agent.id), lineMint, 0n);
+  const amountOut = initialBuyAmount(g.tokenTotalSupply, 100);
+  const quote = quoteInitialBuy(g, fc, fresh, amountOut);
+  const maxIn = maxBuyInput(quote, 100);
+  const deposit = requiredCredits(parsePrepayConfig(net.prepay), DECIMALS);
+  const main = pumpLaunchMain({ launcher: launcher.id, agent: agent.id, agentMint: mintK.id, line: { mint: lineMint, tokenProgram: T22, pool: linePool },
+    name: `Fork rehearsal ${symbol}`, symbol, uri: `https://lineage.invalid/fork/${tag}.json`,
+    args: { repoUrl: canonicalUrl("https://github.com/karpathy/minbpe"), identityMode: IDENTITY_MODE.app, hosted: false } });
+  const buy = pumpInitialBuy({ launcher: launcher.id, agent: agent.id, agentMint: mintK.id, lineMint, amountOut, maxIn, lineTokenProgram: T22,
+    createBuyback: !(await fork.getAccountInfo(ata(PUMP.buybackRecipients[0], lineMint, T22))) });
+  const rest = launch.prepay({ launcher: launcher.id, agent: agent.id, agentMint: mintK.id, lineMint, amount: deposit, decimals: DECIMALS, lineTokenProgram: T22 });
+  const table = await tableFor(linePool);
+  const plan = planLaunch({ payer: launcher.id, main, buy, rest, soul: null, budget: [computeBudget.limit(700_000)], table, v0: true });
+  const l0 = (await reader.tokenBalance(lineOf(launcher.id)))!;
+  const sent = [];
+  for (const [i, t] of plan.txs.entries()) {
+    const what = `${symbol} launch tx ${i + 1}/${plan.txs.length} (${t.ixs.length} instructions${i === plan.buyTx ? ", with the 1% initial buy" : ""}${t.table ? ", v0" : ""})`;
+    sent.push(t.table ? await sendV0("7", what, launcher, t.ixs, [t.table], { signers: i === 0 ? [agent, mintK] : [], computeUnits: 700_000 })
+      : await send("7", what, launcher, t.ixs, { signers: i === 0 ? [agent, mintK] : [], computeUnits: 700_000 }));
+  }
+  const la = (await reader.agentLaunch(mintK.id))!;
+  const c = await curveOf(mintK.id);
+  check(`7: ${symbol} registered in the create_v2 transaction (AgentLaunch venue pump, curve creator = the agent's PDA, quote $LINE, depth 1)`,
+    la.venue === "pump" && la.bondingCurve === pumpPdas.bondingCurve(mintK.id) && la.pumpCreator === launchPdas.pumpCreator(agent.id) && c.creator === la.pumpCreator
+    && c.quoteMint === lineMint && c.depth === 1 && !!(await reader.agent(agent.id)), `plan ${plan.mode}, sizes ${plan.txs.map((t) => t.size).join(", ")} bytes`);
+  const spent = l0 - (await reader.tokenBalance(lineOf(launcher.id)))! - deposit;
+  check(`7: ${symbol} initial buy: exactly 1% of the supply in the agent key's account, at exactly the quote (pump.fun arithmetic), within maxIn`,
+    (await reader.tokenBalance(ata(agent.id, mintK.id, T22))) === amountOut && spent === quote && spent <= maxIn, `${amountOut} tokens for ${spent} $LINE (quote ${quote}, max ${maxIn})`);
+  check(`7: ${symbol} deposit in the compute vault`, (await reader.tokenBalance(launchPdas.computeVault(agent.id))) === deposit, `${deposit}`);
+  return { agent, mint: mintK.id, plan, sent, cost: sent.map((s) => s.cost), quote, amountOut };
+}
+
+async function crankExact(l: { agent: Signer; mint: string }, label: string, graduated: boolean) {
+  const pool = pumpPdas.pool(l.mint, lineMint);
+  const curveFee = (await curveOf(l.mint)).creatorFee;
+  const poolFee = graduated ? decodePumpPool((await fork.getAccountInfo(pool))!.data).creatorFees : 0n;
+  const vault = launchPdas.computeVault(l.agent.id);
+  const [c0, t0] = await reader.tokenBalances([vault, registryPdas.treasury()]);
+  const r = await send("7", `${label}: keeper harvest (pump.fun sweep + collect${graduated ? ", curve and pool" : ""}) + crank_pump_fees`, trader,
+    pumpCrankIxs({ payer: trader.id, agent: l.agent.id, agentMint: l.mint, lineMint, lineTokenProgram: T22, pool: graduated ? pool : undefined }), { computeUnits: 600_000 });
+  const [c1, t1] = await reader.tokenBalances([vault, registryPdas.treasury()]);
+  const [wc, wp] = split(curveFee + poolFee);
+  check(`7: ${label}: compute vault and treasury got exactly the waiting creator fees split ${net.agent_compute_bps}/${net.protocol_bps}`,
+    c1! - c0! === wc && t1! - t0! === wp && curveFee + poolFee > 0n, `curve ${curveFee} + pool ${poolFee} = ${curveFee + poolFee}: ${wc} / ${wp}`);
+  return r;
 }
 
 async function step7() {
-  await giveLine(trader.id, 40_000_000n * ONE, "the trader");
+  await giveLine(trader.id, 330_000_000n * ONE, "the trader");
+  await giveLine(launcher.id, 5_000_000n * ONE, "the launcher");
   const a = await launchOne("a", "FRKA");
-  out.launch_a = { mint: a.mint, agent: a.agent.id, launch_tx_payer_mainnet_lamports: a.cost.payerMainnet, created: a.cost.created };
-  const ga = await fillAndMigrate(a, "FRKA");
-  await send("7", "graduate FRKA (permissionless, on DBC's migration position)", trader, [
-    launch.graduate({ agentMint: a.mint, dbcPool: a.pool, dammPool: ga.dammPool, position: ga.mig.position, positionNftAccount: ga.mig.nftAccount })]);
-  const la = decodeAgentLaunch((await fork.getAccountInfo(launchPdas.agentLaunch(a.mint)))!.data);
-  check("7: FRKA graduated on mainnet DBC behaviour (AgentLaunch records pool and position)", la.graduated && la.dammPool === ga.dammPool && la.position === ga.mig.position);
-  const dSwap = (buy: boolean, amountIn: bigint) => damm.swap({ pool: ga.dammPool, agentMint: a.mint, lineMint, trader: trader.id, lineAccount: lineOf(trader.id),
-    agentAccount: ata(trader.id, a.mint, T22), buy, amountIn, minOut: 1n, lineTokenProgram: T22 });
-  await send("7", "DAMM v2 buy on FRKA (200,000)", trader, [dSwap(true, 200_000n * ONE)], { computeUnits: 300_000 });
-  const vault = launchPdas.computeVault(a.agent.id);
-  const c0 = (await reader.tokenBalance(vault))!;
-  await send("7", "crank_pool_fees on FRKA (DAMM v2 position fees into the compute vault)", trader, [
-    launch.crankPoolFees({ agent: a.agent.id, agentMint: a.mint, lineMint, dammPool: ga.dammPool, position: ga.mig.position, positionNftAccount: ga.mig.nftAccount,
-      lineTokenProgram: T22 })], { computeUnits: 400_000 });
-  check("7: FRKA pool fees reached the compute vault", (await reader.tokenBalance(vault))! > c0);
+  out.launch_a = { mint: a.mint, agent: a.agent.id, plan: a.plan.mode, sizes: a.plan.txs.map((t) => t.size), initial_buy: { tokens: a.amountOut.toString(), line: a.quote.toString() },
+    launch_txs: a.cost.map((c) => ({ signature: c.signature, payer_mainnet_lamports: c.payerMainnet, created: c.created, compute_units: c.computeUnits })) };
+  // curve trades: $LINE in, a sell, and SOL straight in through multi_hop_swap ($LINE curve -> FRKA curve)
+  const t = { mint: a.mint, quoteMint: lineMint, quoteTokenProgram: T22, user: trader.id };
+  await send("7", "FRKA buy_exact_quote_in_v3 (100,000 $LINE)", trader, [token.createAtaIdempotent(trader.id, trader.id, a.mint, T22),
+    pump.buyExactQuoteInV3({ ...t, spendableQuoteIn: 100_000n * ONE, minTokensOut: 1n })], { computeUnits: 300_000 });
+  const held = (await reader.tokenBalance(ata(trader.id, a.mint, T22)))!;
+  await send("7", "FRKA sell_v3 (half)", trader, [pump.sellV3({ ...t, amount: held / 2n, minQuoteOut: 1n })], { computeUnits: 300_000 });
+  const hop = await send("7", "multi_hop_swap SOL -> $LINE curve -> FRKA curve (1 SOL)", trader, [token.createAtaIdempotent(trader.id, trader.id, PUMP.wsol, TOKEN_PROGRAM),
+    pumpAmm.multiHopSwap({ user: trader.id, userIn: ata(trader.id, PUMP.wsol, TOKEN_PROGRAM), userOut: ata(trader.id, a.mint, T22), amountIn: 1_000_000_000n, minOut: 1n,
+      buybackQuoteMint: PUMP.wsol, hops: [{ kind: "curve", mint: lineMint, quoteMint: PUMP.wsol }, { kind: "curve", mint: a.mint, quoteMint: lineMint, quoteTokenProgram: T22 }] })],
+    { computeUnits: 400_000 });
+  check("7: multi_hop_swap from SOL bought FRKA (two TradeEvents)", (await events(hop.signature)).filter((e) => e.name === "TradeEvent").length === 2);
+  const crankA = await crankExact(a, "FRKA on its curve", false);
+  out.crank_curve = { signature: crankA.signature, payer_mainnet_lamports: crankA.cost.payerMainnet, compute_units: crankA.cost.computeUnits, created: crankA.cost.created };
+  // completion: the buy that empties the curve continues into the pool-to-be (synthetic migration), then migrate_v2 and our record
+  const notYet = await refused(trader, [launch.recordPumpGraduation({ agentMint: a.mint, lineMint })]);
+  check("7: record_pump_graduation refused before completion (NotMigrated)", /NotMigrated/.test(notYet), notYet.slice(0, 120));
+  const cur = await curveOf(a.mint);
+  const past = 1_000_000n * ONE;
+  const q = quoteCurveBuyExactOut(await G(), await FC(), cur, cur.realTokenReserves + past, (await reader.tokenBalance(ata(pumpPdas.bondingCurve(a.mint), a.mint, T22)))!);
+  const fill = await send("7", "FRKA: completing buy_v3 past the curve (synthetic migration)", trader, [pump.buyV3({ ...t, amount: cur.realTokenReserves + past, maxQuoteIn: (q.quoteIn * 101n) / 100n })],
+    { computeUnits: 400_000 });
+  const ev = (await events(fill.signature)).map((e) => e.name);
+  check("7: FRKA completed: TradeEvent, CompleteEvent, PostCompleteBuyEvent", ev.join(",").includes("TradeEvent,CompleteEvent,PostCompleteBuyEvent"));
+  const g = await G();
+  const grad = await send("7", "FRKA: pump.fun migrate_v2 + record_pump_graduation (permissionless, one transaction)", trader,
+    pumpGraduateIxs({ payer: trader.id, agentMint: a.mint, lineMint, withdrawAuthority: g.withdrawAuthority, migrated: false, lineTokenProgram: T22 }), { computeUnits: 900_000 });
+  const la = (await reader.agentLaunch(a.mint))!;
+  const pool = pumpPdas.pool(a.mint, lineMint);
+  const pv = decodePumpPool((await fork.getAccountInfo(pool))!.data);
+  check("7: FRKA graduated: AgentLaunch records the canonical PumpSwap pool; Pool.coin_creator is the agent's PDA; LP supply 0",
+    la.graduated && la.pumpPool === pool && pv.coinCreator === la.pumpCreator && pv.quoteMint === lineMint && (await reader.mint(pv.lpMint))!.supply === 0n);
+  out.graduation = { signature: grad.signature, payer_mainnet_lamports: grad.cost.payerMainnet, compute_units: grad.cost.computeUnits, created: grad.cost.created };
+  const again = await refused(trader, [launch.recordPumpGraduation({ agentMint: a.mint, lineMint })]);
+  check("7: graduation is recorded once (WrongPhase)", /WrongPhase/.test(again), again.slice(0, 120));
+  const pt = { pool, mint: a.mint, quoteMint: lineMint, quoteTokenProgram: T22, user: trader.id };
+  await send("7", "FRKA PumpSwap buy_exact_quote_in_v2 (200,000 $LINE)", trader, [pumpAmm.buyExactQuoteInV2({ ...pt, spendableQuoteIn: 200_000n * ONE, minBaseOut: 1n })],
+    { computeUnits: 300_000 });
+  await send("7", "FRKA PumpSwap sell_v2", trader, [pumpAmm.sellV2({ ...pt, baseIn: 1_000_000n * ONE, minQuoteOut: 1n })], { computeUnits: 300_000 });
+  const crankP = await crankExact(a, "FRKA after graduation (curve leftover + pool)", true);
+  out.crank_pool = { signature: crankP.signature, payer_mainnet_lamports: crankP.cost.payerMainnet, compute_units: crankP.cost.computeUnits };
 
-  const b = await launchOne("b", "FRKB");
-  const gb = await fillAndMigrate(b, "FRKB");
-  await viaSquads("graduate_by_admin FRKB", adminActions.graduateByAdmin(ms.vault, { agentMint: b.mint, dbcPool: b.pool, dammPool: gb.dammPool,
-    position: gb.mig.position, positionNftAccount: gb.mig.nftAccount }));
-  check("7: FRKB graduated by the admin (vault) through the multisig", decodeAgentLaunch((await fork.getAccountInfo(launchPdas.agentLaunch(b.mint)))!.data).graduated);
-  out.launch_b = { mint: b.mint, agent: b.agent.id, launch_tx_payer_mainnet_lamports: b.cost.payerMainnet };
+  // $LINE itself migrates; a launch quoted in the migrated $LINE names its pool (the second table) and trades through it
+  const lc = await curveOf(lineMint);
+  const lq = quoteCurveBuyExactOut(await G(), await FC(), lc, lc.realTokenReserves + 1_000_000n * ONE, (await reader.tokenBalance(ata(pumpPdas.bondingCurve(lineMint), lineMint, T22)))!);
+  await send("3", "$LINE stand-in: completing buy (SOL), then migrate_v2 to PumpSwap", dep, [
+    pump.buyV3({ mint: lineMint, quoteMint: PUMP.wsol, user: dep.id, amount: lc.realTokenReserves + 1_000_000n * ONE, maxQuoteIn: (lq.quoteIn * 101n) / 100n }),
+    pump.migrateV2({ user: dep.id, mint: lineMint, quoteMint: PUMP.wsol, withdrawAuthority: (await G()).withdrawAuthority, quoteTokenProgram: TOKEN_PROGRAM })], { computeUnits: 900_000 });
+  const lp = (await linePoolNow())!;
+  check("7: $LINE migrated: its canonical PumpSwap pool is quoted in WSOL", !!lp);
+  const b = await launchOne("b", "FRKB", lp);
+  out.launch_b = { mint: b.mint, agent: b.agent.id, plan: b.plan.mode, sizes: b.plan.txs.map((t) => t.size), launch_txs: b.cost.map((c) => ({ signature: c.signature, payer_mainnet_lamports: c.payerMainnet })) };
+  await send("7", "multi_hop_swap SOL -> $LINE pool -> FRKB curve (1 SOL wrapped)", trader, [
+    system.transfer(trader.id, ata(trader.id, PUMP.wsol, TOKEN_PROGRAM), 1_000_000_000n), { programId: TOKEN_PROGRAM, keys: [{ pubkey: ata(trader.id, PUMP.wsol, TOKEN_PROGRAM), isSigner: false, isWritable: true }], data: Uint8Array.of(17) },
+    token.createAtaIdempotent(trader.id, PUMP.buybackRecipients[0], PUMP.wsol, TOKEN_PROGRAM), token.createAtaIdempotent(trader.id, trader.id, b.mint, T22),
+    pumpAmm.multiHopSwap({ user: trader.id, userIn: ata(trader.id, PUMP.wsol, TOKEN_PROGRAM), userOut: ata(trader.id, b.mint, T22), amountIn: 1_000_000_000n, minOut: 1n,
+      buybackQuoteMint: PUMP.wsol, hops: [{ kind: "pool", mint: lineMint, quoteMint: PUMP.wsol, pool: lp.pool }, { kind: "curve", mint: b.mint, quoteMint: lineMint, quoteTokenProgram: T22 }] })],
+    { computeUnits: 400_000 });
+  await crankExact(b, "FRKB (quoted in the migrated $LINE)", false);
   return a;
 }
 

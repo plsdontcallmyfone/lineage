@@ -6,16 +6,17 @@ import { isAbsolute, join } from "node:path";
 import {
   ata,
   ChainReader,
-  dbc,
   decodeLoaderAuthority,
   decodeLookupTable,
   decodeSquadsMultisig,
   decodeSquadsProgramConfig,
   launch,
+  decodeBondingCurve,
   launchPdas,
   launchTableAddresses,
+  pumpPdas,
   lookupTable,
-  METEORA,
+  PUMP,
   msg,
   msgPdas,
   paramsFromNetworkJson,
@@ -28,7 +29,6 @@ import {
   token,
   type BountyConfigArgs,
   type ChallengeConfigArgs,
-  type DbcParams,
   type Ix,
   type MsgConfigArgs,
   type Params,
@@ -91,8 +91,11 @@ export interface LaunchParams {
   network_file: string;
   max_rebate_per_epoch: bigint;
   max_debit_per_epoch: bigint;
+  /** creator_fee_bps every pump.fun launch carries (owner decision 2026-10-10: 0, pump.fun's default); admin-editable later. */
+  pump_creator_fee_bps: bigint;
+  /** $LINE's canonical PumpSwap pool and vaults once $LINE has migrated (the launch table then names them). */
+  line_pool?: { pool: string; baseVault: string; quoteVault: string };
   msg: Omit<MsgConfigArgs, "admin">;
-  dbc: DbcParams;
   bounty: BountyConfigArgs;
   challenge: ChallengeConfigArgs;
 }
@@ -114,7 +117,7 @@ export function parseLaunchParams(raw: unknown): Loaded {
   const big = (v: unknown): unknown =>
     typeof v === "string" && /^\d+n$/.test(v) ? BigInt(v.slice(0, -1)) : Array.isArray(v) ? v.map(big) : v && typeof v === "object" ? Object.fromEntries(Object.entries(v).map(([k, x]) => [k, big(x)])) : v;
   const p = big(raw) as LaunchParams;
-  if (p.dbc && Array.isArray(p.dbc.curve)) p.dbc.curve = [p.dbc.curve[0], p.dbc.curve[1]];
+  if (p.pump_creator_fee_bps === undefined) throw new Error("pump_creator_fee_bps is required (0n: pump.fun's default)");
   const net = JSON.parse(readFileSync(isAbsolute(p.network_file) ? p.network_file : join(ROOT, p.network_file), "utf8"));
   const params = paramsFromNetworkJson(net, p.line_decimals);
   if (params.unbondCooldownS < 2n * BigInt(params.epochLengthS)) throw new Error("unbond_cooldown_s must be at least 2 x epoch_length_s (the registry refuses less)");
@@ -154,15 +157,17 @@ export const launchArgs = (p: Loaded, vault: string) => {
   return {
     admin: vault, runtimeAuthority: p.runtime_authority, computeSink: computeSink(p, vault), agentComputeBps: Number(p.net.agent_compute_bps),
     protocolBps: Number(p.net.protocol_bps), sleepThreshold: (BigInt(p.net.sleep_threshold) * one) / from, wakeThreshold: (BigInt(p.net.wake_threshold) * one) / from,
-    paused: false, maxDebitPerEpoch: p.max_debit_per_epoch,
+    paused: false, maxDebitPerEpoch: p.max_debit_per_epoch, pumpCreatorFeeBps: p.pump_creator_fee_bps,
   };
 };
 
 /**
  * Initializes the three programs with every admin role = the vault (the deployer only signs as the
- * current upgrade authority and pays), the DBC config, the compute sink and the launch lookup table.
+ * current upgrade authority and pays), the compute sink and the launch lookup table. $LINE must be a
+ * pump.fun coin, SOL- or USDC-paired and never mayhem mode (docs/MAINNET-RUNBOOK.md, hard requirement):
+ * checked here from its bonding curve.
  */
-export async function initializeAll(rpc: Rpc, send: Send, check: Check, deployer: Signer, dbcConfigKey: Signer, p: Loaded, vault: string, existingTable?: string) {
+export async function initializeAll(rpc: Rpc, send: Send, check: Check, deployer: Signer, p: Loaded, vault: string, existingTable?: string) {
   const reader = new ChainReader(rpc);
   const T = p.line_token_program;
   for (const [name, id] of Object.entries(programIdsNow())) {
@@ -173,23 +178,23 @@ export async function initializeAll(rpc: Rpc, send: Send, check: Check, deployer
     await send("lineage_registry::initialize (admin = vault)", deployer, [registry.initialize({ upgradeAuthority: deployer.id, mint: p.line_mint, tokenProgram: T, args: registryArgs(p, vault) })]);
   const c = (await reader.registryConfig())!;
   check("registry: admin = vault, Core authority, mint", c.admin === vault && c.coreAuthority === p.core_authority && c.mint === p.line_mint && c.maxRebatePerEpoch === p.max_rebate_per_epoch);
-  if (!(await rpc.getAccountInfo(dbcConfigKey.id)))
-    await send("Meteora DBC create_config (fee claimer and leftover receiver = launch authority PDA)", deployer, [
-      dbc.createConfig({ config: dbcConfigKey.id, feeClaimer: launchPdas.authority(), quoteMint: p.line_mint, payer: deployer.id, params: p.dbc })], { signers: [dbcConfigKey] });
-  check("DBC config owned by Meteora DBC", (await rpc.getAccountInfo(dbcConfigKey.id))!.owner === METEORA.dbcProgram);
+  const lineCurve = await rpc.getAccountInfo(pumpPdas.bondingCurve(p.line_mint));
+  const lc0 = lineCurve && lineCurve.owner === PUMP.program ? decodeBondingCurve(lineCurve.data) : null;
+  check("$LINE is a pump.fun coin paired with SOL or USDC (depth 0), not mayhem mode", !!lc0 && lc0.depth === 0 && !lc0.isMayhemMode &&
+    (lc0.quoteMint === "11111111111111111111111111111111" || lc0.quoteMint === "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v"), lc0 ? `quote ${lc0.quoteMint}` : "no pump.fun curve");
   if (!(await rpc.getAccountInfo(computeSink(p, vault))))
     await send("compute sink: the vault's $LINE token account", deployer, [token.createAtaIdempotent(deployer.id, vault, p.line_mint, T)]);
   if (!(await reader.launchConfig()))
     await send("lineage_launch::initialize_launch (admin = vault, sink = vault's account)", deployer, [
-      launch.initialize({ upgradeAuthority: deployer.id, lineMint: p.line_mint, dbcConfig: dbcConfigKey.id, lineTokenProgram: T, args: launchArgs(p, vault) })]);
+      launch.initialize({ upgradeAuthority: deployer.id, lineMint: p.line_mint, lineTokenProgram: T, args: launchArgs(p, vault) })]);
   const lc = (await reader.launchConfig())!;
   check("launch: admin = vault, sink = vault's account, runtime authority, debit cap", lc.admin === vault && lc.computeSink === computeSink(p, vault) &&
-    lc.runtimeAuthority === p.runtime_authority && lc.maxDebitPerEpoch === p.max_debit_per_epoch && lc.dbcConfig === dbcConfigKey.id);
+    lc.runtimeAuthority === p.runtime_authority && lc.maxDebitPerEpoch === p.max_debit_per_epoch && lc.venue === PUMP.program && lc.pumpCreatorFeeBps === p.pump_creator_fee_bps);
   if (!(await rpc.getAccountInfo(msgPdas.config())))
     await send("lineage_msg::initialize (admin = vault)", deployer, [msg.initialize({ upgradeAuthority: deployer.id, args: { admin: vault, ...p.msg } })]);
   const mc = await readMsgConfig(rpc);
   check("messages: admin = vault", mc?.admin === vault, `${mc?.admin}`);
-  const want = launchTableAddresses({ lineMint: p.line_mint, dbcConfig: dbcConfigKey.id, lineTokenProgram: T });
+  const want = launchTableAddresses({ lineMint: p.line_mint, lineTokenProgram: T, linePool: p.line_pool });
   const prior = existingTable ? await rpc.getAccountInfo(existingTable) : null;
   let address = existingTable ?? "";
   if (!prior) {

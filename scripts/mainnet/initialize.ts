@@ -4,7 +4,7 @@
 // resumes. Keys are passed as files; nothing reads `solana config`; no key or keyed URL is printed.
 //
 //   bun scripts/mainnet/initialize.ts multisig --params <launch-params.json> --payer <key> --create-key <key> [--rpc <url>] [--mainnet]
-//   bun scripts/mainnet/initialize.ts init     --params <launch-params.json> --payer <deployer key> --dbc-config-key <key> --multisig <addr> [--lookup-table <addr from an earlier run>] [--priority-micro-lamports N] [--rpc <url>] [--mainnet]
+//   bun scripts/mainnet/initialize.ts init     --params <launch-params.json> --payer <deployer key> --multisig <addr> [--lookup-table <addr from an earlier run>] [--priority-micro-lamports N] [--rpc <url>] [--mainnet]
 //   bun scripts/mainnet/initialize.ts check    --params <launch-params.json> --multisig <addr> [--rpc <url>] [--mainnet]
 //
 // --rpc defaults to the local fork (127.0.0.1:9690). A mainnet endpoint is refused without --mainnet.
@@ -51,7 +51,7 @@ if (cmd === "multisig") {
 } else if (cmd === "init") {
   const multisig = need("--multisig");
   const vault = squadsPdas.vault(multisig, 0);
-  const r = await initializeAll(rpc, send, check, loadKeypair(need("--payer")), loadKeypair(need("--dbc-config-key")), P, vault, flag("--lookup-table"));
+  const r = await initializeAll(rpc, send, check, loadKeypair(need("--payer")), P, vault, flag("--lookup-table"));
   console.log(JSON.stringify({ vault, ...r }));
 } else if (cmd === "check") {
   await checkHandover(rpc, check, squadsPdas.vault(need("--multisig"), 0), P);

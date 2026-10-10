@@ -23,24 +23,7 @@
     "maxInline": 568,
     "maxBlob": 1048576
   },
-  "dbc": {
-    "cliffFeeNumerator": "30000000n",
-    "collectFeeMode": 0,
-    "migrationOption": 1,
-    "tokenType": 1,
-    "tokenDecimals": 6,
-    "partnerLocked": 100,
-    "creatorLocked": 0,
-    "threshold": "15999999999792n",
-    "sqrtStart": "4124817371235594858n",
-    "creatorTradingFee": 0,
-    "migratedFeeBps": 300,
-    "supply": "100000000000000n",
-    "curve": [
-      "16499269484942379432n",
-      "439980519592732705252230013543952n"
-    ]
-  },
+  "pump_creator_fee_bps": "0n",
   "bounty": {
     "maxBountyOutBps": 5000,
     "selfHostedInCap": "10000000n",
