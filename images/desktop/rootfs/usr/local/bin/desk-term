@@ -1,0 +1,33 @@
+#!/bin/bash
+# A terminal tile: "term" (navigation, shown) or "run" (sandbox output, diffs and searches over an
+# edited tree: always pixelated in the live stream). Commands arrive on /tmp/desk/<name>.fifo:
+#   ls <dir b64> | search <pattern b64> | show <file in /tmp/desk/show> <title b64> | clear
+name="$1"
+cd "${DESK_REPO:-/work/repo}" 2>/dev/null || cd /tmp
+dec() { printf %s "$1" | base64 -d 2>/dev/null; }
+prompt() { printf '\033[38;5;71magent@desktop\033[0m:\033[38;5;75m~/repo\033[0m$ '; }
+clear; prompt
+while true; do
+  while read -r cmd a b; do
+    case "$cmd" in
+      clear) clear; prompt ;;
+      ls)
+        d="$(dec "$a")"; case "$d" in /*|..|../*|*/../*|*/..) d=. ;; esac
+        printf 'ls %q\n' "$d"; ls -p --color=always -- "$d" 2>&1 | head -60 | column -c 78; prompt ;;
+      search)
+        # term: the committed parent generation only (git grep HEAD), never the working copy, so an
+        # edit written while the search runs cannot show here; run: the working copy (pixelated live)
+        pat="$(dec "$a")"
+        if [ "$name" = term ]; then
+          printf 'git grep -n -E -e %q HEAD\n' "$pat"
+          git -c safe.directory='*' grep -n -I -E --color=always -e "$pat" HEAD -- 2>&1 | sed 's/^\(\x1b\[[0-9;]*m\)*HEAD\(\x1b\[[0-9;]*m\)*://' | cut -c1-200 | head -120
+        else
+          printf 'rg -n -e %q\n' "$pat"; rg -n --color=always --max-columns 160 -e "$pat" -- . 2>&1 | head -120
+        fi
+        prompt ;;
+      show)
+        f="/tmp/desk/show/$(basename -- "$a")"; t="$(dec "$b")"
+        printf '%s\n' "$t"; [ -f "$f" ] && cat -- "$f"; prompt ;;
+    esac
+  done < /tmp/desk/"$name".fifo
+done

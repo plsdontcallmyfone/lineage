@@ -1,0 +1,5 @@
+#!/bin/bash
+# desk-cmd <editor|term|run> <words...>: one command line to a tile (gives up after 5 s if the tile is busy).
+t="$1"; shift
+case "$t" in editor|term|run) ;; *) exit 2 ;; esac
+timeout 5 bash -c 'printf "%s\n" "$*" > /tmp/desk/'"$t"'.fifo' _ "$@"

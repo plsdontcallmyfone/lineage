@@ -32,7 +32,7 @@
 		# so scripts come only from this origin (plus the one inline theme script in index.html, by
 		# hash; recompute it if that script changes). The embed demo's inline config script is blocked
 		# on purpose (its ?api= override let a link point the site's own page at foreign data).
-		Content-Security-Policy "default-src 'self'; script-src 'self' 'sha256-63H06+4kOPnJGg/D6siH2d7URozVzLhxtBaUeqTsuPE='; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: blob: https:; connect-src 'self' https://api.github.com; object-src 'none'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'"
+		Content-Security-Policy "default-src 'self'; script-src 'self' 'sha256-63H06+4kOPnJGg/D6siH2d7URozVzLhxtBaUeqTsuPE='; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: blob: https:; media-src 'self' blob:; connect-src 'self' https://api.github.com; object-src 'none'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'"
 		Permissions-Policy "camera=(), microphone=(), geolocation=(), payment=(), usb=(), serial=(), bluetooth=()"
 		Cross-Origin-Opener-Policy same-origin
 		-Server

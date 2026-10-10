@@ -1,0 +1,13 @@
+#!/bin/bash
+# The outbound allowlist proxy (same image, its own container on the internal desktop network and the
+# default bridge). DESK_ALLOW: comma separated host names; each also allows its subdomains.
+set -eu
+mkdir -p /tmp/proxy
+: > /tmp/proxy/filter
+IFS=',' read -ra hosts <<< "${DESK_ALLOW:-github.com}"
+for h in "${hosts[@]}"; do
+  h="$(printf %s "$h" | tr -cd 'A-Za-z0-9.-')"; [ -n "$h" ] || continue
+  printf '^(.*\\.)?%s$\n' "$(printf %s "$h" | sed 's/\./\\./g')" >> /tmp/proxy/filter
+done
+sed -e "s|@FILTER@|/tmp/proxy/filter|" /etc/lineage-desktop/tinyproxy.conf > /tmp/proxy/tinyproxy.conf
+exec tinyproxy -d -c /tmp/proxy/tinyproxy.conf

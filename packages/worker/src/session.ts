@@ -51,16 +51,18 @@ export class SessionRecorder {
   ) {}
 
   /** Where and with which proposer the attempt runs; the session itself opens on the first event. */
-  private spec: { w: { lineage_id: string; gen_id: string; commit: string }; proposer: string } | null = null;
+  private spec: { w: { lineage_id: string; gen_id: string; commit: string }; proposer: string; desktop?: boolean } | null = null;
+  /** Called once Core opened the session (agent desktops, SPEC 17.7: the live stream is served under its id). */
+  onOpen: ((id: string) => void) | null = null;
 
   /**
    * Prepares a session at a lineage generation. It is opened at Core only when the attempt records
    * its first event, so an author with nothing to try (a scripted author past its last patch) leaves
    * no empty sessions behind. Never throws; push() is a no-op when sessions are disabled.
    */
-  async start(w: { lineage_id: string; gen_id: string; commit: string }, proposer: string): Promise<void> {
+  async start(w: { lineage_id: string; gen_id: string; commit: string }, proposer: string, o: { desktop?: boolean } = {}): Promise<void> {
     if (this.opts.enabled === false) return;
-    this.spec = { w, proposer };
+    this.spec = { w, proposer, ...(o.desktop ? { desktop: true } : {}) };
     this.timer = setInterval(() => void this.flush(), this.opts.flushMs ?? 2000);
   }
 
@@ -68,7 +70,7 @@ export class SessionRecorder {
     if (this.id) return true;
     if (!this.spec) return false;
     try {
-      const r = await this.client.post("/v1/sessions", { ...this.spec.w, proposer: this.spec.proposer });
+      const r = await this.client.post("/v1/sessions", { ...this.spec.w, proposer: this.spec.proposer, ...(this.spec.desktop ? { desktop: true } : {}) });
       if (r.status >= 300) {
         this.warn(`session not opened: ${r.status} ${JSON.stringify(r.body).slice(0, 200)}`);
         this.spec = null;
@@ -76,11 +78,21 @@ export class SessionRecorder {
         return false;
       }
       this.id = r.body.session_id as string;
+      try {
+        this.onOpen?.(this.id);
+      } catch {
+        /* ignore */
+      }
       return true;
     } catch (e) {
       this.warn(`session not opened: ${(e as Error).message}`);
       return false;
     }
+  }
+
+  /** The attempt runs on a live desktop (SPEC 17.7); said when the session opens at Core. */
+  setDesktop(on: boolean): void {
+    if (this.spec) this.spec.desktop = on || undefined;
   }
 
   push(e: SessionEventInput): void {

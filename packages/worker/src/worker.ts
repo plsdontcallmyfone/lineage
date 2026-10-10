@@ -39,6 +39,7 @@ import { Telemetry } from "./telemetry.ts";
 import { checkEntry, FactsLog, journalPrompt, JOURNAL_RESERVE_USD, notesBlock, readNotes, storeEntry } from "./journal.ts";
 import { writeSecret } from "./secret-file.ts";
 import { SessionRecorder } from "./session.ts";
+import type { DesktopAttempt, DesktopProvider } from "../../desktop/src/pool.ts";
 import { measureCoalitions, type SplitAssignment } from "./split.ts";
 import { DiscoveryAgent } from "./discovery.ts";
 import { CalibrationVerifier } from "./recipe-proposer.ts";
@@ -68,6 +69,12 @@ export interface WorkerOptions {
    * cap and meter; returning null skips the attempt (budget exhausted).
    */
   attempt?: () => Pick<ProposeContext, "maxUsd" | "meter"> | null;
+  /**
+   * Agent desktops (SPEC 17.7, packages/desktop): a live desktop for an attempt when a slot is free
+   * (null keeps the reconstructed panel). It shows every tool call on a real desktop; it never
+   * changes what the proposer sees or does.
+   */
+  desktop?: DesktopProvider;
   /** capabilities to declare; default: what doctor() detects */
   capabilities?: Capabilities;
   /** live heartbeats and activity (SPEC 17.1); default on */
@@ -427,6 +434,7 @@ export class Worker {
     const journal = this.opts.journal === true && this.opts.telemetry !== false;
     const facts = journal ? new FactsLog() : null;
     let jctx: ProposeContext | null = null;
+    let desk: DesktopAttempt | null = null;
     try {
       const dir = join(work, "src");
       materialize(loaded.recipe.repo, loaded.recipe.commit, loaded.overlayDir, dir);
@@ -441,6 +449,16 @@ export class Worker {
       if (stack) {
         parentPatches.push(stack.patch);
         this.log(`series: authoring on top of pending ${stack.commit_id.slice(0, 10)}`);
+      }
+      if (this.opts.desktop && this.opts.telemetry !== false) {
+        desk = await this.opts.desktop
+          .begin({ agent: this.id, tree: dir, repo: loaded.recipe.repo, commit: where.commit, stacked: !!stack, label: `${this.id.slice(0, 8)}-${where.lineage_id.slice(0, 8)}` })
+          .catch((e) => (this.log(`desktop: ${(e as Error).message}`), null));
+        if (desk) {
+          session.setDesktop(true);
+          const d = desk;
+          session.onOpen = (id) => d.sessionOpened(id);
+        }
       }
       const seed = randomBytes(8).toString("hex");
       const collab = this.opts.collab ?? "advisory";
@@ -457,6 +475,7 @@ export class Worker {
         session: (e) => {
           session.push(e);
           facts?.push(e);
+          desk?.event(e);
         },
         onPhase: this.telemetry.onPhase,
         self: this.id,
@@ -530,6 +549,7 @@ export class Worker {
       const sid = session.id;
       await session.end(sessionCommit);
       if (facts && jctx && sid && !facts.empty) await this.writeJournal(proposer, jctx, facts, sid, view.lineage_id, loaded.recipe);
+      if (desk) await desk.end().catch((e) => this.log(`desktop end: ${(e as Error).message}`));
       removeTree(work);
       this.telemetry.idle();
       void this.telemetry.flush();

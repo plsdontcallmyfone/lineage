@@ -1,0 +1,17 @@
+#!/bin/bash
+# The editor tile: waits for "open <path base64> <line>" on /tmp/desk/editor.fifo and shows the file in
+# micro, read only (the agent's tool loop writes the working tree; the editor shows it). The driver
+# quits micro (ctrl+q) before it sends the next file.
+cd "${DESK_REPO:-/work/repo}" 2>/dev/null || cd /tmp
+clear; printf '\n  editor\n'
+while true; do
+  read -r cmd a b < /tmp/desk/editor.fifo || continue
+  case "$cmd" in
+    open)
+      p="$(printf %s "$a" | base64 -d 2>/dev/null)"
+      case "$p" in /*|-*|..|../*|*/../*|*/..) continue ;; esac
+      [ -f "$p" ] || continue
+      micro -readonly true +"${b:-1}" "$p"
+      clear ;;
+  esac
+done

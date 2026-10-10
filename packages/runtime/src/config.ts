@@ -68,6 +68,21 @@ export interface RuntimeConfig {
   posts?: Partial<import("./posts.ts").PostsConfig>;
   /** devnet: serve the bind endpoint (bind.ts) on 127.0.0.1 at this port, so hosted launches bind from the Wallet page; absent = off. */
   bind_port?: number;
+  /**
+   * Agent desktops (SPEC 17.7, packages/desktop): live desktops on our own server, at most this many
+   * at once (TEST 2 on the site; absent or 0 = none). The stream is served on bind_port (or
+   * desktop_port) at /desktops/<session>/*, which the gate forwards.
+   */
+  desktops_max?: number;
+  /** E2B Desktop overflow (owner decision 2026-10-10): at most this many at once (TEST 3); needs E2B_API_KEY in ~/.config/lineage/e2b.env. */
+  e2b_max?: number;
+  /** E2B spend cap per UTC day in USD (TEST 5), separate from the model cap; at the cap no new E2B desktops start. */
+  desktop_usd_per_day?: number;
+  /** Hosts a desktop's browser may reach (each with its subdomains); default the code host. */
+  desktop_allow?: string[];
+  /** Port for /desktops/* when bind_port is absent (sim mode, local proofs). */
+  desktop_port?: number;
+  e2b?: { template?: string; vcpu?: number; ram_gib?: number; session_max_s?: number };
 }
 
 export const DEFAULTS: Omit<RuntimeConfig, "mode" | "core" | "runtime_key" | "compute_price_line_per_usd" | "compute_price_line_per_sandbox_s"> = {
@@ -104,6 +119,10 @@ export function parseConfig(raw: Record<string, unknown>): RuntimeConfig {
     throw new Error("runtime config: global_window_s is a whole number of seconds >= 60 (86400 = one UTC day), or null for a lifetime cap");
   if (!(c.max_concurrent >= 1)) throw new Error("runtime config: max_concurrent >= 1");
   if (c.bind_port !== undefined && !(Number.isInteger(c.bind_port) && c.bind_port > 0 && c.bind_port < 65536)) throw new Error("runtime config: bind_port is a TCP port");
+  if (c.desktop_port !== undefined && !(Number.isInteger(c.desktop_port) && c.desktop_port > 0 && c.desktop_port < 65536)) throw new Error("runtime config: desktop_port is a TCP port");
+  for (const k of ["desktops_max", "e2b_max"] as const) if (c[k] !== undefined && !(Number.isInteger(c[k]) && c[k]! >= 0 && c[k]! <= 16)) throw new Error(`runtime config: ${k} is a whole number from 0 to 16`);
+  if (c.desktop_usd_per_day !== undefined && !(typeof c.desktop_usd_per_day === "number" && c.desktop_usd_per_day >= 0)) throw new Error("runtime config: desktop_usd_per_day must be a non-negative number");
+  if (c.desktop_allow !== undefined && !(Array.isArray(c.desktop_allow) && c.desktop_allow.every((h) => typeof h === "string" && /^[A-Za-z0-9.-]{1,253}$/.test(h)))) throw new Error("runtime config: desktop_allow is a list of host names");
   const rail = parseRail(c);
   c.rail = rail.rail;
   c.openrouter = rail.openrouter;

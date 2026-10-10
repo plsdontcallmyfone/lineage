@@ -27,6 +27,11 @@
 //                             address per hour), and publishing a soul the agent key signed (Core checks
 //                             it against the digest on chain); same origin only; own class; anything
 //                             else under /souls is refused
+//   GET  /desktops/<session>/live.m3u8, init.mp4, seg-<n>.m4s   an agent desktop's live stream (SPEC 17.7),
+//                             served by the hosted runtime (packages/desktop/src/serve.ts); CORS *; own
+//                             class; at most DESKTOP_VIEWERS distinct viewers per session and
+//                             DESKTOP_VIEWERS_TOTAL over all sessions (a viewer is an address key seen
+//                             in the last VIEWER_WINDOW_MS)
 //   GET  everything else      dashboard pages and assets
 //   GET  /gate/health         { ok } (no counters: they told an attacker how close the caps were)
 // Client address: the last X-Forwarded-For entry (Caddy sets it to the peer it saw), else the socket.
@@ -34,7 +39,7 @@
 //   [--indexer http://127.0.0.1:9668]   the market indexer upstream for /market/*
 //   [--runtime http://127.0.0.1:9667]   the hosted runtime's bind endpoint for /runtime/bind/*
 
-export type Klass = "v1" | "api" | "rpc" | "faucet" | "terms" | "page" | "market" | "social" | "bind" | "souls";
+export type Klass = "v1" | "api" | "rpc" | "faucet" | "terms" | "page" | "market" | "social" | "bind" | "souls" | "desktop";
 export const LIMITS: Record<Klass, { perMin: number; burst: number }> = {
   v1: { perMin: 120, burst: 60 },
   api: { perMin: 240, burst: 120 },
@@ -49,7 +54,12 @@ export const LIMITS: Record<Klass, { perMin: number; burst: number }> = {
   bind: { perMin: 30, burst: 15 },
   // the dashboard caps drafts per address per hour and per UTC day; this only keeps floods off it
   souls: { perMin: 6, burst: 6 },
+  // one viewer polls the playlist and fetches a segment every 2 s (about 60 a minute); a few tabs fit
+  desktop: { perMin: 240, burst: 60 },
 };
+export const DESKTOP_VIEWERS = 50;
+export const DESKTOP_VIEWERS_TOTAL = 300;
+export const VIEWER_WINDOW_MS = 20_000;
 export const MAX_STREAMS_PER_IP = 4;
 export const MAX_STREAMS = 400;
 export const MAX_BODY = 64 * 1024;
@@ -71,6 +81,39 @@ export interface Route {
   maxBody?: number;
 }
 
+export const DESKTOP_PATH = /^\/desktops\/[0-9a-f]{64}\/(live\.m3u8|init\.mp4|seg-\d{1,20}\.m4s)$/;
+
+/**
+ * Distinct viewers of each desktop stream: an address key counts while it fetched within the window.
+ * A new viewer is refused when its session or the gate is at its cap; a known one always passes.
+ */
+export class DesktopViewers {
+  private s = new Map<string, Map<string, number>>();
+  constructor(private now: () => number = Date.now, private per = DESKTOP_VIEWERS, private total = DESKTOP_VIEWERS_TOTAL, private windowMs = VIEWER_WINDOW_MS) {}
+  private prune() {
+    const t = this.now() - this.windowMs;
+    for (const [k, m] of this.s) {
+      for (const [ip, at] of m) if (at < t) m.delete(ip);
+      if (!m.size) this.s.delete(k);
+    }
+  }
+  count(session?: string): number {
+    this.prune();
+    if (session) return this.s.get(session)?.size ?? 0;
+    let n = 0;
+    for (const m of this.s.values()) n += m.size;
+    return n;
+  }
+  admit(session: string, ip: string): boolean {
+    this.prune();
+    const m = this.s.get(session) ?? new Map<string, number>();
+    if (!m.has(ip) && (m.size >= this.per || this.count() >= this.total)) return false;
+    m.set(ip, this.now());
+    this.s.set(session, m);
+    return true;
+  }
+}
+
 /** Decides what a request is, or the status to refuse it with. Pure; tested in gate.test.ts. */
 export function classify(method: string, path: string): Route | { refuse: number; why: string } {
   if (/^\/runtime\/bind\/[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(path) && (method === "GET" || method === "POST"))
@@ -86,6 +129,10 @@ export function classify(method: string, path: string): Route | { refuse: number
     return { refuse: 405, why: "method" };
   }
   if (method !== "GET" && method !== "HEAD") return { refuse: 405, why: "method" };
+  if (path.startsWith("/desktops/")) {
+    if (!DESKTOP_PATH.test(path)) return { refuse: 404, why: "desktop" };
+    return { klass: "desktop", upstream: "runtime", cors: true, stream: false, sameOrigin: false };
+  }
   if (path.startsWith("/v1/")) {
     if (path.startsWith("/v1/admin")) return { refuse: 404, why: "admin" };
     return { klass: "v1", upstream: "core", cors: true, stream: path === "/v1/events", sameOrigin: false };
@@ -289,6 +336,7 @@ if (import.meta.main) {
   const ORIGINS = arg("origin", "").split(",").map((s) => s.trim()).filter(Boolean);
   const limiter = new Limiter();
   const slots = new StreamSlots();
+  const viewers = new DesktopViewers();
   setInterval(() => limiter.sweep(), 60_000);
 
   const refuse = (status: number, error: string, extra: Record<string, string> = {}, cors = false) =>
@@ -315,6 +363,7 @@ if (import.meta.main) {
       if (r.sameOrigin && !originAllowed(req.headers.get("origin"), req.headers.get("host"), ORIGINS)) return refuse(403, "cross_origin", unread);
       const t = limiter.take(ip, r.klass);
       if (!t.ok) return refuse(429, "rate_limited", { "retry-after": String(t.retryS), ...unread }, r.cors);
+      if (r.klass === "desktop" && !viewers.admit(path.split("/")[2]!, ip)) return refuse(429, "too_many_viewers", { "retry-after": "30" }, r.cors);
       const maxBody = r.maxBody ?? MAX_BODY;
       const len = Number(req.headers.get("content-length") ?? 0);
       if (len > maxBody) {

@@ -1,0 +1,4 @@
+#!/bin/bash
+# desk-put <name>: stdin to /tmp/desk/show/<name> (text the run terminal shows), at most 256 KB.
+n="$(basename -- "$1")"
+head -c 262144 > "/tmp/desk/show/$n"

@@ -165,6 +165,7 @@ export function buildRoutes(core: Core): Route[] {
     route("POST", "/v1/sessions", "agent", (c) => sessionsOf(core).start(c.agent!, c.json())),
     route("POST", "/v1/sessions/:id/events", "agent", (c) => sessionsOf(core).append(c.agent!, c.params.id!, c.json())),
     route("POST", "/v1/sessions/:id/end", "agent", (c) => sessionsOf(core).end(c.agent!, c.params.id!, c.json())),
+    route("POST", "/v1/sessions/:id/recording", "agent", (c) => sessionsOf(core).recording(c.agent!, c.params.id!, c.json())),
     // agent journal (SPEC 17.6, src/journal.ts): one signed entry per session, sealed like the session
     route("GET", "/v1/agents/:id/journal", "optional", (c) => core.tx(() => journalOf(core).list(c.params.id!, { before: int(c, "before"), limit: int(c, "limit"), lineage: q(c, "lineage") }, c.agent))),
     route("GET", "/v1/agents/:id/journal/context", "agent", (c) => core.tx(() => journalOf(core).context(self(c), q(c, "lineage")))),

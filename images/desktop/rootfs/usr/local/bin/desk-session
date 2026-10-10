@@ -1,0 +1,42 @@
+#!/bin/bash
+# The desktop session (lineage/desktop entrypoint; also uploaded to an E2B desktop by packages/desktop).
+# Xvfb, openbox with the fixed tiles, the editor, the two terminals and Chromium. Writes
+# /tmp/desk/ready when every window is up. Environment:
+#   DESK_HOME_URL  first page in Chromium (default about:blank)
+#   DESK_PROXY     http://host:port of the allowlist proxy (local backend); empty = none (E2B filters egress itself)
+#   DESK_NO_X=1    an X server is already running on $DISPLAY (E2B); do not start Xvfb
+set -u
+export DISPLAY="${DISPLAY:-:0}" HOME="${HOME:-/tmp/home}"
+mkdir -p "$HOME/.config/micro" /tmp/desk/show
+ETC="${DESK_ETC:-/etc/lineage-desktop}"
+BIN="${DESK_BIN:-/usr/local/bin}"
+cp "$ETC/micro.json" "$HOME/.config/micro/settings.json" 2>/dev/null || true
+for f in editor term run; do [ -p /tmp/desk/$f.fifo ] || mkfifo /tmp/desk/$f.fifo; done
+if [ "${DESK_NO_X:-0}" != 1 ]; then
+  Xvfb "$DISPLAY" -screen 0 1280x800x24 -nolisten tcp >/tmp/desk/xvfb.log 2>&1 &
+  for i in $(seq 1 50); do xdpyinfo >/dev/null 2>&1 && break; sleep 0.1; done
+fi
+xsetroot -solid '#15171c' 2>/dev/null || true
+openbox --config-file "$ETC/rc.xml" >/tmp/desk/openbox.log 2>&1 &
+sleep 0.3
+XT=(xterm -fa 'DejaVu Sans Mono' -fs 10 -bg '#1b1d23' -fg '#d7dae0' -bc +sb -b 4 -u8)
+"${XT[@]}" -class LineageEditor -T editor -e "$BIN/desk-editor" &
+"${XT[@]}" -class LineageTerm -T terminal -e "$BIN/desk-term" term &
+"${XT[@]}" -class LineageRun -T run -e "$BIN/desk-term" run &
+PROXY=(); [ -n "${DESK_PROXY:-}" ] && PROXY=(--proxy-server="${DESK_PROXY}" --proxy-bypass-list='<-loopback>')
+CH="$(command -v chromium || command -v chromium-browser || command -v google-chrome || true)"
+if [ -n "$CH" ]; then
+  "$CH" --class=LineageBrowser --user-data-dir="$HOME/chromium" --no-sandbox --test-type --no-first-run --no-default-browser-check \
+    --disable-dev-shm-usage --disable-gpu --disable-features=Translate,MediaRouter --disable-sync --password-store=basic \
+    --window-position=640,0 --window-size=640,400 "${PROXY[@]}" "${DESK_HOME_URL:-about:blank}" >/tmp/desk/chromium.log 2>&1 &
+elif command -v firefox >/dev/null; then
+  firefox --new-instance --profile "$(mktemp -d)" --class LineageBrowser --width 640 --height 400 "${DESK_HOME_URL:-about:blank}" >/tmp/desk/browser.log 2>&1 &
+fi
+for i in $(seq 1 100); do
+  n=0
+  for c in LineageEditor LineageTerm LineageRun LineageBrowser; do xdotool search --onlyvisible --class "$c" >/dev/null 2>&1 && n=$((n+1)); done
+  [ "$n" = 4 ] && break
+  sleep 0.2
+done
+touch /tmp/desk/ready
+wait

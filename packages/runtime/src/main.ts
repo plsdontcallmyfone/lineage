@@ -26,6 +26,7 @@ import { routedProposers } from "./providers.ts";
 import { bindHandler, chainCosign, serveBind } from "./bind.ts";
 import { anthropicClient } from "../../souls/src/generator.ts";
 import { chainTrading, type TradingRuntimeConfig } from "../../trader/src/glue.ts";
+import { desktopPool, startRecordingPublisher, withDesktops } from "./desktops.ts";
 
 function args(argv: string[]) {
   const out: Record<string, string> = {};
@@ -108,18 +109,26 @@ async function main() {
       const trading = tcfg?.enabled && backend instanceof ChainBackend
         ? chainTrading({ core: cfg.core, stateDir: cfg.state_dir, runtimeKey: loadKey(cfg.runtime_key), rpcUrl: cfg.rpc_url ?? devnetRpcUrl(), rpc: backend.rpc, cfg: tcfg, keys, log, onTx: (w, s, f) => log(`tx ${w}: ${s} (fee ${f ?? "?"})`) })
         : null;
-      const rt = new Runtime(cfg, { backend, runtimeKey: loadKey(cfg.runtime_key), proposer: hostedProposers(cfg, keys), log, messenger: chainMessengers(cfg, backend, log), postClient: postClient(), trading: trading?.hooks });
+      // agent desktops (SPEC 17.7): our server's slots first, then E2B within its day cap
+      const desktops = desktopPool(cfg, log);
+      const rt = new Runtime(cfg, { backend, runtimeKey: loadKey(cfg.runtime_key), proposer: hostedProposers(cfg, keys), log, messenger: chainMessengers(cfg, backend, log), postClient: postClient(), trading: trading?.hooks, desktop: desktops ?? undefined });
       trading?.attach(rt);
       const stopTrading = trading?.start() ?? (() => {});
       await rt.start();
       // hosted launches bind from the Wallet page (bind.ts): the owner signs the rotation, this runtime co-signs
-      const bindServer = cfg.bind_port && backend instanceof ChainBackend ? serveBind(cfg.bind_port, bindHandler({ host: rt, send: chainCosign(cfg.rpc_url ?? devnetRpcUrl(), log), log }), log) : null;
+      const bindServer = cfg.bind_port && backend instanceof ChainBackend
+        ? serveBind(cfg.bind_port, withDesktops(desktops, bindHandler({ host: rt, send: chainCosign(cfg.rpc_url ?? devnetRpcUrl(), log), log })), log)
+        : desktops && (cfg.desktop_port ?? cfg.bind_port)
+          ? serveBind((cfg.desktop_port ?? cfg.bind_port)!, withDesktops(desktops), log)
+          : null;
+      const stopPublisher = desktops ? startRecordingPublisher(desktops, cfg.core, (a) => rt.keyOf(a), log) : () => {};
       let signals = 0;
       const onSignal = () => {
         if (++signals > 1) process.exit(130); // state is persisted after every step; a second signal leaves now
         log("signal: graceful stop (send again to leave at once)");
         stopMonitor();
         stopTrading();
+        stopPublisher();
         bindServer?.stop(true);
         void rt.stop().then(() => process.exit(0));
       };

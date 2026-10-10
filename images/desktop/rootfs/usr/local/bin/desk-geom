@@ -1,0 +1,8 @@
+#!/bin/bash
+# desk-geom: one line per visible window of the lineage classes: "<class> <x> <y> <w> <h>" (absolute).
+for c in LineageEditor LineageRun LineageTerm LineageBrowser; do
+  for id in $(xdotool search --onlyvisible --class "$c" 2>/dev/null); do
+    eval "$(xdotool getwindowgeometry --shell "$id" 2>/dev/null)" || continue
+    echo "$c ${X:-0} ${Y:-0} ${WIDTH:-0} ${HEIGHT:-0}"
+  done
+done

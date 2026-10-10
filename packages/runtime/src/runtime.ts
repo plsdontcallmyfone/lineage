@@ -11,6 +11,7 @@ import { provenanceRecord, signProvenance, type AttemptTotals } from "./provenan
 import { emptyUsage, isAgentId, Lock, modelTokens, redact, StateStore, type AgentUsage, type ClosedEpoch } from "./state.ts";
 import { AgentPoster, emptyPostState, POSTS_DEFAULTS, type PostState } from "./posts.ts";
 import type { ModelClient, Usage as SoulUsage } from "../../souls/src/generator.ts";
+import type { DesktopProvider } from "../../desktop/src/pool.ts";
 import { existsSync, readFileSync, renameSync } from "node:fs";
 
 /** A spend figure for logs; a corrupt record shows as such (the caps then refuse every attempt). */
@@ -49,6 +50,8 @@ export interface RuntimeDeps {
   };
   /** Agent posts (plan S, posts.ts): the model client posts are written with; absent = no posts. */
   postClient?: ModelClient;
+  /** Agent desktops (SPEC 17.7, packages/desktop): a live desktop per attempt when a slot is free. */
+  desktop?: DesktopProvider;
 }
 
 interface Attempt {
@@ -311,6 +314,7 @@ export class Runtime {
       // agent journal (SPEC 17.6): own notes in, one entry out per session, inside the attempt cap
       journal: true,
       messenger: this.deps.messenger?.(agent, key, (f) => this.meterChain(f)),
+      desktop: this.deps.desktop,
       attempt: () => {
         const b = this.budget(agent);
         if (b.usd === null) {

@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Fixed tiles for the lineage desktop (1280x800). These rectangles are the ones in
+     packages/desktop/src/layout.ts; the live stream pixelates by screen position, so a window that is
+     not exactly in its tile stops the stream (packages/desktop/src/seal.ts, geometry guard). -->
+<openbox_config xmlns="http://openbox.org/3.4/rc">
+  <focus><focusNew>no</focusNew><followMouse>no</followMouse></focus>
+  <placement><policy>Smart</policy></placement>
+  <theme><name>Clearlooks</name><titleLayout></titleLayout><keepBorder>no</keepBorder></theme>
+  <desktops><number>1</number></desktops>
+  <margins><top>0</top><bottom>0</bottom><left>0</left><right>0</right></margins>
+  <keyboard></keyboard>
+  <mouse></mouse>
+  <menu></menu>
+  <applications>
+    <application class="*">
+      <decor>no</decor>
+      <skip_taskbar>yes</skip_taskbar>
+    </application>
+    <application class="LineageEditor">
+      <decor>no</decor><maximized>no</maximized>
+      <position force="yes"><x>0</x><y>0</y></position>
+      <size><width>640</width><height>800</height></size>
+    </application>
+    <application class="LineageBrowser">
+      <decor>no</decor><maximized>no</maximized>
+      <position force="yes"><x>640</x><y>0</y></position>
+      <size><width>640</width><height>400</height></size>
+    </application>
+    <application class="LineageTerm">
+      <decor>no</decor><maximized>no</maximized>
+      <position force="yes"><x>640</x><y>400</y></position>
+      <size><width>640</width><height>200</height></size>
+    </application>
+    <application class="LineageRun">
+      <decor>no</decor><maximized>no</maximized>
+      <position force="yes"><x>640</x><y>600</y></position>
+      <size><width>640</width><height>200</height></size>
+    </application>
+  </applications>
+</openbox_config>

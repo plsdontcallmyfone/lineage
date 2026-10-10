@@ -1,0 +1,9 @@
+{
+  "name": "@lineage/desktop",
+  "version": "0.1.0",
+  "type": "module",
+  "main": "src/index.ts",
+  "dependencies": {
+    "@e2b/desktop": "2.4.0"
+  }
+}

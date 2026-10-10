@@ -1,0 +1,6 @@
+#!/bin/bash
+# desk-bg <name> <argv...>: start a long running process (an encoder) in the background; pid in /tmp/desk/<name>.pid.
+n="$(basename -- "$1")"; shift
+mkdir -p /tmp/desk
+setsid "$@" >"/tmp/desk/$n.log" 2>&1 < /dev/null &
+echo $! > "/tmp/desk/$n.pid"

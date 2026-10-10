@@ -87,6 +87,9 @@ interface SessionRow {
   reported_commit: string | null;
   events: number;
   sealed_bytes: number;
+  desktop: number;
+  recording_sha: string | null;
+  recording_bytes: number | null;
 }
 
 interface EventRow {
@@ -138,6 +141,11 @@ export function sessionsOf(core: Core): Sessions {
 export class Sessions {
   constructor(private core: Core) {
     core.db.exec(SESSIONS_SCHEMA);
+    // agent desktops (SPEC 17.7): the session ran on a live desktop; its recording once the gate opened
+    const cols = new Set(core.db.query<{ name: string }, []>("PRAGMA table_info(sessions)").all().map((c) => c.name));
+    if (!cols.has("desktop")) core.db.exec("ALTER TABLE sessions ADD COLUMN desktop INTEGER NOT NULL DEFAULT 0");
+    if (!cols.has("recording_sha")) core.db.exec("ALTER TABLE sessions ADD COLUMN recording_sha TEXT");
+    if (!cols.has("recording_bytes")) core.db.exec("ALTER TABLE sessions ADD COLUMN recording_bytes INTEGER");
   }
 
   private get db() {
@@ -158,15 +166,16 @@ export class Sessions {
   // ---------------------------------------------------------------------------------------------
   // writes (agent-signed)
 
-  /** POST /v1/sessions { lineage_id, gen_id, commit, proposer } */
+  /** POST /v1/sessions { lineage_id, gen_id, commit, proposer, desktop? } */
   start(agent: string, body: unknown) {
     return this.core.tx(() => {
       const a = this.db.query<{ kind: string }, [string]>("SELECT kind FROM agents WHERE agent_id = ?").get(agent);
       if (!a) throw forbidden("not_registered", "only registered agents record sessions");
       if (a.kind !== "launched") throw forbidden("not_an_author", "only launched agents author");
       if (!isObj(body)) throw bad("bad_session", "body must be an object");
-      for (const k of Object.keys(body)) if (!["lineage_id", "gen_id", "commit", "proposer"].includes(k)) throw bad("bad_session", `unknown field ${k}`);
+      for (const k of Object.keys(body)) if (!["lineage_id", "gen_id", "commit", "proposer", "desktop"].includes(k)) throw bad("bad_session", `unknown field ${k}`);
       const { lineage_id, gen_id, commit, proposer } = body;
+      if (body.desktop !== undefined && typeof body.desktop !== "boolean") throw bad("bad_session", "desktop must be a boolean");
       if (typeof lineage_id !== "string" || !HEX64.test(lineage_id)) throw bad("bad_session", "lineage_id must be 64 hex");
       if (typeof gen_id !== "string" || !HEX64.test(gen_id)) throw bad("bad_session", "gen_id must be 64 hex");
       const l = this.db
@@ -183,8 +192,8 @@ export class Sessions {
       if (live >= SESSION_LIMITS.live_sessions_per_agent) throw new ApiError(429, "too_many_sessions", `at most ${SESSION_LIMITS.live_sessions_per_agent} sessions in progress per agent; end one first`);
       const id = randomBytes(32).toString("hex");
       this.db
-        .query("INSERT INTO sessions (session_id, agent_id, lineage_id, gen_id, commit_sha, proposer, started_at, last_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)")
-        .run(id, agent, lineage_id, gen_id, commit, proposer, now, now);
+        .query("INSERT INTO sessions (session_id, agent_id, lineage_id, gen_id, commit_sha, proposer, started_at, last_at, desktop) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)")
+        .run(id, agent, lineage_id, gen_id, commit, proposer, now, now, body.desktop === true ? 1 : 0);
       this.core.emitEvent("session.started", { session_id: id, agent, lineage_id, gen_id, proposer });
       return { session_id: id, started_at: now };
     });
@@ -304,6 +313,37 @@ export class Sessions {
     });
   }
 
+  /**
+   * POST /v1/sessions/:id/recording { sha256, bytes }: the desktop recording (SPEC 17.7), an MP4 the
+   * agent uploaded to the blob store. Unredacted, so it is accepted only once the gate is open for
+   * everyone (candidate final, or ended without one, or abandoned); a party's own full view does not
+   * count. Set once.
+   */
+  recording(agent: string, id: string, body: unknown) {
+    return this.core.tx(() => {
+      const s = this.mustOwn(agent, id);
+      if (!s.desktop) throw bad("no_desktop", "this session did not run on a desktop");
+      if (!isObj(body)) throw bad("bad_recording", "body must be { sha256, bytes }");
+      for (const k of Object.keys(body)) if (k !== "sha256" && k !== "bytes") throw bad("bad_recording", `unknown field ${k}`);
+      const { sha256, bytes } = body;
+      if (typeof sha256 !== "string" || !HEX64.test(sha256)) throw bad("bad_recording", "sha256 must be 64 hex");
+      if (!isInt(bytes, 1, this.core.maxBlobBytes)) throw bad("bad_recording", "bytes must be a positive integer within the blob limit");
+      if (!this.gate(s).open) throw new ApiError(409, "sealed", "the recording is published only once the session's gate is open");
+      if (s.recording_sha) {
+        if (s.recording_sha === sha256) return this.view(id, agent);
+        throw new ApiError(409, "recording_set", "this session already has a recording");
+      }
+      const blob = this.core.blobs.get(sha256);
+      if (!blob) throw bad("missing_blob", "upload the recording (PUT /v1/blobs/:sha256) first");
+      if (blob.length !== bytes) throw bad("bad_recording", "bytes does not match the blob");
+      // an MP4 starts with a box whose type is ftyp
+      if (blob.length < 12 || new TextDecoder().decode(blob.subarray(4, 8)) !== "ftyp") throw bad("bad_recording", "the blob is not an MP4 file");
+      this.db.query("UPDATE sessions SET recording_sha = ?, recording_bytes = ? WHERE session_id = ?").run(sha256, bytes, id);
+      this.core.emitEvent("session.recording", { session_id: id, lineage_id: s.lineage_id });
+      return this.view(id, agent);
+    });
+  }
+
   // ---------------------------------------------------------------------------------------------
   // the gate
 
@@ -396,6 +436,9 @@ export class Sessions {
       last_at: s.last_at,
       ended_at: s.ended_at,
       events: s.events,
+      desktop: !!s.desktop,
+      // set only after the gate opened (recording()); a link to Core's blob store
+      recording: s.recording_sha && g.open ? { sha256: s.recording_sha, bytes: s.recording_bytes, url: `/v1/blobs/${s.recording_sha}` } : null,
       candidate:
         c && showCand
           ? {

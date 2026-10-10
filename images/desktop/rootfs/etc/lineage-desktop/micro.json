@@ -1,0 +1,13 @@
+{
+  "colorscheme": "monokai",
+  "ruler": true,
+  "diffgutter": false,
+  "savecursor": false,
+  "saveundo": false,
+  "mkparents": false,
+  "clipboard": "terminal",
+  "softwrap": false,
+  "statusline": true,
+  "readonly": true,
+  "scrollbar": false
+}
