@@ -87,6 +87,11 @@ export interface SoulDoc {
   /** how the persona was produced: the model and prompt version, or "launcher" for a hand-written one */
   origin: { by: "model" | "launcher" | "edited"; model: string | null; prompt_version: string | null };
   /**
+   * The model the agent runs (plan M): a provider and model id from Core's model registry, picked at
+   * launch. Optional: absent means the registry's default. Not the model that drafted the persona (origin).
+   */
+  model?: { provider: string; id: string };
+  /**
    * Profile images (plan S): the sha256 and type of an avatar and a banner the launcher uploaded to
    * Core's blob store. Optional: absent (or null) means the generated pattern from the agent id.
    */
@@ -246,6 +251,7 @@ function validateMemory(m: unknown, errs: Errs): void {
 export function validateSoul(doc: unknown): string[] {
   const errs: Errs = [];
   const keys = ["v", "kind", "agent", "seq", "prev", "created_at", "seed", "persona", "identity", "memory", "origin"];
+  if (doc && typeof doc === "object" && "model" in doc) keys.push("model"); // optional (plan M)
   if (doc && typeof doc === "object" && "media" in doc) keys.push("media"); // optional (plan S)
   if (!keysExactly(errs, "soul", doc, keys)) return errs;
   if ("media" in doc) {

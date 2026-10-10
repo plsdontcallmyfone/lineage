@@ -1,0 +1,29 @@
+[
+  {
+    "at": "2026-10-09T23:33:59.154Z",
+    "pick": "anthropic/claude-haiku-4-5",
+    "recipe": "fixture-b58",
+    "seconds": 70,
+    "usd": 0.069794,
+    "tokens": {
+      "in": 11474,
+      "out": 7054,
+      "cache_read": 72242,
+      "cache_write": 12661
+    },
+    "sandbox_s": 4,
+    "outcome": "anthropic: turn limit reached",
+    "diff_lines": 57,
+    "provenance": {
+      "models": [
+        "claude-haiku-4-5-20251001"
+      ],
+      "provider": "anthropic",
+      "proposer": {
+        "name": "anthropic",
+        "version": "anthropic/1"
+      },
+      "harness_digest": "addd1f19b8193784674f2c52ca9e30a81e1c83fca6238003deb565cfb56946b1"
+    }
+  }
+]

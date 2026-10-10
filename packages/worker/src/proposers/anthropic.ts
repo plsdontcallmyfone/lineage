@@ -33,10 +33,16 @@ export const MODEL_PRICES: Record<string, { input: number; output: number; cache
   "claude-opus-5-5": OPUS_55,
   "claude-opus-5": { input: 5, output: 25, cache_read: 0.5, cache_write: 6.25 },
   "claude-opus-4-8": { input: 5, output: 25, cache_read: 0.5, cache_write: 6.25 },
-  "claude-sonnet-5-5": { input: 2, output: 10, cache_read: 0.2, cache_write: 2.5 },
-  "claude-fable-5-1": { input: 10, output: 50, cache_read: 1, cache_write: 12.5 },
+  // re-read 2026-10-09 on platform.claude.com/docs/en/about-claude/pricing (plan M): Sonnet 5.5 and Fable 5.1 cache reads are 0.1 and 0.25
+  "claude-sonnet-5-5": { input: 2, output: 10, cache_read: 0.1, cache_write: 2.5 },
+  "claude-sonnet-5": { input: 2, output: 10, cache_read: 0.2, cache_write: 2.5 },
+  "claude-haiku-4-5": { input: 1, output: 5, cache_read: 0.1, cache_write: 1.25 },
+  "claude-fable-5-1": { input: 10, output: 50, cache_read: 0.25, cache_write: 12.5 },
 };
 const PRICE_CEILING = MODEL_PRICES["claude-fable-5-1"]!;
+
+/** Models that refuse `thinking: adaptive` and `output_config.effort` (read from a real 400, 2026-10-09). */
+const NO_ADAPTIVE = /^claude-haiku-4-5/;
 
 /** Version of this proposer's harness (prompt and tool set); provenance records it (identity plan I5). */
 export const PROPOSER_VERSION = "anthropic/1";
@@ -46,7 +52,7 @@ const MAX_READ = 60_000;
 
 type ToolInput = Record<string, unknown>;
 
-const TOOLS: Anthropic.Beta.BetaTool[] = [
+export const TOOLS: Anthropic.Beta.BetaTool[] = [
   {
     name: "list_files",
     description: "List files under a directory of the repository (relative path, '.' for the root). Build output and VCS directories are hidden.",
@@ -112,7 +118,7 @@ const TOOLS: Anthropic.Beta.BetaTool[] = [
   },
 ];
 
-function systemPrompt(ctx: ProposeContext): string {
+export function systemPrompt(ctx: ProposeContext): string {
   const r = ctx.loaded.recipe;
   const c = ctx.calibration;
   const metrics = r.metrics
@@ -146,6 +152,17 @@ Rules that matter:
 - Be efficient with tool calls; your compute is metered.${ctx.soul ? `\n${ctx.soul}` : ""}`;
 }
 
+/** The first user turn: open findings and other agents' intents (shared by every adapter). */
+export function openingMessage(ctx: ProposeContext): string {
+  const held = (ctx.intents ?? []).filter((i) => i.agent !== ctx.self && i.status === "open");
+  const findings =
+    (ctx.findings.map((f) => `- ${f.kind}: ${f.target}`).join("\n") || "- (none listed; pick a metric)") +
+    (held.length
+      ? `\n\nOther agents have filed public intents (advisory, no locks) on: ${held.map((i) => `${i.kind} ${Array.isArray(i.target) ? i.target.join(",") : i.target}`).join("; ")}. Prefer another target unless you have a clearly different idea.`
+      : "");
+  return `Open findings for this lineage:\n${findings}\n\nStart by exploring the source, then make and evaluate your change.`;
+}
+
 /** sha256 over the tool set and the prompt template: which harness produced a candidate (provenance, identity plan I5). */
 export const HARNESS_DIGEST = sha256Hex(new TextEncoder().encode(JSON.stringify({ v: PROPOSER_VERSION, tools: TOOLS, prompt: systemPrompt.toString() })));
 
@@ -174,7 +191,9 @@ export class AnthropicProposer implements Proposer {
     let lastTurnUsd = 0;
     let lastInput = 0;
     const addUsage = (u: Anthropic.Beta.BetaUsage, model: string) => {
-      const p = model === o.model ? o.prices : (MODEL_PRICES[model] ?? PRICE_CEILING);
+      // a dated snapshot id (claude-haiku-4-5-20251001) is the requested model; it used to price at the ceiling (plan M real session)
+      const base = model.replace(/-\d{8}$/, "");
+      const p = model === o.model || base === o.model ? o.prices : (MODEL_PRICES[model] ?? MODEL_PRICES[base] ?? PRICE_CEILING);
       // a missing, negative or non-finite count turned the spend into NaN, which no cap compares
       // against (audit A2, OFF-K4): such a turn is charged the rest of the cap so the attempt stops
       let bad = false;
@@ -205,15 +224,12 @@ export class AnthropicProposer implements Proposer {
       }
     };
     const tools = new ToolBox(ctx, o.max_evals);
-    const held = (ctx.intents ?? []).filter((i) => i.agent !== ctx.self && i.status === "open");
-    const findings =
-      (ctx.findings.map((f) => `- ${f.kind}: ${f.target}`).join("\n") || "- (none listed; pick a metric)") +
-      (held.length
-        ? `\n\nOther agents have filed public intents (advisory, no locks) on: ${held.map((i) => `${i.kind} ${Array.isArray(i.target) ? i.target.join(",") : i.target}`).join("; ")}. Prefer another target unless you have a clearly different idea.`
-        : "");
-    const messages: Anthropic.Beta.BetaMessageParam[] = [
-      { role: "user", content: `Open findings for this lineage:\n${findings}\n\nStart by exploring the source, then make and evaluate your change.` },
-    ];
+    try {
+      ctx.meter?.harness?.({ name: "anthropic", version: PROPOSER_VERSION, digest: HARNESS_DIGEST, provider: "anthropic" });
+    } catch {
+      /* metering must not change what the model sees */
+    }
+    const messages: Anthropic.Beta.BetaMessageParam[] = [{ role: "user", content: openingMessage(ctx) }];
 
     for (let turn = 0; turn < o.max_turns; turn++) {
       // projected: the next turn is assumed to cost what the last one did, so the cap holds before a turn, not after it
@@ -226,8 +242,8 @@ export class AnthropicProposer implements Proposer {
         max_tokens: 64000,
         betas: ["server-side-fallback-2026-07-01"],
         fallbacks: "default",
-        thinking: { type: "adaptive" },
-        output_config: { effort: o.effort },
+        // adaptive thinking and effort exist on the 4.6-and-later models; Haiku 4.5 answers 400 to them (plan M real session)
+        ...(NO_ADAPTIVE.test(o.model) ? {} : { thinking: { type: "adaptive" as const }, output_config: { effort: o.effort } }),
         cache_control: { type: "ephemeral" },
         system: systemPrompt(ctx),
         tools: TOOLS,

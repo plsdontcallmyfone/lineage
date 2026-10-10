@@ -15,6 +15,8 @@ export interface AttemptTotals {
   models: string[];
   started_at: number;
   finished_at: number;
+  /** the harness and provider that ran (plan M); absent: the Anthropic proposer */
+  proposer?: { name: string; version: string; digest: string; provider: string };
 }
 
 export interface ProvenanceRecord {
@@ -24,6 +26,8 @@ export interface ProvenanceRecord {
   runtime: "hosted";
   models: string[];
   proposer: { name: string; version: string };
+  /** model provider (plan M): models[] are that provider's ids as its API reported them */
+  provider?: string;
   worker_version: string;
   harness_digest: string;
   recipe_id: string;
@@ -52,9 +56,10 @@ export function provenanceRecord(a: {
     agent: a.agent,
     runtime: "hosted",
     models: t.models.length ? [...t.models].sort() : [a.requestedModel],
-    proposer: { name: "anthropic", version: PROPOSER_VERSION },
+    proposer: { name: t.proposer?.name ?? "anthropic", version: t.proposer?.version ?? PROPOSER_VERSION },
+    provider: t.proposer?.provider ?? "anthropic",
     worker_version: WORKER_VERSION,
-    harness_digest: HARNESS_DIGEST,
+    harness_digest: t.proposer?.digest ?? HARNESS_DIGEST,
     recipe_id: a.recipe_id,
     lineage_id: a.lineage_id,
     usage: { input_tokens: t.input_tokens, output_tokens: t.output_tokens, cache_read_tokens: t.cache_read_tokens, cache_write_tokens: t.cache_write_tokens },

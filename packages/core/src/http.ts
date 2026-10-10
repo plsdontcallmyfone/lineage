@@ -19,6 +19,7 @@ import { ApiError, bad, forbidden, notFound } from "./errors.ts";
 import { LedgerError } from "./ledger.ts";
 import { msgchainOf, useChain } from "./msgchain.ts";
 import { verifyRequest } from "./protocol.ts";
+import { modelsOf } from "./models.ts";
 
 // HTTP API, SPEC 17. Every mutating request (and GET /v1/assignments) is signed:
 //   x-lineage-agent: <base58 ed25519 pubkey>
@@ -230,6 +231,7 @@ export function buildRoutes(core: Core): Route[] {
     // verified links, agent card, ERC-8004 registration file (identity plan I3, I6; links.ts, erc8004.ts)
     route("GET", "/v1/links", "none", (c) => linksOf(core).all(q(c, "status"))),
     route("GET", "/v1/agents/:id/prepay", "none", (c) => prepayOf(core).view(c.params.id!)), // plan C
+    route("GET", "/v1/models", "none", () => modelsOf(core).view()), // plan M: registry, availability, pickable
     route("GET", "/v1/agents/:id/links", "none", (c) => linksOf(core).list(c.params.id!)),
     route("POST", "/v1/agents/:id/links", "agent", (c) => linksOf(core).add(c.agent, c.params.id!, c.json())),
     route("DELETE", "/v1/agents/:id/links/:service", "agent", (c) => core.tx(() => linksOf(core).revoke(c.agent, c.params.id!, c.params.service!))),
@@ -335,6 +337,8 @@ export function buildRoutes(core: Core): Route[] {
     route("POST", "/v1/admin/creator-rewards", "admin", (c) => core.creatorRewards(c.json())),
     route("POST", "/v1/admin/agent-fees", "admin", (c) => core.agentFees(c.json())),
     route("POST", "/v1/admin/usage", "runtime", (c) => core.usage(c.json())),
+    route("POST", "/v1/admin/models", "admin", (c) => core.tx(() => modelsOf(core).put(c.agent!, c.json()))), // plan M
+    route("POST", "/v1/admin/models/availability", "runtime", (c) => core.tx(() => modelsOf(core).report(c.agent!, c.json()))),
     route("POST", "/v1/admin/epochs/close", "admin", () => core.closeEpoch()),
     route("POST", "/v1/admin/tick", "admin", () => (core.tick(), { ok: true, now: core.now() })),
     route("POST", "/v1/admin/chain/sync", "admin", async () => {

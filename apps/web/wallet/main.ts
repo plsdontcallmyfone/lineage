@@ -67,6 +67,7 @@ export { mountTradeBox } from "./trade.ts";
 import { custodyHtml, ghClick, initGithubIdentity, showIdentity, submitLaunchToken } from "./identity.ts";
 import { depositBase, depositUsd, loadPrepay, P, prepayFieldset, prepayHelp, showCorePrepay } from "./prepay.ts";
 import { allocationFieldset, loadTradingEscrow, sendAllocation } from "./trading.ts";
+import { entryOf, isDefaultChoice, loadModels, modelChoice, modelFieldset, modelsBody, onModelInput, priceText, withModel } from "./models.ts";
 
 const T22 = TOKEN_2022_PROGRAM;
 const W = "bun packages/worker/src/main.ts";
@@ -353,6 +354,7 @@ function launchForm(): Raw {
         <label class="radio"><input type="radio" name="l_hosted" value="self"> <span><b>Self-hosted.</b> You run the worker with the agent key.</span></label>
       </fieldset>
     </div>
+    ${modelFieldset()}
     <fieldset><legend class="eyebrow">GitHub identity (SPEC 13.9)</legend>
       <label class="radio"><input type="radio" name="l_identity" value="token" checked> <span><b>Own token.</b> A fine-grained token limited to the agent's forks is the recommended choice; any scope is accepted, and a full-scope token is a large liability for whoever holds it.</span></label>
       <label class="radio"><input type="radio" name="l_identity" value="purchased"> <span><b>Purchased account</b> from the operated pool, set up automatically after launch. Price TBA; devnet charges nothing.</span></label>
@@ -535,7 +537,7 @@ async function soulGenerate() {
     S.soul.note = errBox(j.problems ? `${j.error}: ${j.problems.join("; ")}` : (j.message ?? `HTTP ${r.status}`));
     return renderSoul();
   }
-  S.soul.doc = j.doc as SoulDoc;
+  S.soul.doc = withModel(j.doc as SoulDoc, modelChoice()); // plan M: the picked model is part of the signed profile
   S.soul.usd = typeof j.usd === "number" ? j.usd : null;
   renderSoul();
 }
@@ -622,8 +624,15 @@ async function launchReview() {
   set("w-launch-out", html`<div class="panel-b dim">Making the agent and mint keys, building and simulating…</div>`);
   try {
     const keep = S.draft && S.draft.args.repoUrl === args.repoUrl && S.draft.args.symbol === args.symbol;
+    // plan M: the picked model is recorded in the soul the agent key signs; without a soul the agent runs the default
+    const choice = modelChoice();
+    if (S.soul?.doc) {
+      S.soul.doc = withModel(S.soul.doc, choice);
+      renderSoul();
+    }
     const soul = S.soul?.doc ?? null;
     if (S.soul && !soul) throw new Error("The soul has problems; fix them, generate again, or choose Launch without a soul.");
+    if (!soul && !isDefaultChoice(choice)) throw new Error("The model choice is recorded in the agent's soul: generate a soul, or pick the default model.");
     const agent = soul ? S.soul!.agent : keep ? S.draft!.agent : await generateWebKey();
     const mint = keep ? S.draft!.mint : await generateWebKey();
     // prepaid credits (plan C): the deposit and refresh_awake ride in the launch transaction
@@ -656,6 +665,10 @@ function renderLaunchReview() {
     ["repo_id (computed on chain)", html`<span class="wl-hash">${repoId(d.args.repoUrl)}</span>`],
     ["Identity mode", `${d.args.identity} (${d.args.identityMode})`],
     ["Runtime", d.args.hosted ? "hosted" : "self-hosted"],
+    ["Model", (() => {
+      const m = entryOf(d.soul?.model ?? modelChoice());
+      return m ? html`${m.name} <span class="dim">${m.provider}/${m.id}, ${priceText(m)}${d.soul?.model ? ", in the signed soul" : ", the network default"}</span>` : html`<span class="faint">network default</span>`;
+    })()],
     ["Class", `${d.args.cls} (metadata URI)`],
     ["Agent key", addr(d.agent.id)],
     ["Agent mint", addr(d.mint.id)],
@@ -1940,6 +1953,13 @@ function onInput(ev: Event) {
   if (t.name === "t_amount" || t.name === "t_slip") S.quote = null;
   if (t.name?.startsWith("l_") && t.name !== "l_token") S.draft = null;
   if (t.name === "l_deposit") renderPrepay();
+  if ((t.name === "l_provider" || t.name === "l_model") && onModelInput(t)) {
+    set("w-models", modelsBody());
+    if (S.soul?.doc) {
+      S.soul.doc = withModel(S.soul.doc, modelChoice());
+      renderSoul();
+    }
+  }
 }
 
 function renderPrepay() {
@@ -1974,7 +1994,7 @@ export async function mountWallet(root: HTMLElement) {
   renderGate();
   renderConn();
   if (S.gate !== "ok") return;
-  await Promise.all([loadNetwork(), loadLaunches(), loadPrepay(S.cfg!.state as any), loadTradingEscrow()]);
+  await Promise.all([loadNetwork(), loadLaunches(), loadPrepay(S.cfg!.state as any), loadTradingEscrow(), loadModels().then(() => set("w-models", modelsBody()))]);
   const dep = S.root?.querySelector<HTMLInputElement>('[name="l_deposit"]');
   if (dep && !dep.value && P.cfg) dep.value = P.cfg.default_usd;
   renderPrepay();

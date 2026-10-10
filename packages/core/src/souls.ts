@@ -3,6 +3,7 @@ import type { Core } from "./core.ts";
 import { ApiError, bad, conflict, notFound } from "./errors.ts";
 import { socialOf } from "./social.ts";
 import { H, Rng } from "./protocol.ts";
+import { modelsOf } from "./models.ts";
 
 // Agent souls (SPEC 14.8). Core stores every signed version of a soul document by its digest and
 // serves the latest one publicly once the agent is launched (a version stored before Core learns of
@@ -84,7 +85,7 @@ export function soulsOf(core: Core): Souls {
 
 export class Souls {
   private readonly c: Internals;
-  constructor(core: Core) {
+  constructor(private readonly core: Core) {
     this.c = core as unknown as Internals;
     this.ensure();
   }
@@ -116,6 +117,8 @@ export class Souls {
     if (errs.length) throw new ApiError(400, "bad_soul", errs.slice(0, 12).join("; "));
     const doc = b.doc as SoulDoc;
     if (doc.agent !== agentParam) throw bad("bad_soul", "doc.agent must equal the agent in the path");
+    const modelErr = modelsOf(this.core).checkChoice(doc.model); // plan M: the launch model must be a priced registry entry
+    if (modelErr) throw bad("bad_soul", modelErr);
     // plan S: profile images must be uploads made for this agent (social.ts), not arbitrary blobs
     for (const img of [doc.media?.avatar, doc.media?.banner]) {
       const m = img ? socialOf(this.c as unknown as Core).mediaOf(img.sha256) : null;

@@ -1,0 +1,241 @@
+{
+  "at": "2026-10-09T23:35:00.687Z",
+  "pass": 50,
+  "total": 50,
+  "results": [
+    {
+      "name": "availability reported (presence only)",
+      "ok": true,
+      "detail": "anthropic"
+    },
+    {
+      "name": "registry served with pickable flags",
+      "ok": true,
+      "detail": "6 of 28 pickable"
+    },
+    {
+      "name": "1280 light: one monogram per provider",
+      "ok": true,
+      "detail": "ANT OPE GOO DEE ALI MOO ZHI MIN MET"
+    },
+    {
+      "name": "1280 light: no provider logo images",
+      "ok": true
+    },
+    {
+      "name": "1280 light: keyless providers shown unavailable",
+      "ok": true,
+      "detail": "8 unavailable"
+    },
+    {
+      "name": "1280 light: model rows priced from the registry",
+      "ok": true,
+      "detail": "$4 in / $20 out, cached $0.20 per 1M tokens"
+    },
+    {
+      "name": "1280 light: DeepSeek models show the peak caveat",
+      "ok": true,
+      "detail": "DeepSeek Flash (V4.1) deepseek-flash $0.30 in / $1.20 out, cached $0.006 inside 01:00 to 04:00 UTC and 06:00 to 10:00 UTC on weekdays; metered by the clock. Off"
+    },
+    {
+      "name": "1280 light: DeepSeek disabled without a key",
+      "ok": true
+    },
+    {
+      "name": "1280 light: Meta shows no published price and cannot be picked",
+      "ok": true
+    },
+    {
+      "name": "1280 light: MiniMax carries its discount label",
+      "ok": true
+    },
+    {
+      "name": "1280 light: picking a model selects it",
+      "ok": true,
+      "detail": "anthropic/claude-sonnet-5-5"
+    },
+    {
+      "name": "1280 light: no horizontal scroll",
+      "ok": true,
+      "detail": "1280 <= 1280"
+    },
+    {
+      "name": "1280 light: no monospace in the picker",
+      "ok": true,
+      "detail": "0"
+    },
+    {
+      "name": "1280 light: no console errors",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "390 light: one monogram per provider",
+      "ok": true,
+      "detail": "ANT OPE GOO DEE ALI MOO ZHI MIN MET"
+    },
+    {
+      "name": "390 light: no provider logo images",
+      "ok": true
+    },
+    {
+      "name": "390 light: keyless providers shown unavailable",
+      "ok": true,
+      "detail": "8 unavailable"
+    },
+    {
+      "name": "390 light: model rows priced from the registry",
+      "ok": true,
+      "detail": "$4 in / $20 out, cached $0.20 per 1M tokens"
+    },
+    {
+      "name": "390 light: DeepSeek models show the peak caveat",
+      "ok": true,
+      "detail": "DeepSeek Flash (V4.1) deepseek-flash $0.30 in / $1.20 out, cached $0.006 inside 01:00 to 04:00 UTC and 06:00 to 10:00 UTC on weekdays; metered by the clock. Off"
+    },
+    {
+      "name": "390 light: DeepSeek disabled without a key",
+      "ok": true
+    },
+    {
+      "name": "390 light: Meta shows no published price and cannot be picked",
+      "ok": true
+    },
+    {
+      "name": "390 light: MiniMax carries its discount label",
+      "ok": true
+    },
+    {
+      "name": "390 light: picking a model selects it",
+      "ok": true,
+      "detail": "anthropic/claude-sonnet-5-5"
+    },
+    {
+      "name": "390 light: no horizontal scroll",
+      "ok": true,
+      "detail": "390 <= 390"
+    },
+    {
+      "name": "390 light: no monospace in the picker",
+      "ok": true,
+      "detail": "0"
+    },
+    {
+      "name": "390 light: no console errors",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "1280 dark: one monogram per provider",
+      "ok": true,
+      "detail": "ANT OPE GOO DEE ALI MOO ZHI MIN MET"
+    },
+    {
+      "name": "1280 dark: no provider logo images",
+      "ok": true
+    },
+    {
+      "name": "1280 dark: keyless providers shown unavailable",
+      "ok": true,
+      "detail": "8 unavailable"
+    },
+    {
+      "name": "1280 dark: model rows priced from the registry",
+      "ok": true,
+      "detail": "$4 in / $20 out, cached $0.20 per 1M tokens"
+    },
+    {
+      "name": "1280 dark: DeepSeek models show the peak caveat",
+      "ok": true,
+      "detail": "DeepSeek Flash (V4.1) deepseek-flash $0.30 in / $1.20 out, cached $0.006 inside 01:00 to 04:00 UTC and 06:00 to 10:00 UTC on weekdays; metered by the clock. Off"
+    },
+    {
+      "name": "1280 dark: DeepSeek disabled without a key",
+      "ok": true
+    },
+    {
+      "name": "1280 dark: Meta shows no published price and cannot be picked",
+      "ok": true
+    },
+    {
+      "name": "1280 dark: MiniMax carries its discount label",
+      "ok": true
+    },
+    {
+      "name": "1280 dark: picking a model selects it",
+      "ok": true,
+      "detail": "anthropic/claude-sonnet-5-5"
+    },
+    {
+      "name": "1280 dark: no horizontal scroll",
+      "ok": true,
+      "detail": "1280 <= 1280"
+    },
+    {
+      "name": "1280 dark: no monospace in the picker",
+      "ok": true,
+      "detail": "0"
+    },
+    {
+      "name": "1280 dark: no console errors",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "390 dark: one monogram per provider",
+      "ok": true,
+      "detail": "ANT OPE GOO DEE ALI MOO ZHI MIN MET"
+    },
+    {
+      "name": "390 dark: no provider logo images",
+      "ok": true
+    },
+    {
+      "name": "390 dark: keyless providers shown unavailable",
+      "ok": true,
+      "detail": "8 unavailable"
+    },
+    {
+      "name": "390 dark: model rows priced from the registry",
+      "ok": true,
+      "detail": "$4 in / $20 out, cached $0.20 per 1M tokens"
+    },
+    {
+      "name": "390 dark: DeepSeek models show the peak caveat",
+      "ok": true,
+      "detail": "DeepSeek Flash (V4.1) deepseek-flash $0.30 in / $1.20 out, cached $0.006 inside 01:00 to 04:00 UTC and 06:00 to 10:00 UTC on weekdays; metered by the clock. Off"
+    },
+    {
+      "name": "390 dark: DeepSeek disabled without a key",
+      "ok": true
+    },
+    {
+      "name": "390 dark: Meta shows no published price and cannot be picked",
+      "ok": true
+    },
+    {
+      "name": "390 dark: MiniMax carries its discount label",
+      "ok": true
+    },
+    {
+      "name": "390 dark: picking a model selects it",
+      "ok": true,
+      "detail": "anthropic/claude-sonnet-5-5"
+    },
+    {
+      "name": "390 dark: no horizontal scroll",
+      "ok": true,
+      "detail": "390 <= 390"
+    },
+    {
+      "name": "390 dark: no monospace in the picker",
+      "ok": true,
+      "detail": "0"
+    },
+    {
+      "name": "390 dark: no console errors",
+      "ok": true,
+      "detail": ""
+    }
+  ]
+}

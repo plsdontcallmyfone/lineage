@@ -19,6 +19,9 @@ import { Runtime, type RuntimeDeps } from "./runtime.ts";
 import { addSecret, redact } from "./state.ts";
 import { checkCorePrices, CreditMonitor, monitorStatePath, railClient, railModel, railPrices } from "./rail.ts";
 import { ChainMessenger } from "../../core/src/msgchain.ts";
+import { CoreClient } from "../../core/src/client.ts";
+import { availabilityOf, loadProviderKeys, loadProviderSpecs } from "../../worker/src/proposers/providers.ts";
+import { routedProposers } from "./providers.ts";
 import { anthropicClient } from "../../souls/src/generator.ts";
 import { chainTrading, type TradingRuntimeConfig } from "../../trader/src/glue.ts";
 
@@ -49,6 +52,23 @@ export function chainMessengers(cfg: RuntimeConfig, backend: Backend, log: (m: s
   return (agent, key, onFee) => new ChainMessenger({ rpc: backend.rpc, payer, key, agent, core: cfg.core, onFee, log: (m) => log(`${agent.slice(0, 6)} ${m}`) });
 }
 
+/**
+ * The proposer per agent. Rail anthropic (default): each agent runs the model its signed profile
+ * picked (plan M, providers.ts), with keys from providers.env and model.env. Rail openrouter: every
+ * agent runs the configured OpenRouter model (plan C).
+ */
+export function hostedProposers(cfg: RuntimeConfig, keys: Record<string, string>) {
+  if ((cfg.rail ?? "anthropic") === "openrouter") return claudeProposer(cfg);
+  return routedProposers({ core: cfg.core, keys, providers: loadProviderSpecs(), attempt_max_usd: cfg.attempt_max_usd, effort: cfg.effort, max_turns: cfg.max_turns, max_evals: cfg.max_evals });
+}
+
+/** Tells Core which providers have a key on this host (never the keys); the launch form offers only those. */
+export async function reportAvailability(cfg: RuntimeConfig, keys: Record<string, string>, log: (m: string) => void) {
+  const providers = availabilityOf(keys);
+  const r = await new CoreClient(cfg.core, loadKey(cfg.runtime_key)).post("/v1/admin/models/availability", { providers }).catch((e) => ({ status: 0, body: String(e) }));
+  log(`providers with a key: ${Object.entries(providers).filter(([, v]) => v).map(([k]) => k).join(", ") || "none"}${r.status === 200 ? " (reported to Core)" : ` (not reported to Core: ${r.status})`}`);
+}
+
 export function claudeProposer(cfg: RuntimeConfig) {
   // the credit rail picks the model endpoint (plan C): Anthropic by default, OpenRouter only when enabled
   const r = { rail: cfg.rail ?? "anthropic", openrouter: cfg.openrouter ?? null } as const;
@@ -72,8 +92,12 @@ async function main() {
   const log = (m: string) => console.log(redact(`[${new Date().toISOString().slice(11, 19)} runtime] ${m}`));
   switch (cmd) {
     case "run": {
-      const anthropicKey = loadModelEnv();
-      if ((cfg.rail ?? "anthropic") === "anthropic" && !anthropicKey) throw new Error("no model key: put ANTHROPIC_API_KEY in ~/.config/lineage/model.env");
+      loadModelEnv();
+      // provider keys (plan M): providers.env (created empty, mode 600, when missing) plus model.env; never printed
+      const keys = loadProviderKeys();
+      if ((cfg.rail ?? "anthropic") === "anthropic" && Object.keys(keys).length === 0)
+        throw new Error("no model key: put ANTHROPIC_API_KEY in ~/.config/lineage/model.env or a provider key in ~/.config/lineage/providers.env");
+      await reportAvailability(cfg, keys, log);
       await checkCorePrices(cfg.core, cfg, log);
       const stopMonitor = cfg.rail === "openrouter" && cfg.openrouter?.enabled ? new CreditMonitor(cfg.openrouter, { statePath: monitorStatePath(cfg.state_dir), log }).start() : () => {};
       const backend = backendFor(cfg, log, (w, s, f) => log(`tx ${w}: ${s} (fee ${f ?? "?"})`));
@@ -82,7 +106,7 @@ async function main() {
       const trading = tcfg?.enabled && backend instanceof ChainBackend
         ? chainTrading({ core: cfg.core, stateDir: cfg.state_dir, runtimeKey: loadKey(cfg.runtime_key), rpcUrl: cfg.rpc_url ?? devnetRpcUrl(), rpc: backend.rpc, cfg: tcfg, log, onTx: (w, s, f) => log(`tx ${w}: ${s} (fee ${f ?? "?"})`) })
         : null;
-      const rt = new Runtime(cfg, { backend, runtimeKey: loadKey(cfg.runtime_key), proposer: claudeProposer(cfg), log, messenger: chainMessengers(cfg, backend, log), postClient: postClient(), trading: trading?.hooks });
+      const rt = new Runtime(cfg, { backend, runtimeKey: loadKey(cfg.runtime_key), proposer: hostedProposers(cfg, keys), log, messenger: chainMessengers(cfg, backend, log), postClient: postClient(), trading: trading?.hooks });
       trading?.attach(rt);
       const stopTrading = trading?.start() ?? (() => {});
       await rt.start();

@@ -268,6 +268,9 @@ export class Runtime {
         this.usageOf(a.agent).sandbox_s += sec;
         this.save();
       },
+      harness: (h) => {
+        a.totals.proposer = h; // plan M: provenance attests the harness and provider that ran
+      },
     };
   }
 

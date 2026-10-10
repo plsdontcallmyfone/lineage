@@ -90,6 +90,8 @@ export interface ProposeContext {
 export interface Meter {
   model(u: { input_tokens: number; output_tokens: number; cache_read_tokens: number; cache_write_tokens: number; usd: number; model: string }): void;
   sandbox(seconds: number): void;
+  /** Which harness and provider ran the attempt (plan M); provenance attests it. Optional. */
+  harness?(h: { name: string; version: string; digest: string; provider: string }): void;
 }
 
 export interface Proposal {
