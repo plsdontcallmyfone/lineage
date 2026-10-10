@@ -1,0 +1,105 @@
+{
+  "at": "2026-10-10T22:51:20.070Z",
+  "site": "https://157-245-71-188.sslip.io",
+  "wallet": "CmzfSrkhWpdoEx7nZR4UTk3bXLb4rGZG5dxQRHL5aCAg",
+  "mints": [
+    "ERj9D84vZQPTyA1pSM4U5yCb1esKonxJ57UcsLtdKgtP",
+    "8tgWTEPYm3Y4yCcCW3ZThjsuFh9hqr3PiG14F3LRMG3E"
+  ],
+  "pass": 13,
+  "total": 13,
+  "results": [
+    {
+      "check": "TMBPE: page shows the wallet's tLINE as chain does",
+      "ok": true,
+      "detail": "1,000 vs 1,000"
+    },
+    {
+      "check": "TMBPE: the trade box trades on the pump.fun curve",
+      "ok": true,
+      "detail": "pump.fun bonding curve 257C…PcMs"
+    },
+    {
+      "check": "TMBPE buy: confirmed, chain moved by the amount in and the simulated out",
+      "ok": true,
+      "detail": "4FVsrVUgxZ..., in 50000000, out 158021016, quoted 158021016"
+    },
+    {
+      "check": "TMBPE buy: the site's indexer reports it with the same amounts",
+      "ok": true,
+      "detail": "buy base 158021016 quote 50000000 venue curve"
+    },
+    {
+      "check": "TMBPE sell: confirmed, chain moved by the amount in and the simulated out",
+      "ok": true,
+      "detail": "ZdwFbS17Z1..., in 79010508, out 24382715, quoted 24382715"
+    },
+    {
+      "check": "TMBPE sell: the site's indexer reports it with the same amounts",
+      "ok": true,
+      "detail": "sell base 79010508 quote 24382715 venue curve"
+    },
+    {
+      "check": "TLAMP: page shows the wallet's tLINE as chain does",
+      "ok": true,
+      "detail": "974.382715 vs 974.382715"
+    },
+    {
+      "check": "TLAMP: the trade box trades on the pump.fun curve",
+      "ok": true,
+      "detail": "pump.fun bonding curve 2Q12…knSQ"
+    },
+    {
+      "check": "TLAMP buy: confirmed, chain moved by the amount in and the simulated out",
+      "ok": true,
+      "detail": "4A7oUF3bDX..., in 50000000, out 158021897, quoted 158021897"
+    },
+    {
+      "check": "TLAMP buy: the site's indexer reports it with the same amounts",
+      "ok": true,
+      "detail": "buy base 158021897 quote 50000000 venue curve"
+    },
+    {
+      "check": "TLAMP sell: confirmed, chain moved by the amount in and the simulated out",
+      "ok": true,
+      "detail": "5kQ2GRn3WW..., in 79010948, out 24382715, quoted 24382715"
+    },
+    {
+      "check": "TLAMP sell: the site's indexer reports it with the same amounts",
+      "ok": true,
+      "detail": "sell base 79010948 quote 24382715 venue curve"
+    },
+    {
+      "check": "no page errors during the trades",
+      "ok": true,
+      "detail": ""
+    }
+  ],
+  "transactions": [
+    {
+      "what": "send 1,000 tLINE to the trade test wallet from the devnet treasury",
+      "sig": "38X9ipsSdSRQs6G2QnjsZLwh2A9d96zjbPAuKMEu5ufYnapcnrZinkD22Jw8qgzJ2gaMCZww5axpu4LpBeKwCL4K",
+      "fee": 10000
+    },
+    {
+      "what": "buy 50 tLINE of TMBPE on the pump.fun curve through https://157-245-71-188.sslip.io/tokens/ERj9D84vZQPTyA1pSM4U5yCb1esKonxJ57UcsLtdKgtP (headless, test wallet CmzfSr...)",
+      "sig": "4FVsrVUgxZdjtZHFsQYcKUPwhoiBgMBntkzKC86VqRARa6qvcbcZ214mswzjvhqe3VeUQEN6zKEhuTgeoo9mMcCy",
+      "fee": 5001
+    },
+    {
+      "what": "sell 79.010508 TMBPE on the pump.fun curve through https://157-245-71-188.sslip.io/tokens/ERj9D84vZQPTyA1pSM4U5yCb1esKonxJ57UcsLtdKgtP (headless, test wallet CmzfSr...)",
+      "sig": "ZdwFbS17Z1MYYPoCwew1AjVnsSdLrBKtrLR2ALW3bYkdZ7MNabLT9zQZypcBSMSPVo4vyjkJ9UZ5Ybn7ox6Tk4G",
+      "fee": 5001
+    },
+    {
+      "what": "buy 50 tLINE of TLAMP on the pump.fun curve through https://157-245-71-188.sslip.io/tokens/8tgWTEPYm3Y4yCcCW3ZThjsuFh9hqr3PiG14F3LRMG3E (headless, test wallet CmzfSr...)",
+      "sig": "4A7oUF3bDXB3QtycCyqpPP2T7gweWg1HzPy6w3iEbbShCMCCxBiYR2JwB3BQ3uCaryh7SaYbDni2UQmV7V8tYfFc",
+      "fee": 5001
+    },
+    {
+      "what": "sell 79.010948 TLAMP on the pump.fun curve through https://157-245-71-188.sslip.io/tokens/8tgWTEPYm3Y4yCcCW3ZThjsuFh9hqr3PiG14F3LRMG3E (headless, test wallet CmzfSr...)",
+      "sig": "5kQ2GRn3WW5TrSXZPbyCrECRQTFutj5Asht5qXrJHwg3xKfCA1tSCk6fZYG7ebRz36Q4oeig5dqjpsegtn2m8LhM",
+      "fee": 5001
+    }
+  ]
+}

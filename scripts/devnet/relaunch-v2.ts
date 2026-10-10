@@ -16,7 +16,10 @@
 //
 //   bun scripts/devnet/relaunch-v2.ts plan            keys, quotes and needs; sends nothing
 //   bun scripts/devnet/relaunch-v2.ts launch [--only SYM,...]
-//   bun scripts/devnet/relaunch-v2.ts after  [--only SYM,...]   soul, bind, holding move, trading funds
+//   bun scripts/devnet/relaunch-v2.ts after  [--only SYM,...]   soul, bind, holding move
+//   bun scripts/devnet/relaunch-v2.ts allocate [--only SYM,...] the launcher's trading allocation (1,000 tLINE,
+//                                     memo lineage-trade-alloc:<agent>) into the runtime's escrow; Wick Radix is
+//                                     excluded from trading (the owner: it never talks about tokens)
 //
 // Keys are passed explicitly (never `solana config`); only public keys and signatures are printed.
 // State and every transaction: scripts/devnet/RELAUNCH-V2.json (signatures, fees, costs).
@@ -51,7 +54,8 @@ import {
 import { signSoul, soulDigest, type SoulDoc } from "../../packages/souls/src/doc.ts";
 import { unsignedWire, placeSignature } from "../../packages/chain/src/browser/wire.ts";
 import { deployer, key, LAMPORTS, loadState, log, reader, ROOT, rpc, sol } from "./lib.ts";
-import { launchTable, pumpLaunchTx, sendTx } from "./pump-lib.ts";
+import { curveCreatorFee, launchTable, pumpCrank, pumpLaunchTx, sendTx } from "./pump-lib.ts";
+import { ALLOCATION_MEMO, memoIx } from "../../packages/trader/src/funding.ts";
 
 const SITE = "https://157-245-71-188.sslip.io";
 const T22 = TOKEN_2022_PROGRAM;
@@ -298,8 +302,47 @@ async function afterOne(s: Spec) {
   save();
 }
 
+const ALLOCATION = 1_000n * ONE;
+async function allocateOne(s: Spec) {
+  const { row, owner } = await resolve(s);
+  const { body: cfg } = await site<{ allocation_escrow: string; excluded_agents: Record<string, string> }>("/v1/trading/config");
+  if (cfg.excluded_agents[row.agent]) return log(`${s.sym}: excluded from trading (${cfg.excluded_agents[row.agent]})`);
+  if (row.txs.some((t) => t.what.startsWith("trading allocation"))) return log(`${s.sym}: allocation sent already`);
+  const have = (await reader.tokenBalance(ata(owner.id, LINE, T22))) ?? 0n;
+  if (have < ALLOCATION)
+    await tx(row, `send ${ALLOCATION - have} tLINE base units to launcher ${owner.id} from the devnet treasury (trading allocation)`, dep, [
+      token.createAtaIdempotent(dep.id, owner.id, LINE, T22),
+      token.transferChecked(ata(treasury.id, LINE, T22), LINE, ata(owner.id, LINE, T22), treasury.id, ALLOCATION - have, 6, T22),
+    ], [treasury]);
+  await tx(row, `trading allocation ${ALLOCATION} tLINE base units from launcher ${owner.id} to the runtime escrow ${cfg.allocation_escrow} (memo ${ALLOCATION_MEMO}${row.agent})`, owner, [
+    token.transferChecked(ata(owner.id, LINE, T22), LINE, cfg.allocation_escrow, owner.id, ALLOCATION, 6, T22),
+    memoIx(`${ALLOCATION_MEMO}${row.agent}`),
+  ]);
+}
+
+/** The fee crank (permissionless; the deployer pays): creator fees waiting on the curve into the compute vault, exact split checked. */
+async function crankOne(s: Spec) {
+  const { row } = await resolve(s);
+  const fees = await curveCreatorFee(rpc, row.mint);
+  if (fees === 0n) return log(`${s.sym}: no creator fee waiting on the curve`);
+  const vault = launchPdas.computeVault(row.agent);
+  const c0 = (await reader.tokenBalance(vault)) ?? 0n;
+  const l0 = (await reader.agentLaunch(row.mint))!;
+  const r = await pumpCrank(rpc, { payer: dep, agent: row.agent, mint: row.mint, lineMint: LINE });
+  row.txs.push({ what: `fee crank ${row.symbol}: pump.fun sweep + collect of ${fees} creator fee base units, then crank_pump_fees`, signature: r.signature, fee: r.fee, at: new Date().toISOString() });
+  save();
+  const c1 = (await reader.tokenBalance(vault)) ?? 0n;
+  const l1 = (await reader.agentLaunch(row.mint))!;
+  const claimed = l1.feesClaimed - l0.feesClaimed;
+  const want = (claimed * BigInt(devnet.agent_compute_bps as number)) / 10_000n;
+  log(`${s.sym}: crank ${r.signature}: ${claimed} claimed (curve showed ${fees}), compute vault ${c0} -> ${c1} (+${c1 - c0}, want floor(x 7000 / 10000) = ${want}); to_protocol +${l1.toProtocol - l0.toProtocol}`);
+  if (c1 - c0 !== want || (await curveCreatorFee(rpc, row.mint)) !== 0n) throw new Error(`${s.sym}: crank split does not match`);
+}
+
 try {
   if (phase === "plan") await plan();
+  else if (phase === "crank") for (const s of AGENTS.filter((x) => !only || only.has(x.sym))) await crankOne(s);
+  else if (phase === "allocate") for (const s of AGENTS.filter((x) => !only || only.has(x.sym))) await allocateOne(s);
   else if (phase === "launch")
     for (const s of AGENTS.filter((x) => !only || only.has(x.sym)))
       await launchOne(s).catch((e) => {
