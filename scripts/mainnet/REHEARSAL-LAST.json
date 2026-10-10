@@ -1,0 +1,2114 @@
+{
+  "started": "2026-10-10T13:55:38.295Z",
+  "fork": "http://127.0.0.1:9690",
+  "time_lock_s": 20,
+  "challenge_window_s": 30,
+  "mainnet_builds": {
+    "Meteora DBC": "b3f7b765e1b9a2e87e45c4663165974819d248f00c1beefe678af60e9dfe6c44",
+    "Meteora DAMM v2": "7c479dd7de729ada87d141e9d422a572d42df79f4cc8947a751b5f15719d94e0",
+    "Token-2022": "7ea94a027005b39196fa08e6d0ddcd55ec32eb43266179921a834a1ba2eb1947",
+    "Squads v4": "d48660833989ecea3145ff726164fe640bd90696f03ce00dfd0cda258cbf2fac",
+    "squads_creation_fee_lamports": "0",
+    "squads_treasury": "5DH2e3cJmFpyi6mk65EGFediunm4ui6BiKNUNrhWtD1b"
+  },
+  "extend_10240": {
+    "fee_lamports": "5000",
+    "mainnet_rent_added": "52019200"
+  },
+  "set_upgrade_authority_fee_lamports": "5000",
+  "deploys": {
+    "registry": {
+      "so_bytes": 723776,
+      "so_sha256": "8f3861a414b6b13e6acf3d13f2222502f9c1d2b8f04485f880b1231b6fa62b32",
+      "max_len": 723776,
+      "buffer_bytes": 723813,
+      "programdata_bytes": 723821,
+      "program_bytes": 36,
+      "transactions": 718,
+      "fees_lamports": "3600000",
+      "fork_delta_write_lamports": "5042275040",
+      "fork_delta_deploy_lamports": "1151440",
+      "mainnet_rent": {
+        "buffer": "3677620280",
+        "programdata": "3677660920",
+        "program": "833120"
+      },
+      "mainnet_locked_after": "3678494040",
+      "mainnet_spent_after": "3682094040",
+      "mainnet_peak_during": "7359714320"
+    },
+    "launch": {
+      "so_bytes": 744448,
+      "so_sha256": "762a18d9942316140cca508dd3b3b49f062c5ed19c174ada67d9b15dbd9e30b0",
+      "max_len": 744448,
+      "buffer_bytes": 744485,
+      "programdata_bytes": 744493,
+      "program_bytes": 36,
+      "transactions": 738,
+      "fees_lamports": "3700000",
+      "fork_delta_write_lamports": "5186252160",
+      "fork_delta_deploy_lamports": "1151440",
+      "mainnet_rent": {
+        "buffer": "3782634040",
+        "programdata": "3782674680",
+        "program": "833120"
+      },
+      "mainnet_locked_after": "3783507800",
+      "mainnet_spent_after": "3787207800",
+      "mainnet_peak_during": "7569841840"
+    },
+    "msg": {
+      "so_bytes": 342200,
+      "so_sha256": "0d402e828f209bdd3f94fa10a637d940fce717076d426e1bc9d10136b780d085",
+      "max_len": 342200,
+      "buffer_bytes": 342237,
+      "programdata_bytes": 342245,
+      "program_bytes": 36,
+      "transactions": 341,
+      "fees_lamports": "1715000",
+      "fork_delta_write_lamports": "2384621080",
+      "fork_delta_deploy_lamports": "1151440",
+      "mainnet_rent": {
+        "buffer": "1739214200",
+        "programdata": "1739254840",
+        "program": "833120"
+      },
+      "mainnet_locked_after": "1740087960",
+      "mainnet_spent_after": "1741802960",
+      "mainnet_peak_during": "3481017160"
+    }
+  },
+  "headroom": {
+    "registry": {
+      "x1": {
+        "max_len": 723776,
+        "programdata_mainnet_rent": "3677660920"
+      },
+      "x1.25": {
+        "max_len": 904720,
+        "programdata_mainnet_rent": "4596856440"
+      },
+      "x1.5": {
+        "max_len": 1085664,
+        "programdata_mainnet_rent": "5516051960"
+      },
+      "x2": {
+        "max_len": 1447552,
+        "programdata_mainnet_rent": "7354443000"
+      }
+    },
+    "launch": {
+      "x1": {
+        "max_len": 744448,
+        "programdata_mainnet_rent": "3782674680"
+      },
+      "x1.25": {
+        "max_len": 930560,
+        "programdata_mainnet_rent": "4728123640"
+      },
+      "x1.5": {
+        "max_len": 1116672,
+        "programdata_mainnet_rent": "5673572600"
+      },
+      "x2": {
+        "max_len": 1488896,
+        "programdata_mainnet_rent": "7564470520"
+      }
+    },
+    "msg": {
+      "x1": {
+        "max_len": 342200,
+        "programdata_mainnet_rent": "1739254840"
+      },
+      "x1.25": {
+        "max_len": 427750,
+        "programdata_mainnet_rent": "2173848840"
+      },
+      "x1.5": {
+        "max_len": 513300,
+        "programdata_mainnet_rent": "2608442840"
+      },
+      "x2": {
+        "max_len": 684400,
+        "programdata_mainnet_rent": "3477630840"
+      }
+    }
+  },
+  "multisig": {
+    "address": "7DSGGkjh6NDVDocoKiGnvAyJHmiZ2poPbPYQj48zsDRX",
+    "vault": "BK2mgSMgeE63EhvsLNFShBWs92ydaatK5wZnFsUy2VR1",
+    "threshold": 2,
+    "members": [
+      "7ZgfzBAVrgRnuq5q2QpsWggSomXogxyUKw3TgxopXA1Y",
+      "HALA32M46ewFDjXE7gKEtcNFcDiEsaP68vxfRnpSPfbz",
+      "4DSsjVnybbopdcnJTgp4rxSw7p4pW7tCidMVYZidwWmV"
+    ],
+    "time_lock_s": 20
+  },
+  "launch_a": {
+    "mint": "91H2LpbiAtHVkYNFgrGhFoytNd8EDkdecYT3um3ijuN5",
+    "agent": "4k7JCST552qNY6tBS88v6mqiVke8LME1StFkmd19ae1m",
+    "launch_tx_payer_mainnet_lamports": "15996680",
+    "created": [
+      {
+        "address": "91H2LpbiAtHVkYNFgrGhFoytNd8EDkdecYT3um3ijuN5",
+        "bytes": 376,
+        "forkRent": "3507840",
+        "mainnetRent": "2560320"
+      },
+      {
+        "address": "HBPu9ghbWiGskxJKpTXcYmMb5EiSXWKhmTSd3V8p3abq",
+        "bytes": 424,
+        "forkRent": "3841920",
+        "mainnetRent": "2804160"
+      },
+      {
+        "address": "38eRBXC1MwWLGkcMkTo87JJWZ5w88xWhKMq9gSxFyLdS",
+        "bytes": 165,
+        "forkRent": "2039280",
+        "mainnetRent": "1488440"
+      },
+      {
+        "address": "C5K3Ej2PR4ccxJAGPUaEMfW26jtsuEMWBKKoyv74uALN",
+        "bytes": 165,
+        "forkRent": "2039280",
+        "mainnetRent": "1488440"
+      },
+      {
+        "address": "72TkHvEFACzwRJM9P8qtBapFECB5moVyJSMMHxX8KV2A",
+        "bytes": 554,
+        "forkRent": "4746720",
+        "mainnetRent": "3464560"
+      },
+      {
+        "address": "4Uj97XZ6tTHeTzSXSuiid7SALktRHhaFdicRyyjrEDrN",
+        "bytes": 165,
+        "forkRent": "2039280",
+        "mainnetRent": "1488440"
+      },
+      {
+        "address": "viFWT2MZhatAbpB8vv21phGoDjucWs8MCPEh5drT2JF",
+        "bytes": 401,
+        "forkRent": "3681840",
+        "mainnetRent": "2687320"
+      }
+    ]
+  },
+  "launch_b": {
+    "mint": "3MUJJXLLb7MWpDaVb58zg4ppSfGz4qbqHyR5h51g3ktA",
+    "agent": "3o8XqyV57nuJC1JTPsNefYuRH6ErXZrNKSCQBkr7i7BX",
+    "launch_tx_payer_mainnet_lamports": "15996680"
+  },
+  "epoch_post_signature": "5QpeXgAU9uQJSR1natonCQQ25pXgMtsq8yyrfnvNEKcYqZmsLKw5LCwH3Du7R3iNALexiTxNpT264gUPJEad291S",
+  "finished": "2026-10-10T14:02:27.196Z",
+  "outcome": "PASS",
+  "checks": [
+    {
+      "name": "0: fork Meteora DBC is mainnet's build",
+      "ok": true,
+      "detail": "b3f7b765e1b9a2e8"
+    },
+    {
+      "name": "0: fork Meteora DAMM v2 is mainnet's build",
+      "ok": true,
+      "detail": "7c479dd7de729ada"
+    },
+    {
+      "name": "0: fork Token-2022 is mainnet's build",
+      "ok": true,
+      "detail": "7ea94a027005b391"
+    },
+    {
+      "name": "0: fork Squads v4 is mainnet's build",
+      "ok": true,
+      "detail": "d48660833989ecea"
+    },
+    {
+      "name": "0: fork registry at 2vhj9a is the local build",
+      "ok": true,
+      "detail": "723776 bytes, 8f3861a414b6b13e"
+    },
+    {
+      "name": "0: fork launch at 8eHzm1 is the local build",
+      "ok": true,
+      "detail": "744448 bytes, 762a18d994231614"
+    },
+    {
+      "name": "0: fork msg at E6vHsk is the local build",
+      "ok": true,
+      "detail": "342200 bytes, 0d402e828f209bdd"
+    },
+    {
+      "name": "0: Squads program config cloned (mainnet creation fee read)",
+      "ok": true,
+      "detail": "fee 0 lamports, treasury 5DH2e3cJmFpyi6mk65EGFediunm4ui6BiKNUNrhWtD1b"
+    },
+    {
+      "name": "1: registry deployed at a fresh id by write-buffer + deploy",
+      "ok": true,
+      "detail": "ProgramData 723821 bytes, buffer 723813 bytes, 718 transactions, fees 3600000; balance delta equals rent + fees"
+    },
+    {
+      "name": "1: launch deployed at a fresh id by write-buffer + deploy",
+      "ok": true,
+      "detail": "ProgramData 744493 bytes, buffer 744485 bytes, 738 transactions, fees 3700000; balance delta equals rent + fees"
+    },
+    {
+      "name": "1: msg deployed at a fresh id by write-buffer + deploy",
+      "ok": true,
+      "detail": "ProgramData 342245 bytes, buffer 342237 bytes, 341 transactions, fees 1715000; balance delta equals rent + fees"
+    },
+    {
+      "name": "2: multisig read back: 2 of 3, time lock, no config authority",
+      "ok": true,
+      "detail": "multisig 7DSGGkjh6NDVDocoKiGnvAyJHmiZ2poPbPYQj48zsDRX, vault BK2mgSMgeE63EhvsLNFShBWs92ydaatK5wZnFsUy2VR1"
+    },
+    {
+      "name": "3: stand-in mint: Token-2022, fixed supply, no mint or freeze authority",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "4: registry admin is the vault, Core authority the hot key",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "4: launch admin is the vault, sink the vault's account, debit cap set",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "4: launch lookup table frozen with the expected addresses",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "5: the deployer (old hot key) is not the registry admin",
+      "ok": true,
+      "detail": "simulation failed: {\"InstructionError\":[0,{\"Custom\":6000}]} Program log: AnchorError caused by account: config. Error Co"
+    },
+    {
+      "name": "5: one approval of two cannot execute",
+      "ok": true,
+      "detail": "simulation failed: {\"InstructionError\":[0,{\"Custom\":6008}]} Program log: AnchorError thrown in programs/squads_multisig_"
+    },
+    {
+      "name": "5: proposal 1 approved by 2 of 3 (set_bounty_config)",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "5: the time lock refuses an execute right after approval",
+      "ok": true,
+      "detail": "simulation failed: {\"InstructionError\":[0,{\"Custom\":6021}]} Program log: AnchorError thrown in programs/squads_multisig_program/src/instructions/vault_transacti"
+    },
+    {
+      "name": "5: proposal 1 executed (set_bounty_config)",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "5: BountyConfig set by the vault",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "5: proposal 2 approved by 2 of 3 (set_challenge_config)",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "5: proposal 2 executed (set_challenge_config)",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "5: ChallengeConfig set by the vault",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "5: proposal 3 approved by 2 of 3 (registry set_config (max_rebate_per_epoch 2 units))",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "5: proposal 3 executed (registry set_config (max_rebate_per_epoch 2 units))",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "5: registry set_config applied",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "5: proposal 4 approved by 2 of 3 (set_launch_config (max_debit_per_epoch 500 units))",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "5: proposal 4 executed (set_launch_config (max_debit_per_epoch 500 units))",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "5: launch set_config applied",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "5: proposal 5 approved by 2 of 3 (lineage_msg set_config (max_per_day 400))",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "5: proposal 5 executed (lineage_msg set_config (max_per_day 400))",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "5: proposal 6 approved by 2 of 3 (registry pause)",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "5: proposal 6 executed (registry pause)",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "5: registry paused by the vault",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "5: proposal 7 approved by 2 of 3 (registry unpause)",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "5: proposal 7 executed (registry unpause)",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "5: proposal 8 approved by 2 of 3 (registry set_epoch_cursor (rewrites the current values))",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "5: proposal 8 executed (registry set_epoch_cursor (rewrites the current values))",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "5: config transaction executed: time lock changed",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "6: registry upgrade authority is the vault",
+      "ok": true,
+      "detail": "fee 5000"
+    },
+    {
+      "name": "6: launch upgrade authority is the vault",
+      "ok": true,
+      "detail": "fee 5000"
+    },
+    {
+      "name": "6: msg upgrade authority is the vault",
+      "ok": true,
+      "detail": "fee 5000"
+    },
+    {
+      "name": "6: the deployer can no longer upgrade",
+      "ok": true,
+      "detail": "Error: Program's authority Some(BK2mgSMgeE63EhvsLNFShBWs92ydaatK5wZnFsUy2VR1) does not match authority provided 7PkFTjRD"
+    },
+    {
+      "name": "6: buffer authority handed to the vault",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "5: proposal 10 approved by 2 of 3 (upgrade lineage_msg from buffer)",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "5: proposal 10 executed (upgrade lineage_msg from buffer)",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "6: lineage_msg upgraded by the multisig: code equals the build, authority still the vault, buffer closed",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "7: FRKA launched (AgentLaunch + registry Agent)",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "7: FRKA curve complete on mainnet DBC",
+      "ok": true,
+      "detail": "reserve 15999999999792, threshold 15999999999792"
+    },
+    {
+      "name": "7: FRKA crank_fees split exactly 7000/3000",
+      "ok": true,
+      "detail": "fees 398261592549"
+    },
+    {
+      "name": "7: FRKA migrated to a DAMM v2 pool created by DBC's pool authority",
+      "ok": true,
+      "detail": "liquidity 329325419000909866030255248650428, permanently locked 329325419000909866030255248650428"
+    },
+    {
+      "name": "7: FRKA graduated on mainnet DBC behaviour (AgentLaunch records pool and position)",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "7: FRKA pool fees reached the compute vault",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "7: FRKB launched (AgentLaunch + registry Agent)",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "7: FRKB curve complete on mainnet DBC",
+      "ok": true,
+      "detail": "reserve 15999999999792, threshold 15999999999792"
+    },
+    {
+      "name": "7: FRKB crank_fees split exactly 7000/3000",
+      "ok": true,
+      "detail": "fees 398261592549"
+    },
+    {
+      "name": "7: FRKB migrated to a DAMM v2 pool created by DBC's pool authority",
+      "ok": true,
+      "detail": "liquidity 329325419000909866030255248650428, permanently locked 329325419000909866030255248650428"
+    },
+    {
+      "name": "5: proposal 11 approved by 2 of 3 (graduate_by_admin FRKB)",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "5: proposal 11 executed (graduate_by_admin FRKB)",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "7: FRKB graduated by the admin (vault) through the multisig",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "8: reserve covers the rebate",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "8: claims are held while the challenge is open",
+      "ok": true,
+      "detail": "simulation failed: {\"InstructionError\":[0,{\"Custom\":6021}]} Program log: AnchorError thrown in programs/lineage-registry"
+    },
+    {
+      "name": "8: void resolution returned the bond",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "8: claim paid exactly the leaf (compute)",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "8: claim paid exactly the leaf (wallet)",
+      "ok": true,
+      "detail": ""
+    }
+  ],
+  "transactions": [
+    {
+      "step": "2",
+      "what": "Squads multisig_create_v2: 2 of 3, time lock 20 s, autonomous (no config authority), rent collector = vault",
+      "signature": "41HcTnqGj57exxGPALbtvckk4f4q73wdYBJQQQBh8LpMGQoXMTfPJrptbHzH2s42ZkdfDpbm5PZLGkkVXiCAgoN3",
+      "payer": "7PkFTjRDRGbntSFEAcEzPMS1cf9Hq6ub1gVrQ6X5sMHV",
+      "fee": 10000,
+      "computeUnits": 17956,
+      "signatures": 2,
+      "created": [
+        {
+          "address": "7DSGGkjh6NDVDocoKiGnvAyJHmiZ2poPbPYQj48zsDRX",
+          "bytes": 231,
+          "forkRent": "2498640",
+          "mainnetRent": "1823720"
+        }
+      ],
+      "payerDeltaFork": "2508640",
+      "payerMainnet": "1833720",
+      "other": "0"
+    },
+    {
+      "step": "2",
+      "what": "fund the vault for the rent its admin actions create (0.05 SOL)",
+      "signature": "5yi66cjCaYqTTnXBwS45rPQAdXyeQdKatBhVtadXTZ2b8U8QNFYcrbdFCPWaDLbbfacQGo2UwzpmZAsBWz7Vpu61",
+      "payer": "7PkFTjRDRGbntSFEAcEzPMS1cf9Hq6ub1gVrQ6X5sMHV",
+      "fee": 5000,
+      "computeUnits": 150,
+      "signatures": 1,
+      "created": [
+        {
+          "address": "BK2mgSMgeE63EhvsLNFShBWs92ydaatK5wZnFsUy2VR1",
+          "bytes": 0,
+          "forkRent": "890880",
+          "mainnetRent": "650240"
+        }
+      ],
+      "payerDeltaFork": "50005000",
+      "payerMainnet": "49764360",
+      "other": "49109120"
+    },
+    {
+      "step": "3",
+      "what": "create the stand-in $LINE mint (Token-2022, metadata pointer + metadata, 6 decimals)",
+      "signature": "57yiWPzK5Wyvq4vCQN4wMFcWQiP9yC5UyE5RvDW5x9CH1BThA3SHgdgnq83aM9KRLV8AHr1NHa7WW9aAqPkcWnMF",
+      "payer": "7PkFTjRDRGbntSFEAcEzPMS1cf9Hq6ub1gVrQ6X5sMHV",
+      "fee": 10000,
+      "computeUnits": 6327,
+      "signatures": 2,
+      "created": [
+        {
+          "address": "32re1zUHhcTBAT3WpL56eyJXXE65Ke3Nwcksn1VNqS4h",
+          "bytes": 398,
+          "forkRent": "3660960",
+          "mainnetRent": "2672080"
+        }
+      ],
+      "payerDeltaFork": "3670960",
+      "payerMainnet": "2682080",
+      "other": "0"
+    },
+    {
+      "step": "3",
+      "what": "mint the fixed supply to the deployer, then revoke the mint authority",
+      "signature": "64akP5FfFbjABRNJ57wKbdaqNL158k9RwZsMFWNtEbPiWJYNmp9QP5ks6e5QBa8daUb6CcZ16Yokdf9NMKuqNrSn",
+      "payer": "7PkFTjRDRGbntSFEAcEzPMS1cf9Hq6ub1gVrQ6X5sMHV",
+      "fee": 5000,
+      "computeUnits": 21369,
+      "signatures": 1,
+      "created": [
+        {
+          "address": "ALt7FUq75cqvirABZUsPYXqRqv3jiy78xFu8FvtEVZVM",
+          "bytes": 170,
+          "forkRent": "2074080",
+          "mainnetRent": "1513840"
+        }
+      ],
+      "payerDeltaFork": "2079080",
+      "payerMainnet": "1518840",
+      "other": "0"
+    },
+    {
+      "step": "4",
+      "what": "lineage_registry::initialize (admin = Squads vault, Core authority hot key, network.json shape)",
+      "signature": "3nF7sARAHRMS5HqDtCNcdGsd1yva12okwX4PvCZZQ7taA1GYJQTUnSb916aS2LjBVgE8Ffdz3g81edRmZ1Qi4LgS",
+      "payer": "7PkFTjRDRGbntSFEAcEzPMS1cf9Hq6ub1gVrQ6X5sMHV",
+      "fee": 5000,
+      "computeUnits": 125141,
+      "signatures": 1,
+      "created": [
+        {
+          "address": "DBvMML8k8YW8zF5xjfHWgQbYZ6Hboyxo2URyTsba9P6z",
+          "bytes": 285,
+          "forkRent": "2874480",
+          "mainnetRent": "2098040"
+        },
+        {
+          "address": "6KhG3BBuQFQNRsrvV6CiM3mqYrqifKkXyu6qiYfMGDZJ",
+          "bytes": 165,
+          "forkRent": "2039280",
+          "mainnetRent": "1488440"
+        },
+        {
+          "address": "ApLJJstppty9SsoWY7s1x4PGcqnugCi1fhCsn3HERXrN",
+          "bytes": 165,
+          "forkRent": "2039280",
+          "mainnetRent": "1488440"
+        },
+        {
+          "address": "EsSR2NEn7VcsFyFpLc5vb54T9mwwk37Q6vmgiK7MXpXt",
+          "bytes": 165,
+          "forkRent": "2039280",
+          "mainnetRent": "1488440"
+        },
+        {
+          "address": "2rfiL9fEsCkR13xLP9LuLQiMmp8TKNnXPPNVAatFjJxX",
+          "bytes": 165,
+          "forkRent": "2039280",
+          "mainnetRent": "1488440"
+        },
+        {
+          "address": "7nEJDeHtTsfeFPK59W21CasnmnPDzTr3SJR4wWfsbRfG",
+          "bytes": 165,
+          "forkRent": "2039280",
+          "mainnetRent": "1488440"
+        }
+      ],
+      "payerDeltaFork": "13075880",
+      "payerMainnet": "9545240",
+      "other": "0"
+    },
+    {
+      "step": "4",
+      "what": "Meteora DBC create_config (quote = stand-in $LINE, fee claimer + leftover receiver = launch authority PDA, TEST curve)",
+      "signature": "58U5o5rcqufWaLspnLPpXJBkzG4ra6a2oDbRqmbM6TJSfYJb4RWHX4PVJWYEgTKGtk6uNmmcc4gynAZAWgTjbrCz",
+      "payer": "7PkFTjRDRGbntSFEAcEzPMS1cf9Hq6ub1gVrQ6X5sMHV",
+      "fee": 10000,
+      "computeUnits": 31414,
+      "signatures": 2,
+      "created": [
+        {
+          "address": "67VvhCGwZcjPL6qpNESpwr7rd3HZYvSYUVu5Jv2CAaCc",
+          "bytes": 1048,
+          "forkRent": "8184960",
+          "mainnetRent": "5974080"
+        }
+      ],
+      "payerDeltaFork": "8194960",
+      "payerMainnet": "5984080",
+      "other": "0"
+    },
+    {
+      "step": "4",
+      "what": "create the compute sink: the vault's stand-in $LINE account",
+      "signature": "3BbaQsj6RpC7pVYb9P3T3HyCqm25U2wRQftvArLR2Riu9WanuSJwA4nBt2ZN518QgAosSbBjY63HzMeDHVabmQAb",
+      "payer": "7PkFTjRDRGbntSFEAcEzPMS1cf9Hq6ub1gVrQ6X5sMHV",
+      "fee": 5000,
+      "computeUnits": 17217,
+      "signatures": 1,
+      "created": [
+        {
+          "address": "B2UjLMA9x7F97Y7NpEDicqD1r7RPz1BoxQTk9wwJpro9",
+          "bytes": 170,
+          "forkRent": "2074080",
+          "mainnetRent": "1513840"
+        }
+      ],
+      "payerDeltaFork": "2079080",
+      "payerMainnet": "1518840",
+      "other": "0"
+    },
+    {
+      "step": "4",
+      "what": "lineage_launch::initialize_launch (admin = vault, sink = vault's account)",
+      "signature": "4ZoJHUvZkT8ATuB6rhzKFDdHPdjzCNsioRhR9vXxnjkknwg3bfXAo6pXJ8a4DGhb3NTMS3HwmBwua2nibPpE2Xm5",
+      "payer": "7PkFTjRDRGbntSFEAcEzPMS1cf9Hq6ub1gVrQ6X5sMHV",
+      "fee": 5000,
+      "computeUnits": 36276,
+      "signatures": 1,
+      "created": [
+        {
+          "address": "4P9zVaiatqMryWYMjKuF1LLk7C5iwQL2ZJC3QGg81LHC",
+          "bytes": 319,
+          "forkRent": "3111120",
+          "mainnetRent": "2270760"
+        }
+      ],
+      "payerDeltaFork": "3116120",
+      "payerMainnet": "2275760",
+      "other": "0"
+    },
+    {
+      "step": "4",
+      "what": "lineage_msg::initialize (admin = vault)",
+      "signature": "2mGqVNQaBJDEA9kPqVX7d8qaHmzq7NVDxACKCHZiVpJ2gy1aJcaubtfSzXZUsXvL1cNR9Hxx9n1HMxJZnwPiBZRx",
+      "payer": "7PkFTjRDRGbntSFEAcEzPMS1cf9Hq6ub1gVrQ6X5sMHV",
+      "fee": 5000,
+      "computeUnits": 27704,
+      "signatures": 1,
+      "created": [
+        {
+          "address": "FaYMFKhQp2pWcXxXHs9QaW947tpv5uWad6viD65nwTwe",
+          "bytes": 58,
+          "forkRent": "1294560",
+          "mainnetRent": "944880"
+        }
+      ],
+      "payerDeltaFork": "1299560",
+      "payerMainnet": "949880",
+      "other": "0"
+    },
+    {
+      "step": "4",
+      "what": "launch lookup table: create + extend (11 addresses)",
+      "signature": "2DFChQpaFq6gbihu6oX6Lb45ntRr1xawn9u1BuR6kcYfvXFfWxATUEwKjwJtHg8kZKdBeackZ9THBKwnchY9XnMV",
+      "payer": "7PkFTjRDRGbntSFEAcEzPMS1cf9Hq6ub1gVrQ6X5sMHV",
+      "fee": 5000,
+      "computeUnits": 19509,
+      "signatures": 1,
+      "created": [
+        {
+          "address": "5HfKUgY62H5HmTbukgZ7KqM6ghgA1jb3jWWpW5qPXW9n",
+          "bytes": 408,
+          "forkRent": "3730560",
+          "mainnetRent": "2722880"
+        }
+      ],
+      "payerDeltaFork": "3735560",
+      "payerMainnet": "2727880",
+      "other": "0"
+    },
+    {
+      "step": "4",
+      "what": "launch lookup table: freeze",
+      "signature": "3ERZp9yUQDKnSGrtuawu5MbCEunxuVvT6curVNL1aEvYKqrKD7Sw4EwfxfVQGZnwb9LR75SsFWKmAVekS7nxdCi3",
+      "payer": "7PkFTjRDRGbntSFEAcEzPMS1cf9Hq6ub1gVrQ6X5sMHV",
+      "fee": 5000,
+      "computeUnits": 1517,
+      "signatures": 1,
+      "created": [],
+      "payerDeltaFork": "5000",
+      "payerMainnet": "5000",
+      "other": "0"
+    },
+    {
+      "step": "M2",
+      "what": "squads: create vault transaction 1 + proposal (set_bounty_config)",
+      "signature": "58Sgjcpx8X9PAa8Vn8Pq7SNjCvgabWDAiJyod6g5gsqEEsZUtchrbYEMdX7W5HNsqz7PFyEfPi4z2eFkQgwB9L3",
+      "payer": "7ZgfzBAVrgRnuq5q2QpsWggSomXogxyUKw3TgxopXA1Y",
+      "fee": 5000,
+      "computeUnits": 41662,
+      "signatures": 1,
+      "created": [
+        {
+          "address": "8RTR4Vw4vUawzGZjVY12jkFPwkFAo3Q6fxuPrJtuZn63",
+          "bytes": 318,
+          "forkRent": "3104160",
+          "mainnetRent": "2265680"
+        },
+        {
+          "address": "848TNJciN7CtMPo7djsTvqEKxCos4i5zfmzbAHWnw393",
+          "bytes": 358,
+          "forkRent": "3382560",
+          "mainnetRent": "2468880"
+        }
+      ],
+      "payerDeltaFork": "6491720",
+      "payerMainnet": "4739560",
+      "other": "0"
+    },
+    {
+      "step": "M2",
+      "what": "squads: approve 1 (set_bounty_config)",
+      "signature": "2MFQ7fqLSqTphTZfeHR6pG34HQFMPL2pEcc9aSXsNpC4fQKeaVBBubTBWTPKUon2sCxskBoY1AQ7WXkKSHuyb5Rw",
+      "payer": "7ZgfzBAVrgRnuq5q2QpsWggSomXogxyUKw3TgxopXA1Y",
+      "fee": 5000,
+      "computeUnits": 8837,
+      "signatures": 1,
+      "created": [],
+      "payerDeltaFork": "5000",
+      "payerMainnet": "5000",
+      "other": "0"
+    },
+    {
+      "step": "M2",
+      "what": "squads: approve 1 (set_bounty_config)",
+      "signature": "4rx4CugTkQPScek4GkNepSmqL5oNbDAK6xPn1AhmZeJaz1PNfkr2vDRUkjJkomprozQvCisAwtaprbktJAVttwgp",
+      "payer": "HALA32M46ewFDjXE7gKEtcNFcDiEsaP68vxfRnpSPfbz",
+      "fee": 5000,
+      "computeUnits": 9719,
+      "signatures": 1,
+      "created": [],
+      "payerDeltaFork": "5000",
+      "payerMainnet": "5000",
+      "other": "0"
+    },
+    {
+      "step": "M2",
+      "what": "squads: execute 1 (set_bounty_config)",
+      "signature": "411brhxvMtMnDmLR11A83rUQU5b23iU8qNsPEN9HDZ5iU26CnbMXMVRGvj8EiJK6HLJNaapFe9PXkxF8rFf1kDSo",
+      "payer": "4DSsjVnybbopdcnJTgp4rxSw7p4pW7tCidMVYZidwWmV",
+      "fee": 5000,
+      "computeUnits": 42078,
+      "signatures": 1,
+      "created": [
+        {
+          "address": "HXHAkutmobmyBfaHoKc9n3CU5e8F23ZP1KwN1BAzkv3D",
+          "bytes": 76,
+          "forkRent": "1419840",
+          "mainnetRent": "1036320"
+        }
+      ],
+      "payerDeltaFork": "5000",
+      "payerMainnet": "5000",
+      "other": "0"
+    },
+    {
+      "step": "M2",
+      "what": "squads: create vault transaction 2 + proposal (set_challenge_config)",
+      "signature": "3Ykkapr61y8qLoytXzEYp3VYZo68jq8fWjzQfgM6UDCYmVSKk8FER67fiNJNHVz1TR9YnRuaHgEodcvzBg86P7ro",
+      "payer": "7ZgfzBAVrgRnuq5q2QpsWggSomXogxyUKw3TgxopXA1Y",
+      "fee": 5000,
+      "computeUnits": 52365,
+      "signatures": 1,
+      "created": [
+        {
+          "address": "DAnUyYZzxtdi57B7UV1S4d6yVH5yQhe6Kj7y9YHSB7YZ",
+          "bytes": 448,
+          "forkRent": "4008960",
+          "mainnetRent": "2926080"
+        },
+        {
+          "address": "2gNeCj3zt1YvmT2VWF9gmkQhy7EchiwNSzLJF1yVFgCL",
+          "bytes": 358,
+          "forkRent": "3382560",
+          "mainnetRent": "2468880"
+        }
+      ],
+      "payerDeltaFork": "7396520",
+      "payerMainnet": "5399960",
+      "other": "0"
+    },
+    {
+      "step": "M2",
+      "what": "squads: approve 2 (set_challenge_config)",
+      "signature": "ZzbKCNSA8UQWkuEb7UWwiu4dxfX8QyAa1DuJBiXSDTUxC47s8JeBCznXaPsMWTKNNSGEnPYKfrKbmAEGvLLuyYq",
+      "payer": "7ZgfzBAVrgRnuq5q2QpsWggSomXogxyUKw3TgxopXA1Y",
+      "fee": 5000,
+      "computeUnits": 8837,
+      "signatures": 1,
+      "created": [],
+      "payerDeltaFork": "5000",
+      "payerMainnet": "5000",
+      "other": "0"
+    },
+    {
+      "step": "M2",
+      "what": "squads: approve 2 (set_challenge_config)",
+      "signature": "4XcG97FjAQpsLuaEuhxedpRyKfpA8TdwB3cjujNYuggjtSX4RzBM1zuNG8zxztggq2PJ7kA3g7QuKerpQC9jdwJG",
+      "payer": "HALA32M46ewFDjXE7gKEtcNFcDiEsaP68vxfRnpSPfbz",
+      "fee": 5000,
+      "computeUnits": 9719,
+      "signatures": 1,
+      "created": [],
+      "payerDeltaFork": "5000",
+      "payerMainnet": "5000",
+      "other": "0"
+    },
+    {
+      "step": "M2",
+      "what": "squads: execute 2 (set_challenge_config)",
+      "signature": "4bpvJW99bQjf2vhNyohoT1BxQFB6LfNu6kL9tMS9JwhJpptafj8qzodQeHLZ55RFBRdkt7CCAN3U9HPrdJ7VTC8U",
+      "payer": "4DSsjVnybbopdcnJTgp4rxSw7p4pW7tCidMVYZidwWmV",
+      "fee": 5000,
+      "computeUnits": 71475,
+      "signatures": 1,
+      "created": [
+        {
+          "address": "2cgsCS19kX7tUXRp8yNKifiTZX6XAG5zNLfFGfNc3FFu",
+          "bytes": 78,
+          "forkRent": "1433760",
+          "mainnetRent": "1046480"
+        },
+        {
+          "address": "7GcVP5BvRaESrEE1K8CdW5wCfsNgHaUcqFgjhXf1bic8",
+          "bytes": 165,
+          "forkRent": "2039280",
+          "mainnetRent": "1488440"
+        }
+      ],
+      "payerDeltaFork": "5000",
+      "payerMainnet": "5000",
+      "other": "0"
+    },
+    {
+      "step": "M2",
+      "what": "squads: create vault transaction 3 + proposal (registry set_config (max_rebate_per_epoch 2 units))",
+      "signature": "2MLkiynsXkenvnEExohFLPs8J32zbMLdFdmYVJdhPXvZQUDPSLLBKEyuzFrkEfLq9Xmqh2FYWqVkThcJd8knanqw",
+      "payer": "7ZgfzBAVrgRnuq5q2QpsWggSomXogxyUKw3TgxopXA1Y",
+      "fee": 5000,
+      "computeUnits": 39728,
+      "signatures": 1,
+      "created": [
+        {
+          "address": "D1QWDm9WfVXuWxCmaZUfu8hy28xxJgjds6LmWqxzaH2G",
+          "bytes": 395,
+          "forkRent": "3640080",
+          "mainnetRent": "2656840"
+        },
+        {
+          "address": "TBTs5Ag8X3YbLDdG9qHrYZ4bRcZdxcXsqMNuqcS3r5j",
+          "bytes": 358,
+          "forkRent": "3382560",
+          "mainnetRent": "2468880"
+        }
+      ],
+      "payerDeltaFork": "7027640",
+      "payerMainnet": "5130720",
+      "other": "0"
+    },
+    {
+      "step": "M2",
+      "what": "squads: approve 3 (registry set_config (max_rebate_per_epoch 2 units))",
+      "signature": "5zwQgPa1AvAhqSLRAfoYRHLQaMXdhegRUJk1APXipS7hYYJzJ1JzPym62rJyQKv2ubCRMKFqanUHoq1iY54RMi28",
+      "payer": "7ZgfzBAVrgRnuq5q2QpsWggSomXogxyUKw3TgxopXA1Y",
+      "fee": 5000,
+      "computeUnits": 8837,
+      "signatures": 1,
+      "created": [],
+      "payerDeltaFork": "5000",
+      "payerMainnet": "5000",
+      "other": "0"
+    },
+    {
+      "step": "M2",
+      "what": "squads: approve 3 (registry set_config (max_rebate_per_epoch 2 units))",
+      "signature": "9Ppcjbr7ZCfWxndhRjas7b4f33EjH1oSuBBn7pJ5hRynz2TZZmTY8RhtFwXRJSxGxjESmB3YFFjRfWBAkRQLXd1",
+      "payer": "HALA32M46ewFDjXE7gKEtcNFcDiEsaP68vxfRnpSPfbz",
+      "fee": 5000,
+      "computeUnits": 9719,
+      "signatures": 1,
+      "created": [],
+      "payerDeltaFork": "5000",
+      "payerMainnet": "5000",
+      "other": "0"
+    },
+    {
+      "step": "M2",
+      "what": "squads: execute 3 (registry set_config (max_rebate_per_epoch 2 units))",
+      "signature": "3o4KdrRgygQt2g7ann2dLjPaMHCtUsL2QCETfDVEhNAnvCiYQnGFCSNwuV2LF7pK98D3gULN4tkxYS1HMQzzcR6Z",
+      "payer": "4DSsjVnybbopdcnJTgp4rxSw7p4pW7tCidMVYZidwWmV",
+      "fee": 5000,
+      "computeUnits": 33067,
+      "signatures": 1,
+      "created": [],
+      "payerDeltaFork": "5000",
+      "payerMainnet": "5000",
+      "other": "0"
+    },
+    {
+      "step": "M2",
+      "what": "squads: create vault transaction 4 + proposal (set_launch_config (max_debit_per_epoch 500 units))",
+      "signature": "2otpKAWu5pKvvTGfYxbvBPAR6ktKqKQPuCU8Xnx2y2sUbnUJum4D16fhemmpCssPGkckqJmUwHyt1qmYk76YYE6q",
+      "payer": "7ZgfzBAVrgRnuq5q2QpsWggSomXogxyUKw3TgxopXA1Y",
+      "fee": 5000,
+      "computeUnits": 42272,
+      "signatures": 1,
+      "created": [
+        {
+          "address": "5ZvZZdpzfdFNG1Sg8a9ScNHeTnwP4DXiNfmrJv7MTLNf",
+          "bytes": 375,
+          "forkRent": "3500880",
+          "mainnetRent": "2555240"
+        },
+        {
+          "address": "FCwW1ycx43iYF2ZU7LppqVYykEdm8nSeY7bYVQVJ5ejw",
+          "bytes": 358,
+          "forkRent": "3382560",
+          "mainnetRent": "2468880"
+        }
+      ],
+      "payerDeltaFork": "6888440",
+      "payerMainnet": "5029120",
+      "other": "0"
+    },
+    {
+      "step": "M2",
+      "what": "squads: approve 4 (set_launch_config (max_debit_per_epoch 500 units))",
+      "signature": "2UV1jbXsRShqD4qhWbRcZydpnmFY6aYKqdSNu3AREfq8fkz7ZNMRBNXxPHRhG4poAS2qySGEqh12ehmpJSGsra7a",
+      "payer": "7ZgfzBAVrgRnuq5q2QpsWggSomXogxyUKw3TgxopXA1Y",
+      "fee": 5000,
+      "computeUnits": 8837,
+      "signatures": 1,
+      "created": [],
+      "payerDeltaFork": "5000",
+      "payerMainnet": "5000",
+      "other": "0"
+    },
+    {
+      "step": "M2",
+      "what": "squads: approve 4 (set_launch_config (max_debit_per_epoch 500 units))",
+      "signature": "331NZPZzv8XKnRA8YPSCtumU2HrxxCr2k3S5brNANWrPDweFJhV1yrZpgkVdFTtfC2gCbNsVeB69oxG5ut8viNYu",
+      "payer": "HALA32M46ewFDjXE7gKEtcNFcDiEsaP68vxfRnpSPfbz",
+      "fee": 5000,
+      "computeUnits": 9719,
+      "signatures": 1,
+      "created": [],
+      "payerDeltaFork": "5000",
+      "payerMainnet": "5000",
+      "other": "0"
+    },
+    {
+      "step": "M2",
+      "what": "squads: execute 4 (set_launch_config (max_debit_per_epoch 500 units))",
+      "signature": "63r8Uc7QvZRqPHdEF2uXPvf8tfibLsiVXC9m5jCKssgcM6id2KvJpgTGijd9KWMYZCB6LmCjNKRTCLt7Ym5QpYSw",
+      "payer": "4DSsjVnybbopdcnJTgp4rxSw7p4pW7tCidMVYZidwWmV",
+      "fee": 5000,
+      "computeUnits": 33512,
+      "signatures": 1,
+      "created": [],
+      "payerDeltaFork": "5000",
+      "payerMainnet": "5000",
+      "other": "0"
+    },
+    {
+      "step": "M2",
+      "what": "squads: create vault transaction 5 + proposal (lineage_msg set_config (max_per_day 400))",
+      "signature": "51bVxPxw4s48WRm7pXAceZBvH9jo1rxFnwqERJSSb82UYEa8f7BDQTdQYZjKhpXAD1ivFVxRYs4KPYpCxYi2bGfG",
+      "payer": "7ZgfzBAVrgRnuq5q2QpsWggSomXogxyUKw3TgxopXA1Y",
+      "fee": 5000,
+      "computeUnits": 38461,
+      "signatures": 1,
+      "created": [
+        {
+          "address": "A2YfZWap73yepKnhkK1px5fdky49RS7jamvfHA16LDN1",
+          "bytes": 266,
+          "forkRent": "2742240",
+          "mainnetRent": "2001520"
+        },
+        {
+          "address": "FWiEpU2NRDcfdKNGgvmdpwjDzQNZmhPXNTpqFSsvKLXa",
+          "bytes": 358,
+          "forkRent": "3382560",
+          "mainnetRent": "2468880"
+        }
+      ],
+      "payerDeltaFork": "6129800",
+      "payerMainnet": "4475400",
+      "other": "0"
+    },
+    {
+      "step": "M2",
+      "what": "squads: approve 5 (lineage_msg set_config (max_per_day 400))",
+      "signature": "2uUQ7Lo8UKWgZoDyTCMNehqe9C1kSqDjAg6kgXYsBFG5hmAky2cJSS1tcvDp5mub3oj2pnmyZ9tUfAgNL5TabwUx",
+      "payer": "7ZgfzBAVrgRnuq5q2QpsWggSomXogxyUKw3TgxopXA1Y",
+      "fee": 5000,
+      "computeUnits": 8837,
+      "signatures": 1,
+      "created": [],
+      "payerDeltaFork": "5000",
+      "payerMainnet": "5000",
+      "other": "0"
+    },
+    {
+      "step": "M2",
+      "what": "squads: approve 5 (lineage_msg set_config (max_per_day 400))",
+      "signature": "2qVLjRYoSC7KFKLZfJ7cvsWDJVKt1u6eP2zZacRgoiVQfZU2teaevdg1hCSjPhh1oRRDLVR56PCxsQFLXehMiaVX",
+      "payer": "HALA32M46ewFDjXE7gKEtcNFcDiEsaP68vxfRnpSPfbz",
+      "fee": 5000,
+      "computeUnits": 9719,
+      "signatures": 1,
+      "created": [],
+      "payerDeltaFork": "5000",
+      "payerMainnet": "5000",
+      "other": "0"
+    },
+    {
+      "step": "M2",
+      "what": "squads: execute 5 (lineage_msg set_config (max_per_day 400))",
+      "signature": "3yhNG7DFBeUUMgzwNStACeJgwyUFcwVbaxwBNUjyBucuZdZcC1WbEauyfd5Dq7dVWQQfKxZ5oPuoXqqtFCVxgTMP",
+      "payer": "4DSsjVnybbopdcnJTgp4rxSw7p4pW7tCidMVYZidwWmV",
+      "fee": 5000,
+      "computeUnits": 27698,
+      "signatures": 1,
+      "created": [],
+      "payerDeltaFork": "5000",
+      "payerMainnet": "5000",
+      "other": "0"
+    },
+    {
+      "step": "M2",
+      "what": "squads: create vault transaction 6 + proposal (registry pause)",
+      "signature": "5rfZBndrYBcBt9UDHT5mwfEMJvLGNhrnzsuHjhAdypf5p8JMqXpArXE3KXN3rbMn6Q4Z6Lwxu8nQ4zDcbSHA8yFD",
+      "payer": "7ZgfzBAVrgRnuq5q2QpsWggSomXogxyUKw3TgxopXA1Y",
+      "fee": 5000,
+      "computeUnits": 39843,
+      "signatures": 1,
+      "created": [
+        {
+          "address": "ACXqQk9KVU8NHrUyvf6inyZFwAXZ2PiEDtFRZwpTNEnW",
+          "bytes": 218,
+          "forkRent": "2408160",
+          "mainnetRent": "1757680"
+        },
+        {
+          "address": "7ZDD5FUq5fAaNusCrNFhe3gE2X3Y8zv4nTHjy3Mkuptw",
+          "bytes": 358,
+          "forkRent": "3382560",
+          "mainnetRent": "2468880"
+        }
+      ],
+      "payerDeltaFork": "5795720",
+      "payerMainnet": "4231560",
+      "other": "0"
+    },
+    {
+      "step": "M2",
+      "what": "squads: approve 6 (registry pause)",
+      "signature": "5UGKYYVJFiFv96QLxMNP2G6XJwCLti62XjoNSMMDzDe8UbXjotHRf254caZEtwEV2S9o4b26VQS6zj17Z1EDHGsv",
+      "payer": "7ZgfzBAVrgRnuq5q2QpsWggSomXogxyUKw3TgxopXA1Y",
+      "fee": 5000,
+      "computeUnits": 8837,
+      "signatures": 1,
+      "created": [],
+      "payerDeltaFork": "5000",
+      "payerMainnet": "5000",
+      "other": "0"
+    },
+    {
+      "step": "M2",
+      "what": "squads: approve 6 (registry pause)",
+      "signature": "s6WJLZ38sytiSZgjWsDNEXBfayYqhQPGVbkeF4FNRTLPEviNYjtURJf12cGCMns2mUR5Kfpub2gvSo8nzFR2QMP",
+      "payer": "HALA32M46ewFDjXE7gKEtcNFcDiEsaP68vxfRnpSPfbz",
+      "fee": 5000,
+      "computeUnits": 9719,
+      "signatures": 1,
+      "created": [],
+      "payerDeltaFork": "5000",
+      "payerMainnet": "5000",
+      "other": "0"
+    },
+    {
+      "step": "M2",
+      "what": "squads: execute 6 (registry pause)",
+      "signature": "5ed7zmzLyUCe8sfY5HgS8oWL2PivQBDnw3YaTPVPkhgWnCnPNi2TtG8rHbkFxF7xREbMC9DyViATEWzAXqbHKe8q",
+      "payer": "4DSsjVnybbopdcnJTgp4rxSw7p4pW7tCidMVYZidwWmV",
+      "fee": 5000,
+      "computeUnits": 29843,
+      "signatures": 1,
+      "created": [],
+      "payerDeltaFork": "5000",
+      "payerMainnet": "5000",
+      "other": "0"
+    },
+    {
+      "step": "M2",
+      "what": "squads: create vault transaction 7 + proposal (registry unpause)",
+      "signature": "3kTFSquGstF7DJQFP1D6br4xeK6CfJxB6DsPmjaewUx7AeLmrC7ywYuKW82aSURm6JQWhVkNkGtT8efisiGhvHQo",
+      "payer": "7ZgfzBAVrgRnuq5q2QpsWggSomXogxyUKw3TgxopXA1Y",
+      "fee": 5000,
+      "computeUnits": 38281,
+      "signatures": 1,
+      "created": [
+        {
+          "address": "Cph91d76c43E419AJ4cN3qCfZFY4fHe1Sw82CgxU6YgM",
+          "bytes": 218,
+          "forkRent": "2408160",
+          "mainnetRent": "1757680"
+        },
+        {
+          "address": "7S2xiqgiXJGJ6SRLKXZp7uinqP5zEyaMih8E1wf3A1QS",
+          "bytes": 358,
+          "forkRent": "3382560",
+          "mainnetRent": "2468880"
+        }
+      ],
+      "payerDeltaFork": "5795720",
+      "payerMainnet": "4231560",
+      "other": "0"
+    },
+    {
+      "step": "M2",
+      "what": "squads: approve 7 (registry unpause)",
+      "signature": "WvsFGpNzPJFC7vV9djxxt74WNZkV4UKgCT6zPL6bEk4fshZKDdMtSxJuij9fzpsq7fBuTe3Wm5LW35iCNhdKSCr",
+      "payer": "7ZgfzBAVrgRnuq5q2QpsWggSomXogxyUKw3TgxopXA1Y",
+      "fee": 5000,
+      "computeUnits": 8837,
+      "signatures": 1,
+      "created": [],
+      "payerDeltaFork": "5000",
+      "payerMainnet": "5000",
+      "other": "0"
+    },
+    {
+      "step": "M2",
+      "what": "squads: approve 7 (registry unpause)",
+      "signature": "5z3D6pag9tGio1EzgDHQCYMWTbpqYG5x28LteUANFyHpZohkCjAiHE7dhNyRZu91F72erXcQYc1Mkhcxcv2kyWEx",
+      "payer": "HALA32M46ewFDjXE7gKEtcNFcDiEsaP68vxfRnpSPfbz",
+      "fee": 5000,
+      "computeUnits": 9719,
+      "signatures": 1,
+      "created": [],
+      "payerDeltaFork": "5000",
+      "payerMainnet": "5000",
+      "other": "0"
+    },
+    {
+      "step": "M2",
+      "what": "squads: execute 7 (registry unpause)",
+      "signature": "2f4wQu9qyf1RwPizEReeT83kAGdF4avr66SCiGL2UuUUHGa2oMHNZANRbEB6JRa3RNwGvowBbmQ79C2AvrSfQ8SJ",
+      "payer": "4DSsjVnybbopdcnJTgp4rxSw7p4pW7tCidMVYZidwWmV",
+      "fee": 5000,
+      "computeUnits": 29844,
+      "signatures": 1,
+      "created": [],
+      "payerDeltaFork": "5000",
+      "payerMainnet": "5000",
+      "other": "0"
+    },
+    {
+      "step": "M2",
+      "what": "squads: create vault transaction 8 + proposal (registry set_epoch_cursor (rewrites the current values))",
+      "signature": "o54yc4JFn2wswaznbms252YfW8VQj4otJVNALyqAzxf6ACV3pAYgrvbqvSQp6rPQoTUjcUDXKr1xU9jVdRv5aLk",
+      "payer": "7ZgfzBAVrgRnuq5q2QpsWggSomXogxyUKw3TgxopXA1Y",
+      "fee": 5000,
+      "computeUnits": 38569,
+      "signatures": 1,
+      "created": [
+        {
+          "address": "DZEiFrYu93wff3AAMHiv1CrF6V1hyAtzoyoFh2JbUFr1",
+          "bytes": 249,
+          "forkRent": "2623920",
+          "mainnetRent": "1915160"
+        },
+        {
+          "address": "3n9K5NwCgB8vTQntxmi9eZP4BUJUT3sYQL5QeNRkSmrn",
+          "bytes": 358,
+          "forkRent": "3382560",
+          "mainnetRent": "2468880"
+        }
+      ],
+      "payerDeltaFork": "6011480",
+      "payerMainnet": "4389040",
+      "other": "0"
+    },
+    {
+      "step": "M2",
+      "what": "squads: approve 8 (registry set_epoch_cursor (rewrites the current values))",
+      "signature": "3DDdandVG7FMPGWYsfPkgVJTQ9EvUjg3SoQxmEYGJGkVUxYQkkrNJioqgDVBa7R14zmUTPFRxiL7RnngSzkU5zJy",
+      "payer": "7ZgfzBAVrgRnuq5q2QpsWggSomXogxyUKw3TgxopXA1Y",
+      "fee": 5000,
+      "computeUnits": 8837,
+      "signatures": 1,
+      "created": [],
+      "payerDeltaFork": "5000",
+      "payerMainnet": "5000",
+      "other": "0"
+    },
+    {
+      "step": "M2",
+      "what": "squads: approve 8 (registry set_epoch_cursor (rewrites the current values))",
+      "signature": "53WxxhffqNZXqkDuD3JHYwk7U4ezNzEae52rerB5JHH1B5cXPydaUdanE8zFgZEKyKrmQZyVdNXKKFfZbWMs1BST",
+      "payer": "HALA32M46ewFDjXE7gKEtcNFcDiEsaP68vxfRnpSPfbz",
+      "fee": 5000,
+      "computeUnits": 9719,
+      "signatures": 1,
+      "created": [],
+      "payerDeltaFork": "5000",
+      "payerMainnet": "5000",
+      "other": "0"
+    },
+    {
+      "step": "M2",
+      "what": "squads: execute 8 (registry set_epoch_cursor (rewrites the current values))",
+      "signature": "5WzwXuGhGjBswGwrvfL21gDtAHezwAwxRB9ni86V9UhJPmP16ANfE3GcizYKncUjYA1mjy2YTGxgkbHisNUUskL7",
+      "payer": "4DSsjVnybbopdcnJTgp4rxSw7p4pW7tCidMVYZidwWmV",
+      "fee": 5000,
+      "computeUnits": 30399,
+      "signatures": 1,
+      "created": [],
+      "payerDeltaFork": "5000",
+      "payerMainnet": "5000",
+      "other": "0"
+    },
+    {
+      "step": "M2",
+      "what": "squads: create config transaction 9 + proposal (time lock 20 -> 25 s)",
+      "signature": "5UhwXxLzHwrR7SLcfuJ2b9SQvoPviEcbBBBPcnQ9HYh1gsD8yM92BJwnJwtCFMngGgCX1dJsTHJz2tqGgFCK3Ntu",
+      "payer": "7ZgfzBAVrgRnuq5q2QpsWggSomXogxyUKw3TgxopXA1Y",
+      "fee": 5000,
+      "computeUnits": 28941,
+      "signatures": 1,
+      "created": [
+        {
+          "address": "RMaDVeCJmZcZ3jY4QXwgdV3c5xQeZYqfpX9xu4M66t8",
+          "bytes": 90,
+          "forkRent": "1517280",
+          "mainnetRent": "1107440"
+        },
+        {
+          "address": "GGYDGLAkLjaU6JPpymXLY9u6SEPXqtrchJ9xr28igV6a",
+          "bytes": 358,
+          "forkRent": "3382560",
+          "mainnetRent": "2468880"
+        }
+      ],
+      "payerDeltaFork": "4904840",
+      "payerMainnet": "3581320",
+      "other": "0"
+    },
+    {
+      "step": "M2",
+      "what": "squads: approve 9 (time lock)",
+      "signature": "5QdvV8tSbfkZuvdzK6bgrewGPxA9DozCym6EmDxgQKA7w4EWwc9vgXLgLAJmkmzJhBA49TivXjHpEMarpWEdnv2y",
+      "payer": "7ZgfzBAVrgRnuq5q2QpsWggSomXogxyUKw3TgxopXA1Y",
+      "fee": 5000,
+      "computeUnits": 8837,
+      "signatures": 1,
+      "created": [],
+      "payerDeltaFork": "5000",
+      "payerMainnet": "5000",
+      "other": "0"
+    },
+    {
+      "step": "M2",
+      "what": "squads: approve 9 (time lock)",
+      "signature": "5SD6KMEkEarbGfsutQPJTPA4gehRGfug9kGTHzUDvDmjuJcGdgjJEzmeNaw4sydznfFPkzXivHtoZpx34x389Vyx",
+      "payer": "HALA32M46ewFDjXE7gKEtcNFcDiEsaP68vxfRnpSPfbz",
+      "fee": 5000,
+      "computeUnits": 9719,
+      "signatures": 1,
+      "created": [],
+      "payerDeltaFork": "5000",
+      "payerMainnet": "5000",
+      "other": "0"
+    },
+    {
+      "step": "5",
+      "what": "squads: execute config transaction 9 (time lock)",
+      "signature": "xed5CykDssPiem6PhjeZB2ZfVEj8QwTzSZXzbBRLJ76eg7wUrqzP1EscfAP7YQEvcHACXrx7rUgAe8TJ7vhgGF2",
+      "payer": "4DSsjVnybbopdcnJTgp4rxSw7p4pW7tCidMVYZidwWmV",
+      "fee": 5000,
+      "computeUnits": 15517,
+      "signatures": 1,
+      "created": [],
+      "payerDeltaFork": "5000",
+      "payerMainnet": "5000",
+      "other": "0"
+    },
+    {
+      "step": "M2",
+      "what": "squads: create vault transaction 10 + proposal (upgrade lineage_msg from buffer)",
+      "signature": "F3PTdEZmKWygwkPhxPdhEF3qLuEyYjyRbCdz1LVCi4AkAMQ9oVmnfh5MRc7z9U3QcVjKsQe6xaBQCq1FPmwD3iv",
+      "payer": "7ZgfzBAVrgRnuq5q2QpsWggSomXogxyUKw3TgxopXA1Y",
+      "fee": 5000,
+      "computeUnits": 45675,
+      "signatures": 1,
+      "created": [
+        {
+          "address": "urT9Q7Ya66sA1fbgwYLMDi2QBPgGU79okadJcm58U6E",
+          "bytes": 378,
+          "forkRent": "3521760",
+          "mainnetRent": "2570480"
+        },
+        {
+          "address": "98S7iQycWtucGWmmHDzn3fwSHLv82Cw8dG23my4DsZKH",
+          "bytes": 358,
+          "forkRent": "3382560",
+          "mainnetRent": "2468880"
+        }
+      ],
+      "payerDeltaFork": "6909320",
+      "payerMainnet": "5044360",
+      "other": "0"
+    },
+    {
+      "step": "M2",
+      "what": "squads: approve 10 (upgrade lineage_msg from buffer)",
+      "signature": "4Qr8k9VXZ1Qj8H1Sbct4unfiKuSZzR4DwpDzgy7XCwGvV2yqYRqZ1Re3ryCxtYez8nY117xZSqiX7R9nSsHjP5e9",
+      "payer": "7ZgfzBAVrgRnuq5q2QpsWggSomXogxyUKw3TgxopXA1Y",
+      "fee": 5000,
+      "computeUnits": 8837,
+      "signatures": 1,
+      "created": [],
+      "payerDeltaFork": "5000",
+      "payerMainnet": "5000",
+      "other": "0"
+    },
+    {
+      "step": "M2",
+      "what": "squads: approve 10 (upgrade lineage_msg from buffer)",
+      "signature": "2uP3acxpczvvEk5QqyQuUJfGTLmrTfYBpS9WMP5Goe1KidfBnVPG3Racv5YC2v5Em3bYLRbU8fxu8ctHdoUwwaPr",
+      "payer": "HALA32M46ewFDjXE7gKEtcNFcDiEsaP68vxfRnpSPfbz",
+      "fee": 5000,
+      "computeUnits": 9719,
+      "signatures": 1,
+      "created": [],
+      "payerDeltaFork": "5000",
+      "payerMainnet": "5000",
+      "other": "0"
+    },
+    {
+      "step": "M2",
+      "what": "squads: execute 10 (upgrade lineage_msg from buffer)",
+      "signature": "4tf42XvPPjFLE2jzRpbSmyXybRDhNusaCyht6LosGHKhZVs4VfhVfb8fSWAC1XFzjSguiCgpSwmp3JxCKf8Q2Yhd",
+      "payer": "4DSsjVnybbopdcnJTgp4rxSw7p4pW7tCidMVYZidwWmV",
+      "fee": 5000,
+      "computeUnits": 32401,
+      "signatures": 1,
+      "created": [],
+      "payerDeltaFork": "5000",
+      "payerMainnet": "5000",
+      "other": "0"
+    },
+    {
+      "step": "7",
+      "what": "send 40000000 stand-in $LINE to the trader",
+      "signature": "MX8SxxMwf4EZZCFszFGgxwm5yc13hnedtaWhtuHrFpg3v8bmdwC1VSwG3kJSpqeovERYYPRonfd9iabknyn6ALW",
+      "payer": "7PkFTjRDRGbntSFEAcEzPMS1cf9Hq6ub1gVrQ6X5sMHV",
+      "fee": 5000,
+      "computeUnits": 19778,
+      "signatures": 1,
+      "created": [
+        {
+          "address": "9LzjxU2LJFFHGzLzWzyXRQmjuTMNM7zZYzBLjtx3uzJV",
+          "bytes": 170,
+          "forkRent": "2074080",
+          "mainnetRent": "1513840"
+        }
+      ],
+      "payerDeltaFork": "2079080",
+      "payerMainnet": "1518840",
+      "other": "0"
+    },
+    {
+      "step": "7",
+      "what": "launch_agent FRKA (one transaction: registry Agent, AgentLaunch, DBC pool, compute vault)",
+      "signature": "4jY3NuPfBiWz7ewZTuF78EgqtYXgU8WqjQtRG3q4vuFEri8cfKfkoRSjHAgMN3vK4YySMiHraYY2EwER4RCUfdJR",
+      "payer": "62tVqEGTxgkAHFaLRUZjWkhJtJwkpavdVyypfa3bQbdw",
+      "fee": 15000,
+      "computeUnits": 167600,
+      "signatures": 3,
+      "created": [
+        {
+          "address": "91H2LpbiAtHVkYNFgrGhFoytNd8EDkdecYT3um3ijuN5",
+          "bytes": 376,
+          "forkRent": "3507840",
+          "mainnetRent": "2560320"
+        },
+        {
+          "address": "HBPu9ghbWiGskxJKpTXcYmMb5EiSXWKhmTSd3V8p3abq",
+          "bytes": 424,
+          "forkRent": "3841920",
+          "mainnetRent": "2804160"
+        },
+        {
+          "address": "38eRBXC1MwWLGkcMkTo87JJWZ5w88xWhKMq9gSxFyLdS",
+          "bytes": 165,
+          "forkRent": "2039280",
+          "mainnetRent": "1488440"
+        },
+        {
+          "address": "C5K3Ej2PR4ccxJAGPUaEMfW26jtsuEMWBKKoyv74uALN",
+          "bytes": 165,
+          "forkRent": "2039280",
+          "mainnetRent": "1488440"
+        },
+        {
+          "address": "72TkHvEFACzwRJM9P8qtBapFECB5moVyJSMMHxX8KV2A",
+          "bytes": 554,
+          "forkRent": "4746720",
+          "mainnetRent": "3464560"
+        },
+        {
+          "address": "4Uj97XZ6tTHeTzSXSuiid7SALktRHhaFdicRyyjrEDrN",
+          "bytes": 165,
+          "forkRent": "2039280",
+          "mainnetRent": "1488440"
+        },
+        {
+          "address": "viFWT2MZhatAbpB8vv21phGoDjucWs8MCPEh5drT2JF",
+          "bytes": 401,
+          "forkRent": "3681840",
+          "mainnetRent": "2687320"
+        }
+      ],
+      "payerDeltaFork": "21911160",
+      "payerMainnet": "15996680",
+      "other": "0"
+    },
+    {
+      "step": "7",
+      "what": "create the trader's FRKA token account and the authority's",
+      "signature": "BpyuMxFKHCypLQU8YKVxRxh95XviNU7gvDYfPiNaiLsCjS3oBvZPNWyYjYHqnK2mcUvvDVy4iy1VvohWDRFj5j8",
+      "payer": "FnqQgnVx81hbtXQtWrEbD7MfHys25nGakPDDsbghyGAR",
+      "fee": 5000,
+      "computeUnits": 37333,
+      "signatures": 1,
+      "created": [
+        {
+          "address": "3seoxgji1Cb5uFfNLW7V7veiGXkR8fjX4LraWGipYXw7",
+          "bytes": 170,
+          "forkRent": "2074080",
+          "mainnetRent": "1513840"
+        },
+        {
+          "address": "GgngYJuuWpf8BnfuEnCnh2KDiXck2LrAJoqEnoZ7Yjbp",
+          "bytes": 170,
+          "forkRent": "2074080",
+          "mainnetRent": "1513840"
+        }
+      ],
+      "payerDeltaFork": "4153160",
+      "payerMainnet": "3032680",
+      "other": "0"
+    },
+    {
+      "step": "7",
+      "what": "DBC buy on FRKA (100,000 stand-in $LINE)",
+      "signature": "41NBCwmqQme8WQ2zNWRhwMKnQiAN7Sey6wz4y9G6sh7pw95tGwixN9RPA6noDFwJ8BfN68s4xdGFbw4zAkoXgvRr",
+      "payer": "FnqQgnVx81hbtXQtWrEbD7MfHys25nGakPDDsbghyGAR",
+      "fee": 5000,
+      "computeUnits": 35897,
+      "signatures": 1,
+      "created": [],
+      "payerDeltaFork": "5000",
+      "payerMainnet": "5000",
+      "other": "0"
+    },
+    {
+      "step": "7",
+      "what": "DBC sell on FRKA (half)",
+      "signature": "5jnyWr6c8xcWBYcgWPoHsLfPqRXQqUMTAazGR6sd7XzcnTB8Ymd3mbuPqyXtUVS4QYEKQKegwZvgyPNhkfDJ7bHU",
+      "payer": "FnqQgnVx81hbtXQtWrEbD7MfHys25nGakPDDsbghyGAR",
+      "fee": 5000,
+      "computeUnits": 34055,
+      "signatures": 1,
+      "created": [],
+      "payerDeltaFork": "5000",
+      "payerMainnet": "5000",
+      "other": "0"
+    },
+    {
+      "step": "7",
+      "what": "DBC fill on FRKA to the migration threshold (PartialFill)",
+      "signature": "2JBR25gx52it7nHXXML7xqVDdYrCDaY2iDkrQ7BHn3QZYmC85qJ5ThjiifcXhZ722qPftUMAb7snSjNnEUm1E8Q9",
+      "payer": "FnqQgnVx81hbtXQtWrEbD7MfHys25nGakPDDsbghyGAR",
+      "fee": 5000,
+      "computeUnits": 38803,
+      "signatures": 1,
+      "created": [],
+      "payerDeltaFork": "5000",
+      "payerMainnet": "5000",
+      "other": "0"
+    },
+    {
+      "step": "7",
+      "what": "crank_fees on FRKA (curve partner fees, exact split)",
+      "signature": "4wkbovDeyNWf3E2TixHmYt3EuqBxuZUmDwgap3Pto5Np39euQGCp5vbDwPpH8vJp3EGGRxsaF4hL2B3dBenKuxaq",
+      "payer": "FnqQgnVx81hbtXQtWrEbD7MfHys25nGakPDDsbghyGAR",
+      "fee": 5000,
+      "computeUnits": 71587,
+      "signatures": 1,
+      "created": [],
+      "payerDeltaFork": "5000",
+      "payerMainnet": "5000",
+      "other": "0"
+    },
+    {
+      "step": "7",
+      "what": "Meteora migration_damm_v2 on FRKA (permissionless, mainnet DBC to mainnet DAMM v2, config A8gMrE)",
+      "signature": "Vi5jZUYaWysspf6wi7hMBTDzTHdjvqzTeJRQCfy9L2cLkFcUP88bAwRRyNgBwcUSXYT6TiqSFAdMpPD1buktQKC",
+      "payer": "FnqQgnVx81hbtXQtWrEbD7MfHys25nGakPDDsbghyGAR",
+      "fee": 15000,
+      "computeUnits": 147581,
+      "signatures": 3,
+      "created": [
+        {
+          "address": "ESNgPNbWAoJrebLqun234W2NpXatXfzdf6MEZSAYDPby",
+          "bytes": 465,
+          "forkRent": "4127280",
+          "mainnetRent": "3012440"
+        },
+        {
+          "address": "3CMyLGJFb467KwaMcm6aGEuqhJ9H6BnjAbzpDu6ka5sP",
+          "bytes": 1112,
+          "forkRent": "8630400",
+          "mainnetRent": "6299200"
+        },
+        {
+          "address": "7VFRWgu1c3i6QAE3rieRHV2J9ypRYDL1fnaGmCZT8ycE",
+          "bytes": 165,
+          "forkRent": "2039280",
+          "mainnetRent": "1488440"
+        },
+        {
+          "address": "2GFxF4wheLvuNHoMb9pRepFQzCdt9xx8v6R7zhb2bRDm",
+          "bytes": 408,
+          "forkRent": "3730560",
+          "mainnetRent": "2722880"
+        },
+        {
+          "address": "2yd4tRZyzX1fv2sBapjm2nvtHcHthQNchFRZWAnsQrsF",
+          "bytes": 165,
+          "forkRent": "2039280",
+          "mainnetRent": "1488440"
+        },
+        {
+          "address": "2iDi8PtxuAq4f4NEewhXXpRZLEd2ZiruqK5aTn5toEsZ",
+          "bytes": 165,
+          "forkRent": "2039280",
+          "mainnetRent": "1488440"
+        }
+      ],
+      "payerDeltaFork": "22621080",
+      "payerMainnet": "16514840",
+      "other": "0"
+    },
+    {
+      "step": "7",
+      "what": "graduate FRKA (permissionless, on DBC's migration position)",
+      "signature": "2yMYHWfXLxw3muk8rzRPNXQEByTKDBNYvu4dk8KxfNMgZJ5YXwrGrZDg5aK7Ykpizog9Cwy5EBHCn5BeWgWPn4DV",
+      "payer": "FnqQgnVx81hbtXQtWrEbD7MfHys25nGakPDDsbghyGAR",
+      "fee": 5000,
+      "computeUnits": 21341,
+      "signatures": 1,
+      "created": [],
+      "payerDeltaFork": "5000",
+      "payerMainnet": "5000",
+      "other": "0"
+    },
+    {
+      "step": "7",
+      "what": "DAMM v2 buy on FRKA (200,000)",
+      "signature": "K2mfUtPzodmqLHyfHjXwnoMwoAFcwif2uiDbLoRupXWgudAqxWiGG7jqzt8jadcXw6wQaSHkBroEpwjuE9S24Cg",
+      "payer": "FnqQgnVx81hbtXQtWrEbD7MfHys25nGakPDDsbghyGAR",
+      "fee": 5000,
+      "computeUnits": 19241,
+      "signatures": 1,
+      "created": [],
+      "payerDeltaFork": "5000",
+      "payerMainnet": "5000",
+      "other": "0"
+    },
+    {
+      "step": "7",
+      "what": "crank_pool_fees on FRKA (DAMM v2 position fees into the compute vault)",
+      "signature": "2qqBeEs23tSareK6gMnP6GJSoEy5A9WZ9YCs73zW5gGtnAjs6g8161d7ZyijRs2kWZop9Gj72sHBD9MkbbXr1DmE",
+      "payer": "FnqQgnVx81hbtXQtWrEbD7MfHys25nGakPDDsbghyGAR",
+      "fee": 5000,
+      "computeUnits": 74343,
+      "signatures": 1,
+      "created": [],
+      "payerDeltaFork": "5000",
+      "payerMainnet": "5000",
+      "other": "0"
+    },
+    {
+      "step": "7",
+      "what": "launch_agent FRKB (one transaction: registry Agent, AgentLaunch, DBC pool, compute vault)",
+      "signature": "2RCxMNDtRESrEHXLjN2XxfPek8DGyRmRqmcHddiXMto1FiEsNE1gUGSaJDD81CWShdgRNgKUsjhKB7mkpCnLHBGi",
+      "payer": "62tVqEGTxgkAHFaLRUZjWkhJtJwkpavdVyypfa3bQbdw",
+      "fee": 15000,
+      "computeUnits": 158600,
+      "signatures": 3,
+      "created": [
+        {
+          "address": "3MUJJXLLb7MWpDaVb58zg4ppSfGz4qbqHyR5h51g3ktA",
+          "bytes": 376,
+          "forkRent": "3507840",
+          "mainnetRent": "2560320"
+        },
+        {
+          "address": "Esao2trZeASWaLqj3kHinDV1mesWgLeGWka8XeBxoc48",
+          "bytes": 424,
+          "forkRent": "3841920",
+          "mainnetRent": "2804160"
+        },
+        {
+          "address": "5gtdfz8QK5NtDTUPcDQy3WGsbFBBF8NkpnxU3F1oDNu8",
+          "bytes": 165,
+          "forkRent": "2039280",
+          "mainnetRent": "1488440"
+        },
+        {
+          "address": "ATcTDwcbSNvqR86bpGhVrxDQcJnsDBSTiLcamS6sXhBy",
+          "bytes": 165,
+          "forkRent": "2039280",
+          "mainnetRent": "1488440"
+        },
+        {
+          "address": "5byzSuCX5sMJ3qT76xfrL8gjvshx1KFA8hDsXAJMtFUy",
+          "bytes": 554,
+          "forkRent": "4746720",
+          "mainnetRent": "3464560"
+        },
+        {
+          "address": "GdRqTmwHn9UyBNTPi9i6dG1xKH7atqxYtw7R9zA9sAeu",
+          "bytes": 165,
+          "forkRent": "2039280",
+          "mainnetRent": "1488440"
+        },
+        {
+          "address": "DmFw7rqUjbDfsZWBneFWsZL8Vbu1wC4RdrXNQ4XyXXb",
+          "bytes": 401,
+          "forkRent": "3681840",
+          "mainnetRent": "2687320"
+        }
+      ],
+      "payerDeltaFork": "21911160",
+      "payerMainnet": "15996680",
+      "other": "0"
+    },
+    {
+      "step": "7",
+      "what": "create the trader's FRKB token account and the authority's",
+      "signature": "iWPP3GkcB2yEG6DDzMR8phD7fbhBw8ywhMuixgDVq9z65njTuDxgykSPp9i7eoY7qUsRK1bL8cXkZQP1i2fStCw",
+      "payer": "FnqQgnVx81hbtXQtWrEbD7MfHys25nGakPDDsbghyGAR",
+      "fee": 5000,
+      "computeUnits": 34333,
+      "signatures": 1,
+      "created": [
+        {
+          "address": "5hemGznMHTw8KDk7TrE9rXLSvJRfrDFF7EZjFpCtFWRc",
+          "bytes": 170,
+          "forkRent": "2074080",
+          "mainnetRent": "1513840"
+        },
+        {
+          "address": "B8rVezFAGtzvXCpA1EA3x1vkT8DLjwB6bbTZfQK2tupM",
+          "bytes": 170,
+          "forkRent": "2074080",
+          "mainnetRent": "1513840"
+        }
+      ],
+      "payerDeltaFork": "4153160",
+      "payerMainnet": "3032680",
+      "other": "0"
+    },
+    {
+      "step": "7",
+      "what": "DBC buy on FRKB (100,000 stand-in $LINE)",
+      "signature": "4z1zFUXwTVinXrT56vNXbLnz9xvBRav3k8ZFJjn9qgnr6bYCPpWcMMN85e886KDCsUnQ7FGsohscPLUDf54PqMig",
+      "payer": "FnqQgnVx81hbtXQtWrEbD7MfHys25nGakPDDsbghyGAR",
+      "fee": 5000,
+      "computeUnits": 35897,
+      "signatures": 1,
+      "created": [],
+      "payerDeltaFork": "5000",
+      "payerMainnet": "5000",
+      "other": "0"
+    },
+    {
+      "step": "7",
+      "what": "DBC sell on FRKB (half)",
+      "signature": "2NsQ675Jn4W3pGLCTJFBd5cBEU9jPbU6ufj8XD3SarWF83Qhg5yN3hAJRStrmkKkR7DwNCF4DwrAbSAdMqivC1sE",
+      "payer": "FnqQgnVx81hbtXQtWrEbD7MfHys25nGakPDDsbghyGAR",
+      "fee": 5000,
+      "computeUnits": 34055,
+      "signatures": 1,
+      "created": [],
+      "payerDeltaFork": "5000",
+      "payerMainnet": "5000",
+      "other": "0"
+    },
+    {
+      "step": "7",
+      "what": "DBC fill on FRKB to the migration threshold (PartialFill)",
+      "signature": "RHRHwRTdYiF1MHRW8oPEcWidCJqdUuWdaJ6zw1MXhDkcX1GmJEcH7FE7HF3qfScwLR1eK5sFCzNJ533g8rFVmMs",
+      "payer": "FnqQgnVx81hbtXQtWrEbD7MfHys25nGakPDDsbghyGAR",
+      "fee": 5000,
+      "computeUnits": 38803,
+      "signatures": 1,
+      "created": [],
+      "payerDeltaFork": "5000",
+      "payerMainnet": "5000",
+      "other": "0"
+    },
+    {
+      "step": "7",
+      "what": "crank_fees on FRKB (curve partner fees, exact split)",
+      "signature": "2RQmbcKrVuLcZ5kCVTMu1KzSRna1xHfjZwpSzsH7FV9UXPwvHzQubCUfvviWjZSk1rjuW726D9C9R5sxxQiZ6mUE",
+      "payer": "FnqQgnVx81hbtXQtWrEbD7MfHys25nGakPDDsbghyGAR",
+      "fee": 5000,
+      "computeUnits": 70087,
+      "signatures": 1,
+      "created": [],
+      "payerDeltaFork": "5000",
+      "payerMainnet": "5000",
+      "other": "0"
+    },
+    {
+      "step": "7",
+      "what": "Meteora migration_damm_v2 on FRKB (permissionless, mainnet DBC to mainnet DAMM v2, config A8gMrE)",
+      "signature": "4QJzVL3eSXjw4bK7XbQ5ZeLeifVD7R3feKsYvECkJTgKQkNtYrjWLUPKHm5wjbJbyyCW7SVCUUhphRkULv9dwt2r",
+      "payer": "FnqQgnVx81hbtXQtWrEbD7MfHys25nGakPDDsbghyGAR",
+      "fee": 15000,
+      "computeUnits": 162581,
+      "signatures": 3,
+      "created": [
+        {
+          "address": "Bc6q2SjznuG6995eLnRSeQYUcVJKkXtc6cjgVc4wDzzz",
+          "bytes": 465,
+          "forkRent": "4127280",
+          "mainnetRent": "3012440"
+        },
+        {
+          "address": "5sQwCp9N87cm8gEGPmQuJ7uBYgTro7BWRjSZw9mKSPDq",
+          "bytes": 1112,
+          "forkRent": "8630400",
+          "mainnetRent": "6299200"
+        },
+        {
+          "address": "2k28w2wZV7V9Mf9TmRKEF6CYRVsam94hUCoqehRKzoot",
+          "bytes": 165,
+          "forkRent": "2039280",
+          "mainnetRent": "1488440"
+        },
+        {
+          "address": "Ed18szxn6XwwsnSoZNwiq21J9fok1dqh9f6Td94TjMik",
+          "bytes": 408,
+          "forkRent": "3730560",
+          "mainnetRent": "2722880"
+        },
+        {
+          "address": "CQzz4sHSr35vWkNjCQ6M8Xu177AiM9aaZwNgZpJeWMj9",
+          "bytes": 165,
+          "forkRent": "2039280",
+          "mainnetRent": "1488440"
+        },
+        {
+          "address": "A55bQ2yfcpM7dUvgJLrP7HQd1V6jGfEmHayU8c3NdXdD",
+          "bytes": 165,
+          "forkRent": "2039280",
+          "mainnetRent": "1488440"
+        }
+      ],
+      "payerDeltaFork": "22621080",
+      "payerMainnet": "16514840",
+      "other": "0"
+    },
+    {
+      "step": "M2",
+      "what": "squads: create vault transaction 11 + proposal (graduate_by_admin FRKB)",
+      "signature": "4Ytay8GWq9FFHJctbz2qthBMSfLvwyRjTN71rQhgyAtxJ9m8PEq4nMAVdUUcSMJKZeY8ThJxtCBaAKDj6rPDxGr1",
+      "payer": "7ZgfzBAVrgRnuq5q2QpsWggSomXogxyUKw3TgxopXA1Y",
+      "fee": 5000,
+      "computeUnits": 43894,
+      "signatures": 1,
+      "created": [
+        {
+          "address": "FqpYJRAYDWkxogzyNxmY1pmxnRyrcDAfx4Rwf6z71MEL",
+          "bytes": 448,
+          "forkRent": "4008960",
+          "mainnetRent": "2926080"
+        },
+        {
+          "address": "6XEHgQ5VAdi3dJzmoXPGvJvHTKmnhe6Fvo5mUVYW26vM",
+          "bytes": 358,
+          "forkRent": "3382560",
+          "mainnetRent": "2468880"
+        }
+      ],
+      "payerDeltaFork": "7396520",
+      "payerMainnet": "5399960",
+      "other": "0"
+    },
+    {
+      "step": "M2",
+      "what": "squads: approve 11 (graduate_by_admin FRKB)",
+      "signature": "5851TaSXKq4dYZVu6ayCpxnX4JoxvDWbCc6C9RtV2NfLzHdy7rPZteFJPfxuPbpsEBWDEP9cNf3SPZDnTukPvpDr",
+      "payer": "7ZgfzBAVrgRnuq5q2QpsWggSomXogxyUKw3TgxopXA1Y",
+      "fee": 5000,
+      "computeUnits": 8837,
+      "signatures": 1,
+      "created": [],
+      "payerDeltaFork": "5000",
+      "payerMainnet": "5000",
+      "other": "0"
+    },
+    {
+      "step": "M2",
+      "what": "squads: approve 11 (graduate_by_admin FRKB)",
+      "signature": "4PJD884S4cy23BaZiGpm3uAdhkJazAXBR73RTyiEDcFiNzuknUdDwnpu2JSc6hZxoYneboWaWbRqNJ2gMXws8oEZ",
+      "payer": "HALA32M46ewFDjXE7gKEtcNFcDiEsaP68vxfRnpSPfbz",
+      "fee": 5000,
+      "computeUnits": 9719,
+      "signatures": 1,
+      "created": [],
+      "payerDeltaFork": "5000",
+      "payerMainnet": "5000",
+      "other": "0"
+    },
+    {
+      "step": "M2",
+      "what": "squads: execute 11 (graduate_by_admin FRKB)",
+      "signature": "Y6dLKZ1bPcteGht48ZtDFKDyRgDwBEZ9SKFAFpMgyW8RFzLAtNR8kFWunM7VyZYR8jSTNZiH5uEx4neybRG7RdS",
+      "payer": "4DSsjVnybbopdcnJTgp4rxSw7p4pW7tCidMVYZidwWmV",
+      "fee": 5000,
+      "computeUnits": 54630,
+      "signatures": 1,
+      "created": [],
+      "payerDeltaFork": "5000",
+      "payerMainnet": "5000",
+      "other": "0"
+    },
+    {
+      "step": "7",
+      "what": "send 16 stand-in $LINE to the verifier owner",
+      "signature": "5CixsJUKNXMBXCTm8g4U4p1YeQrTj14d4LUMvSyMvSQQCZoa6bQe211qS1EbtfdiuqHRmgo7FZQGX2FPRWYDjYHc",
+      "payer": "7PkFTjRDRGbntSFEAcEzPMS1cf9Hq6ub1gVrQ6X5sMHV",
+      "fee": 5000,
+      "computeUnits": 22778,
+      "signatures": 1,
+      "created": [
+        {
+          "address": "Ezjcn8tEeciVUtWD2sGCiWPpmA1jpcNoQmqwRpx9tf7",
+          "bytes": 170,
+          "forkRent": "2074080",
+          "mainnetRent": "1513840"
+        }
+      ],
+      "payerDeltaFork": "2079080",
+      "payerMainnet": "1518840",
+      "other": "0"
+    },
+    {
+      "step": "8",
+      "what": "register a verifier (burns register_burn)",
+      "signature": "2tHcUJcwBxKHFYuDGCTXCBJk6aoDcUA2E3pRkz7GZ49TUFzM9PtXxaKJY4XLnU3GHkAZqCxgbBqyaXbUxzwSToVS",
+      "payer": "BPCg252caDDPiwV4d6rSX8hU5FyV6B62T17hwLPjua7E",
+      "fee": 10000,
+      "computeUnits": 29669,
+      "signatures": 2,
+      "created": [
+        {
+          "address": "5cSiJzagUzB2dWD47jtfZUx5QPz8WhnxK82KN2LbQExL",
+          "bytes": 401,
+          "forkRent": "3681840",
+          "mainnetRent": "2687320"
+        }
+      ],
+      "payerDeltaFork": "3691840",
+      "payerMainnet": "2697320",
+      "other": "0"
+    },
+    {
+      "step": "8",
+      "what": "bond min_bond",
+      "signature": "4p3XbbPHd5DVbctZ2eaFXoP4jsyYXEwYnuwMYwj955TfwFUR9WvpFpeC1YvF4aqjyqRP83rqPh9gwJKy94Qfwawq",
+      "payer": "BPCg252caDDPiwV4d6rSX8hU5FyV6B62T17hwLPjua7E",
+      "fee": 5000,
+      "computeUnits": 25567,
+      "signatures": 1,
+      "created": [],
+      "payerDeltaFork": "5000",
+      "payerMainnet": "5000",
+      "other": "0"
+    },
+    {
+      "step": "8",
+      "what": "split (treasury to reserve and pool, permissionless)",
+      "signature": "4Jnf7dBjFa8tXcnfP8indbe3m6fb8fL6CU1TsjULxhKa5A8PhnmpQYiWWy3oSMb6vzbiGATcjLeXLGFpWdLPWjNK",
+      "payer": "FnqQgnVx81hbtXQtWrEbD7MfHys25nGakPDDsbghyGAR",
+      "fee": 5000,
+      "computeUnits": 41439,
+      "signatures": 1,
+      "created": [],
+      "payerDeltaFork": "5000",
+      "payerMainnet": "5000",
+      "other": "0"
+    },
+    {
+      "step": "8",
+      "what": "post_epoch 0 (Core authority: 2 leaves, pool 48079391106, rebate 1000)",
+      "signature": "5QpeXgAU9uQJSR1natonCQQ25pXgMtsq8yyrfnvNEKcYqZmsLKw5LCwH3Du7R3iNALexiTxNpT264gUPJEad291S",
+      "payer": "Es6ciXKbPWH8cfBQ5AYZe9gTmfJEgctREZXdXSRVpthS",
+      "fee": 5000,
+      "computeUnits": 52221,
+      "signatures": 1,
+      "created": [
+        {
+          "address": "4K6PkuD27ajpF4DT1ABwUNo2MTqqrey87j26sVwMQ1ay",
+          "bytes": 165,
+          "forkRent": "2039280",
+          "mainnetRent": "1488440"
+        }
+      ],
+      "payerDeltaFork": "2044280",
+      "payerMainnet": "1493440",
+      "other": "0"
+    },
+    {
+      "step": "8",
+      "what": "open_challenge (epoch kind, by the verifier's signing key, bond from its owner)",
+      "signature": "2szfjQSCN9YBWpGDeNcWHwKiSmputSYJgCHUpKyiyEsSGzjJQqiZtX2hvS5MXZsGWprJ7VSobTvyQhaJNYVe5cG7",
+      "payer": "BPCg252caDDPiwV4d6rSX8hU5FyV6B62T17hwLPjua7E",
+      "fee": 10000,
+      "computeUnits": 58194,
+      "signatures": 2,
+      "created": [
+        {
+          "address": "5QbJmunv44P5gU19FVbhiRnCjgzyxjsmeGqyRRprNE1K",
+          "bytes": 252,
+          "forkRent": "2644800",
+          "mainnetRent": "1930400"
+        },
+        {
+          "address": "Bas35YEWohUVezneZFWKu8radCig7Ee8VSfF5gNwYZWv",
+          "bytes": 30,
+          "forkRent": "1099680",
+          "mainnetRent": "802640"
+        }
+      ],
+      "payerDeltaFork": "3754480",
+      "payerMainnet": "2743040",
+      "other": "0"
+    },
+    {
+      "step": "8",
+      "what": "resolve_challenge void (Core authority; bond returned)",
+      "signature": "4PzPemoLEK4eYSCqdU4pxy2ZjyhA6dWzGbYQzbJgvPkSamNMhXTUbnrnFfbEEcirkomAAAsSHVSEf4uxjSfWQsae",
+      "payer": "Es6ciXKbPWH8cfBQ5AYZe9gTmfJEgctREZXdXSRVpthS",
+      "fee": 5000,
+      "computeUnits": 43160,
+      "signatures": 1,
+      "created": [],
+      "payerDeltaFork": "5000",
+      "payerMainnet": "5000",
+      "other": "0"
+    },
+    {
+      "step": "8",
+      "what": "claim epoch 0 leaf compute (anyone pays; receipt rent)",
+      "signature": "5APnidfPfmiUbcmLGJShEaomXQgBVTEUi99bzEwC7Bb5HtXThsgwW6xca6zcbtQJBr3uUuqcEeyCjBCSpXdpERF5",
+      "payer": "FnqQgnVx81hbtXQtWrEbD7MfHys25nGakPDDsbghyGAR",
+      "fee": 5000,
+      "computeUnits": 76960,
+      "signatures": 1,
+      "created": [
+        {
+          "address": "6ftQ6VwZPYXH7GAXTWFaAFTQpbDWySoCbPEBM9UqcaqF",
+          "bytes": 128,
+          "forkRent": "1781760",
+          "mainnetRent": "1300480"
+        }
+      ],
+      "payerDeltaFork": "1786760",
+      "payerMainnet": "1305480",
+      "other": "0"
+    },
+    {
+      "step": "8",
+      "what": "claim epoch 0 leaf wallet (anyone pays; receipt rent)",
+      "signature": "2Xf5ArpBiuuCX4JxkWLvuGy1E12emkbvfdMuebM5GvCTVAZ5YqaE5zWi9X5W8ZJQgrPFCFPAqrtMWRF4ZdD731g8",
+      "payer": "FnqQgnVx81hbtXQtWrEbD7MfHys25nGakPDDsbghyGAR",
+      "fee": 5000,
+      "computeUnits": 75173,
+      "signatures": 1,
+      "created": [
+        {
+          "address": "7ccyTN2pvRmhgKvmthJ94Uqyv3Do75qSJDLmRYRd4XWo",
+          "bytes": 128,
+          "forkRent": "1781760",
+          "mainnetRent": "1300480"
+        }
+      ],
+      "payerDeltaFork": "1786760",
+      "payerMainnet": "1305480",
+      "other": "0"
+    }
+  ]
+}

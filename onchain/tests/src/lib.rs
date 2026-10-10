@@ -31,6 +31,20 @@ pub const LINE_SUPPLY: u64 = 1_000_000_000 * ONE;
 
 pub const DBC_SO_SHA256: &str = "5edf76d972abaf355048db5d9003bc4dfa843cd98a5f93785430dac371678ad3";
 pub const DAMM_SO_SHA256: &str = "82bb9375921bb8007551cb65f9ca43b191597496cc9922926468b36671081ec2";
+/// The mainnet builds (`vendor/meteora/mainnet/fetch.sh`, read 2026-10-10; DBC last deployed in
+/// mainnet slot 445,503,633, DAMM v2 in 445,230,614). `METEORA_BUILD=mainnet` runs every suite on them.
+pub const DBC_MAINNET_SO_SHA256: &str = "4c26a8a5da99f8ce932fa0300c46675b527090021fbb74214c9486bedda9f23b";
+pub const DAMM_MAINNET_SO_SHA256: &str = "4d5b920baebc090f89b2e8796a3452ed067c9667a143058c96a312f2c1e6848b";
+
+/// The Meteora builds the suites load: the devnet pins by default, the mainnet ones with
+/// `METEORA_BUILD=mainnet` (the DAMM v2 config account is the same bytes on both clusters).
+fn meteora_builds() -> [(std::path::PathBuf, &'static str); 2] {
+    if std::env::var("METEORA_BUILD").as_deref() == Ok("mainnet") {
+        [(manifest("../vendor/meteora/mainnet/dbc.so"), DBC_MAINNET_SO_SHA256), (manifest("../vendor/meteora/mainnet/damm_v2.so"), DAMM_MAINNET_SO_SHA256)]
+    } else {
+        [(manifest("../vendor/meteora/dbc.so"), DBC_SO_SHA256), (manifest("../vendor/meteora/damm_v2.so"), DAMM_SO_SHA256)]
+    }
+}
 
 // ---------- transactions ----------
 
@@ -215,10 +229,9 @@ pub fn fresh_svm() -> LiteSVM {
     let mut svm = LiteSVM::new();
     svm.add_program_from_file(lr::ID, manifest("../target/deploy/lineage_registry.so")).expect("build lineage_registry first (cargo build-sbf)");
     svm.add_program_from_file(ll::ID, manifest("../target/deploy/lineage_launch.so")).expect("build lineage_launch first (cargo build-sbf)");
-    let dbc = manifest("../vendor/meteora/dbc.so");
-    let damm = manifest("../vendor/meteora/damm_v2.so");
-    check_sha(&dbc, DBC_SO_SHA256);
-    check_sha(&damm, DAMM_SO_SHA256);
+    let [(dbc, dbc_sha), (damm, damm_sha)] = meteora_builds();
+    check_sha(&dbc, dbc_sha);
+    check_sha(&damm, damm_sha);
     svm.add_program_from_file(DBC, dbc).unwrap();
     svm.add_program_from_file(DAMM, damm).unwrap();
     let data = std::fs::read(manifest("../vendor/meteora/damm_v2_dynamic_config.bin")).unwrap();
