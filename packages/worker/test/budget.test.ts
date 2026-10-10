@@ -7,3 +7,8 @@ test("the wrap-up notice fires near the attempt cap, or when one more turn could
   expect(wrapUpNotice(0.2, 0.5, 0.16)).toContain("give_up"); // 0.2 + 2 * 0.16 > 0.5
   expect(wrapUpNotice(0.1, 0, 0.1)).toBeNull();
 });
+
+test("cap_mode bounded: the notice fires only at the 70% mark, not on the projection", () => {
+  expect(wrapUpNotice(0.2, 0.5, 0.16, false)).toBeNull();
+  expect(wrapUpNotice(0.36, 0.5, 0.02, false)).toContain("submit it now");
+});

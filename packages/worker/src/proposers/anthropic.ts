@@ -356,7 +356,7 @@ export class AnthropicProposer implements Proposer {
       }
       if (submitted) return end("submitted", { ...submitted, usage });
       if (gaveUp) return end("gave up", null);
-      const notice = warned ? null : wrapUpNotice(usage.usd, cap, lastTurnUsd);
+      const notice = warned ? null : wrapUpNotice(usage.usd, cap, lastTurnUsd, !bounded);
       if (notice) {
         warned = true;
         ctx.log("anthropic: budget wrap-up notice sent");

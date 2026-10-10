@@ -1,0 +1,8 @@
+19:45:51 anthropic: turn 1, 0.0028 USD so far
+19:45:54 anthropic: turn 2, 0.0069 USD so far
+19:45:59 anthropic: turn 3, 0.0169 USD so far
+19:46:21 anthropic: turn 4, 0.0746 USD so far
+19:47:23 anthropic: budget wrap-up notice sent
+19:47:23 anthropic: turn 5, 0.2002 USD so far
+19:47:28 anthropic: gave up: Out of budget before I could build and evaluate a change. My plan for train_ir: replace the per-merge list(stats.values()) + max + count scan in BasicTokenizer and RegexTokenizer.train with a lazy max-heap of (-count, pair). This works because pair counts never go up except for pairs that contain the newly minted token, so stale heap entries can be re-pushed when popped. Ties would still go to the earliest first occurrence. That scan is probably 10-15% of the train benchmark (a rough estimate, not profiled). Nothing was submitted, so there is no risk of a failing candidate.
+19:47:28 anthropic: usage gave up: 6 calls, 16 in, 8363 out, 83315 cache read, 13683 cache write, 0.2524 USD

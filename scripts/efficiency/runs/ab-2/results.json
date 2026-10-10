@@ -1,0 +1,53 @@
+[
+ {
+  "recipe": "minbpe",
+  "parent": "tip height 16 (165d08a69158)",
+  "arm": "A",
+  "i": 0,
+  "effort": "high",
+  "cap_mode": "projected",
+  "at": "2026-10-10T19:45:47.482Z",
+  "end": "gave up",
+  "calls": 6,
+  "input_tokens": 16,
+  "output_tokens": 8363,
+  "cache_read_tokens": 83315,
+  "cache_write_tokens": 13683,
+  "usd": 0.2524,
+  "evals": 0,
+  "author_s": 101,
+  "sandbox_s": 0,
+  "submitted": null,
+  "replay": null,
+  "diff_lines": 0
+ },
+ {
+  "recipe": "minbpe",
+  "parent": "tip height 16 (165d08a69158)",
+  "arm": "B",
+  "i": 0,
+  "effort": "high",
+  "cap_mode": "bounded",
+  "at": "2026-10-10T19:47:28.267Z",
+  "end": "submitted",
+  "calls": 6,
+  "input_tokens": 16,
+  "output_tokens": 8451,
+  "cache_read_tokens": 75245,
+  "cache_write_tokens": 25509,
+  "usd": 0.3117,
+  "evals": 1,
+  "author_s": 128,
+  "sandbox_s": 34,
+  "submitted": {
+   "kind": "perf",
+   "target": "train_ir",
+   "claimed": 0.9456196610979122
+  },
+  "replay": {
+   "outcome": "accepted",
+   "ratio": 0.9547388323004837
+  },
+  "diff_lines": 58
+ }
+]
