@@ -10,7 +10,7 @@
 //       key file and every record match); keys made after the snapshot are reported, not failed
 //
 // The parts (scripts/deploy/backup.sh secrets):
-//   state     the hosted runtime's agent keys (var/lib/lineage/runtime/keys/<pubkey>.json) and the
+//   state     the hosted runtime's agent signing keys (var/lib/lineage/runtime/keys/<agent id>.json) and the
 //             site's own keys made on the server (home/lineage/.config/lineage/site/*.json)
 //   identity  the identity service's key file (etc/lineage-identity/master.key) and its encrypted
 //             records (var/lib/lineage/identity/records/<kind>/<id>.enc)
@@ -27,9 +27,8 @@ export const IDENTITY_KEY = "etc/lineage-identity/master.key";
 
 export interface StateFacts {
   part: "state";
+  /** agent id (the file name) -> public key of the agent's signing key held by the runtime */
   runtime_keys: Record<string, string>;
-  /** runtime key files whose name is not their public key */
-  misnamed: string[];
   site_keys: Record<string, string>;
 }
 export interface IdentityFacts {
@@ -50,13 +49,7 @@ function keyDir(dir: string): Record<string, string> {
 
 export function facts(part: string, root: string): Facts {
   if (part === "state") {
-    const runtime_keys = keyDir(join(root, RUNTIME_KEYS));
-    return {
-      part,
-      runtime_keys,
-      misnamed: Object.entries(runtime_keys).filter(([n, p]) => n !== p).map(([n]) => n),
-      site_keys: keyDir(join(root, SITE_KEYS_DIR)),
-    };
+    return { part, runtime_keys: keyDir(join(root, RUNTIME_KEYS)), site_keys: keyDir(join(root, SITE_KEYS_DIR)) };
   }
   if (part === "identity") {
     const keyFile = join(root, IDENTITY_KEY);
@@ -102,7 +95,6 @@ export function compare(snap: Facts, live: Facts): { ok: boolean; lines: string[
       const newer = Object.keys(b).filter((n) => !(n in a));
       lines.push(`${same.length === names.length && names.length > 0 ? "ok  " : names.length === 0 ? "note" : "FAIL"} ${label}: ${same.length} of ${names.length} in the snapshot equal the live ones by public key${newer.length ? `; ${newer.length} live key(s) made after the snapshot` : ""}`);
     }
-    if (snap.misnamed.length) bad(`runtime key files not named by their public key: ${snap.misnamed.join(", ")}`);
   } else if (snap.part === "identity" && live.part === "identity") {
     if (!snap.key_sha256) bad("identity key file missing from the snapshot");
     else if (snap.key_sha256 !== live.key_sha256) bad("identity key file differs from the live one");

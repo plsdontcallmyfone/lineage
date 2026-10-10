@@ -386,10 +386,11 @@ status)
   ;;
 backup)
   # the hourly timer's job now: the two secrets+state parts (each as its data's owner), then Core
+  # one transaction: lineage-backup.service wants the two parts, so each runs once
   rc=0
+  systemctl start lineage-backup-state.service lineage-backup-identity.service lineage-backup.service || rc=1
   for u in lineage-backup-state lineage-backup-identity lineage-backup; do
-    systemctl start "$u.service" || rc=1
-    journalctl -u "$u" -n 1 -o cat --no-pager
+    journalctl -u "$u" -n 3 -o cat --no-pager | grep -E '^snapshot|^backup:' | tail -1 || echo "$u: no snapshot line (journalctl -u $u)"
   done
   [ -s /etc/lineage/backup-recipient.txt ] || echo "secrets+state parts skipped: no /etc/lineage/backup-recipient.txt"
   exit $rc
@@ -482,7 +483,8 @@ restore-test)
       --admin-key /etc/lineage-core/admin.json --runtime-key /var/lib/lineage/site/runtime-authority.pub --canaries-dir "$D/no-canaries"
   ok=0; for i in $(seq 1 60); do curl -fsS -m 3 "http://127.0.0.1:$PORT/v1/health" >/dev/null 2>&1 && { ok=1; break; }; sleep 1; done
   if [ "$ok" = 1 ]; then
-    S="$(curl -fsS -m 10 "http://127.0.0.1:$PORT/v1/stats")"
+    # hidden=1: the stats count every agent row (hidden launches are left out of the default count)
+    S="$(curl -fsS -m 10 "http://127.0.0.1:$PORT/v1/stats?hidden=1")"
     E="$(curl -fsS -m 10 "http://127.0.0.1:$PORT/v1/epochs/current" | jq .n)"
     pass=0 fail=0
     chk() { if [ "$2" = "$3" ]; then pass=$((pass + 1)); echo "  ok   $1 $2"; else fail=$((fail + 1)); echo "  FAIL $1: restored Core $2, snapshot $3"; fi; }

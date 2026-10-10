@@ -26,7 +26,8 @@
 #   restore-secrets [state file] [identity file]   disaster recovery: decrypt the newest local parts (or
 #                   the given ones) here and write them into place on <host> (refuses to overwrite a
 #                   differing file; RESTORE_REPLACE=1 keeps the old ones aside). Run before `full` on a
-#                   new server so the site keeps its keys (docs/DEPLOY-SITE.md "Disaster recovery")
+#                   new server so the site keeps its keys (docs/DEPLOY-SITE.md "Disaster recovery");
+#                   RESTORE_PARTS limits the parts, RESTORE_ROOT writes under another directory (tests)
 #   restore-core [file]   disaster recovery: copy a local Core snapshot (default the newest) to <host> and
 #                   restore it (on a server with no release yet it only places the data for `full`)
 #   monitor         on the server: run the monitor now and print every check
@@ -301,7 +302,7 @@ prune() {
   [ -n "$list" ] || return 0
   if [ -n "${BACKUP_KEEP_DAYS:-}" ]; then
     echo "$list" | while read -r old; do
-      [ -n "$(find "$old" -mtime +"$BACKUP_KEEP_DAYS" 2>/dev/null)" ] && rm -f "$old" "$old.sha256"
+      if [ -n "$(find "$old" -mtime +"$BACKUP_KEEP_DAYS" 2>/dev/null)" ]; then rm -f "$old" "$old.sha256"; fi
     done
   else
     echo "$list" | tail -n +"${BACKUP_KEEP:-3}" | while read -r old; do rm -f "$old" "$old.sha256"; done
@@ -376,7 +377,7 @@ do_restore_secrets() {
   local p f t rc=0
   [ -f "$BACKUP_KEY" ] || { echo "no $BACKUP_KEY here: nothing can be decrypted" >&2; exit 1; }
   put_tools
-  for p in state identity; do
+  for p in ${RESTORE_PARTS:-state identity}; do
     if [ "$p" = state ]; then f="${EXTRA:-}"; else f="${4:-}"; fi
     [ -n "$f" ] || f="$(ls -1t "$BACKUP_LOCAL"/$p-*.tar.zst.age 2>/dev/null | head -1)"
     [ -f "$f" ] || { echo "no local $p snapshot in $BACKUP_LOCAL" >&2; rc=1; continue; }

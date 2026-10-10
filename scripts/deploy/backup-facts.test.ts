@@ -24,12 +24,11 @@ function fixture() {
 }
 
 describe("backup facts", () => {
-  test("state facts are public keys only, named by file", () => {
+  test("state facts are public keys only, by file name", () => {
     const { root, ids } = fixture();
     const f = facts("state", root) as StateFacts;
     expect(Object.keys(f.runtime_keys).sort()).toEqual([...ids].sort());
     for (const [n, p] of Object.entries(f.runtime_keys)) expect(p).toBe(n);
-    expect(f.misnamed).toEqual([]);
     expect(Object.keys(f.site_keys)).toEqual(["admin"]);
     expect(JSON.stringify(f)).not.toMatch(/\[\d/); // no secret key byte arrays
   });
