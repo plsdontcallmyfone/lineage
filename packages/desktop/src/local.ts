@@ -72,14 +72,23 @@ export class LocalBackend implements DesktopBackend {
     return this.run([this.docker, ...args], stdin, timeoutMs);
   }
 
+  private netReady: Promise<void> | null = null;
+
+  /** One setup at a time in this process; another process racing us is handled in setupNet. */
+  private ensureNet(allow: string[]): Promise<void> {
+    const p = (this.netReady ?? Promise.resolve()).catch(() => undefined).then(() => this.setupNet(allow));
+    this.netReady = p;
+    return p;
+  }
+
   /** The internal network and the allowlist proxy; recreated when the allowlist changed. */
-  private async ensureNet(allow: string[]): Promise<void> {
+  private async setupNet(allow: string[]): Promise<void> {
     if ((await this.d(["network", "inspect", NETWORK])).code !== 0) {
       const r = await this.d(["network", "create", "--internal", "--label", "lineage=1", NETWORK]);
       if (r.code !== 0 && !/already exists/.test(r.stderr)) throw new Error(`desktop network: ${r.stderr.trim()}`);
     }
     const want = allow.join(",");
-    const st = await this.d(["inspect", "--format", "{{.State.Running}} {{range .Config.Env}}{{println .}}{{end}}", PROXY]);
+    const st = await this.d(["inspect", "--format", "{{println .State.Running}}{{range .Config.Env}}{{println .}}{{end}}", PROXY]);
     const running = st.code === 0 && st.stdout.startsWith("true");
     const has = st.stdout.split("\n").find((l) => l.startsWith("DESK_ALLOW="))?.slice("DESK_ALLOW=".length) ?? null;
     if (running && has === want) {
@@ -93,7 +102,12 @@ export class LocalBackend implements DesktopBackend {
       "--user", "1000:1000", "--memory", "128m", "--pids-limit", "128",
       "-e", `DESK_ALLOW=${want}`, "--entrypoint", "/usr/local/bin/desk-proxy", this.image,
     ]);
-    if (r.code !== 0) throw new Error(`desktop proxy: ${r.stderr.trim()}`);
+    if (r.code !== 0) {
+      // another process created it at the same moment: use it when it runs with this allowlist
+      const again = await this.d(["inspect", "--format", "{{println .State.Running}}{{range .Config.Env}}{{println .}}{{end}}", PROXY]);
+      const ok = again.code === 0 && again.stdout.startsWith("true") && again.stdout.split("\n").includes(`DESK_ALLOW=${want}`);
+      if (!ok) throw new Error(`desktop proxy: ${r.stderr.trim()}`);
+    }
     const c = await this.d(["network", "connect", NETWORK, PROXY]);
     if (c.code !== 0 && !/already exists/.test(c.stderr)) throw new Error(`desktop proxy network: ${c.stderr.trim()}`);
     this.proxyAllow = want;
