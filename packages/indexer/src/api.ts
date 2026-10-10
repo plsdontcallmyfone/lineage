@@ -1,7 +1,9 @@
 import type { Database } from "bun:sqlite";
 import { ensureCoreSchema } from "./core-sync.ts";
 
-// Read API (docs/plans/LAUNCHPAD-AND-LIVE.md L2), JSON with CORS *. Prices are tLINE per agent
+// Read API (docs/plans/LAUNCHPAD-AND-LIVE.md L2), JSON with CORS *. Agent tokens trade on pump.fun
+// (owner decisions 2026-10-10); a token from the earlier Meteora venue is listed with venue "meteora"
+// and read_only true (devnet history, no new trades). Prices are $LINE per agent
 // token; amounts are UI units (numbers) with the exact base units next to them as strings ("_raw").
 // Times are unix seconds. Nothing is estimated: a figure the chain has not produced yet is null.
 
@@ -30,6 +32,7 @@ interface TokRow {
   fees_claimed: string | null; to_compute: string | null; to_protocol: string | null; debited: string | null; withdrawn: string | null;
   supply: string | null; quote_reserve: string | null; migration_threshold: string | null; spot_price: number | null; start_price: number | null;
   compute_vault: string; compute_balance: string | null; holders: number | null; holders_source: string | null; holders_at: number | null; state_at: number | null;
+  venue: string; pump_creator: string | null; progress: number | null; creator_fee_income: string | null;
 }
 
 // CORS for configured origins (embed kit, docs/EMBED.md): with LINEAGE_CORS_ORIGINS unset every answer
@@ -113,11 +116,14 @@ function marketHandler(db: Database, status: StatusSource, opts: { now?: () => n
     const price = t.spot_price;
     const threshold = t.migration_threshold ? BigInt(t.migration_threshold) : null;
     const reserve = t.quote_reserve ? BigInt(t.quote_reserve) : null;
+    const pump = t.venue === "pump";
     return {
       mint: t.mint,
       agent: t.agent,
       name: t.name,
       symbol: t.symbol,
+      venue: pump ? "pump" : "meteora",
+      read_only: !pump,
       phase: t.graduated ? "graduated" : "curve",
       migrated: t.migrated === 1,
       price,
@@ -126,7 +132,8 @@ function marketHandler(db: Database, status: StatusSource, opts: { now?: () => n
       volume_24h_base: vol.b,
       trades_24h: vol.n,
       change_24h: price != null && refPrice ? price / refPrice - 1 : null,
-      curve_progress: t.graduated ? 1 : reserve != null && threshold ? Number(reserve) / Number(threshold) : null,
+      // pump.fun: the share of the curve's real tokens sold (its graduation raise in $LINE is set by pump.fun at launch)
+      curve_progress: t.graduated ? 1 : pump ? t.progress : reserve != null && threshold ? Number(reserve) / Number(threshold) : null,
       quote_reserve: ui(t.quote_reserve, qd),
       migration_threshold: ui(t.migration_threshold, qd),
       holders: t.holders,
@@ -156,6 +163,10 @@ function marketHandler(db: Database, status: StatusSource, opts: { now?: () => n
       identity_mode: t.identity_mode,
       awake: t.awake == null ? null : t.awake === 1,
       pools: {
+        venue: t.venue === "pump" ? "pump" : "meteora",
+        bonding_curve: t.venue === "pump" ? t.dbc_pool : null,
+        pump_pool: t.venue === "pump" ? t.damm_pool : null,
+        pump_creator: t.pump_creator,
         launch_account: t.launch_account,
         dbc_config: t.dbc_config,
         dbc_pool: t.dbc_pool,
@@ -175,6 +186,10 @@ function marketHandler(db: Database, status: StatusSource, opts: { now?: () => n
         to_compute_raw: t.to_compute,
         to_treasury_raw: t.to_protocol,
         cranks: fees.n,
+        // pump.fun: creator fees the agent's trades charged (income, from the trade events) and what pump.fun's sweeps paid out
+        creator_fee_income: ui(t.creator_fee_income, qd),
+        creator_fee_income_raw: t.creator_fee_income,
+        swept_raw: sweptRaw(t.mint),
       },
       compute_vault: {
         address: t.compute_vault,
@@ -188,6 +203,12 @@ function marketHandler(db: Database, status: StatusSource, opts: { now?: () => n
     };
   }
 
+  const sweptRaw = (mint: string) =>
+    (db.query("SELECT amount_raw AS a FROM sweeps WHERE mint = ?").all(mint) as { a: string }[]).reduce((n, r) => n + BigInt(r.a), 0n).toString();
+  const alerts = () => {
+    const v = (db.query("SELECT v FROM meta WHERE k = 'pump_alerts'").get() as { v: string } | null)?.v;
+    return v ? (JSON.parse(v) as { checked_at: number; baseline: unknown; alerts: { kind: string; subject: string; detail: string }[] }) : null;
+  };
   const getTok = (mint: string) => (MINT.test(mint) ? (db.query("SELECT * FROM tokens WHERE mint = ?").get(mint) as TokRow | null) : null);
 
   return async function handle(req: Request): Promise<Response> {
@@ -203,6 +224,11 @@ function marketHandler(db: Database, status: StatusSource, opts: { now?: () => n
     };
 
     if (parts.length === 2 && parts[1] === "status") return json(status());
+    // pump.fun watch (docs/plans/PUMPFUN-LAUNCHES.md 6.6): creator reassignments, max_curve_depth and fee config changes
+    if (parts.length === 2 && parts[1] === "alerts") {
+      const a = alerts();
+      return json({ checked_at: a?.checked_at ?? null, baseline: a?.baseline ?? null, alerts: a?.alerts ?? [] });
+    }
     if (parts.length === 2 && parts[1] === "summary") {
       const rows = (db.query("SELECT * FROM tokens").all() as TokRow[]).map(summary).filter((r) => !r.hidden);
       const synced = (db.query("SELECT v FROM meta WHERE k = 'core_synced_at'").get() as { v: string } | null)?.v ?? null;
@@ -218,6 +244,7 @@ function marketHandler(db: Database, status: StatusSource, opts: { now?: () => n
         hidden: (db.query("SELECT COUNT(*) AS n FROM hidden_mints").get() as { n: number }).n,
         core_synced_at: synced ? Number(synced) : null,
         quote: QUOTE,
+        alerts: alerts()?.alerts.length ?? null,
       });
     }
     if (parts[1] !== "tokens") return json({ error: "not found" }, 404);
@@ -306,11 +333,12 @@ function marketHandler(db: Database, status: StatusSource, opts: { now?: () => n
         args.push(limit);
         const rows = db.query(`SELECT * FROM trades WHERE mint = ?${cond} ORDER BY slot DESC, sig DESC, idx DESC LIMIT ?`).all(...args) as
           { sig: string; idx: number; slot: number; time: number | null; venue: string; side: string; base: number; quote: number; base_raw: string;
-            quote_raw: string; price: number; spot_after: number | null; fee_raw: string | null; trader: string }[];
+            quote_raw: string; price: number; spot_after: number | null; fee_raw: string | null; trader: string; creator_fee_raw: string | null }[];
         return json({
           mint: t.mint,
           trades: rows.map((r) => ({ signature: r.sig, index: r.idx, slot: r.slot, time: r.time, venue: r.venue, side: r.side, base_amount: r.base,
-            quote_amount: r.quote, base_raw: r.base_raw, quote_raw: r.quote_raw, price: r.price, price_after: r.spot_after, trader: r.trader })),
+            quote_amount: r.quote, base_raw: r.base_raw, quote_raw: r.quote_raw, price: r.price, price_after: r.spot_after, trader: r.trader,
+            creator_fee_raw: r.creator_fee_raw })),
           next: rows.length === limit ? rows[rows.length - 1]!.sig : null,
         });
       }
@@ -336,10 +364,16 @@ function marketHandler(db: Database, status: StatusSource, opts: { now?: () => n
             balance_raw: string; awake: number }[];
         return json({
           mint: t.mint,
-          cranks: rows.map((r) => ({ signature: r.sig, slot: r.slot, time: r.time, source: r.pool_fees ? "damm_v2" : "dbc", amount: ui(r.fees_raw, qd),
+          cranks: rows.map((r) => ({ signature: r.sig, slot: r.slot, time: r.time,
+            source: t.venue === "pump" ? (r.pool_fees ? "pump_curve_and_pool" : "pump_curve") : r.pool_fees ? "damm_v2" : "dbc", amount: ui(r.fees_raw, qd),
             to_vault: ui(r.to_compute_raw, qd), to_treasury: ui(r.to_protocol_raw, qd), amount_raw: r.fees_raw, to_vault_raw: r.to_compute_raw,
             to_treasury_raw: r.to_protocol_raw, vault_balance_after: ui(r.balance_raw, qd), awake_after: r.awake === 1 })),
           totals_onchain: { claimed: ui(t.fees_claimed, qd), to_vault: ui(t.to_compute, qd), to_treasury: ui(t.to_protocol, qd) },
+          creator_fee_income: ui(t.creator_fee_income, qd),
+          creator_fee_income_raw: t.creator_fee_income,
+          sweeps: (db.query("SELECT * FROM sweeps WHERE mint = ? ORDER BY slot DESC, idx DESC").all(t.mint) as
+            { sig: string; slot: number; time: number | null; venue: string; amount_raw: string; recipient: string }[])
+            .map((r) => ({ signature: r.sig, slot: r.slot, time: r.time, venue: r.venue, amount: ui(r.amount_raw, qd), amount_raw: r.amount_raw, recipient: r.recipient })),
           compute_vault: { address: t.compute_vault, balance: ui(t.compute_balance, qd) },
         });
       }

@@ -1,63 +1,42 @@
 #!/usr/bin/env bun
-// Records real devnet transactions (and the decoding context of their token) as unit-test fixtures:
-//   bun packages/indexer/scripts/record-fixtures.ts
-// Run once; the tests never touch the network. The RPC URL is resolved and never printed.
-import { writeFileSync } from "node:fs";
+// Records the pump.fun proof's transactions (scripts/mainnet/pump-fork-proof.ts, a local fork of
+// mainnet running mainnet's own Pump and PumpSwap builds) as the indexer's unit-test fixtures:
+//   bun packages/indexer/scripts/record-fixtures.ts [--rpc http://127.0.0.1:9690]
+// Run once while the fork is up; the tests never touch the network. Reads the fork only.
+import { readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { Rpc } from "@lineage/chain";
-import { devnetRpcUrl, redactRpc } from "@lineage/chain/src/endpoint.ts";
-import { openDb } from "../src/db.ts";
-import { Indexer } from "../src/indexer.ts";
-import { throttledTransport } from "../src/rpc.ts";
+import { PUMP, pumpPdas } from "@lineage/chain";
 
-const FIX: { name: string; mint: string; sig: string; what: string }[] = [
-  { name: "dbc-buy", mint: "3AvZ77ZdVPx7yxtqA4UP11DoaPdjdgP3AUbkSnidsmY4", what: "DBC swap2 buy with 100,000 tLINE (onchain/DEVNET.md trade 1)",
-    sig: "22t5VJqUFFotAMBi2MqNyHeT9MGgWvAReRvGQgAnfXyQsMjVTJun1YzrG3pK7GBwAQcQfCKbfKpKvcBgrZmrVMpb" },
-  { name: "dbc-sell", mint: "3AvZ77ZdVPx7yxtqA4UP11DoaPdjdgP3AUbkSnidsmY4", what: "DBC sell",
-    sig: "pemem7Vi8A9bwKbDFTyZ2RqSjrJzuKj3uJwHUK9tL22wTVhMYiQfR58Smzf6fBkNZX8WGga3a6mVGSaoBTdx6Mw" },
-  { name: "launch", mint: "3AvZ77ZdVPx7yxtqA4UP11DoaPdjdgP3AUbkSnidsmY4", what: "launch_agent of the minbpe TEST agent",
-    sig: "m6i7TWPRyteP74E9EgikqYJ3fDNbeFHYwzCB9EA3EysyuAkzMA2naZAJVnZNB2CvBsonakNAX3Qvm6fYZHDy8Te" },
-  { name: "crank-fees", mint: "AbBT1Mh3mQJgMfVVfKj8zUZhD4mLw5NqbJptFUacb9Zz", what: "crank_fees on the curve (L1 graduation run)",
-    sig: "5GE692Wbb7g3XxKy8nfXuCk6SEmBy6f92vuU625pQhTuUa8Ns1pt9iSyPjhzahQthQzmWGmZn9fzrpvkAaN4VcHC" },
-  { name: "curve-fill", mint: "AbBT1Mh3mQJgMfVVfKj8zUZhD4mLw5NqbJptFUacb9Zz", what: "PartialFill buy that completes the curve",
-    sig: "4HRQQZLrssiiE628hihVX1mdHtrey9eUqNChFtYCK6YWkXHj5HBC2nesajzsJzVUKiduE2taJjYt4vv6E5iF2foc" },
-  { name: "migration", mint: "AbBT1Mh3mQJgMfVVfKj8zUZhD4mLw5NqbJptFUacb9Zz", what: "Meteora DBC migration_damm_v2",
-    sig: "2t7gGK2G5AVY5h7ETNVCgwkwmZVsaga2W1Hfr53eVkoTJcoXCKuhg8eTseKAZeh2XiSokTjypxeGYwD8zpbjt5ZU" },
-  { name: "graduate", mint: "AbBT1Mh3mQJgMfVVfKj8zUZhD4mLw5NqbJptFUacb9Zz", what: "lineage_launch graduate",
-    sig: "45KsTw5VkWHEaWFm2SekcYqVPhbNxdK6sJnsbuNTKyw3pW5VDFeDXeQLSRs15FDaMrwEZKHAFvraVCFNa8BJLtZU" },
-  { name: "repoint", mint: "AbBT1Mh3mQJgMfVVfKj8zUZhD4mLw5NqbJptFUacb9Zz", what: "lineage_launch repoint_position",
-    sig: "3zn9K1ZAzuy6QjY9bCyGSpumkaAMH3199dAu5QzP8JAiDL8u52yJPV13o53DWdrBg6tXtwRqQ1LoPfEJPPLPcRif" },
-  { name: "damm-buy", mint: "AbBT1Mh3mQJgMfVVfKj8zUZhD4mLw5NqbJptFUacb9Zz", what: "DAMM v2 buy with 200,000 tLINE",
-    sig: "4GtTHiSzF39LJtndbTgwtfLDBwioBWee6uGm1qrvwHqZWrEKAfTmAxhpLf6AvakuXFUqAKo6MiHWGHZ6F1tcHyf2" },
-  { name: "damm-sell", mint: "AbBT1Mh3mQJgMfVVfKj8zUZhD4mLw5NqbJptFUacb9Zz", what: "DAMM v2 sell of 4011979457935 base units",
-    sig: "3NnnED1Q2GYDaioL27Zv2p8aKyPrmZmiG4qemqxWa66qCn2rc5wthkEu2M5f53PhzToPtci7bFB2o9wVRyZK8EXn" },
-  { name: "crank-pool-fees", mint: "AbBT1Mh3mQJgMfVVfKj8zUZhD4mLw5NqbJptFUacb9Zz", what: "crank_pool_fees (repointed position)",
-    sig: "dC5P7KcVvgGvTGcFNkzfnjppuob9Xhv8B3g76RfnWmje547UNCYNaXAfipqkv237NoVDX1u15u2Xc4skFD1vxVt" },
-  { name: "add-liquidity", mint: "AbBT1Mh3mQJgMfVVfKj8zUZhD4mLw5NqbJptFUacb9Zz", what: "DAMM v2 add_liquidity + permanent_lock_position (deployer)",
-    sig: "482eBJmn5S3xcAgyYF2xhxmiLspDHyUHHMm2c4WtGcF6of14yK81hAzQQvkCiRzYzN4x13e5WXaBUrQ1Ts2S4wFM" },
-  { name: "damm-buy-2", mint: "AbBT1Mh3mQJgMfVVfKj8zUZhD4mLw5NqbJptFUacb9Zz", what: "DAMM v2 buy with 200,000 tLINE (repointed position)",
-    sig: "ejSb3Y45BcLphC1f5WQ1kKjTxkiujtMx5ZrH6s3GcdCr4NFjaY6Q7U1FsaTxMm9btpGH89VUANc8i6Cv1BGRMWx" },
-  { name: "damm-sell-2", mint: "AbBT1Mh3mQJgMfVVfKj8zUZhD4mLw5NqbJptFUacb9Zz", what: "DAMM v2 sell of 2641779346064 base units",
-    sig: "5KNVbANFmNnqaicQTp46YZk4ktiuU77qu2178UuexndurXcGKW4HVSoSM3anYYgAJkrJ8ufBUMXYe5VtkBFWiWEA" },
-];
-const only = process.argv.slice(2);
-
-const url = devnetRpcUrl();
-console.log(`rpc ${redactRpc(url)}`);
-const rpc = new Rpc(throttledTransport(url).transport);
-const db = openDb(":memory:");
-const ix = new Indexer(db, rpc);
-await ix.discover();
-await ix.refreshState();
-const dir = join(import.meta.dir, "../test/fixtures");
-for (const f of FIX.filter((x) => !only.length || only.includes(x.name))) {
-  const t = db.query("SELECT * FROM tokens WHERE mint = ?").get(f.mint) as Record<string, string | number | null>;
-  const ctx = {
-    mint: f.mint, lineMint: ix.lineMint, dbcPool: t.dbc_pool, dbcBaseVault: t.dbc_base_vault, dbcQuoteVault: t.dbc_quote_vault,
-    dammPool: t.damm_pool, dammBaseVault: t.damm_base_vault, dammQuoteVault: t.damm_quote_vault, baseDecimals: t.decimals, quoteDecimals: ix.lineDecimals,
-  };
-  const tx = await rpc.call("getTransaction", [f.sig, { encoding: "json", commitment: "confirmed", maxSupportedTransactionVersion: 0 }]);
-  if (!tx) throw new Error(`${f.name}: not found`);
-  writeFileSync(join(dir, `${f.name}.json`), JSON.stringify({ name: f.name, what: f.what, recorded_at: new Date().toISOString(), ctx, tx }, null, 1) + "\n");
-  console.log(`${f.name} ok`);
+const argv = process.argv.slice(2);
+const url = argv.includes("--rpc") ? argv[argv.indexOf("--rpc") + 1]! : "http://127.0.0.1:9690";
+if (!url.startsWith("http://127.0.0.1:")) throw new Error("records from a local fork only");
+const proof = JSON.parse(readFileSync(join(import.meta.dir, "../../../scripts/mainnet/PUMP-FORK-LAST.json"), "utf8"));
+const call = async (method: string, params: unknown[]) => {
+  const r = await (await fetch(url, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ jsonrpc: "2.0", id: 1, method, params }) })).json();
+  if (r.error) throw new Error(`${method}: ${JSON.stringify(r.error)}`);
+  return r.result;
+};
+const acct = async (a: string) => (await call("getAccountInfo", [a, { encoding: "base64" }]))?.value?.data?.[0] ?? null;
+const { line, a1, a2 } = proof.mints;
+// the transactions that touch an agent coin (A1 on $LINE's curve, A2 after $LINE migrated)
+const STEPS = ["2", "3a", "3b", "3c", "3d", "4", "7a", "7b", "8b", "8c", "9a", "9b", "9c", "9d"];
+const txs = [];
+for (const step of STEPS) {
+  const row = proof.rows.find((r: { step: string }) => r.step === step);
+  const tx = await call("getTransaction", [row.signature, { encoding: "json", commitment: "confirmed", maxSupportedTransactionVersion: 0 }]);
+  if (!tx) throw new Error(`${step}: not found`);
+  txs.push({ step, what: row.what, tx });
 }
+const out = {
+  _note: "Recorded from the mainnet fork run of scripts/mainnet/pump-fork-proof.ts (mainnet's pump.fun programs and Global, 2026-10-10).",
+  recorded_at: new Date().toISOString(), mints: proof.mints, creator_pdas: proof.creator_pdas,
+  // measured by the proof: the creator PDA's $LINE balance after the sweeps and collects
+  pda_line_after_sweeps: { a1: "103289391468", a2: (295195554190n + 425712173n).toString() },
+  accounts: {
+    global: await acct(PUMP.global), fee_config: await acct(PUMP.feeConfig), amm_fee_config: await acct(PUMP.ammFeeConfig),
+    a1_curve: await acct(pumpPdas.bondingCurve(a1)), a2_curve: await acct(pumpPdas.bondingCurve(a2)), a2_pool: await acct(pumpPdas.pool(a2, line)),
+  },
+  txs,
+};
+writeFileSync(join(import.meta.dir, "../test/fixtures/pump-fork-txs.json"), JSON.stringify(out) + "\n");
+console.log(`recorded ${txs.length} transactions`);

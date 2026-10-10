@@ -2,8 +2,15 @@ import { Database } from "bun:sqlite";
 import type { Decoded } from "./decode.ts";
 
 // SQLite store. Amounts are base-unit integers kept as TEXT (u64 does not fit a JS number safely);
-// prices are REAL (tLINE per agent token). Every row a transaction produces is keyed by its
+// prices are REAL ($LINE per agent token). Every row a transaction produces is keyed by its
 // signature, so re-ingesting a transaction changes nothing.
+//
+// pump.fun (owner decisions 2026-10-10): a token row keeps the first layout's columns so a database
+// written before the venue change opens unchanged. For a pump.fun token `venue` is "pump",
+// dbc_config holds Pump's program id, dbc_pool its bonding curve, dbc_base_vault and dbc_quote_vault
+// the curve's token accounts, and damm_pool, damm_base_vault and damm_quote_vault the canonical
+// PumpSwap pool and its vaults once it exists. Rows from before the change are `venue` "meteora":
+// history, read-only, never ingested again.
 
 export const SCHEMA = `
 CREATE TABLE IF NOT EXISTS meta (k TEXT PRIMARY KEY, v TEXT NOT NULL);
@@ -44,6 +51,11 @@ CREATE TABLE IF NOT EXISTS events (sig TEXT NOT NULL, mint TEXT NOT NULL, kind T
 CREATE TABLE IF NOT EXISTS token_accounts (mint TEXT NOT NULL, account TEXT NOT NULL, owner TEXT NOT NULL, amount TEXT NOT NULL, slot INTEGER NOT NULL,
   PRIMARY KEY (mint, account));
 CREATE TABLE IF NOT EXISTS holders (mint TEXT NOT NULL, owner TEXT NOT NULL, amount TEXT NOT NULL, PRIMARY KEY (mint, owner));
+CREATE TABLE IF NOT EXISTS sweeps (
+  sig TEXT NOT NULL, idx INTEGER NOT NULL, mint TEXT NOT NULL, venue TEXT NOT NULL, slot INTEGER NOT NULL, time INTEGER, amount_raw TEXT NOT NULL, recipient TEXT NOT NULL,
+  PRIMARY KEY (sig, idx, mint)
+);
+CREATE INDEX IF NOT EXISTS sweeps_mint ON sweeps (mint, slot);
 `;
 
 export function openDb(path: string): Database {
@@ -53,13 +65,21 @@ export function openDb(path: string): Database {
   // columns added after the first layout (CREATE TABLE IF NOT EXISTS keeps an older table as it was)
   const cols = new Set((db.query("PRAGMA table_info(tokens)").all() as { name: string }[]).map((c) => c.name));
   if (!cols.has("holders_source")) db.exec("ALTER TABLE tokens ADD COLUMN holders_source TEXT");
+  if (!cols.has("venue")) db.exec("ALTER TABLE tokens ADD COLUMN venue TEXT NOT NULL DEFAULT 'meteora'");
+  if (!cols.has("pump_creator")) db.exec("ALTER TABLE tokens ADD COLUMN pump_creator TEXT");
+  if (!cols.has("progress")) db.exec("ALTER TABLE tokens ADD COLUMN progress REAL");
+  if (!cols.has("creator_fee_income")) db.exec("ALTER TABLE tokens ADD COLUMN creator_fee_income TEXT");
+  const tcols = new Set((db.query("PRAGMA table_info(trades)").all() as { name: string }[]).map((c) => c.name));
+  if (!tcols.has("creator_fee_raw")) db.exec("ALTER TABLE trades ADD COLUMN creator_fee_raw TEXT");
+  if (!tcols.has("completing")) db.exec("ALTER TABLE trades ADD COLUMN completing INTEGER NOT NULL DEFAULT 0");
   return db;
 }
 
 /** Stores one decoded transaction for one token, in one SQLite transaction. Idempotent by signature. */
 export function storeDecoded(db: Database, mint: string, d: Decoded, decimals: { base: number; quote: number }) {
   const tr = db.prepare(`INSERT OR IGNORE INTO trades (sig, idx, mint, venue, slot, time, side, base_raw, quote_raw, base, quote, price, spot_after, fee_raw,
-    trader, source) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`);
+    trader, source, creator_fee_raw, completing) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`);
+  const sw = db.prepare(`INSERT OR IGNORE INTO sweeps (sig, idx, mint, venue, slot, time, amount_raw, recipient) VALUES (?,?,?,?,?,?,?,?)`);
   const fc = db.prepare(`INSERT OR IGNORE INTO fee_cranks (sig, idx, mint, slot, time, fees_raw, to_compute_raw, to_protocol_raw, pool_fees, balance_raw, awake)
     VALUES (?,?,?,?,?,?,?,?,?,?,?)`);
   const ev = db.prepare(`INSERT OR IGNORE INTO events (sig, mint, kind, slot, time, detail) VALUES (?,?,?,?,?,?)`);
@@ -69,8 +89,9 @@ export function storeDecoded(db: Database, mint: string, d: Decoded, decimals: {
   db.transaction(() => {
     for (const t of d.trades) {
       tr.run(t.sig, t.idx, mint, t.venue, t.slot, t.time, t.side, t.baseRaw.toString(), t.quoteRaw.toString(), Number(t.baseRaw) / 10 ** decimals.base,
-        Number(t.quoteRaw) / 10 ** decimals.quote, t.price, t.spotAfter, t.feeRaw?.toString() ?? null, t.trader, t.source);
+        Number(t.quoteRaw) / 10 ** decimals.quote, t.price, t.spotAfter, t.feeRaw.toString(), t.trader, t.source, t.creatorFeeRaw.toString(), t.completing ? 1 : 0);
     }
+    for (const s of d.sweeps) sw.run(s.sig, s.idx, mint, s.venue, s.slot, s.time, s.amountRaw.toString(), s.recipient);
     for (const f of d.fees) {
       fc.run(f.sig, f.idx, mint, f.slot, f.time, f.feesRaw.toString(), f.toComputeRaw.toString(), f.toProtocolRaw.toString(), f.poolFees ? 1 : 0,
         f.balanceRaw.toString(), f.awake ? 1 : 0);

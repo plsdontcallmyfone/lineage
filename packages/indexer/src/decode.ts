@@ -1,43 +1,38 @@
 import { base58Decode } from "@lineage/protocol";
-import { sha256, toAddress, type Address } from "@lineage/chain";
+import { decodePumpEvent, ixDisc, LAUNCH_PROGRAM_ID, PUMP, pumpPdas, sha256, toAddress, type Address, type PumpEvent } from "@lineage/chain";
 
 // Decodes one confirmed transaction (getTransaction, encoding "json") into the market records of one
-// agent token: trades on its DBC curve or its DAMM v2 pool, lineage_launch fee cranks, and lifecycle
-// events (launch, Meteora migration, graduation). Pure: no RPC, so tests replay recorded devnet
-// transactions.
+// agent token on pump.fun (owner decisions 2026-10-10, docs/plans/PUMPFUN-LAUNCHES.md 6.6): trades on
+// its bonding curve and on its canonical PumpSwap pool, creator fee income and sweeps, lineage_launch
+// fee cranks, and lifecycle events (launch, completion, migration, graduation). Pure: no RPC, so tests
+// replay transactions recorded on the mainnet fork.
 //
-// Trade amounts come from the pool vaults' token balance deltas (what the trader actually paid and
-// got; Meteora keeps its fees in the vaults until claimed). The swap instruction gives the trader
-// and the venue, and Meteora's own swap event (emit_cpi, official IDLs: DBC EvtSwap2, DAMM v2
-// EvtSwap2) gives the direction and the pool price after the trade. A transaction with several
-// swaps on the same pool takes amounts from the events instead.
+// Trades come from pump.fun's own events (the event-CPI self invocation of Pump and PumpSwap, decoded
+// by packages/chain decodePumpEvent): Pump TradeEvent (a completing v3 buy adds its
+// PostCompleteBuyEvent), PumpSwap BuyEvent and SellEvent of the token's canonical pool. Only events of
+// this token count, so the $LINE hop of a multi_hop_swap is ignored. TradeEvent.ix_name is not read:
+// mainnet's build writes "buy" for buy_v3 (packages/chain/test/pump.test.ts).
+//
+// Amounts the trader paid (buy) or got (sell), in $LINE base units: curve trades quote_amount plus (buy)
+// or minus (sell) the protocol and creator fee; a completing buy adds its pool leg's quote_in and fees;
+// pool buys the larger of user_quote_amount_in (an exact-out buy: net plus every fee) and
+// quote_amount_in (an exact-in buy such as a multi-hop leg: the whole budget); pool sells
+// user_quote_amount_out. Each is checked against the trader's token balance deltas in
+// test/decode.test.ts. Creator fee income is counted at the trade (creator_fee, coin_creator_fee);
+// sweeps (bucket 1) are payouts, recorded apart and never added to income.
 
-export const DBC_PROGRAM = "dbcij3LWUppWqq96dh6gJWwBifmcGfLSB5D4DuSMaqN";
-export const DAMM_V2_PROGRAM = "cpamdpZCGKUy5JxQXB4dcpGPiikHawvSWAd6mEn1sGG";
-export const LAUNCH_PROGRAM = "8eHzm1XtNtbxJujrMAci4VdhCJvQttFUBukmkFaUwsAT";
+export { LAUNCH_PROGRAM_ID };
 
-const disc = (prefix: string, name: string) => sha256(`${prefix}:${name}`).subarray(0, 8);
 const hex = (b: Uint8Array) => Buffer.from(b).toString("hex");
 /** Anchor's emit_cpi tag: sha256("anchor:event")[..8], reversed. */
 export const EVENT_IX_TAG = "e445a52e51cb9a1d";
-const IX = {
-  swap: hex(disc("global", "swap")),
-  swap2: hex(disc("global", "swap2")),
-  swap2Hook: hex(disc("global", "swap2_with_transfer_hook")),
-  migrationDammV2: hex(disc("global", "migration_damm_v2")),
-  launchAgent: hex(disc("global", "launch_agent")),
-  crankFees: hex(disc("global", "crank_fees")),
-  crankPoolFees: hex(disc("global", "crank_pool_fees")),
-  repointPosition: hex(disc("global", "repoint_position")),
-};
 const EV = {
-  dbcSwap: hex(disc("event", "EvtSwap")),
-  swap2: hex(disc("event", "EvtSwap2")), // same name in DBC and DAMM v2
-  dbcSwap2Hook: hex(disc("event", "EvtSwap2WithTransferHook")),
-  feesCranked: hex(disc("event", "FeesCranked")),
-  graduated: hex(disc("event", "Graduated")),
-  agentLaunched: hex(disc("event", "AgentLaunched")),
+  feesCranked: hex(sha256("event:FeesCranked").subarray(0, 8)),
+  pumpGraduated: hex(sha256("event:PumpGraduated").subarray(0, 8)),
+  pumpLaunched: hex(sha256("event:PumpLaunched").subarray(0, 8)),
 };
+const MIGRATE_V2 = hex(ixDisc("migrate_v2"));
+const AMM_EVENT_AUTHORITY = pumpPdas.ammEventAuthority();
 
 /** The subset of getTransaction (encoding "json") the decoder reads. */
 export interface RawTx {
@@ -70,17 +65,17 @@ interface TokenBalance {
 export interface TokenCtx {
   mint: Address;
   lineMint: Address;
-  dbcPool: Address;
-  dbcBaseVault: Address;
-  dbcQuoteVault: Address;
-  dammPool?: Address | null;
-  dammBaseVault?: Address | null;
-  dammQuoteVault?: Address | null;
+  /** Pump bonding curve PDA of the mint. */
+  curve: Address;
+  /** The canonical PumpSwap pool PDA of the mint quoted in $LINE (whether or not it exists yet). */
+  pool: Address;
   baseDecimals: number;
   quoteDecimals: number;
+  /** lineage_launch's id (default: the active profile's). */
+  launchProgram?: Address;
 }
 
-export type Venue = "dbc" | "damm";
+export type Venue = "curve" | "pool";
 export interface Trade {
   sig: string;
   idx: number;
@@ -90,17 +85,21 @@ export interface Trade {
   side: "buy" | "sell";
   /** Agent token base units the trader got (buy) or gave (sell). */
   baseRaw: bigint;
-  /** tLINE base units the trader paid (buy, fee included) or got (sell, net of fee). */
+  /** $LINE base units the trader paid (buy, fees included) or got (sell, net of fees). */
   quoteRaw: bigint;
-  /** tLINE per agent token, from the two amounts. */
+  /** $LINE per agent token, from the two amounts. */
   price: number;
-  /** Pool price after the trade (tLINE per token) from the event's next_sqrt_price, when present. */
+  /** Curve price after the trade from the event's virtual reserves (curve trades), else null. */
   spotAfter: number | null;
-  /** Meteora's trading fee on this trade (event), in the fee token's base units, when present. */
-  feeRaw: bigint | null;
+  /** Every fee the trade charged (protocol, creator, LP), $LINE base units. */
+  feeRaw: bigint;
+  /** The creator fee the trade charged (income of the agent's creator PDA). */
+  creatorFeeRaw: bigint;
   trader: Address;
-  /** "deltas" (vault balance deltas) or "event" (several swaps in one transaction). */
-  source: "deltas" | "event";
+  /** Always "event": amounts come from pump.fun's own events. */
+  source: "event";
+  /** Set on a curve buy that crossed the curve's end (synthetic migration). */
+  completing: boolean;
 }
 export interface FeeCrank {
   sig: string;
@@ -114,11 +113,21 @@ export interface FeeCrank {
   balanceRaw: bigint;
   awake: boolean;
 }
+/** A pump.fun sweep of the creator fee bucket (a payout to the creator's vault, not income). */
+export interface Sweep {
+  sig: string;
+  idx: number;
+  slot: number;
+  time: number | null;
+  venue: Venue;
+  amountRaw: bigint;
+  recipient: Address;
+}
 export interface LifeEvent {
   sig: string;
   slot: number;
   time: number | null;
-  kind: "launch" | "migration" | "graduated" | "repointed";
+  kind: "launch" | "complete" | "migration" | "graduated";
   detail: Record<string, string>;
 }
 export interface Decoded {
@@ -128,6 +137,7 @@ export interface Decoded {
   failed: boolean;
   trades: Trade[];
   fees: FeeCrank[];
+  sweeps: Sweep[];
   events: LifeEvent[];
   /** Post-transaction balance of every token account of the agent mint the transaction touched. */
   balances: { account: Address; owner: Address; amountRaw: bigint }[];
@@ -139,64 +149,13 @@ interface FlatIx {
   data: Uint8Array;
 }
 
-/** Price of a Q64.64 sqrt price as tokens of quote per token of base, decimals applied. */
-export function sqrtPriceToPrice(sqrt: bigint, baseDecimals: number, quoteDecimals: number): number {
-  const s = Number(sqrt) / 2 ** 64;
-  return s * s * 10 ** (baseDecimals - quoteDecimals);
-}
 export function amountsToPrice(baseRaw: bigint, quoteRaw: bigint, baseDecimals: number, quoteDecimals: number): number {
   if (baseRaw === 0n) return 0;
   return (Number(quoteRaw) / 10 ** quoteDecimals) / (Number(baseRaw) / 10 ** baseDecimals);
 }
 
 const u64 = (d: Uint8Array, o: number) => new DataView(d.buffer, d.byteOffset, d.length).getBigUint64(o, true);
-const u128 = (d: Uint8Array, o: number) => u64(d, o) | (u64(d, o + 8) << 64n);
 const key = (d: Uint8Array, o: number) => toAddress(d.subarray(o, o + 32));
-
-interface SwapEvent {
-  program: Address;
-  /** "v2" for EvtSwap2 kinds, "v1" for DBC's older EvtSwap (emitted alongside EvtSwap2). */
-  kind: "v1" | "v2";
-  pool: Address;
-  /** true when the trader bought the agent token (quote in). */
-  buy: boolean;
-  inputRaw: bigint;
-  outputRaw: bigint;
-  nextSqrtPrice: bigint;
-  feeRaw: bigint;
-}
-
-/**
- * Meteora swap events (the data of an emit_cpi self-invocation, after the 8-byte tag). Layouts from
- * the official IDLs: DBC 0.2.x EvtSwap2 (pool, config, trade_direction, has_referral,
- * SwapParameters2, SwapResult2, ...) where trade_direction 1 = QuoteToBase; DBC EvtSwap (older);
- * DAMM v2 0.2.5 EvtSwap2 (pool, trade_direction, collect_fee_mode, has_referral, SwapParameters2,
- * SwapResult2, ...) where trade_direction 1 = BtoA and token B is tLINE for every agent pool.
- */
-export function decodeSwapEvent(program: Address, ev: Uint8Array): SwapEvent | null {
-  const d = hex(ev.subarray(0, 8));
-  const b = ev.subarray(8);
-  try {
-    if (program === DBC_PROGRAM && (d === EV.swap2 || d === EV.dbcSwap2Hook)) {
-      const r = 32 + 32 + 1 + 1 + 17;
-      return { program, kind: "v2", pool: key(b, 0), buy: b[64] === 1, inputRaw: u64(b, r), outputRaw: u64(b, r + 24), nextSqrtPrice: u128(b, r + 32),
-        feeRaw: u64(b, r + 48) };
-    }
-    if (program === DBC_PROGRAM && d === EV.dbcSwap) {
-      const r = 32 + 32 + 1 + 1 + 16;
-      return { program, kind: "v1", pool: key(b, 0), buy: b[64] === 1, inputRaw: u64(b, r), outputRaw: u64(b, r + 8), nextSqrtPrice: u128(b, r + 16),
-        feeRaw: u64(b, r + 32) };
-    }
-    if (program === DAMM_V2_PROGRAM && d === EV.swap2) {
-      const r = 32 + 1 + 1 + 1 + 17;
-      return { program, kind: "v2", pool: key(b, 0), buy: b[32] === 1, inputRaw: u64(b, r), outputRaw: u64(b, r + 24), nextSqrtPrice: u128(b, r + 32),
-        feeRaw: u64(b, r + 48) };
-    }
-  } catch {
-    return null;
-  }
-  return null;
-}
 
 /** lineage_launch FeesCranked (onchain/programs/lineage-launch/src/lib.rs). */
 export function decodeFeesCranked(b: Uint8Array) {
@@ -239,11 +198,6 @@ export function tokenDeltas(tx: RawTx, keys: Address[]): Map<Address, { mint: st
   return out;
 }
 
-const isSwapIx = (data: Uint8Array) => {
-  const d = hex(data.subarray(0, 8));
-  return d === IX.swap || d === IX.swap2 || d === IX.swap2Hook;
-};
-
 /**
  * Every "Program data:" log line (Anchor emit!) logged by `program` itself, base64-decoded. The
  * invoke stack is tracked from the runtime's "Program X invoke [n]" / "success" / "failed" lines, so
@@ -272,96 +226,104 @@ export function programData(logs: string[], program: string): Uint8Array[] {
   return out;
 }
 
+/**
+ * pump.fun's events in instruction order. Only the event-CPI self invocation counts: the instruction
+ * must be the emitting program calling itself with its own event authority as the only account, so
+ * bytes another program passes cannot forge an event (the same rule as programData for logs).
+ */
+export function pumpEvents(ixs: FlatIx[]): { program: Address; e: PumpEvent }[] {
+  const out: { program: Address; e: PumpEvent }[] = [];
+  const authority: Record<string, string> = { [PUMP.program]: PUMP.eventAuthority, [PUMP.amm]: AMM_EVENT_AUTHORITY };
+  for (const x of ixs) {
+    if ((x.program !== PUMP.program && x.program !== PUMP.amm) || hex(x.data.subarray(0, 8)) !== EVENT_IX_TAG) continue;
+    if (x.accounts[0] !== authority[x.program]) continue;
+    const e = decodePumpEvent(x.data);
+    if (e) out.push({ program: x.program, e });
+  }
+  return out;
+}
+
+const big = (v: unknown) => (typeof v === "bigint" ? v : 0n);
+
 export function decodeTx(tx: RawTx, ctx: TokenCtx): Decoded {
   const sig = tx.transaction.signatures[0]!;
-  const base: Decoded = { sig, slot: tx.slot, time: tx.blockTime ?? null, failed: tx.meta?.err != null, trades: [], fees: [], events: [], balances: [] };
+  const base: Decoded = { sig, slot: tx.slot, time: tx.blockTime ?? null, failed: tx.meta?.err != null, trades: [], fees: [], sweeps: [], events: [], balances: [] };
   if (!tx.meta || base.failed) return base;
   const keys = accountKeys(tx);
   const ixs = flatten(tx, keys);
-  const deltas = tokenDeltas(tx, keys);
+  const price = (b: bigint, q: bigint) => amountsToPrice(b, q, ctx.baseDecimals, ctx.quoteDecimals);
 
-  // ---- trades, per venue ----
-  const venues: { venue: Venue; program: Address; pool: Address; baseVault: Address; quoteVault: Address; poolIdx: number; payerIdx: number }[] = [
-    { venue: "dbc", program: DBC_PROGRAM, pool: ctx.dbcPool, baseVault: ctx.dbcBaseVault, quoteVault: ctx.dbcQuoteVault, poolIdx: 2, payerIdx: 9 },
-  ];
-  if (ctx.dammPool && ctx.dammBaseVault && ctx.dammQuoteVault) {
-    venues.push({ venue: "damm", program: DAMM_V2_PROGRAM, pool: ctx.dammPool, baseVault: ctx.dammBaseVault, quoteVault: ctx.dammQuoteVault, poolIdx: 1,
-      payerIdx: 8 });
-  }
   let idx = 0;
-  for (const v of venues) {
-    const swaps = ixs.filter((x) => x.program === v.program && isSwapIx(x.data) && x.accounts[v.poolIdx] === v.pool);
-    const events: SwapEvent[] = [];
-    for (const x of ixs) {
-      if (x.program !== v.program || hex(x.data.subarray(0, 8)) !== EVENT_IX_TAG) continue;
-      const e = decodeSwapEvent(v.program, x.data.subarray(8));
-      if (e && e.pool === v.pool) events.push(e);
+  let si = 0;
+  let last: Trade | null = null;
+  for (const { program, e } of pumpEvents(ixs)) {
+    const f = e.fields;
+    if (program === PUMP.program && e.name === "TradeEvent" && f.mint === ctx.mint) {
+      const buy = f.is_buy === true;
+      const q = big(f.quote_amount) || big(f.sol_amount);
+      const fee = big(f.fee), cf = big(f.creator_fee);
+      const baseRaw = big(f.token_amount);
+      const quoteRaw = buy ? q + fee + cf : q - fee - cf;
+      const vq = big(f.virtual_quote_reserves) || big(f.virtual_sol_reserves), vt = big(f.virtual_token_reserves);
+      last = { sig, idx: idx++, slot: tx.slot, time: base.time, venue: "curve", side: buy ? "buy" : "sell", baseRaw, quoteRaw, price: price(baseRaw, quoteRaw),
+        spotAfter: vt > 0n ? price(vt, vq) : null, feeRaw: fee + cf, creatorFeeRaw: cf, trader: f.user as string, source: "event", completing: false };
+      base.trades.push(last);
+    } else if (program === PUMP.program && e.name === "PostCompleteBuyEvent" && f.mint === ctx.mint && last && last.venue === "curve" && last.side === "buy") {
+      const fee = big(f.fee), cf = big(f.creator_fee);
+      last.baseRaw += big(f.base_out);
+      last.quoteRaw += big(f.quote_in) + fee + cf;
+      last.feeRaw += fee + cf;
+      last.creatorFeeRaw += cf;
+      last.price = price(last.baseRaw, last.quoteRaw);
+      last.completing = true;
+      const b = big(f.pool_base_reserves_after), q = big(f.pool_quote_reserves_after);
+      last.spotAfter = b > 0n ? price(b, q) : last.spotAfter;
+    } else if (program === PUMP.program && e.name === "CompleteEvent" && f.mint === ctx.mint) {
+      base.events.push({ sig, slot: tx.slot, time: base.time, kind: "complete", detail: { user: String(f.user) } });
+      if (last) last.completing = true;
+    } else if (program === PUMP.amm && (e.name === "BuyEvent" || e.name === "SellEvent") && f.pool === ctx.pool) {
+      const buy = e.name === "BuyEvent";
+      const baseRaw = buy ? big(f.base_amount_out) : big(f.base_amount_in);
+      const quoteRaw = buy ? (big(f.user_quote_amount_in) > big(f.quote_amount_in) ? big(f.user_quote_amount_in) : big(f.quote_amount_in)) : big(f.user_quote_amount_out);
+      const cf = big(f.coin_creator_fee);
+      last = { sig, idx: idx++, slot: tx.slot, time: base.time, venue: "pool", side: buy ? "buy" : "sell", baseRaw, quoteRaw, price: price(baseRaw, quoteRaw),
+        spotAfter: null, feeRaw: big(f.lp_fee) + big(f.protocol_fee) + cf, creatorFeeRaw: cf, trader: f.user as string, source: "event", completing: false };
+      base.trades.push(last);
+    } else if (program === PUMP.program && e.name === "SweepBondingCurveFeeEvent" && f.mint === ctx.mint && f.bucket === 1) {
+      base.sweeps.push({ sig, idx: si++, slot: tx.slot, time: base.time, venue: "curve", amountRaw: big(f.amount), recipient: f.recipient as string });
+    } else if (program === PUMP.amm && e.name === "SweepPoolFeeEvent" && f.base_mint === ctx.mint && f.pool === ctx.pool && f.bucket === 1) {
+      base.sweeps.push({ sig, idx: si++, slot: tx.slot, time: base.time, venue: "pool", amountRaw: big(f.amount), recipient: f.recipient as string });
     }
-    // DBC emits both EvtSwap and EvtSwap2 for one swap: keep one event per swap, the newer kind first.
-    const evs = events.some((e) => e.kind === "v2") ? events.filter((e) => e.kind === "v2") : events;
-    if (swaps.length === 0 && evs.length === 0) continue;
-    const n = Math.max(swaps.length, evs.length);
-    const dBase = deltas.get(v.baseVault)?.delta ?? 0n;
-    const dQuote = deltas.get(v.quoteVault)?.delta ?? 0n;
-    for (let i = 0; i < n; i++) {
-      const ev = evs[i] ?? null;
-      const trader = swaps[i]?.accounts[v.payerIdx] ?? keys[0]!;
-      let side: "buy" | "sell";
-      let baseRaw: bigint;
-      let quoteRaw: bigint;
-      let source: Trade["source"];
-      const oppositeSigns = (dBase < 0n && dQuote > 0n) || (dBase > 0n && dQuote < 0n);
-      // Meteora's own swap event first: vault deltas also count any plain transfer into a vault in
-      // the same transaction, which inflated amount, price and volume (audit A2 OFF-I2).
-      if (ev) {
-        side = ev.buy ? "buy" : "sell";
-        baseRaw = ev.buy ? ev.outputRaw : ev.inputRaw;
-        quoteRaw = ev.buy ? ev.inputRaw : ev.outputRaw;
-        source = "event";
-      } else if (n === 1 && oppositeSigns) {
-        side = dBase < 0n ? "buy" : "sell";
-        baseRaw = dBase < 0n ? -dBase : dBase;
-        quoteRaw = dQuote < 0n ? -dQuote : dQuote;
-        source = "deltas";
-      } else continue;
-      if (baseRaw === 0n) continue;
-      base.trades.push({
-        sig, idx: idx++, slot: tx.slot, time: base.time, venue: v.venue, side, baseRaw, quoteRaw,
-        price: amountsToPrice(baseRaw, quoteRaw, ctx.baseDecimals, ctx.quoteDecimals),
-        spotAfter: ev ? sqrtPriceToPrice(ev.nextSqrtPrice, ctx.baseDecimals, ctx.quoteDecimals) : null,
-        feeRaw: ev ? ev.feeRaw : null, trader, source,
-      });
+  }
+  for (const t of base.trades) if (t.baseRaw === 0n) t.price = 0;
+  base.trades = base.trades.filter((t) => t.baseRaw > 0n);
+
+  // ---- pump.fun's migration of the curve into its PumpSwap pool (migrate_v2 names the mint third) ----
+  for (const x of ixs) {
+    if (x.program === PUMP.program && hex(x.data.subarray(0, 8)) === MIGRATE_V2 && x.accounts[2] === ctx.mint) {
+      base.events.push({ sig, slot: tx.slot, time: base.time, kind: "migration", detail: { pool: ctx.pool } });
+      break;
     }
   }
 
   // ---- lineage_launch events (Anchor emit! logs) ----
   let fi = 0;
-  for (const b of programData(tx.meta.logMessages ?? [], LAUNCH_PROGRAM)) {
+  for (const b of programData(tx.meta.logMessages ?? [], ctx.launchProgram ?? LAUNCH_PROGRAM_ID)) {
     const d = hex(b.subarray(0, 8));
-    if (d === EV.feesCranked && b.length >= 8 + 98) {
-      const f = decodeFeesCranked(b.subarray(8));
+    const g = b.subarray(8);
+    if (d === EV.feesCranked && g.length >= 98) {
+      const f = decodeFeesCranked(g);
       if (f.mint !== ctx.mint) continue;
       base.fees.push({ sig, idx: fi++, slot: tx.slot, time: base.time, feesRaw: f.fees, toComputeRaw: f.toCompute, toProtocolRaw: f.toProtocol,
         poolFees: f.poolFees, balanceRaw: f.balance, awake: f.awake });
-    } else if (d === EV.graduated && b.length >= 8 + 128) {
-      const g = b.subarray(8);
+    } else if (d === EV.pumpGraduated && g.length >= 129) {
       if (key(g, 32) !== ctx.mint) continue;
-      // repoint_position emits Graduated too: it moves crank_pool_fees to a bigger locked position.
-      const repoint = ixs.some((x) => x.program === LAUNCH_PROGRAM && hex(x.data.subarray(0, 8)) === IX.repointPosition);
-      base.events.push({ sig, slot: tx.slot, time: base.time, kind: repoint ? "repointed" : "graduated",
-        detail: { damm_pool: key(g, 64), position: key(g, 96) } });
-    } else if (d === EV.agentLaunched && b.length >= 8 + 96) {
-      const g = b.subarray(8);
+      base.events.push({ sig, slot: tx.slot, time: base.time, kind: "graduated",
+        detail: { pool: key(g, 64), coin_creator: key(g, 96), creator_is_ours: String(g[128] === 1) } });
+    } else if (d === EV.pumpLaunched && g.length >= 160) {
       if (key(g, 32) !== ctx.mint) continue;
-      base.events.push({ sig, slot: tx.slot, time: base.time, kind: "launch", detail: { agent: key(g, 0), launcher: key(g, 64) } });
-    }
-  }
-  // ---- Meteora's migration of the curve into DAMM v2 ----
-  for (const x of ixs) {
-    if (x.program === DBC_PROGRAM && hex(x.data.subarray(0, 8)) === IX.migrationDammV2 && x.accounts.includes(ctx.dbcPool)) {
-      const damm = x.accounts.find((a, i) => i > 0 && a !== ctx.dbcPool && a === (ctx.dammPool ?? "")) ?? "";
-      base.events.push({ sig, slot: tx.slot, time: base.time, kind: "migration", detail: damm ? { damm_pool: damm } : {} });
-      break;
+      base.events.push({ sig, slot: tx.slot, time: base.time, kind: "launch",
+        detail: { agent: key(g, 0), launcher: key(g, 64), bonding_curve: key(g, 96), pump_creator: key(g, 128) } });
     }
   }
   for (const b of tx.meta.postTokenBalances ?? []) {
