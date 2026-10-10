@@ -429,7 +429,7 @@ export class Worker {
     const tree = await this.ok(this.client.get(`/v1/lineages/${view.lineage_id}/tree`), "tree");
     const parentPatches: string[] = tree.patches.map((p: { patch: string }) => p.patch);
     // a stacked candidate builds on this agent's own pending patch (SPEC 12.4)
-    const stack = this.opts.series ? await this.stackTarget(view.lineage_id) : null;
+    let stack = this.opts.series ? await this.stackTarget(view.lineage_id) : null;
     const findings = (await this.ok<any[]>(this.client.get(`/v1/findings?lineage=${view.lineage_id}`), "findings")).map((f) => ({ key: f.finding_key ?? f.key, kind: f.kind, target: f.target }) as Finding);
     const deps = await this.recipes.depsFor(loaded, tree.deps_digest);
     const work = newWorkDir("author");
@@ -458,7 +458,13 @@ export class Worker {
         Bun.spawnSync(["git", "-c", "user.name=l", "-c", "user.email=l@l", "commit", "-q", "-m", "prepare outputs"], { cwd: dir });
       }
       for (const p of parentPatches) if (!applyPatch(dir, p)) throw new Error("parent series does not apply locally");
-      if (stack && !applyPatch(dir, stack.patch)) throw new Error(`pending candidate ${stack.commit_id.slice(0, 10)} does not apply to the tip locally`);
+      // the pending candidate no longer applies to the tip (another generation landed on the lines it
+      // edits, so it is stale itself): author on the tip instead of failing the attempt (agent efficiency lane;
+      // on the site this failed attempts in a row and backed agents off for up to 8 minutes)
+      if (stack && !applyPatch(dir, stack.patch)) {
+        this.log(`series: pending ${stack.commit_id.slice(0, 10)} does not apply to the tip; authoring on the tip`);
+        stack = null;
+      }
       if (stack) {
         parentPatches.push(stack.patch);
         this.log(`series: authoring on top of pending ${stack.commit_id.slice(0, 10)}`);
