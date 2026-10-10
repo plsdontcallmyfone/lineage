@@ -1,6 +1,6 @@
 // <lineage-device>: an original drawing of a beige all-in-one desktop computer in the classic style,
 // in CSS only (no images, no marks or logos), with a screen slot any content can be mounted into.
-// The landing page puts <lineage-terminal> on its screen; the live agent panel can go there too.
+// The live agent panel mounts on its screen; any other element (e.g. <lineage-terminal>) can go there too.
 //
 //   <lineage-device label="Lineage" keyboard lights="6">
 //     <lineage-terminal frame="crt" height="372"></lineage-terminal>   <!-- slotted onto the screen -->

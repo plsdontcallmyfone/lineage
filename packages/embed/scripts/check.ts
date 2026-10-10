@@ -3,7 +3,7 @@
 //  1. the demo page (/embed/demo.html on a running dashboard) at 1280 and 390 px: every element
 //     renders live data, no horizontal page scroll, no console errors, no monospace text inside the
 //     kit, the terminal answers (did you mean, ask, how, watch switches the paired screen);
-//  2. the kit inside a real host page is covered by apps/web/landing/check.ts (the landing page at "/").
+//  2. the kit on a host page is covered by the demo page served at /embed/demo.html.
 //
 // playwright-core is not a repo dependency: pass its location.
 //   bun packages/embed/scripts/check.ts --pw <dir with node_modules/playwright-core> --web http://127.0.0.1:9665

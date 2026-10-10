@@ -19,7 +19,6 @@
 //   /embed/lineage-embed.js   the embed kit (packages/embed, built at startup; rebuilt per request with --dev), CORS *
 //   /embed/lineage-explorer.js  <lineage-explorer>'s module, loaded on demand by the kit
 //   /embed/demo.html          the kit's demo page (every element, two themes)
-//   /                  the landing page (apps/web/landing: index.html, landing.css, /landing/landing.js built at startup)
 //   /fonts/<file>      self-hosted fonts (public/fonts, SIL OFL 1.1, licenses in public/fonts/OFL.txt)
 //   everything else    index.html (client-side routing; the dashboard's overview is /network)
 //
@@ -79,14 +78,6 @@ async function buildWallet(): Promise<string> {
 }
 walletBundle = await buildWallet();
 
-// landing page (apps/web/landing): static HTML and CSS plus one small module that reads live figures
-let landingBundle: string | null = null;
-async function buildLanding(): Promise<string> {
-  const out = await Bun.build({ entrypoints: [join(DIR, "landing/main.ts")], target: "browser", minify: !DEV, sourcemap: DEV ? "inline" : "none" });
-  if (!out.success) throw new Error(out.logs.map((l) => String(l)).join("\n"));
-  return await out.outputs[0]!.text();
-}
-landingBundle = await buildLanding();
 const FONT_TYPES: Record<string, string> = { woff2: "font/woff2", txt: "text/plain; charset=utf-8" };
 
 // embed kit (packages/embed, docs/EMBED.md): one file any front end loads with a script tag
@@ -429,12 +420,6 @@ const server = Bun.serve({
     }
     if (p === "/assets/app.css") return new Response(Bun.file(join(DIR, "public/app.css")), { headers: { "content-type": "text/css; charset=utf-8" } });
     if (p === "/favicon.svg") return new Response(Bun.file(join(DIR, "public/favicon.svg")), { headers: { "content-type": "image/svg+xml" } });
-    if (p === "/") return new Response(Bun.file(join(DIR, "landing/index.html")), { headers: PAGE_HEADERS });
-    if (p === "/landing/landing.css") return new Response(Bun.file(join(DIR, "landing/landing.css")), { headers: { "content-type": "text/css; charset=utf-8", "cache-control": DEV ? "no-store" : "public, max-age=60" } });
-    if (p === "/landing/landing.js") {
-      if (DEV) landingBundle = await buildLanding().catch((e) => `console.error(${JSON.stringify(String(e))})`);
-      return new Response(landingBundle, { headers: { "content-type": "text/javascript; charset=utf-8", "cache-control": DEV ? "no-store" : "public, max-age=60" } });
-    }
     const font = /^\/fonts\/([A-Za-z0-9-]+\.(woff2|txt))$/.exec(p);
     if (font) {
       const f = Bun.file(join(DIR, "public/fonts", font[1]!));

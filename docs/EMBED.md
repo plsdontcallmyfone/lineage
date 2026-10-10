@@ -1,8 +1,8 @@
 # Embed kit: Lineage on any front end
 
 `packages/embed` builds one dependency-free file, `lineage-embed.js`, that drops Lineage into any page
-with a script tag and a few custom elements, on any page. The site's own landing page
-(`apps/web/landing`) is built from it. Plan: `docs/plans/FRONTEND-EMBED.md`.
+with a script tag and a few custom elements, on any page. The site's live panel and the
+`/embed/demo.html` page are built from it. Plan: `docs/plans/FRONTEND-EMBED.md`.
 
 - Served by the dashboard at `/embed/lineage-embed.js` (CORS `*`), demo at `/embed/demo.html`.
 - Build a copy for a static `public/` folder: `bun packages/embed/scripts/build.ts` writes
@@ -95,7 +95,7 @@ the history, Tab completes commands and tickers. From the host page:
 
 ## Placing the elements
 
-The landing page at `/` (`apps/web/landing/index.html`) is the worked example. Each block is a few
+`/embed/demo.html` is the worked example. Each block is a few
 tags inside the host's own markup:
 
 **A computer with the terminal on its screen** (the hero). The terminal pairs with a screen elsewhere
@@ -132,7 +132,7 @@ from an existing button.
 **A coin page** (screen, chart, trades, fees): `<lineage-token mint="<mint>"></lineage-token>`, or a
 screen on its own: `<lineage-screen mint="<mint>"></lineage-screen>`.
 
-Pass `scheme="dark"` or `scheme="light"` to follow a host theme toggle (the landing page sets it on
+Pass `scheme="dark"` or `scheme="light"` to follow a host theme toggle (a host page can set it on
 every element when its theme changes); without it, elements follow the viewer's system scheme.
 
 ## Theming
@@ -197,6 +197,3 @@ like across origins) are retried three times with backoff.
   [--api https://<site>] [--shots <dir>]`: the demo at 1280 and 390 px (every element renders live
   data, no horizontal scroll, no console errors, no monospace in the kit, no USD, terminal
   interactions, palette, hover develop).
-- `bun apps/web/landing/check.ts --pw <dir> --web <dashboard>`: the kit inside a real host page, the
-  landing at `/`, at 1280 and 390 px, dark and light (CSP clean, no console errors, no horizontal
-  scroll, live figures, the device and terminal, reels and screen).

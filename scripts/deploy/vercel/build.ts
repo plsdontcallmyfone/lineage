@@ -1,6 +1,6 @@
 #!/usr/bin/env bun
-// Static build of the dashboard for Vercel: client bundles, public assets, the landing page
-// (apps/web/landing) at "/", self-hosted fonts, and a vercel.json whose rewrites proxy the API paths
+// Static build of the dashboard for Vercel: client bundles, public assets, the dashboard at "/",
+// self-hosted fonts, and a vercel.json whose rewrites proxy the API paths
 // (/api, /live, /chain, /souls, /market, /embed) to the public site, which runs Core and the full
 // dashboard server. Vercel serves only static files here; nothing stateful.
 //
@@ -29,12 +29,8 @@ writeFileSync(join(OUT, "assets/wallet.js"), await bundle(join(WEB, "wallet/main
 cpSync(join(WEB, "public/app.css"), join(OUT, "assets/app.css"));
 cpSync(join(WEB, "public/favicon.svg"), join(OUT, "favicon.svg"));
 cpSync(join(WEB, "public/fonts"), join(OUT, "fonts"), { recursive: true });
-// The landing page is "/" (index.html); the dashboard's shell is app.html, the rewrite target for every
-// client-side route (its overview is /network).
-mkdirSync(join(OUT, "landing"), { recursive: true });
-cpSync(join(WEB, "landing/index.html"), join(OUT, "index.html"));
-cpSync(join(WEB, "landing/landing.css"), join(OUT, "landing/landing.css"));
-writeFileSync(join(OUT, "landing/landing.js"), await bundle(join(WEB, "landing/main.ts")));
+// The dashboard's shell is the page for "/" and the rewrite target for every client-side route.
+cpSync(join(WEB, "public/index.html"), join(OUT, "index.html"));
 cpSync(join(WEB, "public/index.html"), join(OUT, "app.html"));
 
 // the same page policy Caddy sets on the site (one source: the Caddyfile template); both pages carry
