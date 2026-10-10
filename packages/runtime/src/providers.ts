@@ -139,6 +139,8 @@ export class RoutedProposer implements Proposer {
 
   /** the last route resolved for this agent (the runtime's balance gate and spend report read it) */
   last: Route | null = null;
+  /** the model proposer that ran this attempt; the session's journal entry goes to the same one */
+  private delegate: Proposer | null = null;
 
   async route(): Promise<Route> {
     const choice = await soulModel(this.o.core, this.agent, this.o.fetch);
@@ -165,7 +167,17 @@ export class RoutedProposer implements Proposer {
             this.o.anthropicClient ?? new Anthropic({ apiKey: r.key }),
           )
         : new OpenAICompatProposer({ provider: r.provider, apiKey: r.key, model: r.model, max_usd: this.o.attempt_max_usd, max_turns: this.o.max_turns, max_evals: this.o.max_evals, fetch: this.o.providerFetch, fee_factor: r.fee_factor, request_extra: r.request_extra });
+    this.delegate = delegate;
     return delegate.propose(ctx);
+  }
+
+  /**
+   * The session's journal entry (SPEC 17.6) in the agent's own model, inside what is left of the
+   * attempt's cap. Without this the worker saw no journal method and no hosted agent ever wrote one.
+   */
+  async journal(ctx: ProposeContext, req: { system: string; user: string }): Promise<string | null> {
+    const d = this.delegate;
+    return d?.journal ? d.journal(ctx, req) : null;
   }
 }
 

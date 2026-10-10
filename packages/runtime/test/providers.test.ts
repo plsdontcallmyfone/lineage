@@ -135,3 +135,27 @@ describe("RoutedProposer", () => {
     }
   });
 });
+
+describe("RoutedProposer journal", () => {
+  test("the session's journal entry goes to the model that ran the attempt (it was silently skipped before)", async () => {
+    const { c, done } = ctx();
+    try {
+      const { client } = fakeClient([{ tools: [{ name: "give_up", input: { reason: "t" } }], usage: { input_tokens: 1000, output_tokens: 100 }, model: REG.default.id }]);
+      const created: any[] = [];
+      (client as any).beta.messages.create = async (req: any) => {
+        created.push(req);
+        return { model: REG.default.id, stop_reason: "end_turn", content: [{ type: "text", text: "Notes for next time." }], usage: { input_tokens: 200, output_tokens: 50 } };
+      };
+      const opts = { core: "http://core", keys: { anthropic: "sk-a" }, attempt_max_usd: 1, effort: "low" as const, max_turns: 3, max_evals: 1, fetch: fakeCore(null), anthropicClient: client };
+      const p = new RoutedProposer("A", opts, new RegistrySource(opts));
+      expect(typeof p.journal).toBe("function");
+      expect(await p.journal(c, { system: "s", user: "u" })).toBeNull(); // no attempt ran yet
+      await p.propose(c);
+      expect(await p.journal(c, { system: "s", user: "u" })).toBe("Notes for next time.");
+      expect(created.length).toBe(1);
+      expect(created[0].model).toBe(REG.default.id);
+    } finally {
+      done();
+    }
+  });
+});
