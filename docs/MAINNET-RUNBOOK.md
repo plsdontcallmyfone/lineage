@@ -1,9 +1,10 @@
 # Mainnet runbook (M5)
 
 Written 2026-10-10. Nothing has been deployed to mainnet. Every step below has been run, in this
-order, on a local fork of mainnet with mainnet's own Meteora DBC, DAMM v2, Token-2022 and Squads v4
-builds (`scripts/mainnet/rehearsal.ts`, record `scripts/mainnet/REHEARSAL-LAST.json`, 97 of 97
-checks on the `--features mainnet` builds deployed at the mainnet ids, 2026-10-10). Costs: [MAINNET-COSTS.md](MAINNET-COSTS.md). Powers: [AUDIT.md](AUDIT.md) "Powers" and the
+order, on a local fork of mainnet with mainnet's own pump.fun (Pump, PumpSwap, Pump Fees, Mayhem),
+Token-2022 and Squads v4 builds (`scripts/mainnet/rehearsal.ts`, record `scripts/mainnet/REHEARSAL-LAST.json`,
+102 of 102 checks on the `--features mainnet` pump.fun builds deployed at the mainnet ids, 2026-10-10).
+Agent tokens launch on pump.fun only (owner decisions 2026-10-10, docs/plans/PUMPFUN-LAUNCHES.md section 12). Costs: [MAINNET-COSTS.md](MAINNET-COSTS.md). Powers: [AUDIT.md](AUDIT.md) "Powers" and the
 section below. The owner runs the mainnet steps; this lane never sent a mainnet transaction.
 
 ## Go / no-go
@@ -12,9 +13,11 @@ Owner items stay unchecked until the owner checks them.
 
 - [ ] External audit done, findings fixed and the fixed builds re-rehearsed (docs/audit/)
 - [ ] Multisig signers set: members, threshold and time lock (`launch-params.json` `multisig`)
-- [ ] Token parameters set: the `$LINE` mint and decimals, every SPEC 13 parameter (`network_file`), the DBC curve, rebate and debit caps, message caps, bounty and challenge values
+- [ ] Token parameters set: the `$LINE` mint and decimals, every SPEC 13 parameter (`network_file`), rebate and debit caps, message caps, bounty and challenge values, `pump_creator_fee_bps` (0n: pump.fun's default, owner decision 2026-10-10)
+- [ ] **Hard requirement: `$LINE` is a pump.fun coin paired with SOL or USDC and never mayhem mode.** A mayhem coin, or a coin itself quoted in a pump coin, cannot be the quote of a pump.fun custom pair (`QuoteBondingCurveNotEligible`, `CurveDepthExceeded`), so no agent could launch. `initialize.ts` refuses any other `$LINE` (it reads its bonding curve). While `$LINE`'s curve is complete but not yet migrated, launches fail with `QuoteCurveAwaitingMigration` (anyone can run `migrate_v2`); after it migrates, add `line_pool` to `$PARAMS` and make a launch table that names it.
+- [ ] pump.fun's `Global.max_curve_depth` still 1 or more on launch day (0 disables pump-coin quotes; read 1 on 2026-10-10), and pump.fun's governance and terms risk accepted (docs/plans/PUMPFUN-LAUNCHES.md D7)
 - [ ] Legal review done
-- [ ] Budgets set: SOL for the deploy (11.303959440 held at the peak with exact-size ProgramData, MAINNET-COSTS.md), the priority fee policy, the `--max-len` headroom, the Core and runtime hot keys' running SOL, the runtime's model spend caps
+- [ ] Budgets set: SOL for the deploy (10.690668280 held at the peak with exact-size ProgramData, MAINNET-COSTS.md), the priority fee policy, the `--max-len` headroom, the Core and runtime hot keys' running SOL, the runtime's model spend caps
 - [ ] Domain set
 - [ ] Verifiers recruited (the minimum independent count is in the M4 server layout)
 - [x] Program ids decided: fresh mainnet ids (owner decision 2026-10-10; see "Program ids" below)
@@ -24,12 +27,13 @@ Owner items stay unchecked until the owner checks them.
 
 Engineering items, with their evidence:
 
-- [x] Fork rehearsal PASS 97/97 on the exact pre-audit `--features mainnet` builds, deployed at the mainnet ids with the mainnet id keypairs on the local fork only (`scripts/mainnet/REHEARSAL-LAST.json`, 2026-10-10; the earlier 80/80 ran on devnet-id builds before the slash cap)
+- [x] Fork rehearsal PASS 102/102 on the `--features mainnet` pump.fun builds, deployed at the mainnet ids with the mainnet id keypairs on the local fork only (`scripts/mainnet/REHEARSAL-LAST.json`, 2026-10-10; earlier 97/97 on the Meteora builds and 80/80 on devnet-id builds)
+- [x] pump.fun flows on the fork with mainnet's programs: launches with `register_pump_launch` in the `create_v2` transaction and the 1% initial buy, curve and PumpSwap trades, `multi_hop_swap` from SOL, keeper cranks with exact splits, completion, `migrate_v2` + `record_pump_graduation` (`scripts/mainnet/pump-fork-proof.ts` 28/28 before the program change and the rehearsal after it)
 - [x] The A1-08 slash cap on the fork: default 7,500 bps from `initialize`, set to 2,500 through the vault (propose, 2 approvals, time lock, execute), one slash landed, the next in the same chain epoch refused whole (`SlashCap`)
-- [x] LiteSVM 61/61 against the mainnet Meteora builds (`METEORA_BUILD=mainnet`, step 0 below)
-- [x] Every onchain admin action proven through a 2-of-3 Squads vault with a time lock, including a program upgrade and `graduate_by_admin`
+- [x] LiteSVM 69/69 against mainnet's pump.fun builds (dumps pinned by sha256, step 0 below)
+- [x] Every onchain admin action proven through a 2-of-3 Squads vault with a time lock, including a program upgrade
 - [x] The operator commands proven on the same fork after the rehearsal, under `LINEAGE_NETWORK=mainnet`: `propose.ts` proposed, approved (2 of 3), was refused before the time lock (6021) and executed a `registrySetSlashCap` 5,000 after it (proposal 13, read back 5,000); `initialize.ts init` re-ran on the initialized state and skipped every step (8 checks PASS, nothing sent) and `check` passed 7/7; under `LINEAGE_NETWORK=devnet` the same `check` refused (no program at the devnet registry id) (earlier, on the devnet-id run: a `msgSetConfig` through `propose.ts`, 16 checks PASS)
-- [ ] The rehearsal re-run on launch day (Meteora can redeploy DBC and DAMM v2 at any time: their mainnet upgrade authority is `JADaUV8k...uCVLd`)
+- [ ] The rehearsal re-run on launch day (pump.fun upgrades its programs often: `vendor/pump/fetch.sh` fails its hash check when they did; rerun the suite and the rehearsal on the new builds)
 - [ ] Mainnet mode in the app and services (M3) and server hardening (M4)
 
 ## Roles after the handover
@@ -114,7 +118,7 @@ Variables used below. Every key is passed explicitly; never `solana config set`;
 ```sh
 cd ~/lineage
 set -a; . ~/.config/lineage/mainnet-rpc.env; set +a   # RPC=<keyed mainnet URL>, mode 600, never printed
-K=~/.config/lineage/mainnet                            # deployer.json, dbc-config.json, ms-create.json (mode 600)
+K=~/.config/lineage/mainnet                            # deployer.json, ms-create.json (mode 600)
 PARAMS=scripts/mainnet/launch-params.json              # copied from launch-params.example.json, every TBA filled
 FEE=--with-compute-unit-price=<owner's price>          # priority fee, TBA
 export LINEAGE_NETWORK=mainnet                         # scripts/mainnet take the program ids from the mainnet profile
@@ -131,9 +135,8 @@ for p in lineage-registry lineage-launch lineage-msg; do
   cargo build-sbf --offline --manifest-path programs/$p/Cargo.toml --features mainnet --sbf-out-dir target/mainnet; done
 rm -f target/mainnet/*-keypair.json                             # throwaway keypairs cargo build-sbf wrote; not the mainnet ids
 shasum -a 256 target/mainnet/*.so && wc -c target/mainnet/*.so  # compare with the audited mainnet hashes (docs/audit/BUILD-AND-TEST.md)
-vendor/meteora/mainnet/fetch.sh                                 # mainnet DBC and DAMM v2: hash check fails if Meteora redeployed
-METEORA_BUILD=mainnet cargo test --offline -p lineage-onchain-tests   # 61 tests on mainnet's Meteora builds
-cargo test --offline -p lineage-onchain-tests                   # and on the devnet pins
+vendor/pump/fetch.sh                                            # mainnet pump.fun programs and accounts; the suite fails its hash check if pump.fun redeployed
+cargo test --offline -p lineage-onchain-tests                   # 69 tests on mainnet's pump.fun builds
 cd .. && bun test packages/chain
 # the full rehearsal on a fresh fork (throwaway keys; the mainnet id keypairs deploy the mainnet builds on the fork only;
 # ports 9690-9693 and 9700-9730, checked free by fork.sh)
@@ -148,7 +151,7 @@ for id in 3GeaTsBUsaXCJ7Dru9tDHiKnVBsoHE6yiTdqqj42JHay 2vwKsTZm5doa3ahBmpm8Sv3sK
 
 ### 1. Keys
 
-The deployer, the DBC config keypair and the multisig create key are fresh keys made on the machine
+The deployer and the multisig create key are fresh keys made on the machine
 that sends (`solana-keygen new -o $K/<name>.json`, mode 600). The Core authority and runtime authority
 are made on their servers; only their public keys go into `$PARAMS`. Multisig members bring their own
 keys (hardware wallets through the Squads app work: the vault transactions are standard).
@@ -173,21 +176,22 @@ for id in 3GeaTsBUsaXCJ7Dru9tDHiKnVBsoHE6yiTdqqj42JHay 2vwKsTZm5doa3ahBmpm8Sv3sK
   solana program dump -u "$RPC" $id /tmp/$id.so && shasum -a 256 /tmp/$id.so; done   # equal to the builds once trailing zero padding is trimmed
 ```
 
-### 4. DBC config values
+### 4. `$LINE` on pump.fun
 
-The DBC config is created in step 5 from `$PARAMS.dbc`; the curve, fee and threshold are owner values.
-The config names the launch authority PDA as fee claimer and leftover receiver, `$LINE` as quote, 100%
-partner lock and Token-2022 agent mints (the launch program checks all of these).
+`$LINE` launches on pump.fun before step 5 (the owner's launch): `create_v2` paired with SOL or USDC,
+never mayhem mode. Its mint goes into `$PARAMS.line_mint` (Token-2022, 6 decimals). The curve, supply
+and fees are pump.fun's. `$LINE`'s own creator fees are paid in SOL or USDC, not in `$LINE`
+(PUMPFUN-LAUNCHES.md 6.9).
 
 ### 5. Initialize (admin = the vault from the first instruction)
 
 ```sh
-bun scripts/mainnet/initialize.ts init --params $PARAMS --payer $K/deployer.json --dbc-config-key $K/dbc-config.json --multisig $MS \
+bun scripts/mainnet/initialize.ts init --params $PARAMS --payer $K/deployer.json --multisig $MS \
   --priority-micro-lamports <price> --rpc "$RPC" --mainnet
 # prints the launch lookup table address; re-running with --lookup-table <it> resumes without a second table
 ```
 
-This runs `lineage_registry::initialize`, DBC `create_config`, the compute sink account,
+This checks `$LINE` is a pump.fun coin paired with SOL or USDC and not mayhem, then runs `lineage_registry::initialize`, the compute sink account,
 `initialize_launch`, `lineage_msg::initialize` and the launch lookup table (create, extend, freeze),
 each read back.
 
@@ -232,8 +236,11 @@ anchor.
 
 ### 10. First launch
 
-One launch through `/launch` (0.015996680 SOL measured for the launcher), a buy, `crank_fees`, and the
-indexer and app reading them back.
+One launch through `/launch` (0.016255680 SOL measured for the launcher on the fork, plus the 1%
+initial buy and the prepaid credits in `$LINE`; the wallet must sign v0 transactions), a buy, a
+keeper crank (pump.fun sweep + collect, then `crank_pump_fees`), and the indexer and app reading them
+back. Mainnet tests are public on pump.fun's own site: the hidden list cannot hide them, so test there
+only what the fork cannot show.
 
 ## Later admin actions
 
@@ -247,9 +254,8 @@ approve to the threshold, wait out the time lock, execute:
 | `registrySetSlashCap` | registry | the per agent, per epoch slash cap, `max_slash_bps_per_epoch` (A1-08; args `[<bps>]`) |
 | `registrySetEpochCursor` | registry | the epoch sequence and clock anchor (repair only) |
 | `challengeSetConfig` | registry | challenge window, bond, reward, timeout, pause of new challenges |
-| `launchSetConfig` | launch | admin, runtime authority, compute sink, fee split, sleep and wake thresholds, pause, debit cap, DBC config for new launches |
+| `launchSetConfig` | launch | admin, runtime authority, compute sink, fee split, sleep and wake thresholds, pause, debit cap, `pump_creator_fee_bps` (the rate new pump.fun launches must carry; pump.fun accepts 1 to `Global.max_configurable_creator_fee_bps`, 300 on 2026-10-10, only while `creator_fee_configurable`) |
 | `bountySetConfig` | launch | bounty caps, TTLs, grace, minimum, pause |
-| `graduateByAdmin` | launch | graduate on a fully locked, authority-held position (A1 review H1) |
 | `msgSetConfig` | messages | caps, sizes, pause, admin |
 | `upgradeProgram` | loader | replaces a program's code from a buffer whose authority is the vault |
 | `setUpgradeAuthority` | loader | moves the upgrade authority, or with null makes a program immutable |
@@ -277,9 +283,11 @@ Both items listed here were done by the pre-audit program changes lane on 2026-1
 
 ## Notes from the rehearsal
 
-- Meteora's mainnet DBC is a different build from the devnet pin the suites used
-  (`4c26a8a5...848b` against `5edf76d9...8ad3`); every suite passes on both, and the rehearsal's
-  launches, crank, migration and both graduation paths ran on the mainnet build.
+- The suites and the rehearsal run mainnet's own pump.fun builds; devnet's Pump build differs (it
+  refused a coin quoted in a freshly launched tLINE with `QuoteReservesOutOfRange` until tLINE's price
+  rose, scripts/devnet/pump-devnet-proof.ts), so devnet is not evidence for mainnet behaviour.
+- pump.fun's `migrate_v2` needs two remaining accounts its docs do not list (the pool's boost vault
+  authority and its quote account; pump-sdk 4.0.0); `packages/chain` passes them.
 - The test validator charges more rent than mainnet (6,960 against 5,080 lamports per byte with the
   overhead); MAINNET-COSTS.md uses mainnet's own figures.
 - `set_challenge_config` and `set_bounty_config` create accounts with the admin as payer, so the vault

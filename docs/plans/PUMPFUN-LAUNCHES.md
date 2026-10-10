@@ -1,6 +1,8 @@
 # Agent token launches on pump.fun (research and plan)
 
-Written 2026-10-10. Research and spec only: nothing in this plan has been built, signed or sent.
+Written 2026-10-10 as research and spec. The owner decided the open questions the same day; section 12
+records those decisions and what the pump.fun launches lane built and proved (sections 1 to 11 are the
+research as written; where they recommend Meteora as a fallback, section 12 supersedes them).
 Owner request (2026-10-10): "for token launches, can we use pump.fun actually ... they allow for any
 token to be paired with each other." $LINE itself launches on pump.fun.
 
@@ -414,3 +416,28 @@ migration's 0.015 SOL is paid by whoever migrates (normally pump.fun). Work, by 
 - The Terms' application to a third-party platform launching for its users (legal, D7).
 - Lamport costs of a pump launch and of the sweeps (measured in P1).
 - Jupiter routing for new curve-stage agent coins (observed partial; we do not depend on it).
+
+## 12. Owner decisions (2026-10-10) and what was built
+
+Decisions: (1) pump.fun only: the Meteora DBC and DAMM v2 launch, trade and graduation paths are
+removed from the program and the clients (git history keeps them, no fallback). (2) Attach by the
+same-transaction check (D2 b) with a creator PDA per agent; `crank_pump_fees` permissionless; the
+launcher's initial buy (launch fronting, `initial_buy_bps`) delivered to the agent key. (3) `$LINE`
+SOL- or USDC-paired, never mayhem: a hard requirement (docs/MAINNET-RUNBOOK.md go/no-go, checked by
+`scripts/mainnet/initialize.ts`). (4) Creator fee: pump.fun's default (`pump_creator_fee_bps` 0),
+admin-editable in `LaunchConfig`. (5) Devnet moves to pump.fun. (6) The program change lands before
+the external audit; docs/audit regenerated.
+
+| Phase | What | Evidence |
+|---|---|---|
+| a, fork proof, no program change | `packages/chain/src/pump.ts` (builders, decoders, events, quote math); `fork.sh` clones mainnet's Pump, PumpSwap, Pump Fees, Mayhem and their state | `scripts/mainnet/pump-fork-proof.ts` PASS 28/28 (`PUMP-FORK-LAST.json`): a SOL-paired stand-in `$LINE`; coins quoted in it on its curve and after its migration with a `pump_creator` PDA as creator; the 1% initial buy in the v0 launch transaction (989 bytes); v3 curve trades; `multi_hop_swap` from SOL through curve and pool hops (protocol fee once, creator fee once); sweeps and collects land exactly the trade events' creator fees in the PDA's account with no creator signature; synthetic-migration completions; `migrate_v2`; `Pool.coin_creator` = the PDA; LP supply 0; refusals 6105 (depth), 6071 (mayhem), 6107 (quote awaiting migration); `creator_fee_bps` 150 accepted on mainnet's `Global` |
+| b, program | `register_pump_launch`, `crank_pump_fees`, `record_pump_graduation`, `src/pump.rs`; Meteora instructions and `src/meteora.rs` removed; `LaunchConfig` and `AgentLaunch` keep their sizes | LiteSVM on mainnet's pump.fun dumps (`onchain/vendor/pump`, sha256 pinned): launch suite 13 red on the old build then 13 green (9 spoofing attempts, exact splits on curve and pool, graduation, removed instructions, Meteora-era records), all suites 69/69; clippy clean for the programs; `lineage_launch.so` 745,216 to 685,240 bytes |
+| c, clients | `pump-launch.ts` (launch main, initial buy into the agent key, quoted seed and buy quote, crank and graduation helpers, `MAX_LAUNCH_STRINGS` 327); `planLaunch` takes a `rest` group; indexer on Pump and PumpSwap events with creator and config alerts; trader on the curve or pool; launch wizard, initial buy builder, trade box, faucet | packages/chain 195, indexer 27, trader 72 tests; tsc clean (one unrelated JSX file) |
+| d, devnet | new devnet tLINE `CiBfnTkDc1vgYbuMobMNEQaKSQXPYeTUbZGRZcug1L62` (pump.fun, SOL-paired, not mayhem; devnet treasury holds 460,000,000) and a devnet Pump proof (`scripts/devnet/pump-devnet-proof.ts` 6/6) | **Not switched:** devnet's registry and launch config bind the earlier tLINE mint at initialize (the registry's vaults are token accounts of that mint), so an upgrade of devnet `lineage_launch` cannot launch on pump.fun. Moving devnet needs a fresh devnet deployment of the three programs (new devnet ids) initialized with the new tLINE, or a mint-rebind path; owner decision pending. Devnet's Pump build also differs from mainnet's (it refused a coin quoted in the fresh tLINE with `QuoteReservesOutOfRange` until tLINE's price rose) |
+| e, rehearsal | `scripts/mainnet/rehearsal.ts` steps 0, 3, 5, 7 on pump.fun | PASS 102/102 at the mainnet ids; costs in docs/MAINNET-COSTS.md (one launch 0.016255680 SOL plus the initial buy and credits in `$LINE`; crank 0.003032680 first; graduation 0.022519681 incl. pump.fun's 0.015000001 migration fee; deploy 8.956285840 spent, 10.690668280 peak) |
+| f, audit | docs/audit regenerated, SPEC 14 (0.37) | launch tree `6fcfc385`, 1,377 code lines; pump.fun dependency, threat rows, powers and review areas |
+
+Open: the devnet switch above; the creator-change alert has unit tests but no fork `admin_cto` run
+(pump.fun's admin key cannot sign on a fork without editing its `Global`); Jupiter routing is not
+used (SOL buys use `multi_hop_swap`; the trade box's SOL and USDC path still goes through Jupiter to
+`$LINE` first); the hosted agents' launch holding (LAUNCH-FRONTING D3).
