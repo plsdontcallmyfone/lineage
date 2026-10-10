@@ -1,3 +1,4 @@
+import { endOf, idleStatus, idleSub, idleTitle, lastEndOf, RECORDINGS_SHOWN, type IdleStatus } from "./live-only.ts";
 import { mountDevice, type DeviceHandle } from "../../../../packages/embed/src/device.ts";
 import { ApiError, get } from "../api.ts";
 import { fileAt } from "../code.ts";
@@ -54,6 +55,12 @@ export interface LivePanelOptions {
   fps?: number;
   /** called whenever the shown session changes or its summary updates */
   onSession?: (s: SessionSummary | null) => void;
+  /**
+   * Past sessions replayed and desktop recordings shown (default RECORDINGS_SHOWN, false: live only).
+   * Live only: a live session plays live; with none the window shows the agent's idle state; a session
+   * that ended shows its final facts (verdict, metrics, links) without playback.
+   */
+  recordings?: boolean;
   /** data and link access; defaults to the dashboard's own (/api, /live/events, same-origin links) */
   io?: Partial<PanelIO>;
 }
@@ -78,6 +85,8 @@ export interface PanelIO {
   desktop?: ((session: string) => string) | null;
   /** a Core path such as /v1/blobs/<sha256> as a URL this page can load (the desktop recording) */
   media?: (corePath: string) => string;
+  /** the identity service's public view of an agent (its `published` commits), or null for none */
+  identity?: ((agent: string) => Promise<any>) | null;
 }
 
 export const DEFAULT_IO: PanelIO = {
@@ -91,6 +100,10 @@ export const DEFAULT_IO: PanelIO = {
   href: (p) => p,
   desktop: (id) => `/desktops/${id}/`,
   media: (p) => p.replace(/^\/v1\//, "/api/"),
+  identity: (agent) =>
+    fetch(`/identity/agents/${agent}`, { headers: { accept: "application/json" } })
+      .then((r) => (r.ok ? r.json() : null))
+      .catch(() => null),
   linkAttrs: "",
   get styleRoot() {
     return document;
@@ -235,6 +248,11 @@ class Panel {
   private events: SEv[] = [];
   private idx = 0;
   private mode: "live" | "replay" = "replay";
+  /** live only: what the window shows (playing a session, an ended session's facts, the agent's idle state) */
+  private view: "play" | "facts" | "idle" = "play";
+  private idle: IdleStatus | null = null;
+  /** live only: the Verified commit of the shown session's accepted generation */
+  private verified: { url: string; label: string } | null = null;
   private want: PanelMode;
   private playing = false;
   private speed: number;
@@ -279,6 +297,10 @@ class Panel {
   private io: PanelIO;
   /** agent desktops (SPEC 17.7): what the window shows, the player, and whether the stream went away */
   private desk: { el: HTMLElement; video: HTMLVideoElement; player: DeskPlayer | null; showing: "live" | "rec" | null; key: string; gone: boolean; panel: boolean } | null = null;
+  /** live only (opts.recordings, default RECORDINGS_SHOWN false): no replay, no recording */
+  private get liveOnly() {
+    return (this.opts.recordings ?? RECORDINGS_SHOWN) !== true;
+  }
   private a = (path: string) => `href="${esc(this.io.href(path))}"${this.io.linkAttrs ? ` ${this.io.linkAttrs}` : ""}`;
   private q = <T extends HTMLElement = HTMLElement>(sel: string) => this.root.querySelector<T>(sel)!;
 
@@ -361,7 +383,8 @@ class Panel {
       const s = this.summary;
       // a desktop recording is linked a little after the gate opens: keep asking for ten minutes
       const awaitingRec = !!s?.desktop && s.open && !s.recording && Date.now() - (s.ended_at ?? s.last_at) < 600_000;
-      if (s && (s.state === "live" || s.state === "sealed" || awaitingRec)) void this.refresh();
+      if (this.liveOnly && this.view === "idle") void this.pickFromList(true);
+      else if (s && (s.state === "live" || s.state === "sealed" || (!this.liveOnly && awaitingRec))) void this.refresh();
     }, 10_000);
     try {
       if (this.opts.session) await this.load(this.opts.session, this.want);
@@ -411,9 +434,25 @@ class Panel {
     return this.opts.agent ? `agent=${this.opts.agent}` : this.opts.lineage ? `lineage=${this.opts.lineage}` : "";
   }
 
-  private async pickFromList() {
+  private async pickFromList(quiet = false) {
     const q = this.listQuery();
-    const all = await this.io.get<SessionSummary[]>(`sessions?${q}${q ? "&" : ""}limit=24`);
+    const all = await this.io.get<SessionSummary[]>(`sessions?${q}${q ? "&" : ""}limit=24`).catch((e) => {
+      if (quiet) return null;
+      throw e;
+    });
+    if (!all || this.dead) return;
+    if (this.liveOnly) {
+      // live only: the session in progress, else the idle state (never a past session)
+      this.others = all.filter((s) => s.state === "live");
+      const live = this.others[0];
+      if (live) {
+        if (this.summary?.session_id !== live.session_id || this.view !== "play") await this.load(live.session_id, "auto");
+        else this.renderList();
+        return;
+      }
+      await this.showIdle(lastEndOf(all));
+      return;
+    }
     // sessions that recorded nothing (older workers opened one per idle attempt) are left out, unless
     // one is live right now
     this.others = all.filter((s) => s.events > 0 || s.state === "live").slice(0, 12);
@@ -448,7 +487,13 @@ class Panel {
     this.events = event_list;
     this.unsealedNote = false;
     this.network = null;
+    this.verified = null;
+    this.idle = null;
     this.mode = want === "live" || (want === "auto" && summary.state === "live") ? "live" : "replay";
+    if (this.liveOnly) {
+      this.mode = summary.state === "live" ? "live" : "replay";
+      this.view = summary.state === "live" ? "play" : "facts";
+    } else this.view = "play";
     this.reset();
     this.opts.onSession?.(this.summary);
     this.renderList();
@@ -456,6 +501,12 @@ class Panel {
     if (this.desk) this.desk.gone = false;
     this.syncDesk();
     if (summary.state === "final" && summary.candidate) void this.loadNetwork();
+    if (this.view === "facts") {
+      // live only: an ended session shows its final facts, never a playback
+      if (this.opts.session) return;
+      // an agent or lineage mount shows live work: the idle state instead
+      return this.showIdle(endOf(summary));
+    }
     if (this.mode === "live") {
       // a live session opens where the agent is now: earlier events apply instantly, then it follows
       const tail = Math.max(0, this.events.length - 3);
@@ -474,10 +525,32 @@ class Panel {
         if (this.dead || this.summary?.session_id !== id) return;
         const { event_list, ...summary } = v;
         const wasOpen = this.summary.open;
+        const wasLive = this.summary.state === "live";
         this.summary = summary;
         this.opts.onSession?.(summary);
         this.syncDesk();
-        if (!wasOpen && summary.open) {
+        if (this.liveOnly && wasLive && summary.state !== "live") {
+          // live only: the session ended; a session mount shows its facts, an agent mount goes idle
+          // (or to the next live session)
+          this.gen++;
+          this.playing = false;
+          if (!this.opts.session) {
+            await this.pickFromList(true);
+            return;
+          }
+          this.view = "facts";
+          this.mode = "replay";
+          this.reset();
+          this.renderAll();
+          if (summary.state === "final" && summary.candidate) void this.loadNetwork();
+          return;
+        }
+        if (this.liveOnly && this.view === "facts") {
+          if (summary.state === "final" && summary.candidate && !this.network) void this.loadNetwork();
+          this.renderAll();
+          return;
+        }
+        if (!wasOpen && summary.open && !this.liveOnly) {
           // the gate opened: replay from the start, now with the edits
           this.events = event_list;
           this.unsealedNote = true;
@@ -527,6 +600,7 @@ class Panel {
       const transcripts = new Map<string, any>();
       this.network = { cand, transcripts };
       this.renderRun();
+      if (this.view === "facts") void this.loadVerified();
       // the first revealed replay's transcript: real build, test and metrics output
       const r = (cand.replays ?? []).find((x: any) => x.result?.transcript_digest && x.status === "revealed");
       if (r) {
@@ -537,6 +611,57 @@ class Panel {
     } catch {
       /* the verdict row says what is known */
     }
+  }
+
+  /** Live only: the Verified commit the agent's mirror pushed for this session's accepted generation. */
+  private async loadVerified() {
+    const s = this.summary;
+    const gen = s?.candidate?.gen_id;
+    if (!s?.agent || !gen || !this.io.identity) return;
+    const id = s.session_id;
+    const v = await this.io.identity(s.agent).catch(() => null);
+    if (this.dead || this.summary?.session_id !== id) return;
+    const row = (v?.published ?? []).find((r: any) => r?.gen_id === gen);
+    if (!row?.sha || !row?.fork) return;
+    const url = typeof row.html_url === "string" && /^https:\/\/github\.com\//.test(row.html_url) ? row.html_url : `https://github.com/${row.fork}/commit/${row.sha}`;
+    this.verified = { url, label: `${row.verified === true ? "Verified commit" : "Commit"} ${String(row.sha).slice(0, 7)} on ${row.fork}` };
+    this.renderDoc();
+  }
+
+  /** Live only: no session in progress. The window shows the agent's idle state. */
+  private async showIdle(lastEnd: number | null) {
+    if (this.view === "idle" && this.idle && this.idle.last_end === lastEnd) {
+      // already idle: only re-read the runtime's pause
+      const st = await idleStatus((p) => this.io.get(p), this.opts.agent, lastEnd);
+      if (this.dead || this.view !== "idle" || st.kind === this.idle?.kind) return;
+      this.idle = st;
+      this.renderAll();
+      this.renderDoc();
+      return;
+    }
+    this.gen++;
+    this.playing = false;
+    this.summary = null;
+    this.events = [];
+    this.network = null;
+    this.verified = null;
+    this.view = "idle";
+    this.mode = "replay";
+    this.reset();
+    this.tabs = ["@new"];
+    this.active = "@new";
+    this.idle = { kind: "next", last_end: lastEnd };
+    this.syncDesk();
+    this.opts.onSession?.(null);
+    this.renderList();
+    this.renderAll();
+    this.renderDoc();
+    const agent = this.opts.agent;
+    const st = await idleStatus((p) => this.io.get(p), agent, lastEnd);
+    if (this.dead || this.view !== "idle") return;
+    this.idle = st;
+    this.renderAll();
+    this.renderDoc();
   }
 
   private connect() {
@@ -559,10 +684,11 @@ class Panel {
       const cur = this.summary?.session_id;
       if (e.type === "session.events" && e.data?.session_id === cur) this.append(e.data.events as SEv[]);
       else if (e.type === "session.ended" && e.data?.session_id === cur) later();
+      else if (this.liveOnly && this.view === "idle" && e.type === "session.ended") void this.pickFromList(true);
       else if (e.type === "session.started") {
         const mine = (this.opts.agent && e.data?.agent === this.opts.agent) || (this.opts.lineage && e.data?.lineage_id === this.opts.lineage);
         if (mine && !this.opts.session) {
-          if (this.want === "auto" && (!this.summary || this.summary.state !== "live" || !this.playing)) void this.load(e.data.session_id, "auto").then(() => this.refreshList());
+          if ((this.want === "auto" || this.liveOnly) && (!this.summary || this.summary.state !== "live" || !this.playing)) void this.load(e.data.session_id, "auto").then(() => this.refreshList());
           else void this.refreshList();
         }
       } else if (/^(candidate|generation|replay|epoch)\./.test(e.type) && (this.summary?.state === "sealed" || this.summary?.state === "live")) later();
@@ -573,7 +699,8 @@ class Panel {
     if (this.opts.session || this.opts.list === false) return;
     const q = this.listQuery();
     try {
-      this.others = await this.io.get<SessionSummary[]>(`sessions?${q}${q ? "&" : ""}limit=12`);
+      const all = await this.io.get<SessionSummary[]>(`sessions?${q}${q ? "&" : ""}limit=12`);
+      this.others = this.liveOnly ? all.filter((s) => s.state === "live") : all;
       this.renderList();
     } catch {
       /* keep */
@@ -1227,6 +1354,7 @@ class Panel {
       return;
     }
     const act = t.closest<HTMLElement>("[data-act]")?.dataset.act;
+    if (this.liveOnly && act && act !== "live" && act !== "pause") return; // no playback of past work
     if (act === "play") this.play();
     else if (act === "pause") this.pause();
     else if (act === "restart") void this.seek(0);
@@ -1277,7 +1405,7 @@ class Panel {
     const base = s && this.io.desktop ? this.io.desktop(s.session_id) : null;
     let want: "live" | "rec" | null = null;
     if (s?.desktop && s.state === "live" && this.mode === "live" && base && !d.gone) want = "live";
-    else if (s?.desktop && s.open && s.recording && this.io.media) want = "rec";
+    else if (!this.liveOnly && s?.desktop && s.open && s.recording && this.io.media) want = "rec";
     const key = want ? `${want}:${s!.session_id}` : "";
     if (key !== d.key) {
       d.player?.stop();
@@ -1328,8 +1456,22 @@ class Panel {
   }
 
   private renderState() {
+    if (this.view === "idle" && this.idle) {
+      this.setState(this.idle.kind === "next" ? "idle" : "paused", this.idle.kind === "next" ? "Idle" : "Paused");
+      this.root.dataset.active = "0";
+      this.q(".lp-banner").hidden = true;
+      return;
+    }
     const s = this.summary;
     if (!s) return;
+    if (this.view === "facts") {
+      this.setState("ended", s.state === "final" ? `Ended, ${s.candidate?.status ?? "final"}` : s.state === "sealed" ? "Ended, verdict pending" : "Ended");
+      this.root.dataset.active = "0";
+      const banner = this.q(".lp-banner");
+      banner.hidden = true;
+      banner.textContent = "";
+      return;
+    }
     const live = this.mode === "live" && s.state === "live";
     this.setState(live ? "live" : "replay", live ? "Live" : this.mode === "live" ? (s.state === "sealed" ? "Ended, sealed" : "Ended") : this.playing ? "Replay" : "Paused");
     this.root.dataset.active = live || this.playing ? "1" : "0";
@@ -1356,7 +1498,7 @@ class Panel {
     const parts: string[] = [];
     this.tabs.forEach((id, i) => {
       const place = this.placeOf(id);
-      const title = s ? titleOf(s.repo, s.commit, place) : "Loading";
+      const title = s ? titleOf(s.repo, s.commit, place) : this.view === "idle" ? "New Tab" : "Loading";
       const sel = id === this.active;
       const prevSel = this.tabs[i - 1] === this.active;
       if (i > 0 && !sel && !prevSel) parts.push('<span class="cr-sep" aria-hidden="true"></span>');
@@ -1408,7 +1550,19 @@ class Panel {
     const s = this.summary;
     const doc = this.win.querySelector<HTMLElement>(".cr-doc")!;
     const page = this.win.querySelector<HTMLElement>(".cr-page")!;
+    if (this.view === "idle") {
+      page.dataset.k = "idle";
+      page.dataset.kind = "new";
+      doc.innerHTML = this.idleHtml();
+      return;
+    }
     if (!s) return;
+    if (this.view === "facts") {
+      page.dataset.k = "facts";
+      page.dataset.kind = "site";
+      doc.innerHTML = this.siteHead() + this.factsHtml();
+      return;
+    }
     const key = `${this.active}`;
     const keepScroll = page.dataset.k === key;
     const top = page.scrollTop;
@@ -1438,6 +1592,49 @@ class Panel {
     return `<header class="gh-top"><span class="gh-menu" aria-hidden="true"><i></i><i></i><i></i></span><span class="gh-repo">${owner ? `<span>${esc(owner)}</span><span class="sl">/</span>` : ""}<b>${esc(name)}</b></span>
       <span class="gh-find${this.ring === "find" ? " ring" : ""}">${C.search}<span class="v"></span></span></header>
       <nav class="gh-nav"><span aria-current="page">${C.repo}Code</span><span>Issues</span><span>Pull requests</span><span>Actions</span></nav>`;
+  }
+
+  /** Live only: the agent has no session in progress. */
+  private idleHtml() {
+    const st = this.idle ?? { kind: "next" as const, last_end: null };
+    return `<div class="pg-msg lp-idle" data-idle="${st.kind}"><div><b>${esc(idleTitle(st))}</b><div class="lp-idle-sub">${esc(idleSub(st))}</div>${
+      st.kind === "next" ? `<div class="lp-idle-sub">The window goes live as soon as the agent starts its next session.</div>` : `<div class="lp-idle-sub">The agent starts again once the runtime can pay for its next session.</div>`
+    }</div></div>`;
+  }
+
+  /** Live only: an ended session's final facts (no playback). */
+  private factsHtml() {
+    const s = this.summary!;
+    const kv = (k: string, v: string) => `<div><dt>${esc(k)}</dt><dd>${v}</dd></div>`;
+    const c = s.candidate;
+    const eff = c?.verdict?.effect;
+    const ratio = eff && typeof eff.ratio === "number" ? `${esc(eff.metric)} ratio ${esc(eff.ratio.toFixed(4))} (${esc((Math.abs(1 - eff.ratio) * 100).toFixed(1))}% ${eff.ratio < 1 ? "better" : "worse"})` : eff?.fixed ? `fixed ${esc(eff.fixed.join(", "))}` : "";
+    const verdict =
+      s.state === "final" && c
+        ? `<b class="${c.status === "accepted" ? "lp-ok" : "lp-bad"}">${esc(c.status)}</b>${c.reason ? ` <span class="dim">${esc(c.reason.replace(/_/g, " "))}</span>` : ""}`
+        : s.state === "sealed"
+          ? `<span class="dim">being replayed by independent verifiers</span>`
+          : `<span class="dim">ended without a candidate</span>`;
+    const links = [
+      c ? `<a ${this.a(`/candidates/${c.candidate_id ?? c.commit_id}`)}>Candidate</a>` : "",
+      c?.gen_id ? `<a ${this.a(`/generations/${c.gen_id}`)}>Generation</a>` : "",
+      this.verified ? `<a href="${esc(this.verified.url)}" target="_blank" rel="noopener">${esc(this.verified.label)}</a>` : "",
+    ].filter(Boolean);
+    const agent = s.agent ? `<a ${this.a(`/agents/${s.agent}`)}>${esc(s.agent.slice(0, 6))}...${esc(s.agent.slice(-4))}</a>` : `<span title="Hidden while the session's candidate is open (SPEC 10.7)">withheld</span>`;
+    const end = endOf(s);
+    return `<div class="gh-wrap gh-home lp-facts" data-facts="${esc(s.state)}">
+      <div class="gh-box"><div class="gh-bh"><span class="gh-av">${esc(who(s.proposer).slice(0, 1))}</span><b>Session ended</b><span class="dim">${end ? esc(new Date(end).toLocaleString()) : ""}</span></div>
+        <div class="gh-row gh-note"><span class="p">Verdict: ${verdict}</span>${ratio ? `<span class="c">${ratio}</span>` : ""}</div>
+        ${links.length ? `<div class="gh-row gh-note lp-facts-links">${links.join("")}</div>` : ""}</div>
+      <dl class="gh-about">
+        ${kv("Agent", agent)}
+        ${kv("Lineage", `<a ${this.a(`/lineages/${s.lineage_id}`)}>${esc(s.recipe_name ?? s.lineage_id.slice(0, 8))}</a>`)}
+        ${kv("Parent", `<a ${this.a(`/generations/${s.gen_id}`)} title="${esc(s.gen_id)}">gen ${esc(s.height ?? "?")}</a>`)}
+        ${kv("Started", esc(new Date(s.started_at).toLocaleString()))}
+        ${kv("Duration", esc(mmss((s.ended_at ?? s.last_at) - s.started_at)))}
+        ${kv("Events", esc(s.events))}
+      </dl>
+      <div class="lp-idle-sub">Lineage shows live work only; past sessions are not replayed.</div></div>`;
   }
 
   private homeHtml() {
@@ -1583,8 +1780,12 @@ class Panel {
       ctl.innerHTML = "";
       return;
     }
+    if (this.view === "facts") {
+      ctl.innerHTML = "";
+      return;
+    }
     if (this.mode === "live") {
-      ctl.innerHTML = `<span class="lp-none">${esc(who(s.proposer))}${s.state === "live" ? ", following live" : ""}</span><button type="button" class="lp-btn" data-act="replay">${C.restart} Replay</button>`;
+      ctl.innerHTML = `<span class="lp-none">${esc(who(s.proposer))}${s.state === "live" ? ", following live" : ""}</span>${this.liveOnly ? "" : `<button type="button" class="lp-btn" data-act="replay">${C.restart} Replay</button>`}`;
       return;
     }
     const playBtn = this.playing ? `<button type="button" class="lp-btn" data-act="pause" aria-label="Pause">${C.pause}</button>` : `<button type="button" class="lp-btn" data-act="play" aria-label="Play"${this.idx >= this.events.length && this.events.length ? ' disabled title="At the end; restart to replay"' : ""}>${C.play}</button>`;
@@ -1593,7 +1794,7 @@ class Panel {
 
   private renderProgress() {
     const prog = this.q(".lp-prog");
-    prog.hidden = this.mode === "live" || !this.events.length;
+    prog.hidden = this.mode === "live" || this.view !== "play" || !this.events.length;
     const pct = this.events.length ? (this.idx / this.events.length) * 100 : 0;
     prog.querySelector("i")!.style.width = `${pct}%`;
     prog.setAttribute("aria-valuemax", String(this.events.length));
@@ -1604,6 +1805,11 @@ class Panel {
   private renderSay() {
     const say = this.q(".lp-say");
     const s = this.summary;
+    if (this.view === "idle" || (this.view === "facts" && s)) {
+      say.querySelector(".t")!.innerHTML = this.view === "idle" ? esc(this.idle ? idleTitle(this.idle) : "Starting next session") : "Session ended";
+      say.querySelector(".tm")!.textContent = "";
+      return;
+    }
     if (!this.say || !s) {
       say.querySelector(".t")!.innerHTML = s ? (this.events.length ? "Starting" : s.state === "live" ? "Waiting for the agent's first tool call" : "This session recorded no events") : "";
       say.querySelector(".tm")!.textContent = "";
@@ -1618,6 +1824,11 @@ class Panel {
     const s = this.summary;
     if (!s) {
       box.innerHTML = "";
+      return;
+    }
+    if (this.view === "facts") {
+      // final facts only: the network's verdict, no reconstruction of the author's runs
+      box.innerHTML = this.networkHtml();
       return;
     }
     const out: string[] = [];

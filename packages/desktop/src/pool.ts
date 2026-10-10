@@ -24,6 +24,12 @@ export interface DesktopConfig {
   allow: string[];
   image?: string;
   e2b?: { template?: string; vcpu?: number; ram_gib?: number; session_max_s?: number; key?: string | null };
+  /**
+   * Full-quality recordings (SPEC 17.7). Default false (owner direction 2026-10-10: live only):
+   * no recorder runs, nothing is held, nothing is published. The live stream and its sealing and
+   * redaction are the same either way. true turns the recorder and publishPending back on.
+   */
+  recordings?: boolean;
 }
 
 export interface BeginOpts {
@@ -209,6 +215,11 @@ export class DesktopPool implements DesktopProvider {
     renameSync(this.pendingFile() + ".tmp", this.pendingFile());
   }
 
+  /** Whether this pool records and publishes recordings (cfg.recordings, default false). */
+  get recording(): boolean {
+    return this.cfg.recordings === true;
+  }
+
   hold(r: PendingRecording) {
     this.savePending([...this.pending().filter((x) => x.session_id !== r.session_id), r]);
   }
@@ -225,6 +236,8 @@ export class DesktopPool implements DesktopProvider {
   }): Promise<{ published: string[]; held: number }> {
     const published: string[] = [];
     const left: PendingRecording[] = [];
+    // recordings off: nothing is uploaded or linked; anything held from before stays on disk
+    if (!this.recording) return { published, held: this.pending().length };
     for (const p of this.pending()) {
       const keep = () => left.push(p);
       if (!existsSync(p.file)) continue;
@@ -284,6 +297,8 @@ class Attempt implements DesktopAttempt {
   private driver: Driver;
   private session: string | null = null;
   private liveOn = false;
+  /** the full-quality recorder runs for this attempt (pool.recording at start) */
+  private recording: boolean;
   private guard: ReturnType<typeof setInterval> | null = null;
   private guarding = false;
   private ending: Promise<void> | null = null;
@@ -302,7 +317,9 @@ class Attempt implements DesktopAttempt {
     this.t0 = started;
     this.seal = new Seal({ stacked: o.stacked, repo: o.repo, commit: o.commit });
     this.driver = new Driver(inst, this.seal, o.tree, log);
-    void inst.exec(["desk-bg", "rec", ...recordArgs("/tmp/desk/rec.mp4")]).then((r) => r.code !== 0 && log(`desktop: recording did not start: ${r.stderr.slice(0, 160)}`));
+    this.recording = pool.recording;
+    if (this.recording) void inst.exec(["desk-bg", "rec", ...recordArgs("/tmp/desk/rec.mp4")]).then((r) => r.code !== 0 && log(`desktop: recording did not start: ${r.stderr.slice(0, 160)}`));
+    else this.seal.recording = "none";
     this.guard = setInterval(() => void this.tick(), GUARD_MS);
     void this.tick();
     log(`desktop ${inst.backend} ${inst.id} up for ${o.agent.slice(0, 6)}`);
@@ -362,6 +379,7 @@ class Attempt implements DesktopAttempt {
     this.liveOn = false;
     try {
       if (hadLive) await this.inst.exec(["desk-stop", "live", "INT", "5"]).catch(() => undefined);
+      if (!this.recording) return;
       await this.inst.exec(["desk-stop", "rec", "INT", "30"], { timeoutMs: 40_000 }).catch(() => undefined);
       const bytes = await this.inst.read("/tmp/desk/rec.mp4");
       if (this.session && bytes && bytes.length > 1000 && bytes.length <= RECORDING_MAX_BYTES + 2_000_000) {

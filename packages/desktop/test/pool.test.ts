@@ -65,13 +65,13 @@ class FakeBackend implements DesktopBackend {
 
 const begin = { agent: "A".repeat(44), tree: "/tmp/none", repo: "https://github.com/karpathy/minbpe", commit: "c".repeat(40), stacked: false, label: "t" };
 
-function pool(o: { localMax?: number; e2bMax?: number; cap?: number; now?: () => number; e2bWhy?: string | null; localWhy?: string | null } = {}) {
+function pool(o: { localMax?: number; e2bMax?: number; cap?: number; now?: () => number; e2bWhy?: string | null; localWhy?: string | null; recordings?: boolean } = {}) {
   const root = tmp();
   const local = new FakeBackend("local", root, o.localWhy ?? null);
   const e2b = new FakeBackend("e2b", root, o.e2bWhy ?? null, e2bUsdPerS(2, 4));
   const logs: string[] = [];
   const p = new DesktopPool(
-    { root, desktops_max: o.localMax ?? 2, e2b_max: o.e2bMax ?? 3, desktop_usd_per_day: o.cap ?? 5, allow: ["github.com"], e2b: { session_max_s: 3600 } },
+    { root, desktops_max: o.localMax ?? 2, e2b_max: o.e2bMax ?? 3, desktop_usd_per_day: o.cap ?? 5, allow: ["github.com"], e2b: { session_max_s: 3600 }, recordings: o.recordings },
     { local, e2b, log: (m) => logs.push(m), now: o.now },
   );
   return { p, local, e2b, logs, root };
@@ -129,7 +129,7 @@ describe("slots", () => {
 
 describe("an attempt on a desktop", () => {
   test("events become desktop actions; the live encoder starts only after the geometry check; the recording is held under the session id", async () => {
-    const { p, local, root } = pool();
+    const { p, local, root } = pool({ recordings: true });
     const a = (await p.begin(begin))!;
     const inst = local.made[0]!;
     await Bun.sleep(50);
@@ -180,7 +180,7 @@ describe("an attempt on a desktop", () => {
 
 describe("recording publication", () => {
   test("held while live or sealed; published once open; a failed upload stays held", async () => {
-    const { p, root } = pool();
+    const { p, root } = pool({ recordings: true });
     const f = join(root, "recordings", "s.mp4");
     writeFileSync(f, new Uint8Array(100).fill(1));
     p.hold({ session_id: "s", agent: "A", file: f, bytes: 100, held_at: 0 });
@@ -205,6 +205,64 @@ describe("recording publication", () => {
     expect(r.published).toEqual(["s"]);
     expect(existsSync(f)).toBe(false);
     expect(p.pending()).toEqual([]);
+  });
+});
+
+describe("recordings off (the default, live only)", () => {
+  test("no recorder starts, nothing is held, the live stream and its seal run as before", async () => {
+    const { p, local, root } = pool();
+    expect(p.recording).toBe(false);
+    const a = (await p.begin(begin))!;
+    const inst = local.made[0]!;
+    await Bun.sleep(50);
+    expect(inst.calls.some((c) => c[0] === "desk-bg" && c[1] === "rec")).toBe(false);
+    expect(inst.calls.some((c) => c[0] === "desk-bg" && c[1] === "live")).toBe(true);
+    const sid = "e".repeat(64);
+    a.sessionOpened(sid);
+    a.event({ kind: "edit", path: "minbpe/base.py", start_line: 4, end_line: 4, after: "SECRET" });
+    await a.end();
+    const flat = inst.calls.map((c) => c.join(" "));
+    expect(flat.some((c) => c.startsWith("desk-stop rec"))).toBe(false);
+    expect(flat.filter((c) => !c.startsWith("desk-put")).some((c) => c.includes("SECRET"))).toBe(false);
+    expect(inst.destroyed).toBe(true);
+    expect(p.pending()).toEqual([]);
+    expect(existsSync(join(root, "recordings", `${sid}.mp4`))).toBe(false);
+    expect(JSON.parse(readFileSync(p.sessionFile(sid), "utf8")).ended_at).toBeGreaterThan(0);
+  });
+
+  test("publishPending makes no upload and no link call, even with an open gate and a recording held from before", async () => {
+    const { p, root } = pool();
+    const f = join(root, "recordings", "old.mp4");
+    writeFileSync(f, new Uint8Array(100).fill(1));
+    p.hold({ session_id: "old", agent: "A", file: f, bytes: 100, held_at: 0 });
+    const calls: string[] = [];
+    const r = await p.publishPending({
+      gateState: async () => (calls.push("gate"), "final"),
+      putBlob: async () => (calls.push("blob"), 200),
+      link: async () => (calls.push("link"), 200),
+    });
+    expect(calls).toEqual([]);
+    expect(r).toEqual({ published: [], held: 1 });
+    expect(existsSync(f)).toBe(true);
+  });
+
+  test("startRecordingPublisher never calls Core (no POST /v1/sessions/:id/recording)", async () => {
+    const { p, root } = pool();
+    const f = join(root, "recordings", "old.mp4");
+    writeFileSync(f, new Uint8Array(100).fill(1));
+    p.hold({ session_id: "old", agent: "A", file: f, bytes: 100, held_at: 0 });
+    const { startRecordingPublisher } = await import("../src/publish.ts");
+    const seen: string[] = [];
+    const orig = globalThis.fetch;
+    globalThis.fetch = (async (u: string | URL | Request) => (seen.push(String(u instanceof Request ? u.url : u)), new Response("{}"))) as typeof fetch;
+    try {
+      const stop = startRecordingPublisher(p, "http://127.0.0.1:1", () => null, () => {}, 10);
+      await Bun.sleep(60);
+      stop();
+    } finally {
+      globalThis.fetch = orig;
+    }
+    expect(seen).toEqual([]);
   });
 });
 

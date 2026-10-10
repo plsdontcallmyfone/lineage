@@ -5,6 +5,7 @@ import { agentAvatar, agentTitle, buildingLine, injectBuildingStyle, paramCells,
 import { drawThumb, thumbModel, type Palette, type ThumbModel } from "../../../../packages/embed/src/thumb.ts";
 import type { Page } from "./types.ts";
 import { mount as mountLivePanel } from "../live-panel/index.ts";
+import { endOf, idleCaption, idleStatus, RECORDINGS_SHOWN } from "../live-panel/live-only.ts";
 
 // Explorer: the token directory (docs/plans/FRONTEND-EMBED.md, amendment 2, and APP-CONSOLIDATION.md
 // amendment 2026-10-10 (2)). Every listed agent token as a card: a live screen thumbnail of what its
@@ -223,7 +224,11 @@ export function mountExplorer(el: HTMLElement, opts: ExplorerOpts = {}) {
     const sym = card.dataset.sym || "";
     const tok = last?.tokens.find((x) => x.mint === card.dataset.mint);
     let m: ThumbModel = { repo: tok?.repo_url ? repoLabel(tok.repo_url) : "repository TBA", file: null, lines: [], cursor: -1, caption: sid ? "Loading the session" : "No authoring session yet", live: false, title: sym ? `$${sym}` : undefined };
-    if (sid && C && !pending.has(sid)) {
+    if (!RECORDINGS_SHOWN && tok?.session?.state !== "live") {
+      // live only: a card whose agent is not working shows its idle state, not a still of a past session
+      const st = await idleStatus((p) => (C ? getJson<any>(`${C}/${p}`) : Promise.reject(new Error("no core"))), card.dataset.agent, endOf(tok?.session ?? null));
+      m = { ...m, caption: idleCaption(st) };
+    } else if (sid && C && !pending.has(sid)) {
       pending.add(sid);
       try {
         m = await modelFor(card, sid);
@@ -417,7 +422,7 @@ export async function explorerPage(): Promise<Page> {
     mount: (root) => {
       mounted?.destroy();
       mounted = mountExplorer(root.querySelector<HTMLElement>("#ex-root")!, {
-        // hovering a card: the agent's desktop (its session live, else its latest replayed) in the machine frame
+        // hovering a card: the agent's desktop (its session live, else its idle state: live only) in the machine frame
         hoverPanel: (wrap, agent) => {
           // the machine renders at its natural width in a box, and the box is scaled to fit the card's screen
           const box = document.createElement("div");

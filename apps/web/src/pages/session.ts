@@ -7,7 +7,7 @@ import { agentLink, badge, empty, icon, kv, panel } from "../ui.ts";
 import type { Page } from "./types.ts";
 
 // One authoring session (SPEC 17.3) in the live agent panel, and the index of recent sessions.
-// The panel follows the session live or replays it; the facts below it are read from the same
+// The panel follows the session live (an ended one shows its final facts: live only); the facts below it are read from the same
 // GET /v1/sessions/:id, and change with it.
 
 const who = (p: string) => (p === "anthropic" ? "Claude" : p === "scripted" ? "Scripted author" : p === "routed" ? "Routed model" : p);
@@ -93,7 +93,7 @@ export async function sessionsPage(): Promise<Page> {
   );
   const body = html`
     <div class="ph-row"><div class="ph-title"><div class="eyebrow">Live</div><h1>Authoring sessions</h1>
-      <div class="ph-sub"><span>Every authoring attempt, tool call by tool call. Open one to follow it live or replay it.</span></div></div></div>
+      <div class="ph-sub"><span>Every authoring attempt. Open a live one to follow it tool call by tool call; an ended one shows its final facts.</span></div></div></div>
     ${panel(
       "Recent sessions",
       list.length

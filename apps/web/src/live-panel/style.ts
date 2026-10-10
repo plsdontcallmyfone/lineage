@@ -229,6 +229,10 @@ export const CSS = `
 .lp-state { flex: none; display: inline-flex; align-items: center; gap: 6px; height: 22px; padding: 0 9px; border-radius: 11px; font-size: 11.5px; font-weight: 600; color: var(--dim); background: var(--panel-2); border: 1px solid var(--line-soft); white-space: nowrap; }
 .lp-state i { width: 6px; height: 6px; border-radius: 50%; background: var(--faint); }
 .lp-state[data-s="live"] { color: var(--text); }
+.lp-state[data-s="paused"] i { background: var(--warn, #d4a72c); }
+.lp-idle .lp-idle-sub, .lp-facts .lp-idle-sub { margin-top: 6px; color: var(--gh-muted); font-size: 12.5px; }
+.lp-facts .lp-idle-sub { margin-top: 14px; }
+.lp-facts-links { display: flex; flex-wrap: wrap; gap: 6px 16px; }
 .lp-state[data-s="live"] i, .lp-livedot { background: #e5484d; animation: lp-pulse 1.6s ease-out infinite; }
 .lp-livedot { display: inline-block; width: 6px; height: 6px; border-radius: 50%; }
 @keyframes lp-pulse { 0% { box-shadow: 0 0 0 0 rgba(229,72,77,.45); } 100% { box-shadow: 0 0 0 6px transparent; } }

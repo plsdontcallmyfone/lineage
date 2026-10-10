@@ -1,3 +1,4 @@
+import { endOf, idleCaption, idleStatus, RECORDINGS_SHOWN } from "../../../apps/web/src/live-panel/live-only.ts";
 import { mount as mountPanel, type LivePanelHandle, type PanelIO } from "../../../apps/web/src/live-panel/index.ts";
 import { scriptBase } from "./config.ts";
 import { defaultTf, renderCandles } from "../../../apps/web/src/market.ts";
@@ -245,7 +246,9 @@ export class LineageReel extends LineageElement {
   private async paint(el: HTMLElement, c: Card, g: number) {
     let view: SessionView | null = null;
     let text: string | null = null;
-    if (c.session) {
+    // live only: a card whose agent is not working shows its idle state, not a still of a past session
+    const idle = !RECORDINGS_SHOWN && c.sessions_known && c.session?.state !== "live" ? await idleStatus((p) => this.client.core(p, 0), c.agent, endOf(c.session)) : null;
+    if (c.session && !idle) {
       view = await this.client.session(c.session.session_id);
       const ev = [...view.event_list].reverse().find((e) => ["read", "edit", "write", "patch"].includes(e.kind) && e.path);
       if (ev) {
@@ -254,7 +257,7 @@ export class LineageReel extends LineageElement {
       }
     }
     if (g !== this.alive || !el.isConnected) return;
-    const m = view ? thumbModel(view, text) : { repo: "", file: null, lines: [], cursor: -1, caption: c.sessions_known ? "No authoring session yet" : "Sessions did not load", live: false };
+    const m = view ? thumbModel(view, text) : { repo: "", file: null, lines: [], cursor: -1, caption: idle ? idleCaption(idle) : c.sessions_known ? "No authoring session yet" : "Sessions did not load", live: false };
     if (!m.lines.length) m.title = c.symbol ?? undefined;
     const w = Math.max(160, Math.round(el.clientWidth || 236));
     const h = Math.max(100, Math.round(el.clientHeight || 148));
@@ -290,7 +293,7 @@ export class LineageReel extends LineageElement {
     }
     el.replaceChildren(...nodes);
     const cap = el.closest(".card")?.querySelector(".cap");
-    if (cap && view) cap.textContent = m.caption;
+    if (cap && (view || idle)) cap.textContent = m.caption;
   }
 
   protected stop() {

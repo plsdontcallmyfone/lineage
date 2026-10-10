@@ -19,11 +19,12 @@ export function desktopPool(cfg: RuntimeConfig, log: (m: string) => void): Deskt
       desktop_usd_per_day: cfg.desktop_usd_per_day ?? 5,
       allow: cfg.desktop_allow ?? ["github.com", "githubusercontent.com", "githubassets.com"],
       e2b: cfg.e2b,
+      recordings: cfg.recordings === true,
     },
     { log },
   );
   const s = pool.status();
-  log(`desktops: ${local} on this server${pool.local.unavailable() ? ` (${pool.local.unavailable()})` : ""}, ${e2b} on E2B${pool.e2b.unavailable() ? ` (${pool.e2b.unavailable()})` : ""}; E2B spend today ${s.e2b.spent_today_usd.toFixed(4)} of ${s.e2b.cap_usd} USD`);
+  log(`desktops: ${local} on this server${pool.local.unavailable() ? ` (${pool.local.unavailable()})` : ""}, ${e2b} on E2B${pool.e2b.unavailable() ? ` (${pool.e2b.unavailable()})` : ""}; E2B spend today ${s.e2b.spent_today_usd.toFixed(4)} of ${s.e2b.cap_usd} USD; recordings ${pool.recording ? "on" : "off (live only)"}`);
   return pool;
 }
 

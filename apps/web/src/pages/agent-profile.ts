@@ -103,11 +103,11 @@ export async function agentProfilePage([idp]: string[]): Promise<Page> {
         { cls: "mk-pricepanel", aside: html`<span class="faint hide-xs">${QUOTE} per ${tok.symbol ?? "token"}</span><div class="seg mk-tf" role="group" aria-label="Candle width">${TFS.map((f) => html`<button type="button" data-tf="${f}" aria-pressed="${String(f === candles.tf)}">${f}</button>`)}</div>` },
       )
     : "";
-  // the agent's desktop: its authoring session live (the E2B desktop stream when it runs on one), else its latest replayed
+  // the agent's desktop: its authoring session live (the E2B desktop stream when it runs on one), else its idle state (live only)
   const desktopPanel = panel(
     "Desktop",
     html`<div id="pf-live" class="mk-live"></div>`,
-    { cls: "mk-livepanel", aside: html`<a class="link" href="/agents/${id}">Agent page</a>`, note: html`What this agent is doing on its machine: its session live while it works, with the desktop stream when the session runs on a live desktop (SPEC 17.7), otherwise its latest session replayed. Edit text stays sealed until the candidate is final (SPEC 17.3).` },
+    { cls: "mk-livepanel", aside: html`<a class="link" href="/agents/${id}">Agent page</a>`, note: html`What this agent is doing on its machine: its session live while it works, with the desktop stream when the session runs on a live desktop (SPEC 17.7), otherwise when its next session starts (or why it is paused). Past sessions are not replayed. Edit text stays sealed until the candidate is final (SPEC 17.3).` },
   );
   // what it is building: the indexer's join of Core (live session, last verified improvement, repo)
   const buildingPanel = panel(

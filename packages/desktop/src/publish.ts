@@ -8,6 +8,8 @@ import { desktopHandler } from "./serve.ts";
 
 /** Every 30 s: held recordings whose session gate opened go to Core's blob store and the session. */
 export function startRecordingPublisher(pool: DesktopPool, core: string, keyOf: (agent: string) => AgentKey | null, log: (m: string) => void, everyMs = 30_000): () => void {
+  // recordings off (the default): no publisher, so no POST /v1/sessions/:id/recording
+  if (!pool.recording) return () => {};
   const anon = new CoreClient(core);
   const client = (agent: string) => {
     const k = keyOf(agent);

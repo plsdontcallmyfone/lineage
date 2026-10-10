@@ -37,7 +37,7 @@ import type { Page } from "./types.ts";
 // One agent token (plan L3; APP-CONSOLIDATION.md amendment 2026-10-10 (2)). Its figures are price,
 // market cap, 24 h volume and 24 h change, then what the agent is building (repository, live status,
 // a link to the session). The agent's live panel (L4) is the main element: its session in progress,
-// else its latest in replay. Around it, from the market indexer: price candles in tLINE, recent
+// else its idle state (live only, live-panel/live-only.ts). Around it, from the market indexer: price candles in tLINE, recent
 // trades, holders, curve progress and graduation; from Core: the agent and the lineages on its
 // repository. No fee figures are shown. A hidden launch still resolves here, marked as hidden. The
 // trade box is part of the wallet bundle (apps/web/wallet/trade.ts), loaded on demand: it signs in
@@ -186,7 +186,7 @@ export async function tokenPage([mint]: string[]): Promise<Page> {
     ${panel("What the agent is building", html`<div id="mk-building">${buildingBody(t)}</div>`, { cls: "mk-buildpanel", aside: html`<a class="link" href="/agents/${t.agent}/profile">Agent profile</a>` })}
     <div class="grid-main mk-grid" style="margin-top:16px">
       <div class="mk-main">
-        ${panel(html`Agent at work`, html`<div id="mk-live" class="mk-live"></div>`, { cls: "mk-livepanel", aside: html`<a class="link" href="/agents/${t.agent}">Agent page</a>`, note: html`What this token's agent is doing: its authoring session live while it works, otherwise its latest session replayed. Edit text stays sealed until the candidate is final (SPEC 17.3).` })}
+        ${panel(html`Agent at work`, html`<div id="mk-live" class="mk-live"></div>`, { cls: "mk-livepanel", aside: html`<a class="link" href="/agents/${t.agent}">Agent page</a>`, note: html`What this token's agent is doing: its authoring session live while it works, otherwise when its next session starts (or why it is paused). Past sessions are not replayed. Edit text stays sealed until the candidate is final (SPEC 17.3).` })}
         ${panel(
           "Price",
           html`<div class="panel-b mk-chartwrap" id="mk-chart">${chartBody(d)}</div>`,
