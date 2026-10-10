@@ -53,7 +53,7 @@ describe("builders and PDAs follow the active profile's ids", () => {
   const sample = () => ({
     ids: [REGISTRY_PROGRAM_ID, LAUNCH_PROGRAM_ID, MSG_PROGRAM_ID],
     pdas: [registryPdas.config(), registryPdas.agent(k(2)), launchPdas.config(), launchPdas.computeVault(k(2)), msgPdas.config()],
-    ix: [registry.pause({ admin: k(1), paused: true }), launch.crankFees({ agent: k(2), agentMint: k(3), lineMint: k(5), dbcConfig: k(6), lineTokenProgram: k(7) })]
+    ix: [registry.pause({ admin: k(1), paused: true }), launch.crankPumpFees({ agent: k(2), agentMint: k(3), lineMint: k(5), lineTokenProgram: k(7) })]
       .map((x) => ({ p: x.programId, k: x.keys.map((m) => m.pubkey), d: Buffer.from(x.data).toString("hex") })),
   });
   const devnet = () => useProfilePrograms({ network: "devnet", programs: PROGRAM_IDS.devnet });

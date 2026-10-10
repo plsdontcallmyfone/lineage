@@ -53,14 +53,13 @@ describe("browser bundle", () => {
     const A = "8juHDv3a67114S8JTjCwUGQkrZqjkw9Mac5fneSBsQi2";
     const B = "H9AKH5K79DWfwBQLRe8xv83u4pXgLdRfnzDjpkj3ihvk";
     const M = "3PLqpwWokAbpxZgBVLAzMAeLSvzfoDvjkhH9YydwVXmU";
-    const D = "AEcaMdhK3PSqPDq2rrXZMoKsCPCTVTMdqJXaT34mWWGw";
-    const T = node.TOKEN_2022_PROGRAM;
+        const T = node.TOKEN_2022_PROGRAM;
     const ixs = [
-      node.launch.launchAgent({ launcher: A, agent: B, agentMint: node.launchPdas.config(), lineMint: M, dbcConfig: D, lineTokenProgram: T,
-        args: { name: "TEST x", symbol: "TX", uri: "https://lineage.invalid/x.json?class=rust", repoUrl: "https://github.com/karpathy/minbpe", identityMode: 2, hosted: false } }),
+      node.launch.registerPumpLaunch({ launcher: A, agent: B, agentMint: node.launchPdas.config(), lineMint: M, lineTokenProgram: T,
+    args: { repoUrl: "https://github.com/karpathy/minbpe", identityMode: 2, hosted: false } }),
       node.registry.register({ owner: A, agent: B, mint: M, ownerToken: node.ata(A, M, T), operator: "00".repeat(32), capabilities: H("caps", canonicalJson({ arch: "arm64" })), tokenProgram: T }),
-      node.dbc.swap({ config: D, pool: node.launchPdas.dbcPool(D, B, M), agentMint: B, lineMint: M, trader: A, lineAccount: node.ata(A, M, T), agentAccount: node.ata(A, B, T), buy: true, amountIn: 200_000_000n, minOut: 1n, lineTokenProgram: T }),
-      node.launch.crankFees({ agent: B, agentMint: node.launchPdas.config(), lineMint: M, dbcConfig: D, lineTokenProgram: T }),
+      node.pump.buyV3({ mint: B, quoteMint: M, quoteTokenProgram: T, user: A, amount: 200_000_000n, maxQuoteIn: 1_000_000n }),
+      node.launch.crankPumpFees({ agent: B, agentMint: node.launchPdas.config(), lineMint: M, lineTokenProgram: T }),
       node.registry.bond({ owner: A, agent: B, mint: M, ownerToken: node.ata(A, M, T), amount: 5_000_000n, tokenProgram: T }),
     ];
     expect(out.ixs).toEqual(ixs.map((i) => ({ programId: i.programId, keys: i.keys, data: node.bytesToHex(i.data) })));

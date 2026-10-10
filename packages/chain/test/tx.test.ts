@@ -9,13 +9,11 @@ import {
   computeBudget,
   decodeMint,
   decodeTokenAccount,
-  encodeDbcParams,
   fixtureTransport,
   loadOrCreateKeypair,
   RecordingTransport,
   Rpc,
   sendAndConfirm,
-  standardDbcParams,
   toAddress,
   token,
   type Ix,
@@ -175,8 +173,5 @@ describe("token and DBC encodings", () => {
     expect([...token.revokeMintAuthority(fromSeed(1).id, fromSeed(2).id).data]).toEqual([6, 0, 0]);
     expect(token.initializeMint2(fromSeed(1).id, 6, fromSeed(2).id).data.length).toBe(1 + 1 + 32 + 1);
   });
-  test("DBC ConfigParameters length equals the suite's encode_params", () => {
-    // 8+2+8+8+1 base fee, 1 dynamic fee, 5 + 4 + 8 + 16, 40 vesting, 1 + 17 supply, 1 + 1, 2 + 4, 8, 26, 1 + 16 + 1 + 2 + 2, 4 + 32
-    expect(encodeDbcParams(standardDbcParams()).length).toBe(27 + 1 + 33 + 40 + 18 + 2 + 6 + 8 + 26 + 22 + 36);
-  });
+
 });

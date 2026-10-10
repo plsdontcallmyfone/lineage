@@ -9,7 +9,6 @@ import { inspectForCosign } from "../src/cosign.ts";
 
 const k = () => generateAgentKey().id;
 const LINE = "3PLqpwWokAbpxZgBVLAzMAeLSvzfoDvjkhH9YydwVXmU";
-const DBC = "AEcaMdhK3PSqPDq2rrXZMoKsCPCTVTMdqJXaT34mWWGw";
 const BH = "EtWTRABZaYq6iMfeYKouRu166VU2xqa1wcaWoxPkrZBG";
 const T22 = c.TOKEN_2022_PROGRAM;
 
@@ -17,27 +16,29 @@ function launchIxs(o: { strings?: number; soul?: boolean } = {}) {
   const launcher = k(), agent = k(), mint = k();
   const base = { name: "TEST minbpe speedups", symbol: "TMBPE", uri: "https://lineage.invalid/devnet/agents/tmbpe.json?class=python", repoUrl: "https://github.com/karpathy/minbpe" };
   const used = base.name.length + base.symbol.length + base.uri.length + base.repoUrl.length;
-  const args = { ...base, uri: base.uri + "x".repeat(Math.max(0, (o.strings ?? used) - used)), identityMode: 2, hosted: true };
-  const main = [c.launch.launchAgent({ launcher, agent, agentMint: mint, lineMint: LINE, dbcConfig: DBC, lineTokenProgram: T22, args }),
-    ...c.launch.prepay({ launcher, agent, agentMint: mint, lineMint: LINE, amount: 200_000_000n, decimals: 6, lineTokenProgram: T22 })];
+  const pad = Math.max(0, (o.strings ?? used) - used), toUri = Math.min(pad, 200 - base.uri.length);
+  const uri = base.uri + "x".repeat(toUri), repoUrl = base.repoUrl + "x".repeat(pad - toUri);
+  const main = c.pumpLaunchMain({ launcher, agent, agentMint: mint, line: { mint: LINE, tokenProgram: T22 }, name: base.name, symbol: base.symbol, uri,
+    args: { repoUrl, identityMode: 2, hosted: true } });
+  const rest = c.launch.prepay({ launcher, agent, agentMint: mint, lineMint: LINE, amount: 200_000_000n, decimals: 6, lineTokenProgram: T22 });
   const soul = o.soul ? c.registry.setProfile({ signingKey: agent, agent, digest: new Uint8Array(32).fill(7), seq: 1 }) : null;
-  return { launcher, agent, mint, main, soul };
+  return { launcher, agent, mint, main, rest, soul };
 }
 const budget = [c.computeBudget.limit(450_000), c.computeBudget.price(1)];
-const table = (addresses = c.launchTableAddresses({ lineMint: LINE, dbcConfig: DBC, lineTokenProgram: T22 })) => ({ address: k(), addresses });
+const table = (addresses = c.launchTableAddresses({ lineMint: LINE, lineTokenProgram: T22 })) => ({ address: k(), addresses });
 
 describe("v0 messages", () => {
   test("compileMessageV0: version prefix, static signers and programs, table indexes", () => {
     const l = launchIxs({ soul: true });
     const t = table();
-    const ixs = [...budget, ...l.main, l.soul!];
+    const ixs = [...budget, ...l.main, ...l.rest, l.soul!];
     const m = c.compileMessageV0(l.launcher, ixs, BH, [t]);
     expect(m.bytes[0]).toBe(0x80);
     expect(m.keys.slice(0, m.numSigners).sort()).toEqual([l.launcher, l.agent, l.mint].sort());
     expect(m.keys[0]).toBe(l.launcher);
     // invoked programs stay static even though the table holds the registry program and Token-2022
-    for (const p of [c.REGISTRY_PROGRAM_ID, T22, c.LAUNCH_PROGRAM_ID, c.COMPUTE_BUDGET_PROGRAM]) expect(m.keys).toContain(p);
-    expect(m.loaded.readonly).toContain(c.METEORA.dbcProgram);
+    for (const p of [c.REGISTRY_PROGRAM_ID, T22, c.LAUNCH_PROGRAM_ID, c.COMPUTE_BUDGET_PROGRAM, c.PUMP.program]) expect(m.keys).toContain(p);
+    expect(m.loaded.readonly).toContain(c.PUMP.global);
     expect(m.loaded.readonly).not.toContain(T22);
     for (const a of [...m.loaded.writable, ...m.loaded.readonly]) expect(m.keys).not.toContain(a);
     // the message ends with one table lookup: its address, then the writable and read-only indexes
@@ -52,7 +53,7 @@ describe("v0 messages", () => {
   test("the browser decoder reads a v0 message back, resolving the table", () => {
     const l = launchIxs();
     const t = table();
-    const ixs = [...budget, ...l.main];
+    const ixs = [...budget, ...l.main, ...l.rest];
     const m = c.compileMessageV0(l.launcher, ixs, BH, [t]);
     const d = decodeMessage(m.bytes, new Map([[t.address, t.addresses]]));
     expect(d.version).toBe(0);
@@ -127,40 +128,41 @@ describe("deposit math", () => {
   });
 });
 
-describe("launch transaction plan", () => {
-  test("typical launch, deposit and wake without a soul: one legacy transaction", () => {
+describe("launch transaction plan (pump.fun: create_v2 + register_pump_launch, then deposit + wake)", () => {
+  test("typical launch, deposit and wake without a soul: one v0 transaction (legacy is over the packet)", () => {
     const l = launchIxs();
-    const p = c.planLaunch({ payer: l.launcher, main: l.main, soul: null, budget, table: table(), v0: true });
-    expect(p.mode).toBe("legacy");
+    const p = c.planLaunch({ payer: l.launcher, main: l.main, rest: l.rest, soul: null, budget, table: table(), v0: true });
+    expect(p.mode).toBe("v0");
+    expect(p.txs[0]!.ixs).toEqual([...l.main, ...l.rest]);
     expect(p.txs[0]!.size).toBeLessThanOrEqual(c.PACKET_LIMIT);
   });
-  test("with a soul over the packet: one v0 transaction when the wallet signs v0", () => {
+  test("with a soul: still one v0 transaction for typical strings", () => {
     const l = launchIxs({ soul: true });
-    const p = c.planLaunch({ payer: l.launcher, main: l.main, soul: l.soul, budget, table: table(), v0: true });
+    const p = c.planLaunch({ payer: l.launcher, main: l.main, rest: l.rest, soul: l.soul, budget, table: table(), v0: true });
     expect(p.mode).toBe("v0");
     expect(p.txs.length).toBe(1);
-    expect(p.txs[0]!.ixs.length).toBe(4);
-    expect(p.txs[0]!.size).toBeLessThanOrEqual(c.PACKET_LIMIT);
+    expect(p.txs[0]!.ixs.length).toBe(5);
   });
-  test("the longest strings launch_agent accepts, with a soul, still fit one v0 transaction", () => {
+  test("MAX_LAUNCH_STRINGS: create_v2 + register_pump_launch alone fit one v0 transaction at the cap, not one byte over", () => {
+    const at = launchIxs({ strings: c.MAX_LAUNCH_STRINGS });
+    expect(c.planLaunch({ payer: at.launcher, main: at.main, soul: null, budget, table: table(), v0: true }).txs[0]!.size).toBe(c.PACKET_LIMIT);
+    const over = launchIxs({ strings: c.MAX_LAUNCH_STRINGS + 1 });
+    expect(() => c.planLaunch({ payer: over.launcher, main: over.main, soul: null, budget, table: table(), v0: true })).toThrow(/packet limit/);
+  });
+  test("the longest strings with a soul: two transactions, the launch first, deposit + wake + soul second", () => {
     const l = launchIxs({ strings: c.MAX_LAUNCH_STRINGS, soul: true });
-    const p = c.planLaunch({ payer: l.launcher, main: l.main, soul: l.soul, budget, table: table(), v0: true });
-    expect(p.mode).toBe("v0");
-  });
-  test("a wallet without v0: two transactions, launch + deposit + wake first", () => {
-    const l = launchIxs({ soul: true });
-    const p = c.planLaunch({ payer: l.launcher, main: l.main, soul: l.soul, budget, table: table(), v0: false });
+    const p = c.planLaunch({ payer: l.launcher, main: l.main, rest: l.rest, soul: l.soul, budget, table: table(), v0: true });
     expect(p.mode).toBe("split");
     expect(p.txs[0]!.ixs).toEqual(l.main);
-    expect(p.txs[1]!.ixs).toEqual([l.soul!]);
+    expect(p.txs[1]!.ixs).toEqual([...l.rest, l.soul!]);
   });
-  test("over the packet with no way to split: a clear error", () => {
-    const l = launchIxs({ strings: c.MAX_LAUNCH_STRINGS });
-    expect(() => c.planLaunch({ payer: l.launcher, main: l.main, soul: null, budget, table: null, v0: false })).toThrow(/over the 1232-byte/);
+  test("a wallet without v0 cannot launch on pump.fun: a clear error", () => {
+    const l = launchIxs({ soul: true });
+    expect(() => c.planLaunch({ payer: l.launcher, main: l.main, rest: l.rest, soul: l.soul, budget, table: table(), v0: false })).toThrow(/over the 1232-byte.*no v0/);
   });
   test("deposit instructions: transferChecked from the launcher's account into the compute vault, then refresh_awake", () => {
     const l = launchIxs();
-    const [t, r] = l.main.slice(1);
+    const [t, r] = l.rest;
     expect(t!.programId).toBe(T22);
     expect(t!.keys[0]!.pubkey).toBe(c.ata(l.launcher, LINE, T22));
     expect(t!.keys[2]!.pubkey).toBe(c.launchPdas.computeVault(l.agent));

@@ -159,19 +159,22 @@ export interface LaunchPlan {
 const FAKE_BLOCKHASH = "11111111111111111111111111111111";
 
 /**
- * One signed launch transaction when it fits: `main` is the venue's create + register (launch_agent
- * today) + deposit + refresh_awake, `buy` the venue's initial buy instructions (launch fronting; empty
- * when the venue adds none or folds the buy into its create instruction), `soul` the optional
- * set_profile, `budget` the compute budget instructions the sender prepends. A legacy message first;
- * over the packet limit, a v0 message with `table` (when the wallet signs v0); still over, exactly two
- * transactions, never more: (a) main + buy, (b) the soul; if main + buy alone does not fit,
- * (a) main, (b) buy + soul. The buy stays in the first transaction whenever it fits there, so nobody
- * can trade the new curve before it.
+ * One signed launch transaction when it fits: `main` is the venue's create + register (pump.fun:
+ * create_v2 + register_pump_launch), `buy` the venue's initial buy instructions (launch fronting;
+ * empty when the venue adds none), `rest` what may follow in a second transaction (the deposit and
+ * refresh_awake; empty to keep them in `main`), `soul` the optional set_profile, `budget` the compute
+ * budget instructions the sender prepends. A legacy message first; over the packet limit, a v0
+ * message with `table` (when the wallet signs v0); still over, exactly two transactions, never more:
+ * (a) main + buy + rest, (b) the soul; else (a) main + buy, (b) rest + soul; else (a) main, (b) buy +
+ * rest + soul. The buy stays in the first transaction whenever it fits there, so nobody can trade the
+ * new curve before it.
  */
-export function planLaunch(o: { payer: Address; main: Ix[]; buy?: Ix[]; soul: Ix | null; budget: Ix[]; table: LookupTable | null; v0: boolean }): LaunchPlan {
+export function planLaunch(o: { payer: Address; main: Ix[]; buy?: Ix[]; rest?: Ix[]; soul: Ix | null; budget: Ix[]; table: LookupTable | null; v0: boolean }): LaunchPlan {
   const buy = o.buy ?? [];
+  const rest = o.rest ?? [];
+  const soul = o.soul ? [o.soul] : [];
   const hasBuy = buy.length > 0;
-  const all = [...o.main, ...buy, ...(o.soul ? [o.soul] : [])];
+  const all = [...o.main, ...buy, ...rest, ...soul];
   const legacy = (ixs: Ix[]) => {
     const m = compileMessage(o.payer, [...o.budget, ...ixs], FAKE_BLOCKHASH);
     return wireSize({ bytes: m.bytes, numSigners: m.numSigners });
@@ -187,18 +190,14 @@ export function planLaunch(o: { payer: Address; main: Ix[]; buy?: Ix[]; soul: Ix
   if (one) return { mode: one.table ? "v0" : "legacy", txs: [one], buyTx: hasBuy ? 0 : null };
   const size = legacy(all);
   const why = `${o.v0 && o.table ? "" : " (and no v0 lookup table is usable)"}`;
-  if (!o.soul && !hasBuy) throw new Error(`the launch transaction is ${size} bytes, over the ${PACKET_LIMIT}-byte packet limit${why}`);
-  // (a) main + buy, (b) soul
-  if (o.soul) {
-    const a = fit([...o.main, ...buy]);
-    const b = fit([o.soul]);
-    if (a && b) return { mode: "split", txs: [a, b], buyTx: hasBuy ? 0 : null };
-  }
-  // (a) main, (b) buy + soul
-  if (hasBuy) {
-    const a = fit(o.main);
-    const b = fit([...buy, ...(o.soul ? [o.soul] : [])]);
-    if (a && b) return { mode: "split", txs: [a, b], buyTx: 1 };
-  }
+  if (!soul.length && !rest.length && !hasBuy) throw new Error(`the launch transaction is ${size} bytes, over the ${PACKET_LIMIT}-byte packet limit${why}`);
+  const two = (first: Ix[], second: Ix[], buyTx: number | null): LaunchPlan | null => {
+    if (!second.length) return null;
+    const a = fit(first), b = fit(second);
+    return a && b ? { mode: "split", txs: [a, b], buyTx } : null;
+  };
+  const plan = two([...o.main, ...buy, ...rest], soul, hasBuy ? 0 : null) ?? two([...o.main, ...buy], [...rest, ...soul], hasBuy ? 0 : null)
+    ?? (hasBuy ? two(o.main, [...buy, ...rest, ...soul], 1) : null);
+  if (plan) return plan;
   throw new Error(`the launch transaction is ${legacy(o.main)} bytes even without the soul${hasBuy ? " and the initial buy" : ""}, over the ${PACKET_LIMIT}-byte packet limit${why}`);
 }

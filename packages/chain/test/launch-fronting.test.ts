@@ -1,19 +1,17 @@
 // Launch fronting (docs/plans/LAUNCH-FRONTING.md): the venue-agnostic parts. The config (required
 // credits, initial buy bps, slippage bound), the exact 1% amount, the maximum input, the three cost
 // lines and the wallet check, and how the planner composes main + buy + soul into one legacy, one v0 or
-// exactly two transactions. The venue's own buy instructions belong to the venue lane (pump.fun); a
-// stand-in of the same shape (an ATA create for the treasury plus a 15-account swap, here Meteora's
-// swap2 builder) measures the sizes.
+// exactly two transactions. main and buy are the pump.fun venue's real builders (pump-launch.ts:
+// create_v2 + register_pump_launch, and the launcher's buy_v3 delivered to the agent key).
 import { describe, expect, test } from "bun:test";
 import { generateAgentKey } from "@lineage/protocol";
 import * as c from "../src/index.ts";
 
 const k = () => generateAgentKey().id;
 const LINE = "3PLqpwWokAbpxZgBVLAzMAeLSvzfoDvjkhH9YydwVXmU";
-const DBC = "AEcaMdhK3PSqPDq2rrXZMoKsCPCTVTMdqJXaT34mWWGw";
 const T22 = c.TOKEN_2022_PROGRAM;
 const budget = [c.computeBudget.limit(450_000), c.computeBudget.price(1)];
-const table = () => ({ address: k(), addresses: c.launchTableAddresses({ lineMint: LINE, dbcConfig: DBC, lineTokenProgram: T22 }) });
+const table = () => ({ address: k(), addresses: c.launchTableAddresses({ lineMint: LINE, lineTokenProgram: T22 }) });
 
 const CFG = {
   min_usd: "10", default_usd: "10", line_per_usd: "20", rate_status: "test", compute_price_line_per_usd: "20", compute_price_line_per_sandbox_s: "0.002",
@@ -22,19 +20,16 @@ const CFG = {
 
 function launch(o: { strings?: number; soul?: boolean; buy?: boolean } = {}) {
   const launcher = k(), agent = k(), mint = k();
-  const base = { name: "TEST fronting", symbol: "TFRONT", uri: "https://lineage.invalid/devnet/agents/tfront.json?class=python", repoUrl: "https://github.com/keis/base58" };
-  const used = base.name.length + base.symbol.length + base.uri.length + base.repoUrl.length;
-  const args = { ...base, uri: base.uri + "x".repeat(Math.max(0, (o.strings ?? used) - used)), identityMode: 2, hosted: true };
-  const main = [c.launch.launchAgent({ launcher, agent, agentMint: mint, lineMint: LINE, dbcConfig: DBC, lineTokenProgram: T22, args }),
-    ...c.launch.prepay({ launcher, agent, agentMint: mint, lineMint: LINE, amount: 200_000_000n, decimals: 6, lineTokenProgram: T22 })];
-  const pool = c.launchPdas.dbcPool(DBC, mint, LINE);
-  const buy = o.buy === false ? [] : [
-    c.token.createAtaIdempotent(launcher, agent, mint, T22),
-    c.dbc.swap({ config: DBC, pool, agentMint: mint, lineMint: LINE, trader: launcher, lineAccount: c.ata(launcher, LINE, T22), agentAccount: c.ata(agent, mint, T22),
-      buy: true, amountIn: 1_000_000_000_000n, minOut: 5_000_000n, mode: 2, lineTokenProgram: T22 }),
-  ];
+  const base = { name: "TEST fronting", symbol: "TFRONT", uri: "https://lineage.invalid/devnet/agents/tfront.json?class=python", repo: "https://github.com/keis/base58" };
+  const used = base.name.length + base.symbol.length + base.uri.length + base.repo.length;
+  const pad = Math.max(0, (o.strings ?? used) - used), toUri = Math.min(pad, 200 - base.uri.length);
+  const main = c.pumpLaunchMain({ launcher, agent, agentMint: mint, line: { mint: LINE, tokenProgram: T22 }, name: base.name, symbol: base.symbol,
+    uri: base.uri + "x".repeat(toUri), args: { repoUrl: base.repo + "x".repeat(pad - toUri), identityMode: 2, hosted: true } });
+  const rest = c.launch.prepay({ launcher, agent, agentMint: mint, lineMint: LINE, amount: 200_000_000n, decimals: 6, lineTokenProgram: T22 });
+  const buy = o.buy === false ? [] : c.pumpInitialBuy({ launcher, agent, agentMint: mint, lineMint: LINE, amountOut: 10_000_000_000_000n, maxIn: 5_000_000_000n,
+    lineTokenProgram: T22 });
   const soul = o.soul ? c.registry.setProfile({ signingKey: agent, agent, digest: new Uint8Array(32).fill(7), seq: 1 }) : null;
-  return { launcher, agent, mint, main, buy, soul };
+  return { launcher, agent, mint, main, rest, buy, soul };
 }
 
 describe("fronting config", () => {
@@ -95,71 +90,51 @@ describe("cost lines and the wallet check", () => {
   });
 });
 
-describe("planner with the initial buy", () => {
-  test("launch + deposit + wake + buy without a soul: one transaction, the buy in it, after the launch", () => {
+describe("planner with the pump.fun initial buy", () => {
+  // measured (typical strings, both compute budget instructions, the launch table): create_v2 +
+  // register_pump_launch 1,016 bytes v0, + the buy 1,200, + deposit and wake 1,262; legacy is over the
+  // packet from create + register alone (1,507), so pump.fun launches need a v0 wallet.
+  test("typical strings: the buy rides with create + register (anti-snipe), deposit + wake go second", () => {
     const l = launch();
-    const p = c.planLaunch({ payer: l.launcher, main: l.main, buy: l.buy, soul: null, budget, table: table(), v0: true });
-    expect(p.txs.length).toBe(1);
-    expect(p.buyTx).toBe(0);
-    expect(p.txs[0]!.ixs).toEqual([...l.main, ...l.buy]);
-    expect(p.txs[0]!.size).toBeLessThanOrEqual(c.PACKET_LIMIT);
-  });
-  test("measured sizes: legacy and v0 with the stand-in buy", () => {
-    const l = launch();
-    const legacy = c.planLaunch({ payer: l.launcher, main: l.main, buy: l.buy, soul: null, budget, table: null, v0: false });
-    const v0 = c.planLaunch({ payer: l.launcher, main: l.main, buy: l.buy, soul: l.soul ?? null, budget, table: table(), v0: true });
-    expect(legacy.mode === "legacy" || legacy.mode === "split").toBe(true);
-    expect(v0.txs[0]!.size).toBeLessThanOrEqual(c.PACKET_LIMIT);
-  });
-  test("with a soul and a v0 wallet: one v0 transaction carrying all of it", () => {
-    const l = launch({ soul: true });
-    const p = c.planLaunch({ payer: l.launcher, main: l.main, buy: l.buy, soul: l.soul, budget, table: table(), v0: true });
-    expect(p.mode).toBe("v0");
-    expect(p.txs.length).toBe(1);
-    expect(p.buyTx).toBe(0);
-    expect(p.txs[0]!.ixs).toEqual([...l.main, ...l.buy, l.soul!]);
-  });
-  // measured with the stand-in (typical strings): main 1179 legacy / 905 v0 bytes, main + buy 1296 / 1053,
-  // main + buy + soul 1346 / 1134, buy + soul 929 / 748; with the longest strings main + buy + soul is 1250 as v0
-  test("longest strings with a soul on a v0 wallet: two transactions, the buy stays with the launch, the soul second", () => {
-    const l = launch({ strings: c.MAX_LAUNCH_STRINGS, soul: true });
-    const p = c.planLaunch({ payer: l.launcher, main: l.main, buy: l.buy, soul: l.soul, budget, table: table(), v0: true });
+    const p = c.planLaunch({ payer: l.launcher, main: l.main, buy: l.buy, rest: l.rest, soul: null, budget, table: table(), v0: true });
     expect(p.mode).toBe("split");
-    expect(p.txs.length).toBe(2);
     expect(p.buyTx).toBe(0);
     expect(p.txs[0]!.ixs).toEqual([...l.main, ...l.buy]);
-    expect(p.txs[1]!.ixs).toEqual([l.soul!]);
+    expect(p.txs[1]!.ixs).toEqual(l.rest);
     for (const t of p.txs) expect(t.size).toBeLessThanOrEqual(c.PACKET_LIMIT);
   });
-  test("a legacy-only wallet: main + buy is over 1232 bytes as legacy, so the buy goes second with the soul (two signatures, never three)", () => {
+  test("typical strings with a soul: still two transactions, never three", () => {
     const l = launch({ soul: true });
-    const p = c.planLaunch({ payer: l.launcher, main: l.main, buy: l.buy, soul: l.soul, budget, table: table(), v0: false });
-    expect(p.mode).toBe("split");
+    const p = c.planLaunch({ payer: l.launcher, main: l.main, buy: l.buy, rest: l.rest, soul: l.soul, budget, table: table(), v0: true });
     expect(p.txs.length).toBe(2);
+    expect(p.buyTx).toBe(0);
+    expect(p.txs[1]!.ixs).toEqual([...l.rest, l.soul!]);
+  });
+  test("strings at MAX_LAUNCH_STRINGS: create + register fill the first transaction, the buy goes second with the rest", () => {
+    const l = launch({ strings: c.MAX_LAUNCH_STRINGS, soul: true });
+    const p = c.planLaunch({ payer: l.launcher, main: l.main, buy: l.buy, rest: l.rest, soul: l.soul, budget, table: table(), v0: true });
+    expect(p.mode).toBe("split");
     expect(p.buyTx).toBe(1);
     expect(p.txs[0]!.ixs).toEqual(l.main);
-    expect(p.txs[1]!.ixs).toEqual([...l.buy, l.soul!]);
-    expect(p.txs.every((t) => t.table === null)).toBe(true);
+    expect(p.txs[1]!.ixs).toEqual([...l.buy, ...l.rest, l.soul!]);
+    for (const t of p.txs) expect(t.size).toBeLessThanOrEqual(c.PACKET_LIMIT);
   });
-  test("main + buy over the packet even as v0: the buy moves to the second transaction, never a third", () => {
+  test("a legacy-only wallet: refused with a clear error (pump.fun launches need v0)", () => {
     const l = launch({ soul: true });
-    const fat: c.Ix = { programId: k(), keys: Array.from({ length: 9 }, () => ({ pubkey: k(), isSigner: false, isWritable: true })), data: new Uint8Array(40) };
-    const p = c.planLaunch({ payer: l.launcher, main: l.main, buy: [...l.buy, fat], soul: l.soul, budget, table: table(), v0: true });
-    expect(p.mode).toBe("split");
-    expect(p.txs.length).toBe(2);
-    expect(p.buyTx).toBe(1);
-    expect(p.txs[0]!.ixs).toEqual(l.main);
-    expect(p.txs[1]!.ixs).toEqual([...l.buy, fat, l.soul!]);
+    expect(() => c.planLaunch({ payer: l.launcher, main: l.main, buy: l.buy, rest: l.rest, soul: l.soul, budget, table: table(), v0: false })).toThrow(/packet limit/);
   });
-  test("no buy: the plan is the plan C one (buyTx null)", () => {
-    const l = launch({ buy: false, soul: true });
-    const p = c.planLaunch({ payer: l.launcher, main: l.main, buy: [], soul: l.soul, budget, table: table(), v0: true });
+  test("no buy: create + register + deposit + wake in one v0 transaction (buyTx null)", () => {
+    const l = launch({ buy: false });
+    const p = c.planLaunch({ payer: l.launcher, main: l.main, buy: [], rest: l.rest, soul: null, budget, table: table(), v0: true });
     expect(p.buyTx).toBeNull();
-    expect(p.txs[0]!.ixs).toEqual([...l.main, l.soul!]);
+    expect(p.txs.length).toBe(1);
+    expect(p.txs[0]!.ixs).toEqual([...l.main, ...l.rest]);
   });
-  test("nothing fits even split: a clear error", () => {
-    const l = launch({ strings: c.MAX_LAUNCH_STRINGS });
-    const fat: c.Ix = { programId: k(), keys: Array.from({ length: 40 }, () => ({ pubkey: k(), isSigner: false, isWritable: true })), data: new Uint8Array(200) };
-    expect(() => c.planLaunch({ payer: l.launcher, main: l.main, buy: [fat], soul: null, budget, table: null, v0: false })).toThrow(/packet limit/);
+  test("the buy delivers to the agent key's token account, after register_pump_launch", () => {
+    const l = launch();
+    const buy = l.buy.find((x) => x.programId === c.PUMP.program)!;
+    expect(buy.keys[9]!.pubkey).toBe(c.ata(l.agent, l.mint, T22));
+    expect(buy.keys[8]).toEqual({ pubkey: l.launcher, isSigner: true, isWritable: true });
+    expect(l.main[1]!.programId).toBe(c.LAUNCH_PROGRAM_ID);
   });
 });

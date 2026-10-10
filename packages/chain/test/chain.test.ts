@@ -20,7 +20,7 @@ import {
   launch,
   launchPdas,
   LAUNCH_PROGRAM_ID,
-  METEORA,
+  PUMP,
   OFFENCE,
   paramsFromNetworkJson,
   payoutLeaf,
@@ -79,7 +79,6 @@ describe("instruction builders equal the Anchor encodings", () => {
   const owner = k(5);
   const agent = k(6);
   const mint = k(7);
-  const dbcConfig = k(8);
   const launcher = k(9);
   const args = { admin: k(1), coreAuthority: k(2), launchProgram: LAUNCH_PROGRAM_ID, params, maxRebatePerEpoch: 123_456n };
   const ownerToken = ata(owner, line);
@@ -113,19 +112,14 @@ describe("instruction builders equal the Anchor encodings", () => {
       proof: [fill(5), fill(6)], destToken: ata(k(11), line) })],
   ];
   const largs = { admin: k(1), runtimeAuthority: k(3), computeSink: k(10), agentComputeBps: 7000, protocolBps: 3000,
-    sleepThreshold: 1n, wakeThreshold: 2n, paused: false, maxDebitPerEpoch: 4_242n };
-  const dbcPool = launchPdas.dbcPool(dbcConfig, mint, line);
+    sleepThreshold: 1n, wakeThreshold: 2n, paused: false, maxDebitPerEpoch: 4_242n, pumpCreatorFeeBps: 150n };
   cases.push(
-    ["launch.initialize_launch", () => launch.initialize({ upgradeAuthority: k(1), lineMint: line, dbcConfig, args: largs })],
-    ["launch.set_launch_config", () => launch.setConfig({ admin: k(1), dbcConfig, args: largs })],
-    ["launch.launch_agent", () => launch.launchAgent({ launcher, agent, agentMint: mint, lineMint: line, dbcConfig, args: { name: "Base58 Agent",
-      symbol: "B58A", uri: "https://example.invalid/agents/b58a.json", repoUrl: "https://github.com/lineage-test/base58", identityMode: IDENTITY_MODE.app,
-      hosted: true } })],
-    ["launch.crank_fees", () => launch.crankFees({ agent, agentMint: mint, lineMint: line, dbcConfig })],
-    ["launch.graduate", () => launch.graduate({ agentMint: mint, dbcPool, dammPool: k(12), position: k(13), positionNftAccount: k(14) })],
-    ["launch.graduate_by_admin", () => launch.graduateByAdmin({ admin: k(1), agentMint: mint, dbcPool, dammPool: k(12), position: k(13),
-      positionNftAccount: k(14) })],
-    ["launch.repoint_position", () => launch.repointPosition({ agentMint: mint, currentPosition: k(13), position: k(15), positionNftAccount: k(16) })],
+    ["launch.initialize_launch", () => launch.initialize({ upgradeAuthority: k(1), lineMint: line, args: largs })],
+    ["launch.set_launch_config", () => launch.setConfig({ admin: k(1), args: largs })],
+    ["launch.register_pump_launch", () => launch.registerPumpLaunch({ launcher, agent, agentMint: mint, lineMint: line,
+      args: { repoUrl: "https://github.com/lineage-test/base58", identityMode: IDENTITY_MODE.app, hosted: true } })],
+    ["launch.crank_pump_fees", () => launch.crankPumpFees({ agent, agentMint: mint, lineMint: line })],
+    ["launch.record_pump_graduation", () => launch.recordPumpGraduation({ agentMint: mint, lineMint: line })],
     ["launch.migrate_launch_config", () => launch.migrateConfig({ admin: k(1), maxDebitPerEpoch: 8_888n })],
     ["launch.post_usage", () => launch.postUsage({ runtimeAuthority: k(3), epoch: 3, root: fill(9) })],
     ["launch.debit_compute", () => launch.debitCompute({ runtimeAuthority: k(3), epoch: 3, agent, agentMint: mint, computeSink: k(10), lineMint: line,
@@ -134,18 +128,9 @@ describe("instruction builders equal the Anchor encodings", () => {
     ["launch.refresh_awake", () => launch.refreshAwake({ agent, agentMint: mint })],
   );
   for (const [name, build] of cases) test(name, () => expect(asVector(build())).toEqual(vector(name)));
-  test("launch.crank_pool_fees (vaults derived from the pool)", () => {
-    // The vector names arbitrary vault keys; the builder derives DAMM v2's real vault PDAs, so
-    // compare everything but those two.
-    const ix = asVector(launch.crankPoolFees({ agent, agentMint: mint, lineMint: line, dammPool: k(12), position: k(13), positionNftAccount: k(14) }));
-    const v = vector("launch.crank_pool_fees");
-    expect(ix.data).toBe(v.data);
-    expect(ix.accounts.filter((_, i) => i !== 6 && i !== 7)).toEqual(v.accounts.filter((_: unknown, i: number) => i !== 6 && i !== 7));
-    expect(ix.accounts[6]![0]).toBe(launchPdas.dammVault(mint, k(12)));
-  });
   test("every vector is covered", () => {
     // The bounty vectors are checked in bounty.test.ts, the challenge vectors in challenge.test.ts.
-    const names = new Set([...cases.map((c) => c[0]), "launch.crank_pool_fees", "launch.set_bounty_config", "launch.open_bounty", "launch.release_bounty",
+    const names = new Set([...cases.map((c) => c[0]), "launch.set_bounty_config", "launch.open_bounty", "launch.release_bounty",
       "launch.refund_bounty", "launch.cancel_bounty", "registry.set_challenge_config", "registry.open_challenge.verdict", "registry.open_challenge.slash",
       "registry.resolve_challenge.epoch", "registry.resolve_challenge.slash", "registry.resolve_challenge.failed", "registry.expire_challenge"]);
     expect(vectors.instructions.map((v: { name: string }) => v.name).filter((n: string) => !names.has(n))).toEqual([]);
@@ -215,21 +200,24 @@ describe("account decoders read live LiteSVM accounts", () => {
   test("LaunchConfig", () => {
     const c = decodeLaunchConfig(raw("LaunchConfig"));
     const f = acct("LaunchConfig").fields;
-    expect([c.admin, c.runtimeAuthority, c.lineMint, c.dbcConfig, c.agentComputeBps, c.protocolBps, c.paused]).toEqual([f.admin, f.runtimeAuthority,
-      f.lineMint, f.dbcConfig, f.agentComputeBps, f.protocolBps, f.paused]);
-    expect([c.sleepThreshold, c.wakeThreshold, c.migrationQuoteThreshold, c.sqrtStartPrice].map(String)).toEqual([f.sleepThreshold, f.wakeThreshold,
-      f.migrationQuoteThreshold, f.sqrtStartPrice]);
+    expect([c.admin, c.runtimeAuthority, c.lineMint, c.venue, c.agentComputeBps, c.protocolBps, c.paused]).toEqual([f.admin, f.runtimeAuthority,
+      f.lineMint, f.venue, f.agentComputeBps, f.protocolBps, f.paused]);
+    expect(c.venue).toBe(PUMP.program);
+    expect([c.sleepThreshold, c.wakeThreshold, c.pumpCreatorFeeBps].map(String)).toEqual([f.sleepThreshold, f.wakeThreshold, f.pumpCreatorFeeBps]);
     expect([c.registryProgram, ...[c.maxDebitPerEpoch, c.usageEpochsPosted, c.lastUsageEpoch, c.usageAnchor, c.usageAnchorTs].map(String)]).toEqual([
       f.registryProgram, f.maxDebitPerEpoch, f.usageEpochsPosted, f.lastUsageEpoch, f.usageAnchor, f.usageAnchorTs]);
     expect(c.registryProgram).toBe(REGISTRY_PROGRAM_ID);
     const old = decodeLaunchConfig(raw("LaunchConfig").subarray(0, raw("LaunchConfig").length - 40));
-    expect([old.dbcConfig, old.paused, old.maxDebitPerEpoch, old.usageAnchor]).toEqual([c.dbcConfig, c.paused, null, null]);
+    expect([old.venue, old.paused, old.maxDebitPerEpoch, old.usageAnchor]).toEqual([c.venue, c.paused, null, null]);
   });
   test("AgentLaunch", () => {
     const l = decodeAgentLaunch(raw("AgentLaunch"));
     const f = acct("AgentLaunch").fields;
-    expect([l.agent, l.mint, l.launcher, l.repoId, l.repoUrl, l.identityMode, l.hosted, l.dbcPool, l.graduated, l.awake, String(l.createdAt)]).toEqual([
-      f.agent, f.mint, f.launcher, f.repoId, f.repoUrl, f.identityMode, f.hosted, f.dbcPool, f.graduated, f.awake, f.createdAt]);
+    expect([l.agent, l.mint, l.launcher, l.repoId, l.repoUrl, l.identityMode, l.hosted, l.bondingCurve, l.pumpPool, l.pumpCreator, l.graduated, l.awake,
+      String(l.createdAt)]).toEqual([f.agent, f.mint, f.launcher, f.repoId, f.repoUrl, f.identityMode, f.hosted, f.bondingCurve, f.pumpPool, f.pumpCreator,
+      f.graduated, f.awake, f.createdAt]);
+    expect([l.venue, f.venue]).toEqual(["pump", PUMP.program]);
+    expect(l.pumpCreator).toBe(launchPdas.pumpCreator(l.agent));
   });
   test("a wrong discriminator is refused", () => {
     expect(() => decodeAgent(raw("Config"))).toThrow("not a Agent account");
@@ -263,6 +251,6 @@ describe("params", () => {
     expect(p.reserveBps + p.poolBps).toBe(10_000);
     expect(p.registerBurn).toBe((BigInt(net.register_burn) * 10n ** 6n) / 10n ** BigInt(net.token_decimals));
     expect(p.finderShareBps).toBe(Math.round(net.finder_share * 10_000));
-    expect(METEORA.dbcProgram).toBe(vector("launch.crank_fees").accounts[14][0]);
+    expect(PUMP.program).toBe(vector("launch.record_pump_graduation").accounts[2] && "6EF8rrecthR5Dkzon8Nwu78hRvfCKubJ14M5uBEwF6P");
   });
 });
