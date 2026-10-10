@@ -31,6 +31,10 @@ cpSync(join(WEB, "public/favicon.svg"), join(OUT, "favicon.svg"));
 // and the dashboard's shell is app.html, the rewrite target for every client-side route.
 cpSync(join(WEB, "public/garage"), OUT, { recursive: true });
 cpSync(join(WEB, "public/index.html"), join(OUT, "app.html"));
+// the landing page's sticky notes (hidden by garage-overrides.css) ask /api/stickies; a static empty
+// answer keeps that off the proxied Core, which has no such route
+mkdirSync(join(OUT, "api"), { recursive: true });
+writeFileSync(join(OUT, "api/stickies"), "[]");
 
 const vercel = {
   cleanUrls: true,
