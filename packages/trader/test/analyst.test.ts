@@ -69,7 +69,7 @@ describe("analysis model override (owner 2026-10-10: a cheaper model for trading
   test("the trading config's analysis_model replaces the soul's model; null keeps the soul's", async () => {
     const { routedDecisionModel } = await import("../src/analyst.ts");
     const reg = JSON.parse(await Bun.file(new URL("../../../config/models.json", import.meta.url)).text());
-    const registry = { get: async () => reg };
+    const registry = { get: async () => reg } as unknown as Parameters<typeof routedDecisionModel>[0]["registry"];
     const soul = { model: { provider: "anthropic", id: "claude-opus-5-5" } };
     const fetchSoul = (async () => Response.json({ doc: soul })) as unknown as typeof fetch;
     const fake = () => ({ messages: { create: async () => ({}) } });
