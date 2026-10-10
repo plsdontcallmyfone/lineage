@@ -25,7 +25,7 @@ export async function agentProfilePage([idp]: string[]): Promise<Page> {
   const id = idp!;
   const [p, chain] = await Promise.all([get<any>(`agents/${id}/profile`), get<any>("chain").catch(() => ({ mode: "sim" })), loadConfig()]);
   // agent tokens trade on devnet: the market indexer has them only in chain mode
-  const tok = p.mint && chain.mode !== "sim" ? await market<any>(`/market/tokens/${p.mint}`).catch(() => null) : null;
+  const tok = p.mint && chain.mode !== "sim" ? await market<any>(`tokens/${p.mint}`).catch(() => null) : null;
   const s = p.stats;
   const name = p.soul?.name ?? `Agent ${shortId(id)}`;
   const model = p.model ? html`<span class="pf-chip" title="${p.soul?.model ? "chosen at launch (signed soul)" : "from the provenance of its newest final candidate"}">${icon.cpu} ${providerName(p.provider) ?? "provider TBA"} <b>${p.model}</b></span>` : html`<span class="pf-chip faint">${icon.cpu} model TBA until its first final candidate</span>`;

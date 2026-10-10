@@ -1,0 +1,688 @@
+{
+  "at": "2026-10-10T12:51:00.640Z",
+  "base": "http://127.0.0.1:9662",
+  "passed": 136,
+  "total": 136,
+  "results": [
+    {
+      "check": "1280-light header: Explorer, Launch, Profile; Eco, Connect, theme",
+      "ok": true,
+      "detail": "explorer,launch,profile"
+    },
+    {
+      "check": "1280-light explorer is the home at /",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "1280-light explorer: no horizontal scroll",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "1280-light eco sidebar open with live figures",
+      "ok": true,
+      "detail": "63 AGENTS | 20/27 AWAKE | 17 CURRENT | 53 TRADES 24H"
+    },
+    {
+      "check": "1280-light eco: docs entry links to /docs",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "1280-light eco closes on Esc",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "1280-light eco closes on an outside click",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "1280-light profile disconnected: a single prompt to connect",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "1280-light connect: short address in the header",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "1280-light profile connected: balances and my agents",
+      "ok": true,
+      "detail": "1 agents"
+    },
+    {
+      "check": "1280-light profile: no horizontal scroll",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "1280-light profile manage: images, fund trading, fees, signing key and GitHub token",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "1280-light connection persists across a reload",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "1280-light connected menu: Profile, Copy address, Disconnect",
+      "ok": true,
+      "detail": "LINEAGE TEST WALLET, DEVNET HkZJ…A5dV Profile Copy address Disconnect"
+    },
+    {
+      "check": "1280-light launch: six steps, only the first reachable",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "1280-light launch step 2: targets read from Core",
+      "ok": true,
+      "detail": "WHAT IT CAN IMPROVE, READ FROM CORE base58-py python height 5, 6 accepted generations encode_ir lower is better, perf, at least 1% to count decode_ir lower is better, perf, at least 1% to count check_"
+    },
+    {
+      "check": "1280-light launch step 3: soul drafted, temperament read back from it, model table",
+      "ok": true,
+      "detail": "the soul reads as balanced"
+    },
+    {
+      "check": "1280-light launch step 4: token mode shows the token check",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "1280-light launch step 5: 10 USD default, first-run budget, fee split from chain",
+      "ok": true,
+      "detail": "5 FUNDING Prepaid credits wake the agent at once; a trading allocation is optional. The fee split is read from chain. PREPAID CREDITS (PLAN C) DEPOSIT (USD) 200 tLINE (10.00 USD at 20 tLINE per USD TEST rate) into the agent's compute vault "
+    },
+    {
+      "check": "1280-light launch step 6: review rows and a devnet simulation, Launch offered",
+      "ok": true,
+      "detail": "6 REVIEW Every choice, then one launch. Your wallet signs; the agent and mint keys are made in this page. COIN TEST ui check 1280 TUICHECK12 EDIT DESCRIPTION A devnet check of the launch wizard. Nothi"
+    },
+    {
+      "check": "1280-light launch: no horizontal scroll",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "1280-light launch: step nav goes back to a reached step",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "1280-light token page: Commits panel with the Verified commit and the repo link",
+      "ok": true,
+      "detail": "COMMITS github.com/agwyus9p/base58 COMMIT MESSAGE EFFECT GITHUB WHEN c163608 message not readable from GitHub now generation 5 on base58-py 3.51% lower decode_ir, ratio 0.9649 Verified 11h 30m ago 97ddd90 message not rea"
+    },
+    {
+      "check": "1280-light token page: trade box uses the header's connection",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "1280-light token page: no horizontal scroll",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "1280-light docs: static site outside the app shell",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "1280-light docs: live figures filled from Core",
+      "ok": true,
+      "detail": "2 | 5% | 25% | 5% | 10% | 1.00 $LINE | 5.00 $LINE | 25% | 5% | 2% | 3"
+    },
+    {
+      "check": "1280-light docs: no horizontal scroll",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "1280-light /network redirects to /",
+      "ok": true,
+      "detail": "http://127.0.0.1:9662/"
+    },
+    {
+      "check": "1280-light /live redirects to /",
+      "ok": true,
+      "detail": "http://127.0.0.1:9662/"
+    },
+    {
+      "check": "1280-light /wallet redirects to /profile",
+      "ok": true,
+      "detail": "http://127.0.0.1:9662/profile"
+    },
+    {
+      "check": "1280-light /spawn redirects to /launch",
+      "ok": true,
+      "detail": "http://127.0.0.1:9662/launch"
+    },
+    {
+      "check": "1280-light /manual redirects to /docs",
+      "ok": true,
+      "detail": "http://127.0.0.1:9662/docs"
+    },
+    {
+      "check": "1280-light no console errors",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "1280-dark header: Explorer, Launch, Profile; Eco, Connect, theme",
+      "ok": true,
+      "detail": "explorer,launch,profile"
+    },
+    {
+      "check": "1280-dark explorer is the home at /",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "1280-dark explorer: no horizontal scroll",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "1280-dark eco sidebar open with live figures",
+      "ok": true,
+      "detail": "63 AGENTS | 20/27 AWAKE | 17 CURRENT | 53 TRADES 24H"
+    },
+    {
+      "check": "1280-dark eco: docs entry links to /docs",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "1280-dark eco closes on Esc",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "1280-dark eco closes on an outside click",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "1280-dark profile disconnected: a single prompt to connect",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "1280-dark connect: short address in the header",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "1280-dark profile connected: balances and my agents",
+      "ok": true,
+      "detail": "1 agents"
+    },
+    {
+      "check": "1280-dark profile: no horizontal scroll",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "1280-dark profile manage: images, fund trading, fees, signing key and GitHub token",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "1280-dark connection persists across a reload",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "1280-dark connected menu: Profile, Copy address, Disconnect",
+      "ok": true,
+      "detail": "LINEAGE TEST WALLET, DEVNET HkZJ…A5dV Profile Copy address Disconnect"
+    },
+    {
+      "check": "1280-dark launch: six steps, only the first reachable",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "1280-dark launch step 2: targets read from Core",
+      "ok": true,
+      "detail": "WHAT IT CAN IMPROVE, READ FROM CORE base58-py python height 5, 6 accepted generations encode_ir lower is better, perf, at least 1% to count decode_ir lower is better, perf, at least 1% to count check_"
+    },
+    {
+      "check": "1280-dark launch step 3: soul drafted, temperament read back from it, model table",
+      "ok": true,
+      "detail": "the soul reads as balanced"
+    },
+    {
+      "check": "1280-dark launch step 4: token mode shows the token check",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "1280-dark launch step 5: 10 USD default, first-run budget, fee split from chain",
+      "ok": true,
+      "detail": "5 FUNDING Prepaid credits wake the agent at once; a trading allocation is optional. The fee split is read from chain. PREPAID CREDITS (PLAN C) DEPOSIT (USD) 200 tLINE (10.00 USD at 20 tLINE per USD TEST rate) into the agent's compute vault "
+    },
+    {
+      "check": "1280-dark launch step 6: review rows and a devnet simulation, Launch offered",
+      "ok": true,
+      "detail": "6 REVIEW Every choice, then one launch. Your wallet signs; the agent and mint keys are made in this page. COIN TEST ui check 1280 TUICHECK12 EDIT DESCRIPTION A devnet check of the launch wizard. Nothi"
+    },
+    {
+      "check": "1280-dark launch: no horizontal scroll",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "1280-dark launch: step nav goes back to a reached step",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "1280-dark token page: Commits panel with the Verified commit and the repo link",
+      "ok": true,
+      "detail": "COMMITS github.com/agwyus9p/base58 COMMIT MESSAGE EFFECT GITHUB WHEN c163608 message not readable from GitHub now generation 5 on base58-py 3.51% lower decode_ir, ratio 0.9649 Verified 11h 31m ago 97ddd90 message not rea"
+    },
+    {
+      "check": "1280-dark token page: trade box uses the header's connection",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "1280-dark token page: no horizontal scroll",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "1280-dark docs: static site outside the app shell",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "1280-dark docs: live figures filled from Core",
+      "ok": true,
+      "detail": "2 | 5% | 25% | 5% | 10% | 1.00 $LINE | 5.00 $LINE | 25% | 5% | 2% | 3"
+    },
+    {
+      "check": "1280-dark docs: no horizontal scroll",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "1280-dark /network redirects to /",
+      "ok": true,
+      "detail": "http://127.0.0.1:9662/"
+    },
+    {
+      "check": "1280-dark /live redirects to /",
+      "ok": true,
+      "detail": "http://127.0.0.1:9662/"
+    },
+    {
+      "check": "1280-dark /wallet redirects to /profile",
+      "ok": true,
+      "detail": "http://127.0.0.1:9662/profile"
+    },
+    {
+      "check": "1280-dark /spawn redirects to /launch",
+      "ok": true,
+      "detail": "http://127.0.0.1:9662/launch"
+    },
+    {
+      "check": "1280-dark /manual redirects to /docs",
+      "ok": true,
+      "detail": "http://127.0.0.1:9662/docs"
+    },
+    {
+      "check": "1280-dark no console errors",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "390-light header: Explorer, Launch, Profile; Eco, Connect, theme",
+      "ok": true,
+      "detail": "explorer,launch,profile"
+    },
+    {
+      "check": "390-light explorer is the home at /",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "390-light explorer: no horizontal scroll",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "390-light eco sidebar open with live figures",
+      "ok": true,
+      "detail": "63 AGENTS | 20/27 AWAKE | 17 CURRENT | 53 TRADES 24H"
+    },
+    {
+      "check": "390-light eco: docs entry links to /docs",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "390-light eco closes on Esc",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "390-light eco closes with its button (full-height sheet on phones)",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "390-light profile disconnected: a single prompt to connect",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "390-light connect: short address in the header",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "390-light profile connected: balances and my agents",
+      "ok": true,
+      "detail": "1 agents"
+    },
+    {
+      "check": "390-light profile: no horizontal scroll",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "390-light profile manage: images, fund trading, fees, signing key and GitHub token",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "390-light connection persists across a reload",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "390-light connected menu: Profile, Copy address, Disconnect",
+      "ok": true,
+      "detail": "LINEAGE TEST WALLET, DEVNET HkZJ…A5dV Profile Copy address Disconnect"
+    },
+    {
+      "check": "390-light launch: six steps, only the first reachable",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "390-light launch step 2: targets read from Core",
+      "ok": true,
+      "detail": "WHAT IT CAN IMPROVE, READ FROM CORE base58-py python height 5, 6 accepted generations encode_ir lower is better, perf, at least 1% to count decode_ir lower is better, perf, at least 1% to count check_"
+    },
+    {
+      "check": "390-light launch step 3: soul drafted, temperament read back from it, model table",
+      "ok": true,
+      "detail": "the soul reads as balanced"
+    },
+    {
+      "check": "390-light launch step 4: token mode shows the token check",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "390-light launch step 5: 10 USD default, first-run budget, fee split from chain",
+      "ok": true,
+      "detail": "5 FUNDING Prepaid credits wake the agent at once; a trading allocation is optional. The fee split is read from chain. PREPAID CREDITS (PLAN C) DEPOSIT (USD) 200 tLINE (10.00 USD at 20 tLINE per USD TEST rate) into the agent's compute vault "
+    },
+    {
+      "check": "390-light launch step 6: review rows and a devnet simulation, Launch offered",
+      "ok": true,
+      "detail": "6 REVIEW Every choice, then one launch. Your wallet signs; the agent and mint keys are made in this page. COIN TEST ui check 390 TUICHECK39 EDIT DESCRIPTION A devnet check of the launch wizard. Nothin"
+    },
+    {
+      "check": "390-light launch: no horizontal scroll",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "390-light launch: step nav goes back to a reached step",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "390-light token page: Commits panel with the Verified commit and the repo link",
+      "ok": true,
+      "detail": "COMMITS github.com/agwyus9p/base58 COMMIT MESSAGE GITHUB WHEN c163608 message not readable from GitHub now generation 5 on base58-py Verified 11h 32m ago 97ddd90 message not readable from GitHub now generation 4 on base5"
+    },
+    {
+      "check": "390-light token page: trade box uses the header's connection",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "390-light token page: no horizontal scroll",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "390-light docs: static site outside the app shell",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "390-light docs: live figures filled from Core",
+      "ok": true,
+      "detail": "2 | 5% | 25% | 5% | 10% | 1.00 $LINE | 5.00 $LINE | 25% | 5% | 2% | 3"
+    },
+    {
+      "check": "390-light docs: no horizontal scroll",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "390-light /network redirects to /",
+      "ok": true,
+      "detail": "http://127.0.0.1:9662/"
+    },
+    {
+      "check": "390-light /live redirects to /",
+      "ok": true,
+      "detail": "http://127.0.0.1:9662/"
+    },
+    {
+      "check": "390-light /wallet redirects to /profile",
+      "ok": true,
+      "detail": "http://127.0.0.1:9662/profile"
+    },
+    {
+      "check": "390-light /spawn redirects to /launch",
+      "ok": true,
+      "detail": "http://127.0.0.1:9662/launch"
+    },
+    {
+      "check": "390-light /manual redirects to /docs",
+      "ok": true,
+      "detail": "http://127.0.0.1:9662/docs"
+    },
+    {
+      "check": "390-light no console errors",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "390-dark header: Explorer, Launch, Profile; Eco, Connect, theme",
+      "ok": true,
+      "detail": "explorer,launch,profile"
+    },
+    {
+      "check": "390-dark explorer is the home at /",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "390-dark explorer: no horizontal scroll",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "390-dark eco sidebar open with live figures",
+      "ok": true,
+      "detail": "63 AGENTS | 20/27 AWAKE | 17 CURRENT | 53 TRADES 24H"
+    },
+    {
+      "check": "390-dark eco: docs entry links to /docs",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "390-dark eco closes on Esc",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "390-dark eco closes with its button (full-height sheet on phones)",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "390-dark profile disconnected: a single prompt to connect",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "390-dark connect: short address in the header",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "390-dark profile connected: balances and my agents",
+      "ok": true,
+      "detail": "1 agents"
+    },
+    {
+      "check": "390-dark profile: no horizontal scroll",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "390-dark profile manage: images, fund trading, fees, signing key and GitHub token",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "390-dark connection persists across a reload",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "390-dark connected menu: Profile, Copy address, Disconnect",
+      "ok": true,
+      "detail": "LINEAGE TEST WALLET, DEVNET HkZJ…A5dV Profile Copy address Disconnect"
+    },
+    {
+      "check": "390-dark launch: six steps, only the first reachable",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "390-dark launch step 2: targets read from Core",
+      "ok": true,
+      "detail": "WHAT IT CAN IMPROVE, READ FROM CORE base58-py python height 5, 6 accepted generations encode_ir lower is better, perf, at least 1% to count decode_ir lower is better, perf, at least 1% to count check_"
+    },
+    {
+      "check": "390-dark launch step 3: soul drafted, temperament read back from it, model table",
+      "ok": true,
+      "detail": "the soul reads as balanced"
+    },
+    {
+      "check": "390-dark launch step 4: token mode shows the token check",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "390-dark launch step 5: 10 USD default, first-run budget, fee split from chain",
+      "ok": true,
+      "detail": "5 FUNDING Prepaid credits wake the agent at once; a trading allocation is optional. The fee split is read from chain. PREPAID CREDITS (PLAN C) DEPOSIT (USD) 200 tLINE (10.00 USD at 20 tLINE per USD TEST rate) into the agent's compute vault "
+    },
+    {
+      "check": "390-dark launch step 6: review rows and a devnet simulation, Launch offered",
+      "ok": true,
+      "detail": "6 REVIEW Every choice, then one launch. Your wallet signs; the agent and mint keys are made in this page. COIN TEST ui check 390 TUICHECK39 EDIT DESCRIPTION A devnet check of the launch wizard. Nothin"
+    },
+    {
+      "check": "390-dark launch: no horizontal scroll",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "390-dark launch: step nav goes back to a reached step",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "390-dark token page: Commits panel with the Verified commit and the repo link",
+      "ok": true,
+      "detail": "COMMITS github.com/agwyus9p/base58 COMMIT MESSAGE GITHUB WHEN c163608 message not readable from GitHub now generation 5 on base58-py Verified 11h 32m ago 97ddd90 message not readable from GitHub now generation 4 on base5"
+    },
+    {
+      "check": "390-dark token page: trade box uses the header's connection",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "390-dark token page: no horizontal scroll",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "390-dark docs: static site outside the app shell",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "390-dark docs: live figures filled from Core",
+      "ok": true,
+      "detail": "2 | 5% | 25% | 5% | 10% | 1.00 $LINE | 5.00 $LINE | 25% | 5% | 2% | 3"
+    },
+    {
+      "check": "390-dark docs: no horizontal scroll",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "390-dark /network redirects to /",
+      "ok": true,
+      "detail": "http://127.0.0.1:9662/"
+    },
+    {
+      "check": "390-dark /live redirects to /",
+      "ok": true,
+      "detail": "http://127.0.0.1:9662/"
+    },
+    {
+      "check": "390-dark /wallet redirects to /profile",
+      "ok": true,
+      "detail": "http://127.0.0.1:9662/profile"
+    },
+    {
+      "check": "390-dark /spawn redirects to /launch",
+      "ok": true,
+      "detail": "http://127.0.0.1:9662/launch"
+    },
+    {
+      "check": "390-dark /manual redirects to /docs",
+      "ok": true,
+      "detail": "http://127.0.0.1:9662/docs"
+    },
+    {
+      "check": "390-dark no console errors",
+      "ok": true,
+      "detail": ""
+    }
+  ]
+}

@@ -1,4 +1,9 @@
 #!/usr/bin/env bun
+// NOTE (app consolidation, 2026-10-10): the /wallet page this script drives was replaced by /launch (a
+// step wizard) and /profile (faucet, claims, bounties, signing key, verifier kit), with the
+// connection in the header. Its selectors for those sections still exist on /profile, but its
+// navigation (tabs, the one-page launch form) needs reworking before it runs again; the launch and
+// profile flows are checked headless by apps/web/scripts/app-check.ts.
 // Headless check of the Wallet page against REAL devnet (wallet UI lane). A mock Wallet Standard
 // wallet is injected into the page; it signs with a local devnet test key held by this process
 // (~/.config/lineage/devnet/wallet-ui-test.json; the page only ever sees signatures). The script

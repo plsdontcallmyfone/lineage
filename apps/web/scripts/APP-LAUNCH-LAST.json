@@ -1,0 +1,93 @@
+{
+  "wallet": "HkZJw85hRd1dvu4Ajfg3m7HxC8GxArssVLyUuPWtA5dV",
+  "deployer": "CVEZWyUBoNb6Zkte3qa7JDu5TBV4wTH6wMw4pLodnDih",
+  "txs": [
+    {
+      "what": "fund the test wallet with 0.25 SOL from the Lineage deployer",
+      "signature": "4EUK7L3NFVfPSrYGaEXjpRxrtb3xfpFirCwuVtmHp93QkjVFWsWgSoEcmrJN5wU4kXJ3TWNcaqC2V1VEQuwMwyrR",
+      "fee": 5000,
+      "at": "2026-10-10T12:19:06.078Z"
+    },
+    {
+      "what": "top up the test wallet with 700 tLINE from the faucet key",
+      "signature": "4r5P6YArP728qjibZL3VDfPXxDFWm7vaHzZhcpXCcP9GZshDsfy7TdhBgzv99r9pid35uoGrAS3m62PFe8xkCBCY",
+      "fee": 5000,
+      "at": "2026-10-10T12:19:07.903Z"
+    },
+    {
+      "what": "launch_agent + deposit + refresh_awake + set_profile (legacy) TLAMP through /launch",
+      "signature": "463H4WoCk72eX5iiyoC2krTbC31WVS4GYoTyXmXzgFjEMK6R6TVScLKSmj45QdUiJrmfShu1nCENdDrMxLqGnbTh",
+      "fee": 15001,
+      "at": "2026-10-10T12:20:13.008Z"
+    },
+    {
+      "what": "rotate_agent_key TLAMP to the hosted runtime (co-signed by the runtime)",
+      "signature": "2cqW6on8jUGGYuDpTSiNEgw8opahpsHguXUBtqgCauSiMJArDHe3D3AgjMEt6an4Q9XDLWXr9czy9osx6wj5GbLZ",
+      "fee": 10001,
+      "at": "2026-10-10T12:20:14.000Z"
+    }
+  ],
+  "results": [
+    {
+      "check": "launch: the site's drafter expanded the seed into a soul",
+      "ok": true,
+      "detail": "Neap"
+    },
+    {
+      "check": "launch: review simulated on devnet",
+      "ok": true,
+      "detail": "path legacy"
+    },
+    {
+      "check": "launch: exactly one AgentLaunch for this wallet (the double click sent one launch)",
+      "ok": true,
+      "detail": "1"
+    },
+    {
+      "check": "launch: hosted runtime bound (rotate_agent_key co-signed by the runtime)",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "launch: vault funded and awake",
+      "ok": true,
+      "detail": "vault=ok: Vault funded and awake 200tLINE in the compute vault, awake on chain"
+    },
+    {
+      "check": "launch: GitHub account ready",
+      "ok": true,
+      "detail": "github=ok: GitHub account nbebp7jy, purchased"
+    },
+    {
+      "check": "launch: signing key is the runtime's on chain",
+      "ok": true,
+      "detail": "F2hREobttZeroEpWH5ZpEzFJfE95QDQ6ZBRyhDmcigS9"
+    },
+    {
+      "check": "launch: wallet signatures through the mock",
+      "ok": true,
+      "detail": "legacy:Comput,Comput,8eHzm1,Tokenz,8eHzm1,2vhj9a ; legacy:Comput,Comput,2vhj9a"
+    },
+    {
+      "check": "launch: no page errors",
+      "ok": false,
+      "detail": "console: Failed to load resource: the server responded with a status of 404 (Not Found) http://127.0.0.1:9662/api/agents/CLy55wj9ETTkksqcdJjkowNt9Y5m4ZoXxyhR7Buwo5TG ; console: Failed to load resource: the server responded with a status of 404 (Not Found) http://127.0.0.1:9662/api/agents/CLy55wj9ETTkksqcdJjkowNt9Y5m4ZoXxyhR7Buwo5TG ; console: Failed to load resource: the server responded with a status of 404 (Not Found) http://127.0.0.1:9662/api/agents/CLy55wj9ETTkksqcdJjkowNt9Y5m4ZoXxyhR7Buwo5TG"
+    }
+  ],
+  "agent": "CLy55wj9ETTkksqcdJjkowNt9Y5m4ZoXxyhR7Buwo5TG",
+  "mint": "52PNQSX2Y1Y6vcGLtFMDkBkPPG4YRiDkjBTyLozxq1m5",
+  "path": "legacy",
+  "steps": [
+    "confirmed=ok: Confirmed on devnet 463H\u2026nbTh , one transaction",
+    "vault=ok: Vault funded and awake 200tLINE in the compute vault, awake on chain",
+    "github=ok: GitHub account nbebp7jy, purchased",
+    "runtime=ok: Runtime bound signing key F2hR\u2026igS9, the hosted runtime's",
+    "session=wait: First session the runtime starts it once the agent is bound and a recipe is calibrated",
+    "verdict=wait: First verdict after the first candidate is replayed"
+  ],
+  "signing_key": "F2hREobttZeroEpWH5ZpEzFJfE95QDQ6ZBRyhDmcigS9",
+  "wallet_signatures": [
+    "legacy:Comput,Comput,8eHzm1,Tokenz,8eHzm1,2vhj9a",
+    "legacy:Comput,Comput,2vhj9a"
+  ]
+}

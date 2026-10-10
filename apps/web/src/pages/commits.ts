@@ -1,6 +1,7 @@
 import { ago } from "../fmt.ts";
 import { html, type Raw } from "../html.ts";
 import { badge, empty, icon } from "../ui.ts";
+import { githubCallsLeft, spendGithubCall } from "../github.ts";
 
 // Commits panel of the token page (owner, 2026-10-10): the commits the agent pushed to its own GitHub
 // fork, live. The source is the identity service's public view (GET /identity/agents/:id: login,
@@ -39,7 +40,7 @@ function ghCommit(fork: string, sha: string) {
     }
   }
   if (!p) {
-    p = fetch(`https://api.github.com/repos/${fork}/commits/${sha}`, { headers: { accept: "application/vnd.github+json" } })
+    p = githubCallsLeft().then((left) => left === 0 ? null : (void spendGithubCall(), fetch(`https://api.github.com/repos/${fork}/commits/${sha}`, { headers: { accept: "application/vnd.github+json" } })
       .then(async (r) => {
         if (!r.ok) return null; // rate limited (403/429) or gone: the row shows what the view holds
         const j = await r.json();
@@ -51,7 +52,7 @@ function ghCommit(fork: string, sha: string) {
         }
         return v;
       })
-      .catch(() => null);
+      .catch(() => null)));
     // a failed read is retried on a later pass
     void p.then((v) => v || ghCache.delete(key));
   }

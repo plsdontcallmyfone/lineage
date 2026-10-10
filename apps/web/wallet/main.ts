@@ -76,6 +76,7 @@ import { loadTradingEscrow, sendAllocation } from "./trading.ts";
 import { entryOf, isDefaultChoice, loadModels, modelChoice, modelsBody, onModelInput, priceText, withModel } from "./models.ts";
 import { launchSkeleton, profileSkeleton, stepNav, STEPS } from "./pages.ts";
 import { feedItemHtml, uploadMedia } from "../src/pages/social-ui.ts";
+import { githubCallsLeft, spendGithubCall } from "../src/github.ts";
 
 const T22 = TOKEN_2022_PROGRAM;
 const W = "bun packages/worker/src/main.ts";
@@ -310,27 +311,36 @@ async function checkRepo() {
   if (S.repo?.url === url && S.repo.state !== "bad") return;
   S.repo = { url, state: "checking", msg: "Checking GitHub…" };
   renderRepo();
+  /** The recipes Core runs on this repository (active lineages, with what each measures); null when Core does not answer. */
+  const coreRecipes = async (): Promise<{ lineage: any; recipes: any[] } | null> => {
+    try {
+      const ls = await fetch("/api/lineages").then((x) => (x.ok ? x.json() : Promise.reject(new Error(String(x.status)))));
+      const mine = (ls as any[]).filter((l) => /^https:/.test(String(l.repo)) && canonicalUrl(String(l.repo)) === url && (l.status ?? "active") === "active");
+      const recipes = (await Promise.all(mine.map((l) => fetch(`/api/lineages/${l.lineage_id}`).then((x) => (x.ok ? x.json() : null)).catch(() => null)))).filter(Boolean);
+      return { lineage: mine[0] ?? null, recipes };
+    } catch {
+      return null;
+    }
+  };
   try {
-    const r = await fetch(`https://api.github.com/repos/${m[1]}/${m[2]}`, { headers: { accept: "application/vnd.github+json" } });
+    const left = await githubCallsLeft();
+    if (left === 0) await spendGithubCall();
+    const r = left === 0 ? new Response(null, { status: 429 }) : await fetch(`https://api.github.com/repos/${m[1]}/${m[2]}`, { headers: { accept: "application/vnd.github+json" } });
+    if (left !== 0) await spendGithubCall();
     if (r.status === 404) S.repo = { url, state: "bad", msg: "GitHub has no public repository at this URL (it does not exist or is private)." };
-    else if (!r.ok) S.repo = { url, state: "bad", msg: `GitHub API answered HTTP ${r.status}${r.status === 403 ? " (rate limit for unauthenticated calls)" : ""}; try again later.` };
+    else if (r.status === 403 || r.status === 429) {
+      // GitHub's unauthenticated limit (60 an hour per address): a repository Core already runs a
+      // recipe on is public (Core cloned it), so it is accepted on Core's word; any other waits
+      const c = await coreRecipes();
+      if (c?.recipes.length) S.repo = { url, state: "ok", msg: "", gh: { html_url: `https://github.com/${m[1]}/${m[2]}`, full_name: `${m[1]}/${m[2]}`, default_branch: null, language: null, from_core: true }, lineage: c.lineage, core: "ok", recipes: c.recipes };
+      else S.repo = { url, state: "bad", msg: `GitHub's API is rate limiting this browser (HTTP ${r.status}); try again in a few minutes.` };
+    } else if (!r.ok) S.repo = { url, state: "bad", msg: `GitHub API answered HTTP ${r.status}; try again later.` };
     else {
       const gh = await r.json();
       if (gh.private) S.repo = { url, state: "bad", msg: "The repository is private." };
       else {
-        let lineage: any = null, core: "ok" | "down" = "ok";
-        let recipes: any[] = [];
-        try {
-          const ls = await fetch("/api/lineages").then((x) => (x.ok ? x.json() : Promise.reject(new Error(String(x.status)))));
-          const mine = (ls as any[]).filter((l) => /^https:/.test(String(l.repo)) && canonicalUrl(String(l.repo)) === url && (l.status ?? "active") === "active");
-          lineage = mine[0] ?? null;
-          // what each active recipe on this repository measures (class, metrics, fix targets)
-          recipes = await Promise.all(mine.map((l) => fetch(`/api/lineages/${l.lineage_id}`).then((x) => (x.ok ? x.json() : null)).catch(() => null)));
-          recipes = recipes.filter(Boolean);
-        } catch {
-          core = "down";
-        }
-        S.repo = { url, state: "ok", msg: "", gh, lineage, core, recipes };
+        const c = await coreRecipes();
+        S.repo = { url, state: "ok", msg: "", gh, lineage: c?.lineage ?? null, core: c ? "ok" : "down", recipes: c?.recipes ?? [] };
       }
     }
   } catch (e) {
@@ -347,7 +357,9 @@ function renderRepo() {
   if (r.state === "checking") return set("w-repo", html`<span class="dim">${r.msg}</span>`);
   if (r.state === "bad") return set("w-repo", html`<span class="mark warn">${icon.warn} ${r.msg}</span>`);
   const gh = r.gh;
-  set("w-repo", html`<span class="mark good">${icon.check} public on GitHub</span> <a class="link" href="${gh.html_url}" target="_blank" rel="noopener">${gh.full_name}</a>, default branch ${gh.default_branch}, ${gh.language ?? "language not reported"}. On chain as <span class="num">${r.url}</span>.`);
+  set("w-repo", gh.from_core
+    ? html`<span class="mark good">${icon.check} public</span> <a class="link" href="${gh.html_url}" target="_blank" rel="noopener">${gh.full_name}</a>: Core runs a recipe on it (GitHub's API is rate limiting this browser, so its details are not shown). On chain as <span class="num">${r.url}</span>.`
+    : html`<span class="mark good">${icon.check} public on GitHub</span> <a class="link" href="${gh.html_url}" target="_blank" rel="noopener">${gh.full_name}</a>, default branch ${gh.default_branch}, ${gh.language ?? "language not reported"}. On chain as <span class="num">${r.url}</span>.`);
   // the class follows the recipe when one exists
   const cls = r.recipes?.[0]?.recipe?.class;
   const sel = S.root?.querySelector<HTMLSelectElement>('[name="l_class"]');
