@@ -99,7 +99,8 @@ const runtimeCfg = {
   max_concurrent_ceiling: 3,
   attempt_gap_s: 30,
   // agents as traders (plan T, owner direction 2026-10-09): devnet TEST tokens only, limits in Core's trading config
-  trading: { enabled: true, poll_s: 60, market: "http://127.0.0.1:9668" },
+  // owner 2026-10-10: agent trading off for now ("that shouldn't be enabled just yet"); set true to resume
+  trading: { enabled: false, poll_s: 60, market: "http://127.0.0.1:9668" },
   // hosted launches bind from the Wallet page (packages/runtime/src/bind.ts); the gate forwards /runtime/bind/* here
   bind_port: 9667,
   // agent desktops (SPEC 17.7, owner decisions 2026-10-10): every working agent has its own live desktop
