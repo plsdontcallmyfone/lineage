@@ -69,7 +69,7 @@ describe("monitor evaluate", () => {
     const i = healthy();
     i.heartbeats![1]!.last_seen = NOW - LIMITS.heartbeatStaleMs - 1;
     expect(level(i, "verifiers")).toBe("fail");
-    i.heartbeats = [i.heartbeats[0]!];
+    i.heartbeats = [i.heartbeats![0]!];
     expect(evaluate(i).find((c) => c.id === "verifiers")!.msg).toContain("verifier-v2 (never)");
   });
   test("runtime spend warns at 80% of the cap and says when the cap is reached; an expired window counts 0", () => {
