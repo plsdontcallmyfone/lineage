@@ -43,6 +43,10 @@ export interface Attempt {
   end: string; // why it ended: candidate | cap_reached | gave_up | no_submit | turn_limit | refusal | failed | no_change | interrupted
   detail?: string;
   turnUsd: number[]; // cumulative USD after each turn
+  /** the proposer's own usage line (logged since the efficiency lane, every attempt): tokens of the authoring loop */
+  usage?: { calls: number; input_tokens: number; output_tokens: number; cache_read_tokens: number; cache_write_tokens: number; usd: number };
+  /** stacked authoring (series) lines seen in this attempt */
+  series?: string[];
 }
 
 const ts = (line: string) => Date.parse(line.slice(0, 25));
@@ -74,6 +78,9 @@ export function parseRuntimeLog(text: string): Attempt[] {
       else if ((r = msg.match(/^\S+: turn (\d+), ([\d.]+) USD so far/))) (a.turns = Math.max(a.turns, Number(r[1]))), a.turnUsd.push(Number(r[2]));
       else if (/^\S+: evaluating \(/.test(msg)) a.evals++;
       else if (/budget wrap-up notice sent/.test(msg)) a.wrapUp = true;
+      else if ((r = msg.match(/: usage [^:]+: (\d+) calls, (\d+) in, (\d+) out, (\d+) cache read, (\d+) cache write, ([\d.]+) USD/)))
+        a.usage = { calls: Number(r[1]), input_tokens: Number(r[2]), output_tokens: Number(r[3]), cache_read_tokens: Number(r[4]), cache_write_tokens: Number(r[5]), usd: Number(r[6]) };
+      else if (/^series: /.test(msg)) (a.series ??= []).push(msg.slice(8, 120));
       else if (/: spend cap reached/.test(msg)) a.end = "cap_reached";
       else if ((r = msg.match(/: gave up: (.*)$/))) (a.end = "gave_up"), (a.detail = r[1]!.slice(0, 160));
       else if (/: ended without submit/.test(msg)) a.end = "no_submit";
@@ -160,9 +167,13 @@ export function summarize(attempts: Attempt[], core: CoreDump | null, key: (a: A
     }
     const nothing: Record<string, number> = {};
     for (const a of as) if (!a.candidate) nothing[a.end] = (nothing[a.end] ?? 0) + 1;
+    // token breakdown: the proposer's usage line when the attempts have one (every attempt, also those
+    // that end with nothing), else provenance (only attempts that committed a candidate)
+    const logged = as.filter((a) => a.usage);
     const withProv = as.map((a) => (a.candidate ? prov.get(a.candidate) : null)).filter(Boolean) as any[];
-    const tk = withProv.map((r) => r.usage as { input_tokens: number; output_tokens: number; cache_read_tokens: number; cache_write_tokens: number });
-    const turnsOfProv = as.filter((a) => a.candidate && prov.has(a.candidate)).map((a) => a.turns + 1); // + the final submit call, which logs no turn line
+    const useLog = logged.length > 0 && logged.length >= withProv.length;
+    const tk = useLog ? logged.map((a) => a.usage!) : withProv.map((r) => r.usage as { input_tokens: number; output_tokens: number; cache_read_tokens: number; cache_write_tokens: number });
+    const turnsOfProv = useLog ? logged.map((a) => a.usage!.calls) : as.filter((a) => a.candidate && prov.has(a.candidate)).map((a) => a.turns + 1); // + the final submit call, which logs no turn line
     const turnsTotal = sum(turnsOfProv);
     const tin = sum(tk.map((t) => t.input_tokens)),
       tout = sum(tk.map((t) => t.output_tokens)),
