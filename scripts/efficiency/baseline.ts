@@ -203,7 +203,12 @@ export function summarize(attempts: Attempt[], core: CoreDump | null, key: (a: A
   return rows;
 }
 
-export function markdown(rows: Row[]): string {
+/**
+ * Author-blind (SPEC 10.7): a row never says that one agent has a candidate still open, since that
+ * names the author of an open candidate on the agent's lineage. Pending counts appear only in rows
+ * that are not about one agent (`showPending`).
+ */
+export function markdown(rows: Row[], showPending = false): string {
   const h = [
     "| group | attempts | USD/attempt | attempts/accepted | USD/accepted | min/accepted | model calls (median) | min/attempt (median) | sandbox s (median) | evals (median) | ended with nothing (why) | USD on nothing | candidates rejected (why) | in / out / cache read / cache write tokens per turn | cache hit | output share of USD |",
     "|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|",
@@ -213,7 +218,7 @@ export function markdown(rows: Row[]): string {
     const rej = Object.values(r.rejected).reduce((a, b) => a + b, 0);
     const t = r.tokens;
     h.push(
-      `| ${r.group} | ${r.attempts} | ${f(r.usd_per_attempt)} | ${f(r.attempts_per_accepted, 2)} | ${f(r.usd_per_accepted)} | ${f(r.minutes_per_accepted, 1)} | ${r.turns_median ?? "n/a"} | ${f(r.minutes_median, 1)} | ${r.sandbox_s_median ?? "n/a"} | ${r.evals_median ?? "n/a"} | ${pct(nothingN, r.attempts)}${nothingN ? ": " + Object.entries(r.nothing).map(([k, v]) => `${k} ${v}`).join(", ") : ""} | ${f(r.usd_nothing)} | ${pct(rej, r.candidates)}${rej ? ": " + Object.entries(r.rejected).map(([k, v]) => `${k} ${v}`).join(", ") : ""}${r.pending ? `; ${r.pending} pending` : ""} | ${t.attempts ? `${f(t.in_per_turn, 0)} / ${f(t.out_per_turn, 0)} / ${f(t.cache_read_per_turn, 0)} / ${f(t.cache_write_per_turn, 0)} (${t.attempts} attempts)` : "n/a"} | ${t.cache_hit === null ? "n/a" : (100 * t.cache_hit).toFixed(0) + "%"} | ${t.out_usd_share === null ? "n/a" : (100 * t.out_usd_share).toFixed(0) + "%"} |`,
+      `| ${r.group} | ${r.attempts} | ${f(r.usd_per_attempt)} | ${f(r.attempts_per_accepted, 2)} | ${f(r.usd_per_accepted)} | ${f(r.minutes_per_accepted, 1)} | ${r.turns_median ?? "n/a"} | ${f(r.minutes_median, 1)} | ${r.sandbox_s_median ?? "n/a"} | ${r.evals_median ?? "n/a"} | ${pct(nothingN, r.attempts)}${nothingN ? ": " + Object.entries(r.nothing).map(([k, v]) => `${k} ${v}`).join(", ") : ""} | ${f(r.usd_nothing)} | ${pct(rej, r.candidates)}${rej ? ": " + Object.entries(r.rejected).map(([k, v]) => `${k} ${v}`).join(", ") : ""}${showPending && r.pending ? `; ${r.pending} pending` : ""} | ${t.attempts ? `${f(t.in_per_turn, 0)} / ${f(t.out_per_turn, 0)} / ${f(t.cache_read_per_turn, 0)} / ${f(t.cache_write_per_turn, 0)} (${t.attempts} attempts)` : "n/a"} | ${t.cache_hit === null ? "n/a" : (100 * t.cache_hit).toFixed(0) + "%"} | ${t.out_usd_share === null ? "n/a" : (100 * t.out_usd_share).toFixed(0) + "%"} |`,
     );
   }
   return h.join("\n");
@@ -252,9 +257,14 @@ if (import.meta.main) {
   const byModel = summarize(attempts, core, (a) => a.model, MODEL_PRICES);
   const all = summarize(attempts, core, () => "all", MODEL_PRICES);
   const span = attempts.length ? `${new Date(attempts[0]!.started).toISOString()} to ${new Date(attempts[attempts.length - 1]!.started).toISOString()}` : "none";
-  console.log(`attempts ${attempts.length}, started ${span}\n\nPer agent and model:\n${markdown(byAgent)}\n\nPer model:\n${markdown(byModel)}\n\nAll:\n${markdown(all)}`);
+  console.log(`attempts ${attempts.length}, started ${span}\n\nPer agent and model:\n${markdown(byAgent)}\n\nPer model:\n${markdown(byModel, true)}\n\nAll:\n${markdown(all, true)}`);
   const capStops = attempts.filter((a) => a.end === "cap_reached");
   console.log(`\ncap_reached attempts: ${capStops.length}; their caps ${capStops.map((a) => a.cap.toFixed(2)).join(", ")}; last turn before the stop cost ${capStops.map((a) => f(a.turnUsd.length > 1 ? a.turnUsd.at(-1)! - a.turnUsd.at(-2)! : a.turnUsd[0] ?? NaN, 3)).join(", ")} USD`);
   const out = arg("--json");
-  if (out) writeFileSync(out, JSON.stringify({ span, attempts, byAgent, byModel, all }, null, 1));
+  // the JSON is safe to publish: no candidate ids, and no per-agent pending counts (author-blind, SPEC 10.7)
+  const finals = new Map((core?.candidates ?? []).filter((c) => ["accepted", "rejected", "expired"].includes(c.status)).map((c) => [c.commit_id.slice(0, 12), c.reason ?? c.status]));
+  // an attempt whose candidate is still open is left out of the list (it would name that candidate's author)
+  const pub = attempts.filter((a) => !a.candidate || finals.has(a.candidate)).map(({ candidate, ...a }) => ({ ...a, committed: !!candidate, verdict: candidate ? finals.get(candidate)! : null }));
+  const strip = (rows: Row[]) => rows.map(({ pending, ...r }) => r);
+  if (out) writeFileSync(out, JSON.stringify({ span, attempts: pub, byAgent: strip(byAgent), byModel, all }, null, 1));
 }

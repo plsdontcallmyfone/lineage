@@ -1,0 +1,67 @@
+diff --git a/src/lib.rs b/src/lib.rs
+--- a/src/lib.rs
++++ b/src/lib.rs
+@@ -16,28 +16,47 @@ fn digit_value(c: u8) -> Option<u8> {
+ 
+ /// Encodes bytes as base58.
+ pub fn encode(input: &[u8]) -> String {
++    // Limbs hold 5 base58 digits each (base 58^5), little-endian; input is consumed
++    // 4 bytes at a time. 58^5 * 2^32 + carry fits comfortably in a u64.
++    const BASE: u64 = 58 * 58 * 58 * 58 * 58;
+     let zeros = input.iter().take_while(|&&b| b == 0).count();
+-    let mut digits: Vec<u8> = Vec::new();
+-    for &byte in &input[zeros..] {
+-        let mut carry = byte as u32;
+-        for d in digits.iter_mut() {
+-            carry += (*d as u32) << 8;
+-            *d = (carry % 58) as u8;
+-            carry /= 58;
++    let rest = &input[zeros..];
++    let mut limbs: Vec<u32> = Vec::with_capacity(rest.len() * 138 / 500 + 2);
++    for chunk in rest.chunks(4) {
++        let shift = 8 * chunk.len() as u32;
++        let mut carry = chunk.iter().fold(0u64, |acc, &b| (acc << 8) | b as u64);
++        for l in limbs.iter_mut() {
++            carry += (*l as u64) << shift;
++            *l = (carry % BASE) as u32;
++            carry /= BASE;
+         }
+         while carry > 0 {
+-            digits.push((carry % 58) as u8);
+-            carry /= 58;
++            limbs.push((carry % BASE) as u32);
++            carry /= BASE;
+         }
+     }
+-    let mut out = String::new();
+-    for &d in digits.iter() {
+-        out.insert(0, ALPHABET[d as usize] as char);
+-    }
+-    for _ in 0..zeros {
+-        out.insert(0, '1');
++    let mut out: Vec<u8> = Vec::with_capacity(zeros + limbs.len() * 5);
++    out.resize(zeros, b'1');
++    if let Some((&top, lower)) = limbs.split_last() {
++        let mut buf = [0u8; 5];
++        let mut n = 0;
++        let mut v = top;
++        while v > 0 {
++            buf[n] = ALPHABET[(v % 58) as usize];
++            v /= 58;
++            n += 1;
++        }
++        out.extend(buf[..n].iter().rev());
++        for &limb in lower.iter().rev() {
++            let mut v = limb;
++            for slot in buf.iter_mut().rev() {
++                *slot = ALPHABET[(v % 58) as usize];
++                v /= 58;
++            }
++            out.extend_from_slice(&buf);
++        }
+     }
+-    out
++    String::from_utf8(out).expect("base58 alphabet is ASCII")
+ }
+ 
+ /// Decodes base58 into bytes.

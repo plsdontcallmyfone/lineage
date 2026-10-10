@@ -6,6 +6,8 @@
 // rules (the replay a verifier would run). Spend is capped in total.
 //
 //   bun scripts/efficiency/ab.ts --recipes fixture-b58,minbpe --arms A,B,C --n 2 --budget 5 --out <dir>
+//   ... --tree <tree.json>   start from a lineage's tip instead of gen 0: the JSON of Core's
+//                            GET /v1/lineages/:id/tree (its accepted patches are applied in order)
 //
 // Arms (the model is claude-opus-5-5 in every arm; nothing else differs between them):
 //   A  effort high, cap_mode projected   (the site's settings on 2026-10-10)
@@ -15,7 +17,7 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { randomBytes } from "node:crypto";
 import { canonicalizeDiff, judge, type CandidateView } from "@lineage/protocol";
-import { diffWorkingTree, evaluate, loadRecipe, materialize, newWorkDir, prepareDeps, removeTree } from "@lineage/sandbox";
+import { applyPatch, diffWorkingTree, evaluate, loadRecipe, materialize, newWorkDir, prepareDeps, removeTree } from "@lineage/sandbox";
 import { AnthropicProposer } from "../../packages/worker/src/proposers/anthropic.ts";
 import type { EfficiencyOptions } from "../../packages/worker/src/proposers/efficiency.ts";
 
@@ -41,6 +43,9 @@ const reserve = Number(opt("reserve", "0.08")); // the site keeps 0.08 USD of ea
 const budget = Number(opt("budget", "5"));
 const out = resolve(opt("out", `scripts/efficiency/runs/ab-${new Date().toISOString().replace(/[:.]/g, "-")}`)!);
 mkdirSync(out, { recursive: true });
+const treeFile = opt("tree");
+const tip: { gen_id: string; height: number; commit: string; patches: { patch: string }[] } | null = treeFile ? JSON.parse(readFileSync(treeFile, "utf8")) : null;
+const parentPatches = tip ? tip.patches.map((p) => p.patch) : [];
 const resultsPath = join(out, "results.json");
 const results: any[] = existsSync(resultsPath) ? JSON.parse(readFileSync(resultsPath, "utf8")) : [];
 let spent = results.reduce((a, r) => a + (r.usd ?? 0), 0);
@@ -63,6 +68,8 @@ async function attempt(recipe: string, arm: string, i: number) {
       Bun.spawnSync(["git", "add", "-A"], { cwd: tree });
       Bun.spawnSync(["git", "-c", "user.name=l", "-c", "user.email=l@l", "commit", "-q", "-m", "prepare outputs"], { cwd: tree });
     }
+    if (tip && tip.commit !== loaded.recipe.commit) throw new Error("--tree is for another commit than the recipe");
+    for (const p of parentPatches) if (!applyPatch(tree, p)) throw new Error("a tip patch does not apply locally");
     const findings = [
       ...calibration.known_failures.map((t: string) => ({ key: t, kind: "known_failure", target: t })),
       ...loaded.recipe.metrics.filter((m) => calibration.metrics[m.name]?.enabled).map((m) => ({ key: m.name, kind: "metric_target", target: m.name })),
@@ -75,7 +82,7 @@ async function attempt(recipe: string, arm: string, i: number) {
       loaded,
       deps,
       calibration,
-      parentPatches: [],
+      parentPatches,
       findings,
       tree,
       seed: randomBytes(8).toString("hex"),
@@ -94,13 +101,14 @@ async function attempt(recipe: string, arm: string, i: number) {
     let replay: { outcome: string; reason?: string; ratio?: number } | null = null;
     if (proposal && diff) {
       const seed = randomBytes(8).toString("hex");
-      const { result } = await evaluate({ loaded, deps, parentPatches: [], candidatePatch: diff, seed, enabledMetrics: Object.entries(calibration.metrics).filter(([, m]: any) => m.enabled).map(([k]) => k) });
+      const { result } = await evaluate({ loaded, deps, parentPatches, candidatePatch: diff, seed, enabledMetrics: Object.entries(calibration.metrics).filter(([, m]: any) => m.enabled).map(([k]) => k) });
       const cand: CandidateView = { candidate_id: "ab", author: "ab", kind: proposal.kind, target: proposal.target };
       const j = judge(loaded.recipe, calibration, cand, [{ replay_id: "r", replayer: "ab-replay", seed, result }], { quorum: 1, det_tolerance: 0.001, bootstrap_resamples: 4000 });
       replay = { outcome: j.outcome, ...(j.reason ? { reason: j.reason } : {}), ...(j.effect && "ratio" in j.effect ? { ratio: j.effect.ratio } : {}) };
     }
     const r = {
       recipe,
+      parent: tip ? `tip height ${tip.height} (${tip.gen_id.slice(0, 12)})` : "gen 0",
       arm,
       i,
       effort: a.effort,
@@ -162,6 +170,6 @@ for (const arm of arms) {
     `| ${arm} (${ARMS[arm]!.effort}, ${ARMS[arm]!.efficiency.cap_mode}) | ${rs.length} | ${(usd / rs.length).toFixed(4)} | ${rs.filter((r) => r.submitted).length} | ${acc} | ${acc ? (usd / acc).toFixed(4) : "n/a"} | ${acc ? Math.round(sec / acc) : "n/a"} | ${mean("calls")} | ${mean("output_tokens")} | ${tin ? ((100 * tcr) / tin).toFixed(0) + "%" : "n/a"} | ${Object.entries(nothing).map(([k, v]) => `${k} ${v}`).join(", ") || "none"} |`,
   );
 }
-const summary = `A/B ${new Date().toISOString()}: recipes ${recipes.join(", ")}, ${n} rounds, cap ${maxUsd} USD per attempt with ${reserve} kept back, total ${spent.toFixed(4)} USD\n\n${lines.join("\n")}\n`;
+const summary = `A/B ${new Date().toISOString()}: recipes ${recipes.join(", ")}${tip ? ` at tip height ${tip.height}` : " at gen 0"}, ${n} rounds, cap ${maxUsd} USD per attempt with ${reserve} kept back, total ${spent.toFixed(4)} USD\n\n${lines.join("\n")}\n`;
 writeFileSync(join(out, "SUMMARY.md"), summary);
 console.log(summary);

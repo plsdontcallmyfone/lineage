@@ -1,0 +1,170 @@
+[
+ {
+  "recipe": "fixture-b58",
+  "arm": "A",
+  "i": 0,
+  "effort": "high",
+  "cap_mode": "projected",
+  "at": "2026-10-10T19:28:16.755Z",
+  "end": "submitted",
+  "calls": 5,
+  "input_tokens": 12,
+  "output_tokens": 2742,
+  "cache_read_tokens": 18712,
+  "cache_write_tokens": 7963,
+  "usd": 0.0984,
+  "evals": 1,
+  "author_s": 38,
+  "sandbox_s": 10,
+  "submitted": {
+   "kind": "perf",
+   "target": "encode_ir",
+   "claimed": 0.24470109893448785
+  },
+  "replay": {
+   "outcome": "accepted",
+   "ratio": 0.24574295400436327
+  },
+  "diff_lines": 58
+ },
+ {
+  "recipe": "fixture-b58",
+  "arm": "B",
+  "i": 0,
+  "effort": "high",
+  "cap_mode": "bounded",
+  "at": "2026-10-10T19:29:07.012Z",
+  "end": "submitted",
+  "calls": 6,
+  "input_tokens": 14,
+  "output_tokens": 3378,
+  "cache_read_tokens": 31683,
+  "cache_write_tokens": 3616,
+  "usd": 0.092,
+  "evals": 1,
+  "author_s": 50,
+  "sandbox_s": 17,
+  "submitted": {
+   "kind": "perf",
+   "target": "encode_ir",
+   "claimed": 0.10911279547922954
+  },
+  "replay": {
+   "outcome": "accepted",
+   "ratio": 0.1070419431291956
+  },
+  "diff_lines": 68
+ },
+ {
+  "recipe": "fixture-b58",
+  "arm": "C",
+  "i": 0,
+  "effort": "medium",
+  "cap_mode": "bounded",
+  "at": "2026-10-10T19:30:11.139Z",
+  "end": "submitted",
+  "calls": 5,
+  "input_tokens": 12,
+  "output_tokens": 2227,
+  "cache_read_tokens": 19213,
+  "cache_write_tokens": 4076,
+  "usd": 0.0688,
+  "evals": 1,
+  "author_s": 45,
+  "sandbox_s": 25,
+  "submitted": {
+   "kind": "perf",
+   "target": "encode_ir",
+   "claimed": 0.21232457584043632
+  },
+  "replay": {
+   "outcome": "accepted",
+   "ratio": 0.21348197240721642
+  },
+  "diff_lines": 66
+ },
+ {
+  "recipe": "minbpe",
+  "arm": "A",
+  "i": 0,
+  "effort": "high",
+  "cap_mode": "projected",
+  "at": "2026-10-10T19:31:06.487Z",
+  "end": "submitted",
+  "calls": 5,
+  "input_tokens": 12,
+  "output_tokens": 3289,
+  "cache_read_tokens": 36877,
+  "cache_write_tokens": 15028,
+  "usd": 0.1483,
+  "evals": 1,
+  "author_s": 153,
+  "sandbox_s": 121,
+  "submitted": {
+   "kind": "perf",
+   "target": "train_ir",
+   "claimed": 0.4905728249864678
+  },
+  "replay": {
+   "outcome": "accepted",
+   "ratio": 0.43840143055443165
+  },
+  "diff_lines": 72
+ },
+ {
+  "recipe": "minbpe",
+  "arm": "B",
+  "i": 0,
+  "effort": "high",
+  "cap_mode": "bounded",
+  "at": "2026-10-10T19:35:46.141Z",
+  "end": "submitted",
+  "calls": 7,
+  "input_tokens": 16,
+  "output_tokens": 4325,
+  "cache_read_tokens": 80336,
+  "cache_write_tokens": 16603,
+  "usd": 0.1856,
+  "evals": 1,
+  "author_s": 197,
+  "sandbox_s": 154,
+  "submitted": {
+   "kind": "perf",
+   "target": "encode_ir",
+   "claimed": 0.8759138305930548
+  },
+  "replay": {
+   "outcome": "accepted",
+   "ratio": 0.8689196962840946
+  },
+  "diff_lines": 59
+ },
+ {
+  "recipe": "minbpe",
+  "arm": "C",
+  "i": 0,
+  "effort": "medium",
+  "cap_mode": "bounded",
+  "at": "2026-10-10T19:41:45.587Z",
+  "end": "submitted",
+  "calls": 6,
+  "input_tokens": 14,
+  "output_tokens": 2575,
+  "cache_read_tokens": 48811,
+  "cache_write_tokens": 11769,
+  "usd": 0.1202,
+  "evals": 1,
+  "author_s": 168,
+  "sandbox_s": 98,
+  "submitted": {
+   "kind": "perf",
+   "target": "train_ir",
+   "claimed": 0.485134934644802
+  },
+  "replay": {
+   "outcome": "accepted",
+   "ratio": 0.46673858738480695
+  },
+  "diff_lines": 72
+ }
+]
