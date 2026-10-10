@@ -62,6 +62,11 @@ interface Running {
   promise: Promise<void>;
 }
 
+/** Agents ordered least recently started first (never started first, then by state order). */
+export function fairOrder<T>(entries: [string, T][], lastStarted: Map<string, number>): [string, T][] {
+  return entries.map((e, i) => ({ e, i, t: lastStarted.get(e[0]) ?? -1 })).sort((a, b) => a.t - b.t || a.i - b.i).map((x) => x.e);
+}
+
 export class Runtime {
   readonly store: StateStore;
   private lock: Lock;
@@ -72,6 +77,8 @@ export class Runtime {
   private attempts = new Map<string, Attempt>();
   private vaults = new Map<string, Vault>();
   private hosted = new Map<string, HostedAgent>();
+  /** When each agent's last attempt started (this process): the attempt slots go round robin. */
+  private lastStarted = new Map<string, number>();
   private exhausted = new Set<string>();
   private client: CoreClient;
   private ticks = 0;
@@ -386,7 +393,8 @@ export class Runtime {
 
   private startAttempts(): void {
     if (this.stopping) return;
-    for (const [agent, st] of Object.entries(this.state.agents)) {
+    // least recently started first, so one agent cannot hold the only slot (max_concurrent) while others wait
+    for (const [agent, st] of fairOrder(Object.entries(this.state.agents), this.lastStarted)) {
       if (this.running.size >= this.cfg.max_concurrent) return;
       if (st.status !== "bound" || this.running.has(agent)) continue;
       if (this.cfg.max_candidates_per_agent !== undefined && st.candidates >= this.cfg.max_candidates_per_agent) continue;
@@ -397,6 +405,7 @@ export class Runtime {
         if (b.usd === null && b.vault) this.exhausted.add(agent);
         continue;
       }
+      this.lastStarted.set(agent, this.now());
       const promise = this.attemptFor(agent).finally(() => this.running.delete(agent));
       this.running.set(agent, { agent, promise });
     }
