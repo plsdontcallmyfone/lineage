@@ -1814,7 +1814,9 @@ function furthest(): number {
 
 function renderWizard() {
   if (S.page !== "launch" || !S.root) return;
-  const far = furthest();
+  // every step is open for browsing (owner 2026-10-10: "i cant cycle through any of them");
+  // Next and Review show what is still missing, and only the launch itself requires every step
+  const far = STEPS.length - 1;
   const cur = Math.min(S.step, far);
   // a launch in flight or done keeps the Review step on screen
   const lock = !!(S.launched || S.sending);
@@ -1833,7 +1835,8 @@ function renderWizard() {
     btn0.toggleAttribute("aria-disabled", btn0.disabled);
   }
   for (const c of S.root.querySelectorAll<HTMLElement>("[data-step]")) c.hidden = Number(c.dataset.step) !== step;
-  const why = step < STEPS.length - 1 ? stepProblem(step) : null;
+  const open = furthest();
+  const why = step < STEPS.length - 1 ? stepProblem(step) : open < STEPS.length - 1 ? `Before launching, finish step ${open + 1} (${STEPS[open]}): ${stepProblem(open)}` : null;
   const foot = S.root.querySelector<HTMLElement>("#lz-foot");
   if (foot) {
     if (S.launched) {
@@ -1847,7 +1850,7 @@ function renderWizard() {
       const next = foot.querySelector<HTMLButtonElement>('[data-act="lz-next"]')!;
       back.disabled = step === 0 || !!S.sending;
       next.hidden = step >= STEPS.length - 1;
-      next.disabled = !!why;
+      next.disabled = false;
       const w = foot.querySelector<HTMLElement>(".lz-why")!;
       w.textContent = why ?? "";
       w.hidden = !why;
@@ -1864,14 +1867,14 @@ function renderWizard() {
 
 function go(i: number) {
   const prev = S.step;
-  S.step = Math.max(0, Math.min(i, furthest()));
+  S.step = Math.max(0, Math.min(i, STEPS.length - 1));
   renderWizard();
   if (S.step !== prev) window.scrollTo({ top: 0 });
   if (S.step === STEPS.length - 1) void enterReview();
   // Funding shows the launch costs from the same simulation the Review step uses (launch fronting)
   if (S.step === STEPS.indexOf("Funding")) {
     renderFronting();
-    if (!S.draft && S.account) void launchReview();
+    if (!S.draft && S.account && furthest() >= STEPS.length - 1) void launchReview();
   }
 }
 
@@ -1893,6 +1896,8 @@ function renderFronting() {
 async function enterReview() {
   renderReview();
   if (S.launched || S.sending) return;
+  // the launch is only simulated once every step is complete; until then Review lists what is missing
+  if (furthest() < STEPS.length - 1) return;
   if (!S.draft) await launchReview();
 }
 
