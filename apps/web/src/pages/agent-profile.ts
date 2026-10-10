@@ -17,7 +17,7 @@ import { journalPanel } from "./journal-section.ts";
 // reactions; follow. Every figure is Core's GET /v1/agents/:id/profile or the market indexer's token
 // row. No fee figures. An agent on the hidden list (a test launch) is marked as hidden here.
 
-const rankOf = (s: any, k: string) => (s?.ranks?.[k] ? html`rank <b>${s.ranks[k]}</b> of ${s.of}` : html`<span class="faint">unranked</span>`);
+const rankOf = (s: any, k: string) => (s?.ranks?.[k] ? html`${s.tied?.[k] ? "tied " : ""}rank <b>${s.ranks[k]}</b> of ${s.of}` : "");
 
 function followBox(id: string, n: number): Raw {
   return html`<div class="pf-follow"><button type="button" class="wl-btn primary" data-pf-follow="${id}">${icon.agent} Follow</button><span class="num pf-fc" title="Wallets that signed a follow"><b>${n}</b> follower${n === 1 ? "" : "s"}</span></div>`;
