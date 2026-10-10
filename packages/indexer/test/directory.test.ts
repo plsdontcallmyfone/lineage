@@ -94,4 +94,46 @@ describe("token directory", () => {
     const s = (await (await api(new Request("http://x/market/summary"))).json()) as any;
     expect([s.working, s.verified_generations, s.tokens]).toEqual([null, null, 3]);
   });
+
+  test("hidden launches, launcher filter, agent face and what it is building", async () => {
+    const db = setup();
+    const core2: Record<string, unknown> = {
+      ...core,
+      [`/v1/lineages/${LIN_A}`]: { lineage_id: LIN_A, repo: "https://github.com/karpathy/minbpe", recipe: { class: "python" }, generations: [
+        { gen_id: "g1", entry_type: "patch", author: A.agent, accepted_at: 100, effect: { metric: "train_ir", ratio: 0.9 } },
+        { gen_id: "g2", entry_type: "patch", author: A.agent, accepted_at: 200, effect: { metric: "encode_ir", ratio: 0.8 } },
+        { gen_id: "g3", entry_type: "patch", author: A.agent, accepted_at: 300, reverted_by: "r", effect: { metric: "encode_ir", ratio: 0.5 } }] },
+      "/v1/sessions/s1": { event_list: [{ kind: "read", path: "minbpe/base.py" }, { kind: "phase", phase: "think" }, { kind: "edit", path: "minbpe/basic.py" }, { kind: "eval" }] },
+      [`/v1/agents/${A.agent}/profile`]: { soul: { name: "Alpha", tagline: "counts merges" }, media: { avatar: { url: "/v1/media/abc" } } },
+      [`/v1/agents/${B.agent}/profile`]: { soul: null, media: { avatar: null } },
+      "/v1/hidden": { hidden: [{ mint: C.mint, agent: C.agent, reason: "ui check", added_at: 5 }], count: 1 },
+    };
+    await syncCore(db, async (p) => {
+      if (!(p in core2)) throw new Error(`404 ${p}`);
+      return structuredClone(core2[p]);
+    }, 1000);
+    db.query("UPDATE tokens SET launcher = 'W' WHERE mint = ?").run(C.mint);
+    const api = marketApi(db, () => ({}));
+    const list = async (q: string) => ((await (await api(new Request(`http://x/market/tokens?${q}`))).json()) as any);
+    const l = await list("sort=newest");
+    expect(l.tokens.map((t: any) => t.symbol)).toEqual(["BETA", "ALPHA"]);
+    expect([l.count, l.total]).toEqual([2, 2]);
+    expect((await list("q=gamma")).count).toBe(0); // search too
+    expect((await list("hidden=1")).count).toBe(3);
+    const mine = await list("launcher=W");
+    expect(mine.tokens.map((t: any) => [t.symbol, t.hidden?.reason])).toEqual([["GAMMA", "ui check"]]);
+    const detail = (await (await api(new Request(`http://x/market/tokens/${C.mint}`))).json()) as any;
+    expect(detail.hidden).toMatchObject({ reason: "ui check" }); // the direct link still resolves
+    const a = l.tokens.find((t: any) => t.mint === A.mint);
+    expect(a).toMatchObject({ agent_name: "Alpha", tagline: "counts merges", avatar: "/v1/media/abc", hidden: null,
+      building: { repo: "https://github.com/karpathy/minbpe", live: true, session_id: "s1", file: "minbpe/basic.py",
+        last: { gen_id: "g2", lineage_id: LIN_A, metric: "encode_ir", ratio: 0.8, at: 200 } } });
+    const b = l.tokens.find((t: any) => t.mint === B.mint);
+    expect(b.building).toMatchObject({ live: false, file: null, last: null });
+    const s = (await (await api(new Request("http://x/market/summary"))).json()) as any;
+    expect(s).toMatchObject({ tokens: 2, hidden: 1 });
+    // a Core without the list keeps the last one read
+    await syncCore(db, get, 2000);
+    expect((await list("")).count).toBe(2);
+  });
 });

@@ -1,5 +1,5 @@
 import type { Database } from "bun:sqlite";
-import { CORE_SCHEMA } from "./core-sync.ts";
+import { ensureCoreSchema } from "./core-sync.ts";
 
 // Read API (docs/plans/LAUNCHPAD-AND-LIVE.md L2), JSON with CORS *. Prices are tLINE per agent
 // token; amounts are UI units (numbers) with the exact base units next to them as strings ("_raw").
@@ -9,7 +9,9 @@ const TF: Record<string, number> = { "1m": 60, "5m": 300, "1h": 3600, "1d": 8640
 const CORS = { "access-control-allow-origin": "*", "access-control-allow-methods": "GET, HEAD, OPTIONS", "access-control-allow-headers": "content-type" };
 
 interface CoreRow { agent: string; class: string | null; lineage_id: string | null; repo: string | null; model: string | null; provider: string | null;
-  generations: number; session_id: string | null; session_state: string | null; session_at: number | null }
+  generations: number; session_id: string | null; session_state: string | null; session_at: number | null; name: string | null; tagline: string | null;
+  avatar: string | null; session_file: string | null; last_gen: string | null; last_lineage: string | null; last_metric: string | null; last_ratio: number | null;
+  last_fixed: number | null; last_at: number | null }
 
 export interface StatusSource {
   (): Record<string, unknown>;
@@ -54,8 +56,9 @@ export function marketApi(db: Database, status: StatusSource, opts: { now?: () =
 function marketHandler(db: Database, status: StatusSource, opts: { now?: () => number } = {}) {
   const now = opts.now ?? (() => Math.floor(Date.now() / 1000));
   const lineDecimals = () => Number((db.query("SELECT v FROM meta WHERE k = 'line_decimals'").get() as { v: string } | null)?.v ?? 6);
-  db.exec(CORE_SCHEMA);
+  ensureCoreSchema(db);
   const coreOf = (agent: string) => db.query("SELECT * FROM core_agents WHERE agent = ?").get(agent) as CoreRow | null;
+  const hiddenOf = (mint: string) => db.query("SELECT reason, added_at FROM hidden_mints WHERE mint = ?").get(mint) as { reason: string; added_at: number | null } | null;
 
   /** Token directory fields (FRONTEND-EMBED.md amendment 2): chain state plus what Core says about the agent. */
   function directory(t: TokRow) {
@@ -72,6 +75,24 @@ function marketHandler(db: Database, status: StatusSource, opts: { now?: () => n
       generations: c ? c.generations : null,
       lineage_id: c?.lineage_id ?? null,
       session: c?.session_id ? { id: c.session_id, state: c.session_state, at: c.session_at } : null,
+      // the agent's public face (its soul and the launcher's avatar) and what it is building
+      // (APP-CONSOLIDATION amendment 2): the repository, the file a running session last touched, and
+      // its latest verified improvement; all read from Core, null where Core has nothing
+      agent_name: c?.name ?? null,
+      tagline: c?.tagline ?? null,
+      avatar: c?.avatar ?? null,
+      building: c
+        ? {
+            repo: c.repo ?? t.repo_url,
+            live: working,
+            session_id: c.session_id,
+            file: working ? c.session_file : null,
+            last: c.last_gen
+              ? { gen_id: c.last_gen, lineage_id: c.last_lineage, metric: c.last_metric, ratio: c.last_ratio, fixed: c.last_fixed, at: c.last_at }
+              : null,
+          }
+        : null,
+      hidden: hiddenOf(t.mint),
     };
   }
 
@@ -181,7 +202,7 @@ function marketHandler(db: Database, status: StatusSource, opts: { now?: () => n
 
     if (parts.length === 2 && parts[1] === "status") return json(status());
     if (parts.length === 2 && parts[1] === "summary") {
-      const rows = (db.query("SELECT * FROM tokens").all() as TokRow[]).map(summary);
+      const rows = (db.query("SELECT * FROM tokens").all() as TokRow[]).map(summary).filter((r) => !r.hidden);
       const synced = (db.query("SELECT v FROM meta WHERE k = 'core_synced_at'").get() as { v: string } | null)?.v ?? null;
       const known = !!synced && rows.some((r) => r.generations !== null);
       return json({
@@ -192,6 +213,7 @@ function marketHandler(db: Database, status: StatusSource, opts: { now?: () => n
         // null until Core has a record of at least one token's agent (never a zero Core did not say)
         verified_generations: known ? rows.reduce((n, r) => n + (r.generations ?? 0), 0) : null,
         fees_to_compute: rows.reduce((n, r) => n + (r.fees_to_compute ?? 0), 0),
+        hidden: (db.query("SELECT COUNT(*) AS n FROM hidden_mints").get() as { n: number }).n,
         core_synced_at: synced ? Number(synced) : null,
         quote: "tLINE",
       });
@@ -199,17 +221,23 @@ function marketHandler(db: Database, status: StatusSource, opts: { now?: () => n
     if (parts[1] !== "tokens") return json({ error: "not found" }, 404);
 
     if (parts.length === 2) {
-      const all = (db.query("SELECT * FROM tokens").all() as TokRow[]).map(summary);
+      // hidden launches leave the listing and its search unless asked for (hidden=1); launcher= lists one wallet's own
+      const launcher = q.get("launcher");
+      const withHidden = q.get("hidden") === "1" || !!launcher;
+      const all = (db.query("SELECT * FROM tokens").all() as TokRow[]).map(summary).filter((r) => (withHidden || !r.hidden) && (!launcher || r.launcher === launcher));
       const sort = q.get("sort") ?? "newest";
       const key: Record<string, (r: ReturnType<typeof summary>) => number> = {
         newest: (r) => r.created_at,
         market_cap: (r) => r.market_cap ?? -1,
         volume: (r) => r.volume_24h,
+        change: (r) => r.change_24h ?? -1e9,
         progress: (r) => r.curve_progress ?? -1,
         fees: (r) => r.fees_to_compute ?? -1,
         verified: (r) => r.generations ?? -1,
         // awake first (working counts as awake), then market cap
         awake: (r) => (r.state === "working" ? 2e18 : r.awake ? 1e18 : 0) + Math.min(9.9e17, r.market_cap ?? 0),
+        // the agent directory: working now, then the newest verified improvement, then market cap
+        building: (r) => (r.state === "working" ? 4e18 : 0) + (r.building?.last?.at ?? 0) * 1e3 + Math.min(9.9e2, (r.market_cap ?? 0) / 1e4),
       };
       const k = key[sort] ?? key.newest!;
       // filters: class, model ("unknown" for none), state (working, awake, asleep, graduated), q (name, ticker, mint or agent)

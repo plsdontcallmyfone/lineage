@@ -17,7 +17,7 @@ describe("hidden launches", () => {
   test("public list; only the admin edits it; reasons replace; removal works", async () => {
     const e = bare();
     env = e;
-    expect(await expectOk(e.anon.get("/v1/hidden"))).toEqual({ hidden: [], count: 0 });
+    expect(await expectOk<any>(e.anon.get("/v1/hidden"))).toEqual({ hidden: [], count: 0 });
     const [a, b] = [mint(), mint()];
     const agent = mint();
     expect((await agentClient(e).c.post("/v1/admin/hidden", { add: [{ mint: a, reason: "ui check" }] })).status).toBe(403);
