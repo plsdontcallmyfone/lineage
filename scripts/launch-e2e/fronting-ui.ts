@@ -79,23 +79,33 @@ try {
   const errors: string[] = [];
   page.on("pageerror", (e: Error) => errors.push(`pageerror: ${e.message}`));
   const shot = (n: string) => SHOTS && page.screenshot({ path: join(SHOTS, `fronting-${n}.png`), fullPage: true });
+  // a step that will not advance: say why (the wizard's own reason) instead of a bare timeout
+  const next = async () => {
+    const btn = page.locator('[data-act="lz-next"]');
+    for (let i = 0; i < 120 && (await btn.isDisabled()); i++) await page.waitForTimeout(500);
+    if (await btn.isDisabled()) {
+      await shot("stuck");
+      throw new Error(`Next stays disabled: ${await page.locator(".lz-why, .wl-why").first().innerText().catch(() => "no reason shown")}`);
+    }
+    await btn.click();
+  };
   await page.goto(`${BASE}/launch`);
   await page.locator("#cn-btn.on").waitFor({ timeout: 30_000 });
   await page.fill('[name="l_name"]', "Fronting check");
   await page.fill('[name="l_symbol"]', "TFRONT");
   await page.fill('[name="l_desc"]', "A devnet check of the launch fronting lines. Nothing is launched by this run.");
-  await page.click('[data-act="lz-next"]');
+  await next();
   await page.fill('[name="l_repo"]', "https://github.com/keis/base58");
   await page.locator("#w-work .lz-rec, #w-work .banner").first().waitFor({ timeout: 60_000 });
-  await page.click('[data-act="lz-next"]');
+  await next();
   await page.fill('[name="s_vibe"]', "plain, careful, quietly pleased by a smaller number");
   await page.fill('[name="s_specialty"]', "base58 encode and decode hot paths");
   await page.fill('[name="s_values"]', "measure before claiming, small diffs, say plainly it is a test");
   await page.click('[data-act="soul-generate"]');
   await page.waitForSelector(".wl-soul .wl-hash, #w-soul [data-err]", { timeout: 300_000 });
-  await page.click('[data-act="lz-next"]');
+  await next();
   await page.locator('input[name="l_identity"][value="app"]').check();
-  await page.click('[data-act="lz-next"]');
+  await next();
   // Funding: the credits field is read-only at Core's amount; the block fills from the simulation
   const dep = page.locator('[name="l_deposit"]');
   check("Funding: credits field read-only at Core's configured amount", (await dep.inputValue()) === prepay.min_usd && (await dep.getAttribute("readonly")) !== null, await dep.inputValue());
@@ -104,7 +114,7 @@ try {
   out.funding = funding;
   check("Funding: three lines and the total", ["Token creation", "Model credits", "Initial buy", "Total"].every((k) => funding.includes(k)), funding.slice(0, 400));
   await shot("funding");
-  await page.click('[data-act="lz-next"]');
+  await next();
   await page.waitForSelector("text=simulation succeeded on devnet", { timeout: 120_000 });
   const review = (await page.locator('[data-step="5"]').innerText()).replace(/\s+/g, " ");
   out.review = review.slice(0, 3000);
