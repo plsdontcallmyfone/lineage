@@ -1088,7 +1088,7 @@ a.eco-btn { text-decoration: none; }
 
 .deck-shell { height: calc(100vh - var(--hdr-h) - 56px); min-height: 420px; display: flex; flex-direction: column; min-width: 0; margin: -8px calc(-1 * var(--pad-x)) 0; }
 .deck-canvas { display: flex; flex: 1; min-height: 0; gap: 12px; overflow-x: auto; overflow-y: hidden; padding: 12px var(--pad-x) 16px; scroll-padding: 0 var(--pad-x); }
-.deck-column { height: 100%; min-width: 440px; max-width: 760px; flex: 1 0 440px; display: flex; flex-direction: column; min-height: 0; background: var(--bg2); border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; --stripe: var(--border-h); transition: border-color .18s; }
+.deck-column { height: 100%; width: 480px; min-width: 480px; max-width: 480px; flex: 0 0 480px; display: flex; flex-direction: column; min-height: 0; background: var(--bg2); border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; --stripe: var(--border-h); transition: border-color .18s; }
 .deck-column:hover, .deck-column:focus-within, .deck-column[data-active="true"] { border-color: var(--border-h); --stripe: var(--tp); }
 .deck-column[data-active="true"] { box-shadow: 0 0 0 1px var(--ac-b), 0 10px 26px -8px color-mix(in srgb, var(--ac) 35%, transparent); }
 .deck-titlebar { height: 42px; display: flex; align-items: center; gap: 6px; flex-shrink: 0; border-bottom: 1px solid var(--border); background: color-mix(in srgb, var(--bg3) 60%, transparent); padding: 0 6px 0 10px; }
@@ -1128,6 +1128,9 @@ a.eco-btn { text-decoration: none; }
 .deck-body .sticky { position: static; }
 .deck-body .feed { max-height: none; }
 .deck-body .hide-sm { display: none; }
+.deck-body .ag-grid { grid-template-columns: minmax(0, 1fr); gap: 12px; } /* agent cards one per row inside a column */
+.deck-body .ag-links { flex-wrap: wrap; gap: 8px 16px; }
+.deck-body .ph-row > .seg, .deck-body .ph-row > .wl-btn { flex: none; }
 .deck-body .show-sm { display: block; }
 .deck-column.filters-hidden .ph-row, .deck-column.filters-hidden .deck-body > .panel.milled, .deck-column.filters-hidden .lb-hl { display: none; }
 .deck-column.is-compact .t td { padding-top: 6px; padding-bottom: 6px; }
@@ -1135,7 +1138,7 @@ a.eco-btn { text-decoration: none; }
 .deck-column.is-compact .feed-item { padding-top: 6px; padding-bottom: 6px; }
 @media (max-width: 760px) {
   .deck-shell { height: calc(100vh - var(--hdr-h) - 88px); margin-top: -4px; }
-  .deck-column { min-width: calc(100vw - 2 * var(--pad-x)); flex-basis: calc(100vw - 2 * var(--pad-x)); }
+  .deck-column { width: calc(100vw - 2 * var(--pad-x)); min-width: calc(100vw - 2 * var(--pad-x)); max-width: none; flex-basis: calc(100vw - 2 * var(--pad-x)); }
   .deck-canvas { scroll-snap-type: x mandatory; }
   .deck-column { scroll-snap-align: start; }
 }
