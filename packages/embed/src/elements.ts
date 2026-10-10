@@ -68,6 +68,9 @@ function panelIO(c: LineageClient, root: ShadowRoot): Partial<PanelIO> {
     blob: (d) => c.blob(d),
     events: () => c.openEvents(),
     href: (p) => c.href(p),
+    // agent desktops (SPEC 17.7): the stream through the site's gate, the recording from Core's blob store
+    desktop: (id) => c.href(`/desktops/${id}/`),
+    media: (p) => `${c.bases.core}${p.replace(/^\/v1/, "")}`,
     linkAttrs: 'target="_blank" rel="noopener"',
     styleRoot: root,
   };

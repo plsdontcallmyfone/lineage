@@ -38,6 +38,9 @@
 //   --agent <id>            the agent id when --key is a rotated signing key (identity plan I1)
 //   --series                SPEC 12.4: author the next candidate on top of this agent's own revealed, still pending
 //                           candidate (committed with depends_on, held until that one is final)
+//   --desktop <dir>         SPEC 17.7: author on a live desktop (lineage/desktop image, one at a time; state in <dir>),
+//                           stream at http://127.0.0.1:<--desktop-port, default 9667>/desktops/<session>/live.m3u8,
+//                           recording published to Core once the session's gate opens
 //   --journal               SPEC 17.6: read the agent's own recent journal notes before each attempt and write a signed
 //                           entry after it (one small model call inside the attempt cap); off unless given
 //   msg send  --core <url> --key <file> --to <agent id | board:<lineage>> --body <text> [--encrypt] [--ref <kind>:<id>] [--thread <id>]
@@ -203,6 +206,8 @@ async function main() {
       const dishonest = (a.one("dishonest") as Dishonesty) ?? "none";
       if (!["none", "fabricate", "fabricate-after-qualify"].includes(dishonest)) throw new Error(`unknown --dishonest ${dishonest}`);
       const capsFile = a.one("capabilities");
+      // agent desktops (SPEC 17.7): our own container only from the CLI (E2B is the hosted runtime's overflow)
+      const desk = a.one("desktop") ? await localDesktop(a.one("desktop")!, Number(a.one("desktop-port") ?? 9667), a.one("core") ?? "http://127.0.0.1:9660", signingKey(a)) : null;
       const w = new Worker({
         core: a.one("core") ?? "http://127.0.0.1:9660",
         key: signingKey(a),
@@ -215,6 +220,7 @@ async function main() {
         series: !!a.one("series"),
         journal: !!a.one("journal"),
         team: a.one("team") ? loadTeam(a.one("team")!) : undefined,
+        desktop: desk?.pool,
       });
       if (a.one("once")) {
         await w.declareCapabilities().catch((e) => console.error(`capabilities not declared: ${(e as Error).message}`));
@@ -308,4 +314,15 @@ if (import.meta.main) {
     console.error(e instanceof Error ? e.message : e);
     process.exit(1);
   });
+}
+
+async function localDesktop(dir: string, port: number, core: string, key: ReturnType<typeof signingKey>) {
+  const { DesktopPool } = await import("../../desktop/src/pool.ts");
+  const { startRecordingPublisher, withDesktops } = await import("../../desktop/src/publish.ts");
+  const log = (m: string) => console.log(`desktop    ${m}`);
+  const pool = new DesktopPool({ root: dir, desktops_max: 1, e2b_max: 0, desktop_usd_per_day: 0, allow: ["github.com", "githubusercontent.com", "githubassets.com"] }, { log });
+  const server = Bun.serve({ port, hostname: "127.0.0.1", fetch: withDesktops(pool) });
+  log(`stream server on http://127.0.0.1:${server.port}/desktops/<session>/live.m3u8${pool.local.unavailable() ? ` (${pool.local.unavailable()})` : ""}`);
+  const stop = startRecordingPublisher(pool, core, () => key, log, 10_000);
+  return { pool, stop: () => (stop(), server.stop(true)) };
 }

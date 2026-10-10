@@ -106,6 +106,17 @@ export const CSS = `
 .cr-page[data-kind="sandbox"] { background: var(--gh-soft); }
 .cr-page[data-kind="new"] { background: var(--cr-tool); }
 .cr-doc { min-height: 100%; }
+/* agent desktops (SPEC 17.7): the desktop's stream or recording in place of the page */
+.cr[data-desk="1"] .cr-page { display: none; }
+.cr[data-desk="1"] .cr-cursor { display: none; }
+.cr-desk { flex: 1; min-height: 0; position: relative; background: #111318; display: flex; flex-direction: column; }
+.cr-desk[hidden] { display: none; }
+.cr-desk-v { flex: 1; min-height: 0; width: 100%; object-fit: contain; background: #111318; display: block; }
+.cr-desk-bar { flex: none; display: flex; align-items: center; gap: 10px; padding: 6px 10px; background: var(--cr-tool); border-top: 1px solid var(--cr-line); font-size: 12px; color: var(--cr-dim); }
+.cr-desk-tag { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cr-desk-sw { flex: none; font: inherit; font-size: 12px; padding: 3px 10px; border-radius: 999px; border: 1px solid var(--cr-line); background: transparent; color: var(--cr-text); cursor: pointer; }
+.lp-deskback { margin-right: 8px; }
+.cr-desk-sw:hover { background: var(--cr-btn-hover); }
 .cr .ring, .cr .gh-code.ring { box-shadow: var(--lp-ring) !important; }
 .cr-omni.ring { box-shadow: var(--lp-ring), 0 1px 3px rgba(0,0,0,.08) !important; }
 

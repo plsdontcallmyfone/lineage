@@ -6,6 +6,8 @@
 // Usage: bun scripts/network.ts [--recipes fixture-b58,base58-py,minbpe] [--author scripted|anthropic]
 //        [--max-usd 2] [--no-web] [--port 9660] [--web-port 9661] [--data ./data] [--state ./.lineage-net]
 //        [--verifiers 3] [--config config/network.json]
+//        [--desktop]   authors work on live desktops (SPEC 17.7, lineage/desktop image): author i serves its
+//                      stream on 127.0.0.1:<9667 + i>/desktops/<session>/live.m3u8
 // Every worker sends heartbeats and its proposer's activity (SPEC 17.1), so the dashboard's live
 // wall and machine wall show this network's real work.
 // Ctrl-C stops every process this script started (by PID).
@@ -148,6 +150,7 @@ for (const a of authors) {
     }
     args.push("--proposer", "scripted", "--script", dir);
   }
+  if (argv.includes("--desktop")) args.push("--desktop", join(STATE, "desktops", a.name), "--desktop-port", String(9667 + authors.indexOf(a)));
   start(`agent-${a.name}`.slice(0, 10), args);
 }
 

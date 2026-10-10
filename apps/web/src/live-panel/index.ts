@@ -5,6 +5,7 @@ import { esc } from "../html.ts";
 import { addressOf, C, favicon, repoParts, titleOf, type Place } from "./chrome.ts";
 import { ARROW, IBEAM, moveMs, movePath, typingChunks, type CursorKind, type Pt } from "./cursor.ts";
 import { ensureStyle } from "./style.ts";
+import { playDesktop, type DeskPlayer } from "./desk-player.ts";
 
 // Live agent panel (SPEC 17.3, plans L4 and P): one authoring session shown as a desktop browser
 // window in the style of Chrome, by default on the screen of the shared retro desktop machine
@@ -73,6 +74,10 @@ export interface PanelIO {
   linkAttrs: string;
   /** where the panel's stylesheet goes */
   styleRoot: Document | ShadowRoot;
+  /** agent desktops (SPEC 17.7): the base URL of a session's live stream (".../desktops/<id>/"), or null for none */
+  desktop?: ((session: string) => string) | null;
+  /** a Core path such as /v1/blobs/<sha256> as a URL this page can load (the desktop recording) */
+  media?: (corePath: string) => string;
 }
 
 export const DEFAULT_IO: PanelIO = {
@@ -84,6 +89,8 @@ export const DEFAULT_IO: PanelIO = {
   },
   events: () => (typeof EventSource === "undefined" ? null : new EventSource("/live/events")),
   href: (p) => p,
+  desktop: (id) => `/desktops/${id}/`,
+  media: (p) => p.replace(/^\/v1\//, "/api/"),
   linkAttrs: "",
   get styleRoot() {
     return document;
@@ -115,6 +122,10 @@ export interface SessionSummary {
   last_at: number;
   ended_at: number | null;
   events: number;
+  /** the session ran on a live desktop (SPEC 17.7) */
+  desktop?: boolean;
+  /** the desktop's recording, linked once the gate opened */
+  recording?: { sha256: string; bytes: number; url: string } | null;
   candidate: null | { commit_id: string; candidate_id: string | null; status: string; reason: string | null; kind: string; target: unknown; gen_id: string | null; committed_at: number; finalized_at: number | null; verdict: any };
 }
 
@@ -266,6 +277,8 @@ class Panel {
   private root!: HTMLElement;
   private win!: HTMLElement;
   private io: PanelIO;
+  /** agent desktops (SPEC 17.7): what the window shows, the player, and whether the stream went away */
+  private desk: { el: HTMLElement; video: HTMLVideoElement; player: DeskPlayer | null; showing: "live" | "rec" | null; key: string; gone: boolean; panel: boolean } | null = null;
   private a = (path: string) => `href="${esc(this.io.href(path))}"${this.io.linkAttrs ? ` ${this.io.linkAttrs}` : ""}`;
   private q = <T extends HTMLElement = HTMLElement>(sel: string) => this.root.querySelector<T>(sel)!;
 
@@ -301,9 +314,16 @@ class Panel {
         <div class="cr-omni" role="status" aria-label="Address"><span class="cr-site">${C.tune}</span><span class="cr-url"></span><span class="cr-star" aria-hidden="true">${C.star}</span></div>
         <span class="cr-ib" aria-hidden="true">${C.puzzle}</span><span class="cr-avatar" aria-hidden="true"></span><span class="cr-ib" aria-hidden="true">${C.kebab}</span></div>
       <div class="cr-page"><div class="cr-doc"></div></div>
+      <div class="cr-desk" hidden><video class="cr-desk-v" muted playsinline></video><div class="cr-desk-bar"><span class="cr-desk-tag"></span><button type="button" class="cr-desk-sw"></button></div></div>
       <div class="cr-cursor" aria-hidden="true" data-on="0"></div>
     </div>`;
     this.win = fit.querySelector(".cr")!;
+    const deskEl = fit.querySelector<HTMLElement>(".cr-desk")!;
+    this.desk = { el: deskEl, video: deskEl.querySelector("video")!, player: null, showing: null, key: "", gone: false, panel: false };
+    deskEl.querySelector(".cr-desk-sw")!.addEventListener("click", () => {
+      this.desk!.panel = !this.desk!.panel;
+      this.syncDesk();
+    });
     const stage = this.q(".lp-stage");
     if (this.frame === "device") {
       this.device = mountDevice(stage, { screen: fit, glass: "clear", lights: PHASES.length });
@@ -338,7 +358,10 @@ class Panel {
     this.connect();
     this.poll = setInterval(() => {
       if (!this.host.isConnected) return this.destroy();
-      if (this.summary && (this.summary.state === "live" || this.summary.state === "sealed")) void this.refresh();
+      const s = this.summary;
+      // a desktop recording is linked a little after the gate opens: keep asking for ten minutes
+      const awaitingRec = !!s?.desktop && s.open && !s.recording && Date.now() - (s.ended_at ?? s.last_at) < 600_000;
+      if (s && (s.state === "live" || s.state === "sealed" || awaitingRec)) void this.refresh();
     }, 10_000);
     try {
       if (this.opts.session) await this.load(this.opts.session, this.want);
@@ -356,6 +379,7 @@ class Panel {
     this.ro?.disconnect();
     this.mo?.disconnect();
     if (this.poll) clearInterval(this.poll);
+    this.desk?.player?.stop();
   }
 
   /** Sizes the window: laid out at least MIN_W wide and scaled down to the space it has. */
@@ -429,6 +453,8 @@ class Panel {
     this.opts.onSession?.(this.summary);
     this.renderList();
     this.renderAll();
+    if (this.desk) this.desk.gone = false;
+    this.syncDesk();
     if (summary.state === "final" && summary.candidate) void this.loadNetwork();
     if (this.mode === "live") {
       // a live session opens where the agent is now: earlier events apply instantly, then it follows
@@ -450,6 +476,7 @@ class Panel {
         const wasOpen = this.summary.open;
         this.summary = summary;
         this.opts.onSession?.(summary);
+        this.syncDesk();
         if (!wasOpen && summary.open) {
           // the gate opened: replay from the start, now with the edits
           this.events = event_list;
@@ -1235,6 +1262,63 @@ class Panel {
     this.renderTabs();
     this.renderOmni();
     this.renderDoc();
+  }
+
+  /**
+   * Agent desktops (SPEC 17.7): while the session is live on a desktop the window shows its stream
+   * (redacted on the server: the editor and run terminal stay pixelated until the verdict); once the
+   * gate opened and the recording is linked, the recording. Otherwise, or when the viewer switches,
+   * the reconstructed page.
+   */
+  private syncDesk() {
+    const d = this.desk;
+    const s = this.summary;
+    if (!d) return;
+    const base = s && this.io.desktop ? this.io.desktop(s.session_id) : null;
+    let want: "live" | "rec" | null = null;
+    if (s?.desktop && s.state === "live" && this.mode === "live" && base && !d.gone) want = "live";
+    else if (s?.desktop && s.open && s.recording && this.io.media) want = "rec";
+    const key = want ? `${want}:${s!.session_id}` : "";
+    if (key !== d.key) {
+      d.player?.stop();
+      d.player = null;
+      d.video.removeAttribute("src");
+      d.video.controls = false;
+      d.key = key;
+      if (want === "live") {
+        d.player = playDesktop(d.video, base!, () => {
+          d.gone = true;
+          this.syncDesk();
+        });
+      } else if (want === "rec") {
+        d.video.src = this.io.media!(s!.recording!.url);
+        d.video.controls = true;
+        d.video.preload = "metadata";
+      }
+    }
+    const show = !!want && !d.panel;
+    d.el.hidden = !show;
+    this.win.dataset.desk = show ? "1" : "0";
+    if (want === "rec" && !show) d.video.pause();
+    d.el.querySelector(".cr-desk-tag")!.textContent =
+      want === "live" ? "Live desktop. The editor and the run terminal stay pixelated until the verdict." : want === "rec" ? "Recording of the desktop, published after the verdict." : "";
+    const sw = d.el.querySelector<HTMLButtonElement>(".cr-desk-sw")!;
+    sw.textContent = "Show the reconstruction";
+    // the way back lives in the deck while the reconstruction shows
+    let back = this.root.querySelector<HTMLButtonElement>(".lp-deskback");
+    if (want && d.panel) {
+      if (!back) {
+        back = document.createElement("button");
+        back.type = "button";
+        back.className = "lp-btn lp-deskback";
+        back.addEventListener("click", () => {
+          d.panel = false;
+          this.syncDesk();
+        });
+        this.q(".lp-ctlrow").prepend(back);
+      }
+      back.textContent = want === "live" ? "Show the live desktop" : "Show the recording";
+    } else back?.remove();
   }
 
   private setState(s: string, text: string) {
