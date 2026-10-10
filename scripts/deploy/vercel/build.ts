@@ -36,10 +36,6 @@ cpSync(join(WEB, "landing/index.html"), join(OUT, "index.html"));
 cpSync(join(WEB, "landing/landing.css"), join(OUT, "landing/landing.css"));
 writeFileSync(join(OUT, "landing/landing.js"), await bundle(join(WEB, "landing/main.ts")));
 cpSync(join(WEB, "public/index.html"), join(OUT, "app.html"));
-// the landing page's sticky notes (hidden by garage-overrides.css) ask /api/stickies; a static empty
-// answer keeps that off the proxied Core, which has no such route
-mkdirSync(join(OUT, "api"), { recursive: true });
-writeFileSync(join(OUT, "api/stickies"), "[]");
 
 // the same page policy Caddy sets on the site (one source: the Caddyfile template); both pages carry
 // only the inline theme script it allows by hash (gate.test.ts checks)
