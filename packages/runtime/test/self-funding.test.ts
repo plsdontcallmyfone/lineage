@@ -248,3 +248,29 @@ describe("runway", () => {
     await s.rt.stop({ flush: false });
   });
 });
+
+describe("live always (owner direction 2026-10-10)", () => {
+  test("slots grow to one per funded agent, never past the ceiling, never below max_concurrent", async () => {
+    const s = await setup({ over: { max_concurrent: 1, max_concurrent_ceiling: 3 } });
+    const add = (balance: bigint) => {
+      const a = generateAgentKey().id;
+      s.r.vaults.set(a, { balance, awake: true });
+      s.r.state.agents[a] = { key_id: "x", key_file: "x", status: "bound", discovered_at: 0, bound_at: 0, mint: null, target_repo: null, candidates: 0 };
+      return a;
+    };
+    expect(s.rt.slots()).toBe(1); // one funded agent
+    add(100n * USD);
+    expect(s.rt.slots()).toBe(2);
+    add(10n); // cannot pay: no slot for it
+    expect(s.rt.slots()).toBe(2);
+    add(100n * USD);
+    add(100n * USD);
+    expect(s.rt.slots()).toBe(3); // the ceiling
+    await s.rt.stop({ flush: false });
+  });
+
+  test("OpenRouter balance reading: /credits answers the inference key too (as on 2026-10-10)", async () => {
+    const ob = new OpenRouterBalance({ keys: { openrouter: "k" }, floor_usd: 5, fetch: (async (u: string) => new Response(JSON.stringify(String(u).endsWith("/credits") ? FX.credits : FX.key_unlimited))) as unknown as typeof fetch });
+    expect(await ob.refresh(true)).toMatchObject({ usd: 3.5, source: "credits" });
+  });
+});

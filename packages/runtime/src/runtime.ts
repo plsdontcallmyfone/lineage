@@ -104,14 +104,19 @@ interface Running {
 
 /** Agents ordered least recently started first (never started first, then by state order). */
 /**
- * How long an agent waits before its next attempt after `misses` attempts in a row that spent money
- * and produced no candidate: none for the first, then 15 min doubling, capped at 6 h. On the site,
- * attempts kept ending at the spend cap with no candidate while the next started at once.
+ * How long an agent waits after `failures` attempts in a row that failed for infrastructure reasons
+ * (the attempt threw: a provider error, the sandbox, Core): 30 s doubling, capped at 15 min (owner
+ * direction 2026-10-10, "the live stuff always"). An attempt that ended normally without a candidate
+ * is not a failure: a funded agent starts its next one after `attempt_gap_s` (TEST 30 s). An agent
+ * whose vault cannot pay never starts (budget), so it needs no backoff here.
  */
-export function missBackoffMs(misses: number): number {
-  if (misses <= 1) return 0;
-  return Math.min(15 * 60_000 * 2 ** (misses - 2), 6 * 3_600_000);
+export function failureBackoffMs(failures: number): number {
+  if (failures <= 0) return 0;
+  return Math.min(30_000 * 2 ** (failures - 1), 15 * 60_000);
 }
+
+/** @deprecated kept for callers of the old name: the infrastructure-failure backoff. */
+export const missBackoffMs = failureBackoffMs;
 
 export function fairOrder<T>(entries: [string, T][], lastStarted: Map<string, number>): [string, T][] {
   return entries.map((e, i) => ({ e, i, t: lastStarted.get(e[0]) ?? -1 })).sort((a, b) => a.t - b.t || a.i - b.i).map((x) => x.e);
@@ -129,7 +134,7 @@ export class Runtime {
   private hosted = new Map<string, HostedAgent>();
   /** When each agent's last attempt started (this process): the attempt slots go round robin. */
   private lastStarted = new Map<string, number>();
-  /** Attempts in a row that spent money and produced no candidate, and when the agent may try again. */
+  /** Infrastructure failures in a row, and when the agent may try again (failure backoff or the short gap). */
   private misses = new Map<string, { n: number; until: number }>();
   private exhausted = new Set<string>();
   private client: CoreClient;
@@ -521,22 +526,39 @@ export class Runtime {
     }
   }
 
+  /**
+   * Attempt slots now: at least one per funded bound agent (awake, vault can pay), never fewer than
+   * `max_concurrent`, never more than `max_concurrent_ceiling` (owner direction 2026-10-10: funded
+   * agents are live all the time; the ceiling is what the server carries).
+   */
+  slots(): number {
+    const ceiling = this.cfg.max_concurrent_ceiling ?? this.cfg.max_concurrent;
+    let funded = 0;
+    for (const [agent, st] of Object.entries(this.state.agents)) {
+      if (st.status !== "bound" || this.exhausted.has(agent) || !this.vaults.get(agent)?.awake) continue;
+      if (this.running.has(agent) || this.budget(agent).usd !== null) funded++;
+    }
+    return Math.max(1, Math.min(ceiling, Math.max(this.cfg.max_concurrent, funded)));
+  }
+
   private startAttempts(): void {
     if (this.stopping) return;
+    const slots = this.slots();
     // least recently started first, so one agent cannot hold the only slot (max_concurrent) while others wait
     for (const [agent, st] of fairOrder(Object.entries(this.state.agents), this.lastStarted)) {
-      if (this.running.size >= this.cfg.max_concurrent) return;
+      if (this.running.size >= slots) return;
       if (st.status !== "bound" || this.running.has(agent)) continue;
       if (this.cfg.max_candidates_per_agent !== undefined && st.candidates >= this.cfg.max_candidates_per_agent) continue;
       const v = this.vaults.get(agent);
       if (!v?.awake || this.exhausted.has(agent)) continue;
-      if ((this.misses.get(agent)?.until ?? 0) > this.now()) continue;
+      // the vault first: an agent that can no longer pay is marked exhausted even inside its gap
       const b = this.budget(agent);
       if (b.usd === null) {
         if (b.vault) this.exhausted.add(agent);
         this.waiting.set(agent, b.why);
         continue;
       }
+      if ((this.misses.get(agent)?.until ?? 0) > this.now()) continue;
       this.lastStarted.set(agent, this.now());
       const promise = this.attemptFor(agent).finally(() => this.running.delete(agent));
       this.running.set(agent, { agent, promise });
@@ -546,30 +568,31 @@ export class Runtime {
   private async attemptFor(agent: string): Promise<void> {
     const w = this.worker(agent);
     let commit: string | null = null;
+    let failed = false;
     try {
       commit = await w.authorOnce();
     } catch (e) {
+      failed = true;
       this.log(`${agent.slice(0, 6)} attempt failed: ${(e as Error).message}`);
       // OpenRouter 402: its credits cannot cover requests; routed attempts wait until a top-up shows
       if ((e as { noCredits?: boolean }).noCredits && (e as { provider?: string }).provider === "openrouter") this.deps.providerBalance?.markNoCredits();
     }
     const a = this.attempts.get(agent);
     this.attempts.delete(agent);
+    // the next attempt: after the short gap, or after the failure backoff when this one threw
+    const gap = (this.cfg.attempt_gap_s ?? 30) * 1000;
+    if (failed) {
+      const n = (this.misses.get(agent)?.n ?? 0) + 1;
+      const wait = Math.max(gap, failureBackoffMs(n));
+      this.misses.set(agent, { n, until: this.now() + wait });
+      this.log(`${agent.slice(0, 6)} ${n} failed attempt${n === 1 ? "" : "s"} in a row; next attempt in ${Math.round(wait / 1000)} s`);
+    } else this.misses.set(agent, { n: 0, until: this.now() + gap });
     if (!a) return; // no proposer run (not awake in Core, open-candidate limit, no lineage)
     a.totals.finished_at = this.now();
     this.save();
     const cost = costOf(this.prices, a.totals.usd, a.totals.sandbox_s);
     this.log(`${agent.slice(0, 6)} attempt done: ${a.totals.usd.toFixed(4)} USD model spend, ${Math.ceil(a.totals.sandbox_s)} sandbox s, cost ${cost} base units${commit ? `, candidate ${commit.slice(0, 12)}` : ", no candidate"}`);
-    if (!commit) {
-      if (a.totals.usd > 0) {
-        const n = (this.misses.get(agent)?.n ?? 0) + 1;
-        const wait = missBackoffMs(n);
-        this.misses.set(agent, { n, until: this.now() + wait });
-        if (wait) this.log(`${agent.slice(0, 6)} ${n} attempts in a row without a candidate; next attempt in ${Math.round(wait / 60_000)} min`);
-      }
-      return;
-    }
-    this.misses.delete(agent);
+    if (!commit) return;
     this.state.agents[agent]!.candidates++;
     this.usageOf(agent).candidates.push(commit);
     this.save();

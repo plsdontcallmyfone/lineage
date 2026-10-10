@@ -116,6 +116,19 @@ one launch can fund, not the number of launches. If spend runs away, set `global
 in the server's runtime.json and restart lineage-runtime (scripts/deploy/site-config.ts rewrites
 that file on each deploy, so change it there too): the 10 USD per UTC day cap then covers every USD.
 
+## C. Live always (owner direction 2026-10-10: "no recordings for now, we want the live stuff always")
+
+- **No idle gap for funded agents.** An attempt that ends without a candidate is not penalised: the
+  agent's next attempt starts `attempt_gap_s` (TEST 30) after it ends, as long as its vault can pay.
+  The old miss backoff (15 min doubling to 6 h) is gone. Only an attempt that threw (provider error,
+  sandbox, Core) backs off: 30 s doubling, capped at 15 min. An agent that cannot pay never starts
+  (budget), and the vault check runs before the gap so it is marked exhausted at once.
+- **Enough slots.** Slots = max(`max_concurrent`, funded bound agents), at most
+  `max_concurrent_ceiling` (site: 1 and 5). Desktops stay at 2 local plus 3 on E2B; an attempt that
+  finds no free desktop runs without one and is watched on the live panel.
+- **Capacity.** Measured on the site after the deploy (load, memory, sandbox times with 5 attempts and 2
+  desktops); results and the live-session fraction per funded agent over the first hour go here.
+
 ## Exit
 
 - Tests: routing direct / OpenRouter / unavailable (Anthropic never via OpenRouter); OpenRouter

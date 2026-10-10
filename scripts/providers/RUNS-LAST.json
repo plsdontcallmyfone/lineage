@@ -1,29 +1,306 @@
 [
   {
-    "at": "2026-10-09T23:33:59.154Z",
-    "pick": "anthropic/claude-haiku-4-5",
+    "at": "2026-10-10T18:48:26.543Z",
+    "pick": "openai/gpt-5-mini",
     "recipe": "fixture-b58",
-    "seconds": 70,
-    "usd": 0.069794,
+    "seconds": 52,
+    "usd": 0.009534,
     "tokens": {
-      "in": 11474,
-      "out": 7054,
-      "cache_read": 72242,
-      "cache_write": 12661
+      "in": 4256,
+      "out": 3612,
+      "cache_read": 29952,
+      "cache_write": 0
     },
-    "sandbox_s": 4,
-    "outcome": "anthropic: turn limit reached",
-    "diff_lines": 57,
+    "sandbox_s": 10,
+    "outcome": "submitted",
+    "diff_lines": 33,
     "provenance": {
       "models": [
-        "claude-haiku-4-5-20251001"
+        "openai/gpt-5-mini"
       ],
-      "provider": "anthropic",
+      "provider": "openrouter",
       "proposer": {
-        "name": "anthropic",
-        "version": "anthropic/1"
+        "name": "openai-compat",
+        "version": "openai-compat/1"
       },
-      "harness_digest": "addd1f19b8193784674f2c52ca9e30a81e1c83fca6238003deb565cfb56946b1"
-    }
+      "harness_digest": "3787e52be35c6247d0d7f1dd43ef3cdc76819bce5eb1497452b8671a8692f7b0",
+      "route": {
+        "via": "openrouter",
+        "model": {
+          "provider": "openai",
+          "id": "gpt-5-mini"
+        },
+        "upstream": [
+          "OpenAI"
+        ]
+      }
+    },
+    "openrouter_credits_used": 0.006058
+  },
+  {
+    "at": "2026-10-10T18:49:00.795Z",
+    "pick": "google/gemini-3.5-flash-lite",
+    "recipe": "fixture-b58",
+    "seconds": 34,
+    "usd": 0.009057,
+    "tokens": {
+      "in": 24109,
+      "out": 541,
+      "cache_read": 0,
+      "cache_write": 0
+    },
+    "sandbox_s": 18,
+    "outcome": "submitted",
+    "diff_lines": 21,
+    "provenance": {
+      "models": [
+        "google/gemini-3.5-flash-lite"
+      ],
+      "provider": "openrouter",
+      "proposer": {
+        "name": "openai-compat",
+        "version": "openai-compat/1"
+      },
+      "harness_digest": "3787e52be35c6247d0d7f1dd43ef3cdc76819bce5eb1497452b8671a8692f7b0",
+      "route": {
+        "via": "openrouter",
+        "model": {
+          "provider": "google",
+          "id": "gemini-3.5-flash-lite"
+        },
+        "upstream": [
+          "Google"
+        ]
+      }
+    },
+    "openrouter_credits_used": 0.002978
+  },
+  {
+    "at": "2026-10-10T18:53:41.986Z",
+    "pick": "deepseek/deepseek-flash",
+    "recipe": "fixture-b58",
+    "seconds": 281,
+    "usd": 0.014969,
+    "tokens": {
+      "in": 37809,
+      "out": 22777,
+      "cache_read": 103680,
+      "cache_write": 0
+    },
+    "sandbox_s": 5,
+    "outcome": "submitted",
+    "diff_lines": 64,
+    "provenance": {
+      "models": [
+        "deepseek/deepseek-v4.1-flash"
+      ],
+      "provider": "openrouter",
+      "proposer": {
+        "name": "openai-compat",
+        "version": "openai-compat/1"
+      },
+      "harness_digest": "3787e52be35c6247d0d7f1dd43ef3cdc76819bce5eb1497452b8671a8692f7b0",
+      "route": {
+        "via": "openrouter",
+        "model": {
+          "provider": "deepseek",
+          "id": "deepseek-flash"
+        },
+        "upstream": [
+          "Relace"
+        ]
+      }
+    },
+    "openrouter_credits_used": 0.022845
+  },
+  {
+    "at": "2026-10-10T19:01:06.255Z",
+    "pick": "alibaba/qwen3.8-flash",
+    "recipe": "fixture-b58",
+    "seconds": 444,
+    "usd": 0.019555,
+    "tokens": {
+      "in": 31040,
+      "out": 26201,
+      "cache_read": 97792,
+      "cache_write": 0
+    },
+    "sandbox_s": 16,
+    "outcome": "submitted",
+    "diff_lines": 163,
+    "provenance": {
+      "models": [
+        "qwen/qwen3.8-flash"
+      ],
+      "provider": "openrouter",
+      "proposer": {
+        "name": "openai-compat",
+        "version": "openai-compat/1"
+      },
+      "harness_digest": "3787e52be35c6247d0d7f1dd43ef3cdc76819bce5eb1497452b8671a8692f7b0",
+      "route": {
+        "via": "openrouter",
+        "model": {
+          "provider": "alibaba",
+          "id": "qwen3.8-flash"
+        },
+        "upstream": [
+          "Alibaba"
+        ]
+      }
+    },
+    "openrouter_credits_used": 0.018978
+  },
+  {
+    "at": "2026-10-10T19:04:29.250Z",
+    "pick": "moonshot/kimi-k2.6",
+    "recipe": "fixture-b58",
+    "seconds": 203,
+    "usd": 0.063149,
+    "tokens": {
+      "in": 2048,
+      "out": 32121,
+      "cache_read": 3426,
+      "cache_write": 0
+    },
+    "sandbox_s": 0,
+    "outcome": "openrouter: ended without submit",
+    "diff_lines": 0,
+    "provenance": {
+      "models": [
+        "moonshotai/kimi-k2.6"
+      ],
+      "provider": "openrouter",
+      "proposer": {
+        "name": "openai-compat",
+        "version": "openai-compat/1"
+      },
+      "harness_digest": "3787e52be35c6247d0d7f1dd43ef3cdc76819bce5eb1497452b8671a8692f7b0",
+      "route": {
+        "via": "openrouter",
+        "model": {
+          "provider": "moonshot",
+          "id": "kimi-k2.6"
+        },
+        "upstream": [
+          "Baidu"
+        ]
+      }
+    },
+    "openrouter_credits_used": 0.007031
+  },
+  {
+    "at": "2026-10-10T19:05:40.045Z",
+    "pick": "zhipu/glm-5.3-flash",
+    "recipe": "fixture-b58",
+    "seconds": 71,
+    "usd": 0.010376,
+    "tokens": {
+      "in": 39085,
+      "out": 7944,
+      "cache_read": 0,
+      "cache_write": 0
+    },
+    "sandbox_s": 9,
+    "outcome": "submitted",
+    "diff_lines": 70,
+    "provenance": {
+      "models": [
+        "z-ai/glm-5.3-flash"
+      ],
+      "provider": "openrouter",
+      "proposer": {
+        "name": "openai-compat",
+        "version": "openai-compat/1"
+      },
+      "harness_digest": "3787e52be35c6247d0d7f1dd43ef3cdc76819bce5eb1497452b8671a8692f7b0",
+      "route": {
+        "via": "openrouter",
+        "model": {
+          "provider": "zhipu",
+          "id": "glm-5.3-flash"
+        },
+        "upstream": [
+          "Venice"
+        ]
+      }
+    },
+    "openrouter_credits_used": 0.062911
+  },
+  {
+    "at": "2026-10-10T19:08:11.913Z",
+    "pick": "minimax/MiniMax-M2.7",
+    "recipe": "fixture-b58",
+    "seconds": 152,
+    "usd": 0.015926,
+    "tokens": {
+      "in": 24552,
+      "out": 8005,
+      "cache_read": 76553,
+      "cache_write": 0
+    },
+    "sandbox_s": 15,
+    "outcome": "openrouter: turn limit reached",
+    "diff_lines": 63,
+    "provenance": {
+      "models": [
+        "minimax/minimax-m2.7"
+      ],
+      "provider": "openrouter",
+      "proposer": {
+        "name": "openai-compat",
+        "version": "openai-compat/1"
+      },
+      "harness_digest": "3787e52be35c6247d0d7f1dd43ef3cdc76819bce5eb1497452b8671a8692f7b0",
+      "route": {
+        "via": "openrouter",
+        "model": {
+          "provider": "minimax",
+          "id": "MiniMax-M2.7"
+        },
+        "upstream": [
+          "GMICloud"
+        ]
+      }
+    },
+    "openrouter_credits_used": 0.018503
+  },
+  {
+    "at": "2026-10-10T19:08:36.897Z",
+    "pick": "meta/llama-4-maverick",
+    "recipe": "fixture-b58",
+    "seconds": 25,
+    "usd": 0.000458,
+    "tokens": {
+      "in": 1982,
+      "out": 96,
+      "cache_read": 0,
+      "cache_write": 0
+    },
+    "sandbox_s": 0,
+    "outcome": "openrouter: ended without submit",
+    "diff_lines": 0,
+    "provenance": {
+      "models": [
+        "meta-llama/llama-4-maverick"
+      ],
+      "provider": "openrouter",
+      "proposer": {
+        "name": "openai-compat",
+        "version": "openai-compat/1"
+      },
+      "harness_digest": "3787e52be35c6247d0d7f1dd43ef3cdc76819bce5eb1497452b8671a8692f7b0",
+      "route": {
+        "via": "openrouter",
+        "model": {
+          "provider": "meta",
+          "id": "llama-4-maverick"
+        },
+        "upstream": [
+          "DigitalOcean"
+        ]
+      }
+    },
+    "openrouter_credits_used": 0.003041
   }
 ]

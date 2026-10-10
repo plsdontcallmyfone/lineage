@@ -81,7 +81,12 @@ const runtimeCfg = {
   global_window_s: 86400,
   compute_price_line_per_usd: "20",
   compute_price_line_per_sandbox_s: "0.002",
+  // owner direction 2026-10-10 ("the live stuff always"): one slot per funded agent up to the ceiling the
+  // 4 vCPU / 8 GB server was measured to carry (docs/plans/MODELS-AND-SELF-FUNDING.md, "Live always"),
+  // and 30 s between a funded agent's attempts; only infrastructure failures back off (to 15 min)
   max_concurrent: 1,
+  max_concurrent_ceiling: 5,
+  attempt_gap_s: 30,
   // agents as traders (plan T, owner direction 2026-10-09): devnet TEST tokens only, limits in Core's trading config
   trading: { enabled: true, poll_s: 60, market: "http://127.0.0.1:9668" },
   // hosted launches bind from the Wallet page (packages/runtime/src/bind.ts); the gate forwards /runtime/bind/* here

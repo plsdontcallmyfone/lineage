@@ -5,7 +5,7 @@
 // mid-attempt for lack of credits. Read 2026-10-10:
 //   GET https://openrouter.ai/api/v1/credits   (management key) -> { data: { total_credits, total_usage } }
 //   GET https://openrouter.ai/api/v1/key       (inference key)  -> { data: { limit_remaining (null: no limit), usage, ... } }
-// With only an inference key that has no credit limit, the balance is unknown: attempts run and a
+// When /credits refuses the inference key and the key has no credit limit, the balance is unknown: attempts run and a
 // 402 marks the balance low at once. Treasury top-ups are manual (USDC or card on the credits page,
 // or card auto top-up); there is no crypto top-up API.
 
@@ -51,13 +51,21 @@ export class OpenRouterBalance {
     this.readAt = now;
     const before = this.state.usd;
     try {
+      // /credits is documented for management keys; on 2026-10-10 it also answered the inference key, so
+      // that is tried first and /key (the key's own limit) is the fallback
       const mgmt = this.o.keys["openrouter-management"];
-      if (mgmt) {
-        const d = await this.get("/credits", mgmt);
-        const c = d.total_credits, u = d.total_usage;
-        if (typeof c !== "number" || typeof u !== "number" || !Number.isFinite(c) || !Number.isFinite(u)) throw new Error("GET /credits: unexpected body");
-        this.state = { ...this.state, usd: c - u, source: "credits", read_at: now, error: null };
-      } else {
+      const credits = await this.get("/credits", mgmt ?? this.o.keys.openrouter!).then(
+        (d) => {
+          const c = d.total_credits, u = d.total_usage;
+          if (typeof c !== "number" || typeof u !== "number" || !Number.isFinite(c) || !Number.isFinite(u)) throw new Error("GET /credits: unexpected body");
+          return c - u;
+        },
+      ).catch((e) => {
+        if (mgmt) throw e;
+        return null;
+      });
+      if (credits !== null) this.state = { ...this.state, usd: credits, source: "credits", read_at: now, error: null };
+      else {
         const d = await this.get("/key", this.o.keys.openrouter!);
         const rem = d.limit_remaining;
         if (rem === null || rem === undefined) this.state = { ...this.state, usd: null, source: "unknown", read_at: now, error: null };

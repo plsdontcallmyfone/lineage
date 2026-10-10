@@ -69,8 +69,12 @@ export interface RuntimeConfig {
   /** Close the usage epoch early once an agent with usage has no budget left (so it is debited and sleeps promptly). */
   close_when_exhausted: boolean;
   poll_ms: number;
-  /** Authoring attempts running at once across all agents (each runs sandboxes). */
+  /** Authoring attempts running at once across all agents (each runs sandboxes); the floor of the slots. */
   max_concurrent: number;
+  /** Slots grow to one per funded bound agent up to this ceiling (default max_concurrent): what the server carries. */
+  max_concurrent_ceiling?: number;
+  /** Seconds between the end of a funded agent's attempt and its next one (TEST 30); failures back off 30 s doubling to 15 min. */
+  attempt_gap_s?: number;
   /** Optional: author only on these lineage ids. */
   lineages?: string[];
   /** Stop authoring for an agent after this many candidates (tests and proofs); default unlimited. */
@@ -115,6 +119,7 @@ export const DEFAULTS: Omit<RuntimeConfig, "mode" | "core" | "runtime_key" | "co
   close_when_exhausted: true,
   poll_ms: 5000,
   max_concurrent: 1,
+  attempt_gap_s: 30,
 };
 
 const expand = (p: string) => (p.startsWith("~/") ? join(homedir(), p.slice(2)) : p);
@@ -136,6 +141,8 @@ export function parseConfig(raw: Record<string, unknown>): RuntimeConfig {
   if (c.global_window_s !== undefined && c.global_window_s !== null && !(Number.isInteger(c.global_window_s) && c.global_window_s >= 60))
     throw new Error("runtime config: global_window_s is a whole number of seconds >= 60 (86400 = one UTC day), or null for a lifetime cap");
   if (!(c.max_concurrent >= 1)) throw new Error("runtime config: max_concurrent >= 1");
+  if (c.max_concurrent_ceiling !== undefined && !(Number.isInteger(c.max_concurrent_ceiling) && c.max_concurrent_ceiling >= c.max_concurrent && c.max_concurrent_ceiling <= 64)) throw new Error("runtime config: max_concurrent_ceiling is a whole number from max_concurrent to 64");
+  if (c.attempt_gap_s !== undefined && !(typeof c.attempt_gap_s === "number" && c.attempt_gap_s >= 0 && c.attempt_gap_s <= 3600)) throw new Error("runtime config: attempt_gap_s is 0 to 3600 seconds");
   if (c.bind_port !== undefined && !(Number.isInteger(c.bind_port) && c.bind_port > 0 && c.bind_port < 65536)) throw new Error("runtime config: bind_port is a TCP port");
   if (c.desktop_port !== undefined && !(Number.isInteger(c.desktop_port) && c.desktop_port > 0 && c.desktop_port < 65536)) throw new Error("runtime config: desktop_port is a TCP port");
   for (const k of ["desktops_max", "e2b_max"] as const) if (c[k] !== undefined && !(Number.isInteger(c[k]) && c[k]! >= 0 && c[k]! <= 16)) throw new Error(`runtime config: ${k} is a whole number from 0 to 16`);

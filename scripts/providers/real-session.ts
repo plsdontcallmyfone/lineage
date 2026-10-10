@@ -40,6 +40,13 @@ const calib = JSON.parse(readFileSync(join(recipeDir, "calibration.json"), "utf8
 const calibration = calib.calibration ?? calib;
 const deps = await prepareDeps(loaded);
 const results: unknown[] = [];
+// OpenRouter's own account of each session (plan MODELS-AND-SELF-FUNDING): total_usage before and after
+const orUsage = async (): Promise<number | null> => {
+  if (!keys.openrouter) return null;
+  const r = await fetch("https://openrouter.ai/api/v1/credits", { headers: { authorization: `Bearer ${keys["openrouter-management"] ?? keys.openrouter}` } }).catch(() => null);
+  const j = r?.ok ? ((await r.json()) as { data?: { total_usage?: number } }) : null;
+  return typeof j?.data?.total_usage === "number" ? j.data.total_usage : null;
+};
 
 for (const pick of picks) {
   const work = newWorkDir("provider-session");
@@ -50,6 +57,7 @@ for (const pick of picks) {
   let error: string | null = null;
   let proposal: unknown = null;
   let diffLines = 0;
+  const usageBefore = await orUsage();
   try {
     materialize(loaded.recipe.repo, loaded.recipe.commit, loaded.overlayDir, tree);
     const findings = loaded.recipe.metrics.filter((m) => calibration.metrics[m.name]?.enabled).map((m) => ({ key: m.name, kind: "metric_target", target: m.name }));
@@ -80,6 +88,11 @@ for (const pick of picks) {
         },
         sandbox: (s) => (totals.sandbox_s += s),
         harness: (h) => (totals.proposer = h),
+        route: (rt) => (totals.route = { via: rt.via, model: rt.model, upstream: totals.route?.upstream ?? [] }),
+        upstream: (n) => {
+          const rt = (totals.route ??= { via: "openrouter", model: pick, upstream: [] });
+          if (!rt.upstream.includes(n)) rt.upstream.push(n);
+        },
       },
     });
     const raw = diffWorkingTree(tree);
@@ -91,8 +104,17 @@ for (const pick of picks) {
     removeTree(work);
   }
   totals.finished_at = Date.now();
+  // OpenRouter's usage counter can lag a few seconds behind the last response
+  let usageAfter: number | null = null;
+  // (seen 2026-10-10: per-session deltas were off by up to a session; read until two readings agree)
+  for (let i = 0, prev: number | null = null; i < 12 && usageBefore !== null; i++) {
+    await Bun.sleep(10_000);
+    usageAfter = await orUsage();
+    if (usageAfter !== null && usageAfter > usageBefore && usageAfter === prev) break;
+    prev = usageAfter;
+  }
   const record = provenanceRecord({ commit_id: "0".repeat(64), agent: "SESSION", recipe_id: loaded.recipe_id, lineage_id: "0".repeat(64), totals, amount: 0n, price: { line_per_usd: "0", line_per_sandbox_s: "0" }, requestedModel: pick.id });
-  const r = { at: new Date().toISOString(), pick: `${pick.provider}/${pick.id}`, recipe: loaded.recipe.name, seconds: Math.round((Date.now() - t0) / 1000), usd: Number(totals.usd.toFixed(6)), tokens: { in: totals.input_tokens, out: totals.output_tokens, cache_read: totals.cache_read_tokens, cache_write: totals.cache_write_tokens }, sandbox_s: Math.ceil(totals.sandbox_s), outcome: error ? `error: ${error}` : proposal ? "submitted" : (logs.filter((l) => !l.startsWith("model route")).pop() ?? "no proposal"), diff_lines: diffLines, provenance: { models: record.models, provider: record.provider, proposer: record.proposer, harness_digest: record.harness_digest } };
+  const r = { at: new Date().toISOString(), pick: `${pick.provider}/${pick.id}`, recipe: loaded.recipe.name, seconds: Math.round((Date.now() - t0) / 1000), usd: Number(totals.usd.toFixed(6)), tokens: { in: totals.input_tokens, out: totals.output_tokens, cache_read: totals.cache_read_tokens, cache_write: totals.cache_write_tokens }, sandbox_s: Math.ceil(totals.sandbox_s), outcome: error ? `error: ${error}` : proposal ? "submitted" : (logs.filter((l) => !l.startsWith("model route")).pop() ?? "no proposal"), diff_lines: diffLines, provenance: { models: record.models, provider: record.provider, proposer: record.proposer, harness_digest: record.harness_digest, route: record.route ?? null }, openrouter_credits_used: usageBefore !== null && usageAfter !== null ? Number((usageAfter - usageBefore).toFixed(6)) : null };
   results.push(r);
   console.log(JSON.stringify(r, null, 2));
 }
@@ -101,4 +123,4 @@ writeFileSync(join(import.meta.dir, "RUNS-LAST.json"), JSON.stringify(results, n
 const md = join(import.meta.dir, "RUNS.md");
 if (!existsSync(md)) writeFileSync(md, "# Provider sessions (plan M)\n\nReal authoring attempts through the runtime's provider routing, one per provider with a key. Spend is the registry price of the tokens the API reported.\n\n| at (UTC) | model | recipe | outcome | USD | tokens in / out / cache read | sandbox s | provenance |\n|---|---|---|---|---|---|---|---|\n");
 for (const r of results as any[])
-  appendFileSync(md, `| ${r.at.slice(0, 16).replace("T", " ")} | ${r.pick} | ${r.recipe} | ${String(r.outcome).replace(/\|/g, "/").slice(0, 120)} | ${r.usd.toFixed(4)} | ${r.tokens.in} / ${r.tokens.out} / ${r.tokens.cache_read} | ${r.sandbox_s} | ${r.provenance.provider}: ${r.provenance.models.join(", ")}, ${r.provenance.proposer.name} ${r.provenance.proposer.version} |\n`);
+  appendFileSync(md, `| ${r.at.slice(0, 16).replace("T", " ")} | ${r.pick} | ${r.recipe} | ${String(r.outcome).replace(/\|/g, "/").slice(0, 120)} | ${r.usd.toFixed(4)} | ${r.tokens.in} / ${r.tokens.out} / ${r.tokens.cache_read} | ${r.sandbox_s} | ${r.provenance.provider}: ${r.provenance.models.join(", ")}, ${r.provenance.proposer.name} ${r.provenance.proposer.version}${r.provenance.route ? `; route ${r.provenance.route.via}${r.provenance.route.upstream.length ? ` (${r.provenance.route.upstream.join(", ")})` : ""}` : ""}${r.openrouter_credits_used !== null && r.openrouter_credits_used !== undefined ? `; OpenRouter credits used ${r.openrouter_credits_used}` : ""} |\n`);
