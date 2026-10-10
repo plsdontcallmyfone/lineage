@@ -114,6 +114,9 @@ describe("profiles (SPEC 12.8)", () => {
       expect(l.total()).toBeCloseTo(0.066 + 10, 6); // unknown models at the highest listed rate
       expect(l.remaining()).toBeLessThan(0);
       expect(readFileSync(join(dir, "spend.jsonl"), "utf8").trim().split("\n")).toHaveLength(2);
+      // a dated snapshot id is priced as its model, not at the highest rate
+      const dated = l.record("t", "claude-opus-5-5-20261001", { input_tokens: 1000, output_tokens: 2000, cache_read_input_tokens: 10_000, cache_creation_input_tokens: 4000 } as any);
+      expect(dated.usd).toBeCloseTo(0.066, 10);
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }

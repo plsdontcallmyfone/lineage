@@ -276,7 +276,8 @@ export class SpendLedger {
 
   /** Prices a response's usage (MODEL_PRICES; unknown models at the highest listed rate) and logs it. */
   record(who: string, model: string, u: Anthropic.Beta.BetaUsage): SpendEntry {
-    const p = MODEL_PRICES[model] ?? Object.values(MODEL_PRICES).reduce((a, b) => (b.output > a.output ? b : a));
+    // a dated snapshot id (claude-haiku-4-5-20251001) is priced as its model, not at the highest rate
+    const p = MODEL_PRICES[model] ?? MODEL_PRICES[model.replace(/-\d{8}$/, "")] ?? Object.values(MODEL_PRICES).reduce((a, b) => (b.output > a.output ? b : a));
     const e: SpendEntry = {
       at: new Date().toISOString(),
       who,
