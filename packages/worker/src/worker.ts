@@ -454,6 +454,11 @@ export class Worker {
         desk = await this.opts.desktop
           .begin({ agent: this.id, tree: dir, repo: loaded.recipe.repo, commit: where.commit, stacked: !!stack, label: `${this.id.slice(0, 8)}-${where.lineage_id.slice(0, 8)}` })
           .catch((e) => (this.log(`desktop: ${(e as Error).message}`), null));
+        // desktop hosts lane: a required desktop that did not start ends the attempt before the model runs
+        if (!desk && this.opts.desktop.required) {
+          this.log("desktop: none started; attempt not run (desktops are required)");
+          return null;
+        }
         if (desk) {
           session.setDesktop(true);
           const d = desk;
@@ -520,19 +525,32 @@ export class Worker {
       if (!g.ok) this.log(`author: guard says ${g.violation}; submitting anyway only because the proposer is scripted`);
       const salt = randomBytes(16).toString("hex");
       const commitment = patchCommitment(patchHash(patch), salt);
-      const committed = await this.ok(
-        this.client.post("/v1/candidates", {
-          lineage_id: view.lineage_id,
-          parent_gen_id: tree.gen_id,
-          kind: proposal.kind,
-          target: proposal.target,
-          commitment,
-          claimed_effect: proposal.claimed_effect ?? null,
-          ...(stack ? { depends_on: stack.commit_id } : {}),
-          ...this.teamFor({ lineage_id: view.lineage_id, parent_gen_id: tree.gen_id, commitment, kind: proposal.kind, target: proposal.target, depends_on: stack?.commit_id ?? null }),
-        }),
-        "commit candidate",
-      );
+      const commitBody = (parent: string, dep: string | null) => ({
+        lineage_id: view.lineage_id,
+        parent_gen_id: parent,
+        kind: proposal.kind,
+        target: proposal.target,
+        commitment,
+        claimed_effect: proposal.claimed_effect ?? null,
+        ...(dep ? { depends_on: dep } : {}),
+        ...this.teamFor({ lineage_id: view.lineage_id, parent_gen_id: parent, commitment, kind: proposal.kind, target: proposal.target, depends_on: dep }),
+      });
+      let posted = await this.client.post("/v1/candidates", commitBody(tree.gen_id, stack?.commit_id ?? null));
+      // stacked (agent efficiency lane): the pending candidate this attempt built on became final while
+      // it ran. Accepted: the new tip is exactly the tree this change was made and measured on, so it
+      // commits there as an ordinary candidate. Otherwise the change has no parent left and is dropped.
+      if (stack && posted.status === 409 && (posted.body as { error?: string })?.error === "dependency_final") {
+        const tip = await this.ok(this.client.get(`/v1/lineages/${view.lineage_id}/tree`), "tree");
+        const same = tip.patches.length === parentPatches.length && tip.patches.every((p: { patch: string }, i: number) => p.patch === parentPatches[i]);
+        if (!same) {
+          this.log(`series: pending ${stack.commit_id.slice(0, 10)} became final without becoming the tip; change dropped`);
+          facts?.outcome("no candidate: the pending candidate this change was built on was not accepted, so the change had no parent");
+          return null;
+        }
+        this.log(`series: ${stack.commit_id.slice(0, 10)} was accepted while authoring; committing on the new tip ${String(tip.gen_id).slice(0, 10)}`);
+        posted = await this.client.post("/v1/candidates", commitBody(tip.gen_id, null));
+      }
+      const committed = await this.ok(Promise.resolve(posted), "commit candidate");
       sessionCommit = committed.commit_id;
       // no target: a submit names no candidate while it is sealed, and Core shows submits only to this agent (SPEC 10.7)
       this.telemetry.activity(where, { kind: "submit" });

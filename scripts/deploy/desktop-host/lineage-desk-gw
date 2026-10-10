@@ -1,0 +1,200 @@
+#!/usr/bin/python3 -I
+# lineage-desk-gw: the only command the site's desktop key may run on a desktop host
+# (authorized_keys: command="/usr/local/bin/lineage-desk-gw",restrict). Installed by
+# scripts/deploy/desktop-host/provision.sh; docs/plans/AGENT-DESKTOPS.md "Desktop hosts".
+#
+# The site drives the host's Docker through this gate (packages/desktop/src/remote.ts). It accepts
+# only what the remote backend sends, so the site's key cannot get root on the host through Docker:
+#   health                     one JSON line: cpus, memory, load, image id, running desktops
+#   sweep                      removes every desktop container (lineage.desktop=1); never anything else
+#   docker run ...             only lineage/desktop, only the flags below, and always non-root,
+#                              read-only root, every capability dropped, no-new-privileges, label
+#                              lineage=1; no bind mounts, volumes, devices, ports, host namespaces
+#   docker exec ...            only into lineage-desk-* containers, never as root or privileged
+#   docker rm -f NAME          only lineage-desk-* names
+#   docker inspect / image inspect / network inspect|create|connect   on the desktop names only
+# Anything else is refused (exit 126) and logged to syslog.
+import json
+import os
+import re
+import shlex
+import subprocess
+import sys
+import syslog
+
+IMAGE = os.environ.get("LINEAGE_DESK_IMAGE", "lineage/desktop")
+NET = "lineage-desk"
+PROXY = "lineage-desk-proxy"
+NAME = re.compile(r"^lineage-desk-(proxy|[0-9a-f]{16})$")
+DESK = re.compile(r"^lineage-desk-[0-9a-f]{16}$")
+USER = re.compile(r"^[1-9][0-9]{0,6}:[1-9][0-9]{0,6}$")
+
+
+def refuse(why):
+    syslog.syslog(syslog.LOG_WARNING, "lineage-desk-gw refused: %s" % why[:300])
+    sys.stderr.write("lineage-desk-gw: refused: %s\n" % why)
+    sys.exit(126)
+
+
+def run_docker(args):
+    os.execvp("docker", ["docker"] + args)
+
+
+# flags of `docker run` that take a value, and the check each value must pass
+RUN_VALUE = {
+    "--name": lambda v: NAME.match(v),
+    "--label": lambda v: re.match(r"^lineage(\.[a-z]+)?=[A-Za-z0-9._:-]{0,80}$", v),
+    "--network": lambda v: v == NET,
+    "--tmpfs": lambda v: re.match(r"^/(tmp|stream|work/repo)(:[a-z0-9=,]{1,80})?$", v),
+    "--shm-size": lambda v: re.match(r"^[0-9]{1,5}[mg]$", v),
+    "--cap-drop": lambda v: v == "ALL",
+    "--security-opt": lambda v: v == "no-new-privileges",
+    "--pids-limit": lambda v: re.match(r"^[0-9]{1,5}$", v),
+    "--cpus": lambda v: re.match(r"^[0-9]{1,2}(\.[0-9]{1,2})?$", v),
+    "--memory": lambda v: re.match(r"^[0-9]{1,6}[mg]$", v),
+    "--user": lambda v: USER.match(v),
+    "-e": lambda v: re.match(r"^(HOME|DISPLAY|DESK_[A-Z_]{1,20})=[^\n]{0,600}$", v),
+    "--entrypoint": lambda v: v == "/usr/local/bin/desk-proxy",
+    "--restart": lambda v: v == "unless-stopped",
+}
+RUN_BOOL = {"-d", "--read-only"}
+
+
+def check_run(a):
+    seen = {}
+    i = 0
+    while i < len(a) and a[i].startswith("-"):
+        f = a[i]
+        if "=" in f and f.startswith("--"):
+            f, v = f.split("=", 1)
+            i += 1
+        elif f in RUN_BOOL:
+            seen.setdefault(f, []).append(True)
+            i += 1
+            continue
+        else:
+            if i + 1 >= len(a):
+                refuse("run: %s needs a value" % f)
+            v = a[i + 1]
+            i += 2
+        if f not in RUN_VALUE:
+            refuse("run: flag %s" % f)
+        if not RUN_VALUE[f](v):
+            refuse("run: %s %s" % (f, v))
+        seen.setdefault(f, []).append(v)
+    if i >= len(a) or a[i] != IMAGE:
+        refuse("run: image must be %s" % IMAGE)
+    if len(a) != i + 1:
+        refuse("run: no command after the image")
+    for need in ("--read-only", "-d", "--user", "--name"):
+        if need not in seen:
+            refuse("run: %s is required" % need)
+    if seen.get("--cap-drop") != ["ALL"] or seen.get("--security-opt") != ["no-new-privileges"]:
+        refuse("run: --cap-drop ALL and --security-opt no-new-privileges are required")
+    if "lineage=1" not in seen.get("--label", []):
+        refuse("run: label lineage=1 is required")
+    name = seen["--name"][0]
+    if name == PROXY:
+        if seen.get("--entrypoint") != ["/usr/local/bin/desk-proxy"]:
+            refuse("run: the proxy runs desk-proxy")
+    else:
+        if "--entrypoint" in seen or "--restart" in seen:
+            refuse("run: a desktop keeps the image's entrypoint")
+        if seen.get("--network") != [NET]:
+            refuse("run: a desktop runs only on %s" % NET)
+        if "lineage.desktop=1" not in seen.get("--label", []):
+            refuse("run: a desktop carries lineage.desktop=1")
+
+
+def check_exec(a):
+    i = 0
+    while i < len(a) and a[i].startswith("-"):
+        f = a[i]
+        if f == "-i":
+            i += 1
+        elif f in ("-u", "-e") and i + 1 < len(a):
+            v = a[i + 1]
+            if f == "-u" and not USER.match(v):
+                refuse("exec: user %s" % v)
+            if f == "-e" and not re.match(r"^(HOME|DISPLAY)=[^\n]{0,200}$", v):
+                refuse("exec: env %s" % v)
+            i += 2
+        else:
+            refuse("exec: flag %s" % f)
+    if i >= len(a) or not NAME.match(a[i]) or i + 1 >= len(a):
+        refuse("exec: only into lineage-desk-* containers, with a command")
+
+
+def health():
+    def sh(argv):
+        try:
+            return subprocess.run(argv, capture_output=True, text=True, timeout=20)
+        except Exception as e:  # noqa: BLE001
+            return None
+
+    mem = 0
+    avail = 0
+    for line in open("/proc/meminfo"):
+        if line.startswith("MemTotal:"):
+            mem = int(line.split()[1]) // 1024
+        if line.startswith("MemAvailable:"):
+            avail = int(line.split()[1]) // 1024
+    img = sh(["docker", "image", "inspect", "--format", "{{.Id}}", IMAGE])
+    ps = sh(["docker", "ps", "-q", "--filter", "label=lineage.desktop=1"])
+    px = sh(["docker", "inspect", "--format", "{{.State.Running}}", PROXY])
+    print(json.dumps({
+        "cpus": os.cpu_count(),
+        "mem_mib": mem,
+        "mem_avail_mib": avail,
+        "load1": float(open("/proc/loadavg").read().split()[0]),
+        "image": img.stdout.strip() if img and img.returncode == 0 else None,
+        "docker": ps is not None and ps.returncode == 0,
+        "desktops": len(ps.stdout.split()) if ps and ps.returncode == 0 else None,
+        "proxy": bool(px and px.returncode == 0 and px.stdout.strip() == "true"),
+    }))
+
+
+def main():
+    cmd = os.environ.get("SSH_ORIGINAL_COMMAND", "")
+    try:
+        a = shlex.split(cmd)
+    except ValueError:
+        refuse("unparsable command")
+    if not a:
+        refuse("no command")
+    if a == ["health"]:
+        return health()
+    if a == ["sweep"]:
+        ps = subprocess.run(["docker", "ps", "-aq", "--filter", "label=lineage.desktop=1"], capture_output=True, text=True)
+        ids = ps.stdout.split()
+        if ids:
+            subprocess.run(["docker", "rm", "-f"] + ids, capture_output=True)
+        print(json.dumps({"removed": len(ids)}))
+        return
+    if a[0] != "docker" or len(a) < 2:
+        refuse("not a docker command: %s" % a[0])
+    d = a[1:]
+    if d[0] == "run":
+        check_run(d[1:])
+    elif d[0] == "exec":
+        check_exec(d[1:])
+    elif d[0] == "rm":
+        if d[1:2] != ["-f"] or len(d) != 3 or not NAME.match(d[2]):
+            refuse("rm: only rm -f lineage-desk-*")
+    elif d[0] == "inspect":
+        if len(d) != 4 or d[1] != "--format" or not NAME.match(d[3]):
+            refuse("inspect: only --format FMT lineage-desk-*")
+    elif d[0] == "image":
+        if d[1:] not in (["inspect", "--format", "{{.Id}}", IMAGE],):
+            refuse("image: only inspect of %s" % IMAGE)
+    elif d[0] == "network":
+        ok = d[1:] in (["inspect", NET], ["create", "--internal", "--label", "lineage=1", NET], ["connect", NET, PROXY])
+        if not ok:
+            refuse("network: only the desktop network")
+    else:
+        refuse("docker %s" % d[0])
+    run_docker(d)
+
+
+if __name__ == "__main__":
+    main()

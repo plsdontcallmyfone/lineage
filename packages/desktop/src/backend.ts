@@ -13,7 +13,9 @@ export interface ExecResult {
 /** One running desktop. Every command runs as the desktop's unprivileged user with DISPLAY set. */
 export interface DesktopInstance {
   readonly id: string;
-  readonly backend: "local" | "e2b";
+  readonly backend: BackendName;
+  /** the desktop host's name (backend "host", remote.ts) */
+  readonly host?: string;
   /** where the live HLS files are written inside the desktop */
   readonly streamDir: string;
   /** where the live HLS files are on this host (the gate serves from here) */
@@ -25,6 +27,8 @@ export interface DesktopInstance {
   push?(rel: string, bytes: Uint8Array): Promise<void>;
   /** brings new stream files to hostStreamDir (E2B); a no-op where the directory is shared */
   sync(): Promise<void>;
+  /** the desktop's host went away (remote.ts): the attempt ends its live stream cleanly */
+  lost?(): boolean;
   /** stops and removes the desktop; idempotent */
   destroy(): Promise<void>;
   /** USD per second this desktop costs while it runs (0 for our own server) */
@@ -42,8 +46,11 @@ export interface CreateOpts {
   label: string;
 }
 
+/** local: the site's own Docker; host: a desktop host over ssh (remote.ts); e2b: E2B overflow */
+export type BackendName = "local" | "host" | "e2b";
+
 export interface DesktopBackend {
-  readonly name: "local" | "e2b";
+  readonly name: BackendName;
   /** null when this backend can start a desktop now, else why not */
   unavailable(): string | null;
   create(o: CreateOpts): Promise<DesktopInstance>;

@@ -12,6 +12,7 @@ import { emptyUsage, isAgentId, Lock, modelTokens, redact, StateStore, type Agen
 import { AgentPoster, emptyPostState, POSTS_DEFAULTS, type PostState } from "./posts.ts";
 import type { ModelClient, Usage as SoulUsage } from "../../souls/src/generator.ts";
 import type { DesktopProvider } from "../../desktop/src/pool.ts";
+import { desktopGate } from "./desktop-gate.ts";
 import { existsSync, readFileSync, renameSync } from "node:fs";
 import { FixedPrice, type PriceSource, type QuotePrice } from "./price.ts";
 import type { OpenRouterBalance } from "./provider-balance.ts";
@@ -433,6 +434,13 @@ export class Runtime {
           this.log(`${agent.slice(0, 6)} attempt not started: ${b.why}`);
           this.waiting.set(agent, b.why);
           if (b.vault) this.exhausted.add(agent);
+          return null;
+        }
+        // desktop hosts lane: no attempt without its live desktop when desktops are required
+        const dw = desktopGate(this.deps.desktop, agent);
+        if (dw) {
+          if (this.waiting.get(agent) !== dw) this.log(`${agent.slice(0, 6)} attempt not started: ${dw}`);
+          this.waiting.set(agent, dw);
           return null;
         }
         this.waiting.delete(agent);

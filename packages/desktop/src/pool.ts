@@ -2,16 +2,21 @@ import { createHash } from "node:crypto";
 import { existsSync, mkdirSync, readdirSync, readFileSync, renameSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import type { SessionEventInput } from "../../worker/src/session.ts";
-import type { DesktopBackend, DesktopInstance } from "./backend.ts";
+import type { BackendName, DesktopBackend, DesktopInstance } from "./backend.ts";
 import { Driver } from "./driver.ts";
 import { E2BBackend } from "./e2b.ts";
 import { liveArgs, recordArgs, RECORDING_MAX_BYTES, type Rect } from "./layout.ts";
 import { LocalBackend } from "./local.ts";
+import { noSlotWhy, placementOrder, type Slot } from "./placement.ts";
+import { RemoteBackend, type HostConfig } from "./remote.ts";
 import { Seal } from "./seal.ts";
 
 // Desktop slots for the hosted runtime (SPEC 17.7): an attempt gets a desktop when a slot is free
-// (our server first, `desktops_max`; then E2B, `e2b_max`, while the day's E2B spend stays under
-// `desktop_usd_per_day`), otherwise it keeps the reconstructed panel. Recordings wait here until
+// (desktop hosts first, least loaded, each at most its `desktops_max` (remote.ts, placement.ts); then
+// our server, `desktops_max`; then E2B, `e2b_max`, while the day's E2B spend stays under
+// `desktop_usd_per_day`). With `required` (owner decision 2026-10-10: every working agent has its own
+// live desktop) the runtime reserves a slot before an attempt and waits when none is free; without it
+// an attempt with no free slot keeps the reconstructed panel. Recordings wait here until
 // Core's gate opens and are then published to Core's blob store (publishPending).
 
 export interface DesktopConfig {
@@ -24,6 +29,12 @@ export interface DesktopConfig {
   allow: string[];
   image?: string;
   e2b?: { template?: string; vcpu?: number; ram_gib?: number; session_max_s?: number; key?: string | null };
+  /** desktop hosts (remote.ts), in config order */
+  hosts?: HostConfig[];
+  /** a JSON file {hosts: HostConfig[]} written by scripts/deploy/desktop-host/register.ts, re-read every minute */
+  hosts_file?: string;
+  /** every attempt needs a desktop (the runtime reserves one first and waits when none is free) */
+  required?: boolean;
   /**
    * Full-quality recordings (SPEC 17.7). Default false (owner direction 2026-10-10: live only):
    * no recorder runs, nothing is held, nothing is published. The live stream and its sealing and
@@ -43,7 +54,7 @@ export interface BeginOpts {
 }
 
 export interface DesktopAttempt {
-  readonly backend: "local" | "e2b";
+  readonly backend: BackendName;
   /** one session event, in order, as the toolbox records it (before it writes) */
   event(e: SessionEventInput): void;
   /** Core opened the session: the stream is served under its id */
@@ -54,7 +65,18 @@ export interface DesktopAttempt {
 
 export interface DesktopProvider {
   begin(o: BeginOpts): Promise<DesktopAttempt | null>;
+  /** attempts may not run without a desktop (desktop hosts lane) */
+  readonly required?: boolean;
+  /** holds a free slot for this agent's next begin (HOLD_MS); null when held, else why none is free */
+  reserve?(agent: string): string | null;
+  /** drops the agent's hold (the attempt did not start) */
+  release?(agent: string): void;
 }
+
+/** How long a reserved slot waits for its attempt's begin. */
+export const HOLD_MS = 120_000;
+const HEALTH_EVERY_MS = 15_000;
+const HOSTS_EVERY_MS = 60_000;
 
 export interface PendingRecording {
   session_id: string;
@@ -78,7 +100,17 @@ export function parseGeom(text: string): { cls: string; rect: Rect }[] {
 export class DesktopPool implements DesktopProvider {
   readonly local: DesktopBackend;
   readonly e2b: DesktopBackend & { usdPerS: number };
-  private inUse = { local: 0, e2b: 0 };
+  /** desktop hosts by name (retired ones stay until their desktops ended) */
+  readonly hosts = new Map<string, RemoteBackend>();
+  /** running desktops per slot key ("local", "e2b", "host:<name>") */
+  private used = new Map<string, number>();
+  /** slots held for an agent's next begin */
+  private holds = new Map<string, { key: string; until: number }>();
+  private hostsText = "";
+  private timer: ReturnType<typeof setInterval> | null = null;
+  private hostRun?: ConstructorParameters<typeof RemoteBackend>[0]["run"];
+  /** why the last reserve or begin found no slot */
+  lastWhy: string | null = null;
   /** USD per second of the E2B desktops running now, each reserved for its full lifetime */
   private reserved = new Map<string, number>();
   private warned = new Set<string>();
@@ -86,13 +118,115 @@ export class DesktopPool implements DesktopProvider {
 
   constructor(
     readonly cfg: DesktopConfig,
-    o: { log?: (m: string) => void; local?: DesktopBackend; e2b?: DesktopBackend & { usdPerS: number }; now?: () => number } = {},
+    o: {
+      log?: (m: string) => void;
+      local?: DesktopBackend;
+      e2b?: DesktopBackend & { usdPerS: number };
+      now?: () => number;
+      /** test hook: the ssh runner of every desktop host */
+      hostRun?: ConstructorParameters<typeof RemoteBackend>[0]["run"];
+      /** false: no background health checks (tests call checkHosts) */
+      timers?: boolean;
+    } = {},
   ) {
     this.log = o.log ?? (() => {});
     this.now = o.now ?? Date.now;
     for (const d of ["live", "sessions", "recordings"]) mkdirSync(join(cfg.root, d), { recursive: true });
     this.local = o.local ?? new LocalBackend({ root: cfg.root, image: cfg.image, log: this.log });
     this.e2b = o.e2b ?? new E2BBackend({ root: cfg.root, ...(cfg.e2b ?? {}), log: this.log });
+    this.hostRun = o.hostRun;
+    this.loadHosts();
+    if (this.hosts.size || cfg.hosts_file) {
+      void this.checkHosts();
+      if (o.timers !== false) {
+        let n = 0;
+        this.timer = setInterval(() => {
+          if ((++n * HEALTH_EVERY_MS) % HOSTS_EVERY_MS === 0) this.loadHosts();
+          void this.checkHosts();
+        }, HEALTH_EVERY_MS);
+        (this.timer as { unref?: () => void }).unref?.();
+      }
+    }
+  }
+
+  get required(): boolean {
+    return this.cfg.required === true;
+  }
+
+  stop() {
+    if (this.timer) clearInterval(this.timer);
+    this.timer = null;
+  }
+
+  // -------------------------------------------------------------------------------------------- hosts
+
+  /** cfg.hosts plus the hosts file; a host whose entry changed or went away is retired (no new desktops). */
+  loadHosts(): void {
+    let fromFile: HostConfig[] = [];
+    if (this.cfg.hosts_file) {
+      try {
+        fromFile = (JSON.parse(readFileSync(this.cfg.hosts_file, "utf8")) as { hosts?: HostConfig[] }).hosts ?? [];
+      } catch (e) {
+        if (existsSync(this.cfg.hosts_file)) this.once(`hostsfile:${(e as Error).message}`, `desktops: hosts file unreadable: ${(e as Error).message}`);
+      }
+    }
+    const all = [...(this.cfg.hosts ?? []), ...fromFile].filter(validHost);
+    const text = JSON.stringify(all);
+    if (text === this.hostsText) return;
+    this.hostsText = text;
+    const want = new Map(all.map((h) => [h.name, h]));
+    for (const [name, b] of this.hosts) {
+      const h = want.get(name);
+      if (h && JSON.stringify(h) === JSON.stringify(b.host)) continue;
+      b.retired = true;
+      this.hosts.delete(name);
+      this.log(`desktops: host ${name} ${h ? "changed" : "removed"}; its running desktops finish, new ones go elsewhere`);
+    }
+    for (const h of all) {
+      if (this.hosts.has(h.name)) continue;
+      this.hosts.set(h.name, new RemoteBackend({ root: this.cfg.root, host: h, image: this.cfg.image, log: this.log, run: this.hostRun, now: this.now }));
+      this.log(`desktops: host ${h.name} (${h.address}) added, at most ${h.desktops_max} desktops`);
+    }
+  }
+
+  /** Health of every desktop host (every 15 s). */
+  async checkHosts(): Promise<void> {
+    await Promise.all([...this.hosts.values()].map((b) => b.check().catch(() => undefined)));
+  }
+
+  /** Every slot with its load and whether it can take a desktop now (holds count as running). */
+  slots(): Slot[] {
+    const t = this.now();
+    for (const [a, h] of this.holds) if (h.until <= t) this.holds.delete(a);
+    const held = (key: string) => [...this.holds.values()].filter((h) => h.key === key).length;
+    const run = (key: string) => (this.used.get(key) ?? 0) + held(key);
+    const out: Slot[] = [];
+    for (const [name, b] of this.hosts) out.push({ key: `host:${name}`, kind: "host", running: run(`host:${name}`), max: b.host.desktops_max, why: b.unavailable() });
+    out.push({ key: "local", kind: "local", running: run("local"), max: this.cfg.desktops_max, why: this.cfg.desktops_max > 0 ? this.local.unavailable() : "none configured" });
+    const e2bWhy = this.cfg.e2b_max > 0 ? this.e2b.unavailable() ?? (this.e2bBudgetOk(held("e2b")) ? null : `day cap reached (${this.spentToday().toFixed(4)} of ${this.cfg.desktop_usd_per_day} USD, UTC day)`) : "none configured";
+    out.push({ key: "e2b", kind: "e2b", running: run("e2b"), max: this.cfg.e2b_max, why: e2bWhy });
+    return out;
+  }
+
+  reserve(agent: string): string | null {
+    const t = this.now();
+    const h = this.holds.get(agent);
+    if (h && h.until > t) return null;
+    this.holds.delete(agent);
+    const slots = this.slots();
+    const s = placementOrder(slots)[0];
+    if (!s) return (this.lastWhy = noSlotWhy(slots));
+    this.holds.set(agent, { key: s.key, until: t + HOLD_MS });
+    this.lastWhy = null;
+    return null;
+  }
+
+  release(agent: string): void {
+    this.holds.delete(agent);
+  }
+
+  private use(key: string, d: number) {
+    this.used.set(key, Math.max(0, (this.used.get(key) ?? 0) + d));
   }
   private now: () => number;
 
@@ -120,14 +254,20 @@ export class DesktopPool implements DesktopProvider {
   }
 
   /** Whether one more E2B desktop fits under the day's cap, counting each running one at its full lifetime. */
-  e2bBudgetOk(): boolean {
+  e2bBudgetOk(held = 0): boolean {
     const life = this.cfg.e2b?.session_max_s ?? 3600;
     const reserved = [...this.reserved.values()].reduce((a, x) => a + x, 0);
-    return this.spentToday() + reserved + this.e2b.usdPerS * life <= this.cfg.desktop_usd_per_day + 1e-9;
+    return this.spentToday() + reserved + this.e2b.usdPerS * life * (1 + held) <= this.cfg.desktop_usd_per_day + 1e-9;
   }
 
   status() {
-    return { local: { running: this.inUse.local, max: this.cfg.desktops_max }, e2b: { running: this.inUse.e2b, max: this.cfg.e2b_max, spent_today_usd: this.spentToday(), cap_usd: this.cfg.desktop_usd_per_day } };
+    return {
+      required: this.required,
+      hosts: [...this.hosts.values()].map((b) => ({ name: b.host.name, running: this.used.get(`host:${b.host.name}`) ?? 0, max: b.host.desktops_max, up: b.unavailable() === null, why: b.unavailable(), load1: b.health.h?.load1 ?? null })),
+      local: { running: this.used.get("local") ?? 0, max: this.cfg.desktops_max },
+      e2b: { running: this.used.get("e2b") ?? 0, max: this.cfg.e2b_max, spent_today_usd: this.spentToday(), cap_usd: this.cfg.desktop_usd_per_day },
+      waiting_why: this.lastWhy,
+    };
   }
 
   private once(k: string, m: string) {
@@ -140,45 +280,62 @@ export class DesktopPool implements DesktopProvider {
 
   async begin(o: BeginOpts): Promise<DesktopAttempt | null> {
     const opts = { tree: o.tree, homeUrl: homeUrl(o.repo, o.commit), allow: this.cfg.allow, label: o.label };
-    if (this.inUse.local < this.cfg.desktops_max) {
-      const why = this.local.unavailable();
-      if (why) this.once(`local:${why}`, `desktops: local backend unavailable: ${why}`);
-      else {
-        this.inUse.local++;
-        try {
-          const inst = await this.local.create(opts);
-          return this.attempt(inst, o, () => this.inUse.local--);
-        } catch (e) {
-          this.inUse.local--;
-          this.log(`desktops: local desktop failed to start: ${(e as Error).message}`);
-        }
+    const held = this.holds.get(o.agent);
+    this.holds.delete(o.agent);
+    const slots = this.slots();
+    for (const s of slots) {
+      if (!s.why || s.why === "none configured") continue;
+      const m = s.kind === "e2b" && s.why.startsWith("day cap") ? `desktops: E2B ${s.why}; no new E2B desktops today` : `desktops: ${s.kind === "e2b" ? "E2B" : s.kind} backend unavailable: ${s.why}`;
+      this.once(`${s.key}:${s.why.startsWith("day cap") ? `cap:${utcDay(this.now())}` : s.why}`, m);
+    }
+    const order = placementOrder(slots);
+    // the held slot first when it is still free
+    const i = held ? order.findIndex((s) => s.key === held.key) : -1;
+    if (i > 0) order.unshift(...order.splice(i, 1));
+    for (const s of order) {
+      const a = s.kind === "e2b" ? await this.startE2B(opts, o) : await this.start(s.key, s.kind === "local" ? this.local : this.hosts.get(s.key.slice(5)), opts, o);
+      if (a) {
+        this.lastWhy = null;
+        return a;
       }
     }
-    if (this.inUse.e2b < this.cfg.e2b_max) {
-      const why = this.e2b.unavailable();
-      if (why) this.once(`e2b:${why}`, `desktops: E2B backend unavailable: ${why}`);
-      else if (!this.e2bBudgetOk()) this.once(`e2b:cap:${utcDay(this.now())}`, `desktops: E2B day cap reached (${this.spentToday().toFixed(4)} of ${this.cfg.desktop_usd_per_day} USD, UTC day); no new E2B desktops today`);
-      else {
-        this.inUse.e2b++;
-        const key = `${o.label}:${this.now()}`;
-        this.reserved.set(key, this.e2b.usdPerS * (this.cfg.e2b?.session_max_s ?? 3600));
-        const started = this.now();
-        try {
-          const inst = await this.e2b.create(opts);
-          return this.attempt(inst, o, () => {
-            this.inUse.e2b--;
-            this.reserved.delete(key);
-          }, started);
-        } catch (e) {
-          // a sandbox that was created and then failed to come up still ran (and billed) until it was killed
-          this.addSpend(this.e2b.usdPerS * ((this.now() - started) / 1000));
-          this.inUse.e2b--;
-          this.reserved.delete(key);
-          this.log(`desktops: E2B desktop failed to start: ${(e as Error).message}`);
-        }
-      }
-    }
+    this.lastWhy = order.length ? "every free slot failed to start a desktop" : noSlotWhy(this.slots());
     return null;
+  }
+
+  private async start(key: string, b: DesktopBackend | undefined, opts: Parameters<DesktopBackend["create"]>[0], o: BeginOpts): Promise<DesktopAttempt | null> {
+    if (!b) return null;
+    this.use(key, 1);
+    try {
+      const inst = await b.create(opts);
+      return this.attempt(inst, o, () => this.use(key, -1));
+    } catch (e) {
+      this.use(key, -1);
+      this.log(`desktops: ${key} desktop failed to start: ${(e as Error).message}`);
+      return null;
+    }
+  }
+
+  private async startE2B(opts: Parameters<DesktopBackend["create"]>[0], o: BeginOpts): Promise<DesktopAttempt | null> {
+    if (!this.e2bBudgetOk()) return null;
+    this.use("e2b", 1);
+    const key = `${o.label}:${this.now()}`;
+    this.reserved.set(key, this.e2b.usdPerS * (this.cfg.e2b?.session_max_s ?? 3600));
+    const started = this.now();
+    try {
+      const inst = await this.e2b.create(opts);
+      return this.attempt(inst, o, () => {
+        this.use("e2b", -1);
+        this.reserved.delete(key);
+      }, started);
+    } catch (e) {
+      // a sandbox that was created and then failed to come up still ran (and billed) until it was killed
+      this.addSpend(this.e2b.usdPerS * ((this.now() - started) / 1000));
+      this.use("e2b", -1);
+      this.reserved.delete(key);
+      this.log(`desktops: E2B desktop failed to start: ${(e as Error).message}`);
+      return null;
+    }
   }
 
   private attempt(inst: DesktopInstance, o: BeginOpts, release: () => void, started = this.now()): DesktopAttempt {
@@ -292,7 +449,7 @@ export function homeUrl(repo: string | null, commit: string): string {
 const GUARD_MS = 1000;
 
 class Attempt implements DesktopAttempt {
-  readonly backend: "local" | "e2b";
+  readonly backend: BackendName;
   private seal: Seal;
   private driver: Driver;
   private session: string | null = null;
@@ -331,9 +488,10 @@ class Attempt implements DesktopAttempt {
 
   /** The geometry guard, the live encoder that follows it, and (E2B) the stream copy. */
   private async tick() {
-    if (this.guarding || this.seal.phase === "ended") return;
+    if (this.guarding || this.seal.phase === "ended" || this.lost) return;
     this.guarding = true;
     try {
+      if (this.inst.lost?.()) return this.hostLost();
       const g = await this.inst.exec(["desk-geom"], { timeoutMs: 8000 }).catch(() => null);
       const ok = this.seal.geometry(g && g.code === 0 ? parseGeom(g.stdout) : null);
       if (!ok && this.liveOn) {
@@ -351,7 +509,29 @@ class Attempt implements DesktopAttempt {
     }
   }
 
+  /** Set once the desktop's host went away: the live stream ended, the attempt goes on without it. */
+  private lost = false;
+
+  /** The desktop host went away mid-attempt: end the live stream cleanly (the gate answers 410). */
+  private hostLost() {
+    this.lost = true;
+    this.liveOn = false;
+    if (this.guard) clearInterval(this.guard);
+    this.guard = null;
+    this.driver.stop();
+    if (this.session) {
+      try {
+        const f = this.pool.sessionFile(this.session);
+        writeFileSync(f, JSON.stringify({ ...JSON.parse(readFileSync(f, "utf8")), ended_at: this.now(), ended_why: "desktop host lost" }));
+      } catch {
+        /* ignore */
+      }
+    }
+    this.log(`desktop ${this.inst.id}: host ${this.inst.host ?? "?"} lost; live stream ended, the attempt continues without its desktop`);
+  }
+
   event(e: SessionEventInput): void {
+    if (this.lost) return;
     try {
       this.driver.enqueue(this.seal.route(e));
     } catch (err) {
@@ -362,7 +542,7 @@ class Attempt implements DesktopAttempt {
   sessionOpened(id: string): void {
     if (!/^[0-9a-f]{64}$/.test(id)) return;
     this.session = id;
-    writeFileSync(this.pool.sessionFile(id), JSON.stringify({ dir: this.inst.hostStreamDir, backend: this.inst.backend, agent: this.o.agent, started_at: this.now(), ended_at: null }));
+    writeFileSync(this.pool.sessionFile(id), JSON.stringify({ dir: this.inst.hostStreamDir, backend: this.inst.backend, ...(this.inst.host ? { host: this.inst.host } : {}), agent: this.o.agent, started_at: this.now(), ended_at: null }));
   }
 
   end(): Promise<void> {
@@ -408,4 +588,14 @@ class Attempt implements DesktopAttempt {
       this.log(`desktop ${this.inst.id} closed (${this.driver.done.actions} actions, ${this.driver.done.refused} refused, ${this.driver.done.dropped} dropped)`);
     }
   }
+}
+
+function validHost(h: HostConfig): boolean {
+  return (
+    !!h &&
+    typeof h.name === "string" && /^[a-z0-9-]{1,32}$/.test(h.name) &&
+    typeof h.address === "string" && /^[A-Za-z0-9.:-]{1,253}$/.test(h.address) &&
+    typeof h.key === "string" && typeof h.known_hosts === "string" &&
+    Number.isInteger(h.desktops_max) && h.desktops_max >= 0 && h.desktops_max <= 32
+  );
 }

@@ -106,6 +106,10 @@ export interface RuntimeConfig {
   e2b?: { template?: string; vcpu?: number; ram_gib?: number; session_max_s?: number };
   /** Full-quality desktop recordings and their publication (default false: live only, owner direction 2026-10-10). */
   recordings?: boolean;
+  /** Desktop hosts (packages/desktop/src/remote.ts): a JSON file {hosts: [...]} that scripts/deploy/desktop-host/register.ts writes; re-read every minute. */
+  desktop_hosts_file?: string;
+  /** Every attempt needs a live desktop when desktops are on (owner decision 2026-10-10; default true): with none free the attempt waits. */
+  desktop_required?: boolean;
 }
 
 export const DEFAULTS: Omit<RuntimeConfig, "mode" | "core" | "runtime_key" | "compute_price_line_per_usd" | "compute_price_line_per_sandbox_s"> = {
@@ -152,6 +156,8 @@ export function parseConfig(raw: Record<string, unknown>): RuntimeConfig {
   if (c.desktop_port !== undefined && !(Number.isInteger(c.desktop_port) && c.desktop_port > 0 && c.desktop_port < 65536)) throw new Error("runtime config: desktop_port is a TCP port");
   for (const k of ["desktops_max", "e2b_max"] as const) if (c[k] !== undefined && !(Number.isInteger(c[k]) && c[k]! >= 0 && c[k]! <= 16)) throw new Error(`runtime config: ${k} is a whole number from 0 to 16`);
   if (c.recordings !== undefined && typeof c.recordings !== "boolean") throw new Error("runtime config: recordings is true or false");
+  if (c.desktop_required !== undefined && typeof c.desktop_required !== "boolean") throw new Error("runtime config: desktop_required is true or false");
+  if (c.desktop_hosts_file !== undefined && typeof c.desktop_hosts_file !== "string") throw new Error("runtime config: desktop_hosts_file is a path");
   if (c.desktop_usd_per_day !== undefined && !(typeof c.desktop_usd_per_day === "number" && c.desktop_usd_per_day >= 0)) throw new Error("runtime config: desktop_usd_per_day must be a non-negative number");
   if (c.desktop_allow !== undefined && !(Array.isArray(c.desktop_allow) && c.desktop_allow.every((h) => typeof h === "string" && /^[A-Za-z0-9.-]{1,253}$/.test(h)))) throw new Error("runtime config: desktop_allow is a list of host names");
   if (c.efficiency !== undefined) {

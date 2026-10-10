@@ -1,8 +1,12 @@
 #!/usr/bin/env bun
 // Agent desktops proof (SPEC 17.7): one scripted attempt on a real desktop, without a model or Core.
 //
-//   bun packages/desktop/scripts/proof.ts --tree <git checkout> --out <dir> [--backend local|e2b] [--hold 20]
-//     [--serve-root <dir>] [--session <64 hex>]
+//   bun packages/desktop/scripts/proof.ts --tree <git checkout> --out <dir> [--backend local|e2b|host] [--hold 20]
+//     [--serve-root <dir>] [--session <64 hex>] [--hosts-file <json>] [--e2b-template <name> --e2b-vcpu N --e2b-ram-gib N]
+//
+// --backend host: a desktop host from --hosts-file ({hosts: [...]}, remote.ts). proof.json then has
+// `latency`: per segment, when it was complete on the desktop (its mtime there) and when the site's
+// copy appeared (polled every 100 ms), plus each pull's duration.
 //
 // --serve-root: also list the stream in that desktop state directory (the hosted runtime's
 // <state_dir>/desktops on the site), so the runtime's stream server and the gate serve it at
@@ -14,7 +18,7 @@
 // keeps the recording. Writes <out>/live/ (the HLS files), <out>/recording.mp4 and <out>/proof.json
 // (actions, refusals, CPU samples of the desktop container for the local backend). Frames are checked
 // by scripts/frames.ts. Never prints a key.
-import { cpSync, existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
+import { cpSync, existsSync, mkdirSync, readdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { DesktopPool } from "../src/pool.ts";
 
@@ -26,6 +30,8 @@ const backend = opt("backend", "local")!;
 const hold = Number(opt("hold", "20"));
 const serveRoot = opt("serve-root");
 const sid = opt("session", "a".repeat(64))!;
+const hostsFile = opt("hosts-file");
+const e2bTemplate = opt("e2b-template");
 mkdirSync(out, { recursive: true });
 const commit = Bun.spawnSync(["git", "rev-parse", "HEAD"], { cwd: tree }).stdout.toString().trim();
 const repo = Bun.spawnSync(["git", "remote", "get-url", "origin"], { cwd: tree }).stdout.toString().trim() || null;
@@ -33,9 +39,14 @@ const logs: string[] = [];
 const log = (m: string) => (logs.push(m), console.log(`[proof] ${m}`));
 
 const pool = new DesktopPool(
-  { root: join(out, "state"), desktops_max: backend === "local" ? 1 : 0, e2b_max: backend === "e2b" ? 1 : 0, desktop_usd_per_day: 5, allow: ["github.com", "githubusercontent.com", "githubassets.com"], e2b: { session_max_s: 900 } },
+  {
+    root: join(out, "state"), desktops_max: backend === "local" ? 1 : 0, e2b_max: backend === "e2b" ? 1 : 0, desktop_usd_per_day: 5, allow: ["github.com", "githubusercontent.com", "githubassets.com"],
+    e2b: { session_max_s: 900, ...(e2bTemplate ? { template: e2bTemplate, vcpu: Number(opt("e2b-vcpu", "2")), ram_gib: Number(opt("e2b-ram-gib", "4")) } : {}) },
+    ...(backend === "host" ? { hosts_file: resolve(hostsFile!) } : {}),
+  },
   { log },
 );
+if (backend === "host") await pool.checkHosts();
 const t0 = Date.now();
 const a = await pool.begin({ agent: "Proof11111111111111111111111111111111111111", tree, repo, commit, stacked: false, label: "proof" });
 if (!a) throw new Error("no desktop slot: " + logs.join("; "));
@@ -54,6 +65,25 @@ const sampler = backend === "local"
     }, 3000)
   : null;
 
+// stream latency (host and E2B backends): when each segment appears in the site's directory
+const seen = new Map<string, number>();
+const inst = (a as unknown as { inst: { exec(argv: string[]): Promise<{ code: number; stdout: string }>; sync(): Promise<void>; hostStreamDir: string } }).inst;
+const pulls: number[] = [];
+if (backend !== "local") {
+  const sync0 = inst.sync.bind(inst);
+  inst.sync = async () => {
+    const t = performance.now();
+    await sync0();
+    pulls.push(Math.round(performance.now() - t));
+  };
+}
+const watcher = setInterval(() => {
+  try {
+    for (const f of readdirSync(inst.hostStreamDir)) if (/^seg-\d+\.m4s$/.test(f) && !seen.has(f)) seen.set(f, Date.now());
+  } catch {
+    /* gone */
+  }
+}, 100);
 const step = (ms: number) => Bun.sleep(ms);
 const file = "minbpe/basic.py";
 const src = readFileSync(join(tree, file), "utf8");
@@ -82,6 +112,11 @@ for (const p of ["prepare", "build", "test", "metrics"] as const) {
 a.event({ kind: "result", outcome: "accepted", output: `outcome: accepted\nmetric train_ms: parent 812, candidate 640, ratio 0.7882\n${SECRET}` });
 await step(hold * 1000);
 // the live stream as served, before the attempt ends (the gate's directory goes away at the end)
+// each segment's completion time on the desktop: the mtime of its file there (ffmpeg writes a segment once)
+const st = await inst.exec(["sh", "-c", "cd /stream 2>/dev/null || cd /tmp/stream; for f in seg-*.m4s; do printf '%s ' \"$f\"; stat -c %.3Y \"$f\"; done"]);
+const made = new Map(st.stdout.trim().split("\n").filter(Boolean).map((l) => { const [f, t] = l.split(" "); return [f!, Math.round(Number(t) * 1000)] as const; }));
+const latency = [...seen].filter(([f]) => made.has(f)).map(([f, t]) => ({ seg: f, made_ms: made.get(f)!, at_site_ms: t, added_ms: t - made.get(f)! }));
+clearInterval(watcher);
 const sessionMeta = JSON.parse(readFileSync(pool.sessionFile(sid), "utf8")) as { dir: string };
 if (existsSync(sessionMeta.dir)) cpSync(sessionMeta.dir, join(out, "live"), { recursive: true });
 const tEnd = Date.now();
@@ -93,6 +128,6 @@ const held = pool.pending().find((p) => p.session_id === sid);
 if (held) renameSync(held.file, join(out, "recording.mp4"));
 // restore the tree
 writeFileSync(join(tree, file), src);
-writeFileSync(join(out, "proof.json"), JSON.stringify({ backend, commit, repo, seconds: Math.round((Date.now() - t0) / 1000), recording_bytes: held?.bytes ?? 0, cpu, logs, e2b_spent_today_usd: pool.spentToday() }, null, 2));
+writeFileSync(join(out, "proof.json"), JSON.stringify({ backend, commit, repo, seconds: Math.round((Date.now() - t0) / 1000), recording_bytes: held?.bytes ?? 0, cpu, logs, latency, pulls_ms: pulls, e2b_spent_today_usd: pool.spentToday() }, null, 2));
 console.log(`[proof] wrote ${out}`);
 process.exit(0);

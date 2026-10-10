@@ -91,14 +91,21 @@ const runtimeCfg = {
   trading: { enabled: true, poll_s: 60, market: "http://127.0.0.1:9668" },
   // hosted launches bind from the Wallet page (packages/runtime/src/bind.ts); the gate forwards /runtime/bind/* here
   bind_port: 9667,
-  // agent desktops (SPEC 17.7, owner decisions 2026-10-10): 2 on this server (4 vCPU, 8 GB), then E2B
-  // overflow, at most 3, within 5 USD of E2B time per UTC day (separate from the model cap); the
-  // stream is served on bind_port at /desktops/*, which the gate forwards
+  // agent desktops (SPEC 17.7, owner decisions 2026-10-10): every working agent has its own live desktop
+  // (desktop_required: an attempt waits, short retry, until one is free). Desktop hosts first (the
+  // hosts file that scripts/deploy/desktop-host/provision.sh fills; none until the owner creates one),
+  // then 2 on this server (4 vCPU, 8 GB), then E2B overflow: at most 6 at once (6 hosted agents bound
+  // on 2026-10-10), on the lineage-desktop template (2 vCPU, 4 GiB: 0.000046 USD/s, 0.1656 USD per
+  // desktop-hour at e2b.dev/pricing read 2026-10-10; the stock desktop template measured 8 vCPU, 8 GiB),
+  // within 16 USD of E2B time per UTC day (4 desktops all day: 4 x 24 x 0.1656 = 15.90; separate from
+  // the model cap). The stream is served on bind_port at /desktops/*, which the gate forwards.
   desktops_max: 2,
-  e2b_max: 3,
-  desktop_usd_per_day: 5,
+  e2b_max: 6,
+  desktop_usd_per_day: 16,
   desktop_allow: ["github.com", "githubusercontent.com", "githubassets.com"],
-  e2b: { template: "desktop", vcpu: 2, ram_gib: 4, session_max_s: 3600 },
+  e2b: { template: "lineage-desktop", vcpu: 2, ram_gib: 4, session_max_s: 3600 },
+  desktop_required: true,
+  desktop_hosts_file: "/home/lineage/.config/lineage/desktop-hosts/hosts.json",
   // owner direction 2026-10-10: live only. Desktops stream (sealed and redacted as before) but do not
   // record or publish a recording; the site shows only live work. true turns recordings back on.
   recordings: false,
@@ -110,5 +117,5 @@ if (prevRuntime !== null && prevRuntime !== runtimeText) writeFileSync(`${runtim
 writeFileSync(runtimePath, runtimeText, { mode: 0o600 });
 chmodSync(runtimePath, 0o600);
 console.log(
-  `runtime.json: global cap ${runtimeCfg.global_max_usd} USD per ${runtimeCfg.global_window_s} s (UTC day, ${runtimeCfg.global_cap_scope} spend), attempt ${runtimeCfg.attempt_max_usd}, agent epoch ${runtimeCfg.agent_epoch_max_usd ?? "no cap"}, desktops ${runtimeCfg.desktops_max} here + ${runtimeCfg.e2b_max} E2B (${runtimeCfg.desktop_usd_per_day} USD per UTC day), recordings ${runtimeCfg.recordings ? "on" : "off"}${prevRuntime !== null && prevRuntime !== runtimeText ? " (changed; previous kept as runtime.json.prev)" : ""}; ${existsSync(runtimeCfg.runtime_key) ? "runtime authority key present" : "no runtime authority key (lineage-runtime stays disabled)"}`,
+  `runtime.json: global cap ${runtimeCfg.global_max_usd} USD per ${runtimeCfg.global_window_s} s (UTC day, ${runtimeCfg.global_cap_scope} spend), attempt ${runtimeCfg.attempt_max_usd}, agent epoch ${runtimeCfg.agent_epoch_max_usd ?? "no cap"}, desktops: hosts from ${runtimeCfg.desktop_hosts_file}, ${runtimeCfg.desktops_max} here, ${runtimeCfg.e2b_max} E2B (${runtimeCfg.e2b.template}, ${runtimeCfg.desktop_usd_per_day} USD per UTC day), ${runtimeCfg.desktop_required ? "required" : "optional"}, recordings ${runtimeCfg.recordings ? "on" : "off"}${prevRuntime !== null && prevRuntime !== runtimeText ? " (changed; previous kept as runtime.json.prev)" : ""}; ${existsSync(runtimeCfg.runtime_key) ? "runtime authority key present" : "no runtime authority key (lineage-runtime stays disabled)"}`,
 );
