@@ -1,8 +1,7 @@
 {
-  "started": "2026-10-10T13:55:38.295Z",
+  "started": "2026-10-10T14:29:02.415Z",
   "fork": "http://127.0.0.1:9690",
-  "time_lock_s": 20,
-  "challenge_window_s": 30,
+  "params": "scripts/mainnet/fork-params.json",
   "mainnet_builds": {
     "Meteora DBC": "b3f7b765e1b9a2e87e45c4663165974819d248f00c1beefe678af60e9dfe6c44",
     "Meteora DAMM v2": "7c479dd7de729ada87d141e9d422a572d42df79f4cc8947a751b5f15719d94e0",
@@ -145,6 +144,7 @@
     ],
     "time_lock_s": 20
   },
+  "launch_lookup_table": "4TxyPink9PEwHVDVEBbUnFqBHKZTZYo67AUMH2mANdUM",
   "launch_a": {
     "mint": "91H2LpbiAtHVkYNFgrGhFoytNd8EDkdecYT3um3ijuN5",
     "agent": "4k7JCST552qNY6tBS88v6mqiVke8LME1StFkmd19ae1m",
@@ -199,8 +199,8 @@
     "agent": "3o8XqyV57nuJC1JTPsNefYuRH6ErXZrNKSCQBkr7i7BX",
     "launch_tx_payer_mainnet_lamports": "15996680"
   },
-  "epoch_post_signature": "5QpeXgAU9uQJSR1natonCQQ25pXgMtsq8yyrfnvNEKcYqZmsLKw5LCwH3Du7R3iNALexiTxNpT264gUPJEad291S",
-  "finished": "2026-10-10T14:02:27.196Z",
+  "epoch_post_signature": "SVqVQX78Mqs9WJdpNkN2ob8yg6eH79kRXw5gMadepyjeu8ULJ6D2Q2bbqgPcf4q7xz8KrfYbNKh553bYeCVQqhy",
+  "finished": "2026-10-10T14:35:50.542Z",
   "outcome": "PASS",
   "checks": [
     {
@@ -259,9 +259,14 @@
       "detail": "ProgramData 342245 bytes, buffer 342237 bytes, 341 transactions, fees 1715000; balance delta equals rent + fees"
     },
     {
-      "name": "2: multisig read back: 2 of 3, time lock, no config authority",
+      "name": "multisig: members, threshold, time lock, no config authority",
       "ok": true,
       "detail": "multisig 7DSGGkjh6NDVDocoKiGnvAyJHmiZ2poPbPYQj48zsDRX, vault BK2mgSMgeE63EhvsLNFShBWs92ydaatK5wZnFsUy2VR1"
+    },
+    {
+      "name": "2: the multisig and vault are the ones the rehearsal derived",
+      "ok": true,
+      "detail": ""
     },
     {
       "name": "3: stand-in mint: Token-2022, fixed supply, no mint or freeze authority",
@@ -269,27 +274,52 @@
       "detail": ""
     },
     {
-      "name": "4: registry admin is the vault, Core authority the hot key",
+      "name": "registry: upgrade authority is the deployer (initialize needs it) or the registry is already initialized",
+      "ok": true,
+      "detail": "7PkFTjRDRGbntSFEAcEzPMS1cf9Hq6ub1gVrQ6X5sMHV"
+    },
+    {
+      "name": "launch: upgrade authority is the deployer (initialize needs it) or the registry is already initialized",
+      "ok": true,
+      "detail": "7PkFTjRDRGbntSFEAcEzPMS1cf9Hq6ub1gVrQ6X5sMHV"
+    },
+    {
+      "name": "msg: upgrade authority is the deployer (initialize needs it) or the registry is already initialized",
+      "ok": true,
+      "detail": "7PkFTjRDRGbntSFEAcEzPMS1cf9Hq6ub1gVrQ6X5sMHV"
+    },
+    {
+      "name": "registry: admin = vault, Core authority, mint",
       "ok": true,
       "detail": ""
     },
     {
-      "name": "4: launch admin is the vault, sink the vault's account, debit cap set",
+      "name": "DBC config owned by Meteora DBC",
       "ok": true,
       "detail": ""
     },
     {
-      "name": "4: launch lookup table frozen with the expected addresses",
+      "name": "launch: admin = vault, sink = vault's account, runtime authority, debit cap",
       "ok": true,
       "detail": ""
     },
     {
-      "name": "5: the deployer (old hot key) is not the registry admin",
+      "name": "messages: admin = vault",
+      "ok": true,
+      "detail": "BK2mgSMgeE63EhvsLNFShBWs92ydaatK5wZnFsUy2VR1"
+    },
+    {
+      "name": "launch lookup table frozen with the expected addresses",
+      "ok": true,
+      "detail": "4TxyPink9PEwHVDVEBbUnFqBHKZTZYo67AUMH2mANdUM"
+    },
+    {
+      "name": "5: the deployer (old hot key) is not the registry admin (Unauthorized)",
       "ok": true,
       "detail": "simulation failed: {\"InstructionError\":[0,{\"Custom\":6000}]} Program log: AnchorError caused by account: config. Error Co"
     },
     {
-      "name": "5: one approval of two cannot execute",
+      "name": "5: one approval of two cannot execute (InvalidProposalStatus)",
       "ok": true,
       "detail": "simulation failed: {\"InstructionError\":[0,{\"Custom\":6008}]} Program log: AnchorError thrown in programs/squads_multisig_"
     },
@@ -299,7 +329,7 @@
       "detail": ""
     },
     {
-      "name": "5: the time lock refuses an execute right after approval",
+      "name": "5: the time lock refuses an execute right after approval (TimeLockNotReleased)",
       "ok": true,
       "detail": "simulation failed: {\"InstructionError\":[0,{\"Custom\":6021}]} Program log: AnchorError thrown in programs/squads_multisig_program/src/instructions/vault_transacti"
     },
@@ -449,6 +479,41 @@
       "detail": ""
     },
     {
+      "name": "6: handover: registry admin = vault",
+      "ok": true,
+      "detail": "BK2mgSMgeE63EhvsLNFShBWs92ydaatK5wZnFsUy2VR1"
+    },
+    {
+      "name": "6: handover: launch admin = vault",
+      "ok": true,
+      "detail": "BK2mgSMgeE63EhvsLNFShBWs92ydaatK5wZnFsUy2VR1"
+    },
+    {
+      "name": "6: handover: compute sink = the vault's account",
+      "ok": true,
+      "detail": "B2UjLMA9x7F97Y7NpEDicqD1r7RPz1BoxQTk9wwJpro9"
+    },
+    {
+      "name": "6: handover: messages admin = vault",
+      "ok": true,
+      "detail": "BK2mgSMgeE63EhvsLNFShBWs92ydaatK5wZnFsUy2VR1"
+    },
+    {
+      "name": "6: handover: registry upgrade authority = vault",
+      "ok": true,
+      "detail": "BK2mgSMgeE63EhvsLNFShBWs92ydaatK5wZnFsUy2VR1"
+    },
+    {
+      "name": "6: handover: launch upgrade authority = vault",
+      "ok": true,
+      "detail": "BK2mgSMgeE63EhvsLNFShBWs92ydaatK5wZnFsUy2VR1"
+    },
+    {
+      "name": "6: handover: msg upgrade authority = vault",
+      "ok": true,
+      "detail": "BK2mgSMgeE63EhvsLNFShBWs92ydaatK5wZnFsUy2VR1"
+    },
+    {
       "name": "7: FRKA launched (AgentLaunch + registry Agent)",
       "ok": true,
       "detail": ""
@@ -519,9 +584,9 @@
       "detail": ""
     },
     {
-      "name": "8: claims are held while the challenge is open",
+      "name": "8: claims are held while the challenge is open (ClaimHeld)",
       "ok": true,
-      "detail": "simulation failed: {\"InstructionError\":[0,{\"Custom\":6021}]} Program log: AnchorError thrown in programs/lineage-registry"
+      "detail": "simulation failed: {\"InstructionError\":[0,{\"Custom\":6021}]} Program log: AnchorError thrown in programs/lineage-registry/src/challenge.rs:154. Error Code: Claim"
     },
     {
       "name": "8: void resolution returned the bond",
@@ -542,11 +607,11 @@
   "transactions": [
     {
       "step": "2",
-      "what": "Squads multisig_create_v2: 2 of 3, time lock 20 s, autonomous (no config authority), rent collector = vault",
-      "signature": "41HcTnqGj57exxGPALbtvckk4f4q73wdYBJQQQBh8LpMGQoXMTfPJrptbHzH2s42ZkdfDpbm5PZLGkkVXiCAgoN3",
+      "what": "Squads multisig_create_v2: 2 of 3, time lock 20 s, autonomous, rent collector = vault (creation fee 0 lamports)",
+      "signature": "3WMe8dSxtPfJyJMz589NwrzxXwHdAPJN9E9pLguQxhmfX4gY28Hu1xyC2bepkDQBAKxv85zjm4qVhnZo9NKiECBT",
       "payer": "7PkFTjRDRGbntSFEAcEzPMS1cf9Hq6ub1gVrQ6X5sMHV",
       "fee": 10000,
-      "computeUnits": 17956,
+      "computeUnits": 18001,
       "signatures": 2,
       "created": [
         {
@@ -563,7 +628,7 @@
     {
       "step": "2",
       "what": "fund the vault for the rent its admin actions create (0.05 SOL)",
-      "signature": "5yi66cjCaYqTTnXBwS45rPQAdXyeQdKatBhVtadXTZ2b8U8QNFYcrbdFCPWaDLbbfacQGo2UwzpmZAsBWz7Vpu61",
+      "signature": "MYG1SKx56Br5pgNFcSn5UrPTKSDVGhcnakNPEmr1YJPVNgQrcASMTJHRgVCydcHbnb329YRVfUGCxNA63Rv4EZr",
       "payer": "7PkFTjRDRGbntSFEAcEzPMS1cf9Hq6ub1gVrQ6X5sMHV",
       "fee": 5000,
       "computeUnits": 150,
@@ -583,7 +648,7 @@
     {
       "step": "3",
       "what": "create the stand-in $LINE mint (Token-2022, metadata pointer + metadata, 6 decimals)",
-      "signature": "57yiWPzK5Wyvq4vCQN4wMFcWQiP9yC5UyE5RvDW5x9CH1BThA3SHgdgnq83aM9KRLV8AHr1NHa7WW9aAqPkcWnMF",
+      "signature": "8inLBFeuy5Eq1ndXEuv1LEegAKchFfoJXRc4wNvSM5PHUQU3LttXctzEZ5EfqtnYQgbeYxE5ZhNjYJvsKobgxkF",
       "payer": "7PkFTjRDRGbntSFEAcEzPMS1cf9Hq6ub1gVrQ6X5sMHV",
       "fee": 10000,
       "computeUnits": 6327,
@@ -603,7 +668,7 @@
     {
       "step": "3",
       "what": "mint the fixed supply to the deployer, then revoke the mint authority",
-      "signature": "64akP5FfFbjABRNJ57wKbdaqNL158k9RwZsMFWNtEbPiWJYNmp9QP5ks6e5QBa8daUb6CcZ16Yokdf9NMKuqNrSn",
+      "signature": "55hVF54XFJvD8ZCEbQz47odXmUShurSvv3fCmCUNpW5NgwsSu15NrQrGbZxFVrEFP65ukzZ1wEmWirTHXd8CbZKH",
       "payer": "7PkFTjRDRGbntSFEAcEzPMS1cf9Hq6ub1gVrQ6X5sMHV",
       "fee": 5000,
       "computeUnits": 21369,
@@ -622,8 +687,8 @@
     },
     {
       "step": "4",
-      "what": "lineage_registry::initialize (admin = Squads vault, Core authority hot key, network.json shape)",
-      "signature": "3nF7sARAHRMS5HqDtCNcdGsd1yva12okwX4PvCZZQ7taA1GYJQTUnSb916aS2LjBVgE8Ffdz3g81edRmZ1Qi4LgS",
+      "what": "lineage_registry::initialize (admin = vault)",
+      "signature": "4CZWK7jMVUPSpyWWM3dYrHWvJtvpYsmQRCHGanr8VVKdDkrLSm5RVMwQ4xxopZmTX68GsSZZ4EPkZjgKoqPDs1pJ",
       "payer": "7PkFTjRDRGbntSFEAcEzPMS1cf9Hq6ub1gVrQ6X5sMHV",
       "fee": 5000,
       "computeUnits": 125141,
@@ -672,8 +737,8 @@
     },
     {
       "step": "4",
-      "what": "Meteora DBC create_config (quote = stand-in $LINE, fee claimer + leftover receiver = launch authority PDA, TEST curve)",
-      "signature": "58U5o5rcqufWaLspnLPpXJBkzG4ra6a2oDbRqmbM6TJSfYJb4RWHX4PVJWYEgTKGtk6uNmmcc4gynAZAWgTjbrCz",
+      "what": "Meteora DBC create_config (fee claimer and leftover receiver = launch authority PDA)",
+      "signature": "5g7fhSk9LqZN53YRQWRHmJ18tcDeCxkQBWZBkCG6RVnMYeo3oaRpS5NQc8maa6ZWVsHtcV6NdHqiagctkvMoRSCj",
       "payer": "7PkFTjRDRGbntSFEAcEzPMS1cf9Hq6ub1gVrQ6X5sMHV",
       "fee": 10000,
       "computeUnits": 31414,
@@ -692,8 +757,8 @@
     },
     {
       "step": "4",
-      "what": "create the compute sink: the vault's stand-in $LINE account",
-      "signature": "3BbaQsj6RpC7pVYb9P3T3HyCqm25U2wRQftvArLR2Riu9WanuSJwA4nBt2ZN518QgAosSbBjY63HzMeDHVabmQAb",
+      "what": "compute sink: the vault's $LINE token account",
+      "signature": "4RvJhvjznC81feVfdgenNXzWXb6LWFbh34x963BU5k6287nyd7CpjcqSe9sRWbLPKW53ZfjfUZoA2ogSHK4ichmE",
       "payer": "7PkFTjRDRGbntSFEAcEzPMS1cf9Hq6ub1gVrQ6X5sMHV",
       "fee": 5000,
       "computeUnits": 17217,
@@ -713,7 +778,7 @@
     {
       "step": "4",
       "what": "lineage_launch::initialize_launch (admin = vault, sink = vault's account)",
-      "signature": "4ZoJHUvZkT8ATuB6rhzKFDdHPdjzCNsioRhR9vXxnjkknwg3bfXAo6pXJ8a4DGhb3NTMS3HwmBwua2nibPpE2Xm5",
+      "signature": "gvuBjqLMehb9QxfB3adQiRLCb4DzwnXiEEHEv1rzJjSL2csYcnTA5AfxfGdLdRZ4ZL1erDMC38qoGESZhp3SV3u",
       "payer": "7PkFTjRDRGbntSFEAcEzPMS1cf9Hq6ub1gVrQ6X5sMHV",
       "fee": 5000,
       "computeUnits": 36276,
@@ -733,7 +798,7 @@
     {
       "step": "4",
       "what": "lineage_msg::initialize (admin = vault)",
-      "signature": "2mGqVNQaBJDEA9kPqVX7d8qaHmzq7NVDxACKCHZiVpJ2gy1aJcaubtfSzXZUsXvL1cNR9Hxx9n1HMxJZnwPiBZRx",
+      "signature": "38iohTaVBrmVCq4gpbN2oqzMRw3AprrMgKLW5P8wiopD5JVeR4vVjjbrjfEEH3doqhym5ehhSxdcdJNZqVYDUC1h",
       "payer": "7PkFTjRDRGbntSFEAcEzPMS1cf9Hq6ub1gVrQ6X5sMHV",
       "fee": 5000,
       "computeUnits": 27704,
@@ -752,15 +817,15 @@
     },
     {
       "step": "4",
-      "what": "launch lookup table: create + extend (11 addresses)",
-      "signature": "2DFChQpaFq6gbihu6oX6Lb45ntRr1xawn9u1BuR6kcYfvXFfWxATUEwKjwJtHg8kZKdBeackZ9THBKwnchY9XnMV",
+      "what": "launch lookup table 4TxyPink9PEwHVDVEBbUnFqBHKZTZYo67AUMH2mANdUM: create + extend (11 addresses)",
+      "signature": "2yVehx5mFXEtraiKh5R9ErWY2c7jKKatu6TGXXKKm6fq4A6M1JPCHUhgHQgmw6XGmnepWmJEtGBt9qhGaBhpuf3s",
       "payer": "7PkFTjRDRGbntSFEAcEzPMS1cf9Hq6ub1gVrQ6X5sMHV",
       "fee": 5000,
       "computeUnits": 19509,
       "signatures": 1,
       "created": [
         {
-          "address": "5HfKUgY62H5HmTbukgZ7KqM6ghgA1jb3jWWpW5qPXW9n",
+          "address": "4TxyPink9PEwHVDVEBbUnFqBHKZTZYo67AUMH2mANdUM",
           "bytes": 408,
           "forkRent": "3730560",
           "mainnetRent": "2722880"
@@ -773,7 +838,7 @@
     {
       "step": "4",
       "what": "launch lookup table: freeze",
-      "signature": "3ERZp9yUQDKnSGrtuawu5MbCEunxuVvT6curVNL1aEvYKqrKD7Sw4EwfxfVQGZnwb9LR75SsFWKmAVekS7nxdCi3",
+      "signature": "5NgtsaXPrgNrLz8QMtvdaoAgcos4Yc68XX5yikmM9wqBdxm7D2mGfMr1HmYpBmieVWLoV4juc6UE7DCvsjcs1fF7",
       "payer": "7PkFTjRDRGbntSFEAcEzPMS1cf9Hq6ub1gVrQ6X5sMHV",
       "fee": 5000,
       "computeUnits": 1517,
@@ -786,7 +851,7 @@
     {
       "step": "M2",
       "what": "squads: create vault transaction 1 + proposal (set_bounty_config)",
-      "signature": "58Sgjcpx8X9PAa8Vn8Pq7SNjCvgabWDAiJyod6g5gsqEEsZUtchrbYEMdX7W5HNsqz7PFyEfPi4z2eFkQgwB9L3",
+      "signature": "27n11LwcChBkvkQyeZdsUHTJWiPdZ2zZ1ZSP8f5BtuVrNQgSKjqYpg3ngpxhARp5etwCC6iiodGCB8HoES83LgFZ",
       "payer": "7ZgfzBAVrgRnuq5q2QpsWggSomXogxyUKw3TgxopXA1Y",
       "fee": 5000,
       "computeUnits": 41662,
@@ -812,7 +877,7 @@
     {
       "step": "M2",
       "what": "squads: approve 1 (set_bounty_config)",
-      "signature": "2MFQ7fqLSqTphTZfeHR6pG34HQFMPL2pEcc9aSXsNpC4fQKeaVBBubTBWTPKUon2sCxskBoY1AQ7WXkKSHuyb5Rw",
+      "signature": "3oeB6GbvR6MiKef2XcrxTBxBEREkNSWnS7bN3uc1B9nyULDvNJ1byu8acqKbt91Szu2t2Qq1EWDtF1oE9kdA1J91",
       "payer": "7ZgfzBAVrgRnuq5q2QpsWggSomXogxyUKw3TgxopXA1Y",
       "fee": 5000,
       "computeUnits": 8837,
@@ -825,7 +890,7 @@
     {
       "step": "M2",
       "what": "squads: approve 1 (set_bounty_config)",
-      "signature": "4rx4CugTkQPScek4GkNepSmqL5oNbDAK6xPn1AhmZeJaz1PNfkr2vDRUkjJkomprozQvCisAwtaprbktJAVttwgp",
+      "signature": "4FbPUw2nwTeb9DgepFHRjCEcsRX4xyn8dm83BnFMGuQnta1qc4WQPXzWyJfsy635oZgsP4REciA3rZGgeVccSvmX",
       "payer": "HALA32M46ewFDjXE7gKEtcNFcDiEsaP68vxfRnpSPfbz",
       "fee": 5000,
       "computeUnits": 9719,
@@ -838,7 +903,7 @@
     {
       "step": "M2",
       "what": "squads: execute 1 (set_bounty_config)",
-      "signature": "411brhxvMtMnDmLR11A83rUQU5b23iU8qNsPEN9HDZ5iU26CnbMXMVRGvj8EiJK6HLJNaapFe9PXkxF8rFf1kDSo",
+      "signature": "Nk9KjoPQnq6ScBCA2E9wRAJBNAX12huhje1tq26xLsg2CZe7gkqJRhhsH669LzPnAuSAJ2BRTpx3RxyEYmmWKoK",
       "payer": "4DSsjVnybbopdcnJTgp4rxSw7p4pW7tCidMVYZidwWmV",
       "fee": 5000,
       "computeUnits": 42078,
@@ -858,7 +923,7 @@
     {
       "step": "M2",
       "what": "squads: create vault transaction 2 + proposal (set_challenge_config)",
-      "signature": "3Ykkapr61y8qLoytXzEYp3VYZo68jq8fWjzQfgM6UDCYmVSKk8FER67fiNJNHVz1TR9YnRuaHgEodcvzBg86P7ro",
+      "signature": "wj8Nn3gxEBYNXUzpkc4e8QEqKHCiwWRgDssfTWiy5My8UKfXMk7iqP5UJM2tvf1PziCyKfMEBzvzv4nZvKU5zAr",
       "payer": "7ZgfzBAVrgRnuq5q2QpsWggSomXogxyUKw3TgxopXA1Y",
       "fee": 5000,
       "computeUnits": 52365,
@@ -884,7 +949,7 @@
     {
       "step": "M2",
       "what": "squads: approve 2 (set_challenge_config)",
-      "signature": "ZzbKCNSA8UQWkuEb7UWwiu4dxfX8QyAa1DuJBiXSDTUxC47s8JeBCznXaPsMWTKNNSGEnPYKfrKbmAEGvLLuyYq",
+      "signature": "217g9Zk8fDQWPewTKq2yAfpSuBXYHk42o4opqC5FsHeDepmZUmufhG5pshHtgvmHuViufsdr21cAiiS4mdnhYtsL",
       "payer": "7ZgfzBAVrgRnuq5q2QpsWggSomXogxyUKw3TgxopXA1Y",
       "fee": 5000,
       "computeUnits": 8837,
@@ -897,7 +962,7 @@
     {
       "step": "M2",
       "what": "squads: approve 2 (set_challenge_config)",
-      "signature": "4XcG97FjAQpsLuaEuhxedpRyKfpA8TdwB3cjujNYuggjtSX4RzBM1zuNG8zxztggq2PJ7kA3g7QuKerpQC9jdwJG",
+      "signature": "2HRzgemSPgD1Z5ryUwN2gjWoaoQVBbqqxKoa9Gmk5SUDYf1r3mR8TertwnMB6BGY3DypzvHypEDfn2hycNTG7qZc",
       "payer": "HALA32M46ewFDjXE7gKEtcNFcDiEsaP68vxfRnpSPfbz",
       "fee": 5000,
       "computeUnits": 9719,
@@ -910,7 +975,7 @@
     {
       "step": "M2",
       "what": "squads: execute 2 (set_challenge_config)",
-      "signature": "4bpvJW99bQjf2vhNyohoT1BxQFB6LfNu6kL9tMS9JwhJpptafj8qzodQeHLZ55RFBRdkt7CCAN3U9HPrdJ7VTC8U",
+      "signature": "TtYDRs1a2GEqSbCCvvavzcnwLsA77azV59bJTksbFoftn1o9dvsdd7rjT2cyVLNNG4zqKNpvChNQfKTyo4BoRRG",
       "payer": "4DSsjVnybbopdcnJTgp4rxSw7p4pW7tCidMVYZidwWmV",
       "fee": 5000,
       "computeUnits": 71475,
@@ -936,7 +1001,7 @@
     {
       "step": "M2",
       "what": "squads: create vault transaction 3 + proposal (registry set_config (max_rebate_per_epoch 2 units))",
-      "signature": "2MLkiynsXkenvnEExohFLPs8J32zbMLdFdmYVJdhPXvZQUDPSLLBKEyuzFrkEfLq9Xmqh2FYWqVkThcJd8knanqw",
+      "signature": "4rjqNnjx9ZQMe93JnvnM4tNxkq5kV56vW2AphsvCZhmqLPqMprvj6WpiXzgX1LjwP3hRS7fPb3AHDNbyFwEdPUkf",
       "payer": "7ZgfzBAVrgRnuq5q2QpsWggSomXogxyUKw3TgxopXA1Y",
       "fee": 5000,
       "computeUnits": 39728,
@@ -962,7 +1027,7 @@
     {
       "step": "M2",
       "what": "squads: approve 3 (registry set_config (max_rebate_per_epoch 2 units))",
-      "signature": "5zwQgPa1AvAhqSLRAfoYRHLQaMXdhegRUJk1APXipS7hYYJzJ1JzPym62rJyQKv2ubCRMKFqanUHoq1iY54RMi28",
+      "signature": "5SrwwP8qwbjpRwesyns2xkD1HXhomNi9SPLi49rbut9kfviSDXBZ7sBQeYJoV1cYLVUQj4HVarPzhXpCkYQzZZdn",
       "payer": "7ZgfzBAVrgRnuq5q2QpsWggSomXogxyUKw3TgxopXA1Y",
       "fee": 5000,
       "computeUnits": 8837,
@@ -975,7 +1040,7 @@
     {
       "step": "M2",
       "what": "squads: approve 3 (registry set_config (max_rebate_per_epoch 2 units))",
-      "signature": "9Ppcjbr7ZCfWxndhRjas7b4f33EjH1oSuBBn7pJ5hRynz2TZZmTY8RhtFwXRJSxGxjESmB3YFFjRfWBAkRQLXd1",
+      "signature": "oDxsgZFufRYfDL6Dyf7G749ZVjY5qz2dJvL4yk4qRHrWFHq5pt2tVGsfM2VhH1gRytaxqWcwfkFEGox93WcK5bh",
       "payer": "HALA32M46ewFDjXE7gKEtcNFcDiEsaP68vxfRnpSPfbz",
       "fee": 5000,
       "computeUnits": 9719,
@@ -988,7 +1053,7 @@
     {
       "step": "M2",
       "what": "squads: execute 3 (registry set_config (max_rebate_per_epoch 2 units))",
-      "signature": "3o4KdrRgygQt2g7ann2dLjPaMHCtUsL2QCETfDVEhNAnvCiYQnGFCSNwuV2LF7pK98D3gULN4tkxYS1HMQzzcR6Z",
+      "signature": "2YrQ3i5U4nXCtk4N9Djuts2n192bwnMvhzZb2pboCmpkSiMXtSEgaZ74qH9ZVNHYLimGtLPdgptCDLMq7brEpAoM",
       "payer": "4DSsjVnybbopdcnJTgp4rxSw7p4pW7tCidMVYZidwWmV",
       "fee": 5000,
       "computeUnits": 33067,
@@ -1001,7 +1066,7 @@
     {
       "step": "M2",
       "what": "squads: create vault transaction 4 + proposal (set_launch_config (max_debit_per_epoch 500 units))",
-      "signature": "2otpKAWu5pKvvTGfYxbvBPAR6ktKqKQPuCU8Xnx2y2sUbnUJum4D16fhemmpCssPGkckqJmUwHyt1qmYk76YYE6q",
+      "signature": "4w4HEXiaWqapaRfNFVxWhRE51UwGbxV8jVTFnGY4vaubaQGLyY2po1furN5AMF6sqswJtDRfBKix1JKLq82aRnVq",
       "payer": "7ZgfzBAVrgRnuq5q2QpsWggSomXogxyUKw3TgxopXA1Y",
       "fee": 5000,
       "computeUnits": 42272,
@@ -1027,7 +1092,7 @@
     {
       "step": "M2",
       "what": "squads: approve 4 (set_launch_config (max_debit_per_epoch 500 units))",
-      "signature": "2UV1jbXsRShqD4qhWbRcZydpnmFY6aYKqdSNu3AREfq8fkz7ZNMRBNXxPHRhG4poAS2qySGEqh12ehmpJSGsra7a",
+      "signature": "4x3r8tV4rzDkqKPSQqyxa1qaSrMWYTZefsfmVk4BVqrGMcbUMcHBEgDeFusaoVxPn6xLUVMz7qNTeY6AwUh73RKf",
       "payer": "7ZgfzBAVrgRnuq5q2QpsWggSomXogxyUKw3TgxopXA1Y",
       "fee": 5000,
       "computeUnits": 8837,
@@ -1040,7 +1105,7 @@
     {
       "step": "M2",
       "what": "squads: approve 4 (set_launch_config (max_debit_per_epoch 500 units))",
-      "signature": "331NZPZzv8XKnRA8YPSCtumU2HrxxCr2k3S5brNANWrPDweFJhV1yrZpgkVdFTtfC2gCbNsVeB69oxG5ut8viNYu",
+      "signature": "qZLLHW5Tn2h9F4HL9cSbEpHd1scNiVXXUVwbmUCFxdcGjKWfcjdrammYivkqPfxJdeyrQFXTQ8Rpoha1WAC6cDB",
       "payer": "HALA32M46ewFDjXE7gKEtcNFcDiEsaP68vxfRnpSPfbz",
       "fee": 5000,
       "computeUnits": 9719,
@@ -1053,7 +1118,7 @@
     {
       "step": "M2",
       "what": "squads: execute 4 (set_launch_config (max_debit_per_epoch 500 units))",
-      "signature": "63r8Uc7QvZRqPHdEF2uXPvf8tfibLsiVXC9m5jCKssgcM6id2KvJpgTGijd9KWMYZCB6LmCjNKRTCLt7Ym5QpYSw",
+      "signature": "5CgSbjKtRhM1NFBrFvstGoHCD8xUpFtRtbcGoLWxLocSHGzG4WPXPZMiCJvJGrNtb2QqGcLYMKycdUMY3Xv7JdBH",
       "payer": "4DSsjVnybbopdcnJTgp4rxSw7p4pW7tCidMVYZidwWmV",
       "fee": 5000,
       "computeUnits": 33512,
@@ -1066,7 +1131,7 @@
     {
       "step": "M2",
       "what": "squads: create vault transaction 5 + proposal (lineage_msg set_config (max_per_day 400))",
-      "signature": "51bVxPxw4s48WRm7pXAceZBvH9jo1rxFnwqERJSSb82UYEa8f7BDQTdQYZjKhpXAD1ivFVxRYs4KPYpCxYi2bGfG",
+      "signature": "4iL6QRGFn9Re6w1EQKM5ZBavxuAj36tJyvHHoc2gb4qvxaMzQUP3TY5wJHyDWLh8SYbxPmPU3Gw8odcqoS5hagAX",
       "payer": "7ZgfzBAVrgRnuq5q2QpsWggSomXogxyUKw3TgxopXA1Y",
       "fee": 5000,
       "computeUnits": 38461,
@@ -1092,7 +1157,7 @@
     {
       "step": "M2",
       "what": "squads: approve 5 (lineage_msg set_config (max_per_day 400))",
-      "signature": "2uUQ7Lo8UKWgZoDyTCMNehqe9C1kSqDjAg6kgXYsBFG5hmAky2cJSS1tcvDp5mub3oj2pnmyZ9tUfAgNL5TabwUx",
+      "signature": "5yo1t3poP919ezvBZhcw3hMXQb74uWFvBwsDV7WTTY94c93rZDZo5zEo686zUNLGuHM52kTSaaP6wAvjc3zcJPoJ",
       "payer": "7ZgfzBAVrgRnuq5q2QpsWggSomXogxyUKw3TgxopXA1Y",
       "fee": 5000,
       "computeUnits": 8837,
@@ -1105,7 +1170,7 @@
     {
       "step": "M2",
       "what": "squads: approve 5 (lineage_msg set_config (max_per_day 400))",
-      "signature": "2qVLjRYoSC7KFKLZfJ7cvsWDJVKt1u6eP2zZacRgoiVQfZU2teaevdg1hCSjPhh1oRRDLVR56PCxsQFLXehMiaVX",
+      "signature": "5LosXMFBwZZFQT1ArhW4jW63fJtj5cyPTJNMUSXeVRCiVMoETfz2sNGbpKZcZxoTPxdw33amoayZMav5vMbNe5tF",
       "payer": "HALA32M46ewFDjXE7gKEtcNFcDiEsaP68vxfRnpSPfbz",
       "fee": 5000,
       "computeUnits": 9719,
@@ -1118,7 +1183,7 @@
     {
       "step": "M2",
       "what": "squads: execute 5 (lineage_msg set_config (max_per_day 400))",
-      "signature": "3yhNG7DFBeUUMgzwNStACeJgwyUFcwVbaxwBNUjyBucuZdZcC1WbEauyfd5Dq7dVWQQfKxZ5oPuoXqqtFCVxgTMP",
+      "signature": "2p884DuQg59YGpXGBhinQqEyugZVtiuzs4CXx9TksGCRCHTq2YcBPhEJuSdTFijPNBw8Gf4mC7pdJK5KdZ6c5ojM",
       "payer": "4DSsjVnybbopdcnJTgp4rxSw7p4pW7tCidMVYZidwWmV",
       "fee": 5000,
       "computeUnits": 27698,
@@ -1131,7 +1196,7 @@
     {
       "step": "M2",
       "what": "squads: create vault transaction 6 + proposal (registry pause)",
-      "signature": "5rfZBndrYBcBt9UDHT5mwfEMJvLGNhrnzsuHjhAdypf5p8JMqXpArXE3KXN3rbMn6Q4Z6Lwxu8nQ4zDcbSHA8yFD",
+      "signature": "asmSvEnd5pR1ZaEDUTPVhBoADkPikiVJc7sNknTn7a9uJGTRMpmV8JGcmNsj5kAnJsQc3ibVZKq23uLLmgGZshd",
       "payer": "7ZgfzBAVrgRnuq5q2QpsWggSomXogxyUKw3TgxopXA1Y",
       "fee": 5000,
       "computeUnits": 39843,
@@ -1157,7 +1222,7 @@
     {
       "step": "M2",
       "what": "squads: approve 6 (registry pause)",
-      "signature": "5UGKYYVJFiFv96QLxMNP2G6XJwCLti62XjoNSMMDzDe8UbXjotHRf254caZEtwEV2S9o4b26VQS6zj17Z1EDHGsv",
+      "signature": "2Aj5HCo41a19ft4pXb7umKntxNfTUNn2ChXLXd2GwmXUJxgR1ddGAjNUZrcTY4g1bWaJMWbyPyZCGC8dVFiB588G",
       "payer": "7ZgfzBAVrgRnuq5q2QpsWggSomXogxyUKw3TgxopXA1Y",
       "fee": 5000,
       "computeUnits": 8837,
@@ -1170,7 +1235,7 @@
     {
       "step": "M2",
       "what": "squads: approve 6 (registry pause)",
-      "signature": "s6WJLZ38sytiSZgjWsDNEXBfayYqhQPGVbkeF4FNRTLPEviNYjtURJf12cGCMns2mUR5Kfpub2gvSo8nzFR2QMP",
+      "signature": "5tST2Wx75LkzGEpFDPJRBwsSXxzDftfCZKJG9ZemzAfZ8FkLoMFsun4FCSCHrDfMcCYTjqtMvFMtitw85EKqqfCo",
       "payer": "HALA32M46ewFDjXE7gKEtcNFcDiEsaP68vxfRnpSPfbz",
       "fee": 5000,
       "computeUnits": 9719,
@@ -1183,7 +1248,7 @@
     {
       "step": "M2",
       "what": "squads: execute 6 (registry pause)",
-      "signature": "5ed7zmzLyUCe8sfY5HgS8oWL2PivQBDnw3YaTPVPkhgWnCnPNi2TtG8rHbkFxF7xREbMC9DyViATEWzAXqbHKe8q",
+      "signature": "3g7xqtwtU1Sw4GtdX49npNiE9hpLy2eqTs6L3y9FSA14LvPoApCeALjofqkuSGTj8cNkGUMoY6JEsxLpe6Vu6BZJ",
       "payer": "4DSsjVnybbopdcnJTgp4rxSw7p4pW7tCidMVYZidwWmV",
       "fee": 5000,
       "computeUnits": 29843,
@@ -1196,7 +1261,7 @@
     {
       "step": "M2",
       "what": "squads: create vault transaction 7 + proposal (registry unpause)",
-      "signature": "3kTFSquGstF7DJQFP1D6br4xeK6CfJxB6DsPmjaewUx7AeLmrC7ywYuKW82aSURm6JQWhVkNkGtT8efisiGhvHQo",
+      "signature": "56EUsouN715wY2UCnPsfde7B5cmEUErEZSVSpRvi5gJgSb2VmxKVuxYmuRKtVVjKM3cnguffqkkQmJPZk2oGqQ9J",
       "payer": "7ZgfzBAVrgRnuq5q2QpsWggSomXogxyUKw3TgxopXA1Y",
       "fee": 5000,
       "computeUnits": 38281,
@@ -1222,7 +1287,7 @@
     {
       "step": "M2",
       "what": "squads: approve 7 (registry unpause)",
-      "signature": "WvsFGpNzPJFC7vV9djxxt74WNZkV4UKgCT6zPL6bEk4fshZKDdMtSxJuij9fzpsq7fBuTe3Wm5LW35iCNhdKSCr",
+      "signature": "4hPzGkZJ1RMX9wbhqQ8prZSiL2Z6ccWvfffHpsBsBcnM558enjxgoMgS7tvjdPmr1brXCrGfqMHVPHpF7CZuv7bm",
       "payer": "7ZgfzBAVrgRnuq5q2QpsWggSomXogxyUKw3TgxopXA1Y",
       "fee": 5000,
       "computeUnits": 8837,
@@ -1235,7 +1300,7 @@
     {
       "step": "M2",
       "what": "squads: approve 7 (registry unpause)",
-      "signature": "5z3D6pag9tGio1EzgDHQCYMWTbpqYG5x28LteUANFyHpZohkCjAiHE7dhNyRZu91F72erXcQYc1Mkhcxcv2kyWEx",
+      "signature": "4yGEP2oyc25tSG7yz2Fd4VwMY2Hjk1FVevzhAz35uZ1vDKFYV6hkJVHhRStnZUC2vWumin3iavF2T7QcfkYShjKQ",
       "payer": "HALA32M46ewFDjXE7gKEtcNFcDiEsaP68vxfRnpSPfbz",
       "fee": 5000,
       "computeUnits": 9719,
@@ -1248,7 +1313,7 @@
     {
       "step": "M2",
       "what": "squads: execute 7 (registry unpause)",
-      "signature": "2f4wQu9qyf1RwPizEReeT83kAGdF4avr66SCiGL2UuUUHGa2oMHNZANRbEB6JRa3RNwGvowBbmQ79C2AvrSfQ8SJ",
+      "signature": "ovcbzuTo6GQkKcwPxnBb6z5rtbUSBU5iv85k27XLfapp7YYM5wbhxa1Q1mc1ekDEuQj2pwqVipmExTaVitEg6dV",
       "payer": "4DSsjVnybbopdcnJTgp4rxSw7p4pW7tCidMVYZidwWmV",
       "fee": 5000,
       "computeUnits": 29844,
@@ -1261,7 +1326,7 @@
     {
       "step": "M2",
       "what": "squads: create vault transaction 8 + proposal (registry set_epoch_cursor (rewrites the current values))",
-      "signature": "o54yc4JFn2wswaznbms252YfW8VQj4otJVNALyqAzxf6ACV3pAYgrvbqvSQp6rPQoTUjcUDXKr1xU9jVdRv5aLk",
+      "signature": "33ybJ4Z8dWivkGUZCk4skUpCjNk2vpuMF4uDpPw7nxZ2cDWURvb8rfXWGY6n9iFvrdT5WAQrsTghaj37uw4V1qUB",
       "payer": "7ZgfzBAVrgRnuq5q2QpsWggSomXogxyUKw3TgxopXA1Y",
       "fee": 5000,
       "computeUnits": 38569,
@@ -1287,7 +1352,7 @@
     {
       "step": "M2",
       "what": "squads: approve 8 (registry set_epoch_cursor (rewrites the current values))",
-      "signature": "3DDdandVG7FMPGWYsfPkgVJTQ9EvUjg3SoQxmEYGJGkVUxYQkkrNJioqgDVBa7R14zmUTPFRxiL7RnngSzkU5zJy",
+      "signature": "2gkDfdEjMZtawzhx1dwxrxuiiZGnT2RM3jpr21Qq2SwHd4F3HKq4MocYEBjMW4RQ16k258Ygfx28TjfTmjLFnPCm",
       "payer": "7ZgfzBAVrgRnuq5q2QpsWggSomXogxyUKw3TgxopXA1Y",
       "fee": 5000,
       "computeUnits": 8837,
@@ -1300,7 +1365,7 @@
     {
       "step": "M2",
       "what": "squads: approve 8 (registry set_epoch_cursor (rewrites the current values))",
-      "signature": "53WxxhffqNZXqkDuD3JHYwk7U4ezNzEae52rerB5JHH1B5cXPydaUdanE8zFgZEKyKrmQZyVdNXKKFfZbWMs1BST",
+      "signature": "3yLLvBaCqSSve6zK8GPPPGinkcZrhc9RtmErqiQYqFH5Q1oE6Mn4Pitjkr4xW7Zg7GaS3otxrk8758Y12VUu8mPg",
       "payer": "HALA32M46ewFDjXE7gKEtcNFcDiEsaP68vxfRnpSPfbz",
       "fee": 5000,
       "computeUnits": 9719,
@@ -1313,7 +1378,7 @@
     {
       "step": "M2",
       "what": "squads: execute 8 (registry set_epoch_cursor (rewrites the current values))",
-      "signature": "5WzwXuGhGjBswGwrvfL21gDtAHezwAwxRB9ni86V9UhJPmP16ANfE3GcizYKncUjYA1mjy2YTGxgkbHisNUUskL7",
+      "signature": "3oVuyjfc6dFj77WR4Tnak1WiQUYAWHzGp6rJDV8VipFvTST5BEPg4KLcMiq6F98Uv8VVvneMK5WW1jJyELVj1KEs",
       "payer": "4DSsjVnybbopdcnJTgp4rxSw7p4pW7tCidMVYZidwWmV",
       "fee": 5000,
       "computeUnits": 30399,
@@ -1326,7 +1391,7 @@
     {
       "step": "M2",
       "what": "squads: create config transaction 9 + proposal (time lock 20 -> 25 s)",
-      "signature": "5UhwXxLzHwrR7SLcfuJ2b9SQvoPviEcbBBBPcnQ9HYh1gsD8yM92BJwnJwtCFMngGgCX1dJsTHJz2tqGgFCK3Ntu",
+      "signature": "3YhcyTCaGdVEnYT4wikNoe6imGqhdZr9n4JanmhBv6CfsNNjgJwZCb4VxS5gHnF7VD62CPLdgVJ3saAEgUmAEF8X",
       "payer": "7ZgfzBAVrgRnuq5q2QpsWggSomXogxyUKw3TgxopXA1Y",
       "fee": 5000,
       "computeUnits": 28941,
@@ -1352,7 +1417,7 @@
     {
       "step": "M2",
       "what": "squads: approve 9 (time lock)",
-      "signature": "5QdvV8tSbfkZuvdzK6bgrewGPxA9DozCym6EmDxgQKA7w4EWwc9vgXLgLAJmkmzJhBA49TivXjHpEMarpWEdnv2y",
+      "signature": "672vZLRoFAo49Nxe1wFibYkRkQy9Ubgsevch3ZK5vmcQwhSx3i8DEDS6LMX9z9WR7tr4peuyD379KUaX51cP15rU",
       "payer": "7ZgfzBAVrgRnuq5q2QpsWggSomXogxyUKw3TgxopXA1Y",
       "fee": 5000,
       "computeUnits": 8837,
@@ -1365,7 +1430,7 @@
     {
       "step": "M2",
       "what": "squads: approve 9 (time lock)",
-      "signature": "5SD6KMEkEarbGfsutQPJTPA4gehRGfug9kGTHzUDvDmjuJcGdgjJEzmeNaw4sydznfFPkzXivHtoZpx34x389Vyx",
+      "signature": "2kM6mqs7CymhDXhCvXTdtA5chkC8jvAo8wMfLQduoZeK4oQQu2x7BdnGwP3iywQuHC92j7QgoG74YjwVkoTBv9N1",
       "payer": "HALA32M46ewFDjXE7gKEtcNFcDiEsaP68vxfRnpSPfbz",
       "fee": 5000,
       "computeUnits": 9719,
@@ -1378,7 +1443,7 @@
     {
       "step": "5",
       "what": "squads: execute config transaction 9 (time lock)",
-      "signature": "xed5CykDssPiem6PhjeZB2ZfVEj8QwTzSZXzbBRLJ76eg7wUrqzP1EscfAP7YQEvcHACXrx7rUgAe8TJ7vhgGF2",
+      "signature": "4ssDzgBEXcWdEu1YvZeJRcHS5afmDYZyV6EdLYEALxP8ssZyvn54hCm2kGtfWKNWFS4o7fEsvvvCY8ZY6FjzuEnM",
       "payer": "4DSsjVnybbopdcnJTgp4rxSw7p4pW7tCidMVYZidwWmV",
       "fee": 5000,
       "computeUnits": 15517,
@@ -1391,7 +1456,7 @@
     {
       "step": "M2",
       "what": "squads: create vault transaction 10 + proposal (upgrade lineage_msg from buffer)",
-      "signature": "F3PTdEZmKWygwkPhxPdhEF3qLuEyYjyRbCdz1LVCi4AkAMQ9oVmnfh5MRc7z9U3QcVjKsQe6xaBQCq1FPmwD3iv",
+      "signature": "4124fKFrVVMzh3BxWd8Kjythv7BVhyEUzs6i9JXVLt1FmneJ6WGxgh4i6oPArTDkgZsPLovgMA8Evp4xGGB9Bf5z",
       "payer": "7ZgfzBAVrgRnuq5q2QpsWggSomXogxyUKw3TgxopXA1Y",
       "fee": 5000,
       "computeUnits": 45675,
@@ -1417,7 +1482,7 @@
     {
       "step": "M2",
       "what": "squads: approve 10 (upgrade lineage_msg from buffer)",
-      "signature": "4Qr8k9VXZ1Qj8H1Sbct4unfiKuSZzR4DwpDzgy7XCwGvV2yqYRqZ1Re3ryCxtYez8nY117xZSqiX7R9nSsHjP5e9",
+      "signature": "4Ly9NQDVygBCU2EWrkKh1F769VuSpvMYBVFag7YicR1o4odPUqcMN9mapcm7qbBhp6zVqZsqBR8hp7VDbqErmrzh",
       "payer": "7ZgfzBAVrgRnuq5q2QpsWggSomXogxyUKw3TgxopXA1Y",
       "fee": 5000,
       "computeUnits": 8837,
@@ -1430,7 +1495,7 @@
     {
       "step": "M2",
       "what": "squads: approve 10 (upgrade lineage_msg from buffer)",
-      "signature": "2uP3acxpczvvEk5QqyQuUJfGTLmrTfYBpS9WMP5Goe1KidfBnVPG3Racv5YC2v5Em3bYLRbU8fxu8ctHdoUwwaPr",
+      "signature": "5g4QSj7f3NJhm83oe26zo1mVQKgmjrkTWbThoiP7mJiL4VRbjXtRiagMGkPKYCDRuGr7exCpv9wLxB5Kx6K7rNJu",
       "payer": "HALA32M46ewFDjXE7gKEtcNFcDiEsaP68vxfRnpSPfbz",
       "fee": 5000,
       "computeUnits": 9719,
@@ -1443,7 +1508,7 @@
     {
       "step": "M2",
       "what": "squads: execute 10 (upgrade lineage_msg from buffer)",
-      "signature": "4tf42XvPPjFLE2jzRpbSmyXybRDhNusaCyht6LosGHKhZVs4VfhVfb8fSWAC1XFzjSguiCgpSwmp3JxCKf8Q2Yhd",
+      "signature": "4DcREeURqtqjxVWawqFM9ec2xdvW9cTxaxNmi4Pr5Jt1KRacfYRTRuPtspEUgFAcrjh9JjsTzvvXhGXuwTMMSsSs",
       "payer": "4DSsjVnybbopdcnJTgp4rxSw7p4pW7tCidMVYZidwWmV",
       "fee": 5000,
       "computeUnits": 32401,
@@ -1456,7 +1521,7 @@
     {
       "step": "7",
       "what": "send 40000000 stand-in $LINE to the trader",
-      "signature": "MX8SxxMwf4EZZCFszFGgxwm5yc13hnedtaWhtuHrFpg3v8bmdwC1VSwG3kJSpqeovERYYPRonfd9iabknyn6ALW",
+      "signature": "51vfRpVcZqVPKCHCxNZYyiXqzJaYzsou5b5Vkfvn4HWypCuA6DNXjdiFUzFYbVREXtsdp4v9xsJ9veGaBd7n9gj",
       "payer": "7PkFTjRDRGbntSFEAcEzPMS1cf9Hq6ub1gVrQ6X5sMHV",
       "fee": 5000,
       "computeUnits": 19778,
@@ -1476,7 +1541,7 @@
     {
       "step": "7",
       "what": "launch_agent FRKA (one transaction: registry Agent, AgentLaunch, DBC pool, compute vault)",
-      "signature": "4jY3NuPfBiWz7ewZTuF78EgqtYXgU8WqjQtRG3q4vuFEri8cfKfkoRSjHAgMN3vK4YySMiHraYY2EwER4RCUfdJR",
+      "signature": "5hkTmfr86ji87jxbNL6zU88B3nZ3YhgkQLee1sjXdDSq2HE7XscSgYdu5WgBzZ9FbRXA2kZAvcYSArRdwSjndrrP",
       "payer": "62tVqEGTxgkAHFaLRUZjWkhJtJwkpavdVyypfa3bQbdw",
       "fee": 15000,
       "computeUnits": 167600,
@@ -1532,7 +1597,7 @@
     {
       "step": "7",
       "what": "create the trader's FRKA token account and the authority's",
-      "signature": "BpyuMxFKHCypLQU8YKVxRxh95XviNU7gvDYfPiNaiLsCjS3oBvZPNWyYjYHqnK2mcUvvDVy4iy1VvohWDRFj5j8",
+      "signature": "4XpogSovPQqwJs6m2VP8uBYRjQM4w4Tg9TGbE4XxbShCDf36TCaDnhHQDhiyAp8gTBqo4cENPf536wJu4S4pbZam",
       "payer": "FnqQgnVx81hbtXQtWrEbD7MfHys25nGakPDDsbghyGAR",
       "fee": 5000,
       "computeUnits": 37333,
@@ -1558,7 +1623,7 @@
     {
       "step": "7",
       "what": "DBC buy on FRKA (100,000 stand-in $LINE)",
-      "signature": "41NBCwmqQme8WQ2zNWRhwMKnQiAN7Sey6wz4y9G6sh7pw95tGwixN9RPA6noDFwJ8BfN68s4xdGFbw4zAkoXgvRr",
+      "signature": "3FvKimmbBeumEeSVR6iyAQmWh3T2RaExBLXWBP1D3s1G45Qn4hqtSERBKsdRFAz8XECc1BYbPqM6Lshad8M8xusV",
       "payer": "FnqQgnVx81hbtXQtWrEbD7MfHys25nGakPDDsbghyGAR",
       "fee": 5000,
       "computeUnits": 35897,
@@ -1571,7 +1636,7 @@
     {
       "step": "7",
       "what": "DBC sell on FRKA (half)",
-      "signature": "5jnyWr6c8xcWBYcgWPoHsLfPqRXQqUMTAazGR6sd7XzcnTB8Ymd3mbuPqyXtUVS4QYEKQKegwZvgyPNhkfDJ7bHU",
+      "signature": "3wCkD9sTZSeNBNKsWaYU3wqcs9oKcFS7g8FU1QAvaT33YDDhFc7eGsrmM18M3MJ7bbi6jKorwWJQC6W3ZSiMDw2z",
       "payer": "FnqQgnVx81hbtXQtWrEbD7MfHys25nGakPDDsbghyGAR",
       "fee": 5000,
       "computeUnits": 34055,
@@ -1584,7 +1649,7 @@
     {
       "step": "7",
       "what": "DBC fill on FRKA to the migration threshold (PartialFill)",
-      "signature": "2JBR25gx52it7nHXXML7xqVDdYrCDaY2iDkrQ7BHn3QZYmC85qJ5ThjiifcXhZ722qPftUMAb7snSjNnEUm1E8Q9",
+      "signature": "5Ydn4oWXrhppqWa1jPe7H3KdvzwMrRVRT1jPH5PNZP8ih8dfN87G1w3h95x54q5aVrKFJy3WGMrozpU5cAaH3nqj",
       "payer": "FnqQgnVx81hbtXQtWrEbD7MfHys25nGakPDDsbghyGAR",
       "fee": 5000,
       "computeUnits": 38803,
@@ -1597,7 +1662,7 @@
     {
       "step": "7",
       "what": "crank_fees on FRKA (curve partner fees, exact split)",
-      "signature": "4wkbovDeyNWf3E2TixHmYt3EuqBxuZUmDwgap3Pto5Np39euQGCp5vbDwPpH8vJp3EGGRxsaF4hL2B3dBenKuxaq",
+      "signature": "5sP94kR9GGC5EgzKfE8zfcdwofzVSJ1kxqgfVmL3Z5m3X4J9sZeVeFMPaw1qswWSNgY88vAB775VNYREx35Fxdm8",
       "payer": "FnqQgnVx81hbtXQtWrEbD7MfHys25nGakPDDsbghyGAR",
       "fee": 5000,
       "computeUnits": 71587,
@@ -1610,7 +1675,7 @@
     {
       "step": "7",
       "what": "Meteora migration_damm_v2 on FRKA (permissionless, mainnet DBC to mainnet DAMM v2, config A8gMrE)",
-      "signature": "Vi5jZUYaWysspf6wi7hMBTDzTHdjvqzTeJRQCfy9L2cLkFcUP88bAwRRyNgBwcUSXYT6TiqSFAdMpPD1buktQKC",
+      "signature": "3L5PBE4DFuMPnXH3VnhuopE8kn6zN5yarUMLGMcSTH11y2XEmfp95yeaRRgviht3w2gU8Uqaib81bDrZswAhU9PG",
       "payer": "FnqQgnVx81hbtXQtWrEbD7MfHys25nGakPDDsbghyGAR",
       "fee": 15000,
       "computeUnits": 147581,
@@ -1660,7 +1725,7 @@
     {
       "step": "7",
       "what": "graduate FRKA (permissionless, on DBC's migration position)",
-      "signature": "2yMYHWfXLxw3muk8rzRPNXQEByTKDBNYvu4dk8KxfNMgZJ5YXwrGrZDg5aK7Ykpizog9Cwy5EBHCn5BeWgWPn4DV",
+      "signature": "4q64DD9c4yMn1tFvMnPRZnU5tWU4FLfscG9kQGBFEUEgXdxfHRndJMoyMB5A3frtvqH6TBpcoLPey6BQy2AweB3Y",
       "payer": "FnqQgnVx81hbtXQtWrEbD7MfHys25nGakPDDsbghyGAR",
       "fee": 5000,
       "computeUnits": 21341,
@@ -1673,7 +1738,7 @@
     {
       "step": "7",
       "what": "DAMM v2 buy on FRKA (200,000)",
-      "signature": "K2mfUtPzodmqLHyfHjXwnoMwoAFcwif2uiDbLoRupXWgudAqxWiGG7jqzt8jadcXw6wQaSHkBroEpwjuE9S24Cg",
+      "signature": "5wHZerAP2uP5beV2xP3UpumHZoU8ug1VczEbaH5suAaAeTkEowhPSq2pKvGw1xZ2vZNgxJKexyMJKKScJTvaZZnn",
       "payer": "FnqQgnVx81hbtXQtWrEbD7MfHys25nGakPDDsbghyGAR",
       "fee": 5000,
       "computeUnits": 19241,
@@ -1686,7 +1751,7 @@
     {
       "step": "7",
       "what": "crank_pool_fees on FRKA (DAMM v2 position fees into the compute vault)",
-      "signature": "2qqBeEs23tSareK6gMnP6GJSoEy5A9WZ9YCs73zW5gGtnAjs6g8161d7ZyijRs2kWZop9Gj72sHBD9MkbbXr1DmE",
+      "signature": "4VXP6yaMyxnN81YP5HRvnY4TnpsyBSGBUnc7AudZdj2G3qpU6YFuyVr6mEF67kqdWBNgcafaiVCxC8hZdZx8SDMN",
       "payer": "FnqQgnVx81hbtXQtWrEbD7MfHys25nGakPDDsbghyGAR",
       "fee": 5000,
       "computeUnits": 74343,
@@ -1699,7 +1764,7 @@
     {
       "step": "7",
       "what": "launch_agent FRKB (one transaction: registry Agent, AgentLaunch, DBC pool, compute vault)",
-      "signature": "2RCxMNDtRESrEHXLjN2XxfPek8DGyRmRqmcHddiXMto1FiEsNE1gUGSaJDD81CWShdgRNgKUsjhKB7mkpCnLHBGi",
+      "signature": "23rSFjkS3ZNac3vLNLHF1U1EEvz9QNZmAknLsJbWB3qvMDV9aRtrstERShT8sHjwFD7TtxK2yQoNHuFLVm7m9ciE",
       "payer": "62tVqEGTxgkAHFaLRUZjWkhJtJwkpavdVyypfa3bQbdw",
       "fee": 15000,
       "computeUnits": 158600,
@@ -1755,7 +1820,7 @@
     {
       "step": "7",
       "what": "create the trader's FRKB token account and the authority's",
-      "signature": "iWPP3GkcB2yEG6DDzMR8phD7fbhBw8ywhMuixgDVq9z65njTuDxgykSPp9i7eoY7qUsRK1bL8cXkZQP1i2fStCw",
+      "signature": "5jeEsVXoNSThrmoj4bcvhC8Wifri2V9sibtSAfQoCaBnDr48nLTZBeRjjHZCTBsucGpCXh8GMdU5jQXQnqd144vX",
       "payer": "FnqQgnVx81hbtXQtWrEbD7MfHys25nGakPDDsbghyGAR",
       "fee": 5000,
       "computeUnits": 34333,
@@ -1781,7 +1846,7 @@
     {
       "step": "7",
       "what": "DBC buy on FRKB (100,000 stand-in $LINE)",
-      "signature": "4z1zFUXwTVinXrT56vNXbLnz9xvBRav3k8ZFJjn9qgnr6bYCPpWcMMN85e886KDCsUnQ7FGsohscPLUDf54PqMig",
+      "signature": "G7QQNPAukAaNmjkRyW85Yg514Ms7773hVBvCMRmH1GQuL37KMXHeiQDeoG6cBsqyQzVAp6PWX3PrLuk1Mqi6zMh",
       "payer": "FnqQgnVx81hbtXQtWrEbD7MfHys25nGakPDDsbghyGAR",
       "fee": 5000,
       "computeUnits": 35897,
@@ -1794,7 +1859,7 @@
     {
       "step": "7",
       "what": "DBC sell on FRKB (half)",
-      "signature": "2NsQ675Jn4W3pGLCTJFBd5cBEU9jPbU6ufj8XD3SarWF83Qhg5yN3hAJRStrmkKkR7DwNCF4DwrAbSAdMqivC1sE",
+      "signature": "2e4mpBMPRyR7i65FWNqpgH6T4Th2Mm2iB93xypfqCvwA4qh5X38gk5FkJJEgLbpdYWs1gE2ykfgEQikjrySdynMG",
       "payer": "FnqQgnVx81hbtXQtWrEbD7MfHys25nGakPDDsbghyGAR",
       "fee": 5000,
       "computeUnits": 34055,
@@ -1807,7 +1872,7 @@
     {
       "step": "7",
       "what": "DBC fill on FRKB to the migration threshold (PartialFill)",
-      "signature": "RHRHwRTdYiF1MHRW8oPEcWidCJqdUuWdaJ6zw1MXhDkcX1GmJEcH7FE7HF3qfScwLR1eK5sFCzNJ533g8rFVmMs",
+      "signature": "VAvQ9TYMyQnnHadckvnJwzY2wV94g728mViLEmX2HJVZt5B16a43tRwAkZfxcjmyWqCPDxQTyNxF7kqgQ6ZyVJX",
       "payer": "FnqQgnVx81hbtXQtWrEbD7MfHys25nGakPDDsbghyGAR",
       "fee": 5000,
       "computeUnits": 38803,
@@ -1820,7 +1885,7 @@
     {
       "step": "7",
       "what": "crank_fees on FRKB (curve partner fees, exact split)",
-      "signature": "2RQmbcKrVuLcZ5kCVTMu1KzSRna1xHfjZwpSzsH7FV9UXPwvHzQubCUfvviWjZSk1rjuW726D9C9R5sxxQiZ6mUE",
+      "signature": "2gK3EjRxkLecrppPZ344JVYyMxFgXCDdPC82L3HyycGsHkx2FG2CtvSxJmdsHuvrb99VZnGc6PrJKvmngxpebpKS",
       "payer": "FnqQgnVx81hbtXQtWrEbD7MfHys25nGakPDDsbghyGAR",
       "fee": 5000,
       "computeUnits": 70087,
@@ -1833,7 +1898,7 @@
     {
       "step": "7",
       "what": "Meteora migration_damm_v2 on FRKB (permissionless, mainnet DBC to mainnet DAMM v2, config A8gMrE)",
-      "signature": "4QJzVL3eSXjw4bK7XbQ5ZeLeifVD7R3feKsYvECkJTgKQkNtYrjWLUPKHm5wjbJbyyCW7SVCUUhphRkULv9dwt2r",
+      "signature": "2PnxEzEjhJFp8fcAgsF8YA4Ba9XdP8ZKddivdbJbANLgBHABmGnEWBuu5aATwi1rGbr7JpkGAWpqtUJTMqoM1LiN",
       "payer": "FnqQgnVx81hbtXQtWrEbD7MfHys25nGakPDDsbghyGAR",
       "fee": 15000,
       "computeUnits": 162581,
@@ -1883,7 +1948,7 @@
     {
       "step": "M2",
       "what": "squads: create vault transaction 11 + proposal (graduate_by_admin FRKB)",
-      "signature": "4Ytay8GWq9FFHJctbz2qthBMSfLvwyRjTN71rQhgyAtxJ9m8PEq4nMAVdUUcSMJKZeY8ThJxtCBaAKDj6rPDxGr1",
+      "signature": "y5mPbvQygARVfo7kkuo3v6bdHQ74SixRjJjJmV3xiDqTLfGxARfoGnxmKtpAQKeQf2bu8w2m6V8zp8KfFchuDZU",
       "payer": "7ZgfzBAVrgRnuq5q2QpsWggSomXogxyUKw3TgxopXA1Y",
       "fee": 5000,
       "computeUnits": 43894,
@@ -1909,7 +1974,7 @@
     {
       "step": "M2",
       "what": "squads: approve 11 (graduate_by_admin FRKB)",
-      "signature": "5851TaSXKq4dYZVu6ayCpxnX4JoxvDWbCc6C9RtV2NfLzHdy7rPZteFJPfxuPbpsEBWDEP9cNf3SPZDnTukPvpDr",
+      "signature": "3kxDw7kUofbct9CwgPNC68Rj9nTffCgsarBFPafTeRg1SBoyMe5o46VT1DcHs97Y5qwfcYD35LV8YgyEwoYwmTKr",
       "payer": "7ZgfzBAVrgRnuq5q2QpsWggSomXogxyUKw3TgxopXA1Y",
       "fee": 5000,
       "computeUnits": 8837,
@@ -1922,7 +1987,7 @@
     {
       "step": "M2",
       "what": "squads: approve 11 (graduate_by_admin FRKB)",
-      "signature": "4PJD884S4cy23BaZiGpm3uAdhkJazAXBR73RTyiEDcFiNzuknUdDwnpu2JSc6hZxoYneboWaWbRqNJ2gMXws8oEZ",
+      "signature": "3GV1KuCYG7b7KUMSh7TfXbuEg19uTgGGDUZZrJXiSazrkJ5mFxkTydFBYprqCX3L6vDDPFBFQgkro2fWdADf5KWs",
       "payer": "HALA32M46ewFDjXE7gKEtcNFcDiEsaP68vxfRnpSPfbz",
       "fee": 5000,
       "computeUnits": 9719,
@@ -1935,7 +2000,7 @@
     {
       "step": "M2",
       "what": "squads: execute 11 (graduate_by_admin FRKB)",
-      "signature": "Y6dLKZ1bPcteGht48ZtDFKDyRgDwBEZ9SKFAFpMgyW8RFzLAtNR8kFWunM7VyZYR8jSTNZiH5uEx4neybRG7RdS",
+      "signature": "2JXwAhXCEsWmCS4RtU49Yx1vxsiNLwYsaKGpxvbEpRjfLjcj5fc1SpjLVHzBSxrCP9KiGQraQjvJYzPN4bZbVZ9x",
       "payer": "4DSsjVnybbopdcnJTgp4rxSw7p4pW7tCidMVYZidwWmV",
       "fee": 5000,
       "computeUnits": 54630,
@@ -1948,7 +2013,7 @@
     {
       "step": "7",
       "what": "send 16 stand-in $LINE to the verifier owner",
-      "signature": "5CixsJUKNXMBXCTm8g4U4p1YeQrTj14d4LUMvSyMvSQQCZoa6bQe211qS1EbtfdiuqHRmgo7FZQGX2FPRWYDjYHc",
+      "signature": "34BzqJckNQHZWQTi8eL9rfkUWewvYKm4Dm1aLJym9U1LMU3UWKtk9K74zCAKgHPzpagiUaS9xCfrrfw1SdQtTfjJ",
       "payer": "7PkFTjRDRGbntSFEAcEzPMS1cf9Hq6ub1gVrQ6X5sMHV",
       "fee": 5000,
       "computeUnits": 22778,
@@ -1968,7 +2033,7 @@
     {
       "step": "8",
       "what": "register a verifier (burns register_burn)",
-      "signature": "2tHcUJcwBxKHFYuDGCTXCBJk6aoDcUA2E3pRkz7GZ49TUFzM9PtXxaKJY4XLnU3GHkAZqCxgbBqyaXbUxzwSToVS",
+      "signature": "4NVrsgt3u38qRDejqXmtTRN4a61yNSyzMijzmxVApBfuSBmZjP19M4tTmxKYMwEcucXg43pRvEUVUNaavNbZHYPo",
       "payer": "BPCg252caDDPiwV4d6rSX8hU5FyV6B62T17hwLPjua7E",
       "fee": 10000,
       "computeUnits": 29669,
@@ -1988,7 +2053,7 @@
     {
       "step": "8",
       "what": "bond min_bond",
-      "signature": "4p3XbbPHd5DVbctZ2eaFXoP4jsyYXEwYnuwMYwj955TfwFUR9WvpFpeC1YvF4aqjyqRP83rqPh9gwJKy94Qfwawq",
+      "signature": "633wKzpK3BVj87GHsMEgxqnVKwNhK7zpY1mHoiDvEh9xmsrncZXMxzbEDXGiQ3ATdA243nZrPRV8xcJ5CmwriPvo",
       "payer": "BPCg252caDDPiwV4d6rSX8hU5FyV6B62T17hwLPjua7E",
       "fee": 5000,
       "computeUnits": 25567,
@@ -2001,7 +2066,7 @@
     {
       "step": "8",
       "what": "split (treasury to reserve and pool, permissionless)",
-      "signature": "4Jnf7dBjFa8tXcnfP8indbe3m6fb8fL6CU1TsjULxhKa5A8PhnmpQYiWWy3oSMb6vzbiGATcjLeXLGFpWdLPWjNK",
+      "signature": "KLAWzGKs8AMtmdyudCvANPjZSzhk6qWuzoh7Sjk3hkqpSxhTQqd2x5kSfzTU9sbBAE66dpAZCUx3S8f72EHhqxk",
       "payer": "FnqQgnVx81hbtXQtWrEbD7MfHys25nGakPDDsbghyGAR",
       "fee": 5000,
       "computeUnits": 41439,
@@ -2014,7 +2079,7 @@
     {
       "step": "8",
       "what": "post_epoch 0 (Core authority: 2 leaves, pool 48079391106, rebate 1000)",
-      "signature": "5QpeXgAU9uQJSR1natonCQQ25pXgMtsq8yyrfnvNEKcYqZmsLKw5LCwH3Du7R3iNALexiTxNpT264gUPJEad291S",
+      "signature": "SVqVQX78Mqs9WJdpNkN2ob8yg6eH79kRXw5gMadepyjeu8ULJ6D2Q2bbqgPcf4q7xz8KrfYbNKh553bYeCVQqhy",
       "payer": "Es6ciXKbPWH8cfBQ5AYZe9gTmfJEgctREZXdXSRVpthS",
       "fee": 5000,
       "computeUnits": 52221,
@@ -2034,7 +2099,7 @@
     {
       "step": "8",
       "what": "open_challenge (epoch kind, by the verifier's signing key, bond from its owner)",
-      "signature": "2szfjQSCN9YBWpGDeNcWHwKiSmputSYJgCHUpKyiyEsSGzjJQqiZtX2hvS5MXZsGWprJ7VSobTvyQhaJNYVe5cG7",
+      "signature": "64qiwCx8qS5aZtn8812MEHeUhKvqsQF7rLpRCc86QYNvLT4gUCqrPZRvXYmGYEHecdf13FCKXXXxwt3vxY5khuqo",
       "payer": "BPCg252caDDPiwV4d6rSX8hU5FyV6B62T17hwLPjua7E",
       "fee": 10000,
       "computeUnits": 58194,
@@ -2060,7 +2125,7 @@
     {
       "step": "8",
       "what": "resolve_challenge void (Core authority; bond returned)",
-      "signature": "4PzPemoLEK4eYSCqdU4pxy2ZjyhA6dWzGbYQzbJgvPkSamNMhXTUbnrnFfbEEcirkomAAAsSHVSEf4uxjSfWQsae",
+      "signature": "4RXedTLthyPTESBVE3guW9dTk96gLYbgaYeQ7UvbsxLdcaL7mNQE6nJTNyLWfCLDh5jErJA8A71mqueJp8RkJpHr",
       "payer": "Es6ciXKbPWH8cfBQ5AYZe9gTmfJEgctREZXdXSRVpthS",
       "fee": 5000,
       "computeUnits": 43160,
@@ -2073,7 +2138,7 @@
     {
       "step": "8",
       "what": "claim epoch 0 leaf compute (anyone pays; receipt rent)",
-      "signature": "5APnidfPfmiUbcmLGJShEaomXQgBVTEUi99bzEwC7Bb5HtXThsgwW6xca6zcbtQJBr3uUuqcEeyCjBCSpXdpERF5",
+      "signature": "2RXtrwngE4ZC32JUEZtzbsfC8m4XGYMkgYK1U9CnBuTFe33KziZ2NLJB8mMpyC5tuJvKxvdTC23LMY5ev9mNiZpc",
       "payer": "FnqQgnVx81hbtXQtWrEbD7MfHys25nGakPDDsbghyGAR",
       "fee": 5000,
       "computeUnits": 76960,
@@ -2093,7 +2158,7 @@
     {
       "step": "8",
       "what": "claim epoch 0 leaf wallet (anyone pays; receipt rent)",
-      "signature": "2Xf5ArpBiuuCX4JxkWLvuGy1E12emkbvfdMuebM5GvCTVAZ5YqaE5zWi9X5W8ZJQgrPFCFPAqrtMWRF4ZdD731g8",
+      "signature": "3Po4WsGeSaDaX5mgmPR6kvER5EQwK5239cWgzXcxaEgyQVEr8ieVsQSMATpZKUE9BxHnjCRi1MQbC17LH9zKKpJ3",
       "payer": "FnqQgnVx81hbtXQtWrEbD7MfHys25nGakPDDsbghyGAR",
       "fee": 5000,
       "computeUnits": 75173,

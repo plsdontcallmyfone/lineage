@@ -63,6 +63,7 @@ import {
   type Ix,
   type Signer,
 } from "@lineage/chain";
+import { createMultisig, initializeAll, launchArgs, parseLaunchParams, registryArgs, checkHandover } from "./steps.ts";
 import { adminActions, approve, execute, multisigState, proposalState, propose, proposeConfig, type Ms } from "./admin.ts";
 import { airdrop, assertFork, check, checks, fork, FORK_URL, forkKey, forkNow, forkRent, KEYS, log, mainnet, mainnetRent, refused, rows, send, sleep, sol } from "./lib.ts";
 
@@ -72,15 +73,13 @@ const T22 = TOKEN_2022_PROGRAM;
 const DECIMALS = 6;
 const ONE = 10n ** BigInt(DECIMALS);
 const SUPPLY = 1_000_000_000n * ONE;
-const TIME_LOCK_S = 20; // fork value so the run finishes; the mainnet time lock is an owner value (TBA)
-const CHALLENGE_WINDOW_S = 30; // fork value; mainnet TBA
 const PROGRAMS = {
   registry: { id: "2vhj9aBZkuoCpmJxm5BcA3CYkvBJgY6VHTax8FpFmxuY", so: "lineage_registry.so" },
   launch: { id: "8eHzm1XtNtbxJujrMAci4VdhCJvQttFUBukmkFaUwsAT", so: "lineage_launch.so" },
   msg: { id: "E6vHskQjJAMLqDKXyfnn2ZDjeJ57RZXR4H9RjPDzapAB", so: "lineage_msg.so" },
 } as const;
 const reader = new ChainReader(fork);
-const out: Record<string, unknown> = { started: new Date().toISOString(), fork: FORK_URL, time_lock_s: TIME_LOCK_S, challenge_window_s: CHALLENGE_WINDOW_S };
+const out: Record<string, unknown> = { started: new Date().toISOString(), fork: FORK_URL, params: "scripts/mainnet/fork-params.json" };
 const sha = (b: Uint8Array) => createHash("sha256").update(b).digest("hex");
 
 // ---------------------------------------------------------------- keys (throwaway)
@@ -211,18 +210,11 @@ async function step1() {
 
 // ---------------------------------------------------------------- 2: Squads multisig
 async function step2() {
-  const pc = decodeSquadsProgramConfig((await fork.getAccountInfo(squadsPdas.programConfig()))!.data);
-  const members = [m1, m2, m3].map((m) => ({ key: m.id, permissions: SQUADS_PERM.all }));
-  await send("2", `Squads multisig_create_v2: 2 of 3, time lock ${TIME_LOCK_S} s, autonomous (no config authority), rent collector = vault`, dep, [
-    squads.multisigCreateV2({ createKey: createKey.id, creator: dep.id, treasury: pc.treasury, members, threshold: 2, timeLockS: TIME_LOCK_S,
-      configAuthority: null, rentCollector: ms.vault, memo: "lineage rehearsal" }),
-  ], { signers: [createKey] });
-  const st = await multisigState(fork, ms.multisig);
-  check("2: multisig read back: 2 of 3, time lock, no config authority", st.threshold === 2 && st.timeLock === TIME_LOCK_S && st.members.length === 3 &&
-    st.configAuthority === "11111111111111111111111111111111" && st.rentCollector === ms.vault, `multisig ${ms.multisig}, vault ${ms.vault}`);
+  const r = await createMultisig(fork, (w, p, i, o) => send("2", w, p, i, o), check, dep, createKey, P);
+  check("2: the multisig and vault are the ones the rehearsal derived", r.multisig === ms.multisig && r.vault === ms.vault);
   // The vault pays the rent of the config accounts its admin actions create (ChallengeConfig and its vault, BountyConfig).
   await send("2", "fund the vault for the rent its admin actions create (0.05 SOL)", dep, [system.transfer(dep.id, ms.vault, 50_000_000n)]);
-  out.multisig = { address: ms.multisig, vault: ms.vault, threshold: 2, members: members.map((m) => m.key), time_lock_s: TIME_LOCK_S };
+  out.multisig = { address: ms.multisig, vault: ms.vault, threshold: P.multisig.threshold, members: P.multisig.members, time_lock_s: P.multisig.time_lock_s };
 }
 
 // ---------------------------------------------------------------- 3: stand-in quote mint
@@ -245,45 +237,18 @@ async function step3() {
 }
 
 // ---------------------------------------------------------------- 4: initialize with admin = the vault
-const net = JSON.parse(readFileSync(join(ROOT, "config/network.json"), "utf8"));
-// SHAPE ONLY: config/network.json M1 values (owner values TBA, SPEC 13/20); epoch_length_s 300 keeps
-// unbond_cooldown_s 600 above the 2-epoch floor.
-const params = { ...paramsFromNetworkJson(net, DECIMALS), epochLengthS: 300 };
-const MAX_REBATE = 1n * ONE; // TBA
-const MAX_DEBIT = 1_000n * ONE; // TBA
-const sink = () => ata(ms.vault, lineMint, T22); // A1-11: the compute sink is treasury-controlled, not the runtime's own account
-const registryArgs = () => ({ admin: ms.vault, coreAuthority: core.id, launchProgram: PROGRAMS.launch.id, params, maxRebatePerEpoch: MAX_REBATE });
-const launchArgs = () => ({
-  admin: ms.vault, runtimeAuthority: runtime.id, computeSink: sink(), agentComputeBps: net.agent_compute_bps, protocolBps: net.protocol_bps,
-  sleepThreshold: (BigInt(net.sleep_threshold) * ONE) / 10n ** BigInt(net.token_decimals),
-  wakeThreshold: (BigInt(net.wake_threshold) * ONE) / 10n ** BigInt(net.token_decimals), paused: false, maxDebitPerEpoch: MAX_DEBIT,
-});
-const MSG_CAPS = { windowS: 60, maxPerWindow: 20, maxPerDay: 500, maxInline: 568, maxBlob: 1 << 20 }; // TBA (devnet TEST caps)
+// The fork's launch values: scripts/mainnet/fork-params.json (TEST shape), with this run's throwaway keys.
+const forkParams = JSON.parse(readFileSync(join(import.meta.dir, "fork-params.json"), "utf8"));
+const P = parseLaunchParams({ ...forkParams, multisig: { ...forkParams.multisig, members: [m1.id, m2.id, m3.id] }, core_authority: core.id,
+  runtime_authority: runtime.id, line_mint: lineMint });
+const params = P.params;
+const net = P.net;
+const TIME_LOCK_S = P.multisig.time_lock_s;
+const CHALLENGE_WINDOW_S = Number(P.challenge.windowS);
 
 async function step4() {
-  await send("4", "lineage_registry::initialize (admin = Squads vault, Core authority hot key, network.json shape)", dep, [
-    registry.initialize({ upgradeAuthority: dep.id, mint: lineMint, tokenProgram: T22, args: registryArgs() }),
-  ]);
-  const c = (await reader.registryConfig())!;
-  check("4: registry admin is the vault, Core authority the hot key", c.admin === ms.vault && c.coreAuthority === core.id && c.mint === lineMint);
-  await send("4", "Meteora DBC create_config (quote = stand-in $LINE, fee claimer + leftover receiver = launch authority PDA, TEST curve)", dep, [
-    dbc.createConfig({ config: dbcConfigKey.id, feeClaimer: launchPdas.authority(), quoteMint: lineMint, payer: dep.id, params: standardDbcParams() }),
-  ], { signers: [dbcConfigKey] });
-  await send("4", "create the compute sink: the vault's stand-in $LINE account", dep, [token.createAtaIdempotent(dep.id, ms.vault, lineMint, T22)]);
-  await send("4", "lineage_launch::initialize_launch (admin = vault, sink = vault's account)", dep, [
-    launch.initialize({ upgradeAuthority: dep.id, lineMint, dbcConfig: dbcConfigKey.id, lineTokenProgram: T22, args: launchArgs() }),
-  ]);
-  const lc = (await reader.launchConfig())!;
-  check("4: launch admin is the vault, sink the vault's account, debit cap set", lc.admin === ms.vault && lc.computeSink === sink() && lc.maxDebitPerEpoch === MAX_DEBIT);
-  await send("4", "lineage_msg::initialize (admin = vault)", dep, [msg.initialize({ upgradeAuthority: dep.id, args: { admin: ms.vault, paused: false, ...MSG_CAPS } })]);
-  // the v0 launch lookup table (prepaid credits plan C): create + extend, then freeze
-  const slot = await fork.getSlot();
-  const { ix, address } = lookupTable.create({ authority: dep.id, payer: dep.id, recentSlot: slot - 1 });
-  const want = launchTableAddresses({ lineMint, dbcConfig: dbcConfigKey.id, lineTokenProgram: T22 });
-  await send("4", `launch lookup table: create + extend (${want.length} addresses)`, dep, [ix, lookupTable.extend({ table: address, authority: dep.id, payer: dep.id, addresses: want })]);
-  await send("4", "launch lookup table: freeze", dep, [lookupTable.freeze({ table: address, authority: dep.id })]);
-  const t = decodeLookupTable((await fork.getAccountInfo(address))!.data);
-  check("4: launch lookup table frozen with the expected addresses", t.authority === null && t.addresses.length === want.length);
+  const r = await initializeAll(fork, (w, p, i, o) => send("4", w, p, i, o), check, dep, dbcConfigKey, P, ms.vault);
+  out.launch_lookup_table = r.lookupTable;
 }
 
 // ---------------------------------------------------------------- 5: admin actions through the multisig
@@ -294,14 +259,14 @@ async function viaSquads(label: string, ixs: Ix[], prove = false): Promise<bigin
   await approve(sq, ms, m1, index, label);
   if (prove) {
     const one = await refused(m3, [squads.vaultTransactionExecute({ multisig: ms.multisig, index, member: m3.id, message })]);
-    check("5: one approval of two cannot execute", true, one.slice(0, 120));
+    check("5: one approval of two cannot execute (InvalidProposalStatus)", /"Custom":6008/.test(one), one.slice(0, 120));
   }
   await approve(sq, ms, m2, index, label);
   const p = (await proposalState(fork, ms.multisig, index))!;
   check(`5: proposal ${index} approved by 2 of 3 (${label})`, p.status === "Approved" && p.approved.length === 2);
   if (prove) {
     const early = await refused(m3, [squads.vaultTransactionExecute({ multisig: ms.multisig, index, member: m3.id, message })]);
-    check("5: the time lock refuses an execute right after approval", /TimeLock|time lock|0x179b|6043/i.test(early) || early.length > 0, early.slice(0, 160));
+    check("5: the time lock refuses an execute right after approval (TimeLockNotReleased)", /"Custom":6021/.test(early), early.slice(0, 160));
   }
   await waitTimeLock(p.statusTs!);
   await execute(sq, ms, m3, index, message as Msg, label);
@@ -318,23 +283,23 @@ async function waitTimeLock(approvedAt: bigint) {
   }
 }
 
-const BOUNTY_ARGS = { maxBountyOutBps: 5_000, selfHostedInCap: 10n * ONE, windowS: 86_400, minTtlS: 60, maxTtlS: 30 * 86_400, refundGraceS: 60, minAmount: ONE / 100n, paused: false }; // TBA
-const CHALLENGE_ARGS = { windowS: CHALLENGE_WINDOW_S, bond: 1n * ONE, reward: ONE / 2n, resolveTimeoutS: 7200, paused: false }; // TBA
+const BOUNTY_ARGS = P.bounty;
+const CHALLENGE_ARGS = P.challenge;
 
 async function step5() {
   const hot = await refused(dep, adminActions.registryPause(dep.id, true));
-  check("5: the deployer (old hot key) is not the registry admin", true, hot.slice(0, 120));
+  check("5: the deployer (old hot key) is not the registry admin (Unauthorized)", /"Custom":6000/.test(hot), hot.slice(0, 120));
   await viaSquads("set_bounty_config", adminActions.bountySetConfig(ms.vault, BOUNTY_ARGS), true);
   const bc = (await reader.bountyConfig())!;
   check("5: BountyConfig set by the vault", bc.maxBountyOutBps === BOUNTY_ARGS.maxBountyOutBps && bc.minAmount === BOUNTY_ARGS.minAmount);
   await viaSquads("set_challenge_config", adminActions.challengeSetConfig(ms.vault, lineMint, T22, CHALLENGE_ARGS));
   const cc = (await reader.challengeConfig())!;
   check("5: ChallengeConfig set by the vault", Number(cc.windowS) === CHALLENGE_WINDOW_S && cc.bond === CHALLENGE_ARGS.bond);
-  await viaSquads("registry set_config (max_rebate_per_epoch 2 units)", adminActions.registrySetConfig(ms.vault, { ...registryArgs(), maxRebatePerEpoch: 2n * ONE }));
+  await viaSquads("registry set_config (max_rebate_per_epoch 2 units)", adminActions.registrySetConfig(ms.vault, { ...registryArgs(P, ms.vault), maxRebatePerEpoch: 2n * ONE }));
   check("5: registry set_config applied", (await reader.registryConfig())!.maxRebatePerEpoch === 2n * ONE);
-  await viaSquads("set_launch_config (max_debit_per_epoch 500 units)", adminActions.launchSetConfig(ms.vault, dbcConfigKey.id, { ...launchArgs(), maxDebitPerEpoch: 500n * ONE }));
+  await viaSquads("set_launch_config (max_debit_per_epoch 500 units)", adminActions.launchSetConfig(ms.vault, dbcConfigKey.id, { ...launchArgs(P, ms.vault), maxDebitPerEpoch: 500n * ONE }));
   check("5: launch set_config applied", (await reader.launchConfig())!.maxDebitPerEpoch === 500n * ONE);
-  await viaSquads("lineage_msg set_config (max_per_day 400)", adminActions.msgSetConfig(ms.vault, { admin: ms.vault, paused: false, ...MSG_CAPS, maxPerDay: 400 }));
+  await viaSquads("lineage_msg set_config (max_per_day 400)", adminActions.msgSetConfig(ms.vault, { admin: ms.vault, ...P.msg, maxPerDay: 400 }));
   await viaSquads("registry pause", adminActions.registryPause(ms.vault, true));
   check("5: registry paused by the vault", (await reader.registryConfig())!.paused === true);
   await viaSquads("registry unpause", adminActions.registryPause(ms.vault, false));
@@ -373,6 +338,7 @@ async function step6() {
   check("6: lineage_msg upgraded by the multisig: code equals the build, authority still the vault, buffer closed",
     sha(now) === sha(local) && decodeLoaderAuthority((await fork.getAccountInfo(programDataAddress(PROGRAMS.msg.id)))!.data) === ms.vault &&
     (await fork.getAccountInfo(buffer)) === null);
+  await checkHandover(fork, (n, ok, d) => check(`6: handover: ${n}`, ok, d), ms.vault, P);
 }
 
 // ---------------------------------------------------------------- 7: launches, trades, graduation
@@ -489,7 +455,7 @@ async function step8(a: { agent: Signer }) {
   ], { signers: [verifier] });
   const c0 = leaves.map((l, i) => claimFromCoreProof({ epoch: n, ...l, proof: merkleProof(leaves.map((x) => x.leaf), i), root }));
   const held = await refused(trader, [registry.claim({ payer: trader.id, mint: lineMint, ...c0[0]!, destToken: c0[0]!.destKind === 1 ? launchPdas.computeVault(a.agent.id) : ownerLine, tokenProgram: T22 })]);
-  check("8: claims are held while the challenge is open", true, held.slice(0, 120));
+  check("8: claims are held while the challenge is open (ClaimHeld)", /ClaimHeld/.test(held), held.slice(0, 160));
   const b0 = (await reader.tokenBalance(ownerLine))!;
   await send("8", "resolve_challenge void (Core authority; bond returned)", core, [
     challenge.resolve({ coreAuthority: core.id, mint: lineMint, kind: CHALLENGE_KIND.epoch, subject: epochSubject(n), epoch: n, refundToken: ownerLine,

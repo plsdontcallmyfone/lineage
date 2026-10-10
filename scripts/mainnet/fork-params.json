@@ -1,0 +1,61 @@
+{
+  "_note": "The values the fork rehearsal used (TEST shape). The rehearsal fills members, core_authority, runtime_authority and line_mint with its throwaway keys.",
+  "multisig": {
+    "members": [
+      "filled by the rehearsal"
+    ],
+    "threshold": 2,
+    "time_lock_s": 20
+  },
+  "core_authority": "filled by the rehearsal",
+  "runtime_authority": "filled by the rehearsal",
+  "line_mint": "filled by the rehearsal",
+  "line_decimals": 6,
+  "line_token_program": "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb",
+  "network_file": "scripts/mainnet/fork-network.json",
+  "max_rebate_per_epoch": "1000000n",
+  "max_debit_per_epoch": "1000000000n",
+  "msg": {
+    "paused": false,
+    "windowS": 60,
+    "maxPerWindow": 20,
+    "maxPerDay": 500,
+    "maxInline": 568,
+    "maxBlob": 1048576
+  },
+  "dbc": {
+    "cliffFeeNumerator": "30000000n",
+    "collectFeeMode": 0,
+    "migrationOption": 1,
+    "tokenType": 1,
+    "tokenDecimals": 6,
+    "partnerLocked": 100,
+    "creatorLocked": 0,
+    "threshold": "15999999999792n",
+    "sqrtStart": "4124817371235594858n",
+    "creatorTradingFee": 0,
+    "migratedFeeBps": 300,
+    "supply": "100000000000000n",
+    "curve": [
+      "16499269484942379432n",
+      "439980519592732705252230013543952n"
+    ]
+  },
+  "bounty": {
+    "maxBountyOutBps": 5000,
+    "selfHostedInCap": "10000000n",
+    "windowS": 86400,
+    "minTtlS": 60,
+    "maxTtlS": 2592000,
+    "refundGraceS": 60,
+    "minAmount": "10000n",
+    "paused": false
+  },
+  "challenge": {
+    "windowS": 30,
+    "bond": "1000000n",
+    "reward": "500000n",
+    "resolveTimeoutS": 7200,
+    "paused": false
+  }
+}

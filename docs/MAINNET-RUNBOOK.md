@@ -1,0 +1,249 @@
+# Mainnet runbook (M5)
+
+Written 2026-10-10. Nothing has been deployed to mainnet. Every step below has been run, in this
+order, on a local fork of mainnet with mainnet's own Meteora DBC, DAMM v2, Token-2022 and Squads v4
+builds (`scripts/mainnet/rehearsal.ts`, record `scripts/mainnet/REHEARSAL-LAST.json`, 80 of 80
+checks). Costs: [MAINNET-COSTS.md](MAINNET-COSTS.md). Powers: [AUDIT.md](AUDIT.md) "Powers" and the
+section below. The owner runs the mainnet steps; this lane never sent a mainnet transaction.
+
+## Go / no-go
+
+Owner items stay unchecked until the owner checks them.
+
+- [ ] External audit done, findings fixed and the fixed builds re-rehearsed (docs/audit/)
+- [ ] Multisig signers set: members, threshold and time lock (`launch-params.json` `multisig`)
+- [ ] Token parameters set: the `$LINE` mint and decimals, every SPEC 13 parameter (`network_file`), the DBC curve, rebate and debit caps, message caps, bounty and challenge values
+- [ ] Legal review done
+- [ ] Budgets set: SOL for the deploy (11.251935880 held at the peak with exact-size ProgramData, MAINNET-COSTS.md), the priority fee policy, the `--max-len` headroom, the Core and runtime hot keys' running SOL, the runtime's model spend caps
+- [ ] Domain set
+- [ ] Verifiers recruited (the minimum independent count is in the M4 server layout)
+- [ ] Program ids decided (see "Program ids" below)
+- [ ] Decision on the A1-08 per agent, per epoch slash cap (a program change, see "Needs a program change")
+
+Engineering items, with their evidence:
+
+- [x] Fork rehearsal PASS 80/80 on the exact builds (`scripts/mainnet/REHEARSAL-LAST.json`)
+- [x] LiteSVM 61/61 against the mainnet Meteora builds (`METEORA_BUILD=mainnet`, step 0 below)
+- [x] Every onchain admin action proven through a 2-of-3 Squads vault with a time lock, including a program upgrade and `graduate_by_admin`
+- [x] The operator commands proven on the same fork after the rehearsal: `propose.ts` proposed, approved (2 of 3), waited out the time lock and executed a `msgSetConfig` (proposal 12, `max_per_day` 400 to 300, read back); `initialize.ts multisig`, `init` and `check` re-ran on the initialized state and skipped every existing step (16 checks PASS, 0 FAIL)
+- [ ] The rehearsal re-run on launch day (Meteora can redeploy DBC and DAMM v2 at any time: their mainnet upgrade authority is `JADaUV8k...uCVLd`)
+- [ ] Mainnet mode in the app and services (M3) and server hardening (M4)
+
+## Roles after the handover
+
+| Role | Holder | Notes |
+|---|---|---|
+| Upgrade authority, all three programs | Squads v4 vault | moved from the deployer right after initialization (step 6) |
+| Registry admin (`Config.admin`) | the vault | set at `initialize`; the deployer never holds it |
+| Launch admin (`LaunchConfig.admin`, also bounty config) | the vault | set at `initialize_launch` |
+| Messages admin (`MsgConfig.admin`) | the vault | set at `lineage_msg::initialize` |
+| Compute sink | the vault's `$LINE` token account | audit A1-11: not the runtime's own account |
+| Multisig config authority | none (autonomous) | member, threshold and time lock changes go through the same proposals and time lock |
+| Multisig rent collector | the vault | executed proposals' rent can be reclaimed to it |
+| Core authority (`Config.core_authority`) | hot key on the Core server | scoped below; the vault rotates it with `registrySetConfig` |
+| Runtime authority (`LaunchConfig.runtime_authority`) | hot key on the runtime server | the vault rotates it with `launchSetConfig` |
+| Deployer | hot key, temporary | pays the deploys and initializers; holds nothing after step 6 |
+| Core's offchain admin key (`/v1/admin/*`) | hot key on the Core server | signs HTTP requests (hidden list, models, trading config, recipes, findings, epoch close); moves no funds and is not onchain, so it is not behind the multisig |
+
+### The Core authority's scoped powers
+
+From the A1 powers table, checked against the code paths the rehearsal ran:
+
+- `post_epoch`: only the next epoch (exactly last + 1), clocked (epoch `anchor + k` not before
+  `anchor_ts + (k - 1) x epoch_length_s`), paying at most the pool vault's balance plus a rebate of at
+  most `max_rebate_per_epoch` from the reserve. It pays only through Merkle claims, which wait out the
+  challenge window.
+- `slash`: any agent, any offence, any epoch, each slash id once (`SlashReceipt`), at the configured
+  shares; the slashed tokens go to the reserve, from where they leave only at the rates above.
+- `resolve_challenge`: outcomes, bond returns, rewards capped at `max_rebate_per_epoch` per
+  `epoch_length_s` (A1-05), slash reversals, and root corrections only while an epoch has no claim.
+- It cannot change any config, pause, upgrade, move a bond directly, touch compute vaults, escrows or
+  fee positions, or post out of sequence. If the key leaks, the vault rotates it (`registrySetConfig`
+  naming a new Core authority) and can pause the registry (`registryPause`); worst case before that is
+  bounded per epoch by the pool vault plus `max_rebate_per_epoch` (twice that with challenge rewards)
+  and by slashes without a cap (A1-08).
+
+## Program ids
+
+The programs declare their ids in source (`declare_id!`; `lineage_launch` and `lineage_msg` also use
+`lineage_registry::ID`) and `packages/chain` has them as constants. Two choices, both the owner's:
+
+1. **Reuse the devnet ids on mainnet.** The id keypairs exist (`onchain/target/deploy/*-keypair.json`,
+   copies in `onchain/keys-backup/` and `~/.config/lineage/program-keys/`; never committed, checked
+   2026-10-10). No source change. A program id keypair has no power after the first deploy, but until
+   then anyone holding it could deploy first at that address, so deploy soon after deciding.
+2. **Fresh mainnet ids.** A program change: new `declare_id!` in all three programs, `Anchor.toml`, the
+   `packages/chain` constants, client vectors regenerated, LiteSVM and the rehearsal re-run.
+
+The rehearsal deployed the same builds at fresh throwaway ids to measure the deploy path and ran the
+functional copies at the declared ids (loaded with a throwaway upgrade authority); it never used the
+devnet program keypairs.
+
+## Steps
+
+Variables used below. Every key is passed explicitly; never `solana config set`; never print `RPC`.
+
+```sh
+cd ~/lineage
+set -a; . ~/.config/lineage/mainnet-rpc.env; set +a   # RPC=<keyed mainnet URL>, mode 600, never printed
+K=~/.config/lineage/mainnet                            # deployer.json, dbc-config.json, ms-create.json (mode 600)
+PARAMS=scripts/mainnet/launch-params.json              # copied from launch-params.example.json, every TBA filled
+FEE=--with-compute-unit-price=<owner's price>          # priority fee, TBA
+```
+
+### 0. Preflight (no mainnet transaction)
+
+```sh
+df -h /                                                         # at least 5 GB free
+cp onchain/target/deploy/*-keypair.json ~/.config/lineage/program-keys/   # backup before any build
+cd onchain
+for p in lineage-registry lineage-launch lineage-msg; do
+  cargo build-sbf --offline --manifest-path programs/$p/Cargo.toml --sbf-out-dir target/deploy; done
+shasum -a 256 target/deploy/*.so && wc -c target/deploy/*.so    # compare with the audited hashes
+vendor/meteora/mainnet/fetch.sh                                 # mainnet DBC and DAMM v2: hash check fails if Meteora redeployed
+METEORA_BUILD=mainnet cargo test --offline -p lineage-onchain-tests   # 61 tests on mainnet's Meteora builds
+cargo test --offline -p lineage-onchain-tests                   # and on the devnet pins
+cd .. && bun test packages/chain
+# the full rehearsal on a fresh fork (throwaway keys, ports 9690-9693 and 9700-9730)
+mkdir -p /tmp/lin-fork-keys && solana-keygen new --no-bip39-passphrase --silent -o /tmp/lin-fork-keys/deployer.json
+scripts/mainnet/fork.sh /tmp/lin-fork-ledger "$(solana-keygen pubkey /tmp/lin-fork-keys/deployer.json)" > /tmp/lin-fork.log 2>&1 &
+MAINNET_FORK_KEYS=/tmp/lin-fork-keys bun scripts/mainnet/rehearsal.ts   # must end PASS; stop the validator by its PID, delete the ledger
+bun scripts/mainnet/initialize.ts check --params $PARAMS --multisig 11111111111111111111111111111111 --rpc "$RPC" --mainnet 2>&1 | head -1   # refuses while any value is TBA
+solana balance -u "$RPC" -k $K/deployer.json                     # at least the MAINNET-COSTS.md peak plus priority fees
+solana program show -u "$RPC" 2vhj9aBZkuoCpmJxm5BcA3CYkvBJgY6VHTax8FpFmxuY   # with reused ids: must not exist yet (same for the other two)
+```
+
+### 1. Keys
+
+The deployer, the DBC config keypair and the multisig create key are fresh keys made on the machine
+that sends (`solana-keygen new -o $K/<name>.json`, mode 600). The Core authority and runtime authority
+are made on their servers; only their public keys go into `$PARAMS`. Multisig members bring their own
+keys (hardware wallets through the Squads app work: the vault transactions are standard).
+
+### 2. The multisig
+
+```sh
+bun scripts/mainnet/initialize.ts multisig --params $PARAMS --payer $K/deployer.json --create-key $K/ms-create.json --rpc "$RPC" --mainnet
+# prints {"multisig": ..., "vault": ...}; MS=<multisig>, VAULT=<vault>
+solana transfer -u "$RPC" -k $K/deployer.json --allow-unfunded-recipient $VAULT 0.01   # rent for the configs the vault creates (0.004221480 measured) plus margin
+```
+
+### 3. Deploy
+
+```sh
+for p in registry launch msg; do
+  solana program deploy -u "$RPC" -k $K/deployer.json --fee-payer $K/deployer.json --upgrade-authority $K/deployer.json \
+    --program-id onchain/target/deploy/lineage_$p-keypair.json --max-len <owner's max-len for $p> $FEE onchain/target/deploy/lineage_$p.so
+done
+# an interrupted deploy: solana program show -u "$RPC" --buffers -k $K/deployer.json; resume with --buffer, or close the buffer
+for id in 2vhj9aBZkuoCpmJxm5BcA3CYkvBJgY6VHTax8FpFmxuY 8eHzm1XtNtbxJujrMAci4VdhCJvQttFUBukmkFaUwsAT E6vHskQjJAMLqDKXyfnn2ZDjeJ57RZXR4H9RjPDzapAB; do
+  solana program dump -u "$RPC" $id /tmp/$id.so && shasum -a 256 /tmp/$id.so; done   # equal to the builds once trailing zero padding is trimmed
+```
+
+### 4. DBC config values
+
+The DBC config is created in step 5 from `$PARAMS.dbc`; the curve, fee and threshold are owner values.
+The config names the launch authority PDA as fee claimer and leftover receiver, `$LINE` as quote, 100%
+partner lock and Token-2022 agent mints (the launch program checks all of these).
+
+### 5. Initialize (admin = the vault from the first instruction)
+
+```sh
+bun scripts/mainnet/initialize.ts init --params $PARAMS --payer $K/deployer.json --dbc-config-key $K/dbc-config.json --multisig $MS \
+  --priority-micro-lamports <price> --rpc "$RPC" --mainnet
+# prints the launch lookup table address; re-running with --lookup-table <it> resumes without a second table
+```
+
+This runs `lineage_registry::initialize`, DBC `create_config`, the compute sink account,
+`initialize_launch`, `lineage_msg::initialize` and the launch lookup table (create, extend, freeze),
+each read back.
+
+### 6. Hand the upgrade authority to the vault
+
+```sh
+for id in 2vhj9aBZkuoCpmJxm5BcA3CYkvBJgY6VHTax8FpFmxuY 8eHzm1XtNtbxJujrMAci4VdhCJvQttFUBukmkFaUwsAT E6vHskQjJAMLqDKXyfnn2ZDjeJ57RZXR4H9RjPDzapAB; do
+  solana program set-upgrade-authority -u "$RPC" -k $K/deployer.json $id --upgrade-authority $K/deployer.json \
+    --new-upgrade-authority $VAULT --skip-new-upgrade-authority-signer-check; done
+```
+
+The vault is a PDA and cannot sign the checked variant, hence the flag; step 7 reads the result back.
+
+### 7. Check the handover
+
+```sh
+bun scripts/mainnet/initialize.ts check --params $PARAMS --multisig $MS --rpc "$RPC" --mainnet
+```
+
+Every admin field and every upgrade authority must read as the vault.
+
+### 8. First proposals: bounty and challenge configs
+
+Each member proposes, approves and executes with `scripts/mainnet/propose.ts` or in the Squads app.
+Argument files hold the action's argument object (u64 values as strings with an `n` suffix).
+
+```sh
+bun scripts/mainnet/propose.ts propose --multisig $MS --member <member key> bountySetConfig bounty.json --rpc "$RPC" --mainnet
+bun scripts/mainnet/propose.ts approve --multisig $MS --member <member key> --index <i> --rpc "$RPC" --mainnet   # by threshold members
+bun scripts/mainnet/propose.ts status  --multisig $MS --index <i> --rpc "$RPC" --mainnet                        # Approved since <time>
+bun scripts/mainnet/propose.ts execute --multisig $MS --member <member key> --index <i> --rpc "$RPC" --mainnet   # after the time lock
+# then challengeSetConfig with [mint, token program, args] in its file
+```
+
+`propose.ts print` shows the inner instructions without sending, for members who check them first.
+
+### 9. Services
+
+Switch Core, the indexer, the runtime and the app to the mainnet profile (M3), with the Core and
+runtime authorities funded for their posts. The Core authority's first `post_epoch` sets the epoch
+anchor.
+
+### 10. First launch
+
+One launch through `/launch` (0.015996680 SOL measured for the launcher), a buy, `crank_fees`, and the
+indexer and app reading them back.
+
+## Later admin actions
+
+Every onchain admin action is in `scripts/mainnet/admin.ts` `adminActions` and goes through propose,
+approve to the threshold, wait out the time lock, execute:
+
+| Action | Program | What it changes |
+|---|---|---|
+| `registrySetConfig` | registry | admin, Core authority, launch program, SPEC 13 parameters, `max_rebate_per_epoch` |
+| `registryPause` | registry | pause or unpause |
+| `registrySetEpochCursor` | registry | the epoch sequence and clock anchor (repair only) |
+| `challengeSetConfig` | registry | challenge window, bond, reward, timeout, pause of new challenges |
+| `launchSetConfig` | launch | admin, runtime authority, compute sink, fee split, sleep and wake thresholds, pause, debit cap, DBC config for new launches |
+| `bountySetConfig` | launch | bounty caps, TTLs, grace, minimum, pause |
+| `graduateByAdmin` | launch | graduate on a fully locked, authority-held position (A1 review H1) |
+| `msgSetConfig` | messages | caps, sizes, pause, admin |
+| `upgradeProgram` | loader | replaces a program's code from a buffer whose authority is the vault |
+| `setUpgradeAuthority` | loader | moves the upgrade authority, or with null makes a program immutable |
+
+Squads' own config (members, threshold, time lock) goes through `proposeConfig` in `admin.ts` (the
+rehearsal changed the time lock this way). An upgrade:
+
+```sh
+solana program write-buffer -u "$RPC" -k $K/deployer.json --buffer-authority $K/deployer.json onchain/target/deploy/lineage_<p>.so
+solana program set-buffer-authority -u "$RPC" -k $K/deployer.json <buffer> --buffer-authority $K/deployer.json --new-buffer-authority $VAULT
+# if the program grew: solana program extend <id> <bytes> (anyone may pay)
+bun scripts/mainnet/propose.ts propose --multisig $MS --member <key> upgradeProgram upgrade.json --rpc "$RPC" --mainnet   # {"program":..., "buffer":..., "spill":...}
+```
+
+## Needs a program change (not done in this lane)
+
+- **Fresh program ids**, if the owner chooses them (see "Program ids").
+- **A1-08 slash cap**: AUDIT.md recommends a per agent, per epoch slash count or amount cap before
+  mainnet. Today slashes are bounded only by Core.
+
+## Notes from the rehearsal
+
+- Meteora's mainnet DBC is a different build from the devnet pin the suites used
+  (`4c26a8a5...848b` against `5edf76d9...8ad3`); every suite passes on both, and the rehearsal's
+  launches, crank, migration and both graduation paths ran on the mainnet build.
+- The test validator charges more rent than mainnet (6,960 against 5,080 lamports per byte with the
+  overhead); MAINNET-COSTS.md uses mainnet's own figures.
+- `set_challenge_config` and `set_bounty_config` create accounts with the admin as payer, so the vault
+  pays that rent; fund it before step 8.
+- Squads v4's mainnet program config charges no multisig creation fee (read 2026-10-10) and the
+  program is immutable (upgrade authority none).

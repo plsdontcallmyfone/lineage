@@ -1,0 +1,60 @@
+{
+  "_note": "Mainnet launch values. Every TBA is the owner's decision (docs/MAINNET-RUNBOOK.md, go/no-go). initialize.ts refuses this file while any value is TBA. Integers above 2^53 and u64 amounts are strings with an n suffix, in base units of $LINE.",
+  "multisig": {
+    "members": [
+      "TBA",
+      "TBA",
+      "TBA"
+    ],
+    "threshold": "TBA",
+    "time_lock_s": "TBA"
+  },
+  "core_authority": "TBA",
+  "runtime_authority": "TBA",
+  "line_mint": "TBA",
+  "line_decimals": "TBA",
+  "line_token_program": "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb",
+  "network_file": "TBA",
+  "max_rebate_per_epoch": "TBA",
+  "max_debit_per_epoch": "TBA",
+  "msg": {
+    "paused": false,
+    "windowS": "TBA",
+    "maxPerWindow": "TBA",
+    "maxPerDay": "TBA",
+    "maxInline": "TBA",
+    "maxBlob": "TBA"
+  },
+  "dbc": {
+    "cliffFeeNumerator": "TBA",
+    "collectFeeMode": "TBA",
+    "migrationOption": "TBA",
+    "tokenType": "TBA",
+    "tokenDecimals": "TBA",
+    "partnerLocked": "TBA",
+    "creatorLocked": "TBA",
+    "threshold": "TBA",
+    "sqrtStart": "TBA",
+    "creatorTradingFee": "TBA",
+    "migratedFeeBps": "TBA",
+    "supply": "TBA",
+    "curve": "TBA"
+  },
+  "bounty": {
+    "maxBountyOutBps": "TBA",
+    "selfHostedInCap": "TBA",
+    "windowS": "TBA",
+    "minTtlS": "TBA",
+    "maxTtlS": "TBA",
+    "refundGraceS": "TBA",
+    "minAmount": "TBA",
+    "paused": false
+  },
+  "challenge": {
+    "windowS": "TBA",
+    "bond": "TBA",
+    "reward": "TBA",
+    "resolveTimeoutS": "TBA",
+    "paused": false
+  }
+}
