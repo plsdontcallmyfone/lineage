@@ -559,13 +559,16 @@ export class DiscoveryAgent {
     return this.ok(this.client.post("/v1/findings/hotspots", body), "file hotspot");
   }
 
+  /** True once the worker is stopping: no new profile run starts. */
+  stopping: () => boolean = () => false;
+
   /** One pass over this agent's profile assignments: profile and commit new ones, reveal committed ones. */
   async replayOnce(): Promise<number> {
     const list = await this.ok<ProfileAssignment[]>(this.client.get("/v1/findings/assignments", true), "profile assignments");
     let acted = 0;
     for (const a of list) {
       try {
-        if (a.status === "assigned") {
+        if (a.status === "assigned" && !this.stopping()) {
           const t0 = Date.now();
           const { loaded, deps, patches } = await this.tipOf(a.lineage_id, a.tip);
           const run = await profileTip({ loaded, deps, parentPatches: patches, metric: a.metric, seed: a.seed });

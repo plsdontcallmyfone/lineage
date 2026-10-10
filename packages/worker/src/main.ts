@@ -239,6 +239,9 @@ async function main() {
         if (stop) return;
         stop = true;
         stoppedAt = Date.now();
+        // at once, not after the loop: the tick running now must not start another assignment
+        w.draining = true;
+        console.error("stop: finishing the running job, taking no new work, then revealing what is committed");
         // watchdog: once no job is running and nothing is left to reveal, give the loop a minute to finish
         // and then exit even if a call is stuck (a stop that hung for the whole TimeoutStopSec held a deploy)
         setInterval(() => {

@@ -155,7 +155,13 @@ export class Worker {
   readonly telemetry: Telemetry;
   private log: (m: string) => void;
   private pending = new Map<string, PendingReplay>();
-  /** Set on stop: no new assignments are run; committed replays are still revealed. */
+  /**
+   * Set on stop (SIGTERM, before the loop ends): no new assignment, profile, calibration or authoring
+   * step starts, even inside the tick that is running; committed replays are still revealed. It used to
+   * be set only once the loop had returned, so a tick running at SIGTERM went on to start the next
+   * assigned replay (site incident 2026-10-10: lineage-verifier@v2 revealed at 19:44:41, then kept
+   * working until its 45 min stop timeout).
+   */
   draining = false;
   private stateFile: string;
   private submitted = 0;
@@ -182,6 +188,9 @@ export class Worker {
     this.telemetry = new Telemetry(this.client, this.log, { enabled: opts.telemetry !== false });
     this.profiles = new DiscoveryAgent(opts.core, opts.key, this.recipes, this.log);
     this.calibrations = new CalibrationVerifier(opts.core, opts.key, this.log);
+    // a stopping worker takes no new side work either (only finishes what it runs and reveals)
+    this.profiles.stopping = () => this.draining;
+    this.calibrations.stopping = () => this.draining;
     if (existsSync(this.stateFile)) {
       for (const [k, v] of Object.entries(JSON.parse(readFileSync(this.stateFile, "utf8")) as Record<string, PendingReplay>)) this.pending.set(k, v);
     }
@@ -769,7 +778,7 @@ export class Worker {
     try {
       let acted = await this.replayOnce();
       if (!this.draining) acted += await this.sideWork();
-      if (acted === 0) await this.authorOnce();
+      if (acted === 0 && !this.draining) await this.authorOnce();
     } catch (e) {
       this.log(`tick: ${(e as Error).message}`);
     } finally {

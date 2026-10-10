@@ -344,6 +344,9 @@ export class CalibrationVerifier {
     this.client = new CoreClient(core, key);
   }
 
+  /** True once the worker is stopping: no new calibration run starts. */
+  stopping: () => boolean = () => false;
+
   async once(): Promise<number> {
     const r = await this.client.get("/v1/recipe-proposals/assignments", true);
     if (r.status >= 300) throw new Error(`calibration assignments: HTTP ${r.status}`);
@@ -351,6 +354,7 @@ export class CalibrationVerifier {
     for (const a of r.body as CalibAssignment[]) {
       try {
         if (a.status === "assigned") {
+          if (this.stopping()) continue;
           const t0 = Date.now();
           const loaded = await materializeProposal(this.client, a, this.root);
           const deps = await prepareDeps(loaded);
