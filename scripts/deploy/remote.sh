@@ -395,7 +395,8 @@ backup)
   rc=0
   systemctl start lineage-backup-state.service lineage-backup-identity.service lineage-backup.service || rc=1
   for u in lineage-backup-state lineage-backup-identity lineage-backup; do
-    journalctl -u "$u" -n 3 -o cat --no-pager | grep -E '^snapshot|^backup:' | tail -1 || echo "$u: no snapshot line (journalctl -u $u)"
+    l="$(journalctl -u "$u" -n 12 -o cat --no-pager | grep -E '^snapshot|^backup:' | tail -1 || true)"
+    echo "${l:-$u: no snapshot line (journalctl -u $u)}"
   done
   [ -s /etc/lineage/backup-recipient.txt ] || echo "secrets+state parts skipped: no /etc/lineage/backup-recipient.txt"
   exit $rc
