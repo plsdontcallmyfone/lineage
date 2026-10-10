@@ -201,6 +201,28 @@ export function originAllowed(origin: string | null, host: string | null, origin
 }
 
 /** Reads a request body with a byte cap and a deadline, without buffering past the cap. */
+/** Largest refused body the gate still reads to the end (and discards) before answering. */
+export const DRAIN_MAX = 4 * 1024 * 1024;
+
+/** Reads and discards a request body, bounded by DRAIN_MAX bytes and BODY_TIMEOUT_MS. */
+export async function drain(body: ReadableStream<Uint8Array> | null): Promise<void> {
+  if (!body) return;
+  const reader = body.getReader();
+  const deadline = Date.now() + BODY_TIMEOUT_MS;
+  let n = 0;
+  try {
+    while (Date.now() < deadline && n <= DRAIN_MAX) {
+      const { done, value } = await reader.read();
+      if (done) return;
+      n += value.byteLength;
+    }
+  } catch {
+    /* the client went away */
+  } finally {
+    await reader.cancel().catch(() => {});
+  }
+}
+
 export async function readCapped(body: ReadableStream<Uint8Array> | null, max = MAX_BODY, timeoutMs = BODY_TIMEOUT_MS): Promise<{ ok: true; bytes: Uint8Array } | { ok: false; status: 408 | 413 }> {
   if (!body) return { ok: true, bytes: new Uint8Array(0) };
   const reader = body.getReader();
@@ -286,16 +308,25 @@ if (import.meta.main) {
       if (req.method === "OPTIONS" && ("refuse" in r || r.upstream !== "indexer"))
         return "refuse" in r || !r.cors ? new Response(null, { status: 403 }) : new Response(null, { status: 204, headers: CORS_HEADERS });
       if ("refuse" in r) return refuse(r.refuse, r.why === "method" ? "method_not_allowed" : "not_found");
-      if (r.sameOrigin && !originAllowed(req.headers.get("origin"), req.headers.get("host"), ORIGINS)) return refuse(403, "cross_origin");
+      // a refusal that leaves a request body unread also closes the connection: otherwise the client
+      // reuses it and its next request waits behind the unread bytes (a 413 on a 1.7 MB upload froze the
+      // next request on that connection)
+      const unread: Record<string, string> = (req.method === "POST" || req.method === "PUT") && req.body !== null ? { connection: "close" } : {};
+      if (r.sameOrigin && !originAllowed(req.headers.get("origin"), req.headers.get("host"), ORIGINS)) return refuse(403, "cross_origin", unread);
       const t = limiter.take(ip, r.klass);
-      if (!t.ok) return refuse(429, "rate_limited", { "retry-after": String(t.retryS) }, r.cors);
+      if (!t.ok) return refuse(429, "rate_limited", { "retry-after": String(t.retryS), ...unread }, r.cors);
       const maxBody = r.maxBody ?? MAX_BODY;
       const len = Number(req.headers.get("content-length") ?? 0);
-      if (len > maxBody) return refuse(413, "body_too_large", {}, r.cors);
+      if (len > maxBody) {
+        // read and discard a moderately oversized body first, so even a client that ignores
+        // `connection: close` finds a clean connection; anything bigger is just closed
+        if (len <= DRAIN_MAX) await drain(req.body);
+        return refuse(413, "body_too_large", unread, r.cors);
+      }
       let body: Uint8Array | undefined;
       if (req.method === "POST" || req.method === "PUT") {
         const b = await readCapped(req.body, maxBody);
-        if (!b.ok) return refuse(b.status, b.status === 413 ? "body_too_large" : "body_timeout", {}, r.cors);
+        if (!b.ok) return refuse(b.status, b.status === 413 ? "body_too_large" : "body_timeout", unread, r.cors);
         body = b.bytes;
       }
       // the slot is taken before the upstream is asked, so parallel opens cannot pass the cap together
