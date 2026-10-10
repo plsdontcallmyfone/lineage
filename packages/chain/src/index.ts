@@ -14,6 +14,7 @@ export * from "./sender.ts";
 export * from "./spl.ts";
 export * from "./pump.ts";
 export * from "./pump-launch.ts";
+export * from "./holding.ts";
 export * from "./readers.ts";
 export * from "./slots.ts";
 export * from "./swap.ts";

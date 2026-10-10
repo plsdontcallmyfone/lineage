@@ -15,6 +15,7 @@ export * from "../rpc.ts";
 export * from "../spl.ts";
 export * from "../pump.ts";
 export * from "../pump-launch.ts";
+export * from "../holding.ts";
 export * from "../readers.ts";
 export * from "./wire.ts";
 export * from "./client.ts";

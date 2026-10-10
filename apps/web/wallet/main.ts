@@ -14,6 +14,7 @@
 import "../../../packages/chain/src/browser/buffer.ts";
 import {
   ata,
+  moveLaunchHolding,
   base58Encode,
   base64Encode,
   canonicalJson,
@@ -851,8 +852,10 @@ async function bindHosted(agent: string) {
     }
     if (!t) throw new Error("the hosted runtime has not seen this launch yet");
     const rec0 = await reader.agent(agent);
-    if (t.status === "bound" || rec0?.signingKey === t.new_key)
-      return out(html`<span class="mark good">${icon.check} bound</span> <span class="dim">signing key ${addr(t.new_key)} (the hosted runtime's)</span>`);
+    if (t.status === "bound" || rec0?.signingKey === t.new_key) {
+      out(html`<span class="mark good">${icon.check} bound</span> <span class="dim">signing key ${addr(t.new_key)} (the hosted runtime's)</span><div id="w-rt-holding"></div>`);
+      return void moveHolding(agent, t.new_key);
+    }
     if (!requireReady()) return out(html`${retry()} <span class="dim">connect the launcher wallet</span>`);
     if (rec0 && rec0.owner !== me()) return out(html`<span class="dim">only the owner ${addr(rec0.owner)} can bind it</span>`);
     out(html`<span class="dim">Sign the binding: your wallet signs <span class="num">rotate_agent_key</span> as owner, to the runtime's key ${addr(t.new_key)}; the runtime co-signs and sends it.</span>`);
@@ -866,10 +869,34 @@ async function bindHosted(agent: string) {
     logSig(`rotate_agent_key ${short(agent)} to the hosted runtime (co-signed by the runtime)`, j.signature, t2?.meta?.fee, true);
     const rec = await reader.agent(agent);
     out(rec?.signingKey === t.new_key
-      ? html`<span class="mark good">${icon.check} bound</span> ${txLink(j.signature)} <span class="dim">signing key ${addr(t.new_key)} (the hosted runtime's), key changes ${rec.keySeq}; it starts on the runtime's next pass</span>`
+      ? html`<span class="mark good">${icon.check} bound</span> ${txLink(j.signature)} <span class="dim">signing key ${addr(t.new_key)} (the hosted runtime's), key changes ${rec.keySeq}; it starts on the runtime's next pass</span><div id="w-rt-holding"></div>`
       : html`<span class="mark warn">${icon.warn} sent ${txLink(j.signature)}, the registry has not shown the new key yet</span>`);
+    if (rec?.signingKey === t.new_key) await moveHolding(agent, t.new_key);
   } catch (e) {
     out(html`${errBox(e, (e as any).logs)}<div class="wl-row" style="margin-top:6px">${retry()}</div>`);
+  }
+}
+
+// LAUNCH-FRONTING D3 (packages/chain/src/holding.ts): once bound, the launch holding (the initial buy,
+// delivered to the agent key) moves to the runtime key, the hosted agent's treasury. The agent key still
+// in this tab signs the transfer; the launcher's wallet pays. Nothing to do when the holding is empty.
+async function moveHolding(agent: string, treasury: string) {
+  const out = (r: Raw | string) => set("w-rt-holding", r);
+  const L = S.launched;
+  if (!L || L.agent.id !== agent) return;
+  try {
+    const mint = await reader.mint(L.mint);
+    const held = (await reader.tokenBalance(ata(agent, L.mint, mint?.tokenProgram ?? TOKEN_2022_PROGRAM))) ?? 0n;
+    if (!mint || held === 0n) return;
+    if (!requireReady()) return out(html`<span class="dim">connect the launcher wallet to move the launch holding to the agent's treasury</span>`);
+    out(html`<span class="dim">Moving the launch holding (${units(held, mint.decimals)}) to the agent's treasury ${addr(treasury)}: your wallet pays, the agent key signs…</span>`);
+    const ixs = moveLaunchHolding({ payer: me()!, agentKey: agent, treasury, agentMint: L.mint, amount: held, decimals: mint.decimals, tokenProgram: mint.tokenProgram });
+    const r = await signAndSend({ wallet: S.wallet!, account: S.account!, ixs, local: [L.agent], onStatus: (m) => out(html`<span class="dim">${m}</span>`) });
+    const sig = r.confirmed?.signature;
+    if (sig) logSig(`launch holding of ${short(agent)} to its treasury ${short(treasury)}`, sig, r.confirmed?.fee, true);
+    out(html`<span class="mark good">${icon.check} launch holding moved</span> ${sig ? txLink(sig) : ""} <span class="dim">${units(held, mint.decimals)} to ${addr(treasury)}, which never sells its own token</span>`);
+  } catch (e) {
+    out(html`${errBox(e, (e as any).logs)}`);
   }
 }
 
