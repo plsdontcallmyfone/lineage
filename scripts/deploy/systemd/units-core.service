@@ -1,10 +1,14 @@
-# Installed by scripts/deploy/remote.sh. Lineage public devnet site, docs/DEPLOY-SITE.md.
+# Installed by scripts/deploy/remote.sh. units public devnet site, docs/DEPLOY-SITE.md.
 # Runs as lineage-core (no docker, no login; audit OFF-D10): its data in /var/lib/lineage/core, its keys
 # and network.json in /etc/lineage-core (remote.sh users_setup). Group lineage gives it read access to the
 # workers' git mirrors (the tree view, LINEAGE_HOME) and the private canaries; nothing in /home is
 # writable and lineage's key directory is hidden.
 [Unit]
-Description=Lineage Core (devnet chain mode) on 127.0.0.1:9660
+# rebrand (docs/plans/REBRAND-UNITS.md 3.8): never runs together with the unit of the old name; a
+# start waits until that one has stopped (a stop job always runs before a start job of an ordered pair)
+Conflicts=lineage-core.service
+After=lineage-core.service
+Description=units Core (devnet chain mode) on 127.0.0.1:9660
 After=network-online.target
 Wants=network-online.target
 

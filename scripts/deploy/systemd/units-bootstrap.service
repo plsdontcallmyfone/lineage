@@ -1,8 +1,12 @@
-# Installed by scripts/deploy/remote.sh. Lineage public devnet site, docs/DEPLOY-SITE.md.
+# Installed by scripts/deploy/remote.sh. units public devnet site, docs/DEPLOY-SITE.md.
 # One shot per deploy: recipes, snapshots and calibrations by the reference runner (creates the lineages).
 [Unit]
-Description=Lineage site bootstrap (lineages for LINEAGE_RECIPES)
-After=lineage-core.service docker.service
+# rebrand (docs/plans/REBRAND-UNITS.md 3.8): never runs together with the unit of the old name; a
+# start waits until that one has stopped (a stop job always runs before a start job of an ordered pair)
+Conflicts=lineage-bootstrap.service
+After=lineage-bootstrap.service
+Description=units site bootstrap (lineages for LINEAGE_RECIPES)
+After=units-core.service docker.service
 Requires=docker.service
 
 [Service]

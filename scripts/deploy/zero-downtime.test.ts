@@ -3,7 +3,7 @@
 // verifier drained). The ordering itself is exercised end to end by scripts/deploy/dryrun.sh (simulated
 // long verifier drain, public downtime measured); these tests pin the pieces that make it hold.
 import { describe, expect, test } from "bun:test";
-import { readFileSync } from "node:fs";
+import { readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { fetchUpstream } from "./gate.ts";
 
@@ -103,7 +103,7 @@ describe("deploy kit wiring", () => {
   test("activate never waits on a background unit's stop", () => {
     for (const block of [activate, rollback]) {
       for (const line of block.split("\n").filter((l) => /systemctl (stop|restart|disable)\b/.test(l) && !l.trim().startsWith("#"))) {
-        const background = /BG\[@\]|WORKER_UNITS|all_authors|lineage-runtime|optional_units|verifier|reference/.test(line);
+        const background = /BG\[@\]|WORKER_UNITS|all_authors|(units|lineage)-runtime|optional_units|verifier|reference/.test(line);
         if (!background) continue;
         expect(line).toMatch(/--no-block|systemctl disable -q "\$u"/);
         expect(line).not.toMatch(/disable -q --now/);
@@ -112,11 +112,11 @@ describe("deploy kit wiring", () => {
   });
 
   test("public units restart one by one with a health check, Core first", () => {
-    expect(remote).toMatch(/PUBLIC_UNITS=\(lineage-core /);
+    expect(remote).toMatch(/PUBLIC_UNITS=\("\$UP-core" /);
     expect(activate).toContain("public_restart");
     expect(activate).toContain("rolling back to");
     expect(activate).not.toMatch(/systemctl restart "\$\{CORE_UNITS\[@\]\}"/);
-    // a draining worker is ordered After=lineage-core: a plain restart of Core would wait for its drain
+    // a draining worker is ordered After=units-core: a plain restart of Core would wait for its drain
     expect(remote).toContain("systemctl restart --job-mode=ignore-dependencies");
   });
 
@@ -133,10 +133,25 @@ describe("deploy kit wiring", () => {
   });
 
   test("worker units retry a refused Core and keep their drain allowance", () => {
-    for (const u of ["lineage-verifier@.service", "lineage-reference.service", "lineage-author@.service", "lineage-runtime.service"]) {
+    for (const u of ["units-verifier@.service", "units-reference.service", "units-author@.service", "units-runtime.service"]) {
       const f = readFileSync(join(DIR, "systemd", u), "utf8");
       expect(f).toContain("LINEAGE_CORE_RETRY_MS=30000");
       expect(f).toMatch(/TimeoutStopSec=\d+/);
     }
+  });
+
+  test("rebrand: every units-* unit never runs with its lineage-* counterpart and starts after it stops", () => {
+    for (const f of readdirSync(join(DIR, "systemd")).filter((n) => /\.(service|timer)$/.test(n))) {
+      expect(f.startsWith("units-")).toBe(true);
+      const old = "lineage-" + f.slice("units-".length).replace("@.service", "@%i.service");
+      const body = readFileSync(join(DIR, "systemd", f), "utf8");
+      expect(body).toContain(`\nConflicts=${old}\n`);
+      expect(body).toContain(`\nAfter=${old}\n`);
+    }
+    // restart_checked stops the other prefix's unit before restarting a public one
+    expect(remote).toMatch(/o="\$\(other_unit "\$u"\)"/);
+    expect(remote).toContain("unit_set \"$(release_prefix \"$REL\")\"");
+    expect(remote).toContain("unit_set \"$(release_prefix \"$OLD\")\"");
+    expect(remote).toContain("unit_set \"$(release_prefix \"$PREV\")\"");
   });
 });

@@ -1,10 +1,14 @@
-# Installed by scripts/deploy/remote.sh. Lineage public devnet site, docs/DEPLOY-SITE.md "Backups".
+# Installed by scripts/deploy/remote.sh. units public devnet site, docs/DEPLOY-SITE.md "Backups".
 # The "state" part of the secrets+state snapshot (scripts/deploy/backup.sh secrets): the hosted runtime's
 # agent keys and state and the site's own keys, as lineage (their owner), staged in RAM and encrypted
 # with age to the owner's public recipient in /etc/lineage/backup-recipient.txt. Started with
-# lineage-backup.service (hourly by its timer); the newest 24 are kept in /var/lib/lineage/state-backups.
+# units-backup.service (hourly by its timer); the newest 24 are kept in /var/lib/lineage/state-backups.
 [Unit]
-Description=Lineage secrets+state snapshot (runtime and site keys)
+# rebrand (docs/plans/REBRAND-UNITS.md 3.8): never runs together with the unit of the old name; a
+# start waits until that one has stopped (a stop job always runs before a start job of an ordered pair)
+Conflicts=lineage-backup-state.service
+After=lineage-backup-state.service
+Description=units secrets+state snapshot (runtime and site keys)
 ConditionPathExists=/etc/lineage/backup-recipient.txt
 
 [Service]

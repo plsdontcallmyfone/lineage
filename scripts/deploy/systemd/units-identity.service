@@ -1,12 +1,16 @@
-# Installed by scripts/deploy/remote.sh. Lineage public devnet site, docs/DEPLOY-SITE.md.
+# Installed by scripts/deploy/remote.sh. units public devnet site, docs/DEPLOY-SITE.md.
 # GitHub identity service (packages/identity, SPEC 13.9): launch watcher (provisions purchased
 # accounts from the encrypted reserve), pasted-token intake and revocation, status API under
 # /identity/* (Caddy routes it here directly, never through the gate or Core). Runs as the dedicated
 # user lineage-identity; its store /var/lib/lineage/identity (mode 700) and key file
 # /etc/lineage-identity/master.key are readable by that user only.
 [Unit]
-Description=Lineage GitHub identity service on 127.0.0.1:9665
-After=network-online.target lineage-core.service
+# rebrand (docs/plans/REBRAND-UNITS.md 3.8): never runs together with the unit of the old name; a
+# start waits until that one has stopped (a stop job always runs before a start job of an ordered pair)
+Conflicts=lineage-identity.service
+After=lineage-identity.service
+Description=units GitHub identity service on 127.0.0.1:9665
+After=network-online.target units-core.service
 Wants=network-online.target
 ConditionPathExists=/etc/lineage-identity/master.key
 

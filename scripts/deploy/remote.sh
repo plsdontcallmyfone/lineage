@@ -39,12 +39,24 @@ DRY_RUN="${DRY_RUN:-0}"
 LINEAGE_RECIPES="${LINEAGE_RECIPES:-fixture-b58,base58-py,minbpe}"
 AUTHORS="${AUTHORS:-minbpe}"; AUTHORS="${AUTHORS//,/ }"
 # every author unit present (running or not), so stop and status also reach authors dropped from AUTHORS
-all_authors() { systemctl list-units --all --plain --no-legend 'lineage-author@*' 2>/dev/null | awk '{print $1}'; echo lineage-author; }
-CORE_UNITS=(lineage-core lineage-web lineage-gate lineage-indexer lineage-identity)
-IDENTITY_TIMER=lineage-identity-cycle.timer
-# Core snapshots for off-machine backups, and the monitor (docs/DEPLOY-SITE.md "Backups", "Monitoring")
-HARDEN_TIMERS=(lineage-backup.timer lineage-monitor.timer)
-WORKER_UNITS=(lineage-reference lineage-verifier@v1 lineage-verifier@v2)
+# Unit names (rebrand, docs/plans/REBRAND-UNITS.md 3.8): releases from before the rebrand install
+# lineage-* units, later ones units-*. UP is the prefix of the release being started; the unit of the
+# other prefix is stopped and disabled when its counterpart starts (other_unit), so the two never run
+# together. Service users and paths are not renamed by this step.
+unit_set() {
+  UP="$1"
+  CORE_UNITS=("$UP-core" "$UP-web" "$UP-gate" "$UP-indexer" "$UP-identity")
+  IDENTITY_TIMER="$UP-identity-cycle.timer"
+  # Core snapshots for off-machine backups, and the monitor (docs/DEPLOY-SITE.md "Backups", "Monitoring")
+  HARDEN_TIMERS=("$UP-backup.timer" "$UP-monitor.timer")
+  WORKER_UNITS=("$UP-reference" "$UP-verifier@v1" "$UP-verifier@v2")
+  PUBLIC_UNITS=("$UP-core" "$UP-indexer" "$UP-identity" "$UP-web" "$UP-gate")
+}
+# the prefix a release's unit files use
+release_prefix() { if [ -f "$1/scripts/deploy/systemd/units-core.service" ]; then echo units; else echo lineage; fi; }
+other_unit() { case "$1" in units-*) echo "lineage-${1#units-}" ;; lineage-*) echo "units-${1#lineage-}" ;; esac; }
+unit_set units
+all_authors() { systemctl list-units --all --plain --no-legend 'units-author@*' 'lineage-author@*' 2>/dev/null | awk '{print $1}'; echo "$UP-author"; }
 
 as_lineage() {
   runuser -u lineage -- env -i HOME=/home/lineage USER=lineage LINEAGE_HOME=/home/lineage/.lineage PATH=/usr/local/bin:/usr/bin:/bin bash -c "$1"
@@ -199,12 +211,12 @@ backup_setup() {
 }
 
 # the user the installed Core unit runs as (lineage before the service users, lineage-core after)
-core_user() { sed -n 's/^User=//p' /etc/systemd/system/lineage-core.service 2>/dev/null | head -1; }
+core_user() { sed -n 's/^User=//p' "/etc/systemd/system/$UP-core.service" 2>/dev/null | head -1; }
 
 optional_units() {
   local u=()
-  [ "${WITH_RUNTIME:-0}" = 1 ] && u+=(lineage-runtime)
-  if [ "${WITH_AUTHOR:-0}" = 1 ]; then for n in ${AUTHORS:-minbpe}; do u+=("lineage-author@$n"); done; fi
+  [ "${WITH_RUNTIME:-0}" = 1 ] && u+=("$UP-runtime")
+  if [ "${WITH_AUTHOR:-0}" = 1 ]; then for n in ${AUTHORS:-minbpe}; do u+=("$UP-author@$n"); done; fi
   echo "${u[@]:-}"
 }
 
@@ -223,24 +235,29 @@ optional_units() {
 #                     starts only after the old one has exited and then reveals from the same pending.json.
 #                     The deploy waits at most DRAIN_WAIT seconds for them, then names what is still
 #                     draining and returns.
-PUBLIC_UNITS=(lineage-core lineage-indexer lineage-identity lineage-web lineage-gate)
+# PUBLIC_UNITS (unit_set above): Core first, then the indexer, identity, web and the gate
 DRAIN_WAIT="${DRAIN_WAIT:-120}"     # seconds activate waits for background units to finish draining
 HEALTH_WAIT="${HEALTH_WAIT:-180}"   # seconds each public unit has to answer after its restart (a fresh Core reads the chain first)
 health_url() {
-  case "$1" in
-    lineage-core) echo http://127.0.0.1:9660/v1/health ;;
-    lineage-indexer) echo http://127.0.0.1:9668/market/summary ;;
-    lineage-identity) echo http://127.0.0.1:9665/identity/health ;;
-    lineage-web) echo http://127.0.0.1:9661/live/status ;;
-    lineage-gate) echo http://127.0.0.1:9662/gate/health ;;
+  case "${1#*-}" in
+    core) echo http://127.0.0.1:9660/v1/health ;;
+    indexer) echo http://127.0.0.1:9668/market/summary ;;
+    identity) echo http://127.0.0.1:9665/identity/health ;;
+    web) echo http://127.0.0.1:9661/live/status ;;
+    gate) echo http://127.0.0.1:9662/gate/health ;;
   esac
 }
 now_ms() { date +%s%3N; }
 # restart_checked <unit>: restart one public unit and wait until it answers (200; the indexer: any HTTP
 # answer, it may still be catching up). 1 when it does not within HEALTH_WAIT seconds.
 restart_checked() {
-  local u="$1" t0 code url
+  local u="$1" t0 code url o
   t0=$(now_ms)
+  # the same service under the other prefix (rebrand) holds the port: stop and disable it first; the
+  # restart below follows within the same second, and the callers retry a refused dial meanwhile
+  o="$(other_unit "$u")"
+  if [ -n "$o" ] && systemctl is-active -q "$o" 2>/dev/null; then systemctl stop --job-mode=ignore-dependencies "$o"; echo "  $o stopped (replaced by $u)"; fi
+  [ -n "$o" ] && systemctl disable -q "$o" 2>/dev/null || true
   # ignore-dependencies: a worker unit is ordered After=lineage-core, so a plain restart of Core waits
   # until every draining worker has stopped (stop jobs run in reverse order) and the release switch waits
   # with it; the dry run's simulated verifier drain showed exactly that. Boot and shutdown keep the order.
@@ -250,11 +267,11 @@ restart_checked() {
   local until=$(( $(date +%s) + HEALTH_WAIT ))
   while [ "$(date +%s)" -lt "$until" ]; do
     code="$(curl -s -m 3 -o /dev/null -w '%{http_code}' "$url" 2>/dev/null || true)"
-    if [ "$u" = lineage-indexer ] && [ -n "$code" ] && [ "$code" != 000 ]; then break; fi
+    if [ "${u#*-}" = indexer ] && [ -n "$code" ] && [ "$code" != 000 ]; then break; fi
     [ "$code" = 200 ] && break
     sleep 0.25
   done
-  if [ "$u" = lineage-indexer ] && [ -n "$code" ] && [ "$code" != 000 ] || [ "$code" = 200 ]; then
+  if [ "${u#*-}" = indexer ] && [ -n "$code" ] && [ "$code" != 000 ] || [ "$code" = 200 ]; then
     echo "  $u up in $(( ($(now_ms) - t0) )) ms"
     return 0
   fi
@@ -272,7 +289,7 @@ public_restart() {
 # verifier instance (incl. any beyond v1/v2)
 active_background() {
   local u
-  for u in lineage-runtime lineage-reference $(all_authors) $(systemctl list-units --all --plain --no-legend 'lineage-verifier@*' 2>/dev/null | awk '{print $1}'); do
+  for u in units-runtime units-reference lineage-runtime lineage-reference $(all_authors) units-author lineage-author $(systemctl list-units --all --plain --no-legend 'units-verifier@*' 'lineage-verifier@*' 2>/dev/null | awk '{print $1}'); do
     case "$(systemctl is-active "$u" 2>/dev/null)" in active|activating|reloading|deactivating) echo "${u%.service}" ;; esac
   done | sort -u
 }
@@ -364,6 +381,7 @@ chain)
 activate)
   SHA="$1"; REL="$BASE/releases/$SHA"
   [ -d "$REL" ] || { echo "no release $SHA" >&2; exit 1; }
+  unit_set "$(release_prefix "$REL")"
   OLD="$(readlink "$BASE/current" 2>/dev/null || true)"
   T_ACT=$(date +%s)
   # 1. stage everything while the old release keeps serving: configs, users, keys, the Caddyfile
@@ -423,6 +441,7 @@ activate)
       exit 1
     fi
     echo "ACTIVATE FAILED: $FAILED_UNIT did not come up on $(basename "$REL"); rolling back to $(basename "$OLD")" >&2
+    unit_set "$(release_prefix "$OLD")"
     ln -sfn "$OLD" "$BASE/current.new" && mv -Tf "$BASE/current.new" "$BASE/current"
     if [ -n "$PREV_SAVED" ]; then echo "$PREV_SAVED" > "$BASE/previous"; else rm -f "$BASE/previous"; fi
     if [ -n "$PREVB_SAVED" ]; then echo "$PREVB_SAVED" > "$BASE/previous-backup"; else rm -f "$BASE/previous-backup"; fi
@@ -437,26 +456,28 @@ activate)
     echo "rolled back to $(basename "$OLD") (background units restart on it when their drain ends)" >&2
     exit 1
   fi
+  for u in "$IDENTITY_TIMER" "${HARDEN_TIMERS[@]}"; do systemctl disable -q --now "$(other_unit "$u")" 2>/dev/null || true; done
   systemctl enable -q --now "$IDENTITY_TIMER" "${HARDEN_TIMERS[@]}"
   echo "public units on $(basename "$REL") $(( $(date +%s) - T_ACT )) s after activate began"
   # 4. queue the background units' starts on the new release: a unit still draining starts when its old
   # process exits (systemd waits for the stop; never two processes of one unit)
   WANT=()
   if [ "$DRY_RUN" = 1 ]; then
-    echo "dry run: lineage-bootstrap, lineage-reference, lineage-verifier@v1, lineage-verifier@v2, lineage-runtime, lineage-author@* SKIPPED (sandbox units need Docker)"
+    echo "dry run: $UP-bootstrap, $UP-reference, $UP-verifier@v1, $UP-verifier@v2, $UP-runtime, $UP-author@* SKIPPED (sandbox units need Docker)"
   else
+    for u in $(for w in "${WORKER_UNITS[@]}" "$UP-bootstrap" "$UP-runtime"; do other_unit "$w"; done); do systemctl disable -q "$u" 2>/dev/null || true; done
     systemctl enable -q "${WORKER_UNITS[@]}"
-    systemctl restart --no-block lineage-bootstrap
+    systemctl restart --no-block "$UP-bootstrap"
     WANT+=("${WORKER_UNITS[@]}")
     OPT=" $(optional_units) "
-    for u in lineage-runtime $(all_authors); do
+    for u in units-runtime lineage-runtime $(all_authors); do
       u="${u%.service}"
       case "$OPT" in *" $u "*) ;; *) systemctl disable -q "$u" 2>/dev/null || true ;; esac
     done
     for u in $(optional_units); do systemctl enable -q "$u"; WANT+=("$u"); done
   fi
   # any other verifier instance that was running goes back up too (it drained above)
-  for u in "${BG[@]}"; do case "$u" in lineage-verifier@*) WANT+=("$u") ;; esac; done
+  for u in "${BG[@]}"; do case "$u" in *-verifier@*) WANT+=("$UP-verifier@${u#*@}") ;; esac; done
   if [ ${#WANT[@]} -gt 0 ]; then
     mapfile -t WANT < <(printf '%s\n' "${WANT[@]}" | sort -u)
     # --no-block: the workers are ordered after lineage-bootstrap, which can calibrate for an hour or more
@@ -476,8 +497,9 @@ rollback)
   mapfile -t BG < <(active_background)
   systemctl stop "$IDENTITY_TIMER" 2>/dev/null || true
   [ ${#BG[@]} -gt 0 ] && { systemctl stop --no-block "${BG[@]}"; echo "background draining (no wait): ${BG[*]}"; }
-  PREV_USER="$(sed -n 's/^User=//p' "$PREV/scripts/deploy/systemd/lineage-core.service" 2>/dev/null | head -1)"
-  if [ "${1:-}" = "--with-data" ] || [ "$PREV_USER" = lineage ]; then systemctl stop "${CORE_UNITS[@]}" 2>/dev/null || true; fi
+  unit_set "$(release_prefix "$PREV")"
+  PREV_USER="$(sed -n 's/^User=//p' "$PREV/scripts/deploy/systemd/$UP-core.service" 2>/dev/null | head -1)"
+  if [ "${1:-}" = "--with-data" ] || [ "$PREV_USER" = lineage ]; then systemctl stop "${CORE_UNITS[@]}" $(for u in "${CORE_UNITS[@]}"; do other_unit "$u"; done) 2>/dev/null || true; fi
   if [ "${1:-}" = "--with-data" ]; then
     BK="$(cat "$BASE/previous-backup")"
     [ -f "$BK/core.db" ] || { echo "no data backup at $BK" >&2; exit 1; }
@@ -506,27 +528,36 @@ rollback)
   echo "public units (Core first, each health-checked):"
   FAILED_UNIT=""
   public_restart || echo "$FAILED_UNIT did not come up on $(basename "$PREV"); see journalctl -u $FAILED_UNIT" >&2
+  for u in "$IDENTITY_TIMER" "${HARDEN_TIMERS[@]}"; do systemctl disable -q --now "$(other_unit "$u")" 2>/dev/null || true; done
+  for u in $(for w in "${WORKER_UNITS[@]}" "$UP-bootstrap" "$UP-runtime"; do other_unit "$w"; done); do systemctl disable -q "$u" 2>/dev/null || true; done
+  systemctl enable -q "${CORE_UNITS[@]}" 2>/dev/null || true
   systemctl start "$IDENTITY_TIMER" 2>/dev/null || true
   WANT=()
   [ "$DRY_RUN" = 1 ] || WANT+=("${WORKER_UNITS[@]}" $(optional_units))
-  for u in "${BG[@]}"; do case "$u" in lineage-verifier@*) WANT+=("$u") ;; esac; done
+  for u in "${BG[@]}"; do case "$u" in *-verifier@*) WANT+=("$UP-verifier@${u#*@}") ;; esac; done
   [ ${#WANT[@]} -gt 0 ] && systemctl start --no-block $(printf '%s\n' "${WANT[@]}" | sort -u)
   drain_report "$DRAIN_WAIT" "${BG[@]}"
   echo "rolled back to $(basename "$PREV")"
   [ -z "$FAILED_UNIT" ]
   ;;
 stop)
-  systemctl disable -q --now "${HARDEN_TIMERS[@]}" "$IDENTITY_TIMER" lineage-identity-cycle lineage-runtime $(all_authors) lineage-bootstrap "${WORKER_UNITS[@]}" "${CORE_UNITS[@]}" caddy 2>/dev/null || true
-  echo "stopped: every lineage unit and Caddy (disabled; 'start' brings them back)"
+  for P in units lineage; do
+    unit_set "$P"
+    systemctl disable -q --now "${HARDEN_TIMERS[@]}" "$IDENTITY_TIMER" "$P-identity-cycle" "$P-runtime" $(all_authors) "$P-bootstrap" "${WORKER_UNITS[@]}" "${CORE_UNITS[@]}" 2>/dev/null || true
+  done
+  systemctl disable -q --now caddy 2>/dev/null || true
+  echo "stopped: every units (and lineage) unit and Caddy (disabled; 'start' brings them back)"
   ;;
 start)
+  unit_set "$(release_prefix "$(readlink -f "$BASE/current")")"
   systemctl enable -q --now "${CORE_UNITS[@]}" caddy "$IDENTITY_TIMER" "${HARDEN_TIMERS[@]}"
   [ "$DRY_RUN" = 1 ] || systemctl enable -q --now "${WORKER_UNITS[@]}" $(optional_units)
   echo "started"
   ;;
 status)
+  unit_set "$(release_prefix "$(readlink -f "$BASE/current")")"
   echo "release   $(basename "$(readlink "$BASE/current" 2>/dev/null || echo none)") (previous $(basename "$(cat "$BASE/previous" 2>/dev/null || echo none)"))"
-  for u in "${CORE_UNITS[@]}" "$IDENTITY_TIMER" "${HARDEN_TIMERS[@]}" caddy lineage-bootstrap "${WORKER_UNITS[@]}" lineage-runtime $(all_authors | sort -u); do
+  for u in "${CORE_UNITS[@]}" "$IDENTITY_TIMER" "${HARDEN_TIMERS[@]}" caddy "$UP-bootstrap" "${WORKER_UNITS[@]}" "$UP-runtime" $(all_authors | sort -u); do
     st=$(systemctl is-active "$u" 2>/dev/null || true)
     mem=$(systemctl show -p MemoryCurrent --value "$u" 2>/dev/null || echo "")
     [[ "$mem" =~ ^[0-9]+$ ]] && mem="$((mem / 1048576)) MiB" || mem="-"
@@ -556,8 +587,9 @@ backup)
   # the hourly timer's job now: the two secrets+state parts (each as its data's owner), then Core
   # one transaction: lineage-backup.service wants the two parts, so each runs once
   rc=0
-  systemctl start lineage-backup-state.service lineage-backup-identity.service lineage-backup.service || rc=1
-  for u in lineage-backup-state lineage-backup-identity lineage-backup; do
+  unit_set "$(release_prefix "$(readlink -f "$BASE/current")")"
+  systemctl start "$UP-backup-state.service" "$UP-backup-identity.service" "$UP-backup.service" || rc=1
+  for u in "$UP-backup-state" "$UP-backup-identity" "$UP-backup"; do
     l="$(journalctl -u "$u" -n 12 -o cat --no-pager | grep -E '^snapshot|^backup:' | tail -1 || true)"
     echo "${l:-$u: no snapshot line (journalctl -u $u)}"
   done
@@ -582,8 +614,8 @@ restore-secrets)
   REPLACE=0 RR=""
   while [ $# -gt 0 ]; do case "$1" in --replace) REPLACE=1; shift ;; --root) RR="$2"; shift 2 ;; *) echo "unknown argument $1" >&2; exit 2 ;; esac; done
   case "$P" in
-    state) OWNER=lineage; ALLOW='^(var/lib/lineage/runtime/|home/lineage/\.config/lineage/site/)'; UNITS=(lineage-runtime) ;;
-    identity) OWNER=lineage-identity; ALLOW='^(var/lib/lineage/identity/records/|etc/lineage-identity/master\.key$)'; UNITS=(lineage-identity-cycle.timer lineage-identity)
+    state) OWNER=lineage; ALLOW='^(var/lib/lineage/runtime/|home/lineage/\.config/lineage/site/)'; UNITS=(units-runtime lineage-runtime) ;;
+    identity) OWNER=lineage-identity; ALLOW='^(var/lib/lineage/identity/records/|etc/lineage-identity/master\.key$)'; UNITS=(units-identity-cycle.timer units-identity lineage-identity-cycle.timer lineage-identity)
       id lineage-identity >/dev/null 2>&1 || useradd --system --home-dir /var/lib/lineage/identity/home --no-create-home --shell /usr/sbin/nologin --user-group lineage-identity ;;
     *) echo "usage: remote.sh restore-secrets state|identity [--replace] [--root DIR] < part.tar" >&2; exit 2 ;;
   esac
@@ -627,7 +659,8 @@ restore-secrets)
   echo "restored $P: ${#FILES[@]} files${RR:+ under $RR} for $OWNER (${#DIFF[@]} replaced)"
   ;;
 monitor)
-  systemctl start lineage-monitor.service || true
+  unit_set "$(release_prefix "$(readlink -f "$BASE/current")")"
+  systemctl start "$UP-monitor.service" || true
   jq -r '"monitor " + .worst + " at " + .at, (.checks[] | "  " + (.level | . + "    "[0:(5 - length)]) + .id + ": " + .msg)' /var/lib/lineage-monitor/state.json
   ;;
 restore-test)
@@ -637,16 +670,16 @@ restore-test)
   [ -f "$F" ] || { echo "no snapshot" >&2; exit 1; }
   REL="$(readlink -f "$BASE/current")" D=/var/lib/lineage/restore-test PORT=9669
   [ -z "$(lsof -ti ":$PORT" 2>/dev/null)" ] || { echo "port $PORT is in use" >&2; exit 1; }
-  systemctl stop lineage-restore-test 2>/dev/null || true
+  systemctl stop units-restore-test 2>/dev/null || true
   rm -rf "$D"; install -d -m 0770 -o lineage-core -g lineage "$D"
   RC() { runuser -u lineage-core -- env -i PATH=/usr/local/bin:/usr/bin:/bin HOME="$D" bash -c "cd $D && $1"; }
-  trap 'systemctl stop lineage-restore-test 2>/dev/null || true; systemctl reset-failed lineage-restore-test 2>/dev/null || true; rm -rf "$D"' EXIT
+  trap 'systemctl stop units-restore-test 2>/dev/null || true; systemctl reset-failed units-restore-test 2>/dev/null || true; rm -rf "$D"' EXIT
   RC "bash $REL/scripts/deploy/backup.sh verify '$F'"
   RC "bash $REL/scripts/deploy/backup.sh extract '$F' $D/data && tar -xOf <(zstd -q -d -c '$F') manifest.json > $D/manifest.json"
   jq 'del(.chain.core_authority_key) | .canaries_dir = "'"$D"'/no-canaries"' /etc/lineage-core/network.json > "$D/network.json"
   chown lineage-core:lineage-core "$D/network.json"; chmod 600 "$D/network.json"
   T0=$(date +%s)
-  systemd-run -q --unit lineage-restore-test --uid=lineage-core --gid=lineage-core -p UMask=0007 -p WorkingDirectory="$REL" \
+  systemd-run -q --unit units-restore-test --uid=lineage-core --gid=lineage-core -p UMask=0007 -p WorkingDirectory="$REL" \
     -p Environment="HOME=$D LINEAGE_HOME=/home/lineage/.lineage BUN_RUNTIME_TRANSPILER_CACHE_PATH=0 GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=safe.directory GIT_CONFIG_VALUE_0=*" \
     /usr/local/bin/bun packages/core/src/main.ts --data "$D/data" --port $PORT --host 127.0.0.1 --config "$D/network.json" \
       --admin-key /etc/lineage-core/admin.json --runtime-key /var/lib/lineage/site/runtime-authority.pub --canaries-dir "$D/no-canaries"
@@ -666,7 +699,7 @@ restore-test)
     L2="$(runuser -u lineage-core -- sqlite3 -readonly "$D/data/core.db" 'select lineage_id from lineages' | jq -R . | jq -sc 'sort')"
     chk lineage_ids "$(echo "$L1" | sha256sum | cut -c1-16)" "$(echo "$L2" | sha256sum | cut -c1-16)"
   else
-    fail=1; echo "restored Core did not answer on $PORT"; journalctl -u lineage-restore-test -n 20 -o cat --no-pager
+    fail=1; echo "restored Core did not answer on $PORT"; journalctl -u units-restore-test -n 20 -o cat --no-pager
   fi
   echo "restore test $(basename "$F"): $([ "$fail" = 0 ] && echo PASS || echo FAIL) ($pass ok, $fail failed)"
   [ "$fail" = 0 ]
@@ -688,7 +721,8 @@ restore)
     exit 0
   fi
   runuser -u lineage-core -- env -i PATH=/usr/local/bin:/usr/bin:/bin bash "$REL/scripts/deploy/backup.sh" verify "$F"
-  systemctl stop lineage-backup.timer lineage-runtime $(all_authors) "${WORKER_UNITS[@]}" "${CORE_UNITS[@]}" 2>/dev/null || true
+  unit_set "$(release_prefix "$REL")"
+  systemctl stop "$UP-backup.timer" "$UP-runtime" $(all_authors) "${WORKER_UNITS[@]}" "${CORE_UNITS[@]}" 2>/dev/null || true
   M="/var/lib/lineage/backups/$(date -u +%Y%m%dT%H%M%SZ)-before-restore"
   install -d -o lineage -g lineage "$M"
   mv /var/lib/lineage/core/core.db* /var/lib/lineage/core/blobs "$M"/ 2>/dev/null || true
@@ -696,7 +730,7 @@ restore)
   runuser -u lineage-core -- env -i PATH=/usr/local/bin:/usr/bin:/bin bash "$REL/scripts/deploy/backup.sh" extract "$F" /var/lib/lineage/core/.restore
   mv /var/lib/lineage/core/.restore/core.db /var/lib/lineage/core/.restore/blobs /var/lib/lineage/core/ && rmdir /var/lib/lineage/core/.restore
   chown -R "$(core_user)":lineage /var/lib/lineage/core; chmod -R g+rwX /var/lib/lineage/core
-  systemctl start "${CORE_UNITS[@]}" lineage-backup.timer
+  systemctl start "${CORE_UNITS[@]}" "$UP-backup.timer"
   [ "$DRY_RUN" = 1 ] || systemctl start "${WORKER_UNITS[@]}" $(optional_units)
   echo "restored $(basename "$F") (the replaced data is in $M)"
   ;;

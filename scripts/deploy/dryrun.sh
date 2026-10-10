@@ -98,13 +98,18 @@ C=(curl -sS -m 15 --cacert "$WORK/ca.crt")
 code() { "${C[@]}" -o /dev/null -w '%{http_code}' "$@"; }
 
 echo "== units"
-for u in lineage-core lineage-web lineage-gate caddy; do
+# rebrand (docs/plans/REBRAND-UNITS.md 3.8): with DRYRUN_FIRST_REF at a release from before the unit
+# rename, deploy 2 moved every unit from lineage-* to units-*; none of the old names may still run or be enabled
+old_active=$(R "systemctl list-units --all --plain --no-legend --state=active,activating 'lineage-*' | awk '{print \$1}' | paste -sd' ' -")
+old_enabled=$(R "systemctl list-unit-files --plain --no-legend --state=enabled 'lineage-*' | awk '{print \$1}' | paste -sd' ' -")
+check "no lineage-* unit running or enabled after the units release" "$([ -z "$old_active$old_enabled" ] && echo 1 || echo 0)" "active: ${old_active:-none}; enabled: ${old_enabled:-none}"
+for u in units-core units-web units-gate caddy; do
   st=$(R systemctl is-active $u); check "unit $u active" "$([ "$st" = active ] && echo 1 || echo 0)" "$st"
 done
-for u in lineage-bootstrap lineage-reference lineage-verifier@v1 lineage-verifier@v2 lineage-runtime lineage-author; do
+for u in units-bootstrap units-reference units-verifier@v1 units-verifier@v2 units-runtime units-author; do
   st=$(R systemctl is-active $u); check "sandbox unit $u skipped in the dry run" "$([ "$st" != active ] && echo 1 || echo 0)" "$st"
 done
-mm=$(R systemctl show -p MemoryMax --value lineage-core); check "lineage-core memory cap" "$([ "$mm" = 1073741824 ] && echo 1 || echo 0)" "MemoryMax $mm"
+mm=$(R systemctl show -p MemoryMax --value units-core); check "units-core memory cap" "$([ "$mm" = 1073741824 ] && echo 1 || echo 0)" "MemoryMax $mm"
 own=$(R "stat -c '%U %a' /home/lineage/.config/lineage/site/admin.json"); check "site keys made on the server, owner lineage, mode 600" "$([ "$own" = 'lineage 600' ] && echo 1 || echo 0)" "$own"
 nk=$(R "ls /home/lineage/.config/lineage/devnet | wc -l"); check "no key copied from this machine in the dry run" "$([ "$nk" = 0 ] && echo 1 || echo 0)" "$nk files"
 uf=$(R "ufw status | head -1"); check "ufw active" "$(echo "$uf" | grep -q 'active' && echo 1 || echo 0)" "$uf"
@@ -151,7 +156,7 @@ check "scripts/verify.ts runs against the public site" "$([ $rc = 0 ] && echo 1 
 echo "== status, stop, start, rollback"
 "$D" 127.0.0.1 status > "$WORK/status.log" 2>&1; rc=$?; cat "$WORK/status.log"
 check "deploy.sh status" "$([ $rc = 0 ] && grep -q 'core      ok' "$WORK/status.log" && echo 1 || echo 0)"
-"$D" 127.0.0.1 stop >/dev/null 2>&1; st=$(R systemctl is-active lineage-core caddy | sort -u | tr '\n' ' ')
+"$D" 127.0.0.1 stop >/dev/null 2>&1; st=$(R systemctl is-active units-core caddy | sort -u | tr '\n' ' ')
 check "stop" "$(echo "$st" | grep -qw active && echo 0 || echo 1)" "$st"
 "$D" 127.0.0.1 start >/dev/null 2>&1
 for i in $(seq 1 30); do [ "$(code "$U/v1/health")" = 200 ] && break; sleep 2; done
@@ -164,10 +169,10 @@ if [ "$FIRSTSHA" != "$HEADSHA" ]; then
   check "rollback to the previous release" "$([ $rc = 0 ] && [ "$cur" = "$want" ] && [ "$(code "$U/v1/health")" = 200 ] && echo 1 || echo 0)" "now $cur"
   echo "== zero-downtime activate: a release whose Core fails its health check is rolled back"
   # a drop-in that fails Core's start only while /opt/lineage/current is HEAD's release
-  R "install -d /etc/systemd/system/lineage-core.service.d && printf '[Service]\nExecStartPre=/bin/sh -c \"readlink -f /opt/lineage/current | grep -qv $HEADSHA\"\n' > /etc/systemd/system/lineage-core.service.d/zz-dryrun-break.conf && systemctl daemon-reload"
+  R "install -d /etc/systemd/system/units-core.service.d && printf '[Service]\nExecStartPre=/bin/sh -c \"readlink -f /opt/lineage/current | grep -qv $HEADSHA\"\n' > /etc/systemd/system/units-core.service.d/zz-dryrun-break.conf && systemctl daemon-reload"
   DEPLOY_REF="$HEADSHA" DEPLOY_HEALTH_WAIT=15 "$D" 127.0.0.1 code > "$WORK/dbreak.log" 2>&1; rc=$?
   cur=$(R "basename \$(readlink /opt/lineage/current)")
-  R "rm -f /etc/systemd/system/lineage-core.service.d/zz-dryrun-break.conf && systemctl daemon-reload"
+  R "rm -f /etc/systemd/system/units-core.service.d/zz-dryrun-break.conf && systemctl daemon-reload"
   for i in $(seq 1 30); do [ "$(code "$U/v1/health")" = 200 ] && break; sleep 1; done
   check "a failed Core health check rolls the release back" "$([ $rc != 0 ] && [ "$cur" = "$want" ] && grep -q 'rolled back to' "$WORK/dbreak.log" && [ "$(code "$U/v1/health")" = 200 ] && echo 1 || echo 0)" "exit $rc, now $cur"
 
@@ -185,11 +190,11 @@ SIM
   R "cat > /usr/local/lib/lineage-sim-verifier.sh && chmod 755 /usr/local/lib/lineage-sim-verifier.sh" < "$WORK/sim.sh"
   R "install -d -o lineage -g lineage /var/lib/lineage-sim && rm -f /var/lib/lineage-sim/verifier.log
      systemctl cat docker.service >/dev/null 2>&1 || printf '[Unit]\nDescription=dry run stub (no Docker in this container)\n[Service]\nType=oneshot\nRemainAfterExit=yes\nExecStart=/bin/true\n' > /etc/systemd/system/docker.service
-     install -d /etc/systemd/system/lineage-verifier@sim.service.d
-     printf '[Service]\nExecStart=\nExecStart=/bin/bash /usr/local/lib/lineage-sim-verifier.sh\nEnvironment=SIM_DRAIN_S=$SIM_DRAIN_S\n' > /etc/systemd/system/lineage-verifier@sim.service.d/dryrun.conf
-     systemctl daemon-reload && systemctl start lineage-verifier@sim"
+     install -d /etc/systemd/system/units-verifier@sim.service.d
+     printf '[Service]\nExecStart=\nExecStart=/bin/bash /usr/local/lib/lineage-sim-verifier.sh\nEnvironment=SIM_DRAIN_S=$SIM_DRAIN_S\n' > /etc/systemd/system/units-verifier@sim.service.d/dryrun.conf
+     systemctl daemon-reload && systemctl start units-verifier@sim"
   sleep 2
-  st=$(R systemctl is-active lineage-verifier@sim)
+  st=$(R systemctl is-active units-verifier@sim)
   check "simulated verifier running before the deploy" "$([ "$st" = active ] && echo 1 || echo 0)" "$st"
   # poll the public site every 250 ms through the whole deploy
   ms() { perl -MTime::HiRes=time -e 'printf "%d\n", time * 1000'; }
@@ -200,7 +205,7 @@ SIM
   cur=$(R "basename \$(readlink /opt/lineage/current)")
   check "forward again to HEAD (code mode)" "$([ $rc = 0 ] && [ "$cur" = "$(sed -n 's/^== ship \([0-9a-f]*\) .*/\1/p' "$WORK/d4.log")" ] && echo 1 || echo 0)" "now $cur"
   grep -E 'up in|draining|DRAINING|public units on' "$WORK/d4.log" | sed 's/^/  /'
-  check "deploy returned while the verifier was still draining" "$([ "$took" -lt "$SIM_DRAIN_S" ] && grep -q 'lineage-verifier@sim' <(sed -n '/still draining/,$p' "$WORK/d4.log") && echo 1 || echo 0)" "deploy $took s, drain $SIM_DRAIN_S s"
+  check "deploy returned while the verifier was still draining" "$([ "$took" -lt "$SIM_DRAIN_S" ] && grep -q 'units-verifier@sim' <(sed -n '/still draining/,$p' "$WORK/d4.log") && echo 1 || echo 0)" "deploy $took s, drain $SIM_DRAIN_S s"
   # public downtime: non-200 answers and the longest time between two 200 answers
   pol=$(bun -e '
     const rows = (await Bun.file(process.argv[1]).text()).trim().split("\n").map((l) => l.split(" ")).filter((r) => r.length === 3).map(([a, c, b]) => ({ a: +a, c, b: +b }));

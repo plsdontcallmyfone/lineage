@@ -4,7 +4,7 @@ import { decide, evaluate, LIMITS, type Inputs } from "./monitor.ts";
 const NOW = 1_800_000_000_000;
 const healthy = (): Inputs => ({
   now: NOW,
-  units: { "lineage-core.service": { enabled: true, active: "active" }, "lineage-backup.timer": { enabled: true, active: "active" }, "lineage-author@x.service": { enabled: false, active: "inactive" } },
+  units: { "units-core.service": { enabled: true, active: "active" }, "units-backup.timer": { enabled: true, active: "active" }, "units-author@x.service": { enabled: false, active: "inactive" } },
   coreHealth: { ok: true },
   gateHealth: { ok: true },
   publicHealth: { ok: true },
@@ -36,10 +36,10 @@ describe("monitor evaluate", () => {
   });
   test("an enabled unit that is not active fails; a disabled one is ignored", () => {
     const i = healthy();
-    i.units["lineage-core.service"] = { enabled: true, active: "failed" };
+    i.units["units-core.service"] = { enabled: true, active: "failed" };
     const c = evaluate(i).find((x) => x.id === "units")!;
     expect(c.level).toBe("fail");
-    expect(c.msg).toContain("lineage-core.service (failed)");
+    expect(c.msg).toContain("units-core.service (failed)");
     expect(c.msg).not.toContain("author");
   });
   test("Core down fails", () => {

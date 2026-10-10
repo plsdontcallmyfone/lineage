@@ -1,10 +1,14 @@
-# Installed by scripts/deploy/remote.sh. Lineage public devnet site, docs/DEPLOY-SITE.md.
+# Installed by scripts/deploy/remote.sh. units public devnet site, docs/DEPLOY-SITE.md.
 # The reference runner (Core's own measurements: calibrations, reference replays, audits). Docker sandboxes
 # run under dockerd with each recipe's limits, outside this unit's memory cap.
 [Unit]
-Description=Lineage reference runner
-After=lineage-core.service lineage-bootstrap.service docker.service
-Wants=lineage-bootstrap.service
+# rebrand (docs/plans/REBRAND-UNITS.md 3.8): never runs together with the unit of the old name; a
+# start waits until that one has stopped (a stop job always runs before a start job of an ordered pair)
+Conflicts=lineage-reference.service
+After=lineage-reference.service
+Description=units reference runner
+After=units-core.service units-bootstrap.service docker.service
+Wants=units-bootstrap.service
 Requires=docker.service
 
 [Service]

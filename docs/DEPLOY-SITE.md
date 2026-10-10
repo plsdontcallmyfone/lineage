@@ -75,9 +75,9 @@ of `~/.ssh/lineage_site`), then run deploy.sh with its address.
 | `lineage-verifier@v1`, `@v2` | two honest verifiers, bonded on devnet | `lineage` | | 1 GB each |
 | `lineage-author@<name>` (optional, one per name in `AUTHORS`) | TEST author agent of recipe `<name>`, scripted candidates | `lineage` | | 1 GB each |
 | `lineage-runtime` (optional, disabled) | hosted runtime (`packages/runtime`) | `lineage` | | 1 GB |
-| `lineage-backup.timer` | hourly Core snapshot (see "Backups") | `lineage-core` | | 512 MB |
+| `units-backup.timer` | hourly Core snapshot (see "Backups") | `lineage-core` | | 512 MB |
 | `lineage-backup-state`, `lineage-backup-identity` (started with `lineage-backup`) | hourly secrets+state snapshot, age-encrypted (see "Backups") | `lineage`, `lineage-identity` | | 512 MB each |
-| `lineage-monitor.timer` | checks every 5 minutes, alerts (see "Monitoring") | `lineage-monitor` | | 256 MB |
+| `units-monitor.timer` | checks every 5 minutes, alerts (see "Monitoring") | `lineage-monitor` | | 256 MB |
 
 Only `lineage` is in the docker group: it runs the sandboxes and everything that starts containers. Every
 other unit has its own system user with no shell, no home and no docker (see "Service users"). Core, the
@@ -298,7 +298,7 @@ The cap and its counter:
 
 ```sh
 ssh ... "runuser -u lineage -- env HOME=/home/lineage bash -c 'cd /opt/lineage/current && bun packages/runtime/src/main.ts status --config /var/lib/lineage/site/runtime.json' | jq .cap"
-ssh ... journalctl -u lineage-runtime | grep -E 'started|attempt|spend window|global runtime cap'
+ssh ... journalctl -u units-runtime | grep -E 'started|attempt|spend window|global runtime cap'
 ```
 
 **Enabled 2026-10-09** (release 560a569, `WITH_RUNTIME=1` with the recorded 21 recipes and 18 authors). TEST agent
@@ -394,7 +394,7 @@ sets it up idempotently:
 - writes `identity.env` with the keyed RPC from lineage's `rpc.env`;
 - copies the site admin key to `core-key.json` (Core accepts PR records from it).
 
-`lineage-identity-cycle.timer` runs the mirror and PR bot cycle every 5 minutes as the same user.
+`units-identity-cycle.timer` runs the mirror and PR bot cycle every 5 minutes as the same user.
 
 | What | Where |
 |---|---|
@@ -422,7 +422,7 @@ protect them from an operator with root.
 scripts/deploy/deploy.sh <host> status            # units, memory, Core health, chain read, vaults, verifiers, faucet, SOL, disk
 scripts/deploy/deploy.sh <host> code              # ship HEAD and activate it
 scripts/deploy/deploy.sh <host> fund              # top up and re-register (idempotent)
-ssh -i ~/.ssh/lineage_site root@<host> journalctl -u lineage-core -f
+ssh -i ~/.ssh/lineage_site root@<host> journalctl -u units-core -f
 ```
 
 `status` prints the Core authority's and the site owner's SOL, the faucet's SOL and tLINE, and the
@@ -504,7 +504,7 @@ replays are revealed, the process exits (`packages/worker/test/drain-stop.test.t
 older release keep the old behaviour until their stop timeout.
 
 A second thing held Core: every worker unit is ordered `After=lineage-core`, so a plain
-`systemctl restart lineage-core` waits until every draining worker has stopped (stop jobs run in reverse
+`systemctl restart units-core` waits until every draining worker has stopped (stop jobs run in reverse
 order). The public restarts therefore use `--job-mode=ignore-dependencies`; boot and shutdown keep the
 ordering.
 
@@ -573,14 +573,14 @@ again there, then two consecutive `deploy.sh code` runs reloaded Caddy onto the 
 
 ## Backups
 
-Two kinds of snapshot, both hourly from `lineage-backup.timer`, both kept 24 deep on the server, and both
+Two kinds of snapshot, both hourly from `units-backup.timer`, both kept 24 deep on the server, and both
 copied off the machine by `deploy.sh <host> backup` (daily from the owner's Mac by a launchd agent).
 
 | Kind | What | Written by | Where | Encrypted |
 |---|---|---|---|---|
-| Core | `core.db`, Core's blob store, a manifest (sha256, every table's row count, the open epoch) | `lineage-core` (`lineage-backup.service`) | `/var/lib/lineage/core-backups/core-<UTC>.tar.zst` | no (mode 600) |
-| secrets+state: `state` | the hosted runtime's agent signing keys (`runtime/keys/<agent id>.json`), `state.json`, `posts.json`, `trader/`, `bind-requests/`, `worker/`, the desktop session records and pending recording list (not the live stream dir or recordings), and the site's own keys made on the server (`~lineage/.config/lineage/site`: admin, owner, verifier-ref, verifier-v1, verifier-v2) | `lineage` (`lineage-backup-state.service`) | `/var/lib/lineage/state-backups/state-<UTC>.tar.zst.age` | age |
-| secrets+state: `identity` | the identity service's encrypted records (GitHub pool credentials, pasted tokens, cycle state) and its key file `/etc/lineage-identity/master.key` | `lineage-identity` (`lineage-backup-identity.service`) | `/var/lib/lineage/identity-backups/identity-<UTC>.tar.zst.age` | age |
+| Core | `core.db`, Core's blob store, a manifest (sha256, every table's row count, the open epoch) | `lineage-core` (`units-backup.service`) | `/var/lib/lineage/core-backups/core-<UTC>.tar.zst` | no (mode 600) |
+| secrets+state: `state` | the hosted runtime's agent signing keys (`runtime/keys/<agent id>.json`), `state.json`, `posts.json`, `trader/`, `bind-requests/`, `worker/`, the desktop session records and pending recording list (not the live stream dir or recordings), and the site's own keys made on the server (`~lineage/.config/lineage/site`: admin, owner, verifier-ref, verifier-v1, verifier-v2) | `lineage` (`units-backup-state.service`) | `/var/lib/lineage/state-backups/state-<UTC>.tar.zst.age` | age |
+| secrets+state: `identity` | the identity service's encrypted records (GitHub pool credentials, pasted tokens, cycle state) and its key file `/etc/lineage-identity/master.key` | `lineage-identity` (`units-backup-identity.service`) | `/var/lib/lineage/identity-backups/identity-<UTC>.tar.zst.age` | age |
 
 Not backed up, on purpose: the indexer's `market.db` (derived from chain: delete it and restart
 `lineage-indexer` and it backfills, see "Market indexer"); the keys and env files copied from the
@@ -705,7 +705,7 @@ exit 0.
 
 ## Monitoring
 
-`lineage-monitor.timer` runs `scripts/deploy/monitor.ts` every 5 minutes as `lineage-monitor`.
+`units-monitor.timer` runs `scripts/deploy/monitor.ts` every 5 minutes as `lineage-monitor`.
 
 | Check | Warn | Fail |
 |---|---|---|
@@ -732,7 +732,7 @@ ALERT_WEBHOOK_URL=https://...          # POST {"text": ..., "content": ...} (Sla
 ALERT_TELEGRAM_BOT_TOKEN=...           # and ALERT_TELEGRAM_CHAT_ID=...
 ```
 
-Without it alerts reach the journal only (`journalctl -u lineage-monitor -p warning`). `deploy.sh <host>
+Without it alerts reach the journal only (`journalctl -u units-monitor -p warning`). `deploy.sh <host>
 monitor` runs it now and prints every check; `status` prints the last result. Nothing watches the
 watcher on this box: add an external uptime check on `https://<site>/v1/health` for that.
 

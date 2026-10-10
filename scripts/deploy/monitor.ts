@@ -1,5 +1,5 @@
 #!/usr/bin/env bun
-// Lineage site monitor (plan M4). lineage-monitor.timer runs it every 5 minutes as the unprivileged
+// Lineage site monitor (plan M4). units-monitor.timer runs it every 5 minutes as the unprivileged
 // user lineage-monitor; `remote.sh monitor` starts it once and prints every check.
 //
 //   bun scripts/deploy/monitor.ts [--state /var/lib/lineage-monitor/state.json]
@@ -12,7 +12,7 @@
 // Alerts go out when a check turns warn or fail, when it recovers, and every 6 hours while it stays
 // failing: to ALERT_WEBHOOK_URL (POST {"text": ...}, e.g. Slack or Discord style) and/or Telegram
 // (ALERT_TELEGRAM_BOT_TOKEN, ALERT_TELEGRAM_CHAT_ID), both from /etc/lineage/alert.env, which only the
-// owner writes. Without either, alerts go to the journal only (`journalctl -u lineage-monitor -p warning`).
+// owner writes. Without either, alerts go to the journal only (`journalctl -u units-monitor -p warning`).
 // Nothing secret is read or printed: health endpoints, unit states, public keys and file ages.
 import { existsSync, mkdirSync, readdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
@@ -26,7 +26,7 @@ export interface Check {
 
 export interface Inputs {
   now: number;
-  /** unit name -> { enabled, active } for lineage-* units and caddy */
+  /** unit name -> { enabled, active } for units-* (and pre-rebrand lineage-*) units and caddy */
   units: Record<string, { enabled: boolean; active: string }>;
   coreHealth: { ok: boolean; err?: string };
   gateHealth: { ok: boolean; err?: string };
@@ -246,10 +246,10 @@ function sh(cmd: string[]): string {
 
 function readUnits(): Inputs["units"] {
   const units: Inputs["units"] = {};
-  const lines = sh(["systemctl", "list-units", "--all", "--plain", "--no-legend", "--type=service,timer", "lineage-*", "caddy.service"]).split("\n").filter(Boolean);
+  const lines = sh(["systemctl", "list-units", "--all", "--plain", "--no-legend", "--type=service,timer", "units-*", "lineage-*", "caddy.service"]).split("\n").filter(Boolean);
   for (const l of lines) {
     const name = l.split(/\s+/)[0]!;
-    if (name.endsWith(".service") && /^lineage-(identity-cycle|backup|backup-state|backup-identity|monitor)\.service$/.test(name)) continue; // timer-run oneshots
+    if (name.endsWith(".service") && /^(units|lineage)-(identity-cycle|backup|backup-state|backup-identity|monitor)\.service$/.test(name)) continue; // timer-run oneshots
     const enabled = sh(["systemctl", "is-enabled", name]) === "enabled";
     units[name] = { enabled, active: sh(["systemctl", "is-active", name]) || "unknown" };
   }

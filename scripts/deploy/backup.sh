@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Lineage site: Core snapshots (plan M4). Runs on the server as lineage-core (lineage-backup.timer, hourly)
+# Lineage site: Core snapshots (plan M4). Runs on the server as lineage-core (units-backup.timer, hourly)
 # and, for `verify` and `extract`, also on the owner's machine after deploy.sh pulls a snapshot.
 #
 #   backup.sh snapshot [--data /var/lib/lineage/core] [--out /var/lib/lineage/core-backups] [--keep 24]
@@ -21,11 +21,11 @@
 # /etc/lineage/backup-recipient.txt (a public key; the private identity stays on the owner's machine,
 # ~/.config/lineage/backup-age.key, and never reaches the server). Each part is written by the user that
 # owns its data, so no service user gains read access to another's files:
-#   state     (lineage, lineage-backup-state.service) the hosted runtime's agent signing keys (keys/),
+#   state     (lineage, units-backup-state.service) the hosted runtime's agent signing keys (keys/),
 #             state.json, posts.json, trader/, bind-requests/, worker/, the desktop session records and
 #             pending recording list (not the live stream dir or the recordings themselves), and the
 #             site's own keys made on the server (~lineage/.config/lineage/site: admin, owner, verifiers)
-#   identity  (lineage-identity, lineage-backup-identity.service) the identity service's encrypted
+#   identity  (lineage-identity, units-backup-identity.service) the identity service's encrypted
 #             records (GitHub pool credentials, cycle state) and its key file /etc/lineage-identity/master.key
 # Inside: manifest.json (part, time, file count, bytes), SHA256SUMS and files/<path from />. The files are
 # staged in a RAM directory (the unit's RuntimeDirectory), checksummed and piped through zstd into age,

@@ -1,9 +1,13 @@
-# Installed by scripts/deploy/remote.sh. Lineage public devnet site, docs/DEPLOY-SITE.md "Monitoring".
+# Installed by scripts/deploy/remote.sh. units public devnet site, docs/DEPLOY-SITE.md "Monitoring".
 # scripts/deploy/monitor.ts as lineage-monitor (no docker, no home). The root pre-step copies only the
 # hosted runtime's spend window and cap out of its state (mode 600, owner lineage) for the check.
 [Unit]
-Description=Lineage monitor
-After=network-online.target lineage-core.service
+# rebrand (docs/plans/REBRAND-UNITS.md 3.8): never runs together with the unit of the old name; a
+# start waits until that one has stopped (a stop job always runs before a start job of an ordered pair)
+Conflicts=lineage-monitor.service
+After=lineage-monitor.service
+Description=units monitor
+After=network-online.target units-core.service
 
 [Service]
 Type=oneshot

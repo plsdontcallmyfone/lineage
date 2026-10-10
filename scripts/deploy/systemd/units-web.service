@@ -1,7 +1,11 @@
-# Installed by scripts/deploy/remote.sh. Lineage public devnet site, docs/DEPLOY-SITE.md.
+# Installed by scripts/deploy/remote.sh. units public devnet site, docs/DEPLOY-SITE.md.
 [Unit]
-Description=Lineage dashboard and Wallet page on 127.0.0.1:9661
-After=lineage-core.service
+# rebrand (docs/plans/REBRAND-UNITS.md 3.8): never runs together with the unit of the old name; a
+# start waits until that one has stopped (a stop job always runs before a start job of an ordered pair)
+Conflicts=lineage-web.service
+After=lineage-web.service
+Description=units dashboard and Wallet page on 127.0.0.1:9661
+After=units-core.service
 
 [Service]
 User=lineage-web

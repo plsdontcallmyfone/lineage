@@ -1,12 +1,16 @@
 # Installed by scripts/deploy/remote.sh. Runs the identity mirror and PR bot cycle every 5 minutes.
 [Unit]
-Description=Lineage identity: mirror and PR bot every 5 minutes
+# rebrand (docs/plans/REBRAND-UNITS.md 3.8): never runs together with the unit of the old name; a
+# start waits until that one has stopped (a stop job always runs before a start job of an ordered pair)
+Conflicts=lineage-identity-cycle.timer
+After=lineage-identity-cycle.timer
+Description=units identity: mirror and PR bot every 5 minutes
 
 [Timer]
 OnActiveSec=1min
 OnBootSec=3min
 OnUnitInactiveSec=5min
-Unit=lineage-identity-cycle.service
+Unit=units-identity-cycle.service
 
 [Install]
 WantedBy=timers.target

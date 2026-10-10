@@ -1,12 +1,16 @@
-# Installed by scripts/deploy/remote.sh. Lineage public devnet site, docs/DEPLOY-SITE.md "Backups".
+# Installed by scripts/deploy/remote.sh. units public devnet site, docs/DEPLOY-SITE.md "Backups".
 # A consistent snapshot of Core's database and blob store (scripts/deploy/backup.sh) into
 # /var/lib/lineage/core-backups, the newest 24 kept; `deploy.sh <host> backup` copies the newest one
 # off the machine and verifies it. Starting it also starts the two secrets+state parts (each as the
-# user that owns its data): lineage-backup-state.service and lineage-backup-identity.service.
+# user that owns its data): units-backup-state.service and units-backup-identity.service.
 [Unit]
-Description=Lineage Core snapshot
-After=lineage-core.service
-Wants=lineage-backup-state.service lineage-backup-identity.service
+# rebrand (docs/plans/REBRAND-UNITS.md 3.8): never runs together with the unit of the old name; a
+# start waits until that one has stopped (a stop job always runs before a start job of an ordered pair)
+Conflicts=lineage-backup.service
+After=lineage-backup.service
+Description=units Core snapshot
+After=units-core.service
+Wants=units-backup-state.service units-backup-identity.service
 
 [Service]
 Type=oneshot

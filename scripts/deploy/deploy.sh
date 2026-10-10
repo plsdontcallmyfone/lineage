@@ -261,7 +261,7 @@ do_activate() {
     if r "curl -fsS -m 5 http://127.0.0.1:9660/v1/health >/dev/null && curl -fsS -m 5 http://127.0.0.1:9662/gate/health >/dev/null"; then ok=1; break; fi
     sleep 2
   done
-  [ "$ok" = 1 ] || { echo "Core or the gate did not come up; journalctl -u lineage-core -u lineage-gate on the server" >&2; exit 1; }
+  [ "$ok" = 1 ] || { echo "Core or the gate did not come up; journalctl -u units-core -u units-gate on the server" >&2; exit 1; }
   local first="${SITE_NAMES%%,*}"
   if [ "$DRY_RUN" = 1 ]; then
     r "curl -fsS -m 10 --cacert /var/lib/caddy/.local/share/caddy/pki/authorities/local/root.crt https://$first/v1/health" && echo
@@ -346,7 +346,7 @@ verify_secrets() { # verify_secrets <file> [facts out]
 do_backup_pull() {
   local f size free rc=0 p n
   f="$(r "ls -1t /var/lib/lineage/core-backups/core-*.tar.zst 2>/dev/null | head -1")"
-  [ -n "$f" ] || { echo "no snapshot on the server yet (lineage-backup.timer runs hourly; 'remote.sh backup' makes one now)" >&2; exit 1; }
+  [ -n "$f" ] || { echo "no snapshot on the server yet (units-backup.timer runs hourly; 'remote.sh backup' makes one now)" >&2; exit 1; }
   size="$(r "stat -c %s $f")"
   install -d -m 700 "$BACKUP_LOCAL"
   free="$(df -Pk "$BACKUP_LOCAL" | awk 'NR==2 {printf "%d", $4 * 1024}')"

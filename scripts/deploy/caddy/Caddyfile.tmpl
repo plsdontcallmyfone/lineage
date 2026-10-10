@@ -48,8 +48,8 @@
 		max_size 1600KB
 	}
 	# /market/* goes through the gate like everything else (rate limits per client; audit A2), which
-	# sends it on to the market indexer (packages/indexer, lineage-indexer.service) on 127.0.0.1:9668
-	# GitHub identity service (packages/identity, lineage-identity.service): pasted tokens go here only, never to the gate or Core
+	# sends it on to the market indexer (packages/indexer, units-indexer.service) on 127.0.0.1:9668
+	# GitHub identity service (packages/identity, units-identity.service): pasted tokens go here only, never to the gate or Core
 	# lb_try_duration: while a deploy restarts the gate or the identity service (well under a second each;
 	# docs/DEPLOY-SITE.md "Zero-downtime activate"), a refused dial is retried every 250 ms for up to 15 s
 	# instead of answering 502. Writes go without it: to retry, Caddy buffers the body, and a body over

@@ -1,5 +1,9 @@
 [Unit]
-Description=Lineage Core snapshot every hour
+# rebrand (docs/plans/REBRAND-UNITS.md 3.8): never runs together with the unit of the old name; a
+# start waits until that one has stopped (a stop job always runs before a start job of an ordered pair)
+Conflicts=lineage-backup.timer
+After=lineage-backup.timer
+Description=units Core snapshot every hour
 
 [Timer]
 OnBootSec=10min

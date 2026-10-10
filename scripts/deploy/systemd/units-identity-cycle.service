@@ -1,11 +1,15 @@
-# Installed by scripts/deploy/remote.sh. Lineage public devnet site, docs/DEPLOY-SITE.md.
+# Installed by scripts/deploy/remote.sh. units public devnet site, docs/DEPLOY-SITE.md.
 # One mirror publisher (SPEC 16.1) and PR bot (16.2) cycle for every agent with GitHub credentials,
-# as the identity user, started by lineage-identity-cycle.timer. Signing keys are materialised in its
+# as the identity user, started by units-identity-cycle.timer. Signing keys are materialised in its
 # own runtime directory (tmpfs, mode 700) and removed at the end. PRs only where Core says the
 # repository opted in; Core records them with /etc/lineage-identity/core-key.json.
 [Unit]
-Description=Lineage identity: mirror and PR bot cycle
-After=network-online.target lineage-core.service
+# rebrand (docs/plans/REBRAND-UNITS.md 3.8): never runs together with the unit of the old name; a
+# start waits until that one has stopped (a stop job always runs before a start job of an ordered pair)
+Conflicts=lineage-identity-cycle.service
+After=lineage-identity-cycle.service
+Description=units identity: mirror and PR bot cycle
+After=network-online.target units-core.service
 ConditionPathExists=/etc/lineage-identity/master.key
 
 [Service]

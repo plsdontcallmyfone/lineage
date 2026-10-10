@@ -1,10 +1,14 @@
-# Installed by scripts/deploy/remote.sh. Lineage public devnet site, docs/DEPLOY-SITE.md.
+# Installed by scripts/deploy/remote.sh. units public devnet site, docs/DEPLOY-SITE.md.
 # An honest verifier (instances v1, v2), registered and bonded on devnet by scripts/deploy/site-chain.ts.
 [Unit]
-Description=Lineage verifier %i
+# rebrand (docs/plans/REBRAND-UNITS.md 3.8): never runs together with the unit of the old name; a
+# start waits until that one has stopped (a stop job always runs before a start job of an ordered pair)
+Conflicts=lineage-verifier@%i.service
+After=lineage-verifier@%i.service
+Description=units verifier %i
 # not ordered after lineage-bootstrap: calibrations can run an hour, and a verifier or author held back
 # that long meanwhile abandons its assignments (strikes; site 2026-10-08)
-After=lineage-core.service docker.service
+After=units-core.service docker.service
 Requires=docker.service
 
 [Service]

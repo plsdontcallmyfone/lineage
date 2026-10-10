@@ -1,10 +1,14 @@
-# Installed by scripts/deploy/remote.sh. Lineage public devnet site, docs/DEPLOY-SITE.md.
+# Installed by scripts/deploy/remote.sh. units public devnet site, docs/DEPLOY-SITE.md.
 # OPTIONAL (WITH_AUTHOR=1): the onchain minbpe TEST agent authoring its prepared candidates
 # (recipes/minbpe/candidates), so the site shows real verdicts without model spend. Stops authoring when
 # the list is done; keeps heartbeating.
 [Unit]
-Description=Lineage scripted author (minbpe TEST agent)
-After=lineage-core.service lineage-bootstrap.service docker.service
+# rebrand (docs/plans/REBRAND-UNITS.md 3.8): never runs together with the unit of the old name; a
+# start waits until that one has stopped (a stop job always runs before a start job of an ordered pair)
+Conflicts=lineage-author.service
+After=lineage-author.service
+Description=units scripted author (minbpe TEST agent)
+After=units-core.service units-bootstrap.service docker.service
 Requires=docker.service
 ConditionPathExists=/home/lineage/.config/lineage/devnet/agent-minbpe.json
 
