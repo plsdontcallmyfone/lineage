@@ -19,8 +19,8 @@ The doc drift at the end was found while preparing this package and fixed on 202
    with bounty releases after A1-04, refund handling after A1-02, expiry racing resolution (A1-07),
    and whether any path can leave a gate open forever.
 3. **Economic bounds on a compromised Core key**: rebates plus challenge rewards (A1-05) at most twice
-   `max_rebate_per_epoch` per epoch length from the reserve, plus the pool each post; slashes with no
-   per-agent cap (A1-08). Is there a path that beats these bounds?
+   `max_rebate_per_epoch` per epoch length from the reserve, plus the pool each post; slashes up to
+   `max_slash_bps_per_epoch` of each agent's bond per chain epoch (A1-08, fixed 2026-10-10). Is there a path that beats these bounds?
 4. **The Merkle leaf encoders** (`lineage_registry/src/leaf.rs`, `lineage_launch/src/bounty.rs`
    `contribution_json`, `target_json`) against Core's canonical JSON (`packages/protocol`,
    `packages/core/src/records.ts`), especially escaping and key order: a mismatch either strands

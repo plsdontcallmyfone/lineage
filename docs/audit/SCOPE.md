@@ -9,17 +9,19 @@ was read or measured on that date with the command shown; nothing is estimated.
 |---|---|---|
 | Repository | `github.com/plsdontcallmyfone/lineage`, branch `main` | `git remote -v` |
 | Repository head when this package was prepared | `76549f62885913c56dcf72bbb188d6b2c253a279` | `git log -1` |
-| Last commit that changed any program source | `b855b4a682b54fc5a977a6861da08bb417171a20` ("audit A1: onchain fixes") | `git log -- onchain/programs` |
-| `lineage_msg` source last changed | `257fe85271ed822c8b0da6db3d333f0b0fc03bea` (2026-10-08) | `git log -- onchain/programs/lineage-msg` |
-| Tree `onchain/programs/lineage-registry` | `1cd55714c6cc870550ded74bbb40f987a3b9fe15` | `git rev-parse <commit>:onchain/programs/lineage-registry` |
-| Tree `onchain/programs/lineage-launch` | `455d3717e482c60933fc6c98c7bc3c3a8166201e` | same |
-| Tree `onchain/programs/lineage-msg` | `22a99ff1fc3f357c82752efa3010c9fd7756b14c` | same |
-| Blob `onchain/Cargo.lock` | `ae07e6cfbce9d993be465bd7a50be26c857ea07d` | `git rev-parse HEAD:onchain/Cargo.lock` |
+| Last commit that changed any program source | `9f7035789fdc2f9c076b3d1af299a38e7cf28112` ("pre-audit program changes": A1-08 slash cap, mainnet ids by cargo feature, 2026-10-10) | `git log -- onchain/programs` |
+| Previous program commit (the first version of this table) | `b855b4a682b54fc5a977a6861da08bb417171a20` ("audit A1: onchain fixes") | same |
+| `lineage_msg` source last changed | `9f70357` (only its `declare_id!` per feature and its `mainnet` feature; before that `257fe85`, 2026-10-08) | `git log -- onchain/programs/lineage-msg` |
+| Tree `onchain/programs/lineage-registry` | `fcdd35a605edd6db1df0b09afbf7bb7db775d277` (was `1cd55714...fe15`) | `git rev-parse 9f70357:onchain/programs/lineage-registry` |
+| Tree `onchain/programs/lineage-launch` | `abd42ea54d3ad76f458a4a7fb506dd760f8e41b5` (was `455d3717...201e`) | same |
+| Tree `onchain/programs/lineage-msg` | `35b655c66e886acc32222b7fd90754b98bff868c` (was `22a99ff1...b14c`) | same |
+| Blob `onchain/Cargo.lock` | `ae07e6cfbce9d993be465bd7a50be26c857ea07d` (unchanged) | `git rev-parse 9f70357:onchain/Cargo.lock` |
 
-The three program trees and `Cargo.lock` hash the same at `b855b4a` and at `76549f6`
-(`git diff --stat b855b4a 76549f6 -- onchain/programs onchain/Cargo.toml onchain/Cargo.lock` is empty).
-An auditor may pin either commit; the tree hashes above are what must match. If any program changes
-before the engagement starts, this table is regenerated and the new hashes are sent with it.
+Regenerated 2026-10-10 after the pre-audit program changes (owner decisions of 2026-10-10, both
+before the audit commit is frozen). The tree hashes above are what must match; an auditor pins
+`9f70357` or any later commit whose program trees and `Cargo.lock` hash the same (`git diff --stat
+9f70357 <commit> -- onchain/programs onchain/Cargo.toml onchain/Cargo.lock` empty). If any program
+changes again before the engagement starts, this table is regenerated and the new hashes are sent with it.
 
 ## Programs in scope
 
@@ -27,23 +29,29 @@ Anchor 0.31.1 workspace at `onchain/` (`Anchor.toml`, `Cargo.toml`). Release pro
 `overflow-checks = true`, `lto = "fat"`, `codegen-units = 1`.
 
 Lines counted with `awk` per file: blank lines, lines whose first non-space characters are `//`
-(comments and doc comments), and the rest ("code"). Counted 2026-10-10 on the tree hashes above.
+(comments and doc comments), and the rest ("code"). Recounted 2026-10-10 on the tree hashes above
+(`9f70357`).
 
 | Program | Id | File | Total | Blank | Comment | Code |
 |---|---|---|---|---|---|---|
-| `lineage_registry` | `2vhj9aBZkuoCpmJxm5BcA3CYkvBJgY6VHTax8FpFmxuY` | `programs/lineage-registry/src/lib.rs` | 1,293 | 70 | 127 | 1,096 |
+| `lineage_registry` | devnet `2vhj9aBZkuoCpmJxm5BcA3CYkvBJgY6VHTax8FpFmxuY`, mainnet `3GeaTsBUsaXCJ7Dru9tDHiKnVBsoHE6yiTdqqj42JHay` | `programs/lineage-registry/src/lib.rs` | 1,388 | 75 | 151 | 1,162 |
 | | | `programs/lineage-registry/src/challenge.rs` | 591 | 27 | 66 | 498 |
 | | | `programs/lineage-registry/src/leaf.rs` | 272 | 18 | 38 | 216 |
-| | | `programs/lineage-registry/Cargo.toml` | 27 | | | |
-| | | **subtotal (Rust)** | **2,156** | **115** | **231** | **1,810** |
-| `lineage_launch` | `8eHzm1XtNtbxJujrMAci4VdhCJvQttFUBukmkFaUwsAT` | `programs/lineage-launch/src/lib.rs` | 1,089 | 57 | 131 | 901 |
+| | | `programs/lineage-registry/Cargo.toml` | 29 | | | |
+| | | **subtotal (Rust)** | **2,251** | **120** | **255** | **1,876** |
+| `lineage_launch` | devnet `8eHzm1XtNtbxJujrMAci4VdhCJvQttFUBukmkFaUwsAT`, mainnet `2vwKsTZm5doa3ahBmpm8Sv3sKPD76Fq2ZZENbNW5BYBq` | `programs/lineage-launch/src/lib.rs` | 1,094 | 57 | 133 | 904 |
 | | | `programs/lineage-launch/src/bounty.rs` | 710 | 43 | 78 | 589 |
 | | | `programs/lineage-launch/src/meteora.rs` | 308 | 17 | 35 | 256 |
-| | | `programs/lineage-launch/Cargo.toml` | 28 | | | |
-| | | **subtotal (Rust)** | **2,107** | **117** | **244** | **1,746** |
-| `lineage_msg` | `E6vHskQjJAMLqDKXyfnn2ZDjeJ57RZXR4H9RjPDzapAB` | `programs/lineage-msg/src/lib.rs` | 451 | 36 | 50 | 365 |
-| | | `programs/lineage-msg/Cargo.toml` | 27 | | | |
-| **All three** | | **7 Rust files** | **4,714** | **268** | **525** | **3,921** |
+| | | `programs/lineage-launch/Cargo.toml` | 30 | | | |
+| | | **subtotal (Rust)** | **2,112** | **117** | **246** | **1,749** |
+| `lineage_msg` | devnet `E6vHskQjJAMLqDKXyfnn2ZDjeJ57RZXR4H9RjPDzapAB`, mainnet `jmcb7cBA8aJ5Zra8V6gUsEbgKAoG3h5d2CNpmKsRdky` | `programs/lineage-msg/src/lib.rs` | 455 | 36 | 51 | 368 |
+| | | `programs/lineage-msg/Cargo.toml` | 29 | | | |
+| **All three** | | **7 Rust files** | **4,818** | **273** | **552** | **3,993** |
+
+Before the pre-audit changes (`b855b4a`) the same count was 4,714 total and 3,921 code lines. The ids
+are selected at build time: the default build declares the devnet ids, the cargo feature `mainnet`
+the mainnet ids (SPEC 14.11); `lineage_launch` and `lineage_msg` forward the feature to the registry
+crate. Both variants are in scope; they differ only in the declared ids.
 
 Of these, two in-crate unit test modules are not program code: `leaf.rs` lines 251 to 272 and
 `bounty.rs` lines 700 to 710.
@@ -73,32 +81,40 @@ re-checked against the exact mainnet builds (see `REVIEW-AREAS.md`).
 | File | Total lines | Code lines |
 |---|---|---|
 | `onchain/tests/src/lib.rs` (LiteSVM harness) | 873 | 804 |
-| `onchain/tests/tests/registry.rs` | 561 | 485 |
+| `onchain/tests/tests/registry.rs` | 562 | 486 |
 | `onchain/tests/tests/launch.rs` | 732 | 648 |
 | `onchain/tests/tests/identity.rs` | 235 | 201 |
 | `onchain/tests/tests/bounty.rs` | 621 | 543 |
 | `onchain/tests/tests/challenge.rs` | 416 | 336 |
 | `onchain/tests/tests/msg.rs` | 411 | 354 |
-| `onchain/tests/tests/client_vectors.rs` | 450 | 433 |
+| `onchain/tests/tests/client_vectors.rs` | 457 | 440 |
+| `onchain/tests/tests/slash_cap.rs` (pre-audit, A1-08) | 200 | 155 |
 
 ## Deployed on devnet
 
-Read from devnet on 2026-10-10 at 13:14 UTC with `solana program show -u devnet <id>` and
-`solana program dump -u devnet <id> <file>` followed by `shasum -a 256`. Nothing is deployed to mainnet.
+Read from devnet on 2026-10-10 at 16:06 UTC, after the pre-audit upgrade, with `solana program show -u
+devnet <id>` and `solana program dump -u devnet <id> <file>`; the dump's first bytes (as many as the
+build) hashed with sha256 and the rest checked to be zero. Nothing is deployed to mainnet.
 
-| Program | ProgramData | Upgrade authority | Last deployed slot | Data length | sha256 of the dump | Equals |
+| Program | ProgramData | Upgrade authority | Last deployed slot | Data length | Dump | Equals |
 |---|---|---|---|---|---|---|
-| `lineage_registry` | `3YwmdjWmRuf6S1mQaWUQ43Fiu5rwdkhu6z81kLB2Whm2` | `CVEZWyUBoNb6Zkte3qa7JDu5TBV4wTH6wMw4pLodnDih` | 509,305,148 | 728,000 | `547eafe6...944c` whole account; the first 723,776 bytes hash `8f3861a414b6b13e6acf3d13f2222502f9c1d2b8f04485f880b1231b6fa62b32` and the remaining 4,224 bytes are zero | the local build `target/deploy/lineage_registry.so` (723,776 bytes, `8f3861a4...2b32`) |
-| `lineage_launch` | `AuxNHnyVm4GSHQoScSBN8eY4BrcBTgGV5mSwWT6Bhbpa` | `CVEZWyUBoNb6Zkte3qa7JDu5TBV4wTH6wMw4pLodnDih` | 509,305,277 | 744,448 | `762a18d9942316140cca508dd3b3b49f062c5ed19c174ada67d9b15dbd9e30b0` | the local build (`762a18d9...30b0`) |
+| `lineage_registry` | `3YwmdjWmRuf6S1mQaWUQ43Fiu5rwdkhu6z81kLB2Whm2` | `CVEZWyUBoNb6Zkte3qa7JDu5TBV4wTH6wMw4pLodnDih` | 509,594,590 | 738,240 | first 732,472 bytes hash `7287a911843b531244d0c6e50923d38d850099800de153ea47dca6587d346ede`, the remaining 5,768 bytes are zero | the local devnet build at `9f70357` |
+| `lineage_launch` | `AuxNHnyVm4GSHQoScSBN8eY4BrcBTgGV5mSwWT6Bhbpa` | `CVEZWyUBoNb6Zkte3qa7JDu5TBV4wTH6wMw4pLodnDih` | 509,594,746 | 754,688 | first 745,216 bytes hash `d1ab4dbf15f3d7b2c1e5a7fc0791c4e56cd1f4b5979c5e2db06829a2a974f36e`, the remaining 9,472 bytes are zero | the local devnet build at `9f70357` |
 | `lineage_msg` | `5MyrfyAg9E5eSmvyxbfaiT7s2gAEsSeKjRjJjB7inX5R` | `CVEZWyUBoNb6Zkte3qa7JDu5TBV4wTH6wMw4pLodnDih` | 508,815,067 | 342,200 | `94de4765ab321743e71610d5b1eb589334834b01f0d08a4ae3f6a6bac1d90b62` | its build at deploy (onchain/DEVNET.md "Onchain messages"); see the note below |
 
-The registry's ProgramData is longer than the build because the upgrade extended it by the loader's
-10,240-byte minimum (onchain/DEVNET.md "Internal audit A1 upgrade").
+The devnet Config was grown by `migrate_config_slash_cap` with 7,500 bps (onchain/DEVNET.md
+"Pre-audit program changes"). The previous version of this table (13:14 UTC) read registry
+`8f3861a4...2b32` and launch `762a18d9...30b0`, the builds of `b855b4a`.
 
-`lineage_msg`: the local `target/deploy/lineage_msg.so` today hashes
-`0d402e828f209bdd3f94fa10a637d940fce717076d426e1bc9d10136b780d085`, not the deployed `94de4765...0b62`.
+Both ProgramData accounts are longer than the builds because each upgrade that outgrew them extended
+them by the loader's 10,240-byte minimum (onchain/DEVNET.md "Internal audit A1 upgrade" and
+"Pre-audit program changes").
+
+`lineage_msg`: the local `target/deploy/lineage_msg.so` at `9f70357` hashes
+`ebdccd343a6cf57b5ad896609be41719a4f8b9850fb78a1488fe5ee2d8ad9b81`, not the deployed `94de4765...0b62`
+(it was not upgraded on 2026-10-10).
 `lineage_msg` compiles the registry crate in, and the registry source changed after `lineage_msg` was
-deployed (W7 challenges, A1 fixes); `lineage_msg`'s own source is unchanged since `257fe85`
+deployed (W7 challenges, A1 fixes); `lineage_msg`'s own source is unchanged since `257fe85` except the per-feature `declare_id!` of `9f70357`
 (docs/AUDIT.md "Onchain", first paragraph). The deployed binary therefore corresponds to
 `lineage_msg` at `257fe85` built with the registry crate as of that commit. An audit of `lineage_msg`
 should either review the deployed pairing or have it redeployed from the audited commit before

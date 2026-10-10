@@ -8,7 +8,7 @@
 //   bun scripts/mainnet/propose.ts execute --multisig <addr> --member <keyfile> --index N
 //   bun scripts/mainnet/propose.ts print   --multisig <addr> <action> <args.json>   (the inner instructions, base64, nothing sent)
 //
-// Actions are adminActions in admin.ts: registrySetConfig, registryPause, registrySetEpochCursor,
+// Actions are adminActions in admin.ts: registrySetConfig, registryPause, registrySetSlashCap, registrySetEpochCursor,
 // challengeSetConfig, launchSetConfig, bountySetConfig, graduateByAdmin, msgSetConfig,
 // upgradeProgram, setUpgradeAuthority. args.json holds that action's argument object (bigints as
 // strings with an n suffix, such as "1000000n"; see admin.ts for each shape). `execute` reads the stored

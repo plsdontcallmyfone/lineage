@@ -58,6 +58,25 @@ The deployer holding 11.251935880 SOL before the first deploy covers the initial
 | lineage_launch | 744,448 | 744,493 | 3.782674680 | 0.000833120 | 3.782634040 | 738 | 0.003700000 | 3.783507800 | 3.787207800 | 7.569841840 |
 | lineage_msg | 342,200 | 342,245 | 1.739254840 | 0.000833120 | 1.739214200 | 341 | 0.001715000 | 1.740087960 | 1.741802960 | 3.481017160 |
 
+**Rent at the pre-audit sizes (2026-10-10, `9f70357`).** The A1-08 slash cap and the per-feature ids
+changed the builds after the rehearsal: the `--features mainnet` builds are `lineage_registry.so`
+732,472 bytes (`ea000f21...ecb6`), `lineage_launch.so` 745,216 (`a9123cdd...8f79`), `lineage_msg.so`
+342,600 (`f633adc2...287f`), the same sizes as their devnet builds. Rent read from mainnet with `solana
+rent -u mainnet-beta <bytes> --lamports` for ProgramData (`.so` + 45 bytes), the buffer (`.so` + 37)
+and the program account (36 bytes); the rehearsal was not rerun, so transaction counts and fees at
+these sizes are not measured (0.009015000 for 1,797 transactions at the sizes above):
+
+| Program | `.so` bytes | ProgramData bytes | ProgramData rent | Program account | Buffer rent (refunded) | Locked after (rent only) |
+|---|---|---|---|---|---|---|
+| lineage_registry | 732,472 | 732,517 | 3.721836600 | 0.000833120 | 3.721795960 | 3.722669720 |
+| lineage_launch | 745,216 | 745,261 | 3.786576120 | 0.000833120 | 3.786535480 | 3.787409240 |
+| lineage_msg | 342,600 | 342,645 | 1.741286840 | 0.000833120 | 1.741246200 | 1.742119960 |
+| **All three** | | | | | | **9.252198920** (was 9.202089800, +0.050109120) |
+
+At these sizes the peak the deployer holds is, before fees, registry locked plus launch ProgramData,
+program account and buffer: 3.722669720 + 7.573944720 = 11.296614440 (was 11.251935880 with fees).
+The budget table above stays as measured until the rehearsal is rerun on the mainnet builds.
+
 **Upgrade headroom.** A program that grows needs more ProgramData. Two ways, both measured:
 
 | `--max-len` at deploy | registry ProgramData rent | launch | msg | Extra locked, all three |

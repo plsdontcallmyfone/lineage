@@ -42,6 +42,19 @@ bun test packages/chain                                    # from the repo root
 suites after any program change. `UPDATE_VECTORS=1 cargo test -p lineage-onchain-tests --test client_vectors`
 regenerates the client vectors after an instruction or account layout change.
 
+Program ids select by network at build time (SPEC 14.11): the commands above build the devnet ids
+(the default). For mainnet add `--features mainnet` and a separate output directory, then delete the
+throwaway keypairs `cargo build-sbf` writes there (the mainnet id keypairs live in
+`~/.config/lineage/mainnet/`, docs/MAINNET-RUNBOOK.md "Program ids"):
+
+```sh
+for p in lineage-registry lineage-launch lineage-msg; do
+  cargo build-sbf --offline --manifest-path programs/$p/Cargo.toml --features mainnet --sbf-out-dir target/mainnet; done
+rm -f target/mainnet/*-keypair.json
+```
+
+The LiteSVM suites always load the devnet builds in `target/deploy`.
+
 ## Leaf encoding
 
 No binary encoding was needed: the registry hashes the payout leaf exactly as Core does,

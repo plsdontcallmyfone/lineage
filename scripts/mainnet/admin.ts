@@ -34,6 +34,8 @@ export const adminActions = {
   // lineage_registry, Config.admin
   registrySetConfig: (vault: string, args: ConfigArgs): Ix[] => [registry.setConfig({ admin: vault, args })],
   registryPause: (vault: string, paused: boolean): Ix[] => [registry.pause({ admin: vault, paused })],
+  /** Audit A1-08: the per agent, per epoch slash cap in bps (at least every single slash share, at most 10,000). */
+  registrySetSlashCap: (vault: string, maxSlashBpsPerEpoch: number): Ix[] => [registry.setSlashCap({ admin: vault, maxSlashBpsPerEpoch })],
   registrySetEpochCursor: (vault: string, c: { epochsPosted: bigint; lastEpoch: bigint; anchor: bigint; anchorTs: bigint }): Ix[] =>
     [registry.setEpochCursor({ admin: vault, ...c })],
   /** Creates ChallengeConfig and its vault on first use: the vault pays that rent. */

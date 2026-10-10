@@ -17,8 +17,10 @@ Owner items stay unchecked until the owner checks them.
 - [ ] Budgets set: SOL for the deploy (11.251935880 held at the peak with exact-size ProgramData, MAINNET-COSTS.md), the priority fee policy, the `--max-len` headroom, the Core and runtime hot keys' running SOL, the runtime's model spend caps
 - [ ] Domain set
 - [ ] Verifiers recruited (the minimum independent count is in the M4 server layout)
-- [ ] Program ids decided (see "Program ids" below)
-- [ ] Decision on the A1-08 per agent, per epoch slash cap (a program change, see "Needs a program change")
+- [x] Program ids decided: fresh mainnet ids (owner decision 2026-10-10; see "Program ids" below)
+- [ ] The three mainnet program id keypairs backed up offline by the owner (see "Program ids")
+- [x] A1-08 per agent, per epoch slash cap decided and built (owner decision 2026-10-10, docs/AUDIT.md A1-08)
+- [ ] The mainnet slash cap value (`set_slash_cap` through the vault; `initialize` sets strike_limit x the largest share)
 
 Engineering items, with their evidence:
 
@@ -61,23 +63,45 @@ From the A1 powers table, checked against the code paths the rehearsal ran:
   fee positions, or post out of sequence. If the key leaks, the vault rotates it (`registrySetConfig`
   naming a new Core authority) and can pause the registry (`registryPause`); worst case before that is
   bounded per epoch by the pool vault plus `max_rebate_per_epoch` (twice that with challenge rewards)
-  and by slashes without a cap (A1-08).
+  and by slashes up to `max_slash_bps_per_epoch` of each agent's bond per chain epoch (A1-08).
 
 ## Program ids
 
-The programs declare their ids in source (`declare_id!`; `lineage_launch` and `lineage_msg` also use
-`lineage_registry::ID`) and `packages/chain` has them as constants. Two choices, both the owner's:
+Owner decision 2026-10-10: **fresh mainnet ids**, selected at build time (SPEC 14.11). The default
+build declares the devnet ids; `cargo build-sbf --features mainnet` declares the mainnet ids, and
+`lineage_launch` and `lineage_msg` forward the feature so all three agree. `onchain/Anchor.toml`
+`[programs.mainnet]`, `packages/chain` `PROGRAM_IDS.mainnet` and `config/profile.json`
+`profiles.mainnet.programs` carry them.
 
-1. **Reuse the devnet ids on mainnet.** The id keypairs exist (`onchain/target/deploy/*-keypair.json`,
-   copies in `onchain/keys-backup/` and `~/.config/lineage/program-keys/`; never committed, checked
-   2026-10-10). No source change. A program id keypair has no power after the first deploy, but until
-   then anyone holding it could deploy first at that address, so deploy soon after deciding.
-2. **Fresh mainnet ids.** A program change: new `declare_id!` in all three programs, `Anchor.toml`, the
-   `packages/chain` constants, client vectors regenerated, LiteSVM and the rehearsal re-run.
+| Program | Mainnet id | Keypair (mode 600, never committed) |
+|---|---|---|
+| `lineage_registry` | `3GeaTsBUsaXCJ7Dru9tDHiKnVBsoHE6yiTdqqj42JHay` | `~/.config/lineage/mainnet/registry-program-keypair.json` |
+| `lineage_launch` | `2vwKsTZm5doa3ahBmpm8Sv3sKPD76Fq2ZZENbNW5BYBq` | `~/.config/lineage/mainnet/launch-program-keypair.json` |
+| `lineage_msg` | `jmcb7cBA8aJ5Zra8V6gUsEbgKAoG3h5d2CNpmKsRdky` | `~/.config/lineage/mainnet/msg-program-keypair.json` |
 
-The rehearsal deployed the same builds at fresh throwaway ids to measure the deploy path and ran the
-functional copies at the declared ids (loaded with a throwaway upgrade authority); it never used the
-devnet program keypairs.
+Made 2026-10-10 with `solana-keygen new --no-bip39-passphrase` on the development machine; only the
+public keys were printed. They exist only there: **the owner must back the three files up offline**
+(for example on encrypted removable media kept apart from the machine) before anything depends on
+them. A program id keypair has no power after the first deploy, but until then anyone holding it
+could deploy first at that address, and losing it before the deploy means new ids and a new build. So
+keep the copies offline and deploy soon after the audit.
+
+`cargo build-sbf` writes throwaway `lineage_*-keypair.json` files into its `--sbf-out-dir` when none
+exist there; those are not the mainnet ids. Delete them after a mainnet build and always deploy with
+`--program-id ~/.config/lineage/mainnet/<p>-program-keypair.json`.
+
+The devnet id keypairs stay in `onchain/target/deploy/` (copies in `onchain/keys-backup/`,
+`~/.config/lineage/program-keys/` and `~/.config/lineage/devnet-program-keypairs-backup/`).
+
+Still to do before mainnet (not done in the pre-audit lane): `scripts/mainnet/steps.ts` still names
+the devnet ids (`PROGRAM_IDS`) and the rehearsal loads the devnet builds, and the `packages/chain`
+instruction builders and PDAs default to the devnet ids. The mainnet initialize and the senders must
+take `PROGRAM_IDS.mainnet` (or the profile's `programs`), and the rehearsal must be rerun on the
+`target/mainnet` builds at these ids.
+
+The rehearsal deployed the builds at fresh throwaway ids to measure the deploy path and ran the
+functional copies at the declared ids (loaded with a throwaway upgrade authority); it never used any
+program id keypair.
 
 ## Steps
 
@@ -95,11 +119,13 @@ FEE=--with-compute-unit-price=<owner's price>          # priority fee, TBA
 
 ```sh
 df -h /                                                         # at least 5 GB free
-cp onchain/target/deploy/*-keypair.json ~/.config/lineage/program-keys/   # backup before any build
+cp onchain/target/deploy/*-keypair.json ~/.config/lineage/program-keys/   # devnet id keypairs: backup before any build
+ls -l ~/.config/lineage/mainnet/*-program-keypair.json          # the mainnet id keypairs (and the owner's offline copies)
 cd onchain
 for p in lineage-registry lineage-launch lineage-msg; do
-  cargo build-sbf --offline --manifest-path programs/$p/Cargo.toml --sbf-out-dir target/deploy; done
-shasum -a 256 target/deploy/*.so && wc -c target/deploy/*.so    # compare with the audited hashes
+  cargo build-sbf --offline --manifest-path programs/$p/Cargo.toml --features mainnet --sbf-out-dir target/mainnet; done
+rm -f target/mainnet/*-keypair.json                             # throwaway keypairs cargo build-sbf wrote; not the mainnet ids
+shasum -a 256 target/mainnet/*.so && wc -c target/mainnet/*.so  # compare with the audited mainnet hashes (docs/audit/BUILD-AND-TEST.md)
 vendor/meteora/mainnet/fetch.sh                                 # mainnet DBC and DAMM v2: hash check fails if Meteora redeployed
 METEORA_BUILD=mainnet cargo test --offline -p lineage-onchain-tests   # 61 tests on mainnet's Meteora builds
 cargo test --offline -p lineage-onchain-tests                   # and on the devnet pins
@@ -110,7 +136,7 @@ scripts/mainnet/fork.sh /tmp/lin-fork-ledger "$(solana-keygen pubkey /tmp/lin-fo
 MAINNET_FORK_KEYS=/tmp/lin-fork-keys bun scripts/mainnet/rehearsal.ts   # must end PASS; stop the validator by its PID, delete the ledger
 bun scripts/mainnet/initialize.ts check --params $PARAMS --multisig 11111111111111111111111111111111 --rpc "$RPC" --mainnet 2>&1 | head -1   # refuses while any value is TBA
 solana balance -u "$RPC" -k $K/deployer.json                     # at least the MAINNET-COSTS.md peak plus priority fees
-solana program show -u "$RPC" 2vhj9aBZkuoCpmJxm5BcA3CYkvBJgY6VHTax8FpFmxuY   # with reused ids: must not exist yet (same for the other two)
+for id in 3GeaTsBUsaXCJ7Dru9tDHiKnVBsoHE6yiTdqqj42JHay 2vwKsTZm5doa3ahBmpm8Sv3sKPD76Fq2ZZENbNW5BYBq jmcb7cBA8aJ5Zra8V6gUsEbgKAoG3h5d2CNpmKsRdky; do solana program show -u "$RPC" $id; done   # must not exist yet
 ```
 
 ### 1. Keys
@@ -133,10 +159,10 @@ solana transfer -u "$RPC" -k $K/deployer.json --allow-unfunded-recipient $VAULT 
 ```sh
 for p in registry launch msg; do
   solana program deploy -u "$RPC" -k $K/deployer.json --fee-payer $K/deployer.json --upgrade-authority $K/deployer.json \
-    --program-id onchain/target/deploy/lineage_$p-keypair.json --max-len <owner's max-len for $p> $FEE onchain/target/deploy/lineage_$p.so
+    --program-id ~/.config/lineage/mainnet/$p-program-keypair.json --max-len <owner's max-len for $p> $FEE onchain/target/mainnet/lineage_$p.so
 done
 # an interrupted deploy: solana program show -u "$RPC" --buffers -k $K/deployer.json; resume with --buffer, or close the buffer
-for id in 2vhj9aBZkuoCpmJxm5BcA3CYkvBJgY6VHTax8FpFmxuY 8eHzm1XtNtbxJujrMAci4VdhCJvQttFUBukmkFaUwsAT E6vHskQjJAMLqDKXyfnn2ZDjeJ57RZXR4H9RjPDzapAB; do
+for id in 3GeaTsBUsaXCJ7Dru9tDHiKnVBsoHE6yiTdqqj42JHay 2vwKsTZm5doa3ahBmpm8Sv3sKPD76Fq2ZZENbNW5BYBq jmcb7cBA8aJ5Zra8V6gUsEbgKAoG3h5d2CNpmKsRdky; do
   solana program dump -u "$RPC" $id /tmp/$id.so && shasum -a 256 /tmp/$id.so; done   # equal to the builds once trailing zero padding is trimmed
 ```
 
@@ -161,7 +187,7 @@ each read back.
 ### 6. Hand the upgrade authority to the vault
 
 ```sh
-for id in 2vhj9aBZkuoCpmJxm5BcA3CYkvBJgY6VHTax8FpFmxuY 8eHzm1XtNtbxJujrMAci4VdhCJvQttFUBukmkFaUwsAT E6vHskQjJAMLqDKXyfnn2ZDjeJ57RZXR4H9RjPDzapAB; do
+for id in 3GeaTsBUsaXCJ7Dru9tDHiKnVBsoHE6yiTdqqj42JHay 2vwKsTZm5doa3ahBmpm8Sv3sKPD76Fq2ZZENbNW5BYBq jmcb7cBA8aJ5Zra8V6gUsEbgKAoG3h5d2CNpmKsRdky; do
   solana program set-upgrade-authority -u "$RPC" -k $K/deployer.json $id --upgrade-authority $K/deployer.json \
     --new-upgrade-authority $VAULT --skip-new-upgrade-authority-signer-check; done
 ```
@@ -211,6 +237,7 @@ approve to the threshold, wait out the time lock, execute:
 |---|---|---|
 | `registrySetConfig` | registry | admin, Core authority, launch program, SPEC 13 parameters, `max_rebate_per_epoch` |
 | `registryPause` | registry | pause or unpause |
+| `registrySetSlashCap` | registry | the per agent, per epoch slash cap, `max_slash_bps_per_epoch` (A1-08; args `[<bps>]`) |
 | `registrySetEpochCursor` | registry | the epoch sequence and clock anchor (repair only) |
 | `challengeSetConfig` | registry | challenge window, bond, reward, timeout, pause of new challenges |
 | `launchSetConfig` | launch | admin, runtime authority, compute sink, fee split, sleep and wake thresholds, pause, debit cap, DBC config for new launches |
@@ -224,7 +251,7 @@ Squads' own config (members, threshold, time lock) goes through `proposeConfig` 
 rehearsal changed the time lock this way). An upgrade:
 
 ```sh
-solana program write-buffer -u "$RPC" -k $K/deployer.json --buffer-authority $K/deployer.json onchain/target/deploy/lineage_<p>.so
+solana program write-buffer -u "$RPC" -k $K/deployer.json --buffer-authority $K/deployer.json onchain/target/mainnet/lineage_<p>.so   # a --features mainnet build
 solana program set-buffer-authority -u "$RPC" -k $K/deployer.json <buffer> --buffer-authority $K/deployer.json --new-buffer-authority $VAULT
 # if the program grew: solana program extend <id> <bytes> (anyone may pay)
 bun scripts/mainnet/propose.ts propose --multisig $MS --member <key> upgradeProgram upgrade.json --rpc "$RPC" --mainnet   # {"program":..., "buffer":..., "spill":...}
@@ -232,9 +259,14 @@ bun scripts/mainnet/propose.ts propose --multisig $MS --member <key> upgradeProg
 
 ## Needs a program change (not done in this lane)
 
-- **Fresh program ids**, if the owner chooses them (see "Program ids").
-- **A1-08 slash cap**: AUDIT.md recommends a per agent, per epoch slash count or amount cap before
-  mainnet. Today slashes are bounded only by Core.
+Both items listed here were done by the pre-audit program changes lane on 2026-10-10 (`9f70357`):
+
+- **Fresh program ids**: built by cargo feature (see "Program ids"); the mainnet scripts and builders
+  still have to take them (same section).
+- **A1-08 slash cap**: `max_slash_bps_per_epoch` (docs/AUDIT.md A1-08). `initialize` sets
+  `min(10,000, strike_limit x the largest slash share)`; the vault edits it with `set_slash_cap`
+  (`registrySetSlashCap` in `scripts/mainnet/admin.ts`, a vault transaction like the other admin
+  actions). The value is the owner's.
 
 ## Notes from the rehearsal
 

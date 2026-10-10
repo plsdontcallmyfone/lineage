@@ -4,6 +4,11 @@ Every command below was run on 2026-10-10 by the audit package lane; the results
 observed, with the raw outputs in `runs/`. Machine: macOS (Darwin 25.5, arm64). Toolchain in
 `SCOPE.md`.
 
+**Update, 2026-10-10 (pre-audit program changes lane, commit `9f70357`).** The programs changed after
+this package was first prepared: the A1-08 slash cap and the mainnet program ids by cargo feature
+(docs/AUDIT.md A1-08, SPEC 14.1 and 14.11). Every figure below that names a hash or a test count was
+rerun on that commit and is marked "pre-audit"; the earlier runs stay in `runs/` for the record.
+
 ## Prerequisites
 
 - anchor-cli 0.31.1 (only for its conventions; `anchor deploy` is never used, and `anchor build` is
@@ -31,11 +36,26 @@ cargo build-sbf --offline --manifest-path programs/lineage-msg/Cargo.toml      -
 shasum -a 256 target/deploy/*.so
 ```
 
-Drop `--offline` on a machine without a warm cargo cache. Expected hashes for the commit in `SCOPE.md`:
-registry `8f3861a414b6b13e6acf3d13f2222502f9c1d2b8f04485f880b1231b6fa62b32`, launch
-`762a18d9942316140cca508dd3b3b49f062c5ed19c174ada67d9b15dbd9e30b0` (both equal the devnet dumps).
-Our `target/deploy` on 2026-10-10 held exactly these two, and `lineage_msg.so` hashing
-`0d402e82...d085` (it differs from the deployed `94de4765...0b62` for the reason in `SCOPE.md`).
+Drop `--offline` on a machine without a warm cargo cache. Expected hashes (pre-audit, commit `9f70357`,
+devnet build, the default): registry `7287a911843b531244d0c6e50923d38d850099800de153ea47dca6587d346ede`
+(732,472 bytes), launch `d1ab4dbf15f3d7b2c1e5a7fc0791c4e56cd1f4b5979c5e2db06829a2a974f36e` (745,216
+bytes), both equal to the devnet dumps read after the 2026-10-10 upgrade; `lineage_msg.so`
+`ebdccd343a6cf57b5ad896609be41719a4f8b9850fb78a1488fe5ee2d8ad9b81` (342,600 bytes; differs from the
+deployed `94de4765...0b62` for the reason in `SCOPE.md`).
+
+The mainnet build (same sources, cargo feature `mainnet`, SPEC 14.11):
+
+```sh
+for p in lineage-registry lineage-launch lineage-msg; do
+  cargo build-sbf --offline --manifest-path programs/$p/Cargo.toml --features mainnet --sbf-out-dir target/mainnet; done
+rm target/mainnet/*-keypair.json   # cargo build-sbf writes throwaway id keypairs; they are NOT the mainnet ids
+```
+
+Pre-audit hashes: registry `ea000f217db97ac7702f0cb8101838c741aa694ef3f140f2fa37f90f755decb6`, launch
+`a9123cdd014a756b6862573811d5ce8ed34b2a51a4ca44311dc5c32e7de48f79`, msg
+`f633adc2db6aa618bbad34f741254e91421858eb2c56ab3cf3daffecc2bf287f` (same sizes as the devnet builds).
+Checked by searching each `.so` for the 32-byte ids: every mainnet build embeds only the mainnet ids
+(its own and the registry's), every devnet build only the devnet ids.
 Reproducibility across machines has not been tested; `solana-verify` (Docker-based verifiable builds)
 has not been set up yet.
 
@@ -68,13 +88,22 @@ Result on 2026-10-10 13:21 UTC (`runs/LITESVM-2026-10-10.txt`), against the `.so
 The five `audit_a1_*` tests were each run red against the unfixed programs and green after the fix by
 the A1 lane (docs/AUDIT.md "Onchain"); this package reran them green only.
 
+Pre-audit rerun (commit `9f70357`, 2026-10-10): `runs/LITESVM-PREAUDIT-2026-10-10.txt` (devnet
+Meteora pins) and `runs/LITESVM-PREAUDIT-MAINNET-METEORA-2026-10-10.txt` (`METEORA_BUILD=mainnet`):
+**69/69 on each**, the suites above (`init_auth.rs` 3/3 from the spec drift lane included) plus
+`tests/slash_cap.rs` 5/5 (A1-08: several slashes stop at the cap, one slash past the room left, reset
+with the next epoch post and per agent, admin-only edits and bounds, `migrate_config_slash_cap`). The
+five slash cap tests were run red against the previous build (all five failed) before the fix was
+built. `lineage-registry --lib` 3/3 and `lineage-launch --lib` 2/2 pass with and without
+`--features mainnet`; `cargo clippy` clean on all three programs with and without the feature.
+
 ## TypeScript client and fixtures
 
 From the repository root:
 
 ```sh
 bun install --frozen-lockfile
-bun test packages/chain                       # 129/129 on 2026-10-10
+bun test packages/chain                       # 129/129 on 2026-10-10; pre-audit 173/173 (incl. programs.test.ts)
 bun onchain/scripts/make-fixtures.ts --check  # "merkle.json current"
 ```
 
@@ -93,6 +122,9 @@ explicitly; they never change `solana config`. They append a transaction log to 
 |---|---|---|---|
 | `scripts/devnet/graduation-e2e.ts` | launch, curve fill, `crank_fees` exact split, Meteora migration, `graduate`, `crank_pool_fees`, `repoint_position` to a larger locked position, totals | deployer | PASS 16/16, 0.042965 devnet SOL (`runs/DEVNET-2026-10-10.md`) |
 | `onchain/scripts/audit-a1-devnet.ts` | A1-03 (seller refused after an owner transfer for withdraw, open and cancel; buyer allowed) and A1-01 (donation then cancel in one transaction) | deployer | PASS 9/9, 0.037602 devnet SOL (same file) |
+| (pre-audit) `scripts/devnet/graduation-e2e.ts` after the A1-08 registry and launch upgrade | as above | deployer | PASS 16/16, 0.042965 devnet SOL (onchain/DEVNET.md "Pre-audit program changes") |
+| (pre-audit) `onchain/scripts/audit-a1-devnet.ts` after the same upgrade | as above | deployer | PASS 9/9, 0.037602 devnet SOL (same section) |
+| (pre-audit) `onchain/scripts/slash-cap-devnet.ts` | grows the devnet Config by the cap (`migrate_config_slash_cap` 7,500 bps) and checks it reads back | deployer (registry admin) | PASS, 0.000015 devnet SOL |
 | `scripts/devnet/e2e-devnet.ts` | a short network with a chain-mode Core: epochs posted, claims, slashes, credential | the live site's Core authority | not run: it would race the live site's epoch posts (docs/AUDIT.md "Devnet") |
 | `scripts/devnet/challenge-e2e.ts` | an upheld verdict challenge and a failed slash challenge resolved on chain | the live site's Core authority | not run, same reason; last run 22/22 on 2026-10-08 (onchain/DEVNET.md "Contestable Core", `scripts/devnet/CHALLENGE-E2E-LAST.json`), before the A1 registry upgrade |
 | `scripts/devnet/msg-e2e.ts` | `lineage_msg` boards, sealed DMs, key publication through the runtime path | runtime authority and a local Core on port 9662 | not run (shared runtime key and port); last run 17/17 on 2026-10-08 (onchain/DEVNET.md "Onchain messages", `scripts/devnet/MSG-E2E-LAST.json`) against the `lineage_msg` binary still deployed |
@@ -107,6 +139,7 @@ instruction; admin and authority paths need a fresh deployment (`onchain/DEPLOY.
 
 ## Static checks
 
-`cargo clippy` was clean on all three programs at the A1 commit (docs/AUDIT.md "Onchain").
+`cargo clippy` was clean on all three programs at the A1 commit (docs/AUDIT.md "Onchain") and again at
+the pre-audit commit `9f70357`, with and without the `mainnet` feature.
 `cargo audit` has not been run (no advisory database on the build machine); we would welcome its
 output as part of the engagement.

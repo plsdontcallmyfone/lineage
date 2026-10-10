@@ -1,0 +1,91 @@
+Sat Oct 10 16:08:48 UTC 2026
+     Running unittests src/lib.rs (target/debug/deps/lineage_onchain_tests-697750b01c60932f)
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+     Running tests/bounty.rs (target/debug/deps/bounty-def44445a510c81c)
+test config_is_admin_only_and_validated ... ok
+test rust_contribution_leaf_matches_core ... ok
+test release_with_a_core_proof_pays_the_payee_compute_vault_once ... ok
+test proof_reuse_and_stale_generations_are_refused ... ok
+test refund_only_after_deadline_and_grace_and_late_epochs_do_not_qualify ... ok
+test forged_record_roots_are_refused ... ok
+test audit_a1_04_bounty_release_waits_for_the_challenge_hold ... ok
+test audit_a1_01_a_donation_cannot_freeze_an_escrow ... ok
+test audit_a1_03_compute_follows_the_registry_owner ... ok
+test caps_and_opener_rules ... ok
+test cancel_only_by_the_opener_before_the_next_epoch ... ok
+test self_hosted_payees_are_capped ... ok
+test wrong_payee_and_wrong_condition_are_refused ... ok
+test result: ok. 13 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 1.74s
+     Running tests/challenge.rs (target/debug/deps/challenge-0312477d11ef0a1b)
+test only_a_registered_agents_current_key_challenges ... ok
+test unresolved_challenges_expire_and_release_the_hold ... ok
+test audit_a1_05_upheld_rewards_are_capped_per_epoch_length ... ok
+test config_is_admin_only_and_claims_wait_for_the_window ... ok
+test audit_a1_02_a_closed_refund_account_cannot_hold_an_epoch_forever ... ok
+test verdict_challenges_on_the_open_epoch_and_a_failed_one_forfeits_the_bond ... ok
+test upheld_slash_challenge_reverses_the_slash_once ... ok
+test upheld_epoch_challenge_corrects_the_root_before_any_claim ... ok
+test result: ok. 8 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.95s
+     Running tests/client_vectors.rs (target/debug/deps/client_vectors-0514248c64f325ed)
+test client_vectors ... ok
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.06s
+     Running tests/identity.rs (target/debug/deps/identity-5ebcacef51d2706f)
+test rotate_needs_the_owner_and_the_new_key ... ok
+test migrate_epoch_keeps_old_epochs_claimable ... ok
+test profile_is_set_by_the_current_signing_key_with_increasing_seq ... ok
+test migrate_agent_grows_v1_records ... ok
+test revoke_blocks_until_a_rotation ... ok
+test new_records_start_as_v2_with_the_agent_key ... ok
+test owner_transfer_is_two_step_and_public ... ok
+test result: ok. 7 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.59s
+     Running tests/init_auth.rs (target/debug/deps/init_auth-2527b57e0339b2a4)
+test msg_initialize_only_by_upgrade_authority ... ok
+test launch_initialize_only_by_upgrade_authority ... ok
+test registry_initialize_only_by_upgrade_authority ... ok
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.54s
+     Running tests/launch.rs (target/debug/deps/launch-9840bf19c2d1b429)
+test migrate_launch_config_from_the_first_layout ... ok
+test longest_launch_fits_one_transaction ... ok
+test self_hosted_withdrawals_and_sleep_wake ... ok
+test admin_graduates_past_a_larger_third_party_lock ... ok
+test dbc_config_offsets_and_checks ... ok
+test forged_dust_position_cannot_graduate ... ok
+test launch_pause ... ok
+test usage_root_from_typescript_and_compute_debits ... ok
+test usage_sequence_hosted_only_and_debit_cap ... ok
+test full_launch_records_everything ... ok
+test curve_fees_left_at_migration_are_cranked_after_graduation ... ok
+test graduation_and_locked_pool_fees ... ok
+test trades_and_an_exact_fee_split ... ok
+test result: ok. 13 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 1.70s
+     Running tests/msg.rs (target/debug/deps/msg-cbb5ac1bf9132f7a)
+test events_cannot_be_forged_from_outside ... ok
+test bodies_references_and_sizes ... ok
+test longest_message_fits_one_transaction ... ok
+test sealed_dm_round_trip_with_the_typescript_seal ... ok
+test signer_must_be_the_current_registry_signing_key ... ok
+test rate_limits_pause_and_config ... ok
+test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.63s
+     Running tests/registry.rs (target/debug/deps/registry-680cd8249cd90b50)
+test leaves_match_the_typescript_protocol ... ok
+test config_floors_and_nonzero_keys ... ok
+test over_claim_is_refused ... ok
+test register_launched_only_through_the_launch_program ... ok
+test slash_lands_once_per_id ... ok
+test migrate_config_from_the_first_layout ... ok
+test pause_and_config_are_admin_only ... ok
+test post_epoch_sequence_clock_and_caps ... ok
+test line_mint_extension_allowlist ... ok
+test split_is_exact ... ok
+test slash_strikes_and_suspension ... ok
+test register_bond_unbond_cooldown ... ok
+test epoch_post_and_claim_with_a_typescript_root ... ok
+test result: ok. 13 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 2.12s
+     Running tests/slash_cap.rs (target/debug/deps/slash_cap-b701e4beaa2a92bb)
+test migrate_config_slash_cap_grows_the_previous_layout ... ok
+test one_slash_past_the_room_left_is_refused ... ok
+test several_slashes_in_one_epoch_stop_at_the_cap ... ok
+test the_cap_resets_with_the_next_epoch_post_and_is_per_agent ... ok
+test the_admin_edits_the_cap_and_nobody_else ... ok
+test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.77s
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s

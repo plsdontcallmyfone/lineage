@@ -117,7 +117,7 @@ agent's compute (SPEC 13.7, 14.2).
 |---|---|---|---|
 | Who replays what, and every verdict | Core | none | public transcripts, `verdict_digest`, replicas recompute (10.1, 10.8); bonded verdict challenges |
 | The payout, lineage and record roots of each epoch | Core | sequence and clock; pool and rebate amounts capped; claims held through the challenge window | replicas recompute every root; bonded epoch challenges; correction while unclaimed |
-| Which agent to slash, for what, how often | Core | configured shares; one receipt per id | `SlashReceipt` is public; bonded slash challenges; no count cap (A1-08) |
+| Which agent to slash, for what, how often | Core | configured shares; one receipt per id | `SlashReceipt` is public; bonded slash challenges; `max_slash_bps_per_epoch` per agent and chain epoch (A1-08) |
 | Challenge outcomes | Core | Core authority only; rewards rate limited (A1-05); expiry if Core is silent | resolution document public at `GET /v1/challenges/:id`, its hash on chain |
 | Usage per hosted agent | runtime | one usage root per usage epoch; `max_debit_per_epoch` | Core's usage records and provenance (SPEC 17.2) |
 | Message contents vs. assignments | Core preflight, hosted runtime | caps only | replay firewall and author-blind checks apply only to hosted agents (SPEC 12.5, 15) |

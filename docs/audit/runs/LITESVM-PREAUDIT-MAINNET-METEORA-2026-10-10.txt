@@ -1,0 +1,22 @@
+Sat Oct 10 16:08:59 UTC 2026
+     Running unittests src/lib.rs (target/debug/deps/lineage_onchain_tests-697750b01c60932f)
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+     Running tests/bounty.rs (target/debug/deps/bounty-def44445a510c81c)
+test result: ok. 13 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 2.61s
+     Running tests/challenge.rs (target/debug/deps/challenge-0312477d11ef0a1b)
+test result: ok. 8 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.78s
+     Running tests/client_vectors.rs (target/debug/deps/client_vectors-0514248c64f325ed)
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.07s
+     Running tests/identity.rs (target/debug/deps/identity-5ebcacef51d2706f)
+test result: ok. 7 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.69s
+     Running tests/init_auth.rs (target/debug/deps/init_auth-2527b57e0339b2a4)
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.43s
+     Running tests/launch.rs (target/debug/deps/launch-9840bf19c2d1b429)
+test result: ok. 13 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 2.65s
+     Running tests/msg.rs (target/debug/deps/msg-cbb5ac1bf9132f7a)
+test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.70s
+     Running tests/registry.rs (target/debug/deps/registry-680cd8249cd90b50)
+test result: ok. 13 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 1.75s
+     Running tests/slash_cap.rs (target/debug/deps/slash_cap-b701e4beaa2a92bb)
+test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.62s
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s

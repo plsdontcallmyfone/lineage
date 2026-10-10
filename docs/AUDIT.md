@@ -26,13 +26,13 @@ this machine and was not run (no offline advisory database).
 | A1-05 | Medium | Fixed | `lineage_registry` `src/challenge.rs` `handle_resolve` |
 | A1-06 | Low | Accepted | `lineage_registry` `src/challenge.rs` (verdict challenge subjects) |
 | A1-07 | Low | Accepted | `lineage_registry` `src/challenge.rs` `handle_expire` |
-| A1-08 | Low | Accepted | `lineage_registry` `slash` |
+| A1-08 | Low | Fixed (2026-10-10) | `lineage_registry` `slash`, `set_slash_cap`, `migrate_config_slash_cap` |
 | A1-09 | Low | Accepted | `lineage_msg` |
 | A1-10 | Info | Accepted | `lineage_launch` `graduate`, `repoint_position` |
 | A1-11 | Info | Accepted | `lineage_launch` `LaunchConfig.max_debit_per_epoch`, devnet `compute_sink` |
 
-Fix commit for A1-01 to A1-05: `b855b4a` ("audit A1: onchain fixes"). Tests are in
-`onchain/tests/tests/`.
+Fix commit for A1-01 to A1-05: `b855b4a` ("audit A1: onchain fixes"); A1-08 was fixed before the
+external audit freeze in `9f70357` ("pre-audit program changes"). Tests are in `onchain/tests/tests/`.
 
 #### A1-01 (High): a one-unit donation froze any bounty escrow forever
 
@@ -143,14 +143,38 @@ challenge Core would resolve as failed can expire it first and take its bond bac
 must resolve within the timeout (the admin sets both); a slow Core is the condition the expiry
 exists for.
 
-#### A1-08 (Low, accepted): slashes are bounded only by Core
+#### A1-08 (Low, fixed 2026-10-10): slashes were bounded only by Core
 
-`slash` takes any agent, any offence, any epoch and any fresh slash id, so the Core key can slash an
-agent repeatedly in one epoch (each slash takes its share of what is left) and suspend it for an
-arbitrary epoch. Accepted as the trust model of SPEC 10 and 13.6 (Core decides slashes; the
-`SlashReceipt` makes each one public and contestable). With A1-05 the slashed tokens leave the
-reserve through Core's hands only at the bounded rates above. Recommended before mainnet: a per agent,
-per epoch slash count or amount cap.
+- **Code:** `slash` took any agent, any offence, any epoch and any fresh slash id, so the Core key
+  could slash one agent again and again inside one epoch (each slash taking its share of what was
+  left) until the bond was gone, and suspend it for an arbitrary epoch.
+- **Fix (owner decision 2026-10-10):** an admin-editable cap, `Config.max_slash_bps_per_epoch`. Within
+  one chain epoch the amounts slashed from one agent total at most that share of its bond at stake in
+  the epoch (bond plus what was slashed in it). The window is `Config.epochs_posted`, so it advances
+  only with `post_epoch` (clocked), never with the `epoch` argument Core passes. A slash past the cap
+  is refused whole with `SlashCap` (nothing moves, no strike, no receipt), not clamped: `post_epoch`
+  is a separate instruction, so a refusal never blocks an epoch post, and Core's bridge sends the same
+  slash id again after the next post (`packages/core/src/chain.ts`, test "a slash the registry's per
+  epoch cap refuses"). Strikes that move nothing are never refused. The cap may not sit below any
+  single share (`SlashCapBelowShare`, also checked by `set_config`), so every slash fits an epoch of
+  its own; 10,000 lifts it. `initialize` and `migrate_config` set `min(10,000, strike_limit x largest
+  share)` (room for the strikes that suspend the agent); `set_slash_cap` edits it (the admin, on
+  mainnet the Squads vault); `migrate_config_slash_cap` grows a Config written before the cap. The
+  per agent window (`Agent.slash_window`, `slashed_in_window`) was carved from the zeroed v2 reserve,
+  so agent records need no migration.
+- **Tests (red on the previous build, green now):** `onchain/tests/tests/slash_cap.rs`:
+  `several_slashes_in_one_epoch_stop_at_the_cap` (four canary slashes land, the fifth crosses 7,500
+  bps and is refused whole; an abandon strike still lands), `one_slash_past_the_room_left_is_refused`,
+  `the_cap_resets_with_the_next_epoch_post_and_is_per_agent` (the refused slash id lands after the
+  next post), `the_admin_edits_the_cap_and_nobody_else` (stranger and Core refused, below a share and
+  above 10,000 refused, `set_config` cannot raise a share above it), and
+  `migrate_config_slash_cap_grows_the_previous_layout` (admin only, once, checked cap, only the two
+  cap bytes added). `registry.rs` `migrate_config_from_the_first_layout` checks the default cap.
+- **Residual:** the `epoch` argument still names the suspension epoch, so a compromised Core key can
+  still suspend an agent for an arbitrary epoch (no tokens move); the admin rotates the key. A slash
+  reversed by an upheld challenge does not give room back in its window (the conservative side).
+- **Devnet:** registry upgraded and the Config migrated with 7,500 bps on 2026-10-10
+  (onchain/DEVNET.md "Pre-audit program changes").
 
 #### A1-09 (Low, accepted): message spam is bounded per agent, not globally
 
@@ -208,8 +232,8 @@ registry, launch and messages admin; the Core authority is `CjNUnQ...c4j9`; the 
 | Role | Exact powers | If compromised |
 |---|---|---|
 | Upgrade authority (one key, all three programs) | Replace any program's code (`solana program deploy`), which is total control of every vault and record. Also the only signer of the one-time `initialize`, `initialize_launch` and `lineage_msg::initialize`. | Everything: bonds, treasury, reserve, pool, payable and challenge vaults, every compute vault and escrow, the agent token fee positions. Mitigation before mainnet: a multisig with a timelock, separate from the admin keys. |
-| Registry admin (`Config.admin`) | `set_config`: the admin, Core authority, launch program and every SPEC 13 parameter (slash shares up to 100%, `register_burn`, `unbond_cooldown_s` down to two epoch lengths, `epoch_length_s`, reserve/pool split) and `max_rebate_per_epoch` (no upper bound). `pause` (stops every instruction that is not an admin's own except `revoke_agent_key`, `migrate_agent`, `migrate_epoch` and `expire_challenge`; claims and unbond withdrawals included; `lineage_launch` and `lineage_msg` have their own pauses). `set_epoch_cursor` (rewrites the epoch sequence and clock anchor). `set_challenge_config` (window, bond, reward, timeout, pause of new challenges). `migrate_config` once. It cannot move tokens or edit agent records, epochs or receipts directly. | Becomes any Core authority it names, so everything in the Core row with no cap (it raises `max_rebate_per_epoch` and resets the epoch clock): the pool vault each post, the whole reserve, and every bond through 100% slashes; it can freeze all claims and withdrawals with `pause` or an unbounded challenge window, and point `launch_program` at its own program to register fake launched agents and redirect `agent:<id>:compute` payouts. |
-| Core authority (`Config.core_authority`) | `post_epoch` (next epoch only, clocked: roots, units, `pool_amount` up to the pool vault, `rebate_amount` up to the reserve and `max_rebate_per_epoch`); `slash` (any agent, offence, epoch, fresh id; configured shares; suspensions); `resolve_challenge` (outcomes, bond and reward moves with rewards capped per A1-05, slash reversals, root corrections while an epoch has no claim). | Pays the whole pool vault and up to `max_rebate_per_epoch` of the reserve each epoch length to leaves it chooses, plus up to the same again as challenge rewards; slashes bonds into the reserve without limit (A1-08), from where they leave at those rates; resolves challenges against honest challengers. Bounded by the clocked sequence (no burst) and visible on chain; the admin rotates the key and can pause. |
+| Registry admin (`Config.admin`) | `set_config`: the admin, Core authority, launch program and every SPEC 13 parameter (slash shares up to 100%, `register_burn`, `unbond_cooldown_s` down to two epoch lengths, `epoch_length_s`, reserve/pool split) and `max_rebate_per_epoch` (no upper bound). `pause` (stops every instruction that is not an admin's own except `revoke_agent_key`, `migrate_agent`, `migrate_epoch` and `expire_challenge`; claims and unbond withdrawals included; `lineage_launch` and `lineage_msg` have their own pauses). `set_epoch_cursor` (rewrites the epoch sequence and clock anchor). `set_challenge_config` (window, bond, reward, timeout, pause of new challenges). `set_slash_cap` (A1-08: the per agent, per epoch slash cap, at least every single share). `migrate_config` and `migrate_config_slash_cap` once. It cannot move tokens or edit agent records, epochs or receipts directly. | Becomes any Core authority it names, so everything in the Core row with no cap (it raises `max_rebate_per_epoch` and resets the epoch clock): the pool vault each post, the whole reserve, and every bond through 100% slashes and a lifted slash cap; it can freeze all claims and withdrawals with `pause` or an unbounded challenge window, and point `launch_program` at its own program to register fake launched agents and redirect `agent:<id>:compute` payouts. |
+| Core authority (`Config.core_authority`) | `post_epoch` (next epoch only, clocked: roots, units, `pool_amount` up to the pool vault, `rebate_amount` up to the reserve and `max_rebate_per_epoch`); `slash` (any agent, offence, epoch, fresh id; configured shares; suspensions); `resolve_challenge` (outcomes, bond and reward moves with rewards capped per A1-05, slash reversals, root corrections while an epoch has no claim). | Pays the whole pool vault and up to `max_rebate_per_epoch` of the reserve each epoch length to leaves it chooses, plus up to the same again as challenge rewards; slashes bonds into the reserve up to `max_slash_bps_per_epoch` of each agent's bond per chain epoch (A1-08), from where they leave at those rates; resolves challenges against honest challengers. Bounded by the clocked sequence (no burst) and visible on chain; the admin rotates the key and can pause. |
 | Launch admin (`LaunchConfig.admin`) | `set_launch_config`: admin, runtime authority, compute sink, fee split, sleep and wake thresholds, pause, `max_debit_per_epoch` (0 = none) and the DBC config new launches use (checked: `$LINE` quote, our authority as fee claimer and leftover receiver, 100% partner lock, no creator share, Token-2022 base). `graduate_by_admin` (graduate on any fully locked, authority-held position of the agent's own DAMM v2 pool). `set_bounty_config`. `migrate_launch_config` once. | Names itself runtime authority and compute sink with no debit cap, then drains every hosted agent's compute vault in one usage epoch; can pause cranks, withdrawals and bounties; can route future launches' fees entirely to the protocol treasury (not to itself). Cannot touch self-hosted vaults, escrows, or the fee positions. |
 | Runtime authority (`LaunchConfig.runtime_authority`) | `post_usage` (clocked sequence, one root per epoch length); `debit_compute` (hosted agents only, proven usage leaf, once per agent and usage epoch, to the configured sink, at most `max_debit_per_epoch` in total per usage epoch); `open_bounty` / `cancel_bounty` for hosted payers (at most `max_bounty_out_bps` of a vault per window). It holds hosted agents' signing keys (SPEC 17.2), so it also speaks for them in `lineage_msg`, `set_profile` and `open_challenge`. | Moves up to `max_debit_per_epoch` per usage epoch length from hosted vaults to the sink (on devnet the sink is its own account, A1-11); escrows hosted vaults into bounties that pay only through Core-proven accepted generations; posts messages and profile digests as hosted agents until each owner rotates or revokes the key. |
 | Messages admin (`MsgConfig.admin`) | `set_config`: caps, sizes, pause, the admin. | Pauses messages or loosens the caps (spam at the fee payer's cost). Cannot forge or delete a message. |
@@ -222,6 +246,13 @@ the A1 proof run 9/9 (`onchain/scripts/audit-a1-devnet.ts`: the old launcher ref
 withdraw, open and cancel; the new owner withdraws; a donated escrow cancels). SOL: deployer
 67.57488197 -> 67.32486161 (0.25002036: 0.1694536 upgrades, 0.04296504 graduation e2e, 0.03760172
 proof run of which 0.02 went to its buyer key).
+
+Upgraded again 2026-10-10 for A1-08 (onchain/DEVNET.md, "Pre-audit program changes"): registry
+`7287a911...6ede`, launch `d1ab4dbf...f36e` (the launch binary changed only because it compiles the
+registry's `Config` type in), both dumps equal to the builds; `migrate_config_slash_cap` 7,500 bps.
+After it: graduation e2e 16/16 and the A1 proof run 9/9 again. SOL: deployer 65.46289277 ->
+65.27092745 (0.19196532: 0.11139856 extends, upgrades and migration, 0.04296504 graduation e2e,
+0.03760172 proof run of which 0.02 went to its buyer key).
 
 ### For an external auditor
 

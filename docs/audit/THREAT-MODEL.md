@@ -93,7 +93,7 @@ total control by design until it moves to a multisig with a timelock).
 
 From docs/AUDIT.md (accepted or partly fixed, each with its rationale there): A1-06 (first challenger
 fixes a subject; verdict challenges hold claims until resolved or expired), A1-07 (expiry can race a
-late resolution), A1-08 (slashes bounded only by Core: no per-agent, per-epoch cap), A1-09 (message
+late resolution), A1-08 (fixed 2026-10-10: per agent, per epoch slash cap; the suspension epoch argument stays Core's), A1-09 (message
 caps per agent, not global; `lineage_msg` ignores the registry pause), A1-10 (graduation paths ignore
 the launch pause), A1-11 (no debit cap when `max_debit_per_epoch = 0`; devnet sink is the runtime's
 own account), and offchain OFF-04, OFF-06, OFF-D10, OFF-D12, OFF-S6, OFF-S8, OFF-S9, OFF-W3, OFF-W4,

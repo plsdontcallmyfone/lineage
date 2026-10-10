@@ -695,3 +695,94 @@ Devnet transactions of the agent trading lane: smoke checks of the trade venue a
 | 2026-10-10 00:36:21 | allocate: TEST launcher Ds2dJD9Qr5WPbq9ZHjsnp7Lh6aybPaQU72nS7pfCB4C sends 1000000000 tLINE base units to the allocation escrow 3QeYPxe2awQmaqcZ7kRpfZYmZTjj98eYg1PPuVqRkPQC for agent 63JTudW2oYZyy5oQPwyjZAPQAVGaF7xXTKEzQw8uvqAy (memo) | 5000 | `2CuWuSJW5wzKy8fc1CfsjwpHCWrdrXNUrFCafmt5K7ygUPSjsNuoBy56J3ZSvcFAcMf25jsY1HC4VSmJRxUCLi5Q` |
 | 2026-10-10 00:36:23 | allocate: TEST launcher Hwudggz5NWKsJ7afGgXqAFqNnDRVD7NcM9sY3HkmDvp6 sends 1000000000 tLINE base units to the allocation escrow 3QeYPxe2awQmaqcZ7kRpfZYmZTjj98eYg1PPuVqRkPQC for agent 5t9wKLssXQ1ZFdM74UdiXj9QxFphjVxBmo6rmLaSK91R (memo) | 5000 | `5t48A8Sr9ix2Zk1dmcE7rgjckKJFNJAJPEqEWaTFdPA6PZPLCcB6CDFWusGC3VsxYYzx2DyNv1Bhoc6kCd75RkCy` |
 | 2026-10-10 00:36:25 | allocate: TEST launcher 9vsruXazhbaehi3DAF3sPk7SD2Wh26SXmj8Sp3HwJNnh sends 1000000000 tLINE base units to the allocation escrow 3QeYPxe2awQmaqcZ7kRpfZYmZTjj98eYg1PPuVqRkPQC for agent BFPxdave7NVSXztGEZA5iZ7FiBDKRsuZmS9wZn2J1WBV (memo) | 5000 | `5zM1Cw1hMYD9U7Hat6mkuiEg93q5znvgrrzHGV6RnGTGDEy2wAe5vhkYHF32qj2ZYKHnZsmdREWcyXi7ffae4jdA` |
+| 2026-10-10 16:03:34 | A1-08 | lineage_registry::migrate_config_slash_cap (Config +2 bytes, max_slash_bps_per_epoch 7500) | 5000 | `n77cdSJNE9e4yJjiPdHyY3xLoqHany3HjGvqzmZZ8kZYD3fkDbcopzD3enxUuwvRm5BaTPgHGwYaLC8oAkpt7mq` |
+
+## Graduation e2e run 20261010160425 (launchpad L1, scripts/devnet/graduation-e2e.ts)
+
+Outcome: PASS; checks 16/16.
+
+- Preconditions: deployer CVEZWyUBoNb6Zkte3qa7JDu5TBV4wTH6wMw4pLodnDih 65.351494210 SOL and 920000407 tLINE; DBC config AEcaMdhK3PSqPDq2rrXZMoKsCPCTVTMdqJXaT34mWWGw migration threshold 15999999999792 base units, migration option 1, partner/creator permanent lock 100/0%; DBC pool authority holds 99.226635387 SOL (it lends migration rent); rent: DAMM pool 0.006299200, position 0.002722880 SOL.
+- Curve fill: the deployer paid 16494845360611 tLINE base units in one PartialFill buy (quote reserve 15999999999792, partner fee 395876288656).
+- Migration positions: 8x7FTt6ZB5t1mM4wMgQjLWeBHY57ehywpzQ4dEt6cruQ (NFT 4cKMedB7oH4vv31ByUgCdmrjauyJrjEubbUV4BSagu83, locked 329325419000909866030255248650428, unlocked 0).
+- crank_pool_fees (migration position): compute vault Y1uD6Zn3rj1HtVaU6N9xWj8YmynzMysoANYmRMWGHJh 277113402059 -> 326374344523 base units (+49260942464), treasury +21111832485, agent-token fees burned 0.
+- crank_pool_fees (repointed position): compute vault Y1uD6Zn3rj1HtVaU6N9xWj8YmynzMysoANYmRMWGHJh 326374344523 -> 340117655127 base units (+13743310604), treasury +5889990259, agent-token fees burned 0.
+- Token mint 14E4iX892ojFApcCQUDrvuX5igGqu81syHGEfJQG7Qbv; agent 9K2zSUrswhCcPY6HMgX95SQC43JFu2t8drm8xTvJ9yF; DBC pool 5qCD9nndC2GChcNDB1UUDyUMfm5fzCYpBUwiV6JLd4Mc; DAMM v2 pool B6JpPkpUTT6BTc1mVmbu8bTnzbq4c2KyktxnWwiM1o5i; migration position 8x7FTt6ZB5t1mM4wMgQjLWeBHY57ehywpzQ4dEt6cruQ; repointed position HcBMtLNGgrYBRoiPvyePA2LqLvhchLL6xp1Gfnffkd86; compute vault Y1uD6Zn3rj1HtVaU6N9xWj8YmynzMysoANYmRMWGHJh ends at 340117655127 base units (to_compute 340117655127, to_protocol 145764709341).
+- Deployer spent 0.042965040 SOL and 26281388263497 tLINE base units (curve fill, DAMM trades, locked liquidity); it still holds 50193807575216 agent-token base units.
+
+| When (UTC) | Step | What | Fee | Signature |
+|---|---|---|---|---|
+| 2026-10-10 16:04:28 | L1 | launch_agent: TEST graduation agent 9K2zSUrswhCcPY6HMgX95SQC43JFu2t8drm8xTvJ9yF on https://github.com/karpathy/minbpe, agent mint 14E4iX892ojFApcCQUDrvuX5igGqu81syHGEfJQG7Qbv, launcher = deployer | 15000 | `66QfGjNRz7Zy58F9pGYq6SS2Qjzd6E8s1UKQ59JsFxbcXGv7RL7y1e6vWhVzRtsGdqHkabG8m91zCdLKbcWr8Yf5` |
+| 2026-10-10 16:04:30 | L1 | create the launch authority's and the deployer's agent-token ATAs | 5000 | `2PcHegZgiQhL2uEtBS2GWb99VHfVLDhr6weNku5edUE4haBjCV97q4Fwb95eJjhHdbkkeLjR9BwaNRy4Xg73QgFj` |
+| 2026-10-10 16:04:32 | L1 | fill the curve: deployer buys with up to 17599999999771 tLINE base units (PartialFill, stops at the threshold) | 5000 | `ALJVqCaxnFkFonGkfPdx8xQ27NxnQZc4ZvKdikPdsGCXgqswnWSuXZNvm7q5LEGvUQ7AA5bjXJSvf4sfpaxTLVV` |
+| 2026-10-10 16:04:34 | L1 | crank_fees: curve partner fee 395876288656 base units | 5000 | `62CaX3U6YXbJPkN4qefwHArXSKyoCW3kmK6G7VSY87wczki9xmV7D8VjF74GtzTzozhuPt4p2uk8NZ61674xMT9d` |
+| 2026-10-10 16:04:36 | L1 | Meteora DBC migration_damm_v2: DAMM v2 pool B6JpPkpUTT6BTc1mVmbu8bTnzbq4c2KyktxnWwiM1o5i on config A8gMrEPJkacWkcb3DGwtJwTe16HktSEfvwtuDh2MCtck | 15000 | `ZnVSERgh1n55RL77mbXzAYs7sc2DZRgtSS58ajvpfVHquufDZXBsX8xdNYzPuuzEyhQhSZea1Ws4xuaSjAzxHJm` |
+| 2026-10-10 16:04:39 | L1 | graduate: DAMM v2 pool B6JpPkpUTT6BTc1mVmbu8bTnzbq4c2KyktxnWwiM1o5i, migration position 8x7FTt6ZB5t1mM4wMgQjLWeBHY57ehywpzQ4dEt6cruQ | 5000 | `2Q9iU7NGfmtBBXcZBYP2T4q1hksB222WNJV7RCuE1NkmfQU6djiAWTv2X6oDacU9s4HMKkggD5VEsV9VTAmVVVYt` |
+| 2026-10-10 16:04:41 | L1 | DAMM v2 trade (migration position): deployer buys with 200000 tLINE | 5000 | `5C2eGLQao8WdE3smxHCwLVBCgTxR17s4MzmwN8EKWmmGCbWqvR7wXREQ85m2crYK9TDugk62zhAXJeLd9i4Jp3w3` |
+| 2026-10-10 16:04:42 | L1 | DAMM v2 trade (migration position): deployer sells 4011979457935 agent-token base units | 5000 | `61Vh1rLPLCjEBuFXCqzM6HQv6knBsDVnkn1WhK5Kxn7dNSGcGRDc1y76gvruAHVfUg7i4ZbfgzrRo9dZLiAZx9Du` |
+| 2026-10-10 16:04:45 | L1 | crank_pool_fees (migration position): position 8x7FTt6ZB5t1mM4wMgQjLWeBHY57ehywpzQ4dEt6cruQ into compute vault Y1uD6Zn3rj1HtVaU6N9xWj8YmynzMysoANYmRMWGHJh | 5000 | `29Bd48iUC6phZnwwyFEWMfMsnZTHu6tTJF7hzdcLK1fMyXmvppNz2uxW1i4qgAXRGvomtQ7YerPtw71mKs2CN8E8` |
+| 2026-10-10 16:04:47 | L1 | DAMM v2 create_position HcBMtLNGgrYBRoiPvyePA2LqLvhchLL6xp1Gfnffkd86 (deployer owns the NFT) | 10000 | `5AjYoezzmF2vSBySnAVRQEB6rP2eG31rJTfXF8UEYpkPNgwJFjvGiecwuag2o5fdDEgCD2QJEZUPPYWXpNHnzVCW` |
+| 2026-10-10 16:04:51 | L1 | add_liquidity 329325419000909866030255248650429 (migration position locked + 1), permanent_lock_position, hand the NFT account to the launch authority | 5000 | `AXwhriyZCjBxZcLzbawzZjKzfFP8GyRmmUkCcpvzFyVzzpRS3T52ZrLJSm7EbDeT732SC83DzfkfcriWZzWifV5` |
+| 2026-10-10 16:04:53 | L1 | repoint_position: 8x7FTt6ZB5t1mM4wMgQjLWeBHY57ehywpzQ4dEt6cruQ -> HcBMtLNGgrYBRoiPvyePA2LqLvhchLL6xp1Gfnffkd86 | 5000 | `46gf4wh86wrvUVyAS8dxo77aR775ag8A8rEjpUGZZ34S8EHuGssCNgVbBsFEj9HvHd7JpxaDPhV33EnUdQYy5W8Z` |
+| 2026-10-10 16:04:58 | L1 | DAMM v2 trade (repointed position): deployer buys with 200000 tLINE | 5000 | `66igDrU4oj6imBFk1Rys2AoxB3sMRGbaRyNKhJevJbPKVTJPm2zoaeJswknAA7Y28Msf7srYbQNwwKV5qgMykBEx` |
+| 2026-10-10 16:05:00 | L1 | DAMM v2 trade (repointed position): deployer sells 2641779346064 agent-token base units | 5000 | `574DBJ1uGwy3Evt3Knh5Tz1bjqRtaU4qfB3q5ySvwNHwwziAJ5WcE85geGm1Rj8qnA8YGnpgHGSKa5UK4a8LnN8e` |
+| 2026-10-10 16:05:02 | L1 | crank_pool_fees (repointed position): position HcBMtLNGgrYBRoiPvyePA2LqLvhchLL6xp1Gfnffkd86 into compute vault Y1uD6Zn3rj1HtVaU6N9xWj8YmynzMysoANYmRMWGHJh | 5000 | `62Una1JWPPffKX5wx2hPtZpgxernm2zh2ArdCKyLauN8Npds12hZTPsXBJ1V8UkNX8ZSL3NzhqsoKzbLXWoQH15o` |
+
+### Audit A1 devnet proof run 20261010160509 (onchain/scripts/audit-a1-devnet.ts)
+
+Outcome: PASS; checks 9/9; deployer 65.308529170 -> 65.270927450 SOL (0.037601720 spent, including 0.02 SOL sent to the buyer key).
+
+- PASS launch and bounty configs live and unpaused: bounty min 10000, out cap 5000 bps, ttl 60..2592000 s
+- PASS deployer holds enough SOL: 65.308529170 SOL
+- PASS registry owner is the buyer; AgentLaunch.launcher is still the deployer
+- PASS A1-03 old launcher withdraw_compute after the sale: refused in simulation (Unauthorized)
+- PASS A1-03 the new owner withdraws
+- PASS bounty amount fits the per-window cap: 1000000 of 97000000
+- PASS A1-03 old launcher open_bounty from the sold agent's vault: refused in simulation (Unauthorized)
+- PASS A1-03 old launcher cancel_bounty of the new owner's bounty: refused in simulation (Unauthorized)
+- PASS A1-01 cancel landed despite the donation: escrow vault closed, escrow and donation back in the compute vault: vault 97000000 -> 97000001
+
+| When (UTC) | Step | What | Fee | Signature |
+|---|---|---|---|---|
+| 2026-10-10 16:05:11 | A1 | launch_agent: TEST audit agent DyVieT4A2uCZYcRRFJDpMU5Xb4cYqdL3QRqBNECPmdpD (self-hosted), mint DqWKABVZkK28gbchenr9KYX85wk6HTxgrq4KotjnR7uH, launcher = deployer | 15000 | `53uNaXpRePCVdazTByCyVbsYydDdJ1FrjzatLBxzGk9hCtyqZPDtxfayuL71YYbqstGbP7GYeFeHpkfBSjFhzdpd` |
+| 2026-10-10 16:05:13 | A1 | fund the agent's compute vault with 100 tLINE; buyer 5piBZD5mGSwBn9R76NBrnKQef1yUKTvPihnoNvwZ89xn: 0.02 SOL and a tLINE account | 5000 | `2L4DM6HrHEk6xEUUBkTfERzopA1fJ2acJxpJCQTeA98F5WXVLSoCw3Ykp7cHpeRPfBntd3vmuXADN6c32PwhVBTR` |
+| 2026-10-10 16:05:15 | A1 | withdraw_compute 1 tLINE by the launcher (still the owner) | 5000 | `639Tv4jvHJ6NpRhci7pRLWESp5Bxo4zUKytjBsdtGefXC2cesJhJB4XM9G6UYXj6hYHiMe3GaKEBuAAvDrKEHqVT` |
+| 2026-10-10 16:05:17 | A1 | propose_owner: deployer proposes 5piBZD5mGSwBn9R76NBrnKQef1yUKTvPihnoNvwZ89xn | 5000 | `3DXGDG6hV5KeCzDkGRpy2dvgBtKDuaPb6zH1N2NBXKHaDYsYVJogH22BixqiTAMK3yAaoyB4YBA1jSBzRvJEvj5y` |
+| 2026-10-10 16:05:18 | A1 | accept_owner by the buyer | 5000 | `4fZqUDjP6nroeAsZXjXgZj1177oshg3pYyxYY6gUJU4DPFVkaPkEBMYMLWrKiNktR8ne7ZVtKAg1tFuZX5Zkwkpv` |
+| 2026-10-10 16:05:21 | A1 | withdraw_compute 2 tLINE by the new owner | 5000 | `2yY3rPZ4cmxpfbiB8xFNsYrpDo4cJBfFdVfbga9fBrPm6emUMWMVrbL1ccBKBUVFR5PbULqbNMoRfuPYVj7zgWgu` |
+| 2026-10-10 16:05:24 | A1 | A1-01 open_bounty 20261010160509 (1000000 base units) by the new owner, donate 1 base unit into its escrow vault, cancel_bounty: one transaction | 5000 | `2dbbTj1KzbwpjiXk1pMwUnPGxmAshR9kEthUDjJnF4CXhmSYPREvCkxmMSvr1FBEMejuThvu298pu1fvgCsCgENo` |
+
+## Pre-audit program changes (2026-10-10, A1-08 slash cap, program ids by feature)
+
+Commit `9f70357`. The deployer `CVEZWy...nDih` (`~/.config/lineage/devnet-deployer.json`, passed with
+`-k`; `solana config` untouched) extended, upgraded and migrated; nothing else was signed. Devnet
+program keypairs backed up first to `~/.config/lineage/devnet-program-keypairs-backup/` (mode 600).
+The devnet build is the default build; its ids are unchanged.
+
+Measured before sending: registry build 732,472 bytes against ProgramData 728,000 (short by 4,472;
+the loader refuses extends under 10,240 bytes, so 10,240), launch build 745,216 against 744,448 (short
+by 768, extended 10,240). Buffer rent on devnet: 3.721608 SOL (registry), 3.78634752 SOL (launch),
+refunded after each upgrade.
+
+| Step | Signature | Result |
+|---|---|---|
+| `solana program extend` registry 10,240 | (CLI prints none) | ProgramData 738,240 |
+| registry upgrade | `29MyQxV4zNpN9EraPAzo6r1Dygr1WmKK6ApdodBF54Ck1XTPCew8YrjRUR17SevKsb4ng3Pj9HbVDFyuZ17ZzoNe` | slot 509,594,590 |
+| `migrate_config_slash_cap` 7,500 bps (`onchain/scripts/slash-cap-devnet.ts`) | `n77cdSJNE9e4yJjiPdHyY3xLoqHany3HjGvqzmZZ8kZYD3fkDbcopzD3enxUuwvRm5BaTPgHGwYaLC8oAkpt7mq` | 15,666 CU; cap 7,500 = strike_limit 3 x canary 2,500; epochs_posted 18, last epoch 17 unchanged |
+| `solana program extend` launch 10,240 | (CLI prints none) | ProgramData 754,688 |
+| launch upgrade | `4hR6Z5ovkkNN5jEPSmahzqGpYUiMDsdFqV6A4781hWVe3RyRHuMtU2e42uPQjo4rp7PkrLndhf9SLiDCX2QavQ4X` | slot 509,594,746 |
+
+The registry ran on the previous Config layout for the seconds between its upgrade and the migration;
+the site's Core posts daily, and no post fell in that gap. `lineage_msg` was not upgraded (its deployed
+binary predates registry changes, docs/audit/SCOPE.md).
+
+Dumps (`solana program dump`): registry first 732,472 bytes sha256
+`7287a911843b531244d0c6e50923d38d850099800de153ea47dca6587d346ede`, launch first 745,216 bytes
+`d1ab4dbf15f3d7b2c1e5a7fc0791c4e56cd1f4b5979c5e2db06829a2a974f36e`, each equal to the local build, the
+rest of each ProgramData zero.
+
+After it: graduation e2e PASS 16/16 and the A1 proof PASS 9/9 (the two sections above). The live
+site's Core kept reading the chain on the new layouts (`/api/chain` read 10 s old, epochs_posted 18,
+agents_v1 0); its next epoch post is epoch 18, whose window ends at 1791731026604 ms (Core clock).
+
+SOL: deployer 65.46289277 -> 65.27092745 (0.19196532: 0.11139856 extends, upgrades and migration,
+0.04296504 graduation e2e, 0.03760172 A1 proof of which 0.02 went to its buyer key).
