@@ -1753,6 +1753,9 @@ function stepProblem(i: number): string | null {
       // paid by swap (mainnet), that part needs no quote balance
       const need = (payAsset(val("l_deposit_pay")) === "LINE" ? dep : 0n) + (payAsset(val("l_alloc_pay")) === "LINE" ? alloc : 0n);
       if (S.line !== null && S.line < need) return `Your wallet holds ${units(S.line, dec())} ${qsym()}; the deposit${alloc ? " and the allocation" : " needs"}${alloc ? " need" : ""} ${units(need, dec())}.${topUp()}`;
+      // launch fronting: the wallet must cover the creation cost, the credits and the initial buy
+      const short = S.draft?.costs && S.draft.costs.creationLamports !== null ? frontingShortfall(S.draft.costs, S.sol, S.line) : null;
+      if (short) return `Your wallet does not cover the launch: ${short}.`;
       return null;
     }
   } catch (e) {
@@ -1839,7 +1842,7 @@ function frontingHtml() {
     credits = null;
   }
   return frontingBlock({ cfg: P.cfg, costs: S.draft?.costs ?? null, credits, creditsUsd: P.cfg?.min_usd ?? null, decimals: dec(), sym: qsym(), solBalance: S.sol, quoteBalance: S.line,
-    fmtSol: (l) => (Number(l) / 1e9).toFixed(9), fmtQuote: (b) => units(b, dec()) });
+    fmtSol: (l) => sol(l), fmtQuote: (b) => units(b, dec()) });
 }
 function renderFronting() {
   set("w-fronting", frontingHtml());
