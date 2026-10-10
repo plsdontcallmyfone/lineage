@@ -1,9 +1,10 @@
-import { afterEach, describe, expect, test } from "bun:test";
+import { afterAll, afterEach, beforeAll, describe, expect, test } from "bun:test";
 import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { accountDisc, ChainReader, fixtureTransport, hexToBytes, Reader, registryPdas, Rpc, Writer, type Ix, type Transport } from "@lineage/chain";
+import { accountDisc, ChainReader, DEVNET_V1_PROGRAM_IDS, useProgramIdsForTest, fixtureTransport, hexToBytes, Reader, registryPdas, Rpc, Writer, type Ix, type Transport } from "@lineage/chain";
 import { backoffMs, ChainBridge, chainBootstrap, parseChainSettings, slashId } from "../src/chain.ts";
+import { deploymentsOf } from "../src/deployments.ts";
 import { FakeClock } from "../src/clock.ts";
 import { CoreClient } from "../src/client.ts";
 import { parseNetworkConfig } from "../src/config.ts";
@@ -13,6 +14,12 @@ import { generateAgentKey, merkleProof, merkleRoot, verifyProof } from "../src/p
 import { CAPS, ROOT } from "./helpers.ts";
 
 // Core chain mode against devnet state recorded by scripts/devnet/record-fixtures.ts: no live RPC.
+// The recording is of the first devnet deployment, so its program ids are active for this file.
+let restoreIds: () => void = () => {};
+beforeAll(() => {
+  restoreIds = useProgramIdsForTest(DEVNET_V1_PROGRAM_IDS);
+});
+afterAll(() => restoreIds());
 
 const fx = JSON.parse(readFileSync(join(import.meta.dir, "fixtures/devnet-rpc.json"), "utf8"));
 const base = parseNetworkConfig(JSON.parse(readFileSync(join(ROOT, "config/network.json"), "utf8")));
@@ -406,5 +413,50 @@ describe("slashes and posts that report failure (review M1, L1, L7)", () => {
     expect(core.chainEpochs()[0]!.signature).toBeTruthy();
     await bridge.tick();
     expect(sends).toBe(1);
+  });
+});
+
+describe("deployment switch (devnet v2, deployments.ts)", () => {
+  test("a new registry retires the earlier one: its epochs stay with it, absent agents sleep, a same-key relaunch records the previous token", async () => {
+    const reg = await new ChainReader(new Rpc(transport())).registryConfig();
+    const sent: string[] = [];
+    const { core, bridge, admin } = await setup({ coreKey: reg!.coreAuthority, send: async (label) => (sent.push(label), { signature: `sig${sent.length}` }) });
+    await bridge.tick();
+    const d = deploymentsOf(core);
+    expect(d.list().deployments.map((x) => [x.registry_program, x.label, x.retired_at])).toEqual([[SETTINGS.registry_program, "devnet v1", null]]);
+    core.tx(() => (core as any).addUnits(VERIFIER, "replay", "r1", 2, 2_000n));
+    const a = core.closeEpoch();
+    await bridge.tick();
+    expect(core.chainEpochs().find((e) => e.n === a.n)?.signature).toBeTruthy();
+    const b = core.closeEpoch(); // closed, not posted when the switch happens
+    // the switch: Core now reads the devnet v2 registry
+    const sw = d.observe({ registry_program: "CJk3kwUqSS4qoJD8iu7uhUzSBNySjn9HsqaExpaV9gM2", launch_program: "Axo38WX6TBAGGQ2nPpejn5tPsQogygA728baRaeJebGX", line_mint: "CiBfnTkDc1vgYbuMobMNEQaKSQXPYeTUbZGRZcug1L62", label: "devnet v2" });
+    expect(sw.switched.map((x) => [x.through_epoch, x.last_posted_epoch, JSON.parse(x.unposted_epochs!)])).toEqual([[b.n, a.n, [b.n]]]);
+    expect(d.retiredThrough()).toBe(b.n);
+    expect(d.observe({ registry_program: "CJk3kwUqSS4qoJD8iu7uhUzSBNySjn9HsqaExpaV9gM2", launch_program: "x", line_mint: null }).switched).toEqual([]);
+    // epochs of the retired registry are neither posted again nor mirrored for claims
+    expect(core.chainPendingEpochs()).toEqual([]);
+    expect(core.chainPostedLeaves()).toEqual([]);
+    const c = core.closeEpoch();
+    expect(core.chainPendingEpochs().map((e) => e.n)).toEqual([c.n]);
+    // an agent the new registry does not carry sleeps with no vault and no bond there
+    expect(core.agentView(MINBPE).awake).toBe(true);
+    expect(core.chainAbsentAgents(new Set([VERIFIER]))).toEqual([MINBPE]);
+    expect(core.agentView(MINBPE)).toMatchObject({ compute: "0", awake: false });
+    expect(core.agentView(VERIFIER).bond).toBe("5000000");
+    // relaunched under the same agent key: new mint, the old one is its previous token
+    const old = core.agentView(MINBPE).mint as string;
+    const NEW = "5uUyWAc9DQEWb3XF1aH8yG62sCjmrEjtAoRB1SD9JFqV";
+    const rec = (await bridge.reader.agents()).find((x) => x.agent === MINBPE)!;
+    core.chainSyncAgent({ agent: MINBPE, owner: rec.owner, kind: "launched", burned: 0n, bond: 0n, unbondAmount: 0n, unbondReadyAt: 0n, registeredAt: rec.registeredAt,
+      operator: rec.operator, capabilities: rec.capabilities, launch: { mint: NEW, launcher: rec.owner, repoUrl: "https://github.com/karpathy/minbpe", identityMode: 2, hosted: true }, compute: 300_000_000n });
+    expect(core.agentView(MINBPE)).toMatchObject({ mint: NEW, awake: true });
+    expect(d.previousOf(MINBPE)).toMatchObject([{ mint: old, previous_agent_id: MINBPE, venue: "meteora", deployment: "devnet v1" }]);
+    // relaunched under a new agent key: the admin links it
+    const nk = generateAgentKey().id;
+    d.link(admin.id, { agent: nk, previous_agent: VERIFIER, previous_mint: old });
+    expect(d.successorOf(VERIFIER)).toBe(nk);
+    expect(() => d.link(admin.id, { agent: nk, previous_agent: nk, previous_mint: old })).toThrow(/same agent key/);
+    expect(core.ledger.reconcile().ok).toBe(true);
   });
 });

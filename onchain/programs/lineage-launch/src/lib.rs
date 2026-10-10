@@ -18,7 +18,7 @@ use pump as pf;
 
 // Network ids by build feature, as in lineage_registry: devnet by default, `mainnet` for mainnet.
 #[cfg(not(feature = "mainnet"))]
-declare_id!("8eHzm1XtNtbxJujrMAci4VdhCJvQttFUBukmkFaUwsAT");
+declare_id!("Axo38WX6TBAGGQ2nPpejn5tPsQogygA728baRaeJebGX");
 #[cfg(feature = "mainnet")]
 declare_id!("2vwKsTZm5doa3ahBmpm8Sv3sKPD76Fq2ZZENbNW5BYBq");
 

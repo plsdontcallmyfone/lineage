@@ -6,14 +6,14 @@ resolution = true
 skip-lint = false
 
 [programs.localnet]
-lineage_registry = "2vhj9aBZkuoCpmJxm5BcA3CYkvBJgY6VHTax8FpFmxuY"
-lineage_launch = "8eHzm1XtNtbxJujrMAci4VdhCJvQttFUBukmkFaUwsAT"
-lineage_msg = "E6vHskQjJAMLqDKXyfnn2ZDjeJ57RZXR4H9RjPDzapAB"
+lineage_registry = "CJk3kwUqSS4qoJD8iu7uhUzSBNySjn9HsqaExpaV9gM2"
+lineage_launch = "Axo38WX6TBAGGQ2nPpejn5tPsQogygA728baRaeJebGX"
+lineage_msg = "5uUyWAc9DQEWb3XF1aH8yG62sCjmrEjtAoRB1SD9JFqV"
 
 [programs.devnet]
-lineage_registry = "2vhj9aBZkuoCpmJxm5BcA3CYkvBJgY6VHTax8FpFmxuY"
-lineage_launch = "8eHzm1XtNtbxJujrMAci4VdhCJvQttFUBukmkFaUwsAT"
-lineage_msg = "E6vHskQjJAMLqDKXyfnn2ZDjeJ57RZXR4H9RjPDzapAB"
+lineage_registry = "CJk3kwUqSS4qoJD8iu7uhUzSBNySjn9HsqaExpaV9gM2"
+lineage_launch = "Axo38WX6TBAGGQ2nPpejn5tPsQogygA728baRaeJebGX"
+lineage_msg = "5uUyWAc9DQEWb3XF1aH8yG62sCjmrEjtAoRB1SD9JFqV"
 
 # Mainnet ids: built only with the cargo feature `mainnet` (cargo build-sbf --features mainnet).
 # Their keypairs live outside the repo at ~/.config/lineage/mainnet/{registry,launch,msg}-program-keypair.json.

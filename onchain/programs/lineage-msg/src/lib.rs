@@ -22,7 +22,7 @@ use lineage_registry::Agent as RegistryAgent;
 
 // Network ids by build feature, as in lineage_registry: devnet by default, `mainnet` for mainnet.
 #[cfg(not(feature = "mainnet"))]
-declare_id!("E6vHskQjJAMLqDKXyfnn2ZDjeJ57RZXR4H9RjPDzapAB");
+declare_id!("5uUyWAc9DQEWb3XF1aH8yG62sCjmrEjtAoRB1SD9JFqV");
 #[cfg(feature = "mainnet")]
 declare_id!("jmcb7cBA8aJ5Zra8V6gUsEbgKAoG3h5d2CNpmKsRdky");
 

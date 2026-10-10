@@ -1,5 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import {
+  DEVNET_V1_PROGRAM_IDS,
+  withProgramIdsForTest,
   bounty,
   compileVaultMessage,
   decodeSquadsMultisig,
@@ -42,7 +44,8 @@ describe("squads v4", () => {
   });
 
   test("the program stored exactly the message compileVaultMessage built", () => {
-    const ix = bounty.setConfig({ admin: fx.vault, args: BOUNTY_ARGS });
+    // recorded on a fork at the first devnet deployment's launch id (DEVNET_V1_PROGRAM_IDS)
+    const ix = withProgramIdsForTest(DEVNET_V1_PROGRAM_IDS, () => bounty.setConfig({ admin: fx.vault, args: BOUNTY_ARGS }));
     const m = compileVaultMessage(fx.vault, [ix]);
     // VaultTransaction: disc, multisig, creator, index, bump, vault index, vault bump, ephemeral bumps, message (borsh u32 vecs)
     const rd = new Reader(acct("transaction_1")).expect("VaultTransaction");
@@ -63,7 +66,8 @@ describe("squads v4", () => {
   });
 
   test("execute accounts never mark the vault as a signer", () => {
-    const ix = bounty.setConfig({ admin: fx.vault, args: BOUNTY_ARGS });
+    // recorded on a fork at the first devnet deployment's launch id (DEVNET_V1_PROGRAM_IDS)
+    const ix = withProgramIdsForTest(DEVNET_V1_PROGRAM_IDS, () => bounty.setConfig({ admin: fx.vault, args: BOUNTY_ARGS }));
     const m = compileVaultMessage(fx.vault, [ix]);
     const metas = executeAccounts(m, fx.vault);
     expect(metas[0]).toEqual({ pubkey: fx.vault, isSigner: false, isWritable: true });

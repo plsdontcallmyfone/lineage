@@ -67,8 +67,8 @@ export function loadState(): DevnetState {
   const base: DevnetState = {
     mode: "devnet",
     rpc_url: "https://api.devnet.solana.com",
-    registry_program: "2vhj9aBZkuoCpmJxm5BcA3CYkvBJgY6VHTax8FpFmxuY",
-    launch_program: "8eHzm1XtNtbxJujrMAci4VdhCJvQttFUBukmkFaUwsAT",
+    registry_program: "CJk3kwUqSS4qoJD8iu7uhUzSBNySjn9HsqaExpaV9gM2",
+    launch_program: "Axo38WX6TBAGGQ2nPpejn5tPsQogygA728baRaeJebGX",
   };
   return existsSync(STATE_PATH) ? { ...base, ...JSON.parse(readFileSync(STATE_PATH, "utf8")) } : base;
 }

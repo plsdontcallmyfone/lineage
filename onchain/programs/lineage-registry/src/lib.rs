@@ -14,7 +14,7 @@ pub use challenge::*;
 // feature `mainnet`, the fresh mainnet id (SPEC 14, "Program ids"). `lineage_launch` and
 // `lineage_msg` forward the feature, so all three agree.
 #[cfg(not(feature = "mainnet"))]
-declare_id!("2vhj9aBZkuoCpmJxm5BcA3CYkvBJgY6VHTax8FpFmxuY");
+declare_id!("CJk3kwUqSS4qoJD8iu7uhUzSBNySjn9HsqaExpaV9gM2");
 #[cfg(feature = "mainnet")]
 declare_id!("3GeaTsBUsaXCJ7Dru9tDHiKnVBsoHE6yiTdqqj42JHay");
 

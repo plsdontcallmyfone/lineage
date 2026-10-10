@@ -21,9 +21,9 @@ export interface ProgramIds {
 
 export const PROGRAM_IDS: Readonly<Record<ProgramNetwork, Readonly<ProgramIds>>> = Object.freeze({
   devnet: Object.freeze({
-    registry: "2vhj9aBZkuoCpmJxm5BcA3CYkvBJgY6VHTax8FpFmxuY",
-    launch: "8eHzm1XtNtbxJujrMAci4VdhCJvQttFUBukmkFaUwsAT",
-    msg: "E6vHskQjJAMLqDKXyfnn2ZDjeJ57RZXR4H9RjPDzapAB",
+    registry: "CJk3kwUqSS4qoJD8iu7uhUzSBNySjn9HsqaExpaV9gM2",
+    launch: "Axo38WX6TBAGGQ2nPpejn5tPsQogygA728baRaeJebGX",
+    msg: "5uUyWAc9DQEWb3XF1aH8yG62sCjmrEjtAoRB1SD9JFqV",
   }),
   mainnet: Object.freeze({
     registry: "3GeaTsBUsaXCJ7Dru9tDHiKnVBsoHE6yiTdqqj42JHay",
@@ -31,6 +31,44 @@ export const PROGRAM_IDS: Readonly<Record<ProgramNetwork, Readonly<ProgramIds>>>
     msg: "jmcb7cBA8aJ5Zra8V6gUsEbgKAoG3h5d2CNpmKsRdky",
   }),
 });
+
+/**
+ * The first devnet deployment (2026-10-07 to 2026-10-10), bound at initialize to the earlier plain
+ * Token-2022 tLINE (3PLqpw...): kept read-only as history after devnet moved to pump.fun with a fresh
+ * deployment (owner decision 2026-10-10, onchain/DEVNET.md "Devnet v2"). Nothing builds against these
+ * ids except tests over fixtures recorded at them.
+ */
+export const DEVNET_V1_PROGRAM_IDS: Readonly<ProgramIds> = Object.freeze({
+  registry: "2vhj9aBZkuoCpmJxm5BcA3CYkvBJgY6VHTax8FpFmxuY",
+  launch: "8eHzm1XtNtbxJujrMAci4VdhCJvQttFUBukmkFaUwsAT",
+  msg: "E6vHskQjJAMLqDKXyfnn2ZDjeJ57RZXR4H9RjPDzapAB",
+});
+
+/**
+ * Tests over fixtures recorded at other ids (DEVNET_V1_PROGRAM_IDS): makes `ids` active and returns a
+ * function that restores the previous ids. Never used by a service or the pages.
+ */
+export function useProgramIdsForTest(ids: ProgramIds): () => void {
+  const prev = { registry: REGISTRY_PROGRAM_ID, launch: LAUNCH_PROGRAM_ID, msg: MSG_PROGRAM_ID };
+  REGISTRY_PROGRAM_ID = ids.registry;
+  LAUNCH_PROGRAM_ID = ids.launch;
+  MSG_PROGRAM_ID = ids.msg;
+  return () => {
+    REGISTRY_PROGRAM_ID = prev.registry;
+    LAUNCH_PROGRAM_ID = prev.launch;
+    MSG_PROGRAM_ID = prev.msg;
+  };
+}
+
+/** useProgramIdsForTest around one synchronous call. */
+export function withProgramIdsForTest<T>(ids: ProgramIds, fn: () => T): T {
+  const restore = useProgramIdsForTest(ids);
+  try {
+    return fn();
+  } finally {
+    restore();
+  }
+}
 
 /** The program ids of `network`; throws on anything but devnet or mainnet. */
 export function programIds(network: string): ProgramIds {

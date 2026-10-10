@@ -19,9 +19,9 @@ const declared = (prog: string, feature: "devnet" | "mainnet") => {
 const profileJson = JSON.parse(readFileSync(new URL("../../../config/profile.json", import.meta.url), "utf8"));
 
 describe("program ids per network", () => {
-  test("devnet ids are unchanged and are what the builders use", () => {
+  test("devnet ids are the devnet v2 deployment's and are what the builders use", () => {
     expect(PROGRAM_IDS.devnet).toEqual({ registry: REGISTRY_PROGRAM_ID, launch: LAUNCH_PROGRAM_ID, msg: MSG_PROGRAM_ID });
-    expect(REGISTRY_PROGRAM_ID).toBe("2vhj9aBZkuoCpmJxm5BcA3CYkvBJgY6VHTax8FpFmxuY");
+    expect(REGISTRY_PROGRAM_ID).toBe("CJk3kwUqSS4qoJD8iu7uhUzSBNySjn9HsqaExpaV9gM2");
   });
   test("each network's ids equal the program sources' declare_id! and Anchor.toml", () => {
     for (const net of ["devnet", "mainnet"] as const) {
