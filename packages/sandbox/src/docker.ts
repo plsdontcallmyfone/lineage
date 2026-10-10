@@ -86,6 +86,9 @@ export function dockerArgs(spec: RunSpec, name: string): string[] {
     "lineage",
     "--label",
     "lineage=1",
+    // rebrand transition (docs/plans/REBRAND-UNITS.md 3.10): both labels, cleanup matches either
+    "--label",
+    "units=1",
     "--label",
     `lineage.job=${spec.job}`,
     "--user",
@@ -169,8 +172,7 @@ export function runnableImage(image: string): string {
 
 /** Removes leftover containers of ours only (crashed runs). */
 export function cleanupLineageContainers(): void {
-  const ps = Bun.spawnSync(["docker", "ps", "-aq", "--filter", "label=lineage=1"]);
-  const ids = ps.stdout.toString().split("\n").filter(Boolean);
+  const ids = [...new Set(["label=lineage=1", "label=units=1"].flatMap((f) => Bun.spawnSync(["docker", "ps", "-aq", "--filter", f]).stdout.toString().split("\n").filter(Boolean)))];
   if (ids.length) Bun.spawnSync(["docker", "rm", "-f", ...ids]);
 }
 

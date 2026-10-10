@@ -93,6 +93,8 @@ Lanes whose files join the sweep when they land (the scan is rerun at execution,
   `lineage-episode-v1|` (episode ids), `lineage-soul-variety-v1` (soul generator determinism),
   `lineage-link-v1` (ERC-8004 service version string already published). Test fixtures that hash
   `"lineage"` (`onchain/scripts/make-fixtures.ts`, wallet-e2e) also stay: they pin committed fixtures.
+- The sandbox container hostname `lineage` (`packages/sandbox/src/docker.ts`): environment size
+  shifts instruction counts, so a different hostname would move every calibrated metric.
 - On-chain seeds: none contain the word (checked: every `*_SEED` in the three programs), so nothing to
   freeze there.
 
@@ -244,6 +246,10 @@ verify count, and the site serving with no 5xx in the Caddy log for the switch w
 
 ### 3.10 Docker
 
+- Done in the compat step: sandbox and local desktop containers carry both labels and sandbox
+  cleanup matches either; the desktop host gateway accepts either label. Remote desktop containers
+  (`packages/desktop/src/remote.ts`) add `units=1` only after every desktop host runs the new gateway
+  (an older gateway refuses unknown labels).
 - Containers: new ones carry both `lineage=1` and `units=1` during the transition; every lookup
   (sandbox cleanup, desktop pool, the desk gateway's allow rule in `lineage-desk-gw`) matches either
   label, so containers started by an old release are still found and cleaned. After one release,

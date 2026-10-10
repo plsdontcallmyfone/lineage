@@ -97,7 +97,7 @@ export class LocalBackend implements DesktopBackend {
     mkdirSync(host, { recursive: true, mode: 0o755 });
     const user = this.uid();
     const r = await this.d([
-      "run", "-d", "--name", name, "--label", "lineage=1", "--label", "lineage.desktop=1", "--label", `lineage.attempt=${o.label.slice(0, 60)}`,
+      "run", "-d", "--name", name, "--label", "lineage=1", "--label", "units=1", "--label", "lineage.desktop=1", "--label", `lineage.attempt=${o.label.slice(0, 60)}`,
       "--network", NETWORK, "--read-only", "--tmpfs", "/tmp:size=768m", "--shm-size", "256m",
       "--cap-drop", "ALL", "--security-opt", "no-new-privileges", "--pids-limit", "768",
       "--cpus", String(this.o.cpus ?? 1.5), "--memory", this.o.memory ?? "1536m",
@@ -151,7 +151,7 @@ type Docker = (args: string[]) => Promise<ExecResult>;
  */
 export async function setupDeskNet(d: Docker, image: string, allow: string[]): Promise<void> {
   if ((await d(["network", "inspect", NETWORK])).code !== 0) {
-    const r = await d(["network", "create", "--internal", "--label", "lineage=1", NETWORK]);
+    const r = await d(["network", "create", "--internal", "--label", "lineage=1", "--label", "units=1", NETWORK]);
     if (r.code !== 0 && !/already exists/.test(r.stderr)) throw new Error(`desktop network: ${r.stderr.trim()}`);
   }
   const want = allow.join(",");
@@ -161,7 +161,7 @@ export async function setupDeskNet(d: Docker, image: string, allow: string[]): P
   if (running && has === want) return;
   if (st.code === 0) await d(["rm", "-f", PROXY]);
   const r = await d([
-    "run", "-d", "--name", PROXY, "--label", "lineage=1", "--restart", "unless-stopped",
+    "run", "-d", "--name", PROXY, "--label", "lineage=1", "--label", "units=1", "--restart", "unless-stopped",
     "--read-only", "--tmpfs", "/tmp:size=16m", "--cap-drop", "ALL", "--security-opt", "no-new-privileges",
     "--user", "1000:1000", "--memory", "128m", "--pids-limit", "128",
     "-e", `DESK_ALLOW=${want}`, "--entrypoint", "/usr/local/bin/desk-proxy", image,

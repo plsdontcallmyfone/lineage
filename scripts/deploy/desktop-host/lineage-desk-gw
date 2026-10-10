@@ -43,7 +43,7 @@ def run_docker(args):
 # flags of `docker run` that take a value, and the check each value must pass
 RUN_VALUE = {
     "--name": lambda v: NAME.match(v),
-    "--label": lambda v: re.match(r"^lineage(\.[a-z]+)?=[A-Za-z0-9._:-]{0,80}$", v),
+    "--label": lambda v: re.match(r"^(lineage|units)(\.[a-z]+)?=[A-Za-z0-9._:-]{0,80}$", v),
     "--network": lambda v: v == NET,
     "--tmpfs": lambda v: re.match(r"^/(tmp|stream|work/repo)(:[a-z0-9=,]{1,80})?$", v),
     "--shm-size": lambda v: re.match(r"^[0-9]{1,5}[mg]$", v),
@@ -91,8 +91,9 @@ def check_run(a):
             refuse("run: %s is required" % need)
     if seen.get("--cap-drop") != ["ALL"] or seen.get("--security-opt") != ["no-new-privileges"]:
         refuse("run: --cap-drop ALL and --security-opt no-new-privileges are required")
-    if "lineage=1" not in seen.get("--label", []):
-        refuse("run: label lineage=1 is required")
+    # rebrand transition (docs/plans/REBRAND-UNITS.md 3.10): either brand label marks a container as ours
+    if "lineage=1" not in seen.get("--label", []) and "units=1" not in seen.get("--label", []):
+        refuse("run: label lineage=1 or units=1 is required")
     name = seen["--name"][0]
     if name == PROXY:
         if seen.get("--entrypoint") != ["/usr/local/bin/desk-proxy"]:
