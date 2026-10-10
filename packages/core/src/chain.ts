@@ -4,6 +4,8 @@ import { readFileSync } from "node:fs";
 import { homedir } from "node:os";
 import {
   ChainReader,
+  DEVNET_V1_PROGRAM_IDS,
+  PROGRAM_IDS,
   hexToBytes,
   launchPdas,
   loadKeypair,
@@ -21,6 +23,7 @@ import { challengesOf } from "./challenges.ts";
 import { soulsOf } from "./souls.ts";
 import { msgchainOf } from "./msgchain.ts";
 import { prepayOf } from "./prepay.ts";
+import { deploymentsOf } from "./deployments.ts";
 import type { NetworkConfig } from "./config.ts";
 import type { ChainAgent, Core } from "./core.ts";
 
@@ -214,6 +217,11 @@ export class ChainBridge {
   private async tickInner() {
     const reg = await this.reader.registryConfig();
     if (!reg) throw new Error("registry not initialized");
+    // which deployment this is; a different registry than last time retires the earlier one (deployments.ts)
+    const rp = this.settings.registry_program;
+    const label = rp === DEVNET_V1_PROGRAM_IDS.registry ? "devnet v1" : rp === PROGRAM_IDS.devnet.registry ? "devnet v2" : rp === PROGRAM_IDS.mainnet.registry ? "mainnet" : null;
+    const sw = deploymentsOf(this.core).observe({ registry_program: rp, launch_program: this.settings.launch_program, line_mint: reg.mint, label });
+    for (const d of sw.switched) this.log(`registry ${d.registry_program} retired: epochs through ${d.through_epoch} stay with it (last posted ${d.last_posted_epoch}, unposted ${d.unposted_epochs})`);
     const launchCfg = await this.reader.launchConfig();
     const tokenProgram = reg.tokenProgram;
     if (this.send && this.coreKeyId === reg.coreAuthority) await this.sendSlashes(reg.mint, tokenProgram, reg.epochsPosted);
@@ -259,6 +267,12 @@ export class ChainBridge {
       } catch (e) {
         this.log(`agent ${a.agent} not mirrored: ${(e as Error).message}`);
       }
+    }
+
+    // agents of a retired deployment that this registry does not carry: no vault, no bond here
+    if (agents.length > 0) {
+      const gone = this.core.chainAbsentAgents(new Set(agents.map((a) => a.agent)));
+      if (gone.length) this.log(`not on this registry, mirrored with zero vault and bond: ${gone.join(", ")}`);
     }
 
     // prepaid launches (plan C): each new launch's deposit, read once from its launch transaction

@@ -25,6 +25,7 @@ import { verifyRequest } from "./protocol.ts";
 import { modelsOf } from "./models.ts";
 import { runtimeSpendOf } from "./runtime-spend.ts";
 import { hiddenOf } from "./hidden.ts";
+import { deploymentsOf } from "./deployments.ts";
 import { loadNetworkProfile } from "../../chain/src/profile-node.ts";
 
 // HTTP API, SPEC 17. Every mutating request (and GET /v1/assignments) is signed:
@@ -262,7 +263,8 @@ export function buildRoutes(core: Core): Route[] {
     // follows, reactions and media are self-authenticating statements signed by a wallet
     route("GET", "/v1/leaderboard", "none", (c) => core.tx(() => leaderboardOf(core).board({ sort: q(c, "sort"), window: q(c, "window"), class: q(c, "class"), model: q(c, "model"), provider: q(c, "provider"), lineage: q(c, "lineage"), repo: q(c, "repo"), limit: int(c, "limit"), hidden: withHidden(c) }))),
     route("GET", "/v1/feed", "none", (c) => core.tx(() => feedOf(core).route({ before: int(c, "before"), limit: int(c, "limit"), agent: q(c, "agent"), agents: q(c, "agents"), wallet: q(c, "wallet"), lineage: q(c, "lineage"), kinds: q(c, "kinds"), hidden: withHidden(c) }))),
-    route("GET", "/v1/agents/:id/profile", "none", (c) => core.tx(() => agentProfile(core, c.params.id!))),
+    route("GET", "/v1/agents/:id/profile", "none", (c) => core.tx(() => ({ ...agentProfile(core, c.params.id!),
+      previous_tokens: deploymentsOf(core).previousOf(c.params.id!), successor: deploymentsOf(core).successorOf(c.params.id!) }))),
     route("GET", "/v1/agents/:id/followers", "none", (c) => socialOf(core).followers(c.params.id!, int(c, "limit"), withHidden(c))),
     // agents follow agents (docs/plans/AGENT-FOLLOWS.md): signed by the follower's signing key, same POST /v1/social/follow
     route("GET", "/v1/agents/:id/following", "none", (c) => socialOf(core).agentFollowing(c.params.id!, { hidden: withHidden(c) })),
@@ -282,7 +284,9 @@ export function buildRoutes(core: Core): Route[] {
       const off = unlisted(c);
       return core.listAgents().filter((a) => !off.has((a as { agent_id: string }).agent_id));
     }),
-    route("GET", "/v1/agents/:id", "none", (c) => ({ ...core.agentView(c.params.id!), hidden: hiddenOf(core).ofAgent(c.params.id!) })),
+    route("GET", "/v1/agents/:id", "none", (c) => ({ ...core.agentView(c.params.id!), hidden: hiddenOf(core).ofAgent(c.params.id!),
+      previous_tokens: deploymentsOf(core).previousOf(c.params.id!), successor: deploymentsOf(core).successorOf(c.params.id!) })),
+    route("GET", "/v1/chain/deployments", "none", () => deploymentsOf(core).list()), // devnet v2 switch (deployments.ts)
     // identity (identity plan I1, I2): key history, reputation records with proofs, portable credential
     route("GET", "/v1/agents/:id/keys", "none", (c) => core.identity.history(c.params.id!)),
     route("GET", "/v1/agents/:id/records", "none", (c) => core.records.view(c.params.id!, int(c, "epoch"))),
@@ -409,6 +413,7 @@ export function buildRoutes(core: Core): Route[] {
     route("POST", "/v1/admin/usage", "runtime", (c) => core.usage(c.json())),
     route("POST", "/v1/admin/launch-fronting", "admin", (c) => prepayOf(core).setFronting(c.json())),
     route("POST", "/v1/admin/hidden", "admin", (c) => core.tx(() => hiddenOf(core).edit(c.agent!, c.json()))),
+    route("POST", "/v1/admin/agent-previous", "admin", (c) => core.tx(() => deploymentsOf(core).link(c.agent!, c.json()))),
     route("POST", "/v1/admin/models", "admin", (c) => core.tx(() => modelsOf(core).put(c.agent!, c.json()))), // plan M
     route("POST", "/v1/admin/models/availability", "runtime", (c) => core.tx(() => modelsOf(core).report(c.agent!, c.json()))),
     route("POST", "/v1/admin/runtime/spend", "runtime", (c) => {

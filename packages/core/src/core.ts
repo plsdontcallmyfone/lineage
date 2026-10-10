@@ -69,6 +69,7 @@ import { Ports } from "./ports.ts";
 import { Live } from "./live.ts";
 import { openDb } from "./store.ts";
 import { SlotBeacon } from "./beacon.ts";
+import { deploymentsOf } from "./deployments.ts";
 import type { TreeSource } from "./trees.ts";
 
 // The Core coordinator: SPEC sections 5, 10, 11, 12, 13. Every state change goes through a method
@@ -2422,6 +2423,14 @@ export class Core {
         } else return null;
         this.db.query("UPDATE agents SET chain_owner = ?, chain_caps = ? WHERE agent_id = ?").run(r.owner, r.capabilities, r.agent);
         a = this.agentRow(r.agent)!;
+      } else if (r.launch && a.mint && a.mint !== r.launch.mint) {
+        // relaunched under the same agent key on a new deployment (devnet v2): the old token is history
+        const MODES = ["token", "purchased", "app"];
+        deploymentsOf(this).recordRelaunch(r.agent, a.mint, r.launch.mint);
+        this.db
+          .query("UPDATE agents SET mint = ?, launcher = ?, hosted = ?, identity_mode = ?, chain_owner = ?, chain_caps = ? WHERE agent_id = ?")
+          .run(r.launch.mint, r.launch.launcher, r.launch.hosted ? 1 : 0, MODES[r.launch.identityMode] ?? "app", r.owner, r.capabilities, r.agent);
+        a = this.agentRow(r.agent)!;
       }
       if (r.keySeq !== undefined) this.identity.syncChain(r.agent, r.signingKey ?? null, r.keySeq, r.keyChangedAt ?? 0n);
       if (r.ownerSince !== undefined) this.identity.syncOwner(r.agent, r.owner, r.ownerSince, r.pendingOwner ?? null);
@@ -2445,14 +2454,34 @@ export class Core {
     });
   }
 
+  /**
+   * Agents Core mirrored that the current registry does not carry (a retired deployment's, devnet v2):
+   * no compute vault and no bond there, so both mirror as zero and the agent sleeps.
+   */
+  chainAbsentAgents(present: Set<string>) {
+    return this.tx(() => {
+      const rows = this.db.query<{ agent_id: string; kind: string }, []>("SELECT agent_id, kind FROM agents WHERE kind IN ('launched', 'verifier') AND shadow = 0").all();
+      const out: string[] = [];
+      for (const r of rows.filter((x) => !present.has(x.agent_id))) {
+        const c = r.kind === "launched" ? this.mirror(ACC.compute(r.agent_id), 0n, "chain_absent") : 0n;
+        const b = this.mirror(ACC.bond(r.agent_id), 0n, "chain_absent");
+        if (r.kind === "launched") this.refreshAwake(r.agent_id);
+        if (b !== 0n) this.db.query("INSERT INTO bonds (agent_id, action, amount, at) VALUES (?, 'unbond_release', ?, ?)").run(r.agent_id, (-b).toString(), this.now());
+        if (c !== 0n || b !== 0n) out.push(r.agent_id);
+      }
+      if (out.length) this.fillWants();
+      return out;
+    });
+  }
+
   /** Mirrors the registry vaults: treasury as is, pool and reserve net of decisions not yet sent. */
   chainSetBalances(b: { treasury: bigint; reserve: bigint; pool: bigint }) {
     return this.tx(() => {
       const unposted = this.db
         .query<{ pool_amount: string; rebate_amount: string }, []>(
-          "SELECT e.pool_amount, e.rebate_amount FROM epochs e LEFT JOIN chain_epochs c ON c.n = e.n WHERE e.status = 'closed' AND c.signature IS NULL",
+          "SELECT e.pool_amount, e.rebate_amount FROM epochs e LEFT JOIN chain_epochs c ON c.n = e.n WHERE e.status = 'closed' AND c.signature IS NULL AND e.n > ?",
         )
-        .all();
+        .all(this.retiredThrough());
       const pool = unposted.reduce((t, e) => t + BigInt(e.pool_amount), 0n);
       const rebate = unposted.reduce((t, e) => t + BigInt(e.rebate_amount), 0n);
       this.mirror(ACC.treasury, b.treasury, "chain_treasury");
@@ -2464,10 +2493,10 @@ export class Core {
   /** Closed epochs not yet posted on chain, oldest first (never dropped; the bridge backs off). */
   chainPendingEpochs(maxAttempts = Number.MAX_SAFE_INTEGER) {
     return this.db
-      .query<EpochRow & { attempts: number | null }, [number]>(
-        "SELECT e.*, c.attempts FROM epochs e LEFT JOIN chain_epochs c ON c.n = e.n WHERE e.status = 'closed' AND c.signature IS NULL AND COALESCE(c.attempts, 0) < ? ORDER BY e.n",
+      .query<EpochRow & { attempts: number | null }, [number, number]>(
+        "SELECT e.*, c.attempts FROM epochs e LEFT JOIN chain_epochs c ON c.n = e.n WHERE e.status = 'closed' AND c.signature IS NULL AND COALESCE(c.attempts, 0) < ? AND e.n > ? ORDER BY e.n",
       )
-      .all(maxAttempts);
+      .all(maxAttempts, this.retiredThrough());
   }
   chainEpochResult(n: number, r: { signature?: string; error?: string }) {
     this.tx(() => {
@@ -2507,11 +2536,16 @@ export class Core {
     });
   }
 
+  /** Epochs at or before this belong to a retired deployment (deployments.ts); -1 when none. */
+  private retiredThrough(): number {
+    return deploymentsOf(this).retiredThrough() ?? -1;
+  }
+
   /** Payout leaves of epochs posted on chain, for the claim mirror. */
   chainPostedLeaves(): { n: number; leaves: PayoutLeaf[] }[] {
     return this.db
-      .query<{ n: number; payouts: string }, []>("SELECT e.n, e.payouts FROM epochs e JOIN chain_epochs c ON c.n = e.n WHERE c.signature IS NOT NULL ORDER BY e.n")
-      .all()
+      .query<{ n: number; payouts: string }, [number]>("SELECT e.n, e.payouts FROM epochs e JOIN chain_epochs c ON c.n = e.n WHERE c.signature IS NOT NULL AND e.n > ? ORDER BY e.n")
+      .all(this.retiredThrough())
       .map((r) => ({ n: r.n, leaves: JSON.parse(r.payouts) as PayoutLeaf[] }));
   }
   /** Records a claim made on chain (a ClaimReceipt exists for the leaf). */
