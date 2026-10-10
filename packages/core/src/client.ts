@@ -9,6 +9,13 @@ import { signRequest, type AgentKey } from "./protocol.ts";
 
 /** Per-request timeout for calls to Core (LINEAGE_CORE_TIMEOUT_MS, default 120 s). */
 const CORE_TIMEOUT_MS = Number(process.env.LINEAGE_CORE_TIMEOUT_MS ?? 120_000);
+/**
+ * How long a refused connection to Core is retried (LINEAGE_CORE_RETRY_MS, default 0: off). The site's
+ * worker units set it so a commit or reveal sent while a deploy restarts Core (a few seconds) waits for
+ * it instead of failing; a refused request never reached Core, so re-sending it (same nonce) is safe.
+ */
+const CORE_RETRY_MS = Number(process.env.LINEAGE_CORE_RETRY_MS ?? 0);
+const refused = (e: unknown) => ["ConnectionRefused", "ECONNREFUSED"].includes((e as { code?: string })?.code ?? "");
 
 export type SigningKey = AgentKey & { agent?: string };
 
@@ -37,12 +44,23 @@ export class CoreClient {
       headers["x-lineage-sig"] = signRequest(key, method, path, text, nonce);
     }
     // bounded: a request Core accepted but never answered (seen during deploys) used to hang a worker forever
-    const res = await fetch(this.base + path, {
-      method,
-      headers,
-      body: opts.raw ? new Blob([opts.raw as Uint8Array<ArrayBuffer>]) : text || undefined,
-      signal: AbortSignal.timeout(CORE_TIMEOUT_MS),
-    });
+    const send = () =>
+      fetch(this.base + path, {
+        method,
+        headers,
+        body: opts.raw ? new Blob([opts.raw as Uint8Array<ArrayBuffer>]) : text || undefined,
+        signal: AbortSignal.timeout(CORE_TIMEOUT_MS),
+      });
+    let res: Response;
+    for (const until = Date.now() + CORE_RETRY_MS; ; ) {
+      try {
+        res = await send();
+        break;
+      } catch (e) {
+        if (!refused(e) || Date.now() >= until) throw e;
+        await new Promise((r) => setTimeout(r, 500));
+      }
+    }
     const ct = res.headers.get("content-type") ?? "";
     const out = ct.includes("json") ? await res.json() : await res.arrayBuffer();
     return { status: res.status, body: out as T };

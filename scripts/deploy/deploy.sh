@@ -46,6 +46,10 @@
 #   KEEP_SITE_ENV   1 (default): LINEAGE_RECIPES, AUTHORS, WITH_RUNTIME, WITH_AUTHOR and EXTRA_ORIGINS left
 #                   unset keep the server's current site.env values; 0 falls back to the defaults
 #   DEPLOY_REF      commit to deploy (default HEAD; must be HEAD or an ancestor)
+#   DEPLOY_DRAIN_WAIT  seconds activate waits for background units (verifiers, authors, runtime) to finish
+#                   draining before it returns and names the ones still draining (default 120)
+#   DEPLOY_HEALTH_WAIT seconds each public unit has to answer after its restart before the release is
+#                   rolled back (default 90)
 #   BACKUP_AGE_KEY  the owner's age identity for secrets+state snapshots (default
 #                   ~/.config/lineage/backup-age.key, mode 600, never copied anywhere); its public
 #                   recipient goes to the server's /etc/lineage/backup-recipient.txt on every code ship
@@ -247,7 +251,10 @@ do_fund() {
 
 do_activate() {
   say "activate $SHA"
-  r "bash /opt/lineage/releases/$SHA/scripts/deploy/remote.sh activate $SHA"
+  # the public units restart one by one (health-checked, rollback on a failure); background units drain
+  # without holding them, and activate waits at most DEPLOY_DRAIN_WAIT s for them (docs/DEPLOY-SITE.md
+  # "Zero-downtime activate")
+  r "DRAIN_WAIT=${DEPLOY_DRAIN_WAIT:-120} HEALTH_WAIT=${DEPLOY_HEALTH_WAIT:-90} bash /opt/lineage/releases/$SHA/scripts/deploy/remote.sh activate $SHA"
   say "health"
   local ok=0
   for i in $(seq 1 60); do
@@ -262,6 +269,15 @@ do_activate() {
     for i in $(seq 1 30); do curl -fsS -m 10 "https://$first/v1/health" && { echo; break; }; sleep 5; done || true
   fi
   echo "site: $(echo "$SITE_NAMES" | tr ',' '\n' | sed 's|^|https://|' | paste -sd' ' -)"
+  draining_now
+}
+# draining_now: the background units still finishing their work on the old release (each starts on the
+# new one by itself when its old process exits; systemd's TimeoutStopSec bounds the wait)
+draining_now() {
+  local d
+  d="$(r 'for u in $(systemctl list-units --all --plain --no-legend "lineage-*" | awk "{print \$1}"); do [ "$(systemctl is-active "$u")" = deactivating ] && printf "%s since %s (stop timeout %s)\n" "${u%.service}" "$(systemctl show -p StateChangeTimestamp --value "$u")" "$(systemctl show -p TimeoutStopUSec --value "$u")"; done; true' 2>/dev/null || true)"
+  if [ -n "$d" ]; then echo "still draining (they start on $(echo "${SHA:-the new release}" | cut -c1-7) when done):"; printf '%s\n' "$d" | sed 's/^/  /'
+  else echo "still draining: none"; fi
 }
 
 # Off-machine copies (docs/DEPLOY-SITE.md "Backups"). Core snapshots hold unrevealed epoch secrets and

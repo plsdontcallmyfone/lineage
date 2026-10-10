@@ -161,9 +161,62 @@ if [ "$FIRSTSHA" != "$HEADSHA" ]; then
   cur=$(R "basename \$(readlink /opt/lineage/current)")
   for i in $(seq 1 30); do [ "$(code "$U/v1/health")" = 200 ] && break; sleep 2; done
   check "rollback to the previous release" "$([ $rc = 0 ] && [ "$cur" = "$want" ] && [ "$(code "$U/v1/health")" = 200 ] && echo 1 || echo 0)" "now $cur"
-  DEPLOY_REF=HEAD "$D" 127.0.0.1 code > "$WORK/d4.log" 2>&1; rc=$?
+  echo "== zero-downtime activate: a release whose Core fails its health check is rolled back"
+  # a drop-in that fails Core's start only while /opt/lineage/current is HEAD's release
+  R "install -d /etc/systemd/system/lineage-core.service.d && printf '[Service]\nExecStartPre=/bin/sh -c \"readlink -f /opt/lineage/current | grep -qv $HEADSHA\"\n' > /etc/systemd/system/lineage-core.service.d/zz-dryrun-break.conf && systemctl daemon-reload"
+  DEPLOY_REF=HEAD DEPLOY_HEALTH_WAIT=15 "$D" 127.0.0.1 code > "$WORK/dbreak.log" 2>&1; rc=$?
+  cur=$(R "basename \$(readlink /opt/lineage/current)")
+  R "rm -f /etc/systemd/system/lineage-core.service.d/zz-dryrun-break.conf && systemctl daemon-reload"
+  for i in $(seq 1 30); do [ "$(code "$U/v1/health")" = 200 ] && break; sleep 1; done
+  check "a failed Core health check rolls the release back" "$([ $rc != 0 ] && [ "$cur" = "$want" ] && grep -q 'rolled back to' "$WORK/dbreak.log" && [ "$(code "$U/v1/health")" = 200 ] && echo 1 || echo 0)" "exit $rc, now $cur"
+
+  echo "== zero-downtime activate: a verifier mid-replay drains without holding the public units"
+  # Stand-in for a verifier finishing a long replay: on SIGTERM it keeps working SIM_DRAIN_S seconds
+  # (the real template's TimeoutStopSec stays in force). No Docker here, so docker.service is a stub.
+  SIM_DRAIN_S=90
+  cat > "$WORK/sim.sh" <<'SIM'
+#!/bin/bash
+LOG=/var/lib/lineage-sim/verifier.log
+echo "$(date +%s) start $$ $(readlink -f /proc/self/cwd)" >> "$LOG"
+trap 'echo "$(date +%s) term $$" >> "$LOG"; sleep "${SIM_DRAIN_S:-90}"; echo "$(date +%s) drained $$" >> "$LOG"; exit 0' TERM
+while :; do sleep 1 & wait $!; done
+SIM
+  R "cat > /usr/local/lib/lineage-sim-verifier.sh && chmod 755 /usr/local/lib/lineage-sim-verifier.sh" < "$WORK/sim.sh"
+  R "install -d -o lineage -g lineage /var/lib/lineage-sim && rm -f /var/lib/lineage-sim/verifier.log
+     systemctl cat docker.service >/dev/null 2>&1 || printf '[Unit]\nDescription=dry run stub (no Docker in this container)\n[Service]\nType=oneshot\nRemainAfterExit=yes\nExecStart=/bin/true\n' > /etc/systemd/system/docker.service
+     install -d /etc/systemd/system/lineage-verifier@sim.service.d
+     printf '[Service]\nExecStart=\nExecStart=/bin/bash /usr/local/lib/lineage-sim-verifier.sh\nEnvironment=SIM_DRAIN_S=$SIM_DRAIN_S\n' > /etc/systemd/system/lineage-verifier@sim.service.d/dryrun.conf
+     systemctl daemon-reload && systemctl start lineage-verifier@sim"
+  sleep 2
+  st=$(R systemctl is-active lineage-verifier@sim)
+  check "simulated verifier running before the deploy" "$([ "$st" = active ] && echo 1 || echo 0)" "$st"
+  # poll the public site every 250 ms through the whole deploy
+  ms() { perl -MTime::HiRes=time -e 'printf "%d\n", time * 1000'; }
+  ( while :; do t=$(ms); c=$(code -m 10 "$U/api/config"); echo "$t $c $(ms)"; sleep 0.25; done ) > "$WORK/poll.log" 2>/dev/null &
+  POLL=$!
+  s=$(date +%s); DEPLOY_REF=HEAD DEPLOY_DRAIN_WAIT=20 "$D" 127.0.0.1 code > "$WORK/d4.log" 2>&1; rc=$?; took=$(( $(date +%s) - s ))
+  sleep 2; kill "$POLL" 2>/dev/null; wait "$POLL" 2>/dev/null
   cur=$(R "basename \$(readlink /opt/lineage/current)")
   check "forward again to HEAD (code mode)" "$([ $rc = 0 ] && [ "$cur" = "$(sed -n 's/^== ship \([0-9a-f]*\) .*/\1/p' "$WORK/d4.log")" ] && echo 1 || echo 0)" "now $cur"
+  grep -E 'up in|draining|DRAINING|public units on' "$WORK/d4.log" | sed 's/^/  /'
+  check "deploy returned while the verifier was still draining" "$([ "$took" -lt "$SIM_DRAIN_S" ] && grep -q 'lineage-verifier@sim' <(sed -n '/still draining/,$p' "$WORK/d4.log") && echo 1 || echo 0)" "deploy $took s, drain $SIM_DRAIN_S s"
+  # public downtime: non-200 answers and the longest time between two 200 answers
+  pol=$(bun -e '
+    const rows = (await Bun.file(process.argv[1]).text()).trim().split("\n").map((l) => l.split(" ")).filter((r) => r.length === 3).map(([a, c, b]) => ({ a: +a, c, b: +b }));
+    let bad = 0, gap = 0, last = null, slow = 0;
+    for (const r of rows) { if (r.c !== "200") { bad++; continue; } if (last !== null) gap = Math.max(gap, r.b - last); last = r.b; slow = Math.max(slow, r.b - r.a); }
+    console.log(JSON.stringify({ polls: rows.length, non200: bad, longest_gap_ms: gap, slowest_ms: slow }));' "$WORK/poll.log")
+  check "public site answered 200 through the whole deploy" "$(echo "$pol" | grep -q '"non200":0' && echo 1 || echo 0)" "$pol"
+  # the queued start runs the new release only after the old process exits: never two at once
+  for i in $(seq 1 $((SIM_DRAIN_S + 30))); do [ "$(R "grep -c ' start ' /var/lib/lineage-sim/verifier.log")" -ge 2 ] && break; sleep 1; done
+  sl=$(R "cat /var/lib/lineage-sim/verifier.log")
+  echo "$sl" | sed 's/^/  sim: /'
+  ok=$(echo "$sl" | bun -e '
+    const l = (await Bun.stdin.text()).trim().split("\n").map((x) => x.split(" "));
+    const starts = l.filter((x) => x[1] === "start"), drained = l.filter((x) => x[1] === "drained");
+    const ok = starts.length === 2 && drained.length === 1 && drained[0][2] === starts[0][2] && +starts[1][0] >= +drained[0][0] && starts[1][3].includes(process.argv[1]) && !starts[0][3].includes(process.argv[1]);
+    console.log(ok ? 1 : 0);' "$HEADSHA")
+  check "drained verifier restarted once, on the new release, after its old process exited" "$ok"
 fi
 dfree=$(df -g / | tail -1 | awk '{print $4}')
 check "host disk still >= 4 GB free" "$([ "$dfree" -ge 4 ] && echo 1 || echo 0)" "$dfree GB"

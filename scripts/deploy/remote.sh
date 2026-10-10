@@ -5,8 +5,11 @@
 #                                bun install, build the sandbox images the recipes need, re-pin the
 #                                recipes to this machine (arch-recipes.ts), make the site's keys, write configs
 #   remote.sh chain <sha> [plan] register and bond the site's verifiers on devnet (site-chain.ts)
-#   remote.sh activate <sha>     back up Core's data, point /opt/lineage/current at <sha>, install units and
-#                                the Caddyfile, restart, start the bootstrap and the workers
+#   remote.sh activate <sha>     back up Core's data (online), install units and the Caddyfile, start the
+#                                background units draining (no wait), point /opt/lineage/current at <sha>,
+#                                restart the public units one by one with health checks (rollback on a
+#                                failed check), queue the bootstrap and workers on <sha>, report drains
+#                                still running after DRAIN_WAIT s (default 120)
 #   remote.sh rollback [--with-data]   back to the previous release (with --with-data: also the data backup
 #                                taken when the current release was activated)
 #   remote.sh stop | start       stop (and disable) or start every lineage unit and Caddy
@@ -205,6 +208,94 @@ optional_units() {
   echo "${u[@]:-}"
 }
 
+# ---- zero-downtime activate (docs/DEPLOY-SITE.md "Zero-downtime activate") ----------------------------
+# Incident 2026-10-10 19:42 to about 20:28 UTC: activate ran one `systemctl stop` over the workers and the
+# public units together, and systemctl waited for lineage-verifier@v2 to finish a long replay
+# (TimeoutStopSec 45 min) before Core, web and the gate came back: the whole site answered 502 for about
+# 45 minutes. Now the two sets never share a stop:
+#   public units      restarted one at a time, each health-checked before the next (seconds each); a
+#                     failed check rolls the release back. Caddy retries a refused dial to the gate, the
+#                     gate retries a refused upstream, web's /api proxy retries a refused Core, so a
+#                     request during a restart waits instead of failing.
+#   background units  told to stop with --no-block (each drains as before: a verifier finishes and commits
+#                     its current replay and reveals what it committed), and a start is queued behind each
+#                     stop; systemd never runs two processes of one unit, so the new release's verifier
+#                     starts only after the old one has exited and then reveals from the same pending.json.
+#                     The deploy waits at most DRAIN_WAIT seconds for them, then names what is still
+#                     draining and returns.
+PUBLIC_UNITS=(lineage-core lineage-indexer lineage-identity lineage-web lineage-gate)
+DRAIN_WAIT="${DRAIN_WAIT:-120}"     # seconds activate waits for background units to finish draining
+HEALTH_WAIT="${HEALTH_WAIT:-90}"    # seconds each public unit has to answer after its restart
+health_url() {
+  case "$1" in
+    lineage-core) echo http://127.0.0.1:9660/v1/health ;;
+    lineage-indexer) echo http://127.0.0.1:9668/market/summary ;;
+    lineage-identity) echo http://127.0.0.1:9665/identity/health ;;
+    lineage-web) echo http://127.0.0.1:9661/live/status ;;
+    lineage-gate) echo http://127.0.0.1:9662/gate/health ;;
+  esac
+}
+now_ms() { date +%s%3N; }
+# restart_checked <unit>: restart one public unit and wait until it answers (200; the indexer: any HTTP
+# answer, it may still be catching up). 1 when it does not within HEALTH_WAIT seconds.
+restart_checked() {
+  local u="$1" t0 code url i
+  t0=$(now_ms)
+  systemctl restart "$u" || { echo "  $u: restart failed" >&2; return 1; }
+  if [ "$(systemctl show -p ConditionResult --value "$u")" = no ]; then echo "  $u skipped (unit condition not met)"; return 0; fi
+  url="$(health_url "$u")"
+  for i in $(seq 1 $((HEALTH_WAIT * 4))); do
+    code="$(curl -s -m 3 -o /dev/null -w '%{http_code}' "$url" 2>/dev/null || true)"
+    if [ "$u" = lineage-indexer ] && [ -n "$code" ] && [ "$code" != 000 ]; then break; fi
+    [ "$code" = 200 ] && break
+    sleep 0.25
+  done
+  if [ "$u" = lineage-indexer ] && [ -n "$code" ] && [ "$code" != 000 ] || [ "$code" = 200 ]; then
+    echo "  $u up in $(( ($(now_ms) - t0) )) ms"
+    return 0
+  fi
+  echo "  $u did not answer $url within ${HEALTH_WAIT} s (last HTTP ${code:-none})" >&2
+  journalctl -u "$u" -n 15 -o cat --no-pager 2>/dev/null | sed 's/^/    /' >&2 || true
+  return 1
+}
+# public_restart: every public unit in order (Core first: the others read it), then nothing else.
+# Prints the failed unit and returns 1 on the first failed health check.
+public_restart() {
+  local u
+  for u in "${PUBLIC_UNITS[@]}"; do restart_checked "$u" || { FAILED_UNIT="$u"; return 1; }; done
+}
+# the background units running now (they drain on stop): hosted runtime, authors, reference, every
+# verifier instance (incl. any beyond v1/v2)
+active_background() {
+  local u
+  for u in lineage-runtime lineage-reference $(all_authors) $(systemctl list-units --all --plain --no-legend 'lineage-verifier@*' 2>/dev/null | awk '{print $1}'); do
+    case "$(systemctl is-active "$u" 2>/dev/null)" in active|activating|reloading|deactivating) echo "${u%.service}" ;; esac
+  done | sort -u
+}
+# drain_report <seconds> <unit...>: wait for the given units to finish stopping, at most <seconds>; prints
+# each one as it finishes and a DRAINING line for each one still stopping when the time is up
+drain_report() {
+  local wait="$1"; shift
+  local left=("$@") t0 u st next=()
+  [ ${#left[@]} = 0 ] && { echo "background: nothing was running"; return 0; }
+  t0=$(date +%s)
+  while :; do
+    next=()
+    for u in "${left[@]}"; do
+      st="$(systemctl is-active "$u" 2>/dev/null || true)"
+      if [ "$st" = deactivating ]; then next+=("$u"); else echo "  $u drained in $(( $(date +%s) - t0 )) s (now $st)"; fi
+    done
+    left=("${next[@]}")
+    [ ${#left[@]} = 0 ] && { echo "background: every unit drained"; return 0; }
+    [ $(( $(date +%s) - t0 )) -ge "$wait" ] && break
+    sleep 2
+  done
+  for u in "${left[@]}"; do
+    printf 'DRAINING %s: still stopping after %s s (stop timeout %s); the queued start runs this release when it exits\n' \
+      "$u" "$wait" "$(systemctl show -p TimeoutStopUSec --value "$u")"
+  done
+}
+
 case "$CMD" in
 install)
   SHA="$1"; REL="$BASE/releases/$SHA"
@@ -270,24 +361,27 @@ activate)
   SHA="$1"; REL="$BASE/releases/$SHA"
   [ -d "$REL" ] || { echo "no release $SHA" >&2; exit 1; }
   OLD="$(readlink "$BASE/current" 2>/dev/null || true)"
+  T_ACT=$(date +%s)
+  # 1. stage everything while the old release keeps serving: configs, users, keys, the Caddyfile
   site_config "$REL"
-  # the new units first, so the stop below already uses their drain allowance (TimeoutStopSec)
+  # the new units first, so the stops below already use their drain allowance (TimeoutStopSec)
   install -m 644 "$REL"/scripts/deploy/systemd/*.service "$REL"/scripts/deploy/systemd/*.timer /etc/systemd/system/ && systemctl daemon-reload
+  PREV_SAVED="$(cat "$BASE/previous" 2>/dev/null || true)" PREVB_SAVED="$(cat "$BASE/previous-backup" 2>/dev/null || true)"
   if [ -n "$OLD" ] && [ "$OLD" != "$REL" ]; then
-    systemctl stop lineage-runtime $(all_authors) "${WORKER_UNITS[@]}" "${CORE_UNITS[@]}" 2>/dev/null || true
     B="/var/lib/lineage/backups/$(date -u +%Y%m%dT%H%M%SZ)-$(basename "$OLD")"
     install -d -o lineage -g lineage "$B"
     if [ -f /var/lib/lineage/core/core.db ]; then
-      sqlite3 /var/lib/lineage/core/core.db ".backup '$B/core.db'"
+      # online copy while the old Core keeps serving: VACUUM INTO is one read transaction (consistent;
+      # WAL writers are not blocked), where `.backup` restarts on every write (backup.sh)
+      sqlite3 /var/lib/lineage/core/core.db ".timeout 60000" "vacuum into '$B/core.db'"
+      sqlite3 "$B/core.db" "pragma journal_mode=delete" >/dev/null
       chown lineage:lineage "$B/core.db"
     fi
     echo "$OLD" > "$BASE/previous"
     echo "$B" > "$BASE/previous-backup"
-    echo "data backup $B"
+    echo "data backup $B (taken with the old Core serving; writes in the seconds before its restart are not in it)"
     ls -1dt /var/lib/lineage/backups/*/ 2>/dev/null | tail -n +6 | xargs -r rm -rf
   fi
-  ln -sfn "$REL" "$BASE/current.new" && mv -Tf "$BASE/current.new" "$BASE/current"
-  install -m 644 "$REL"/scripts/deploy/systemd/*.service "$REL"/scripts/deploy/systemd/*.timer /etc/systemd/system/
   identity_setup "$REL"
   users_setup "$REL"
   backup_setup
@@ -299,30 +393,81 @@ activate)
   install -d -o caddy -g caddy /var/log/caddy
   sed -e "s|@SITES@|${SITES//,/, }|" -e "s|@TLS@|$TLS|" -e "s|@GLOBAL@|$GLOBAL|" "$REL/scripts/deploy/caddy/Caddyfile.tmpl" > /etc/caddy/Caddyfile.new
   caddy validate --config /etc/caddy/Caddyfile.new --adapter caddyfile >/dev/null 2>&1 || { caddy validate --config /etc/caddy/Caddyfile.new --adapter caddyfile; exit 1; }
+  [ -f /etc/caddy/Caddyfile ] && cp -p /etc/caddy/Caddyfile /etc/caddy/Caddyfile.prev
   mv /etc/caddy/Caddyfile.new /etc/caddy/Caddyfile
   chown -R caddy:caddy /var/log/caddy   # `caddy validate` above ran as root and may have created the log file
   systemctl daemon-reload
   systemctl enable -q "${CORE_UNITS[@]}" caddy
-  systemctl restart "${CORE_UNITS[@]}"
+  # Caddy first: the new config's dial retries cover the gate's restart below (graceful reload)
   systemctl reload-or-restart caddy
+  # 2. background units start draining now, in parallel, and never hold the public restart
+  mapfile -t BG < <(active_background)
+  [ ${#BG[@]} -gt 0 ] && { systemctl stop --no-block "${BG[@]}"; echo "background draining (no wait): ${BG[*]}"; }
+  # 3. switch the release and restart the public units one by one, each health-checked
+  ln -sfn "$REL" "$BASE/current.new" && mv -Tf "$BASE/current.new" "$BASE/current"
+  echo "public units (Core first, each health-checked):"
+  FAILED_UNIT=""
+  if ! public_restart; then
+    if [ -z "$OLD" ] || [ "$OLD" = "$REL" ] || [ ! -d "$OLD" ]; then
+      echo "ACTIVATE FAILED: $FAILED_UNIT did not come up and there is no other release to go back to" >&2
+      exit 1
+    fi
+    echo "ACTIVATE FAILED: $FAILED_UNIT did not come up on $(basename "$REL"); rolling back to $(basename "$OLD")" >&2
+    ln -sfn "$OLD" "$BASE/current.new" && mv -Tf "$BASE/current.new" "$BASE/current"
+    if [ -n "$PREV_SAVED" ]; then echo "$PREV_SAVED" > "$BASE/previous"; else rm -f "$BASE/previous"; fi
+    if [ -n "$PREVB_SAVED" ]; then echo "$PREVB_SAVED" > "$BASE/previous-backup"; else rm -f "$BASE/previous-backup"; fi
+    install -m 644 "$OLD"/scripts/deploy/systemd/*.service /etc/systemd/system/
+    ls "$OLD"/scripts/deploy/systemd/*.timer >/dev/null 2>&1 && install -m 644 "$OLD"/scripts/deploy/systemd/*.timer /etc/systemd/system/
+    systemctl daemon-reload
+    site_config "$OLD" >/dev/null 2>&1 || true
+    [ -f /var/lib/lineage/site/network.json ] && install -m 600 -o lineage-core -g lineage-core /var/lib/lineage/site/network.json /etc/lineage-core/network.json
+    if [ -f /etc/caddy/Caddyfile.prev ]; then cp -p /etc/caddy/Caddyfile.prev /etc/caddy/Caddyfile; systemctl reload-or-restart caddy || true; fi
+    public_restart || echo "the previous release did not come up either ($FAILED_UNIT); see journalctl -u $FAILED_UNIT" >&2
+    [ ${#BG[@]} -gt 0 ] && systemctl start --no-block "${BG[@]}"
+    echo "rolled back to $(basename "$OLD") (background units restart on it when their drain ends)" >&2
+    exit 1
+  fi
   systemctl enable -q --now "$IDENTITY_TIMER" "${HARDEN_TIMERS[@]}"
+  echo "public units on $(basename "$REL") $(( $(date +%s) - T_ACT )) s after activate began"
+  # 4. queue the background units' starts on the new release: a unit still draining starts when its old
+  # process exits (systemd waits for the stop; never two processes of one unit)
+  WANT=()
   if [ "$DRY_RUN" = 1 ]; then
     echo "dry run: lineage-bootstrap, lineage-reference, lineage-verifier@v1, lineage-verifier@v2, lineage-runtime, lineage-author@* SKIPPED (sandbox units need Docker)"
   else
     systemctl enable -q "${WORKER_UNITS[@]}"
     systemctl restart --no-block lineage-bootstrap
-    # --no-block: the workers are ordered after lineage-bootstrap, which can calibrate for an hour or more
-    systemctl restart --no-block "${WORKER_UNITS[@]}"
-    for u in lineage-runtime $(all_authors); do systemctl disable -q --now "$u" 2>/dev/null || true; done
-    for u in $(optional_units); do systemctl enable -q "$u"; systemctl restart --no-block "$u"; done
+    WANT+=("${WORKER_UNITS[@]}")
+    OPT=" $(optional_units) "
+    for u in lineage-runtime $(all_authors); do
+      u="${u%.service}"
+      case "$OPT" in *" $u "*) ;; *) systemctl disable -q "$u" 2>/dev/null || true ;; esac
+    done
+    for u in $(optional_units); do systemctl enable -q "$u"; WANT+=("$u"); done
   fi
+  # any other verifier instance that was running goes back up too (it drained above)
+  for u in "${BG[@]}"; do case "$u" in lineage-verifier@*) WANT+=("$u") ;; esac; done
+  if [ ${#WANT[@]} -gt 0 ]; then
+    mapfile -t WANT < <(printf '%s\n' "${WANT[@]}" | sort -u)
+    # --no-block: the workers are ordered after lineage-bootstrap, which can calibrate for an hour or more
+    systemctl start --no-block "${WANT[@]}"
+    echo "background starts queued: ${WANT[*]}"
+  fi
+  # 5. bounded wait for the drains, then name what is still draining
+  drain_report "$DRAIN_WAIT" "${BG[@]}"
   echo "active: $SHA"
   ;;
 rollback)
   PREV="$(cat "$BASE/previous" 2>/dev/null || true)"
   [ -n "$PREV" ] && [ -d "$PREV" ] || { echo "no previous release recorded" >&2; exit 1; }
   CUR="$(readlink "$BASE/current")"
-  systemctl stop "$IDENTITY_TIMER" lineage-runtime $(all_authors) "${WORKER_UNITS[@]}" "${CORE_UNITS[@]}" 2>/dev/null || true
+  # background units drain without holding the public units (as in activate); with --with-data, or back
+  # to a release from before the service users, the public units are stopped here (data or owners change)
+  mapfile -t BG < <(active_background)
+  systemctl stop "$IDENTITY_TIMER" 2>/dev/null || true
+  [ ${#BG[@]} -gt 0 ] && { systemctl stop --no-block "${BG[@]}"; echo "background draining (no wait): ${BG[*]}"; }
+  PREV_USER="$(sed -n 's/^User=//p' "$PREV/scripts/deploy/systemd/lineage-core.service" 2>/dev/null | head -1)"
+  if [ "${1:-}" = "--with-data" ] || [ "$PREV_USER" = lineage ]; then systemctl stop "${CORE_UNITS[@]}" 2>/dev/null || true; fi
   if [ "${1:-}" = "--with-data" ]; then
     BK="$(cat "$BASE/previous-backup")"
     [ -f "$BK/core.db" ] || { echo "no data backup at $BK" >&2; exit 1; }
@@ -348,9 +493,17 @@ rollback)
     systemctl disable -q --now "${HARDEN_TIMERS[@]}" 2>/dev/null || true
     echo "previous release predates the service users: keys copied back to lineage, backup and monitor timers off"
   fi
-  systemctl start "${CORE_UNITS[@]}"
-  [ "$DRY_RUN" = 1 ] || systemctl start "${WORKER_UNITS[@]}" $(optional_units)
+  echo "public units (Core first, each health-checked):"
+  FAILED_UNIT=""
+  public_restart || echo "$FAILED_UNIT did not come up on $(basename "$PREV"); see journalctl -u $FAILED_UNIT" >&2
+  systemctl start "$IDENTITY_TIMER" 2>/dev/null || true
+  WANT=()
+  [ "$DRY_RUN" = 1 ] || WANT+=("${WORKER_UNITS[@]}" $(optional_units))
+  for u in "${BG[@]}"; do case "$u" in lineage-verifier@*) WANT+=("$u") ;; esac; done
+  [ ${#WANT[@]} -gt 0 ] && systemctl start --no-block $(printf '%s\n' "${WANT[@]}" | sort -u)
+  drain_report "$DRAIN_WAIT" "${BG[@]}"
   echo "rolled back to $(basename "$PREV")"
+  [ -z "$FAILED_UNIT" ]
   ;;
 stop)
   systemctl disable -q --now "${HARDEN_TIMERS[@]}" "$IDENTITY_TIMER" lineage-identity-cycle lineage-runtime $(all_authors) lineage-bootstrap "${WORKER_UNITS[@]}" "${CORE_UNITS[@]}" caddy 2>/dev/null || true

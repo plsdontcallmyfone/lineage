@@ -288,9 +288,24 @@ function recent(url: URL): Response {
 // ------------------------------------------------------------------------------------------------
 // proxy
 
+// a deploy restarts Core and the indexer one at a time (docs/DEPLOY-SITE.md "Zero-downtime activate"):
+// a refused connection is retried for up to 15 s, so a read waits out the restart instead of failing
+async function fetchRestarting(url: string): Promise<Response> {
+  const until = Date.now() + 15_000;
+  for (;;) {
+    try {
+      return await fetch(url);
+    } catch (e) {
+      const code = (e as { code?: string }).code;
+      if ((code !== "ConnectionRefused" && code !== "ECONNREFUSED") || Date.now() >= until) throw e;
+      await Bun.sleep(250);
+    }
+  }
+}
+
 async function proxy(path: string, search: string): Promise<Response> {
   try {
-    const res = await fetch(`${CORE}/v1/${path}${search}`);
+    const res = await fetchRestarting(`${CORE}/v1/${path}${search}`);
     const headers = new Headers();
     headers.set("content-type", res.headers.get("content-type") ?? "application/octet-stream");
     headers.set("cache-control", "no-store");
@@ -303,7 +318,7 @@ async function proxy(path: string, search: string): Promise<Response> {
 // market indexer (plan L2): read-only, JSON; an unreachable indexer answers 503 so the page can say so
 async function marketProxy(path: string, search: string): Promise<Response> {
   try {
-    const res = await fetch(`${MARKET}${path}${search}`);
+    const res = await fetchRestarting(`${MARKET}${path}${search}`);
     return new Response(res.body, { status: res.status, headers: { "content-type": res.headers.get("content-type") ?? "application/json", "cache-control": "no-store" } });
   } catch (e) {
     return Response.json({ error: "market_unreachable", code: "market_unreachable", message: `the market indexer at ${MARKET} did not answer (${(e as Error).message})` }, { status: 503 });

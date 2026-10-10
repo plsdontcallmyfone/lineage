@@ -19,6 +19,8 @@ User=lineage
 Group=lineage
 WorkingDirectory=/opt/lineage/current
 Environment=HOME=/home/lineage LINEAGE_HOME=/home/lineage/.lineage PATH=/usr/local/bin:/usr/bin:/bin
+# a refused connection to Core (a deploy restarting it, a few seconds) is retried this long (packages/core/src/client.ts)
+Environment=LINEAGE_CORE_RETRY_MS=30000
 EnvironmentFile=-/etc/lineage/site.env
 NoNewPrivileges=yes
 ProtectSystem=full

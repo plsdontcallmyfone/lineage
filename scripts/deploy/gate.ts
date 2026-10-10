@@ -38,6 +38,7 @@
 // Limits key on clientKey(): an IPv6 address counts as its /64, an IPv4-mapped one as the IPv4.
 //   [--indexer http://127.0.0.1:9668]   the market indexer upstream for /market/*
 //   [--runtime http://127.0.0.1:9667]   the hosted runtime's bind endpoint for /runtime/bind/*
+//   [--upstream-wait-ms 15000]  a refused upstream connection (a restart during a deploy) is retried this long
 
 export type Klass = "v1" | "api" | "rpc" | "faucet" | "terms" | "page" | "market" | "social" | "bind" | "souls" | "desktop";
 export const LIMITS: Record<Klass, { perMin: number; burst: number }> = {
@@ -316,6 +317,25 @@ export function upstreamHeaders(req: Request, ip: string): Headers {
   return headers;
 }
 
+/**
+ * fetch with a bounded wait for an upstream that is restarting (a deploy restarts Core, web and the indexer
+ * one by one, docs/DEPLOY-SITE.md "Zero-downtime activate"): a refused connection, which the upstream never
+ * received, is retried every `stepMs` until `waitMs` has passed or the client goes away. Any other error,
+ * or a refusal after the wait, throws as fetch does.
+ */
+export async function fetchUpstream(url: string, init: RequestInit, waitMs: number, stepMs = 250): Promise<Response> {
+  const until = Date.now() + waitMs;
+  for (;;) {
+    try {
+      return await fetch(url, init);
+    } catch (e) {
+      const code = (e as { code?: string }).code;
+      if ((code !== "ConnectionRefused" && code !== "ECONNREFUSED") || Date.now() + stepMs > until || init.signal?.aborted) throw e;
+      await Bun.sleep(stepMs);
+    }
+  }
+}
+
 export const CORS_HEADERS = {
   "access-control-allow-origin": "*",
   "access-control-allow-methods": "GET, HEAD, PUT, OPTIONS",
@@ -334,6 +354,8 @@ if (import.meta.main) {
     runtime: arg("runtime", "http://127.0.0.1:9667").replace(/\/+$/, ""),
   };
   const ORIGINS = arg("origin", "").split(",").map((s) => s.trim()).filter(Boolean);
+  // how long a request waits for an upstream that refuses connections (restarting during a deploy)
+  const UPSTREAM_WAIT_MS = Number(arg("upstream-wait-ms", "15000"));
   const limiter = new Limiter();
   const slots = new StreamSlots();
   const viewers = new DesktopViewers();
@@ -383,7 +405,7 @@ if (import.meta.main) {
       if (r.stream && !release) return refuse(429, "too_many_streams", { "retry-after": "30" }, r.cors);
       let res: Response;
       try {
-        res = await fetch(`${UP[r.upstream]}${path}${url.search}`, { method: req.method, headers: upstreamHeaders(req, ip), body, redirect: "manual", signal: req.signal, decompress: true } as RequestInit);
+        res = await fetchUpstream(`${UP[r.upstream]}${path}${url.search}`, { method: req.method, headers: upstreamHeaders(req, ip), body, redirect: "manual", signal: req.signal, decompress: true } as RequestInit, UPSTREAM_WAIT_MS);
       } catch (e) {
         release?.();
         return refuse(502, "upstream_unreachable", {}, r.cors);

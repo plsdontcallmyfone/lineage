@@ -50,9 +50,17 @@
 	# /market/* goes through the gate like everything else (rate limits per client; audit A2), which
 	# sends it on to the market indexer (packages/indexer, lineage-indexer.service) on 127.0.0.1:9668
 	# GitHub identity service (packages/identity, lineage-identity.service): pasted tokens go here only, never to the gate or Core
-	reverse_proxy /identity/* 127.0.0.1:9665
+	# lb_try_duration: while a deploy restarts the gate or the identity service (about a second each;
+	# docs/DEPLOY-SITE.md "Zero-downtime activate"), a refused dial is retried every 250 ms for up to 15 s
+	# instead of answering 502
+	reverse_proxy /identity/* 127.0.0.1:9665 {
+		lb_try_duration 15s
+		lb_try_interval 250ms
+	}
 	reverse_proxy 127.0.0.1:9662 {
 		flush_interval -1
+		lb_try_duration 15s
+		lb_try_interval 250ms
 	}
 	log {
 		output file /var/log/caddy/lineage-access.log {
