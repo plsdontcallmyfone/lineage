@@ -1,0 +1,73 @@
+{
+  "mode": "devnet",
+  "rpc_url": "https://api.devnet.solana.com",
+  "registry_program": "2vhj9aBZkuoCpmJxm5BcA3CYkvBJgY6VHTax8FpFmxuY",
+  "launch_program": "8eHzm1XtNtbxJujrMAci4VdhCJvQttFUBukmkFaUwsAT",
+  "line_mint": "3PLqpwWokAbpxZgBVLAzMAeLSvzfoDvjkhH9YydwVXmU",
+  "line_token_program": "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb",
+  "line_decimals": 6,
+  "line_holder": "GRb3V2j6yBraHf39a7STArgGjVxBQ2c6WbvaHEYQMTPe",
+  "line_supply_initial": "1000000000000000",
+  "deployer_balance_after_setup": "71.378750329",
+  "admin": "CVEZWyUBoNb6Zkte3qa7JDu5TBV4wTH6wMw4pLodnDih",
+  "core_authority": "CjNUnQ3v2FRQJiMr16CfaFWCdzJ3nqq1VvY2zAgsc4j9",
+  "core_authority_key": "~/.config/lineage/devnet/core-authority.json",
+  "dbc_config": "AEcaMdhK3PSqPDq2rrXZMoKsCPCTVTMdqJXaT34mWWGw",
+  "runtime_authority": "DCmdy5MoAfnN6fn3nVW27db62ZwtjoksqSqdjAc8VPk4",
+  "compute_sink": "8fFdkfzJDMCBzhnfKUfdNeUimgr8QEBUYGoTPg5CYn44",
+  "agent_compute_bps": 7000,
+  "protocol_bps": 3000,
+  "fee_split": {
+    "crank_signature": "4bVskzMWx4gR8A5f78T8rnktA3sA95mYgV1hMydw3vAHzaYtbv4WD7cXuB3YweZ1xiy9d2rLFpk2DYdwyLZsR6tn",
+    "fees": "5369496032",
+    "to_compute": "3758647222",
+    "to_protocol": "1610848810",
+    "agent_compute_bps": 7000,
+    "check": "3758647222 = floor(5369496032 x 7000 / 10000); 1610848810 = 5369496032 - 3758647222"
+  },
+  "agents": {
+    "minbpe": {
+      "agent": "BFPxdave7NVSXztGEZA5iZ7FiBDKRsuZmS9wZn2J1WBV",
+      "mint": "3AvZ77ZdVPx7yxtqA4UP11DoaPdjdgP3AUbkSnidsmY4",
+      "launcher": "9vsruXazhbaehi3DAF3sPk7SD2Wh26SXmj8Sp3HwJNnh",
+      "repo_url": "https://github.com/karpathy/minbpe"
+    },
+    "verifier-test": {
+      "agent": "FeGKtFj8U4ZnCRTuMBDMbhNqzsH3vZebuM1sisJFvfZ7",
+      "owner": "PsMbwtjM9Sh7A8VwYk1WuB4owg5Djr7EkL6aDiuqpvy"
+    },
+    "bounty-payer": {
+      "agent": "HjJneVqhRvrZAuu46xyjpKxuh2jVS2dLccRX61EoCEVL",
+      "mint": "Agyq69CNXTajd86E9tstqWfMjuxtQjSqqjnLaM5b5GSH",
+      "launcher": "9vsruXazhbaehi3DAF3sPk7SD2Wh26SXmj8Sp3HwJNnh",
+      "repo_url": "https://github.com/karpathy/minbpe"
+    }
+  },
+  "trader": "4UwBL8x8sDsBKsZGDSAU1J2ed63UgsNG92bQonLSe1au",
+  "test_epoch": 0,
+  "test_epoch_leaves": [
+    {
+      "agent": "BFPxdave7NVSXztGEZA5iZ7FiBDKRsuZmS9wZn2J1WBV",
+      "dest": "agent:BFPxdave7NVSXztGEZA5iZ7FiBDKRsuZmS9wZn2J1WBV:compute",
+      "amount": "184097007",
+      "leaf": "b856cfa056d8abc1a08ba748635fa508a50966fcca6bdb60392e9564dd72a86e"
+    },
+    {
+      "agent": "FeGKtFj8U4ZnCRTuMBDMbhNqzsH3vZebuM1sisJFvfZ7",
+      "dest": "agent:FeGKtFj8U4ZnCRTuMBDMbhNqzsH3vZebuM1sisJFvfZ7:wallet",
+      "amount": "138075755",
+      "leaf": "e232d8d25e039b43949c99f22716f9096d93c8356b1d45f931ee9914e8485f56"
+    }
+  ],
+  "verifier_owner": "PsMbwtjM9Sh7A8VwYk1WuB4owg5Djr7EkL6aDiuqpvy",
+  "launch_lookup_table": "AN3jKVEWN7H8gJAnZkWdmd51JzK3U8nSMKF5Fz8nTD9S",
+  "pump_tline": {
+    "mint": "CiBfnTkDc1vgYbuMobMNEQaKSQXPYeTUbZGRZcug1L62",
+    "token_program": "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb",
+    "decimals": 6,
+    "curve": "9zpS1kkYQMBDupZQoGzNjFyHwfjU2Qt5w6BjNq5u4vMq",
+    "treasury": "GZszrP7EYDH8RNo6NsqFwAy7WVYsqmqjj3hquTRhAYPW",
+    "treasury_account": "42qm4wJn1YQqmxA5FuMB4zkke31Kp1nhwGiDTa86Ewyg",
+    "note": "devnet tLINE as a pump.fun coin (owner decision 2026-10-10); not yet the registry's or launch config's mint: that needs the devnet program decision"
+  }
+}

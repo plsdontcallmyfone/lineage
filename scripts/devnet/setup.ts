@@ -19,6 +19,10 @@
 //      launch admin) and read back
 //   i  a second TEST agent, hosted, on the same repository, whose compute vault funds devnet bounties
 //      (100 tLINE sent to its vault by transfer); the runtime authority opens its bounties
+//   m  lineage_msg's MsgConfig with TEST caps (msg-e2e.ts's values)
+// Devnet v2 (2026-10-10, fresh deployment bound to the pump.fun tLINE): run with --only a,b,c,d,h,m;
+// e, f and i are the original wiring proofs (a test launch, a test verifier, a test epoch 0 that would
+// anchor the registry's epoch numbering at 0 instead of Core's next epoch), not part of the site's setup.
 // Usage: bun scripts/devnet/setup.ts [--only a,b,...]
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
@@ -37,6 +41,9 @@ import {
   launch,
   launchPdas,
   launchTableAddresses,
+  msg,
+  MSG_PROGRAM_ID,
+  readMsgConfig,
   lookupTable,
   paramsFromNetworkJson,
   payoutLeaf,
@@ -60,7 +67,7 @@ const want = (s: string) => !only || only.has(s);
 const T22 = TOKEN_2022_PROGRAM;
 const DECIMALS = 6;
 const ONE = 10n ** BigInt(DECIMALS);
-const LINE_META = { name: "Lineage Test LINE (TEST)", symbol: "tLINE", uri: "https://lineage.invalid/devnet/tline-test.json" };
+const LINE_META = { name: "Lineage devnet TEST LINE", symbol: "tLINE", uri: "https://lineage.invalid/devnet/tline.json" }; // as pump-devnet-proof.ts created it
 const AGENT_REPO = "https://github.com/karpathy/minbpe";
 const AGENT_META = { name: "TEST minbpe agent", symbol: "TMBPE", uri: "https://lineage.invalid/devnet/agents/minbpe-test.json" };
 
@@ -73,11 +80,14 @@ const MAX_REBATE_PER_EPOCH = 1n * 10n ** BigInt(DECIMALS);
 const MAX_DEBIT_PER_EPOCH = 1_000n * 10n ** BigInt(DECIMALS);
 const state = loadState();
 const dep = deployer();
-// a new key: the earlier devnet tLINE (key "line-mint") was a plain Token-2022 mint, not a pump.fun coin
-const lineMint = key("line-mint-pump");
+// the devnet tLINE pump.fun coin (CiBfnTkD..., made by pump-devnet-proof.ts); the earlier devnet tLINE
+// (key "line-mint") was a plain Token-2022 mint, bound to the first devnet deployment (devnet v1)
+const lineMint = key("tline-pump-mint");
+// the devnet treasury holds the tLINE the steps hand out (bought on tLINE's curve by pump-devnet-proof.ts)
+const holder = key("tline-pump-treasury");
 const core = key("core-authority");
 const runtime = key("runtime-authority");
-const lineHolder = ata(dep.id, lineMint.id, T22);
+const lineHolder = ata(holder.id, lineMint.id, T22);
 const computeSink = ata(runtime.id, lineMint.id, T22);
 
 /** TEST bounty values (plan C6; launch values TBA, SPEC 20). */
@@ -120,10 +130,7 @@ async function stepA() {
     const amount = need - held;
     if (amount >= curve.realTokenReserves) throw new Error(`buying ${amount} would complete tLINE's curve (${curve.realTokenReserves} left)`);
     const q = quoteCurveBuyExactOut(g, decodePumpFeeConfig(fcA!.data), curve, amount, (await reader.tokenBalance(ata(pumpPdas.bondingCurve(lineMint.id), lineMint.id, T22))) ?? 0n);
-    await send("a", `the supply holder buys ${amount} tLINE base units on tLINE's pump.fun curve (buy_v3, at most ${q.quoteIn * 101n / 100n} lamports)`, dep, [
-      token.createAtaIdempotent(dep.id, dep.id, lineMint.id, T22),
-      pump.buyV3({ mint: lineMint.id, quoteMint: PUMP.wsol, user: dep.id, amount, maxQuoteIn: (q.quoteIn * 101n) / 100n }),
-    ], { computeUnits: 300_000 });
+    throw new Error(`the devnet treasury ${holder.id} holds ${held} tLINE base units, ${amount} short: buy on tLINE's curve with scripts/devnet/pump-devnet-proof.ts`);
   }
   const m = (await reader.mint(lineMint.id))!;
   const meta = decodeT22Metadata((await rpc.getAccountInfo(lineMint.id))!.data);
@@ -238,8 +245,8 @@ async function lineTo(owner: string, min: bigint, label: string, step: string) {
   if (bal >= min) return dest;
   await send(step, `send ${(min - bal) / ONE} tLINE to ${label} ${owner}`, dep, [
     token.createAtaIdempotent(dep.id, owner, lineMint.id, T22),
-    token.transferChecked(lineHolder, lineMint.id, dest, dep.id, min - bal, DECIMALS, T22),
-  ]);
+    token.transferChecked(lineHolder, lineMint.id, dest, holder.id, min - bal, DECIMALS, T22),
+  ], { signers: [holder] });
   return dest;
 }
 
@@ -421,6 +428,20 @@ async function stepG() {
     }), `${eAfter.length} epochs, ${epochs.filter((x) => x.version === 1).length} migrated now`);
 }
 
+// ------------------------------------------------------------------ m: lineage_msg config
+const MSG_TEST_CAPS = { windowS: 60, maxPerWindow: 20, maxPerDay: 500, maxInline: 568, maxBlob: 1 << 20 };
+async function stepM() {
+  const cur = await readMsgConfig(rpc);
+  if (!cur)
+    await send("m", "lineage_msg initialize (TEST caps: 20 per 60 s, 500 per day, 568-byte inline, 1 MiB blobs)", dep, [
+      msg.initialize({ upgradeAuthority: dep.id, args: { admin: dep.id, paused: false, ...MSG_TEST_CAPS } }),
+    ]);
+  else log("m: MsgConfig exists, skipping");
+  const got = await readMsgConfig(rpc);
+  check("m: MsgConfig read back with the TEST caps", !!got && got.admin === dep.id && !got.paused && got.maxPerWindow === 20 && got.maxPerDay === 500 && got.maxInline === 568 && got.maxBlob === 1 << 20);
+  state.msg_program = MSG_PROGRAM_ID;
+}
+
 async function stepH() {
   const cur = await reader.bountyConfig();
   const same = cur && Object.entries(BOUNTY_TEST).every(([k, v]) => (cur as any)[k] === v);
@@ -454,8 +475,8 @@ async function stepI() {
   const want = BOUNTY_VAULT_LINE;
   if (bal < want) {
     await send("i", `send ${want - bal} tLINE base units to the bounty payer's compute vault ${vault} (deposit by transfer)`, dep, [
-      token.transferChecked(lineHolder, lineMint.id, vault, dep.id, want - bal, DECIMALS, T22),
-    ]);
+      token.transferChecked(lineHolder, lineMint.id, vault, holder.id, want - bal, DECIMALS, T22),
+    ], { signers: [holder] });
     await send("i", "refresh_awake for the bounty payer", dep, [launch.refreshAwake({ agent: agent.id, agentMint: agentMint.id })]);
   }
   const after = (await reader.tokenBalance(vault)) ?? 0n;
@@ -472,6 +493,7 @@ try {
   if (want("f")) await stepF();
   if (want("g")) await stepG();
   if (want("h")) await stepH();
+  if (want("m")) await stepM();
   if (want("i")) await stepI();
 } finally {
   const end = await rpc.getBalance(dep.id);

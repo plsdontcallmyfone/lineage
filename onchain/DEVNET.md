@@ -786,3 +786,46 @@ agents_v1 0); its next epoch post is epoch 18, whose window ends at 179173102660
 
 SOL: deployer 65.46289277 -> 65.27092745 (0.19196532: 0.11139856 extends, upgrades and migration,
 0.04296504 graduation e2e, 0.03760172 A1 proof of which 0.02 went to its buyer key).
+
+## Devnet v2: fresh deployment on the pump.fun tLINE (2026-10-10, devnet pump.fun redeploy lane)
+
+Owner decision 2026-10-10 (option A): devnet moves to pump.fun with a fresh deployment of the three
+programs at new ids, initialized with the pump.fun tLINE `CiBfnTkDc1vgYbuMobMNEQaKSQXPYeTUbZGRZcug1L62`
+(SOL-paired, not mayhem). The devnet v1 programs (registry `2vhj9a...`, launch `8eHzm1...`, msg
+`E6vHsk...`) are bound to the earlier tLINE `3PLqpw...` and stay as read-only history
+(`scripts/devnet/devnet-v1.json`; `DEVNET_V1_PROGRAM_IDS` in packages/chain/src/programs.ts).
+
+**Keys.** The v1 program id keypairs were backed up to
+`~/.config/lineage/devnet-program-keypairs-backup/2026-10-10-pre-pumpfun-redeploy/` (and
+`onchain/keys-backup/devnet-v1/`, gitignored) before anything else. New keypairs:
+`~/.config/lineage/devnet-v2-program-keys/`, copied to `onchain/target/deploy/` and
+`onchain/keys-backup/`. Nothing was cleaned or deleted under `target/`.
+
+| Program | New devnet id | `.so` bytes | sha256 (local build = devnet dump) | `--max-len` | ProgramData rent (SOL) | Deploy signature |
+|---|---|---|---|---|---|---|
+| lineage_registry | `CJk3kwUqSS4qoJD8iu7uhUzSBNySjn9HsqaExpaV9gM2` | 732,472 | `aff3edbd573710e7a726628492abcc5e6adf92059c1a4935b0d53d8733fff873` | 732,472 | 3.7218366 | `4bgsgCdrzVRnTNUk6EtfaQX1mpUvaUYEdS7g1TNBitWviacKh7iw9NajUBP3CvSPWSeTLvKn7rVo4cczfLRsv28Y` |
+| lineage_launch | `Axo38WX6TBAGGQ2nPpejn5tPsQogygA728baRaeJebGX` | 685,240 | `da0d05c3ae72733e5435eeddf551f923149357f497f4012262ee35899409482f` | 685,240 | 3.48189804 | `4UVpAuYATYD3SJBZCPZ8BDGkFJWb2skKrPHqeUvAwcs3592CTZRK9qmTmbA1JNj6Cn2nGmAETgN1E6utDEfBdRe3` |
+| lineage_msg | `5uUyWAc9DQEWb3XF1aH8yG62sCjmrEjtAoRB1SD9JFqV` | 342,600 | `a159e34df0770c15a08b76444461a81c545d6825ff6346224affe4464deef491` | 342,600 | 1.74128684 | `5QSoLYoCyUEQgBpBpQ2ZtRixURB4sPvSykY8bc6XwxsXK4fTVx2JtGvKpBZwtV8uqSps4X7kmsGqKpqBeLH6s6zC` |
+
+Built with `cargo build-sbf --offline` per program into `target/deploy` (the default feature set
+declares the devnet ids; the `mainnet` feature and the mainnet ids are unchanged). The only source
+change is the three default `declare_id!` lines; no program logic changed. LiteSVM 69/69 on these
+builds (client vectors and msg event fixtures regenerated with `UPDATE_VECTORS=1`, since PDAs follow
+the program ids). Preconditions measured first: deployer `CVEZWy...` 64.402306647 SOL, `df -h /` 30 GiB
+free, the three ids unused on devnet, exact `--max-len` (an upgrade that grows a program needs
+`solana program extend` first). Every command passed the keyed devnet RPC, `-k` and
+`--upgrade-authority` `~/.config/lineage/devnet-deployer.json`; `solana config` was not touched.
+Deploy cost 8.956285840 SOL (ProgramData rent 8.94502148, program accounts and write fees the rest);
+deployer 55.446020807 SOL afterwards.
+
+### Transactions (devnet v2 setup)
+
+| When (UTC) | Step | What | Fee | Signature |
+|---|---|---|---|---|
+| 2026-10-10 21:54:42 | b | lineage_registry::initialize (admin = deployer, Core authority, params from config/network.json) | 5000 | `2GyaLtbqJWQWmkgC9zzzAikRcdoEihRiMhYegRoWmwVxSV5W2P4TcPJkdnhnvhxEu1hMjxRUE8qRoBGGF1tdmrU5` |
+| 2026-10-10 21:54:44 | c | launch lookup table G4wMGeW4x1Rk8KDaRfLCxxs8KBj189GD8EFjuR6ETbux (21 addresses) | 5000 | `43NRHMi48gF2BWGGZNfVLqaPLoxjtwi9HBMG5P3FYvmJkpRqY4KqNFTygx4z5j1gARTzXjKZBQDV3PF9gmNUh2V1` |
+| 2026-10-10 21:54:46 | c | freeze the launch lookup table G4wMGeW4x1Rk8KDaRfLCxxs8KBj189GD8EFjuR6ETbux | 5000 | `5LeyyWbjgsAySfLzJwu2o56uqMCRkFsrerXvhdDKpJdWy1frPyyXrZjRpJ2erJwvzSTmvFF22vW6hsHs9SnG9Uxv` |
+| 2026-10-10 21:54:49 | d | create the compute sink GwdGDhaJaD5jebCwQt8Ew4q8o9SVFNhatncxXdkxotgU (runtime authority's tLINE ATA) | 5000 | `2Q1ktDjdUYsXkGakSrmufgx4kyV11xvYJbS7q5mjriBvVpQH5obVXYQ8qq9JUcEh8VMGUiYDDdFv7EkjJ4CxxEca` |
+| 2026-10-10 21:54:53 | d | lineage_launch::initialize_launch (admin = deployer, runtime authority, 7000/3000 split, sleep/wake from network.json) | 5000 | `5TUpPKzCUzZotS4oiMEJ65QzroCjTEQxJdg5zFfbTDrPvEHTc25mDNADTGKKXyNj3Uh9dUJcfvBfxQ2eaCoeWxGK` |
+| 2026-10-10 21:54:55 | h | set_bounty_config (TEST: max_bounty_out_bps 5000, self-hosted cap 10000000, ttl 60..2592000 s, grace 60 s) | 5000 | `3DzYbL5PX1W97RYybdEFLggCwwpDn14NSGbBjYJYcDvwbaV8fgUPe9g8tEoEqyasK9jMSgBSNCtUWWcbiWxfTQnA` |
+| 2026-10-10 21:54:57 | m | lineage_msg initialize (TEST caps: 20 per 60 s, 500 per day, 568-byte inline, 1 MiB blobs) | 5000 | `wTQvUSmWGn8QWYvyhJ78AE4W9YTjYH6A9889z7CZUEzxwWAkPjB9GYoTWLopb7ZXmuEj6dkgTtRyPacJTV5ryyN` |

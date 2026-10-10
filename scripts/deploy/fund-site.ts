@@ -41,15 +41,18 @@ const sol = (l: bigint) => (Number(l) / 1e9).toFixed(6);
 const genesis = await rpc.call<string>("getGenesisHash", []);
 if (genesis !== DEVNET_GENESIS) throw new Error(`RPC genesis ${genesis} is not devnet; refusing`);
 const dep = loadKeypair(join(homedir(), ".config", "lineage", "devnet-deployer.json"));
+// devnet v2: tLINE is the pump.fun coin, held by the devnet treasury key (the deployer pays the fees)
+const holder = devnet.pump_tline?.treasury ? loadKeypair(join(homedir(), ".config", "lineage", "devnet", "tline-pump-treasury.json")) : dep;
+if (holder !== dep && holder.id !== devnet.pump_tline.treasury) throw new Error("tline-pump-treasury.json is not the devnet treasury in devnet.json");
 
 function logTx(what: string, signature: string, fee?: number) {
   if (!existsSync(LOGMD))
     writeFileSync(LOGMD, "# Site devnet transactions\n\nEvery devnet transaction the site deploy kit sent (scripts/deploy/fund-site.ts locally, scripts/deploy/site-chain.ts on the server). Fee in lamports as returned by the RPC.\n\n| When (UTC) | Step | What | Fee | Signature |\n|---|---|---|---|---|\n");
   appendFileSync(LOGMD, `| ${new Date().toISOString().replace("T", " ").slice(0, 19)} | fund | ${what} | ${fee ?? "?"} | \`${signature}\` |\n`);
 }
-async function send(what: string, ixs: Ix[]) {
+async function send(what: string, ixs: Ix[], signers: (typeof dep)[] = []) {
   if (PLAN) return log(`plan: ${what}`);
-  const r = await sendAndConfirm(rpc, dep, ixs, { log: (m) => log(`  ${m}`) });
+  const r = await sendAndConfirm(rpc, dep, ixs, { signers, log: (m) => log(`  ${m}`) });
   logTx(what, r.signature, r.fee);
   log(`${what}: ${r.signature}`);
 }
@@ -75,8 +78,8 @@ const need = wantLine - spent - have;
 if (need > 0n)
   await send(`send ${need} tLINE base units to site owner ${OWNER}`, [
     token.createAtaIdempotent(dep.id, OWNER, mint, T22),
-    token.transferChecked(devnet.line_holder, mint, ownerAta, dep.id, need, devnet.line_decimals, T22),
-  ]);
+    token.transferChecked(devnet.line_holder, mint, ownerAta, holder.id, need, devnet.line_decimals, T22),
+  ], holder === dep ? [] : [holder]);
 else log(`site owner tLINE: ${have} base units held, ${spent} already burned or bonded; ok`);
 
 const faucetPath = join(homedir(), ".config", "lineage", "devnet", "faucet.json");
