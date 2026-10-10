@@ -60,7 +60,7 @@ const RUNTIME = (arg("runtime", process.env.LINEAGE_RUNTIME ?? "http://127.0.0.1
 const DIR = import.meta.dir;
 
 try {
-  const busy = execFileSync("lsof", ["-ti", `:${PORT}`], { encoding: "utf8" }).trim();
+  const busy = execFileSync("lsof", ["-ti", `tcp:${PORT}`, "-sTCP:LISTEN"], { encoding: "utf8" }).trim();
   if (busy) {
     console.error(`port ${PORT} is in use by pid ${busy.replace(/\n/g, ", ")}; not binding`);
     process.exit(1);
