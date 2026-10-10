@@ -1099,7 +1099,7 @@ a.eco-btn { text-decoration: none; }
 .deck-title { display: flex; align-items: center; gap: 7px; height: 30px; min-width: 0; padding: 0 8px; border: 0; border-radius: 9999px; background: none; color: var(--tp); cursor: pointer; transition: background .15s; }
 .deck-title span { font-family: var(--serif); font-size: 19px; line-height: 1; letter-spacing: -0.018em; white-space: nowrap; }
 .deck-title svg { flex-shrink: 0; color: var(--tt); }
-.deck-stripes { height: 30px; min-width: 16px; flex: 1; border: 0; cursor: grab; touch-action: none; background: repeating-linear-gradient(to bottom, var(--stripe) 0 1px, transparent 1px 3px) center / 100% 11px no-repeat; transition: --stripe .15s; }
+.deck-stripes { height: 30px; min-width: 16px; flex: 1; border: 0; cursor: grab; touch-action: none; background: none; } /* the drag handle, unmarked */
 .deck-stripes:active { cursor: grabbing; }
 .deck-icon { display: grid; place-items: center; width: 28px; height: 28px; flex-shrink: 0; border: 0; border-radius: 9999px; background: none; color: var(--tt); cursor: pointer; transition: background .15s, color .15s; }
 .deck-icon:hover, .deck-title:hover { background: var(--sb-hover); color: var(--tp); }
