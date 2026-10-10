@@ -102,7 +102,7 @@ describe("audit A2: gate", () => {
     expect(classify("GET", "/api//admin/ledger")).toEqual({ refuse: 404, why: "admin" });
     expect(classify("GET", "/api/x%2f..%2fadmin")).toEqual({ refuse: 404, why: "admin" });
     expect(classify("GET", "/api/lineages")).toMatchObject({ klass: "api" });
-    expect(classify("POST", "/souls/draft")).toEqual({ refuse: 405, why: "method" });
+    expect(classify("POST", "/souls/other")).toEqual({ refuse: 405, why: "method" });
   });
 
   test("OFF-D5 bodies are read with a cap and a deadline, never buffered past the cap", async () => {
@@ -239,4 +239,12 @@ describe("hosted runtime bind", () => {
     expect(classify("PUT", `/runtime/bind/${agent}`)).toEqual({ refuse: 405, why: "method" });
     expect(classify("GET", "/runtime/health")).toMatchObject({ klass: "page", upstream: "web" });
   });
+});
+
+test("soul drafts and publishes are same-origin POSTs in their own class; nothing else under /souls", () => {
+  expect(classify("POST", "/souls/draft")).toMatchObject({ klass: "souls", upstream: "web", sameOrigin: true, cors: false });
+  expect(classify("POST", "/souls/publish")).toMatchObject({ klass: "souls", sameOrigin: true });
+  expect(classify("POST", "/souls/config")).toEqual({ refuse: 405, why: "method" });
+  expect(classify("GET", "/souls/config")).toMatchObject({ klass: "page", upstream: "web" });
+  expect(LIMITS.souls.perMin).toBeLessThanOrEqual(10);
 });

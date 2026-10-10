@@ -22,7 +22,11 @@
 //                             the runtime key a hosted launch rotates to, and the owner-signed rotation
 //                             it co-signs; POST same origin only (a browser sends no Origin on a
 //                             same-origin GET; GET only reads, or makes the key of a real hosted launch); own class
-//   POST /souls/*             refused: drafts spend the model key; opening them is an owner decision
+//   POST /souls/draft, /souls/publish   the launch page's soul step (owner direction 2026-10-10, launch e2e):
+//                             a Claude draft under the dashboard's own caps (per soul, per UTC day, per
+//                             address per hour), and publishing a soul the agent key signed (Core checks
+//                             it against the digest on chain); same origin only; own class; anything
+//                             else under /souls is refused
 //   GET  everything else      dashboard pages and assets
 //   GET  /gate/health         { ok } (no counters: they told an attacker how close the caps were)
 // Client address: the last X-Forwarded-For entry (Caddy sets it to the peer it saw), else the socket.
@@ -30,7 +34,7 @@
 //   [--indexer http://127.0.0.1:9668]   the market indexer upstream for /market/*
 //   [--runtime http://127.0.0.1:9667]   the hosted runtime's bind endpoint for /runtime/bind/*
 
-export type Klass = "v1" | "api" | "rpc" | "faucet" | "terms" | "page" | "market" | "social" | "bind";
+export type Klass = "v1" | "api" | "rpc" | "faucet" | "terms" | "page" | "market" | "social" | "bind" | "souls";
 export const LIMITS: Record<Klass, { perMin: number; burst: number }> = {
   v1: { perMin: 120, burst: 60 },
   api: { perMin: 240, burst: 120 },
@@ -43,6 +47,8 @@ export const LIMITS: Record<Klass, { perMin: number; burst: number }> = {
   social: { perMin: 20, burst: 10 },
   // a hosted launch binds once; the page polls the key for a few seconds after its launch
   bind: { perMin: 30, burst: 15 },
+  // the dashboard caps drafts per address per hour and per UTC day; this only keeps floods off it
+  souls: { perMin: 6, burst: 6 },
 };
 export const MAX_STREAMS_PER_IP = 4;
 export const MAX_STREAMS = 400;
@@ -74,6 +80,7 @@ export function classify(method: string, path: string): Route | { refuse: number
   if (method === "POST") {
     if (path === "/chain/rpc") return { klass: "rpc", upstream: "web", cors: false, stream: false, sameOrigin: true };
     if (path === "/chain/faucet") return { klass: "faucet", upstream: "web", cors: false, stream: false, sameOrigin: true };
+    if (path === "/souls/draft" || path === "/souls/publish") return { klass: "souls", upstream: "web", cors: false, stream: false, sameOrigin: true };
     if (path === "/social/follow" || path === "/social/react") return { klass: "social", upstream: "web", cors: false, stream: false, sameOrigin: true, maxBody: SOCIAL_MAX_BODY };
     if (/^\/social\/media\/[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(path)) return { klass: "social", upstream: "web", cors: false, stream: false, sameOrigin: true, maxBody: MEDIA_MAX_BODY };
     return { refuse: 405, why: "method" };
