@@ -23,8 +23,6 @@ import { loadRecipe, prepareDeps } from "@lineage/sandbox";
 import {
   ata,
   compileMessage,
-  dbc,
-  decodeDbcPool,
   decodeDebitReceipt,
   decodeUsageEpoch,
   IDENTITY_MODE,
@@ -42,6 +40,7 @@ import { CoreClient } from "../../packages/core/src/client.ts";
 import { Worker } from "../../packages/worker/src/index.ts";
 import { deployer, key, KEY_DIR, LAMPORTS, loadState, logTx, reader, rpc, send, sol, topUp } from "../devnet/lib.ts";
 import { withBackoff } from "../../packages/runtime/src/backend.ts";
+import { curveCreatorFee, launchTable, pumpCrank, pumpLaunchTx, pumpTrade } from "../devnet/pump-lib.ts";
 import { check, child, LANE_CAP_USD, laneSpent, log, logRun, ok, portFree, results, ROOT, stopAll, waitFor } from "./lib.ts";
 
 const argv = process.argv.slice(2);
@@ -89,11 +88,9 @@ async function main() {
   let l = await reader.agentLaunch(agentMint.id);
   if (!l) {
     await topUp(STEP, dep, launcher.id, LAMPORTS / 10n, "runtime test launcher");
-    await send(STEP, `launch_agent: TEST hosted agent ${agent.id} for the hosted runtime proof on ${url}, agent mint ${agentMint.id}`, launcher, [
-      launch.launchAgent({ launcher: launcher.id, agent: agent.id, agentMint: agentMint.id, lineMint, dbcConfig: state.dbc_config!, lineTokenProgram: T22,
-        args: { ...AGENT_META, repoUrl: url, identityMode: IDENTITY_MODE.app, hosted: true } }),
-    ], { signers: [agent, agentMint], computeUnits: 400_000 });
-    await send(STEP, "create the launch authority's agent-token ATA for the runtime test agent (crank prerequisite)", dep, [token.createAtaIdempotent(dep.id, launchPdas.authority(), agentMint.id, T22)]);
+    const r = await pumpLaunchTx(rpc, { launcher, agent, mint: agentMint, lineMint, ...AGENT_META, args: { repoUrl: url, identityMode: IDENTITY_MODE.app, hosted: true },
+      table: await launchTable(rpc, state as never) });
+    log(`pump.fun launch: TEST hosted agent ${agent.id} for the hosted runtime proof on ${url}, agent mint ${agentMint.id}: ${r.sent.map((t) => t.signature).join(", ")}`);
     l = await reader.agentLaunch(agentMint.id);
   }
   check("TEST agent launched hosted on chain", !!l && l.hosted && l.launcher === launcher.id && l.repoUrl === url, agent.id);
@@ -245,20 +242,16 @@ async function main() {
   const lines2: string[] = [];
   rt = child("rt2", ["bun", join(ROOT, "packages/runtime/src/main.ts"), "run", "--config", CONFIG], (x) => (lines2.push(x), onLine(x)));
   await Bun.sleep(20_000);
-  const pool = launchPdas.dbcPool(state.dbc_config!, agentMint.id, lineMint);
-  const traderLine = ata(trader.id, lineMint, T22);
-  const traderAgent = ata(trader.id, agentMint.id, T22);
   await topUp(STEP, dep, trader.id, LAMPORTS / 50n, "trader", LAMPORTS / 20n);
-  await send(STEP, "create the trader's agent-token ATA for the runtime test agent", trader, [token.createAtaIdempotent(trader.id, trader.id, agentMint.id, T22)]);
-  await send(STEP, "trade: trader buys the runtime test agent's token with 2,000 tLINE", trader, [
-    dbc.swap({ config: state.dbc_config!, pool, agentMint: agentMint.id, lineMint, trader: trader.id, lineAccount: traderLine, agentAccount: traderAgent, buy: true, amountIn: 2_000n * ONE, minOut: 1n, lineTokenProgram: T22 }),
-  ], { computeUnits: 300_000 });
-  const fees = decodeDbcPool((await rpc.getAccountInfo(pool))!.data).partnerQuoteFee;
+  const t = await pumpTrade(rpc, { trader, mint: agentMint.id, lineMint, buy: true, amountIn: 2_000n * ONE });
+  log(`trade: trader buys the runtime test agent's token with 2,000 tLINE on pump.fun (${t.venue}): ${t.signature}`);
+  const fees = await curveCreatorFee(rpc, agentMint.id);
   const c0 = (await reader.tokenBalance(vault))!;
-  await send(STEP, `crank_fees for the runtime test agent: ${fees} partner fee base units`, dep, [launch.crankFees({ agent: agent.id, agentMint: agentMint.id, lineMint, dbcConfig: state.dbc_config!, lineTokenProgram: T22 })], { computeUnits: 400_000 });
+  const cr = await pumpCrank(rpc, { payer: dep, agent: agent.id, mint: agentMint.id, lineMint });
+  log(`crank for the runtime test agent: pump.fun sweep + collect of ${fees} creator fee base units, then crank_pump_fees: ${cr.signature}`);
   const c1 = (await reader.tokenBalance(vault))!;
   const lWake = (await reader.agentLaunch(agentMint.id))!;
-  check("crank_fees paid agent_compute_bps of the new fees into the vault", c1 - c0 === (fees * BigInt(lc0.agentComputeBps)) / 10_000n, `fees ${fees}, vault +${c1 - c0}`);
+  check("crank_pump_fees paid agent_compute_bps of the new fees into the vault", c1 - c0 === (fees * BigInt(lc0.agentComputeBps)) / 10_000n, `fees ${fees}, vault +${c1 - c0}`);
   check("new fees woke the agent on chain", lWake.awake && c1 >= lc0.wakeThreshold, `vault ${c1} >= ${lc0.wakeThreshold}`);
   await waitFor("the restarted runtime sees the agent awake", async () => lines2.some((x) => x.includes(`agent ${agent.id} is awake`)), 120_000, 2000).catch(() => null);
   check("the restarted runtime (state recovered, no budget left) sees the agent awake", lines2.some((x) => x.includes(`agent ${agent.id} is awake`)) && !lines2.some((x) => x.includes(`discovered hosted agent ${agent.id}`)));

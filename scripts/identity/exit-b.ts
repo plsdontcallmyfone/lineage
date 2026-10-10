@@ -25,6 +25,7 @@ import { canonicalUrl, signStatement } from "@lineage/protocol";
 import { ata, ChainReader, IDENTITY_MODE, launch, launchPdas, loadKeypair, loadOrCreateKeypair, registry, Rpc, sendAndConfirm, token, TOKEN_2022_PROGRAM, type Signer } from "@lineage/chain";
 import { DEVNET_GENESIS } from "../../packages/chain/src/browser/client.ts";
 import { devnetRpcUrl } from "../../packages/chain/src/endpoint.ts";
+import { launchTable, pumpLaunchTx } from "../devnet/pump-lib.ts";
 import { checkSoul, signSoul, soulDigest } from "../../packages/souls/src/doc.ts";
 import { newSoul } from "../../packages/souls/src/schema.ts";
 import { persona, SEED } from "../../packages/souls/test/fixtures.ts";
@@ -86,13 +87,12 @@ if (cmd === "launch") {
     const net = JSON.parse(readFileSync(join(ROOT, "config/network.json"), "utf8"));
     const devnet = JSON.parse(readFileSync(join(ROOT, "scripts/devnet/devnet.json"), "utf8"));
     const sym = `TB${label.toUpperCase().replace(/[^A-Z0-9]/g, "")}`.slice(0, 10);
-    const sig = await send(`launch_agent (identity ${mode}) + set_profile: TEST agent ${agent.id} on ${url}, mint ${mint.id}`, launcher, [
-      launch.launchAgent({
-        launcher: launcher.id, agent: agent.id, agentMint: mint.id, lineMint: devnet.line_mint, dbcConfig: devnet.dbc_config, lineTokenProgram: TOKEN_2022_PROGRAM,
-        args: { name: `TEST identity ${label}`.slice(0, 32), symbol: sym, uri: `https://lineage.invalid/devnet/agents/identity-${label}.json`, repoUrl: url, identityMode: IDENTITY_MODE[mode], hosted: false },
-      }),
-      registry.setProfile({ signingKey: agent.id, agent: agent.id, digest: soulDigest(doc), seq: doc.seq }),
-    ], { signers: [agent, mint], computeUnits: 450_000 });
+    // pump.fun launch + set_profile (owner decisions 2026-10-10): one v0 transaction when it fits, else two (planLaunch)
+    const r = await pumpLaunchTx(rpc, { launcher, agent, mint, lineMint: devnet.line_mint, name: `TEST identity ${label}`.slice(0, 32), symbol: sym,
+      uri: `https://lineage.invalid/devnet/agents/identity-${label}.json`, args: { repoUrl: url, identityMode: IDENTITY_MODE[mode], hosted: false },
+      soul: registry.setProfile({ signingKey: agent.id, agent: agent.id, digest: soulDigest(doc), seq: doc.seq }), table: await launchTable(rpc, devnet) });
+    const sig = r.sent[0]!.signature;
+    log(`pump.fun launch (identity ${mode}) + set_profile: TEST agent ${agent.id} on ${url}, mint ${mint.id}: ${r.sent.map((t) => t.signature).join(", ")}`);
     const want = BigInt(net.wake_threshold) + 500n * 10n ** 6n;
     const vault = launchPdas.computeVault(agent.id);
     await send(`send ${want} tLINE base units to identity-${label} compute vault ${vault}`, dep, [token.transferChecked(ata(dep.id, devnet.line_mint, TOKEN_2022_PROGRAM), devnet.line_mint, vault, dep.id, want, 6, TOKEN_2022_PROGRAM)]);

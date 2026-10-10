@@ -58,12 +58,12 @@ if (bal0.line < 50n * 10n ** BigInt(decimals)) {
 
 // ------------------------------------------------------------------ venue
 const toks = await marketTokens(MARKET);
-const curve = toks.filter((t) => t.venue === "dbc" && t.price).sort((a, b) => (b.price ?? 0) - (a.price ?? 0))[0];
-const grad = toks.find((t) => t.venue === "damm_v2");
+const curve = toks.filter((t) => t.venue === "pump_curve" && t.price).sort((a, b) => (b.price ?? 0) - (a.price ?? 0))[0];
+const grad = toks.find((t) => t.venue === "pump_pool");
 for (const t of [curve, grad].filter(Boolean) as typeof toks) {
   const tv = { ...t, parties: [] };
   const route = await venue.route(t.mint);
-  check(`${t.mint.slice(0, 6)}: venue read from chain matches the indexer's phase`, (route.kind === "damm_v2") === (t.venue === "damm_v2"), route.kind);
+  check(`${t.mint.slice(0, 6)}: venue read from chain matches the indexer's phase`, (route.kind === "pump_pool") === (t.venue === "pump_pool"), route.kind);
   const q = await venue.quote(me, tv, "buy", BUY);
   check(`${t.mint.slice(0, 6)}: buy quote by simulation`, q.out > 0n, `out ${q.out}, impact ${q.impact_bps} bps`);
   const min = (q.out * 9800n) / 10_000n;

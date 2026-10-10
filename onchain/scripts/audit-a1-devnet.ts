@@ -34,13 +34,13 @@ import {
   type Signer,
 } from "@lineage/chain";
 import { deployer, key, LAMPORTS, loadState, log, reader, ROOT, rpc, sol } from "../../scripts/devnet/lib.ts";
+import { launchTable, pumpLaunchTx } from "../../scripts/devnet/pump-lib.ts";
 
 const T22 = TOKEN_2022_PROGRAM;
 const STAMP = new Date().toISOString().replace(/[-:T]/g, "").slice(0, 14);
 const STEP = "A1";
 const state = loadState();
 const lineMint = state.line_mint!;
-const dbcConfig = state.dbc_config!;
 const DEC = state.line_decimals ?? 6;
 const ONE = 10n ** BigInt(DEC);
 const dep = deployer();
@@ -89,11 +89,11 @@ async function main() {
   const mintKey = key(`a1-${STAMP}-mint`);
   const buyer = key(`a1-${STAMP}-buyer`);
   const mint = mintKey.id;
-  await send(`launch_agent: TEST audit agent ${agent.id} (self-hosted), mint ${mint}, launcher = deployer`, dep, [
-    launch.launchAgent({ launcher: dep.id, agent: agent.id, agentMint: mint, lineMint, dbcConfig, lineTokenProgram: T22,
-      args: { name: "TEST audit agent", symbol: "TAUDIT", uri: "https://lineage.invalid/devnet/agents/audit-a1.json", repoUrl: "https://github.com/karpathy/minbpe",
-        identityMode: IDENTITY_MODE.app, hosted: false } }),
-  ], { signers: [agent, mintKey], computeUnits: 400_000 });
+  // pump.fun launch (owner decisions 2026-10-10): create_v2 + register_pump_launch, one v0 transaction with the launch table
+  const launched = await pumpLaunchTx(rpc, { launcher: dep, agent, mint: mintKey, lineMint, name: "TEST audit agent", symbol: "TAUDIT",
+    uri: "https://lineage.invalid/devnet/agents/audit-a1.json", args: { repoUrl: "https://github.com/karpathy/minbpe", identityMode: IDENTITY_MODE.app, hosted: false },
+    table: await launchTable(rpc, state as never) });
+  log(`pump.fun launch: TEST audit agent ${agent.id} (self-hosted), mint ${mint}, launcher = deployer: ${launched.sent.map((t) => t.signature).join(", ")}`);
   const vault = launchPdas.computeVault(agent.id);
   const depLine = ata(dep.id, lineMint, T22);
   const buyerLine = ata(buyer.id, lineMint, T22);

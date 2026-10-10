@@ -1,12 +1,16 @@
 #!/usr/bin/env bun
 // Devnet wiring, steps (a) to (f) of the devnet lane, each idempotent (skipped when already done)
 // and each read back from chain:
-//   a  a Token-2022 Pump.fun-style TEST $LINE mint ("Lineage Test LINE", symbol tLINE)
+//   a  TEST $LINE as a real pump.fun coin (create_v2 paired with SOL, never mayhem; owner decisions
+//      2026-10-10), the supply holder (the deployer) buying the tLINE the steps need on its curve
+//      (nothing can be minted: pump.fun revokes the mint authority)
 //   b  lineage_registry::initialize with config/network.json params (paramsFromNetworkJson)
-//   c  a Meteora DBC config naming the launch authority PDA as fee claimer and leftover receiver
-//   d  lineage_launch::initialize_launch
-//   e  an agent launch targeting https://github.com/karpathy/minbpe, trades on its curve from a
-//      test trader, crank_fees with the exact split verified, then split of the treasury
+//   c  the frozen launch lookup table (launchTableAddresses: pump.fun's fixed accounts, $LINE's quote accounts, ours)
+//   d  lineage_launch::initialize_launch (pump_creator_fee_bps 0: pump.fun's default)
+//   e  an agent launch on pump.fun targeting https://github.com/karpathy/minbpe (create_v2 +
+//      register_pump_launch in one transaction), trades on its curve from a test trader, the fee
+//      crank (pump.fun's sweep + collect, then crank_pump_fees) with the exact split verified against
+//      the creator fee the curve held, then split of the treasury
 //   f  a verifier registered and bonded, an epoch posted with a Core-format Merkle root, claimed
 //   g  Agent v2 and Epoch.record_root (identity plan I1, I2): every Agent record and Epoch account an
 //      earlier registry layout wrote is grown in place (migrate_agent, migrate_epoch; the deployer
@@ -23,26 +27,31 @@ import {
   ata,
   bounty,
   claimFromCoreProof,
-  dbc,
-  decodeDbcPool,
+  createV2,
+  decodeBondingCurve,
+  decodeLookupTable,
+  decodePumpFeeConfig,
+  decodePumpGlobal,
   decodeT22Metadata,
   IDENTITY_MODE,
   launch,
   launchPdas,
-  METEORA,
+  launchTableAddresses,
+  lookupTable,
   paramsFromNetworkJson,
   payoutLeaf,
+  pump,
+  PUMP,
+  pumpPdas,
+  quoteCurveBuyExactOut,
   registry,
   registryPdas,
-  standardDbcParams,
-  system,
-  T22_MINT_WITH_POINTER,
   token,
   TOKEN_2022_PROGRAM,
-  tokenMetadataLen,
   type Signer,
 } from "@lineage/chain";
-import { check, deployer, key, LAMPORTS, loadState, log, reader, ROOT, rpc, saveState, send, sol, topUp } from "./lib.ts";
+import { check, deployer, key, LAMPORTS, loadState, log, logTx, reader, ROOT, rpc, saveState, send, sol, topUp } from "./lib.ts";
+import { curveCreatorFee, launchTable, pumpCrank, pumpLaunchTx, pumpTrade } from "./pump-lib.ts";
 
 const argv = process.argv.slice(2);
 const only = argv.includes("--only") ? new Set(argv[argv.indexOf("--only") + 1]!.split(",")) : null;
@@ -51,7 +60,6 @@ const want = (s: string) => !only || only.has(s);
 const T22 = TOKEN_2022_PROGRAM;
 const DECIMALS = 6;
 const ONE = 10n ** BigInt(DECIMALS);
-const SUPPLY = 1_000_000_000n * ONE;
 const LINE_META = { name: "Lineage Test LINE (TEST)", symbol: "tLINE", uri: "https://lineage.invalid/devnet/tline-test.json" };
 const AGENT_REPO = "https://github.com/karpathy/minbpe";
 const AGENT_META = { name: "TEST minbpe agent", symbol: "TMBPE", uri: "https://lineage.invalid/devnet/agents/minbpe-test.json" };
@@ -65,10 +73,10 @@ const MAX_REBATE_PER_EPOCH = 1n * 10n ** BigInt(DECIMALS);
 const MAX_DEBIT_PER_EPOCH = 1_000n * 10n ** BigInt(DECIMALS);
 const state = loadState();
 const dep = deployer();
-const lineMint = key("line-mint");
+// a new key: the earlier devnet tLINE (key "line-mint") was a plain Token-2022 mint, not a pump.fun coin
+const lineMint = key("line-mint-pump");
 const core = key("core-authority");
 const runtime = key("runtime-authority");
-const dbcConfigKey = key("dbc-config");
 const lineHolder = ata(dep.id, lineMint.id, T22);
 const computeSink = ata(runtime.id, lineMint.id, T22);
 
@@ -84,36 +92,48 @@ const BOUNTY_TEST = {
   paused: false,
 };
 const PAYER_META = { name: "TEST bounty payer agent", symbol: "TBNTY", uri: "https://lineage.invalid/devnet/agents/bounty-payer-test.json" };
+/** tLINE the trader of step e is given (base units). */
+const TRADER_LINE = 1_000_000n * ONE;
+/** tLINE the bounty payer's compute vault receives in step i. */
+const BOUNTY_VAULT_LINE = 100n * ONE;
 
 const startBalance = await rpc.getBalance(dep.id);
 log(`deployer ${dep.id} holds ${sol(startBalance)} SOL`);
 
-// ------------------------------------------------------------------ a: $LINE test mint
+// ------------------------------------------------------------------ a: $LINE as a pump.fun coin
 async function stepA() {
   const existing = await rpc.getAccountInfo(lineMint.id);
   if (!existing) {
-    const lamports = await rpc.getMinimumBalanceForRentExemption(T22_MINT_WITH_POINTER + tokenMetadataLen(LINE_META.name, LINE_META.symbol, LINE_META.uri));
-    await send("a", `create TEST $LINE mint ${lineMint.id} (Token-2022, metadata pointer + metadata, ${DECIMALS} decimals)`, dep, [
-      system.createAccount(dep.id, lineMint.id, lamports, T22_MINT_WITH_POINTER, T22),
-      token.initializeMetadataPointer(lineMint.id, dep.id, lineMint.id),
-      token.initializeMint2(lineMint.id, DECIMALS, dep.id, T22),
-      token.initializeTokenMetadata(lineMint.id, dep.id, dep.id, LINE_META.name, LINE_META.symbol, LINE_META.uri),
-    ], { signers: [lineMint] });
-  } else log("a: mint exists, skipping create");
-  let m = (await reader.mint(lineMint.id))!;
-  if (m.supply === 0n && m.mintAuthority === dep.id) {
-    await send("a", `mint the full TEST supply ${SUPPLY / ONE} tLINE to the deployer's ATA ${lineHolder}`, dep, [
+    await send("a", `pump.fun create_v2: TEST $LINE ${lineMint.id} paired with SOL, not mayhem, creator = deployer`, dep, [
+      createV2({ mint: lineMint.id, user: dep.id, creator: dep.id, name: LINE_META.name, symbol: LINE_META.symbol, uri: LINE_META.uri, quote: { kind: "sol" } }),
+    ], { signers: [lineMint], computeUnits: 400_000 });
+  } else log("a: tLINE exists, skipping create_v2");
+  const [gA, fcA] = await rpc.getMultipleAccounts([PUMP.global, PUMP.feeConfig]);
+  const g = decodePumpGlobal(gA!.data);
+  const curve = decodeBondingCurve((await rpc.getAccountInfo(pumpPdas.bondingCurve(lineMint.id)))!.data);
+  check("a: tLINE curve: owned by Pump, quoted in SOL, depth 0, not mayhem", curve.quoteMint === "11111111111111111111111111111111" && curve.depth === 0
+    && !curve.isMayhemMode, `real token reserves ${curve.realTokenReserves}`);
+  // what the later steps hand out: the trader (e), a verifier owner's burn and bond (f), the bounty payer's vault (i)
+  const need = TRADER_LINE + params.registerBurn + params.minBond + BOUNTY_VAULT_LINE;
+  const held = (await reader.tokenBalance(lineHolder)) ?? 0n;
+  if (held < need) {
+    const amount = need - held;
+    if (amount >= curve.realTokenReserves) throw new Error(`buying ${amount} would complete tLINE's curve (${curve.realTokenReserves} left)`);
+    const q = quoteCurveBuyExactOut(g, decodePumpFeeConfig(fcA!.data), curve, amount, (await reader.tokenBalance(ata(pumpPdas.bondingCurve(lineMint.id), lineMint.id, T22))) ?? 0n);
+    await send("a", `the supply holder buys ${amount} tLINE base units on tLINE's pump.fun curve (buy_v3, at most ${q.quoteIn * 101n / 100n} lamports)`, dep, [
       token.createAtaIdempotent(dep.id, dep.id, lineMint.id, T22),
-      token.mintTo(lineMint.id, lineHolder, dep.id, SUPPLY, T22),
-    ]);
+      pump.buyV3({ mint: lineMint.id, quoteMint: PUMP.wsol, user: dep.id, amount, maxQuoteIn: (q.quoteIn * 101n) / 100n }),
+    ], { computeUnits: 300_000 });
   }
-  m = (await reader.mint(lineMint.id))!;
-  if (m.mintAuthority) await send("a", "revoke the tLINE mint authority (fixed supply, as Pump.fun mints)", dep, [token.revokeMintAuthority(lineMint.id, dep.id, T22)]);
-  m = (await reader.mint(lineMint.id))!;
+  const m = (await reader.mint(lineMint.id))!;
   const meta = decodeT22Metadata((await rpc.getAccountInfo(lineMint.id))!.data);
   check("a: tLINE is a Token-2022 mint with metadata", m.tokenProgram === T22 && meta?.name === LINE_META.name && meta?.symbol === LINE_META.symbol, JSON.stringify(meta));
-  check("a: fixed supply, no mint or freeze authority", m.mintAuthority === null && m.freezeAuthority === null && m.decimals === DECIMALS, `supply ${m.supply}`);
-  Object.assign(state, { line_mint: lineMint.id, line_token_program: T22, line_decimals: DECIMALS, line_holder: lineHolder, line_supply_initial: SUPPLY.toString() });
+  check("a: fixed supply (pump.fun's), no mint or freeze authority", m.mintAuthority === null && m.freezeAuthority === null && m.decimals === DECIMALS
+    && m.supply === g.tokenTotalSupply, `supply ${m.supply}`);
+  check("a: the supply holder holds what the steps need", ((await reader.tokenBalance(lineHolder)) ?? 0n) >= need);
+  Object.assign(state, { line_mint: lineMint.id, line_token_program: T22, line_decimals: DECIMALS, line_holder: lineHolder, line_supply_initial: m.supply.toString(),
+    line_venue: "pump.fun" });
+  delete state.dbc_config;
 }
 
 // ------------------------------------------------------------------ b: registry initialize
@@ -151,17 +171,29 @@ async function stepB() {
   Object.assign(state, { admin: dep.id, core_authority: core.id, core_authority_key: "~/.config/lineage/devnet/core-authority.json" });
 }
 
-// ------------------------------------------------------------------ c: DBC config
+// ------------------------------------------------------------------ c: launch lookup table
 async function stepC() {
-  const existing = await rpc.getAccountInfo(dbcConfigKey.id);
-  if (!existing) {
-    await send("c", `Meteora DBC create_config ${dbcConfigKey.id} (quote tLINE, fee claimer and leftover receiver = launch authority PDA, TEST curve)`, dep, [
-      dbc.createConfig({ config: dbcConfigKey.id, feeClaimer: launchPdas.authority(), quoteMint: lineMint.id, payer: dep.id, params: standardDbcParams() }),
-    ], { signers: [dbcConfigKey] });
-  } else log("c: DBC config exists, skipping");
-  const a = (await rpc.getAccountInfo(dbcConfigKey.id))!;
-  check("c: DBC config owned by DBC", a.owner === METEORA.dbcProgram, `${a.data.length} bytes`);
-  state.dbc_config = dbcConfigKey.id;
+  const want = launchTableAddresses({ lineMint: lineMint.id, lineTokenProgram: T22, linePool: state.line_pool as never });
+  const same = (a: string[]) => a.length === want.length && a.every((x, i) => x === want[i]);
+  if (typeof state.launch_lookup_table === "string") {
+    const acc = await rpc.getAccountInfo(state.launch_lookup_table);
+    const t = acc ? decodeLookupTable(acc.data) : null;
+    if (t && same(t.addresses) && t.authority === null) {
+      log(`c: launch lookup table ${state.launch_lookup_table} is frozen with the expected content, skipping`);
+      return;
+    }
+  }
+  const slot = await rpc.getSlot();
+  const { ix, address } = lookupTable.create({ authority: dep.id, payer: dep.id, recentSlot: slot - 1 });
+  await send("c", `launch lookup table ${address} (${want.length} addresses)`, dep, [ix, lookupTable.extend({ table: address, authority: dep.id, payer: dep.id, addresses: want })]);
+  await send("c", `freeze the launch lookup table ${address}`, dep, [lookupTable.freeze({ table: address, authority: dep.id })]);
+  const t = decodeLookupTable((await rpc.getAccountInfo(address))!.data);
+  check("c: launch lookup table frozen with the expected content", same(t.addresses) && t.authority === null, `${t.addresses.length} addresses`);
+  state.launch_lookup_table = address;
+  saveState(state);
+  // a table is usable from the slot after its last extension
+  const s0 = await rpc.getSlot();
+  while ((await rpc.getSlot()) <= s0 + 1) await new Promise((r) => setTimeout(r, 400));
 }
 
 // ------------------------------------------------------------------ d: launch initialize
@@ -175,12 +207,11 @@ async function stepD() {
       launch.initialize({
         upgradeAuthority: dep.id,
         lineMint: lineMint.id,
-        dbcConfig: dbcConfigKey.id,
         lineTokenProgram: T22,
         args: {
           admin: dep.id, runtimeAuthority: runtime.id, computeSink,
           agentComputeBps: net.agent_compute_bps, protocolBps: net.protocol_bps, sleepThreshold: sleep, wakeThreshold: wake, paused: false,
-          maxDebitPerEpoch: MAX_DEBIT_PER_EPOCH,
+          maxDebitPerEpoch: MAX_DEBIT_PER_EPOCH, pumpCreatorFeeBps: 0n,
         },
       }),
     ]);
@@ -194,10 +225,9 @@ async function stepD() {
   }
   check("d: debit cap set, registry program is the constant", lc!.maxDebitPerEpoch === MAX_DEBIT_PER_EPOCH && lc!.registryProgram === state.registry_program,
     `${lc!.maxDebitPerEpoch}`);
-  const p = standardDbcParams();
-  check("d: launch config read back", !!lc && lc.dbcConfig === dbcConfigKey.id && lc.lineMint === lineMint.id && lc.computeSink === computeSink && lc.runtimeAuthority === runtime.id
+  check("d: launch config read back", !!lc && lc.venue === PUMP.program && lc.lineMint === lineMint.id && lc.computeSink === computeSink && lc.runtimeAuthority === runtime.id
     && lc.agentComputeBps === net.agent_compute_bps && lc.protocolBps === net.protocol_bps && lc.sleepThreshold === sleep && lc.wakeThreshold === wake);
-  check("d: curve threshold and start price read from the DBC config", lc!.migrationQuoteThreshold === p.threshold && lc!.sqrtStartPrice === p.sqrtStart, `${lc!.migrationQuoteThreshold} / ${lc!.sqrtStartPrice}`);
+  check("d: pump.fun creator fee rate is pump.fun's default (0)", lc!.pumpCreatorFeeBps === 0n, `${lc!.pumpCreatorFeeBps}`);
   Object.assign(state, { runtime_authority: runtime.id, compute_sink: computeSink, agent_compute_bps: lc!.agentComputeBps, protocol_bps: lc!.protocolBps });
 }
 
@@ -222,56 +252,51 @@ async function stepE() {
   let l = await reader.agentLaunch(agentMint.id);
   if (!l) {
     await topUp("e", dep, launcher.id, LAMPORTS / 10n, "launcher");
-    await send("e", `launch_agent: TEST agent ${agent.id} on ${url}, agent mint ${agentMint.id}`, launcher, [
-      launch.launchAgent({
-        launcher: launcher.id, agent: agent.id, agentMint: agentMint.id, lineMint: lineMint.id, dbcConfig: dbcConfigKey.id, lineTokenProgram: T22,
-        args: { ...AGENT_META, repoUrl: url, identityMode: IDENTITY_MODE.app, hosted: true },
-      }),
-    ], { signers: [agent, agentMint], computeUnits: 400_000 });
+    const table = await launchTable(rpc, state as never);
+    const r = await pumpLaunchTx(rpc, { launcher, agent, mint: agentMint, lineMint: lineMint.id, ...AGENT_META,
+      args: { repoUrl: url, identityMode: IDENTITY_MODE.app, hosted: true }, table });
+    for (const t of r.sent) {
+      logTx("e", `pump.fun launch: TEST agent ${agent.id} on ${url}, agent mint ${agentMint.id} (${r.plan.mode}, ${t.size} bytes)`, { signature: t.signature, fee: t.fee ?? undefined, slot: 0, logs: [] });
+      log(`e: launch ${t.signature} (${t.size} bytes${t.computeUnits ? `, ${t.computeUnits} CU` : ""})`);
+    }
     l = await reader.agentLaunch(agentMint.id);
-  } else log("e: agent launch exists, skipping launch_agent");
+  } else log("e: agent launch exists, skipping the launch");
   const rec = await reader.agent(agent.id);
-  check("e: AgentLaunch read back", !!l && l.agent === agent.id && l.launcher === launcher.id && l.repoUrl === url && l.hosted && l.identityMode === IDENTITY_MODE.app);
+  check("e: AgentLaunch read back", !!l && l.venue === "pump" && l.agent === agent.id && l.launcher === launcher.id && l.repoUrl === url && l.hosted && l.identityMode === IDENTITY_MODE.app);
   check("e: repo_id computed onchain equals protocol repoId(url)", l!.repoId === repoId(url), l!.repoId);
   check("e: registry Agent record (kind launched) created by CPI", !!rec && rec.kind === "launched" && rec.owner === launcher.id && rec.mint === agentMint.id && rec.hosted);
-  const pool = launchPdas.dbcPool(dbcConfigKey.id, agentMint.id, lineMint.id);
-  check("e: DBC pool creator is the launch authority PDA", decodeDbcPool((await rpc.getAccountInfo(pool))!.data).creator === launchPdas.authority());
-  const authAgentToken = ata(launchPdas.authority(), agentMint.id, T22);
-  if (!(await rpc.getAccountInfo(authAgentToken)))
-    await send("e", "create the launch authority's agent-token ATA (crank prerequisite)", dep, [token.createAtaIdempotent(dep.id, launchPdas.authority(), agentMint.id, T22)]);
+  const curve0 = decodeBondingCurve((await rpc.getAccountInfo(pumpPdas.bondingCurve(agentMint.id)))!.data);
+  check("e: the curve's creator is the agent's creator PDA and its quote is tLINE", curve0.creator === launchPdas.pumpCreator(agent.id) && curve0.quoteMint === lineMint.id
+    && curve0.depth === 1, `virtual quote ${curve0.virtualQuoteReserves}`);
 
   const computeVault = launchPdas.computeVault(agent.id);
   const treasury = registryPdas.treasury();
   if (l!.feesClaimed === 0n) {
-    let view = decodeDbcPool((await rpc.getAccountInfo(pool))!.data);
-    if (view.partnerQuoteFee === 0n) {
+    if ((await curveCreatorFee(rpc, agentMint.id)) === 0n) {
       await topUp("e", dep, trader.id, LAMPORTS / 50n, "trader", LAMPORTS / 20n);
-      const traderLine = await lineTo(trader.id, 1_000_000n * ONE, "trader", "e");
-      const traderAgent = ata(trader.id, agentMint.id, T22);
-      await send("e", "create the trader's agent-token ATA", trader, [token.createAtaIdempotent(trader.id, trader.id, agentMint.id, T22)]);
-      const swap = (buy: boolean, amountIn: bigint) =>
-        dbc.swap({ config: dbcConfigKey.id, pool, agentMint: agentMint.id, lineMint: lineMint.id, trader: trader.id, lineAccount: traderLine, agentAccount: traderAgent,
-          buy, amountIn, minOut: 1n, lineTokenProgram: T22 });
-      await send("e", "trade 1: trader buys with 100,000 tLINE on the DBC curve", trader, [swap(true, 100_000n * ONE)], { computeUnits: 300_000 });
-      await send("e", "trade 2: trader buys with 50,000 tLINE", trader, [swap(true, 50_000n * ONE)], { computeUnits: 300_000 });
-      const held = (await reader.tokenBalance(traderAgent))!;
-      await send("e", `trade 3: trader sells ${held / 2n} agent-token base units (half)`, trader, [swap(false, held / 2n)], { computeUnits: 300_000 });
-      view = decodeDbcPool((await rpc.getAccountInfo(pool))!.data);
+      await lineTo(trader.id, TRADER_LINE, "trader", "e");
+      const trade = async (what: string, buy: boolean, amountIn: bigint) => {
+        const t = await pumpTrade(rpc, { trader, mint: agentMint.id, lineMint: lineMint.id, buy, amountIn });
+        logTx("e", what, { signature: t.signature, fee: t.fee ?? undefined, slot: 0, logs: [] });
+        log(`e: ${what}: ${t.signature} (${t.venue})`);
+      };
+      await trade(`trade 1: trader buys with ${(TRADER_LINE / 10n) / ONE} tLINE on the pump.fun curve`, true, TRADER_LINE / 10n);
+      await trade(`trade 2: trader buys with ${(TRADER_LINE / 20n) / ONE} tLINE`, true, TRADER_LINE / 20n);
+      const held = (await reader.tokenBalance(ata(trader.id, agentMint.id, T22)))!;
+      await trade(`trade 3: trader sells ${held / 2n} agent-token base units (half)`, false, held / 2n);
     }
-    check("e: trades left partner (claimable) and Meteora protocol fees in the pool", view.partnerQuoteFee > 0n && view.protocolQuoteFee > 0n,
-      `partner ${view.partnerQuoteFee}, Meteora protocol ${view.protocolQuoteFee}, quote reserve ${view.quoteReserve}`);
-    const fees = view.partnerQuoteFee;
+    const fees = await curveCreatorFee(rpc, agentMint.id);
+    check("e: trades left the creator fee waiting on the curve (v3 trades)", fees > 0n, `${fees}`);
     const [c0, t0] = await reader.tokenBalances([computeVault, treasury]);
-    const crank = await send("e", `crank_fees: claim ${fees} partner fee base units and split them`, dep, [
-      launch.crankFees({ agent: agent.id, agentMint: agentMint.id, lineMint: lineMint.id, dbcConfig: dbcConfigKey.id, lineTokenProgram: T22 }),
-    ], { computeUnits: 400_000 });
+    const crank = await pumpCrank(rpc, { payer: dep, agent: agent.id, mint: agentMint.id, lineMint: lineMint.id });
+    logTx("e", `crank: pump.fun sweep + collect of ${fees} creator fee base units, then crank_pump_fees`, { signature: crank.signature, fee: crank.fee ?? undefined, slot: 0, logs: [] });
     const [c1, t1] = await reader.tokenBalances([computeVault, treasury]);
     const wantC = (fees * BigInt(net.agent_compute_bps)) / 10_000n;
     const la = (await reader.agentLaunch(agentMint.id))!;
     check("e: compute vault got exactly floor(fees x agent_compute_bps / 10,000)", c1! - c0! === wantC, `${c1! - c0!} of ${fees}`);
     check("e: treasury got exactly the rest", t1! - t0! === fees - wantC, `${t1! - t0!}`);
     check("e: AgentLaunch counters agree", la.feesClaimed === fees && la.toCompute === wantC && la.toProtocol === fees - wantC);
-    check("e: partner fee in the pool is now zero", decodeDbcPool((await rpc.getAccountInfo(pool))!.data).partnerQuoteFee === 0n);
+    check("e: the curve's waiting creator fee is now zero", (await curveCreatorFee(rpc, agentMint.id)) === 0n);
     state.fee_split = { crank_signature: crank.signature, fees: fees.toString(), to_compute: wantC.toString(), to_protocol: (fees - wantC).toString(),
       agent_compute_bps: net.agent_compute_bps, check: `${c1! - c0!} = floor(${fees} x ${net.agent_compute_bps} / 10000); ${t1! - t0!} = ${fees} - ${wantC}` };
   } else log(`e: fees already cranked (${l!.feesClaimed}), skipping trades and crank`);
@@ -416,18 +441,17 @@ async function stepI() {
   let l = await reader.agentLaunch(agentMint.id);
   if (!l) {
     await topUp("i", dep, launcher.id, LAMPORTS / 20n, "launcher", LAMPORTS / 10n);
-    await send("i", `launch_agent: TEST bounty payer agent ${agent.id} on ${url} (hosted), agent mint ${agentMint.id}`, launcher, [
-      launch.launchAgent({
-        launcher: launcher.id, agent: agent.id, agentMint: agentMint.id, lineMint: lineMint.id, dbcConfig: dbcConfigKey.id, lineTokenProgram: T22,
-        args: { ...PAYER_META, repoUrl: url, identityMode: IDENTITY_MODE.app, hosted: true },
-      }),
-    ], { signers: [agent, agentMint], computeUnits: 400_000 });
+    const table = await launchTable(rpc, state as never);
+    const r = await pumpLaunchTx(rpc, { launcher, agent, mint: agentMint, lineMint: lineMint.id, ...PAYER_META,
+      args: { repoUrl: url, identityMode: IDENTITY_MODE.app, hosted: true }, table });
+    for (const t of r.sent)
+      logTx("i", `pump.fun launch: TEST bounty payer agent ${agent.id} on ${url} (hosted), agent mint ${agentMint.id}`, { signature: t.signature, fee: t.fee ?? undefined, slot: 0, logs: [] });
     l = await reader.agentLaunch(agentMint.id);
-  } else log("i: bounty payer launch exists, skipping launch_agent");
+  } else log("i: bounty payer launch exists, skipping the launch");
   check("i: bounty payer AgentLaunch read back (hosted)", !!l && l.agent === agent.id && l.hosted && l.launcher === launcher.id);
   const vault = launchPdas.computeVault(agent.id);
   const bal = (await reader.tokenBalance(vault)) ?? 0n;
-  const want = 100n * ONE;
+  const want = BOUNTY_VAULT_LINE;
   if (bal < want) {
     await send("i", `send ${want - bal} tLINE base units to the bounty payer's compute vault ${vault} (deposit by transfer)`, dep, [
       token.transferChecked(lineHolder, lineMint.id, vault, dep.id, want - bal, DECIMALS, T22),

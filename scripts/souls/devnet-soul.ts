@@ -19,7 +19,8 @@ import { IDENTITY_MODE, launch, registry, TOKEN_2022_PROGRAM, token, launchPdas 
 import { devnetRpcUrl } from "../../packages/chain/src/endpoint.ts";
 import { checkSoul, nextVersion, signSoul, soulDigest, type SoulDoc } from "../../packages/souls/src/index.ts";
 import { FileCredentialStore } from "../../packages/souls/src/github/index.ts";
-import { deployer, key, KEY_DIR, LAMPORTS, loadState, log, reader, rpc, send, sol, topUp } from "../devnet/lib.ts";
+import { deployer, key, KEY_DIR, LAMPORTS, loadState, log, logTx, reader, rpc, send, sol, topUp } from "../devnet/lib.ts";
+import { launchTable, pumpLaunchTx } from "../devnet/pump-lib.ts";
 import { withBackoff } from "../../packages/runtime/src/backend.ts";
 
 const argv = process.argv.slice(2);
@@ -54,14 +55,14 @@ async function launchStep() {
   let l = await reader.agentLaunch(agentMint.id);
   if (!l) {
     await topUp(STEP, dep, launcher.id, LAMPORTS / 10n, "souls test launcher");
-    const r = await send(STEP, `launch_agent + set_profile: TEST souls agent ${agent.id} on ${REPO} (identity purchased, hosted), soul A digest ${digest} seq 1`, launcher, [
-      launch.launchAgent({ launcher: launcher.id, agent: agent.id, agentMint: agentMint.id, lineMint: state.line_mint!, dbcConfig: state.dbc_config!, lineTokenProgram: TOKEN_2022_PROGRAM,
-        args: { ...META, repoUrl: REPO, identityMode: IDENTITY_MODE.purchased, hosted: true } }),
-      registry.setProfile({ signingKey: agent.id, agent: agent.id, digest, seq: 1 }),
-    ], { signers: [agent, agentMint], computeUnits: 450_000 });
+    const launched = await pumpLaunchTx(rpc, { launcher, agent, mint: agentMint, lineMint: state.line_mint!, ...META,
+      args: { repoUrl: REPO, identityMode: IDENTITY_MODE.purchased, hosted: true }, soul: registry.setProfile({ signingKey: agent.id, agent: agent.id, digest, seq: 1 }),
+      table: await launchTable(rpc, state as never) });
+    const r = launched.sent[0]!;
+    logTx(STEP, `pump.fun launch + set_profile: TEST souls agent ${agent.id} on ${REPO} (identity purchased, hosted), soul A digest ${digest} seq 1`,
+      { signature: r.signature, fee: r.fee ?? undefined, slot: 0, logs: [] });
     last.launch_signature = r.signature;
     last.launch_fee_lamports = r.fee ?? null;
-    await send(STEP, "create the launch authority's agent-token ATA for the souls test agent (crank prerequisite)", dep, [token.createAtaIdempotent(dep.id, launchPdas.authority(), agentMint.id, TOKEN_2022_PROGRAM)]);
     l = await reader.agentLaunch(agentMint.id);
   }
   check("TEST agent launched on chain (purchased, hosted, minbpe)", !!l && l.hosted && l.identityMode === IDENTITY_MODE.purchased && l.repoUrl === REPO, agent.id);

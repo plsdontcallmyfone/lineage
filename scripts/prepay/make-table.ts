@@ -18,7 +18,8 @@ const dry = process.argv.includes("--dry-run");
 const state = JSON.parse(readFileSync(STATE, "utf8"));
 const rpc = Rpc.http(devnetRpcUrl(), "confirmed");
 await assertDevnet(rpc);
-const want = launchTableAddresses({ lineMint: state.line_mint, dbcConfig: state.dbc_config, lineTokenProgram: state.line_token_program });
+// pump.fun launches (owner decisions 2026-10-10): pump.fun's fixed accounts and $LINE's quote accounts (its pool once migrated, state.line_pool)
+const want = launchTableAddresses({ lineMint: state.line_mint, lineTokenProgram: state.line_token_program, linePool: state.line_pool });
 const same = (a: string[], b: string[]) => a.length === b.length && a.every((x, i) => x === b[i]);
 
 if (state.launch_lookup_table) {

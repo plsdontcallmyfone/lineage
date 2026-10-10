@@ -14,21 +14,28 @@
 //                      mainnet and is not simulated here: the program is not deployed there)
 //   B trading alloc.   pay USDC: swap, then transferChecked of exactly the allocation to an escrow
 //                      token account plus the allocation memo, one v0 transaction
-//   C trade-box buy    pay SOL: swap to the pool's quote, then Meteora DBC swap2 (buy) on a live
-//                      mainnet DBC pool, one v0 transaction; minOut from the simulated output less
-//                      the slippage, recomposed and simulated again (the wallet's review step)
+//   C trade-box buy    pay SOL: swap to the curve's quote, then pump.fun buy_exact_quote_in_v3 on a
+//                      live mainnet pump.fun bonding curve, one v0 transaction; minOut from the
+//                      simulated output less the slippage, recomposed and simulated again (the
+//                      wallet's review step)
 // The quote for A and B is the profile's (the PYUSD stand-in until $LINE exists). No Lineage agent
-// pool exists on mainnet, so C uses a live USDC-quoted DBC pool found from recent DBC transactions
-// (--pool to pick another); the composition, the Jupiter + DBC accounts and the size limits are the
-// same as for an agent pool.
+// coin exists on mainnet (agent coins launch on pump.fun quoted in $LINE, owner decisions
+// 2026-10-10), so C uses a live USDC-quoted pump.fun curve found with getProgramAccounts (--curve
+// <mint> to pick another); the composition, the Jupiter + pump.fun accounts and the size limits are
+// the same as for an agent coin's curve.
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import {
   ata,
   compileMessageV0,
-  dbc,
-  decodeTokenAccount,
-  METEORA,
+    decodeTokenAccount,
+  PUMP,
+  pump,
+  pumpPdas,
+  accountDisc,
+  addressBytes,
+  decodeBondingCurve,
+  TOKEN_2022_PROGRAM,
   parsePrepayConfig,
   parseSwapConfig,
   planSwapThen,
@@ -121,23 +128,25 @@ async function feeFor(label: string, ixs: Ix[]) {
   return f;
 }
 
-async function findUsdcDbcPool(): Promise<{ config: string; pool: string; baseMint: string; baseProgram: string; quoteProgram: string } | null> {
-  const want = arg("pool", "");
-  let before: string | undefined;
-  for (let page = 0; page < 6; page++) {
-    const sigs = await rpc.call<{ signature: string; err: unknown }[]>("getSignaturesForAddress", [want || METEORA.dbcProgram, { limit: 100, before }]);
-    before = sigs[sigs.length - 1]?.signature;
-    for (const s of sigs) {
-      if (s.err) continue;
-      await new Promise((r) => setTimeout(r, 120));
-      const tx = await rpc.call<any>("getTransaction", [s.signature, { encoding: "json", maxSupportedTransactionVersion: 0, commitment: "confirmed" }]).catch(() => null);
+/** A live, uncompleted pump.fun bonding curve quoted in USDC (Token-2022 base, as create_v2 coins are). */
+async function findUsdcPumpCurve(): Promise<{ mint: string; curve: string } | null> {
+  const want = arg("curve", "");
+  if (want) return { mint: want, curve: pumpPdas.bondingCurve(want) };
+  const all = await rpc.getProgramAccounts(PUMP.program, { memcmp: [{ offset: 0, bytes: accountDisc("BondingCurve") }, { offset: 83, bytes: addressBytes(USDC_MINT) },
+    { offset: 48, bytes: Uint8Array.of(0) }] });
+  for (const a of all) {
+    const c = decodeBondingCurve(a.data);
+    if (c.complete || c.isMayhemMode || c.isCashbackCoin || c.realTokenReserves === 0n) continue;
+    // the curve PDA does not name its mint; find it from the curve's own recent transactions
+    const sigs = await rpc.call<{ signature: string; err: unknown }[]>("getSignaturesForAddress", [a.address, { limit: 5 }]);
+    for (const sg of sigs) {
+      if (sg.err) continue;
+      const tx = await rpc.call<any>("getTransaction", [sg.signature, { encoding: "json", maxSupportedTransactionVersion: 0, commitment: "confirmed" }]).catch(() => null);
       if (!tx) continue;
       const keys: string[] = [...tx.transaction.message.accountKeys, ...(tx.meta?.loadedAddresses?.writable ?? []), ...(tx.meta?.loadedAddresses?.readonly ?? [])];
-      for (const ix of tx.transaction.message.instructions as { programIdIndex: number; accounts: number[] }[]) {
-        if (keys[ix.programIdIndex] !== METEORA.dbcProgram || ix.accounts.length < 14) continue;
-        const a = ix.accounts.map((i) => keys[i]!);
-        if (a[8] === USDC_MINT && (!want || a[2] === want)) return { config: a[1]!, pool: a[2]!, baseMint: a[7]!, baseProgram: a[10]!, quoteProgram: a[11]! };
-      }
+      const mint = keys.find((k) => pumpPdas.bondingCurve(k) === a.address);
+      if (mint) return { mint, curve: a.address };
+      await new Promise((r) => setTimeout(r, 120));
     }
   }
   return null;
@@ -201,19 +210,18 @@ async function main() {
 
   // ---------------- C: trade-box buy, pay SOL: swap to the pool's quote, then DBC swap2 (buy)
   {
-    console.log("\n== C trade-box buy, pay SOL (swap to the pool's quote, then a Meteora DBC buy, one transaction)");
-    const pool = await findUsdcDbcPool();
-    check("C: a live USDC-quoted Meteora DBC pool on mainnet", !!pool, pool ? `pool ${pool.pool}, base ${pool.baseMint}` : "none in the recent DBC transactions");
+    console.log("\n== C trade-box buy, pay SOL (swap to the curve's quote, then a pump.fun buy_exact_quote_in_v3, one transaction)");
+    const pool = await findUsdcPumpCurve();
+    check("C: a live USDC-quoted pump.fun curve on mainnet", !!pool, pool ? `curve ${pool.curve}, mint ${pool.mint}` : "none found");
     if (pool) {
       // the pool's quote is the swap target here (an agent pool's quote would be the profile's quote mint)
       const cCfg: SwapConfig = { ...swapCfg, target_mint: USDC_MINT, target_decimals: 6, target_token_program: TOKEN_PROGRAM, target_symbol: "USDC" };
       const amountIn = 2_000_000n; // 2 USDC into the curve
       const takerQuote = ata(taker, USDC_MINT, TOKEN_PROGRAM);
-      const takerBase = ata(taker, pool.baseMint, pool.baseProgram);
+      const takerBase = ata(taker, pool.mint, TOKEN_2022_PROGRAM);
       const buy = (minOut: bigint): Ix[] => [
-        token.createAtaIdempotent(taker, taker, pool.baseMint, pool.baseProgram),
-        dbc.swap({ config: pool.config, pool: pool.pool, agentMint: pool.baseMint, lineMint: USDC_MINT, trader: taker, lineAccount: takerQuote, agentAccount: takerBase,
-          buy: true, amountIn, minOut, lineTokenProgram: pool.quoteProgram, baseTokenProgram: pool.baseProgram }),
+        token.createAtaIdempotent(taker, taker, pool.mint, TOKEN_2022_PROGRAM),
+        pump.buyExactQuoteInV3({ mint: pool.mint, quoteMint: USDC_MINT, quoteTokenProgram: TOKEN_PROGRAM, user: taker, spendableQuoteIn: amountIn, minTokensOut: minOut }),
       ];
       await pause();
       const quote = await quoteForTarget({ cfg: cCfg, pay: "SOL", need: amountIn, taker, pause, apiKey: process.env.JUPITER_API_KEY, maxAccounts: 30 });
@@ -233,7 +241,7 @@ async function main() {
           check("C: the swap funds the buy (taker USDC net >= 0)", s2.deltas[1]! >= 0n, `${units(s2.deltas[1]!, 6)} USDC`);
           check("C: output at least the minimum", s2.deltas[0]! >= minOut, `${s2.deltas[0]} >= ${minOut}`);
         }
-        results.C = { pool: pool.pool, base_mint: pool.baseMint, route: quote.route.path, in_lamports: quote.route.inAmount.toString(), size: t.size, units: s2.units, out: s2.deltas[0]?.toString(), min_out: minOut.toString(), usdc_net: s2.deltas[1]?.toString() };
+        results.C = { curve: pool.curve, base_mint: pool.mint, route: quote.route.path, in_lamports: quote.route.inAmount.toString(), size: t.size, units: s2.units, out: s2.deltas[0]?.toString(), min_out: minOut.toString(), usdc_net: s2.deltas[1]?.toString() };
       }
     }
   }

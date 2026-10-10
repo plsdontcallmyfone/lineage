@@ -24,6 +24,7 @@ import { canonicalUrl } from "@lineage/protocol";
 import { ata, ChainReader, IDENTITY_MODE, launch, launchPdas, loadKeypair, loadOrCreateKeypair, Rpc, sendAndConfirm, system, token, TOKEN_2022_PROGRAM, type Ix, type Signer } from "@lineage/chain";
 import { DEVNET_GENESIS } from "../../packages/chain/src/browser/client.ts";
 import { devnetRpcUrl } from "../../packages/chain/src/endpoint.ts";
+import { launchTable, pumpLaunchTx } from "../devnet/pump-lib.ts";
 
 const ROOT = join(import.meta.dir, "..", "..");
 const argv = process.argv.slice(2);
@@ -44,7 +45,6 @@ const T22 = TOKEN_2022_PROGRAM;
 const DECIMALS = 6;
 const ONE = 10n ** BigInt(DECIMALS);
 const lineMint = devnet.line_mint as string;
-const dbcConfig = devnet.dbc_config as string;
 const WANT = BigInt(net.wake_threshold) + 500n * ONE;
 const log = (m: string) => console.log(`[site-authors] ${m}`);
 
@@ -84,12 +84,10 @@ for (const name of names) {
     const bal = await rpc.getBalance(launcher.id);
     if (bal < 50_000_000n) await send(`fund launcher ${launcher.id} with 0.1 SOL`, dep, [system.transfer(dep.id, launcher.id, 100_000_000n)]);
     const sym = `T${name.replace(/[^a-z0-9]/gi, "").toUpperCase()}`.slice(0, 10);
-    await send(`launch_agent: TEST author agent ${agent.id} for ${name} on ${url}, mint ${mint.id}`, launcher, [
-      launch.launchAgent({
-        launcher: launcher.id, agent: agent.id, agentMint: mint.id, lineMint, dbcConfig, lineTokenProgram: T22,
-        args: { name: `TEST ${name} author`.slice(0, 32), symbol: sym, uri: `https://lineage.invalid/devnet/agents/${name}-test.json`, repoUrl: url, identityMode: IDENTITY_MODE.app, hosted: false },
-      }),
-    ], { signers: [agent, mint], computeUnits: 400_000 });
+    const r = await pumpLaunchTx(rpc, { launcher, agent, mint, lineMint, name: `TEST ${name} author`.slice(0, 32), symbol: sym,
+      uri: `https://lineage.invalid/devnet/agents/${name}-test.json`, args: { repoUrl: url, identityMode: IDENTITY_MODE.app, hosted: false },
+      table: await launchTable(rpc, devnet) });
+    log(`pump.fun launch: TEST author agent ${agent.id} for ${name} on ${url}, mint ${mint.id}: ${r.sent.map((t) => t.signature).join(", ")}`);
   } else if (l.agent !== agent.id || l.repoUrl !== url) throw new Error(`${name}: mint ${mint.id} launched for another agent or repo`);
   else log(`${name}: launched already (${agent.id})`);
   const vault = launchPdas.computeVault(agent.id);

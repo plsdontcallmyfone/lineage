@@ -3,7 +3,7 @@
 // registry vaults read from the programs), three verifiers registered and bonded ON CHAIN running
 // as separate worker processes with Docker sandboxes, and the minbpe TEST agent launched on chain
 // by scripts/devnet/setup.ts authoring one scripted candidate on its target repo. Fresh agent
-// token trades refill the epoch pool (crank_fees, split), Core closes the epoch, the bridge posts
+// token trades on its pump.fun curve refill the epoch pool (sweep + collect, crank_pump_fees, split), Core closes the epoch, the bridge posts
 // its root with post_epoch, every leaf is claimed on chain, and Core mirrors the claims back.
 //
 // Identity (plan I1, I2): before authoring, the minbpe agent's owner (its launcher) rotates the agent
@@ -38,8 +38,6 @@ import {
   termsDigest,
   releaseFromContribution,
   targetDigest,
-  dbc,
-  decodeDbcPool,
   launch,
   launchPdas,
   paramsFromNetworkJson,
@@ -54,6 +52,7 @@ import { verifyCredential } from "../../packages/core/src/records.ts";
 import { doctor } from "../../packages/worker/src/doctor.ts";
 import { loadScript, ScriptedProposer, Worker } from "../../packages/worker/src/index.ts";
 import { deployer, key, KEY_DIR, LAMPORTS, loadState, logTx, reader, ROOT, rpc, send, sol, topUp } from "./lib.ts";
+import { curveCreatorFee, pumpCrank, pumpTrade } from "./pump-lib.ts";
 
 const argv = process.argv.slice(2);
 const PORT = Number(argv.includes("--port") ? argv[argv.indexOf("--port") + 1] : 9663);
@@ -120,28 +119,29 @@ async function onchainVerifier(owner: Signer, agent: Signer, caps: unknown, bond
   return rec!;
 }
 
-/** Fresh trades on the minbpe agent's curve, crank_fees, split: refills the epoch pool from real fees. */
+/** Fresh trades on the minbpe agent's pump.fun curve (or pool), the fee crank, split: refills the epoch pool from real fees. */
 async function refillPool() {
   const m = state.agents!.minbpe!;
   const trader = key("trader");
-  const pool = launchPdas.dbcPool(state.dbc_config!, m.mint!, lineMint);
-  const traderLine = ata(trader.id, lineMint, T22);
   const traderAgent = ata(trader.id, m.mint!, T22);
   await topUp(STEP, dep, trader.id, LAMPORTS / 50n, "trader", LAMPORTS / 20n);
-  const swap = (buy: boolean, amountIn: bigint) =>
-    dbc.swap({ config: state.dbc_config!, pool, agentMint: m.mint!, lineMint, trader: trader.id, lineAccount: traderLine, agentAccount: traderAgent, buy, amountIn, minOut: 1n,
-      lineTokenProgram: T22 });
-  await send(STEP, "trade: trader buys with 20,000 tLINE", trader, [swap(true, 20_000n * ONE)], { computeUnits: 300_000 });
+  const trade = async (what: string, buy: boolean, amountIn: bigint) => {
+    const t = await pumpTrade(rpc, { trader, mint: m.mint!, lineMint, buy, amountIn });
+    logTx(STEP, what, { signature: t.signature, fee: t.fee ?? undefined, slot: 0, logs: [] });
+  };
+  await trade("trade: trader buys with 20,000 tLINE", true, 20_000n * ONE);
   const held = (await reader.tokenBalance(traderAgent))!;
-  await send(STEP, `trade: trader sells ${held / 4n} agent-token base units`, trader, [swap(false, held / 4n)], { computeUnits: 300_000 });
-  const fees = decodeDbcPool((await rpc.getAccountInfo(pool))!.data).partnerQuoteFee;
+  await trade(`trade: trader sells ${held / 4n} agent-token base units`, false, held / 4n);
+  // creator fees waiting on the curve; once graduated the pool's waiting fees add to it (read from the crank's deltas)
+  const fees0 = await curveCreatorFee(rpc, m.mint!);
   const [c0, t0] = await reader.tokenBalances([launchPdas.computeVault(m.agent), registryPdas.treasury()]);
-  await send(STEP, `crank_fees: ${fees} partner fee base units`, dep, [
-    launch.crankFees({ agent: m.agent, agentMint: m.mint!, lineMint, dbcConfig: state.dbc_config!, lineTokenProgram: T22 }),
-  ], { computeUnits: 400_000 });
+  const crank = await pumpCrank(rpc, { payer: dep, agent: m.agent, mint: m.mint!, lineMint });
+  logTx(STEP, `crank: pump.fun sweep + collect, crank_pump_fees (curve creator fee ${fees0})`, { signature: crank.signature, fee: crank.fee ?? undefined, slot: 0, logs: [] });
   const [c1, t1] = await reader.tokenBalances([launchPdas.computeVault(m.agent), registryPdas.treasury()]);
+  const fees = c1! - c0! + (t1! - t0!);
   const wantC = (fees * 7000n) / 10_000n;
-  check("crank_fees split exactly 7000/3000 bps on chain", c1! - c0! === wantC && t1! - t0! === fees - wantC, `fees ${fees}: compute +${c1! - c0!}, treasury +${t1! - t0!}`);
+  check("the crank split at least the curve's creator fee", fees >= fees0, `${fees} of ${fees0}`);
+  check("crank_pump_fees split exactly 7000/3000 bps on chain", c1! - c0! === wantC && t1! - t0! === fees - wantC, `fees ${fees}: compute +${c1! - c0!}, treasury +${t1! - t0!}`);
   const tBal = t1!;
   const [r0, p0] = await reader.tokenBalances([registryPdas.reserve(), registryPdas.pool()]);
   await send(STEP, `split: treasury ${tBal} to reserve and pool`, dep, [registry.split({ mint: lineMint, tokenProgram: T22 })]);
