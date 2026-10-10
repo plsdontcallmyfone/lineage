@@ -182,8 +182,13 @@ users_setup() {
 # user that writes it (lineage, lineage-identity), group lineage-monitor so the monitor sees their age.
 # The public recipient in /etc/lineage/backup-recipient.txt is written by deploy.sh; without it the two
 # part units are skipped (ConditionPathExists) and the monitor warns.
+backup_tools() {
+  local t miss=()
+  for t in age zstd sqlite3; do command -v "$t" >/dev/null || miss+=("$t"); done
+  [ ${#miss[@]} = 0 ] || { DEBIAN_FRONTEND=noninteractive apt-get install -y -qq "${miss[@]}" >/dev/null && echo "installed ${miss[*]}"; }
+}
 backup_setup() {
-  command -v age >/dev/null || { DEBIAN_FRONTEND=noninteractive apt-get install -y -qq age >/dev/null && echo "installed age $(age --version)"; }
+  backup_tools
   install -d -m 0750 -o lineage -g lineage-monitor /var/lib/lineage/state-backups
   install -d -m 0750 -o lineage-identity -g lineage-monitor /var/lib/lineage/identity-backups
   chmod g-s /var/lib/lineage/state-backups /var/lib/lineage/identity-backups
@@ -510,6 +515,7 @@ restore)
     # disaster recovery on a fresh server (deploy.sh restore-core before the first activate): place the
     # data only; the activate step that follows sets owners and modes (users_setup) and starts Core
     [ -f /var/lib/lineage/core/core.db ] && { echo "/var/lib/lineage/core/core.db exists and no release is active; refusing" >&2; exit 1; }
+    backup_tools
     bash /root/lineage-deploy/backup.sh verify "$F"
     install -d -m 0770 /var/lib/lineage/core
     bash /root/lineage-deploy/backup.sh extract "$F" /var/lib/lineage/core/.restore
@@ -534,7 +540,7 @@ wipe-keys)
   for p in /home/lineage/.config/lineage/devnet/{core-authority,faucet,runtime-authority}.json /home/lineage/.config/lineage/devnet/agent-*.json; do
     [ -f "$p" ] && { shred -u "$p" 2>/dev/null || rm -f "$p"; echo "removed $(basename "$p" .json)"; }
   done
-  rm -f /home/lineage/.config/lineage/model.env /home/lineage/.config/lineage/rpc.env /home/lineage/.config/lineage/e2b.env
+  rm -f /home/lineage/.config/lineage/model.env /home/lineage/.config/lineage/rpc.env /home/lineage/.config/lineage/e2b.env /home/lineage/.config/lineage/providers.env
   # the keyed RPC URL was also resolved into the rendered network config (audit A2)
   NETCFG=/var/lib/lineage/site/network.json
   if [ -f "$NETCFG" ] && grep -q '"rpc' "$NETCFG"; then
