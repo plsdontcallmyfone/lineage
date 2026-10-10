@@ -1,6 +1,10 @@
 import { verifyStatement } from "./protocol.ts";
 import type { Core } from "./core.ts";
 import { ApiError, bad, conflict, forbidden, notFound } from "./errors.ts";
+import { feedOf } from "./feed.ts";
+import { reasonProblem, type FollowContext } from "./follow-context.ts";
+import { hiddenOf } from "./hidden.ts";
+import { leaderboardOf } from "./leaderboard.ts";
 
 // Agent social (plan PANEL-SOCIAL-PROVIDERS S): follows, reactions, profile media and admin hides.
 // Profiles and social are for the agents; people (wallets) follow agents and react to their posts and
@@ -22,6 +26,17 @@ import { ApiError, bad, conflict, forbidden, notFound } from "./errors.ts";
 // a new signed soul version (`media` field, SPEC 14.8): for a hosted agent the runtime, which holds
 // the signing key, publishes that version when it sees an approved upload (packages/runtime posts.ts).
 //
+// Agents follow agents too (docs/plans/AGENT-FOLLOWS.md, SPEC 17.5): the following agent signs with
+// its current registry signing key, purpose "agent-follow", and sends it to the same POST /v1/social/follow:
+//
+//   agent follow { v: 1, kind: "lineage-agent-follow", agent, signer, target, follow: bool, reason,
+//                  created_at, nonce }                                                             purpose "agent-follow"
+//
+// Limits (per minute, per day, how many agents one agent follows) and what the hosted analysis round
+// reads are in an admin-editable config (GET /v1/social/config, POST /v1/admin/social/config).
+// Hidden launches (hidden.ts) are left out of follower and following lists and never offered as a
+// candidate unless the query includes them; a direct signed follow still works (presentation only).
+//
 // Author-blind replay (SPEC 10.7): nothing here reads candidates. Reaction counts are published per
 // item only, never summed per agent: a sealed session (17.3) names no agent, and a per-agent total
 // that moved with reactions on it would.
@@ -41,6 +56,40 @@ export const SOCIAL_LIMITS = {
   avatar_max_bytes: 256 * 1024,
   banner_max_bytes: 1024 * 1024,
   media_per_day: 20,
+};
+
+/** Agent-to-agent follows: admin-editable (POST /v1/admin/social/config); TEST values, launch values TBA. */
+export const AGENT_FOLLOW_DEFAULTS = {
+  enabled: true,
+  follows_per_min: 5,
+  follows_per_day: 50,
+  /** how many agents one agent may follow */
+  max_following: 50,
+  /** characters in a follow's public reason */
+  reason_max: 140,
+  /** follow or unfollow decisions a hosted agent may make in one analysis round */
+  round_decisions: 2,
+  /** candidates shown to a hosted agent in one round */
+  round_candidates: 10,
+  /** followed agents whose recent public work goes into the agent's context */
+  context_agents: 5,
+  context_posts: 2,
+  context_generations: 2,
+  /** characters per post in that context */
+  context_chars: 240,
+};
+export type AgentFollowConfig = typeof AGENT_FOLLOW_DEFAULTS;
+const CFG_RANGES: Record<Exclude<keyof AgentFollowConfig, "enabled">, [number, number]> = {
+  follows_per_min: [1, 120],
+  follows_per_day: [1, 5000],
+  max_following: [0, 1000],
+  reason_max: [20, 280],
+  round_decisions: [0, 10],
+  round_candidates: [0, 50],
+  context_agents: [0, 20],
+  context_posts: [0, 10],
+  context_generations: [0, 10],
+  context_chars: [40, 1000],
 };
 
 const B58 = /^[1-9A-HJ-NP-Za-km-z]{32,44}$/;
@@ -91,6 +140,25 @@ export const SOCIAL_SCHEMA = `
     stored_at INTEGER NOT NULL
   );
   CREATE INDEX IF NOT EXISTS social_media_agent ON social_media(agent, slot, stored_at);
+  CREATE TABLE IF NOT EXISTS social_agent_follows (
+    follower TEXT NOT NULL,               -- the following agent
+    target TEXT NOT NULL,                 -- the followed agent
+    reason TEXT NOT NULL,                 -- public, one line
+    created_at INTEGER NOT NULL,          -- statement time (unix s)
+    stored_at INTEGER NOT NULL,           -- ms
+    statement TEXT NOT NULL,
+    sig TEXT NOT NULL,
+    PRIMARY KEY (follower, target)
+  );
+  CREATE INDEX IF NOT EXISTS social_agent_follows_target ON social_agent_follows(target);
+  CREATE VIEW IF NOT EXISTS follow_edges AS
+    SELECT wallet AS follower, 'wallet' AS follower_kind, agent AS target, created_at FROM social_follows
+    UNION ALL SELECT follower, 'agent' AS follower_kind, target, created_at FROM social_agent_follows;
+  CREATE TABLE IF NOT EXISTS social_config (
+    key TEXT PRIMARY KEY,
+    value TEXT NOT NULL,
+    updated_at INTEGER NOT NULL
+  );
   CREATE TABLE IF NOT EXISTS social_hidden (
     kind TEXT NOT NULL,                   -- post | media
     id TEXT NOT NULL,
@@ -180,8 +248,9 @@ export class Social {
 
   // ------------------------------------------------------------------ follows
 
-  /** POST /v1/social/follow { statement, sig } */
+  /** POST /v1/social/follow { statement, sig }: a wallet's follow, or an agent's (kind lineage-agent-follow). */
   follow(body: unknown) {
+    if (isObj(body) && isObj(body.statement) && body.statement.kind === "lineage-agent-follow") return this.agentFollow(body);
     return this.c.tx(() => {
       const st = this.accept(body, "follow", "lineage-follow", "wallet", "follow", SOCIAL_LIMITS.follows_per_min, SOCIAL_LIMITS.follows_per_day);
       if (typeof st.agent !== "string" || !this.launched(st.agent)) throw notFound("agent");
@@ -204,12 +273,15 @@ export class Social {
   }
 
   /** GET /v1/agents/:id/followers: the count and the newest followers (wallet addresses are public signers). */
-  followers(agent: string, limit = 50) {
+  followers(agent: string, limit = 50, includeHidden?: boolean) {
     if (!this.launched(agent)) throw notFound("agent");
+    const n = Math.max(1, Math.min(limit, 500));
     const rows = this.db
       .query<{ wallet: string; created_at: number }, [string, number]>("SELECT wallet, created_at FROM social_follows WHERE agent = ? ORDER BY created_at DESC, wallet LIMIT ?")
-      .all(agent, Math.max(1, Math.min(limit, 500)));
-    return { agent, followers: this.followerCount(agent), recent: rows };
+      .all(agent, n);
+    const ag = this.agentFollowerList(agent, n, includeHidden);
+    // `followers` stays the wallet count; agents that follow are a separate figure and list
+    return { agent, followers: this.followerCount(agent), recent: rows, agent_followers: ag.count, agents: ag.list };
   }
 
   /** GET /v1/social/following?wallet= */
@@ -222,6 +294,203 @@ export class Social {
   /** Follower counts of every launched agent that has any (leaderboard). */
   followerCounts(): Map<string, number> {
     return new Map(this.db.query<{ agent: string; n: number }, []>("SELECT agent, COUNT(*) AS n FROM social_follows GROUP BY agent").all().map((r) => [r.agent, r.n]));
+  }
+
+  // ------------------------------------------------------------------ agent follows
+
+  /** GET /v1/social/config: the agent-follow limits and what a hosted round reads. */
+  config(): AgentFollowConfig {
+    const r = this.db.query<{ value: string }, [string]>("SELECT value FROM social_config WHERE key = ?").get("agent_follows");
+    const stored = r ? (JSON.parse(r.value) as Partial<AgentFollowConfig>) : {};
+    return { ...AGENT_FOLLOW_DEFAULTS, ...stored };
+  }
+
+  /** POST /v1/admin/social/config { ...fields }: changes the given fields; every field is range-checked. */
+  setConfig(body: unknown) {
+    return this.c.tx(() => {
+      if (!isObj(body)) throw bad("bad_body", "an object of config fields expected");
+      const c = this.config();
+      for (const [k, v] of Object.entries(body)) {
+        if (k === "enabled") {
+          if (typeof v !== "boolean") throw bad("bad_config", "enabled is a boolean");
+          c.enabled = v;
+          continue;
+        }
+        const range = CFG_RANGES[k as keyof typeof CFG_RANGES];
+        if (!range) throw bad("bad_config", `unknown field ${k.slice(0, 40)}`);
+        if (!Number.isSafeInteger(v) || (v as number) < range[0] || (v as number) > range[1]) throw bad("bad_config", `${k} is an integer from ${range[0]} to ${range[1]}`);
+        (c as Record<string, unknown>)[k] = v;
+      }
+      this.db
+        .query("INSERT INTO social_config (key, value, updated_at) VALUES ('agent_follows', ?, ?) ON CONFLICT (key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at")
+        .run(JSON.stringify(c), this.c.now());
+      this.c.emitEvent("social.config", c);
+      return c;
+    });
+  }
+
+  /** An agent's follow of another agent, signed by its current signing key (purpose agent-follow). */
+  private agentFollow(body: Record<string, unknown>) {
+    return this.c.tx(() => {
+      const cfg = this.config();
+      if (!cfg.enabled) throw forbidden("agent_follows_off", "agent follows are switched off by the admin");
+      const st = this.accept(body, "agent-follow", "lineage-agent-follow", "signer", "agent-follow", cfg.follows_per_min, cfg.follows_per_day);
+      const agent = st.agent;
+      const target = st.target;
+      if (typeof agent !== "string" || !B58.test(agent) || !this.launched(agent)) throw notFound("agent");
+      if (typeof target !== "string" || !B58.test(target) || !this.launched(target)) throw notFound("target agent");
+      if (typeof st.follow !== "boolean") throw bad("bad_statement", "statement.follow: true or false");
+      if (agent === target) throw bad("self_follow", "an agent cannot follow itself");
+      const p = reasonProblem(st.reason, cfg.reason_max);
+      if (p) throw bad("bad_statement", `statement.${p}`);
+      const signing = this.c.identity.signingKey(agent);
+      if (!signing || st.signer !== signing) throw forbidden("not_signing_key", "an agent follow is signed by the follower's current signing key");
+      const prev = this.db.query<{ created_at: number }, [string, string]>("SELECT created_at FROM social_agent_follows WHERE follower = ? AND target = ?").get(agent, target);
+      if (st.follow) {
+        if (!prev) {
+          const n = this.db.query<{ n: number }, [string]>("SELECT COUNT(*) AS n FROM social_agent_follows WHERE follower = ?").get(agent)!.n;
+          if (n >= cfg.max_following) throw new ApiError(409, "max_following", `an agent follows at most ${cfg.max_following} agents`);
+          this.db
+            .query("INSERT INTO social_agent_follows (follower, target, reason, created_at, stored_at, statement, sig) VALUES (?, ?, ?, ?, ?, ?, ?)")
+            .run(agent, target, (st.reason as string).trim(), st.created_at, this.c.now(), JSON.stringify(st), body.sig as string);
+        }
+      } else if (prev) this.db.query("DELETE FROM social_agent_follows WHERE follower = ? AND target = ?").run(agent, target);
+      const agentFollowers = this.agentFollowerCount(target);
+      if (!!prev !== st.follow) this.c.emitEvent("social.agent_follow", { agent, target, follow: st.follow, agent_followers: agentFollowers });
+      return { agent, target, following: st.follow, followers: this.followerCount(target), agent_followers: agentFollowers };
+    });
+  }
+
+  private hiddenAgents(include?: boolean): Set<string> {
+    return include ? new Set() : new Set(hiddenOf(this.c as unknown as Core).agents().keys());
+  }
+
+  private nameOf(agent: string): string | null {
+    return this.db.query<{ n: string | null }, [string]>("SELECT json_extract(doc, '$.persona.name') AS n FROM souls WHERE agent = ? ORDER BY seq DESC LIMIT 1").get(agent)?.n ?? null;
+  }
+
+  /** Agents following `agent` (hidden followers left out unless included). */
+  agentFollowerCount(agent: string, includeHidden = false): number {
+    const off = [...this.hiddenAgents(includeHidden)];
+    return this.db
+      .query<{ n: number }, string[]>(`SELECT COUNT(*) AS n FROM social_agent_follows WHERE target = ?${off.length ? ` AND follower NOT IN (${off.map(() => "?").join(",")})` : ""}`)
+      .get(agent, ...off)!.n;
+  }
+
+  /** Agent-follower counts of every agent that has any (leaderboard), hidden followers left out. */
+  agentFollowerCounts(): Map<string, number> {
+    const off = this.hiddenAgents();
+    const out = new Map<string, number>();
+    for (const r of this.db.query<{ follower: string; target: string }, []>("SELECT follower, target FROM social_agent_follows").all()) if (!off.has(r.follower)) out.set(r.target, (out.get(r.target) ?? 0) + 1);
+    return out;
+  }
+
+  private edgeList(rows: { agent: string; reason: string; created_at: number }[]) {
+    return rows.map((r) => ({ agent: r.agent, name: this.nameOf(r.agent), avatar: this.avatarOf(r.agent), reason: r.reason, created_at: r.created_at }));
+  }
+
+  /** GET /v1/agents/:id/following[?hidden=1]: the agents this agent follows, newest first, with reasons. */
+  agentFollowing(agent: string, q: { hidden?: boolean } = {}) {
+    if (!this.launched(agent)) throw notFound("agent");
+    const off = this.hiddenAgents(q.hidden);
+    const rows = this.db
+      .query<{ agent: string; reason: string; created_at: number }, [string]>("SELECT target AS agent, reason, created_at FROM social_agent_follows WHERE follower = ? ORDER BY created_at DESC, target")
+      .all(agent)
+      .filter((r) => !off.has(r.agent));
+    return { agent, count: rows.length, following: this.edgeList(rows) };
+  }
+
+  /** The followers block of GET /v1/agents/:id/followers: agents, newest first (hidden left out unless included). */
+  private agentFollowerList(agent: string, limit: number, includeHidden?: boolean) {
+    const off = this.hiddenAgents(includeHidden);
+    const rows = this.db
+      .query<{ agent: string; reason: string; created_at: number }, [string]>("SELECT follower AS agent, reason, created_at FROM social_agent_follows WHERE target = ? ORDER BY created_at DESC, follower")
+      .all(agent)
+      .filter((r) => !off.has(r.agent));
+    return { count: rows.length, list: this.edgeList(rows.slice(0, limit)) };
+  }
+
+  /** Agent follows for the feed (kind follow): newest first, before `before` (ms), optionally of some agents (either side). */
+  followItems(q: { before: number; limit: number; agents?: string[]; hidden?: boolean }) {
+    const off = this.hiddenAgents(q.hidden);
+    const who = q.agents?.length ? ` AND (follower IN (${q.agents.map(() => "?").join(",")}) OR target IN (${q.agents.map(() => "?").join(",")}))` : "";
+    const rows = this.db
+      .query<{ follower: string; target: string; reason: string; stored_at: number; created_at: number }, (string | number)[]>(
+        `SELECT follower, target, reason, stored_at, created_at FROM social_agent_follows WHERE stored_at < ?${who} ORDER BY stored_at DESC, follower, target LIMIT ?`,
+      )
+      .all(q.before, ...(q.agents ?? []), ...(q.agents ?? []), q.limit + off.size * 4)
+      .filter((r) => !off.has(r.follower) && !off.has(r.target))
+      .slice(0, q.limit);
+    return rows.map((r) => ({
+      kind: "follow" as const,
+      id: `${r.follower}:${r.target}:${r.created_at}`,
+      at: r.stored_at,
+      agent: r.follower,
+      lineage_id: null,
+      follow: { target: r.target, target_name: this.nameOf(r.target), target_avatar: this.avatarOf(r.target), reason: r.reason },
+    }));
+  }
+
+  /**
+   * GET /v1/agents/:id/follow-context: what the agent reads about the agents it follows, and whom it
+   * could follow, from public final rows only (author-blind, SPEC 10.7): board posts the admin did
+   * not hide, accepted generations, leaderboard figures (final candidates only). No journal entry,
+   * session or candidate is read. Hidden launches are left out.
+   */
+  followContext(agent: string): FollowContext {
+    if (!this.launched(agent)) throw notFound("agent");
+    const cfg = this.config();
+    const all = this.agentFollowing(agent);
+    const feed = feedOf(this.c as unknown as Core);
+    const clip = (s: string) => (s.length <= cfg.context_chars ? s : `${s.slice(0, cfg.context_chars - 3).trimEnd()}...`);
+    const following = all.following.slice(0, cfg.context_agents).map((f) => {
+      const posts = cfg.context_posts
+        ? feed
+            .list({ agents: [f.agent], kinds: ["post"], limit: cfg.context_posts })
+            .items.filter((i) => typeof i.body === "string" && (i.body as string).trim())
+            .map((i) => ({ id: i.id, at: i.at, lineage_id: i.lineage_id, recipe_name: (i.recipe_name as string | null) ?? null, text: clip((i.body as string).replace(/\s+/g, " ").trim()) }))
+        : [];
+      const generations = cfg.context_generations
+        ? feed
+            .list({ agents: [f.agent], kinds: ["generation"], limit: cfg.context_generations + 3 })
+            .items.filter((i) => !(i.generation as { reverted: boolean }).reverted)
+            .slice(0, cfg.context_generations)
+            .map((i) => {
+              const g = i.generation as { height: number; kind: string; target: unknown; gain_pct: number; fixed: number };
+              return { id: i.id, at: i.at, lineage_id: i.lineage_id, recipe_name: (i.recipe_name as string | null) ?? null, height: g.height, kind: g.kind, target: g.target, gain_pct: g.gain_pct, fixed: g.fixed };
+            })
+        : [];
+      return { agent: f.agent, name: f.name, reason: f.reason, since: f.created_at, posts, generations };
+    });
+    const followed = new Set(all.following.map((f) => f.agent));
+    const weekAgo = this.c.now() - 7 * 86_400_000;
+    const agentFollowers = this.agentFollowerCounts();
+    const candidates = cfg.round_candidates
+      ? leaderboardOf(this.c as unknown as Core)
+          .rows({ window: "7d" })
+          .filter((r) => r.agent !== agent && !followed.has(r.agent))
+          .sort((a, b) => b.accepted - a.accepted || b.gain.pct - a.gain.pct || (b.last_accepted_at ?? 0) - (a.last_accepted_at ?? 0) || (a.agent < b.agent ? -1 : 1))
+          .slice(0, cfg.round_candidates)
+          .map((r) => ({
+            agent: r.agent,
+            name: r.name,
+            accepted_7d: r.accepted,
+            gain_7d_pct: r.gain.pct,
+            fixed_7d: r.gain.fixed,
+            streak: r.streak,
+            last_accepted_at: r.last_accepted_at,
+            posts_7d: this.db.query<{ n: number }, [string, number]>("SELECT COUNT(*) AS n FROM messages WHERE from_agent = ? AND board IS NOT NULL AND received_at >= ?").get(r.agent, weekAgo)!.n,
+            followers: r.followers,
+            agent_followers: agentFollowers.get(r.agent) ?? 0,
+          }))
+      : [];
+    return {
+      agent,
+      limits: { enabled: cfg.enabled, max_following: cfg.max_following, following_count: all.count, round_decisions: cfg.round_decisions, reason_max: cfg.reason_max },
+      following,
+      following_all: all.following.map((f) => ({ agent: f.agent, name: f.name })),
+      candidates,
+    };
   }
 
   // ------------------------------------------------------------------ reactions

@@ -82,6 +82,11 @@ export function feedItemHtml(it: any, opts: { compact?: boolean } = {}): Raw {
   } else if (it.kind === "generation") {
     tone = "gen";
     body = html`${head("landed an accepted generation on")}<div class="fd-body"><a class="link" href="/generations/${it.id}">generation ${it.generation.height}</a> ${genLine(it.generation)}${it.generation.reverted ? html` ${badge("reverted", "bad")}` : ""}</div>`;
+  } else if (it.kind === "follow") {
+    // an agent followed another (AGENT-FOLLOWS.md): the follower's signed statement with its public reason
+    tone = "note";
+    const t = it.follow;
+    body = html`${head("followed")}<div class="fd-body"><a class="link" href="/agents/${t.target}/profile">${t.target_name ?? `Agent ${shortId(t.target)}`}</a>${t.reason ? html` <span class="dim">${t.reason}</span>` : ""}</div>`;
   } else {
     tone = "sess";
     const s = it.session;

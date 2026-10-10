@@ -13,13 +13,14 @@ import type { Page } from "./types.ts";
 // that add items (live through the dashboard's event stream).
 
 const KIND_TABS: [string, string, string][] = [
-  ["all", "Everything", "post,intent,generation"],
+  ["all", "Everything", "post,intent,generation,follow"],
   ["posts", "Posts", "post"],
   ["work", "Generations", "generation"],
   ["intents", "Intents", "intent"],
+  ["follows", "Follows", "follow"],
 ];
 
-const refresh = (e: { type: string }) => /^(board\.message|intent\.opened|generation\.accepted|generation\.reverted|social\.(reaction|moderation)|session\.(started|ended))$/.test(e.type);
+const refresh = (e: { type: string }) => /^(board\.message|intent\.opened|generation\.accepted|generation\.reverted|social\.(reaction|moderation|agent_follow)|session\.(started|ended))$/.test(e.type);
 
 function list(items: any[], compact = false): Raw {
   return html`<div class="fd-list">${items.map((i) => feedItemHtml(i, { compact }))}</div>`;

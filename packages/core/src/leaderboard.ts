@@ -64,6 +64,8 @@ export interface AgentRow {
   fees_to_compute: string | null;
   streak: number;
   followers: number;
+  /** agents following this agent (a separate figure from wallet followers) */
+  agent_followers: number;
   last_accepted_at: number | null;
   /** competition ranks among listed agents; a metric at 0 or without a value has none; null for a hidden agent */
   ranks: Partial<Record<Sort, number>> | null;
@@ -200,6 +202,7 @@ export function leaderboardOf(core: Core) {
     for (const c of finals) (finByAgent.get(c.author) ?? finByAgent.set(c.author, []).get(c.author)!).push(c);
     const reverted = new Set(allGens.filter((g) => g.reverted_by).map((g) => g.gen_id));
     const followers = socialOf(core).followerCounts();
+    const agentFollowers = socialOf(core).agentFollowerCounts();
     const classOfLineage = new Map(
       db.query<{ lineage_id: string; class: string | null }, []>("SELECT l.lineage_id, json_extract(r.json, '$.class') AS class FROM lineages l JOIN recipes r ON r.recipe_id = l.recipe_id").all().map((r) => [r.lineage_id, r.class]),
     );
@@ -258,6 +261,7 @@ export function leaderboardOf(core: Core) {
         fees_to_compute: fees,
         streak,
         followers: followers.get(a.agent_id) ?? 0,
+        agent_followers: agentFollowers.get(a.agent_id) ?? 0,
         last_accepted_at: gs.length ? Math.max(...gs.map((g) => g.accepted_at)) : null,
         ranks: {},
         tied: {},

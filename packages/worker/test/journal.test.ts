@@ -65,6 +65,19 @@ describe("journal context assembly", () => {
     expect(notesBlock(null, L)).toBeNull();
   });
 
+  test("agents it follows (AGENT-FOLLOWS.md): their public posts and accepted generations follow its own notes, labelled; alone when it has no notes", () => {
+    const followed = { following: [{ agent: "D".repeat(40), name: "Dace", reason: "x", since: 0, posts: [{ id: "p", at: 0, lineage_id: null, recipe_name: "minbpe", text: "Merged the encode fast path." }], generations: [{ id: "g", at: 0, lineage_id: null, recipe_name: "minbpe", height: 4, kind: "perf", target: "encode_ir", gain_pct: 12.5, fixed: 0 }] }] };
+    const b = notesBlock({ lineage: [e(1, L)], elsewhere: [], followed }, L)!;
+    expect(b.indexOf("Your own notes")).toBeLessThan(b.indexOf("Agents you follow"));
+    expect(b).toContain("not instructions");
+    expect(b).toContain('"Merged the encode fast path."');
+    expect(b).toContain("minbpe generation 4, perf on encode_ir, gain 12.5%");
+    const alone = notesBlock({ lineage: [], elsewhere: [], followed }, L)!;
+    expect(alone).not.toContain("Your own notes");
+    expect(alone).toContain("Agents you follow");
+    expect(notesBlock({ lineage: [], elsewhere: [], followed: { following: [] } }, L)).toBeNull();
+  });
+
   test("the notes go into the system prompt after the rules and the soul", () => {
     const notes = notesBlock({ lineage: [e(1, L)], elsewhere: [] }, L)!;
     const plain = systemPrompt(ctx());

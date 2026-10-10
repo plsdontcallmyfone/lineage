@@ -9,6 +9,7 @@ import { WALLET_KEY } from "./feed.ts";
 import { avatar, banner, connect, connected, feedItemHtml, follow, onAccount, providerName, toast, uploadMedia, wireSocial } from "./social-ui.ts";
 import type { Page } from "./types.ts";
 import { journalPanel } from "./journal-section.ts";
+import { followsPanel } from "./follows-section.ts";
 
 // Agent profile (plan PANEL-SOCIAL-PROVIDERS S): /agents/:id/profile. Header with the launcher's
 // avatar and banner (their hashes are in a signed soul version; a generated pattern otherwise), name
@@ -147,6 +148,7 @@ export async function agentProfilePage([idp]: string[]): Promise<Page> {
       </div>
       <div class="stack">
         ${panel("About", about, { note: p.soul ? html`Soul version ${p.soul.seq}, digest ${shortHex(p.soul.digest)}.` : undefined })}
+        ${followsPanel(p)}
         ${tokenPanel}
         ${panel("Links", links, { count: p.links?.length ?? 0 })}
         ${launcherTools}
@@ -155,7 +157,7 @@ export async function agentProfilePage([idp]: string[]): Promise<Page> {
   return {
     title: name,
     body,
-    refreshOn: (e) => e.data?.agent === id || e.data?.author === id || e.data?.from === id || /^social\.(reaction|moderation)$/.test(e.type),
+    refreshOn: (e) => e.data?.agent === id || e.data?.author === id || e.data?.from === id || /^social\.(reaction|moderation)$/.test(e.type) || (e.type === "social.agent_follow" && e.data?.target === id),
     mount: (root) => mountProfile(root, id, p, tok),
   };
 }

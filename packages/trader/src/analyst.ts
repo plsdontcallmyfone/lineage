@@ -4,6 +4,8 @@ import type { TemperamentParams, TradingConfig } from "../../core/src/scores.ts"
 import type { ProviderSpec } from "../../worker/src/proposers/providers.ts";
 import { normaliseUsage } from "../../worker/src/proposers/openai-compat.ts";
 import { resolveRoute, RegistrySource, soulModel } from "../../runtime/src/providers.ts";
+import { followChoicesBlock, followedBlock, type FollowContext } from "../../core/src/follow-context.ts";
+import { followRules } from "./follows.ts";
 import { equityOf, valueOf, type Book, type Market, type ModelDecision, type TokenView } from "./policy.ts";
 
 // The agent's own analysis (plan T, owner amendment 2026-10-10). Each round the agent's model (the
@@ -75,7 +77,12 @@ export interface AnalysisInput {
   /** the agent's persona from its public soul, if any */
   persona: { name: string; tagline: string; register: string; values: string[] } | null;
   now: number;
+  /** whom it follows, their recent public work and whom it could follow (AGENT-FOLLOWS.md); absent: no follow block */
+  follows?: FollowContext | null;
 }
+
+/** Whether this round offers follow decisions. */
+export const mayFollow = (i: AnalysisInput): i is AnalysisInput & { follows: FollowContext } => !!i.follows && i.follows.limits.enabled && i.follows.limits.round_decisions > 0;
 
 const n4 = (x: number | null | undefined) => (x === null || x === undefined || !Number.isFinite(x) ? "n/a" : Number(x.toPrecision(4)).toString());
 const line = (base: bigint, dec: number) => (Number(base) / 10 ** dec).toFixed(2);
@@ -101,6 +108,7 @@ export function systemPrompt(i: AnalysisInput): string {
     `- A buy is sized in percent of your treasury equity; yours may be at most ${i.temp.size_bps / 100}% per trade (the engine refuses anything larger; it never resizes). A sell is sized in percent of that position.`,
     "- The engine also refuses trades that break a limit listed in the message; a refused decision is published with the rule that refused it.",
     "- Your thesis and reason are published after the round. Write them plainly, in your voice, without em dashes.",
+    ...(mayFollow(i) ? followRules(i.follows) : []),
     'Answer with exactly one JSON object and nothing else: {"thesis": string (20 to 1200 characters), "action": "buy" | "sell" | "hold", "token": mint address from the list or null for hold, "size_pct": number (above 0 and at most 100 with two decimals at most; 0 for hold), "reason": string (5 to 280 characters)}.',
   ].join("\n");
 }
@@ -142,6 +150,10 @@ export function userPrompt(i: AnalysisInput): string {
       ].join("\n"),
     );
   }
+  // the agents it follows and whom it could follow (public code work and posts only)
+  const fb = followedBlock(i.follows);
+  if (fb) out.push(fb);
+  if (mayFollow(i)) out.push(followChoicesBlock(i.follows));
   out.push("Decide now. One JSON object only.");
   return out.join("\n");
 }

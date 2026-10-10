@@ -6,6 +6,8 @@ import { TRADING_DEFAULTS, type Temperament, type TemperamentParams, type Tradin
 import { enforceDecision, equityOf, parseDecision, riskExits, valueOf, type Action, type Book, type Market, type ModelDecision, type Position, type Refusal, type ScoreInput, type TokenView } from "./policy.ts";
 import { systemPrompt, userPrompt, type AnalysisInput, type DecisionModel, type MarketInfo, type PublicGen, type Usage } from "./analyst.ts";
 import type { TraderKey, Venue } from "./venue.ts";
+import { signedAgentFollow, type FollowContext } from "../../core/src/follow-context.ts";
+import { parseFollows, splitFollows, type FollowDecision } from "./follows.ts";
 
 // The trader (plan T): runs inside the hosted runtime, one book per bound hosted agent. Each tick it
 // reads the admin-editable trading config and the published scores from Core and the market from
@@ -80,6 +82,8 @@ export interface TraderState {
   analyses?: { agent: string; at: number; model: string; usd: number; outcome: string; rule: string | null; ref: string; post: string | null }[];
   /** board posts of analyses, newest last (bounded) */
   posts?: { agent: string; at: number; ref: string; msg_id: string | null; board: string }[];
+  /** follow decisions from analysis rounds, newest last (bounded): sent, or the rule that dropped or refused them */
+  follows?: { agent: string; at: number; target: string | null; follow: boolean | null; reason: string | null; outcome: "sent" | "refused" | "dropped"; rule: string | null }[];
 }
 
 const DAY = 86_400_000;
@@ -404,7 +408,10 @@ export class Trader {
     an.meter(a.agent, out.usage); // always: what the call cost counts against the caps, whatever it returned
     const model = routed.model.id;
     const usd = Math.round(out.usage.usd * 1e6) / 1e6;
-    const parsed = out.error ? ({ ok: false, rule: "invalid_decision", detail: out.error, thesis: "" } as const) : parseDecision(out.text);
+    // follow decisions ride in the same answer (AGENT-FOLLOWS.md); taken out before the trade decision parses
+    const split = out.error ? { text: out.text, follows: undefined } : splitFollows(out.text);
+    const follows = input.follows ? parseFollows(split.follows, input.follows, a.agent) : { decisions: [], dropped: [] };
+    const parsed = out.error ? ({ ok: false, rule: "invalid_decision", detail: out.error, thesis: "" } as const) : parseDecision(split.text);
     const meta = { model, analysis_usd: usd, temperament };
     let refusal: Refusal | null = null;
     let decision: ModelDecision | null = null;
@@ -418,6 +425,7 @@ export class Trader {
         if (x.ok) {
           await this.postAnalysis(a, market, decision, { outcome: "filled", ref: x.ref, id: x.id, amount_in: x.amount_in, amount_out: x.amount_out });
           this.logRound(a.agent, now, model, usd, "filled", null, x.ref);
+          await this.applyFollows(a, follows);
           return { traded: true, refusal: null };
         }
         refusal = { mint: decision.token, side: decision.action as "buy" | "sell", rule: x.rule, detail: x.detail };
@@ -433,6 +441,7 @@ export class Trader {
     });
     if (refusal) await this.postAnalysis(a, market, decision, { outcome: "refused", rule: refusal.rule, ref, id: rec?.id ?? null });
     this.logRound(a.agent, now, model, usd, refusal ? "refused" : "hold", refusal?.rule ?? null, ref);
+    await this.applyFollows(a, follows);
     this.log(`${a.agent.slice(0, 6)} analysis (${model}, ${usd.toFixed(4)} USD): ${decision ? `${decision.action}${decision.token ? ` ${decision.token.slice(0, 6)} ${decision.size_pct}%` : ""}` : "no valid decision"}${refusal ? `, refused by ${refusal.rule}` : ""}`);
     return { traded: false, refusal };
   }
@@ -449,13 +458,40 @@ export class Trader {
   private lastComponents = new Map<string, Record<string, { raw: number | null }>>();
 
   private async analysisInput(a: TradingAgent, cfg: TradingConfig, market: Market, book: Book, temperament: Temperament, temp: TemperamentParams, realized: bigint): Promise<AnalysisInput> {
-    const [soul, feed] = await Promise.all([this.anon.get(`/v1/agents/${a.agent}/soul`), this.anon.get("/v1/feed?kinds=generation&limit=100")]);
+    const [soul, feed, fc] = await Promise.all([
+      this.anon.get(`/v1/agents/${a.agent}/soul`),
+      this.anon.get("/v1/feed?kinds=generation&limit=100"),
+      // whom it follows, their recent public work, whom it could follow (public data; AGENT-FOLLOWS.md)
+      this.anon.get(`/v1/agents/${a.agent}/follow-context`).catch(() => ({ status: 0, body: null })),
+    ]);
     const doc = soul.status === 200 ? soul.body?.doc : null;
     const persona = doc?.persona ? { name: String(doc.persona.name ?? ""), tagline: String(doc.persona.tagline ?? ""), register: String(doc.persona.voice?.register ?? ""), values: Array.isArray(doc.persona.values) ? doc.persona.values.map(String) : [] } : null;
     const gens: PublicGen[] = feed.status === 200 ? (feed.body.items as any[]).filter((i) => i.kind === "generation" && i.agent && !i.generation?.reverted).map((i) => ({ agent: i.agent, at: i.at, recipe_name: i.recipe_name ?? null, height: i.generation.height, kind: i.generation.kind, target: i.generation.target, gain_pct: i.generation.gain_pct })) : [];
     const info = new Map<string, MarketInfo>();
     for (const t of this.lastTokens) if (t.info) info.set(t.mint, t.info);
-    return { agent: a.agent, temperament, temp, cfg, book, market, info, components: this.lastComponents, gens, realized, persona, now: this.now() };
+    const follows = fc.status === 200 ? (fc.body as FollowContext) : null;
+    return { agent: a.agent, temperament, temp, cfg, book, market, info, components: this.lastComponents, gens, realized, persona, now: this.now(), follows };
+  }
+
+  /**
+   * Sends the round's follow decisions, each signed by the agent's key (its registry signing key),
+   * after the trade is done; Core checks the signature, rate limits and maximum. Dropped entries are
+   * logged with their rule. No model call happens here.
+   */
+  private async applyFollows(a: TradingAgent, f: { decisions: FollowDecision[]; dropped: { index: number; rule: string }[] }) {
+    const l = (this.state.follows ??= []);
+    const at = this.now();
+    for (const d of f.dropped) l.push({ agent: a.agent, at, target: null, follow: null, reason: null, outcome: "dropped", rule: d.rule });
+    for (const d of f.decisions) {
+      const body = signedAgentFollow(a.key as AgentKey, { agent: a.agent, target: d.agent, follow: d.follow, reason: d.reason, now_ms: this.now() });
+      const r = await this.anon.post("/v1/social/follow", body).catch((e) => ({ status: 0, body: { error: (e as Error).message } }));
+      const ok = r.status === 200;
+      l.push({ agent: a.agent, at, target: d.agent, follow: d.follow, reason: d.reason, outcome: ok ? "sent" : "refused", rule: ok ? null : String(r.body?.error ?? `core_${r.status}`) });
+      this.log(`${a.agent.slice(0, 6)} ${d.follow ? "follows" : "unfollows"} ${d.agent.slice(0, 6)}: ${ok ? "sent" : `refused (${String(r.body?.error ?? r.status)})`}`);
+    }
+    if (f.dropped.length) this.log(`${a.agent.slice(0, 6)} follow entries dropped: ${f.dropped.map((d) => d.rule).join("; ")}`);
+    if (l.length > 500) l.splice(0, l.length - 500);
+    if (f.dropped.length || f.decisions.length) this.save();
   }
 
   /** The board post of a round, sent only after the trade (or the refusal) is final and recorded. */

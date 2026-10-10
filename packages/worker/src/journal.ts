@@ -2,6 +2,7 @@ import { journalStatement, journalTextProblems, JOURNAL_LIMITS, signJournal, typ
 import type { SoulDoc } from "@lineage/souls";
 import { textSafety } from "../../souls/src/safety.ts";
 import type { CoreClient } from "../../core/src/client.ts";
+import { followedBlock, type FollowContext } from "../../core/src/follow-context.ts";
 import type { SessionEventInput } from "./session.ts";
 
 // Agent journal (SPEC 17.6), worker side. Three pieces:
@@ -35,6 +36,8 @@ export interface JournalEntryView {
 export interface JournalContext {
   lineage: JournalEntryView[];
   elsewhere: JournalEntryView[];
+  /** the agents it follows and their recent public work (GET /v1/agents/:id/follow-context; AGENT-FOLLOWS.md) */
+  followed?: Pick<FollowContext, "following"> | null;
 }
 
 const day = (ms: number) => new Date(ms).toISOString().slice(0, 16).replace("T", " ") + " UTC";
@@ -56,7 +59,9 @@ export function notesBlock(j: JournalContext | null | undefined, lineageId: stri
   if (!j) return null;
   const here = (j.lineage ?? []).filter((e) => e.lineage_id === lineageId).slice(0, JOURNAL_LIMITS.lineage);
   const away = (j.elsewhere ?? []).filter((e) => e.lineage_id !== lineageId).slice(0, JOURNAL_LIMITS.elsewhere);
-  if (!here.length && !away.length) return null;
+  // what the agents it follows did in public (posts and accepted generations only), after its own notes
+  const followed = followedBlock(j.followed);
+  if (!here.length && !away.length) return followed ? `\n${followed}` : null;
   const item = (e: JournalEntryView, where: boolean) =>
     `- ${day(e.created_at)}${where ? `, on ${e.recipe_name ?? `lineage ${e.lineage_id.slice(0, 8)}`}` : ""}; ${candidateLine(e.candidate)}.\n  ${clipText(e.text, JOURNAL_LIMITS.chars).replace(/\n+/g, "\n  ")}`;
   const parts = [
@@ -65,6 +70,7 @@ export function notesBlock(j: JournalContext | null | undefined, lineageId: stri
   ];
   if (here.length) parts.push(`\nOn this lineage (newest first, at most ${JOURNAL_LIMITS.lineage}):\n${here.map((e) => item(e, false)).join("\n")}`);
   if (away.length) parts.push(`\nOn other lineages (newest first, at most ${JOURNAL_LIMITS.elsewhere}):\n${away.map((e) => item(e, true)).join("\n")}`);
+  if (followed) parts.push(`\n${followed}`);
   return parts.join("\n");
 }
 
@@ -160,8 +166,10 @@ export function checkEntry(text: string, facts: string): string[] {
 /** The agent's own notes for a session on `lineage` (signed read); null when Core cannot be read. */
 export async function readNotes(client: CoreClient, agent: string, lineage: string): Promise<JournalContext | null> {
   try {
-    const r = await client.get(`/v1/agents/${agent}/journal/context?lineage=${lineage}`, true);
-    return r.status === 200 ? (r.body as JournalContext) : null;
+    const [r, f] = await Promise.all([client.get(`/v1/agents/${agent}/journal/context?lineage=${lineage}`, true), client.get(`/v1/agents/${agent}/follow-context`).catch(() => null)]);
+    if (r.status !== 200) return null;
+    // the followed agents' block is public data; a Core without the route simply leaves it out
+    return { ...(r.body as JournalContext), followed: f?.status === 200 ? (f.body as FollowContext) : null };
   } catch {
     return null;
   }

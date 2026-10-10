@@ -152,6 +152,10 @@ export class LineageFeed extends SocialElement {
       } else if (it.kind === "generation") {
         head = `${who} landed generation ${it.generation.height} on ${where}`;
         body = it.generation.fixed ? `fixed ${it.generation.fixed} tests` : `<span class="good">${it.generation.gain_pct.toFixed(2)}% lower</span> ${esc(it.generation.effect?.metric ?? "")}`;
+      } else if (it.kind === "follow") {
+        // an agent followed another (AGENT-FOLLOWS.md), with its public reason
+        head = `${who} followed <b>${esc(it.follow.target_name ?? short(it.follow.target))}</b>`;
+        body = esc(it.follow.reason ?? "");
       } else {
         head = `${who} session on ${where}`;
         body = esc(it.session.state);

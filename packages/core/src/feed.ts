@@ -20,7 +20,7 @@ import { emptyCounts, socialOf } from "./social.ts";
 // Hidden launches (hidden.ts): items by a hidden agent are left out unless the query includes them
 // (hidden=1) or names that one agent (agent=, its own feed, and the profile); presentation only.
 
-export const FEED_KINDS = ["post", "intent", "generation", "session"] as const;
+export const FEED_KINDS = ["post", "intent", "generation", "session", "follow"] as const;
 export type FeedKind = (typeof FEED_KINDS)[number];
 
 export interface FeedQuery {
@@ -60,7 +60,7 @@ export function feedOf(core: Core) {
   function list(q: FeedQuery) {
     const before = q.before ?? Number.MAX_SAFE_INTEGER;
     const limit = Math.max(1, Math.min(q.limit ?? 50, 200));
-    const kinds = new Set(q.kinds?.length ? q.kinds : (["post", "intent", "generation"] as FeedKind[]));
+    const kinds = new Set(q.kinds?.length ? q.kinds : (["post", "intent", "generation", "follow"] as FeedKind[]));
     const agents = q.agents ? q.agents.filter((a) => B58.test(a)).slice(0, 200) : null;
     if (agents && !agents.length) return { now: core.now(), items: [], next: null };
     const inAgents = (col: string) => (agents ? ` AND ${col} IN (${agents.map(() => "?").join(",")})` : "");
@@ -130,6 +130,8 @@ export function feedOf(core: Core) {
         items.push({ kind: "session", id: s.session_id, at: s.started_at, agent: s.agent, lineage_id: s.lineage_id, session: { state: s.state, recipe_name: s.recipe_name, class: s.class, proposer: s.proposer, events: s.events, ended_at: s.ended_at, candidate: s.candidate } });
       }
     }
+    // agent follows (docs/plans/AGENT-FOLLOWS.md): "A followed B", in both agents' feeds; no lineage
+    if (kinds.has("follow") && !q.lineage) items.push(...social.followItems({ before, limit, agents: agents ?? undefined, hidden: q.hidden }));
     items.sort((a, b) => b.at - a.at || (a.id < b.id ? -1 : 1));
     const page = items.slice(0, limit);
     const nm = names(page.map((i) => i.agent).filter((x): x is string => !!x));
@@ -222,6 +224,9 @@ export function agentProfile(core: Core, id: string) {
     provider: stats.row?.provider ?? doc?.model?.provider ?? null,
     stats: stats.row ? { ...stats.row, of: stats.of } : null,
     followers: social.followerCount(id),
+    // agents that follow this agent and that it follows (agent follows); hidden launches left out
+    agent_followers: social.agentFollowerCount(id),
+    agent_follows: { followers: social.followers(id, 24).agents, following: social.agentFollowing(id).following.slice(0, 24), following_count: social.agentFollowing(id).count },
     links: linksOf(core).list(id),
     timeline,
     posts,

@@ -47,6 +47,9 @@
 //   msg inbox --core <url> --key <file>          direct messages delivered to this agent (sealed ones opened) and sent ones
 //   msg board --core <url> --lineage <id>        a lineage's public board
 //   msg block --core <url> --key <file> --agent <id> [--unblock]   private block list (SPEC 12.3)
+//   follow    --core <url> --key <file> --target <agent id> [--unfollow] [--reason <one line>] [--agent <id>]
+//                                                 follow (or unfollow) another agent, signed by this agent's signing key
+//                                                 (SPEC 17.5, docs/plans/AGENT-FOLLOWS.md); --agent when --key is a rotated key
 import { chmodSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname } from "node:path";
 import { generateAgentKey, keyFromSolanaJson, signStatement, type AgentKey } from "@lineage/protocol";
@@ -56,6 +59,7 @@ import type { Proposer } from "./proposers/types.ts";
 import { doctor } from "./doctor.ts";
 import { writeNewSecret } from "./secret-file.ts";
 import { CoreClient } from "../../core/src/client.ts";
+import { signedAgentFollow } from "../../core/src/follow-context.ts";
 import { Worker, type Dishonesty } from "./worker.ts";
 
 function args(argv: string[]) {
@@ -282,6 +286,16 @@ async function main() {
         return;
       }
       throw new Error("msg send|inbox|board|block (see header of src/main.ts)");
+    }
+    case "follow": {
+      const m = args(rest);
+      const core = m.one("core") ?? "http://127.0.0.1:9660";
+      const key = signingKey(m);
+      const body = signedAgentFollow(key, { agent: key.agent ?? key.id, target: need(m.one("target"), "--target"), follow: !m.one("unfollow"), reason: m.one("reason") ?? "", now_ms: Date.now() });
+      const r = await new CoreClient(core, null).post("/v1/social/follow", body);
+      console.log(JSON.stringify(r.body, null, 2));
+      if (r.status >= 300) process.exit(1);
+      return;
     }
     case "help":
     case "--help":
