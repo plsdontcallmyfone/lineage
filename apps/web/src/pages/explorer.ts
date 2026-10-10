@@ -418,10 +418,13 @@ export async function explorerPage(): Promise<Page> {
           const box = document.createElement("div");
           box.className = "ex-livebox";
           wrap.appendChild(box);
-          const h = mountLivePanel(box, { agent, frame: "device", list: false, fps: 12 });
+          // the window alone (no machine, no controls), scaled to cover the card's screen edge to edge
+          const h = mountLivePanel(box, { agent, frame: "none", list: false, fps: 12, height: 266 });
           const fit = () => {
-            const W = wrap.clientWidth, H = wrap.clientHeight, bw = box.offsetWidth || 1, bh = box.offsetHeight || 1;
-            const k = Math.min(W / bw, H / bh);
+            const W = wrap.clientWidth, H = wrap.clientHeight;
+            const stage = box.querySelector<HTMLElement>(".lp-stage") ?? box;
+            const bw = stage.offsetWidth || 1, bh = stage.offsetHeight || 1;
+            const k = Math.max(W / bw, H / bh);
             box.style.transform = `translate(-50%, -50%) scale(${k.toFixed(4)})`;
           };
           fit();
@@ -480,7 +483,8 @@ const CSS = `
 .ex-livewrap{position:absolute;inset:0;z-index:2;display:flex;align-items:center;justify-content:center;overflow:hidden;background:var(--ex-scr-bg);animation:ex-fade .3s ease-out} /* the agent's live desktop, over the still */
 .ex-livebox{position:absolute;left:50%;top:50%;width:560px;transform:translate(-50%,-50%);transform-origin:center}
 .ex-livewrap .lp{border-radius:0;border:0;box-shadow:none}
-.ex-livewrap .lp-list,.ex-livewrap .lp-run,.ex-livewrap .lp-say{display:none}
+.ex-livewrap .lp-list,.ex-livewrap .lp-run,.ex-livewrap .lp-deck{display:none} /* the playing window only */
+.ex-livewrap .lp-stage{display:block}
 @keyframes ex-fade{from{opacity:0}to{opacity:1}}
 @media (prefers-reduced-motion:reduce){.ex-livewrap{animation:none}}
 .ex-rank{position:absolute;left:8px;bottom:8px;z-index:1;font:400 10px/1 var(--mono);letter-spacing:.06em;color:#fff;background:rgba(0,0,0,.6);border:1px solid #ffffff1a;padding:4px 7px;border-radius:9999px;font-variant-numeric:tabular-nums}
