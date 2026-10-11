@@ -448,6 +448,39 @@ drain_report() {
   done
 }
 
+# ---- ops log (docs/plans/PAGES-PROJECTS-GENERATIONS-ANALYTICS.md 5) ----------------------------------
+# One JSON line per deploy, rollback and restore test in /var/lib/units/ops/deploys.jsonl (world-readable;
+# Core serves it on the Analytics page). While the public units restart, a probe asks the public path
+# (Caddy, gate, Core: https://<site>/v1/health, resolved to this machine) once a second and the line keeps
+# how many probes ran, how many did not answer 200 and the longest gap between two 200s: measured downtime.
+OPS_DIR=/var/lib/units/ops
+ops_log() { install -d -m 0755 "$OPS_DIR" 2>/dev/null && printf '%s\n' "$1" >> "$OPS_DIR/deploys.jsonl" && chmod 0644 "$OPS_DIR/deploys.jsonl" || true; }
+PROBE_PID="" PROBE_FILE=""
+probe_start() {
+  local h="${SITE_NAMES%%,*}"; h="${h:-localhost}"
+  PROBE_FILE="$(mktemp)"
+  ( while :; do
+      c="$(curl -sk -m 2 -o /dev/null -w '%{http_code}' --resolve "$h:443:127.0.0.1" "https://$h/v1/health" 2>/dev/null || true)"
+      echo "$(now_ms) ${c:-000}"
+      sleep 1
+    done ) >> "$PROBE_FILE" 2>/dev/null &
+  PROBE_PID=$!
+}
+# prints {"probes":n,"non_200":n,"longest_gap_ms":n} (gap: between two 200s, or from the first probe to the first 200)
+probe_stop() {
+  [ -n "$PROBE_PID" ] && { kill "$PROBE_PID" 2>/dev/null || true; wait "$PROBE_PID" 2>/dev/null || true; }
+  PROBE_PID=""
+  [ -n "$PROBE_FILE" ] && [ -f "$PROBE_FILE" ] || { echo null; return; }
+  awk 'NR==1{first=$1} {n++; if ($2!="200") bad++; else { ref=(last200==""?first:last200); g=$1-ref; if (g>gap) gap=g; last200=$1 } }
+       END{ if (last200=="" && n>0) gap=$1-first; printf "{\"probes\":%d,\"non_200\":%d,\"longest_gap_ms\":%d}\n", n, bad, gap }' "$PROBE_FILE"
+  rm -f "$PROBE_FILE"; PROBE_FILE=""
+}
+# ops_deploy <kind> <sha> <previous> <started_ms> <public_ms|""> <result> <failed unit|""> <probe json>
+ops_deploy() {
+  ops_log "$(jq -cn --arg k "$1" --arg sha "$2" --arg prev "$3" --argjson st "$4" --arg pub "$5" --arg res "$6" --arg fu "$7" --argjson probe "${8:-null}" --argjson end "$(now_ms)" \
+    '{kind: $k, sha: $sha, previous: (if $prev == "" then null else $prev end), started_at: $st, public_at: (if $pub == "" then null else ($pub | tonumber) end), ended_at: $end, result: $res, failed_unit: (if $fu == "" then null else $fu end), probe: $probe}')"
+}
+
 case "$CMD" in
 migrate-layout)
   migrate_layout
@@ -567,12 +600,14 @@ activate)
   mapfile -t BG < <(active_background)
   [ ${#BG[@]} -gt 0 ] && { systemctl stop --no-block "${BG[@]}"; echo "background draining (no wait): ${BG[*]}"; }
   # 3. switch the release and restart the public units one by one, each health-checked
+  T_MS=$(now_ms); probe_start
   ln -sfn "$REL" "$BASE/current.new" && mv -Tf "$BASE/current.new" "$BASE/current"
   echo "public units (Core first, each health-checked):"
   FAILED_UNIT=""
   if ! public_restart; then
     if [ -z "$OLD" ] || [ "$OLD" = "$REL" ] || [ ! -d "$OLD" ]; then
       echo "ACTIVATE FAILED: $FAILED_UNIT did not come up and there is no other release to go back to" >&2
+      ops_deploy deploy "$SHA" "" "$T_MS" "" failed "$FAILED_UNIT" "$(probe_stop)"
       exit 1
     fi
     echo "ACTIVATE FAILED: $FAILED_UNIT did not come up on $(basename "$REL"); rolling back to $(basename "$OLD")" >&2
@@ -589,11 +624,13 @@ activate)
     public_restart || echo "the previous release did not come up either ($FAILED_UNIT); see journalctl -u $FAILED_UNIT" >&2
     [ ${#BG[@]} -gt 0 ] && systemctl start --no-block "${BG[@]}"
     echo "rolled back to $(basename "$OLD") (background units restart on it when their drain ends)" >&2
+    ops_deploy deploy "$SHA" "$(basename "$OLD")" "$T_MS" "" rolled_back "$FAILED_UNIT" "$(probe_stop)"
     exit 1
   fi
   for u in "$IDENTITY_TIMER" "${HARDEN_TIMERS[@]}"; do systemctl disable -q --now "$(other_unit "$u")" 2>/dev/null || true; done
   systemctl enable -q --now "$IDENTITY_TIMER" "${HARDEN_TIMERS[@]}"
-  echo "public units on $(basename "$REL") $(( $(date +%s) - T_ACT )) s after activate began"
+  PUB_MS=$(now_ms); PROBE="$(probe_stop)"
+  echo "public units on $(basename "$REL") $(( $(date +%s) - T_ACT )) s after activate began (public probe: $PROBE)"
   # 4. queue the background units' starts on the new release: a unit still draining starts when its old
   # process exits (systemd waits for the stop; never two processes of one unit)
   WANT=()
@@ -621,6 +658,7 @@ activate)
   fi
   # 5. bounded wait for the drains, then name what is still draining
   drain_report "$DRAIN_WAIT" "${BG[@]}"
+  ops_deploy deploy "$SHA" "$( [ -n "$OLD" ] && basename "$OLD" || true)" "$T_MS" "$PUB_MS" ok "" "$PROBE"
   echo "active: $SHA"
   ;;
 rollback)
@@ -662,7 +700,10 @@ rollback)
   fi
   echo "public units (Core first, each health-checked):"
   FAILED_UNIT=""
+  T_MS=$(now_ms); probe_start
   public_restart || echo "$FAILED_UNIT did not come up on $(basename "$PREV"); see journalctl -u $FAILED_UNIT" >&2
+  PUB_MS=$(now_ms); PROBE="$(probe_stop)"
+  ops_deploy rollback "$(basename "$PREV")" "$(basename "$CUR")" "$T_MS" "$PUB_MS" "$([ -z "$FAILED_UNIT" ] && echo ok || echo failed)" "$FAILED_UNIT" "$PROBE"
   for u in "$IDENTITY_TIMER" "${HARDEN_TIMERS[@]}"; do systemctl disable -q --now "$(other_unit "$u")" 2>/dev/null || true; done
   for u in $(for w in "${WORKER_UNITS[@]}" "$UP-bootstrap" "$UP-runtime"; do other_unit "$w"; done); do systemctl disable -q "$u" 2>/dev/null || true; done
   systemctl enable -q "${CORE_UNITS[@]}" 2>/dev/null || true
@@ -837,6 +878,8 @@ restore-test)
     fail=1; echo "restored Core did not answer on $PORT"; journalctl -u units-restore-test -n 20 -o cat --no-pager
   fi
   echo "restore test $(basename "$F"): $([ "$fail" = 0 ] && echo PASS || echo FAIL) ($pass ok, $fail failed)"
+  ops_log "$(jq -cn --arg f "$(basename "$F")" --argjson st "$((T0 * 1000))" --argjson end "$(now_ms)" --arg res "$([ "$fail" = 0 ] && echo PASS || echo FAIL)" --argjson p "${pass:-0}" --argjson x "${fail:-0}" \
+    '{kind: "restore_test", snapshot: $f, started_at: $st, ended_at: $end, result: $res, passed: $p, failed: $x}')"
   [ "$fail" = 0 ]
   ;;
 restore)
