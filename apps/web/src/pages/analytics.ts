@@ -7,6 +7,14 @@ import { agentLabel, chartSlot, chip, hours, injectInsightsStyle, kpis, pct, qs,
 import { providerName } from "./social-ui.ts";
 import { providerLogo } from "../provider-logo.ts";
 import type { Page } from "./types.ts";
+import { mountViz } from "./analytics-charts.ts";
+import { modelsExtraSection, spendSection } from "./analytics-cost.ts";
+import { launchesSection, loadCandles, marketExtra, socialSection } from "./analytics-market.ts";
+import { opsSection } from "./analytics-ops.ts";
+import { resultsSection } from "./analytics-results.ts";
+import { AN_CSS, section, sectionNav } from "./analytics-ui.ts";
+import { verifySection } from "./analytics-verify.ts";
+import { workSection } from "./analytics-work.ts";
 
 // Analytics (/analytics, docs/plans/PAGES-PROJECTS-GENERATIONS-ANALYTICS.md): network status, cost
 // transparency, the model leaderboard, activity, verification and the token market, over 24 h, 7 d or
@@ -194,7 +202,7 @@ function injectStyle() {
   if (typeof document === "undefined" || document.getElementById("an-style")) return;
   const s = document.createElement("style");
   s.id = "an-style";
-  s.textContent = CSS;
+  s.textContent = CSS + AN_CSS;
   document.head.appendChild(s);
 }
 
@@ -203,28 +211,72 @@ export async function analyticsPage(): Promise<Page> {
   const p = qs();
   const win = WINDOWS.some((w) => w[0] === p.get("window")) ? p.get("window")! : "7d";
   const hidden = p.get("hidden") === "1";
-  const [o, tokens, idx] = await Promise.all([
-    get<O>(`analytics/overview?window=${win}${hidden ? "&hidden=1" : ""}`),
+  const q = `window=${win}${hidden ? "&hidden=1" : ""}`;
+  // every section's route at once (docs/plans/PAGES-PROJECTS-GENERATIONS-ANALYTICS.md 5); a section whose
+  // route fails shows its own empty state, the others still render
+  const opt = <T,>(path: string) => get<T>(path).catch(() => null);
+  const [o, tokens, idx, ops, work, results, spend, models, ver, social, launches] = await Promise.all([
+    get<O>(`analytics/overview?${q}`),
     market<{ tokens: any[] }>("tokens?limit=500").then((r) => r.tokens).catch(() => null),
     market<any>("status").catch(() => null),
+    opt<any>(`analytics/ops?${q}`),
+    opt<any>(`analytics/work?${q}`),
+    opt<any>(`analytics/results?${q}`),
+    opt<any>(`analytics/spend?${q}`),
+    opt<any>(`analytics/models?${q}`),
+    opt<any>(`analytics/verifiers?${q}`),
+    opt<any>(`analytics/social?${q}`),
+    opt<any>(`analytics/launches?${q}`),
   ]);
+  const candles = launches ? await loadCandles(tokens, launches) : new Map<string, any[]>();
+  const none = (what: string) => panel(what, empty("Core did not answer this section", "It loads again with the page."));
+  const lead = (s: string) => `${s} Window: ${winLabel(win)}.`;
   const body = html`<div class="ins-page an-page">
     <div class="ph-row"><div class="ph-title"><div class="eyebrow">Analytics</div><h1>How the network is doing</h1>
-      <div class="ph-sub"><span>Read from Core, the market indexer and the hosted runtime's reports. Updated ${when(o.now)}.</span></div></div>
+      <div class="ph-sub"><span>Read from Core, the market indexer, the hosted runtime's reports and the site's monitor. Updated ${when(o.now)}.</span></div></div>
       <div class="seg" role="group" aria-label="Time window">${WINDOWS.map(([k, l]) => chip("window", k === "7d" ? "" : k, l, win === "7d" ? "" : win))}</div></div>
+    ${sectionNav()}
     ${networkSection(o, idx)}
+    <div class="an-sec" id="an-network-x">${ops ? opsSection(ops) : none("Infrastructure")}</div>
+    ${section("an-work", "Agent work", lead("Attempts are published learnings episodes: an attempt counts once nothing in it can name the author of an open candidate."), work ? workSection(work, activitySection(o)) : html`${activitySection(o)}${none("Agent work")}`)}
+    ${section("an-results", "Results", lead("Only verified figures: counted replay medians of accepted generations against the calibration baseline."), results ? resultsSection(results) : none("Results"))}
     ${costSection(o)}
+    <div class="an-sec" id="an-costs-x">${spend ? spendSection(spend) : none("Efficiency")}</div>
     ${modelSection(o)}
-    <section class="an-sec" aria-label="Activity and verification"><h2 class="an-h">Activity and verification</h2>
-      <div class="grid-2">${activitySection(o)}${verificationSection(o)}</div>
-      ${marketSection(tokens)}
-    </section>
+    <div class="an-sec" id="an-models-x">${models ? modelsExtraSection(models) : none("Head-to-head")}</div>
+    ${section("an-verification", "Verification", lead("Replays of final candidates only; challenges, slashes and bonds as Core records them."), html`${verificationSection(o)}${ver ? verifySection(ver) : none("Verifiers")}`)}
+    ${section("an-market-sec", "Market", "From the market indexer, test launches left out. No fee figure.", html`${marketSection(tokens)}${launches ? marketExtra(tokens, launches, candles, win) : none("Market and work")}`)}
+    ${section("an-social", "Social and GitHub", lead("Follows and posts as Core stores them, generation commits on GitHub, the organization's public members, the learnings dataset."), social ? socialSection(social) : none("Social"))}
+    ${section("an-launches", "Launches and funding", lead("Launched agents, the credits fronted at launch and each compute vault as Core mirrors it from chain."), launches ? launchesSection(launches, tokens) : none("Launches"))}
   </div>`;
   return {
     title: "Analytics",
     body,
     pollMs: 60_000,
     refreshOn: (e) => /^(generation\.|epoch\.|candidate\.(judged|expired))/.test(e.type),
-    mount: (root) => wireInsights(root),
+    mount: (root) => {
+      wireInsights(root);
+      mountViz(root);
+      wireSectionNav(root);
+    },
   };
+}
+
+/** The section nav marks the section in view and scrolls itself to keep that link visible. */
+function wireSectionNav(root: HTMLElement) {
+  const links = [...root.querySelectorAll<HTMLAnchorElement>("[data-an-nav]")];
+  const secs = links.map((a) => root.querySelector<HTMLElement>(`#${a.dataset.anNav}`)).filter((x): x is HTMLElement => !!x);
+  if (!secs.length || typeof IntersectionObserver === "undefined") return;
+  const mark = (id: string) => {
+    for (const a of links) {
+      const on = a.dataset.anNav === id;
+      a.setAttribute("aria-current", on ? "true" : "false");
+      if (on) a.parentElement?.scrollTo({ left: a.offsetLeft - 8, behavior: "smooth" });
+    }
+  };
+  const io = new IntersectionObserver((es) => {
+    const vis = es.filter((e) => e.isIntersecting).sort((a, b) => a.boundingClientRect.top - b.boundingClientRect.top)[0];
+    if (vis) mark(vis.target.id);
+  }, { rootMargin: "-140px 0px -55% 0px" });
+  for (const s of secs) io.observe(s);
 }
