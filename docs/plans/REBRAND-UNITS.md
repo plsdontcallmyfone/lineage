@@ -502,3 +502,35 @@ before the rebrand, ensure_users before it would create any account):
   read before listening), which on the site sits behind the gate's and Caddy's retries. The 3 failures
   (wallet page, deploy.sh status, one 11 s gap in the container's zero-downtime poll) are a subset of
   the 6 recorded in the previous dry run (efb01ae), none new.
+
+### 6.5 Site deploy (3a2119e, 2026-10-11)
+
+- `deploy.sh 157.245.71.188 code` exit 0. migrate-layout flipped all seven directories and renamed the
+  seven accounts with their UIDs (units 1000, units-core 993, units-web 992, units-gate 988,
+  units-indexer 987, units-identity 994, units-monitor 986; the lineage names alias them; account files
+  backed up in /var/backups/units-rename-20261011T163350Z), and removed the redundant github-token.conf
+  drop-in. Core has UNITS_GITHUB_TOKEN from /etc/units/core-github.env through its unit file. Public
+  units restarted one by one (Core up in 3.2 s); 108 polls of the public /v1/health from outside
+  during the deploy: 0 non-200.
+- scripts/verify.ts against the site: 200/200 verdicts, 156 rounds (142 on a slot hash) and 55
+  decisions in 6 revealed epochs, all match (also with --chain before the deploy).
+- Backups under the new accounts and paths: units-backup (units-core), units-backup-state (units),
+  units-backup-identity (units-identity) all success into /var/lib/units/*-backups; restore-test PASS
+  (Core 5/5; 10/10 runtime keys and 5/5 site keys equal live by public key; identity key file equal;
+  70/70 identity records authenticate); the Mac's launchd com.lineage.backup-pull ran with exit 0;
+  monitor all ok apart from the runtime spend warning (29.93 of 30 USD, unrelated).
+- GitHub: the identity cycle renamed units-agents, agwyus9p, owunqwxs and nbebp7jy lineage-learnings to
+  units-learnings, each with its own token (the org repository with the publisher's); the old URLs
+  answer 301 to the new ones. Core's two records for retired agent ids (5iCWSoXA, CLy55wj9, which the
+  cycle no longer reports) were updated to the renamed repositories through POST /v1/learnings/repos.
+  All five genesis READMEs were recommitted (Verified) with units markers, and units-proof.json sits
+  beside lineage-proof.json in agwyus9p, nbebp7jy and owunqwxs. Core records units-proof.json for the
+  three current agents, and verify-genesis.ts gives 5/5 on each. The proofs keep their
+  lineage-github-genesis kind (facts unchanged, so no re-signing), and the README names that domain.
+  verify-generation.ts gives 5/5 checks on 5 published generations. The two retired ids' genesis links
+  have read broken since their accounts publish the successor agents' proofs (checked broken before
+  this deploy).
+- Playwright `UI_BASE_URL=https://157-245-71-188.sslip.io bunx playwright test`: 86 passed, 9 failed,
+  5 skipped (7.1 min). Failures, all in specs older than this lane: routes-docs "nine pages" x2 (the
+  docs site has 28 pages since the docs expansion), agent profile figures x2 (the known parameter order
+  mismatch), profile and launch with the mock wallet x5 (Privy Connect and the write guard).
