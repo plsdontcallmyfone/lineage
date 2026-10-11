@@ -53,6 +53,7 @@ function cfgText(key: string, v: unknown, cfg: Record<string, unknown>): string 
   const leaf = key.split(".").pop()!;
   const quote = (pick(cfg, "prepay.rate_status") === "test" ? "tUNITS" : "$UNITS");
   if (leaf.endsWith("_usd")) return `${v} USD`;
+  if (leaf.endsWith("_lamports") && /^\d+$/.test(String(v))) return `${Number(v) / 1e9} SOL`;
   if (leaf === "line_per_usd" || leaf === "compute_price_line_per_usd") return `${v} ${quote} per USD`;
   if (leaf === "compute_price_line_per_sandbox_s") return `${v} ${quote} per sandbox second`;
   if (Array.isArray(v)) return v.join(" to ");

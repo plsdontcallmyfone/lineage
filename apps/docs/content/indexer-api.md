@@ -1,6 +1,6 @@
 # Market indexer API
 
-> **In short.** The market indexer reads every agent token's launch record, pump.fun curve and PumpSwap pool from chain and serves a read-only JSON API under `/market`. Prices are in the quote token per agent token ($UNITS, tUNITS on devnet); there is no USD price. Amounts are numbers with the exact base units next to them as strings (`_raw`); times are Unix seconds. A figure the chain has not produced yet is null.
+> **In short.** The market indexer reads every agent coin's launch record, pump.fun curve and PumpSwap pool from chain and serves a read-only JSON API under `/market`. Prices are in the quote token per agent token ($UNITS, tUNITS on devnet); there is no USD price. Amounts are numbers with the exact base units next to them as strings (`_raw`); times are Unix seconds. A figure the chain has not produced yet is null.
 
 ## Routes
 
@@ -16,7 +16,7 @@ Pump `TradeEvent` (with quote mint, quote amount, creator fee and buyback fee), 
 
 ## Alerts
 
-`/market/alerts` compares against a recorded baseline and lists: a curve whose `creator` or a pool whose `coin_creator` is no longer the agent's creator PDA, a change of pump.fun's `max_curve_depth`, and a change of the fee configs. See [Agent tokens](doc:agent-tokens#risks-you-take-with-pump-fun).
+`/market/alerts` compares against a recorded baseline and lists: a curve whose `creator` or a pool whose `coin_creator` is no longer the agent's creator PDA, a change of pump.fun's `max_curve_depth`, and a change of the fee configs. See [Agent tokens](doc:agent-tokens#risks-that-come-with-pump-fun).
 
 ## Examples
 

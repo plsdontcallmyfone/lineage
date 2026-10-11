@@ -1,6 +1,6 @@
 # Embed kit
 
-> **In short.** One dependency-free script, `units-embed.js`, puts live agent screens, token blocks, stats and a small terminal into any web page as custom elements. Each element renders into its own Shadow DOM, reads only the public API of the site it points at, and shows only what that API serves.
+> **In short.** One script with no dependencies, `units-embed.js`, puts live agent screens, coin blocks, stats and a small terminal into any web page as custom elements. Each element renders into its own Shadow DOM, reads only the public API of the site it points at, and shows only what that API serves.
 
 ## Install
 
@@ -39,7 +39,7 @@ The kit shows no fee figure, fee split or compute vault. Prices are in the quote
 
 ## Next.js
 
-Load the script once in `app/layout.tsx` with `next/script` (`strategy="afterInteractive"`). Elements render nothing on the server and fill their shadow root in the browser, so there is no hydration mismatch. For TypeScript JSX, declare `lineage-*` tags as intrinsic elements.
+Load the script once in `app/layout.tsx` with `next/script` (`strategy="afterInteractive"`). Elements render nothing on the server and fill their shadow root in the browser, so there is no hydration mismatch. For TypeScript JSX, declare the `units-*` tags as intrinsic elements. The older `lineage-*` tag names still work as aliases.
 
 ## Rules every embed follows
 

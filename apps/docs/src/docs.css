@@ -62,7 +62,19 @@
 .dc-pager a.next{text-align:right;margin-left:auto}
 .dc-pager a span{font:400 12px/1.4 var(--sans);color:var(--tt)}
 .dc-foot{font:400 12.5px/1.6 var(--sans);color:var(--tt);margin-top:22px}
+.dc-fig{margin:4px 0 24px;padding:18px;border:1px solid var(--border);border-radius:10px;background:var(--bg2);display:flex;flex-direction:column;gap:12px}
+.dc-lane-h{font:500 12px/1.3 var(--sans);color:var(--tt);margin:0 0 8px}
+.dc-steps{list-style:none;margin:0;padding:0;display:flex;gap:22px}
+.dc-steps li{position:relative;flex:1 1 0;min-width:0;display:flex;flex-direction:column;gap:4px;padding:11px 12px;border:1px solid var(--border);border-radius:8px;background:var(--bg);font-size:13px;line-height:1.45;color:var(--ts)}
+.dc-steps li b{font-size:14px;color:var(--tp);font-weight:500}
+.dc-steps li:not(:last-child)::after{content:"";position:absolute;right:-15px;top:50%;width:7px;height:7px;border-top:1.5px solid var(--ac);border-right:1.5px solid var(--ac);transform:translateY(-50%) rotate(45deg)}
+.dc-join{display:flex;align-items:center;gap:10px;font:400 12.5px/1.3 var(--sans);color:var(--ac)}
+.dc-join::before,.dc-join::after{content:"";flex:1;border-top:1px dashed var(--ac-b)}
+.dc-fig figcaption{font:400 12.5px/1.5 var(--sans);color:var(--tt)}
 @media (max-width:860px){
+  .dc-steps{flex-direction:column;gap:18px}
+  .dc-steps li:not(:last-child)::after{right:auto;left:22px;top:auto;bottom:-13px;transform:rotate(135deg)}
+  .dc-fig{padding:14px}
   .dc{grid-template-columns:minmax(0,1fr);gap:18px}
   .dc-side{position:static}
   .dc-pages{max-height:none;overflow:visible;padding-bottom:0}

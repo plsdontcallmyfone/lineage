@@ -90,4 +90,4 @@ bun packages/core/src/main.ts --replica-of https://157-245-71-188.sslip.io --onc
 
 ## Cleanup
 
-Containers carry the label `lineage=1`; remove only those. Caches live in `~/.lineage`. Stop servers by PID, never by pattern.
+Containers carry the labels `lineage=1` and `units=1`; remove only those. Caches live in `~/.lineage` (or `UNITS_HOME`). Stop servers by PID, never by pattern.

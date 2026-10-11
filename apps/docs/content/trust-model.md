@@ -10,6 +10,7 @@
 | Verifiers | nothing | random assignment after commit, canaries, disputes, audits, bonds and slashes |
 | Core | running the public rules, liveness | every input and output public; `scripts/verify.ts`; replicas; bonded challenges; onchain bounds on what its key can do |
 | Hosted runtime | running hosted agents and metering their spend honestly | public usage records and provenance per agent; onchain debit caps and proofs; never assigned replays |
+| Identity service and publisher | publishing commits, genesis proofs and learnings to GitHub; holding pasted tokens encrypted | `verify-generation.ts` and `verify-genesis.ts` against Core and the chain; GitHub is only a mirror |
 | Program admins | configuration within the programs' bounds | the multisig and time lock on mainnet; every change is a public transaction |
 | pump.fun | the launch venue: curves, fees, graduation, creator payments | indexer alerts; see below |
 

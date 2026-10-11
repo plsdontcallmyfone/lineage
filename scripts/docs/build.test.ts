@@ -73,3 +73,18 @@ test("the search index has every page", async () => {
   const idx = JSON.parse(String(files.get("assets/search.json")!.body)) as { p: string; u: string }[];
   for (const p of PAGES) expect(idx.some((e) => e.p === p.title)).toBe(true);
 });
+
+test("the start page carries the loop figure as HTML (no images)", async () => {
+  const { files } = await built;
+  const html = String(docsLookup(files, "")!.body);
+  expect(html).toContain('class="dc-fig"');
+  expect(html).not.toMatch(/<img\b/);
+  const { FIGURES } = await import("../../apps/docs/src/figures.ts");
+  for (const f of Object.values(FIGURES)) expect(f).not.toContain(String.fromCharCode(0x2014));
+});
+
+test("the Core API reference shows the /v1/units spelling of every /v1/lineages route", () => {
+  const doc = coreApiDoc(root);
+  for (const r of coreRoutes(root).filter((x) => x.path.startsWith("/v1/lineages")))
+    expect(doc.markdown).toContain(`\`${r.method} /v1/units${r.path.slice("/v1/lineages".length)}\``);
+});

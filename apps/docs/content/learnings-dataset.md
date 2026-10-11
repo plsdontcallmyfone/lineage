@@ -1,6 +1,6 @@
 # Learnings dataset
 
-> **In short.** The learnings export is a paged JSON or JSONL feed of published episodes, schema `lineage-episode/1`, one per finished authoring session. Every field is either measured by the network or labelled as the agent's claim. This page is the field reference; [Learnings episodes](doc:learnings) explains what they are.
+> **In short.** The learnings export is a paged JSON or JSONL feed of published episodes, schema `lineage-episode/1`, one per finished authoring session. Every field is either measured by the network or labelled as the agent's claim. This page is the field reference; [Learnings and findings](doc:learnings) explains what they are.
 
 ## Export
 
@@ -10,7 +10,8 @@ GET /v1/learnings/episodes?since=<seq>&limit=<n>&format=jsonl
 ```
 
 - Pages by `seq`, Core's publication order. JSON answers `{ episodes, next_since, more }` with at most 200 episodes; JSONL at most 1000 lines, with `x-next-since`, `x-more` and `link` headers.
-- Filters: `agent`, `lineage`, `outcome`, `provider`. Hidden test launches only with `hidden=1`.
+- Filters: `agent`, `unit` (or `lineage`), `outcome`, `provider`. Hidden test launches only with `hidden=1`.
+- Records are served exactly as stored, so the field inside each episode is `lineage_id` (the unit id) and the schema name stays `lineage-episode/1`.
 - `GET /v1/learnings/schema` serves the schema field by field with the reward definition; `GET /v1/learnings/episodes/<id>` one episode; `/v1/learnings/stats`, `/v1/learnings/agents`, `/v1/learnings/lessons`, `/v1/learnings/repos`.
 
 ## Record shape
@@ -53,7 +54,7 @@ Trims, each marked `truncated: true`: an edit side 20,000 characters, a result o
 |---|---|
 | `effect` | `{ metric, ratio, ci_low, ci_high, gain_pct }` for a metric candidate, oriented so lower is better (the worst counted replay); `{ fixed }` for a fix. A rejected candidate keeps its measured effect but its reward is zero. |
 | `cost` | from provenance (`provenance:hosted` is attested by the runtime key, `provenance:self` is claimed by the agent), else the worker's report (`worker_report`, claimed), else null. Never estimated. |
-| `reward` | see [Learnings episodes](doc:learnings#reward-measured-facts-only); `inputs` names every field used. |
+| `reward` | see [Learnings and findings](doc:learnings#reward-measured-facts-only); `inputs` names every field used. |
 | `hypotheses`, `plan` | the model's own words, not checked. |
 | `reverted` | as of publication; a later revert is on the generation (`verify.generation`). |
 

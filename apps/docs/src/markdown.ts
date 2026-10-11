@@ -1,9 +1,12 @@
+import { FIGURES } from "./figures.ts";
+
 // Markdown renderer of the docs site (moved from the dashboard's former /docs page): headings,
 // paragraphs, lists, tables, block quotes, fenced blocks, links, bold, italics, inline code, and the
 // live figure tags
 //   {{cfg:<key>}}       a parameter from Core's GET /v1/config
 //   {{cfg:prepay.min_usd}}  a nested parameter (dotted key)
 //   {{market:tokens}}   agent tokens the market indexer holds; {{market:graduated}} those graduated
+// and, on a line of its own, {{fig:<name>}}: a figure from figures.ts, inserted as it is.
 // The static build cannot know a live figure, so `live` returns null there and the tag renders as a
 // TBA span carrying data-live; the page's script (client.ts) fills it when Core or the indexer answers.
 
@@ -48,10 +51,16 @@ export function renderMarkdown(md: string, live: Live): { title: string; html: s
     seen.set(base, n + 1);
     return n ? `${base}-${n + 1}` : base;
   };
-  const isBlockStart = (l: string) => /^(#{1,4} |\||```|>|\s*- |\s*\d+\. )/.test(l);
+  const isBlockStart = (l: string) => /^(#{1,4} |\||```|>|\s*- |\s*\d+\. |\{\{fig:)/.test(l);
   while (i < lines.length) {
     const l = lines[i]!;
     if (l.trim() === "" || l.trim() === "---") {
+      i++;
+      continue;
+    }
+    const fig = /^\{\{fig:([a-z-]+)\}\}$/.exec(l.trim());
+    if (fig) {
+      out.push(FIGURES[fig[1]!] ?? `<p>Figure ${esc(fig[1])} is missing (TBA).</p>`);
       i++;
       continue;
     }

@@ -15,6 +15,7 @@
 //   [text](doc:slug#anchor)   another docs page ("doc:overview" is the index)
 //   [text](repo:path)         a file in the public repository (checked to exist at build time)
 //   {{gen:name}}              a generated section on a line of its own (apps/docs/src/generate.ts)
+//   {{fig:name}}              a figure (HTML and CSS, no images) on a line of its own (apps/docs/src/figures.ts)
 //
 // Layout of the output (paths under --base):
 //   index.html             the Overview page
@@ -30,6 +31,7 @@ import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync, wri
 import { dirname, join } from "node:path";
 import { renderMarkdown } from "../../apps/docs/src/markdown.ts";
 import { generate } from "../../apps/docs/src/generate.ts";
+import { FIGURES } from "../../apps/docs/src/figures.ts";
 
 const ROOT = join(import.meta.dir, "../..");
 const DOCS = join(ROOT, "apps/docs");
@@ -47,8 +49,9 @@ export const SECTIONS: { title: string; pages: DocPage[] }[] = [
   {
     title: "Start",
     pages: [
-      { slug: "overview", title: "Overview", file: "overview.md" },
+      { slug: "overview", title: "Start here", file: "overview.md" },
       { slug: "how-it-works", title: "How it works", file: "how-it-works.md" },
+      { slug: "status", title: "What is live", file: "status.md" },
       { slug: "glossary", title: "Glossary", file: "glossary.md" },
       { slug: "faq", title: "FAQ", file: "faq.md" },
     ],
@@ -63,6 +66,7 @@ export const SECTIONS: { title: string; pages: DocPage[] }[] = [
       { slug: "agent-profile", title: "The agent's profile", file: "agent-profile.md" },
       { slug: "souls-and-journals", title: "Souls and journals", file: "souls-and-journals.md" },
       { slug: "follows", title: "Follows and the feed", file: "follows.md" },
+      { slug: "learnings", title: "Learnings and findings", file: "learnings.md" },
     ],
   },
   {
@@ -70,6 +74,7 @@ export const SECTIONS: { title: string; pages: DocPage[] }[] = [
     pages: [
       { slug: "agent-tokens", title: "Agent tokens", file: "agent-tokens.md" },
       { slug: "trading", title: "Trading and figures", file: "trading.md" },
+      { slug: "site-pages", title: "Projects, generations, analytics", file: "site-pages.md" },
     ],
   },
   {
@@ -79,7 +84,6 @@ export const SECTIONS: { title: string; pages: DocPage[] }[] = [
       { slug: "sealing", title: "Sealing", file: "sealing.md" },
       { slug: "challenges-and-epochs", title: "Challenges, epochs, claims", file: "challenges-and-epochs.md" },
       { slug: "github-proofs", title: "Proofs on GitHub", file: "github-proofs.md" },
-      { slug: "learnings", title: "Learnings episodes", file: "learnings.md" },
     ],
   },
   {
@@ -128,6 +132,7 @@ export function themeScript(): string {
 
 /** Expand {{gen:...}} lines and the doc: and repo: link schemes. Problems are collected, never thrown. */
 function prepare(md: string, href: (slug: string) => string, problems: string[], page: string): string {
+  for (const m of md.matchAll(/\{\{fig:([a-z-]+)\}\}/g)) if (!FIGURES[m[1]!]) problems.push(`${page}: unknown figure ${m[1]}`);
   return md
     .replace(/\{\{gen:([a-z-]+)\}\}/g, (_, name: string) => {
       try {

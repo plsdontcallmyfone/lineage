@@ -106,7 +106,7 @@ const ACCESS: Record<CoreRoute["auth"], string> = {
 
 const GROUPS: [string, RegExp][] = [
   ["Network, config and health", /^\/v1\/(health|config|stats|chain|launch-fronting|models|hidden|events|ledger|blobs|scores|trading|trades)/],
-  ["Units, findings and recipes", /^\/v1\/(lineages|findings|recipe-proposals|calibrations)/],
+  ["Units, findings and recipes", /^\/v1\/(lineages|units|findings|recipe-proposals|calibrations)/],
   ["Candidates, replays and assignments", /^\/v1\/(candidates|replays|assignments|generations|github)/],
   ["Sessions, journals and learnings", /^\/v1\/(sessions|learnings|agents\/:id\/journal)/],
   ["Agents, identity and souls", /^\/v1\/(agents|souls|links)/],
@@ -117,6 +117,13 @@ const GROUPS: [string, RegExp][] = [
   ["Upstream repositories", /^\/v1\/upstream/],
   ["Analytics", /^\/v1\/analytics/],
 ];
+
+/** The /v1/units spelling of a /v1/lineages route (same handler), or null. */
+export function unitAlias(path: string): string | null {
+  if (path === "/v1/lineages" || path.startsWith("/v1/lineages/")) return "/v1/units" + path.slice("/v1/lineages".length);
+  if (path.startsWith("/v1/admin/lineages/")) return "/v1/admin/units/" + path.slice("/v1/admin/lineages/".length);
+  return null;
+}
 
 export interface CoreApiDoc {
   markdown: string;
@@ -142,7 +149,10 @@ export function coreApiDoc(root: string): CoreApiDoc {
     if (rd?.body) parts.push(`Body: ${rd.body}`);
     if (rd?.response) parts.push(`${rd.body !== null ? "Response" : purpose ? "Returns" : "Returns"}: ${rd.response}`);
     if (!parts.length) parts.push("Not described yet (the route exists in packages/core/src/http.ts).");
-    const row = `| \`${r.method} ${r.path}\` | ${ACCESS[r.auth]} | ${r.query.length ? r.query.map((q) => `\`${q}\``).join(", ") : ""} | ${parts.join(" ")} |`;
+    // the unit alias (packages/core/src/unit-alias.ts): /v1/units... is served by the /v1/lineages... handler
+    const alias = unitAlias(r.path);
+    const cell = alias ? `\`${r.method} ${alias}\` (also \`${r.method} ${r.path}\`)` : `\`${r.method} ${r.path}\``;
+    const row = `| ${cell} | ${ACCESS[r.auth]} | ${r.query.length ? r.query.map((q) => `\`${q}\``).join(", ") : ""} | ${parts.join(" ")} |`;
     if (r.path.startsWith("/v1/admin/")) {
       admin.push(row);
       continue;
@@ -171,7 +181,7 @@ export function programIdsDoc(root: string): string {
     network: string;
     profiles: Record<string, { cluster: string; genesis: string; explorer_cluster: string | null; programs: Record<string, string>; quote: Record<string, unknown>; faucet: boolean; test_labels: boolean; swap: boolean; usd_feed: unknown; fees: Record<string, unknown> }>;
   };
-  const names: Record<string, string> = { registry: "lineage_registry", launch: "lineage_launch", msg: "lineage_msg" };
+  const names: Record<string, string> = { registry: "units_registry", launch: "units_launch", msg: "units_msg" };
   const nets = Object.keys(p.profiles);
   const out: string[] = [];
   out.push(`The repository's default network is **${p.network}** (\`config/profile.json\` \`network\`; \`UNITS_NETWORK\` overrides it for one process).`, "");
