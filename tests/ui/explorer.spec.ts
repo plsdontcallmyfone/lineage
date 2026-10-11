@@ -3,11 +3,12 @@ import { expectFigures, readParams } from "./support/figures.ts";
 import { expect, test } from "./support/fixtures.ts";
 
 test.describe("Explorer (/)", () => {
-  test("header: Explorer, Agents, Projects, Generations, Analytics, Launch; Connect, no Eco button; one theme (light), no toggle", async ({ page }) => {
+  test("header: Explorer, Agents, Projects, Generations, Analytics; Launch beside Connect, no Eco button; one theme (light), no toggle", async ({ page }) => {
     await page.goto("/");
     await page.locator(".ex-card, .ex-empty").first().waitFor({ timeout: 60_000 });
     const nav = (await page.locator(".nav a").allInnerTexts()).map((s) => s.trim().toLowerCase());
-    expect(nav).toEqual(["explorer", "agents", "projects", "generations", "analytics", "launch"]);
+    expect(nav).toEqual(["explorer", "agents", "projects", "generations", "analytics"]);
+    await expect(page.locator(".top-right a.nav-launch[href='/launch']")).toBeVisible();
     await expect(page.locator(".nav a[aria-current=page]")).toHaveText(/explorer/i);
     await expect(page.locator("#eco-open")).toHaveCount(0);
     await expect(page.locator("#cn-btn")).toBeVisible();

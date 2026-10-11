@@ -29,6 +29,7 @@ import { profilePage } from "./pages/profile.ts";
 import type { Page } from "./pages/types.ts";
 import { siteFooter } from "./site-footer.ts";
 import { smoothScroll } from "./smooth-scroll.ts";
+import { glide } from "./glide.ts";
 import { deckPage, deckSync } from "./deck.ts";
 
 // ------------------------------------------------------------------------------------------------
@@ -88,9 +89,9 @@ function shell() {
         <a href="/projects" data-nav="/projects">Projects</a>
         <a href="/generations" data-nav="/generations">Generations</a>
         <a href="/analytics" data-nav="/analytics">Analytics</a>
-        <a href="/launch" data-nav="/launch">Launch</a>
       </nav>
       <div class="top-right">
+        <a class="nav-launch" href="/launch" data-nav="/launch">Launch</a>
         ${connectHtml()}
       </div>
     </div></header>
@@ -380,6 +381,7 @@ window.addEventListener("resize", () => {
 
 shell();
 smoothScroll();
+glide();
 fetch("/live/status")
   .then((r) => r.json())
   .then((s) => {

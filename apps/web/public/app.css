@@ -1424,3 +1424,29 @@ a.eco-btn { text-decoration: none; }
 /* no visible scrollbars anywhere (the page and inner panels still scroll) */
 * { scrollbar-width: none; -ms-overflow-style: none; }
 *::-webkit-scrollbar { display: none; width: 0; height: 0; }
+
+/* toggles: the pressed option's pill slides (src/glide.ts sets its box); buttons press in slightly */
+:is(.seg, .ex-seg)[data-glide] { position: relative; isolation: isolate; }
+:is(.seg, .ex-seg)[data-glide]::before { content: ""; position: absolute; z-index: -1; left: 0; top: 0; width: var(--gw); height: var(--gh); transform: translate(var(--gx), var(--gy)); border-radius: 12px; corner-shape: squircle; background: var(--tp); pointer-events: none; }
+:is(.seg, .ex-seg)[data-glide-ready]::before { transition: transform .38s cubic-bezier(.22, 1, .36, 1), width .38s cubic-bezier(.22, 1, .36, 1), height .38s cubic-bezier(.22, 1, .36, 1); }
+:is(.seg, .ex-seg)[data-glide] > [aria-pressed="true"] { background: transparent !important; }
+:is(.seg, .ex-seg) > :is(button, a) { transition: color .25s ease, transform .18s ease !important; }
+:is(.seg, .ex-seg, .mk-tb2-side, .mk-tb2-chips) > button:active, .nav a:active, .wl-btn:active, .pf-chip:active { transform: scale(.96); }
+.nav a, .wl-btn, .pf-chip { transition-property: background, color, transform, height, padding, font-size, width, opacity !important; }
+/* cards lift a little on hover */
+.ag-card, .panel.an-w { transition: transform .28s cubic-bezier(.22, 1, .36, 1), box-shadow .28s ease, border-color .15s; }
+.ag-card:hover { transform: translateY(-3px); }
+@media (prefers-reduced-motion: reduce) {
+  :is(.seg, .ex-seg)[data-glide-ready]::before { transition: none; }
+  .ag-card:hover { transform: none; }
+}
+
+/* Launch sits beside the profile button: the landing site's purple call to action */
+.nav-launch { display: inline-flex; align-items: center; justify-content: center; height: 34px; padding: 0 16px; border-radius: 18px; corner-shape: squircle; background: #a68aff; color: #47146e; font: 500 14px/1 var(--display); letter-spacing: -.01em; white-space: nowrap; text-decoration: none; transition: background .18s var(--ease-soft), transform .28s var(--ease-back), height .34s var(--ease-soft), padding .34s var(--ease-soft), font-size .34s var(--ease-soft); }
+.nav-launch:hover { background: #7b54f5; color: #fff; transform: translateY(-2px); text-decoration: none; }
+.nav-launch[aria-current="page"] { background: #7b54f5; color: #fff; }
+.top.is-scrolled .nav-launch { height: 30px; padding: 0 14px; font-size: 13px; }
+@media (max-width: 760px) { .nav-launch { height: 32px; padding: 0 14px; font-size: 13px; } }
+/* the deck fills the screen: a short gap to the footer */
+main:has(.deck-shell) { padding-bottom: 12px; min-height: 0; }
+main:has(.deck-shell) + .site-footer { margin-top: 0; }
