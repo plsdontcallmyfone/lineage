@@ -454,7 +454,7 @@ export async function explorerPage(): Promise<Page> {
 }
 
 // The page's empty sides on a wide screen: small hand-drawn trading doodles (candles, arrows, buy and
-// sell tags, a coin, a chart line) in the page's marker style, a coloured line or fill with a navy
+// sell tags, a coin) in the page's marker style, a coloured line or fill with a navy
 // edge, each drifting a little; the screen's edges blur what passes under them, like the reference.
 // Decoration only: hidden from assistive tech, gone under 1560 px, still with reduced motion.
 const INK = "#092538";
@@ -466,22 +466,18 @@ const tag = (label: string, c: string, w: number) =>
 const DOODLES: Record<string, { svg: string; vb: string }> = {
   candleUp: { vb: "0 0 36 52", svg: line("M18 4 L18 46", INK) + fill("M10 13 h16 v22 h-16 z", C.green) },
   candleDown: { vb: "0 0 36 52", svg: line("M18 4 L18 46", INK) + fill("M10 16 h16 v24 h-16 z", C.red) },
-  candles: { vb: "0 0 64 56", svg: line("M14 6 L14 44 M32 12 L32 52 M50 2 L50 38", INK) + fill("M7 14 h14 v20 h-14 z", C.red) + fill("M25 22 h14 v22 h-14 z", C.green) + fill("M43 8 h14 v22 h-14 z", C.green) },
   up: { vb: "0 0 60 48", svg: line("M5 42 L20 27 L30 35 L52 10 M38 9 L53 9 L53 24", C.green) },
   down: { vb: "0 0 60 48", svg: line("M5 8 L20 23 L30 15 L52 40 M38 41 L53 41 L53 26", C.red) },
   buy: { vb: "0 0 62 50", svg: tag("BUY", C.green, 56) },
   sell: { vb: "0 0 68 50", svg: tag("SELL", C.red, 62) },
   coin: { vb: "0 0 52 52", svg: fill("M26 5 C 38 5, 47 14, 47 26 C 47 38, 38 47, 26 47 C 14 47, 5 38, 5 26 C 5 14, 14 5, 26 5 Z", C.yellow) + line("M26 15 L26 37 M32 19 C 28 16, 20 17, 21 22 C 22 27, 32 25, 32 31 C 32 36, 24 37, 20 33", INK) },
-  chart: { vb: "0 0 62 50", svg: line("M5 42 L5 6 M5 42 L57 42", INK) + line("M11 34 L22 24 L31 29 L45 13", C.purple) + `<circle cx="45" cy="13" r="5" fill="${C.yellow}" stroke="${INK}" stroke-width="3"/>` },
   spark: { vb: "0 0 50 50", svg: fill("M25 4 C 27 18, 32 23, 46 25 C 32 27, 27 32, 25 46 C 23 32, 18 27, 4 25 C 18 23, 23 18, 25 4 Z", C.blue) },
 };
 const SIDE: { d: keyof typeof DOODLES; side: "l" | "r"; top: number; off: number; rot: number; size: number }[] = [
-  { d: "candles", side: "l", top: 40, off: 60, rot: -8, size: 70 },
   { d: "buy", side: "l", top: 330, off: 20, rot: -10, size: 66 },
   { d: "up", side: "l", top: 600, off: 100, rot: 6, size: 62 },
   { d: "coin", side: "l", top: 880, off: 40, rot: -6, size: 50 },
   { d: "candleUp", side: "l", top: 1150, off: 110, rot: 10, size: 44 },
-  { d: "chart", side: "r", top: 20, off: 70, rot: 6, size: 68 },
   { d: "sell", side: "r", top: 310, off: 110, rot: 9, size: 70 },
   { d: "candleDown", side: "r", top: 590, off: 30, rot: -10, size: 46 },
   { d: "down", side: "r", top: 860, off: 90, rot: -5, size: 60 },
