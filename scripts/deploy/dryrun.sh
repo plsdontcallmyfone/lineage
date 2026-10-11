@@ -68,7 +68,15 @@ git -C "$REPO" cat-file -e "$FIRST:scripts/deploy/remote.sh" 2>/dev/null || FIRS
 HEADSHA="$(git -C "$REPO" rev-parse HEAD)"; FIRSTSHA="$(git -C "$REPO" rev-parse "$FIRST")"
 
 echo "== deploy 1: full at $FIRSTSHA"
-s=$(date +%s); DEPLOY_REF="$FIRSTSHA" "$D" 127.0.0.1 full > "$WORK/d1.log" 2>&1; rc=$?
+# DRYRUN_FIRST_KIT=1: deploy 1 runs the first ref's own deploy kit (a detached worktree, removed at the
+# end), so the box starts in that release's layout (e.g. the lineage paths and accounts) and deploy 2
+# migrates it live, as on a real server (docs/plans/REBRAND-UNITS.md 6.4)
+D1="$D"
+if [ "${DRYRUN_FIRST_KIT:-0}" = 1 ]; then
+  git -C "$REPO" worktree add -q --detach "$WORK/kit" "$FIRSTSHA" && ln -s "$REPO/node_modules" "$WORK/kit/node_modules" && D1="$WORK/kit/scripts/deploy/deploy.sh"
+fi
+s=$(date +%s); DEPLOY_REF="$FIRSTSHA" "$D1" 127.0.0.1 full > "$WORK/d1.log" 2>&1; rc=$?
+[ "$D1" != "$D" ] && git -C "$REPO" worktree remove --force "$WORK/kit" 2>/dev/null
 tail -25 "$WORK/d1.log"
 check "deploy.sh full on a fresh box" "$([ $rc = 0 ] && echo 1 || echo 0)" "exit $rc, $(( $(date +%s) - s )) s"
 [ $rc = 0 ] || { echo "first deploy failed; stopping (log above)" >&2; exit 1; }
@@ -76,8 +84,25 @@ grep -q "plan done (nothing sent)" "$WORK/d1.log" && grep -q "fund-site.*plan" "
 
 if [ "$FIRSTSHA" != "$HEADSHA" ]; then
   echo "== deploy 2: full at HEAD $HEADSHA"
+  RR() { ssh -i "$WORK/key" -p $SSH_P -o IdentitiesOnly=yes -o BatchMode=yes -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o LogLevel=ERROR root@127.0.0.1 "$@"; }
+  ids_before=$(RR 'for u in lineage lineage-core lineage-identity units units-core units-identity; do printf "%s=%s " $u "$(id -u $u 2>/dev/null)"; done')
+  # Core's health every 0.5 s on the box while deploy 2 runs (the layout migration happens with Core up)
+  RR 'rm -f /root/dryrun-polls; (for i in $(seq 1 2400); do printf "%s %s\n" "$(date +%s%3N)" "$(curl -s -m 2 -o /dev/null -w %{http_code} http://127.0.0.1:9660/v1/health)" >> /root/dryrun-polls; sleep 0.5; done) >/dev/null 2>&1 &'
   s=$(date +%s); DEPLOY_REF="$HEADSHA" "$D" 127.0.0.1 full > "$WORK/d2.log" 2>&1; rc=$?; tail -8 "$WORK/d2.log"
   check "deploy.sh full re-run on the same box (new commit)" "$([ $rc = 0 ] && echo 1 || echo 0)" "exit $rc, $(( $(date +%s) - s )) s"
+  if grep -q "layout: .* is the directory" "$WORK/d2.log"; then
+    RR 'pkill -f "seq 1 2400" || true' >/dev/null 2>&1
+    links=$(RR 'for d in /opt/lineage /var/lib/lineage /etc/lineage /etc/lineage-core /etc/lineage-identity /home/lineage /var/lib/lineage-monitor; do printf "%s->%s " $d "$(readlink $d)"; done')
+    check "layout: every old directory is a link to its units name" "$([ "$(echo "$links" | tr ' ' '\n' | grep -c -- '->$')" = 0 ] && echo 1 || echo 0)" "$links"
+    ids_after=$(RR 'for u in lineage lineage-core lineage-identity units units-core units-identity; do printf "%s=%s " $u "$(id -u $u 2>/dev/null)"; done')
+    old_ids=$(echo "$ids_before" | tr ' ' '\n' | grep '^lineage' | sed 's/^lineage/X/' | sort | paste -sd' ' -)
+    new_ids=$(echo "$ids_after" | tr ' ' '\n' | grep '^units' | sed 's/^units/X/' | sort | paste -sd' ' -)
+    check "layout: accounts renamed with their UIDs (old names alias the same UIDs)" "$([ "$old_ids" = "$new_ids" ] && echo "$ids_after" | grep -q 'lineage=[0-9]' && echo 1 || echo 0)" "before: $ids_before; after: $ids_after"
+    mig=$(RR 'grep -c . /root/dryrun-polls; awk "\$2!=200" /root/dryrun-polls | wc -l')
+    echo "info: Core health polls during deploy 2 (count, then non-200): $(echo $mig)"
+  elif [ "${DRYRUN_FIRST_KIT:-0}" = 1 ]; then
+    check "layout: deploy 2 migrated the first kit's layout" 0 "no layout lines in the deploy 2 log"
+  fi
 fi
 echo "== deploy 3: full again at HEAD (re-run safety)"
 s=$(date +%s); DEPLOY_REF="$HEADSHA" "$D" 127.0.0.1 full > "$WORK/d3.log" 2>&1; rc=$?; tail -5 "$WORK/d3.log"
