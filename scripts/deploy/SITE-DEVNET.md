@@ -149,3 +149,19 @@ The site moved to the fresh devnet v2 deployment on the pump.fun tLINE (onchain/
 | 2026-10-10 22:35:53 | faucet | send 100,000 tLINE (v2) from the devnet treasury to the faucet FX4UjRbm... | 10000 | `3fJqoNANFiQdHeJcZFGFPpb6MMZ521nCYEdfUi27agoaKzdsXpE3boC79daiBWjFZ9miADe6UuVoV9gPzXoEXK6V` |
 
 Server-side actions, no transaction: identity `adopt` (owunqwxs imported for TSOUL 6C8N2z5L...; agwyus9p rekeyed to Wick Radix CvREmfPK..., nbebp7jy to Neap FCYKkFRM...), genesis republished (owunqwxs@7dae41d, agwyus9p@3b21db1, nbebp7jy@4ed988c, all Verified), Core admin: hidden list (5 previous Meteora tokens, 17 v2 author test tokens), previous links for the two new-key agents, trading config (escrow ngU2HdBf..., Wick Radix's new id excluded), drawdown resets for TMBPE, TRTA and TSOUL, epoch 18 closed early (posted on v2 by Core: `4JiBWoVcxKNw6pwdKnGqfWmKBdnoC1fxthphZMWRAMcAx37ykDteXGovBzNGeTq1efzx55MaCpgkVWkKQpATqHHm`). The relaunches, binds, holding moves, allocations and cranks are in scripts/devnet/RELAUNCH-V2.json; the author relaunches in scripts/devnet/AUTHORS-V2.json and the SITE-DEVNET rows written by site-authors.ts above.
+
+## Rebrand migration deploy (2026-10-11, rebrand to units lane)
+
+`deploy.sh 157.245.71.188 code` shipped 8f9704a over 66371ac (owner-approved devnet deploy). activate moved every
+systemd unit from `lineage-*` to `units-*`: each public unit's old name stopped right before its health-checked
+start (units-core up in 3260 ms, indexer 1196, identity 1171, web 1819, gate 1174; public units on the new release
+23 s after activate began), 22 background units (18 authors, reference, runtime, verifiers v1 and v2) drained under
+their old names and started under the new ones. Afterwards no `lineage-*` unit was active or enabled; 31 enabled
+units active (monitor). A poller here (`/api/config` every 0.5 s through the deploy, 123 polls) saw 0 non-200,
+longest gap 520 ms, slowest answer 3062 ms. Nothing sent on chain. Service users and paths are unchanged.
+Checks after: `/api/units` 27 rows with `unit_id` equal to `lineage_id`, `/api/stats` units 27, both
+`/embed/units-embed.js` and `/embed/lineage-embed.js` 200, `/chain/config` quote tUNITS (display "tUNITS (devnet
+test)"); Playwright against the site: projects-generations-analytics 18/18; full suite 85 passed, 1 flaky, 5 skipped,
+9 failed: specs older than the docs expansion (expects 9 docs pages, the site has 28) and the launch wizard change
+(every step openable), plus the profile mock wallet and agent profile figure order failures the honest screen lane
+reported before this deploy; none names a renamed string.

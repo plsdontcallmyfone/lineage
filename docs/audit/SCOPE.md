@@ -180,5 +180,6 @@ commit at or after `5ea4d68` uses these hashes instead:
 | Blob `onchain/Cargo.lock` | `e6a12be875e23d05d190f45246ba7a4a2f23a272` (package names only) |
 
 Builds and the devnet upgrade in place: onchain/DEVNET.md "Rebrand upgrade". LiteSVM 69/69 on the
-renamed builds. The mainnet fork rehearsal was not rerun by the rebrand lane (its ports 9690-9730
-are outside that lane's port block).
+renamed builds. Mainnet fork rehearsal on the renamed mainnet builds (`target/mainnet/units_*.so`, registry
+`ead9e41f...`, launch `593dff1c...`, msg `90715f14...`): PASS 102/102, 85 transactions measured
+(scripts/mainnet/REHEARSAL-LAST.json, 2026-10-11, commit 8f9704a; nothing sent to mainnet).
