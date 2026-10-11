@@ -32,11 +32,12 @@ test.describe("Token page (/tokens/:mint)", () => {
     }
   });
 
-  test("panels: head, feed | chart (Computer toggle), curve, agent | trade, holders, transactions; commits", async ({ page, data }) => {
+  test("panels: head, feed | chart (Computer toggle), holders/transactions card | trade; commits", async ({ page, data }) => {
     const t = await pickToken(data);
     await page.goto(`/tokens/${t.mint}`);
     await page.locator(".mk-statspanel").waitFor({ timeout: 60_000 });
-    for (const p of [".mk-buildpanel", ".mk-pricepanel", ".mk-tradepanel", ".mk-holderspanel", ".mk-activity", ".mk-curvepanel", ".mk-agentpanel"]) await expect(page.locator(p)).toBeVisible();
+    for (const p of [".mk-buildpanel", ".mk-pricepanel", ".mk-tradepanel", ".tk-book .mk-holderspanel"]) await expect(page.locator(p)).toBeVisible();
+    await expect(page.locator(".mk-curvepanel, .mk-agentpanel")).toHaveCount(0);
     // the chart (Lightweight Charts canvas) first; the toggle swaps it for the agent's desktop
     await expect(page.locator("#mk-chart canvas").first()).toBeVisible();
     await expect(page.locator(".mk-livepanel")).toBeHidden();
@@ -50,6 +51,11 @@ test.describe("Token page (/tokens/:mint)", () => {
     if (repo) await expect(page.locator(".mk-buildpanel .bd-repo > span")).toHaveAttribute("title", repo);
     // transaction rows are the indexer's trades for this mint
     const trades = await data.get(`/market/tokens/${t.mint}/trades?limit=50`).catch(() => null);
+    // one card: Holders first, the toggle swaps in the transactions
+    await expect(page.locator(".tk-book .mk-activity")).toBeHidden();
+    await page.locator("[data-book-b=trades]").click();
+    await expect(page.locator(".tk-book .mk-activity")).toBeVisible();
+    await expect(page.locator(".tk-book .mk-holderspanel")).toBeHidden();
     if (trades?.trades?.length) await expect(page.locator(".mk-trades > li").first()).toHaveAttribute("data-sig", trades.trades[0].signature);
     await cleanPage(page);
   });

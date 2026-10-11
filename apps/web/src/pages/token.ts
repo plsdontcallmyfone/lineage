@@ -1,4 +1,4 @@
-import { ApiError, get, getOptional } from "../api.ts";
+import { ApiError } from "../api.ts";
 import { repoLink, when } from "../fmt.ts";
 import { html, type Raw } from "../html.ts";
 import { mount as mountLivePanel, type LivePanelHandle } from "../live-panel/index.ts";
@@ -19,10 +19,8 @@ import {
   market,
   phaseBadge,
   priceFig,
-  progressBar,
   QUOTE,
   shortAddr,
-  txLink,
   explorerAddr,
   explorerTx,
   type Candle,
@@ -30,7 +28,7 @@ import {
   type TokenDetail,
   type Trade,
 } from "../market.ts";
-import { agentLink, empty, icon, kv, panel, stat } from "../ui.ts";
+import { empty, icon, panel, stat } from "../ui.ts";
 import { unreachable } from "./tokens.ts";
 import type { Page } from "./types.ts";
 
@@ -109,57 +107,12 @@ function holdersTable(d: Data): Raw {
   <div class="panel-note">${h.excludes} excluded${h.source ? `, counted from ${h.source}` : ""}.</div>`;
 }
 
-const EVENT_METEORA: Record<string, string> = { launch: "Launched on the DBC curve", migration: "Migrated to DAMM v2 by Meteora", graduated: "Graduated (lineage_launch)", repointed: "Pool position repointed to the agent" };
-const EVENT_PUMP: Record<string, string> = { launch: "Launched on the pump.fun curve", migration: "Migrated to PumpSwap by pump.fun", graduated: "Graduated (lineage_launch)" };
-
-function curveBody(t: TokenDetail): Raw {
-  const grad = t.phase === "graduated";
-  const steps = [
-    { k: "launch", done: true },
-    { k: "migration", done: t.migrated || grad },
-    { k: "graduated", done: grad },
-  ];
-  const evs = new Map(t.events.map((e) => [e.kind, e]));
-  const met = t.venue === "meteora";
-  const EVENT = met ? EVENT_METEORA : EVENT_PUMP;
-  return html`<div class="panel-b mk-curve">
-      <div class="mk-curve-h"><span class="eyebrow">Curve progress</span>${phaseBadge(t)}</div>
-      <div class="mk-curve-bar">${progressBar(t.curve_progress, "curve_progress")}</div>
-      <div class="mk-curve-n dim">${!met ? (grad ? html`The pump.fun curve sold out; trading continues on the PumpSwap pool.` : html`${amountFig(t.quote_reserve, QUOTE, "quote_reserve")} raised; when the curve sells out pump.fun migrates it to PumpSwap.`)
-        : grad ? html`The curve filled at ${amountFig(t.migration_threshold, QUOTE, "migration_threshold")}; trading continued on the DAMM v2 pool. Launched on the earlier Meteora venue: read only.` : html`${amountFig(t.quote_reserve, QUOTE, "quote_reserve")} of ${amountFig(t.migration_threshold, QUOTE, "migration_threshold")} raised on the earlier Meteora venue: read only.`}</div>
-      <ol class="mk-steps">${steps.map((s) => {
-        const e = evs.get(s.k);
-        return html`<li class="${s.done ? "done" : ""}"><i>${s.done ? icon.check : ""}</i><div><div>${EVENT[s.k]}</div><div class="sub faint">${e ? html`${e.time ? when(e.time * 1000) : ""} ${txLink(e.signature)}` : s.done ? "transaction not indexed" : "not yet"}</div></div></li>`;
-      })}</ol>
-    </div>`;
-}
-
 /** What the agent is building: its live status or last verified improvement, the repository and the session link. */
 function buildingBody(t: TokenDetail): Raw {
   return html`<div class="panel-b mk-building">${buildingLine(t as unknown as DirToken, { full: true })}</div>`;
 }
 
-function agentBody(t: TokenDetail, lineages: { lineage_id: string; recipe_name: string; height: number; status: string }[] | null, known: boolean): Raw {
-  return html`${kv([
-    ["Agent", html`${agentLink(t.agent)}${known ? "" : html` <span class="faint" title="This Core has no record of the agent yet">not in Core</span>`}`],
-    ["Units", lineages === null ? html`<span class="faint">Core not reachable</span>` : lineages.length ? html`<span class="mk-lins">${lineages.map((l) => html`<a class="link" href="/units/${l.lineage_id}">${l.recipe_name}</a> <span class="faint">gen ${l.height}${l.status !== "active" ? `, ${l.status}` : ""}</span>`)}</span>` : html`<span class="faint">none on this repository yet</span>`],
-    ["Repository", t.repo_url ? repoLink(t.repo_url) : null],
-    ["Launcher", addrLink(t.launcher)],
-    ["Mint", html`${addrLink(t.mint)} <button type="button" class="mk-copy" data-copy="${t.mint}" aria-label="Copy the mint address">${icon.copy}</button>`],
-    ["Curve pool", addrLink(t.pools.dbc_pool)],
-    ["DAMM v2 pool", t.pools.damm_pool ? addrLink(t.pools.damm_pool) : html`<span class="faint">after graduation</span>`],
-  ])}`;
-}
-
 // ------------------------------------------------------------------------------------------------
-
-const norm = (u: string | null | undefined) => (u ?? "").toLowerCase().replace(/\.git$/, "").replace(/\/+$/, "");
-
-async function agentLineages(t: TokenDetail) {
-  const [a, ls] = await Promise.all([getOptional<any>(`agents/${t.agent}`).catch(() => null), get<any[]>("lineages").catch(() => null)]);
-  const repo = norm(a?.target_repo ?? t.repo_url);
-  return { known: !!a, lineages: ls ? ls.filter((l) => norm(l.repo) === repo) : null };
-}
 
 export async function tokenPage([mint]: string[]): Promise<Page> {
   let d: Data;
@@ -177,7 +130,6 @@ export async function tokenPage([mint]: string[]): Promise<Page> {
   const t = d.t;
   const dt = t as unknown as DirToken;
   injectBuildingStyle();
-  const ag = await agentLineages(t);
   const genesis = await loadGenesis(t.agent);
   const body = html`
     <section class="panel tk-head mk-statspanel">
@@ -213,16 +165,18 @@ export async function tokenPage([mint]: string[]): Promise<Page> {
           <div class="tk-pane" data-pane-v="chart" id="mk-chart"></div>
           <div class="tk-pane mk-livepanel" data-pane-v="computer" hidden><div id="mk-live" class="mk-live"></div></div>
         </section>
-        <div class="tk-pair">
-          ${panel("Curve and graduation", html`<div id="mk-curve">${curveBody(t)}</div>`, { cls: "mk-curvepanel" })}
-          ${panel("Agent", html`<div id="mk-agent">${agentBody(t, ag.lineages, ag.known)}</div>`, { cls: "mk-agentpanel" })}
-        </div>
+        <section class="panel tk-book" data-book="holders">
+          <div class="panel-h">
+            <div class="seg tk-bookseg" role="group" aria-label="Show"><button type="button" data-book-b="holders" aria-pressed="true">Holders${d.holders.holders !== null ? html` <span class="count num">${d.holders.holders}</span>` : ""}</button><button type="button" data-book-b="trades" aria-pressed="false">Transactions</button></div>
+            <div class="aside"><span class="faint" data-book-a="holders">top ${d.holders.top.length}</span><span class="faint" data-book-a="trades" hidden>on chain</span></div>
+          </div>
+          <div class="mk-holderspanel" data-book-p="holders"><div id="mk-holders">${holdersTable(d)}</div></div>
+          <div class="mk-activity" data-book-p="trades" hidden><div id="mk-trades">${tradesTable(d)}</div></div>
+        </section>
         <div id="mk-commits"></div>
       </div>
       <div class="tk-right">
         ${panel(html`Trade ${t.symbol ?? ""}`, html`<div id="mk-trade" class="mk-trade"><div class="panel-b dim">Loading the wallet module…</div></div>`, { cls: "mk-tradepanel" })}
-        ${panel("Holders", html`<div id="mk-holders">${holdersTable(d)}</div>`, { cls: "mk-holderspanel", count: d.holders.holders ?? undefined, aside: html`<span class="faint">top ${d.holders.top.length}</span>` })}
-        ${panel("Transactions", html`<div id="mk-trades">${tradesTable(d)}</div>`, { cls: "mk-activity", aside: html`<span class="faint">on chain</span>` })}
       </div>
     </div>`;
 
@@ -255,7 +209,6 @@ export async function tokenPage([mint]: string[]): Promise<Page> {
         set("mk-phase", phaseBadge(x.t));
         set("mk-trades", tradesTable(x));
         set("mk-holders", holdersTable(x));
-        set("mk-curve", curveBody(x.t));
         set("mk-building", buildingBody(x.t));
         for (const b of root.querySelectorAll<HTMLElement>("[data-tf]")) b.setAttribute("aria-pressed", String(b.dataset.tf === x.tf));
         chart.set(x.candles, x.t.start_price, label(x));
@@ -282,6 +235,17 @@ export async function tokenPage([mint]: string[]): Promise<Page> {
       root.querySelector("[data-scroll-trade]")?.addEventListener("click", (ev) => {
         ev.preventDefault();
         root.querySelector(".mk-tradepanel")?.scrollIntoView({ behavior: "smooth", block: "start" });
+      });
+
+      // Holders / Transactions: one card under the chart, the toggle swaps the list
+      const book = root.querySelector<HTMLElement>(".tk-book")!;
+      book.querySelector(".tk-bookseg")?.addEventListener("click", (ev) => {
+        const b = (ev.target as HTMLElement).closest<HTMLElement>("[data-book-b]");
+        if (!b) return;
+        const v = b.dataset.bookB!;
+        book.dataset.book = v;
+        for (const x of book.querySelectorAll<HTMLElement>("[data-book-b]")) x.setAttribute("aria-pressed", String(x.dataset.bookB === v));
+        for (const x of book.querySelectorAll<HTMLElement>("[data-book-p], [data-book-a]")) x.hidden = (x.dataset.bookP ?? x.dataset.bookA) !== v;
       });
 
       // Chart / Computer: the centre panel shows the price chart or the agent's computer (the live panel:

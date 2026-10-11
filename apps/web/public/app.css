@@ -924,8 +924,10 @@ a.eco-btn { text-decoration: none; }
 .tk-chart-empty { position: absolute; inset: 0; display: grid; place-items: center; padding: 24px; text-align: center; color: var(--tt); pointer-events: none; }
 .tk-chart-empty[hidden] { display: none; }
 .mk-livepanel .mk-live { padding: 12px; }
-.tk-pair { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 16px; align-items: start; }
-.tk-pair > .panel + .panel { margin-top: 0; }
+.tk-book .panel-h { gap: 12px; flex-wrap: wrap; }
+.tk-book [hidden] { display: none; }
+.tk-book .seg .count { margin-left: 4px; color: inherit; opacity: .7; }
+.tk-book .mk-trades { max-height: 560px; }
 #mk-commits:empty { display: none; }
 
 .tk-rows { list-style: none; margin: 0; padding: 0; }
@@ -955,17 +957,15 @@ a.eco-btn { text-decoration: none; }
   .tk-left { grid-column: 1 / -1; order: 3; display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); align-items: start; }
 }
 @media (max-width: 900px) {
-  /* one column: chart, trade, holders, transactions, then the rest */
+  /* one column: chart, trade, holders and transactions, then the rest */
   .tk-grid { display: flex; flex-direction: column; align-items: stretch; }
   .tk-left, .tk-center, .tk-right { display: contents; }
   .tk-chartpanel { order: 1; }
   .mk-tradepanel { order: 2; }
-  .mk-holderspanel { order: 3; }
-  .mk-activity { order: 4; }
-  .mk-buildpanel { order: 5; }
-  .tk-feed { order: 6; }
-  .tk-pair { order: 7; grid-template-columns: minmax(0, 1fr); }
-  #mk-commits { order: 8; }
+  .tk-book { order: 3; }
+  .mk-buildpanel { order: 4; }
+  .tk-feed { order: 5; }
+  #mk-commits { order: 6; }
   .tk-stats .stat:last-child:nth-child(odd) { grid-column: auto; }
   .tk-stats .stat .v { font-size: 19px; }
   .tk-stats { grid-template-columns: repeat(2, minmax(0, 1fr)); }
