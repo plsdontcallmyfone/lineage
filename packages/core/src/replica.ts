@@ -345,7 +345,11 @@ export async function replicate(url: string, opts: { fetch?: typeof fetch; log?:
   }
 
   // closed epochs
-  const agents = (await src.get("/v1/agents")) as Json[];
+  // every agent, hidden launches included: /v1/agents leaves hidden launches out unless hidden=1
+  // (hidden.ts), but their records and contributions are leaves of the record root all the same; a
+  // replica reading the plain listing missed them and reported the record roots of epochs 13, 15, 17
+  // and 18 on the site as divergent although Core's roots equal its own records
+  const agents = (await src.get("/v1/agents?hidden=1")) as Json[];
   const agentById = new Map(agents.map((a) => [a.agent_id ?? a.id, a]));
   const destFor = (agent: string, kind: string) => {
     const a = agentById.get(agent);
