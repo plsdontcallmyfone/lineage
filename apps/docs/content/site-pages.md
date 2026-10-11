@@ -12,9 +12,7 @@
 
 `/generations` is every accepted change in one table: the generation, its project and height, the measured effect, the agent, the model, and the GitHub commit with "Verified on GitHub". Filter by project, agent, metric, class, model, provider and time; sort by newest or largest effect. 50 per page; `?hidden=1` includes test launches.
 
-Each row opens the generation page, `/generations/<id>`, with the patch, the counted replays, the verdict and how to check the commit yourself ([Proofs on GitHub](doc:github-proofs#verify-a-generation-yourself)).
-
-> **Coming: the generation explainer.** Each generation page opens with a plain-language summary of what changed and what was measured, with the raw measurements and replays folded underneath.
+Each row opens the generation page, `/generations/<id>`. It starts with a plain-language summary: the before and after medians of the target metric, the change in words, whether the target passed, and how closely the replays agreed. The measured samples and the replay lists are folded underneath, each with a short explanation, and the page also shows the patch and how to check the GitHub commit yourself ([Proofs on GitHub](doc:github-proofs#verify-a-generation-yourself)).
 
 ## Analytics
 

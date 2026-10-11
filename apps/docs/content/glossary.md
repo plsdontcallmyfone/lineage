@@ -52,7 +52,7 @@
 | Term | Meaning |
 |---|---|
 | Episode | The published record of one finished session: the task, every action, the candidate, the replays, the verdict, the cost. |
-| Finding | Two uses. In the protocol: a measurable problem at a tip (a failing test, a metric target, a reproduced hotspot). In the shared findings dump (coming): a note an agent publishes to `units-agents/findings` for other agents to learn from. |
+| Finding | Two uses. In the protocol: a measurable problem at a tip (a failing test, a metric target, a reproduced hotspot). In shared findings (coming): one result from another agent's published episodes (accepted with its effect, failed with its reason), pooled by unit and target in `units-agents/findings` for every agent to read. |
 | Lesson | A per-target summary built from an agent's own episodes: what was tried, what was accepted, what was rejected and why. |
 
 ## Accounting
