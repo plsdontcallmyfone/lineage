@@ -21,6 +21,9 @@
 //   main.ts learnings [--agent <id>] [--force] [--dry-run]
 //                                      publish agents' learnings repositories <login>/units-learnings
 //                                      (docs/plans/AGENT-LEARNINGS.md 7); also run at the end of every cycle
+//   main.ts findings-dump [--force] [--dry-run]
+//                                      publish the next batch of every listed agent's findings to
+//                                      units-agents/findings (docs/plans/AGENT-LEARNINGS.md 12); also run at the end of every cycle
 //   main.ts genesis --agent <id> [--no-token | --with-token] [--force] [--sign-key <keypair.json>] [--readme]
 //                                      publish (or re-publish) the agent's GitHub genesis repository
 //                                      (docs/plans/GITHUB-GENESIS.md); --readme refreshes only the status
@@ -52,6 +55,7 @@ import { tokenShapeOk } from "./github-token.ts";
 import { errText } from "./redact.ts";
 import { GenesisRunner, httpSources } from "./genesis.ts";
 import { httpLearningsSources, LearningsPublisher } from "./learnings.ts";
+import { FindingsDumpPublisher, httpDumpSources } from "./findings-dump.ts";
 import { CoreClient } from "../../core/src/client.ts";
 import { handler } from "./http.ts";
 import { safeLog } from "./redact.ts";
@@ -78,8 +82,8 @@ if (cmd === "init") {
   console.log(JSON.stringify({ key: k.created ? "created" : "present", dir: DIR }));
   process.exit(0);
 }
-if (!["serve", "cycle", "reserve-add", "reserve-list", "status", "genesis", "publisher-set", "publisher-status", "publisher-clear", "learnings", "adopt", "publisher-move", "org-join", "org-status"].includes(cmd ?? "")) {
-  console.error("usage: main.ts init | serve | cycle | reserve-add | reserve-list | status | genesis | publisher-set | publisher-status | publisher-clear | publisher-move | org-join | org-status | learnings | adopt  (see the header)");
+if (!["serve", "cycle", "reserve-add", "reserve-list", "status", "genesis", "publisher-set", "publisher-status", "publisher-clear", "learnings", "adopt", "publisher-move", "org-join", "org-status", "findings-dump"].includes(cmd ?? "")) {
+  console.error("usage: main.ts init | serve | cycle | reserve-add | reserve-list | status | genesis | publisher-set | publisher-status | publisher-clear | publisher-move | org-join | org-status | learnings | findings-dump | adopt  (see the header)");
   process.exit(2);
 }
 
@@ -176,6 +180,27 @@ async function runLearnings(): Promise<boolean> {
 
 if (cmd === "learnings") process.exit((await runLearnings()) ? 0 : 1);
 
+async function runFindingsDump(): Promise<boolean> {
+  try {
+    const keyFile = arg("core-key", "UNITS_IDENTITY_CORE_KEY");
+    let post: ((path: string, body: unknown) => Promise<{ status: number; body: any }>) | null = null;
+    if (keyFile) {
+      const raw = JSON.parse(readFileSync(keyFile, "utf8"));
+      const cc = new CoreClient(CORE, Array.isArray(raw) ? keyFromSolanaJson(raw) : raw);
+      post = (path, body) => cc.post(path, body);
+    }
+    const s = await new FindingsDumpPublisher({ svc, sources: httpDumpSources({ core: CORE, post }), site: SITE, log }).run({ force: flag("force"), dryRun: flag("dry-run") });
+    log(`findings dump: ${s.result}, ${s.added} added, ${s.removed} removed, ${s.episodes} episodes on ${s.units} units in ${s.repo ?? "(no repository)"} up to cursor ${s.last_seq}${s.more ? ", more to come" : ""}${s.reason ? ` (${s.reason})` : ""}`);
+    if (cmd === "findings-dump") console.log(JSON.stringify(s, null, 2));
+    return s.result !== "failed";
+  } catch (e) {
+    log(`findings dump: ${errText(e)}`);
+    return false;
+  }
+}
+
+if (cmd === "findings-dump") process.exit((await runFindingsDump()) ? 0 : 1);
+
 if (cmd === "genesis") {
   const agent = arg("agent");
   if (!agent || !/^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(agent)) {
@@ -236,6 +261,7 @@ if (cmd === "reserve-add") {
   const s = await cycleOnce({ svc, core: CORE, site: SITE ?? undefined, coreKeyFile: arg("core-key", "UNITS_IDENTITY_CORE_KEY") ?? null, dryRun: flag("dry-run"), force: flag("force"), log });
   log(`cycle done: ${s.agents} agents, ${s.lineages.length} lineages built, ${s.skipped_unchanged} unchanged, ${s.published} published (${s.verified} verified), ${s.prs.filter((p) => p.action === "opened").length} PRs opened, ${s.rejected.length} rejected, GitHub records ${s.recorded} recorded + ${s.awaiting} awaiting publisher${s.publisher ? ` (publisher ${s.publisher})` : " (no publisher)"}, ${s.record_failures.length} not recorded${s.error ? `, error: ${s.error}` : ""}`);
   await runLearnings();
+  await runFindingsDump();
   process.exit(s.error ? 1 : 0);
 } else {
   const port = Number(arg("port", "UNITS_IDENTITY_PORT", "9665"));

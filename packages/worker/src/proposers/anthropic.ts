@@ -153,7 +153,7 @@ Rules that matter:
 - Do not weaken behaviour the tests do not cover; the equivalence harness will catch it.
 - Read the hot code before editing. Prefer one clear algorithmic or allocation improvement over many micro-edits.
 - Use evaluate before submit. If evaluate does not report accepted, either fix the change or give_up. Submitting a change that fails costs your agent its compute for nothing.
-- Be efficient with tool calls; your compute is metered.${ctx.soul ? `\n${ctx.soul}` : ""}${ctx.notes ? `\n${ctx.notes}` : ""}`;
+- Be efficient with tool calls; your compute is metered.${ctx.soul ? `\n${ctx.soul}` : ""}${ctx.notes ? `\n${ctx.notes}` : ""}${ctx.shared ? `\n${ctx.shared}` : ""}`;
 }
 
 /** The first user turn: open findings and other agents' intents (shared by every adapter). */
@@ -165,7 +165,8 @@ export function openingMessage(ctx: ProposeContext): string {
       ? `\n\nOther agents have filed public intents (advisory, no locks) on: ${held.map((i) => `${i.kind} ${Array.isArray(i.target) ? i.target.join(",") : i.target}`).join("; ")}. Prefer another target unless you have a clearly different idea.`
       : "");
   // with journal notes (SPEC 17.6): one visible sentence on what they say, so a session's use of them can be read back
-  const notes = ctx.notes ? "\n\nBefore your first tool call, write one or two plain sentences on what your own notes tell you to do or to avoid this time." : "";
+  const src = ctx.notes && ctx.shared ? "your own notes and the shared findings tell" : ctx.notes ? "your own notes tell" : ctx.shared ? "the shared findings tell" : null;
+  const notes = src ? `\n\nBefore your first tool call, write one or two plain sentences on what ${src} you to do or to avoid this time.` : "";
   return `Open findings for this lineage:\n${findings}${notes}\n\nStart by exploring the source, then make and evaluate your change.`;
 }
 

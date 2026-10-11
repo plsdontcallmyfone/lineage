@@ -37,6 +37,7 @@ import { RecipeBook } from "./recipes.ts";
 import { proposerSoulBlock, type SoulDoc } from "@units/souls";
 import { Telemetry } from "./telemetry.ts";
 import { checkEntry, FactsLog, journalPrompt, JOURNAL_RESERVE_USD, notesBlock, readNotes, storeEntry } from "./journal.ts";
+import { plannedKey, readShared, sharedBlock, type SharedData } from "./shared-findings.ts";
 import { writeSecret } from "./secret-file.ts";
 import { SessionRecorder } from "./session.ts";
 import { EpisodeCapture } from "./episode.ts";
@@ -110,6 +111,12 @@ export interface WorkerOptions {
    * inside the attempt's cap). The hosted runtime turns it on; self-hosted workers opt in.
    */
   journal?: boolean;
+  /**
+   * Shared findings (docs/plans/AGENT-LEARNINGS.md 12.4): before each attempt read every listed agent's
+   * published outcomes on the unit from Core into a short labelled block after the agent's own notes.
+   * Default: on with the journal (the hosted runtime); `false` turns it off; `{ max_tokens }` sets the cap.
+   */
+  sharedFindings?: boolean | { max_tokens?: number };
   /**
    * Onchain messages (SPEC 12.5): when set, encryption keys and messages go through this transport
    * (units_msg; packages/core msgchain.ts ChainMessenger) instead of POST /v1/messages. Reading
@@ -507,11 +514,22 @@ export class Worker {
         dependsOn: stack?.commit_id ?? null,
         soul: await this.soulBlock(),
         notes: journal ? notesBlock(await readNotes(this.client, this.id, view.lineage_id), view.lineage_id) : null,
+        shared: null,
         journalReserveUsd: journal && proposer.journal ? JOURNAL_RESERVE_USD : 0,
         spent: { usd: 0 },
         ...budget,
       };
       ctx.meter = episode.wrap(ctx.meter);
+      // shared findings after the notes (AGENT-LEARNINGS.md 12.4); re-ranked for the planned target below
+      const sharedOpt = this.opts.sharedFindings ?? journal;
+      const sharedCap = typeof sharedOpt === "object" ? sharedOpt.max_tokens : undefined;
+      const sharedData: SharedData | null = sharedOpt && proposer.name !== "scripted" ? await readShared(this.client, view.lineage_id) : null;
+      const setShared = (target: string | null) => {
+        const b = sharedBlock(sharedData, { self: this.id, target, maxTokens: sharedCap });
+        ctx.shared = b?.text ?? null;
+        if (b) this.log(`shared findings: ${b.items} items, about ${b.tokens} tokens${target ? ` (target ${target})` : ""}`);
+      };
+      setShared(null);
       jctx = ctx;
       if (collab !== "off") {
         // intents are advisory (SPEC 12.1): reading or filing one never blocks authoring
@@ -523,6 +541,7 @@ export class Worker {
         if (proposer.plan) {
           ctx.planned = await proposer.plan(ctx);
           episode.plan(ctx.planned);
+          if (ctx.planned && sharedData) setShared(plannedKey(ctx.planned));
           if (ctx.planned) {
             const intent = await this.fileIntent(view.lineage_id, tree.gen_id, ctx.planned);
             if (intent) await this.send(`board:${view.lineage_id}`, intentNote({ kind: ctx.planned.kind, target: this.normTarget(ctx.planned), tip: tree.gen_id }), { ref: { kind: "intent", id: intent } });

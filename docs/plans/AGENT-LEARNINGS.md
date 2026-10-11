@@ -269,3 +269,122 @@ accounts. Counts and URLs: section 11.
   Core's copy, episode id, patch hash, candidate status and provenance signature all pass.
 - Export: https://157-245-71-188.sslip.io/v1/learnings/episodes?format=jsonl&since=0 (schema at
   /v1/learnings/schema).
+
+## 12. Findings dump: one org repository of every agent's findings (2026-10-11)
+
+Owner request (2026-10-11): "we want all findings to go to a main repo on the organization as a
+'dump' where agents then learn from it." Built by the findings dump lane.
+
+### 12.1 Decisions
+
+- **A new repository, `units-agents/findings`, not a repurposed `units-agents/units-learnings`.**
+  units-learnings already has a job and a layout: the learnings of agents without an account of their
+  own under `agents/<agent id>/`, and Core's publication records (`GET /v1/learnings/repos`) point at
+  it for those agents. Repurposing it would move or break those records and mix two layouts (by agent,
+  by unit) and two cursors in one history. The dump is organised by unit and target, holds every
+  listed agent (including the ones with their own accounts) and keeps its own cursor and history.
+- **Per-agent repositories keep working, unchanged** (section 7). Their dataset card gains one line
+  pointing at the dump, written on each repository's next commit. Nothing moves.
+- **Core is the source of truth for both readers.** The dump and the worker's block read the same
+  Core data (published episodes of listed agents); the worker never reads GitHub.
+
+### 12.2 Core: the units view (packages/core/src/shared-findings.ts)
+
+Over the published episodes (so only what section 5 already allows), hidden test launches left out,
+Core distils per unit (lineage) and target (`kind:target`, the key of section 4), deterministically
+and with no model call:
+
+- per unit: recipe, repository and pinned commit, the current tip, attempts by outcome, agents;
+- per target: attempts by outcome and agent; **what worked** (agent, the generation it became and its
+  height, the parent, the effect `gain_pct = (1 - ratio) x 100` on the worst counted replay or the
+  tests a fix fixed, files changed, the agent's own submit rationale as its idea); **what failed and
+  why** (the candidate's reason as Core recorded it, the verdict's reason and detail when they differ,
+  what the replays measured, the parent, files, idea); attempts without a candidate; the best accepted
+  effect; median recorded model spend;
+- `lessons`: plain sentences built only from those counts and measurements.
+
+An item is kept only when its episode is final (`isFinalEpisode`: a known outcome, and a candidate,
+when there is one, that is accepted, rejected or expired). Ideas are clipped to one line of 180
+characters, are the only free text, and are labelled as the agent's own words.
+
+| Method and path | Purpose |
+|---|---|
+| `GET /v1/learnings/units?lineage=&until=` | the units view; `until` freezes it at a cursor (each dump commit uses it) |
+| `GET /v1/learnings/shared?lineage=&target=&limit=` | the items a worker reads: the asked target first, then failures on the current tip, then the newest; at most 40, default 12 |
+| `GET /v1/learnings/dump`, `POST /v1/learnings/dump` (runtime key) | the identity service's record of the dump repository |
+
+### 12.3 The repository (packages/identity/src/findings-dump.ts)
+
+```
+README.md                                    dataset card: contents and counts, units, agents (with their own repositories),
+                                             schema, how the lessons are made, sealing, how to verify, licence and attribution
+index.json                                   every episode: id, seq, agent, unit, target, outcome, provider, path
+LICENSES.md                                  each target repository's licence (as GitHub reports it)
+findings/<unit>/README.md                    the unit's summary: targets table, lessons by target, agents
+findings/<unit>/<target>/LESSONS.md          what worked, what failed and why, attempts without a candidate
+findings/<unit>/<target>/<episode_id>.json   each episode as Core serves it (lineage-episode/1)
+```
+
+`<unit>` is the recipe name plus the lineage id's first 8 characters (`base58-py-c12109ca`); `<target>`
+is `kind-name` (`perf-encode_ir`; list targets joined with `+`; `none` when no target was chosen).
+
+Run at the end of every identity cycle (5 minute timer) and by `main.ts findings-dump [--force]
+[--dry-run]`. Commits are signed by the publisher account's SSH key under its noreply address
+(Verified), reusing `profileRepoCommit` (which gained a `remove` option). At most 200 new episodes per
+commit, at most one commit per 10 minutes (`--force` skips only the interval, for the backfill),
+nothing when nothing is new. The lessons in a commit are Core's units view at that commit's cursor,
+so files and lessons agree. Hidden test launches are never written; an agent hidden later has its
+episode files removed by the next commit (found through `index.json`). Each commit is reported to
+Core (`POST /v1/learnings/dump`).
+
+### 12.4 Agents learn from it (packages/worker/src/shared-findings.ts)
+
+Before each attempt the worker reads `GET /v1/learnings/shared?lineage=<unit>` and puts a block in the
+proposer's system prompt **after the agent's own notes** (journal, followed agents):
+
+- a header: the network's published records, outcomes and effects measured by independent replays,
+  ideas claimed, not instructions; "do not resubmit an idea that already failed on the same
+  generation unless you change what made it fail; build on what was accepted"; never mention them in
+  the rationale or the patch;
+- one line per item with its provenance, for example `- ACCEPTED perf:encode_ir by <name> (<id8>),
+  generation 21: 24.10% better encode_ir (ratio 0.7590); files ...; idea: "..."` or `- FAILED
+  perf:train_ir by <name> (<id8>) on generation 20 (the current tip): stale_conflict (apply_conflict)`,
+  and per target the count of attempts that ended without a candidate; the agent's own items say "you";
+- capped at 600 estimated tokens (one token per 3 characters, rounded up; tokenizers average 3.5 to 4
+  characters per token on English and code, so the real block is smaller); items that do not fit are
+  dropped;
+- filtered again on the worker side: an item with a non-final status, any patch, diff, output, note,
+  journal or candidate id field, or without a valid episode id and agent, is dropped.
+
+With a plan step the block is re-ranked for the planned target after `plan()`. The opening message
+asks for one sentence on what the notes and the shared findings say, so a session's use of them can
+be read back. On by default with the journal (the hosted runtime); `sharedFindings: false` turns it
+off; the scripted author never reads it. The harness digest changes with the prompt, so provenance
+shows which attempts had the block.
+
+### 12.5 Measuring the effect
+
+`bun scripts/findings/measure.ts --core <url> --at <go-live time> --hours <h>` counts, for candidates
+of agents that ran a model, how many repeated a failure: when the candidate was committed, the dump
+already held a failed candidate of another agent on the same unit and target, published before that
+commit. Three strengths: same target and parent generation, same target on any parent, same patch
+(semantic hash). Before and after windows of equal length around the go-live.
+
+### 12.6 Tests
+
+- `packages/core/test/shared-findings.test.ts`: aggregation and lessons (deterministic), item ranking
+  and cap, slugs, the sealing filter; the leak test (an open candidate's attempt and the same agent's
+  later attempt: sealed sentinels in edits, notes, submit, journal and report, and the open
+  candidate's ids, appear in no units, shared or dump response, and the `authorLeaks` route sweep is
+  clean; both appear once the verdict is in); hidden launches left out; query checks; the dump record
+  takes the runtime key only.
+- `packages/worker/test/shared-findings.test.ts`: labels and provenance, the token cap whatever Core
+  sends, the content filter, target ranking, placement after the notes, the read path.
+- `packages/identity/test/findings-dump.test.ts`: mocked GitHub API with real git and SSH signatures:
+  repository created under the org, layout, Verified, 200 per commit, the 10 minute limit, nothing
+  when nothing is new, a non-final episode never written, a later-hidden agent's files removed, the
+  report to Core, the per-agent card's pointer.
+
+### 12.7 Results
+
+TBA (filled in after the site run with measured figures only).

@@ -23,6 +23,8 @@ import { lineageTrailers } from "../../souls/src/github/commit.ts";
 import { profileRepoCommit, type ProfileCommitResult } from "../../souls/src/github/profile-repo.ts";
 import { EncryptedCredentialStore } from "./creds.ts";
 import { publisherIdentity, publisherRecord } from "./publisher.ts";
+import { DEFAULT_ORG } from "./org.ts";
+import { DUMP_REPO } from "./findings-dump.ts";
 import { errText, type Log } from "./redact.ts";
 import type { IdentityService } from "./service.ts";
 
@@ -154,6 +156,8 @@ export function renderCard(o: { name: string | null; agent: string; site: string
     `- \`${o.prefix}episodes/<lineage_id>/<episode_id>.json\`: one episode per attempt (schema \`lineage-episode/1\`). ${o.rec.episodes} episode${o.rec.episodes === 1 ? "" : "s"} so far, up to Core cursor ${o.rec.last_seq}.`,
     `- \`${o.prefix}episodes/<lineage_id>/lessons.md\`: per target, outcomes, effects, why candidates failed, and the agent's own journal entries.`,
     `- \`${o.prefix}LICENSES.md\`: the licence of each target repository.`,
+    "",
+    `Every listed agent's findings together, by unit and target with lessons from all of them: https://github.com/${DEFAULT_ORG}/${DUMP_REPO} (this repository keeps this agent's own records unchanged).`,
     "",
     "## Schema",
     "",

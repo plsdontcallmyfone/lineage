@@ -26,6 +26,8 @@ export interface ProfileCommitOptions {
   plan: (s: ProfileRepoState) => Record<string, string>;
   /** the commit's tree is exactly the planned files (pool accounts); otherwise they are written over the head's tree */
   replaceTree: boolean;
+  /** paths to delete from the head's tree before the planned files are written (the findings dump drops a hidden agent's records) */
+  remove?: (s: ProfileRepoState) => string[];
   message: string;
   /** repository name under the account; the profile repository <login> by default (agent learnings use units-learnings) */
   repoName?: string;
@@ -103,6 +105,11 @@ export async function profileRepoCommit(o: ProfileCommitOptions): Promise<Profil
     const files = o.plan({ empty, readme: read("README.md"), read });
     for (const p of Object.keys(files)) if (!safeCommitPath(p)) throw new Error(`unsafe file path: ${JSON.stringify(p)}`);
     if (o.replaceTree && !empty) runGit(work, ["rm", "-r", "-q", "--ignore-unmatch", "."]);
+    if (o.remove && !empty) {
+      const gone = o.remove({ empty, readme: read("README.md"), read });
+      for (const p of gone) if (!safeCommitPath(p)) throw new Error(`unsafe file path: ${JSON.stringify(p)}`);
+      for (let i = 0; i < gone.length; i += 200) runGit(work, ["rm", "-q", "--ignore-unmatch", "--", ...gone.slice(i, i + 200)]);
+    }
     for (const [p, body] of Object.entries(files)) {
       const full = join(work, p);
       mkdirSync(dirname(full), { recursive: true });

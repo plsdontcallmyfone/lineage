@@ -12,6 +12,7 @@ import { erc8004Of } from "./erc8004.ts";
 import { sessionsOf } from "./sessions.ts";
 import { journalOf } from "./journal.ts";
 import { jsonlResponse, learningsOf, schemaDoc } from "./learnings.ts";
+import { readDump, recordDump, sharedFindingsOf } from "./shared-findings.ts";
 import { socialOf } from "./social.ts";
 import { leaderboardOf } from "./leaderboard.ts";
 import { agentProfile, feedOf } from "./feed.ts";
@@ -214,6 +215,11 @@ export function buildRoutes(core: Core): Route[] {
     route("GET", "/v1/learnings/lessons", "none", (c) => learningsOf(core).lessons({ agent: q(c, "agent"), lineage: q(c, "lineage") })),
     route("GET", "/v1/learnings/repos", "none", (c) => learningsOf(core).repos(q(c, "agent"))),
     route("POST", "/v1/learnings/repos", "runtime", (c) => learningsOf(core).recordRepos(c.agent!, c.json())),
+    // shared findings (docs/plans/AGENT-LEARNINGS.md 12, src/shared-findings.ts): every listed agent's published episodes by unit and target
+    route("GET", "/v1/learnings/units", "none", (c) => sharedFindingsOf(core).units({ lineage: q(c, "lineage"), until: int(c, "until") })),
+    route("GET", "/v1/learnings/shared", "none", (c) => sharedFindingsOf(core).shared({ lineage: q(c, "lineage"), target: q(c, "target"), agent: q(c, "agent"), limit: int(c, "limit") })),
+    route("GET", "/v1/learnings/dump", "none", () => readDump(core)),
+    route("POST", "/v1/learnings/dump", "runtime", (c) => recordDump(core, c.agent!, c.json(), core.now())),
     // hotspot findings and agent-proposed recipes (SPEC 12.8, 6.2; findings.ts, recipe-proposals.ts)
     route("GET", "/v1/findings/hotspots", "optional", (c) => findingsOf(core).list(q(c, "lineage"), c.agent)),
     route("GET", "/v1/findings/hotspots/:id", "optional", (c) => core.tx(() => findingsOf(core).view(c.params.id!, c.agent))),
