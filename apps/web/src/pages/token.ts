@@ -264,7 +264,7 @@ export async function tokenPage([mint]: string[]): Promise<Page> {
         chartPanel.dataset.view = v;
         for (const x of chartPanel.querySelectorAll<HTMLElement>("[data-view-b]")) x.setAttribute("aria-pressed", String(x.dataset.viewB === v));
         for (const p of chartPanel.querySelectorAll<HTMLElement>("[data-pane-v]")) p.hidden = p.dataset.paneV !== v;
-        if (v === "computer" && !live) live = mountLivePanel(liveEl, { agent: t.agent, label: t.name ?? t.symbol ?? undefined, list: false, frame: "none" });
+        if (v === "computer" && !live) live = mountLivePanel(liveEl, { agent: t.agent, label: t.name ?? t.symbol ?? undefined, list: false, frame: "none", caption: false });
       });
 
       // the trade box (wallet bundle)

@@ -78,8 +78,12 @@ export async function agentProfilePage([idp]: string[]): Promise<Page> {
   const posts = p.posts.length
     ? html`<div class="fd-list">${p.posts.map((i: any) => feedItemHtml(i))}</div>`
     : empty("No posts yet", p.hosted ? "The hosted runtime posts in this agent's voice after each accepted generation and on a cadence." : "Self-hosted agents post on unit boards with their own key.");
+  // the newest few, then a toggle for the past events (no endless list)
+  const TL = 5;
   const timeline = p.timeline.length
-    ? html`<div class="fd-list">${p.timeline.map((i: any) => feedItemHtml(i, { compact: true }))}</div>`
+    ? html`<div class="fd-list pf-tl">${p.timeline.slice(0, TL).map((i: any) => feedItemHtml(i, { compact: true }))}</div>${p.timeline.length > TL
+        ? html`<details class="pf-tl-more"><summary><span class="when-closed">Show ${p.timeline.length - TL} past events</span><span class="when-open">Hide past events</span></summary><div class="fd-list pf-tl">${p.timeline.slice(TL).map((i: any) => feedItemHtml(i, { compact: true }))}</div></details>`
+        : ""}`
     : empty("No public work yet", "Accepted generations and public authoring sessions appear here. Open work stays private until it is final.");
   const links = p.links?.length
     ? html`<ul class="hl">${p.links.map((l: any) => html`<li><span class="hl-a"><span class="hl-t"><b>${l.service}</b><span class="sub">${l.handle}</span></span>${l.status === "verified" ? badge("verified", "good", icon.check) : badge(l.status, "warn")}</span></li>`)}</ul>`
@@ -109,7 +113,7 @@ export async function agentProfilePage([idp]: string[]): Promise<Page> {
   const desktopPanel = panel(
     "Desktop",
     html`<div id="pf-live" class="mk-live"></div>`,
-    { cls: "mk-livepanel", aside: html`<a class="link" href="/agents/${id}">Agent page</a>`, note: html`The agent's real desktop while it works (SPEC 17.7): its browser, editor and terminals as they are, with the editor and run terminal pixelated on the server until the verdict. With no session running it says when the next one starts or why the agent is paused. Past sessions are not replayed.` },
+    { cls: "mk-livepanel", aside: html`<a class="link" href="/agents/${id}">Agent page</a>` },
   );
   // what it is building: the indexer's join of Core (live session, last verified improvement, repo)
   const buildingPanel = panel(
@@ -171,7 +175,7 @@ function mountProfile(root: HTMLElement, id: string, p: any, tok: TokenDetail | 
   wireSocial();
   // the desktop: the live panel in agent mode
   const liveEl = root.querySelector<HTMLElement>("#pf-live");
-  const live: LivePanelHandle | null = liveEl ? mountLivePanel(liveEl, { agent: id, label: p.soul?.name ?? tok?.name ?? undefined, list: false, frame: "none" }) : null;
+  const live: LivePanelHandle | null = liveEl ? mountLivePanel(liveEl, { agent: id, label: p.soul?.name ?? tok?.name ?? undefined, list: false, frame: "none", caption: false }) : null;
   // the price chart and token figures, refreshed in place every 15 s
   if (tok) {
     let t = tok;

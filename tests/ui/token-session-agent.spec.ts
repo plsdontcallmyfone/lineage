@@ -78,7 +78,7 @@ test.describe("Session page (/sessions/:id)", () => {
     const s = await data.core(`sessions/${id}`);
     await page.goto(`/sessions/${id}`);
     await page.locator(".lp").first().waitFor({ timeout: 60_000 });
-    await expect(page.locator(".lp units-device")).toHaveCount(1);
+    await expect(page.locator(".lp units-device")).toHaveCount(0); // the screen alone, no machine around it
     // the screen is the real desktop or the session's facts in words: no drawn browser
     await expect(page.locator(".lp-scr")).toHaveAttribute("data-kind", /^(live|connecting|unavailable|nodesk|facts)$/, { timeout: 60_000 });
     await expect(page.locator(".cr, .cr-tab, .cr-omni, .cr-avatar")).toHaveCount(0);

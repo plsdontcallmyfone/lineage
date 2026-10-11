@@ -51,10 +51,12 @@ export interface LivePanelOptions {
   list?: boolean;
   /** kept for callers: the screen keeps the desktop's 16:10 shape */
   height?: number;
-  /** the machine, the screen alone with rounded corners, or no frame (default "device") */
+  /** the machine, the screen alone with rounded corners, or no frame (default "none": just the video) */
   frame?: PanelFrame;
   /** kept for callers; unused */
   fps?: number;
+  /** the status line, note and latest event under the screen (default true; false shows the screen alone) */
+  caption?: boolean;
   /** the agent's name for the caption (the page knows it; default its short address) */
   label?: string;
   /** called whenever the shown session changes or its summary updates */
@@ -223,13 +225,13 @@ class Panel {
     private opts: LivePanelOptions,
   ) {
     this.io = { ...DEFAULT_IO, styleRoot: DEFAULT_IO.styleRoot, ...(opts.io ?? {}) };
-    this.frame = opts.frame === "window" || opts.frame === "none" ? opts.frame : "device";
+    this.frame = opts.frame === "window" || opts.frame === "device" ? opts.frame : "none";
   }
 
   async init() {
     this.host.innerHTML = `<div class="lp" data-frame="${this.frame}" data-view="loading" role="region" aria-label="Agent screen">
       <div class="lp-stage"></div>
-      <div class="lp-deck">
+      <div class="lp-deck"${this.opts.caption === false ? " hidden" : ""}>
         <div class="lp-say" aria-live="polite"><span class="lp-state" data-s="idle"><i></i><span>Loading</span></span><span class="t"></span><span class="tm"></span></div>
         <div class="lp-note" hidden></div>
         <div class="lp-latest" hidden></div>
