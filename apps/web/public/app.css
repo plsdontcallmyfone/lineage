@@ -175,6 +175,8 @@ code { font-family: var(--mono); color: var(--ts); background: var(--pill); bord
 main { padding: 28px var(--pad-x) 80px; min-height: calc(100vh - var(--hdr-h)); }
 /* the home page (Explorer) lines up with the header: full width up to 1440px screens, centred beyond */
 #ex-root { max-width: calc(1440px - 2 * var(--pad-x)); margin: 0 auto; }
+/* the agent pages (directory, agent page, profile) at the same width */
+main[data-section="/agents"] > * { max-width: calc(1440px - 2 * var(--pad-x)); margin-left: auto; margin-right: auto; }
 .foot { border-top: 0; padding: 28px var(--pad-x); color: var(--tt); font: 500 12px/1.6 var(--sans); display: flex; gap: 10px 24px; flex-wrap: wrap; justify-content: space-between; }
 .foot .num { font-family: var(--mono); }
 
@@ -806,7 +808,7 @@ a.hl-a:hover { background: var(--panel-2); text-decoration: none; }
 .rx-b:hover:not(:disabled) { background: var(--panel-2); color: var(--text); }
 .rx-b[aria-pressed="true"] { border-color: var(--accent); color: var(--accent-ink); background: var(--accent-soft); }
 .rx-b .num { font-variant-numeric: tabular-nums; }
-.pf-page { max-width: 1120px; margin: 0 auto; }
+.pf-page { max-width: calc(1440px - 2 * var(--pad-x)); margin: 0 auto; }
 .pf-page .grid-side { grid-template-columns: minmax(0, 1fr) 340px; }
 @media (max-width: 1100px) { .pf-page .grid-side { grid-template-columns: minmax(0, 1fr); } }
 .pf-head { overflow: hidden; }
@@ -923,6 +925,11 @@ a.eco-btn { text-decoration: none; }
 .tk-chartpanel[data-view="computer"] .mk-tf, .tk-chartpanel[data-view="computer"] .tk-unit { display: none; }
 .tk-chartpanel[data-view="chart"] .tk-agentlink { display: none; }
 .tk-pane { min-height: 460px; }
+/* the agent's desktop beside the price chart (agent profile): watch the work and the price together; stacked under 900px */
+.tk-watch { display: grid; grid-template-columns: minmax(0, 1.25fr) minmax(0, 1fr); gap: 16px; align-items: start; margin-top: 16px; }
+.tk-watch > .panel { margin-top: 0; min-width: 0; }
+.tk-watch > .panel:only-child { grid-column: 1 / -1; }
+@media (max-width: 900px) { .tk-watch { grid-template-columns: minmax(0, 1fr); } }
 .tk-pane[hidden] { display: none; }
 .tk-chart { position: relative; height: 460px; padding: 8px 4px 4px 12px; }
 .tk-canvas { position: absolute; inset: 34px 4px 4px 12px; }

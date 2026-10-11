@@ -62,10 +62,10 @@ const routes: [RegExp, Handler, string][] = [
   [/^\/trading$/, tradingPage, "/eco"],
   [/^\/trading\/([1-9A-HJ-NP-Za-km-z]{32,44})$/, tradingAgentPage, "/eco"],
   [/^\/machines$/, machinesPage, "/eco"],
-  [/^\/projects$/, projectsPage, "/eco"],
-  [/^\/projects\/([^/]+(?:\/[^/]+)?)$/, projectPage, "/eco"],
-  [/^\/generations$/, generationsPage, "/eco"],
-  [/^\/analytics$/, analyticsPage, "/eco"],
+  [/^\/projects$/, projectsPage, "/projects"],
+  [/^\/projects\/([^/]+(?:\/[^/]+)?)$/, projectPage, "/projects"],
+  [/^\/generations$/, generationsPage, "/generations"],
+  [/^\/analytics$/, analyticsPage, "/analytics"],
 ];
 /** Removed pages (app consolidation): each goes to what replaced it. The server answers the same with a 302. */
 export const REDIRECTS: Record<string, string> = { "/network": "/", "/live": "/", "/explorer": "/", "/tokens": "/", "/wallet": "/profile", "/spawn": "/launch", "/manual": "/docs" };
@@ -84,6 +84,9 @@ function shell() {
       <nav class="nav" aria-label="Main">
         <a href="/" data-nav="/">Explorer</a>
         <a href="/deck?open=agents" data-nav="/agents">Agents</a>
+        <a href="/projects" data-nav="/projects">Projects</a>
+        <a href="/generations" data-nav="/generations">Generations</a>
+        <a href="/analytics" data-nav="/analytics">Analytics</a>
         <a href="/launch" data-nav="/launch">Launch</a>
       </nav>
       <div class="top-right">
@@ -97,6 +100,7 @@ function shell() {
 }
 
 function setNav(section: string) {
+  document.getElementById("main")?.setAttribute("data-section", section);
   for (const a of document.querySelectorAll<HTMLAnchorElement>("[data-nav]")) {
     if (a.dataset.nav === section) a.setAttribute("aria-current", "page");
     else a.removeAttribute("aria-current");
