@@ -12,7 +12,7 @@ import { brandNeutralTrailers } from "./protocol.ts";
 export const GEN_GITHUB_SCHEMA = `
   CREATE TABLE IF NOT EXISTS gen_github (
     gen_id TEXT PRIMARY KEY,
-    status TEXT NOT NULL,                -- published | awaiting publisher
+    status TEXT NOT NULL,                -- published | awaiting publisher | removed
     repo TEXT,
     branch TEXT,
     sha TEXT,
@@ -27,10 +27,13 @@ export const GEN_GITHUB_SCHEMA = `
 `;
 
 export const AWAITING = "awaiting publisher";
+/** A recorded commit whose repository was deleted on purpose (docs/plans/GITHUB-ORG.md 6): the page explains, never links. */
+export const REMOVED = "removed";
 
 interface Row {
   gen_id: string;
   status: string;
+  reason?: string | null;
   repo: string | null;
   branch: string | null;
   sha: string | null;
@@ -71,6 +74,7 @@ export interface GenGithubOptions {
 export type GithubField =
   | { url: string; commit: string; verified: boolean; published_at: number; repo: string; branch: string | null; verification_reason: string | null; identity: string | null; login: string | null }
   | { status: "awaiting publisher" | "pending" }
+  | { status: "removed"; reason: string; removed_at: number; repo: string | null; former_commit: string | null }
   | null;
 
 const GEN = /^[0-9a-f]{64}$/;
@@ -105,6 +109,9 @@ export class GenGithub {
     this.c = core as unknown as Internals;
     this.opts = { fetch: (u, i) => fetch(u, i), githubApi: "https://api.github.com", githubToken: (process.env.UNITS_GITHUB_TOKEN ?? process.env.LINEAGE_GITHUB_TOKEN) || null };
     this.c.db.exec(GEN_GITHUB_SCHEMA);
+    // the reason of a removed record (added 2026-10-11; older databases gain the column here)
+    const cols = this.c.db.query<{ name: string }, []>("PRAGMA table_info(gen_github)").all();
+    if (!cols.some((x) => x.name === "reason")) this.c.db.exec("ALTER TABLE gen_github ADD COLUMN reason TEXT");
   }
 
   configure(o: Partial<GenGithubOptions>) {
@@ -133,6 +140,7 @@ export class GenGithub {
         repo: r.repo, branch: r.branch, verification_reason: r.verification_reason, identity: r.identity, login: r.login,
       };
     }
+    if (r?.status === REMOVED) return { status: REMOVED, reason: r.reason ?? "repository deleted", removed_at: r.checked_at, repo: r.repo, former_commit: r.sha };
     return { status: r?.status === AWAITING ? AWAITING : "pending" };
   }
 
@@ -203,6 +211,7 @@ export class GenGithub {
    * Answers one result per record: recorded | unchanged | refused | retry, with a detail.
    */
   async record(body: unknown) {
+    if ((body as any)?.removed !== undefined) return this.removed((body as any).removed);
     const recs = (body as any)?.records;
     if (!Array.isArray(recs) || recs.length > 200) throw bad("bad_body", "{ records: [...] } of at most 200 expected");
     const out: { gen_id: string; result: string; detail: string | null; github: GithubField }[] = [];
@@ -224,8 +233,8 @@ export class GenGithub {
       const prev = this.row(genId);
       const now = this.c.now();
       if (rec.status === AWAITING) {
-        if (prev?.status === "published") {
-          out.push({ gen_id: genId, result: "unchanged", detail: "already published", github: this.field(g, prev) });
+        if (prev?.status === "published" || prev?.status === REMOVED) {
+          out.push({ gen_id: genId, result: "unchanged", detail: prev.status === REMOVED ? "removed" : "already published", github: this.field(g, prev) });
           continue;
         }
         this.c.tx(() =>
@@ -265,7 +274,7 @@ export class GenGithub {
              VALUES (?, 'published', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
              ON CONFLICT(gen_id) DO UPDATE SET status = 'published', repo = excluded.repo, branch = excluded.branch, sha = excluded.sha, url = excluded.url,
                verified = excluded.verified, verification_reason = excluded.verification_reason, identity = excluded.identity, login = excluded.login,
-               published_at = excluded.published_at, checked_at = excluded.checked_at`,
+               published_at = excluded.published_at, checked_at = excluded.checked_at, reason = NULL`,
           )
           .run(genId, rec.repo, branch, rec.sha, c.url, c.verified ? 1 : 0, c.reason, identity, login, publishedAt, now),
       );
@@ -273,6 +282,31 @@ export class GenGithub {
       out.push({ gen_id: genId, result: "recorded", detail: c.verified ? null : `GitHub reports the signature as ${c.reason ?? "unverified"}`, github: this.view(genId) });
     }
     return { results: out };
+  }
+
+  /**
+   * { removed: { repos: [owner/name, ...], reason } } on POST /v1/github/generations (same key): every
+   * published record whose repository is one of `repos` becomes status "removed" with the reason, so
+   * no page links to a commit that no longer exists (docs/plans/GITHUB-ORG.md 6). The former repo and
+   * sha stay in the row. A later published record (the commit pushed again somewhere) replaces it.
+   */
+  removed(b: unknown) {
+    const repos = (b as any)?.repos;
+    const reason = String((b as any)?.reason ?? "").trim();
+    if (!Array.isArray(repos) || !repos.length || repos.length > 200 || !repos.every((r) => typeof r === "string" && REPO.test(r))) throw bad("bad_body", "removed.repos: 1 to 200 owner/name strings");
+    if (!reason || reason.length > 200) throw bad("bad_body", "removed.reason: 1 to 200 characters");
+    const now = this.c.now();
+    const lowered = repos.map((r: string) => r.toLowerCase());
+    const marks = `(${lowered.map(() => "?").join(",")})`;
+    const ids = this.c.db
+      .query<{ gen_id: string; lineage_id: string }, string[]>(`SELECT gg.gen_id, g.lineage_id FROM gen_github gg JOIN generations g ON g.gen_id = gg.gen_id WHERE gg.status = 'published' AND lower(gg.repo) IN ${marks}`)
+      .all(...lowered);
+    this.c.tx(() => {
+      const q = this.c.db.query("UPDATE gen_github SET status = ?, reason = ?, verified = NULL, checked_at = ? WHERE gen_id = ?");
+      for (const x of ids) q.run(REMOVED, reason, now, x.gen_id);
+    });
+    for (const x of ids) this.c.emitEvent("generation.github", { gen_id: x.gen_id, lineage_id: x.lineage_id, removed: true });
+    return { removed: ids.map((x) => x.gen_id), reason };
   }
 
   /** For tests and the generation route: throws when the generation does not exist. */

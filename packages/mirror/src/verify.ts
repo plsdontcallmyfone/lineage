@@ -48,6 +48,8 @@ export interface VerifyResult {
   commit: string | null;
   url: string | null;
   checks: Check[];
+  /** the commit's repository was deleted on purpose; Core says why (docs/plans/GITHUB-ORG.md 6) */
+  removed?: { reason: string; repo: string | null; former_commit: string | null } | null;
 }
 
 async function getJson(f: Fetch, url: string, headers: Record<string, string> = {}): Promise<{ status: number; body: any }> {
@@ -80,6 +82,13 @@ export async function verifyGeneration(o: VerifyOptions): Promise<VerifyResult> 
   }
   const g = gr.body;
   const gh = g.github;
+  if (gh?.status === "removed") {
+    // an explained state, not a failure: nothing is left on GitHub to check
+    res.removed = { reason: String(gh.reason ?? "repository deleted"), repo: gh.repo ?? null, former_commit: gh.former_commit ?? null };
+    add("published", null, `removed: ${res.removed.reason}${gh.repo && gh.former_commit ? ` (was ${gh.repo}@${String(gh.former_commit).slice(0, 12)})` : ""}; no GitHub commit to verify`);
+    res.ok = true;
+    return res;
+  }
   if (!gh || !gh.commit) {
     add("published", false, gh?.status ? `no commit yet: ${gh.status}` : "this generation has no GitHub commit (gen 0 or not a GitHub repository)");
     return res;

@@ -25,6 +25,9 @@ export interface CommitIdentity {
   token: string | null;
   /** account or organization that holds this identity's forks (default: login; docs/plans/GITHUB-ORG.md 3) */
   owner?: string | null;
+  /** one repository (owner/name) that holds every lineage branch of this identity instead of a fork per
+   *  upstream: the app identity's units-agents/generations (docs/plans/GITHUB-ORG.md 6) */
+  repo?: string | null;
 }
 
 export interface Identities {

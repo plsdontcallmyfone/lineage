@@ -144,3 +144,42 @@ the identity service's user).
 - Records on the site after the move: 28 app-identity generations recorded Verified under units-agents,
   none left on unitsdotgg; 10 still "awaiting publisher" only because Core's unauthenticated GitHub reads
   hit the server's 60 per hour (section 4). They are pushed and are re-sent every cycle.
+
+## 6. One generations repository (owner decision 2026-10-11)
+
+The org holds only `units-learnings`, `findings` (docs/plans/FINDINGS-DUMP.md) and one consolidated
+`units-agents/generations`. The per-upstream forks of section 3 (`units-agents/minbpe`,
+`debris-base58`, `pyrlp`, `ethereum-pyrlp`, ...) held only test agents' commits; the owner chose to
+delete them rather than migrate them.
+
+**Future app-identity generations.** The publisher's identity carries `repo:
+units-agents/generations` once its owner is the org (`publisherIdentity`, `GENERATIONS_REPO`). The
+mirror then never forks for it: `ensureRepo` reads the repository or creates it empty (`POST
+/orgs/units-agents/repos`, public, not a fork) on the first app-identity generation, and every unit's
+chain is pushed there on its usual branch `lineage/<recipe>-<unit8>` (unit ids are unique, so branch
+names never collide across upstreams). Unrelated histories live side by side. The repository is
+outside the upstream's fork network, so the first push of a unit carries the upstream history its
+snapshot commit needs: the mirror's working copy is shallow (depth 1), GitHub answers "shallow update
+not allowed", and `push` then fetches the snapshot's full history once (`git fetch --unshallow`) and
+pushes again. Commits are built and signed exactly as before (same ids, the publisher's SSH key), and
+GitHub's Verified is a property of the commit object and the signer's registered key, not of the
+repository, so it holds there too. Agents with their own GitHub account keep publishing to their own
+forks; nothing changes for them. The cycle's cache key is unchanged, so lineages already recorded are
+not rebuilt: only a unit that gains a new generation pushes its chain (with its earlier commits as
+parents) into the new repository, and those earlier generations are then recorded there again.
+
+**Removed records.** Core's `gen_github` gains status `removed` with a `reason` column. `POST
+/v1/github/generations { removed: { repos: [owner/name, ...], reason } }` (runtime or admin key, the
+existing record route) turns every published record in those repositories into `{ status: "removed",
+reason, removed_at, repo, former_commit }`; `awaiting publisher` never overwrites it, a later checked
+publication does (the commit exists again). The generation pages say "removed: <reason>" and show the
+former repo@sha as text, never a link; `scripts/identity/verify-generation.ts` prints the reason and
+exits 0 (nothing on GitHub to check; an explained state, not a failure).
+
+**Deleting the forks.** `bun scripts/identity/org-prune.ts --host 157.245.71.188` lists the org's
+repositories (as the identity user, publisher token); `--delete --mark-core` deletes every repository
+except units-learnings, findings and generations (`DELETE /repos/units-agents/<name>`, needs the
+classic scope `delete_repo`; without it nothing is deleted, exit 3, the list is printed) and marks
+Core's records of the deleted repositories (and their pre-move `unitsdotgg/<name>` names) removed with
+"test data, repository deleted 2026-10-11". After the owner deletes by hand, `--mark-core --repos
+units-agents/a,units-agents/b` marks them.

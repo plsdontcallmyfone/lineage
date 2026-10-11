@@ -99,4 +99,38 @@ describe("generations on GitHub: Core record", () => {
     const r = await expectOk(e.admin.c.post("/v1/github/generations", { records: [{ gen_id: genId, repo: "bot/fx", sha: SHA }] }));
     expect(r.results[0]).toMatchObject({ result: "recorded", github: { verified: false, verification_reason: "unsigned" } });
   });
+
+  test("records in a deleted repository become removed with the reason; a later publication replaces it", async () => {
+    const e = (env = await setup({ verifiers: 3 }));
+    const author = await makeAuthor(e);
+    const c = await submit(e, author, diff("a"));
+    await runReplays(e, c.candidate_id, honest(result({}, 800)));
+    const genId = (await expectOk(e.anon.get(`/v1/candidates/${c.candidate_id}`))).gen_id as string;
+    const g = await expectOk(e.anon.get(`/v1/generations/${genId}`));
+    genGithubOf(e.core).configure({ fetch: fakeGithub({ [`units-agents/fx@${SHA}`]: { message: msg(g), verified: true }, [`units-agents/generations@${SHA}`]: { message: msg(g), verified: true } }).fn, githubApi: "http://gh.fake" });
+    await expectOk(e.admin.c.post("/v1/github/generations", { records: [{ gen_id: genId, repo: "units-agents/fx", branch: "lineage/fx-12345678", sha: SHA, identity: "app", login: "pub" }] }));
+
+    // only the runtime or admin key; bad bodies refused
+    expect((await author.c.post("/v1/github/generations", { removed: { repos: ["units-agents/fx"], reason: "x" } })).status).toBe(403);
+    expect((await e.admin.c.post("/v1/github/generations", { removed: { repos: ["not a repo"], reason: "x" } })).status).toBe(400);
+    expect((await e.admin.c.post("/v1/github/generations", { removed: { repos: ["units-agents/fx"], reason: "" } })).status).toBe(400);
+
+    const reason = "test data, repository deleted 2026-10-11";
+    const r = await expectOk(e.admin.c.post("/v1/github/generations", { removed: { repos: ["Units-Agents/FX", "units-agents/other"], reason } }));
+    expect(r).toEqual({ removed: [genId], reason });
+    const view = (await expectOk(e.anon.get(`/v1/generations/${genId}`))).github;
+    expect(view).toMatchObject({ status: "removed", reason, repo: "units-agents/fx", former_commit: SHA });
+    expect(view.url).toBeUndefined();
+    expect(view.commit).toBeUndefined();
+    // idempotent, and "awaiting publisher" never overwrites it
+    expect((await expectOk(e.admin.c.post("/v1/github/generations", { removed: { repos: ["units-agents/fx"], reason } }))).removed).toEqual([]);
+    const aw = await expectOk(e.admin.c.post("/v1/github/generations", { records: [{ gen_id: genId, status: "awaiting publisher" }] }));
+    expect(aw.results[0]).toMatchObject({ result: "unchanged", detail: "removed" });
+    expect((await expectOk(e.anon.get(`/v1/github/generations?agent=${author.id}`))).generations[0].github.status).toBe("removed");
+
+    // the commit pushed again (units-agents/generations): a live, checked commit replaces the removed state
+    const again = await expectOk(e.admin.c.post("/v1/github/generations", { records: [{ gen_id: genId, repo: "units-agents/generations", branch: "lineage/fx-12345678", sha: SHA, identity: "app", login: "pub" }] }));
+    expect(again.results[0].result).toBe("recorded");
+    expect((await expectOk(e.anon.get(`/v1/generations/${genId}`))).github).toMatchObject({ commit: SHA, repo: "units-agents/generations", verified: true });
+  });
 });

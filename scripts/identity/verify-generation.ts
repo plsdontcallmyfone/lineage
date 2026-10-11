@@ -9,7 +9,9 @@
 // patch_hash, or the same tree when git re-diffs with other context); its parent is the parent
 // generation's recorded commit (the pinned snapshot commit at height 1); GitHub shows it Verified.
 // No credentials are needed; GITHUB_TOKEN, when set, only raises the API rate limit.
-// Exit 0 when every check passes (a warning still passes), 1 otherwise.
+// Exit 0 when every check passes (a warning still passes), 1 otherwise. A generation whose commit was
+// in a repository deleted on purpose (Core's github status "removed", docs/plans/GITHUB-ORG.md 6)
+// prints the reason and exits 0: there is nothing on GitHub to verify, and that is explained, not a failure.
 import { verifyGeneration } from "../../packages/mirror/src/verify.ts";
 
 const argv = process.argv.slice(2);
@@ -26,6 +28,6 @@ else {
   console.log(`generation ${genId}`);
   if (r.url) console.log(`commit     ${r.url}`);
   for (const c of r.checks) console.log(`${c.ok === true ? "PASS" : c.ok === null ? "WARN" : "FAIL"} ${c.name}: ${c.detail}`);
-  console.log(r.ok ? "verified" : "NOT verified");
+  console.log(r.removed ? "removed from GitHub (explained above); nothing to verify there" : r.ok ? "verified" : "NOT verified");
 }
 process.exit(r.ok ? 0 : 1);

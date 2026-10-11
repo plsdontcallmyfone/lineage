@@ -7,7 +7,7 @@ import { badge, icon, kv, panel } from "../ui.ts";
 
 export type GithubField =
   | { url: string; commit: string; verified: boolean; published_at: number; repo?: string; branch?: string | null; verification_reason?: string | null; identity?: string | null; login?: string | null }
-  | { status: string }
+  | { status: string; reason?: string; repo?: string | null; former_commit?: string | null; removed_at?: number }
   | null
   | undefined;
 
@@ -16,7 +16,11 @@ const published = (g: GithubField): g is Extract<GithubField, { commit: string }
 /** "Verified on GitHub" badge plus the commit link, or the status ("awaiting publisher", "pending"). */
 export function githubLink(g: GithubField): Raw {
   if (!g) return html`<span class="faint">none (gen 0 or not a GitHub repository)</span>`;
-  if (!published(g)) return html`<span class="faint">${g.status === "awaiting publisher" ? "awaiting publisher" : "pending"}</span>`;
+  if (!published(g)) {
+    // a repository deleted on purpose (docs/plans/GITHUB-ORG.md 6): said plainly, never a dead link
+    if (g.status === "removed") return html`<span class="faint" title="${g.reason ?? ""}">removed: ${g.reason ?? "repository deleted"}</span>`;
+    return html`<span class="faint">${g.status === "awaiting publisher" ? "awaiting publisher" : "pending"}</span>`;
+  }
   return html`${g.verified ? badge("Verified on GitHub", "good", icon.check, g.verification_reason ?? "valid") : badge("Unverified on GitHub", "warn", undefined, g.verification_reason ?? "")}
     <a class="link num" href="${g.url}" target="_blank" rel="noopener" title="${g.commit}">${icon.ext} ${g.repo ? `${g.repo}@` : ""}${g.commit.slice(0, 7)}</a>`;
 }
@@ -29,12 +33,15 @@ export function githubPanel(gen: { gen_id: string; height: number; github?: Gith
   if (published(g)) {
     if (g.branch) rows.push(["branch", html`<span class="num">${g.branch}</span>`]);
     if (g.identity) rows.push(["signed by", g.identity === "app" ? html`the units publisher account${g.login ? ` ${g.login}` : ""}` : html`the agent's own account${g.login ? ` ${g.login}` : ""}`]);
+  } else if (g.status === "removed") {
+    if (g.repo && g.former_commit) rows.push(["was", html`<span class="num">${g.repo}@${g.former_commit.slice(0, 7)}</span> (no longer on GitHub)`]);
+    rows.push(["why", `${g.reason ?? "The repository was deleted"}. The generation itself, its patch and its replays stay in units and are checked on this page; only the GitHub copy is gone.`]);
   } else if (g.status === "awaiting publisher") {
     rows.push(["why", "The author has no GitHub account of its own; its commit is published by the units publisher account once that account is configured."]);
   }
   return panel("GitHub", kv(rows), {
     id: "github",
-    note: html`<b>How to verify.</b> Run <span class="num">bun scripts/identity/verify-generation.ts ${gen.gen_id}</span> from the units repository, or by hand: the commit message's trailers name this generation (<span class="num">Lineage-Generation</span>, <span class="num">Lineage-Height</span> ${gen.height}, <span class="num">Lineage-Patch-Sha256</span> equal to the patch hash above); its diff against its parent is the patch on this page; its parent is the parent generation's commit (the recipe's pinned commit at height 1); GitHub shows the signature Verified.`,
+    note: !published(g) && g.status === "removed" ? undefined : html`<b>How to verify.</b> Run <span class="num">bun scripts/identity/verify-generation.ts ${gen.gen_id}</span> from the units repository, or by hand: the commit message's trailers name this generation (<span class="num">Lineage-Generation</span>, <span class="num">Lineage-Height</span> ${gen.height}, <span class="num">Lineage-Patch-Sha256</span> equal to the patch hash above); its diff against its parent is the patch on this page; its parent is the parent generation's commit (the recipe's pinned commit at height 1); GitHub shows the signature Verified.`,
   });
 }
 

@@ -170,7 +170,7 @@ describe("generations on GitHub", () => {
     }
   }, 60_000);
 
-  test("moving the publisher's repositories into the org keeps every commit and re-points Core (GITHUB-ORG.md 3)", async () => {
+  test("under the org, app-identity generations go to one units-agents/generations repository, no fork (GITHUB-ORG.md 3, 6)", async () => {
     const before = new Map([G1, G2, G5].map((id) => [id, records.get(id).sha as string]));
     // not an owner of the org yet: refused before anything moves
     gh.addOrg("units-agents", "someone-else");
@@ -184,12 +184,17 @@ describe("generations on GitHub", () => {
     expect(publisherPublic(svc).owner).toBe("units-agents");
     expect((await moveToOrg(svc, "units-agents")).moved).toEqual([]); // idempotent
 
+    const forksBefore = gh.calls.filter((c) => c.method === "POST" && c.path.endsWith("/forks")).length;
     const s = await cycle();
     expect(s.error).toBeNull();
-    // same commits, new repository for the app-identity ones; the account generation stays on its account
-    expect(records.get(G2)).toMatchObject({ repo: "units-agents/fx", identity: "app", login: "lineagepub", sha: before.get(G2) });
-    expect(records.get(G5)).toMatchObject({ repo: "units-agents/fx", sha: before.get(G5) });
+    // same commits, now in the one consolidated repository (created empty on first use, not a fork);
+    // the account generation stays on its own account's fork
+    expect(records.get(G2)).toMatchObject({ repo: "units-agents/generations", identity: "app", login: "lineagepub", sha: before.get(G2), branch: `lineage/fx-${LIN.slice(0, 8)}` });
+    expect(records.get(G5)).toMatchObject({ repo: "units-agents/generations", sha: before.get(G5), branch: `lineage/fxdoc-${LIN2.slice(0, 8)}` });
     expect(records.get(G1)).toMatchObject({ repo: "quillbot/fx", sha: before.get(G1) });
+    expect(gh.orgCalls.filter((c) => c === "POST /orgs/units-agents/repos as lineagepub").length).toBe(1);
+    expect(gh.calls.filter((c) => c.method === "POST" && c.path.endsWith("/forks")).length).toBe(forksBefore);
+    expect(gh.forks.has("units-agents/generations")).toBe(false);
     for (const id of [G1, G2, G5]) {
       const v = await verify(id);
       expect([id, v.ok, v.checks.filter((c) => c.ok !== true).map((c) => `${c.name}: ${c.detail}`)]).toEqual([id, true, []]);
@@ -198,7 +203,10 @@ describe("generations on GitHub", () => {
     svc.o.store.put("meta", "publisher-move", { at: Date.now() });
     expect((await cycle()).error).toContain("being moved");
     svc.o.store.delete("meta", "publisher-move");
-    // no second fork was made under the publisher's own account
+    // no fork was made for the org: only the account's and the publisher's own before the move
     expect(gh.calls.filter((c) => c.method === "POST" && c.path.endsWith("/forks")).length).toBe(2);
+    // a later cycle reuses the repository (no second create)
+    expect((await cycleOnce({ svc, core: "http://core.mock", site: "https://site.mock", apiBase: gh.api, gitBase: gh.root, fetch: gh.fetch, postCore, coreFetch, force: true })).error).toBeNull();
+    expect(gh.orgCalls.filter((c) => c === "POST /orgs/units-agents/repos as lineagepub").length).toBe(1);
   }, 60_000);
 });

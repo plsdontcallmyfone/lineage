@@ -64,6 +64,37 @@ export async function ensureFork(gh: GitHub, owner: string, upstream: string, t:
   return { fork, created: true };
 }
 
+/**
+ * One repository that holds every lineage branch of an identity (the app identity's
+ * `units-agents/generations`, docs/plans/GITHUB-ORG.md 6): read, or created empty (not a fork) when
+ * missing, under the organization (POST /orgs/{org}/repos) or the token's own account (POST /user/repos).
+ * The mirror pushes each chain with its upstream history, so commits keep their parents.
+ */
+export async function ensureRepo(gh: GitHub, full: string, login: string, t: GitHubTarget): Promise<{ repo: string; created: boolean }> {
+  const [owner, name] = full.split("/") as [string, string];
+  const existing = await gh.get<any>(`/repos/${full}`, [404]);
+  if (existing && !existing.message && existing.full_name) return { repo: existing.full_name, created: false };
+  const body = {
+    name, private: false, has_issues: false, has_projects: false, has_wiki: false, auto_init: false,
+    description: "Signed commits of units generations by agents without a GitHub account of their own, one branch per unit",
+  };
+  const own = owner.toLowerCase() === login.toLowerCase();
+  const r = await gh.request<{ full_name: string }>("POST", own ? "/user/repos" : `/orgs/${owner}/repos`, body, { okStatuses: [422] });
+  if (r.status === 422) {
+    // created meanwhile (another cycle): use it
+    const again = await gh.get<any>(`/repos/${full}`, [404]);
+    if (again?.full_name) return { repo: again.full_name, created: false };
+    throw new Error(`could not create ${full}: ${JSON.stringify(r.data).slice(0, 200)}`);
+  }
+  const sleep = t.sleep ?? ((ms: number) => Bun.sleep(ms));
+  for (let i = 0; i < 10; i++) {
+    const x = await gh.get<any>(`/repos/${full}`, [404]);
+    if (x?.full_name) return { repo: x.full_name, created: true };
+    await sleep(1000);
+  }
+  return { repo: r.data.full_name ?? full, created: true };
+}
+
 /** Head commit of a branch, or null when the branch does not exist. */
 export async function branchHead(gh: GitHub, repo: string, branch: string): Promise<string | null> {
   const r = await gh.get<any>(`/repos/${repo}/git/ref/heads/${branch}`, [404]);
@@ -72,8 +103,16 @@ export async function branchHead(gh: GitHub, repo: string, branch: string): Prom
 }
 
 /** Force-pushes `sha` to `branch` of `repo` from the local working repository (GitHub is a mirror). */
-export function push(dir: string, token: string, t: GitHubTarget, repo: string, sha: string, branch: string) {
-  git(dir, ["push", "-q", "--force", gitUrl(t, repo), `${sha}:refs/heads/${branch}`], { env: authEnv(token, gitBaseOf(t)) });
+export function push(dir: string, token: string, t: GitHubTarget, repo: string, sha: string, branch: string, o: { upstream?: string } = {}) {
+  const args = ["push", "-q", "--force", gitUrl(t, repo), `${sha}:refs/heads/${branch}`];
+  const env = authEnv(token, gitBaseOf(t));
+  const r = git(dir, args, { env, allowFail: !!o.upstream });
+  if (r.ok || !o.upstream) return;
+  // a repository outside the upstream's fork network (units-agents/generations) lacks the history the
+  // shallow working copy stops at: fetch the snapshot's full history once, then push again
+  if (!/shallow/i.test(r.err)) throw new Error(`git push failed: ${r.err.slice(0, 600)}`);
+  if (git(dir, ["rev-parse", "--is-shallow-repository"]).out === "true") git(dir, ["fetch", "-q", "--unshallow", gitUrl(t, o.upstream)]);
+  git(dir, args, { env });
 }
 
 export async function deleteBranch(gh: GitHub, repo: string, branch: string) {

@@ -17,6 +17,9 @@ import type { IdentityService } from "./service.ts";
 /** Logins that may never become the publisher (the reserved upstream maintainer of the test repositories). */
 export const RESERVED_LOGINS = ["ds56vmr2"];
 
+/** The one repository under the org that holds every app-identity generation branch (docs/plans/GITHUB-ORG.md 6). */
+export const GENERATIONS_REPO = "generations";
+
 export interface PublisherRecord {
   v: 1;
   login: string;
@@ -121,7 +124,10 @@ export function publisherIdentity(svc: IdentityService): CommitIdentity {
   const path = join(dir, "signing");
   if (!existsSync(path)) writeFileSync(path, r.ssh_private_key, { mode: 0o600 });
   chmodSync(path, 0o600);
-  return { kind: "app", name: r.login, email: noreplyEmail(r.github_id, r.login), signingKey: path, login: r.login, token: r.token, owner: r.owner ?? r.login };
+  const owner = r.owner ?? r.login;
+  // under the org: one consolidated repository, no fork per upstream (owner decision 2026-10-11)
+  const repo = lower(owner) !== lower(r.login) ? `${owner}/${GENERATIONS_REPO}` : null;
+  return { kind: "app", name: r.login, email: noreplyEmail(r.github_id, r.login), signingKey: path, login: r.login, token: r.token, owner, repo };
 }
 
 export interface MoveResult {

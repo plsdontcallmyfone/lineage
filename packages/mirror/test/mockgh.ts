@@ -125,6 +125,16 @@ export class MockGitHub {
       }
       return json({ full_name: fork }, 202);
     }
+    // a new empty repository (not a fork): under an organization or the token's own account
+    if (((m = /^\/orgs\/([^/]+)\/repos$/.exec(path)) || path === "/user/repos") && method === "POST") {
+      const name = String(JSON.parse(String(init?.body ?? "{}")).name ?? "");
+      const full = `${m ? m[1] : me!.login}/${name}`;
+      if (existsSync(this.bare(full))) return json({ message: "Repository creation failed.", errors: [{ message: "name already exists on this account" }] }, 422);
+      mkdirSync(join(this.bare(full), ".."), { recursive: true });
+      sh(this.root, ["init", "-q", "--bare", "-b", "main", this.bare(full)]);
+      this.defaults.set(full, "main");
+      return json({ full_name: full, default_branch: "main", fork: false }, 201);
+    }
     if ((m = /^\/repos\/([^/]+\/[^/]+)\/git\/ref\/heads\/(.+)$/.exec(path)) && method === "GET") {
       const r = sh(this.bare(m[1]!), ["rev-parse", "--verify", "-q", `refs/heads/${m[2]}`], true);
       return r.ok && existsSync(this.bare(m[1]!)) ? json({ ref: `refs/heads/${m[2]}`, object: { sha: r.out } }) : nf();

@@ -121,6 +121,7 @@ export class MockOrgGitHub extends MockGitHub {
       return json({ full_name: from }, 202);
     }
     if ((m = /^\/orgs\/([^/]+)\/repos$/.exec(p)) && method === "POST" && me) {
+      this.orgCalls.push(`${key} as ${me.login}`);
       const name = JSON.parse(String(init?.body ?? "{}")).name;
       const full = `${m[1]}/${name}`;
       mkdirSync(dirname(this.bare(full)), { recursive: true });

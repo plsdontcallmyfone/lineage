@@ -3,7 +3,8 @@
 //   2. build its deterministic commit chain (chain.ts), one commit per accepted generation;
 //   3. for every agent with its own GitHub account that authored a generation of the lineage (and the
 //      app identity when one is configured and an author has no account), make sure its fork exists
-//      and that branch lineage/<recipe>-<lineage8> points at the chain's tip, pushing only when it
+//      (the app identity under the org: one repository units-agents/generations for every unit, no fork;
+//      docs/plans/GITHUB-ORG.md 6) and that branch lineage/<recipe>-<lineage8> points at the chain's tip, pushing only when it
 //      does not already (idempotent; a rerun after an interruption simply continues);
 //   4. ask GitHub whether each of the agent's commits shows Verified.
 // A generation whose author has no account is committed under the app identity and recorded as a
@@ -16,7 +17,7 @@ import type { AgentCredential, CredentialStore } from "../../souls/src/github/cr
 import { APP_IDENTITY, buildChain, type Chain, type CommitIdentity, type Identities } from "./chain.ts";
 import { CoreReader, githubRepo, type LineageSummary } from "./coreapi.ts";
 import { noreplyEmail } from "./git.ts";
-import { branchHead, client, ensureFork, gitUrl, push, verification, type GitHubTarget } from "./github.ts";
+import { branchHead, client, ensureFork, ensureRepo, gitUrl, push, verification, type GitHubTarget } from "./github.ts";
 import { lineageBranch } from "./message.ts";
 
 export interface MirrorOptions extends GitHubTarget {
@@ -164,15 +165,18 @@ export async function mirrorOnce(o: MirrorOptions): Promise<MirrorReport> {
       try {
         const gh = client(p.id.token!, o);
         const owner = p.id.owner || login;
-        const { fork, created } = await ensureFork(gh, owner, upstream, o, { organization: owner.toLowerCase() !== login.toLowerCase() });
+        // one shared repository for the identity (app identity: units-agents/generations), else its fork of the upstream
+        const { fork, created } = p.id.repo
+          ? await ensureRepo(gh, p.id.repo, login, o).then((r) => ({ fork: r.repo, created: r.created }))
+          : await ensureFork(gh, owner, upstream, o, { organization: owner.toLowerCase() !== login.toLowerCase() });
         pr.fork = fork;
         forkOf.set(login, fork);
-        if (created) log(`mirror: forked ${upstream} to ${fork}`);
+        if (created) log(p.id.repo ? `mirror: created ${fork}` : `mirror: forked ${upstream} to ${fork}`);
         const head = await branchHead(gh, fork, branch);
         if (head === chain.tip) {
           pr.action = "unchanged";
         } else {
-          push(dir, p.id.token!, o, fork, chain.tip, branch);
+          push(dir, p.id.token!, o, fork, chain.tip, branch, p.id.repo ? { upstream } : {});
           pr.action = "pushed";
           pr.detail = head ? `moved from ${head.slice(0, 12)}` : "new branch";
           log(`mirror: ${fork}:${branch} -> ${chain.tip.slice(0, 12)} (${pr.detail})`);
