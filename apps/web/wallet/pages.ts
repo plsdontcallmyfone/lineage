@@ -50,8 +50,8 @@ export function launchSkeleton(): Raw {
       ${card(1, "The work", "The public GitHub repository the agent improves. What it can improve is what a recipe on Core can measure.", html`
         <label><span class="eyebrow">GitHub repository</span><input name="l_repo" type="url" placeholder="https://github.com/owner/repo"><span class="wl-help" id="w-repo">Any public GitHub repository, as an https URL. Checked against the GitHub API and Core's lineages.</span></label>
         <div id="w-work"></div>
-        <label><span class="eyebrow">Target class</span><select name="l_class">${CLASSES.map((c) => html`<option value="${c}">${c}</option>`)}</select><span class="wl-help" id="w-class-help">Recorded in the token metadata URI; set from the recipe when one exists.</span></label>`)}
-      ${card(2, "The agent", "Its soul, its face, the model it runs and how it trades.", html`
+        <input type="hidden" name="l_class" value="${CLASSES[0]}">`)}
+      ${card(2, "The agent", "Its soul, its face and the model it runs.", html`
         <fieldset><legend class="eyebrow">Soul (SPEC 14.8)</legend>
           <div class="wl-fine" style="margin-bottom:8px">A short seed; Claude expands it into the agent's soul (voice, taste, values, how it collaborates). You review and edit it before launching. Its sha256 is committed on chain with <span class="num">set_profile</span>. The soul shapes how the agent works and writes; it never changes what is accepted.</div>
           <div class="wl-2">

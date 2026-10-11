@@ -81,7 +81,7 @@ import { frontingShortfall, type FrontingCosts } from "../../../packages/chain/s
 import { payAsset, prepareSwapThen, routeLines, sendSwapPlan, simulatePlan, type PreparedSwap } from "./swap.ts";
 import { loadTradingEscrow, sendAllocation } from "./trading.ts";
 import { entryOf, isDefaultChoice, loadModels, modelChoice, modelsBody, onModelInput, priceText, withModel } from "./models.ts";
-import { launchSkeleton, profileSkeleton, stepNav, STEPS } from "./pages.ts";
+import { CLASSES, launchSkeleton, profileSkeleton, stepNav, STEPS } from "./pages.ts";
 import { feedItemHtml, uploadMedia } from "../src/pages/social-ui.ts";
 import { agentAvatar, agentTitle, buildingLine, injectBuildingStyle, paramCells, type DirToken } from "../src/building.ts";
 import { githubCallsLeft, spendGithubCall } from "../src/github.ts";
@@ -379,11 +379,12 @@ function renderRepo() {
     : html`<span class="mark good">${icon.check} public on GitHub</span> <a class="link" href="${gh.html_url}" target="_blank" rel="noopener">${gh.full_name}</a>, default branch ${gh.default_branch}, ${gh.language ?? "language not reported"}. On chain as <span class="num">${r.url}</span>.`);
   // the class follows the recipe when one exists
   const cls = r.recipes?.[0]?.recipe?.class;
-  const sel = S.root?.querySelector<HTMLSelectElement>('[name="l_class"]');
-  if (sel && cls && [...sel.options].some((o) => o.value === cls)) {
-    sel.value = cls;
-    set("w-class-help", html`Set from the recipe ${r.recipes![0].recipe.name}: <b>${cls}</b>. Recorded in the token metadata URI.`);
-  }
+  // the target class is not picked by the launcher (owner 2026-10-11): it follows the recipe, else the
+  // repository's language when it is one of the classes
+  const sel = S.root?.querySelector<HTMLInputElement>('[name="l_class"]');
+  const lang = String(gh?.language ?? "").toLowerCase().replace("c++", "cpp");
+  const pick = cls ?? (CLASSES.includes(lang) ? lang : null);
+  if (sel && pick) sel.value = pick;
 }
 
 /** What the agent can improve on this repository: the recipes Core runs on it, their class and measurable targets. */
@@ -1722,7 +1723,12 @@ function effectiveTemper(doc: SoulDoc | null | undefined): string | null {
   return fallback;
 }
 
+const TEMPER_PICKABLE = false;
+
 function renderTemper() {
+  // agent trading is off for now (owner 2026-10-11: launchers do not pick a temperament yet); the
+  // agent takes the network default when trading is turned on
+  if (!TEMPER_PICKABLE) return set("w-temp", "");
   const c = tradingCfg;
   if (!c?.temperaments) return set("w-temp", html`<div class="wl-fine" style="margin-top:8px">Trading temperament: the trading config is not readable now (TBA); the agent takes the network default.</div>`);
   const cur = temperPick() ?? c.default_temperament;
@@ -1929,7 +1935,6 @@ function renderReview() {
       ${row("Image", S.image ? `${S.image.name}, ${Math.ceil(S.image.size / 1024)} KB, uploaded as the avatar after the launch` : html`<span class="faint">none (generated pattern)</span>`, 0)}
       ${row("Links", links.length ? links.join(", ") : html`<span class="faint">none</span>`, 0)}
       ${row("Repository", r?.gh ? html`<a class="link" href="${r.gh.html_url}" target="_blank" rel="noopener">${r.gh.full_name}</a>, ${r.recipes?.length ? `${r.recipes.length} recipe${r.recipes.length === 1 ? "" : "s"} on Core` : "no recipe yet (setting up)"}` : "TBA", 1)}
-      ${row("Class", val("l_class"), 1)}
       ${row("Soul", soul ? html`${soul.persona.name}, <span class="dim">${soul.persona.tagline}</span> <span class="wl-hash">${soulDigest(soul).slice(0, 16)}…</span>` : html`<span class="faint">none</span>`, 2)}
       ${row("Temperament", html`${effectiveTemper(soul) ?? "TBA"} <span class="dim">read from the soul</span>`, 2)}
       ${row("Model", m ? html`${m.name} <span class="dim">${m.provider}, ${priceText(m)}</span>` : html`<span class="faint">network default</span>`, 2)}
