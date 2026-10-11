@@ -148,43 +148,49 @@ export async function moveToOrg(svc: IdentityService, org: string, opts: SetOpti
   const out: MoveResult = { org, moved: [], already: [], skipped: [], failed: [], owner: r.owner ?? null };
   const role = await gh.request<{ role?: string; state?: string }>("GET", `/user/memberships/orgs/${org}`, undefined, { okStatuses: [404] });
   if (role.status === 404 || role.data?.role !== "admin" || role.data?.state !== "active") throw new Error(`${r.login} is not an active owner of ${org}; the org owner must make it one before the move`);
-  const repos = await gh.paged<{ name: string; full_name: string; fork: boolean; owner: { login: string } }>(`/users/${r.login}/repos?type=owner`);
-  for (const repo of repos) {
-    if (lower(repo.owner?.login ?? "") !== lower(r.login)) continue;
-    if (!repo.fork && repo.name !== "lineage-learnings") {
-      out.skipped.push({ repo: repo.full_name, why: "not a mirror fork or the learnings repository" });
-      continue;
-    }
-    const target = `${org}/${repo.name}`;
-    const there = await gh.get<any>(`/repos/${target}`, [404]);
-    if (there && !there.message && there.full_name) {
-      if (lower(there.full_name) === lower(target) && there.owner?.login && lower(there.owner.login) === lower(org)) {
-        out.already.push(target);
+  // the identity cycle skips while this marker is fresh (cycle.ts), so it never forks beside a repository in transfer
+  if (!opts.dryRun) svc.o.store.put("meta", "publisher-move", { at: Date.now() });
+  try {
+    const repos = await gh.paged<{ name: string; full_name: string; fork: boolean; owner: { login: string } }>(`/users/${r.login}/repos?type=owner`);
+    for (const repo of repos) {
+      if (lower(repo.owner?.login ?? "") !== lower(r.login)) continue;
+      if (!repo.fork && repo.name !== "lineage-learnings") {
+        out.skipped.push({ repo: repo.full_name, why: "not a mirror fork or the learnings repository" });
         continue;
       }
-    }
-    if (opts.dryRun) {
-      out.moved.push({ from: repo.full_name, to: target });
-      continue;
-    }
-    try {
-      await gh.request("POST", `/repos/${repo.full_name}/transfer`, { new_owner: org });
-      // the transfer continues asynchronously: wait until the org answers for it
-      const deadline = Date.now() + (opts.waitS ?? 60) * 1000;
-      for (;;) {
-        const t = await gh.get<any>(`/repos/${target}`, [404]);
-        if (t && t.owner?.login && lower(t.owner.login) === lower(org)) break;
-        if (Date.now() > deadline) throw new Error(`not under ${org} after ${opts.waitS ?? 60} s`);
-        await sleep(2000);
+      const target = `${org}/${repo.name}`;
+      const there = await gh.get<any>(`/repos/${target}`, [404]);
+      if (there && !there.message && there.full_name) {
+        if (lower(there.full_name) === lower(target) && there.owner?.login && lower(there.owner.login) === lower(org)) {
+          out.already.push(target);
+          continue;
+        }
       }
-      out.moved.push({ from: repo.full_name, to: target });
-    } catch (e) {
-      out.failed.push({ repo: repo.full_name, why: (e as Error).message.slice(0, 200) });
+      if (opts.dryRun) {
+        out.moved.push({ from: repo.full_name, to: target });
+        continue;
+      }
+      try {
+        await gh.request("POST", `/repos/${repo.full_name}/transfer`, { new_owner: org });
+        // the transfer continues asynchronously: wait until the org answers for it
+        const deadline = Date.now() + (opts.waitS ?? 60) * 1000;
+        for (;;) {
+          const t = await gh.get<any>(`/repos/${target}`, [404]);
+          if (t && t.owner?.login && lower(t.owner.login) === lower(org)) break;
+          if (Date.now() > deadline) throw new Error(`not under ${org} after ${opts.waitS ?? 60} s`);
+          await sleep(2000);
+        }
+        out.moved.push({ from: repo.full_name, to: target });
+      } catch (e) {
+        out.failed.push({ repo: repo.full_name, why: (e as Error).message.slice(0, 200) });
+      }
     }
+    if (!opts.dryRun && out.failed.length === 0) {
+      svc.o.store.put("publisher", "app", { ...r, owner: org });
+      out.owner = org;
+    }
+    return out;
+  } finally {
+    if (!opts.dryRun) svc.o.store.delete("meta", "publisher-move");
   }
-  if (!opts.dryRun && out.failed.length === 0) {
-    svc.o.store.put("publisher", "app", { ...r, owner: org });
-    out.owner = org;
-  }
-  return out;
 }

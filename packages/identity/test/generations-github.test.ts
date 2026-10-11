@@ -194,6 +194,10 @@ describe("generations on GitHub", () => {
       const v = await verify(id);
       expect([id, v.ok, v.checks.filter((c) => c.ok !== true).map((c) => `${c.name}: ${c.detail}`)]).toEqual([id, true, []]);
     }
+    // a cycle during a move does nothing (it would fork beside a repository in transfer)
+    svc.o.store.put("meta", "publisher-move", { at: Date.now() });
+    expect((await cycle()).error).toContain("being moved");
+    svc.o.store.delete("meta", "publisher-move");
     // no second fork was made under the publisher's own account
     expect(gh.calls.filter((c) => c.method === "POST" && c.path.endsWith("/forks")).length).toBe(2);
   }, 60_000);

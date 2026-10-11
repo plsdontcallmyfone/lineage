@@ -74,6 +74,13 @@ export async function cycleOnce(o: CycleOptions): Promise<CycleSummary> {
   const { svc } = o;
   const store = svc.o.store;
   const sum: CycleSummary = { at: now().toISOString(), agents: 0, rejected: [], lineages: [], skipped_unchanged: 0, published: 0, verified: 0, prs: [], recorded: 0, awaiting: 0, record_failures: [], publisher: null, error: null };
+  // a publisher-move in progress (publisher.ts moveToOrg): a cycle now would fork beside repositories in transfer
+  const moving = store.get<{ at: number }>("meta", "publisher-move");
+  if (moving && now().getTime() - moving.at < 15 * 60 * 1000) {
+    sum.error = "skipped: the publisher's repositories are being moved into the org";
+    log(`cycle: ${sum.error}`);
+    return sum;
+  }
   try {
     // 1. tokens still accepted?
     const agents: string[] = [];
