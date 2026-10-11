@@ -1450,3 +1450,5 @@ a.eco-btn { text-decoration: none; }
 /* the deck fills the screen: a short gap to the footer */
 main:has(.deck-shell) { padding-bottom: 12px; min-height: 0; }
 main:has(.deck-shell) + .site-footer { margin-top: 0; }
+html, body { scrollbar-width: none; }
+html::-webkit-scrollbar, body::-webkit-scrollbar { display: none; width: 0; height: 0; }
