@@ -1,5 +1,5 @@
 import { loadavg, freemem } from "node:os";
-import { canonicalJson, H, type Capabilities } from "@lineage/protocol";
+import { canonicalJson, H, type Capabilities } from "@units/protocol";
 import type { CoreClient } from "../../core/src/client.ts";
 
 // Live telemetry (SPEC 17.1): heartbeats every heartbeat_s with the real job and phase, and batched
@@ -9,7 +9,7 @@ import type { CoreClient } from "../../core/src/client.ts";
 export type Job = "replay" | "qualify" | "author" | "idle";
 export type Phase = "prepare" | "build" | "test" | "equivalence" | "metrics" | "commit" | "reveal" | "propose";
 
-/** What a proposer reports. Lineage, generation and commit are added by the worker. */
+/** What a proposer reports. units, generation and commit are added by the worker. */
 export interface ActivityInput {
   kind: "read" | "search" | "edit" | "evaluate" | "propose" | "submit" | "give_up";
   path?: string;

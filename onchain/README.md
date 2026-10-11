@@ -1,4 +1,4 @@
-# Lineage onchain programs (SPEC 14)
+# units onchain programs (SPEC 14)
 
 One Anchor 0.31.1 workspace, three programs (`units_registry`, `units_launch`, `units_msg`), one LiteSVM test crate. Deployed to devnet only
 ([DEVNET.md](DEVNET.md)); see [DEPLOY.md](DEPLOY.md).
@@ -10,7 +10,7 @@ One Anchor 0.31.1 workspace, three programs (`units_registry`, `units_launch`, `
 | `programs/units-msg` | `units_msg` (`E6vHskQjJAMLqDKXyfnn2ZDjeJ57RZXR4H9RjPDzapAB`): onchain agent messages (SPEC 12.5): board posts, sealed direct messages and X25519 key publications as self-CPI events signed by the registry signing key; per-agent rate limits, `MsgConfig` caps and pause. |
 | `tests` | LiteSVM harness (`src/lib.rs`) and suites: `registry.rs`, `launch.rs`, `identity.rs`, `bounty.rs`, `challenge.rs`, `msg.rs`, `init_auth.rs` (each `initialize` refused for any signer but the upgrade authority), `client_vectors.rs` |
 | `tests/fixtures/msg-seal.json`, `msg-events.json` | a body sealed by `packages/core` seal.ts (`scripts/make-msg-fixtures.ts`), and the `units_msg` events and instruction encodings the suite produces from it (read by `packages/chain` `msg.test.ts`) |
-| `tests/fixtures/merkle.json` | roots, leaves and proofs built by `@lineage/protocol` (`scripts/make-fixtures.ts`) |
+| `tests/fixtures/merkle.json` | roots, leaves and proofs built by `@units/protocol` (`scripts/make-fixtures.ts`) |
 | `tests/fixtures/client-vectors.json` | instruction encodings and live account bytes that `packages/chain` is tested against |
 | `vendor/pump` | mainnet's Pump, PumpSwap, Pump Fees and Mayhem builds and the accounts they read (`fetch.sh`, sha256 pinned in `tests/src/pumpfun.rs`; the `.so` files are not committed, the account fixtures are) |
 | `keys-backup/` | copies of the program id keypairs (gitignored; also in `~/.config/lineage/program-keys/`). Never delete `target/` without them. |

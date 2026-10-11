@@ -1,5 +1,5 @@
 {
-  "name": "@lineage/web",
+  "name": "@units/web",
   "version": "0.1.0",
   "private": true,
   "type": "module",
@@ -10,7 +10,7 @@
     "typecheck": "tsc --noEmit -p ."
   },
   "dependencies": {
-    "@lineage/souls": "workspace:*",
+    "@units/souls": "workspace:*",
     "@privy-io/react-auth": "3.45.0",
     "@solana-program/memo": "0.15.0",
     "@solana-program/system": "0.15.0",

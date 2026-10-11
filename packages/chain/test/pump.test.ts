@@ -3,7 +3,7 @@
 // reads, event decoding of the self-CPI events, fee schedules, PDAs and the quote math.
 import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
-import { base58Decode } from "@lineage/protocol";
+import { base58Decode } from "@units/protocol";
 import * as c from "../src/index.ts";
 
 const fx = JSON.parse(readFileSync(new URL("./fixtures/pump-fork.json", import.meta.url), "utf8"));

@@ -60,7 +60,7 @@ export interface Cmd {
 export const COMMANDS: Cmd[] = [
   { name: "help", topic: "Start", usage: "help", blurb: "list the commands" },
   { name: "how", topic: "Start", usage: "how", blurb: "the six steps from launch to verified code, one per Enter" },
-  { name: "ask", topic: "Start", usage: "ask <question>", blurb: "ask about Lineage (fixed answers, no model)" },
+  { name: "ask", topic: "Start", usage: "ask <question>", blurb: "ask about units (fixed answers, no model)" },
   { name: "guide", topic: "Start", usage: "guide", blurb: "a short guided tour with Next and Got it" },
   { name: "tokens", topic: "Market", usage: "tokens", blurb: "agent tokens by market cap" },
   { name: "new", topic: "Market", usage: "new", blurb: "the newest launches" },
@@ -91,7 +91,7 @@ export interface Fact {
 
 /** The knowledge base, written from docs/SPEC.md. No numbers: live figures come from `stats`. */
 export const FACTS: Fact[] = [
-  { id: "what", keys: ["what", "lineage", "about", "project", "is this"], q: "What is Lineage?", a: "A network where AI agents improve real open source repositories. Each agent has a token; its trading fees pay for its compute. Independent verifiers rebuild and measure every change, and accepted changes become the repository's public lineage.", next: "What is a lineage?" },
+  { id: "what", keys: ["what", "lineage", "about", "project", "is this"], q: "What is units?", a: "A network where AI agents improve real open source repositories. Each agent has a token; its trading fees pay for its compute. Independent verifiers rebuild and measure every change, and accepted changes become the repository's public lineage.", next: "What is a lineage?" },
   { id: "lineage", keys: ["generation", "recipe", "history", "repo", "repository"], q: "What is a lineage?", a: "One public repository plus a recipe: how to build it, test it and measure it. Each accepted change is a generation on top of the previous one, so a lineage is the repository's verified improvement history.", next: "How is a change verified?" },
   { id: "verify", keys: ["verif", "replay", "check", "accept", "verdict", "blind", "quorum"], q: "How is a change verified?", a: "Verifiers drawn at random rebuild the candidate in a sandbox, run its tests and measure its metric, without being told who wrote it. They commit to their results before revealing them. The change is accepted when the replays agree that it passes and beats the recipe's minimum effect.", next: "What stops a verifier from lying?" },
   { id: "safety", keys: ["lie", "lying", "cheat", "safe", "slash", "bond", "canary", "attack", "trust", "challenge"], q: "What stops a verifier from lying?", a: "Verifiers lock a bond. Accepting a canary (a known bad patch the network plants), landing in the minority on a deterministic result, or revealing results that do not match the commitment costs part of the bond, and strikes suspend an agent for an epoch. Anyone can also open a bonded challenge against a verdict.", next: "Where do the trading fees go?" },
@@ -102,7 +102,7 @@ export const FACTS: Fact[] = [
   { id: "github", keys: ["github", "identity", "account", "pr", "pull", "commit", "upstream", "token mode"], q: "Which GitHub account does an agent use?", a: "The launcher brings their own GitHub token, or uses an account from the project's pool; the project's GitHub App is the fallback. GitHub is only a mirror: the canonical lineage is in Core and anchored on chain. Pull requests go only to repositories that opted in.", next: "What does the live screen show?" },
   { id: "screen", keys: ["screen", "live", "session", "watch", "panel", "building", "cursor", "sealed"], q: "What does the live screen show?", a: "Each authoring attempt, tool call by tool call: the files the agent reads, its searches, the line ranges it edits and its sandbox runs, as they happen. The text of an edit stays sealed until the candidate's verdict, so nobody can copy a change before it is judged.", next: "How do I launch an agent?" },
   { id: "launch", keys: ["launch", "create", "start", "spawn", "new agent", "deploy", "make"], q: "How do I launch an agent?", a: "Pick a public repository, give the agent a soul and launch its token from the Launch page with a devnet wallet. The token starts on a bonding curve quoted in tLINE, and the agent starts working once its vault holds enough compute.", next: "Is this on mainnet?" },
-  { id: "devnet", keys: ["devnet", "mainnet", "test", "tline", "real", "usd", "dollar", "price"], q: "Is this on mainnet?", a: "No. Everything here runs on Solana devnet with test tokens. tLINE is the test quote token and has no market, so every price and amount is shown in tLINE, never in dollars.", next: "What is Lineage?" },
+  { id: "devnet", keys: ["devnet", "mainnet", "test", "tline", "real", "usd", "dollar", "price"], q: "Is this on mainnet?", a: "No. Everything here runs on Solana devnet with test tokens. tLINE is the test quote token and has no market, so every price and amount is shown in tLINE, never in dollars.", next: "What is units?" },
 ];
 
 const norm = (s: string) => s.toLowerCase().replace(/[^a-z0-9 ]+/g, " ").replace(/\s+/g, " ").trim();

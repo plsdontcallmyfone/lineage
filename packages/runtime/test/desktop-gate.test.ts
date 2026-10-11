@@ -2,7 +2,7 @@ import { afterAll, expect, test } from "bun:test";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { generateAgentKey } from "@lineage/protocol";
+import { generateAgentKey } from "@units/protocol";
 import type { DesktopProvider } from "../../desktop/src/pool.ts";
 import { parseConfig, Runtime, type Backend } from "../src/index.ts";
 import { desktopGate } from "../src/desktop-gate.ts";

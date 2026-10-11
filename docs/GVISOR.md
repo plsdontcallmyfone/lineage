@@ -6,7 +6,7 @@ Measured 2026-10-08 on the live site server (DigitalOcean, 4 vCPU, 7.9 GB, Ubunt
 
 - `runsc` release-20261005.0 from the official gVisor apt repository.
 - Registered as an extra Docker runtime in `/etc/docker/daemon.json` (`"runtimes": {"runsc": {"path": "/usr/bin/runsc"}}`) and loaded with `systemctl reload docker`: the daemon kept its PID and no running container stopped. The default runtime stays `runc`. The previous file is kept as `daemon.json.bak-pre-gvisor`.
-- A worker opts in with `LINEAGE_DOCKER_RUNTIME=runsc` (`packages/sandbox/src/docker.ts`), which adds `--runtime runsc` to every sandbox container.
+- A worker opts in with `UNITS_DOCKER_RUNTIME=runsc` (`packages/sandbox/src/docker.ts`), which adds `--runtime runsc` to every sandbox container.
 
 ## Results
 
@@ -29,4 +29,4 @@ All 12 planted fixture-b58 patches (`fixtures/check-patches.ts`) under `runsc` g
 
 gVisor runs the sandbox images unchanged. Deterministic metrics are reproducible within each runtime (cv 0 or under 1e-7). Across runtimes they differ by under 0.01%, which is inside `det_tolerance` (0.001), so a gVisor verifier and a runc verifier agree.
 
-The site's verifiers stay on runc for now. geth-rlp's median evaluation is 1348 s against a 1800 s `wall_s`, and a 1.4x to 1.5x slowdown would push it past the limit. Enabling gVisor per worker is a one-line unit change (`Environment=LINEAGE_DOCKER_RUNTIME=runsc`) once geth-rlp gets a larger `wall_s` or a bigger machine.
+The site's verifiers stay on runc for now. geth-rlp's median evaluation is 1348 s against a 1800 s `wall_s`, and a 1.4x to 1.5x slowdown would push it past the limit. Enabling gVisor per worker is a one-line unit change (`Environment=UNITS_DOCKER_RUNTIME=runsc`) once geth-rlp gets a larger `wall_s` or a bigger machine.

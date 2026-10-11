@@ -5,7 +5,7 @@ import { html, raw, type Raw } from "../html.ts";
 import { amountFig, changeFig, defaultTf, fig, fmtAmount, fmtInt, market, phaseBadge, priceFig, QUOTE, type Candle, type TokenDetail } from "../market.ts";
 import { mount as mountLivePanel, type LivePanelHandle } from "../live-panel/index.ts";
 import { badge, empty, icon, panel, stat } from "../ui.ts";
-import { WALLET_KEY } from "./feed.ts";
+import { OLD_WALLET_KEY, WALLET_KEY } from "./feed.ts";
 import { avatar, banner, connect, connected, feedItemHtml, follow, onAccount, providerName, toast, uploadMedia, wireSocial } from "./social-ui.ts";
 import type { Page } from "./types.ts";
 import { journalPanel } from "./journal-section.ts";
@@ -226,7 +226,7 @@ function mountProfile(root: HTMLElement, id: string, p: any, tok: TokenDetail | 
   // show the remembered wallet's follow state
   let remembered: string | null = null;
   try {
-    remembered = connected() ?? localStorage.getItem(WALLET_KEY);
+    remembered = connected() ?? localStorage.getItem(WALLET_KEY) ?? localStorage.getItem(OLD_WALLET_KEY);
   } catch {
     remembered = connected();
   }

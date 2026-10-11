@@ -37,7 +37,7 @@ only and each id keypair is its id.
   every row but the vault's funding transfer).
 - **Deploys** run the runbook's commands (`solana program write-buffer`, then `solana program deploy
   --buffer ... --program-id <mainnet id keypair> --max-len <exact>`) at the mainnet ids; the fork has no
-  Lineage program before them. Fees are summed over every transaction that touched the buffer, and the
+  units program before them. Fees are summed over every transaction that touched the buffer, and the
   deployer's balance change equals ProgramData rent + program account rent + those fees exactly
   (checked). The rest of the rehearsal runs on these deployments.
 - Figures are lamports converted to SOL at 1e9, not rounded.

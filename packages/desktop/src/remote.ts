@@ -259,7 +259,7 @@ export async function pullStream(exec: (argv: string[], x?: { timeoutMs?: number
 /** Directory for ssh control sockets (short: a unix socket path is at most 104 bytes on some systems). */
 export function controlDir(): string {
   // ssh appends "/<40 hex>" (%C) and a temporary ".<16 chars>" while it binds: keep the base short
-  const base = process.env.LINEAGE_DESK_SSH_DIR ?? (tmpdir().length < 30 ? tmpdir() : "/tmp");
+  const base = (process.env.UNITS_DESK_SSH_DIR ?? process.env.LINEAGE_DESK_SSH_DIR) ?? (tmpdir().length < 30 ? tmpdir() : "/tmp");
   const d = base.length + 24 <= 46 ? join(base, `lineage-desk-ssh-${process.getuid?.() ?? 0}`) : join("/tmp", `ldssh-${process.getuid?.() ?? 0}`);
   mkdirSync(d, { recursive: true, mode: 0o700 });
   return d;

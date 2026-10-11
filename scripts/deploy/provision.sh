@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Lineage site: one-time and idempotent box setup, run as root on a fresh Ubuntu 24.04 server.
+# units site: one-time and idempotent box setup, run as root on a fresh Ubuntu 24.04 server.
 # deploy.sh copies this file to the server and runs it; running it again changes nothing that is
 # already in place. See docs/DEPLOY-SITE.md.
 #

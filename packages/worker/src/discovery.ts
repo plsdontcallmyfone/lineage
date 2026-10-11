@@ -2,7 +2,7 @@ import Anthropic from "@anthropic-ai/sdk";
 import { randomBytes } from "node:crypto";
 import { appendFileSync, cpSync, existsSync, mkdirSync, readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
-import { canonicalJson, H, matchesAny, type MetricSpec, type Recipe } from "@lineage/protocol";
+import { canonicalJson, H, matchesAny, type MetricSpec, type Recipe } from "@units/protocol";
 import {
   applyPatch,
   commitTime,
@@ -18,7 +18,7 @@ import {
   type DepsLayer,
   type LoadedRecipe,
   type RunResult,
-} from "@lineage/sandbox";
+} from "@units/sandbox";
 import { CoreClient } from "../../core/src/client.ts";
 import type { SigningKey } from "../../core/src/client.ts";
 import { hotspotTarget, profileCommitment, profileTool, repoPath, type Profile, type ProfileFn } from "../../core/src/findings.ts";
@@ -459,7 +459,7 @@ export async function analyseHotspot(o: {
   const r = o.loaded.recipe;
   const m = r.metrics.find((x) => x.name === o.metric)!;
   const shown = o.profile.functions.slice(0, 30);
-  const system = `You are a discovery agent in Lineage, a network where code changes count only when other machines reproduce them.
+  const system = `You are a discovery agent in units, a network where code changes count only when other machines reproduce them.
 
 Repository: ${r.repo} at commit ${r.commit} (class ${r.class}).
 You are given a ${o.tool === "cu" ? "compute-unit breakdown" : "callgrind profile (self, exclusive, instruction counts per function)"} of the metric ${o.metric} (${m.direction} is better), measured in the sandbox by: ${m.command}

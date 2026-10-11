@@ -1,7 +1,7 @@
 #!/usr/bin/env bun
 // Headless UI check of the social pages (plan PANEL-SOCIAL-PROVIDERS L, F, S) against a running
 // dashboard (scripts/social/local-run.ts --keep): /leaderboard, /feed, /following, an agent profile,
-// a session page with its feed panel, and <lineage-leaderboard> / <lineage-feed> on a page of another
+// a session page with its feed panel, and <units-leaderboard> / <units-feed> on a page of another
 // origin, at 1280 and 390 px, light and dark. Checks: no horizontal scroll, no console errors, no
 // monospace, figures equal Core's, the generated pattern when there is no avatar and the signed
 // upload when there is, and a follow and a reaction signed by a test wallet (Wallet Standard,
@@ -55,8 +55,8 @@ const FAKE_WALLET = `(() => {
 
 const embedHtml = `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>embed</title>
 <style>body{margin:0;padding:16px;font-family:system-ui;background:#f4f2ee}.g{display:grid;grid-template-columns:repeat(auto-fit,minmax(320px,1fr));gap:16px}</style></head>
-<body><div class="g"><lineage-leaderboard limit="5" title="Top agents"></lineage-leaderboard><lineage-feed limit="8"></lineage-feed></div>
-<script src="${WEB}/embed/lineage-embed.js" data-core="${CORE}/v1" data-events="${CORE}/v1/events" data-site="${WEB}"></script></body></html>`;
+<body><div class="g"><units-leaderboard limit="5" title="Top agents"></units-leaderboard><units-feed limit="8"></units-feed></div>
+<script src="${WEB}/embed/units-embed.js" data-core="${CORE}/v1" data-events="${CORE}/v1/events" data-site="${WEB}"></script></body></html>`;
 const embedSrv = Bun.serve({ port: EMBED_PORT, hostname: "127.0.0.1", fetch: () => new Response(embedHtml, { headers: { "content-type": "text/html" } }) });
 
 const browser = await chromium.launch({ executablePath: arg("exe"), headless: true });
@@ -173,9 +173,9 @@ for (const width of [1280, 390])
     if (!dark) {
       const { ctx, p, errors } = await open(width, dark);
       await p.goto(`http://127.0.0.1:${EMBED_PORT}/`, { waitUntil: "load" });
-      await p.waitForFunction(() => (document.querySelector("lineage-leaderboard") as any)?.shadowRoot?.querySelector(".row") && (document.querySelector("lineage-feed") as any)?.shadowRoot?.querySelector(".it"), undefined, { timeout: 15_000 });
-      const rows = await p.evaluate(() => (document.querySelector("lineage-leaderboard") as any).shadowRoot.querySelectorAll(".row").length);
-      check(`embed ${tag}: <lineage-leaderboard> rows from Core`, rows === Math.min(5, lb.agents.length), `${rows}`);
+      await p.waitForFunction(() => (document.querySelector("units-leaderboard") as any)?.shadowRoot?.querySelector(".row") && (document.querySelector("units-feed") as any)?.shadowRoot?.querySelector(".it"), undefined, { timeout: 15_000 });
+      const rows = await p.evaluate(() => (document.querySelector("units-leaderboard") as any).shadowRoot.querySelectorAll(".row").length);
+      check(`embed ${tag}: <units-leaderboard> rows from Core`, rows === Math.min(5, lb.agents.length), `${rows}`);
       await p.screenshot({ path: join(SHOTS, `embed-${tag}.png`), fullPage: true });
       await common(p, errors, `embed ${tag}`);
       await ctx.close();

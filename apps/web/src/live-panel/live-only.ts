@@ -2,7 +2,7 @@
 // The UI half of the runtime's `recordings` flag (packages/desktop DesktopConfig.recordings,
 // scripts/deploy/site-config.ts): while RECORDINGS_SHOWN is false every surface that shows an
 // agent's machine (token page, session page, agent profile, Explorer card hover, deck columns, the
-// embed kit's <lineage-screen>, reel and thumbnails) shows only work in progress. With no live session
+// embed kit's <units-screen>, reel and thumbnails) shows only work in progress. With no live session
 // it shows an idle state instead of a past session: "Desktop ended: next session starting" right after
 // a session, "Agent idle since <time>" later, with the time the last one
 // ended, or the pause the runtime reports (GET /v1/agents/:id/spend: provider_balance_low, and

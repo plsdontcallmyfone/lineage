@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { base58Decode, base58Encode } from "@lineage/protocol";
+import { base58Decode, base58Encode } from "@units/protocol";
 
 // Borsh encoding as Anchor writes it, with no dependency: u64/i64/u128 are bigint, keys base58.
 

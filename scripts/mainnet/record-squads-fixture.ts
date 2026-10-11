@@ -3,7 +3,7 @@
 // transaction) into packages/chain/test/fixtures/squads-accounts.json for squads.test.ts.
 import { writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { squadsPdas } from "@lineage/chain";
+import { squadsPdas } from "@units/chain";
 import { fork } from "./lib.ts";
 import last from "./REHEARSAL-LAST.json";
 

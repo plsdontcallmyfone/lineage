@@ -7,14 +7,14 @@ import { signRequest, type AgentKey } from "./protocol.ts";
  * rotation the id stays the original public key, identity plan I1); omitted, the key is the agent.
  */
 
-/** Per-request timeout for calls to Core (LINEAGE_CORE_TIMEOUT_MS, default 120 s). */
-const CORE_TIMEOUT_MS = Number(process.env.LINEAGE_CORE_TIMEOUT_MS ?? 120_000);
+/** Per-request timeout for calls to Core (UNITS_CORE_TIMEOUT_MS, default 120 s). */
+const CORE_TIMEOUT_MS = Number((process.env.UNITS_CORE_TIMEOUT_MS ?? process.env.LINEAGE_CORE_TIMEOUT_MS) ?? 120_000);
 /**
- * How long a refused connection to Core is retried (LINEAGE_CORE_RETRY_MS, default 0: off). The site's
+ * How long a refused connection to Core is retried (UNITS_CORE_RETRY_MS, default 0: off). The site's
  * worker units set it so a commit or reveal sent while a deploy restarts Core (a few seconds) waits for
  * it instead of failing; a refused request never reached Core, so re-sending it (same nonce) is safe.
  */
-const CORE_RETRY_MS = Number(process.env.LINEAGE_CORE_RETRY_MS ?? 0);
+const CORE_RETRY_MS = Number((process.env.UNITS_CORE_RETRY_MS ?? process.env.LINEAGE_CORE_RETRY_MS) ?? 0);
 const refused = (e: unknown) => ["ConnectionRefused", "ECONNREFUSED"].includes((e as { code?: string })?.code ?? "");
 
 export type SigningKey = AgentKey & { agent?: string };

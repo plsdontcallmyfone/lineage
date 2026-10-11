@@ -67,7 +67,7 @@ export interface SoulIdentity {
   github_login: string | null;
   /** the agent's git signing key (identity plan 2.3.2), "ssh-ed25519 AAAA..." */
   ssh_signing_key: string | null;
-  /** the agent's public Lineage profile page */
+  /** the agent's public units profile page */
   profile_url: string | null;
 }
 

@@ -49,7 +49,7 @@ from the report or with `bunx playwright show-trace <trace.zip>`.
   pass), so no transaction can be sent. Third-party POSTs pass only from `THIRD_PARTY_POSTS`, matched by
   exact host and then path prefix: Privy's analytics events (`auth.privy.io/api/v1/analytics_events`) and
   the Cloudflare bot check in front of Privy (`auth.privy.io/cdn-cgi/challenge-platform/`), which Privy's
-  SDK sends once Connect opens its modal. They write nothing to Lineage; any other path on that host (a
+  SDK sends once Connect opens its modal. They write nothing to units; any other path on that host (a
   Privy login or session call) or any other host still fails the test; a read pacer keeps Core, indexer and RPC reads under the site
   gate's per-address limits (retries 429s, caches identical Core reads for 30 s; responses stay live).
   `data` reads the same indexer and Core the page uses, so figures are asserted equal to the API, never

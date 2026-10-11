@@ -10,7 +10,7 @@
 // its own unittest suite (ref/python/tests.py) and a checksum loop (bech32_polymod) as hot path.
 import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { loadRecipe } from "@lineage/sandbox";
+import { loadRecipe } from "@units/sandbox";
 import { SpendLedger, anthropicClient } from "../../packages/worker/src/discovery.ts";
 import { RecipeDrafter, type DraftTarget } from "../../packages/worker/src/recipe-proposer.ts";
 

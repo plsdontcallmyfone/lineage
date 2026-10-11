@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Lineage desktop host: provision (or update) a dedicated server that runs agent desktops for the site
+# units desktop host: provision (or update) a dedicated server that runs agent desktops for the site
 # (docs/plans/AGENT-DESKTOPS.md "Desktop hosts", docs/DEPLOY-SITE.md "Desktop hosts"). Idempotent:
 # run it again at any time; `update` redoes only the gateway, the image and the proxy.
 #

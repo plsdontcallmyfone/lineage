@@ -1,4 +1,4 @@
-# Deploying the Lineage programs (devnet deployed 2026-10-07, see DEVNET.md)
+# Deploying the units programs (devnet deployed 2026-10-07, see DEVNET.md)
 
 Deployed to devnet on 2026-10-07 and upgraded the same day with the review fixes (DEVNET.md).
 The text below is the original plan, kept for the measured figures. Mainnet is out of scope until launch values exist

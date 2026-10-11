@@ -12,10 +12,10 @@ User=lineage-web
 Group=lineage-web
 WorkingDirectory=/opt/lineage/current
 # its own home: the faucet key and log, the soul drafts' state (remote.sh users_setup)
-Environment=HOME=/var/lib/lineage/web LINEAGE_HOME=/var/lib/lineage/web/.lineage PATH=/usr/local/bin:/usr/bin:/bin
+Environment=HOME=/var/lib/lineage/web UNITS_HOME=/var/lib/lineage/web/.lineage PATH=/usr/local/bin:/usr/bin:/bin
 Environment=BUN_RUNTIME_TRANSPILER_CACHE_PATH=0
 EnvironmentFile=-/etc/lineage/site.env
-# LINEAGE_DEVNET_RPC and ANTHROPIC_API_KEY (soul drafts), root-owned, read by systemd
+# UNITS_DEVNET_RPC and ANTHROPIC_API_KEY (soul drafts), root-owned, read by systemd
 EnvironmentFile=-/etc/lineage/web.env
 NoNewPrivileges=yes
 PrivateTmp=yes

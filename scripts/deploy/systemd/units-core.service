@@ -1,7 +1,7 @@
 # Installed by scripts/deploy/remote.sh. units public devnet site, docs/DEPLOY-SITE.md.
 # Runs as lineage-core (no docker, no login; audit OFF-D10): its data in /var/lib/lineage/core, its keys
 # and network.json in /etc/lineage-core (remote.sh users_setup). Group lineage gives it read access to the
-# workers' git mirrors (the tree view, LINEAGE_HOME) and the private canaries; nothing in /home is
+# workers' git mirrors (the tree view, UNITS_HOME) and the private canaries; nothing in /home is
 # writable and lineage's key directory is hidden.
 [Unit]
 # rebrand (docs/plans/REBRAND-UNITS.md 3.8): never runs together with the unit of the old name; a
@@ -18,7 +18,7 @@ User=lineage-core
 Group=lineage
 UMask=0007
 WorkingDirectory=/opt/lineage/current
-Environment=HOME=/var/lib/lineage/core LINEAGE_HOME=/home/lineage/.lineage PATH=/usr/local/bin:/usr/bin:/bin
+Environment=HOME=/var/lib/lineage/core UNITS_HOME=/home/lineage/.lineage PATH=/usr/local/bin:/usr/bin:/bin
 Environment=BUN_RUNTIME_TRANSPILER_CACHE_PATH=0
 # the mirrors belong to lineage; git refuses another owner's repository unless it is marked safe
 Environment=GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=safe.directory GIT_CONFIG_VALUE_0=*

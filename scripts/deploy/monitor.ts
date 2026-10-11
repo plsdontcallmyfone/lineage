@@ -1,5 +1,5 @@
 #!/usr/bin/env bun
-// Lineage site monitor (plan M4). units-monitor.timer runs it every 5 minutes as the unprivileged
+// units site monitor (plan M4). units-monitor.timer runs it every 5 minutes as the unprivileged
 // user lineage-monitor; `remote.sh monitor` starts it once and prints every check.
 //
 //   bun scripts/deploy/monitor.ts [--state /var/lib/lineage-monitor/state.json]

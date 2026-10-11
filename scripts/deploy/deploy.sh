@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Lineage public devnet site: deploy from this machine to one Linux server. docs/DEPLOY-SITE.md.
+# units public devnet site: deploy from this machine to one Linux server. docs/DEPLOY-SITE.md.
 #
 #   scripts/deploy/deploy.sh <host> [mode]
 #
@@ -36,14 +36,14 @@
 #   SSH_KEY (default ~/.ssh/lineage_site), SSH_PORT (22), SSH_USER (root)
 #   DOMAIN          optional real domain (its A record must point at the server) served next to <ip>.sslip.io
 #   ACME_EMAIL      optional email for Let's Encrypt
-#   LINEAGE_RECIPES recipes to serve (default fixture-b58,base58-py,minbpe), re-pinned to the server's arch
+#   UNITS_RECIPES recipes to serve (default fixture-b58,base58-py,minbpe), re-pinned to the server's arch
 #   WITH_RUNTIME=1  also copy the runtime authority key, model.env and providers.env (modes full, keys and code) and run
 #                   lineage-runtime (real model spend, capped per UTC day in runtime.json by site-config.ts);
 #                   e2b.env too when it holds a key (agent desktops' E2B overflow, capped per UTC day)
 #   WITH_AUTHOR=1   also copy the TEST author agent keys and run lineage-author@<name> (scripted candidates)
 #   AUTHORS         recipes whose TEST author runs (default minbpe); launch their agents first with
 #                   scripts/deploy/site-authors.ts --recipes <same list> (keys agent-<name>.json here)
-#   KEEP_SITE_ENV   1 (default): LINEAGE_RECIPES, AUTHORS, WITH_RUNTIME, WITH_AUTHOR and EXTRA_ORIGINS left
+#   KEEP_SITE_ENV   1 (default): UNITS_RECIPES, AUTHORS, WITH_RUNTIME, WITH_AUTHOR and EXTRA_ORIGINS left
 #                   unset keep the server's current site.env values; 0 falls back to the defaults
 #   DEPLOY_REF      commit to deploy (default HEAD; must be HEAD or an ancestor)
 #   DEPLOY_DRAIN_WAIT  seconds activate waits for background units (verifiers, authors, runtime) to finish
@@ -81,7 +81,7 @@ if [ "${KEEP_SITE_ENV:-1}" = 1 ] && [ "$DRY_RUN" != 1 ]; then
   CUR="$(r 'cat /etc/lineage/site.env 2>/dev/null' 2>/dev/null || true)"
   cur() { printf '%s\n' "$CUR" | sed -n "s/^$1=//p" | tail -1; }
   if [ -n "$CUR" ]; then
-    : "${LINEAGE_RECIPES:=$(cur LINEAGE_RECIPES)}" "${AUTHORS:=$(cur AUTHORS)}"
+    : "${UNITS_RECIPES:=${LINEAGE_RECIPES:-$(cur UNITS_RECIPES)}}" "${UNITS_RECIPES:=$(cur LINEAGE_RECIPES)}" "${AUTHORS:=$(cur AUTHORS)}"
     : "${WITH_RUNTIME:=$(cur WITH_RUNTIME)}" "${WITH_AUTHOR:=$(cur WITH_AUTHOR)}"
     if [ -z "${EXTRA_ORIGINS:-}" ]; then
       EXTRA_ORIGINS="$(cur GATE_ORIGINS | tr ',' '\n' | grep -vxF "$(printf 'https://%s\n' $(cur SITE_NAMES | tr ',' ' '))" | paste -sd, - || true)"
@@ -89,7 +89,7 @@ if [ "${KEEP_SITE_ENV:-1}" = 1 ] && [ "$DRY_RUN" != 1 ]; then
     echo "kept from the server's site.env where unset: recipes, authors, WITH_RUNTIME=${WITH_RUNTIME:-0}, WITH_AUTHOR=${WITH_AUTHOR:-0}, extra origins"
   fi
 fi
-LINEAGE_RECIPES="${LINEAGE_RECIPES:-fixture-b58,base58-py,minbpe}"
+UNITS_RECIPES="${UNITS_RECIPES:-${LINEAGE_RECIPES:-fixture-b58,base58-py,minbpe}}"
 AUTHORS="${AUTHORS:-minbpe}"
 
 if [[ "$HOST" =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]]; then SSLIP="${HOST//./-}.sslip.io"; else SSLIP=""; fi
@@ -108,16 +108,19 @@ git merge-base --is-ancestor "$SHA" HEAD || { echo "DEPLOY_REF must be HEAD or o
 
 write_env() {
   r "install -d -m 755 /etc/lineage && (umask 077; cat > /etc/lineage/site.env) && chmod 600 /etc/lineage/site.env && chown root:root /etc/lineage/site.env" <<EOF
-# written by scripts/deploy/deploy.sh; read by remote.sh and the lineage units
+# written by scripts/deploy/deploy.sh; read by remote.sh and the units-* (and older lineage-*) units
 SITE_NAMES=$SITE_NAMES
 GATE_ORIGINS=$ORIGINS
-LINEAGE_RECIPES=$LINEAGE_RECIPES
+UNITS_RECIPES=$UNITS_RECIPES
+# the same values under their pre-rebrand names, for a rollback to a release from before it
+LINEAGE_RECIPES=$UNITS_RECIPES
+LINEAGE_SITE_URL=https://${SITE_NAMES%%,*}
 DRY_RUN=$DRY_RUN
 WITH_RUNTIME=${WITH_RUNTIME:-0}
 WITH_AUTHOR=${WITH_AUTHOR:-0}
 AUTHORS=$AUTHORS
-# Core's public base URL (identity links name it in their proof text); LINEAGE_LINK_HTTP_HOSTS stays unset
-LINEAGE_SITE_URL=https://${SITE_NAMES%%,*}
+# Core's public base URL (identity links name it in their proof text); UNITS_LINK_HTTP_HOSTS stays unset
+UNITS_SITE_URL=https://${SITE_NAMES%%,*}
 ACME_EMAIL=${ACME_EMAIL:-}
 EOF
 }

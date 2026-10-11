@@ -5,8 +5,8 @@
 // Usage: bun scripts/check-canaries.ts recipes/<name> [canaries|candidates] [patch names...] [--seed <hex>]
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
-import { judge, type Calibration, type CandidateView } from "@lineage/protocol";
-import { calibrate, evaluate, loadRecipe, prepareDeps } from "@lineage/sandbox";
+import { judge, type Calibration, type CandidateView } from "@units/protocol";
+import { calibrate, evaluate, loadRecipe, prepareDeps } from "@units/sandbox";
 
 const args = process.argv.slice(2);
 const seedIdx = args.indexOf("--seed");

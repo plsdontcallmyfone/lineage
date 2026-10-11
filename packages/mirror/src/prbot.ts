@@ -106,20 +106,20 @@ export async function prCycle(o: PrOptions): Promise<PrRecord[]> {
       }
       const soul = gen.author ? await o.core.soulAt(gen.author, gen.accepted_at) : null;
       const msg = commitMessage({ gen, lineage_id: g.lineage_id, recipe: g.recipe, site, soul, identity: "account" });
-      writeFileSync(join(dir, ".git", "LINEAGE_MSG"), msg);
+      writeFileSync(join(dir, ".git", "UNITS_MSG"), msg);
       const when = `${Math.floor(gen.accepted_at / 1000)} +0000`;
-      git(dir, ["-c", `user.name=${id.name}`, "-c", `user.email=${id.email}`, "-c", "gpg.format=ssh", "-c", `user.signingkey=${id.signingKey}`, "commit", "-q", "--no-verify", "-S", "-F", join(dir, ".git", "LINEAGE_MSG")], {
+      git(dir, ["-c", `user.name=${id.name}`, "-c", `user.email=${id.email}`, "-c", "gpg.format=ssh", "-c", `user.signingkey=${id.signingKey}`, "commit", "-q", "--no-verify", "-S", "-F", join(dir, ".git", "UNITS_MSG")], {
         env: { GIT_AUTHOR_DATE: when, GIT_COMMITTER_DATE: when, GIT_AUTHOR_NAME: id.name, GIT_AUTHOR_EMAIL: id.email, GIT_COMMITTER_NAME: id.name, GIT_COMMITTER_EMAIL: id.email },
       });
       rec.sha = git(dir, ["rev-parse", "HEAD"]).out;
       push(dir, id.token, o, g.fork, rec.sha, branch);
       const gh = client(id.token, o);
       const body = [
-        `Lineage protocol PR for generation ${g.gen_id} (lineage ${g.lineage_id.slice(0, 12)}, recipe ${g.recipe}), authored by agent ${g.author}.`,
+        `units protocol PR for generation ${g.gen_id} (lineage ${g.lineage_id.slice(0, 12)}, recipe ${g.recipe}), authored by agent ${g.author}.`,
         "",
         ...msg.split("\n").filter((l) => l.startsWith("Measured effect:") || l.startsWith("Replays:") || l.startsWith("Generation:") || l.startsWith("Candidate and replay")),
         "",
-        `This repository opted in to Lineage pull requests (${el.status === "opted_in" ? "a .lineage.yml on the default branch or a maintainer-signed opt-in" : el.status}). Lineage opens at most one PR per accepted generation and never comments on, argues about or reopens a closed PR: closing this PR ends the attempt. To stop PRs, remove .lineage.yml or set \`opt_out: true\` in it.`,
+        `This repository opted in to units pull requests (${el.status === "opted_in" ? "a .lineage.yml on the default branch or a maintainer-signed opt-in" : el.status}). units opens at most one PR per accepted generation and never comments on, argues about or reopens a closed PR: closing this PR ends the attempt. To stop PRs, remove .lineage.yml or set \`opt_out: true\` in it.`,
         "",
         `Lineage-Gen: ${g.gen_id}`,
       ].join("\n");

@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { canonicalizeDiff } from "@lineage/protocol";
+import { canonicalizeDiff } from "@units/protocol";
 import { changedProtectedBlocks, diffWorkingTree, evaluate, isolateMetric, loadRecipe, materialize, newWorkDir, prepareDeps, readRegularFile, removeTree } from "../src/index.ts";
 
 // Regression tests for the adversarial review (2026-10-07): code under test must not be able to

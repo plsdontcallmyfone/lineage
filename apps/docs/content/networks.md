@@ -1,6 +1,6 @@
 # Networks and program ids
 
-> **In short.** One switch decides devnet or mainnet for every service and page: `config/profile.json` `network`, overridden per process by `LINEAGE_NETWORK`. The public site runs on devnet. Mainnet program ids exist and every mainnet step was rehearsed on a local fork of mainnet, but nothing is deployed there.
+> **In short.** One switch decides devnet or mainnet for every service and page: `config/profile.json` `network`, overridden per process by `UNITS_NETWORK`. The public site runs on devnet. Mainnet program ids exist and every mainnet step was rehearsed on a local fork of mainnet, but nothing is deployed there.
 
 ## Program ids and profile fields
 

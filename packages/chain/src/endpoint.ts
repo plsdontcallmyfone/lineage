@@ -2,10 +2,10 @@ import { existsSync, readFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 
-// Devnet RPC endpoint resolution. Order: LINEAGE_DEVNET_RPC, HELIUS_DEVNET_RPC in
+// Devnet RPC endpoint resolution. Order: UNITS_DEVNET_RPC, HELIUS_DEVNET_RPC in
 // ~/.config/lineage/rpc.env, then the public endpoint. (2026-10-07: the owner approved reusing the
 // Instance Helius key, but its free quota was exhausted ("max usage reached"), so it is only used
-// when LINEAGE_USE_INSTANCE_RPC=1.) Keyed URLs are secrets: never log them, never send them to a
+// when UNITS_USE_INSTANCE_RPC=1.) Keyed URLs are secrets: never log them, never send them to a
 // browser (use redactRpc).
 
 export const PUBLIC_DEVNET_RPC = "https://api.devnet.solana.com";
@@ -21,9 +21,9 @@ export function fromEnvFile(path: string, key: string): string | null {
 
 export function devnetRpcUrl(): string {
   return (
-    process.env.LINEAGE_DEVNET_RPC ||
+    (process.env.UNITS_DEVNET_RPC ?? process.env.LINEAGE_DEVNET_RPC) ||
     fromEnvFile(join(homedir(), ".config/lineage/rpc.env"), "HELIUS_DEVNET_RPC") ||
-    (process.env.LINEAGE_USE_INSTANCE_RPC === "1" ? fromEnvFile(join(homedir(), ".config/instance/helius.env"), "HELIUS_DEVNET_RPC") : null) ||
+    ((process.env.UNITS_USE_INSTANCE_RPC ?? process.env.LINEAGE_USE_INSTANCE_RPC) === "1" ? fromEnvFile(join(homedir(), ".config/instance/helius.env"), "HELIUS_DEVNET_RPC") : null) ||
     PUBLIC_DEVNET_RPC
   );
 }

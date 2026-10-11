@@ -2,7 +2,7 @@
 // the wallet, signatures placed by signer address, the message decoded back for inspection, and
 // WebCrypto Ed25519 keys for the fresh keypairs a launch needs (agent key, agent mint). No secret
 // ever leaves the page except as a file the person chooses to download.
-import { base58Decode, base58Encode } from "@lineage/protocol";
+import { base58Decode, base58Encode } from "@units/protocol";
 import { toAddress, type Address } from "../codec.ts";
 import type { CompiledMessage } from "../tx.ts";
 

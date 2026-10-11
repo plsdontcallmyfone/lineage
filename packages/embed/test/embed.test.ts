@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { buildCards, LineageClient, pickSession, resolveBases, soulFrom, type SessionSummary, type TokenSummary } from "../src/client.ts";
+import { buildCards, UnitsClient, pickSession, resolveBases, soulFrom, type SessionSummary, type TokenSummary } from "../src/client.ts";
 import { cardHtml, describeEvent, extLink, howSteps, linkFor, statsHtml, timelineLayout, tokenHeadHtml } from "../src/render.ts";
 import { answer, complete, didYouMean, editDistance, FACTS, run, type TermEnv } from "../src/terminal.ts";
 import { dither, thumbModel } from "../src/thumb.ts";
@@ -41,14 +41,14 @@ describe("client", () => {
 
   test("a transient 502 is retried", async () => {
     let n = 0;
-    const c = new LineageClient(resolveBases({ api: "https://s" }, ""), async () =>
+    const c = new UnitsClient(resolveBases({ api: "https://s" }, ""), async () =>
       ++n < 3 ? new Response("bad gateway", { status: 502 }) : new Response(JSON.stringify({ generations: 1 }), { headers: { "content-type": "application/json" } }),
     );
     c.retryDelays = [0, 0];
     expect(await c.core<any>("stats")).toEqual({ generations: 1 });
     expect(n).toBe(3);
     let m = 0;
-    const d = new LineageClient(resolveBases({ api: "https://s" }, ""), async () => {
+    const d = new UnitsClient(resolveBases({ api: "https://s" }, ""), async () => {
       if (++m < 2) throw new TypeError("Failed to fetch");
       return new Response("{}", { headers: { "content-type": "application/json" } });
     });
@@ -64,15 +64,15 @@ describe("client", () => {
 
   test("a missing soul is null through the dashboard (no 404) and directly", async () => {
     const seen: string[] = [];
-    const viaWeb = new LineageClient(resolveBases({ api: "https://s" }, ""), fakeFetch({ "agents/A1/soul?optional=1": { _miss: { status: 404 } } }, seen));
+    const viaWeb = new UnitsClient(resolveBases({ api: "https://s" }, ""), fakeFetch({ "agents/A1/soul?optional=1": { _miss: { status: 404 } } }, seen));
     expect(await viaWeb.soul("A1")).toBeNull();
     expect(seen[0]).toBe("https://s/api/agents/A1/soul?optional=1");
-    const direct = new LineageClient(resolveBases({ api: "https://s", core: "http://c/v1" }, ""), fakeFetch({}));
+    const direct = new UnitsClient(resolveBases({ api: "https://s", core: "http://c/v1" }, ""), fakeFetch({}));
     expect(await direct.soul("A1")).toBeNull();
   });
 
   test("stats: every figure from the API, null when unreadable", async () => {
-    const c = new LineageClient(
+    const c = new UnitsClient(
       resolveBases({ api: "https://s" }, ""),
       fakeFetch({
         "/api/stats": { generations: 20, candidates: 82 },
@@ -83,7 +83,7 @@ describe("client", () => {
     const st = await c.stats();
     expect(st).toEqual({ tokens: 2, graduated: 1, agents_working: 2, generations: 20, candidates: 82, volume_24h: 14.5, sessions_live: 3 });
     expect(Object.keys(st).some((k) => /fee/.test(k))).toBe(false);
-    const down = new LineageClient(resolveBases({ api: "https://s" }, ""), fakeFetch({}));
+    const down = new UnitsClient(resolveBases({ api: "https://s" }, ""), fakeFetch({}));
     down.retryDelays = [];
     const s = await down.stats();
     expect(s.tokens).toBeNull();

@@ -1,7 +1,7 @@
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
-import { parseDiff, type CandidateKind } from "@lineage/protocol";
-import { applyPatch } from "@lineage/sandbox";
+import { parseDiff, type CandidateKind } from "@units/protocol";
+import { applyPatch } from "@units/sandbox";
 import { heldByOthers, targetKey, type PlannedTarget, type Proposal, type ProposeContext, type Proposer } from "./types.ts";
 
 // Scripted proposer: submits prepared patches in order (fixture patches, hand-written candidates

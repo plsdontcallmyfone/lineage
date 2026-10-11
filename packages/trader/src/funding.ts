@@ -1,6 +1,6 @@
 import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { dirname } from "node:path";
-import { ata, ChainReader, launchPdas, Rpc, sendAndConfirm, system, token, TOKEN_2022_PROGRAM, type Ix, type LaunchConfig, type Signer } from "@lineage/chain";
+import { ata, ChainReader, launchPdas, Rpc, sendAndConfirm, system, token, TOKEN_2022_PROGRAM, type Ix, type LaunchConfig, type Signer } from "@units/chain";
 
 // How a trading treasury is funded (plan T), without a program change:
 //

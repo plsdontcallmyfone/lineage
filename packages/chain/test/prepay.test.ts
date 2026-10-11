@@ -2,7 +2,7 @@
 // here and end to end by devnet in scripts/prepay/launch-e2e.ts), the browser decoder on v0, the
 // deposit math, and the launch transaction plan.
 import { describe, expect, test } from "bun:test";
-import { generateAgentKey } from "@lineage/protocol";
+import { generateAgentKey } from "@units/protocol";
 import * as c from "../src/index.ts";
 import { decodeMessage, missingSigners, placeSignature, unsignedWire } from "../src/browser/wire.ts";
 import { inspectForCosign } from "../src/cosign.ts";

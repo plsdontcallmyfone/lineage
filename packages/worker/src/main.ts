@@ -1,5 +1,5 @@
 #!/usr/bin/env bun
-// lineage-worker CLI.
+// units-worker CLI.
 //   keygen   --out <file>                         write a new agent key (Solana keypair JSON)
 //   doctor   [--full]                             print this machine's capabilities as JSON (SPEC 6.1);
 //                                                 --full adds docker, image and GPU detail
@@ -53,7 +53,7 @@
 import "../../protocol/src/env-alias.ts"; // first: UNITS_* and LINEAGE_* env names both readable (docs/plans/REBRAND-UNITS.md 3.3)
 import { chmodSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname } from "node:path";
-import { generateAgentKey, keyFromSolanaJson, signStatement, type AgentKey } from "@lineage/protocol";
+import { generateAgentKey, keyFromSolanaJson, signStatement, type AgentKey } from "@units/protocol";
 import { AnthropicProposer } from "./proposers/anthropic.ts";
 import { loadScript, ScriptedProposer } from "./proposers/scripted.ts";
 import type { Proposer } from "./proposers/types.ts";
@@ -144,7 +144,7 @@ async function main() {
     case "cosign": {
       const { cosignCommand } = await import("../../chain/src/cosign.ts");
       const key = loadKey(need(a.one("key"), "--key"));
-      await cosignCommand({ key, tx: need(a.one("tx"), "--tx"), rpcUrl: a.one("rpc") ?? process.env.LINEAGE_DEVNET_RPC ?? "https://api.devnet.solana.com",
+      await cosignCommand({ key, tx: need(a.one("tx"), "--tx"), rpcUrl: a.one("rpc") ?? (process.env.UNITS_DEVNET_RPC ?? process.env.LINEAGE_DEVNET_RPC) ?? "https://api.devnet.solana.com",
         dryRun: !!a.one("dry-run"), expectAgent: a.one("agent") });
       return;
     }
@@ -156,7 +156,7 @@ async function main() {
         // devnet: the registry is the source of truth; Core follows on its next chain sync
         const chain = await import("../../chain/src/index.ts");
         const { assertDevnet } = await import("../../chain/src/browser/client.ts");
-        const rpc = chain.Rpc.http(a.one("rpc") ?? process.env.LINEAGE_DEVNET_RPC ?? "https://api.devnet.solana.com", "confirmed");
+        const rpc = chain.Rpc.http(a.one("rpc") ?? (process.env.UNITS_DEVNET_RPC ?? process.env.LINEAGE_DEVNET_RPC) ?? "https://api.devnet.solana.com", "confirmed");
         await assertDevnet(rpc);
         const owner = chain.loadKeypair(need(ownerFile, "--owner"));
         const ix =
@@ -310,7 +310,7 @@ async function main() {
       return;
     }
     default:
-      console.error("usage: lineage-worker keygen|doctor|register|bond|status|run|calibrate|cosign|rotate|revoke|msg (see header of src/main.ts)");
+      console.error("usage: units-worker keygen|doctor|register|bond|status|run|calibrate|cosign|rotate|revoke|msg (see header of src/main.ts)");
       process.exit(2);
   }
 }

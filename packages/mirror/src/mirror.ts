@@ -129,7 +129,7 @@ export async function mirrorOnce(o: MirrorOptions): Promise<MirrorReport> {
     const L = await o.core.lineage(s.lineage_id);
     const branch = lineageBranch(L.recipe.name, L.lineage_id);
     rec.branch = branch;
-    const dir = mkdtempSync(join(tmpdir(), "lineage-mirror-"));
+    const dir = mkdtempSync(join(tmpdir(), "units-mirror-"));
     let chain: Chain;
     try {
       chain = await buildChain({ core: o.core, lineage: L, identities: o.identities, repoGitUrl: gitUrl(o, upstream), site, dir, log });

@@ -3,7 +3,7 @@
 // so Core recomputes each entry and refuses a version whose memory says anything its records do not.
 // Records hold only final work, so nothing about an open candidate can reach a soul (SPEC 10.7).
 
-import { canonicalJson } from "@lineage/protocol";
+import { canonicalJson } from "@units/protocol";
 import type { MemoryEntry, SoulDoc, SoulMemory } from "./schema.ts";
 import { LIMITS } from "./schema.ts";
 

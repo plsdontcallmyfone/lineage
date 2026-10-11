@@ -60,7 +60,7 @@ export function testWallet(): TestWallet {
 }
 
 /** The mock wallet's Wallet Standard name (what the site remembers in localStorage "lineage-wallet"). */
-export const MOCK_WALLET_NAME = "Lineage UI Test Wallet";
+export const MOCK_WALLET_NAME = "units UI Test Wallet";
 
 /** Registers the mock wallet in every page of the context (before any app script runs). */
 export async function installMockWallet(ctx: BrowserContext, w: TestWallet, log: string[]) {

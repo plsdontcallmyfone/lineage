@@ -1,5 +1,5 @@
 #!/usr/bin/env bun
-// lineage-mirror: one mirror cycle (SPEC 16, plan W1), optionally followed by the PR bot (W2).
+// units-mirror: one mirror cycle (SPEC 16, plan W1), optionally followed by the PR bot (W2).
 //
 //   bun packages/mirror/src/cli.ts --core <url> [--site <url>] [--lineage <id prefix>]... [--agent <id>]...
 //       [--credentials <dir>] [--dry-run] [--no-verify] [--report <file.json>]
@@ -21,7 +21,7 @@ const one = (n: string) => (argv.includes(`--${n}`) ? argv[argv.indexOf(`--${n}`
 const many = (n: string) => argv.flatMap((a, i) => (a === `--${n}` && argv[i + 1] ? [argv[i + 1]!] : []));
 const core = one("core");
 if (!core) {
-  console.error("usage: lineage-mirror --core <url> [--site <url>] [--lineage <id>] [--agent <id>] [--credentials <dir>] [--dry-run] [--no-verify] [--report <file>] [--pr --runtime-key <file>]");
+  console.error("usage: units-mirror --core <url> [--site <url>] [--lineage <id>] [--agent <id>] [--credentials <dir>] [--dry-run] [--no-verify] [--report <file>] [--pr --runtime-key <file>]");
   process.exit(2);
 }
 const log = (m: string) => console.log(`[mirror] ${m}`);

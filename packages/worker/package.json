@@ -1,15 +1,16 @@
 {
-  "name": "@lineage/worker",
+  "name": "@units/worker",
   "version": "0.1.0",
   "type": "module",
   "main": "src/index.ts",
   "bin": {
+    "units-worker": "src/main.ts",
     "lineage-worker": "src/main.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.132.0",
-    "@lineage/protocol": "workspace:*",
-    "@lineage/sandbox": "workspace:*",
-    "@lineage/souls": "workspace:*"
+    "@units/protocol": "workspace:*",
+    "@units/sandbox": "workspace:*",
+    "@units/souls": "workspace:*"
   }
 }

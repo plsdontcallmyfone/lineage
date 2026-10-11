@@ -1,5 +1,5 @@
 #!/usr/bin/env bun
-// lineage-souls: generate, check, sign and provision agent souls (SPEC 14.8).
+// units-souls: generate, check, sign and provision agent souls (SPEC 14.8).
 //   generate  --seed <seed.json> --agent <id> [--repo <url>] [--max-usd 0.40] [--effort high] [--avoid "A,B"] [--out <soul.json>] [--spend-log <file>]
 //   check     --file <soul.json>
 //   render    --file <soul.json>
@@ -12,7 +12,7 @@
 
 import "../../protocol/src/env-alias.ts"; // first: UNITS_* and LINEAGE_* env names both readable (docs/plans/REBRAND-UNITS.md 3.3)
 import { appendFileSync, existsSync, readFileSync, writeFileSync } from "node:fs";
-import { keyFromSolanaJson } from "@lineage/protocol";
+import { keyFromSolanaJson } from "@units/protocol";
 import { checkSoul, signSoul, soulDigest } from "./doc.ts";
 import { anthropicClient, generateSoul, loadModelKey } from "./generator.ts";
 import { FileCredentialStore, GitHub, lineageTrailers, Pool, provisionAccount, signedCommit, DEFAULT_POOL, DEFAULT_STORE } from "./github/index.ts";
@@ -106,12 +106,12 @@ async function main() {
       return;
     }
     default:
-      console.error("usage: lineage-souls generate|check|render|sign|provision|commit (see the header of src/cli.ts)");
+      console.error("usage: units-souls generate|check|render|sign|provision|commit (see the header of src/cli.ts)");
       process.exit(2);
   }
 }
 
 main().catch((e) => {
-  console.error(`lineage-souls: ${(e as Error).message}`);
+  console.error(`units-souls: ${(e as Error).message}`);
   process.exit(1);
 });

@@ -9,8 +9,8 @@
 set -uo pipefail
 cd "$(dirname "$0")/../.."
 export PATH="$HOME/.bun/bin:$PATH"
-export LINEAGE_HOME="${LINEAGE_HOME:-$HOME/.lineage}"
-export LINEAGE_GPU_DEVICE="${LINEAGE_GPU_DEVICE:-0}"
+export UNITS_HOME="${UNITS_HOME:-$HOME/.lineage}"
+export UNITS_GPU_DEVICE="${UNITS_GPU_DEVICE:-0}"
 SKIP_E2E=0; SKIP_LLMC=0
 for a in "$@"; do case "$a" in --skip-e2e) SKIP_E2E=1;; --skip-llmc) SKIP_LLMC=1;; esac; done
 for f in scripts/calibrate-recipe.ts scripts/verify.ts packages/core/src/main.ts recipes/fixture-cuda/recipe.yml recipes/llmc-cuda/recipe.yml; do
@@ -47,9 +47,9 @@ step() { # step <name> <command...>
 } > "$OUT/box.txt" 2>&1
 cat "$OUT/box.txt"
 
-SM_DOT=$(nvidia-smi --query-gpu=compute_cap --format=csv,noheader -i "$LINEAGE_GPU_DEVICE" | tr -d ' ')
+SM_DOT=$(nvidia-smi --query-gpu=compute_cap --format=csv,noheader -i "$UNITS_GPU_DEVICE" | tr -d ' ')
 SM_NUM=${SM_DOT/./}
-echo "GPU $LINEAGE_GPU_DEVICE compute capability $SM_DOT"
+echo "GPU $UNITS_GPU_DEVICE compute capability $SM_DOT"
 
 # ---- 1. image
 step build-image docker build --platform linux/amd64 -t lineage/cuda:m1 images/cuda

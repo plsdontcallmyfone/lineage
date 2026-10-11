@@ -2,7 +2,7 @@ import { afterAll, describe, expect, test } from "bun:test";
 import { existsSync, mkdirSync, mkdtempSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { loadRecipe } from "@lineage/sandbox";
+import { loadRecipe } from "@units/sandbox";
 import { materializeProposal } from "../src/recipe-proposer.ts";
 import { writeNewSecret, writeSecret } from "../src/secret-file.ts";
 import { measureCoalitions } from "../src/split.ts";

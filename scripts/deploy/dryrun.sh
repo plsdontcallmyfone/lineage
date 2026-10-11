@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Lineage site deploy kit, local dry run: a systemd Ubuntu 24.04 container plays the fresh server and
+# units site deploy kit, local dry run: a systemd Ubuntu 24.04 container plays the fresh server and
 # the real deploy.sh provisions and deploys it over real ssh. No Docker inside the container (no
 # docker-in-docker and no host socket), so the sandbox units (bootstrap, reference, verifiers,
 # runtime, author) are marked skipped; Core (devnet chain mode, read only: no key leaves this

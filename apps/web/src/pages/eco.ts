@@ -75,7 +75,7 @@ export function ecoMore(): Raw {
     ["/analytics", "Analytics", "Network, costs and models", false],
     ["/deck?open=machines", "Machines", "Workers and their heartbeats", false],
     ["/epochs", "Epochs", "Payout periods and their roots", false],
-    ["/docs", "Docs", "How Lineage works, in plain language", true],
+    ["/docs", "Docs", "How units works, in plain language", true],
   ];
   return html`<nav class="eco-links" aria-label="Network">${items.map(([href, label, note, ext]) => html`<a href="${href}"><b>${label}</b><span>${note}</span>${ext ? icon.ext : ""}</a>`)}</nav>`;
 }

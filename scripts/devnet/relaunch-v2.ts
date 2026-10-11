@@ -50,7 +50,7 @@ import {
   token,
   TOKEN_2022_PROGRAM,
   type Signer,
-} from "@lineage/chain";
+} from "@units/chain";
 import { signSoul, soulDigest, type SoulDoc } from "../../packages/souls/src/doc.ts";
 import { unsignedWire, placeSignature } from "../../packages/chain/src/browser/wire.ts";
 import { deployer, key, LAMPORTS, loadState, log, reader, ROOT, rpc, sol } from "./lib.ts";

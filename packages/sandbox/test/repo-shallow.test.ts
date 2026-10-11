@@ -7,8 +7,8 @@ import { join } from "node:path";
 // and a later commit is fetched into it by id.
 test("ensureCommit fetches one commit into a new shallow mirror", async () => {
   const home = mkdtempSync(join(tmpdir(), "lineage-shallow-"));
-  const prev = process.env.LINEAGE_HOME;
-  process.env.LINEAGE_HOME = home;
+  const prev = process.env.UNITS_HOME;
+  process.env.UNITS_HOME = home;
   try {
     const src = join(home, "src");
     const run = (args: string[], cwd = src) => {
@@ -42,8 +42,8 @@ test("ensureCommit fetches one commit into a new shallow mirror", async () => {
     repo.materialize(url, shas[1], null, dest);
     expect(Bun.file(join(dest, "f.txt")).size).toBe(3);
   } finally {
-    if (prev === undefined) delete process.env.LINEAGE_HOME;
-    else process.env.LINEAGE_HOME = prev;
+    if (prev === undefined) delete process.env.UNITS_HOME;
+    else process.env.UNITS_HOME = prev;
     rmSync(home, { recursive: true, force: true });
   }
 });

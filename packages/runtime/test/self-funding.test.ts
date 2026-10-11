@@ -2,7 +2,7 @@ import { afterAll, describe, expect, test } from "bun:test";
 import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { generateAgentKey } from "@lineage/protocol";
+import { generateAgentKey } from "@units/protocol";
 import type { ModelRegistry } from "../../core/src/model-registry.ts";
 import { parseConfig, Runtime, type Backend } from "../src/index.ts";
 import { FixedPrice, JupiterPrice, perUsdOf, type PriceSource } from "../src/price.ts";

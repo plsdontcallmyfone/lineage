@@ -31,7 +31,7 @@ const plan = argv.includes("--plan");
 const sshKey = opt("ssh-key", join(homedir(), ".ssh/lineage_site"))!;
 const pool = new Pool(opt("pool", DEFAULT_POOL)!);
 const MAIN = "/opt/lineage/current/packages/identity/src/main.ts";
-const RUN_AS = `runuser -u lineage-identity -- env HOME=/var/lib/lineage/identity/home BUN_RUNTIME_TRANSPILER_CACHE_PATH=0 LINEAGE_IDENTITY_DIR=/var/lib/lineage/identity LINEAGE_IDENTITY_KEY=/etc/lineage-identity/master.key /usr/local/bin/bun ${MAIN}`;
+const RUN_AS = `runuser -u lineage-identity -- env HOME=/var/lib/lineage/identity/home BUN_RUNTIME_TRANSPILER_CACHE_PATH=0 UNITS_IDENTITY_DIR=/var/lib/lineage/identity UNITS_IDENTITY_KEY=/etc/lineage-identity/master.key /usr/local/bin/bun ${MAIN}`;
 
 function ssh(cmd: string, input?: string): string {
   const r = spawnSync("ssh", ["-i", sshKey, "-o", "IdentitiesOnly=yes", "-o", "BatchMode=yes", "-o", "ConnectTimeout=15", `root@${host}`, `cd /opt/lineage/current && ${cmd}`], { input, encoding: "utf8", maxBuffer: 1 << 24 });

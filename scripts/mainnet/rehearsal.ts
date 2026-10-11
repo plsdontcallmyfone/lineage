@@ -5,7 +5,7 @@
 //
 //   0  the fork runs mainnet's exact pump.fun (Pump, PumpSwap, Pump Fees, Mayhem), Token-2022 and Squads v4 builds; our ids are still empty
 //   1  deploy: write-buffer + deploy of each build at the active profile's id with its id keypair, exactly
-//      as the runbook does (LINEAGE_NETWORK=mainnet: onchain/target/mainnet builds, the mainnet ids, the
+//      as the runbook does (UNITS_NETWORK=mainnet: onchain/target/mainnet builds, the mainnet ids, the
 //      keypairs in ~/.config/lineage/mainnet signing on this local fork only), and its cost
 //   2  Squads v4: a 2-of-3 multisig with a time lock; its vault is every admin and, later, the upgrade authority
 //   3  a stand-in $LINE: a pump.fun coin paired with SOL, never mayhem (create_v2), bought on its own curve
@@ -19,13 +19,13 @@
 //      cap and one refused past it (A1-08)
 // Writes scripts/mainnet/REHEARSAL-LAST.json (every transaction with its exact cost, every check).
 //
-//   LINEAGE_NETWORK=mainnet MAINNET_FORK_KEYS=<throwaway key dir> bun scripts/mainnet/rehearsal.ts
+//   UNITS_NETWORK=mainnet MAINNET_FORK_KEYS=<throwaway key dir> bun scripts/mainnet/rehearsal.ts
 import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
-import { base58Decode, canonicalUrl, H, merkleProof, merkleRoot, proportionalSplit } from "@lineage/protocol";
+import { base58Decode, canonicalUrl, H, merkleProof, merkleRoot, proportionalSplit } from "@units/protocol";
 import {
   ata,
   CHALLENGE_KIND,
@@ -86,7 +86,7 @@ import {
   type LookupTable,
   type PumpEvent,
   type Signer,
-} from "@lineage/chain";
+} from "@units/chain";
 import { checkEndpoint, createMultisig, initializeAll, launchArgs, parseLaunchParams, programIdsNow, registryArgs, checkHandover, useActiveProfile } from "./steps.ts";
 import { adminActions, approve, execute, multisigState, proposalState, propose, proposeConfig, type Ms } from "./admin.ts";
 import { airdrop, assertFork, check, checks, fork, FORK_URL, forkKey, forkNow, forkRent, forkTable, KEYS, log, mainnet, mainnetRent, refused, rows, send, sendV0, sleep, sol } from "./lib.ts";
@@ -98,7 +98,7 @@ const ONE = 10n ** BigInt(DECIMALS);
 const SUPPLY = 1_000_000_000n * ONE;
 /** $LINE the deployer buys on the stand-in's own curve (it holds 793,100,000; this leaves it uncompleted). */
 const LINE_HELD = 600_000_000n * ONE;
-// Program ids, builds and id keypairs follow the active network profile (LINEAGE_NETWORK): mainnet
+// Program ids, builds and id keypairs follow the active network profile (UNITS_NETWORK): mainnet
 // deploys the `--features mainnet` builds at the mainnet ids; devnet the default builds at the devnet ids.
 const profile = useActiveProfile();
 const IDS = programIdsNow();
@@ -267,7 +267,7 @@ async function step2() {
 }
 
 // ---------------------------------------------------------------- 3: stand-in quote mint
-const LINE_META = { name: "Lineage stand-in LINE (fork)", symbol: "sLINE", uri: "https://lineage.invalid/fork/stand-in-line.json" };
+const LINE_META = { name: "units stand-in LINE (fork)", symbol: "sLINE", uri: "https://lineage.invalid/fork/stand-in-line.json" };
 async function step3() {
   await send("3", "create the stand-in $LINE: pump.fun create_v2 paired with SOL, not mayhem", dep, [
     createV2({ mint: lineMint, user: dep.id, creator: dep.id, name: LINE_META.name, symbol: LINE_META.symbol, uri: LINE_META.uri, quote: { kind: "sol" } })],

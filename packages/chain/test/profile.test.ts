@@ -21,11 +21,11 @@ const raw = JSON.parse(readFileSync(PROFILE_FILE, "utf8"));
 const swap = parseSwapConfig(JSON.parse(readFileSync(join(import.meta.dir, "../../../config/swap.json"), "utf8")));
 
 describe("profile switch", () => {
-  test("the file says devnet and devnet is what every process gets without LINEAGE_NETWORK", () => {
+  test("the file says devnet and devnet is what every process gets without UNITS_NETWORK", () => {
     expect(raw.network).toBe("devnet");
     expect(loadNetworkProfile({ env: {} }).network).toBe("devnet");
-    expect(loadNetworkProfile({ env: { LINEAGE_NETWORK: "mainnet" } }).network).toBe("mainnet");
-    expect(() => loadNetworkProfile({ env: { LINEAGE_NETWORK: "testnet" } })).toThrow(/devnet or mainnet/);
+    expect(loadNetworkProfile({ env: { UNITS_NETWORK: "mainnet" } }).network).toBe("mainnet");
+    expect(() => loadNetworkProfile({ env: { UNITS_NETWORK: "testnet" } })).toThrow(/devnet or mainnet/);
   });
 
   test("devnet is unchanged: the browser fallback equals the configured devnet profile", () => {
@@ -103,8 +103,8 @@ describe("rpc resolution", () => {
   const home = mkdtempSync(join(tmpdir(), "lineage-profile-"));
   const m = selectProfile(raw, "mainnet");
 
-  test("mainnet reads LINEAGE_MAINNET_RPC, then HELIUS_MAINNET_RPC in rpc.env", () => {
-    expect(rpcUrlFor(m, { LINEAGE_MAINNET_RPC: "https://rpc.example/?api-key=k1" }, home)).toBe("https://rpc.example/?api-key=k1");
+  test("mainnet reads UNITS_MAINNET_RPC, then HELIUS_MAINNET_RPC in rpc.env", () => {
+    expect(rpcUrlFor(m, { UNITS_MAINNET_RPC: "https://rpc.example/?api-key=k1" }, home)).toBe("https://rpc.example/?api-key=k1");
     const h2 = mkdtempSync(join(tmpdir(), "lineage-profile-"));
     const dir = join(h2, ".config/lineage");
     require("node:fs").mkdirSync(dir, { recursive: true });

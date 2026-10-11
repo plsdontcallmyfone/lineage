@@ -39,7 +39,7 @@ of `~/.ssh/lineage_site`), then run deploy.sh with its address.
    `bun install --frozen-lockfile`.
 3. **sandbox images and amd64 calibration**: builds the images the served recipes use
    (`lineage/rust:m1`, `lineage/python:m1` for the default set) from `images/<class>` on the server, then
-   `arch-recipes.ts` re-pins `fixture-b58`, `base58-py`, `minbpe` (or `LINEAGE_RECIPES`) in that release
+   `arch-recipes.ts` re-pins `fixture-b58`, `base58-py`, `minbpe` (or `UNITS_RECIPES`) in that release
    only: `requires.arch` to the server's arch and the image pin to the image id built there. Why: the
    committed recipes pin arm64 image ids measured on an Apple M4; cachegrind counts and image ids differ
    on amd64, so an amd64 reference runner and amd64 verifiers can only serve recipes calibrated on amd64.
@@ -101,7 +101,7 @@ Public surface (the gate refuses everything else before it reaches Core or the d
 | `/chain/faucet` | POST (web keeps its per-wallet 24 h and 30 per hour limits) | 3 per hour | same origin only (Origin header required) |
 | pages and assets | GET, HEAD | 600 per minute | none |
 | event streams (`/live/events`, `/api/events`, `/v1/events`) | GET | 4 open per address, 400 in all | |
-| `/market/*` (gate to `lineage-indexer`) | GET, HEAD, OPTIONS (the indexer answers its own preflight) | 240 per minute, burst 120 | the indexer's (`*` unless `LINEAGE_CORS_ORIGINS`) |
+| `/market/*` (gate to `lineage-indexer`) | GET, HEAD, OPTIONS (the indexer answers its own preflight) | 240 per minute, burst 120 | the indexer's (`*` unless `UNITS_CORS_ORIGINS`) |
 | `/souls/*` | refused (405): drafts spend the model key, and opening them on the site is an owner decision | | |
 
 "Per client address" means per IPv4 address or per IPv6 /64 (an IPv4-mapped address counts as its IPv4); the gate holds at most 50,000 buckets (least recently used evicted). A stream slot is reserved before the upstream answers. Upstreams see one `X-Forwarded-For` and no `Forwarded`, `X-Real-IP`, `Cookie` or `Authorization` from the client. Bodies over 64 KB are refused by the gate as soon as they pass the cap (256 KB by Caddy), and a body must arrive within 10 s (408). Core's write API is not public on this
@@ -113,7 +113,7 @@ site: outside workers cannot join through it (open `POST /v1/*` in `gate.ts` whe
 /var/lib/lineage/indexer/market.db --interval 15` as `lineage-indexer` (remote.sh makes its data directory).
 It is one of the core units in `remote.sh` (enabled, restarted and stopped with Core, the dashboard and
 the gate), sends nothing on chain and holds no key. RPC: the chain resolver
-(`packages/chain/src/endpoint.ts`): `LINEAGE_DEVNET_RPC` from `/etc/lineage/indexer.env` (remote.sh
+(`packages/chain/src/endpoint.ts`): `UNITS_DEVNET_RPC` from `/etc/lineage/indexer.env` (remote.sh
 writes it from `HELIUS_DEVNET_RPC` in `~lineage/.config/lineage/rpc.env`, copied only when it exists on
 this machine), else public devnet. It never prints the URL (`/market/status` shows the host only). Sources per token:
 its DBC pool, its DAMM v2 pool after migration, its mint and its `AgentLaunch` account; a quiet source
@@ -166,12 +166,12 @@ Deployed 2026-10-08 with:
 
 ```sh
 bun scripts/deploy/site-authors.ts --recipes base58-py,base58-rs,bitcoin-base58,geth-rlp,lc-text-splitters,ollama-tokenizer,solana-config,zig-clap
-LINEAGE_RECIPES=fixture-b58,base58-py,minbpe,base58-rs,bitcoin-base58,zig-clap,fixture-zigsize,fixture-cu-tally,solana-config,lc-text-splitters,ollama-tokenizer,geth-rlp \
+UNITS_RECIPES=fixture-b58,base58-py,minbpe,base58-rs,bitcoin-base58,zig-clap,fixture-zigsize,fixture-cu-tally,solana-config,lc-text-splitters,ollama-tokenizer,geth-rlp \
 WITH_AUTHOR=1 AUTHORS=minbpe,base58-py,base58-rs,bitcoin-base58,zig-clap,solana-config,lc-text-splitters,ollama-tokenizer,geth-rlp \
   scripts/deploy/deploy.sh 157.245.71.188 code
 ```
 
-Keep geth-rlp last in `LINEAGE_RECIPES`: lineage-bootstrap calibrates in list order, and geth-rlp alone takes
+Keep geth-rlp last in `UNITS_RECIPES`: lineage-bootstrap calibrates in list order, and geth-rlp alone takes
 about 53 minutes there. The 12 non-CUDA recipes are the ones above. The CUDA recipes need a GPU server
 (docs/GPU-SESSION.md).
 
@@ -486,7 +486,7 @@ the retry cannot double a write.
 
 Workers mid-request when Core restarts: the worker loop already retries a failed tick, but a commit sent
 in the restart window used to fail and lose the replay it was committing. The worker units now set
-`LINEAGE_CORE_RETRY_MS=30000`, so `CoreClient` retries a refused connection (same signed request and
+`UNITS_CORE_RETRY_MS=30000`, so `CoreClient` retries a refused connection (same signed request and
 nonce, which Core never saw) until Core is back; it is off (0) everywhere else. Core's own stop closes
 open connections (`server.stop(true)`); a commit cut after Core applied it is seen as `committed` on the
 next pass and revealed from `pending.json`, one cut before is still `assigned` and is run again.
@@ -682,7 +682,7 @@ hourly snapshots and `restore-test` passed there (Core 5/5, secrets proof PASS).
    the newest local Core snapshot over, verifies it and, with no release active yet, only places
    `core.db` and the blobs (it refuses if a `core.db` is there).
 5. `scripts/deploy/deploy.sh <new-ip> full` with the usual settings (`WITH_RUNTIME=1`, `WITH_AUTHOR=1`,
-   `AUTHORS`, `LINEAGE_RECIPES`, `EXTRA_ORIGINS`; a new server has no site.env to keep them from).
+   `AUTHORS`, `UNITS_RECIPES`, `EXTRA_ORIGINS`; a new server has no site.env to keep them from).
    `install` reuses the restored site keys, `identity_setup` the restored key file, activate sets owners
    and modes and starts Core on the restored data; the indexer backfills from chain; `site-chain.ts` is
    idempotent (an agent already registered is not registered again, a bond already at the minimum is not
@@ -751,7 +751,7 @@ The devnet site is one box. For mainnet, split by what each part can lose:
 | Box | Runs | Holds | Never runs |
 |---|---|---|---|
 | Edge + Core (1) | Caddy, gate, dashboard, indexer, Core, monitor, backups | Core authority (hot key, scoped powers: docs/AUDIT.md powers table), Core's database, admin key | Docker, sandboxes, model keys |
-| Verifiers (2 or more, separate operators) | `lineage-worker` (verifier or reference) with Docker | each its own agent key and bond | Core, any shared key |
+| Verifiers (2 or more, separate operators) | `units-worker` (verifier or reference) with Docker | each its own agent key and bond | Core, any shared key |
 | Runtime (1) | hosted runtime, agent desktops (Docker) | runtime authority, model keys, E2B key | Core, the Core authority |
 
 - Releases owned by root on every box (not by the user that runs Docker), installed read only.

@@ -60,7 +60,7 @@ describe("gate: fetchUpstream waits out a restarting upstream", () => {
   });
 });
 
-describe("CoreClient: LINEAGE_CORE_RETRY_MS", () => {
+describe("CoreClient: UNITS_CORE_RETRY_MS", () => {
   // the setting is read at import, so each case runs in its own process
   const run = (env: Record<string, string>, port: number, startAfterMs: number) =>
     Bun.spawn(
@@ -80,7 +80,7 @@ describe("CoreClient: LINEAGE_CORE_RETRY_MS", () => {
 
   test("off by default: a refused connection fails at once", async () => {
     const port = await freePort();
-    const p = run({ LINEAGE_CORE_RETRY_MS: "" }, port, 800);
+    const p = run({ UNITS_CORE_RETRY_MS: "" }, port, 800);
     const out = JSON.parse((await new Response(p.stdout).text()).trim());
     expect(out.error).toBe("ConnectionRefused");
     expect(out.ms).toBeLessThan(800);
@@ -88,7 +88,7 @@ describe("CoreClient: LINEAGE_CORE_RETRY_MS", () => {
 
   test("set: a request sent while Core restarts waits for it", async () => {
     const port = await freePort();
-    const p = run({ LINEAGE_CORE_RETRY_MS: "10000" }, port, 800);
+    const p = run({ UNITS_CORE_RETRY_MS: "10000" }, port, 800);
     const out = JSON.parse((await new Response(p.stdout).text()).trim());
     expect(out.status).toBe(200);
     expect(out.ms).toBeGreaterThanOrEqual(700);
@@ -135,7 +135,7 @@ describe("deploy kit wiring", () => {
   test("worker units retry a refused Core and keep their drain allowance", () => {
     for (const u of ["units-verifier@.service", "units-reference.service", "units-author@.service", "units-runtime.service"]) {
       const f = readFileSync(join(DIR, "systemd", u), "utf8");
-      expect(f).toContain("LINEAGE_CORE_RETRY_MS=30000");
+      expect(f).toContain("UNITS_CORE_RETRY_MS=30000");
       expect(f).toMatch(/TimeoutStopSec=\d+/);
     }
   });

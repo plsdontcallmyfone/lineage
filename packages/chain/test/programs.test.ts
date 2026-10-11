@@ -75,19 +75,19 @@ describe("builders and PDAs follow the active profile's ids", () => {
     }
     expect(sample()).toEqual(before);
   });
-  test("applyNetworkProfile applies the profile's ids (LINEAGE_NETWORK=mainnet), devnet leaves them unchanged", () => {
+  test("applyNetworkProfile applies the profile's ids (UNITS_NETWORK=mainnet), devnet leaves them unchanged", () => {
     const before = sample();
     try {
-      applyNetworkProfile({ env: { LINEAGE_NETWORK: "mainnet" } });
+      applyNetworkProfile({ env: { UNITS_NETWORK: "mainnet" } });
       expect(activePrograms()).toEqual({ network: "mainnet", ...PROGRAM_IDS.mainnet });
       const reader = new ChainReader(Rpc.http("http://127.0.0.1:1"));
       devnet();
       expect(reader.launchProgram).toBe(PROGRAM_IDS.devnet.launch); // a reader built earlier follows too
-      applyNetworkProfile({ env: { LINEAGE_NETWORK: "devnet" } });
+      applyNetworkProfile({ env: { UNITS_NETWORK: "devnet" } });
       expect(sample()).toEqual(before);
     } finally {
       devnet();
-      applyNetworkProfile({ env: { LINEAGE_NETWORK: "devnet" } });
+      applyNetworkProfile({ env: { UNITS_NETWORK: "devnet" } });
     }
   });
   test("a profile whose ids are not its network's row is refused", () => {

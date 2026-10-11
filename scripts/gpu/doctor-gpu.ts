@@ -6,7 +6,7 @@
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync, chmodSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
-import { gpuDeviceRequest, hostGpus, parseNcuInst, runContainer } from "@lineage/sandbox";
+import { gpuDeviceRequest, hostGpus, parseNcuInst, runContainer } from "@units/sandbox";
 
 const image = process.argv[2];
 if (!image) {

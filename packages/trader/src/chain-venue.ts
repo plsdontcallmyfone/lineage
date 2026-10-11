@@ -15,7 +15,7 @@ import {
   type Ix,
   type LaunchConfig,
   type Signer,
-} from "@lineage/chain";
+} from "@units/chain";
 import { simulateDetailed } from "../../chain/src/browser/client.ts";
 import { unsignedWire } from "../../chain/src/browser/wire.ts";
 import { decodeTokenAccount } from "../../chain/src/spl.ts";

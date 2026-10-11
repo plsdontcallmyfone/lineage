@@ -1,5 +1,5 @@
 #!/usr/bin/env bun
-// Lineage site: launches one TEST author agent per served recipe that has prepared candidates
+// units site: launches one TEST author agent per served recipe that has prepared candidates
 // (recipes/<name>/candidates), so the site's scripted authors (lineage-author@<name>) can submit them.
 // Runs LOCALLY (the devnet deployer key never leaves this machine). Idempotent: an agent already
 // launched, or a compute vault already at its minimum, is skipped.
@@ -20,8 +20,8 @@
 import { appendFileSync, readFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
-import { canonicalUrl } from "@lineage/protocol";
-import { ata, ChainReader, IDENTITY_MODE, launch, launchPdas, loadKeypair, loadOrCreateKeypair, Rpc, sendAndConfirm, system, token, TOKEN_2022_PROGRAM, type Ix, type Signer } from "@lineage/chain";
+import { canonicalUrl } from "@units/protocol";
+import { ata, ChainReader, IDENTITY_MODE, launch, launchPdas, loadKeypair, loadOrCreateKeypair, Rpc, sendAndConfirm, system, token, TOKEN_2022_PROGRAM, type Ix, type Signer } from "@units/chain";
 import { DEVNET_GENESIS } from "../../packages/chain/src/browser/client.ts";
 import { devnetRpcUrl } from "../../packages/chain/src/endpoint.ts";
 import { launchTable, pumpLaunchTx } from "../devnet/pump-lib.ts";

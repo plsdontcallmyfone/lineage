@@ -26,8 +26,8 @@ import { spawn, type Subprocess } from "bun";
 import { mkdtempSync, rmSync, writeFileSync, readFileSync, mkdirSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { canonicalJson, generateAgentKey, H, hashJson, type AgentKey } from "@lineage/protocol";
-import { loadRecipe, prepareDeps } from "@lineage/sandbox";
+import { canonicalJson, generateAgentKey, H, hashJson, type AgentKey } from "@units/protocol";
+import { loadRecipe, prepareDeps } from "@units/sandbox";
 import {
   accountDisc,
   addressBytes,
@@ -42,7 +42,7 @@ import {
   token,
   TOKEN_2022_PROGRAM,
   type Signer,
-} from "@lineage/chain";
+} from "@units/chain";
 import { CoreClient } from "../../packages/core/src/client.ts";
 import { replicate } from "../../packages/core/src/replica.ts";
 import { doctor } from "../../packages/worker/src/doctor.ts";
@@ -118,7 +118,7 @@ function startWorker(name: string, keyPath: string, extra: string[] = []): Subpr
   const stateDir = join(tmp, "workers", name);
   mkdirSync(stateDir, { recursive: true });
   const p = spawn(["bun", join(ROOT, "packages/worker/src/main.ts"), "run", "--core", CORE, "--key", keyPath, "--interval", "1000", ...extra], {
-    stdout: "pipe", stderr: "pipe", env: { ...process.env, LINEAGE_HOME: stateDir } });
+    stdout: "pipe", stderr: "pipe", env: { ...process.env, UNITS_HOME: stateDir } });
   for (const s of [p.stdout, p.stderr])
     (async () => {
       for await (const c of s) for (const l of new TextDecoder().decode(c).split("\n")) if (l.trim()) console.log(`   ${name.padEnd(4)} ${l}`);

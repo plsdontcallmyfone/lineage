@@ -953,13 +953,13 @@ function renderVerifier() {
   const k = S.vkey;
   const mine = rec && rec.owner === me();
   let body: Raw;
-  if (!k) body = html`<div class="dim">Enter the agent public key printed by <span class="num">lineage-worker keygen</span> (step 1 of the kit).</div>`;
+  if (!k) body = html`<div class="dim">Enter the agent public key printed by <span class="num">units-worker keygen</span> (step 1 of the kit).</div>`;
   else if (rec === undefined) body = html`<div class="dim">Reading the registry…</div>`;
   else if (rec === null) {
     const need = p ? p.registerBurn : null;
     const short0 = need !== null && S.line !== null && S.line < need;
     body = html`<div class="wl-fine">Not registered. Registering burns <b>${tl(p?.registerBurn)}</b> from your wallet (register_burn, read from the registry config) and creates the Agent record linking this key to your wallet as owner.</div>
-      <label class="wl-field" style="margin-top:10px"><span class="eyebrow">Capabilities (output of <span class="num">lineage-worker doctor</span>)</span><textarea name="v_caps" rows="4" placeholder='{"arch":"arm64","cpus":10,...}'></textarea><span class="wl-help">Committed as H("caps", canonical JSON), the digest Core compares with what the worker declares. Leave empty to commit to no capabilities.</span></label>
+      <label class="wl-field" style="margin-top:10px"><span class="eyebrow">Capabilities (output of <span class="num">units-worker doctor</span>)</span><textarea name="v_caps" rows="4" placeholder='{"arch":"arm64","cpus":10,...}'></textarea><span class="wl-help">Committed as H("caps", canonical JSON), the digest Core compares with what the worker declares. Leave empty to commit to no capabilities.</span></label>
       <div class="wl-row" style="margin-top:10px">${btn("v-register", "Sign register as owner", { primary: true, disabled: !S.account ? "connect a wallet" : short0 ? `needs ${units(need!, dec())} ${qsym()} to burn: use Get ${qsym()}` : false })}</div>
       <div id="w-cosign">${S.partial && S.partial.agent === k ? cosignView() : ""}</div>`;
   } else {
@@ -1052,7 +1052,7 @@ async function vRegister() {
     try {
       digest = H("caps", canonicalJson(JSON.parse(capsText)));
     } catch {
-      set("w-cosign", errBox("Capabilities must be the JSON printed by lineage-worker doctor."));
+      set("w-cosign", errBox("Capabilities must be the JSON printed by units-worker doctor."));
       return;
     }
   }
@@ -1085,7 +1085,7 @@ async function watchRegistration(agent: string, lastValid: number) {
       const sigs = await rpc.call<{ signature: string; err: unknown }[]>("getSignaturesForAddress", [registryPdas.agent(agent), { limit: 1, commitment: "confirmed" }]).catch(() => []);
       if (sigs[0]) {
         const t = await rpc.getTransaction(sigs[0].signature).catch(() => null);
-        logSig(`register ${short(agent)} (sent by lineage-worker cosign)`, sigs[0].signature, t?.meta?.fee, !sigs[0].err);
+        logSig(`register ${short(agent)} (sent by units-worker cosign)`, sigs[0].signature, t?.meta?.fee, !sigs[0].err);
       }
       S.vOut = html`<div class="panel-b">${banner("info", "Registered by the worker's co-signature.", html`Burned ${units(rec.burned, dec())} ${qsym()} (Agent.burned)${supply0 !== null && supply1 !== null ? html`; ${qsym()} supply fell by ${units(supply0 - supply1, dec())}` : ""}.`)}</div>`;
       refreshBalances();
@@ -1170,7 +1170,7 @@ function renderIdentity() {
       ${rec.version === 1 ? html`<div class="wl-row" style="margin-top:10px">${btn("i-migrate", "Grow to Agent v2 (migrate_agent)", { disabled: !S.account ? "connect a wallet" : false })}</div>` : ""}
       ${mine && rec.version === 2
         ? html`<div class="wl-2" style="margin-top:12px">
-            <div><label class="wl-field"><span class="eyebrow">New signing key (public key)</span><input name="i_newkey" placeholder="from lineage-worker keygen, or the hosted runtime" spellcheck="false"></label>
+            <div><label class="wl-field"><span class="eyebrow">New signing key (public key)</span><input name="i_newkey" placeholder="from units-worker keygen, or the hosted runtime" spellcheck="false"></label>
               <div class="wl-row" style="margin-top:8px">${btn("i-rotate", "Sign rotate as owner", { primary: true })}</div></div>
             <div><span class="eyebrow">Leaked key</span><div class="wl-fine" style="margin:6px 0">Revoking stops Core from accepting any request for this agent until you rotate to a new key.</div>
               <div class="wl-row">${btn("i-revoke", "Revoke signing key", { disabled: revoked ? "already revoked" : false })}</div></div>
@@ -1324,7 +1324,7 @@ async function watchRotation(agent: string, newKey: string, seq0: number, lastVa
       const sigs = await rpc.call<{ signature: string; err: unknown }[]>("getSignaturesForAddress", [registryPdas.agent(agent), { limit: 1, commitment: "confirmed" }]).catch(() => []);
       if (sigs[0]) {
         const t = await rpc.getTransaction(sigs[0].signature).catch(() => null);
-        logSig(`rotate_agent_key ${short(agent)} to ${short(newKey)} (sent by lineage-worker cosign)`, sigs[0].signature, t?.meta?.fee, !sigs[0].err);
+        logSig(`rotate_agent_key ${short(agent)} to ${short(newKey)} (sent by units-worker cosign)`, sigs[0].signature, t?.meta?.fee, !sigs[0].err);
       }
       S.iOut = html`<div class="panel-b">${banner("info", "Rotated: the new key co-signed.", html`Signing key ${addr(newKey)}, key changes ${rec.keySeq} (read back). The agent id is unchanged.`)}</div>`;
       return renderIdentity();
@@ -2510,7 +2510,7 @@ async function boot(root: HTMLElement, page: "launch" | "profile", body: Raw) {
   renderSigs();
   try {
     S.cfg ??= await loadChainCfg();
-    if (!S.cfg.state) throw new Error(isMainnet() ? "Lineage is not deployed on mainnet yet (no mainnet state on this server)." : "This server has no devnet state (scripts/devnet/devnet.json).");
+    if (!S.cfg.state) throw new Error(isMainnet() ? "units is not deployed on mainnet yet (no mainnet state on this server)." : "This server has no devnet state (scripts/devnet/devnet.json).");
     await devnetGate();
     S.gate = "ok";
   } catch (e) {

@@ -3,7 +3,7 @@ import { spawnSync } from "node:child_process";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { generateAgentKey, type AgentKey } from "@lineage/protocol";
+import { generateAgentKey, type AgentKey } from "@units/protocol";
 import type { AgentLaunch } from "../../chain/src/index.ts";
 import { sshKeygen } from "../../souls/src/github/provision.ts";
 import { genesisRoute } from "../../runtime/src/genesis.ts";

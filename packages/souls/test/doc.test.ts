@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { generateAgentKey, hashJson } from "@lineage/protocol";
+import { generateAgentKey, hashJson } from "@units/protocol";
 import { checkMemory, checkSoul, deriveEntries, foldMemory, githubBio, nextVersion, personaSafety, proposerSoulBlock, signSoul, soulDigest, verifySoul, voiceBlock, type RecordsEpoch } from "../src/index.ts";
 import { persona, soul } from "./fixtures.ts";
 

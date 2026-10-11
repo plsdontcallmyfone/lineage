@@ -4,7 +4,7 @@
 
 ## Routes
 
-GET and HEAD only, CORS `*` unless `LINEAGE_CORS_ORIGINS` restricts it. The list below is checked against the indexer's dispatcher by the docs tests.
+GET and HEAD only, CORS `*` unless `UNITS_CORS_ORIGINS` restricts it. The list below is checked against the indexer's dispatcher by the docs tests.
 
 {{gen:indexer-api}}
 

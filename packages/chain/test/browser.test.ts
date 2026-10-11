@@ -8,7 +8,7 @@ import { spawnSync } from "node:child_process";
 import { mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { canonicalJson, generateAgentKey, H } from "@lineage/protocol";
+import { canonicalJson, generateAgentKey, H } from "@units/protocol";
 import * as node from "../src/index.ts";
 import { BrowserBuffer } from "../src/browser/buffer.ts";
 import { DEVNET_GENESIS, simulateDetailed } from "../src/browser/client.ts";

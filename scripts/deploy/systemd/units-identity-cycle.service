@@ -18,8 +18,8 @@ User=lineage-identity
 Group=lineage-identity
 WorkingDirectory=/opt/lineage/current
 Environment=HOME=/var/lib/lineage/identity/home BUN_RUNTIME_TRANSPILER_CACHE_PATH=0 PATH=/usr/local/bin:/usr/bin:/bin
-Environment=LINEAGE_IDENTITY_DIR=/var/lib/lineage/identity LINEAGE_IDENTITY_KEY=/etc/lineage-identity/master.key LINEAGE_IDENTITY_RUN=/run/lineage-identity-cycle
-Environment=LINEAGE_IDENTITY_CORE_KEY=/etc/lineage-identity/core-key.json
+Environment=UNITS_IDENTITY_DIR=/var/lib/lineage/identity UNITS_IDENTITY_KEY=/etc/lineage-identity/master.key UNITS_IDENTITY_RUN=/run/lineage-identity-cycle
+Environment=UNITS_IDENTITY_CORE_KEY=/etc/lineage-identity/core-key.json
 EnvironmentFile=-/etc/lineage/site.env
 EnvironmentFile=-/etc/lineage-identity/identity.env
 RuntimeDirectory=lineage-identity-cycle

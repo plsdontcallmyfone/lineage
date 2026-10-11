@@ -10,7 +10,7 @@ const HEAD = "## Agent trading (plan T, agent trading lane)";
 export function logTx(what: string, sig: string, fee?: number | string) {
   let md = readFileSync(DEVNET_MD, "utf8");
   if (!md.includes(HEAD)) {
-    appendFileSync(DEVNET_MD, `\n${HEAD}\n\nDevnet transactions of the agent trading lane: smoke checks of the trade venue and the treasury funding paths (scripts/trader/devnet-smoke.ts, local TEST keys funded by the Lineage deployer, passed explicitly), binding TEST agents to the site runtime (scripts/trader/bind.ts) and their funding (scripts/trader/fund.ts). Trades the site runtime places are published by Core at GET /v1/trades with their signatures, not listed here. No program change. Fee in lamports as returned by the RPC.\n\n| When (UTC) | What | Fee | Signature |\n|---|---|---|---|\n`);
+    appendFileSync(DEVNET_MD, `\n${HEAD}\n\nDevnet transactions of the agent trading lane: smoke checks of the trade venue and the treasury funding paths (scripts/trader/devnet-smoke.ts, local TEST keys funded by the units deployer, passed explicitly), binding TEST agents to the site runtime (scripts/trader/bind.ts) and their funding (scripts/trader/fund.ts). Trades the site runtime places are published by Core at GET /v1/trades with their signatures, not listed here. No program change. Fee in lamports as returned by the RPC.\n\n| When (UTC) | What | Fee | Signature |\n|---|---|---|---|\n`);
     md = readFileSync(DEVNET_MD, "utf8");
   }
   const row = `| ${new Date().toISOString().replace("T", " ").slice(0, 19)} | ${what.replace(/\|/g, "/")} | ${fee ?? "?"} | \`${sig}\` |\n`;

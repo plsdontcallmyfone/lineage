@@ -26,7 +26,7 @@
 // Usage: bun scripts/devnet/setup.ts [--only a,b,...]
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
-import { canonicalUrl, H, merkleProof, merkleRoot, proportionalSplit, repoId } from "@lineage/protocol";
+import { canonicalUrl, H, merkleProof, merkleRoot, proportionalSplit, repoId } from "@units/protocol";
 import {
   ata,
   bounty,
@@ -56,7 +56,7 @@ import {
   token,
   TOKEN_2022_PROGRAM,
   type Signer,
-} from "@lineage/chain";
+} from "@units/chain";
 import { check, deployer, key, LAMPORTS, loadState, log, logTx, reader, ROOT, rpc, saveState, send, sol, topUp } from "./lib.ts";
 import { curveCreatorFee, launchTable, pumpCrank, pumpLaunchTx, pumpTrade } from "./pump-lib.ts";
 
@@ -67,7 +67,7 @@ const want = (s: string) => !only || only.has(s);
 const T22 = TOKEN_2022_PROGRAM;
 const DECIMALS = 6;
 const ONE = 10n ** BigInt(DECIMALS);
-const LINE_META = { name: "Lineage devnet TEST LINE", symbol: "tLINE", uri: "https://lineage.invalid/devnet/tline.json" }; // as pump-devnet-proof.ts created it
+const LINE_META = { name: "units devnet TEST LINE", symbol: "tLINE", uri: "https://lineage.invalid/devnet/tline.json" }; // as pump-devnet-proof.ts created it
 const AGENT_REPO = "https://github.com/karpathy/minbpe";
 const AGENT_META = { name: "TEST minbpe agent", symbol: "TMBPE", uri: "https://lineage.invalid/devnet/agents/minbpe-test.json" };
 

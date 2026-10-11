@@ -2,7 +2,7 @@ import { afterEach, describe, expect, test } from "bun:test";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { generateAgentKey } from "@lineage/protocol";
+import { generateAgentKey } from "@units/protocol";
 import { registerScoreInputs, type TradingConfig } from "../../core/src/scores.ts";
 import { agentClient, diff, expectOk, honest, makeAuthor, result, runReplays, setup, submit, type Agent, type Env } from "../../core/test/helpers.ts";
 import { emptyUsage, type DecisionModel, type Usage } from "../src/analyst.ts";

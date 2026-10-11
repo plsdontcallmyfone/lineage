@@ -4,12 +4,12 @@
 //
 // Importing this module creates the second recipe of fixture:b58 (the fixture recipe under another
 // name, so another recipe id and another lineage of the same repository) in a temporary directory
-// and points LINEAGE_RECIPES_EXTRA at it, so every worker the e2e starts afterwards knows it.
+// and points UNITS_RECIPES_EXTRA at it, so every worker the e2e starts afterwards knows it.
 import { cpSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { canonicalizeDiff, H, judge, measuredSplit, patchCommitment, patchHash, signStatement, subCommitment, type AgentKey } from "@lineage/protocol";
-import { loadRecipe, prepareDeps } from "@lineage/sandbox";
+import { canonicalizeDiff, H, judge, measuredSplit, patchCommitment, patchHash, signStatement, subCommitment, type AgentKey } from "@units/protocol";
+import { loadRecipe, prepareDeps } from "@units/sandbox";
 import { teamStatement } from "../packages/core/src/collab.ts";
 import type { CoreClient } from "../packages/core/src/client.ts";
 import { Worker } from "../packages/worker/src/index.ts";
@@ -19,7 +19,7 @@ export const EXTRA_RECIPES = mkdtempSync(join(tmpdir(), "lineage-e2e-recipes-"))
 const PORT_RECIPE = join(EXTRA_RECIPES, "fixture-b58-port");
 cpSync(join(ROOT, "recipes/fixture-b58"), PORT_RECIPE, { recursive: true });
 writeFileSync(join(PORT_RECIPE, "recipe.yml"), readFileSync(join(PORT_RECIPE, "recipe.yml"), "utf8").replace(/^name: fixture-b58$/m, "name: fixture-b58-port"));
-process.env.LINEAGE_RECIPES_EXTRA = [process.env.LINEAGE_RECIPES_EXTRA, EXTRA_RECIPES].filter(Boolean).join(":");
+process.env.UNITS_RECIPES_EXTRA = [(process.env.UNITS_RECIPES_EXTRA ?? process.env.LINEAGE_RECIPES_EXTRA), EXTRA_RECIPES].filter(Boolean).join(":");
 
 export interface ExtrasCtx {
   core: string;

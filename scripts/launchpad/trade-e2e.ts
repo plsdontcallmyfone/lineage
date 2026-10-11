@@ -3,7 +3,7 @@
 // harness's manner: headless Chromium drives /tokens/:mint, and a mock Wallet Standard wallet
 // injected into the page signs with a local devnet test key held by this process
 // (~/.config/lineage/devnet/launchpad-ui-test.json; the page only ever sees signatures). The test
-// wallet is funded by the Lineage deployer (~/.config/lineage/devnet-deployer.json, passed
+// wallet is funded by the units deployer (~/.config/lineage/devnet-deployer.json, passed
 // explicitly; the global solana config is never read).
 //
 // For each mint (default: the most traded curve token and the graduated TGRAD token, so both DBC and
@@ -19,14 +19,14 @@ import { spawn, spawnSync } from "bun";
 import { appendFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
-import { ata, ChainReader, loadKeypair, loadOrCreateKeypair, Rpc, sendAndConfirm, signBytes, system, token, TOKEN_2022_PROGRAM } from "@lineage/chain";
+import { ata, ChainReader, loadKeypair, loadOrCreateKeypair, Rpc, sendAndConfirm, signBytes, system, token, TOKEN_2022_PROGRAM } from "@units/chain";
 import { devnetRpcUrl } from "../../packages/chain/src/endpoint.ts";
 import { assertDevnet } from "../../packages/chain/src/browser/client.ts";
 import { parseWire, placeSignature } from "../../packages/chain/src/browser/wire.ts";
 import { units } from "../../apps/web/wallet/chain.ts";
 
 const arg = (n: string, d?: string) => (process.argv.includes(`--${n}`) ? process.argv[process.argv.indexOf(`--${n}`) + 1]! : d);
-const PW = arg("pw") ?? process.env.LINEAGE_PLAYWRIGHT;
+const PW = arg("pw") ?? (process.env.UNITS_PLAYWRIGHT ?? process.env.LINEAGE_PLAYWRIGHT);
 if (!PW) throw new Error("--pw <dir with node_modules/playwright-core> is required (not a repo dependency)");
 const { chromium } = await import(join(PW, "node_modules", "playwright-core", "index.mjs"));
 const PORT = Number(arg("port", "9665"));
@@ -57,7 +57,7 @@ function logTx(what: string, sig: string, fee?: number | string) {
   txs.push({ what, sig, fee: fee ?? "?" });
   let md = readFileSync(DEVNET_MD, "utf8");
   if (!md.includes(HEAD)) {
-    appendFileSync(DEVNET_MD, `\n${HEAD}\n\nDevnet transactions sent through the token page's trade box (apps/web/wallet/trade.ts) by scripts/launchpad/trade-e2e.ts: headless Chromium with a mock Wallet Standard wallet signing with the test key ~/.config/lineage/devnet/launchpad-ui-test.json, funded by the Lineage deployer. TEST tokens only. Fee in lamports as returned by the RPC.\n\n| When (UTC) | What | Fee | Signature |\n|---|---|---|---|\n`);
+    appendFileSync(DEVNET_MD, `\n${HEAD}\n\nDevnet transactions sent through the token page's trade box (apps/web/wallet/trade.ts) by scripts/launchpad/trade-e2e.ts: headless Chromium with a mock Wallet Standard wallet signing with the test key ~/.config/lineage/devnet/launchpad-ui-test.json, funded by the units deployer. TEST tokens only. Fee in lamports as returned by the RPC.\n\n| When (UTC) | What | Fee | Signature |\n|---|---|---|---|\n`);
     md = readFileSync(DEVNET_MD, "utf8");
   }
   const row = `| ${new Date().toISOString().replace("T", " ").slice(0, 19)} | ${what.replace(/\|/g, "/")} | ${fee ?? "?"} | \`${sig}\` |\n`;
@@ -123,7 +123,7 @@ await ctx.addInitScript(({ address, pub }: { address: string; pub: number[] }) =
   const account = { address, publicKey: new Uint8Array(pub), chains: ["solana:devnet"], features: ["solana:signTransaction"], label: "test" };
   const w = {
     version: "1.0.0",
-    name: "Lineage Test Wallet",
+    name: "units Test Wallet",
     icon: "data:image/svg+xml;base64," + btoa('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20"><rect width="20" height="20" rx="4" fill="#2a78d6"/></svg>'),
     chains: ["solana:devnet"],
     accounts: [] as unknown[],
@@ -200,8 +200,8 @@ try {
     const sym = t.symbol ?? mint.slice(0, 6);
     const venue = t.phase === "graduated" ? "DAMM v2" : "DBC";
     await page.goto(`${BASE}/tokens/${mint}`);
-    await page.locator(`[data-tb="connect"][data-name="Lineage Test Wallet"], [data-bal="line"]`).first().waitFor({ timeout: 60_000 });
-    if (await page.locator('[data-tb="connect"]').count()) await page.click('[data-tb="connect"][data-name="Lineage Test Wallet"]');
+    await page.locator(`[data-tb="connect"][data-name="units Test Wallet"], [data-bal="line"]`).first().waitFor({ timeout: 60_000 });
+    if (await page.locator('[data-tb="connect"]').count()) await page.click('[data-tb="connect"][data-name="units Test Wallet"]');
     await page.locator('[data-bal="line"]').waitFor({ timeout: T });
     const b0 = await balances(mint);
     const lineShown = (await page.locator('[data-bal="line"]').innerText()).trim();

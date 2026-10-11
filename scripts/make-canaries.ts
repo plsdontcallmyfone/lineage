@@ -5,8 +5,8 @@
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { existsSync, readdirSync } from "node:fs";
 import { join } from "node:path";
-import { canonicalizeDiff, guard } from "@lineage/protocol";
-import { diffWorkingTree, loadRecipe, materialize, newWorkDir, removeTree } from "@lineage/sandbox";
+import { canonicalizeDiff, guard } from "@units/protocol";
+import { diffWorkingTree, loadRecipe, materialize, newWorkDir, removeTree } from "@units/sandbox";
 
 const ROOT = join(import.meta.dir, "..");
 

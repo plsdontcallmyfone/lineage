@@ -184,7 +184,7 @@ export interface RepoLicense {
 
 const normRepo = (u: string) => u.trim().replace(/\.git$/, "").replace(/\/+$/, "").toLowerCase();
 
-export function loadLicenses(path = process.env.LINEAGE_LEARNINGS_LICENSES ?? DEFAULT_LICENSES): Map<string, RepoLicense> {
+export function loadLicenses(path = (process.env.UNITS_LEARNINGS_LICENSES ?? process.env.LINEAGE_LEARNINGS_LICENSES) ?? DEFAULT_LICENSES): Map<string, RepoLicense> {
   const out = new Map<string, RepoLicense>();
   if (!existsSync(path)) return out;
   const raw = parse<{ repos?: RepoLicense[] }>(readFileSync(path, "utf8"));

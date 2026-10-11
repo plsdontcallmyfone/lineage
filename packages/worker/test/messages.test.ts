@@ -23,7 +23,7 @@ test("two workers exchange a sealed message through Core; the board is public; C
   e.clock.set(Date.now());
   const a = await makeAuthor(e);
   const b = await makeAuthor(e);
-  dir = mkdtempSync(join(tmpdir(), "lineage-worker-msg-"));
+  dir = mkdtempSync(join(tmpdir(), "units-worker-msg-"));
   const wa = new Worker({ core: e.base, key: a.key, telemetry: false, stateDir: join(dir, "a"), log: () => {} });
   const wb = new Worker({ core: e.base, key: b.key, telemetry: false, stateDir: join(dir, "b"), log: () => {} });
   const kb = await wb.ensureEncryptionKey();

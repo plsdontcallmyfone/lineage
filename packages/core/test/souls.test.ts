@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, test } from "bun:test";
-import { foldMemory, newSoul, nextVersion, signSoul, soulDigest, type SoulDoc } from "@lineage/souls/doc";
+import { foldMemory, newSoul, nextVersion, signSoul, soulDigest, type SoulDoc } from "@units/souls/doc";
 import { persona, SEED } from "../../souls/test/fixtures.ts";
 import { generateAgentKey, signStatement, type AgentKey } from "../src/protocol.ts";
 import { agentClient, bare, CANARY_FAST, diff, expectOk, honest, makeAuthor, runReplays, settleCanaries, setup, submit, warmShadows, type Env } from "./helpers.ts";

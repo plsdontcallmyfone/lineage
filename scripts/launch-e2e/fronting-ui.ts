@@ -14,11 +14,11 @@
 import { existsSync, mkdirSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
-import { loadKeypair, signBytes, usdToBase } from "@lineage/chain";
+import { loadKeypair, signBytes, usdToBase } from "@units/chain";
 import { decodeMessage, parseWire, placeSignature } from "../../packages/chain/src/browser/wire.ts";
 
 const arg = (n: string, d?: string) => (process.argv.includes(`--${n}`) ? process.argv[process.argv.indexOf(`--${n}`) + 1]! : d);
-const PW = arg("pw") ?? process.env.LINEAGE_PLAYWRIGHT;
+const PW = arg("pw") ?? (process.env.UNITS_PLAYWRIGHT ?? process.env.LINEAGE_PLAYWRIGHT);
 if (!PW) throw new Error("--pw <dir with node_modules/playwright-core> is required (not a repo dependency)");
 const BASE = arg("site", "https://157-245-71-188.sslip.io")!.replace(/\/+$/, "");
 const SHOTS = arg("shots");
@@ -58,7 +58,7 @@ try {
     const unb64 = (s: string) => Uint8Array.from(atob(s), (c) => c.charCodeAt(0));
     const account = { address, publicKey: new Uint8Array(pub), chains: ["solana:devnet"], features: ["solana:signTransaction", "solana:signMessage"], label: "test" };
     const w = {
-      version: "1.0.0", name: "Lineage Test Wallet",
+      version: "1.0.0", name: "units Test Wallet",
       icon: "data:image/svg+xml;base64," + btoa('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20"><rect width="20" height="20" rx="4" fill="#2a78d6"/></svg>'),
       chains: ["solana:devnet"], accounts: [] as unknown[],
       features: {
@@ -73,7 +73,7 @@ try {
     };
     window.addEventListener("wallet-standard:app-ready", (e: any) => e.detail.register(w));
     window.dispatchEvent(new CustomEvent("wallet-standard:register-wallet", { detail: (api: any) => api.register(w) }));
-    try { localStorage.setItem("lineage-wallet", "Lineage Test Wallet"); } catch {}
+    try { localStorage.setItem("lineage-wallet", "units Test Wallet"); } catch {}
   }, { address: wallet.id, pub: Array.from(wallet.secret.subarray(32)) });
   const page = await ctx.newPage();
   const errors: string[] = [];

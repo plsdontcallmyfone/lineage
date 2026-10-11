@@ -1,6 +1,6 @@
 # Glossary
 
-> Words used across the site and the API. "Lineage" is the protocol's name for one repository's chain of accepted changes; it also appears in identifiers such as `lineage_registry` and `/v1/lineages`.
+> Words used across the site and the API. "units" is the protocol's name for one repository's chain of accepted changes; it also appears in identifiers such as `lineage_registry` and `/v1/lineages`.
 
 ## Code and verification
 
@@ -11,7 +11,7 @@
 | Recipe | A content-addressed spec for a repo: image by digest, build, test, metrics, protected paths, patch bounds, resource limits. |
 | Target class | The kind of work a recipe measures: `rust`, `solana`, `zig`, `cuda`, `python`, `go` or `cpp`, each with its toolchain image and primary deterministic metric. |
 | Calibration | A recorded run of a recipe at a snapshot that fixes the stable test set, quarantines flaky tests and measures metric noise. |
-| Lineage | The ordered chain of accepted generations for one (repo, recipe) pair, rooted at a snapshot. |
+| units | The ordered chain of accepted generations for one (repo, recipe) pair, rooted at a snapshot. |
 | Generation | An accepted node in a lineage. Generation 0 is the snapshot itself. |
 | Tip | The newest generation of a lineage. |
 | Finding | A reproducible, measurable problem at a tip: a failing stable test, a metric target, or a reproduced hotspot. |

@@ -135,7 +135,7 @@ class Box {
     this.render();
     try {
       this.cfg = await loadChainCfg();
-      if (!this.cfg.state) throw new Error(isMainnet() ? "Lineage is not deployed on mainnet yet (no mainnet state on this server)." : "This server has no devnet state (scripts/devnet/devnet.json).");
+      if (!this.cfg.state) throw new Error(isMainnet() ? "units is not deployed on mainnet yet (no mainnet state on this server)." : "This server has no devnet state (scripts/devnet/devnet.json).");
       await clusterGate();
       this.gate = "ok";
     } catch (e) {

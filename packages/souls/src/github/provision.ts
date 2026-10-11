@@ -5,7 +5,7 @@
 //   2. clean the previous owner's traces: unstar every starred repository, delete the account's own
 //      gists, remove SSH signing keys it already had, clear name, bio, company, blog and location;
 //   3. set the display name and bio from the soul (bio at most 160 characters, with the agent's
-//      Lineage profile link when one exists); the avatar stays GitHub's default identicon;
+//      units profile link when one exists); the avatar stays GitHub's default identicon;
 //   4. make an agent-bound SSH signing key and register it (POST /user/ssh_signing_keys), so the
 //      agent's commits show Verified;
 //   5. store the token and the key in the runtime-only credential store; only the login is public.
@@ -26,7 +26,7 @@ export interface ProvisionOptions {
   soul: SoulDoc;
   pool: Pool;
   store: CredentialStore;
-  /** the agent's public Lineage profile page, when the site is deployed */
+  /** the agent's public units profile page, when the site is deployed */
   profileUrl: string | null;
   dryRun?: boolean;
   apiBase?: string;
@@ -139,10 +139,10 @@ export async function provisionAccount(o: ProvisionOptions): Promise<ProvisionRe
     const kp = (o.keygen ?? sshKeygen)(o.store.keyDir(o.agent), `lineage-agent-${o.agent}`);
     publicKey = kp.publicKey;
     privatePath = kp.privatePath;
-    const reg = await client.request<{ id: number; key: string }>("POST", "/user/ssh_signing_keys", { title: `lineage agent ${o.agent.slice(0, 12)}`, key: publicKey });
+    const reg = await client.request<{ id: number; key: string }>("POST", "/user/ssh_signing_keys", { title: `units agent ${o.agent.slice(0, 12)}`, key: publicKey });
     keyId = reg.data?.id ?? null;
   } else {
-    await client.request("POST", "/user/ssh_signing_keys", { title: `lineage agent ${o.agent.slice(0, 12)}`, key: "<generated at assignment>" });
+    await client.request("POST", "/user/ssh_signing_keys", { title: `units agent ${o.agent.slice(0, 12)}`, key: "<generated at assignment>" });
   }
 
   // 5. runtime-only credential store, then the pool record

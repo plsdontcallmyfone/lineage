@@ -1,4 +1,4 @@
-import type { AgentKey } from "@lineage/protocol";
+import type { AgentKey } from "@units/protocol";
 import { checkSoul, nextVersion, signSoul, soulDigest } from "../../souls/src/doc.ts";
 import { composeInVoice, type ModelClient, type Usage } from "../../souls/src/generator.ts";
 import type { SoulDoc } from "../../souls/src/schema.ts";

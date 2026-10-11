@@ -12,8 +12,8 @@
 import { appendFileSync, existsSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { generateAgentKey, journalEntryId, verifyJournal, type AgentKey } from "@lineage/protocol";
-import { loadRecipe, prepareDeps } from "@lineage/sandbox";
+import { generateAgentKey, journalEntryId, verifyJournal, type AgentKey } from "@units/protocol";
+import { loadRecipe, prepareDeps } from "@units/sandbox";
 import { CoreClient } from "../../packages/core/src/client.ts";
 import { loadModelEnv } from "../../packages/runtime/src/config.ts";
 import { newSoul, signSoul } from "../../packages/souls/src/doc.ts";

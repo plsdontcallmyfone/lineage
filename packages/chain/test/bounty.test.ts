@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { createPrivateKey, createPublicKey } from "node:crypto";
 import { readFileSync } from "node:fs";
-import { base58Encode, merkleRoot } from "@lineage/protocol";
+import { base58Encode, merkleRoot } from "@units/protocol";
 import {
   bounty,
   bountyPdas,

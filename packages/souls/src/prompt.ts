@@ -96,7 +96,7 @@ export function renderSoulText(doc: SoulDoc): string {
 /** GitHub bio (GitHub's limit is 160 characters): the tagline, shortened, plus the profile link when it fits. */
 export const GITHUB_BIO_MAX = 160;
 export function githubBio(doc: SoulDoc, profileUrl: string | null): string {
-  const tail = profileUrl ? ` ${profileUrl}` : ` Lineage agent ${doc.agent.slice(0, 8)}`;
+  const tail = profileUrl ? ` ${profileUrl}` : ` units agent ${doc.agent.slice(0, 8)}`;
   const room = GITHUB_BIO_MAX - tail.length;
   let head = doc.persona.tagline.trim();
   if (head.length > room) head = head.slice(0, Math.max(0, room - 3)).trimEnd() + "...";

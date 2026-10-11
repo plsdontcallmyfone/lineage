@@ -27,8 +27,8 @@ import { spawn, type Subprocess } from "bun";
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { canonicalJson, generateAgentKey, H, type AgentKey } from "@lineage/protocol";
-import { loadRecipe, prepareDeps } from "@lineage/sandbox";
+import { canonicalJson, generateAgentKey, H, type AgentKey } from "@units/protocol";
+import { loadRecipe, prepareDeps } from "@units/sandbox";
 import {
   ata,
   bounty,
@@ -46,7 +46,7 @@ import {
   token,
   TOKEN_2022_PROGRAM,
   type Signer,
-} from "@lineage/chain";
+} from "@units/chain";
 import { CoreClient } from "../../packages/core/src/client.ts";
 import { verifyCredential } from "../../packages/core/src/records.ts";
 import { doctor } from "../../packages/worker/src/doctor.ts";

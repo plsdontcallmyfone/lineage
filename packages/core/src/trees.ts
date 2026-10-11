@@ -1,6 +1,6 @@
 import { existsSync, readFileSync } from "node:fs";
 import { join, resolve } from "node:path";
-import { LINEAGE_HOME, mirrorPath } from "../../sandbox/src/repo.ts";
+import { UNITS_HOME, mirrorPath } from "../../sandbox/src/repo.ts";
 import { overlayDigest } from "../../sandbox/src/recipe.ts";
 import { canonicalUrl, filePath, parseDiff, sha256Hex, type Recipe } from "./protocol.ts";
 
@@ -10,7 +10,7 @@ import { canonicalUrl, filePath, parseDiff, sha256Hex, type Recipe } from "./pro
 //
 //   base bytes   = recipes/<name>/overlay/<path> when the overlay (verified against the recipe's
 //                  overlay_digest) has it, else `git show <commit>:<path>` from the local bare
-//                  mirror the sandbox already keeps (LINEAGE_HOME/mirrors, or fixtures/ for
+//                  mirror the sandbox already keeps (UNITS_HOME/mirrors, or fixtures/ for
 //                  fixture: repos). Core never clones: a missing mirror means "tree unavailable".
 //   patched      = each canonical patch of the series applied in order, hunk by hunk, with no fuzz
 //                  (the same rule as git apply in the sandbox). A context mismatch is an error.
@@ -119,7 +119,7 @@ export class GitTreeSource implements TreeSource {
         return null;
       }
     } else {
-      dir = join(LINEAGE_HOME, "mirrors", sha256Hex(canonicalUrl(repo)).slice(0, 24) + ".git");
+      dir = join(UNITS_HOME, "mirrors", sha256Hex(canonicalUrl(repo)).slice(0, 24) + ".git");
       if (!existsSync(dir)) return null;
     }
     return git(dir, ["cat-file", "-e", `${commit}^{commit}`]).ok ? dir : null;

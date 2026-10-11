@@ -10,8 +10,8 @@ test("pins, classes and the map path", () => {
   expect(parsePinnedImage("lineage/rust:m1")).toBeNull();
   expect(imageClass("lineage/zig:0.15.2")).toBe("zig");
   expect(imageClass("ubuntu:24.04")).toBeNull();
-  expect(localImagesPath({ LINEAGE_LOCAL_IMAGES: "off" })).toBeNull();
-  expect(localImagesPath({ LINEAGE_LOCAL_IMAGES: "/x/map.json" })).toBe("/x/map.json");
+  expect(localImagesPath({ UNITS_LOCAL_IMAGES: "off" })).toBeNull();
+  expect(localImagesPath({ UNITS_LOCAL_IMAGES: "/x/map.json" })).toBe("/x/map.json");
   expect(localImagesPath({})).toMatch(/\.lineage\/local-images\.json$/);
 });
 
@@ -22,10 +22,10 @@ const anyLocal = dockerUp
   : undefined;
 (anyLocal ? describe : describe.skip)("local pin map (docker)", () => {
   const dir = mkdtempSync(join(tmpdir(), "lineage-local-images-"));
-  const prev = process.env.LINEAGE_LOCAL_IMAGES;
+  const prev = process.env.UNITS_LOCAL_IMAGES;
   afterAll(() => {
-    if (prev === undefined) delete process.env.LINEAGE_LOCAL_IMAGES;
-    else process.env.LINEAGE_LOCAL_IMAGES = prev;
+    if (prev === undefined) delete process.env.UNITS_LOCAL_IMAGES;
+    else process.env.UNITS_LOCAL_IMAGES = prev;
     rmSync(dir, { recursive: true, force: true });
   });
 
@@ -39,7 +39,7 @@ const anyLocal = dockerUp
       [missing]: { ref: "lineage/x:t", local: "f".repeat(64), context: "images/x", built_at: "" },
       [local]: { ref: "lineage/x:t", local: "f".repeat(64), context: "images/x", built_at: "" },
     } }));
-    process.env.LINEAGE_LOCAL_IMAGES = map;
+    process.env.UNITS_LOCAL_IMAGES = map;
     const lines: string[] = [];
     // committed id present: used as is even though the map has an entry for it
     expect(resolvePinnedImage(`lineage/x:t@sha256:${local}`, (l) => lines.push(l))).toBe(`sha256:${local}`);
@@ -53,8 +53,8 @@ const anyLocal = dockerUp
     expect(lines[0]).toContain("local image rebuild");
   });
 
-  test("LINEAGE_LOCAL_IMAGES=off disables substitution", () => {
-    process.env.LINEAGE_LOCAL_IMAGES = "off";
+  test("UNITS_LOCAL_IMAGES=off disables substitution", () => {
+    process.env.UNITS_LOCAL_IMAGES = "off";
     const absent = "0".repeat(63) + "3";
     expect(resolvePinnedImage(`lineage/x:t@sha256:${absent}`, () => {})).toBe(`sha256:${absent}`);
   });

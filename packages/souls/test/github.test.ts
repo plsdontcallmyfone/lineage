@@ -3,12 +3,12 @@ import { spawnSync } from "node:child_process";
 import { chmodSync, existsSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { generateAgentKey } from "@lineage/protocol";
+import { generateAgentKey } from "@units/protocol";
 import { github } from "../src/index.ts";
 import { soul } from "./fixtures.ts";
 
 const { FileCredentialStore, Pool, provisionAccount, signedCommit, redactTokens } = github;
-const tmp = mkdtempSync(join(tmpdir(), "lineage-souls-gh-"));
+const tmp = mkdtempSync(join(tmpdir(), "units-souls-gh-"));
 afterAll(() => rmSync(tmp, { recursive: true, force: true }));
 
 interface Acct {

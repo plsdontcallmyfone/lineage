@@ -1,4 +1,4 @@
-import { base58Decode, base58Encode } from "@lineage/protocol";
+import { base58Decode, base58Encode } from "@units/protocol";
 import { accountDisc, addressBytes, bytesToHex, hexToBytes, ixDisc, Reader, sha256, Writer, type Address } from "./codec.ts";
 import { BPF_LOADER_UPGRADEABLE, pda, SYSTEM_PROGRAM } from "./pda.ts";
 import { r, registryPdas, w, type Ix } from "./registry.ts";

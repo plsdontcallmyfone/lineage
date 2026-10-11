@@ -16,7 +16,7 @@
 // verifier agent owned by whoever asked). The chain then requires the owner to be the agent's owner.
 // The worst a caller can do is bind a hosted agent they own to this runtime, which is what a hosted
 // launch is for; spend stays under the global cap, the per-agent epoch cap and the agent's vault.
-import type { AgentKey } from "@lineage/protocol";
+import type { AgentKey } from "@units/protocol";
 import { inspectForCosign } from "../../chain/src/cosign.ts";
 import { ixDisc } from "../../chain/src/codec.ts";
 import { REGISTRY_PROGRAM_ID } from "../../chain/src/registry.ts";

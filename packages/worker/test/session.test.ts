@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
-import { loadRecipe, materialize, newWorkDir, prepareDeps, removeTree } from "@lineage/sandbox";
+import { loadRecipe, materialize, newWorkDir, prepareDeps, removeTree } from "@units/sandbox";
 import { loadScript, ScriptedProposer, ToolBox, type ProposeContext } from "../src/index.ts";
 import { patchHunks } from "../src/proposers/scripted.ts";
 import type { SessionEventInput } from "../src/session.ts";

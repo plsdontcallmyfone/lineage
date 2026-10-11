@@ -16,12 +16,12 @@ import {
   bootstrapRatio,
   cv,
   median,
-} from "@lineage/protocol";
+} from "@units/protocol";
 import { gpuDeviceRequest, hostGpus, withHostLock, imageArch, imageDigest, runContainer, runnableImage, type Mount, type RunResult } from "./docker.ts";
 import { parseMetric, parseTests, type TestOutcome } from "./parsers.ts";
 import type { LoadedRecipe } from "./recipe.ts";
 import { copyConfined, fileSha256, openRegular, readInside } from "./fsafe.ts";
-import { applyPatch, cloneTree, commitTime, LINEAGE_HOME, materialize, newWorkDir, openPermissions, removeTree } from "./repo.ts";
+import { applyPatch, cloneTree, commitTime, UNITS_HOME, materialize, newWorkDir, openPermissions, removeTree } from "./repo.ts";
 
 // The evaluation pipeline every replay runs, SPEC sections 8 and 9.
 
@@ -117,7 +117,7 @@ function envFor(loaded: LoadedRecipe, seed: Hex, sourceEpoch: number): Record<st
  * Cargo's own bookkeeping in CARGO_HOME, not dependency content: `.global-cache` is an SQLite file of
  * last-use timestamps and the `.package-cache*` files are locks. They differ on every machine and run,
  * so including them made a fresh verifier's deps digest disagree with the snapshot's (found by the
- * worker image lane, W9b: a container with its own LINEAGE_HOME could never replay fixture-b58).
+ * worker image lane, W9b: a container with its own UNITS_HOME could never replay fixture-b58).
  * A layer cached before this rule keeps its stored digest (`.lineage-digest`) until re-prepared.
  */
 export const VOLATILE_DEPS = /(^|\/)cargo\/\.(global-cache|package-cache|package-cache-mutate)$/;
@@ -129,7 +129,7 @@ export const VOLATILE_DEPS = /(^|\/)cargo\/\.(global-cache|package-cache|package
 export async function prepareDeps(loaded: LoadedRecipe, opts: { force?: boolean } = {}): Promise<DepsLayer> {
   const r = loaded.recipe;
   const key = H("deps", loaded.recipe_id).slice(0, 32);
-  const dir = join(LINEAGE_HOME, "deps", key);
+  const dir = join(UNITS_HOME, "deps", key);
   const digestFile = join(dir, ".lineage-digest");
   if (!opts.force && existsSync(digestFile)) return { dir, digest: readFileSync(digestFile, "utf8").trim() };
   removeTree(dir);
@@ -213,7 +213,7 @@ async function run(ctx: Ctx, step: string, cmd: string, mounts: Mount[], timeout
     job: `${step}-${side ?? "x"}`,
     gpus: ctx.gpus,
   }));
-  const res = exclusive ? await withHostLock(join(LINEAGE_HOME, "locks"), `gpu-${ctx.gpus!.replace(/[^0-9a-z]/gi, "")}`, go) : await go();
+  const res = exclusive ? await withHostLock(join(UNITS_HOME, "locks"), `gpu-${ctx.gpus!.replace(/[^0-9a-z]/gi, "")}`, go) : await go();
   record(ctx.transcript, step, cmd, res, side);
   return res;
 }

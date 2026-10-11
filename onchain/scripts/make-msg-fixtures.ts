@@ -6,7 +6,7 @@
 //   bun onchain/scripts/make-msg-fixtures.ts         write (a new ephemeral key each time)
 //   bun onchain/scripts/make-msg-fixtures.ts --check  the committed fixture still opens
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
-import { base58Decode } from "@lineage/protocol";
+import { base58Decode } from "@units/protocol";
 import { encryptionKeyFromSecret, open, seal } from "../../packages/core/src/seal.ts";
 
 const out = new URL("../tests/fixtures/msg-seal.json", import.meta.url);

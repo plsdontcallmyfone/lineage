@@ -1,4 +1,4 @@
-import { canonicalJson, leafHash, verifyProof } from "@lineage/protocol";
+import { canonicalJson, leafHash, verifyProof } from "@units/protocol";
 import { hexToBytes, type Address } from "./codec.ts";
 import { DEST_KIND, registryPdas } from "./registry.ts";
 

@@ -1,6 +1,6 @@
 import { randomBytes } from "node:crypto";
 import { mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
-import type { Limits } from "@lineage/protocol";
+import type { Limits } from "@units/protocol";
 import { resolvePinnedImage } from "./local-images.ts";
 
 // Docker runner, SPEC section 8. Every container is labelled lineage=1 so cleanup never touches
@@ -64,13 +64,13 @@ async function readCapped(stream: ReadableStream<Uint8Array>, limit: number): Pr
 }
 
 /**
- * Optional OCI runtime for sandbox containers (LINEAGE_DOCKER_RUNTIME, e.g. `runsc` for gVisor on a
+ * Optional OCI runtime for sandbox containers (UNITS_DOCKER_RUNTIME, e.g. `runsc` for gVisor on a
  * Linux worker). Unset means Docker's default runtime.
  */
 export function dockerRuntime(env: Record<string, string | undefined> = process.env): string | null {
-  const v = env.LINEAGE_DOCKER_RUNTIME?.trim();
+  const v = (env.UNITS_DOCKER_RUNTIME ?? env.LINEAGE_DOCKER_RUNTIME)?.trim();
   if (!v) return null;
-  if (!/^[a-z0-9][a-z0-9._-]{0,63}$/.test(v)) throw new Error(`LINEAGE_DOCKER_RUNTIME must be a runtime name, got ${JSON.stringify(v)}`);
+  if (!/^[a-z0-9][a-z0-9._-]{0,63}$/.test(v)) throw new Error(`UNITS_DOCKER_RUNTIME must be a runtime name, got ${JSON.stringify(v)}`);
   return v;
 }
 
@@ -214,12 +214,12 @@ export function parseNvidiaSmiGpus(out: string): HostGpu[] {
 }
 
 /**
- * The `--gpus` value for a recipe: LINEAGE_GPU_DEVICE (default "0") selects one host GPU, so a
+ * The `--gpus` value for a recipe: UNITS_GPU_DEVICE (default "0") selects one host GPU, so a
  * multi-GPU worker measures base and candidate on the same device.
  */
 export function gpuDeviceRequest(): string {
-  const dev = (process.env.LINEAGE_GPU_DEVICE ?? "0").trim();
-  if (!/^\d+$/.test(dev)) throw new Error(`LINEAGE_GPU_DEVICE must be a single GPU index, got ${dev}`);
+  const dev = ((process.env.UNITS_GPU_DEVICE ?? process.env.LINEAGE_GPU_DEVICE) ?? "0").trim();
+  if (!/^\d+$/.test(dev)) throw new Error(`UNITS_GPU_DEVICE must be a single GPU index, got ${dev}`);
   return `device=${dev}`;
 }
 

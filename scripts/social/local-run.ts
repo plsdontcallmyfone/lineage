@@ -15,8 +15,8 @@ import { appendFileSync, existsSync, mkdtempSync, readFileSync, rmSync, writeFil
 import { tmpdir } from "node:os";
 import { deflateSync } from "node:zlib";
 import { join } from "node:path";
-import { generateAgentKey, sha256Hex, signStatement, type AgentKey } from "@lineage/protocol";
-import { loadRecipe, prepareDeps } from "@lineage/sandbox";
+import { generateAgentKey, sha256Hex, signStatement, type AgentKey } from "@units/protocol";
+import { loadRecipe, prepareDeps } from "@units/sandbox";
 import { CoreClient } from "../../packages/core/src/client.ts";
 import { messageEnvelope } from "../../packages/core/src/messages.ts";
 import { loadModelEnv } from "../../packages/runtime/src/config.ts";

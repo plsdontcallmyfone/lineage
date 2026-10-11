@@ -18,7 +18,7 @@ import {
   TOKEN_2022_PROGRAM,
   type Address,
   type PumpGlobal,
-} from "@lineage/chain";
+} from "@units/chain";
 import { readMint, readTokenAccount } from "./accounts.ts";
 import { pumpAlerts, type PumpBaseline, type PumpWatch } from "./alerts.ts";
 import { storeDecoded } from "./db.ts";

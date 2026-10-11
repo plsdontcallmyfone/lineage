@@ -1,6 +1,6 @@
 import { defineConfig, devices } from "@playwright/test";
 
-// The Lineage app's UI suite (docs/UI-TESTS.md). By default Playwright starts the dashboard built from
+// The units app's UI suite (docs/UI-TESTS.md). By default Playwright starts the dashboard built from
 // this tree on 127.0.0.1:<UI_PORT> against the deployed site's live Core and market indexer:
 //
 //   bun apps/web/server.ts --port 9661 --core <site> --market <site> --upstream <site>

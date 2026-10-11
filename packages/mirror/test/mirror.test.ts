@@ -66,7 +66,7 @@ const fakeCore = async (url: string): Promise<Response> => {
 };
 
 beforeAll(() => {
-  root = mkdtempSync(join(tmpdir(), "lineage-mirror-test-"));
+  root = mkdtempSync(join(tmpdir(), "units-mirror-test-"));
   gh = new MockGitHub(join(root, "host"));
   base = gh.createRepo("up/fx", { "src/lib.py": LIB, "README.md": "fx\n" });
   const k = keypair(root, "agent-a");

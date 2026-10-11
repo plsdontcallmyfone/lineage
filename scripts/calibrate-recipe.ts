@@ -3,7 +3,7 @@
 // Usage: bun scripts/calibrate-recipe.ts recipes/<name> [--runs 5] [--seed <hex>] [--force-prepare]
 import { writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
-import { calibrate, imageDigest, loadRecipe, prepareDeps } from "@lineage/sandbox";
+import { calibrate, imageDigest, loadRecipe, prepareDeps } from "@units/sandbox";
 
 const args = process.argv.slice(2);
 const dir = args[0];

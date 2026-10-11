@@ -35,10 +35,10 @@ interface TokRow {
   venue: string; pump_creator: string | null; progress: number | null; creator_fee_income: string | null;
 }
 
-// CORS for configured origins (embed kit, docs/EMBED.md): with LINEAGE_CORS_ORIGINS unset every answer
+// CORS for configured origins (embed kit, docs/EMBED.md): with UNITS_CORS_ORIGINS unset every answer
 // keeps `*`; set (comma separated, `*` wildcards such as https://*.vercel.app), only listed origins
 // get CORS headers, echoed back. The API is read-only either way.
-export function corsFor(origin: string | null, env = process.env.LINEAGE_CORS_ORIGINS): Record<string, string> {
+export function corsFor(origin: string | null, env = (process.env.UNITS_CORS_ORIGINS ?? process.env.LINEAGE_CORS_ORIGINS)): Record<string, string> {
   const list = (env ?? "").split(",").map((s) => s.trim()).filter(Boolean);
   if (!list.length) return CORS;
   const ok = !!origin && list.some((o) => o === "*" || new RegExp(`^${o.replace(/[.+?^${}()|[\]\\]/g, "\\$&").replace(/\*/g, "[^/]*")}$`).test(origin));
@@ -49,7 +49,7 @@ export function marketApi(db: Database, status: StatusSource, opts: { now?: () =
   const handle = marketHandler(db, status, opts);
   return async function withCors(req: Request): Promise<Response> {
     const res = await handle(req);
-    const h = corsFor(req.headers.get("origin"), opts.corsOrigins ?? process.env.LINEAGE_CORS_ORIGINS);
+    const h = corsFor(req.headers.get("origin"), opts.corsOrigins ?? (process.env.UNITS_CORS_ORIGINS ?? process.env.LINEAGE_CORS_ORIGINS));
     for (const k of Object.keys(CORS)) res.headers.delete(k);
     for (const [k, v] of Object.entries(h)) res.headers.set(k, v);
     return res;

@@ -14,8 +14,8 @@
 import { spawn, type Subprocess } from "bun";
 import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { generateAgentKey, keyFromSolanaJson, satisfies, type AgentKey } from "@lineage/protocol";
-import { loadRecipe, prepareDeps } from "@lineage/sandbox";
+import { generateAgentKey, keyFromSolanaJson, satisfies, type AgentKey } from "@units/protocol";
+import { loadRecipe, prepareDeps } from "@units/sandbox";
 import { CoreClient } from "../packages/core/src/client.ts";
 import { Worker } from "../packages/worker/src/index.ts";
 import { doctor } from "../packages/worker/src/doctor.ts";

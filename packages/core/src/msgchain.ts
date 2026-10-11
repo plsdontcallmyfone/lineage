@@ -12,7 +12,7 @@ import {
   type RawTx,
   type Rpc,
   type Signer,
-} from "@lineage/chain";
+} from "@units/chain";
 import { CoreClient, type SigningKey } from "./client.ts";
 import type { Core } from "./core.ts";
 import { ApiError, conflict } from "./errors.ts";

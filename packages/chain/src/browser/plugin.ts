@@ -1,6 +1,6 @@
-// Bun.build plugin for a browser bundle that imports @lineage/chain or @lineage/protocol: maps the
+// Bun.build plugin for a browser bundle that imports @units/chain or @units/protocol: maps the
 // node builtins those packages import to the browser stand-ins in this directory. Entries must
-// import "@lineage/chain/browser" (or ./buffer.ts) first so globalThis.Buffer exists at load.
+// import "@units/chain/browser" (or ./buffer.ts) first so globalThis.Buffer exists at load.
 import type { BunPlugin } from "bun";
 import { join } from "node:path";
 

@@ -32,7 +32,7 @@ import {
   type Ix,
   type SendOptions,
   type Signer,
-} from "@lineage/chain";
+} from "@units/chain";
 import { deployer, key, LAMPORTS, loadState, log, reader, ROOT, rpc, sol } from "../../scripts/devnet/lib.ts";
 import { launchTable, pumpLaunchTx } from "../../scripts/devnet/pump-lib.ts";
 

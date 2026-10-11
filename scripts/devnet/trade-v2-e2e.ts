@@ -3,7 +3,7 @@
 // (never the owner's Chrome). A mock Wallet Standard wallet injected into the page signs with a local
 // devnet test key held by this process (~/.config/lineage/devnet/launchpad-ui-test.json); it connects
 // through the returning-visitor path (localStorage "lineage-wallet", as tests/ui does). The test
-// wallet's SOL comes from the Lineage deployer and its tLINE from the devnet treasury (keys passed
+// wallet's SOL comes from the units deployer and its tLINE from the devnet treasury (keys passed
 // explicitly). For each mint: buy with tLINE on the pump.fun curve, then sell half of what was bought;
 // chain balances must move by the amount in and the page's simulated out, the page must show chain's
 // balances, and the site's indexer must report each trade with the same amounts.
@@ -14,7 +14,7 @@
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
-import { ata, loadOrCreateKeypair, sendAndConfirm, signBytes, system, token, TOKEN_2022_PROGRAM } from "@lineage/chain";
+import { ata, loadOrCreateKeypair, sendAndConfirm, signBytes, system, token, TOKEN_2022_PROGRAM } from "@units/chain";
 import { parseWire, placeSignature } from "../../packages/chain/src/browser/wire.ts";
 // the wallet's formatter (apps/web/wallet/chain.ts units), inlined: that module needs a browser
 const group = (s: string) => s.replace(/\B(?=(\d{3})+(?!\d))/g, ",");
@@ -26,7 +26,7 @@ function units(base: bigint, decimals: number): string {
 import { deployer, key, loadState, logTx as devnetLog, reader, rpc } from "./lib.ts";
 
 const arg = (n: string, d?: string) => (process.argv.includes(`--${n}`) ? process.argv[process.argv.indexOf(`--${n}`) + 1]! : d);
-const PW = arg("pw") ?? process.env.LINEAGE_PLAYWRIGHT;
+const PW = arg("pw") ?? (process.env.UNITS_PLAYWRIGHT ?? process.env.LINEAGE_PLAYWRIGHT);
 if (!PW) throw new Error("--pw <dir with node_modules/playwright-core> is required (not a repo dependency)");
 const { chromium } = await import(join(PW, "node_modules", "playwright-core", "index.mjs"));
 const SITE = arg("site", "https://157-245-71-188.sslip.io")!.replace(/\/+$/, "");
@@ -73,7 +73,7 @@ const MINTS = arg("mints")?.split(",") ?? listed.filter((t) => t.venue === "pump
 const exe = join(homedir(), "Library/Caches/ms-playwright/chromium_headless_shell-1243/chrome-headless-shell-mac-arm64/chrome-headless-shell");
 const browser = await chromium.launch(existsSync(exe) ? { executablePath: exe, headless: true } : { headless: true });
 const ctx = await browser.newContext({ viewport: { width: 1280, height: 1000 }, colorScheme: "light" });
-const WALLET_NAME = "Lineage Test Wallet";
+const WALLET_NAME = "units Test Wallet";
 await ctx.exposeFunction("__lineageMockSign", (b64: string) => {
   const wire = new Uint8Array(Buffer.from(b64, "base64"));
   const { message } = parseWire(wire);

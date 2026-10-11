@@ -146,7 +146,7 @@ export function parseProfile(network: NetworkName, raw: unknown): NetworkProfile
   return p;
 }
 
-/** Picks the active profile: `override` (LINEAGE_NETWORK) when set, else the file's `network`. */
+/** Picks the active profile: `override` (UNITS_NETWORK) when set, else the file's `network`. */
 export function selectProfile(raw: unknown, override?: string | null): NetworkProfile {
   if (!isObj(raw) || !isObj(raw.profiles)) throw new Error("profile config: profiles is required");
   const name = (override && override.trim()) || raw.network;

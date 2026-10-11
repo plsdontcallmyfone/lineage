@@ -1,5 +1,5 @@
 #!/usr/bin/env bun
-// Lineage site keys. Prints public keys only, never a secret.
+// units site keys. Prints public keys only, never a secret.
 //
 //   bun scripts/deploy/site-keys.ts init [--dir <dir>]    create the site's own keys if missing (mode 600) and print
 //                                                         every key's public half as JSON
@@ -14,8 +14,8 @@
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
-import { keyFromSolanaJson } from "@lineage/protocol";
-import { loadOrCreateKeypair } from "@lineage/chain";
+import { keyFromSolanaJson } from "@units/protocol";
+import { loadOrCreateKeypair } from "@units/chain";
 
 export const SITE_KEYS = ["admin", "owner", "verifier-ref", "verifier-v1", "verifier-v2"] as const;
 const CONFIG = join(homedir(), ".config", "lineage");

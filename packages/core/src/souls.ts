@@ -1,4 +1,4 @@
-import { checkMemory, checkSoul, newSoul, signSoul, soulDigest, validatePersona, validateSeed, verifySoul, type RecordsEpoch, type SoulDoc, type SoulPersona, type SoulSeed } from "@lineage/souls/doc";
+import { checkMemory, checkSoul, newSoul, signSoul, soulDigest, validatePersona, validateSeed, verifySoul, type RecordsEpoch, type SoulDoc, type SoulPersona, type SoulSeed } from "@units/souls/doc";
 import type { Core } from "./core.ts";
 import { ApiError, bad, conflict, notFound } from "./errors.ts";
 import { socialOf } from "./social.ts";

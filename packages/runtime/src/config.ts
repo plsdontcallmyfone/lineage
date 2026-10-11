@@ -17,7 +17,7 @@ export interface RuntimeConfig {
   state_dir: string;
   /** Runtime authority keypair (Solana JSON): signs provenance, posts usage (devnet: post_usage, debit_compute). */
   runtime_key: string;
-  /** chain RPC; default the network profile's (devnet: packages/chain devnetRpcUrl(); mainnet: LINEAGE_MAINNET_RPC). A keyed URL here is a secret. */
+  /** chain RPC; default the network profile's (devnet: packages/chain devnetRpcUrl(); mainnet: UNITS_MAINNET_RPC). A keyed URL here is a secret. */
   rpc_url?: string;
   /** Claude proposer. */
   model: string;
@@ -113,7 +113,7 @@ export interface RuntimeConfig {
 }
 
 export const DEFAULTS: Omit<RuntimeConfig, "mode" | "core" | "runtime_key" | "compute_price_line_per_usd" | "compute_price_line_per_sandbox_s"> = {
-  state_dir: join(process.env.LINEAGE_HOME ?? join(homedir(), ".lineage"), "runtime", "default"),
+  state_dir: join((process.env.UNITS_HOME ?? process.env.LINEAGE_HOME) ?? join(homedir(), ".lineage"), "runtime", "default"),
   model: "claude-opus-5-5",
   effort: "high",
   max_turns: 40,

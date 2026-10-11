@@ -1,5 +1,5 @@
 #!/usr/bin/env bun
-// Lineage site: re-pins recipes to THIS machine's architecture and locally built sandbox images.
+// units site: re-pins recipes to THIS machine's architecture and locally built sandbox images.
 //
 //   bun scripts/deploy/arch-recipes.ts fixture-b58,base58-py,minbpe [--check]
 //
@@ -22,7 +22,7 @@
 // --check only prints what it would change. Prints { name: recipe_id } as JSON on the last line.
 import { cpSync, existsSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { loadRecipe, localImageId } from "@lineage/sandbox";
+import { loadRecipe, localImageId } from "@units/sandbox";
 import { doctor } from "../../packages/worker/src/doctor.ts";
 
 const ROOT = join(import.meta.dir, "..", "..");

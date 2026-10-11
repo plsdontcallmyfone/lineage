@@ -20,10 +20,10 @@ import {
   type SendOptions,
   type SendResult,
   type Signer,
-} from "@lineage/chain";
+} from "@units/chain";
 
 export const FORK_URL = "http://127.0.0.1:9690";
-export const MAINNET_URL = process.env.LINEAGE_MAINNET_RPC || "https://api.mainnet-beta.solana.com";
+export const MAINNET_URL = (process.env.UNITS_MAINNET_RPC ?? process.env.LINEAGE_MAINNET_RPC) || "https://api.mainnet-beta.solana.com";
 const MAINNET_GENESIS = "5eykt4UsFv8P8NJdTREpY1vzqKqZKvdpKuc147dw2N9d";
 
 export const fork = Rpc.http(FORK_URL, "confirmed");

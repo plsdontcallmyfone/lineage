@@ -93,7 +93,7 @@ export async function signedCommit(o: SignedCommitOptions): Promise<SignedCommit
     throw new Error(`${forkName} exists and is not a fork of ${o.upstream}`);
   }
 
-  const work = mkdtempSync(join(tmpdir(), "lineage-souls-commit-"));
+  const work = mkdtempSync(join(tmpdir(), "units-souls-commit-"));
   try {
     const env = authEnv(o.cred.token, gitBase);
     const remote = `${gitBase}/${forkName}.git`;
@@ -115,7 +115,7 @@ export async function signedCommit(o: SignedCommitOptions): Promise<SignedCommit
       git(work, ["add", "--", path]);
     }
     const ident = ["-c", `user.name=${o.cred.login}`, "-c", `user.email=${noreply(o.cred)}`, "-c", "gpg.format=ssh", "-c", `user.signingkey=${o.cred.ssh_private_key_path}`, "-c", "commit.gpgsign=true"];
-    const msgFile = join(work, ".git", "LINEAGE_MSG");
+    const msgFile = join(work, ".git", "UNITS_MSG");
     writeFileSync(msgFile, o.message);
     git(work, [...ident, "commit", "-q", "-S", "-F", msgFile]);
     const sha = git(work, ["rev-parse", "HEAD"]);

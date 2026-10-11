@@ -1,8 +1,8 @@
 import { describe, expect, test } from "bun:test";
 import { join } from "node:path";
 import type Anthropic from "@anthropic-ai/sdk";
-import { loadRecipe } from "@lineage/sandbox";
-import { generateAgentKey, JOURNAL_LIMITS, journalEntryId, verifyJournal } from "@lineage/protocol";
+import { loadRecipe } from "@units/sandbox";
+import { generateAgentKey, JOURNAL_LIMITS, journalEntryId, verifyJournal } from "@units/protocol";
 import { AnthropicProposer, systemPrompt, type ProposeContext } from "../src/index.ts";
 import { checkEntry, FactsLog, journalPrompt, JOURNAL_RESERVE_USD, notesBlock, storeEntry, type JournalEntryView } from "../src/journal.ts";
 

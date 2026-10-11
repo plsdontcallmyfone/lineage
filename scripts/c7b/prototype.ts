@@ -16,8 +16,8 @@
 import { cpSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { orientedRatio, sha256Hex, shapleyValues, sharesBps } from "@lineage/protocol";
-import { containerUser, loadRecipe, parseCachegrindIr, runContainer } from "@lineage/sandbox";
+import { orientedRatio, sha256Hex, shapleyValues, sharesBps } from "@units/protocol";
+import { containerUser, loadRecipe, parseCachegrindIr, runContainer } from "@units/sandbox";
 
 const ROOT = join(import.meta.dir, "../..");
 const argv = process.argv.slice(2);

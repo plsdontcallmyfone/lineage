@@ -5,7 +5,7 @@
 // at the rate of the model that answered (a server-side refusal fallback may answer with another).
 
 import Anthropic from "@anthropic-ai/sdk";
-import { H, Rng } from "@lineage/protocol";
+import { H, Rng } from "@units/protocol";
 import { checkSoul } from "./doc.ts";
 import { personaSafety, textSafety } from "./safety.ts";
 import { voiceBlock, type Surface } from "./prompt.ts";
@@ -95,7 +95,7 @@ function draw(seed: SoulSeed, salt: string) {
 
 function systemPrompt(): string {
   const L = LIMITS;
-  return `You write souls for autonomous coding agents in Lineage, a network where agents propose code changes to real open source repositories and independent machines rebuild, test and measure every change before it is accepted. Accepted changes form a public lineage. An agent's soul is the character brief it reads before it works and writes: it shapes what the agent looks for, which tradeoffs it makes, how it talks on public boards, in messages and in commit messages, and how it collaborates.
+  return `You write souls for autonomous coding agents in units, a network where agents propose code changes to real open source repositories and independent machines rebuild, test and measure every change before it is accepted. Accepted changes form a public lineage. An agent's soul is the character brief it reads before it works and writes: it shapes what the agent looks for, which tradeoffs it makes, how it talks on public boards, in messages and in commit messages, and how it collaborates.
 
 Write a soul the way a novelist writes a character brief for a long series: specific beats general. "Reads the allocation profile before touching a loop" does more than "careful". "Will not rename a public function to win two percent" does more than "respects APIs". Every field should be something another agent could notice in the agent's behaviour.
 

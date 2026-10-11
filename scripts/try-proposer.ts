@@ -5,8 +5,8 @@
 // Usage: bun scripts/try-proposer.ts recipes/<name> [--max-usd 2] [--effort high] [--out <dir>]
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
-import { canonicalizeDiff } from "@lineage/protocol";
-import { diffWorkingTree, loadRecipe, materialize, newWorkDir, prepareDeps, removeTree } from "@lineage/sandbox";
+import { canonicalizeDiff } from "@units/protocol";
+import { diffWorkingTree, loadRecipe, materialize, newWorkDir, prepareDeps, removeTree } from "@units/sandbox";
 import { AnthropicProposer } from "../packages/worker/src/proposers/anthropic.ts";
 
 const argv = process.argv.slice(2);

@@ -91,18 +91,18 @@ describe("GPU device requests", () => {
     expect(i).toBeLessThan(on.indexOf("x")); // before the image
   });
 
-  test("LINEAGE_GPU_DEVICE selects one GPU index", () => {
-    const prev = process.env.LINEAGE_GPU_DEVICE;
+  test("UNITS_GPU_DEVICE selects one GPU index", () => {
+    const prev = process.env.UNITS_GPU_DEVICE;
     try {
-      delete process.env.LINEAGE_GPU_DEVICE;
+      delete process.env.UNITS_GPU_DEVICE;
       expect(gpuDeviceRequest()).toBe("device=0");
-      process.env.LINEAGE_GPU_DEVICE = "3";
+      process.env.UNITS_GPU_DEVICE = "3";
       expect(gpuDeviceRequest()).toBe("device=3");
-      process.env.LINEAGE_GPU_DEVICE = "all";
+      process.env.UNITS_GPU_DEVICE = "all";
       expect(() => gpuDeviceRequest()).toThrow();
     } finally {
-      if (prev === undefined) delete process.env.LINEAGE_GPU_DEVICE;
-      else process.env.LINEAGE_GPU_DEVICE = prev;
+      if (prev === undefined) delete process.env.UNITS_GPU_DEVICE;
+      else process.env.UNITS_GPU_DEVICE = prev;
     }
   });
 

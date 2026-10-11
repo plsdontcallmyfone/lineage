@@ -22,10 +22,10 @@ interface Gen {
   accepted_at: number; reverted_by: string | null; audit_status: string | null; github: GithubField;
 }
 interface Session { session_id: string; state: string; agent: string | null; name: string | null; started_at: number; last_at: number; ended_at: number | null; desktop: boolean; events: number; height: number | null }
-interface Lineage { lineage_id: string; recipe_name: string | null; class: string | null; status: string; height: number; open_candidates: number; accepted: number; metrics: (ProjectMetric & { points: Point[]; latest_change_pct: number | null })[]; timeline: Gen[]; sessions: Session[] }
-type Project = Omit<ProjectRow, "lineages"> & { lineages: Lineage[] };
+interface LineageRow { lineage_id: string; recipe_name: string | null; class: string | null; status: string; height: number; open_candidates: number; accepted: number; metrics: (ProjectMetric & { points: Point[]; latest_change_pct: number | null })[]; timeline: Gen[]; sessions: Session[] }
+type Project = Omit<ProjectRow, "lineages"> & { lineages: LineageRow[] };
 
-function metricCharts(l: Lineage): Raw {
+function metricCharts(l: LineageRow): Raw {
   const ms = l.metrics.filter((m) => m.points.length || m.baseline !== null);
   if (!ms.length) return empty("No measured values yet", "Values appear with the lineage's first accepted generation.");
   return html`<div class="ins-grid">${ms.map(
@@ -38,7 +38,7 @@ function metricCharts(l: Lineage): Raw {
   <div class="ins-legend"><span><i class="dash"></i>baseline (calibration)</span><span><i></i>measured after each accepted generation (filled: the generation targeted this metric)</span></div>`;
 }
 
-function metricTable(l: Lineage): Raw {
+function metricTable(l: LineageRow): Raw {
   return html`<div class="tw"><table class="t">
     <thead><tr><th>Metric</th><th class="right">Baseline</th><th class="right">Best</th><th class="right">Improvement</th><th class="right hide-sm">Latest</th><th class="right hide-sm">Measured</th></tr></thead>
     <tbody>${l.metrics.map(
@@ -51,7 +51,7 @@ function metricTable(l: Lineage): Raw {
     )}</tbody></table></div>`;
 }
 
-function timeline(l: Lineage, hidden: boolean): Raw {
+function timeline(l: LineageRow, hidden: boolean): Raw {
   if (!l.timeline.length) return empty("No accepted generation yet");
   return html`<div class="tw"><table class="t">
     <thead><tr><th>Gen</th><th>Change</th><th class="hide-sm">Author</th><th>GitHub</th><th class="right hide-sm">Accepted</th></tr></thead>
@@ -68,7 +68,7 @@ function timeline(l: Lineage, hidden: boolean): Raw {
     ${hidden ? "" : l.timeline.some((g) => g.author_hidden) ? html`<div class="panel-note">Generations by test launches keep their place in the lineage; <a class="link" href="?hidden=1" data-q>show their authors</a>.</div>` : ""}`;
 }
 
-function sessions(l: Lineage): Raw {
+function sessions(l: LineageRow): Raw {
   const live = l.sessions.filter((s) => s.state === "live");
   const recent = l.sessions.filter((s) => s.state !== "live").slice(0, 8);
   const row = (s: Session) => html`<li class="pjd-s">

@@ -22,15 +22,15 @@ import { spawn, spawnSync, type Subprocess } from "bun";
 import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
-import { generateAgentKey } from "@lineage/protocol";
-import { ata, ChainReader, launchPdas, loadKeypair, loadOrCreateKeypair, registry, Rpc, sendAndConfirm, signBytes, system, token, TOKEN_2022_PROGRAM, usdToBase } from "@lineage/chain";
+import { generateAgentKey } from "@units/protocol";
+import { ata, ChainReader, launchPdas, loadKeypair, loadOrCreateKeypair, registry, Rpc, sendAndConfirm, signBytes, system, token, TOKEN_2022_PROGRAM, usdToBase } from "@units/chain";
 import { assertDevnet } from "../../packages/chain/src/browser/client.ts";
 import { decodeMessage, parseWire, placeSignature } from "../../packages/chain/src/browser/wire.ts";
 import { devnetRpcUrl, redactRpc } from "../../packages/chain/src/endpoint.ts";
 import type { SoulDoc } from "../../packages/souls/src/doc.ts";
 
 const arg = (n: string, d?: string) => (process.argv.includes(`--${n}`) ? process.argv[process.argv.indexOf(`--${n}`) + 1]! : d);
-const PW = arg("pw") ?? process.env.LINEAGE_PLAYWRIGHT;
+const PW = arg("pw") ?? (process.env.UNITS_PLAYWRIGHT ?? process.env.LINEAGE_PLAYWRIGHT);
 if (!PW) throw new Error("--pw <dir with node_modules/playwright-core> is required (not a repo dependency)");
 const { chromium } = await import(join(PW, "node_modules", "playwright-core", "index.mjs"));
 const PORT = Number(arg("port", "9663"));
@@ -133,7 +133,7 @@ await ctx.addInitScript(({ address, pub }: { address: string; pub: number[] }) =
   const account = { address, publicKey: new Uint8Array(pub), chains: ["solana:devnet"], features: ["solana:signTransaction"], label: "test" };
   const w = {
     version: "1.0.0",
-    name: "Lineage Test Wallet",
+    name: "units Test Wallet",
     icon: "data:image/svg+xml;base64," + btoa('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20"><rect width="20" height="20" rx="4" fill="#2a78d6"/></svg>'),
     chains: ["solana:devnet"],
     accounts: [] as unknown[],
@@ -172,7 +172,7 @@ const T = 180_000;
 async function openWallet(v0: boolean) {
   await page.goto(`${BASE}/wallet`);
   await page.evaluate((x: boolean) => ((window as any).__mockV0 = x), v0);
-  await page.locator('[data-act="connect"][data-name="Lineage Test Wallet"]').click({ timeout: 30_000 });
+  await page.locator('[data-act="connect"][data-name="units Test Wallet"]').click({ timeout: 30_000 });
   await page.locator(".wl-bal").waitFor({ timeout: T });
   await page.waitForFunction(() => !document.querySelector(".wl-bal")?.textContent?.includes("TBA"), null, { timeout: T });
   await page.waitForFunction(() => /tLINE/.test(document.querySelector("#w-prepay")?.textContent ?? ""), null, { timeout: T });

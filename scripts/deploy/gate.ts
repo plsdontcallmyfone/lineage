@@ -1,5 +1,5 @@
 #!/usr/bin/env bun
-// Lineage site gate: the only thing Caddy talks to. Rate limits per client address, CORS, method
+// units site gate: the only thing Caddy talks to. Rate limits per client address, CORS, method
 // and path allowlists, body size cap, and a cap on open event streams, in front of the dashboard
 // (apps/web/server.ts) and Core's public read API.
 //

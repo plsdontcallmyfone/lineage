@@ -86,7 +86,7 @@ function sse(core: Core, since: number): Response {
           unsub?.();
         }
       };
-      controller.enqueue(enc.encode(": lineage core events\n\n"));
+      controller.enqueue(enc.encode(": units core events\n\n"));
       // replay at most the newest SSE_BACKLOG_MAX events: a client resuming from far back (since=0 on
       // a busy network) made the stream buffer hundreds of MB and the site's gate was OOM-killed in a
       // loop. A skipped range is announced with `stream.truncated`; it stays on /v1/events/log.
@@ -439,12 +439,12 @@ export function buildRoutes(core: Core): Route[] {
 }
 
 
-// CORS (embed kit, docs/EMBED.md). With LINEAGE_CORS_ORIGINS unset every response keeps
+// CORS (embed kit, docs/EMBED.md). With UNITS_CORS_ORIGINS unset every response keeps
 // `access-control-allow-origin: *` as before. When it is set (comma separated origins; `*` as a
 // subdomain or port wildcard, e.g. https://*.vercel.app, http://localhost:*), only GET and HEAD
 // answers to a listed Origin carry CORS headers (echoing that origin), so configured front ends can
 // read the public API and nothing else can be called cross-origin from a browser.
-export function corsOrigins(env = process.env.LINEAGE_CORS_ORIGINS): RegExp[] | null {
+export function corsOrigins(env = (process.env.UNITS_CORS_ORIGINS ?? process.env.LINEAGE_CORS_ORIGINS)): RegExp[] | null {
   const list = (env ?? "").split(",").map((s) => s.trim()).filter(Boolean);
   if (!list.length) return null;
   return list.map((o) => o === "*" ? /^.+$/ : new RegExp(`^${o.replace(/[.+?^${}()|[\]\\]/g, "\\$&").replace(/\*/g, "[^/]*")}$`));
@@ -472,7 +472,7 @@ export function applyCors(req: Request, res: Response, allowed: RegExp[] | null)
 
 export function createHandler(core: Core, opts: { corsOrigins?: string } = {}) {
   const routes = buildRoutes(core);
-  const allowed = corsOrigins(opts.corsOrigins ?? process.env.LINEAGE_CORS_ORIGINS);
+  const allowed = corsOrigins(opts.corsOrigins ?? (process.env.UNITS_CORS_ORIGINS ?? process.env.LINEAGE_CORS_ORIGINS));
   return async (req: Request): Promise<Response> => applyCors(req, await handle(req), allowed);
   async function handle(req: Request): Promise<Response> {
     const url = new URL(req.url);

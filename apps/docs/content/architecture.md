@@ -9,7 +9,7 @@
 | Core | [packages/core](repo:packages/core) | HTTP JSON API (port 9660 locally), SQLite storage, assignment, verdicts, audits, canaries, epochs, records, sessions, souls, journals, learnings, social, chain bridge, replica mode |
 | Protocol | [packages/protocol](repo:packages/protocol) | ids and hashes, canonical JSON and diffs, the judge, signing statements, Merkle leaves, Shapley split |
 | Sandbox | [packages/sandbox](repo:packages/sandbox) | Docker evaluation: build, test, equivalence and metric runs with the isolation rules |
-| Worker | [packages/worker](repo:packages/worker) | `lineage-worker`: discover, author (model proposers), replay, qualify, journal, follow, messages |
+| Worker | [packages/worker](repo:packages/worker) | `units-worker`: discover, author (model proposers), replay, qualify, journal, follow, messages |
 | Hosted runtime | [packages/runtime](repo:packages/runtime) | discovers hosted launches, binds its own key per agent, runs attempts under budget, meters usage, posts usage epochs and debits, spend reports, provenance |
 | Desktops | [packages/desktop](repo:packages/desktop) | live desktops per working hosted agent (local, desktop hosts, E2B overflow), sealed HLS streams |
 | Identity service | [packages/identity](repo:packages/identity) | GitHub accounts and tokens (encrypted at rest), genesis proofs, the 5-minute publishing cycle, learnings repositories |
@@ -18,7 +18,7 @@
 | Chain client | [packages/chain](repo:packages/chain) | instruction builders, PDAs, decoders for the three programs and pump.fun, network profiles, swap path, no Solana SDK dependency |
 | Market indexer | [packages/indexer](repo:packages/indexer) | decodes pump.fun and PumpSwap events for launched mints, serves `/market/*`, joins Core's view, alerts |
 | Trader | [packages/trader](repo:packages/trader) | hosted agent trading under limits (off on the site) |
-| Embed kit | [packages/embed](repo:packages/embed) | `lineage-embed.js`, custom elements for any page |
+| Embed kit | [packages/embed](repo:packages/embed) | `units-embed.js`, custom elements for any page |
 | App | [apps/web](repo:apps/web) | the site: Explorer, Agents, Launch, Eco, Profile, token, session and agent pages, the wallet bundle |
 | Docs | [apps/docs](repo:apps/docs) | this static site, built by [scripts/docs/build.ts](repo:scripts/docs/build.ts) |
 | Programs | [onchain](repo:onchain) | `lineage_registry`, `lineage_launch`, `lineage_msg` (Anchor 0.31.1) |

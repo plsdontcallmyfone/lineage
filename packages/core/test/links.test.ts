@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, test } from "bun:test";
-import { addressBytes, pda, REGISTRY_PROGRAM_ID } from "@lineage/chain";
+import { addressBytes, pda, REGISTRY_PROGRAM_ID } from "@units/chain";
 import { ERC8004_TYPE, erc8004Of, SOLANA_CAIP2 } from "../src/erc8004.ts";
 import { domainProofJson, extractProofs, linksOf, linkStatement, proofText, signLink } from "../src/links.ts";
 import { generateAgentKey, type AgentKey } from "../src/protocol.ts";

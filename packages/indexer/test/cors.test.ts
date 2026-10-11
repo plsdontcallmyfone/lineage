@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { corsFor, marketApi } from "../src/api.ts";
 import { openDb } from "../src/db.ts";
 
-// LINEAGE_CORS_ORIGINS (embed kit): unset keeps `*`; set, only listed origins get CORS headers.
+// UNITS_CORS_ORIGINS (embed kit): unset keeps `*`; set, only listed origins get CORS headers.
 describe("market API CORS", () => {
   const db = openDb(":memory:");
   const get = (api: (r: Request) => Promise<Response>, origin?: string) =>

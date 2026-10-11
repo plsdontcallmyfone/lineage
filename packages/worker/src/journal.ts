@@ -1,5 +1,5 @@
-import { journalStatement, journalTextProblems, JOURNAL_LIMITS, signJournal, type AgentKey } from "@lineage/protocol";
-import type { SoulDoc } from "@lineage/souls";
+import { journalStatement, journalTextProblems, JOURNAL_LIMITS, signJournal, type AgentKey } from "@units/protocol";
+import type { SoulDoc } from "@units/souls";
 import { textSafety } from "../../souls/src/safety.ts";
 import type { CoreClient } from "../../core/src/client.ts";
 import { followedBlock, type FollowContext } from "../../core/src/follow-context.ts";
@@ -143,7 +143,7 @@ export function journalPrompt(soul: SoulDoc | null, facts: string): { system: st
   const voice = p
     ? `Write as ${p.name}, in your own voice. Register: ${p.voice.register}\nStyle: ${p.voice.style}\nHabits:\n${p.voice.habits.map((h) => `- ${h}`).join("\n")}\nNever say:\n${p.voice.never_says.map((h) => `- ${h}`).join("\n")}`
     : "Write plainly, in the first person.";
-  const system = `You are an authoring agent in Lineage, writing your own journal entry at the end of an authoring session. Your next sessions read it as your own notes; once the work it describes is final the network publishes it on your profile.
+  const system = `You are an authoring agent in units, writing your own journal entry at the end of an authoring session. Your next sessions read it as your own notes; once the work it describes is final the network publishes it on your profile.
 
 ${voice}
 

@@ -2,7 +2,7 @@ import { accountDisc, addressBytes, ixDisc, Reader, Writer, type Address } from 
 import { BPF_LOADER_UPGRADEABLE, pda, SYSTEM_PROGRAM, u64le } from "./pda.ts";
 import { r, w, type AccountMeta, type Ix } from "./registry.ts";
 
-// Squads v4 multisig plumbing (M2, docs/MAINNET-RUNBOOK.md): every admin instruction of the Lineage
+// Squads v4 multisig plumbing (M2, docs/MAINNET-RUNBOOK.md): every admin instruction of the units
 // programs is built here as a vault transaction, proposed, approved by the threshold, and executed
 // after the multisig's time lock. No SDK: the encodings follow the program's own IDL
 // (@sqds/multisig 2.1.4, idl/squads_multisig_program.json, Anchor 0.29) and its TypeScript

@@ -1,5 +1,5 @@
 #!/usr/bin/env bun
-// Lineage market indexer (docs/plans/LAUNCHPAD-AND-LIVE.md L2).
+// units market indexer (docs/plans/LAUNCHPAD-AND-LIVE.md L2).
 //
 //   bun packages/indexer/src/main.ts [--port 9668] [--host 127.0.0.1] [--db <file>] [--interval 15]
 //     [--min-gap-ms 250] [--holders-every 600] [--max-idle 300] [--no-ws] [--once] [--core http://127.0.0.1:9660] [--core-every 60]
@@ -7,17 +7,17 @@
 // --interval: seconds between passes and the poll interval of an active source; a source with nothing
 // new is polled less often (doubling up to --max-idle seconds) unless logsSubscribe reports activity.
 //
-// RPC: the network profile's (config/profile.json, LINEAGE_NETWORK; SPEC 14.10). devnet: packages/chain's
-// resolver (LINEAGE_DEVNET_RPC, ~/.config/lineage/rpc.env, else public devnet); mainnet: the keyed
-// LINEAGE_MAINNET_RPC, no public fallback.
+// RPC: the network profile's (config/profile.json, UNITS_NETWORK; SPEC 14.10). devnet: packages/chain's
+// resolver (UNITS_DEVNET_RPC, ~/.config/lineage/rpc.env, else public devnet); mainnet: the keyed
+// UNITS_MAINNET_RPC, no public fallback.
 // The URL is never printed (redactRpc). --once runs one full pass and exits (no HTTP server).
 import "../../protocol/src/env-alias.ts"; // first: UNITS_* and LINEAGE_* env names both readable (docs/plans/REBRAND-UNITS.md 3.3)
 import { mkdirSync } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
-import { Rpc } from "@lineage/chain";
-import { redactRpc } from "@lineage/chain/src/endpoint.ts";
-import { applyNetworkProfile, rpcUrlFor } from "@lineage/chain/src/profile-node.ts";
+import { Rpc } from "@units/chain";
+import { redactRpc } from "@units/chain/src/endpoint.ts";
+import { applyNetworkProfile, rpcUrlFor } from "@units/chain/src/profile-node.ts";
 import { marketApi } from "./api.ts";
 import { syncCore } from "./core-sync.ts";
 import { openDb } from "./db.ts";
@@ -33,7 +33,7 @@ const flag = (k: string) => argv.includes(`--${k}`);
 
 const port = Number(arg("port", "9668"));
 const host = arg("host", "127.0.0.1");
-const dbPath = arg("db", join(process.env.LINEAGE_HOME ?? join(homedir(), ".lineage"), "indexer", "market.db"));
+const dbPath = arg("db", join((process.env.UNITS_HOME ?? process.env.LINEAGE_HOME) ?? join(homedir(), ".lineage"), "indexer", "market.db"));
 const intervalS = Number(arg("interval", "15"));
 const profile = applyNetworkProfile();
 const url = rpcUrlFor(profile);
@@ -157,7 +157,7 @@ if (flag("once")) {
 }
 const handle = marketApi(db, status, { quote: profile.quote.symbol });
 // Core: target class, verified generations, latest session and model per agent for the token directory
-const core = arg("core", process.env.LINEAGE_CORE ?? "http://127.0.0.1:9660").replace(/\/+$/, "");
+const core = arg("core", (process.env.UNITS_CORE ?? process.env.LINEAGE_CORE) ?? "http://127.0.0.1:9660").replace(/\/+$/, "");
 const coreEvery = Number(arg("core-every", "60"));
 const modelCache = new Map<string, { model: string | null; at: number }>();
 const coreGet = async (p: string) => {

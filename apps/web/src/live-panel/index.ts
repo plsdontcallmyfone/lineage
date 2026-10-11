@@ -75,9 +75,9 @@ export interface PanelIO {
   blob(digest: string): Promise<any>;
   /** a new connection to the event stream (the panel closes it on destroy), or null for none */
   events(): EventSource | null;
-  /** the URL of a Lineage page such as /agents/<id> */
+  /** the URL of a units page such as /agents/<id> */
   href(path: string): string;
-  /** extra attributes on every link (an embed opens the Lineage site in a new tab) */
+  /** extra attributes on every link (an embed opens the units site in a new tab) */
   linkAttrs: string;
   /** where the panel's stylesheet goes */
   styleRoot: Document | ShadowRoot;
@@ -621,7 +621,7 @@ class Panel {
         <div><dt>Ran</dt><dd>${esc(when(s.started_at))}, ${esc(mmss((s.ended_at ?? s.last_at) - s.started_at))}, ${esc(s.events)} events</dd></div>
       </dl>
       ${links.length ? `<div class="lp-facts-links">${links.join("")}</div>` : ""}
-      <span class="lp-msg-s lp-idle-sub">Lineage shows live work only; past sessions are not replayed.</span></div>`;
+      <span class="lp-msg-s lp-idle-sub">units shows live work only; past sessions are not replayed.</span></div>`;
   }
 
   /** Under the screen of an ended session: the network's verdict and its replays. */

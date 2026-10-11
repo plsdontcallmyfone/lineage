@@ -1,7 +1,7 @@
 #!/usr/bin/env bun
 // Verifies an accepted generation against its public GitHub commit (docs/plans/GENERATIONS-ON-GITHUB.md 5).
 //
-//   bun scripts/identity/verify-generation.ts <gen_id> [--core <Lineage site or Core base URL>] [--json]
+//   bun scripts/identity/verify-generation.ts <gen_id> [--core <units site or Core base URL>] [--json]
 //
 // Reads the generation from Core (GET /v1/generations/:id, its `github` field), the commit from
 // GitHub's public API and the git objects with `git fetch`, and checks: trailers name the generation,
@@ -19,7 +19,7 @@ if (!genId) {
   console.error("usage: verify-generation.ts <gen_id (64 hex)> [--core <url>] [--json]");
   process.exit(2);
 }
-const core = (opt("core") ?? process.env.LINEAGE_CORE ?? "https://157-245-71-188.sslip.io").replace(/\/+$/, "");
+const core = (opt("core") ?? (process.env.UNITS_CORE ?? process.env.LINEAGE_CORE) ?? "https://157-245-71-188.sslip.io").replace(/\/+$/, "");
 const r = await verifyGeneration({ core, genId, token: process.env.GITHUB_TOKEN || null });
 if (argv.includes("--json")) console.log(JSON.stringify(r, null, 2));
 else {

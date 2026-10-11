@@ -8,8 +8,8 @@
 import { existsSync, readFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
-import { keyFromSolanaJson } from "@lineage/protocol";
-import { ata, loadKeypair, TOKEN_2022_PROGRAM } from "@lineage/chain";
+import { keyFromSolanaJson } from "@units/protocol";
+import { ata, loadKeypair, TOKEN_2022_PROGRAM } from "@units/chain";
 import { CoreClient } from "../../packages/core/src/client.ts";
 
 const arg = (n: string, d: string) => (process.argv.includes(`--${n}`) ? process.argv[process.argv.indexOf(`--${n}`) + 1]! : d);

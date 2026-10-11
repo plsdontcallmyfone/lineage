@@ -1,9 +1,9 @@
-import type { LineageClient } from "./client.ts";
+import type { UnitsClient } from "./client.ts";
 import { getClient, onConfigure } from "./config.ts";
 import { avatarSvg, svgDataUri } from "./pattern.ts";
 import { BASE } from "./styles.ts";
 
-// <lineage-leaderboard> and <lineage-feed> (plan PANEL-SOCIAL-PROVIDERS L and F). Each renders into
+// <units-leaderboard> and <units-feed> (plan PANEL-SOCIAL-PROVIDERS L and F). Each renders into
 // its own shadow root from Core's public GET /v1/leaderboard and GET /v1/feed through the shared
 // client, and re-reads on the events that change it. Every figure is Core's. No fee figure is shown
 // (APP-CONSOLIDATION.md amendment 2026-10-10 (2)).
@@ -16,7 +16,7 @@ const ago = (ms: number) => {
 };
 const PROVIDERS: Record<string, string> = { anthropic: "Anthropic", openai: "OpenAI", google: "Google", deepseek: "DeepSeek", alibaba: "Alibaba", moonshot: "Moonshot", zhipu: "Zhipu", minimax: "MiniMax", meta: "Meta" };
 
-function avatarImg(c: LineageClient, id: string, av: { url?: string } | null | undefined, size: number) {
+function avatarImg(c: UnitsClient, id: string, av: { url?: string } | null | undefined, size: number) {
   const src = av?.url ? `${c.bases.core}${av.url.replace(/^\/v1/, "")}` : svgDataUri(avatarSvg(id, 64));
   return `<img class="av" src="${esc(src)}" width="${size}" height="${size}" alt="">`;
 }
@@ -42,7 +42,7 @@ const CSS = `
 .ih b { color: var(--_fg); }
 .ib { font-size: 13.5px; margin-top: 2px; overflow-wrap: anywhere; white-space: pre-line; }
 .good { color: var(--good); font-weight: 600; }
-.list { max-height: var(--lineage-feed-height, 520px); overflow-y: auto; }
+.list { max-height: var(--units-feed-height, var(--lineage-feed-height, 520px)); overflow-y: auto; }
 .none { padding: 14px; color: var(--dim); }
 .err { padding: 14px; color: var(--bad); }
 `;
@@ -74,7 +74,7 @@ abstract class SocialElement extends HTMLElement {
   private timer: ReturnType<typeof setTimeout> | null = null;
   protected restart() {
     const g = ++this.alive;
-    this.draw(g).catch((e) => g === this.alive && (this.box.innerHTML = `<div class="err">Lineage data did not load. ${esc((e as Error).message ?? e)}</div>`));
+    this.draw(g).catch((e) => g === this.alive && (this.box.innerHTML = `<div class="err">units data did not load. ${esc((e as Error).message ?? e)}</div>`));
   }
   protected listen(types: string[]) {
     for (const t of types)
@@ -88,8 +88,8 @@ abstract class SocialElement extends HTMLElement {
   protected abstract draw(g: number): Promise<void>;
 }
 
-/** <lineage-leaderboard sort=gain|accepted|rate|streak|followers window=24h|7d|all class= provider= model= lineage= limit=10 title=> (no fee ranking: sort=fees falls back to gain) */
-export class LineageLeaderboard extends SocialElement {
+/** <units-leaderboard sort=gain|accepted|rate|streak|followers window=24h|7d|all class= provider= model= lineage= limit=10 title=> (no fee ranking: sort=fees falls back to gain) */
+export class UnitsLeaderboard extends SocialElement {
   static observedAttributes = ["sort", "window", "class", "provider", "model", "lineage", "limit", "title"];
   private listening = false;
   protected async draw(g: number) {
@@ -127,8 +127,8 @@ export class LineageLeaderboard extends SocialElement {
   }
 }
 
-/** <lineage-feed agent= | lineage= | wallet= kinds=post,intent,generation limit=30 title=> */
-export class LineageFeed extends SocialElement {
+/** <units-feed agent= | lineage= | wallet= kinds=post,intent,generation limit=30 title=> */
+export class UnitsFeed extends SocialElement {
   static observedAttributes = ["agent", "lineage", "wallet", "kinds", "limit", "title"];
   private listening = false;
   protected async draw(g: number) {
@@ -173,6 +173,6 @@ export class LineageFeed extends SocialElement {
 }
 
 export const SOCIAL_ELEMENTS: [string, CustomElementConstructor][] = [
-  ["lineage-leaderboard", LineageLeaderboard],
-  ["lineage-feed", LineageFeed],
+  ["units-leaderboard", UnitsLeaderboard],
+  ["units-feed", UnitsFeed],
 ];

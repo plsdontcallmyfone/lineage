@@ -38,16 +38,16 @@ import {
   activePrograms,
   useProfilePrograms,
   type ProgramIds,
-} from "@lineage/chain";
+} from "@units/chain";
 import { loadNetworkProfile } from "../../packages/chain/src/profile-node.ts";
 import type { NetworkProfile } from "../../packages/chain/src/profile.ts";
 
 const MAINNET_GENESIS = "5eykt4UsFv8P8NJdTREpY1vzqKqZKvdpKuc147dw2N9d";
 
 /**
- * The active network profile (config/profile.json `network`, LINEAGE_NETWORK overrides), with its
+ * The active network profile (config/profile.json `network`, UNITS_NETWORK overrides), with its
  * program ids applied to every builder, PDA and reader (packages/chain programs.ts). The mainnet
- * scripts run under LINEAGE_NETWORK=mainnet (docs/MAINNET-RUNBOOK.md); nothing here names an id.
+ * scripts run under UNITS_NETWORK=mainnet (docs/MAINNET-RUNBOOK.md); nothing here names an id.
  */
 export function useActiveProfile(env: Record<string, string | undefined> = process.env): NetworkProfile {
   const p = loadNetworkProfile({ env });
@@ -69,12 +69,12 @@ export const programIdsNow = (): ProgramIds => {
  */
 export async function checkEndpoint(rpc: Rpc, p: NetworkProfile, o: { deployed: boolean; local?: boolean }): Promise<string> {
   const genesis = await rpc.call<string>("getGenesisHash");
-  if (genesis === MAINNET_GENESIS && p.network !== "mainnet") throw new Error(`mainnet endpoint under the ${p.network} profile: run with LINEAGE_NETWORK=mainnet`);
+  if (genesis === MAINNET_GENESIS && p.network !== "mainnet") throw new Error(`mainnet endpoint under the ${p.network} profile: run with UNITS_NETWORK=mainnet`);
   if (genesis !== p.genesis && !o.local) throw new Error(`the endpoint's genesis ${genesis} is not the ${p.network} profile's ${p.genesis}`);
   if (o.deployed)
     for (const [name, id] of Object.entries(programIdsNow())) {
       const a = await rpc.getAccountInfo(id);
-      if (!a || !a.executable) throw new Error(`${name}: no program at ${id}, the ${p.network} profile's id (LINEAGE_NETWORK=${process.env.LINEAGE_NETWORK ?? ""})`);
+      if (!a || !a.executable) throw new Error(`${name}: no program at ${id}, the ${p.network} profile's id (UNITS_NETWORK=${(process.env.UNITS_NETWORK ?? process.env.LINEAGE_NETWORK) ?? ""})`);
     }
   return genesis;
 }

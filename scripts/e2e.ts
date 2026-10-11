@@ -8,8 +8,8 @@ import { spawn, type Subprocess } from "bun";
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { canonicalizeDiff, generateAgentKey, H, patchCommitment, patchHash, sha256Hex, signStatement, type AgentKey } from "@lineage/protocol";
-import { loadRecipe, prepareDeps } from "@lineage/sandbox";
+import { canonicalizeDiff, generateAgentKey, H, patchCommitment, patchHash, sha256Hex, signStatement, type AgentKey } from "@units/protocol";
+import { loadRecipe, prepareDeps } from "@units/sandbox";
 import { CoreClient } from "../packages/core/src/client.ts";
 import { doctor } from "../packages/worker/src/doctor.ts";
 import { loadScript, ScriptedProposer, Worker } from "../packages/worker/src/index.ts";
@@ -150,7 +150,7 @@ async function main() {
   const fund = (k: AgentKey, amount: bigint) => ok(admin.post("/v1/admin/faucet", { agent: k.id, amount: amount.toString() }), "faucet");
   const MIN_BOND = BigInt(net.min_bond);
   const BURN = BigInt(net.register_burn);
-  // real capabilities from this machine (what `lineage-worker doctor` prints); workers re-declare on start
+  // real capabilities from this machine (what `units-worker doctor` prints); workers re-declare on start
   const caps = doctor().capabilities;
   const wrongCaps = { ...caps, arch: caps.arch === "arm64" ? "amd64" : "arm64" };
   for (const n of ["ref", "v1", "v2", "v3", "v4", "v5", "liar", "faker", "wrongarch"] as const) {
@@ -795,8 +795,8 @@ try {
     rmSync(EXTRA_RECIPES, { recursive: true, force: true });
   } else {
     log(`kept ${tmp}`);
-    // the second lineage's recipe lives here; replay.ts finds it with LINEAGE_RECIPES_EXTRA
-    log(`kept recipes ${EXTRA_RECIPES} (LINEAGE_RECIPES_EXTRA=${EXTRA_RECIPES} bun scripts/replay.ts ...)`);
+    // the second lineage's recipe lives here; replay.ts finds it with UNITS_RECIPES_EXTRA
+    log(`kept recipes ${EXTRA_RECIPES} (UNITS_RECIPES_EXTRA=${EXTRA_RECIPES} bun scripts/replay.ts ...)`);
   }
   process.exit(failed || bad.length ? 1 : 0);
 }

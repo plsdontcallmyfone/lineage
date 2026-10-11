@@ -1,6 +1,6 @@
 import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import type { AgentKey } from "@lineage/protocol";
+import type { AgentKey } from "@units/protocol";
 import { CoreClient } from "../../core/src/client.ts";
 import { TRADING_DEFAULTS, type Temperament, type TemperamentParams, type TradingConfig } from "../../core/src/scores.ts";
 import { enforceDecision, equityOf, parseDecision, riskExits, valueOf, type Action, type Book, type Market, type ModelDecision, type Position, type Refusal, type ScoreInput, type TokenView } from "./policy.ts";

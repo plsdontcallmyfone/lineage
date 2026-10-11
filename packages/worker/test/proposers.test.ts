@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import type Anthropic from "@anthropic-ai/sdk";
-import { calibrate, diffWorkingTree, loadRecipe, materialize, newWorkDir, prepareDeps, removeTree } from "@lineage/sandbox";
+import { calibrate, diffWorkingTree, loadRecipe, materialize, newWorkDir, prepareDeps, removeTree } from "@units/sandbox";
 import { AnthropicProposer, loadScript, ScriptedProposer, ToolBox, type ProposeContext } from "../src/index.ts";
 
 const ROOT = join(import.meta.dir, "../../..");
@@ -169,7 +169,7 @@ describe("AnthropicProposer soul (SPEC 14.8)", () => {
   test("the soul is appended after the rules, which stay word for word the same", async () => {
     const { c, done } = await ctx();
     try {
-      const { proposerSoulBlock } = await import("@lineage/souls");
+      const { proposerSoulBlock } = await import("@units/souls");
       const { soul } = await import("../../souls/test/fixtures.ts");
       const plain = fakeClient([[use("g1", "give_up", { reason: "test" })]]);
       await new AnthropicProposer({ max_usd: 1 }, plain.client).propose(c);

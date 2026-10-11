@@ -1,6 +1,6 @@
 import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import { join, relative } from "node:path";
-import { H, recipeId, sha256Hex, type Recipe } from "@lineage/protocol";
+import { H, recipeId, sha256Hex, type Recipe } from "@units/protocol";
 import { isCleanRel } from "./fsafe.ts";
 
 // Recipe loading and validation, SPEC section 6. A recipe lives in recipes/<name>/ with

@@ -1,6 +1,6 @@
 import { join } from "node:path";
 import { mkdirSync, writeFileSync } from "node:fs";
-import type { AgentKey } from "@lineage/protocol";
+import type { AgentKey } from "@units/protocol";
 import { CoreClient } from "../../core/src/client.ts";
 import { Worker } from "../../worker/src/worker.ts";
 import type { Meter, Proposer } from "../../worker/src/proposers/types.ts";
