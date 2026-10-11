@@ -28,6 +28,7 @@ import { launchPage } from "./pages/launch.ts";
 import { profilePage } from "./pages/profile.ts";
 import type { Page } from "./pages/types.ts";
 import { logo } from "./ui.ts";
+import { siteFooter } from "./site-footer.ts";
 import { deckPage, deckSync } from "./deck.ts";
 
 // ------------------------------------------------------------------------------------------------
@@ -90,12 +91,11 @@ function shell() {
         <a href="/launch" data-nav="/launch">Launch</a>
       </nav>
       <div class="top-right">
-        <a class="eco-btn" id="eco-open" href="/eco" data-nav="/eco"><i class="eco-dot" id="live" data-s="${live.upstream}" title="Core event stream"></i>Eco</a>
         ${connectHtml()}
       </div>
     </div></header>
     <main id="main" aria-live="polite"></main>
-    <footer class="foot"><span>Every figure is read from Core, the market indexer or devnet; values none of them holds show as TBA.</span><span>Token amounts in $UNITS (placeholder), formatted with token_decimals from <span class="num">GET /v1/config</span>.</span><span id="core-url"></span></footer>`.s;
+    ${siteFooter}`.s;
   wireConnect(document.getElementById("cn")!);
 }
 

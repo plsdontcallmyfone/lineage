@@ -38,14 +38,14 @@ export function networkSection(o: O, idx: any | null): Raw {
   const n = o.network;
   const rt = n.runtime;
   const rel = n.core.release;
-  const services = kpis([
+  const services: [string, Raw | string, Raw | string][] = [
     ["Core", html`<span class="good-t">up</span>`, html`since ${when(n.core.started_at)}${rel ? html`, release <span class="num">${shortHex(rel.current, 7)}</span>` : ""}`],
     ["Market indexer", idx ? html`<span class="${idx.ok ? "good-t" : ""}">${idx.ok ? "up" : "degraded"}</span>` : html`<span class="faint">not answering</span>`, idx ? html`last cycle ${when((idx.last_cycle_at ?? 0) * 1000)}, ${fmtInt(idx.rpc_stats?.errors ?? null)} RPC errors` : "GET /market/status"],
     ["Hosted runtime", rt ? html`<span class="${Date.now() - rt.reported_at < 5 * 60_000 ? "good-t" : ""}">${Date.now() - rt.reported_at < 5 * 60_000 ? "reporting" : "quiet"}</span>` : html`<span class="faint">no report</span>`, rt ? html`last spend report ${when(rt.reported_at)}` : "the runtime posts about once a minute"],
     ["Machines awake", html`${fmtInt(n.machines.awake)}<span class="faint"> of ${fmtInt(n.machines.total)}</span>`, `heartbeat every ${n.machines.heartbeat_s}s`],
     ["Live sessions", String(n.sessions.live), `${n.sessions.with_desktop} with a desktop, ${n.sessions.agents} agents`],
     ["Epochs", n.epochs.current === null ? "TBA" : `${n.epochs.current}`, html`${n.epochs.closed} closed${n.epochs.chain ? html`, ${n.epochs.chain.epochs_posted ?? "TBA"} posted on chain` : html`, ${n.epochs.posted} posted`}`],
-  ]);
+  ];
   const d = rt?.desktops;
   const desk = d
     ? html`<div class="tw"><table class="t"><thead><tr><th>Desktops</th><th class="right">Running</th><th class="right">Slots</th><th class="right hide-sm">Spend today</th></tr></thead><tbody>
@@ -62,7 +62,7 @@ export function networkSection(o: O, idx: any | null): Raw {
         ["Left", usd(cap.left_usd), cap.max_usd ? pct(((cap.spent_usd ?? 0) / cap.max_usd) * 100, 1) + " used" : ""],
         ["Lifetime", usd(cap.lifetime_usd), "since the runtime started counting"],
       ])}
-      ${cap.past_windows?.length ? chartSlot({ type: "bar", label: "platform cap spend per past window, USD", bars: cap.past_windows.map((w: any) => ({ label: w.start ? new Date(w.start).toISOString().slice(5, 10) : "", v: w.usd ?? 0, tip: `${w.start ? stamp(w.start) : ""}: ${usd(w.usd)} of ${usd(cap.max_usd)}` })) }, 120) : ""}`
+      ${cap.past_windows?.length ? chartSlot({ type: "bar", label: "platform cap spend per past window, USD", bars: cap.past_windows.map((w: any) => ({ label: w.start ? new Date(w.start).toISOString().slice(5, 10) : "", v: w.usd ?? 0, tip: `${w.start ? stamp(w.start) : ""}: ${usd(w.usd)} of ${usd(cap.max_usd)}` })) }, 96) : ""}`
     : empty("No cap report", "The hosted runtime reports its platform cap with its spend report.");
   const waiting = n.waiting.length
     ? html`<div class="tw"><table class="t"><thead><tr><th>Agent</th><th>Why it waits</th><th class="right hide-sm">Reported</th></tr></thead><tbody>${n.waiting.map(
@@ -81,11 +81,18 @@ export function networkSection(o: O, idx: any | null): Raw {
   const deps = n.deployments?.length
     ? html`<ul class="an-rel">${n.deployments.map((x: any) => html`<li><b>${x.label}</b><span class="sub">first seen ${stamp(x.first_seen_at)}${x.retired_at ? `, retired ${stamp(x.retired_at)}` : ", current"}</span></li>`)}</ul>`
     : "";
+  // every item is its own widget, all the same size in one grid (the platform cap, with its chart, takes two)
+  const kpiWidget = ([l, v, sub]: [string, Raw | string, Raw | string]) =>
+    html`<section class="panel an-w an-kpi"><span class="eyebrow">${l}</span><b>${v}</b><small>${sub}</small></section>`;
   return html`<section class="an-sec" id="an-network" aria-labelledby="an-network-h"><h2 class="an-h" id="an-network-h">Network status</h2>
-    <section class="panel">${services}</section>
-    <div class="grid-2">${panel("Waiting agents", waiting, { count: n.waiting.length })}${panel("Desktops", desk)}</div>
-    ${panel("Platform cap (hosted runtime)", capBody)}
-    <div class="grid-2">${panel("Epochs", epochs)}${panel("Deploys", html`${releases}${deps ? html`<div class="ins-pad" style="padding-top:0"><div class="eyebrow">Chain deployments</div>${deps}</div>` : ""}`)}</div>
+    <div class="an-grid">
+      ${services.map(kpiWidget)}
+      ${panel("Waiting agents", waiting, { count: n.waiting.length, cls: "an-w" })}
+      ${panel("Desktops", desk, { cls: "an-w" })}
+      ${panel("Platform cap (hosted runtime)", capBody, { cls: "an-w an-w2" })}
+      ${panel("Epochs", epochs, { cls: "an-w" })}
+      ${panel("Deploys", html`${releases}${deps ? html`<div class="ins-pad" style="padding-top:0"><div class="eyebrow">Chain deployments</div>${deps}</div>` : ""}`, { cls: "an-w" })}
+    </div>
   </section>`;
 }
 
@@ -196,6 +203,20 @@ const CSS = `
 .an-rel{list-style:none;margin:0;padding:10px 16px;display:grid;gap:6px;font-size:13px}
 .an-rel li{display:flex;flex-wrap:wrap;gap:4px 10px;align-items:center}
 .an-rel .sub{color:var(--tt);font-size:12px}
+.an-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));grid-auto-rows:240px;gap:16px}
+.an-grid>.panel{margin:0;display:flex;flex-direction:column;min-height:0;overflow:auto}
+.an-grid>.panel>.panel-h{position:sticky;top:0;z-index:1;background:var(--bg2)}
+.an-grid>.panel>*{flex:none}
+.an-grid>.panel>.empty{flex:1}
+.an-grid .t td,.an-grid .t th{white-space:nowrap}
+.an-w2{grid-column:span 2}
+.an-kpi{justify-content:space-between;padding:16px 18px}
+.an-kpi b{font-family:var(--display);font-weight:500;font-size:40px;letter-spacing:-.04em;line-height:1;font-variant-numeric:tabular-nums;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.an-kpi b .faint{font-size:18px;letter-spacing:-.01em}
+.an-kpi small{color:var(--tt);font-size:12.5px;line-height:1.45}
+@media (max-width:1280px){.an-grid{grid-template-columns:repeat(3,minmax(0,1fr))}}
+@media (max-width:1000px){.an-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media (max-width:640px){.an-grid{grid-template-columns:minmax(0,1fr);grid-auto-rows:auto}.an-grid>.panel{max-height:340px}.an-w2{grid-column:auto}.an-kpi{gap:10px}}
 `;
 function injectStyle() {
   injectInsightsStyle();

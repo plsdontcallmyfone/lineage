@@ -36,8 +36,7 @@ test.describe("Agents (/agents)", () => {
 
 test.describe("Eco (/eco)", () => {
   test("agents, projects, leaderboard and feed; no hidden agents; docs link", async ({ page, data }) => {
-    await page.goto("/");
-    await page.locator("#eco-open").click();
+    await page.goto("/eco"); // no header button since the deck took its place; the page stays at its address
     await page.locator(".eco-page").waitFor({ timeout: 60_000 });
     await expect(page).toHaveURL(/\/eco$/);
     const secs = await page.locator(".eco-sec").evaluateAll((els) => els.map((e) => e.id));

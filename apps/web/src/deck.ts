@@ -41,7 +41,7 @@ let cols: Col[] = [];
 const live = new Map<string, Live>();
 let canvas: HTMLElement | null = null;
 let menu: string | null = null;
-let drag: { id: string; x: number } | null = null;
+let drag: { id: string; el: HTMLElement; x0: number; base: number; pointer: number; moved: boolean } | null = null;
 let wired = false;
 
 const uid = () => (crypto.randomUUID ? crypto.randomUUID() : Math.random().toString(36).slice(2));
@@ -323,20 +323,73 @@ function onClick(ev: MouseEvent) {
   rechrome();
 }
 
+// Drag a column by its title bar (anywhere but its buttons; the stripes are a button that drags too): the
+// column follows the pointer, the others swap past it as it crosses their middle, the canvas scrolls at its
+// edges, and the order is saved on release. The bodies are moved with their columns, never reloaded.
 function onPointerDown(ev: PointerEvent) {
-  const t = (ev.target as HTMLElement).closest<HTMLElement>('[data-act="stripes"]');
-  if (!t) return;
-  drag = { id: t.dataset.id!, x: ev.clientX };
-  t.setPointerCapture(ev.pointerId);
+  if (ev.button !== 0 || !canvas) return;
+  const bar = (ev.target as HTMLElement).closest<HTMLElement>(".deck-titlebar");
+  if (!bar || !canvas.contains(bar)) return;
+  const btn = (ev.target as HTMLElement).closest("button, a, input, select");
+  if (btn && !btn.matches('[data-act="stripes"]')) return;
+  const el = bar.closest<HTMLElement>(".deck-column");
+  if (!el?.dataset.columnId) return;
+  drag = { id: el.dataset.columnId, el, x0: ev.clientX, base: ev.clientX, pointer: ev.pointerId, moved: false };
+  bar.setPointerCapture(ev.pointerId);
+}
+function onPointerMove(ev: PointerEvent) {
+  if (!drag || ev.pointerId !== drag.pointer || !canvas) return;
+  if (!drag.moved) {
+    if (Math.abs(ev.clientX - drag.x0) < 6) return;
+    drag.moved = true;
+    menu = null;
+    drag.el.classList.add("is-dragging");
+    canvas.classList.add("is-reordering");
+  }
+  // scroll the canvas when the pointer nears its edges; the column keeps under the pointer
+  const r = canvas.getBoundingClientRect();
+  const edge = ev.clientX < r.left + 60 ? -14 : ev.clientX > r.right - 60 ? 14 : 0;
+  if (edge) {
+    const before = canvas.scrollLeft;
+    canvas.scrollLeft += edge;
+    drag.base -= canvas.scrollLeft - before;
+  }
+  const cols = [...canvas.querySelectorAll<HTMLElement>(".deck-column")];
+  const i = cols.indexOf(drag.el);
+  const prev = cols[i - 1];
+  const next = cols[i + 1];
+  const shift = (o: HTMLElement) => o.getBoundingClientRect().width + parseFloat(getComputedStyle(canvas!).columnGap || "12");
+  if (next) {
+    const nr = next.getBoundingClientRect();
+    if (ev.clientX > nr.left + nr.width / 2) {
+      next.after(drag.el);
+      drag.base += shift(next);
+    }
+  }
+  if (prev) {
+    const pr = prev.getBoundingClientRect();
+    if (ev.clientX < pr.left + pr.width / 2) {
+      prev.before(drag.el);
+      drag.base -= shift(prev);
+    }
+  }
+  drag.el.style.transform = `translateX(${ev.clientX - drag.base}px)`;
 }
 function onPointerUp(ev: PointerEvent) {
-  const t = (ev.target as HTMLElement).closest<HTMLElement>('[data-act="stripes"]');
-  if (!t || !drag || drag.id !== t.dataset.id) {
-    drag = null;
-    return;
-  }
-  if (Math.abs(ev.clientX - drag.x) > 4) move(drag.id, ev.clientX > drag.x ? 1 : -1);
+  if (!drag || ev.pointerId !== drag.pointer) return;
+  const d = drag;
   drag = null;
+  if (!d.moved || !canvas) return;
+  d.el.classList.remove("is-dragging");
+  d.el.style.transform = "";
+  canvas.classList.remove("is-reordering");
+  const order = [...canvas.querySelectorAll<HTMLElement>(".deck-column")].map((e) => e.dataset.columnId);
+  cols = order.map((id) => cols.find((c) => c.id === id)).filter((c): c is Col => !!c);
+  save();
+  // the click that ends a drag opens nothing
+  const swallow = (e: MouseEvent) => (e.stopPropagation(), e.preventDefault());
+  document.addEventListener("click", swallow, { capture: true, once: true });
+  setTimeout(() => document.removeEventListener("click", swallow, { capture: true }), 0);
 }
 
 function onLiveEvent(ev: Event) {
@@ -357,7 +410,9 @@ function wire() {
   wired = true;
   document.addEventListener("click", onClick, true);
   document.addEventListener("pointerdown", onPointerDown);
+  document.addEventListener("pointermove", onPointerMove);
   document.addEventListener("pointerup", onPointerUp);
+  document.addEventListener("pointercancel", onPointerUp);
   window.addEventListener("units:event", onLiveEvent);
   document.addEventListener("keydown", (ev) => {
     if (ev.key === "Escape" && menu) {
