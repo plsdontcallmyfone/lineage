@@ -4,6 +4,18 @@ Owner decision 2026-10-10: the project is renamed **units**, at full depth (code
 server, GitHub artifacts, copy). This file is the phase 0 inventory and plan; nothing is renamed by it.
 Phase 1 executes it in reviewable commits by area (section 5).
 
+## 0. Owner decisions (2026-10-10, second round; they override sections 1 to 5 where they differ)
+
+- **Q1, protocol noun: renamed.** A repository's chain of verified generations is a **unit** (plural
+  units): API `/v1/units`, field `unit_id`, copy "the base58 unit". Section 3.14.
+- **Q2, ticker: $LINE becomes $UNITS** in code labels, config symbols, docs and UI. The devnet test
+  coin is a pump.fun coin whose on-chain name and symbol cannot change; it is displayed from config
+  as "tUNITS (devnet test)". The mainnet $UNITS mint comes from the owner later. Section 3.15.
+- **Q3, mirrored GitHub history:** not changed (no answer given; the default in 3.7 stands).
+- **Q4, folder:** `~/lineage` becomes `~/units` with a symlink, done by the coordinator after the merge.
+- **Deploy:** the owner approved the zero-downtime migration deploy to the devnet site and the UI
+  suite against it, after the failing tests pass on a quiet machine and a dry run.
+
 ## 1. Naming conventions
 
 The owner writes the name in lowercase: `units`. One spelling per context:
@@ -300,6 +312,43 @@ Every doc (SPEC, RUNBOOK, DEPLOY-SITE, AUDIT, EMBED, plans, READMEs, CLAUDE.md t
 renamed by hand, keeping the concept noun. Historical records (DEVNET.md signatures, audit run logs,
 DRYRUN-LAST.json and PROOF-LAST.json outputs) keep what was true when written; they get a one-line
 note that the project was named Lineage then. File names: `docs/plans/*` keep their names.
+
+### 3.14 Protocol noun: lineage becomes unit (owner decision Q1)
+
+Database choice: **keep the physical table and column names** (`lineages`, `lineage_id`, every index)
+and rename at the API and presentation layer. Why this is the safer of the two options:
+- no migration runs on the 500 MB `core.db`, so there is no window where the live Core, the hourly
+  snapshot, `restore-test` or a rollback to an older release sees a schema it does not know (an older
+  release, including the one a failed activate rolls back to, reads the same tables);
+- `scripts/verify.ts`, the replica check and the epoch record roots recompute hashes from rows whose
+  field names are part of the hashed JSON; renamed columns would change nothing on chain but would make
+  every recompute path need its own alias;
+- compatibility views would add a second name to every query plan and still leave the old name in
+  every backup.
+The cost is that SQL and internal variables keep the old word; they are not user visible.
+
+What changes:
+- Core API: every `/v1/lineages...` route is also served as `/v1/units...` (same handler, no redirect,
+  so clients that do not follow redirects work). Views of a unit, a generation, a candidate, a session
+  and the analytics rows return `unit_id` alongside `lineage_id` (same 64-hex value). Query parameters
+  `unit` and `unit_id` are accepted wherever `lineage` and `lineage_id` are. `/v1/stats` returns
+  `units` next to `lineages`.
+- Never changed: `lineage_id` values (`H("lineage", snapshot_id, recipe_id)`), id derivations, signing
+  domains, signed or hashed payloads (journal statements, bounty contribution leaves, epoch records,
+  learnings episodes keep the field name `lineage_id` inside them), recipes.
+- Web: pages `/units` and `/units/:id`; `/lineages/...` keeps working (same page). Copy "Lineage" as
+  the noun becomes "Unit"/"unit". Embed client: `units()` and `unit(id)` next to the old methods.
+- Docs: the noun is "unit" everywhere; SPEC and the API reference name both field names.
+
+### 3.15 Ticker: $LINE becomes $UNITS (owner decision Q2)
+
+- Copy, labels and docs: `$LINE` to `$UNITS`, `tLINE` to `tUNITS`.
+- Config: the devnet profile's quote symbol becomes `tUNITS` with `display: "tUNITS (devnet test)"`
+  and `onchain_symbol: "tLINE"` (the pump.fun coin's metadata, which cannot change); the mainnet
+  profile key `line_mint` becomes `units_mint` (the parser reads either; still null until the owner
+  gives the mint). Internal names such as the programs' `line_mint` account fields stay (account
+  layout and IDL field names, not user visible).
+- Records keep what was true when written (DEVNET.md, run logs, *LAST.json).
 
 ## 4. Owner actions (only the owner can do these)
 
