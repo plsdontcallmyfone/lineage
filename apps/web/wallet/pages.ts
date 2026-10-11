@@ -93,15 +93,27 @@ export function launchSkeleton(): Raw {
 }
 
 export function profileSkeleton(): Raw {
-  return html`
-    <div class="ph-row"><div class="ph-title"><div class="eyebrow">Profile</div>
-      <h1 id="me-h">Your wallet</h1>
-      <div class="ph-sub"><span>Only the connected wallet's own view: its balances, the agents it launched, what it holds and follows, and what it can claim. Devnet, TEST tokens.</span></div></div></div>
+  // laid out like an agent's profile (/agents/:id/profile): a head card with a cover and avatar drawn from
+  // the wallet address, its name and chips; the credits of its agents as a strip; then its agents as the
+  // /agents cards, what it holds and follows, and the wallet panel with the faucet
+  return html`<div class="pf-page me-page">
+    <div class="crumbs"><span>Profile</span></div>
+    <section class="panel pf-head me-headcard">
+      <div id="me-cover"><div class="pf-banner"></div></div>
+      <div class="pf-id">
+        <span id="me-av"><span class="av pf-av me-av0"></span></span>
+        <div class="pf-name"><h1 id="me-h">Your wallet</h1><div class="pf-tagline">The agents you launched, their credits, and what you hold and follow. ${raw("Devnet, TEST tokens.")}</div>
+          <div class="pf-sub" id="me-sub"></div></div>
+        <div id="me-act"></div>
+      </div>
+      <div class="pf-chips" id="me-chips"></div>
+    </section>
     <div id="w-gate"></div>
     <div id="me-body">
       <section class="panel" id="me-head"><div id="w-conn"><div class="panel-b dim">Reading the wallet…</div></div></section>
       <div id="me-signed" hidden>
-        ${panel("My agents", html`<div id="w-mine"><div class="panel-b dim">Reading the launches…</div></div>`, { id: "agents", note: html`Read from the <span class="num">AgentLaunch</span> and registry <span class="num">Agent</span> accounts on devnet, the identity service and Core.` })}
+        <section class="panel me-stats" id="me-stats"></section>
+        ${panel("My agents", html`<div id="w-mine"><div class="panel-b dim">Reading the launches…</div></div>`, { id: "agents", note: html`Read from the <span class="num">AgentLaunch</span> and registry <span class="num">Agent</span> accounts on devnet, the identity service and Core. Credits are the hosted runtime's last spend report.` })}
         <section class="panel" id="me-manage" hidden></section>
         ${panel("My holdings", html`<div id="w-hold"><div class="panel-b dim">Reading token accounts…</div></div>`, { id: "holdings", note: html`Balances read from chain; value at the market indexer's last price in tUNITS.` })}
         ${panel("Following", html`<div id="w-follow"><div class="panel-b dim">Reading follows…</div></div>`, { id: "following" })}

@@ -97,6 +97,7 @@ import { CLASSES, launchSkeleton, profileSkeleton, stepNav, STEPS } from "./page
 import { feedItemHtml, uploadMedia } from "../src/pages/social-ui.ts";
 import { agentAvatar, agentTitle, buildingLine, injectBuildingStyle, paramCells, type DirToken } from "../src/building.ts";
 import { agentCard } from "../src/pages/directory.ts";
+import { avatar as idAvatar, banner as idCover } from "../src/pages/social-ui.ts";
 import { githubCallsLeft, spendGithubCall } from "../src/github.ts";
 
 const T22 = TOKEN_2022_PROGRAM;
@@ -277,9 +278,22 @@ function renderConn() {
       : btn("faucet", html`Get ${units(BigInt(f.amount), dec())} ${qsym()}`, { primary: true });
   const h = S.root?.querySelector("#me-h");
   if (h) h.textContent = short(S.account.address);
+  // the head card, like an agent's: a cover and an avatar drawn from the address, and chips for the balances
+  const a = S.account.address;
+  set("me-cover", idCover(a, null));
+  set("me-av", idAvatar(a, null, 96, "pf-av"));
+  set("me-sub", html`<span class="hash" title="${a}">${a.slice(0, 8)}…${a.slice(-8)}</span> <span class="dim">${S.wallet!.name}, ${netName()}</span>`);
+  set("me-act", html`<a class="wl-btn primary" href="/launch">${icon.agent} Launch an agent</a>`);
+  set(
+    "me-chips",
+    html`<button type="button" class="pf-chip" data-copy="${a}" title="Copy the address">${icon.copy} Copy address</button>
+      <span class="pf-chip">SOL <b class="num">${S.sol === null ? "TBA" : sol(S.sol)}</b></span>
+      <span class="pf-chip">${qsym()} <b class="num">${S.line === null ? "TBA" : units(S.line, dec())}</b></span>
+      <a class="pf-chip" href="#holdings">${icon.coin} Holdings</a><a class="pf-chip" href="#following">${icon.agent} Following</a>`,
+  );
   set(
     "w-conn",
-    html`<div class="stats wl-bal" style="--n:3">
+    html`<div class="panel-h"><h2>Wallet</h2></div><div class="stats wl-bal" style="--n:3">
         ${stat("Address", html`<span title="${S.account.address}">${short(S.account.address)}</span> <button type="button" class="copy" data-copy="${S.account.address}" aria-label="Copy address">${icon.copy}</button>`, html`${S.wallet!.name}${devnetOk ? `, ${netName()}` : `, ${netName()} not offered`}`, "sm")}
         ${stat("SOL", S.sol === null ? "TBA" : sol(S.sol), `${netName()}, for fees and rent`, "sm")}
         ${stat(`${qsym()}`, S.line === null ? "TBA" : units(S.line, dec()), testLabels() ? "TEST mint, Token-2022" : NET.p.quote.status === "stand-in" ? "stand-in for $UNITS" : "quote token", "sm")}
@@ -2205,6 +2219,7 @@ function renderMine() {
   if (S.page !== "profile") return;
   if (S.launchesErr) return set("w-mine", html`<div class="panel-b">${S.launchesErr}</div>`);
   const mine = myAgents();
+  set("me-stats", mineSummary(mine));
   if (!mine.length) return set("w-mine", html`<div class="panel-b dim">This wallet has launched no agent on ${netName()} yet. <a class="link" href="/launch">Launch one</a>.</div>`);
   injectBuildingStyle();
   const cards = mine.map((l) => {
@@ -2215,7 +2230,7 @@ function renderMine() {
       : html`<article class="ag-card" data-agent="${l.agent}"><div class="ag-top"><a class="ag-face" href="/agents/${l.agent}/profile">${agentAvatar(l.agent, null, 44, "ag-av")}</a><div class="ag-who"><div class="ag-name"><a href="/agents/${l.agent}/profile">${(m?.name ?? short(l.mint)).replace(/^TEST /, "")}</a></div><p class="ag-tag"><span class="ag-faint">Reading its token…</span></p></div></div></article>`.s;
     return card.replace('<article class="ag-card', '<article class="me-ag ag-card').replace(/<\/article>\s*$/, `${creditsHtml(l).s}</article>`);
   });
-  set("w-mine", html`${mineSummary(mine)}<div class="ag-grid me-agents">${raw(cards.join(""))}</div>`);
+  set("w-mine", html`<div class="ag-grid me-agents">${raw(cards.join(""))}</div>`);
   void fillMine(mine);
 }
 
@@ -2391,6 +2406,11 @@ function paintProfileFrame() {
   if (!S.account) {
     const h = S.root?.querySelector("#me-h");
     if (h) h.textContent = "Your wallet";
+    set("me-cover", html`<div class="pf-banner"></div>`);
+    set("me-av", html`<span class="av pf-av me-av0"></span>`);
+    set("me-sub", "");
+    set("me-act", "");
+    set("me-chips", "");
     set("w-conn", html`<div class="panel-b me-prompt"><div><div class="t1">Connect a wallet to see your profile</div><div class="dim">Your agents, holdings, follows, claims and bounties, read for the connected wallet only. ${netName() === "devnet" ? "Devnet" : "Mainnet"}.</div></div>${btn("me-connect", "Connect", { primary: true })}</div>`);
   }
 }

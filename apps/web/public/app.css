@@ -830,6 +830,18 @@ a.hl-a:hover { background: var(--panel-2); text-decoration: none; }
 .pf-chip { display: inline-flex; align-items: center; gap: 6px; height: 28px; padding: 0 10px; border-radius: 14px; border: 1px solid var(--line); background: var(--panel-2); color: var(--text); font-size: 12.5px; text-decoration: none; white-space: nowrap; max-width: 100%; overflow: hidden; text-overflow: ellipsis; }
 a.pf-chip:hover { background: var(--panel-3); text-decoration: none; }
 .pf-chip svg { width: 13px; height: 13px; flex: none; }
+/* the profile page (wallet) in the agent profile's layout */
+button.pf-chip { cursor: pointer; font: inherit; font-size: 12.5px; }
+button.pf-chip:hover { background: var(--panel-3); }
+.me-av0 { display: block; width: 96px; height: 96px; background: var(--pill); }
+#me-act:not(:empty) { margin-left: auto; align-self: center; }
+.me-page #me-body { display: flex; flex-direction: column; }
+.me-page #me-body > * { margin-top: 0; }
+.me-page #me-body:has(#me-signed:not([hidden])) > #me-head { order: 2; margin-top: 16px; }
+.me-page .me-stats { margin-top: 16px; }
+.me-page .me-stats:empty { display: none; }
+.me-page #w-gate:not(:empty) { margin-top: 16px; }
+.me-page #me-body > #me-head:only-child, .me-page #me-body > #me-head { margin-bottom: 0; }
 .pf-stats { margin-top: 16px; }
 .pf-about { padding: 12px 14px; display: grid; gap: 8px; font-size: 13.5px; line-height: 1.55; }
 .pf-about p { margin: 0; }
