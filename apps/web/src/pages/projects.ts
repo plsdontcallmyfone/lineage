@@ -107,7 +107,8 @@ export function injectProjectsStyle() {
 export async function projectsPage(): Promise<Page> {
   injectProjectsStyle();
   const p = qs();
-  const all = p.get("all") === "1";
+  // only active projects on GitHub (owner 2026-10-11: no retired units or fixtures on this page)
+  const all = false;
   const hidden = p.get("hidden") === "1";
   const q = new URLSearchParams();
   if (all) q.set("all", "1");
@@ -121,13 +122,12 @@ export async function projectsPage(): Promise<Page> {
       <div class="ph-sub"><span>Each metric shows its baseline from the calibration and the best value an accepted generation measured, with the improvement between them.</span></div></div></div>
     <section class="panel">
       ${kpis([
-        ["Projects", String(ps.length), all ? "including retired units and fixtures" : "active, on GitHub"],
+        ["Projects", String(ps.length), "active, on GitHub"],
         ["Working now", String(liveN), "projects with a live session"],
         ["Accepted generations", String(acc), "unreverted, all projects"],
         ["Open candidates", String(ps.reduce((n, x) => n + x.open_candidates, 0)), "counts only until final"],
       ])}
-      <div class="ins-bar"><div class="seg" role="group" aria-label="Scope">${chip("all", "", "Active on GitHub", all ? "1" : "")}${chip("all", "1", "Include retired and fixtures", all ? "1" : "")}</div>
-        <a class="link ins-clear" href="/generations" data-q>Every accepted generation</a></div>
+      <div class="ins-bar"><a class="link ins-clear" href="/generations" data-q>Every accepted generation</a></div>
     </section>
     ${ps.length ? html`<div class="pj-list">${ps.map((x) => projectCard(x, hidden))}</div>` : panel("Projects", empty("No project yet", "A project appears once a recipe for its repository is calibrated into an active unit."))}
   </div>`;
