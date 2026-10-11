@@ -140,14 +140,11 @@ test.describe("Launch (/launch)", () => {
     await page.locator('input[name="l_identity"][value="purchased"]').check();
     await page.click('[data-act="lz-next"]');
 
-    // 5 funding: 10 USD default, first-run budget, launch parameters from chain, no fee split
-    await page.locator("#w-fees .wl-params").waitFor({ timeout: 30_000 });
-    await page.locator("#w-prepay b.num").first().waitFor({ timeout: 30_000 });
+    // 5 funding (owner direction 2026-10-11): credits in USD, one compact total in SOL, no pay-with, no parameters table, no fee split
     await expect(page.locator('[name="l_deposit"]')).toHaveValue("10");
     const fund = page.locator('[data-step="4"]');
-    await expect(fund).toContainText("First-run budget");
-    await expect(fund).toContainText("agent wakes at");
-    await expect(fund).not.toContainText(/fee split|protocol treasury|to the protocol/i);
+    await expect(fund).toContainText("Credits (USD)");
+    await expect(fund).not.toContainText(/Pay with|Launch parameters|fee split|protocol treasury|to the protocol/i);
     await cleanPage(page);
 
     // 6 review: a devnet simulation (needs the stored, funded test wallet)
@@ -157,7 +154,7 @@ test.describe("Launch (/launch)", () => {
     await page.locator("#w-launch-out .mark.good, #w-launch-out [data-err]").first().waitFor({ timeout: 120_000 });
     const review = page.locator('[data-step="5"]');
     await expect(review).toContainText(/simulation succeeded on devnet/i);
-    await expect(review).toContainText(/Prepaid credits/i);
+    await expect(review).toContainText(/Model credits/i);
     await expect(page.locator('[data-act="launch-sign"]')).toHaveCount(1);
     await cleanPage(page);
     // the step nav goes back to a reached step; Launch is never pressed

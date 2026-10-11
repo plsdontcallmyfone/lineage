@@ -2,30 +2,52 @@
 // and the venue buy hook (amount and slippage bound checked against Core's config).
 import { describe, expect, test } from "bun:test";
 import { maxBuyInput, parsePrepayConfig } from "../../../packages/chain/src/browser/index.ts";
-import { costsFromSim, initialBuyFor, setInitialBuyBuilder } from "../wallet/fronting.ts";
+import { costBreakdown, fundingBlocked, fundingSummary, initialBuyFor, setInitialBuyBuilder, solCostsFromSims } from "../wallet/fronting.ts";
 
-const tokenData = (amount: bigint) => {
-  const d = new Uint8Array(165);
-  new DataView(d.buffer).setBigUint64(64, amount, true);
-  return d;
-};
 const acc = (address: string, before: bigint | null, after: bigint | null, dataBefore: Uint8Array | null = null, dataAfter: Uint8Array | null = null) =>
   ({ address, writable: true, signer: false, before, after, owner: null, created: before === null, dataBefore, dataAfter });
 
 const CFG = parsePrepayConfig({ min_usd: "10", default_usd: "10", line_per_usd: "20", rate_status: "test", compute_price_line_per_usd: "20",
   compute_price_line_per_sandbox_s: "0.002", sandbox_reserve_s: 600, attempt_max_usd: 0.5, since: 0 });
 
-describe("costs from the launch simulation", () => {
-  const sim = { err: null, logs: [], fee: 15_000n, accounts: [acc("launcher", 1_000_000_000n, 983_000_000n), acc("launcherLine", 3_000_000n, 3_000_000n, tokenData(900_000_000n), tokenData(668_000_000n))] };
-  test("creation = launcher SOL change; buy cost = quote spent minus credits", () => {
-    const c = costsFromSim({ sim, launcher: "launcher", launcherQuoteAccount: "launcherLine", credits: 200_000_000n,
-      buy: { ixs: [], amountOut: 10n ** 13n, quote: 31_500_000n, maxIn: maxBuyInput(31_500_000n, 100), treasuryAccount: "t" } });
-    expect(c.creationLamports).toBe(17_000_000n);
-    expect(c.buy).toEqual({ amountOut: 10n ** 13n, cost: 32_000_000n, maxIn: 31_815_000n });
-    expect(c.quoteSpent).toBe(232_000_000n);
+describe("SOL cost lines from the simulations (owner direction 2026-10-11)", () => {
+  const launchSim = { err: null, logs: [], fee: 10_000n, accounts: [acc("launcher", 1_000_000_000n, 975_000_000n)] };
+  // the purchase: fee 10,000, the launcher's $UNITS account created (2,039,280), 3,000,000 lamports of trade
+  const purchase = { err: null, logs: [], fee: 10_000n, accounts: [acc("launcher", 975_000_000n, 969_950_720n), acc("launcherUnits", null, 2_039_280n)] };
+  test("creation = launch change + purchase fee and rent + later fees and rent; credits and buy split the trade by pump.fun's quote", () => {
+    const c = solCostsFromSims({ launch: launchSim, purchase, payer: "launcher", creditsShare: { num: 1n, den: 3n }, hasBuy: true, laterFees: 5_000n, laterRent: 2_074_080n,
+      identity: 50_000_000n, headroom: 30_000n })!;
+    expect(c.creation).toBe(25_000_000n + 10_000n + 2_039_280n + 5_000n + 2_074_080n);
+    expect(c.credits).toBe(1_000_000n);
+    expect(c.buy).toBe(2_000_000n);
+    expect(c.identity).toBe(50_000_000n);
+    expect(c.total).toBe(c.creation + 3_000_000n + 50_000_000n);
+    expect(c.needed).toBe(c.total + 30_000n);
   });
-  test("a failed simulation gives no creation figure (launch stays disabled)", () => {
-    expect(costsFromSim({ sim: { ...sim, err: { InstructionError: [0, "x"] } }, launcher: "launcher", launcherQuoteAccount: "launcherLine", credits: 1n, buy: null }).creationLamports).toBeNull();
+  test("a failed simulation gives no figures (launch stays disabled)", () => {
+    expect(solCostsFromSims({ launch: { ...launchSim, err: { InstructionError: [0, "x"] } }, purchase, payer: "launcher", creditsShare: { num: 1n, den: 1n }, hasBuy: false, laterFees: 0n, laterRent: 0n, identity: 0n })).toBeNull();
+  });
+  test("Launch disabled reasons: no SOL price first, then simulation, then balance", () => {
+    const costs = solCostsFromSims({ launch: launchSim, purchase, payer: "launcher", creditsShare: { num: 1n, den: 1n }, hasBuy: false, laterFees: 0n, laterRent: 0n, identity: 0n })!;
+    expect(fundingBlocked({ costs, solUsd: null, solBalance: 10n ** 12n })).toBe("no SOL price");
+    expect(fundingBlocked({ costs: null, solUsd: 112, solBalance: 10n ** 12n })).toMatch(/not simulated/);
+    expect(fundingBlocked({ costs, solUsd: 112, solBalance: 1n })).toMatch(/the wallet holds/);
+    expect(fundingBlocked({ costs, solUsd: 112, solBalance: 10n ** 12n })).toBeNull();
+  });
+  test("Funding: one total in SOL with USD small, a one-line breakdown with the units account, one short disabled line", () => {
+    const costs = solCostsFromSims({ launch: launchSim, purchase, payer: "launcher", creditsShare: { num: 1n, den: 3n }, hasBuy: true, laterFees: 0n, laterRent: 0n, identity: 50_000_000n })!;
+    const v = { costs, creditsUsd: "10", bps: 100, identityChosen: true, solUsd: 100, solBalance: 1n, txCount: 2, blocked: "the wallet holds 0.000000001 SOL", devnet: true, docs: "/docs/x", pending: false };
+    const h = fundingSummary(v).s;
+    expect(h).toContain("Token creation · Model credits · Initial buy 1% · A units account");
+    expect(h).toContain("one signature");
+    expect(h).toContain("Launch disabled: the wallet holds");
+    expect(h).toContain("Devnet test tokens, no value");
+    expect(h).not.toContain("tUNITS");
+    expect(h).not.toContain("\u2014");
+    const r = costBreakdown({ ...v, blocked: null }).s;
+    expect(r).toContain("10 USD of credits");
+    expect(r).toContain("2 transactions signed together, sent in order");
+    expect(fundingSummary({ ...v, identityChosen: false }).s).not.toContain("A units account");
   });
 });
 

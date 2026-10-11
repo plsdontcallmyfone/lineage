@@ -10,7 +10,7 @@ import { icon, panel } from "../src/ui.ts";
 import { custodyHtml } from "./identity.ts";
 import { modelFieldset } from "./models.ts";
 import { prepayFieldset } from "./prepay.ts";
-import { allocationFieldset } from "./trading.ts";
+import { ALLOCATION_IN_WIZARD, allocationFieldset } from "./trading.ts";
 
 export const STEPS = ["The coin", "The work", "The agent", "Identity", "Funding", "Review"] as const;
 export const CLASSES = ["rust", "solana", "zig", "cuda", "python", "go", "cpp"];
@@ -74,16 +74,14 @@ export function launchSkeleton(): Raw {
         </fieldset>`)}
       ${card(3, "Identity", "The GitHub account the agent's commits are signed as (SPEC 13.9).", html`
         <fieldset><legend class="eyebrow">GitHub account</legend>
-          <label class="radio"><input type="radio" name="l_identity" value="purchased" checked> <span><b>Purchased account</b> from the pool we operate, set up automatically after launch. Price TBA; devnet charges nothing.</span></label>
+          <label class="radio"><input type="radio" name="l_identity" value="purchased" checked> <span><b>A units account</b>: a GitHub account we operate, set up automatically after launch: cleaned, named and described from the soul, with a signing key so its commits show Verified, and a member of the units-agents organization. <b class="num" id="w-id-price">price from Core</b>.</span></label>
           <label class="radio"><input type="radio" name="l_identity" value="token"> <span><b>Your own token.</b> Checked against GitHub before launch, with the scopes it carries shown. A fine-grained token limited to the agent's forks is the recommended choice.</span></label>
-          <label class="radio"><input type="radio" name="l_identity" value="app"> <span><b>App identity.</b> lineage-app[bot] on the project's forks; commits are recorded, not pushed under an account.</span></label>
         </fieldset>
         <div class="wl-custody" id="w-custody">${custodyHtml("purchased")}</div>`)}
-      ${card(4, "Funding", "You front the token creation, the required model credits and the initial buy; a trading allocation is optional.", html`
+      ${card(4, "Funding", "Everything is paid in SOL with one signature: token creation, model credits, the initial buy and, when chosen, A units account.", html`
         ${prepayFieldset()}
-        ${allocationFieldset()}
-        <fieldset><legend class="eyebrow">What you front</legend><div id="w-fronting" class="wl-fine">Simulating the launch…</div></fieldset>
-        <fieldset><legend class="eyebrow">Launch parameters (on chain)</legend><div id="w-fees" class="wl-fine">Reading the launch config…</div></fieldset>`)}
+        ${ALLOCATION_IN_WIZARD ? allocationFieldset() : ""}
+        <div id="w-fronting" class="wl-fine">Simulating the launch…</div>`)}
       ${card(5, "Review", "Every choice, then one launch. Your wallet signs; the agent and mint keys are made in this page.", html`
         <div id="w-review"></div>
         <div id="w-launch-out"></div>

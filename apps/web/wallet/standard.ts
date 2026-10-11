@@ -249,5 +249,17 @@ export async function signTransaction(w: StdWallet, account: StdAccount, wire: U
   return new Uint8Array(out.signedTransaction);
 }
 
+/**
+ * One approval for several transactions (owner direction 2026-10-11): Wallet Standard
+ * `solana:signTransaction` takes any number of inputs in one call, so the wallet shows one prompt
+ * (the standard's equivalent of signAllTransactions). A wallet that answers with fewer outputs is refused.
+ */
+export async function signTransactions(w: StdWallet, account: StdAccount, wires: Uint8Array[]): Promise<Uint8Array[]> {
+  const out = await w.features["solana:signTransaction"].signTransaction(...wires.map((transaction) => ({ account, transaction, chain: CHAIN })));
+  if (!Array.isArray(out) || out.length !== wires.length || out.some((o: any) => !o?.signedTransaction))
+    throw new Error(`the wallet signed ${Array.isArray(out) ? out.length : 0} of ${wires.length} transactions; nothing was sent`);
+  return out.map((o: any) => new Uint8Array(o.signedTransaction));
+}
+
 /** Whether the wallet signs version 0 transactions (Wallet Standard `supportedTransactionVersions`; plan C). */
 export const signsV0 = (w: StdWallet): boolean => !!w.features?.["solana:signTransaction"]?.supportedTransactionVersions?.includes?.(0);

@@ -2,7 +2,7 @@
 // identity service at /identity/* on this site (Caddy routes it there directly: a pasted token never
 // goes to Core or the gate).
 //   launch form   token mode: a token field and a check that shows the login, scopes and expiry
-//                 GitHub reports for it (nothing stored); purchased and app: what will happen
+//                 GitHub reports for it (nothing stored); purchased: what will happen
 //   after launch  token mode: the token is submitted with a statement bound to the launch, signed
 //                 by your wallet (signMessage) or, when the wallet cannot sign messages, by the agent
 //                 key this tab made for the launch; then the status is polled until ready or failed
@@ -84,8 +84,8 @@ export function custodyHtml(mode: string): Raw {
       <div class="wl-fine">Off by default. When ticked, your account is invited to github.com/units-agents, accepts with the token and shows the membership publicly (the token needs the write:org scope). The choice is part of the statement your wallet signs.</div>
       <div class="wl-fine">After the launch confirms, the token goes over this site's HTTPS to the identity service only (never to Core), with a statement that binds it to this launch, signed by your wallet. The service reads its login, scopes and expiry from GitHub, stores it encrypted (AES-256-GCM, a key only that service's user can read), registers an SSH signing key for the agent's commits, and never returns the token in any answer or log. It is used only to fork, push the agent's branches and open PRs on repositories that opted in. A full-scope token is a large liability for whoever holds it: a fine-grained token limited to the agent's forks, with the account permission "SSH signing keys: write", is the recommended choice. You can rotate or revoke it from your Profile (Manage); a token GitHub rejects moves the agent to the app identity. Left empty, the agent uses the app identity until you add one there.</div>`;
   if (mode === "purchased")
-    return html`<div class="wl-fine">An account from the pool we operate is assigned automatically once the launch confirms: validated, cleaned of the previous owner's traces, named and described from the soul, with an SSH signing key registered so the agent's commits show Verified. Its login appears here and on your Profile when it is ready. Price TBA; devnet charges nothing.</div>`;
-  return html`<div class="wl-fine">No credential is involved. The mirror records the agent's commits under the app identity with the agent id in a trailer.</div>`;
+    return html`<div class="wl-fine">The account is assigned once the launch confirms and its payment is found in the launch transactions; its login appears here and on your Profile when it is ready.</div>`;
+  return html``;
 }
 
 export async function checkToken() {
@@ -136,7 +136,7 @@ async function sendToken(token: string, agent: string, mint: string, agentKey: W
 
 const STATUS: Record<string, [string, "good" | "warn" | "bad" | "info"]> = {
   ready: ["ready", "good"], provisioning: ["provisioning", "info"], waiting_soul: ["waiting for the soul", "info"], awaiting_token: ["waiting for a token", "warn"],
-  failed: ["failed", "bad"], revoked: ["revoked", "warn"], rejected: ["rejected by GitHub", "bad"], app: ["app identity", "info"], untracked: ["not managed", "info"], unknown: ["unknown", "info"],
+  failed: ["failed", "bad"], unpaid: ["unpaid: no units account", "warn"], revoked: ["revoked", "warn"], rejected: ["rejected by GitHub", "bad"], app: ["app identity", "info"], untracked: ["not managed", "info"], unknown: ["unknown", "info"],
 };
 
 function statusView(v: any, actions: boolean): Raw {

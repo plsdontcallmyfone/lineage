@@ -1172,6 +1172,7 @@ a.eco-btn { text-decoration: none; }
   .lz-step.on::after { left: 6px; right: 6px; }
   .lz-rr { grid-template-columns: minmax(0, 1fr) auto; }
   .lz-rr .eyebrow { grid-column: 1 / -1; }
+  .lz-sum-lines .lz-rr, .lz-fronting .lz-rr { grid-template-columns: minmax(0, 1fr); }
   .lz-img { flex-direction: column; }
   .lz-why { text-align: left; }
 }

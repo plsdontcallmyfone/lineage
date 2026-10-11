@@ -24,7 +24,10 @@ import {
   httpTransport,
   Rpc,
   sameBytes,
+  sendJitoBundle,
   sendWire,
+  base64Encode,
+  wireSignature,
   simulateDetailed,
   unsignedWire,
   type Confirmed,
@@ -33,7 +36,7 @@ import {
   type Simulation,
   type WebKey,
 } from "../../../packages/chain/src/browser/index.ts";
-import { DEVNET_CHAIN, MAINNET_CHAIN, setWalletChain, signTransaction, type StdAccount, type StdWallet } from "./standard.ts";
+import { DEVNET_CHAIN, MAINNET_CHAIN, setWalletChain, signTransaction, signTransactions, type StdAccount, type StdWallet } from "./standard.ts";
 
 export interface DevnetPublic {
   registry_program: string;
@@ -62,6 +65,8 @@ export const NET: { p: PublicProfile } = { p: DEVNET_PUBLIC_PROFILE };
 export const isMainnet = () => NET.p.network === "mainnet";
 /** The quote token's symbol for labels: tUNITS on devnet, the configured quote (PYUSD stand-in, later $UNITS) on mainnet. */
 export const qsym = () => NET.p.quote.symbol;
+/** The quote token as user-facing copy (owner direction 2026-10-11): "$UNITS" on devnet (with a "devnet test tokens, no value" note), the configured quote elsewhere. */
+export const usym = () => (NET.p.network === "devnet" ? "$UNITS" : NET.p.quote.symbol);
 /** TEST labels are shown only where the profile says so (devnet). */
 export const testLabels = () => NET.p.test_labels;
 /** The cluster name for copy ("devnet", "mainnet"). */
@@ -212,6 +217,76 @@ export async function signAndSend(o: {
     return s;
   }, NET.p.confirm, { onStatus: o.onStatus });
   return { confirmed: { signature: landed.signature, slot: landed.slot, fee: landed.fee, err: landed.err, logs: landed.logs }, lastValidBlockHeight: lvbh };
+}
+
+/** One transaction of a launch bundle: instructions (the compute budget is prepended here) or a prebuilt v0 message's parts. */
+export interface BundlePart {
+  ixs: Ix[];
+  units: number;
+  table?: LookupTable | null;
+  /** extra lookup tables (a Jupiter swap); the budget is already in `ixs` when `raw` */
+  tables?: LookupTable[];
+  raw?: boolean;
+  local?: WebKey[];
+  label: string;
+}
+
+/**
+ * The whole launch in one approval (owner direction 2026-10-11): every transaction is built on one
+ * fresh blockhash and the wallet signs them all in one request. Mainnet sends them as one Jito bundle
+ * (all or nothing, in order); devnet sends them in order, simulating each before it goes, and stops at
+ * the first that would fail or fails, reporting which landed. `skip(i)` is asked right before sending
+ * transaction i (devnet): true leaves it out (what it carries is already on chain).
+ */
+export async function signAndSendAll(o: {
+  wallet: StdWallet;
+  account: StdAccount;
+  parts: BundlePart[];
+  onStatus?: (s: string) => void;
+  skip?: (i: number) => Promise<boolean>;
+}): Promise<{ landed: { label: string; confirmed: Confirmed }[]; failed: { index: number; label: string; error: string; logs?: string[] } | null; bundleId?: string }> {
+  await clusterGate();
+  const payer = o.account.address;
+  const { blockhash, lastValidBlockHeight } = await rpc.getLatestBlockhash();
+  const msgs = [];
+  for (const p of o.parts) {
+    const all = p.raw ? p.ixs : await withBudget(payer, p.ixs, p.units);
+    const tables = p.tables ?? (p.table ? [p.table] : []);
+    msgs.push(tables.length ? compileMessageV0(payer, all, blockhash, tables) : compileMessage(payer, all, blockhash));
+  }
+  o.onStatus?.(`waiting for the wallet to approve ${msgs.length === 1 ? "the transaction" : `all ${msgs.length} transactions at once`}`);
+  const signed = await signTransactions(o.wallet, o.account, msgs.map((m) => unsignedWire(m)));
+  const wires: Uint8Array[] = [];
+  for (const [i, w] of signed.entries()) {
+    if (!sameBytes(parseWire(w).message, msgs[i]!.bytes)) throw new Error(`the wallet changed transaction ${i + 1}; nothing was sent`);
+    let wire = w;
+    for (const k of o.parts[i]!.local ?? []) wire = placeSignature(wire, k.id, await k.sign(msgs[i]!.bytes));
+    const missing = missingSigners(wire);
+    if (missing.length) throw new Error(`transaction ${i + 1}: signatures missing for ${missing.join(", ")}; nothing was sent`);
+    wires.push(wire);
+  }
+  if (isMainnet()) {
+    const { bundleId } = await sendJitoBundle(rpc, wires.map((w) => base64Encode(w)), { onStatus: o.onStatus });
+    const sigs = wires.map((w) => wireSignature(w));
+    const st = await rpc.call<{ value: ({ slot: number; err: unknown } | null)[] }>("getSignatureStatuses", [sigs]);
+    return { bundleId, failed: null, landed: sigs.map((signature, i) => ({ label: o.parts[i]!.label, confirmed: { signature, slot: st.value[i]?.slot ?? 0, err: st.value[i]?.err ?? null, logs: [] } })) };
+  }
+  const landed: { label: string; confirmed: Confirmed }[] = [];
+  for (const [i, wire] of wires.entries()) {
+    const label = o.parts[i]!.label;
+    if (await o.skip?.(i)) continue;
+    if (i > 0) {
+      // the earlier transactions have landed: this one can be simulated on the state they left
+      const tables = o.parts[i]!.tables ?? (o.parts[i]!.table ? [o.parts[i]!.table!] : []);
+      const sim = await simulateDetailed(rpc, wire, new Map(tables.map((t) => [t.address, t.addresses])));
+      if (sim.err) return { landed, failed: { index: i, label, error: `simulation failed: ${JSON.stringify(sim.err)}; not sent`, logs: sim.logs } };
+    }
+    o.onStatus?.(`sending ${label} (${i + 1} of ${wires.length})`);
+    const c = await sendWire(rpc, wire, lastValidBlockHeight, o.onStatus).catch((e) => ({ signature: wireSignature(wire), slot: 0, err: (e as Error).message, logs: [] as string[] }) as Confirmed);
+    if (c.err) return { landed, failed: { index: i, label, error: `failed on chain: ${typeof c.err === "string" ? c.err : JSON.stringify(c.err)}`, logs: c.logs } };
+    landed.push({ label, confirmed: c });
+  }
+  return { landed, failed: null };
 }
 
 // ---------- amounts ----------

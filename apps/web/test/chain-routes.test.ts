@@ -117,3 +117,33 @@ test("scrubber removes the URL, its query value and long path segments", () => {
   const p = scrubber("https://rpc.example/v2/abcdefghijkl");
   expect(p("GET /v2/abcdefghijkl failed")).not.toContain("abcdefghijkl");
 });
+
+describe("SOL price and Jito (owner direction 2026-10-11)", () => {
+  const SOL = "So11111111111111111111111111111111111111112";
+  test("/chain/sol-price: Jupiter's price with its block; refused outside the band, when unreadable or going back in blocks", async () => {
+    let answer: unknown = { [SOL]: { usdPrice: 112.18, blockId: 100 } };
+    const f = (async (url: string) => (String(url).includes("price/v3") ? new Response(JSON.stringify(answer)) : new Response("{}"))) as unknown as typeof fetch;
+    const r = chainRoutes({ profile: devnet, rpcUrl: "u", state: null, faucet: null, fetch: f, sleep: nosleep });
+    expect(await (await r.route(new Request("http://x/chain/sol-price"), "/chain/sol-price")).json()).toMatchObject({ ok: true, usd: 112.18, block: 100, source: "jupiter" });
+    const bad = chainRoutes({ profile: devnet, rpcUrl: "u", state: null, faucet: null, fetch: (async () => new Response(JSON.stringify({ [SOL]: { usdPrice: 0.0001, blockId: 1 } }))) as unknown as typeof fetch, sleep: nosleep });
+    expect(await (await bad.route(new Request("http://x/chain/sol-price"), "/chain/sol-price")).json()).toMatchObject({ ok: false, reason: expect.stringMatching(/no usable SOL price/) });
+    const down = chainRoutes({ profile: devnet, rpcUrl: "u", state: null, faucet: null, fetch: (async () => new Response("x", { status: 503 })) as unknown as typeof fetch, sleep: nosleep });
+    expect(await (await down.route(new Request("http://x/chain/sol-price"), "/chain/sol-price")).json()).toMatchObject({ ok: false });
+    void answer;
+  });
+  test("Jito methods: refused on devnet, forwarded to the block engine on mainnet; tip floor in lamports", async () => {
+    const seen: string[] = [];
+    const f = (async (url: string, init?: { body?: string }) => {
+      seen.push(String(url));
+      if (String(url).includes("tip_floor")) return new Response(JSON.stringify([{ ema_landed_tips_50th_percentile: 5e-6 }]));
+      const b = JSON.parse(init?.body ?? "{}");
+      return new Response(JSON.stringify({ jsonrpc: "2.0", id: 1, result: b.method === "getGenesisHash" ? mainnet.genesis : "bundle-id" }));
+    }) as unknown as typeof fetch;
+    const dev = chainRoutes({ profile: devnet, rpcUrl: "u", state: null, faucet: null, fetch: f, sleep: nosleep });
+    expect((await dev.route(post({ method: "sendBundle", params: [[]] }), "/chain/rpc")).status).toBe(400);
+    const main = chainRoutes({ profile: mainnet, rpcUrl: KEYED, state: null, faucet: null, fetch: f, sleep: nosleep });
+    expect(await (await main.route(post({ method: "sendBundle", params: [["AA=="], { encoding: "base64" }] }), "/chain/rpc")).json()).toMatchObject({ result: "bundle-id" });
+    expect(seen).toContain("https://mainnet.block-engine.jito.wtf/api/v1/bundles");
+    expect(await (await main.route(post({ method: "getTipFloor", params: [] }), "/chain/rpc")).json()).toMatchObject({ result: { lamports: "5000" } });
+  });
+});

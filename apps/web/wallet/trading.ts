@@ -33,6 +33,9 @@ export async function loadTradingEscrow(): Promise<string | null> {
   return escrow;
 }
 
+/** The trading allocation is left out of the launch wizard while agent trading is off (owner direction 2026-10-11); the form, its send and the escrow code stay behind this flag. */
+export const ALLOCATION_IN_WIZARD = false;
+
 export function allocationFieldset(): Raw {
   return html`<fieldset><legend class="eyebrow">Trading allocation (plan T, optional)</legend>
       <label><span class="eyebrow">Allocation (${qsym()})</span><input name="l_alloc" inputmode="decimal" autocomplete="off" placeholder="0"><span class="wl-help" id="w-alloc">Hosted agents trade other agents' tokens from a treasury separate from their compute vault. Reading the trading config…</span></label>
