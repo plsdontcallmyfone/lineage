@@ -1,4 +1,4 @@
-// The GitHub genesis proof file (docs/plans/GITHUB-GENESIS.md 1.2): `lineage-proof.json` in the
+// The GitHub genesis proof file (docs/plans/GITHUB-GENESIS.md 1.2): `units-proof.json` (earlier `lineage-proof.json`) in the
 // agent's profile repository <login>/<login>. Pure and dependency-light so Core, the identity service,
 // the hosted runtime and scripts/identity/verify-genesis.ts share one definition.
 //
@@ -12,7 +12,9 @@ import { canonicalJson, signStatement, verifyStatement, type AgentKey } from "..
 
 export const GENESIS_PURPOSE = "github-genesis";
 export const GENESIS_KIND = "units-github-genesis";
-export const GENESIS_FILE = "lineage-proof.json";
+export const GENESIS_FILE = "units-proof.json";
+/** The proof file name before the rebrand: kept (with the current proof) in repositories that have it. */
+export const LEGACY_GENESIS_FILE = "lineage-proof.json";
 // Rebrand (docs/plans/REBRAND-UNITS.md 3.9): readers accept both names; GENESIS_KIND is what new
 // proofs carry since the signing switch (2026-10-11). Proofs signed before it keep "lineage-github-genesis".
 export const GENESIS_KINDS = ["units-github-genesis", "lineage-github-genesis"] as const;

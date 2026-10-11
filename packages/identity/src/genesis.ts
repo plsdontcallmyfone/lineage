@@ -12,18 +12,20 @@ import type { Fetch } from "../../souls/src/github/api.ts";
 import { lineageTrailers } from "../../souls/src/github/commit.ts";
 import { profileRepoCommit, type ProfileCommitResult } from "../../souls/src/github/profile-repo.ts";
 import { EncryptedCredentialStore } from "./creds.ts";
-import { GENESIS_FILE, GENESIS_KIND, genesisFileText, genesisShapeError, signGenesis, verifyGenesis, type GenesisFile, type UnsignedGenesis } from "./genesis-proof.ts";
+import { GENESIS_FILE, GENESIS_KIND, LEGACY_GENESIS_FILE, genesisFileText, genesisShapeError, signGenesis, verifyGenesis, type GenesisFile, type UnsignedGenesis } from "./genesis-proof.ts";
 import type { PublishedRecord } from "./records.ts";
 import { errText, type Log } from "./redact.ts";
 import type { IdentityService } from "./service.ts";
 
-export const MARK_GENESIS = "<!-- lineage:genesis v1 -->";
-export const MARK_START = "<!-- lineage:status:start -->";
-export const MARK_END = "<!-- lineage:status:end -->";
+// README markers: written under units since the rebrand; the lineage ones are still found (REBRAND-UNITS.md 3.9)
+export const MARK_GENESIS = "<!-- units:genesis v1 -->";
+export const MARK_START = "<!-- units:status:start -->";
+export const MARK_END = "<!-- units:status:end -->";
+const LEGACY_MARKS = { genesis: "<!-- lineage:genesis v1 -->", start: "<!-- lineage:status:start -->", end: "<!-- lineage:status:end -->" };
 // Rebrand (docs/plans/REBRAND-UNITS.md 3.9): the units markers are recognised too; the writer keeps the
 // lineage markers until the signing switch.
-export const GENESIS_MARKS = ["<!-- units:genesis v1 -->", MARK_GENESIS] as const;
-const STATUS_MARKS: [string, string][] = [["<!-- units:status:start -->", "<!-- units:status:end -->"], [MARK_START, MARK_END]];
+export const GENESIS_MARKS = [MARK_GENESIS, LEGACY_MARKS.genesis] as const;
+const STATUS_MARKS: [string, string][] = [[MARK_START, MARK_END], [LEGACY_MARKS.start, LEGACY_MARKS.end]];
 /** At most one README commit per agent in this window (owner rule). */
 export const README_MIN_INTERVAL_MS = 10 * 60 * 1000;
 /** How often the serve loop reads Core for one agent's status. */
@@ -254,6 +256,8 @@ export interface GenesisRecord {
   /** README.md kept (the launcher's own profile README): ours goes to LINEAGE.md */
   readme_path: "README.md" | "LINEAGE.md";
   proof: { text: string; issued_at: number; signed: boolean } | null;
+  /** proof files in the repository after the last commit (records written before the rebrand: lineage-proof.json only) */
+  proof_files?: string[];
   commit: { sha: string; verified: boolean | null; reason: string; html_url: string } | null;
   readme: { hash: string; status_hash: string; at: number; sha: string; verified: boolean | null } | null;
   core: { status: string; detail: string | null; at: number } | null;
@@ -276,7 +280,7 @@ export function genesisPublic(r: GenesisRecord | null): GenesisPublic | null {
   if (!r) return null;
   return {
     status: r.status, reason: r.reason, repo_url: r.repo ? `https://github.com/${r.repo}` : null,
-    proof_url: r.repo && r.status === "published" ? `https://github.com/${r.repo}/blob/HEAD/${GENESIS_FILE}` : null,
+    proof_url: r.repo && r.status === "published" ? `https://github.com/${r.repo}/blob/HEAD/${(r.proof_files ?? [LEGACY_GENESIS_FILE])[0]}` : null,
     signed: !!r.proof?.signed, commit_url: r.commit?.html_url ?? null, verified: r.commit?.verified ?? null,
     readme_updated_at: r.readme ? new Date(r.readme.at).toISOString() : null, core_status: r.core?.status ?? null,
   };
@@ -450,7 +454,10 @@ export class GenesisRunner {
         // a launcher's own profile README (no genesis marker) is never overwritten (plan 2.5)
         const foreign = mode === "token" && s.readme !== null && !GENESIS_MARKS.some((m) => s.readme!.includes(m));
         rec.readme_path = foreign ? "LINEAGE.md" : "README.md";
-        return { [rec.readme_path]: readme, [GENESIS_FILE]: proofText };
+        // the proof goes under its units name; a repository that already holds lineage-proof.json keeps it, with the same proof
+        const legacy = s.read(LEGACY_GENESIS_FILE) !== null;
+        rec.proof_files = legacy ? [GENESIS_FILE, LEGACY_GENESIS_FILE] : [GENESIS_FILE];
+        return { [rec.readme_path]: readme, [GENESIS_FILE]: proofText, ...(legacy ? { [LEGACY_GENESIS_FILE]: proofText } : {}) };
       },
       message: `${title}\n\n${lineageTrailers({ agent })}\n`,
       description: "units agent: genesis proof and status",

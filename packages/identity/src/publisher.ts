@@ -134,7 +134,7 @@ export interface MoveResult {
 }
 
 /**
- * Moves the publisher's repositories (its mirror forks and lineage-learnings) into the organization by
+ * Moves the publisher's repositories (its mirror forks and units-learnings, earlier lineage-learnings) into the organization by
  * transfer (POST /repos/{owner}/{repo}/transfer {new_owner}), so history, commit ids and Verified
  * signatures stay and GitHub redirects the old URLs; then records the org as the publisher's owner, so
  * the mirror and the learnings publisher use it from the next cycle. Repositories the publisher made
@@ -154,7 +154,7 @@ export async function moveToOrg(svc: IdentityService, org: string, opts: SetOpti
     const repos = await gh.paged<{ name: string; full_name: string; fork: boolean; owner: { login: string } }>(`/users/${r.login}/repos?type=owner`);
     for (const repo of repos) {
       if (lower(repo.owner?.login ?? "") !== lower(r.login)) continue;
-      if (!repo.fork && repo.name !== "lineage-learnings") {
+      if (!repo.fork && repo.name !== "lineage-learnings" && repo.name !== "units-learnings") {
         out.skipped.push({ repo: repo.full_name, why: "not a mirror fork or the learnings repository" });
         continue;
       }

@@ -1,5 +1,5 @@
 #!/usr/bin/env bun
-// Verifies a GitHub genesis proof (docs/plans/GITHUB-GENESIS.md 3): lineage-proof.json from an agent's
+// Verifies a GitHub genesis proof (docs/plans/GITHUB-GENESIS.md 3): units-proof.json (earlier lineage-proof.json) from an agent's
 // profile repository <login>/<login>.
 //
 //   bun scripts/identity/verify-genesis.ts <proof.json | https://github.com/<login>/<login> | raw URL>

@@ -1,18 +1,23 @@
 // Agent learnings repositories (docs/plans/AGENT-LEARNINGS.md 7). For every agent with its own GitHub
 // account (ready, not a hidden test launch) the identity service keeps the public repository
-// <login>/lineage-learnings in step with the agent's published episodes in Core: one JSON file per
+// <login>/units-learnings in step with the agent's published episodes in Core: one JSON file per
 // episode, lessons.md per lineage, a dataset card README and LICENSES.md. Commits are signed with the
 // agent's SSH signing key (Verified), reusing the genesis publisher (profileRepoCommit). Batched and
 // rate limited: at most one commit per agent per 10 minutes and 200 new episodes per commit.
 //
 // Agents without an account (app identity) are recorded as "awaiting publisher"; with a publisher
-// account configured (publisher.ts) their learnings go to <publisher>/lineage-learnings under
+// account configured (publisher.ts) their learnings go to <publisher>/units-learnings under
 // agents/<agent_id>/. The reserve pool accounts are never used.
+//
+// Rebrand (docs/plans/REBRAND-UNITS.md 3.9): repositories were named lineage-learnings. The first run
+// after the rename finds one and renames it in place (PATCH /repos, with the same token that publishes:
+// the agent's own, or the publisher's for the org repository); GitHub keeps a redirect from the old
+// URL. When GitHub refuses the rename the old name stays in use, so no second repository is created.
 //
 // Sealing: this module reads only Core's published episodes (GET /v1/learnings/*), which exist only
 // once nothing in them can name the author of an open candidate (SPEC 10.7, 17.3, 17.8).
 
-import type { Fetch } from "../../souls/src/github/api.ts";
+import { GitHub, type Fetch } from "../../souls/src/github/api.ts";
 import type { AgentCredential } from "../../souls/src/github/credentials.ts";
 import { lineageTrailers } from "../../souls/src/github/commit.ts";
 import { profileRepoCommit, type ProfileCommitResult } from "../../souls/src/github/profile-repo.ts";
@@ -21,7 +26,8 @@ import { publisherIdentity, publisherRecord } from "./publisher.ts";
 import { errText, type Log } from "./redact.ts";
 import type { IdentityService } from "./service.ts";
 
-export const LEARNINGS_REPO = "lineage-learnings";
+export const LEARNINGS_REPO = "units-learnings";
+export const LEGACY_LEARNINGS_REPO = "lineage-learnings";
 export const LEARNINGS_MIN_INTERVAL_MS = 10 * 60 * 1000;
 export const LEARNINGS_BATCH = 200;
 
@@ -232,6 +238,33 @@ export class LearningsPublisher {
     this.store.put("learnings", r.agent, r);
   }
 
+  /** owner -> repository name decided in this process (one rename check per owner per run) */
+  private names = new Map<string, string>();
+
+  /**
+   * The learnings repository name under `owner`: units-learnings, renaming a pre-rebrand
+   * lineage-learnings in place first. Keeps the old name when GitHub refuses the rename (a token
+   * without admin rights on the repository), so a second repository is never created beside it.
+   */
+  async repoName(cred: AgentCredential, owner: string, o: { dryRun?: boolean } = {}): Promise<string> {
+    const key = owner.toLowerCase();
+    const known = this.names.get(key);
+    if (known) return known;
+    const gh = new GitHub({ token: cred.token, base: this.o.apiBase, fetch: this.o.fetch });
+    const full = (x: unknown) => (x && typeof (x as { full_name?: unknown }).full_name === "string" ? (x as { full_name: string }).full_name.toLowerCase() : null);
+    const decide = (n: string) => (o.dryRun ? n : (this.names.set(key, n), n));
+    if (full(await gh.get(`/repos/${owner}/${LEARNINGS_REPO}`, [404])) === `${key}/${LEARNINGS_REPO}`) return decide(LEARNINGS_REPO);
+    if (full(await gh.get(`/repos/${owner}/${LEGACY_LEARNINGS_REPO}`, [404])) !== `${key}/${LEGACY_LEARNINGS_REPO}`) return decide(LEARNINGS_REPO);
+    if (o.dryRun) return LEGACY_LEARNINGS_REPO;
+    const r = await gh.request<{ full_name?: string }>("PATCH", `/repos/${owner}/${LEGACY_LEARNINGS_REPO}`, { name: LEARNINGS_REPO }, { okStatuses: [403, 404, 422] });
+    if (r.status === 200 && full(r.data) === `${key}/${LEARNINGS_REPO}`) {
+      this.log(`learnings: renamed ${owner}/${LEGACY_LEARNINGS_REPO} to ${owner}/${LEARNINGS_REPO} (GitHub redirects the old URL)`);
+      return decide(LEARNINGS_REPO);
+    }
+    this.log(`learnings: kept ${owner}/${LEGACY_LEARNINGS_REPO}: GitHub refused the rename (HTTP ${r.status})`);
+    return decide(LEGACY_LEARNINGS_REPO);
+  }
+
   /** The account an agent publishes under: its own (ready), the publisher, or none. */
   private target(agent: string): { cred: AgentCredential; identity: "account" | "publisher"; prefix: string; owner: string } | null {
     const s = this.o.svc.state(agent);
@@ -268,7 +301,7 @@ export class LearningsPublisher {
       const eps = page.episodes.filter((e) => e && e.agent?.id === agent && typeof e.episode_id === "string" && /^[0-9a-f]{64}$/.test(e.episode_id) && /^[0-9a-f]{64}$/.test(e.task?.lineage_id ?? ""));
       if (!eps.length && rec.status === "published" && rec.login?.toLowerCase() === t.cred.login.toLowerCase()) {
         // the repository moved (transferred to the org, docs/plans/GITHUB-ORG.md 3): same history, new name
-        const repo = `${t.owner}/${LEARNINGS_REPO}`;
+        const repo = `${t.owner}/${await this.repoName(t.cred, t.owner, o)}`;
         if (rec.repo !== repo && !o.dryRun) {
           const old = rec.repo;
           rec.repo = repo;
@@ -278,12 +311,13 @@ export class LearningsPublisher {
         return "unchanged";
       }
       if (!o.force && rec.committed_at && at - rec.committed_at < LEARNINGS_MIN_INTERVAL_MS) return "rate_limited";
+      const name = await this.repoName(t.cred, t.owner, o);
       const lessons = await this.o.sources.lessons(agent);
-      const name = eps.find((e) => e.agent?.name)?.agent?.name ?? null;
+      const agentName = eps.find((e) => e.agent?.name)?.agent?.name ?? null;
       const providers = { ...rec.providers };
       for (const e of eps) providers[e.model?.provider ?? "none"] = (providers[e.model?.provider ?? "none"] ?? 0) + 1;
       const next: LearningsRecord = {
-        ...rec, identity: t.identity, login: t.cred.login, repo: `${t.owner}/${LEARNINGS_REPO}`, providers, episodes: rec.episodes + eps.length,
+        ...rec, identity: t.identity, login: t.cred.login, repo: `${t.owner}/${name}`, providers, episodes: rec.episodes + eps.length,
         last_seq: eps.length ? Math.max(...eps.map((e) => e.seq)) : rec.last_seq, lineages: [...new Set([...rec.lineages, ...eps.map((e) => e.task.lineage_id)])].sort(),
       };
       const touched = new Set(eps.map((e) => e.task.lineage_id));
@@ -291,7 +325,7 @@ export class LearningsPublisher {
       for (const e of eps) files[`${t.prefix}episodes/${e.task.lineage_id}/${e.episode_id}.json`] = JSON.stringify(e, null, 2) + "\n";
       for (const l of lessons.lineages ?? []) if (touched.has(l.lineage_id) || !prev) files[`${t.prefix}episodes/${l.lineage_id}/lessons.md`] = renderLessons(l);
       files[`${t.prefix}LICENSES.md`] = renderLicenses(lessons.lineages ?? []);
-      const card = renderCard({ name, agent, site: this.o.site, core: this.o.coreUrl ?? this.o.site, rec: next, prefix: t.prefix });
+      const card = renderCard({ name: agentName, agent, site: this.o.site, core: this.o.coreUrl ?? this.o.site, rec: next, prefix: t.prefix });
       if (t.identity === "account") files["README.md"] = card;
       else files[`${t.prefix}README.md`] = card;
       if (o.dryRun) {
@@ -300,7 +334,7 @@ export class LearningsPublisher {
       }
       const site = this.o.site?.replace(/\/+$/, "") ?? null;
       const res: ProfileCommitResult = await profileRepoCommit({
-        cred: t.cred, repoName: LEARNINGS_REPO, owner: t.owner, replaceTree: false, plan: () => files,
+        cred: t.cred, repoName: name, owner: t.owner, replaceTree: false, plan: () => files,
         message: `units learnings: ${eps.length} episode${eps.length === 1 ? "" : "s"} up to cursor ${next.last_seq}\n\n${lineageTrailers({ agent })}\n`,
         description: t.identity === "account" ? "What this units agent learned: one record per authoring attempt, with verdicts and rewards" : "Learnings of units agents without their own GitHub account",
         homepage: site ? `${site}/agents/${agent}/profile` : undefined,

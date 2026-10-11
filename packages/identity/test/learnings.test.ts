@@ -11,15 +11,16 @@ import { IdentityService } from "../src/service.ts";
 import { EncryptedStore, ensureKeyFile } from "../src/store.ts";
 
 // Agent learnings repositories (docs/plans/AGENT-LEARNINGS.md 7) against a mocked GitHub API and real
-// git (file:// bare repositories, real SSH signatures): <login>/lineage-learnings, batched, rate
+// git (file:// bare repositories, real SSH signatures): <login>/units-learnings, batched, rate
 // limited, Verified; app-identity agents wait for a publisher.
 
 const tmp = mkdtempSync(join(tmpdir(), "lineage-learnings-"));
 afterAll(() => rmSync(tmp, { recursive: true, force: true }));
 const EM_DASH = String.fromCharCode(0x2014);
 
-function ghMock(base: string) {
+function ghMock(base: string, o: { refuseRename?: boolean } = {}) {
   const repos = new Map<string, { default_branch: string }>();
+  const redirects = new Map<string, string>();
   const calls: string[] = [];
   const f = async (url: string, init: RequestInit): Promise<Response> => {
     const u = new URL(url);
@@ -29,8 +30,20 @@ function ghMock(base: string) {
     const login = String((init.headers as any).authorization).replace("Bearer tok-", "");
     let m = /^\/repos\/([^/]+)\/([^/]+)$/.exec(u.pathname);
     if (method === "GET" && m) {
-      const r = repos.get(`${m[1]}/${m[2]}`);
-      return r ? j({ full_name: `${m[1]}/${m[2]}`, fork: false, archived: false, private: false, default_branch: r.default_branch }) : j({ message: "Not Found" }, 404);
+      // a renamed repository answers under its new name (GitHub follows the redirect); a bare repository on disk counts as existing
+      const name = redirects.get(`${m[1]}/${m[2]}`) ?? `${m[1]}/${m[2]}`;
+      const r = repos.get(name) ?? (spawnSync("test", ["-d", join(base, `${name}.git`)]).status === 0 ? { default_branch: "main" } : undefined);
+      return r ? j({ full_name: name, fork: false, archived: false, private: false, default_branch: r.default_branch }) : j({ message: "Not Found" }, 404);
+    }
+    if (method === "PATCH" && m) {
+      if (o.refuseRename) return j({ message: "Resource not accessible by personal access token" }, 403);
+      const b = JSON.parse(String(init.body));
+      const from = `${m[1]}/${m[2]}`, to = `${m[1]}/${b.name}`;
+      renameSync(join(base, `${from}.git`), join(base, `${to}.git`));
+      repos.delete(from);
+      repos.set(to, { default_branch: "main" });
+      redirects.set(from, to);
+      return j({ full_name: to, default_branch: "main" });
     }
     const orgRepos = /^\/orgs\/([^/]+)\/repos$/.exec(u.pathname);
     if (method === "POST" && (u.pathname === "/user/repos" || orgRepos)) {
@@ -49,7 +62,7 @@ function ghMock(base: string) {
     }
     return j({ message: `unmocked ${method} ${u.pathname}` }, 404);
   };
-  return { fetch: f, calls };
+  return { fetch: f, calls, repos };
 }
 
 const LIN = "1".repeat(64);
@@ -62,14 +75,14 @@ function episode(agent: string, seq: number, over: Record<string, any> = {}) {
   };
 }
 
-function world() {
+function world(o: { refuseRename?: boolean } = {}) {
   const d = mkdtempSync(join(tmp, "w"));
   const keyFile = join(d, "key", "master.key");
   ensureKeyFile(keyFile);
   const store = new EncryptedStore(join(d, "data"), keyFile);
   const base = join(d, "gh");
   mkdirSync(base, { recursive: true });
-  const gh = ghMock(base);
+  const gh = ghMock(base, o);
   let clock = 1_800_000_000_000;
   const lines: string[] = [];
   const svc = new IdentityService({
@@ -98,20 +111,20 @@ function world() {
     record: async (r) => void recorded.push(r),
   };
   const pub = new LearningsPublisher({ svc, sources, site: "https://site.test", apiBase: "https://api.test", gitBase: `file://${base}`, fetch: gh.fetch as never, log: safeLog("t", (l) => lines.push(l)), now: () => new Date(clock), verifyPolls: 1 });
-  const bare = join(base, login, "lineage-learnings.git");
+  const bare = join(base, login, "units-learnings.git");
   const git = (...a: string[]) => spawnSync("git", ["-C", bare, ...a], { encoding: "utf8" }).stdout;
-  return { svc, pub, own, app, login, published, recorded, lines, gh, git, tick: (ms: number) => (clock += ms) };
+  return { svc, pub, own, app, login, published, recorded, lines, gh, git, base, tick: (ms: number) => (clock += ms) };
 }
 
 describe("learnings repositories", () => {
-  test("publishes <login>/lineage-learnings with Verified, batched, rate-limited commits; app agents await a publisher", async () => {
+  test("publishes <login>/units-learnings with Verified, batched, rate-limited commits; app agents await a publisher", async () => {
     const w = world();
     for (let i = 1; i <= 3; i++) w.published.push(episode(w.own, i));
     w.published.push(episode(w.app, 4));
     const s1 = await w.pub.tick();
     expect(s1.agents).toBe(2);
     expect(s1.awaiting).toEqual([w.app]);
-    expect(s1.published).toEqual([{ agent: w.own, repo: `${w.login}/lineage-learnings`, episodes: 3, commit: expect.any(String), verified: true }]);
+    expect(s1.published).toEqual([{ agent: w.own, repo: `${w.login}/units-learnings`, episodes: 3, commit: expect.any(String), verified: true }]);
     const files = w.git("ls-tree", "-r", "--name-only", "HEAD").trim().split("\n").sort();
     expect(files).toEqual(["LICENSES.md", "README.md", ...[1, 2, 3].map((i) => `episodes/${LIN}/${i.toString(16).padStart(64, "0")}.json`), `episodes/${LIN}/lessons.md`].sort());
     expect(w.git("cat-file", "commit", "HEAD")).toContain("BEGIN SSH SIGNATURE");
@@ -123,7 +136,7 @@ describe("learnings repositories", () => {
     expect(readme + w.git("show", `HEAD:episodes/${LIN}/lessons.md`) + w.git("show", "HEAD:LICENSES.md")).not.toContain(EM_DASH);
     expect(JSON.parse(w.git("show", `HEAD:episodes/${LIN}/${"1".padStart(64, "0")}.json`)).seq).toBe(1);
     // the repositories are reported to Core
-    expect(w.recorded.at(-1)!.find((r) => r.agent === w.own)).toMatchObject({ status: "published", url: `https://github.com/${w.login}/lineage-learnings`, episodes: 3, last_seq: 3, verified: true });
+    expect(w.recorded.at(-1)!.find((r) => r.agent === w.own)).toMatchObject({ status: "published", url: `https://github.com/${w.login}/units-learnings`, episodes: 3, last_seq: 3, verified: true });
     expect(w.recorded.at(-1)!.find((r) => r.agent === w.app)).toMatchObject({ status: "awaiting publisher", url: null });
 
     // nothing new: no commit; new episodes inside 10 minutes: rate limited; after: one commit with them
@@ -150,18 +163,18 @@ describe("learnings repositories", () => {
     store.put("publisher", "app", { v: 1, login: "unitspub", github_id: 77, token: "tok-unitspub", ssh_private_key: readFileSync(kp.privatePath, "utf8"), ssh_public_key: kp.publicKey, ssh_signing_key_id: 1, scopes: null, set_at: "", owner: null });
     w.published.push(episode(w.app, 1));
     const s1 = await w.pub.tick({ agents: [w.app] });
-    expect(s1.published).toEqual([{ agent: w.app, repo: "unitspub/lineage-learnings", episodes: 1, commit: expect.any(String), verified: true }]);
+    expect(s1.published).toEqual([{ agent: w.app, repo: "unitspub/units-learnings", episodes: 1, commit: expect.any(String), verified: true }]);
     expect(w.gh.calls).toContain("POST /user/repos");
     // the operator moves the repository into the org (publisher-move): no new episodes, the record follows
     const gb = join(w.svc.o.runDir, "..", "gh");
     mkdirSync(join(gb, "units-agents"), { recursive: true });
-    renameSync(join(gb, "unitspub", "lineage-learnings.git"), join(gb, "units-agents", "lineage-learnings.git"));
+    renameSync(join(gb, "unitspub", "units-learnings.git"), join(gb, "units-agents", "units-learnings.git"));
     store.put("publisher", "app", { ...store.get<any>("publisher", "app"), owner: "units-agents" });
     const sha = w.pub.record(w.app)!.commit!.sha;
     w.tick(LEARNINGS_MIN_INTERVAL_MS);
     expect((await w.pub.tick({ agents: [w.app] })).unchanged).toBe(1);
-    expect(w.pub.record(w.app)).toMatchObject({ repo: "units-agents/lineage-learnings", commit: { sha, html_url: `https://github.com/units-agents/lineage-learnings/commit/${sha}` } });
-    expect(w.recorded.at(-1)!.find((r) => r.agent === w.app)).toMatchObject({ url: "https://github.com/units-agents/lineage-learnings", commit: sha });
+    expect(w.pub.record(w.app)).toMatchObject({ repo: "units-agents/units-learnings", commit: { sha, html_url: `https://github.com/units-agents/units-learnings/commit/${sha}` } });
+    expect(w.recorded.at(-1)!.find((r) => r.agent === w.app)).toMatchObject({ url: "https://github.com/units-agents/units-learnings", commit: sha });
     // a fresh org (nothing moved yet) gets its repository created under the org
     const other = generateAgentKey().id;
     rmSync(join(gb, "units-agents"), { recursive: true, force: true });
@@ -169,7 +182,7 @@ describe("learnings repositories", () => {
     const s3 = await w.pub.tick({ agents: [other] });
     expect(s3.failed).toEqual([]);
     expect(w.gh.calls).toContain("POST /orgs/units-agents/repos");
-    expect(w.pub.record(other)!.repo).toBe("units-agents/lineage-learnings");
+    expect(w.pub.record(other)!.repo).toBe("units-agents/units-learnings");
   }, 60_000);
 
   test("a batch holds at most 200 episodes; the rest follow on the next run", async () => {
@@ -192,4 +205,57 @@ describe("learnings repositories", () => {
     expect(card).toContain("- none yet");
     expect(card).not.toContain(EM_DASH);
   });
+});
+
+/** A repository published before the rebrand: <owner>/lineage-learnings with one commit, and the record pointing at it. */
+function legacyRepo(w: ReturnType<typeof world>, owner: string, agent: string) {
+  const dir = join(w.base, owner, "lineage-learnings.git");
+  mkdirSync(join(w.base, owner), { recursive: true });
+  spawnSync("git", ["init", "-q", "--bare", "--initial-branch=main", dir]);
+  const work = mkdtempSync(join(tmp, "seed"));
+  const g = (...a: string[]) => spawnSync("git", ["-C", work, "-c", "user.name=t", "-c", "user.email=t@t", ...a], { encoding: "utf8" });
+  g("init", "-q", "--initial-branch=main");
+  Bun.write(join(work, "OLD.md"), "published before the rebrand\n");
+  g("add", "OLD.md");
+  g("commit", "-q", "-m", "old");
+  g("push", "-q", dir, "main");
+  w.svc.o.store.put("learnings", agent, { v: 1, agent, status: "published", reason: null, identity: "account", login: owner, repo: `${owner}/lineage-learnings`, last_seq: 0, episodes: 0, providers: {}, lineages: [], commit: null, committed_at: 0, updated_at: "" });
+}
+
+describe("learnings repository rename (REBRAND-UNITS.md 3.9)", () => {
+  test("a lineage-learnings repository is renamed in place with the agent's own token and keeps its history", async () => {
+    const w = world();
+    legacyRepo(w, w.login, w.own);
+    w.published.push(episode(w.own, 1));
+    const s1 = await w.pub.tick({ agents: [w.own] });
+    expect(s1.failed).toEqual([]);
+    expect(w.gh.calls).toContain(`PATCH /repos/${w.login}/lineage-learnings`);
+    expect(w.gh.calls).not.toContain("POST /user/repos");
+    expect(w.pub.record(w.own)).toMatchObject({ status: "published", repo: `${w.login}/units-learnings` });
+    expect(w.recorded.at(-1)!.find((r) => r.agent === w.own)).toMatchObject({ url: `https://github.com/${w.login}/units-learnings` });
+    // same repository: the commit made before the rebrand is still in its history
+    expect(w.git("log", "--format=%s", "main")).toContain("old");
+    expect(w.lines.join("\n")).toContain("renamed wrenacct/lineage-learnings to wrenacct/units-learnings");
+  }, 60_000);
+
+  test("when GitHub refuses the rename the old repository stays in use and no second one is created", async () => {
+    const w = world({ refuseRename: true });
+    legacyRepo(w, w.login, w.own);
+    w.published.push(episode(w.own, 1));
+    const s1 = await w.pub.tick({ agents: [w.own] });
+    expect(s1.failed).toEqual([]);
+    expect(w.gh.calls).toContain(`PATCH /repos/${w.login}/lineage-learnings`);
+    expect(w.gh.calls).not.toContain("POST /user/repos");
+    expect(w.pub.record(w.own)).toMatchObject({ status: "published", repo: `${w.login}/lineage-learnings` });
+  }, 60_000);
+
+  test("a record already pointing at lineage-learnings with no new episodes follows the rename", async () => {
+    const w = world();
+    legacyRepo(w, w.login, w.own);
+    w.published.push(episode(w.own, 1));
+    w.svc.o.store.put("learnings", w.own, { ...w.svc.o.store.get<any>("learnings", w.own), last_seq: 1 });
+    const s1 = await w.pub.tick({ agents: [w.own] });
+    expect(s1.unchanged).toBe(1);
+    expect(w.pub.record(w.own)!.repo).toBe(`${w.login}/units-learnings`);
+  }, 60_000);
 });

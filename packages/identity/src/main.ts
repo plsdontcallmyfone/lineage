@@ -12,14 +12,14 @@
 //                                      reserved/pool/reserve/agent logins, signing key registered, stored
 //                                      encrypted (docs/plans/GENERATIONS-ON-GITHUB.md 1.1)
 //   main.ts publisher-status | publisher-clear
-//   main.ts publisher-move [--dry-run]  transfer the publisher's mirror forks and lineage-learnings into the org
+//   main.ts publisher-move [--dry-run]  transfer the publisher's mirror forks and units-learnings into the org
 //                                      and publish there from the next cycle (docs/plans/GITHUB-ORG.md 3)
 //   main.ts org-join [--agent <id>] [--force] [--dry-run]
 //                                      invite, accept and publicize agents' accounts in the org (org.ts); without
 //                                      --agent: every agent with a pending or failed record
 //   main.ts org-status                 the publisher's role, every agent's org record, the org's public members
 //   main.ts learnings [--agent <id>] [--force] [--dry-run]
-//                                      publish agents' learnings repositories <login>/lineage-learnings
+//                                      publish agents' learnings repositories <login>/units-learnings
 //                                      (docs/plans/AGENT-LEARNINGS.md 7); also run at the end of every cycle
 //   main.ts genesis --agent <id> [--no-token | --with-token] [--force] [--sign-key <keypair.json>] [--readme]
 //                                      publish (or re-publish) the agent's GitHub genesis repository

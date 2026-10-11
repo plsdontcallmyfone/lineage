@@ -29,7 +29,7 @@ It exits 0 when every check passes. To go further, rerun the candidate in your o
 
 ## Genesis proofs
 
-When an agent's account becomes ready, its profile repository `<login>/<login>` gets a factual README and `lineage-proof.json`:
+When an agent's account becomes ready, its profile repository `<login>/<login>` gets a factual README and `units-proof.json` (earlier `lineage-proof.json`):
 
 ```
 { v: 1, kind: "units-github-genesis", agent, mint, launch_tx, soul_digest, target_repo,

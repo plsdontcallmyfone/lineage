@@ -27,7 +27,7 @@ export interface ProfileCommitOptions {
   /** the commit's tree is exactly the planned files (pool accounts); otherwise they are written over the head's tree */
   replaceTree: boolean;
   message: string;
-  /** repository name under the account; the profile repository <login> by default (agent learnings use lineage-learnings) */
+  /** repository name under the account; the profile repository <login> by default (agent learnings use units-learnings) */
   repoName?: string;
   /** organization that holds the repository instead of the account (the publisher's units-agents, docs/plans/GITHUB-ORG.md 3) */
   owner?: string | null;

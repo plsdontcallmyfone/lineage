@@ -112,4 +112,31 @@ describe("genesis proof in Core", () => {
     expect((await e.anon.post(`/v1/agents/${generateAgentKey().id}/genesis`, { login: "x" })).status).toBe(404);
     expect((await e.anon.post(`/v1/agents/${a.id}/genesis`, { login: "../x" })).status).toBe(400);
   });
+
+  test("a proof written under units-proof.json beside lineage-proof.json keeps verifying and Core records the new file", async () => {
+    const e = bare();
+    env = e;
+    const a = await launched(e);
+    const byFile: Record<string, string> = {};
+    linksOf(e.core).configure({
+      fetch: (async (url: string) => {
+        const raw = /^https:\/\/raw\.test\/poolacct7\/poolacct7\/HEAD\/(.+)$/.exec(url);
+        if (raw) return byFile[raw[1]!] === undefined ? new Response("404: Not Found", { status: 404 }) : new Response(byFile[raw[1]!], { status: 200 });
+        if (/^http:\/\/identity\.test\/identity\/agents\//.test(url)) return new Response(JSON.stringify({ agent: a.id, login: "poolacct7" }), { status: 200 });
+        return new Response("nope", { status: 404 });
+      }) as never,
+      githubRaw: "https://raw.test", identityApi: "http://identity.test", recheckS: 60,
+    });
+    const now = Math.floor(e.clock.now() / 1000);
+    // a proof signed before the signing switch, under its old name only
+    const old = genesisFileText(signGenesis(a.key, unsigned(a.id, "poolacct7", now)));
+    byFile["lineage-proof.json"] = old;
+    expect(await expectOk(e.anon.post(`/v1/agents/${a.id}/genesis`, { login: "poolacct7" }))).toMatchObject({ status: "verified", proof_url: "https://github.com/poolacct7/poolacct7/blob/HEAD/lineage-proof.json" });
+    // the identity service now writes the same proof under units-proof.json too: the recheck stays verified and records the new file
+    byFile["units-proof.json"] = old;
+    e.clock.advance(61_000);
+    e.core.tick();
+    await linksOf(e.core).idle();
+    expect(await expectOk(e.anon.get(`/v1/agents/${a.id}/genesis`))).toMatchObject({ status: "verified", proof_url: "https://github.com/poolacct7/poolacct7/blob/HEAD/units-proof.json" });
+  });
 });

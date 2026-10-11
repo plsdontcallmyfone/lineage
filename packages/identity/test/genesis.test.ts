@@ -236,7 +236,7 @@ describe("genesis runner", () => {
     expect(raw).toContain("-----BEGIN SSH SIGNATURE-----");
     expect(raw).toContain(`${100 + Number(w.login.slice(4))}+${w.login}@users.noreply.github.com`);
     expect(raw).toContain(`Agent: ${w.agent}`);
-    const proof = w.show("lineage-proof.json").stdout;
+    const proof = w.show("units-proof.json").stdout;
     const v = verifyGenesis(proof, { agent: w.agent, login: w.login, key: w.agentKey.id });
     expect(v.ok).toBe(true);
     if (v.ok) {
@@ -249,7 +249,7 @@ describe("genesis runner", () => {
     expect(readme).toContain("TESTB58");
     expect(readme.includes(EM_DASH)).toBe(false);
     expect(w.commits()).toBe("1");
-    expect(w.svc.view(w.agent).genesis).toMatchObject({ status: "published", signed: true, verified: true, proof_url: `https://github.com/${w.login}/${w.login}/blob/HEAD/lineage-proof.json` });
+    expect(w.svc.view(w.agent).genesis).toMatchObject({ status: "published", signed: true, verified: true, proof_url: `https://github.com/${w.login}/${w.login}/blob/HEAD/units-proof.json` });
     // no token or key in any log line
     expect(w.lines.join("\n").includes(`tok-${w.login}`)).toBe(false);
     expect(w.lines.join("\n").includes("PRIVATE KEY")).toBe(false);
@@ -285,7 +285,7 @@ describe("genesis runner", () => {
     // every commit signed; the proof file unchanged across README updates
     const all = spawnSync("git", ["-C", w.bareDir, "log", "--format=%H"], { encoding: "utf8" }).stdout.trim().split("\n");
     for (const sha of all) expect(spawnSync("git", ["-C", w.bareDir, "cat-file", "commit", sha], { encoding: "utf8" }).stdout).toContain("SSH SIGNATURE");
-    expect(w.show("lineage-proof.json").stdout).toBe(w.show("lineage-proof.json", all[all.length - 1]).stdout);
+    expect(w.show("units-proof.json").stdout).toBe(w.show("units-proof.json", all[all.length - 1]).stdout);
     // the poll interval keeps Core reads down when not forced
     expect(await w.runner.refresh(w.agent)).toBe("skipped");
   });
@@ -299,7 +299,7 @@ describe("genesis runner", () => {
     const readme = w.show("README.md").stdout;
     for (const s of ["TESTB58", w.mint, "Token", "/tokens/"]) expect(readme.includes(s)).toBe(false);
     // the proof still carries the mint as recorded
-    expect(JSON.parse(w.show("lineage-proof.json").stdout).mint).toBe(w.mint);
+    expect(JSON.parse(w.show("units-proof.json").stdout).mint).toBe(w.mint);
     // later README updates keep the option
     w.tick(README_MIN_INTERVAL_MS + 1000);
     w.profile.stats = { accepted: 1, rejected: 0, final: 1 };
@@ -325,14 +325,44 @@ describe("genesis runner", () => {
     expect(r.readme_path).toBe("LINEAGE.md");
     expect(w.show("README.md").stdout).toBe("# Hi, I am a human\n");
     expect(w.show("LINEAGE.md").stdout).toContain("Its signature is pending");
-    const p = JSON.parse(w.show("lineage-proof.json").stdout);
+    const p = JSON.parse(w.show("units-proof.json").stdout);
     expect(p.sig).toBeNull();
     expect(w.recorded).toEqual([]); // nothing for Core to verify yet
     // the operator signs with the agent's key file later
     const r2 = await w.runner.run(w.agent, { key: w.agentKey });
     expect(r2.proof!.signed).toBe(true);
-    expect(verifyGenesis(w.show("lineage-proof.json").stdout, { key: w.agentKey.id }).ok).toBe(true);
+    expect(verifyGenesis(w.show("units-proof.json").stdout, { key: w.agentKey.id }).ok).toBe(true);
     expect(w.show("README.md").stdout).toBe("# Hi, I am a human\n");
     expect(w.recorded.length).toBe(1);
+  });
+
+  test("a repository published before the rebrand keeps lineage-proof.json beside units-proof.json, and its lineage README markers are still ours", async () => {
+    const w = world("token");
+    // seed the profile repository as the pre-rebrand writer left it
+    mkdirSync(join(w.bareDir, ".."), { recursive: true });
+    spawnSync("git", ["init", "-q", "--bare", "--initial-branch=main", w.bareDir]);
+    w.gh.repos.set(`${w.login}/${w.login}`, { default_branch: "main" });
+    const work = join(w.bareDir, "..", "seed");
+    mkdirSync(work, { recursive: true });
+    const g = (...a: string[]) => spawnSync("git", ["-C", work, "-c", "user.name=t", "-c", "user.email=t@t", ...a], { encoding: "utf8" });
+    g("init", "-q", "--initial-branch=main");
+    await Bun.write(join(work, "README.md"), "<!-- lineage:genesis v1 -->\n# Test Wren\n\n<!-- lineage:status:start -->\n- old\n<!-- lineage:status:end -->\n");
+    await Bun.write(join(work, "lineage-proof.json"), "{}\n");
+    g("add", ".");
+    g("commit", "-q", "-m", "lineage genesis");
+    g("push", "-q", w.bareDir, "main");
+    const r = await w.runner.run(w.agent);
+    expect(r.status).toBe("published");
+    // the old README carried our (lineage) marker, so it is ours to replace, now with units markers
+    expect(r.readme_path).toBe("README.md");
+    expect(w.show("README.md").stdout.startsWith("<!-- units:genesis v1 -->")).toBe(true);
+    expect(statusBlock(w.show("README.md").stdout)).not.toBeNull();
+    // both names hold the same, current proof; readers find either
+    const units = w.show("units-proof.json").stdout;
+    expect(w.show("lineage-proof.json").stdout).toBe(units);
+    expect(verifyGenesis(units, { key: w.agentKey.id }).ok).toBe(true);
+    expect(JSON.parse(units).kind).toBe("units-github-genesis");
+    expect(r.proof_files).toEqual(["units-proof.json", "lineage-proof.json"]);
+    expect(w.svc.view(w.agent).genesis).toMatchObject({ proof_url: `https://github.com/${w.login}/${w.login}/blob/HEAD/units-proof.json` });
   });
 });

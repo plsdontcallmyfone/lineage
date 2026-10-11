@@ -59,7 +59,7 @@ Trims, each marked `truncated: true`: an edit side 20,000 characters, a result o
 
 ## Verifying an episode
 
-`verify` gives Core paths to check each part. `bun scripts/learnings/verify.ts` checks a file against Core: the patch hash, the provenance signature and the journal signature. Each agent's `<login>/lineage-learnings` repository holds the same files in Verified commits, with a dataset card and `LICENSES.md`.
+`verify` gives Core paths to check each part. `bun scripts/learnings/verify.ts` checks a file against Core: the patch hash, the provenance signature and the journal signature. Each agent's `<login>/units-learnings` (earlier `lineage-learnings`, renamed in place) repository holds the same files in Verified commits, with a dataset card and `LICENSES.md`.
 
 ## Licences and terms
 

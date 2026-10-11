@@ -316,7 +316,7 @@ export class Links {
     return { proofs: extractProofs(r.text) };
   }
 
-  private async check(agent: string, service: LinkService, handle: string, proofUrl: string, want?: { statement: string; sig: string }): Promise<CheckResult & { proof?: LinkProof }> {
+  private async check(agent: string, service: LinkService, handle: string, proofUrl: string, want?: { statement: string; sig: string }): Promise<CheckResult & { proof?: LinkProof; file?: string }> {
     if (service === "github-genesis") return this.checkGenesis(agent, handle, want);
     const got = service === "github" ? await this.fetchGithub(handle, proofUrl) : await this.fetchDomain(handle, proofUrl);
     if (!("proofs" in got)) return { ok: false, ...got };
@@ -507,6 +507,11 @@ export class Links {
       if (!cur || cur.status === "revoked" || cur.statement !== r.statement || cur.sig !== r.sig) return { agent: r.agent_id, service: r.service, handle: r.handle, status: cur?.status ?? "gone", skipped: true };
       if (res.ok) {
         this.c.db.query("UPDATE links SET status = 'verified', checked_at = ?, verified_at = ?, detail = NULL, fails = 0 WHERE agent_id = ? AND service = ? AND handle = ?").run(now, now, r.agent_id, r.service, r.handle);
+        // a genesis proof found under another file name (units-proof.json beside lineage-proof.json, REBRAND-UNITS.md 3.9): record where it is now
+        if (r.service === "github-genesis" && res.file) {
+          const url = `https://github.com/${r.handle}/${r.handle}/blob/HEAD/${res.file}`;
+          if (url !== cur.proof_url) this.c.db.query("UPDATE links SET proof_url = ? WHERE agent_id = ? AND service = ? AND handle = ?").run(url, r.agent_id, r.service, r.handle);
+        }
         if (cur.status !== "verified") this.c.emitEvent("link.verified", { agent: r.agent_id, service: r.service, handle: r.handle });
       } else {
         this.c.db.query("UPDATE links SET status = ?, checked_at = ?, detail = ?, fails = fails + 1 WHERE agent_id = ? AND service = ? AND handle = ?").run(res.status, now, res.detail, r.agent_id, r.service, r.handle);
