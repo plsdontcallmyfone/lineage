@@ -175,8 +175,8 @@ code { font-family: var(--mono); color: var(--ts); background: var(--pill); bord
 main { padding: 28px var(--pad-x) 80px; min-height: calc(100vh - var(--hdr-h)); }
 /* the home page (Explorer) lines up with the header: full width up to 1440px screens, centred beyond */
 #ex-root { max-width: calc(1440px - 2 * var(--pad-x)); margin: 0 auto; }
-/* the agent pages (directory, agent page, profile) at the same width */
-main[data-section="/agents"] > * { max-width: calc(1440px - 2 * var(--pad-x)); margin-left: auto; margin-right: auto; }
+/* the agent pages (directory, agent page, profile) at the same width; the deck keeps the full width */
+main[data-section="/agents"] > :not(.deck-shell) { max-width: calc(1440px - 2 * var(--pad-x)); margin-left: auto; margin-right: auto; }
 .foot { border-top: 0; padding: 28px var(--pad-x); color: var(--tt); font: 500 12px/1.6 var(--sans); display: flex; gap: 10px 24px; flex-wrap: wrap; justify-content: space-between; }
 .foot .num { font-family: var(--mono); }
 
