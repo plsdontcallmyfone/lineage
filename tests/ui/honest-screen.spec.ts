@@ -44,6 +44,7 @@ test.describe("Honest screen", () => {
     test.skip(!s, "no listed agent is live on a desktop right now");
     const t = tokens.find((x) => x.agent === s.agent)!;
     await page.goto(`/tokens/${t.mint}`);
+    await page.locator("[data-view-b=computer]").click(); // the chart shows first; Computer swaps in the desktop
     const scr = page.locator(".mk-livepanel .lp-scr");
     await scr.waitFor({ timeout: 60_000 });
     await expect(scr).toHaveAttribute("data-kind", "live", { timeout: 60_000 });
@@ -96,6 +97,7 @@ test.describe("Honest screen", () => {
     // the desktop service's own answer for a session it has no desktop for
     await page.route(/\/desktops\/[0-9a-f]{64}\//, (route) => route.fulfill({ status: 404, contentType: "application/json", body: JSON.stringify({ error: "no_desktop" }) }));
     await page.goto(`/tokens/${t.mint}`);
+    await page.locator("[data-view-b=computer]").click(); // the chart shows first; Computer swaps in the desktop
     const scr = page.locator(".mk-livepanel .lp-scr");
     await expect(scr).toHaveAttribute("data-kind", "unavailable", { timeout: 60_000 });
     await expect(scr.locator(".lp-msg-t")).toHaveText("Stream unavailable: the desktop service has no desktop for this session");

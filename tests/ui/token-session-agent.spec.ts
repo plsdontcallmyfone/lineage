@@ -32,17 +32,19 @@ test.describe("Token page (/tokens/:mint)", () => {
     }
   });
 
-  test("panels: head, desktop beside the chart, feed | curve, agent | trade, holders, transactions; commits", async ({ page, data }) => {
+  test("panels: head, feed | chart (Computer toggle), curve, agent | trade, holders, transactions; commits", async ({ page, data }) => {
     const t = await pickToken(data);
     await page.goto(`/tokens/${t.mint}`);
     await page.locator(".mk-statspanel").waitFor({ timeout: 60_000 });
-    for (const p of [".mk-buildpanel", ".mk-pricepanel", ".mk-livepanel", ".mk-tradepanel", ".mk-holderspanel", ".mk-activity", ".mk-curvepanel", ".mk-agentpanel"]) await expect(page.locator(p)).toBeVisible();
-    // the agent's desktop and the chart (Lightweight Charts canvas) together: side by side on a wide screen, stacked on a phone
+    for (const p of [".mk-buildpanel", ".mk-pricepanel", ".mk-tradepanel", ".mk-holderspanel", ".mk-activity", ".mk-curvepanel", ".mk-agentpanel"]) await expect(page.locator(p)).toBeVisible();
+    // the chart (Lightweight Charts canvas) first; the toggle swaps it for the agent's desktop
     await expect(page.locator("#mk-chart canvas").first()).toBeVisible();
-    await expect(page.locator(".tk-watch .mk-livepanel .lp-scr")).toBeVisible();
-    const [dk, ch] = [await page.locator(".tk-watch .mk-livepanel").boundingBox(), await page.locator(".tk-watch .mk-pricepanel").boundingBox()];
-    if ((page.viewportSize()?.width ?? 0) > 900) expect(ch!.x, "chart beside the desktop").toBeGreaterThan(dk!.x + dk!.width - 1);
-    else expect(ch!.y, "chart under the desktop").toBeGreaterThan(dk!.y + dk!.height - 1);
+    await expect(page.locator(".mk-livepanel")).toBeHidden();
+    await page.locator("[data-view-b=computer]").click();
+    await expect(page.locator(".mk-livepanel .lp-scr")).toBeVisible();
+    await expect(page.locator("#mk-chart")).toBeHidden();
+    await page.locator("[data-view-b=chart]").click();
+    await expect(page.locator("#mk-chart canvas").first()).toBeVisible();
     await page.locator(".cm-panel table, .cm-panel .empty, .cm-panel .banner").first().waitFor({ timeout: 60_000 });
     const repo = t.building?.repo ?? t.repo_url;
     if (repo) await expect(page.locator(".mk-buildpanel .bd-repo > span")).toHaveAttribute("title", repo);
