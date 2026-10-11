@@ -391,3 +391,25 @@ green, pushed to main.
 Checks run before calling it done: tsc, bun test (all packages), LiteSVM, scripts/e2e.ts,
 `bun run test:ui`, site deploy with end-to-end verify, restore-test, and a devnet dump hash match for
 each upgraded program. Devnet only; no mainnet transaction at any step.
+
+## 6. Rebrand finish lane (2026-10-11)
+
+### 6.1 verify.ts "slot draw is not published" (fixed)
+
+Measured on the site before the fix: 200/200 verdicts, then 5 FAIL, 3 audit decisions of epoch 17
+and 2 of epoch 18 ("its slot draw is not published"). Cause: a canary or audit decision uses its draw
+subject's first resolved slot draw (`SlotBeacon.firstDraw`), and Core publishes each draw under the
+epoch it was requested in. The epoch 17 decisions use draws published in epoch 15 and the epoch 18
+decisions use draws published in epoch 17; verify.ts looked only in the decision's own epoch. The
+retired v1 deployment is not involved, and nothing was missing from Core.
+
+Fix (scripts/verify.ts only, no route change): draws are indexed across every revealed epoch. Checks
+added, none removed: a published draw must carry the epoch it is published under, a decision's draw
+must not come from a later epoch, and it must be its subject's lowest published slot round (what
+`firstDraw` picks). Test: scripts/verify-draws.test.ts 4/4 (cross-epoch draw passes; missing draw,
+non-first round and tampered value fail). Site after: 200/200 verdicts and 156 rounds (142 on a slot
+hash) + 55 decisions in 6 revealed epochs, all match.
+
+packages/core typecheck: both errors were wrong bun:sqlite parameter tuples on queries whose SQL and
+arguments were right (core.ts chainSetBalances: one `?`, typed `[]`; deployments.ts successorOf: two
+`?`, typed `[string]`). Annotations fixed, no behaviour change; packages/core typechecks clean.

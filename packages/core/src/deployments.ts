@@ -209,6 +209,6 @@ export class Deployments {
   /** The agent that continues `agent` (a relaunch under a new key), if any. */
   successorOf(agent: string): string | null {
     this.c.db.exec(SCHEMA);
-    return this.c.db.query<{ agent_id: string }, [string]>("SELECT agent_id FROM agent_previous_tokens WHERE previous_agent_id = ? AND agent_id != ? LIMIT 1").get(agent, agent)?.agent_id ?? null;
+    return this.c.db.query<{ agent_id: string }, [string, string]>("SELECT agent_id FROM agent_previous_tokens WHERE previous_agent_id = ? AND agent_id != ? LIMIT 1").get(agent, agent)?.agent_id ?? null;
   }
 }

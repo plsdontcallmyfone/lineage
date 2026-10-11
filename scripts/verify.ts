@@ -101,8 +101,26 @@ async function verifyDraws(): Promise<number> {
     fails++;
     console.log(`FAIL ${m}`);
   };
+  // A canary or audit decision uses its draw subject's first resolved slot draw (Core firstDraw), which
+  // is published in the epoch it was requested in, often an earlier one than the decision's. Index the
+  // draws of every revealed epoch so such a decision finds its draw wherever it was published.
+  const allClosed = opt("epoch") ? ((await get("/v1/epochs")) as any[]).filter((e) => e.status === "closed") : epochs;
+  const records = new Map<number, any>();
+  for (const { n } of allClosed) records.set(n, await get(`/v1/epochs/${n}`));
+  for (const { n } of epochs) if (!records.has(n)) records.set(n, await get(`/v1/epochs/${n}`));
+  const drawsBySubject = new Map<string, any[]>();
+  for (const r of records.values())
+    if (r.status === "closed" && r.secret)
+      for (const d of r.slot_beacon?.draws ?? []) {
+        if (d.epoch !== r.n) fail(`epoch ${r.n} publishes a draw of ${String(d.subject).slice(0, 12)} round ${d.round} requested in epoch ${d.epoch}`);
+        const l = drawsBySubject.get(d.subject) ?? [];
+        l.push(d);
+        drawsBySubject.set(d.subject, l);
+      }
+  const publishedDraw = (subject: string, round: number) => drawsBySubject.get(subject)?.find((d) => d.round === round);
+  const firstPublishedRound = (subject: string) => Math.min(...(drawsBySubject.get(subject) ?? []).map((d) => d.round));
   for (const { n } of epochs) {
-    const ep = await get(`/v1/epochs/${n}`);
+    const ep = records.get(n);
     if (ep.status !== "closed") continue;
     if (!ep.secret) {
       sealed++;
@@ -137,11 +155,13 @@ async function verifyDraws(): Promise<number> {
     }
     for (const u of sb?.decisions ?? []) {
       decisions++;
-      const d = drawOf(u.draw_subject, u.draw_round);
+      const d = drawOf(u.draw_subject, u.draw_round) ?? publishedDraw(u.draw_subject, u.draw_round);
       if (!d) {
         fail(`epoch ${n} ${u.kind} ${String(u.subject).slice(0, 12)}: its slot draw is not published`);
         continue;
       }
+      if (d.epoch > n) fail(`epoch ${n} ${u.kind} ${String(u.subject).slice(0, 12)}: its draw was requested in a later epoch ${d.epoch}`);
+      if (u.draw_round !== firstPublishedRound(u.draw_subject)) fail(`epoch ${n} ${u.kind} ${String(u.subject).slice(0, 12)}: uses round ${u.draw_round}, not the first slot draw of its subject (round ${firstPublishedRound(u.draw_subject)})`);
       const v = new Rng(H(`slot-${u.kind}`, ep.secret, u.subject, d.slot, d.hash)).next();
       if (v !== u.value || (v < u.rate) !== u.outcome) fail(`epoch ${n} ${u.kind} ${String(u.subject).slice(0, 12)}: recomputes to ${v} (${v < u.rate}), Core recorded ${u.value} (${u.outcome})`);
     }

@@ -2478,7 +2478,7 @@ export class Core {
   chainSetBalances(b: { treasury: bigint; reserve: bigint; pool: bigint }) {
     return this.tx(() => {
       const unposted = this.db
-        .query<{ pool_amount: string; rebate_amount: string }, []>(
+        .query<{ pool_amount: string; rebate_amount: string }, [number]>(
           "SELECT e.pool_amount, e.rebate_amount FROM epochs e LEFT JOIN chain_epochs c ON c.n = e.n WHERE e.status = 'closed' AND c.signature IS NULL AND e.n > ?",
         )
         .all(this.retiredThrough());
