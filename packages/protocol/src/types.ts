@@ -151,6 +151,7 @@ export type RejectReason =
   | "no_improvement"
   | "metric_disabled"
   | "noisy_split"
+  | "metric_regression"
   | "env_fail"
   | "insufficient_replays";
 

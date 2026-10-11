@@ -89,6 +89,8 @@ export const API_NOTES: Record<string, string> = {
   "POST /v1/admin/links/recheck": "Recheck verified links now.",
   "POST /v1/admin/launch-fronting": "Edit what launchers front: `{ credits_usd?, initial_buy_bps?, initial_buy_slippage_bps? }` (SPEC 14.12).",
   "POST /v1/admin/hidden": "Edit the hidden list of test launches.",
+  "GET /v1/guard-config": "Every guard limits config version (default max regression, kinds, per-recipe overrides, digest) and the activation time; a candidate is judged with the version in force when it was committed (SPEC 10.1 rule 6).",
+  "POST /v1/admin/guard-config": "Add a guard limits config version: `{ default_max_regression?, kinds?, overrides?: { recipe_id: { metric: fraction | null } | null }, effective_from_ms? }`, never effective before Core's clock (SPEC 10.1 rule 6).",
   "POST /v1/admin/agent-previous": "Link an agent to its earlier token or agent id (devnet v2 relaunches).",
   "POST /v1/admin/models": "Replace the model registry; the stored version wins over the seed (SPEC 17.4).",
   "POST /v1/admin/models/availability": "The runtime reports which providers have a key on its host, never a key (SPEC 17.4).",

@@ -14,6 +14,7 @@ import { journalOf } from "./journal.ts";
 import { jsonlResponse, learningsOf, schemaDoc } from "./learnings.ts";
 import { readDump, recordDump, sharedFindingsOf } from "./shared-findings.ts";
 import { socialOf } from "./social.ts";
+import { guardConfigOf } from "./guard-config.ts";
 import { leaderboardOf } from "./leaderboard.ts";
 import { agentProfile, feedOf } from "./feed.ts";
 import { scoresOf } from "./scores.ts";
@@ -156,6 +157,7 @@ export function buildRoutes(core: Core): Route[] {
     route("GET", "/v1/health", "none", () => ({ ok: true, now: core.now(), epoch: core.currentEpoch().n })),
     // prepayOf first: it applies the admin's launch fronting patch to the prepay block served here
     route("GET", "/v1/config", "none", () => (prepayOf(core), { network: networkConfigJson(core.cfg), admin: core.adminId, runtime: core.runtimeId ?? null })),
+    route("GET", "/v1/guard-config", "none", () => guardConfigOf(core).view()), // SPEC 10.1 rule 6: every version, for verifiers
     route("GET", "/v1/launch-fronting", "none", () => prepayOf(core).frontingView()), // docs/plans/LAUNCH-FRONTING.md
     route("GET", "/v1/stats", "none", (c) => {
       const s = core.stats();
@@ -436,6 +438,7 @@ export function buildRoutes(core: Core): Route[] {
     route("POST", "/v1/admin/agent-fees", "admin", (c) => core.agentFees(c.json())),
     route("POST", "/v1/admin/usage", "runtime", (c) => core.usage(c.json())),
     route("POST", "/v1/admin/launch-fronting", "admin", (c) => prepayOf(core).setFronting(c.json())),
+    route("POST", "/v1/admin/guard-config", "admin", (c) => guardConfigOf(core).set(c.agent!, c.json())), // SPEC 10.1 rule 6
     route("POST", "/v1/admin/hidden", "admin", (c) => core.tx(() => hiddenOf(core).edit(c.agent!, c.json()))),
     route("POST", "/v1/admin/agent-previous", "admin", (c) => core.tx(() => deploymentsOf(core).link(c.agent!, c.json()))),
     route("POST", "/v1/admin/models", "admin", (c) => core.tx(() => modelsOf(core).put(c.agent!, c.json()))), // plan M

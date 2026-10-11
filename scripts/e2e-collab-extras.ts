@@ -8,7 +8,7 @@
 import { cpSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { canonicalizeDiff, H, judge, measuredSplit, patchCommitment, patchHash, signStatement, subCommitment, type AgentKey } from "@units/protocol";
+import { canonicalizeDiff, guardConfigAt, guardRuleFor, H, judge, measuredSplit, patchCommitment, patchHash, signStatement, subCommitment, type AgentKey } from "@units/protocol";
 import { loadRecipe, prepareDeps } from "@units/sandbox";
 import { teamStatement } from "../packages/core/src/collab.ts";
 import type { CoreClient } from "../packages/core/src/client.ts";
@@ -68,6 +68,8 @@ export async function collabExtras(x: ExtrasCtx): Promise<void> {
   const loaded2 = loadRecipe(PORT_RECIPE);
   const deps2 = await prepareDeps(loaded2);
   await ok(admin.post("/v1/admin/recipes", { recipe: loaded2.recipe, recipe_id: loaded2.recipe_id }), "port recipe");
+  // same fixture code, same rlib_bytes growth from the planted speedups: unguarded like the first (scripts/e2e.ts)
+  await ok(admin.post("/v1/admin/guard-config", { overrides: { [loaded2.recipe_id]: { rlib_bytes: null } } }), "port recipe guard override");
   const snap2 = await ok(admin.post("/v1/admin/snapshots", { repo: loaded2.recipe.repo, commit: loaded2.recipe.commit, deps_digest: deps2.digest }), "port snapshot");
   log("reference runner calibrating the second lineage of fixture:b58");
   const ref = new Worker({ core: x.core, key: keys.ref, log: (m) => console.log(`   ref2 ${m}`) });
@@ -113,7 +115,7 @@ export async function collabExtras(x: ExtrasCtx): Promise<void> {
   const leadAfter = BigInt((await ok(admin.get(`/v1/agents/${keys.author2.id}`), "author2")).compute);
   await ok(lead.post(`/v1/candidates/${committed.commit_id}/reveal`, { patch, salt, subs }), "reveal split candidate");
   const fin = await x.candidateFinal(committed.commit_id);
-  log(`split candidate: ${fin.status}${fin.reason ? ` (${fin.reason})` : ""}`);
+  log(`split candidate: ${fin.status}${fin.reason ? ` (${fin.reason}${fin.detail ? `: ${fin.detail}` : ""})` : ""}`);
   check("measured split: the team candidate (two sub-patches on independent functions) is accepted on decode_ir", fin.status === "accepted", fin.verdict?.effect ? `ratio ${fin.verdict.effect.ratio}` : `${fin.reason ?? ""} ${fin.detail ?? ""}`);
   const counted: string[] = fin.verdict?.counted ?? [];
   const reports = (fin.split?.reports ?? []) as any[];
@@ -133,7 +135,8 @@ export async function collabExtras(x: ExtrasCtx): Promise<void> {
   const phiSum = (o?.phi ?? []).reduce((a: number, b: number) => a + b, 0);
   check("measured split: the Shapley values sum to the whole patch's gain", Math.abs(phiSum - gain) < 1e-12, `sum ${phiSum.toFixed(6)} vs gain ${gain.toFixed(6)}; v(lookup) ${o?.v?.[1]?.toFixed(6)}, v(limbs) ${o?.v?.[2]?.toFixed(6)}`);
   const replays = (fin.replays as any[]).filter((r) => r.stage === fin.stage && !r.audit_id && r.status === "revealed" && r.result).map((r) => ({ replay_id: r.replay_id, replayer: r.replayer, seed: r.seed, result: r.result, reference: r.kind === "reference" }));
-  const j = judge(lineage2.recipe, lineage2.calibration, { candidate_id: fin.candidate_id, author: keys.author2.id, kind: "perf", target: "decode_ir" }, replays, { quorum: cfg.quorum, det_tolerance: cfg.det_tolerance, bootstrap_resamples: cfg.bootstrap_resamples });
+  const j = judge(lineage2.recipe, lineage2.calibration, { candidate_id: fin.candidate_id, author: keys.author2.id, kind: "perf", target: "decode_ir" }, replays, { quorum: cfg.quorum, det_tolerance: cfg.det_tolerance, bootstrap_resamples: cfg.bootstrap_resamples,
+    guard_limits: guardRuleFor(guardConfigAt((await ok<any>(admin.get("/v1/guard-config"), "guard config")).versions, fin.committed_at), loaded2.recipe_id) });
   check("measured split: the verdict is identical without the split (recomputed from the whole-patch results alone)", j.outcome === fin.verdict?.outcome && j.digest === fin.verdict?.digest, `${j.outcome} ${j.digest.slice(0, 12)}`);
   const ev = await ok<any[]>(admin.get("/v1/events/log?since=0&limit=20000"), "events");
   const au = ev.filter((e) => e.type === "units.awarded" && e.data.kind === "author" && e.data.ref === fin.gen_id).map((e) => e.data);

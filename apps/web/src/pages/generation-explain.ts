@@ -167,13 +167,19 @@ export function plainSummary(g: any, recipe: any, cal: any, cfg: any): Raw {
       : r.det
         ? badge(`replays agree within ${pct(r.m?.tolerance ?? tol)}`, "", undefined, "Deterministic metrics must match across replays within this tolerance; non-target metrics are not required to improve.")
         : badge("timed, varies run to run", "");
+    // guard limits (SPEC 10.1 rule 6): verdicts after activation record each non-target metric's check
+    const gc = v?.guard_limits?.checks?.find((x: any) => x.metric === r.name);
+    const guardTag =
+      gc && gc.limit !== null && gc.status !== "disabled"
+        ? badge(`guarded, limit ${pct(gc.limit)}: ${gc.status === "passed" ? "passed" : "exceeded"}`, gc.status === "passed" ? "good" : "bad", gc.status === "passed" ? icon.check : icon.x, "A non-target metric may not get worse than this limit in any counted replay.")
+        : null;
     return html`<div class="gx-row${isT ? " t" : ""}">
       <div class="gx-name"><b>${r.name}</b>${info.desc ? html`<span>${info.desc}</span>` : ""}</div>
       <div class="gx-val"><span class="num">${b}</span><span class="gx-arr" aria-label="to">→</span><span class="num">${c}</span><span class="gx-ch ${ch.tone}">${ch.text}</span></div>
       <div class="gx-badges">${
         isT
           ? html`${badge("target", "info")}${accepted ? badge("passed", "good", icon.check, need || undefined) : v ? badge(v.outcome, "bad", icon.x) : ""}`
-          : html`${badge("not judged", "", undefined, "Only the target metric decides the verdict; other metrics are measured and shown for context.")}${agreeTag}`
+          : html`${guardTag ?? badge("not judged", "", undefined, "Only the target metric decides the verdict; other metrics are measured and shown for context.")}${agreeTag}`
       }</div>
     </div>`;
   });
@@ -228,7 +234,7 @@ export function rawMeasurements(g: any, recipe: any, cfg: any, sp: Raw | null, a
           ? html`<li>These counters are deterministic: measuring the same code again gives the same number, so each row is a single dot and the replays line up ${identical ? "exactly" : html`(here they differ by at most ${Number.isInteger(maxAbs) ? maxAbs.toLocaleString("en-US") : maxAbs.toPrecision(3)}${tInfo?.noun ? ` ${tInfo.noun}` : ""}, inside the ${pct(tol)} the network allows)`}.</li>`
           : ""
       }
-      ${t ? html`<li>The target is <b>${t.name}</b>${t.m?.min_effect ? html`: the candidate had to be at least ${pct(t.m.min_effect)} ${t.m.direction === "higher" ? "higher" : "lower"} than the parent in every replay` : ""}. The other metrics are measured for context and do not decide the verdict.</li>` : ""}
+      ${t ? html`<li>The target is <b>${t.name}</b>${t.m?.min_effect ? html`: the candidate had to be at least ${pct(t.m.min_effect)} ${t.m.direction === "higher" ? "higher" : "lower"} than the parent in every replay` : ""}. ${g.verdict?.guard_limits ? "The other metrics are guarded: none may get worse than its limit in any replay." : "The other metrics are measured for context and do not decide the verdict."}</li>` : ""}
       <li>Each dot is one measurement and the tick is the median. On the axis, k, M and G mean thousand, million and billion.</li>
     </ul>
   </div>`;

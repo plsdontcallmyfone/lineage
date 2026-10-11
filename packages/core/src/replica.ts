@@ -4,12 +4,16 @@ import {
   canonicalJson,
   costClass,
   effectValue,
+  guardConfigAt,
+  guardConfigDigest,
+  guardRuleFor,
   judge,
   leafHash,
   merkleRoot,
   proportionalSplit,
   type Calibration,
   type CandidateView,
+  type GuardConfigVersion,
   type Judgement,
   type JudgeConfig,
   type Recipe,
@@ -121,7 +125,7 @@ export function effectiveCalibration(calib: Calibration, gens: Map<string, GenLi
 }
 
 export interface Divergence {
-  kind: "verdict" | "audit" | "challenge" | "units" | "epoch" | "fetch";
+  kind: "verdict" | "audit" | "challenge" | "units" | "epoch" | "fetch" | "guard_config";
   id: string;
   field: string;
   core: unknown;
@@ -187,14 +191,21 @@ export async function replicate(url: string, opts: { fetch?: typeof fetch; log?:
   const net = cfgView.network as Json;
   const judgeCfg: JudgeConfig = { quorum: net.quorum, det_tolerance: net.det_tolerance, bootstrap_resamples: net.bootstrap_resamples };
   const health = await src.get("/v1/health");
+  // guard limits (SPEC 10.1 rule 6): each candidate is judged with the version in force at its commit
+  const guardHistory = (((await src.get("/v1/guard-config", true)) as Json | null)?.versions ?? []) as GuardConfigVersion[];
+  for (const v of guardHistory) {
+    const { digest, ...fields } = v;
+    if (guardConfigDigest(fields) !== digest) report({ kind: "guard_config", id: String(v.version), field: "digest", core: digest, replica: guardConfigDigest(fields) });
+  }
+  const cfgFor = (c: Json, recipe_id: string): JudgeConfig => ({ ...judgeCfg, guard_limits: guardRuleFor(guardConfigAt(guardHistory, c.committed_at), recipe_id) });
 
   // lineages, recipes, calibrations, generations
   const lineageList = (await src.get("/v1/lineages")) as Json[];
-  const lineages = new Map<string, { recipe: Recipe; calibration: Calibration }>();
+  const lineages = new Map<string, { recipe: Recipe; calibration: Calibration; recipe_id: string }>();
   const gens = new Map<string, GenLite>();
   for (const l of lineageList) {
     const v = await src.get(`/v1/lineages/${l.lineage_id}`);
-    lineages.set(v.lineage_id, { recipe: v.recipe, calibration: v.calibration });
+    lineages.set(v.lineage_id, { recipe: v.recipe, calibration: v.calibration, recipe_id: v.recipe_id });
     for (const g of v.generations as Json[]) gens.set(g.gen_id, { ...g, lineage_id: v.lineage_id });
   }
 
@@ -224,7 +235,7 @@ export async function replicate(url: string, opts: { fetch?: typeof fetch; log?:
       const calib = effectiveCalibration(lin.calibration, gens, evalParent);
       const view: CandidateView = { candidate_id: c.candidate_id, author: c.author, kind: c.kind, target: c.target };
       const revealed: RevealedReplay[] = group.map((r) => ({ replay_id: r.replay_id, replayer: r.replayer, seed: r.seed, result: r.result, reference: r.kind === "reference" }));
-      const j = judge(lin.recipe, calib, view, revealed, judgeCfg);
+      const j = judge(lin.recipe, calib, view, revealed, cfgFor(c, lin.recipe_id));
       checkedV++;
       if (j.digest !== c.verdict.digest) report({ kind: "verdict", id: c.candidate_id, field: "digest", core: c.verdict.digest, replica: j.digest });
       else if (j.outcome !== c.verdict.outcome) report({ kind: "verdict", id: c.candidate_id, field: "outcome", core: c.verdict.outcome, replica: j.outcome });
@@ -238,7 +249,7 @@ export async function replicate(url: string, opts: { fetch?: typeof fetch; log?:
           const orig = group.filter((r) => (c.verdict.counted as string[]).includes(r.replay_id));
           const all = [...orig, ...auditGroup].map((r) => ({ replay_id: r.replay_id, replayer: r.replayer, seed: r.seed, result: r.result,
             reference: r.kind === "reference" || r.kind === "audit_reference" }));
-          const ja = judge(lin.recipe, calib, view, all, judgeCfg);
+          const ja = judge(lin.recipe, calib, view, all, cfgFor(c, lin.recipe_id));
           if (ja.digest !== gv.audit.verdict.digest) report({ kind: "audit", id: gv.audit.audit_id, field: "digest", core: gv.audit.verdict.digest, replica: ja.digest });
           auditsChecked++;
         }
@@ -260,7 +271,7 @@ export async function replicate(url: string, opts: { fetch?: typeof fetch; log?:
       const calib = effectiveCalibration(lin.calibration, gens, orig[0]?.eval_parent_gen_id ?? c.eval_parent_gen_id);
       const view: CandidateView = { candidate_id: c.candidate_id, author: c.author, kind: c.kind, target: c.target };
       const jc = judge(lin.recipe, calib, view, [...orig, ...fresh].map((r) => ({ replay_id: r.replay_id, replayer: r.replayer, seed: r.seed, result: r.result,
-        reference: REF_KINDS.has(r.kind) })), judgeCfg);
+        reference: REF_KINDS.has(r.kind) })), cfgFor(c, lin.recipe_id));
       challengesChecked++;
       if (jc.digest !== ch.resolution.combined.digest) report({ kind: "challenge", id: ch.challenge_id, field: "combined.digest", core: ch.resolution.combined.digest, replica: jc.digest });
     }

@@ -14,6 +14,7 @@ import {
   type Calibration,
   type CandidateView,
   type Judgement,
+  type JudgeConfig,
   type Recipe,
   type RevealedReplay,
 } from "./protocol.ts";
@@ -127,6 +128,7 @@ interface CandLite {
   status: string;
   stage: number;
   eval_parent_gen_id: string;
+  committed_at: number;
   finalized_at: number | null;
   is_canary: number;
   gen_id: string | null;
@@ -194,7 +196,7 @@ interface Internals {
   viewOf(c: CandLite): CandidateView;
   asRevealed(r: ReplayLite): RevealedReplay;
   revealedOf(grp: string): RevealedReplay[];
-  judgeCfg(quorum?: number): { quorum: number; det_tolerance: number; bootstrap_resamples: number };
+  judgeCfg(quorum: number, c: CandLite): JudgeConfig;
   draw(subject: string, round: number, count: number, wantRef: boolean, ex: Set<string>, exOps: Set<string>, requireFull: boolean, lineage: unknown):
     { chosen: string[]; reference: string | null; seed: string; epoch: number } | null;
   replayWindowMs(calib: Calibration): number;
@@ -505,7 +507,7 @@ export class Challenges {
       let accepted = false;
       if (c && rp?.result) {
         const { recipe, calib } = this.c.lineageCtx(c, rp.eval_parent_gen_id);
-        accepted = judge(recipe, calib, this.c.viewOf(c), [this.c.asRevealed(rp)], this.c.judgeCfg(1)).outcome === "accepted";
+        accepted = judge(recipe, calib, this.c.viewOf(c), [this.c.asRevealed(rp)], this.c.judgeCfg(1, c)).outcome === "accepted";
       }
       return c?.is_canary && accepted
         ? this.finish(r, "failed", "the replay accepted a canary", { ...base, recomputed: "accepted_canary" })
@@ -564,7 +566,7 @@ export class Challenges {
     const grp = `chal:${r.challenge_id}`;
     const fresh = this.c.revealedOf(grp).map((x) => ({ ...x, reference: this.c.replayRow(x.replay_id)?.kind === "challenge_reference" }));
     const freshIds = new Set(fresh.map((x) => x.replay_id));
-    const j = judge(recipe, calib, this.c.viewOf(c), [...orig.map((x) => this.c.asRevealed(x)), ...fresh], this.c.judgeCfg());
+    const j = judge(recipe, calib, this.c.viewOf(c), [...orig.map((x) => this.c.asRevealed(x)), ...fresh], this.c.judgeCfg(this.c.cfg.quorum, c));
     const j0 = JSON.parse(c.verdict!) as Judgement;
     const doc = {
       v: 1, kind: "verdict", candidate_id: c.candidate_id, original: { digest: j0.digest, outcome: j0.outcome, reason: j0.reason ?? null, counted: j0.counted },
@@ -578,7 +580,11 @@ export class Challenges {
     }
     const target = JSON.parse(c.target) as string | string[];
     const metric = recipe.metrics.find((m) => m.name === (Array.isArray(target) ? target[0] : target));
-    const noisy = (x: Judgement) => x.outcome === "rejected" && (x.reason === "noisy_split" || (x.reason === "no_improvement" && !metric?.deterministic));
+    // a guard limit exceeded only on noisy metrics is a noisy outcome too (SPEC 10.1 rule 6)
+    const noisyGuard = (x: Judgement) =>
+      x.reason === "metric_regression" &&
+      (x.guard_limits?.checks ?? []).filter((g) => g.status === "exceeded" || g.status === "unmeasured").every((g) => !recipe.metrics.find((m) => m.name === g.metric)?.deterministic);
+    const noisy = (x: Judgement) => x.outcome === "rejected" && (x.reason === "noisy_split" || (x.reason === "no_improvement" && !metric?.deterministic) || noisyGuard(x));
     const wrongOriginal = j0.counted.filter((id) => j.minority.includes(id));
     const flipped = j0.outcome !== j.outcome && (j0.outcome === "accepted" || j0.outcome === "rejected") && !noisy(j0) && !noisy(j);
     this.settleFresh(grp, j, calib);
@@ -610,7 +616,7 @@ export class Challenges {
     const grp = `chal:${r.challenge_id}`;
     const fresh = this.c.revealedOf(grp).map((x) => ({ ...x, reference: this.c.replayRow(x.replay_id)?.kind === "challenge_reference" }));
     const context = this.slashedContext(rp);
-    const j = judge(recipe, calib, this.c.viewOf(c), [...context.map((x) => this.c.asRevealed(x)), ...fresh], this.c.judgeCfg());
+    const j = judge(recipe, calib, this.c.viewOf(c), [...context.map((x) => this.c.asRevealed(x)), ...fresh], this.c.judgeCfg(this.c.cfg.quorum, c));
     const doc = {
       v: 1, kind: "slash", slash: { id: s.id, slash_id: slashIdOf(s), agent: s.agent_id, reason: s.reason, ref: s.ref, amount: s.amount, epoch: s.epoch },
       original_group: context.map((x) => x.replay_id), fresh: fresh.map((x) => x.replay_id),

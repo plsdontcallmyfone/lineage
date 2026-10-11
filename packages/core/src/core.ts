@@ -47,12 +47,14 @@ import {
   type CandidateView,
   type Eligible,
   type Judgement,
+  type JudgeConfig,
   type Recipe,
   type ReplayResult,
   type RevealedReplay,
 } from "./protocol.ts";
 import { Collab } from "./collab.ts";
 import { Hardening } from "./hardening.ts";
+import { guardConfigOf } from "./guard-config.ts";
 import { Identity } from "./identity.ts";
 import { Records } from "./records.ts";
 import { Series } from "./series.ts";
@@ -439,6 +441,7 @@ export class Core {
     this.hosted = new Hosted(this);
     this.split = new Split(this);
     this.ports = new Ports(this);
+    guardConfigOf(this); // guard limits table + version 1 seed (SPEC 10.1 rule 6)
     this.tx(() => {
       if (!this.db.query("SELECT n FROM epochs LIMIT 1").get()) this.openEpoch(opts.firstEpoch ?? 0, this.now());
     });
@@ -574,8 +577,10 @@ export class Core {
       .query<{ c: number }, [string]>("SELECT COUNT(*) AS c FROM replays WHERE replayer = ? AND status IN ('assigned','committed')")
       .get(id)!.c;
   }
-  private judgeCfg(quorum = this.cfg.quorum) {
-    return { quorum, det_tolerance: this.cfg.det_tolerance, bootstrap_resamples: this.cfg.bootstrap_resamples };
+  /** Judge config for candidate `c`: its guard rule is the version in force at its commit (SPEC 10.1 rule 6). */
+  private judgeCfg(quorum: number, c: CandRow): JudgeConfig {
+    const guard_limits = guardConfigOf(this).ruleFor(c.committed_at, this.lineageRow(c.lineage_id)!.recipe_id);
+    return { quorum, det_tolerance: this.cfg.det_tolerance, bootstrap_resamples: this.cfg.bootstrap_resamples, guard_limits };
   }
   private replayWindowMs(calib: Calibration): number {
     return Math.max(this.cfg.replay_window_min_s, this.cfg.replay_window_factor * calib.median_eval_seconds) * 1000;
@@ -1817,7 +1822,7 @@ export class Core {
     const { recipe, calib } = this.lineageCtx(c);
     const grp = this.candGroup(c);
     const replays = this.revealedOf(grp);
-    const j = judge(recipe, calib, this.viewOf(c), replays, this.judgeCfg());
+    const j = judge(recipe, calib, this.viewOf(c), replays, this.judgeCfg(this.cfg.quorum, c));
     this.emit("candidate.judged", { candidate_id: c.candidate_id, stage: c.stage, outcome: j.outcome, reason: j.reason ?? null });
     if (j.outcome === "pending") {
       const need = this.cfg.quorum - j.counted.length;
@@ -2052,7 +2057,7 @@ export class Core {
 
   private checkCanaryReplay(c: CandRow, r: ReplayRow) {
     const { recipe, calib } = this.lineageCtx(c);
-    const j = judge(recipe, calib, this.viewOf(c), [this.asRevealed(r)], this.judgeCfg(1));
+    const j = judge(recipe, calib, this.viewOf(c), [this.asRevealed(r)], this.judgeCfg(1, c));
     if (j.outcome === "accepted") {
       this.db.query("UPDATE replays SET role = 'canary_fail' WHERE replay_id = ?").run(r.replay_id);
       this.slash(r.replayer, this.cfg.canary_slash_bps, "canary", r.replay_id);
@@ -2071,7 +2076,7 @@ export class Core {
     const { recipe, calib } = this.lineageCtx(c);
     const replays = this.revealedOf(this.candGroup(c));
     // its public status is what the full rule says, except it can never become a generation
-    const j = judge(recipe, calib, this.viewOf(c), replays, this.judgeCfg());
+    const j = judge(recipe, calib, this.viewOf(c), replays, this.judgeCfg(this.cfg.quorum, c));
     let reason: CandidateReason;
     if (j.outcome === "accepted") reason = "canary";
     else if (j.outcome === "rejected") reason = j.reason!;
@@ -2100,7 +2105,7 @@ export class Core {
     const origIds = new Set(original.map((r) => r.replay_id));
     const auditReplays = this.revealedOf(`audit:${a.audit_id}`);
     const auditIds = new Set(auditReplays.map((r) => r.replay_id));
-    const j = judge(recipe, calib, this.viewOf(c), [...original.map((r) => this.asRevealed(r)), ...auditReplays], this.judgeCfg());
+    const j = judge(recipe, calib, this.viewOf(c), [...original.map((r) => this.asRevealed(r)), ...auditReplays], this.judgeCfg(this.cfg.quorum, c));
     const auditCounted = j.counted.filter((id) => auditIds.has(id)).length + j.minority.filter((id) => auditIds.has(id)).length;
     const v = auditOutcome(recipe, this.viewOf(c), j, origIds, auditReplays, auditCounted);
     const status = v.status;
@@ -3175,6 +3180,13 @@ export function auditOutcome(
     if (metric?.deterministic)
       return { status: "weak", detail: `fresh-seed ${metricName} does not reach min_effect: ${j.detail ?? ""}; recorded, not reverted in M1`, settled: true };
     return { status: "inconclusive", detail: `noisy ${metricName} on a fresh seed: ${j.reason} (${j.detail ?? ""}); not a contradiction`, settled: true };
+  }
+  if (j.reason === "metric_regression") {
+    // a guard limit exceeded on the fresh seed (SPEC 10.1 rule 6): like a target miss, weak on a deterministic metric, inconclusive on a noisy one
+    const failing = (j.guard_limits?.checks ?? []).filter((g) => g.status === "exceeded" || g.status === "unmeasured");
+    if (failing.some((g) => recipe.metrics.find((m) => m.name === g.metric)?.deterministic))
+      return { status: "weak", detail: `fresh-seed guard limit exceeded: ${j.detail ?? ""}; recorded, not reverted in M1`, settled: true };
+    return { status: "inconclusive", detail: `noisy guard limit on a fresh seed: ${j.detail ?? ""}; not a contradiction`, settled: true };
   }
   return { status: "inconclusive", detail: `audit judgement rejected ${j.reason}: ${j.detail ?? ""}`, settled: true };
 }

@@ -97,6 +97,10 @@ export interface NetworkConfig {
   upstream_bonus: number;
   /** Prepaid credits at launch (plan C): minimum and default deposit, the $UNITS rate (TEST on devnet). Optional; absent = no minimum. */
   prepay?: PrepayConfig | null;
+  /** Guard limits (SPEC 10.1 rule 6): default max regression of a non-target metric, a fraction. Optional, default 0.01; seeds guard config version 1. */
+  guard_max_regression: number;
+  /** When guard config version 1 takes effect (ms); Core seeds it at max(this, its clock) on first start. Optional; absent or null = guards off until an admin sets a version. */
+  guard_activation_ms: number | null;
 }
 
 const AMOUNT_KEYS = ["register_burn", "min_bond", "bond_cap", "rebate_per_class", "sleep_threshold", "wake_threshold"] as const;
@@ -195,6 +199,12 @@ export function parseNetworkConfig(raw: Record<string, unknown>): NetworkConfig 
   posInt("upstream_bonus", 2, 0);
   range("canary_inject_delay_s", [30, 600]);
   range("canary_reveal_delay_s", [5, 120]);
+  const gmr = raw.guard_max_regression ?? 0.01;
+  if (typeof gmr !== "number" || !Number.isFinite(gmr) || gmr < 0 || gmr > 1) throw new Error("network config: guard_max_regression must be a fraction from 0 to 1");
+  out.guard_max_regression = gmr;
+  const gam = raw.guard_activation_ms ?? null;
+  if (gam !== null && (typeof gam !== "number" || !Number.isSafeInteger(gam) || gam < 0)) throw new Error("network config: guard_activation_ms must be a non-negative integer (ms) or null");
+  out.guard_activation_ms = gam;
   out.prepay = raw.prepay === undefined || raw.prepay === null ? null : parsePrepayConfig(raw.prepay);
   const cfg = out as unknown as NetworkConfig;
   if (cfg.agent_compute_bps + cfg.protocol_bps > 10_000) throw new Error("network config: agent_compute_bps + protocol_bps exceeds 10000");

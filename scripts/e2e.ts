@@ -145,6 +145,11 @@ async function main() {
   const deps = await prepareDeps(loaded);
   const rec = await ok(admin.post("/v1/admin/recipes", { recipe: loaded.recipe, recipe_id: loaded.recipe_id }), "recipe");
   check("recipe id recomputed by Core matches the worker's", (rec.recipe_id ?? loaded.recipe_id) === loaded.recipe_id);
+  // guard limits (SPEC 10.1 rule 6): the planted fixture speedups add lookup tables and code, growing
+  // rlib_bytes far past the 1% default (series A +43%, the split candidate +11%); this run checks
+  // other mechanisms, so rlib_bytes is unguarded here the way an admin would for such a recipe
+  const gv = await ok<any>(admin.post("/v1/admin/guard-config", { overrides: { [loaded.recipe_id]: { rlib_bytes: null } } }), "guard override");
+  check("guard limits: an admin override adds a public guard config version", gv.version >= 2 && (await ok<any>(admin.get("/v1/guard-config"), "guard config")).versions.some((v: any) => v.digest === gv.digest));
   const snap = await ok(admin.post("/v1/admin/snapshots", { repo: loaded.recipe.repo, commit: loaded.recipe.commit, deps_digest: deps.digest }), "snapshot");
 
   const fund = (k: AgentKey, amount: bigint) => ok(admin.post("/v1/admin/faucet", { agent: k.id, amount: amount.toString() }), "faucet");

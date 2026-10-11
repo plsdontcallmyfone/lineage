@@ -18,6 +18,7 @@ import {
   type SplitReport,
 } from "../src/protocol.ts";
 import { ACC } from "../src/ledger.ts";
+import { guardConfigOf } from "../src/guard-config.ts";
 import {
   allAgents,
   assignmentsFor,
@@ -137,7 +138,8 @@ describe("measured split (SPEC 12.6)", () => {
     expect(fin.split.outcome.phi[0] + fin.split.outcome.phi[1]).toBeCloseTo(0.2, 12);
     // the verdict is the same function of the results alone (the split is not an input)
     const replays = fin.replays.filter((r: any) => r.status === "revealed").map((r: any) => ({ replay_id: r.replay_id, replayer: r.replayer, seed: r.seed, result: r.result }));
-    const j = judge(RECIPE, CALIB, { candidate_id: c.candidate_id, author: lead.id, kind: "perf", target: "ir" }, replays, { quorum: e.cfg.quorum, det_tolerance: e.cfg.det_tolerance, bootstrap_resamples: e.cfg.bootstrap_resamples });
+    const j = judge(RECIPE, CALIB, { candidate_id: c.candidate_id, author: lead.id, kind: "perf", target: "ir" }, replays, { quorum: e.cfg.quorum, det_tolerance: e.cfg.det_tolerance, bootstrap_resamples: e.cfg.bootstrap_resamples,
+      guard_limits: guardConfigOf(e.core).ruleFor(fin.committed_at, (e.core as any).lineageRow(fin.lineage_id).recipe_id) });
     expect(j.digest).toBe(fin.verdict.digest);
     // author units by measured shares, exactly
     const u = unitsOf(e, fin.gen_id);

@@ -13,7 +13,7 @@
 // Usage: bun scripts/verify.ts --core http://127.0.0.1:9660 [--candidate <id>] [--lineage <id>]
 //          [--no-draws] [--epoch <n>] [--rpc <url> | --chain]
 //        (no candidate: verifies every final candidate, or every one in the lineage)
-import { assignmentSeed, assignReplayers, H, judge, measuredSplit, Rng, type Calibration, type RevealedReplay } from "@units/protocol";
+import { assignmentSeed, assignReplayers, guardConfigAt, guardConfigDigest, guardRuleFor, H, judge, measuredSplit, Rng, type Calibration, type GuardConfigVersion, type RevealedReplay } from "@units/protocol";
 import { blockAt, blocksBetween, Rpc } from "@units/chain";
 import { devnetRpcUrl } from "../packages/chain/src/endpoint.ts";
 import { politeFetch } from "../packages/core/src/polite.ts";
@@ -30,6 +30,21 @@ const get = async (p: string) => {
 
 const cfg = (await get("/v1/config")).network;
 const judgeCfg = { quorum: cfg.quorum, det_tolerance: cfg.det_tolerance, bootstrap_resamples: cfg.bootstrap_resamples };
+
+// Guard limits (SPEC 10.1 rule 6): every published config version, each digest recomputed here. A
+// candidate is judged with the version in force at its committed_at (rule version 2), or with no
+// guards when it was committed before the first version (rule version 1). A Core without the route
+// has no versions: every verdict is rule version 1.
+const guardHistory: GuardConfigVersion[] = await polite(CORE + "/v1/guard-config").then(async (r) => (r.ok ? ((await r.json()) as any).versions : []));
+let guardFails = 0;
+for (const v of guardHistory) {
+  const { digest, ...fields } = v;
+  if (guardConfigDigest(fields) !== digest) {
+    guardFails++;
+    console.log(`FAIL guard config version ${v.version}: digest does not recompute`);
+  }
+}
+const ruleCount = { 1: 0, 2: 0 };
 
 /** Stable set in force at a generation: the lineage calibration plus tests fixed by fix generations on its path. */
 function effectiveCalibration(lineage: any, gen: string): Calibration {
@@ -52,9 +67,11 @@ async function verifyOne(id: string): Promise<{ id: string; ok: boolean; detail:
   const replays: RevealedReplay[] = c.replays
     .filter((r: any) => r.stage === c.stage && !r.audit_id && r.status === "revealed" && r.result)
     .map((r: any) => ({ replay_id: r.replay_id, replayer: r.replayer, seed: r.seed, result: r.result, reference: r.kind === "reference" }));
-  const j = judge(lineage.recipe, calib, { candidate_id: c.candidate_id, author: c.author, kind: c.kind, target: c.target }, replays, judgeCfg);
+  const guard = guardRuleFor(guardConfigAt(guardHistory, c.committed_at), lineage.recipe_id);
+  const j = judge(lineage.recipe, calib, { candidate_id: c.candidate_id, author: c.author, kind: c.kind, target: c.target }, replays, { ...judgeCfg, guard_limits: guard });
   const recorded = c.verdict;
-  let same = j.digest === recorded.digest && j.outcome === recorded.outcome;
+  ruleCount[guard ? 2 : 1]++;
+  let same = j.digest === recorded.digest && j.outcome === recorded.outcome && (recorded.rule_version ?? 1) === (guard ? 2 : 1);
   // measured split (SPEC 12.6): the shares recomputed from the counted replays' revealed coalition reports
   let splitNote = "";
   if (same && c.split?.outcome) {
@@ -72,8 +89,8 @@ async function verifyOne(id: string): Promise<{ id: string; ok: boolean; detail:
     detail: splitNote.includes("MISMATCH")
       ? `${j.outcome} digest matches${splitNote}`
       : same
-      ? `${j.outcome}${j.reason ? ` (${j.reason})` : ""}, ${replays.length} replays, digest ${j.digest.slice(0, 12)} matches${splitNote}`
-      : `MISMATCH: recomputed ${j.outcome} ${j.digest.slice(0, 12)}, Core recorded ${recorded.outcome} ${String(recorded.digest).slice(0, 12)}`,
+      ? `${j.outcome}${j.reason ? ` (${j.reason})` : ""}, rule v${guard ? `2 (guard config ${guard.config_version})` : "1"}, ${replays.length} replays, digest ${j.digest.slice(0, 12)} matches${splitNote}`
+      : `MISMATCH: recomputed ${j.outcome} ${j.digest.slice(0, 12)} rule v${guard ? 2 : 1}, Core recorded ${recorded.outcome} ${String(recorded.digest).slice(0, 12)} rule v${recorded.rule_version ?? 1}`,
   };
 }
 
@@ -86,7 +103,8 @@ for (const id of ids) {
   if (!r.ok) bad++;
   console.log(`${r.ok ? "ok  " : "FAIL"} ${id.slice(0, 12)} ${r.detail}`);
 }
-console.log(`${ids.length - bad}/${ids.length} verdicts independently recomputed`);
+console.log(`${ids.length - bad}/${ids.length} verdicts independently recomputed (rule v1: ${ruleCount[1]}, rule v2 with guard limits: ${ruleCount[2]}; ${guardHistory.length} guard config versions${guardHistory[0] ? `, active since ${new Date(guardHistory[0].effective_from_ms).toISOString()}` : ""})`);
+bad += guardFails;
 
 // ------------------------------------------------------------------------------------------- draws
 /** Allowed difference between Core's clock and the cluster's block times when checking a slot is not older than its request. */

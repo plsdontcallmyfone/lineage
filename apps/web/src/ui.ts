@@ -65,6 +65,7 @@ export const REASONS: Record<string, string> = {
   no_improvement: "no improvement",
   metric_disabled: "metric disabled",
   noisy_split: "noisy split",
+  metric_regression: "a guarded metric got worse",
   env_fail: "replay environment failed",
   insufficient_replays: "insufficient replays",
   duplicate: "duplicate",

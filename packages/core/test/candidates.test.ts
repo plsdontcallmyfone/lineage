@@ -167,12 +167,14 @@ describe("rejections from the judge", () => {
     // the recipe asks for 15 rounds of ns, and the judge requires that many samples per side
     const fast = { base: [100, 101, 99, 100, 102, 98, 100, 101, 99, 100, 100, 101, 99, 100, 102], cand: [80, 81, 79, 80, 82, 78, 80, 81, 79, 80, 80, 81, 79, 80, 82], deterministic: false };
     const flat = { base: [100, 101, 99, 100, 102, 98, 100, 101, 99, 100, 100, 101, 99, 100, 102], cand: [100, 101, 99, 100, 102, 98, 100, 101, 99, 100, 100, 101, 99, 100, 102], deterministic: false };
+    // ir is enabled too, so an honest replay measures it (guard limits, SPEC 10.1 rule 6): unchanged here
+    const IR_SAME = { base: [1000], cand: [1000], deterministic: true };
     const ok = await submit(e, author, diff("n1"), { target: "ns" });
-    await runReplays(e, ok.candidate_id, honest(result({ metrics: { ns: fast } })));
+    await runReplays(e, ok.candidate_id, honest(result({ metrics: { ir: IR_SAME, ns: fast } })));
     expect((await candidate(e, ok.candidate_id)).status).toBe("accepted");
     const split = await submit(e, author, diff("n2", "src/n2.rs"), { target: "ns" });
     let n = 0;
-    await runReplays(e, split.candidate_id, () => result({ metrics: { ns: n++ === 0 ? fast : flat } }));
+    await runReplays(e, split.candidate_id, () => result({ metrics: { ir: IR_SAME, ns: n++ === 0 ? fast : flat } }));
     const v = await candidate(e, split.candidate_id);
     expect(v.reason).toBe("noisy_split");
   });

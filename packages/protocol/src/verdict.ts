@@ -1,5 +1,6 @@
 import { H, hashJson } from "./hash.ts";
 import { bootstrapRatio, median, orientedRatio, relDiff } from "./stats.ts";
+import { GUARD_RULE_VERSION, guardChangeText, limitFor, type GuardCheck, type GuardRule, type GuardVerdict } from "./guard-limits.ts";
 import type {
   Calibration,
   CandidateView,
@@ -18,6 +19,12 @@ export interface JudgeConfig {
   quorum: number;
   det_tolerance: number;
   bootstrap_resamples: number;
+  /**
+   * Guard limits on non-target metrics (SPEC 10.1 rule 6). Absent or null: rule version 1 (the
+   * target metric alone decides; candidates committed before the guard activation). Present: rule
+   * version 2, and the verdict records the config version and digest it was judged with.
+   */
+  guard_limits?: GuardRule | null;
 }
 
 export const DEFAULT_JUDGE: JudgeConfig = { quorum: 2, det_tolerance: 0.001, bootstrap_resamples: 10_000 };
@@ -35,6 +42,10 @@ export interface Judgement {
   minority: Hex[];
   /** Deterministic fields on which counted replays disagreed. */
   disputed_fields: string[];
+  /** 2 when judged with guard limits; absent on rule version 1 verdicts (their digests are unchanged). */
+  rule_version?: number;
+  /** Rule version 2 only: the guard config judged with and, once the metrics were judged, every non-target metric's check. */
+  guard_limits?: GuardVerdict;
   digest: Hex;
 }
 
@@ -140,8 +151,12 @@ export function judge(
         outcome: finiteOnly(j),
       }),
     );
+  const rule = cfg.guard_limits ?? null;
+  let guardChecks: GuardCheck[] = [];
   const finish = (j: Omit<Judgement, "digest" | "env_failed">): Judgement => {
-    const full = { ...j, env_failed };
+    const full: Omit<Judgement, "digest"> = rule
+      ? { ...j, env_failed, rule_version: GUARD_RULE_VERSION, guard_limits: { config_version: rule.config_version, config_digest: rule.config_digest, checks: guardChecks } }
+      : { ...j, env_failed };
     return { ...full, digest: digestOf(full) };
   };
 
@@ -232,6 +247,11 @@ export function judge(
     if (targets.length === 0 || invalid.length) return reject("fix_target_not_fixed", `not known failures: ${invalid.join(", ") || "(none given)"}`);
     const still = targets.filter((t) => !candPass.has(t));
     if (still.length) return reject("fix_target_not_fixed", `still failing: ${still.join(", ")}`);
+    if (rule && rule.kinds.includes("fix")) {
+      guardChecks = guardMetrics(rule, recipe, calib, null, counted, cfg);
+      const over = guardExceeded(guardChecks);
+      if (over) return reject("metric_regression", over);
+    }
     return finish({ outcome: "accepted", effect: { fixed: sortedUniq(targets) }, counted: countedIds, minority, disputed_fields });
   }
 
@@ -274,8 +294,74 @@ export function judge(
     per_replay: per,
   };
   const passes = per.filter((p) => p.pass).length;
+  if (rule && rule.kinds.includes(cand.kind)) {
+    guardChecks = guardMetrics(rule, recipe, calib, metric.name, counted, cfg);
+    const over = passes === per.length ? guardExceeded(guardChecks) : null;
+    if (over) return finish({ outcome: "rejected", reason: "metric_regression", detail: over, effect, counted: countedIds, minority, disputed_fields });
+  }
   if (passes === per.length) return finish({ outcome: "accepted", effect, counted: countedIds, minority, disputed_fields });
   if (passes === 0 || metric.deterministic)
     return finish({ outcome: "rejected", reason: "no_improvement", detail: `worst ratio ${effect.ratio.toFixed(4)} vs required ${threshold.toFixed(4)}`, effect, counted: countedIds, minority, disputed_fields });
   return finish({ outcome: "rejected", reason: "noisy_split", detail: `${passes} of ${per.length} replays show the improvement`, effect, counted: countedIds, minority, disputed_fields });
 }
+
+/**
+ * Guard checks on every metric other than the target (SPEC 10.1 rule 6), with the target's own
+ * aggregation: each counted replay is judged on its own and the worst replay decides. A
+ * deterministic metric exceeds its limit when a replay's ratio of medians (oriented so that above 1
+ * is worse) is above 1 + limit; a noisy metric when a replay's whole 95% bootstrap interval is above
+ * it (ci_low > 1 + limit, the mirror of the target's ci_high < 1 - min_effect, same resampling seed).
+ * A metric calibration disabled is not measured and so not guarded; a guarded metric a replay has no
+ * valid samples for is `unmeasured`, which rejects like an exceeded limit.
+ */
+function guardMetrics(rule: GuardRule, recipe: Recipe, calib: Calibration, target: string | null, counted: RevealedReplay[], cfg: JudgeConfig): GuardCheck[] {
+  const out: GuardCheck[] = [];
+  for (const m of recipe.metrics) {
+    if (m.name === target) continue;
+    const limit = limitFor(rule, m.name);
+    if (limit === null) {
+      out.push({ metric: m.name, limit: null, status: "unguarded" });
+      continue;
+    }
+    if (calib.metrics[m.name] && !calib.metrics[m.name]!.enabled) {
+      out.push({ metric: m.name, limit, status: "disabled" });
+      continue;
+    }
+    let worst = -Infinity;
+    let worstId: Hex | undefined;
+    let missing: Hex | null = null;
+    for (const r of counted) {
+      const s = r.result.metrics[m.name];
+      const minSamples = m.deterministic ? 1 : Math.max(5, m.rounds ?? 5);
+      if (!s || s.base.length < minSamples || s.cand.length < minSamples || ![...s.base, ...s.cand].every((v) => typeof v === "number" && Number.isFinite(v) && v > 0)) {
+        missing = r.replay_id;
+        break;
+      }
+      const tested = m.deterministic
+        ? orientedRatio(median(s.base), median(s.cand), m.direction)
+        : bootstrapRatio(s.base, s.cand, m.direction, H("bootstrap", r.seed, m.name), cfg.bootstrap_resamples).ci_low;
+      if (tested > worst) {
+        worst = tested;
+        worstId = r.replay_id;
+      }
+    }
+    if (missing !== null) out.push({ metric: m.name, limit, status: "unmeasured", replay_id: missing });
+    else out.push({ metric: m.name, limit, status: worst > 1 + limit ? "exceeded" : "passed", worst_ratio: worst, replay_id: worstId });
+  }
+  return out;
+}
+
+/** The rejection detail for the first failing guard, or null when every guarded metric is within its limit. */
+function guardExceeded(checks: GuardCheck[]): string | null {
+  const bad = checks.filter((c) => c.status === "exceeded" || c.status === "unmeasured");
+  if (!bad.length) return null;
+  return bad
+    .map((c) =>
+      c.status === "unmeasured"
+        ? `${c.metric} has no valid samples in replay ${c.replay_id} (guarded, limit ${pct(c.limit!)})`
+        : `${c.metric} worsened ${guardChangeText(c.worst_ratio!)} in replay ${c.replay_id} (guarded, limit ${pct(c.limit!)})`,
+    )
+    .join("; ");
+}
+
+const pct = (x: number) => `${+(x * 100).toFixed(4)}%`;

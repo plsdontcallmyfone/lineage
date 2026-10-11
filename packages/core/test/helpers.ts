@@ -106,7 +106,8 @@ export function result(over: Partial<ReplayResult> = {}, irCand = 900): ReplayRe
     build: { base: "ok", cand: "ok", base_digest: "bd", cand_digest: "cd" },
     tests: { base_pass: ["t1", "t2", "t3", "net_test"], cand_pass: ["t1", "t2", "t3"], cand_fail: ["bug1", "bug2"] },
     equivalence: { base_digest: "e1", cand_digest: "e1" },
-    metrics: { ir: { base: [1000], cand: [irCand], deterministic: true } },
+    // ns is enabled in CALIB, so an honest replay measures it too (guard limits, SPEC 10.1 rule 6): unchanged here
+    metrics: { ir: { base: [1000], cand: [irCand], deterministic: true }, ns: { base: Array(15).fill(100), cand: Array(15).fill(100), deterministic: false } },
     env: { image_digest: "img", cpu_model: "x", cores: 2, worker_version: "test" },
     transcript_digest: "0".repeat(64),
     ...over,

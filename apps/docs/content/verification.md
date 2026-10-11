@@ -56,11 +56,24 @@ A candidate becomes a generation only if:
 2. at least `quorum` valid replays from distinct, eligible verifiers were revealed;
 3. every counted replay reports that the patch applies, both builds succeed, the base passes exactly the stable set, the candidate passes all of it (plus its targets for a fix), and equivalence digests match where defined;
 4. for speed and size changes, every counted replay passes the metric rule on its own, and deterministic numbers agree within tolerance;
-5. where the recipe demands reproducible builds, artifact digests agree.
+5. where the recipe demands reproducible builds, artifact digests agree;
+6. for speed and size changes, no other metric of the recipe got worse than its **guard limit** in any counted replay.
+
+### Guard limits on the other metrics
+
+Since 2026-10-11 the target metric is not the only one that counts. Every other metric of the recipe is guarded: it may get worse by at most its limit, 1% by default, or the candidate is rejected with `metric_regression` and a reason that names the metric and the change, in the form `<metric> worsened +<change> in replay <id> (guarded, limit <limit>)`. Improvements are always fine.
+
+- **Judged like the target.** Each counted replay is checked on its own. A counter (instructions, bytes, compute units) fails when its parent-to-candidate ratio is worse than 1 plus the limit. A timed metric fails only when its whole 95% confidence interval is beyond the limit, so run-to-run noise alone does not reject.
+- **Not measured, not guarded.** A metric that calibration turned off is ignored. A guarded metric a replay has no valid samples for rejects.
+- **Where the limits live.** Recipes are frozen (their bytes make the unit's id), so the limits are a separate, versioned config: a network default and per-recipe overrides keyed by recipe id. An override can loosen or tighten one metric, or mark it unguarded (`null`), for example a noisy timing. The admin adds versions; every version is public at `GET /v1/guard-config` with its digest.
+- **No retroactive changes.** A candidate is judged with the version in force when it was committed. Candidates committed before guards were activated keep the original rule (rule version 1), and their verdicts are unchanged. Every new verdict records `rule_version` 2 and the guard config version and digest it used, plus each metric's check, so `scripts/verify.ts` and replicas recompute old and new verdicts alike.
+- **Fix candidates** target tests, not a metric, and are not guarded unless the config lists `fix`.
+
+The generation page shows each non-target metric as `guarded, limit 1%: passed` (or `exceeded`).
 
 The verdict is a pure function of the revealed replays and the recipe. Recompute every final verdict with `bun scripts/verify.ts --core <url>`; rerun one candidate in your own sandbox with `bun scripts/replay.ts --core <url> --candidate <id>`.
 
-Rejection reasons from the rule: `guard`, `apply_conflict`, `build_fail`, `tests_fail`, `fix_target_not_fixed`, `equivalence_changed`, `no_improvement`, `metric_disabled`, `noisy_split`, `env_fail`, `insufficient_replays`. Added by Core: `duplicate`, `stale_conflict`, `stale`, `unresolved_dispute`, `canary`, `expired`, `dependency_failed`.
+Rejection reasons from the rule: `guard`, `apply_conflict`, `build_fail`, `tests_fail`, `fix_target_not_fixed`, `equivalence_changed`, `no_improvement`, `metric_regression`, `metric_disabled`, `noisy_split`, `env_fail`, `insufficient_replays`. Added by Core: `duplicate`, `stale_conflict`, `stale`, `unresolved_dispute`, `canary`, `expired`, `dependency_failed`.
 
 ## How cheating is caught
 
