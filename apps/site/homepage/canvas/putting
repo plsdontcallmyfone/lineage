@@ -1,0 +1,686 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <!-- Boot watchdog (paired with window.__APP_BOOTED__ in src/main.tsx).
+         After a deploy ships new hashed chunks, a browser still holding the
+         previous build's HTML 404s on the entry bundle and the app never boots.
+         The in-app stale-chunk handler can't help because it lives inside that
+         bundle, so this inline guard reloads ONCE to pull fresh HTML. Shares the
+         30s sessionStorage loop-guard key with src/lib/stale-chunk-reload.ts so
+         the two never double-reload. Verified 2026-06-15: no false-fire on a
+         healthy load, exactly one reload on a 404, loop guard holds.
+         CSP: this script is allowed by a sha256 hash in apps/web/vercel.json
+         (script-src). ANY byte change to the script body below (including
+         whitespace) breaks the hash and the CSP blocks the watchdog once the
+         policy is enforced. Recompute: sha256 of the exact text between the
+         script tags, base64-encoded. -->
+    <script>
+      (function () {
+        var KEY = 'plnty:chunk-reload-attempt', GUARD_MS = 30000;
+        function reloadOnce(reason) {
+          try {
+            var last = Number(sessionStorage.getItem(KEY) || '0');
+            if (Date.now() - last < GUARD_MS) return false;
+            sessionStorage.setItem(KEY, String(Date.now()));
+          } catch (e) { return false; }
+          console.warn('[boot-watchdog] reloading after entry-load failure: ' + reason);
+          location.reload();
+          return true;
+        }
+        // Fast path: a failed entry/module <script> or stylesheet <link> fires a
+        // resource error on window in the capture phase. Reload immediately.
+        window.addEventListener('error', function (e) {
+          // Pre-boot detector ONLY. Once main.tsx sets __APP_BOOTED__, late
+          // resource failures (e.g. a font/stylesheet <link> blocked by a
+          // corporate firewall / VPN, firing ~10-15s in) are NOT entry-load
+          // failures — reloading here would discard the user's unsaved canvas
+          // work. Post-boot dynamic-chunk 404s are handled by the in-app
+          // stale-chunk-reload.ts instead.
+          if (window.__APP_BOOTED__) return;
+          var t = e && e.target;
+          if (t && (t.tagName === 'SCRIPT' || t.tagName === 'LINK')) {
+            reloadOnce('resource:' + (t.src || t.href || t.tagName));
+          }
+        }, true);
+        // Backstop: if main.tsx never set __APP_BOOTED__, the entry stalled or
+        // failed without an error event. Generous timeout so a slow (but working)
+        // load is never reloaded out from under the user.
+        window.setTimeout(function () {
+          if (!window.__APP_BOOTED__) reloadOnce('boot-timeout');
+        }, 20000);
+      })();
+    </script>
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <link rel="icon" type="image/png" sizes="96x96" href="/favicon-96x96.png" />
+    <link rel="shortcut icon" href="/favicon.ico" />
+    <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png" />
+    <!-- The LIGHT manifest. A person in dark mode gets site-dark.webmanifest in its
+         place, swapped in at boot by src/lib/app-install.ts: the two differ only in
+         the Windows ("any") icon, a plate that follows the colour scheme, because
+         Chrome reads that icon once, at install, and never again on desktop.
+         src/__tests__/web-manifest.test.ts holds the pair to each other. -->
+    <link rel="manifest" href="/site.webmanifest" />
+    <title>Plnty · The agentic creative canvas for professional creators</title>
+
+    <!-- Open Graph (Facebook, Discord, LinkedIn, WhatsApp, etc.).
+         Keep the exact `property="..." content="..."` attribute order, and the
+         single space between attributes: the /share middleware
+         (apps/web/middleware.ts) rewrites these tags by regex to inject
+         per-board previews, and its pattern is
+         `<meta\s+property="KEY"\s+content="..."`. It REPLACES, never inserts,
+         so a tag it targets must exist here or that board preview silently
+         keeps the default below. It sets og:title, og:description, og:url,
+         og:image, og:image:width, og:image:height, og:image:type and
+         og:image:alt; all eight are present.
+
+         Copy mirrors the marketing homepage
+         (apps/marketing/src/pages/index.astro), which is where the reasoning
+         behind these exact words is written down. Change both together or a
+         shared app link and a shared marketing link describe two different
+         products. The description below is ALSO the install dialog's, in
+         public/site.webmanifest and site-dark.webmanifest;
+         src/__tests__/web-manifest.test.ts fails when they part.
+
+         ⚠ AND THAT IS NOT A THEORETICAL RISK. Rewritten again 2026-08-14 when
+         the homepage hero changed, and the edit found this file still saying
+         "Over 100 tools" three weeks after that figure moved to 150 in all
+         five places the marketing site names it. The pair had silently come
+         apart because only the marketing half was ever touched. If you are
+         reading this while editing one of them, open the other now.
+
+         The og:image:alt below is the ONE line here that must not be updated
+         to match the new hero: it describes /og-image.png, which is artwork
+         with the old headline set into it. See the longer note on the same
+         problem in apps/marketing/src/layouts/BaseLayout.astro.
+
+         ⚠ THE WHOLE APP is noindex (X-Robots-Tag on "/(.*)", apps/web/vercel.json),
+         not just the private routes. Widened 2026-08-19, reasoning recorded in
+         apps/marketing/public/sitemap.xml. So none of this is for search. It is
+         what renders when someone pastes an app link into Discord or Slack, which
+         is most of how Plnty gets passed around, and robots directives have never
+         affected link unfurling. -->
+    <meta property="og:type" content="website" />
+    <meta property="og:url" content="https://plnty.app/" />
+    <meta property="og:title" content="Plnty · The agentic creative canvas for professional creators" />
+    <meta property="og:description" content="Plnty is a powerful suite of design tools that turns ideas into finished work across image, video, vector, 3D and audio, all inside one shared canvas." />
+    <meta property="og:image" content="https://plnty.app/og-image.png" />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta property="og:image:type" content="image/png" />
+    <meta property="og:image:alt" content="Plnty. Build on the great ideas you might have missed." />
+    <meta property="og:site_name" content="Plnty" />
+
+    <!-- Twitter Card -->
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:site" content="@plntyapp" />
+    <meta name="twitter:title" content="Plnty · The agentic creative canvas for professional creators" />
+    <meta name="twitter:description" content="Plnty is a powerful suite of design tools that turns ideas into finished work across image, video, vector, 3D and audio, all inside one shared canvas." />
+    <meta name="twitter:image" content="https://plnty.app/og-image.png" />
+
+    <!-- General meta -->
+    <meta name="description" content="Plnty is a powerful suite of design tools that turns ideas into finished work across image, video, vector, 3D and audio, all inside one shared canvas." />
+    <!-- Self-hosted fonts: Urbanist (collaboration cursors) + the text-annotation
+         font picker families. Mirrored from Google Fonts by scripts/fetch-google-fonts.mjs
+         (no visitor IPs sent to Google — GDPR). Keep the script's font list in sync with
+         FONT_FAMILY_OPTIONS in text-fonts.ts, then re-run it to regenerate gfonts.css. -->
+    <!-- Does this load get the boot skeleton? Decided HERE, in the head,
+         before the element it governs has even been parsed.
+
+         ⚠ IT USED TO SIT AT THE END OF THE BODY AND REMOVE `hidden`, WHICH IS A
+         RACE. A browser may paint a first frame mid-parse, and any frame taken
+         between the skeleton's markup and a reveal that comes after it is the
+         black background — the exact flash this was built to remove, now
+         arriving from the mechanism meant to prevent it. Deciding in the head
+         means no frame can exist with the answer unknown. Same reason a
+         dark-mode class is set in the head rather than after the page.
+
+         Fail-safe in the same direction as before: the CSS default is hidden
+         and this switches it ON, so a blocked or broken script leaves the old
+         black screen rather than stamping a dashboard over a login page.
+
+         The paths are `sectionPath()`'s own (src/lib/app-routes.ts): recent is
+         the bare root, My boards is /boards, and a team prefixes /t/<slug>.
+         Library, settings, boards and the rest are deliberately NOT here — they
+         draw a different shell, and the React skeleton covers them a moment
+         later.
+
+         The use-case doors (/use/<slug>, a page a paid ad lands on, usually on a
+         phone) get no skeleton but a LIGHT GROUND from the first frame
+         (`data-boot-ground`): their page is light, and the black base showed for
+         the seconds the bundle took on a phone (Dor, 2026-10-01: "make sure we
+         never have black borders").
+
+         CSP: allowed by a sha256 hash in apps/web/vercel.json (script-src),
+         exactly like the boot watchdog above. ANY byte change below breaks the
+         hash and the skeleton silently stops appearing early. Recompute: sha256
+         of the exact text between the script tags, base64. -->
+    <script>
+      (function () {
+        var p = location.pathname.replace(/\/+$/, '') || '/';
+        var t = p.indexOf('/t/') === 0 ? p.slice(3).replace(/^[^/]*/, '') || '/' : p;
+        if (t === '/' || t === '/dashboard' || t === '/boards' || t === '/recent' || t === '/shared') {
+          document.documentElement.setAttribute('data-boot-skeleton', 'on');
+        }
+        if (p.indexOf('/use/') === 0) {
+          document.documentElement.setAttribute('data-boot-ground', 'light');
+        }
+      })();
+    </script>
+    <link rel="stylesheet" href="/fonts/gfonts.css">
+    <!-- Apparat draws the home page's greeting and its two tab strips, all above
+         the fold, and is font-display: swap. Without this preload the first paint
+         shows Suisse and visibly reflows when the face lands. Same reasoning and
+         same file as apps/marketing/src/layouts/BaseLayout.astro. -->
+    <link rel="preload" href="/fonts/KMR-Apparat-Medium.woff2" as="font" type="font/woff2" crossorigin />
+    <!-- Regular is preloaded for the same reason at a different place: it sets the
+         canvas tool cards and the left tools rail, both of which are on screen the
+         moment a board finishes loading. -->
+    <link rel="preload" href="/fonts/KMR-Apparat-Regular.woff2" as="font" type="font/woff2" crossorigin />
+    <style>
+      /* KMR Apparat Medium — the marketing homepage's display face (its 96px hero
+         headline and its nav labels), brought over so the app's home page opens on
+         the same type as the site the user arrived from. Copied byte-for-byte from
+         apps/marketing/public/fonts; both apps serve their own copy.
+
+         Licensed to Plnty Labs Ltd for Desktop + Web + Social Media + Logo (Kimera
+         invoice E799FAD0-0222, 2026-08-10).
+
+         ⚠ LICENCE, corrected 2026-08-18: MEDIUM AND REGULAR are both licensed
+         (operator-confirmed against the Kimera invoice on 2026-08-18, when Regular
+         was added below for the canvas tools). Until that day every note in this
+         repo said Medium was the only cut we held rights to; that was the state
+         before the check, not after it. The remaining five cuts were NOT verified
+         either way, so treat them as unlicensed and re-confirm before adding one.
+
+         swap, not block, because it draws above-the-fold text. Preloaded above. */
+      @font-face {
+        font-family: 'KMR Apparat';
+        src: url('/fonts/KMR-Apparat-Medium.woff2') format('woff2');
+        font-weight: 500;
+        font-style: normal;
+        font-display: swap;
+      }
+      /* KMR Apparat Regular — the canvas tool cards and the left tools rail
+         (canvas-tools/canvas-type.css). Added because Medium read too heavy at tool
+         sizes and Apparat is NOT a variable font: it has no fvar axis, so a lighter
+         weight can only come from a second file.
+
+         ⚠ THE NAME LADDER IS NOT THE WEIGHT LADDER. Read out of each cut's own
+         OS/2 usWeightClass: Light 100, Regular 300, Book 375, Medium 400, Bold 500,
+         Heavy 700, Black 900. So the file we have always called "Medium" is a 400,
+         the cut directly below it is BOOK, and Regular is two steps down. The
+         `font-weight` values in these two @font-face blocks are CSS LABELS we
+         choose for matching (500 = Medium, 400 = Regular); they deliberately do not
+         restate the internal numbers, and changing them would silently repoint
+         every `fontWeight: 500` in the app. Do not "correct" them to 400/300.
+
+         Safe to register at 400 in this app: every existing Apparat consumer here
+         pins 500 explicitly (`type-recipes.ts § displayType`, plus the two raw uses
+         in CreatorProgramModal / GuestPassModal), so nothing silently moves onto
+         this face. apps/marketing declares its own @font-face in global.css and is
+         untouched by this block — 43 of its 49 Apparat rules leave weight unset, so
+         adding a 400 face THERE would restyle the whole public site. Do not. */
+      @font-face {
+        font-family: 'KMR Apparat';
+        src: url('/fonts/KMR-Apparat-Regular.woff2') format('woff2');
+        font-weight: 400;
+        font-style: normal;
+        font-display: swap;
+      }
+      /* Suisse Intl Font Family — WOFF2/WOFF web-optimized builds */
+      @font-face {
+        font-family: 'Suisse Intl';
+        src: url('/fonts/SuisseIntl-Light.woff2') format('woff2'),
+             url('/fonts/SuisseIntl-Light.woff') format('woff');
+        font-weight: 300;
+        font-style: normal;
+        font-display: swap;
+      }
+      @font-face {
+        font-family: 'Suisse Intl';
+        src: url('/fonts/SuisseIntl-Regular-WebS.woff2') format('woff2'),
+             url('/fonts/SuisseIntl-Regular-WebS.woff') format('woff');
+        font-weight: 400;
+        font-style: normal;
+        font-display: swap;
+      }
+      @font-face {
+        font-family: 'Suisse Intl';
+        src: url('/fonts/SuisseIntl-Medium-WebS.woff2') format('woff2'),
+             url('/fonts/SuisseIntl-Medium-WebS.woff') format('woff');
+        font-weight: 500;
+        font-style: normal;
+        font-display: swap;
+      }
+      @font-face {
+        font-family: 'Suisse Intl';
+        src: url('/fonts/SuisseIntl-SemiBold-WebS.woff2') format('woff2'),
+             url('/fonts/SuisseIntl-SemiBold-WebS.woff') format('woff');
+        font-weight: 600;
+        font-style: normal;
+        font-display: swap;
+      }
+      @font-face {
+        font-family: 'Suisse Intl';
+        src: url('/fonts/SuisseIntl-Bold-WebS.woff2') format('woff2'),
+             url('/fonts/SuisseIntl-Bold-WebS.woff') format('woff');
+        font-weight: 700;
+        font-style: normal;
+        font-display: swap;
+      }
+      /* Serif italic accent (LoginPage headline) — same pair the marketing
+         site uses; the file was already shipped in /fonts, undeclared. */
+      @font-face {
+        font-family: 'Suisse Works';
+        src: url('/fonts/SuisseWorks-BookItalic-WebXL.woff2') format('woff2'),
+             url('/fonts/SuisseWorks-BookItalic-WebS.woff2') format('woff2');
+        font-weight: 400;
+        font-style: italic;
+        font-display: swap;
+      }
+
+      :root {
+        --font-family-primary: 'Suisse Intl', -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+        /* Mirrors DEFAULT_TOKENS.typography.fontFamilyDisplay so CSS files can
+           reach the display face too. Only ever paired with weight 500 — see
+           the @font-face note above. Read by canvas-tools/canvas-type.css. */
+        --font-family-display: 'KMR Apparat', 'Suisse Intl', -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+        --font-family-mono: 'SF Mono', 'Menlo', 'Monaco', 'Courier New', monospace;
+      }
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+      html, body, #root {
+        width: 100%;
+        height: 100%;
+        overflow: hidden;
+        /* Stop two-finger horizontal trackpad swipes from triggering browser
+           back/forward navigation (which throws users out of the canvas). The
+           <canvas> already preventDefaults its own wheels, but swipes over the
+           surrounding HTML chrome (margins, panels, cards) leak to the browser;
+           this document-root rule blocks the navigation gesture everywhere. */
+        overscroll-behavior: none;
+        background: #000000;
+        font-family: var(--font-family-primary);
+        font-size: 12px;
+        font-weight: 400;
+        -webkit-font-smoothing: antialiased;
+        -moz-osx-font-smoothing: grayscale;
+      }
+      /* The use-case doors are light from their first frame (the head script above sets
+         `data-boot-ground`): #F8F8F8 is the door's ground, `P.surface` in login-frame.ts. */
+      html[data-boot-ground='light'],
+      html[data-boot-ground='light'] body,
+      html[data-boot-ground='light'] #root {
+        background: #F8F8F8;
+      }
+
+      /* Tablet: a long press is OUR context-menu gesture (see
+         src/lib/touch-context-menu.ts — it is the only door to Delete,
+         Duplicate, Rerun and the rest on a device with no right-click). iOS
+         answers the same press with its native callout ("Save Image", "Copy"),
+         which would cover our menu, so suppress it.
+
+         Scoped to `(hover: none) and (pointer: coarse)` on purpose: that is
+         false on a touchscreen LAPTOP, where the primary input is still a mouse
+         and the native callout should be left alone. Text fields keep their
+         callout regardless — the JS bails out on inputs and contenteditable, so
+         cursor placement, Select All and Paste behave normally in a sticky note. */
+      @media (hover: none) and (pointer: coarse) {
+        #root {
+          -webkit-touch-callout: none;
+        }
+
+        /* Overlay cards (sticky notes, image/video refs, shapes, frames, text,
+           chains, palettes...) are dragged by finger through DragManager's
+           pointer events. On a touchscreen a drag that starts on a
+           `touch-action: auto` element is claimed by the BROWSER as a possible
+           scroll: it fires `pointercancel` a few moves in and the card never
+           moves. Measured on the real input pipeline, where the whole overlay
+           ancestry computed to `touch-action: auto`.
+
+           Tool cards are excluded and handle it on their header instead
+           (ToolCardHeader `S.header`). `touch-action` cannot be re-enabled by a
+           descendant, so setting `none` on a tool card's ROOT would also kill
+           scrolling inside its prompt textarea and settings panel. Every other
+           overlay type drags from its whole body and has nothing to scroll. */
+        [data-overlay-id]:not([data-overlay-type='tool-card']) {
+          touch-action: none;
+        }
+      }
+
+      /* Text selection: neutral mid-gray tint at 50% so the highlight is
+         visible on BOTH light and dark surfaces while staying quiet. The text
+         color is left untouched so selected text stays readable.
+         Was currentColor-based ("adapt to the text's own color"), but Chromium
+         paints ::selection currentColor as a dark tint regardless of the
+         element's text color, which made selection completely invisible in
+         every light-text-on-dark input (settings, admin dark, home panels).
+         Do NOT reintroduce currentColor here. */
+      ::selection {
+        background-color: rgba(128, 128, 128, 0.5);
+      }
+      ::-moz-selection {
+        background-color: rgba(128, 128, 128, 0.5);
+      }
+
+
+      /* =====================================================================
+         BOOT SKELETON — the dashboard's first frame, before any JS runs.
+         =====================================================================
+
+         ⚠ THIS IS A HAND COPY OF `DashboardSkeleton.tsx` AND HAS TO STAY ONE.
+         Every number below is that component's, which is `dashboard-frame.ts`'s:
+         the 219 menu, the 260 rail, the 54 identity row, the 200-minimum card
+         track. If either side moves, the handoff at React mount becomes a
+         visible jump, which is the whole thing this was built to stop. There is
+         a matching warning at the top of that file.
+
+         ⚠ AND IT CANNOT BE THE SAME CODE, which is the honest reason for the
+         duplication. React is what renders that component, and the gap being
+         covered here is the one BEFORE React exists — the entry bundle is still
+         downloading, `#root` is empty, and the page is the black in `html, body`
+         below. Operator, 2026-08-28: *"i always see a black screen then the
+         skeleton then the app - i want to see the skeleton right away"*.
+
+         React clears `#root` on its first commit, so nothing removes this: the
+         real skeleton takes its place in the same frame, drawn identically.
+
+         The unit is `--tc-u` verbatim from `chrome-metrics.ts`, so this scales
+         with the viewport exactly as the app does. Radii carry the x2
+         SMOOTHING_BOOST the app's `squircle()` applies. */
+      #boot-skeleton { display: none; }
+      html[data-boot-skeleton='on'] #boot-skeleton { display: flex; }
+      #boot-skeleton {
+        --tc-u: clamp(1px, 0.06944vw, 1.3333px);
+        --bs-u: var(--tc-u);
+        /* ⚠ LOW ON PURPOSE, AND A PREVIOUS SESSION ALREADY RAISED THEM AND PUT
+           THEM BACK. They were tried at 0.14 / 0.22 and rejected: operator,
+           2026-08-28, *"its too different, like there is too much contrast"*.
+           The sweep below lights them a little as it passes; the resting ink
+           stays this quiet. */
+        --bs-block: rgba(248, 245, 238, 0.055);
+        --bs-strong: rgba(248, 245, 238, 0.085);
+        --bs-hairline: rgba(248, 245, 238, 0.1);
+        position: absolute;
+        inset: 0;
+        flex-direction: column;
+        background: #050505;
+        overflow: hidden;
+      }
+      #boot-skeleton i {
+        display: block;
+        background-color: var(--bs-block);
+        border-radius: calc(8 * var(--bs-u));
+        corner-shape: squircle;
+        flex-shrink: 0;
+      }
+      #boot-skeleton i.s { background-color: var(--bs-strong); }
+
+      /* ⚠ THIS BLOCK DRIVES BOTH SKELETONS, ON PURPOSE.
+         `DashboardSkeleton.tsx` and `skeleton-kit.tsx` put `bs-blk` / `bs-thumb`
+         on their own divs so they are styled by the rules below rather than by
+         a second copy injected from React. Renaming anything here breaks the
+         React skeleton SILENTLY: nothing throws, the blocks just stop moving.
+
+         ONE LIGHT, TRAVELLING LEFT TO RIGHT ACROSS THE WHOLE PAGE. Dor,
+         2026-10-03: *"animation should happen from left to right like the
+         norm"*. This replaces the 2026-08-28 pulse, where every block breathed
+         in place on a hand-shuffled third of three offsets so the page never
+         read as a wave. A sweep IS the wave, so the offset tables went with it.
+
+         `background-attachment: fixed` is what makes it one light: every block
+         paints its own slice of a single viewport-wide band, so the band
+         crosses the menu, the cards and the rail as one sheen, in step, with
+         no per-block offset to keep. The stops are a raised cosine (17 of
+         them): a straight-line gradient shows a faint edge wherever its slope
+         changes, and this one has none, so it reads as light, not a stripe.
+
+         The blocks keep their ink as `background-color`. ⚠ A `background:`
+         shorthand on a block (in this file or inline from React) resets the
+         band and that block goes still.
+
+         The curve is cube-motion's one curve (`lib/morph-motion.ts §
+         MORPH_EASE`) with its last crawl cut off: the light comes in quickly
+         from the left and is still moving as it leaves on the right, and the
+         next pass starts at once. cube has no looping move, so its curve is
+         what it lends here.
+
+         ⚠ THE CURVE IS TRIMMED ON PURPOSE, AND THE FULL ONE PARKS THE LIGHT.
+         cube's (0.2, 0, 0, 1) spends its last 40% of the time on its last 3%
+         of the distance. Played whole on a loop, with a rest after it, the
+         bright part crossed in 450ms and the page then sat dark for 1350ms.
+         Dor, 2026-10-03: *"shimmering needs to happen more often - its kinda
+         hold every shimmer"*. So the curve is split where cube's own curve
+         reaches t = 0.9 (de Casteljau) and the first piece is scaled back to
+         the unit square: cubic-bezier(0.245, 0, 0.049, 0.833) IS cube's curve
+         over that stretch, not an approximation. Over 1200ms the light crosses
+         in about 500ms and the dark gap is about 700ms. Restoring 0.2, 0, 0, 1
+         or a rest brings the hold back.
+
+         The React skeletons pick the band up where this one left it:
+         `skeleton-kit.tsx § useSweepClock` puts every sweep on the boot
+         skeleton's clock, so the hand-over between the two does not move the
+         light. */
+      @keyframes bs-sweep {
+        from { background-position: -50vw 0; }
+        to   { background-position: 100vw 0; }
+      }
+      #boot-skeleton i,
+      .bs-thumb,
+      .bs-blk {
+        background-image: linear-gradient(90deg,
+          rgba(248, 245, 238, 0) 0%,
+          rgba(248, 245, 238, 0.0019) 6.25%,
+          rgba(248, 245, 238, 0.0073) 12.5%,
+          rgba(248, 245, 238, 0.0154) 18.75%,
+          rgba(248, 245, 238, 0.025) 25%,
+          rgba(248, 245, 238, 0.0346) 31.25%,
+          rgba(248, 245, 238, 0.0427) 37.5%,
+          rgba(248, 245, 238, 0.0481) 43.75%,
+          rgba(248, 245, 238, 0.05) 50%,
+          rgba(248, 245, 238, 0.0481) 56.25%,
+          rgba(248, 245, 238, 0.0427) 62.5%,
+          rgba(248, 245, 238, 0.0346) 68.75%,
+          rgba(248, 245, 238, 0.025) 75%,
+          rgba(248, 245, 238, 0.0154) 81.25%,
+          rgba(248, 245, 238, 0.0073) 87.5%,
+          rgba(248, 245, 238, 0.0019) 93.75%,
+          rgba(248, 245, 238, 0) 100%);
+        background-size: 50vw 100vh;
+        background-repeat: no-repeat;
+        background-attachment: fixed;
+        background-position: -50vw 0;
+        animation: bs-sweep 1200ms cubic-bezier(0.245, 0, 0.049, 0.833) infinite;
+      }
+
+      @media (prefers-reduced-motion: reduce) {
+        #boot-skeleton i, .bs-thumb, .bs-blk { animation: none; background-image: none; }
+      }
+      .bs-ticker { height: calc(18 * var(--bs-u)); flex-shrink: 0; background: #262624; }
+      .bs-row { display: flex; flex: 1; min-height: 0; width: 100%; overflow: hidden; }
+
+      .bs-menu {
+        width: calc(219 * var(--bs-u));
+        flex-shrink: 0;
+        display: flex;
+        flex-direction: column;
+        background: #050505;
+        box-shadow: 0.5px 0 0 0 var(--bs-hairline);
+        overflow: clip;
+      }
+      .bs-identity {
+        height: calc(54 * var(--bs-u));
+        display: flex;
+        align-items: center;
+        gap: calc(8 * var(--bs-u));
+        padding: 0 calc(16 * var(--bs-u));
+        box-sizing: border-box;
+        flex-shrink: 0;
+      }
+      .bs-rule { height: 1px; width: 100%; background: var(--bs-hairline); flex-shrink: 0; margin-bottom: -1px; }
+      .bs-top {
+        display: flex;
+        flex-direction: column;
+        gap: calc(16 * var(--bs-u));
+        padding: calc(16 * var(--bs-u)) calc(12 * var(--bs-u)) 0;
+        width: 100%;
+        box-sizing: border-box;
+      }
+      .bs-nav {
+        display: flex;
+        flex-direction: column;
+        gap: calc(8 * var(--bs-u));
+        padding: calc(24 * var(--bs-u)) calc(12 * var(--bs-u)) 0;
+        box-sizing: border-box;
+      }
+      .bs-grule {
+        height: 1px;
+        background: var(--bs-hairline);
+        flex-shrink: 0;
+        margin: 0 calc(-12 * var(--bs-u));
+      }
+      .bs-bottom { margin-top: auto; padding: calc(12 * var(--bs-u)); box-sizing: border-box; }
+
+      .bs-content {
+        flex: 1;
+        min-width: 0;
+        display: flex;
+        flex-direction: column;
+        gap: calc(16 * var(--bs-u));
+        padding: calc(14 * var(--bs-u)) calc(12 * var(--bs-u));
+        background: #0F0F0E;
+        box-sizing: border-box;
+        border-left: calc(0.5 * var(--bs-u)) solid var(--bs-hairline);
+        border-right: calc(0.5 * var(--bs-u)) solid var(--bs-hairline);
+        overflow: hidden;
+      }
+      .bs-toprow {
+        display: flex;
+        align-items: center;
+        gap: calc(16 * var(--bs-u));
+        padding: 0 calc(8 * var(--bs-u));
+        flex-shrink: 0;
+      }
+      .bs-filters { display: flex; align-items: center; gap: calc(4 * var(--bs-u)); }
+      .bs-topright { margin-left: auto; display: flex; align-items: center; gap: calc(16 * var(--bs-u)); }
+      .bs-track {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(calc(200 * var(--bs-u)), 1fr));
+        column-gap: calc(12 * var(--bs-u));
+        row-gap: calc(16 * var(--bs-u));
+        align-content: start;
+        flex: 1;
+        min-height: 0;
+        overflow: hidden;
+      }
+      .bs-card { display: flex; flex-direction: column; gap: calc(8 * var(--bs-u)); min-width: 0; }
+      .bs-thumb {
+        width: 100%;
+        aspect-ratio: 245.5 / 164;
+        background-color: var(--bs-block);
+        border-radius: calc(16 * var(--bs-u));
+        corner-shape: squircle;
+      }
+      .bs-cardtext {
+        display: flex;
+        flex-direction: column;
+        gap: calc(8 * var(--bs-u));
+        padding: 0 calc(8 * var(--bs-u));
+      }
+
+      .bs-rail {
+        width: calc(260 * var(--bs-u));
+        flex-shrink: 0;
+        box-sizing: border-box;
+        display: flex;
+        flex-direction: column;
+        gap: calc(17 * var(--bs-u));
+        padding: calc(16 * var(--bs-u)) calc(12 * var(--bs-u));
+        background: #050505;
+        overflow: hidden;
+      }
+      .bs-tabs {
+        display: flex;
+        align-items: center;
+        gap: calc(4 * var(--bs-u));
+        padding: 0 calc(8 * var(--bs-u));
+        width: 100%;
+        box-sizing: border-box;
+        flex-shrink: 0;
+      }
+      .bs-tiles { display: flex; flex-direction: column; gap: calc(16 * var(--bs-u)); width: 100%; flex: 1; min-height: 0; }
+      .bs-pair { display: flex; gap: calc(4 * var(--bs-u)); width: 100%; }
+      .bs-pair i { flex: 1 1 0; }
+      .bs-group { display: flex; flex-direction: column; gap: calc(4 * var(--bs-u)); width: 100%; }
+
+      /* Design System Scrollbar Styling */
+      .ds-scrollbar::-webkit-scrollbar {
+        width: 6px;
+      }
+      .ds-scrollbar::-webkit-scrollbar-track {
+        background: transparent;
+      }
+      .ds-scrollbar::-webkit-scrollbar-thumb {
+        background: #363636;
+        border-radius: 3px;
+      }
+      .ds-scrollbar::-webkit-scrollbar-thumb:hover {
+        background: #5e5e5e;
+      }
+      /* Firefox scrollbar */
+      .ds-scrollbar {
+        scrollbar-width: thin;
+        scrollbar-color: #363636 transparent;
+      }
+    </style>
+
+    <!-- Google tag (gtag.js) — AW-18440458478, the first paid campaign.
+         ⚠ IT IS IN THE HTML BECAUSE GOOGLE'S DETECTOR READS HTML. The tag was
+         injected from a JS module first, and that WORKED (verified on
+         production: the tag loaded and the gclid reached
+         ad.doubleclick.net/ccm/s/collect). Google Ads still emailed "We haven't
+         found a Google tag on your website", because their check fetches the
+         page and looks for this snippet rather than running a React bundle.
+
+         ⚠ THE ORDER OF THESE TWO LINES IS LOAD-BEARING. ads-init.js is NOT
+         async: it must set the Consent Mode defaults before gtag/js
+         initialises, or the first beacon goes out under the wrong assumption.
+
+         ⚠ NO INLINE SCRIPT HERE, DELIBERATELY. script-src in vercel.json is
+         'self' plus two sha256 hashes; an inline block would need a third, with
+         the same "any byte change breaks it" fragility the boot watchdog above
+         carries. A same-origin file needs no hash. -->
+    <script src="/ads-init.js"></script>
+    <script async src="https://www.googletagmanager.com/gtag/js?id=AW-18440458478"></script>
+    <script type="module" crossorigin src="/assets/react-C9WEJgbf.js"></script>
+    <script type="module" crossorigin src="/assets/three-CbhGz-nM.js"></script>
+    <script type="module" crossorigin src="/assets/main-DamfXklH.js"></script>
+  </head>
+  <body>
+    <div id="root"><div id="boot-skeleton" aria-hidden="true">
+      <div class="bs-ticker"></div>
+      <div class="bs-row">
+        <aside class="bs-menu">
+          <div class="bs-identity"><i class="s" style="width:calc(24 * var(--bs-u));height:calc(24 * var(--bs-u));border-radius:calc(16 * var(--bs-u))"></i><i class="s" style="width:calc(64 * var(--bs-u));height:calc(10 * var(--bs-u));border-radius:calc(6 * var(--bs-u))"></i></div>
+          <div class="bs-rule"></div>
+          <div class="bs-top"><i style="width:100%;height:calc(26 * var(--bs-u));border-radius:calc(12 * var(--bs-u))"></i><i style="width:100%;height:calc(24 * var(--bs-u));border-radius:calc(51.612 * var(--bs-u))"></i></div>
+          <div class="bs-nav"><i style="width:100%;height:calc(26 * var(--bs-u));border-radius:calc(12 * var(--bs-u))"></i><i style="width:100%;height:calc(26 * var(--bs-u));border-radius:calc(12 * var(--bs-u))"></i><i style="width:100%;height:calc(26 * var(--bs-u));border-radius:calc(12 * var(--bs-u))"></i><div class="bs-grule"></div><i style="width:100%;height:calc(26 * var(--bs-u));border-radius:calc(12 * var(--bs-u))"></i><i style="width:100%;height:calc(26 * var(--bs-u));border-radius:calc(12 * var(--bs-u))"></i></div>
+          <div class="bs-bottom"><i style="width:100%;height:calc(20 * var(--bs-u));border-radius:calc(12 * var(--bs-u))"></i></div>
+        </aside>
+        <div class="bs-content">
+          <div class="bs-toprow"><i class="s" style="width:calc(92 * var(--bs-u));height:calc(21 * var(--bs-u));border-radius:calc(10 * var(--bs-u))"></i><div class="bs-filters"><i style="width:calc(54 * var(--bs-u));height:calc(17 * var(--bs-u));border-radius:calc(10 * var(--bs-u))"></i><i style="width:calc(62 * var(--bs-u));height:calc(17 * var(--bs-u));border-radius:calc(10 * var(--bs-u))"></i><i style="width:calc(50 * var(--bs-u));height:calc(17 * var(--bs-u));border-radius:calc(10 * var(--bs-u))"></i></div><div class="bs-topright"><i style="width:calc(72 * var(--bs-u));height:calc(12 * var(--bs-u));border-radius:calc(10 * var(--bs-u))"></i><i class="s" style="width:calc(64 * var(--bs-u));height:calc(21 * var(--bs-u));border-radius:calc(10 * var(--bs-u))"></i></div></div>
+          <div class="bs-track"><div class="bs-card"><div class="bs-thumb"></div><div class="bs-cardtext"><i style="width:62%;height:calc(10 * var(--bs-u));border-radius:calc(6 * var(--bs-u))"></i><i style="width:40%;height:calc(8 * var(--bs-u));border-radius:calc(6 * var(--bs-u))"></i></div></div><div class="bs-card"><div class="bs-thumb"></div><div class="bs-cardtext"><i style="width:62%;height:calc(10 * var(--bs-u));border-radius:calc(6 * var(--bs-u))"></i><i style="width:40%;height:calc(8 * var(--bs-u));border-radius:calc(6 * var(--bs-u))"></i></div></div><div class="bs-card"><div class="bs-thumb"></div><div class="bs-cardtext"><i style="width:62%;height:calc(10 * var(--bs-u));border-radius:calc(6 * var(--bs-u))"></i><i style="width:40%;height:calc(8 * var(--bs-u));border-radius:calc(6 * var(--bs-u))"></i></div></div><div class="bs-card"><div class="bs-thumb"></div><div class="bs-cardtext"><i style="width:62%;height:calc(10 * var(--bs-u));border-radius:calc(6 * var(--bs-u))"></i><i style="width:40%;height:calc(8 * var(--bs-u));border-radius:calc(6 * var(--bs-u))"></i></div></div><div class="bs-card"><div class="bs-thumb"></div><div class="bs-cardtext"><i style="width:62%;height:calc(10 * var(--bs-u));border-radius:calc(6 * var(--bs-u))"></i><i style="width:40%;height:calc(8 * var(--bs-u));border-radius:calc(6 * var(--bs-u))"></i></div></div><div class="bs-card"><div class="bs-thumb"></div><div class="bs-cardtext"><i style="width:62%;height:calc(10 * var(--bs-u));border-radius:calc(6 * var(--bs-u))"></i><i style="width:40%;height:calc(8 * var(--bs-u));border-radius:calc(6 * var(--bs-u))"></i></div></div><div class="bs-card"><div class="bs-thumb"></div><div class="bs-cardtext"><i style="width:62%;height:calc(10 * var(--bs-u));border-radius:calc(6 * var(--bs-u))"></i><i style="width:40%;height:calc(8 * var(--bs-u));border-radius:calc(6 * var(--bs-u))"></i></div></div><div class="bs-card"><div class="bs-thumb"></div><div class="bs-cardtext"><i style="width:62%;height:calc(10 * var(--bs-u));border-radius:calc(6 * var(--bs-u))"></i><i style="width:40%;height:calc(8 * var(--bs-u));border-radius:calc(6 * var(--bs-u))"></i></div></div><div class="bs-card"><div class="bs-thumb"></div><div class="bs-cardtext"><i style="width:62%;height:calc(10 * var(--bs-u));border-radius:calc(6 * var(--bs-u))"></i><i style="width:40%;height:calc(8 * var(--bs-u));border-radius:calc(6 * var(--bs-u))"></i></div></div><div class="bs-card"><div class="bs-thumb"></div><div class="bs-cardtext"><i style="width:62%;height:calc(10 * var(--bs-u));border-radius:calc(6 * var(--bs-u))"></i><i style="width:40%;height:calc(8 * var(--bs-u));border-radius:calc(6 * var(--bs-u))"></i></div></div><div class="bs-card"><div class="bs-thumb"></div><div class="bs-cardtext"><i style="width:62%;height:calc(10 * var(--bs-u));border-radius:calc(6 * var(--bs-u))"></i><i style="width:40%;height:calc(8 * var(--bs-u));border-radius:calc(6 * var(--bs-u))"></i></div></div><div class="bs-card"><div class="bs-thumb"></div><div class="bs-cardtext"><i style="width:62%;height:calc(10 * var(--bs-u));border-radius:calc(6 * var(--bs-u))"></i><i style="width:40%;height:calc(8 * var(--bs-u));border-radius:calc(6 * var(--bs-u))"></i></div></div><div class="bs-card"><div class="bs-thumb"></div><div class="bs-cardtext"><i style="width:62%;height:calc(10 * var(--bs-u));border-radius:calc(6 * var(--bs-u))"></i><i style="width:40%;height:calc(8 * var(--bs-u));border-radius:calc(6 * var(--bs-u))"></i></div></div><div class="bs-card"><div class="bs-thumb"></div><div class="bs-cardtext"><i style="width:62%;height:calc(10 * var(--bs-u));border-radius:calc(6 * var(--bs-u))"></i><i style="width:40%;height:calc(8 * var(--bs-u));border-radius:calc(6 * var(--bs-u))"></i></div></div><div class="bs-card"><div class="bs-thumb"></div><div class="bs-cardtext"><i style="width:62%;height:calc(10 * var(--bs-u));border-radius:calc(6 * var(--bs-u))"></i><i style="width:40%;height:calc(8 * var(--bs-u));border-radius:calc(6 * var(--bs-u))"></i></div></div><div class="bs-card"><div class="bs-thumb"></div><div class="bs-cardtext"><i style="width:62%;height:calc(10 * var(--bs-u));border-radius:calc(6 * var(--bs-u))"></i><i style="width:40%;height:calc(8 * var(--bs-u));border-radius:calc(6 * var(--bs-u))"></i></div></div></div>
+        </div>
+        <aside class="bs-rail">
+          <div class="bs-tabs"><i class="s" style="width:calc(46 * var(--bs-u));height:calc(18 * var(--bs-u));border-radius:calc(10 * var(--bs-u))"></i><i style="width:calc(34 * var(--bs-u));height:calc(18 * var(--bs-u));border-radius:calc(10 * var(--bs-u))"></i><i style="width:calc(34 * var(--bs-u));height:calc(18 * var(--bs-u));border-radius:calc(10 * var(--bs-u))"></i></div>
+          <div class="bs-tiles"><i class="s" style="width:100%;height:calc(115 * var(--bs-u));border-radius:calc(12 * var(--bs-u))"></i><div class="bs-pair"><i style="height:calc(56 * var(--bs-u));border-radius:calc(12 * var(--bs-u))"></i><i style="height:calc(56 * var(--bs-u));border-radius:calc(12 * var(--bs-u))"></i></div><div class="bs-group"><i style="width:calc(72 * var(--bs-u));height:calc(10 * var(--bs-u));border-radius:calc(6 * var(--bs-u))"></i><i style="width:100%;height:calc(56 * var(--bs-u));border-radius:calc(16 * var(--bs-u))"></i><i style="width:100%;height:calc(56 * var(--bs-u));border-radius:calc(16 * var(--bs-u))"></i></div><div class="bs-group"><i style="width:calc(72 * var(--bs-u));height:calc(10 * var(--bs-u));border-radius:calc(6 * var(--bs-u))"></i><i style="width:100%;height:calc(56 * var(--bs-u));border-radius:calc(16 * var(--bs-u))"></i><i style="width:100%;height:calc(56 * var(--bs-u));border-radius:calc(16 * var(--bs-u))"></i></div></div>
+        </aside>
+      </div>
+    </div></div>
+  </body>
+</html>

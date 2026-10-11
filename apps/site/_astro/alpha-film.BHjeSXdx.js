@@ -1,0 +1,1 @@
+function e(){return navigator.vendor.startsWith(`Apple`)?document.createElement(`video`).canPlayType(`video/mp4; codecs="hvc1"`)!==``:!1}export{e as t};
