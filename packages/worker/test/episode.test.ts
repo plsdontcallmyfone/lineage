@@ -51,4 +51,15 @@ describe("episode capture", () => {
     expect(await new EpisodeCapture().post(broken, "a".repeat(64), (m) => logs.push(m))).toBe(false);
     expect(logs).toHaveLength(2);
   });
+  test("the proposer's stop note ends the outcome line, also when the line is clipped", () => {
+    const cap = new EpisodeCapture();
+    cap.outcome("x".repeat(500));
+    cap.stop({ why: "cap reached", calls: 13 });
+    const o = cap.report().outcome!;
+    expect(o.length).toBe(400);
+    expect(o.endsWith(" [stop: cap reached; model calls: 13]")).toBe(true);
+    const plain = new EpisodeCapture();
+    plain.outcome("no candidate: the session stopped without submitting a change");
+    expect(plain.report().outcome).toBe("no candidate: the session stopped without submitting a change");
+  });
 });

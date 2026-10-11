@@ -452,7 +452,14 @@ export class Worker {
     const facts = journal ? new FactsLog() : null;
     // agent learnings (docs/plans/AGENT-LEARNINGS.md 1.1): what only the worker sees, reported after the end
     const episode = new EpisodeCapture();
-    const outcome = (s: string) => (facts?.outcome(s), episode.outcome(s));
+    // the proposer's stop note (why its model loop ended, model calls) rides on the episode's outcome
+    // line: the Analytics page counts "cap reached" attempts and turns per attempt from it (core
+    // analytics.ts STOP_NOTE)
+    const outcome = (s: string) => {
+      facts?.outcome(s);
+      episode.outcome(s);
+      if (jctx?.stop) episode.stop(jctx.stop);
+    };
     let jctx: ProposeContext | null = null;
     let desk: DesktopAttempt | null = null;
     try {

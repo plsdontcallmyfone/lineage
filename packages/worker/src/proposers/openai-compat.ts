@@ -213,6 +213,7 @@ export class OpenAICompatProposer implements Proposer {
     for (let turn = 0; turn < o.max_turns; turn++) {
       if (usage.usd >= cap || usage.usd + lastTurnUsd > cap) {
         ctx.log(`${tag}: spend cap reached (${usage.usd.toFixed(4)} USD spent, cap ${cap.toFixed(4)})`);
+        ctx.stop = { why: "cap reached", calls: turn };
         return null;
       }
       const body: Record<string, unknown> = {
@@ -237,6 +238,7 @@ export class OpenAICompatProposer implements Proposer {
       if (!msg) throw new ProviderError(p.id, 502, null, "response has no choices");
       if (choice.finish_reason === "content_filter") {
         ctx.log(`${tag}: refusal (content_filter)`);
+        ctx.stop = { why: "refusal", calls: turn + 1 };
         return null;
       }
       const text = typeof msg.content === "string" ? msg.content : "";
@@ -244,6 +246,7 @@ export class OpenAICompatProposer implements Proposer {
       const calls = Array.isArray(msg.tool_calls) ? msg.tool_calls : [];
       if (calls.length === 0) {
         ctx.log(`${tag}: ended without submit`);
+        ctx.stop = { why: "no submit", calls: turn + 1 };
         return null;
       }
       if (choice.finish_reason === "length") throw new Error("tool input truncated at max_tokens");
@@ -289,8 +292,8 @@ export class OpenAICompatProposer implements Proposer {
         }
         messages.push({ role: "tool", tool_call_id: call.id, content: out });
       }
-      if (submitted) return { ...submitted, usage };
-      if (gaveUp) return null;
+      if (submitted) return (ctx.stop = { why: "submitted", calls: turn + 1 }), { ...submitted, usage };
+      if (gaveUp) return (ctx.stop = { why: "gave up", calls: turn + 1 }), null;
       const notice = warned ? null : wrapUpNotice(usage.usd, cap, lastTurnUsd);
       if (notice) {
         warned = true;
@@ -300,6 +303,7 @@ export class OpenAICompatProposer implements Proposer {
       ctx.log(`${tag}: turn ${turn + 1}, ${usage.usd.toFixed(4)} USD so far`);
     }
     ctx.log(`${tag}: turn limit reached`);
+    ctx.stop = { why: "turn limit", calls: o.max_turns };
     return null;
   }
 

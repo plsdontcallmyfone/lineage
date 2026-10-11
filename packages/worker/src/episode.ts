@@ -85,13 +85,19 @@ export class EpisodeCapture {
     this.outcomes.push(s);
   }
 
+  /** Why the proposer's model loop ended and its model calls: noted at the end of the outcome line. */
+  stop(st: { why: string; calls: number }): void {
+    this.stopNote = ` [stop: ${clean(st.why, 40).replace(/[;\]]/g, " ")}; model calls: ${Math.max(0, Math.floor(st.calls))}]`;
+  }
+  private stopNote = "";
+
   report(): EpisodeReport {
     const round = (x: number) => Math.round(x * 1e6) / 1e6;
     const route = this.route ? { ...this.route, upstream: [...this.upstream].slice(0, 8) } : null;
     return {
       v: 1,
       planned: this.planned,
-      outcome: this.outcomes.length ? clean(this.outcomes.join("; "), 400) : null,
+      outcome: this.outcomes.length ? clean(this.outcomes.join("; "), 400 - this.stopNote.length) + this.stopNote : null,
       usage: this.metered ? { ...this.usage, usd: round(this.usage.usd) } : null,
       sandbox_s: this.sandboxed ? round(this.sandbox) : null,
       models: [...this.models].slice(0, 8),

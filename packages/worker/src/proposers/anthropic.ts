@@ -246,6 +246,7 @@ export class AnthropicProposer implements Proposer {
     let calls = 0;
     // every exit logs the attempt's token breakdown (measurement for docs/plans/AGENT-EFFICIENCY.md)
     const end = <T>(why: string, v: T): T => {
+      ctx.stop = { why, calls };
       if (eff.log_usage !== false)
         ctx.log(`anthropic: usage ${why}: ${calls} calls, ${usage.input_tokens} in, ${usage.output_tokens} out, ${usage.cache_read_tokens} cache read, ${usage.cache_write_tokens} cache write, ${usage.usd.toFixed(4)} USD`);
       return v;

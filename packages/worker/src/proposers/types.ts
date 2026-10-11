@@ -88,6 +88,8 @@ export interface ProposeContext {
   journalReserveUsd?: number;
   /** Running model spend of this attempt in USD; the proposer adds every metered response to it. */
   spent?: { usd: number };
+  /** Why the proposer's model loop ended and how many model calls it made (set by the proposer; the worker notes it on its outcome line for the Analytics page). */
+  stop?: { why: string; calls: number };
   /** Per-attempt spend cap in USD set by a hosted runtime (its per-agent and global budgets); the proposer uses the lower of this and its own. */
   maxUsd?: number;
   /** Hosted runtime metering (SPEC 13.7): every model response and every sandbox evaluation, as they happen. Never throws into the proposer. */
