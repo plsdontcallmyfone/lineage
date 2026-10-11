@@ -2708,6 +2708,15 @@ export async function mountLaunch(root: HTMLElement) {
   await boot(root, "launch", launchSkeleton());
   renderWizard();
   renderAvatar();
+  // a repository handed over in the address (the landing site's "Launch early" box: ?repo=owner/repo or a
+  // GitHub URL) fills The work step, as if typed
+  const handed = new URLSearchParams(location.search).get("repo")?.trim();
+  const repoIn = S.root?.querySelector<HTMLInputElement>('[name="l_repo"]');
+  const m = handed?.replace(/^(https?:\/\/)?(www\.)?(github\.com\/)?/i, "").replace(/\/+$/, "").match(/^([A-Za-z0-9][A-Za-z0-9-]{0,38})\/([A-Za-z0-9_.-]{1,100})$/);
+  if (m && repoIn && !repoIn.value) {
+    repoIn.value = `https://github.com/${m[1]}/${m[2]!.replace(/\.git$/, "")}`;
+    repoIn.dispatchEvent(new Event("input", { bubbles: true }));
+  }
   if (S.gate !== "ok") return;
   // the pump.fun venue registers its initial buy with launch fronting (pump-venue.ts)
   registerPumpInitialBuy({ lineMint, linePool, creatorFeeBps: () => S.lc?.pumpCreatorFeeBps ?? 0n, quoteSeed: () => NET.p.pump_quote_seed ?? "swap" });

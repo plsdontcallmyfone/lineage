@@ -453,42 +453,50 @@ export async function explorerPage(): Promise<Page> {
   };
 }
 
-// The page's empty sides on a wide screen: small hand-drawn doodles in the style of the page's own
-// (a light blue marker line with a navy edge), each drifting a little. Decoration only: hidden from
-// assistive tech, gone under 1560 px, still with reduced motion.
-const DOODLES: Record<string, string> = {
-  star: "M24 6 L28 19 L42 20 L31 28 L35 42 L24 34 L13 42 L17 28 L6 20 L20 19 Z",
-  squiggle: "M4 30 C 10 14, 16 14, 20 28 S 30 42, 36 26 S 46 12, 50 24",
-  loop: "M6 34 C 14 34, 20 10, 30 12 C 40 14, 36 32, 26 30 C 16 28, 22 8, 34 8 C 42 8, 46 18, 48 24",
-  spiral: "M28 28 C 28 24, 34 24, 34 28 C 34 34, 24 36, 22 28 C 20 18, 36 14, 40 26 C 44 40, 22 46, 16 32",
-  heart: "M26 42 C 10 30, 6 20, 12 13 C 18 7, 25 11, 26 17 C 27 11, 34 7, 40 13 C 46 20, 42 30, 26 42 Z",
-  zigzag: "M4 32 L12 18 L20 32 L28 18 L36 32 L44 18 L52 32",
-  plus: "M26 8 L26 44 M8 26 L44 26",
-  burst: "M26 6 L26 16 M26 36 L26 46 M6 26 L16 26 M36 26 L46 26 M12 12 L19 19 M33 33 L40 40 M40 12 L33 19 M19 33 L12 40",
-  wave: "M4 22 Q 13 10, 22 22 T 40 22 T 58 22 M4 36 Q 13 24, 22 36 T 40 36 T 58 36",
-  circle: "M26 8 C 38 8, 46 16, 46 27 C 46 38, 37 46, 26 45 C 14 44, 7 36, 8 25 C 9 15, 17 10, 30 9",
+// The page's empty sides on a wide screen: small hand-drawn trading doodles (candles, arrows, buy and
+// sell tags, a coin, a chart line) in the page's marker style, a coloured line or fill with a navy
+// edge, each drifting a little; the screen's edges blur what passes under them, like the reference.
+// Decoration only: hidden from assistive tech, gone under 1560 px, still with reduced motion.
+const INK = "#092538";
+const C = { green: "#4cc26a", red: "#ff5b4f", yellow: "#ffc83d", purple: "#a68aff", blue: "#72afff" };
+const line = (d: string, c: string) => `<path d="${d}" fill="none" stroke="${INK}" stroke-width="7" stroke-linecap="round" stroke-linejoin="round"/><path d="${d}" fill="none" stroke="${c}" stroke-width="3.6" stroke-linecap="round" stroke-linejoin="round"/>`;
+const fill = (d: string, c: string) => `<path d="${d}" fill="${c}" stroke="${INK}" stroke-width="3" stroke-linejoin="round"/>`;
+const tag = (label: string, c: string, w: number) =>
+  `<rect x="3" y="12" width="${w}" height="26" rx="9" fill="${c}" stroke="${INK}" stroke-width="3"/><text x="${3 + w / 2}" y="30.5" text-anchor="middle" font-family="KMR Apparat, Suisse Intl, system-ui, sans-serif" font-weight="700" font-size="14" fill="${INK}" letter-spacing=".5">${label}</text>`;
+const DOODLES: Record<string, { svg: string; vb: string }> = {
+  candleUp: { vb: "0 0 36 52", svg: line("M18 4 L18 46", INK) + fill("M10 13 h16 v22 h-16 z", C.green) },
+  candleDown: { vb: "0 0 36 52", svg: line("M18 4 L18 46", INK) + fill("M10 16 h16 v24 h-16 z", C.red) },
+  candles: { vb: "0 0 64 56", svg: line("M14 6 L14 44 M32 12 L32 52 M50 2 L50 38", INK) + fill("M7 14 h14 v20 h-14 z", C.red) + fill("M25 22 h14 v22 h-14 z", C.green) + fill("M43 8 h14 v22 h-14 z", C.green) },
+  up: { vb: "0 0 60 48", svg: line("M5 42 L20 27 L30 35 L52 10 M38 9 L53 9 L53 24", C.green) },
+  down: { vb: "0 0 60 48", svg: line("M5 8 L20 23 L30 15 L52 40 M38 41 L53 41 L53 26", C.red) },
+  buy: { vb: "0 0 62 50", svg: tag("BUY", C.green, 56) },
+  sell: { vb: "0 0 68 50", svg: tag("SELL", C.red, 62) },
+  coin: { vb: "0 0 52 52", svg: fill("M26 5 C 38 5, 47 14, 47 26 C 47 38, 38 47, 26 47 C 14 47, 5 38, 5 26 C 5 14, 14 5, 26 5 Z", C.yellow) + line("M26 15 L26 37 M32 19 C 28 16, 20 17, 21 22 C 22 27, 32 25, 32 31 C 32 36, 24 37, 20 33", INK) },
+  chart: { vb: "0 0 62 50", svg: line("M5 42 L5 6 M5 42 L57 42", INK) + line("M11 34 L22 24 L31 29 L45 13", C.purple) + `<circle cx="45" cy="13" r="5" fill="${C.yellow}" stroke="${INK}" stroke-width="3"/>` },
+  spark: { vb: "0 0 50 50", svg: fill("M25 4 C 27 18, 32 23, 46 25 C 32 27, 27 32, 25 46 C 23 32, 18 27, 4 25 C 18 23, 23 18, 25 4 Z", C.blue) },
 };
 const SIDE: { d: keyof typeof DOODLES; side: "l" | "r"; top: number; off: number; rot: number; size: number }[] = [
-  { d: "star", side: "l", top: 60, off: 70, rot: -12, size: 46 },
-  { d: "squiggle", side: "l", top: 330, off: 20, rot: 8, size: 64 },
-  { d: "heart", side: "l", top: 620, off: 110, rot: -8, size: 40 },
-  { d: "spiral", side: "l", top: 900, off: 40, rot: 14, size: 52 },
-  { d: "plus", side: "l", top: 1180, off: 90, rot: 10, size: 34 },
-  { d: "burst", side: "r", top: 30, off: 60, rot: 6, size: 50 },
-  { d: "loop", side: "r", top: 300, off: 110, rot: -10, size: 62 },
-  { d: "zigzag", side: "r", top: 600, off: 30, rot: 12, size: 56 },
-  { d: "circle", side: "r", top: 880, off: 90, rot: -6, size: 44 },
-  { d: "wave", side: "r", top: 1150, off: 40, rot: 4, size: 60 },
+  { d: "candles", side: "l", top: 40, off: 60, rot: -8, size: 70 },
+  { d: "buy", side: "l", top: 330, off: 20, rot: -10, size: 66 },
+  { d: "up", side: "l", top: 600, off: 100, rot: 6, size: 62 },
+  { d: "coin", side: "l", top: 880, off: 40, rot: -6, size: 50 },
+  { d: "candleUp", side: "l", top: 1150, off: 110, rot: 10, size: 44 },
+  { d: "chart", side: "r", top: 20, off: 70, rot: 6, size: 68 },
+  { d: "sell", side: "r", top: 310, off: 110, rot: 9, size: 70 },
+  { d: "candleDown", side: "r", top: 590, off: 30, rot: -10, size: 46 },
+  { d: "down", side: "r", top: 860, off: 90, rot: -5, size: 60 },
+  { d: "spark", side: "r", top: 1140, off: 40, rot: 12, size: 42 },
 ];
 function sideDoodles(root: HTMLElement) {
   root.querySelector(".ex-deco")?.remove();
   const deco = document.createElement("div");
   deco.className = "ex-deco";
   deco.setAttribute("aria-hidden", "true");
-  deco.innerHTML = SIDE.map(
-    (p, i) =>
-      `<svg class="ex-doodle ex-deco-${p.side}" viewBox="0 0 56 50" width="${p.size}" height="${p.size}" style="--top:${p.top}px;--off:${p.off}px;--rot:${p.rot}deg;--dl:${(i * 0.7).toFixed(1)}s;--dur:${(6 + (i % 4)).toFixed(1)}s"><path d="${DOODLES[p.d]}" fill="none" stroke="#092538" stroke-width="7" stroke-linecap="round" stroke-linejoin="round"/><path d="${DOODLES[p.d]}" fill="none" stroke="#72afff" stroke-width="3.6" stroke-linecap="round" stroke-linejoin="round"/></svg>`,
-  ).join("");
+  deco.innerHTML =
+    SIDE.map((p, i) => {
+      const d = DOODLES[p.d]!;
+      return `<svg class="ex-doodle ex-deco-${p.side}" viewBox="${d.vb}" width="${p.size}" height="${p.size}" style="--top:${p.top}px;--off:${p.off}px;--rot:${p.rot}deg;--dl:${(i * 0.7).toFixed(1)}s;--dur:${(6 + (i % 4)).toFixed(1)}s">${d.svg}</svg>`;
+    }).join("") + `<div class="ex-edge ex-edge-l"></div><div class="ex-edge ex-edge-r"></div>`;
   root.prepend(deco);
 }
 
@@ -502,6 +510,9 @@ const CSS = `
 .ex-deco{position:absolute;inset:0;overflow:hidden;pointer-events:none;z-index:0}
 .ex-doodle{position:absolute;top:calc(var(--top) + 60px);overflow:visible;transform:rotate(var(--rot));animation:ex-drift var(--dur) ease-in-out var(--dl) infinite alternate;opacity:.95}
 .ex-deco-l{left:calc((100% - 1392px) / 4 - 40px + var(--off) - 60px)}
+.ex-edge{position:fixed;top:0;bottom:0;width:140px;z-index:0;pointer-events:none;-webkit-backdrop-filter:blur(9px);backdrop-filter:blur(9px)}
+.ex-edge-l{left:0;-webkit-mask-image:linear-gradient(to right,#000 0,transparent 100%);mask-image:linear-gradient(to right,#000 0,transparent 100%)}
+.ex-edge-r{right:0;-webkit-mask-image:linear-gradient(to left,#000 0,transparent 100%);mask-image:linear-gradient(to left,#000 0,transparent 100%)}
 .ex-deco-r{right:calc((100% - 1392px) / 4 - 40px + var(--off) - 60px)}
 @keyframes ex-drift{from{transform:translate(0,0) rotate(var(--rot))}to{transform:translate(4px,-10px) rotate(calc(var(--rot) + 6deg))}}
 @media (max-width:1560px){.ex-deco{display:none}}
