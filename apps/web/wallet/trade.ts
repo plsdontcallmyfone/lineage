@@ -88,6 +88,8 @@ class Box {
   private msg: Raw | null = null;
   private err: Raw | null = null;
   private busy = false;
+  /** the gear: slippage and the Pay with choice */
+  private settings = false;
   private dead = false;
   private unsub: (() => void) | null = null;
   private offWallets: (() => void) | null = null;
@@ -369,34 +371,45 @@ class Box {
     if (this.gate === "checking") body = html`<div class="dim">Checking that the RPC is ${netName()}…</div>`;
     else if (this.gate !== "ok") body = this.errBox(`Trading is off: ${this.gate}`);
     else if (this.venue?.kind === "legacy" || this.venue?.kind === "waiting") body = html`<div class="mk-tb-venue">${this.venueLine()}</div>`;
-    else if (!this.account) {
-      body = html`<div class="mk-tb-venue">${this.venueLine()}</div>
-        <div class="eyebrow" style="margin:12px 0 8px">Connect a wallet to trade</div>
-        <div class="wl-row">${this.btn("connect", "Connect", { primary: true })}</div>
-        ${testLabels() ? html`<div class="wl-fine">Devnet only, TEST tokens. Get tUNITS from the faucet on your <a class="link" href="/profile">Profile</a>.</div>` : html`<div class="wl-fine">Prices in ${qsym()}. A buy can pay in SOL or USDC through Jupiter.</div>`}`;
-    } else {
+    else {
+      // Buy or Sell with a gear for the settings, one large amount, quick amounts, one action button,
+      // then the venue and balances in a small footer. Disconnected, the same box asks to connect.
       const q = this.quote;
       const buy = this.side === "buy";
       const inU = buy ? qsym() : sym;
       const outU = buy ? sym : qsym();
       const inD = buy ? qd : this.td();
       const outD = buy ? this.td() : qd;
-      body = html`<div class="mk-tb-venue">${this.venueLine()}</div>
-        <div class="mk-tb-acct"><span title="${this.account.address}">${this.wallet?.name ?? "Wallet"} ${this.account.address.slice(0, 4)}…${this.account.address.slice(-4)}</span><a class="link" href="/profile">Profile</a></div>
-        <div class="mk-tb-bal">
-          <div><span class="eyebrow">${qsym()}</span><b class="num" data-bal="line">${this.line === null ? "TBA" : units(this.line, qd)}</b></div>
-          <div><span class="eyebrow">${sym}</span><b class="num" data-bal="token">${this.tok === null ? "TBA" : units(this.tok, this.td())}</b></div>
-          <div><span class="eyebrow">SOL</span><b class="num" data-bal="sol">${this.sol === null ? "TBA" : sol(this.sol)}</b></div>
+      const on = !!this.account;
+      const chips: [string, string][] = buy
+        ? ["10", "100", "500", "1000"].map((v) => [v, `${Number(v).toLocaleString("en-US")} ${qsym()}`])
+        : ["25", "50", "75", "100"].map((p) => [`${p}%`, `${p}%`]);
+      const action = !on
+        ? this.btn("connect", "Connect wallet", { primary: true })
+        : (q && !q.built.sim.err) || this.swapQ
+          ? this.btn("sign", html`Sign and ${this.swapQ ? (this.swapQ.out === null ? "swap" : "buy") : q!.side} ${this.swapQ?.out === null ? "" : sym}`, { primary: true, disabled: this.busy })
+          : this.btn("review", html`${buy ? "Buy" : "Sell"} ${sym}`, { primary: true, disabled: this.busy });
+      body = html`<div class="mk-tb2${buy ? " is-buy" : " is-sell"}">
+        <div class="mk-tb2-top">
+          <div class="mk-tb2-side" role="group" aria-label="Side"><button type="button" data-tb="side" data-side="buy" aria-pressed="${String(buy)}">Buy</button><button type="button" data-tb="side" data-side="sell" aria-pressed="${String(!buy)}">Sell</button></div>
+          <button type="button" class="mk-tb2-gear" data-tb="gear" aria-label="Trade settings" aria-expanded="${String(this.settings)}" title="Slippage${buy ? " and Pay with" : ""}"><svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6Z"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09a1.65 1.65 0 0 0-1.08-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09a1.65 1.65 0 0 0 1.51-1.08 1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33h.08a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82v.08a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1Z"/></svg></button>
         </div>
-        <div class="seg mk-tb-side" role="group" aria-label="Side"><button type="button" data-tb="side" data-side="buy" aria-pressed="${String(buy)}">Buy</button><button type="button" data-tb="side" data-side="sell" aria-pressed="${String(!buy)}">Sell</button></div>
-        <label class="wl-field mk-tb-f"><span class="eyebrow">${buy ? `${this.pay === "LINE" ? "Pay" : "Spend"} ${qsym()}` : `Sell ${sym}`}</span><span class="mk-tb-in"><input name="tb_amount" inputmode="decimal" autocomplete="off" placeholder="0.0" value="${esc(this.amount)}"><button type="button" class="mk-tb-max" data-tb="max">Max</button></span></label>
-        ${buy ? payWithControl("tb_pay", qsym(), this.pay) : ""}
-        <label class="wl-field mk-tb-f"><span class="eyebrow">Slippage tolerance (bps)</span><input name="tb_slip" inputmode="numeric" value="${esc(this.slip)}"></label>
+        ${this.settings
+          ? html`<div class="mk-tb2-set">${buy && on ? payWithControl("tb_pay", qsym(), this.pay) : ""}<label class="wl-field"><span class="eyebrow">Slippage tolerance (bps)</span><input name="tb_slip" inputmode="numeric" value="${esc(this.slip)}"></label></div>`
+          : ""}
+        <label class="mk-tb2-amt"><span class="mk-tb2-u">${inU}</span><input name="tb_amount" inputmode="decimal" autocomplete="off" placeholder="0" value="${esc(this.amount)}" aria-label="${buy ? `Amount of ${qsym()} to pay` : `Amount of ${sym} to sell`}"${on ? "" : raw(" disabled")}><span class="mk-tb2-hint">${on ? html`<button type="button" class="mk-tb2-max" data-tb="max">Max</button>` : "Enter amount"}</span></label>
+        <div class="mk-tb2-chips">${chips.map(([v, l]) => html`<button type="button" data-tb="chip" data-v="${v}"${on ? "" : raw(" disabled")}>${l}</button>`)}</div>
+        <div class="mk-tb2-bal">${on
+          ? html`<span>${qsym()} <b class="num" data-bal="line">${this.line === null ? "TBA" : units(this.line, qd)}</b></span><span>${sym} <b class="num" data-bal="token">${this.tok === null ? "TBA" : units(this.tok, this.td())}</b></span><span>SOL <b class="num" data-bal="sol">${this.sol === null ? "TBA" : sol(this.sol)}</b></span>`
+          : html`<span class="faint">Connect a wallet to see your balances</span>`}</div>
         ${q && !q.built.sim.err
           ? html`<div class="mk-tb-quote"><div><span>You pay</span><b class="num">${units(q.amountIn, inD)} ${inU}</b></div><div><span>You get (simulated)</span><b class="num" data-quote-out="${q.out}">${units(q.out, outD)} ${outU}</b></div><div><span>Minimum at your tolerance</span><b class="num">${units(q.minOut, outD)} ${outU}</b></div><div><span>Network fee</span><b class="num">${q.built.sim.fee === null ? "TBA" : sol(q.built.sim.fee)} SOL</b></div></div>`
           : ""}
         ${this.swapQ ? html`${routeLines(this.swapQ.prepared)}<div class="mk-tb-quote">${this.swapQ.out === null ? html`<div><span>You get</span><b>simulated after the swap lands (two transactions)</b></div>` : html`<div><span>You get (simulated)</span><b class="num" data-quote-out="${this.swapQ.out}">${units(this.swapQ.out, outD)} ${outU}</b></div><div><span>Minimum at your tolerance</span><b class="num">${units(this.swapQ.minOut, outD)} ${outU}</b></div><div><span>Network fee</span><b class="num">${this.swapQ.fee === null ? "TBA" : sol(this.swapQ.fee)} SOL</b></div>`}</div>` : ""}
-        <div class="mk-tb-go">${(q && !q.built.sim.err) || this.swapQ ? this.btn("sign", html`Sign and ${this.swapQ ? (this.swapQ.out === null ? "swap" : "buy") : q!.side}`, { primary: true, disabled: this.busy }) : this.btn("review", "Review", { primary: true, disabled: this.busy })}${q || this.swapQ ? this.btn("clear", "Change") : ""}</div>`;
+        <div class="mk-tb2-go">${action}${q || this.swapQ ? this.btn("clear", "Change") : ""}</div>
+        <div class="mk-tb2-foot"><span class="mk-tb-venue">${this.venueLine()}</span>${on ? html`<a class="link mk-tb-acct" href="/profile" title="${this.account!.address}">${this.account!.address.slice(0, 4)}…${this.account!.address.slice(-4)}</a>` : ""}</div>
+        ${testLabels() ? html`<div class="wl-fine mk-tb2-note">Devnet only, TEST tokens. Get tUNITS from the faucet on your <a class="link" href="/profile">Profile</a>.</div>` : ""}
+      </div>`;
     }
     this.el.innerHTML = html`<div class="panel-b mk-tb">${body}${this.err ?? ""}${this.msg ? html`<div class="mk-tb-msg">${this.msg}</div>` : ""}</div>`.s;
   }
@@ -448,6 +461,19 @@ class Box {
         case "clear":
           this.quote = this.swapQ = null;
           break;
+        case "gear":
+          this.settings = !this.settings;
+          break;
+        case "chip": {
+          const v = b.dataset.v ?? "";
+          if (v.endsWith("%")) {
+            const p = BigInt(v.slice(0, -1));
+            if (this.tok !== null) this.amount = units((this.tok * p) / 100n, this.td()).replace(/,/g, "");
+          } else this.amount = v;
+          this.quote = this.swapQ = null;
+          this.err = this.msg = null;
+          break;
+        }
         case "review":
           this.msg = null;
           await this.review();

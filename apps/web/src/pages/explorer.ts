@@ -423,6 +423,7 @@ export async function explorerPage(): Promise<Page> {
     body: html`<div id="ex-root"></div>`,
     mount: (root) => {
       mounted?.destroy();
+      sideCards(root);
       mounted = mountExplorer(root.querySelector<HTMLElement>("#ex-root")!, {
         doodles: true,
         // hovering a card: the agent's desktop (its session live, else its idle state: live only) in the machine frame
@@ -452,6 +453,59 @@ export async function explorerPage(): Promise<Page> {
   };
 }
 
+// The page's empty sides on a wide screen, after the reference's floating art: copies of the page's own
+// token cards (their screens copied pixel for pixel), tilted, half off the screen and blurred towards the
+// screen's edge. Decoration only: inert, hidden from assistive tech, gone under 1560 px.
+const SIDE: { side: "l" | "r"; top: number; off: number; rot: number; blur: number }[] = [
+  { side: "l", top: 40, off: -10, rot: -7, blur: 0 },
+  { side: "l", top: 520, off: 50, rot: 5, blur: 2.5 },
+  { side: "l", top: 980, off: -40, rot: -4, blur: 5 },
+  { side: "r", top: 0, off: -40, rot: 8, blur: 3 },
+  { side: "r", top: 450, off: 30, rot: -6, blur: 0 },
+  { side: "r", top: 930, off: -20, rot: 5, blur: 4 },
+];
+function sideCards(root: HTMLElement) {
+  root.querySelector(".ex-deco")?.remove();
+  const deco = document.createElement("div");
+  deco.className = "ex-deco";
+  deco.setAttribute("aria-hidden", "true");
+  root.prepend(deco);
+  let tries = 0;
+  const fill = () => {
+    if (!deco.isConnected) return;
+    const cards = [...root.querySelectorAll<HTMLElement>("#ex-root .ex-card")];
+    // wait for the cards, then about two seconds for their screens to draw; no cards, no decoration
+    if (!cards.length || tries < 4) {
+      if (++tries < 30) setTimeout(fill, 500);
+      return;
+    }
+    deco.replaceChildren(
+      ...SIDE.map((p, i) => {
+        const src = cards[i % cards.length]!;
+        const c = src.cloneNode(true) as HTMLElement;
+        c.classList.add("ex-deco-card", `ex-deco-${p.side}`);
+        c.removeAttribute("data-mint");
+        c.setAttribute("inert", "");
+        c.style.cssText = `--top:${p.top}px;--off:${p.off}px;--rot:${p.rot}deg;--blur:${p.blur}px`;
+        const from = src.querySelectorAll("canvas");
+        c.querySelectorAll("canvas").forEach((cv, k) => {
+          const f = from[k];
+          if (!f) return;
+          cv.width = f.width;
+          cv.height = f.height;
+          try {
+            cv.getContext("2d")?.drawImage(f, 0, 0);
+          } catch {
+            /* a tainted canvas stays blank */
+          }
+        });
+        return c;
+      }),
+    );
+  };
+  setTimeout(fill, 800);
+}
+
 // ------------------------------------------------------------------------------------------------
 
 const CSS = `
@@ -459,6 +513,13 @@ const CSS = `
   --ex-scr-bg:#0a0908;--ex-scr-panel:#1a1c20;--ex-scr-fg:#e6e8ec;--ex-scr-muted:#7a808c;--ex-scr-accent:var(--ac);
   font-family:var(--sans);color:var(--ex-text);min-width:0;display:flex;flex-direction:column;gap:22px}
 .ex-loading{padding:40px 0;color:var(--ex-faint)}
+.ex-deco{position:absolute;inset:0;overflow:hidden;pointer-events:none;z-index:0}
+.ex-deco-card{position:absolute;top:calc(var(--top) + 40px);width:250px;transform:rotate(var(--rot));filter:blur(var(--blur));box-shadow:0 24px 50px -22px #1a1a1955;user-select:none}
+.ex-deco-l{left:calc((100% - 1392px) / 2 - 290px + var(--off));-webkit-mask-image:linear-gradient(to left,#000 55%,transparent 100%);mask-image:linear-gradient(to left,#000 55%,transparent 100%)}
+.ex-deco-r{right:calc((100% - 1392px) / 2 - 290px - var(--off));-webkit-mask-image:linear-gradient(to right,#000 55%,transparent 100%);mask-image:linear-gradient(to right,#000 55%,transparent 100%)}
+.ex-deco-card .ex-cardlink{pointer-events:none}
+@media (max-width:1560px){.ex-deco{display:none}}
+@media (prefers-reduced-motion:reduce){.ex-deco-card{filter:none}}
 .ex-head{position:relative;display:flex;justify-content:space-between;align-items:flex-end;gap:24px 40px;flex-wrap:wrap;padding:36px 32px 32px;border-radius:22px;corner-shape:squircle;background:var(--bg2);box-shadow:var(--card-glow)}
 .ex-hero{position:relative;z-index:1;min-width:0;max-width:620px}
 .ex-eyebrow{display:inline-flex;align-items:center;gap:8px;font:500 12px/1 var(--sans);letter-spacing:-.01em;color:var(--tt);margin-bottom:14px}
