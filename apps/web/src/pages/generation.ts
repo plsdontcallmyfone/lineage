@@ -7,6 +7,7 @@ import { agentLink, auditBadge, badge, banner, teamPanel, candLink, epochLink, g
 import type { Page } from "./types.ts";
 import { provenancePanel } from "./provenance.ts";
 import { githubPanel } from "./generation-github.ts";
+import { mountExplain, plainSummary, rawMeasurements, replaysFold } from "./generation-explain.ts";
 
 export function verdictPanel(v: any, title = "Verdict", extra: [string, unknown][] = []): Raw {
   if (!v) return panel(title, html`<div class="empty"><div class="t1">No verdict yet</div><div>Core computes it once every assigned replay has revealed.</div></div>`);
@@ -28,7 +29,7 @@ export function verdictPanel(v: any, title = "Verdict", extra: [string, unknown]
 }
 
 export async function generationPage([id]: string[]): Promise<Page> {
-  const [g] = await Promise.all([get(`generations/${id}`), loadConfig(), loadLineageNames()]);
+  const [g, cfg] = await Promise.all([get(`generations/${id}`), loadConfig(), loadLineageNames()]);
   const l = await get(`lineages/${g.lineage_id}`);
   const recipe = l.recipe;
   const cal = l.calibration;
@@ -93,6 +94,7 @@ export async function generationPage([id]: string[]): Promise<Page> {
         <span>epoch ${epochLink(g.epoch)}</span>
         <span title="${stamp(g.accepted_at)}">accepted ${when(g.accepted_at)}</span></div></div></div>
     ${banners}
+    ${plainSummary(g, recipe, cal, cfg)}
     ${hero}
     ${g.github ? html`<div style="margin-top:16px">${githubPanel(g)}</div>` : ""}
     ${g.team ? html`<div style="margin-top:16px">${teamPanel(g.team)}</div>` : ""}
@@ -100,7 +102,7 @@ export async function generationPage([id]: string[]): Promise<Page> {
     ${
       g.entry_type === "patch"
         ? html`<div class="grid-side" style="margin-top:16px">
-      <div class="stack">${sp ?? ""}${replayList(mainReplays, recipe, cal, { perReplay })}${asp ? html`${asp}` : ""}${auditReplays.length ? replayList(auditReplays, recipe, cal, { title: "Audit replays" }) : ""}</div>
+      <div class="stack">${rawMeasurements(g, recipe, cfg, sp, asp)}${replaysFold(mainReplays, cal, replayList(mainReplays, recipe, cal, { perReplay }))}${auditReplays.length ? replaysFold(auditReplays, cal, replayList(auditReplays, recipe, cal, { title: "Audit replays" }), "Audit replays") : ""}</div>
       <div class="stack">
         ${verdictPanel(g.verdict, "Verdict", [["unit", linLink(g.lineage_id, lineageName(g.lineage_id))], ["kind and target", html`${g.kind} ${target(g.target)}`]])}
         ${prov}
@@ -111,7 +113,7 @@ export async function generationPage([id]: string[]): Promise<Page> {
           ? html`<div style="margin-top:16px">${verdictPanel(g.verdict, "Audit verdict behind this revert")}</div>`
           : ""
     }`;
-  return { title: headTitle, body, refreshOn: (ev) => ev.data?.gen_id === id || ev.data?.candidate_id === g.candidate_id };
+  return { title: headTitle, body, mount: mountExplain, refreshOn: (ev) => ev.data?.gen_id === id || ev.data?.candidate_id === g.candidate_id };
 }
 
 export { icon };
