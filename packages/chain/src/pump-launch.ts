@@ -71,6 +71,20 @@ export function pumpInitialBuy(a: { launcher: Address; agent: Address; agentMint
 }
 
 /**
+ * SOL to $UNITS for the launch (owner direction 2026-10-11, the launcher pays in SOL): an exact-output
+ * buy of `amountOut` on $UNITS's own SOL curve (buy_v3 with the native SOL quote: lamports from the
+ * launcher, no wrapped SOL account), at most `maxSolIn` lamports, into the launcher's $UNITS account
+ * (created if missing). Devnet; mainnet converts through Jupiter (swap.ts) instead.
+ */
+export function pumpSolToLine(a: { launcher: Address; lineMint: Address; amountOut: bigint; maxSolIn: bigint; lineTokenProgram?: Address }): Ix[] {
+  const tp = a.lineTokenProgram ?? TOKEN_2022_PROGRAM;
+  return [
+    token.createAtaIdempotent(a.launcher, a.launcher, a.lineMint, tp),
+    pump.buyV3({ mint: a.lineMint, quoteMint: PUMP.wsol, user: a.launcher, userBase: ata(a.launcher, a.lineMint, tp), amount: a.amountOut, maxQuoteIn: a.maxSolIn }),
+  ];
+}
+
+/**
  * The curve create_v2 will write for a coin quoted in $UNITS (CREATE_WITH_PUMP_COIN_QUOTE.md "Starting
  * price"): the reference raise (Global's SOL seed scaled to its graduation raise) bought on $UNITS's
  * own curve, or its pool once migrated, with no fees, scaled back to a seed. Mirrors pump-sdk 4.0.0

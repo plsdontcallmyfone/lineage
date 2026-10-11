@@ -14,8 +14,9 @@ export const MODES: LaunchMode[] = ["token", "purchased", "app"];
  *   revoked         the launcher revoked the token; the agent uses the app identity
  *   rejected        GitHub rejected the stored token on use; the agent uses the app identity
  *   app             launched with the app identity
+ *   unpaid          purchased; the launch transactions carry no units account payment, so no pool account is assigned
  */
-export type Status = "waiting_soul" | "provisioning" | "awaiting_token" | "ready" | "failed" | "revoked" | "rejected" | "app";
+export type Status = "waiting_soul" | "provisioning" | "awaiting_token" | "ready" | "failed" | "revoked" | "rejected" | "app" | "unpaid";
 
 export interface AgentState {
   v: 1;
@@ -41,6 +42,8 @@ export interface AgentState {
   last_statement_at: number;
   /** token mode: the launcher opted the account into the units-agents organization (docs/plans/GITHUB-ORG.md 1) */
   join_org?: boolean;
+  /** purchased: the units account payment found in the launch transactions (owner direction 2026-10-11) */
+  paid?: { lamports: string; recipient: string; signatures: string[] };
   history: { at: string; status: Status; reason: string | null }[];
 }
 

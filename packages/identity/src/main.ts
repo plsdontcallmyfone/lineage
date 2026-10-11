@@ -36,13 +36,15 @@
 //   --site     UNITS_SITE_URL       public site base URL   (profile links, commit messages)
 //   --core-key UNITS_IDENTITY_CORE_KEY  Core runtime/admin key file (PR records)
 //   --since    UNITS_IDENTITY_SINCE unix seconds; launches before it are ignored (default: first start)
+//   --payment-since  UNITS_IDENTITY_PAYMENT_SINCE unix seconds; purchased launches from it on need the units account
+//              payment in their launch transactions (default: the first start of a service that checks it)
 //   --indexer  UNITS_INDEXER        market indexer base     (default http://127.0.0.1:9668; launch tx, symbol)
 //   --signer   UNITS_GENESIS_SIGNER hosted runtime base     (default http://127.0.0.1:9667; signs genesis proofs)
 //   --org      UNITS_GITHUB_ORG     organization agents join (default units-agents)
 // Tokens are never printed.
 
 import "../../protocol/src/env-alias.ts"; // first: UNITS_* and LINEAGE_* env names both readable (docs/plans/REBRAND-UNITS.md 3.3)
-import { ChainReader, Rpc } from "../../chain/src/index.ts";
+import { ChainReader, identityPaymentIn, launchBundleTxs, Rpc } from "../../chain/src/index.ts";
 import { devnetRpcUrl, redactRpc } from "../../chain/src/endpoint.ts";
 import type { SoulDoc } from "../../souls/src/schema.ts";
 import { readFileSync } from "node:fs";
@@ -112,9 +114,26 @@ async function soul(agent: string): Promise<SoulDoc | null> {
   const j: any = await r.json();
   return (j?.doc ?? j) as SoulDoc;
 }
+// "A units account" payment (owner direction 2026-10-11): required for purchased launches from the
+// first start of a service that checks it (persisted, so a restart never moves it); earlier launches keep what they have
+const payMeta = store.get<{ since: number }>("meta", "payment");
+const paymentSince = Number(arg("payment-since", "UNITS_IDENTITY_PAYMENT_SINCE") ?? payMeta?.since ?? Math.floor(Date.now() / 1000));
+if (!payMeta || payMeta.since !== paymentSince) store.put("meta", "payment", { since: paymentSince });
+async function paymentTerms(): Promise<{ lamports: bigint; recipient: string } | null> {
+  const r = await fetch(`${CORE}/v1/config`, { signal: AbortSignal.timeout(15_000) });
+  if (!r.ok) throw new Error(`Core answered ${r.status} for its config`);
+  const p = ((await r.json()) as any)?.network?.prepay;
+  if (!p?.identity_account_recipient || !/^\d+$/.test(String(p.identity_account_price_lamports ?? ""))) return null;
+  return { lamports: BigInt(p.identity_account_price_lamports), recipient: p.identity_account_recipient };
+}
 const svc = new IdentityService({
   store, runDir: RUN, chain: { launches: () => reader.launches(), agentLaunch: (m) => reader.agentLaunch(m), agent: (a) => reader.agent(a) },
   soul, site: SITE, since, log,
+  payment: {
+    since: paymentSince,
+    terms: paymentTerms,
+    paid: async (l, recipient) => identityPaymentIn(await launchBundleTxs(reader.rpc, { mint: l.mint, launcher: l.launcher }), { payer: l.launcher, recipient }),
+  },
   org: arg("org", "UNITS_GITHUB_ORG", DEFAULT_ORG),
   soulWaitS: Number((process.env.UNITS_IDENTITY_SOUL_WAIT_S ?? process.env.LINEAGE_IDENTITY_SOUL_WAIT_S) ?? 600),
 });

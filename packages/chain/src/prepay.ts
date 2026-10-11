@@ -32,7 +32,19 @@ export interface PrepayConfig {
   initial_buy_bps: number;
   /** Most the initial buy may cost above the curve quote, in basis points of the quote (the maximum input sent with an exact-output buy). */
   initial_buy_slippage_bps: number;
+  /**
+   * "A units account" (owner direction 2026-10-11): the SOL the launcher pays, in lamports (decimal
+   * string), by a system transfer in the launch transactions to `identity_account_recipient`. The
+   * identity service assigns a pool account only to a launch that carries it. Admin-editable
+   * (POST /v1/admin/launch-fronting). Default 50,000,000 (0.05 SOL).
+   */
+  identity_account_price_lamports: string;
+  /** Where that payment goes; null: not configured, and the wizard does not offer the option. */
+  identity_account_recipient: string | null;
 }
+
+/** The default price of "A units account": 0.05 SOL (owner direction 2026-10-11). */
+export const IDENTITY_ACCOUNT_PRICE_DEFAULT = "50000000";
 
 const DEC = /^\d+(\.\d+)?$/;
 /** A non-negative decimal string as (integer, scale). */
@@ -52,13 +64,19 @@ export function parsePrepayConfig(raw: unknown): PrepayConfig {
     if (typeof r[k] !== "number" || !Number.isFinite(r[k]) || (r[k] as number) < 0) throw new Error(`prepay config: ${k} must be a non-negative number`);
   for (const k of ["initial_buy_bps", "initial_buy_slippage_bps"])
     if (r[k] !== undefined && (!Number.isInteger(r[k]) || (r[k] as number) < 0 || (r[k] as number) > 10_000)) throw new Error(`prepay config: ${k} must be an integer 0 to 10000`);
+  if (r.identity_account_price_lamports !== undefined && (typeof r.identity_account_price_lamports !== "string" || !/^\d+$/.test(r.identity_account_price_lamports)))
+    throw new Error("prepay config: identity_account_price_lamports must be a whole number of lamports as a string");
+  if (r.identity_account_recipient !== undefined && r.identity_account_recipient !== null && (typeof r.identity_account_recipient !== "string" || !/^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(r.identity_account_recipient)))
+    throw new Error("prepay config: identity_account_recipient must be a base58 address or null");
   const c = r as unknown as PrepayConfig;
   if (cmpDec(c.default_usd, c.min_usd) < 0) throw new Error("prepay config: default_usd below min_usd");
   if (cmpDec(c.line_per_usd, "0") <= 0) throw new Error("prepay config: line_per_usd must be positive");
   return { min_usd: c.min_usd, default_usd: c.default_usd, line_per_usd: c.line_per_usd, rate_status: c.rate_status,
     compute_price_line_per_usd: c.compute_price_line_per_usd, compute_price_line_per_sandbox_s: c.compute_price_line_per_sandbox_s,
     sandbox_reserve_s: c.sandbox_reserve_s, attempt_max_usd: c.attempt_max_usd, since: c.since,
-    initial_buy_bps: (r.initial_buy_bps as number | undefined) ?? 100, initial_buy_slippage_bps: (r.initial_buy_slippage_bps as number | undefined) ?? 100 };
+    initial_buy_bps: (r.initial_buy_bps as number | undefined) ?? 100, initial_buy_slippage_bps: (r.initial_buy_slippage_bps as number | undefined) ?? 100,
+    identity_account_price_lamports: (r.identity_account_price_lamports as string | undefined) ?? IDENTITY_ACCOUNT_PRICE_DEFAULT,
+    identity_account_recipient: (r.identity_account_recipient as string | null | undefined) ?? null };
 }
 
 // ---------- launch fronting (docs/plans/LAUNCH-FRONTING.md) ----------

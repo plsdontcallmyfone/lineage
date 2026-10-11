@@ -327,3 +327,62 @@ describe("token flow and revocation", () => {
     expect(codes).toContain(429);
   });
 });
+
+describe("units account payment (owner direction 2026-10-11)", () => {
+  const RECIPIENT = "GZszrP7EYDH8RNo6NsqFwAy7WVYsqmqjj3hquTRhAYPW";
+  function paidSetup(paidBy: Record<string, bigint>, since = 1_799_999_500) {
+    const launcher = generateAgentKey();
+    const agent = generateAgentKey().id, earlier = generateAgentKey().id;
+    const L = [launchOf(agent, 1, 1_800_000_000, launcher.id), launchOf(earlier, 1, 1_799_999_200, launcher.id)];
+    const accts = { [tok("7")]: acct("pool7", 7), [tok("8")]: acct("pool8", 8) };
+    const t = setup(L, accts, { [agent]: fixtureSoul(agent), [earlier]: fixtureSoul(earlier) });
+    const asked: string[] = [];
+    (t.svc.o as any).payment = {
+      since,
+      terms: async () => ({ lamports: 50_000_000n, recipient: RECIPIENT }),
+      paid: async (l: AgentLaunch, recipient: string) => {
+        asked.push(`${l.agent}:${recipient}`);
+        const lamports = paidBy[l.agent] ?? 0n;
+        return { lamports, signatures: lamports ? ["sig2"] : [] };
+      },
+    };
+    t.svc.reserve.add("pool7", tok("7"));
+    t.svc.reserve.add("pool8", tok("8"));
+    return { t, agent, earlier, asked, paidBy };
+  }
+
+  test("refuses to assign a pool account without the payment; the pool stays untouched", async () => {
+    const x = paidSetup({});
+    await x.t.svc.watchOnce();
+    const v = x.t.svc.view(x.agent);
+    expect(v.status).toBe("unpaid");
+    expect(v.identity).toBe("app");
+    expect(v.reason).toMatch(/0 of the 50000000 lamports/);
+    expect(x.t.svc.reserve.publicList().filter((a) => a.assigned_agent === x.agent)).toEqual([]);
+    // a launch from before the payment started is provisioned as before (agents launched earlier keep their accounts)
+    expect(x.t.svc.view(x.earlier).status).toBe("ready");
+  });
+  test("an underpayment is refused too", async () => {
+    const x = paidSetup({});
+    x.paidBy[x.agent] = 49_999_999n;
+    await x.t.svc.watchOnce();
+    expect(x.t.svc.view(x.agent).status).toBe("unpaid");
+  });
+  test("paid in the launch transactions (amount and recipient): provisioned, the payment recorded", async () => {
+    const x = paidSetup({});
+    await x.t.svc.watchOnce();
+    expect(x.t.svc.view(x.agent).status).toBe("unpaid");
+    // the funding transaction lands after the launch transaction: the next watch finds it
+    x.paidBy[x.agent] = 50_000_000n;
+    await x.t.svc.watchOnce();
+    expect(x.t.svc.view(x.agent).status).toBe("ready");
+    expect(x.asked).toContain(`${x.agent}:${RECIPIENT}`);
+    expect(x.t.svc.state(x.agent)!.paid).toEqual({ lamports: "50000000", recipient: RECIPIENT, signatures: ["sig2"] });
+  });
+  test("no price configured: nothing assigned", async () => {
+    const x = paidSetup({});
+    (x.t.svc.o as any).payment.terms = async () => null;
+    await x.t.svc.watchOnce();
+    expect(x.t.svc.view(x.agent)).toMatchObject({ status: "unpaid", reason: expect.stringMatching(/no units account price/) });
+  });
+});

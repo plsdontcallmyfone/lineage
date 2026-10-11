@@ -3,12 +3,16 @@
 //
 //   purchased  waiting_soul -> provisioning -> ready | failed. Assigns one reserve account, validates
 //              it, cleans the previous owner's traces, sets name and bio from the soul, registers an
-//              SSH signing key and marks it assigned (packages/souls provisionAccount). Devnet charges
-//              nothing; the price stays TBA.
+//              SSH signing key and marks it assigned (packages/souls provisionAccount). Paid in SOL in
+//              the launch transactions (see below); unpaid launches get no account.
 //   token      awaiting_token until the launcher submits a token (POST /identity/token with a signed
 //              statement); then validated (login, scopes, expiry), stored encrypted, signing key
 //              registered -> ready. Revocable and rotatable by the launcher.
 //   app        no account; commits are recorded as fallbacks by the mirror.
+// "A units account" (owner direction 2026-10-11): a purchased launch created at or after
+// `payment.since` gets a pool account only when its launch transactions carry the configured SOL
+// payment (amount and recipient from Core's prepay config) from the launcher; otherwise it stays
+// `unpaid` and no pool account is touched. Launches before that keep what they have.
 // Only launches created at or after `since` are acted on (older TEST launches are left alone).
 
 import type { AgentLaunch, AgentRecord } from "../../chain/src/index.ts";
@@ -52,6 +56,19 @@ export interface ServiceOptions {
   now?: () => Date;
   /** GitHub organization agents join (docs/plans/GITHUB-ORG.md); default units-agents */
   org?: string;
+  /** the units account payment check (owner direction 2026-10-11); absent: no payment required */
+  payment?: PaymentCheck;
+}
+
+export interface PaymentCheck {
+  /** purchased launches created at or after this (unix seconds) must carry the payment */
+  since: number;
+  /** the configured price and recipient now (Core's prepay block), or null when none is configured */
+  terms: () => Promise<{ lamports: bigint; recipient: string } | null>;
+  /** lamports the launcher sent `recipient` in the launch's transactions (launch-bundle.ts identityPaymentIn) */
+  paid: (l: AgentLaunch, recipient: string) => Promise<{ lamports: bigint; signatures: string[] }>;
+  /** how long after first seeing a launch the payment is still looked for (default 1800 s: its transactions land in order) */
+  windowS?: number;
 }
 
 export class HttpError extends Error {
@@ -156,8 +173,38 @@ export class IdentityService {
         this.save(s);
         this.log(`watch: new launch ${l.agent} (${mode}) on ${l.repoUrl}: ${s.status}`);
       }
-      if (mode === "purchased") await this.advancePurchased(s);
+      if (mode === "purchased" && (await this.paymentOk(l, s))) await this.advancePurchased(s);
     }
+  }
+
+  /** Whether a purchased launch may get a pool account: paid in its launch transactions, or launched before the payment started. */
+  private async paymentOk(l: AgentLaunch, s: AgentState): Promise<boolean> {
+    const p = this.o.payment;
+    if (!p || Number(l.createdAt) < p.since || s.status === "ready" || s.paid) return true;
+    if (s.status === "unpaid" && this.now().getTime() - Date.parse(s.first_seen_at) > (p.windowS ?? 1800) * 1000) return false;
+    let why: string;
+    try {
+      const t = await p.terms();
+      if (!t) why = "no units account price is configured; no pool account is assigned";
+      else {
+        const got = await p.paid(l, t.recipient);
+        if (got.lamports >= t.lamports) {
+          s.paid = { lamports: got.lamports.toString(), recipient: t.recipient, signatures: got.signatures };
+          if (s.status === "unpaid") setStatus(s, "waiting_soul", null, this.now());
+          this.save(s);
+          this.log(`watch: ${s.agent} paid ${got.lamports} lamports for its units account in ${got.signatures.join(", ")}`);
+          return true;
+        }
+        why = `the launch transactions carry ${got.lamports} of the ${t.lamports} lamports to ${t.recipient}; no pool account is assigned`;
+      }
+    } catch (e) {
+      why = `the payment could not be read yet: ${errText(e)}`;
+    }
+    if (s.status !== "unpaid" || s.reason !== why) {
+      this.save(setStatus(s, "unpaid", why, this.now()));
+      this.log(`watch: ${s.agent} unpaid: ${why}`);
+    }
+    return false;
   }
 
   private async advancePurchased(s: AgentState) {

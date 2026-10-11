@@ -93,7 +93,7 @@ describe("underfunded launch", () => {
 describe("reading the launch transaction", () => {
   const agent = generateAgentKey().id, mint = generateAgentKey().id;
   const vault = launchPdas.computeVault(agent), al = launchPdas.agentLaunch(mint);
-  const l = { agent, mint, createdAt: 5n } as unknown as AgentLaunch;
+  const l = { agent, mint, launcher: "payer", createdAt: 5n } as unknown as AgentLaunch;
   const data = (b: Uint8Array) => base58Encode(b);
   function rpcFor(tx: unknown) {
     return new Rpc(async (method) => {
@@ -125,6 +125,19 @@ describe("reading the launch transaction", () => {
       ] } };
     expect(await readLaunchDeposit(rpcFor(tx), l)).toEqual({ signature: "launch", deposit: 200_000_000n, woke: false, initialBuy: 1_000_000_000_000n });
   });
+  test("one approval, two transactions: create + register first, deposit + wake in the second; another payer's transaction is not the launch's", async () => {
+    const first = { transaction: { message: { accountKeys: ["payer", LAUNCH_PROGRAM_ID, al], instructions: [] } }, meta: { err: null, postTokenBalances: [] } };
+    const second = { transaction: { message: { accountKeys: ["payer", LAUNCH_PROGRAM_ID, launchPdas.config(), al, vault], instructions: [{ programIdIndex: 1, accounts: [2, 3, 4], data: data(ixDisc("refresh_awake")) }] } },
+      meta: { err: null, postTokenBalances: [{ accountIndex: 4, mint: "m", uiTokenAmount: { amount: "200000000" } }] } };
+    const stranger = { transaction: { message: { accountKeys: ["someoneElse", LAUNCH_PROGRAM_ID, vault], instructions: [] } }, meta: { err: null, postTokenBalances: [{ accountIndex: 2, mint: "m", uiTokenAmount: { amount: "999" } }] } };
+    const byS: Record<string, unknown> = { a: first, b: second, c: stranger };
+    const rpc = new Rpc(async (method, params) => {
+      if (method === "getSignaturesForAddress") return [{ signature: "c", err: null }, { signature: "b", err: null }, { signature: "a", err: null }];
+      if (method === "getTransaction") return byS[(params as string[])[0]!];
+      throw new Error(method);
+    });
+    expect(await readLaunchDeposit(rpc, l)).toEqual({ signature: "a", deposit: 200_000_000n, woke: true, initialBuy: 0n });
+  });
 });
 
 describe("launch fronting config (admin-editable)", () => {
@@ -146,7 +159,16 @@ describe("launch fronting config (admin-editable)", () => {
     expect(() => p.setFronting({ credits_usd: "0" })).toThrow(/credits_usd/);
     expect(() => p.setFronting({ initial_buy_bps: 10_001 })).toThrow(/initial_buy_bps/);
     expect(() => p.setFronting({ min_usd: "1" })).toThrow(/unknown field/);
+    expect(() => p.setFronting({ identity_account_price_lamports: 50_000_000 })).toThrow(/identity_account_price_lamports/);
+    expect(() => p.setFronting({ identity_account_recipient: "nope" })).toThrow(/identity_account_recipient/);
     expect(p.frontingView()).toMatchObject({ admin_patch: null, credits_usd: "10" });
+  });
+  test("the units account price and recipient are admin-editable and served in the prepay block", () => {
+    const e = env();
+    const p = prepayOf(e.core);
+    const to = generateAgentKey().id;
+    expect(p.setFronting({ identity_account_price_lamports: "60000000", identity_account_recipient: to })).toMatchObject({ identity_account_price_lamports: "60000000", identity_account_recipient: to });
+    expect(e.cfg.prepay).toMatchObject({ identity_account_price_lamports: "60000000", identity_account_recipient: to });
   });
   test("a recorded launch shows its initial buy as a share of the supply", () => {
     const e = env();

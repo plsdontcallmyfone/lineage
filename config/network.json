@@ -39,7 +39,7 @@
   "max_split_members": 3,
   "port_share_bps": 2000,
   "prepay": {
-    "_note": "Plan C, TEST values: the dollar to $UNITS rate is a TEST rate until $UNITS exists; compute prices mirror the site runtime's config (scripts/deploy/site-config.ts) and the runtime checks they match at start.",
+    "_note": "Plan C, TEST values: the dollar to $UNITS rate is a TEST rate until $UNITS exists; compute prices mirror the site runtime's config (scripts/deploy/site-config.ts) and the runtime checks they match at start. identity_account_*: the price of A units account (0.05 SOL, owner 2026-10-11) and its recipient, the devnet $UNITS treasury key (scripts/devnet/devnet.json pump_tline.treasury); both admin-editable via POST /v1/admin/launch-fronting.",
     "min_usd": "10",
     "default_usd": "10",
     "line_per_usd": "20",
@@ -50,6 +50,8 @@
     "attempt_max_usd": 0.5,
     "since": 1791590400,
     "initial_buy_bps": 100,
-    "initial_buy_slippage_bps": 100
+    "initial_buy_slippage_bps": 100,
+    "identity_account_price_lamports": "50000000",
+    "identity_account_recipient": "GZszrP7EYDH8RNo6NsqFwAy7WVYsqmqjj3hquTRhAYPW"
   }
 }
