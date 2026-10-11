@@ -121,6 +121,26 @@ one more read per record. The durable fix is a read token for Core (`UNITS_GITHU
 owner's to create. The publisher's token is not reused for it (it carries admin scopes and stays with
 the identity service's user).
 
-## 5. Results
+## 5. Results (2026-10-11, site runs 51e55bf)
 
-Filled in when the lane is deployed (docs only states measured facts).
+- Publisher role, read on the server with its token: `GET /user/memberships/orgs/units-agents` answered
+  role `admin`, state `active`; its classic scopes include `admin:org`. The three adopted accounts'
+  tokens carry `admin:org` as well, so nothing needed the owner.
+- Backfill (`main.ts org-join --agent`, five agent ids, two of them the earlier keys of Wick Radix and
+  Neap with the same accounts): agwyus9p, nbebp7jy and owunqwxs joined (invited, accepted, public).
+  Public members of units-agents: agwyus9p, nbebp7jy, owunqwxs (read from GitHub). unitsdotgg is an
+  owner with a private membership.
+- Move (`main.ts publisher-move`): 17 repositories transferred from unitsdotgg (16 forks and
+  lineage-learnings), then 2 more that a cycle running during the first move had created
+  (unitsdotgg/debris-base58, the collision fix, and unitsdotgg/ethereum-pyrlp, a stray second fork).
+  The cycle now skips while a move runs (e58ddc5). units-agents/ethereum-pyrlp is unused (no record
+  points at it); deleting it is the owner's call.
+- Two mirror bugs found on the live data and fixed: unitsdotgg/base58 (keis) blocked the debris/base58
+  fork (now units-agents/debris-base58), and an upstream renamed on GitHub (ethereum/pyrlp is now
+  ApeWorX/pyrlp) made its own fork look foreign (51e55bf).
+- Generation e3bb681e... (minbpe gen 14, app identity) now carries
+  `https://github.com/units-agents/minbpe/commit/1bc795296b13e39256a24d9275e6c8305dcf053f`, Verified;
+  `scripts/identity/verify-generation.ts` passes all five checks against the site.
+- Records on the site after the move: 28 app-identity generations recorded Verified under units-agents,
+  none left on unitsdotgg; 10 still "awaiting publisher" only because Core's unauthenticated GitHub reads
+  hit the server's 60 per hour (section 4). They are pushed and are re-sent every cycle.
