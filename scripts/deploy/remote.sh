@@ -100,6 +100,22 @@ flip_dir() {
   fi
   echo "layout: $new is the directory, $old -> $nb"
 }
+# add_aliases: each old account name that is missing while its units name exists becomes an alias of it
+# (same UID, GID and supplementary groups; nologin, locked), on a migrated box and on one provisioned
+# with the units names, so a release from before the rename (a rollback) runs on either
+add_aliases() {
+  local p o n uid gid home supp
+  for p in "${LAYOUT_USERS[@]}"; do
+    o="${p%%:*}" n="${p#*:}"
+    getent passwd "$n" >/dev/null || continue
+    getent passwd "$o" >/dev/null && continue
+    uid="$(getent passwd "$n" | cut -d: -f3)"; gid="$(getent passwd "$n" | cut -d: -f4)"; home="$(getent passwd "$n" | cut -d: -f6)"
+    supp="$(id -nG "$n" | tr ' ' '\n' | grep -vx "$(id -gn "$n")" | paste -sd, - || true)"
+    getent group "$o" >/dev/null || groupadd -o -g "$gid" "$o"
+    useradd -r -o -u "$uid" -g "$gid" ${supp:+-G "$supp"} -M -N -d "$home" -s /usr/sbin/nologin -c "old name of $n" "$o" 2>/dev/null
+    echo "layout: $o is an alias of $n"
+  done
+}
 # rename_accounts: every old account whose new name does not exist yet, in one vipw/vigr pass per file
 rename_accounts() {
   local p o n pairs=() map="" bk ed f kind ok=1
@@ -142,15 +158,7 @@ EOS
       [ -f "$f" ] || continue
       for p in "${pairs[@]}"; do sed -i "s/^${p%%:*}:/${p#*:}:/" "$f"; done
     done
-    # aliases: the old names, same ids and groups
-    for p in "${pairs[@]}"; do
-      o="${p%%:*}" n="${p#*:}"
-      local uid gid home supp
-      uid="$(getent passwd "$n" | cut -d: -f3)"; gid="$(getent passwd "$n" | cut -d: -f4)"; home="$(getent passwd "$n" | cut -d: -f6)"
-      supp="$(id -nG "$n" | tr ' ' '\n' | grep -vx "$(id -gn "$n")" | paste -sd, - || true)"
-      getent group "$o" >/dev/null || groupadd -o -g "$gid" "$o"
-      getent passwd "$o" >/dev/null || useradd -r -o -u "$uid" -g "$gid" ${supp:+-G "$supp"} -M -N -d "$home" -s /usr/sbin/nologin -c "old name of $n" "$o"
-    done
+    add_aliases
     # checks: both names give the old uid and the old set of group ids
     for p in "${pairs[@]}"; do
       o="${p%%:*}" n="${p#*:}"
@@ -170,6 +178,7 @@ migrate_layout() {
   local p
   for p in "${LAYOUT_DIRS[@]}"; do flip_dir "${p%%:*}" "${p#*:}" || return 1; done
   rename_accounts || return 1
+  add_aliases
   # Core's optional GitHub token env file is named by units-core.service itself now; a drop-in naming
   # the pre-rename path for it is redundant (the file moved with /etc/lineage, which still resolves)
   local d=/etc/systemd/system/units-core.service.d/github-token.conf
@@ -233,6 +242,7 @@ ensure_users() {
   done
   install -d -m 700 -o units-core -g units-core /etc/units-core
   install -d -m 755 /etc/units
+  migrate_layout || exit 1   # again: links and aliases for what was just made (a fresh box)
 }
 # The caddy.service drop-in. `caddy reload` sends the new config to the admin address named IN the new
 # config, so a reload that moves the admin endpoint (localhost:2019 <-> the unix socket, in either

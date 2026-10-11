@@ -158,3 +158,5 @@ systemctl daemon-reload
 systemctl enable caddy >/dev/null 2>&1 || true
 echo "caddy $(caddy version | awk '{print $1}')"
 echo "== provision done"
+# the pre-rebrand names as links and account aliases (a rollback to an older release runs on this box)
+bash "$(dirname "$0")/remote.sh" migrate-layout

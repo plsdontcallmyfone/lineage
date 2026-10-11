@@ -441,3 +441,54 @@ and old, souls new and continuing, Core links), worker journal test now expects 
 Suites: protocol 85, souls 28, identity 45, core 292, runtime 70, trader 73, mirror 15, apps/web/test
 21, docs build 7, all pass; tsc clean apart from two pre-existing script errors outside this lane
 (scripts/devnet/relaunch-v2.ts import, scripts/learnings/backfill.ts top-level await).
+
+### 6.3 GitHub artifacts
+
+- Genesis proofs: `GENESIS_FILE` is `units-proof.json`, new proofs carry `units-github-genesis`. A
+  profile repository that already holds `lineage-proof.json` keeps it, rewritten with the same current
+  proof on every commit (the purchased-mode tree replace would otherwise drop it); the record lists
+  `proof_files`. README markers are written as `<!-- units:... -->`; the lineage ones are still found
+  (a launcher README with them is still ours to replace). Readers (Core checkGenesis,
+  verify-genesis.ts) already took either file, units first. Core's link recheck now records the file it
+  found, so `proof_url` moves to `units-proof.json` without a new `POST /genesis`.
+- Learnings repositories: `units-learnings`. Before publishing, the identity service renames a
+  `lineage-learnings` under the same owner in place (`PATCH /repos/{owner}/lineage-learnings
+  {name}`) with the token that publishes there: the agent's own token, or the publisher's token for the
+  shared `units-agents` repository. GitHub keeps a redirect from the old URL. If GitHub refuses (a
+  token without admin rights), the old name stays in use and no second repository is created. Core's
+  recorded URLs follow from the next cycle's report.
+- Tests: identity genesis 9/9 (incl. a pre-rebrand repository: both files hold the same proof,
+  lineage markers recognised), learnings 7/7 (rename with the agent's token keeps history, a refused
+  rename keeps the old repo, a record with no new episodes follows the rename), core genesis 2/2
+  (units-proof.json appears beside the old file: still verified, proof_url moves).
+
+### 6.4 Server paths and accounts
+
+`remote.sh migrate-layout` (idempotent; deploy.sh runs it before shipping, provision.sh on a box from
+before the rebrand, ensure_users before it would create any account):
+
+- Directories /opt, /var/lib, /var/lib/*-monitor, /etc, /etc/*-core, /etc/*-identity and /home: the units
+  name becomes the real directory and the lineage name a relative link to it, swapped in one
+  `renameat2(RENAME_EXCHANGE)` (perl `syscall`), so each path resolves at every instant. None of these
+  directories is a mount point in a service namespace (ReadWritePaths name directories below them), so
+  running services keep their bind mounts, open files and working directories.
+- Accounts lineage, lineage-core, -web, -gate, -indexer, -identity, -monitor become units, units-core,
+  and so on. They are renamed in place with `vipw`/`vigr` (locked, atomic per file) and a scripted
+  editor that also maps group member lists and the two home paths. UIDs and GIDs stay the same, so no
+  file changes owner, and this works while the accounts' processes run (`usermod -l` refuses then).
+  Each old name stays as an alias entry with the same UID, GID and supplementary groups (nologin,
+  locked), so old unit files (a rollback) and old commands still resolve. The account files are backed
+  up to /var/backups/units-rename-<time> and restored if a check fails (both names must give the old
+  UID and the same group ids).
+- Unit files and the deploy kit use the units paths and accounts; runtime directories are units-*.
+  units-core.service names `/etc/units/core-github.env` (optional), and the separate
+  github-token.conf drop-in is removed once it is redundant. Kept on purpose: paths relative to a home
+  directory (`~/.config/lineage`, `~/.lineage`, read by code across packages; the old names resolve),
+  the secrets snapshots' member paths (`var/lib/lineage/...`, a frozen archive format; they resolve
+  through the links), /root/lineage-deploy, the Caddy log file name.
+- Rehearsal in a throwaway Ubuntu 24.04 container (label units=1) shaped like the site, with a process
+  of uid 1000 holding its cwd in /var/lib/lineage and one of lineage-core appending to a file in
+  /var/lib/lineage/core: both kept running and writing across the flip; ids, groups, aliases, subuid
+  checked; pwck and grpck clean; second run a no-op.
+- Local: `~/.config/units` is the directory and `~/.config/lineage` links to it (backup
+  `~/.config/lineage.bak-20261011`, 193 files, tree digest equal before the move).
