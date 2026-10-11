@@ -41,7 +41,7 @@ const check = (name: string, ok: boolean, detail = "") => {
 };
 const runtimeHits = () => {
   if (!HOST) return null;
-  const r = spawnSync(["ssh", "-i", join(homedir(), ".ssh/lineage_site"), "-o", "BatchMode=yes", `root@${HOST}`, "cat /var/lib/lineage/runtime/trader/trader.json"]);
+  const r = spawnSync(["ssh", "-i", join(homedir(), ".ssh/lineage_site"), "-o", "BatchMode=yes", `root@${HOST}`, "cat /var/lib/units/runtime/trader/trader.json"]);
   if (r.exitCode !== 0) return null;
   const s = JSON.parse(r.stdout.toString());
   return { trades: s.trades as number, limit_hits: s.limit_hits as Record<string, number>, outbox: (s.outbox as unknown[]).length, analyses: (s.analyses ?? []) as any[], posts: (s.posts ?? []) as any[] };

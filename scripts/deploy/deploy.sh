@@ -52,7 +52,7 @@
 #                   rolled back (default 180; a fresh Core reads the chain before it listens)
 #   BACKUP_AGE_KEY  the owner's age identity for secrets+state snapshots (default
 #                   ~/.config/lineage/backup-age.key, mode 600, never copied anywhere); its public
-#                   recipient goes to the server's /etc/lineage/backup-recipient.txt on every code ship
+#                   recipient goes to the server's /etc/units/backup-recipient.txt on every code ship
 #                   (a different recipient already there is kept unless BACKUP_RECIPIENT_REPLACE=1)
 #   DRY_RUN=1       test mode (scripts/deploy/dryrun.sh): no Docker, no keys from here, nothing sent on chain,
 #                   Caddy with internal TLS for SITE_NAMES (default localhost)
@@ -78,7 +78,7 @@ cd "$REPO"
 # Settings left unset keep the server's current values (a deploy without them must not switch the
 # runtime, authors, recipes or extra origins back to the defaults). KEEP_SITE_ENV=0 uses the defaults.
 if [ "${KEEP_SITE_ENV:-1}" = 1 ] && [ "$DRY_RUN" != 1 ]; then
-  CUR="$(r 'cat /etc/lineage/site.env 2>/dev/null' 2>/dev/null || true)"
+  CUR="$(r 'cat /etc/units/site.env 2>/dev/null || cat /etc/lineage/site.env 2>/dev/null' 2>/dev/null || true)"
   cur() { printf '%s\n' "$CUR" | sed -n "s/^$1=//p" | tail -1; }
   if [ -n "$CUR" ]; then
     : "${UNITS_RECIPES:=${LINEAGE_RECIPES:-$(cur UNITS_RECIPES)}}" "${UNITS_RECIPES:=$(cur LINEAGE_RECIPES)}" "${AUTHORS:=$(cur AUTHORS)}"
@@ -107,7 +107,7 @@ SHA="$(git rev-parse "${DEPLOY_REF:-HEAD}^{commit}")"
 git merge-base --is-ancestor "$SHA" HEAD || { echo "DEPLOY_REF must be HEAD or one of its ancestors" >&2; exit 2; }
 
 write_env() {
-  r "install -d -m 755 /etc/lineage && (umask 077; cat > /etc/lineage/site.env) && chmod 600 /etc/lineage/site.env && chown root:root /etc/lineage/site.env" <<EOF
+  r "install -d -m 755 /etc/units && (umask 077; cat > /etc/units/site.env) && chmod 600 /etc/units/site.env && chown root:root /etc/units/site.env" <<EOF
 # written by scripts/deploy/deploy.sh; read by remote.sh and the units-* (and older lineage-*) units
 SITE_NAMES=$SITE_NAMES
 GATE_ORIGINS=$ORIGINS
@@ -144,7 +144,10 @@ do_ship() {
   local t; t="$(mktemp -d)"
   git bundle create -q "$t/lineage.bundle" HEAD
   echo "bundle $(du -h "$t/lineage.bundle" | cut -f1)"
-  env -u LC_CTYPE -u LC_ALL scp -q "${SCP_OPTS[@]}" "$t/lineage.bundle" "$SSH_USER@$HOST:/opt/lineage/incoming.bundle"
+  # the units layout (paths and accounts) before anything is copied to its paths (REBRAND-UNITS.md 6.4)
+  put_tools
+  r "bash /root/lineage-deploy/remote.sh migrate-layout < /dev/null"
+  env -u LC_CTYPE -u LC_ALL scp -q "${SCP_OPTS[@]}" "$t/lineage.bundle" "$SSH_USER@$HOST:/opt/units/incoming.bundle"
   rm -rf "$t"
   write_env
   put_tools
@@ -159,29 +162,29 @@ do_ship() {
 pub_local() { bun "$REPO/scripts/deploy/site-keys.ts" pub "$1" | bun -e 'const j=JSON.parse(await Bun.stdin.text()); console.log(Object.values(j)[0] ?? "")'; }
 # pub_remote <path> [owner]: a relative path is under ~lineage/.config/lineage (owner lineage)
 pub_remote() {
-  local f="$1" o="${2:-lineage}"
-  [[ "$f" = /* ]] || f="/home/lineage/.config/lineage/$f"
-  r "if [ -f $f ]; then runuser -u $o -- env HOME=/tmp BUN_RUNTIME_TRANSPILER_CACHE_PATH=0 /usr/local/bin/bun /opt/lineage/releases/$SHA/scripts/deploy/site-keys.ts pub $f; else echo '{}'; fi" | bun -e 'const j=JSON.parse(await Bun.stdin.text()); console.log(Object.values(j)[0] ?? "")'
+  local f="$1" o="${2:-units}"
+  [[ "$f" = /* ]] || f="/home/units/.config/lineage/$f"
+  r "if [ -f $f ]; then runuser -u $o -- env HOME=/tmp BUN_RUNTIME_TRANSPILER_CACHE_PATH=0 /usr/local/bin/bun /opt/units/releases/$SHA/scripts/deploy/site-keys.ts pub $f; else echo '{}'; fi" | bun -e 'const j=JSON.parse(await Bun.stdin.text()); console.log(Object.values(j)[0] ?? "")'
 }
 # put_key <local file> <remote path> <expected pubkey or empty> [owner]: a relative remote path is under
 # ~lineage/.config/lineage; an absolute one belongs to a service user (remote.sh users_setup), e.g. the
-# Core authority key in /etc/lineage-core (owner lineage-core) and the faucet in lineage-web's home
+# Core authority key in /etc/units-core (owner units-core) and the faucet in units-web's home
 put_key() {
-  local src="$1" dst="$2" want="$3" owner="${4:-lineage}" have there abs
+  local src="$1" dst="$2" want="$3" owner="${4:-units}" have there abs
   [ -f "$src" ] || { echo "missing $src" >&2; return 1; }
   have="$(pub_local "$src")"
   if [ -n "$want" ] && [ "$have" != "$want" ]; then echo "$src holds $have, expected $want; not copied" >&2; return 1; fi
   there="$(pub_remote "$dst" "$owner")"
   if [ "$there" = "$have" ]; then echo "key $dst: already on the server ($have)"; return 0; fi
   if [ -n "$there" ]; then echo "key $dst: the server holds a different key ($there); not replaced" >&2; return 1; fi
-  abs="$dst"; [[ "$abs" = /* ]] || abs="/home/lineage/.config/lineage/$dst"
+  abs="$dst"; [[ "$abs" = /* ]] || abs="/home/units/.config/lineage/$dst"
   r "umask 077; install -d -m 700 -o $owner -g $owner \$(dirname $abs); cat > $abs.tmp && chown $owner:$owner $abs.tmp && chmod 600 $abs.tmp && mv $abs.tmp $abs" < "$src"
   echo "key $dst: copied ($have)"
 }
 # put_secret <local file> <remote path>: env files with no public half; content never shown
 put_secret() {
   [ -f "$1" ] || { echo "missing $1" >&2; return 1; }
-  r "umask 077; cat > /home/lineage/.config/lineage/$2.tmp && chown lineage:lineage /home/lineage/.config/lineage/$2.tmp && chmod 600 /home/lineage/.config/lineage/$2.tmp && mv /home/lineage/.config/lineage/$2.tmp /home/lineage/.config/lineage/$2" < "$1"
+  r "umask 077; cat > /home/units/.config/lineage/$2.tmp && chown units:units /home/units/.config/lineage/$2.tmp && chmod 600 /home/units/.config/lineage/$2.tmp && mv /home/units/.config/lineage/$2.tmp /home/units/.config/lineage/$2" < "$1"
   echo "secret $2: copied ($(wc -c < "$1" | tr -d ' ') bytes)"
 }
 
@@ -192,8 +195,8 @@ do_keys() {
   ca="$(bun -e "console.log(JSON.parse(await Bun.file('$dj').text()).core_authority)")"
   rt="$(bun -e "console.log(JSON.parse(await Bun.file('$dj').text()).runtime_authority)")"
   # Core's and the faucet's keys go to their service users, never to lineage (audit OFF-D10)
-  put_key "$KEYS_LOCAL/core-authority.json" /etc/lineage-core/core-authority.json "$ca" lineage-core
-  put_key "$KEYS_LOCAL/faucet.json" /var/lib/lineage/web/.config/lineage/devnet/faucet.json "" lineage-web
+  put_key "$KEYS_LOCAL/core-authority.json" /etc/units-core/core-authority.json "$ca" units-core
+  put_key "$KEYS_LOCAL/faucet.json" /var/lib/units/web/.config/lineage/devnet/faucet.json "" units-web
   [ -f "$HOME/.config/lineage/rpc.env" ] && put_secret "$HOME/.config/lineage/rpc.env" rpc.env
   [ "${WITH_RUNTIME:-0}" = 1 ] && do_runtime_secrets
   if [ "${WITH_AUTHOR:-0}" = 1 ]; then
@@ -230,7 +233,7 @@ do_runtime_secrets() {
   fi
 }
 
-site_pub() { r "cat /var/lib/lineage/site/pubkeys.json" | bun -e "const j=JSON.parse(await Bun.stdin.text()); console.log(j.site['$1'])"; }
+site_pub() { r "cat /var/lib/units/site/pubkeys.json" | bun -e "const j=JSON.parse(await Bun.stdin.text()); console.log(j.site['$1'])"; }
 
 do_fund() {
   local owner verifiers plan=""
@@ -240,11 +243,11 @@ do_fund() {
   say "fund (local, deployer key stays here)${plan:+: plan only}"
   bun "$REPO/scripts/deploy/fund-site.ts" --owner "$owner" --verifiers "$verifiers" $plan
   say "chain: register and bond the site's verifiers (on the server)${plan:+: plan only}"
-  r "bash /opt/lineage/releases/$SHA/scripts/deploy/remote.sh chain $SHA $([ -n "$plan" ] && echo plan) < /dev/null"
+  r "bash /opt/units/releases/$SHA/scripts/deploy/remote.sh chain $SHA $([ -n "$plan" ] && echo plan) < /dev/null"
   if [ -z "$plan" ]; then
     # site-chain.ts transactions, appended to the local record
     local md="$REPO/scripts/deploy/SITE-DEVNET.md"
-    r "cat /var/lib/lineage/site/tx-log.jsonl 2>/dev/null || true" | while read -r l; do
+    r "cat /var/lib/units/site/tx-log.jsonl 2>/dev/null || true" | while read -r l; do
       sig="$(echo "$l" | bun -e 'console.log(JSON.parse(await Bun.stdin.text()).signature)')"
       [ -f "$md" ] && grep -q "$sig" "$md" && continue
       echo "$l" | bun -e "const j=JSON.parse(await Bun.stdin.text()); const fs=require('fs'); const md='$md'; if(!fs.existsSync(md)) fs.writeFileSync(md,'# Site devnet transactions\n\nEvery devnet transaction the site deploy kit sent (scripts/deploy/fund-site.ts locally, scripts/deploy/site-chain.ts on the server). Fee in lamports as returned by the RPC.\n\n| When (UTC) | Step | What | Fee | Signature |\n|---|---|---|---|---|\n'); fs.appendFileSync(md, '| '+j.at.replace('T',' ').slice(0,19)+' | server | '+j.what+' | '+(j.fee??'?')+' | \`'+j.signature+'\` |\n')"
@@ -257,7 +260,7 @@ do_activate() {
   # the public units restart one by one (health-checked, rollback on a failure); background units drain
   # without holding them, and activate waits at most DEPLOY_DRAIN_WAIT s for them (docs/DEPLOY-SITE.md
   # "Zero-downtime activate")
-  r "DRAIN_WAIT=${DEPLOY_DRAIN_WAIT:-120} HEALTH_WAIT=${DEPLOY_HEALTH_WAIT:-180} bash /opt/lineage/releases/$SHA/scripts/deploy/remote.sh activate $SHA"
+  r "DRAIN_WAIT=${DEPLOY_DRAIN_WAIT:-120} HEALTH_WAIT=${DEPLOY_HEALTH_WAIT:-180} bash /opt/units/releases/$SHA/scripts/deploy/remote.sh activate $SHA"
   say "health"
   local ok=0
   for i in $(seq 1 60); do
@@ -278,7 +281,7 @@ do_activate() {
 # new one by itself when its old process exits; systemd's TimeoutStopSec bounds the wait)
 draining_now() {
   local d
-  d="$(r 'for u in $(systemctl list-units --all --plain --no-legend "lineage-*" | awk "{print \$1}"); do [ "$(systemctl is-active "$u")" = deactivating ] && printf "%s since %s (stop timeout %s)\n" "${u%.service}" "$(systemctl show -p StateChangeTimestamp --value "$u")" "$(systemctl show -p TimeoutStopUSec --value "$u")"; done; true' 2>/dev/null || true)"
+  d="$(r 'for u in $(systemctl list-units --all --plain --no-legend "units-*" "lineage-*" | awk "{print \$1}"); do [ "$(systemctl is-active "$u")" = deactivating ] && printf "%s since %s (stop timeout %s)\n" "${u%.service}" "$(systemctl show -p StateChangeTimestamp --value "$u")" "$(systemctl show -p TimeoutStopUSec --value "$u")"; done; true' 2>/dev/null || true)"
   if [ -n "$d" ]; then echo "still draining (they start on $(echo "${SHA:-the new release}" | cut -c1-7) when done):"; printf '%s\n' "$d" | sed 's/^/  /'
   else echo "still draining: none"; fi
 }
@@ -296,12 +299,12 @@ put_recipient() {
   elif [ -f "$BACKUP_KEY" ] && command -v age-keygen >/dev/null; then rc="$(age-keygen -y "$BACKUP_KEY")"
   else echo "backup recipient: no $BACKUP_KEY here (or no age-keygen); secrets+state snapshots stay off"; return 0; fi
   [[ "$rc" =~ ^age1[0-9a-z]{58}$ ]] || { echo "backup recipient: not an age public key; not copied" >&2; return 1; }
-  have="$(r 'cat /etc/lineage/backup-recipient.txt 2>/dev/null' || true)"
+  have="$(r 'cat /etc/units/backup-recipient.txt 2>/dev/null' || true)"
   if [ "$have" = "$rc" ]; then echo "backup recipient: already on the server (${rc:0:12}...)"; return 0; fi
   if [ -n "$have" ] && [ "${BACKUP_RECIPIENT_REPLACE:-0}" != 1 ]; then
     echo "backup recipient: the server holds a different one (${have:0:12}...); kept (BACKUP_RECIPIENT_REPLACE=1 replaces it)" >&2; return 0
   fi
-  r "install -d -m 755 /etc/lineage && printf '%s\n' '$rc' > /etc/lineage/backup-recipient.txt.tmp && chmod 644 /etc/lineage/backup-recipient.txt.tmp && mv /etc/lineage/backup-recipient.txt.tmp /etc/lineage/backup-recipient.txt"
+  r "install -d -m 755 /etc/units && printf '%s\n' '$rc' > /etc/units/backup-recipient.txt.tmp && chmod 644 /etc/units/backup-recipient.txt.tmp && mv /etc/units/backup-recipient.txt.tmp /etc/units/backup-recipient.txt"
   echo "backup recipient: copied (${rc:0:12}...)"
 }
 
@@ -348,7 +351,7 @@ verify_secrets() { # verify_secrets <file> [facts out]
 
 do_backup_pull() {
   local f size free rc=0 p n
-  f="$(r "ls -1t /var/lib/lineage/core-backups/core-*.tar.zst 2>/dev/null | head -1")"
+  f="$(r "ls -1t /var/lib/units/core-backups/core-*.tar.zst 2>/dev/null | head -1")"
   [ -n "$f" ] || { echo "no snapshot on the server yet (units-backup.timer runs hourly; 'remote.sh backup' makes one now)" >&2; exit 1; }
   size="$(r "stat -c %s $f")"
   install -d -m 700 "$BACKUP_LOCAL"
@@ -356,14 +359,14 @@ do_backup_pull() {
   # the copy, plus the verify step's temporary extract (the database is several times the archive)
   if [ "$free" -lt $((size * 10 + 2 * 1024 * 1024 * 1024)) ]; then echo "not enough free disk here for $(basename "$f") ($size bytes)" >&2; exit 1; fi
   say "Core snapshot"
-  pull_newest /var/lib/lineage/core-backups 'core-*.tar.zst'
+  pull_newest /var/lib/units/core-backups 'core-*.tar.zst'
   bash "$REPO/scripts/deploy/backup.sh" verify "$PULLED" || rc=1
   prune 'core-*.tar.zst'
   for p in state identity; do
     say "secrets+state: $p"
-    pull_newest "/var/lib/lineage/$p-backups" "$p-*.tar.zst.age"
+    pull_newest "/var/lib/units/$p-backups" "$p-*.tar.zst.age"
     if [ -z "$PULLED" ]; then
-      if r "test -s /etc/lineage/backup-recipient.txt"; then echo "no $p snapshot on the server yet" >&2; rc=1
+      if r "test -s /etc/units/backup-recipient.txt"; then echo "no $p snapshot on the server yet" >&2; rc=1
       else echo "the server has no backup recipient: no $p snapshots (deploy.sh <host> code copies it)"; fi
       continue
     fi
@@ -387,10 +390,10 @@ do_secrets_proof() {
   t="$(mktemp -d)"; chmod 700 "$t"
   for p in state identity; do
     say "secrets+state restore proof: $p"
-    pull_newest "/var/lib/lineage/$p-backups" "$p-*.tar.zst.age"
+    pull_newest "/var/lib/units/$p-backups" "$p-*.tar.zst.age"
     [ -n "$PULLED" ] || { echo "FAIL no $p snapshot on the server"; rc=1; continue; }
     if ! verify_secrets "$PULLED" "$t/snap-$p.json"; then rc=1; continue; fi
-    r "bash /opt/lineage/current/scripts/deploy/remote.sh secrets-facts $p" > "$t/live-$p.json" || { echo "FAIL could not read the live $p facts"; rc=1; continue; }
+    r "bash /opt/units/current/scripts/deploy/remote.sh secrets-facts $p" > "$t/live-$p.json" || { echo "FAIL could not read the live $p facts"; rc=1; continue; }
     bun "$REPO/scripts/deploy/backup-facts.ts" compare "$t/snap-$p.json" "$t/live-$p.json" || rc=1
   done
   rm -rf "$t"
@@ -422,9 +425,9 @@ do_restore_core() {
   [ -f "$f" ] || { echo "no local Core snapshot in $BACKUP_LOCAL" >&2; exit 1; }
   bash "$REPO/scripts/deploy/backup.sh" verify "$f"
   put_tools
-  r "install -d -m 0750 /var/lib/lineage/core-backups"
-  env -u LC_CTYPE -u LC_ALL scp -q -p "${SCP_OPTS[@]}" "$f" "$f.sha256" "$SSH_USER@$HOST:/var/lib/lineage/core-backups/"
-  r "chmod 600 /var/lib/lineage/core-backups/$(basename "$f")*; bash /root/lineage-deploy/remote.sh restore /var/lib/lineage/core-backups/$(basename "$f") < /dev/null"
+  r "install -d -m 0750 /var/lib/units/core-backups"
+  env -u LC_CTYPE -u LC_ALL scp -q -p "${SCP_OPTS[@]}" "$f" "$f.sha256" "$SSH_USER@$HOST:/var/lib/units/core-backups/"
+  r "chmod 600 /var/lib/units/core-backups/$(basename "$f")*; bash /root/lineage-deploy/remote.sh restore /var/lib/units/core-backups/$(basename "$f") < /dev/null"
 }
 
 case "$MODE" in
@@ -435,12 +438,12 @@ case "$MODE" in
   code) do_ship; [ "${WITH_RUNTIME:-0}" = 1 ] && { say "runtime secrets"; do_runtime_secrets; }; do_activate ;;
   keys) do_ship; do_keys ;;
   fund) do_fund ;;
-  status) r "bash /opt/lineage/current/scripts/deploy/remote.sh status" ;;
-  rollback) r "bash /opt/lineage/current/scripts/deploy/remote.sh rollback $EXTRA" ;;
-  stop|start|wipe-keys|monitor) r "bash /opt/lineage/current/scripts/deploy/remote.sh $MODE" ;;
+  status) r "bash /opt/units/current/scripts/deploy/remote.sh status" ;;
+  rollback) r "bash /opt/units/current/scripts/deploy/remote.sh rollback $EXTRA" ;;
+  stop|start|wipe-keys|monitor) r "bash /opt/units/current/scripts/deploy/remote.sh $MODE" ;;
   restore-test)
     rt=0
-    r "bash /opt/lineage/current/scripts/deploy/remote.sh restore-test $EXTRA" || rt=1
+    r "bash /opt/units/current/scripts/deploy/remote.sh restore-test $EXTRA" || rt=1
     do_secrets_proof || rt=1
     exit $rt ;;
   backup) do_backup_pull ;;

@@ -16,13 +16,13 @@ Requires=docker.service
 # the job in hand finishes before the drain: the longest is a geth-rlp replay (about 23 min on the site, 2026-10-08)
 TimeoutStopSec=2700
 KillSignal=SIGTERM
-User=lineage
-Group=lineage
-WorkingDirectory=/opt/lineage/current
-Environment=HOME=/home/lineage UNITS_HOME=/home/lineage/.lineage PATH=/usr/local/bin:/usr/bin:/bin
+User=units
+Group=units
+WorkingDirectory=/opt/units/current
+Environment=HOME=/home/units UNITS_HOME=/home/units/.lineage PATH=/usr/local/bin:/usr/bin:/bin
 # a refused connection to Core (a deploy restarting it, a few seconds) is retried this long (packages/core/src/client.ts)
 Environment=UNITS_CORE_RETRY_MS=30000
-EnvironmentFile=-/etc/lineage/site.env
+EnvironmentFile=-/etc/units/site.env
 NoNewPrivileges=yes
 ProtectSystem=full
 Restart=always
@@ -31,7 +31,7 @@ StandardOutput=journal
 StandardError=journal
 MemoryMax=1G
 TasksMax=512
-ExecStart=/usr/local/bin/bun packages/worker/src/main.ts run --core http://127.0.0.1:9660 --key /home/lineage/.config/lineage/site/verifier-%i.json --capabilities /var/lib/lineage/site/caps.json --interval 2000
+ExecStart=/usr/local/bin/bun packages/worker/src/main.ts run --core http://127.0.0.1:9660 --key /home/units/.config/lineage/site/verifier-%i.json --capabilities /var/lib/units/site/caps.json --interval 2000
 
 [Install]
 WantedBy=multi-user.target

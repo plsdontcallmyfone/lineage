@@ -46,7 +46,7 @@ const AGENT = /^[1-9A-HJ-NP-Za-km-z]{32,44}$/;
 export class EncryptedCredentialStore implements CredentialStore {
   constructor(
     private readonly store: EncryptedStore,
-    /** runtime directory for materialised keys (the site: /run/lineage-identity) */
+    /** runtime directory for materialised keys (the site: /run/units-identity) */
     readonly runDir: string,
   ) {}
 

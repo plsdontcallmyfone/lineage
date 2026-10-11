@@ -1,26 +1,26 @@
 # Installed by scripts/deploy/remote.sh. units public devnet site, docs/DEPLOY-SITE.md "Backups".
 # The "state" part of the secrets+state snapshot (scripts/deploy/backup.sh secrets): the hosted runtime's
 # agent keys and state and the site's own keys, as lineage (their owner), staged in RAM and encrypted
-# with age to the owner's public recipient in /etc/lineage/backup-recipient.txt. Started with
-# units-backup.service (hourly by its timer); the newest 24 are kept in /var/lib/lineage/state-backups.
+# with age to the owner's public recipient in /etc/units/backup-recipient.txt. Started with
+# units-backup.service (hourly by its timer); the newest 24 are kept in /var/lib/units/state-backups.
 [Unit]
 # rebrand (docs/plans/REBRAND-UNITS.md 3.8): never runs together with the unit of the old name; a
 # start waits until that one has stopped (a stop job always runs before a start job of an ordered pair)
 Conflicts=lineage-backup-state.service
 After=lineage-backup-state.service
 Description=units secrets+state snapshot (runtime and site keys)
-ConditionPathExists=/etc/lineage/backup-recipient.txt
+ConditionPathExists=/etc/units/backup-recipient.txt
 
 [Service]
 Type=oneshot
-User=lineage
-Group=lineage
+User=units
+Group=units
 UMask=0077
-WorkingDirectory=/opt/lineage/current
-Environment=PATH=/usr/local/bin:/usr/bin:/bin HOME=/home/lineage
-RuntimeDirectory=lineage-backup-state
+WorkingDirectory=/opt/units/current
+Environment=PATH=/usr/local/bin:/usr/bin:/bin HOME=/home/units
+RuntimeDirectory=units-backup-state
 RuntimeDirectoryMode=0700
-ReadWritePaths=/var/lib/lineage/state-backups
+ReadWritePaths=/var/lib/units/state-backups
 ProtectHome=read-only
 NoNewPrivileges=yes
 PrivateTmp=yes
@@ -37,4 +37,4 @@ Nice=10
 IOSchedulingClass=idle
 MemoryMax=512M
 TimeoutStartSec=600
-ExecStart=/bin/bash scripts/deploy/backup.sh secrets state --out /var/lib/lineage/state-backups --keep 24
+ExecStart=/bin/bash scripts/deploy/backup.sh secrets state --out /var/lib/units/state-backups --keep 24

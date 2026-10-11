@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
-# units site: Core snapshots (plan M4). Runs on the server as lineage-core (units-backup.timer, hourly)
+# units site: Core snapshots (plan M4). Runs on the server as units-core (units-backup.timer, hourly)
 # and, for `verify` and `extract`, also on the owner's machine after deploy.sh pulls a snapshot.
 #
-#   backup.sh snapshot [--data /var/lib/lineage/core] [--out /var/lib/lineage/core-backups] [--keep 24]
+#   backup.sh snapshot [--data /var/lib/units/core] [--out /var/lib/units/core-backups] [--keep 24]
 #   backup.sh verify <snapshot.tar.zst>            checksum, archive and database integrity, table counts
 #   backup.sh extract <snapshot.tar.zst> <dir>     core.db and blobs/ into an empty <dir> (a Core --data dir)
 #
@@ -18,15 +18,15 @@
 # snapshots are mode 600 and an off-machine copy must be kept as private as the server.
 #
 # A secrets+state snapshot is <part>-<UTC time>.tar.zst.age, encrypted with `age` to the recipient in
-# /etc/lineage/backup-recipient.txt (a public key; the private identity stays on the owner's machine,
+# /etc/units/backup-recipient.txt (a public key; the private identity stays on the owner's machine,
 # ~/.config/lineage/backup-age.key, and never reaches the server). Each part is written by the user that
 # owns its data, so no service user gains read access to another's files:
 #   state     (lineage, units-backup-state.service) the hosted runtime's agent signing keys (keys/),
 #             state.json, posts.json, trader/, bind-requests/, worker/, the desktop session records and
 #             pending recording list (not the live stream dir or the recordings themselves), and the
 #             site's own keys made on the server (~lineage/.config/lineage/site: admin, owner, verifiers)
-#   identity  (lineage-identity, units-backup-identity.service) the identity service's encrypted
-#             records (GitHub pool credentials, cycle state) and its key file /etc/lineage-identity/master.key
+#   identity  (units-identity, units-backup-identity.service) the identity service's encrypted
+#             records (GitHub pool credentials, cycle state) and its key file /etc/units-identity/master.key
 # Inside: manifest.json (part, time, file count, bytes), SHA256SUMS and files/<path from />. The files are
 # staged in a RAM directory (the unit's RuntimeDirectory), checksummed and piped through zstd into age,
 # so no new plaintext copy is written to disk. The indexer's market.db is not included: it is rebuilt
@@ -52,7 +52,7 @@ counts() {
 
 case "$CMD" in
 snapshot)
-  DATA=/var/lib/lineage/core OUT=/var/lib/lineage/core-backups KEEP=24
+  DATA=/var/lib/units/core OUT=/var/lib/units/core-backups KEEP=24
   while [ $# -gt 0 ]; do
     case "$1" in
       --data) DATA="$2"; shift 2 ;;
@@ -114,7 +114,7 @@ extract)
   ;;
 secrets)
   PART="${1:-}"; shift || true
-  OUT="" KEEP=24 RCPT=/etc/lineage/backup-recipient.txt STAGE="${RUNTIME_DIRECTORY:-}" ROOT=/
+  OUT="" KEEP=24 RCPT=/etc/units/backup-recipient.txt STAGE="${RUNTIME_DIRECTORY:-}" ROOT=/
   while [ $# -gt 0 ]; do
     case "$1" in
       --out) OUT="$2"; shift 2 ;;
@@ -130,9 +130,9 @@ secrets)
                   var/lib/lineage/runtime/trader var/lib/lineage/runtime/bind-requests var/lib/lineage/runtime/worker
                   var/lib/lineage/runtime/desktops/sessions var/lib/lineage/runtime/desktops/recordings/pending.json
                   home/lineage/.config/lineage/site)
-           OUT="${OUT:-/var/lib/lineage/state-backups}" ;;
+           OUT="${OUT:-/var/lib/units/state-backups}" ;;
     identity) PATHS=(var/lib/lineage/identity/records etc/lineage-identity/master.key)
-           OUT="${OUT:-/var/lib/lineage/identity-backups}" ;;
+           OUT="${OUT:-/var/lib/units/identity-backups}" ;;
     *) die "secrets: part must be state or identity" ;;
   esac
   command -v age >/dev/null || die "age is not installed (apt-get install age)"

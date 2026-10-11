@@ -10,7 +10,7 @@
 // 2. When fewer than --target accounts are available on the server, takes the next local accounts
 //    that are available, not excluded by login and not reserved, checks each token still answers
 //    GET /user for its login (read only), and sends them over ssh stdin to `main.ts reserve-add`, run
-//    as the lineage-identity user, which encrypts them. Pushed accounts are marked server_reserve
+//    as the units-identity user, which encrypts them. Pushed accounts are marked server_reserve
 //    locally, so nothing here assigns them again.
 // Tokens never appear in argv, output or logs: only logins are printed.
 
@@ -30,11 +30,11 @@ const target = Number(opt("target", "5"));
 const plan = argv.includes("--plan");
 const sshKey = opt("ssh-key", join(homedir(), ".ssh/lineage_site"))!;
 const pool = new Pool(opt("pool", DEFAULT_POOL)!);
-const MAIN = "/opt/lineage/current/packages/identity/src/main.ts";
-const RUN_AS = `runuser -u lineage-identity -- env HOME=/var/lib/lineage/identity/home BUN_RUNTIME_TRANSPILER_CACHE_PATH=0 UNITS_IDENTITY_DIR=/var/lib/lineage/identity UNITS_IDENTITY_KEY=/etc/lineage-identity/master.key /usr/local/bin/bun ${MAIN}`;
+const MAIN = "/opt/units/current/packages/identity/src/main.ts";
+const RUN_AS = `runuser -u units-identity -- env HOME=/var/lib/units/identity/home BUN_RUNTIME_TRANSPILER_CACHE_PATH=0 UNITS_IDENTITY_DIR=/var/lib/units/identity UNITS_IDENTITY_KEY=/etc/units-identity/master.key /usr/local/bin/bun ${MAIN}`;
 
 function ssh(cmd: string, input?: string): string {
-  const r = spawnSync("ssh", ["-i", sshKey, "-o", "IdentitiesOnly=yes", "-o", "BatchMode=yes", "-o", "ConnectTimeout=15", `root@${host}`, `cd /opt/lineage/current && ${cmd}`], { input, encoding: "utf8", maxBuffer: 1 << 24 });
+  const r = spawnSync("ssh", ["-i", sshKey, "-o", "IdentitiesOnly=yes", "-o", "BatchMode=yes", "-o", "ConnectTimeout=15", `root@${host}`, `cd /opt/units/current && ${cmd}`], { input, encoding: "utf8", maxBuffer: 1 << 24 });
   if (r.status !== 0) throw new Error(`ssh ${cmd.split(" ").slice(-1)[0]} failed: ${(r.stderr || "").slice(0, 400)}`);
   return r.stdout.trim().split("\n").pop() ?? "";
 }
@@ -47,7 +47,7 @@ for (const s of server.accounts) {
   const want = s.status === "available" || s.status === "assigning" ? "server_reserve" : s.status;
   if (a.status !== want || a.assigned_agent !== s.assigned_agent) {
     console.log(`sync ${s.login}: ${a.status} -> ${want}${s.assigned_agent ? ` (agent ${s.assigned_agent})` : ""}`);
-    if (!plan) pool.update(s.login, { status: want, assigned_agent: s.assigned_agent, note: `server reserve (lineage-identity): ${s.status}${s.note ? `, ${s.note}` : ""}` });
+    if (!plan) pool.update(s.login, { status: want, assigned_agent: s.assigned_agent, note: `server reserve (units-identity): ${s.status}${s.note ? `, ${s.note}` : ""}` });
   }
 }
 const available = server.accounts.filter((a) => a.status === "available").length;

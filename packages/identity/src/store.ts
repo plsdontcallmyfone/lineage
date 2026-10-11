@@ -1,7 +1,7 @@
 // Encrypted credential store of the identity service (plan AUDIT-AND-IDENTITY B, SPEC 13.9).
 //
-// Layout (on the site: /var/lib/lineage/identity, mode 700, owned by the dedicated user
-// `lineage-identity`):
+// Layout (on the site: /var/lib/units/identity, mode 700, owned by the dedicated user
+// `units-identity`):
 //   <dir>/records/<kind>/<id>.enc   one record per file, mode 600, JSON { v, alg, iv, tag, ct }
 //   key file (separate path)        32 random bytes, mode 600 (or 400), readable only by that user
 //

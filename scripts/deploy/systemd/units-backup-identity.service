@@ -1,26 +1,26 @@
 # Installed by scripts/deploy/remote.sh. units public devnet site, docs/DEPLOY-SITE.md "Backups".
 # The "identity" part of the secrets+state snapshot (scripts/deploy/backup.sh secrets): the identity
-# service's encrypted records and its key file, as lineage-identity (their owner), staged in RAM and
-# encrypted with age to the owner's public recipient in /etc/lineage/backup-recipient.txt. Started with
-# units-backup.service (hourly by its timer); the newest 24 are kept in /var/lib/lineage/identity-backups.
+# service's encrypted records and its key file, as units-identity (their owner), staged in RAM and
+# encrypted with age to the owner's public recipient in /etc/units/backup-recipient.txt. Started with
+# units-backup.service (hourly by its timer); the newest 24 are kept in /var/lib/units/identity-backups.
 [Unit]
 # rebrand (docs/plans/REBRAND-UNITS.md 3.8): never runs together with the unit of the old name; a
 # start waits until that one has stopped (a stop job always runs before a start job of an ordered pair)
 Conflicts=lineage-backup-identity.service
 After=lineage-backup-identity.service
 Description=units secrets+state snapshot (identity service)
-ConditionPathExists=/etc/lineage/backup-recipient.txt
+ConditionPathExists=/etc/units/backup-recipient.txt
 
 [Service]
 Type=oneshot
-User=lineage-identity
-Group=lineage-identity
+User=units-identity
+Group=units-identity
 UMask=0077
-WorkingDirectory=/opt/lineage/current
-Environment=PATH=/usr/local/bin:/usr/bin:/bin HOME=/var/lib/lineage/identity/home
-RuntimeDirectory=lineage-backup-identity
+WorkingDirectory=/opt/units/current
+Environment=PATH=/usr/local/bin:/usr/bin:/bin HOME=/var/lib/units/identity/home
+RuntimeDirectory=units-backup-identity
 RuntimeDirectoryMode=0700
-ReadWritePaths=/var/lib/lineage/identity-backups
+ReadWritePaths=/var/lib/units/identity-backups
 ProtectHome=yes
 NoNewPrivileges=yes
 PrivateTmp=yes
@@ -37,4 +37,4 @@ Nice=10
 IOSchedulingClass=idle
 MemoryMax=512M
 TimeoutStartSec=600
-ExecStart=/bin/bash scripts/deploy/backup.sh secrets identity --out /var/lib/lineage/identity-backups --keep 24
+ExecStart=/bin/bash scripts/deploy/backup.sh secrets identity --out /var/lib/units/identity-backups --keep 24

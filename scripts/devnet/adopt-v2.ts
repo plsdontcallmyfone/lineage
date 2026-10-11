@@ -6,7 +6,7 @@
 //     ~/.lineage/runtime/credentials (token and git signing key), as the coordinator asked 2026-10-10.
 //   - Wick Radix and Neap: relaunched under new agent keys; their accounts (agwyus9p, nbebp7jy) move to
 //     the new agent ids (rekey). Their earlier records stay as history.
-// Input goes over ssh stdin to `main.ts adopt` as the lineage-identity user; no token is ever in argv
+// Input goes over ssh stdin to `main.ts adopt` as the units-identity user; no token is ever in argv
 // or printed. Agent ids and mints come from scripts/devnet/RELAUNCH-V2.json (relaunch-v2.ts plan).
 //
 //   bun scripts/devnet/adopt-v2.ts [--host 157.245.71.188] [--only TSOUL,TESTB58,TLAMP]
@@ -20,12 +20,12 @@ const argv = process.argv.slice(2);
 const opt = (k: string, d?: string) => (argv.includes(`--${k}`) ? argv[argv.indexOf(`--${k}`) + 1] : d);
 const host = opt("host", "157.245.71.188")!;
 const only = opt("only") ? new Set(opt("only")!.split(",")) : null;
-const MAIN = "/opt/lineage/current/packages/identity/src/main.ts";
-const RUN_AS = `runuser -u lineage-identity -- env HOME=/var/lib/lineage/identity/home BUN_RUNTIME_TRANSPILER_CACHE_PATH=0 UNITS_IDENTITY_DIR=/var/lib/lineage/identity UNITS_IDENTITY_KEY=/etc/lineage-identity/master.key /usr/local/bin/bun ${MAIN}`;
+const MAIN = "/opt/units/current/packages/identity/src/main.ts";
+const RUN_AS = `runuser -u units-identity -- env HOME=/var/lib/units/identity/home BUN_RUNTIME_TRANSPILER_CACHE_PATH=0 UNITS_IDENTITY_DIR=/var/lib/units/identity UNITS_IDENTITY_KEY=/etc/units-identity/master.key /usr/local/bin/bun ${MAIN}`;
 const rows = JSON.parse(readFileSync(join(import.meta.dir, "RELAUNCH-V2.json"), "utf8")).rows as Record<string, { agent: string; old_agent: string; mint: string; launcher: string; repo: string }>;
 
 function adopt(input: unknown): string {
-  const r = spawnSync("ssh", ["-i", join(homedir(), ".ssh/lineage_site"), "-o", "IdentitiesOnly=yes", "-o", "BatchMode=yes", `root@${host}`, `cd /opt/lineage/current && ${RUN_AS} adopt`],
+  const r = spawnSync("ssh", ["-i", join(homedir(), ".ssh/lineage_site"), "-o", "IdentitiesOnly=yes", "-o", "BatchMode=yes", `root@${host}`, `cd /opt/units/current && ${RUN_AS} adopt`],
     { input: JSON.stringify(input), encoding: "utf8" });
   if (r.status !== 0) throw new Error(`adopt failed: ${(r.stderr || "").slice(0, 400)}`);
   return r.stdout.trim().split("\n").pop() ?? "";

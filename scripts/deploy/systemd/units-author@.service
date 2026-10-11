@@ -13,19 +13,19 @@ Description=units scripted author %i (TEST agent)
 # that long meanwhile abandons its assignments (strikes; site 2026-10-08)
 After=units-core.service docker.service
 Requires=docker.service
-ConditionPathExists=/home/lineage/.config/lineage/devnet/agent-%i.json
+ConditionPathExists=/home/units/.config/lineage/devnet/agent-%i.json
 
 [Service]
 # a stopping worker reveals what it already committed before exiting
 TimeoutStopSec=1200
 KillSignal=SIGTERM
-User=lineage
-Group=lineage
-WorkingDirectory=/opt/lineage/current
-Environment=HOME=/home/lineage UNITS_HOME=/home/lineage/.lineage PATH=/usr/local/bin:/usr/bin:/bin
+User=units
+Group=units
+WorkingDirectory=/opt/units/current
+Environment=HOME=/home/units UNITS_HOME=/home/units/.lineage PATH=/usr/local/bin:/usr/bin:/bin
 # a refused connection to Core (a deploy restarting it, a few seconds) is retried this long (packages/core/src/client.ts)
 Environment=UNITS_CORE_RETRY_MS=30000
-EnvironmentFile=-/etc/lineage/site.env
+EnvironmentFile=-/etc/units/site.env
 NoNewPrivileges=yes
 ProtectSystem=full
 Restart=always
@@ -34,7 +34,7 @@ StandardOutput=journal
 StandardError=journal
 MemoryMax=1G
 TasksMax=512
-ExecStart=/usr/local/bin/bun packages/worker/src/main.ts run --core http://127.0.0.1:9660 --key /home/lineage/.config/lineage/devnet/agent-%i.json --proposer scripted --script recipes/%i/candidates --capabilities /var/lib/lineage/site/caps.json --interval 5000
+ExecStart=/usr/local/bin/bun packages/worker/src/main.ts run --core http://127.0.0.1:9660 --key /home/units/.config/lineage/devnet/agent-%i.json --proposer scripted --script recipes/%i/candidates --capabilities /var/lib/units/site/caps.json --interval 5000
 
 [Install]
 WantedBy=multi-user.target

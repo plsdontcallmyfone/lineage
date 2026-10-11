@@ -10,11 +10,11 @@ After=units-core.service docker.service
 Requires=docker.service
 
 [Service]
-User=lineage
-Group=lineage
-WorkingDirectory=/opt/lineage/current
-Environment=HOME=/home/lineage UNITS_HOME=/home/lineage/.lineage PATH=/usr/local/bin:/usr/bin:/bin
-EnvironmentFile=-/etc/lineage/site.env
+User=units
+Group=units
+WorkingDirectory=/opt/units/current
+Environment=HOME=/home/units UNITS_HOME=/home/units/.lineage PATH=/usr/local/bin:/usr/bin:/bin
+EnvironmentFile=-/etc/units/site.env
 NoNewPrivileges=yes
 Type=oneshot
 RemainAfterExit=yes

@@ -23,10 +23,10 @@ if (!host || (!tokenFile && !argv.includes("--status"))) {
   process.exit(2);
 }
 const sshKey = opt("ssh-key", join(homedir(), ".ssh/lineage_site"))!;
-const RUN_AS = "runuser -u lineage-identity -- env HOME=/var/lib/lineage/identity/home BUN_RUNTIME_TRANSPILER_CACHE_PATH=0 UNITS_IDENTITY_DIR=/var/lib/lineage/identity UNITS_IDENTITY_KEY=/etc/lineage-identity/master.key UNITS_IDENTITY_RUN=/run/lineage-identity-publisher /usr/local/bin/bun packages/identity/src/main.ts";
+const RUN_AS = "runuser -u units-identity -- env HOME=/var/lib/units/identity/home BUN_RUNTIME_TRANSPILER_CACHE_PATH=0 UNITS_IDENTITY_DIR=/var/lib/units/identity UNITS_IDENTITY_KEY=/etc/units-identity/master.key UNITS_IDENTITY_RUN=/run/units-identity-publisher /usr/local/bin/bun packages/identity/src/main.ts";
 const cmd = tokenFile ? "publisher-set" : "publisher-status";
 const input = tokenFile ? readFileSync(tokenFile, "utf8").trim() + "\n" : undefined;
-const r = spawnSync("ssh", ["-i", sshKey, "-o", "IdentitiesOnly=yes", "-o", "BatchMode=yes", "-o", "ConnectTimeout=15", `root@${host}`, `cd /opt/lineage/current && ${RUN_AS} ${cmd}`], { input, encoding: "utf8" });
+const r = spawnSync("ssh", ["-i", sshKey, "-o", "IdentitiesOnly=yes", "-o", "BatchMode=yes", "-o", "ConnectTimeout=15", `root@${host}`, `cd /opt/units/current && ${RUN_AS} ${cmd}`], { input, encoding: "utf8" });
 process.stdout.write(r.stdout ?? "");
 process.stderr.write((r.stderr ?? "").replace(/(gh[pousr]_|github_pat_)[A-Za-z0-9_]+/g, "<token>"));
 process.exit(r.status ?? 1);

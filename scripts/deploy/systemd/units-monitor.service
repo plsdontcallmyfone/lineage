@@ -1,5 +1,5 @@
 # Installed by scripts/deploy/remote.sh. units public devnet site, docs/DEPLOY-SITE.md "Monitoring".
-# scripts/deploy/monitor.ts as lineage-monitor (no docker, no home). The root pre-step copies only the
+# scripts/deploy/monitor.ts as units-monitor (no docker, no home). The root pre-step copies only the
 # hosted runtime's spend window and cap out of its state (mode 600, owner lineage) for the check.
 [Unit]
 # rebrand (docs/plans/REBRAND-UNITS.md 3.8): never runs together with the unit of the old name; a
@@ -11,17 +11,17 @@ After=network-online.target units-core.service
 
 [Service]
 Type=oneshot
-User=lineage-monitor
-Group=lineage-monitor
-WorkingDirectory=/opt/lineage/current
-Environment=HOME=/var/lib/lineage-monitor PATH=/usr/local/bin:/usr/bin:/bin BUN_RUNTIME_TRANSPILER_CACHE_PATH=0
+User=units-monitor
+Group=units-monitor
+WorkingDirectory=/opt/units/current
+Environment=HOME=/var/lib/units-monitor PATH=/usr/local/bin:/usr/bin:/bin BUN_RUNTIME_TRANSPILER_CACHE_PATH=0
 # what to watch (public keys, site URL; written by remote.sh) and where to alert (owner-written, optional)
-EnvironmentFile=-/etc/lineage/monitor.env
-EnvironmentFile=-/etc/lineage/alert.env
-StateDirectory=lineage-monitor
-RuntimeDirectory=lineage-monitor
+EnvironmentFile=-/etc/units/monitor.env
+EnvironmentFile=-/etc/units/alert.env
+StateDirectory=units-monitor
+RuntimeDirectory=units-monitor
 UMask=0022
-ExecStartPre=+/bin/sh -c 'jq -c -s "{window: .[0].window, cap_usd: .[1].global_max_usd, scope: .[1].global_cap_scope, provider: .[0].provider_balance}" /var/lib/lineage/runtime/state.json /var/lib/lineage/site/runtime.json > /run/lineage-monitor/spend.json 2>/dev/null || rm -f /run/lineage-monitor/spend.json'
+ExecStartPre=+/bin/sh -c 'jq -c -s "{window: .[0].window, cap_usd: .[1].global_max_usd, scope: .[1].global_cap_scope, provider: .[0].provider_balance}" /var/lib/units/runtime/state.json /var/lib/units/site/runtime.json > /run/units-monitor/spend.json 2>/dev/null || rm -f /run/units-monitor/spend.json'
 NoNewPrivileges=yes
 PrivateTmp=yes
 PrivateDevices=yes
@@ -38,4 +38,4 @@ CapabilityBoundingSet=
 RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX AF_NETLINK
 MemoryMax=256M
 TimeoutStartSec=120
-ExecStart=/usr/local/bin/bun scripts/deploy/monitor.ts --state /var/lib/lineage-monitor/state.json
+ExecStart=/usr/local/bin/bun scripts/deploy/monitor.ts --state /var/lib/units-monitor/state.json

@@ -10,16 +10,16 @@ After=lineage-author.service
 Description=units scripted author (minbpe TEST agent)
 After=units-core.service units-bootstrap.service docker.service
 Requires=docker.service
-ConditionPathExists=/home/lineage/.config/lineage/devnet/agent-minbpe.json
+ConditionPathExists=/home/units/.config/lineage/devnet/agent-minbpe.json
 
 [Service]
-User=lineage
-Group=lineage
-WorkingDirectory=/opt/lineage/current
-Environment=HOME=/home/lineage UNITS_HOME=/home/lineage/.lineage PATH=/usr/local/bin:/usr/bin:/bin
+User=units
+Group=units
+WorkingDirectory=/opt/units/current
+Environment=HOME=/home/units UNITS_HOME=/home/units/.lineage PATH=/usr/local/bin:/usr/bin:/bin
 # a refused connection to Core (a deploy restarting it, a few seconds) is retried this long (packages/core/src/client.ts)
 Environment=UNITS_CORE_RETRY_MS=30000
-EnvironmentFile=-/etc/lineage/site.env
+EnvironmentFile=-/etc/units/site.env
 NoNewPrivileges=yes
 ProtectSystem=full
 Restart=always
@@ -28,7 +28,7 @@ StandardOutput=journal
 StandardError=journal
 MemoryMax=1G
 TasksMax=512
-ExecStart=/usr/local/bin/bun packages/worker/src/main.ts run --core http://127.0.0.1:9660 --key /home/lineage/.config/lineage/devnet/agent-minbpe.json --proposer scripted --script recipes/minbpe/candidates --capabilities /var/lib/lineage/site/caps.json --interval 5000
+ExecStart=/usr/local/bin/bun packages/worker/src/main.ts run --core http://127.0.0.1:9660 --key /home/units/.config/lineage/devnet/agent-minbpe.json --proposer scripted --script recipes/minbpe/candidates --capabilities /var/lib/units/site/caps.json --interval 5000
 
 [Install]
 WantedBy=multi-user.target

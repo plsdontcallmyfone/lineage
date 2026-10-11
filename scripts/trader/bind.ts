@@ -19,7 +19,7 @@ const argv = process.argv.slice(2);
 const host = argv[argv.indexOf("--host") + 1]!;
 const pairs = argv.flatMap((a, i) => (argv[i - 1] === "--agent" ? [a] : []));
 const ssh = (cmd: string) => {
-  const r = spawnSync(["ssh", "-i", join(homedir(), ".ssh/lineage_site"), "-o", "BatchMode=yes", `root@${host}`, `runuser -u lineage -- env HOME=/home/lineage bash -c 'cd /opt/lineage/current && ${cmd}'`]);
+  const r = spawnSync(["ssh", "-i", join(homedir(), ".ssh/lineage_site"), "-o", "BatchMode=yes", `root@${host}`, `runuser -u units -- env HOME=/home/units bash -c 'cd /opt/units/current && ${cmd}'`]);
   return { ok: r.exitCode === 0, out: r.stdout.toString(), err: r.stderr.toString() };
 };
 const rpc = Rpc.http(devnetRpcUrl(), "confirmed");
@@ -27,14 +27,14 @@ await assertDevnet(rpc);
 for (const p of pairs) {
   const [agent, keyFile] = p.split("=");
   const owner = loadKeypair(keyFile!.startsWith("/") ? keyFile! : join(homedir(), ".config/lineage/devnet", keyFile!));
-  const req = ssh(`bun packages/runtime/src/main.ts bind-request --config /var/lib/lineage/site/runtime.json --agent ${agent}`);
+  const req = ssh(`bun packages/runtime/src/main.ts bind-request --config /var/lib/units/site/runtime.json --agent ${agent}`);
   if (!req.ok) throw new Error(`bind request for ${agent}: ${req.err}`);
   const newKey = JSON.parse(req.out).new_key as string;
   const { blockhash } = await rpc.getLatestBlockhash();
   const msg = compileMessage(owner.id, [computeBudget.limit(60_000), registry.rotateAgentKey({ owner: owner.id, agent: agent!, newKey })], blockhash);
   const wire = placeSignature(unsignedWire(msg), owner.id, signBytes(owner, msg.bytes));
   const b64 = Buffer.from(wire).toString("base64");
-  const r = ssh(`bun packages/runtime/src/main.ts cosign --config /var/lib/lineage/site/runtime.json --agent ${agent} --tx ${b64}`);
+  const r = ssh(`bun packages/runtime/src/main.ts cosign --config /var/lib/units/site/runtime.json --agent ${agent} --tx ${b64}`);
   console.log(r.out.trim());
   if (!r.ok) throw new Error(`cosign ${agent}: ${r.err}`);
   const sig = /rotated: (\w+)/.exec(r.out)?.[1] ?? base58Encode(wire.subarray(1, 65));

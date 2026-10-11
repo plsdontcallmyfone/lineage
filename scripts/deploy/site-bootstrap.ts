@@ -4,12 +4,12 @@
 // and snapshots are upserts and a recipe that already has a lineage is not calibrated again.
 //
 //   bun scripts/deploy/site-bootstrap.ts --recipes fixture-b58,base58-py,minbpe [--core http://127.0.0.1:9660]
-//     [--caps /var/lib/lineage/site/caps.json] [--runs 5]
+//     [--caps /var/lib/units/site/caps.json] [--runs 5]
 //
 // For each recipe (already re-pinned to this machine by arch-recipes.ts): register the recipe and
 // its snapshot with Core (admin key), flag the site's reference runner (registered on chain by
 // site-chain.ts), and let it calibrate the recipe in the sandbox, which creates the lineage. Needs
-// Docker. Writes /var/lib/lineage/site/lineages.json ({ name: { recipe_id, lineage_id } }).
+// Docker. Writes /var/lib/units/site/lineages.json ({ name: { recipe_id, lineage_id } }).
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
@@ -23,10 +23,10 @@ const argv = process.argv.slice(2);
 const opt = (k: string) => (argv.includes(`--${k}`) ? argv[argv.indexOf(`--${k}`) + 1] : undefined);
 const CORE = opt("core") ?? "http://127.0.0.1:9660";
 const names = (opt("recipes") ?? "fixture-b58,base58-py,minbpe").split(",").filter(Boolean);
-const caps = JSON.parse(readFileSync(opt("caps") ?? "/var/lib/lineage/site/caps.json", "utf8"));
+const caps = JSON.parse(readFileSync(opt("caps") ?? "/var/lib/units/site/caps.json", "utf8"));
 const RUNS = Number(opt("runs") ?? 5);
 const SITE = join(homedir(), ".config", "lineage", "site");
-const OUT = "/var/lib/lineage/site/lineages.json";
+const OUT = "/var/lib/units/site/lineages.json";
 const log = (m: string) => console.log(`[bootstrap] ${m}`);
 const key = (n: string) => keyFromSolanaJson(JSON.parse(readFileSync(join(SITE, `${n}.json`), "utf8")));
 

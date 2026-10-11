@@ -8,15 +8,15 @@ Description=units dashboard and Wallet page on 127.0.0.1:9661
 After=units-core.service
 
 [Service]
-User=lineage-web
-Group=lineage-web
-WorkingDirectory=/opt/lineage/current
+User=units-web
+Group=units-web
+WorkingDirectory=/opt/units/current
 # its own home: the faucet key and log, the soul drafts' state (remote.sh users_setup)
-Environment=HOME=/var/lib/lineage/web UNITS_HOME=/var/lib/lineage/web/.lineage PATH=/usr/local/bin:/usr/bin:/bin
+Environment=HOME=/var/lib/units/web UNITS_HOME=/var/lib/units/web/.lineage PATH=/usr/local/bin:/usr/bin:/bin
 Environment=BUN_RUNTIME_TRANSPILER_CACHE_PATH=0
-EnvironmentFile=-/etc/lineage/site.env
+EnvironmentFile=-/etc/units/site.env
 # UNITS_DEVNET_RPC and ANTHROPIC_API_KEY (soul drafts), root-owned, read by systemd
-EnvironmentFile=-/etc/lineage/web.env
+EnvironmentFile=-/etc/units/web.env
 NoNewPrivileges=yes
 PrivateTmp=yes
 # audit A2: this unit needs no Docker, devices, namespaces or raw sockets
@@ -38,7 +38,7 @@ SystemCallArchitectures=native
 SystemCallFilter=@system-service
 SystemCallErrorNumber=EPERM
 ProtectSystem=strict
-ReadWritePaths=/var/lib/lineage/web
+ReadWritePaths=/var/lib/units/web
 ProtectHome=yes
 Restart=always
 RestartSec=5

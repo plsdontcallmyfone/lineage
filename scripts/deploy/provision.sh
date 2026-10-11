@@ -5,11 +5,11 @@
 #
 #   bash provision.sh [--no-docker]
 #
-# Installs: base packages, the unprivileged user `lineage` (root's authorized keys, no password, no
+# Installs: base packages, the unprivileged user `units` (`lineage` before the rebrand; root's authorized keys, no password, no
 # sudo; the only user in the docker group: it runs the sandboxes, verifiers and the hosted runtime; the
 # services' own users are made by remote.sh, see its users_setup), ufw (deny incoming; 22, 80, 443), fail2ban for sshd, unattended security upgrades, a
 # swapfile when RAM is under 8 GiB (not inside a container), journald size cap, Docker (docker.io
-# from Ubuntu, `lineage` in the docker group; skipped with --no-docker, which the dry run uses),
+# from Ubuntu, `units` in the docker group; skipped with --no-docker, which the dry run uses),
 # Bun pinned to BUN_VERSION (checksum verified against the release's SHASUMS256.txt) and Caddy from
 # the Caddy project's apt repository.
 set -euo pipefail
@@ -37,16 +37,19 @@ apt-get install -y -qq ca-certificates curl gnupg git unzip jq lsof sqlite3 ufw 
 echo "packages ok"
 
 # ---------------------------------------------------------------- user
-if ! id lineage >/dev/null 2>&1; then adduser --disabled-password --gecos "" lineage >/dev/null; fi
-if id -nG lineage | grep -qw -E 'sudo|admin'; then echo "lineage is in a sudo group; refusing" >&2; exit 1; fi
-install -d -m 700 -o lineage -g lineage /home/lineage/.ssh /home/lineage/.config /home/lineage/.config/lineage \
-  /home/lineage/.config/lineage/devnet /home/lineage/.config/lineage/site
-if [ -f /root/.ssh/authorized_keys ]; then install -m 600 -o lineage -g lineage /root/.ssh/authorized_keys /home/lineage/.ssh/authorized_keys; fi
-chmod 750 /home/lineage
-install -d -m 755 -o lineage -g lineage /opt/lineage /opt/lineage/releases
-install -d -m 750 -o lineage -g lineage /var/lib/lineage /var/lib/lineage/core /var/lib/lineage/site /var/lib/lineage/canaries \
-  /var/lib/lineage/backups /var/lib/lineage/runtime
-echo "user lineage ok"
+# a box from before the rebrand: its paths and accounts move to the units names first (same UIDs), so
+# nothing below makes a second account beside the old one (remote.sh migrate-layout, REBRAND-UNITS.md 6.4)
+if id lineage >/dev/null 2>&1 && ! id units >/dev/null 2>&1; then bash "$(dirname "$0")/remote.sh" migrate-layout; fi
+if ! id units >/dev/null 2>&1; then adduser --disabled-password --gecos "" units >/dev/null; fi
+if id -nG units | grep -qw -E 'sudo|admin'; then echo "units is in a sudo group; refusing" >&2; exit 1; fi
+install -d -m 700 -o units -g units /home/units/.ssh /home/units/.config /home/units/.config/lineage \
+  /home/units/.config/lineage/devnet /home/units/.config/lineage/site
+if [ -f /root/.ssh/authorized_keys ]; then install -m 600 -o units -g units /root/.ssh/authorized_keys /home/units/.ssh/authorized_keys; fi
+chmod 750 /home/units
+install -d -m 755 -o units -g units /opt/units /opt/units/releases
+install -d -m 750 -o units -g units /var/lib/units /var/lib/units/core /var/lib/units/site /var/lib/units/canaries \
+  /var/lib/units/backups /var/lib/units/runtime
+echo "user units ok"
 
 # ---------------------------------------------------------------- firewall, fail2ban, upgrades
 ufw default deny incoming >/dev/null
@@ -102,7 +105,7 @@ if [ "$DOCKER" = 1 ]; then
     printf '{ "log-driver": "json-file", "log-opts": { "max-size": "10m", "max-file": "3" } }\n' > /etc/docker/daemon.json
   fi
   systemctl enable --now docker >/dev/null
-  usermod -aG docker lineage
+  usermod -aG docker units
   echo "docker: $(docker version --format '{{.Server.Version}} {{.Server.Arch}}')"
 else
   echo "docker: skipped (--no-docker)"

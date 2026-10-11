@@ -110,12 +110,12 @@ for u in units-bootstrap units-reference units-verifier@v1 units-verifier@v2 uni
   st=$(R systemctl is-active $u); check "sandbox unit $u skipped in the dry run" "$([ "$st" != active ] && echo 1 || echo 0)" "$st"
 done
 mm=$(R systemctl show -p MemoryMax --value units-core); check "units-core memory cap" "$([ "$mm" = 1073741824 ] && echo 1 || echo 0)" "MemoryMax $mm"
-own=$(R "stat -c '%U %a' /home/lineage/.config/lineage/site/admin.json"); check "site keys made on the server, owner lineage, mode 600" "$([ "$own" = 'lineage 600' ] && echo 1 || echo 0)" "$own"
-nk=$(R "ls /home/lineage/.config/lineage/devnet | wc -l"); check "no key copied from this machine in the dry run" "$([ "$nk" = 0 ] && echo 1 || echo 0)" "$nk files"
+own=$(R "stat -c '%U %a' /home/units/.config/lineage/site/admin.json"); check "site keys made on the server, owner units, mode 600" "$([ "$own" = 'units 600' ] && echo 1 || echo 0)" "$own"
+nk=$(R "ls /home/units/.config/lineage/devnet | wc -l"); check "no key copied from this machine in the dry run" "$([ "$nk" = 0 ] && echo 1 || echo 0)" "$nk files"
 uf=$(R "ufw status | head -1"); check "ufw active" "$(echo "$uf" | grep -q 'active' && echo 1 || echo 0)" "$uf"
 f2b=$(R "systemctl is-active fail2ban"); check "fail2ban active" "$([ "$f2b" = active ] && echo 1 || echo 0)" "$f2b"
 bv=$(R "bun --version"); check "bun pinned" "$([ "$bv" = 1.3.13 ] && echo 1 || echo 0)" "$bv"
-lu=$(R "id -nG lineage"); check "lineage user has no sudo" "$(echo "$lu" | grep -qwE 'sudo|admin' && echo 0 || echo 1)" "$lu"
+lu=$(R "id -nG units"); check "units user has no sudo" "$(echo "$lu" | grep -qwE 'sudo|admin' && echo 0 || echo 1)" "$lu"
 
 echo "== HTTPS through Caddy and the gate"
 h=$("${C[@]}" "$U/v1/health"); check "GET /v1/health over HTTPS (internal TLS)" "$(echo "$h" | grep -q '"ok":true' && echo 1 || echo 0)" "$h"
@@ -162,16 +162,16 @@ check "stop" "$(echo "$st" | grep -qw active && echo 0 || echo 1)" "$st"
 for i in $(seq 1 30); do [ "$(code "$U/v1/health")" = 200 ] && break; sleep 2; done
 check "start" "$([ "$(code "$U/v1/health")" = 200 ] && echo 1 || echo 0)"
 if [ "$FIRSTSHA" != "$HEADSHA" ]; then
-  want=$(R "basename \$(cat /opt/lineage/previous)")
+  want=$(R "basename \$(cat /opt/units/previous)")
   "$D" 127.0.0.1 rollback > "$WORK/rb.log" 2>&1; rc=$?
-  cur=$(R "basename \$(readlink /opt/lineage/current)")
+  cur=$(R "basename \$(readlink /opt/units/current)")
   for i in $(seq 1 30); do [ "$(code "$U/v1/health")" = 200 ] && break; sleep 2; done
   check "rollback to the previous release" "$([ $rc = 0 ] && [ "$cur" = "$want" ] && [ "$(code "$U/v1/health")" = 200 ] && echo 1 || echo 0)" "now $cur"
   echo "== zero-downtime activate: a release whose Core fails its health check is rolled back"
-  # a drop-in that fails Core's start only while /opt/lineage/current is HEAD's release
-  R "install -d /etc/systemd/system/units-core.service.d && printf '[Service]\nExecStartPre=/bin/sh -c \"readlink -f /opt/lineage/current | grep -qv $HEADSHA\"\n' > /etc/systemd/system/units-core.service.d/zz-dryrun-break.conf && systemctl daemon-reload"
+  # a drop-in that fails Core's start only while /opt/units/current is HEAD's release
+  R "install -d /etc/systemd/system/units-core.service.d && printf '[Service]\nExecStartPre=/bin/sh -c \"readlink -f /opt/units/current | grep -qv $HEADSHA\"\n' > /etc/systemd/system/units-core.service.d/zz-dryrun-break.conf && systemctl daemon-reload"
   DEPLOY_REF="$HEADSHA" DEPLOY_HEALTH_WAIT=15 "$D" 127.0.0.1 code > "$WORK/dbreak.log" 2>&1; rc=$?
-  cur=$(R "basename \$(readlink /opt/lineage/current)")
+  cur=$(R "basename \$(readlink /opt/units/current)")
   R "rm -f /etc/systemd/system/units-core.service.d/zz-dryrun-break.conf && systemctl daemon-reload"
   for i in $(seq 1 30); do [ "$(code "$U/v1/health")" = 200 ] && break; sleep 1; done
   check "a failed Core health check rolls the release back" "$([ $rc != 0 ] && [ "$cur" = "$want" ] && grep -q 'rolled back to' "$WORK/dbreak.log" && [ "$(code "$U/v1/health")" = 200 ] && echo 1 || echo 0)" "exit $rc, now $cur"
@@ -188,7 +188,7 @@ trap 'echo "$(date +%s) term $$" >> "$LOG"; sleep "${SIM_DRAIN_S:-90}"; echo "$(
 while :; do sleep 1 & wait $!; done
 SIM
   R "cat > /usr/local/lib/lineage-sim-verifier.sh && chmod 755 /usr/local/lib/lineage-sim-verifier.sh" < "$WORK/sim.sh"
-  R "install -d -o lineage -g lineage /var/lib/lineage-sim && rm -f /var/lib/lineage-sim/verifier.log
+  R "install -d -o units -g units /var/lib/lineage-sim && rm -f /var/lib/lineage-sim/verifier.log
      systemctl cat docker.service >/dev/null 2>&1 || printf '[Unit]\nDescription=dry run stub (no Docker in this container)\n[Service]\nType=oneshot\nRemainAfterExit=yes\nExecStart=/bin/true\n' > /etc/systemd/system/docker.service
      install -d /etc/systemd/system/units-verifier@sim.service.d
      printf '[Service]\nExecStart=\nExecStart=/bin/bash /usr/local/lib/lineage-sim-verifier.sh\nEnvironment=SIM_DRAIN_S=$SIM_DRAIN_S\n' > /etc/systemd/system/units-verifier@sim.service.d/dryrun.conf
@@ -202,7 +202,7 @@ SIM
   POLL=$!
   s=$(date +%s); DEPLOY_REF="$HEADSHA" DEPLOY_DRAIN_WAIT=20 "$D" 127.0.0.1 code > "$WORK/d4.log" 2>&1; rc=$?; took=$(( $(date +%s) - s ))
   sleep 2; kill "$POLL" 2>/dev/null; wait "$POLL" 2>/dev/null
-  cur=$(R "basename \$(readlink /opt/lineage/current)")
+  cur=$(R "basename \$(readlink /opt/units/current)")
   check "forward again to HEAD (code mode)" "$([ $rc = 0 ] && [ "$cur" = "$(sed -n 's/^== ship \([0-9a-f]*\) .*/\1/p' "$WORK/d4.log")" ] && echo 1 || echo 0)" "now $cur"
   grep -E 'up in|draining|DRAINING|public units on' "$WORK/d4.log" | sed 's/^/  /'
   check "deploy returned while the verifier was still draining" "$([ "$took" -lt "$SIM_DRAIN_S" ] && grep -q 'units-verifier@sim' <(sed -n '/still draining/,$p' "$WORK/d4.log") && echo 1 || echo 0)" "deploy $took s, drain $SIM_DRAIN_S s"

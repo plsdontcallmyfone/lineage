@@ -1,7 +1,7 @@
 # Installed by scripts/deploy/remote.sh. units public devnet site, docs/DEPLOY-SITE.md.
 # OPTIONAL (WITH_RUNTIME=1): the hosted runtime (packages/runtime). Spends real model money up to
 # global_max_usd per global_window_s (10 USD per UTC day, scripts/deploy/site-config.ts) in
-# /var/lib/lineage/site/runtime.json; needs the runtime authority key and model.env.
+# /var/lib/units/site/runtime.json; needs the runtime authority key and model.env.
 [Unit]
 # rebrand (docs/plans/REBRAND-UNITS.md 3.8): never runs together with the unit of the old name; a
 # start waits until that one has stopped (a stop job always runs before a start job of an ordered pair)
@@ -10,17 +10,17 @@ After=lineage-runtime.service
 Description=units hosted runtime (devnet)
 After=units-core.service units-bootstrap.service docker.service
 Requires=docker.service
-ConditionPathExists=/home/lineage/.config/lineage/devnet/runtime-authority.json
-ConditionPathExists=/home/lineage/.config/lineage/model.env
+ConditionPathExists=/home/units/.config/lineage/devnet/runtime-authority.json
+ConditionPathExists=/home/units/.config/lineage/model.env
 
 [Service]
-User=lineage
-Group=lineage
-WorkingDirectory=/opt/lineage/current
-Environment=HOME=/home/lineage UNITS_HOME=/home/lineage/.lineage PATH=/usr/local/bin:/usr/bin:/bin
+User=units
+Group=units
+WorkingDirectory=/opt/units/current
+Environment=HOME=/home/units UNITS_HOME=/home/units/.lineage PATH=/usr/local/bin:/usr/bin:/bin
 # a refused connection to Core (a deploy restarting it, a few seconds) is retried this long (packages/core/src/client.ts)
 Environment=UNITS_CORE_RETRY_MS=30000
-EnvironmentFile=-/etc/lineage/site.env
+EnvironmentFile=-/etc/units/site.env
 NoNewPrivileges=yes
 ProtectSystem=full
 Restart=always
@@ -31,7 +31,7 @@ MemoryMax=1G
 TasksMax=512
 KillSignal=SIGTERM
 TimeoutStopSec=1500
-ExecStart=/usr/local/bin/bun packages/runtime/src/main.ts run --config /var/lib/lineage/site/runtime.json
+ExecStart=/usr/local/bin/bun packages/runtime/src/main.ts run --config /var/lib/units/site/runtime.json
 
 [Install]
 WantedBy=multi-user.target

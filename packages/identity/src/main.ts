@@ -1,5 +1,5 @@
 #!/usr/bin/env bun
-// lineage-identity: the GitHub identity service (plan AUDIT-AND-IDENTITY B, SPEC 13.9).
+// units-identity: the GitHub identity service (plan AUDIT-AND-IDENTITY B, SPEC 13.9).
 //
 //   main.ts init                       make the key file and the store directory (idempotent)
 //   main.ts serve [--port 9665] [--host 127.0.0.1] [--interval 30]
@@ -26,9 +26,9 @@
 //                                      (docs/plans/GITHUB-GENESIS.md); --readme refreshes only the status
 //
 // Common flags and their environment fallbacks:
-//   --dir      UNITS_IDENTITY_DIR   store directory        (default /var/lib/lineage/identity)
-//   --key      UNITS_IDENTITY_KEY   32-byte key file       (default /etc/lineage-identity/master.key)
-//   --run-dir  UNITS_IDENTITY_RUN   materialised keys      (default /run/lineage-identity)
+//   --dir      UNITS_IDENTITY_DIR   store directory        (default /var/lib/units/identity)
+//   --key      UNITS_IDENTITY_KEY   32-byte key file       (default /etc/units-identity/master.key)
+//   --run-dir  UNITS_IDENTITY_RUN   materialised keys      (default /run/units-identity)
 //   --core     UNITS_CORE           Core base URL          (default http://127.0.0.1:9660)
 //   --site     UNITS_SITE_URL       public site base URL   (profile links, commit messages)
 //   --core-key UNITS_IDENTITY_CORE_KEY  Core runtime/admin key file (PR records)
@@ -65,9 +65,9 @@ const arg = (n: string, env?: string, d?: string) => {
   return i >= 0 ? argv[i + 1] : (env && process.env[env]) || d;
 };
 const flag = (n: string) => argv.includes(`--${n}`);
-const DIR = arg("dir", "UNITS_IDENTITY_DIR", "/var/lib/lineage/identity")!;
-const KEY = arg("key", "UNITS_IDENTITY_KEY", "/etc/lineage-identity/master.key")!;
-const RUN = arg("run-dir", "UNITS_IDENTITY_RUN", "/run/lineage-identity")!;
+const DIR = arg("dir", "UNITS_IDENTITY_DIR", "/var/lib/units/identity")!;
+const KEY = arg("key", "UNITS_IDENTITY_KEY", "/etc/units-identity/master.key")!;
+const RUN = arg("run-dir", "UNITS_IDENTITY_RUN", "/run/units-identity")!;
 const CORE = arg("core", "UNITS_CORE", "http://127.0.0.1:9660")!.replace(/\/+$/, "");
 const SITE = arg("site", "UNITS_SITE_URL") ?? null;
 const log = safeLog(cmd === "cycle" ? "identity-cycle" : "identity");

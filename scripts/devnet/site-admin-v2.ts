@@ -9,7 +9,7 @@
 //     "trading_reset": [{ "agent", "reason" }],                   POST /v1/agents/:id/trading/reset
 //     "close_epoch": true }                                       POST /v1/admin/epochs/close
 //
-//   ssh root@<host> 'cd /opt/lineage/current && runuser -u lineage -- bun scripts/devnet/site-admin-v2.ts' < actions.json
+//   ssh root@<host> 'cd /opt/units/current && runuser -u units -- bun scripts/devnet/site-admin-v2.ts' < actions.json
 //
 // Prints each route's status and answer (public data only).
 import { readFileSync } from "node:fs";

@@ -2,7 +2,7 @@
 // units site: writes the server's configuration files from the release being deployed. Idempotent;
 // prints what it wrote, never a key.
 //
-//   bun scripts/deploy/site-config.ts --out /var/lib/lineage/site [--refresh-caps]
+//   bun scripts/deploy/site-config.ts --out /var/lib/units/site [--refresh-caps]
 //
 // Writes:
 //   network.json  config/network.json with the site's values (daily epochs, the private canaries
@@ -25,21 +25,21 @@ import { devnetRpcUrl, redactRpc } from "../../packages/chain/src/endpoint.ts";
 const ROOT = join(import.meta.dir, "..", "..");
 const argv = process.argv.slice(2);
 const opt = (k: string) => (argv.includes(`--${k}`) ? argv[argv.indexOf(`--${k}`) + 1] : undefined);
-const OUT = opt("out") ?? "/var/lib/lineage/site";
+const OUT = opt("out") ?? "/var/lib/units/site";
 const HOME_CFG = join(homedir(), ".config", "lineage");
 mkdirSync(OUT, { recursive: true });
 
 const devnet = JSON.parse(readFileSync(join(ROOT, "scripts/devnet/devnet.json"), "utf8"));
 const net = JSON.parse(readFileSync(join(ROOT, "config/network.json"), "utf8"));
 // The Core authority key: on a site with service users (remote.sh users_setup) it lives in
-// /etc/lineage-core, which this user cannot read, so remote.sh names it in UNITS_SITE_CORE_KEY;
+// /etc/units-core, which this user cannot read, so remote.sh names it in UNITS_SITE_CORE_KEY;
 // otherwise the copy in this user's home (older layout, local dry runs).
 const coreKeyEnv = (process.env.UNITS_SITE_CORE_KEY ?? process.env.LINEAGE_SITE_CORE_KEY) || "";
 const coreKey = join(HOME_CFG, "devnet", "core-authority.json");
 Object.assign(net, {
   _note: "units public devnet site. M1 TEST values from config/network.json; epoch length daily so each post_epoch (about 0.0015 devnet SOL) happens once a day.",
   epoch_length_s: Number((process.env.UNITS_SITE_EPOCH_S ?? process.env.LINEAGE_SITE_EPOCH_S) ?? 86400),
-  canaries_dir: "/var/lib/lineage/canaries",
+  canaries_dir: "/var/lib/units/canaries",
   chain: {
     mode: "devnet",
     // the keyed RPC from ~/.config/lineage/rpc.env when deploy.sh copied it (Core publishes it redacted
@@ -69,7 +69,7 @@ writeFileSync(join(OUT, "runtime-authority.pub"), devnet.runtime_authority + "\n
 const runtimeCfg = {
   mode: "devnet",
   core: "http://127.0.0.1:9660",
-  state_dir: "/var/lib/lineage/runtime",
+  state_dir: "/var/lib/units/runtime",
   runtime_key: join(HOME_CFG, "devnet", "runtime-authority.json"),
   // no rpc_url: the runtime resolves it like Core (UNITS_DEVNET_RPC, the keyed rpc.env, else public devnet)
   _note:
@@ -117,7 +117,7 @@ const runtimeCfg = {
   desktop_allow: ["github.com", "githubusercontent.com", "githubassets.com"],
   e2b: { template: "lineage-desktop", vcpu: 2, ram_gib: 4, session_max_s: 3600 },
   desktop_required: true,
-  desktop_hosts_file: "/home/lineage/.config/lineage/desktop-hosts/hosts.json",
+  desktop_hosts_file: "/home/units/.config/lineage/desktop-hosts/hosts.json",
   // owner direction 2026-10-10: live only. Desktops stream (sealed and redacted as before) but do not
   // record or publish a recording; the site shows only live work. true turns recordings back on.
   recordings: false,

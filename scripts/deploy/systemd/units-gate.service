@@ -8,11 +8,11 @@ Description=units gate (rate limits, CORS, allowlists) on 127.0.0.1:9662, the on
 After=units-web.service
 
 [Service]
-User=lineage-gate
-Group=lineage-gate
-WorkingDirectory=/opt/lineage/current
+User=units-gate
+Group=units-gate
+WorkingDirectory=/opt/units/current
 Environment=HOME=/tmp PATH=/usr/local/bin:/usr/bin:/bin
-EnvironmentFile=-/etc/lineage/site.env
+EnvironmentFile=-/etc/units/site.env
 NoNewPrivileges=yes
 PrivateTmp=yes
 # audit A2: this unit needs no Docker, devices, namespaces or raw sockets

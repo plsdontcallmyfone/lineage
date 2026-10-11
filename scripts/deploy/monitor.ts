@@ -1,8 +1,8 @@
 #!/usr/bin/env bun
 // units site monitor (plan M4). units-monitor.timer runs it every 5 minutes as the unprivileged
-// user lineage-monitor; `remote.sh monitor` starts it once and prints every check.
+// user units-monitor; `remote.sh monitor` starts it once and prints every check.
 //
-//   bun scripts/deploy/monitor.ts [--state /var/lib/lineage-monitor/state.json]
+//   bun scripts/deploy/monitor.ts [--state /var/lib/units-monitor/state.json]
 //
 // Checks: every enabled lineage unit and Caddy active; Core, gate and public HTTPS health; epochs close
 // on time and each closed epoch is posted on chain; the site's verifiers heartbeat; the hosted
@@ -11,7 +11,7 @@
 //
 // Alerts go out when a check turns warn or fail, when it recovers, and every 6 hours while it stays
 // failing: to ALERT_WEBHOOK_URL (POST {"text": ...}, e.g. Slack or Discord style) and/or Telegram
-// (ALERT_TELEGRAM_BOT_TOKEN, ALERT_TELEGRAM_CHAT_ID), both from /etc/lineage/alert.env, which only the
+// (ALERT_TELEGRAM_BOT_TOKEN, ALERT_TELEGRAM_CHAT_ID), both from /etc/units/alert.env, which only the
 // owner writes. Without either, alerts go to the journal only (`journalctl -u units-monitor -p warning`).
 // Nothing secret is read or printed: health endpoints, unit states, public keys and file ages.
 import { existsSync, mkdirSync, readdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
@@ -183,7 +183,7 @@ export function evaluate(i: Inputs): Check[] {
 
   // backups
   if (i.backupsExpected) {
-    if (i.newestBackupMs == null) add("backup", "fail", "no Core snapshot in /var/lib/lineage/core-backups");
+    if (i.newestBackupMs == null) add("backup", "fail", "no Core snapshot in /var/lib/units/core-backups");
     else {
       const age = i.now - i.newestBackupMs;
       add("backup", age > LIMITS.backupStaleMs ? "fail" : "ok", `newest Core snapshot ${mins(age)} old`);
@@ -273,8 +273,8 @@ function disk(path: string): { path: string; freeBytes: number; totalBytes: numb
   return { path, totalBytes: Number(f[1]) * 1024, freeBytes: Number(f[3]) * 1024 };
 }
 
-export const SECRETS_RECIPIENT = "/etc/lineage/backup-recipient.txt";
-export const SECRETS_DIRS: Record<string, string> = { state: "/var/lib/lineage/state-backups", identity: "/var/lib/lineage/identity-backups" };
+export const SECRETS_RECIPIENT = "/etc/units/backup-recipient.txt";
+export const SECRETS_DIRS: Record<string, string> = { state: "/var/lib/units/state-backups", identity: "/var/lib/units/identity-backups" };
 
 function newestBackup(dir: string, re = /^core-.*\.tar\.zst$/): number | null {
   try {
@@ -303,7 +303,7 @@ async function notify(text: string): Promise<string[]> {
 if (import.meta.main) {
   const argv = process.argv.slice(2);
   const opt = (k: string, d: string) => (argv.includes(`--${k}`) ? argv[argv.indexOf(`--${k}`) + 1]! : d);
-  const statePath = opt("state", "/var/lib/lineage-monitor/state.json");
+  const statePath = opt("state", "/var/lib/units-monitor/state.json");
   const env = process.env;
   const CORE = env.MONITOR_CORE ?? "http://127.0.0.1:9660";
   const WEB = env.MONITOR_WEB ?? "http://127.0.0.1:9661";
@@ -329,7 +329,7 @@ if (import.meta.main) {
         const [name, id] = s.split(":") as [string, string];
         return { name, lamports: await balance(rpc, id) };
       }));
-  const spendFile = env.MONITOR_SPEND ?? "/run/lineage-monitor/spend.json";
+  const spendFile = env.MONITOR_SPEND ?? "/run/units-monitor/spend.json";
   let spend: Inputs["spend"] = null;
   try {
     spend = JSON.parse(readFileSync(spendFile, "utf8"));
@@ -353,7 +353,7 @@ if (import.meta.main) {
     balances,
     faucet: faucet.ok ? faucet.body! : null,
     disk: ["/", ...(existsSync("/var/lib/docker") ? ["/var/lib/docker"] : [])].map(disk).filter((d): d is NonNullable<typeof d> => !!d).filter((d, k, a) => a.findIndex((x) => x.totalBytes === d.totalBytes && x.freeBytes === d.freeBytes) === k),
-    newestBackupMs: newestBackup(env.MONITOR_BACKUPS ?? "/var/lib/lineage/core-backups"),
+    newestBackupMs: newestBackup(env.MONITOR_BACKUPS ?? "/var/lib/units/core-backups"),
     backupsExpected: env.MONITOR_BACKUPS_EXPECTED !== "0",
     secretsBackups: existsSync(env.MONITOR_SECRETS_RECIPIENT ?? SECRETS_RECIPIENT)
       ? Object.entries(SECRETS_DIRS).map(([part, dir]) => ({ part, newestMs: newestBackup(dir, new RegExp(`^${part}-.*\\.tar\\.zst\\.age$`)) }))
@@ -376,7 +376,7 @@ if (import.meta.main) {
   }
   // journal: <3> err, <4> warning, <6> info (systemd reads the prefix as the priority)
   for (const c of checks) console.log(`${c.level === "fail" ? "<3>" : c.level === "warn" ? "<4>" : "<6>"}${c.level.padEnd(4)} ${c.id}: ${c.msg}`);
-  if (send.length) console.log(`<5>alerts: ${send.map((c) => `${c.recovered ? "recovered" : c.level} ${c.id}`).join(", ")} -> ${delivered.length ? delivered.join(", ") : "journal only (no /etc/lineage/alert.env sink)"}`);
+  if (send.length) console.log(`<5>alerts: ${send.map((c) => `${c.recovered ? "recovered" : c.level} ${c.id}`).join(", ")} -> ${delivered.length ? delivered.join(", ") : "journal only (no /etc/units/alert.env sink)"}`);
   const summary = { at: new Date(now).toISOString(), worst: checks.some((c) => c.level === "fail") ? "fail" : checks.some((c) => c.level === "warn") ? "warn" : "ok", checks, alerts: next };
   mkdirSync(dirname(statePath), { recursive: true });
   writeFileSync(statePath, JSON.stringify(summary, null, 2) + "\n");

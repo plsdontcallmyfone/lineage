@@ -2,8 +2,8 @@
 # GitHub identity service (packages/identity, SPEC 13.9): launch watcher (provisions purchased
 # accounts from the encrypted reserve), pasted-token intake and revocation, status API under
 # /identity/* (Caddy routes it here directly, never through the gate or Core). Runs as the dedicated
-# user lineage-identity; its store /var/lib/lineage/identity (mode 700) and key file
-# /etc/lineage-identity/master.key are readable by that user only.
+# user units-identity; its store /var/lib/units/identity (mode 700) and key file
+# /etc/units-identity/master.key are readable by that user only.
 [Unit]
 # rebrand (docs/plans/REBRAND-UNITS.md 3.8): never runs together with the unit of the old name; a
 # start waits until that one has stopped (a stop job always runs before a start job of an ordered pair)
@@ -12,17 +12,17 @@ After=lineage-identity.service
 Description=units GitHub identity service on 127.0.0.1:9665
 After=network-online.target units-core.service
 Wants=network-online.target
-ConditionPathExists=/etc/lineage-identity/master.key
+ConditionPathExists=/etc/units-identity/master.key
 
 [Service]
-User=lineage-identity
-Group=lineage-identity
-WorkingDirectory=/opt/lineage/current
-Environment=HOME=/var/lib/lineage/identity/home BUN_RUNTIME_TRANSPILER_CACHE_PATH=0 PATH=/usr/local/bin:/usr/bin:/bin
-Environment=UNITS_IDENTITY_DIR=/var/lib/lineage/identity UNITS_IDENTITY_KEY=/etc/lineage-identity/master.key UNITS_IDENTITY_RUN=/run/lineage-identity
-EnvironmentFile=-/etc/lineage/site.env
-EnvironmentFile=-/etc/lineage-identity/identity.env
-RuntimeDirectory=lineage-identity
+User=units-identity
+Group=units-identity
+WorkingDirectory=/opt/units/current
+Environment=HOME=/var/lib/units/identity/home BUN_RUNTIME_TRANSPILER_CACHE_PATH=0 PATH=/usr/local/bin:/usr/bin:/bin
+Environment=UNITS_IDENTITY_DIR=/var/lib/units/identity UNITS_IDENTITY_KEY=/etc/units-identity/master.key UNITS_IDENTITY_RUN=/run/units-identity
+EnvironmentFile=-/etc/units/site.env
+EnvironmentFile=-/etc/units-identity/identity.env
+RuntimeDirectory=units-identity
 RuntimeDirectoryMode=0700
 UMask=0077
 NoNewPrivileges=yes
@@ -30,7 +30,7 @@ PrivateTmp=yes
 PrivateDevices=yes
 ProtectSystem=strict
 ProtectHome=yes
-ReadWritePaths=/var/lib/lineage/identity
+ReadWritePaths=/var/lib/units/identity
 ProtectKernelTunables=yes
 ProtectKernelModules=yes
 ProtectControlGroups=yes

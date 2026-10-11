@@ -4,7 +4,7 @@
 // server as the `lineage` user. Idempotent: an agent already registered is not registered again,
 // a bond already at min_bond is not topped up, and a changed caps.json sends update_agent.
 //
-//   bun scripts/deploy/site-chain.ts --caps /var/lib/lineage/site/caps.json [--plan] [--log <jsonl>]
+//   bun scripts/deploy/site-chain.ts --caps /var/lib/units/site/caps.json [--plan] [--log <jsonl>]
 //
 // --plan reads the chain and prints what it would send, sending nothing (the dry run uses it).
 // Keys: ~/.config/lineage/site/{owner,verifier-ref,verifier-v1,verifier-v2}.json (made by
@@ -21,10 +21,10 @@ const ROOT = join(import.meta.dir, "..", "..");
 const argv = process.argv.slice(2);
 const opt = (k: string) => (argv.includes(`--${k}`) ? argv[argv.indexOf(`--${k}`) + 1] : undefined);
 const PLAN = argv.includes("--plan");
-const LOG = opt("log") ?? "/var/lib/lineage/site/tx-log.jsonl";
+const LOG = opt("log") ?? "/var/lib/units/site/tx-log.jsonl";
 const SITE = join(homedir(), ".config", "lineage", "site");
 const devnet = JSON.parse(readFileSync(join(ROOT, "scripts/devnet/devnet.json"), "utf8"));
-const caps = JSON.parse(readFileSync(opt("caps") ?? "/var/lib/lineage/site/caps.json", "utf8"));
+const caps = JSON.parse(readFileSync(opt("caps") ?? "/var/lib/units/site/caps.json", "utf8"));
 const capsDigest = H("caps", canonicalJson(caps));
 const rpc = Rpc.http(devnetRpcUrl(), "confirmed");
 const reader = new ChainReader(rpc);

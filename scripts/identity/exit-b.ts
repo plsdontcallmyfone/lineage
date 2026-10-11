@@ -119,14 +119,14 @@ if (cmd === "launch") {
   if (!idx) throw new Error(`no candidate ${cand}`);
   const diff = readFileSync(join(ROOT, "recipes", recipe, "candidates", `${cand}.diff`), "utf8");
   const key = readFileSync(agentFile, "utf8");
-  const dir = `/var/lib/lineage/site/b-${label}`;
-  const keyPath = `/home/lineage/.config/lineage/devnet/agent-b-${label}.json`;
-  ssh(`set -e; umask 077; cat > ${keyPath}.tmp; chown lineage:lineage ${keyPath}.tmp; mv ${keyPath}.tmp ${keyPath}`, key);
+  const dir = `/var/lib/units/site/b-${label}`;
+  const keyPath = `/home/units/.config/lineage/devnet/agent-b-${label}.json`;
+  ssh(`set -e; umask 077; cat > ${keyPath}.tmp; chown units:units ${keyPath}.tmp; mv ${keyPath}.tmp ${keyPath}`, key);
   const index = JSON.stringify({ [cand]: { kind: idx.kind, target, note: `${idx.note} (single-metric target for the identity exit run)`, lines: idx.lines, guard: idx.guard } });
-  ssh(`set -e; install -d -o lineage -g lineage -m 750 ${dir}; cat > ${dir}/${cand}.diff; chown lineage:lineage ${dir}/${cand}.diff`, diff);
-  ssh(`set -e; cat > ${dir}/index.json; chown lineage:lineage ${dir}/index.json`, index);
+  ssh(`set -e; install -d -o units -g units -m 750 ${dir}; cat > ${dir}/${cand}.diff; chown units:units ${dir}/${cand}.diff`, diff);
+  ssh(`set -e; cat > ${dir}/index.json; chown units:units ${dir}/index.json`, index);
   const unit = `lineage-b-author-${label}`;
-  log(ssh(`systemctl stop ${unit} 2>/dev/null; systemctl reset-failed ${unit} 2>/dev/null; systemd-run --unit ${unit} --uid lineage --gid lineage -p WorkingDirectory=/opt/lineage/current -p MemoryMax=1G -p KillSignal=SIGTERM -p TimeoutStopSec=1200 --setenv=HOME=/home/lineage --setenv=UNITS_HOME=/home/lineage/.lineage --setenv=PATH=/usr/local/bin:/usr/bin:/bin /usr/local/bin/bun packages/worker/src/main.ts run --core http://127.0.0.1:9660 --key ${keyPath} --proposer scripted --script ${dir} --capabilities /var/lib/lineage/site/caps.json --interval 5000 2>&1; echo started ${unit}`));
+  log(ssh(`systemctl stop ${unit} 2>/dev/null; systemctl reset-failed ${unit} 2>/dev/null; systemd-run --unit ${unit} --uid units --gid units -p WorkingDirectory=/opt/units/current -p MemoryMax=1G -p KillSignal=SIGTERM -p TimeoutStopSec=1200 --setenv=HOME=/home/units --setenv=UNITS_HOME=/home/units/.lineage --setenv=PATH=/usr/local/bin:/usr/bin:/bin /usr/local/bin/bun packages/worker/src/main.ts run --core http://127.0.0.1:9660 --key ${keyPath} --proposer scripted --script ${dir} --capabilities /var/lib/units/site/caps.json --interval 5000 2>&1; echo started ${unit}`));
   save("author", { recipe, candidate: cand, target, unit, at: new Date().toISOString() });
 } else if (cmd === "token" || cmd === "revoke" || cmd === "status") {
   const agent = loadKeypair(agentFile).id;

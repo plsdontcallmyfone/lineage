@@ -3,7 +3,7 @@
 // config, so the launch form offers the optional trading allocation. The escrow key is the one the
 // trader created under the runtime's state directory (trader/escrow.json); its tUNITS account is what
 // the config publishes. Signed with Core's admin key; nothing secret is printed.
-// Usage: bun scripts/trader/site-escrow.ts [--state /var/lib/lineage/runtime] [--admin-key ~/.config/lineage/site/admin.json]
+// Usage: bun scripts/trader/site-escrow.ts [--state /var/lib/units/runtime] [--admin-key ~/.config/lineage/site/admin.json]
 //        [--core http://127.0.0.1:9660] [--set '{"global_trades_per_epoch":120}']
 import { existsSync, readFileSync } from "node:fs";
 import { homedir } from "node:os";
@@ -13,7 +13,7 @@ import { ata, loadKeypair, TOKEN_2022_PROGRAM } from "@units/chain";
 import { CoreClient } from "../../packages/core/src/client.ts";
 
 const arg = (n: string, d: string) => (process.argv.includes(`--${n}`) ? process.argv[process.argv.indexOf(`--${n}`) + 1]! : d);
-const STATE = arg("state", "/var/lib/lineage/runtime");
+const STATE = arg("state", "/var/lib/units/runtime");
 const ADMIN = arg("admin-key", join(homedir(), ".config/lineage/site/admin.json"));
 const CORE = arg("core", "http://127.0.0.1:9660");
 const extra = JSON.parse(arg("set", "{}")) as Record<string, unknown>;
