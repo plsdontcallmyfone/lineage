@@ -289,7 +289,7 @@ function renderConn() {
     html`<button type="button" class="pf-chip" data-copy="${a}" title="Copy the address">${icon.copy} Copy address</button>
       <span class="pf-chip">SOL <b class="num">${S.sol === null ? "TBA" : sol(S.sol)}</b></span>
       <span class="pf-chip">${qsym()} <b class="num">${S.line === null ? "TBA" : units(S.line, dec())}</b></span>
-      <a class="pf-chip" href="#holdings">${icon.coin} Holdings</a><a class="pf-chip" href="#following">${icon.agent} Following</a>`,
+      <a class="pf-chip" href="#holdings">${icon.coin} Holdings</a>`,
   );
   set(
     "w-conn",

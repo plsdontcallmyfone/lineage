@@ -4,6 +4,7 @@ import { html, type Raw } from "../html.ts";
 import { mount as mountLivePanel, type LivePanelHandle } from "../live-panel/index.ts";
 import { mountCommits } from "./commits.ts";
 import { mountTokenChart } from "./token-chart.ts";
+import { mountAbout } from "./token-about.ts";
 import { genesisLink, loadGenesis } from "./genesis-proof.ts";
 import { feedPanel } from "./feed.ts";
 import { agentAvatar, agentTitle, buildingLine, hiddenNote, injectBuildingStyle, type DirToken } from "../building.ts";
@@ -173,12 +174,13 @@ export async function tokenPage([mint]: string[]): Promise<Page> {
           <div class="mk-holderspanel" data-book-p="holders"><div id="mk-holders">${holdersTable(d)}</div></div>
           <div class="mk-activity" data-book-p="trades" hidden><div id="mk-trades">${tradesTable(d)}</div></div>
         </section>
-        <div id="mk-commits"></div>
       </div>
       <div class="tk-right">
         ${panel(html`Trade ${t.symbol ?? ""}`, html`<div id="mk-trade" class="mk-trade"><div class="panel-b dim">Loading the wallet module…</div></div>`, { cls: "mk-tradepanel" })}
+        ${panel(html`About ${t.symbol ?? "the token"}`, html`<div id="mk-about"></div>`, { cls: "mk-aboutpanel" })}
       </div>
-    </div>`;
+    </div>
+    <div id="mk-commits" class="tk-commits"></div>`;
 
   return {
     title: `${t.symbol ?? "Token"} ${t.name ?? ""}`.trim(),
@@ -195,6 +197,8 @@ export async function tokenPage([mint]: string[]): Promise<Page> {
       const feedEl = root.querySelector<HTMLElement>("#mk-feed");
       // the agent's commits to its own GitHub fork, live (identity service + GitHub)
       mountCommits(root.querySelector<HTMLElement>("#mk-commits")!, { agent: t.agent, repoUrl: t.repo_url ?? null });
+      // About the token, under the trade box: counted from the indexer's trades
+      const about = mountAbout(root.querySelector<HTMLElement>("#mk-about")!, t, dt.tagline ?? null);
       const paintFeed = () => void feedPanel({ agent: t.agent, title: "Agent feed" }).then((r) => feedEl?.isConnected && (feedEl.innerHTML = r.s));
       paintFeed();
       const feedTimer = setInterval(() => (feedEl?.isConnected ? paintFeed() : clearInterval(feedTimer)), 20_000);
@@ -210,6 +214,7 @@ export async function tokenPage([mint]: string[]): Promise<Page> {
         set("mk-trades", tradesTable(x));
         set("mk-holders", holdersTable(x));
         set("mk-building", buildingBody(x.t));
+        about.refresh(x.t);
         for (const b of root.querySelectorAll<HTMLElement>("[data-tf]")) b.setAttribute("aria-pressed", String(b.dataset.tf === x.tf));
         chart.set(x.candles, x.t.start_price, label(x));
         tradeBox?.update?.(x.t);
@@ -259,7 +264,7 @@ export async function tokenPage([mint]: string[]): Promise<Page> {
         chartPanel.dataset.view = v;
         for (const x of chartPanel.querySelectorAll<HTMLElement>("[data-view-b]")) x.setAttribute("aria-pressed", String(x.dataset.viewB === v));
         for (const p of chartPanel.querySelectorAll<HTMLElement>("[data-pane-v]")) p.hidden = p.dataset.paneV !== v;
-        if (v === "computer" && !live) live = mountLivePanel(liveEl, { agent: t.agent, label: t.name ?? t.symbol ?? undefined, list: false });
+        if (v === "computer" && !live) live = mountLivePanel(liveEl, { agent: t.agent, label: t.name ?? t.symbol ?? undefined, list: false, frame: "none" });
       });
 
       // the trade box (wallet bundle)

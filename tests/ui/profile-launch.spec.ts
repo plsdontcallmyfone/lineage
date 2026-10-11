@@ -62,7 +62,6 @@ test.describe("Profile (/profile)", () => {
     }
     await expect(page.locator(".wl-bal")).toHaveCount(1);
     await page.locator("#w-hold table, #w-hold [data-none]").first().waitFor({ timeout: 60_000 });
-    await page.locator("#w-follow .me-follow, #w-follow [data-none]").first().waitFor({ timeout: 30_000 });
     await expect(page.locator("#me-signed")).not.toContainText(/fees? (claimed|to compute|split)|crank/i);
     await cleanPage(page);
 

@@ -30,6 +30,7 @@ import type { Page } from "./pages/types.ts";
 import { siteFooter } from "./site-footer.ts";
 import { smoothScroll } from "./smooth-scroll.ts";
 import { glide } from "./glide.ts";
+import { pickers } from "./pickers.ts";
 import { deckPage, deckSync } from "./deck.ts";
 
 // ------------------------------------------------------------------------------------------------
@@ -382,6 +383,7 @@ window.addEventListener("resize", () => {
 shell();
 smoothScroll();
 glide();
+pickers();
 fetch("/live/status")
   .then((r) => r.json())
   .then((s) => {

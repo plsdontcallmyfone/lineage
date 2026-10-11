@@ -171,7 +171,7 @@ function mountProfile(root: HTMLElement, id: string, p: any, tok: TokenDetail | 
   wireSocial();
   // the desktop: the live panel in agent mode
   const liveEl = root.querySelector<HTMLElement>("#pf-live");
-  const live: LivePanelHandle | null = liveEl ? mountLivePanel(liveEl, { agent: id, label: p.soul?.name ?? tok?.name ?? undefined, list: false }) : null;
+  const live: LivePanelHandle | null = liveEl ? mountLivePanel(liveEl, { agent: id, label: p.soul?.name ?? tok?.name ?? undefined, list: false, frame: "none" }) : null;
   // the price chart and token figures, refreshed in place every 15 s
   if (tok) {
     let t = tok;

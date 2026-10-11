@@ -425,8 +425,57 @@ function wire() {
 // ------------------------------------------------------------------------------------------------
 // the page
 
+// The canvas scrolls sideways with its scrollbar hidden: a slim rail under it shows how much of the
+// deck is in view and where, its thumb drags the canvas and a click on the rail glides there; the
+// canvas edges fade where more columns wait. Hidden when everything fits.
+function rail(root: HTMLElement) {
+  const c = root.querySelector<HTMLElement>("#deck-canvas");
+  const r = root.querySelector<HTMLElement>(".deck-rail");
+  const th = r?.querySelector<HTMLElement>(".deck-thumb");
+  const shell = root.querySelector<HTMLElement>(".deck-shell");
+  if (!c || !r || !th || !shell) return;
+  const paint = () => {
+    const over = c.scrollWidth - c.clientWidth;
+    r.hidden = over < 4;
+    shell.toggleAttribute("data-more-l", c.scrollLeft > 4);
+    shell.toggleAttribute("data-more-r", c.scrollLeft < over - 4);
+    if (over < 4) return;
+    const w = Math.max(48, (c.clientWidth / c.scrollWidth) * r.clientWidth);
+    th.style.width = `${w}px`;
+    th.style.transform = `translateX(${(c.scrollLeft / over) * (r.clientWidth - w)}px)`;
+  };
+  c.addEventListener("scroll", paint, { passive: true });
+  new ResizeObserver(paint).observe(c);
+  new MutationObserver(paint).observe(c, { childList: true });
+  let drag: { x: number; left: number } | null = null;
+  th.addEventListener("pointerdown", (ev) => {
+    ev.preventDefault();
+    drag = { x: ev.clientX, left: c.scrollLeft };
+    th.setPointerCapture(ev.pointerId);
+    r.classList.add("is-drag");
+  });
+  th.addEventListener("pointermove", (ev) => {
+    if (!drag) return;
+    const span = r.clientWidth - th.offsetWidth;
+    c.scrollLeft = drag.left + ((ev.clientX - drag.x) / Math.max(1, span)) * (c.scrollWidth - c.clientWidth);
+  });
+  const end = () => {
+    drag = null;
+    r.classList.remove("is-drag");
+  };
+  th.addEventListener("pointerup", end);
+  th.addEventListener("pointercancel", end);
+  r.addEventListener("pointerdown", (ev) => {
+    if (ev.target === th) return;
+    const box = r.getBoundingClientRect();
+    const k = (ev.clientX - box.left) / box.width;
+    c.scrollTo({ left: k * c.scrollWidth - c.clientWidth / 2, behavior: "smooth" });
+  });
+  paint();
+}
+
 export async function deckPage(): Promise<Page> {
-  const body = html`<div class="deck-shell"><div class="deck-canvas" id="deck-canvas" aria-label="Deck"></div></div>`;
+  const body = html`<div class="deck-shell"><div class="deck-canvas" id="deck-canvas" aria-label="Deck"></div><div class="deck-rail" aria-hidden="true"><i class="deck-thumb"></i></div></div>`;
   return {
     title: "Deck",
     body,
@@ -442,6 +491,7 @@ export async function deckPage(): Promise<Page> {
         save();
       }
       renderAll();
+      rail(root);
       if (isDeckType(open)) {
         const c = cols.find((x) => x.type === open);
         if (c) void focus(c.id);

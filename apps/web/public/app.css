@@ -1452,3 +1452,81 @@ main:has(.deck-shell) { padding-bottom: 12px; min-height: 0; }
 main:has(.deck-shell) + .site-footer { margin-top: 0; }
 html, body { scrollbar-width: none; }
 html::-webkit-scrollbar, body::-webkit-scrollbar { display: none; width: 0; height: 0; }
+
+/* token page: Commits under the three columns at full width; About under the trade box */
+.tk-commits { margin-top: 16px; }
+.tk-commits:empty { display: none; }
+.ta { display: flex; flex-direction: column; gap: 14px; }
+.ta-desc { margin: 0; color: var(--ts); font-size: 13.5px; line-height: 1.5; }
+.ta-wins { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 6px; }
+.ta-wins button { display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 8px 4px; border: 0; border-radius: 14px; corner-shape: squircle; background: var(--bg); box-shadow: inset 0 0 0 1px var(--border); color: var(--tt); font: 500 12px/1 var(--sans); cursor: pointer; transition: background .18s var(--ease-soft), box-shadow .18s var(--ease-soft), transform .18s var(--ease-soft); }
+.ta-wins button b { font-weight: 500; font-size: 12.5px; color: var(--tp); white-space: nowrap; }
+.ta-wins button:hover { background: var(--pill); }
+.ta-wins button[aria-pressed="true"] { background: var(--pill); box-shadow: inset 0 0 0 1.5px var(--tp); }
+.ta-wins button:active { transform: scale(.96); }
+.ta .up { color: var(--good); }
+.ta .down { color: var(--bad); }
+.ta-bar { display: flex; flex-direction: column; gap: 6px; }
+.ta-bar-h { display: flex; justify-content: space-between; gap: 8px; font-size: 13px; color: var(--tt); }
+.ta-bar-h b { font-weight: 500; color: var(--tp); }
+.ta-bar-t { display: flex; gap: 4px; height: 6px; }
+.ta-bar-t i { display: block; height: 100%; border-radius: 3px; transition: width .5s cubic-bezier(.22, 1, .36, 1); min-width: 4px; }
+.ta-bar-t .b { background: var(--good); }
+.ta-bar-t .s { background: var(--bad); }
+.ta-bar-t.empty i { background: var(--border); }
+.ta-wait { font-size: 13px; }
+.ta-links { display: flex; flex-wrap: wrap; gap: 6px; }
+.ta-facts { margin: 0; display: flex; flex-direction: column; gap: 10px; padding-top: 12px; border-top: 1px solid var(--border); }
+.ta-facts > div { display: flex; align-items: baseline; gap: 8px; font-size: 13px; }
+.ta-facts dt { color: var(--tt); flex: none; }
+.ta-facts dd { margin: 0 0 0 auto; color: var(--tp); text-align: right; display: inline-flex; align-items: center; gap: 4px; }
+.ta-facts > div { background: repeating-linear-gradient(to right, var(--border-h) 0 2px, transparent 2px 6px) left 62% / 100% 1px no-repeat; }
+.ta-facts dt, .ta-facts dd { background: var(--bg2); padding: 0 6px 0 0; }
+.ta-facts dd { padding: 0 0 0 6px; }
+
+/* the app's own pickers (src/pickers.ts): the native select or date field stays, transparent, under a button */
+.cs { position: relative; display: inline-flex; min-width: 0; width: 100%; }
+.cs > .cs-native { position: absolute !important; inset: 0; width: 100% !important; height: 100% !important; opacity: 0 !important; pointer-events: none !important; margin: 0 !important; }
+.cs-btn { display: inline-flex; align-items: center; justify-content: space-between; gap: 8px; width: 100%; min-width: 0; height: 36px; padding: 0 10px 0 12px; border: 0; border-radius: 12px; corner-shape: squircle; background: var(--bg); box-shadow: inset 0 0 0 1px var(--border); color: var(--tp); font: 500 13px/1 var(--sans); letter-spacing: -.01em; text-align: left; cursor: pointer; transition: box-shadow .18s var(--ease-soft), background .18s var(--ease-soft), transform .18s var(--ease-soft); }
+.cs-btn:hover { background: var(--pill); }
+.cs-btn[aria-expanded="true"], .cs-btn:focus-visible { outline: 0; box-shadow: inset 0 0 0 1.5px var(--tp); }
+.cs-btn:active { transform: scale(.98); }
+.cs-btn:disabled { color: var(--tt); cursor: not-allowed; }
+.cs-btn.is-empty .cs-v { color: var(--tt); }
+.cs-btn .cs-v { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cs-btn svg { flex: none; color: var(--tt); transition: transform .2s var(--ease-soft); }
+.cs-btn[aria-expanded="true"] svg { transform: rotate(180deg); }
+.wl-form .cs-btn, .launch .cs-btn { height: 44px; border-radius: 16px; box-shadow: inset 0 0 0 2px var(--tp); font-size: 15px; }
+.cs-pop { position: fixed; z-index: 400; max-height: 300px; overflow-y: auto; padding: 6px; border-radius: 16px; corner-shape: squircle; background: var(--bg2); box-shadow: 0 0 0 1px var(--border), 0 18px 40px -16px #1a1a1940; animation: cs-in .18s cubic-bezier(.22, 1, .36, 1); }
+@keyframes cs-in { from { opacity: 0; transform: translateY(-4px) scale(.98); } }
+.cs-opt { display: flex; align-items: center; justify-content: space-between; gap: 10px; width: 100%; padding: 8px 10px; border: 0; border-radius: 10px; background: transparent; color: var(--tp); font: 400 13.5px/1.25 var(--sans); text-align: left; cursor: pointer; }
+.cs-opt:hover, .cs-opt:focus-visible { outline: 0; background: var(--pill); }
+.cs-opt[aria-selected="true"] { font-weight: 500; }
+.cs-opt:disabled { color: var(--tt); cursor: not-allowed; background: transparent; }
+.cs-cal { width: 260px; padding: 10px; }
+.cs-cal-h { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; font: 500 14px/1 var(--display); letter-spacing: -.01em; }
+.cs-nav { display: grid; place-items: center; width: 28px; height: 28px; border: 0; border-radius: 9px; background: transparent; color: var(--tp); cursor: pointer; }
+.cs-nav:hover { background: var(--pill); }
+.cs-nav[data-m="-1"] svg { transform: rotate(90deg); }
+.cs-nav[data-m="1"] svg { transform: rotate(-90deg); }
+.cs-wk, .cs-grid { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 2px; }
+.cs-wk span { text-align: center; font: 500 11px/24px var(--sans); color: var(--tt); }
+.cs-day { height: 32px; border: 0; border-radius: 9px; background: transparent; color: var(--tp); font: 400 13px/1 var(--sans); font-variant-numeric: tabular-nums; cursor: pointer; transition: background .15s; }
+.cs-day:hover { background: var(--pill); }
+.cs-day.today { box-shadow: inset 0 0 0 1px var(--border-h); }
+.cs-day.on { background: var(--tp); color: var(--bg); }
+.cs-day:disabled { color: var(--border-h); cursor: not-allowed; background: transparent; }
+.cs-cal-f { display: flex; justify-content: space-between; margin-top: 8px; padding-top: 8px; border-top: 1px solid var(--border); }
+.cs-link { border: 0; background: none; color: var(--ts); font: 500 12.5px/1 var(--sans); cursor: pointer; padding: 6px 4px; }
+.cs-link:hover { color: var(--tp); }
+
+/* deck: a scroll rail under the canvas (deck.ts rail) and fades at the edges where more columns wait */
+.deck-rail { position: relative; flex: none; height: 8px; margin: 2px var(--pad-x) 0; border-radius: 4px; background: var(--pill); cursor: pointer; transition: height .2s var(--ease-soft); }
+.deck-rail:hover, .deck-rail.is-drag { height: 10px; }
+.deck-rail[hidden] { display: none; }
+.deck-thumb { position: absolute; top: 0; left: 0; height: 100%; border-radius: 4px; background: var(--tp); opacity: .55; cursor: grab; transition: opacity .2s; }
+.deck-rail:hover .deck-thumb, .deck-rail.is-drag .deck-thumb { opacity: .85; }
+.deck-rail.is-drag .deck-thumb { cursor: grabbing; }
+.deck-shell[data-more-r] .deck-canvas { -webkit-mask-image: linear-gradient(to right, #000 calc(100% - 64px), transparent); mask-image: linear-gradient(to right, #000 calc(100% - 64px), transparent); }
+.deck-shell[data-more-l] .deck-canvas { -webkit-mask-image: linear-gradient(to left, #000 calc(100% - 64px), transparent); mask-image: linear-gradient(to left, #000 calc(100% - 64px), transparent); }
+.deck-shell[data-more-l][data-more-r] .deck-canvas { -webkit-mask-image: linear-gradient(to right, transparent, #000 64px, #000 calc(100% - 64px), transparent); mask-image: linear-gradient(to right, transparent, #000 64px, #000 calc(100% - 64px), transparent); }

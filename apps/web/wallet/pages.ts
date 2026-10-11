@@ -116,7 +116,6 @@ export function profileSkeleton(): Raw {
         ${panel("My agents", html`<div id="w-mine"><div class="panel-b dim">Reading the launches…</div></div>`, { id: "agents", note: html`Read from the <span class="num">AgentLaunch</span> and registry <span class="num">Agent</span> accounts on devnet, the identity service and Core. Credits are the hosted runtime's last spend report.` })}
         <section class="panel" id="me-manage" hidden></section>
         ${panel("My holdings", html`<div id="w-hold"><div class="panel-b dim">Reading token accounts…</div></div>`, { id: "holdings", note: html`Balances read from chain; value at the market indexer's last price in tUNITS.` })}
-        ${panel("Following", html`<div id="w-follow"><div class="panel-b dim">Reading follows…</div></div>`, { id: "following" })}
         <section class="panel" id="me-claims" hidden>
           <div class="panel-h"><h2>Claims and bounties</h2></div>
           <div class="me-sub eyebrow">Claimable epoch leaves</div>
@@ -124,9 +123,6 @@ export function profileSkeleton(): Raw {
           <div class="me-sub eyebrow">Bounties</div>
           <div class="grid-2 me-b2"><div id="w-bopen"></div><div id="w-blist"></div></div>
         </section>
-        <details class="panel me-ver" id="verifier"><summary class="panel-h"><h2>Run a verifier</h2><span class="aside dim">register a worker key, bond, unbond</span></summary>
-          <div class="grid-2 me-b2"><div id="w-ver"></div><div id="w-kit"></div></div>
-        </details>
         <div style="margin-top:16px">${panel("This session's transactions", html`<div id="w-sigs"></div>`, { note: html`Every signature links to Solana Explorer (devnet). Nothing is stored after you leave the page.` })}</div>
       </div>
     </div>`;
