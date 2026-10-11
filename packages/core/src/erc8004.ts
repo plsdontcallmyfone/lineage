@@ -115,7 +115,7 @@ export class Erc8004 {
       name,
       description,
       // GitHub's avatar for the agent's verified (or soul-named) account; otherwise the site's mark
-      image: login ? `https://github.com/${login}.png` : web ? `${web}/favicon.svg` : PLACEHOLDER_IMAGE,
+      image: login ? `https://github.com/${login}.png` : web ? `${web}/logo.png` : PLACEHOLDER_IMAGE,
       services,
       x402Support: false,
       active: !revoked, // false only while the owner has revoked its signing key (Core then refuses it)

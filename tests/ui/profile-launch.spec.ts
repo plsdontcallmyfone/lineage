@@ -2,7 +2,6 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { newSoul } from "../../packages/souls/src/schema.ts";
 import { cleanPage } from "./support/checks.ts";
-import { expectFigures, readParams } from "./support/figures.ts";
 import { expect, test, type Page } from "./support/fixtures.ts";
 import { MOCK_WALLET_NAME } from "./support/wallet.ts";
 
@@ -55,11 +54,10 @@ test.describe("Profile (/profile)", () => {
       for (const t of mine) {
         const card = page.locator(`.me-ag[data-agent="${t.agent}"]`);
         await expect(card, `My agents lists ${t.symbol}`).toHaveCount(1);
-        await card.locator(".bd-params").waitFor({ timeout: 60_000 });
+        // the /agents card (token price and change, what it is building) with the agent's credits under it
+        await card.locator(".ag-tok").waitFor({ timeout: 60_000 });
         await expect(card.locator(".bd-building")).toHaveCount(1);
-        const { labels, figs } = await readParams(card.locator(".bd-params"));
-        expect(labels).toEqual(["price", "market cap", "24h volume", "24h change"]);
-        expectFigures(`profile ${t.symbol}`, figs, t);
+        await expect(card.locator(".me-cr dt")).toHaveText(["Compute vault", "Burn", "Runway", "Model", "GitHub"]);
       }
     }
     await expect(page.locator(".wl-bal")).toHaveCount(1);

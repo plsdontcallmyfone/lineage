@@ -27,7 +27,6 @@ import { analyticsPage } from "./pages/analytics.ts";
 import { launchPage } from "./pages/launch.ts";
 import { profilePage } from "./pages/profile.ts";
 import type { Page } from "./pages/types.ts";
-import { logo } from "./ui.ts";
 import { siteFooter } from "./site-footer.ts";
 import { deckPage, deckSync } from "./deck.ts";
 
@@ -81,7 +80,7 @@ let renderSeq = 0;
 
 function shell() {
   app.innerHTML = html`<header class="top"><div class="top-in">
-      <a class="brand" href="/">${logo}<span>units</span></a>
+      <a class="brand" href="/"><img class="brand-logo" src="/logo.png" alt="" width="26" height="26"><span>units</span></a>
       <nav class="nav" aria-label="Main">
         <a href="/" data-nav="/">Explorer</a>
         <a href="/deck?open=agents" data-nav="/agents">Agents</a>

@@ -96,6 +96,7 @@ import { entryOf, isDefaultChoice, loadModels, modelChoice, modelsBody, onModelI
 import { CLASSES, launchSkeleton, profileSkeleton, stepNav, STEPS } from "./pages.ts";
 import { feedItemHtml, uploadMedia } from "../src/pages/social-ui.ts";
 import { agentAvatar, agentTitle, buildingLine, injectBuildingStyle, paramCells, type DirToken } from "../src/building.ts";
+import { agentCard } from "../src/pages/directory.ts";
 import { githubCallsLeft, spendGithubCall } from "../src/github.ts";
 
 const T22 = TOKEN_2022_PROGRAM;
@@ -2157,48 +2158,80 @@ function myAgents(): AgentLaunch[] {
 /** The market indexer's row per mint (price, market cap, volume, change, what the agent is building), for My agents. */
 const mineRows = new Map<string, DirToken | null>();
 
-// My agents leads the profile (APP-CONSOLIDATION.md amendment 2026-10-10 (2)): each agent this
-// wallet launched or owns, with its token's four figures and what it is building right now (the live
-// session, else its last verified improvement, and its repository), then its status and Manage.
+// My agents leads the profile (APP-CONSOLIDATION.md amendment 2026-10-10 (2)): the agents this wallet
+// launched or owns, as the same cards as /agents (avatar, soul, token price and change, what it is
+// building, links), each with its credits under it: the compute vault read from chain, and the hosted
+// runtime's spend report (vault in USD, burn per hour, runway, model, why it waits), then its status
+// and Manage. A summary strip sums the credits. Figures nobody reports show TBA.
+const spendRows = new Map<string, any | null>();
+const usd = (n: number | null | undefined, d = 2) => (typeof n === "number" && Number.isFinite(n) ? `$${n.toLocaleString("en-US", { minimumFractionDigits: d, maximumFractionDigits: d })}` : null);
+const tbaOr = (v: string | null) => (v === null ? html`<span class="faint">TBA</span>` : html`${v}`);
+function runwayText(h: number | null | undefined) {
+  if (typeof h !== "number" || !Number.isFinite(h)) return null;
+  return h >= 48 ? `${(h / 24).toFixed(1)} days` : `${h.toFixed(1)} h`;
+}
+function mineSummary(mine: AgentLaunch[]) {
+  const rows = mine.map((l) => spendRows.get(l.agent)?.spend ?? null);
+  const known = rows.filter((r) => r && typeof r.vault_usd === "number");
+  const total = known.length ? known.reduce((a, r) => a + r.vault_usd, 0) : null;
+  const burn = known.length ? known.reduce((a, r) => a + (r.burn_usd_per_h ?? 0), 0) : null;
+  const working = mine.filter((l) => mineRows.get(l.mint)?.building?.live).length;
+  return html`<div class="stats me-sum" style="--n:4">
+    ${stat("Agents", String(mine.length), `${mine.filter((l) => l.awake).length} awake`)}
+    ${stat("Working now", String(working), "in a live session")}
+    ${stat("Credits", tbaOr(usd(total)), known.length < mine.length ? `${known.length} of ${mine.length} agents reported` : "in their compute vaults")}
+    ${stat("Burn", tbaOr(burn === null ? null : `${usd(burn)}/h`), "model spend, last report")}
+  </div>`;
+}
+function creditsHtml(l: AgentLaunch) {
+  const sp = spendRows.get(l.agent);
+  const r = sp?.spend ?? null;
+  const rec = S.records.get(l.agent);
+  const bound = l.hosted && !!rec?.signingKey && rec.signingKey !== l.agent;
+  const waiting = r?.waiting ?? (sp?.provider_balance_low ? "provider balance low" : null);
+  return html`<div class="me-cr">
+      <div class="me-cr-st">${l.awake ? badge("awake", "good") : badge("asleep", "")} ${l.hosted ? (bound ? badge("bound", "good") : rec?.signingKey === null ? badge("key revoked", "bad") : badge("not bound", "warn")) : badge("self-hosted", "info")}${mineRows.get(l.mint)?.hidden ? badge("hidden from listings", "") : ""}${waiting ? badge(String(waiting), "warn") : ""}</div>
+      <dl class="me-cr-k">
+        <div><dt>Compute vault</dt><dd><b id="me-v-${l.agent}"><span class="faint">…</span></b>${r && typeof r.vault_usd === "number" ? html` <span class="faint">${usd(r.vault_usd)}</span>` : ""}</dd></div>
+        <div><dt>Burn</dt><dd>${tbaOr(r && typeof r.burn_usd_per_h === "number" ? `${usd(r.burn_usd_per_h)}/h` : null)}</dd></div>
+        <div><dt>Runway</dt><dd>${tbaOr(runwayText(r?.runway_h))}</dd></div>
+        <div><dt>Model</dt><dd>${tbaOr(r?.model?.id ?? null)}</dd></div>
+        <div><dt>GitHub</dt><dd id="me-gh-${l.agent}"><span class="faint">…</span></dd></div>
+      </dl>
+      <div class="me-cr-act">${btn("me-manage", S.manage === l.agent ? "Close" : "Manage", { data: { agent: l.agent }, primary: S.manage !== l.agent })}</div>
+    </div>`;
+}
 function renderMine() {
   if (S.page !== "profile") return;
   if (S.launchesErr) return set("w-mine", html`<div class="panel-b">${S.launchesErr}</div>`);
   const mine = myAgents();
   if (!mine.length) return set("w-mine", html`<div class="panel-b dim">This wallet has launched no agent on ${netName()} yet. <a class="link" href="/launch">Launch one</a>.</div>`);
   injectBuildingStyle();
-  set(
-    "w-mine",
-    html`<div class="me-agents">${mine.map((l) => {
-      const m = S.metas.get(l.mint);
-      const rec = S.records.get(l.agent);
-      const t = mineRows.get(l.mint) ?? null;
-      const bound = l.hosted && !!rec?.signingKey && rec.signingKey !== l.agent;
-      const name = t ? agentTitle(t) : (m?.name ?? short(l.mint)).replace(/^TEST /, "");
-      return html`<article class="me-ag${t?.building?.live ? " live" : ""}" data-agent="${l.agent}">
-        <div class="me-ag-h">
-          <a href="/agents/${l.agent}/profile" aria-label="${name}, profile">${agentAvatar(l.agent, t?.avatar, 40)}</a>
-          <div class="me-ag-n"><a class="link" href="/agents/${l.agent}/profile"><b>${name}</b></a> <a class="dim" href="/tokens/${l.mint}">${m?.symbol ? `$${m.symbol}` : short(l.mint)}</a>
-            <div class="me-ag-st">${l.awake ? badge("awake", "good") : badge("asleep", "")} ${l.hosted ? (bound ? badge("bound", "good") : rec?.signingKey === null ? badge("key revoked", "bad") : badge("not bound", "warn")) : badge("self-hosted", "info")}${t?.hidden ? badge("hidden from listings", "") : ""}</div></div>
-          <div class="me-ag-act">${btn("me-manage", S.manage === l.agent ? "Close" : "Manage", { data: { agent: l.agent }, primary: S.manage !== l.agent })}</div>
-        </div>
-        <div class="me-ag-bd">${t ? buildingLine(t, { full: true }) : html`<span class="faint">Reading what it is building…</span>`}</div>
-        ${t ? paramCells(t) : ""}
-        <div class="me-ag-f"><span>Compute vault <b id="me-v-${l.agent}"><span class="faint">…</span></b></span><span>GitHub <span id="me-gh-${l.agent}"><span class="faint">…</span></span></span><a class="link" href="/tokens/${l.mint}">Token page</a></div>
-      </article>`;
-    })}</div>`,
-  );
+  const cards = mine.map((l) => {
+    const t = mineRows.get(l.mint) ?? null;
+    const m = S.metas.get(l.mint);
+    const card = t
+      ? agentCard(t).s
+      : html`<article class="ag-card" data-agent="${l.agent}"><div class="ag-top"><a class="ag-face" href="/agents/${l.agent}/profile">${agentAvatar(l.agent, null, 44, "ag-av")}</a><div class="ag-who"><div class="ag-name"><a href="/agents/${l.agent}/profile">${(m?.name ?? short(l.mint)).replace(/^TEST /, "")}</a></div><p class="ag-tag"><span class="ag-faint">Reading its token…</span></p></div></div></article>`.s;
+    return card.replace('<article class="ag-card', '<article class="me-ag ag-card').replace(/<\/article>\s*$/, `${creditsHtml(l).s}</article>`);
+  });
+  set("w-mine", html`${mineSummary(mine)}<div class="ag-grid me-agents">${raw(cards.join(""))}</div>`);
   void fillMine(mine);
 }
 
 let mineSeq = 0;
 async function fillMine(mine: AgentLaunch[]) {
   const seq = ++mineSeq;
-  const missing = mine.filter((l) => !mineRows.has(l.mint));
+  const missing = mine.filter((l) => !mineRows.has(l.mint) || !spendRows.has(l.agent));
   if (missing.length) {
     await Promise.all(
       missing.map(async (l) => {
-        const r = await fetch(`/market/tokens/${l.mint}`, { headers: { accept: "application/json" } }).then((x) => (x.ok ? x.json() : null)).catch(() => null);
-        mineRows.set(l.mint, r);
+        const [r, sp] = await Promise.all([
+          mineRows.has(l.mint) ? mineRows.get(l.mint) : fetch(`/market/tokens/${l.mint}`, { headers: { accept: "application/json" } }).then((x) => (x.ok ? x.json() : null)).catch(() => null),
+          spendRows.has(l.agent) ? spendRows.get(l.agent) : fetch(`/api/agents/${l.agent}/spend`, { headers: { accept: "application/json" } }).then((x) => (x.ok ? x.json() : null)).catch(() => null),
+        ]);
+        mineRows.set(l.mint, r ?? null);
+        spendRows.set(l.agent, sp ?? null);
       }),
     );
     if (seq === mineSeq) return renderMine();

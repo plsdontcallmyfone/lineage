@@ -31,7 +31,8 @@ writeFileSync(join(OUT, "assets/wallet.js"), await bundle(join(WEB, "wallet/main
 // the Privy login island (React), loaded on demand by the Connect button
 writeFileSync(join(OUT, "assets/privy.js"), await bundle(join(WEB, "privy/main.tsx"), { format: "esm", define: { "process.env.NODE_ENV": JSON.stringify("production"), global: "globalThis" } }));
 cpSync(join(WEB, "public/app.css"), join(OUT, "assets/app.css"));
-cpSync(join(WEB, "public/favicon.svg"), join(OUT, "favicon.svg"));
+cpSync(join(WEB, "public/favicon.png"), join(OUT, "favicon.png"));
+cpSync(join(WEB, "public/logo.png"), join(OUT, "logo.png"));
 cpSync(join(WEB, "public/fonts"), join(OUT, "fonts"), { recursive: true });
 cpSync(join(WEB, "public/doodles"), join(OUT, "doodles"), { recursive: true });
 cpSync(join(WEB, "public/providers"), join(OUT, "providers"), { recursive: true });

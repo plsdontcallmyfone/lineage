@@ -148,10 +148,10 @@ code { font-family: var(--mono); color: var(--ts); background: var(--pill); bord
 .top.is-scrolled { padding: 8px max(var(--pad-x), calc((100vw - 1180px) / 2)); }
 .top.is-scrolled .top-in { height: calc(var(--hdr-h) - 16px); padding: 0 10px 0 18px; gap: 8px; border-radius: 26px; background: color-mix(in srgb, var(--bg2) 88%, transparent); box-shadow: inset 0 0 0 1px #fff8, 0 12px 32px -14px #1a1a1933; }
 .brand { display: inline-flex; align-items: center; gap: 9px; margin-right: 18px; font: 500 20px/1 var(--display); letter-spacing: -.03em; white-space: nowrap; color: var(--tp); transition: font-size .34s var(--ease-soft), margin .34s var(--ease-soft), gap .34s var(--ease-soft); }
-.brand svg { width: 24px; height: 24px; flex: none; transition: width .34s var(--ease-soft), height .34s var(--ease-soft); }
+.brand svg, .brand-logo { width: 26px; height: 26px; flex: none; transition: width .34s var(--ease-soft), height .34s var(--ease-soft); }
 .brand .ph { display: none; }
 .top.is-scrolled .brand { font-size: 17px; margin-right: 10px; gap: 7px; }
-.top.is-scrolled .brand svg { width: 20px; height: 20px; }
+.top.is-scrolled .brand svg, .top.is-scrolled .brand-logo { width: 22px; height: 22px; }
 .nav { display: flex; align-items: center; gap: 8px; overflow-x: auto; scrollbar-width: none; transition: gap .34s var(--ease-soft); }
 .nav::-webkit-scrollbar { display: none; }
 .nav a, .eco-btn, .iconbtn {
@@ -1196,18 +1196,17 @@ a.eco-btn { text-decoration: none; }
 .me-chips { display: flex; flex-wrap: wrap; gap: 6px; }
 .me-chip { border: 1px solid var(--border); border-radius: 9999px; padding: 4px 10px; font-size: 12.5px; color: var(--ts); }
 .me-chip:hover { border-color: var(--border-h); color: var(--tp); }
-.me-agents { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; padding: 16px; }
-.me-ag { display: flex; flex-direction: column; gap: 12px; min-width: 0; padding: 14px; border: 1px solid var(--border); border-radius: var(--radius); background: var(--bg); }
-.me-ag.live { border-color: color-mix(in srgb, var(--ac) 40%, var(--border)); }
-.me-ag-h { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: 12px; align-items: center; }
-.me-ag-h > a { line-height: 0; }
-.me-ag-n { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.me-ag-n .dim { font-size: 12.5px; text-decoration: none; }
-.me-ag-st { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 4px; }
-.me-ag-f { display: flex; flex-wrap: wrap; gap: 6px 16px; padding-top: 10px; border-top: 1px solid var(--border); font-size: 12.5px; color: var(--tt); }
-.me-ag-f b { font-weight: 500; color: var(--ts); }
-.me-ag-f .link { margin-left: auto; }
-@media (max-width: 860px) { .me-agents { grid-template-columns: minmax(0, 1fr); } }
+/* My agents (profile): the /agents cards (.ag-grid, .ag-card) with each agent's credits under it, and a summary strip */
+.me-sum { border-bottom: 1px solid var(--border); }
+.me-agents { padding: 16px; }
+.me-cr { display: flex; flex-direction: column; gap: 10px; margin-top: auto; padding-top: 12px; border-top: 1px solid var(--border); }
+.me-cr-st { display: flex; flex-wrap: wrap; gap: 4px; }
+.me-cr-k { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px 14px; margin: 0; }
+.me-cr-k > div { min-width: 0; }
+.me-cr-k dt { font: 500 12px/1.3 var(--sans); color: var(--tt); letter-spacing: -.01em; }
+.me-cr-k dd { margin: 2px 0 0; font-size: 13.5px; color: var(--tp); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.me-cr-k dd b { font-weight: 500; }
+.me-cr-act { display: flex; justify-content: flex-end; }
 #me-head .stat .copy { margin-left: 6px; padding: 2px 6px; }
 #w-blist .tw, #w-bopen .params { border: 1px solid var(--border); border-radius: 8px; }
 

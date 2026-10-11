@@ -119,7 +119,8 @@ export interface DocsFile {
 }
 
 const esc = (v: unknown) => String(v).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]!);
-const LOGO = `<svg viewBox="0 0 20 20" aria-hidden="true"><path d="M4.5 15.5L10 10l5.5-5.5" stroke="var(--accent)" stroke-width="1.6" fill="none"/><circle cx="4.5" cy="15.5" r="2.4" fill="var(--accent)"/><circle cx="10" cy="10" r="2.4" fill="var(--accent)"/><circle cx="15.5" cy="4.5" r="2.4" fill="var(--panel)" stroke="var(--accent)" stroke-width="1.6"/></svg>`;
+// the logo as a background, so the pages stay free of <img> (the loop figure test)
+const LOGO = (base: string) => `<span class="brand-logo" aria-hidden="true" style="display:inline-block;background:url(${base}/logo.png) center / contain no-repeat"></span>`;
 const MOON = `<svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M13.5 9.8A5.8 5.8 0 016.2 2.5a5.8 5.8 0 107.3 7.3z"/></svg>`;
 const SEARCH = `<svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" aria-hidden="true"><circle cx="7" cy="7" r="4.5"/><path d="M10.5 10.5L14 14"/></svg>`;
 
@@ -212,7 +213,7 @@ export async function buildDocsChecked(o: { base?: string; app?: string } = {}):
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>${esc(title)}</title>
 <meta name="description" content="${esc(`${r.title || d.title}: ${PRODUCT} documentation, written from the specification and the code.`)}">
-<link rel="icon" href="${base}/favicon.svg" type="image/svg+xml">
+<link rel="icon" href="${base}/favicon.png" type="image/png">
 <meta name="theme-color" content="#141414">
 <link rel="preload" href="${base}/fonts/SuisseIntl-Regular-WebS.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="preload" href="${base}/fonts/KMR-Apparat-Medium.woff2" as="font" type="font/woff2" crossorigin>
@@ -222,7 +223,7 @@ export async function buildDocsChecked(o: { base?: string; app?: string } = {}):
 </head>
 <body data-docs-base="${esc(base)}">
 <header class="top"><div class="top-in">
-  <a class="brand" href="${app}/">${LOGO}<span>${PRODUCT}</span><span class="ph">docs</span></a>
+  <a class="brand" href="${app}/">${LOGO(base)}<span>${PRODUCT}</span><span class="ph">docs</span></a>
   <nav class="nav" aria-label="Main">
     <a href="${app}/">Explorer</a>
     <a href="${app}/agents">Agents</a>
@@ -258,7 +259,8 @@ export async function buildDocsChecked(o: { base?: string; app?: string } = {}):
   out.set("assets/search.json", { body: JSON.stringify(search), type: "application/json; charset=utf-8" });
   out.set("assets/app.css", { body: readFileSync(join(WEB, "public/app.css"), "utf8").replaceAll('url("/fonts/', `url("${base}/fonts/`), type: "text/css; charset=utf-8" });
   out.set("assets/docs.css", { body: readFileSync(join(DOCS, "src/docs.css"), "utf8"), type: "text/css; charset=utf-8" });
-  out.set("favicon.svg", { body: readFileSync(join(WEB, "public/favicon.svg")), type: "image/svg+xml" });
+  out.set("favicon.png", { body: readFileSync(join(WEB, "public/favicon.png")), type: "image/png" });
+  out.set("logo.png", { body: readFileSync(join(WEB, "public/logo.png")), type: "image/png" });
   for (const f of readdirSync(join(WEB, "public/fonts")))
     out.set(`fonts/${f}`, { body: new Uint8Array(readFileSync(join(WEB, "public/fonts", f))), type: f.endsWith(".woff2") ? "font/woff2" : "text/plain; charset=utf-8" });
   problems.push(...checkDocs(out, base));

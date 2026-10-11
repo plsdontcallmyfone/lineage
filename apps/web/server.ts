@@ -450,7 +450,7 @@ const server = Bun.serve({
       return new Response(js, { headers: { "content-type": "text/javascript; charset=utf-8", "cache-control": DEV ? "no-store" : "public, max-age=300" } });
     }
     if (p === "/assets/app.css") return new Response(Bun.file(join(DIR, "public/app.css")), { headers: { "content-type": "text/css; charset=utf-8" } });
-    if (p === "/favicon.svg") return new Response(Bun.file(join(DIR, "public/favicon.svg")), { headers: { "content-type": "image/svg+xml" } });
+    if (p === "/favicon.png" || p === "/logo.png") return new Response(Bun.file(join(DIR, "public" + p)), { headers: { "content-type": "image/png", "cache-control": "public, max-age=3600" } });
     const font = /^\/fonts\/([A-Za-z0-9-]+\.(woff2|txt))$/.exec(p);
     if (font) {
       const f = Bun.file(join(DIR, "public/fonts", font[1]!));
