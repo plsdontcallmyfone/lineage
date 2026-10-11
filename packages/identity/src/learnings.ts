@@ -233,10 +233,10 @@ export class LearningsPublisher {
   }
 
   /** The account an agent publishes under: its own (ready), the publisher, or none. */
-  private target(agent: string): { cred: AgentCredential; identity: "account" | "publisher"; prefix: string } | null {
+  private target(agent: string): { cred: AgentCredential; identity: "account" | "publisher"; prefix: string; owner: string } | null {
     const s = this.o.svc.state(agent);
     const own = s && s.status === "ready" ? this.creds.get(agent) : null;
-    if (own) return { cred: own, identity: "account", prefix: "" };
+    if (own) return { cred: own, identity: "account", prefix: "", owner: own.login };
     const pub = publisherRecord(this.o.svc);
     if (!pub) return null;
     const id = publisherIdentity(this.o.svc);
@@ -244,6 +244,7 @@ export class LearningsPublisher {
       cred: { v: 1, agent, login: pub.login, github_id: pub.github_id, token: pub.token, ssh_private_key_path: id.signingKey!, ssh_public_key: pub.ssh_public_key, ssh_signing_key_id: pub.ssh_signing_key_id, assigned_at: pub.set_at },
       identity: "publisher",
       prefix: `agents/${agent}/`,
+      owner: pub.owner ?? pub.login,
     };
   }
 
@@ -265,14 +266,24 @@ export class LearningsPublisher {
       const at = this.now().getTime();
       const page = await this.o.sources.episodes(agent, rec.last_seq, LEARNINGS_BATCH);
       const eps = page.episodes.filter((e) => e && e.agent?.id === agent && typeof e.episode_id === "string" && /^[0-9a-f]{64}$/.test(e.episode_id) && /^[0-9a-f]{64}$/.test(e.task?.lineage_id ?? ""));
-      if (!eps.length && rec.status === "published" && rec.login?.toLowerCase() === t.cred.login.toLowerCase()) return "unchanged";
+      if (!eps.length && rec.status === "published" && rec.login?.toLowerCase() === t.cred.login.toLowerCase()) {
+        // the repository moved (transferred to the org, docs/plans/GITHUB-ORG.md 3): same history, new name
+        const repo = `${t.owner}/${LEARNINGS_REPO}`;
+        if (rec.repo !== repo && !o.dryRun) {
+          const old = rec.repo;
+          rec.repo = repo;
+          if (rec.commit) rec.commit = { ...rec.commit, html_url: rec.commit.html_url && old ? rec.commit.html_url.replace(`/${old}/`, `/${repo}/`) : rec.commit.html_url };
+          this.save(rec);
+        }
+        return "unchanged";
+      }
       if (!o.force && rec.committed_at && at - rec.committed_at < LEARNINGS_MIN_INTERVAL_MS) return "rate_limited";
       const lessons = await this.o.sources.lessons(agent);
       const name = eps.find((e) => e.agent?.name)?.agent?.name ?? null;
       const providers = { ...rec.providers };
       for (const e of eps) providers[e.model?.provider ?? "none"] = (providers[e.model?.provider ?? "none"] ?? 0) + 1;
       const next: LearningsRecord = {
-        ...rec, identity: t.identity, login: t.cred.login, repo: `${t.cred.login}/${LEARNINGS_REPO}`, providers, episodes: rec.episodes + eps.length,
+        ...rec, identity: t.identity, login: t.cred.login, repo: `${t.owner}/${LEARNINGS_REPO}`, providers, episodes: rec.episodes + eps.length,
         last_seq: eps.length ? Math.max(...eps.map((e) => e.seq)) : rec.last_seq, lineages: [...new Set([...rec.lineages, ...eps.map((e) => e.task.lineage_id)])].sort(),
       };
       const touched = new Set(eps.map((e) => e.task.lineage_id));
@@ -289,7 +300,7 @@ export class LearningsPublisher {
       }
       const site = this.o.site?.replace(/\/+$/, "") ?? null;
       const res: ProfileCommitResult = await profileRepoCommit({
-        cred: t.cred, repoName: LEARNINGS_REPO, replaceTree: false, plan: () => files,
+        cred: t.cred, repoName: LEARNINGS_REPO, owner: t.owner, replaceTree: false, plan: () => files,
         message: `units learnings: ${eps.length} episode${eps.length === 1 ? "" : "s"} up to cursor ${next.last_seq}\n\n${lineageTrailers({ agent })}\n`,
         description: t.identity === "account" ? "What this units agent learned: one record per authoring attempt, with verdicts and rewards" : "Learnings of units agents without their own GitHub account",
         homepage: site ? `${site}/agents/${agent}/profile` : undefined,

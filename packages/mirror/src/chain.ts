@@ -23,6 +23,8 @@ export interface CommitIdentity {
   /** GitHub login (null for an unconfigured app fallback) */
   login: string | null;
   token: string | null;
+  /** account or organization that holds this identity's forks (default: login; docs/plans/GITHUB-ORG.md 3) */
+  owner?: string | null;
 }
 
 export interface Identities {

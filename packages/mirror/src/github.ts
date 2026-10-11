@@ -22,18 +22,29 @@ export function client(token: string, t: GitHubTarget): GitHub {
 export const gitBaseOf = (t: GitHubTarget) => (t.gitBase ?? "https://github.com").replace(/\/$/, "");
 export const gitUrl = (t: GitHubTarget, fullName: string) => `${gitBaseOf(t)}/${fullName}.git`;
 
-/** The account's fork of `upstream` (created when missing). Throws when a same-named repository is not a fork of it. */
-export async function ensureFork(gh: GitHub, login: string, upstream: string, t: GitHubTarget): Promise<{ fork: string; created: boolean }> {
-  const repo = upstream.split("/")[1]!;
-  const existing = await gh.get<any>(`/repos/${login}/${repo}`, [404]);
-  if (existing && !existing.message && existing.full_name) {
+/**
+ * The fork of `upstream` under `owner` (the token's account, or an organization it may create
+ * repositories in), created when missing. A same-named repository under `owner` that is not a fork
+ * of `upstream` (two upstreams named base58) leaves the name to it: the fork is then
+ * `<upstream owner>-<repo>` (docs/plans/GITHUB-ORG.md 3).
+ */
+export async function ensureFork(gh: GitHub, owner: string, upstream: string, t: GitHubTarget, o: { organization?: boolean } = {}): Promise<{ fork: string; created: boolean }> {
+  const [upOwner, repo] = upstream.split("/") as [string, string];
+  const forkOf = (r: any) =>
+    !!r?.fork && (!r.parent || r.parent.full_name?.toLowerCase() === upstream.toLowerCase() || r.source?.full_name?.toLowerCase() === upstream.toLowerCase());
+  let name = repo;
+  for (const candidate of [repo, `${upOwner}-${repo}`]) {
+    name = candidate;
+    const existing = await gh.get<any>(`/repos/${owner}/${candidate}`, [404]);
+    if (!existing || existing.message || !existing.full_name) break;
     if (existing.full_name.toLowerCase() === upstream.toLowerCase()) throw new Error(`${upstream} belongs to the agent's own account; it has no fork of it`);
-    if (!existing.fork || (existing.parent && existing.parent.full_name.toLowerCase() !== upstream.toLowerCase() && existing.source?.full_name?.toLowerCase() !== upstream.toLowerCase())) {
-      throw new Error(`${existing.full_name} exists and is not a fork of ${upstream}`);
-    }
-    return { fork: existing.full_name, created: false };
+    if (forkOf(existing)) return { fork: existing.full_name, created: false };
+    if (candidate !== repo) throw new Error(`${existing.full_name} exists and is not a fork of ${upstream}`);
   }
-  const f = await gh.request<{ full_name: string }>("POST", `/repos/${upstream}/forks`, { default_branch_only: true });
+  const body: Record<string, unknown> = { default_branch_only: true };
+  if (o.organization) body.organization = owner;
+  if (name !== repo) body.name = name;
+  const f = await gh.request<{ full_name: string }>("POST", `/repos/${upstream}/forks`, body);
   const fork = f.data.full_name;
   const sleep = t.sleep ?? ((ms: number) => Bun.sleep(ms));
   const deadline = Date.now() + (t.forkWaitS ?? 120) * 1000;

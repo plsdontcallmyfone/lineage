@@ -118,7 +118,7 @@ export async function cycleOnce(o: CycleOptions): Promise<CycleSummary> {
       const appGens = gens.filter((g) => !g.author || !svc.creds.record(g.author));
       const logins = mine.map((a) => svc.creds.record(a)?.login ?? "?");
       const build = mine.length > 0 || (hasPublisher && appGens.length > 0);
-      const key = `${CYCLE_FORMAT}|${L.tip}|${L.height}|${mine.join(",")}|${logins.join(",")}|${build ? (hasPublisher ? app.login : "-") : "awaiting"}`;
+      const key = `${CYCLE_FORMAT}|${L.tip}|${L.height}|${mine.join(",")}|${logins.join(",")}|${build ? (hasPublisher ? `${app.login}${app.owner && app.owner !== app.login ? `@${app.owner}` : ""}` : "-") : "awaiting"}`;
       if (!o.force && cache[l.lineage_id] === key) {
         sum.skipped_unchanged++;
         continue;

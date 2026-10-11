@@ -5,9 +5,10 @@ import { join } from "node:path";
 import { generateAgentKey } from "@units/protocol";
 import { canonicalizeDiff, patchHash } from "../../protocol/src/diff.ts";
 import { verifyGeneration } from "../../mirror/src/verify.ts";
-import { keypair, MockGitHub } from "../../mirror/test/mockgh.ts";
+import { keypair } from "../../mirror/test/mockgh.ts";
 import { cycleOnce, type GithubRecord } from "../src/cycle.ts";
-import { publisherPublic, setPublisher } from "../src/publisher.ts";
+import { moveToOrg, publisherPublic, setPublisher } from "../src/publisher.ts";
+import { MockOrgGitHub } from "./mockorg.ts";
 import { IdentityService } from "../src/service.ts";
 import { EncryptedStore, ensureKeyFile } from "../src/store.ts";
 
@@ -37,7 +38,7 @@ const P2 = "diff --git a/src/lib.py b/src/lib.py\n--- a/src/lib.py\n+++ b/src/li
 const P5 = "diff --git a/README.md b/README.md\n--- a/README.md\n+++ b/README.md\n@@ -1 +1 @@\n-fx\n+fx, faster\n";
 const ph = (p: string) => patchHash(canonicalizeDiff(p));
 
-const gh = new MockGitHub(join(tmp, "host"));
+const gh = new MockOrgGitHub(join(tmp, "host"));
 const base = gh.createRepo("up/fx", { "src/lib.py": LIB, "README.md": "fx\n" });
 const records = new Map<string, any>(); // what the fake Core recorded
 const posts: GithubRecord[][] = [];
@@ -167,5 +168,33 @@ describe("generations on GitHub", () => {
       // a patch whose hunks are what git emits: the diff itself has Core's patch_hash
       expect((await verify(G5)).checks.find((c) => c.name === "diff")!.detail).toContain("Core's patch_hash");
     }
+  }, 60_000);
+
+  test("moving the publisher's repositories into the org keeps every commit and re-points Core (GITHUB-ORG.md 3)", async () => {
+    const before = new Map([G1, G2, G5].map((id) => [id, records.get(id).sha as string]));
+    // not an owner of the org yet: refused before anything moves
+    gh.addOrg("units-agents", "someone-else");
+    await expect(moveToOrg(svc, "units-agents")).rejects.toThrow("not an active owner");
+    gh.orgs.get("units-agents")!.members.set("lineagepub", { role: "admin", state: "active" });
+    const dry = await moveToOrg(svc, "units-agents", { dryRun: true });
+    expect(dry.moved).toEqual([{ from: "lineagepub/fx", to: "units-agents/fx" }]);
+    expect(publisherPublic(svc).owner).toBe("lineagepub");
+    const m = await moveToOrg(svc, "units-agents", { sleep: async () => {} });
+    expect(m).toMatchObject({ moved: [{ from: "lineagepub/fx", to: "units-agents/fx" }], failed: [], owner: "units-agents" });
+    expect(publisherPublic(svc).owner).toBe("units-agents");
+    expect((await moveToOrg(svc, "units-agents")).moved).toEqual([]); // idempotent
+
+    const s = await cycle();
+    expect(s.error).toBeNull();
+    // same commits, new repository for the app-identity ones; the account generation stays on its account
+    expect(records.get(G2)).toMatchObject({ repo: "units-agents/fx", identity: "app", login: "lineagepub", sha: before.get(G2) });
+    expect(records.get(G5)).toMatchObject({ repo: "units-agents/fx", sha: before.get(G5) });
+    expect(records.get(G1)).toMatchObject({ repo: "quillbot/fx", sha: before.get(G1) });
+    for (const id of [G1, G2, G5]) {
+      const v = await verify(id);
+      expect([id, v.ok, v.checks.filter((c) => c.ok !== true).map((c) => `${c.name}: ${c.detail}`)]).toEqual([id, true, []]);
+    }
+    // no second fork was made under the publisher's own account
+    expect(gh.calls.filter((c) => c.method === "POST" && c.path.endsWith("/forks")).length).toBe(2);
   }, 60_000);
 });

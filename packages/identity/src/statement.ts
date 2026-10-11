@@ -22,6 +22,8 @@ export interface TokenStatement {
   /** sha256 hex of the exact token string submitted with the statement */
   token_sha256: string;
   created_at: number;
+  /** optional: the launcher opts the account into the units-agents organization (docs/plans/GITHUB-ORG.md 1) */
+  join_org?: boolean;
 }
 
 export interface RevokeStatement {
@@ -46,7 +48,9 @@ export function checkStatement(s: unknown, sig: unknown, kind: IdentityStatement
   const x = s as Record<string, unknown>;
   const keys = Object.keys(x).sort().join(",");
   const want = kind === "lineage-identity-token" ? "agent,created_at,kind,mint,signer,token_sha256,v" : "agent,created_at,kind,mint,signer,v";
-  if (keys !== want) return `statement fields must be exactly ${want}`;
+  const withOrg = kind === "lineage-identity-token" ? "agent,created_at,join_org,kind,mint,signer,token_sha256,v" : null;
+  if (keys !== want && keys !== withOrg) return `statement fields must be exactly ${want}${withOrg ? " (plus optional join_org)" : ""}`;
+  if ("join_org" in x && typeof x.join_org !== "boolean") return "statement join_org must be true or false";
   if (x.v !== 1 || !isKind(x.kind, kind.replace(/^lineage-/, ""))) return `statement kind must be ${kind}`;
   for (const k of ["agent", "mint", "signer"]) if (typeof x[k] !== "string" || !ADDR.test(x[k] as string)) return `statement ${k} is not an address`;
   if (kind === "lineage-identity-token" && (typeof x.token_sha256 !== "string" || !/^[0-9a-f]{64}$/.test(x.token_sha256))) return "statement token_sha256 must be 64 lowercase hex";

@@ -80,6 +80,8 @@ export function custodyHtml(mode: string): Raw {
     return html`<label><span class="eyebrow">GitHub token</span><input type="password" name="l_token" autocomplete="off" spellcheck="false" placeholder="github_pat_... (fine-grained, limited to the agent's forks)"></label>
       <div class="wl-row" style="margin-top:6px">${btn("gh-check", "Check token")}</div>
       <div id="w-gh-check" class="wl-fine"></div>
+      <label style="display:flex;gap:8px;align-items:center;margin-top:8px"><input type="checkbox" name="gh_join_org"> <span>Join the units-agents organization on GitHub</span></label>
+      <div class="wl-fine">Off by default. When ticked, your account is invited to github.com/units-agents, accepts with the token and shows the membership publicly (the token needs the write:org scope). The choice is part of the statement your wallet signs.</div>
       <div class="wl-fine">After the launch confirms, the token goes over this site's HTTPS to the identity service only (never to Core), with a statement that binds it to this launch, signed by your wallet. The service reads its login, scopes and expiry from GitHub, stores it encrypted (AES-256-GCM, a key only that service's user can read), registers an SSH signing key for the agent's commits, and never returns the token in any answer or log. It is used only to fork, push the agent's branches and open PRs on repositories that opted in. A full-scope token is a large liability for whoever holds it: a fine-grained token limited to the agent's forks, with the account permission "SSH signing keys: write", is the recommended choice. You can rotate or revoke it from your Profile (Manage); a token GitHub rejects moves the agent to the app identity. Left empty, the agent uses the app identity until you add one there.</div>`;
   if (mode === "purchased")
     return html`<div class="wl-fine">An account from the pool we operate is assigned automatically once the launch confirms: validated, cleaned of the previous owner's traces, named and described from the soul, with an SSH signing key registered so the agent's commits show Verified. Its login appears here and on your Profile when it is ready. Price TBA; devnet charges nothing.</div>`;
@@ -108,15 +110,16 @@ export async function submitLaunchToken(o: { agent: WebKey; mint: string }): Pro
   const el = q<HTMLInputElement>('[name="l_token"]');
   const token = (el?.value ?? "").trim();
   if (!token) return html`<span class="dim">No token pasted: the agent uses the app identity until you add one from your Profile (Manage).</span>`;
-  const r = await sendToken(token, o.agent.id, o.mint, o.agent);
+  const joinOrg = q<HTMLInputElement>('[name="gh_join_org"]')?.checked === true;
+  const r = await sendToken(token, o.agent.id, o.mint, o.agent, joinOrg);
   if (el) el.value = "";
   return r;
 }
 
-async function sendToken(token: string, agent: string, mint: string, agentKey: WebKey | null): Promise<Raw> {
+async function sendToken(token: string, agent: string, mint: string, agentKey: WebKey | null, joinOrg?: boolean): Promise<Raw> {
   const s = signerFor(agentKey);
   if (!s) return errLine("Connect the launcher wallet (one that can sign messages) to bind the token.");
-  const st = { v: 1, kind: "lineage-identity-token", agent, mint, signer: s.id, token_sha256: await sha256Hex(token), created_at: Math.floor(Date.now() / 1000) };
+  const st = { v: 1, kind: "lineage-identity-token", agent, mint, signer: s.id, token_sha256: await sha256Hex(token), created_at: Math.floor(Date.now() / 1000), ...(joinOrg ? { join_org: true } : {}) };
   let body;
   try {
     body = { ...(await signed(st, s)), token };
@@ -152,6 +155,7 @@ function statusView(v: any, actions: boolean): Raw {
       ? html`${pub.slice(-6).reverse().map((p) => html`<div><a class="link" href="${p.html_url || `https://github.com/${p.fork}/commit/${p.sha}`}" target="_blank" rel="noopener">${p.fork ?? ""}@${(p.sha ?? "").slice(0, 10)}</a> ${p.verified ? badge("Verified", "good") : badge(p.verification_reason ?? "unverified", "warn")} <span class="dim">${p.recipe} gen ${p.height}</span></div>`)}`
       : html`<span class="faint">none yet (the mirror runs every 5 minutes after an accepted generation)</span>`,
   ]);
+  if (v.org) rows.push(["units-agents org", html`${badge(v.org.status === "joined" ? "public member" : v.org.status.replace("_", " "), v.org.status === "joined" ? "good" : v.org.status === "failed" || v.org.status === "scope_missing" ? "warn" : "info")} ${v.org.reason ? html`<span class="dim">${v.org.reason}</span>` : ""}`]);
   if (v.updated_at) rows.push(["Updated", v.updated_at.replace("T", " ").slice(0, 19) + " UTC"]);
   const tokenActions =
     actions && v.mode === "token"

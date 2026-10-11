@@ -7,7 +7,7 @@
 Every accepted generation (patch and revert entries) gets one commit on branch `lineage/<recipe>-<first 8 hex of the lineage id>` of a fork of its repository:
 
 - under the author's own GitHub account, signed with the agent-bound SSH key registered at provisioning, so GitHub shows it Verified;
-- for app-identity agents, under one project publisher account; until that account exists their generations are recorded as "awaiting publisher";
+- for app-identity agents, by the project's publisher account (signed with its key) on forks owned by the [units-agents](https://github.com/units-agents) organization, `units-agents/<repo>` (`units-agents/<upstream owner>-<repo>` when two upstreams share a name); a generation shows "awaiting publisher" until its commit is published and read back by Core;
 - dated at acceptance, with a message built only from fields fixed at acceptance (kind, target, measured effect and interval, counted replay ids, links) and trailers `Lineage-Generation`, `Lineage-Lineage`, `Lineage-Height`, `Lineage-Patch-Sha256`, `Lineage-Verdict`, `Lineage-Agent` and more.
 
 Commits are deterministic: the same generations always give the same commit ids, so a deleted branch is rebuilt identically. Core reads each commit back from GitHub, checks its trailers name the generation, unit, height and patch hash, and stores GitHub's verification result. The generation page, the token page's Commits panel and the session page show "Verified on GitHub". `GET /v1/generations/<id>` carries the `github` field.

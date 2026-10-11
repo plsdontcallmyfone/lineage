@@ -8,7 +8,7 @@
 import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import type { Fetch } from "../../souls/src/github/api.ts";
+import { GitHub, type Fetch } from "../../souls/src/github/api.ts";
 import { APP_IDENTITY, type CommitIdentity } from "../../mirror/src/chain.ts";
 import { noreplyEmail } from "../../mirror/src/git.ts";
 import { registerSigningKey, removeSigningKey, sshKeygen, validateToken, type Keygen } from "./github-token.ts";
@@ -27,6 +27,9 @@ export interface PublisherRecord {
   ssh_signing_key_id: number | null;
   scopes: string[] | null;
   set_at: string;
+  /** account or organization that holds the publisher's forks and learnings repository; null: its own
+   *  account. Set by `moveToOrg` once the repositories are transferred (docs/plans/GITHUB-ORG.md 3). */
+  owner?: string | null;
 }
 
 export interface PublisherPublic {
@@ -35,6 +38,8 @@ export interface PublisherPublic {
   profile_url: string | null;
   ssh_signing_key: string | null;
   set_at: string | null;
+  /** where its repositories live (the units-agents organization once moved) */
+  owner: string | null;
 }
 
 export interface SetOptions {
@@ -54,7 +59,7 @@ export function publisherRecord(svc: IdentityService): PublisherRecord | null {
 
 export function publisherPublic(svc: IdentityService): PublisherPublic {
   const r = publisherRecord(svc);
-  return { configured: !!r, login: r?.login ?? null, profile_url: r ? `https://github.com/${r.login}` : null, ssh_signing_key: r?.ssh_public_key ?? null, set_at: r?.set_at ?? null };
+  return { configured: !!r, login: r?.login ?? null, profile_url: r ? `https://github.com/${r.login}` : null, ssh_signing_key: r?.ssh_public_key ?? null, set_at: r?.set_at ?? null, owner: r ? (r.owner ?? r.login) : null };
 }
 
 /** Logins the publisher may not be: reserved, every reserve account, every agent's account. */
@@ -84,6 +89,8 @@ export async function setPublisher(svc: IdentityService, token: string, opts: Se
     const rec: PublisherRecord = {
       v: 1, login: info.login, github_id: info.github_id, token, ssh_private_key: readFileSync(k.privatePath, "utf8"), ssh_public_key: k.publicKey,
       ssh_signing_key_id: id, scopes: info.scopes, set_at: (o.now ?? (() => new Date()))().toISOString(),
+      // the same account set again keeps where its repositories live
+      owner: prev && lower(prev.login) === lower(info.login) ? (prev.owner ?? null) : null,
     };
     svc.o.store.put("publisher", "app", rec);
     // a replaced publisher of the same account: its old key is removed (registerSigningKey replaced it by title)
@@ -114,5 +121,70 @@ export function publisherIdentity(svc: IdentityService): CommitIdentity {
   const path = join(dir, "signing");
   if (!existsSync(path)) writeFileSync(path, r.ssh_private_key, { mode: 0o600 });
   chmodSync(path, 0o600);
-  return { kind: "app", name: r.login, email: noreplyEmail(r.github_id, r.login), signingKey: path, login: r.login, token: r.token };
+  return { kind: "app", name: r.login, email: noreplyEmail(r.github_id, r.login), signingKey: path, login: r.login, token: r.token, owner: r.owner ?? r.login };
+}
+
+export interface MoveResult {
+  org: string;
+  moved: { from: string; to: string }[];
+  already: string[];
+  skipped: { repo: string; why: string }[];
+  failed: { repo: string; why: string }[];
+  owner: string | null;
+}
+
+/**
+ * Moves the publisher's repositories (its mirror forks and lineage-learnings) into the organization by
+ * transfer (POST /repos/{owner}/{repo}/transfer {new_owner}), so history, commit ids and Verified
+ * signatures stay and GitHub redirects the old URLs; then records the org as the publisher's owner, so
+ * the mirror and the learnings publisher use it from the next cycle. Repositories the publisher made
+ * by hand (not forks, not lineage-learnings) are left alone. Idempotent.
+ */
+export async function moveToOrg(svc: IdentityService, org: string, opts: SetOptions & { dryRun?: boolean; waitS?: number; sleep?: (ms: number) => Promise<void> } = {}): Promise<MoveResult> {
+  const r = publisherRecord(svc);
+  if (!r) throw new Error("no publisher account is configured");
+  const gh = new GitHub({ token: r.token, base: opts.apiBase ?? svc.o.apiBase, fetch: opts.fetch ?? svc.o.fetch });
+  const sleep = opts.sleep ?? ((ms: number) => Bun.sleep(ms));
+  const out: MoveResult = { org, moved: [], already: [], skipped: [], failed: [], owner: r.owner ?? null };
+  const role = await gh.request<{ role?: string; state?: string }>("GET", `/user/memberships/orgs/${org}`, undefined, { okStatuses: [404] });
+  if (role.status === 404 || role.data?.role !== "admin" || role.data?.state !== "active") throw new Error(`${r.login} is not an active owner of ${org}; the org owner must make it one before the move`);
+  const repos = await gh.paged<{ name: string; full_name: string; fork: boolean; owner: { login: string } }>(`/users/${r.login}/repos?type=owner`);
+  for (const repo of repos) {
+    if (lower(repo.owner?.login ?? "") !== lower(r.login)) continue;
+    if (!repo.fork && repo.name !== "lineage-learnings") {
+      out.skipped.push({ repo: repo.full_name, why: "not a mirror fork or the learnings repository" });
+      continue;
+    }
+    const target = `${org}/${repo.name}`;
+    const there = await gh.get<any>(`/repos/${target}`, [404]);
+    if (there && !there.message && there.full_name) {
+      if (lower(there.full_name) === lower(target) && there.owner?.login && lower(there.owner.login) === lower(org)) {
+        out.already.push(target);
+        continue;
+      }
+    }
+    if (opts.dryRun) {
+      out.moved.push({ from: repo.full_name, to: target });
+      continue;
+    }
+    try {
+      await gh.request("POST", `/repos/${repo.full_name}/transfer`, { new_owner: org });
+      // the transfer continues asynchronously: wait until the org answers for it
+      const deadline = Date.now() + (opts.waitS ?? 60) * 1000;
+      for (;;) {
+        const t = await gh.get<any>(`/repos/${target}`, [404]);
+        if (t && t.owner?.login && lower(t.owner.login) === lower(org)) break;
+        if (Date.now() > deadline) throw new Error(`not under ${org} after ${opts.waitS ?? 60} s`);
+        await sleep(2000);
+      }
+      out.moved.push({ from: repo.full_name, to: target });
+    } catch (e) {
+      out.failed.push({ repo: repo.full_name, why: (e as Error).message.slice(0, 200) });
+    }
+  }
+  if (!opts.dryRun && out.failed.length === 0) {
+    svc.o.store.put("publisher", "app", { ...r, owner: org });
+    out.owner = org;
+  }
+  return out;
 }

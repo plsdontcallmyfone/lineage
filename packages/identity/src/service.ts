@@ -20,6 +20,7 @@ import { registerSigningKey, removeSigningKey, sshKeygen, TokenRejected, tokenSh
 import { MODES, publicView, setStatus, type AgentState, type LaunchMode, type PublicView, type PublishedRecord } from "./records.ts";
 import { errText, type Log } from "./redact.ts";
 import { genesisPublic, type GenesisRecord } from "./genesis.ts";
+import { orgPublic, type OrgRecord } from "./org.ts";
 import { checkStatement, tokenSha256, type RevokeStatement, type TokenStatement } from "./statement.ts";
 import type { EncryptedStore } from "./store.ts";
 
@@ -49,6 +50,8 @@ export interface ServiceOptions {
   keygen?: Keygen;
   log?: Log;
   now?: () => Date;
+  /** GitHub organization agents join (docs/plans/GITHUB-ORG.md); default units-agents */
+  org?: string;
 }
 
 export class HttpError extends Error {
@@ -97,7 +100,9 @@ export class IdentityService {
     const s = this.state(agent);
     const pub = /^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(agent) ? (this.store.get<PublishedRecord[]>("published", agent) ?? []) : [];
     const v = publicView(agent, s, pub, this.modes.get(agent) ?? null);
-    return /^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(agent) ? { ...v, genesis: genesisPublic(this.store.get<GenesisRecord>("genesis", agent)) } : v;
+    if (!/^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(agent)) return v;
+    const org = orgPublic(this.store.get<OrgRecord>("org", agent));
+    return { ...v, genesis: genesisPublic(this.store.get<GenesisRecord>("genesis", agent)), org, ...(s?.mode === "token" ? { join_org: s.join_org === true } : {}) };
   }
 
   private ready(agent: string) {
@@ -238,6 +243,8 @@ export class IdentityService {
       const s = prev ?? this.newState(launch, "token");
       s.last_statement_at = st.created_at;
       s.attempts += 1;
+      // the opt-in rides on the signed statement; a statement without the field keeps the earlier choice
+      if (typeof st.join_org === "boolean") s.join_org = st.join_org;
       this.save(s);
       let info: TokenInfo;
       try {

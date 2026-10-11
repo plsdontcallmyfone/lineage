@@ -39,6 +39,8 @@ export interface AgentState {
   attempts: number;
   /** created_at of the last accepted signed statement (replay guard) */
   last_statement_at: number;
+  /** token mode: the launcher opted the account into the units-agents organization (docs/plans/GITHUB-ORG.md 1) */
+  join_org?: boolean;
   history: { at: string; status: Status; reason: string | null }[];
 }
 
@@ -100,6 +102,10 @@ export interface PublicView {
   published: PublishedRecord[];
   /** the GitHub genesis repository (genesis.ts), when one was attempted */
   genesis?: import("./genesis.ts").GenesisPublic | null;
+  /** membership in the units-agents organization (org.ts), when one was attempted */
+  org?: import("./org.ts").OrgPublic | null;
+  /** token mode: whether the launcher opted in to the organization */
+  join_org?: boolean;
 }
 
 export function publicView(agent: string, s: AgentState | null, published: PublishedRecord[] = [], launchMode: LaunchMode | null = null): PublicView {

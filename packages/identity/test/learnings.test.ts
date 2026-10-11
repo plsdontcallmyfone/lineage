@@ -1,6 +1,6 @@
 import { afterAll, describe, expect, test } from "bun:test";
 import { spawnSync } from "node:child_process";
-import { mkdirSync, mkdtempSync, rmSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, renameSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { generateAgentKey } from "@units/protocol";
@@ -32,13 +32,15 @@ function ghMock(base: string) {
       const r = repos.get(`${m[1]}/${m[2]}`);
       return r ? j({ full_name: `${m[1]}/${m[2]}`, fork: false, archived: false, private: false, default_branch: r.default_branch }) : j({ message: "Not Found" }, 404);
     }
-    if (method === "POST" && u.pathname === "/user/repos") {
+    const orgRepos = /^\/orgs\/([^/]+)\/repos$/.exec(u.pathname);
+    if (method === "POST" && (u.pathname === "/user/repos" || orgRepos)) {
       const b = JSON.parse(String(init.body));
-      const dir = join(base, login, `${b.name}.git`);
-      mkdirSync(join(base, login), { recursive: true });
+      const owner = orgRepos ? orgRepos[1]! : login;
+      const dir = join(base, owner, `${b.name}.git`);
+      mkdirSync(join(base, owner), { recursive: true });
       spawnSync("git", ["init", "-q", "--bare", "--initial-branch=main", dir]);
-      repos.set(`${login}/${b.name}`, { default_branch: "main" });
-      return j({ full_name: `${login}/${b.name}`, default_branch: "main" }, 201);
+      repos.set(`${owner}/${b.name}`, { default_branch: "main" });
+      return j({ full_name: `${owner}/${b.name}`, default_branch: "main" }, 201);
     }
     m = /^\/repos\/([^/]+)\/([^/]+)\/commits\/([0-9a-f]{40})$/.exec(u.pathname);
     if (method === "GET" && m) {
@@ -138,6 +140,36 @@ describe("learnings repositories", () => {
     expect(w.pub.record(w.own)!.last_seq).toBe(5);
     // no reserve or pool account was touched: only the agent's own token reached GitHub
     expect(w.lines.join("\n")).not.toContain("tok-");
+  }, 60_000);
+
+  test("app agents publish under the publisher's org once its repositories moved there (GITHUB-ORG.md 3)", async () => {
+    const w = world();
+    const d = mkdtempSync(join(tmp, "pk"));
+    const kp = sshKeygen(d, "publisher");
+    const store = w.svc.o.store;
+    store.put("publisher", "app", { v: 1, login: "unitspub", github_id: 77, token: "tok-unitspub", ssh_private_key: readFileSync(kp.privatePath, "utf8"), ssh_public_key: kp.publicKey, ssh_signing_key_id: 1, scopes: null, set_at: "", owner: null });
+    w.published.push(episode(w.app, 1));
+    const s1 = await w.pub.tick({ agents: [w.app] });
+    expect(s1.published).toEqual([{ agent: w.app, repo: "unitspub/lineage-learnings", episodes: 1, commit: expect.any(String), verified: true }]);
+    expect(w.gh.calls).toContain("POST /user/repos");
+    // the operator moves the repository into the org (publisher-move): no new episodes, the record follows
+    const gb = join(w.svc.o.runDir, "..", "gh");
+    mkdirSync(join(gb, "units-agents"), { recursive: true });
+    renameSync(join(gb, "unitspub", "lineage-learnings.git"), join(gb, "units-agents", "lineage-learnings.git"));
+    store.put("publisher", "app", { ...store.get<any>("publisher", "app"), owner: "units-agents" });
+    const sha = w.pub.record(w.app)!.commit!.sha;
+    w.tick(LEARNINGS_MIN_INTERVAL_MS);
+    expect((await w.pub.tick({ agents: [w.app] })).unchanged).toBe(1);
+    expect(w.pub.record(w.app)).toMatchObject({ repo: "units-agents/lineage-learnings", commit: { sha, html_url: `https://github.com/units-agents/lineage-learnings/commit/${sha}` } });
+    expect(w.recorded.at(-1)!.find((r) => r.agent === w.app)).toMatchObject({ url: "https://github.com/units-agents/lineage-learnings", commit: sha });
+    // a fresh org (nothing moved yet) gets its repository created under the org
+    const other = generateAgentKey().id;
+    rmSync(join(gb, "units-agents"), { recursive: true, force: true });
+    w.published.push(episode(other, 2));
+    const s3 = await w.pub.tick({ agents: [other] });
+    expect(s3.failed).toEqual([]);
+    expect(w.gh.calls).toContain("POST /orgs/units-agents/repos");
+    expect(w.pub.record(other)!.repo).toBe("units-agents/lineage-learnings");
   }, 60_000);
 
   test("a batch holds at most 200 episodes; the rest follow on the next run", async () => {

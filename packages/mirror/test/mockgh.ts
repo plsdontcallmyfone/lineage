@@ -115,7 +115,8 @@ export class MockGitHub {
     if ((m = /^\/repos\/([^/]+\/[^/]+)\/forks$/.exec(path)) && method === "POST") {
       const up = m[1]!;
       if (!existsSync(this.bare(up))) return nf();
-      const fork = `${me!.login}/${up.split("/")[1]}`;
+      const fb = JSON.parse(String(init?.body ?? "{}"));
+      const fork = `${fb.organization ?? me!.login}/${fb.name ?? up.split("/")[1]}`;
       if (!existsSync(this.bare(fork))) {
         mkdirSync(join(this.bare(fork), ".."), { recursive: true });
         sh(this.root, ["clone", "-q", "--bare", this.bare(up), this.bare(fork)]);

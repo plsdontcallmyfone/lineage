@@ -163,7 +163,8 @@ export async function mirrorOnce(o: MirrorOptions): Promise<MirrorReport> {
       if (o.dryRun) continue;
       try {
         const gh = client(p.id.token!, o);
-        const { fork, created } = await ensureFork(gh, login, upstream, o);
+        const owner = p.id.owner || login;
+        const { fork, created } = await ensureFork(gh, owner, upstream, o, { organization: owner.toLowerCase() !== login.toLowerCase() });
         pr.fork = fork;
         forkOf.set(login, fork);
         if (created) log(`mirror: forked ${upstream} to ${fork}`);

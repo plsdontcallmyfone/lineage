@@ -12,6 +12,12 @@
 //                                      reserved/pool/reserve/agent logins, signing key registered, stored
 //                                      encrypted (docs/plans/GENERATIONS-ON-GITHUB.md 1.1)
 //   main.ts publisher-status | publisher-clear
+//   main.ts publisher-move [--dry-run]  transfer the publisher's mirror forks and lineage-learnings into the org
+//                                      and publish there from the next cycle (docs/plans/GITHUB-ORG.md 3)
+//   main.ts org-join [--agent <id>] [--force] [--dry-run]
+//                                      invite, accept and publicize agents' accounts in the org (org.ts); without
+//                                      --agent: every agent with a pending or failed record
+//   main.ts org-status                 the publisher's role, every agent's org record, the org's public members
 //   main.ts learnings [--agent <id>] [--force] [--dry-run]
 //                                      publish agents' learnings repositories <login>/lineage-learnings
 //                                      (docs/plans/AGENT-LEARNINGS.md 7); also run at the end of every cycle
@@ -29,6 +35,7 @@
 //   --since    UNITS_IDENTITY_SINCE unix seconds; launches before it are ignored (default: first start)
 //   --indexer  UNITS_INDEXER        market indexer base     (default http://127.0.0.1:9668; launch tx, symbol)
 //   --signer   UNITS_GENESIS_SIGNER hosted runtime base     (default http://127.0.0.1:9667; signs genesis proofs)
+//   --org      UNITS_GITHUB_ORG     organization agents join (default units-agents)
 // Tokens are never printed.
 
 import "../../protocol/src/env-alias.ts"; // first: UNITS_* and LINEAGE_* env names both readable (docs/plans/REBRAND-UNITS.md 3.3)
@@ -39,7 +46,8 @@ import { readFileSync } from "node:fs";
 import { keyFromSolanaJson } from "../../protocol/src/index.ts";
 import { loadNetworkProfile } from "../../chain/src/profile-node.ts";
 import { cycleOnce } from "./cycle.ts";
-import { clearPublisher, publisherPublic, setPublisher } from "./publisher.ts";
+import { clearPublisher, moveToOrg, publisherPublic, setPublisher } from "./publisher.ts";
+import { DEFAULT_ORG, OrgMembership } from "./org.ts";
 import { tokenShapeOk } from "./github-token.ts";
 import { errText } from "./redact.ts";
 import { GenesisRunner, httpSources } from "./genesis.ts";
@@ -70,8 +78,8 @@ if (cmd === "init") {
   console.log(JSON.stringify({ key: k.created ? "created" : "present", dir: DIR }));
   process.exit(0);
 }
-if (!["serve", "cycle", "reserve-add", "reserve-list", "status", "genesis", "publisher-set", "publisher-status", "publisher-clear", "learnings", "adopt"].includes(cmd ?? "")) {
-  console.error("usage: main.ts init | serve | cycle | reserve-add | reserve-list | status | genesis | publisher-set | publisher-status | publisher-clear | learnings | adopt  (see the header)");
+if (!["serve", "cycle", "reserve-add", "reserve-list", "status", "genesis", "publisher-set", "publisher-status", "publisher-clear", "learnings", "adopt", "publisher-move", "org-join", "org-status"].includes(cmd ?? "")) {
+  console.error("usage: main.ts init | serve | cycle | reserve-add | reserve-list | status | genesis | publisher-set | publisher-status | publisher-clear | publisher-move | org-join | org-status | learnings | adopt  (see the header)");
   process.exit(2);
 }
 
@@ -103,6 +111,7 @@ async function soul(agent: string): Promise<SoulDoc | null> {
 const svc = new IdentityService({
   store, runDir: RUN, chain: { launches: () => reader.launches(), agentLaunch: (m) => reader.agentLaunch(m), agent: (a) => reader.agent(a) },
   soul, site: SITE, since, log,
+  org: arg("org", "UNITS_GITHUB_ORG", DEFAULT_ORG),
   soulWaitS: Number((process.env.UNITS_IDENTITY_SOUL_WAIT_S ?? process.env.LINEAGE_IDENTITY_SOUL_WAIT_S) ?? 600),
 });
 
@@ -111,7 +120,36 @@ const genesis = new GenesisRunner({
   svc, site: SITE, network: { name: net.network, explorer_cluster: net.explorer_cluster }, log,
   sources: httpSources({ core: CORE, indexer: arg("indexer", "UNITS_INDEXER", "http://127.0.0.1:9668"), runtime: arg("signer", "UNITS_GENESIS_SIGNER", "http://127.0.0.1:9667"), log }),
 });
-svc.afterReady = (a) => genesis.run(a);
+const org = new OrgMembership({ svc, log });
+svc.afterReady = async (a) => {
+  // the org join does not wait for the genesis repository, and neither blocks the other on failure
+  await Promise.allSettled([genesis.run(a), org.afterReady(a)]);
+};
+
+if (cmd === "org-join") {
+  const agent = arg("agent");
+  const ids = agent ? [agent] : svc.o.store.list("org");
+  const out = [];
+  for (const a of ids) {
+    const r = await org.join(a, { force: flag("force") || !!agent, dryRun: flag("dry-run") });
+    out.push({ agent: a, login: r.login, status: r.status, step: r.step, public: r.public, reason: r.reason });
+  }
+  console.log(JSON.stringify({ org: org.org, agents: out }, null, 2));
+  process.exit(out.every((x) => x.status === "joined" || flag("dry-run")) ? 0 : 1);
+}
+if (cmd === "org-status") {
+  console.log(JSON.stringify(await org.status(), null, 2));
+  process.exit(0);
+}
+if (cmd === "publisher-move") {
+  try {
+    console.log(JSON.stringify(await moveToOrg(svc, org.org, { dryRun: flag("dry-run") }), null, 2));
+    process.exit(0);
+  } catch (e) {
+    console.error(`publisher-move: ${errText(e)}`);
+    process.exit(1);
+  }
+}
 
 function learningsPublisher(): LearningsPublisher {
   const keyFile = arg("core-key", "UNITS_IDENTITY_CORE_KEY");
@@ -213,6 +251,7 @@ if (cmd === "reserve-add") {
     try {
       await svc.watchOnce();
       await genesis.tick();
+      await org.tick().catch((e) => log(`org: ${errText(e)}`));
     } finally {
       running = false;
     }
