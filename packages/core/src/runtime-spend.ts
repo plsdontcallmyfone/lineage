@@ -18,6 +18,22 @@ CREATE TABLE IF NOT EXISTS runtime_spend_global (
   id INTEGER PRIMARY KEY CHECK (id = 1),
   body TEXT NOT NULL,
   reported_at INTEGER NOT NULL
+);
+-- Analytics (docs/plans/PAGES-PROJECTS-GENERATIONS-ANALYTICS.md 5): the highest E2B spend the runtime
+-- reported per UTC day (its day counter resets at 00:00 UTC), and an hourly sample of each vault's USD
+-- value and of the OpenRouter balance (agent '' is the runtime-wide row), so the page can draw trends
+CREATE TABLE IF NOT EXISTS runtime_spend_daily (
+  day TEXT NOT NULL,
+  key TEXT NOT NULL,
+  value REAL NOT NULL,
+  PRIMARY KEY (day, key)
+);
+CREATE TABLE IF NOT EXISTS runtime_spend_samples (
+  at INTEGER NOT NULL,
+  agent TEXT NOT NULL,
+  vault_usd REAL,
+  openrouter_usd REAL,
+  PRIMARY KEY (agent, at)
 );`;
 
 interface Internals {
@@ -93,6 +109,14 @@ export class RuntimeSpend {
       put.run(id, JSON.stringify(row), now, by);
     }
     this.c.db.query("INSERT OR REPLACE INTO runtime_spend_global (id, body, reported_at) VALUES (1, ?, ?)").run(JSON.stringify(global), now);
+    // history for the Analytics page: the day's E2B maximum, and one sample per hour
+    const e2b = global.desktops?.e2b?.spent_today_usd;
+    if (typeof e2b === "number") this.c.db.query("INSERT INTO runtime_spend_daily (day, key, value) VALUES (?, 'e2b_usd', ?) ON CONFLICT (day, key) DO UPDATE SET value = MAX(value, excluded.value)").run(new Date(now).toISOString().slice(0, 10), e2b);
+    const hour = Math.floor(now / 3_600_000) * 3_600_000;
+    const or = (b.provider_balance as { openrouter?: { usd?: unknown } | null } | null)?.openrouter?.usd;
+    const sample = this.c.db.query("INSERT OR IGNORE INTO runtime_spend_samples (at, agent, vault_usd, openrouter_usd) VALUES (?, ?, ?, ?)");
+    sample.run(hour, "", null, fin(or));
+    for (const id of ids) sample.run(hour, id, fin(b.agents[id]!.vault_usd), null);
     return { ok: true, agents: ids.length };
   }
 

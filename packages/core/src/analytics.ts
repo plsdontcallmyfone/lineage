@@ -1,4 +1,4 @@
-import { readdirSync, statSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import { basename, dirname, join } from "node:path";
 import type { Core } from "./core.ts";
 import { deploymentsOf } from "./deployments.ts";
@@ -9,6 +9,7 @@ import { gainOf, providerOf, WINDOWS } from "./leaderboard.ts";
 import { learningsOf } from "./learnings.ts";
 import { runtimeSpendOf } from "./runtime-spend.ts";
 import { sessionsOf } from "./sessions.ts";
+import { socialOf } from "./social.ts";
 
 // Read-only aggregates for the Projects, Generations and Analytics pages
 // (docs/plans/PAGES-PROJECTS-GENERATIONS-ANALYTICS.md). Nothing here is a new claim: every figure is a
@@ -36,6 +37,8 @@ const CACHE_MS = 10_000;
 const HEX64 = /^[0-9a-f]{64}$/;
 const AGENT = /^[1-9A-HJ-NP-Za-km-z]{32,44}$/;
 const DAY = 86_400_000;
+/** The worker's stop note on its outcome line (packages/worker/src/worker.ts): why the model loop ended and its model calls. */
+export const STOP_NOTE = /\[stop: ([^;\]]{1,40}); model calls: (\d{1,5})\]/;
 const HOUR = 3_600_000;
 
 const median = (xs: number[]): number | null => {
@@ -107,6 +110,24 @@ interface Episode {
   worker_outcome: string | null;
   reason: string | null;
   class: string | null;
+  // expansion (section 5): tokens, candidate times, task and actions of the published episode
+  input_tokens: number | null;
+  cache_read: number | null;
+  cache_write: number | null;
+  committed_at: number | null;
+  finalized_at: number | null;
+  parent_gen_id: string | null;
+  target: string | null;
+  reads: number;
+  searches: number;
+  lists: number;
+  edits: number;
+  evals: number;
+  tool_calls: number;
+  /** why the model loop ended and its model calls, from the worker's outcome line (newer workers only) */
+  stop: string | null;
+  calls: number | null;
+  published_at: number;
 }
 
 type Cached<T> = { at: number; v: T };
@@ -522,6 +543,8 @@ export class Analytics {
         {
           seq: number; agent: string; lineage_id: string; outcome: string; provider: string | null; model: string | null; harness: string | null; usd: number | null; sandbox_s: number | null;
           ratio: number | null; fixed: number | null; started_at: number; ended_at: number | null; worker_outcome: string | null; reason: string | null; class: string | null;
+          input_tokens: number | null; cache_read: number | null; cache_write: number | null; committed_at: number | null; finalized_at: number | null; parent_gen_id: string | null;
+          target: unknown; published_at: number; reads: number; searches: number; lists: number; edits: number; evals: number; tool_calls: number;
         },
         [number]
       >(
@@ -531,12 +554,29 @@ export class Analytics {
            json_extract(json, '$.effect.ratio') AS ratio, json_array_length(json_extract(json, '$.effect.fixed')) AS fixed,
            json_extract(json, '$.times.started_at') AS started_at, json_extract(json, '$.times.ended_at') AS ended_at,
            json_extract(json, '$.worker_outcome') AS worker_outcome, json_extract(json, '$.verdict.reason') AS reason,
-           json_extract(json, '$.task.recipe.class') AS class
+           json_extract(json, '$.task.recipe.class') AS class,
+           json_extract(json, '$.cost.input_tokens') AS input_tokens, json_extract(json, '$.cost.cache_read_tokens') AS cache_read,
+           json_extract(json, '$.cost.cache_write_tokens') AS cache_write,
+           json_extract(json, '$.candidate.committed_at') AS committed_at, json_extract(json, '$.candidate.finalized_at') AS finalized_at,
+           json_extract(json, '$.task.parent_gen_id') AS parent_gen_id, json_extract(json, '$.task.target.target') AS target, published_at,
+           (SELECT COUNT(*) FROM json_each(learnings_episodes.json, '$.actions') a WHERE json_extract(a.value, '$.kind') = 'read') AS reads,
+           (SELECT COUNT(*) FROM json_each(learnings_episodes.json, '$.actions') a WHERE json_extract(a.value, '$.kind') = 'search') AS searches,
+           (SELECT COUNT(*) FROM json_each(learnings_episodes.json, '$.actions') a WHERE json_extract(a.value, '$.kind') = 'list') AS lists,
+           (SELECT COUNT(*) FROM json_each(learnings_episodes.json, '$.actions') a WHERE json_extract(a.value, '$.kind') IN ('edit', 'write', 'patch')) AS edits,
+           (SELECT COUNT(*) FROM json_each(learnings_episodes.json, '$.actions') a WHERE json_extract(a.value, '$.kind') = 'evaluate') AS evals,
+           (SELECT COUNT(*) FROM json_each(learnings_episodes.json, '$.actions') a WHERE json_extract(a.value, '$.kind') IN ('read', 'search', 'list', 'edit', 'write', 'patch', 'evaluate', 'submit', 'give_up')) AS tool_calls
          FROM learnings_episodes WHERE seq > ? ORDER BY seq`,
       )
       .all(this.episodesSeq);
     for (const r of rows) {
-      this.episodes.push({ ...r, fixed: r.fixed ?? 0, usd: typeof r.usd === "number" ? r.usd : null, sandbox_s: typeof r.sandbox_s === "number" ? r.sandbox_s : null, ratio: typeof r.ratio === "number" ? r.ratio : null });
+      const stop = r.worker_outcome ? STOP_NOTE.exec(r.worker_outcome) : null;
+      const n = (v: unknown) => (typeof v === "number" && Number.isFinite(v) ? v : null);
+      this.episodes.push({
+        ...r, fixed: r.fixed ?? 0, usd: n(r.usd), sandbox_s: n(r.sandbox_s), ratio: n(r.ratio),
+        input_tokens: n(r.input_tokens), cache_read: n(r.cache_read), cache_write: n(r.cache_write), committed_at: n(r.committed_at), finalized_at: n(r.finalized_at),
+        target: r.target === null || r.target === undefined ? null : typeof r.target === "string" ? r.target : JSON.stringify(r.target),
+        stop: stop ? stop[1]!.trim() : null, calls: stop ? Number(stop[2]) : null,
+      });
       this.episodesSeq = r.seq;
     }
     return this.episodes;
@@ -744,6 +784,734 @@ export class Analytics {
           audits: Object.fromEntries(audits.map((a) => [a.audit_status, a.n])),
           daily: [...repDaily.entries()].map(([day, n]) => ({ day, n })).sort((a, b) => a.day.localeCompare(b.day)).slice(-90),
         },
+      };
+    });
+  }
+
+  // =============================================================================== expansion (plan section 5)
+  // Eight sections of the Analytics page, each its own route over the same window. The sealing rule holds:
+  // attempts, costs, models and times from published episodes only; replays of final candidates only;
+  // hidden launches left out unless hidden=1.
+
+  /** Time buckets of a window: hours over 24 h, days over 7 d, days since the first record (at most 90) over all. */
+  private bucketsOf(win: string, now: number, first: number | null) {
+    if (win === "24h") return { unit: "hour" as const, size: HOUR, start: Math.floor(now / HOUR) * HOUR - 23 * HOUR, n: 24 };
+    if (win === "7d") return { unit: "day" as const, size: DAY, start: Math.floor(now / DAY) * DAY - 6 * DAY, n: 7 };
+    const today = Math.floor(now / DAY) * DAY;
+    const start = Math.max(today - 89 * DAY, Math.floor((first ?? now) / DAY) * DAY);
+    return { unit: "day" as const, size: DAY, start, n: Math.round((today - start) / DAY) + 1 };
+  }
+
+  private win(q: { window?: string }) {
+    const win = q.window ?? "7d";
+    const span = WINDOWS[win];
+    if (span === undefined) throw bad("bad_query", "window: 24h, 7d or all");
+    const now = this.core.now();
+    return { win, now, since: span === null ? 0 : now - span };
+  }
+
+  private axis(b: { unit: string; size: number; start: number; n: number }) {
+    return { unit: b.unit, t: Array.from({ length: b.n }, (_, i) => b.start + i * b.size) };
+  }
+
+  private slot(b: { size: number; start: number; n: number }, t: number): number {
+    const i = Math.floor((t - b.start) / b.size);
+    return i >= 0 && i < b.n ? i : -1;
+  }
+
+  private repoKeyOf(lineage: string): string | null {
+    const l = this.lineages().find((x) => x.lineage_id === lineage);
+    return l ? repoKey(l.repo, l.repo_id) : null;
+  }
+
+  private outcomeOf(e: Episode): string {
+    return e.outcome === "no_candidate" && e.stop === "cap reached" ? "cap_reached" : e.outcome;
+  }
+
+  // ------------------------------------------------------------------------------------------- ops files
+
+  private readJsonl(path: string, max: number): any[] {
+    try {
+      if (!existsSync(path)) return [];
+      const lines = readFileSync(path, "utf8").split("\n").filter((l) => l.trim());
+      return lines
+        .slice(-max)
+        .map((l) => parse<any>(l))
+        .filter((x): x is Record<string, unknown> => !!x && typeof x === "object");
+    } catch {
+      return [];
+    }
+  }
+
+  private monitorState() {
+    const path = process.env.UNITS_MONITOR_STATE ?? "/var/lib/units-monitor/state.json";
+    try {
+      if (!existsSync(path)) return null;
+      const j = JSON.parse(readFileSync(path, "utf8")) as { at?: string; worst?: string; checks?: { id: string; level: string; msg: string }[] };
+      const at = j.at ? Date.parse(j.at) : NaN;
+      return {
+        at: Number.isFinite(at) ? at : null,
+        worst: typeof j.worst === "string" ? j.worst : null,
+        checks: (Array.isArray(j.checks) ? j.checks : []).filter((c) => c && typeof c.id === "string").map((c) => ({ id: c.id.slice(0, 80), level: String(c.level).slice(0, 8), msg: String(c.msg ?? "").slice(0, 240) })),
+      };
+    } catch {
+      return null;
+    }
+  }
+
+  /** GET /v1/analytics/ops?window=&hidden=1 */
+  ops(q: { window?: string; hidden?: boolean }) {
+    const { win, now, since } = this.win(q);
+    const include = !!q.hidden;
+    return this.memo(`ops:${win}:${include ? 1 : 0}`, () => {
+      const off = this.hiddenSet(include);
+      const dir = process.env.UNITS_OPS_DIR ?? "/var/lib/units/ops";
+      const log = this.readJsonl(join(dir, "deploys.jsonl"), 200);
+      const num = (v: unknown) => (typeof v === "number" && Number.isFinite(v) ? v : null);
+      const str = (v: unknown, n = 80) => (typeof v === "string" ? v.slice(0, n) : null);
+      const entries = log.map((x) => ({
+        kind: str(x.kind, 20), sha: str(x.sha, 40), previous: str(x.previous, 40), started_at: num(x.started_at), public_at: num(x.public_at), ended_at: num(x.ended_at),
+        result: str(x.result, 20), failed_unit: str(x.failed_unit, 60),
+        probe: x.probe && typeof x.probe === "object" ? { probes: num((x.probe as any).probes), non_200: num((x.probe as any).non_200), longest_gap_ms: num((x.probe as any).longest_gap_ms) } : null,
+        snapshot: str(x.snapshot, 120), passed: num(x.passed), failed: num(x.failed),
+      }));
+      const deploys = entries.filter((e) => e.kind === "deploy" || e.kind === "rollback").reverse();
+      const restores = entries.filter((e) => e.kind === "restore_test").reverse();
+      const inWin = deploys.filter((d) => (d.started_at ?? 0) >= since);
+
+      // desktop minutes per bucket: sessions that ran on a desktop, start to end (now while live)
+      const sess = this.db
+        .query<{ agent_id: string; started_at: number; ended_at: number | null; last_at: number }, []>("SELECT agent_id, started_at, ended_at, last_at FROM sessions WHERE desktop = 1")
+        .all()
+        .filter((s) => !off.has(s.agent_id));
+      const eps = this.loadEpisodes().filter((e) => !off.has(e.agent));
+      const first = Math.min(...sess.map((s) => s.started_at), ...eps.map((e) => e.started_at), now);
+      const b = this.bucketsOf(win, now, first);
+      const desk = Array.from({ length: b.n }, () => ({ minutes: 0, sessions: 0 }));
+      for (const s of sess) {
+        const end = s.ended_at ?? now;
+        const i0 = this.slot(b, s.started_at);
+        if (i0 >= 0) desk[i0]!.sessions++;
+        for (let i = 0; i < b.n; i++) {
+          const lo = b.start + i * b.size, hi = lo + b.size;
+          const ov = Math.min(end, hi) - Math.max(s.started_at, lo);
+          if (ov > 0) desk[i]!.minutes += ov / 60_000;
+        }
+      }
+      // sandbox seconds by class (published episodes, attempt start)
+      const classes = [...new Set(eps.map((e) => e.class ?? "unknown"))].sort();
+      const sandbox = Array.from({ length: b.n }, () => Object.fromEntries(classes.map((c) => [c, 0])) as Record<string, number>);
+      for (const e of eps) {
+        const i = this.slot(b, e.started_at);
+        if (i >= 0 && e.sandbox_s !== null) sandbox[i]![e.class ?? "unknown"]! += e.sandbox_s;
+      }
+      runtimeSpendOf(this.core); // its tables
+      const daily = this.db.query<{ day: string; key: string; value: number }, []>("SELECT day, key, value FROM runtime_spend_daily WHERE key = 'e2b_usd' ORDER BY day").all();
+      const sessionsLive = this.liveSessions(include);
+      const g = runtimeSpendOf(this.core).global();
+      return {
+        now, window: win, since, hidden_included: include,
+        axis: this.axis(b),
+        monitor: this.monitorState(),
+        deploys: {
+          source: entries.length ? "ops log (scripts/deploy/remote.sh)" : null,
+          log: deploys.slice(0, 30),
+          in_window: { deploys: inWin.filter((d) => d.kind === "deploy").length, rolled_back: inWin.filter((d) => d.result === "rolled_back").length, failed: inWin.filter((d) => d.result === "failed").length, rollbacks: inWin.filter((d) => d.kind === "rollback").length, non_200: inWin.reduce((n, d) => n + (d.probe?.non_200 ?? 0), 0), probes: inWin.reduce((n, d) => n + (d.probe?.probes ?? 0), 0), longest_gap_ms: Math.max(0, ...inWin.map((d) => d.probe?.longest_gap_ms ?? 0)) },
+          releases: this.release(),
+        },
+        restore_tests: restores.slice(0, 10),
+        live: { sessions: sessionsLive.length, with_desktop: sessionsLive.filter((s) => s.desktop).length, desktops: g?.body.desktops ?? null, reported_at: g?.reported_at ?? null },
+        desktop_minutes: desk.map((d) => ({ minutes: Math.round(d.minutes * 10) / 10, sessions: d.sessions })),
+        e2b_daily: daily.slice(-90).map((d) => ({ day: d.day, usd: r6(d.value) })),
+        sandbox: { classes, series: sandbox.map((x) => Object.fromEntries(Object.entries(x).map(([k, v]) => [k, Math.round(v)]))) },
+        viewers: null,
+        viewers_note: "the gate keeps its stream viewer counters private (they would tell how close the caps are)",
+      };
+    });
+  }
+
+  // ------------------------------------------------------------------------------------------------ work
+
+  /** GET /v1/analytics/work?window=&hidden=1 */
+  work(q: { window?: string; hidden?: boolean }) {
+    const { win, now, since } = this.win(q);
+    const include = !!q.hidden;
+    return this.memo(`work:${win}:${include ? 1 : 0}`, () => {
+      const off = this.hiddenSet(include);
+      const all = this.loadEpisodes().filter((e) => !off.has(e.agent));
+      const gens = this.gens().filter((g) => !off.has(g.author!));
+      const b = this.bucketsOf(win, now, all.length ? Math.min(...all.map((e) => e.started_at)) : null);
+      const eps = all.filter((e) => this.slot(b, e.started_at) >= 0 && e.started_at >= Math.min(since, b.start));
+      const OUT = ["accepted", "rejected", "expired", "no_candidate", "cap_reached", "abandoned"];
+      const outcomes = Array.from({ length: b.n }, () => Object.fromEntries(OUT.map((o) => [o, 0])) as Record<string, number>);
+      for (const e of eps) outcomes[this.slot(b, e.started_at)]![this.outcomeOf(e)]!++;
+      const genSeries = Array.from({ length: b.n }, () => 0);
+      for (const g of gens) {
+        const i = this.slot(b, g.accepted_at);
+        if (i >= 0) genSeries[i]!++;
+      }
+      // acceptance over time per agent and per project
+      const rateRows = (key: (e: Episode) => string | null, label: (k: string) => Record<string, unknown>) => {
+        const m = new Map<string, Episode[]>();
+        for (const e of eps) {
+          const k = key(e);
+          if (k) (m.get(k) ?? m.set(k, []).get(k)!).push(e);
+        }
+        return [...m.entries()]
+          .map(([k, es]) => {
+            const s = Array.from({ length: b.n }, () => ({ attempts: 0, accepted: 0 }));
+            for (const e of es) {
+              const x = s[this.slot(b, e.started_at)]!;
+              x.attempts++;
+              if (e.outcome === "accepted") x.accepted++;
+            }
+            const acc = es.filter((e) => e.outcome === "accepted").length;
+            return { key: k, ...label(k), attempts: es.length, accepted: acc, rate: es.length >= MIN_ATTEMPTS_FOR_RATE ? r4(acc / es.length) : null, series: s };
+          })
+          .sort((a, b2) => b2.attempts - a.attempts);
+      };
+      const byAgent = rateRows((e) => e.agent, (a) => ({ agent: a, name: this.nameOf(a) }));
+      const byProject = rateRows((e) => this.repoKeyOf(e.lineage_id), () => ({}));
+      // times (published candidates of the window)
+      const toCommit = eps.filter((e) => e.committed_at !== null && e.committed_at >= e.started_at).map((e) => (e.committed_at! - e.started_at) / 1000);
+      const toVerdict = eps.filter((e) => e.committed_at !== null && e.finalized_at !== null && e.finalized_at >= e.committed_at).map((e) => (e.finalized_at! - e.committed_at!) / 1000);
+      const timeSeries = Array.from({ length: b.n }, () => ({ commit: [] as number[], verdict: [] as number[] }));
+      for (const e of eps) {
+        const x = timeSeries[this.slot(b, e.started_at)]!;
+        if (e.committed_at !== null && e.committed_at >= e.started_at) x.commit.push((e.committed_at - e.started_at) / 1000);
+        if (e.committed_at !== null && e.finalized_at !== null && e.finalized_at >= e.committed_at) x.verdict.push((e.finalized_at - e.committed_at) / 1000);
+      }
+      const stat = (xs: number[]) => ({ n: xs.length, median: xs.length ? r4(median(xs)!) : null, mean: xs.length ? r4(xs.reduce((s, x) => s + x, 0) / xs.length) : null });
+      // tools per attempt
+      // model attempts only: a scripted author applies a recipe patch without tool calls
+      const modelEps = eps.filter((e) => this.modelKey(e).model !== "scripted");
+      const withCalls = modelEps.filter((e) => e.calls !== null);
+      const tools = {
+        attempts: modelEps.length,
+        scripted: eps.length - modelEps.length,
+        tool_calls: stat(modelEps.map((e) => e.tool_calls)),
+        reads: stat(modelEps.map((e) => e.reads)),
+        searches: stat(modelEps.map((e) => e.searches)),
+        lists: stat(modelEps.map((e) => e.lists)),
+        edits: stat(modelEps.map((e) => e.edits)),
+        evals: stat(modelEps.map((e) => e.evals)),
+        turns: stat(withCalls.map((e) => e.calls!)),
+        stops: Object.entries(withCalls.reduce<Record<string, number>>((m, e) => ((m[e.stop!] = (m[e.stop!] ?? 0) + 1), m), {})).map(([stop, n]) => ({ stop, n })).sort((a, c) => c.n - a.n),
+      };
+      // lines changed per accepted generation (the accepted candidate's canonical patch)
+      const winGens = gens.filter((g) => g.accepted_at >= Math.min(since, b.start) && this.slot(b, g.accepted_at) >= 0 && g.candidate_id);
+      const patches = new Map(
+        this.db
+          .query<{ candidate_id: string; patch: string | null }, []>("SELECT c.candidate_id, c.patch FROM candidates c JOIN generations g ON g.candidate_id = c.candidate_id WHERE c.status = 'accepted' AND g.entry_type = 'patch'")
+          .all()
+          .map((r) => [r.candidate_id, r.patch]),
+      );
+      const lines = winGens
+        .map((g) => {
+          const p = patches.get(g.candidate_id!);
+          if (!p) return null;
+          let add = 0, del = 0;
+          for (const l of p.split("\n")) {
+            if (l.startsWith("+") && !l.startsWith("+++")) add++;
+            else if (l.startsWith("-") && !l.startsWith("---")) del++;
+          }
+          return { gen_id: g.gen_id, height: g.height, project: this.repoKeyOf(g.lineage_id), added: add, removed: del, lines: add + del, at: g.accepted_at };
+        })
+        .filter((x): x is NonNullable<typeof x> => !!x);
+      // live-time share per agent per bucket: published attempts plus live sessions
+      const live = this.liveSessions(include);
+      const spans: { agent: string; a: number; z: number }[] = [
+        ...all.map((e) => ({ agent: e.agent, a: e.started_at, z: e.ended_at ?? e.started_at })),
+        ...live.filter((s) => s.agent).map((s) => ({ agent: s.agent as string, a: s.started_at as number, z: now })),
+      ];
+      const share = new Map<string, number[]>();
+      for (const s of spans) {
+        if (s.z <= b.start) continue;
+        const row = share.get(s.agent) ?? share.set(s.agent, Array.from({ length: b.n }, () => 0)).get(s.agent)!;
+        for (let i = Math.max(0, this.slot(b, s.a)); i < b.n; i++) {
+          const lo = b.start + i * b.size, hi = lo + b.size;
+          if (lo >= s.z) break;
+          const ov = Math.min(s.z, hi) - Math.max(s.a, lo);
+          if (ov > 0) row[i]! += ov / 60_000;
+        }
+      }
+      const shareRows = [...share.entries()]
+        .map(([agent, mins]) => ({ agent, name: this.nameOf(agent), minutes: mins.map((m) => Math.round(m * 10) / 10), total: Math.round(mins.reduce((s, m) => s + m, 0)) }))
+        .filter((r) => r.total > 0)
+        .sort((a, c) => c.total - a.total);
+      // cross-agent conflicts per project: final candidates rejected because another generation landed first
+      const CONFLICT = ["stale_conflict", "stale", "apply_conflict"];
+      const conf = this.db
+        .query<{ lineage_id: string; author: string; reason: string | null; t: number }, []>(
+          "SELECT lineage_id, author, reason, COALESCE(finalized_at, committed_at) AS t FROM candidates WHERE status IN ('accepted', 'rejected', 'expired') AND is_canary = 0",
+        )
+        .all()
+        .filter((c) => !off.has(c.author) && c.t >= Math.min(since, b.start));
+      const confMap = new Map<string, { project: string; final: number; conflicts: number; by_reason: Record<string, number> }>();
+      for (const c of conf) {
+        const k = this.repoKeyOf(c.lineage_id) ?? c.lineage_id;
+        const r = confMap.get(k) ?? confMap.set(k, { project: k, final: 0, conflicts: 0, by_reason: {} }).get(k)!;
+        r.final++;
+        if (c.reason && CONFLICT.includes(c.reason)) (r.conflicts++, (r.by_reason[c.reason] = (r.by_reason[c.reason] ?? 0) + 1));
+      }
+      return {
+        now, window: win, since, hidden_included: include,
+        axis: this.axis(b),
+        source: "published learnings episodes (an attempt is counted once its episode is published), accepted generations, final candidates",
+        generations: genSeries,
+        outcomes: { series: outcomes, totals: OUT.reduce<Record<string, number>>((m, o) => ((m[o] = outcomes.reduce((s, x) => s + x[o]!, 0)), m), {}), stop_recorded: withCalls.length },
+        rate: { by_agent: byAgent, by_project: byProject, min_attempts: MIN_ATTEMPTS_FOR_RATE },
+        times: { start_to_commit_s: stat(toCommit), commit_to_verdict_s: stat(toVerdict), series: timeSeries.map((x) => ({ commit_s: x.commit.length ? Math.round(median(x.commit)!) : null, verdict_s: x.verdict.length ? Math.round(median(x.verdict)!) : null })) },
+        tools,
+        lines: { n: lines.length, median: lines.length ? median(lines.map((l) => l.lines)) : null, mean: lines.length ? r4(lines.reduce((s, l) => s + l.lines, 0) / lines.length) : null, rows: lines.sort((a, c) => c.at - a.at).slice(0, 100) },
+        live_share: { rows: shareRows.slice(0, 12), others: shareRows.length > 12 ? shareRows.slice(12).reduce((s, r) => s + r.total, 0) : 0 },
+        conflicts: [...confMap.values()].filter((r) => r.final > 0).sort((a, c) => c.conflicts - a.conflicts || c.final - a.final),
+      };
+    });
+  }
+
+  // --------------------------------------------------------------------------------------------- results
+
+  /** GET /v1/analytics/results?window=&hidden=1 */
+  results(q: { window?: string; hidden?: boolean }) {
+    const { win, now, since } = this.win(q);
+    const include = !!q.hidden;
+    return this.memo(`results:${win}:${include ? 1 : 0}`, () => {
+      const off = this.hiddenSet(include);
+      const gens = this.gens();
+      const ls = this.lineages();
+      // per lineage and metric: improvement over the calibration baseline after each generation (all
+      // authors: the lineage's state), and the records (each new best)
+      const metrics: any[] = [];
+      for (const l of ls) {
+        const lg = gens.filter((g) => g.lineage_id === l.lineage_id);
+        if (!lg.length) continue;
+        for (const m of this.series(l, lg)) {
+          if (!m.points.length || m.baseline === null || m.baseline === 0) continue;
+          let best: number | null = null;
+          const better = (a: number, c: number) => (m.direction === "higher" ? a > c : a < c);
+          const pts = [...m.points]
+            .sort((a, c) => a.at - c.at)
+            .map((p) => {
+              const rec = best === null ? better(p.value, m.baseline!) : better(p.value, best);
+              if (best === null || better(p.value, best)) best = p.value;
+              const imp = r4(((m.direction === "higher" ? best! - m.baseline! : m.baseline! - best!) / Math.abs(m.baseline!)) * 100);
+              return { at: p.at, height: p.height, gen_id: p.gen_id, value: p.value, best: best!, improvement_pct: imp, record: rec };
+            });
+          metrics.push({ lineage_id: l.lineage_id, project: repoKey(l.repo, l.repo_id), recipe_name: l.recipe_name, metric: m.name, direction: m.direction, baseline: m.baseline, improvement_pct: pts[pts.length - 1]!.improvement_pct, records: pts.filter((p) => p.record).length, records_in_window: pts.filter((p) => p.record && p.at >= since).length, points: pts });
+        }
+      }
+      metrics.sort((a, c) => c.improvement_pct - a.improvement_pct);
+      const row = (g: GenRow) => {
+        const eff = parse<any>(g.effect);
+        const x = gainOf(eff);
+        const l = ls.find((y) => y.lineage_id === g.lineage_id);
+        return { gen_id: g.gen_id, height: g.height, project: l ? repoKey(l.repo, l.repo_id) : null, recipe_name: l?.recipe_name ?? null, metric: eff?.metric ?? null, gain_pct: r4(x.pct), fixed: x.fixed, author: g.author, author_name: this.nameOf(g.author!), accepted_at: g.accepted_at, reverted_by: g.reverted_by };
+      };
+      const listed = gens.filter((g) => !off.has(g.author!));
+      const byGain = (xs: GenRow[]) => xs.map(row).filter((r) => r.gain_pct > 0 || r.fixed > 0).sort((a, c) => c.gain_pct - a.gain_pct || c.fixed - a.fixed);
+      const week = now - 7 * DAY;
+      const perProject = new Map<string, ReturnType<typeof row>>();
+      for (const r of byGain(listed.filter((g) => !g.reverted_by))) if (r.project && !perProject.has(r.project)) perProject.set(r.project, r);
+      // reverted and challenged generations
+      const reverted = gens.filter((g) => g.reverted_by).map((g) => ({ ...row(g), author: off.has(g.author!) ? null : g.author, author_name: off.has(g.author!) ? null : this.nameOf(g.author!) }));
+      const chal = this.db
+        .query<{ challenge_id: string; kind: string; subject: string; status: string; opened_at: number; resolved_at: number | null; resolution: string | null }, []>("SELECT challenge_id, kind, subject, status, opened_at, resolved_at, resolution FROM challenges ORDER BY opened_at DESC")
+        .all();
+      const genOfCand = new Map(gens.filter((g) => g.candidate_id).map((g) => [g.candidate_id!, g]));
+      const challenged = chal
+        .filter((c) => c.kind === "verdict")
+        .map((c) => {
+          const g = genOfCand.get(c.subject);
+          return { challenge_id: c.challenge_id, status: c.status, opened_at: c.opened_at, resolved_at: c.resolved_at, resolution: parse(c.resolution), generation: g ? { gen_id: g.gen_id, height: g.height, project: this.repoKeyOf(g.lineage_id), reverted_by: g.reverted_by } : null };
+        });
+      return {
+        now, window: win, since, hidden_included: include,
+        source: "counted replay medians of each unreverted accepted generation against the calibration baseline; verdict effects; challenges",
+        metrics,
+        wins: { week: byGain(listed.filter((g) => g.accepted_at >= week && !g.reverted_by)).slice(0, 10), window: byGain(listed.filter((g) => g.accepted_at >= since && !g.reverted_by)).slice(0, 10), all_time: byGain(listed.filter((g) => !g.reverted_by)).slice(0, 10), per_project: [...perProject.values()] },
+        reverted,
+        challenged,
+      };
+    });
+  }
+
+  // ----------------------------------------------------------------------------------------------- spend
+
+  /** GET /v1/analytics/spend?window=&hidden=1 */
+  spend(q: { window?: string; hidden?: boolean }) {
+    const { win, now, since } = this.win(q);
+    const include = !!q.hidden;
+    return this.memo(`spend:${win}:${include ? 1 : 0}`, () => {
+      const off = this.hiddenSet(include);
+      const all = this.loadEpisodes().filter((e) => !off.has(e.agent));
+      const b = this.bucketsOf(win, now, all.length ? Math.min(...all.map((e) => e.started_at)) : null);
+      const eps = all.filter((e) => this.slot(b, e.started_at) >= 0 && e.started_at >= Math.min(since, b.start));
+      const gain = (e: Episode) => (e.outcome === "accepted" && e.ratio !== null && e.ratio < 1 ? (1 - e.ratio) * 100 : 0);
+      const series = Array.from({ length: b.n }, () => ({ usd: 0, priced: 0, gain_pct: 0, anthropic_usd: 0, anthropic_priced: 0, read: 0, input: 0, write: 0 }));
+      for (const e of eps) {
+        const x = series[this.slot(b, e.started_at)]!;
+        if (e.usd !== null) {
+          x.usd += e.usd;
+          x.priced++;
+          x.gain_pct += gain(e);
+          if (this.modelKey(e).provider === "anthropic") (x.anthropic_usd += e.usd, x.anthropic_priced++);
+        }
+        if (e.input_tokens !== null && e.cache_read !== null) (x.read += e.cache_read, x.input += e.input_tokens, (x.write += e.cache_write ?? 0));
+      }
+      const hit = (r: number, i: number, w: number) => (r + i + w > 0 ? r4(r / (r + i + w)) : null);
+      const tok = eps.filter((e) => e.input_tokens !== null && e.cache_read !== null);
+      const sum = (xs: Episode[], k: "cache_read" | "input_tokens" | "cache_write") => xs.reduce((s, e) => s + (e[k] ?? 0), 0);
+      const byModel = new Map<string, Episode[]>();
+      for (const e of tok) {
+        const k = JSON.stringify(this.modelKey(e));
+        (byModel.get(k) ?? byModel.set(k, []).get(k)!).push(e);
+      }
+      const priced = eps.filter((e) => e.usd !== null);
+      const usd = priced.reduce((s, e) => s + e.usd!, 0);
+      const nothing = priced.filter((e) => e.outcome !== "accepted").reduce((s, e) => s + e.usd!, 0);
+      const g = runtimeSpendOf(this.core).global();
+      const or = (g?.body.provider_balance as any)?.openrouter ?? null;
+      const samples = this.db
+        .query<{ at: number; openrouter_usd: number | null }, [number]>("SELECT at, openrouter_usd FROM runtime_spend_samples WHERE agent = '' AND at >= ? ORDER BY at")
+        .all(win === "all" ? 0 : Math.min(since, b.start));
+      const orPts = samples.filter((s) => s.openrouter_usd !== null).map((s) => ({ at: s.at, usd: r6(s.openrouter_usd!) }));
+      const day = orPts.filter((p) => p.at >= now - DAY);
+      return {
+        now, window: win, since, hidden_included: include,
+        axis: this.axis(b),
+        source: "published learnings episodes (cost.usd and token counts as attested by the hosted runtime or reported by the worker); the runtime's spend report",
+        totals: { usd: priced.length ? r6(usd) : null, priced: priced.length, attempts: eps.length, nothing_usd: priced.length ? r6(nothing) : null, nothing_share: usd > 0 ? r4(nothing / usd) : null, gain_pct: r4(priced.reduce((s, e) => s + gain(e), 0)), gain_per_usd: usd > 0 ? r6(priced.reduce((s, e) => s + gain(e), 0) / usd) : null },
+        series: series.map((x) => ({ usd: x.priced ? r6(x.usd) : null, priced: x.priced, gain_pct: r4(x.gain_pct), gain_per_usd: x.usd > 0 ? r6(x.gain_pct / x.usd) : null, anthropic_usd: x.anthropic_priced ? r6(x.anthropic_usd) : null, cache_hit: hit(x.read, x.input, x.write) })),
+        cache: {
+          attempts: tok.length,
+          hit_rate: hit(sum(tok, "cache_read"), sum(tok, "input_tokens"), sum(tok, "cache_write")),
+          read_tokens: sum(tok, "cache_read"), input_tokens: sum(tok, "input_tokens"), write_tokens: sum(tok, "cache_write"),
+          by_model: [...byModel.entries()].map(([k, es]) => ({ ...(JSON.parse(k) as object), attempts: es.length, hit_rate: hit(sum(es, "cache_read"), sum(es, "input_tokens"), sum(es, "cache_write")) })).sort((a, c) => c.attempts - a.attempts),
+        },
+        anthropic: { usd: r6(priced.filter((e) => this.modelKey(e).provider === "anthropic").reduce((s, e) => s + e.usd!, 0)), attempts: priced.filter((e) => this.modelKey(e).provider === "anthropic").length },
+        openrouter: {
+          now: or ? { usd: typeof or.usd === "number" ? or.usd : null, read_at: or.read_at ?? null, floor_usd: or.floor_usd ?? null, configured: or.configured ?? null, error: or.error ?? null } : null,
+          samples: orPts.slice(-500),
+          change_24h: day.length >= 2 ? r6(day[day.length - 1]!.usd - day[0]!.usd) : null,
+        },
+      };
+    });
+  }
+
+  // ---------------------------------------------------------------------------------------------- models
+
+  /** GET /v1/analytics/models?window=&hidden=1: head-to-head and failure modes (the leaderboard is in the overview). */
+  modelsDetail(q: { window?: string; hidden?: boolean }) {
+    const { win, now, since } = this.win(q);
+    const include = !!q.hidden;
+    return this.memo(`models:${win}:${include ? 1 : 0}`, () => {
+      const off = this.hiddenSet(include);
+      const eps = this.loadEpisodes().filter((e) => !off.has(e.agent) && e.started_at >= since);
+      const label = (e: Episode) => this.modelKey(e);
+      const groups = new Map<string, Episode[]>();
+      for (const e of eps) {
+        if (!e.parent_gen_id) continue;
+        const k = `${e.lineage_id}|${e.parent_gen_id}|${e.target ?? ""}`;
+        (groups.get(k) ?? groups.set(k, []).get(k)!).push(e);
+      }
+      const heights = new Map(this.db.query<{ gen_id: string; height: number }, []>("SELECT gen_id, height FROM generations").all().map((r) => [r.gen_id, r.height]));
+      const h2h = [...groups.entries()]
+        .map(([k, es]) => {
+          const [lineage, parent, target] = k.split("|") as [string, string, string];
+          const ms = new Map<string, Episode[]>();
+          for (const e of es) {
+            const mk = JSON.stringify(label(e));
+            (ms.get(mk) ?? ms.set(mk, []).get(mk)!).push(e);
+          }
+          if (ms.size < 2) return null;
+          return {
+            lineage_id: lineage, project: this.repoKeyOf(lineage), parent_gen_id: parent, parent_height: heights.get(parent) ?? null, target: target || null,
+            last_at: Math.max(...es.map((e) => e.started_at)),
+            models: [...ms.entries()].map(([mk, xs]) => {
+              const pr = xs.filter((e) => e.usd !== null);
+              const gains = xs.filter((e) => e.outcome === "accepted" && e.ratio !== null).map((e) => r4((1 - e.ratio!) * 100));
+              return { ...(JSON.parse(mk) as { provider: string | null; model: string }), attempts: xs.length, accepted: xs.filter((e) => e.outcome === "accepted").length, best_gain_pct: gains.length ? Math.max(...gains) : null, usd: pr.length ? r6(pr.reduce((s, e) => s + e.usd!, 0)) : null, priced: pr.length };
+            }).sort((a, c) => c.accepted - a.accepted || (c.best_gain_pct ?? -1) - (a.best_gain_pct ?? -1)),
+          };
+        })
+        .filter((x): x is NonNullable<typeof x> => !!x)
+        .sort((a, c) => c.last_at - a.last_at);
+      const fm = new Map<string, Episode[]>();
+      for (const e of eps) {
+        const mk = JSON.stringify(label(e));
+        (fm.get(mk) ?? fm.set(mk, []).get(mk)!).push(e);
+      }
+      const failures = [...fm.entries()]
+        .map(([mk, es]) => {
+          const bad = es.filter((e) => e.outcome !== "accepted");
+          const outcomes = bad.reduce<Record<string, number>>((m, e) => ((m[this.outcomeOf(e)] = (m[this.outcomeOf(e)] ?? 0) + 1), m), {});
+          const reasons = new Map<string, number>();
+          for (const e of bad) {
+            const why = e.outcome === "rejected" || e.outcome === "expired" ? `${e.outcome}: ${(e.reason ?? "no reason").replace(/_/g, " ")}` : e.stop ? `no candidate: ${e.stop}` : e.outcome === "abandoned" ? "abandoned" : "no candidate: stop not recorded";
+            reasons.set(why, (reasons.get(why) ?? 0) + 1);
+          }
+          return { ...(JSON.parse(mk) as { provider: string | null; model: string }), attempts: es.length, failed: bad.length, outcomes, reasons: [...reasons.entries()].map(([reason, n]) => ({ reason, n })).sort((a, c) => c.n - a.n).slice(0, 8) };
+        })
+        .sort((a, c) => c.attempts - a.attempts);
+      return { now, window: win, since, hidden_included: include, source: "published learnings episodes", head_to_head: h2h.slice(0, 40), head_to_head_total: h2h.length, failures };
+    });
+  }
+
+  // ------------------------------------------------------------------------------------------- verifiers
+
+  /** GET /v1/analytics/verifiers?window=&hidden=1 */
+  verifiers(q: { window?: string; hidden?: boolean }) {
+    const { win, now, since } = this.win(q);
+    const include = !!q.hidden;
+    return this.memo(`verifiers:${win}:${include ? 1 : 0}`, () => {
+      const off = this.hiddenSet(include);
+      const reps = this.db
+        .query<{ candidate_id: string; replayer: string; role: string | null; status: string; assigned_at: number; committed_at: number | null; c_committed: number; author: string; t: number }, [number]>(
+          `SELECT r.candidate_id, r.replayer, r.role, r.status, r.assigned_at, r.committed_at, c.committed_at AS c_committed, c.author, COALESCE(c.finalized_at, c.committed_at) AS t
+           FROM replays r JOIN candidates c ON c.candidate_id = r.candidate_id
+           WHERE c.status IN ('accepted', 'rejected', 'expired') AND c.is_canary = 0 AND r.kind IN ('replay', 'reference') AND COALESCE(c.finalized_at, c.committed_at) >= ?`,
+        )
+        .all(since)
+        .filter((r) => !off.has(r.author));
+      const per = new Map<string, typeof reps>();
+      for (const r of reps) (per.get(r.replayer) ?? per.set(r.replayer, []).get(r.replayer)!).push(r);
+      const rows = [...per.entries()]
+        .map(([v, rs]) => {
+          const counted = rs.filter((r) => r.role === "counted").length;
+          const minority = rs.filter((r) => r.role === "minority").length;
+          const durs = rs.filter((r) => r.committed_at !== null && r.committed_at >= r.assigned_at).map((r) => (r.committed_at! - r.assigned_at) / 1000);
+          return {
+            verifier: v, replays: rs.length, revealed: rs.filter((r) => r.status === "revealed").length, counted, minority, env_failed: rs.filter((r) => r.role === "env_failed").length,
+            disagreement: counted + minority > 0 ? r4(minority / (counted + minority)) : null,
+            mean_replay_s: durs.length ? Math.round(durs.reduce((s, x) => s + x, 0) / durs.length) : null, median_replay_s: durs.length ? Math.round(median(durs)!) : null,
+          };
+        })
+        .sort((a, c) => c.replays - a.replays);
+      const firstBy = new Map<string, { c: number; first: number }>();
+      for (const r of reps) {
+        if (r.committed_at === null) continue;
+        const f = firstBy.get(r.candidate_id);
+        if (!f || r.committed_at < f.first) firstBy.set(r.candidate_id, { c: r.c_committed, first: r.committed_at });
+      }
+      const waits = [...firstBy.values()].filter((x) => x.first >= x.c).map((x) => (x.first - x.c) / 1000);
+      const ch = this.db
+        .query<{ challenge_id: string; kind: string; subject: string; challenger: string; bond: string; status: string; opened_at: number; resolved_at: number | null; resolution: string | null }, []>(
+          "SELECT challenge_id, kind, subject, challenger, bond, status, opened_at, resolved_at, resolution FROM challenges ORDER BY opened_at DESC",
+        )
+        .all();
+      const OPEN = ["open", "replaying"];
+      const sl = this.db.query<{ agent_id: string; bps: number; amount: string; reason: string; epoch: number; at: number }, []>("SELECT agent_id, bps, amount, reason, epoch, at FROM slashes ORDER BY at DESC").all().filter((s) => !off.has(s.agent_id));
+      const bonds = this.db.query<{ account: string; amount: string }, []>("SELECT account, amount FROM balances WHERE account LIKE 'agent:%:bond'").all().filter((b) => !off.has(b.account.split(":")[1]!));
+      const big = (xs: string[]) => xs.reduce((s, x) => s + (/^-?\d+$/.test(x) ? BigInt(x) : 0n), 0n).toString();
+      return {
+        now, window: win, since, hidden_included: include,
+        source: "replays of final candidates (replay and reference kinds); challenges, slashes and bond balances as Core records them",
+        verifiers: rows,
+        replays: reps.length,
+        commit_to_first_replay_s: { n: waits.length, median: waits.length ? Math.round(median(waits)!) : null, mean: waits.length ? Math.round(waits.reduce((s, x) => s + x, 0) / waits.length) : null },
+        challenges: {
+          opened_in_window: ch.filter((c) => c.opened_at >= since).length,
+          by_status: ch.filter((c) => c.opened_at >= since).reduce<Record<string, number>>((m, c) => ((m[c.status] = (m[c.status] ?? 0) + 1), m), {}),
+          by_kind: ch.filter((c) => c.opened_at >= since).reduce<Record<string, number>>((m, c) => ((m[c.kind] = (m[c.kind] ?? 0) + 1), m), {}),
+          open_bonds: big(ch.filter((c) => OPEN.includes(c.status)).map((c) => c.bond)),
+          open: ch.filter((c) => OPEN.includes(c.status)).length,
+          recent: ch.slice(0, 20).map((c) => ({ challenge_id: c.challenge_id, kind: c.kind, subject: c.subject, challenger: c.challenger, bond: c.bond, status: c.status, opened_at: c.opened_at, resolved_at: c.resolved_at, resolution: parse(c.resolution) })),
+        },
+        slashes: { total: sl.length, in_window: sl.filter((s) => s.at >= since).length, amount: big(sl.map((s) => s.amount)), recent: sl.slice(0, 20) },
+        bonds: { accounts: bonds.filter((b) => b.amount !== "0").length, held: big(bonds.map((b) => b.amount)) },
+      };
+    });
+  }
+
+  // ---------------------------------------------------------------------------------------------- social
+
+  private org: { org: string; members: string[] | null; at: number; error: string | null } | null = null;
+  private orgBusy = false;
+  /** Replaceable in tests; the org's public members from GitHub (no token needed). */
+  orgFetch: ((org: string) => Promise<string[]>) | null =
+    process.env.NODE_ENV === "test"
+      ? null
+      : async (org) => {
+          const r = await fetch(`https://api.github.com/orgs/${encodeURIComponent(org)}/public_members?per_page=100`, { headers: { accept: "application/vnd.github+json", "user-agent": "units-core-analytics" }, signal: AbortSignal.timeout(10_000) });
+          if (!r.ok) throw new Error(`GitHub ${r.status}`);
+          return ((await r.json()) as { login: string }[]).map((m) => m.login);
+        };
+
+  private orgMembers() {
+    const org = process.env.UNITS_GITHUB_ORG || "units-agents";
+    const now = this.core.now();
+    if (this.orgFetch && !this.orgBusy && (!this.org || now - this.org.at > 30 * 60_000)) {
+      this.orgBusy = true;
+      const f = this.orgFetch;
+      f(org)
+        .then((members) => (this.org = { org, members: members.slice(0, 500), at: this.core.now(), error: null }))
+        .catch((e) => (this.org = { org, members: this.org?.members ?? null, at: this.core.now(), error: String((e as Error).message).slice(0, 120) }))
+        .finally(() => (this.orgBusy = false));
+    }
+    return this.org ? { org: this.org.org, members: this.org.members, read_at: this.org.at, error: this.org.error } : { org, members: null, read_at: null, error: null };
+  }
+
+  /** GET /v1/analytics/social?window=&hidden=1 */
+  social(q: { window?: string; hidden?: boolean }) {
+    const { win, now, since } = this.win(q);
+    const include = !!q.hidden;
+    const org = this.orgMembers();
+    return this.memo(`social:${win}:${include ? 1 : 0}:${org.read_at ?? 0}`, () => {
+      const off = this.hiddenSet(include);
+      socialOf(this.core); // its tables
+      genGithubOf(this.core);
+      const wf = this.db.query<{ agent: string; stored_at: number }, []>("SELECT agent, stored_at FROM social_follows").all().filter((r) => !off.has(r.agent));
+      const af = this.db.query<{ follower: string; target: string; stored_at: number }, []>("SELECT follower, target, stored_at FROM social_agent_follows").all().filter((r) => !off.has(r.follower) && !off.has(r.target));
+      const hiddenPosts = socialOf(this.core).hiddenSet("post");
+      const posts = this.db
+        .query<{ msg_id: string; from_agent: string; received_at: number }, []>("SELECT msg_id, from_agent, received_at FROM messages WHERE board IS NOT NULL AND shadow = 0")
+        .all()
+        .filter((r) => !off.has(r.from_agent) && !hiddenPosts.has(r.msg_id));
+      const gens = new Map(this.gens().map((g) => [g.gen_id, g]));
+      const gh = this.db
+        .query<{ gen_id: string; status: string; verified: number | null; published_at: number | null; repo: string | null }, []>("SELECT gen_id, status, verified, published_at, repo FROM gen_github")
+        .all()
+        .filter((r) => {
+          const g = gens.get(r.gen_id);
+          return !g || !off.has(g.author!);
+        });
+      const pub = gh.filter((r) => r.status === "published" && r.published_at);
+      const eps = this.loadEpisodes().filter((e) => !off.has(e.agent));
+      const first = Math.min(now, ...wf.map((r) => r.stored_at), ...af.map((r) => r.stored_at), ...posts.map((r) => r.received_at), ...pub.map((r) => r.published_at!), ...eps.map((e) => e.published_at));
+      const b = this.bucketsOf(win, now, first);
+      const series = Array.from({ length: b.n }, () => ({ wallet_follows: 0, agent_follows: 0, posts: 0, github: 0, github_verified: 0, episodes: 0, episodes_total: 0 }));
+      const put = (t: number, f: (x: (typeof series)[number]) => void) => {
+        const i = this.slot(b, t);
+        if (i >= 0) f(series[i]!);
+      };
+      for (const r of wf) put(r.stored_at, (x) => x.wallet_follows++);
+      for (const r of af) put(r.stored_at, (x) => x.agent_follows++);
+      for (const r of posts) put(r.received_at, (x) => x.posts++);
+      for (const r of pub) put(r.published_at!, (x) => (x.github++, r.verified === 1 && x.github_verified++));
+      for (const e of eps) put(e.published_at, (x) => x.episodes++);
+      let run = eps.filter((e) => e.published_at < b.start).length;
+      for (const x of series) x.episodes_total = run += x.episodes;
+      const orgRepos = new Set(pub.filter((r) => r.repo?.toLowerCase().startsWith(`${org.org.toLowerCase()}/`)).map((r) => r.repo!));
+      return {
+        now, window: win, since, hidden_included: include,
+        axis: this.axis(b),
+        series,
+        totals: {
+          wallet_follows: wf.length, agent_follows: af.length, posts: posts.length, posts_in_window: posts.filter((p) => p.received_at >= since).length,
+          github_published: pub.length, github_verified: pub.filter((r) => r.verified === 1).length, github_awaiting: gh.filter((r) => r.status !== "published").length,
+          episodes: eps.length, episodes_in_window: eps.filter((e) => e.published_at >= since).length,
+          learnings_repos: this.db.query<{ n: number }, []>("SELECT COUNT(*) AS n FROM learnings_repos").get()!.n,
+        },
+        org: { ...org, repos_with_generations: orgRepos.size },
+      };
+    });
+  }
+
+  // -------------------------------------------------------------------------------------------- launches
+
+  /** GET /v1/analytics/launches?window=&hidden=1 */
+  launches(q: { window?: string; hidden?: boolean }) {
+    const { win, now, since } = this.win(q);
+    const include = !!q.hidden;
+    return this.memo(`launches:${win}:${include ? 1 : 0}`, () => {
+      const off = this.hiddenSet(include);
+      const tests = this.testLaunches();
+      const agents = this.db
+        .query<{ agent_id: string; registered_at: number; mint: string | null; identity_mode: string | null; hosted: number }, []>("SELECT agent_id, registered_at, mint, identity_mode, hosted FROM agents WHERE kind = 'launched' AND shadow = 0")
+        .all()
+        .filter((a) => !off.has(a.agent_id));
+      const soulModel = new Map<string, string>();
+      for (const r of this.db.query<{ agent: string; doc: string }, []>("SELECT agent, doc FROM souls ORDER BY seq").all()) {
+        const m = parse<any>(r.doc)?.model;
+        if (m && typeof m.id === "string") soulModel.set(r.agent, `${typeof m.provider === "string" ? `${m.provider}/` : ""}${m.id}`);
+      }
+      const spend = new Map(runtimeSpendOf(this.core).all().map((r) => [r.agent, r]));
+      const modelOf = (a: string) => {
+        if (soulModel.has(a)) return { model: soulModel.get(a)!, source: "soul" };
+        const m = spend.get(a)?.spend.model;
+        if (m && typeof m.id === "string") return { model: `${m.provider}/${m.id}`, source: "runtime" };
+        return { model: "not declared", source: null };
+      };
+      const prepay = new Map(
+        this.db
+          .query<{ agent_id: string; mint: string | null; launched_at: number | null; deposit: string; initial_buy: string | null; supply: string | null }, []>("SELECT agent_id, mint, launched_at, deposit, initial_buy, supply FROM prepay")
+          .all()
+          .map((r) => [r.agent_id, r]),
+      );
+      // the compute vault as Core mirrored it from chain: each change, in order
+      const ids = new Set(agents.map((a) => a.agent_id));
+      const ledger = this.db
+        .query<{ account: string; delta: string; at: number }, []>("SELECT account, delta, at FROM ledger_entries WHERE reason = 'chain_compute' AND account LIKE 'agent:%:compute' ORDER BY id")
+        .all()
+        .map((r) => ({ agent: r.account.split(":")[1]!, delta: /^-?\d+$/.test(r.delta) ? BigInt(r.delta) : 0n, at: r.at }))
+        .filter((r) => ids.has(r.agent));
+      const first = Math.min(now, ...agents.map((a) => a.registered_at), ...ledger.map((l) => l.at));
+      const b = this.bucketsOf(win, now, first);
+      const modes = [...new Set(agents.map((a) => a.identity_mode ?? "not recorded"))].sort();
+      const models = [...new Set(agents.map((a) => modelOf(a.agent_id).model))].sort();
+      const series = Array.from({ length: b.n }, () => ({ launches: 0, by_mode: Object.fromEntries(modes.map((m) => [m, 0])) as Record<string, number>, by_model: Object.fromEntries(models.map((m) => [m, 0])) as Record<string, number>, fronted: 0n, increases: 0n, increase_count: 0 }));
+      for (const a of agents) {
+        const i = this.slot(b, a.registered_at);
+        if (i < 0) continue;
+        const x = series[i]!;
+        x.launches++;
+        x.by_mode[a.identity_mode ?? "not recorded"]!++;
+        x.by_model[modelOf(a.agent_id).model]!++;
+      }
+      for (const p of prepay.values()) {
+        if (!ids.has(p.agent_id) || !p.launched_at) continue;
+        const i = this.slot(b, p.launched_at * 1000);
+        if (i >= 0 && /^\d+$/.test(p.deposit)) series[i]!.fronted += BigInt(p.deposit);
+      }
+      const bal = new Map<string, bigint>();
+      const before = new Map<string, bigint>();
+      const endOfBucket = new Map<string, (bigint | null)[]>();
+      for (const l of ledger) {
+        const v = (bal.get(l.agent) ?? 0n) + l.delta;
+        bal.set(l.agent, v);
+        const i = this.slot(b, l.at);
+        if (l.delta > 0n && i >= 0) (series[i]!.increases += l.delta, series[i]!.increase_count++);
+        const row = endOfBucket.get(l.agent) ?? endOfBucket.set(l.agent, Array.from({ length: b.n }, () => null)).get(l.agent)!;
+        if (l.at < b.start) before.set(l.agent, v);
+        else if (i >= 0) row[i] = v;
+      }
+      // a vault before the window opens it; each vault carries forward through buckets without a change
+      for (const [a, row] of endOfBucket) {
+        if (row[0] === null) row[0] = before.get(a) ?? null;
+        for (let i = 1; i < row.length; i++) if (row[i] === null) row[i] = row[i - 1]!;
+      }
+      const gensBy = new Map<string, number[]>();
+      for (const g of this.gens()) {
+        if (!ids.has(g.author!)) continue;
+        const d = Math.floor(g.accepted_at / DAY) * DAY;
+        const r = gensBy.get(g.author!) ?? gensBy.set(g.author!, []).get(g.author!)!;
+        r.push(d);
+      }
+      const rows = agents
+        .map((a) => {
+          const p = prepay.get(a.agent_id);
+          const s = spend.get(a.agent_id)?.spend;
+          const days = gensBy.get(a.agent_id) ?? [];
+          const per = new Map<number, number>();
+          for (const d of days) per.set(d, (per.get(d) ?? 0) + 1);
+          return {
+            agent: a.agent_id, name: this.nameOf(a.agent_id), mint: a.mint, registered_at: a.registered_at, identity_mode: a.identity_mode, hosted: !!a.hosted, test_launch: tests.has(a.agent_id), ...modelOf(a.agent_id),
+            deposit: p?.deposit ?? null, initial_buy: p?.initial_buy ?? null, supply: p?.supply ?? null, launched_at: p?.launched_at ? p.launched_at * 1000 : null,
+            vault: bal.has(a.agent_id) ? bal.get(a.agent_id)!.toString() : null, vault_usd: typeof s?.vault_usd === "number" ? s.vault_usd : null,
+            vault_series: endOfBucket.get(a.agent_id)?.map((v) => (v === null ? null : v.toString())) ?? null,
+            generations: days.length, generations_daily: [...per.entries()].sort((x, y) => x[0] - y[0]).map(([day, n]) => ({ day: dayOf(day), n })),
+          };
+        })
+        .sort((x, y) => y.registered_at - x.registered_at);
+      return {
+        now, window: win, since, hidden_included: include,
+        axis: this.axis(b),
+        source: "launched agents, their newest soul, the launch fronting record (prepay) and the compute vault as Core mirrors it from chain (base units of the quote token)",
+        modes, models,
+        series: series.map((x) => ({ launches: x.launches, by_mode: x.by_mode, by_model: x.by_model, fronted: x.fronted.toString(), increases: x.increases.toString(), increase_count: x.increase_count })),
+        totals: { agents: agents.length, in_window: agents.filter((a) => a.registered_at >= since).length, fronted: prepay.size ? [...prepay.values()].filter((p) => ids.has(p.agent_id) && /^\d+$/.test(p.deposit)).reduce((s, p) => s + BigInt(p.deposit), 0n).toString() : "0" },
+        agents: rows,
       };
     });
   }
