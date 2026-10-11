@@ -87,7 +87,7 @@
   --radius-sm: 10px;
   --font: var(--sans);
   --pad-x: 24px;
-  --hdr-h: 60px;
+  --hdr-h: 68px;
   --ease-soft: cubic-bezier(.16, 1, .3, 1);
   --ease-back: cubic-bezier(.34, 2.4, .64, 1);
 }
@@ -131,31 +131,46 @@ code { font-family: var(--mono); color: var(--ts); background: var(--pill); bord
 
 /* ---------------------------------------------------------------- shell */
 
-/* The header (plnty): a fixed-height bar on the page surface, wordmark then beige nav pills on the left,
-   the actions on the right. Once the page scrolls (main.ts toggles .is-scrolled) the content under it is
-   blurred through a mask that fades out below the bar; the bar itself never changes size. */
-.top { position: sticky; top: 0; z-index: 100; font-family: var(--display); }
+/* The header (plnty): wordmark then beige nav pills on the left, the actions on the right. At the top of the
+   page it is a flat bar on the page surface. Once the page scrolls (main.ts toggles .is-scrolled) it closes
+   in to a shorter floating pill (narrower, smaller pills and wordmark) over a masked blur of the content
+   under it. Its total height never changes (8px above and below the shorter pill), so the page stays put. */
+.top { position: sticky; top: 0; z-index: 100; padding: 0; font-family: var(--display); transition: padding .34s var(--ease-soft); }
 .top::before, .top::after { content: ""; position: absolute; left: 0; right: 0; top: 0; z-index: -1; pointer-events: none; opacity: 0; transition: opacity .32s var(--ease-soft); }
 .top::before { bottom: -30px; backdrop-filter: blur(18px); -webkit-backdrop-filter: blur(18px); -webkit-mask-image: linear-gradient(to bottom, #000 0, #000 var(--hdr-h), transparent calc(var(--hdr-h) + 30px)); mask-image: linear-gradient(to bottom, #000 0, #000 var(--hdr-h), transparent calc(var(--hdr-h) + 30px)); }
 .top::after { bottom: -60px; backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px); -webkit-mask-image: linear-gradient(to bottom, #000 0, #000 var(--hdr-h), transparent calc(var(--hdr-h) + 60px)); mask-image: linear-gradient(to bottom, #000 0, #000 var(--hdr-h), transparent calc(var(--hdr-h) + 60px)); }
 .top.is-scrolled::before, .top.is-scrolled::after { opacity: 1; }
-.top-in { position: relative; display: flex; align-items: center; gap: 8px; height: var(--hdr-h); padding: 0 max(var(--pad-x), calc((100vw - 1440px) / 2 + var(--pad-x))); }
-.brand { display: inline-flex; align-items: center; gap: 8px; margin-right: 16px; font: 500 17px/1 var(--display); letter-spacing: -.03em; white-space: nowrap; color: var(--tp); }
-.brand svg { width: 21px; height: 21px; flex: none; }
+.top-in {
+  position: relative; display: flex; align-items: center; gap: 10px; height: var(--hdr-h); padding: 0 max(var(--pad-x), calc((100vw - 1440px) / 2 + var(--pad-x)));
+  border-radius: 0; corner-shape: squircle; background: transparent; box-shadow: 0 0 0 0 transparent;
+  transition: height .34s var(--ease-soft), padding .34s var(--ease-soft), gap .34s var(--ease-soft), border-radius .34s var(--ease-soft), background .34s var(--ease-soft), box-shadow .34s var(--ease-soft);
+}
+.top.is-scrolled { padding: 8px max(var(--pad-x), calc((100vw - 1180px) / 2)); }
+.top.is-scrolled .top-in { height: calc(var(--hdr-h) - 16px); padding: 0 10px 0 18px; gap: 8px; border-radius: 26px; background: color-mix(in srgb, var(--bg2) 88%, transparent); box-shadow: inset 0 0 0 1px #fff8, 0 12px 32px -14px #1a1a1933; }
+.brand { display: inline-flex; align-items: center; gap: 9px; margin-right: 18px; font: 500 20px/1 var(--display); letter-spacing: -.03em; white-space: nowrap; color: var(--tp); transition: font-size .34s var(--ease-soft), margin .34s var(--ease-soft), gap .34s var(--ease-soft); }
+.brand svg { width: 24px; height: 24px; flex: none; transition: width .34s var(--ease-soft), height .34s var(--ease-soft); }
 .brand .ph { display: none; }
-.nav { display: flex; align-items: center; gap: 8px; overflow-x: auto; scrollbar-width: none; }
+.top.is-scrolled .brand { font-size: 17px; margin-right: 10px; gap: 7px; }
+.top.is-scrolled .brand svg { width: 20px; height: 20px; }
+.nav { display: flex; align-items: center; gap: 8px; overflow-x: auto; scrollbar-width: none; transition: gap .34s var(--ease-soft); }
 .nav::-webkit-scrollbar { display: none; }
 .nav a, .eco-btn, .iconbtn {
-  display: inline-flex; align-items: center; justify-content: center; gap: 6px; height: 28px; padding: 0 10px; border: 0; border-radius: 16px; corner-shape: squircle;
-  background: var(--pill); color: var(--pill-ink); font: 500 12px/1 var(--display); letter-spacing: -.01em; white-space: nowrap; cursor: pointer;
-  transition: background .18s var(--ease-soft), color .18s var(--ease-soft), transform .18s var(--ease-soft);
+  display: inline-flex; align-items: center; justify-content: center; gap: 7px; height: 34px; padding: 0 14px; border: 0; border-radius: 18px; corner-shape: squircle;
+  background: var(--pill); color: var(--pill-ink); font: 500 14px/1 var(--display); letter-spacing: -.01em; white-space: nowrap; cursor: pointer;
+  transition: background .18s var(--ease-soft), color .18s var(--ease-soft), transform .18s var(--ease-soft), height .34s var(--ease-soft), padding .34s var(--ease-soft), font-size .34s var(--ease-soft), width .34s var(--ease-soft);
 }
 .nav a:hover, .eco-btn:hover, .iconbtn:hover { background: var(--pill-hover); }
 .nav a[aria-current="page"], .eco-btn[aria-current="page"], .eco-btn[aria-expanded="true"] { background: var(--tp); color: var(--bg); }
-.top-right { margin-left: auto; display: flex; align-items: center; gap: 8px; }
+.top.is-scrolled .nav { gap: 6px; }
+.top.is-scrolled .nav a, .top.is-scrolled .eco-btn, .top.is-scrolled .iconbtn { height: 30px; padding: 0 12px; font-size: 13px; }
+.top.is-scrolled .nav a:not([aria-current="page"]), .top.is-scrolled .eco-btn:not([aria-current="page"]):not([aria-expanded="true"]) { background: color-mix(in srgb, var(--pill) 70%, var(--bg)); }
+.top.is-scrolled .nav a:not([aria-current="page"]):hover, .top.is-scrolled .eco-btn:not([aria-current="page"]):not([aria-expanded="true"]):hover { background: var(--pill-hover); }
+.top-right { margin-left: auto; display: flex; align-items: center; gap: 8px; transition: gap .34s var(--ease-soft); }
+.top.is-scrolled .top-right { gap: 6px; }
 @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: .35; } }
-.iconbtn { width: 28px; padding: 0; }
-.iconbtn svg { width: 14px; height: 14px; }
+.iconbtn { width: 34px; padding: 0; }
+.iconbtn svg { width: 16px; height: 16px; }
+.top.is-scrolled .iconbtn { width: 30px; padding: 0; }
 
 main { padding: 28px var(--pad-x) 80px; min-height: calc(100vh - var(--hdr-h)); }
 .foot { border-top: 0; padding: 28px var(--pad-x); color: var(--tt); font: 500 12px/1.6 var(--sans); display: flex; gap: 10px 24px; flex-wrap: wrap; justify-content: space-between; }
@@ -392,7 +407,9 @@ details.more[open] summary { border-bottom: 1px solid var(--border); }
 }
 @media (max-width: 760px) {
   :root { --pad-x: 16px; }
-  .top-in { gap: 6px 8px; height: auto; min-height: var(--hdr-h); flex-wrap: wrap; padding-top: 12px; padding-bottom: 10px; }
+  .top-in { gap: 6px 8px; height: auto; min-height: 60px; flex-wrap: wrap; padding-top: 12px; padding-bottom: 10px; }
+  .top.is-scrolled { padding: 6px 8px; }
+  .top.is-scrolled .top-in { height: auto; min-height: 48px; padding: 6px 8px 8px 14px; border-radius: 22px; }
   .top::before { -webkit-mask-image: linear-gradient(to bottom, #000 0, #000 100%, transparent); mask-image: linear-gradient(to bottom, #000 0, #000 calc(100% - 30px), transparent); }
   .nav { order: 3; width: 100%; }
   main { padding: 20px var(--pad-x) 56px; }
@@ -821,9 +838,9 @@ a.pf-chip:hover { background: var(--panel-3); text-decoration: none; }
 
 /* Eco is a beige pill (with the nav, above); Connect is plnty's dark "Log in" pill */
 .cn-btn {
-  display: inline-flex; align-items: center; justify-content: center; gap: 7px; height: 26px; padding: 0 13px 0 11px; border: 0; border-radius: 16px; corner-shape: squircle;
-  background: var(--btn-p-bg); color: var(--btn-p-fg); font: 500 12px/1 var(--display); letter-spacing: -.01em; white-space: nowrap; cursor: pointer;
-  transition: background .18s var(--ease-soft), transform .18s var(--ease-soft);
+  display: inline-flex; align-items: center; justify-content: center; gap: 7px; height: 34px; padding: 0 16px 0 14px; border: 0; border-radius: 18px; corner-shape: squircle;
+  background: var(--btn-p-bg); color: var(--btn-p-fg); font: 500 14px/1 var(--display); letter-spacing: -.01em; white-space: nowrap; cursor: pointer;
+  transition: background .18s var(--ease-soft), transform .18s var(--ease-soft), height .34s var(--ease-soft), padding .34s var(--ease-soft), font-size .34s var(--ease-soft), width .34s var(--ease-soft);
 }
 .cn-btn:not(.on):hover, .cn-btn:not(.on):focus-visible, .wl-btn.primary:hover:not(:disabled) { transform: translateY(-4px); transition: background .18s var(--ease-soft), transform .28s var(--ease-back); }
 .cn-btn:not(.on):hover { background: #000; }
@@ -842,9 +859,11 @@ a.pf-chip:hover { background: var(--panel-3); text-decoration: none; }
 .cn-err { color: var(--bad); }
 
 /* Connected: the Connect button becomes the profile icon (agent avatar or wallet identicon) */
-.cn-btn.on { width: 28px; height: 28px; padding: 0; background: var(--pill); overflow: hidden; }
+.cn-btn.on { width: 34px; height: 34px; padding: 0; background: var(--pill); overflow: hidden; }
 .cn-btn.on:hover { background: var(--pill-hover); }
-.cn-btn.on .cn-av { width: 22px; height: 22px; border-radius: 50%; box-shadow: none; }
+.cn-btn.on .cn-av { width: 26px; height: 26px; border-radius: 50%; box-shadow: none; }
+.top.is-scrolled .cn-btn:not(.on) { height: 30px; padding: 0 14px 0 12px; font-size: 13px; }
+.top.is-scrolled .cn-btn.on { width: 30px; height: 30px; }
 a.eco-btn { text-decoration: none; }
 @media (max-width: 760px) {
   .cn-btn:not(.on) { height: 32px; padding: 0 14px; font-size: 13px; }
