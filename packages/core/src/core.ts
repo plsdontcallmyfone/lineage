@@ -765,7 +765,7 @@ export class Core {
     return { reserve, pool };
   }
 
-  /** $LINE creator rewards (SPEC 13.1): into the treasury, then split reserve_bps and pool_bps. */
+  /** $UNITS creator rewards (SPEC 13.1): into the treasury, then split reserve_bps and pool_bps. */
   creatorRewards(body: unknown) {
     return this.tx(() => {
       this.notOnChain("creator rewards");

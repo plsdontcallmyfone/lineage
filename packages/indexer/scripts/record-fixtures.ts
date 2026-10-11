@@ -18,7 +18,7 @@ const call = async (method: string, params: unknown[]) => {
 };
 const acct = async (a: string) => (await call("getAccountInfo", [a, { encoding: "base64" }]))?.value?.data?.[0] ?? null;
 const { line, a1, a2 } = proof.mints;
-// the transactions that touch an agent coin (A1 on $LINE's curve, A2 after $LINE migrated)
+// the transactions that touch an agent coin (A1 on $UNITS's curve, A2 after $UNITS migrated)
 const STEPS = ["2", "3a", "3b", "3c", "3d", "4", "7a", "7b", "8b", "8c", "9a", "9b", "9c", "9d"];
 const txs = [];
 for (const step of STEPS) {
@@ -30,7 +30,7 @@ for (const step of STEPS) {
 const out = {
   _note: "Recorded from the mainnet fork run of scripts/mainnet/pump-fork-proof.ts (mainnet's pump.fun programs and Global, 2026-10-10).",
   recorded_at: new Date().toISOString(), mints: proof.mints, creator_pdas: proof.creator_pdas,
-  // measured by the proof: the creator PDA's $LINE balance after the sweeps and collects
+  // measured by the proof: the creator PDA's $UNITS balance after the sweeps and collects
   pda_line_after_sweeps: { a1: "103289391468", a2: (295195554190n + 425712173n).toString() },
   accounts: {
     global: await acct(PUMP.global), fee_config: await acct(PUMP.feeConfig), amm_fee_config: await acct(PUMP.ammFeeConfig),

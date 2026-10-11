@@ -1,7 +1,7 @@
 #!/usr/bin/env bun
 // On the site server (as the lineage user): publishes the runtime's allocation escrow in Core's trading
 // config, so the launch form offers the optional trading allocation. The escrow key is the one the
-// trader created under the runtime's state directory (trader/escrow.json); its tLINE account is what
+// trader created under the runtime's state directory (trader/escrow.json); its tUNITS account is what
 // the config publishes. Signed with Core's admin key; nothing secret is printed.
 // Usage: bun scripts/trader/site-escrow.ts [--state /var/lib/lineage/runtime] [--admin-key ~/.config/lineage/site/admin.json]
 //        [--core http://127.0.0.1:9660] [--set '{"global_trades_per_epoch":120}']

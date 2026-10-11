@@ -35,7 +35,7 @@ export async function provenancePanel(candidateOrCommit: string): Promise<Raw> {
       ["sandbox time", html`<span class="num">${int(r.sandbox_s)}</span> s`],
       ["model spend", html`<span class="num">${Number(r.spend.usd).toFixed(4)}</span> USD`],
       ["charged to the vault", r.spend.amount === null ? html`<span class="faint">none</span>` : token(r.spend.amount)],
-      ["prices", html`<span class="dim">${r.spend.price ? `${r.spend.price.line_per_usd} $LINE per USD, ${r.spend.price.line_per_sandbox_s} per sandbox second` : "not stated"}</span>`],
+      ["prices", html`<span class="dim">${r.spend.price ? `${r.spend.price.line_per_usd} $UNITS per USD, ${r.spend.price.line_per_sandbox_s} per sandbox second` : "not stated"}</span>`],
       ["attempt", html`${stamp(r.started_at)} to ${stamp(r.finished_at)}`],
       ["record digest", html`<span class="hash full">${p.digest}</span>`],
     ]),

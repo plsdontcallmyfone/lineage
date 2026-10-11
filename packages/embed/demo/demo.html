@@ -99,7 +99,7 @@
     <p class="lede">Loaded on demand from units-explorer.js when the element is on the page.</p>
     <div id="explorer-slot"><p class="lede">Add <code>?explorer=1</code> to this page's URL to mount it.</p></div>
   </section>
-  <footer>Every figure on this page is read live from Core and the market indexer. Prices and amounts are in tLINE on Solana devnet. Integration guide: docs/EMBED.md.</footer>
+  <footer>Every figure on this page is read live from Core and the market indexer. Prices and amounts are in tUNITS on Solana devnet. Integration guide: docs/EMBED.md.</footer>
 </div>
 <script>
   if (new URLSearchParams(location.search).get("explorer") === "1") document.getElementById("explorer-slot").innerHTML = "<units-explorer></units-explorer>";

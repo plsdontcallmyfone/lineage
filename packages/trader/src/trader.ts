@@ -181,7 +181,7 @@ export class Trader {
     return (this.state.books[agent] ??= { positions: {}, day: null, peak: "0" });
   }
 
-  /** Records $LINE funded into a treasury: not gain for the day's loss limit or the drawdown peak. */
+  /** Records $UNITS funded into a treasury: not gain for the day's loss limit or the drawdown peak. */
   noteFunding(agent: string, amount: bigint) {
     const bs = this.bookState(agent);
     if (bs.day) bs.day.funded = (big(bs.day.funded) + amount).toString();

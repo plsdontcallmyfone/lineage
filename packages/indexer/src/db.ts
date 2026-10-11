@@ -2,7 +2,7 @@ import { Database } from "bun:sqlite";
 import type { Decoded } from "./decode.ts";
 
 // SQLite store. Amounts are base-unit integers kept as TEXT (u64 does not fit a JS number safely);
-// prices are REAL ($LINE per agent token). Every row a transaction produces is keyed by its
+// prices are REAL ($UNITS per agent token). Every row a transaction produces is keyed by its
 // signature, so re-ingesting a transaction changes nothing.
 //
 // pump.fun (owner decisions 2026-10-10): a token row keeps the first layout's columns so a database

@@ -1,8 +1,8 @@
 // Prepaid credits at launch (plan C, owner decision 2026-10-09): the deposit step of the launch form.
-// The launch transaction carries launch_agent, a tLINE deposit into the new compute vault and
+// The launch transaction carries launch_agent, a tUNITS deposit into the new compute vault and
 // refresh_awake, so the agent wakes at once. Every figure here comes from Core's network config
 // (`prepay`: minimum, default, the TEST dollar rate, the runtime's published compute prices) or from
-// chain (wake_threshold, the wallet's tLINE, the frozen lookup table a v0 launch reads); none is
+// chain (wake_threshold, the wallet's tUNITS, the frozen lookup table a v0 launch reads); none is
 // invented. lineage_launch does not enforce the minimum, so this form refuses a smaller deposit and
 // Core keeps an underfunded agent asleep (packages/core/src/prepay.ts).
 // Mainnet (SPEC 14.10): no USD figure without a real price feed, so the deposit is typed and shown in
@@ -103,7 +103,7 @@ export function prepayHelp(typed: string, o: { decimals: number; wake: bigint | 
   if (!P.cfg) return html`<span class="mark warn">Prepay config TBA: ${P.err ?? "not loaded"}. Launch is disabled until Core answers.</span>`;
   const c = P.cfg;
   if (!usdMode()) return quoteHelp(typed, o);
-  const rate = html`${c.line_per_usd} tLINE per USD ${c.rate_status === "test" ? badge("TEST rate", "warn") : ""}`;
+  const rate = html`${c.line_per_usd} tUNITS per USD ${c.rate_status === "test" ? badge("TEST rate", "warn") : ""}`;
   let amount: bigint;
   try {
     amount = depositBase(typed, o.decimals);
@@ -112,10 +112,10 @@ export function prepayHelp(typed: string, o: { decimals: number; wake: bigint | 
   }
   const b = firstRunBudget(c, amount, o.decimals);
   const cents = baseToUsdCents(amount, c.line_per_usd, o.decimals);
-  return html`<b class="num">${units(amount, o.decimals)}</b> tLINE (${(Number(cents) / 100).toFixed(2)} USD at ${rate}) into the agent's compute vault in the launch transaction; required, set in Core's config (admin-editable).
-    First-run budget at the runtime's published prices (${c.compute_price_line_per_usd} tLINE per USD of model spend, ${c.compute_price_line_per_sandbox_s} per sandbox second, ${c.sandbox_reserve_s} s held back): <b class="num">${b.usd.toFixed(2)}</b> USD of model spend, ${b.attempts} attempts at the ${c.attempt_max_usd} USD per-attempt cap.
-    ${o.wake !== null ? (amount >= o.wake ? html`<span class="mark good">wakes at once (wake_threshold ${units(o.wake, o.decimals)} tLINE)</span>` : html`<span class="mark warn">below wake_threshold ${units(o.wake, o.decimals)} tLINE: the agent would stay asleep</span>`) : ""}
-    ${o.balance !== null && o.balance < amount ? html`<span class="mark warn">your wallet holds ${units(o.balance, o.decimals)} tLINE</span>` : ""}`;
+  return html`<b class="num">${units(amount, o.decimals)}</b> tUNITS (${(Number(cents) / 100).toFixed(2)} USD at ${rate}) into the agent's compute vault in the launch transaction; required, set in Core's config (admin-editable).
+    First-run budget at the runtime's published prices (${c.compute_price_line_per_usd} tUNITS per USD of model spend, ${c.compute_price_line_per_sandbox_s} per sandbox second, ${c.sandbox_reserve_s} s held back): <b class="num">${b.usd.toFixed(2)}</b> USD of model spend, ${b.attempts} attempts at the ${c.attempt_max_usd} USD per-attempt cap.
+    ${o.wake !== null ? (amount >= o.wake ? html`<span class="mark good">wakes at once (wake_threshold ${units(o.wake, o.decimals)} tUNITS)</span>` : html`<span class="mark warn">below wake_threshold ${units(o.wake, o.decimals)} tUNITS: the agent would stay asleep</span>`) : ""}
+    ${o.balance !== null && o.balance < amount ? html`<span class="mark warn">your wallet holds ${units(o.balance, o.decimals)} tUNITS</span>` : ""}`;
 }
 
 const parseQuote = (t: string, decimals: number): bigint | null => {

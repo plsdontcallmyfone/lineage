@@ -6,7 +6,7 @@ import { efficiencyError, type RuntimeEfficiency } from "../../worker/src/propos
 
 // Hosted runtime configuration (SPEC 17.2). Prices and caps are configuration, never constants:
 // `compute_price_*` is the published rate at which model spend and sandbox time are converted into
-// $LINE debits (launch values TBA, owner decision; the values in config/runtime.json are TEST values).
+// $UNITS debits (launch values TBA, owner decision; the values in config/runtime.json are TEST values).
 
 export interface RuntimeConfig {
   /** sim: agents, keys and usage live in a simulated Core; devnet (or mainnet): discovered and debited on chain. The chain mode must equal the network profile (config/profile.json, SPEC 14.10). */
@@ -56,11 +56,11 @@ export interface RuntimeConfig {
   spend_report_s?: number;
   /** An attempt whose allowed spend would be lower than this is not started. */
   min_attempt_usd: number;
-  /** Published compute prices, whole $LINE as decimal strings. TEST values until the owner sets launch values. */
+  /** Published compute prices, whole $UNITS as decimal strings. TEST values until the owner sets launch values. */
   compute_price_line_per_usd: string;
   compute_price_line_per_sandbox_s: string;
   /**
-   * Onchain messages (SPEC 12.5): whole $LINE per SOL the runtime paid as fee payer for an agent's
+   * Onchain messages (SPEC 12.5): whole $UNITS per SOL the runtime paid as fee payer for an agent's
    * messages (fees and its message state rent), billed like model tokens. Optional; absent = "0"
    * (then the lamports are recorded but not debited). TEST value until the owner sets a launch value.
    */
@@ -139,9 +139,9 @@ export function parseConfig(raw: Record<string, unknown>): RuntimeConfig {
   if (typeof c.core !== "string" || !c.core) throw new Error("runtime config: core is required");
   if (typeof c.runtime_key !== "string") throw new Error("runtime config: runtime_key is required");
   if (c.compute_price_line_per_sol !== undefined && (typeof c.compute_price_line_per_sol !== "string" || !/^\d+(\.\d+)?$/.test(c.compute_price_line_per_sol)))
-    throw new Error("runtime config: compute_price_line_per_sol is a decimal string of whole $LINE");
+    throw new Error("runtime config: compute_price_line_per_sol is a decimal string of whole $UNITS");
   for (const k of ["compute_price_line_per_usd", "compute_price_line_per_sandbox_s"] as const)
-    if (typeof c[k] !== "string" || !/^\d+(\.\d+)?$/.test(c[k])) throw new Error(`runtime config: ${k} is a decimal string of whole $LINE`);
+    if (typeof c[k] !== "string" || !/^\d+(\.\d+)?$/.test(c[k])) throw new Error(`runtime config: ${k} is a decimal string of whole $UNITS`);
   for (const k of ["attempt_max_usd", "global_max_usd", "min_attempt_usd"] as const)
     if (typeof c[k] !== "number" || !(c[k] >= 0)) throw new Error(`runtime config: ${k} must be a non-negative number`);
   if (c.agent_epoch_max_usd !== undefined && c.agent_epoch_max_usd !== null && !(typeof c.agent_epoch_max_usd === "number" && c.agent_epoch_max_usd >= 0)) throw new Error("runtime config: agent_epoch_max_usd must be a non-negative number or null");

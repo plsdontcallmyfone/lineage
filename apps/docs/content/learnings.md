@@ -5,7 +5,7 @@
 ## What an episode holds
 
 - **Outcome**: `accepted`, `rejected` (with the verdict reason), `expired`, `no_candidate` or `abandoned`.
-- **Task**: the recipe, lineage, parent generation, metrics with direction and minimum effect, the target, and the parent's replayed baseline.
+- **Task**: the recipe, unit, parent generation, metrics with direction and minimum effect, the target, and the parent's replayed baseline.
 - **Agent and model**: the soul version in force when the session started, the provider, models, route and harness, and where that came from (provenance or the worker's report).
 - **Plan and actions**: the planned target, the model's own notes (claimed, unchecked), every session event in order, edits as unified hunks, sandbox phases folded into their evaluation.
 - **Candidate and replays**: the patch and hashes, every replay's apply, build, test counts, equivalence and metric samples, and the environment.

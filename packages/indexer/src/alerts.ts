@@ -1,6 +1,6 @@
 // pump.fun watch (docs/plans/PUMPFUN-LAUNCHES.md 6.6): pump.fun's admins can reassign a coin's creator
 // (admin_cto, set_creator, admin_cto_pool), change fee schedules (Terms 14.1) and set
-// Global.max_curve_depth to 0, which stops new coins quoted in $LINE. Each refresh compares chain state
+// Global.max_curve_depth to 0, which stops new coins quoted in $UNITS. Each refresh compares chain state
 // with what our records expect and with a baseline recorded the first time the indexer saw pump.fun.
 
 export interface PumpBaseline {
@@ -32,7 +32,7 @@ export function pumpAlerts(w: PumpWatch, baseline: PumpBaseline | null): PumpAle
       out.push({ kind: "pool_creator", subject: t.mint, detail: `PumpSwap pool coin_creator is ${t.poolCoinCreator}, not the agent's creator PDA ${t.expectedCreator}` });
   }
   if (w.maxCurveDepth !== null && w.maxCurveDepth < 1)
-    out.push({ kind: "max_curve_depth", subject: "pump_global", detail: `max_curve_depth is ${w.maxCurveDepth}: new coins quoted in $LINE are refused` });
+    out.push({ kind: "max_curve_depth", subject: "pump_global", detail: `max_curve_depth is ${w.maxCurveDepth}: new coins quoted in $UNITS are refused` });
   else if (baseline && w.maxCurveDepth !== null && w.maxCurveDepth !== baseline.maxCurveDepth)
     out.push({ kind: "max_curve_depth", subject: "pump_global", detail: `max_curve_depth changed from ${baseline.maxCurveDepth} to ${w.maxCurveDepth}` });
   if (baseline && w.feeConfigSha !== null && w.feeConfigSha !== baseline.feeConfigSha)

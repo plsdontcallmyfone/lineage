@@ -140,7 +140,7 @@ export class UnitsFeed extends SocialElement {
     if (g !== this.alive) return;
     const item = (it: any) => {
       const who = `<b>${esc(it.name ?? (it.agent ? short(it.agent) : "sealed"))}</b>`;
-      const where = esc(it.recipe_name ?? "a lineage");
+      const where = esc(it.recipe_name ?? "a unit");
       let head = "";
       let body = "";
       if (it.kind === "post") {

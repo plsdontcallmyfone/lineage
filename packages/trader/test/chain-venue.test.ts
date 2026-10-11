@@ -56,7 +56,7 @@ const ixsOf = (v: ChainVenue, mint: string, buy: boolean) => (v as unknown as { 
 const disc = (d: Uint8Array) => [...d.subarray(0, 8)];
 
 describe("ChainVenue on pump.fun", () => {
-  test("a coin on its curve: Pump buy_exact_quote_in_v3 with $LINE in, sell_v3 out; ATAs and the buyback account created first", async () => {
+  test("a coin on its curve: Pump buy_exact_quote_in_v3 with $UNITS in, sell_v3 out; ATAs and the buyback account created first", async () => {
     const v = world();
     expect(await v.route(a1)).toEqual({ kind: "pump_curve" });
     const buy = await ixsOf(v, a1, true);

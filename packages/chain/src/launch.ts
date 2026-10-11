@@ -18,7 +18,7 @@ export const launchPdas = {
   config: () => pda(LAUNCH_PROGRAM_ID, "launch_config"),
   /** Signer of the registry's register_launched; authority of every compute vault. */
   authority: () => pda(LAUNCH_PROGRAM_ID, "authority"),
-  /** ["pump_creator", agent]: the agent coin's pump.fun creator; its $LINE ATA receives the swept creator fees. */
+  /** ["pump_creator", agent]: the agent coin's pump.fun creator; its $UNITS ATA receives the swept creator fees. */
   pumpCreator: (agent: Address) => pda(LAUNCH_PROGRAM_ID, "pump_creator", addressBytes(agent)),
   agentLaunch: (mint: Address) => pda(LAUNCH_PROGRAM_ID, "agent_launch", addressBytes(mint)),
   computeVault: (agent: Address) => pda(LAUNCH_PROGRAM_ID, "compute", addressBytes(agent)),
@@ -29,7 +29,7 @@ export const launchPdas = {
 
 /**
  * The accounts every pump.fun launch transaction names that are neither signers nor fresh: the
- * content of a launch lookup table (pump.fun's fixed accounts and $LINE's quote accounts, plus ours).
+ * content of a launch lookup table (pump.fun's fixed accounts and $UNITS's quote accounts, plus ours).
  */
 export function launchTableAddresses(a: { lineMint: Address; lineTokenProgram?: Address; linePool?: { pool: Address; baseVault: Address; quoteVault: Address } }): Address[] {
   return [...new Set([launchPdas.config(), launchPdas.authority(), a.lineMint, registryPdas.config(), REGISTRY_PROGRAM_ID, LAUNCH_PROGRAM_ID, SYSVAR_INSTRUCTIONS,
@@ -101,7 +101,7 @@ export const launch = {
     };
   },
   /**
-   * Permissionless: splits the creator PDA's $LINE ATA. Put pump.fun's sweeps and collects before it
+   * Permissionless: splits the creator PDA's $UNITS ATA. Put pump.fun's sweeps and collects before it
    * (pump.ts creatorFeeHarvest) and create that ATA idempotently first.
    */
   crankPumpFees(a: { agent: Address; agentMint: Address; lineMint: Address; lineTokenProgram?: Address }): Ix {
@@ -151,7 +151,7 @@ export const launch = {
     };
   },
   /**
-   * Prepaid credits at launch (plan C): the launcher's tLINE into the new agent's compute vault, then
+   * Prepaid credits at launch (plan C): the launcher's tUNITS into the new agent's compute vault, then
    * the permissionless refresh_awake, placed after register_pump_launch in the same transaction so the agent
    * wakes at once when `amount` reaches wake_threshold.
    */

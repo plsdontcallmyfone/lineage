@@ -1,7 +1,7 @@
 import { get } from "../api.ts";
 import { shortHex, stamp, when } from "../fmt.ts";
 import { html, type Raw } from "../html.ts";
-import { fmtAmount, fmtInt, market, QUOTE } from "../market.ts";
+import { fmtAmount, fmtInt, market, QUOTE_LABEL } from "../market.ts";
 import { badge, empty, panel } from "../ui.ts";
 import { agentLabel, chartSlot, chip, hours, injectInsightsStyle, kpis, pct, qs, secs, usd, wireInsights } from "./insights-ui.ts";
 import { providerName } from "./social-ui.ts";
@@ -174,7 +174,7 @@ export function marketSection(tokens: any[] | null): Raw {
   const sum = (k: string) => tokens.reduce((s, t) => s + (typeof t[k] === "number" ? t[k] : 0), 0);
   return panel("Token market", html`${kpis([
       ["Listed tokens", String(tokens.length), `${tokens.filter((t) => t.phase === "graduated").length} graduated`],
-      ["24 h volume", fmtAmount(sum("volume_24h")), QUOTE],
+      ["24 h volume", fmtAmount(sum("volume_24h")), QUOTE_LABEL],
       ["24 h trades", fmtInt(sum("trades_24h")), `${fmtInt(sum("trades"))} all time`],
       ["Holders", fmtInt(sum("holders")), "summed over tokens"],
     ])}<div class="panel-note">From the market indexer (GET /market/tokens), test launches left out.</div>`, { id: "an-market" });

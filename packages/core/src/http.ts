@@ -27,6 +27,7 @@ import { runtimeSpendOf } from "./runtime-spend.ts";
 import { hiddenOf } from "./hidden.ts";
 import { deploymentsOf } from "./deployments.ts";
 import { analyticsOf } from "./analytics.ts";
+import { unitJson, unitUrl } from "./unit-alias.ts";
 import { loadNetworkProfile } from "../../chain/src/profile-node.ts";
 
 // HTTP API, SPEC 17. Every mutating request (and GET /v1/assignments) is signed:
@@ -486,11 +487,14 @@ export function createHandler(core: Core, opts: { corsOrigins?: string } = {}) {
         },
       });
     }
+    // /v1/units... and ?unit= are the /v1/lineages... routes and ?lineage= (unit-alias.ts); a signed
+    // request is still checked against the path and query it was signed over (`url`)
+    const rurl = unitUrl(url);
     try {
       let matched: { r: Route; m: RegExpExecArray } | null = null;
       let pathMatched = false;
       for (const r of routes) {
-        const m = r.pattern.exec(url.pathname);
+        const m = r.pattern.exec(rurl.pathname);
         if (!m) continue;
         pathMatched = true;
         if (r.method === req.method) {
@@ -516,7 +520,7 @@ export function createHandler(core: Core, opts: { corsOrigins?: string } = {}) {
       }
       const ctx: Ctx = {
         req,
-        url,
+        url: rurl,
         params,
         body,
         agent,
@@ -530,7 +534,9 @@ export function createHandler(core: Core, opts: { corsOrigins?: string } = {}) {
         },
       };
       const out = await r.handler(ctx);
-      return out instanceof Response ? out : json(out ?? { ok: true });
+      if (out instanceof Response) return out;
+      if (req.method === "GET") return new Response(unitJson(rurl.pathname, out ?? { ok: true }), { status: 200, headers: { "content-type": "application/json", "access-control-allow-origin": "*" } });
+      return json(out ?? { ok: true });
     } catch (e) {
       if (e instanceof ApiError) return json({ error: e.code, message: e.message }, e.status);
       if (e instanceof LedgerError) return json({ error: "ledger", message: e.message }, 409);

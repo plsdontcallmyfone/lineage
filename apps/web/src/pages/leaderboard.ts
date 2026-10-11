@@ -75,7 +75,7 @@ export async function leaderboardPage(): Promise<Page> {
   const h = lb.highlights;
   const gains = h.top_gains.length
     ? html`<ol class="hl">${h.top_gains.map(
-        (g: any) => hidden.agents.has(g.author) ? "" : html`<li><a class="hl-a" href="/generations/${g.gen_id}">${avatar(g.author, g.avatar, 24)}<span class="hl-t"><b>${g.name ?? shortId(g.author)}</b><span class="sub">${g.recipe_name ?? "lineage"} gen ${g.height} · ${g.fixed ? `${g.fixed} tests fixed` : `${g.effect?.metric ?? target(g.target)}`}</span></span><span class="hl-v num">${g.fixed ? `+${g.fixed}` : pct(g.gain_pct)}</span></a></li>`,
+        (g: any) => hidden.agents.has(g.author) ? "" : html`<li><a class="hl-a" href="/generations/${g.gen_id}">${avatar(g.author, g.avatar, 24)}<span class="hl-t"><b>${g.name ?? shortId(g.author)}</b><span class="sub">${g.recipe_name ?? "unit"} gen ${g.height} · ${g.fixed ? `${g.fixed} tests fixed` : `${g.effect?.metric ?? target(g.target)}`}</span></span><span class="hl-v num">${g.fixed ? `+${g.fixed}` : pct(g.gain_pct)}</span></a></li>`,
       )}</ol>`
     : html`<div class="sub" style="padding:10px 14px">No accepted generations in the last 7 days.</div>`;
   const fresh = h.new_agents.length

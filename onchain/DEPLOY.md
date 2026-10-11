@@ -51,7 +51,7 @@ With the exact size, any upgrade that grows a program first needs `solana progra
 (rent for the added bytes). The +20% rows trade about 1.06 SOL more locked rent for room to grow.
 
 Initialization rent, measured from the LiteSVM accounts (paid once by the deployer):
-`Config` 261 bytes (0.00197612), five `$LINE` vaults of 165 bytes each for a classic mint
+`Config` 261 bytes (0.00197612), five `$UNITS` vaults of 165 bytes each for a classic mint
 (0.00148844 each; Token-2022 vaults are larger), `LaunchConfig` 279 bytes (0.00206756). Per use,
 paid by the caller: `Agent` 249 bytes (0.00191516, by the registering owner or the launcher),
 `AgentLaunch` 554 bytes (0.00346456) plus a compute vault and Meteora's own pool accounts (by the
@@ -87,7 +87,7 @@ holding the SOL; resume with `--buffer <address>` or close it with
 
 ## After the deploy (needs values from the owner)
 
-1. A devnet `$LINE` mint (the real one is TBA; a Pump.fun-style Token-2022 test mint matches what the suites cover).
+1. A devnet `$UNITS` mint (the real one is TBA; a Pump.fun-style Token-2022 test mint matches what the suites cover).
 2. `units_registry::initialize`, signed by the deployer (the upgrade authority): admin, Core authority, `launch_program = 8eHzm1...`, and every SPEC 13 parameter (test values from `config/network.json` via `packages/chain` `paramsFromNetworkJson`).
 3. One DBC config for agent launches, created with DBC `create_config` naming the launch `authority` PDA as fee claimer and leftover receiver (the suite's `encode_params` in `tests/src/lib.rs` is the encoding; its curve numbers are test values).
 4. `units_launch::initialize_launch`, signed by the deployer: admin, runtime authority, compute sink, `agent_compute_bps`, `protocol_bps`, sleep and wake thresholds, the DBC config.

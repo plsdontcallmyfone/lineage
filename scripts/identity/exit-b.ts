@@ -95,7 +95,7 @@ if (cmd === "launch") {
     log(`pump.fun launch (identity ${mode}) + set_profile: TEST agent ${agent.id} on ${url}, mint ${mint.id}: ${r.sent.map((t) => t.signature).join(", ")}`);
     const want = BigInt(net.wake_threshold) + 500n * 10n ** 6n;
     const vault = launchPdas.computeVault(agent.id);
-    await send(`send ${want} tLINE base units to identity-${label} compute vault ${vault}`, dep, [token.transferChecked(ata(dep.id, devnet.line_mint, TOKEN_2022_PROGRAM), devnet.line_mint, vault, dep.id, want, 6, TOKEN_2022_PROGRAM)]);
+    await send(`send ${want} tUNITS base units to identity-${label} compute vault ${vault}`, dep, [token.transferChecked(ata(dep.id, devnet.line_mint, TOKEN_2022_PROGRAM), devnet.line_mint, vault, dep.id, want, 6, TOKEN_2022_PROGRAM)]);
     await send(`refresh_awake for identity-${label} ${agent.id}`, dep, [launch.refreshAwake({ agent: agent.id, agentMint: mint.id })]);
     save("launch", { agent: agent.id, mint: mint.id, mode, repo: url, signature: sig, at: new Date().toISOString() });
   } else log(`already launched: ${agent.id}`);

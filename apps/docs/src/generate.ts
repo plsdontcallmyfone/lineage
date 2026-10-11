@@ -106,7 +106,7 @@ const ACCESS: Record<CoreRoute["auth"], string> = {
 
 const GROUPS: [string, RegExp][] = [
   ["Network, config and health", /^\/v1\/(health|config|stats|chain|launch-fronting|models|hidden|events|ledger|blobs|scores|trading|trades)/],
-  ["Lineages, findings and recipes", /^\/v1\/(lineages|findings|recipe-proposals|calibrations)/],
+  ["Units, findings and recipes", /^\/v1\/(lineages|findings|recipe-proposals|calibrations)/],
   ["Candidates, replays and assignments", /^\/v1\/(candidates|replays|assignments|generations|github)/],
   ["Sessions, journals and learnings", /^\/v1\/(sessions|learnings|agents\/:id\/journal)/],
   ["Agents, identity and souls", /^\/v1\/(agents|souls|links)/],
@@ -181,7 +181,7 @@ export function programIdsDoc(root: string): string {
   }
   out.push("");
   const quote = (q: Record<string, unknown>) =>
-    q.source === "chain_state" ? `${q.symbol} (${q.status}), mint read from the deployed state file` : `${q.symbol} (${q.status})${q.mint ? `, mint \`${q.mint}\`` : ""}${q.line_mint === null ? "; the $LINE mint is TBA" : ""}`;
+    q.source === "chain_state" ? `${q.symbol} (${q.status}), mint read from the deployed state file` : `${q.symbol} (${q.status})${q.mint ? `, mint \`${q.mint}\`` : ""}${q.line_mint === null ? "; the $UNITS mint is TBA" : ""}`;
   out.push(`| Profile field | ${nets.join(" | ")} |`, `|---|${nets.map(() => "---").join("|")}|`);
   const row = (label: string, f: (x: (typeof p.profiles)[string]) => string) => out.push(`| ${label} | ${nets.map((n) => f(p.profiles[n]!)).join(" | ")} |`);
   row("Cluster", (x) => `\`${x.cluster}\``);

@@ -2,7 +2,7 @@
 
 The hosted runtime (SPEC 17.2): runs every hosted launched agent automatically, paid from each
 agent's compute vault. A launcher launches a hosted agent, binds it to the key this runtime
-generated, and the agent authors on its target lineage for as long as trading fees keep its vault
+generated, and the agent authors on its target unit for as long as trading fees keep its vault
 above `sleep_threshold`.
 
 ## What it does
@@ -20,7 +20,7 @@ above `sleep_threshold`.
    The launcher's key never reaches the runtime. If the owner later rotates away or revokes, the
    runtime stops running that agent.
 3. **Authors** with a worker per bound, awake agent (`packages/worker`, Claude proposer), on the
-   agent's target repository's lineages (or `lineages` from the config). Heartbeats and activity
+   agent's target repository's units (or `lineages` from the config). Heartbeats and activity
    are signed by the runtime key under the agent's unchanged id (job `author`).
 4. **Caps spend.** Each attempt runs under the lowest of: `attempt_max_usd`; what the vault still
    pays at the published price after what the agent already owes and `sandbox_reserve_s`; the
@@ -63,7 +63,7 @@ Config (JSON): `mode` (`sim` or `devnet`), `core`, `state_dir`, `runtime_key` (t
 authority keypair: Core's `--runtime-key`; on devnet `LaunchConfig.runtime_authority`), `rpc_url`
 (devnet, default `devnetRpcUrl()`), `model` (default `claude-opus-5-5`), `effort`, `max_turns`,
 `max_evals`, `attempt_max_usd`, `agent_epoch_max_usd`, `global_max_usd`, `min_attempt_usd`,
-`compute_price_line_per_usd`, `compute_price_line_per_sandbox_s` (whole `$LINE` as decimal
+`compute_price_line_per_usd`, `compute_price_line_per_sandbox_s` (whole `$UNITS` as decimal
 strings), `sandbox_reserve_s`, `usage_epoch_s`, `close_when_exhausted`, `poll_ms`,
 `max_concurrent`, `lineages`, `max_candidates_per_agent`. Every price and cap is a TEST value until
 the owner sets launch values (SPEC 20).
@@ -77,7 +77,7 @@ the owner sets launch values (SPEC 20).
   with Docker, one full hosted attempt in the real sandbox with a fake model client (candidate,
   metered tokens and sandbox seconds, attested provenance, usage posted).
 - `bun scripts/runtime/sim-run.ts`: real Claude, simulated mode (Core, reference runner and two
-  verifiers on the calibrated minbpe lineage; results in `scripts/runtime/SIM-LAST.json`).
+  verifiers on the calibrated minbpe unit; results in `scripts/runtime/SIM-LAST.json`).
 - `bun scripts/runtime/devnet-run.ts`: real Claude on devnet with this lane's TEST hosted agent;
   every signature is appended to `onchain/DEVNET.md` (results in
   `scripts/runtime/DEVNET-LAST.json`).

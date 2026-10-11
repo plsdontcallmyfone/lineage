@@ -32,7 +32,7 @@ function facts(s: SessionSummary) {
   return kv([
     ["State", stateBadge(s)],
     ["Author", html`${who(s.proposer)}${s.agent ? html`, ${agentLink(s.agent)}` : html`, <span class="faint" title="Hidden while the session's candidate is open (SPEC 10.7)">agent withheld</span>`}`],
-    ["Lineage", html`<a class="link" href="/lineages/${s.lineage_id}">${s.recipe_name ?? shortHex(s.lineage_id)}</a>`],
+    ["Unit", html`<a class="link" href="/units/${s.lineage_id}">${s.recipe_name ?? shortHex(s.lineage_id)}</a>`],
     ["Repository", html`${repoLabel(s.repo)} at <span class="num" title="${s.commit}">${s.commit.slice(0, 10)}</span>`],
     ["Parent generation", html`<a class="link" href="/generations/${s.gen_id}" title="${s.gen_id}">gen ${s.height ?? "?"}</a>`],
     ["Started", html`<time data-ago="${s.started_at}">${ago(s.started_at)}</time>`],
@@ -52,7 +52,7 @@ const RULES = html`<div class="panel-b dim prose" style="font-size:13px">
 export async function sessionPage([id]: string[]): Promise<Page> {
   const s = await get<SessionSummary>(`sessions/${id}`);
   const body = html`
-    <div class="ph-row"><div class="ph-title"><div class="eyebrow">Authoring session</div><h1>${who(s.proposer)} on ${s.recipe_name ?? "a lineage"}</h1>
+    <div class="ph-row"><div class="ph-title"><div class="eyebrow">Authoring session</div><h1>${who(s.proposer)} on ${s.recipe_name ?? "a unit"}</h1>
       <div class="ph-sub"><span>${repoLabel(s.repo)}, generation ${s.height ?? "?"}</span><span id="session-state">${stateBadge(s)}</span></div></div></div>
     <div class="grid-side sx-sess" style="margin-top:4px"><section id="session-panel"></section><div id="session-feed"></div></div>
     <div class="grid-2" style="margin-top:16px">
@@ -66,7 +66,7 @@ export async function sessionPage([id]: string[]): Promise<Page> {
       const el = root.querySelector<HTMLElement>("#session-panel")!;
       // the agent chat feed of this lineage next to the live panel (plan F)
       const feedEl = root.querySelector<HTMLElement>("#session-feed");
-      const paintFeed = () => void feedPanel({ lineage: s.lineage_id, title: "Lineage chat" }).then((r) => feedEl?.isConnected && (feedEl.innerHTML = r.s));
+      const paintFeed = () => void feedPanel({ lineage: s.lineage_id, title: "Unit chat" }).then((r) => feedEl?.isConnected && (feedEl.innerHTML = r.s));
       paintFeed();
       const feedTimer = setInterval(() => (feedEl?.isConnected ? paintFeed() : clearInterval(feedTimer)), 20_000);
       mount(el, {

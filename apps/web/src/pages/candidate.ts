@@ -79,7 +79,7 @@ export async function candidatePage([id]: string[]): Promise<Page> {
   const details = panel(
     "Commit and reveal",
     kv([
-      ["lineage", linLink(c.lineage_id)],
+      ["unit", linLink(c.lineage_id)],
       ["kind and target", html`${c.kind} ${target(c.target)}`],
       ["author", authorLink(c)],
       ["commit id", html`<span class="hash full">${c.commit_id}</span>`],

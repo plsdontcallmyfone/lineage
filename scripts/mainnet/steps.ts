@@ -93,7 +93,7 @@ export interface LaunchParams {
   max_debit_per_epoch: bigint;
   /** creator_fee_bps every pump.fun launch carries (owner decision 2026-10-10: 0, pump.fun's default); admin-editable later. */
   pump_creator_fee_bps: bigint;
-  /** $LINE's canonical PumpSwap pool and vaults once $LINE has migrated (the launch table then names them). */
+  /** $UNITS's canonical PumpSwap pool and vaults once $UNITS has migrated (the launch table then names them). */
   line_pool?: { pool: string; baseVault: string; quoteVault: string };
   msg: Omit<MsgConfigArgs, "admin">;
   bounty: BountyConfigArgs;
@@ -163,7 +163,7 @@ export const launchArgs = (p: Loaded, vault: string) => {
 
 /**
  * Initializes the three programs with every admin role = the vault (the deployer only signs as the
- * current upgrade authority and pays), the compute sink and the launch lookup table. $LINE must be a
+ * current upgrade authority and pays), the compute sink and the launch lookup table. $UNITS must be a
  * pump.fun coin, SOL- or USDC-paired and never mayhem mode (docs/MAINNET-RUNBOOK.md, hard requirement):
  * checked here from its bonding curve.
  */
@@ -180,10 +180,10 @@ export async function initializeAll(rpc: Rpc, send: Send, check: Check, deployer
   check("registry: admin = vault, Core authority, mint", c.admin === vault && c.coreAuthority === p.core_authority && c.mint === p.line_mint && c.maxRebatePerEpoch === p.max_rebate_per_epoch);
   const lineCurve = await rpc.getAccountInfo(pumpPdas.bondingCurve(p.line_mint));
   const lc0 = lineCurve && lineCurve.owner === PUMP.program ? decodeBondingCurve(lineCurve.data) : null;
-  check("$LINE is a pump.fun coin paired with SOL or USDC (depth 0), not mayhem mode", !!lc0 && lc0.depth === 0 && !lc0.isMayhemMode &&
+  check("$UNITS is a pump.fun coin paired with SOL or USDC (depth 0), not mayhem mode", !!lc0 && lc0.depth === 0 && !lc0.isMayhemMode &&
     (lc0.quoteMint === "11111111111111111111111111111111" || lc0.quoteMint === "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v"), lc0 ? `quote ${lc0.quoteMint}` : "no pump.fun curve");
   if (!(await rpc.getAccountInfo(computeSink(p, vault))))
-    await send("compute sink: the vault's $LINE token account", deployer, [token.createAtaIdempotent(deployer.id, vault, p.line_mint, T)]);
+    await send("compute sink: the vault's $UNITS token account", deployer, [token.createAtaIdempotent(deployer.id, vault, p.line_mint, T)]);
   if (!(await reader.launchConfig()))
     await send("units_launch::initialize_launch (admin = vault, sink = vault's account)", deployer, [
       launch.initialize({ upgradeAuthority: deployer.id, lineMint: p.line_mint, lineTokenProgram: T, args: launchArgs(p, vault) })]);

@@ -7,7 +7,7 @@
 // explicitly; the global solana config is never read).
 //
 // For each mint (default: the most traded curve token and the graduated TGRAD token, so both DBC and
-// DAMM v2 run): buy with tLINE, then sell half of what was bought. After each trade the balances are
+// DAMM v2 run): buy with tUNITS, then sell half of what was bought. After each trade the balances are
 // read back from chain and must equal the page's simulated quote, the page's balances must equal
 // chain, and the market indexer must report the trade with the same amounts; the page's trade list
 // must then show it. Every transaction is logged in onchain/DEVNET.md under this lane's section.
@@ -94,7 +94,7 @@ if (lineNow < LINE_TOP / 2n) {
     token.createAtaIdempotent(dep.id, wallet.id, LINE, T22),
     token.transferChecked(ata(dep.id, LINE, T22), LINE, ata(wallet.id, LINE, T22), dep.id, LINE_TOP - lineNow, QD, T22),
   ]);
-  logTx(`fund the test wallet with ${units(LINE_TOP - lineNow, QD)} tLINE from the deployer`, r.signature, r.fee);
+  logTx(`fund the test wallet with ${units(LINE_TOP - lineNow, QD)} tUNITS from the deployer`, r.signature, r.fee);
 }
 
 const tokens = (await (await fetch(`${MARKET}/market/tokens`)).json()).tokens as any[];
@@ -177,7 +177,7 @@ async function trade(mint: string, sym: string, decimals: number, side: "buy" | 
   const sig = (await page.locator(".mk-tb-done").getAttribute("data-sig"))!;
   const after = await balances(mint);
   const tx = await rpc.call<any>("getTransaction", [sig, { encoding: "json", commitment: "confirmed", maxSupportedTransactionVersion: 0 }]).catch(() => null);
-  logTx(`${side} ${side === "buy" ? `${amount} tLINE of ${sym}` : `${amount} ${sym}`} on ${venue} through /tokens/${mint} (test wallet ${wallet.id.slice(0, 6)}...)`, sig, tx?.meta?.fee);
+  logTx(`${side} ${side === "buy" ? `${amount} tUNITS of ${sym}` : `${amount} ${sym}`} on ${venue} through /tokens/${mint} (test wallet ${wallet.id.slice(0, 6)}...)`, sig, tx?.meta?.fee);
   const inBase = side === "buy" ? BigInt(Math.round(Number(amount) * 10 ** QD)) : BigInt(Math.round(Number(amount) * 10 ** decimals));
   const dIn = side === "buy" ? before.line - after.line : before.tok - after.tok;
   const dOut = side === "buy" ? after.tok - before.tok : after.line - before.line;
@@ -205,7 +205,7 @@ try {
     await page.locator('[data-bal="line"]').waitFor({ timeout: T });
     const b0 = await balances(mint);
     const lineShown = (await page.locator('[data-bal="line"]').innerText()).trim();
-    check(`${sym}: page shows the wallet's tLINE as chain does`, lineShown === units(b0.line, QD), `${lineShown} vs ${units(b0.line, QD)}`);
+    check(`${sym}: page shows the wallet's tUNITS as chain does`, lineShown === units(b0.line, QD), `${lineShown} vs ${units(b0.line, QD)}`);
     const v = await page.locator(".mk-tb-venue").innerText();
     check(`${sym}: venue ${venue}`, venue === "DAMM v2" ? /DAMM v2/.test(v) : /DBC curve/.test(v), v.replace(/\s+/g, " "));
     const buy = await trade(mint, sym, t.decimals, "buy", BUY, venue);

@@ -13,7 +13,7 @@
 //   - keys ~/.config/lineage/devnet/agent-<name>.json and agent-<name>-mint.json (mode 600, made here
 //     on first use; minbpe keeps the existing agent-minbpe key from scripts/devnet/setup.ts);
 //   - launch_agent by the devnet launcher key (TEST metadata, identity mode app, not hosted);
-//   - tLINE from the deployer to the agent's compute vault up to the wake threshold plus 500 tLINE,
+//   - tUNITS from the deployer to the agent's compute vault up to the wake threshold plus 500 tUNITS,
 //     then refresh_awake, so Core sees the agent awake.
 // Every transaction is appended to scripts/deploy/SITE-DEVNET.md. Public keys only are printed.
 // Prints { name: agent pubkey } as JSON on the last line.
@@ -52,7 +52,7 @@ const genesis = await rpc.call<string>("getGenesisHash", []);
 if (genesis !== DEVNET_GENESIS) throw new Error(`RPC genesis ${genesis} is not devnet; refusing`);
 const dep = loadKeypair(join(homedir(), ".config", "lineage", "devnet-deployer.json"));
 const launcher = loadKeypair(join(KEYS, "launcher.json"));
-// devnet v2: tLINE is the pump.fun coin held by the devnet treasury (the deployer pays the fees)
+// devnet v2: tUNITS is the pump.fun coin held by the devnet treasury (the deployer pays the fees)
 const holder = devnet.pump_tline?.treasury ? loadKeypair(join(KEYS, "tline-pump-treasury.json")) : dep;
 
 function logTx(what: string, signature: string, fee?: number) {
@@ -96,7 +96,7 @@ for (const name of names) {
   const vault = launchPdas.computeVault(agent.id);
   const have = (await reader.tokenBalance(vault)) ?? 0n;
   if (have < WANT) {
-    await send(`send ${WANT - have} tLINE base units to ${name} author's compute vault ${vault}`, dep, [
+    await send(`send ${WANT - have} tUNITS base units to ${name} author's compute vault ${vault}`, dep, [
       token.transferChecked(ata(holder.id, lineMint, T22), lineMint, vault, holder.id, WANT - have, DECIMALS, T22),
     ], holder === dep ? {} : { signers: [holder] });
     await send(`refresh_awake for ${name} author ${agent.id}`, dep, [launch.refreshAwake({ agent: agent.id, agentMint: mint.id })]);

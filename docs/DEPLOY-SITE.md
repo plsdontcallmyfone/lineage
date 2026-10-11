@@ -1,7 +1,7 @@
 # Public devnet site: deploy
 
 One public Linux server runs Core in devnet chain mode, the dashboard and the Wallet page, so anyone
-can browse lineages, watch the live wall, recompute verdicts (`scripts/verify.ts --core https://<site>`)
+can browse units, watch the live wall, recompute verdicts (`scripts/verify.ts --core https://<site>`)
 and use the devnet wallet flows (faucet, launch, bond, claims, bounties). Everything is devnet and every
 amount is a TEST value. The kit is `scripts/deploy/`; one command brings a fresh box up and the same
 command is safe to run again:
@@ -19,7 +19,7 @@ scripts/deploy/deploy.sh <server IPv4>
 | Optional: a domain whose A record points at the server (`DOMAIN=lineage.example`) | served next to `<ip-with-dashes>.sslip.io`, which needs no DNS |
 | Optional: `ACME_EMAIL=<email>` | Let's Encrypt expiry notices |
 | On this machine: `~/.config/lineage/devnet/core-authority.json`, `faucet.json`, `~/.config/lineage/devnet-deployer.json` | already here (devnet wiring lane); see "Secrets" |
-| Optional: `WITH_AUTHOR=1` and `AUTHORS=<recipes>` (default `minbpe`) | one TEST author agent per listed recipe submits its prepared candidates (`recipes/<name>/candidates`) on the site (real verdicts, no model spend); launch the agents first with `bun scripts/deploy/site-authors.ts --recipes <same list>` (see "The full lineage set") |
+| Optional: `WITH_AUTHOR=1` and `AUTHORS=<recipes>` (default `minbpe`) | one TEST author agent per listed recipe submits its prepared candidates (`recipes/<name>/candidates`) on the site (real verdicts, no model spend); launch the agents first with `bun scripts/deploy/site-authors.ts --recipes <same list>` (see "The full unit set") |
 | `WITH_RUNTIME=1` and `~/.config/lineage/model.env` | the hosted runtime authors with Claude; spends real money, at most 10 USD of model usage per UTC day across all hosted agents (owner decision 2026-10-09; see "Hosted runtime") |
 
 No DigitalOcean token is needed: create the droplet in the console (Ubuntu 24.04, add the public half
@@ -43,13 +43,13 @@ of `~/.ssh/lineage_site`), then run deploy.sh with its address.
    only: `requires.arch` to the server's arch and the image pin to the image id built there. Why: the
    committed recipes pin arm64 image ids measured on an Apple M4; cachegrind counts and image ids differ
    on amd64, so an amd64 reference runner and amd64 verifiers can only serve recipes calibrated on amd64.
-   The re-pinned recipe has a new recipe id, so the site has its own lineages, calibrated on the server
+   The re-pinned recipe has a new recipe id, so the site has its own units, calibrated on the server
    by its reference runner (step 6). Images are never rebuilt with `--pull`, so their ids, the recipe ids
-   and the lineages stay the same across deploys. An arm64 server (not offered by DigitalOcean; Hetzner
+   and the units stay the same across deploys. An arm64 server (not offered by DigitalOcean; Hetzner
    CAX, AWS Graviton) whose images match the committed ids keeps the recipes as committed.
 4. **keys** (see "Secrets"): makes the site's own keys on the server and copies only the keys the
    server needs from this machine, checked by public key first.
-5. **fund and chain**: `fund-site.ts` runs here (the deployer key stays here): SOL and tLINE to the
+5. **fund and chain**: `fund-site.ts` runs here (the deployer key stays here): SOL and tUNITS to the
    site's verifier owner, SOL to the Core authority. Then `site-chain.ts` on the server registers the
    site's reference runner and two verifiers on devnet (`register` with the server's capabilities digest,
    `bond` min_bond for the two verifiers), owner = the site's owner key. Every transaction is appended
@@ -70,7 +70,7 @@ of `~/.ssh/lineage_site`), then run deploy.sh with its address.
 | `lineage-indexer` | market indexer (`packages/indexer`): agent tokens, DBC and DAMM v2 trades, fee cranks, holders; read API `/market/*`; data `/var/lib/lineage/indexer/market.db` | `lineage-indexer` | 127.0.0.1:9668 | 256 MB |
 | `lineage-identity` | GitHub identity service (see its section) | `lineage-identity` | 127.0.0.1:9665 | 256 MB |
 | `caddy` | HTTPS for `<ip-dashes>.sslip.io` and `DOMAIN`, gzip, security headers (CSP, HSTS, nosniff, frame DENY, Permissions-Policy, COOP); everything to the gate | `caddy` | 80, 443; admin on a unix socket | 256 MB |
-| `lineage-bootstrap` | one shot per deploy: lineages for the served recipes | `lineage` | | 1 GB |
+| `lineage-bootstrap` | one shot per deploy: units for the served recipes | `lineage` | | 1 GB |
 | `lineage-reference` | reference runner (calibrations, reference replays, audits) | `lineage` | | 1 GB |
 | `lineage-verifier@v1`, `@v2` | two honest verifiers, bonded on devnet | `lineage` | | 1 GB each |
 | `lineage-author@<name>` (optional, one per name in `AUTHORS`) | TEST author agent of recipe `<name>`, scripted candidates | `lineage` | | 1 GB each |
@@ -141,7 +141,7 @@ server is mode 600 in a mode 700 directory, owned by the one service user that u
 | `~lineage/.config/lineage/site/owner.json` | made on the server | `site-keys.ts` | owns the site's verifiers on chain (pays their burn and bond) |
 | `~lineage/.config/lineage/site/verifier-{ref,v1,v2}.json` | made on the server | `site-keys.ts` | reference runner and verifiers |
 | `/etc/lineage-core/core-authority.json` (owner `lineage-core`) | `CjNUnQ3v2FRQJiMr16CfaFWCdzJ3nqq1VvY2zAgsc4j9` | copied from this machine | Core's chain bridge: `post_epoch`, `slash`, `migrate_agent` |
-| `/var/lib/lineage/web/.config/lineage/devnet/faucet.json` (owner `lineage-web`) | `FX4UjRbmbLHJ6K6RTvYcV4bFA9Yai2qntnPNex31GiH6` | copied | the Wallet page's tLINE faucet |
+| `/var/lib/lineage/web/.config/lineage/devnet/faucet.json` (owner `lineage-web`) | `FX4UjRbmbLHJ6K6RTvYcV4bFA9Yai2qntnPNex31GiH6` | copied | the Wallet page's tUNITS faucet |
 | `~lineage/.config/lineage/devnet/agent-<name>.json` (WITH_AUTHOR=1, each name in `AUTHORS`) | minbpe `BFPxdave7NVSXztGEZA5iZ7FiBDKRsuZmS9wZn2J1WBV`; the others as `site-authors.ts` printed them | copied | `lineage-author@<name>` |
 | `~lineage/.config/lineage/devnet/runtime-authority.json` (WITH_RUNTIME=1) | `DCmdy5MoAfnN6fn3nVW27db62ZwtjoksqSqdjAc8VPk4` | copied | `lineage-runtime` (Core only gets the public key file `runtime-authority.pub`) |
 | `~lineage/.config/lineage/model.env` (WITH_RUNTIME=1) | | copied | `lineage-runtime` |
@@ -160,7 +160,7 @@ whichever posts epoch N first wins and the other's epoch N is refused. Stop the 
 `/etc/lineage-core/core-authority.json` on the server and activate again; its Core then only reads). The same holds for the runtime
 authority: run `lineage-runtime` on the site or on this machine, not both.
 
-## The full lineage set (FINISH W3)
+## The full unit set (FINISH W3)
 
 Deployed 2026-10-08 with:
 
@@ -212,9 +212,9 @@ oversubscribe the 4 vCPUs. So a geth-rlp verdict takes about half an hour, and i
 keep the workers busy for roughly two hours. That is acceptable for a TEST site. A busier site should
 move to the 8 vCPU plan before wall_s becomes the limit.
 
-**Authors.** Chain mode only lets a launched agent author on lineages of the repository named at launch
+**Authors.** Chain mode only lets a launched agent author on units of the repository named at launch
 (`target_repo`), so each repository has its own TEST author agent. `site-authors.ts` launched them on
-devnet, funded each compute vault above Core's wake threshold (2,500 tLINE, TEST), and called
+devnet, funded each compute vault above Core's wake threshold (2,500 tUNITS, TEST), and called
 refresh_awake. Every transaction is in `scripts/deploy/SITE-DEVNET.md`. fixture-zigsize has candidates but
 no author: its repository `fixture:zigsize` is not an https URL, so `launch_agent` refuses it.
 
@@ -383,7 +383,7 @@ with its stream pulled and served (latency measured), and pauses the host mid-at
 ## GitHub identity service
 
 `lineage-identity` (packages/identity, SPEC 13.9 "Identity service") runs as the dedicated user
-`lineage-identity`, not in the docker, sudo or lineage groups. It listens on 127.0.0.1:9665, and Caddy routes
+`lineage-identity`, not in the docker, sudo or unit groups. It listens on 127.0.0.1:9665, and Caddy routes
 `/identity/*` to it directly, so a pasted token never passes the gate or Core. `remote.sh activate`
 sets it up idempotently:
 
@@ -391,7 +391,7 @@ sets it up idempotently:
 - gives `/var/lib/lineage` traverse-only permission for others (`o+x`; every directory under it keeps its own mode);
 - makes `/var/lib/lineage/identity` and `/etc/lineage-identity` (both mode 700);
 - makes the 32-byte key `master.key` once on the server (it is never copied anywhere);
-- writes `identity.env` with the keyed RPC from lineage's `rpc.env`;
+- writes `identity.env` with the keyed RPC from unit's `rpc.env`;
 - copies the site admin key to `core-key.json` (Core accepts PR records from it).
 
 `units-identity-cycle.timer` runs the mirror and PR bot cycle every 5 minutes as the same user.
@@ -425,7 +425,7 @@ scripts/deploy/deploy.sh <host> fund              # top up and re-register (idem
 ssh -i ~/.ssh/lineage_site root@<host> journalctl -u units-core -f
 ```
 
-`status` prints the Core authority's and the site owner's SOL, the faucet's SOL and tLINE, and the
+`status` prints the Core authority's and the site owner's SOL, the faucet's SOL and tUNITS, and the
 registry vaults as Core last read them. Top-ups: `fund` (site owner, Core authority from the deployer),
 `apps/web/scripts/fund-faucet.ts` (faucet). Private canaries go in `/var/lib/lineage/canaries/<recipe name>/`
 (Core rereads it every 60 s); without them the site injects none.
@@ -549,7 +549,7 @@ them is in the docker, sudo, admin, adm or systemd-journal group:
 
 The Core authority key and the faucet key are moved out of `lineage`'s home on the first activate
 (shredded there) and `deploy.sh keys` copies them straight to their new owners afterwards, so the user
-that runs untrusted sandboxes no longer holds a key that posts epochs or pays out tLINE. Core's and the
+that runs untrusted sandboxes no longer holds a key that posts epochs or pays out tUNITS. Core's and the
 indexer's data keep group `lineage` (mode 0770, Core with `UMask=0007`), so if a release from before the
 service users is activated again the site still runs: `remote.sh rollback` to such a release copies the
 two keys back to `lineage` and turns the new timers off; a plain `deploy.sh code` of such a release runs
@@ -622,8 +622,8 @@ times the Core archive plus 2 GiB). Retention here: the newest `BACKUP_KEEP` (3)
 `BACKUP_KEEP_DAYS=<n>` every copy younger than n days; the newest of each kind always stays.
 
 `restore-test` starts a Core on the restored data with the chain bridge read only (authority key
-removed from its config, no canaries) and compares what it serves (`/v1/stats?hidden=1` lineages,
-agents, candidates, the open epoch, the set of lineage ids) with the snapshot; the live Core is not
+removed from its config, no canaries) and compares what it serves (`/v1/stats?hidden=1` units,
+agents, candidates, the open epoch, the set of unit ids) with the snapshot; the live Core is not
 touched. It then decrypts the newest `state` and `identity` parts here (the private key never leaves
 this machine), computes public facts with `scripts/deploy/backup-facts.ts` (public keys of the runtime
 agent keys and site keys; the identity key file's sha256; whether every identity record authenticates
@@ -666,7 +666,7 @@ A lost or destroyed server is rebuilt from this machine. Tested end to end on a 
 (the dry run image) with the site's real snapshots of 2026-10-10 18:28 UTC: the rebuilt box reported the
 same five site public keys as the live site, the eight runtime agent keys and five site keys equal the
 snapshot by public key, all 23 identity records authenticated under the restored key file, and its Core
-served lineages 27, agents 67, candidates 202 and open epoch 18, the snapshot's figures; then its own
+served units 27, agents 67, candidates 202 and open epoch 18, the snapshot's figures; then its own
 hourly snapshots and `restore-test` passed there (Core 5/5, secrets proof PASS).
 
 1. New Ubuntu 24.04 server with root ssh for `~/.ssh/lineage_site`; pull the newest copies first if the
@@ -697,7 +697,7 @@ survives), and so is runtime state written after the state snapshot.
 Measured on the site 2026-10-10 (release ef15547): one `remote.sh backup` (all three snapshots) took 27 s.
 Core: a 589,004,800-byte `core.db` with 271 blobs packed to 19,898,877 bytes. `state`: 26 files, 394,963
 bytes, 18,754 bytes encrypted. `identity`: 24 files (23 records and the key file), 21,619 bytes, 18,597
-bytes encrypted. `restore-test`: Core PASS 5/5 (restored Core up in 4 s; lineages 27, agents 67,
+bytes encrypted. `restore-test`: Core PASS 5/5 (restored Core up in 4 s; units 27, agents 67,
 candidates 204, open epoch 18), secrets proof PASS (8 of 8 runtime agent keys and 5 of 5 site keys equal
 the live ones by public key; identity key file equal; 23 of 23 records authenticate), 36 s in all from
 this machine. The launchd agent's first run (kickstarted after install) pulled and verified all three,
@@ -709,14 +709,14 @@ exit 0.
 
 | Check | Warn | Fail |
 |---|---|---|
-| units | | an enabled lineage unit, timer or Caddy not active |
+| units | | an enabled units-* systemd unit, timer or Caddy not active |
 | `core`, `gate`, `public` | | `/v1/health` on 127.0.0.1:9660, `/gate/health` on 9662, `https://<site>/v1/health` not ok |
 | `epochs` | | the open epoch more than 1 h past its end; a closed epoch not on chain 2 h after closing; Core without its authority key when one is installed |
 | `verifiers` | | a site verifier (ref, v1, v2) without a heartbeat for 10 min |
 | `spend` (runtime on) | the hosted runtime's model spend at 80% of its window cap (the message says when the cap is reached) | |
 | `souls` | the soul drafter at 80% of its daily cap | |
 | `balance:core-authority`, `balance:owner` | under 0.05 SOL | Core authority under 0.01 SOL |
-| `faucet` | under 0.02 SOL or fewer than 10 drips of tLINE | |
+| `faucet` | under 0.02 SOL or fewer than 10 drips of tUNITS | |
 | `disk:/` | under 20% free | under 10% or 5 GiB free |
 | `backup` | | no snapshot, or the newest older than 2 h |
 | `backup:state`, `backup:identity` | | no encrypted snapshot of that part, or the newest older than 2 h |
@@ -785,7 +785,7 @@ defaults to amd64 and recalibrates there.
 
 Devnet costs (test SOL, no money): each `post_epoch` locks 0.00148844 SOL of Epoch account rent
 (measured on epoch 2's account, 165 bytes, 2026-10-08) plus the 5,000 lamport fee, once a day. Verifier
-registration and bonds: three burns of 1 tLINE and two bonds of 5 tLINE, plus fees and rent. The model
+registration and bonds: three burns of 1 tUNITS and two bonds of 5 tUNITS, plus fees and rent. The model
 spend of the optional runtime is real money and is capped by `runtime.json`.
 
 ## Tested

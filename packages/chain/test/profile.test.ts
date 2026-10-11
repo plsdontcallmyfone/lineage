@@ -34,7 +34,7 @@ describe("profile switch", () => {
     expect(d.faucet).toBe(true);
     expect(d.test_labels).toBe(true);
     expect(d.swap).toBe(false);
-    expect(d.quote).toMatchObject({ source: "chain_state", symbol: "tLINE" });
+    expect(d.quote).toMatchObject({ source: "chain_state", symbol: "tUNITS" });
     // the price every devnet transaction always used, and the devnet confirmation timing (900 ms poll, 2.5 s rebroadcast)
     expect(d.fees).toEqual({ mode: "fixed", cu_price_micro_lamports: 1 });
     expect(d.confirm).toEqual({ poll_ms: 900, resend_ms: 2500, rebuilds: 0 });
@@ -55,7 +55,7 @@ describe("profile switch", () => {
     expect(m.test_labels).toBe(false);
     expect(m.swap).toBe(true);
     expect(m.quote.source).toBe("config");
-    expect(m.quote.line_mint).toBeNull(); // $LINE is TBA
+    expect(m.quote.line_mint).toBeNull(); // $UNITS is TBA
     expect(m.quote.status).toBe("stand-in");
     expect(m.fees.mode).toBe("recent");
     if (m.fees.mode === "recent") expect(m.fees.cap_micro_lamports).toBeGreaterThan(0);
@@ -87,7 +87,7 @@ describe("profile switch", () => {
     expect(() => parseProfile("mainnet", { ...base, fees: { mode: "fixed", cu_price_micro_lamports: 1 } })).toThrow(/recent/);
     expect(() => parseProfile("mainnet", { ...base, fees: { ...base.fees, floor_micro_lamports: 10, cap_micro_lamports: 5 } })).toThrow(/floor above cap/);
     expect(() => parseProfile("mainnet", { ...base, quote: { ...base.quote, decimals: 99 } })).toThrow(/decimals/);
-    expect(() => parseProfile("mainnet", { ...base, quote: { ...base.quote, status: "live" } })).toThrow(/line_mint/);
+    expect(() => parseProfile("mainnet", { ...base, quote: { ...base.quote, status: "live" } })).toThrow(/units_mint/);
   });
 
   test("the public view carries no RPC URL", () => {

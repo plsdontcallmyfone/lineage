@@ -142,7 +142,7 @@ function buildingBody(t: TokenDetail): Raw {
 function agentBody(t: TokenDetail, lineages: { lineage_id: string; recipe_name: string; height: number; status: string }[] | null, known: boolean): Raw {
   return html`${kv([
     ["Agent", html`${agentLink(t.agent)}${known ? "" : html` <span class="faint" title="This Core has no record of the agent yet">not in Core</span>`}`],
-    ["Lineages", lineages === null ? html`<span class="faint">Core not reachable</span>` : lineages.length ? html`<span class="mk-lins">${lineages.map((l) => html`<a class="link" href="/lineages/${l.lineage_id}">${l.recipe_name}</a> <span class="faint">gen ${l.height}${l.status !== "active" ? `, ${l.status}` : ""}</span>`)}</span>` : html`<span class="faint">none on this repository yet</span>`],
+    ["Units", lineages === null ? html`<span class="faint">Core not reachable</span>` : lineages.length ? html`<span class="mk-lins">${lineages.map((l) => html`<a class="link" href="/units/${l.lineage_id}">${l.recipe_name}</a> <span class="faint">gen ${l.height}${l.status !== "active" ? `, ${l.status}` : ""}</span>`)}</span>` : html`<span class="faint">none on this repository yet</span>`],
     ["Repository", t.repo_url ? repoLink(t.repo_url) : null],
     ["Launcher", addrLink(t.launcher)],
     ["Mint", html`${addrLink(t.mint)} <button type="button" class="mk-copy" data-copy="${t.mint}" aria-label="Copy the mint address">${icon.copy}</button>`],

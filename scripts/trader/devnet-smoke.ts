@@ -53,7 +53,7 @@ const bal0 = await venue.balances(me.id, []);
 if (bal0.line < 50n * 10n ** BigInt(decimals)) {
   const amt = 100n * 10n ** BigInt(decimals) - bal0.line;
   const r = await sendAndConfirm(rpc, dep, [token.createAtaIdempotent(dep.id, me.id, LINE, TOKEN_2022_PROGRAM), token.transferChecked(ata(dep.id, LINE, TOKEN_2022_PROGRAM), LINE, ata(me.id, LINE, TOKEN_2022_PROGRAM), dep.id, amt, decimals, TOKEN_2022_PROGRAM)]);
-  logTx(`smoke: fund TEST treasury with ${amt} tLINE base units from the deployer`, r.signature, r.fee);
+  logTx(`smoke: fund TEST treasury with ${amt} tUNITS base units from the deployer`, r.signature, r.fee);
 }
 
 // ------------------------------------------------------------------ venue

@@ -27,7 +27,7 @@ type Project = Omit<ProjectRow, "lineages"> & { lineages: LineageRow[] };
 
 function metricCharts(l: LineageRow): Raw {
   const ms = l.metrics.filter((m) => m.points.length || m.baseline !== null);
-  if (!ms.length) return empty("No measured values yet", "Values appear with the lineage's first accepted generation.");
+  if (!ms.length) return empty("No measured values yet", "Values appear with the unit's first accepted generation.");
   return html`<div class="ins-grid">${ms.map(
     (m) => html`<div class="ins-mini" data-metric="${m.name}"><h3>${m.name}<span>${m.direction} is better${m.improvement_pct ? `, ${pct(m.improvement_pct)} from baseline` : ""}</span></h3>
       ${chartSlot({
@@ -77,7 +77,7 @@ function sessions(l: LineageRow): Raw {
     <span class="sub">${s.desktop ? "desktop, " : ""}${s.events} events, started ${when(s.started_at)}${s.ended_at ? html`, ended ${when(s.ended_at)}` : ""}</span></li>`;
   return html`<div class="ins-pad pjd-sess">
     <div class="eyebrow">Live now</div>
-    ${live.length ? html`<ul class="pjd-sl">${live.map(row)}</ul>` : html`<p class="ins-note">No live session on this lineage right now.</p>`}
+    ${live.length ? html`<ul class="pjd-sl">${live.map(row)}</ul>` : html`<p class="ins-note">No live session on this unit right now.</p>`}
     <div class="eyebrow" style="margin-top:10px">Recent</div>
     ${recent.length ? html`<ul class="pjd-sl">${recent.map(row)}</ul>` : html`<p class="ins-note">No ended session yet.</p>`}
     <p class="ins-note">Sessions are watched live; ended sessions keep their facts, with no replay of the screen.</p></div>`;
@@ -121,8 +121,8 @@ export async function projectPage(params: string[]): Promise<Page> {
     ])}</section>
     ${shown.sort((a, b) => Number(b.status === "active") - Number(a.status === "active") || b.timeline.length - a.timeline.length).map(
       (l) => html`<section class="pjd-lin" data-lineage="${l.lineage_id}">
-        <div class="pjd-lin-h"><h2>${l.recipe_name ?? "lineage"}</h2><span class="sub">gen ${l.height}${l.status !== "active" ? `, ${l.status}` : ""}, ${l.open_candidates} open candidate${l.open_candidates === 1 ? "" : "s"}</span>
-          <a class="link" href="/lineages/${l.lineage_id}">Lineage page</a></div>
+        <div class="pjd-lin-h"><h2>${l.recipe_name ?? "unit"}</h2><span class="sub">gen ${l.height}${l.status !== "active" ? `, ${l.status}` : ""}, ${l.open_candidates} open candidate${l.open_candidates === 1 ? "" : "s"}</span>
+          <a class="link" href="/units/${l.lineage_id}">Unit page</a></div>
         <div class="grid-2" style="margin-top:12px">
           ${panel("Metrics over generations", metricCharts(l), { count: l.metrics.length })}
           ${panel("Sessions", sessions(l), { count: l.sessions.filter((s) => s.state === "live").length ? `${l.sessions.filter((s) => s.state === "live").length} live` : undefined })}
@@ -131,7 +131,7 @@ export async function projectPage(params: string[]): Promise<Page> {
         <div style="margin-top:20px">${panel("Generation timeline", timeline(l, hidden), { count: l.timeline.length })}</div>
       </section>`,
     )}
-    ${quiet ? html`<p class="ins-note">${quiet} retired lineage${quiet === 1 ? "" : "s"} of this repository without an accepted generation ${quiet === 1 ? "is" : "are"} left out (see the <a class="link" href="/projects?all=1" data-q>full list</a>).</p>` : ""}
+    ${quiet ? html`<p class="ins-note">${quiet} retired unit${quiet === 1 ? "" : "s"} of this repository without an accepted generation ${quiet === 1 ? "is" : "are"} left out (see the <a class="link" href="/projects?all=1" data-q>full list</a>).</p>` : ""}
   </div>`;
   return {
     title: title,

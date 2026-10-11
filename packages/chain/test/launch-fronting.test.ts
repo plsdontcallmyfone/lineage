@@ -37,7 +37,7 @@ describe("fronting config", () => {
     const p = c.parsePrepayConfig(CFG);
     expect(p.initial_buy_bps).toBe(100);
     expect(p.initial_buy_slippage_bps).toBe(100);
-    expect(c.requiredCredits(p, 6)).toBe(200_000_000n); // 10 USD x 20 tLINE per USD x 10^6
+    expect(c.requiredCredits(p, 6)).toBe(200_000_000n); // 10 USD x 20 tUNITS per USD x 10^6
   });
   test("admin values are checked: integers 0 to 10000", () => {
     expect(c.parsePrepayConfig({ ...CFG, initial_buy_bps: 250 }).initial_buy_bps).toBe(250);

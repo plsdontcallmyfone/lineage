@@ -193,7 +193,7 @@ export class Prepay {
   checkSimDeposit(deposit: bigint) {
     const m = this.minBase();
     if (m !== null && deposit < m) {
-      throw bad("deposit_below_minimum", `deposit ${deposit} is below the minimum ${m} base units (prepay.min_usd ${this.config()!.min_usd} USD at ${this.config()!.line_per_usd} $LINE per USD)`);
+      throw bad("deposit_below_minimum", `deposit ${deposit} is below the minimum ${m} base units (prepay.min_usd ${this.config()!.min_usd} USD at ${this.config()!.line_per_usd} $UNITS per USD)`);
     }
   }
 

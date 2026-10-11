@@ -1,10 +1,10 @@
-// Pay in SOL or USDC where the app needs $LINE (SPEC 14.9): the launch deposit, the trading
+// Pay in SOL or USDC where the app needs $UNITS (SPEC 14.9): the launch deposit, the trading
 // allocation and trade-box buys. On mainnet the wallet asks Jupiter (Swap API V2 /build) for a quote
 // with raw instructions, shows the route, price impact, slippage and guaranteed minimum, and signs
 // one v0 transaction: Jupiter's swap, then the app's action spending at most that minimum (two
 // transactions in one signing request when one does not fit). Jupiter does not run on devnet, so
-// there the option is shown as unavailable and the forms use tLINE directly. The target mint and
-// every limit come from config/swap.json (a stand-in mint until $LINE exists on mainnet).
+// there the option is shown as unavailable and the forms use tUNITS directly. The target mint and
+// every limit come from config/swap.json (a stand-in mint until $UNITS exists on mainnet).
 import "../../../packages/chain/src/browser/buffer.ts";
 import {
   checkSwapTarget,
@@ -70,7 +70,7 @@ function swapHelp(): Raw {
   const a = availability();
   if (!a.ok) return html`<span class="dim">SOL or USDC through Jupiter: unavailable here (${a.reason}).</span>`;
   const c = SWAP.cfg!;
-  return html`SOL or USDC is swapped to ${c.target_symbol}${c.target_status === "stand-in" ? " (stand-in for $LINE)" : ""} through Jupiter in the same transaction; slippage ${c.slippage_bps} bps (limit ${c.max_slippage_bps}), price impact limit ${c.max_price_impact_pct}%. Route and minimum are shown before you sign.`;
+  return html`SOL or USDC is swapped to ${c.target_symbol}${c.target_status === "stand-in" ? " (stand-in for $UNITS)" : ""} through Jupiter in the same transaction; slippage ${c.slippage_bps} bps (limit ${c.max_slippage_bps}), price impact limit ${c.max_price_impact_pct}%. Route and minimum are shown before you sign.`;
 }
 
 /** The "pay with" select for a form; `name` is the form field. SOL and USDC are disabled until the network is mainnet. */

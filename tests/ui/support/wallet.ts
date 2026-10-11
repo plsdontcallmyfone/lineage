@@ -8,7 +8,7 @@ import type { BrowserContext } from "@playwright/test";
 // apps/web/scripts/app-check.ts does. It connects and signs messages with a local key, and it REFUSES
 // every transaction: the UI suite never signs or sends one. The key is the app-check test wallet
 // (~/.config/lineage/devnet/app-launch-test.json, or UI_WALLET_KEY), which launched TLAMP and holds
-// devnet tLINE; when it is absent (CI) a throwaway key is generated and the checks that need a funded
+// devnet tUNITS; when it is absent (CI) a throwaway key is generated and the checks that need a funded
 // launcher are skipped. The key never leaves this process and is never printed.
 
 const B58 = "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz";

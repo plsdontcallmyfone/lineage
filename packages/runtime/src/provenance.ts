@@ -68,7 +68,7 @@ export function provenanceRecord(a: {
     recipe_id: a.recipe_id,
     lineage_id: a.lineage_id,
     usage: { input_tokens: t.input_tokens, output_tokens: t.output_tokens, cache_read_tokens: t.cache_read_tokens, cache_write_tokens: t.cache_write_tokens },
-    spend: { usd: t.usd.toFixed(6), amount: a.amount.toString(), unit: "$LINE base units at the published compute price", price: a.price },
+    spend: { usd: t.usd.toFixed(6), amount: a.amount.toString(), unit: "$UNITS base units at the published compute price", price: a.price },
     sandbox_s: Math.ceil(t.sandbox_s),
     started_at: t.started_at,
     finished_at: t.finished_at,

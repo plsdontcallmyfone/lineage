@@ -1,8 +1,8 @@
 #!/usr/bin/env bun
-// One-time (idempotent) funding of the devnet tLINE faucet (wallet UI lane). Creates the faucet key
+// One-time (idempotent) funding of the devnet tUNITS faucet (wallet UI lane). Creates the faucet key
 // at ~/.config/lineage/devnet/faucet.json (mode 600) and tops it up from the devnet deployer, which
 // holds the TEST supply (scripts/devnet/devnet.json line_holder): SOL for fees and recipients' token
-// accounts, and tLINE to transfer. Nothing is minted: the tLINE mint authority is revoked.
+// accounts, and tUNITS to transfer. Nothing is minted: the tUNITS mint authority is revoked.
 // Usage: bun apps/web/scripts/fund-faucet.ts [--sol 0.2] [--line 100000]
 import { devnetRpcUrl } from "../../../packages/chain/src/endpoint.ts";
 import { readFileSync } from "node:fs";
@@ -39,7 +39,7 @@ if (have < wantLine) {
     token.createAtaIdempotent(dep.id, faucet.id, mint, T22),
     token.transferChecked(state.line_holder, mint, fAta, dep.id, wantLine - have, state.line_decimals, T22),
   ]);
-  logWalletTx("faucet", `send ${(wantLine - have) / ONE} tLINE from the supply holder ${state.line_holder} to the faucet's account ${fAta}`, r.signature, r.fee);
-  console.log(`tLINE: ${r.signature}`);
+  logWalletTx("faucet", `send ${(wantLine - have) / ONE} tUNITS from the supply holder ${state.line_holder} to the faucet's account ${fAta}`, r.signature, r.fee);
+  console.log(`tUNITS: ${r.signature}`);
 }
 console.log(`faucet holds ${Number(await rpc.getBalance(faucet.id)) / 1e9} SOL; deployer ${Number(await rpc.getBalance(dep.id)) / 1e9} SOL`);

@@ -90,7 +90,7 @@ async function lineTo(owner: string, min: bigint, label: string) {
   const dest = ata(owner, lineMint, T22);
   const bal = (await reader.tokenBalance(dest)) ?? 0n;
   if (bal >= min) return dest;
-  await send(STEP, `send ${min - bal} tLINE base units to ${label} ${owner}`, dep, [
+  await send(STEP, `send ${min - bal} tUNITS base units to ${label} ${owner}`, dep, [
     token.createAtaIdempotent(dep.id, owner, lineMint, T22),
     token.transferChecked(state.line_holder as string, lineMint, dest, dep.id, min - bal, DECIMALS, T22),
   ]);
@@ -129,7 +129,7 @@ async function refillPool() {
     const t = await pumpTrade(rpc, { trader, mint: m.mint!, lineMint, buy, amountIn });
     logTx(STEP, what, { signature: t.signature, fee: t.fee ?? undefined, slot: 0, logs: [] });
   };
-  await trade("trade: trader buys with 20,000 tLINE", true, 20_000n * ONE);
+  await trade("trade: trader buys with 20,000 tUNITS", true, 20_000n * ONE);
   const held = (await reader.tokenBalance(traderAgent))!;
   await trade(`trade: trader sells ${held / 4n} agent-token base units`, false, held / 4n);
   // creator fees waiting on the curve; once graduated the pool's waiting fees add to it (read from the crank's deltas)
@@ -217,7 +217,7 @@ async function main() {
   };
   const chain0 = await chainSync();
   const cfgView = await ok(anon.get("/v1/config"), "config");
-  check("Core in chain mode takes amounts from the registry (6-decimal tLINE)", cfgView.network.min_bond === params.minBond.toString() && cfgView.network.token_decimals === DECIMALS,
+  check("Core in chain mode takes amounts from the registry (6-decimal tUNITS)", cfgView.network.min_bond === params.minBond.toString() && cfgView.network.token_decimals === DECIMALS,
     `min_bond ${cfgView.network.min_bond}, first epoch ${(await ok(anon.get("/v1/health"), "health")).epoch}`);
   for (const n of names) {
     const v = await ok(anon.get(`/v1/agents/${vkeys[n].id}`), n);
@@ -274,8 +274,8 @@ async function main() {
   const b1 = mkBounty(base, { payee: m.agent, amount: 2n * ONE, kind: COND.target, value: targetDigest("encode_ir"), ttl: 86_400n, note: "e2e-devnet: faster encode on minbpe" });
   const b2 = mkBounty(base + 1n, { payee: null, amount: ONE, kind: COND.target, value: null, ttl: 70n, note: "e2e-devnet: short deadline, refunded" });
   const b3 = mkBounty(base + 2n, { payee: null, amount: ONE / 2n, kind: COND.target, value: null, ttl: 3_600n, note: "e2e-devnet: cancelled before the next epoch" });
-  for (const [b, what] of [[b1, `open_bounty ${base}: 2 tLINE on encode_ir of lineage ${L.slice(0, 12)}... for ${m.agent}`],
-    [b2, `open_bounty ${base + 1n}: 1 tLINE, any author, 70 s deadline (to refund)`], [b3, `open_bounty ${base + 2n}: 0.5 tLINE (to cancel)`]] as const)
+  for (const [b, what] of [[b1, `open_bounty ${base}: 2 tUNITS on encode_ir of lineage ${L.slice(0, 12)}... for ${m.agent}`],
+    [b2, `open_bounty ${base + 1n}: 1 tUNITS, any author, 70 s deadline (to refund)`], [b3, `open_bounty ${base + 2n}: 0.5 tUNITS (to cancel)`]] as const)
     await send(STEP, `${what} (runtime authority for the hosted payer ${payerA.agent.slice(0, 8)})`, runtimeAuth, [b.ix], { computeUnits: 300_000 });
   const addr1 = bountyPdas.bounty(payerA.agent, b1.id);
   const addr2 = bountyPdas.bounty(payerA.agent, b2.id);
@@ -283,7 +283,7 @@ async function main() {
   const pv1 = (await reader.tokenBalance(payerVault))!;
   const ob1 = (await reader.bounty(addr1))!;
   const reg1 = (await reader.registryConfig())!;
-  check("open_bounty escrowed exactly 3.5 tLINE from the payer's compute vault", pv0 - pv1 === 3n * ONE + ONE / 2n && (await reader.tokenBalance(bountyPdas.vault(addr1))) === 2n * ONE,
+  check("open_bounty escrowed exactly 3.5 tUNITS from the payer's compute vault", pv0 - pv1 === 3n * ONE + ONE / 2n && (await reader.tokenBalance(bountyPdas.vault(addr1))) === 2n * ONE,
     `${pv0} -> ${pv1}`);
   check("the bounty qualifies only generations from the registry's next epoch on", ob1.minEpoch === (reg1.epochsPosted === 0n ? 0n : reg1.lastEpoch + 1n) && ob1.status === "open",
     `min_epoch ${ob1.minEpoch}`);
@@ -407,12 +407,12 @@ async function main() {
   const mv0 = (await reader.tokenBalance(launchPdas.computeVault(m.agent)))!;
   const relIx = bounty.release({ caller: dep.id, payer: payerA.agent, bountyId: b1.id, opener: runtimeAuth.id, payee: m.agent, payeeMint: m.mint!, lineMint,
     contribution: cand.contribution, proof: cand.proof, lineTokenProgram: T22 });
-  const relTx = await send(STEP, `release_bounty ${b1.id}: 2 tLINE to ${m.agent} for gen ${String(cand.gen_id).slice(0, 12)}... (epoch ${closed.n} record root)`, dep, [relIx],
+  const relTx = await send(STEP, `release_bounty ${b1.id}: 2 tUNITS to ${m.agent} for gen ${String(cand.gen_id).slice(0, 12)}... (epoch ${closed.n} record root)`, dep, [relIx],
     { computeUnits: 400_000 });
   const mv1 = (await reader.tokenBalance(launchPdas.computeVault(m.agent)))!;
   const after1 = (await reader.bounty(addr1))!;
   const rcpt = await rpc.getAccountInfo(bountyPdas.receipt(payerA.agent, cand.leaf));
-  check("release_bounty paid exactly 2 tLINE into the payee's compute vault, with a receipt", mv1 - mv0 === 2n * ONE && after1.status === "released" &&
+  check("release_bounty paid exactly 2 tUNITS into the payee's compute vault, with a receipt", mv1 - mv0 === 2n * ONE && after1.status === "released" &&
     after1.releasedTo === m.agent && after1.leaf === cand.leaf && !!rcpt, `${relTx.signature} (${relTx.computeUnits ?? "?"} CU)`);
   let again = "";
   try {
@@ -478,7 +478,7 @@ async function main() {
   const pr0 = (await reader.tokenBalance(payerVault))!;
   await send(STEP, `refund_bounty ${b2.id} after the deadline plus grace (anyone; deployer pays the fee)`, dep, [bounty.refund({ payer: payerA.agent, payerMint: payerA.mint!,
     bountyId: b2.id, opener: runtimeAuth.id, lineMint, lineTokenProgram: T22 })]);
-  check("refund_bounty returned exactly 1 tLINE to the payer's compute vault", (await reader.tokenBalance(payerVault))! - pr0 === ONE && (await reader.bounty(addr2))!.status === "refunded");
+  check("refund_bounty returned exactly 1 tUNITS to the payer's compute vault", (await reader.tokenBalance(payerVault))! - pr0 === ONE && (await reader.bounty(addr2))!.status === "refunded");
 
   writeFileSync(join(ROOT, "scripts/devnet/E2E-DEVNET-LAST.json"), JSON.stringify({ at: new Date().toISOString(), seconds: Math.round((Date.now() - T0) / 1000), epoch: closed.n,
     post_epoch: post?.signature ?? null, payouts: closed.payouts, chain: chainView, results }, null, 2) + "\n");

@@ -9,16 +9,20 @@ export type NetworkName = "devnet" | "mainnet";
 export const NETWORKS: readonly NetworkName[] = ["devnet", "mainnet"];
 
 export interface QuoteConfig {
-  /** "chain_state": mint and decimals come from the deployed state file (devnet tLINE); "config": from this block */
+  /** "chain_state": mint and decimals come from the deployed state file (devnet tUNITS); "config": from this block */
   source: "chain_state" | "config";
   symbol: string;
-  /** "test" (devnet tLINE), "stand-in" (a mainnet mint standing in for $LINE), "live" ($LINE itself) */
+  /** "test" (devnet tUNITS), "stand-in" (a mainnet mint standing in for $UNITS), "live" ($UNITS itself) */
   status: "test" | "stand-in" | "live";
   mint?: string;
   decimals?: number;
   token_program?: string;
-  /** $LINE's mainnet mint once it exists; null = TBA */
+  /** $UNITS's mainnet mint once it exists; null = TBA (config key `units_mint`; `line_mint` is still read) */
   line_mint?: string | null;
+  /** how the quote token is named next to its symbol in the UI, e.g. "tUNITS (devnet test)"; defaults to the symbol */
+  display?: string;
+  /** the token's own on-chain metadata symbol when it differs from `symbol` (the devnet test coin keeps "tLINE") */
+  onchain_symbol?: string;
 }
 
 export type FeePolicy =
@@ -49,7 +53,7 @@ export interface NetworkProfile {
   confirm: ConfirmPolicy;
   /** registry, launch and msg program ids of this network: the ones its build declares (programs.ts, cargo feature `mainnet`) */
   programs: ProgramIds;
-  /** how this cluster's Pump build seeds a coin quoted in $LINE (pump-launch.ts PumpQuoteSeed); "swap" when absent */
+  /** how this cluster's Pump build seeds a coin quoted in $UNITS (pump-launch.ts PumpQuoteSeed); "swap" when absent */
   pump_quote_seed: "swap" | "spot";
 }
 
@@ -70,9 +74,16 @@ function parseQuote(q: unknown, where: string): QuoteConfig {
     out.decimals = q.decimals as number;
     out.token_program = q.token_program;
   }
-  if (q.line_mint !== undefined && q.line_mint !== null && (typeof q.line_mint !== "string" || !B58.test(q.line_mint))) throw new Error(`${where}.quote.line_mint must be null or an address`);
-  out.line_mint = (q.line_mint as string | null | undefined) ?? null;
-  if (out.status === "live" && out.source === "config" && out.line_mint !== out.mint) throw new Error(`${where}.quote: status live needs line_mint equal to mint`);
+  // rebrand (docs/plans/REBRAND-UNITS.md 3.15): the config key is units_mint; line_mint is still read
+  const um = q.units_mint !== undefined ? q.units_mint : q.line_mint;
+  if (um !== undefined && um !== null && (typeof um !== "string" || !B58.test(um))) throw new Error(`${where}.quote.units_mint must be null or an address`);
+  out.line_mint = (um as string | null | undefined) ?? null;
+  for (const k of ["display", "onchain_symbol"] as const) {
+    if (q[k] === undefined) continue;
+    if (typeof q[k] !== "string" || !q[k] || (q[k] as string).length > 40) throw new Error(`${where}.quote.${k} must be a short string`);
+    out[k] = q[k] as string;
+  }
+  if (out.status === "live" && out.source === "config" && out.line_mint !== out.mint) throw new Error(`${where}.quote: status live needs units_mint equal to mint`);
   return out;
 }
 
@@ -159,7 +170,7 @@ export interface PublicProfile {
   network: NetworkName;
   cluster: string;
   genesis: string;
-  quote: { symbol: string; status: QuoteConfig["status"]; mint: string | null; decimals: number | null; token_program: string | null; line_mint: string | null };
+  quote: { symbol: string; display: string; status: QuoteConfig["status"]; mint: string | null; decimals: number | null; token_program: string | null; line_mint: string | null };
   faucet: boolean;
   test_labels: boolean;
   swap: boolean;
@@ -176,7 +187,7 @@ export function publicProfile(p: NetworkProfile): PublicProfile {
     network: p.network,
     cluster: p.cluster,
     genesis: p.genesis,
-    quote: { symbol: p.quote.symbol, status: p.quote.status, mint: p.quote.mint ?? null, decimals: p.quote.decimals ?? null, token_program: p.quote.token_program ?? null, line_mint: p.quote.line_mint ?? null },
+    quote: { symbol: p.quote.symbol, display: p.quote.display ?? p.quote.symbol, status: p.quote.status, mint: p.quote.mint ?? null, decimals: p.quote.decimals ?? null, token_program: p.quote.token_program ?? null, line_mint: p.quote.line_mint ?? null },
     faucet: p.faucet,
     test_labels: p.test_labels,
     swap: p.swap,
@@ -194,7 +205,7 @@ export const DEVNET_PUBLIC_PROFILE: PublicProfile = {
   network: "devnet",
   cluster: "devnet",
   genesis: "EtWTRABZaYq6iMfeYKouRu166VU2xqa1wcaWoxPkrZBG",
-  quote: { symbol: "tLINE", status: "test", mint: null, decimals: null, token_program: null, line_mint: null },
+  quote: { symbol: "tUNITS", display: "tUNITS (devnet test)", status: "test", mint: null, decimals: null, token_program: null, line_mint: null },
   faucet: true,
   test_labels: true,
   swap: false,

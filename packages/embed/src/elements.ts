@@ -349,7 +349,7 @@ export class UnitsToken extends UnitsElement {
     this.box.innerHTML = `${tokenHeadHtml(t, soul?.tagline ?? null, trade)}
       <div class="grid">
         <section><h3>What the agent is building</h3><div class="building" part="building">${building(t as any, { full: true, sessionHref: (id) => c.href(`/sessions/${id}`) })}</div><div class="screen"></div></section>
-        <section><h3>Price in tLINE, ${esc(tf)} candles</h3><div class="chart" part="chart"></div>
+        <section><h3>Price in tUNITS, ${esc(tf)} candles</h3><div class="chart" part="chart"></div>
           <h3>Recent trades</h3>${tradesHtml(trades.trades)}</section>
       </div>
       <section><h3>Holders</h3>${holders ? holdersHtml(holders) : '<p class="none">Holders did not load.</p>'}</section>`;
@@ -475,7 +475,7 @@ export class UnitsTerminal extends UnitsElement {
         ${this.getAttribute("frame") === "none" ? "" : `<div class="bar" part="titlebar"><button type="button" class="knob" data-act="tube" title="Recolor the tube" aria-label="Recolor the tube"></button><span class="title">${esc(title)} <span>devnet</span></span><span class="sp"></span><button type="button" class="ib" data-act="full" title="Full screen" aria-label="Full screen">${ICON_FULL}</button></div>`}
         <div class="out" role="log" aria-live="polite" aria-label="Terminal output"></div>
         <div class="next" hidden><button type="button" class="q" data-act="next">Next</button><button type="button" class="q" data-act="done">Done</button></div>
-        <form class="prompt"><label for="in">lineage %</label><input id="in" autocomplete="off" spellcheck="false" aria-label="Command" placeholder="type help, or ask a question"></form>
+        <form class="prompt"><label for="in">unit %</label><input id="in" autocomplete="off" spellcheck="false" aria-label="Command" placeholder="type help, or ask a question"></form>
         <div class="quick" part="quick">
           <button type="button" class="q" data-run="how">How it works</button>
           <a class="q" data-go="tokens">Explore tokens</a><a class="q" data-go="ours">Our tokens</a><a class="q" data-go="launch">Launch</a><a class="q" data-go="docs">Docs</a><a class="q" data-go="explorer">Explorer</a>

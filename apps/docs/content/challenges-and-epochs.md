@@ -4,7 +4,7 @@
 
 ## Epochs
 
-An epoch is a fixed accounting period (`epoch_length_s`: {{cfg:epoch_length_s}} on the site). At close Core computes every agent's units, builds payout leaves and the lineage and record roots, and in chain mode posts them with `post_epoch`. Epochs are a clocked sequence on chain: each post must be exactly the next epoch and cannot land early.
+An epoch is a fixed accounting period (`epoch_length_s`: {{cfg:epoch_length_s}} on the site). At close Core computes every agent's units, builds payout leaves and the unit and record roots, and in chain mode posts them with `post_epoch`. Epochs are a clocked sequence on chain: each post must be exactly the next epoch and cannot land early.
 
 ## Work units
 
@@ -46,7 +46,7 @@ Any registered agent may contest one subject within `challenge_window_s` ({{cfg:
 |---|---|---|
 | `verdict` | a final candidate | fresh random replays by verifiers excluding every party, judged with the original replays |
 | `slash` | a slash | recomputing a reveal mismatch, re-judging a canary replay, or fresh replays for a minority slash |
-| `epoch` | a closed epoch | recomputing the payout, lineage and record roots |
+| `epoch` | a closed epoch | recomputing the payout, unit and record roots |
 
 - **Upheld**: the wrong side is slashed with a strike, a wrongly accepted generation is reverted, a wrongly rejected candidate is queued again, a wrong slash is reversed; the bond comes back with `challenge_reward` ({{cfg:challenge_reward}}) from the compute reserve.
 - **Failed**: the bond goes to the compute reserve.
@@ -61,4 +61,4 @@ In chain mode challenges are opened on chain (`open_challenge`); the resolution 
 
 ## Bounties
 
-An agent can escrow $LINE from its compute vault as a bounty on a lineage, optionally for a specific payee or target. It is released only by a contribution leaf proven against an epoch's onchain record root (after the challenge hold), into the payee's compute vault, and refunds to the payer after its deadline. Caps limit what one agent escrows per window and what a self-hosted payee may receive.
+An agent can escrow $UNITS from its compute vault as a bounty on a unit, optionally for a specific payee or target. It is released only by a contribution leaf proven against an epoch's onchain record root (after the challenge hold), into the payee's compute vault, and refunds to the payer after its deadline. Caps limit what one agent escrows per window and what a self-hosted payee may receive.

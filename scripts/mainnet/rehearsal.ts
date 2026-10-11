@@ -8,13 +8,13 @@
 //      as the runbook does (UNITS_NETWORK=mainnet: onchain/target/mainnet builds, the mainnet ids, the
 //      keypairs in ~/.config/lineage/mainnet signing on this local fork only), and its cost
 //   2  Squads v4: a 2-of-3 multisig with a time lock; its vault is every admin and, later, the upgrade authority
-//   3  a stand-in $LINE: a pump.fun coin paired with SOL, never mayhem (create_v2), bought on its own curve
+//   3  a stand-in $UNITS: a pump.fun coin paired with SOL, never mayhem (create_v2), bought on its own curve
 //   4  initialize registry, launch and messages with admin = the vault (mainnet-shaped values, owner values TBA)
 //   5  every onchain admin action through propose, approve (2 of 3), time lock, execute (incl. set_slash_cap)
 //   6  upgrade authority to the vault, then an upgrade executed by the multisig
 //   7  pump.fun launches exactly as the wizard plans them (create_v2 + register_pump_launch + 1% initial buy + deposit),
 //      curve trades, multi_hop_swap from SOL, the keeper crank's exact split, completion, migrate_v2 + record_pump_graduation,
-//      PumpSwap trades and pool fees, then $LINE's own migration and a launch quoted in the migrated $LINE
+//      PumpSwap trades and pool fees, then $UNITS's own migration and a launch quoted in the migrated $UNITS
 //   8  verifier, epoch post, a challenge opened and resolved, claims after the window, slashes up to the
 //      cap and one refused past it (A1-08)
 // Writes scripts/mainnet/REHEARSAL-LAST.json (every transaction with its exact cost, every check).
@@ -96,7 +96,7 @@ const T22 = TOKEN_2022_PROGRAM;
 const DECIMALS = 6;
 const ONE = 10n ** BigInt(DECIMALS);
 const SUPPLY = 1_000_000_000n * ONE;
-/** $LINE the deployer buys on the stand-in's own curve (it holds 793,100,000; this leaves it uncompleted). */
+/** $UNITS the deployer buys on the stand-in's own curve (it holds 793,100,000; this leaves it uncompleted). */
 const LINE_HELD = 600_000_000n * ONE;
 // Program ids, builds and id keypairs follow the active network profile (UNITS_NETWORK): mainnet
 // deploys the `--features mainnet` builds at the mainnet ids; devnet the default builds at the devnet ids.
@@ -269,18 +269,18 @@ async function step2() {
 // ---------------------------------------------------------------- 3: stand-in quote mint
 const LINE_META = { name: "units stand-in LINE (fork)", symbol: "sLINE", uri: "https://lineage.invalid/fork/stand-in-line.json" };
 async function step3() {
-  await send("3", "create the stand-in $LINE: pump.fun create_v2 paired with SOL, not mayhem", dep, [
+  await send("3", "create the stand-in $UNITS: pump.fun create_v2 paired with SOL, not mayhem", dep, [
     createV2({ mint: lineMint, user: dep.id, creator: dep.id, name: LINE_META.name, symbol: LINE_META.symbol, uri: LINE_META.uri, quote: { kind: "sol" } })],
     { signers: [lineMintKey], computeUnits: 400_000 });
   const c = decodeBondingCurve((await fork.getAccountInfo(pumpPdas.bondingCurve(lineMint)))!.data);
   const g = decodePumpGlobal((await fork.getAccountInfo(PUMP.global))!.data);
   const q = quoteCurveBuyExactOut(g, decodePumpFeeConfig((await fork.getAccountInfo(PUMP.feeConfig))!.data), c, LINE_HELD, SUPPLY);
-  await send("3", `buy ${LINE_HELD / ONE} stand-in $LINE on its own curve with SOL (buy_v3)`, dep, [token.createAtaIdempotent(dep.id, dep.id, lineMint, T22),
+  await send("3", `buy ${LINE_HELD / ONE} stand-in $UNITS on its own curve with SOL (buy_v3)`, dep, [token.createAtaIdempotent(dep.id, dep.id, lineMint, T22),
     pump.buyV3({ mint: lineMint, quoteMint: PUMP.wsol, user: dep.id, amount: LINE_HELD, maxQuoteIn: (q.quoteIn * 101n) / 100n })], { computeUnits: 300_000 });
   const m = (await reader.mint(lineMint))!;
-  check("3: stand-in $LINE: a pump.fun coin (Token-2022, 1e15 supply, no mint or freeze authority), quoted in SOL, depth 0, not mayhem",
+  check("3: stand-in $UNITS: a pump.fun coin (Token-2022, 1e15 supply, no mint or freeze authority), quoted in SOL, depth 0, not mayhem",
     m.tokenProgram === T22 && m.supply === SUPPLY && m.mintAuthority === null && m.freezeAuthority === null && c.quoteMint === "11111111111111111111111111111111" && c.depth === 0 && !c.isMayhemMode);
-  check("3: the deployer holds the bought $LINE", (await reader.tokenBalance(ata(dep.id, lineMint, T22))) === LINE_HELD);
+  check("3: the deployer holds the bought $UNITS", (await reader.tokenBalance(ata(dep.id, lineMint, T22))) === LINE_HELD);
 }
 
 // ---------------------------------------------------------------- 4: initialize with admin = the vault
@@ -403,7 +403,7 @@ async function step6() {
 // ---------------------------------------------------------------- 7: pump.fun launches, trades, fees, graduation
 const lineOf = (owner: string) => ata(owner, lineMint, T22);
 async function giveLine(to: string, amount: bigint, label: string) {
-  await send("7", `send ${amount / ONE} stand-in $LINE to ${label}`, dep, [
+  await send("7", `send ${amount / ONE} stand-in $UNITS to ${label}`, dep, [
     token.createAtaIdempotent(dep.id, to, lineMint, T22),
     token.transferChecked(lineOf(dep.id), lineMint, lineOf(to), dep.id, amount, DECIMALS, T22),
   ]);
@@ -466,12 +466,12 @@ async function launchOne(tag: string, symbol: string, linePool?: { pool: string;
   }
   const la = (await reader.agentLaunch(mintK.id))!;
   const c = await curveOf(mintK.id);
-  check(`7: ${symbol} registered in the create_v2 transaction (AgentLaunch venue pump, curve creator = the agent's PDA, quote $LINE, depth 1)`,
+  check(`7: ${symbol} registered in the create_v2 transaction (AgentLaunch venue pump, curve creator = the agent's PDA, quote $UNITS, depth 1)`,
     la.venue === "pump" && la.bondingCurve === pumpPdas.bondingCurve(mintK.id) && la.pumpCreator === launchPdas.pumpCreator(agent.id) && c.creator === la.pumpCreator
     && c.quoteMint === lineMint && c.depth === 1 && !!(await reader.agent(agent.id)), `plan ${plan.mode}, sizes ${plan.txs.map((t) => t.size).join(", ")} bytes`);
   const spent = l0 - (await reader.tokenBalance(lineOf(launcher.id)))! - deposit;
   check(`7: ${symbol} initial buy: exactly 1% of the supply in the agent key's account, at exactly the quote (pump.fun arithmetic), within maxIn`,
-    (await reader.tokenBalance(ata(agent.id, mintK.id, T22))) === amountOut && spent === quote && spent <= maxIn, `${amountOut} tokens for ${spent} $LINE (quote ${quote}, max ${maxIn})`);
+    (await reader.tokenBalance(ata(agent.id, mintK.id, T22))) === amountOut && spent === quote && spent <= maxIn, `${amountOut} tokens for ${spent} $UNITS (quote ${quote}, max ${maxIn})`);
   check(`7: ${symbol} deposit in the compute vault`, (await reader.tokenBalance(launchPdas.computeVault(agent.id))) === deposit, `${deposit}`);
   return { agent, mint: mintK.id, plan, sent, cost: sent.map((s) => s.cost), quote, amountOut };
 }
@@ -497,13 +497,13 @@ async function step7() {
   const a = await launchOne("a", "FRKA");
   out.launch_a = { mint: a.mint, agent: a.agent.id, plan: a.plan.mode, sizes: a.plan.txs.map((t) => t.size), initial_buy: { tokens: a.amountOut.toString(), line: a.quote.toString() },
     launch_txs: a.cost.map((c) => ({ signature: c.signature, payer_mainnet_lamports: c.payerMainnet, created: c.created, compute_units: c.computeUnits })) };
-  // curve trades: $LINE in, a sell, and SOL straight in through multi_hop_swap ($LINE curve -> FRKA curve)
+  // curve trades: $UNITS in, a sell, and SOL straight in through multi_hop_swap ($UNITS curve -> FRKA curve)
   const t = { mint: a.mint, quoteMint: lineMint, quoteTokenProgram: T22, user: trader.id };
-  await send("7", "FRKA buy_exact_quote_in_v3 (100,000 $LINE)", trader, [token.createAtaIdempotent(trader.id, trader.id, a.mint, T22),
+  await send("7", "FRKA buy_exact_quote_in_v3 (100,000 $UNITS)", trader, [token.createAtaIdempotent(trader.id, trader.id, a.mint, T22),
     pump.buyExactQuoteInV3({ ...t, spendableQuoteIn: 100_000n * ONE, minTokensOut: 1n })], { computeUnits: 300_000 });
   const held = (await reader.tokenBalance(ata(trader.id, a.mint, T22)))!;
   await send("7", "FRKA sell_v3 (half)", trader, [pump.sellV3({ ...t, amount: held / 2n, minQuoteOut: 1n })], { computeUnits: 300_000 });
-  const hop = await send("7", "multi_hop_swap SOL -> $LINE curve -> FRKA curve (1 SOL)", trader, [token.createAtaIdempotent(trader.id, trader.id, PUMP.wsol, TOKEN_PROGRAM),
+  const hop = await send("7", "multi_hop_swap SOL -> $UNITS curve -> FRKA curve (1 SOL)", trader, [token.createAtaIdempotent(trader.id, trader.id, PUMP.wsol, TOKEN_PROGRAM),
     pumpAmm.multiHopSwap({ user: trader.id, userIn: ata(trader.id, PUMP.wsol, TOKEN_PROGRAM), userOut: ata(trader.id, a.mint, T22), amountIn: 1_000_000_000n, minOut: 1n,
       buybackQuoteMint: PUMP.wsol, hops: [{ kind: "curve", mint: lineMint, quoteMint: PUMP.wsol }, { kind: "curve", mint: a.mint, quoteMint: lineMint, quoteTokenProgram: T22 }] })],
     { computeUnits: 400_000 });
@@ -532,30 +532,30 @@ async function step7() {
   const again = await refused(trader, [launch.recordPumpGraduation({ agentMint: a.mint, lineMint })]);
   check("7: graduation is recorded once (WrongPhase)", /WrongPhase/.test(again), again.slice(0, 120));
   const pt = { pool, mint: a.mint, quoteMint: lineMint, quoteTokenProgram: T22, user: trader.id };
-  await send("7", "FRKA PumpSwap buy_exact_quote_in_v2 (200,000 $LINE)", trader, [pumpAmm.buyExactQuoteInV2({ ...pt, spendableQuoteIn: 200_000n * ONE, minBaseOut: 1n })],
+  await send("7", "FRKA PumpSwap buy_exact_quote_in_v2 (200,000 $UNITS)", trader, [pumpAmm.buyExactQuoteInV2({ ...pt, spendableQuoteIn: 200_000n * ONE, minBaseOut: 1n })],
     { computeUnits: 300_000 });
   await send("7", "FRKA PumpSwap sell_v2", trader, [pumpAmm.sellV2({ ...pt, baseIn: 1_000_000n * ONE, minQuoteOut: 1n })], { computeUnits: 300_000 });
   const crankP = await crankExact(a, "FRKA after graduation (curve leftover + pool)", true);
   out.crank_pool = { signature: crankP.signature, payer_mainnet_lamports: crankP.cost.payerMainnet, compute_units: crankP.cost.computeUnits };
 
-  // $LINE itself migrates; a launch quoted in the migrated $LINE names its pool (the second table) and trades through it
+  // $UNITS itself migrates; a launch quoted in the migrated $UNITS names its pool (the second table) and trades through it
   const lc = await curveOf(lineMint);
   const lq = quoteCurveBuyExactOut(await G(), await FC(), lc, lc.realTokenReserves + 1_000_000n * ONE, (await reader.tokenBalance(ata(pumpPdas.bondingCurve(lineMint), lineMint, T22)))!);
-  await send("7", "$LINE stand-in: completing buy with SOL (synthetic migration)", dep, [
+  await send("7", "$UNITS stand-in: completing buy with SOL (synthetic migration)", dep, [
     pump.buyV3({ mint: lineMint, quoteMint: PUMP.wsol, user: dep.id, amount: lc.realTokenReserves + 1_000_000n * ONE, maxQuoteIn: (lq.quoteIn * 101n) / 100n })], { computeUnits: 400_000 });
-  await send("7", "$LINE stand-in: migrate_v2 to PumpSwap (permissionless)", dep, [
+  await send("7", "$UNITS stand-in: migrate_v2 to PumpSwap (permissionless)", dep, [
     pump.migrateV2({ user: dep.id, mint: lineMint, quoteMint: PUMP.wsol, withdrawAuthority: (await G()).withdrawAuthority, quoteTokenProgram: TOKEN_PROGRAM })], { computeUnits: 900_000 });
   const lp = (await linePoolNow())!;
-  check("7: $LINE migrated: its canonical PumpSwap pool is quoted in WSOL", !!lp);
+  check("7: $UNITS migrated: its canonical PumpSwap pool is quoted in WSOL", !!lp);
   const b = await launchOne("b", "FRKB", lp);
   out.launch_b = { mint: b.mint, agent: b.agent.id, plan: b.plan.mode, sizes: b.plan.txs.map((t) => t.size), launch_txs: b.cost.map((c) => ({ signature: c.signature, payer_mainnet_lamports: c.payerMainnet })) };
-  await send("7", "multi_hop_swap SOL -> $LINE pool -> FRKB curve (1 SOL wrapped)", trader, [
+  await send("7", "multi_hop_swap SOL -> $UNITS pool -> FRKB curve (1 SOL wrapped)", trader, [
     system.transfer(trader.id, ata(trader.id, PUMP.wsol, TOKEN_PROGRAM), 1_000_000_000n), { programId: TOKEN_PROGRAM, keys: [{ pubkey: ata(trader.id, PUMP.wsol, TOKEN_PROGRAM), isSigner: false, isWritable: true }], data: Uint8Array.of(17) },
     token.createAtaIdempotent(trader.id, PUMP.buybackRecipients[0], PUMP.wsol, TOKEN_PROGRAM), token.createAtaIdempotent(trader.id, trader.id, b.mint, T22),
     pumpAmm.multiHopSwap({ user: trader.id, userIn: ata(trader.id, PUMP.wsol, TOKEN_PROGRAM), userOut: ata(trader.id, b.mint, T22), amountIn: 1_000_000_000n, minOut: 1n,
       buybackQuoteMint: PUMP.wsol, hops: [{ kind: "pool", mint: lineMint, quoteMint: PUMP.wsol, pool: lp.pool }, { kind: "curve", mint: b.mint, quoteMint: lineMint, quoteTokenProgram: T22 }] })],
     { computeUnits: 400_000 });
-  await crankExact(b, "FRKB (quoted in the migrated $LINE)", false);
+  await crankExact(b, "FRKB (quoted in the migrated $UNITS)", false);
   return a;
 }
 

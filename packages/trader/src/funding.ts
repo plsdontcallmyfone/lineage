@@ -8,13 +8,13 @@ import { ata, ChainReader, launchPdas, Rpc, sendAndConfirm, system, token, TOKEN
 //    chain (AgentLaunch.to_compute, the agent's share of its trading fees credited to its compute
 //    vault) and adds trade_share_bps of what is new since the last share as a "trade share" line of
 //    the agent's usage leaf. debit_compute moves it, with the compute usage, from the compute vault to
-//    the compute sink (the runtime authority's tLINE account), and the runtime forwards exactly the
+//    the compute sink (the runtime authority's tUNITS account), and the runtime forwards exactly the
 //    trade share from the sink to the treasury in a second transaction. Anyone can recompute it: the
 //    basis (to_compute before and after, bps) is published with the funding record, the debit receipt
 //    and both transfers are on chain. A share is taken only when the vault keeps at least the wake
 //    threshold after paying the compute usage and the share, so trading never starves compute; a
 //    skipped share stays owed (the baseline does not move).
-// 2. An optional allocation at launch: the launcher sends tLINE to the allocation escrow (published as
+// 2. An optional allocation at launch: the launcher sends tUNITS to the allocation escrow (published as
 //    allocation_escrow in GET /v1/trading/config) with a memo naming the agent; the runtime forwards
 //    it to the agent's treasury once the agent is bound, and publishes both signatures.
 // 3. Gas: SOL for the treasury key's fees, topped up by the runtime authority, published as funding
@@ -113,7 +113,7 @@ export class ChainFunder {
     this.o.onTx?.(what, r.signature, r.fee);
     return r.signature;
   }
-  /** Trade share: compute sink (the runtime authority's tLINE account) to the treasury's tLINE account. */
+  /** Trade share: compute sink (the runtime authority's tUNITS account) to the treasury's tUNITS account. */
   async forwardShare(treasury: string, amount: bigint, note: string): Promise<string> {
     const { lc, decimals } = await this.config();
     if (lc.computeSink !== ata(this.runtimeKey.id, lc.lineMint, lc.lineTokenProgram)) throw new Error("the compute sink is not this runtime authority's token account; the trade share cannot be forwarded");
@@ -127,13 +127,13 @@ export class ChainFunder {
   async gas(treasury: string, lamports: bigint): Promise<string> {
     return this.send(`gas ${lamports} lamports to treasury ${treasury}`, this.runtimeKey, [system.transfer(this.runtimeKey.id, treasury, lamports)]);
   }
-  /** The escrow's tLINE account (the address the launch form sends allocations to). */
+  /** The escrow's tUNITS account (the address the launch form sends allocations to). */
   async escrowAccount(): Promise<string | null> {
     if (!this.o.escrow) return null;
     const { lc } = await this.config();
     return ata(this.o.escrow.id, lc.lineMint, lc.lineTokenProgram);
   }
-  /** Creates the escrow's tLINE account when it does not exist yet (the runtime authority pays the rent). */
+  /** Creates the escrow's tUNITS account when it does not exist yet (the runtime authority pays the rent). */
   async ensureEscrow(): Promise<string | null> {
     const acct = await this.escrowAccount();
     if (!acct || !this.o.escrow) return acct;

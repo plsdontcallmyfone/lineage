@@ -27,8 +27,8 @@ afterAll(() => {
 
 describe("chain fee usage line", () => {
   test("lamports convert at the per-SOL price, rounded up; absent price bills nothing", () => {
-    const p = { decimals: 6, perUsd: 0n, perSandboxS: 0n, perSol: 2_000_000n }; // 2 $LINE per SOL
-    expect(chainCostOf(p, 10_000)).toBe(20n); // 0.00001 SOL -> 0.00002 $LINE = 20 base units
+    const p = { decimals: 6, perUsd: 0n, perSandboxS: 0n, perSol: 2_000_000n }; // 2 $UNITS per SOL
+    expect(chainCostOf(p, 10_000)).toBe(20n); // 0.00001 SOL -> 0.00002 $UNITS = 20 base units
     expect(chainCostOf(p, 1)).toBe(1n);
     expect(chainCostOf(p, 0)).toBe(0n);
     expect(chainCostOf({ ...p, perSol: undefined }, 10_000)).toBe(0n);

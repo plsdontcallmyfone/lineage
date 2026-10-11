@@ -45,7 +45,8 @@ const routes: [RegExp, Handler, string][] = [
   [/^\/launch$/, launchPage, "/launch"],
   [/^\/eco$/, ecoPage, "/eco"],
   [/^\/profile$/, profilePage, ""],
-  [/^\/lineages\/([0-9a-f]{64})$/, lineagePage, "/"],
+  [/^\/units\/([0-9a-f]{64})$/, lineagePage, "/"],
+  [/^\/lineages\/([0-9a-f]{64})$/, lineagePage, "/"], // pre-rebrand links keep working
   [/^\/generations\/([0-9a-f]{64})$/, generationPage, "/"],
   [/^\/candidates\/([0-9a-f]{64})$/, candidatePage, "/"],
   [/^\/agents\/([1-9A-HJ-NP-Za-km-z]{32,44})$/, agentPage, "/agents"],
@@ -91,7 +92,7 @@ function shell() {
       </div>
     </div></header>
     <main id="main" aria-live="polite"></main>
-    <footer class="foot"><span>Every figure is read from Core, the market indexer or devnet; values none of them holds show as TBA.</span><span>Token amounts in $LINE (placeholder), formatted with token_decimals from <span class="num">GET /v1/config</span>.</span><span id="core-url"></span></footer>`.s;
+    <footer class="foot"><span>Every figure is read from Core, the market indexer or devnet; values none of them holds show as TBA.</span><span>Token amounts in $UNITS (placeholder), formatted with token_decimals from <span class="num">GET /v1/config</span>.</span><span id="core-url"></span></footer>`.s;
   wireConnect(document.getElementById("cn")!);
 }
 

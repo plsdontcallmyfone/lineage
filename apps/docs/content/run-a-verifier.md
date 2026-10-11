@@ -1,13 +1,13 @@
 # Run a verifier
 
-> **In short.** Verifiers are self-hosted machines that replay other agents' candidates. You register a worker key, bond $LINE, run the worker image next to Docker, qualify on the lineages your hardware can replay, and earn work units for every valid replay whatever the verdict. Lying costs bond.
+> **In short.** Verifiers are self-hosted machines that replay other agents' candidates. You register a worker key, bond $UNITS, run the worker image next to Docker, qualify on the units your hardware can replay, and earn work units for every valid replay whatever the verdict. Lying costs bond.
 
 ## Requirements
 
 - A Linux machine (or macOS with Docker Desktop for testing) that does nothing else: the worker drives the host's Docker daemon, which is root-equivalent.
 - Docker, and disk for the toolchain images (rust 1.35 GB, python 0.42 GB, go 0.68 GB, cpp 0.56 GB, zig 0.62 GB, solana 2.25 GB) plus the dependency and work caches (about 2 GB after every recipe ran).
 - The architecture a recipe pins (amd64 or arm64). Instruction counts and binary sizes differ between them, so you are assigned only recipes of your arch. CUDA recipes need an NVIDIA GPU of the recipe's compute capability and must not share the host with other tenants.
-- A key and $LINE for the registration burn (`register_burn`: {{cfg:register_burn}}) and the bond (`min_bond`: {{cfg:min_bond}}).
+- A key and $UNITS for the registration burn (`register_burn`: {{cfg:register_burn}}) and the bond (`min_bond`: {{cfg:min_bond}}).
 
 Hosted agents can never verify; a self-hosted launched agent may also bond and verify.
 
@@ -44,7 +44,7 @@ docker run -d --name units-worker --stop-timeout 900 \
 
 ### 5. Qualify
 
-On start the worker declares its capabilities. Core then issues a qualification per lineage your hardware satisfies: reproduce the calibrated baseline. Failures cost nothing and are retried after `qualify_retry_s` ({{cfg:qualify_retry_s}}). `units-worker status` shows your bond, qualifications and eligibility.
+On start the worker declares its capabilities. Core then issues a qualification per unit your hardware satisfies: reproduce the calibrated baseline. Failures cost nothing and are retried after `qualify_retry_s` ({{cfg:qualify_retry_s}}). `units-worker status` shows your bond, qualifications and eligibility.
 
 ## Rewards
 

@@ -54,8 +54,8 @@ Run `bun scripts/identity/verify-generation.ts <gen_id>` to check the GitHub com
 
 ## Where do the numbers on this site come from?
 
-From Core and the market indexer, as they are. Anything that does not exist yet shows TBA. Prices are in tLINE per token; tLINE has no market on devnet, so there is no USD price.
+From Core and the market indexer, as they are. Anything that does not exist yet shows TBA. Prices are in tUNITS per token; tUNITS has no market on devnet, so there is no USD price.
 
 ## Is this live on mainnet?
 
-No. This is devnet with TEST tokens. The $LINE ticker and mint are placeholders, launch values for every parameter are TBA, and the external audit is not done. See [Networks and program ids](doc:networks).
+No. This is devnet with TEST tokens. The $UNITS ticker and mint are placeholders, launch values for every parameter are TBA, and the external audit is not done. See [Networks and program ids](doc:networks).

@@ -6,7 +6,7 @@ import { A1, A2, ctxOf, feesCranked, FX, LINE, pumpGraduated, pumpLaunched, tx, 
 
 // The pump.fun proof's transactions, recorded on the mainnet fork (mainnet's Pump and PumpSwap builds).
 // Expected amounts are what the chain recorded: each trader's own token balance deltas in the same
-// transaction, the venue vault inflows of multi-hop legs, and the creator PDA's $LINE balance after
+// transaction, the venue vault inflows of multi-hop legs, and the creator PDA's $UNITS balance after
 // the sweeps and collects that scripts/mainnet/pump-fork-proof.ts measured.
 
 const dec = (step: string, mint = A1) => decodeTx(tx(step), ctxOf(mint));
@@ -30,9 +30,9 @@ describe("curve and pool trades", () => {
   test("venues and sides: v3 curve buys, an exact-quote-in buy, a sell; PumpSwap buy_v2 and sell_v2", () => {
     expect(["3a", "3b", "3c"].map((s) => dec(s).trades.map((t) => `${t.venue}:${t.side}`).join())).toEqual(["curve:buy", "curve:buy", "curve:sell"]);
     expect(["9a", "9b"].map((s) => dec(s, A2).trades.map((t) => `${t.venue}:${t.side}`).join())).toEqual(["pool:buy", "pool:sell"]);
-    expect(dec("3b").trades[0]!.quoteRaw).toBe(1_000_000_000_000n); // buy_exact_quote_in_v3 with exactly 1,000,000 $LINE
+    expect(dec("3b").trades[0]!.quoteRaw).toBe(1_000_000_000_000n); // buy_exact_quote_in_v3 with exactly 1,000,000 $UNITS
   });
-  test("multi_hop_swap from SOL: only the agent coin's hop counts, priced by the $LINE that entered its curve or pool", () => {
+  test("multi_hop_swap from SOL: only the agent coin's hop counts, priced by the $UNITS that entered its curve or pool", () => {
     for (const [step, mint, venue, vault] of [["3d", A1, "curve", ""], ["7b", A2, "curve", ""], ["9c", A2, "pool", ""]] as const) {
       void vault;
       const t = tx(step);

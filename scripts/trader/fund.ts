@@ -1,7 +1,7 @@
 #!/usr/bin/env bun
 // Funding for the devnet trading run (plan T exit), every transfer logged in onchain/DEVNET.md:
 //   prep      the deployer sends the runtime authority SOL for treasury gas top-ups, and each TEST
-//             launcher the tLINE of its allocation (a launcher's own wallet, as at launch);
+//             launcher the tUNITS of its allocation (a launcher's own wallet, as at launch);
 //   allocate  each TEST launcher sends its allocation to the published allocation escrow with the memo
 //             `lineage-trade-alloc:<agent>` (what the launch form's optional field sends); the site
 //             runtime forwards it to the agent's treasury once the agent is bound.
@@ -45,7 +45,7 @@ if (mode === "prep") {
       token.createAtaIdempotent(dep.id, l.id, LINE, TOKEN_2022_PROGRAM),
       token.transferChecked(ata(dep.id, LINE, TOKEN_2022_PROGRAM), LINE, ata(l.id, LINE, TOKEN_2022_PROGRAM), dep.id, amount, DEC, TOKEN_2022_PROGRAM),
     ]);
-    logTx(`prep: ${amount} tLINE base units from the deployer to TEST launcher ${l.id} (allocation for agent ${agent})${have ? "" : ", its tLINE account created"}`, r2.signature, r2.fee);
+    logTx(`prep: ${amount} tUNITS base units from the deployer to TEST launcher ${l.id} (allocation for agent ${agent})${have ? "" : ", its tUNITS account created"}`, r2.signature, r2.fee);
     console.log(`launcher ${l.id} +${amount}: ${r2.signature}`);
   }
 } else if (mode === "allocate") {
@@ -56,7 +56,7 @@ if (mode === "prep") {
     const [agent, f] = p.split("=");
     const l = key(f!);
     const r = await sendAndConfirm(rpc, l, [token.transferChecked(ata(l.id, LINE, TOKEN_2022_PROGRAM), LINE, escrow, l.id, amount, DEC, TOKEN_2022_PROGRAM), memoIx(`${ALLOCATION_MEMO}${agent}`)]);
-    logTx(`allocate: TEST launcher ${l.id} sends ${amount} tLINE base units to the allocation escrow ${escrow} for agent ${agent} (memo)`, r.signature, r.fee);
+    logTx(`allocate: TEST launcher ${l.id} sends ${amount} tUNITS base units to the allocation escrow ${escrow} for agent ${agent} (memo)`, r.signature, r.fee);
     console.log(`allocation for ${agent}: ${r.signature}`);
   }
 } else throw new Error("usage: fund.ts prep|allocate ...");

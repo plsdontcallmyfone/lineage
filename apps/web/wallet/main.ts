@@ -171,7 +171,7 @@ const S = {
 const dec = () => S.cfg?.state?.line_decimals ?? 6;
 const lineMint = () => S.cfg!.state!.line_mint;
 const me = () => S.account?.address ?? null;
-/** $LINE's canonical PumpSwap pool and vaults once $LINE has migrated (Core's state.line_pool), else its curve is the quote. */
+/** $UNITS's canonical PumpSwap pool and vaults once $UNITS has migrated (Core's state.line_pool), else its curve is the quote. */
 const linePool = () => (S.cfg?.state as { line_pool?: { pool: string; baseVault: string; quoteVault: string } } | undefined)?.line_pool;
 const tl = (base: bigint | null | undefined, min = 0) =>
   base === null || base === undefined ? html`<span class="faint">TBA</span>` : html`<span class="num">${units(base, dec(), min)}</span><span class="unit">${qsym()}</span>`;
@@ -209,14 +209,14 @@ function renderGate() {
   if (cl) cl.innerHTML = c ? (c.genesis === NET.p.genesis ? badge(netName(), "good", icon.check, `genesis ${c.genesis}`) : badge(c.cluster, "bad", icon.x)).s : "";
   if (S.gate === "checking") return set("w-gate", banner("info", "Checking the cluster…", `The RPC's genesis hash must be ${netName()}'s before anything is built.`));
   if (S.gate !== "ok") return set("w-gate", banner("bad", "Refusing to build transactions", html`${S.gate} This page is set to ${netName()} only.`));
-  // mainnet (SPEC 14.10): no TEST wording; the quote token as configured, a stand-in until $LINE exists
+  // mainnet (SPEC 14.10): no TEST wording; the quote token as configured, a stand-in until $UNITS exists
   if (isMainnet())
     return set(
       "w-gate",
       banner(
         "info",
         html`Solana mainnet. Every transaction here is built for mainnet and nothing else.`,
-        html`The RPC answers with mainnet's genesis hash (${NET.p.genesis.slice(0, 8)}…), checked again before every build. Amounts are in ${qsym()} ${addr(lineMint())}${NET.p.quote.status === "stand-in" ? ", a stand-in for $LINE (TBA)" : ""}.`,
+        html`The RPC answers with mainnet's genesis hash (${NET.p.genesis.slice(0, 8)}…), checked again before every build. Amounts are in ${qsym()} ${addr(lineMint())}${NET.p.quote.status === "stand-in" ? ", a stand-in for $UNITS (TBA)" : ""}.`,
       ),
     );
   set(
@@ -243,7 +243,7 @@ async function refreshBalances() {
   renderConn();
 }
 
-/** Profile header: the address, SOL and tLINE, and the faucet (devnet). */
+/** Profile header: the address, SOL and tUNITS, and the faucet (devnet). */
 function renderConn() {
   if (S.page !== "profile") return;
   if (!S.account) return;
@@ -262,7 +262,7 @@ function renderConn() {
     html`<div class="stats wl-bal" style="--n:3">
         ${stat("Address", html`<span title="${S.account.address}">${short(S.account.address)}</span> <button type="button" class="copy" data-copy="${S.account.address}" aria-label="Copy address">${icon.copy}</button>`, html`${S.wallet!.name}${devnetOk ? `, ${netName()}` : `, ${netName()} not offered`}`, "sm")}
         ${stat("SOL", S.sol === null ? "TBA" : sol(S.sol), `${netName()}, for fees and rent`, "sm")}
-        ${stat(`${qsym()}`, S.line === null ? "TBA" : units(S.line, dec()), testLabels() ? "TEST mint, Token-2022" : NET.p.quote.status === "stand-in" ? "stand-in for $LINE" : "quote token", "sm")}
+        ${stat(`${qsym()}`, S.line === null ? "TBA" : units(S.line, dec()), testLabels() ? "TEST mint, Token-2022" : NET.p.quote.status === "stand-in" ? "stand-in for $UNITS" : "quote token", "sm")}
       </div>
       ${devnetOk ? "" : html`<div class="panel-b">${banner("bad", `This wallet account does not offer ${walletChain()}`, `Pick an account or wallet that supports ${netName()}. Nothing will be built for it.`)}</div>`}
       ${NET.p.faucet ? html`<div class="panel-b wl-row">
@@ -370,7 +370,7 @@ function renderRepo() {
   const r = S.repo;
   renderWizard();
   set("w-work", r?.state === "ok" ? workView(r) : "");
-  if (!r) return set("w-repo", "Any public GitHub repository, as an https URL. Checked against the GitHub API and Core's lineages.");
+  if (!r) return set("w-repo", "Any public GitHub repository, as an https URL. Checked against the GitHub API and Core's units.");
   if (r.state === "checking") return set("w-repo", html`<span class="dim">${r.msg}</span>`);
   if (r.state === "bad") return set("w-repo", html`<span class="mark warn">${icon.warn} ${r.msg}</span>`);
   const gh = r.gh;
@@ -391,13 +391,13 @@ function workView(r: NonNullable<typeof S.repo>): Raw {
   if (r.core === "down") return html`<div class="lz-work">${banner("warn", "Core is not answering", "What this repository can improve is TBA until it does.")}</div>`;
   const rs = r.recipes ?? [];
   if (!rs.length)
-    return html`<div class="lz-work">${banner("info", "No recipe for this repository yet", html`Core has no active lineage on it, so nothing here is measurable yet. The agent's first job is drafting a recipe; it authors only after calibration replays agree on one (SPEC 13.8). A repository that cannot be calibrated (no runnable tests, no metric, a policy against AI changes) stays in setting up with a public reason.`)}</div>`;
+    return html`<div class="lz-work">${banner("info", "No recipe for this repository yet", html`Core has no active unit on it, so nothing here is measurable yet. The agent's first job is drafting a recipe; it authors only after calibration replays agree on one (SPEC 13.8). A repository that cannot be calibrated (no runnable tests, no metric, a policy against AI changes) stays in setting up with a public reason.`)}</div>`;
   return html`<div class="lz-work"><div class="eyebrow" style="margin-bottom:6px">What it can improve, read from Core</div>
     ${rs.map((v) => {
       const rc = v.recipe ?? {};
       const metrics = (rc.metrics ?? []) as any[];
       const fix = (rc.fix?.targets ?? rc.targets ?? []) as any[];
-      return html`<div class="lz-rec"><div class="lz-rec-h"><a class="link" href="/lineages/${v.lineage_id}">${rc.name ?? "recipe"}</a> ${badge(rc.class ?? "class TBA", "info")} <span class="dim">height ${v.height ?? 0}, ${v.generations?.length ?? 0} accepted generation${(v.generations?.length ?? 0) === 1 ? "" : "s"}</span></div>
+      return html`<div class="lz-rec"><div class="lz-rec-h"><a class="link" href="/units/${v.lineage_id}">${rc.name ?? "recipe"}</a> ${badge(rc.class ?? "class TBA", "info")} <span class="dim">height ${v.height ?? 0}, ${v.generations?.length ?? 0} accepted generation${(v.generations?.length ?? 0) === 1 ? "" : "s"}</span></div>
         ${metrics.length ? html`<ul class="lz-mets">${metrics.map((m) => html`<li><b>${m.name}</b> <span class="dim">${m.direction ?? ""} is better, ${m.kind ?? "metric"}${typeof m.min_effect === "number" ? `, at least ${(m.min_effect * 100).toFixed(m.min_effect * 100 < 1 ? 2 : 0)}% to count` : ""}</span></li>`)}</ul>` : ""}
         ${fix.length ? html`<div class="dim">Failing tests it can fix: ${fix.map((t) => (typeof t === "string" ? t : t.id ?? JSON.stringify(t))).join(", ")}</div>` : ""}
         ${!metrics.length && !fix.length ? html`<div class="dim">This recipe publishes no measurable target.</div>` : ""}</div>`;
@@ -1495,9 +1495,9 @@ function renderBountyForm() {
           <label><span class="eyebrow">Deadline (hours from now)</span><input name="b_hours" inputmode="decimal" value="${String(Math.max(1, Math.min(72, Math.ceil(c.maxTtlS / 3600))))}"></label>
         </div>
         <label><span class="eyebrow">Payee agent</span><input name="b_payee" placeholder="leave empty: any agent credited as author" spellcheck="false"><span class="wl-help">A named payee is paid if credited in any role (author, reviewer, harness, finder); it must be a launched agent, since payment goes to its compute vault.</span></label>
-        <label><span class="eyebrow">Lineage id</span><input name="b_lineage" placeholder="64 hex characters" spellcheck="false"></label>
+        <label><span class="eyebrow">Unit id</span><input name="b_lineage" placeholder="64 hex characters" spellcheck="false"></label>
         <fieldset><legend class="eyebrow">Condition</legend>
-          <label class="radio"><input type="radio" name="b_kind" value="target" checked> <span><b>Target.</b> Any accepted generation on the lineage for this target (metric name, or test ids separated by commas); empty means any target.</span></label>
+          <label class="radio"><input type="radio" name="b_kind" value="target" checked> <span><b>Target.</b> Any accepted generation on the unit for this target (metric name, or test ids separated by commas); empty means any target.</span></label>
           <label class="radio"><input type="radio" name="b_kind" value="commitment"> <span><b>Commitment.</b> The accepted generation of one candidate commitment (64 hex).</span></label>
         </fieldset>
         <label><span class="eyebrow">Target or commitment</span><input name="b_value" spellcheck="false"></label>
@@ -1533,7 +1533,7 @@ function renderBounties() {
           : html`<div class="wl-row" style="margin-top:6px">${btn("b-find", "Find release", { data: { i: b.address } })}${refundable ? btn("b-refund", "Refund", { data: { i: b.address } }) : ""}${cancellable ? btn("b-cancel", "Cancel", { data: { i: b.address } }) : ""}</div>`;
         return html`<tr data-bounty="${b.address}"><td>${addr(b.address)}<div class="sub">payer ${short(b.payer)} · ${b.payee ? html`payee ${short(b.payee)}` : "any author"}</div>
             <div class="sub">deadline ${when(b.deadline)}</div></td>
-          <td class="wrap">${condText(b)}<div class="sub">lineage ${short(b.lineageId)} · from epoch ${String(b.minEpoch)}</div></td>
+          <td class="wrap">${condText(b)}<div class="sub">unit ${short(b.lineageId)} · from epoch ${String(b.minEpoch)}</div></td>
           <td class="right">${tl(b.amount)}</td>
           <td>${b.status === "open" ? badge("open", "info") : b.status === "released" ? badge(`released to ${short(b.releasedTo ?? "")}`, "good", icon.check) : badge(b.status, "warn")}${actions}
             ${rel ? html`<div class="wl-brel">${rel.note ? html`<div class="wl-fine">${rel.note}</div>` : ""}${rel.rows.map((r, j) => html`<div class="wl-row" style="margin-top:6px">${r.problem
@@ -1565,7 +1565,7 @@ async function bOpen() {
     const hours = Number(val("b_hours"));
     if (!(hours > 0)) throw new Error("enter the deadline in hours");
     const lineage = val("b_lineage").toLowerCase();
-    if (!HEX64.test(lineage)) throw new Error("the lineage id is 64 hex characters");
+    if (!HEX64.test(lineage)) throw new Error("the unit id is 64 hex characters");
     const kind = S.root?.querySelector<HTMLInputElement>('[name="b_kind"]:checked')?.value === "commitment" ? COND.commitment : COND.target;
     const raw0 = val("b_value");
     let value: string | null = null;

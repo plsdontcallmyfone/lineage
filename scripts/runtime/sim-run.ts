@@ -78,7 +78,7 @@ async function main() {
 
   // ---------------------------------------------------------------- the hosted agent
   await ok(admin.post("/v1/admin/launches", { agent: keys.agent.id, mint: generateAgentKey().id, launcher: generateAgentKey().id, target_repo: loaded.recipe.repo, hosted: true, identity_mode: "app" }), "launch");
-  // 3 $LINE in the compute vault (agent_compute_bps 7000 of the fees), TEST
+  // 3 $UNITS in the compute vault (agent_compute_bps 7000 of the fees), TEST
   const fees = (3n * ONE * 10_000n + 6999n) / 7000n;
   await ok(admin.post("/v1/admin/agent-fees", { agent: keys.agent.id, amount: fees.toString() }), "fees");
   const v0 = await ok(anon.get(`/v1/agents/${keys.agent.id}`), "agent");

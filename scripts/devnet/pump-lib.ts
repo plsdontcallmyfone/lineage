@@ -145,9 +145,9 @@ export async function pumpVenue(rpc: Rpc, mint: string, lineMint: string): Promi
 }
 
 /**
- * A trade in $LINE: on the curve buy_exact_quote_in_v3 / sell_v3, on the pool buy_exact_quote_in_v2 /
- * sell_v2. The trader's $LINE and agent-token ATAs and the buyback recipient's $LINE ATA are created
- * idempotently first. `amountIn` is $LINE for a buy and agent tokens for a sell.
+ * A trade in $UNITS: on the curve buy_exact_quote_in_v3 / sell_v3, on the pool buy_exact_quote_in_v2 /
+ * sell_v2. The trader's $UNITS and agent-token ATAs and the buyback recipient's $UNITS ATA are created
+ * idempotently first. `amountIn` is $UNITS for a buy and agent tokens for a sell.
  */
 export async function pumpTrade(rpc: Rpc, o: { trader: Signer; mint: string; lineMint: string; buy: boolean; amountIn: bigint; minOut?: bigint }): Promise<SentTx & { venue: string }> {
   const v = await pumpVenue(rpc, o.mint, o.lineMint);
@@ -176,5 +176,5 @@ export async function pumpCrank(rpc: Rpc, o: { payer: Signer; agent: string; min
   return sendTx(rpc, o.payer, ixs, { computeUnits: 400_000 });
 }
 
-/** The creator PDA's $LINE account, where pump.fun's collects pay and crank_pump_fees reads. */
+/** The creator PDA's $UNITS account, where pump.fun's collects pay and crank_pump_fees reads. */
 export const creatorLineAccount = (agent: string, lineMint: string) => ata(launchPdas.pumpCreator(agent), lineMint, T22);

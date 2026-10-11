@@ -19,12 +19,12 @@ import type { Ix } from "./registry.ts";
 import { token } from "./spl.ts";
 
 // An agent launch on pump.fun (owner decisions 2026-10-10, docs/plans/PUMPFUN-LAUNCHES.md): Pump
-// create_v2 at the top level (creator = the agent's units_launch PDA, quoted in $LINE, never
+// create_v2 at the top level (creator = the agent's units_launch PDA, quoted in $UNITS, never
 // mayhem), then units_launch register_pump_launch in the same transaction, then the launcher's
 // initial buy (launch fronting, docs/plans/LAUNCH-FRONTING.md section 6 option B) delivered to the
 // agent key. The fee crank's harvest + crank_pump_fees, and the graduation record.
 
-/** $LINE's quote accounts create_v2 names: its curve, and its canonical pool and vaults once migrated. */
+/** $UNITS's quote accounts create_v2 names: its curve, and its canonical pool and vaults once migrated. */
 export interface LineQuote {
   mint: Address;
   /** Token-2022 for a create_v2 coin. */
@@ -53,10 +53,10 @@ export function pumpLaunchMain(a: { launcher: Address; agent: Address; agentMint
 }
 
 /**
- * The launcher's initial buy of exactly `amountOut` agent tokens (buy_v3, at most `maxIn` $LINE from
+ * The launcher's initial buy of exactly `amountOut` agent tokens (buy_v3, at most `maxIn` $UNITS from
  * the launcher), delivered straight into the agent key's token account (buy_v3 pays the base tokens to
  * the account it is given; proven on the mainnet fork). Goes after register_pump_launch: the program
- * records the curve only before any trade. $LINE's buyback recipient account must exist (the trade
+ * records the curve only before any trade. $UNITS's buyback recipient account must exist (the trade
  * never creates it); pass `createBuyback` when it does not yet (anyone may create it).
  */
 export function pumpInitialBuy(a: { launcher: Address; agent: Address; agentMint: Address; lineMint: Address; amountOut: bigint; maxIn: bigint; lineTokenProgram?: Address;
@@ -71,32 +71,32 @@ export function pumpInitialBuy(a: { launcher: Address; agent: Address; agentMint
 }
 
 /**
- * The curve create_v2 will write for a coin quoted in $LINE (CREATE_WITH_PUMP_COIN_QUOTE.md "Starting
- * price"): the reference raise (Global's SOL seed scaled to its graduation raise) bought on $LINE's
+ * The curve create_v2 will write for a coin quoted in $UNITS (CREATE_WITH_PUMP_COIN_QUOTE.md "Starting
+ * price"): the reference raise (Global's SOL seed scaled to its graduation raise) bought on $UNITS's
  * own curve, or its pool once migrated, with no fees, scaled back to a seed. Mirrors pump-sdk 4.0.0
  * `pumpQuoteReserves`; the launch simulation stays the authority.
  */
 export function pumpQuotedCurve(g: PumpGlobal, line: { curve: BondingCurve; pool?: { pool: PumpPool; baseReserve: bigint; quoteReserve: bigint } }, creator: Address,
   lineMint: Address, creatorFeeBps = 0n, seedRule: PumpQuoteSeed = "swap"): BondingCurve {
   const c = line.curve;
-  if (c.isMayhemMode || c.depth > 0) throw new Error("$LINE cannot be a quote: mayhem or depth > 0");
+  if (c.isMayhemMode || c.depth > 0) throw new Error("$UNITS cannot be a quote: mayhem or depth > 0");
   let base: bigint, quote: bigint;
   if (curveMigrated(c)) {
-    if (!line.pool) throw new Error("$LINE has migrated: its pool reserves are required");
+    if (!line.pool) throw new Error("$UNITS has migrated: its pool reserves are required");
     base = line.pool.baseReserve;
     quote = line.pool.quoteReserve + line.pool.pool.virtualQuoteReserves;
   } else {
-    if (c.complete) throw new Error("$LINE's curve is complete and awaits migration (QuoteCurveAwaitingMigration): retry after migrate_v2");
+    if (c.complete) throw new Error("$UNITS's curve is complete and awaits migration (QuoteCurveAwaitingMigration): retry after migrate_v2");
     base = c.virtualTokenReserves;
     quote = c.virtualQuoteReserves;
   }
   const target = c.quoteMint === "11111111111111111111111111111111" ? g.initialVirtualSolReserves : g.initialVirtualQuoteReserves;
   const tradable = g.initialVirtualTokenReserves - g.initialRealTokenReserves;
   const input = (target * g.initialRealTokenReserves) / tradable;
-  // "swap": the reference raise bought on $LINE's curve (mainnet's build, fork proof); "spot": devnet's
-  // build prices the target at $LINE's spot price, seed = target x base / quote (measured 2026-10-10)
+  // "swap": the reference raise bought on $UNITS's curve (mainnet's build, fork proof); "spot": devnet's
+  // build prices the target at $UNITS's spot price, seed = target x base / quote (measured 2026-10-10)
   const seed = seedRule === "spot" ? (target * base) / quote : (((input * base) / (quote + input)) * tradable) / g.initialRealTokenReserves;
-  if (seed < 1n) throw new Error("QuoteReservesOutOfRange: $LINE is priced so high the seed rounds to zero");
+  if (seed < 1n) throw new Error("QuoteReservesOutOfRange: $UNITS is priced so high the seed rounds to zero");
   return {
     virtualTokenReserves: g.initialVirtualTokenReserves, virtualQuoteReserves: seed, realTokenReserves: g.initialRealTokenReserves, realQuoteReserves: 0n,
     tokenTotalSupply: g.tokenTotalSupply, complete: false, creator, isMayhemMode: false, isCashbackCoin: false, quoteMint: lineMint, creatorFeeBps,
@@ -106,7 +106,7 @@ export function pumpQuotedCurve(g: PumpGlobal, line: { curve: BondingCurve; pool
 }
 
 /**
- * How a cluster's Pump build seeds the curve of a coin quoted in $LINE: "swap" (mainnet, pump-sdk
+ * How a cluster's Pump build seeds the curve of a coin quoted in $UNITS: "swap" (mainnet, pump-sdk
  * 4.0.0, proven on the mainnet fork) or "spot" (devnet's build: the launch of 2026-10-10 asked exactly
  * the spot-seeded quote). The network profile says which (pump_quote_seed).
  */
@@ -118,7 +118,7 @@ export function quoteInitialBuy(g: PumpGlobal, fc: PumpFeeConfig, fresh: Bonding
 }
 
 /**
- * The keeper's crank of one agent: create the creator PDA's $LINE ATA when missing, pump.fun's sweep
+ * The keeper's crank of one agent: create the creator PDA's $UNITS ATA when missing, pump.fun's sweep
  * and collect on the curve (and the pool's once `pool` is given), then crank_pump_fees. Permissionless.
  */
 export function pumpCrankIxs(a: { payer: Address; agent: Address; agentMint: Address; lineMint: Address; lineTokenProgram?: Address; pool?: Address }): Ix[] {

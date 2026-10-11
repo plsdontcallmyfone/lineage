@@ -3,7 +3,7 @@ import { TOKEN_2022_PROGRAM, TOKEN_PROGRAM } from "./pda.ts";
 import type { Ix } from "./registry.ts";
 import { compileMessageV0, wireSize, type LookupTable } from "./v0.ts";
 
-// Pay in SOL or USDC wherever the app needs $LINE (mainnet only): a Jupiter quote with raw swap
+// Pay in SOL or USDC wherever the app needs $UNITS (mainnet only): a Jupiter quote with raw swap
 // instructions, then the app's own action (launch deposit, trading allocation, a trade-box buy) in
 // the same transaction. Browser-safe: no node imports, fetch is injectable.
 //
@@ -14,10 +14,10 @@ import { compileMessageV0, wireSize, type LookupTable } from "./v0.ts";
 // It answers a quote (inAmount, outAmount, otherAmountThreshold = minimum out after slippage,
 // priceImpactPct as a decimal ratio, routePlan) plus computeBudgetInstructions (the unit price only),
 // setupInstructions, swapInstruction, cleanupInstruction, otherInstructions and
-// addressesByLookupTableAddress for a v0 message. /build is ExactIn only, so an exact $LINE amount is
+// addressesByLookupTableAddress for a v0 message. /build is ExactIn only, so an exact $UNITS amount is
 // reached by sizing the input from a probe quote and requiring otherAmountThreshold >= the need: the
 // swap instruction itself fails below that, so the action never runs short.
-// Jupiter does not run on devnet: there the option is unavailable and devnet uses tLINE directly.
+// Jupiter does not run on devnet: there the option is unavailable and devnet uses tUNITS directly.
 
 export const JUPITER_SWAP_API = "https://api.jup.ag/swap/v2";
 export const WSOL_MINT = "So11111111111111111111111111111111111111112";
@@ -37,13 +37,13 @@ export const PAY_ASSETS: Record<Exclude<PayAsset, "LINE">, { mint: Address; deci
 export interface SwapConfig {
   /** "mainnet" enables Jupiter; anything else shows the option as unavailable */
   cluster: string;
-  /** the $LINE mint (a stand-in until $LINE exists on mainnet) */
+  /** the $UNITS mint (a stand-in until $UNITS exists on mainnet) */
   target_mint: Address;
   target_decimals: number;
   target_token_program: Address;
   /** shown next to amounts; "LINE" once real */
   target_symbol: string;
-  /** "stand-in" until $LINE exists on mainnet and the owner sets the real mint */
+  /** "stand-in" until $UNITS exists on mainnet and the owner sets the real mint */
   target_status: "stand-in" | "live";
   api_base: string;
   /** default and ceiling for the slippage tolerance, bps */

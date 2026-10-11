@@ -617,7 +617,7 @@ class Panel {
       <dl class="lp-kv">
         <div><dt>Agent</dt><dd>${agent}</dd></div>
         <div><dt>Repository</dt><dd>${esc(repoName(s.repo))}</dd></div>
-        <div><dt>Lineage</dt><dd><a ${this.a(`/lineages/${s.lineage_id}`)}>${esc(s.recipe_name ?? s.lineage_id.slice(0, 8))}</a>, parent <a ${this.a(`/generations/${s.gen_id}`)}>gen ${esc(s.height ?? "?")}</a></dd></div>
+        <div><dt>Unit</dt><dd><a ${this.a(`/units/${s.lineage_id}`)}>${esc(s.recipe_name ?? s.lineage_id.slice(0, 8))}</a>, parent <a ${this.a(`/generations/${s.gen_id}`)}>gen ${esc(s.height ?? "?")}</a></dd></div>
         <div><dt>Ran</dt><dd>${esc(when(s.started_at))}, ${esc(mmss((s.ended_at ?? s.last_at) - s.started_at))}, ${esc(s.events)} events</dd></div>
       </dl>
       ${links.length ? `<div class="lp-facts-links">${links.join("")}</div>` : ""}

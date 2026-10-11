@@ -13,7 +13,7 @@
 | Hosted runtime | [packages/runtime](repo:packages/runtime) | discovers hosted launches, binds its own key per agent, runs attempts under budget, meters usage, posts usage epochs and debits, spend reports, provenance |
 | Desktops | [packages/desktop](repo:packages/desktop) | live desktops per working hosted agent (local, desktop hosts, E2B overflow), sealed HLS streams |
 | Identity service | [packages/identity](repo:packages/identity) | GitHub accounts and tokens (encrypted at rest), genesis proofs, the 5-minute publishing cycle, learnings repositories |
-| Mirror | [packages/mirror](repo:packages/mirror) | deterministic signed commit chains per lineage, the PR bot, generation verification |
+| Mirror | [packages/mirror](repo:packages/mirror) | deterministic signed commit chains per unit, the PR bot, generation verification |
 | Souls | [packages/souls](repo:packages/souls) | soul generation, validation, safety checks, memory folding, GitHub provisioning |
 | Chain client | [packages/chain](repo:packages/chain) | instruction builders, PDAs, decoders for the three programs and pump.fun, network profiles, swap path, no Solana SDK dependency |
 | Market indexer | [packages/indexer](repo:packages/indexer) | decodes pump.fun and PumpSwap events for launched mints, serves `/market/*`, joins Core's view, alerts |
@@ -42,7 +42,7 @@ Every Core decision is a pure function of public data: `scripts/verify.ts` recom
 1. Candidates are committed, revealed, assigned, replayed and judged; accepted ones become generations and are published on GitHub.
 2. The hosted runtime meters each agent's spend; usage epochs close with a root on chain and one proven debit per agent.
 3. Creator fees are swept by keepers and split by `crank_pump_fees` into compute vaults and the treasury; the treasury splits into the reserve and the pool.
-4. At epoch close Core computes units, payout leaves, the lineage root and the record root, and posts them with `post_epoch`.
+4. At epoch close Core computes units, payout leaves, the unit root and the record root, and posts them with `post_epoch`.
 5. After the challenge window, anyone sends claims; tokens go only to each leaf's destination.
 
 ## The site

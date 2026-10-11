@@ -12,7 +12,7 @@ export interface TokenView {
   agent: string;
   /** launcher, registry owner and operator of that agent */
   parties: string[];
-  /** tLINE per whole token (the pool price), null when unknown */
+  /** tUNITS per whole token (the pool price), null when unknown */
   price: number | null;
   decimals: number;
   /** 24 h price change as a fraction, null when unknown */
@@ -27,7 +27,7 @@ export interface Position {
   mint: string;
   /** token base units held */
   qty: bigint;
-  /** $LINE base units paid for what is held (cost basis, reduced pro rata on sells) */
+  /** $UNITS base units paid for what is held (cost basis, reduced pro rata on sells) */
   cost: bigint;
   opened_at: number;
   last_side: "buy" | "sell";
@@ -39,12 +39,12 @@ export interface Book {
   /** the agent's own token */
   mint: string | null;
   parties: string[];
-  /** $LINE base units in the treasury */
+  /** $UNITS base units in the treasury */
   line: bigint;
   /** lamports on the treasury key (fees) */
   sol: bigint;
   positions: Record<string, Position>;
-  /** equity at the start of the current UTC day, and $LINE funded since then */
+  /** equity at the start of the current UTC day, and $UNITS funded since then */
   day: { start: number; equity: bigint; funded: bigint };
   /** highest equity seen, raised by fundings so that a deposit is not counted as gain */
   peak: bigint;
@@ -78,12 +78,12 @@ export interface ScoreUsed {
 export interface Action {
   side: "buy" | "sell";
   mint: string;
-  /** buy: $LINE base units in; sell: token base units in */
+  /** buy: $UNITS base units in; sell: token base units in */
   amount: bigint;
   rule: string;
   reason: string;
   score: ScoreUsed;
-  /** expected value of the trade in $LINE base units at the mark price */
+  /** expected value of the trade in $UNITS base units at the mark price */
   value: bigint;
 }
 
@@ -108,11 +108,11 @@ export interface Market {
   tokens: TokenView[];
   /** agent -> its published score now and at the lookback */
   scores: Map<string, ScoreInput>;
-  /** $LINE decimals */
+  /** $UNITS decimals */
   lineDecimals: number;
 }
 
-/** Value in $LINE base units of `qty` token base units at `price` tLINE per whole token. */
+/** Value in $UNITS base units of `qty` token base units at `price` tUNITS per whole token. */
 export function valueOf(qty: bigint, price: number | null, decimals: number, lineDecimals: number): bigint {
   if (price === null || !Number.isFinite(price) || price <= 0 || qty <= 0n) return 0n;
   // exact enough: qty and the product stay well inside 2^53 for TEST sizes; floor so a mark never flatters
@@ -179,7 +179,7 @@ export function checkTrade(
     return r("integrity_min_hold", `no ${side} within ${cfg.min_hold_s} s of a ${p.last_side} in the same token`);
   if (side === "buy") {
     if (amount < BigInt(cfg.min_trade_line)) return r("min_trade", `below the minimum trade ${cfg.min_trade_line}`);
-    if (amount > b.line) return r("funds", `treasury holds ${b.line} base units of $LINE`);
+    if (amount > b.line) return r("funds", `treasury holds ${b.line} base units of $UNITS`);
     if (amount > bps(equity, cfg.max_trade_bps)) return r("max_trade", `above ${cfg.max_trade_bps} bps of equity per trade`);
     const open = Object.values(b.positions).filter((x) => x.qty > 0n).length;
     if ((!p || p.qty === 0n) && open >= cfg.max_open_positions) return r("max_open_positions", `${open} positions open (max ${cfg.max_open_positions})`);

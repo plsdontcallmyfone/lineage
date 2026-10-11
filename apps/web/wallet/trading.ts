@@ -1,4 +1,4 @@
-// Optional trading allocation at launch (plan T): the quote token (tLINE on devnet) from the launcher's wallet to the allocation
+// Optional trading allocation at launch (plan T): the quote token (tUNITS on devnet) from the launcher's wallet to the allocation
 // escrow the network publishes (GET /v1/trading/config, allocation_escrow), with a memo naming the
 // agent. The hosted runtime forwards it to the agent's trading treasury once the agent is bound, and
 // publishes the deposit and the forward as a funding record. A second transaction after the launch,

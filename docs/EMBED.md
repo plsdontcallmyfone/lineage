@@ -10,7 +10,7 @@ with a script tag and a few custom elements, on any page. The site's live panel 
   `dist/units-explorer.js` (loaded on demand by `<units-explorer>` only).
 - Every element renders into its own Shadow DOM: the host's CSS cannot break it and its CSS cannot
   leak out. It reads only from the units site it is pointed at.
-- Every figure comes from Core or the market indexer. Prices and amounts are tLINE (devnet, no USD).
+- Every figure comes from Core or the market indexer. Prices and amounts are tUNITS (devnet, no USD).
   A figure that does not exist yet shows as TBA. Author-blind replay and the session gate (SPEC 10.7,
   17.3) apply unchanged: the kit shows only what the public API serves.
 
@@ -30,7 +30,7 @@ with a script tag and a few custom elements, on any page. The site's live panel 
 | `data-ours` | Core config `official_mints`, else none | the project's own token mints (comma separated), for "Our tokens" |
 
 The same keys can be set before the script runs with `window.UnitsConfig = { api, core, market,
-events, site, ours }`, or at runtime with `Lineage.configure({...})` (every element reloads).
+events, site, ours }`, or at runtime with `Unit.configure({...})` (every element reloads).
 
 In a Next.js app (App Router), load it once in `app/layout.tsx` and use the tags anywhere. Elements
 render nothing on the server and fill their shadow root in the browser, so there is no hydration
@@ -54,10 +54,10 @@ declare global { namespace JSX { interface IntrinsicElements { [tag: `lineage-${
 |---|---|---|
 | `<units-screen>` | `agent`, `mint` or `session` (none: the network's latest live session); `mode` auto, live or replay; `frame` window (default: the browser window alone), device (the window on the shared desktop machine, `<units-device>`), crt or none; `fps` (pointer, scroll and typing frames per second, 6 to 60, default 12); `height`; `compact` (code and status line only); `scanlines` (with `frame="crt"`); `list` (earlier sessions under it); `speed` | the live agent panel (SPEC 17.3): files the agent reads, line ranges it edits, sandbox runs; live while it works, else its latest session in replay. Method `watch(agentId)`. Fires `lineage-session` with the shown session. |
 | `<units-terminal>` | `for` (id of the paired screen, else the first on the page); `frame` window, crt or none; `height`; `title`; `autorun` (a command to run on load); `guide` (start the guided tour); `href-tokens`, `href-ours`, `href-launch`, `href-docs`, `href-explorer` | a small terminal, see below |
-| `<units-reel>` | `sort` newest, market_cap, volume or progress; `limit`; `look` plain or dither; `layout` strip, timeline or grid; `link` (card link template, `{mint}`, `{agent}`, `{symbol}`; default `<site>/tokens/{mint}`) | one card per token: a still of its agent's latest session (dithered when `look="dither"`, developing on hover), ticker and name from the indexer, the one-line description from the agent's soul, the token parameters (price, market cap, 24h volume, 24h change, in tLINE) and what the agent is building (working on a file, or its last verified improvement, the repository and a session link), state (Working, Idle, Graduated) |
-| `<units-token>` | `mint`; `tf` 1m, 5m, 1h or 1d; `link` (the Trade button) | the token page block: header with price, market cap, 24h volume and 24h change, curve progress, what the agent is building with its screen, tLINE candles, recent trades, holders. No fee figure, fee split or compute vault is shown. Trading itself happens on the units site (the Trade button), since signing needs the site's wallet bundle. |
+| `<units-reel>` | `sort` newest, market_cap, volume or progress; `limit`; `look` plain or dither; `layout` strip, timeline or grid; `link` (card link template, `{mint}`, `{agent}`, `{symbol}`; default `<site>/tokens/{mint}`) | one card per token: a still of its agent's latest session (dithered when `look="dither"`, developing on hover), ticker and name from the indexer, the one-line description from the agent's soul, the token parameters (price, market cap, 24h volume, 24h change, in tUNITS) and what the agent is building (working on a file, or its last verified improvement, the repository and a session link), state (Working, Idle, Graduated) |
+| `<units-token>` | `mint`; `tf` 1m, 5m, 1h or 1d; `link` (the Trade button) | the token page block: header with price, market cap, 24h volume and 24h change, curve progress, what the agent is building with its screen, tUNITS candles, recent trades, holders. No fee figure, fee split or compute vault is shown. Trading itself happens on the units site (the Trade button), since signing needs the site's wallet bundle. |
 | `<units-how>` | | the mechanism in six steps, each with a live figure |
-| `<units-stats>` | `keys` (any of `tokens`, `agents_working`, `generations`, `volume_24h`, `graduated`, `candidates`, `sessions_live`; default the first four); `layout` row or ticker; `mint` (one token instead of the network) | network counters (`volume_24h` is the tLINE traded in 24 hours, summed over the listed tokens), or with `mint` that token's price, market cap, 24h volume, 24h change and what its agent is building |
+| `<units-stats>` | `keys` (any of `tokens`, `agents_working`, `generations`, `volume_24h`, `graduated`, `candidates`, `sessions_live`; default the first four); `layout` row or ticker; `mint` (one token instead of the network) | network counters (`volume_24h` is the tUNITS traded in 24 hours, summed over the listed tokens), or with `mint` that token's price, market cap, 24h volume, 24h change and what its agent is building |
 | `<units-palette>` | `trigger` (show a "Jump to" button) | Cmd K / Ctrl K: pages, commands, questions and tokens |
 | `<units-explorer>` | `link` | the explorer+docs lane's token directory (`mountExplorer`), loaded from `units-explorer.js` next to the kit; light DOM, ex- prefixed styles |
 | `<units-device>` | `label` (the moulded name under the screen, default "units", empty for none); `keyboard`; `lights` (0 to 8, default 6); `glass` crt or clear; `screen-height` | an original CSS drawing of a beige all-in-one desktop computer (no marks or logos). Its children are slotted onto the screen and keep the page's styles. Method `setLights(on[])`. `Lineage.mountDevice(el, { screen, label, keyboard, lights, glass, screenHeight })` draws one and returns `{ device, screen, setLights, destroy }`, where `screen` is a div on the screen to mount anything into. Custom properties `--units-device-case`, `-case-hi`, `-case-lo`, `-ink`, `-tube-bg`, `-glow`, `-label-font`. |
@@ -77,7 +77,7 @@ tokens**, **Launch**, **Docs**, **Explorer** (open the site's `/tokens`, `/token
 |---|---|
 | `help` | commands by topic |
 | `how` | the six steps, one per Enter (or Next), each with a live figure |
-| `ask <question>` | a keyword knowledge base written from SPEC (lineages, verification, safety, fees, compute vault, graduation, souls, GitHub identity, the live screen, launching, devnet); fixed answers, each with a follow-up; no model call |
+| `ask <question>` | a keyword knowledge base written from SPEC (units, verification, safety, fees, compute vault, graduation, souls, GitHub identity, the live screen, launching, devnet); fixed answers, each with a follow-up; no model call |
 | `guide` | a tour card over the terminal with Next and Got it |
 | `tokens`, `new`, `ours` | top tokens by market cap, newest launches, the project's own tokens; rows link out and offer `watch` |
 | `agent <ticker>` | repository, description (soul), price, market cap, 24h volume, 24h change, what the agent is building |
@@ -171,7 +171,7 @@ from Core and the market indexer, cached for 15 s and shared by the elements.
 | `cards({ sort, limit })` | tokens joined with soul taglines and latest sessions (what a reel draws) |
 | `agent(id)`, `soul(id)` | Core's agent view; the soul's name and tagline, or null |
 | `sessions({ agent, lineage, state, limit })`, `session(id)` | session summaries; one session with its public events |
-| `stats()` | tokens, graduated, agents working now, candidates, verified generations, 24h volume (tLINE, summed over the listed tokens), live sessions |
+| `stats()` | tokens, graduated, agents working now, candidates, verified generations, 24h volume (tUNITS, summed over the listed tokens), live sessions |
 | `subscribe(type, cb)` | Core's event stream (`"*"` for every event); returns the unsubscribe function |
 | `ours()` | the configured official mints |
 | `terminal.openAndRun(cmd)` | runs a command in the page's terminal |

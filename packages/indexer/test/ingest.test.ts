@@ -125,7 +125,7 @@ describe("ingest", () => {
     const get = async (p: string) => (await (await api(new Request(`http://x${p}`))).json()) as any;
     for (const [mint, want] of [[A1, FX.pda_line_after_sweeps.a1], [A2, FX.pda_line_after_sweeps.a2]] as const) {
       const d = await get(`/market/tokens/${mint}`);
-      expect(d.fees.creator_fee_income_raw).toBe(want); // equals the creator PDA's $LINE after pump.fun's sweeps and collects
+      expect(d.fees.creator_fee_income_raw).toBe(want); // equals the creator PDA's $UNITS after pump.fun's sweeps and collects
       expect(d.fees.swept_raw).toBe(want);
     }
     // base amounts: the sum over trades equals the base tokens traders received minus what they sold

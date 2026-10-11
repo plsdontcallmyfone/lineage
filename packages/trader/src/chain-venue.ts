@@ -54,7 +54,7 @@ export class ChainVenue implements Venue {
   }
 
   private buyback = new Set<string>();
-  /** Whether $LINE's buyback recipient account exists (cached once seen). */
+  /** Whether $UNITS's buyback recipient account exists (cached once seen). */
   private async buybackReady(address: string): Promise<boolean> {
     if (this.buyback.has(address)) return true;
     if (await this.rpc.getAccountInfo(address)) this.buyback.add(address);
@@ -107,7 +107,7 @@ export class ChainVenue implements Venue {
     const agentAccount = ata(owner, mint, TOKEN_2022_PROGRAM);
     const tp = c.lineTokenProgram;
     const pre = [token.createAtaIdempotent(owner, owner, lm, tp), token.createAtaIdempotent(owner, owner, mint, TOKEN_2022_PROGRAM)];
-    // the buyback recipient's $LINE account must exist for every trade (pump.fun never creates it)
+    // the buyback recipient's $UNITS account must exist for every trade (pump.fun never creates it)
     const bb = ata(PUMP.buybackRecipients[0], lm, tp);
     if (!(await this.buybackReady(bb))) pre.push(token.createAtaIdempotent(owner, PUMP.buybackRecipients[0], lm, tp));
     const base = { mint, quoteMint: lm, quoteTokenProgram: tp, user: owner, userBase: agentAccount, userQuote: lineAccount };

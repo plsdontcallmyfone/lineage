@@ -10,10 +10,10 @@ import { decodePumpEvent, ixDisc, LAUNCH_PROGRAM_ID, PUMP, pumpPdas, sha256, toA
 // Trades come from pump.fun's own events (the event-CPI self invocation of Pump and PumpSwap, decoded
 // by packages/chain decodePumpEvent): Pump TradeEvent (a completing v3 buy adds its
 // PostCompleteBuyEvent), PumpSwap BuyEvent and SellEvent of the token's canonical pool. Only events of
-// this token count, so the $LINE hop of a multi_hop_swap is ignored. TradeEvent.ix_name is not read:
+// this token count, so the $UNITS hop of a multi_hop_swap is ignored. TradeEvent.ix_name is not read:
 // mainnet's build writes "buy" for buy_v3 (packages/chain/test/pump.test.ts).
 //
-// Amounts the trader paid (buy) or got (sell), in $LINE base units: curve trades quote_amount plus (buy)
+// Amounts the trader paid (buy) or got (sell), in $UNITS base units: curve trades quote_amount plus (buy)
 // or minus (sell) the protocol and creator fee; a completing buy adds its pool leg's quote_in and fees;
 // pool buys the larger of user_quote_amount_in (an exact-out buy: net plus every fee) and
 // quote_amount_in (an exact-in buy such as a multi-hop leg: the whole budget); pool sells
@@ -67,7 +67,7 @@ export interface TokenCtx {
   lineMint: Address;
   /** Pump bonding curve PDA of the mint. */
   curve: Address;
-  /** The canonical PumpSwap pool PDA of the mint quoted in $LINE (whether or not it exists yet). */
+  /** The canonical PumpSwap pool PDA of the mint quoted in $UNITS (whether or not it exists yet). */
   pool: Address;
   baseDecimals: number;
   quoteDecimals: number;
@@ -85,13 +85,13 @@ export interface Trade {
   side: "buy" | "sell";
   /** Agent token base units the trader got (buy) or gave (sell). */
   baseRaw: bigint;
-  /** $LINE base units the trader paid (buy, fees included) or got (sell, net of fees). */
+  /** $UNITS base units the trader paid (buy, fees included) or got (sell, net of fees). */
   quoteRaw: bigint;
-  /** $LINE per agent token, from the two amounts. */
+  /** $UNITS per agent token, from the two amounts. */
   price: number;
   /** Curve price after the trade from the event's virtual reserves (curve trades), else null. */
   spotAfter: number | null;
-  /** Every fee the trade charged (protocol, creator, LP), $LINE base units. */
+  /** Every fee the trade charged (protocol, creator, LP), $UNITS base units. */
   feeRaw: bigint;
   /** The creator fee the trade charged (income of the agent's creator PDA). */
   creatorFeeRaw: bigint;

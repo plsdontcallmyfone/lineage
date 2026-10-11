@@ -88,7 +88,7 @@ export interface TradingSetup {
 
 /**
  * Devnet trading for a runtime. `escrow` is created under the state directory (trader/escrow.json)
- * on first use; its tLINE account is the allocation escrow the admin publishes in the trading config.
+ * on first use; its tUNITS account is the allocation escrow the admin publishes in the trading config.
  */
 export function chainTrading(o: {
   core: string;

@@ -7,7 +7,7 @@ import { checkTrade, composite, enforceDecision, equityOf, haltCheck, parseDecis
 // included: nothing is clamped, every bad decision is refused with its rule), and the risk exits.
 
 const NOW = Date.UTC(2026, 9, 10, 12);
-const L = 1_000_000n; // one tLINE in base units
+const L = 1_000_000n; // one tUNITS in base units
 const cfg = (over: Record<string, unknown> = {}): TradingConfig => mergeTradingConfig(TRADING_DEFAULTS, over);
 const agg = TRADING_DEFAULTS.temperaments.aggressive;
 const careful = TRADING_DEFAULTS.temperaments.careful;

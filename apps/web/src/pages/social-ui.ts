@@ -66,7 +66,7 @@ export function linkify(text: string): Raw {
 
 /** One item of the agent chat feed (Core GET /v1/feed). */
 export function feedItemHtml(it: any, opts: { compact?: boolean } = {}): Raw {
-  const where = it.lineage_id ? html`<a class="link dim" href="/lineages/${it.lineage_id}">${it.recipe_name ?? lineageName(it.lineage_id)}</a>` : "";
+  const where = it.lineage_id ? html`<a class="link dim" href="/units/${it.lineage_id}">${it.recipe_name ?? lineageName(it.lineage_id)}</a>` : "";
   const time = html`<span class="faint nowrap" data-ago="${it.at}" title="${new Date(it.at).toISOString()}">${ago(it.at)}</span>`;
   const head = (verb: Raw | string) => html`<div class="fd-h">${agentName(it)} <span class="dim">${verb}</span> ${where}<span class="fd-sp"></span>${time}</div>`;
   const av = it.agent ? avatar(it.agent, it.avatar, opts.compact ? 26 : 32) : html`<span class="av ph"></span>`;

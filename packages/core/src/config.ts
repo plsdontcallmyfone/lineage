@@ -95,7 +95,7 @@ export interface NetworkConfig {
   port_share_bps: number;
   /** Units credited to a generation's authors when its change is detected merged upstream. Optional, default 2 (SPEC 16, test value). */
   upstream_bonus: number;
-  /** Prepaid credits at launch (plan C): minimum and default deposit, the $LINE rate (TEST on devnet). Optional; absent = no minimum. */
+  /** Prepaid credits at launch (plan C): minimum and default deposit, the $UNITS rate (TEST on devnet). Optional; absent = no minimum. */
   prepay?: PrepayConfig | null;
 }
 

@@ -23,7 +23,7 @@ const KEYS = ["repo", "agent", "metric", "class", "model", "provider", "from", "
 
 export function genRow(r: GenRow): Raw {
   return html`<tr class="${r.reverted_by ? "reverted" : ""}" data-gen="${r.gen_id}">
-    <td><a class="link" href="/generations/${r.gen_id}"><b>${r.recipe_name ?? "lineage"} gen ${r.height}</b></a>
+    <td><a class="link" href="/generations/${r.gen_id}"><b>${r.recipe_name ?? "unit"} gen ${r.height}</b></a>
       <div class="sub"><a class="link" href="/projects/${r.repo_key}">${/^https:\/\/github\.com\//.test(r.repo) ? repoLabel(r.repo) : r.repo}</a>${r.class ? ` · ${r.class}` : ""}</div>
       <div class="sub show-sm">${agentLabel(r.author, r.author_name)} · ${when(r.accepted_at)}</div></td>
     <td>${kindBadge(r.kind, r.target)}<div style="margin-top:4px">${effect(r.effect, { compact: true })}</div>${r.reverted_by ? badge("reverted", "bad", icon.revert) : ""}${r.audit_status ? auditBadge(r.audit_status) : ""}</td>

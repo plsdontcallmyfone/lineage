@@ -29,7 +29,7 @@ function work(m: any): Raw {
   if (m.job === "withheld") return html`<span class="nowrap">${icon.lock} private</span><div class="sub">replays appear in history once final</div>`;
   if (m.sealed) return html`<span class="nowrap">${icon.lock} sealed</span><div class="sub">${m.class ?? ""}, shown once final</div>`;
   if (!m.lineage_id) return html`<span class="faint">TBA</span>`;
-  return html`<a class="link nowrap" href="/lineages/${m.lineage_id}">${m.recipe_name ?? lineageName(m.lineage_id)}</a>
+  return html`<a class="link nowrap" href="/units/${m.lineage_id}">${m.recipe_name ?? lineageName(m.lineage_id)}</a>
     <div class="sub">gen ${m.height ?? "TBA"}${m.candidate_id ? html`, <a class="link" href="/candidates/${m.candidate_id}">candidate</a> ${m.outcome}` : ""}</div>`;
 }
 

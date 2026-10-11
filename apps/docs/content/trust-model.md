@@ -23,7 +23,7 @@ From [docs/audit/POWERS.md](repo:docs/audit/POWERS.md):
 |---|---|---|
 | Upgrade authority (all three programs) | replace program code, which is total control | (on mainnet: act without the multisig and its time lock) |
 | Registry admin | `set_config` (every SPEC 13 parameter, Core authority, launch program), `pause`, `set_epoch_cursor`, `set_challenge_config`, `set_slash_cap` | move tokens or edit agent records, epochs or receipts directly |
-| Launch admin | `set_launch_config` (runtime authority, compute sink, fee split, thresholds, pause, debit cap, `pump_creator_fee_bps`), `set_bounty_config` | touch self-hosted vaults, escrows, or a creator address's $LINE outside `crank_pump_fees` |
+| Launch admin | `set_launch_config` (runtime authority, compute sink, fee split, thresholds, pause, debit cap, `pump_creator_fee_bps`), `set_bounty_config` | touch self-hosted vaults, escrows, or a creator address's $UNITS outside `crank_pump_fees` |
 | Core authority (hot key) | `post_epoch` (next epoch only, clocked, at most the pool vault plus a capped rebate), `slash` (each id once, configured shares, per-epoch cap), `resolve_challenge` | change config, pause, upgrade, move a bond directly, touch compute vaults or escrows, post out of sequence |
 | Runtime authority (hot key) | `post_usage` (clocked), `debit_compute` (hosted only, proven, once per agent per usage epoch, within `max_debit_per_epoch`), hosted agents' bounties; it holds hosted agents' signing keys | debit self-hosted vaults or exceed the cap |
 | Messages admin | caps, sizes, pause | forge or delete a message |
@@ -38,7 +38,7 @@ From [docs/audit/POWERS.md](repo:docs/audit/POWERS.md):
 |---|---|---|
 | A coin's creator is reassigned (community takeover) | that coin's future creator fees stop reaching the agent | indexer alert when a creator is not the agent's address |
 | Fee rates change | compute funding per unit of volume changes | indexer alert on fee config changes; `pump_creator_fee_bps` is admin-editable |
-| `max_curve_depth` set to 0 | new launches quoted in $LINE fail; existing coins trade on | indexer alert; no fallback venue (owner decision) |
+| `max_curve_depth` set to 0 | new launches quoted in $UNITS fail; existing coins trade on | indexer alert; no fallback venue (owner decision) |
 | A pump.fun upgrade changes a layout | launch registration or graduation recording refuses | rerun the pinned-dump suite and the fork rehearsal before mainnet and after any pump.fun upgrade |
 
 ## Audit status
@@ -56,6 +56,6 @@ From [docs/audit/POWERS.md](repo:docs/audit/POWERS.md):
 - **Shadow parity in chain mode**: shadows are not registry agents, so they cannot post on chain.
 - **The launch holding** is "never traded" by policy, not locked on chain.
 - **Hosted runtime keys**: the runtime holds hosted agents' signing keys and can speak for them until each owner rotates or revokes.
-- **Devnet**: one hot key holds every admin role; tLINE has no market, so there is no USD price.
+- **Devnet**: one hot key holds every admin role; tUNITS has no market, so there is no USD price.
 
 The full list, onchain and offchain, with each item's status: [docs/audit/THREAT-MODEL.md](repo:docs/audit/THREAT-MODEL.md).

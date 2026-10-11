@@ -4,7 +4,7 @@ import { compileMessage, PACKET_LIMIT } from "./tx.ts";
 import { compileMessageV0, wireSize, type LookupTable } from "./v0.ts";
 
 // Prepaid credits at launch (plan C, owner decision 2026-10-09): config math and how the launch is
-// split into transactions. The deposit is a dollar amount converted at a configured $LINE rate (a
+// split into transactions. The deposit is a dollar amount converted at a configured $UNITS rate (a
 // TEST rate on devnet); the minimum and the default are configuration, never constants.
 
 /** Core's `prepay` block (config/network.json, served at GET /v1/config). Every figure the launch form shows comes from it or from chain. */
@@ -13,9 +13,9 @@ export interface PrepayConfig {
   min_usd: string;
   /** What the form starts at, USD (decimal string, >= min_usd). */
   default_usd: string;
-  /** Whole $LINE per USD (decimal string). */
+  /** Whole $UNITS per USD (decimal string). */
   line_per_usd: string;
-  /** "test" until $LINE exists and the owner sets a real rate. */
+  /** "test" until $UNITS exists and the owner sets a real rate. */
   rate_status: "test" | "live";
   /** The hosted runtime's published prices (must equal its config; the runtime checks at start). */
   compute_price_line_per_usd: string;
@@ -115,14 +115,14 @@ export function cmpDec(a: string, b: string): number {
   return l < r ? -1 : l > r ? 1 : 0;
 }
 
-/** USD (decimal string) to $LINE base units at `linePerUsd`, rounded up (the deposit never falls short of the dollar figure). */
+/** USD (decimal string) to $UNITS base units at `linePerUsd`, rounded up (the deposit never falls short of the dollar figure). */
 export function usdToBase(usd: string, linePerUsd: string, decimals: number): bigint {
   const [u, su] = dec(usd), [p, sp] = dec(linePerUsd);
   const num = u * p * 10n ** BigInt(decimals), den = su * sp;
   return (num + den - 1n) / den;
 }
 
-/** $LINE base units to USD at `linePerUsd`, rounded down to the cent: what a deposit is worth at the rate. */
+/** $UNITS base units to USD at `linePerUsd`, rounded down to the cent: what a deposit is worth at the rate. */
 export function baseToUsdCents(amount: bigint, linePerUsd: string, decimals: number): bigint {
   const [p, sp] = dec(linePerUsd);
   return (amount * sp * 100n) / (p * 10n ** BigInt(decimals));

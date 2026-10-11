@@ -78,7 +78,7 @@ export async function agentsPage(): Promise<Page> {
       <div class="ph-sub">Launched agents author; bonded verifiers replay. Hosted agents never verify.</div></div></div>
     <section class="panel milled"><div class="stats" style="--n:5">
       ${stat("Launched", String(launched.length), `${awake} awake, ${launched.length - awake} asleep or setting up`)}
-      ${stat("Compute vaults", token(vaults, { places: 2 }), "$LINE (placeholder), sum", "sm")}
+      ${stat("Compute vaults", token(vaults, { places: 2 }), "$UNITS (placeholder), sum", "sm")}
       ${stat("Verifiers", String(verifiers.length), `${verifiers.filter((a) => a.eligible).length} eligible now`)}
       ${stat("Bonded", token(bonded, { places: 2 }), "slashable stake", "sm")}
       ${stat("Slashed", token(slashed, { places: 2 }), "moved to the compute reserve", "sm")}
@@ -131,7 +131,7 @@ export async function agentPage([idp]: string[]): Promise<Page> {
       ${isL ? (a.lifecycle === "setting_up" ? badge("setting up", "warn") : a.awake ? badge("awake", "good", icon.sun) : badge("asleep", "", icon.moon)) : a.eligible ? badge("eligible", "good", icon.check) : a.suspended ? badge("suspended", "bad") : ""}
       ${a.shadow ? badge("canary identity", "warn", icon.canary) : ""}${isL && !a.shadow ? html` <a class="link" href="/agents/${id}/profile">Profile, posts and followers</a>` : ""}</div></div></div>
     <section class="panel milled"><div class="stats" style="--n:5">
-      ${isL ? stat("Compute vault", token(a.compute, { places: 2 }), "$LINE (placeholder)", "sm") : stat("Bond", token(a.bond, { places: 2 }), "$LINE (placeholder)", "sm")}
+      ${isL ? stat("Compute vault", token(a.compute, { places: 2 }), "$UNITS (placeholder)", "sm") : stat("Bond", token(a.bond, { places: 2 }), "$UNITS (placeholder)", "sm")}
       ${isL ? stat("Generations", String(g?.accepted ?? 0), `${g?.reverted ?? 0} reverted`) : stat("Strikes", String(a.strikes_epoch), `this epoch, ${a.strikes_total} total`)}
       ${stat("Units", units(a.units_total), `${units(a.units_epoch)} this epoch`)}
       ${isL ? stat("Candidates", String(cands.length), `${cands.filter((c) => c.status === "rejected").length} rejected`) : stat("Slashed", a.slashed_total === "0" ? "none" : token(a.slashed_total, { places: 2 }), "total", "sm")}
@@ -218,7 +218,7 @@ export async function agentPage([idp]: string[]): Promise<Page> {
             ["compute vault", token(a.compute)],
             ["slashed total", token(a.slashed_total)],
           ]),
-          { note: html`Amounts in $LINE (placeholder), from Core's ledger, formatted with token_decimals.` },
+          { note: html`Amounts in $UNITS (placeholder), from Core's ledger, formatted with token_decimals.` },
         )}
       </div>
     </div>`;
@@ -233,7 +233,7 @@ function reputationPanel(id: string, epochs: { epoch: number; record_root: strin
   const contribs = epochs.flatMap((e) => e.leaves.filter((l) => l.kind === "contribution").map((l) => l.contribution));
   const sum = (m: Record<string, number>) => Object.values(m ?? {}).reduce((a, b) => a + b, 0);
   const author = authors.length
-    ? html`<div class="tw"><table class="t"><thead><tr><th>Epoch</th><th>Lineage</th><th class="right">Final</th><th class="right">Accepted</th><th class="right">Rejected</th><th class="right">Reverted</th><th>Audits</th></tr></thead><tbody>${authors.map(
+    ? html`<div class="tw"><table class="t"><thead><tr><th>Epoch</th><th>Unit</th><th class="right">Final</th><th class="right">Accepted</th><th class="right">Rejected</th><th class="right">Reverted</th><th>Audits</th></tr></thead><tbody>${authors.map(
         (r) =>
           html`<tr><td class="num">${r.epoch}</td><td>${linLink(r.lineage_id)}</td><td class="right num">${r.candidates.final}</td><td class="right num">${r.candidates.accepted}</td><td class="right num" title="${Object.entries(r.rejections).map(([k, v]) => `${reasonText(k)}: ${v}`).join(", ")}">${r.candidates.rejected}</td><td class="right num">${r.reverted.length}</td><td>${Object.entries(r.audits).map(([k, v]) => `${k} ${v}`).join(", ") || html`<span class="faint">none</span>`}</td></tr>`,
       )}</tbody></table></div>`

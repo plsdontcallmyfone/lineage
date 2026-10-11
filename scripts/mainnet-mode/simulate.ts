@@ -18,8 +18,8 @@
 //                      live mainnet pump.fun bonding curve, one v0 transaction; minOut from the
 //                      simulated output less the slippage, recomposed and simulated again (the
 //                      wallet's review step)
-// The quote for A and B is the profile's (the PYUSD stand-in until $LINE exists). No units agent
-// coin exists on mainnet (agent coins launch on pump.fun quoted in $LINE, owner decisions
+// The quote for A and B is the profile's (the PYUSD stand-in until $UNITS exists). No units agent
+// coin exists on mainnet (agent coins launch on pump.fun quoted in $UNITS, owner decisions
 // 2026-10-10), so C uses a live USDC-quoted pump.fun curve found with getProgramAccounts (--curve
 // <mint> to pick another); the composition, the Jupiter + pump.fun accounts and the size limits are
 // the same as for an agent coin's curve.
@@ -158,7 +158,7 @@ async function main() {
   check("RPC is mainnet-beta (the profile's genesis)", genesis === profile.genesis, genesis);
   if (genesis !== profile.genesis) process.exit(1);
   check("profile mainnet: no faucet, no TEST labels, quote from config, recent fees", !profile.faucet && !profile.test_labels && profile.quote.source === "config" && !!fees);
-  check("config/swap.json targets the profile's quote mint", checkSwapTarget(profile, swapCfg) === null, `${profile.quote.symbol} ${profile.quote.mint} (${profile.quote.status}; $LINE ${profile.quote.line_mint ?? "TBA"})`);
+  check("config/swap.json targets the profile's quote mint", checkSwapTarget(profile, swapCfg) === null, `${profile.quote.symbol} ${profile.quote.mint} (${profile.quote.status}; $UNITS ${profile.quote.line_mint ?? "TBA"})`);
   console.log(`swap budget: Jupiter's unit price, never above ${maxCuPrice} micro-lamports (min of config/swap.json and the profile cap)`);
   const q = profile.quote;
   const qd = q.decimals!, qm = q.mint!, qtp = q.token_program!;

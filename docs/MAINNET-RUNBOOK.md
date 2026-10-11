@@ -13,8 +13,8 @@ Owner items stay unchecked until the owner checks them.
 
 - [ ] External audit done, findings fixed and the fixed builds re-rehearsed (docs/audit/)
 - [ ] Multisig signers set: members, threshold and time lock (`launch-params.json` `multisig`)
-- [ ] Token parameters set: the `$LINE` mint and decimals, every SPEC 13 parameter (`network_file`), rebate and debit caps, message caps, bounty and challenge values, `pump_creator_fee_bps` (0n: pump.fun's default, owner decision 2026-10-10)
-- [ ] **Hard requirement: `$LINE` is a pump.fun coin paired with SOL or USDC and never mayhem mode.** A mayhem coin, or a coin itself quoted in a pump coin, cannot be the quote of a pump.fun custom pair (`QuoteBondingCurveNotEligible`, `CurveDepthExceeded`), so no agent could launch. `initialize.ts` refuses any other `$LINE` (it reads its bonding curve). While `$LINE`'s curve is complete but not yet migrated, launches fail with `QuoteCurveAwaitingMigration` (anyone can run `migrate_v2`); after it migrates, add `line_pool` to `$PARAMS` and make a launch table that names it.
+- [ ] Token parameters set: the `$UNITS` mint and decimals, every SPEC 13 parameter (`network_file`), rebate and debit caps, message caps, bounty and challenge values, `pump_creator_fee_bps` (0n: pump.fun's default, owner decision 2026-10-10)
+- [ ] **Hard requirement: `$UNITS` is a pump.fun coin paired with SOL or USDC and never mayhem mode.** A mayhem coin, or a coin itself quoted in a pump coin, cannot be the quote of a pump.fun custom pair (`QuoteBondingCurveNotEligible`, `CurveDepthExceeded`), so no agent could launch. `initialize.ts` refuses any other `$UNITS` (it reads its bonding curve). While `$UNITS`'s curve is complete but not yet migrated, launches fail with `QuoteCurveAwaitingMigration` (anyone can run `migrate_v2`); after it migrates, add `line_pool` to `$PARAMS` and make a launch table that names it.
 - [ ] pump.fun's `Global.max_curve_depth` still 1 or more on launch day (0 disables pump-coin quotes; read 1 on 2026-10-10), and pump.fun's governance and terms risk accepted (docs/plans/PUMPFUN-LAUNCHES.md D7)
 - [ ] Legal review done
 - [ ] Budgets set: SOL for the deploy (10.690668280 held at the peak with exact-size ProgramData, MAINNET-COSTS.md), the priority fee policy, the `--max-len` headroom, the Core and runtime hot keys' running SOL, the runtime's model spend caps
@@ -44,7 +44,7 @@ Engineering items, with their evidence:
 | Registry admin (`Config.admin`) | the vault | set at `initialize`; the deployer never holds it |
 | Launch admin (`LaunchConfig.admin`, also bounty config) | the vault | set at `initialize_launch` |
 | Messages admin (`MsgConfig.admin`) | the vault | set at `units_msg::initialize` |
-| Compute sink | the vault's `$LINE` token account | audit A1-11: not the runtime's own account |
+| Compute sink | the vault's `$UNITS` token account | audit A1-11: not the runtime's own account |
 | Multisig config authority | none (autonomous) | member, threshold and time lock changes go through the same proposals and time lock |
 | Multisig rent collector | the vault | executed proposals' rent can be reclaimed to it |
 | Core authority (`Config.core_authority`) | hot key on the Core server | scoped below; the vault rotates it with `registrySetConfig` |
@@ -176,11 +176,11 @@ for id in 3GeaTsBUsaXCJ7Dru9tDHiKnVBsoHE6yiTdqqj42JHay 2vwKsTZm5doa3ahBmpm8Sv3sK
   solana program dump -u "$RPC" $id /tmp/$id.so && shasum -a 256 /tmp/$id.so; done   # equal to the builds once trailing zero padding is trimmed
 ```
 
-### 4. `$LINE` on pump.fun
+### 4. `$UNITS` on pump.fun
 
-`$LINE` launches on pump.fun before step 5 (the owner's launch): `create_v2` paired with SOL or USDC,
+`$UNITS` launches on pump.fun before step 5 (the owner's launch): `create_v2` paired with SOL or USDC,
 never mayhem mode. Its mint goes into `$PARAMS.line_mint` (Token-2022, 6 decimals). The curve, supply
-and fees are pump.fun's. `$LINE`'s own creator fees are paid in SOL or USDC, not in `$LINE`
+and fees are pump.fun's. `$UNITS`'s own creator fees are paid in SOL or USDC, not in `$UNITS`
 (PUMPFUN-LAUNCHES.md 6.9).
 
 ### 5. Initialize (admin = the vault from the first instruction)
@@ -191,7 +191,7 @@ bun scripts/mainnet/initialize.ts init --params $PARAMS --payer $K/deployer.json
 # prints the launch lookup table address; re-running with --lookup-table <it> resumes without a second table
 ```
 
-This checks `$LINE` is a pump.fun coin paired with SOL or USDC and not mayhem, then runs `units_registry::initialize`, the compute sink account,
+This checks `$UNITS` is a pump.fun coin paired with SOL or USDC and not mayhem, then runs `units_registry::initialize`, the compute sink account,
 `initialize_launch`, `units_msg::initialize` and the launch lookup table (create, extend, freeze),
 each read back.
 
@@ -237,7 +237,7 @@ anchor.
 ### 10. First launch
 
 One launch through `/launch` (0.016255680 SOL measured for the launcher on the fork, plus the 1%
-initial buy and the prepaid credits in `$LINE`; the wallet must sign v0 transactions), a buy, a
+initial buy and the prepaid credits in `$UNITS`; the wallet must sign v0 transactions), a buy, a
 keeper crank (pump.fun sweep + collect, then `crank_pump_fees`), and the indexer and app reading them
 back. Mainnet tests are public on pump.fun's own site: the hidden list cannot hide them, so test there
 only what the fork cannot show.
@@ -284,7 +284,7 @@ Both items listed here were done by the pre-audit program changes lane on 2026-1
 ## Notes from the rehearsal
 
 - The suites and the rehearsal run mainnet's own pump.fun builds; devnet's Pump build differs (it
-  refused a coin quoted in a freshly launched tLINE with `QuoteReservesOutOfRange` until tLINE's price
+  refused a coin quoted in a freshly launched tUNITS with `QuoteReservesOutOfRange` until tUNITS's price
   rose, scripts/devnet/pump-devnet-proof.ts), so devnet is not evidence for mainnet behaviour.
 - pump.fun's `migrate_v2` needs two remaining accounts its docs do not list (the pool's boost vault
   authority and its quote account; pump-sdk 4.0.0); `packages/chain` passes them.

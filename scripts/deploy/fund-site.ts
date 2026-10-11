@@ -7,7 +7,7 @@
 //
 // Sends (devnet only, refused on any other genesis):
 //   - SOL to the site owner up to 0.1 when under 0.05 (verifier registration and bond fees, rent);
-//   - tLINE to the site owner: 3 register burns + 2 min bonds (read from the registry), less what it holds;
+//   - tUNITS to the site owner: 3 register burns + 2 min bonds (read from the registry), less what it holds;
 //   - SOL to the Core authority up to 0.3 when under 0.1 (each post_epoch costs about 0.0015 SOL: Epoch
 //     account rent 0.00148844 measured 2026-10-08, plus the fee).
 // Reports the faucet's balances (fund it with apps/web/scripts/fund-faucet.ts if low).
@@ -41,7 +41,7 @@ const sol = (l: bigint) => (Number(l) / 1e9).toFixed(6);
 const genesis = await rpc.call<string>("getGenesisHash", []);
 if (genesis !== DEVNET_GENESIS) throw new Error(`RPC genesis ${genesis} is not devnet; refusing`);
 const dep = loadKeypair(join(homedir(), ".config", "lineage", "devnet-deployer.json"));
-// devnet v2: tLINE is the pump.fun coin, held by the devnet treasury key (the deployer pays the fees)
+// devnet v2: tUNITS is the pump.fun coin, held by the devnet treasury key (the deployer pays the fees)
 const holder = devnet.pump_tline?.treasury ? loadKeypair(join(homedir(), ".config", "lineage", "devnet", "tline-pump-treasury.json")) : dep;
 if (holder !== dep && holder.id !== devnet.pump_tline.treasury) throw new Error("tline-pump-treasury.json is not the devnet treasury in devnet.json");
 
@@ -76,16 +76,16 @@ const site = await Promise.all((opt("verifiers") ?? "").split(",").filter(Boolea
 const spent = site.reduce((s, r) => s + (r ? r.burned + r.bond : 0n), 0n);
 const need = wantLine - spent - have;
 if (need > 0n)
-  await send(`send ${need} tLINE base units to site owner ${OWNER}`, [
+  await send(`send ${need} tUNITS base units to site owner ${OWNER}`, [
     token.createAtaIdempotent(dep.id, OWNER, mint, T22),
     token.transferChecked(devnet.line_holder, mint, ownerAta, holder.id, need, devnet.line_decimals, T22),
   ], holder === dep ? [] : [holder]);
-else log(`site owner tLINE: ${have} base units held, ${spent} already burned or bonded; ok`);
+else log(`site owner tUNITS: ${have} base units held, ${spent} already burned or bonded; ok`);
 
 const faucetPath = join(homedir(), ".config", "lineage", "devnet", "faucet.json");
 if (existsSync(faucetPath)) {
   const f = loadKeypair(faucetPath).id;
   const [fs, fl] = [await rpc.getBalance(f), (await reader.tokenBalance(ata(f, mint, T22))) ?? 0n];
-  log(`faucet ${f}: ${sol(fs)} SOL, ${fl} tLINE base units${fs < 20_000_000n ? " (LOW: fund it with apps/web/scripts/fund-faucet.ts)" : ""}`);
+  log(`faucet ${f}: ${sol(fs)} SOL, ${fl} tUNITS base units${fs < 20_000_000n ? " (LOW: fund it with apps/web/scripts/fund-faucet.ts)" : ""}`);
 }
 log(PLAN ? "plan done (nothing sent)" : "done");

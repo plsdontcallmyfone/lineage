@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
 # Rebrand pass (docs/plans/REBRAND-UNITS.md 5): renames the brand in tracked text files by pattern,
-# leaving frozen strings, records and the concept noun alone. Idempotent.
+# leaving frozen strings, records and the concept noun alone. ONE-SHOT: already applied (merged
+# 2026-10-11). Do not rerun with --write: it would also rename the compatibility names added after it
+# (LINEAGE_* env fallbacks, the <lineage-*> element aliases, window.Lineage).
 #   python3 -I scripts/rebrand/rename.py [--write]      (without --write: counts only)
 import os, re, subprocess, sys
 
@@ -37,6 +39,7 @@ PROTECT = [
     r"H\(\"lineage\"", r"--hostname\",\s*\"lineage\"", r"\"--hostname\",\n\s*\"lineage\"",
     r"github\.com/plsdontcallmyfone/lineage", r"plsdontcallmyfone/lineage",
     r"lineage-garage|lineage-sable", r"com\.lineage\.[a-z-]+",
+    r"Lineage devnet TEST LINE", r"Published under the Lineage app identity",
     r"LINEAGE_RECIPES=\$UNITS_RECIPES", r"LINEAGE_SITE_URL=https", r"\$\{LINEAGE_RECIPES", r"cur LINEAGE_RECIPES",
 ]
 PROTECT_RE = re.compile("|".join(f"(?:{p})" for p in PROTECT))

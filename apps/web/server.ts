@@ -12,7 +12,7 @@
 //   /assets/wallet.js  wallet bundle (packages/chain in the browser; loaded by Launch, Profile and the token page's trade box)
 //   /chain/config      public devnet addresses (scripts/devnet/devnet.json) and the RPC's cluster
 //   /chain/rpc         POST JSON-RPC proxy to the devnet RPC (read, simulate, send; method allowlist)
-//   /chain/faucet      GET faucet state, POST {wallet} one small tLINE transfer (rate-limited, logged)
+//   /chain/faucet      GET faucet state, POST {wallet} one small tUNITS transfer (rate-limited, logged)
 //   /souls/config      GET soul draft service state (caps, today's spend; TEST values)
 //   /souls/draft       POST {seed, agent, repo} a soul draft by Claude (per-soul, daily and per-address caps)
 //   /souls/publish     POST {doc, sig} forwarded to Core's PUT /v1/agents/:id/soul (SPEC 14.8)

@@ -81,7 +81,7 @@ const lineKey = key("tline-pump-mint");
 const L = lineKey.id;
 if (!(await rpc.getAccountInfo(L)))
   await send("1: create devnet tLINE (create_v2, paired with SOL, not mayhem; deployer is user and creator)", dep, [
-    createV2({ mint: L, user: dep.id, creator: dep.id, name: "units devnet TEST LINE", symbol: "tLINE", uri: "https://lineage.invalid/devnet/tline.json", quote: { kind: "sol" } }),
+    createV2({ mint: L, user: dep.id, creator: dep.id, name: "Lineage devnet TEST LINE", symbol: "tLINE", uri: "https://lineage.invalid/devnet/tline.json", quote: { kind: "sol" } }),
   ], { signers: [lineKey], computeUnits: 400_000 });
 const lc0 = decodeBondingCurve((await rpc.getAccountInfo(pumpPdas.bondingCurve(L)))!.data);
 const m = decodeMint((await rpc.getAccountInfo(L))!.data);

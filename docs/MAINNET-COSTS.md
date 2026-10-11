@@ -24,7 +24,7 @@ only and each id keypair is its id.
   withdraw authority, buyback recipient 0 and its wrapped SOL account, the Squads program config
   `BSTq9w...cNZr` and its treasury, and mainnet's feature set (`--clone-feature-set`). Step 0 of the
   rehearsal hashes each program on the fork against the same program read from mainnet: all six equal.
-  The stand-in `$LINE` is a pump.fun coin the rehearsal creates (step 3); the deployer buys 600,000,000
+  The stand-in `$UNITS` is a pump.fun coin the rehearsal creates (step 3); the deployer buys 600,000,000
   of it on its own curve with fork SOL (38.533520432 SOL on the fork; not a launch cost).
 - **Fees** are the network fee of each transaction as the fork recorded it (5,000 lamports per
   signature, the same base fee as mainnet). No priority fee was set. **Compute units** are recorded per
@@ -101,15 +101,15 @@ multisig proposal (section 3). The headroom choice is the owner's (TBA).
 |---|---|---|---|
 | Squads `multisig_create_v2`, 2 of 3, time lock, autonomous (mainnet creation fee read 2026-10-10: 0 lamports) | multisig (231) | 22,630 | 0.001833720 |
 | `units_registry::initialize` (admin = vault; sets the default slash cap) | Config (287, two bytes more for the A1-08 cap), five token vaults (165 each) | 114,786 | 0.009555400 |
-| Compute sink: the vault's `$LINE` token account | token account (170) | 18,717 | 0.001518840 |
-| `units_launch::initialize_launch` (admin = vault; checks `$LINE` is a pump.fun coin paired with SOL or USDC, not mayhem) | LaunchConfig (319) | 27,969 | 0.002275760 |
+| Compute sink: the vault's `$UNITS` token account | token account (170) | 18,717 | 0.001518840 |
+| `units_launch::initialize_launch` (admin = vault; checks `$UNITS` is a pump.fun coin paired with SOL or USDC, not mayhem) | LaunchConfig (319) | 27,969 | 0.002275760 |
 | `units_msg::initialize` (admin = vault) | MsgConfig (58) | 20,204 | 0.000949880 |
-| Launch lookup table, create + extend (21 addresses: ours and pump.fun's fixed and `$LINE` quote accounts) | table (728) | 22,450 | 0.004353480 |
+| Launch lookup table, create + extend (21 addresses: ours and pump.fun's fixed and `$UNITS` quote accounts) | table (728) | 22,450 | 0.004353480 |
 | Launch lookup table, freeze | | 1,517 | 0.000005000 |
 | `set-upgrade-authority` x 3 | | | 0.000015000 |
 | **Total (deployer)** | | | **0.020507080** |
 
-There is no DBC config any more (0.005984080 in the Meteora run). Once `$LINE` has migrated to
+There is no DBC config any more (0.005984080 in the Meteora run). Once `$UNITS` has migrated to
 PumpSwap a launch also names its pool and two vaults: a second table with those 3 more addresses
 (24, 824 bytes) cost 0.004841160 on the fork.
 
@@ -120,8 +120,8 @@ Paid by the vault inside its first two proposals: BountyConfig (76 bytes) 0.0010
 (78) 0.001046480 and the challenge bond vault (165) 0.001488440; the vault itself must stay
 rent-exempt (0 bytes, 0.000650240).
 
-The stand-in `$LINE` is a pump.fun coin created on the fork with `create_v2` paired with SOL
-(0.005689440 for its creator, with its curve and mint); the real `$LINE` launches on pump.fun (owner),
+The stand-in `$UNITS` is a pump.fun coin created on the fork with `create_v2` paired with SOL
+(0.005689440 for its creator, with its curve and mint); the real `$UNITS` launches on pump.fun (owner),
 paired with SOL or USDC and never mayhem mode.
 
 ## 3. One admin action through the multisig
@@ -154,18 +154,18 @@ rehearsal, `propose.ts` set the cap to 5,000 bps on the same fork through the op
 
 | Action | Payer | Accounts created (bytes) | Compute units | SOL |
 |---|---|---|---|---|
-| **One launch on pump.fun** (as the wizard plans it, v0 with the launch table: `create_v2` + `register_pump_launch` + the 1% initial buy, then deposit + `refresh_awake` in a second transaction) | launcher | 8: agent mint (376), bonding curve (166), the curve's two token accounts (170), AgentLaunch (554), compute vault (165), Agent (401), the agent key's token account (170) | 350,172 and 16,658 | **0.016255680** (0.016250680 + 0.000005000), plus the `$LINE` of the initial buy and the deposit |
-| The first launch on a `$LINE` also creates the `$LINE` buyback recipient's account (170) and the launcher's pump.fun volume account (137) | launcher | 2 more | 344,668 | 0.019110720 for the first transaction |
+| **One launch on pump.fun** (as the wizard plans it, v0 with the launch table: `create_v2` + `register_pump_launch` + the 1% initial buy, then deposit + `refresh_awake` in a second transaction) | launcher | 8: agent mint (376), bonding curve (166), the curve's two token accounts (170), AgentLaunch (554), compute vault (165), Agent (401), the agent key's token account (170) | 350,172 and 16,658 | **0.016255680** (0.016250680 + 0.000005000), plus the `$UNITS` of the initial buy and the deposit |
+| The first launch on a `$UNITS` also creates the `$UNITS` buyback recipient's account (170) and the launcher's pump.fun volume account (137) | launcher | 2 more | 344,668 | 0.019110720 for the first transaction |
 | A curve trade (`buy_exact_quote_in_v3`, `sell_v3`) | trader | the trader's pump.fun volume account (137) and token account (170) on a first buy | 85,026, 60,492 | 0.002865040 first buy, 0.000005000 after |
-| `multi_hop_swap` SOL to `$LINE` (curve or pool) to an agent coin | trader | | 162,235 and 166,251 | 0.000005000 plus the SOL spent (and wrapped SOL account rent when new) |
-| **Fee crank** (pump.fun `sweep_creator_fee` + `collect_creator_fee_v2`, then `crank_pump_fees`; anyone) | keeper | first time: the creator PDA's `$LINE` account and pump.fun's creator vault account (170 each) | 133,921 and 142,921 | **0.003032680** first, 0.000005000 after |
+| `multi_hop_swap` SOL to `$UNITS` (curve or pool) to an agent coin | trader | | 162,235 and 166,251 | 0.000005000 plus the SOL spent (and wrapped SOL account rent when new) |
+| **Fee crank** (pump.fun `sweep_creator_fee` + `collect_creator_fee_v2`, then `crank_pump_fees`; anyone) | keeper | first time: the creator PDA's `$UNITS` account and pump.fun's creator vault account (170 each) | 133,921 and 142,921 | **0.003032680** first, 0.000005000 after |
 | After graduation the crank adds PumpSwap's sweep + `collect_coin_creator_fee` | keeper | first time: the AMM creator vault account (170) | 168,890 | 0.001518840 first |
 | **Graduation**: pump.fun `migrate_v2` + `record_pump_graduation` (permissionless, one transaction) | whoever calls it | pool (287), LP mint (82), pool and authority token accounts | 386,144 | **0.022519681**, of which pump.fun's migration fee is 0.015000001 (`Global.pool_migration_fee`, read 2026-10-10) |
 | A PumpSwap trade (`buy_exact_quote_in_v2`, `sell_v2`) | trader | | 58,347, 56,121 | 0.000005000 |
 | Register a verifier (2 signatures) | owner | Agent (401) | 31,565 | 0.002697320 |
 | `bond`, `split` | owner, anyone | | 27,463, 32,597 | 0.000005000 each |
 | **One epoch post** (`post_epoch`) | Core authority | Epoch (165) | 49,440 | **0.001493440** |
-| **One challenge** (`open_challenge`, 2 signatures) | challenger's payer | Challenge (252), ChallengeGate (30) | 64,489 | **0.002743040** plus the bond in `$LINE` (TBA) |
+| **One challenge** (`open_challenge`, 2 signatures) | challenger's payer | Challenge (252), ChallengeGate (30) | 64,489 | **0.002743040** plus the bond in `$UNITS` (TBA) |
 | `resolve_challenge` | Core authority | | 44,839 | 0.000005000 |
 | **One claim** | anyone | ClaimReceipt (128) | 76,835 and 77,276 | **0.001305480** |
 | **One slash** (`slash`, with or without an amount) | Core authority | SlashReceipt (97) | 46,782 (canary), 45,211 (abandon) | **0.001148000** |
@@ -177,7 +177,7 @@ sends and the slashes it posts (0.001148000 each); the hosted runtime's is its u
 
 ## What the owner still sets (TBA)
 
-Priority fee policy; `--max-len` headroom; the real `$LINE` mint (a pump.fun coin paired with SOL or USDC,
+Priority fee policy; `--max-len` headroom; the real `$UNITS` mint (a pump.fun coin paired with SOL or USDC,
 never mayhem); every protocol parameter (the fork used the shape of `config/network.json` with
 `epoch_length_s` 300 and the devnet TEST caps; pump.fun sets the curve); the multisig members, threshold and time lock (the fork used 2 of 3 with 20 s,
 then 25 s, so the run finishes); the challenge window and bond.

@@ -120,7 +120,7 @@ export interface Stats {
   agents_working: number | null;
   generations: number | null;
   candidates: number | null;
-  /** tLINE traded in the last 24 hours, summed over the indexer's listed tokens; null when unknown */
+  /** tUNITS traded in the last 24 hours, summed over the indexer's listed tokens; null when unknown */
   volume_24h: number | null;
   sessions_live: number | null;
 }
@@ -304,6 +304,15 @@ export class UnitsClient {
   generation(id: string): Promise<any> {
     return this.core(`generations/${id}`);
   }
+  /** Every unit (a repository's chain of accepted generations); each row carries unit_id and lineage_id. */
+  units(): Promise<any[]> {
+    return this.core("units");
+  }
+  /** One unit's view (docs/plans/REBRAND-UNITS.md 3.14). */
+  unit(id: string): Promise<any> {
+    return this.core(`units/${id}`);
+  }
+  /** The pre-rename name of units(), kept for hosts that call it. */
   lineages(): Promise<any[]> {
     return this.core("lineages");
   }

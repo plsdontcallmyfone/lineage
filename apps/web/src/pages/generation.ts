@@ -41,9 +41,9 @@ export async function generationPage([id]: string[]): Promise<Page> {
 
   const headTitle = g.entry_type === "genesis" ? "Generation 0" : g.entry_type === "revert" ? `Generation #${g.height}, revert` : `Generation #${g.height}`;
   const banners: Raw[] = [];
-  if (g.reverted_by) banners.push(banner("bad", "Reverted", html`An audit contradicted this generation; ${genLink(g.reverted_by, "the revert entry")} removes its patch from the lineage. Its author reward is void.`));
-  if (g.needs_revalidation) banners.push(banner("warn", "Needs revalidation", "An earlier generation in this lineage was reverted after this one was accepted."));
-  if (g.entry_type === "revert") banners.push(banner("info", "Revert entry", html`Removes ${genLink(g.reverts)} from the lineage. History is never rewritten; reverts are first-class entries.`));
+  if (g.reverted_by) banners.push(banner("bad", "Reverted", html`An audit contradicted this generation; ${genLink(g.reverted_by, "the revert entry")} removes its patch from the unit. Its author reward is void.`));
+  if (g.needs_revalidation) banners.push(banner("warn", "Needs revalidation", "An earlier generation in this unit was reverted after this one was accepted."));
+  if (g.entry_type === "revert") banners.push(banner("info", "Revert entry", html`Removes ${genLink(g.reverts)} from the unit. History is never rewritten; reverts are first-class entries.`));
 
   let hero: Raw;
   if (g.entry_type === "patch") {
@@ -102,7 +102,7 @@ export async function generationPage([id]: string[]): Promise<Page> {
         ? html`<div class="grid-side" style="margin-top:16px">
       <div class="stack">${sp ?? ""}${replayList(mainReplays, recipe, cal, { perReplay })}${asp ? html`${asp}` : ""}${auditReplays.length ? replayList(auditReplays, recipe, cal, { title: "Audit replays" }) : ""}</div>
       <div class="stack">
-        ${verdictPanel(g.verdict, "Verdict", [["lineage", linLink(g.lineage_id, lineageName(g.lineage_id))], ["kind and target", html`${g.kind} ${target(g.target)}`]])}
+        ${verdictPanel(g.verdict, "Verdict", [["unit", linLink(g.lineage_id, lineageName(g.lineage_id))], ["kind and target", html`${g.kind} ${target(g.target)}`]])}
         ${prov}
         ${g.audit ? verdictPanel(g.audit.verdict, "Audit verdict", [["audit id", html`<span class="hash">${shortHex(g.audit.audit_id, 16)}</span>`], ["status", auditBadge(g.audit.status)]]) : ""}
         ${panel("Tests", kv([["stable set", int(cal?.stable?.length)], ["known failures at gen 0", int(cal?.known_failures?.length)], ["quarantined", int(cal?.quarantined?.length)]]), { note: html`A counted replay must pass the whole stable set${g.kind === "fix" ? " plus the targeted tests" : ""}.` })}

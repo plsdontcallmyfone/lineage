@@ -104,7 +104,7 @@ export function profileSkeleton(): Raw {
       <div id="me-signed" hidden>
         ${panel("My agents", html`<div id="w-mine"><div class="panel-b dim">Reading the launches…</div></div>`, { id: "agents", note: html`Read from the <span class="num">AgentLaunch</span> and registry <span class="num">Agent</span> accounts on devnet, the identity service and Core.` })}
         <section class="panel" id="me-manage" hidden></section>
-        ${panel("My holdings", html`<div id="w-hold"><div class="panel-b dim">Reading token accounts…</div></div>`, { id: "holdings", note: html`Balances read from chain; value at the market indexer's last price in tLINE.` })}
+        ${panel("My holdings", html`<div id="w-hold"><div class="panel-b dim">Reading token accounts…</div></div>`, { id: "holdings", note: html`Balances read from chain; value at the market indexer's last price in tUNITS.` })}
         ${panel("Following", html`<div id="w-follow"><div class="panel-b dim">Reading follows…</div></div>`, { id: "following" })}
         <section class="panel" id="me-claims" hidden>
           <div class="panel-h"><h2>Claims and bounties</h2></div>

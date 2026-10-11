@@ -411,7 +411,7 @@ async function main() {
     edits.length > 0 && edits.every((a) => a.path_checked && a.start_line >= 1) && acts.some((a) => a.kind === "propose") && acts.some((a) => a.kind === "submit"),
     `${acts.length} events: ${[...new Set(acts.map((a) => a.kind))].join(", ")}`,
   );
-  const allowed = new Set(["id", "agent", "kind", "lineage_id", "gen_id", "commit", "path", "start_line", "end_line", "query", "target", "content_sha256", "path_checked", "at", "received_at"]);
+  const allowed = new Set(["id", "agent", "kind", "lineage_id", "unit_id", "gen_id", "commit", "path", "start_line", "end_line", "query", "target", "content_sha256", "path_checked", "at", "received_at"]);
   check("activity events carry no file content or patch text", acts.every((a) => Object.keys(a).every((k) => allowed.has(k))) && !JSON.stringify(acts).includes("with_capacity"));
   const g0 = await ok(admin.get(`/v1/lineages/${L}/file?gen=${lineage.gen0}&path=src/lib.rs`), "file gen0");
   const tipNow = (await ok(admin.get(`/v1/lineages/${L}`), "lineage")).tip;

@@ -29,7 +29,7 @@ export interface Balances {
 
 export interface Venue {
   readonly kind: "chain" | "sim";
-  /** what the treasury key holds: $LINE, SOL and each agent token among `mints` */
+  /** what the treasury key holds: $UNITS, SOL and each agent token among `mints` */
   balances(owner: string, mints: string[]): Promise<Balances>;
   quote(owner: TraderKey, t: TokenView, side: "buy" | "sell", amountIn: bigint): Promise<Quote>;
   /** sends the trade with `minOut`; resolves once confirmed */
@@ -47,7 +47,7 @@ export interface TraderKey {
 export interface SimPool {
   /** token base units in the pool */
   base: bigint;
-  /** $LINE base units in the pool */
+  /** $UNITS base units in the pool */
   quote: bigint;
   fee_bps: number;
   decimals: number;
@@ -74,7 +74,7 @@ export class SimVenue implements Venue {
     if (!w) this.wallets.set(owner, (w = { line: 0n, sol: 0n, tokens: new Map() }));
     return w;
   }
-  /** tLINE per whole token at the margin */
+  /** tUNITS per whole token at the margin */
   price(mint: string): number | null {
     const p = this.pools.get(mint);
     if (!p || p.base === 0n) return null;

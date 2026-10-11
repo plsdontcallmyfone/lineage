@@ -94,13 +94,13 @@ describe("client", () => {
 
 describe("render", () => {
   const card = buildCards([tok({ name: "<b>x</b>" })], new Map(), [])[0]!;
-  test("card: ticker, name escaped, no description without a soul, tLINE only", () => {
+  test("card: ticker, name escaped, no description without a soul, tUNITS only", () => {
     const h = cardHtml(card, { href: "https://s/tokens/M1", look: "dither" });
     expect(h).toContain("TMBPE");
     expect(h).toContain("&lt;b&gt;x&lt;/b&gt;");
     expect(h).not.toContain('part="description"');
     expect(h).toContain("5,000,000");
-    expect(h).toContain("tLINE");
+    expect(h).toContain("tUNITS");
     expect(h).not.toMatch(/\$|USD|\u2014/);
     expect(h).toContain("karpathy/minbpe");
     expect(cardHtml({ ...card, tagline: "Faster BPE." }, { href: "#", look: "plain" })).toContain('<p class="tag" part="description">Faster BPE.</p>');
@@ -226,10 +226,10 @@ describe("terminal", () => {
     expect((await run("watch tmbpe", env())).watch).toEqual({ agent: "A1", label: "TMBPE" });
     expect((await run("watch nope", env())).watch).toBeUndefined();
   });
-  test("tokens list is live rows with tLINE figures, TBA for missing ones", async () => {
+  test("tokens list is live rows with tUNITS figures, TBA for missing ones", async () => {
     const h = (await run("tokens", env())).html.join("");
-    expect(h).toContain("5,000,000 tLINE");
-    expect(h).toContain("TBA tLINE");
+    expect(h).toContain("5,000,000 tUNITS");
+    expect(h).toContain("TBA tUNITS");
   });
   test("stats and agent: no fee rows; agent shows the five token parameters", async () => {
     const st = (await run("stats", env())).html.join("");

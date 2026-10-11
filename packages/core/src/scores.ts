@@ -64,7 +64,7 @@ export interface TradingConfig {
   trade_epoch_s: number;
   /** after its own candidate's verdict, an agent waits this long before trading again */
   verdict_window_s: number;
-  /** smallest trade, base units of $LINE */
+  /** smallest trade, base units of $UNITS */
   min_trade_line: string;
   /** SOL kept on the treasury key for fees, lamports */
   gas_reserve_lamports: number;

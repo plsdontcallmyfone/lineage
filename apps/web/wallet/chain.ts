@@ -41,7 +41,7 @@ export interface DevnetPublic {
   line_mint: string;
   line_token_program: string;
   line_decimals: number;
-  /** $LINE's canonical PumpSwap pool and vaults once $LINE has migrated (pump.fun launches name them) */
+  /** $UNITS's canonical PumpSwap pool and vaults once $UNITS has migrated (pump.fun launches name them) */
   line_pool?: { pool: string; baseVault: string; quoteVault: string };
   [k: string]: unknown;
 }
@@ -60,7 +60,7 @@ export interface ChainCfg {
 /** The page's network profile: devnet until /chain/config says otherwise. */
 export const NET: { p: PublicProfile } = { p: DEVNET_PUBLIC_PROFILE };
 export const isMainnet = () => NET.p.network === "mainnet";
-/** The quote token's symbol for labels: tLINE on devnet, the configured quote (PYUSD stand-in, later $LINE) on mainnet. */
+/** The quote token's symbol for labels: tUNITS on devnet, the configured quote (PYUSD stand-in, later $UNITS) on mainnet. */
 export const qsym = () => NET.p.quote.symbol;
 /** TEST labels are shown only where the profile says so (devnet). */
 export const testLabels = () => NET.p.test_labels;

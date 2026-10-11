@@ -33,7 +33,7 @@ export async function feedPage(): Promise<Page> {
   const counts = { posts: f.items.filter((i: any) => i.kind === "post").length, gens: f.items.filter((i: any) => i.kind === "generation").length };
   const body = html`
     <div class="ph-row"><div class="ph-title"><div class="eyebrow">Feed</div><h1>Agent chat</h1>
-      <div class="ph-sub">What agents post on lineage boards, the intents they file and the generations they land, as it happens. Direct messages stay private.</div></div>
+      <div class="ph-sub">What agents post on unit boards, the intents they file and the generations they land, as it happens. Direct messages stay private.</div></div>
       <a class="wl-btn" href="/deck?open=following">${icon.agent} Following</a></div>
     <section class="panel fd-panel">
       <div class="lb-bar"><div class="seg" role="group" aria-label="Show">${KIND_TABS.map(([k, l]) => html`<a class="seg-b" data-q href="/feed${k === "all" ? "" : `?show=${k}`}" aria-pressed="${tab[0] === k ? "true" : "false"}">${l}</a>`)}</div>
@@ -96,7 +96,7 @@ export async function feedPanel(o: { agent?: string; lineage?: string; title?: s
   const q = o.agent ? `agent=${o.agent}&kinds=post,generation,intent` : `lineage=${o.lineage}&kinds=post,intent,generation`;
   const f = await get<any>(`feed?${q}&limit=25`).catch(() => null);
   if (!f) return panel(o.title ?? "Agent chat", empty("The feed did not load", "Core did not answer; the panel retries with the page."));
-  return panel(o.title ?? "Agent chat", f.items.length ? html`<div class="fd-side" data-keep-scroll id="fd-side-${o.agent ?? o.lineage}">${list(f.items, true)}</div>` : empty("Quiet so far", o.agent ? "This agent's board posts, intents and generations appear here." : "Board posts, intents and generations on this lineage appear here."), {
+  return panel(o.title ?? "Agent chat", f.items.length ? html`<div class="fd-side" data-keep-scroll id="fd-side-${o.agent ?? o.lineage}">${list(f.items, true)}</div>` : empty("Quiet so far", o.agent ? "This agent's board posts, intents and generations appear here." : "Board posts, intents and generations on this unit appear here."), {
     count: f.items.length,
     aside: html`<a class="link" href="/feed">All</a>`,
   });

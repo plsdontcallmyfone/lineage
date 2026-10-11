@@ -44,7 +44,7 @@ export const projectHref = (p: { key: string }) => `/projects/${p.key}`;
 export function metricLine(m: ProjectMetric): Raw {
   const imp = m.improvement_pct;
   return html`<li class="pj-m"><span class="pj-mn">${m.name}</span>
-    <span class="pj-mv num" title="${m.direction} is better; baseline from the lineage's calibration, best from the counted replays of an accepted generation">${metricVal(m.baseline)} <span class="faint">to</span> ${m.best ? metricVal(m.best.value) : html`<span class="faint">none yet</span>`}</span>
+    <span class="pj-mv num" title="${m.direction} is better; baseline from the unit's calibration, best from the counted replays of an accepted generation">${metricVal(m.baseline)} <span class="faint">to</span> ${m.best ? metricVal(m.best.value) : html`<span class="faint">none yet</span>`}</span>
     <span class="pj-mi num ${imp && imp > 0 ? "good-t" : ""}">${imp === null ? html`<span class="faint">TBA</span>` : imp > 0 ? pct(imp) : html`<span class="faint" title="No accepted generation measured this metric better than its baseline">not improved</span>`}</span></li>`;
 }
 
@@ -63,7 +63,7 @@ export function projectCard(p: ProjectRow, hidden: boolean): Raw {
     </div>
     ${p.lineages.map(
       (l) => html`<div class="pj-lin">
-        <div class="pj-lin-h"><a class="link" href="/lineages/${l.lineage_id}">${l.recipe_name ?? "lineage"}</a><span class="sub">gen ${l.height}${l.status !== "active" ? `, ${l.status}` : ""}</span></div>
+        <div class="pj-lin-h"><a class="link" href="/units/${l.lineage_id}">${l.recipe_name ?? "unit"}</a><span class="sub">gen ${l.height}${l.status !== "active" ? `, ${l.status}` : ""}</span></div>
         ${l.metrics.length ? html`<ul class="pj-ms">${l.metrics.map(metricLine)}</ul>` : html`<div class="sub">No metrics declared.</div>`}
       </div>`,
     )}
@@ -121,7 +121,7 @@ export async function projectsPage(): Promise<Page> {
       <div class="ph-sub"><span>Each metric shows its baseline from the calibration and the best value an accepted generation measured, with the improvement between them.</span></div></div></div>
     <section class="panel">
       ${kpis([
-        ["Projects", String(ps.length), all ? "including retired lineages and fixtures" : "active, on GitHub"],
+        ["Projects", String(ps.length), all ? "including retired units and fixtures" : "active, on GitHub"],
         ["Working now", String(liveN), "projects with a live session"],
         ["Accepted generations", String(acc), "unreverted, all projects"],
         ["Open candidates", String(ps.reduce((n, x) => n + x.open_candidates, 0)), "counts only until final"],
@@ -129,7 +129,7 @@ export async function projectsPage(): Promise<Page> {
       <div class="ins-bar"><div class="seg" role="group" aria-label="Scope">${chip("all", "", "Active on GitHub", all ? "1" : "")}${chip("all", "1", "Include retired and fixtures", all ? "1" : "")}</div>
         <a class="link ins-clear" href="/generations" data-q>Every accepted generation</a></div>
     </section>
-    ${ps.length ? html`<div class="pj-list">${ps.map((x) => projectCard(x, hidden))}</div>` : panel("Projects", empty("No project yet", "A project appears once a recipe for its repository is calibrated into an active lineage."))}
+    ${ps.length ? html`<div class="pj-list">${ps.map((x) => projectCard(x, hidden))}</div>` : panel("Projects", empty("No project yet", "A project appears once a recipe for its repository is calibrated into an active unit."))}
   </div>`;
   return {
     title: "Projects",

@@ -8,19 +8,19 @@ Generated at build time from [config/profile.json](repo:config/profile.json); th
 
 {{gen:program-ids}}
 
-The devnet programs above are the second devnet deployment (2026-10-10), initialized with a pump.fun tLINE. The earlier devnet programs stay as read-only history; Core retired them at a recorded epoch (`GET /v1/chain/deployments`).
+The devnet programs above are the second devnet deployment (2026-10-10), initialized with a pump.fun tUNITS. The earlier devnet programs stay as read-only history; Core retired them at a recorded epoch (`GET /v1/chain/deployments`).
 
 ## Devnet
 
-- tLINE from the deployed state file and a faucet on your profile; TEST labels everywhere.
+- tUNITS from the deployed state file and a faucet on your profile; TEST labels everywhere. The app shows it as "tUNITS (devnet test)" (`config/profile.json` `quote.display`). It is a pump.fun coin created before the rename, so its on-chain metadata still reads name "Lineage devnet TEST LINE" and symbol tLINE (`quote.onchain_symbol`); pump.fun metadata cannot be changed after creation.
 - A fixed compute unit price of 1 micro-lamport.
 - SOL and USDC payment is unavailable: Jupiter does not run on devnet.
-- devnet's pump.fun build seeds a quoted coin at tLINE's spot price.
+- devnet's pump.fun build seeds a quoted coin at tUNITS's spot price.
 
 ## Mainnet
 
 - No faucet and no TEST labels; the profile parser refuses a mainnet block that turns either on.
-- The quote token comes from config. Until $LINE exists the mint is a stand-in (PYUSD) and `line_mint` is null (TBA).
+- The quote token comes from config. Until $UNITS exists the mint is a stand-in (PYUSD) and `units_mint` is null (TBA); the owner provides the mainnet $UNITS mint later.
 - No USD price feed: amounts are shown in the quote token only.
 - A keyed RPC from the environment, never sent to a browser; browsers reach the chain only through the site's `/chain/rpc` proxy.
 - Pay in SOL or USDC through Jupiter for the launch deposit and buys.
@@ -32,4 +32,4 @@ The programs select their ids at build time: the default build declares the devn
 
 ## Mainnet readiness
 
-The go/no-go list is in [docs/MAINNET-RUNBOOK.md](repo:docs/MAINNET-RUNBOOK.md). Open owner items include the external audit, the multisig signers, every token parameter, $LINE itself (a pump.fun coin paired with SOL or USDC, never mayhem), legal review, budgets, the domain and recruiting verifiers. Costs measured on the fork: [docs/MAINNET-COSTS.md](repo:docs/MAINNET-COSTS.md).
+The go/no-go list is in [docs/MAINNET-RUNBOOK.md](repo:docs/MAINNET-RUNBOOK.md). Open owner items include the external audit, the multisig signers, every token parameter, $UNITS itself (a pump.fun coin paired with SOL or USDC, never mayhem), legal review, budgets, the domain and recruiting verifiers. Costs measured on the fork: [docs/MAINNET-COSTS.md](repo:docs/MAINNET-COSTS.md).

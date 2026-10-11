@@ -18,7 +18,7 @@ describe("pump.fun accounts", () => {
     expect([g.tokenTotalSupply, g.initialRealTokenReserves, g.initialVirtualTokenReserves]).toEqual([1_000_000_000_000_000n, 793_100_000_000_000n, 1_073_000_000_000_000n]);
     expect(g.buybackFeeRecipients).toEqual([...c.PUMP.buybackRecipients]);
   });
-  test("BondingCurve: an agent coin quoted in $LINE with our creator PDA, depth 1, at the offsets units_launch reads", () => {
+  test("BondingCurve: an agent coin quoted in $UNITS with our creator PDA, depth 1, at the offsets units_launch reads", () => {
     const d = b64(fx.accounts.a1_curve);
     const k = c.decodeBondingCurve(d);
     expect([k.quoteMint, k.creator, k.depth, k.isMayhemMode, k.isCashbackCoin, k.isHolderReward, k.creatorFeeBps]).toEqual([line, fx.creator_pdas.a1, 1, false, false, false, 0n]);
@@ -28,7 +28,7 @@ describe("pump.fun accounts", () => {
     expect(c.toAddress(d.subarray(O.quoteMint, O.quoteMint + 32))).toBe(line);
     expect(d[O.depth]).toBe(1);
   });
-  test("a migrated curve reads as migrated; its PumpSwap pool carries our creator PDA and the $LINE quote", () => {
+  test("a migrated curve reads as migrated; its PumpSwap pool carries our creator PDA and the $UNITS quote", () => {
     expect(c.curveMigrated(c.decodeBondingCurve(b64(fx.accounts.a2_curve)))).toBe(true);
     const p = c.decodePumpPool(b64(fx.accounts.a2_pool));
     expect([p.index, p.creator, p.baseMint, p.quoteMint, p.coinCreator]).toEqual([0, c.pumpPdas.poolAuthority(a2), a2, line, fx.creator_pdas.a2]);
@@ -106,13 +106,13 @@ describe("pump.fun builders", () => {
     expect(ixs.map((x) => x.programId)).toEqual([c.ASSOCIATED_TOKEN_PROGRAM, c.PUMP.program, c.PUMP.program, c.PUMP.amm, c.PUMP.amm, c.LAUNCH_PROGRAM_ID]);
     expect(ixs[0]!.keys[1]!.pubkey).toBe(c.ata(c.launchPdas.pumpCreator(a1), line, c.TOKEN_2022_PROGRAM));
   });
-  test("quote math: the seed of a coin quoted in $LINE on its curve, and the 1% initial buy's quote", () => {
+  test("quote math: the seed of a coin quoted in $UNITS on its curve, and the 1% initial buy's quote", () => {
     const g = c.decodePumpGlobal(b64(fx.accounts.global));
     const fc = c.decodePumpFeeConfig(b64(fx.accounts.fee_config));
     const lineCurve: c.BondingCurve = { ...c.decodeBondingCurve(b64(fx.accounts.a1_curve)), quoteMint: "11111111111111111111111111111111", depth: 0,
       virtualTokenReserves: g.initialVirtualTokenReserves, virtualQuoteReserves: g.initialVirtualSolReserves, complete: false };
     const fresh = c.pumpQuotedCurve(g, { curve: lineCurve }, fx.creator_pdas.a1, line);
-    // a fresh $LINE: the reference raise buys the curve's real reserves exactly, scaled back to the seed
+    // a fresh $UNITS: the reference raise buys the curve's real reserves exactly, scaled back to the seed
     expect(fresh.virtualQuoteReserves > 0n && fresh.realTokenReserves === g.initialRealTokenReserves).toBe(true);
     const q = c.quoteInitialBuy(g, fc, fresh, c.initialBuyAmount(g.tokenTotalSupply, 100));
     const net = (10_000_000_000_000n * fresh.virtualQuoteReserves) / (fresh.virtualTokenReserves - 10_000_000_000_000n) + 1n;

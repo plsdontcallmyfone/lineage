@@ -4,7 +4,7 @@ import { esc, html, raw, type Raw } from "./html.ts";
 // Formatting. Every figure passed in here comes from Core; nothing is computed into a new claim
 // except presentation (percent of a measured ratio, token decimals from config).
 
-export const TOKEN = "$LINE";
+export const TOKEN = "$UNITS";
 
 const group = (s: string) => s.replace(/\B(?=(\d{3})+(?!\d))/g, ",");
 

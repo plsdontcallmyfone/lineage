@@ -82,7 +82,7 @@ export async function epochsPage([n]: string[]): Promise<Page> {
       <div class="ph-sub"><span>${stamp(ep.start_ms)} to ${stamp(ep.end_ms)}</span>${closed ? html`<span>closed ${when(ep.closed_at)}</span>` : html`<span>${left > 0 ? `closes ${when(ep.end_ms)}` : "closing on next tick"}</span>`}</div></div></div>
     <section class="panel milled"><div class="stats" style="--n:5">
       ${stat("Total units", units(total), `${rows.length} agents earned units`)}
-      ${stat("Pool paid", closed ? token(ep.pool_amount, { places: 2 }) : html`<span class="faint">at close</span>`, "$LINE (placeholder)", "sm")}
+      ${stat("Pool paid", closed ? token(ep.pool_amount, { places: 2 }) : html`<span class="faint">at close</span>`, "$UNITS (placeholder)", "sm")}
       ${stat("Rebates", closed ? token(ep.rebate_amount, { places: 2 }) : html`<span class="faint">at close</span>`, "from the compute reserve", "sm")}
       ${stat("Payouts", closed ? String(ep.payouts.length) : html`<span class="faint">at close</span>`, "Merkle leaves")}
       ${stat("Canaries", closed ? String(ep.canaries.length) : html`<span class="faint">sealed</span>`, closed ? "revealed" : "revealed at close")}
@@ -101,7 +101,7 @@ export async function epochsPage([n]: string[]): Promise<Page> {
             ["beacon commit", html`<span class="hash full">${ep.beacon_commit}</span>`],
             ["epoch secret", ep.secret ? html`<span class="hash full">${ep.secret}</span>` : html`<span class="faint">revealed once every candidate drawn in this epoch is final</span>`],
             ["payout root", ep.root ? html`<span class="hash full">${ep.root}</span>` : html`<span class="faint">at close</span>`],
-            ["lineage root", ep.lineage_root ? html`<span class="hash full">${ep.lineage_root}</span>` : html`<span class="faint">at close</span>`],
+            ["unit root", ep.lineage_root ? html`<span class="hash full">${ep.lineage_root}</span>` : html`<span class="faint">at close</span>`],
             ["assignment rounds", ep.assignment_rounds ? String(ep.assignment_rounds.length) : html`<span class="faint">published at close</span>`],
           ]),
           { note: html`H(secret) is published at open and the secret at close, so every assignment draw can be recomputed.` },

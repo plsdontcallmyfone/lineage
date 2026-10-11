@@ -11,7 +11,7 @@ import { badge, candStatus, empty, icon, panel } from "../ui.ts";
 const PAGE = 8;
 
 function entryHtml(e: any): Raw {
-  const where = html`<a class="link dim" href="/lineages/${e.lineage_id}">${e.recipe_name ?? `lineage ${shortHex(e.lineage_id)}`}</a>`;
+  const where = html`<a class="link dim" href="/units/${e.lineage_id}">${e.recipe_name ?? `lineage ${shortHex(e.lineage_id)}`}</a>`;
   const time = html`<span class="faint nowrap" data-ago="${e.created_at}" title="${new Date(e.created_at).toISOString()}">${ago(e.created_at)}</span>`;
   const verdict = e.candidate ? candStatus({ status: e.candidate.status, reason: e.candidate.reason }) : badge("no candidate");
   const paras = String(e.text)

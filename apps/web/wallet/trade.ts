@@ -194,7 +194,7 @@ class Box {
     const lm = this.lineMint();
     const lineAccount = ata(a, lm, T22);
     const agentAccount = ata(a, this.t.mint, T22);
-    // the buyback recipient's $LINE account must exist for every pump.fun trade in $LINE (anyone may create it)
+    // the buyback recipient's $UNITS account must exist for every pump.fun trade in $UNITS (anyone may create it)
     const pre = [token.createAtaIdempotent(a, a, lm, T22), token.createAtaIdempotent(a, a, this.t.mint, T22),
       token.createAtaIdempotent(a, PUMP.buybackRecipients[0], lm, T22)];
     if (v.kind !== "curve" && v.kind !== "pool") throw new Error(v.kind === "legacy" ? "This token was launched on the earlier Meteora venue and is read only here." :
@@ -373,7 +373,7 @@ class Box {
       body = html`<div class="mk-tb-venue">${this.venueLine()}</div>
         <div class="eyebrow" style="margin:12px 0 8px">Connect a wallet to trade</div>
         <div class="wl-row">${this.btn("connect", "Connect", { primary: true })}</div>
-        ${testLabels() ? html`<div class="wl-fine">Devnet only, TEST tokens. Get tLINE from the faucet on your <a class="link" href="/profile">Profile</a>.</div>` : html`<div class="wl-fine">Prices in ${qsym()}. A buy can pay in SOL or USDC through Jupiter.</div>`}`;
+        ${testLabels() ? html`<div class="wl-fine">Devnet only, TEST tokens. Get tUNITS from the faucet on your <a class="link" href="/profile">Profile</a>.</div>` : html`<div class="wl-fine">Prices in ${qsym()}. A buy can pay in SOL or USDC through Jupiter.</div>`}`;
     } else {
       const q = this.quote;
       const buy = this.side === "buy";

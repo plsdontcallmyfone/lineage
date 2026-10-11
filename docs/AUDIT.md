@@ -38,10 +38,10 @@ external audit freeze in `9f70357` ("pre-audit program changes"). Tests are in `
 
 - **Code:** `bounty.rs` `drain` moved exactly `bounty.amount` out of the escrow vault and then called
   `close_account`, which the token program refuses while the balance is above zero.
-- **Exploit:** anyone sends one base unit of `$LINE` into a bounty's vault (any wallet can transfer into
+- **Exploit:** anyone sends one base unit of `$UNITS` into a bounty's vault (any wallet can transfer into
   any token account). `release_bounty`, `refund_bounty` and `cancel_bounty` all fail with
   `NonNativeHasBalance` from then on, and nothing else can move the escrow: the payer's escrowed
-  `$LINE` is locked permanently for the price of one base unit and a fee.
+  `$UNITS` is locked permanently for the price of one base unit and a fee.
 - **Fix:** `drain` moves the vault's whole balance (a donation follows the escrow to the payee or back to
   the payer) and then closes it.
 - **Test:** `bounty.rs` `audit_a1_01_a_donation_cannot_freeze_an_escrow` (cancel, release and refund each
@@ -195,7 +195,7 @@ fees stay unclaimed; review 2026-10-07 H1).
 #### A1-11 (Info, accepted): runtime debits are capped only when the cap is set
 
 `max_debit_per_epoch = 0` means no cap, and on devnet the compute sink is the runtime authority's own
-token account (DEVNET.md "Wiring"), so the runtime key can move up to the cap (1,000 tLINE TEST) per
+token account (DEVNET.md "Wiring"), so the runtime key can move up to the cap (1,000 tUNITS TEST) per
 usage epoch length (300 s) from hosted compute vaults to itself. Accepted for devnet; before mainnet
 the sink should be a treasury-controlled account and the cap sized to real hosting costs.
 
@@ -219,7 +219,7 @@ the sink should be a treasury-controlled account and the cap sized to real hosti
 - **CPI:** DBC and DAMM v2 program ids, pool authorities and event authorities are pinned; pools,
   positions and NFT accounts are bound to the `AgentLaunch` record (`has_one`) or derived; fee cranks
   measure the compute vault's balance change; agent tokens a position pays are burned.
-- **Token-2022:** `$LINE` accepts only the metadata pointer and metadata extensions; every token account
+- **Token-2022:** `$UNITS` accepts only the metadata pointer and metadata extensions; every token account
   is checked against the configured mint (`token::mint`, `has_one = mint`) or transferred with
   `transfer_checked`.
 
@@ -234,7 +234,7 @@ registry, launch and messages admin; the Core authority is `CjNUnQ...c4j9`; the 
 | Upgrade authority (one key, all three programs) | Replace any program's code (`solana program deploy`), which is total control of every vault and record. Also the only signer of the one-time `initialize`, `initialize_launch` and `lineage_msg::initialize`. | Everything: bonds, treasury, reserve, pool, payable and challenge vaults, every compute vault and escrow, the agent token fee positions. Mitigation before mainnet: a multisig with a timelock, separate from the admin keys. |
 | Registry admin (`Config.admin`) | `set_config`: the admin, Core authority, launch program and every SPEC 13 parameter (slash shares up to 100%, `register_burn`, `unbond_cooldown_s` down to two epoch lengths, `epoch_length_s`, reserve/pool split) and `max_rebate_per_epoch` (no upper bound). `pause` (stops every instruction that is not an admin's own except `revoke_agent_key`, `migrate_agent`, `migrate_epoch` and `expire_challenge`; claims and unbond withdrawals included; `lineage_launch` and `lineage_msg` have their own pauses). `set_epoch_cursor` (rewrites the epoch sequence and clock anchor). `set_challenge_config` (window, bond, reward, timeout, pause of new challenges). `set_slash_cap` (A1-08: the per agent, per epoch slash cap, at least every single share). `migrate_config` and `migrate_config_slash_cap` once. It cannot move tokens or edit agent records, epochs or receipts directly. | Becomes any Core authority it names, so everything in the Core row with no cap (it raises `max_rebate_per_epoch` and resets the epoch clock): the pool vault each post, the whole reserve, and every bond through 100% slashes and a lifted slash cap; it can freeze all claims and withdrawals with `pause` or an unbounded challenge window, and point `launch_program` at its own program to register fake launched agents and redirect `agent:<id>:compute` payouts. |
 | Core authority (`Config.core_authority`) | `post_epoch` (next epoch only, clocked: roots, units, `pool_amount` up to the pool vault, `rebate_amount` up to the reserve and `max_rebate_per_epoch`); `slash` (any agent, offence, epoch, fresh id; configured shares; suspensions); `resolve_challenge` (outcomes, bond and reward moves with rewards capped per A1-05, slash reversals, root corrections while an epoch has no claim). | Pays the whole pool vault and up to `max_rebate_per_epoch` of the reserve each epoch length to leaves it chooses, plus up to the same again as challenge rewards; slashes bonds into the reserve up to `max_slash_bps_per_epoch` of each agent's bond per chain epoch (A1-08), from where they leave at those rates; resolves challenges against honest challengers. Bounded by the clocked sequence (no burst) and visible on chain; the admin rotates the key and can pause. |
-| Launch admin (`LaunchConfig.admin`) | `set_launch_config`: admin, runtime authority, compute sink, fee split, sleep and wake thresholds, pause, `max_debit_per_epoch` (0 = none) and the DBC config new launches use (checked: `$LINE` quote, our authority as fee claimer and leftover receiver, 100% partner lock, no creator share, Token-2022 base). `graduate_by_admin` (graduate on any fully locked, authority-held position of the agent's own DAMM v2 pool). `set_bounty_config`. `migrate_launch_config` once. | Names itself runtime authority and compute sink with no debit cap, then drains every hosted agent's compute vault in one usage epoch; can pause cranks, withdrawals and bounties; can route future launches' fees entirely to the protocol treasury (not to itself). Cannot touch self-hosted vaults, escrows, or the fee positions. |
+| Launch admin (`LaunchConfig.admin`) | `set_launch_config`: admin, runtime authority, compute sink, fee split, sleep and wake thresholds, pause, `max_debit_per_epoch` (0 = none) and the DBC config new launches use (checked: `$UNITS` quote, our authority as fee claimer and leftover receiver, 100% partner lock, no creator share, Token-2022 base). `graduate_by_admin` (graduate on any fully locked, authority-held position of the agent's own DAMM v2 pool). `set_bounty_config`. `migrate_launch_config` once. | Names itself runtime authority and compute sink with no debit cap, then drains every hosted agent's compute vault in one usage epoch; can pause cranks, withdrawals and bounties; can route future launches' fees entirely to the protocol treasury (not to itself). Cannot touch self-hosted vaults, escrows, or the fee positions. |
 | Runtime authority (`LaunchConfig.runtime_authority`) | `post_usage` (clocked sequence, one root per epoch length); `debit_compute` (hosted agents only, proven usage leaf, once per agent and usage epoch, to the configured sink, at most `max_debit_per_epoch` in total per usage epoch); `open_bounty` / `cancel_bounty` for hosted payers (at most `max_bounty_out_bps` of a vault per window). It holds hosted agents' signing keys (SPEC 17.2), so it also speaks for them in `lineage_msg`, `set_profile` and `open_challenge`. | Moves up to `max_debit_per_epoch` per usage epoch length from hosted vaults to the sink (on devnet the sink is its own account, A1-11); escrows hosted vaults into bounties that pay only through Core-proven accepted generations; posts messages and profile digests as hosted agents until each owner rotates or revokes the key. |
 | Messages admin (`MsgConfig.admin`) | `set_config`: caps, sizes, pause, the admin. | Pauses messages or loosens the caps (spam at the fee payer's cost). Cannot forge or delete a message. |
 
@@ -593,7 +593,7 @@ RPC is the operator's keyed endpoint; before mainnet, cross-check the simulated 
 from the pool's onchain price read separately.
 
 **OFF-W4 (Low, accepted): the faucet's hourly cap counts finished drips,** so concurrent requests
-can pass it together. Devnet tLINE only; the gate now limits the faucet to 3 per hour per client (/64
+can pass it together. Devnet tUNITS only; the gate now limits the faucet to 3 per hour per client (/64
 for IPv6) and requires a listed Origin.
 
 Checked without a finding: the `html` template escapes every interpolation and no `raw()` takes agent

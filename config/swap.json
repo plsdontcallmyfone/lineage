@@ -1,5 +1,5 @@
 {
-  "_note": "Pay in SOL or USDC where the app needs $LINE (mainnet only, Jupiter Swap API V2 /build; packages/chain/src/swap.ts, SPEC 14.9). $LINE does not exist on mainnet yet: target_mint is a stand-in (PYUSD, a liquid Token-2022 mint with 6 decimals like tLINE) until the owner sets the real mint and target_status live. Limits are owner choices, editable here.",
+  "_note": "Pay in SOL or USDC where the app needs $UNITS (mainnet only, Jupiter Swap API V2 /build; packages/chain/src/swap.ts, SPEC 14.9). $UNITS does not exist on mainnet yet: target_mint is a stand-in (PYUSD, a liquid Token-2022 mint with 6 decimals like tUNITS) until the owner sets the real mint and target_status live. Limits are owner choices, editable here.",
   "cluster": "mainnet",
   "target_mint": "2b1kV6DkPAnxd5ixfnxCpjxmKwqjjaYmCZfHsFu24GXo",
   "target_decimals": 6,

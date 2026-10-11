@@ -13,7 +13,7 @@
 //   GET  /api/*, /live/*      dashboard data (CORS *); not /api/admin*, not encoded slashes or //
 //   GET  /market/*            market indexer read API (own class; the indexer's own CORS and preflight)
 //   POST /chain/rpc           devnet JSON-RPC proxy (web keeps its method allowlist); same origin only
-//   POST /chain/faucet        tLINE faucet (web keeps its per-wallet and hourly limits); same origin only
+//   POST /chain/faucet        tUNITS faucet (web keeps its per-wallet and hourly limits); same origin only
 //                             (an Origin header is required: browsers always send one on POST)
 //   POST /social/follow, /social/react, /social/media/:agent   wallet-signed social statements (Core
 //                             verifies each signature); same origin only; own class; bodies capped at

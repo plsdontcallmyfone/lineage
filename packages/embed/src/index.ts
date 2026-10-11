@@ -24,6 +24,8 @@ export const Units = {
   soul: (id: string) => c().soul(id),
   sessions: (o?: { agent?: string; lineage?: string; state?: string; limit?: number }) => c().sessions(o),
   session: (id: string) => c().session(id),
+  units: () => c().units(),
+  unit: (id: string) => c().unit(id),
   stats: () => c().stats(),
   leaderboard: (q: Record<string, string> = {}) => c().core(`leaderboard?${new URLSearchParams(q)}`, 15_000),
   feed: (q: Record<string, string> = {}) => c().core(`feed?${new URLSearchParams(q)}`, 5_000),

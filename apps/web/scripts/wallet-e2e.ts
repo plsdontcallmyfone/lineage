@@ -101,8 +101,8 @@ if (solBal < MIN) {
   log(`funded test wallet: ${r.signature}`);
 }
 
-// ---------------------------------------------------------------- tLINE for the test wallet
-// The flow spends about 206 tLINE (buy 200, register burn, bond 5) and the page's faucet drips at most
+// ---------------------------------------------------------------- tUNITS for the test wallet
+// The flow spends about 206 tUNITS (buy 200, register burn, bond 5) and the page's faucet drips at most
 // once per wallet every 24 h, so a second run on the same day used to stop at the buy with
 // "insufficient funds". Top the wallet up from the faucet's own devnet key, as SOL is topped up from
 // the deployer; the faucet UI step below still runs whenever the page allows a drip.
@@ -117,8 +117,8 @@ if (lineBal < LINE_MIN) {
     token.createAtaIdempotent(fk.id, wallet.id, mint, T22),
     token.transferChecked(ata(fk.id, mint, T22), mint, walletLine, fk.id, LINE_TOP - lineBal, Number(state.line_decimals), T22),
   ]);
-  logWalletTx("e2e", `top up the test wallet ${wallet.id} with ${units(LINE_TOP - lineBal, Number(state.line_decimals))} tLINE from the faucet key`, r.signature, r.fee);
-  log(`topped up test wallet tLINE: ${r.signature}`);
+  logWalletTx("e2e", `top up the test wallet ${wallet.id} with ${units(LINE_TOP - lineBal, Number(state.line_decimals))} tUNITS from the faucet key`, r.signature, r.fee);
+  log(`topped up test wallet tUNITS: ${r.signature}`);
 }
 
 // ---------------------------------------------------------------- Core stand-in (proof routes only)
@@ -217,16 +217,16 @@ try {
   check("page states devnet only and the cluster was checked", /Devnet only/.test(gate) && /genesis hash/.test(gate));
   const balText = await page.locator(".wl-bal").innerText();
   const [chainSol, chainLine] = await Promise.all([rpc.getBalance(wallet.id), reader.tokenBalance(ata(wallet.id, mint, T22))]);
-  check("balances shown equal chain", balText.includes(units(chainSol, 9)) && balText.includes(units(chainLine ?? 0n, state.line_decimals)), `${balText.replace(/\s+/g, " ")} vs ${chainSol} lamports, ${chainLine ?? 0} tLINE base units`);
+  check("balances shown equal chain", balText.includes(units(chainSol, 9)) && balText.includes(units(chainLine ?? 0n, state.line_decimals)), `${balText.replace(/\s+/g, " ")} vs ${chainSol} lamports, ${chainLine ?? 0} tUNITS base units`);
 
   // ------------------------------------------------------------ faucet
   const faucetBtn = page.locator('[data-act="faucet"]');
   if (await faucetBtn.isEnabled()) {
     const before = (await reader.tokenBalance(ata(wallet.id, mint, T22))) ?? 0n;
     await faucetBtn.click();
-    await page.locator("text=/Received .* tLINE/").waitFor({ timeout: T });
+    await page.locator("text=/Received .* tUNITS/").waitFor({ timeout: T });
     const after = (await reader.tokenBalance(ata(wallet.id, mint, T22))) ?? 0n;
-    check("faucet transferred 1,000 tLINE (read back)", after - before === 1_000_000_000n, `${before} -> ${after}`);
+    check("faucet transferred 1,000 tUNITS (read back)", after - before === 1_000_000_000n, `${before} -> ${after}`);
     const again = await fetch(`${BASE}/chain/faucet`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ wallet: wallet.id }) });
     check("faucet refuses a second drip to the same wallet", again.status === 429, `HTTP ${again.status}`);
   } else log(`faucet disabled for this wallet: ${await page.locator("#w-conn .wl-why").first().innerText().catch(() => "")}`);
@@ -315,12 +315,12 @@ try {
   const b0 = (await reader.agent(workerKey.id))!.bond;
   await page.fill('[name="v_bond"]', "5");
   await page.click('[data-act="v-bond"]');
-  await page.locator("#w-vout >> text=bond 5 tLINE").waitFor({ timeout: T });
+  await page.locator("#w-vout >> text=bond 5 tUNITS").waitFor({ timeout: T });
   const b1 = (await reader.agent(workerKey.id))!.bond;
-  check("bond moved 5 tLINE into the bond (read back)", b1 - b0 === 5_000_000n, `${b0} -> ${b1}; min_bond ${cfg.params.minBond}`);
+  check("bond moved 5 tUNITS into the bond (read back)", b1 - b0 === 5_000_000n, `${b0} -> ${b1}; min_bond ${cfg.params.minBond}`);
   await page.fill('[name="v_unbond"]', "1");
   await page.click('[data-act="v-unbond"]');
-  await page.locator("#w-vout >> text=request_unbond 1 tLINE").waitFor({ timeout: T });
+  await page.locator("#w-vout >> text=request_unbond 1 tUNITS").waitFor({ timeout: T });
   const r2 = (await reader.agent(workerKey.id))!;
   check("request_unbond recorded with its cooldown", r2.unbondAmount === 1_000_000n && Number(r2.unbondReadyAt) - Number(r2.unbondRequestedAt) === Number(cfg.params.unbondCooldownS), `ready at ${r2.unbondReadyAt}`);
   await shot("e2e-07-verifier");
@@ -381,7 +381,7 @@ try {
   {
     const fk = loadKeypair(join(KEYS, "faucet.json"));
     const r = await sendAndConfirm(rpc, fk, [token.transferChecked(ata(fk.id, mint, T22), mint, launchPdas.computeVault(l.agent), fk.id, 2n * LINE_UNIT, Number(state.line_decimals), T22)]);
-    extraSigs.push({ step: "e2e", what: `deposit 2 tLINE by transfer into the compute vault of ${l.agent} (bounty test, faucet key)`, sig: r.signature });
+    extraSigs.push({ step: "e2e", what: `deposit 2 tUNITS by transfer into the compute vault of ${l.agent} (bounty test, faucet key)`, sig: r.signature });
   }
   const minbpe = state.agents.minbpe.agent as string;
   const bLineage = H("lineage", "wallet-e2e", stamp);
@@ -419,7 +419,7 @@ try {
   const bRel = await openOne("0.5", minbpe);
   const bCan = await openOne("0.25", "");
   const cv1 = (await reader.tokenBalance(launchPdas.computeVault(l.agent)))!;
-  check("open_bounty from the page: 0.75 tLINE escrowed from the agent's compute vault, payee and condition as typed (read back)",
+  check("open_bounty from the page: 0.75 tUNITS escrowed from the agent's compute vault, payee and condition as typed (read back)",
     cv0 - cv1 === 750_000n && bRel.payee === minbpe && bCan.payee === null && bRel.conditionKind === 0 && bRel.conditionValue === bCommit && bRel.lineageId === bLineage &&
       bRel.opener === wallet.id && (await reader.tokenBalance(bountyPdas.vault(bRel.address))) === 500_000n, `${cv0} -> ${cv1}`);
   await shot("e2e-10-bounty-opened");
@@ -467,7 +467,7 @@ try {
   await page.locator(`text=Claimed epoch ${n}`).waitFor({ timeout: T });
   const d1 = (await reader.tokenBalance(destToken)) ?? 0n;
   const [receipt] = await reader.claimReceipts(n, [Uint8Array.from(Buffer.from(leaf, "hex"))]);
-  check("claim paid exactly the leaf to the owner's tLINE account, receipt on chain", d1 - d0 === amount && !!receipt, `${d1 - d0}`);
+  check("claim paid exactly the leaf to the owner's tUNITS account, receipt on chain", d1 - d0 === amount && !!receipt, `${d1 - d0}`);
   await shot("e2e-11-claimed");
 
   // ------------------------------------------------------------ bounties: release with the contribution proof (checked against the record root on chain)
@@ -480,7 +480,7 @@ try {
   await page.locator("#w-bout >> text=Released").first().waitFor({ timeout: T });
   const mv1 = (await reader.tokenBalance(launchPdas.computeVault(minbpe)))!;
   const relB = (await reader.bounty(bRel.address))!;
-  check("release from the page paid exactly 0.5 tLINE into the payee's compute vault; receipt on chain (read back)", mv1 - mv0 === 500_000n && relB.status === "released" &&
+  check("release from the page paid exactly 0.5 tUNITS into the payee's compute vault; receipt on chain (read back)", mv1 - mv0 === 500_000n && relB.status === "released" &&
     relB.releasedTo === minbpe && relB.leaf === cLeaf && !!(await rpc.getAccountInfo(bountyPdas.receipt(l.agent, cLeaf))), `${mv1 - mv0}`);
   await shot("e2e-12-bounty-released");
 

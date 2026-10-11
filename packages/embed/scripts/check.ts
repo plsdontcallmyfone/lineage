@@ -114,7 +114,7 @@ for (const width of [1280, 390]) {
             off.push(`${b.mint}: not in the indexer`);
             continue;
           }
-          const got = b.cells.map((c) => c[1].replace(/\s*tLINE$/, ""));
+          const got = b.cells.map((c) => c[1].replace(/\s*tUNITS$/, ""));
           if (JSON.stringify(got) !== JSON.stringify(want(t))) off.push(`${b.mint.slice(0, 6)} page ${got.join("|")} indexer ${want(t).join("|")}`);
         }
         if (!off.length) break;

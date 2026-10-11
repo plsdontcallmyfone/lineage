@@ -51,7 +51,7 @@ function pick(cfg: Record<string, unknown>, key: string): unknown {
 function cfgText(key: string, v: unknown, cfg: Record<string, unknown>): string | null {
   if (v === undefined || v === null || key === "_note") return null;
   const leaf = key.split(".").pop()!;
-  const quote = (pick(cfg, "prepay.rate_status") === "test" ? "tLINE" : "$LINE");
+  const quote = (pick(cfg, "prepay.rate_status") === "test" ? "tUNITS" : "$UNITS");
   if (leaf.endsWith("_usd")) return `${v} USD`;
   if (leaf === "line_per_usd" || leaf === "compute_price_line_per_usd") return `${v} ${quote} per USD`;
   if (leaf === "compute_price_line_per_sandbox_s") return `${v} ${quote} per sandbox second`;
@@ -59,7 +59,7 @@ function cfgText(key: string, v: unknown, cfg: Record<string, unknown>): string 
   if (leaf === "finder_share" && typeof v === "number") return `${Math.round(v * 100)}%`;
   // amounts paramValue does not list (challenge bond and reward) format like any bond amount
   const t = paramValue(leaf === "challenge_bond" || leaf === "challenge_reward" ? "min_bond" : leaf, v);
-  return t === "TBA" ? null : t.replace("$LINE", quote);
+  return t === "TBA" ? null : t.replace("$UNITS", quote);
 }
 
 async function fill() {

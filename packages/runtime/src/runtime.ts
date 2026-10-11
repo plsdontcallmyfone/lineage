@@ -200,7 +200,7 @@ export class Runtime {
       : `spent so far ${usd4(this.state.spent_usd_total)} of ${this.cfg.global_max_usd} USD (lifetime cap)`;
     const q = this.price.current(this.now());
     this.log(
-      `started (${this.cfg.mode}, runtime ${this.deps.runtimeKey.id}, pid ${process.pid}); prices ${q?.status === "live" ? `${q.perUsd} base units per USD (live, ${q.source})` : q ? `${this.cfg.compute_price_line_per_usd} $LINE per USD (TEST value)` : `no quote price yet (${this.price.why(this.now())})`} and ${this.cfg.compute_price_line_per_sandbox_s} per sandbox second; vault-funded spend has no global cap, the ${this.cfg.global_cap_scope === "all" ? "global cap counts every USD" : "global cap counts subsidized spend only"}: ${capText}${unposted ? `; recovering ${unposted} unposted usage epoch(s)` : ""}`,
+      `started (${this.cfg.mode}, runtime ${this.deps.runtimeKey.id}, pid ${process.pid}); prices ${q?.status === "live" ? `${q.perUsd} base units per USD (live, ${q.source})` : q ? `${this.cfg.compute_price_line_per_usd} $UNITS per USD (TEST value)` : `no quote price yet (${this.price.why(this.now())})`} and ${this.cfg.compute_price_line_per_sandbox_s} per sandbox second; vault-funded spend has no global cap, the ${this.cfg.global_cap_scope === "all" ? "global cap counts every USD" : "global cap counts subsidized spend only"}: ${capText}${unposted ? `; recovering ${unposted} unposted usage epoch(s)` : ""}`,
     );
   }
 

@@ -1,4 +1,4 @@
-// Swap path proof (SPEC 14.9): builds the real "pay in SOL or USDC, swap to $LINE, then deposit"
+// Swap path proof (SPEC 14.9): builds the real "pay in SOL or USDC, swap to $UNITS, then deposit"
 // transaction for a mainnet wallet and simulates it on mainnet (sigVerify false,
 // replaceRecentBlockhash true). Nothing is signed and nothing is sent: the wallet is a read-only
 // public address and every signature slot is zeros.
@@ -6,7 +6,7 @@
 //   bun scripts/swap/simulate.ts [--pay SOL|USDC|both] [--taker <address>] [--usd 10] [--record]
 //
 // RPC: UNITS_MAINNET_RPC when set (printed redacted), else the public mainnet endpoint.
-// $LINE does not exist on mainnet yet, so the target is config/swap.json's stand-in mint. The
+// $UNITS does not exist on mainnet yet, so the target is config/swap.json's stand-in mint. The
 // deposit is the launch deposit's transferChecked (packages/chain launch.prepay) into a stand-in
 // compute vault: the associated token account of launchPdas.computeVault(agent) for a sample agent
 // address, created idempotently in the same transaction, because units_launch is not deployed on
@@ -97,7 +97,7 @@ async function main() {
   const genesis = await rpc.call<string>("getGenesisHash");
   check("RPC is mainnet-beta", genesis === MAINNET_GENESIS, genesis);
   if (genesis !== MAINNET_GENESIS) process.exit(1);
-  console.log(`target ${cfg.target_symbol} ${cfg.target_mint} (${cfg.target_status} for $LINE), ${cfg.target_decimals} decimals`);
+  console.log(`target ${cfg.target_symbol} ${cfg.target_mint} (${cfg.target_status} for $UNITS), ${cfg.target_decimals} decimals`);
   console.log(`deposit ${usd} USD at the ${prepay.rate_status.toUpperCase()} rate ${prepay.line_per_usd} per USD = ${units(need, cfg.target_decimals).slice(1)} ${cfg.target_symbol} (${need} base units)`);
 
   const vaultOwner = launchPdas.computeVault(SAMPLE_AGENT);

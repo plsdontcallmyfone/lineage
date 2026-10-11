@@ -3,7 +3,7 @@ import { ensureCoreSchema } from "./core-sync.ts";
 
 // Read API (docs/plans/LAUNCHPAD-AND-LIVE.md L2), JSON with CORS *. Agent tokens trade on pump.fun
 // (owner decisions 2026-10-10); a token from the earlier Meteora venue is listed with venue "meteora"
-// and read_only true (devnet history, no new trades). Prices are $LINE per agent
+// and read_only true (devnet history, no new trades). Prices are $UNITS per agent
 // token; amounts are UI units (numbers) with the exact base units next to them as strings ("_raw").
 // Times are unix seconds. Nothing is estimated: a figure the chain has not produced yet is null.
 
@@ -57,8 +57,8 @@ export function marketApi(db: Database, status: StatusSource, opts: { now?: () =
 }
 
 function marketHandler(db: Database, status: StatusSource, opts: { now?: () => number; quote?: string } = {}) {
-  // the quote token's symbol under the network profile (tLINE on devnet; SPEC 14.10)
-  const QUOTE = opts.quote ?? "tLINE";
+  // the quote token's symbol under the network profile (tUNITS on devnet; SPEC 14.10)
+  const QUOTE = opts.quote ?? "tUNITS";
   const now = opts.now ?? (() => Math.floor(Date.now() / 1000));
   const lineDecimals = () => Number((db.query("SELECT v FROM meta WHERE k = 'line_decimals'").get() as { v: string } | null)?.v ?? 6);
   ensureCoreSchema(db);
@@ -132,7 +132,7 @@ function marketHandler(db: Database, status: StatusSource, opts: { now?: () => n
       volume_24h_base: vol.b,
       trades_24h: vol.n,
       change_24h: price != null && refPrice ? price / refPrice - 1 : null,
-      // pump.fun: the share of the curve's real tokens sold (its graduation raise in $LINE is set by pump.fun at launch)
+      // pump.fun: the share of the curve's real tokens sold (its graduation raise in $UNITS is set by pump.fun at launch)
       curve_progress: t.graduated ? 1 : pump ? t.progress : reserve != null && threshold ? Number(reserve) / Number(threshold) : null,
       quote_reserve: ui(t.quote_reserve, qd),
       migration_threshold: ui(t.migration_threshold, qd),

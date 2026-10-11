@@ -188,7 +188,7 @@ describe("hosted runtime, simulated mode", () => {
       const view0 = await expectOk(env.anon.get(`/v1/agents/${author.id}`));
       const bal0 = BigInt(view0.compute);
       expect(view0.awake).toBe(true);
-      // the vault pays: (balance - 100 s x 0.001) / 4 $LINE per USD, capped at attempt_max_usd 1
+      // the vault pays: (balance - 100 s x 0.001) / 4 $UNITS per USD, capped at attempt_max_usd 1
       const prices = resolvePrices(cfg, env.cfg.token_decimals);
       expect(rt.budget(author.id).usd).toBe(Math.min(1, usdFor(prices, bal0, 100)));
       // metered usage (as the proposer reports it) drains the vault below sleep_threshold

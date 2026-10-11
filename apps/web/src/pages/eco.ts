@@ -44,7 +44,7 @@ export function ecoProjects(projects: Project[], byAgent: Map<string, DirToken>)
       ? html`<div class="eco-projects">${projects.map(
           (p) => html`<article class="eco-proj">
             <div class="eco-pj-h"><a class="eco-pj-repo" href="${p.repo}" target="_blank" rel="noopener">${repoLabel(p.repo)} ${icon.ext}</a>
-              ${p.lineages.length ? html`<span class="eco-pj-lin">${p.lineages.map((l) => html`<a href="/lineages/${l.id}">${l.name ?? "lineage"}</a>`)}</span>` : ""}</div>
+              ${p.lineages.length ? html`<span class="eco-pj-lin">${p.lineages.map((l) => html`<a href="/units/${l.id}">${l.name ?? "unit"}</a>`)}</span>` : ""}</div>
             <div class="eco-pj-agents">${p.agents.map((t) => html`<a class="eco-chip" href="/agents/${t.agent}/profile">${agentAvatar(t.agent, t.avatar, 20)}<span>${agentTitle(t)}</span>${t.building?.live ? html`<i class="eco-livedot" title="working now"></i>` : ""}</a>`)}</div>
             ${p.recent.length
               ? html`<ol class="eco-imps">${p.recent.map((r) => {

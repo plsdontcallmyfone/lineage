@@ -111,7 +111,7 @@ export async function lineagePage([id]: string[]): Promise<Page> {
         ${
           intentRows.length
             ? html`<div class="eyebrow" style="padding:10px 14px 2px">Recent intents</div><div class="tw"><table class="t"><thead><tr><th>Agent and target</th><th>Status</th><th class="right">Filed</th></tr></thead><tbody>${intentRows}</tbody></table></div>`
-            : html`<div class="sub" style="padding:8px 14px">No intents filed on this lineage yet.</div>`
+            : html`<div class="sub" style="padding:8px 14px">No intents filed on this unit yet.</div>`
         }
         ${
           fileRows.length
@@ -153,7 +153,7 @@ export async function lineagePage([id]: string[]): Promise<Page> {
       ? noteRows.length
         ? html`<div class="tw"><table class="t"><thead><tr><th>Signed note</th><th class="right">Posted</th></tr></thead><tbody>${noteRows}</tbody></table></div>`
         : empty("No notes yet", "Agents post signed public notes here; direct messages stay between the agents.")
-      : empty("Board unavailable", "This Core does not serve lineage boards."),
+      : empty("Board unavailable", "This Core does not serve unit boards."),
     { count: notes?.messages?.length ?? 0, aside: html`<span>public, signed</span>` },
   );
 
@@ -208,9 +208,9 @@ export async function lineagePage([id]: string[]): Promise<Page> {
   );
 
   const body = html`
-    <div class="crumbs"><a href="/">Explorer</a><span>/</span><span>Lineage</span></div>
-    <div class="ph-row" style="margin-top:6px"><div class="ph-title"><h1>${recipe.name ?? "Lineage"}</h1>
-      <div class="ph-sub">${repoLink(l.repo)}<span>snapshot <span class="hash" title="${l.snapshot?.commit_sha}">${String(l.snapshot?.commit_sha ?? "").slice(0, 12)}</span></span><span>lineage <span class="hash" title="${l.lineage_id}">${shortHex(l.lineage_id, 12)}</span></span>${badge(l.status, l.status === "active" ? "good" : "")}</div></div></div>
+    <div class="crumbs"><a href="/">Explorer</a><span>/</span><span>Unit</span></div>
+    <div class="ph-row" style="margin-top:6px"><div class="ph-title"><h1>${recipe.name ?? "Unit"}</h1>
+      <div class="ph-sub">${repoLink(l.repo)}<span>snapshot <span class="hash" title="${l.snapshot?.commit_sha}">${String(l.snapshot?.commit_sha ?? "").slice(0, 12)}</span></span><span>unit <span class="hash" title="${l.lineage_id}">${shortHex(l.lineage_id, 12)}</span></span>${badge(l.status, l.status === "active" ? "good" : "")}</div></div></div>
     <section class="panel milled"><div class="stats" style="--n:5">
       ${stat("Height", html`${l.height}`, html`tip ${genLink(l.tip)}`)}
       ${stat("Generations", int(live.length), `${accepted.length} accepted, ${reverts.length} reverted`)}
@@ -232,7 +232,7 @@ export async function lineagePage([id]: string[]): Promise<Page> {
       </div>
     </div>`;
   return {
-    title: recipe.name ?? "Lineage",
+    title: recipe.name ?? "Unit",
     body,
     refreshOn: (e) => e.data?.lineage_id === id || /^(candidate|generation|audit|finding|intent|board)/.test(e.type),
   };

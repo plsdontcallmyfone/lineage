@@ -220,7 +220,7 @@ const USDC = "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v";
 const isSolLike = (q: Address) => q === SYSTEM_PROGRAM || q === PUMP.wsol || q === "9pan9bMn5HatX4EJdBwg9VgCa7Uz5HL8N1m5D3NdXejP";
 /**
  * The fee schedule a canonical curve or pool pays, by quote mint, as pump-fees selects it: SOL-like
- * quotes the market-cap tier, USDC the stable tiers, any other quote (an agent coin quoted in $LINE)
+ * quotes the market-cap tier, USDC the stable tiers, any other quote (an agent coin quoted in $UNITS)
  * `exotic_flat_fees` (or `flat_fees` while that is unset). `marketCap` in quote base units.
  */
 export function pumpFeeSchedule(fc: PumpFeeConfig, quoteMint: Address, marketCap: bigint): PumpFees {
@@ -651,8 +651,8 @@ export const toAddr = toAddress;
 
 /**
  * Accounts every agent-coin launch on pump.fun names that are neither signers nor fresh, for a v0
- * launch transaction's lookup table: Pump's fixed accounts, the $LINE quote accounts (its curve, and
- * its canonical pool and vaults once migrated) and the $LINE buyback recipient account.
+ * launch transaction's lookup table: Pump's fixed accounts, the $UNITS quote accounts (its curve, and
+ * its canonical pool and vaults once migrated) and the $UNITS buyback recipient account.
  */
 export function pumpLaunchTableAddresses(a: { lineMint: Address; linePool?: { pool: Address; baseVault: Address; quoteVault: Address } }): Address[] {
   return [...new Set([PUMP.program, PUMP.global, pumpPdas.mintAuthority(), PUMP.eventAuthority, PUMP.mayhem, pumpPdas.mayhemGlobalParams(), pumpPdas.mayhemSolVault(),

@@ -4,11 +4,14 @@ import { esc, html, raw, type Raw } from "./html.ts";
 // Launchpad market data (plan L3): a client for the market indexer's read API (packages/indexer,
 // served by the dashboard at /market/*, plan L2) and the presentation pieces the token pages share.
 // Every figure comes from the indexer as it is; this file only formats it. Prices are in the quote
-// token per agent token (tLINE on devnet; on mainnet the network profile's quote, SPEC 14.10): no USD
+// token per agent token (tUNITS on devnet; on mainnet the network profile's quote, SPEC 14.10): no USD
 // price feed is wired, so nothing here is ever shown in USD.
 
-/** The quote token's symbol; a live binding, set from /chain/config's network profile (tLINE until then). */
-export let QUOTE = "tLINE";
+/** The quote token's symbol; a live binding, set from /chain/config's network profile (tUNITS until then). */
+export let QUOTE = "tUNITS";
+/** How the quote token is named where it is introduced (the profile's quote.display): the devnet test
+ * coin is "tUNITS (devnet test)"; its on-chain metadata still says tLINE (docs: networks). */
+export let QUOTE_LABEL = "tUNITS (devnet test)";
 /** The profile's network: "devnet" until /chain/config says otherwise. */
 export let NETWORK: "devnet" | "mainnet" = "devnet";
 let explorerQ = "?cluster=devnet";
@@ -16,7 +19,8 @@ let explorerQ = "?cluster=devnet";
 /** Reads the network profile once (public view, no RPC); true when it changed the labels (mainnet). */
 export async function loadNetworkLabels(): Promise<boolean> {
   try {
-    const c = (await (await fetch("/chain/config")).json()) as { profile?: { network: "devnet" | "mainnet"; quote: { symbol: string }; explorer_cluster: string | null } };
+    const c = (await (await fetch("/chain/config")).json()) as { profile?: { network: "devnet" | "mainnet"; quote: { symbol: string; display?: string }; explorer_cluster: string | null } };
+    if (c.profile?.quote.display) QUOTE_LABEL = c.profile.quote.display;
     if (!c.profile || c.profile.network === "devnet") return false;
     NETWORK = c.profile.network;
     QUOTE = c.profile.quote.symbol;
@@ -145,12 +149,12 @@ const sig4 = new Intl.NumberFormat("en-US", { maximumSignificantDigits: 4 });
 const two = new Intl.NumberFormat("en-US", { maximumFractionDigits: 2 });
 const zero = new Intl.NumberFormat("en-US", { maximumFractionDigits: 0 });
 
-/** A price in tLINE per token: six significant digits. */
+/** A price in tUNITS per token: six significant digits. */
 export function fmtPrice(n: number | null | undefined): string {
   if (n === null || n === undefined || !Number.isFinite(n)) return "TBA";
   return sig6.format(n);
 }
-/** An amount (tLINE or tokens): whole numbers from 100,000, two places from 1, four significant digits below. */
+/** An amount (tUNITS or tokens): whole numbers from 100,000, two places from 1, four significant digits below. */
 export function fmtAmount(n: number | null | undefined): string {
   if (n === null || n === undefined || !Number.isFinite(n)) return "TBA";
   const a = Math.abs(n);

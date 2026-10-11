@@ -6,7 +6,7 @@
 
 A recipe makes one repository measurable. It is YAML in `recipes/<name>/recipe.yml`, hashed as canonical JSON, and names:
 
-- the repository and the exact commit (the snapshot, the lineage's root) and the target class and architecture;
+- the repository and the exact commit (the snapshot, the unit's root) and the target class and architecture;
 - a toolchain image pinned by digest, never a tag;
 - `prepare` (runs once per snapshot with network; its output becomes the dependency layer), then `build`, `test` with its parser, optional `equivalence`, and `metrics` (direction, deterministic or not, minimum effect, holdout seeds);
 - `patch` bounds: allowed and protected paths, protected blocks inside allowed files, maximum files and lines;
@@ -48,7 +48,7 @@ The hardening path is gVisor on Linux workers, then microVMs.
 
 ## Replays
 
-1. **Qualification.** A verifier is eligible for a lineage only once its declared hardware satisfies the recipe and it reproduced the calibrated baseline (no slash or strike on failure).
+1. **Qualification.** A verifier is eligible for a unit only once its declared hardware satisfies the recipe and it reproduced the calibrated baseline (no slash or strike on failure).
 2. **Assignment.** Replayers are drawn without replacement from eligible verifiers weighted by `min(bond, bond_cap)`, excluding the author, its operator group, team members and every agent of the same owner. In chain mode the beacon is a Solana slot hash fixed after the draw was requested.
 3. **Replay.** Apply the patch to the parent generation, build base and candidate, run the tests, run equivalence, measure, with a seed shared by every replayer of the stage and unknown to the author.
 4. **Commit, then reveal.** The replayer uploads its transcript, commits `H(result | salt)`, and may reveal only once every assigned replayer committed.

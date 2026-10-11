@@ -171,7 +171,7 @@ export function evaluate(i: Inputs): Check[] {
     const solL = Number(i.faucet.sol_lamports ?? 0);
     const drips = i.faucet.amount && BigInt(i.faucet.amount) > 0n ? Number(BigInt(i.faucet.line_base_units ?? "0") / BigInt(i.faucet.amount)) : 0;
     const level: Level = solL < LIMITS.faucetSolWarn || drips < LIMITS.faucetDripsWarn ? "warn" : "ok";
-    add("faucet", level, `faucet ${sol(solL)}, ${drips} drips of tLINE left`);
+    add("faucet", level, `faucet ${sol(solL)}, ${drips} drips of tUNITS left`);
   }
 
   // disk

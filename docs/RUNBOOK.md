@@ -65,7 +65,7 @@ bun fixtures/make-patches.ts      # regenerates fixtures/b58-patches from fixtur
 bun fixtures/check-patches.ts     # evaluates each patch against gen 0 and judges it as a single replay (about 95 s)
 ```
 
-Each patch is judged alone against gen 0, so `perf_encode_dup` and `stale_conflict` show as accepted here: their expected rejections (duplicate, stale conflict) only exist once `perf_encode` is in the lineage, which section 3 checks.
+Each patch is judged alone against gen 0, so `perf_encode_dup` and `stale_conflict` show as accepted here: their expected rejections (duplicate, stale conflict) only exist once `perf_encode` is in the unit, which section 3 checks.
 
 ## 3. End-to-end network check, independent verification
 
@@ -73,7 +73,7 @@ Each patch is judged alone against gen 0, so `perf_encode_dup` and `stale_confli
 bun scripts/e2e.ts --port 9662 --keep      # 83 checks, 275 to 365 s; prints "kept <dir>" and "kept recipes <dir>"
 ```
 
-Starts a Core and worker processes with their own keys (a reference runner, honest verifiers, a verifier that fabricates its qualification, one declaring the wrong arch, and a liar that qualifies honestly and then fabricates), drives an authoring agent through every planted patch, and asserts each outcome: accepted perf and fix generations, every rejection reason, stale conflict and rebase, qualification, canaries and disputes catching the liar, audits, teams and intents, epoch close with a Merkle claim, and ledger reconciliation; then stacked series and messages, and on a second lineage of the same fixture repository (`scripts/e2e-collab-extras.ts`, plan W4) a measured split and cross-lineage ports. The result of the last run is written to `docs/E2E-LAST.json`. Without `--keep` the temp dirs are deleted.
+Starts a Core and worker processes with their own keys (a reference runner, honest verifiers, a verifier that fabricates its qualification, one declaring the wrong arch, and a liar that qualifies honestly and then fabricates), drives an authoring agent through every planted patch, and asserts each outcome: accepted perf and fix generations, every rejection reason, stale conflict and rebase, qualification, canaries and disputes catching the liar, audits, teams and intents, epoch close with a Merkle claim, and ledger reconciliation; then stacked series and messages, and on a second unit of the same fixture repository (`scripts/e2e-collab-extras.ts`, plan W4) a measured split and cross-lineage ports. The result of the last run is written to `docs/E2E-LAST.json`. Without `--keep` the temp dirs are deleted.
 
 Anyone can then recheck the network's work from its public API. Start a Core on the kept data (it warns that `~/.config/lineage/canaries` is missing; the e2e canaries are public test fixtures, hence the flag) and run:
 
@@ -86,7 +86,7 @@ UNITS_RECIPES_EXTRA=<kept recipes dir> bun scripts/replay.ts --core http://127.0
 bun packages/core/src/main.ts --replica-of http://127.0.0.1:9664 --once  # read-only replica: verdicts, audits, units, epoch roots (zero divergence)
 ```
 
-`replay.ts` exits 1 when any revealed replay differs from your local run. The second lineage's recipe (`fixture-b58-port`) exists only in the kept recipes dir the e2e prints, so without `UNITS_RECIPES_EXTRA` its two candidates report the recipe as missing. On the e2e data that is the expected result for every candidate the liar replayed: the DIFF lines name only the liar (slashed and suspended by Core), and every honest replay reproduces. Stop the Core by its PID afterwards.
+`replay.ts` exits 1 when any revealed replay differs from your local run. The second unit's recipe (`fixture-b58-port`) exists only in the kept recipes dir the e2e prints, so without `UNITS_RECIPES_EXTRA` its two candidates report the recipe as missing. On the e2e data that is the expected result for every candidate the liar replayed: the DIFF lines name only the liar (slashed and suspended by Core), and every honest replay reproduces. Stop the Core by its PID afterwards.
 
 ## 4. Real repositories
 
@@ -121,7 +121,7 @@ bun apps/web/scripts/seed-dev.ts --port 9664 [--live]          # about 15 s; pri
 bun apps/web/server.ts --port 9663 --core http://127.0.0.1:9664
 ```
 
-The seed Core keeps serving until stopped (Ctrl-C or its PID). It qualifies four verifiers, accepts generations on two lineages, rejects candidates for broken tests, a protected path, a regression, an equivalence change, a duplicate and a stale conflict, catches its dishonest verifier with a canary and a dispute, runs audits, closes epoch 0 and leaves epoch 1 work open. `--live` keeps submitting candidates so the feed moves. Against the kept e2e Core of section 3, point `--core` at port 9664 instead.
+The seed Core keeps serving until stopped (Ctrl-C or its PID). It qualifies four verifiers, accepts generations on two units, rejects candidates for broken tests, a protected path, a regression, an equivalence change, a duplicate and a stale conflict, catches its dishonest verifier with a canary and a dispute, runs audits, closes epoch 0 and leaves epoch 1 work open. `--live` keeps submitting candidates so the feed moves. Against the kept e2e Core of section 3, point `--core` at port 9664 instead.
 
 Rendering every route in headless Chromium (no page errors, no failed `/api` call other than the documented "none" answers, no error box, no horizontal scroll at 1280 and 390 px) is a scratch script in `docs/VERIFICATION.md`'s run, not committed. The committed UI checks, each starting its own simulated Core and dashboard:
 
@@ -173,7 +173,7 @@ mkdir -p <dir> && cd <dir> && bun add playwright-core@1.63.0 && ./node_modules/.
 bun apps/web/scripts/wallet-e2e.ts --pw <dir> [--shots <dir>]   # 29 checks; ports 9665 and 9666
 ```
 
-It tops the test wallet up with devnet SOL from the deployer and with tLINE from the faucet key when they run low, so it can run more than once a day. Every transaction these scripts send is appended to `onchain/DEVNET.md`.
+It tops the test wallet up with devnet SOL from the deployer and with tUNITS from the faucet key when they run low, so it can run more than once a day. Every transaction these scripts send is appended to `onchain/DEVNET.md`.
 
 **`e2e-devnet.ts` and `challenge-e2e.ts` sign with the same Core authority as the live site.** `e2e-devnet.ts` posts the next epoch number before the site does and blocks the site's own post (docs/DEPLOY-SITE.md); `challenge-e2e.ts` keeps its own epoch open but resolves challenges and slashes on chain with that authority. Run them only on a devnet the site does not use, or with the site's Core stopped. `wallet-e2e.ts` launches a new TEST agent token per run.
 
