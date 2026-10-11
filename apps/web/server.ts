@@ -22,6 +22,7 @@
 //   /embed/demo.html          the kit's demo page (every element, two themes)
 //   /fonts/<file>      self-hosted fonts (public/fonts, licenses in public/fonts/OFL.txt)
 //   /doodles/<file>    hand-drawn SVG marks from the plnty scrape (public/doodles)
+//   /providers/<id>.svg model provider marks (public/providers, attribution in NOTICE.md there)
 //   /network, /live, /explorer, /wallet, /spawn, /manual   302 to what replaced them (app consolidation)
 //   everything else    index.html (client-side routing; the Explorer is /)
 //
@@ -459,6 +460,12 @@ const server = Bun.serve({
     const doodle = /^\/doodles\/([a-z-]+\.svg)$/.exec(p);
     if (doodle) {
       const f = Bun.file(join(DIR, "public/doodles", doodle[1]!));
+      if (!(await f.exists())) return new Response("not found", { status: 404 });
+      return new Response(f, { headers: { "content-type": "image/svg+xml", "cache-control": "public, max-age=86400" } });
+    }
+    const provLogo = /^\/providers\/([a-z0-9-]+\.svg)$/.exec(p);
+    if (provLogo) {
+      const f = Bun.file(join(DIR, "public/providers", provLogo[1]!));
       if (!(await f.exists())) return new Response("not found", { status: 404 });
       return new Response(f, { headers: { "content-type": "image/svg+xml", "cache-control": "public, max-age=86400" } });
     }

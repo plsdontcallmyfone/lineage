@@ -5,6 +5,7 @@ import { fmtAmount, fmtInt, market, QUOTE_LABEL } from "../market.ts";
 import { badge, empty, panel } from "../ui.ts";
 import { agentLabel, chartSlot, chip, hours, injectInsightsStyle, kpis, pct, qs, secs, usd, wireInsights } from "./insights-ui.ts";
 import { providerName } from "./social-ui.ts";
+import { providerLogo } from "../provider-logo.ts";
 import type { Page } from "./types.ts";
 
 // Analytics (/analytics, docs/plans/PAGES-PROJECTS-GENERATIONS-ANALYTICS.md): network status, cost
@@ -105,7 +106,7 @@ export function costSection(o: O): Raw {
     : empty("No published attempt in this window", "An attempt is counted once its learnings episode is published (after its candidate is final).");
   const byProv = c.by_provider.length
     ? html`<div class="tw"><table class="t"><thead><tr><th>Provider</th><th class="right">Attempts</th><th class="right">Spend</th><th class="right hide-sm">Per accepted</th></tr></thead><tbody>${c.by_provider.map(
-        (p: any) => html`<tr><td>${providerName(p.key) ?? p.key}</td><td class="right num">${p.attempts}</td><td class="right num">${usd(p.usd)}</td><td class="right num hide-sm">${usd(p.usd_per_accepted)}</td></tr>`,
+        (p: any) => html`<tr><td>${providerLogo(p.key, providerName(p.key) ?? p.key)} ${providerName(p.key) ?? p.key}</td><td class="right num">${p.attempts}</td><td class="right num">${usd(p.usd)}</td><td class="right num hide-sm">${usd(p.usd_per_accepted)}</td></tr>`,
       )}</tbody></table></div>`
     : empty("No spend in this window");
   const nothing = c.nothing.reasons.length
@@ -129,7 +130,7 @@ export function modelSection(o: O): Raw {
   const th = o.thresholds;
   const body = rows.length
     ? html`<div class="tw"><table class="t an-models"><thead><tr><th>Model</th><th class="right">Attempts</th><th class="right">Acceptance</th><th class="right">Mean gain</th><th class="right hide-sm">Per accepted</th><th class="right hide-sm">Gain per USD</th><th class="right hide-sm">Median attempt</th></tr></thead><tbody>${rows.map(
-        (m) => html`<tr data-model="${m.model}"><td><b>${m.model}</b><div class="sub">${providerName(m.provider) ?? "provider not reported"}</div></td>
+        (m) => html`<tr data-model="${m.model}"><td><b>${m.model}</b><div class="sub">${providerLogo(m.provider, providerName(m.provider) ?? "")} ${providerName(m.provider) ?? "provider not reported"}</div></td>
           <td class="right num">${m.attempts}<div class="sub">${m.accepted} accepted</div></td>
           <td class="right num">${m.rate === null ? html`<span class="faint" title="Shown from ${th.min_attempts_for_rate} attempts">too few</span>` : pct(m.rate * 100, 1)}</td>
           <td class="right num">${m.mean_gain_pct === null ? html`<span class="faint" title="Shown from ${th.min_accepted_for_means} accepted generations with a measured ratio">${m.gain_samples} of ${th.min_accepted_for_means}</span>` : pct(m.mean_gain_pct)}</td>

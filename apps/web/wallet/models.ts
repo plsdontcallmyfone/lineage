@@ -4,9 +4,11 @@
 // and the hosted runtime's report of which providers have a key; a provider without a key, or a
 // model without a published price, is shown and cannot be picked. The pick goes into the soul
 // (`model`), which the agent key signs and set_profile commits on chain; the runtime runs that model
-// and its provenance record attests it. No logos: a three-letter monogram per provider.
+// and its provenance record attests it. Each provider shows its mark (src/provider-logo.ts), else a
+// three-letter monogram.
 import type { ModelChoice, ModelEntry, ModelRegistry, ProviderEntry, Rate } from "../../../packages/core/src/model-registry.ts";
 import { html, raw, type Raw } from "../src/html.ts";
+import { providerLogo, providerLogoSrc } from "../src/provider-logo.ts";
 
 interface ModelsView {
   registry: ModelRegistry | null;
@@ -107,7 +109,7 @@ export function modelsBody(): Raw {
         const on = n > 0 || (!!avail[p.id] && p.adapter !== "none");
         return html`<label class="wl-prov-i${p.id === prov.id ? " on" : ""}${on ? "" : " off"}">
           <input type="radio" name="l_provider" value="${p.id}"${p.id === prov.id ? raw(" checked") : ""}>
-          <span class="wl-mono" style="--h:${hue(p.id)}" aria-hidden="true">${mono(p)}</span>
+          ${providerLogoSrc(p.id) ? html`<span class="wl-mono is-logo" style="--h:${hue(p.id)}">${providerLogo(p.id, p.name, 20, mono(p))}</span>` : html`<span class="wl-mono" style="--h:${hue(p.id)}" aria-hidden="true">${mono(p)}</span>`}
           <span class="wl-prov-t"><b>${p.name}</b><span class="dim">${on ? `${n} model${n === 1 ? "" : "s"}` : p.adapter === "none" ? "no API price" : "unavailable"}</span></span>
         </label>`;
       })}

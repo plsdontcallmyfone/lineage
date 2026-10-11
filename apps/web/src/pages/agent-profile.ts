@@ -6,6 +6,7 @@ import { amountFig, changeFig, defaultTf, fig, fmtAmount, fmtInt, market, phaseB
 import { mount as mountLivePanel, type LivePanelHandle } from "../live-panel/index.ts";
 import { badge, empty, icon, panel, stat } from "../ui.ts";
 import { OLD_WALLET_KEY, WALLET_KEY } from "./feed.ts";
+import { providerLogo } from "../provider-logo.ts";
 import { avatar, banner, connect, connected, feedItemHtml, follow, onAccount, providerName, toast, uploadMedia, wireSocial } from "./social-ui.ts";
 import type { Page } from "./types.ts";
 import { journalPanel } from "./journal-section.ts";
@@ -57,7 +58,7 @@ export async function agentProfilePage([idp]: string[]): Promise<Page> {
   const genesis = await loadGenesis(id);
   const s = p.stats;
   const name = p.soul?.name ?? `Agent ${shortId(id)}`;
-  const model = p.model ? html`<span class="pf-chip" title="${p.soul?.model ? "chosen at launch (signed soul)" : "from the provenance of its newest final candidate"}">${icon.cpu} ${providerName(p.provider) ?? "provider TBA"} <b>${p.model}</b></span>` : "";
+  const model = p.model ? html`<span class="pf-chip" title="${p.soul?.model ? "chosen at launch (signed soul)" : "from the provenance of its newest final candidate"}">${providerLogo(p.provider, providerName(p.provider) ?? "") || icon.cpu} ${providerName(p.provider) ?? "provider TBA"} <b>${p.model}</b></span>` : "";
   const gh = p.soul?.github_login ? html`<a class="pf-chip" href="https://github.com/${p.soul.github_login}" target="_blank" rel="noopener">${raw('<svg width="13" height="13" viewBox="0 0 16 16" aria-hidden="true"><path fill="currentColor" d="M8 .2a8 8 0 00-2.5 15.6c.4 0 .5-.2.5-.4v-1.5c-2.2.5-2.7-1-2.7-1-.4-.9-.9-1.2-.9-1.2-.7-.5.1-.5.1-.5.8.1 1.2.8 1.2.8.7 1.3 1.9.9 2.4.7 0-.5.3-.9.5-1.1-1.8-.2-3.6-.9-3.6-4 0-.9.3-1.6.8-2.1-.1-.2-.4-1 .1-2.1 0 0 .7-.2 2.2.8a7.5 7.5 0 014 0c1.5-1 2.2-.8 2.2-.8.4 1.1.2 1.9.1 2.1.5.6.8 1.3.8 2.1 0 3.1-1.9 3.7-3.6 3.9.3.3.5.8.5 1.5v2.2c0 .2.1.5.6.4A8 8 0 008 .2z"/></svg>')} ${p.soul.github_login}</a>` : html`<span class="pf-chip faint">no GitHub login yet</span>`;
   const tokChip = p.mint
     ? html`<a class="pf-chip" href="/tokens/${p.mint}">${icon.coin} ${tok?.symbol ? `$${tok.symbol}` : `token ${shortId(p.mint)}`}${tok?.price != null ? html` <b class="num">${tok.price.toPrecision(4)}</b> <span class="dim">${QUOTE}</span>` : ""}</a>`

@@ -745,6 +745,9 @@ pre.wl-wrap { white-space: pre-wrap; overflow-wrap: anywhere; max-height: 140px;
 .wl-prov-i.off { opacity: .62; }
 .wl-prov-i:focus-within { outline: 2px solid var(--accent, var(--text)); outline-offset: 1px; }
 .wl-mono { flex: none; width: 30px; height: 30px; border-radius: 7px; display: grid; place-items: center; font-size: 10.5px; font-weight: 650; letter-spacing: .02em; color: #fff; background: hsl(var(--h) 42% 42%); }
+.wl-mono.is-logo { background: #fff; box-shadow: inset 0 0 0 1px var(--line); }
+.wl-mono.is-logo img { display: block; width: 20px; height: 20px; }
+.prov-logo { flex: none; vertical-align: -2px; }
 .wl-prov-t { display: grid; min-width: 0; font-size: 12.5px; line-height: 1.3; }
 .wl-prov-t b, .wl-prov-t span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .wl-models { display: grid; gap: 6px; margin-top: 10px; }
