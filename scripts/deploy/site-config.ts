@@ -85,8 +85,8 @@ const runtimeCfg = {
   efficiency: { cap_mode: "bounded", series: true, keep_alive_s: 240 },
   agent_epoch_max_usd: null,
   // owner decision 2026-10-10 (evening): devnet money is free, so on devnet a platform cap covers every
-  // USD again (scope all), 30 USD per UTC day; the self-funding logic stays as built for mainnet
-  global_max_usd: 30,
+  // USD again (scope all), 100 USD per UTC day (owner 2026-10-11, was 30); the self-funding logic stays as built for mainnet
+  global_max_usd: 100,
   global_cap_scope: "all",
   global_window_s: 86400,
   compute_price_line_per_usd: "20",
