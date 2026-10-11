@@ -1,11 +1,11 @@
 {
-  "at": "2026-10-11T03:34:37.696Z",
-  "head": "8f9704af1747cc1bee8bff5acb3aa596cbefcc9c",
-  "first": "3ddb515b93bbb48f0f33f58b852205296aa69890",
+  "at": "2026-10-11T16:32:51.686Z",
+  "head": "fced41f32e35005c731752fcf88e551a6891e274",
+  "first": "7ac1c41a951326f9183b5953d82ea1e3acfef14c",
   "container_image": "lineage/site-dryrun:24.04",
-  "seconds": 381,
-  "passed": 52,
-  "failed": 6,
+  "seconds": 485,
+  "passed": 57,
+  "failed": 3,
   "checks": [
     {
       "check": "fresh box reachable over root ssh",
@@ -15,7 +15,7 @@
     {
       "check": "deploy.sh full on a fresh box",
       "ok": true,
-      "detail": "exit 0, 107 s"
+      "detail": "exit 0, 145 s"
     },
     {
       "check": "fund and site-chain ran as plans (nothing sent on chain)",
@@ -25,12 +25,22 @@
     {
       "check": "deploy.sh full re-run on the same box (new commit)",
       "ok": true,
-      "detail": "exit 0, 26 s"
+      "detail": "exit 0, 52 s"
+    },
+    {
+      "check": "layout: every old directory is a link to its units name",
+      "ok": true,
+      "detail": "/opt/lineage->units /var/lib/lineage->units /etc/lineage->units /etc/lineage-core->units-core /etc/lineage-identity->units-identity /home/lineage->units /var/lib/lineage-monitor->units-monitor "
+    },
+    {
+      "check": "layout: accounts renamed with their UIDs (old names alias the same UIDs)",
+      "ok": true,
+      "detail": "before: lineage=1001 lineage-core=997 lineage-identity=992 units= units-core= units-identity= ; after: lineage=1001 lineage-core=997 lineage-identity=992 units=1001 units-core=997 units-identity=992 "
     },
     {
       "check": "deploy.sh full re-run, same commit",
       "ok": true,
-      "detail": "exit 0, 24 s"
+      "detail": "exit 0, 42 s"
     },
     {
       "check": "same-commit re-run takes no data backup",
@@ -98,9 +108,9 @@
       "detail": "MemoryMax 1073741824"
     },
     {
-      "check": "site keys made on the server, owner lineage, mode 600",
+      "check": "site keys made on the server, owner units, mode 600",
       "ok": true,
-      "detail": "lineage 600"
+      "detail": "units 600"
     },
     {
       "check": "no key copied from this machine in the dry run",
@@ -123,19 +133,19 @@
       "detail": "1.3.13"
     },
     {
-      "check": "lineage user has no sudo",
+      "check": "units user has no sudo",
       "ok": true,
-      "detail": "lineage users"
+      "detail": "units users"
     },
     {
       "check": "GET /v1/health over HTTPS (internal TLS)",
       "ok": true,
-      "detail": "{\"ok\":true,\"now\":1791689471623,\"epoch\":19}"
+      "detail": "{\"ok\":true,\"now\":1791736150322,\"epoch\":19}"
     },
     {
       "check": "Core in devnet chain mode read the chain",
       "ok": true,
-      "detail": "slot 509767067, epochs posted 1, core_signing false"
+      "detail": "slot 509962609, epochs posted 1, core_signing false"
     },
     {
       "check": "Core does not sign as Core authority in the dry run",
@@ -210,7 +220,7 @@
     {
       "check": "devnet RPC proxy (same origin)",
       "ok": true,
-      "detail": "{\"jsonrpc\":\"2.0\",\"result\":509767093,\"id\":1}"
+      "detail": "{\"jsonrpc\":\"2.0\",\"result\":509962681,\"id\":1}"
     },
     {
       "check": "RPC method allowlist kept",
@@ -224,8 +234,8 @@
     },
     {
       "check": "oversized body refused",
-      "ok": false,
-      "detail": "502"
+      "ok": true,
+      "detail": "413"
     },
     {
       "check": "event streams capped per address (4 open, 5th 429)",
@@ -234,8 +244,8 @@
     },
     {
       "check": "event stream flows through Caddy and the gate",
-      "ok": false,
-      "detail": "{\"error\":\"too_many_streams\",\"message\":\"gate: too_many_streams\"}"
+      "ok": true,
+      "detail": "retry: 3000"
     },
     {
       "check": "scripts/verify.ts runs against the public site",
@@ -260,12 +270,12 @@
     {
       "check": "rollback to the previous release",
       "ok": true,
-      "detail": "now 3ddb515b93bbb48f0f33f58b852205296aa69890"
+      "detail": "now 7ac1c41a951326f9183b5953d82ea1e3acfef14c"
     },
     {
       "check": "a failed Core health check rolls the release back",
       "ok": true,
-      "detail": "exit 1, now 3ddb515b93bbb48f0f33f58b852205296aa69890"
+      "detail": "exit 1, now 7ac1c41a951326f9183b5953d82ea1e3acfef14c"
     },
     {
       "check": "simulated verifier running before the deploy",
@@ -275,17 +285,17 @@
     {
       "check": "forward again to HEAD (code mode)",
       "ok": true,
-      "detail": "now 8f9704af1747cc1bee8bff5acb3aa596cbefcc9c"
+      "detail": "now fced41f32e35005c731752fcf88e551a6891e274"
     },
     {
       "check": "deploy returned while the verifier was still draining",
-      "ok": false,
-      "detail": "deploy 45 s, drain 150 s"
+      "ok": true,
+      "detail": "deploy 35 s, drain 150 s"
     },
     {
       "check": "public site answered 200 through the whole deploy",
       "ok": false,
-      "detail": "{\"polls\":96,\"non200\":1,\"longest_gap_ms\":19908,\"slowest_ms\":9360}"
+      "detail": "{\"polls\":97,\"non200\":1,\"longest_gap_ms\":11334,\"slowest_ms\":791}"
     },
     {
       "check": "drained verifier restarted once, on the new release, after its old process exited",
@@ -295,7 +305,7 @@
     {
       "check": "host disk still >= 4 GB free",
       "ok": true,
-      "detail": "32 GB"
+      "detail": "30 GB"
     }
   ]
 }

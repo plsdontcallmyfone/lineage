@@ -492,3 +492,13 @@ before the rebrand, ensure_users before it would create any account):
   checked; pwck and grpck clean; second run a no-op.
 - Local: `~/.config/units` is the directory and `~/.config/lineage` links to it (backup
   `~/.config/lineage.bak-20261011`, 193 files, tree digest equal before the move).
+- Dry run (`DRYRUN_FIRST_REF=7ac1c41 DRYRUN_FIRST_KIT=1 scripts/deploy/dryrun.sh`; the new flag deploys the
+  first ref with its own kit, so the box starts in the lineage layout and deploy 2 migrates it live):
+  57/60 at fced41f. Passing: every old directory is a link to its units name, UIDs are kept (lineage
+  1001, lineage-core 997, lineage-identity 992 before; units/units-core/units-identity the same after,
+  old names aliasing them), no lineage-* unit, rollback to the old-layout release and forward again,
+  failed-health rollback, drain. Core's health polled every 0.5 s on the box during deploy 2: every poll
+  around the account rename answered 200; the 24 non-200 polls all fall after Core's restart (its chain
+  read before listening), which on the site sits behind the gate's and Caddy's retries. The 3 failures
+  (wallet page, deploy.sh status, one 11 s gap in the container's zero-downtime poll) are a subset of
+  the 6 recorded in the previous dry run (efb01ae), none new.
