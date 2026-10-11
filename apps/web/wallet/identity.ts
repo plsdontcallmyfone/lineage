@@ -44,7 +44,7 @@ async function api(path: string, body?: unknown): Promise<{ ok: boolean; status:
 
 const sha256Hex = async (s: string) => [...new Uint8Array(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(s)))].map((b) => b.toString(16).padStart(2, "0")).join("");
 /** statementDigest("identity", st) of packages/protocol: what the signer signs (as UTF-8 text). */
-const digestOf = (st: unknown) => H("lineage-identity-v1", canonicalJson(st));
+const digestOf = (st: unknown) => H("units-identity-v1", canonicalJson(st)); // units-* kinds below (signing switch)
 
 type Signer = { id: string; sign: (msg: Uint8Array) => Promise<Uint8Array>; how: string };
 
@@ -119,7 +119,7 @@ export async function submitLaunchToken(o: { agent: WebKey; mint: string }): Pro
 async function sendToken(token: string, agent: string, mint: string, agentKey: WebKey | null, joinOrg?: boolean): Promise<Raw> {
   const s = signerFor(agentKey);
   if (!s) return errLine("Connect the launcher wallet (one that can sign messages) to bind the token.");
-  const st = { v: 1, kind: "lineage-identity-token", agent, mint, signer: s.id, token_sha256: await sha256Hex(token), created_at: Math.floor(Date.now() / 1000), ...(joinOrg ? { join_org: true } : {}) };
+  const st = { v: 1, kind: "units-identity-token", agent, mint, signer: s.id, token_sha256: await sha256Hex(token), created_at: Math.floor(Date.now() / 1000), ...(joinOrg ? { join_org: true } : {}) };
   let body;
   try {
     body = { ...(await signed(st, s)), token };
@@ -214,7 +214,7 @@ export async function ghClick(act: string, b: HTMLElement) {
   }
   if (act === "gh-revoke") {
     put("w-gh-out", html`<span class="dim">Waiting for your wallet's signature…</span>`);
-    const st = { v: 1, kind: "lineage-identity-revoke", agent, mint, signer: s.id, created_at: Math.floor(Date.now() / 1000) };
+    const st = { v: 1, kind: "units-identity-revoke", agent, mint, signer: s.id, created_at: Math.floor(Date.now() / 1000) };
     let body;
     try {
       body = await signed(st, s);

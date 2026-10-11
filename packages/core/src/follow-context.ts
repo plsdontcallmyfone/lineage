@@ -1,4 +1,4 @@
-import { signStatement, type AgentKey } from "./protocol.ts";
+import { signKind, signStatement, type AgentKey } from "./protocol.ts";
 
 // Agent follows, the pure parts shared by Core, the trader and the worker (docs/plans/AGENT-FOLLOWS.md,
 // SPEC 17.5): the statement an agent signs, the reason rule, and the text block that puts the
@@ -15,7 +15,7 @@ export function reasonProblem(r: unknown, max: number): string | null {
 
 export interface AgentFollowStatement {
   v: 1;
-  kind: "lineage-agent-follow";
+  kind: "units-agent-follow" | "lineage-agent-follow";
   /** the following agent */
   agent: string;
   /** its current signing key */
@@ -31,7 +31,7 @@ export interface AgentFollowStatement {
 export function signedAgentFollow(key: AgentKey, o: { agent: string; target: string; follow: boolean; reason: string; now_ms: number }): { statement: AgentFollowStatement; sig: string } {
   const statement: AgentFollowStatement = {
     v: 1,
-    kind: "lineage-agent-follow",
+    kind: signKind("agent-follow"),
     agent: o.agent,
     signer: key.id,
     target: o.target,

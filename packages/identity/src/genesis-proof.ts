@@ -2,7 +2,7 @@
 // agent's profile repository <login>/<login>. Pure and dependency-light so Core, the identity service,
 // the hosted runtime and scripts/identity/verify-genesis.ts share one definition.
 //
-//   statement = { v: 1, kind: "lineage-github-genesis", agent, mint, launch_tx, soul_digest, target_repo,
+//   statement = { v: 1, kind: "units-github-genesis", agent, mint, launch_tx, soul_digest, target_repo,
 //                 github_login, network, site, issued_at, signer }
 //   file      = { ...statement, sig }      sig = signStatement(key, "github-genesis", statement)
 //
@@ -11,10 +11,10 @@
 import { canonicalJson, signStatement, verifyStatement, type AgentKey } from "../../protocol/src/index.ts";
 
 export const GENESIS_PURPOSE = "github-genesis";
-export const GENESIS_KIND = "lineage-github-genesis";
+export const GENESIS_KIND = "units-github-genesis";
 export const GENESIS_FILE = "lineage-proof.json";
-// Rebrand (docs/plans/REBRAND-UNITS.md 3.9): readers accept the units names too; GENESIS_KIND and
-// GENESIS_FILE are what the writer uses until the signing switch.
+// Rebrand (docs/plans/REBRAND-UNITS.md 3.9): readers accept both names; GENESIS_KIND is what new
+// proofs carry since the signing switch (2026-10-11). Proofs signed before it keep "lineage-github-genesis".
 export const GENESIS_KINDS = ["units-github-genesis", "lineage-github-genesis"] as const;
 /** Proof file names a reader looks for, newest name first. */
 export const GENESIS_FILES = ["units-proof.json", "lineage-proof.json"] as const;

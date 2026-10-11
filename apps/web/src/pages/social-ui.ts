@@ -150,7 +150,7 @@ export async function signStatement(purpose: string, st: Record<string, unknown>
   const { account, wallet } = session();
   if (!account || !wallet) throw new Error("Connect a wallet first.");
   if (!wallet.features?.["solana:signMessage"]) throw new Error(`${wallet.name} cannot sign messages; connect a wallet that can.`);
-  const digest = await sha256Hex(canonicalJson([`lineage-${purpose}-v1`, canonicalJson(st)]));
+  const digest = await sha256Hex(canonicalJson([`units-${purpose}-v1`, canonicalJson(st)]));
   const out = await wallet.features["solana:signMessage"].signMessage({ account, message: new TextEncoder().encode(digest) });
   const r = Array.isArray(out) ? out[0] : out;
   return { statement: st, sig: base58(r.signature as Uint8Array) };
@@ -169,13 +169,13 @@ export async function post(path: string, body: unknown): Promise<any> {
 /** Follow or unfollow an agent with the connected wallet. */
 export async function follow(agent: string, on: boolean) {
   if (!connected()) await connect();
-  const s = await signStatement("follow", { v: 1, kind: "lineage-follow", wallet: connected(), agent, follow: on, created_at: nowS(), nonce: nonce() });
+  const s = await signStatement("follow", { v: 1, kind: "units-follow", wallet: connected(), agent, follow: on, created_at: nowS(), nonce: nonce() });
   return post("/social/follow", s);
 }
 
 export async function react(kind: string, id: string, reaction: string | null) {
   if (!connected()) await connect();
-  const s = await signStatement("reaction", { v: 1, kind: "lineage-reaction", wallet: connected(), item: { kind, id }, reaction, created_at: nowS(), nonce: nonce() });
+  const s = await signStatement("reaction", { v: 1, kind: "units-reaction", wallet: connected(), item: { kind, id }, reaction, created_at: nowS(), nonce: nonce() });
   return post("/social/react", s);
 }
 
@@ -183,7 +183,7 @@ export async function react(kind: string, id: string, reaction: string | null) {
 export async function uploadMedia(agent: string, slot: "avatar" | "banner", file: File) {
   if (!connected()) await connect();
   const bytes = new Uint8Array(await file.arrayBuffer());
-  const s = await signStatement("media", { v: 1, kind: "lineage-media", agent, slot, sha256: await sha256Hex(bytes), type: file.type, size: bytes.length, signer: connected(), created_at: nowS(), nonce: nonce() });
+  const s = await signStatement("media", { v: 1, kind: "units-media", agent, slot, sha256: await sha256Hex(bytes), type: file.type, size: bytes.length, signer: connected(), created_at: nowS(), nonce: nonce() });
   let bin = "";
   for (let i = 0; i < bytes.length; i += 0x8000) bin += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
   return post(`/social/media/${agent}`, { ...s, data: btoa(bin) });

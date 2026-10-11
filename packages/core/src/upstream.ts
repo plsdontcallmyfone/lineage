@@ -229,7 +229,7 @@ export function githubFullName(url: string): string | null {
 
 export interface OptInStatement {
   v: 1;
-  kind: "lineage-upstream-optin";
+  kind: "units-upstream-optin" | "lineage-upstream-optin";
   repo: string;
   maintainer: string;
   key: string;

@@ -138,7 +138,7 @@ if (cmd === "launch") {
     const pool = new Pool(DEFAULT_POOL);
     const a = pool.read().accounts.find((x) => x.login === login);
     if (!a || a.status !== "available") throw new Error(`${login} is not an available pool account`);
-    const st = { v: 1, kind: "lineage-identity-token", agent, mint, signer: launcher.id, token_sha256: tokenSha256(a.token), created_at: Math.floor(Date.now() / 1000) };
+    const st = { v: 1, kind: "units-identity-token", agent, mint, signer: launcher.id, token_sha256: tokenSha256(a.token), created_at: Math.floor(Date.now() / 1000) };
     const check = await fetch(`${SITE}/identity/token/check`, { method: "POST", headers: { "content-type": "application/json", origin: SITE }, body: JSON.stringify({ token: a.token }) });
     const cj = await check.json();
     log(`check: HTTP ${check.status} ${JSON.stringify(cj)}`);
@@ -146,7 +146,7 @@ if (cmd === "launch") {
     r = await fetch(`${SITE}/identity/token`, { method: "POST", headers: { "content-type": "application/json", origin: SITE }, body: JSON.stringify({ statement: st, sig: signStatement(launcher, PURPOSE, st), token: a.token }) });
     if (r.ok) pool.update(login, { status: "assigned", assigned_agent: agent, assigned_at: new Date().toISOString(), note: "pasted-token exit run of the identity service (lane B, 2026-10-09): its token was submitted as a token-mode agent's own token" });
   } else {
-    const st = { v: 1, kind: "lineage-identity-revoke", agent, mint, signer: launcher.id, created_at: Math.floor(Date.now() / 1000) };
+    const st = { v: 1, kind: "units-identity-revoke", agent, mint, signer: launcher.id, created_at: Math.floor(Date.now() / 1000) };
     r = await fetch(`${SITE}/identity/revoke`, { method: "POST", headers: { "content-type": "application/json", origin: SITE }, body: JSON.stringify({ statement: st, sig: signStatement(launcher, PURPOSE, st) }) });
   }
   const j = await r.json();

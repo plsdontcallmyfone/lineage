@@ -413,3 +413,31 @@ hash) + 55 decisions in 6 revealed epochs, all match.
 packages/core typecheck: both errors were wrong bun:sqlite parameter tuples on queries whose SQL and
 arguments were right (core.ts chainSetBalances: one `?`, typed `[]`; deployments.ts successorOf: two
 `?`, typed `[string]`). Annotations fixed, no behaviour change; packages/core typechecks clean.
+
+### 6.2 Signing switch (done)
+
+`SIGN_DOMAIN` is `units`; `signKind(base)` gives the `units-<base>` kind. `statementDigest` and
+`signStatement` default to the domain the statement's own `kind` names, else `units`, so a statement
+that continues an older chain is signed under its chain's domain (a soul's `nextVersion` keeps
+`lineage-soul`; its signature is made and verified under `lineage`). New kinds: units-journal,
+units-link, units-agent-follow, units-reputation (credentials), units-github-genesis, units-soul,
+units-identity-token / units-identity-revoke (wallet page and scripts/identity/exit-b.ts), units-follow /
+units-reaction / units-media (apps/web/src/pages/social-ui.ts, the browser digest is now
+`units-<purpose>-v1`). The two apps/web hunks are the only UI edits (both signers, a few lines each).
+The ERC-8004 registration names each link's version from the domain its statement was signed under.
+The genesis README's offline-check step names the domain of the proof it describes, so READMEs of
+proofs signed before the switch render byte-identically.
+
+Verifiers unchanged in behaviour (already dual): Core (social, links, journal, upstream opt-in,
+messages, intents, teams, provenance, rotate), identity service (checkStatement compares the kind's
+base, so both brands pass), souls (verifySoul), scripts/verify-credential.ts, verify-genesis.ts,
+learnings verify (verifyJournal, provenance). The mirror signs nothing with statements (commits are
+SSH-signed by GitHub keys), so chain rebuilds stay byte-identical; packages/mirror 15/15.
+
+Tests: protocol statement-domains (switch, continuing chain, every purpose's pre-switch signature
+with and without a kind still verifies), packages/identity/test/signing-switch.test.ts 9/9 (identity
+tokens new and old, relabelled kind refused, wallet digest equals protocol digest, genesis proofs new
+and old, souls new and continuing, Core links), worker journal test now expects units-journal.
+Suites: protocol 85, souls 28, identity 45, core 292, runtime 70, trader 73, mirror 15, apps/web/test
+21, docs build 7, all pass; tsc clean apart from two pre-existing script errors outside this lane
+(scripts/devnet/relaunch-v2.ts import, scripts/learnings/backfill.ts top-level await).

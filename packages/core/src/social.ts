@@ -219,7 +219,7 @@ export class Social {
   private accept(body: unknown, purpose: string, kind: string, signerField: string, what: string, perMin: number, perDay: number): Record<string, unknown> & { created_at: number } {
     if (!isObj(body) || !isObj(body.statement) || typeof body.sig !== "string") throw bad("bad_body", "{ statement, sig } expected");
     const st = body.statement;
-    if (st.v !== 1 || !isKind(st.kind, kind.replace(/^lineage-/, ""))) throw bad("bad_statement", `statement.kind must be ${kind} (v 1)`);
+    if (st.v !== 1 || !isKind(st.kind, kind.replace(/^(lineage|units)-/, ""))) throw bad("bad_statement", `statement.kind must be ${kind} (v 1)`);
     const signer = st[signerField];
     if (typeof signer !== "string" || !B58.test(signer)) throw bad("bad_statement", `statement.${signerField} must be a base58 key`);
     if (typeof st.nonce !== "string" || !NONCE.test(st.nonce)) throw bad("bad_statement", "statement.nonce: 8 to 64 letters, digits, _ or -");
@@ -252,7 +252,7 @@ export class Social {
   follow(body: unknown) {
     if (isObj(body) && isObj(body.statement) && isKind(body.statement.kind, "agent-follow")) return this.agentFollow(body);
     return this.c.tx(() => {
-      const st = this.accept(body, "follow", "lineage-follow", "wallet", "follow", SOCIAL_LIMITS.follows_per_min, SOCIAL_LIMITS.follows_per_day);
+      const st = this.accept(body, "follow", "units-follow", "wallet", "follow", SOCIAL_LIMITS.follows_per_min, SOCIAL_LIMITS.follows_per_day);
       if (typeof st.agent !== "string" || !this.launched(st.agent)) throw notFound("agent");
       if (typeof st.follow !== "boolean") throw bad("bad_statement", "statement.follow: true or false");
       if (st.agent === st.wallet) throw bad("bad_statement", "an agent key cannot follow itself");
@@ -334,7 +334,7 @@ export class Social {
     return this.c.tx(() => {
       const cfg = this.config();
       if (!cfg.enabled) throw forbidden("agent_follows_off", "agent follows are switched off by the admin");
-      const st = this.accept(body, "agent-follow", "lineage-agent-follow", "signer", "agent-follow", cfg.follows_per_min, cfg.follows_per_day);
+      const st = this.accept(body, "agent-follow", "units-agent-follow", "signer", "agent-follow", cfg.follows_per_min, cfg.follows_per_day);
       const agent = st.agent;
       const target = st.target;
       if (typeof agent !== "string" || !B58.test(agent) || !this.launched(agent)) throw notFound("agent");
@@ -504,7 +504,7 @@ export class Social {
   /** POST /v1/social/react { statement, sig }: one reaction per wallet per item; null removes it. */
   react(body: unknown) {
     return this.c.tx(() => {
-      const st = this.accept(body, "reaction", "lineage-reaction", "wallet", "reaction", SOCIAL_LIMITS.reactions_per_min, SOCIAL_LIMITS.reactions_per_day);
+      const st = this.accept(body, "reaction", "units-reaction", "wallet", "reaction", SOCIAL_LIMITS.reactions_per_min, SOCIAL_LIMITS.reactions_per_day);
       const item = st.item;
       if (!isObj(item) || (item.kind !== "post" && item.kind !== "session") || typeof item.id !== "string" || !HEX64.test(item.id)) throw bad("bad_statement", "statement.item: { kind: post | session, id: 64 hex }");
       if (st.reaction !== null && !REACTIONS.includes(st.reaction as Reaction)) throw bad("bad_statement", `statement.reaction: one of ${REACTIONS.join(", ")}, or null`);
@@ -568,7 +568,7 @@ export class Social {
   uploadMedia(agentParam: string, body: unknown) {
     return this.c.tx(() => {
       if (!isObj(body) || typeof body.data !== "string") throw bad("bad_body", "{ statement, sig, data } expected (data: base64 image)");
-      const st = this.accept(body, "media", "lineage-media", "signer", "media", SOCIAL_LIMITS.media_per_day, SOCIAL_LIMITS.media_per_day);
+      const st = this.accept(body, "media", "units-media", "signer", "media", SOCIAL_LIMITS.media_per_day, SOCIAL_LIMITS.media_per_day);
       if (st.agent !== agentParam) throw bad("bad_statement", "statement.agent must equal the agent in the path");
       const a = this.launched(agentParam);
       if (!a) throw notFound("agent");

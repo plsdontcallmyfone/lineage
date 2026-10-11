@@ -15,7 +15,8 @@ const ADDR = /^[1-9A-HJ-NP-Za-km-z]{32,44}$/;
 
 export interface TokenStatement {
   v: 1;
-  kind: "lineage-identity-token";
+  /** "units-identity-token" since the signing switch; "lineage-identity-token" before it */
+  kind: "units-identity-token" | "lineage-identity-token";
   agent: string;
   mint: string;
   signer: string;
@@ -28,7 +29,7 @@ export interface TokenStatement {
 
 export interface RevokeStatement {
   v: 1;
-  kind: "lineage-identity-revoke";
+  kind: "units-identity-revoke" | "lineage-identity-revoke";
   agent: string;
   mint: string;
   signer: string;
@@ -45,15 +46,16 @@ export const statementMessage = (s: IdentityStatement) => statementDigest(PURPOS
 /** Shape, freshness and signature of a statement; returns the reason it is refused, or null. */
 export function checkStatement(s: unknown, sig: unknown, kind: IdentityStatement["kind"], nowS: number): string | null {
   if (!s || typeof s !== "object") return "statement missing";
+  const token = kind.endsWith("-identity-token");
   const x = s as Record<string, unknown>;
   const keys = Object.keys(x).sort().join(",");
-  const want = kind === "lineage-identity-token" ? "agent,created_at,kind,mint,signer,token_sha256,v" : "agent,created_at,kind,mint,signer,v";
-  const withOrg = kind === "lineage-identity-token" ? "agent,created_at,join_org,kind,mint,signer,token_sha256,v" : null;
+  const want = token ? "agent,created_at,kind,mint,signer,token_sha256,v" : "agent,created_at,kind,mint,signer,v";
+  const withOrg = token ? "agent,created_at,join_org,kind,mint,signer,token_sha256,v" : null;
   if (keys !== want && keys !== withOrg) return `statement fields must be exactly ${want}${withOrg ? " (plus optional join_org)" : ""}`;
   if ("join_org" in x && typeof x.join_org !== "boolean") return "statement join_org must be true or false";
-  if (x.v !== 1 || !isKind(x.kind, kind.replace(/^lineage-/, ""))) return `statement kind must be ${kind}`;
+  if (x.v !== 1 || !isKind(x.kind, kind.replace(/^(lineage|units)-/, ""))) return `statement kind must be ${kind}`;
   for (const k of ["agent", "mint", "signer"]) if (typeof x[k] !== "string" || !ADDR.test(x[k] as string)) return `statement ${k} is not an address`;
-  if (kind === "lineage-identity-token" && (typeof x.token_sha256 !== "string" || !/^[0-9a-f]{64}$/.test(x.token_sha256))) return "statement token_sha256 must be 64 lowercase hex";
+  if (token && (typeof x.token_sha256 !== "string" || !/^[0-9a-f]{64}$/.test(x.token_sha256))) return "statement token_sha256 must be 64 lowercase hex";
   if (typeof x.created_at !== "number" || !Number.isInteger(x.created_at)) return "statement created_at must be unix seconds";
   if (Math.abs(nowS - x.created_at) > MAX_SKEW_S) return `statement created_at is more than ${MAX_SKEW_S} s from the service clock`;
   if (typeof sig !== "string" || !/^[1-9A-HJ-NP-Za-km-z]{60,100}$/.test(sig)) return "signature missing";

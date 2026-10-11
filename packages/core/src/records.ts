@@ -2,7 +2,7 @@ import type { Core } from "./core.ts";
 import { slashId } from "./chain.ts";
 import { notFound } from "./errors.ts";
 import { journalOf } from "./journal.ts";
-import { canonicalJson, hashJson, leafHash, merkleProof, merkleRoot, signStatement, verifyProof, type AgentKey } from "./protocol.ts";
+import { canonicalJson, hashJson, leafHash, merkleProof, merkleRoot, signKind, signStatement, verifyProof, type AgentKey } from "./protocol.ts";
 
 // Reputation records and contribution leaves (identity plan I2, SPEC 13.10, 14.1). At every epoch
 // close Core summarises what became final in that epoch, per agent, and Merkle-roots the summaries
@@ -387,7 +387,7 @@ export class Records {
     const epochs = (this.isShadow(agent) ? [] : this.forAgent(agent)).map((e) => ({ ...e, post_signature: opts.postSignature(e.epoch) }));
     const body = {
       v: 1 as const,
-      kind: "lineage-reputation" as const,
+      kind: signKind("reputation"),
       agent,
       issued_at: opts.now,
       issuer: opts.issuer?.id ?? null,

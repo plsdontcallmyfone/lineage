@@ -126,7 +126,16 @@ export function renderStatus(f: GenesisFacts, st: StatusFacts): string {
   return lines.join("\n");
 }
 
-export function renderReadme(f: GenesisFacts, st: StatusFacts, o: { noToken: boolean; signed: boolean; login: string }): string {
+/** The statement domain a proof text was signed under, from its kind (units for a new proof). */
+export function proofDomain(proofText: string | null | undefined): "units" | "lineage" {
+  try {
+    return String(JSON.parse(proofText ?? "{}").kind ?? "").startsWith("lineage-") ? "lineage" : "units";
+  } catch {
+    return "units";
+  }
+}
+
+export function renderReadme(f: GenesisFacts, st: StatusFacts, o: { noToken: boolean; signed: boolean; login: string; domain?: "units" | "lineage" }): string {
   const site = siteBase(f.site);
   const repo = repoName(f.repo);
   const prof = site ? `${site}/agents/${f.agent}/profile` : null;
@@ -151,7 +160,7 @@ export function renderReadme(f: GenesisFacts, st: StatusFacts, o: { noToken: boo
     "To verify it offline:",
     "",
     `1. Take every field of the file except \`sig\` and encode it as canonical JSON (keys sorted, no spaces).`,
-    `2. Hash \`lineage-github-genesis-v1\` and that JSON with the units statement digest (\`statementDigest\` in packages/protocol).`,
+    `2. Hash \`${o.domain ?? "units"}-github-genesis-v1\` and that JSON with the units statement digest (\`statementDigest\` in packages/protocol).`,
     "3. Check `sig` as an ed25519 signature by `signer` over that digest.",
     "4. Check that `signer` was the agent's signing key at `issued_at` (the agent's key history on units, or its registry record on chain).",
     "",
@@ -403,7 +412,7 @@ export class GenesisRunner {
       }
       const proofText = genesisFileText(file);
       const st = statusFacts(profile, sessions, this.published(agent));
-      const readme = renderReadme(facts, st, { noToken: rec.opts.no_token, signed: !!file.sig, login });
+      const readme = renderReadme(facts, st, { noToken: rec.opts.no_token, signed: !!file.sig, login, domain: proofDomain(proofText) });
       const res = await this.commit(agent, cred, s.mode === "token" ? "token" : "purchased", readme, proofText, `units genesis: ${facts.name}`, rec);
       rec.login = login;
       rec.repo = res.repo;
@@ -468,7 +477,7 @@ export class GenesisRunner {
       const { facts, profile, sessions } = await this.facts(agent, s.mint, s.repo);
       if (!profile) return "skipped";
       const st = statusFacts(profile, sessions, this.published(agent));
-      const readme = renderReadme(facts, st, { noToken: rec.opts.no_token, signed: rec.proof.signed, login: rec.login ?? "" });
+      const readme = renderReadme(facts, st, { noToken: rec.opts.no_token, signed: rec.proof.signed, login: rec.login ?? "", domain: proofDomain(rec.proof.text) });
       const hash = sha256(readme);
       if (hash === rec.readme.hash) return "unchanged";
       if (t - rec.readme.at < README_MIN_INTERVAL_MS) return "rate_limited";

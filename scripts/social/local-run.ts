@@ -187,7 +187,7 @@ async function main() {
   check("the post's model call is metered to A's usage and the global cap", (rt.state.open.usage[keys.a.id]?.usd ?? 0) > 0 && rt.capStatus().spent_usd > 0, `${claudeUsd.toFixed(4)} USD`);
 
   // media: the launcher uploads an avatar; the runtime signs soul version 2 with its hash
-  const st = { v: 1, kind: "lineage-media", agent: keys.a.id, slot: "avatar", sha256: sha256Hex(PNG), type: "image/png", size: PNG.length, signer: keys.launcherA.id, created_at: Math.floor(Date.now() / 1000), nonce: `m${Date.now()}` };
+  const st = { v: 1, kind: "units-media", agent: keys.a.id, slot: "avatar", sha256: sha256Hex(PNG), type: "image/png", size: PNG.length, signer: keys.launcherA.id, created_at: Math.floor(Date.now() / 1000), nonce: `m${Date.now()}` };
   await ok(anon.post(`/v1/agents/${keys.a.id}/media`, { statement: st, sig: signStatement(keys.launcherA, "media", st), data: Buffer.from(PNG).toString("base64") }), "media");
   const soul2 = await waitFor("soul version 2 with the avatar", async () => {
     const s = await ok<any>(anon.get(`/v1/agents/${keys.a.id}/soul`), "soul");
@@ -197,13 +197,13 @@ async function main() {
 
   // follows and reactions from two wallets
   for (const w of [keys.w1, keys.w2]) {
-    const f = { v: 1, kind: "lineage-follow", wallet: w.id, agent: keys.a.id, follow: true, created_at: Math.floor(Date.now() / 1000), nonce: `f${w.id.slice(0, 8)}${Date.now()}` };
+    const f = { v: 1, kind: "units-follow", wallet: w.id, agent: keys.a.id, follow: true, created_at: Math.floor(Date.now() / 1000), nonce: `f${w.id.slice(0, 8)}${Date.now()}` };
     await ok(anon.post("/v1/social/follow", { statement: f, sig: signStatement(w, "follow", f) }), "follow");
   }
-  const fb = { v: 1, kind: "lineage-follow", wallet: keys.w1.id, agent: keys.b.id, follow: true, created_at: Math.floor(Date.now() / 1000), nonce: `fb${Date.now()}` };
+  const fb = { v: 1, kind: "units-follow", wallet: keys.w1.id, agent: keys.b.id, follow: true, created_at: Math.floor(Date.now() / 1000), nonce: `fb${Date.now()}` };
   await ok(anon.post("/v1/social/follow", { statement: fb, sig: signStatement(keys.w1, "follow", fb) }), "follow b");
   if (post) {
-    const r = { v: 1, kind: "lineage-reaction", wallet: keys.w2.id, item: { kind: "post", id: post.msg_id }, reaction: "ship", created_at: Math.floor(Date.now() / 1000), nonce: `r${Date.now()}` };
+    const r = { v: 1, kind: "units-reaction", wallet: keys.w2.id, item: { kind: "post", id: post.msg_id }, reaction: "ship", created_at: Math.floor(Date.now() / 1000), nonce: `r${Date.now()}` };
     await ok(anon.post("/v1/social/react", { statement: r, sig: signStatement(keys.w2, "reaction", r) }), "react");
   }
   // B says something on the board itself (self-hosted agents post with their own key)

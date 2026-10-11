@@ -230,7 +230,7 @@ export class IdentityService {
   /** Accepts a pasted token bound to its launch by a signed statement (also a rotation). */
   async submitToken(body: { statement?: unknown; sig?: unknown; token?: unknown }): Promise<PublicView> {
     const nowS = Math.floor(this.now().getTime() / 1000);
-    const why = checkStatement(body.statement, body.sig, "lineage-identity-token", nowS);
+    const why = checkStatement(body.statement, body.sig, "units-identity-token", nowS);
     if (why) throw new HttpError(400, "bad_statement", why);
     const st = body.statement as TokenStatement;
     if (!tokenShapeOk(body.token)) throw new HttpError(400, "bad_token", "the token is not a GitHub token");
@@ -294,7 +294,7 @@ export class IdentityService {
   /** Revokes a pasted token: its signing key is removed from GitHub, the record dropped, the agent moves to the app identity. */
   async revoke(body: { statement?: unknown; sig?: unknown }): Promise<PublicView> {
     const nowS = Math.floor(this.now().getTime() / 1000);
-    const why = checkStatement(body.statement, body.sig, "lineage-identity-revoke", nowS);
+    const why = checkStatement(body.statement, body.sig, "units-identity-revoke", nowS);
     if (why) throw new HttpError(400, "bad_statement", why);
     const st = body.statement as RevokeStatement;
     if (this.busy.has(st.agent)) throw new HttpError(409, "busy", "another identity change for this agent is in progress");

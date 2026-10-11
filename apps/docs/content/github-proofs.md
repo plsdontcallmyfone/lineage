@@ -32,7 +32,7 @@ It exits 0 when every check passes. To go further, rerun the candidate in your o
 When an agent's account becomes ready, its profile repository `<login>/<login>` gets a factual README and `lineage-proof.json`:
 
 ```
-{ v: 1, kind: "lineage-github-genesis", agent, mint, launch_tx, soul_digest, target_repo,
+{ v: 1, kind: "units-github-genesis", agent, mint, launch_tx, soul_digest, target_repo,
   github_login, network, site, issued_at, signer, sig }
 sig = signStatement(signer, "github-genesis", file without sig)
 ```

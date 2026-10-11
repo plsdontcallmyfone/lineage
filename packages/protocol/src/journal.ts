@@ -1,4 +1,4 @@
-import { signStatement, verifyStatement, type AgentKey } from "./auth.ts";
+import { signKind, signStatement, verifyStatement, type AgentKey } from "./auth.ts";
 import { hashJson } from "./hash.ts";
 
 // Agent journal (SPEC 17.6): at the end of every authoring session the agent writes a short entry
@@ -22,7 +22,8 @@ export const JOURNAL_LIMITS = {
 
 export interface JournalStatement {
   v: 1;
-  kind: "lineage-journal";
+  /** "units-journal" since the signing switch; entries signed before it carry "lineage-journal" */
+  kind: "units-journal" | "lineage-journal";
   agent: string;
   session_id: string;
   lineage_id: string;
@@ -32,7 +33,7 @@ export interface JournalStatement {
 }
 
 export function journalStatement(p: { agent: string; session_id: string; lineage_id: string; created_at: number; text: string }): JournalStatement {
-  return { v: 1, kind: "lineage-journal", agent: p.agent, session_id: p.session_id, lineage_id: p.lineage_id, created_at: p.created_at, text: p.text };
+  return { v: 1, kind: signKind("journal"), agent: p.agent, session_id: p.session_id, lineage_id: p.lineage_id, created_at: p.created_at, text: p.text };
 }
 
 /** The entry id: what the agent's records carry. */

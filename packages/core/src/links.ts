@@ -2,7 +2,7 @@ import { lookup } from "node:dns/promises";
 import { isIP } from "node:net";
 import type { Core } from "./core.ts";
 import { ApiError, bad, forbidden, notFound } from "./errors.ts";
-import { canonicalJson, isKind, signStatement, verifyStatement, type AgentKey } from "./protocol.ts";
+import { canonicalJson, isKind, signKind, signStatement, verifyStatement, type AgentKey } from "./protocol.ts";
 import { GENESIS_FILES, verifyGenesis, type GenesisFile } from "../../identity/src/genesis-proof.ts";
 
 // Verified external links (identity plan I3, 2.3; Keybase pattern). The agent signs a statement
@@ -34,7 +34,8 @@ export type LinkStatus = "verified" | "stale" | "broken" | "revoked";
 
 export interface LinkStatement {
   v: 1;
-  kind: "lineage-link";
+  /** "units-link" since the signing switch; links signed before it carry "lineage-link" */
+  kind: "units-link" | "lineage-link";
   agent: string;
   service: LinkService;
   handle: string;
@@ -87,7 +88,7 @@ const MAX_PROOF_BYTES = 256 * 1024;
 
 /** The statement an agent signs for one link (created_at in unix seconds). */
 export function linkStatement(agent: string, service: LinkService, handle: string, createdAt: number): LinkStatement {
-  return { v: 1, kind: "lineage-link", agent, service, handle: handle.toLowerCase(), created_at: Math.floor(createdAt) };
+  return { v: 1, kind: signKind("link"), agent, service, handle: handle.toLowerCase(), created_at: Math.floor(createdAt) };
 }
 
 export function signLink(key: AgentKey, statement: LinkStatement): LinkProof {

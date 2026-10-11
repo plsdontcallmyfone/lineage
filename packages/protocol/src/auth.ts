@@ -108,27 +108,35 @@ export function verifyMessage(id: string, sig: string, message: string): boolean
 //
 // Rebrand (docs/plans/REBRAND-UNITS.md 3.6): the domain was "lineage" and becomes "units". Verifiers
 // accept both, so every signature made before the switch stays valid; SIGN_DOMAIN is what new
-// signatures use, and it moves to "units" only after the verifiers that read them are deployed. A
-// statement whose `kind` names one brand ("units-..." or "lineage-...") verifies only under that
-// brand's domain, so an old signature can never be relabelled.
+// signatures use: "units" since the signing switch (2026-10-11, after the dual-verify release had
+// been live on the site). A statement whose `kind` names one brand ("units-..." or "lineage-...")
+// verifies only under that brand's domain, so an old signature can never be relabelled; signing
+// follows the same rule, so a statement that continues an older chain (a soul's next version keeps
+// its `lineage-soul` kind) is still signed under the domain its kind names.
 
 const PURPOSE = /^[a-z][a-z0-9-]{0,31}$/;
 
 export type StatementDomain = "lineage" | "units";
 /** Every domain a statement signature is accepted under, newest first. */
 export const STATEMENT_DOMAINS: readonly StatementDomain[] = ["units", "lineage"];
-/** The domain new signatures use (moves to "units" in the signing switch, REBRAND-UNITS.md 5 step 6). */
-export const SIGN_DOMAIN: StatementDomain = "lineage";
+/** The domain new signatures use (the signing switch, REBRAND-UNITS.md 5 step 6). */
+export const SIGN_DOMAIN: StatementDomain = "units";
 
-/** The exact message a statement signature covers (under SIGN_DOMAIN unless a domain is given). */
-export function statementDigest(purpose: string, statement: unknown, domain: StatementDomain = SIGN_DOMAIN): string {
+/** The `kind` new statements carry for `base` ("follow" -> "units-follow"). */
+export const signKind = <B extends string>(base: B): `units-${B}` => `${SIGN_DOMAIN}-${base}` as `units-${B}`;
+
+/**
+ * The exact message a statement signature covers: under the domain given, else the domain the
+ * statement's `kind` names, else SIGN_DOMAIN.
+ */
+export function statementDigest(purpose: string, statement: unknown, domain: StatementDomain = kindDomain(statement) ?? SIGN_DOMAIN): string {
   if (!PURPOSE.test(purpose)) throw new Error("statement purpose must be 1-32 lowercase letters, digits or dashes");
   if (!STATEMENT_DOMAINS.includes(domain)) throw new Error("unknown statement domain");
   return H(`${domain}-${purpose}-v1`, canonicalJson(statement));
 }
 
 /** Signs a statement for one purpose (team, intent, rotate, profile, link, msg, provenance, credential). */
-export function signStatement(key: AgentKey, purpose: string, statement: unknown, domain: StatementDomain = SIGN_DOMAIN): string {
+export function signStatement(key: AgentKey, purpose: string, statement: unknown, domain: StatementDomain = kindDomain(statement) ?? SIGN_DOMAIN): string {
   return signMessage(key, statementDigest(purpose, statement, domain));
 }
 

@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { join } from "node:path";
 import type Anthropic from "@anthropic-ai/sdk";
 import { loadRecipe } from "@units/sandbox";
-import { generateAgentKey, JOURNAL_LIMITS, journalEntryId, verifyJournal } from "@units/protocol";
+import { generateAgentKey, JOURNAL_LIMITS, journalEntryId, statementDomainOf, verifyJournal } from "@units/protocol";
 import { AnthropicProposer, systemPrompt, type ProposeContext } from "../src/index.ts";
 import { checkEntry, FactsLog, journalPrompt, JOURNAL_RESERVE_USD, notesBlock, storeEntry, type JournalEntryView } from "../src/journal.ts";
 
@@ -177,8 +177,9 @@ describe("journal statement", () => {
     const client = { post: async (path: string, body: any) => (sent.push({ path, body }), { status: 200, body: { entry_id: journalEntryId(body.statement), created: true } }) } as any;
     const id = await storeEntry(client, key, key.id, { session_id: "11".repeat(32), lineage_id: L, text: "entry", created_at: 1 }, () => {});
     expect(sent[0].path).toBe(`/v1/agents/${key.id}/journal`);
-    expect(sent[0].body.statement).toEqual({ v: 1, kind: "lineage-journal", agent: key.id, session_id: "11".repeat(32), lineage_id: L, created_at: 1, text: "entry" });
+    expect(sent[0].body.statement).toEqual({ v: 1, kind: "units-journal", agent: key.id, session_id: "11".repeat(32), lineage_id: L, created_at: 1, text: "entry" });
     expect(verifyJournal(key.id, sent[0].body.sig, sent[0].body.statement)).toBe(true);
+    expect(statementDomainOf(key.id, sent[0].body.sig, "journal", sent[0].body.statement)).toBe("units");
     expect(id).toBe(journalEntryId(sent[0].body.statement));
   });
 });

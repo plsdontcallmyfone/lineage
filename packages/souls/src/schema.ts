@@ -4,7 +4,9 @@
 // Core.
 
 export const SOUL_V = 1 as const;
-export const SOUL_KIND = "lineage-soul" as const;
+/** Kind of new soul documents (signing switch 2026-10-11); `LEGACY_SOUL_KIND` documents stay valid and keep their kind across versions. */
+export const SOUL_KIND = "units-soul" as const;
+export const LEGACY_SOUL_KIND = "lineage-soul" as const;
 
 /** The launcher's seed: what the person typed at launch, kept verbatim so the expansion can be judged against it. */
 export interface SoulSeed {
@@ -73,7 +75,7 @@ export interface SoulIdentity {
 
 export interface SoulDoc {
   v: typeof SOUL_V;
-  kind: typeof SOUL_KIND | "units-soul";
+  kind: typeof SOUL_KIND | typeof LEGACY_SOUL_KIND;
   agent: string;
   seq: number;
   /** digest of the version this one replaces, null for seq 1 */
@@ -266,7 +268,7 @@ export function validateSoul(doc: unknown): string[] {
       errs.push("soul.model: { provider, id } from the model registry");
   }
   if (doc.v !== SOUL_V) errs.push(`soul.v: must be ${SOUL_V}`);
-  if (doc.kind !== SOUL_KIND && doc.kind !== "units-soul") errs.push(`soul.kind: must be ${SOUL_KIND}`);
+  if (doc.kind !== SOUL_KIND && doc.kind !== LEGACY_SOUL_KIND) errs.push(`soul.kind: must be ${SOUL_KIND}`);
   if (typeof doc.agent !== "string" || !B58.test(doc.agent)) errs.push("soul.agent: a base58 agent id");
   if (!Number.isInteger(doc.seq) || (doc.seq as number) < 1 || (doc.seq as number) > 0xffffffff) errs.push("soul.seq: an integer from 1 (u32, the set_profile seq)");
   if (doc.seq === 1 && doc.prev !== null) errs.push("soul.prev: null for seq 1");
