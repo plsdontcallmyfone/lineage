@@ -1420,3 +1420,7 @@ a.eco-btn { text-decoration: none; }
 .mk-tb2-foot { display: flex; align-items: center; justify-content: space-between; gap: 8px; flex-wrap: wrap; padding-top: 10px; border-top: 1px solid var(--border); font-size: 12px; color: var(--tt); }
 .mk-tb2-foot .mk-tb-venue { margin: 0; }
 .mk-tb2-note { margin: 0; }
+
+/* no visible scrollbars anywhere (the page and inner panels still scroll) */
+* { scrollbar-width: none; -ms-overflow-style: none; }
+*::-webkit-scrollbar { display: none; width: 0; height: 0; }

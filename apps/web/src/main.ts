@@ -28,6 +28,7 @@ import { launchPage } from "./pages/launch.ts";
 import { profilePage } from "./pages/profile.ts";
 import type { Page } from "./pages/types.ts";
 import { siteFooter } from "./site-footer.ts";
+import { smoothScroll } from "./smooth-scroll.ts";
 import { deckPage, deckSync } from "./deck.ts";
 
 // ------------------------------------------------------------------------------------------------
@@ -155,6 +156,7 @@ async function render(opts: { soft?: boolean } = {}) {
     if (page.mount) void page.mount(main);
     tickTimes();
     if (path !== currentPath) {
+      window.dispatchEvent(new Event("units:route")); // a glide in progress stops
       if (location.hash) document.getElementById(decodeURIComponent(location.hash.slice(1)))?.scrollIntoView();
       else window.scrollTo(0, 0);
     }
@@ -377,6 +379,7 @@ window.addEventListener("resize", () => {
 // ------------------------------------------------------------------------------------------------
 
 shell();
+smoothScroll();
 fetch("/live/status")
   .then((r) => r.json())
   .then((s) => {
