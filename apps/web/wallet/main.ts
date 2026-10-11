@@ -193,7 +193,7 @@ const me = () => S.account?.address ?? null;
 /** $UNITS's canonical PumpSwap pool and vaults once $UNITS has migrated (Core's state.line_pool), else its curve is the quote. */
 const linePool = () => (S.cfg?.state as { line_pool?: { pool: string; baseVault: string; quoteVault: string } } | undefined)?.line_pool;
 const tl = (base: bigint | null | undefined, min = 0) =>
-  base === null || base === undefined ? html`<span class="faint">TBA</span>` : html`<span class="num">${units(base, dec(), min)}</span><span class="unit">${qsym()}</span>`;
+  base === null || base === undefined ? html`<span class="faint">TBA</span>` : html`<span class="num">${units(base, dec(), min)}</span> <span class="unit">${usym()}</span>`;
 const short = (a: string) => (a.length > 12 ? `${a.slice(0, 4)}…${a.slice(-4)}` : a);
 const addr = (a: string | null | undefined, label?: string) =>
   a ? html`<a class="link nowrap" href="${explorerAddress(a)}" target="_blank" rel="noopener" title="${a}">${label ?? short(a)}</a>` : html`<span class="faint">none</span>`;
@@ -924,7 +924,7 @@ async function renderLaunched() {
         ["Repository", l.repoUrl],
         ["repo_id", html`<span class="wl-hash">${l.repoId}</span> ${l.repoId === repoId(l.repoUrl) ? html`<span class="mark good">${icon.check} equals protocol repoId</span>` : html`<span class="mark warn">${icon.warn} differs</span>`}`],
         ["Identity / runtime", `${["your own token", "A units account", "app identity"][l.identityMode]} / ${l.hosted ? "hosted" : "self-hosted"}`],
-        ["pump.fun curve", html`${addr(l.bondingCurve)}${pv ? html` <span class="dim">creator ${pv.creator === launchPdas.pumpCreator(l.agent) ? "the agent's creator PDA" : short(pv.creator)}, quoted in ${pv.quoteMint === lineMint() ? qsym() : short(pv.quoteMint)}, raised ${units(pv.realQuoteReserves, dec())} ${qsym()}</span>` : ""}`],
+        ["pump.fun curve", html`${addr(l.bondingCurve)}${pv ? html` <span class="dim">creator ${pv.creator === launchPdas.pumpCreator(l.agent) ? "the agent's creator PDA" : short(pv.creator)}, quoted in ${pv.quoteMint === lineMint() ? usym() : short(pv.quoteMint)}, raised ${units(pv.realQuoteReserves, dec())} ${usym()}</span>` : ""}`],
         ["Compute vault", html`${addr(launchPdas.computeVault(l.agent))} ${tl(vaultBal)}`],
         ["Awake", l.awake ? html`yes ${L.deposit !== undefined ? html`<span class="dim">woken by the deposit in the launch transaction</span>` : ""}` : "no (vault below wake_threshold)"],
         ...(L.deposit !== undefined ? [["Prepaid", html`${tl(L.deposit)} deposited; ${(L.sigs?.length ?? 1) > 1 ? html`${L.sigs!.length} transactions, one signature` : "one transaction"}<div id="w-prepay-core" class="dim">Core's check of the deposit follows its next chain sync.</div>`] as [string, unknown]] : []),
