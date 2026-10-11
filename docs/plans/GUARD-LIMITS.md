@@ -80,11 +80,42 @@ per rule version.
 
 Author-blind replay and sealing: the config names no candidate; verdicts are public only once final.
 Replay agreement within `det_tolerance` still applies to every deterministic metric. Worker
-self-checks (an author's own pre-submit judge) still use rule version 1, so an author can still submit
-a candidate the guard will reject; teaching the worker the guard is a follow-up.
+self-checks apply the guard too (section 7).
 
 ## 6. UI and docs
 
 The generation page summary shows each non-target metric as `guarded, limit 1%: passed` (or
 `exceeded`) from the verdict's checks; generations judged by rule 1 keep `not judged`. Docs:
 Recipes, replays, verdicts (`apps/docs/content/verification.md`), Core API notes for the two routes.
+
+## 7. Worker self-evaluation (replica roots + worker guard lane, 2026-10-11)
+
+The author's own pre-submit judge (`evaluate` tool in `packages/worker/src/proposers/anthropic.ts`,
+shared by every model proposer, and `selfCheck` in `worker.ts`) judges with the same rule replays use:
+
+- **Rule in force.** On every evaluation the worker reads `GET /v1/guard-config` and picks the
+  version in force now for the recipe (`packages/worker/src/guard-limits.ts`). No version in force, or
+  a Core without the route (404): rule version 1, as replays would judge it. Any other read failure
+  keeps the last rule read in the attempt; with none, that evaluation cannot be submitted (an
+  unreadable config is never treated as no guards).
+- **Regression.** When the self-judgement rejects with `metric_regression`, the evaluate result
+  starts with `guard regression on <metric>: <metric> worsened <change> against the parent; the limit
+  is <limit>` (or `has no valid samples`), the submit tool refuses with the same metric, and the model
+  may change the patch and evaluate again within the attempt's remaining budget and evaluation count.
+- **Not submitted.** The worker never commits while the last evaluation regressed a guarded metric;
+  an attempt that ends that way records the outcome `guard regression on <metric>: measured change
+  <change>, limit <limit> (guard config version <n>); not submitted`.
+
+Tests: `packages/worker/test/guard-limits.test.ts` (a +5% `decode_ir` change is refused, a +0.5% one is
+submitted; the model fixing it within the attempt; rule version 1 unchanged; an unreadable config).
+
+### Replica record roots, epochs 13, 15, 17, 18
+
+The replica reported these four record roots as divergent. Cause: it enumerated agents from
+`GET /v1/agents`, which leaves hidden launches out unless `hidden=1` (core hidden filter lane), so the
+records and contribution leaves of hidden agents never reached its recomputation. Core's published
+roots are correct: on the site database every record and contribution leaf rehashes from its record
+and the sorted leaves root to the published value for all four epochs (leaves 15, 14, 58 and 31; the
+plain listing gave the replica 7, 2, 16 and 11 of them). The replica now reads `/v1/agents?hidden=1`;
+no historical exception is needed. Test: `packages/core/test/replica-records.test.ts`.
+

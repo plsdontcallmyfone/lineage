@@ -1,4 +1,5 @@
-import type { Calibration, CandidateKind } from "@units/protocol";
+import type { Calibration, CandidateKind, GuardRule } from "@units/protocol";
+import type { GuardRegression } from "../guard-limits.ts";
 import type { DepsLayer, LoadedRecipe, PhaseCallback } from "@units/sandbox";
 import type { ActivityInput } from "../telemetry.ts";
 import type { SessionEventInput } from "../session.ts";
@@ -94,6 +95,10 @@ export interface ProposeContext {
   maxUsd?: number;
   /** Hosted runtime metering (SPEC 13.7): every model response and every sandbox evaluation, as they happen. Never throws into the proposer. */
   meter?: Meter;
+  /** Guard limits (SPEC 10.1 rule 6): the rule a candidate committed now is judged with (GET /v1/guard-config); null = none in force. Absent: self-evaluation judges without guards. */
+  guardRule?: () => Promise<GuardRule | null>;
+  /** Set by the proposer's evaluate: the guarded metric the last evaluation regressed beyond its limit, or null. The worker never submits while it is set. */
+  guardRegression?: GuardRegression | null;
 }
 
 /** Usage a proposer reports while it works; the hosted runtime turns it into per-agent usage records. */

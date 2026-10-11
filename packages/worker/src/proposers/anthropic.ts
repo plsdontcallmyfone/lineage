@@ -3,10 +3,11 @@ import { wrapUpNotice } from "./budget.ts";
 import { DEFAULT_MIN_TURN_TOKENS, MAX_TURN_TOKENS, contentChars, turnAllowance, type EfficiencyOptions } from "./efficiency.ts";
 import { existsSync, lstatSync, readdirSync, readFileSync, realpathSync, statSync, writeFileSync } from "node:fs";
 import { dirname, join, normalize, relative, resolve, sep } from "node:path";
-import { canonicalizeDiff, guard, judge, matchesAny, sha256Hex, type CandidateKind, type CandidateView } from "@units/protocol";
+import { canonicalizeDiff, guard, judge, matchesAny, sha256Hex, type CandidateKind, type CandidateView, type GuardRule } from "@units/protocol";
 import { diffWorkingTree, evaluate } from "@units/sandbox";
 import type { Proposal, ProposeContext, Proposer } from "./types.ts";
 import { clip, type SessionEventInput } from "../session.ts";
+import { guardFeedback, guardRegressionOf } from "../guard-limits.ts";
 
 // LLM proposer: Claude edits the parent tree through a small, path-confined tool set and can
 // measure its own change in the real sandbox before submitting. Spend is metered per attempt
@@ -446,7 +447,8 @@ export class ToolBox {
   private evals = 0;
   private lastAccepted: { kind: CandidateKind; target: string; diffHash: string; ratio?: number } | null = null;
 
-  constructor(private ctx: ProposeContext, private maxEvals: number) {}
+  /** `evaluateImpl`: the sandbox evaluation (tests pass a stand-in that returns a measured result). */
+  constructor(private ctx: ProposeContext, private maxEvals: number, private evaluateImpl: typeof evaluate = evaluate) {}
 
   /** Live activity (SPEC 17.1). Never throws: telemetry must not change what the model sees. */
   report(e: Parameters<NonNullable<ProposeContext["activity"]>>[0]): void {
@@ -612,7 +614,7 @@ export class ToolBox {
       this.session({ kind: "phase", phase: p });
       this.ctx.onPhase?.(p, at);
     };
-    const { result, transcript } = await evaluate({ loaded: this.ctx.loaded, deps: this.ctx.deps, parentPatches: this.ctx.parentPatches, candidatePatch: diff, seed: this.ctx.seed, onPhase, enabledMetrics: Object.entries(this.ctx.calibration.metrics).filter(([, m]) => m.enabled).map(([n]) => n) });
+    const { result, transcript } = await this.evaluateImpl({ loaded: this.ctx.loaded, deps: this.ctx.deps, parentPatches: this.ctx.parentPatches, candidatePatch: diff, seed: this.ctx.seed, onPhase, enabledMetrics: Object.entries(this.ctx.calibration.metrics).filter(([, m]) => m.enabled).map(([n]) => n) });
     // sandbox time as the transcript records it (hosted runtime metering, SPEC 13.7)
     try {
       this.ctx.meter?.sandbox(transcript.steps.reduce((a, st) => a + st.duration_ms, 0) / 1000);
@@ -620,12 +622,30 @@ export class ToolBox {
       /* ignore */
     }
     const cand: CandidateView = { candidate_id: "self", author: "self", kind, target: kind === "fix" ? [target] : target };
+    // guard limits (SPEC 10.1 rule 6): the same rule replays will judge a candidate committed now with
+    let rule: GuardRule | null = null;
+    let ruleError: string | null = null;
+    if (this.ctx.guardRule) {
+      try {
+        rule = await this.ctx.guardRule();
+      } catch (e) {
+        ruleError = (e as Error).message.slice(0, 200);
+      }
+    }
     const j = judge(this.ctx.loaded.recipe, this.ctx.calibration, cand, [{ replay_id: "self", replayer: "self-check", seed: this.ctx.seed, result }], {
       quorum: 1,
       det_tolerance: 0.001,
       bootstrap_resamples: 4000,
+      guard_limits: rule,
     });
+    const regression = guardRegressionOf(j);
+    this.ctx.guardRegression = regression;
     const lines = [`outcome: ${j.outcome}${j.reason ? ` (${j.reason}: ${j.detail})` : ""}`, `guard: ok, ${g.files} files, ${g.lines} lines`];
+    if (regression) {
+      lines.splice(1, 0, guardFeedback(regression));
+      this.ctx.log(`anthropic: guard regression on ${regression.metric} (${regression.status}, limit ${regression.limit}); not submittable`);
+    } else if (ruleError) lines.splice(1, 0, `guard limits: the guard config could not be read (${ruleError}); this evaluation cannot be submitted, evaluate again`);
+    else if (j.guard_limits) lines.splice(1, 0, `guard limits (config version ${j.guard_limits.config_version}): every guarded metric other than the target is within its limit`);
     lines.push(`build: base ${result.build.base}, candidate ${result.build.cand}`);
     const failing = this.ctx.calibration.stable.filter((t) => !result.tests.cand_pass.includes(t));
     if (failing.length) lines.push(`stable tests failing: ${failing.slice(0, 20).join(", ")}`);
@@ -652,12 +672,14 @@ export class ToolBox {
         tail: clip([st.stdout_tail, st.stderr_tail].filter((t) => t && t.trim()).join("\n").slice(-1200), 1200).text,
       })),
     });
-    this.lastAccepted = j.outcome === "accepted" ? { kind, target, diffHash: Bun.hash(diff).toString(), ratio } : null;
+    this.lastAccepted = j.outcome === "accepted" && !ruleError ? { kind, target, diffHash: Bun.hash(diff).toString(), ratio } : null;
     return lines.join("\n");
   }
 
   validateSubmit(input: ToolInput): { ok: true; kind: CandidateKind; target: string; ratio?: number } | { ok: false; error: string } {
     const a = this.lastAccepted;
+    const reg = this.ctx.guardRegression;
+    if (!a && reg) return { ok: false, error: `not submitted: guard regression on ${reg.metric} in the last evaluation; fix it and evaluate again, or give_up` };
     if (!a) return { ok: false, error: "the last evaluate did not report accepted; evaluate first or give_up" };
     if (a.kind !== input.kind || a.target !== input.target) return { ok: false, error: `submit must match the last accepted evaluation (${a.kind} ${a.target})` };
     if (Bun.hash(this.currentDiff()).toString() !== a.diffHash) return { ok: false, error: "the change was edited after the last evaluation; evaluate again" };

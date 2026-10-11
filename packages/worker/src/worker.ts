@@ -22,6 +22,7 @@ import {
   type Capabilities,
   type CandidateKind,
   type CandidateView,
+  type GuardRule,
   type Recipe,
   type ReplayResult,
 } from "@units/protocol";
@@ -36,6 +37,7 @@ import { doctor } from "./doctor.ts";
 import { RecipeBook } from "./recipes.ts";
 import { proposerSoulBlock, type SoulDoc } from "@units/souls";
 import { Telemetry } from "./telemetry.ts";
+import { guardOutcome, guardRuleReader } from "./guard-limits.ts";
 import { checkEntry, FactsLog, journalPrompt, JOURNAL_RESERVE_USD, notesBlock, readNotes, storeEntry } from "./journal.ts";
 import { plannedKey, readShared, sharedBlock, type SharedData } from "./shared-findings.ts";
 import { writeSecret } from "./secret-file.ts";
@@ -524,6 +526,9 @@ export class Worker {
         shared: null,
         journalReserveUsd: journal && proposer.journal ? JOURNAL_RESERVE_USD : 0,
         spent: { usd: 0 },
+        // guard limits (SPEC 10.1 rule 6): self-evaluation judges with the rule in force (GET /v1/guard-config)
+        guardRule: guardRuleReader((path) => this.client.get(path), view.recipe_id),
+        guardRegression: null,
         ...budget,
       };
       ctx.meter = episode.wrap(ctx.meter);
@@ -557,7 +562,13 @@ export class Worker {
       }
       const proposal = await proposer.propose(ctx);
       if (!proposal) {
-        outcome("no candidate: the session stopped without submitting a change");
+        outcome(ctx.guardRegression ? guardOutcome(ctx.guardRegression) : "no candidate: the session stopped without submitting a change");
+        return null;
+      }
+      // a change whose last self-evaluation regressed a guarded metric beyond its limit is never submitted
+      if (ctx.guardRegression) {
+        this.log(`author: ${guardOutcome(ctx.guardRegression)}`);
+        outcome(guardOutcome(ctx.guardRegression));
         return null;
       }
       if (proposal.usage) this.log(`author: model spend ${proposal.usage.usd.toFixed(4)} USD (${proposal.usage.input_tokens} in, ${proposal.usage.output_tokens} out, ${proposal.usage.cache_read_tokens} cache read)`);
@@ -948,11 +959,11 @@ function fabricateQualification(a: Assignment): { result: ReplayResult; transcri
 }
 
 /** Self-check an author can run before submitting (the anthropic proposer does this itself). */
-export async function selfCheck(w: Worker, recipe_id: string, calibration: Calibration, parentPatches: string[], patch: string, cand: CandidateView): Promise<string> {
+export async function selfCheck(w: Worker, recipe_id: string, calibration: Calibration, parentPatches: string[], patch: string, cand: CandidateView, guardRule: GuardRule | null = null): Promise<string> {
   const loaded = w.recipes.get(recipe_id);
   const deps = await w.recipes.depsFor(loaded);
   const { result } = await evaluate({ loaded, deps, parentPatches, candidatePatch: patch, seed: randomBytes(8).toString("hex") });
-  const j = judge(loaded.recipe, calibration, cand, [{ replay_id: "self", replayer: "self", seed: "self", result }], { quorum: 1, det_tolerance: 0.001, bootstrap_resamples: 2000 });
+  const j = judge(loaded.recipe, calibration, cand, [{ replay_id: "self", replayer: "self", seed: "self", result }], { quorum: 1, det_tolerance: 0.001, bootstrap_resamples: 2000, guard_limits: guardRule });
   return j.outcome + (j.reason ? `:${j.reason}` : "");
 }
 
