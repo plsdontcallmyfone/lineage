@@ -2,7 +2,7 @@ import { endOf, idleCaption, idleStatus, RECORDINGS_SHOWN } from "../../../apps/
 import { mount as mountPanel, type LivePanelHandle, type PanelIO } from "../../../apps/web/src/live-panel/index.ts";
 import { scriptBase } from "./config.ts";
 import { defaultTf, renderCandles } from "../../../apps/web/src/market.ts";
-import type { Card, LineageClient, SessionView } from "./client.ts";
+import type { Card, UnitsClient, SessionView } from "./client.ts";
 import { pool } from "./client.ts";
 import { getClient, onConfigure, ourMints } from "./config.ts";
 import { building, cardHtml, esc, howSteps, holdersHtml, howHtml, linkFor, statsHtml, timelineLayout, tokenHeadHtml, tokenParams, tradesHtml, STAT_ITEMS } from "./render.ts";
@@ -16,14 +16,14 @@ import type { Stats } from "./client.ts";
 
 const reduced = () => typeof matchMedia === "function" && matchMedia("(prefers-reduced-motion: reduce)").matches;
 
-abstract class LineageElement extends HTMLElement {
+abstract class UnitsElement extends HTMLElement {
   protected root!: ShadowRoot;
   protected box!: HTMLElement;
   protected alive = 0;
   private offCfg: (() => void) | null = null;
   protected abstract css: string;
 
-  get client(): LineageClient {
+  get client(): UnitsClient {
     return getClient();
   }
 
@@ -52,7 +52,7 @@ abstract class LineageElement extends HTMLElement {
     this.stop();
     const g = this.alive;
     this.start(g).catch((e) => {
-      if (g === this.alive) this.box.innerHTML = `<div class="err"><b>Lineage data did not load.</b> ${esc((e as Error).message ?? e)}</div>`;
+      if (g === this.alive) this.box.innerHTML = `<div class="err"><b>units data did not load.</b> ${esc((e as Error).message ?? e)}</div>`;
     });
   }
 
@@ -62,7 +62,7 @@ abstract class LineageElement extends HTMLElement {
 
 // ------------------------------------------------------------------------------------------- screen
 
-function panelIO(c: LineageClient, root: ShadowRoot): Partial<PanelIO> {
+function panelIO(c: UnitsClient, root: ShadowRoot): Partial<PanelIO> {
   return {
     get: (p) => c.core(p, 0),
     fileAt: (l, g, p) => c.fileAt(l, g, p),
@@ -77,8 +77,8 @@ function panelIO(c: LineageClient, root: ShadowRoot): Partial<PanelIO> {
   };
 }
 
-/** <lineage-screen agent= | mint= | session= mode= frame=window|device|crt|none fps= height= compact list> */
-export class LineageScreen extends LineageElement {
+/** <units-screen agent= | mint= | session= mode= frame=window|device|crt|none fps= height= compact list> */
+export class UnitsScreen extends UnitsElement {
   static observedAttributes = ["agent", "mint", "session", "lineage", "mode", "frame", "height", "speed", "fps"];
   protected css = SCREEN;
   private panel: LivePanelHandle | null = null;
@@ -147,8 +147,8 @@ function paletteOf(el: Element): Palette {
   return { bg: colorOf(el, "var(--_bg)"), fg: colorOf(el, "var(--_fg)"), muted: colorOf(el, "var(--_muted)"), accent: colorOf(el, "var(--_accent)"), panel: colorOf(el, "var(--panel-3)") };
 }
 
-/** <lineage-reel sort= limit= look=plain|dither layout=strip|timeline|grid link=> */
-export class LineageReel extends LineageElement {
+/** <units-reel sort= limit= look=plain|dither layout=strip|timeline|grid link=> */
+export class UnitsReel extends UnitsElement {
   static observedAttributes = ["sort", "limit", "look", "layout", "link"];
   protected css = REEL + PARAMS;
   private io: IntersectionObserver | null = null;
@@ -321,8 +321,8 @@ function debounce(f: () => unknown, ms: number) {
 
 // ------------------------------------------------------------------------------------------- token
 
-/** <lineage-token mint= tf=> the token page block: header with price, market cap, 24h volume and 24h change, what the agent is building with its screen, chart, trades, holders. */
-export class LineageToken extends LineageElement {
+/** <units-token mint= tf=> the token page block: header with price, market cap, 24h volume and 24h change, what the agent is building with its screen, chart, trades, holders. */
+export class UnitsToken extends UnitsElement {
   static observedAttributes = ["mint", "tf", "link"];
   protected css = SCREEN + TOKEN + PARAMS;
   private panel: LivePanelHandle | null = null;
@@ -375,8 +375,8 @@ export class LineageToken extends LineageElement {
 
 // ------------------------------------------------------------------------------------------- how, stats
 
-/** <lineage-how> the mechanism in six steps with live figures. */
-export class LineageHow extends LineageElement {
+/** <units-how> the mechanism in six steps with live figures. */
+export class UnitsHow extends UnitsElement {
   protected css = HOW;
   private timer: ReturnType<typeof setInterval> | null = null;
   protected async start(g: number) {
@@ -393,11 +393,11 @@ export class LineageHow extends LineageElement {
 }
 
 /**
- * <lineage-stats keys="tokens,agents_working,generations,volume_24h" layout=row|ticker> network counters;
- * <lineage-stats mint=> one token's parameters instead: price, market cap, 24h volume, 24h change and
+ * <units-stats keys="tokens,agents_working,generations,volume_24h" layout=row|ticker> network counters;
+ * <units-stats mint=> one token's parameters instead: price, market cap, 24h volume, 24h change and
  * what its agent is building.
  */
-export class LineageStats extends LineageElement {
+export class UnitsStats extends UnitsElement {
   static observedAttributes = ["keys", "layout", "mint"];
   protected css = STATS + PARAMS;
   private timer: ReturnType<typeof setInterval> | null = null;
@@ -429,14 +429,14 @@ export class LineageStats extends LineageElement {
 
 const ICON_FULL = `<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><path d="M2.5 6V2.5H6M10 2.5h3.5V6M13.5 10v3.5H10M6 13.5H2.5V10"/></svg>`;
 
-/** Terminals on the page, for Lineage.terminal.openAndRun. */
-export const terminals = new Set<LineageTerminal>();
+/** Terminals on the page, for Units.terminal.openAndRun. */
+export const terminals = new Set<UnitsTerminal>();
 
 /**
- * <lineage-terminal for="screen-id" frame=window|crt|none height= title= autorun= guide
+ * <units-terminal for="screen-id" frame=window|crt|none height= title= autorun= guide
  *   href-tokens= href-ours= href-launch= href-docs= href-explorer=>
  */
-export class LineageTerminal extends LineageElement {
+export class UnitsTerminal extends UnitsElement {
   static observedAttributes = ["frame"];
   protected css = TERMINAL;
   private hist: string[] = [];
@@ -470,7 +470,7 @@ export class LineageTerminal extends LineageElement {
     if (!this.built) {
       this.built = true;
       const h = Number(this.getAttribute("height"));
-      const title = this.getAttribute("title") ?? "Lineage CLI";
+      const title = this.getAttribute("title") ?? "units CLI";
       this.box.innerHTML = `<div class="term" part="terminal"${h ? ` style="--h:${h}px"` : ""}>
         ${this.getAttribute("frame") === "none" ? "" : `<div class="bar" part="titlebar"><button type="button" class="knob" data-act="tube" title="Recolor the tube" aria-label="Recolor the tube"></button><span class="title">${esc(title)} <span>devnet</span></span><span class="sp"></span><button type="button" class="ib" data-act="full" title="Full screen" aria-label="Full screen">${ICON_FULL}</button></div>`}
         <div class="out" role="log" aria-live="polite" aria-label="Terminal output"></div>
@@ -484,7 +484,7 @@ export class LineageTerminal extends LineageElement {
         <div class="scan"></div>
       </div>`;
       this.wire();
-      this.print([`<span class="dim">Lineage on Solana devnet. Type ${'<button type="button" class="run" data-run="help">help</button>'}, or ask a question with ask.</span>`]);
+      this.print([`<span class="dim">units on Solana devnet. Type ${'<button type="button" class="run" data-run="help">help</button>'}, or ask a question with ask.</span>`]);
       const auto = this.getAttribute("autorun");
       if (auto) void this.exec(auto, false);
       if (this.hasAttribute("guide")) void this.guide(0);
@@ -634,9 +634,9 @@ export class LineageTerminal extends LineageElement {
 
   private watch(agent: string, label: string) {
     const id = this.getAttribute("for");
-    const target = (id ? document.getElementById(id) : document.querySelector("lineage-screen")) as LineageScreen | null;
+    const target = (id ? document.getElementById(id) : document.querySelector("units-screen, lineage-screen")) as UnitsScreen | null;
     if (target && typeof (target as any).watch === "function") target.watch(agent);
-    else this.print([`<span class="dim">No lineage-screen on this page to show ${esc(label)}.</span>`]);
+    else this.print([`<span class="dim">No units-screen on this page to show ${esc(label)}.</span>`]);
   }
 
   focusInput() {
@@ -644,7 +644,7 @@ export class LineageTerminal extends LineageElement {
   }
 }
 
-/** Lineage.terminal.openAndRun: scrolls the first terminal into view and runs a command there. */
+/** Units.terminal.openAndRun: scrolls the first terminal into view and runs a command there. */
 export async function openAndRun(cmd: string) {
   const t = [...terminals][0];
   if (!t) return false;
@@ -656,8 +656,8 @@ export async function openAndRun(cmd: string) {
 
 // ------------------------------------------------------------------------------------------- palette
 
-/** <lineage-palette> Cmd K (or Ctrl K): pages, commands and tokens; commands run in the page's terminal. */
-export class LineagePalette extends LineageElement {
+/** <units-palette> Cmd K (or Ctrl K): pages, commands and tokens; commands run in the page's terminal. */
+export class UnitsPalette extends UnitsElement {
   protected css = PALETTE;
   private items: { kind: string; label: string; detail: string; act: () => void }[] = [];
   private sel = 0;
@@ -746,25 +746,25 @@ export class LineagePalette extends LineageElement {
 type MountExplorer = (el: HTMLElement, o: any) => { destroy(): void };
 let explorerLoad: Promise<MountExplorer> | null = null;
 
-/** Loads lineage-explorer.js (next to lineage-embed.js) once; it is kept out of the main file for size. */
+/** Loads units-explorer.js (next to units-embed.js) once; it is kept out of the main file for size. */
 function loadExplorer(): Promise<MountExplorer> {
   const w = window as any;
   if (w.__lineageMountExplorer) return Promise.resolve(w.__lineageMountExplorer);
   return (explorerLoad ??= new Promise((res, rej) => {
     const s = document.createElement("script");
-    s.src = `${scriptBase()}/lineage-explorer.js`;
-    s.onload = () => (w.__lineageMountExplorer ? res(w.__lineageMountExplorer) : rej(new Error("lineage-explorer.js did not register")));
+    s.src = `${scriptBase()}/units-explorer.js`;
+    s.onload = () => (w.__lineageMountExplorer ? res(w.__lineageMountExplorer) : rej(new Error("units-explorer.js did not register")));
     s.onerror = () => rej(new Error(`${s.src} did not load`));
     document.head.appendChild(s);
   }));
 }
 
 /**
- * <lineage-explorer link=> a thin wrapper over the explorer+docs lane's mountExplorer
- * (apps/web/src/pages/explorer.ts), loaded on demand from lineage-explorer.js. It renders in the
+ * <units-explorer link=> a thin wrapper over the explorer+docs lane's mountExplorer
+ * (apps/web/src/pages/explorer.ts), loaded on demand from units-explorer.js. It renders in the
  * light DOM because that module styles itself through one document stylesheet (ex- prefixed).
  */
-export class LineageExplorer extends HTMLElement {
+export class UnitsExplorer extends HTMLElement {
   static observedAttributes = ["link"];
   private h: { destroy(): void } | null = null;
   private gen = 0;
@@ -796,14 +796,14 @@ export class LineageExplorer extends HTMLElement {
 }
 
 export const ELEMENTS: [string, CustomElementConstructor][] = [
-  ["lineage-explorer", LineageExplorer],
-  ["lineage-screen", LineageScreen],
-  ["lineage-reel", LineageReel],
-  ["lineage-token", LineageToken],
-  ["lineage-how", LineageHow],
-  ["lineage-stats", LineageStats],
-  ["lineage-terminal", LineageTerminal],
-  ["lineage-palette", LineagePalette],
+  ["units-explorer", UnitsExplorer],
+  ["units-screen", UnitsScreen],
+  ["units-reel", UnitsReel],
+  ["units-token", UnitsToken],
+  ["units-how", UnitsHow],
+  ["units-stats", UnitsStats],
+  ["units-terminal", UnitsTerminal],
+  ["units-palette", UnitsPalette],
 ];
 
 export { pool };

@@ -1,12 +1,12 @@
 {
-  "name": "@lineage/core",
+  "name": "@units/core",
   "version": "0.1.0",
   "type": "module",
   "main": "src/index.ts",
   "types": "src/index.ts",
   "dependencies": {
-    "@lineage/chain": "workspace:*",
-    "@lineage/souls": "workspace:*"
+    "@units/chain": "workspace:*",
+    "@units/souls": "workspace:*"
   },
   "scripts": {
     "start": "bun src/main.ts",

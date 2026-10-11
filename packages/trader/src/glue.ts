@@ -1,6 +1,6 @@
 import { join } from "node:path";
-import { loadOrCreateKeypair, Rpc, type Signer } from "@lineage/chain";
-import type { AgentKey } from "@lineage/protocol";
+import { loadOrCreateKeypair, Rpc, type Signer } from "@units/chain";
+import type { AgentKey } from "@units/protocol";
 import { CoreClient } from "../../core/src/client.ts";
 import { ChainVenue } from "./chain-venue.ts";
 import { ChainFunder, FundingStore, tradeShareOf, type ShareBasis } from "./funding.ts";

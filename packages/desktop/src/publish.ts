@@ -1,4 +1,4 @@
-import type { AgentKey } from "@lineage/protocol";
+import type { AgentKey } from "@units/protocol";
 import { CoreClient } from "../../core/src/client.ts";
 import type { DesktopPool } from "./pool.ts";
 import { desktopHandler } from "./serve.ts";

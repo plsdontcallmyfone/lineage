@@ -5,16 +5,16 @@
 # Global, quote control, both fee configs, PumpSwap's global config, Mayhem's global params and SOL
 # vault, Pump's withdraw authority, and buyback fee recipient 0 with its wrapped SOL account
 # (docs/plans/PUMPFUN-LAUNCHES.md). Reads mainnet only (the public endpoint, or
-# LINEAGE_MAINNET_RPC when set; the URL is never printed). Nothing is sent to mainnet.
-# The three Lineage programs are NOT preloaded: the rehearsal deploys them itself with the runbook's
-# commands at the active profile's ids (LINEAGE_NETWORK=mainnet: the mainnet ids, signed by the
+# UNITS_MAINNET_RPC when set; the URL is never printed). Nothing is sent to mainnet.
+# The three units programs are NOT preloaded: the rehearsal deploys them itself with the runbook's
+# commands at the active profile's ids (UNITS_NETWORK=mainnet: the mainnet ids, signed by the
 # mainnet id keypairs on this fork only), so the deploy it measures is the one the owner runs.
 #
 # Usage: scripts/mainnet/fork.sh <ledger dir>
 # Ports: RPC 9690 (websocket 9691), faucet 9692, gossip 9693, dynamic 9700-9730 (checked free first).
 set -eu
 LEDGER="$1"
-U="${LINEAGE_MAINNET_RPC:-https://api.mainnet-beta.solana.com}"
+U="${UNITS_MAINNET_RPC:-https://api.mainnet-beta.solana.com}"
 for p in 9690 9691 9692 9693 $(seq 9700 9730); do
   if lsof -ti ":$p" >/dev/null 2>&1; then echo "port $p is taken" >&2; exit 1; fi
 done

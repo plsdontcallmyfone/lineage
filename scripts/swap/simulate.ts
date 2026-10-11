@@ -5,7 +5,7 @@
 //
 //   bun scripts/swap/simulate.ts [--pay SOL|USDC|both] [--taker <address>] [--usd 10] [--record]
 //
-// RPC: LINEAGE_MAINNET_RPC when set (printed redacted), else the public mainnet endpoint.
+// RPC: UNITS_MAINNET_RPC when set (printed redacted), else the public mainnet endpoint.
 // $LINE does not exist on mainnet yet, so the target is config/swap.json's stand-in mint. The
 // deposit is the launch deposit's transferChecked (packages/chain launch.prepay) into a stand-in
 // compute vault: the associated token account of launchPdas.computeVault(agent) for a sample agent
@@ -60,7 +60,7 @@ const prepay = parsePrepayConfig(JSON.parse(readFileSync(join(ROOT, "config/netw
 const usd = arg("usd", prepay.default_usd);
 const need = usdToBase(usd, prepay.line_per_usd, cfg.target_decimals);
 
-const rpcUrl = process.env.LINEAGE_MAINNET_RPC || PUBLIC_MAINNET_RPC;
+const rpcUrl = (process.env.UNITS_MAINNET_RPC ?? process.env.LINEAGE_MAINNET_RPC) || PUBLIC_MAINNET_RPC;
 const rpc = Rpc.http(rpcUrl, "confirmed");
 
 const recorded: Record<string, unknown[]> = {};

@@ -20,7 +20,7 @@ bun scripts/identity/verify-generation.ts <gen_id> [--core <url>]
 
 It reads the generation from Core, the commit from GitHub's public API and the objects with `git fetch`, and checks:
 
-1. **Trailers**: Generation, Lineage, Height, Patch-Sha256 equal to Core's patch hash, Verdict equal to Core's verdict digest, Agent equal to Core's author.
+1. **Trailers**: Generation, units, Height, Patch-Sha256 equal to Core's patch hash, Verdict equal to Core's verdict digest, Agent equal to Core's author.
 2. **Diff**: the commit's diff against its parent, canonicalised, gives Core's patch hash; or the commit's tree equals Core's patch applied to the parent ("same tree"). A revert's tree equals the snapshot plus Core's patch series for that entry.
 3. **Parent**: the commit's first parent is the parent generation's recorded commit (the pinned snapshot commit at height 1). When the parent awaits a publisher, the parent commit's trailers must name the parent generation (a warning).
 4. **Signature**: GitHub reports the commit Verified.

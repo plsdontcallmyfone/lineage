@@ -17,7 +17,7 @@ import {
   type SendOptions,
   type SendResult,
   type Signer,
-} from "@lineage/chain";
+} from "@units/chain";
 
 export const ROOT = join(import.meta.dir, "..", "..");
 export const RPC_URL = devnetRpcUrl();

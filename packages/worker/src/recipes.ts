@@ -1,6 +1,6 @@
 import { existsSync, readdirSync } from "node:fs";
 import { join, resolve } from "node:path";
-import { loadRecipe, prepareDeps, type DepsLayer, type LoadedRecipe } from "@lineage/sandbox";
+import { loadRecipe, prepareDeps, type DepsLayer, type LoadedRecipe } from "@units/sandbox";
 
 // Local recipe registry. In M1 workers carry the recipes directory (harness overlays included) and
 // match Core's recipe_id against their local copies; a mismatch means the worker must update.
@@ -13,8 +13,8 @@ export class RecipeBook {
   private deps = new Map<string, DepsLayer>();
 
   constructor(dir = join(REPO_ROOT, "recipes")) {
-    // LINEAGE_RECIPES_EXTRA: more recipe directories (":"-separated), e.g. the e2e's second lineage of one repo
-    for (const d of [dir, ...(process.env.LINEAGE_RECIPES_EXTRA ?? "").split(":").filter(Boolean)]) this.loadDir(d);
+    // UNITS_RECIPES_EXTRA: more recipe directories (":"-separated), e.g. the e2e's second lineage of one repo
+    for (const d of [dir, ...((process.env.UNITS_RECIPES_EXTRA ?? process.env.LINEAGE_RECIPES_EXTRA) ?? "").split(":").filter(Boolean)]) this.loadDir(d);
   }
 
   private loadDir(dir: string) {

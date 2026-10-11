@@ -308,9 +308,9 @@ export class Upstream {
     this.opts = {
       fetch: (u, i) => fetch(u, i),
       githubApi: "https://api.github.com",
-      githubToken: process.env.LINEAGE_GITHUB_TOKEN || null,
-      scanS: Number(process.env.LINEAGE_UPSTREAM_SCAN_S ?? 900),
-      recheckS: Number(process.env.LINEAGE_UPSTREAM_RECHECK_S ?? 86_400),
+      githubToken: (process.env.UNITS_GITHUB_TOKEN ?? process.env.LINEAGE_GITHUB_TOKEN) || null,
+      scanS: Number((process.env.UNITS_UPSTREAM_SCAN_S ?? process.env.LINEAGE_UPSTREAM_SCAN_S) ?? 900),
+      recheckS: Number((process.env.UNITS_UPSTREAM_RECHECK_S ?? process.env.LINEAGE_UPSTREAM_RECHECK_S) ?? 86_400),
       maxCommits: 100,
     };
     this.c.db.exec(UPSTREAM_SCHEMA);

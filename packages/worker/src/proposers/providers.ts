@@ -114,7 +114,7 @@ export const PROVIDERS: Record<string, ProviderSpec> = {
     // credits charged (Usage Accounting); reasoning goes back unmodified in reasoning_details on assistant
     // turns of a tool loop; HTTP-Referer and X-OpenRouter-Title identify the app; a 200 may carry only
     // an error object; 402 means the credits cannot cover the request
-    headers: { "HTTP-Referer": "https://github.com/plsdontcallmyfone/lineage", "X-OpenRouter-Title": "Lineage" },
+    headers: { "HTTP-Referer": "https://github.com/plsdontcallmyfone/lineage", "X-OpenRouter-Title": "units" },
     echo_fields: ["reasoning_details"],
     reported_cost: true,
     router: true,
@@ -125,7 +125,7 @@ export const PROVIDERS: Record<string, ProviderSpec> = {
 export const PROVIDERS_ENV = join(homedir(), ".config/lineage/providers.env");
 export const MODEL_ENV = join(homedir(), ".config/lineage/model.env");
 
-const TEMPLATE = `# Lineage provider keys (plan M). Fill the ones you have; an empty value means that provider is
+const TEMPLATE = `# units provider keys (plan M). Fill the ones you have; an empty value means that provider is
 # unavailable in the launch form. Mode 600. Never commit this file. Anthropic's key may stay in
 # model.env (ANTHROPIC_API_KEY there is read too).
 ${Object.values(PROVIDERS)

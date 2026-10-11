@@ -5,7 +5,7 @@
 //
 // A mock Wallet Standard wallet signs with a local devnet test key
 // (~/.config/lineage/devnet/launch-e2e-test.json); the page only ever sees signatures. The test wallet
-// is funded from the Lineage deployer (SOL) and the faucet key (tLINE), both passed explicitly; the
+// is funded from the units deployer (SOL) and the faucet key (tLINE), both passed explicitly; the
 // global `solana config` is never read or changed.
 //
 // Phases (state in scripts/launch-e2e/STATE.json, public data only; results appended to RESULTS.json):
@@ -24,13 +24,13 @@
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
-import { ata, ChainReader, launchPdas, loadKeypair, loadOrCreateKeypair, registryPdas, Rpc, sendAndConfirm, signBytes, system, token, TOKEN_2022_PROGRAM } from "@lineage/chain";
+import { ata, ChainReader, launchPdas, loadKeypair, loadOrCreateKeypair, registryPdas, Rpc, sendAndConfirm, signBytes, system, token, TOKEN_2022_PROGRAM } from "@units/chain";
 import { assertDevnet } from "../../packages/chain/src/browser/client.ts";
 import { decodeMessage, parseWire, placeSignature } from "../../packages/chain/src/browser/wire.ts";
 import { devnetRpcUrl, redactRpc } from "../../packages/chain/src/endpoint.ts";
 
 const arg = (n: string, d?: string) => (process.argv.includes(`--${n}`) ? process.argv[process.argv.indexOf(`--${n}`) + 1]! : d);
-const PW = arg("pw") ?? process.env.LINEAGE_PLAYWRIGHT;
+const PW = arg("pw") ?? (process.env.UNITS_PLAYWRIGHT ?? process.env.LINEAGE_PLAYWRIGHT);
 const PHASE = arg("phase", "launch")!;
 const BASE = arg("site", "https://157-245-71-188.sslip.io")!.replace(/\/+$/, "");
 const WAIT_S = Number(arg("wait", "900"));
@@ -53,7 +53,7 @@ export const SEED = {
   specialty: "keis/base58 encode and decode hot paths: fewer big-int steps, same bytes out",
   values: "measure before claiming, small reviewable diffs, say plainly it is a test, talk only about the engineering",
   lines:
-    "You are a devnet TEST agent of the Lineage network, launched to prove the launch flow end to end, and you keep working after the test. " +
+    "You are a devnet TEST agent of the units network, launched to prove the launch flow end to end, and you keep working after the test. " +
     "Your TEST launch token is a technical devnet instrument with no value. You are not connected to, affiliated with, or representing any real token, including $LINE or the project's token. " +
     "Like every agent you are funded by your own launch token's creator fees into your compute vault, and paid for verified work. " +
     "Never mention, promote or speculate about any token, price or market. Talk only about your engineering: what you changed, what was measured, the verdict.",
@@ -138,7 +138,7 @@ async function browser() {
     const account = { address, publicKey: new Uint8Array(pub), chains: ["solana:devnet"], features: ["solana:signTransaction", "solana:signMessage"], label: "test" };
     const w = {
       version: "1.0.0",
-      name: "Lineage Test Wallet",
+      name: "units Test Wallet",
       icon: "data:image/svg+xml;base64," + btoa('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20"><rect width="20" height="20" rx="4" fill="#2a78d6"/></svg>'),
       chains: ["solana:devnet"],
       accounts: [] as unknown[],
@@ -174,7 +174,7 @@ const T = 180_000;
 
 async function openWallet(page: any) {
   await page.goto(`${BASE}/wallet`);
-  await page.locator('[data-act="connect"][data-name="Lineage Test Wallet"]').click({ timeout: 60_000 });
+  await page.locator('[data-act="connect"][data-name="units Test Wallet"]').click({ timeout: 60_000 });
   await page.locator(".wl-bal").waitFor({ timeout: T });
   await page.waitForFunction(() => !document.querySelector(".wl-bal")?.textContent?.includes("TBA"), null, { timeout: T });
 }
@@ -187,7 +187,7 @@ async function fundWallet() {
   const solBal = await rpc.getBalance(wallet.id);
   if (solBal < 300_000_000n) {
     const r = await sendAndConfirm(rpc, dep, [system.transfer(dep.id, wallet.id, 400_000_000n - solBal)]);
-    logTx(`fund the test wallet with ${Number(400_000_000n - solBal) / 1e9} SOL from the Lineage deployer`, r.signature, r.fee);
+    logTx(`fund the test wallet with ${Number(400_000_000n - solBal) / 1e9} SOL from the units deployer`, r.signature, r.fee);
   }
   const want = 300n * 10n ** BigInt(DEC);
   const bal = (await reader.tokenBalance(ata(wallet.id, LINE, T22))) ?? 0n;
@@ -475,8 +475,8 @@ async function phaseTrade() {
   const bal = async () => ({ line: (await reader.tokenBalance(ata(wallet.id, LINE, T22))) ?? 0n, tok: (await reader.tokenBalance(ata(wallet.id, mint, T22))) ?? 0n });
   try {
     await page.goto(`${BASE}/tokens/${mint}`);
-    await page.locator(`[data-tb="connect"][data-name="Lineage Test Wallet"], [data-bal="line"]`).first().waitFor({ timeout: 90_000 });
-    if (await page.locator('[data-tb="connect"]').count()) await page.click('[data-tb="connect"][data-name="Lineage Test Wallet"]');
+    await page.locator(`[data-tb="connect"][data-name="units Test Wallet"], [data-bal="line"]`).first().waitFor({ timeout: 90_000 });
+    if (await page.locator('[data-tb="connect"]').count()) await page.click('[data-tb="connect"][data-name="units Test Wallet"]');
     await page.locator('[data-bal="line"]').waitFor({ timeout: T });
     for (const [side, amount] of [["buy", "10"], ["sell", null]] as const) {
       const before = await bal();

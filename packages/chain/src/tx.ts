@@ -1,7 +1,7 @@
 import { createPrivateKey, createPublicKey, sign as edSign } from "node:crypto";
 import { chmodSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname } from "node:path";
-import { base58Encode, generateAgentKey, keyFromSolanaJson, type AgentKey } from "@lineage/protocol";
+import { base58Encode, generateAgentKey, keyFromSolanaJson, type AgentKey } from "@units/protocol";
 import { addressBytes, Writer, type Address } from "./codec.ts";
 import type { AccountMeta, Ix } from "./registry.ts";
 

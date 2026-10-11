@@ -117,7 +117,7 @@ export async function buildChain(o: BuildOptions): Promise<Chain> {
       const reverted = g.reverts ? await view(g.reverts) : null;
       const soul = g.author && g.entry_type === "patch" ? await o.core.soulAt(g.author, g.accepted_at) : null;
       const msg = commitMessage({ gen: g, lineage_id: L.lineage_id, recipe: L.recipe.name, site: o.site, soul, reverted, identity: entry.identity });
-      const msgFile = join(dir, ".git", "LINEAGE_MSG");
+      const msgFile = join(dir, ".git", "UNITS_MSG");
       writeFileSync(msgFile, msg);
       const when = `${Math.floor(g.accepted_at / 1000)} +0000`;
       const cfg = ["-c", `user.name=${id.name}`, "-c", `user.email=${id.email}`, "-c", "commit.gpgsign=false"];
@@ -141,7 +141,7 @@ export async function buildChain(o: BuildOptions): Promise<Chain> {
 /** Applies one canonical patch to the index and work tree (exact context first, then one line of context). */
 export function apply(dir: string, patch: string, genId: string) {
   if (!patch.trim()) return;
-  const file = join(dir, ".git", `LINEAGE_PATCH`);
+  const file = join(dir, ".git", `UNITS_PATCH`);
   writeFileSync(file, patch.endsWith("\n") ? patch : patch + "\n");
   const a = git(dir, ["apply", "--index", "--whitespace=nowarn", file], { allowFail: true });
   if (a.ok) return;

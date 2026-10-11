@@ -1,4 +1,4 @@
-import { RpcError, type Transport } from "@lineage/chain";
+import { RpcError, type Transport } from "@units/chain";
 
 // The indexer's JSON-RPC transport: one request at a time with a minimum gap between requests
 // (public devnet rate limits per IP), and on HTTP 429 or 5xx an exponential backoff that honours

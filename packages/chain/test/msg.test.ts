@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { createPrivateKey, createPublicKey } from "node:crypto";
 import { readFileSync } from "node:fs";
-import { base58Encode } from "@lineage/protocol";
+import { base58Encode } from "@units/protocol";
 import { encryptionKeyFromSecret, open } from "../../core/src/seal.ts";
 import {
   buildTransaction,
@@ -18,7 +18,7 @@ import {
   type Ix,
   type RawTx,
 } from "../src/index.ts";
-import { generateAgentKey } from "@lineage/protocol";
+import { generateAgentKey } from "@units/protocol";
 
 const fx = JSON.parse(readFileSync(new URL("../../../onchain/tests/fixtures/msg-events.json", import.meta.url), "utf8"));
 const seal = JSON.parse(readFileSync(new URL("../../../onchain/tests/fixtures/msg-seal.json", import.meta.url), "utf8"));

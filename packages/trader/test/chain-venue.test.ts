@@ -4,7 +4,7 @@
 // account bytes mainnet's pump.fun programs wrote on the mainnet fork (packages/chain/test/fixtures/pump-fork.json).
 import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
-import { accountDisc, ata, ixDisc, launchPdas, toAddress, LAUNCH_PROGRAM_ID, PUMP, pumpPdas, Rpc, TOKEN_2022_PROGRAM, Writer } from "@lineage/chain";
+import { accountDisc, ata, ixDisc, launchPdas, toAddress, LAUNCH_PROGRAM_ID, PUMP, pumpPdas, Rpc, TOKEN_2022_PROGRAM, Writer } from "@units/chain";
 import { ChainVenue } from "../src/chain-venue.ts";
 
 const fx = JSON.parse(readFileSync(new URL("../../chain/test/fixtures/pump-fork.json", import.meta.url), "utf8"));

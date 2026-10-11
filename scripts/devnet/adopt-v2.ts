@@ -21,7 +21,7 @@ const opt = (k: string, d?: string) => (argv.includes(`--${k}`) ? argv[argv.inde
 const host = opt("host", "157.245.71.188")!;
 const only = opt("only") ? new Set(opt("only")!.split(",")) : null;
 const MAIN = "/opt/lineage/current/packages/identity/src/main.ts";
-const RUN_AS = `runuser -u lineage-identity -- env HOME=/var/lib/lineage/identity/home BUN_RUNTIME_TRANSPILER_CACHE_PATH=0 LINEAGE_IDENTITY_DIR=/var/lib/lineage/identity LINEAGE_IDENTITY_KEY=/etc/lineage-identity/master.key /usr/local/bin/bun ${MAIN}`;
+const RUN_AS = `runuser -u lineage-identity -- env HOME=/var/lib/lineage/identity/home BUN_RUNTIME_TRANSPILER_CACHE_PATH=0 UNITS_IDENTITY_DIR=/var/lib/lineage/identity UNITS_IDENTITY_KEY=/etc/lineage-identity/master.key /usr/local/bin/bun ${MAIN}`;
 const rows = JSON.parse(readFileSync(join(import.meta.dir, "RELAUNCH-V2.json"), "utf8")).rows as Record<string, { agent: string; old_agent: string; mint: string; launcher: string; repo: string }>;
 
 function adopt(input: unknown): string {

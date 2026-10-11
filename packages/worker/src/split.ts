@@ -1,6 +1,6 @@
-import { canonicalizeDiff, subsetKey, subsetMasks, type Hex, type ReplayResult, type SplitReport, type SubsetMeasure } from "@lineage/protocol";
-import { applyPatch, evaluate, materialize, newWorkDir, removeTree, type DepsLayer, type PhaseCallback } from "@lineage/sandbox";
-import type { LoadedRecipe } from "@lineage/sandbox";
+import { canonicalizeDiff, subsetKey, subsetMasks, type Hex, type ReplayResult, type SplitReport, type SubsetMeasure } from "@units/protocol";
+import { applyPatch, evaluate, materialize, newWorkDir, removeTree, type DepsLayer, type PhaseCallback } from "@units/sandbox";
+import type { LoadedRecipe } from "@units/sandbox";
 
 // Measured split, replayer side (SPEC 12.6, plan C5). For a team candidate with a split the
 // assignment carries the sub-patches by index (never who wrote them). After the ordinary replay

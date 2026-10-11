@@ -1,5 +1,5 @@
 #!/usr/bin/env bun
-// Lineage site status, read only. Runs on the server (deploy.sh status calls it).
+// units site status, read only. Runs on the server (deploy.sh status calls it).
 //
 //   bun scripts/deploy/site-status.ts [--core http://127.0.0.1:9660] [--web http://127.0.0.1:9661] [--gate http://127.0.0.1:9662]
 //
@@ -11,8 +11,8 @@
 import { existsSync, readFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
-import { keyFromSolanaJson } from "@lineage/protocol";
-import { Rpc } from "@lineage/chain";
+import { keyFromSolanaJson } from "@units/protocol";
+import { Rpc } from "@units/chain";
 import { devnetRpcUrl } from "../../packages/chain/src/endpoint.ts";
 
 const arg = (n: string, d: string) => (process.argv.includes(`--${n}`) ? process.argv[process.argv.indexOf(`--${n}`) + 1]! : d);

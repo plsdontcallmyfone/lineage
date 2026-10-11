@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
-import type { Address, ChainReader, Ix, RegistryConfig } from "@lineage/chain";
-import { CHALLENGE_KIND, CHALLENGE_OUTCOME, challenge as challengeIx, epochSubject } from "@lineage/chain";
+import type { Address, ChainReader, Ix, RegistryConfig } from "@units/chain";
+import { CHALLENGE_KIND, CHALLENGE_OUTCOME, challenge as challengeIx, epochSubject } from "@units/chain";
 import type { Core } from "./core.ts";
 import { ApiError, bad, conflict, forbidden, notFound } from "./errors.ts";
 import { ACC } from "./ledger.ts";

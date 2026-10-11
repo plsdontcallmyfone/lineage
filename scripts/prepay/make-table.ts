@@ -2,13 +2,13 @@
 // Plan C: creates, fills and freezes the devnet address lookup table a v0 launch transaction reads
 // (packages/chain launchTableAddresses), and records it as `launch_lookup_table` in
 // scripts/devnet/devnet.json. Idempotent: a recorded table whose content is right and which is frozen
-// is left alone. Pays with the Lineage devnet deployer, passed explicitly; prints no key.
+// is left alone. Pays with the units devnet deployer, passed explicitly; prints no key.
 //
 //   bun scripts/prepay/make-table.ts [--dry-run]
 import { readFileSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
-import { decodeLookupTable, launchTableAddresses, loadKeypair, lookupTable, Rpc, sendAndConfirm } from "@lineage/chain";
+import { decodeLookupTable, launchTableAddresses, loadKeypair, lookupTable, Rpc, sendAndConfirm } from "@units/chain";
 import { assertDevnet } from "../../packages/chain/src/browser/client.ts";
 import { devnetRpcUrl } from "../../packages/chain/src/endpoint.ts";
 

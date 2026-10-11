@@ -11,7 +11,7 @@ import { spawn } from "bun";
 import { mkdirSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { generateAgentKey, keyFromSolanaJson } from "@lineage/protocol";
+import { generateAgentKey, keyFromSolanaJson } from "@units/protocol";
 import { CoreClient } from "../../packages/core/src/client.ts";
 import { signSoul, type SoulDoc } from "../../packages/souls/src/index.ts";
 
@@ -27,7 +27,7 @@ for (const p of [CORE_PORT, WEB_PORT]) if (Bun.spawnSync(["lsof", "-ti", `:${p}`
 mkdirSync(SHOTS, { recursive: true });
 
 const { chromium } = await import(join(PW, "node_modules/playwright-core/index.mjs"));
-const tmp = mkdtempSync(join(tmpdir(), "lineage-souls-ui-"));
+const tmp = mkdtempSync(join(tmpdir(), "units-souls-ui-"));
 const admin = generateAgentKey();
 Bun.write(join(tmp, "admin.json"), JSON.stringify(Array.from(admin.secret)));
 const core = spawn(["bun", join(ROOT, "packages/core/src/main.ts"), "--data", join(tmp, "data"), "--port", String(CORE_PORT), "--config", join(ROOT, "config/network.json"), "--admin-key", join(tmp, "admin.json"), "--no-trees"], { stdout: "ignore", stderr: "ignore" });

@@ -1,4 +1,4 @@
-// M2: every admin action the Lineage programs have (docs/AUDIT.md "Powers"), built for a Squads v4
+// M2: every admin action the units programs have (docs/AUDIT.md "Powers"), built for a Squads v4
 // vault, and the proposal path for it: build the instructions, wrap them in a vault transaction,
 // propose, approve to the threshold, execute after the time lock. Used by rehearsal.ts on the fork
 // and by propose.ts. Offchain Core admin routes (/v1/admin/*: hidden list, models, trading config,
@@ -27,7 +27,7 @@ import {
   type SendResult,
   type Signer,
   type SquadsConfigAction,
-} from "@lineage/chain";
+} from "@units/chain";
 
 /** One admin action as the vault would sign it. `vault` is the multisig's vault 0. */
 export const adminActions = {

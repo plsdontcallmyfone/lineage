@@ -8,7 +8,7 @@ import { devnetRpcUrl } from "../../../packages/chain/src/endpoint.ts";
 import { readFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
-import { ata, loadKeypair, loadOrCreateKeypair, Rpc, sendAndConfirm, system, token, TOKEN_2022_PROGRAM } from "@lineage/chain";
+import { ata, loadKeypair, loadOrCreateKeypair, Rpc, sendAndConfirm, system, token, TOKEN_2022_PROGRAM } from "@units/chain";
 import { assertDevnet } from "../../../packages/chain/src/browser/client.ts";
 import { logWalletTx } from "./devnet-log.ts";
 

@@ -1,5 +1,5 @@
 #!/usr/bin/env bun
-// Lineage site: creates the site's lineages. Runs on the server as the `lineage` user, once per
+// units site: creates the site's lineages. Runs on the server as the `lineage` user, once per
 // deploy (systemd unit lineage-bootstrap, a oneshot before lineage-reference). Idempotent: recipes
 // and snapshots are upserts and a recipe that already has a lineage is not calibrated again.
 //
@@ -13,8 +13,8 @@
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
-import { keyFromSolanaJson } from "@lineage/protocol";
-import { loadRecipe, prepareDeps } from "@lineage/sandbox";
+import { keyFromSolanaJson } from "@units/protocol";
+import { loadRecipe, prepareDeps } from "@units/sandbox";
 import { CoreClient } from "../../packages/core/src/client.ts";
 import { Worker } from "../../packages/worker/src/index.ts";
 

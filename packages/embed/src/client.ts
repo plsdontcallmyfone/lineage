@@ -5,9 +5,9 @@ import type { Candle, Holders, TokenDetail, TokenSummary, Trade } from "../../..
 
 // The embed kit's data client (docs/plans/FRONTEND-EMBED.md): plain JSON from Core and the market
 // indexer, nothing computed that the API does not serve except sums and counts over its own rows.
-// Exposed to hosts as window.Lineage, and used by every element.
+// Exposed to hosts as window.Units, and used by every element.
 //
-// Where things live, given a site origin `api` (the Lineage site, e.g. https://<site>):
+// Where things live, given a site origin `api` (the units site, e.g. https://<site>):
 //   Core      <api>/api/<path>     (the dashboard's proxy; the site gate adds CORS)
 //   market    <api>/market/<path>  (the indexer; CORS from the indexer)
 //   events    <api>/live/events    (the dashboard's shared SSE fan-out of Core's stream)
@@ -47,7 +47,7 @@ export function httpUrl(s: string | null | undefined): string | null {
 }
 
 export function resolveBases(o: BaseOverrides, fallbackOrigin: string): Bases {
-  // overrides come from attributes, window.LineageConfig or a page's query string: only absolute
+  // overrides come from attributes, window.UnitsConfig or a page's query string: only absolute
   // http(s) URLs are taken, so `javascript:` can never become a link base or data source (audit A2 OFF-E1)
   const api = trim(httpUrl(o.api) || fallbackOrigin);
   return {
@@ -180,7 +180,7 @@ export function soulFrom(body: any): Soul | null {
   return { agent: body.agent, name: typeof p.name === "string" ? p.name : null, tagline: typeof p.tagline === "string" ? p.tagline : null, digest: body.digest, seq: body.seq };
 }
 
-export class LineageClient {
+export class UnitsClient {
   private cache = new Map<string, { at: number; p: Promise<any> }>();
   private es: EventSource | null = null;
   private subs = new Map<string, Set<(e: any) => void>>();

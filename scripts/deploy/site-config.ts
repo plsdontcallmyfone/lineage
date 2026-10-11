@@ -1,5 +1,5 @@
 #!/usr/bin/env bun
-// Lineage site: writes the server's configuration files from the release being deployed. Idempotent;
+// units site: writes the server's configuration files from the release being deployed. Idempotent;
 // prints what it wrote, never a key.
 //
 //   bun scripts/deploy/site-config.ts --out /var/lib/lineage/site [--refresh-caps]
@@ -9,7 +9,7 @@
 //                 directory) and the `chain` block for devnet chain mode (scripts/devnet/devnet.json).
 //                 `core_authority_key` is set only when the key file is on this machine; without it
 //                 Core's chain bridge reads and never sends.
-//   caps.json     this machine's capabilities (lineage-worker doctor). Written once and kept, so the
+//   caps.json     this machine's capabilities (units-worker doctor). Written once and kept, so the
 //                 digest the site's verifiers registered on chain stays stable across reboots;
 //                 --refresh-caps rewrites it (site-chain.ts then sends update_agent).
 //   runtime.json  the hosted runtime's config (devnet mode, rewritten each time from the values below; the
@@ -18,7 +18,7 @@
 import { chmodSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
-import { canonicalJson, H } from "@lineage/protocol";
+import { canonicalJson, H } from "@units/protocol";
 import { doctor } from "../../packages/worker/src/doctor.ts";
 import { devnetRpcUrl, redactRpc } from "../../packages/chain/src/endpoint.ts";
 
@@ -32,13 +32,13 @@ mkdirSync(OUT, { recursive: true });
 const devnet = JSON.parse(readFileSync(join(ROOT, "scripts/devnet/devnet.json"), "utf8"));
 const net = JSON.parse(readFileSync(join(ROOT, "config/network.json"), "utf8"));
 // The Core authority key: on a site with service users (remote.sh users_setup) it lives in
-// /etc/lineage-core, which this user cannot read, so remote.sh names it in LINEAGE_SITE_CORE_KEY;
+// /etc/lineage-core, which this user cannot read, so remote.sh names it in UNITS_SITE_CORE_KEY;
 // otherwise the copy in this user's home (older layout, local dry runs).
-const coreKeyEnv = process.env.LINEAGE_SITE_CORE_KEY || "";
+const coreKeyEnv = (process.env.UNITS_SITE_CORE_KEY ?? process.env.LINEAGE_SITE_CORE_KEY) || "";
 const coreKey = join(HOME_CFG, "devnet", "core-authority.json");
 Object.assign(net, {
-  _note: "Lineage public devnet site. M1 TEST values from config/network.json; epoch length daily so each post_epoch (about 0.0015 devnet SOL) happens once a day.",
-  epoch_length_s: Number(process.env.LINEAGE_SITE_EPOCH_S ?? 86400),
+  _note: "units public devnet site. M1 TEST values from config/network.json; epoch length daily so each post_epoch (about 0.0015 devnet SOL) happens once a day.",
+  epoch_length_s: Number((process.env.UNITS_SITE_EPOCH_S ?? process.env.LINEAGE_SITE_EPOCH_S) ?? 86400),
   canaries_dir: "/var/lib/lineage/canaries",
   chain: {
     mode: "devnet",
@@ -49,7 +49,7 @@ Object.assign(net, {
     launch_program: devnet.launch_program,
     line_mint: devnet.line_mint,
     ...(coreKeyEnv ? { core_authority_key: coreKeyEnv } : existsSync(coreKey) ? { core_authority_key: "~/.config/lineage/devnet/core-authority.json" } : {}),
-    poll_ms: Number(process.env.LINEAGE_SITE_POLL_MS ?? 20000),
+    poll_ms: Number((process.env.UNITS_SITE_POLL_MS ?? process.env.LINEAGE_SITE_POLL_MS) ?? 20000),
   },
 });
 writeFileSync(join(OUT, "network.json"), JSON.stringify(net, null, 2) + "\n", { mode: 0o600 });
@@ -71,7 +71,7 @@ const runtimeCfg = {
   core: "http://127.0.0.1:9660",
   state_dir: "/var/lib/lineage/runtime",
   runtime_key: join(HOME_CFG, "devnet", "runtime-authority.json"),
-  // no rpc_url: the runtime resolves it like Core (LINEAGE_DEVNET_RPC, the keyed rpc.env, else public devnet)
+  // no rpc_url: the runtime resolves it like Core (UNITS_DEVNET_RPC, the keyed rpc.env, else public devnet)
   _note:
     "Written by scripts/deploy/site-config.ts on every install and activate. Owner decisions 2026-10-09 and 2026-10-10: each hosted agent's model spend is paid by its own compute vault with no platform cap (attempt_max_usd per attempt, reserved from the vault first); the 10 USD per UTC day global cap (global_max_usd per global_window_s) counts only subsidized spend, the usage the vaults could not pay (global_cap_scope subsidized; set all to cap every USD again). Prices are TEST values.",
   attempt_max_usd: 0.5,

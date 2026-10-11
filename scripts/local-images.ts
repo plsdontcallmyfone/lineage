@@ -12,7 +12,7 @@
 // from each committed id to the local image id. The sandbox runs the local rebuild only when the
 // committed id is absent, and logs it. Recipe files and recipe ids are left unchanged: that is for
 // local tests and development. For a worker serving a real Core, re-pin with
-// scripts/deploy/arch-recipes.ts instead (new recipe ids) and set LINEAGE_LOCAL_IMAGES=off.
+// scripts/deploy/arch-recipes.ts instead (new recipe ids) and set UNITS_LOCAL_IMAGES=off.
 // Without --build, maps the images already tagged here. Only lineage/* images are built or read;
 // nothing is removed or pushed.
 import { readdirSync, existsSync } from "node:fs";
@@ -25,7 +25,7 @@ import {
   parsePinnedImage,
   readLocalImageMap,
   writeLocalImageMap,
-} from "@lineage/sandbox";
+} from "@units/sandbox";
 
 const ROOT = join(import.meta.dir, "..");
 const argv = process.argv.slice(2);
@@ -40,7 +40,7 @@ if (argv.includes("--help") || argv.includes("-h")) {
 
 const mapPath = localImagesPath();
 if (!mapPath) {
-  console.error("LINEAGE_LOCAL_IMAGES is off; unset it (or point it at a file) to write a local pin map");
+  console.error("UNITS_LOCAL_IMAGES is off; unset it (or point it at a file) to write a local pin map");
   process.exit(2);
 }
 

@@ -79,7 +79,7 @@ let renderSeq = 0;
 
 function shell() {
   app.innerHTML = html`<header class="top"><div class="top-in">
-      <a class="brand" href="/">${logo}<span>Lineage</span></a>
+      <a class="brand" href="/">${logo}<span>units</span></a>
       <nav class="nav" aria-label="Main">
         <a href="/" data-nav="/">Explorer</a>
         <a href="/deck?open=agents" data-nav="/agents">Agents</a>
@@ -124,7 +124,7 @@ async function render(opts: { soft?: boolean } = {}) {
   const match = routes.map(([re, h, nav]) => ({ m: re.exec(path), h, nav })).find((x) => x.m);
   if (!match) {
     setNav("");
-    document.title = "No such page | Lineage";
+    document.title = "No such page | units";
     main.innerHTML = html`<div class="panel errorbox"><h1>No such page</h1><p><a class="link" href="/">Back to the explorer</a></p></div>`.s;
     return;
   }
@@ -144,7 +144,7 @@ async function render(opts: { soft?: boolean } = {}) {
     const keep = saveUi(main);
     main.innerHTML = page.body.s;
     current = page;
-    document.title = page.title === "Explorer" ? "Lineage Explorer" : `${page.title} | Lineage`;
+    document.title = page.title === "Explorer" ? "units Explorer" : `${page.title} | units`;
     restoreUi(main, keep);
     restoreTabs(main);
     mountCharts(main);
@@ -239,9 +239,9 @@ function onEvent(e: Ev) {
   if (live.events.length > MAX_FEED) live.events.length = MAX_FEED;
   if (e.type === "lineage.created" || e.type === "recipe.added") loadLineageNames(true).catch(() => {});
   // components that keep their own state (the token page's commits panel) listen here
-  window.dispatchEvent(new CustomEvent("lineage:event", { detail: e }));
+  window.dispatchEvent(new CustomEvent("units:event", { detail: e }));
   if (current?.refreshOn?.(e)) scheduleRefresh();
-  window.dispatchEvent(new CustomEvent("lineage:event", { detail: e })); // the deck's columns refresh on their own
+  window.dispatchEvent(new CustomEvent("units:event", { detail: e })); // the deck's columns refresh on their own
 }
 
 async function connect() {

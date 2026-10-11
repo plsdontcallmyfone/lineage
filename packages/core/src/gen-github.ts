@@ -103,7 +103,7 @@ export class GenGithub {
   opts: GenGithubOptions;
   constructor(core: Core) {
     this.c = core as unknown as Internals;
-    this.opts = { fetch: (u, i) => fetch(u, i), githubApi: "https://api.github.com", githubToken: process.env.LINEAGE_GITHUB_TOKEN || null };
+    this.opts = { fetch: (u, i) => fetch(u, i), githubApi: "https://api.github.com", githubToken: (process.env.UNITS_GITHUB_TOKEN ?? process.env.LINEAGE_GITHUB_TOKEN) || null };
     this.c.db.exec(GEN_GITHUB_SCHEMA);
   }
 

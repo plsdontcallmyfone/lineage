@@ -4,7 +4,7 @@
 // by our own pool accounts.
 //
 //   maintainer  pool account ds56vmr2 (status "reserved" in the pool file) owns three repositories,
-//               each described as a Lineage protocol test:
+//               each described as a units protocol test:
 //                 lineage-optin-test   .lineage.yml on main            -> receives exactly one PR
 //                 lineage-noopt-test   no opt-in                       -> receives none
 //                 lineage-aiban-test   .lineage.yml + CONTRIBUTING.md that bans AI-generated changes -> none
@@ -90,7 +90,7 @@ const agentIdentity: CommitIdentity = { kind: "account", name: cred.login, email
 // ------------------------------------------------------------------------------------------------
 // 1. test repositories under the maintainer
 
-const CODEC = `"""Lineage protocol test fixture: a tiny hex codec. Not a real project."""
+const CODEC = `"""units protocol test fixture: a tiny hex codec. Not a real project."""
 
 
 def encode(data: bytes) -> str:
@@ -104,34 +104,34 @@ def decode(text: str) -> bytes:
     return bytes(int(text[i:i + 2], 16) for i in range(0, len(text), 2))
 `;
 const CODEC_FAST = CODEC.replace(`    out = ""\n    for b in data:\n        out = out + "%02x" % b\n    return out\n`, "    return data.hex()\n");
-const OPTIN_YML = `# Lineage protocol test repository: this file opts the repository in to Lineage pull requests (SPEC 16).
+const OPTIN_YML = `# units protocol test repository: this file opts the repository in to units pull requests (SPEC 16).
 lineage:
   max_prs_per_week: 2
   kinds: [perf]
   contact: https://github.com/${MAINTAINER}
 `;
-const readme = (name: string, what: string) => `# ${name}\n\nLineage protocol test repository (upstream policy, plan W2). Not a real project: it exists to test that Lineage agents open pull requests only for repositories that opt in.\n\n${what}\n`;
+const readme = (name: string, what: string) => `# ${name}\n\nLineage protocol test repository (upstream policy, plan W2). Not a real project: it exists to test that units agents open pull requests only for repositories that opt in.\n\n${what}\n`;
 const REPOS: { name: string; description: string; files: Record<string, string>; expect: string }[] = [
   {
     name: "lineage-optin-test",
-    description: "Lineage protocol test repository: opts in with .lineage.yml, so it may receive one PR per accepted generation. Not a real project.",
+    description: "units protocol test repository: opts in with .lineage.yml, so it may receive one PR per accepted generation. Not a real project.",
     files: { "README.md": readme("lineage-optin-test", "This repository opts in with `.lineage.yml`."), "src/codec.py": CODEC, ".lineage.yml": OPTIN_YML },
     expect: "opted_in",
   },
   {
     name: "lineage-noopt-test",
-    description: "Lineage protocol test repository: no opt-in, so it must never receive a Lineage PR. Not a real project.",
+    description: "units protocol test repository: no opt-in, so it must never receive a units PR. Not a real project.",
     files: { "README.md": readme("lineage-noopt-test", "This repository has no `.lineage.yml` and must receive no PR."), "src/codec.py": CODEC },
     expect: "not_opted_in",
   },
   {
     name: "lineage-aiban-test",
-    description: "Lineage protocol test repository: its contribution policy bans AI-generated changes, so it must never receive a Lineage PR. Not a real project.",
+    description: "units protocol test repository: its contribution policy bans AI-generated changes, so it must never receive a units PR. Not a real project.",
     files: {
       "README.md": readme("lineage-aiban-test", "This repository has a `.lineage.yml`, but its CONTRIBUTING.md bans AI-generated changes, which blocks the opt-in."),
       "src/codec.py": CODEC,
       ".lineage.yml": OPTIN_YML,
-      "CONTRIBUTING.md": "# Contributing\n\nThis is a Lineage protocol test repository.\n\nAI-generated contributions are not accepted here. Pull requests written by AI tools or LLM agents will be closed.\n",
+      "CONTRIBUTING.md": "# Contributing\n\nThis is a units protocol test repository.\n\nAI-generated contributions are not accepted here. Pull requests written by AI tools or LLM agents will be closed.\n",
     },
     expect: "ai_banned",
   },
@@ -147,7 +147,7 @@ async function ensureRepo(r: (typeof REPOS)[number]): Promise<string> {
   for (const [path, body] of Object.entries(r.files)) {
     const f = await mgh.get<any>(`/repos/${full}/contents/${path}`, [404]);
     if (f && f.sha) continue;
-    await mgh.request("PUT", `/repos/${full}/contents/${path}`, { message: `Add ${path} (Lineage protocol test fixture)`, content: Buffer.from(body).toString("base64") });
+    await mgh.request("PUT", `/repos/${full}/contents/${path}`, { message: `Add ${path} (units protocol test fixture)`, content: Buffer.from(body).toString("base64") });
   }
   // head of the default branch (the lineage snapshot): the first commit that has every file
   for (let i = 0; i < 10; i++) {
@@ -384,7 +384,7 @@ async function main() {
 
   // the maintainer merges; Core detects it by hunk matching and credits the bonus
   if (pr.state === "open") {
-    await mgh.request("PUT", `/repos/${MAINTAINER}/lineage-optin-test/pulls/${pr.number}/merge`, { merge_method: "merge", commit_title: `Merge Lineage protocol test PR #${pr.number}` });
+    await mgh.request("PUT", `/repos/${MAINTAINER}/lineage-optin-test/pulls/${pr.number}/merge`, { merge_method: "merge", commit_title: `Merge units protocol test PR #${pr.number}` });
     log(`maintainer merged ${pr.html_url}`);
   }
   const epoch = (await ok<any>(anon.get("/v1/epochs/current"), "epoch")).n;

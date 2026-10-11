@@ -8,8 +8,8 @@
 import { spawnSync } from "bun";
 import { homedir } from "node:os";
 import { join } from "node:path";
-import { base58Encode } from "@lineage/protocol";
-import { compileMessage, computeBudget, loadKeypair, registry, Rpc, signBytes } from "@lineage/chain";
+import { base58Encode } from "@units/protocol";
+import { compileMessage, computeBudget, loadKeypair, registry, Rpc, signBytes } from "@units/chain";
 import { devnetRpcUrl } from "../../packages/chain/src/endpoint.ts";
 import { assertDevnet } from "../../packages/chain/src/browser/client.ts";
 import { placeSignature, unsignedWire } from "../../packages/chain/src/browser/wire.ts";

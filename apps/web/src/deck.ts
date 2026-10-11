@@ -20,7 +20,8 @@ const PAGES: Record<DeckType, () => Promise<Page>> = { machines: machinesPage, a
 /** Pages whose body depends on the URL query (their filter chips push a new query). */
 const QUERY_PAGES = new Set<DeckType>(["leaderboard", "feed", "following"]);
 const MAX_COLUMNS = 10;
-const KEY = "lineage.deck.v1";
+const KEY = "units.deck.v1";
+const OLD_KEY = "lineage.deck.v1"; // pre-rebrand name, read once (docs/plans/REBRAND-UNITS.md 3.11)
 
 interface Col {
   id: string;
@@ -47,7 +48,7 @@ const uid = () => (crypto.randomUUID ? crypto.randomUUID() : Math.random().toStr
 
 function load(): Col[] {
   try {
-    const data = JSON.parse(localStorage.getItem(KEY) ?? "null");
+    const data = JSON.parse(localStorage.getItem(KEY) ?? localStorage.getItem(OLD_KEY) ?? "null");
     if (Array.isArray(data) && data.every((c) => c && typeof c.id === "string" && isDeckType(c.type)))
       return data.map((c) => ({ id: c.id, type: c.type, compact: !!c.compact, filtersHidden: !!c.filtersHidden }));
   } catch {
@@ -357,7 +358,7 @@ function wire() {
   document.addEventListener("click", onClick, true);
   document.addEventListener("pointerdown", onPointerDown);
   document.addEventListener("pointerup", onPointerUp);
-  window.addEventListener("lineage:event", onLiveEvent);
+  window.addEventListener("units:event", onLiveEvent);
   document.addEventListener("keydown", (ev) => {
     if (ev.key === "Escape" && menu) {
       menu = null;

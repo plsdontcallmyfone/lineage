@@ -5,7 +5,7 @@
 # start waits until that one has stopped (a stop job always runs before a start job of an ordered pair)
 Conflicts=lineage-bootstrap.service
 After=lineage-bootstrap.service
-Description=units site bootstrap (lineages for LINEAGE_RECIPES)
+Description=units site bootstrap (lineages for UNITS_RECIPES)
 After=units-core.service docker.service
 Requires=docker.service
 
@@ -13,11 +13,11 @@ Requires=docker.service
 User=lineage
 Group=lineage
 WorkingDirectory=/opt/lineage/current
-Environment=HOME=/home/lineage LINEAGE_HOME=/home/lineage/.lineage PATH=/usr/local/bin:/usr/bin:/bin
+Environment=HOME=/home/lineage UNITS_HOME=/home/lineage/.lineage PATH=/usr/local/bin:/usr/bin:/bin
 EnvironmentFile=-/etc/lineage/site.env
 NoNewPrivileges=yes
 Type=oneshot
 RemainAfterExit=yes
 TimeoutStartSec=infinity
 MemoryMax=1G
-ExecStart=/usr/local/bin/bun scripts/deploy/site-bootstrap.ts --recipes ${LINEAGE_RECIPES}
+ExecStart=/usr/local/bin/bun scripts/deploy/site-bootstrap.ts --recipes ${UNITS_RECIPES}

@@ -1,5 +1,5 @@
 import type { Database } from "bun:sqlite";
-import type { SlotBlock, SlotSource } from "@lineage/chain";
+import type { SlotBlock, SlotSource } from "@units/chain";
 import { H } from "./protocol.ts";
 
 // M2 slot-hash beacon (SPEC 10.3, plan W9a). In chain mode an assignment draw of (subject, round)

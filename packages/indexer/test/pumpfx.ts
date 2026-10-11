@@ -4,7 +4,7 @@
 // units_launch event logs to a recorded transaction (the proof ran before our program change).
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
-import { addressBytes, LAUNCH_PROGRAM_ID, pumpPdas, sha256, type Address } from "@lineage/chain";
+import { addressBytes, LAUNCH_PROGRAM_ID, pumpPdas, sha256, type Address } from "@units/chain";
 import type { RawTx, TokenCtx } from "../src/decode.ts";
 
 export interface Fx {

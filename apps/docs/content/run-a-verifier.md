@@ -15,15 +15,15 @@ Hosted agents can never verify; a self-hosted launched agent may also bond and v
 
 ### 1. Images
 
-Recipes pin images by digest. Build them from `images/<class>`; on a fresh machine `bun scripts/local-images.ts --build --skip solana` builds every class and maps the committed ids to the local ones for local testing. A worker that submits to a real Core must run the exact pinned images: set `LINEAGE_LOCAL_IMAGES=off` there and re-pin with `bun scripts/deploy/arch-recipes.ts <names>` (a different image is a different recipe).
+Recipes pin images by digest. Build them from `images/<class>`; on a fresh machine `bun scripts/local-images.ts --build --skip solana` builds every class and maps the committed ids to the local ones for local testing. A worker that submits to a real Core must run the exact pinned images: set `UNITS_LOCAL_IMAGES=off` there and re-pin with `bun scripts/deploy/arch-recipes.ts <names>` (a different image is a different recipe).
 
 ### 2. Key
 
-`lineage-worker keygen --out agent.json`. Check the machine with `lineage-worker doctor`.
+`units-worker keygen --out agent.json`. Check the machine with `units-worker doctor`.
 
 ### 3. Register and bond
 
-On devnet the registry is on chain: the "Run a verifier" section of your [profile](/profile#verifier) registers a worker key (your wallet signs, the key co-signs with `lineage-worker cosign`) and bonds. Against a simulated Core: `lineage-worker register --core <url> --key agent.json`, then `lineage-worker bond --core <url> --key agent.json --amount <base units>`.
+On devnet the registry is on chain: the "Run a verifier" section of your [profile](/profile#verifier) registers a worker key (your wallet signs, the key co-signs with `units-worker cosign`) and bonds. Against a simulated Core: `units-worker register --core <url> --key agent.json`, then `units-worker bond --core <url> --key agent.json --amount <base units>`.
 
 ### 4. Run the worker image
 
@@ -31,7 +31,7 @@ From the repository root (`images/worker`):
 
 ```
 docker build -f images/worker/Dockerfile -t lineage/worker .
-docker run -d --name lineage-worker --stop-timeout 900 \
+docker run -d --name units-worker --stop-timeout 900 \
   -v /var/run/docker.sock:/var/run/docker.sock \
   -v /var/lib/lineage:/var/lib/lineage \
   -v /etc/lineage/agent.json:/keys/agent.json:ro \
@@ -39,12 +39,12 @@ docker run -d --name lineage-worker --stop-timeout 900 \
 ```
 
 - Mount only the agent key, read only. Prefer rootless Docker.
-- `LINEAGE_HOME` must be the same absolute path inside and outside the container (default `/var/lib/lineage`), because the daemon resolves sandbox mounts on the host.
+- `UNITS_HOME` must be the same absolute path inside and outside the container (default `/var/lib/lineage`), because the daemon resolves sandbox mounts on the host.
 - Stop with `docker stop -t 900`: on SIGTERM the worker takes no new work, finishes and reveals what it committed, then exits. Docker's default 10 s would kill it before it reveals.
 
 ### 5. Qualify
 
-On start the worker declares its capabilities. Core then issues a qualification per lineage your hardware satisfies: reproduce the calibrated baseline. Failures cost nothing and are retried after `qualify_retry_s` ({{cfg:qualify_retry_s}}). `lineage-worker status` shows your bond, qualifications and eligibility.
+On start the worker declares its capabilities. Core then issues a qualification per lineage your hardware satisfies: reproduce the calibrated baseline. Failures cost nothing and are retried after `qualify_retry_s` ({{cfg:qualify_retry_s}}). `units-worker status` shows your bond, qualifications and eligibility.
 
 ## Rewards
 
@@ -67,6 +67,6 @@ On start the worker declares its capabilities. Core then issues a qualification 
 ## Runbook
 
 - Containers carry the label `lineage=1`; clean leftovers with `docker ps -aq --filter label=lineage=1 | xargs docker rm -f`, never a global prune on a shared machine.
-- Caches live in `~/.lineage` (or `LINEAGE_HOME`); deleting them is safe.
+- Caches live in `~/.lineage` (or `UNITS_HOME`); deleting them is safe.
 - Stop processes by PID, never by pattern.
-- The full runbook, with every check and its duration: [docs/RUNBOOK.md](repo:docs/RUNBOOK.md). Worker commands: `lineage-worker --help` ([main.ts header](repo:packages/worker/src/main.ts)).
+- The full runbook, with every check and its duration: [docs/RUNBOOK.md](repo:docs/RUNBOOK.md). Worker commands: `units-worker --help` ([main.ts header](repo:packages/worker/src/main.ts)).

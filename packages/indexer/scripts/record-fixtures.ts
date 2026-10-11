@@ -5,7 +5,7 @@
 // Run once while the fork is up; the tests never touch the network. Reads the fork only.
 import { readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { PUMP, pumpPdas } from "@lineage/chain";
+import { PUMP, pumpPdas } from "@units/chain";
 
 const argv = process.argv.slice(2);
 const url = argv.includes("--rpc") ? argv[argv.indexOf("--rpc") + 1]! : "http://127.0.0.1:9690";

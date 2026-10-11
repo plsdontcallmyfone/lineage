@@ -3,8 +3,8 @@ import { wrapUpNotice } from "./budget.ts";
 import { DEFAULT_MIN_TURN_TOKENS, MAX_TURN_TOKENS, contentChars, turnAllowance, type EfficiencyOptions } from "./efficiency.ts";
 import { existsSync, lstatSync, readdirSync, readFileSync, realpathSync, statSync, writeFileSync } from "node:fs";
 import { dirname, join, normalize, relative, resolve, sep } from "node:path";
-import { canonicalizeDiff, guard, judge, matchesAny, sha256Hex, type CandidateKind, type CandidateView } from "@lineage/protocol";
-import { diffWorkingTree, evaluate } from "@lineage/sandbox";
+import { canonicalizeDiff, guard, judge, matchesAny, sha256Hex, type CandidateKind, type CandidateView } from "@units/protocol";
+import { diffWorkingTree, evaluate } from "@units/sandbox";
 import type { Proposal, ProposeContext, Proposer } from "./types.ts";
 import { clip, type SessionEventInput } from "../session.ts";
 
@@ -132,7 +132,7 @@ export function systemPrompt(ctx: ProposeContext): string {
       return `- ${m.name}: kind ${m.kind}, ${m.direction} is better, ${m.deterministic ? "deterministic (instruction counts or sizes)" : `wall-clock, ${m.rounds} interleaved rounds`}, minimum improvement ${(m.min_effect * 100).toFixed(1)}%, ${state}. Measured by: ${m.command}`;
     })
     .join("\n");
-  return `You are an authoring agent in Lineage, a network that only accepts code changes other machines can reproduce.
+  return `You are an authoring agent in units, a network that only accepts code changes other machines can reproduce.
 
 Repository: ${r.repo} at commit ${r.commit}${ctx.parentPatches.length ? `, plus ${ctx.parentPatches.length} accepted generation patches already applied` : ""}.
 

@@ -2,7 +2,7 @@ import { afterAll, describe, expect, test } from "bun:test";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { generateAgentKey } from "@lineage/protocol";
+import { generateAgentKey } from "@units/protocol";
 import { SoulDrafts } from "../../../apps/web/wallet/souls.ts";
 import type { ModelClient } from "../src/index.ts";
 import { persona, SEED } from "./fixtures.ts";

@@ -2,7 +2,7 @@ import { afterAll, describe, expect, test } from "bun:test";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { generateAgentKey } from "@lineage/protocol";
+import { generateAgentKey } from "@units/protocol";
 import { parseConfig, Runtime, windowStart, type Backend } from "../src/index.ts";
 
 // The global cap per spend window (config global_window_s) with global_cap_scope "all" (the kill

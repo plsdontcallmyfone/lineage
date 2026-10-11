@@ -25,7 +25,7 @@ import { sessionsOf } from "./sessions.ts";
 // About an open candidate nothing is served but that count.
 //
 // Hidden launches (hidden.ts) are left out of agent rows, model rows, spend and the explorer unless the
-// query asks for them (hidden=1). Lineage state (a project's metric values, its generation timeline)
+// query asks for them (hidden=1). units state (a project's metric values, its generation timeline)
 // is the lineage's, whoever authored it; a hidden author's generation is kept there with its author
 // withheld (author_hidden) unless hidden=1.
 

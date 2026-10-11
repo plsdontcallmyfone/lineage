@@ -1,5 +1,5 @@
 #!/usr/bin/env bun
-// M2 proposal path for a multisig member: build one Lineage admin action as a Squads v4 vault
+// M2 proposal path for a multisig member: build one units admin action as a Squads v4 vault
 // transaction, propose it, approve it, execute it after the time lock, or show its status.
 //
 //   bun scripts/mainnet/propose.ts status  --multisig <addr> [--index N]
@@ -16,10 +16,10 @@
 //
 // Endpoint: --rpc <url>, default the local fork (127.0.0.1:9690). A mainnet endpoint is refused unless
 // --mainnet is also given (the owner's step, docs/MAINNET-RUNBOOK.md). Keyed URLs are never printed.
-// Program ids come from the active network profile: run with LINEAGE_NETWORK=mainnet.
+// Program ids come from the active network profile: run with UNITS_NETWORK=mainnet.
 // Members can equally approve and execute in the Squads app: the vault transaction is standard.
 import { readFileSync } from "node:fs";
-import { compileVaultMessage, decodeSquadsVaultTransaction, loadKeypair, Rpc, sendAndConfirm, squads, squadsPdas, type Ix } from "@lineage/chain";
+import { compileVaultMessage, decodeSquadsVaultTransaction, loadKeypair, Rpc, sendAndConfirm, squads, squadsPdas, type Ix } from "@units/chain";
 import { adminActions, multisigState, proposalState } from "./admin.ts";
 import { checkEndpoint, programIdsNow, useActiveProfile } from "./steps.ts";
 
@@ -29,7 +29,7 @@ const positional = argv.filter((a, i) => !a.startsWith("--") && !(i > 0 && argv[
 const [cmd, action, argsPath] = positional;
 const rpcUrl = flag("--rpc") ?? "http://127.0.0.1:9690";
 const rpc = Rpc.http(rpcUrl, "confirmed");
-// program ids from the active network profile (LINEAGE_NETWORK=mainnet for the runbook and the fork)
+// program ids from the active network profile (UNITS_NETWORK=mainnet for the runbook and the fork)
 const profile = useActiveProfile();
 const genesis = await checkEndpoint(rpc, profile, { deployed: cmd !== "status", local: rpcUrl.startsWith("http://127.0.0.1:") });
 if (genesis === "5eykt4UsFv8P8NJdTREpY1vzqKqZKvdpKuc147dw2N9d" && !argv.includes("--mainnet")) throw new Error("mainnet endpoint: pass --mainnet to confirm");

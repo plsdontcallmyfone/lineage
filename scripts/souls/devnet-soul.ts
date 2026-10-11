@@ -14,7 +14,7 @@
 import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { canonicalUrl } from "@lineage/protocol";
+import { canonicalUrl } from "@units/protocol";
 import { IDENTITY_MODE, launch, registry, TOKEN_2022_PROGRAM, token, launchPdas } from "../../packages/chain/src/index.ts";
 import { devnetRpcUrl } from "../../packages/chain/src/endpoint.ts";
 import { checkSoul, nextVersion, signSoul, soulDigest, type SoulDoc } from "../../packages/souls/src/index.ts";
@@ -74,7 +74,7 @@ async function launchStep() {
 async function v2Step() {
   const s1 = readSoul(1);
   const cred = new FileCredentialStore().get(agent.id);
-  if (!cred) throw new Error("no GitHub credential for the agent yet: run lineage-souls provision first");
+  if (!cred) throw new Error("no GitHub credential for the agent yet: run units-souls provision first");
   const s2 = nextVersion(s1, { identity: { github_login: cred.login, ssh_signing_key: cred.ssh_public_key.split(" ").slice(0, 2).join(" "), profile_url: null } }, Math.floor(Date.now() / 1000));
   const errs = checkSoul(s2);
   if (errs.length) throw new Error(errs.join("; "));
@@ -95,7 +95,7 @@ async function v2Step() {
 async function coreStep() {
   const busy = Bun.spawnSync(["lsof", "-ti", `:${PORT}`]).stdout.toString().trim();
   if (busy) throw new Error(`port ${PORT} is in use by ${busy}`);
-  const tmp = mkdtempSync(join(tmpdir(), "lineage-souls-core-"));
+  const tmp = mkdtempSync(join(tmpdir(), "units-souls-core-"));
   const ROOT = join(import.meta.dir, "../..");
   const net = JSON.parse(readFileSync(join(ROOT, "config/network.json"), "utf8"));
   net.chain = { mode: "devnet", rpc_url: devnetRpcUrl(), registry_program: state.registry_program, launch_program: state.launch_program, line_mint: state.line_mint, core_authority_key: null, poll_ms: 3_600_000 };

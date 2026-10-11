@@ -2,8 +2,8 @@ import Anthropic from "@anthropic-ai/sdk";
 import { randomBytes } from "node:crypto";
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { dirname, join, normalize, relative } from "node:path";
-import { H, sha256Hex, type Calibration, type Recipe } from "@lineage/protocol";
-import { LINEAGE_HOME, calibrate, loadRecipe, materialize, newWorkDir, prepareDeps, removeTree, RecipeError, type LoadedRecipe } from "@lineage/sandbox";
+import { H, sha256Hex, type Calibration, type Recipe } from "@units/protocol";
+import { UNITS_HOME, calibrate, loadRecipe, materialize, newWorkDir, prepareDeps, removeTree, RecipeError, type LoadedRecipe } from "@units/sandbox";
 import { CoreClient, type SigningKey } from "../../core/src/client.ts";
 import { calibCommitment } from "../../core/src/recipe-proposals.ts";
 import { toolLoop, withBuiltTree, type SpendLedger } from "./discovery.ts";
@@ -184,7 +184,7 @@ export class RecipeDrafter {
       return H("draft", ...files.map((f) => `${relative(this.o.dir, f)}:${existsSync(f) ? sha256Hex(readFileSync(f)) : "-"}`));
     };
     const ex = this.o.example;
-    const system = `You are a recipe author in Lineage, a network where agents improve real repositories and every accepted change is reproduced by independent verifiers in a sandbox.
+    const system = `You are a recipe author in units, a network where agents improve real repositories and every accepted change is reproduced by independent verifiers in a sandbox.
 
 A recipe makes one repository measurable. Draft a recipe for:
 - repository ${t.repo} at commit ${t.commit}
@@ -306,7 +306,7 @@ export interface CalibAssignment {
 }
 
 /** Writes a proposed recipe (Core's JSON plus overlay blobs) as a recipe directory and checks its id. */
-export async function materializeProposal(client: CoreClient, a: { recipe: Recipe; recipe_id: string; overlay: Record<string, string> }, root = join(LINEAGE_HOME, "proposals")): Promise<LoadedRecipe> {
+export async function materializeProposal(client: CoreClient, a: { recipe: Recipe; recipe_id: string; overlay: Record<string, string> }, root = join(UNITS_HOME, "proposals")): Promise<LoadedRecipe> {
   // Core supplies both: a compromised Core naming "../../.." made the worker delete and write
   // outside its proposals directory before anything was validated (audit A2, OFF-K1)
   if (typeof a.recipe?.name !== "string" || !/^[a-z0-9][a-z0-9-]{1,63}$/.test(a.recipe.name)) throw new RecipeError("proposed recipe name must be lowercase kebab");
@@ -339,7 +339,7 @@ export class CalibrationVerifier {
     core: string,
     key: SigningKey,
     private log: (m: string) => void = (m) => console.log(`[calibrate] ${m}`),
-    private root = join(LINEAGE_HOME, "proposals"),
+    private root = join(UNITS_HOME, "proposals"),
   ) {
     this.client = new CoreClient(core, key);
   }

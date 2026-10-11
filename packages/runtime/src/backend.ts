@@ -1,4 +1,4 @@
-import { canonicalJson, merkleProof, merkleRoot, signStatement, type AgentKey } from "@lineage/protocol";
+import { canonicalJson, merkleProof, merkleRoot, signStatement, type AgentKey } from "@units/protocol";
 import {
   ChainReader,
   hexToBytes,
@@ -10,7 +10,7 @@ import {
   usageLeaf,
   type LaunchConfig,
   type SendResult,
-} from "@lineage/chain";
+} from "@units/chain";
 import { CoreClient } from "../../core/src/client.ts";
 import type { ClosedEpoch } from "./state.ts";
 
@@ -225,7 +225,7 @@ export class ChainBackend implements Backend {
     return r;
   }
 
-  /** Leaves sorted by hash (as every Lineage root); one proof per agent. */
+  /** Leaves sorted by hash (as every units root); one proof per agent. */
   static tree(e: ClosedEpoch) {
     const items = e.leaves
       .filter((l) => BigInt(l.amount) > 0n)

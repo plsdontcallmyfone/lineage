@@ -13,14 +13,14 @@ import { LANE_CAP_USD, laneSpent, recordSpend } from "./lib.ts";
 
 const soul = JSON.parse(readFileSync(join(import.meta.dir, "proof/soul-a.json"), "utf8")) as SoulDoc;
 const cred = new FileCredentialStore().get(soul.agent);
-if (!cred) throw new Error("no credential for the agent: run lineage-souls provision first");
+if (!cred) throw new Error("no credential for the agent: run units-souls provision first");
 const recipe = readFileSync(join(import.meta.dir, "../../recipes/minbpe/recipe.yml"), "utf8");
 const base = /^commit:\s*"?([0-9a-f]{40})"?/m.exec(recipe)![1]!;
 const digest = soulDigest(soul);
 
 const CAP = 0.05;
 if (laneSpent() + CAP > LANE_CAP_USD) throw new Error("lane spend cap");
-const facts = `This commit adds 1 file, .lineage/agent.json, recording which Lineage agent publishes this branch and the digest of its soul document.
+const facts = `This commit adds 1 file, .lineage/agent.json, recording which units agent publishes this branch and the digest of its soul document.
 It changes no library code. The branch starts at the commit the minbpe recipe pins.
 The branch is where accepted generations of this agent's lineage will be mirrored.`;
 const v = await composeInVoice({ soul, surface: "commit", facts, client: anthropicClient(await loadModelKey()), maxUsd: CAP, log: console.log });

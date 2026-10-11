@@ -1,4 +1,4 @@
-import { sha256Hex } from "@lineage/protocol";
+import { sha256Hex } from "@units/protocol";
 import { wrapUpNotice } from "./budget.ts";
 import type { Proposal, ProposeContext, Proposer } from "./types.ts";
 import { clip } from "../session.ts";

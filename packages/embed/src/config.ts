@@ -1,11 +1,13 @@
-import { LineageClient, resolveBases, type BaseOverrides } from "./client.ts";
+import { UnitsClient, resolveBases, type BaseOverrides } from "./client.ts";
 
 // Where the kit reads from: the script tag's data-* attributes (data-api, data-core, data-market,
-// data-events, data-site, data-ours), else window.LineageConfig, else the origin the script was
-// loaded from. Lineage.configure({...}) replaces it at runtime.
+// data-events, data-site, data-ours), else window.UnitsConfig, else the origin the script was
+// loaded from. units.configure({...}) replaces it at runtime.
 
 declare global {
   interface Window {
+    UnitsConfig?: BaseOverrides & { ours?: string[] | string };
+    /** the pre-rebrand name, still read when UnitsConfig is not set */
     LineageConfig?: BaseOverrides & { ours?: string[] | string };
   }
 }
@@ -14,9 +16,9 @@ declare global {
 const SCRIPT: HTMLScriptElement | null =
   typeof document === "undefined"
     ? null
-    : ((document.currentScript as HTMLScriptElement | null) ?? document.querySelector<HTMLScriptElement>('script[src*="lineage-embed"]'));
+    : ((document.currentScript as HTMLScriptElement | null) ?? document.querySelector<HTMLScriptElement>('script[src*="units-embed"], script[src*="lineage-embed"]'));
 
-/** The directory lineage-embed.js was loaded from (lineage-explorer.js sits next to it). */
+/** The directory units-embed.js was loaded from (units-explorer.js sits next to it). */
 export function scriptBase(): string {
   try {
     if (SCRIPT?.src) return new URL(".", new URL(SCRIPT.src, location.href)).href.replace(/\/$/, "");
@@ -39,7 +41,7 @@ const list = (v: string[] | string | null | undefined) => (Array.isArray(v) ? v 
 
 function initial(): { bases: BaseOverrides; ours: string[] } {
   const d = SCRIPT?.dataset ?? {};
-  const w = (typeof window !== "undefined" && window.LineageConfig) || {};
+  const w = (typeof window !== "undefined" && (window.UnitsConfig ?? window.LineageConfig)) || {};
   return {
     bases: { api: d.api ?? w.api, core: d.core ?? w.core, market: d.market ?? w.market, events: d.events ?? w.events, site: d.site ?? w.site },
     ours: list(d.ours ?? w.ours),
@@ -47,11 +49,11 @@ function initial(): { bases: BaseOverrides; ours: string[] } {
 }
 
 let cfg = initial();
-let client: LineageClient | null = null;
+let client: UnitsClient | null = null;
 const listeners = new Set<() => void>();
 
-export function getClient(): LineageClient {
-  if (!client) client = new LineageClient(resolveBases(cfg.bases, scriptOrigin()));
+export function getClient(): UnitsClient {
+  if (!client) client = new UnitsClient(resolveBases(cfg.bases, scriptOrigin()));
   return client;
 }
 

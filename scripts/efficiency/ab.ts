@@ -16,8 +16,8 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { randomBytes } from "node:crypto";
-import { canonicalizeDiff, judge, type CandidateView } from "@lineage/protocol";
-import { applyPatch, diffWorkingTree, evaluate, loadRecipe, materialize, newWorkDir, prepareDeps, removeTree } from "@lineage/sandbox";
+import { canonicalizeDiff, judge, type CandidateView } from "@units/protocol";
+import { applyPatch, diffWorkingTree, evaluate, loadRecipe, materialize, newWorkDir, prepareDeps, removeTree } from "@units/sandbox";
 import { AnthropicProposer } from "../../packages/worker/src/proposers/anthropic.ts";
 import type { EfficiencyOptions } from "../../packages/worker/src/proposers/efficiency.ts";
 

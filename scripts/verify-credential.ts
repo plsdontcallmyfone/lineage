@@ -1,5 +1,5 @@
 #!/usr/bin/env bun
-// Verifies a Lineage reputation credential (identity plan I2) from chain alone: reads each epoch's
+// Verifies a units reputation credential (identity plan I2) from chain alone: reads each epoch's
 // `Epoch.record_root` from the registry over RPC, recomputes every leaf from its record, checks every
 // Merkle proof against the onchain root, and recomputes the totals. Core's signature on the bundle is
 // reported but never needed.
@@ -8,9 +8,9 @@
 //   bun scripts/verify-credential.ts --file <credential.json> [--rpc <url>] [--tamper]
 //   bun scripts/verify-credential.ts --core <url> --agent <id> [--rpc <url>] [--tamper] [--out <file>]
 // --tamper alters one record (a counter +1) and expects the check to fail: exit 0 only if it does.
-// The RPC defaults to the devnet resolver (LINEAGE_DEVNET_RPC, ~/.config/lineage/rpc.env, public).
+// The RPC defaults to the devnet resolver (UNITS_DEVNET_RPC, ~/.config/lineage/rpc.env, public).
 import { readFileSync, writeFileSync } from "node:fs";
-import { ChainReader, Rpc } from "@lineage/chain";
+import { ChainReader, Rpc } from "@units/chain";
 import { devnetRpcUrl, redactRpc } from "../packages/chain/src/endpoint.ts";
 import { verifyCredential } from "../packages/core/src/records.ts";
 import { verifyStatement } from "../packages/protocol/src/index.ts";

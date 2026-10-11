@@ -17,7 +17,7 @@ const PW = arg("pw");
 if (!PW) throw new Error("--pw <dir with node_modules/playwright-core> is required");
 const WEB = arg("web", "http://127.0.0.1:9663")!.replace(/\/+$/, "");
 const MARKET = arg("market", "http://127.0.0.1:9668")!.replace(/\/+$/, "");
-const SHOTS = arg("shots", "/tmp/lineage-explorer-shots")!;
+const SHOTS = arg("shots", "/tmp/units-explorer-shots")!;
 mkdirSync(SHOTS, { recursive: true });
 const { chromium } = await import(join(PW, "node_modules", "playwright-core", "index.mjs"));
 

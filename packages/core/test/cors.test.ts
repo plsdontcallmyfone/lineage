@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { applyCors, corsOrigins } from "../src/http.ts";
 
-// LINEAGE_CORS_ORIGINS (embed kit): unset keeps Core's `*`; set, only GET and HEAD answers to a listed
+// UNITS_CORS_ORIGINS (embed kit): unset keeps Core's `*`; set, only GET and HEAD answers to a listed
 // origin carry CORS headers, so a browser on another origin can read the public API and call nothing else.
 const res = () => new Response("{}", { headers: { "content-type": "application/json", "access-control-allow-origin": "*" } });
 const req = (method: string, origin: string | null, pre?: string) =>

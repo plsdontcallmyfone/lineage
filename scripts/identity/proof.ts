@@ -7,7 +7,7 @@
 //      tick, link_recheck_s set short for the run) marks the link broken.
 //   3. A second gist is posted and verified; it stays as the live proof.
 //   4. Domain proof: a local test server (port 9668) serves /.well-known/lineage-agent.json; Core
-//      verifies it (the test host is allowed over http by LINEAGE_LINK_HTTP_HOSTS, tests only).
+//      verifies it (the test host is allowed over http by UNITS_LINK_HTTP_HOSTS, tests only).
 //   5. ERC-8004 registration file: every field the EIP lists, and its registrations entry resolves
 //      on devnet to the agent's registry PDA (owned by the registry program, decoding to the agent).
 //
@@ -17,7 +17,7 @@
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
-import { addressBytes, ChainReader, pda, Rpc } from "@lineage/chain";
+import { addressBytes, ChainReader, pda, Rpc } from "@units/chain";
 import { devnetRpcUrl } from "../../packages/chain/src/endpoint.ts";
 import { CoreClient } from "../../packages/core/src/client.ts";
 import { domainProofJson, linkStatement, proofText, signLink } from "../../packages/core/src/links.ts";
@@ -56,7 +56,7 @@ const gh = (method: string, path: string, body?: unknown) =>
   });
 
 async function createGist(text: string, note: string): Promise<{ id: string; url: string }> {
-  const r = await gh("POST", "/gists", { description: `Lineage agent link proof (${note})`, public: true, files: { "lineage-agent-proof.md": { content: text } } });
+  const r = await gh("POST", "/gists", { description: `units agent link proof (${note})`, public: true, files: { "lineage-agent-proof.md": { content: text } } });
   if (r.status !== 201) throw new Error(`gist create answered ${r.status}`);
   const g = (await r.json()) as { id: string; html_url: string };
   return { id: g.id, url: g.html_url };
@@ -86,7 +86,7 @@ async function main() {
   const admin = key("identity-test-core-admin");
   const core = Bun.spawn(
     ["bun", join(ROOT, "packages/core/src/main.ts"), "--data", join(tmp, "data"), "--port", String(CORE_PORT), "--config", join(tmp, "network.json"), "--admin-key", join(KEY_DIR, "identity-test-core-admin.json"), "--tick-ms", "1000", "--no-trees"],
-    { stdout: "ignore", stderr: "pipe", env: { ...process.env, LINEAGE_LINK_RECHECK_S: String(RECHECK_S), LINEAGE_LINK_HTTP_HOSTS: `127.0.0.1:${DOMAIN_PORT}`, LINEAGE_DEVNET_RPC: rpcUrl } },
+    { stdout: "ignore", stderr: "pipe", env: { ...process.env, UNITS_LINK_RECHECK_S: String(RECHECK_S), UNITS_LINK_HTTP_HOSTS: `127.0.0.1:${DOMAIN_PORT}`, UNITS_DEVNET_RPC: rpcUrl } },
   );
   let domainBody: string | null = null;
   const domain = Bun.serve({

@@ -7,13 +7,13 @@
 //   funding: a local allocation escrow is created, a deposit with the memo `lineage-trade-alloc:<agent>`
 //            is read back by ChainFunder.deposits and forwarded; a gas top-up lands.
 // Keys: ~/.config/lineage/devnet/trading-smoke.json (TEST treasury) and trading-smoke-escrow.json, funded by
-// the Lineage deployer (~/.config/lineage/devnet-deployer.json, passed explicitly; the global solana
+// the units deployer (~/.config/lineage/devnet-deployer.json, passed explicitly; the global solana
 // config is never read). Every transaction is logged in onchain/DEVNET.md (agent trading lane section).
 // Usage: bun scripts/trader/devnet-smoke.ts [--market https://157-245-71-188.sslip.io] [--buy 2]
 import { writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
-import { ata, loadKeypair, loadOrCreateKeypair, Rpc, sendAndConfirm, system, token, TOKEN_2022_PROGRAM } from "@lineage/chain";
+import { ata, loadKeypair, loadOrCreateKeypair, Rpc, sendAndConfirm, system, token, TOKEN_2022_PROGRAM } from "@units/chain";
 import { devnetRpcUrl } from "../../packages/chain/src/endpoint.ts";
 import { assertDevnet } from "../../packages/chain/src/browser/client.ts";
 import { withBackoff } from "../../packages/runtime/src/backend.ts";

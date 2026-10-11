@@ -1,5 +1,5 @@
 import { readFileSync } from "node:fs";
-import { parsePrepayConfig, type PrepayConfig } from "@lineage/chain";
+import { parsePrepayConfig, type PrepayConfig } from "@units/chain";
 
 // Network parameters (SPEC 13, config/network.json). Token amounts are integer base units, held as
 // bigint in Core and as decimal strings on disk and on the wire.

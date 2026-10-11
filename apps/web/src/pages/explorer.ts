@@ -16,7 +16,7 @@ import { endOf, idleCaption, idleStatus, RECORDINGS_SHOWN } from "../live-panel/
 // is the indexer's or Core's; what neither holds is TBA.
 //
 // `mountExplorer(el, opts)` renders it into any element (the app's home page, and the embed kit's
-// <lineage-explorer>). Styles are injected once, prefixed ex-, on the app's colour tokens with
+// <units-explorer>). Styles are injected once, prefixed ex-, on the app's colour tokens with
 // fallbacks. Thumbnails use the embed kit's thumbnail drawing (packages/embed/src/thumb.ts) over the
 // session's public events and the file at its parent generation, both from Core.
 

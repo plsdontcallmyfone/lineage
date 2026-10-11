@@ -2,7 +2,7 @@ import { afterAll, describe, expect, test } from "bun:test";
 import { chmodSync, existsSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { generateAgentKey, signStatement, type AgentKey } from "@lineage/protocol";
+import { generateAgentKey, signStatement, type AgentKey } from "@units/protocol";
 import type { AgentLaunch, AgentRecord } from "../../chain/src/index.ts";
 import { soul as fixtureSoul } from "../../souls/test/fixtures.ts";
 import { handler } from "../src/http.ts";
@@ -230,7 +230,7 @@ describe("launch watcher", () => {
     t.tick(601_000);
     await t.svc.watchOnce();
     expect(t.svc.view(a1).status).toBe("ready");
-    expect(accts[tok("3")]!.profile.name).toBe(`Lineage agent ${a1.slice(0, 8)}`);
+    expect(accts[tok("3")]!.profile.name).toBe(`units agent ${a1.slice(0, 8)}`);
     expect(t.svc.view(a2).status).toBe("failed");
     expect(t.svc.view(a2).reason).toContain("reserve is empty");
     expect(t.svc.view(a2).identity).toBe("app");
@@ -262,7 +262,7 @@ describe("token flow and revocation", () => {
     await expect(t.svc.submitToken({ statement: st, sig: signed(launcher, { ...st, created_at: st.created_at + 1 }).sig, token })).rejects.toMatchObject({ code: "bad_statement" });
     const v = await t.svc.submitToken({ ...signed(launcher, st), token });
     expect(v).toMatchObject({ status: "ready", identity: "account", login: "pasted", token_kind: "classic" });
-    expect(accts[token]!.signingKeys.map((k) => k.title)).toEqual(["their own key", `lineage agent ${agent.slice(0, 12)}`]);
+    expect(accts[token]!.signingKeys.map((k) => k.title)).toEqual(["their own key", `units agent ${agent.slice(0, 12)}`]);
     // replay of the same statement is refused
     await expect(t.svc.submitToken({ ...signed(launcher, st), token })).rejects.toMatchObject({ code: "replayed" });
     // revocation by the launcher: our key removed, theirs kept, credential gone, app identity

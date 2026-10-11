@@ -11,7 +11,7 @@ import { chainBrowserPlugin } from "../../../packages/chain/src/browser/plugin.t
 
 const ROOT = join(import.meta.dir, "../../..");
 const SENTINEL = "m3leaksentinel7b2f9c4e1d";
-const env = { ...process.env, LINEAGE_NETWORK: "mainnet", LINEAGE_MAINNET_RPC: `https://mainnet.rpc.invalid/?api-key=${SENTINEL}`, HELIUS_MAINNET_RPC: `https://mainnet.rpc.invalid/?api-key=${SENTINEL}` };
+const env = { ...process.env, UNITS_NETWORK: "mainnet", UNITS_MAINNET_RPC: `https://mainnet.rpc.invalid/?api-key=${SENTINEL}`, HELIUS_MAINNET_RPC: `https://mainnet.rpc.invalid/?api-key=${SENTINEL}` };
 
 /** Secret values that must never appear: the sentinel, and the real keys of the local rpc.env (values only, not printed). */
 function secrets(): string[] {
@@ -61,9 +61,9 @@ describe("built browser output carries no RPC key", () => {
   }, 120_000);
 
   test("the dashboard server's bundles (app and wallet) with the env set as on the server", async () => {
-    const saved = { n: process.env.LINEAGE_NETWORK, r: process.env.LINEAGE_MAINNET_RPC };
-    process.env.LINEAGE_NETWORK = env.LINEAGE_NETWORK;
-    process.env.LINEAGE_MAINNET_RPC = env.LINEAGE_MAINNET_RPC;
+    const saved = { n: process.env.UNITS_NETWORK, r: process.env.UNITS_MAINNET_RPC };
+    process.env.UNITS_NETWORK = env.UNITS_NETWORK;
+    process.env.UNITS_MAINNET_RPC = env.UNITS_MAINNET_RPC;
     try {
       const app = await Bun.build({ entrypoints: [join(ROOT, "apps/web/src/main.ts")], target: "browser", minify: true });
       const wallet = await Bun.build({ entrypoints: [join(ROOT, "apps/web/wallet/main.ts")], target: "browser", format: "esm", minify: true, plugins: [chainBrowserPlugin] });
@@ -76,10 +76,10 @@ describe("built browser output carries no RPC key", () => {
       expect(w).toContain("/chain/rpc");
       expect(w).not.toMatch(/https:\/\/api\.mainnet-beta\.solana\.com/);
     } finally {
-      if (saved.n === undefined) delete process.env.LINEAGE_NETWORK;
-      else process.env.LINEAGE_NETWORK = saved.n;
-      if (saved.r === undefined) delete process.env.LINEAGE_MAINNET_RPC;
-      else process.env.LINEAGE_MAINNET_RPC = saved.r;
+      if (saved.n === undefined) delete process.env.UNITS_NETWORK;
+      else process.env.UNITS_NETWORK = saved.n;
+      if (saved.r === undefined) delete process.env.UNITS_MAINNET_RPC;
+      else process.env.UNITS_MAINNET_RPC = saved.r;
     }
   }, 120_000);
 });

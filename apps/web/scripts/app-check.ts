@@ -12,7 +12,7 @@
 //                   locally with a real soul document so no model is paid for), Profile connected and
 //                   disconnected, a token page's Commits panel, the docs; no console errors, no
 //                   horizontal scroll; removed routes redirect
-//   --phase launch  a real devnet launch through /launch: a fresh test wallet funded by the Lineage
+//   --phase launch  a real devnet launch through /launch: a fresh test wallet funded by the units
 //                   deployer (SOL, key passed explicitly) and the faucet key (tLINE), the soul drafted
 //                   by the site's drafter, the wizard's Launch button, the hosted bind, then the live
 //                   status list; transactions are logged to apps/web/scripts/APP-LAUNCH-LAST.json
@@ -26,14 +26,14 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
-import { ata, ChainReader, launchPdas, registryPdas, loadKeypair, loadOrCreateKeypair, Rpc, sendAndConfirm, signBytes, system, token, TOKEN_2022_PROGRAM } from "@lineage/chain";
+import { ata, ChainReader, launchPdas, registryPdas, loadKeypair, loadOrCreateKeypair, Rpc, sendAndConfirm, signBytes, system, token, TOKEN_2022_PROGRAM } from "@units/chain";
 import { assertDevnet } from "../../../packages/chain/src/browser/client.ts";
 import { decodeMessage, parseWire, placeSignature } from "../../../packages/chain/src/browser/wire.ts";
 import { devnetRpcUrl } from "../../../packages/chain/src/endpoint.ts";
 import { newSoul } from "../../../packages/souls/src/schema.ts";
 
 const arg = (n: string, d?: string) => (process.argv.includes(`--${n}`) ? process.argv[process.argv.indexOf(`--${n}`) + 1]! : d);
-const PW = arg("pw") ?? process.env.LINEAGE_PLAYWRIGHT;
+const PW = arg("pw") ?? (process.env.UNITS_PLAYWRIGHT ?? process.env.LINEAGE_PLAYWRIGHT);
 const BASE = arg("base", "http://127.0.0.1:9662")!.replace(/\/+$/, "");
 const PHASE = arg("phase", "ui")!;
 const SHOTS = arg("shots");
@@ -73,7 +73,7 @@ async function browser(wallet: ReturnType<typeof loadKeypair> | null) {
     const ctx = await b.newContext({ viewport: { width: o.width, height: o.width < 600 ? 844 : 900 }, colorScheme: o.dark ? "dark" : "light", deviceScaleFactor: 1 });
     await ctx.addInitScript((dark: boolean) => {
       try {
-        localStorage.setItem("lineage-theme", dark ? "dark" : "light");
+        localStorage.setItem("units-theme", dark ? "dark" : "light");
       } catch {}
     }, o.dark);
     if (wallet) {
@@ -91,7 +91,7 @@ async function browser(wallet: ReturnType<typeof loadKeypair> | null) {
         const account = { address, publicKey: new Uint8Array(pub), chains: ["solana:devnet"], features: ["solana:signTransaction", "solana:signMessage"], label: "test" };
         const w = {
           version: "1.0.0",
-          name: "Lineage Test Wallet",
+          name: "units Test Wallet",
           icon: "data:image/svg+xml;base64," + btoa('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20"><rect width="20" height="20" rx="4" fill="#2a78d6"/></svg>'),
           chains: ["solana:devnet"],
           accounts: [] as unknown[],
@@ -350,11 +350,11 @@ async function phaseLaunch() {
   const txs: { what: string; signature: string; fee: number | null; at: string }[] = [];
   const logTx = (what: string, signature: string, fee: number | null | undefined) => txs.push({ what, signature, fee: fee ?? null, at: new Date().toISOString() });
   const save = (extra: Record<string, unknown>) => writeFileSync(OUT, JSON.stringify({ wallet: wallet.id, deployer: dep.id, txs, results, ...extra }, null, 2) + "\n");
-  // fund the test wallet: SOL from the Lineage deployer, tLINE from the faucet key (both passed explicitly)
+  // fund the test wallet: SOL from the units deployer, tLINE from the faucet key (both passed explicitly)
   const solBal = await rpc.getBalance(wallet.id);
   if (solBal < 200_000_000n) {
     const r = await sendAndConfirm(rpc, dep, [system.transfer(dep.id, wallet.id, 250_000_000n - solBal)]);
-    logTx(`fund the test wallet with ${Number(250_000_000n - solBal) / 1e9} SOL from the Lineage deployer`, r.signature, r.fee);
+    logTx(`fund the test wallet with ${Number(250_000_000n - solBal) / 1e9} SOL from the units deployer`, r.signature, r.fee);
   }
   const want = 700n * 10n ** BigInt(DEC); // the 10 USD deposit (200 tLINE) now, and later UI checks that review another
   const bal = (await reader.tokenBalance(ata(wallet.id, LINE, T22))) ?? 0n;

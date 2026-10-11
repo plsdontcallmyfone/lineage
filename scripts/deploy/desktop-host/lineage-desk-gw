@@ -22,7 +22,7 @@ import subprocess
 import sys
 import syslog
 
-IMAGE = os.environ.get("LINEAGE_DESK_IMAGE", "lineage/desktop")
+IMAGE = os.environ.get("UNITS_DESK_IMAGE", "lineage/desktop")
 NET = "lineage-desk"
 PROXY = "lineage-desk-proxy"
 NAME = re.compile(r"^lineage-desk-(proxy|[0-9a-f]{16})$")

@@ -85,7 +85,7 @@ check "the runtime's key cannot forward ports" "$([ "$banner" != "SSH-2.0" ] && 
 
 echo "== desktops on the host"
 git clone -q "$(for m in ~/.lineage/mirrors/*.git; do git -C "$m" cat-file -e HEAD:minbpe/basic.py 2>/dev/null && echo "$m" && break; done)" "$WORK/minbpe" 2>/dev/null
-export LINEAGE_DESK_SSH_DIR="/tmp/ldh-$$"; mkdir -p "$LINEAGE_DESK_SSH_DIR"
+export UNITS_DESK_SSH_DIR="/tmp/ldh-$$"; mkdir -p "$UNITS_DESK_SSH_DIR"
 if [ -f "$WORK/minbpe/minbpe/basic.py" ]; then
   s=$(date +%s); bun "$REPO/packages/desktop/scripts/proof.ts" --tree "$WORK/minbpe" --out "$WORK/proof" --backend host --hosts-file "$WORK/site/hosts.json" --hold 15 > "$WORK/proof.log" 2>&1; rc=$?
   tail -6 "$WORK/proof.log"

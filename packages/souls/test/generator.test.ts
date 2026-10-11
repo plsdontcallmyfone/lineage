@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { generateAgentKey } from "@lineage/protocol";
+import { generateAgentKey } from "@units/protocol";
 import { checkSoul, generateSoul, type ModelClient } from "../src/index.ts";
 import { persona, SEED } from "./fixtures.ts";
 

@@ -1,17 +1,17 @@
-import { buildCards, LineageClient, pickSession, resolveBases } from "./client.ts";
+import { buildCards, UnitsClient, pickSession, resolveBases } from "./client.ts";
 import { configure, getClient, ourMints } from "./config.ts";
 import { DEVICE_ELEMENTS, mountDevice } from "./device.ts";
 import { ELEMENTS, openAndRun, terminals } from "./elements.ts";
 import { SOCIAL_ELEMENTS } from "./social.ts";
 import { answer, run } from "./terminal.ts";
 
-// lineage-embed.js: the six elements (lineage-screen, lineage-terminal, lineage-reel, lineage-token,
-// lineage-how, lineage-stats), the optional lineage-palette, and window.Lineage, the data client.
+// units-embed.js: the six elements (units-screen, units-terminal, units-reel, units-token,
+// units-how, units-stats), the optional units-palette, and window.Units, the data client.
 // See docs/EMBED.md.
 
 const c = () => getClient();
 
-export const Lineage = {
+export const Units = {
   version: "0.1.0",
   configure,
   get bases() {
@@ -36,19 +36,28 @@ export const Lineage = {
     },
   },
   /** building blocks for hosts that render their own markup */
-  util: { LineageClient, resolveBases, buildCards, pickSession, answer, run },
-  /** draws a <lineage-device> (the beige desktop computer) in an element, with content on its screen */
+  util: { UnitsClient, resolveBases, buildCards, pickSession, answer, run },
+  /** draws a <units-device> (the beige desktop computer) in an element, with content on its screen */
   mountDevice,
 };
 
 declare global {
   interface Window {
-    Lineage?: typeof Lineage;
+    Units?: typeof Units;
+    /** the pre-rebrand name of the same client (embeds pasted before the rename keep working) */
+    Lineage?: typeof Units;
   }
 }
 
 if (typeof window !== "undefined") {
-  window.Lineage = Object.assign(window.Lineage ?? {}, Lineage);
-  for (const [name, ctor] of [...ELEMENTS, ...SOCIAL_ELEMENTS, ...DEVICE_ELEMENTS]) if (!customElements.get(name)) customElements.define(name, ctor);
+  window.Units = Object.assign(window.Units ?? window.Lineage ?? {}, Units);
+  window.Lineage = window.Units;
+  for (const [name, ctor] of [...ELEMENTS, ...SOCIAL_ELEMENTS, ...DEVICE_ELEMENTS]) {
+    if (!customElements.get(name)) customElements.define(name, ctor);
+    // rebrand (docs/plans/REBRAND-UNITS.md 3.11): <lineage-*> markup pasted before the rename still renders
+    const old = name.replace(/^units-/, "lineage-");
+    if (old !== name && !customElements.get(old)) customElements.define(old, class extends (ctor as CustomElementConstructor) {});
+  }
+  window.dispatchEvent(new CustomEvent("units-ready"));
   window.dispatchEvent(new CustomEvent("lineage-ready"));
 }

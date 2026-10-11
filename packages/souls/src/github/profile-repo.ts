@@ -112,7 +112,7 @@ export async function profileRepoCommit(o: ProfileCommitOptions): Promise<Profil
     }
     const c = o.cred;
     const ident = ["-c", `user.name=${c.login}`, "-c", `user.email=${noreplyEmail(c)}`, "-c", "gpg.format=ssh", "-c", `user.signingkey=${c.ssh_private_key_path}`, "-c", "commit.gpgsign=true"];
-    const msgFile = join(work, ".git", "LINEAGE_MSG");
+    const msgFile = join(work, ".git", "UNITS_MSG");
     writeFileSync(msgFile, o.message);
     runGit(work, [...ident, "commit", "-q", "-S", "-F", msgFile]);
     const sha = runGit(work, ["rev-parse", "HEAD"]);

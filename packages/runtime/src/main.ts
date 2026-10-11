@@ -12,7 +12,7 @@
 import "../../protocol/src/env-alias.ts"; // first: UNITS_* and LINEAGE_* env names both readable (docs/plans/REBRAND-UNITS.md 3.3)
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
-import { keyFromSolanaJson } from "@lineage/protocol";
+import { keyFromSolanaJson } from "@units/protocol";
 import { applyNetworkProfile, rpcUrlFor } from "../../chain/src/profile-node.ts";
 import { AnthropicProposer } from "../../worker/src/proposers/anthropic.ts";
 import { ChainBackend, SimBackend, type Backend } from "./backend.ts";
@@ -123,7 +123,7 @@ async function main() {
   addSecret(cfg.rpc_url);
   // network profile (SPEC 14.10): a chain mode must be the profile's; mainnet sends price compute units from recent fees
   const profile = applyNetworkProfile();
-  if (cfg.mode !== "sim" && cfg.mode !== profile.network) throw new Error(`runtime config mode ${cfg.mode} differs from the network profile ${profile.network} (config/profile.json, LINEAGE_NETWORK)`);
+  if (cfg.mode !== "sim" && cfg.mode !== profile.network) throw new Error(`runtime config mode ${cfg.mode} differs from the network profile ${profile.network} (config/profile.json, UNITS_NETWORK)`);
   if (cfg.mode !== "sim" && !cfg.rpc_url) addSecret(chainRpc());
   // every line through redact, including the backend's and the messengers' (audit A2, OFF-R5)
   const log = (m: string) => console.log(redact(`[${new Date().toISOString().slice(11, 19)} runtime] ${m}`));

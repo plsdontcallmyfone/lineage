@@ -210,7 +210,7 @@ export function tokenHeadHtml(t: TokenDetail, tagline: string | null, tradeHref:
     ${tagline ? `<p class="tag" part="description">${esc(tagline)}</p>` : ""}
     <div class="sub">${t.repo_url ? ext(t.repo_url, repoLabel(t.repo_url)) : ""}<span>launched ${esc(ago(t.created_at))}</span>${ext(explorer("address", t.mint), shortAddr(t.mint), t.mint)}</div>
     <div class="params" part="params">${tokenParams(t, { unit: true })}</div>
-    <div class="curve">${progressHtml(t.curve_progress)}<span class="faint">${t.phase === "graduated" ? `DAMM v2 pool ${esc(shortAddr(t.pools.damm_pool))}` : `${esc(fmtAmount(t.quote_reserve))} of ${esc(fmtAmount(t.migration_threshold))} ${QUOTE} to graduation`}</span><a class="btn" part="trade" href="${esc(tradeHref)}" target="_blank" rel="noopener">Trade on Lineage</a></div>
+    <div class="curve">${progressHtml(t.curve_progress)}<span class="faint">${t.phase === "graduated" ? `DAMM v2 pool ${esc(shortAddr(t.pools.damm_pool))}` : `${esc(fmtAmount(t.quote_reserve))} of ${esc(fmtAmount(t.migration_threshold))} ${QUOTE} to graduation`}</span><a class="btn" part="trade" href="${esc(tradeHref)}" target="_blank" rel="noopener">Trade on units</a></div>
   </header>`;
 }
 

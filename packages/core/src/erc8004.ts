@@ -1,10 +1,10 @@
-import { addressBytes, pda, REGISTRY_PROGRAM_ID } from "@lineage/chain";
+import { addressBytes, pda, REGISTRY_PROGRAM_ID } from "@units/chain";
 import { loadNetworkProfile } from "../../chain/src/profile-node.ts";
 import type { Core } from "./core.ts";
 import { linksOf } from "./links.ts";
 import { soulsOf } from "./souls.ts";
 
-// ERC-8004 export (identity plan I6, 2.8) and the A2A agent card (plan 2.3). Lineage takes ERC-8004's
+// ERC-8004 export (identity plan I6, 2.8) and the A2A agent card (plan 2.3). units takes ERC-8004's
 // registration file format and nothing else: no external registry is written (fees and approval),
 // its transferable-NFT identity and open-feedback reputation are not imported. The file is generated
 // from the agent's public profile (its soul, SPEC 14.8, whose digest the registry holds as
@@ -17,7 +17,7 @@ import { soulsOf } from "./souls.ts";
 // { agentId, agentRegistry } ("all fields in the registration are mandatory"), supportedTrust
 // (OPTIONAL). Every one is present below.
 //
-// `registrations`: agentRegistry is `{namespace}:{chainId}:{identityRegistry}`; for Lineage that is
+// `registrations`: agentRegistry is `{namespace}:{chainId}:{identityRegistry}`; for units that is
 // the CAIP-2 Solana chain id and the `units_registry` program, and agentId is the agent's id (the
 // base58 key that seeds its `Agent` PDA; ERC-8004 uses an ERC-721 tokenId there, Solana has none).
 // `agentAccount` (an addition, ignored by ERC-8004 readers) is the PDA itself, so anyone can resolve
@@ -56,12 +56,12 @@ export const agentPda = (registryProgram: string, agent: string): string => pda(
 export class Erc8004 {
   opts: Erc8004Options;
   constructor(private readonly core: Core) {
-    // LINEAGE_CLUSTER when set, else the network profile (config/profile.json, LINEAGE_NETWORK; SPEC 14.10)
-    const cluster = (process.env.LINEAGE_CLUSTER ?? loadNetworkProfile().network) as keyof typeof SOLANA_CAIP2;
+    // UNITS_CLUSTER when set, else the network profile (config/profile.json, UNITS_NETWORK; SPEC 14.10)
+    const cluster = ((process.env.UNITS_CLUSTER ?? process.env.LINEAGE_CLUSTER) ?? loadNetworkProfile().network) as keyof typeof SOLANA_CAIP2;
     this.opts = {
-      registryProgram: process.env.LINEAGE_REGISTRY_PROGRAM || REGISTRY_PROGRAM_ID,
+      registryProgram: (process.env.UNITS_REGISTRY_PROGRAM ?? process.env.LINEAGE_REGISTRY_PROGRAM) || REGISTRY_PROGRAM_ID,
       chain: SOLANA_CAIP2[cluster] ?? SOLANA_CAIP2.devnet,
-      siteUrl: (process.env.LINEAGE_SITE_URL || "").replace(/\/+$/, "") || null,
+      siteUrl: ((process.env.UNITS_SITE_URL ?? process.env.LINEAGE_SITE_URL) || "").replace(/\/+$/, "") || null,
     };
   }
 
@@ -86,11 +86,11 @@ export class Erc8004 {
     }
     const short = id.slice(0, 8);
     const persona = soul?.doc?.persona;
-    const name: string = persona?.name ?? (a.kind === "launched" ? `Lineage agent ${short}` : `Lineage verifier ${short}`);
+    const name: string = persona?.name ?? (a.kind === "launched" ? `units agent ${short}` : `units verifier ${short}`);
     const role =
       a.kind === "launched"
-        ? `An authoring agent on Lineage${a.target_repo ? ` working on ${a.target_repo}` : ""}: it proposes changes that count only after independent bonded replays reproduce them.`
-        : "A verifier on Lineage: it replays other agents' candidates under bond and commit-reveal.";
+        ? `An authoring agent on units${a.target_repo ? ` working on ${a.target_repo}` : ""}: it proposes changes that count only after independent bonded replays reproduce them.`
+        : "A verifier on units: it replays other agents' candidates under bond and commit-reveal.";
     const description = persona ? `${persona.tagline} ${persona.backstory} ${role}` : role;
     const login: string | null = soul?.doc?.identity?.github_login ?? null;
     return { a, soul, name, description, login };
@@ -146,11 +146,11 @@ export class Erc8004 {
       protocolVersion: A2A_PROTOCOL_VERSION,
       name,
       description,
-      // Lineage agents take no A2A tasks; the URL is the agent's read-only record in Core
+      // units agents take no A2A tasks; the URL is the agent's read-only record in Core
       url: `${api}/agents/${id}`,
       preferredTransport: "HTTP+JSON",
       version: String(soul?.seq ?? 0),
-      provider: { organization: "Lineage (placeholder name)", url: web ?? api },
+      provider: { organization: "units", url: web ?? api },
       ...(login ? { iconUrl: `https://github.com/${login}.png` } : {}),
       ...(web ? { documentationUrl: `${web}/manual` } : {}),
       capabilities: { streaming: false, pushNotifications: false, stateTransitionHistory: false },

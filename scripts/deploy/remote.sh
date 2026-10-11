@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Lineage site: server-side steps, run as root by deploy.sh over ssh. Never prints a secret.
+# units site: server-side steps, run as root by deploy.sh over ssh. Never prints a secret.
 #
 #   remote.sh install <sha>      clone the shipped bundle into /opt/lineage/releases/<sha> (as lineage),
 #                                bun install, build the sandbox images the recipes need, re-pin the
@@ -27,7 +27,7 @@
 #                                server with no release yet (disaster recovery) it only places the data
 #   remote.sh wipe-keys          delete the keys copied from the owner's machine (before destroying the box)
 #
-# Settings come from /etc/lineage/site.env, which deploy.sh writes: SITE_NAMES, LINEAGE_RECIPES,
+# Settings come from /etc/lineage/site.env, which deploy.sh writes: SITE_NAMES, UNITS_RECIPES,
 # GATE_ORIGINS, DRY_RUN, WITH_RUNTIME, WITH_AUTHOR, AUTHORS.
 set -euo pipefail
 [ "$(id -u)" = 0 ] || { echo "run as root" >&2; exit 1; }
@@ -36,7 +36,7 @@ BASE=/opt/lineage
 ENVF=/etc/lineage/site.env
 [ -f "$ENVF" ] && . "$ENVF"
 DRY_RUN="${DRY_RUN:-0}"
-LINEAGE_RECIPES="${LINEAGE_RECIPES:-fixture-b58,base58-py,minbpe}"
+UNITS_RECIPES="${UNITS_RECIPES:-${LINEAGE_RECIPES:-fixture-b58,base58-py,minbpe}}"
 AUTHORS="${AUTHORS:-minbpe}"; AUTHORS="${AUTHORS//,/ }"
 # every author unit present (running or not), so stop and status also reach authors dropped from AUTHORS
 # Unit names (rebrand, docs/plans/REBRAND-UNITS.md 3.8): releases from before the rebrand install
@@ -59,7 +59,7 @@ unit_set units
 all_authors() { systemctl list-units --all --plain --no-legend 'units-author@*' 'lineage-author@*' 2>/dev/null | awk '{print $1}'; echo "$UP-author"; }
 
 as_lineage() {
-  runuser -u lineage -- env -i HOME=/home/lineage USER=lineage LINEAGE_HOME=/home/lineage/.lineage PATH=/usr/local/bin:/usr/bin:/bin bash -c "$1"
+  runuser -u lineage -- env -i HOME=/home/lineage USER=lineage UNITS_HOME=/home/lineage/.lineage PATH=/usr/local/bin:/usr/bin:/bin bash -c "$1"
 }
 # The GitHub identity service (packages/identity, docs/DEPLOY-SITE.md "GitHub identity service"):
 # a dedicated user, its encrypted store (mode 700) and key file (made once on the server, never
@@ -75,7 +75,7 @@ identity_setup() {
   # keyed RPC for the launch watcher (lineage's rpc.env is not readable by this user)
   local rpcenv=/home/lineage/.config/lineage/rpc.env
   if [ -f "$rpcenv" ]; then
-    ( umask 077; sed -n 's/^[[:space:]]*HELIUS_DEVNET_RPC[[:space:]]*=[[:space:]]*/LINEAGE_DEVNET_RPC=/p' "$rpcenv" > /etc/lineage-identity/identity.env.tmp )
+    ( umask 077; sed -n 's/^[[:space:]]*HELIUS_DEVNET_RPC[[:space:]]*=[[:space:]]*/UNITS_DEVNET_RPC=/p' "$rpcenv" > /etc/lineage-identity/identity.env.tmp )
     chown lineage-identity:lineage-identity /etc/lineage-identity/identity.env.tmp && mv /etc/lineage-identity/identity.env.tmp /etc/lineage-identity/identity.env
   fi
   # Core accepts PR records from its runtime or admin key; the site's admin key is the one on this box
@@ -136,7 +136,7 @@ EOF
 }
 # site-config.ts runs as lineage; the Core key it names is the service user's copy when there is one
 site_config() {
-  as_lineage "cd $1 && LINEAGE_SITE_CORE_KEY=$([ -f /etc/lineage-core/core-authority.json ] && echo /etc/lineage-core/core-authority.json) bun scripts/deploy/site-config.ts --out /var/lib/lineage/site"
+  as_lineage "cd $1 && UNITS_SITE_CORE_KEY=$([ -f /etc/lineage-core/core-authority.json ] && echo /etc/lineage-core/core-authority.json) bun scripts/deploy/site-config.ts --out /var/lib/lineage/site"
 }
 # move_secret <from> <to> <owner>: a key leaves lineage's home for the one service that uses it
 move_secret() {
@@ -174,8 +174,8 @@ users_setup() {
   local sd=/home/lineage/.lineage/web/soul-drafts.jsonl
   if [ -f "$sd" ] && [ ! -f "$WEB/.lineage/web/soul-drafts.jsonl" ]; then install -m 600 -o lineage-web -g lineage-web "$sd" "$WEB/.lineage/web/soul-drafts.jsonl"; fi
   ( umask 077
-    { env_line "$LH/rpc.env" HELIUS_DEVNET_RPC LINEAGE_DEVNET_RPC; env_line "$LH/model.env" ANTHROPIC_API_KEY ANTHROPIC_API_KEY; } > /etc/lineage/web.env
-    env_line "$LH/rpc.env" HELIUS_DEVNET_RPC LINEAGE_DEVNET_RPC > /etc/lineage/indexer.env )
+    { env_line "$LH/rpc.env" HELIUS_DEVNET_RPC UNITS_DEVNET_RPC; env_line "$LH/model.env" ANTHROPIC_API_KEY ANTHROPIC_API_KEY; } > /etc/lineage/web.env
+    env_line "$LH/rpc.env" HELIUS_DEVNET_RPC UNITS_DEVNET_RPC > /etc/lineage/indexer.env )
   chmod 600 /etc/lineage/web.env /etc/lineage/indexer.env
   # monitor: what to watch (public keys and names only; alert sinks are the owner's /etc/lineage/alert.env)
   local pk=/var/lib/lineage/site/pubkeys.json
@@ -337,7 +337,7 @@ install)
   as_lineage "cd $REL && bun install --frozen-lockfile >/dev/null 2>&1 || bun install --frozen-lockfile" && echo "bun install ok"
   if [ "$DRY_RUN" != 1 ]; then
     # sandbox images for the recipes in use, built here (never --pull: the image id stays stable across deploys)
-    for r in ${LINEAGE_RECIPES//,/ }; do
+    for r in ${UNITS_RECIPES//,/ }; do
       y="$REL/recipes/$r/recipe.yml"
       [ -f "$y" ] || { echo "no recipe $r" >&2; exit 1; }
       ref=$(sed -n 's/^image:[[:space:]]*"\{0,1\}\([^"@[:space:]]*\)@sha256.*/\1/p' "$y")
@@ -356,7 +356,7 @@ install)
       fi
       echo "  $ref $(docker image inspect --format '{{.Id}}' "$ref" | cut -c1-19) $(docker image inspect --format '{{.Architecture}}' "$ref")"
     done
-    as_lineage "cd $REL && bun scripts/deploy/arch-recipes.ts $LINEAGE_RECIPES" | tail -n +1
+    as_lineage "cd $REL && bun scripts/deploy/arch-recipes.ts $UNITS_RECIPES" | tail -n +1
     # agent desktops (SPEC 17.7): the hosted runtime's desktop image, rebuilt only when images/desktop changed
     if [ "${WITH_RUNTIME:-0}" = 1 ]; then
       h=$(cd "$REL/images/desktop" && find . -type f -print0 | sort -z | xargs -0 sha256sum | sha256sum | cut -c1-64)
@@ -682,7 +682,7 @@ restore-test)
   chown lineage-core:lineage-core "$D/network.json"; chmod 600 "$D/network.json"
   T0=$(date +%s)
   systemd-run -q --unit units-restore-test --uid=lineage-core --gid=lineage-core -p UMask=0007 -p WorkingDirectory="$REL" \
-    -p Environment="HOME=$D LINEAGE_HOME=/home/lineage/.lineage BUN_RUNTIME_TRANSPILER_CACHE_PATH=0 GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=safe.directory GIT_CONFIG_VALUE_0=*" \
+    -p Environment="HOME=$D UNITS_HOME=/home/lineage/.lineage BUN_RUNTIME_TRANSPILER_CACHE_PATH=0 GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=safe.directory GIT_CONFIG_VALUE_0=*" \
     /usr/local/bin/bun packages/core/src/main.ts --data "$D/data" --port $PORT --host 127.0.0.1 --config "$D/network.json" \
       --admin-key /etc/lineage-core/admin.json --runtime-key /var/lib/lineage/site/runtime-authority.pub --canaries-dir "$D/no-canaries"
   ok=0; for i in $(seq 1 60); do curl -fsS -m 3 "http://127.0.0.1:$PORT/v1/health" >/dev/null 2>&1 && { ok=1; break; }; sleep 1; done

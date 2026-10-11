@@ -1,5 +1,5 @@
-import { signStatement, type AgentKey } from "@lineage/protocol";
-import { WORKER_VERSION } from "@lineage/sandbox";
+import { signStatement, type AgentKey } from "@units/protocol";
+import { WORKER_VERSION } from "@units/sandbox";
 import { HARNESS_DIGEST, PROPOSER_VERSION } from "../../worker/src/proposers/anthropic.ts";
 
 // Provenance records (identity plan I5, SPEC 17.2): the hosted runtime's signed statement of which

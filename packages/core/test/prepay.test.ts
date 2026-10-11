@@ -2,8 +2,8 @@
 // minimum are refused; an underfunded chain launch stays asleep in Core until its vault holds the
 // minimum; the launch transaction's deposit and refresh_awake are read from a legacy or v0 tx.
 import { afterEach, describe, expect, test } from "bun:test";
-import { addressBytes, ixDisc, LAUNCH_PROGRAM_ID, launchPdas, Rpc, type AgentLaunch } from "@lineage/chain";
-import { base58Encode, generateAgentKey } from "@lineage/protocol";
+import { addressBytes, ixDisc, LAUNCH_PROGRAM_ID, launchPdas, Rpc, type AgentLaunch } from "@units/chain";
+import { base58Encode, generateAgentKey } from "@units/protocol";
 import { prepayOf, readLaunchDeposit } from "../src/prepay.ts";
 import { bare, testConfig } from "./helpers.ts";
 

@@ -15,11 +15,11 @@ import { dirname, join } from "node:path";
 // Recipe ids: a substitution does NOT change the recipe file, so the recipe id stays the committed
 // one. That is meant for local tests and development only, and it is never silent: the log line
 // names both ids and the evidence records the local id as env.image_digest. Anything submitted to a
-// real Core must not run on a substitute: set LINEAGE_LOCAL_IMAGES=off there and re-pin with
+// real Core must not run on a substitute: set UNITS_LOCAL_IMAGES=off there and re-pin with
 // scripts/deploy/arch-recipes.ts, which writes the local id into the recipe and so gives it a new
 // recipe id (a different image is a different recipe).
 //
-// LINEAGE_LOCAL_IMAGES: path of the map file (default ~/.lineage/local-images.json, machine-wide
+// UNITS_LOCAL_IMAGES: path of the map file (default ~/.lineage/local-images.json, machine-wide
 // like the Docker daemon it describes, outside every repository), or "off" to disable substitution.
 
 export interface LocalImageEntry {
@@ -39,7 +39,7 @@ export interface LocalImageMap {
 }
 
 export function localImagesPath(env: Record<string, string | undefined> = process.env): string | null {
-  const v = env.LINEAGE_LOCAL_IMAGES?.trim();
+  const v = (env.UNITS_LOCAL_IMAGES ?? env.LINEAGE_LOCAL_IMAGES)?.trim();
   if (v && /^(off|0|false|no)$/i.test(v)) return null;
   return v || join(homedir(), ".lineage", "local-images.json");
 }
@@ -55,7 +55,7 @@ export function readLocalImageMap(path: string | null = localImagesPath()): Loca
 }
 
 export function writeLocalImageMap(map: LocalImageMap, path: string | null = localImagesPath()): void {
-  if (!path) throw new Error("LINEAGE_LOCAL_IMAGES is off; no local pin map to write");
+  if (!path) throw new Error("UNITS_LOCAL_IMAGES is off; no local pin map to write");
   mkdirSync(dirname(path), { recursive: true });
   writeFileSync(path, JSON.stringify(map, null, 2) + "\n");
 }

@@ -1,7 +1,7 @@
 import { cpus, totalmem } from "node:os";
-import type { Capabilities } from "@lineage/protocol";
+import type { Capabilities } from "@units/protocol";
 
-// `lineage-worker doctor`: what this machine can replay (SPEC 6.1). Capabilities are read from the
+// `units-worker doctor`: what this machine can replay (SPEC 6.1). Capabilities are read from the
 // Docker engine where possible (on macOS the sandboxes run in Docker Desktop's VM, whose CPU and
 // memory are what a replay actually gets), falling back to the host.
 

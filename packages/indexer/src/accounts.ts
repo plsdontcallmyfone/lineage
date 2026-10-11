@@ -1,4 +1,4 @@
-import { toAddress, type Address } from "@lineage/chain";
+import { toAddress, type Address } from "@units/chain";
 
 // Account readers the indexer needs beyond packages/chain (whose pump.ts decodes pump.fun's Global,
 // BondingCurve, Pool and fee configs): Token-2022 mints (supply, decimals, the metadata extension's

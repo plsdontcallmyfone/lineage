@@ -1,4 +1,4 @@
-import { generateAgentKey } from "@lineage/protocol";
+import { generateAgentKey } from "@units/protocol";
 import { newSoul, type SoulPersona, type SoulSeed } from "../src/doc.ts";
 
 // A hand-written TEST persona that passes the validator (not model output).

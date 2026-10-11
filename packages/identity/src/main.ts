@@ -20,15 +20,15 @@
 //                                      (docs/plans/GITHUB-GENESIS.md); --readme refreshes only the status
 //
 // Common flags and their environment fallbacks:
-//   --dir      LINEAGE_IDENTITY_DIR   store directory        (default /var/lib/lineage/identity)
-//   --key      LINEAGE_IDENTITY_KEY   32-byte key file       (default /etc/lineage-identity/master.key)
-//   --run-dir  LINEAGE_IDENTITY_RUN   materialised keys      (default /run/lineage-identity)
-//   --core     LINEAGE_CORE           Core base URL          (default http://127.0.0.1:9660)
-//   --site     LINEAGE_SITE_URL       public site base URL   (profile links, commit messages)
-//   --core-key LINEAGE_IDENTITY_CORE_KEY  Core runtime/admin key file (PR records)
-//   --since    LINEAGE_IDENTITY_SINCE unix seconds; launches before it are ignored (default: first start)
-//   --indexer  LINEAGE_INDEXER        market indexer base     (default http://127.0.0.1:9668; launch tx, symbol)
-//   --signer   LINEAGE_GENESIS_SIGNER hosted runtime base     (default http://127.0.0.1:9667; signs genesis proofs)
+//   --dir      UNITS_IDENTITY_DIR   store directory        (default /var/lib/lineage/identity)
+//   --key      UNITS_IDENTITY_KEY   32-byte key file       (default /etc/lineage-identity/master.key)
+//   --run-dir  UNITS_IDENTITY_RUN   materialised keys      (default /run/lineage-identity)
+//   --core     UNITS_CORE           Core base URL          (default http://127.0.0.1:9660)
+//   --site     UNITS_SITE_URL       public site base URL   (profile links, commit messages)
+//   --core-key UNITS_IDENTITY_CORE_KEY  Core runtime/admin key file (PR records)
+//   --since    UNITS_IDENTITY_SINCE unix seconds; launches before it are ignored (default: first start)
+//   --indexer  UNITS_INDEXER        market indexer base     (default http://127.0.0.1:9668; launch tx, symbol)
+//   --signer   UNITS_GENESIS_SIGNER hosted runtime base     (default http://127.0.0.1:9667; signs genesis proofs)
 // Tokens are never printed.
 
 import "../../protocol/src/env-alias.ts"; // first: UNITS_* and LINEAGE_* env names both readable (docs/plans/REBRAND-UNITS.md 3.3)
@@ -57,11 +57,11 @@ const arg = (n: string, env?: string, d?: string) => {
   return i >= 0 ? argv[i + 1] : (env && process.env[env]) || d;
 };
 const flag = (n: string) => argv.includes(`--${n}`);
-const DIR = arg("dir", "LINEAGE_IDENTITY_DIR", "/var/lib/lineage/identity")!;
-const KEY = arg("key", "LINEAGE_IDENTITY_KEY", "/etc/lineage-identity/master.key")!;
-const RUN = arg("run-dir", "LINEAGE_IDENTITY_RUN", "/run/lineage-identity")!;
-const CORE = arg("core", "LINEAGE_CORE", "http://127.0.0.1:9660")!.replace(/\/+$/, "");
-const SITE = arg("site", "LINEAGE_SITE_URL") ?? null;
+const DIR = arg("dir", "UNITS_IDENTITY_DIR", "/var/lib/lineage/identity")!;
+const KEY = arg("key", "UNITS_IDENTITY_KEY", "/etc/lineage-identity/master.key")!;
+const RUN = arg("run-dir", "UNITS_IDENTITY_RUN", "/run/lineage-identity")!;
+const CORE = arg("core", "UNITS_CORE", "http://127.0.0.1:9660")!.replace(/\/+$/, "");
+const SITE = arg("site", "UNITS_SITE_URL") ?? null;
 const log = safeLog(cmd === "cycle" ? "identity-cycle" : "identity");
 
 if (cmd === "init") {
@@ -88,7 +88,7 @@ if (cmd === "adopt") {
   }
 }
 const meta = store.get<{ since: number }>("meta", "watcher");
-const since = Number(arg("since", "LINEAGE_IDENTITY_SINCE") ?? meta?.since ?? Math.floor(Date.now() / 1000));
+const since = Number(arg("since", "UNITS_IDENTITY_SINCE") ?? meta?.since ?? Math.floor(Date.now() / 1000));
 if (!meta || meta.since !== since) store.put("meta", "watcher", { since });
 
 const rpcUrl = devnetRpcUrl();
@@ -103,18 +103,18 @@ async function soul(agent: string): Promise<SoulDoc | null> {
 const svc = new IdentityService({
   store, runDir: RUN, chain: { launches: () => reader.launches(), agentLaunch: (m) => reader.agentLaunch(m), agent: (a) => reader.agent(a) },
   soul, site: SITE, since, log,
-  soulWaitS: Number(process.env.LINEAGE_IDENTITY_SOUL_WAIT_S ?? 600),
+  soulWaitS: Number((process.env.UNITS_IDENTITY_SOUL_WAIT_S ?? process.env.LINEAGE_IDENTITY_SOUL_WAIT_S) ?? 600),
 });
 
 const net = loadNetworkProfile();
 const genesis = new GenesisRunner({
   svc, site: SITE, network: { name: net.network, explorer_cluster: net.explorer_cluster }, log,
-  sources: httpSources({ core: CORE, indexer: arg("indexer", "LINEAGE_INDEXER", "http://127.0.0.1:9668"), runtime: arg("signer", "LINEAGE_GENESIS_SIGNER", "http://127.0.0.1:9667"), log }),
+  sources: httpSources({ core: CORE, indexer: arg("indexer", "UNITS_INDEXER", "http://127.0.0.1:9668"), runtime: arg("signer", "UNITS_GENESIS_SIGNER", "http://127.0.0.1:9667"), log }),
 });
 svc.afterReady = (a) => genesis.run(a);
 
 function learningsPublisher(): LearningsPublisher {
-  const keyFile = arg("core-key", "LINEAGE_IDENTITY_CORE_KEY");
+  const keyFile = arg("core-key", "UNITS_IDENTITY_CORE_KEY");
   let post: ((path: string, body: unknown) => Promise<{ status: number; body: any }>) | null = null;
   if (keyFile) {
     const raw = JSON.parse(readFileSync(keyFile, "utf8"));
@@ -195,12 +195,12 @@ if (cmd === "reserve-add") {
     process.exit(1);
   }
 } else if (cmd === "cycle") {
-  const s = await cycleOnce({ svc, core: CORE, site: SITE ?? undefined, coreKeyFile: arg("core-key", "LINEAGE_IDENTITY_CORE_KEY") ?? null, dryRun: flag("dry-run"), force: flag("force"), log });
+  const s = await cycleOnce({ svc, core: CORE, site: SITE ?? undefined, coreKeyFile: arg("core-key", "UNITS_IDENTITY_CORE_KEY") ?? null, dryRun: flag("dry-run"), force: flag("force"), log });
   log(`cycle done: ${s.agents} agents, ${s.lineages.length} lineages built, ${s.skipped_unchanged} unchanged, ${s.published} published (${s.verified} verified), ${s.prs.filter((p) => p.action === "opened").length} PRs opened, ${s.rejected.length} rejected, GitHub records ${s.recorded} recorded + ${s.awaiting} awaiting publisher${s.publisher ? ` (publisher ${s.publisher})` : " (no publisher)"}, ${s.record_failures.length} not recorded${s.error ? `, error: ${s.error}` : ""}`);
   await runLearnings();
   process.exit(s.error ? 1 : 0);
 } else {
-  const port = Number(arg("port", "LINEAGE_IDENTITY_PORT", "9665"));
+  const port = Number(arg("port", "UNITS_IDENTITY_PORT", "9665"));
   const host = arg("host", undefined, "127.0.0.1")!;
   const interval = Number(arg("interval", undefined, "30")) * 1000;
   const h = handler(svc, log);

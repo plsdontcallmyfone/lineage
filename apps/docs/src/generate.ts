@@ -174,7 +174,7 @@ export function programIdsDoc(root: string): string {
   const names: Record<string, string> = { registry: "lineage_registry", launch: "lineage_launch", msg: "lineage_msg" };
   const nets = Object.keys(p.profiles);
   const out: string[] = [];
-  out.push(`The repository's default network is **${p.network}** (\`config/profile.json\` \`network\`; \`LINEAGE_NETWORK\` overrides it for one process).`, "");
+  out.push(`The repository's default network is **${p.network}** (\`config/profile.json\` \`network\`; \`UNITS_NETWORK\` overrides it for one process).`, "");
   out.push(`| Program | ${nets.join(" | ")} |`, `|---|${nets.map(() => "---").join("|")}|`);
   for (const k of Object.keys(names)) {
     out.push(`| \`${names[k]}\` | ${nets.map((n) => (p.profiles[n]!.programs[k] ? explorer(p.profiles[n]!.programs[k]!, p.profiles[n]!.explorer_cluster) : "TBA")).join(" | ")} |`);

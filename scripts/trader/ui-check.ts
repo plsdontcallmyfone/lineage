@@ -9,7 +9,7 @@ import { homedir } from "node:os";
 import { join } from "node:path";
 
 const arg = (n: string, d?: string) => (process.argv.includes(`--${n}`) ? process.argv[process.argv.indexOf(`--${n}`) + 1]! : d);
-const PW = arg("pw") ?? process.env.LINEAGE_PLAYWRIGHT;
+const PW = arg("pw") ?? (process.env.UNITS_PLAYWRIGHT ?? process.env.LINEAGE_PLAYWRIGHT);
 if (!PW) throw new Error("--pw <dir with node_modules/playwright-core> is required");
 const { chromium } = await import(join(PW, "node_modules", "playwright-core", "index.mjs"));
 const WEB = arg("web", "https://157-245-71-188.sslip.io")!.replace(/\/+$/, "");

@@ -7,7 +7,7 @@
 // Core verifies everything again on `PUT /v1/agents/:id/soul`, so a hook bug cannot publish a memory
 // the records do not support.
 
-import type { AgentKey } from "@lineage/protocol";
+import type { AgentKey } from "@units/protocol";
 import { checkSoul, foldMemory, memoryChanged, nextVersion, signSoul, soulDigest, type RecordsEpoch } from "./doc.ts";
 import { proposerSoulBlock } from "./prompt.ts";
 import type { SoulDoc } from "./schema.ts";

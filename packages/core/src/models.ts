@@ -4,7 +4,7 @@ import type { Core } from "./core.ts";
 import { bad } from "./errors.ts";
 import { checkRegistry, findModel, offerable, openrouterRoute, pickable, validChoice, type Availability, type ModelChoice, type ModelRegistry } from "./model-registry.ts";
 
-// Model registry in Core (plan M, SPEC 17.4). The seed is config/models.json (or LINEAGE_MODELS);
+// Model registry in Core (plan M, SPEC 17.4). The seed is config/models.json (or UNITS_MODELS);
 // the admin replaces it with POST /v1/admin/models and that stored version wins from then on. The
 // hosted runtime reports which providers have a key on its host (never a key) with
 // POST /v1/admin/models/availability; GET /v1/models serves the registry with a pickable flag per
@@ -46,7 +46,7 @@ export class Models {
   constructor(core: Core) {
     this.c = core as unknown as Internals;
     this.c.db.exec(SCHEMA);
-    const path = process.env.LINEAGE_MODELS ?? DEFAULT_MODELS_PATH;
+    const path = (process.env.UNITS_MODELS ?? process.env.LINEAGE_MODELS) ?? DEFAULT_MODELS_PATH;
     if (existsSync(path)) {
       const raw = JSON.parse(readFileSync(path, "utf8"));
       const errs = checkRegistry(raw);

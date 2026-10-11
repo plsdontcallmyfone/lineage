@@ -32,7 +32,7 @@ Engineering items, with their evidence:
 - [x] The A1-08 slash cap on the fork: default 7,500 bps from `initialize`, set to 2,500 through the vault (propose, 2 approvals, time lock, execute), one slash landed, the next in the same chain epoch refused whole (`SlashCap`)
 - [x] LiteSVM 69/69 against mainnet's pump.fun builds (dumps pinned by sha256, step 0 below)
 - [x] Every onchain admin action proven through a 2-of-3 Squads vault with a time lock, including a program upgrade
-- [x] The operator commands proven on the same fork after the rehearsal, under `LINEAGE_NETWORK=mainnet`: `propose.ts` proposed, approved (2 of 3), was refused before the time lock (6021) and executed a `registrySetSlashCap` 5,000 after it (proposal 13, read back 5,000); `initialize.ts init` re-ran on the initialized state and skipped every step (8 checks PASS, nothing sent) and `check` passed 7/7; under `LINEAGE_NETWORK=devnet` the same `check` refused (no program at the devnet registry id) (earlier, on the devnet-id run: a `msgSetConfig` through `propose.ts`, 16 checks PASS)
+- [x] The operator commands proven on the same fork after the rehearsal, under `UNITS_NETWORK=mainnet`: `propose.ts` proposed, approved (2 of 3), was refused before the time lock (6021) and executed a `registrySetSlashCap` 5,000 after it (proposal 13, read back 5,000); `initialize.ts init` re-ran on the initialized state and skipped every step (8 checks PASS, nothing sent) and `check` passed 7/7; under `UNITS_NETWORK=devnet` the same `check` refused (no program at the devnet registry id) (earlier, on the devnet-id run: a `msgSetConfig` through `propose.ts`, 16 checks PASS)
 - [ ] The rehearsal re-run on launch day (pump.fun upgrades its programs often: `vendor/pump/fetch.sh` fails its hash check when they did; rerun the suite and the rehearsal on the new builds)
 - [ ] Mainnet mode in the app and services (M3) and server hardening (M4)
 
@@ -102,14 +102,14 @@ The devnet id keypairs stay in `onchain/target/deploy/` (copies in `onchain/keys
 the active network profile's ids (`packages/chain/src/programs.ts`): devnet until a profile is
 applied, then the profile's `programs` (Core, the indexer, the runtime and the web server apply it at
 start with `applyNetworkProfile`; the wallet applies the page's `/chain/config` profile). The
-`scripts/mainnet` commands take the active profile too, so they run with `LINEAGE_NETWORK=mainnet`
+`scripts/mainnet` commands take the active profile too, so they run with `UNITS_NETWORK=mainnet`
 (set once in "Steps" below); `initialize.ts` and `propose.ts` print the ids they use, refuse a
 mainnet endpoint under any other profile, and refuse when the profile's programs are not deployed
 at the endpoint. No script names an id.
 
 The fork rehearsal deploys the `--features mainnet` builds (`onchain/target/mainnet`) at the mainnet
 ids with these keypairs, by the same write-buffer and deploy commands as step 3, on the local fork
-only (`fork.sh` no longer preloads any Lineage program). The keypairs signed nothing anywhere else.
+only (`fork.sh` no longer preloads any units program). The keypairs signed nothing anywhere else.
 
 ## Steps
 
@@ -121,7 +121,7 @@ set -a; . ~/.config/lineage/mainnet-rpc.env; set +a   # RPC=<keyed mainnet URL>,
 K=~/.config/lineage/mainnet                            # deployer.json, ms-create.json (mode 600)
 PARAMS=scripts/mainnet/launch-params.json              # copied from launch-params.example.json, every TBA filled
 FEE=--with-compute-unit-price=<owner's price>          # priority fee, TBA
-export LINEAGE_NETWORK=mainnet                         # scripts/mainnet take the program ids from the mainnet profile
+export UNITS_NETWORK=mainnet                         # scripts/mainnet take the program ids from the mainnet profile
 ```
 
 ### 0. Preflight (no mainnet transaction)
@@ -142,7 +142,7 @@ cd .. && bun test packages/chain
 # ports 9690-9693 and 9700-9730, checked free by fork.sh)
 mkdir -p -m 700 /tmp/lin-fork-keys
 scripts/mainnet/fork.sh /tmp/lin-fork-ledger > /tmp/lin-fork.log 2>&1 & echo $! > /tmp/lin-fork.pid
-LINEAGE_NETWORK=mainnet MAINNET_FORK_KEYS=/tmp/lin-fork-keys bun scripts/mainnet/rehearsal.ts   # must end PASS
+UNITS_NETWORK=mainnet MAINNET_FORK_KEYS=/tmp/lin-fork-keys bun scripts/mainnet/rehearsal.ts   # must end PASS
 kill "$(cat /tmp/lin-fork.pid)" && rm -rf /tmp/lin-fork-ledger   # by its PID, then delete the ledger
 bun scripts/mainnet/initialize.ts check --params $PARAMS --multisig 11111111111111111111111111111111 --rpc "$RPC" --mainnet 2>&1 | head -1   # refuses while any value is TBA
 solana balance -u "$RPC" -k $K/deployer.json                     # at least the MAINNET-COSTS.md peak plus priority fees

@@ -3,7 +3,7 @@ import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type Anthropic from "@anthropic-ai/sdk";
-import { loadRecipe } from "@lineage/sandbox";
+import { loadRecipe } from "@units/sandbox";
 import { AnthropicProposer, type ProposeContext } from "../src/index.ts";
 import { MAX_TURN_TOKENS, turnAllowance } from "../src/proposers/efficiency.ts";
 

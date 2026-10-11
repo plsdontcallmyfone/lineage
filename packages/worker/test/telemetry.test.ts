@@ -1,8 +1,8 @@
 import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
-import { sha256Hex, generateAgentKey } from "@lineage/protocol";
-import { loadRecipe, materialize, newWorkDir, removeTree, type DepsLayer } from "@lineage/sandbox";
+import { sha256Hex, generateAgentKey } from "@units/protocol";
+import { loadRecipe, materialize, newWorkDir, removeTree, type DepsLayer } from "@units/sandbox";
 import { CoreClient } from "../../core/src/client.ts";
 import { loadScript, ScriptedProposer, ToolBox, type ProposeContext } from "../src/index.ts";
 import { Telemetry, type ActivityInput } from "../src/telemetry.ts";

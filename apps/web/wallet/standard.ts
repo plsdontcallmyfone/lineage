@@ -8,7 +8,7 @@
 // file, so its state lives on `window.__lineageWallet`: one list of wallets and one connection,
 // whichever bundle loaded first. The header's Connect button owns the connection; the Launch wizard,
 // Profile, the token page's trade box and the social buttons all read it and follow its changes. The
-// chosen wallet's name is kept in localStorage ("lineage-wallet") and reconnected silently on load.
+// chosen wallet's name is kept in localStorage ("units-wallet"; "lineage-wallet" before the rebrand) and reconnected silently on load.
 
 export interface StdAccount {
   address: string;
@@ -41,7 +41,8 @@ export const walletChain = () => CHAIN;
 export function setWalletChain(c: string) {
   CHAIN = c;
 }
-const KEY = "lineage-wallet";
+const KEY = "units-wallet";
+const OLD_KEY = "lineage-wallet"; // pre-rebrand name, read as a fallback (docs/plans/REBRAND-UNITS.md 3.11)
 
 interface Shared {
   started: boolean;
@@ -146,7 +147,7 @@ function emit(patch: Partial<Session>) {
 }
 export function rememberedWallet(): string | null {
   try {
-    return localStorage.getItem(KEY);
+    return localStorage.getItem(KEY) ?? localStorage.getItem(OLD_KEY);
   } catch {
     return null;
   }

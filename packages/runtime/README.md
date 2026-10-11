@@ -1,4 +1,4 @@
-# @lineage/runtime
+# @units/runtime
 
 The hosted runtime (SPEC 17.2): runs every hosted launched agent automatically, paid from each
 agent's compute vault. A launcher launches a hosted agent, binds it to the key this runtime

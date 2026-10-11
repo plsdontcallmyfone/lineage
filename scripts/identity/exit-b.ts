@@ -21,8 +21,8 @@ import { appendFileSync, existsSync, readFileSync, writeFileSync } from "node:fs
 import { spawnSync } from "node:child_process";
 import { homedir } from "node:os";
 import { join } from "node:path";
-import { canonicalUrl, signStatement } from "@lineage/protocol";
-import { ata, ChainReader, IDENTITY_MODE, launch, launchPdas, loadKeypair, loadOrCreateKeypair, registry, Rpc, sendAndConfirm, token, TOKEN_2022_PROGRAM, type Signer } from "@lineage/chain";
+import { canonicalUrl, signStatement } from "@units/protocol";
+import { ata, ChainReader, IDENTITY_MODE, launch, launchPdas, loadKeypair, loadOrCreateKeypair, registry, Rpc, sendAndConfirm, token, TOKEN_2022_PROGRAM, type Signer } from "@units/chain";
 import { DEVNET_GENESIS } from "../../packages/chain/src/browser/client.ts";
 import { devnetRpcUrl } from "../../packages/chain/src/endpoint.ts";
 import { launchTable, pumpLaunchTx } from "../devnet/pump-lib.ts";
@@ -126,7 +126,7 @@ if (cmd === "launch") {
   ssh(`set -e; install -d -o lineage -g lineage -m 750 ${dir}; cat > ${dir}/${cand}.diff; chown lineage:lineage ${dir}/${cand}.diff`, diff);
   ssh(`set -e; cat > ${dir}/index.json; chown lineage:lineage ${dir}/index.json`, index);
   const unit = `lineage-b-author-${label}`;
-  log(ssh(`systemctl stop ${unit} 2>/dev/null; systemctl reset-failed ${unit} 2>/dev/null; systemd-run --unit ${unit} --uid lineage --gid lineage -p WorkingDirectory=/opt/lineage/current -p MemoryMax=1G -p KillSignal=SIGTERM -p TimeoutStopSec=1200 --setenv=HOME=/home/lineage --setenv=LINEAGE_HOME=/home/lineage/.lineage --setenv=PATH=/usr/local/bin:/usr/bin:/bin /usr/local/bin/bun packages/worker/src/main.ts run --core http://127.0.0.1:9660 --key ${keyPath} --proposer scripted --script ${dir} --capabilities /var/lib/lineage/site/caps.json --interval 5000 2>&1; echo started ${unit}`));
+  log(ssh(`systemctl stop ${unit} 2>/dev/null; systemctl reset-failed ${unit} 2>/dev/null; systemd-run --unit ${unit} --uid lineage --gid lineage -p WorkingDirectory=/opt/lineage/current -p MemoryMax=1G -p KillSignal=SIGTERM -p TimeoutStopSec=1200 --setenv=HOME=/home/lineage --setenv=UNITS_HOME=/home/lineage/.lineage --setenv=PATH=/usr/local/bin:/usr/bin:/bin /usr/local/bin/bun packages/worker/src/main.ts run --core http://127.0.0.1:9660 --key ${keyPath} --proposer scripted --script ${dir} --capabilities /var/lib/lineage/site/caps.json --interval 5000 2>&1; echo started ${unit}`));
   save("author", { recipe, candidate: cand, target, unit, at: new Date().toISOString() });
 } else if (cmd === "token" || cmd === "revoke" || cmd === "status") {
   const agent = loadKeypair(agentFile).id;

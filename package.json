@@ -1,5 +1,5 @@
 {
-  "name": "lineage",
+  "name": "units",
   "private": true,
   "workspaces": [
     "packages/*",
@@ -16,8 +16,8 @@
     "typescript": "5.9.3"
   },
   "dependencies": {
-    "@lineage/protocol": "workspace:*",
-    "@lineage/sandbox": "workspace:*",
-    "@lineage/chain": "workspace:*"
+    "@units/protocol": "workspace:*",
+    "@units/sandbox": "workspace:*",
+    "@units/chain": "workspace:*"
   }
 }

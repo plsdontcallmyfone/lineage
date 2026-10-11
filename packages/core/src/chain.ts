@@ -17,7 +17,7 @@ import {
   type LaunchConfig,
   type RegistryConfig,
   type Signer,
-} from "@lineage/chain";
+} from "@units/chain";
 import { bountiesOf } from "./bounties.ts";
 import { challengesOf } from "./challenges.ts";
 import { soulsOf } from "./souls.ts";

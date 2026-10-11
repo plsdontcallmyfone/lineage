@@ -3,7 +3,7 @@ import { spawnSync } from "node:child_process";
 import { mkdirSync, mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { generateAgentKey } from "@lineage/protocol";
+import { generateAgentKey } from "@units/protocol";
 import { sshKeygen } from "../../souls/src/github/provision.ts";
 import { LEARNINGS_MIN_INTERVAL_MS, LearningsPublisher, renderCard, renderLessons, type LearningsSources, type RepoReport } from "../src/learnings.ts";
 import { safeLog } from "../src/redact.ts";

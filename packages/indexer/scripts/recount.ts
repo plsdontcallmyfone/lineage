@@ -13,8 +13,8 @@
 import { writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { createHash } from "node:crypto";
-import { base58Decode, base58Encode } from "@lineage/protocol";
-import { devnetRpcUrl, redactRpc } from "@lineage/chain/src/endpoint.ts";
+import { base58Decode, base58Encode } from "@units/protocol";
+import { devnetRpcUrl, redactRpc } from "@units/chain/src/endpoint.ts";
 
 const argv = process.argv.slice(2);
 const api = argv.includes("--api") ? argv[argv.indexOf("--api") + 1]! : "http://127.0.0.1:9668";

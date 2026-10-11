@@ -1,5 +1,5 @@
-import { base58Decode } from "@lineage/protocol";
-import { ChainReader, ixDisc, LAUNCH_PROGRAM_ID, launchPdas, parsePrepayConfig, usdToBase, type AgentLaunch, type PrepayConfig, type Rpc } from "@lineage/chain";
+import { base58Decode } from "@units/protocol";
+import { ChainReader, ixDisc, LAUNCH_PROGRAM_ID, launchPdas, parsePrepayConfig, usdToBase, type AgentLaunch, type PrepayConfig, type Rpc } from "@units/chain";
 import type { Core } from "./core.ts";
 import { bad } from "./errors.ts";
 import { ACC } from "./ledger.ts";

@@ -2,7 +2,7 @@ import { afterAll, describe, expect, test } from "bun:test";
 import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { calibId, generateAgentKey, recipeId, sha256Hex, signMessage, signStatement, type AgentKey } from "@lineage/protocol";
+import { calibId, generateAgentKey, recipeId, sha256Hex, signMessage, signStatement, type AgentKey } from "@units/protocol";
 import { newSoul, signSoul } from "../../souls/src/doc.ts";
 import { persona, SEED } from "../../souls/test/fixtures.ts";
 import { FakeClock } from "../../core/src/clock.ts";

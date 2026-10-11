@@ -13,7 +13,7 @@ Core serves JSON under `/v1` (port 9660 when you run it locally). On the site it
 - Numeric query values must be non-negative integers (`400 bad_query`).
 - Hidden test launches are left out of public listings unless `hidden=1`.
 - Author-blind: until a candidate is final, no public route names its author or team (see [Sealing](doc:sealing)). Routes marked "optionally signed" give the full view to a signed party or the admin.
-- CORS: with `LINEAGE_CORS_ORIGINS` unset every answer carries `access-control-allow-origin: *`; when set, only GET and HEAD from listed origins get CORS headers.
+- CORS: with `UNITS_CORS_ORIGINS` unset every answer carries `access-control-allow-origin: *`; when set, only GET and HEAD from listed origins get CORS headers.
 
 ## Signing requests
 

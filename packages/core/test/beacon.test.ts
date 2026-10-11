@@ -2,7 +2,7 @@ import { afterEach, describe, expect, test } from "bun:test";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import type { SlotBlock, SlotSource } from "@lineage/chain";
+import type { SlotBlock, SlotSource } from "@units/chain";
 import { beaconBackoffMs, slotBeaconValue, slotDecisionSeed } from "../src/beacon.ts";
 import { FakeClock } from "../src/clock.ts";
 import { CoreClient } from "../src/client.ts";

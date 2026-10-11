@@ -22,7 +22,7 @@
 //   MAINNET_FORK_KEYS=<throwaway key dir> bun scripts/mainnet/pump-fork-proof.ts
 import { writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { base58Decode } from "@lineage/protocol";
+import { base58Decode } from "@units/protocol";
 import {
   addressBytes,
   ata,
@@ -51,7 +51,7 @@ import {
   type Ix,
   type PumpEvent,
   type Signer,
-} from "@lineage/chain";
+} from "@units/chain";
 import { airdrop, assertFork, check, checks, fork, forkKey, forkTable, log, refused, rows, send, sendV0, sol } from "./lib.ts";
 
 const T22 = TOKEN_2022_PROGRAM;
@@ -99,7 +99,7 @@ async function main() {
   const lineMint = forkKey(`pump-line-mint-${Date.now()}`);
   const L = lineMint.id;
   const r1 = await send("1", "$LINE stand-in: create_v2 SOL-paired", lineCreator,
-    [createV2({ mint: L, user: lineCreator.id, creator: lineCreator.id, name: "Lineage Fork", symbol: "LINE", uri: "https://example.invalid/line.json", quote: { kind: "sol" } })],
+    [createV2({ mint: L, user: lineCreator.id, creator: lineCreator.id, name: "units Fork", symbol: "LINE", uri: "https://example.invalid/line.json", quote: { kind: "sol" } })],
     { signers: [lineMint], computeUnits: 400_000 });
   const lc = await curveOf(L);
   check("$LINE curve: owner Pump, quote SOL (zero key), depth 0, not mayhem", lc.owner === PUMP.program && lc.c.quoteMint === "11111111111111111111111111111111"

@@ -10,8 +10,8 @@
 // Without --model: per provider with a key, its cheapest priced model.
 import { appendFileSync, existsSync, readFileSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
-import { canonicalizeDiff } from "@lineage/protocol";
-import { diffWorkingTree, loadRecipe, materialize, newWorkDir, prepareDeps, removeTree } from "@lineage/sandbox";
+import { canonicalizeDiff } from "@units/protocol";
+import { diffWorkingTree, loadRecipe, materialize, newWorkDir, prepareDeps, removeTree } from "@units/sandbox";
 import type { ModelChoice, ModelRegistry } from "../../packages/core/src/model-registry.ts";
 import { loadProviderKeys } from "../../packages/worker/src/proposers/providers.ts";
 import { RegistrySource, RoutedProposer } from "../../packages/runtime/src/providers.ts";

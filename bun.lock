@@ -5,9 +5,9 @@
     "": {
       "name": "lineage",
       "dependencies": {
-        "@lineage/chain": "workspace:*",
-        "@lineage/protocol": "workspace:*",
-        "@lineage/sandbox": "workspace:*",
+        "@units/chain": "workspace:*",
+        "@units/protocol": "workspace:*",
+        "@units/sandbox": "workspace:*",
       },
       "devDependencies": {
         "@playwright/test": "1.63.0",
@@ -16,15 +16,15 @@
       },
     },
     "apps/web": {
-      "name": "@lineage/web",
+      "name": "@units/web",
       "version": "0.1.0",
       "dependencies": {
-        "@lineage/souls": "workspace:*",
         "@privy-io/react-auth": "3.45.0",
         "@solana-program/memo": "0.15.0",
         "@solana-program/system": "0.15.0",
         "@solana-program/token": "0.17.0",
         "@solana/kit": "8.3.0",
+        "@units/souls": "workspace:*",
         "lightweight-charts": "5.2.0",
         "react": "19.2.8",
         "react-dom": "19.2.8",
@@ -35,119 +35,124 @@
       },
     },
     "packages/chain": {
-      "name": "@lineage/chain",
+      "name": "@units/chain",
       "version": "0.1.0",
       "dependencies": {
-        "@lineage/protocol": "workspace:*",
+        "@units/protocol": "workspace:*",
       },
     },
     "packages/core": {
-      "name": "@lineage/core",
+      "name": "@units/core",
       "version": "0.1.0",
       "dependencies": {
-        "@lineage/chain": "workspace:*",
-        "@lineage/souls": "workspace:*",
+        "@units/chain": "workspace:*",
+        "@units/souls": "workspace:*",
       },
     },
     "packages/desktop": {
-      "name": "@lineage/desktop",
+      "name": "@units/desktop",
       "version": "0.1.0",
       "dependencies": {
         "@e2b/desktop": "2.4.0",
       },
     },
     "packages/embed": {
-      "name": "@lineage/embed",
+      "name": "@units/embed",
       "version": "0.1.0",
     },
     "packages/identity": {
-      "name": "@lineage/identity",
+      "name": "@units/identity",
       "version": "0.1.0",
       "bin": {
+        "units-identity": "src/main.ts",
         "lineage-identity": "src/main.ts",
       },
       "dependencies": {
-        "@lineage/chain": "workspace:*",
-        "@lineage/mirror": "workspace:*",
-        "@lineage/protocol": "workspace:*",
-        "@lineage/souls": "workspace:*",
+        "@units/chain": "workspace:*",
+        "@units/mirror": "workspace:*",
+        "@units/protocol": "workspace:*",
+        "@units/souls": "workspace:*",
       },
     },
     "packages/indexer": {
-      "name": "@lineage/indexer",
+      "name": "@units/indexer",
       "version": "0.1.0",
       "dependencies": {
-        "@lineage/chain": "workspace:*",
-        "@lineage/protocol": "workspace:*",
+        "@units/chain": "workspace:*",
+        "@units/protocol": "workspace:*",
       },
     },
     "packages/mirror": {
-      "name": "@lineage/mirror",
+      "name": "@units/mirror",
       "version": "0.1.0",
       "bin": {
+        "units-mirror": "src/cli.ts",
         "lineage-mirror": "src/cli.ts",
       },
       "dependencies": {
-        "@lineage/protocol": "workspace:*",
-        "@lineage/souls": "workspace:*",
+        "@units/protocol": "workspace:*",
+        "@units/souls": "workspace:*",
       },
     },
     "packages/protocol": {
-      "name": "@lineage/protocol",
+      "name": "@units/protocol",
       "version": "0.1.0",
     },
     "packages/runtime": {
-      "name": "@lineage/runtime",
+      "name": "@units/runtime",
       "version": "0.1.0",
       "bin": {
+        "units-runtime": "src/main.ts",
         "lineage-runtime": "src/main.ts",
       },
       "dependencies": {
         "@anthropic-ai/sdk": "^0.132.0",
-        "@lineage/chain": "workspace:*",
-        "@lineage/protocol": "workspace:*",
-        "@lineage/sandbox": "workspace:*",
-        "@lineage/worker": "workspace:*",
+        "@units/chain": "workspace:*",
+        "@units/protocol": "workspace:*",
+        "@units/sandbox": "workspace:*",
+        "@units/worker": "workspace:*",
       },
     },
     "packages/sandbox": {
-      "name": "@lineage/sandbox",
+      "name": "@units/sandbox",
       "version": "0.1.0",
       "dependencies": {
-        "@lineage/protocol": "workspace:*",
+        "@units/protocol": "workspace:*",
       },
     },
     "packages/souls": {
-      "name": "@lineage/souls",
+      "name": "@units/souls",
       "version": "0.1.0",
       "bin": {
+        "units-souls": "src/cli.ts",
         "lineage-souls": "src/cli.ts",
       },
       "dependencies": {
         "@anthropic-ai/sdk": "^0.132.0",
-        "@lineage/protocol": "workspace:*",
+        "@units/protocol": "workspace:*",
       },
     },
     "packages/trader": {
-      "name": "@lineage/trader",
+      "name": "@units/trader",
       "version": "0.1.0",
       "dependencies": {
         "@anthropic-ai/sdk": "^0.132.0",
-        "@lineage/chain": "workspace:*",
-        "@lineage/protocol": "workspace:*",
+        "@units/chain": "workspace:*",
+        "@units/protocol": "workspace:*",
       },
     },
     "packages/worker": {
-      "name": "@lineage/worker",
+      "name": "@units/worker",
       "version": "0.1.0",
       "bin": {
+        "units-worker": "src/main.ts",
         "lineage-worker": "src/main.ts",
       },
       "dependencies": {
         "@anthropic-ai/sdk": "^0.132.0",
-        "@lineage/protocol": "workspace:*",
-        "@lineage/sandbox": "workspace:*",
-        "@lineage/souls": "workspace:*",
+        "@units/protocol": "workspace:*",
+        "@units/sandbox": "workspace:*",
+        "@units/souls": "workspace:*",
       },
     },
   },
@@ -219,34 +224,6 @@
     "@internationalized/string": ["@internationalized/string@3.2.10", "", { "dependencies": { "@swc/helpers": "^0.5.0" } }, "sha512-PDx6//vHSpRnHfxqMqto11zQvhsaU74O3mKv2F/0eicGZcl9NLjQmGlbHz/LsJh5tLKp4A4L7ZVTzN1/MmMTvA=="],
 
     "@isaacs/fs-minipass": ["@isaacs/fs-minipass@4.0.1", "", { "dependencies": { "minipass": "^7.0.4" } }, "sha512-wgm9Ehl2jpeqP3zw/7mo3kRHFp5MEDhqAdwy1fTGkHAwnkGOVsgpvQhL8B5n1qlb01jV3n/bI0ZfZp5lWA1k4w=="],
-
-    "@lineage/chain": ["@lineage/chain@workspace:packages/chain"],
-
-    "@lineage/core": ["@lineage/core@workspace:packages/core"],
-
-    "@lineage/desktop": ["@lineage/desktop@workspace:packages/desktop"],
-
-    "@lineage/embed": ["@lineage/embed@workspace:packages/embed"],
-
-    "@lineage/identity": ["@lineage/identity@workspace:packages/identity"],
-
-    "@lineage/indexer": ["@lineage/indexer@workspace:packages/indexer"],
-
-    "@lineage/mirror": ["@lineage/mirror@workspace:packages/mirror"],
-
-    "@lineage/protocol": ["@lineage/protocol@workspace:packages/protocol"],
-
-    "@lineage/runtime": ["@lineage/runtime@workspace:packages/runtime"],
-
-    "@lineage/sandbox": ["@lineage/sandbox@workspace:packages/sandbox"],
-
-    "@lineage/souls": ["@lineage/souls@workspace:packages/souls"],
-
-    "@lineage/trader": ["@lineage/trader@workspace:packages/trader"],
-
-    "@lineage/web": ["@lineage/web@workspace:apps/web"],
-
-    "@lineage/worker": ["@lineage/worker@workspace:packages/worker"],
 
     "@lit-labs/ssr-dom-shim": ["@lit-labs/ssr-dom-shim@1.6.0", "", {}, "sha512-VHb0ALPMTlgKjM6yIxxoQNnpKyUKLD04VzeQdsiXkMqkvYlAHxq9glGLmgbb889/1GsohSOAjvQYoiBppXFqrQ=="],
 
@@ -491,6 +468,34 @@
     "@types/react-dom": ["@types/react-dom@19.3.0", "", { "peerDependencies": { "@types/react": "^19.3.0" } }, "sha512-ZI7bU42mZXXKHn/qNLEw2IrbiINU7X5+vfgdixBHkCNpYWXjKgfQ/P+uyGb5CjOLB9UcnTeg3rylQtV2hym44Q=="],
 
     "@types/trusted-types": ["@types/trusted-types@2.0.7", "", {}, "sha512-ScaPdn1dQczgbl0QFTeTOmVHFULt394XJgOQNoyVhZ6r2vLnMLJfBPd53SB52T/3G36VI1/g2MZaX0cwDuXsfw=="],
+
+    "@units/chain": ["@units/chain@workspace:packages/chain"],
+
+    "@units/core": ["@units/core@workspace:packages/core"],
+
+    "@units/desktop": ["@units/desktop@workspace:packages/desktop"],
+
+    "@units/embed": ["@units/embed@workspace:packages/embed"],
+
+    "@units/identity": ["@units/identity@workspace:packages/identity"],
+
+    "@units/indexer": ["@units/indexer@workspace:packages/indexer"],
+
+    "@units/mirror": ["@units/mirror@workspace:packages/mirror"],
+
+    "@units/protocol": ["@units/protocol@workspace:packages/protocol"],
+
+    "@units/runtime": ["@units/runtime@workspace:packages/runtime"],
+
+    "@units/sandbox": ["@units/sandbox@workspace:packages/sandbox"],
+
+    "@units/souls": ["@units/souls@workspace:packages/souls"],
+
+    "@units/trader": ["@units/trader@workspace:packages/trader"],
+
+    "@units/web": ["@units/web@workspace:apps/web"],
+
+    "@units/worker": ["@units/worker@workspace:packages/worker"],
 
     "@wagmi/connectors": ["@wagmi/connectors@6.2.0", "", { "dependencies": { "@base-org/account": "2.4.0", "@coinbase/wallet-sdk": "4.3.6", "@gemini-wallet/core": "0.3.2", "@metamask/sdk": "0.33.1", "@safe-global/safe-apps-provider": "0.18.6", "@safe-global/safe-apps-sdk": "9.1.0", "@walletconnect/ethereum-provider": "2.21.1", "cbw-sdk": "npm:@coinbase/wallet-sdk@3.9.3", "porto": "0.2.35" }, "peerDependencies": { "@wagmi/core": "2.22.1", "typescript": ">=5.0.4", "viem": "2.x" }, "optionalPeers": ["typescript"] }, "sha512-2NfkbqhNWdjfibb4abRMrn7u6rPjEGolMfApXss6HCDVt9AW2oVC6k8Q5FouzpJezElxLJSagWz9FW1zaRlanA=="],
 

@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, test } from "bun:test";
-import { newSoul, nextVersion, signSoul, type SoulDoc } from "@lineage/souls/doc";
+import { newSoul, nextVersion, signSoul, type SoulDoc } from "@units/souls/doc";
 import { persona, SEED } from "../../souls/test/fixtures.ts";
 import { messageEnvelope } from "../src/messages.ts";
 import { generateAgentKey, sha256Hex, signStatement, type AgentKey } from "../src/protocol.ts";

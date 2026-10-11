@@ -18,8 +18,8 @@
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
-import { base58Encode, canonicalUrl } from "@lineage/protocol";
-import { loadRecipe, prepareDeps } from "@lineage/sandbox";
+import { base58Encode, canonicalUrl } from "@units/protocol";
+import { loadRecipe, prepareDeps } from "@units/sandbox";
 import {
   ata,
   compileMessage,

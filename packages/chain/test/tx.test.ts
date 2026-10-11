@@ -3,7 +3,7 @@ import { createPrivateKey, createPublicKey, verify } from "node:crypto";
 import { mkdtempSync, readFileSync, statSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { base58Decode, base58Encode, type AgentKey } from "@lineage/protocol";
+import { base58Decode, base58Encode, type AgentKey } from "@units/protocol";
 import {
   buildTransaction,
   computeBudget,

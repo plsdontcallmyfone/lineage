@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Lineage site: Core snapshots (plan M4). Runs on the server as lineage-core (units-backup.timer, hourly)
+# units site: Core snapshots (plan M4). Runs on the server as lineage-core (units-backup.timer, hourly)
 # and, for `verify` and `extract`, also on the owner's machine after deploy.sh pulls a snapshot.
 #
 #   backup.sh snapshot [--data /var/lib/lineage/core] [--out /var/lib/lineage/core-backups] [--keep 24]

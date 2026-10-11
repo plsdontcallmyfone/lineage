@@ -10,7 +10,7 @@
 import { spawn, spawnSync, type Subprocess } from "bun";
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { generateAgentKey, type AgentKey } from "@lineage/protocol";
+import { generateAgentKey, type AgentKey } from "@units/protocol";
 import { CoreClient } from "../../packages/core/src/client.ts";
 
 const ROOT = join(import.meta.dir, "../..");
@@ -40,8 +40,8 @@ if (spawnSync(["lsof", "-ti", `:${PORT}`]).stdout.toString().trim()) {
 const tmp = mkdtempSync(join(process.platform === "darwin" ? "/private/tmp" : "/tmp", "lineage-w9b-"));
 // every machine here starts cold, the host side (reference runner, author) included: nothing is shared
 // through a cache, so the containers' dependency layers must agree with the host's by content
-process.env.LINEAGE_HOME = join(tmp, "home-host");
-const { loadRecipe, prepareDeps } = await import("@lineage/sandbox");
+process.env.UNITS_HOME = join(tmp, "home-host");
+const { loadRecipe, prepareDeps } = await import("@units/sandbox");
 const { loadScript, ScriptedProposer, Worker } = await import("../../packages/worker/src/index.ts");
 const net = JSON.parse(readFileSync(join(ROOT, "config/network.json"), "utf8"));
 Object.assign(net, { canary_rate: 0, audit_rate: 0, epoch_length_s: 86400, qualify_retry_s: 30 });
@@ -64,7 +64,7 @@ function docker(args: string[], what: string): string {
   return p.stdout.toString().trim();
 }
 
-/** The image's CLI as a one-off container (key read-only, same LINEAGE_HOME path inside and out). */
+/** The image's CLI as a one-off container (key read-only, same UNITS_HOME path inside and out). */
 function cli(name: string, args: string[]) {
   return docker(["run", "--rm", ...(LINUX ? ["--network", "host"] : []), "-v", `${paths[name as keyof typeof paths]}:/keys/agent.json:ro`, IMAGE, ...args], `${name} ${args[0]}`);
 }
@@ -76,7 +76,7 @@ function startContainer(name: "v1" | "v2") {
   docker([
     "run", "-d", "--name", cname, "--stop-timeout", "600", ...(LINUX ? ["--network", "host"] : []),
     "-v", "/var/run/docker.sock:/var/run/docker.sock",
-    "-v", `${home}:${home}`, "-e", `LINEAGE_HOME=${home}`,
+    "-v", `${home}:${home}`, "-e", `UNITS_HOME=${home}`,
     "-v", `${paths[name]}:/keys/agent.json:ro`,
     IMAGE, "run", "--core", CORE_IN, "--key", "/keys/agent.json", "--interval", "1000",
   ], `start ${name}`);
@@ -109,7 +109,7 @@ async function main() {
   const img = docker(["image", "inspect", "--format", "{{.Id}} {{.Architecture}}", IMAGE], "image");
   log(`image ${IMAGE} ${img}`);
   const help = spawnSync(["docker", "run", "--rm", IMAGE, "--help"]);
-  check("the image prints its usage", help.exitCode === 0 && help.stdout.toString().includes("lineage-worker CLI"));
+  check("the image prints its usage", help.exitCode === 0 && help.stdout.toString().includes("units-worker CLI"));
   const doc = JSON.parse(cli("v1", ["doctor"]));
   check("doctor inside the container sees the host daemon's architecture", doc.arch === (process.arch === "arm64" ? "arm64" : "amd64"), JSON.stringify(doc));
 

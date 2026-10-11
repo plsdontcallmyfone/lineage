@@ -11,7 +11,7 @@
 //        [--line 1000] [--sol 0.5]
 import { homedir } from "node:os";
 import { join } from "node:path";
-import { ata, loadKeypair, Rpc, sendAndConfirm, system, token, TOKEN_2022_PROGRAM } from "@lineage/chain";
+import { ata, loadKeypair, Rpc, sendAndConfirm, system, token, TOKEN_2022_PROGRAM } from "@units/chain";
 import { devnetRpcUrl } from "../../packages/chain/src/endpoint.ts";
 import { assertDevnet } from "../../packages/chain/src/browser/client.ts";
 import { ALLOCATION_MEMO, memoIx } from "../../packages/trader/src/funding.ts";

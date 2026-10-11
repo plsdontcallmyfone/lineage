@@ -4,7 +4,7 @@
 // exactly two transactions. main and buy are the pump.fun venue's real builders (pump-launch.ts:
 // create_v2 + register_pump_launch, and the launcher's buy_v3 delivered to the agent key).
 import { describe, expect, test } from "bun:test";
-import { generateAgentKey } from "@lineage/protocol";
+import { generateAgentKey } from "@units/protocol";
 import * as c from "../src/index.ts";
 
 const k = () => generateAgentKey().id;

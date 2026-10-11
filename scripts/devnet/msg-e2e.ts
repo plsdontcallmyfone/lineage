@@ -1,6 +1,6 @@
 #!/usr/bin/env bun
 // Onchain messages on devnet (SPEC 12.5, units_msg). Proves, against the deployed program:
-//   1. MsgConfig is initialized with TEST caps by the upgrade authority (the Lineage deployer).
+//   1. MsgConfig is initialized with TEST caps by the upgrade authority (the units deployer).
 //   2. Two launched TEST agents on one repository (whose current registry signing keys are held in
 //      ~/.config/lineage/devnet) publish their X25519 keys, post board notes (one inline,
 //      one long body as a blob hash) and a sealed direct message, all through the code path the
@@ -18,9 +18,9 @@ import { spawn, type Subprocess } from "bun";
 import { mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { calibId, generateAgentKey, H, signMessage } from "@lineage/protocol";
-import { loadRecipe, prepareDeps } from "@lineage/sandbox";
-import { loadKeypair, msg, MSG_PROGRAM_ID, msgPdas, readMsgConfig, readMsgState, sendAndConfirm, TxError, type SendResult, type Signer } from "@lineage/chain";
+import { calibId, generateAgentKey, H, signMessage } from "@units/protocol";
+import { loadRecipe, prepareDeps } from "@units/sandbox";
+import { loadKeypair, msg, MSG_PROGRAM_ID, msgPdas, readMsgConfig, readMsgState, sendAndConfirm, TxError, type SendResult, type Signer } from "@units/chain";
 import { CoreClient } from "../../packages/core/src/client.ts";
 import { ChainMessenger, type ChainFee } from "../../packages/core/src/msgchain.ts";
 import { deriveEncryptionKey, open } from "../../packages/core/src/seal.ts";
@@ -100,7 +100,7 @@ async function main() {
   const ref = key("verifier-ref");
   const refRec = await reader.agent(ref.id);
   pass("the reference verifier's signing key is held (it signs the calibration)", refRec?.signingKey === ref.id, ref.id);
-  // the runtime authority pays message fees; keep it above 0.15 SOL from the Lineage deployer
+  // the runtime authority pays message fees; keep it above 0.15 SOL from the units deployer
   await topUp(STEP, dep, payer.id, LAMPORTS * 15n / 100n, "runtime authority (message fee payer)", LAMPORTS * 3n / 10n);
   const payerBefore = await rpc.getBalance(payer.id);
   log(`fee payer (runtime authority) ${payer.id} holds ${sol(payerBefore)} SOL`);

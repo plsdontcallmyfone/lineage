@@ -1,28 +1,28 @@
-// <lineage-device>: an original drawing of a beige all-in-one desktop computer in the classic style,
+// <units-device>: an original drawing of a beige all-in-one desktop computer in the classic style,
 // in CSS only (no images, no marks or logos), with a screen slot any content can be mounted into.
-// The live agent panel mounts on its screen; any other element (e.g. <lineage-terminal>) can go there too.
+// The live agent panel mounts on its screen; any other element (e.g. <units-terminal>) can go there too.
 //
-//   <lineage-device label="Lineage" keyboard lights="6">
-//     <lineage-terminal frame="crt" height="372"></lineage-terminal>   <!-- slotted onto the screen -->
-//   </lineage-device>
+//   <units-device label="units" keyboard lights="6">
+//     <units-terminal frame="crt" height="372"></units-terminal>   <!-- slotted onto the screen -->
+//   </units-device>
 //
 //   const d = mountDevice(el, { screen: myNode, keyboard: true });   // or { screen: "<p>html</p>" }
 //   mountPanel(d.screen, ...);                                        // d.screen is a light-DOM div on the screen
 //   d.setLights([true, true, false]);
 //
-// Attributes: `label` (the moulded name under the screen; default "Lineage"; empty for none),
+// Attributes: `label` (the moulded name under the screen; default "units"; empty for none),
 // `keyboard` (draw a keyboard in front), `lights` (number of indicator lights under the screen, 0 to 8,
 // default 6), `glass` crt (scanlines and curvature, default) or clear (no overlay, for dense content),
 // `screen-height` (px; otherwise the screen is as tall as its content).
-// Theming (custom properties on the element or an ancestor): --lineage-device-case,
-// --lineage-device-case-hi, --lineage-device-case-lo, --lineage-device-ink, --lineage-device-tube-bg,
-// --lineage-device-glow, --lineage-device-label-font. Parts: case, screen, chin, label, lights, light,
+// Theming (custom properties on the element or an ancestor): --units-device-case,
+// --units-device-case-hi, --units-device-case-lo, --units-device-ink, --units-device-tube-bg,
+// --units-device-glow, --units-device-label-font. Parts: case, screen, chin, label, lights, light,
 // drive, base, keyboard. Content on the screen keeps the page's styles (it is slotted, light DOM).
 
 const CSS = `
 :host { display: block; position: relative; container-type: inline-size; min-width: 0;
-  --c: var(--lineage-device-case, #d8d0bf); --hi: var(--lineage-device-case-hi, #ece6d8); --lo: var(--lineage-device-case-lo, #b4aa94);
-  --ink: var(--lineage-device-ink, #6d6453); --tube-bg: var(--lineage-device-tube-bg, #061008); --glow: var(--lineage-device-glow, #95eaa8); }
+  --c: var(--units-device-case, var(--lineage-device-case, #d8d0bf)); --hi: var(--units-device-case-hi, var(--lineage-device-case-hi, #ece6d8)); --lo: var(--units-device-case-lo, var(--lineage-device-case-lo, #b4aa94));
+  --ink: var(--units-device-ink, var(--lineage-device-ink, #6d6453)); --tube-bg: var(--units-device-tube-bg, var(--lineage-device-tube-bg, #061008)); --glow: var(--units-device-glow, var(--lineage-device-glow, #95eaa8)); }
 :host([hidden]) { display: none; }
 * { box-sizing: border-box; }
 .dev { position: relative; display: flex; flex-direction: column; align-items: center; }
@@ -46,7 +46,7 @@ const CSS = `
 :host([glass="clear"]) .glass { padding: 0; }
 :host([glass="clear"]) .glass::before, :host([glass="clear"]) .glass::after { display: none; }
 .chin { display: flex; align-items: center; gap: 14px; padding: 3.6cqi 1cqi 3.2cqi; min-height: 64px; }
-.label { font-family: var(--lineage-device-label-font, "Instrument Serif", "Iowan Old Style", Georgia, serif); font-style: italic; font-size: 21px; line-height: 1; color: var(--ink);
+.label { font-family: var(--units-device-label-font, var(--lineage-device-label-font, "Instrument Serif", "Iowan Old Style", Georgia, serif)); font-style: italic; font-size: 21px; line-height: 1; color: var(--ink);
   text-shadow: 0 1px 0 rgba(255,255,255,.75), 0 -1px 0 rgba(0,0,0,.12); white-space: nowrap; }
 .label:empty { display: none; }
 .lights { display: inline-flex; gap: 5px; padding: 5px 7px; border-radius: 5px; background: rgba(0,0,0,.09); box-shadow: inset 0 1px 2px rgba(0,0,0,.25), 0 1px 0 rgba(255,255,255,.55); }
@@ -86,7 +86,7 @@ const clampLights = (v: string | null) => {
   return Number.isFinite(n) ? Math.max(0, Math.min(8, n)) : 6;
 };
 
-export class LineageDevice extends HTMLElement {
+export class UnitsDevice extends HTMLElement {
   static observedAttributes = ["label", "lights", "screen-height"];
   private root: ShadowRoot | null = null;
   private lit: boolean[] = [];
@@ -120,7 +120,7 @@ export class LineageDevice extends HTMLElement {
   private sync() {
     const r = this.root!;
     const label = this.getAttribute("label");
-    r.querySelector(".label")!.textContent = label === null ? "Lineage" : label;
+    r.querySelector(".label")!.textContent = label === null ? "units" : label;
     const n = clampLights(this.getAttribute("lights"));
     const box = r.querySelector<HTMLElement>(".lights")!;
     if (box.children.length !== n) box.innerHTML = `<i part="light"></i>`.repeat(n);
@@ -155,7 +155,7 @@ export interface DeviceOptions {
 }
 
 export interface DeviceHandle {
-  device: LineageDevice;
+  device: UnitsDevice;
   /** a light-DOM div on the device's screen: mount anything into it (it keeps the page's styles) */
   screen: HTMLElement;
   setLights(on: boolean[]): void;
@@ -164,15 +164,15 @@ export interface DeviceHandle {
 
 /** Draws a device inside `el` and puts `opts.screen` on its screen. */
 export function mountDevice(el: HTMLElement, opts: DeviceOptions = {}): DeviceHandle {
-  if (!customElements.get("lineage-device")) customElements.define("lineage-device", LineageDevice);
-  const device = document.createElement("lineage-device") as LineageDevice;
+  if (!customElements.get("units-device")) customElements.define("units-device", UnitsDevice);
+  const device = document.createElement("units-device") as UnitsDevice;
   if (opts.label !== undefined) device.setAttribute("label", opts.label);
   if (opts.keyboard) device.setAttribute("keyboard", "");
   if (opts.lights !== undefined) device.setAttribute("lights", String(opts.lights));
   if (opts.glass) device.setAttribute("glass", opts.glass);
   if (opts.screenHeight) device.setAttribute("screen-height", String(opts.screenHeight));
   const screen = document.createElement("div");
-  screen.className = "lineage-device-screen";
+  screen.className = "units-device-screen";
   if (typeof opts.screen === "string") screen.innerHTML = opts.screen;
   else if (opts.screen) screen.appendChild(opts.screen);
   device.appendChild(screen);
@@ -180,4 +180,4 @@ export function mountDevice(el: HTMLElement, opts: DeviceOptions = {}): DeviceHa
   return { device, screen, setLights: (on) => device.setLights(on), destroy: () => device.remove() };
 }
 
-export const DEVICE_ELEMENTS: [string, CustomElementConstructor][] = [["lineage-device", LineageDevice]];
+export const DEVICE_ELEMENTS: [string, CustomElementConstructor][] = [["units-device", UnitsDevice]];

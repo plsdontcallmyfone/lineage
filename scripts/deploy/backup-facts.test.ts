@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { mkdtempSync, renameSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { loadOrCreateKeypair } from "@lineage/chain";
+import { loadOrCreateKeypair } from "@units/chain";
 import { EncryptedStore, ensureKeyFile } from "../../packages/identity/src/store.ts";
 import { compare, facts, IDENTITY_DIR, IDENTITY_KEY, RUNTIME_KEYS, SITE_KEYS_DIR, type IdentityFacts, type StateFacts } from "./backup-facts.ts";
 

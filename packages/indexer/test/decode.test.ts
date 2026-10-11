@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
-import { base58Encode } from "@lineage/protocol";
-import { PUMP, pumpPdas } from "@lineage/chain";
+import { base58Encode } from "@units/protocol";
+import { PUMP, pumpPdas } from "@units/chain";
 import { accountKeys, decodeTx, tokenDeltas, type RawTx } from "../src/decode.ts";
 import { A1, A2, ctxOf, feesCranked, FX, LINE, pumpGraduated, pumpLaunched, tx, withLog } from "./pumpfx.ts";
 

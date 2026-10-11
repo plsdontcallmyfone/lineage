@@ -1,5 +1,5 @@
 #!/usr/bin/env bun
-// Lineage site: registers the site's verifiers on devnet (units_registry register + bond), owned
+// units site: registers the site's verifiers on devnet (units_registry register + bond), owned
 // by the site's own owner key, with the capabilities digest of this machine (caps.json). Runs on the
 // server as the `lineage` user. Idempotent: an agent already registered is not registered again,
 // a bond already at min_bond is not topped up, and a changed caps.json sends update_agent.
@@ -13,8 +13,8 @@
 import { appendFileSync, readFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
-import { canonicalJson, H } from "@lineage/protocol";
-import { ata, ChainReader, loadKeypair, registry, Rpc, sendAndConfirm, TOKEN_2022_PROGRAM, type Ix, type Signer } from "@lineage/chain";
+import { canonicalJson, H } from "@units/protocol";
+import { ata, ChainReader, loadKeypair, registry, Rpc, sendAndConfirm, TOKEN_2022_PROGRAM, type Ix, type Signer } from "@units/chain";
 import { devnetRpcUrl } from "../../packages/chain/src/endpoint.ts";
 
 const ROOT = join(import.meta.dir, "..", "..");

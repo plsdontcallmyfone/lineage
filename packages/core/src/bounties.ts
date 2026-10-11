@@ -1,4 +1,4 @@
-import type { BountyAccount } from "@lineage/chain";
+import type { BountyAccount } from "@units/chain";
 import type { Core } from "./core.ts";
 import { ApiError, notFound } from "./errors.ts";
 import { canonicalJson, hashJson, merkleProof } from "./protocol.ts";

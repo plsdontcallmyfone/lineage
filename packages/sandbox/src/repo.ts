@@ -1,14 +1,14 @@
 import { cpSync, existsSync, mkdirSync, mkdtempSync, readdirSync, rmSync, writeFileSync, chmodSync } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, join, resolve } from "node:path";
-import { canonicalUrl, sha256Hex } from "@lineage/protocol";
+import { canonicalUrl, sha256Hex } from "@units/protocol";
 import { containerUser } from "./docker.ts";
 import { copyConfined } from "./fsafe.ts";
 
 // Snapshot trees: a bare mirror per repo, then a fresh tree per evaluation (snapshot commit +
 // overlay + parent patch series + candidate patch).
 
-export const LINEAGE_HOME = process.env.LINEAGE_HOME ?? join(homedir(), ".lineage");
+export const UNITS_HOME = (process.env.UNITS_HOME ?? process.env.LINEAGE_HOME) ?? join(homedir(), ".lineage");
 const REPO_ROOT = resolve(import.meta.dir, "../../..");
 
 function git(cwd: string, args: string[], env: Record<string, string> = {}): { ok: boolean; out: string; err: string } {
@@ -40,16 +40,16 @@ const FIXED = {
 function ensureFixture(name: string): string {
   const src = join(REPO_ROOT, "fixtures", name);
   if (!existsSync(src)) throw new Error(`unknown fixture ${name}`);
-  const bare = join(LINEAGE_HOME, "fixtures", `${name}.git`);
+  const bare = join(UNITS_HOME, "fixtures", `${name}.git`);
   if (existsSync(bare)) return bare;
-  const work = mkdtempSync(join(LINEAGE_HOME, "tmp-fixture-"));
+  const work = mkdtempSync(join(UNITS_HOME, "tmp-fixture-"));
   try {
     cpSync(src, work, { recursive: true });
     must(git(work, ["init", "-q", "-b", "main"]), "fixture init");
     must(git(work, ["add", "-A"]), "fixture add");
     must(git(work, ["commit", "-q", "-m", `fixture ${name}`], FIXED), "fixture commit");
     mkdirSync(dirname(bare), { recursive: true });
-    must(git(LINEAGE_HOME, ["clone", "-q", "--bare", work, bare]), "fixture bare clone");
+    must(git(UNITS_HOME, ["clone", "-q", "--bare", work, bare]), "fixture bare clone");
   } finally {
     rmSync(work, { recursive: true, force: true });
   }
@@ -57,7 +57,7 @@ function ensureFixture(name: string): string {
 }
 
 function mirrorDir(url: string): string {
-  return join(LINEAGE_HOME, "mirrors", sha256Hex(canonicalUrl(url)).slice(0, 24) + ".git");
+  return join(UNITS_HOME, "mirrors", sha256Hex(canonicalUrl(url)).slice(0, 24) + ".git");
 }
 
 /**
@@ -69,7 +69,7 @@ function mirrorDir(url: string): string {
 function shallowMirror(url: string, commit: string, dir: string): boolean {
   mkdirSync(dirname(dir), { recursive: true });
   const ok =
-    git(LINEAGE_HOME, ["init", "-q", "--bare", dir]).ok &&
+    git(UNITS_HOME, ["init", "-q", "--bare", dir]).ok &&
     git(dir, ["remote", "add", "origin", url]).ok &&
     git(dir, ["fetch", "-q", "--depth", "1", "origin", commit]).ok &&
     git(dir, ["cat-file", "-e", `${commit}^{commit}`]).ok;
@@ -82,7 +82,7 @@ export function mirrorPath(url: string): string {
   const dir = mirrorDir(url);
   if (!existsSync(dir)) {
     mkdirSync(dirname(dir), { recursive: true });
-    must(git(LINEAGE_HOME, ["clone", "-q", "--mirror", url, dir]), `mirror ${url}`);
+    must(git(UNITS_HOME, ["clone", "-q", "--mirror", url, dir]), `mirror ${url}`);
   }
   return dir;
 }
@@ -113,7 +113,7 @@ export function commitTime(url: string, commit: string): number {
 }
 
 export function newWorkDir(prefix: string): string {
-  const base = join(LINEAGE_HOME, "work");
+  const base = join(UNITS_HOME, "work");
   mkdirSync(base, { recursive: true });
   return mkdtempSync(join(base, `${prefix}-`));
 }

@@ -17,7 +17,7 @@ import {
   TOKEN_2022_PROGRAM,
   TxError,
   type Signer,
-} from "@lineage/chain";
+} from "@units/chain";
 import { DEVNET_GENESIS } from "../../../packages/chain/src/browser/client.ts";
 
 export interface FaucetOptions {

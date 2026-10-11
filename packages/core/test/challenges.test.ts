@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, test } from "bun:test";
-import { CHALLENGE_KIND, registryPdas, type Ix } from "@lineage/chain";
+import { CHALLENGE_KIND, registryPdas, type Ix } from "@units/chain";
 import { challengeId, challengesOf, slashIdOf } from "../src/challenges.ts";
 import { slashId } from "../src/chain.ts";
 import { replicate } from "../src/replica.ts";

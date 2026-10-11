@@ -32,7 +32,7 @@ export const CONSOLE_ALLOW: RegExp[] = [/net::ERR_BLOCKED_BY_CLIENT/, /status of
 
 /**
  * Third-party POSTs that pass the write guard: matched by exact host, then by path prefix on that host
- * (no wildcard hosts). They write nothing to Lineage: they are the Privy login island's own traffic
+ * (no wildcard hosts). They write nothing to units: they are the Privy login island's own traffic
  * (apps/web/privy/main.tsx) once Connect opens Privy's modal. Keep each with its reason; any other POST
  * to a third-party host, or another path on these hosts (a Privy login or session call), fails the test.
  *  - auth.privy.io /api/v1/analytics_events: Privy SDK's analytics events, sent when the island mounts

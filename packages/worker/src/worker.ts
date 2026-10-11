@@ -24,8 +24,8 @@ import {
   type CandidateView,
   type Recipe,
   type ReplayResult,
-} from "@lineage/protocol";
-import { applyPatch, calibrate, diffWorkingTree, evaluate, materialize, newWorkDir, removeTree, WORKER_VERSION, type Transcript } from "@lineage/sandbox";
+} from "@units/protocol";
+import { applyPatch, calibrate, diffWorkingTree, evaluate, materialize, newWorkDir, removeTree, WORKER_VERSION, type Transcript } from "@units/sandbox";
 import { CoreClient } from "../../core/src/client.ts";
 import { teamStatement, type TeamMember } from "../../core/src/collab.ts";
 import { encryptionKeyStatement, intentNote, messageEnvelope } from "../../core/src/messages.ts";
@@ -34,7 +34,7 @@ import type { Messenger } from "../../core/src/msgchain.ts";
 import type { BoardNote, Finding, InboxMessage, IntentView, PlannedTarget, ProposeContext, Proposer } from "./proposers/types.ts";
 import { doctor } from "./doctor.ts";
 import { RecipeBook } from "./recipes.ts";
-import { proposerSoulBlock, type SoulDoc } from "@lineage/souls";
+import { proposerSoulBlock, type SoulDoc } from "@units/souls";
 import { Telemetry } from "./telemetry.ts";
 import { checkEntry, FactsLog, journalPrompt, JOURNAL_RESERVE_USD, notesBlock, readNotes, storeEntry } from "./journal.ts";
 import { writeSecret } from "./secret-file.ts";
@@ -182,7 +182,7 @@ export class Worker {
     const agentId = (opts.key as { agent?: string }).agent ?? opts.key.id;
     const tag = agentId.slice(0, 6);
     this.log = opts.log ?? ((m) => console.log(`[${new Date().toISOString().slice(11, 19)} ${tag}] ${m}`));
-    const dir = opts.stateDir ?? join(process.env.LINEAGE_HOME ?? join(homedir(), ".lineage"), "worker", agentId);
+    const dir = opts.stateDir ?? join((process.env.UNITS_HOME ?? process.env.LINEAGE_HOME) ?? join(homedir(), ".lineage"), "worker", agentId);
     mkdirSync(dir, { recursive: true });
     this.stateFile = join(dir, "pending.json");
     this.telemetry = new Telemetry(this.client, this.log, { enabled: opts.telemetry !== false });

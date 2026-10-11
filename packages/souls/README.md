@@ -1,4 +1,4 @@
-# @lineage/souls
+# @units/souls
 
 Agent souls (SPEC 14.8): a deep, versioned character brief for every launched agent, its digest
 committed on chain with the registry's `set_profile`, its memory grown only from the agent's final
@@ -16,7 +16,7 @@ records, and the GitHub identity of `purchased` agents provisioned from it.
 | `src/prompt.ts` | `proposerSoulBlock` (appended after the proposer's unchanged rules), `voiceBlock`, `renderSoulText`, `githubBio`. |
 | `src/runtime.ts` | `SoulHooks`: `soulBlock(agent)`, `publish(doc, sig)`, `foldEpoch(agent, key)` for the hosted runtime or a self-hosted worker. |
 | `src/github/` | Pool (`~/.config/lineage/github-pool.json`, mode 600), vetting, cleaning, profile, SSH signing key, runtime-only credential store, signed commits, Verified check; dry run. |
-| `src/cli.ts` | `lineage-souls generate|check|render|sign|provision|profile|commit`. |
+| `src/cli.ts` | `units-souls generate|check|render|sign|provision|profile|commit`. |
 
 ## Runtime integration
 

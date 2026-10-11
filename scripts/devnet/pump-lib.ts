@@ -33,7 +33,7 @@ import {
   type PumpLaunchArgs,
   type Rpc,
   type Signer,
-} from "@lineage/chain";
+} from "@units/chain";
 
 const T22 = TOKEN_2022_PROGRAM;
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));

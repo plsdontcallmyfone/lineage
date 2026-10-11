@@ -64,13 +64,15 @@ export async function validateToken(token: string, t: GitHubTarget = {}): Promis
   };
 }
 
-export const signingKeyTitle = (agent: string) => `lineage agent ${agent.slice(0, 12)}`;
+export const signingKeyTitle = (agent: string) => `units agent ${agent.slice(0, 12)}`;
+/** Titles this agent's key may carry, including the pre-rebrand one (docs/plans/REBRAND-UNITS.md 3.9). */
+const signingKeyTitles = (agent: string) => [signingKeyTitle(agent), `lineage agent ${agent.slice(0, 12)}`];
 
 export async function registerSigningKey(token: string, agent: string, publicKey: string, t: GitHubTarget = {}): Promise<number | null> {
   const gh = new GitHub({ token, base: t.apiBase, fetch: t.fetch });
   // an earlier key of this agent (a rotation, or a retry after a crash) is replaced, other keys are left alone
   const keys = await gh.paged<{ id: number; title: string }>("/user/ssh_signing_keys", 5);
-  for (const k of keys) if (k.title === signingKeyTitle(agent)) await gh.request("DELETE", `/user/ssh_signing_keys/${k.id}`, undefined, { okStatuses: [404] });
+  for (const k of keys) if (signingKeyTitles(agent).includes(k.title)) await gh.request("DELETE", `/user/ssh_signing_keys/${k.id}`, undefined, { okStatuses: [404] });
   const reg = await gh.request<{ id: number }>("POST", "/user/ssh_signing_keys", { title: signingKeyTitle(agent), key: publicKey });
   return reg.data?.id ?? null;
 }

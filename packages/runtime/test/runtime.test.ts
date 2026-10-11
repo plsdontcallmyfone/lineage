@@ -3,8 +3,8 @@ import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "no
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type Anthropic from "@anthropic-ai/sdk";
-import { calibId, generateAgentKey, recipeId, signMessage, signStatement, type AgentKey } from "@lineage/protocol";
-import { loadRecipe } from "@lineage/sandbox";
+import { calibId, generateAgentKey, recipeId, signMessage, signStatement, type AgentKey } from "@units/protocol";
+import { loadRecipe } from "@units/sandbox";
 import { FakeClock } from "../../core/src/clock.ts";
 import { CoreClient } from "../../core/src/client.ts";
 import { Core } from "../../core/src/core.ts";
@@ -323,7 +323,7 @@ describe("provenance (identity plan I5)", () => {
 
 describe("devnet usage tree", () => {
   test("one leaf per agent with usage, sorted by hash, proofs verify against the root", async () => {
-    const { verifyProof } = await import("@lineage/protocol");
+    const { verifyProof } = await import("@units/protocol");
     const a = generateAgentKey().id;
     const b = generateAgentKey().id;
     const e = {

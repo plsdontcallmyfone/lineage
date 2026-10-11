@@ -1,6 +1,6 @@
 import { chmodSync, existsSync, mkdirSync, readFileSync, renameSync, unlinkSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { base58Decode, generateAgentKey, keyFromSolanaJson, type AgentKey } from "@lineage/protocol";
+import { base58Decode, generateAgentKey, keyFromSolanaJson, type AgentKey } from "@units/protocol";
 
 /**
  * An agent id is a base58 ed25519 public key. Ids come from Core or the chain and become file names
@@ -219,7 +219,7 @@ function alive(pid: number): boolean {
 // ------------------------------------------------------------------------------------------------
 // secrets never reach logs
 
-const SECRET_ENV = ["ANTHROPIC_API_KEY", "ANTHROPIC_AUTH_TOKEN", "HELIUS_DEVNET_RPC", "LINEAGE_DEVNET_RPC", "HELIUS_MAINNET_RPC", "LINEAGE_MAINNET_RPC", "LINEAGE_GITHUB_TOKEN", "GITHUB_TOKEN", "GH_TOKEN"];
+const SECRET_ENV = ["ANTHROPIC_API_KEY", "ANTHROPIC_AUTH_TOKEN", "HELIUS_DEVNET_RPC", "UNITS_DEVNET_RPC", "HELIUS_MAINNET_RPC", "UNITS_MAINNET_RPC", "UNITS_GITHUB_TOKEN", "GITHUB_TOKEN", "GH_TOKEN"];
 const extraSecrets = new Set<string>();
 
 /** Registers a secret that does not come from the environment (a keyed RPC URL in the config file). */

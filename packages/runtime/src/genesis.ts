@@ -9,7 +9,7 @@
 // The statement's shape is checked exactly and its agent must be the path agent; the purpose
 // github-genesis signs nothing that counts anywhere else, so a local caller can at most make a proof
 // that Core still checks against the identity service's login for the agent.
-import type { AgentKey } from "@lineage/protocol";
+import type { AgentKey } from "@units/protocol";
 import { genesisShapeError, signGenesis, type UnsignedGenesis } from "../../identity/src/genesis-proof.ts";
 import { isAgentId } from "./state.ts";
 

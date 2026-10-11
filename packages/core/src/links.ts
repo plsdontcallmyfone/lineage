@@ -97,7 +97,7 @@ export function signLink(key: AgentKey, statement: LinkStatement): LinkProof {
 /** The exact text to post in a gist (a fenced block survives Markdown rendering). */
 export function proofText(p: LinkProof): string {
   return [
-    `This gist proves that the GitHub account ${p.statement.handle} speaks for Lineage agent ${p.statement.agent}.`,
+    `This gist proves that the GitHub account ${p.statement.handle} speaks for units agent ${p.statement.agent}.`,
     "",
     "```json",
     canonicalJson({ statement: p.statement, sig: p.sig }),
@@ -179,14 +179,14 @@ export class Links {
     this.c = core as unknown as Internals;
     this.opts = {
       fetch: (u, i) => fetch(u, i),
-      httpHosts: envList(process.env.LINEAGE_LINK_HTTP_HOSTS),
-      githubToken: process.env.LINEAGE_GITHUB_TOKEN || null,
+      httpHosts: envList((process.env.UNITS_LINK_HTTP_HOSTS ?? process.env.LINEAGE_LINK_HTTP_HOSTS)),
+      githubToken: (process.env.UNITS_GITHUB_TOKEN ?? process.env.LINEAGE_GITHUB_TOKEN) || null,
       githubApi: "https://api.github.com",
-      recheckS: Number(process.env.LINEAGE_LINK_RECHECK_S ?? 3600), // TEST value; launch value TBA
+      recheckS: Number((process.env.UNITS_LINK_RECHECK_S ?? process.env.LINEAGE_LINK_RECHECK_S) ?? 3600), // TEST value; launch value TBA
       perTick: 2,
       timeoutMs: 10_000,
       githubRaw: "https://raw.githubusercontent.com",
-      identityApi: (process.env.LINEAGE_IDENTITY ?? "http://127.0.0.1:9665").replace(/\/+$/, "") || null,
+      identityApi: ((process.env.UNITS_IDENTITY ?? process.env.LINEAGE_IDENTITY) ?? "http://127.0.0.1:9665").replace(/\/+$/, "") || null,
     };
     this.ensure();
   }
@@ -243,7 +243,7 @@ export class Links {
   /** A statement matching this link whose signature verifies against the agent's key at created_at. */
   private matchProof(agent: string, service: LinkService, handle: string, proofs: LinkProof[], want?: { statement: string; sig: string }): CheckResult & { proof?: LinkProof } {
     const nowS = this.c.now() / 1000;
-    let why = "no Lineage link statement for this agent and account in the proof";
+    let why = "no units link statement for this agent and account in the proof";
     for (const p of proofs) {
       const s = p.statement;
       if (s.v !== 1 || !isKind(s.kind, "link") || s.agent !== agent || s.service !== service || typeof s.handle !== "string" || s.handle.toLowerCase() !== handle) continue;

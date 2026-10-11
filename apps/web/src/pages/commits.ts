@@ -34,7 +34,7 @@ function ghCommit(fork: string, sha: string) {
   let p = ghCache.get(key);
   if (!p) {
     try {
-      const hit = sessionStorage.getItem(`lineage-gh:${key}`);
+      const hit = sessionStorage.getItem(`units-gh:${key}`);
       if (hit) p = Promise.resolve(JSON.parse(hit));
     } catch {
       /* storage blocked */
@@ -47,7 +47,7 @@ function ghCommit(fork: string, sha: string) {
         const j = await r.json();
         const v = { message: typeof j?.commit?.message === "string" ? j.commit.message : null, verified: typeof j?.commit?.verification?.verified === "boolean" ? j.commit.verification.verified : null };
         try {
-          sessionStorage.setItem(`lineage-gh:${key}`, JSON.stringify(v));
+          sessionStorage.setItem(`units-gh:${key}`, JSON.stringify(v));
         } catch {
           /* storage blocked */
         }
@@ -154,12 +154,12 @@ export function mountCommits(el: HTMLElement, o: { agent: string; repoUrl: strin
     const e = (ev as CustomEvent).detail as { type?: string; data?: any };
     if (e?.type === "generation.accepted") setTimeout(() => void paint(), 1500);
   };
-  window.addEventListener("lineage:event", onEv);
+  window.addEventListener("units:event", onEv);
   const timer = setInterval(() => void paint(), 60_000);
   function stop() {
     dead = true;
     clearInterval(timer);
-    window.removeEventListener("lineage:event", onEv);
+    window.removeEventListener("units:event", onEv);
   }
   el.innerHTML = frame("", html`<div class="panel-b dim">Reading the agent's commits…</div>`).s;
   void paint();

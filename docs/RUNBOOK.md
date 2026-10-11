@@ -35,9 +35,9 @@ Recipes pin images by id (`name@sha256:<id>`). Docker builds are not reproducibl
 bun scripts/local-images.ts --build --skip solana   # drop --skip solana for the solana recipes
 ```
 
-This builds every image class the recipes need from `images/<class>` with the tags above (labelled `lineage=1`; cuda is left out unless you name its recipes), then writes this machine's local pin map, `~/.lineage/local-images.json` (outside the repository; `LINEAGE_LOCAL_IMAGES=<path>` moves it), from each committed image id to the id built here. Name recipes to build only their classes (`bun scripts/local-images.ts --build fixture-b58 minbpe`); without `--build` it only maps images already tagged here. The sandbox uses the map when, and only when, a recipe's committed id is absent here and the map names a local image that exists, and prints a `[lineage] local image rebuild` line naming both ids.
+This builds every image class the recipes need from `images/<class>` with the tags above (labelled `lineage=1`; cuda is left out unless you name its recipes), then writes this machine's local pin map, `~/.lineage/local-images.json` (outside the repository; `UNITS_LOCAL_IMAGES=<path>` moves it), from each committed image id to the id built here. Name recipes to build only their classes (`bun scripts/local-images.ts --build fixture-b58 minbpe`); without `--build` it only maps images already tagged here. The sandbox uses the map when, and only when, a recipe's committed id is absent here and the map names a local image that exists, and prints a `[lineage] local image rebuild` line naming both ids.
 
-Recipe ids do not change: the recipe file is untouched, so tests, canaries and the e2e run on their committed recipe ids, and the evidence records the local id as `env.image_digest`. That is for local tests and development only. A worker that submits to a real Core must not run on a substitute: set `LINEAGE_LOCAL_IMAGES=off` there and re-pin with `bun scripts/deploy/arch-recipes.ts <names>`, which writes the local id into the recipe, so the recipe id changes and Core calibrates it as a new recipe (a different image is a different recipe). On an amd64 machine the arm64 recipes refuse to run either way; `arch-recipes.ts` is the only path there.
+Recipe ids do not change: the recipe file is untouched, so tests, canaries and the e2e run on their committed recipe ids, and the evidence records the local id as `env.image_digest`. That is for local tests and development only. A worker that submits to a real Core must not run on a substitute: set `UNITS_LOCAL_IMAGES=off` there and re-pin with `bun scripts/deploy/arch-recipes.ts <names>`, which writes the local id into the recipe, so the recipe id changes and Core calibrates it as a new recipe (a different image is a different recipe). On an amd64 machine the arm64 recipes refuse to run either way; `arch-recipes.ts` is the only path there.
 
 ## 1. Unit and integration tests, typecheck
 
@@ -82,11 +82,11 @@ K=<kept dir>
 bun packages/core/src/main.ts --data $K/data --port 9664 --config $K/network.json --admin-key $K/admin.json --allow-public-canaries &
 bun scripts/verify.ts --core http://127.0.0.1:9664                       # recomputes every final verdict (21/21)
 bun scripts/replay.ts --core http://127.0.0.1:9664 --candidate <id>      # re-runs one candidate in your sandbox
-LINEAGE_RECIPES_EXTRA=<kept recipes dir> bun scripts/replay.ts --core http://127.0.0.1:9664 --candidate <id>   # a candidate of the second lineage
+UNITS_RECIPES_EXTRA=<kept recipes dir> bun scripts/replay.ts --core http://127.0.0.1:9664 --candidate <id>   # a candidate of the second lineage
 bun packages/core/src/main.ts --replica-of http://127.0.0.1:9664 --once  # read-only replica: verdicts, audits, units, epoch roots (zero divergence)
 ```
 
-`replay.ts` exits 1 when any revealed replay differs from your local run. The second lineage's recipe (`fixture-b58-port`) exists only in the kept recipes dir the e2e prints, so without `LINEAGE_RECIPES_EXTRA` its two candidates report the recipe as missing. On the e2e data that is the expected result for every candidate the liar replayed: the DIFF lines name only the liar (slashed and suspended by Core), and every honest replay reproduces. Stop the Core by its PID afterwards.
+`replay.ts` exits 1 when any revealed replay differs from your local run. The second lineage's recipe (`fixture-b58-port`) exists only in the kept recipes dir the e2e prints, so without `UNITS_RECIPES_EXTRA` its two candidates report the recipe as missing. On the e2e data that is the expected result for every candidate the liar replayed: the DIFF lines name only the liar (slashed and suspended by Core), and every honest replay reproduces. Stop the Core by its PID afterwards.
 
 ## 4. Real repositories
 
@@ -153,7 +153,7 @@ bun packages/core/src/main.ts --replica-of https://157-245-71-188.sslip.io --onc
 
 ## 9. Devnet (owner machine)
 
-Needs the devnet keys under `~/.config/lineage/` and the deployed programs (`onchain/DEVNET.md`). Every script passes its keys and the cluster explicitly and never touches `solana config` or `~/.config/solana/id.json`. The RPC is the public devnet endpoint unless `LINEAGE_DEVNET_RPC` or `~/.config/lineage/rpc.env` names another; the scripts back off and retry on HTTP 429.
+Needs the devnet keys under `~/.config/lineage/` and the deployed programs (`onchain/DEVNET.md`). Every script passes its keys and the cluster explicitly and never touches `solana config` or `~/.config/solana/id.json`. The RPC is the public devnet endpoint unless `UNITS_DEVNET_RPC` or `~/.config/lineage/rpc.env` names another; the scripts back off and retry on HTTP 429.
 
 ```sh
 bun scripts/devnet/setup.ts                   # idempotent; on a set-up devnet it skips every step, sends nothing and reads everything back
@@ -188,26 +188,26 @@ Run by their lanes once, with owner approval, and recorded; a verification run d
 | `scripts/discovery/run.ts` | Claude (`--author anthropic`), capped per run | `scripts/discovery/runs/`, `scripts/discovery/spend.jsonl` |
 | `scripts/runtime/sim-run.ts`, `scripts/runtime/devnet-run.ts` | Claude, and devnet for the second | `scripts/runtime/SIM-LAST.json` (15/15), `DEVNET-LAST.json` (18/18), `scripts/runtime/RUNS.md` |
 | `scripts/souls/*.ts` | Claude, GitHub provisioning, devnet | `scripts/souls/RUNS.md`, `*-LAST.json` |
-| `packages/mirror/src/cli.ts` (`lineage-mirror`) | pushes to agents' forks; `--dry-run` writes nothing | |
+| `packages/mirror/src/cli.ts` (`units-mirror`) | pushes to agents' forks; `--dry-run` writes nothing | |
 
 ## 11. Worker image
 
-`images/worker/Dockerfile` builds `lineage/worker`: the worker CLI (`lineage-worker`, the same commands as `bun packages/worker/src/main.ts`) with Bun, git and the Docker CLI. Sandboxes are not nested: the worker starts them on the HOST daemon through the mounted socket.
+`images/worker/Dockerfile` builds `lineage/worker`: the worker CLI (`units-worker`, the same commands as `bun packages/worker/src/main.ts`) with Bun, git and the Docker CLI. Sandboxes are not nested: the worker starts them on the HOST daemon through the mounted socket.
 
 ```sh
 docker build -f images/worker/Dockerfile -t lineage/worker .     # from the repository root; arm64 and amd64
 docker run --rm lineage/worker --help
-docker run -d --name lineage-worker --stop-timeout 900 \
+docker run -d --name units-worker --stop-timeout 900 \
   -v /var/run/docker.sock:/var/run/docker.sock \
   -v /var/lib/lineage:/var/lib/lineage \
   -v /etc/lineage/agent.json:/keys/agent.json:ro \
   lineage/worker run --core https://<core> --key /keys/agent.json
-docker stop -t 900 lineage-worker       # SIGTERM: takes no new work, finishes and reveals what it committed, then exits 0
+docker stop -t 900 units-worker       # SIGTERM: takes no new work, finishes and reveals what it committed, then exits 0
 bun images/worker/smoke.ts --port 9664  # 9 checks, about 30 s: two containers register, bond, qualify on fixture-b58 and replay a candidate to accepted
 ```
 
 - **The socket is root-equivalent.** Anything that can talk to `/var/run/docker.sock` controls the host. Run the worker on a host that does nothing else, prefer rootless Docker (`dockerd-rootless`, socket at `$XDG_RUNTIME_DIR/docker.sock`, mounted the same way), and never mount the socket of a host that holds other keys or services.
-- **LINEAGE_HOME at the same path inside and out.** The daemon resolves sandbox bind mounts on the host, so the work, mirror and dependency directories must exist at the same absolute path on both sides (default `/var/lib/lineage`; on Docker Desktop use a path under a shared directory such as `/private/tmp` and pass `-e LINEAGE_HOME=<that path>`). The worker's pending reveals live there too (`worker/<agent>`), so a restarted container picks them up.
+- **UNITS_HOME at the same path inside and out.** The daemon resolves sandbox bind mounts on the host, so the work, mirror and dependency directories must exist at the same absolute path on both sides (default `/var/lib/lineage`; on Docker Desktop use a path under a shared directory such as `/private/tmp` and pass `-e UNITS_HOME=<that path>`). The worker's pending reveals live there too (`worker/<agent>`), so a restarted container picks them up.
 - **Keys read-only.** Mount only the agent key, `:ro`. The container runs as root so it can remove what sandboxes write (they run as uid 10001); on Linux with `--user <uid>:<docker gid>` sandboxes run as that uid instead (`containerUser`, packages/sandbox/src/docker.ts).
 - **Stop timeout.** Docker's default 10 s would kill a draining worker before it reveals; use `--stop-timeout 900` or `docker stop -t 900` (the drain gives up after 15 minutes).
 - **Built and checked 2026-10-08** locally (arm64, `images/worker/SMOKE-LAST-arm64.json` 9/9) and on the site server (amd64, image `sha256:723a5c85fef6...`, 133 MB: `--help`, `doctor` saw amd64 and 4 cpus, Docker CLI 27.5.1 against daemon 29.1.3; no worker was started there). On Docker Desktop `doctor` reports the Docker VM's cpus and memory, not the Mac's.

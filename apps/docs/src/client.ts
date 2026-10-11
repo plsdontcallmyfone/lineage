@@ -17,7 +17,7 @@ themeBtn?.addEventListener("click", () => {
   if (next === "light") document.documentElement.setAttribute("data-theme", "light");
   else document.documentElement.removeAttribute("data-theme");
   try {
-    localStorage.setItem("lineage-theme", next);
+    localStorage.setItem("units-theme", next);
   } catch {
     /* storage blocked */
   }

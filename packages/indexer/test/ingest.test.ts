@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { accountDisc, addressBytes, PUMP, pumpPdas, Rpc, RpcError, toAddress, type Transport } from "@lineage/chain";
+import { accountDisc, addressBytes, PUMP, pumpPdas, Rpc, RpcError, toAddress, type Transport } from "@units/chain";
 import { pumpAlerts } from "../src/alerts.ts";
 import { marketApi } from "../src/api.ts";
 import { openDb } from "../src/db.ts";

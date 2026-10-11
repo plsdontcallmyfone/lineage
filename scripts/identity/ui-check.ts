@@ -35,7 +35,7 @@ const host = `127.0.0.1:${DOMAIN_PORT}`;
 const core = spawn(["bun", join(ROOT, "packages/core/src/main.ts"), "--data", join(tmp, "data"), "--port", String(CORE_PORT), "--config", join(ROOT, "config/network.json"), "--admin-key", join(tmp, "admin.json"), "--no-trees"], {
   stdout: "ignore",
   stderr: "ignore",
-  env: { ...process.env, LINEAGE_LINK_HTTP_HOSTS: host },
+  env: { ...process.env, UNITS_LINK_HTTP_HOSTS: host },
 });
 const web = spawn(["bun", join(ROOT, "apps/web/server.ts"), "--port", String(WEB_PORT), "--core", `http://127.0.0.1:${CORE_PORT}`], { stdout: "ignore", stderr: "ignore" });
 const agentKey = keyFromSolanaJson(JSON.parse(readFileSync(join(process.env.HOME!, ".config/lineage/devnet/souls-test-agent.json"), "utf8")));

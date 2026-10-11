@@ -8,7 +8,7 @@
 import { appendFileSync, existsSync, mkdirSync, readFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
-import { anthropicClient, generateSoul, loadModelKey, type ModelClient, type SoulSeed } from "@lineage/souls";
+import { anthropicClient, generateSoul, loadModelKey, type ModelClient, type SoulSeed } from "@units/souls";
 
 export interface SoulDraftsOptions {
   /** USD cap of one soul (all calls) */

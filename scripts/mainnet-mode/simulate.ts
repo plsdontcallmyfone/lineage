@@ -7,7 +7,7 @@
 //
 //   bun scripts/mainnet-mode/simulate.ts [--taker <address>] [--record]
 //
-// RPC: LINEAGE_MAINNET_RPC when set (printed redacted, never the key), else the public mainnet
+// RPC: UNITS_MAINNET_RPC when set (printed redacted, never the key), else the public mainnet
 // endpoint (this script only reads). Flows:
 //   A launch deposit   pay SOL: Jupiter swap to exactly the deposit of the quote token (the wallet
 //                      sends this first, then the launch transaction, which needs units_launch on
@@ -18,7 +18,7 @@
 //                      live mainnet pump.fun bonding curve, one v0 transaction; minOut from the
 //                      simulated output less the slippage, recomposed and simulated again (the
 //                      wallet's review step)
-// The quote for A and B is the profile's (the PYUSD stand-in until $LINE exists). No Lineage agent
+// The quote for A and B is the profile's (the PYUSD stand-in until $LINE exists). No units agent
 // coin exists on mainnet (agent coins launch on pump.fun quoted in $LINE, owner decisions
 // 2026-10-10), so C uses a live USDC-quoted pump.fun curve found with getProgramAccounts (--curve
 // <mint> to pick another); the composition, the Jupiter + pump.fun accounts and the size limits are
@@ -70,9 +70,9 @@ const arg = (k: string, d: string) => {
   return i > 0 && process.argv[i + 1] ? process.argv[i + 1]! : d;
 };
 const taker = arg("taker", DEFAULT_TAKER);
-const rpcUrl = process.env.LINEAGE_MAINNET_RPC || PUBLIC_MAINNET_RPC;
+const rpcUrl = (process.env.UNITS_MAINNET_RPC ?? process.env.LINEAGE_MAINNET_RPC) || PUBLIC_MAINNET_RPC;
 const rpc = Rpc.http(rpcUrl, "confirmed");
-const profile = loadNetworkProfile({ env: { LINEAGE_NETWORK: "mainnet" } });
+const profile = loadNetworkProfile({ env: { UNITS_NETWORK: "mainnet" } });
 const swapCfg = parseSwapConfig(JSON.parse(readFileSync(join(ROOT, "config/swap.json"), "utf8")));
 const prepay = parsePrepayConfig(JSON.parse(readFileSync(join(ROOT, "config/network.json"), "utf8")).prepay);
 const fees = profile.fees.mode === "recent" ? profile.fees : null;

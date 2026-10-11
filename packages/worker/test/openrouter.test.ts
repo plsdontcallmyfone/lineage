@@ -97,7 +97,7 @@ describe("OpenAICompatProposer on the OpenRouter route", () => {
       expect(api.requests.length).toBe(2);
       const [first, second] = api.requests;
       expect(first.url).toBe("https://openrouter.ai/api/v1/chat/completions");
-      expect(first.headers).toMatchObject({ authorization: "Bearer sk-or-fixture", "X-OpenRouter-Title": "Lineage" });
+      expect(first.headers).toMatchObject({ authorization: "Bearer sk-or-fixture", "X-OpenRouter-Title": "units" });
       expect(first.body.model).toBe("openai/gpt-5.5");
       // the highest listed tier is the ceiling: never a host priced above OpenRouter's listed rate
       const tiers = entry.tiers!.map((t) => t.rate);

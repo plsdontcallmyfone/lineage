@@ -15,7 +15,7 @@ import { join } from "node:path";
 import { fmtAmount, fmtChange, fmtPrice } from "../../../apps/web/src/market.ts";
 
 const arg = (n: string, d?: string) => (process.argv.includes(`--${n}`) ? process.argv[process.argv.indexOf(`--${n}`) + 1]! : d);
-const PW = arg("pw") ?? process.env.LINEAGE_PLAYWRIGHT;
+const PW = arg("pw") ?? (process.env.UNITS_PLAYWRIGHT ?? process.env.LINEAGE_PLAYWRIGHT);
 if (!PW) throw new Error("--pw <dir with node_modules/playwright-core> is required (not a repo dependency)");
 const { chromium } = await import(join(PW, "node_modules", "playwright-core", "index.mjs"));
 const WEB = arg("web", "http://127.0.0.1:9665")!.replace(/\/+$/, "");
@@ -50,7 +50,7 @@ const MONO_PROBE = `(() => {
       if (mono.test(f.split(",")[0])) bad.push(el.tagName + "." + el.className + ": " + f);
     }
   };
-  for (const host of document.querySelectorAll("lineage-screen, lineage-terminal, lineage-reel, lineage-token, lineage-how, lineage-stats, lineage-palette")) if (host.shadowRoot) walk(host.shadowRoot);
+  for (const host of document.querySelectorAll("units-screen, units-terminal, units-reel, units-token, units-how, units-stats, units-palette")) if (host.shadowRoot) walk(host.shadowRoot);
   return bad.slice(0, 5);
 })()`;
 
@@ -63,7 +63,7 @@ const SCROLL_ALL = `(async () => { for (let y = 0; y < document.documentElement.
 const paramsIn = (host: string) => `(() => [...document.querySelectorAll(${JSON.stringify(host)})].flatMap((h) => h.shadowRoot ? [...h.shadowRoot.querySelectorAll(".bd-params")].map((p) => ({ mint: p.closest("[data-mint]")?.dataset.mint ?? h.getAttribute("mint"), cells: [...p.children].map((d) => [d.querySelector("span").textContent.trim(), d.querySelector("b").textContent.trim()]) })) : []))()`;
 const PARAM_LABELS = ["Price", "Market cap", "24h volume", "24h change"];
 /** Any fee wording in the kit's visible text (the terminal's fixed answers excepted: they explain the mechanism, no figures). */
-const FEE_PROBE = `(() => { let t = ""; for (const h of document.querySelectorAll("lineage-reel, lineage-token, lineage-stats, lineage-how, lineage-leaderboard")) t += h.shadowRoot ? h.shadowRoot.textContent : ""; const m = t.match(/[^.]{0,40}\\b(fees?|fee split|to compute|compute vault|treasury|cranks?)\\b[^.]{0,40}/i); return m ? m[0] : null; })()`;
+const FEE_PROBE = `(() => { let t = ""; for (const h of document.querySelectorAll("units-reel, units-token, units-stats, units-how, units-leaderboard")) t += h.shadowRoot ? h.shadowRoot.textContent : ""; const m = t.match(/[^.]{0,40}\\b(fees?|fee split|to compute|compute vault|treasury|cranks?)\\b[^.]{0,40}/i); return m ? m[0] : null; })()`;
 
 async function waitFor(page: any, expr: string, ms = 30_000) {
   const t0 = Date.now();
@@ -84,21 +84,21 @@ for (const width of [1280, 390]) {
   page.on("pageerror", (e: any) => errors.push(String(e)));
   await page.goto(`${WEB}/embed/demo.html${API !== WEB ? `?api=${encodeURIComponent(API)}` : ""}`, { waitUntil: "domcontentloaded" });
   const w = `demo ${width}`;
-  check(`${w}: reel cards`, await waitFor(page, `${shadowCount("lineage-reel", ".card")} >= 4`), String(await page.evaluate(shadowCount("lineage-reel", ".card"))));
+  check(`${w}: reel cards`, await waitFor(page, `${shadowCount("units-reel", ".card")} >= 4`), String(await page.evaluate(shadowCount("units-reel", ".card"))));
   await page.evaluate(SCROLL_ALL);
-  check(`${w}: card screens drawn`, await waitFor(page, `${shadowCount("lineage-reel", ".thumb canvas")} >= 2`, 40_000));
-  check(`${w}: dithered stills`, (await page.evaluate(shadowCount("lineage-reel", "canvas.dith"))) >= 1);
-  check(`${w}: screen panel mounted`, await waitFor(page, `${shadowCount("lineage-screen", ".lp")} === 1`));
-  check(`${w}: token block`, await waitFor(page, `${shadowCount("lineage-token", ".thead")} === 1 && ${shadowCount("lineage-token", ".lp")} === 1`, 40_000));
-  check(`${w}: how, six steps with figures`, await waitFor(page, `${shadowCount("lineage-how", ".step .f")} === 6`));
-  check(`${w}: stats`, await waitFor(page, `${shadowCount("lineage-stats", ".stat")} === 8`));
-  const statKeys = await page.evaluate(`[...document.querySelectorAll("lineage-stats")].flatMap((h) => [...h.shadowRoot.querySelectorAll(".stat")].map((s) => s.dataset.k))`);
+  check(`${w}: card screens drawn`, await waitFor(page, `${shadowCount("units-reel", ".thumb canvas")} >= 2`, 40_000));
+  check(`${w}: dithered stills`, (await page.evaluate(shadowCount("units-reel", "canvas.dith"))) >= 1);
+  check(`${w}: screen panel mounted`, await waitFor(page, `${shadowCount("units-screen", ".lp")} === 1`));
+  check(`${w}: token block`, await waitFor(page, `${shadowCount("units-token", ".thead")} === 1 && ${shadowCount("units-token", ".lp")} === 1`, 40_000));
+  check(`${w}: how, six steps with figures`, await waitFor(page, `${shadowCount("units-how", ".step .f")} === 6`));
+  check(`${w}: stats`, await waitFor(page, `${shadowCount("units-stats", ".stat")} === 8`));
+  const statKeys = await page.evaluate(`[...document.querySelectorAll("units-stats")].flatMap((h) => [...h.shadowRoot.querySelectorAll(".stat")].map((s) => s.dataset.k))`);
   check(`${w}: stats keys have no fee figure`, statKeys.length === 8 && !statKeys.some((k: string) => /fee/.test(k)), statKeys.join(","));
   // token parameters: the reel cards and the token block, each the four figures in order plus the building line
   {
     const rows = (await j(`${API}/market/tokens?sort=newest`)).tokens as any[];
     const want = (t: any) => [fmtPrice(t.price), fmtAmount(t.market_cap), fmtAmount(t.volume_24h), fmtChange(t.change_24h)];
-    for (const host of ["lineage-reel", "lineage-token"]) {
+    for (const host of ["units-reel", "units-token"]) {
       const blocks = (await page.evaluate(paramsIn(host))) as { mint: string; cells: [string, string][] }[];
       const bad = blocks.filter((b) => JSON.stringify(b.cells.map((c) => c[0])) !== JSON.stringify(PARAM_LABELS));
       check(`${w}: ${host} shows only price, market cap, 24h volume, 24h change`, blocks.length > 0 && bad.length === 0, `${blocks.length} blocks${bad.length ? `, bad ${JSON.stringify(bad[0]!.cells)}` : ""}`);
@@ -126,26 +126,26 @@ for (const width of [1280, 390]) {
     }
     const fee = await page.evaluate(FEE_PROBE);
     check(`${w}: no fee figures, splits or compute vault in the kit`, fee === null, fee ?? "");
-    // <lineage-stats mint=> the same five for one token
+    // <units-stats mint=> the same five for one token
     const mint = rows[0]?.mint;
-    await page.evaluate(`(() => { const e = document.createElement("lineage-stats"); e.id = "tokstats"; e.setAttribute("mint", ${JSON.stringify(mint)}); document.body.appendChild(e); })()`);
+    await page.evaluate(`(() => { const e = document.createElement("units-stats"); e.id = "tokstats"; e.setAttribute("mint", ${JSON.stringify(mint)}); document.body.appendChild(e); })()`);
     const ok = await waitFor(page, `${shadowCount("#tokstats", ".bd-params > div")} === 4 && ${shadowCount("#tokstats", ".bd-building")} === 1`);
     const cells = ((await page.evaluate(paramsIn("#tokstats"))) as { cells: [string, string][] }[])[0]?.cells ?? [];
-    check(`${w}: <lineage-stats mint> shows the five token parameters`, ok && JSON.stringify(cells.map((c) => c[0])) === JSON.stringify(PARAM_LABELS), cells.map((c) => c.join(" ")).join(", "));
+    check(`${w}: <units-stats mint> shows the five token parameters`, ok && JSON.stringify(cells.map((c) => c[0])) === JSON.stringify(PARAM_LABELS), cells.map((c) => c.join(" ")).join(", "));
     await page.evaluate(`document.getElementById("tokstats").remove()`);
   }
-  const noUsd = await page.evaluate(`(() => { let t = ""; for (const h of document.querySelectorAll("lineage-reel, lineage-token, lineage-stats, lineage-how")) t += h.shadowRoot ? h.shadowRoot.textContent : ""; return !/\\$\\s?\\d|USD|\\u2014/.test(t); })()`);
+  const noUsd = await page.evaluate(`(() => { let t = ""; for (const h of document.querySelectorAll("units-reel, units-token, units-stats, units-how")) t += h.shadowRoot ? h.shadowRoot.textContent : ""; return !/\\$\\s?\\d|USD|\\u2014/.test(t); })()`);
   check(`${w}: no USD, no em dash`, noUsd);
   if (width === 1280) {
     // the terminal: typo, ask, how, watch
-    const term = page.locator("lineage-terminal");
+    const term = page.locator("units-terminal");
     const input = term.locator("input");
     await input.fill("tokns");
     await input.press("Enter");
-    check("terminal: did you mean", await waitFor(page, `document.querySelector("lineage-terminal").shadowRoot.textContent.includes("did you mean")`));
+    check("terminal: did you mean", await waitFor(page, `document.querySelector("units-terminal").shadowRoot.textContent.includes("did you mean")`));
     await input.fill("ask how is a change verified");
     await input.press("Enter");
-    check("terminal: ask answers with a follow-up", await waitFor(page, `document.querySelector("lineage-terminal").shadowRoot.textContent.includes("Next: What stops a verifier from lying?")`));
+    check("terminal: ask answers with a follow-up", await waitFor(page, `document.querySelector("units-terminal").shadowRoot.textContent.includes("Next: What stops a verifier from lying?")`));
     await input.fill("how");
     await input.press("Enter");
     await page.waitForTimeout(400);
@@ -153,29 +153,29 @@ for (const width of [1280, 390]) {
       await input.press("Enter");
       await page.waitForTimeout(150);
     }
-    check("terminal: how steps 1 to 6", await waitFor(page, `document.querySelector("lineage-terminal").shadowRoot.textContent.includes("6/6")`));
-    const t = await page.evaluate(`Lineage.tokens({ sort: "newest" }).then((ts) => ts.find((x) => x.symbol)) `);
+    check("terminal: how steps 1 to 6", await waitFor(page, `document.querySelector("units-terminal").shadowRoot.textContent.includes("6/6")`));
+    const t = await page.evaluate(`Units.tokens({ sort: "newest" }).then((ts) => ts.find((x) => x.symbol)) `);
     await input.fill(`watch ${t.symbol}`);
     await input.press("Enter");
     check("terminal: watch switches the paired screen", await waitFor(page, `document.getElementById("screen1").getAttribute("agent") === ${JSON.stringify(t.agent)}`), t.symbol);
     await input.fill("sta");
     await input.press("Tab");
     check("terminal: tab completion", (await input.inputValue()) === "stats ");
-    await page.evaluate(`Lineage.terminal.openAndRun("stats")`);
-    check("terminal: Lineage.terminal.openAndRun", await waitFor(page, `document.querySelector("lineage-terminal").shadowRoot.textContent.includes("Verified generations")`));
-    check("terminal: stats has no fee row", !/fees? routed|to compute/i.test(await page.evaluate(`document.querySelector("lineage-terminal").shadowRoot.querySelector(".out").textContent`)));
-    await page.evaluate(`Lineage.terminal.openAndRun("agent ${t.symbol}")`);
-    check("terminal: agent shows price, market cap, 24h volume, 24h change, building", await waitFor(page, `(() => { const o = document.querySelector("lineage-terminal").shadowRoot.querySelector(".out").lastElementChild?.parentElement.textContent ?? ""; return ["Price", "Market cap", "24h volume", "24h change", "Building"].every((k) => o.includes(k)); })()`), t.symbol);
+    await page.evaluate(`Units.terminal.openAndRun("stats")`);
+    check("terminal: Units.terminal.openAndRun", await waitFor(page, `document.querySelector("units-terminal").shadowRoot.textContent.includes("Verified generations")`));
+    check("terminal: stats has no fee row", !/fees? routed|to compute/i.test(await page.evaluate(`document.querySelector("units-terminal").shadowRoot.querySelector(".out").textContent`)));
+    await page.evaluate(`Units.terminal.openAndRun("agent ${t.symbol}")`);
+    check("terminal: agent shows price, market cap, 24h volume, 24h change, building", await waitFor(page, `(() => { const o = document.querySelector("units-terminal").shadowRoot.querySelector(".out").lastElementChild?.parentElement.textContent ?? ""; return ["Price", "Market cap", "24h volume", "24h change", "Building"].every((k) => o.includes(k)); })()`), t.symbol);
     await page.keyboard.press("Meta+k");
-    check("palette: Cmd K opens", await waitFor(page, `!document.querySelector("lineage-palette").shadowRoot.querySelector(".ov").hidden`));
+    check("palette: Cmd K opens", await waitFor(page, `!document.querySelector("units-palette").shadowRoot.querySelector(".ov").hidden`));
     await page.screenshot({ path: join(SHOTS, "demo-palette-1280.png") });
     await page.keyboard.press("Escape");
     // hover a card: the still develops
-    const card = page.locator("lineage-reel").first().locator(".card").first();
+    const card = page.locator("units-reel").first().locator(".card").first();
     await card.hover();
     await page.waitForTimeout(800);
     check("reel: hover develops the still", (await card.locator("canvas.dith").evaluate((c: HTMLElement) => getComputedStyle(c).opacity)) === "0");
-    await page.locator("lineage-terminal").screenshot({ path: join(SHOTS, "demo-terminal-1280.png") });
+    await page.locator("units-terminal").screenshot({ path: join(SHOTS, "demo-terminal-1280.png") });
   }
   await page.waitForTimeout(1500);
   const sw = await page.evaluate(`document.documentElement.scrollWidth - document.documentElement.clientWidth`);
@@ -193,15 +193,15 @@ for (const width of [1280, 390]) {
 
 // ------------------------------------------------------------------------------------------ explorer
 {
-  // <lineage-explorer> wraps the explorer+docs lane's module; its routes may not be deployed yet, so
+  // <units-explorer> wraps the explorer+docs lane's module; its routes may not be deployed yet, so
   // its console errors are reported, and only the wrapper loading and mounting is checked
   const page = await browser.newPage({ viewport: { width: 1280, height: 900 } });
   const errors: string[] = [];
   page.on("console", (m: any) => m.type() === "error" && errors.push(m.text()));
   await page.goto(`${WEB}/embed/demo.html?explorer=1${API !== WEB ? `&api=${encodeURIComponent(API)}` : ""}`, { waitUntil: "domcontentloaded" });
-  check("explorer: lineage-explorer.js loaded on demand and mounted", await waitFor(page, `document.querySelectorAll("lineage-explorer [class^=ex-]").length > 3`));
+  check("explorer: units-explorer.js loaded on demand and mounted", await waitFor(page, `document.querySelectorAll("units-explorer [class^=ex-]").length > 3`));
   if (errors.length) console.log(`NOTE explorer: ${errors.length} console errors from the explorer module (${errors[0]?.slice(0, 120)})`);
-  await page.locator("lineage-explorer").screenshot({ path: join(SHOTS, "demo-explorer-1280.png") }).catch(() => {});
+  await page.locator("units-explorer").screenshot({ path: join(SHOTS, "demo-explorer-1280.png") }).catch(() => {});
   await page.close();
 }
 

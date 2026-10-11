@@ -5,8 +5,8 @@
 // revealed. Trusts nothing Core or the verifiers said.
 //
 // Usage: bun scripts/replay.ts --core http://127.0.0.1:9660 --candidate <commit or candidate id>
-import { median, relDiff } from "@lineage/protocol";
-import { evaluate, loadRecipe, prepareDeps } from "@lineage/sandbox";
+import { median, relDiff } from "@units/protocol";
+import { evaluate, loadRecipe, prepareDeps } from "@units/sandbox";
 import { RecipeBook } from "../packages/worker/src/recipes.ts";
 
 const argv = process.argv.slice(2);

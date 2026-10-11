@@ -1,12 +1,12 @@
 // Agent-key co-signing for transactions a browser wallet built and signed first (wallet UI lane).
 // `units_registry::register` needs both the owner wallet and the agent key; the agent key lives
 // with the worker and never enters a page. The page builds the transaction, the wallet signs as
-// owner and fee payer, and `lineage-worker cosign` checks what it is about to sign, adds the agent
+// owner and fee payer, and `units-worker cosign` checks what it is about to sign, adds the agent
 // signature and sends it. Devnet only in this milestone. The same flow co-signs
 // `rotate_agent_key` (identity plan I1): the owner's wallet signs on the Wallet page and the new key
 // (a hosted runtime's or a worker's, which never leaves its machine) proves possession by co-signing.
 import { createPublicKey, verify } from "node:crypto";
-import { base58Decode, base58Encode } from "@lineage/protocol";
+import { base58Decode, base58Encode } from "@units/protocol";
 import { ixDisc, type Address } from "./codec.ts";
 import { REGISTRY_PROGRAM_ID, registryPdas } from "./registry.ts";
 import { Rpc } from "./rpc.ts";
@@ -86,7 +86,7 @@ export function cosign(wire: Uint8Array, key: Signer): Uint8Array {
   return placeSignature(wire, key.id, signBytes(key, parseWire(wire).message));
 }
 
-/** `lineage-worker cosign --key <file> --tx <base64> [--rpc <url>] [--dry-run]` */
+/** `units-worker cosign --key <file> --tx <base64> [--rpc <url>] [--dry-run]` */
 export async function cosignCommand(o: { key: Signer; tx: string; rpcUrl: string; dryRun?: boolean; expectAgent?: Address; log?: (m: string) => void; genesis?: string }) {
   const log = o.log ?? console.log;
   const rpc = Rpc.http(o.rpcUrl, "confirmed");

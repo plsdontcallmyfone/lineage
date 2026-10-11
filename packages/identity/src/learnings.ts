@@ -139,9 +139,9 @@ export function renderCard(o: { name: string | null; agent: string; site: string
   const core = o.core?.replace(/\/+$/, "") ?? site;
   const prov = Object.entries(o.rec.providers).sort((a, b) => b[1] - a[1]);
   return [
-    `# Lineage learnings: ${o.name ?? `agent ${o.agent.slice(0, 8)}`}`,
+    `# units learnings: ${o.name ?? `agent ${o.agent.slice(0, 8)}`}`,
     "",
-    `What agent \`${o.agent}\` learned while improving code on Lineage: one record per finished authoring attempt (accepted, rejected, expired, ended without a candidate, or abandoned), with what it read, searched, edited and measured, the candidate it submitted, the independent replays and verdict, what it cost, and a reward computed only from measured facts. Meant for training and evaluating coding agents (recursive learning, reinforcement learning).`,
+    `What agent \`${o.agent}\` learned while improving code on units: one record per finished authoring attempt (accepted, rejected, expired, ended without a candidate, or abandoned), with what it read, searched, edited and measured, the candidate it submitted, the independent replays and verdict, what it cost, and a reward computed only from measured facts. Meant for training and evaluating coding agents (recursive learning, reinforcement learning).`,
     "",
     "## Contents",
     "",
@@ -151,7 +151,7 @@ export function renderCard(o: { name: string | null; agent: string; site: string
     "",
     "## Schema",
     "",
-    `Field by field at ${core ? `${core}/v1/learnings/schema` : "`GET /v1/learnings/schema` on the Lineage Core API"}. The full dataset across all agents pages from ${core ? `${core}/v1/learnings/episodes?format=jsonl&since=0` : "`GET /v1/learnings/episodes?format=jsonl&since=0`"} (follow \`x-next-since\`).`,
+    `Field by field at ${core ? `${core}/v1/learnings/schema` : "`GET /v1/learnings/schema` on the units Core API"}. The full dataset across all agents pages from ${core ? `${core}/v1/learnings/episodes?format=jsonl&since=0` : "`GET /v1/learnings/episodes?format=jsonl&since=0`"} (follow \`x-next-since\`).`,
     "",
     "## Reward",
     "",
@@ -174,7 +174,7 @@ export function renderCard(o: { name: string | null; agent: string; site: string
     "",
     `1. Every episode is served by Core: \`GET /v1/learnings/episodes/<episode_id>\`${core ? ` on ${core}` : ""}; the file here must equal it.`,
     "2. `verify` in each episode lists the Core paths that serve its parts independently: the session, the candidate (patch and verdict), the generation, the signed provenance record and the signed journal entry.",
-    "3. The verdict can be recomputed from the revealed replays, and the replay draws checked against the chain, with `bun scripts/verify.ts --core <core> --candidate <commit_id> --chain` from the Lineage repository.",
+    "3. The verdict can be recomputed from the revealed replays, and the replay draws checked against the chain, with `bun scripts/verify.ts --core <core> --candidate <commit_id> --chain` from the units repository.",
     `4. \`bun scripts/learnings/verify.ts <episode file or URL> --core <core>\` does 1 and 2 at once: equality with Core, the patch hash, the provenance signature (purpose \`provenance\`) and the journal signature (purpose \`journal\`).`,
     "",
     "Commits in this repository are signed by the agent's own SSH signing key (GitHub shows Verified).",
@@ -290,8 +290,8 @@ export class LearningsPublisher {
       const site = this.o.site?.replace(/\/+$/, "") ?? null;
       const res: ProfileCommitResult = await profileRepoCommit({
         cred: t.cred, repoName: LEARNINGS_REPO, replaceTree: false, plan: () => files,
-        message: `Lineage learnings: ${eps.length} episode${eps.length === 1 ? "" : "s"} up to cursor ${next.last_seq}\n\n${lineageTrailers({ agent })}\n`,
-        description: t.identity === "account" ? "What this Lineage agent learned: one record per authoring attempt, with verdicts and rewards" : "Learnings of Lineage agents without their own GitHub account",
+        message: `units learnings: ${eps.length} episode${eps.length === 1 ? "" : "s"} up to cursor ${next.last_seq}\n\n${lineageTrailers({ agent })}\n`,
+        description: t.identity === "account" ? "What this units agent learned: one record per authoring attempt, with verdicts and rewards" : "Learnings of units agents without their own GitHub account",
         homepage: site ? `${site}/agents/${agent}/profile` : undefined,
         apiBase: this.o.apiBase, gitBase: this.o.gitBase, fetch: this.o.fetch, log: (m) => this.log(m), verifyPolls: this.o.verifyPolls,
       });

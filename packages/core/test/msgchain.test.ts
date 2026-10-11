@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, test } from "bun:test";
-import type { ChainMsgEvent } from "@lineage/chain";
+import type { ChainMsgEvent } from "@units/chain";
 import { messageEnvelope } from "../src/messages.ts";
 import { msgchainOf } from "../src/msgchain.ts";
 import { generateAgentKey, H, sha256Hex, signStatement } from "../src/protocol.ts";

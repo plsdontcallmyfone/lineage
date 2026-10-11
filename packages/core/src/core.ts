@@ -923,7 +923,7 @@ export class Core {
   }
 
   // ---------------------------------------------------------------------------------------------
-  // Lineage setup (SPEC 6, 12)
+  // units setup (SPEC 6, 12)
 
   addRecipe(body: unknown) {
     return this.tx(() => {

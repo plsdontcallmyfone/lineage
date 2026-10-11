@@ -1,5 +1,5 @@
 {
-  "name": "@lineage/souls",
+  "name": "@units/souls",
   "version": "0.1.0",
   "type": "module",
   "main": "src/index.ts",
@@ -10,10 +10,11 @@
     "./github": "./src/github/index.ts"
   },
   "bin": {
+    "units-souls": "src/cli.ts",
     "lineage-souls": "src/cli.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.132.0",
-    "@lineage/protocol": "workspace:*"
+    "@units/protocol": "workspace:*"
   }
 }

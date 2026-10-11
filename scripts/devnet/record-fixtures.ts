@@ -6,8 +6,8 @@
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { ChainReader, RecordingTransport, Rpc, httpTransport } from "@lineage/chain";
-import { generateAgentKey } from "@lineage/protocol";
+import { ChainReader, RecordingTransport, Rpc, httpTransport } from "@units/chain";
+import { generateAgentKey } from "@units/protocol";
 import { ChainBridge, chainBootstrap } from "../../packages/core/src/chain.ts";
 import { FakeClock } from "../../packages/core/src/clock.ts";
 import { loadNetworkConfig } from "../../packages/core/src/config.ts";

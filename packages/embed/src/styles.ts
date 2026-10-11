@@ -1,20 +1,20 @@
 // Shadow DOM styles. Theme through custom properties on the host element (or any ancestor):
-// --lineage-accent, --lineage-bg, --lineage-fg, --lineage-muted, --lineage-font, --lineage-radius,
-// --lineage-line, --lineage-panel. Defaults follow the viewer's light or dark scheme; scheme="dark" or
+// --units-accent, --units-bg, --units-fg, --units-muted, --units-font, --units-radius,
+// --units-line, --units-panel. Defaults follow the viewer's light or dark scheme; scheme="dark" or
 // scheme="light" on an element forces one. The default face is a sans stack (never monospace); set
-// --lineage-font: inherit to take the host page's font.
+// --units-font: inherit to take the host page's font.
 
 import { BUILDING_CSS } from "../../../apps/web/src/building.ts";
 
-const LIGHT = `--_bg: var(--lineage-bg, #fbfaf8); --_fg: var(--lineage-fg, #1c1b19); --_muted: var(--lineage-muted, #6b665f); --_accent: var(--lineage-accent, #d9561a);`;
-const DARK = `--_bg: var(--lineage-bg, #121211); --_fg: var(--lineage-fg, #ecebe8); --_muted: var(--lineage-muted, #9d978f); --_accent: var(--lineage-accent, #ff7a2e);`;
+const LIGHT = `--_bg: var(--units-bg, var(--lineage-bg, #fbfaf8)); --_fg: var(--units-fg, var(--lineage-fg, #1c1b19)); --_muted: var(--units-muted, var(--lineage-muted, #6b665f)); --_accent: var(--units-accent, var(--lineage-accent, #d9561a));`;
+const DARK = `--_bg: var(--units-bg, var(--lineage-bg, #121211)); --_fg: var(--units-fg, var(--lineage-fg, #ecebe8)); --_muted: var(--units-muted, var(--lineage-muted, #9d978f)); --_accent: var(--units-accent, var(--lineage-accent, #ff7a2e));`;
 
 export const BASE = `
 :host { display: block; box-sizing: border-box; min-width: 0; ${LIGHT}
-  --_font: var(--lineage-font, "Geist", "Geist Sans", "Inter", ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif);
-  --_radius: var(--lineage-radius, 12px);
-  --_line: var(--lineage-line, color-mix(in oklab, var(--_fg) 14%, transparent));
-  --_panel: var(--lineage-panel, color-mix(in oklab, var(--_fg) 4%, var(--_bg)));
+  --_font: var(--units-font, var(--lineage-font, "Geist", "Geist Sans", "Inter", ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif));
+  --_radius: var(--units-radius, var(--lineage-radius, 12px));
+  --_line: var(--units-line, var(--lineage-line, color-mix(in oklab, var(--_fg) 14%, transparent)));
+  --_panel: var(--units-panel, var(--lineage-panel, color-mix(in oklab, var(--_fg) 4%, var(--_bg))));
   --panel: var(--_panel); --panel-2: color-mix(in oklab, var(--_fg) 7%, var(--_bg)); --panel-3: color-mix(in oklab, var(--_fg) 11%, var(--_bg));
   --line: var(--_line); --line-soft: color-mix(in oklab, var(--_fg) 8%, transparent);
   --text: var(--_fg); --dim: var(--_muted); --faint: color-mix(in oklab, var(--_muted) 72%, var(--_bg)); --font: var(--_font);
@@ -97,8 +97,8 @@ export const REEL = `
 `;
 
 export const TERMINAL = `
-.term { --tube: var(--lineage-tube, var(--_accent)); position: relative; display: flex; flex-direction: column; min-height: 0; height: var(--h, 420px);
-  background: var(--lineage-term-bg, #0e0d0c); color: color-mix(in oklab, var(--tube) 82%, white); border-radius: var(--_radius); overflow: hidden;
+.term { --tube: var(--units-tube, var(--lineage-tube, var(--_accent))); position: relative; display: flex; flex-direction: column; min-height: 0; height: var(--h, 420px);
+  background: var(--units-term-bg, var(--lineage-term-bg, #0e0d0c)); color: color-mix(in oklab, var(--tube) 82%, white); border-radius: var(--_radius); overflow: hidden;
   border: 1px solid color-mix(in oklab, var(--tube) 35%, transparent); font-size: 13px; }
 :host([frame="crt"]) .term { background: transparent; border: 0; border-radius: 0; text-shadow: 0 0 6px color-mix(in oklab, var(--tube) 55%, transparent); }
 :host([frame="none"]) .term { border: 0; border-radius: 0; }
@@ -139,7 +139,7 @@ code.cmd { display: block; font: inherit; padding: 6px 9px; border-radius: 6px; 
   background: color-mix(in oklab, var(--tube) 10%, transparent); border: 1px solid color-mix(in oklab, var(--tube) 35%, transparent); }
 .q:hover, .q:focus-visible { background: color-mix(in oklab, var(--tube) 22%, transparent); outline: 0; }
 .guide { position: absolute; right: 12px; bottom: 54px; width: min(320px, calc(100% - 24px)); padding: 12px 14px; border-radius: 10px; z-index: 3;
-  background: color-mix(in oklab, var(--lineage-term-bg, #0e0d0c) 80%, var(--tube)); border: 1px solid color-mix(in oklab, var(--tube) 50%, transparent); box-shadow: 0 14px 30px -16px black; }
+  background: color-mix(in oklab, var(--units-term-bg, var(--lineage-term-bg, #0e0d0c)) 80%, var(--tube)); border: 1px solid color-mix(in oklab, var(--tube) 50%, transparent); box-shadow: 0 14px 30px -16px black; }
 .guide[hidden] { display: none; }
 .guide p { margin: 6px 0 10px; font-size: 12.5px; line-height: 1.45; }
 .guide .row { display: flex; gap: 8px; justify-content: flex-end; align-items: center; }

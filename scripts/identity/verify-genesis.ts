@@ -3,7 +3,7 @@
 // profile repository <login>/<login>.
 //
 //   bun scripts/identity/verify-genesis.ts <proof.json | https://github.com/<login>/<login> | raw URL>
-//       [--core <Lineage site or Core base URL>]   also check the signer against the agent's key history
+//       [--core <units site or Core base URL>]   also check the signer against the agent's key history
 //       [--chain]                                   also check the signer is the agent's current registry key (devnet RPC)
 //
 // Offline (a local file, no flags): shape and signature only. Exit 0 when every check run passes.
@@ -64,9 +64,9 @@ if (core && f.signer) {
   const t = f.issued_at * 1000;
   const keys: { signing_key: string | null; valid_from: number | null; valid_to: number | null }[] = h?.keys ?? [];
   const at = keys.filter((k) => (k.valid_from ?? 0) <= t && (k.valid_to === null || k.valid_to > t)).pop();
-  check("signer was the agent's signing key at issued_at (Lineage key history)", !!at && at.signing_key === f.signer, at ? `key at issued_at ${at.signing_key}` : "no key history");
+  check("signer was the agent's signing key at issued_at (units key history)", !!at && at.signing_key === f.signer, at ? `key at issued_at ${at.signing_key}` : "no key history");
   const g: any = await fetch(`${base}/agents/${f.agent}/genesis`).then((r) => (r.ok ? r.json() : null)).catch(() => null);
-  check("Lineage recorded this proof as verified", g?.status === "verified" && g?.handle === f.github_login, g ? `${g.status} for ${g.handle}` : "no record");
+  check("units recorded this proof as verified", g?.status === "verified" && g?.handle === f.github_login, g ? `${g.status} for ${g.handle}` : "no record");
 }
 
 if (argv.includes("--chain") && f.signer) {

@@ -23,7 +23,7 @@ afterEach(() => {
   while (dirs.length) rmSync(dirs.pop()!, { recursive: true, force: true });
 });
 
-const GEOM = "LineageEditor 0 0 636 795\nLineageRun 640 600 637 195\nLineageTerm 640 400 637 195\nLineageBrowser 640 0 640 400\n";
+const GEOM = "UnitsEditor 0 0 636 795\nLineageRun 640 600 637 195\nLineageTerm 640 400 637 195\nLineageBrowser 640 0 640 400\n";
 const ok = (stdout = ""): ExecResult => ({ code: 0, stdout, stderr: "" });
 const HEALTH = JSON.stringify({ cpus: 8, mem_mib: 16000, mem_avail_mib: 15000, load1: 0.2, image: "sha256:abc", docker: true, desktops: 0, proxy: true });
 

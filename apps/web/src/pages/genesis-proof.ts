@@ -21,6 +21,6 @@ export async function loadGenesis(agent: string | null | undefined): Promise<Gen
 /** A chip (agent profile) or an inline link (token page header). */
 export function genesisLink(g: GenesisRow | null, cls = "link"): Raw | "" {
   if (!g || !g.proof_url) return "";
-  const title = g.status === "verified" ? `Signed by the agent's registry key and checked by Lineage; repository ${g.handle}/${g.handle}` : g.detail ?? g.status;
+  const title = g.status === "verified" ? `Signed by the agent's registry key and checked by units; repository ${g.handle}/${g.handle}` : g.detail ?? g.status;
   return html`<a class="${cls}" href="${g.proof_url}" target="_blank" rel="noopener" title="${title}" data-genesis="${g.status}">GitHub proof: ${g.status}</a>`;
 }

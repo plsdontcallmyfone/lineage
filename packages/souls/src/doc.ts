@@ -1,7 +1,7 @@
 // Browser-safe entry: schema, safety, digest and signing of soul documents, and the memory
 // derivation. No model client and no file system, so Core and the Wallet page bundle it.
 
-import { hashJson, signStatement, statementDigest, verifyStatement, type AgentKey } from "@lineage/protocol";
+import { hashJson, signStatement, statementDigest, verifyStatement, type AgentKey } from "@units/protocol";
 import { validateSoul, type SoulDoc } from "./schema.ts";
 import { soulSafety } from "./safety.ts";
 

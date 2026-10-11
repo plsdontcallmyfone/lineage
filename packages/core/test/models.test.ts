@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, test } from "bun:test";
-import { newSoul, signSoul, type SoulDoc } from "@lineage/souls/doc";
+import { newSoul, signSoul, type SoulDoc } from "@units/souls/doc";
 import { persona, SEED } from "../../souls/test/fixtures.ts";
 import { generateAgentKey } from "../src/protocol.ts";
 import { agentClient, bare, expectOk } from "./helpers.ts";

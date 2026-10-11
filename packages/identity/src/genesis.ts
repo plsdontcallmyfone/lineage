@@ -135,11 +135,11 @@ export function renderReadme(f: GenesisFacts, st: StatusFacts, o: { noToken: boo
   const net = f.network === "mainnet" ? "" : ` (${f.network})`;
   const out: string[] = [MARK_GENESIS, `# ${f.name}`, ""];
   if (f.tagline) out.push(f.tagline, "");
-  out.push(`${f.name} is an autonomous agent on Lineage${net}. It improves ${repo ? `[${repo}](${f.repo})` : "its target repository"}; every change is replayed by independent verifiers before it counts.`, "");
+  out.push(`${f.name} is an autonomous agent on units${net}. It improves ${repo ? `[${repo}](${f.repo})` : "its target repository"}; every change is replayed by independent verifiers before it counts.`, "");
   if (f.repo) out.push(`- Target repository: [${repo}](${f.repo})`);
   if (!o.noToken && f.mint) out.push(`- Token: ${f.symbol ? `${f.symbol}, mint ` : "mint "}\`${f.mint}\` ([explorer](${explorerUrl({ explorer_cluster: f.explorer_cluster }, "address", f.mint)}))`);
   out.push(`- Model: ${f.model ?? "TBA"}`);
-  if (prof) out.push(`- Lineage profile: ${prof}`);
+  if (prof) out.push(`- units profile: ${prof}`);
   if (!o.noToken && tokenPage) out.push(`- Token page: ${tokenPage}`);
   if (session) out.push(`- ${st.state === "working" ? "Live session" : "Latest session"}: ${session}`);
   out.push("", "## Status", "", MARK_START, renderStatus(f, st), MARK_END, "", "## Proof", "");
@@ -151,11 +151,11 @@ export function renderReadme(f: GenesisFacts, st: StatusFacts, o: { noToken: boo
     "To verify it offline:",
     "",
     `1. Take every field of the file except \`sig\` and encode it as canonical JSON (keys sorted, no spaces).`,
-    `2. Hash \`lineage-github-genesis-v1\` and that JSON with the Lineage statement digest (\`statementDigest\` in packages/protocol).`,
+    `2. Hash \`lineage-github-genesis-v1\` and that JSON with the units statement digest (\`statementDigest\` in packages/protocol).`,
     "3. Check `sig` as an ed25519 signature by `signer` over that digest.",
-    "4. Check that `signer` was the agent's signing key at `issued_at` (the agent's key history on Lineage, or its registry record on chain).",
+    "4. Check that `signer` was the agent's signing key at `issued_at` (the agent's key history on units, or its registry record on chain).",
     "",
-    `Or, from a checkout of the Lineage repository: \`bun scripts/identity/verify-genesis.ts https://github.com/${o.login}/${o.login} --core ${site ?? "<site>"}\`.`,
+    `Or, from a checkout of the units repository: \`bun scripts/identity/verify-genesis.ts https://github.com/${o.login}/${o.login} --core ${site ?? "<site>"}\`.`,
     "",
   );
   return out.join("\n");
@@ -334,7 +334,7 @@ export class GenesisRunner {
     return {
       profile, sessions,
       facts: {
-        agent, name: str(soul?.name, 120) ?? `Lineage agent ${agent.slice(0, 8)}`, tagline: str(soul?.tagline, 400),
+        agent, name: str(soul?.name, 120) ?? `units agent ${agent.slice(0, 8)}`, tagline: str(soul?.tagline, 400),
         repo: str(profile?.target_repo) ?? repo, mint: m, symbol: str(tok?.symbol, 20), launch_tx: launch?.signature ?? null,
         model: str(profile?.soul?.model?.id ?? profile?.model, 80), soul_digest: str(soul?.digest, 64), network: this.o.network.name,
         explorer_cluster: this.o.network.explorer_cluster, site: this.o.site, hidden,
@@ -404,7 +404,7 @@ export class GenesisRunner {
       const proofText = genesisFileText(file);
       const st = statusFacts(profile, sessions, this.published(agent));
       const readme = renderReadme(facts, st, { noToken: rec.opts.no_token, signed: !!file.sig, login });
-      const res = await this.commit(agent, cred, s.mode === "token" ? "token" : "purchased", readme, proofText, `Lineage genesis: ${facts.name}`, rec);
+      const res = await this.commit(agent, cred, s.mode === "token" ? "token" : "purchased", readme, proofText, `units genesis: ${facts.name}`, rec);
       rec.login = login;
       rec.repo = res.repo;
       rec.status = "published";
@@ -444,7 +444,7 @@ export class GenesisRunner {
         return { [rec.readme_path]: readme, [GENESIS_FILE]: proofText };
       },
       message: `${title}\n\n${lineageTrailers({ agent })}\n`,
-      description: "Lineage agent: genesis proof and status",
+      description: "units agent: genesis proof and status",
       homepage: site ? `${site}/agents/${agent}/profile` : undefined,
       apiBase: this.o.apiBase, gitBase: this.o.gitBase, fetch: this.o.fetch, log: (m) => this.log(m), verifyPolls: this.o.verifyPolls,
     });
@@ -475,7 +475,7 @@ export class GenesisRunner {
       const cred = this.creds.get(agent);
       if (!cred) return "skipped";
       const line = renderStatus(facts, st).split("\n")[0]!.replace(/^- /, "");
-      const res = await this.commit(agent, cred, s.mode === "token" ? "token" : "purchased", readme, rec.proof.text, `Lineage status: ${line}`, rec);
+      const res = await this.commit(agent, cred, s.mode === "token" ? "token" : "purchased", readme, rec.proof.text, `units status: ${line}`, rec);
       rec.readme = { hash, status_hash: sha256(renderStatus(facts, st)), at: t, sha: res.sha, verified: res.verified };
       this.save(rec);
       this.log(`genesis: ${agent} README ${res.unchanged ? "unchanged on GitHub" : `updated ${res.sha.slice(0, 12)} (${res.verified ? "Verified" : res.reason})`}`);

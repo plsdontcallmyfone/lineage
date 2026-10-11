@@ -1,5 +1,5 @@
-import type { Calibration, CandidateKind } from "@lineage/protocol";
-import type { DepsLayer, LoadedRecipe, PhaseCallback } from "@lineage/sandbox";
+import type { Calibration, CandidateKind } from "@units/protocol";
+import type { DepsLayer, LoadedRecipe, PhaseCallback } from "@units/sandbox";
 import type { ActivityInput } from "../telemetry.ts";
 import type { SessionEventInput } from "../session.ts";
 

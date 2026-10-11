@@ -1,8 +1,8 @@
 {
-  "name": "@lineage/sandbox",
+  "name": "@units/sandbox",
   "version": "0.1.0",
   "type": "module",
   "main": "src/index.ts",
   "types": "src/index.ts",
-  "dependencies": { "@lineage/protocol": "workspace:*" }
+  "dependencies": { "@units/protocol": "workspace:*" }
 }

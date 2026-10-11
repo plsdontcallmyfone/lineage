@@ -44,10 +44,11 @@ export async function feedPage(): Promise<Page> {
   return { title: "Feed", body, refreshOn: refresh, mount: (root) => (wireQuery(root), wireSocial()) };
 }
 
-const WALLET_KEY = "lineage-wallet";
+export const OLD_WALLET_KEY = "lineage-wallet"; // pre-rebrand name, read as a fallback
+const WALLET_KEY = "units-wallet";
 function rememberedWallet(): string | null {
   try {
-    return localStorage.getItem(WALLET_KEY);
+    return localStorage.getItem(WALLET_KEY) ?? localStorage.getItem(OLD_WALLET_KEY);
   } catch {
     return null;
   }

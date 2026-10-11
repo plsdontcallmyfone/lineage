@@ -1,4 +1,4 @@
-// Lineage dashboard server. Serves the client bundle, proxies GET requests to Core, and (Wallet page) devnet RPC and faucet.
+// units dashboard server. Serves the client bundle, proxies GET requests to Core, and (Wallet page) devnet RPC and faucet.
 //
 //   bun apps/web/server.ts --port 9661 --core http://127.0.0.1:9660 [--host 127.0.0.1] [--dev]
 //
@@ -17,8 +17,8 @@
 //   /souls/draft       POST {seed, agent, repo} a soul draft by Claude (per-soul, daily and per-address caps)
 //   /souls/publish     POST {doc, sig} forwarded to Core's PUT /v1/agents/:id/soul (SPEC 14.8)
 //   /market/<path>     GET proxy to the market indexer (packages/indexer; --market, default http://127.0.0.1:9668)
-//   /embed/lineage-embed.js   the embed kit (packages/embed, built at startup; rebuilt per request with --dev), CORS *
-//   /embed/lineage-explorer.js  <lineage-explorer>'s module, loaded on demand by the kit
+//   /embed/units-embed.js   the embed kit (packages/embed, built at startup; rebuilt per request with --dev), CORS *
+//   /embed/units-explorer.js  <units-explorer>'s module, loaded on demand by the kit
 //   /embed/demo.html          the kit's demo page (every element, two themes)
 //   /fonts/<file>      self-hosted fonts (public/fonts, licenses in public/fonts/OFL.txt)
 //   /doodles/<file>    hand-drawn SVG marks from the plnty scrape (public/doodles)
@@ -49,14 +49,14 @@ const arg = (n: string, d?: string) => {
   return i >= 0 ? process.argv[i + 1] : d;
 };
 const PORT = Number(arg("port", "9661"));
-const CORE = (arg("core", process.env.LINEAGE_CORE ?? "http://127.0.0.1:9660") ?? "").replace(/\/+$/, "");
+const CORE = (arg("core", (process.env.UNITS_CORE ?? process.env.LINEAGE_CORE) ?? "http://127.0.0.1:9660") ?? "").replace(/\/+$/, "");
 const HOST = arg("host", "127.0.0.1")!;
 const DEV = process.argv.includes("--dev");
-const MARKET = (arg("market", process.env.LINEAGE_MARKET ?? "http://127.0.0.1:9668") ?? "").replace(/\/+$/, "");
+const MARKET = (arg("market", (process.env.UNITS_MARKET ?? process.env.LINEAGE_MARKET) ?? "http://127.0.0.1:9668") ?? "").replace(/\/+$/, "");
 // the GitHub identity service (packages/identity); on the site Caddy routes /identity/* to it directly
-const IDENTITY = (arg("identity", process.env.LINEAGE_IDENTITY ?? "http://127.0.0.1:9665") ?? "").replace(/\/+$/, "");
+const IDENTITY = (arg("identity", (process.env.UNITS_IDENTITY ?? process.env.LINEAGE_IDENTITY) ?? "http://127.0.0.1:9665") ?? "").replace(/\/+$/, "");
 const UPSTREAM = (arg("upstream", "") ?? "").replace(/\/+$/, "");
-const RUNTIME = (arg("runtime", process.env.LINEAGE_RUNTIME ?? "http://127.0.0.1:9667") ?? "").replace(/\/+$/, "");
+const RUNTIME = (arg("runtime", (process.env.UNITS_RUNTIME ?? process.env.LINEAGE_RUNTIME) ?? "http://127.0.0.1:9667") ?? "").replace(/\/+$/, "");
 const DIR = import.meta.dir;
 
 try {
@@ -139,14 +139,16 @@ const FONT_TYPES: Record<string, string> = { woff2: "font/woff2", txt: "text/pla
 // embed kit (packages/embed, docs/EMBED.md): one file any front end loads with a script tag
 const { buildEmbed } = await import("../../packages/embed/scripts/build.ts");
 let embedBundle: string = await buildEmbed({ dev: DEV });
-let explorerBundle: string | null = null; // built on first request (the explorer lane's module, loaded on demand by <lineage-explorer>)
+let explorerBundle: string | null = null; // built on first request (the explorer lane's module, loaded on demand by <units-explorer>)
 async function embedRoute(p: string): Promise<Response> {
+  // pre-rebrand script URLs pasted on other sites keep working (docs/plans/REBRAND-UNITS.md 3.11)
+  if (p === "/embed/lineage-embed.js" || p === "/embed/lineage-explorer.js") p = p.replace("/lineage-", "/units-");
   const cors = { "access-control-allow-origin": "*", "cross-origin-resource-policy": "cross-origin" };
-  if (p === "/embed/lineage-embed.js") {
+  if (p === "/embed/units-embed.js") {
     if (DEV) embedBundle = await buildEmbed({ dev: true }).catch((e) => `console.error(${JSON.stringify(String(e))})`);
     return new Response(embedBundle, { headers: { "content-type": "text/javascript; charset=utf-8", "cache-control": DEV ? "no-store" : "public, max-age=300", ...cors } });
   }
-  if (p === "/embed/lineage-explorer.js") {
+  if (p === "/embed/units-explorer.js") {
     if (DEV || !explorerBundle) explorerBundle = await buildEmbed({ dev: DEV, entry: "explorer-entry" }).catch((e) => `console.error(${JSON.stringify(String(e))})`);
     return new Response(explorerBundle, { headers: { "content-type": "text/javascript; charset=utf-8", "cache-control": DEV ? "no-store" : "public, max-age=300", ...cors } });
   }
@@ -157,7 +159,7 @@ async function embedRoute(p: string): Promise<Response> {
 
 // ------------------------------------------------------------------------------------------------
 // chain: public state, RPC proxy, faucet, under the network profile (config/profile.json,
-// LINEAGE_NETWORK; SPEC 14.10). devnet as before; mainnet: no faucet, keyed RPC from env, never sent here.
+// UNITS_NETWORK; SPEC 14.10). devnet as before; mainnet: no faucet, keyed RPC from env, never sent here.
 
 const PROFILE = applyNetworkProfile();
 const RPC_URL = arg("rpc") ?? rpcUrlFor(PROFILE);

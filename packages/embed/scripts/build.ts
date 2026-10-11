@@ -1,7 +1,7 @@
 #!/usr/bin/env bun
-// Builds packages/embed/dist/lineage-embed.js: one dependency-free file (an IIFE, so it works as a
+// Builds packages/embed/dist/units-embed.js: one dependency-free file (an IIFE, so it works as a
 // classic <script> and also when loaded with type="module"). apps/web/server.ts serves the same build
-// at /embed/lineage-embed.js.
+// at /embed/units-embed.js.
 //
 //   bun packages/embed/scripts/build.ts [--out <file>] [--dev]
 import { mkdirSync, writeFileSync } from "node:fs";
@@ -29,15 +29,15 @@ export async function buildEmbed(opts: { dev?: boolean; entry?: "index" | "explo
     plugins: opts.dev ? [] : [cssWhitespace],
   });
   if (!out.success) throw new Error(out.logs.map((l) => String(l)).join("\n"));
-  return `/* ${opts.entry === "explorer-entry" ? "lineage-explorer.js" : "lineage-embed.js"} ${new Date().toISOString().slice(0, 10)}, docs/EMBED.md */\n${await out.outputs[0]!.text()}`;
+  return `/* ${opts.entry === "explorer-entry" ? "units-explorer.js" : "units-embed.js"} ${new Date().toISOString().slice(0, 10)}, docs/EMBED.md */\n${await out.outputs[0]!.text()}`;
 }
 
 if (import.meta.main) {
   const i = process.argv.indexOf("--out");
-  const file = i > 0 ? process.argv[i + 1]! : join(import.meta.dir, "../dist/lineage-embed.js");
+  const file = i > 0 ? process.argv[i + 1]! : join(import.meta.dir, "../dist/units-embed.js");
   const dev = process.argv.includes("--dev");
   mkdirSync(dirname(file), { recursive: true });
-  for (const [f, js] of [[file, await buildEmbed({ dev })], [join(dirname(file), "lineage-explorer.js"), await buildEmbed({ dev, entry: "explorer-entry" })]] as const) {
+  for (const [f, js] of [[file, await buildEmbed({ dev })], [join(dirname(file), "units-explorer.js"), await buildEmbed({ dev, entry: "explorer-entry" })]] as const) {
     writeFileSync(f, js);
     const gz = Bun.gzipSync(new TextEncoder().encode(js)).length;
     console.log(`${f}: ${(js.length / 1024).toFixed(1)} KB minified, ${(gz / 1024).toFixed(1)} KB gzip`);

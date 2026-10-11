@@ -37,9 +37,9 @@ export const TILES: Record<Tile, Rect> = {
 
 /** X window class of each tile (desk-session). */
 export const CLASSES: Record<Tile, string> = {
-  editor: "LineageEditor",
-  browser: "LineageBrowser",
-  term: "LineageTerm",
+  editor: "UnitsEditor",
+  browser: "UnitsBrowser",
+  term: "UnitsTerm",
   run: "LineageRun",
 };
 

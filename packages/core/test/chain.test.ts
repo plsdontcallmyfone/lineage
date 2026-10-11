@@ -2,7 +2,7 @@ import { afterAll, afterEach, beforeAll, describe, expect, test } from "bun:test
 import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { accountDisc, ChainReader, DEVNET_V1_PROGRAM_IDS, useProgramIdsForTest, fixtureTransport, hexToBytes, Reader, registryPdas, Rpc, Writer, type Ix, type Transport } from "@lineage/chain";
+import { accountDisc, ChainReader, DEVNET_V1_PROGRAM_IDS, useProgramIdsForTest, fixtureTransport, hexToBytes, Reader, registryPdas, Rpc, Writer, type Ix, type Transport } from "@units/chain";
 import { backoffMs, ChainBridge, chainBootstrap, parseChainSettings, slashId } from "../src/chain.ts";
 import { deploymentsOf } from "../src/deployments.ts";
 import { FakeClock } from "../src/clock.ts";

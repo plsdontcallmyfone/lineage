@@ -5,7 +5,7 @@ import { homedir } from "node:os";
 import { join, resolve } from "node:path";
 import { systemClock } from "./clock.ts";
 import { loadNetworkConfig } from "./config.ts";
-import { ChainReader, Rpc, rpcSlotSource } from "@lineage/chain";
+import { ChainReader, Rpc, rpcSlotSource } from "@units/chain";
 import { redactRpc } from "../../chain/src/endpoint.ts";
 import { applyNetworkProfile, rpcUrlFor } from "../../chain/src/profile-node.ts";
 import { ChainBridge, chainBootstrap, loadChainSettings } from "./chain.ts";
@@ -78,13 +78,13 @@ if (busy) {
   process.exit(1);
 }
 
-// network profile (SPEC 14.10): devnet unless config/profile.json or LINEAGE_NETWORK says mainnet;
+// network profile (SPEC 14.10): devnet unless config/profile.json or UNITS_NETWORK says mainnet;
 // on mainnet every send prices compute units from recent fees (capped by config)
 const profile = applyNetworkProfile();
 const chainSettings = loadChainSettings(arg("chain") ?? configPath);
 if (chainSettings) {
   if (chainSettings.mode !== profile.network) {
-    console.error(`chain.mode ${chainSettings.mode} differs from the network profile ${profile.network} (config/profile.json, LINEAGE_NETWORK); refusing to start`);
+    console.error(`chain.mode ${chainSettings.mode} differs from the network profile ${profile.network} (config/profile.json, UNITS_NETWORK); refusing to start`);
     process.exit(2);
   }
   // mainnet: the keyed endpoint from env, never from a config file

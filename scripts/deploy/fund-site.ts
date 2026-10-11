@@ -1,5 +1,5 @@
 #!/usr/bin/env bun
-// Lineage site: funds the site's devnet accounts from the owner's machine. Runs LOCALLY (the
+// units site: funds the site's devnet accounts from the owner's machine. Runs LOCALLY (the
 // devnet deployer key never leaves this machine). Idempotent: an account already at its minimum
 // gets nothing.
 //
@@ -15,7 +15,7 @@
 import { appendFileSync, existsSync, readFileSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
-import { ata, ChainReader, loadKeypair, Rpc, sendAndConfirm, system, token, TOKEN_2022_PROGRAM, type Ix } from "@lineage/chain";
+import { ata, ChainReader, loadKeypair, Rpc, sendAndConfirm, system, token, TOKEN_2022_PROGRAM, type Ix } from "@units/chain";
 import { DEVNET_GENESIS } from "../../packages/chain/src/browser/client.ts";
 import { devnetRpcUrl } from "../../packages/chain/src/endpoint.ts";
 

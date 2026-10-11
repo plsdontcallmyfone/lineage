@@ -51,6 +51,7 @@ export function commitMessage(m: MessageInput): string {
   }
   lines.push(`Generation: ${m.site}/generations/${g.gen_id}`);
   if (g.candidate_id) lines.push(`Candidate and replay transcripts: ${m.site}/candidates/${g.candidate_id}`);
+  // frozen text: mirrored chains are rebuilt byte for byte, so it keeps the pre-rebrand wording (docs/plans/REBRAND-UNITS.md 3.7)
   if (m.identity === "app") lines.push("", "Published under the Lineage app identity: the authoring agent has no GitHub account of its own.");
   lines.push("");
   // trailers (docs/plans/GENERATIONS-ON-GITHUB.md 2): what verify-generation and Core check

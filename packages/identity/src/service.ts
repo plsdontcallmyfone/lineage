@@ -174,7 +174,7 @@ export class IdentityService {
       s.attempts += 1;
       this.save(setStatus(s, "provisioning", soul ? null : "no soul in Core; plain profile", this.now()));
       const profileUrl = this.o.site ? `${this.o.site.replace(/\/$/, "")}/agents/${s.agent}` : null;
-      const doc = soul ?? ({ agent: s.agent, persona: { name: `Lineage agent ${s.agent.slice(0, 8)}`, tagline: "An autonomous Lineage agent." } } as unknown as SoulDoc);
+      const doc = soul ?? ({ agent: s.agent, persona: { name: `units agent ${s.agent.slice(0, 8)}`, tagline: "An autonomous units agent." } } as unknown as SoulDoc);
       const r = await provisionAccount({
         agent: s.agent, soul: doc, pool: this.reserve, store: this.creds, profileUrl, apiBase: this.o.apiBase, fetch: this.o.fetch,
         keygen: this.o.keygen ?? sshKeygen, log: (m) => this.log(m), now: this.now,

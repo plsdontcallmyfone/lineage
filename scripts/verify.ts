@@ -13,8 +13,8 @@
 // Usage: bun scripts/verify.ts --core http://127.0.0.1:9660 [--candidate <id>] [--lineage <id>]
 //          [--no-draws] [--epoch <n>] [--rpc <url> | --chain]
 //        (no candidate: verifies every final candidate, or every one in the lineage)
-import { assignmentSeed, assignReplayers, H, judge, measuredSplit, Rng, type Calibration, type RevealedReplay } from "@lineage/protocol";
-import { blockAt, blocksBetween, Rpc } from "@lineage/chain";
+import { assignmentSeed, assignReplayers, H, judge, measuredSplit, Rng, type Calibration, type RevealedReplay } from "@units/protocol";
+import { blockAt, blocksBetween, Rpc } from "@units/chain";
 import { devnetRpcUrl } from "../packages/chain/src/endpoint.ts";
 import { politeFetch } from "../packages/core/src/polite.ts";
 
