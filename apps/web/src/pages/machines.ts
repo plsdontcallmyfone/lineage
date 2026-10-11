@@ -36,7 +36,7 @@ function work(m: any): Raw {
 function row(m: any, now: number): Raw {
   const load = m.load ? html`<span class="num">${m.load.load1.toFixed(2)}</span><div class="sub">${m.load.mem_free_mb !== undefined ? `${int(m.load.mem_free_mb)} MB free` : ""}</div>` : html`<span class="faint">TBA</span>`;
   const gain = m.gain ? effect(m.gain, { compact: true }) : html`<span class="faint">${m.sealed ? "sealed" : m.job === "idle" ? "none" : m.job === "withheld" ? "private" : "TBA"}</span>`;
-  return html`<tr class="${m.awake ? "" : "asleep"}">
+  return html`<tr class="${m.awake ? "" : "asleep"}" data-job="${m.job}" data-awake="${m.awake ? "1" : "0"}">
     <td>${agentLink(m.agent_id)}<div class="sub">${m.reference ? "reference runner" : m.kind}${m.caps_match === false ? ", capabilities changed" : ""}<span class="show-sm">${m.awake ? "awake" : "asleep"}</span></div></td>
     <td class="hide-sm">${hw(m.capabilities)}</td>
     <td>${m.job === "withheld" ? html`<span class="faint">private</span>` : badge(m.job, JOB_TONE[m.job] ?? "")}${m.phase ? html`<div class="sub">${m.phase}</div>` : ""}</td>
@@ -48,16 +48,21 @@ function row(m: any, now: number): Raw {
   </tr>`;
 }
 
+let mfilter = "";
+
 export async function machinesPage(): Promise<Page> {
   const [live] = await Promise.all([get("live"), loadLineageNames()]);
   const now = live.now as number;
   const ms = [...live.machines].sort((a: any, b: any) => Number(b.awake) - Number(a.awake) || b.last_seen - a.last_seen);
   const t = live.totals;
+  // the first four tiles filter the process table (click again to show every machine)
+  const tile = (key: string, label: string, value: Raw | string, sub: string) =>
+    html`<button type="button" class="stat stat-btn" data-mf="${key}" aria-pressed="${String(mfilter === key)}"><div class="eyebrow">${label}</div><div class="v">${value}</div><div class="s">${sub}</div></button>`;
   const strip = html`<section class="panel milled"><div class="stats" style="--n:6">
-    ${stat("Awake", html`${int(t.awake)}<span class="unit">of ${int(t.machines)}</span>`, `heartbeat within ${live.awake_window_s}s`)}
-    ${stat("Replaying", int(t.by_job.replay), "includes audits and references")}
-    ${stat("Qualifying", int(t.by_job.qualify), "baseline replays")}
-    ${stat("Authoring", int(t.by_job.author), "agents proposing")}
+    ${tile("awake", "Awake", html`${int(t.awake)}<span class="unit">of ${int(t.machines)}</span>`, `heartbeat within ${live.awake_window_s}s`)}
+    ${tile("replay", "Replaying", int(t.by_job.replay), "includes audits and references")}
+    ${tile("qualify", "Qualifying", int(t.by_job.qualify), "baseline replays")}
+    ${tile("author", "Authoring", int(t.by_job.author), "agents proposing")}
     ${stat("CPUs awake", int(t.cpus_awake), `${int(Math.round(t.memory_mb_awake / 1024))} GB declared memory`)}
     ${stat("GPUs awake", int(t.gpus_awake), "declared by awake machines")}
   </div></section>`;
@@ -71,5 +76,20 @@ export async function machinesPage(): Promise<Page> {
       <div class="ph-sub"><span>Workers report job, phase, container start and host load every ${live.heartbeat_s}s (<span class="num">POST /v1/heartbeat</span>, signed). A machine is awake while its last heartbeat is under ${live.awake_window_s}s old. Hardware is what the worker declared and qualified with.</span></div></div></div>
     ${strip}
     <div style="margin-top:16px">${panel("Process table", table, { count: ms.length, aside: html`<span>awake first, then by last heartbeat</span>` })}</div>`;
-  return { title: "Machines", body, refreshOn: (e) => e.type === "machine.heartbeat" || e.type.startsWith("candidate.") || e.type === "generation.accepted", pollMs: live.heartbeat_s * 1000 };
+  const applyFilter = (root: HTMLElement) => {
+    for (const b of root.querySelectorAll<HTMLElement>("[data-mf]")) b.setAttribute("aria-pressed", String(b.dataset.mf === mfilter));
+    for (const tr of root.querySelectorAll<HTMLElement>("tr[data-job]"))
+      tr.hidden = !!mfilter && (mfilter === "awake" ? tr.dataset.awake !== "1" : tr.dataset.job !== mfilter);
+  };
+  const mount = (root: HTMLElement) => {
+    applyFilter(root);
+    // on the strip, which every render replaces, so a re-mount into the same root adds no second listener
+    root.querySelector(".stats")?.addEventListener("click", (ev) => {
+      const b = (ev.target as HTMLElement).closest<HTMLElement>("[data-mf]");
+      if (!b) return;
+      mfilter = mfilter === b.dataset.mf ? "" : (b.dataset.mf ?? "");
+      applyFilter(root);
+    });
+  };
+  return { title: "Machines", body, mount, refreshOn: (e) => e.type === "machine.heartbeat" || e.type.startsWith("candidate.") || e.type === "generation.accepted", pollMs: live.heartbeat_s * 1000 };
 }

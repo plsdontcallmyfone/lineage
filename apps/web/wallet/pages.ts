@@ -29,6 +29,7 @@ const card = (i: number, title: string, sub: Raw | string, body: Raw) =>
 
 export function launchSkeleton(): Raw {
   return html`
+    <div class="lz-page">
     <div class="ph-row"><div class="ph-title"><div class="eyebrow">Launch</div>
       <h1><span class="dd-wrap">Launch an agent<img class="dd dd-wow" src="/doodles/wow.svg" alt="" aria-hidden="true"></span></h1>
       <div class="ph-sub"><span>A token for an agent that works on a public repository. Its work is judged by independent replays. Devnet, TEST tokens.</span></div></div></div>
@@ -43,8 +44,7 @@ export function launchSkeleton(): Raw {
         </div>
         <label><span class="eyebrow">Description</span><textarea name="l_desc" maxlength="700" rows="3" placeholder="What this agent is for, in a sentence or two."></textarea><span class="wl-help">Shown on the agent's profile as "From the launcher"; it is also part of the soul seed the agent key signs.</span></label>
         <div class="lz-img">
-          <div class="lz-prev" id="lz-prev" aria-hidden="true"><span>${icon.agent}</span></div>
-          <label class="lz-file"><span class="eyebrow">Image</span><input type="file" name="l_image" accept="image/png,image/jpeg,image/webp"><span class="wl-help" id="lz-img-help">PNG, JPEG or WebP, at most 256 KB. Your wallet signs it after the launch and it becomes the agent's avatar; without one the avatar is a pattern generated from the agent key.</span></label>
+          <label class="lz-drop"><input type="file" class="lz-fin" name="l_image" accept="image/png,image/jpeg,image/webp"><span class="lz-prev" id="lz-prev" aria-hidden="true"><span>${icon.agent}</span></span><span class="lz-drop-t"><b data-file="l_image">Upload image</b><span class="wl-help" id="lz-img-help">PNG, JPEG or WebP, at most 256 KB. It becomes the agent's avatar; without one the avatar is a pattern generated from the agent key.</span></span></label>
         </div>
         <label><span class="eyebrow">Links (optional)</span><textarea name="l_links" rows="2" maxlength="400" placeholder="https://example.com, one per line, up to 3"></textarea><span class="wl-help">https links, kept with the description.</span></label>`)}
       ${card(1, "The work", "The public GitHub repository the agent improves. What it can improve is what a recipe on Core can measure.", html`
@@ -65,7 +65,7 @@ export function launchSkeleton(): Raw {
         </fieldset>
         <fieldset><legend class="eyebrow">Avatar and banner</legend>
           <div class="lz-av" id="lz-av"></div>
-          <label class="lz-file"><span class="eyebrow">Banner (optional)</span><input type="file" name="l_banner" accept="image/png,image/jpeg,image/webp"><span class="wl-help">At most 1 MB; signed and uploaded after the launch, like the image.</span></label>
+          <label class="lz-drop"><input type="file" class="lz-fin" name="l_banner" accept="image/png,image/jpeg,image/webp"><span class="lz-drop-t"><b data-file="l_banner">Upload banner (optional)</b><span class="wl-help">At most 1 MB; signed and uploaded after the launch, like the image.</span></span></label>
         </fieldset>
         ${modelFieldset()}
         <fieldset><legend class="eyebrow">Runtime</legend>
@@ -90,7 +90,8 @@ export function launchSkeleton(): Raw {
         <div id="w-launch-steps"></div>`)}
     </form>
     <div class="lz-foot" id="lz-foot"></div>
-    <div style="margin-top:16px">${panel("This session's transactions", html`<div id="w-sigs"></div>`, { note: html`Every signature links to Solana Explorer (devnet). Nothing is stored after you leave the page.` })}</div>`;
+    <div style="margin-top:16px">${panel("This session's transactions", html`<div id="w-sigs"></div>`, { note: html`Every signature links to Solana Explorer (devnet). Nothing is stored after you leave the page.` })}</div>
+    </div>`;
 }
 
 export function profileSkeleton(): Raw {

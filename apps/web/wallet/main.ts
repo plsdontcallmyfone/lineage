@@ -2448,6 +2448,8 @@ async function pickImage(t: HTMLInputElement) {
   const f = t.files?.[0] ?? null;
   if (t.name === "l_image") S.image = f;
   else S.bannerFile = f;
+  const label = S.root?.querySelector<HTMLElement>(`[data-file="${t.name}"]`);
+  if (label) label.textContent = f ? f.name : t.name === "l_image" ? "Upload image" : "Upload banner (optional)";
   renderAvatar();
   renderWizard();
 }
