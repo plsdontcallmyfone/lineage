@@ -46,3 +46,17 @@ test("a user-account fork without organization keeps the old behaviour", async (
   expect(r).toEqual({ fork: "pub/base58", created: true });
   expect(c.writes.find((w) => w.method === "POST")!.body).toEqual({ default_branch_only: true });
 });
+
+test("an upstream that moved keeps its fork (the fork's parent carries the new name)", async () => {
+  const c = client("tok-pub", T(gh));
+  gh.createRepo("ApeWorX/pyrlp", { "rlp.py": "z\n" });
+  // the org already forked it under the old name; GitHub answers the old upstream name with the new repository
+  const r0 = await ensureFork(c, "units-agents", "ApeWorX/pyrlp", T(gh), { organization: true });
+  expect(r0.fork).toBe("units-agents/pyrlp");
+  const real = gh.fetch;
+  const redirected = async (url: string, init?: RequestInit) => real(url.replace("/repos/ethereum/pyrlp", "/repos/ApeWorX/pyrlp"), init);
+  const c2 = client("tok-pub", { ...T(gh), fetch: redirected });
+  const r = await ensureFork(c2, "units-agents", "ethereum/pyrlp", { ...T(gh), fetch: redirected }, { organization: true });
+  expect(r).toEqual({ fork: "units-agents/pyrlp", created: false });
+  expect(c2.writes).toEqual([]);
+});

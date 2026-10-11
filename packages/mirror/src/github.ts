@@ -30,14 +30,18 @@ export const gitUrl = (t: GitHubTarget, fullName: string) => `${gitBaseOf(t)}/${
  */
 export async function ensureFork(gh: GitHub, owner: string, upstream: string, t: GitHubTarget, o: { organization?: boolean } = {}): Promise<{ fork: string; created: boolean }> {
   const [upOwner, repo] = upstream.split("/") as [string, string];
-  const forkOf = (r: any) =>
-    !!r?.fork && (!r.parent || r.parent.full_name?.toLowerCase() === upstream.toLowerCase() || r.source?.full_name?.toLowerCase() === upstream.toLowerCase());
+  // an upstream that moved (ethereum/pyrlp is now ApeWorX/pyrlp; GitHub redirects the old name) is
+  // the parent of its forks under its current name
+  const names = new Set([upstream.toLowerCase()]);
+  const up = await gh.get<any>(`/repos/${upstream}`, [404]);
+  if (up?.full_name) names.add(String(up.full_name).toLowerCase());
+  const forkOf = (r: any) => !!r?.fork && (!r.parent || names.has(String(r.parent.full_name ?? "").toLowerCase()) || names.has(String(r.source?.full_name ?? "").toLowerCase()));
   let name = repo;
   for (const candidate of [repo, `${upOwner}-${repo}`]) {
     name = candidate;
     const existing = await gh.get<any>(`/repos/${owner}/${candidate}`, [404]);
     if (!existing || existing.message || !existing.full_name) break;
-    if (existing.full_name.toLowerCase() === upstream.toLowerCase()) throw new Error(`${upstream} belongs to the agent's own account; it has no fork of it`);
+    if (names.has(existing.full_name.toLowerCase())) throw new Error(`${upstream} belongs to the agent's own account; it has no fork of it`);
     if (forkOf(existing)) return { fork: existing.full_name, created: false };
     if (candidate !== repo) throw new Error(`${existing.full_name} exists and is not a fork of ${upstream}`);
   }
