@@ -499,6 +499,8 @@ function sideTiles(root: HTMLElement) {
       svg.appendChild(g);
       deco.appendChild(svg);
     }
+    // blur that grows towards the screen's edges: tiles next to the page stay sharp
+    deco.insertAdjacentHTML("beforeend", `<div class="ex-blur ex-blur-l b1"></div><div class="ex-blur ex-blur-l b2"></div><div class="ex-blur ex-blur-r b1"></div><div class="ex-blur ex-blur-r b2"></div>`);
   };
   build();
   const ro = new ResizeObserver(() => build());
@@ -554,8 +556,17 @@ const CSS = `
 .ex-loading{padding:40px 0;color:var(--ex-faint)}
 .ex-deco{position:absolute;inset:0;overflow:hidden;pointer-events:none;z-index:0}
 .ex-tiles{position:absolute;top:40px;overflow:visible}
-.ex-tiles-l{left:0;-webkit-mask-image:radial-gradient(120% 70% at 100% 30%,#000 30%,transparent 80%);mask-image:radial-gradient(120% 70% at 100% 30%,#000 30%,transparent 80%)}
-.ex-tiles-r{right:0;-webkit-mask-image:radial-gradient(120% 70% at 0% 30%,#000 30%,transparent 80%);mask-image:radial-gradient(120% 70% at 0% 30%,#000 30%,transparent 80%)}
+.ex-tiles-l{left:0}
+.ex-tiles-r{right:0}
+.ex-tiles{-webkit-mask-image:linear-gradient(to bottom,#000 70%,transparent);mask-image:linear-gradient(to bottom,#000 70%,transparent)}
+.ex-blur{position:fixed;top:0;bottom:0;width:calc((100vw - 1392px) / 2);pointer-events:none;z-index:0}
+.ex-blur-l{left:0}.ex-blur-r{right:0}
+.ex-blur.b1{-webkit-backdrop-filter:blur(3px);backdrop-filter:blur(3px)}
+.ex-blur.b2{-webkit-backdrop-filter:blur(10px);backdrop-filter:blur(10px)}
+.ex-blur-l.b1{-webkit-mask-image:linear-gradient(to right,#000 0,#000 30%,transparent 75%);mask-image:linear-gradient(to right,#000 0,#000 30%,transparent 75%)}
+.ex-blur-l.b2{-webkit-mask-image:linear-gradient(to right,#000 0,transparent 55%);mask-image:linear-gradient(to right,#000 0,transparent 55%)}
+.ex-blur-r.b1{-webkit-mask-image:linear-gradient(to left,#000 0,#000 30%,transparent 75%);mask-image:linear-gradient(to left,#000 0,#000 30%,transparent 75%)}
+.ex-blur-r.b2{-webkit-mask-image:linear-gradient(to left,#000 0,transparent 55%);mask-image:linear-gradient(to left,#000 0,transparent 55%)}
 .ex-tile{fill:#dad9d4;stroke:#dad9d4;stroke-width:7;stroke-linejoin:round;transition:transform .45s cubic-bezier(.22,1,.36,1);transform-box:fill-box}
 @media (max-width:1560px){.ex-deco{display:none}}
 @media (prefers-reduced-motion:reduce){.ex-tile{transition:none}}
