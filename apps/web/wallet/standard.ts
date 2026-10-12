@@ -245,9 +245,27 @@ export function restoreSession() {
 // ------------------------------------------------------------------------------------------------
 // signing
 
+/**
+ * Runs a signing request; when the wallet answers that this site or account is not authorized (a
+ * session restored from storage that the wallet itself no longer holds, or the wallet switched
+ * account), asks the wallet to connect again and retries once with the same address.
+ */
+async function authorized<T = any>(w: StdWallet, account: StdAccount, run: (a: StdAccount) => Promise<T>): Promise<T> {
+  try {
+    return await run(account);
+  } catch (e) {
+    const m = String((e as any)?.message ?? e);
+    if ((e as any)?.code !== 4100 && !/not been authorized|unauthorized/i.test(m)) throw e;
+    const r = await w.features["standard:connect"].connect();
+    const again = ((r?.accounts ?? w.accounts ?? []) as StdAccount[]).find((x) => x.address === account.address);
+    if (!again) throw new Error(`The wallet is on another account. Switch it to ${account.address.slice(0, 4)}...${account.address.slice(-4)} and press Launch again.`);
+    return await run(again);
+  }
+}
+
 /** The wallet signs `wire` (it may hold other signatures already) for the profile's chain (devnet unless mainnet) and returns the wire. */
 export async function signTransaction(w: StdWallet, account: StdAccount, wire: Uint8Array): Promise<Uint8Array> {
-  const [out] = await w.features["solana:signTransaction"].signTransaction({ account, transaction: wire, chain: G.chain });
+  const [out] = await authorized<any[]>(w, account, (a) => w.features["solana:signTransaction"].signTransaction({ account: a, transaction: wire, chain: G.chain }));
   if (!out?.signedTransaction) throw new Error("the wallet returned no signed transaction");
   return new Uint8Array(out.signedTransaction);
 }
@@ -258,7 +276,7 @@ export async function signTransaction(w: StdWallet, account: StdAccount, wire: U
  * (the standard's equivalent of signAllTransactions). A wallet that answers with fewer outputs is refused.
  */
 export async function signTransactions(w: StdWallet, account: StdAccount, wires: Uint8Array[]): Promise<Uint8Array[]> {
-  const out = await w.features["solana:signTransaction"].signTransaction(...wires.map((transaction) => ({ account, transaction, chain: G.chain })));
+  const out = await authorized(w, account, (a) => w.features["solana:signTransaction"].signTransaction(...wires.map((transaction) => ({ account: a, transaction, chain: G.chain }))));
   if (!Array.isArray(out) || out.length !== wires.length || out.some((o: any) => !o?.signedTransaction))
     throw new Error(`the wallet signed ${Array.isArray(out) ? out.length : 0} of ${wires.length} transactions; nothing was sent`);
   return out.map((o: any) => new Uint8Array(o.signedTransaction));
