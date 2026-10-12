@@ -487,7 +487,9 @@ async function preflight() {
   }
   // the site
   if (SITE) {
-    const h = (await fetch(`${SITE}/v1/health`, { signal: AbortSignal.timeout(10_000) }).then((r) => r.json()).catch(() => null)) as { ok?: boolean } | null;
+    // a site behind a password until the owner opens it: UNITS_SITE_AUTH="user:password" (never printed)
+    const auth = process.env.UNITS_SITE_AUTH ? { authorization: `Basic ${Buffer.from(process.env.UNITS_SITE_AUTH).toString("base64")}` } : undefined;
+    const h = (await fetch(`${SITE}/v1/health`, { headers: auth, signal: AbortSignal.timeout(10_000) }).then((r) => r.json()).catch(() => null)) as { ok?: boolean } | null;
     const ch = (await fetch(`${SITE}/v1/chain`, { signal: AbortSignal.timeout(10_000) }).then((r) => r.json()).catch(() => null)) as { registry_program?: string; core_authority?: string } | null;
     check(`the site instance answers at ${SITE} and its Core authority is the one named`, !!h?.ok && ch?.core_authority === P0.core_authority,
       ch ? `serving ${ch.registry_program === IDS.registry ? "the OFFICIAL deployment" : `the deployment at registry ${ch.registry_program} (the test deployment until switch)`}` : "no answer");
@@ -598,7 +600,9 @@ async function pre() {
   check("the dev wallet holds SOL", (await rpc.getBalance(ADMIN)) > 100_000_000n, sol(await rpc.getBalance(ADMIN)));
   for (const [name, a] of [["Core authority", P0.core_authority], ["runtime authority", P0.runtime_authority]] as const) check(`${name} hot key holds at least 0.05 SOL`, (await rpc.getBalance(a)) >= 50_000_000n, sol(await rpc.getBalance(a)));
   if (SITE) {
-    const h = (await fetch(`${SITE}/v1/health`, { signal: AbortSignal.timeout(10_000) }).then((r) => r.json()).catch(() => null)) as { ok?: boolean } | null;
+    // a site behind a password until the owner opens it: UNITS_SITE_AUTH="user:password" (never printed)
+    const auth = process.env.UNITS_SITE_AUTH ? { authorization: `Basic ${Buffer.from(process.env.UNITS_SITE_AUTH).toString("base64")}` } : undefined;
+    const h = (await fetch(`${SITE}/v1/health`, { headers: auth, signal: AbortSignal.timeout(10_000) }).then((r) => r.json()).catch(() => null)) as { ok?: boolean } | null;
     check(`the site answers at ${SITE}`, !!h?.ok);
   }
   if (failed) { say(`pre: ${failed} check${failed > 1 ? "s" : ""} failed`); return; }
