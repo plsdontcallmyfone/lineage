@@ -7,3 +7,4 @@ export * from "./rpc.ts";
 export * from "./core-sync.ts";
 export * from "./alerts.ts";
 export * from "./usd.ts";
+export * from "./purged.ts";

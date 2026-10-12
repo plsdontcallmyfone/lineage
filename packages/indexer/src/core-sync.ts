@@ -1,4 +1,5 @@
 import type { Database } from "bun:sqlite";
+import { dropPurged, ensurePurgedSchema, isPurgedLaunch, purgedSets, recordPurged, type Dropped } from "./purged.ts";
 
 // What the token directory (/explorer, docs/plans/FRONTEND-EMBED.md amendment 2) needs from Core
 // for each agent token: the target class of the lineage the agent works on, its verified (accepted,
@@ -30,9 +31,51 @@ interface Gen { gen_id?: string; entry_type: string; author: string | null; reve
 interface Session { session_id: string; agent: string | null; state: string; class: string | null; lineage_id: string; repo: string | null; proposer: string;
   started_at: number; last_at: number | null }
 
+export interface SyncCoreOpts {
+  modelCache?: Map<string, { model: string | null; at: number }>;
+  /** Called after rows of a purged launch were deleted, with counts only (no id): the caller drops what it holds in memory. */
+  onPurge?: (dropped: { mints: number; agents: number; rows: number }) => void;
+}
+
+/**
+ * Core's list of purged launches (GET /v1/purged, digests only; purged.ts) and the deletion of every
+ * row this database holds of them. It runs first and in its own transaction, so a purge takes effect
+ * even when the rest of the pass fails; a Core that cannot be read, or one without the route, leaves
+ * the stored list as it is, and the deletion still runs against it (it is idempotent, and it removes
+ * what a pass of the indexer that was reading the chain at the time may have written since).
+ */
+export async function syncPurged(db: Database, get: FetchJson, opts: SyncCoreOpts = {}): Promise<Dropped> {
+  ensurePurgedSchema(db);
+  const answer = await get("/v1/purged").catch(() => null);
+  const listed = purgedSets(db);
+  const news = Array.isArray((answer as { purged?: unknown } | null)?.purged) && (answer as { purged: unknown[] }).purged.length > 0;
+  if (!news && !listed.mints.size && !listed.agents.size) return { mints: [], agents: [], rows: 0 };
+  // deleted content is overwritten in the database file instead of being left in its free pages
+  db.exec("PRAGMA secure_delete = ON");
+  const dropped = db.transaction(() => {
+    recordPurged(db, answer);
+    return dropPurged(db, { deep: true });
+  })();
+  afterPurge(db, dropped, opts);
+  return dropped;
+}
+
+function afterPurge(db: Database, dropped: Dropped, opts: SyncCoreOpts) {
+  for (const a of dropped.agents) opts.modelCache?.delete(a);
+  if (!dropped.rows) return;
+  // the write-ahead log still holds the deleted rows until it is folded into the database file
+  try {
+    db.exec("PRAGMA wal_checkpoint(TRUNCATE)");
+  } catch {
+    /* a reader holds the log: the next checkpoint folds it */
+  }
+  opts.onPurge?.({ mints: dropped.mints.length, agents: dropped.agents.length, rows: dropped.rows });
+}
+
 /** One pass over Core. Returns the number of agents written; throws when Core does not answer. */
-export async function syncCore(db: Database, get: FetchJson, now = Math.floor(Date.now() / 1000), opts: { modelCache?: Map<string, { model: string | null; at: number }> } = {}) {
+export async function syncCore(db: Database, get: FetchJson, now = Math.floor(Date.now() / 1000), opts: SyncCoreOpts = {}) {
   ensureCoreSchema(db);
+  await syncPurged(db, get, opts);
   // hidden launches (APP-CONSOLIDATION amendment 2): an older Core without the list keeps the last one read
   const hidden = (await get("/v1/hidden").catch(() => null)) as { hidden?: { mint: string; agent: string | null; reason: string; added_at: number }[] } | null;
   const agents = (await get("/v1/agents")) as { agent_id: string; mint: string | null; target_repo: string | null; kind: string }[];
@@ -85,17 +128,23 @@ export async function syncCore(db: Database, get: FetchJson, now = Math.floor(Da
       last?.g.gen_id ?? null, last?.lineage ?? null, e?.metric ?? null, typeof e?.ratio === "number" ? e.ratio : null,
       Array.isArray(e?.fixed) ? e!.fixed!.length : null, last?.g.accepted_at ?? null]);
   }
-  db.transaction(() => {
+  const dropped = db.transaction(() => {
+    // a purged launch is written to neither table, whatever this Core answered (an older Core, or an answer read before its purge)
+    const purged = purgedSets(db);
+    const kept = rows.filter((r) => !purged.agents.size || !isPurgedLaunch(purged, "", r[0] as string));
     db.query("DELETE FROM core_agents").run();
-    for (const r of rows) ins.run(...(r as [string]));
+    for (const r of kept) ins.run(...(r as [string]));
     if (hidden && Array.isArray(hidden.hidden)) {
       db.query("DELETE FROM hidden_mints").run();
       const h = db.prepare("INSERT OR REPLACE INTO hidden_mints (mint, agent, reason, added_at) VALUES (?,?,?,?)");
-      for (const x of hidden.hidden) h.run(x.mint, x.agent ?? null, x.reason, x.added_at ?? null);
+      for (const x of hidden.hidden) if (typeof x.mint === "string" && !isPurgedLaunch(purged, x.mint, x.agent)) h.run(x.mint, x.agent ?? null, x.reason, x.added_at ?? null);
     }
     db.query("INSERT OR REPLACE INTO meta (k, v) VALUES ('core_synced_at', ?)").run(String(now));
+    // and again in this transaction: what the tables hold of a purged launch goes with the rewrite
+    return { kept: kept.length, ...dropPurged(db) };
   })();
-  return rows.length;
+  afterPurge(db, dropped, opts);
+  return dropped.kept;
 }
 
 /** The path of the newest public event that names a file in a running session, or null. */

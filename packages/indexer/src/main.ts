@@ -126,7 +126,18 @@ function subscribeLogs() {
   };
   const sync = () => {
     if (!sock || sock.readyState !== 1) return;
-    for (const { address } of db.query("SELECT address FROM sources").all() as { address: string }[]) {
+    const sources = db.query("SELECT address FROM sources").all() as { address: string }[];
+    // a source that left the database (a purged coin, purged.ts): its subscription ends and its address is forgotten
+    const live = new Set(sources.map((s) => s.address));
+    for (const a of subscribed) if (!live.has(a)) subscribed.delete(a);
+    for (const [req, a] of byRequest) if (!live.has(a)) byRequest.delete(req);
+    for (const [sub, a] of bySub) {
+      if (live.has(a)) continue;
+      bySub.delete(sub);
+      ws.subscriptions = Math.max(0, ws.subscriptions - 1);
+      sock.send(JSON.stringify({ jsonrpc: "2.0", id: ++id, method: "logsUnsubscribe", params: [sub] }));
+    }
+    for (const { address } of sources) {
       if (subscribed.has(address)) continue;
       subscribed.add(address);
       byRequest.set(++id, address);
@@ -179,11 +190,16 @@ const coreGet = async (p: string) => {
   if (!r.ok) throw new Error(`${p.split("?")[0]}: HTTP ${r.status}`);
   return r.json();
 };
+// a launch Core purged (purged.ts): its rows are gone, so is what this process held of it; counts only, never an id
+const onPurge = (p: { mints: number; agents: number; rows: number }) => {
+  ix.forgetMissing();
+  log(`purge: ${p.rows} row(s) of ${p.mints} coin(s) Core purged were deleted`);
+};
 let coreFailed = false;
 async function coreLoop() {
   for (;;) {
     try {
-      const n = await syncCore(db, coreGet, Math.floor(Date.now() / 1000), { modelCache });
+      const n = await syncCore(db, coreGet, Math.floor(Date.now() / 1000), { modelCache, onPurge });
       if (coreFailed) log(`core sync: ${n} agent(s)`);
       coreFailed = false;
     } catch (e) {

@@ -23,6 +23,7 @@ import { readMint, readTokenAccount } from "./accounts.ts";
 import { pumpAlerts, type PumpBaseline, type PumpWatch } from "./alerts.ts";
 import { storeDecoded } from "./db.ts";
 import { decodeTx, type RawTx, type TokenCtx } from "./decode.ts";
+import { isPurgedLaunch, purgedSets } from "./purged.ts";
 
 // Ingest (pump.fun only, owner decisions 2026-10-10). Discovery: every AgentLaunch account of
 // units_launch (getProgramAccounts). Sources of a pump.fun launch: its bonding curve, its canonical
@@ -34,6 +35,10 @@ import { decodeTx, type RawTx, type TokenCtx } from "./decode.ts";
 // `before`); each new signature is fetched once with getTransaction, decoded and stored keyed by
 // signature. The cursor only moves past a signature once it is stored, so a crash or restart resumes
 // where it stopped and re-reading is harmless.
+//
+// Purged launches (purged.ts): a launch Core purged still exists on chain. Discovery skips it by the
+// digest of its mint or agent, and every write that follows a chain read checks that the token row is
+// still there, so a pass that was reading the chain for the coin when it was purged writes nothing.
 
 export interface IndexerOpts {
   launchProgram?: Address;
@@ -105,13 +110,20 @@ export class Indexer {
 
     const accs = await this.rpc.getProgramAccounts(this.launchProgram, { memcmp: [{ offset: 0, bytes: accountDisc("AgentLaunch") }] });
     const known = new Set((this.db.query("SELECT mint FROM tokens").all() as { mint: string }[]).map((r) => r.mint));
-    const fresh = accs.map((a) => ({ a, l: decodeAgentLaunch(a.data) })).filter((x) => !known.has(x.l.mint));
+    // a launch Core purged is never imported again: its mint or agent digest is on the list (purged.ts)
+    const listed = purgedSets(this.db);
+    const fresh = accs.map((a) => ({ a, l: decodeAgentLaunch(a.data) })).filter((x) => !known.has(x.l.mint) && !isPurgedLaunch(listed, x.l.mint, x.l.agent));
     if (fresh.length) {
       const mints = await this.rpc.getMultipleAccounts(fresh.map((x) => x.l.mint));
+      // read again: the list may have grown while the mint accounts were fetched
+      const now = purgedSets(this.db);
+      let added = 0;
       const ins = this.db.prepare(`INSERT OR IGNORE INTO tokens (mint, agent, launcher, launch_account, name, symbol, uri, decimals, repo_url, hosted,
         identity_mode, created_at, dbc_config, dbc_pool, dbc_base_vault, dbc_quote_vault, compute_vault, venue, pump_creator)
         VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`);
       fresh.forEach(({ a, l }, i) => {
+        if (isPurgedLaunch(now, l.mint, l.agent)) return;
+        added++;
         const mint = mints[i] ? readMint(mints[i]!.data) : null;
         const pump = l.venue === "pump";
         // a Meteora-era record: kept as read-only history, no sources
@@ -124,7 +136,7 @@ export class Indexer {
           .run(l.bondingCurve, l.mint, l.mint, l.mint, a.address, l.mint);
         this.dirtyHolders.add(l.mint);
       });
-      this.log(`discovered ${fresh.length} new agent token(s), ${accs.length} total`);
+      if (added) this.log(`discovered ${added} new agent token(s), ${accs.length} on chain`);
     }
     this.lastDiscoverAt = this.now();
     return accs.length;
@@ -168,13 +180,15 @@ export class Indexer {
       });
     }
     const now = this.now();
+    // nothing below awaits: a token whose row went while the accounts were read (purged.ts) is skipped
+    const held = new Set((this.db.query("SELECT mint FROM tokens").all() as { mint: string }[]).map((r) => r.mint));
     const watch: PumpWatch = { tokens: [], maxCurveDepth: g ? g.maxCurveDepth : null,
       feeConfigSha: by.get(PUMP.feeConfig) ? sha(by.get(PUMP.feeConfig)!.data) : null, ammFeeConfigSha: by.get(PUMP.ammFeeConfig) ? sha(by.get(PUMP.ammFeeConfig)!.data) : null };
     for (const t of toks) {
       const la = by.get(t.launch_account);
       const mintAcc = by.get(t.mint);
       const vault = by.get(t.compute_vault);
-      if (!la || !mintAcc) continue;
+      if (!la || !mintAcc || !held.has(t.mint)) continue;
       const l = decodeAgentLaunch(la.data);
       const mint = readMint(mintAcc.data);
       // compute-side fields change for every record (debits, withdrawals, wake), whatever the venue
@@ -255,7 +269,8 @@ export class Indexer {
         let ok = true;
         try {
           const d = decodeTx(tx, ctx);
-          this.db.transaction(() => storeDecoded(this.db, tok.mint, d, { base: tok.decimals, quote: this.lineDecimals }))();
+          // false: the coin was purged while this source was being read; its rows are gone, nothing more is written
+          if (!this.db.transaction(() => storeDecoded(this.db, tok.mint, d, { base: tok.decimals, quote: this.lineDecimals }))()) return n;
           if (d.trades.length) this.dirtyHolders.add(tok.mint);
         } catch (e) {
           ok = false;
@@ -311,13 +326,27 @@ export class Indexer {
       }
       source = "transactions";
     }
-    this.db.transaction(() => {
+    return this.db.transaction(() => {
+      // the token row went while the accounts were read (purged.ts): no holder rows for it
+      if (!this.db.query("SELECT 1 FROM tokens WHERE mint = ?").get(mint)) return 0;
       this.db.query("DELETE FROM holders WHERE mint = ?").run(mint);
       const ins = this.db.prepare("INSERT INTO holders (mint, owner, amount) VALUES (?,?,?)");
       for (const [o, a] of byOwner) ins.run(mint, o, a.toString());
       this.db.query("UPDATE tokens SET holders = ?, holders_source = ?, holders_at = ? WHERE mint = ?").run(byOwner.size, source, this.now(), mint);
+      return byOwner.size;
     })();
-    return byOwner.size;
+  }
+
+  /** Drops the per-token state held in memory for tokens and sources the database no longer has (a purged coin, purged.ts). */
+  forgetMissing(): void {
+    if (this.dirtyHolders.size) {
+      const mints = new Set((this.db.query("SELECT mint FROM tokens").all() as { mint: string }[]).map((r) => r.mint));
+      for (const m of this.dirtyHolders) if (!mints.has(m)) this.dirtyHolders.delete(m);
+    }
+    if (this.schedule.size) {
+      const sources = new Set((this.db.query("SELECT address FROM sources").all() as { address: string }[]).map((r) => r.address));
+      for (const a of this.schedule.keys()) if (!sources.has(a)) this.schedule.delete(a);
+    }
   }
 
   /** Makes every source of the token behind `address` (a source address or a mint) due on the next cycle. */
@@ -368,6 +397,7 @@ export class Indexer {
         }
       }
     }
+    this.forgetMissing();
     this.lastCycleAt = this.now();
     this.lastCycleMs = Date.now() - t0;
     return { txs, errors };

@@ -1,5 +1,6 @@
 import { Database } from "bun:sqlite";
 import type { Decoded } from "./decode.ts";
+import { ensurePurgedSchema, isPurgedMint } from "./purged.ts";
 
 // SQLite store. Amounts are base-unit integers kept as TEXT (u64 does not fit a JS number safely);
 // prices are REAL ($UNITS per agent token). Every row a transaction produces is keyed by its
@@ -62,6 +63,7 @@ export function openDb(path: string): Database {
   const db = new Database(path, { create: true });
   db.exec("PRAGMA journal_mode = WAL; PRAGMA busy_timeout = 5000;");
   db.exec(SCHEMA);
+  ensurePurgedSchema(db);
   // columns added after the first layout (CREATE TABLE IF NOT EXISTS keeps an older table as it was)
   const cols = new Set((db.query("PRAGMA table_info(tokens)").all() as { name: string }[]).map((c) => c.name));
   if (!cols.has("holders_source")) db.exec("ALTER TABLE tokens ADD COLUMN holders_source TEXT");
@@ -75,8 +77,12 @@ export function openDb(path: string): Database {
   return db;
 }
 
-/** Stores one decoded transaction for one token, in one SQLite transaction. Idempotent by signature. */
-export function storeDecoded(db: Database, mint: string, d: Decoded, decimals: { base: number; quote: number }) {
+/**
+ * Stores one decoded transaction for one token, in one SQLite transaction. Idempotent by signature.
+ * Nothing is written for a coin Core purged (purged.ts): the answer is false and the caller stops.
+ */
+export function storeDecoded(db: Database, mint: string, d: Decoded, decimals: { base: number; quote: number }): boolean {
+  if (isPurgedMint(db, mint)) return false;
   const tr = db.prepare(`INSERT OR IGNORE INTO trades (sig, idx, mint, venue, slot, time, side, base_raw, quote_raw, base, quote, price, spot_after, fee_raw,
     trader, source, creator_fee_raw, completing) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`);
   const sw = db.prepare(`INSERT OR IGNORE INTO sweeps (sig, idx, mint, venue, slot, time, amount_raw, recipient) VALUES (?,?,?,?,?,?,?,?)`);
@@ -100,4 +106,5 @@ export function storeDecoded(db: Database, mint: string, d: Decoded, decimals: {
     for (const b of d.balances) bal.run(mint, b.account, b.owner, b.amountRaw.toString(), d.slot);
     seen.run(d.sig, mint, d.slot, d.time, d.failed ? 1 : 0);
   })();
+  return true;
 }
