@@ -268,6 +268,20 @@ One run (`units-fee-keeper.timer`, every 10 minutes once enabled):
    after graduation), for exactly the amount quoted from chain right before sending, capped at the
    budget, and burned in the same transaction. A larger share is spent over the next runs.
 
+It never touches the wallet's own `$UNITS`. The creator wallet's associated token account holds the
+owner's coins; the keeper buys into and burns from a token account of its own (the wallet's seeded
+account `units-fee-keeper-burn`, created by the first buy, its rent paid from the fee reserve) and
+names the associated account in no transaction. Right before signing, the keeper reads the
+instructions of the transaction it built and refuses it (exit status 2, nothing signed) if any of
+them names the wallet's own account, if anything but its own buy, burn or account creation touches
+the burn account, if a burn in a buy's transaction is not of exactly what that buy asks for, or if
+the wallet's own account holds less than `protected_units`. A burn sent apart from its buy is sent
+only while the burn account holds at least what it held before those buys (`burn_floor` in the state
+file) plus what is owed (`burn_owed`); otherwise it is skipped with the figures and the debt is kept.
+A state file with a `burn_owed` and no `burn_floor` (written before the field existed) burns nothing
+until an operator, with the timer stopped, adds `"burn_floor": "<n>n"` to the state file, `<n>` being
+the base units in the burn account that the keeper did not buy (`"0n"` when there are none).
+
 It never spends the wallet's own SOL: transaction fees and one-off account rent come out of the fee
 reserve, and a transaction the reserve does not cover is not sent. Before a transaction is sent its
 signed bytes are written to the state file; an interrupted run resends those bytes or books their
@@ -289,6 +303,7 @@ only; every field is the owner's and is read again on each run, none has a defau
 | `min_collect_lamports` | a collection is sent only when it brings at least this much after its cost |
 | `min_buyback_lamports`, `max_buyback_lamports` | the smallest and largest SOL amount of one buyback transaction |
 | `slippage_bps` | the most a buy may pay above the price read from chain (refused above 1000) |
+| `protected_units` | base units of `$UNITS` (6 decimals) in the wallet's own token account that are the owner's; the keeper signs nothing while that account holds less. `"25000000000000"` (25,000,000 coins) in `config/fee-keeper.official.json`; the owner changes it whenever the wallet's own holdings change. Required: a config without it does not load |
 | `priority_fee` | percentile of recent fees, with a floor and a cap in micro-lamports per compute unit |
 | `confirm_timeout_s` | how long a run waits for a transaction before the next run takes over |
 | `state_path`, `log_path` | the private state and the public log |
@@ -313,6 +328,13 @@ sets each transaction's limit from its own simulation plus 20%, at most 400,000:
 | buy on the curve + burn | 801 first, 759 after | 80,494 first, 57,457 after | first buy: the wallet's `$UNITS` token account 2,074,080 and Pump's volume account 1,844,400 lamports |
 | collect after graduation (curve leftover + pool) | 1,066 | 139,035 | first pool sweep: 2,039,280 lamports for the PumpSwap creator vault's token account |
 | buy on the pool + burn | 916 | 75,623 | first pool buy: PumpSwap's volume account 1,844,400 lamports |
+
+The two buy rows were measured before the keeper bought into its own burn account and have not been
+measured again on the fork (rerun `scripts/mainnet/fee-keeper-fork.ts`). Since then the first buy
+creates the burn account (a 165-byte token account, 2,039,280 lamports of rent) in place of the
+associated account, and the transactions built from the recorded snapshots are 915 bytes (first curve
+buy + burn), 759 (later curve buys), 1,072 (a pool buy that creates the burn account) and 916 (later
+pool buys); their compute units are not measured yet.
 
 So `fee_reserve_lamports` must cover the first buy's 3,918,480 lamports of rent plus fees, and
 `min_collect_lamports` must exceed the first sweep's rent, or those steps wait. A pool buy also needs
@@ -405,6 +427,124 @@ Both items listed here were done by the pre-audit program changes lane on 2026-1
   pays that rent; fund it before step 8.
 - Squads v4's mainnet program config charges no multisig creation fee (read 2026-10-10) and the
   program is immutable (upgrade authority none).
+
+## Go-live (single key, today)
+
+Owner decisions 2026-10-12: no multisig today. The dev wallet `6UhUBoVpywefyPoMtQEuwngkPjzFRork4L3dgCVr4jh3`
+is admin and upgrade authority of all three programs and the recipient wherever a wallet is
+configurable (compute sink, units account payments, `$UNITS` creator fees). It creates `$UNITS`
+(`GQdEL4MhL4v8bsmMvyBvjh6BdbWqasgkDnJGfaAHpump`) on pump.fun itself, paired with SOL, not mayhem mode:
+that is the owner's last manual action. Everything else is `scripts/mainnet/golive.ts`, built so that
+as much as possible happens BEFORE the coin exists. Every step is a dry run unless `--send` is given,
+reads the chain first and skips what exists, so a stopped step is resumed by running it again.
+Values: `scripts/mainnet/official-params.json` (the block `owner_decision` is the owner's; `--send`
+refuses while `owner_confirmed` is false). Proof: `scripts/mainnet/golive-fork.ts` on a fork of
+mainnet holding the three programs as deployed, record in `scripts/mainnet/GOLIVE-FORK-LAST.json`.
+The steps of the multisig path above (2, 5 to 8) are not used today.
+
+Rules built into the tooling: the dev wallet never buys or sells `$UNITS`; exactly one transfer of at
+most 5,000,000 `$UNITS` (a constant in the code) leaves it, to the site's verifier owner key, checked
+on the transaction's instructions before signing and recorded in `<out>/dev-wallet-transfer.json`
+before it is sent, so no re-run can send a second one. The dev wallet must hold those 5,000,000
+after creating the coin (5 registration burns of 200,000 and 4 bonds of 1,000,000: the site's
+reference runner, v1, v2 and the two capacity server verifiers).
+
+```sh
+G="env UNITS_NETWORK=mainnet bun scripts/mainnet/golive.ts"; H=157.245.71.188
+O=~/.config/units/mainnet/official          # golive's output directory (public values, the marker)
+I="UNITS_INSTANCE=mainnet WITH_RUNTIME=1 WITH_IDENTITY=1 INSTANCE_STATE_FILE=$O/state.json INSTANCE_PROFILE_FILE=$O/profile.local.json INSTANCE_SIZING_FILE=$O/sizing.json"
+GO="GO_SWITCH_RUNNING=yes GO_BACKUP_CORE=test-deployment GO_ARCHIVE_INDEXER=test-deployment"   # Core's database kept (copied first), the indexer's set aside
+
+# ---- BEFORE the coin (repeatable; nothing here needs the mint account) ----------------------------------
+$G pre --mainnet                    # read only, about 5 s: programs = builds, authority, pump.fun, balances, the site
+$G pre --mainnet --send             # about 10 s, 4 transactions: units_msg initialize, the launch lookup table
+                                    # (create + extend, freeze), SOL to the Core authority hot key. Writes $O/pre.json
+$G switch --pre --mainnet           # 1 s, sends nothing: $O/state.json, profile.local.json, sizing.json at a new
+                                    # pump.fun coin's starting price (replaced by the live price at go-live)
+env $I STAGE_NEXT=1 scripts/deploy/instance.sh $H stage      # minutes: ships HEAD and the official files beside the
+                                    # live ones (/etc/units-main/next); the test deployment keeps running
+ssh -i ~/.ssh/lineage_site root@$H systemctl stop units-main-runtime   # shortly before the coin: `go` stops the runtime, the
+                                    # indexer and Core, and a runtime with an attempt in flight may take up to 1500 s to stop
+bun scripts/identity/ship-pool.ts plan --instance mainnet --all                      # local: which accounts qualify
+IDENTITY_POOL_SEND=yes UNITS_INSTANCE=mainnet scripts/deploy/instance.sh $H identity-pool --all   # the GitHub account pool
+
+# ---- the owner creates $UNITS with the dev wallet (and buys at least 5,000,000 with it) -------------------
+
+# ---- AFTER the coin: one trigger, started before the coin is created ------------------------------------
+$G watch --mainnet --send --run-site --go-cmd "env $I $GO scripts/deploy/instance.sh $H go"   # polls for the mint; then post-coin preflight, init (2 transactions) and the
+                                    # one transfer in parallel, the instance files at the live price, `instance.sh chain`
+                                    # (3 registrations, 2 bonds on the server) and `instance.sh go` (activation).
+                                    # One "TIME <step>" line per step; on a failure it stops and prints the resume command
+$G status --mainnet                 # everything in one screen
+
+# ---- the capacity server's two verifiers (the site is already live on the reference runner, v1 and v2) -----
+# 1. the OFFICIAL public overlay on the host before it co-signs, and the host on the instance's release:
+scp $O/profile.local.json root@157.230.180.62:/etc/units-cap/profile.local.json
+scripts/deploy/capacity-host/provision.sh 157.230.180.62 update        # as the scale-out lane documents (docs/DEPLOY-SITE.md "Adding capacity")
+# 2. per verifier (kdhdDrZ8... with /etc/units-cap/verifier.json, HNaVHuqa... with verifier-2.json); R=3GeaTsBUsaXCJ7Dru9tDHiKnVBsoHE6yiTdqqj42JHay
+#    on the machine that holds the verifier owner key (the site server, as the instance's account with its keyed RPC):
+#      bun scripts/deploy/capacity-host/verifier-chain.ts --registry $R --register <agent> --caps-digest aebc08b52831e42cf0cc0abcc499057d883e3ebebfff7f4c14d354e4f124da7c
+#    on the host, offline:   bun scripts/deploy/capacity-host/cosign-register.ts --key <key file> --tx <base64>
+#    back, within about a minute:   ... verifier-chain.ts --registry $R --send <base64>   then   ... --bond <agent>
+# 3. both host verifiers qualify again on every unit: 23 to 165 s per unit on the host (measured by the scale-out lane on the test deployment)
+$G switch --mainnet --apply-config --commit && git push      # the repository's default becomes the official deployment
+                                    # (config/profile.json mainnet_deployment official, the real quote; config/mainnet/state.json)
+```
+
+The same steps one by one, when `watch` is not used or stopped: `$G preflight --mainnet`,
+`$G init --mainnet --send`, `$G bond --mainnet --send --wait-s 60`, `$G switch --mainnet`, then
+`env $I scripts/deploy/instance.sh $H chain-plan`, `env $I MAINNET_SEND=yes scripts/deploy/instance.sh $H chain`,
+`env $I $GO scripts/deploy/instance.sh $H go`.
+
+| Step | Expected output | Measured | If it stops |
+|---|---|---|---|
+| `pre --send` | `PASS` lines, 4 signatures, `pre done` | 2.6 s on the fork | run it again: it skips what landed (the table address is in `pre.json` before the freeze) |
+| `watch`: post-coin preflight | `READY` | under 1 s on the fork | fix what `FAIL` names, run `watch` again |
+| `watch`: init + the one transfer | `init 1 of 2`, `init 2 of 2`, `the one transfer from the dev wallet` | about 3 s on the fork | `init --send` finishes whatever is missing (step by step path); `bond --send` reads the marker and the chain and never sends twice |
+| `watch`: instance files | `wrote state.json, profile.local.json and sizing.json` | under 1 s | `switch` again |
+| `watch`: `instance.sh chain` | 3 `register verifier`, 2 `bond` | about 4 s on the fork (the tool itself; ssh not included) | run `chain` again: registered and bonded verifiers are skipped |
+| `watch`: `instance.sh go` | units up, each health-checked, seconds per phase | not measured (never run on the server) | `go` puts the previous state files back when the activation fails; run it again |
+
+Costs measured on the fork at mainnet rent, base fee, no priority fee (`GOLIVE-FORK-LAST.json`
+`wallets`): the dev wallet 0.005308360 SOL before the coin and 0.016916240 SOL for init, plus the
+one transfer's fee and the owner key's token account, plus the Core authority top-up; the verifier
+owner key 0.013506605 SOL for 5 registrations and 4 bonds; one launch through the wizard about 0.2 SOL
+with 10 USD of credits.
+
+What the switch does to the site: Core KEEPS its database, so nothing is calibrated or qualified
+again. On its first sync against the official registry Core retires the test deployment in one
+database transaction (`packages/core/src/deployments.ts`): the units, recipes, calibrations and the
+verifiers' qualifications stay; the test agent, its coin (added to the hidden list), its generation
+and its open epoch stay in the database with a `retired` marker and leave every listing; no unit,
+payout or slash of the test deployment can reach the official registry; Core's first post there is
+epoch 1; verifier bonds, vaults and parameters are read again from the new registry. The release
+with that change MUST be the one staged: older code would post the test deployment's open epoch to
+the official registry. The switch is one-way in the database, so `go` copies it first
+(`GO_BACKUP_CORE`). The indexer's database is set aside (`GO_ARCHIVE_INDEXER`): its price samples are
+not keyed by coin and it never drops a token. The runtime's state is kept. Rehearse it on the server,
+read only, on a copy: `bun scripts/mainnet/golive-core-carry.ts --data /var/lib/units-main/core --chain <chain config>`.
+Fallback with a fresh database (recalibration and qualification then take tens of minutes):
+`instance.sh $H stop`, `instance.sh $H archive-state test-<date>`, then `go` without the `GO_*` archive variables.
+
+Back to the test deployment, three lines: `UNITS_INSTANCE=mainnet scripts/deploy/instance.sh $H stop`,
+`UNITS_INSTANCE=mainnet scripts/deploy/instance.sh $H restore-state test-deployment` (Core's database
+from the copy, the indexer's from its archive, the state files and derived configs of before the
+switch; what the official deployment wrote goes to `archive/pre-restore-<time>`), and
+`UNITS_INSTANCE=mainnet scripts/deploy/instance.sh $H start`. Then `$G switch --rollback --apply-config`
+plus a commit if the repository's default was already moved. A second `go` with a label that already
+holds those parts is refused: after a failed `go`, retry without the two `GO_*` archive variables. Nothing on chain is undone by this: the official programs stay
+initialized, the verifiers stay bonded.
+
+After go-live: `$G switch --rate-only --mainnet` writes the price-dependent values again;
+`$G retune --mainnet [--send]` re-resolves the dollar thresholds on chain at today's price. The fee
+keeper config for the official coin is `config/fee-keeper.official.json` (creator = the dev wallet,
+the owner's compute address, not enabled, no key).
+
+Not proven off the fork: anything on the server (`stage` with `STAGE_NEXT=1`, `chain` there, `go`,
+the identity unit on mainnet, the pool shipment), a real Jito bundle, the co-signed registration of
+the two capacity server verifiers (their keys never leave that box; the fork used stand-in keys),
+priority fees, and `$UNITS` graduating to PumpSwap (the launch lookup table then needs the pool's
+addresses: `$G init --mainnet --send --new-table`, then `switch` and `go` again).
 
 ## Mainnet test (single key, throwaway quote coin)
 

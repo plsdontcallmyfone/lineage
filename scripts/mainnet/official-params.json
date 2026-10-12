@@ -1,0 +1,110 @@
+{
+  "_note": "OFFICIAL go-live values (docs/MAINNET-RUNBOOK.md 'Go-live (single key, today)'; scripts/mainnet/golive.ts). Public values only. Owner decisions 2026-10-12: no multisig today, the dev wallet is admin, upgrade authority and every wallet-configurable recipient; fee split 70% compute, 30% protocol. Every key under a block named `owner_decision` is a TEST value carried over or a PROPOSAL of the go-live prep lane: the owner confirms or edits it before `golive.ts init --send` (init refuses while `owner_confirmed` is false). Token amounts are whole $UNITS (6 decimals, pump.fun supply 1,000,000,000). Amounts ending in _usd are US dollars and are turned into $UNITS at the price read from $UNITS's own pump.fun market (its curve or pool, times SOL/USD from Jupiter) at the moment `init` first resolves them; the resolution is written to <out>/official-resolved.json and reused on every resume.",
+  "owner_confirmed": false,
+  "admin": "6UhUBoVpywefyPoMtQEuwngkPjzFRork4L3dgCVr4jh3",
+  "core_authority": "AYsa2Pn2pzH5SeknsA8TZc3ndA9V3oNpau5oFex4yVtu",
+  "runtime_authority": "CCt4EoNuYhVbk4cXUXBzMLQBfshfPF1f5rLyw22S2uXs",
+  "units_mint": "GQdEL4MhL4v8bsmMvyBvjh6BdbWqasgkDnJGfaAHpump",
+  "line_decimals": 6,
+  "line_token_program": "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb",
+  "fee_split": {
+    "agent_compute_bps": 7000,
+    "protocol_bps": 3000
+  },
+  "site": {
+    "host": "157.245.71.188",
+    "app_url": "https://app.units.gg",
+    "docs_url": "https://docs.units.gg",
+    "verifier_owner": "2GE119zn6qPQVAnCY8B1wbQ9RTpqS9tcEgMsgv2DxSoi",
+    "_verifiers_note": "The site's own three (reference runner: burn only; v1, v2: burn and bond) are registered by `instance.sh chain` with keys that live on the server. extra_verifiers live on the capacity server; the owner key signs their register and bond, the box co-signs the register.",
+    "site_verifiers": {
+      "burn_only": 1,
+      "burn_and_bond": 2
+    },
+    "extra_verifiers": [
+      {
+        "agent": "kdhdDrZ8x1dCKCVBZUNYAUufSfQegKMEXW3MVbK1LRL",
+        "cosign_host": "root@157.230.180.62",
+        "cosign_key": "/etc/units-cap/verifier.json"
+      },
+      {
+        "agent": "HNaVHuqadsRMPmaEsn3WYUgZ1gCkVTkcMpqcyusjc3tZ",
+        "cosign_host": "root@157.230.180.62",
+        "cosign_key": "/etc/units-cap/verifier-2.json"
+      }
+    ],
+    "extra_capabilities_digest": "aebc08b52831e42cf0cc0abcc499057d883e3ebebfff7f4c14d354e4f124da7c",
+    "sizing": {
+      "attempts": 16,
+      "max_open_replays": 10
+    }
+  },
+  "owner_decision": {
+    "_scale_note": "The registry token amounts below are the TEST values times 200,000 (one choice: a verifier's minimum bond is 0.1% of the supply instead of 5 tokens). Change the scale by editing the amounts; the ratios between them are the TEST ones.",
+    "register_burn_units": "200000",
+    "min_bond_units": "1000000",
+    "bond_cap_units": "10000000",
+    "rebate_per_class_units": "200",
+    "max_rebate_per_epoch_units": "500000",
+    "unbond_cooldown_s": 86400,
+    "onchain_epoch_length_s": 300,
+    "core_epoch_length_s": 900,
+    "core_authority_low_days": 3,
+    "core_authority_target_sol": "1.25",
+    "max_slash_bps_per_epoch": 2500,
+    "canary_slash_bps": 2500,
+    "minority_slash_bps": 500,
+    "reveal_slash_bps": 200,
+    "strike_limit": 3,
+    "reserve_bps": 8000,
+    "pool_bps": 2000,
+    "challenge": {
+      "windowS": 3600,
+      "bond_units": "200000",
+      "reward_units": "100000",
+      "resolveTimeoutS": 7200,
+      "paused": false
+    },
+    "bounty": {
+      "maxBountyOutBps": 5000,
+      "selfHostedInCap_units": "2000000",
+      "windowS": 86400,
+      "minTtlS": 60,
+      "maxTtlS": 2592000,
+      "refundGraceS": 60,
+      "minAmount_units": "2000",
+      "paused": false
+    },
+    "msg": {
+      "paused": false,
+      "windowS": 60,
+      "maxPerWindow": 20,
+      "maxPerDay": 500,
+      "maxInline": 568,
+      "maxBlob": 1048576
+    },
+    "sleep_threshold_usd": "0.50",
+    "wake_threshold_usd": "1.00",
+    "max_debit_per_epoch_usd": "300",
+    "pump_creator_fee_bps": "0n",
+    "credits_min_usd": "10",
+    "sandbox_usd_per_s": "0.0001",
+    "price_band": {
+      "min_usd": 3e-07,
+      "max_usd": 1,
+      "max_age_s": 120,
+      "refresh_s": 30
+    },
+    "credits_rate_tolerance_bps": 1000,
+    "credits_rate_window_s": 300,
+    "guard_max_regression": 0.01,
+    "identity_account_price_lamports": "30000000",
+    "_epoch_note": "Core's epoch is 900 s (owner 2026-10-12: results on chain every 15 minutes). Re-scaled for it, as PROPOSALS: max_slash_bps_per_epoch 2500 (the cap's window is one posted epoch, now 15 minutes instead of a day; 2500 is the lowest the program allows, the largest single slash share) and max_rebate_per_epoch 500,000 (Core does not check the cap before posting and an epoch over it blocks every later post; 500,000 is 2,500 class-units of replays in 15 minutes). core_authority_target_sol: pre tops the Core authority hot key up to this from the dev wallet (96 posts a day at 0.001493440 SOL is 0.143370240 SOL a day)."
+  },
+  "bond": {
+    "_note": "What `golive.ts bond` does with the dev wallet: uses the $UNITS it already holds, buys only the shortfall on $UNITS's curve (exact amount out, at most the quote plus slippage_bps), and sends the site's verifier owner key the $UNITS for every burn and bond plus owner_sol for its fees and the agent records' rent.",
+    "slippage_bps": 500,
+    "owner_sol": "0.05"
+  },
+  "fee_keeper_compute_address": "BBR99DmQbViLg54YHf8ZsS56eZSy5qCeMfCo7WzGtNW9"
+}

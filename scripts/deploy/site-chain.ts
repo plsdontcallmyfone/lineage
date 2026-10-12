@@ -27,7 +27,8 @@ const PLAN = argv.includes("--plan");
 const L = instanceLayout(process.env.UNITS_INSTANCE);
 const LOG = opt("log") ?? `${L.state}/site/tx-log.jsonl`;
 const SITE = join(homedir(), ".config", "lineage", "site");
-const devnet = JSON.parse(readFileSync(L.stateFile.startsWith("/") ? L.stateFile : join(ROOT, L.stateFile), "utf8"));
+// UNITS_INSTANCE_STATE names another state file (as in site-config.ts): the go-live fork proof runs this tool off the server
+const devnet = JSON.parse(readFileSync(process.env.UNITS_INSTANCE_STATE || (L.stateFile.startsWith("/") ? L.stateFile : join(ROOT, L.stateFile)), "utf8"));
 const caps = JSON.parse(readFileSync(opt("caps") ?? `${L.state}/site/caps.json`, "utf8"));
 const capsDigest = H("caps", canonicalJson(caps));
 // mainnet: the profile's program ids, fee policy and keyed endpoint (UNITS_MAINNET_RPC in the environment; never printed)

@@ -1,0 +1,949 @@
+{
+  "started": "2026-10-12T19:53:33.269Z",
+  "fork": "http://127.0.0.1:9690",
+  "program_ids": {
+    "registry": "3GeaTsBUsaXCJ7Dru9tDHiKnVBsoHE6yiTdqqj42JHay",
+    "launch": "2vwKsTZm5doa3ahBmpm8Sv3sKPD76Fq2ZZENbNW5BYBq",
+    "msg": "jmcb7cBA8aJ5Zra8V6gUsEbgKAoG3h5d2CNpmKsRdky"
+  },
+  "wallets_before": {
+    "dev_wallet": "5004818338",
+    "core_authority": "1250001000",
+    "runtime_authority": "242676227"
+  },
+  "pre": {
+    "transactions": 3,
+    "payer_mainnet_lamports": "5308360",
+    "launch_lookup_table": "FyqZSU9fXaJHtTwU5nzaEe6eg5VidTQAZG9kcpnSJVqx",
+    "staged_line_per_usd": "331000"
+  },
+  "stand_in": {
+    "mint": "HW8eBfDZxj1MeChSY1EEjfWGZvisc4WRstSszZ8yz3VU",
+    "creator": "GckGD4PUBFgB8k8Ccu943E8seRcHmXbrmZKetbx4kmPX",
+    "creator_buy_lamports": "1000000000",
+    "dev_wallet_given_base_units": "30000000000000",
+    "note": "created on the fork only; on go-live day the owner's dev wallet creates the real mint and --mint is not passed"
+  },
+  "watch": {
+    "note": "wall time on the local fork (blocks every 400 ms, no network distance); the server-side activation is not part of it",
+    "steps": [
+      {
+        "step": "post-coin preflight",
+        "seconds": 0
+      },
+      {
+        "step": "init + bond funding, in parallel",
+        "seconds": 3.1
+      },
+      {
+        "step": "instance files at the live price",
+        "seconds": 0
+      },
+      {
+        "step": "verifiers registered and bonded (server side)",
+        "seconds": 4
+      },
+      {
+        "step": "total since the coin was seen",
+        "seconds": 7.2
+      }
+    ],
+    "coin_create_transactions_s": 2.3,
+    "from_coin_created_to_done_s": 5.4
+  },
+  "init": {
+    "transactions": 2,
+    "payer_mainnet_lamports": "16916240",
+    "price": {
+      "usd_per_units": 0.0000030242154421986674,
+      "sol_usd": 108.16610564930568,
+      "sol_per_units": 2.7958993476234855e-8,
+      "venue": "curve",
+      "read_at": "2026-10-12T19:53:44.573Z"
+    },
+    "resolved_usd": [
+      {
+        "key": "sleep_threshold_usd",
+        "usd": "0.50",
+        "units": "165000"
+      },
+      {
+        "key": "wake_threshold_usd",
+        "usd": "1.00",
+        "units": "331000"
+      },
+      {
+        "key": "max_debit_per_epoch_usd",
+        "usd": "300",
+        "units": "99200000"
+      }
+    ]
+  },
+  "bond": {
+    "units_base": "5000000000000",
+    "payer_mainnet_lamports": "51278200",
+    "note": "the stand-in owner key started with 0 SOL, so 0.05 SOL was sent with the coins; the real key held 0.241898035 SOL on 2026-10-12 and would be sent none"
+  },
+  "switch": {
+    "line_per_usd": "310000",
+    "sandbox_per_s": "31",
+    "runtime_price": {
+      "source": "jupiter",
+      "api": "http://127.0.0.1:9768/market/price/v3",
+      "min_usd": 3e-7,
+      "max_usd": 1,
+      "max_age_s": 120,
+      "refresh_s": 30
+    },
+    "sizing": {
+      "_note": "the capacity server's verifiers carry replays: more open replays per verifier and more attempts at once (scripts/deploy/sizing.ts overrides, /etc/units-main/sizing.json)",
+      "attempts": 16,
+      "max_open_replays": 10
+    }
+  },
+  "wizard": {
+    "outcome": "PASS",
+    "passed": 30,
+    "total": 30,
+    "launch": {
+      "agent": "7oUazcgX9ejQ2CRTKG9LZDMqtf2Midy671xpMdvKLTKY",
+      "mint": "G8Ec99tBQPQ8vxssZrFTFgGBs9uwTSzJTd8DTWKGBr1o",
+      "wallet_sol_spent_fork_lamports": "201401162",
+      "approvals": [
+        2
+      ],
+      "bundle_sizes": [
+        2
+      ],
+      "credits": {
+        "min_usd": "10",
+        "tolerance_bps": 1000,
+        "window_s": 300,
+        "band_usd": [
+          3e-7,
+          1
+        ],
+        "price_move": null,
+        "vault_deposit_base_units": "3098433167872",
+        "decimals": 6,
+        "launch_time": 1791834845,
+        "page_reading": {
+          "usd": 0.000003227437694540496,
+          "read_at": 1791834842,
+          "built_base_units": "3098433167872",
+          "deposit_usd": 10.000000000004613
+        },
+        "indexer_reading": {
+          "usd": 0.000003227437694540496,
+          "read_at": 1791834600,
+          "which": "the indexer's stored sample for the launch's time"
+        },
+        "deposit_usd": 10.000000000004613,
+        "core": {
+          "ok": true,
+          "pending": false,
+          "deposit": "3098433167872",
+          "min": "2759478543483",
+          "rate": {
+            "state": "market",
+            "usd_per_token": 0.0000032614857692067205,
+            "read_at": 1791834887,
+            "min_at_price": "3066087270537",
+            "tolerance_bps": 1000,
+            "window_s": 300,
+            "launch_time": 1791834845,
+            "from": "sync"
+          }
+        }
+      }
+    },
+    "trade": {
+      "signature": "5U7rHjckkddhrMa1T6Aztf96jkYDbh2tsUGd1pTz98tB5Yhx5BtKLRi66eaBBivxyHQ2Cjtp434AEYEBmk3xeZ2L",
+      "agent_coin_base_units": "2559313637489"
+    },
+    "results": [
+      {
+        "check": "the instance runs the mainnet profile on the fork: test program ids, the test coin as quote, Jupiter off, no faucet, no TEST labels",
+        "ok": true,
+        "detail": "quote UNITS, programs 3GeaTs..., genesis 5xtRZPLv..."
+      },
+      {
+        "check": "Core names no units account recipient (the option is not offered on the test instance)",
+        "ok": true,
+        "detail": "identity_account_recipient null"
+      },
+      {
+        "check": "official: Core's prepay block prices the launch credits at the market (rate_source market, with the band, tolerance and window)",
+        "ok": true,
+        "detail": "rate_source market, band 3e-7 to 1 USD, max age 120 s, tolerance 1000 bps, window 300 s"
+      },
+      {
+        "check": "official: the local indexer reads the quote coin's USD price from the fork (GET /market/quote-usd)",
+        "ok": true,
+        "detail": "0.000003227437694540496 USD, read_at 1791834842"
+      },
+      {
+        "check": "wizard, Identity: \"A units account\" is not offered and cannot be picked; \"Your own token\" is selected",
+        "ok": true,
+        "detail": "not offered here"
+      },
+      {
+        "check": "wizard, Funding: everything in SOL, no faucet and no Jupiter wording, no TEST label",
+        "ok": true,
+        "detail": "5 Funding Everything is paid in SOL with one signature: token creation, model credits, the initial buy and, when chosen, A units account. Model credits Credits (USD) At least $10.00; you can add more."
+      },
+      {
+        "check": "wizard: no devnet or TEST wording anywhere on the page under the mainnet profile",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "check": "wizard, Review: the launch simulated on the mainnet profile; transactions planned as launch + soul, then SOL to the quote coin + initial buy + credits + tip",
+        "ok": true,
+        "detail": "Transactionslaunch + soul (1152 bytes, v0); sol-to-units + initial-buy + credits + tip (1101 bytes, v0) Launch (one signature)Simulate againunits Test Wallet approves every transaction of the launch at once; a ho"
+      },
+      {
+        "check": "wizard, Review: says one signature and one Jito bundle",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "check": "wizard, Review: the coin's metadata URI names the permanent origin and the chosen image by its hash, read back before the review; the page says that origin answers, as the server reads it",
+        "ok": true,
+        "detail": "Metadata URIhttps://app.units.gg/coin/G8Ec99tBQPQ8vxssZrFTFgGBs9uwTSzJTd8DTWKGBr1o.json?i=7Ga96SDJUmojQQty3o9eaeqHu1Rmnd1QuRTZsqTppkVT read back before this review: document and image answerSoulSlackwater, 58db532be94f44a607b1f70b1f"
+      },
+      {
+        "check": "launch: one approval carried every transaction of the launch (one signTransaction request)",
+        "ok": true,
+        "detail": "requests [2]"
+      },
+      {
+        "check": "launch: the bundle went to the Jito endpoint first, once, with the same transactions",
+        "ok": true,
+        "detail": "bundles [2]"
+      },
+      {
+        "check": "launch: one AgentLaunch for the wallet on the fork (the ordered sends landed after Jito refused the bundle)",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "check": "launch: the coin is quoted in the test coin, its creator is the agent's PDA, the 1% initial buy is in the agent key's account, the credits are in the vault and the agent is awake",
+        "ok": true,
+        "detail": "bought 10000000000000, vault 3098433167872"
+      },
+      {
+        "check": "launch: the soul digest is on chain",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "check": "metadata: the URI on chain is <metadata origin>/coin/<mint>.json?i=<the chosen image's hash>",
+        "ok": true,
+        "detail": "https://app.units.gg/coin/G8Ec99tBQPQ8vxssZrFTFgGBs9uwTSzJTd8DTWKGBr1o.json?i=7Ga96SDJUmojQQty3o9eaeqHu1Rmnd1QuRTZsqTppkVT"
+      },
+      {
+        "check": "metadata: the URI (as on chain, no preview query) resolves through the gate to the coin's document, built from chain, and its image is the chosen file byte for byte",
+        "ok": true,
+        "detail": "{\"name\":\"Fork Lamp\",\"symbol\":\"FLAMP\",\"description\":\"Fork Lamp is an autonomous coding agent launched on units. It works on https://github.com/keis/base58.\",\"showName\":true,\"image\":\"https://app.units.gg/coin/image/7Ga96SDJUmojQQty3o9eaeqHu1Rmnd1QuRTZsqTppkVT\",\"createdOn\":\"https://app.units.gg\",\"website\":\"https://app.units.gg/tokens/G8Ec99tBQPQ8vxssZrFTFgGBs9uwTSzJTd8DTWKGBr1o\"}"
+      },
+      {
+        "check": "metadata: a later coin image upload for the launched agent is refused",
+        "ok": true,
+        "detail": "HTTP 401"
+      },
+      {
+        "check": "metadata: the agent's avatar in Core is the same image",
+        "ok": true,
+        "detail": "{\"sha256\":\"5d234e00c1353e2486bd7af374e8372966a1870a43d6bfd9bd8c705531a1ce06\",\"type\":\"image/png\",\"url\":\"/v1/media/5d234e00c1353e2486bd7af374e8372966a1870a43d6bfd9bd8c705531a1ce06\"}"
+      },
+      {
+        "check": "no identity service on this instance: no GitHub account row after the launch and no request to /identity/*",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "check": "launch: the wallet paid in SOL only and holds no more than the slippage remainder of the test coin",
+        "ok": true,
+        "detail": "0.201401162 SOL at the fork's rent"
+      },
+      {
+        "check": "credits: Funding and Review show the rate and the reading's age, and Review carries the reading the built amount used",
+        "ok": true,
+        "detail": "$10.00 of credits = 3,098,433.167872 UNITS at $0.000003227, read 3 s ago"
+      },
+      {
+        "check": "credits: the vault holds exactly the amount the page built, which is the minimum at the page's reading (ceil(min_usd / price))",
+        "ok": true,
+        "detail": "vault 3098433167872, built 3098433167872, 10 USD at 0.000003227437694540496"
+      },
+      {
+        "check": "credits: the deposit is worth 10 USD at the reading the page used (never less, and under a millionth more)",
+        "ok": true,
+        "detail": "10.000000000004613 USD"
+      },
+      {
+        "check": "credits: at the indexer's stored sample for the launch's time the deposit is within 1000 bps of 10 USD",
+        "ok": true,
+        "detail": "10.000000000004613 USD at 0.000003227437694540496 (read_at 1791834600)"
+      },
+      {
+        "check": "credits: Core's check of the deposit (GET /v1/agents/<agent>/prepay) says ok, judged at a stored price inside the band, with the minimum at that price",
+        "ok": true,
+        "detail": "{\"ok\":true,\"pending\":false,\"deposit\":\"3098433167872\",\"min\":\"2759478543483\",\"rate\":{\"state\":\"market\",\"usd_per_token\":0.0000032614857692067205,\"read_at\":1791834887,\"min_at_price\":\"3066087270537\",\"tolerance_bps\":1000,\"window_s\":300,\"launch_time\":1791834845,\"from\":\"sync\"}}"
+      },
+      {
+        "check": "trade box: Pay with offers the quote coin and SOL through it on pump.fun (no Jupiter options)",
+        "ok": true,
+        "detail": "LINE, SOL"
+      },
+      {
+        "check": "trade box: a 0.02 SOL buy is simulated and quoted in the agent's coin",
+        "ok": true,
+        "detail": "Buy Sell Pay with UNITS SOL (through UNITS on pump.fun) SOL (through UNITS on pump.fun) SOL buys UNITS on its pump.fun curve and the token with it, in one transaction (pump.fun's multi-hop swap); the amount is typed in SOL. Each of the two "
+      },
+      {
+        "check": "trade box: the SOL buy landed through pump.fun's multi_hop_swap and delivered exactly the simulated amount",
+        "ok": true,
+        "detail": "2559313637489 base units for 0.025962761 SOL, 0 curve buys, 1 approval of 1"
+      },
+      {
+        "check": "no page errors",
+        "ok": true,
+        "detail": ""
+      }
+    ]
+  },
+  "wizard_after_price_move": {
+    "outcome": "PASS",
+    "passed": 32,
+    "total": 32,
+    "launch": {
+      "agent": "4UV2U5RSGCvuEVKDpLmbu8JajGavoQNMBhVbrCLqDPpj",
+      "mint": "CmzezS64vwjPSDUskD2FHCaLzxJpr63MV2iQX95BhgtT",
+      "wallet_sol_spent_fork_lamports": "205014591",
+      "approvals": [
+        2
+      ],
+      "bundle_sizes": [
+        2
+      ],
+      "credits": {
+        "min_usd": "10",
+        "tolerance_bps": 1000,
+        "window_s": 300,
+        "band_usd": [
+          3e-7,
+          1
+        ],
+        "price_move": {
+          "sol": 3,
+          "signature": "rx5Q48d8BmqwfVnkPSo6NNeY8fLPQD4RYJhVVJx9ph1WwacGFmr3Cd4kwPbZ1s9b6Rd8aXgPcC31Ldsg4qRjJ6y",
+          "quote_coin_base_units": "89603532222666",
+          "usd_before": 0.0000032657653565938673,
+          "usd_after": 0.00000391544152024626,
+          "read_at_after": 1791834951,
+          "state_file_usd": 0.0000032273536982551473
+        },
+        "vault_deposit_base_units": "2553990386089",
+        "decimals": 6,
+        "launch_time": 1791834954,
+        "page_reading": {
+          "usd": 0.00000391544152024626,
+          "read_at": 1791834951,
+          "built_base_units": "2553990386089",
+          "deposit_usd": 10.000000000002647
+        },
+        "indexer_reading": {
+          "usd": 0.00000391544152024626,
+          "read_at": 1791834900,
+          "which": "the indexer's stored sample for the launch's time"
+        },
+        "deposit_usd": 10.000000000002647,
+        "core": {
+          "ok": true,
+          "pending": false,
+          "deposit": "2553990386089",
+          "min": "2298591347480",
+          "rate": {
+            "state": "market",
+            "usd_per_token": 0.00000391544152024626,
+            "read_at": 1791834951,
+            "min_at_price": "2553990386089",
+            "tolerance_bps": 1000,
+            "window_s": 300,
+            "launch_time": 1791834954,
+            "from": "sync"
+          }
+        }
+      }
+    }
+  },
+  "wallets": {
+    "note": "at mainnet rent and the base fee of 5,000 lamports per signature, no priority fee. The dev wallet never buys: the verifiers' 5,000,000 coins come out of its own holdings in one transfer. dev_wallet includes 0.05 SOL sent to the stand-in owner key, which the real key does not need.",
+    "dev_wallet": {
+      "address": "6UhUBoVpywefyPoMtQEuwngkPjzFRork4L3dgCVr4jh3",
+      "held_lamports": "5004818338",
+      "spent_lamports": "73502800",
+      "spent_sol": "0.073502800",
+      "before_the_coin": "5308360",
+      "after_the_coin_init_and_transfer": "68194440"
+    },
+    "verifier_owner_key": {
+      "spent_lamports": "13506605",
+      "spent_sol": "0.013506605",
+      "covers": "5 registrations (each creates an agent record) and 4 bonds"
+    },
+    "launcher_wallet": {
+      "spent_lamports": "217980843",
+      "spent_sol": "0.217980843",
+      "covers": "one launch through the wizard (credits, the 1% initial buy, rent, fees, the tip) and one 0.02 SOL buy in the trade box"
+    },
+    "cranker": {
+      "spent_lamports": "3032680",
+      "covers": "one fee crank (anyone may send it)"
+    },
+    "core_authority": "sends nothing in this sequence; one epoch post was measured at 0.001493440 SOL (docs/MAINNET-COSTS.md)",
+    "runtime_authority": "sends nothing in this sequence"
+  },
+  "finished": "2026-10-12T19:56:29.883Z",
+  "outcome": "PASS",
+  "checks": [
+    {
+      "name": "0: registry on the fork is the program deployed on mainnet at 3GeaTs... (cloned), byte-identical to the build, upgrade authority the dev wallet",
+      "ok": true,
+      "detail": "sha256 ead9e41fed21c50e8b01ca76ad58776c2f3bfd74a206d70342a5fbbda09b9c71"
+    },
+    {
+      "name": "0: launch on the fork is the program deployed on mainnet at 2vwKsT... (cloned), byte-identical to the build, upgrade authority the dev wallet",
+      "ok": true,
+      "detail": "sha256 593dff1c876f83b4e59003cdeff4159c4a6a46cdefa9dc71a853dc175f045008"
+    },
+    {
+      "name": "0: msg on the fork is the program deployed on mainnet at jmcb7c... (cloned), byte-identical to the build, upgrade authority the dev wallet",
+      "ok": true,
+      "detail": "sha256 90715f1490bb45029ad085f7ddb287cf6a159af450e91a66cd7aa0220dbcccb2"
+    },
+    {
+      "name": "0: nothing is initialized at the official ids",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "0: the dev wallet holds on the fork what it holds on mainnet (no airdrop: the sequence must fit its real balance)",
+      "ok": true,
+      "detail": "5.004818338 SOL"
+    },
+    {
+      "name": "1: the post-coin preflight refuses while the official mint does not exist (as on mainnet today)",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "1: pre, dry: the checks that need no coin pass and 3 transactions are planned (the Core authority already holds its target: no top-up), nothing sent",
+      "ok": true,
+      "detail": "the verifiers need 5,000,000 UNITS in all (5 burns of 200,000 UNITS, 4 bonds of 1,000,000 UNITS): with --bond-from-dev-wallet the dev wallet must hold that much after creating the coin (about 0.1398 SOL of coins at the starting price, before pump.fun's fee and"
+    },
+    {
+      "name": "1: pre --send, before the coin exists: messages initialized (admin = the dev wallet), the launch lookup table created, extended and frozen for the mint's address, the Core authority hot key at 1.25 SOL or more",
+      "ok": true,
+      "detail": "table FyqZSU9fXaJHtTwU5nzaEe6eg5VidTQAZG9kcpnSJVqx"
+    },
+    {
+      "name": "1: pre --send run again sends nothing",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "1: switch --pre writes the instance's state file before the coin exists: official ids, the mint, the table, the sink derived from the mint, a new coin's starting price",
+      "ok": true,
+      "detail": "331000 coins per USD at the starting price"
+    },
+    {
+      "name": "1: bond refuses before init",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "2: test coin: a pump.fun coin (Token-2022, no mint or freeze authority), paired with SOL, depth 0, not mayhem, curve not complete",
+      "ok": true,
+      "detail": "HW8eBfDZxj1MeChSY1EEjfWGZvisc4WRstSszZ8yz3VU"
+    },
+    {
+      "name": "2: watch saw the coin and ran the post-coin preflight, init, the bond funding, the instance files and the server-side registrations, with a time per step",
+      "ok": true,
+      "detail": "post-coin preflight 0 s; init + bond funding, in parallel 3.1 s; instance files at the live price 0 s; verifiers registered and bonded (server side) 4 s; total since the coin was seen 7.2 s"
+    },
+    {
+      "name": "2: after the coin the dev wallet sent exactly three transactions, in parallel: init in two, and the one transfer to the verifier owner key (never a buy)",
+      "ok": true,
+      "detail": "init 2 of 2: compute sink, units_launch:... 66397 CU; init 1 of 2: units_registry::initialize,... 169687 CU; the one transfer from the dev wallet: 5,... 20076 CU"
+    },
+    {
+      "name": "2: registry, launch and messages initialized with admin = the dev wallet, the Core and runtime authorities of the instance, the stand-in as mint",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "2: fee split 70% compute, 30% protocol; compute sink = the dev wallet's $UNITS account (as staged before the coin); slash cap as in the file; bounty and challenge configs set",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "2: registry values equal the file: burn, min bond, cap, cooldown, on-chain epoch",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "2: the dollar values are on chain at the price read when the coin appeared: sleep, wake, debit cap",
+      "ok": true,
+      "detail": "at 0.0000030242154421986674 USD per coin: sleep_threshold_usd 0.50 USD = 165000, wake_threshold_usd 1.00 USD = 331000, max_debit_per_epoch_usd 300 USD = 99200000"
+    },
+    {
+      "name": "2: site-chain.ts (what `instance.sh chain` runs on the server) registered the reference runner and registered and bonded v1 and v2 at the official registry, owner = the verifier owner key",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "2: the instance files were written again at the live price: units account at 0.03 SOL to the dev wallet, credits at the live rate, the runtime billing from the instance's indexer inside the band",
+      "ok": true,
+      "detail": "310000 coins per USD (staged at 331000)"
+    },
+    {
+      "name": "2: the repository's config was not written (no --apply-config)",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "3: init --send run again sends nothing and uses the saved resolution",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "4: the two capacity verifiers are registered with the instance's capabilities digest and bonded; the owner key has spent every coin it was sent",
+      "ok": true,
+      "detail": "bond vault 4000000000000 base units"
+    },
+    {
+      "name": "4: bond now finds nothing to do",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "5: exactly one transfer of 5,000,000 coins left the dev wallet, to the verifier owner key, recorded in the marker before it was sent; the rest of its coins are untouched",
+      "ok": true,
+      "detail": "dev wallet held 30000000000000 base units, holds 25000000000000"
+    },
+    {
+      "name": "5: bond --send run again sends nothing (the marker and the chain both say the transfer landed)",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "5: a sixth million is refused: with the transfer landed the tooling never sends a second one, and the dev wallet's balance does not move",
+      "ok": true,
+      "detail": "stopped: the one transfer landed and the verifier owner key still lacks coins: the tooling never sends a second one; look by hand"
+    },
+    {
+      "name": "5: switch --no-identity names no units account recipient",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "7: the Launch wizard, headless, launched one agent at the OFFICIAL ids quoted in the stand-in and bought it in the trade box",
+      "ok": true,
+      "detail": "30/30"
+    },
+    {
+      "name": "7: the launch's credits were priced by the wizard at the coin's live market price: the vault holds 10 USD of coins at the page's reading, Core judged it ok at the price of the launch's time, and the agent is awake",
+      "ok": true,
+      "detail": "3098433167872 base units = 10.0000 USD at 0.000003227437694540496 USD per coin"
+    },
+    {
+      "name": "7: a launch after the price moved (3 SOL bought on the coin's curve first): the wizard passes, the deposit is still 10 USD of coins at the new price, fewer coins than the first launch, and Core accepts it",
+      "ok": true,
+      "detail": "32/32; 2553990386089 base units at 0.00000391544152024626 USD per coin (first launch: 3098433167872 at 0.000003227437694540496)"
+    },
+    {
+      "name": "8: the crank paid exactly the waiting creator fees: 70% to the agent's compute vault, 30% to the treasury",
+      "ok": true,
+      "detail": "9546022999 base units: 6682216099 / 2863806900"
+    },
+    {
+      "name": "9: status shows the deployment: admin, authorities, the Core authority's days of posts, price, 5 verifiers (4 bonded), 2 agents, epochs",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "the stand-in mint is the only difference: the resolved on-chain values for the official mint are identical once the mint address is swapped",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "the dev wallet's real balance covers the whole sequence",
+      "ok": true,
+      "detail": "0.073502800 of 5.004818338 SOL"
+    }
+  ],
+  "transactions": [
+    {
+      "step": "1 pre (before the coin)",
+      "what": "units_msg::initialize (admin = vault)",
+      "signature": "36CQKTVeTsHuPPp444ot6p8ZH52YED5zJbm9fGU9rrvLRb664dEAn8rBPyXXqAK1H4YtqnEt728GrLaqUp5U6Tvh",
+      "payer": "6UhUBoVpywefyPoMtQEuwngkPjzFRork4L3dgCVr4jh3",
+      "bytes": 326,
+      "signatures": 1,
+      "compute_units": 20204,
+      "fee_lamports": 5000,
+      "payer_mainnet_lamports": "949880",
+      "created_bytes": [
+        58
+      ]
+    },
+    {
+      "step": "1 pre (before the coin)",
+      "what": "launch lookup table FyqZSU9fXaJHtTwU5nzaEe6eg5VidTQAZG9kcpnSJVqx: create + extend (21 addresses)",
+      "signature": "4h8uVbsvtJJ1iTfs35b5DDScgD2ntUEnKTfUHTAN1jShB2V3DSfaJTLAQkD7SHgknEPzVCfmyP77maXT223fCXD5",
+      "payer": "6UhUBoVpywefyPoMtQEuwngkPjzFRork4L3dgCVr4jh3",
+      "bytes": 942,
+      "signatures": 1,
+      "compute_units": 22450,
+      "fee_lamports": 5000,
+      "payer_mainnet_lamports": "4353480",
+      "created_bytes": [
+        728
+      ]
+    },
+    {
+      "step": "1 pre (before the coin)",
+      "what": "launch lookup table: freeze",
+      "signature": "2SHwXBx2sFXmS9tVbRniX5FXDqp64U74gBF7CEMQfPEmYW9SQWykJY725fsVsyASnF1rMFcceKNwYwxCfzZWcgzR",
+      "payer": "6UhUBoVpywefyPoMtQEuwngkPjzFRork4L3dgCVr4jh3",
+      "bytes": 207,
+      "signatures": 1,
+      "compute_units": 1517,
+      "fee_lamports": 5000,
+      "payer_mainnet_lamports": "5000",
+      "created_bytes": []
+    },
+    {
+      "step": "2 watch (after the coin)",
+      "what": "init 2 of 2: compute sink, units_launch::initialize_launch, set_bounty_config (admin = the dev wallet)",
+      "signature": "4MquMsfDkvBHGXEw7x1qypTwwLsWRNGSzFK8f7msi5D57aHs8J4LeKKJ2er9KhFogUZbViVns6WshH7L4TdscoRG",
+      "payer": "6UhUBoVpywefyPoMtQEuwngkPjzFRork4L3dgCVr4jh3",
+      "bytes": 706,
+      "signatures": 1,
+      "compute_units": 66397,
+      "fee_lamports": 5000,
+      "payer_mainnet_lamports": "4825920",
+      "created_bytes": [
+        170,
+        319,
+        76
+      ]
+    },
+    {
+      "step": "2 watch (after the coin)",
+      "what": "init 1 of 2: units_registry::initialize, set_challenge_config, set_slash_cap (admin = the dev wallet)",
+      "signature": "5kCMYqzRJnFmxiLaECgw8ji5niL8igVrs6D5qzTRqDYWuSerNsBRdSMfjJQvHApErvrXLueYZiFP6eaN7rVkLsGk",
+      "payer": "6UhUBoVpywefyPoMtQEuwngkPjzFRork4L3dgCVr4jh3",
+      "bytes": 891,
+      "signatures": 1,
+      "compute_units": 169687,
+      "fee_lamports": 5000,
+      "payer_mainnet_lamports": "12090320",
+      "created_bytes": [
+        287,
+        165,
+        165,
+        165,
+        165,
+        165,
+        78,
+        165
+      ]
+    },
+    {
+      "step": "2 watch (after the coin)",
+      "what": "the one transfer from the dev wallet: 5,000,000 UNITS to the verifier owner key and 0.050000000 SOL",
+      "signature": "5KLbH7Wt8QzFaMbLbKX3Zc5JYUvmKFrTzdim8phe8u4kvvbZy5kaYvzRjrKswV54bJoAdJNayAGowiHazmBqNcTv",
+      "payer": "6UhUBoVpywefyPoMtQEuwngkPjzFRork4L3dgCVr4jh3",
+      "bytes": 442,
+      "signatures": 1,
+      "compute_units": 20076,
+      "fee_lamports": 5000,
+      "payer_mainnet_lamports": "51278200",
+      "created_bytes": [
+        170,
+        0
+      ]
+    },
+    {
+      "step": "2 watch: site verifiers",
+      "what": "register verifier ref 9HQxRQiJDsdEWeuqufQRzdhk3SX6RePtsLNjdA2xt5sM",
+      "signature": "3oEtwyfRxt4mvK2FZzAgdW9Wpds3wqmAhVoz3EG8iUPBtH1LFxSEp3L6pCVU6UE5bM4UQhtdEFx97AX4BMLGhzJR",
+      "payer": "8JDyaa4ho2JTuLJnCvniEdRCBeZ944Jgaui2hkXTLV4d",
+      "bytes": 581,
+      "signatures": 2,
+      "compute_units": 31715,
+      "fee_lamports": 10001,
+      "payer_mainnet_lamports": "2697321",
+      "created_bytes": [
+        401
+      ]
+    },
+    {
+      "step": "2 watch: site verifiers",
+      "what": "register verifier v1 J1LrMN34VCosrKcKjn7TZkEJb51sPLhJZiEH5nyVUMxE",
+      "signature": "4EQSeaA8jx2ZcCxXRDVboW28YS5F1R8wzC9QMpXKBdtKfpSHSDwGVbr2zkNFmU5LkJhVzf3euLbZfb1ezZuh7Lko",
+      "payer": "8JDyaa4ho2JTuLJnCvniEdRCBeZ944Jgaui2hkXTLV4d",
+      "bytes": 581,
+      "signatures": 2,
+      "compute_units": 31715,
+      "fee_lamports": 10001,
+      "payer_mainnet_lamports": "2697321",
+      "created_bytes": [
+        401
+      ]
+    },
+    {
+      "step": "2 watch: site verifiers",
+      "what": "bond 1000000000000 base units for v1 J1LrMN34VCosrKcKjn7TZkEJb51sPLhJZiEH5nyVUMxE",
+      "signature": "3HLuGJ5Wz7StgTVEUNDiYn5fEbrpUbMWqFp2gsBDXZSjV3m5n18S7C4jxVrv2r3HWcenm8yxRm8v76HmVWcwZWBk",
+      "payer": "8JDyaa4ho2JTuLJnCvniEdRCBeZ944Jgaui2hkXTLV4d",
+      "bytes": 428,
+      "signatures": 1,
+      "compute_units": 27613,
+      "fee_lamports": 5001,
+      "payer_mainnet_lamports": "5001",
+      "created_bytes": []
+    },
+    {
+      "step": "2 watch: site verifiers",
+      "what": "register verifier v2 A9YpupCtHhM4hxdy2ucv4yPdSRuizzLGKmuG5FxZX2vc",
+      "signature": "3hyxEqs1rChgDR1n5jZJzEEnaVrJh87UvFTtJp5PdaZHz4a7jfWQPed6C6z9X5i9frVZQZ9SL1Ts1bEucVeaAKLM",
+      "payer": "8JDyaa4ho2JTuLJnCvniEdRCBeZ944Jgaui2hkXTLV4d",
+      "bytes": 581,
+      "signatures": 2,
+      "compute_units": 30215,
+      "fee_lamports": 10001,
+      "payer_mainnet_lamports": "2697321",
+      "created_bytes": [
+        401
+      ]
+    },
+    {
+      "step": "2 watch: site verifiers",
+      "what": "bond 1000000000000 base units for v2 A9YpupCtHhM4hxdy2ucv4yPdSRuizzLGKmuG5FxZX2vc",
+      "signature": "2RMQ1nL1aSz22XkW5PmvcaS2tai5S2o9fu6PsfVqnUJWm1DRNGwU6xx2JfzAAcjdtgZ8RhgVfUPS3fndAPASzSo4",
+      "payer": "8JDyaa4ho2JTuLJnCvniEdRCBeZ944Jgaui2hkXTLV4d",
+      "bytes": 428,
+      "signatures": 1,
+      "compute_units": 27613,
+      "fee_lamports": 5001,
+      "payer_mainnet_lamports": "5001",
+      "created_bytes": []
+    },
+    {
+      "step": "4 capacity verifiers",
+      "what": "register capacity verifier 1 (owner key pays and signs, the verifier key co-signs; 2 signatures)",
+      "signature": "QK7v5vGEg6rLFRLy8UWF3rgzubWAmqxtz8o6TUV96qxzAuyBFH1Vs7DFkmLKwfQygJwEzWaikM1cburFYwkUqNZ",
+      "payer": "8JDyaa4ho2JTuLJnCvniEdRCBeZ944Jgaui2hkXTLV4d",
+      "bytes": 537,
+      "signatures": 2,
+      "compute_units": 30065,
+      "fee_lamports": 10000,
+      "payer_mainnet_lamports": "2697320",
+      "created_bytes": [
+        401
+      ]
+    },
+    {
+      "step": "4 capacity verifiers",
+      "what": "bond min_bond for capacity verifier 1",
+      "signature": "NmdDGWxWpSNcC6idRFKAYk43Rx9m6MSAH2KecqFExvgk8KtVr7361YtRAabawLdVeKoGCTDupySQkvdHbAzPGDF",
+      "payer": "8JDyaa4ho2JTuLJnCvniEdRCBeZ944Jgaui2hkXTLV4d",
+      "bytes": 384,
+      "signatures": 1,
+      "compute_units": 27463,
+      "fee_lamports": 5000,
+      "payer_mainnet_lamports": "5000",
+      "created_bytes": []
+    },
+    {
+      "step": "4 capacity verifiers",
+      "what": "register capacity verifier 2 (owner key pays and signs, the verifier key co-signs; 2 signatures)",
+      "signature": "5U67DyEQQohNXSxFroF9ANoBz3xScqCcc1246ddLjyT8WhgdTiE1PVwgpc8Gk6nWycNaQbyXyX4jmHGHBP7Knj43",
+      "payer": "8JDyaa4ho2JTuLJnCvniEdRCBeZ944Jgaui2hkXTLV4d",
+      "bytes": 537,
+      "signatures": 2,
+      "compute_units": 31565,
+      "fee_lamports": 10000,
+      "payer_mainnet_lamports": "2697320",
+      "created_bytes": [
+        401
+      ]
+    },
+    {
+      "step": "4 capacity verifiers",
+      "what": "bond min_bond for capacity verifier 2",
+      "signature": "rXqbjtZ23azyAVyLVLVacS9QRMbuzVfuij33dJZpD5exxF9sGo4kA559Y519EMHUAyuuuXVp4ZJtn66wgx7GiLc",
+      "payer": "8JDyaa4ho2JTuLJnCvniEdRCBeZ944Jgaui2hkXTLV4d",
+      "bytes": 384,
+      "signatures": 1,
+      "compute_units": 27463,
+      "fee_lamports": 5000,
+      "payer_mainnet_lamports": "5000",
+      "created_bytes": []
+    },
+    {
+      "step": "7 launch (wallet)",
+      "what": "fork only: SOL to the browser wallet",
+      "signature": "5J2NnndtMEuHfTKfr1vJhkmWiC8L6z2s4NuQg7XhxkD9n1vx6UWKwTm6XqmEEcXwqoWFBDRxkBHekFGfg9KR1prQ",
+      "payer": "DtA9rs3WRTxE1iQg9Fr6VB1hcjdcnnkdzqfA4vGvnCLR",
+      "bytes": 215,
+      "signatures": 1,
+      "compute_units": 150,
+      "fee_lamports": 5000,
+      "payer_mainnet_lamports": "999764360",
+      "created_bytes": [
+        0
+      ]
+    },
+    {
+      "step": "7 launch (wallet)",
+      "what": "wallet transaction 1 of the launch and the trade",
+      "signature": "Znv2vAcN5nLpiiaPTDabtRtCkVChBnA8dk1YBwuTmMCgztTdRrkbiTaYijv9ryjJJE2vnAnKVeeowkVuSo2xkLD",
+      "payer": "B1ZSUaqL8S4g63caaCMm91nS3Sny1Ngy47Dp8boDCXEy",
+      "bytes": 1152,
+      "signatures": 3,
+      "compute_units": 247862,
+      "fee_lamports": 15001,
+      "payer_mainnet_lamports": "15133081",
+      "created_bytes": [
+        454,
+        166,
+        170,
+        170,
+        554,
+        165,
+        401
+      ]
+    },
+    {
+      "step": "7 launch (wallet)",
+      "what": "wallet transaction 2 of the launch and the trade",
+      "signature": "2sjsSG145hjSQCAzomsyMfrvt1xGbUtPxZULQniPsm9zMGCeWagKE8wiEifVrdZS2VBSvTv9oSrsXRuip3xCAgJz",
+      "payer": "B1ZSUaqL8S4g63caaCMm91nS3Sny1Ngy47Dp8boDCXEy",
+      "bytes": 1101,
+      "signatures": 1,
+      "compute_units": 193348,
+      "fee_lamports": 5001,
+      "payer_mainnet_lamports": "178494281",
+      "created_bytes": [
+        170,
+        137,
+        170,
+        170
+      ]
+    },
+    {
+      "step": "7 launch (wallet)",
+      "what": "wallet transaction 3 of the launch and the trade",
+      "signature": "5U7rHjckkddhrMa1T6Aztf96jkYDbh2tsUGd1pTz98tB5Yhx5BtKLRi66eaBBivxyHQ2Cjtp434AEYEBmk3xeZ2L",
+      "payer": "B1ZSUaqL8S4g63caaCMm91nS3Sny1Ngy47Dp8boDCXEy",
+      "bytes": 1133,
+      "signatures": 1,
+      "compute_units": 182456,
+      "fee_lamports": 5001,
+      "payer_mainnet_lamports": "24353481",
+      "created_bytes": [
+        165,
+        170,
+        137
+      ]
+    },
+    {
+      "step": "8 crank",
+      "what": "fee crank: pump.fun sweep + collect, then crank_pump_fees (anyone)",
+      "signature": "5XDLXFW1x2LomyePhHfePMRkV4z72MRWUwfdSP1K4JEozHB34veKpXpM6o2LWA3LfXh39Pbhv8kmVrrLQj2CmA84",
+      "payer": "BoxDevYLB3BAPeL7FY4GmwAjSYm99TXyzm4kghBxrCo7",
+      "bytes": 856,
+      "signatures": 1,
+      "compute_units": 144529,
+      "fee_lamports": 5000,
+      "payer_mainnet_lamports": "3032680",
+      "created_bytes": [
+        170,
+        170
+      ]
+    }
+  ],
+  "commands": [
+    {
+      "command": "golive.ts preflight",
+      "seconds": 0.1,
+      "lines": 20
+    },
+    {
+      "command": "golive.ts pre",
+      "seconds": 0.2,
+      "lines": 23
+    },
+    {
+      "command": "golive.ts pre --send",
+      "seconds": 2.6,
+      "lines": 18
+    },
+    {
+      "command": "golive.ts pre --send",
+      "seconds": 0.1,
+      "lines": 16
+    },
+    {
+      "command": "golive.ts switch --pre --overlay-genesis 5xtRZPLvLUoTMFxbTkrUtVZvJt4rbHwjrZSrjj4inPLx",
+      "seconds": 0.1,
+      "lines": 19
+    },
+    {
+      "command": "golive.ts bond",
+      "seconds": 0,
+      "lines": 2
+    },
+    {
+      "command": "golive.ts watch --send",
+      "seconds": 7.7,
+      "lines": 116
+    },
+    {
+      "command": "golive.ts init --send",
+      "seconds": 0.1,
+      "lines": 42
+    },
+    {
+      "command": "golive.ts bond",
+      "seconds": 0.1,
+      "lines": 14
+    },
+    {
+      "command": "golive.ts bond --send",
+      "seconds": 0.1,
+      "lines": 14
+    },
+    {
+      "command": "golive.ts bond --send --params /private/tmp/claude-501/-Users-achi/0d7dec43-11bf-41b5-9356-a383af601cd1/scratchpad/keys/official-params.more.json",
+      "seconds": 0.1,
+      "lines": 4
+    },
+    {
+      "command": "golive.ts switch --overlay-genesis 5xtRZPLvLUoTMFxbTkrUtVZvJt4rbHwjrZSrjj4inPLx --no-identity",
+      "seconds": 0.1,
+      "lines": 18
+    },
+    {
+      "command": "golive.ts status",
+      "seconds": 0.2,
+      "lines": 24
+    }
+  ]
+}

@@ -60,7 +60,9 @@ Object.assign(net, {
   _note: MAIN
     ? "units mainnet test instance (docs/MAINNET-RUNBOOK.md \"Mainnet test\"). TEST values from config/network.json with the state file's network_overrides; epoch length daily."
     : "units public devnet site. M1 TEST values from config/network.json; epoch length daily so each post_epoch (about 0.0015 devnet SOL) happens once a day.",
-  epoch_length_s: Number((process.env.UNITS_SITE_EPOCH_S ?? process.env.LINEAGE_SITE_EPOCH_S) ?? 86400),
+  // an instance's state file may set Core's own epoch (core_epoch_length_s; the official deployment posts every 900 s,
+  // owner 2026-10-12); the environment still wins, and without either it is a day, as before
+  epoch_length_s: Number((process.env.UNITS_SITE_EPOCH_S ?? process.env.LINEAGE_SITE_EPOCH_S) ?? (MAIN && Number.isInteger(devnet.core_epoch_length_s) && devnet.core_epoch_length_s >= 300 ? devnet.core_epoch_length_s : 86400)),
   canaries_dir: `${L.state}/canaries`,
   chain: {
     mode: L.network,
@@ -232,7 +234,10 @@ if (MAIN) {
     attempt_max_usd: net.prepay.attempt_max_usd,
     compute_price_line_per_usd: net.prepay.compute_price_line_per_usd,
     compute_price_line_per_sandbox_s: net.prepay.compute_price_line_per_sandbox_s,
-    price: { source: "config" },
+    // the official deployment's state file names the live price source (runtime_price, written by scripts/mainnet/golive.ts
+    // switch: the instance's own market indexer in Jupiter's shape, with a band and a maximum age); the test deployment's
+    // state file has none, so its throwaway coin keeps the configured TEST rate
+    price: devnet.runtime_price && typeof devnet.runtime_price === "object" ? devnet.runtime_price : { source: "config" },
     // this server's two local desktop slots stay with the devnet site; the test instance's desktops are
     // E2B, at most one per attempt slot
     desktops_max: 0,

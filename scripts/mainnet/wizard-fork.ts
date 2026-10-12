@@ -26,8 +26,12 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 
 import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
 import { generateAgentKey } from "@units/protocol";
+import { bytesToHex, checkMetadataUri, coinImageId, coinMetadataUri, sha256 } from "@units/chain";
+import { readMint } from "../../packages/indexer/src/accounts.ts";
 import { ata, ChainReader, decodeBondingCurve, JITO_BLOCK_ENGINE, launchPdas, loadKeypair, pumpPdas, Rpc, sendAndConfirm, signBytes, system, TOKEN_2022_PROGRAM } from "@units/chain";
+import { creditsAtPrice, usdToBase, decodePumpFeeConfig, decodePumpGlobal, pump, PUMP, quoteCurveBuyExactIn, token } from "@units/chain";
 import { decodeMessage, parseWire, placeSignature } from "../../packages/chain/src/browser/wire.ts";
+import { useActiveProfile } from "./steps.ts";
 import { useTestProfile } from "./test-steps.ts";
 
 const arg = (n: string, d?: string) => (process.argv.includes(`--${n}`) ? process.argv[process.argv.indexOf(`--${n}`) + 1]! : d);
@@ -47,14 +51,26 @@ const check = (name: string, ok: boolean, detail = "") => {
 };
 if (SHOTS) mkdirSync(SHOTS, { recursive: true });
 
-useTestProfile();
+// --official: the launch's own program ids (the go-live proof, golive-fork.ts) with --state-dir <dir holding state.json and
+// profile.local.json, as `golive.ts switch --no-identity` writes them>, --record <file>, --wallet-sol <SOL>
+// --move-price-sol <SOL> (official only): before the wizard is opened the funder key buys that much of the quote coin on its
+// pump.fun curve, so the coin's price is no longer the one in the state file and the launch credits (prepay rate_source
+// "market") must come from the indexer's live reading. The record's launch.credits holds the deposit and the prices.
+const OFFICIAL = process.argv.includes("--official");
+if (OFFICIAL) useActiveProfile();
+else useTestProfile();
+const STATE_DIR = arg("state-dir") ?? join(KEYS, "out");
+const RECORD = arg("record") ?? join(import.meta.dir, "WIZARD-FORK-LAST.json");
+const WALLET_LAMPORTS = BigInt(Math.round(Number(arg("wallet-sol") ?? "0.4") * 1e9));
+const MOVE_PRICE_LAMPORTS = OFFICIAL && arg("move-price-sol") ? BigInt(Math.round(Number(arg("move-price-sol")) * 1e9)) : 0n;
+if (!OFFICIAL && arg("move-price-sol")) throw new Error("--move-price-sol needs --official");
 const rpc = Rpc.http(FORK, "confirmed");
 const genesis = await rpc.call<string>("getGenesisHash");
 if (genesis === "5eykt4UsFv8P8NJdTREpY1vzqKqZKvdpKuc147dw2N9d") throw new Error("refusing: the endpoint is mainnet, this check runs on a local fork only");
 for (const p of Object.values(PORTS)) if (spawnSync(["lsof", "-ti", `:${p}`]).stdout.toString().trim()) throw new Error(`port ${p} is taken`);
 const reader = new ChainReader(rpc);
-const state = JSON.parse(readFileSync(join(KEYS, "out", "mainnet.json"), "utf8"));
-const overlay = JSON.parse(readFileSync(join(KEYS, "out", "profile.local.json"), "utf8"));
+const state = JSON.parse(readFileSync(join(STATE_DIR, OFFICIAL ? "state.json" : "mainnet.json"), "utf8"));
+const overlay = JSON.parse(readFileSync(join(STATE_DIR, "profile.local.json"), "utf8"));
 const coin = state.line_mint as string;
 const dep = loadKeypair(join(KEYS, "deployer.json"));
 
@@ -90,8 +106,10 @@ const jito = Bun.serve({ port: PORTS.jito, hostname: "127.0.0.1", fetch: async (
   return Response.json({ jsonrpc: "2.0", id: b.id, error: { code: -32601, message: "not served by the fork stand-in" } });
 } });
 
-const env = { ...process.env, UNITS_NETWORK: "mainnet", UNITS_PROFILE_LOCAL: join(tmp, "profile.local.json"), UNITS_MAINNET_RPC: FORK, UNITS_JITO_URL: `http://127.0.0.1:${PORTS.jito}`,
+const env: Record<string, string | undefined> = { ...process.env, UNITS_NETWORK: "mainnet", UNITS_PROFILE_LOCAL: join(tmp, "profile.local.json"), UNITS_MAINNET_RPC: FORK, UNITS_JITO_URL: `http://127.0.0.1:${PORTS.jito}`,
   UNITS_HOME: join(tmp, "home"), UNITS_PORT_BLOCK: "9690-9699" };
+// official: Core copies the indexer's price reading once a minute (revenue.ts), which the market rate of the launch credits needs
+if (OFFICIAL) env.UNITS_INDEXER_URL = `http://127.0.0.1:${PORTS.indexer}`;
 const procs: Subprocess[] = [];
 const logs = (name: string) => Bun.file(join(tmp, `${name}.log`));
 const run = (name: string, cmd: string[]) => procs.push(spawn(cmd, { cwd: ROOT, env, stdout: logs(name), stderr: logs(name) }));
@@ -127,9 +145,53 @@ try {
   const cfg = (await fetch(`${BASE}/v1/config`).then((r) => r.json())) as any;
   check("Core names no units account recipient (the option is not offered on the test instance)", cfg?.network?.prepay?.identity_account_recipient === null, `identity_account_recipient ${JSON.stringify(cfg?.network?.prepay?.identity_account_recipient)}`);
 
+  // ---------------------------------------------------------------- official: the launch credits at the live price
+  const prepayCfg = (cfg?.network?.prepay ?? {}) as Record<string, any>;
+  const MARKET_RATE = OFFICIAL && prepayCfg.rate_source === "market";
+  const DEC = Number(state.line_decimals ?? 6);
+  const quoteUsd = async () => (await fetch(`${MARKET}/market/quote-usd`).then((r) => r.json()).catch(() => null)) as { ok?: boolean; usd?: number; read_at?: number; reason?: string } | null;
+  let priceBefore: { usd: number; read_at: number } | null = null;
+  let moved: Record<string, unknown> | null = null;
+  if (OFFICIAL) {
+    check("official: Core's prepay block prices the launch credits at the market (rate_source market, with the band, tolerance and window)",
+      MARKET_RATE && typeof prepayCfg.rate_min_usd === "number" && typeof prepayCfg.rate_max_usd === "number" && Number.isInteger(prepayCfg.rate_tolerance_bps) && Number.isInteger(prepayCfg.rate_window_s),
+      `rate_source ${prepayCfg.rate_source}, band ${prepayCfg.rate_min_usd} to ${prepayCfg.rate_max_usd} USD, max age ${prepayCfg.rate_max_age_s} s, tolerance ${prepayCfg.rate_tolerance_bps} bps, window ${prepayCfg.rate_window_s} s`);
+    for (let i = 0; i < 120 && !priceBefore; i++) {
+      const q = await quoteUsd();
+      if (q?.ok && typeof q.usd === "number" && typeof q.read_at === "number") priceBefore = { usd: q.usd, read_at: q.read_at };
+      else await Bun.sleep(1000);
+    }
+    check("official: the local indexer reads the quote coin's USD price from the fork (GET /market/quote-usd)", !!priceBefore, priceBefore ? `${priceBefore.usd} USD, read_at ${priceBefore.read_at}` : `${(await quoteUsd())?.reason ?? "no answer"}`);
+  }
+  if (MOVE_PRICE_LAMPORTS > 0n) {
+    if (!priceBefore) throw new Error("--move-price-sol: the indexer gave no price to move from");
+    // a buy on the quote coin's own pump.fun curve, as createTestCoin does (scripts/mainnet/test-steps.ts)
+    const curveAddr = pumpPdas.bondingCurve(coin);
+    const [gA, fcA, cA] = await rpc.getMultipleAccounts([PUMP.global, PUMP.feeConfig, curveAddr]);
+    if (!gA || !fcA || !cA) throw new Error("--move-price-sol: pump.fun's Global, FeeConfig or the quote coin's curve is not on the fork");
+    const c0 = decodeBondingCurve(cA.data);
+    if (c0.complete) throw new Error("--move-price-sol: the quote coin's curve is complete (it trades on PumpSwap); this option buys on the curve only");
+    const base = (await reader.tokenBalance(ata(curveAddr, coin, T22)))!;
+    const q = quoteCurveBuyExactIn(decodePumpGlobal(gA.data), decodePumpFeeConfig(fcA.data), c0, MOVE_PRICE_LAMPORTS, base);
+    if (q.completes || q.tokens <= 0n) throw new Error("--move-price-sol: that buy would complete the curve or buy nothing; use a smaller amount");
+    const sent = await sendAndConfirm(rpc, dep, [token.createAtaIdempotent(dep.id, dep.id, coin, T22), pump.buyV3({ mint: coin, quoteMint: PUMP.wsol, user: dep.id, amount: q.tokens, maxQuoteIn: MOVE_PRICE_LAMPORTS })], { computeUnits: 300_000 });
+    const boughtAt = Math.floor(Date.now() / 1000);
+    let after: { usd: number; read_at: number } | null = null;
+    for (let i = 0; i < 180 && !after; i++) {
+      const r = await quoteUsd();
+      if (r?.ok && typeof r.usd === "number" && typeof r.read_at === "number" && r.read_at > boughtAt) after = { usd: r.usd, read_at: r.read_at };
+      else await Bun.sleep(1000);
+    }
+    const statePrice = typeof state.price_at_switch?.usd_per_units === "number" ? (state.price_at_switch.usd_per_units as number) : null;
+    check("price move: the funder's curve buy landed and the indexer's next reading, taken after it, is higher than the one before and is not the state file's price",
+      !!after && after.usd > priceBefore.usd && after.usd !== statePrice, `${priceBefore.usd} USD before, ${after?.usd ?? "no reading"} USD after ${Number(MOVE_PRICE_LAMPORTS) / 1e9} SOL; state file ${statePrice ?? "none"}`);
+    moved = { sol: Number(MOVE_PRICE_LAMPORTS) / 1e9, signature: sent.signature, quote_coin_base_units: q.tokens.toString(),
+      usd_before: priceBefore.usd, usd_after: after?.usd ?? null, read_at_after: after?.read_at ?? null, state_file_usd: statePrice };
+  }
+
   // ---------------------------------------------------------------- a browser wallet with SOL only
   const wallet = generateAgentKey();
-  await sendAndConfirm(rpc, dep, [system.transfer(dep.id, wallet.id, 400_000_000n)]);
+  await sendAndConfirm(rpc, dep, [system.transfer(dep.id, wallet.id, WALLET_LAMPORTS)]);
   const { chromium } = await import(join(ROOT, "node_modules/.bun/playwright-core@1.63.0/node_modules/playwright-core/index.mjs"));
   const exe = join(homedir(), "Library/Caches/ms-playwright/chromium_headless_shell-1243/chrome-headless-shell-mac-arm64/chrome-headless-shell");
   const browser = await chromium.launch({ headless: true, ...(existsSync(exe) ? { executablePath: exe } : {}) });
@@ -173,6 +235,15 @@ try {
   const page = await ctx.newPage();
   const errors: string[] = [];
   page.on("pageerror", (e: Error) => errors.push(e.message));
+  // this instance has no identity service: the page must not ask for one
+  const identityCalls: string[] = [];
+  page.on("request", (r: any) => {
+    const u = new URL(r.url());
+    if (u.pathname.startsWith("/identity/")) identityCalls.push(`${r.method()} ${u.pathname}`);
+  });
+  // the coin image the launcher picks (any PNG under 256 KB: the app's own icon file)
+  const IMAGE = new Uint8Array(readFileSync(join(ROOT, "apps/web/public/favicon.png")));
+  const IMAGE_SHA = bytesToHex(sha256(IMAGE));
   const proof = JSON.parse(readFileSync(join(ROOT, "scripts/souls/proof/soul-a.json"), "utf8"));
   await page.route("**/souls/draft", async (route: any) => {
     const body = JSON.parse(route.request().postData() ?? "{}");
@@ -196,6 +267,7 @@ try {
     await page.fill('[name="l_name"]', "Fork Lamp");
     await page.fill('[name="l_symbol"]', "FLAMP");
     await page.fill('[name="l_desc"]', "A launch on a local fork of mainnet, through the real wizard. Nothing here is on mainnet.");
+    await page.locator('[name="l_image"]').setInputFiles({ name: "coin.png", mimeType: "image/png", buffer: Buffer.from(IMAGE) });
     await page.click('[data-act="lz-next"]');
     await page.fill('[name="l_repo"]', "https://github.com/keis/base58");
     await page.locator("#w-work .lz-rec, #w-work .banner").first().waitFor({ timeout: 90_000 });
@@ -212,7 +284,7 @@ try {
       (await page.locator('input[name="l_identity"][value="purchased"]').isDisabled()) && (await page.locator('input[name="l_identity"][value="token"]').isChecked()), await text("#w-id-price"));
     await shot("4-identity");
     await page.click('[data-act="lz-next"]');
-    await page.waitForFunction(() => /Total\s*[\d.]+\s*SOL/.test((document.querySelector('[data-step="4"]') as HTMLElement | null)?.innerText ?? ""), null, { timeout: 120_000 });
+    await page.waitForFunction(() => /Total[\s\S]{0,40}?[\d.]+\s*SOL/.test((document.querySelector('[data-step="4"]') as HTMLElement | null)?.innerText ?? ""), null, { timeout: 120_000 });
     const funding = await text('[data-step="4"]');
     check("wizard, Funding: everything in SOL, no faucet and no Jupiter wording, no TEST label", /SOL/.test(funding) && !/faucet|Jupiter|TEST/.test(funding), funding.slice(0, 200));
     const whole = await text("#w-root, main");
@@ -225,7 +297,16 @@ try {
     check("wizard, Review: the launch simulated on the mainnet profile; transactions planned as launch + soul, then SOL to the quote coin + initial buy + credits + tip",
       /simulation succeeded on mainnet/i.test(review) && /launch \+ soul/.test(review) && /sol-to-units \+ initial-buy \+ credits \+ tip/.test(review) && !/units-account/.test(review) && !/Jupiter swap/.test(review), (review.match(/Transactions.{0,200}/) ?? [review.slice(0, 300)])[0]!);
     check("wizard, Review: says one signature and one Jito bundle", /one signature/i.test(review) && /Jito bundle/i.test(review));
+    // whether the permanent origin itself answers is the server's reading (GET /coin/origin); the page must say the same
+    const originAnswers = ((await fetch(`${BASE}/coin/origin`).then((r) => r.json()).catch(() => null)) as { answers?: boolean } | null)?.answers === true;
+    check(`wizard, Review: the coin's metadata URI names the permanent origin and the chosen image by its hash, read back before the review; the page says that origin ${originAnswers ? "answers" : "does not answer yet"}, as the server reads it`,
+      review.includes(`https://app.units.gg/coin/`) && review.includes(`.json?i=${coinImageId(IMAGE_SHA)}`) &&
+        (originAnswers ? /read back before this review: document and image answer/.test(review) && !/does not answer yet/.test(review) : /read back on this host; app\.units\.gg itself does not answer yet/.test(review) && /app\.units\.gg does not answer yet/.test(review)),
+      (review.match(/Metadata URI.{0,220}/) ?? [""])[0]!);
     await shot("6-review");
+    // market rate: the reading behind the amount in the built transactions, as the Review step carries it (wallet/prepay.ts builtRateNote)
+    const built = MARKET_RATE ? await page.locator("#w-launch-out [data-credits-built]").first().evaluate((e: HTMLElement) => ({ usd: Number(e.dataset.usd), read_at: Number(e.dataset.readAt), base: e.dataset.base ?? "", text: e.textContent ?? "" })).catch(() => null) : null;
+    const fundingRate = MARKET_RATE ? /of credits = [\d,.]+ \S+ at \$[\d.]+, read \d+ s ago/.test(funding) : false;
     const s0 = await rpc.getBalance(wallet.id);
     const n0 = requests.length;
     await page.locator('[data-act="launch-sign"]').click();
@@ -245,9 +326,69 @@ try {
     check("launch: the coin is quoted in the test coin, its creator is the agent's PDA, the 1% initial buy is in the agent key's account, the credits are in the vault and the agent is awake",
       curve.quoteMint === coin && curve.creator === launchPdas.pumpCreator(l.agent) && bought === curve.tokenTotalSupply / 100n && vault > 0n && la.awake === true, `bought ${bought}, vault ${vault}`);
     check("launch: the soul digest is on chain", !!(await reader.agent(l.agent))?.profileDigest);
+    // the coin's metadata: the URI on chain, and what it resolves to on this instance (the permanent origin has no DNS record here)
+    const onChain = readMint((await rpc.getAccountInfo(l.mint))!.data);
+    const wantUri = coinMetadataUri("https://app.units.gg", l.mint, coinImageId(IMAGE_SHA));
+    check("metadata: the URI on chain is <metadata origin>/coin/<mint>.json?i=<the chosen image's hash>", onChain.uri === wantUri, `${onChain.uri}`);
+    const walked = await checkMetadataUri(onChain.uri ?? "", { via: (u) => u.replace("https://app.units.gg", BASE), expect: { name: onChain.name ?? "", symbol: onChain.symbol ?? "" } });
+    check("metadata: the URI (as on chain, no preview query) resolves through the gate to the coin's document, built from chain, and its image is the chosen file byte for byte",
+      walked.ok && walked.image?.sha256 === IMAGE_SHA && walked.metadata?.name === "Fork Lamp" && walked.metadata?.symbol === "FLAMP" && walked.metadata?.image === `https://app.units.gg/coin/image/${coinImageId(IMAGE_SHA)}`,
+      walked.ok ? JSON.stringify(walked.metadata) : `${walked.problem}`);
+    const again = await fetch(`${BASE}/social/media/${l.agent}`, { method: "POST", headers: { "content-type": "application/json", origin: BASE }, body: JSON.stringify({ statement: { v: 1, kind: "units-media", agent: l.agent, slot: "coin", sha256: IMAGE_SHA, type: "image/png", size: IMAGE.length, signer: l.agent, created_at: Math.floor(Date.now() / 1000), nonce: "wizardfork01" }, sig: "1".repeat(88), data: Buffer.from(IMAGE).toString("base64") }) });
+    check("metadata: a later coin image upload for the launched agent is refused", again.status >= 400, `HTTP ${again.status}`);
+    let avatar: any = null;
+    for (let i = 0; i < 40 && !avatar; i++) {
+      avatar = ((await fetch(`${BASE}/v1/agents/${l.agent}/profile`).then((r) => (r.ok ? r.json() : null)).catch(() => null)) as any)?.media?.avatar ?? null;
+      if (!avatar) await Bun.sleep(1500);
+    }
+    check("metadata: the agent's avatar in Core is the same image", avatar?.sha256 === IMAGE_SHA, JSON.stringify(avatar));
+    check("no identity service on this instance: no GitHub account row after the launch and no request to /identity/*",
+      (await page.locator('[data-track="github"]').count()) === 0 && (await page.locator("#w-gh-launch").count()) === 0 && identityCalls.length === 0 && !/identity service/i.test(await text("#w-launch-out")), identityCalls.slice(0, 3).join(", "));
     const spent = s0 - (await rpc.getBalance(wallet.id));
-    check("launch: the wallet paid in SOL only and holds no more than the slippage remainder of the test coin", spent > 0n && ((await reader.tokenBalance(ata(wallet.id, coin, T22))) ?? 0n) < 100_000n * 1_000_000n, `${(Number(spent) / 1e9).toFixed(9)} SOL at the fork's rent`);
+    check("launch: the wallet paid in SOL only and holds no more than the slippage remainder of the test coin", spent > 0n && (OFFICIAL || ((await reader.tokenBalance(ata(wallet.id, coin, T22))) ?? 0n) < 100_000n * 1_000_000n), `${(Number(spent) / 1e9).toFixed(9)} SOL at the fork's rent`);
     out.launch = { agent: l.agent, mint: l.mint, wallet_sol_spent_fork_lamports: spent.toString(), approvals: requests.slice(n0), bundle_sizes: bundles };
+    if (MARKET_RATE) {
+      // the credits at the live price: what went into the vault, at which reading, and Core's own check of it
+      const minUsd = String(prepayCfg.min_usd), tol = Number(prepayCfg.rate_tolerance_bps), lo = Number(minUsd) * (1 - tol / 10_000), hi = Number(minUsd) * (1 + tol / 10_000);
+      const usdOf = (price: number | null | undefined) => (typeof price === "number" ? (Number(vault) / 10 ** DEC) * price : null);
+      check("credits: Funding and Review show the rate and the reading's age, and Review carries the reading the built amount used", fundingRate && !!built && built.usd > 0 && built.read_at > 0, built?.text ?? funding.slice(0, 200));
+      check("credits: the vault holds exactly the amount the page built, which is the minimum at the page's reading (ceil(min_usd / price))",
+        !!built && vault.toString() === built.base && vault === creditsAtPrice(minUsd, built.usd, DEC), `vault ${vault}, built ${built?.base}, ${minUsd} USD at ${built?.usd}`);
+      const pageUsd = usdOf(built?.usd);
+      check(`credits: the deposit is worth ${minUsd} USD at the reading the page used (never less, and under a millionth more)`, pageUsd !== null && pageUsd >= Number(minUsd) - 1e-9 && pageUsd <= Number(minUsd) * 1.000001, `${pageUsd} USD`);
+      const launchTime = Number(l.createdAt);
+      const atTime = (await fetch(`${MARKET}/market/quote-usd?at=${launchTime}`).then((r) => r.json()).catch(() => null)) as { ok?: boolean; usd?: number; read_at?: number } | null;
+      const nowQ = await quoteUsd();
+      const judged = atTime?.ok && typeof atTime.usd === "number" ? { usd: atTime.usd, read_at: atTime.read_at ?? null, which: "the indexer's stored sample for the launch's time" }
+        : nowQ?.ok && typeof nowQ.usd === "number" ? { usd: nowQ.usd, read_at: nowQ.read_at ?? null, which: "the indexer's current reading" } : null;
+      const depositUsd = usdOf(judged?.usd);
+      check(`credits: at ${judged?.which ?? "the indexer's reading"} the deposit is within ${tol} bps of ${minUsd} USD`, depositUsd !== null && depositUsd >= lo && depositUsd <= hi, `${depositUsd} USD at ${judged?.usd} (read_at ${judged?.read_at})`);
+      if (moved) {
+        const statePrice = moved.state_file_usd as number | null;
+        const staticBase = usdToBase(minUsd, String(state.network_overrides?.prepay?.line_per_usd ?? prepayCfg.line_per_usd_config), DEC);
+        check("credits: after the price move the deposit is not the state file's static amount (min_usd x line_per_usd) and was priced above the state file's price",
+          vault !== staticBase && !!built && (statePrice === null || built.usd > statePrice) && built.usd >= (moved.usd_after as number) * 0.999, `vault ${vault}, static ${staticBase}; page price ${built?.usd}, state file ${statePrice}, after the move ${moved.usd_after}`);
+      }
+      // Core reads the launch on its chain sync and judges the deposit at the readings it held around the launch's time (pending until it has one)
+      let cp: any = null;
+      for (let i = 0; i < 100; i++) {
+        cp = await fetch(`${CORE}/v1/agents/${l.agent}/prepay`).then((r) => (r.ok ? r.json() : null)).catch(() => null);
+        if (cp?.checked && cp.pending === false) break;
+        await Bun.sleep(2000);
+      }
+      const coreUsd = cp?.rate?.usd_per_token as number | null | undefined;
+      check("credits: Core's check of the deposit (GET /v1/agents/<agent>/prepay) says ok, judged at a stored price inside the band, with the minimum at that price",
+        cp?.checked === true && cp.ok === true && cp.pending === false && cp.deposit === vault.toString() && cp.rate?.state === "market" && typeof coreUsd === "number" && coreUsd >= prepayCfg.rate_min_usd && coreUsd <= prepayCfg.rate_max_usd &&
+          BigInt(cp.min ?? "0") <= vault && cp.rate.tolerance_bps === tol,
+        JSON.stringify({ ok: cp?.ok, pending: cp?.pending, deposit: cp?.deposit, min: cp?.min, rate: cp?.rate }));
+      (out.launch as Record<string, unknown>).credits = {
+        min_usd: minUsd, tolerance_bps: tol, window_s: prepayCfg.rate_window_s, band_usd: [prepayCfg.rate_min_usd, prepayCfg.rate_max_usd], price_move: moved,
+        vault_deposit_base_units: vault.toString(), decimals: DEC, launch_time: launchTime,
+        page_reading: built ? { usd: built.usd, read_at: built.read_at, built_base_units: built.base, deposit_usd: pageUsd } : null,
+        indexer_reading: judged, deposit_usd: depositUsd,
+        core: cp ? { ok: cp.ok, pending: cp.pending ?? null, deposit: cp.deposit, min: cp.min, rate: cp.rate ?? null } : null,
+      };
+    }
 
     // ---------------------------------------------------------------- the trade box, paid in SOL
     for (let i = 0; i < 60; i++) {
@@ -296,7 +437,7 @@ try {
   stop();
   const failed = results.filter((r) => !r.ok).length;
   if (failed && outcome === "PASS") outcome = `FAIL: ${failed} checks`;
-  writeFileSync(join(import.meta.dir, "WIZARD-FORK-LAST.json"), JSON.stringify({ at: new Date().toISOString(), outcome, passed: results.length - failed, total: results.length, ...out, results }, null, 2) + "\n");
+  writeFileSync(RECORD, JSON.stringify({ at: new Date().toISOString(), outcome, passed: results.length - failed, total: results.length, ...out, results }, null, 2) + "\n");
   log(`${outcome}: ${results.length - failed}/${results.length}`);
   process.exit(outcome === "PASS" ? 0 : 1);
 }

@@ -1,15 +1,15 @@
 {
-  "ran_at": "2026-10-12T16:34:13.243Z",
-  "mint": "7eH4u2uf4pFE2mrqFVXJdBvC7MXSiyeKyoRDyyCbL6au",
-  "creator": "9XfNuuebK6BcS3ees7TpvBnzkiNuRMZ5dDtvWKLXyH5",
-  "compute_address": "C8JRapHdTE688S6q3Xvwc2aqoGiFfhTch38uV5752PpE",
+  "ran_at": "2026-10-12T19:56:59.521Z",
+  "mint": "D8cJkSK9oxSdmZUFuPNgYzgWD5iQEeK6DaP79jCnBgk6",
+  "creator": "8KNXjrtoLmxyvVtfyMfKxViNUmz27rRWunZy6wXUfNyi",
+  "compute_address": "6XFVBZyvHf5MpDJaX2TFQWMTEmYuMLCcXxpeTigXMsea",
   "config": {
     "enabled": false,
     "rpc_url": "http://127.0.0.1:9690",
-    "mint": "7eH4u2uf4pFE2mrqFVXJdBvC7MXSiyeKyoRDyyCbL6au",
-    "creator": "9XfNuuebK6BcS3ees7TpvBnzkiNuRMZ5dDtvWKLXyH5",
+    "mint": "D8cJkSK9oxSdmZUFuPNgYzgWD5iQEeK6DaP79jCnBgk6",
+    "creator": "8KNXjrtoLmxyvVtfyMfKxViNUmz27rRWunZy6wXUfNyi",
     "key_path": null,
-    "compute_address": "C8JRapHdTE688S6q3Xvwc2aqoGiFfhTch38uV5752PpE",
+    "compute_address": "6XFVBZyvHf5MpDJaX2TFQWMTEmYuMLCcXxpeTigXMsea",
     "compute_bps": 5000,
     "burn_bps": 5000,
     "fee_reserve_lamports": "10000000",
@@ -22,6 +22,7 @@
       "floor_micro_lamports": 1,
       "cap_micro_lamports": 50000
     },
+    "protected_units": "0",
     "confirm_timeout_s": 60,
     "state_path": "/nonexistent/state.json",
     "log_path": "/nonexistent/runs.jsonl"
@@ -38,23 +39,23 @@
       "fee_lamports": "5001"
     },
     "buy on the curve + burn (first: creates the token account and the volume account)": {
-      "size": 801,
-      "compute_units": "80494",
+      "size": 915,
+      "compute_units": "57950",
       "fee_lamports": "5001"
     },
     "buy on the curve + burn": {
       "size": 759,
-      "compute_units": "57457",
+      "compute_units": "52768",
       "fee_lamports": "5001"
     },
     "collect after graduation (curve leftover + pool, first: creates the vault token account)": {
       "size": 1066,
-      "compute_units": "139035",
+      "compute_units": "142035",
       "fee_lamports": "5001"
     },
     "buy on the pool + burn (first: creates the volume account)": {
       "size": 916,
-      "compute_units": "75623",
+      "compute_units": "79934",
       "fee_lamports": "5001"
     }
   },
@@ -70,12 +71,12 @@
     {
       "name": "2: a config naming another creator is refused",
       "ok": true,
-      "detail": "the coin's creator on chain is 9XfNuuebK6BcS3ees7TpvBnzkiNuRMZ5dDtvWKLXyH5, not config.creator 8cS2jqhoMgVKJYrmrxMFecLXEdhKUZipN1TJiqq8aP4Z"
+      "detail": "the coin's creator on chain is 8KNXjrtoLmxyvVtfyMfKxViNUmz27rRWunZy6wXUfNyi, not config.creator FwRkEuiZESVhh6QZUUYbK4SBtB8TfTADa83f5MUv9FjJ"
     },
     {
       "name": "2: a key that is not the creator's is refused",
       "ok": true,
-      "detail": "the key at config.key_path is 8cS2jqhoMgVKJYrmrxMFecLXEdhKUZipN1TJiqq8aP4Z, not config.creator"
+      "detail": "the key at config.key_path is FwRkEuiZESVhh6QZUUYbK4SBtB8TfTADa83f5MUv9FjJ, not config.creator"
     },
     {
       "name": "2: a compute address that is a program is refused",
@@ -85,7 +86,7 @@
     {
       "name": "2: a mint that is not a pump.fun coin is refused",
       "ok": true,
-      "detail": "Error: config.mint 8cS2jqhoMgVKJYrmrxMFecLXEdhKUZipN1TJiqq8aP4Z has no pump.fun bonding curve on this cluster"
+      "detail": "Error: config.mint FwRkEuiZESVhh6QZUUYbK4SBtB8TfTADa83f5MUv9FjJ has no pump.fun bonding curve on this cluster"
     },
     {
       "name": "2: the dry run (CLI, no --send) plans collect, compute and buyback, each simulated",
@@ -135,12 +136,12 @@
     {
       "name": "3: the wallet holds its own SOL plus exactly what the ledger says (owed + reserve): none of its own was spent",
       "ok": true,
-      "detail": "own 1992417520, buyback owed 5447909, reserve 6071518"
+      "detail": "own 1992417520, buyback owed 5447909, reserve 6106318"
     },
     {
       "name": "3: overhead (fees, the token account and volume account rent) came out of the reserve",
       "ok": true,
-      "detail": "overhead 3928482 lamports"
+      "detail": "overhead 3893682 lamports"
     },
     {
       "name": "3: the buyback share was spent over several capped runs; what is left is under the minimum",
@@ -165,7 +166,7 @@
     {
       "name": "4: the next run booked the collect once, then was killed with the compute transfer recorded and unsent",
       "ok": true,
-      "detail": "compute owed 7960170"
+      "detail": "compute owed 7977570"
     },
     {
       "name": "4: the run after that sent the recorded transfer (same signature) and finished the run: one log line",
@@ -175,7 +176,7 @@
     {
       "name": "4: the compute address received this collection's share exactly once",
       "ok": true,
-      "detail": "7960170 lamports"
+      "detail": "7977570 lamports"
     },
     {
       "name": "4: after the interruptions the wallet still holds its own SOL plus exactly the ledger",
@@ -231,42 +232,42 @@
   "log": [
     {
       "v": 1,
-      "run_id": "2026-10-12T16:33:59.107Z-0c0fe6b8",
-      "time": "2026-10-12T16:33:59.107Z",
-      "cluster": "genesis:Gduxqgu1i3GUTwLecZ4qkLYoZja2Chg1FZZoXcrPYLSa",
-      "mint": "7eH4u2uf4pFE2mrqFVXJdBvC7MXSiyeKyoRDyyCbL6au",
-      "creator": "9XfNuuebK6BcS3ees7TpvBnzkiNuRMZ5dDtvWKLXyH5",
+      "run_id": "2026-10-12T19:56:44.964Z-f1bfc7a1",
+      "time": "2026-10-12T19:56:44.964Z",
+      "cluster": "genesis:5xtRZPLvLUoTMFxbTkrUtVZvJt4rbHwjrZSrjj4inPLx",
+      "mint": "D8cJkSK9oxSdmZUFuPNgYzgWD5iQEeK6DaP79jCnBgk6",
+      "creator": "8KNXjrtoLmxyvVtfyMfKxViNUmz27rRWunZy6wXUfNyi",
       "venue": "curve",
       "collected_lamports": "27732291",
       "collect_cost_lamports": "895881",
-      "collect_signature": "5kR5qvz18f95uUXRY574vvwQgP7YoNxjqY3gsm6KuJQmUFuyHsteR9PPcxB4MV6SP2wcQ68VXtwiEJe6wKGS12Lf",
+      "collect_signature": "5UeBRXZmZFDLJm4uVWLyktifLbYhVw1nP1cnjm5byhnaQvKWqEdCxNrsXc5fksK2ARigWSQYqKk6fmiWfan4KxXU",
       "reserve_lamports": "10000000",
       "compute_share_lamports": "8418205",
       "burn_share_lamports": "8418205",
       "compute_lamports": "8418205",
-      "compute_address": "C8JRapHdTE688S6q3Xvwc2aqoGiFfhTch38uV5752PpE",
-      "compute_signature": "CBvR9iPuVghSbNcHLNRfaPyRoy76REh44GRQziEM5LfEGyP9kQtNgpJ68atAvU1QvS4JhywkYzzVCb8vMM6NxHR",
+      "compute_address": "6XFVBZyvHf5MpDJaX2TFQWMTEmYuMLCcXxpeTigXMsea",
+      "compute_signature": "QNFtKvuZgH3n2pjkmHWAU59tzXohNR46ZyfaWcXXGcBkgWqdtpneeDtNaX6iKQFxe7pprLyvq9jW3zuRrhAPB73",
       "buyback_lamports": "2970296",
       "units_bought": "79324982117",
-      "buyback_signature": "59jFbiQSZCGdNRa9BqLok2x6rx9y8D7uQghSd5hfxfzV5oBDVUFXtS83cKLLCxcGpATeVCWv1UVJRZ4UiXbUQvqi",
+      "buyback_signature": "5LQ2hFLLqbrtXU3KLNiuSJe8AyGuigfEYbEauN2Q9CQj8CyrR73qQPMrDHkXE2zqohfG7AWHQWpLT2as3wS1YFvG",
       "units_burned": "79324982117",
-      "burn_signature": "59jFbiQSZCGdNRa9BqLok2x6rx9y8D7uQghSd5hfxfzV5oBDVUFXtS83cKLLCxcGpATeVCWv1UVJRZ4UiXbUQvqi",
-      "overhead_lamports": "3928482",
+      "burn_signature": "5LQ2hFLLqbrtXU3KLNiuSJe8AyGuigfEYbEauN2Q9CQj8CyrR73qQPMrDHkXE2zqohfG7AWHQWpLT2as3wS1YFvG",
+      "overhead_lamports": "3893682",
       "owed": {
         "compute_lamports": "0",
         "buyback_lamports": "5447909",
         "burn_units": "0",
-        "reserve_lamports": "6071518"
+        "reserve_lamports": "6106318"
       },
       "notes": []
     },
     {
       "v": 1,
-      "run_id": "2026-10-12T16:34:00.728Z-8fe25eb0",
-      "time": "2026-10-12T16:34:00.728Z",
-      "cluster": "genesis:Gduxqgu1i3GUTwLecZ4qkLYoZja2Chg1FZZoXcrPYLSa",
-      "mint": "7eH4u2uf4pFE2mrqFVXJdBvC7MXSiyeKyoRDyyCbL6au",
-      "creator": "9XfNuuebK6BcS3ees7TpvBnzkiNuRMZ5dDtvWKLXyH5",
+      "run_id": "2026-10-12T19:56:46.587Z-108d91ad",
+      "time": "2026-10-12T19:56:46.587Z",
+      "cluster": "genesis:5xtRZPLvLUoTMFxbTkrUtVZvJt4rbHwjrZSrjj4inPLx",
+      "mint": "D8cJkSK9oxSdmZUFuPNgYzgWD5iQEeK6DaP79jCnBgk6",
+      "creator": "8KNXjrtoLmxyvVtfyMfKxViNUmz27rRWunZy6wXUfNyi",
       "venue": "curve",
       "collected_lamports": "0",
       "collect_cost_lamports": "0",
@@ -275,29 +276,29 @@
       "compute_share_lamports": "0",
       "burn_share_lamports": "0",
       "compute_lamports": "0",
-      "compute_address": "C8JRapHdTE688S6q3Xvwc2aqoGiFfhTch38uV5752PpE",
+      "compute_address": "6XFVBZyvHf5MpDJaX2TFQWMTEmYuMLCcXxpeTigXMsea",
       "compute_signature": null,
       "buyback_lamports": "2970296",
       "units_bought": "79311494619",
-      "buyback_signature": "5gakBcNL1tYkfV1iK6ZiPNAzEyUqysfd88vZ4z2zJMDwPsSDJaN5xtg7dQbo3vFzh71uzWpd46gX6Xt5tcwwk6Py",
+      "buyback_signature": "7DdMFuUUyaRxcDs1b8QwXgEVC2q14im4VLcQLMv5coVsmmbujdwFhhc5RRQbbwyMLCHA9NNH5g4qQjBuqyXbXRu",
       "units_burned": "79311494619",
-      "burn_signature": "5gakBcNL1tYkfV1iK6ZiPNAzEyUqysfd88vZ4z2zJMDwPsSDJaN5xtg7dQbo3vFzh71uzWpd46gX6Xt5tcwwk6Py",
+      "burn_signature": "7DdMFuUUyaRxcDs1b8QwXgEVC2q14im4VLcQLMv5coVsmmbujdwFhhc5RRQbbwyMLCHA9NNH5g4qQjBuqyXbXRu",
       "overhead_lamports": "5001",
       "owed": {
         "compute_lamports": "0",
         "buyback_lamports": "2477613",
         "burn_units": "0",
-        "reserve_lamports": "6066517"
+        "reserve_lamports": "6101317"
       },
       "notes": []
     },
     {
       "v": 1,
-      "run_id": "2026-10-12T16:34:01.136Z-7bff8a99",
-      "time": "2026-10-12T16:34:01.136Z",
-      "cluster": "genesis:Gduxqgu1i3GUTwLecZ4qkLYoZja2Chg1FZZoXcrPYLSa",
-      "mint": "7eH4u2uf4pFE2mrqFVXJdBvC7MXSiyeKyoRDyyCbL6au",
-      "creator": "9XfNuuebK6BcS3ees7TpvBnzkiNuRMZ5dDtvWKLXyH5",
+      "run_id": "2026-10-12T19:56:46.997Z-3bd626cf",
+      "time": "2026-10-12T19:56:46.997Z",
+      "cluster": "genesis:5xtRZPLvLUoTMFxbTkrUtVZvJt4rbHwjrZSrjj4inPLx",
+      "mint": "D8cJkSK9oxSdmZUFuPNgYzgWD5iQEeK6DaP79jCnBgk6",
+      "creator": "8KNXjrtoLmxyvVtfyMfKxViNUmz27rRWunZy6wXUfNyi",
       "venue": "curve",
       "collected_lamports": "0",
       "collect_cost_lamports": "0",
@@ -306,48 +307,48 @@
       "compute_share_lamports": "0",
       "burn_share_lamports": "0",
       "compute_lamports": "0",
-      "compute_address": "C8JRapHdTE688S6q3Xvwc2aqoGiFfhTch38uV5752PpE",
+      "compute_address": "6XFVBZyvHf5MpDJaX2TFQWMTEmYuMLCcXxpeTigXMsea",
       "compute_signature": null,
       "buyback_lamports": "2453081",
       "units_bought": "65490874729",
-      "buyback_signature": "4a3LY7f2yNTtCwMFT83qYuat8yroL5sWMEuiTRu1SfbdsyAKCSUY6T7g7Bgdkt8Sus1q5UmbF61H4faPNfARecnA",
+      "buyback_signature": "27MWWyZQ5QnBLKeUG1mzc7BAHwWwxFuMnniM72iAtQTYmd4td4bPJYcbSc9gLAPjGLnMto5qHpFXtuLPWpjV43A2",
       "units_burned": "65490874729",
-      "burn_signature": "4a3LY7f2yNTtCwMFT83qYuat8yroL5sWMEuiTRu1SfbdsyAKCSUY6T7g7Bgdkt8Sus1q5UmbF61H4faPNfARecnA",
+      "burn_signature": "27MWWyZQ5QnBLKeUG1mzc7BAHwWwxFuMnniM72iAtQTYmd4td4bPJYcbSc9gLAPjGLnMto5qHpFXtuLPWpjV43A2",
       "overhead_lamports": "5001",
       "owed": {
         "compute_lamports": "0",
         "buyback_lamports": "24532",
         "burn_units": "0",
-        "reserve_lamports": "6061516"
+        "reserve_lamports": "6096316"
       },
       "notes": []
     },
     {
       "v": 1,
-      "run_id": "2026-10-12T16:34:02.352Z-5732d97e",
-      "time": "2026-10-12T16:34:02.352Z",
-      "cluster": "genesis:Gduxqgu1i3GUTwLecZ4qkLYoZja2Chg1FZZoXcrPYLSa",
-      "mint": "7eH4u2uf4pFE2mrqFVXJdBvC7MXSiyeKyoRDyyCbL6au",
-      "creator": "9XfNuuebK6BcS3ees7TpvBnzkiNuRMZ5dDtvWKLXyH5",
+      "run_id": "2026-10-12T19:56:48.219Z-eabd8cd0",
+      "time": "2026-10-12T19:56:48.219Z",
+      "cluster": "genesis:5xtRZPLvLUoTMFxbTkrUtVZvJt4rbHwjrZSrjj4inPLx",
+      "mint": "D8cJkSK9oxSdmZUFuPNgYzgWD5iQEeK6DaP79jCnBgk6",
+      "creator": "8KNXjrtoLmxyvVtfyMfKxViNUmz27rRWunZy6wXUfNyi",
       "venue": "curve",
       "collected_lamports": "19863825",
       "collect_cost_lamports": "5001",
-      "collect_signature": "51QeSdByvtmU6TvA87CMivTgDpZR1pd8WhYrndhCzePykMUDqnKW7jkQVvEPsbMfzkrXLxMKenhzAqyNFXftHhBx",
-      "reserve_lamports": "3938484",
-      "compute_share_lamports": "7960170",
-      "burn_share_lamports": "7960170",
-      "compute_lamports": "7960170",
-      "compute_address": "C8JRapHdTE688S6q3Xvwc2aqoGiFfhTch38uV5752PpE",
-      "compute_signature": "3AikEMoVmE72BwnyqV9gAqBQ2bgvqYrFxZoCB57A4BYsSXePkuGpx8dQjqWGGkygXjNPr1r9HxbLtUSFwT7PUgaz",
+      "collect_signature": "5CYgz7c6zR7KMGhF6JmumiPVw8ftBhGT3XhdwjGPBWtjXuTcf76CUpwdMqfFnPdT4CFqMDJNFNaiRTjr2SdDC9Pn",
+      "reserve_lamports": "3903684",
+      "compute_share_lamports": "7977570",
+      "burn_share_lamports": "7977570",
+      "compute_lamports": "7977570",
+      "compute_address": "6XFVBZyvHf5MpDJaX2TFQWMTEmYuMLCcXxpeTigXMsea",
+      "compute_signature": "1cMAquareW9i5TUkqjSKhnzhfjbz6bEFFGbVVTzfVopvt7srNFRpKkyQ6iEfenm8v8Fi6CkkRTdvyVg7s6LEAyy",
       "buyback_lamports": "2970296",
       "units_bought": "55837697641",
-      "buyback_signature": "iv1cxNuSxUbidFswtojBYWEwgpC7JCVNkeqqQnjV2cdoN42BPXD8YoYWjb2YiHA2uuMF72ZLjrJfcdhfbB72H7Y",
+      "buyback_signature": "q3r5sQywc3Vt9538ieA3phmEewSB2Dmk4Tyz6toV248vUrPqd3RPAHHuX5hF5cK9tQkk7FDtMpQBXWgJ5gpCjxc",
       "units_burned": "55837697641",
-      "burn_signature": "iv1cxNuSxUbidFswtojBYWEwgpC7JCVNkeqqQnjV2cdoN42BPXD8YoYWjb2YiHA2uuMF72ZLjrJfcdhfbB72H7Y",
+      "burn_signature": "q3r5sQywc3Vt9538ieA3phmEewSB2Dmk4Tyz6toV248vUrPqd3RPAHHuX5hF5cK9tQkk7FDtMpQBXWgJ5gpCjxc",
       "overhead_lamports": "10002",
       "owed": {
         "compute_lamports": "0",
-        "buyback_lamports": "5014406",
+        "buyback_lamports": "5031806",
         "burn_units": "0",
         "reserve_lamports": "9989998"
       },
@@ -355,11 +356,11 @@
     },
     {
       "v": 1,
-      "run_id": "2026-10-12T16:34:06.380Z-97818a28",
-      "time": "2026-10-12T16:34:06.380Z",
-      "cluster": "genesis:Gduxqgu1i3GUTwLecZ4qkLYoZja2Chg1FZZoXcrPYLSa",
-      "mint": "7eH4u2uf4pFE2mrqFVXJdBvC7MXSiyeKyoRDyyCbL6au",
-      "creator": "9XfNuuebK6BcS3ees7TpvBnzkiNuRMZ5dDtvWKLXyH5",
+      "run_id": "2026-10-12T19:56:52.653Z-db9a0a0c",
+      "time": "2026-10-12T19:56:52.653Z",
+      "cluster": "genesis:5xtRZPLvLUoTMFxbTkrUtVZvJt4rbHwjrZSrjj4inPLx",
+      "mint": "D8cJkSK9oxSdmZUFuPNgYzgWD5iQEeK6DaP79jCnBgk6",
+      "creator": "8KNXjrtoLmxyvVtfyMfKxViNUmz27rRWunZy6wXUfNyi",
       "venue": "curve",
       "collected_lamports": "0",
       "collect_cost_lamports": "0",
@@ -368,17 +369,17 @@
       "compute_share_lamports": "0",
       "burn_share_lamports": "0",
       "compute_lamports": "0",
-      "compute_address": "C8JRapHdTE688S6q3Xvwc2aqoGiFfhTch38uV5752PpE",
+      "compute_address": "6XFVBZyvHf5MpDJaX2TFQWMTEmYuMLCcXxpeTigXMsea",
       "compute_signature": null,
       "buyback_lamports": "2970296",
       "units_bought": "55829732076",
-      "buyback_signature": "5H9vXuq7uoJ3zsxrti9ejXbZNDTzsCydZtnssa84sx5Go12Z3UtF1L11k2By2MEzwGPXQHU3KJapqUQp6qDK2yHz",
+      "buyback_signature": "3LXbmFZaciLvSUTBWnNgTY3C1SKnNUyhFoZj51qGfhjcW58gB42bNtsZXPvqwASKckJd6STY68Aw2459RUtvmELJ",
       "units_burned": "55829732076",
-      "burn_signature": "5H9vXuq7uoJ3zsxrti9ejXbZNDTzsCydZtnssa84sx5Go12Z3UtF1L11k2By2MEzwGPXQHU3KJapqUQp6qDK2yHz",
+      "burn_signature": "3LXbmFZaciLvSUTBWnNgTY3C1SKnNUyhFoZj51qGfhjcW58gB42bNtsZXPvqwASKckJd6STY68Aw2459RUtvmELJ",
       "overhead_lamports": "5001",
       "owed": {
         "compute_lamports": "0",
-        "buyback_lamports": "2044110",
+        "buyback_lamports": "2061510",
         "burn_units": "0",
         "reserve_lamports": "9984997"
       },
@@ -386,11 +387,11 @@
     },
     {
       "v": 1,
-      "run_id": "2026-10-12T16:34:06.787Z-0cb12801",
-      "time": "2026-10-12T16:34:06.787Z",
-      "cluster": "genesis:Gduxqgu1i3GUTwLecZ4qkLYoZja2Chg1FZZoXcrPYLSa",
-      "mint": "7eH4u2uf4pFE2mrqFVXJdBvC7MXSiyeKyoRDyyCbL6au",
-      "creator": "9XfNuuebK6BcS3ees7TpvBnzkiNuRMZ5dDtvWKLXyH5",
+      "run_id": "2026-10-12T19:56:53.465Z-b0b4fac5",
+      "time": "2026-10-12T19:56:53.465Z",
+      "cluster": "genesis:5xtRZPLvLUoTMFxbTkrUtVZvJt4rbHwjrZSrjj4inPLx",
+      "mint": "D8cJkSK9oxSdmZUFuPNgYzgWD5iQEeK6DaP79jCnBgk6",
+      "creator": "8KNXjrtoLmxyvVtfyMfKxViNUmz27rRWunZy6wXUfNyi",
       "venue": "curve",
       "collected_lamports": "0",
       "collect_cost_lamports": "0",
@@ -399,17 +400,17 @@
       "compute_share_lamports": "0",
       "burn_share_lamports": "0",
       "compute_lamports": "0",
-      "compute_address": "C8JRapHdTE688S6q3Xvwc2aqoGiFfhTch38uV5752PpE",
+      "compute_address": "6XFVBZyvHf5MpDJaX2TFQWMTEmYuMLCcXxpeTigXMsea",
       "compute_signature": null,
-      "buyback_lamports": "2023870",
-      "units_bought": "38036122313",
-      "buyback_signature": "3Ft5qyrmr6BYLLx7XoLtPf49qS2vEUYDL7WAim5sGdyzf14PGDoXPKkm7mysehsturQ2H7BRF4kYgyM3bS1yEVUo",
-      "units_burned": "38036122313",
-      "burn_signature": "3Ft5qyrmr6BYLLx7XoLtPf49qS2vEUYDL7WAim5sGdyzf14PGDoXPKkm7mysehsturQ2H7BRF4kYgyM3bS1yEVUo",
+      "buyback_lamports": "2041098",
+      "units_bought": "38359879582",
+      "buyback_signature": "5ZcE8GUtMUX2zgG2KBfcrM4VVHGZCNZuusjrZ8TjEp1A5CZzf8jkiR8NWwBAup5mXhE6yudS3euHnBeqPpoAg7v9",
+      "units_burned": "38359879582",
+      "burn_signature": "5ZcE8GUtMUX2zgG2KBfcrM4VVHGZCNZuusjrZ8TjEp1A5CZzf8jkiR8NWwBAup5mXhE6yudS3euHnBeqPpoAg7v9",
       "overhead_lamports": "5001",
       "owed": {
         "compute_lamports": "0",
-        "buyback_lamports": "20240",
+        "buyback_lamports": "20412",
         "burn_units": "0",
         "reserve_lamports": "9979996"
       },
@@ -417,30 +418,30 @@
     },
     {
       "v": 1,
-      "run_id": "2026-10-12T16:34:11.610Z-816174d0",
-      "time": "2026-10-12T16:34:11.610Z",
-      "cluster": "genesis:Gduxqgu1i3GUTwLecZ4qkLYoZja2Chg1FZZoXcrPYLSa",
-      "mint": "7eH4u2uf4pFE2mrqFVXJdBvC7MXSiyeKyoRDyyCbL6au",
-      "creator": "9XfNuuebK6BcS3ees7TpvBnzkiNuRMZ5dDtvWKLXyH5",
+      "run_id": "2026-10-12T19:56:57.884Z-adf33496",
+      "time": "2026-10-12T19:56:57.884Z",
+      "cluster": "genesis:5xtRZPLvLUoTMFxbTkrUtVZvJt4rbHwjrZSrjj4inPLx",
+      "mint": "D8cJkSK9oxSdmZUFuPNgYzgWD5iQEeK6DaP79jCnBgk6",
+      "creator": "8KNXjrtoLmxyvVtfyMfKxViNUmz27rRWunZy6wXUfNyi",
       "venue": "pool",
       "collected_lamports": "286307182",
       "collect_cost_lamports": "2044281",
-      "collect_signature": "RvRjAJpoVK37kBvBNnikQhk2GXhFgVJzwxbr7DTFjyQ4vBprd28GneuWjRR6wVzLts5oDSiHLjdT3NwR6XeKN58",
+      "collect_signature": "2qh6HeJwxLeqqAw8E9ct4bdqX9qpwzncTu6ZDFMhapv9Bp5MVTGecQU51nY4fe5G8EUFRzhVMcziD3VHBPRwT67D",
       "reserve_lamports": "20005",
       "compute_share_lamports": "142121448",
       "burn_share_lamports": "142121448",
       "compute_lamports": "142121448",
-      "compute_address": "C8JRapHdTE688S6q3Xvwc2aqoGiFfhTch38uV5752PpE",
-      "compute_signature": "3h4td9JvSbderGPUgzizF7kLT3egg5432vjfSkrrKC13bm3cYymR2fiYKyG3K3g81uh1VSXHY5VSYNS8tnJ8pj5Q",
+      "compute_address": "6XFVBZyvHf5MpDJaX2TFQWMTEmYuMLCcXxpeTigXMsea",
+      "compute_signature": "3yt24XLzSVNMTDzqmFCcoZGbofaV7mjLiqGsnr2CWG3UzGTj6kR5UvskNzFkyTfWRZs4EEhEg3B8wmrAQLCeamvw",
       "buyback_lamports": "59405939",
       "units_bought": "117370998357",
-      "buyback_signature": "4HfubksHTMa2iA9fjo9y618phxo8VrijaNuKe14Wa5uj2rAUS7W15GWh1UuaesT8WLt33FJAZhNemWAyyWaMnycP",
+      "buyback_signature": "2uRRLHZhTVSwPm5zgE4dHnMWAYN9FqRo8rxco9g3sHrfBVkx4YiVEe3CC7gDfdm1x8k1navdRkVgK8jQ49GHdYUK",
       "units_burned": "117370998357",
-      "burn_signature": "4HfubksHTMa2iA9fjo9y618phxo8VrijaNuKe14Wa5uj2rAUS7W15GWh1UuaesT8WLt33FJAZhNemWAyyWaMnycP",
+      "burn_signature": "2uRRLHZhTVSwPm5zgE4dHnMWAYN9FqRo8rxco9g3sHrfBVkx4YiVEe3CC7gDfdm1x8k1navdRkVgK8jQ49GHdYUK",
       "overhead_lamports": "1854402",
       "owed": {
         "compute_lamports": "0",
-        "buyback_lamports": "82735749",
+        "buyback_lamports": "82735921",
         "burn_units": "0",
         "reserve_lamports": "8145599"
       },

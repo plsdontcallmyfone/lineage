@@ -10,10 +10,12 @@
 # commands at the active profile's ids (UNITS_NETWORK=mainnet: the mainnet ids, signed by the
 # mainnet id keypairs on this fork only), so the deploy it measures is the one the owner runs.
 #
-# Usage: scripts/mainnet/fork.sh <ledger dir>
+# Usage: scripts/mainnet/fork.sh <ledger dir> [more solana-test-validator arguments]
+# The go-live proof (scripts/mainnet/golive-fork.ts) passes the three OFFICIAL programs as deployed and
+# the wallets of the sequence: --clone-upgradeable-program <id> x3 --clone <address> ...
 # Ports: RPC 9690 (websocket 9691), faucet 9692, gossip 9693, dynamic 9700-9730 (checked free first).
 set -eu
-LEDGER="$1"
+LEDGER="$1"; shift
 U="${UNITS_MAINNET_RPC:-https://api.mainnet-beta.solana.com}"
 for p in 9690 9691 9692 9693 $(seq 9700 9730); do
   if lsof -ti ":$p" >/dev/null 2>&1; then echo "port $p is taken" >&2; exit 1; fi
@@ -43,4 +45,5 @@ exec solana-test-validator --ledger "$LEDGER" --reset --quiet \
   --clone BwWK17cbHxwWBKZkUYvzxLcNQ1YVyaFezduWbtm2de6s \
   --clone 39azUYFWPz3VHgKCf3VChUwbpURdCHRxjWVowf5jUJjg \
   --clone 5YxQFdt3Tr9zJLvkFccqXVUwhdTWJQc1fFg2YPbxvxeD \
-  --clone HjQjngTDqoHE6aaGhUqfz9aQ7WZcBRjy5xB8PScLSr8i
+  --clone HjQjngTDqoHE6aaGhUqfz9aQ7WZcBRjy5xB8PScLSr8i \
+  "$@"
