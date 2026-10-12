@@ -13,9 +13,9 @@ pub use challenge::*;
 // The program id selects by network at build time: devnet (the default build) or, with the cargo
 // feature `mainnet`, the fresh mainnet id (SPEC 14, "Program ids"). `units_launch` and
 // `units_msg` forward the feature, so all three agree.
-#[cfg(not(feature = "mainnet"))]
+#[cfg(not(any(feature = "mainnet", feature = "mainnet-test")))]
 declare_id!("CJk3kwUqSS4qoJD8iu7uhUzSBNySjn9HsqaExpaV9gM2");
-#[cfg(feature = "mainnet")]
+#[cfg(all(feature = "mainnet", not(feature = "mainnet-test")))]
 declare_id!("3GeaTsBUsaXCJ7Dru9tDHiKnVBsoHE6yiTdqqj42JHay");
 
 pub const CONFIG_SEED: &[u8] = b"config";
@@ -1386,3 +1386,9 @@ pub enum RegistryError {
     #[msg("max_slash_bps_per_epoch below a slash share")]
     SlashCapBelowShare,
 }
+
+// The mainnet TEST deployment (docs/MAINNET-RUNBOOK.md "Mainnet test"): a throwaway id that is closed when the test
+// ends, so the mainnet id above stays unused for the launch. Only the id differs. It sits at the end of the file so
+// that no line above moves: the default and `mainnet` builds stay byte-identical (error sites carry line numbers).
+#[cfg(feature = "mainnet-test")]
+declare_id!("27Y2UyLkuBAdwriNtqro5CJ4MTKjWCoUQywDJKunYBni");

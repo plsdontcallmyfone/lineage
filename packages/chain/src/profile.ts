@@ -3,7 +3,7 @@
 // and resolve the RPC with profile-node.ts. The public view never carries an RPC URL: the browser
 // talks to the web server's /chain/rpc proxy, which holds the keyed endpoint.
 
-import { PROGRAM_IDS, type ProgramIds } from "./programs.ts";
+import { matchProgramIds, PROGRAM_IDS, type ProgramIds } from "./programs.ts";
 
 export type NetworkName = "devnet" | "mainnet";
 export const NETWORKS: readonly NetworkName[] = ["devnet", "mainnet"];
@@ -118,6 +118,9 @@ function parsePrograms(network: NetworkName, raw: unknown, where: string): Progr
   const want = PROGRAM_IDS[network];
   if (raw === undefined) return { ...want };
   if (!isObj(raw)) throw new Error(`${where}.programs must be an object`);
+  // mainnet may also carry the mainnet TEST deployment's row, all three ids together (programs.ts)
+  const row = matchProgramIds(network, raw as Partial<ProgramIds>);
+  if (row) return { ...row };
   for (const k of ["registry", "launch", "msg"] as const)
     if (raw[k] !== want[k]) throw new Error(`${where}.programs.${k} must be ${want[k]}, the id the ${network} build declares`);
   return { ...want };

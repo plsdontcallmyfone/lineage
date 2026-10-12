@@ -2,10 +2,10 @@
 // The mainnet TEST, rehearsed end to end on a local fork of mainnet (scripts/mainnet/fork.sh) with
 // the operator commands themselves (scripts/mainnet/test.ts): docs/MAINNET-RUNBOOK.md "Mainnet test
 // (single key, throwaway quote coin)". Nothing is sent to mainnet and no real key signs anything but
-// the three mainnet program id keypairs, which sign their deploys on this local fork only. Mainnet is
+// the three mainnet-test program id keypairs, which sign their deploys on this local fork only. Mainnet is
 // read for rent, the programs' bytes and Jito's public tip accounts and tip floor.
 //
-//   0  the fork runs mainnet's pump.fun and Token-2022 builds; the three ids are empty; the builds embed the mainnet ids
+//   0  the fork runs mainnet's pump.fun and Token-2022 builds; the three test ids are empty; the mainnet-test builds embed only them
 //   1  test.ts keys, coin (create_v2 SOL-paired + a small buy), deploy, init (admin = the deployer), fund
 //   2  one agent launched as the wizard plans it on mainnet for this test: create_v2 quoted in the test coin +
 //      register_pump_launch, the soul, SOL to the test coin on its curve, the 1% initial buy, the credits +
@@ -78,17 +78,16 @@ import {
   type Signer,
 } from "@units/chain";
 import { base58Decode } from "@units/protocol";
-import { checkEndpoint, parseLaunchParams, programIdsNow, useActiveProfile } from "./steps.ts";
-import { sellTestCoin, sweepKey } from "./test-steps.ts";
+import { checkEndpoint, parseLaunchParams, programIdsNow } from "./steps.ts";
+import { sellTestCoin, sweepKey, TEST_BUILD_DIR, TEST_PROGRAM_KEYS, useTestProfile } from "./test-steps.ts";
 import { airdrop, assertFork, check, checks, fork, FORK_URL, forkKey, forkRent, KEYS, log, mainnet, mainnetRent, measure, rows, send, sleep, sol, type CostRow } from "./lib.ts";
 
 const ROOT = join(import.meta.dir, "..", "..");
 const T22 = TOKEN_2022_PROGRAM;
-const profile = useActiveProfile();
-if (profile.network !== "mainnet") throw new Error("run with UNITS_NETWORK=mainnet");
+const profile = useTestProfile();
 const IDS = programIdsNow();
-const PROGRAM_KEYS = join(homedir(), ".config", "units", "mainnet");
-const DEPLOY = join(ROOT, "onchain", "target", "mainnet");
+const PROGRAM_KEYS = TEST_PROGRAM_KEYS;
+const DEPLOY = TEST_BUILD_DIR;
 const names = ["registry", "launch", "msg"] as const;
 const reader = new ChainReader(fork);
 const sha = (b: Uint8Array) => createHash("sha256").update(b).digest("hex");
@@ -186,12 +185,13 @@ async function step0() {
   const builds: Record<string, unknown> = {};
   for (const n of names) {
     const so = readFileSync(join(DEPLOY, `units_${n}.so`));
-    check(`0: ${n} build embeds the mainnet ids only`, has(so, IDS[n]) && !Object.values(PROGRAM_IDS.devnet).some((id) => has(so, id)), `${so.length} bytes, sha256 ${sha(so)}`);
+    check(`0: ${n} build embeds the mainnet-test ids only (no devnet id, no mainnet id)`, has(so, IDS[n]) && ![...Object.values(PROGRAM_IDS.devnet), ...Object.values(PROGRAM_IDS.mainnet)].some((id) => has(so, id)), `${so.length} bytes, sha256 ${sha(so)}`);
     check(`0: ${n} id keypair is ${IDS[n].slice(0, 6)}...`, pubkeyOf(join(PROGRAM_KEYS, `${n}-program-keypair.json`)) === IDS[n]);
     check(`0: no program at ${IDS[n].slice(0, 6)}... on the fork yet`, (await fork.getAccountInfo(IDS[n])) === null);
     builds[n] = { so_bytes: so.length, so_sha256: sha(so) };
   }
   out.builds = builds;
+  for (const n of names) check(`0: the launch's mainnet id ${PROGRAM_IDS.mainnet[n].slice(0, 6)}... is not used on the fork`, (await fork.getAccountInfo(PROGRAM_IDS.mainnet[n])) === null);
   const pumpBuilds: Record<string, string> = {};
   for (const [name, id] of [["Pump", PUMP.program], ["PumpSwap", PUMP.amm], ["Pump Fees", PUMP.fees], ["Token-2022", T22]] as const) {
     const [f, m] = [trimZeros(await programBytes(fork, id)), trimZeros(await programBytes(mainnet, id))];
@@ -207,7 +207,7 @@ async function step0() {
 
 // ---------------------------------------------------------------- 1: keys, coin, deploy, init, fund (the operator commands)
 async function step1() {
-  testCli(["keys", "--backup", join(KEYS, "backup")]);
+  testCli(["keys", "--backup", join(KEYS, "backup"), "--program-backup", join(KEYS, "backup")]);
   check("1: keys: hot keys and the coin mint key made (mode 600) and every key file backed up",
     ["core-authority", "runtime-authority", "test-coin-mint", "deployer"].every((n) => existsSync(join(KEYS, "backup", `${n}.json`))) &&
     names.every((n) => existsSync(join(KEYS, "backup", `${n}-program-keypair.json`))));
@@ -506,7 +506,7 @@ async function step4(coinMint: string, launcherSpent: bigint, corePost: CostRow)
   const direct = spawnSync("solana", ["-u", FORK_URL, "-k", join(KEYS, "deployer.json"), "program", "deploy", join(DEPLOY, "units_msg.so"), "--program-id", join(PROGRAM_KEYS, "msg-program-keypair.json"),
     "--upgrade-authority", join(KEYS, "deployer.json"), "--fee-payer", join(KEYS, "deployer.json")], { encoding: "utf8" });
   const why = `${direct.stdout}${direct.stderr}`.trim().split("\n").pop() ?? "";
-  check("4: the loader refuses a deploy at a closed program id (the three mainnet ids cannot be used again after the test)", direct.status !== 0 && (await fork.getAccountInfo(programDataAddress(IDS.msg))) === null, why.slice(0, 200));
+  check("4: the loader refuses a deploy at a closed program id (only the throwaway test ids are spent)", direct.status !== 0 && (await fork.getAccountInfo(programDataAddress(IDS.msg))) === null, why.slice(0, 200));
   (out as Record<string, unknown>).closed_id_redeploy_refusal = why.slice(0, 300);
   const st = testCli(["status"]);
   check("4: status reports the three programs CLOSED", (st.match(/CLOSED/g) ?? []).length === 3);

@@ -14,6 +14,7 @@ import {
   decodePumpFeeConfig,
   decodePumpGlobal,
   launchTableAddresses,
+  MAINNET_TEST_PROGRAM_IDS,
   programDataAddress,
   pump,
   PUMP,
@@ -28,9 +29,13 @@ import {
   type Rpc,
   type SendResult,
   type Signer,
+  useProfilePrograms,
 } from "@units/chain";
+import { homedir } from "node:os";
+import { join } from "node:path";
+import type { NetworkProfile } from "../../packages/chain/src/profile.ts";
 import { adminActions } from "./admin.ts";
-import { computeSink, initializeAll, programIdsNow, type Loaded } from "./steps.ts";
+import { computeSink, initializeAll, programIdsNow, useActiveProfile, type Loaded } from "./steps.ts";
 
 export type Send = (what: string, payer: Signer, ixs: Ix[], o?: { signers?: Signer[]; computeUnits?: number }) => Promise<SendResult>;
 export type Check = (name: string, ok: boolean, detail?: string) => void;
@@ -39,6 +44,23 @@ const T22 = TOKEN_2022_PROGRAM;
 /** Written into the key directory by preflight.ts when every check passes; test.ts needs it (24 hours) before it sends on mainnet. */
 export const READY_FILE = "preflight-ready.json";
 const SOL_QUOTE = "11111111111111111111111111111111";
+
+/** Where the test deployment's builds and id keypairs live (cargo feature `mainnet-test`; never the mainnet ids' directory). */
+export const TEST_BUILD_DIR = join(import.meta.dir, "..", "..", "onchain", "target", "mainnet-test");
+export const TEST_PROGRAM_KEYS = join(homedir(), ".config", "units", "mainnet-test");
+
+/**
+ * The mainnet profile with the mainnet TEST deployment's program ids active (packages/chain
+ * MAINNET_TEST_PROGRAM_IDS): every builder, PDA and reader of this process then uses the throwaway ids,
+ * and the mainnet ids of the launch are never touched by the test scripts.
+ */
+export function useTestProfile(): NetworkProfile {
+  const p = useActiveProfile();
+  if (p.network !== "mainnet") throw new Error("run with UNITS_NETWORK=mainnet: the test uses the mainnet profile with the test program ids");
+  const programs = { ...MAINNET_TEST_PROGRAM_IDS };
+  useProfilePrograms({ network: "mainnet", programs });
+  return { ...p, programs };
+}
 
 export interface CoinMeta {
   name: string;

@@ -9,13 +9,14 @@
 //
 // Checks:
 //   1  the fork rehearsal record (TEST-REHEARSAL-LAST.json) is PASS, and how old it is
-//   2  the three builds are hash-equal to the rehearsed ones and embed the mainnet ids only
-//   3  the three program id keypairs are the declared mainnet ids
+//   2  the three mainnet-test builds are hash-equal to the rehearsed ones and embed the test ids only
+//   3  the three program id keypairs (~/.config/units/mainnet-test) are the declared mainnet-test ids
 //   4  the hot keys and the test coin's mint key exist (test.ts keys)
 //   5  every key file has an identical copy in the backup directory, mode 600
 //   6  UNITS_MAINNET_RPC is set (environment or ~/.config/units/rpc.env) and answers with mainnet's genesis
 //   7  the deployer holds at least the rehearsed peak (plus the priority fee bound of the deploys)
-//   8  the three program ids are unused on mainnet, or hold exactly these builds under the deployer (a resumed run); none is closed
+//   8  the three test ids are unused on mainnet, or hold exactly these builds under the deployer (a resumed run); none is closed;
+//      and the launch's own mainnet ids are still unused
 //   9  pump.fun's programs on mainnet are the builds the rehearsal and the LiteSVM suite ran (vendor/pump dumps)
 //  10  pump.fun's Global.max_curve_depth is 1 or more
 //  11  Jito's block engine answers getTipAccounts and the tip floor is readable
@@ -26,8 +27,8 @@ import { homedir } from "node:os";
 import { join } from "node:path";
 import { addressBytes, decodeLoaderAuthority, decodePumpGlobal, JITO_BLOCK_ENGINE, JITO_TIP_FLOOR, loadKeypair, PROGRAM_IDS, programDataAddress, PUMP, Rpc, tipFromFloor, TOKEN_2022_PROGRAM } from "@units/chain";
 import { MissingRpcError, rpcUrlFor } from "../../packages/chain/src/profile-node.ts";
-import { programIdsNow, useActiveProfile } from "./steps.ts";
-import { READY_FILE } from "./test-steps.ts";
+import { programIdsNow } from "./steps.ts";
+import { READY_FILE, TEST_BUILD_DIR, TEST_PROGRAM_KEYS, useTestProfile } from "./test-steps.ts";
 
 const ROOT = join(import.meta.dir, "..", "..");
 const MAINNET_GENESIS = "5eykt4UsFv8P8NJdTREpY1vzqKqZKvdpKuc147dw2N9d";
@@ -37,8 +38,9 @@ const flag = (n: string) => (argv.includes(n) ? argv[argv.indexOf(n) + 1] : unde
 const KEYS = flag("--keys") ?? join(homedir(), ".config", "units", "mainnet");
 const BACKUP = flag("--backup") ?? `${KEYS.replace(/\/+$/, "")}-backup`;
 const price = Number(flag("--priority-micro-lamports") ?? 0);
-const profile = useActiveProfile();
-if (profile.network !== "mainnet") throw new Error("run with UNITS_NETWORK=mainnet");
+const PROGRAM_KEYS = flag("--program-keys") ?? TEST_PROGRAM_KEYS;
+const PROGRAM_BACKUP = `${PROGRAM_KEYS.replace(/\/+$/, "")}-backup`;
+const profile = useTestProfile(); // the mainnet profile with the mainnet-test program ids
 const IDS = programIdsNow();
 const names = ["registry", "launch", "msg"] as const;
 const sha = (b: Uint8Array) => createHash("sha256").update(b).digest("hex");
@@ -73,30 +75,35 @@ if (reh?.finished) notes.push(`the rehearsal is ${((Date.now() - Date.parse(reh.
 // 2 builds
 const builds: Record<string, string> = {};
 for (const n of names) {
-  const f = join(ROOT, "onchain", "target", "mainnet", `units_${n}.so`);
+  const f = join(TEST_BUILD_DIR, `units_${n}.so`);
   if (!existsSync(f)) {
-    check(`${n}: the mainnet build exists`, false, "onchain/target/mainnet is missing it: build with --features mainnet");
+    check(`${n}: the mainnet build exists`, false, "onchain/target/mainnet-test is missing it: build with --features mainnet-test");
     continue;
   }
   const so = readFileSync(f);
   builds[n] = sha(so);
   const has = (id: string) => Buffer.from(so).indexOf(Buffer.from(addressBytes(id))) >= 0;
-  check(`${n}: the build is hash-equal to the rehearsed one and embeds the mainnet ids only`,
-    reh?.builds?.[n]?.so_sha256 === builds[n] && has(IDS[n]) && !Object.values(PROGRAM_IDS.devnet).some(has), `${so.length} bytes, sha256 ${builds[n]!.slice(0, 16)}`);
+  check(`${n}: the mainnet-test build is hash-equal to the rehearsed one and embeds the test ids only`,
+    reh?.builds?.[n]?.so_sha256 === builds[n] && has(IDS[n]) && ![...Object.values(PROGRAM_IDS.devnet), ...Object.values(PROGRAM_IDS.mainnet)].some(has), `${so.length} bytes, sha256 ${builds[n]!.slice(0, 16)}`);
 }
 
 // 3 program id keypairs; 4 hot keys; 5 backup
 const pubkeyOf = (p: string) => spawnSync("solana-keygen", ["pubkey", p], { encoding: "utf8" }).stdout.trim();
 for (const n of names) {
-  const f = join(KEYS, `${n}-program-keypair.json`);
-  check(`${n}: the program id keypair is the declared mainnet id`, existsSync(f) && pubkeyOf(f) === IDS[n], IDS[n]);
+  const f = join(PROGRAM_KEYS, `${n}-program-keypair.json`);
+  check(`${n}: the program id keypair is the declared mainnet-test id`, existsSync(f) && pubkeyOf(f) === IDS[n], IDS[n]);
 }
-const keyFiles = ["deployer", "core-authority", "runtime-authority", "test-coin-mint", ...names.map((n) => `${n}-program-keypair`)].map((n) => `${n}.json`);
-const haveHot = ["core-authority", "runtime-authority", "test-coin-mint"].every((n) => existsSync(join(KEYS, `${n}.json`)));
-check("the deployer key, the hot keys and the test coin mint key exist, mode 600", existsSync(join(KEYS, "deployer.json")) && haveHot && keyFiles.every((f) => !existsSync(join(KEYS, f)) || (statSync(join(KEYS, f)).mode & 0o077) === 0),
+const hotFiles = ["deployer", "core-authority", "runtime-authority", "test-coin-mint"].map((n) => join(KEYS, `${n}.json`));
+const idFiles = names.map((n) => join(PROGRAM_KEYS, `${n}-program-keypair.json`));
+const haveHot = hotFiles.every((f) => existsSync(f));
+check("the deployer key, the hot keys and the test coin mint key exist, mode 600", haveHot && [...hotFiles, ...idFiles].every((f) => !existsSync(f) || (statSync(f).mode & 0o077) === 0),
   haveHot ? "" : "run: bun scripts/mainnet/test.ts keys");
-const backed = keyFiles.filter((f) => existsSync(join(KEYS, f)) && existsSync(join(BACKUP, f)) && sha(readFileSync(join(KEYS, f))) === sha(readFileSync(join(BACKUP, f))) && (statSync(join(BACKUP, f)).mode & 0o077) === 0);
-check("every key file has an identical copy in the backup directory", backed.length === keyFiles.length, `${backed.length} of ${keyFiles.length} in the directory beside the key directory (test.ts keys makes it; keep an offline copy too)`);
+const copyOk = (f: string, dir: string) => {
+  const c = join(dir, f.split("/").pop()!);
+  return existsSync(f) && existsSync(c) && sha(readFileSync(f)) === sha(readFileSync(c)) && (statSync(c).mode & 0o077) === 0;
+};
+const backed = hotFiles.filter((f) => copyOk(f, BACKUP)).length + idFiles.filter((f) => copyOk(f, PROGRAM_BACKUP)).length;
+check("every key file has an identical copy in its backup directory", backed === 7, `${backed} of 7 in the directories beside the key directories (test.ts keys makes them; keep an offline copy too)`);
 const deployer = existsSync(join(KEYS, "deployer.json")) ? loadKeypair(join(KEYS, "deployer.json")).id : null;
 
 // 6 the keyed endpoint
@@ -139,9 +146,16 @@ await attempt("the three program ids are free on mainnet (or hold these builds u
       continue;
     }
     deployedAlready++;
-    const same = sha(trimZeros(pd.data.subarray(45))) === sha(trimZeros(readFileSync(join(ROOT, "onchain", "target", "mainnet", `units_${n}.so`))));
+    const same = sha(trimZeros(pd.data.subarray(45))) === sha(trimZeros(readFileSync(join(TEST_BUILD_DIR, `units_${n}.so`))));
     check(`${n}: already on mainnet with this build and the deployer as upgrade authority (a resumed run)`, same && decodeLoaderAuthority(pd.data) === deployer);
   }
+});
+
+// the launch's own mainnet ids must stay untouched by the test
+await attempt("the launch's mainnet program ids are still unused", async () => {
+  const used = [];
+  for (const n of names) if (await read.getAccountInfo(PROGRAM_IDS.mainnet[n])) used.push(PROGRAM_IDS.mainnet[n]);
+  check("the launch's mainnet program ids are still unused (the test never deploys at them)", used.length === 0, used.join(", "));
 });
 
 // 9 and 10 pump.fun on mainnet
@@ -170,7 +184,7 @@ await attempt("Jito's block engine is reachable", async () => {
 const ready = results.every((r) => r.ok);
 console.log("");
 for (const n of notes) console.log(`[preflight] note: ${n}`);
-console.log("[preflight] note: the test ends with test.ts close, which returns the ProgramData rent; the three mainnet program ids are then gone for good, so the real launch needs new ids and new builds");
+console.log("[preflight] note: the test ends with test.ts close, which returns the ProgramData rent and spends the three throwaway mainnet-test ids; the launch's mainnet ids are not involved");
 if (deployedAlready) console.log(`[preflight] note: ${deployedAlready} of 3 programs are already on mainnet; test.ts deploy skips them`);
 console.log(`[preflight] ${ready ? "READY" : "NOT READY"}: ${results.filter((r) => r.ok).length} of ${results.length} checks pass${ready ? "" : `; failing: ${results.filter((r) => !r.ok).map((r) => r.name).join("; ")}`}`);
 const readyFile = join(KEYS, READY_FILE);

@@ -11,7 +11,7 @@
 //   keys      make the hot keys (Core authority, runtime authority) and the test coin's mint key if absent; back every key file up
 //   status    what exists at the endpoint and what each key holds (read only)
 //   coin      create the test coin (create_v2, SOL-paired, not mayhem) and buy a little: --name --symbol --uri [--buy-sol 0.05]
-//   deploy    write-buffer + deploy each program at its mainnet id, upgrade authority = the deployer, ProgramData sized to the build
+//   deploy    write-buffer + deploy each mainnet-test build at its TEST id (never the launch's mainnet ids), upgrade authority = the deployer, ProgramData sized to the build
 //   init      initialize registry, launch and messages with admin = the deployer, the lookup table, bounty and challenge configs;
 //             writes the state file and the profile overlay into --out
 //   fund      SOL from the deployer to the hot keys: --core <SOL> --runtime <SOL>; and to another wallet (the site instance's
@@ -23,7 +23,7 @@
 // Options: --rpc <url> (default the local fork 127.0.0.1:9690; with --mainnet and no --rpc the keyed
 // endpoint from UNITS_MAINNET_RPC or ~/.config/units/rpc.env), --mainnet (required on a mainnet
 // endpoint), --keys <dir> (default ~/.config/units/mainnet: deployer.json and the hot keys),
-// --program-keys <dir> (default the same: <name>-program-keypair.json), --params <file> (default
+// --program-keys <dir> (default ~/.config/units/mainnet-test: the TEST ids' <name>-program-keypair.json), --params <file> (default
 // scripts/mainnet/test-params.json), --out <dir> (default scripts/mainnet; untracked mainnet.json and
 // profile.local.json), --priority-micro-lamports <n>, --use-rpc (deploy through the RPC instead of
 // TPU), --log <file> (appends one JSON line per transaction).
@@ -52,8 +52,8 @@ import {
   type Signer,
 } from "@units/chain";
 import { rpcUrlFor } from "../../packages/chain/src/profile-node.ts";
-import { checkEndpoint, parseLaunchParams, programIdsNow, useActiveProfile, type Loaded } from "./steps.ts";
-import { checkTest, createTestCoin, initializeTest, READY_FILE, sellTestCoin, sweepKey } from "./test-steps.ts";
+import { checkEndpoint, parseLaunchParams, programIdsNow, type Loaded } from "./steps.ts";
+import { checkTest, createTestCoin, initializeTest, READY_FILE, sellTestCoin, sweepKey, TEST_BUILD_DIR, TEST_PROGRAM_KEYS, useTestProfile } from "./test-steps.ts";
 
 const ROOT = join(import.meta.dir, "..", "..");
 const MAINNET_GENESIS = "5eykt4UsFv8P8NJdTREpY1vzqKqZKvdpKuc147dw2N9d";
@@ -65,11 +65,11 @@ const flag = (n: string) => (argv.includes(n) ? argv[argv.indexOf(n) + 1] : unde
 const has = (n: string) => argv.includes(n);
 const need = (n: string) => flag(n) ?? (() => { throw new Error(`${n} required`); })();
 
-const profile = useActiveProfile();
-if (profile.network !== "mainnet") throw new Error("run with UNITS_NETWORK=mainnet: the test deploys the mainnet builds at the mainnet ids (on the fork and on mainnet)");
+// the mainnet profile with the TEST program ids (cargo feature mainnet-test): the mainnet ids of the launch are never used here
+const profile = useTestProfile();
 const IDS = programIdsNow();
 const KEYS = flag("--keys") ?? join(homedir(), ".config", "units", "mainnet");
-const PROGRAM_KEYS = flag("--program-keys") ?? KEYS;
+const PROGRAM_KEYS = flag("--program-keys") ?? TEST_PROGRAM_KEYS;
 const OUT = flag("--out") ?? join(ROOT, "scripts", "mainnet");
 const rpcUrl = flag("--rpc") ?? (has("--mainnet") ? rpcUrlFor(profile) : FORK);
 const local = rpcUrl.startsWith("http://127.0.0.1:");
@@ -123,7 +123,7 @@ const send = async (what: string, payer: Signer, ixs: Ix[], o: { signers?: Signe
 };
 
 const PROGRAMS = (["registry", "launch", "msg"] as const).map((name) => ({
-  name, id: IDS[name], so: join(ROOT, "onchain", "target", "mainnet", `units_${name}.so`), key: join(PROGRAM_KEYS, `${name}-program-keypair.json`),
+  name, id: IDS[name], so: join(TEST_BUILD_DIR, `units_${name}.so`), key: join(PROGRAM_KEYS, `${name}-program-keypair.json`),
 }));
 const keyPath = (n: string) => join(KEYS, `${n}.json`);
 const deployer = () => loadKeypair(keyPath("deployer"));
@@ -189,22 +189,25 @@ async function keys() {
     say(`${n}: ${key.id}${created ? " (made now, mode 600)" : ""}`);
   }
   say(`deployer: ${deployer().id}`);
-  // the backup: byte-identical copies beside the key directory; an existing copy is never overwritten
-  const backup = flag("--backup") ?? `${KEYS.replace(/\/+$/, "")}-backup`;
-  mkdirSync(backup, { recursive: true, mode: 0o700 });
-  chmodSync(backup, 0o700);
-  const files = new Map<string, string>();
-  for (const d of new Set([KEYS, PROGRAM_KEYS])) for (const f of readdirSync(d)) if (/^(deployer|core-authority|runtime-authority|test-coin-mint|(registry|launch|msg)-program-keypair)\.json$/.test(f)) files.set(f, join(d, f));
-  for (const [f, src] of files) {
-    const dst = join(backup, f);
-    if (existsSync(dst)) {
-      if (sha(readFileSync(dst)) !== sha(readFileSync(src))) throw new Error(`${f}: the backup copy differs from the key file; nothing was overwritten, look at both by hand`);
-      continue;
+  // the backup: byte-identical copies beside each key directory; an existing copy is never overwritten
+  let n = 0, tight = true;
+  for (const [dir, pattern] of [[KEYS, /^(deployer|core-authority|runtime-authority|test-coin-mint)\.json$/], [PROGRAM_KEYS, /^(registry|launch|msg)-program-keypair\.json$/]] as const) {
+    const backup = (dir === KEYS ? flag("--backup") : flag("--program-backup")) ?? `${dir.replace(/\/+$/, "")}-backup`;
+    mkdirSync(backup, { recursive: true, mode: 0o700 });
+    chmodSync(backup, 0o700);
+    for (const f of readdirSync(dir).filter((x) => pattern.test(x))) {
+      const src = join(dir, f), dst = join(backup, f);
+      if (existsSync(dst)) {
+        if (sha(readFileSync(dst)) !== sha(readFileSync(src))) throw new Error(`${f}: the backup copy differs from the key file; nothing was overwritten, look at both by hand`);
+      } else {
+        copyFileSync(src, dst);
+        chmodSync(dst, 0o600);
+      }
+      n++;
+      tight &&= (statSync(dst).mode & 0o077) === 0;
     }
-    copyFileSync(src, dst);
-    chmodSync(dst, 0o600);
   }
-  check(`backup: ${files.size} key files have identical copies (mode 600) in the backup directory beside the key directory`, [...files.keys()].every((f) => (statSync(join(backup, f)).mode & 0o077) === 0), "keep an offline copy too");
+  check(`backup: ${n} key files have identical copies (mode 600) in the backup directories beside the key directories`, n === 7 && tight, "keep an offline copy too");
 }
 
 async function status() {
@@ -286,6 +289,7 @@ async function init() {
   writeFileSync(join(OUT, "mainnet.json"), JSON.stringify({
     mode: "mainnet", test: true,
     deployment: "mainnet TEST (single key admin and upgrade authority, throwaway pump.fun quote coin; closed when the test ends)",
+    program_ids: "mainnet-test (throwaway; the launch's mainnet ids are not used)",
     registry_program: IDS.registry, launch_program: IDS.launch, msg_program: IDS.msg,
     line_mint: P.line_mint, line_token_program: P.line_token_program, line_decimals: P.line_decimals, line_venue: "pump.fun",
     admin: dep.id, core_authority: P.core_authority, runtime_authority: P.runtime_authority,
@@ -295,10 +299,11 @@ async function init() {
     network_overrides: { prepay: { identity_account_recipient: dep.id } },
   }, null, 2) + "\n");
   writeFileSync(join(OUT, "profile.local.json"), JSON.stringify({
-    _note: "Local overlay for the mainnet TEST instance (UNITS_PROFILE_LOCAL, packages/chain/src/profile-node.ts): the quote is the throwaway test coin, and SOL is turned into it on its own pump.fun curve, not through Jupiter. Untracked.",
+    _note: "Local overlay for the mainnet TEST instance (UNITS_PROFILE_LOCAL, packages/chain/src/profile-node.ts): the programs are the mainnet-test ids, the quote is the throwaway test coin, and SOL is turned into it on its own pump.fun curve, not through Jupiter. Untracked.",
     profiles: { mainnet: {
       quote: { source: "config", symbol, display: `${symbol} (mainnet test coin)`, mint: P.line_mint, decimals: P.line_decimals, token_program: P.line_token_program, status: "stand-in", units_mint: null },
       swap: false,
+      programs: { registry: IDS.registry, launch: IDS.launch, msg: IDS.msg },
     } },
   }, null, 2) + "\n");
   say(`wrote mainnet.json and profile.local.json into ${OUT}`);

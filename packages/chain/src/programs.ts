@@ -33,6 +33,29 @@ export const PROGRAM_IDS: Readonly<Record<ProgramNetwork, Readonly<ProgramIds>>>
 });
 
 /**
+ * The mainnet TEST deployment (docs/MAINNET-RUNBOOK.md "Mainnet test"): throwaway ids declared by the
+ * cargo feature `mainnet-test`, deployed on mainnet for a small test and closed afterwards, so the
+ * mainnet ids above stay unused for the launch. A mainnet profile may name this row instead of the
+ * mainnet one (all three ids together), which only a local overlay does (UNITS_PROFILE_LOCAL). Keypairs:
+ * ~/.config/units/mainnet-test/{registry,launch,msg}-program-keypair.json.
+ */
+export const MAINNET_TEST_PROGRAM_IDS: Readonly<ProgramIds> = Object.freeze({
+  registry: "27Y2UyLkuBAdwriNtqro5CJ4MTKjWCoUQywDJKunYBni",
+  launch: "CxwvazD6EYoALLfFzBvJk5DWYacgAmrUGGxntmvPLkCT",
+  msg: "45TEx2pxSMCKPzLwZsatB62hX6SQndYL29ugcXJWa4ns",
+});
+
+/** The id rows a profile of `network` may carry: the network's own, and for mainnet also the test deployment's. */
+export function allowedProgramIds(network: string): Readonly<ProgramIds>[] {
+  const own = programIds(network);
+  return network === "mainnet" ? [own, MAINNET_TEST_PROGRAM_IDS] : [own];
+}
+/** The allowed row equal to `ids` (all three), or null. */
+export function matchProgramIds(network: string, ids: Partial<ProgramIds>): Readonly<ProgramIds> | null {
+  return allowedProgramIds(network).find((r) => r.registry === ids.registry && r.launch === ids.launch && r.msg === ids.msg) ?? null;
+}
+
+/**
  * The first devnet deployment (2026-10-07 to 2026-10-10), bound at initialize to the earlier plain
  * Token-2022 tUNITS (3PLqpw...): kept read-only as history after devnet moved to pump.fun with a fresh
  * deployment (owner decision 2026-10-10, onchain/DEVNET.md "Devnet v2"). Nothing builds against these
@@ -90,9 +113,13 @@ let activeNetwork: ProgramNetwork = "devnet";
  * (profile.ts already refuses anything else; checked again here).
  */
 export function useProfilePrograms(p: { network: string; programs: ProgramIds }): ProgramIds {
-  const want = programIds(p.network);
-  for (const k of ["registry", "launch", "msg"] as const)
-    if (p.programs[k] !== want[k]) throw new Error(`profile ${p.network}: programs.${k} ${p.programs[k]} is not the id the ${p.network} build declares (${want[k]})`);
+  const want = matchProgramIds(p.network, p.programs);
+  if (!want) {
+    const own = programIds(p.network);
+    for (const k of ["registry", "launch", "msg"] as const)
+      if (p.programs[k] !== own[k]) throw new Error(`profile ${p.network}: programs.${k} ${p.programs[k]} is not the id the ${p.network} build declares (${own[k]})`);
+    throw new Error(`profile ${p.network}: programs is not a row of the id table`);
+  }
   REGISTRY_PROGRAM_ID = want.registry;
   LAUNCH_PROGRAM_ID = want.launch;
   MSG_PROGRAM_ID = want.msg;

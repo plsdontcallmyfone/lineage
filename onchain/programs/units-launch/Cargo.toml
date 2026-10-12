@@ -20,6 +20,8 @@ custom-heap = []
 custom-panic = []
 # Build for mainnet: the mainnet program ids (declare_id!). Devnet stays the default.
 mainnet = ["units-registry/mainnet"]
+# Build for the mainnet test: throwaway program ids (declare_id!), closed after the test.
+mainnet-test = ["units-registry/mainnet-test"]
 
 [dependencies]
 anchor-lang = { version = "=0.31.1", features = ["init-if-needed"] }

@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
-import { activePrograms, ChainReader, LAUNCH_PROGRAM_ID, launch, launchPdas, MSG_PROGRAM_ID, msgPdas, PROGRAM_IDS, programIds, registry, registryPdas, REGISTRY_PROGRAM_ID, Rpc, toAddress, useProfilePrograms } from "../src/index.ts";
+import { activePrograms, ChainReader, LAUNCH_PROGRAM_ID, launch, launchPdas, MAINNET_TEST_PROGRAM_IDS, MSG_PROGRAM_ID, msgPdas, PROGRAM_IDS, programIds, registry, registryPdas, REGISTRY_PROGRAM_ID, Rpc, toAddress, useProfilePrograms } from "../src/index.ts";
 import { applyNetworkProfile } from "../src/profile-node.ts";
 import { DEVNET_PUBLIC_PROFILE, publicProfile, selectProfile } from "../src/profile.ts";
 
@@ -11,9 +11,9 @@ const section = (name: string) => {
   const m = anchorToml.match(new RegExp(`\\[programs\\.${name}\\]\\n([^\\[]*)`));
   return Object.fromEntries([...(m?.[1] ?? "").matchAll(/units_(\w+) = "(\w+)"/g)].map((x) => [x[1], x[2]]));
 };
-const declared = (prog: string, feature: "devnet" | "mainnet") => {
+const declared = (prog: string, feature: "devnet" | "mainnet" | "mainnet-test") => {
   const src = readFileSync(new URL(`../../../onchain/programs/units-${prog}/src/lib.rs`, import.meta.url), "utf8");
-  const cfg = feature === "mainnet" ? '#[cfg(feature = "mainnet")]' : '#[cfg(not(feature = "mainnet"))]';
+  const cfg = feature === "mainnet-test" ? '#[cfg(feature = "mainnet-test")]' : feature === "mainnet" ? '#[cfg(all(feature = "mainnet", not(feature = "mainnet-test")))]' : '#[cfg(not(any(feature = "mainnet", feature = "mainnet-test")))]';
   return src.split(cfg + "\ndeclare_id!(\"")[1]?.split('"')[0];
 };
 const profileJson = JSON.parse(readFileSync(new URL("../../../config/profile.json", import.meta.url), "utf8"));
@@ -29,6 +29,19 @@ describe("program ids per network", () => {
       for (const p of ["registry", "launch", "msg"] as const) expect(declared(p, net)).toBe(PROGRAM_IDS[net][p]);
     }
     expect(new Set([...Object.values(PROGRAM_IDS.devnet), ...Object.values(PROGRAM_IDS.mainnet)]).size).toBe(6);
+  });
+  test("the mainnet test ids: declared by the mainnet-test feature, distinct, and accepted only as a whole row of a mainnet profile", () => {
+    for (const p of ["registry", "launch", "msg"] as const) expect(declared(p, "mainnet-test")).toBe(MAINNET_TEST_PROGRAM_IDS[p]);
+    expect(new Set([...Object.values(PROGRAM_IDS.devnet), ...Object.values(PROGRAM_IDS.mainnet), ...Object.values(MAINNET_TEST_PROGRAM_IDS)]).size).toBe(9);
+    const t = structuredClone(profileJson);
+    t.profiles.mainnet.programs = { ...MAINNET_TEST_PROGRAM_IDS };
+    expect(selectProfile(t, "mainnet").programs).toEqual(MAINNET_TEST_PROGRAM_IDS);
+    expect(useProfilePrograms(selectProfile(t, "mainnet"))).toMatchObject(MAINNET_TEST_PROGRAM_IDS);
+    useProfilePrograms({ network: "devnet", programs: PROGRAM_IDS.devnet });
+    t.profiles.mainnet.programs = { ...MAINNET_TEST_PROGRAM_IDS, msg: PROGRAM_IDS.mainnet.msg };
+    expect(() => selectProfile(t, "mainnet")).toThrow(/programs\.registry must be 3GeaTs/);
+    t.profiles.devnet.programs = { ...MAINNET_TEST_PROGRAM_IDS };
+    expect(() => selectProfile(t, "devnet")).toThrow(/programs\.registry must be CJk3kw/);
   });
   test("the profile carries its network's ids and refuses others", () => {
     for (const net of ["devnet", "mainnet"] as const) {

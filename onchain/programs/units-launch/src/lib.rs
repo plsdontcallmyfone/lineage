@@ -17,9 +17,9 @@ pub use bounty::*;
 use pump as pf;
 
 // Network ids by build feature, as in units_registry: devnet by default, `mainnet` for mainnet.
-#[cfg(not(feature = "mainnet"))]
+#[cfg(not(any(feature = "mainnet", feature = "mainnet-test")))]
 declare_id!("Axo38WX6TBAGGQ2nPpejn5tPsQogygA728baRaeJebGX");
-#[cfg(feature = "mainnet")]
+#[cfg(all(feature = "mainnet", not(feature = "mainnet-test")))]
 declare_id!("2vwKsTZm5doa3ahBmpm8Sv3sKPD76Fq2ZZENbNW5BYBq");
 
 pub const LAUNCH_CONFIG_SEED: &[u8] = b"launch_config";
@@ -841,3 +841,9 @@ pub enum LaunchError {
     #[msg("bounty release held: the epoch's challenge window or an open challenge")]
     BountyHeld,
 }
+
+// The mainnet TEST deployment (docs/MAINNET-RUNBOOK.md "Mainnet test"): a throwaway id that is closed when the test
+// ends, so the mainnet id above stays unused for the launch. Only the id differs. It sits at the end of the file so
+// that no line above moves: the default and `mainnet` builds stay byte-identical (error sites carry line numbers).
+#[cfg(feature = "mainnet-test")]
+declare_id!("CxwvazD6EYoALLfFzBvJk5DWYacgAmrUGGxntmvPLkCT");

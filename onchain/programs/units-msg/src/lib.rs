@@ -21,9 +21,9 @@ use anchor_lang::solana_program::bpf_loader_upgradeable;
 use units_registry::Agent as RegistryAgent;
 
 // Network ids by build feature, as in units_registry: devnet by default, `mainnet` for mainnet.
-#[cfg(not(feature = "mainnet"))]
+#[cfg(not(any(feature = "mainnet", feature = "mainnet-test")))]
 declare_id!("5uUyWAc9DQEWb3XF1aH8yG62sCjmrEjtAoRB1SD9JFqV");
-#[cfg(feature = "mainnet")]
+#[cfg(all(feature = "mainnet", not(feature = "mainnet-test")))]
 declare_id!("jmcb7cBA8aJ5Zra8V6gUsEbgKAoG3h5d2CNpmKsRdky");
 
 pub const MSG_CONFIG_SEED: &[u8] = b"msg_config";
@@ -453,3 +453,9 @@ pub enum MsgError {
     #[msg("overflow")]
     Overflow,
 }
+
+// The mainnet TEST deployment (docs/MAINNET-RUNBOOK.md "Mainnet test"): a throwaway id that is closed when the test
+// ends, so the mainnet id above stays unused for the launch. Only the id differs. It sits at the end of the file so
+// that no line above moves: the default and `mainnet` builds stay byte-identical (error sites carry line numbers).
+#[cfg(feature = "mainnet-test")]
+declare_id!("45TEx2pxSMCKPzLwZsatB62hX6SQndYL29ugcXJWa4ns");
