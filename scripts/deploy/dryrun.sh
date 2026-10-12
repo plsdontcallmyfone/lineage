@@ -7,6 +7,8 @@
 # on chain (fund and site-chain run as plans). Results: scripts/deploy/DRYRUN-LAST.json.
 #
 #   scripts/deploy/dryrun.sh [--keep]
+#   DRYRUN_FORK=1 DRYRUN_FORK_KEYS=<dir> scripts/deploy/dryrun.sh    also the second instance against a local
+#                                         mainnet fork (chain order and key sweep; see that section below)
 #
 # Deploys DRYRUN_FIRST_REF (default HEAD~1 when it has the kit, else HEAD) and then HEAD, so rollback is
 # exercised; runs `full` twice on HEAD (re-run safety). Host ports 9668 (ssh) and 9669 (https) from
@@ -360,14 +362,75 @@ gone=$(R 'ls /etc/systemd/system/units-main-*.service /etc/caddy/sites.d/units-m
 check "mainnet instance remove --purge: units, site block, directories and accounts gone; the devnet site answers" "$([ $rc = 0 ] && [ "$(echo $gone)" = '0 0' ] && [ "$(code "$U/v1/health")" = 200 ] && [ "$(R systemctl is-active caddy)" = active ] && echo 1 || echo 0)" "left: $(echo $gone)"
 R "systemctl stop units-dryrun-stubrpc 2>/dev/null; true"
 
+# Second instance against a local mainnet fork (scripts/mainnet/fork.sh with the test deployment deployed and
+# initialized by scripts/mainnet/test.ts): the order stage, chain-plan, fund, chain, activate, and the sweep of
+# the keys that live on the server. Runs only with DRYRUN_FORK=1 and DRYRUN_FORK_KEYS=<the fork's key directory
+# (deployer.json and out/mainnet.json, out/profile.local.json)>; the fork is the caller's and is not stopped here.
+FORK_SECTION=skipped
+if [ "${DRYRUN_FORK:-0}" = 1 ]; then
+  echo "== second instance against the local mainnet fork: stage, chain-plan, fund, chain, activate, sweep"
+  FORK_SECTION=ran
+  FK="${DRYRUN_FORK_KEYS:?DRYRUN_FORK_KEYS: the fork key directory}"
+  FURL="${DRYRUN_FORK_URL:-http://127.0.0.1:9690}"; FBOX="${DRYRUN_FORK_BOX_URL:-http://host.docker.internal:9690}"
+  rpcq() { curl -s -m 8 -X POST -H 'content-type: application/json' -d "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"$2\",\"params\":${3:-[]}}" "$1"; }
+  bal() { rpcq "$FURL" getBalance "[\"$1\",{\"commitment\":\"confirmed\"}]" | sed -n 's/.*"value":\([0-9]*\).*/\1/p'; }
+  fg=$(rpcq "$FURL" getGenesisHash | sed -n 's/.*"result":"\([^"]*\)".*/\1/p')
+  bg=$(R "curl -s -m 8 -X POST -H 'content-type: application/json' -d '{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"getGenesisHash\"}' $FBOX" | sed -n 's/.*"result":"\([^"]*\)".*/\1/p')
+  check "fork: reachable from this machine and from inside the box (same genesis, not mainnet's)" "$([ -n "$fg" ] && [ "$fg" = "$bg" ] && [ "$fg" != 5eykt4UsFv8P8NJdTREpY1vzqKqZKvdpKuc147dw2N9d ] && echo 1 || echo 0)" "here ${fg:0:8}, box ${bg:0:8}"
+  if [ -n "$fg" ] && [ "$fg" = "$bg" ]; then
+    # fork testing only: the overlay names the fork's genesis, so every profile genesis check matches the fork
+    bun -e 'const o = JSON.parse(await Bun.file(process.argv[1]).text()); o.profiles.mainnet.genesis = process.argv[2]; await Bun.write(process.argv[3], JSON.stringify(o, null, 2));' "$FK/out/profile.local.json" "$fg" "$WORK/fork-profile.json"
+    FI=("${MI[@]}" INSTANCE_STATE_FILE="$FK/out/mainnet.json" INSTANCE_PROFILE_FILE="$WORK/fork-profile.json" UNITS_MAINNET_RPC="$FBOX")
+    freg=$(bun -e 'console.log(JSON.parse(await Bun.file(process.argv[1]).text()).registry_program)' "$FK/out/mainnet.json")
+    fdep=$(bun "$REPO/scripts/deploy/site-keys.ts" pub "$FK/deployer.json" | sed 's/.*": *"\([^"]*\)".*/\1/')
+    "${FI[@]}" "$D" 127.0.0.1 stage > "$WORK/f1.log" 2>&1; rc=$?; tail -3 "$WORK/f1.log"
+    check "fork: stage with the chain state, overlay and RPC (nothing started)" "$([ $rc = 0 ] && grep -q 'staged and stopped' "$WORK/f1.log" && [ "$(R systemctl is-active units-main-core)" != active ] && echo 1 || echo 0)" "exit $rc"
+    "${FI[@]}" "$D" 127.0.0.1 chain-plan > "$WORK/f2.log" 2>&1; rc=$?; grep 'site-chain' "$WORK/f2.log" | head -4
+    fown=$(sed -n 's/^\[site-chain\] owner \([1-9A-HJ-NP-Za-km-z]*\):.*/\1/p' "$WORK/f2.log" | head -1)
+    fneed=$(sed -n 's/^\[site-chain\] owner .* needs \([0-9]*\) tUNITS base units.*/\1/p' "$WORK/f2.log" | head -1)
+    check "fork: chain-plan before activate (Core not running): 3 registrations planned, the owner key and what it must hold named" "$([ $rc = 0 ] && [ "$(grep -c 'plan: register verifier' "$WORK/f2.log")" = 3 ] && [ -n "$fown" ] && [ "${fneed:-0}" -gt 0 ] && grep -q 'is not funded' "$WORK/f2.log" && echo 1 || echo 0)" "owner $fown needs $fneed quote token base units and 0.02 SOL"
+    MAINNET_SEND=yes "${FI[@]}" "$D" 127.0.0.1 chain > "$WORK/f3.log" 2>&1; rc=$?
+    check "fork: chain refused while the owner key is not funded (nothing sent)" "$([ $rc != 0 ] && grep -q 'is not funded' "$WORK/f3.log" && echo 1 || echo 0)" "exit $rc"
+    fcoins=$(( (fneed + 999999) / 1000000 + 7 ))
+    UNITS_NETWORK=mainnet bun "$REPO/scripts/mainnet/test.ts" fund --rpc "$FURL" --keys "$FK" --out "$FK/out" --to "$fown" --sol 0.05 --coin "$fcoins" > "$WORK/f4.log" 2>&1; rc=$?
+    check "fork: the owner key funded from the fork deployer (0.05 SOL, $fcoins test coins)" "$([ $rc = 0 ] && [ "$(bal "$fown")" = 50000000 ] && echo 1 || echo 0)" "exit $rc"
+    MAINNET_SEND=yes "${FI[@]}" "$D" 127.0.0.1 chain > "$WORK/f5.log" 2>&1; rc=$?; grep 'site-chain' "$WORK/f5.log" | tail -4
+    check "fork: chain before activate sends 3 registrations and 2 bonds with the server's owner key (Core still not running)" "$([ $rc = 0 ] && [ "$(grep -c '^\[site-chain\] register verifier .*: [1-9A-HJ-NP-Za-km-z]\{80,\}$' "$WORK/f5.log")" = 3 ] && [ "$(grep -c '^\[site-chain\] bond .*: [1-9A-HJ-NP-Za-km-z]\{80,\}$' "$WORK/f5.log")" = 2 ] && [ "$(grep -c 'registered, bond' "$WORK/f5.log")" = 3 ] && [ "$(R systemctl is-active units-main-core)" != active ] && echo 1 || echo 0)" "exit $rc"
+    MAINNET_SEND=yes "${FI[@]}" "$D" 127.0.0.1 chain > "$WORK/f6.log" 2>&1; rc=$?
+    check "fork: chain again sends nothing (already registered and bonded)" "$([ $rc = 0 ] && [ "$(grep -c '^\[site-chain\] \(register\|bond\) ' "$WORK/f6.log")" = 0 ] && [ "$(grep -c 'registered, bond' "$WORK/f6.log")" = 3 ] && echo 1 || echo 0)" "exit $rc"
+    s=$(date +%s); "${FI[@]}" "$D" 127.0.0.1 activate > "$WORK/f7.log" 2>&1; rc=$?; tail -8 "$WORK/f7.log"
+    check "fork: activate after the chain step, the instance preflight reading the fork (READY, marked FORK TEST)" "$([ $rc = 0 ] && grep -q 'active: mainnet instance' "$WORK/f7.log" && grep -q 'preflight mainnet\] READY' "$WORK/f7.log" && grep -q 'FORK TEST' "$WORK/f7.log" && echo 1 || echo 0)" "exit $rc, $(( $(date +%s) - s )) s, $(grep -c 'preflight mainnet\] PASS' "$WORK/f7.log") preflight checks"
+    fch=""; for i in $(seq 1 20); do fch=$("${MC[@]}" "$MU/v1/chain"); echo "$fch" | grep -q '"slot"' && break; sleep 3; done
+    check "fork: the instance's Core reads the fork at the test deployment's program ids" "$(echo "$fch" | grep -q '"mode":"mainnet"' && echo "$fch" | grep -q "$freg" && echo 1 || echo 0)" "$(echo "$fch" | head -c 90)"
+    "${FI[@]}" "$D" 127.0.0.1 sweep-plan > "$WORK/f8.log" 2>&1; rc=$?; grep 'site-sweep' "$WORK/f8.log" | head -3
+    check "fork: sweep-plan lists what the server-held keys hold (nothing sent)" "$([ $rc = 0 ] && grep -q "owner $fown: .* quote token base units" "$WORK/f8.log" && grep -q 'plan done (nothing sent)' "$WORK/f8.log" && echo 1 || echo 0)" "exit $rc"
+    "${FI[@]}" "$D" 127.0.0.1 remove --purge > "$WORK/f9.log" 2>&1; rc=$?
+    check "fork: remove --purge refused while the server-held keys hold funds (instance kept)" "$([ $rc != 0 ] && grep -q 'NOT PURGED' "$WORK/f9.log" && R 'test -f /home/units-main/.config/lineage/site/owner.json' && [ "$(mcode "$MU/v1/health")" = 200 ] && echo 1 || echo 0)" "exit $rc"
+    "${FI[@]}" "$D" 127.0.0.1 sweep "$fdep" > "$WORK/f10.log" 2>&1; rc=$?
+    check "fork: sweep refused without MAINNET_SEND=yes" "$([ $rc != 0 ] && grep -q 'MAINNET_SEND=yes' "$WORK/f10.log" && echo 1 || echo 0)" "exit $rc"
+    b0=$(bal "$fdep"); o0=$(bal "$fown")
+    MAINNET_SEND=yes "${FI[@]}" "$D" 127.0.0.1 sweep "$fdep" > "$WORK/f11.log" 2>&1; rc=$?; grep 'site-sweep' "$WORK/f11.log" | tail -6
+    b1=$(bal "$fdep"); o1=$(bal "$fown")
+    check "fork: sweep sends the owner key's quote tokens and SOL to the recipient: the key holds 0, the recipient received it less two fees and with the closed token account's rent" "$([ $rc = 0 ] && [ "$o1" = 0 ] && [ "$o0" -gt 0 ] && [ $((b1 - b0)) -gt $((o0 - 10001)) ] && grep -q 'token account closed' "$WORK/f11.log" && echo 1 || echo 0)" "owner $o0 to $o1 lamports, recipient +$((b1 - b0))"
+    check "fork: the sweep says the bonds stay in the registry" "$([ "$(grep -c 'stays in the registry' "$WORK/f11.log")" = 2 ] && echo 1 || echo 0)"
+    "${FI[@]}" "$D" 127.0.0.1 remove --purge > "$WORK/f12.log" 2>&1; rc=$?; tail -2 "$WORK/f12.log"
+    gone=$(R 'ls /etc/systemd/system/units-main-*.service /opt/units-main /var/lib/units-main /etc/units-main /etc/units-main-core 2>/dev/null | wc -l; id units-main 2>/dev/null | wc -l')
+    check "fork: remove --purge after the sweep; the devnet site answers" "$([ $rc = 0 ] && [ "$(echo $gone)" = '0 0' ] && [ "$(code "$U/v1/health")" = 200 ] && echo 1 || echo 0)" "exit $rc"
+    fl=$(cat "$WORK"/f*.log | grep -c 'host.docker.internal\|127.0.0.1:9690')
+    check "fork: the endpoint is in no deploy log" "$([ "$fl" = 0 ] && echo 1 || echo 0)" "$fl lines"
+  fi
+else
+  echo "SKIP second instance against a mainnet fork (chain order and sweep): set DRYRUN_FORK=1 and DRYRUN_FORK_KEYS with scripts/mainnet/fork.sh running and the test deployment initialized"
+fi
+
 dfree=$(df -g / | tail -1 | awk '{print $4}')
 check "host disk still >= 4 GB free" "$([ "$dfree" -ge 4 ] && echo 1 || echo 0)" "$dfree GB"
 
 bun -e '
 const lines = (await Bun.file(process.argv[1]).text()).trim().split("\n").map((l) => JSON.parse(l));
-const out = { at: new Date().toISOString(), head: process.argv[2], first: process.argv[3], container_image: process.argv[4], seconds: Number(process.argv[5]),
+const out = { at: new Date().toISOString(), head: process.argv[2], first: process.argv[3], container_image: process.argv[4], seconds: Number(process.argv[5]), fork_section: process.argv[7],
   passed: lines.filter((l) => l.ok).length, failed: lines.filter((l) => !l.ok).length, checks: lines };
 await Bun.write(process.argv[6], JSON.stringify(out, null, 2) + "\n");
 console.log(`dry run: ${out.passed}/${lines.length} checks passed in ${out.seconds} s`);
-' "$RESULTS" "$HEADSHA" "$FIRSTSHA" "$IMAGE" "$(( $(date +%s) - T0 ))" "$REPO/scripts/deploy/DRYRUN-LAST.json"
+' "$RESULTS" "$HEADSHA" "$FIRSTSHA" "$IMAGE" "$(( $(date +%s) - T0 ))" "$REPO/scripts/deploy/DRYRUN-LAST.json" "$FORK_SECTION"
 [ "$FAIL" = 0 ]

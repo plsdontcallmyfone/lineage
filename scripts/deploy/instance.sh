@@ -13,11 +13,17 @@
 #                    is mainnet and the programs are deployed and initialized there.
 #   chain-plan       read only: what registering and bonding the instance's three verifiers would send, and
 #                    the SOL and quote tokens its owner key (made on the server) must hold first
-#   chain            the same, sent on mainnet by the server's owner key; refused without MAINNET_SEND=yes
+#   chain            the same, sent on mainnet by the server's owner key; refused without MAINNET_SEND=yes.
+#                    Both need only a stage made with the chain state, the overlay and the RPC present: run
+#                    them BEFORE activate, so the verifiers are registered when their units first start.
+#   sweep-plan       read only: what the keys that live only on the server hold (site owner key, verifier keys)
+#   sweep <recipient>  sends all of it (SOL, and the owner key's quote tokens) to <recipient>; refused without
+#                    MAINNET_SEND=yes. Bonds stay in the registry.
 #   status           units, ports, what is present, Core health, the shared E2B budget files
 #   stop | start     stop and disable, or start, the instance's units (Caddy and the first instance stay)
-#   remove [--purge] stop it and remove its unit files and Caddy site block; --purge also deletes its
-#                    directories, keys and accounts on the server
+#   remove [--purge [--force]]  stop it and remove its unit files and Caddy site block; --purge also deletes
+#                    its directories, keys and accounts on the server, and is refused while the server-held
+#                    keys hold more than dust (sweep first) unless --force
 #
 # What it reads here (never printed; keys are compared and reported by public key only):
 #   scripts/mainnet/mainnet.json          the deployed chain state (untracked; INSTANCE_STATE_FILE overrides)
@@ -33,7 +39,7 @@
 set -euo pipefail
 HOST="${1:-}"; MODE="${2:-stage}"; EXTRA="${3:-}"
 NAME="${UNITS_INSTANCE:-}"
-[ -n "$HOST" ] && [ -n "$NAME" ] || { sed -n '2,32p' "$0"; exit 2; }
+[ -n "$HOST" ] && [ -n "$NAME" ] || { sed -n '2,39p' "$0"; exit 2; }
 case "$NAME" in mainnet) TAG=main; NETWORK=mainnet ;; *) echo "unknown UNITS_INSTANCE '$NAME' (known: mainnet)" >&2; exit 2 ;; esac
 P="units-$TAG"
 REPO="$(cd "$(dirname "$0")/../.." && pwd)"
@@ -195,7 +201,13 @@ case "$MODE" in
     # sends transactions on the instance's network with the instance's owner key (on the server)
     [ "${MAINNET_SEND:-}" = yes ] || { echo "chain sends ${NETWORK} transactions (3 registrations, 2 bonds): run chain-plan first, then MAINNET_SEND=yes with the owner's approval" >&2; exit 1; }
     put_tools; r "$RI chain < /dev/null" ;;
+  sweep-plan) put_tools; r "$RI sweep plan < /dev/null" ;;
+  sweep)
+    # sends, on the instance's network, everything the server-held keys hold to <recipient>
+    [[ "$EXTRA" =~ ^[1-9A-HJ-NP-Za-km-z]{32,44}$ ]] || { echo "sweep <recipient address>: where the site owner key's and the verifier keys' SOL and quote tokens go" >&2; exit 2; }
+    [ "${MAINNET_SEND:-}" = yes ] || { echo "sweep sends ${NETWORK} transactions from the keys on the server to $EXTRA: run sweep-plan first, then MAINNET_SEND=yes with the owner's approval" >&2; exit 1; }
+    put_tools; r "$RI sweep send $EXTRA < /dev/null" ;;
   status|stop|start) put_tools; r "$RI $MODE < /dev/null" ;;
-  remove) put_tools; r "$RI remove $EXTRA < /dev/null" ;;
-  *) echo "unknown mode $MODE (stage, activate, chain-plan, chain, status, stop, start, remove)" >&2; exit 2 ;;
+  remove) put_tools; r "$RI remove $EXTRA ${4:-} < /dev/null" ;;
+  *) echo "unknown mode $MODE (stage, activate, chain-plan, chain, sweep-plan, sweep, status, stop, start, remove)" >&2; exit 2 ;;
 esac

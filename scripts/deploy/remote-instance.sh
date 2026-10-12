@@ -16,9 +16,13 @@
 #                                one health-checked (on a failure the instance is stopped again)
 #   remote-instance.sh <name> chain [plan]    register and bond the instance's verifiers (site-chain.ts);
 #                                with plan nothing is sent
+#                                Needs the staged release, state, overlay and RPC only: run it before activate.
+#   remote-instance.sh <name> sweep plan | check | send <recipient>   what the site owner key and the verifier
+#                                keys hold, back to the recipient (site-sweep.ts); bonds stay in the registry
 #   remote-instance.sh <name> stop | start | status
-#   remote-instance.sh <name> remove [--purge]   stop, remove the unit files and the Caddy site block;
-#                                --purge also deletes its directories (keys included) and accounts
+#   remote-instance.sh <name> remove [--purge [--force]]   stop, remove the unit files and the Caddy site block;
+#                                --purge also deletes its directories (keys included) and accounts, and is
+#                                refused while those keys hold more than dust unless --force
 set -euo pipefail
 [ "$(id -u)" = 0 ] || { echo "run as root" >&2; exit 1; }
 NAME="${1:-}"; CMD="${2:-}"; shift 2 || true
@@ -171,6 +175,20 @@ caddy_site() {
   echo "caddy: site block for $SITES ($F)"
 }
 
+# the release the chain tools run from: the active one, else the newest staged
+release_dir() {
+  local rel; rel="$(readlink -f "$BASE/current" 2>/dev/null || true)"
+  [ -d "$rel" ] || rel="$BASE/releases/$(ls -1t "$BASE/releases" 2>/dev/null | head -1)"
+  [ -d "$rel/scripts" ] || { echo "no release of the $NAME instance: stage it first" >&2; exit 1; }
+  echo "$rel"
+}
+# a chain tool as the instance's main account, with the keyed RPC from its root-only env file (never printed)
+run_chain_tool() {
+  systemd-run --wait --pipe -q --collect --uid="$P" --gid="$P" -p EnvironmentFile="$ETC/rpc.env" -p WorkingDirectory="$REL" \
+    -E HOME="$UHOME" -E BUN_RUNTIME_TRANSPILER_CACHE_PATH=0 -E UNITS_INSTANCE="$NAME" -E UNITS_NETWORK="$NETWORK" -E UNITS_PROFILE_LOCAL="$ETC/profile.local.json" \
+    /usr/local/bin/bun "$@"
+}
+
 case "$CMD" in
 install)
   SHA="$1"; REL="$BASE/releases/$SHA"
@@ -269,11 +287,25 @@ chain)
   # register and bond the instance's verifiers (site-chain.ts) with its own owner key. `plan` reads the
   # chain and prints what it would send and what the owner key must hold; without it transactions are
   # sent on the instance's network.
-  REL="$(readlink -f "$BASE/current" 2>/dev/null || true)"; [ -d "$REL" ] || REL="$BASE/releases/$(ls -1t "$BASE/releases" | head -1)"
+  # Needs only what `install` (stage) leaves: the release, the chain state, the overlay, the keyed RPC and
+  # the site keys. Core does not have to run, so it comes before `activate`.
+  REL="$(release_dir)"
+  have_rpc || { echo "no keyed RPC ($ETC/rpc.env): stage again once UNITS_MAINNET_RPC is set on the owner's machine" >&2; exit 1; }
+  [ -s "$ETC/state.json" ] && [ -s "$ETC/profile.local.json" ] || { echo "no chain state or profile overlay yet ($ETC): stage again once the programs are deployed and initialized" >&2; exit 1; }
+  run_chain_tool scripts/deploy/site-chain.ts --caps "$STATE/site/caps.json" ${1:+--plan}
+  ;;
+sweep)
+  # what the keys that live only here still hold (the site owner key and its verifiers), back to a recipient
+  # (site-sweep.ts): `sweep plan` and `sweep check` read only, `sweep send <recipient>` sends
+  REL="$(release_dir)"
   have_rpc || { echo "no keyed RPC ($ETC/rpc.env)" >&2; exit 1; }
-  systemd-run --wait --pipe -q --collect --uid="$P" --gid="$P" -p EnvironmentFile="$ETC/rpc.env" -p WorkingDirectory="$REL" \
-    -E HOME="$UHOME" -E BUN_RUNTIME_TRANSPILER_CACHE_PATH=0 -E UNITS_INSTANCE="$NAME" -E UNITS_NETWORK="$NETWORK" -E UNITS_PROFILE_LOCAL="$ETC/profile.local.json" \
-    /usr/local/bin/bun scripts/deploy/site-chain.ts --caps "$STATE/site/caps.json" ${1:+--plan}
+  case "${1:-}" in
+    plan) ARGS=(--plan) ;;
+    check) ARGS=(--check) ;;
+    send) [ -n "${2:-}" ] || { echo "sweep send <recipient address>" >&2; exit 2; }; ARGS=(--to "$2") ;;
+    *) echo "sweep plan | check | send <recipient address>" >&2; exit 2 ;;
+  esac
+  run_chain_tool scripts/deploy/site-sweep.ts "${ARGS[@]}"
   ;;
 stop)
   stop_all
@@ -302,6 +334,15 @@ status)
   for f in "$SHARED"/*.json; do if [ -f "$f" ]; then echo "e2b       $(basename "$f" .json): $(jq -c '{day, usd}' "$f" 2>/dev/null || echo unreadable)"; fi; done
   ;;
 remove)
+  if [ "${1:-}" = "--purge" ] && [ "${2:-}" != "--force" ] && [ -f "$LH/site/owner.json" ] && have_rpc && [ -s "$ETC/state.json" ] && [ -s "$ETC/profile.local.json" ]; then
+    # --purge deletes the site owner key and the verifier keys: refuse while they still hold funds
+    REL="$(release_dir)"; rc=0
+    run_chain_tool scripts/deploy/site-sweep.ts --check || rc=$?
+    if [ "$rc" != 0 ]; then
+      echo "NOT PURGED: $([ "$rc" = 1 ] && echo "keys on this server still hold funds (above)" || echo "the keys' balances could not be read"). Sweep first (deploy.sh <host> sweep <recipient>), or remove --purge --force to delete the keys anyway" >&2
+      exit 1
+    fi
+  fi
   stop_all
   for f in /etc/systemd/system/$P-*.service; do [ -f "$f" ] && rm -f "$f"; done
   systemctl daemon-reload
@@ -322,7 +363,7 @@ remove)
   fi
   ;;
 *)
-  echo "usage: remote-instance.sh <name> install <sha> | activate <sha> | chain [plan] | stop | start | status | remove [--purge]" >&2
+  echo "usage: remote-instance.sh <name> install <sha> | activate <sha> | chain [plan] | sweep plan|check|send <recipient> | stop | start | status | remove [--purge [--force]]" >&2
   exit 2
   ;;
 esac

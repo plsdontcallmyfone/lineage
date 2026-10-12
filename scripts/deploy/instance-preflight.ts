@@ -10,6 +10,7 @@ import { applyNetworkProfile, rpcUrlFor, stateFor } from "../../packages/chain/s
 import { instanceLayout } from "./instance.ts";
 
 const L = instanceLayout(process.argv[2]);
+const MAINNET_GENESIS = "5eykt4UsFv8P8NJdTREpY1vzqKqZKvdpKuc147dw2N9d";
 let failed = 0;
 const check = (name: string, ok: boolean, detail = "") => {
   console.log(`[preflight ${L.name}] ${ok ? "PASS" : "FAIL"} ${name}${detail ? `: ${detail}` : ""}`);
@@ -21,6 +22,8 @@ try {
   const rpc = Rpc.http(rpcUrlFor(profile), "confirmed");
   const genesis = await rpc.call<string>("getGenesisHash");
   check(`the endpoint's genesis is the ${L.network} profile's`, genesis === profile.genesis, `${genesis.slice(0, 8)}...`);
+  // the profile's genesis is mainnet's unless a profile overlay made for fork testing names another one
+  if (L.network === "mainnet" && profile.genesis !== MAINNET_GENESIS) console.log(`[preflight ${L.name}] FORK TEST: the profile overlay names genesis ${profile.genesis.slice(0, 8)}..., which is not mainnet's; this is not a mainnet activation`);
   for (const [name, id] of Object.entries(profile.programs)) {
     const a = await rpc.getAccountInfo(id);
     check(`units_${name} is deployed at ${id}`, !!a?.executable);

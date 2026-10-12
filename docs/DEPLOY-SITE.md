@@ -753,11 +753,24 @@ server by the lane that built it: it was proven in the dry-run container only ("
 
 ```sh
 UNITS_INSTANCE=mainnet scripts/deploy/deploy.sh <host> stage            # ship + install + configs, starts nothing
+UNITS_INSTANCE=mainnet scripts/deploy/deploy.sh <host> chain-plan       # read only: the owner key and what the verifiers' registration needs
+MAINNET_SEND=yes UNITS_INSTANCE=mainnet scripts/deploy/deploy.sh <host> chain   # 3 registrations, 2 bonds, before activate
 UNITS_INSTANCE=mainnet WITH_RUNTIME=1 scripts/deploy/deploy.sh <host> activate   # only once the programs exist on mainnet
-UNITS_INSTANCE=mainnet scripts/deploy/deploy.sh <host> chain-plan       # read only: what the verifiers' registration needs
 UNITS_INSTANCE=mainnet scripts/deploy/deploy.sh <host> status | stop | start
-UNITS_INSTANCE=mainnet scripts/deploy/deploy.sh <host> remove [--purge]   # after the test; --purge deletes its keys, data and accounts
+UNITS_INSTANCE=mainnet scripts/deploy/deploy.sh <host> sweep-plan       # read only: what the keys on the server hold
+MAINNET_SEND=yes UNITS_INSTANCE=mainnet scripts/deploy/deploy.sh <host> sweep <recipient>   # their SOL and quote tokens back
+UNITS_INSTANCE=mainnet scripts/deploy/deploy.sh <host> remove [--purge [--force]]   # after the test; --purge deletes its keys, data and accounts
 ```
+
+**The order, proven on a mainnet fork** (dry run, `DRYRUN_FORK=1`, "Tested"): `stage` (with the chain
+state, the overlay and the RPC already on the owner's machine, so they are shipped), `chain-plan`, fund
+the owner key it names, `chain`, then `activate`; at the end `stop`, `sweep-plan`, `sweep`, `remove
+--purge`. `chain-plan` and `chain` need only what `stage` leaves (the release, `state.json`, the overlay,
+`rpc.env` and the site keys made at `stage`): Core does not have to run, and both were run with every
+unit of the instance stopped. Running `chain` before `activate` means the verifiers are registered
+when their units first start. A `stage` made before the programs exist (no state, no RPC) is fine: run
+`stage` again once `test.ts init` has written the two files, and `chain-plan` says so if they are
+missing.
 
 `deploy.sh` hands over to `scripts/deploy/instance.sh` (local) and `remote-instance.sh` (server).
 
@@ -797,7 +810,7 @@ A Caddy configuration that does not validate is put back as it was before anythi
 directories, clones and installs the release, makes the instance's own site keys (admin, owner,
 verifiers) and installs the unit files, enabled and started nowhere. `activate` is refused, on the
 owner's machine and again on the server, until the chain state, the overlay, the RPC and both hot
-keys are there; then `scripts/deploy/instance-preflight.ts` reads the endpoint (genesis is mainnet's,
+keys are there; then `scripts/deploy/instance-preflight.ts` reads the endpoint (genesis is the profile's, which is mainnet's unless an overlay made for fork testing names another one, in which case the output says FORK TEST;
 the three programs are executable at the profile's ids, registry and launch are initialized, the
 registry's mint is the overlay's quote mint, both authorities equal the state file) and only a READY
 starts anything. Each public unit is health-checked; a failure stops the instance again and leaves the
@@ -834,13 +847,29 @@ mainnet side waits.
 route, so a launch there cannot be given a pool account), backups, the monitor, rollback (`stage` and
 `activate` an older commit instead) and authors. 
 
+**Sweep before purge.** The site owner key and the three verifier keys exist only on the server.
+`sweep-plan` prints what each holds. `sweep <recipient>` (refused without `MAINNET_SEND=yes`) sends the
+owner key's whole quote-token balance to the recipient's token account (created if missing, paid by
+the owner key), closes the emptied token account so its rent returns, then sends all the SOL of each
+key; each key pays its own fees and is left with 0 lamports (the last transfer carries no priority fee,
+so its fee is exactly 5,000 lamports). A key holding no more than that one fee is dust and is left.
+Bonds are not moved: they stay in the registry (not withdrawable before the unbond cooldown, and lost
+when the programs are closed), and the sweep says so per verifier. `remove --purge` reads the same
+balances first and is refused while any of those keys holds more than dust, or when the balances
+cannot be read; `remove --purge --force` deletes the keys regardless. For the mainnet test the
+recipient is the deployer, and the sweep runs before `scripts/mainnet/test.ts close` (which closes the
+programs) or after it: it needs the RPC and the quote mint, not the programs.
+
 **Verifiers.** Candidates get verdicts only from registered verifiers. The instance has its own three
 (reference, v1, v2; keys made on the server at `stage`, public keys in
 `/var/lib/units-main/site/pubkeys.json`), owned by its own owner key. `chain-plan` reads mainnet and
-prints what registering and bonding them would send and what the owner key must hold first (SOL for
-fees and rent, and the quote token for three registration burns and two bonds); `chain` sends it and
-is refused without `MAINNET_SEND=yes`. Funding that owner key on mainnet is not in the kit
-(`fund-site.ts` is devnet's): the owner sends it. Neither was run on mainnet.
+prints the owner key and what registering and bonding them would send and what that key must hold
+first: 0.02 SOL at least for fees and rent, and the quote token for three registration burns and two
+bonds (13,000,000 base units with the test parameters: 3 burns of 1 and 2 bonds of 5 test coins);
+`chain` sends it, is refused without `MAINNET_SEND=yes` and stops before sending anything while the key
+is short. It is idempotent: a second run sends nothing. Funding that owner key is
+`scripts/mainnet/test.ts fund --to <owner key> --sol 0.05 --coin 20` from the deployer. Neither was
+run on mainnet; both were run on a mainnet fork (dry run).
 
 ## Mainnet server layout (recommended)
 
