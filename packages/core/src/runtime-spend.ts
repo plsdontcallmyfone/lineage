@@ -113,7 +113,7 @@ export class RuntimeSpend {
         throw bad("bad_spend", `agents.${id}: vault, vault_usd, burn_per_h, burn_usd_per_h, burn_window_s, runway_h, via, waiting`);
       const m = a.model as { provider?: unknown; id?: unknown } | null | undefined;
       if (m != null && !(typeof m.provider === "string" && typeof m.id === "string" && m.provider.length <= 32 && m.id.length <= 100)) throw bad("bad_spend", `agents.${id}.model: { provider, id }`);
-      const row = { vault: a.vault ?? null, vault_usd: a.vault_usd ?? null, burn_per_h: a.burn_per_h ?? null, burn_usd_per_h: a.burn_usd_per_h ?? null, burn_window_s: a.burn_window_s ?? null, runway_h: a.runway_h ?? null, model: m ?? null, via: a.via ?? null, waiting: a.waiting ?? null, ...(a.desktop !== undefined ? { desktop: agentDesktopOf(a.desktop) } : {}) };
+      const row = { vault: a.vault ?? null, vault_usd: a.vault_usd ?? null, burn_per_h: a.burn_per_h ?? null, burn_usd_per_h: a.burn_usd_per_h ?? null, burn_window_s: a.burn_window_s ?? null, runway_h: a.runway_h ?? null, model: m ?? null, via: a.via ?? null, waiting: a.waiting ?? null, ...(typeof a.waiting_since === "number" && Number.isFinite(a.waiting_since) ? { waiting_since: a.waiting_since } : {}), ...(a.desktop !== undefined ? { desktop: agentDesktopOf(a.desktop) } : {}) };
       put.run(id, JSON.stringify(row), now, by);
     }
     this.c.db.query("INSERT OR REPLACE INTO runtime_spend_global (id, body, reported_at) VALUES (1, ?, ?)").run(JSON.stringify(global), now);
@@ -134,6 +134,16 @@ export class RuntimeSpend {
       .query<{ agent_id: string; body: string; reported_at: number }, []>("SELECT agent_id, body, reported_at FROM runtime_spend ORDER BY agent_id")
       .all()
       .map((r) => ({ agent: r.agent_id, reported_at: r.reported_at, spend: JSON.parse(r.body) }));
+  }
+
+  /** GET /v1/runtime/waiting: the bound agents the runtime reports as not working, with its reason and, for a desktop wait, since when (the site monitor reads it). */
+  waitingList() {
+    return {
+      now: this.c.now(),
+      agents: this.all()
+        .filter((r) => typeof r.spend.waiting === "string" && r.spend.waiting)
+        .map((r) => ({ agent: r.agent, waiting: r.spend.waiting as string, waiting_since: typeof r.spend.waiting_since === "number" ? (r.spend.waiting_since as number) : null, reported_at: r.reported_at })),
+    };
   }
 
   /** The latest runtime-wide part: price, provider balance, the platform cap and the desktop pool (null when never reported). */

@@ -246,6 +246,7 @@ export function buildRoutes(core: Core): Route[] {
     // hosted runtime (SPEC 17.2, identity plan I5): provenance once final, public usage records per agent
     route("GET", "/v1/candidates/:id/provenance", "optional", (c) => core.hosted.view(c.params.id!, c.agent)),
     route("GET", "/v1/agents/:id/usage", "none", (c) => core.hosted.usageOf(c.params.id!, int(c, "limit"))),
+    route("GET", "/v1/runtime/waiting", "none", () => runtimeSpendOf(core).waitingList()),
     route("GET", "/v1/agents/:id/spend", "none", (c) => runtimeSpendOf(core).of(c.params.id!)), // vault, burn, runway (plan MODELS-AND-SELF-FUNDING)
     // collaboration (SPEC 12.1): intents and the lineage workboard
     route("GET", "/v1/intents", "optional", (c) =>

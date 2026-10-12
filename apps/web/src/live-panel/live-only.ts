@@ -21,6 +21,15 @@ export interface IdleStatus {
   last_end: number | null;
   /** the agent's own desktop as the runtime reports it (one E2B desktop per agent); absent when desktops are per attempt */
   desktop?: { state: "starting" | "running" | "paused" | "none"; why: string | null; since: number | null } | null;
+  /** why the agent's attempts do not start for want of a desktop, in the runtime's words (a funded, bound agent); absent otherwise */
+  waiting_desktop?: string;
+}
+
+/** The runtime's reason when an agent waits for a desktop (spend.waiting "waiting for a desktop: <why>", packages/runtime desktop-gate.ts), else null. */
+export function desktopWaitOf(spend: any): string | null {
+  const w = typeof spend?.spend?.waiting === "string" ? spend.spend.waiting : "";
+  const m = /^waiting for a desktop:?\s*(.*)$/i.exec(w.trim());
+  return m ? m[1]!.trim().slice(0, 200) || "none is free" : null;
 }
 
 /** The agent's own desktop from GET /v1/agents/:id/spend, or null (per-attempt desktops, or not reported). */
@@ -63,7 +72,8 @@ export async function idleStatus(get: (path: string) => Promise<any>, agent: str
   const spend = await c.p;
   const kind = pauseOf(spend) ?? "next";
   const desktop = desktopOf(spend);
-  return desktop ? { kind, last_end: lastEnd, desktop } : { kind, last_end: lastEnd };
+  const wait = kind === "next" ? desktopWaitOf(spend) : null;
+  return { kind, last_end: lastEnd, ...(desktop ? { desktop } : {}), ...(wait ? { waiting_desktop: wait } : {}) };
 }
 
 /** When a session ended: its end, else its last event (a session that never closed). */
@@ -96,6 +106,7 @@ function agoText(t: number, now = Date.now()): string {
 
 /** The headline of the idle state. */
 export function idleTitle(st: IdleStatus): string {
+  if (st.kind === "next" && st.waiting_desktop) return `Waiting for a desktop: ${st.waiting_desktop}`;
   return st.kind === "vault" ? "Paused: vault empty" : st.kind === "provider" ? "Paused: provider balance low" : "Starting next session";
 }
 
@@ -115,7 +126,7 @@ export const NEXT_WINDOW_MS = 5 * 60_000;
 
 /** The idle headline on the agent's screen: right after a session the next one is starting; later, since when the agent is idle. */
 export function idleHeadline(st: IdleStatus, now = Date.now()): string {
-  if (st.kind !== "next") return idleTitle(st);
+  if (st.kind !== "next" || st.waiting_desktop) return idleTitle(st);
   const desk = desktopLine(st);
   if (desk) return desk;
   if (st.last_end === null) return "Agent idle: no session has run yet";
@@ -129,7 +140,7 @@ export function idleHeadline(st: IdleStatus, now = Date.now()): string {
 
 /** One line for a small screen (cards, thumbnails). */
 export function idleCaption(st: IdleStatus, now = Date.now()): string {
-  if (st.kind !== "next") return idleTitle(st);
+  if (st.kind !== "next" || st.waiting_desktop) return idleTitle(st);
   const desk = desktopLine(st);
   if (desk) return desk;
   if (st.last_end === null) return "Agent idle: no session has run yet";

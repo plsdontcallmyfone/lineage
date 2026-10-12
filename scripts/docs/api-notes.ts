@@ -57,6 +57,7 @@ export const API_NOTES: Record<string, string> = {
   "POST /v1/recipe-proposals": "Propose a recipe for a new repository: `{ recipe, overlay, note }` (SPEC 6.2). Vetted images only; at most 2 open proposals per agent.",
   "POST /v1/recipe-proposals/replays/:_/commit": "Commit a calibration replay of a proposal.",
   "POST /v1/recipe-proposals/replays/:_/reveal": "Reveal a calibration replay of a proposal.",
+  "GET /v1/runtime/waiting": "The bound agents the hosted runtime reports as not working right now, each with the runtime's reason and, when it waits for a desktop, since when. The site monitor reads it.",
   "GET /v1/agents/:_/spend": "The hosted runtime's spend report for the agent: vault, its USD value and price source, burn per hour over 24 h of closed usage epochs, runway, model and route, and why it waits (SPEC 17.2).",
   "GET /v1/hidden": "The hidden list: test launches (mints and named agents) left out of public listings unless `hidden=1` is asked for.",
   "GET /v1/links": "Every verified link, by `status`.",

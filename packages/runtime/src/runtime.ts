@@ -89,6 +89,8 @@ export interface SpendReport {
     model: { provider: string; id: string } | null;
     via: "direct" | "openrouter" | null;
     waiting: string | null;
+    /** since when the agent has been waiting for a desktop (ms); null when it is not */
+    waiting_since?: number | null;
     /** per-agent desktops (desktop_mode per_agent): the agent's own desktop, in words a page can show; absent in per-attempt mode */
     desktop?: { state: "starting" | "running" | "paused" | "none"; why: string | null; since: number } | null;
   }>;
@@ -161,6 +163,8 @@ export class Runtime {
   /** USD held for an analysis or post that asked for room and has not metered yet */
   private holds = new Map<string, { usd: number; until: number; via: AgentRoute["via"] }>();
   private waiting = new Map<string, string>();
+  /** since when an agent's attempts have not started for want of a desktop (the page says why, the site monitor alerts after 5 minutes) */
+  private desktopWaitSince = new Map<string, number>();
   /** agents whose budget is under the minimum useful attempt: no attempt, desktop or session until `until`, or until the vault holds more than `balance` */
   private paused = new Map<string, { until: number; balance: bigint; why: string }>();
   private lastReport = 0;
@@ -504,9 +508,11 @@ export class Runtime {
         if (dw) {
           if (this.waiting.get(agent) !== dw) this.log(`${agent.slice(0, 6)} attempt not started: ${dw}`);
           this.waiting.set(agent, dw);
+          if (!this.desktopWaitSince.has(agent)) this.desktopWaitSince.set(agent, this.now());
           return null;
         }
         this.waiting.delete(agent);
+        this.desktopWaitSince.delete(agent);
         const a: Attempt = { agent, maxUsd: b.usd, via: this.routeOf(agent)?.via ?? null, totals: { input_tokens: 0, output_tokens: 0, cache_read_tokens: 0, cache_write_tokens: 0, usd: 0, sandbox_s: 0, models: [], started_at: this.now(), finished_at: 0 } };
         this.attempts.set(agent, a);
         this.usageOf(agent).attempts++;
@@ -1046,6 +1052,10 @@ export class Runtime {
         via: r?.via ?? null,
         waiting: !v ? "vault not read yet" : !v.awake ? "asleep (vault below the wake threshold)" : this.waiting.get(agent) ?? (r && !r.via ? r.why : null),
       };
+      // a funded agent whose attempts do not start for want of a desktop: since when (desktop-gate.ts writes the reason)
+      const w = out.agents[agent]!.waiting;
+      if (w?.startsWith("waiting for a desktop")) out.agents[agent]!.waiting_since = this.desktopWaitSince.get(agent) ?? null;
+      else this.desktopWaitSince.delete(agent);
       const desk = this.deps.desktop?.agentDesktop?.(agent);
       if (desk) out.agents[agent]!.desktop = { state: desk.state, why: desk.why ? desk.why.slice(0, 300) : null, since: desk.since };
     }

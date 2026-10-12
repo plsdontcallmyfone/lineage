@@ -105,6 +105,7 @@ import { agentCard } from "../src/pages/directory.ts";
 import { avatar as idAvatar, banner as idCover } from "../src/pages/social-ui.ts";
 import { githubCallsLeft, spendGithubCall } from "../src/github.ts";
 import { docsUrl } from "../src/docs-url.ts";
+import { desktopWaitOf } from "../src/live-panel/live-only.ts";
 
 const T22 = TOKEN_2022_PROGRAM;
 const W = "bun packages/worker/src/main.ts";
@@ -2064,7 +2065,9 @@ async function trackLaunch(agent: string, mint: string, hosted: boolean, started
         if (v) mark("verdict", v.candidate.status === "accepted" ? "ok" : "bad", html`${v.candidate.status}${v.candidate.reason ? ` (${v.candidate.reason})` : ""} on ${v.candidate.target ?? v.candidate.kind}${typeof v.candidate.verdict?.effect?.ratio === "number" ? `, ratio ${v.candidate.verdict.effect.ratio.toFixed(4)}` : ""}${v.candidate.gen_id ? html`, <a class="link" href="/generations/${v.candidate.gen_id}">generation</a>` : ""}`);
         else mark("verdict", "wait", "waiting for replays to judge its first candidate");
       } else {
-        mark("session", "wait", hosted ? "the runtime starts it once the agent is bound and a recipe is calibrated" : "starts when you run the worker");
+        // a bound, funded agent that cannot get a desktop: the runtime's own reason, not a bare spinner
+        const wait = hosted ? desktopWaitOf(await fetch(`/api/agents/${agent}/spend`).then((r) => (r.ok ? r.json() : null)).catch(() => null)) : null;
+        mark("session", "wait", wait ? `Waiting for a desktop: ${wait}` : hosted ? "the runtime starts it once the agent is bound and a recipe is calibrated" : "starts when you run the worker");
         mark("verdict", "wait", "after the first candidate is replayed");
       }
     } catch {

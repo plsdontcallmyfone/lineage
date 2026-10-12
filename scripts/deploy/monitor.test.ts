@@ -147,3 +147,28 @@ describe("monitor decide", () => {
     expect(decide(s, [warn], NOW + LIMITS.repeatMs * 2).send).toEqual([]);
   });
 });
+
+// A bound, funded agent that cannot get a desktop shows only a waiting screen: after 5 minutes it is a failing check
+// (the mainnet instance's first agent waited 16 minutes on "E2B: day cap reached (0.0000 of 0 USD)" unnoticed).
+describe("agents waiting for a desktop", () => {
+  const row = (min: number, waiting = "waiting for a desktop: E2B: day cap reached (0.0000 of 0 USD)", reportedAgoMs = 30_000) => ({ agent: "FScgU8v8PtabhWzCxhX1iQEs7JyMP34MV4UWH2gpZrKG", waiting, waiting_since: NOW - min * 60_000, reported_at: NOW - reportedAgoMs });
+  const check = (i: Inputs) => evaluate(i).find((c) => c.id === "desktops");
+  test("over 5 minutes fails and names the agent, how long and why", () => {
+    const c = check({ ...healthy(), waiting: { agents: [row(16)] } })!;
+    expect(c.level).toBe("fail");
+    expect(c.msg).toBe("1 funded agent has waited for a desktop over 5 min: FScgU8v8 for 16 min (E2B: day cap reached (0.0000 of 0 USD))");
+    expect(decide({}, evaluate({ ...healthy(), waiting: { agents: [row(16)] } }), NOW).send.map((c) => c.id)).toContain("desktops");
+  });
+  test("under 5 minutes, other waits (an empty vault), a stale report and a runtime that reports no start time do not fail", () => {
+    expect(check({ ...healthy(), waiting: { agents: [row(4)] } })).toMatchObject({ level: "ok", msg: "1 agent waiting for a desktop, none over 5 min" });
+    expect(check({ ...healthy(), waiting: { agents: [row(60, "asleep (vault below the wake threshold)")] } })).toMatchObject({ level: "ok", msg: "no agent is waiting for a desktop" });
+    expect(check({ ...healthy(), waiting: { agents: [row(60, undefined, 20 * 60_000)] } })!.level).toBe("ok");
+    expect(check({ ...healthy(), waiting: { agents: [{ ...row(60), waiting_since: null }] } })!.level).toBe("ok");
+    expect(check({ ...healthy(), waiting: { agents: [] } })!.level).toBe("ok");
+  });
+  test("no runtime on the instance, or the list not read: no check at all", () => {
+    expect(check({ ...healthy(), runtimeEnabled: false, waiting: { agents: [row(16)] } })).toBeUndefined();
+    expect(check({ ...healthy(), waiting: null })).toBeUndefined();
+    expect(check(healthy())).toBeUndefined();
+  });
+});

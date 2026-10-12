@@ -48,6 +48,8 @@ export interface Inputs {
     provider?: { openrouter?: { usd: number | null; source: string | null; read_at: number | null; error: string | null; floor_usd: number; configured: boolean } | null } | null;
   } | null;
   runtimeEnabled: boolean;
+  /** GET /v1/runtime/waiting: the bound agents the runtime reports as not working (null: not read) */
+  waiting?: { now?: number; agents: { agent: string; waiting: string; waiting_since: number | null; reported_at: number }[] } | null;
   souls: { enabled?: boolean; daily_usd?: number; spent_today_usd?: number } | null;
   /** name -> lamports (null when the read failed) */
   balances: { name: string; lamports: number | null }[];
@@ -75,6 +77,10 @@ export const LIMITS = {
   faucetSolWarn: 0.02e9,
   faucetDripsWarn: 10,
   backupStaleMs: 2 * 3600_000,
+  /** a bound, funded agent that has waited for a desktop this long is a failure (it shows only a waiting screen) */
+  desktopWaitMs: 5 * 60_000,
+  /** a runtime report older than this says nothing about now */
+  desktopReportStaleMs: 15 * 60_000,
   repeatMs: 6 * 3600_000,
 } as const;
 
@@ -132,6 +138,15 @@ export function evaluate(i: Inputs): Check[] {
       const stale = i.verifiers.filter((v) => !by.has(v.id) || i.now - by.get(v.id)! > LIMITS.heartbeatStaleMs);
       add("verifiers", stale.length ? "fail" : "ok", stale.length ? `no heartbeat for ${mins(LIMITS.heartbeatStaleMs)}: ${stale.map((v) => `${v.name}${by.has(v.id) ? ` (last ${mins(i.now - by.get(v.id)!)} ago)` : " (never)"}`).join(", ")}` : `${i.verifiers.length} verifiers heartbeating`);
     }
+  }
+
+  // agents starved of a desktop: bound and funded, attempts not starting, only a waiting screen to show for it
+  if (i.runtimeEnabled && i.waiting) {
+    const stuck = i.waiting.agents.filter((a) => /^waiting for a desktop/i.test(a.waiting) && a.waiting_since !== null && i.now - a.waiting_since > LIMITS.desktopWaitMs && i.now - a.reported_at < LIMITS.desktopReportStaleMs);
+    const n = i.waiting.agents.filter((a) => /^waiting for a desktop/i.test(a.waiting)).length;
+    add("desktops", stuck.length ? "fail" : "ok", stuck.length
+      ? `${stuck.length} funded agent${stuck.length === 1 ? " has" : "s have"} waited for a desktop over ${mins(LIMITS.desktopWaitMs)}: ${stuck.slice(0, 5).map((a) => `${a.agent.slice(0, 8)} for ${mins(i.now - a.waiting_since!)} (${a.waiting.replace(/^waiting for a desktop:?\s*/i, "").slice(0, 120)})`).join("; ")}`
+      : n ? `${n} agent${n === 1 ? "" : "s"} waiting for a desktop, none over ${mins(LIMITS.desktopWaitMs)}` : "no agent is waiting for a desktop");
   }
 
   // spend
@@ -311,7 +326,7 @@ if (import.meta.main) {
   const dry = env.MONITOR_DRY_RUN === "1";
   const now = Date.now();
 
-  const [core, gate, pub, epochs, chain, hb, souls, faucet] = await Promise.all([
+  const [core, gate, pub, epochs, chain, hb, souls, faucet, waiting] = await Promise.all([
     getJson<{ ok: boolean }>(`${CORE}/v1/health`),
     getJson<{ ok: boolean }>(`${GATE}/gate/health`),
     env.MONITOR_SITE && !dry ? getJson<{ ok: boolean }>(`${env.MONITOR_SITE}/v1/health`, 15_000) : Promise.resolve(null),
@@ -320,6 +335,7 @@ if (import.meta.main) {
     getJson<Inputs["heartbeats"]>(`${CORE}/v1/heartbeats`),
     getJson<Inputs["souls"]>(`${WEB}/souls/config`),
     getJson<Inputs["faucet"]>(`${WEB}/chain/faucet`),
+    getJson<NonNullable<Inputs["waiting"]>>(`${CORE}/v1/runtime/waiting`),
   ]);
   const verifiers = (env.MONITOR_VERIFIERS ?? "").split(",").filter(Boolean).map((id, k) => ({ name: ["verifier-ref", "verifier-v1", "verifier-v2"][k] ?? `verifier-${k}`, id }));
   const rpc = env.MONITOR_RPC ?? "https://api.devnet.solana.com";
@@ -349,6 +365,7 @@ if (import.meta.main) {
     verifiers: dry ? [] : verifiers,
     spend,
     runtimeEnabled: env.MONITOR_RUNTIME === "1",
+    waiting: waiting.ok && Array.isArray(waiting.body?.agents) ? waiting.body! : null,
     souls: souls.ok ? souls.body! : null,
     balances,
     faucet: faucet.ok ? faucet.body! : null,
