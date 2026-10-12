@@ -10,7 +10,11 @@ const FILE = /^\/desktops\/([0-9a-f]{64})\/(live\.m3u8|init\.mp4|seg-\d{1,20}\.m
 
 const types: Record<string, string> = { m3u8: "application/vnd.apple.mpegurl", mp4: "video/mp4", m4s: "video/iso.segment" };
 
-export function desktopHandler(root: string) {
+/**
+ * `onHit(dir)`: a viewer asked for a stream file of the desktop whose files are in `dir` (the
+ * per-agent desktops copy a desktop's stream to this host only while someone watches it).
+ */
+export function desktopHandler(root: string, onHit?: (dir: string) => void) {
   return async (req: Request): Promise<Response | null> => {
     const url = new URL(req.url);
     if (!url.pathname.startsWith("/desktops/")) return null;
@@ -25,6 +29,7 @@ export function desktopHandler(root: string) {
       return Response.json({ error: "no_desktop" }, { status: 404, headers: { "cache-control": "no-store" } });
     }
     if (s.ended_at) return Response.json({ error: "ended" }, { status: 410, headers: { "cache-control": "no-store" } });
+    onHit?.(s.dir);
     const pl = join(s.dir, "live.m3u8");
     if (!existsSync(pl)) return Response.json({ error: "starting" }, { status: 404, headers: { "cache-control": "no-store" } });
     const text = readFileSync(pl, "utf8");

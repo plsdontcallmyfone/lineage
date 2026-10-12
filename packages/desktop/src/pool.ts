@@ -6,7 +6,8 @@ import type { BackendName, DesktopBackend, DesktopInstance } from "./backend.ts"
 import { Driver } from "./driver.ts";
 import { AgentDesktops, type AgentBackend, type AgentDesktopView, type AgentInfo } from "./agent-desktops.ts";
 import { E2BBackend } from "./e2b.ts";
-import { liveArgs, recordArgs, RECORDING_MAX_BYTES, type Rect } from "./layout.ts";
+import { liveArgs, parseGeom, recordArgs, RECORDING_MAX_BYTES } from "./layout.ts";
+export { parseGeom } from "./layout.ts";
 import { LocalBackend } from "./local.ts";
 import { noSlotWhy, placementOrder, type Slot } from "./placement.ts";
 import { RemoteBackend, type HostConfig } from "./remote.ts";
@@ -56,6 +57,16 @@ export interface DesktopConfig {
    * running at once and `desktop_usd_per_day` counts every second one runs.
    */
   mode?: "per_agent" | "per_attempt";
+  /**
+   * The live stream's mask (default true): the editor's text and the run terminal pixelated, and the
+   * stream stopped while their windows are not where the mask is (the geometry guard). false (owner
+   * decision 2026-10-12, "we don't want to be blurred"): the video shows the desktop as it is, and no
+   * geometry check stops it. Only the video changes: session events, notes, patch text and
+   * evaluation output stay sealed at Core as before.
+   */
+  mask?: boolean;
+  /** per_agent: false keeps an awake agent's desktop running however long it waits for its next attempt (default true: paused after idle_s) */
+  idle_pause?: boolean;
   /** per_agent: this runtime's label on its sandboxes (only sandboxes with it are ever touched) */
   owner?: string;
   /** per_agent: see AgentDesktopLimits (agent-desktops.ts) for each, with its default */
@@ -120,15 +131,6 @@ export interface PendingRecording {
 
 const utcDay = (t: number) => new Date(t).toISOString().slice(0, 10);
 
-export function parseGeom(text: string): { cls: string; rect: Rect }[] {
-  const out: { cls: string; rect: Rect }[] = [];
-  for (const l of text.split("\n")) {
-    const m = /^(\w+) (-?\d+) (-?\d+) (\d+) (\d+)$/.exec(l.trim());
-    if (m) out.push({ cls: m[1]!, rect: { x: +m[2]!, y: +m[3]!, w: +m[4]!, h: +m[5]! } });
-  }
-  return out;
-}
-
 export class DesktopPool implements DesktopProvider {
   readonly local: DesktopBackend;
   readonly e2b: DesktopBackend & { usdPerS: number };
@@ -192,6 +194,8 @@ export class DesktopPool implements DesktopProvider {
           get resume_gap_max_s() { return pool.cfg.resume_gap_max_s; },
           get remove_after_s() { return pool.cfg.remove_after_s; },
           get start_parallel() { return pool.cfg.start_parallel; },
+          get idle_pause() { return pool.cfg.idle_pause; },
+          get mask() { return pool.cfg.mask; },
         },
         allow: cfg.allow,
         backend,
@@ -277,7 +281,8 @@ export class DesktopPool implements DesktopProvider {
         }
       }
       if (res.sessions_closed) this.log(`desktops: closed ${res.sessions_closed} session file(s) left open by attempts that are gone`);
-      this.sweep(new Set(this.live.keys()));
+      // an agent's own stream directory lives as long as its desktop, not as long as an attempt
+      this.sweep(new Set([...this.live.keys(), ...(this.agents?.streamDirs() ?? [])]));
     } catch {
       /* state directory unreadable: nothing to clean */
     }
@@ -393,6 +398,7 @@ export class DesktopPool implements DesktopProvider {
     const ad = this.agents?.counts() ?? null;
     return {
       mode: this.agents ? ("per_agent" as const) : ("per_attempt" as const),
+      masked: this.cfg.mask !== false,
       agent_desktops: ad,
       required: this.required,
       hosts: [...this.hosts.values()].map((b) => ({ name: b.host.name, running: this.used.get(`host:${b.host.name}`) ?? 0, max: b.host.desktops_max, up: b.unavailable() === null, why: b.unavailable(), load1: b.health.h?.load1 ?? null })),
@@ -637,21 +643,31 @@ class Attempt implements DesktopAttempt {
     return { ...this.driver.done, phase: this.seal.phase, why: this.seal.why };
   }
 
-  /** The geometry guard, the live encoder that follows it, and (E2B) the stream copy. */
+  /** The geometry guard (only with the mask on), the live encoder that follows it, and (E2B) the stream copy. */
   private async tick() {
     if (this.guarding || this.seal.phase === "ended" || this.lost) return;
     this.guarding = true;
     try {
       if (this.inst.lost?.()) return this.hostLost();
-      const g = await this.inst.exec(["desk-geom"], { timeoutMs: 8000 }).catch(() => null);
-      const ok = this.seal.geometry(g && g.code === 0 ? parseGeom(g.stdout) : null);
+      // the agent's own desktop streams by itself, across attempts (agent-desktops.ts)
+      if (this.inst.managedStream) return;
+      const mask = this.pool.cfg.mask !== false;
+      let ok = true;
+      if (mask) {
+        const g = await this.inst.exec(["desk-geom"], { timeoutMs: 8000 }).catch(() => null);
+        ok = this.seal.geometry(g && g.code === 0 ? parseGeom(g.stdout) : null);
+      } else if (this.seal.phase !== "live") {
+        // no mask, so nothing depends on where the windows are: the stream runs from the start
+        this.seal.phase = "live";
+        this.seal.why = null;
+      }
       if (!ok && this.liveOn) {
         this.liveOn = false;
         await this.inst.exec(["desk-stop", "live", "KILL", "2"]);
         await this.inst.exec(["sh", "-c", `rm -f ${this.inst.streamDir}/*.tmp`]);
         this.log(`desktop ${this.inst.id}: blackout (${this.seal.why}); live stream stopped`);
       } else if (ok && !this.liveOn && this.seal.phase === "live") {
-        const r = await this.inst.exec(["desk-bg", "live", ...liveArgs(this.inst.streamDir)]);
+        const r = await this.inst.exec(["desk-bg", "live", ...liveArgs(this.inst.streamDir, ":0", mask)]);
         this.liveOn = r.code === 0;
       }
       if (this.liveOn) await this.inst.sync().catch(() => undefined);
@@ -734,7 +750,7 @@ class Attempt implements DesktopAttempt {
       }
       await this.inst.destroy();
       this.pool.meter(this.inst, (this.now() - this.t0) / 1000);
-      rmSync(this.inst.hostStreamDir, { recursive: true, force: true });
+      if (!this.inst.managedStream) rmSync(this.inst.hostStreamDir, { recursive: true, force: true });
       this.release();
       this.log(`desktop ${this.inst.id} closed (${this.driver.done.actions} actions, ${this.driver.done.refused} refused, ${this.driver.done.dropped} dropped)`);
     }

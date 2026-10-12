@@ -78,7 +78,7 @@ export interface SpendReport {
   /** the platform cap and its counter (capStatus), for the Analytics page */
   cap?: ReturnType<Runtime["capStatus"]> & { scope: string };
   /** desktop slots by backend, counts only (no host names) */
-  desktops?: { required: boolean | null; local: { running: number; max: number } | null; hosts: { count: number; up: number; running: number; max: number } | null; e2b: { running: number; max: number; spent_today_usd: number; cap_usd: number } | null } | null;
+  desktops?: { required: boolean | null; masked?: boolean | null; local: { running: number; max: number } | null; hosts: { count: number; up: number; running: number; max: number } | null; e2b: { running: number; max: number; spent_today_usd: number; cap_usd: number } | null } | null;
   agents: Record<string, {
     vault: string | null;
     vault_usd: number | null;
@@ -92,7 +92,7 @@ export interface SpendReport {
     /** since when the agent has been waiting for a desktop (ms); null when it is not */
     waiting_since?: number | null;
     /** per-agent desktops (desktop_mode per_agent): the agent's own desktop, in words a page can show; absent in per-attempt mode */
-    desktop?: { state: "starting" | "running" | "paused" | "none"; why: string | null; since: number } | null;
+    desktop?: { state: "starting" | "running" | "paused" | "none"; why: string | null; since: number; stream?: string | null } | null;
   }>;
 }
 
@@ -539,7 +539,11 @@ export class Runtime {
     for (const [agent, st] of Object.entries(this.state.agents)) {
       // bound to this runtime and still a hosted agent the backend knows
       if (st.status !== "bound" || !(this.discovered ?? this.hosted).has(agent)) continue;
-      list.push({ agent, working: this.running.has(agent), asleep: this.vaults.get(agent)?.awake === false });
+      const working = this.running.has(agent);
+      const awake = this.vaults.get(agent)?.awake !== false;
+      // an awake agent whose vault cannot pay for an attempt does not work either: its desktop rests until a deposit
+      const broke = awake && !working && (this.exhausted.has(agent) || !!this.pausedNow(agent));
+      list.push({ agent, working, asleep: !awake || broke, ...(broke ? { asleep_why: "agent cannot pay for an attempt (vault low)" } : {}) });
     }
     try {
       d.syncAgents(list);
@@ -1057,7 +1061,7 @@ export class Runtime {
       if (w?.startsWith("waiting for a desktop")) out.agents[agent]!.waiting_since = this.desktopWaitSince.get(agent) ?? null;
       else this.desktopWaitSince.delete(agent);
       const desk = this.deps.desktop?.agentDesktop?.(agent);
-      if (desk) out.agents[agent]!.desktop = { state: desk.state, why: desk.why ? desk.why.slice(0, 300) : null, since: desk.since };
+      if (desk) out.agents[agent]!.desktop = { state: desk.state, why: desk.why ? desk.why.slice(0, 300) : null, since: desk.since, stream: desk.stream ?? null };
     }
     return out;
   }
@@ -1069,6 +1073,7 @@ export class Runtime {
     const hosts = Array.isArray(st.hosts) ? (st.hosts as { running: number; max: number; up: boolean }[]) : [];
     return {
       required: typeof st.required === "boolean" ? st.required : null,
+      masked: typeof st.masked === "boolean" ? st.masked : null,
       local: st.local ? { running: st.local.running, max: st.local.max } : null,
       hosts: hosts.length ? { count: hosts.length, up: hosts.filter((h) => h.up).length, running: hosts.reduce((n, h) => n + h.running, 0), max: hosts.reduce((n, h) => n + h.max, 0) } : null,
       e2b: st.e2b ? { running: st.e2b.running, max: st.e2b.max, spent_today_usd: st.e2b.spent_today_usd, cap_usd: st.e2b.cap_usd } : null,

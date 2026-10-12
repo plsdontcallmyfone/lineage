@@ -163,7 +163,8 @@ async function main() {
   // ---------------------------------------------------------------- 3. the same state, driven here
   const plog: string[] = [];
   const pcfg = parseConfig(JSON.parse(readFileSync(cfgFile, "utf8")));
-  const pool = desktopPool(pcfg, (m) => (plog.push(m), console.log(`   pool ${m}`)), { timers: false })!;
+  // its timers run: the agent's stream is kept by the pool itself (agent-desktops.ts streamPass)
+  const pool = desktopPool(pcfg, (m) => (plog.push(m), console.log(`   pool ${m}`)))!;
   const man = pool.agents!;
   const all = (o: Partial<Record<number, { working?: boolean; asleep?: boolean }>> = {}) => agents.map((a, i) => ({ agent: a.id, working: false, asleep: false, ...(o[i] ?? {}) }));
   await man.settle();
@@ -218,7 +219,8 @@ async function main() {
   await man.settle();
   const spentAfterWait = pool.spentToday();
   out.own_meter = { note: "this runtime's own count (seconds running x the listed rate), not E2B's bill", per_desktop_s_usd: RATE };
-  check("the runtime's own spend count stops for the paused desktop (two running for 20 s)", Math.abs(spentAfterWait - spentAtPause - 2 * RATE * 20) < 2 * RATE * 6, `${(spentAfterWait - spentAtPause).toFixed(5)} USD in about 20 s; two desktops for 20 s are ${(2 * RATE * 20).toFixed(5)}`);
+  check("the runtime's own spend count stops for the paused desktop (two running for 20 s)", // a running desktop's time is booked every 10 s, so the 20 s window reads as 10 to 30 s of two desktops
+    spentAfterWait - spentAtPause >= 2 * RATE * 8 && spentAfterWait - spentAtPause <= 2 * RATE * 32, `${(spentAfterWait - spentAtPause).toFixed(5)} USD in about 20 s; two desktops for 20 s are ${(2 * RATE * 20).toFixed(5)}`);
 
   t0 = Date.now();
   pool.syncAgents(all());

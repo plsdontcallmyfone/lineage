@@ -117,6 +117,9 @@ export function desktopPool(cfg: RuntimeConfig, log: (m: string) => void, test: 
     resume_gap_max_s: cfg.desktop_resume_gap_max_s,
     remove_after_s: cfg.desktop_remove_after_s,
     start_parallel: cfg.desktop_start_parallel,
+    idle_pause: cfg.desktop_idle_pause,
+    // the live video's mask (owner decision 2026-10-12: off on the sites; on unless the config says false)
+    mask: cfg.desktop_mask !== false,
   };
   if (shared) {
     // the pool reads its cap at every check: with a shared budget it is what the peers have left of it
@@ -137,7 +140,7 @@ export function desktopPool(cfg: RuntimeConfig, log: (m: string) => void, test: 
   }
   const s = pool.status();
   if (pool.agents)
-    log(`desktops: one E2B desktop per agent (label ${dcfg.owner}): at most ${e2b} running at once, paused after ${cfg.desktop_idle_s ?? 600} s idle or when the agent sleeps, session length ${cfg.e2b?.session_max_s ?? 3600} s renewed between attempts; desktop hosts and this server's slots are not used in this mode`);
-  log(`desktops: ${pool.hosts.size} desktop host(s) with ${[...pool.hosts.values()].reduce((n, b) => n + b.host.desktops_max, 0)} slots, ${local} on this server${pool.local.unavailable() ? ` (${pool.local.unavailable()})` : ""}, ${e2b} on E2B${pool.e2b.unavailable() ? ` (${pool.e2b.unavailable()})` : ""}; E2B spend today ${s.e2b.spent_today_usd.toFixed(4)} of ${s.e2b.cap_usd} USD${shared ? ` left of the ${cap} USD shared with ${cfg.desktop_shared!.peers.join(", ")}` : ""}; recordings ${pool.recording ? "on" : "off (live only)"}; desktop ${pool.required ? "required for every attempt" : "optional"}`);
+    log(`desktops: one E2B desktop per agent (label ${dcfg.owner}): at most ${e2b} running at once, ${cfg.desktop_idle_pause === false ? "running and streaming while the agent is awake (no idle pause), paused when it sleeps" : `paused after ${cfg.desktop_idle_s ?? 600} s idle or when the agent sleeps`}, session length ${cfg.e2b?.session_max_s ?? 3600} s renewed between attempts; desktop hosts and this server's slots are not used in this mode`);
+  log(`desktops: ${pool.hosts.size} desktop host(s) with ${[...pool.hosts.values()].reduce((n, b) => n + b.host.desktops_max, 0)} slots, ${local} on this server${pool.local.unavailable() ? ` (${pool.local.unavailable()})` : ""}, ${e2b} on E2B${pool.e2b.unavailable() ? ` (${pool.e2b.unavailable()})` : ""}; E2B spend today ${s.e2b.spent_today_usd.toFixed(4)} of ${s.e2b.cap_usd} USD${shared ? ` left of the ${cap} USD shared with ${cfg.desktop_shared!.peers.join(", ")}` : ""}; recordings ${pool.recording ? "on" : "off (live only)"}; live video ${dcfg.mask ? "masked (editor text and run terminal pixelated)" : "unmasked (desktop_mask false)"}; desktop ${pool.required ? "required for every attempt" : "optional"}`);
   return pool;
 }

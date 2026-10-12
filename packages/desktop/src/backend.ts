@@ -33,6 +33,12 @@ export interface DesktopInstance {
   destroy(): Promise<void>;
   /** USD per second this desktop costs while it runs (0 for our own server) */
   readonly usdPerS: number;
+  /**
+   * The live stream is not this attempt's to start or stop: the desktop is its agent's own and keeps
+   * streaming between attempts (agent-desktops.ts). The attempt runs no encoder, copies no stream
+   * files and leaves hostStreamDir when it ends.
+   */
+  readonly managedStream?: boolean;
 }
 
 export interface CreateOpts {

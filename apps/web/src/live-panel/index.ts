@@ -200,6 +200,10 @@ class Panel {
   private idle: IdleStatus | null = null;
   private error = "";
   private stream: DeskStatus | null = null;
+  /** the agent's own desktop as the runtime reports it: while it runs, its stream is the screen, in a session and between sessions */
+  private desk: IdleStatus["desktop"] | null = null;
+  private masked: boolean | null = null;
+  private deskAgent: string | null = null;
   private player: DeskPlayer | null = null;
   private playerKey = "";
   private retry: ReturnType<typeof setTimeout> | null = null;
@@ -266,8 +270,10 @@ class Panel {
       if (this.view === "idle" || this.view === "error") void this.pickFromList(true);
       else if (this.summary && (this.summary.state === "live" || this.summary.state === "sealed")) void this.refresh();
       void this.readViewers();
+      void this.readDesk();
     }, 10_000);
     try {
+      await this.readDesk();
       if (this.opts.session) await this.load(this.opts.session);
       else await this.pickFromList();
     } catch (e) {
@@ -325,6 +331,7 @@ class Panel {
       this.view = "facts";
       if (summary.state === "final" && summary.candidate) void this.loadNetwork();
     } else this.view = "live";
+    if (!this.opts.agent && summary.agent && this.deskAgent !== summary.agent) void this.readDesk();
     this.syncStream();
     this.renderList();
     this.paint();
@@ -402,7 +409,41 @@ class Panel {
     const st = await idleStatus((p) => this.io.get(p), this.opts.agent, lastEnd);
     if (this.dead || this.view !== "idle") return;
     this.idle = st;
+    if (this.opts.agent) {
+      this.deskAgent = this.opts.agent;
+      this.desk = st.desktop ?? null;
+    }
+    this.masked = st.masked ?? this.masked;
+    this.syncStream();
     this.paint();
+  }
+
+  /** The agent's own desktop from the runtime's report (read at most every 30 s): its stream id while it runs, and whether the video is masked. */
+  private async readDesk() {
+    const agent = this.opts.agent ?? this.summary?.agent;
+    if (!agent) return;
+    const st = await idleStatus((p) => this.io.get(p), agent, this.idle?.last_end ?? null).catch(() => null);
+    if (this.dead || !st) return;
+    const was = this.agentStream();
+    const wasMasked = this.masked;
+    this.deskAgent = agent;
+    this.desk = st.desktop ?? null;
+    this.masked = st.masked ?? null;
+    if (this.view === "idle" && this.idle) this.idle = { ...st, last_end: this.idle.last_end };
+    if (was !== this.agentStream() || wasMasked !== this.masked || this.view === "idle") {
+      this.syncStream();
+      this.paint();
+    }
+  }
+
+  /** The id of the agent's own stream when its desktop runs (an agent or unit mount; a session's own page keeps the session's stream). */
+  private agentStream(): string | null {
+    if (this.opts.session || !this.io.desktop) return null;
+    const d = this.desk;
+    if (!d || d.state !== "running" || !d.stream) return null;
+    // a unit mount shows whichever agent is live now: that agent's desktop, and only during its session
+    if (!this.opts.agent && (this.view !== "live" || this.deskAgent !== this.summary?.agent)) return null;
+    return d.stream;
   }
 
   private connect() {
@@ -444,8 +485,10 @@ class Panel {
   /** Starts, keeps or stops the desktop stream for what the screen shows now. */
   private syncStream() {
     const s = this.summary;
-    const base = s && this.io.desktop ? this.io.desktop(s.session_id) : null;
-    const want = this.view === "live" && s?.state === "live" && s.desktop && base ? `${s.session_id}` : "";
+    // the agent's own stream first: the same player goes on across a session's end and the next one's start
+    const own = this.view === "live" || this.view === "idle" ? this.agentStream() : null;
+    const base = own ? this.io.desktop!(own) : s && this.io.desktop ? this.io.desktop(s.session_id) : null;
+    const want = own ? `agent:${own}` : this.view === "live" && s?.state === "live" && s.desktop && base ? `${s.session_id}` : "";
     if (want === this.playerKey && (this.player || this.retry)) return;
     if (want === this.playerKey && this.stream?.kind === "gone") return; // waiting for the retry
     this.player?.stop();
@@ -513,6 +556,9 @@ class Panel {
     this.scr.dataset.kind = "";
     if (this.view === "loading") return this.screenMsg("loading", "Loading the agent's screen", `<span class="lp-msg-s">Reading the session list from Core.</span>`);
     if (this.view === "error") return this.screenMsg("error", "Screen unavailable", `<span class="lp-msg-s">${esc(this.error)}</span>`);
+    // between sessions the agent's own desktop is still the screen: its video, or what is true about its stream
+    const own = this.playerKey.startsWith("agent:");
+    if (this.view === "idle" && own && this.stream) return this.paintStream(null);
     if (this.view === "idle") {
       const st = this.idle ?? { kind: "next" as const, last_end: null };
       this.msg.innerHTML = "";
@@ -530,6 +576,7 @@ class Panel {
       return;
     }
     // live
+    if (own) return this.paintStream(s);
     if (!s.desktop) {
       return this.screenMsg(
         "nodesk",
@@ -537,20 +584,26 @@ class Panel {
         `<span class="lp-msg-s">This session is running without a desktop: no desktop was assigned to it, so there is no video to show. What Core reports about it:</span>${this.factsList(s)}`,
       );
     }
+    this.paintStream(s);
+  }
+
+  /** The stream's own state: the video, or what is true about it in words. `s`: the live session, null between sessions. */
+  private paintStream(s: SessionSummary | null) {
+    const stall = this.scr.querySelector<HTMLElement>(".lp-stall")!;
     const st = this.stream;
     if (!st || st.kind === "connecting") {
-      return this.screenMsg("connecting", "Connecting to the live desktop", `<span class="lp-msg-s">${esc(st?.kind === "connecting" && st.detail ? st.detail : `Loading the video stream of ${repoName(s.repo)}.`)}</span>`);
+      return this.screenMsg("connecting", "Connecting to the live desktop", `<span class="lp-msg-s">${esc(st?.kind === "connecting" && st.detail ? st.detail : s ? `Loading the video stream of ${repoName(s.repo)}.` : "Loading the agent's desktop video.")}</span>`);
     }
     if (st.kind === "blocked") {
       return this.screenMsg("blocked", "The live desktop is ready", `<span class="lp-msg-s">This browser did not start the video on its own.</span><button type="button" class="lp-btn" data-act="play">Play the live desktop</button>`);
     }
     if (st.kind === "gone") {
       const retry = st.code === "codec" ? "" : " Asking again every 15 s while Core lists the session as live.";
-      return this.screenMsg("unavailable", `Stream unavailable: ${st.reason}`, `<span class="lp-msg-s">The session is still live in Core.${esc(retry)}</span>${this.factsList(s)}`);
+      return this.screenMsg("unavailable", `Stream unavailable: ${st.reason}`, s ? `<span class="lp-msg-s">The session is still live in Core.${esc(retry)}</span>${this.factsList(s)}` : "");
     }
     // frames: the video itself, nothing over it but a stall note
     this.scr.dataset.show = "video";
-    this.scr.dataset.kind = "live";
+    this.scr.dataset.kind = s ? "live" : "between";
     this.msg.innerHTML = "";
     if (st.kind === "stalled") {
       stall.hidden = false;
@@ -584,6 +637,16 @@ class Panel {
     latest.hidden = true;
     tm.textContent = "";
     tm.removeAttribute("data-watching");
+    if (this.view === "idle" && this.scr.dataset.show === "video") {
+      // the agent's own desktop, live between two sessions: the video plays, the caption says where the agent is
+      const end = this.idle?.last_end ?? null;
+      this.setState("live", "Live");
+      t.textContent = "Live desktop: the agent is between sessions";
+      tm.textContent = end ? `last session ended ${when(end)}` : "no session yet";
+      note.hidden = false;
+      note.textContent = this.deskNote();
+      return;
+    }
     if (this.view === "idle") {
       const st = this.idle;
       this.setState(st && st.kind !== "next" ? "paused" : "idle", st && st.kind !== "next" ? "Paused" : "Idle");
@@ -612,13 +675,20 @@ class Panel {
     if (w >= 1) tm.setAttribute("data-watching", String(w));
     if (s.desktop) {
       note.hidden = false;
-      note.textContent = "The agent's real desktop. Its editor and run terminal are pixelated on the server until the verdict.";
+      note.textContent = this.deskNote();
     }
     const d = describeEvent(this.latest as any);
     if (d) {
       latest.hidden = false;
       latest.innerHTML = `<span class="k">Latest event</span> ${esc(d)}<span class="tm">${esc(clock(this.latest!.at))}</span>`;
     }
+  }
+
+  /** One line under the live video: what it is, and whether the server masks part of it (the runtime's own setting). */
+  private deskNote(): string {
+    if (this.masked === false) return "The agent's real desktop, live and unmasked.";
+    if (this.masked === true) return "The agent's real desktop. Its editor and run terminal are pixelated on the server until the verdict.";
+    return "The agent's real desktop, live.";
   }
 
   /** An ended session's final facts (no playback). */

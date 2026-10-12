@@ -67,6 +67,8 @@ function desktopsOf(v: unknown) {
   const slot = (x: Record<string, unknown> | undefined) => (x && typeof x === "object" ? { running: fin(x.running), max: fin(x.max) } : null);
   return {
     required: typeof (v as { required?: unknown }).required === "boolean" ? (v as { required: boolean }).required : null,
+    // the runtime's desktop_mask setting, when it says
+    ...(typeof (v as { masked?: unknown }).masked === "boolean" ? { masked: (v as { masked: boolean }).masked } : {}),
     local: slot(d.local),
     hosts: d.hosts && typeof d.hosts === "object" ? { ...slot(d.hosts), count: fin(d.hosts.count), up: fin(d.hosts.up) } : null,
     e2b: d.e2b && typeof d.e2b === "object" ? { ...slot(d.e2b), spent_today_usd: fin(d.e2b.spent_today_usd), cap_usd: fin(d.e2b.cap_usd) } : null,
@@ -78,7 +80,9 @@ function agentDesktopOf(v: unknown) {
   if (!v || typeof v !== "object" || Array.isArray(v)) return null;
   const d = v as Record<string, unknown>;
   if (d.state !== "starting" && d.state !== "running" && d.state !== "paused" && d.state !== "none") return null;
-  return { state: d.state, why: typeof d.why === "string" && short(d.why) ? d.why : null, since: fin(d.since) };
+  // the id its live stream is served under while it runs (the desktop route's 64 hex; public like a live session's id)
+  const stream = typeof d.stream === "string" && /^[0-9a-f]{64}$/.test(d.stream) ? d.stream : null;
+  return { state: d.state, why: typeof d.why === "string" && short(d.why) ? d.why : null, since: fin(d.since), ...(d.stream !== undefined ? { stream } : {}) };
 }
 
 const instances = new WeakMap<Core, RuntimeSpend>();
@@ -165,6 +169,8 @@ export class RuntimeSpend {
       price: global?.price ?? null,
       // the note the profile shows when the agent's model runs through OpenRouter and its balance is low
       provider_balance_low: !!(s?.via === "openrouter" && global?.provider_balance?.openrouter?.low),
+      // whether the runtime masks the live desktop video (config desktop_mask); null when it did not say
+      desktop_masked: (global as { desktops?: { masked?: boolean | null } | null } | null)?.desktops?.masked ?? null,
     };
   }
 }

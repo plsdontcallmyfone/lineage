@@ -17,7 +17,17 @@ interface Box {
   onTimeout: "pause" | "kill";
   provisioned: boolean;
   cmds: string[];
+  /** the desktop session's four windows are up */
+  windows: boolean;
+  /** what desk-geom prints while they are (a test moves a window by changing it) */
+  geom: string;
+  /** the live encoder runs; the command that started it */
+  encoder: boolean;
+  encoderCmd: string;
+  encoderStarts: number;
 }
+
+export const GEOM = "LineageEditor 0 0 636 795\nLineageRun 640 600 637 195\nLineageTerm 640 400 637 195\nLineageBrowser 640 0 640 400\n";
 
 export class FakeE2B implements E2BApi {
   boxes = new Map<string, Box>();
@@ -50,8 +60,18 @@ export class FakeE2B implements E2BApi {
         run: async (cmd) => {
           alive();
           b.cmds.push(cmd);
-          if (/^test -f \S*\.provisioned$/.test(cmd) && !b.provisioned) throw Object.assign(new Error("exit 1"), { exitCode: 1, stdout: "", stderr: "" });
+          const fail = () => Object.assign(new Error("exit 1"), { exitCode: 1, stdout: "", stderr: "" });
+          if (/^test -f \S*\.provisioned$/.test(cmd) && !b.provisioned) throw fail();
           if (/^touch \S*\.provisioned$/.test(cmd)) b.provisioned = true;
+          // the desktop session: closing it takes the windows and the encoder, starting it brings the windows
+          if (cmd.includes("pkill -KILL -x xterm")) (b.windows = false), (b.encoder = false);
+          if (cmd.includes("desk-bg session")) b.windows = true;
+          if (cmd === "test -f /tmp/desk/ready" && !b.windows) throw fail();
+          if (cmd.includes("desk-stop live")) b.encoder = false;
+          if (cmd.includes("desk-bg live")) (b.encoder = true), (b.encoderCmd = cmd), b.encoderStarts++;
+          // the stream guard's one command: the windows, then whether the encoder and the session are there
+          if (cmd.includes("echo ---")) return { exitCode: 0, stdout: `${cmd.includes("desk-geom") && b.windows ? b.geom : ""}---\n${b.encoder ? "alive\n" : ""}${b.windows ? "ready\n" : ""}`, stderr: "" };
+          if (cmd.endsWith("desk-geom") || cmd.endsWith("desk-geom'")) return { exitCode: 0, stdout: b.windows ? b.geom : "", stderr: "" };
           return { exitCode: 0, stdout: "", stderr: "" };
         },
       },
@@ -59,8 +79,13 @@ export class FakeE2B implements E2BApi {
         write: async () => {
           alive();
         },
-        read: async () => {
+        read: async (path) => {
           alive();
+          // a running encoder's playlist: three 2 s segments numbered by the clock, as ffmpeg's are
+          if (!b.encoder) throw new Error("no file");
+          const n = Math.floor(this.now() / 2000);
+          if (path === "/tmp/stream/live.m3u8") return new TextEncoder().encode(`#EXTM3U\n#EXT-X-MAP:URI="init.mp4"\n${[n - 2, n - 1, n].map((i) => `#EXTINF:2,\nseg-${i}.m4s`).join("\n")}\n`);
+          if (/^\/tmp\/stream\/(init\.mp4|seg-\d+\.m4s)$/.test(path)) return new TextEncoder().encode(`${b.id}:${path}:${b.encoderStarts}`);
           throw new Error("no file");
         },
       },
@@ -78,7 +103,7 @@ export class FakeE2B implements E2BApi {
     if (this.failCreate) throw new Error(this.failCreate);
     const id = `sbx${++this.n}xxxxxxxx`;
     const lc = opts.lifecycle as { onTimeout?: "pause" | "kill" } | undefined;
-    const b: Box = { id, state: "running", metadata: { ...(opts.metadata as Record<string, string>) }, startedAt: this.now(), endAt: this.now() + (opts.timeoutMs as number), onTimeout: lc?.onTimeout ?? "kill", provisioned: false, cmds: [] };
+    const b: Box = { id, state: "running", metadata: { ...(opts.metadata as Record<string, string>) }, startedAt: this.now(), endAt: this.now() + (opts.timeoutMs as number), onTimeout: lc?.onTimeout ?? "kill", provisioned: false, cmds: [], windows: false, geom: GEOM, encoder: false, encoderCmd: "", encoderStarts: 0 };
     this.boxes.set(id, b);
     return this.handle(b);
   }

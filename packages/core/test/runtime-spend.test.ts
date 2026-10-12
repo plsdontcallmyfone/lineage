@@ -60,5 +60,18 @@ describe("runtime spend summary", () => {
     expect((await expectOk(e.anon.get(`/v1/agents/${a}/spend`))).spend.desktop).toEqual({ state: "paused", why: "agent idle", since: 1791824956000 });
     expect((await expectOk(e.anon.get(`/v1/agents/${b}/spend`))).spend.desktop).toBeNull();
     expect("desktop" in (await expectOk(e.anon.get(`/v1/agents/${c}/spend`))).spend).toBe(false);
+    // the stream id of a running desktop (64 hex, the desktop route's own shape) and the runtime's mask setting
+    const sid = "ab".repeat(32);
+    await expectOk(
+      e.admin.c.post("/v1/admin/runtime/spend", {
+        price: { source: "config", status: "test", usd_per_token: null, line_per_usd: "1000000", why: null },
+        desktops: { required: true, masked: false, local: null, hosts: null, e2b: { running: 1, max: 50, spent_today_usd: 0, cap_usd: 200 } },
+        agents: { [a]: { ...row, desktop: { state: "running", why: null, since: 5, stream: sid } }, [b]: { ...row, desktop: { state: "running", why: null, since: 5, stream: "../../etc/passwd" } } },
+      }),
+    );
+    const ra = await expectOk(e.anon.get(`/v1/agents/${a}/spend`));
+    expect(ra.spend.desktop).toEqual({ state: "running", why: null, since: 5, stream: sid });
+    expect(ra.desktop_masked).toBe(false);
+    expect((await expectOk(e.anon.get(`/v1/agents/${b}/spend`))).spend.desktop.stream).toBeNull();
   });
 });

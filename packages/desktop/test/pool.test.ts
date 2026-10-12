@@ -65,13 +65,13 @@ class FakeBackend implements DesktopBackend {
 
 const begin = { agent: "A".repeat(44), tree: "/tmp/none", repo: "https://github.com/karpathy/minbpe", commit: "c".repeat(40), stacked: false, label: "t" };
 
-function pool(o: { localMax?: number; e2bMax?: number; cap?: number; now?: () => number; e2bWhy?: string | null; localWhy?: string | null; recordings?: boolean } = {}) {
+function pool(o: { localMax?: number; e2bMax?: number; cap?: number; now?: () => number; e2bWhy?: string | null; localWhy?: string | null; recordings?: boolean; mask?: boolean } = {}) {
   const root = tmp();
   const local = new FakeBackend("local", root, o.localWhy ?? null);
   const e2b = new FakeBackend("e2b", root, o.e2bWhy ?? null, e2bUsdPerS(2, 4));
   const logs: string[] = [];
   const p = new DesktopPool(
-    { root, desktops_max: o.localMax ?? 2, e2b_max: o.e2bMax ?? 3, desktop_usd_per_day: o.cap ?? 5, allow: ["github.com"], e2b: { session_max_s: 3600 }, recordings: o.recordings },
+    { root, desktops_max: o.localMax ?? 2, e2b_max: o.e2bMax ?? 3, desktop_usd_per_day: o.cap ?? 5, allow: ["github.com"], e2b: { session_max_s: 3600 }, recordings: o.recordings, ...(o.mask === undefined ? {} : { mask: o.mask }) },
     { local, e2b, log: (m) => logs.push(m), now: o.now },
   );
   return { p, local, e2b, logs, root };
@@ -415,4 +415,43 @@ describe("driver", () => {
       { cls: "LineageRun", rect: { x: -1, y: 2, w: 3, h: 4 } },
     ]);
   });
+});
+
+describe("the live video's mask (desktop_mask)", () => {
+  const waitFor = async (f: () => boolean) => {
+    for (let i = 0; i < 100 && !f(); i++) await Bun.sleep(20);
+  };
+  test("on (the default): the encoder pixelates, and windows that cannot be read stop the stream (blackout)", async () => {
+    const { p, local, logs } = pool();
+    const at = await p.begin(begin);
+    const inst = local.made[0]!;
+    await waitFor(() => inst.calls.some((c) => c[0] === "desk-bg" && c[1] === "live"));
+    const live = inst.calls.find((c) => c[0] === "desk-bg" && c[1] === "live")!;
+    expect(live.join(" ")).toContain("flags=neighbor");
+    expect(inst.calls.some((c) => c[0] === "desk-geom")).toBe(true);
+    // the windows go unreadable: the guard stops the stream
+    (inst as unknown as { geom: string }).geom = "";
+    await waitFor(() => logs.some((l) => l.includes("blackout")));
+    expect(logs.join("\n")).toMatch(/blackout \((editor window missing|window geometry unreadable)\); live stream stopped/);
+    await at!.end();
+    p.stop();
+  }, 20_000);
+
+  test("off: the video as it is, no window check, and unreadable windows stop nothing", async () => {
+    const { p, local, logs } = pool({ mask: false });
+    const at = await p.begin(begin);
+    const inst = local.made[0]!;
+    (inst as unknown as { geom: string }).geom = "";
+    await waitFor(() => inst.calls.some((c) => c[0] === "desk-bg" && c[1] === "live"));
+    const live = inst.calls.find((c) => c[0] === "desk-bg" && c[1] === "live")!;
+    expect(live[live.indexOf("-filter_complex") + 1]).toBe("[0:v]format=yuv420p[v]");
+    expect(live.join(" ")).not.toContain("crop=");
+    await Bun.sleep(1300);
+    expect(inst.calls.some((c) => c[0] === "desk-geom")).toBe(false);
+    expect(inst.calls.filter((c) => c[0] === "desk-stop" && c[1] === "live" && c[2] === "KILL")).toHaveLength(0);
+    expect(logs.join("\n")).not.toContain("blackout");
+    expect(p.status().masked).toBe(false);
+    await at!.end();
+    p.stop();
+  }, 20_000);
 });

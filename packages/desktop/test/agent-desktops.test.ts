@@ -3,8 +3,11 @@ import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "nod
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { AgentDesktops, type AgentDesktopLimits } from "../src/agent-desktops.ts";
+import { streamIdOf } from "../src/agent-desktops.ts";
 import { E2BBackend, e2bUsdPerS } from "../src/e2b.ts";
+import { liveArgs, liveFilter, plainFilter } from "../src/layout.ts";
 import { DesktopPool } from "../src/pool.ts";
+import { desktopHandler } from "../src/serve.ts";
 import { FakeE2B } from "./fake-e2b.ts";
 
 // One E2B desktop per agent (owner decision 2026-10-12, agent-desktops.ts) against a fake E2B account:
@@ -213,19 +216,39 @@ describe("pause and resume", () => {
     expect(s.m.view(A)).toMatchObject({ state: "paused", why: "agent asleep (vault empty)" });
   });
 
-  test("each attempt gets a clean session on the same sandbox", async () => {
+  test("each attempt gets the same sandbox with its tiles reset and the new tree; the windows stay; a desktop without its windows gets a fresh session", async () => {
     const s = setup();
     await s.m.settle();
     s.m.sync(awake(A));
     await s.m.settle();
     const box = s.e2b.ofAgent(A)[0]!;
-    const one = await s.open(A);
-    const n = box.cmds.length;
+    // the desktop session started with the desktop, before any attempt
     expect(box.cmds.filter((c) => c.includes("desk-bg session"))).toHaveLength(1);
+    expect(box.windows).toBe(true);
+    let n = box.cmds.length;
+    const one = await s.open(A);
+    const first = box.cmds.slice(n).join("\n");
+    expect(first).toContain("desk-cmd term clear");
+    expect(first).toContain("find /home/user/repo -mindepth 1 -delete");
+    expect(first).toContain("tar -xzf /tmp/repo.tgz");
+    expect(first).not.toContain("pkill -KILL -x xterm");
+    expect(box.cmds.filter((c) => c.includes("desk-bg session"))).toHaveLength(1);
+    expect(one!.managedStream).toBe(true);
+    n = box.cmds.length;
     await one!.destroy();
-    expect(box.cmds.slice(n).join("\n")).toContain("rm -rf /tmp/desk /tmp/stream");
+    // the attempt's end closes no window and stops no encoder; what the attempt put on the screen is cleared and its tree copy deleted
+    const end = box.cmds.slice(n).join("\n");
+    expect(end).toContain("pkill -x micro");
+    expect(end).toContain("desk-cmd run clear");
+    expect(end).toContain("find /home/user/repo -mindepth 1 -delete");
+    expect(end).not.toContain("pkill -KILL");
+    expect(end).not.toContain("desk-stop");
+    expect(box.windows).toBe(true);
+    // the windows are gone (something on the desktop died): the next attempt starts the session afresh
+    box.windows = false;
     const two = await s.open(A);
     expect(box.cmds.filter((c) => c.includes("desk-bg session"))).toHaveLength(2);
+    expect(box.windows).toBe(true);
     expect(two!.id).not.toBe(one!.id);
     expect(two!.usdPerS).toBe(0);
     await two!.destroy();
@@ -505,6 +528,187 @@ describe("removal", () => {
   });
 });
 
+describe("the agent's live stream", () => {
+  const get = (root: string, m: AgentDesktops) => {
+    const h = desktopHandler(root, (dir) => m.watched(dir));
+    return async (id: string, file = "live.m3u8") => (await h(new Request(`http://x/desktops/${id}/${file}`)))!;
+  };
+  const segs = (text: string) => [...text.matchAll(/seg-(\d+)\.m4s/g)].map((x) => Number(x[1]));
+
+  test("it runs from the desktop's creation, across an attempt and after it, from one encoder; a viewer keeps the same playlist advancing", async () => {
+    const s = setup({ limits: { idle_s: 100_000 } });
+    mkdirSync(join(s.root, "sessions"), { recursive: true });
+    const fetch = get(s.root, s.m);
+    await s.m.settle();
+    s.m.sync(awake(A));
+    await s.m.settle();
+    const box = s.e2b.ofAgent(A)[0]!;
+    const sid = streamIdOf(A);
+    expect(sid).toMatch(/^[0-9a-f]{64}$/);
+    expect(s.m.view(A)).toMatchObject({ state: "running", stream: sid });
+    await s.m.streamPass();
+    expect(box.encoder).toBe(true);
+    expect(box.encoderStarts).toBe(1);
+    // nobody watches and no attempt runs: nothing is copied to this host, a first viewer is told "starting"
+    expect((await fetch(sid)).status).toBe(404);
+    s.clock.t += 1000;
+    await s.m.streamPass();
+    const p0 = await fetch(sid);
+    expect(p0.status).toBe(200);
+    const before = segs(await p0.text());
+    expect((await fetch(sid, `seg-${before[0]}.m4s`)).status).toBe(200);
+
+    // an attempt starts on the desktop: same encoder, the playlist goes on
+    const inst = await s.open(A);
+    s.clock.t += 4000;
+    await s.m.streamPass();
+    expect(box.encoderStarts).toBe(1);
+    const during = segs(await (await fetch(sid)).text());
+    expect(during.at(-1)!).toBeGreaterThan(before.at(-1)!);
+    // and ends: the desktop, its windows and its stream stay
+    await inst!.destroy();
+    for (let i = 0; i < 5; i++) {
+      s.clock.t += 2000;
+      await s.m.streamPass();
+      await fetch(sid);
+    }
+    expect(box.encoderStarts).toBe(1);
+    const after = segs(await (await fetch(sid)).text());
+    expect(after.at(-1)!).toBeGreaterThan(during.at(-1)!);
+    expect(after.at(-1)! - before.at(-1)!).toBe(7);
+    expect(s.m.sandboxOf(A)).toBe(box.id);
+    // the next attempt: still the one encoder
+    const again = await s.open(A);
+    s.clock.t += 2000;
+    await s.m.streamPass();
+    expect(box.encoderStarts).toBe(1);
+    await again!.destroy();
+  });
+
+  test("a stream nobody watches is not copied; a pause ends it (410) after stopping the encoder; a resume brings it back under the same id", async () => {
+    const s = setup({ limits: { idle_s: 100_000 } });
+    mkdirSync(join(s.root, "sessions"), { recursive: true });
+    const fetch = get(s.root, s.m);
+    await s.m.settle();
+    s.m.sync(awake(A));
+    await s.m.settle();
+    const box = s.e2b.ofAgent(A)[0]!;
+    const sid = streamIdOf(A);
+    await s.m.streamPass();
+    await fetch(sid);
+    s.clock.t += 1000;
+    await s.m.streamPass();
+    expect((await fetch(sid)).status).toBe(200);
+    // the viewer leaves: 30 s later the copy is dropped, the encoder goes on
+    const reads = () => box.cmds.length;
+    s.clock.t += 40_000;
+    await s.m.streamPass();
+    s.clock.t += 5000;
+    await s.m.streamPass();
+    expect(box.encoder).toBe(true);
+    const h = desktopHandler(s.root);
+    expect((await h(new Request(`http://x/desktops/${sid}/live.m3u8`)))!.status).toBe(404);
+    void reads;
+    // asleep: the encoder is stopped, then the desktop paused; the stream answers 410
+    const n = box.cmds.length;
+    s.m.sync([{ agent: A, working: false, asleep: true, asleep_why: "agent cannot pay for an attempt (vault low)" }]);
+    await s.m.settle();
+    expect(box.cmds.slice(n).some((c) => c.includes("desk-stop") && c.includes("live"))).toBe(true);
+    expect(box.state).toBe("paused");
+    expect(s.m.view(A)).toMatchObject({ state: "paused", why: "agent cannot pay for an attempt (vault low)", stream: null });
+    expect((await fetch(sid)).status).toBe(410);
+    // its next attempt: resumed, a fresh encoder, the same stream id
+    const inst = await s.open(A);
+    s.clock.t += 1000;
+    await s.m.streamPass();
+    expect(box.encoderStarts).toBe(2);
+    expect((await fetch(sid)).status).toBe(200);
+    expect(s.m.view(A)!.stream).toBe(sid);
+    await inst!.destroy();
+    // removed with its agent: 410 again, nothing left on this host
+    s.m.sync([]);
+    s.clock.t += 301_000;
+    s.m.sync([]);
+    await s.m.settle();
+    expect((await fetch(sid)).status).toBe(410);
+  });
+
+  test("mask on (the default): the pixelation filter, and a window outside its tile stops the stream until it is back", async () => {
+    const s = setup({ limits: { idle_s: 100_000 } });
+    await s.m.settle();
+    s.m.sync(awake(A));
+    await s.m.settle();
+    const box = s.e2b.ofAgent(A)[0]!;
+    await s.m.streamPass();
+    expect(box.encoderCmd).toContain("scale=");
+    expect(box.encoderCmd).toContain("flags=neighbor");
+    expect(box.cmds.at(-1)).not.toBeUndefined();
+    // the editor window leaves its tile
+    box.geom = box.geom.replace("LineageEditor 0 0 636 795", "LineageEditor 300 0 636 795");
+    s.clock.t += 5000;
+    await s.m.streamPass();
+    expect(box.encoder).toBe(false);
+    expect(s.logs.join("\n")).toContain("blackout (a window is outside its tile); live stream stopped");
+    s.clock.t += 5000;
+    await s.m.streamPass();
+    expect(box.encoder).toBe(false);
+    box.geom = box.geom.replace("LineageEditor 300 0", "LineageEditor 0 0");
+    s.clock.t += 5000;
+    await s.m.streamPass();
+    expect(box.encoder).toBe(true);
+    expect(s.logs.join("\n")).toContain("live stream back");
+  });
+
+  test("mask off (desktop_mask false): the video as it is, no window check, and nothing stops the stream when a window moves", async () => {
+    const s = setup({ limits: { idle_s: 100_000, mask: false } });
+    await s.m.settle();
+    s.m.sync(awake(A));
+    await s.m.settle();
+    const box = s.e2b.ofAgent(A)[0]!;
+    await s.m.streamPass();
+    expect(box.encoder).toBe(true);
+    expect(box.encoderCmd).toContain("[0:v]format=yuv420p[v]");
+    expect(box.encoderCmd).not.toContain("scale=");
+    expect(box.encoderCmd).not.toContain("crop=");
+    const guard = box.cmds.filter((c) => c.includes("echo ---"));
+    expect(guard.length).toBeGreaterThan(0);
+    expect(guard.every((c) => !c.includes("desk-geom"))).toBe(true);
+    box.geom = "LineageEditor 300 0 636 795\n";
+    s.clock.t += 5000;
+    await s.m.streamPass();
+    expect(box.encoder).toBe(true);
+    expect(box.encoderStarts).toBe(1);
+    expect(s.logs.join("\n")).not.toContain("blackout");
+  });
+
+  test("the filter of each setting", () => {
+    expect(liveArgs("/tmp/stream").join(" ")).toContain(liveFilter());
+    expect(liveArgs("/tmp/stream", ":0", true).join(" ")).toContain(liveFilter());
+    const off = liveArgs("/tmp/stream", ":0", false);
+    expect(off[off.indexOf("-filter_complex") + 1]).toBe(plainFilter());
+    expect(plainFilter()).toBe("[0:v]format=yuv420p[v]");
+    // everything but the filter is the same stream
+    expect(off.filter((_, i) => i !== off.indexOf("-filter_complex") + 1)).toEqual(liveArgs("/tmp/stream").filter((_, i, a) => i !== a.indexOf("-filter_complex") + 1));
+  });
+
+  test("idle_pause false: an awake agent's desktop keeps running however long it waits; an agent that cannot work is still paused", async () => {
+    const s = setup({ limits: { idle_s: 600, idle_pause: false } });
+    await s.m.settle();
+    s.m.sync(awake(A, B));
+    await s.m.settle();
+    for (let i = 0; i < 24; i++) {
+      s.clock.t += 300_000;
+      s.m.sync(awake(A, B));
+      await s.m.settle();
+    }
+    expect(s.m.counts()).toMatchObject({ running: 2, paused: 0 });
+    s.m.sync([{ agent: A, working: false, asleep: false }, { agent: B, working: false, asleep: true }]);
+    await s.m.settle();
+    expect(s.m.view(A)!.state).toBe("running");
+    expect(s.m.view(B)).toMatchObject({ state: "paused", why: "agent asleep (vault empty)" });
+  });
+});
+
 describe("the pool in per_agent mode", () => {
   function pool(o: { e2b_max?: number; cap?: number; required?: boolean } = {}) {
     const root = tmp();
@@ -538,6 +742,50 @@ describe("the pool in per_agent mode", () => {
     expect(s.p.spentToday()).toBeGreaterThanOrEqual(RATE * 100);
     expect(JSON.parse(readFileSync(join(s.root, "e2b-spend.json"), "utf8")).day).toBe("2026-10-12");
     expect(s.p.agentDesktop(A)).toMatchObject({ state: "running" });
+    s.p.stop();
+  });
+
+  test("an attempt's session id is a second name for the agent's stream while the attempt lasts; after it the session answers 410 and the agent's stream goes on", async () => {
+    const s = pool();
+    await s.p.agents!.settle();
+    s.p.syncAgents(awake(A));
+    await s.p.agents!.settle();
+    const h = desktopHandler(s.root, (dir) => s.p.agents!.watched(dir));
+    const get = async (id: string) => (await h(new Request(`http://x/desktops/${id}/live.m3u8`)))!;
+    const stream = s.p.agentDesktop(A)!.stream!;
+    const at = await s.begin(A);
+    const session = "5".repeat(64);
+    at!.sessionOpened(session);
+    await s.p.agents!.streamPass();
+    s.clock.t += 2000;
+    await s.p.agents!.streamPass();
+    const bySession = await get(session);
+    const byAgent = await get(stream);
+    expect(bySession.status).toBe(200);
+    const first = await byAgent.text();
+    expect(await bySession.text()).toBe(first);
+    // both names point at the one directory
+    const dirOf = (id: string) => JSON.parse(readFileSync(join(s.root, "sessions", `${id}.json`), "utf8")).dir;
+    expect(dirOf(session)).toBe(dirOf(stream));
+    const box = s.e2b.ofAgent(A)[0]!;
+    await at!.end();
+    // the attempt started and stopped no encoder of its own and removed nothing
+    expect(box.encoderStarts).toBe(1);
+    expect(box.encoder).toBe(true);
+    expect((await get(session)).status).toBe(410);
+    s.clock.t += 2000;
+    await s.p.agents!.streamPass();
+    const later = await get(stream);
+    expect(later.status).toBe(200);
+    expect(await later.text()).not.toBe(first);
+    // the pool's sweep of dead stream directories leaves the agent's
+    s.clock.t += 600_000;
+    await s.p.reap();
+    await s.p.agents!.streamPass();
+    await get(stream);
+    s.clock.t += 1000;
+    await s.p.agents!.streamPass();
+    expect((await get(stream)).status).toBe(200);
     s.p.stop();
   });
 

@@ -467,3 +467,113 @@ an attempt comes back at the next command (both proven above).
    (120 s: 4 x 1.2 x 24 x 0.1656 = 19.08 USD per day under the same assumption).
 4. Nothing else on the dashboard: no template, key or webhook changes. The sandboxes of this mode can
    be found there by the metadata `units_desktop=agent`.
+
+## Amendment: the screen stays live between attempts, and the video is unmasked (2026-10-12, agent desktops always-live lane)
+
+Two owner decisions of 2026-10-12, on launch day.
+
+### 1. "it should keep running all time"
+
+The coin page read "Desktop ended: next session starting" between every two attempts, because the
+stream belonged to a session. In `desktop_mode: "per_agent"` the stream is now the agent's.
+
+- **One encoder per desktop.** It starts with the desktop (a desktop session with empty tiles is
+  started at creation, so the screen is live before the first attempt) and runs until the desktop is
+  paused or removed. An attempt neither starts nor stops it.
+- **A fixed id per agent** on the route that already exists: `/desktops/<stream>/live.m3u8`, where
+  `<stream>` is `sha256("units-desktop-stream\n" + agent id)` in hex. 64 hex is the shape of a session
+  id, so the gate, the web server's proxy and the Vercel forward carry it unchanged (no change in
+  `gate.ts`). While an attempt runs, its session id is a second name for the same files; after it the
+  session id answers 410 as before.
+- **An attempt's start does not restart the desktop.** With the four windows up and in their tiles,
+  the tiles are cleared, the tree copy is emptied in place and the runtime's tree copied in, and the
+  browser goes to the attempt's page. Only a desktop whose windows are gone gets a fresh session, with
+  the stream stopped for it.
+- **An attempt's end clears what it showed.** The editor leaves its file, both terminals are cleared,
+  the tree copy is deleted and the browser goes back to the repository's page. The screen between
+  attempts is the real, live, idle desktop. This is deliberate (the first idea was to leave the screen
+  as the agent left it): a screen that kept the last file and output would show them to someone who
+  arrives after the candidate was committed, which the live video alone never did.
+- **Copies on demand.** The encoder always runs in the sandbox. Its files are copied to the runtime's
+  host only while an attempt runs on the desktop or a viewer asked for the stream in the last 30
+  seconds (a first viewer is told "starting" for about a second). Without this, 50 desktops would mean
+  50 copies of a 0.56 Mbit/s stream to the site server all day.
+- **The page.** The runtime reports `stream` with a running desktop; Core serves it; the panel plays
+  the agent's stream whenever it has one and keeps the same player when a session ends or starts. The
+  caption reads "Live desktop: the agent is between sessions". The text states stay for what is real:
+  `Desktop paused: agent asleep (vault empty)`, `Desktop paused: agent cannot pay for an attempt
+  (vault low)`, `Desktop paused: day cap reached (...)`, `No desktop: E2B desktop limit reached: ...`,
+  `Desktop starting`, `Stream unavailable: <reason>`. "Desktop ended: next session starting" is not
+  shown for an agent with its own desktop.
+- **Idle pause is a setting.** `desktop_idle_pause` (default true: paused after `desktop_idle_s`).
+  With false, an awake agent that waits for its turn (50 agents and 16 attempt slots: many minutes)
+  keeps its desktop running and streaming; a desktop rests only when its agent cannot work (asleep, or
+  awake with a vault that cannot pay for an attempt), at the day budget, or to make room at
+  `e2b_max`. What false costs at most, from the measured rate: every desktop running all day, 50 x 24
+  x 0.1656 = **198.72 USD per day** (5,961.60 USD per 30 days, 6,111.60 with the plan fee). With true
+  and 600 s, under assumption A of the first amendment and 16 attempts at once: 32 running on
+  average, 127.18 USD per day; the agents that wait longer than 10 minutes then show "Desktop paused:
+  agent idle" until their turn.
+
+Author-blind check (SPEC 10.7, 17.3): the stream id is derived from the agent id, and a live
+session already names its agent, so the id says nothing new. Between attempts the screen shows empty
+tiles and the repository's page; no tree copy is on the desktop. Notes, patch text and results never
+reach the desktop's unmasked tiles other than as the attempt itself showed them live. No route other
+than the existing desktop route serves anything.
+
+### 2. "we don't want to be blurred"
+
+The owner saw the pixelated editor on the live desktop and decided the video is shown unmasked.
+`desktop_mask` (runtime config; site-config sets it false on both networks; a config that does not
+say is masked, as before).
+
+- false: the encoder's filter is the plain screen (`[0:v]format=yuv420p[v]`), and nothing checks
+  where the windows are, so the "blackout (window geometry unreadable); live stream stopped" stop
+  cannot happen (that guard only protected the mask).
+- true: the pixelation of the editor's text and the run terminal and the geometry guard, unchanged.
+- **What it trades.** A viewer of the live video can read a change before it is committed and could
+  submit it first; and someone who watched an agent write a change can tell whose candidate it is
+  while that candidate is still open, which author-blind replay (10.7) is meant to prevent. The owner
+  was told the first and chose unmasked video.
+- **What it does not change.** Core's session gate: edit and patch text, evaluation output, notes,
+  `submit` and `give_up` stay sealed until the candidate is final, and the session view still drops
+  the agent's name once its candidate is committed. Nothing new is served anywhere.
+
+### 3. Tests and proofs
+
+- `packages/desktop/test/agent-desktops.test.ts`: 28 (7 new: the stream from creation across an
+  attempt and after it on one encoder; no copy without a viewer, pause 410, resume under the same id;
+  mask on with the guard; mask off with no guard; the filter of each setting; idle pause off; the
+  session id as a second name and 410 after; tiles reset and no window closed). `pool.test.ts`: 2 new
+  for the per-attempt desktops' mask on and off. Runtime 8 (1 new: an agent that cannot pay), Core 1 extended, web 1 new. `bun test packages/desktop
+  packages/runtime`: 195 pass, 1 skip, 0 fail.
+- Real E2B, `bun scripts/desktops/stream-proof.ts` (13/13, `STREAM-PROOF-LAST.json`; mask off) and
+  with `--mask` (13/13): the stream answered under the agent's id 5.5 s after the desktop ran, before
+  any attempt; two attempts in a row on the same sandbox with the same encoder process (pid 2414
+  before, in the first and in the second); a viewer polling every second across both attempts and the
+  gaps got 200 every time (31 polls), the newest segment never went back and the longest time without
+  a new one was 1.0 s (segments are 2 s); the session id answered 410 after its attempt; asleep:
+  paused in 0.9 s and 410; the next attempt had the stream back 6.3 s after it asked for its desktop.
+  An attempt was ready 1.6 s after its reserve. Spend by the runtime's own count: 0.0029 USD.
+  `proof.ts` again on the new code: 22/22, 0.0115 USD.
+- Headless Chromium at 1280 and 390 on a local dashboard: each text state above renders as text with
+  no horizontal scroll, and none reads "Desktop ended". The video itself was not played headless
+  (Playwright's Chromium has no H.264); the playing path is covered by the real stream above and the
+  panel's unit states, not by a browser run.
+
+### 4. Switching the mainnet instance on
+
+In `scripts/deploy/site-config.ts`, inside the mainnet instance's `Object.assign(runtimeCfg, { ... })`
+(it already has `e2b_max: 50`, `desktop_usd_per_day: 200`, `desktop_shared: null`):
+
+    desktop_mode: "per_agent",
+    desktop_idle_pause: false,
+    e2b: { template: "lineage-desktop", vcpu: 2, ram_gib: 4, session_max_s: 86400 },
+
+Then the usual deploy of that instance. What its agents go through: the runtime stops after its
+running attempts ended (their per-attempt desktops end with them); the new runtime lists its own
+sandboxes (none yet; its label is `mainnet-<12 hex>`) and creates a desktop for every bound agent,
+four at a time, about 13 seconds each (measured), each with the idle screen live under its stream id. An awake agent's
+next attempt starts on it about 2 seconds after its reserve (1.6 s measured). An agent that is asleep or cannot pay
+gets its desktop created and paused at once, and its page reads so. Core must run this release too:
+an older Core drops the `stream` field and the page would stay on the session-keyed stream.

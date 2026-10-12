@@ -1,0 +1,97 @@
+{
+  "at": "2026-10-12T19:29:34.776Z",
+  "owner": "proof-da789baf",
+  "mask": false,
+  "sandbox": "i9ptie",
+  "first_playlist_after_create_ms": 6018,
+  "viewer": {
+    "samples": 32,
+    "not_200": 0,
+    "went_back": 0,
+    "longest_without_a_new_segment_ms": 1002,
+    "first_segment": 1791833399,
+    "last_segment": 1791833414,
+    "by_phase": {
+      "attempt 1 starting": 1,
+      "attempt 1": 7,
+      "between attempts 1 and 2": 11,
+      "attempt 2 starting": 2,
+      "attempt 2": 7,
+      "after attempt 2": 4
+    }
+  },
+  "stream_back_after_resume_ms": 5546,
+  "spent_usd_own_count": 0.0028,
+  "left_at_e2b": 0,
+  "wall_s": 68,
+  "spent_usd_upper_bound": 0.0031,
+  "checks": [
+    {
+      "check": "the agent's desktop runs and its state names the stream id (64 hex, the desktop route's own shape)",
+      "ok": true,
+      "detail": "i9ptie"
+    },
+    {
+      "check": "the stream answers under the agent's id before any attempt (the desktop session with nothing in it)",
+      "ok": true,
+      "detail": "first playlist 6018 ms after the desktop was running"
+    },
+    {
+      "check": "mask off: the encoder's filter is the plain screen, no crop, no pixelation",
+      "ok": true,
+      "detail": "filter: [0:v]format=yuv420p[v]"
+    },
+    {
+      "check": "attempt 1: its session id serves the agent's stream (the same playlist under both names)",
+      "ok": true,
+      "detail": "session ready 1468 ms after the reserve; newest segment 1791833402 by session id, 1791833402 by agent id"
+    },
+    {
+      "check": "attempt 1 ended: its session id answers 410",
+      "ok": true,
+      "detail": "410 ended"
+    },
+    {
+      "check": "between attempts the agent's stream keeps advancing",
+      "ok": true,
+      "detail": "newest segment 1791833403 -> 1791833408 in 10 s with no attempt running"
+    },
+    {
+      "check": "same sandbox",
+      "ok": true,
+      "detail": "i9ptie"
+    },
+    {
+      "check": "attempt 2 started on the same desktop without restarting its windows or its encoder",
+      "ok": true,
+      "detail": "encoder pid 2317 before attempt 1, 2317 in it, 2317 in attempt 2; session ready 1470 ms after the reserve"
+    },
+    {
+      "check": "a viewer polling every second across both attempts and the gaps: always 200, the playlist never went back and never stopped for 8 s",
+      "ok": true,
+      "detail": "32 polls, 0 not 200, longest time without a new segment 1002 ms (segments are 2 s), segments 1791833399 to 1791833414"
+    },
+    {
+      "check": "one encoder start for the whole run so far",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "the agent sleeps: desktop paused, the stream answers 410 and the state says why",
+      "ok": true,
+      "detail": "paused in 917 ms; \"agent asleep (vault empty)\""
+    },
+    {
+      "check": "its next attempt resumes it: the stream is back under the same id, same sandbox",
+      "ok": true,
+      "detail": "first playlist 5546 ms after the attempt asked for its desktop"
+    },
+    {
+      "check": "removed: the E2B list shows none of this run's sandboxes",
+      "ok": true,
+      "detail": ""
+    }
+  ],
+  "pass": 13,
+  "total": 13
+}

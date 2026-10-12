@@ -3,6 +3,7 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { generateAgentKey } from "@units/protocol";
+import { streamIdOf } from "../../desktop/src/agent-desktops.ts";
 import { E2BBackend, e2bUsdPerS } from "../../desktop/src/e2b.ts";
 import { FakeE2B } from "../../desktop/test/fake-e2b.ts";
 import { parseConfig, Runtime, type Backend } from "../src/index.ts";
@@ -77,7 +78,9 @@ describe("per-agent desktops in the runtime", () => {
     await s.pool.agents!.settle();
     expect(s.e2b.ofAgent(a)).toHaveLength(1);
     expect(s.e2b.ofAgent(a)[0]!.metadata).toEqual({ units_desktop: "agent", owner: desktopOwner(s.cfg), agent: a });
-    expect(s.rt.spendReport().agents[a]!.desktop).toEqual({ state: "running", why: null, since: T0 });
+    // its state, and the id its live stream is served under while it runs
+    expect(s.rt.spendReport().agents[a]!.desktop).toEqual({ state: "running", why: null, since: T0, stream: streamIdOf(a) });
+    expect(s.rt.spendReport().desktops!.masked).toBe(true);
     expect(s.rt.spendReport().desktops!.e2b).toMatchObject({ running: 1, max: 100 });
     // more ticks: still the one sandbox
     await s.rt.tick();
@@ -154,6 +157,34 @@ describe("per-agent desktops in the runtime", () => {
     s.pool.stop();
   });
 
+  test("an awake agent whose vault cannot pay for an attempt: its desktop rests, with that reason; with desktop_idle_pause false an agent that can work keeps its desktop", async () => {
+    const s = setup({ desktop_idle_pause: false, desktop_idle_s: 60 });
+    await s.rt.start();
+    await s.pool.agents!.settle();
+    const [a, b] = [generateAgentKey().id, generateAgentKey().id];
+    s.world.hosted = [a, b];
+    await s.rt.tick();
+    s.bind(a);
+    s.bind(b);
+    await s.rt.tick();
+    await s.pool.agents!.settle();
+    // an hour of waiting for a turn: both still running
+    for (let i = 0; i < 12; i++) {
+      s.clock.t += 300_000;
+      await s.rt.tick();
+      await s.pool.agents!.settle();
+    }
+    expect(s.e2b.running()).toBe(2);
+    // a's vault can no longer pay (the runtime marks it exhausted)
+    (s.rt as unknown as { exhausted: Set<string>; budget: (x: string) => unknown }).exhausted.add(a);
+    (s.rt as unknown as { budget: (x: string) => unknown }).budget = () => ({ usd: null, why: "compute vault exhausted", vault: true });
+    await s.rt.tick();
+    await s.pool.agents!.settle();
+    expect(s.rt.spendReport().agents[a]!.desktop).toMatchObject({ state: "paused", why: "agent cannot pay for an attempt (vault low)", stream: null });
+    await s.rt.stop({ flush: false });
+    s.pool.stop();
+  });
+
   test("a restarted runtime takes its agents' desktops back: same sandbox ids, no new sandbox", async () => {
     const s = setup();
     await s.rt.start();
@@ -196,6 +227,16 @@ describe("config", () => {
     expect(() => parseConfig({ ...base, e2b_max: 1101 })).toThrow("e2b_max");
     expect(() => parseConfig({ ...base, desktop_idle_s: -1 })).toThrow("desktop_idle_s");
     expect(() => parseConfig({ ...base, desktop_owner: "a b" })).toThrow("desktop_owner");
+    // the mask and the idle pause are settings too: on unless the config says false
+    expect(() => parseConfig({ ...base, desktop_mask: "no" })).toThrow("desktop_mask");
+    expect(() => parseConfig({ ...base, desktop_idle_pause: 0 })).toThrow("desktop_idle_pause");
+    for (const [mask, want] of [[undefined, true], [true, true], [false, false]] as const) {
+      const d2 = scratch();
+      const pm = desktopPool(parseConfig({ ...base, state_dir: d2, e2b_max: 2, ...(mask === undefined ? {} : { desktop_mask: mask }) }), () => {}, { timers: false, e2b: new E2BBackend({ root: d2, key: null }) })!;
+      expect(pm.cfg.mask).toBe(want);
+      expect(pm.status().masked).toBe(want);
+      pm.stop();
+    }
   });
 
   test("two runtimes get different labels, the same runtime the same one", () => {

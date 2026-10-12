@@ -1,6 +1,9 @@
-import { existsSync, readFileSync, renameSync, writeFileSync } from "node:fs";
+import { createHash } from "node:crypto";
+import { existsSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import type { CreateOpts, DesktopInstance } from "./backend.ts";
+import type { CreateOpts, DesktopInstance, ExecResult } from "./backend.ts";
+import { liveArgs, parseGeom } from "./layout.ts";
+import { tilesOk } from "./e2b.ts";
 import { sandboxGone, type E2BApi, type E2BInfo, type E2BSandbox, type SessionHooks } from "./e2b.ts";
 
 // One E2B desktop per agent (owner decision 2026-10-12, docs/plans/AGENT-DESKTOPS.md "one E2B desktop
@@ -20,6 +23,14 @@ import { sandboxGone, type E2BApi, type E2BInfo, type E2BSandbox, type SessionHo
 //   the timeout runs out: a runtime that dies leaves nothing running for long and loses nothing;
 // - killed when its agent is not bound to this runtime any more.
 //
+// The live stream is the agent's, not an attempt's (owner decision 2026-10-12, "it should keep running
+// all time"): while the desktop runs, its encoder runs, across attempts and between them, and the
+// stream is served under a fixed id per agent (streamIdOf: 64 hex, so the existing
+// /desktops/<id>/live.m3u8 route and the gate carry it unchanged). An attempt's session id is a second
+// name for the same files while the attempt lasts. The files are copied to this host only while an
+// attempt runs or someone watches. With the mask on, the geometry guard runs here for the stream's
+// whole life; with it off there is nothing to guard.
+//
 // Only sandboxes with this runtime's own `owner` label are ever listed, paused or killed.
 
 export type AgentDesktopState = "starting" | "running" | "paused" | "none";
@@ -29,6 +40,28 @@ export interface AgentDesktopView {
   state: AgentDesktopState;
   why: string | null;
   since: number;
+  /** the id its live stream is served under (/desktops/<stream>/live.m3u8) while it runs, else null */
+  stream: string | null;
+}
+
+/** The fixed stream id of an agent's own desktop: 64 hex, the shape of a session id, and never one. */
+export function streamIdOf(agent: string): string {
+  return createHash("sha256").update(`units-desktop-stream\n${agent}`).digest("hex");
+}
+
+interface Stream {
+  id: string;
+  /** this host's copy of the stream files */
+  dir: string;
+  have: Set<string>;
+  /** the encoder runs on the desktop */
+  on: boolean;
+  /** the desktop session is being started afresh: no encoder until it is up */
+  hold: boolean;
+  ticking: boolean;
+  last_tick: number;
+  watched_until: number;
+  why: string | null;
 }
 
 interface Rec {
@@ -57,6 +90,10 @@ export interface AgentBackend {
   api(): Promise<E2BApi>;
   createAgent(o: { metadata: Record<string, string>; timeoutMs: number; allow: string[]; onId?: (id: string) => void }): Promise<E2BSandbox>;
   openSession(o: CreateOpts, hooks: SessionHooks): Promise<DesktopInstance>;
+  /** the desktop session with nothing in it: what the screen shows until the first attempt */
+  idleSession(sbx: E2BSandbox): Promise<void>;
+  run(sbx: E2BSandbox, argv: string[], timeoutMs?: number): Promise<ExecResult>;
+  syncStream(sbx: E2BSandbox, host: string, have: Set<string>): Promise<void>;
 }
 
 /** Read at every use, so an edited limit applies without a restart of the manager. */
@@ -79,6 +116,10 @@ export interface AgentDesktopLimits {
   remove_after_s?: number;
   /** creates at once (default 4) */
   start_parallel?: number;
+  /** false: an awake agent's desktop is never paused for idleness, however long it waits for its next attempt (default true) */
+  idle_pause?: boolean;
+  /** the stream's mask and its geometry guard (default true); false: the video as it is, no guard */
+  mask?: boolean;
 }
 
 export const AGENT_DESKTOP_DEFAULTS = { idle_s: 600, session_max_s: 3600, renew_before_s: 1800, keepalive_s: 900, resume_gap_max_s: 60, remove_after_s: 300, start_parallel: 4 } as const;
@@ -87,8 +128,10 @@ export interface AgentInfo {
   agent: string;
   /** in an attempt now */
   working: boolean;
-  /** vault empty */
+  /** it cannot work now: asleep (vault empty), or its vault cannot pay for an attempt */
   asleep: boolean;
+  /** why, in words for its page (default "agent asleep (vault empty)") */
+  asleep_why?: string;
 }
 
 const utcDay = (t: number) => new Date(t).toISOString().slice(0, 10);
@@ -100,6 +143,8 @@ export class AgentDesktops {
   private handles = new Map<string, E2BSandbox>();
   private busy = new Set<string>();
   private chains = new Map<string, Promise<unknown>>();
+  /** agents with a step requested or in flight */
+  private ops = new Map<string, number>();
   private wanted = new Map<string, AgentInfo>();
   /** slots held for an agent's next open */
   private holds = new Map<string, number>();
@@ -110,6 +155,10 @@ export class AgentDesktops {
   private starting = 0;
   private startQueue: (() => void)[] = [];
   private timer: ReturnType<typeof setInterval> | null = null;
+  private streamTimer: ReturnType<typeof setInterval> | null = null;
+  private streams = new Map<string, Stream>();
+  /** agents whose attempt is opening its session on the desktop right now */
+  private opening = new Set<string>();
   private warned = new Set<string>();
   private now: () => number;
   private log: (m: string) => void;
@@ -141,12 +190,149 @@ export class AgentDesktops {
     if (o.timers !== false) {
       this.timer = setInterval(() => this.maintain(), 30_000);
       (this.timer as { unref?: () => void }).unref?.();
+      this.streamTimer = setInterval(() => void this.streamPass(), 1000);
+      (this.streamTimer as { unref?: () => void }).unref?.();
     }
   }
 
   stop() {
     if (this.timer) clearInterval(this.timer);
     this.timer = null;
+    if (this.streamTimer) clearInterval(this.streamTimer);
+    this.streamTimer = null;
+  }
+
+  // ------------------------------------------------------------------ the agent's live stream
+
+  private get mask() {
+    return this.o.limits.mask !== false;
+  }
+
+  private streamOf(agent: string): Stream {
+    let s = this.streams.get(agent);
+    if (!s) {
+      const id = streamIdOf(agent);
+      s = { id, dir: join(this.o.root, "live", `agent-${id.slice(0, 24)}`), have: new Set(), on: false, hold: false, ticking: false, last_tick: 0, watched_until: 0, why: null };
+      this.streams.set(agent, s);
+    }
+    return s;
+  }
+
+  private streamFile(s: Stream) {
+    return join(this.o.root, "sessions", `${s.id}.json`);
+  }
+
+  /** The stream directories on this host (the pool's sweep leaves them). */
+  streamDirs(): string[] {
+    return [...this.streams.values()].map((s) => s.dir.split("/").pop()!);
+  }
+
+  /** The desktop runs: its stream is served under the agent's stream id from now on. */
+  private streamUp(agent: string) {
+    const s = this.streamOf(agent);
+    try {
+      mkdirSync(s.dir, { recursive: true, mode: 0o755 });
+      mkdirSync(join(this.o.root, "sessions"), { recursive: true });
+      let started = this.now();
+      try {
+        const j = JSON.parse(readFileSync(this.streamFile(s), "utf8"));
+        if (!j.ended_at && typeof j.started_at === "number") started = j.started_at;
+      } catch {
+        /* first time */
+      }
+      writeFileSync(this.streamFile(s), JSON.stringify({ dir: s.dir, backend: "e2b", agent, agent_stream: true, started_at: started, ended_at: null }));
+    } catch (e) {
+      this.once(`streamup:${msg(e)}`, `agent desktops: stream record not written: ${msg(e)}`);
+    }
+  }
+
+  /** The desktop stops running (paused, removed, gone): the stream ends (410) and this host's copy is dropped. `sbx`: stop the encoder first. */
+  private async streamDown(agent: string, why: string, sbx?: E2BSandbox | null) {
+    const s = this.streams.get(agent);
+    if (!s) return;
+    if (sbx && s.on) await this.o.backend.run(sbx, ["desk-stop", "live", "KILL", "2"], 10_000).catch(() => undefined);
+    s.on = false;
+    s.have.clear();
+    try {
+      const f = this.streamFile(s);
+      if (existsSync(f)) writeFileSync(f, JSON.stringify({ ...JSON.parse(readFileSync(f, "utf8")), ended_at: this.now(), ended_why: why }));
+      rmSync(s.dir, { recursive: true, force: true });
+    } catch {
+      /* nothing to end */
+    }
+  }
+
+  /** A viewer asked for a file of the stream in `dir` (serve.ts): keep this host's copy fresh for the next 30 s. */
+  watched(dir: string): void {
+    for (const s of this.streams.values()) if (s.dir === dir) s.watched_until = this.now() + 30_000;
+  }
+
+  /**
+   * One pass over the running desktops (every second): keeps each one's encoder running (with the mask
+   * on: only while every window is inside its tile, as an attempt's guard did), and copies the stream
+   * to this host while an attempt runs on the desktop or someone watches. A desktop that is neither
+   * is looked at every 5 s.
+   */
+  async streamPass(): Promise<void> {
+    const jobs: Promise<void>[] = [];
+    for (const [agent, r] of this.recs) {
+      // a create, pause or resume in flight settles first; an attempt's start on windows that stay does not stop the stream
+      if (r.state !== "running" || (this.ops.has(agent) && !this.opening.has(agent))) continue;
+      const s = this.streamOf(agent);
+      const t = this.now();
+      const active = this.busy.has(agent) || s.watched_until > t;
+      if (s.ticking || s.hold || t - s.last_tick < (active ? 1000 : 5000) - 50) continue;
+      const sbx = this.handles.get(agent);
+      if (!sbx) {
+        // found again after a restart: a handle first (connect only extends the timeout)
+        void this.chain(agent, () => this.resume(agent));
+        continue;
+      }
+      s.ticking = true;
+      s.last_tick = t;
+      jobs.push(this.streamTick(agent, s, sbx, active).catch(() => undefined).finally(() => (s.ticking = false)));
+    }
+    await Promise.all(jobs);
+  }
+
+  private async streamTick(agent: string, s: Stream, sbx: E2BSandbox, active: boolean): Promise<void> {
+    const b = this.o.backend;
+    // the windows (the mask is by position) and whether the encoder is still there, in one command
+    const g = await b.run(sbx, ["sh", "-c", `${this.mask ? "desk-geom; " : ""}echo ---; p=$(cat /tmp/desk/live.pid 2>/dev/null); [ -n "$p" ] && kill -0 "$p" 2>/dev/null && echo alive; test -f /tmp/desk/ready && echo ready`], 8000);
+    if (this.handles.get(agent) !== sbx || s.hold || this.recs.get(agent)?.state !== "running") return;
+    if (g.code !== 0) return; // not reachable now: the attempt's own recovery, or the next read of the list, settles it
+    const [geom = "", rest = ""] = g.stdout.split("---");
+    const alive = /\balive\b/.test(rest);
+    const ready = /\bready\b/.test(rest);
+    let ok = ready;
+    let why: string | null = ready ? null : "the desktop session is not up";
+    if (ok && this.mask) {
+      const wins = parseGeom(geom);
+      const missing = ["LineageEditor", "LineageRun"].find((c) => !wins.some((w) => w.cls === c));
+      why = missing ? `${missing === "LineageEditor" ? "editor" : "run"} window missing` : tilesOk(wins) ? null : "a window is outside its tile";
+      ok = !why;
+    }
+    if (s.on && !alive) s.on = false;
+    if (!ok && (s.on || alive)) {
+      await b.run(sbx, ["sh", "-c", "desk-stop live KILL 2; rm -f /tmp/stream/*.tmp"], 10_000);
+      s.on = false;
+      this.log(`agent desktops: ${agent.slice(0, 6)} blackout (${why}); live stream stopped`);
+    } else if (ok && !s.on) {
+      // a stale encoder (the desktop was paused under it) goes first
+      const r = await b.run(sbx, ["sh", "-c", `desk-stop live KILL 2; mkdir -p /tmp/stream; rm -f /tmp/stream/*; desk-bg live ${liveArgs("/tmp/stream", ":0", this.mask).map((a) => `'${a.replace(/'/g, `'\\''`)}'`).join(" ")}`], 15_000);
+      s.on = r.code === 0;
+      s.have.clear();
+      if (s.why && !why) this.log(`agent desktops: ${agent.slice(0, 6)} live stream back`);
+    }
+    s.why = why;
+    if (s.on && active) {
+      mkdirSync(s.dir, { recursive: true, mode: 0o755 });
+      await b.syncStream(sbx, s.dir, s.have).catch(() => undefined);
+    } else if (!active && s.have.size) {
+      // nobody watches: this host's copy would go stale, so it is dropped (a new viewer is told "starting" for a second)
+      s.have.clear();
+      rmSync(s.dir, { recursive: true, force: true });
+    }
   }
 
   // ------------------------------------------------------------------ settings
@@ -217,6 +403,15 @@ export class AgentDesktops {
   /** One thing at a time per agent. */
   private chain<T>(agent: string, f: () => Promise<T>): Promise<T> {
     const p = (this.chains.get(agent) ?? Promise.resolve()).catch(() => undefined).then(f);
+    // counted from the request to its end, and released before whoever waits on it goes on
+    this.ops.set(agent, (this.ops.get(agent) ?? 0) + 1);
+    void p
+      .finally(() => {
+        const n = (this.ops.get(agent) ?? 1) - 1;
+        if (n > 0) this.ops.set(agent, n);
+        else this.ops.delete(agent);
+      })
+      .catch(() => undefined);
     const tail = p.catch(() => undefined);
     this.chains.set(agent, tail);
     void tail.then(() => {
@@ -315,7 +510,7 @@ export class AgentDesktops {
     }
     for (const [agent, infos] of by) {
       // an agent in the middle of a create or a resume: its own step settles its record
-      if (this.chains.has(agent)) continue;
+      if (this.ops.has(agent)) continue;
       const r = this.rec(agent);
       const keep = infos.find((i) => i.sandboxId === r.sandbox_id) ?? infos.slice().sort((a, b) => a.startedAt.getTime() - b.startedAt.getTime())[0]!;
       for (const i of infos) {
@@ -333,7 +528,9 @@ export class AgentDesktops {
         r.run_started_at = keep.startedAt.getTime();
         r.expires_at = keep.endAt.getTime();
         if (r.state !== "running") this.set(r, "running", null);
+        this.streamUp(agent);
       } else {
+        if (r.state === "running") void this.streamDown(agent, "desktop paused by E2B");
         if (r.state === "running") {
           // E2B paused it (its timeout ran out): it ran until then
           this.meter(r, Math.min(this.now(), r.expires_at ?? r.metered_to ?? this.now()));
@@ -347,7 +544,7 @@ export class AgentDesktops {
       if (first || adopted) this.log(`agent desktops: ${agent.slice(0, 6)} has its desktop ${short(keep.sandboxId)} back (${keep.state})`);
     }
     for (const [agent, r] of this.recs) {
-      if (!r.sandbox_id || by.has(agent) || this.chains.has(agent)) continue;
+      if (!r.sandbox_id || by.has(agent) || this.ops.has(agent)) continue;
       if (r.state === "running") this.meter(r, Math.min(this.now(), r.expires_at ?? this.now()));
       this.log(`agent desktops: ${agent.slice(0, 6)} desktop ${short(r.sandbox_id)} is no longer at E2B`);
       r.sandbox_id = null;
@@ -355,6 +552,7 @@ export class AgentDesktops {
       r.run_started_at = null;
       this.handles.delete(agent);
       this.set(r, "none", "its sandbox is no longer at E2B; a new one is made");
+      void this.streamDown(agent, "desktop gone");
     }
     this.listed = true;
     this.save();
@@ -391,7 +589,7 @@ export class AgentDesktops {
         this.meter(r, t);
         dirty = true;
       }
-      if (this.chains.has(agent)) continue;
+      if (this.ops.has(agent)) continue;
       if (!w) {
         if (!fromSync) continue;
         r.unwanted_since ??= t;
@@ -408,7 +606,7 @@ export class AgentDesktops {
         this.keepalive(agent, r);
         continue;
       }
-      const why = w.asleep ? "agent asleep (vault empty)" : this.budgetUsedUp() ? `day cap reached (${this.o.spentToday().toFixed(4)} of ${this.o.limits.desktop_usd_per_day} USD, UTC day ${utcDay(t)})` : t - r.last_used_at >= this.lim("idle_s") * 1000 ? "agent idle" : null;
+      const why = w.asleep ? (w.asleep_why ?? "agent asleep (vault empty)") : this.budgetUsedUp() ? `day cap reached (${this.o.spentToday().toFixed(4)} of ${this.o.limits.desktop_usd_per_day} USD, UTC day ${utcDay(t)})` : this.o.limits.idle_pause !== false && t - r.last_used_at >= this.lim("idle_s") * 1000 ? "agent idle" : null;
       if (why) void this.chain(agent, () => this.pause(agent, why));
       else if (r.run_started_at !== null && t - r.run_started_at >= this.sessionMs - this.renewBeforeMs) void this.chain(agent, () => this.renew(agent));
       else this.keepalive(agent, r);
@@ -452,7 +650,7 @@ export class AgentDesktops {
     if (this.runningCount(forAgent) < max) return null;
     let pick: string | null = null;
     for (const [a, r] of this.recs) {
-      if (a === forAgent || r.state !== "running" || this.busy.has(a) || this.holds.has(a) || this.chains.has(a)) continue;
+      if (a === forAgent || r.state !== "running" || this.busy.has(a) || this.holds.has(a) || this.ops.has(a)) continue;
       if (!pick || r.last_used_at < this.recs.get(pick)!.last_used_at) pick = a;
     }
     if (pick) {
@@ -522,7 +720,10 @@ export class AgentDesktops {
       r.fails = 0;
       r.retry_at = 0;
       this.handles.set(agent, sbx);
+      // its screen is live from here on: the desktop session with nothing in it yet
+      await this.o.backend.idleSession(sbx).catch((e) => this.log(`agent desktops: ${agent.slice(0, 6)} first desktop session not started (${msg(e)}); the first attempt starts it`));
       this.set(r, "running", null);
+      this.streamUp(agent);
       this.log(`agent desktops: ${agent.slice(0, 6)} desktop ${short(sbx.sandboxId)} created in ${((t - t0) / 1000).toFixed(1)} s`);
       return null;
     } catch (e) {
@@ -554,9 +755,14 @@ export class AgentDesktops {
     const r = this.recs.get(agent);
     if (!r?.sandbox_id || r.state !== "running" || this.busy.has(agent)) return false;
     const t0 = this.now();
+    // the encoder stops cleanly first: a paused encoder would wake into a gap in its own clock
+    const h = this.handles.get(agent);
+    if (h && this.streams.get(agent)?.on) await this.o.backend.run(h, ["desk-stop", "live", "KILL", "2"], 10_000).catch(() => undefined);
     try {
       await (await this.o.backend.api()).pause(r.sandbox_id);
     } catch (e) {
+      const st = this.streams.get(agent);
+      if (st) st.on = false; // the next pass starts it again
       // E2B may refuse a pause when its node is busy (503): the desktop keeps running and the next pass tries again
       this.once(`pause:${agent}:${msg(e)}`, `agent desktops: ${agent.slice(0, 6)} not paused (${msg(e)}); tried again at the next pass`);
       if (sandboxGone(e)) void this.reconcile();
@@ -568,6 +774,7 @@ export class AgentDesktops {
     r.expires_at = null;
     this.handles.delete(agent);
     this.set(r, "paused", why);
+    await this.streamDown(agent, `desktop paused: ${why}`);
     this.save();
     this.log(`agent desktops: ${agent.slice(0, 6)} desktop ${short(r.sandbox_id)} paused in ${((this.now() - t0) / 1000).toFixed(1)} s: ${why}`);
     return true;
@@ -598,6 +805,9 @@ export class AgentDesktops {
       // connect only ever extends the timeout
       r.expires_at = Math.max(r.expires_at ?? 0, t + this.keepaliveMs);
       this.set(r, "running", null);
+      const st = this.streamOf(agent);
+      if (was !== "running") st.on = false;
+      this.streamUp(agent);
       this.save();
       return null;
     } catch (e) {
@@ -645,6 +855,8 @@ export class AgentDesktops {
       if (r.state === "running") this.meter(r);
       this.log(`agent desktops: ${agent.slice(0, 6)} desktop ${short(r.sandbox_id)} removed: ${why}`);
     }
+    await this.streamDown(agent, "desktop removed");
+    this.streams.delete(agent);
     this.recs.delete(agent);
     this.handles.delete(agent);
     this.holds.delete(agent);
@@ -700,8 +912,16 @@ export class AgentDesktops {
         let lost = false;
         let recovering: Promise<boolean> | null = null;
         try {
+          const st = this.streamOf(agent);
+          this.opening.add(agent);
           const inst = await this.o.backend.openSession(o, {
             box,
+            hostDir: st.dir,
+            restarting: async () => {
+              st.hold = true;
+              if (st.on) await this.o.backend.run(box.sbx, ["desk-stop", "live", "KILL", "2"], 10_000).catch(() => undefined);
+              st.on = false;
+            },
             recover: (e) => (lost ? Promise.resolve(false) : (recovering ??= this.recover(agent, box, e).then((ok) => ((lost = !ok), (recovering = null), ok)))),
             closed: () => {
               this.busy.delete(agent);
@@ -709,8 +929,13 @@ export class AgentDesktops {
               this.save();
             },
           });
+          this.opening.delete(agent);
+          st.hold = false;
+          st.last_tick = 0;
           return { ...inst, lost: () => lost };
         } catch (e) {
+          this.opening.delete(agent);
+          this.streamOf(agent).hold = false;
           this.busy.delete(agent);
           this.log(`agent desktops: ${agent.slice(0, 6)} session not opened on ${short(r.sandbox_id)}: ${msg(e)}`);
           if (sandboxGone(e)) void this.reconcile();
@@ -749,6 +974,9 @@ export class AgentDesktops {
       this.meter(r, Math.min(t, r.expires_at ?? t));
       r.metered_to = t;
       r.run_started_at = t;
+      // its encoder slept through the pause: the next stream pass starts a fresh one
+      this.streamOf(agent).on = false;
+      this.streamUp(agent);
       this.log(`agent desktops: ${agent.slice(0, 6)} desktop ${short(id)} was paused by E2B under a running attempt; back after ${((t - t0) / 1000).toFixed(1)} s`);
     }
     r.expires_at = Math.max(r.expires_at ?? 0, t + this.keepaliveMs);
@@ -763,7 +991,7 @@ export class AgentDesktops {
   view(agent: string): AgentDesktopView | null {
     const r = this.recs.get(agent);
     // a service's own error text stays in the log: the page gets the reason without it
-    return r ? { state: r.state, why: r.why ? r.why.replace(/^(create failed|resume failed): .*?(; next try|; its sandbox|$)/, "$1$2") : null, since: r.since } : null;
+    return r ? { state: r.state, why: r.why ? r.why.replace(/^(create failed|resume failed): .*?(; next try|; its sandbox|$)/, "$1$2") : null, since: r.since, stream: r.state === "running" ? streamIdOf(agent) : null } : null;
   }
 
   /** The sandbox id of an agent's desktop (proofs and logs; never on a page). */

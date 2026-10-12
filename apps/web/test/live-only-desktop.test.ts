@@ -6,6 +6,7 @@ import { desktopOf, desktopWaitOf, idleCaption, idleHeadline, idleStatus, idleSu
 
 describe("the agent's own desktop in the idle state", () => {
   const now = Date.UTC(2026, 9, 12, 12);
+
   test("read from the spend report; absent or malformed is no desktop state at all", async () => {
     expect(desktopOf({ spend: { desktop: { state: "paused", why: "agent idle", since: 5 } } })).toEqual({ state: "paused", why: "agent idle", since: 5 });
     expect(desktopOf({ spend: { desktop: { state: "melted" } } })).toBeNull();
@@ -62,5 +63,17 @@ describe("waiting for a desktop", () => {
     const fine = await idleStatus(async () => ({ spend: { waiting: null } }), "agent-fine-x", null);
     expect(fine).toEqual({ kind: "next", last_end: null });
     expect(idleHeadline(fine, now)).toBe("Agent idle: no session has run yet");
+  });
+  test("a running desktop's stream id and the runtime's mask setting are read from the report; only a running desktop has a stream", async () => {
+    const sid = "c".repeat(64);
+    expect(desktopOf({ spend: { desktop: { state: "running", why: null, since: 1, stream: sid } } })).toEqual({ state: "running", why: null, since: 1, stream: sid });
+    expect(desktopOf({ spend: { desktop: { state: "paused", why: "agent asleep (vault empty)", since: 1, stream: sid } } })).toEqual({ state: "paused", why: "agent asleep (vault empty)", since: 1 });
+    expect(desktopOf({ spend: { desktop: { state: "running", why: null, since: 1, stream: "x/../y" } } })).toEqual({ state: "running", why: null, since: 1 });
+    const st = await idleStatus(async () => ({ desktop_masked: false, spend: { waiting: null, desktop: { state: "running", why: null, since: now, stream: sid } } }), "agent-with-a-live-desktop", now);
+    expect(st.desktop?.stream).toBe(sid);
+    expect(st.masked).toBe(false);
+    // between sessions with a running desktop the words never say the desktop ended
+    expect(idleHeadline({ kind: "next", last_end: now - 30_000, desktop: st.desktop }, now)).toBe("Next session starting");
+    expect(idleHeadline({ kind: "next", last_end: now - 30_000, desktop: st.desktop }, now)).not.toContain("Desktop ended");
   });
 });

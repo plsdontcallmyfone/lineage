@@ -3,6 +3,7 @@ import { homedir } from "node:os";
 import { join } from "node:path";
 import { randomBytes } from "node:crypto";
 import { b64, type CreateOpts, type DesktopBackend, type DesktopInstance, type ExecResult } from "./backend.ts";
+import { CLASSES, inside, parseGeom, TILES, type Rect, type Tile } from "./layout.ts";
 
 // E2B Desktop overflow backend (owner decision 2026-10-10): used only when our own server's desktop
 // slots are full, at most `e2b_max` at once, and only while the day's E2B spend (UTC) is under
@@ -147,8 +148,12 @@ export interface SessionHooks {
   box: { sbx: E2BSandbox };
   /** a command could not reach the sandbox: true when it is back (try once more), false when it is lost */
   recover?(e: unknown): Promise<boolean>;
-  /** the session closed (the sandbox stays) */
+  /** the attempt's use of the desktop ended (the sandbox, its windows and its stream stay) */
   closed(): void;
+  /** where the agent's stream files are on this host */
+  hostDir: string;
+  /** the desktop session is about to be started afresh: the stream stops for it */
+  restarting?(): Promise<void>;
 }
 
 const TOOLS = ["xdotool", "ffmpeg", "openbox", "xterm", "micro", "rg", "git", "xdpyinfo"];
@@ -323,7 +328,7 @@ export class E2BBackend implements DesktopBackend {
     if (r.code !== 0) throw new Error(`e2b desktop: not provisioned: ${r.stderr.slice(0, 160)}`);
   }
 
-  /** Stops what a session left on an agent's desktop: the encoder, the windows, the tree copy, the browser profile. */
+  /** Stops everything a session put on an agent's desktop: the encoder, the windows, the tree copy, the browser profile. */
   private closeLine() {
     return [
       `for n in live rec; do [ -x ${DESK}/bin/desk-stop ] && ${DESK}/bin/desk-stop $n KILL 2; done`,
@@ -336,37 +341,96 @@ export class E2BBackend implements DesktopBackend {
   }
 
   /**
-   * One attempt's session on an agent's own desktop: what the last session left is cleared, the
-   * runtime's working tree is copied in and the desktop session starts. `destroy` ends the session and
-   * leaves the sandbox; it bills nothing here (the per-agent desktops count the sandbox's running time).
+   * Makes a desktop whose windows are up ready for the next attempt without closing anything, so its
+   * live stream goes on: the editor leaves its file, both terminals are cleared, what the run terminal
+   * showed is deleted, and the tree copy is emptied in place (the terminals stand in that directory).
+   */
+  private resetLine() {
+    return [
+      "pkill -x micro",
+      `${DESK}/bin/desk-cmd term clear`,
+      `${DESK}/bin/desk-cmd run clear`,
+      "rm -rf /tmp/desk/show/* /tmp/repo.tgz",
+      `mkdir -p ${REPO} && find ${REPO} -mindepth 1 -delete`,
+    ].join("; ");
+  }
+
+  /** One command on a sandbox as the desktop user (the per-agent desktops' stream guard and encoder). */
+  run(sbx: E2BSandbox, argv: string[], timeoutMs = 30_000): Promise<ExecResult> {
+    return this.shell({ sbx }, "about:blank")(argv.map(shq).join(" "), timeoutMs);
+  }
+
+  /** Copies what the desktop's playlist lists to `host` (new files first, the playlist last). */
+  syncStream(sbx: E2BSandbox, host: string, have: Set<string>): Promise<void> {
+    return syncStreamFiles(sbx, host, have);
+  }
+
+  /**
+   * The desktop session with nothing in it (an empty tree, a blank browser page): what an agent's
+   * desktop shows from its creation until its first attempt, so its screen is live from the start.
+   */
+  async idleSession(sbx: E2BSandbox): Promise<void> {
+    const sh = this.shell({ sbx }, "about:blank");
+    await sh(this.closeLine(), 30_000);
+    await sh(`mkdir -p ${REPO} /tmp/stream`);
+    await this.stopTemplateDesktop(sh);
+    await this.startSession(sh);
+  }
+
+  /**
+   * One attempt's session on an agent's own desktop. The windows stay when they are all up and in
+   * their tiles (the stream goes on across the attempt's start): the tiles are reset, the runtime's
+   * working tree replaces the copy and the browser goes to the attempt's page. Otherwise the desktop
+   * session is started afresh (`hooks.restarting` first: the stream stops for it). `destroy` ends the
+   * attempt's use of the desktop: the tiles are cleared and the tree copy deleted, the windows and the
+   * stream stay, so the screen is live between attempts and shows an idle desktop. It bills nothing here (the per-agent desktops count the sandbox's running time).
    */
   async openSession(o: CreateOpts, hooks: SessionHooks): Promise<DesktopInstance> {
     const box = hooks.box;
     const id = randomBytes(8).toString("hex");
-    const host = join(this.o.root, "live", id);
-    mkdirSync(host, { recursive: true, mode: 0o755 });
     const sh = this.shell(box, o.homeUrl, hooks.recover);
     let closed = false;
+    // the browser's page, typed into the address bar as the driver does
+    const goto = (url: string) => `w=$(xdotool search --onlyvisible --class LineageBrowser | head -1); [ -n "$w" ] && xdotool windowactivate --sync "$w" key --clearmodifiers ctrl+l && xdotool type --delay 8 --clearmodifiers ${shq(url)} && xdotool key --clearmodifiers Return`;
+    let opened = false;
     const close = async () => {
       if (closed) return;
       closed = true;
-      // no recovery here: a sandbox that is gone has nothing left to stop
-      await this.shell(box, o.homeUrl)(this.closeLine(), 30_000).catch(() => undefined);
+      // The attempt is over and the screen stays live. What the attempt put on it does not stay: the
+      // editor leaves its file, the terminals are cleared, the tree copy is deleted and the browser goes
+      // back to the repository's page, so the screen between attempts shows nothing of the attempt that
+      // a viewer could not already see while it ran (SPEC 10.7: nothing left to link a later candidate
+      // to this agent). No recovery here: a sandbox that is gone has nothing left to clear.
+      if (opened) await this.shell(box, o.homeUrl)(`${this.resetLine()}; ${goto(o.homeUrl)}; true`, 30_000).catch(() => undefined);
       hooks.closed();
     };
     try {
       await this.prepareAgent(box.sbx, o.allow);
-      const c = await sh(this.closeLine(), 30_000);
-      if (c.code !== 0) throw new Error(`e2b desktop: could not clear the last session: ${c.stderr.slice(0, 160)}`);
-      const u = await this.uploadTree(box.sbx, sh, o.tree);
-      if (u.code !== 0) throw new Error(`e2b desktop: tree not unpacked: ${u.stderr.slice(0, 160)}`);
-      await this.startSession(sh);
+      const g = await sh(`${DESK}/bin/desk-geom`, 8000);
+      const wins = g.code === 0 ? parseGeom(g.stdout) : [];
+      const up = ["LineageEditor", "LineageTerm", "LineageRun", "LineageBrowser"].every((c) => wins.some((w) => w.cls === c)) && tilesOk(wins);
+      let soft = false;
+      if (up) {
+        const r = await sh(this.resetLine(), 30_000);
+        const u = r.code === 0 ? await this.uploadTree(box.sbx, sh, o.tree) : r;
+        soft = u.code === 0;
+        // the attempt's first page
+        if (soft) await sh(goto(o.homeUrl), 20_000);
+      }
+      if (!soft) {
+        await hooks.restarting?.();
+        const c = await sh(this.closeLine(), 30_000);
+        if (c.code !== 0) throw new Error(`e2b desktop: could not clear the last session: ${c.stderr.slice(0, 160)}`);
+        const u = await this.uploadTree(box.sbx, sh, o.tree);
+        if (u.code !== 0) throw new Error(`e2b desktop: tree not unpacked: ${u.stderr.slice(0, 160)}`);
+        await this.startSession(sh);
+      }
+      opened = true;
     } catch (e) {
       await close();
-      rmSync(host, { recursive: true, force: true });
       throw e;
     }
-    return this.instance(box, sh, id, host, close, 0);
+    return { ...this.instance(box, sh, id, hooks.hostDir, close, 0), sync: async () => {}, managedStream: true };
   }
 
   private instance(box: { sbx: E2BSandbox }, sh: (cmd: string, timeoutMs?: number) => Promise<ExecResult>, id: string, host: string, destroy: () => Promise<void>, usdPerS: number): DesktopInstance {
@@ -396,34 +460,46 @@ export class E2BBackend implements DesktopBackend {
       push: async (rel, bytes) => {
         await box.sbx.files.write(`${REPO}/${rel}`, bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer);
       },
-      sync: async () => {
-        // the playlist names what exists; fetch what is new, then publish the playlist last
-        let pl: Uint8Array;
-        try {
-          pl = await box.sbx.files.read("/tmp/stream/live.m3u8", { format: "bytes" });
-        } catch {
-          return;
-        }
-        const text = new TextDecoder().decode(pl);
-        const names = playlistFiles(text);
-        for (const n of names) {
-          if (have.has(n)) continue;
-          try {
-            const b = await box.sbx.files.read(`/tmp/stream/${n}`, { format: "bytes" });
-            writeFileSync(join(host, `${n}.part`), b);
-            renameSync(join(host, `${n}.part`), join(host, n));
-            have.add(n);
-          } catch {
-            return; // not there yet; next round
-          }
-        }
-        writeFileSync(join(host, "live.m3u8.part"), text);
-        renameSync(join(host, "live.m3u8.part"), join(host, "live.m3u8"));
-        for (const f of readdirSync(host)) if (f.startsWith("seg-") && !names.includes(f)) rmSync(join(host, f), { force: true }), have.delete(f);
-      },
+      sync: () => syncStreamFiles(box.sbx, host, have),
       destroy,
     };
   }
+}
+
+/** Brings what a desktop's playlist lists to `host`: files not yet there first, then the playlist; files it no longer lists are removed. */
+export async function syncStreamFiles(sbx: E2BSandbox, host: string, have: Set<string>): Promise<void> {
+  // the playlist names what exists; fetch what is new, then publish the playlist last
+  let pl: Uint8Array;
+  try {
+    pl = await sbx.files.read("/tmp/stream/live.m3u8", { format: "bytes" });
+  } catch {
+    return;
+  }
+  const text = new TextDecoder().decode(pl);
+  const names = playlistFiles(text);
+  for (const n of names) {
+    if (have.has(n)) continue;
+    try {
+      const b = await sbx.files.read(`/tmp/stream/${n}`, { format: "bytes" });
+      writeFileSync(join(host, `${n}.part`), b);
+      renameSync(join(host, `${n}.part`), join(host, n));
+      have.add(n);
+    } catch {
+      return; // not there yet; next round
+    }
+  }
+  writeFileSync(join(host, "live.m3u8.part"), text);
+  renameSync(join(host, "live.m3u8.part"), join(host, "live.m3u8"));
+  for (const f of readdirSync(host)) if (f.startsWith("seg-") && !names.includes(f)) rmSync(join(host, f), { force: true }), have.delete(f);
+}
+
+/** Every window of the desktop's classes lies inside its own tile (the mask is by screen position). */
+export function tilesOk(wins: { cls: string; rect: Rect }[]): boolean {
+  for (const w of wins) {
+    const t = (Object.keys(CLASSES) as Tile[]).find((k) => CLASSES[k] === w.cls);
+    if (t && !inside(w.rect, TILES[t])) return false;
+  }
+  return true;
 }
 
 /** Files an HLS media playlist references (its map and segments), names only. */

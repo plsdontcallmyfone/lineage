@@ -41,7 +41,7 @@ export function startRecordingPublisher(pool: DesktopPool, core: string, keyOf: 
 
 /** Serves /desktops/* first, then whatever else shares the port (the bind endpoint). */
 export function withDesktops(pool: DesktopPool | null, rest?: (req: Request) => Promise<Response>) {
-  const desk = pool ? desktopHandler(pool.cfg.root) : null;
+  const desk = pool ? desktopHandler(pool.cfg.root, (dir) => pool.agents?.watched(dir)) : null;
   return async (req: Request): Promise<Response> => {
     const r = desk ? await desk(req) : null;
     if (r) return r;

@@ -196,6 +196,19 @@ const runtimeCfg: Record<string, any> = {
   desktop_resume_gap_max_s: 60,
   desktop_remove_after_s: 300,
   desktop_start_parallel: 4,
+  // per_agent only: true pauses an awake agent's desktop after desktop_idle_s without an attempt; false
+  // keeps it running and its screen live however long it waits for its turn (owner 2026-10-12, "it
+  // should keep running all time"): then a desktop rests only when its agent cannot work (asleep, or
+  // its vault cannot pay), at the day budget, or to make room at e2b_max. What false costs at most:
+  // every desktop running all day, 0.1656 x 24 = 3.97 USD per agent-day (50 agents: 198.72 USD).
+  desktop_idle_pause: true,
+  // The live video's mask. Owner decision 2026-10-12 ("we don't want to be blurred"): OFF on both
+  // networks. The video shows the desktop as it is, the editor and the run terminal included, and no
+  // window check stops the stream. What it trades: a viewer can read a change before it is committed
+  // (the mask existed so nobody could copy a change in progress and submit it first). Only the video:
+  // session events, notes, patch text and evaluation output stay sealed at Core until the verdict.
+  // true brings the pixelation and its geometry guard back.
+  desktop_mask: false,
   // one E2B day budget for every instance on this server (packages/runtime desktops.ts): this one
   // publishes its spend there and counts a second instance's; with no second instance (no directory,
   // no peer file) nothing changes

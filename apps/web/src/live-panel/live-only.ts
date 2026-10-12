@@ -20,7 +20,9 @@ export interface IdleStatus {
   /** when the agent's last session ended (ms), or null when Core lists none */
   last_end: number | null;
   /** the agent's own desktop as the runtime reports it (one E2B desktop per agent); absent when desktops are per attempt */
-  desktop?: { state: "starting" | "running" | "paused" | "none"; why: string | null; since: number | null } | null;
+  desktop?: { state: "starting" | "running" | "paused" | "none"; why: string | null; since: number | null; stream?: string | null } | null;
+  /** whether the runtime masks the live video (editor text and run terminal pixelated); null or absent when it did not say */
+  masked?: boolean | null;
   /** why the agent's attempts do not start for want of a desktop, in the runtime's words (a funded, bound agent); absent otherwise */
   waiting_desktop?: string;
 }
@@ -36,7 +38,9 @@ export function desktopWaitOf(spend: any): string | null {
 export function desktopOf(spend: any): IdleStatus["desktop"] {
   const d = spend?.spend?.desktop;
   if (!d || typeof d !== "object" || !["starting", "running", "paused", "none"].includes(d.state)) return null;
-  return { state: d.state, why: typeof d.why === "string" && d.why ? d.why : null, since: typeof d.since === "number" ? d.since : null };
+  // the id the agent's own stream is served under while its desktop runs: the screen stays live between sessions
+  const stream = d.state === "running" && typeof d.stream === "string" && /^[0-9a-f]{64}$/.test(d.stream) ? d.stream : null;
+  return { state: d.state, why: typeof d.why === "string" && d.why ? d.why : null, since: typeof d.since === "number" ? d.since : null, ...(stream ? { stream } : {}) };
 }
 
 /** What the screen says instead of a picture while the agent's own desktop is not running: text only. */
@@ -73,7 +77,8 @@ export async function idleStatus(get: (path: string) => Promise<any>, agent: str
   const kind = pauseOf(spend) ?? "next";
   const desktop = desktopOf(spend);
   const wait = kind === "next" ? desktopWaitOf(spend) : null;
-  return { kind, last_end: lastEnd, ...(desktop ? { desktop } : {}), ...(wait ? { waiting_desktop: wait } : {}) };
+  const masked = typeof spend?.desktop_masked === "boolean" ? { masked: spend.desktop_masked as boolean } : {};
+  return { kind, last_end: lastEnd, ...(desktop ? { desktop } : {}), ...(wait ? { waiting_desktop: wait } : {}), ...masked };
 }
 
 /** When a session ended: its end, else its last event (a session that never closed). */

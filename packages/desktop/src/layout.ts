@@ -105,12 +105,30 @@ export const LIVE_CODEC = "avc1.42e020"; // constrained baseline, level 3.2 (128
 export const LIVE_FPS = 5;
 export const SEGMENT_S = 2;
 
-/** ffmpeg argv for the live stream: x11grab, the redaction filter, fMP4 HLS into `dir`. */
-export function liveArgs(dir: string, display = ":0"): string[] {
+/**
+ * The filter graph of an unmasked live stream (runtime config `desktop_mask` false, owner decision
+ * 2026-10-12: the desktop video is shown as it is): the screen, nothing pixelated.
+ */
+export function plainFilter(): string {
+  return "[0:v]format=yuv420p[v]";
+}
+
+/** What desk-geom printed: one window per line, "<class> <x> <y> <w> <h>". */
+export function parseGeom(text: string): { cls: string; rect: Rect }[] {
+  const out: { cls: string; rect: Rect }[] = [];
+  for (const l of text.split("\n")) {
+    const m = /^(\w+) (-?\d+) (-?\d+) (\d+) (\d+)$/.exec(l.trim());
+    if (m) out.push({ cls: m[1]!, rect: { x: +m[2]!, y: +m[3]!, w: +m[4]!, h: +m[5]! } });
+  }
+  return out;
+}
+
+/** ffmpeg argv for the live stream: x11grab, the redaction filter (`mask`, default on) or none, fMP4 HLS into `dir`. */
+export function liveArgs(dir: string, display = ":0", mask = true): string[] {
   return [
     "ffmpeg", "-nostdin", "-hide_banner", "-loglevel", "error",
     "-f", "x11grab", "-draw_mouse", "1", "-framerate", String(LIVE_FPS), "-video_size", `${SCREEN.w}x${SCREEN.h}`, "-i", `${display}.0`,
-    "-filter_complex", liveFilter(), "-map", "[v]",
+    "-filter_complex", mask ? liveFilter() : plainFilter(), "-map", "[v]",
     "-c:v", "libx264", "-preset", "ultrafast", "-tune", "zerolatency", "-profile:v", "baseline", "-level", "3.2",
     "-g", String(LIVE_FPS * SEGMENT_S), "-keyint_min", String(LIVE_FPS * SEGMENT_S), "-sc_threshold", "0",
     "-b:v", "500k", "-maxrate", "700k", "-bufsize", "1400k",
