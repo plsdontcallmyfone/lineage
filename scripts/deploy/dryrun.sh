@@ -63,6 +63,9 @@ check "fresh box reachable over root ssh" "$ok"
 [ "$ok" = 1 ] || { echo "no ssh into the container; stopping" >&2; exit 1; }
 
 export SSH_KEY="$WORK/key" SSH_PORT=$SSH_P SSH_INSECURE_TEST=1 DRY_RUN=1 SITE_NAMES=localhost DRY_RUN_ORIGIN="https://localhost:$HTTPS_P"
+# Core's first start on an empty database reads the whole devnet deployment through the public RPC before
+# it listens (measured 2026-10-12: 199 s), longer than the kit's 180 s health wait on a server with data
+export DEPLOY_HEALTH_WAIT="${DEPLOY_HEALTH_WAIT:-420}"
 D="$REPO/scripts/deploy/deploy.sh"
 FIRST="${DRYRUN_FIRST_REF:-HEAD~1}"
 git -C "$REPO" cat-file -e "$FIRST:scripts/deploy/remote.sh" 2>/dev/null || FIRST=HEAD
@@ -152,7 +155,8 @@ check "Core does not sign as Core authority in the dry run" "$(echo "$ch" | grep
 ag=$("${C[@]}" "$U/v1/agents" | bun -e 'const j=JSON.parse(await Bun.stdin.text()); console.log(Array.isArray(j)?j.length:(j.agents?.length ?? -1))' 2>/dev/null)
 check "Core mirrored the registry's agents" "$([ "${ag:-0}" -gt 0 ] 2>/dev/null && echo 1 || echo 0)" "$ag agents"
 check "dashboard page" "$([ "$(code "$U/")" = 200 ] && echo 1 || echo 0)"
-check "wallet page" "$([ "$(code "$U/wallet")" = 200 ] && echo 1 || echo 0)"
+# /wallet moved into /profile (docs/plans/APP-CONSOLIDATION.md): the old address redirects there
+check "wallet page (redirects to /profile, which answers)" "$([ "$(code "$U/wallet")" = 302 ] && [ "$(code "$U/profile")" = 200 ] && echo 1 || echo 0)"
 check "client bundle" "$([ "$(code "$U/assets/app.js")" = 200 ] && echo 1 || echo 0)"
 check "wallet bundle" "$([ "$(code "$U/assets/wallet.js")" = 200 ] && echo 1 || echo 0)"
 cc=$("${C[@]}" "$U/chain/config"); check "/chain/config: devnet" "$(echo "$cc" | grep -q '"devnet":true' && echo 1 || echo 0)"

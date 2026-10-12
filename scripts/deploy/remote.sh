@@ -750,10 +750,10 @@ status)
   free -m | awk '/Mem:/ {print "memory    " $7 " MiB available of " $2}'
   command -v docker >/dev/null && docker system df --format '{{.Type}} {{.Size}}' 2>/dev/null | sed 's/^/docker    /' || true
   echo "--"
-  N="$(ls -1t /var/lib/units/core-backups/core-*.tar.zst 2>/dev/null | head -1)"
+  N="$(ls -1t /var/lib/units/core-backups/core-*.tar.zst 2>/dev/null | head -1 || true)"   # no backup yet (a fresh box) is not an error
   [ -n "$N" ] && echo "backup    $(basename "$N") $(du -h "$N" | cut -f1), $(ls -1 /var/lib/units/core-backups/core-*.tar.zst | wc -l) kept" || echo "backup    none yet"
   for p in state identity; do
-    N="$(ls -1t /var/lib/units/$p-backups/$p-*.tar.zst.age 2>/dev/null | head -1)"
+    N="$(ls -1t /var/lib/units/$p-backups/$p-*.tar.zst.age 2>/dev/null | head -1 || true)"
     [ -n "$N" ] && echo "backup    $(basename "$N") $(du -h "$N" | cut -f1), $(ls -1 /var/lib/units/$p-backups/$p-*.tar.zst.age | wc -l) kept (encrypted)" || echo "backup    no $p snapshot yet"
   done
   M=/var/lib/units-monitor/state.json
