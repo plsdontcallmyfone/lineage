@@ -897,6 +897,18 @@ units, the amd64 recalibration and the devnet registration run for the first tim
 service users, the Caddy admin socket, backups and the monitor (M4) were tested on the real site; the dry
 run has not been rerun since.
 
+**Second instance.** The dry run of 2026-10-11 at `254acd7` (106 of 108 checks; the two that fail,
+"wallet page" and "deploy.sh status", failed the same way in the run recorded before this change)
+deployed the devnet site, then staged, refused, activated, stopped, started and purged the mainnet
+instance beside it: 51 of 51 checks in that section. What stood in for mainnet there: no units program
+exists on mainnet yet, so the instance's RPC was `scripts/deploy/dryrun/stub-rpc.ts` inside the
+container (mainnet's genesis hash, devnet's chain served under the mainnet program ids), and its chain
+state and profile overlay were made from `scripts/devnet/devnet.json`. Not exercised anywhere: the
+instance's sandbox units and hosted runtime (no Docker in the container), a real mainnet endpoint,
+key copying, Let's Encrypt for the second host, two runtimes sharing one Docker daemon, and the two
+running runtimes sharing the E2B budget (the budget code is unit-tested and was run in the container
+as both accounts against the shared directory).
+
 **Other front ends.** A front end on another domain that proxies to this site (the Vercel build in
 `scripts/deploy/vercel/` rewrites `/chain`, `/api`, `/live` and `/souls` here) forwards the browser's
 Origin, and the gate only accepts wallet writes (`/chain/rpc`, `/chain/faucet`) from listed origins. List

@@ -1,11 +1,11 @@
 {
-  "at": "2026-10-11T16:32:51.686Z",
-  "head": "fced41f32e35005c731752fcf88e551a6891e274",
-  "first": "7ac1c41a951326f9183b5953d82ea1e3acfef14c",
+  "at": "2026-10-12T01:12:36.570Z",
+  "head": "254acd71fe61622bd0b496b9de2f82026691b719",
+  "first": "eeb2a2c8b2d1100abfccc84597a7ef909ebbea58",
   "container_image": "lineage/site-dryrun:24.04",
-  "seconds": 485,
-  "passed": 57,
-  "failed": 3,
+  "seconds": 773,
+  "passed": 106,
+  "failed": 2,
   "checks": [
     {
       "check": "fresh box reachable over root ssh",
@@ -15,7 +15,7 @@
     {
       "check": "deploy.sh full on a fresh box",
       "ok": true,
-      "detail": "exit 0, 145 s"
+      "detail": "exit 0, 170 s"
     },
     {
       "check": "fund and site-chain ran as plans (nothing sent on chain)",
@@ -25,22 +25,12 @@
     {
       "check": "deploy.sh full re-run on the same box (new commit)",
       "ok": true,
-      "detail": "exit 0, 52 s"
-    },
-    {
-      "check": "layout: every old directory is a link to its units name",
-      "ok": true,
-      "detail": "/opt/lineage->units /var/lib/lineage->units /etc/lineage->units /etc/lineage-core->units-core /etc/lineage-identity->units-identity /home/lineage->units /var/lib/lineage-monitor->units-monitor "
-    },
-    {
-      "check": "layout: accounts renamed with their UIDs (old names alias the same UIDs)",
-      "ok": true,
-      "detail": "before: lineage=1001 lineage-core=997 lineage-identity=992 units= units-core= units-identity= ; after: lineage=1001 lineage-core=997 lineage-identity=992 units=1001 units-core=997 units-identity=992 "
+      "detail": "exit 0, 23 s"
     },
     {
       "check": "deploy.sh full re-run, same commit",
       "ok": true,
-      "detail": "exit 0, 42 s"
+      "detail": "exit 0, 18 s"
     },
     {
       "check": "same-commit re-run takes no data backup",
@@ -140,12 +130,12 @@
     {
       "check": "GET /v1/health over HTTPS (internal TLS)",
       "ok": true,
-      "detail": "{\"ok\":true,\"now\":1791736150322,\"epoch\":19}"
+      "detail": "{\"ok\":true,\"now\":1791767015809,\"epoch\":20}"
     },
     {
       "check": "Core in devnet chain mode read the chain",
       "ok": true,
-      "detail": "slot 509962609, epochs posted 1, core_signing false"
+      "detail": "slot 510091811, epochs posted 2, core_signing false"
     },
     {
       "check": "Core does not sign as Core authority in the dry run",
@@ -155,7 +145,7 @@
     {
       "check": "Core mirrored the registry's agents",
       "ok": true,
-      "detail": "25 agents"
+      "detail": "26 agents"
     },
     {
       "check": "dashboard page",
@@ -220,7 +210,7 @@
     {
       "check": "devnet RPC proxy (same origin)",
       "ok": true,
-      "detail": "{\"jsonrpc\":\"2.0\",\"result\":509962681,\"id\":1}"
+      "detail": "{\"jsonrpc\":\"2.0\",\"result\":510091837,\"id\":1}"
     },
     {
       "check": "RPC method allowlist kept",
@@ -270,12 +260,12 @@
     {
       "check": "rollback to the previous release",
       "ok": true,
-      "detail": "now 7ac1c41a951326f9183b5953d82ea1e3acfef14c"
+      "detail": "now eeb2a2c8b2d1100abfccc84597a7ef909ebbea58"
     },
     {
       "check": "a failed Core health check rolls the release back",
       "ok": true,
-      "detail": "exit 1, now 7ac1c41a951326f9183b5953d82ea1e3acfef14c"
+      "detail": "exit 1, now eeb2a2c8b2d1100abfccc84597a7ef909ebbea58"
     },
     {
       "check": "simulated verifier running before the deploy",
@@ -285,17 +275,17 @@
     {
       "check": "forward again to HEAD (code mode)",
       "ok": true,
-      "detail": "now fced41f32e35005c731752fcf88e551a6891e274"
+      "detail": "now 254acd71fe61622bd0b496b9de2f82026691b719"
     },
     {
       "check": "deploy returned while the verifier was still draining",
       "ok": true,
-      "detail": "deploy 35 s, drain 150 s"
+      "detail": "deploy 28 s, drain 150 s"
     },
     {
       "check": "public site answered 200 through the whole deploy",
-      "ok": false,
-      "detail": "{\"polls\":97,\"non200\":1,\"longest_gap_ms\":11334,\"slowest_ms\":791}"
+      "ok": true,
+      "detail": "{\"polls\":88,\"non200\":0,\"longest_gap_ms\":3590,\"slowest_ms\":3324}"
     },
     {
       "check": "drained verifier restarted once, on the new release, after its old process exited",
@@ -303,9 +293,259 @@
       "detail": ""
     },
     {
+      "check": "mainnet instance: stage without chain state, overlay or RPC",
+      "ok": true,
+      "detail": "exit 0"
+    },
+    {
+      "check": "mainnet instance: staged units are installed, none active or enabled",
+      "ok": true,
+      "detail": "units-main-core=inactive/disabled units-main-web=inactive/disabled units-main-gate=inactive/disabled units-main-indexer=inactive/disabled units-main-runtime=inactive/disabled "
+    },
+    {
+      "check": "mainnet instance: activate refused here while state, overlay and RPC are missing",
+      "ok": true,
+      "detail": "exit 1"
+    },
+    {
+      "check": "mainnet instance: activate refused on the server too",
+      "ok": true,
+      "detail": "exit 1"
+    },
+    {
+      "check": "devnet site untouched by the staging",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "stub RPC answers with mainnet's genesis (devnet data behind it)",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "mainnet instance: activate with state, overlay and RPC",
+      "ok": true,
+      "detail": "exit 0, 113 s"
+    },
+    {
+      "check": "mainnet instance: chain preflight passed before the start",
+      "ok": true,
+      "detail": "15 checks"
+    },
+    {
+      "check": "unit units-main-core active",
+      "ok": true,
+      "detail": "active"
+    },
+    {
+      "check": "unit units-main-indexer active",
+      "ok": true,
+      "detail": "active"
+    },
+    {
+      "check": "unit units-main-web active",
+      "ok": true,
+      "detail": "active"
+    },
+    {
+      "check": "unit units-main-gate active",
+      "ok": true,
+      "detail": "active"
+    },
+    {
+      "check": "devnet unit units-core still active beside it",
+      "ok": true,
+      "detail": "active"
+    },
+    {
+      "check": "devnet unit units-web still active beside it",
+      "ok": true,
+      "detail": "active"
+    },
+    {
+      "check": "devnet unit units-gate still active beside it",
+      "ok": true,
+      "detail": "active"
+    },
+    {
+      "check": "devnet unit units-indexer still active beside it",
+      "ok": true,
+      "detail": "active"
+    },
+    {
+      "check": "devnet unit caddy still active beside it",
+      "ok": true,
+      "detail": "active"
+    },
+    {
+      "check": "sandbox unit units-main-bootstrap skipped in the dry run",
+      "ok": true,
+      "detail": "inactive"
+    },
+    {
+      "check": "sandbox unit units-main-reference skipped in the dry run",
+      "ok": true,
+      "detail": "inactive"
+    },
+    {
+      "check": "sandbox unit units-main-verifier@v1 skipped in the dry run",
+      "ok": true,
+      "detail": "inactive"
+    },
+    {
+      "check": "sandbox unit units-main-verifier@v2 skipped in the dry run",
+      "ok": true,
+      "detail": "inactive"
+    },
+    {
+      "check": "sandbox unit units-main-runtime skipped in the dry run",
+      "ok": true,
+      "detail": "inactive"
+    },
+    {
+      "check": "distinct ports: devnet 9660 9661 9662 9668, mainnet 9760 9761 9762 9768 all listening",
+      "ok": true,
+      "detail": "22 80 443 9660 9661 9662 9665 9668 9760 9761 9762 9768 9799"
+    },
+    {
+      "check": "distinct directories, databases and accounts",
+      "ok": true,
+      "detail": "/opt/units /opt/units-main | units-core:264065 units-main-core:435649 | units-core units-main-core"
+    },
+    {
+      "check": "mainnet accounts: none in sudo, docker or a devnet service group (dry run: no docker group)",
+      "ok": true,
+      "detail": "units-main(units-main,users,units-e2b) units-main-core(units-main-core,units-main) units-main-web(units-main-web) units-main-gate(units-main-gate) units-main-indexer(units-main-indexer) "
+    },
+    {
+      "check": "mainnet host answers its own Core (chain mode mainnet, mainnet program ids)",
+      "ok": true,
+      "detail": "{\"mode\":\"mainnet\",\"rpc_url\":\"http://127.0.0.1:9799 (keyed)\",\"read_at\":1791767327918,\"slot\""
+    },
+    {
+      "check": "devnet host still answers its own Core (chain mode devnet)",
+      "ok": true,
+      "detail": "{\"mode\":\"devnet\",\"rpc_url\":\"https://api.devnet.solana.com\",\"read_at\":1791767315853,\"slot\":"
+    },
+    {
+      "check": "mainnet Core does not sign in the dry run",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "mainnet host: dashboard and both bundles",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "mainnet /chain/config: mainnet profile, no faucet, no TEST labels, the overlay's quote",
+      "ok": true,
+      "detail": "{\"devnet\":false,\"network\":\"mainnet\",\"faucet\":false,\"test_labels\":false,\"swap\":false,\"quote\":\"DRYQ\",\"faucet_addr\":null,\"state_mint\":\"CiBfnTkDc1vgYbuMobMNEQaKSQXPYeTUbZGRZcug1L62\"}"
+    },
+    {
+      "check": "mainnet /chain/config and /v1/chain: the RPC secret is not shown",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "mainnet faucet off",
+      "ok": true,
+      "detail": "{\"enabled\":false,\"reason\":\"no faucet on mainnet\"}"
+    },
+    {
+      "check": "mainnet hidden list empty",
+      "ok": true,
+      "detail": "{\"hidden\":[],\"count\":0}"
+    },
+    {
+      "check": "mainnet RPC proxy (same origin) reaches the instance's endpoint",
+      "ok": true,
+      "detail": "{\"jsonrpc\":\"2.0\",\"id\":1,\"result\":\"5eykt4UsFv8P8NJdTREpY1vzqKqZKvdpKuc147dw2N9d\"}"
+    },
+    {
+      "check": "mainnet admin API not public",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "mainnet Core's environment: UNITS_NETWORK=mainnet, its overlay, its port block",
+      "ok": true,
+      "detail": "UNITS_INSTANCE=mainnet UNITS_NETWORK=mainnet UNITS_PORT_BLOCK=9760-9769 UNITS_PROFILE_LOCAL=/etc/units-main/profile.local.json"
+    },
+    {
+      "check": "devnet Core's environment carries none of the mainnet settings",
+      "ok": true,
+      "detail": "0"
+    },
+    {
+      "check": "mainnet runtime.json: 20 USD per UTC day counting all spend, 2 attempts, desktops required, shared E2B budget (strict), trading off",
+      "ok": true,
+      "detail": "{\"mode\":\"mainnet\",\"core\":\"http://127.0.0.1:9760\",\"global_max_usd\":20,\"global_cap_scope\":\"all\",\"global_window_s\":86400,\"max_concurrent\":1,\"max_concurrent_ceiling\":2,\"trading\":false,\"desktop_required\":true,\"desktops_max\":0,\"e2b_max\":2,\"desktop_usd_per_day\":16,\"shared\":{\"dir\":\"/var/lib/units-shared/e2b-spend\",\"name\":\"mainnet\",\"peers\":[\"devnet\"],\"strict\":true},\"price\":\"config\",\"bind_port\":9767}"
+    },
+    {
+      "check": "devnet runtime.json names the same shared E2B budget (one cap, not two)",
+      "ok": true,
+      "detail": "{\"mode\":\"devnet\",\"core\":\"http://127.0.0.1:9660\",\"desktop_usd_per_day\":16,\"shared\":{\"dir\":\"/var/lib/units-shared/e2b-spend\",\"name\":\"devnet\",\"peers\":[\"mainnet\"]}}"
+    },
+    {
+      "check": "shared E2B budget directory: root:units-e2b 770, both runtime accounts in the group",
+      "ok": true,
+      "detail": "root:units-e2b 770 1 1"
+    },
+    {
+      "check": "shared E2B budget across the two accounts: devnet spent 10 leaves mainnet 6, mainnet spent 2 leaves devnet 14",
+      "ok": true,
+      "detail": "devnet 0 mainnet 6 devnet-after 14"
+    },
+    {
+      "check": "the RPC secret is in no journal and no deploy log",
+      "ok": true,
+      "detail": "journal 0, deploy logs 0"
+    },
+    {
+      "check": "the RPC secret is only in root-owned mode 600 files of the mainnet instance",
+      "ok": true,
+      "detail": "/etc/units-main/web.env:600:root /etc/units-main/indexer.env:600:root /etc/units-main/runtime.env:600:root /etc/units-main/rpc.env:600:root /etc/units-main/core.env:600:root "
+    },
+    {
+      "check": "mainnet instance: verifier registration runs as a plan against its own state and endpoint (nothing sent)",
+      "ok": true,
+      "detail": "exit 0"
+    },
+    {
+      "check": "mainnet instance: sending is refused without MAINNET_SEND=yes",
+      "ok": true,
+      "detail": "exit 1"
+    },
+    {
+      "check": "mainnet instance status",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "mainnet instance stop: its units stop, the devnet site and Caddy keep running",
+      "ok": true,
+      "detail": "inactive inactive active active"
+    },
+    {
+      "check": "mainnet instance start",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "a devnet deploy keeps the mainnet host (Caddy imports its site block) and both answer",
+      "ok": true,
+      "detail": "exit 0"
+    },
+    {
+      "check": "mainnet instance remove --purge: units, site block, directories and accounts gone; the devnet site answers",
+      "ok": true,
+      "detail": "left: 0 0"
+    },
+    {
       "check": "host disk still >= 4 GB free",
       "ok": true,
-      "detail": "30 GB"
+      "detail": "38 GB"
     }
   ]
 }
