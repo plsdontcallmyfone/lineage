@@ -240,6 +240,13 @@ if (MAIN) {
     // 200 USD of E2B time per UTC day (50 desktops all day: 50 x 24 x 0.1656 = 198.72)
     e2b_max: 50,
     desktop_usd_per_day: 200,
+    // owner 2026-10-12 ("it should keep running all time"): every agent has its own desktop for its whole
+    // life, its screen stays live between attempts, and a queued agent's desktop is not paused for being
+    // idle (50 always running: 50 x 24 x 0.1656 = 198.72 USD a day, inside the budget above); 24 h
+    // sessions on the Professional plan
+    desktop_mode: "per_agent",
+    desktop_idle_pause: false,
+    e2b: { template: "lineage-desktop", vcpu: 2, ram_gib: 4, session_max_s: 86400 },
     desktop_required: true,
     desktop_hosts_file: undefined,
     // owner 2026-10-12: its own E2B budget (the cap above), not shared with the devnet site. While it was
