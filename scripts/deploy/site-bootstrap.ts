@@ -12,7 +12,7 @@
 // Docker. Writes /var/lib/units/site/lineages.json ({ name: { recipe_id, lineage_id } }).
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { keyFromSolanaJson } from "@units/protocol";
 import { loadRecipe, prepareDeps } from "@units/sandbox";
 import { CoreClient } from "../../packages/core/src/client.ts";
@@ -23,10 +23,12 @@ const argv = process.argv.slice(2);
 const opt = (k: string) => (argv.includes(`--${k}`) ? argv[argv.indexOf(`--${k}`) + 1] : undefined);
 const CORE = opt("core") ?? "http://127.0.0.1:9660";
 const names = (opt("recipes") ?? "fixture-b58,base58-py,minbpe").split(",").filter(Boolean);
-const caps = JSON.parse(readFileSync(opt("caps") ?? "/var/lib/units/site/caps.json", "utf8"));
+const CAPS = opt("caps") ?? "/var/lib/units/site/caps.json";
+const caps = JSON.parse(readFileSync(CAPS, "utf8"));
 const RUNS = Number(opt("runs") ?? 5);
 const SITE = join(homedir(), ".config", "lineage", "site");
-const OUT = "/var/lib/units/site/lineages.json";
+// beside the caps file, so a second instance (UNITS_INSTANCE) writes into its own state directory
+const OUT = join(dirname(CAPS), "lineages.json");
 const log = (m: string) => console.log(`[bootstrap] ${m}`);
 const key = (n: string) => keyFromSolanaJson(JSON.parse(readFileSync(join(SITE, `${n}.json`), "utf8")));
 
