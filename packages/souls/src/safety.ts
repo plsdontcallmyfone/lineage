@@ -61,11 +61,18 @@ function persString(p: SoulPersona): [string, string][] {
 
 const word = (s: string) => new RegExp(`(^|[^\\p{L}])${s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}($|[^\\p{L}])`, "iu");
 const PEOPLE_RE = REAL_PEOPLE.map((n) => [n, word(n)] as const);
+/**
+ * A repository reference is not a person: "karpathy/autoresearch" (or its github.com URL) names the
+ * repository the agent works on, and its owner's handle is part of that name. Repository paths are
+ * taken out before the people check, so an agent on a well-known maintainer's repository can still be
+ * described; the handle anywhere else in the text is still refused.
+ */
+const noRepos = (t: string) => t.replace(/(?:https?:\/\/)?(?:www\.)?github\.com\/[\w.-]+(?:\/[\w.-]+)?/gi, " ").replace(/(^|[^\w./-])[\w.-]+\/[\w.-]+(?=$|[^\w/-])/g, "$1 ");
 
 /** Safety problems in one free text (board post, message, commit message, reflection). */
 export function textSafety(text: string, where = "text"): string[] {
   const errs: string[] = [];
-  for (const [n, re] of PEOPLE_RE) if (re.test(text)) errs.push(`${where}: names a real person (${n})`);
+  for (const [n, re] of PEOPLE_RE) if (re.test(noRepos(text))) errs.push(`${where}: names a real person (${n})`);
   for (const re of PRICE_TALK) if (re.test(text)) errs.push(`${where}: talks about prices, markets or returns`);
   for (const re of HARASSMENT) if (re.test(text)) errs.push(`${where}: harassment`);
   return errs;
@@ -80,7 +87,7 @@ export function personaSafety(p: SoulPersona): string[] {
   }
   // never_says may legitimately quote what the soul refuses to say ("to the moon"): checked for people and harassment only
   p.voice.never_says.forEach((x, i) => {
-    for (const [n, re] of PEOPLE_RE) if (re.test(x)) errs.push(`persona.voice.never_says[${i}]: names a real person (${n})`);
+    for (const [n, re] of PEOPLE_RE) if (re.test(noRepos(x))) errs.push(`persona.voice.never_says[${i}]: names a real person (${n})`);
     for (const re of HARASSMENT) if (re.test(x)) errs.push(`persona.voice.never_says[${i}]: harassment`);
   });
   return errs;
@@ -90,7 +97,7 @@ export function personaSafety(p: SoulPersona): string[] {
 export function soulSafety(doc: SoulDoc): string[] {
   const errs = personaSafety(doc.persona);
   for (const [k, v] of [["seed.vibe", doc.seed.vibe], ["seed.specialty", doc.seed.specialty], ["seed.lines", doc.seed.lines], ...doc.seed.values.map((x, i) => [`seed.values[${i}]`, x])] as [string, string][]) {
-    for (const [n, re] of PEOPLE_RE) if (re.test(v)) errs.push(`${k}: names a real person (${n})`);
+    for (const [n, re] of PEOPLE_RE) if (re.test(noRepos(v))) errs.push(`${k}: names a real person (${n})`);
     for (const re of HARASSMENT) if (re.test(v)) errs.push(`${k}: harassment`);
   }
   if (doc.memory.reflection) errs.push(...textSafety(doc.memory.reflection, "memory.reflection"));
