@@ -22,19 +22,60 @@ import type { Action, Seal } from "./seal.ts";
 
 const BACKLOG = 12;
 
+/**
+ * The code host's own error pages (GitHub answers a slow or failed page with its "Unicorn!" 502/504
+ * page or a "Server Error" page, a proxy with a bare gateway error). The driver reads the browser
+ * window's title after a page load and reloads such a page a bounded number of times, waiting
+ * longer before each try. A missing page (404) and a rate limit page are not reloaded: a reload
+ * cannot fix the first and makes the second worse.
+ */
+const ERROR_TITLE = /^(?:unicorn!|server error|50[0-4]\b|(?:bad gateway|gateway time-?out|service unavailable)\b)/i;
+export const isErrorPageTitle = (title: string): boolean => ERROR_TITLE.test(title.trim());
+
+/** Waits before each look at the page: the first is the load itself, the rest back off. At most `length - 1` reloads. */
+export const RELOAD_WAITS_MS = [2500, 2000, 4000, 8000];
+
+export interface DriverOpts {
+  /** waits before each title check (tests shorten them) */
+  reloadWaitsMs?: number[];
+  now?: () => number;
+  sleep?: (ms: number) => Promise<unknown>;
+}
+
 export class Driver {
   private q: Action[] = [];
   private running: Promise<void> | null = null;
   private wins = new Map<Tile, string>();
   private n = 0;
-  readonly done = { actions: 0, refused: 0, failed: 0, dropped: 0 };
+  readonly done = { actions: 0, refused: 0, failed: 0, dropped: 0, reloads: 0 };
+  /** the page whose load is still being checked for an error page: which look is next and when */
+  private page: { url: string; look: number; due: number } | null = null;
+  private acting = false;
+  private waits: number[];
+  private now: () => number;
+  private sleep: (ms: number) => Promise<unknown>;
 
   constructor(
     private inst: DesktopInstance,
     private seal: Seal,
     private tree: string,
     private log: (m: string) => void = () => {},
-  ) {}
+    o: DriverOpts = {},
+  ) {
+    this.waits = o.reloadWaitsMs ?? RELOAD_WAITS_MS;
+    this.now = o.now ?? Date.now;
+    this.sleep = o.sleep ?? ((ms) => Bun.sleep(ms));
+  }
+
+  /**
+   * Has the driver check a page the browser opened by itself (the desktop's first page) the same
+   * way as a page it navigated to.
+   */
+  watchPage(url: string): void {
+    if (this.seal.phase === "ended" || !this.waits.length) return;
+    this.page = { url, look: 0, due: this.now() + this.waits[0]! };
+    if (!this.running) this.running = this.pump().finally(() => (this.running = null));
+  }
 
   enqueue(actions: Action[]): void {
     if (!actions.length || this.seal.phase === "ended") return;
@@ -51,18 +92,39 @@ export class Driver {
   /** Waits until the queue is empty (or `ms` passed). */
   async idle(ms = 30_000): Promise<void> {
     const t0 = Date.now();
-    while ((this.running || this.q.length) && Date.now() - t0 < ms) await Bun.sleep(50);
+    // a page still being watched for an error page does not hold the caller: only actions do
+    while ((this.acting || this.q.length) && Date.now() - t0 < ms) await Bun.sleep(50);
+  }
+
+  /** Waits until the queue is empty and no page is being watched any more (or `ms` passed). */
+  async settled(ms = 30_000): Promise<void> {
+    const t0 = Date.now();
+    while ((this.running || this.q.length || this.page) && Date.now() - t0 < ms) await Bun.sleep(20);
   }
 
   /** Stops acting: the queue is dropped. */
   stop(): void {
     this.q = [];
+    this.page = null;
   }
 
   private async pump(): Promise<void> {
-    while (this.q.length) {
+    while (this.q.length || this.page) {
+      if (this.seal.phase === "ended") return void (this.page = null);
+      // the page check runs between actions, in order with them; with nothing else to do the pump waits for it
+      if (this.page && (this.now() >= this.page.due || !this.q.length)) {
+        const wait = this.page.due - this.now();
+        if (wait > 0) {
+          await this.sleep(Math.min(wait, 100));
+          continue;
+        }
+        await this.lookAtPage().catch((e) => {
+          this.page = null;
+          this.log(`desktop: browser page check failed: ${(e as Error).message}`);
+        });
+        continue;
+      }
       const a = this.q.shift()!;
-      if (this.seal.phase === "ended") return;
       try {
         this.seal.check(a);
       } catch (e) {
@@ -70,14 +132,40 @@ export class Driver {
         this.log(`desktop: refused ${a.tile} ${a.op}: ${(e as Error).message}`);
         continue;
       }
+      this.acting = true;
       try {
         await this.act(a);
         this.done.actions++;
       } catch (e) {
         this.done.failed++;
         this.log(`desktop: ${a.tile} ${a.op} failed: ${(e as Error).message}`);
+      } finally {
+        this.acting = false;
       }
     }
+  }
+
+  /** One look at the page being watched: an error page is reloaded (bounded, with backoff), anything else ends the watch. */
+  private async lookAtPage(): Promise<void> {
+    const p = this.page;
+    if (!p) return;
+    const w = await this.win("browser");
+    if (!w) return void (this.page = null);
+    const r = await this.inst.exec(["xdotool", "getwindowname", w], { timeoutMs: 5000 });
+    if (this.page !== p) return; // a newer navigation replaced it
+    const title = r.code === 0 ? r.stdout.trim() : "";
+    if (!isErrorPageTitle(title)) return void (this.page = null);
+    const next = p.look + 1;
+    if (next >= this.waits.length) {
+      this.page = null;
+      this.log(`desktop: the code host still answers with an error page after ${p.look} reload${p.look === 1 ? "" : "s"} (${title.slice(0, 60)}); left as it is`);
+      return;
+    }
+    // only ever the page the seal allows (the snapshot commit's pages); the reload itself is one key
+    await this.x(["xdotool", "windowactivate", "--sync", w, "key", "--clearmodifiers", "F5"], "browser reload");
+    this.done.reloads++;
+    this.log(`desktop: the code host answered with an error page (${title.slice(0, 60)}); reload ${next} of ${this.waits.length - 1}`);
+    this.page = { url: p.url, look: next, due: this.now() + this.waits[next]! };
   }
 
   private async win(t: Tile): Promise<string | null> {
@@ -128,6 +216,7 @@ export class Driver {
         if (!w) return; // a desktop without a browser still shows the rest
         await this.x(["xdotool", "windowactivate", "--sync", w, "key", "--clearmodifiers", "ctrl+l"], "browser focus");
         await this.x(["xdotool", "type", "--delay", "8", "--clearmodifiers", `${a.url}\n`], "browser address");
+        if (this.waits.length) this.page = { url: a.url, look: 0, due: this.now() + this.waits[0]! };
         return;
       }
       case "term":

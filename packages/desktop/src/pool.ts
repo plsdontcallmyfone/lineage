@@ -474,6 +474,9 @@ class Attempt implements DesktopAttempt {
     this.t0 = started;
     this.seal = new Seal({ stacked: o.stacked, repo: o.repo, commit: o.commit });
     this.driver = new Driver(inst, this.seal, o.tree, log);
+    // the browser opened the repository page by itself: an error page from the code host is reloaded like any other
+    const home = homeUrl(o.repo, o.commit);
+    if (home !== "about:blank") this.driver.watchPage(home);
     this.recording = pool.recording;
     if (this.recording) void inst.exec(["desk-bg", "rec", ...recordArgs("/tmp/desk/rec.mp4")]).then((r) => r.code !== 0 && log(`desktop: recording did not start: ${r.stderr.slice(0, 160)}`));
     else this.seal.recording = "none";
