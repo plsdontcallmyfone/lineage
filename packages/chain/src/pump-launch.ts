@@ -15,7 +15,7 @@ import {
   type PumpGlobal,
   type PumpPool,
 } from "./pump.ts";
-import type { Ix } from "./registry.ts";
+import type { AccountMeta, Ix } from "./registry.ts";
 import { token } from "./spl.ts";
 
 // An agent launch on pump.fun (owner decisions 2026-10-10, docs/plans/PUMPFUN-LAUNCHES.md): Pump
@@ -135,12 +135,13 @@ export function quoteInitialBuy(g: PumpGlobal, fc: PumpFeeConfig, fresh: Bonding
  * The keeper's crank of one agent: create the creator PDA's $UNITS ATA when missing, pump.fun's sweep
  * and collect on the curve (and the pool's once `pool` is given), then crank_pump_fees. Permissionless.
  */
-export function pumpCrankIxs(a: { payer: Address; agent: Address; agentMint: Address; lineMint: Address; lineTokenProgram?: Address; pool?: Address }): Ix[] {
+export function pumpCrankIxs(a: { payer: Address; agent: Address; agentMint: Address; lineMint: Address; lineTokenProgram?: Address; pool?: Address; routes?: AccountMeta[] }): Ix[] {
   const tp = a.lineTokenProgram ?? TOKEN_2022_PROGRAM, creator = launchPdas.pumpCreator(a.agent);
   return [
     token.createAtaIdempotent(a.payer, creator, a.lineMint, tp),
     ...creatorFeeHarvest({ payer: a.payer, mint: a.agentMint, creator, quoteMint: a.lineMint, pool: a.pool, quoteTokenProgram: tp }),
-    launch.crankPumpFees({ agent: a.agent, agentMint: a.agentMint, lineMint: a.lineMint, lineTokenProgram: tp }),
+    // `routes`: the trailing accounts of an agent with a GitHub fee route or a pool membership (claims.ts, pools.ts crankRouteKeys)
+    launch.crankPumpFees({ agent: a.agent, agentMint: a.agentMint, lineMint: a.lineMint, lineTokenProgram: tp, routes: a.routes }),
   ];
 }
 

@@ -7,15 +7,25 @@
 import "../../packages/chain/src/devnet-process.ts"; // devnet only: pins UNITS_NETWORK=devnet for this process and what it spawns
 import {
   ata,
+  claimPdas,
+  claims,
   computeBudget,
   compileMessageV0,
   curveMigrated,
+  decodeAgentLaunch,
   decodeBondingCurve,
+  decodeFeeRoute,
+  decodeLaunchConfig,
+  decodePool,
+  decodePoolMember,
+  FEATURES,
   decodeLookupTable,
   launch,
   launchPdas,
   launchTableAddresses,
   planLaunch,
+  poolPdas,
+  pools,
   pump,
   PUMP,
   pumpAmm,
@@ -28,6 +38,7 @@ import {
   TOKEN_2022_PROGRAM,
   TxError,
   wireSize,
+  type AccountMeta,
   type Ix,
   type LaunchPlan,
   type LookupTable,
@@ -173,7 +184,17 @@ export async function curveCreatorFee(rpc: Rpc, mint: string): Promise<bigint> {
 /** The keeper's crank: pump.fun's sweep + collect (and the pool's once it exists), then crank_pump_fees. Permissionless. */
 export async function pumpCrank(rpc: Rpc, o: { payer: Signer; agent: string; mint: string; lineMint: string }): Promise<SentTx> {
   const v = await pumpVenue(rpc, o.mint, o.lineMint);
-  const ixs = pumpCrankIxs({ payer: o.payer.id, agent: o.agent, agentMint: o.mint, lineMint: o.lineMint, lineTokenProgram: T22, pool: v.kind === "pool" ? v.pool : undefined });
+  // an agent with a GitHub fee route or a pool membership needs its trailing accounts while the feature is on
+  // (GitHub route first, then the pool), or the program refuses the crank (MissingRouteAccounts)
+  const [lcA, alA, frA, pmA] = await rpc.getMultipleAccounts([launchPdas.config(), launchPdas.agentLaunch(o.mint), claimPdas.feeRoute(o.agent), poolPdas.member(o.agent)]);
+  const active = lcA && alA ? decodeLaunchConfig(lcA.data).features & decodeAgentLaunch(alA.data).routes : 0;
+  const routes: AccountMeta[] = [];
+  if (active & FEATURES.githubFees && frA) routes.push(...claims.crankRouteKeys(o.agent, decodeFeeRoute(frA.data).githubId));
+  if (active & FEATURES.pools && pmA) {
+    const poolA = await rpc.getAccountInfo(decodePoolMember(pmA.data).pool);
+    if (poolA) routes.push(...pools.crankRouteKeys(o.agent, decodePool(poolA.data).repoId, o.lineMint, T22));
+  }
+  const ixs = pumpCrankIxs({ payer: o.payer.id, agent: o.agent, agentMint: o.mint, lineMint: o.lineMint, lineTokenProgram: T22, pool: v.kind === "pool" ? v.pool : undefined, routes });
   return sendTx(rpc, o.payer, ixs, { computeUnits: 400_000 });
 }
 
