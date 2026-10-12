@@ -10,7 +10,8 @@ import { createHash } from "node:crypto";
 import { existsSync, lstatSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { dirname, join, posix } from "node:path";
 
-export const MONOREPO_URL = "https://github.com/plsdontcallmyfone/lineage";
+// the public repositories name the units organization only (owner 2026-10-12): no personal account
+export const MONOREPO_URL = "https://github.com/units-agents";
 
 /** A file tree in memory: path (posix, relative) to bytes. */
 export type Tree = Map<string, Buffer>;
@@ -129,7 +130,7 @@ export interface SourceManifest {
 /** SOURCE.json for a tree: what wrote it, from which commit, and the sha256 of every file. */
 export function manifestFor(tree: Tree, o: { script: string; commit: string; extra?: Record<string, unknown> }): SourceManifest {
   return {
-    _generated: `Written by ${o.script} of the units monorepo (${MONOREPO_URL}). Do not edit this directory by hand: change the source there and run the export again.`,
+    _generated: `Written by ${o.script} of the units source tree (${MONOREPO_URL}). Do not edit this directory by hand: change the source there and run the export again.`,
     source_repository: MONOREPO_URL,
     source_commit: o.commit,
     ...(o.extra ?? {}),
