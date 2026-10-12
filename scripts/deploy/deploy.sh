@@ -262,10 +262,14 @@ do_keys() {
   [ -f "$HOME/.config/lineage/rpc.env" ] && put_secret "$HOME/.config/lineage/rpc.env" rpc.env
   [ "${WITH_RUNTIME:-0}" = 1 ] && do_runtime_secrets
   if [ "${WITH_AUTHOR:-0}" = 1 ]; then
-    local ma n; ma="$(bun -e "console.log(JSON.parse(await Bun.file('$dj').text()).agents.minbpe.agent)")"
+    # devnet.json names the minbpe author agent only where scripts/devnet/setup.ts launched one (devnet v2
+    # has no such entry): a missing entry is read as empty, never an error
+    local ma n; ma="$(bun -e "console.log(JSON.parse(await Bun.file('$dj').text()).agents?.minbpe?.agent ?? '')")"
     for n in ${AUTHORS//,/ }; do
       # minbpe's agent is the one scripts/devnet/setup.ts launched; the others site-authors.ts launched
-      put_key "$KEYS_LOCAL/agent-$n.json" "devnet/agent-$n.json" "$([ "$n" = minbpe ] && echo "$ma")"
+      if [ "$n" = minbpe ] && [ -z "$ma" ]; then echo "author minbpe: no agents.minbpe.agent in scripts/devnet/devnet.json; its key is skipped"; continue; fi
+      if [ ! -f "$KEYS_LOCAL/agent-$n.json" ]; then echo "author $n: no key at $KEYS_LOCAL/agent-$n.json on this machine; skipped (launch it with scripts/deploy/site-authors.ts)"; continue; fi
+      put_key "$KEYS_LOCAL/agent-$n.json" "devnet/agent-$n.json" "$([ "$n" = minbpe ] && echo "$ma" || true)"
     done
   fi
 }

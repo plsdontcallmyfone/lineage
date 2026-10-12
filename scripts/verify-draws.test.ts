@@ -6,7 +6,6 @@ import { join } from "node:path";
 import { H, Rng } from "@units/protocol";
 
 const ROOT = join(import.meta.dir, "..");
-const PORT = 9665;
 
 function epoch(n: number, secret: string, draws: any[], decisions: any[]) {
   return { n, status: "closed", secret, beacon_commit: H("beacon-commit", secret), assignment_rounds: [], slot_beacon: { lag_slots: 2, draws, decisions } };
@@ -21,7 +20,7 @@ function decision(epochN: number, secret: string, subject: string, d: any) {
 
 async function run(epochs: any[]): Promise<{ code: number; out: string }> {
   const server = Bun.serve({
-    port: PORT,
+    port: 0, // any free port: a fixed one fails whenever something else holds it
     hostname: "127.0.0.1",
     fetch(req) {
       const p = new URL(req.url).pathname;
@@ -35,7 +34,7 @@ async function run(epochs: any[]): Promise<{ code: number; out: string }> {
     },
   });
   try {
-    const proc = Bun.spawn(["bun", join(ROOT, "scripts/verify.ts"), "--core", `http://127.0.0.1:${PORT}`], { stdout: "pipe", stderr: "pipe" });
+    const proc = Bun.spawn(["bun", join(ROOT, "scripts/verify.ts"), "--core", `http://127.0.0.1:${server.port}`], { stdout: "pipe", stderr: "pipe" });
     const out = (await new Response(proc.stdout).text()) + (await new Response(proc.stderr).text());
     return { code: await proc.exited, out };
   } finally {
