@@ -8,6 +8,7 @@
 //         reads the chain and prints what each agent needs (burn, bond, SOL) and sends nothing
 //   ... --register <agent id>     prints the owner-signed register transaction (base64) and the cosign
 //                                 command for the host; it is valid for about a minute and is not sent here
+//   ... --send <base64>           sends the register once the host co-signed it (cosign-register.ts there)
 //   ... --bond <agent id>         sends the bond up to min_bond (owner only)
 //
 // --registry names the deployment on purpose: it must equal the registry program of the active network
@@ -20,6 +21,9 @@ import { ata, ChainReader, compileMessage, loadKeypair, registry, Rpc, sendAndCo
 import { base58Encode } from "@units/protocol";
 import { REGISTRY_PROGRAM_ID } from "../../../packages/chain/src/programs.ts";
 import { applyNetworkProfile, rpcUrlFor } from "../../../packages/chain/src/profile-node.ts";
+import { assertCluster, sendWire } from "../../../packages/chain/src/browser/client.ts";
+import { decodeMessage, parseWire } from "../../../packages/chain/src/browser/wire.ts";
+import { COMPUTE_BUDGET_PROGRAM } from "../../../packages/chain/src/tx.ts";
 
 const argv = process.argv.slice(2);
 const opt = (k: string) => (argv.includes(`--${k}`) ? argv[argv.indexOf(`--${k}`) + 1] : undefined);
@@ -32,11 +36,30 @@ const want = opt("registry");
 if (!want || !ID.test(want)) throw new Error("--registry <program id> is required: the registry of the deployment you mean");
 if (want !== REGISTRY_PROGRAM_ID) throw new Error(`--registry ${want} is not the active profile's registry ${REGISTRY_PROGRAM_ID} (network ${profile.network}); select the deployment with UNITS_NETWORK and, for mainnet, UNITS_MAINNET_DEPLOYMENT or UNITS_PROFILE_LOCAL`);
 const agents = (opt("agents") ?? opt("register") ?? opt("bond") ?? "").split(",").filter(Boolean);
-if (!agents.length || !agents.every((a) => ID.test(a))) throw new Error("--agents <id,id,...> (or --register <id>, --bond <id>) is required");
+const SEND = opt("send");
+if (!SEND && (!agents.length || !agents.every((a) => ID.test(a)))) throw new Error("--agents <id,id,...> (or --register <id>, --bond <id>, --send <base64>) is required");
 const caps = opt("caps-digest");
 if ((PLAN || opt("register")) && !(caps && /^[0-9a-f]{64}$/.test(caps))) throw new Error("--caps-digest <64 hex> is required (the capabilities digest the host printed)");
 
 const rpc = Rpc.http(rpcUrlFor(profile), "confirmed");
+// --send <base64>: the register after the host's cosign-register.ts. Sent only when it is nothing but
+// units_registry instructions of this registry (and compute budget) and every signature is present.
+if (SEND) {
+  if (!/^[A-Za-z0-9+/=]{100,4000}$/.test(SEND)) throw new Error("--send takes a base64 transaction");
+  const wire = new Uint8Array(Buffer.from(SEND, "base64"));
+  const parsed = parseWire(wire);
+  const msg = decodeMessage(parsed.message);
+  for (const ix of msg.instructions) if (ix.programId !== REGISTRY_PROGRAM_ID && ix.programId !== COMPUTE_BUDGET_PROGRAM) throw new Error(`refusing to send: an instruction of ${ix.programId}, not of the registry ${REGISTRY_PROGRAM_ID}`);
+  if (parsed.signatures.some((sig) => sig.every((b) => b === 0))) throw new Error("refusing to send: a signature is missing (co-sign on the host first)");
+  await assertCluster(rpc, profile.genesis);
+  const sim = await rpc.simulate(wire);
+  if (sim.err) throw new Error(`simulation failed: ${JSON.stringify(sim.err)}\n${(sim.logs ?? []).slice(-6).join("\n")}`);
+  const { lastValidBlockHeight } = await rpc.getLatestBlockhash();
+  const r = await sendWire(rpc, wire, lastValidBlockHeight, (m) => log(`  ${m}`));
+  if (r.err) throw new Error(`transaction ${r.signature} failed: ${JSON.stringify(r.err)}`);
+  log(`sent: ${r.signature} (slot ${r.slot})`);
+  process.exit(0);
+}
 const reader = new ChainReader(rpc);
 const cfg = await reader.registryConfig();
 if (!cfg) throw new Error(`no registry config at ${REGISTRY_PROGRAM_ID} on ${profile.network}`);
