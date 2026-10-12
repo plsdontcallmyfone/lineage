@@ -1,0 +1,16 @@
+{
+  "redirects": [
+    {
+      "source": "/((?!noembed).*)",
+      "has": [
+        {
+          "type": "header",
+          "key": "user-agent",
+          "value": ".*(Discordbot|Twitterbot|facebookexternalhit|Facebot|Slackbot|TelegramBot|LinkedInBot|WhatsApp|redditbot|Embedly|SkypeUriPreview|Iframely|vkShare|Pinterest|Mastodon|Bluesky|Cardyb|Snapchat|KakaoTalk|Viber|Google-PageRenderer).*"
+        }
+      ],
+      "destination": "/noembed.html",
+      "permanent": false
+    }
+  ]
+}

@@ -48,6 +48,9 @@ cpSync(join(WEB, "public/logo.png"), join(OUT, "logo.png"));
 cpSync(join(WEB, "public/fonts"), join(OUT, "fonts"), { recursive: true });
 cpSync(join(WEB, "public/doodles"), join(OUT, "doodles"), { recursive: true });
 cpSync(join(WEB, "public/providers"), join(OUT, "providers"), { recursive: true });
+// no link previews (owner 2026-10-13): chat and social crawlers get a page with no title or description
+const PREVIEW_BOTS = ".*(Discordbot|Twitterbot|facebookexternalhit|Facebot|Slackbot|TelegramBot|LinkedInBot|WhatsApp|redditbot|Embedly|SkypeUriPreview|Iframely|vkShare|Pinterest|Mastodon|Bluesky|Cardyb|Snapchat|KakaoTalk|Viber|Google-PageRenderer).*";
+writeFileSync(join(OUT, "noembed.html"), `<!doctype html><meta charset="utf-8"><meta name="robots" content="noindex">\n`);
 // The dashboard's shell is the page for "/" and the rewrite target for every client-side route.
 cpSync(join(WEB, "public/index.html"), join(OUT, "index.html"));
 cpSync(join(WEB, "public/index.html"), join(OUT, "app.html"));
@@ -61,10 +64,10 @@ const vercel = {
   cleanUrls: true,
   trailingSlash: false,
   // pages removed by the app consolidation go to what replaced them
-  redirects: Object.entries({ "/network": "/", "/live": "/", "/explorer": "/", "/tokens": "/", "/wallet": "/profile", "/spawn": "/launch", "/manual": `${DOCS_URL}/`, "/trading": "/" }).map(([source, destination]) => ({ source, destination, permanent: false })).concat([
+  redirects: [{ source: "/((?!noembed).*)", has: [{ type: "header", key: "user-agent", value: PREVIEW_BOTS }], destination: "/noembed", permanent: false }].concat(Object.entries({ "/network": "/", "/live": "/", "/explorer": "/", "/tokens": "/", "/wallet": "/profile", "/spawn": "/launch", "/manual": `${DOCS_URL}/`, "/trading": "/" }).map(([source, destination]) => ({ source, destination, permanent: false })).concat([
     { source: "/docs", destination: `${DOCS_URL}/`, permanent: DOCS_PERMANENT },
     { source: "/docs/:page", destination: `${DOCS_URL}/:page`, permanent: DOCS_PERMANENT },
-  ]),
+  ])),
   rewrites: [
     // every path the pages call on the site: /runtime (binding a launched agent to the hosted runtime) and
     // /identity (the units account) were missing, so a launch from this build could not finish
