@@ -1,12 +1,12 @@
 {
-  "at": "2026-10-12T01:48:39.284Z",
-  "head": "1a0b8d2db5fde85bda95266b7f9e791d7f334b2a",
-  "first": "0afcb27c37819cb583f0139121a1929b9071b6f0",
+  "at": "2026-10-12T18:06:54.763Z",
+  "head": "99389eeaf2554c9e3487b881dc444c55c1927343",
+  "first": "4fbb1d01fe0d68c885093044701d52a0e8c2f61b",
   "container_image": "lineage/site-dryrun:24.04",
-  "seconds": 1289,
-  "fork_section": "ran",
-  "passed": 121,
-  "failed": 3,
+  "seconds": 1057,
+  "fork_section": "skipped",
+  "passed": 107,
+  "failed": 1,
   "checks": [
     {
       "check": "fresh box reachable over root ssh",
@@ -16,7 +16,7 @@
     {
       "check": "deploy.sh full on a fresh box",
       "ok": true,
-      "detail": "exit 0, 167 s"
+      "detail": "exit 0, 280 s"
     },
     {
       "check": "fund and site-chain ran as plans (nothing sent on chain)",
@@ -26,12 +26,12 @@
     {
       "check": "deploy.sh full re-run on the same box (new commit)",
       "ok": true,
-      "detail": "exit 0, 37 s"
+      "detail": "exit 0, 22 s"
     },
     {
       "check": "deploy.sh full re-run, same commit",
       "ok": true,
-      "detail": "exit 0, 36 s"
+      "detail": "exit 0, 25 s"
     },
     {
       "check": "same-commit re-run takes no data backup",
@@ -131,12 +131,12 @@
     {
       "check": "GET /v1/health over HTTPS (internal TLS)",
       "ok": true,
-      "detail": "{\"ok\":true,\"now\":1791768692335,\"epoch\":20}"
+      "detail": "{\"ok\":true,\"now\":1791827706942,\"epoch\":20}"
     },
     {
       "check": "Core in devnet chain mode read the chain",
       "ok": true,
-      "detail": "slot 510098749, epochs posted 2, core_signing false"
+      "detail": "slot 510345707, epochs posted 2, core_signing false"
     },
     {
       "check": "Core does not sign as Core authority in the dry run",
@@ -146,7 +146,7 @@
     {
       "check": "Core mirrored the registry's agents",
       "ok": true,
-      "detail": "30 agents"
+      "detail": "36 agents"
     },
     {
       "check": "dashboard page",
@@ -154,8 +154,8 @@
       "detail": ""
     },
     {
-      "check": "wallet page",
-      "ok": false,
+      "check": "wallet page (redirects to /profile, which answers)",
+      "ok": true,
       "detail": ""
     },
     {
@@ -211,7 +211,7 @@
     {
       "check": "devnet RPC proxy (same origin)",
       "ok": true,
-      "detail": "{\"jsonrpc\":\"2.0\",\"result\":510098855,\"id\":1}"
+      "detail": "{\"jsonrpc\":\"2.0\",\"result\":510345764,\"id\":1}"
     },
     {
       "check": "RPC method allowlist kept",
@@ -245,7 +245,7 @@
     },
     {
       "check": "deploy.sh status",
-      "ok": false,
+      "ok": true,
       "detail": ""
     },
     {
@@ -261,12 +261,12 @@
     {
       "check": "rollback to the previous release",
       "ok": true,
-      "detail": "now 0afcb27c37819cb583f0139121a1929b9071b6f0"
+      "detail": "now 4fbb1d01fe0d68c885093044701d52a0e8c2f61b"
     },
     {
       "check": "a failed Core health check rolls the release back",
       "ok": true,
-      "detail": "exit 1, now 0afcb27c37819cb583f0139121a1929b9071b6f0"
+      "detail": "exit 1, now 4fbb1d01fe0d68c885093044701d52a0e8c2f61b"
     },
     {
       "check": "simulated verifier running before the deploy",
@@ -276,17 +276,17 @@
     {
       "check": "forward again to HEAD (code mode)",
       "ok": true,
-      "detail": "now 1a0b8d2db5fde85bda95266b7f9e791d7f334b2a"
+      "detail": "now 99389eeaf2554c9e3487b881dc444c55c1927343"
     },
     {
       "check": "deploy returned while the verifier was still draining",
-      "ok": false,
-      "detail": "deploy 491 s, drain 150 s"
+      "ok": true,
+      "detail": "deploy 30 s, drain 150 s"
     },
     {
       "check": "public site answered 200 through the whole deploy",
       "ok": true,
-      "detail": "{\"polls\":90,\"non200\":0,\"longest_gap_ms\":464259,\"slowest_ms\":3046}"
+      "detail": "{\"polls\":93,\"non200\":0,\"longest_gap_ms\":6098,\"slowest_ms\":5834}"
     },
     {
       "check": "drained verifier restarted once, on the new release, after its old process exited",
@@ -326,7 +326,7 @@
     {
       "check": "mainnet instance: activate with state, overlay and RPC",
       "ok": true,
-      "detail": "exit 0, 91 s"
+      "detail": "exit 0, 146 s"
     },
     {
       "check": "mainnet instance: chain preflight passed before the start",
@@ -411,7 +411,7 @@
     {
       "check": "distinct directories, databases and accounts",
       "ok": true,
-      "detail": "/opt/units /opt/units-main | units-core:269190 units-main-core:436456 | units-core units-main-core"
+      "detail": "/opt/units /opt/units-main | units-core:580187 units-main-core:774532 | units-core units-main-core"
     },
     {
       "check": "mainnet accounts: none in sudo, docker or a devnet service group (dry run: no docker group)",
@@ -421,12 +421,12 @@
     {
       "check": "mainnet host answers its own Core (chain mode mainnet, mainnet program ids)",
       "ok": true,
-      "detail": "{\"mode\":\"mainnet\",\"rpc_url\":\"http://127.0.0.1:9799 (keyed)\",\"read_at\":1791769452293,\"slot\""
+      "detail": "{\"mode\":\"mainnet\",\"rpc_url\":\"http://127.0.0.1:9799 (keyed)\",\"read_at\":1791828085981,\"slot\""
     },
     {
       "check": "devnet host still answers its own Core (chain mode devnet)",
       "ok": true,
-      "detail": "{\"mode\":\"devnet\",\"rpc_url\":\"https://api.devnet.solana.com\",\"read_at\":1791769445612,\"slot\":"
+      "detail": "{\"mode\":\"devnet\",\"rpc_url\":\"https://api.devnet.solana.com\",\"read_at\":1791828071553,\"slot\":"
     },
     {
       "check": "mainnet Core does not sign in the dry run",
@@ -474,14 +474,14 @@
       "detail": "UNITS_INSTANCE=mainnet UNITS_NETWORK=mainnet UNITS_PORT_BLOCK=9760-9769 UNITS_PROFILE_LOCAL=/etc/units-main/profile.local.json"
     },
     {
-      "check": "devnet Core's environment carries none of the mainnet settings",
+      "check": "devnet Core's environment: UNITS_NETWORK=devnet pinned (the repository default is mainnet), none of the mainnet settings",
       "ok": true,
-      "detail": "0"
+      "detail": "UNITS_NETWORK=devnet"
     },
     {
-      "check": "mainnet runtime.json: 20 USD per UTC day counting all spend, 2 attempts, desktops required, shared E2B budget (strict), trading off",
-      "ok": true,
-      "detail": "{\"mode\":\"mainnet\",\"core\":\"http://127.0.0.1:9760\",\"global_max_usd\":20,\"global_cap_scope\":\"all\",\"global_window_s\":86400,\"max_concurrent\":1,\"max_concurrent_ceiling\":2,\"trading\":false,\"desktop_required\":true,\"desktops_max\":0,\"e2b_max\":2,\"desktop_usd_per_day\":16,\"shared\":{\"dir\":\"/var/lib/units-shared/e2b-spend\",\"name\":\"mainnet\",\"peers\":[\"devnet\"],\"strict\":true},\"price\":\"config\",\"bind_port\":9767}"
+      "check": "mainnet runtime.json: 800 USD per UTC day counting all spend, 2 attempts, desktops required, shared E2B budget (strict), no trading block",
+      "ok": false,
+      "detail": "{\"mode\":\"mainnet\",\"core\":\"http://127.0.0.1:9760\",\"global_max_usd\":800,\"global_cap_scope\":\"all\",\"global_window_s\":86400,\"max_concurrent\":1,\"max_concurrent_ceiling\":2,\"trading\":false,\"desktop_required\":true,\"desktops_max\":0,\"e2b_max\":50,\"desktop_usd_per_day\":200,\"shared\":{\"dir\":\"/var/lib/units-shared/e2b-spend\",\"name\":\"mainnet\",\"peers\":[\"devnet\"],\"strict\":true},\"price\":\"config\",\"bind_port\":9767}"
     },
     {
       "check": "devnet runtime.json names the same shared E2B budget (one cap, not two)",
@@ -544,89 +544,9 @@
       "detail": "left: 0 0"
     },
     {
-      "check": "fork: reachable from this machine and from inside the box (same genesis, not mainnet's)",
-      "ok": true,
-      "detail": "here 54KzxYgn, box 54KzxYgn"
-    },
-    {
-      "check": "fork: stage with the chain state, overlay and RPC (nothing started)",
-      "ok": true,
-      "detail": "exit 0"
-    },
-    {
-      "check": "fork: chain-plan before activate (Core not running): 3 registrations planned, the owner key and what it must hold named",
-      "ok": true,
-      "detail": "owner 8teg2eU4y78TynwzhKKtXDeiv1o5C9Cm6ErLAaya5ZGj needs 13000000 quote token base units and 0.02 SOL"
-    },
-    {
-      "check": "fork: chain refused while the owner key is not funded (nothing sent)",
-      "ok": true,
-      "detail": "exit 1"
-    },
-    {
-      "check": "fork: the owner key funded from the fork deployer (0.05 SOL, 20 test coins)",
-      "ok": true,
-      "detail": "exit 0"
-    },
-    {
-      "check": "fork: chain before activate sends 3 registrations and 2 bonds with the server's owner key (Core still not running)",
-      "ok": true,
-      "detail": "exit 0"
-    },
-    {
-      "check": "fork: chain again sends nothing (already registered and bonded)",
-      "ok": true,
-      "detail": "exit 0"
-    },
-    {
-      "check": "fork: activate after the chain step, the instance preflight reading the fork (READY, marked FORK TEST)",
-      "ok": true,
-      "detail": "exit 0, 7 s, 15 preflight checks"
-    },
-    {
-      "check": "fork: the instance's Core reads the fork at the test deployment's program ids",
-      "ok": true,
-      "detail": "{\"mode\":\"mainnet\",\"rpc_url\":\"http://host.docker.internal:9690\",\"read_at\":1791769711020,\"sl"
-    },
-    {
-      "check": "fork: sweep-plan lists what the server-held keys hold (nothing sent)",
-      "ok": true,
-      "detail": "exit 0"
-    },
-    {
-      "check": "fork: remove --purge refused while the server-held keys hold funds (instance kept)",
-      "ok": true,
-      "detail": "exit 1"
-    },
-    {
-      "check": "fork: sweep refused without MAINNET_SEND=yes",
-      "ok": true,
-      "detail": "exit 1"
-    },
-    {
-      "check": "fork: sweep sends the owner key's quote tokens and SOL to the recipient: the key holds 0, the recipient received it less two fees and with the closed token account's rent",
-      "ok": true,
-      "detail": "owner 38914475 to 0 lamports, recipient +40978554"
-    },
-    {
-      "check": "fork: the sweep says the bonds stay in the registry",
-      "ok": true,
-      "detail": ""
-    },
-    {
-      "check": "fork: remove --purge after the sweep; the devnet site answers",
-      "ok": true,
-      "detail": "exit 0"
-    },
-    {
-      "check": "fork: the endpoint is in no deploy log",
-      "ok": true,
-      "detail": "0 lines"
-    },
-    {
       "check": "host disk still >= 4 GB free",
       "ok": true,
-      "detail": "35 GB"
+      "detail": "22 GB"
     }
   ]
 }
