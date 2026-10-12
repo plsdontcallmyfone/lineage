@@ -121,16 +121,16 @@ describe("router", () => {
 
 describe("geometry guard", () => {
   const ok = [
-    { cls: "UnitsEditor", rect: { x: 0, y: 0, w: 636, h: 795 } },
+    { cls: "LineageEditor", rect: { x: 0, y: 0, w: 636, h: 795 } },
     { cls: "LineageRun", rect: { x: 640, y: 600, w: 637, h: 195 } },
-    { cls: "UnitsTerm", rect: { x: 640, y: 400, w: 640, h: 200 } },
-    { cls: "UnitsBrowser", rect: { x: 640, y: 0, w: 640, h: 400 } },
+    { cls: "LineageTerm", rect: { x: 640, y: 400, w: 640, h: 200 } },
+    { cls: "LineageBrowser", rect: { x: 640, y: 0, w: 640, h: 400 } },
   ];
   test("windows inside their tiles: live; any sealed window off its tile, missing, or unreadable: blackout", () => {
     const s = seal();
     expect(s.geometry(ok)).toBe(true);
     expect(s.streamAllowed).toBe(true);
-    const moved = ok.map((w) => (w.cls === "UnitsEditor" ? { ...w, rect: { ...w.rect, x: 641 } } : w));
+    const moved = ok.map((w) => (w.cls === "LineageEditor" ? { ...w, rect: { ...w.rect, x: 641 } } : w));
     expect(s.geometry(moved)).toBe(false);
     expect(s.why).toMatch(/editor/);
     expect(s.streamAllowed).toBe(false);
@@ -139,9 +139,9 @@ describe("geometry guard", () => {
     expect(s.geometry(ok.filter((w) => w.cls !== "LineageRun"))).toBe(false);
     expect(s.geometry(null)).toBe(false);
     // a second editor window (a dialog of the editor) anywhere else
-    expect(s.geometry([...ok, { cls: "UnitsEditor", rect: { x: 700, y: 10, w: 100, h: 100 } }])).toBe(false);
+    expect(s.geometry([...ok, { cls: "LineageEditor", rect: { x: 700, y: 10, w: 100, h: 100 } }])).toBe(false);
     // a browser window over the run tile
-    expect(s.geometry([...ok, { cls: "UnitsBrowser", rect: { x: 640, y: 0, w: 640, h: 800 } }])).toBe(false);
+    expect(s.geometry([...ok, { cls: "LineageBrowser", rect: { x: 640, y: 0, w: 640, h: 800 } }])).toBe(false);
     expect(s.geometry(ok)).toBe(true);
     s.end(false);
     expect(s.geometry(ok)).toBe(false);

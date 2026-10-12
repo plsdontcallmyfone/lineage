@@ -23,7 +23,7 @@ afterEach(() => {
   while (dirs.length) rmSync(dirs.pop()!, { recursive: true, force: true });
 });
 
-const GEOM = "UnitsEditor 0 0 636 795\nLineageRun 640 600 637 195\nLineageTerm 640 400 637 195\nLineageBrowser 640 0 640 400\n";
+const GEOM = "LineageEditor 0 0 636 795\nLineageRun 640 600 637 195\nLineageTerm 640 400 637 195\nLineageBrowser 640 0 640 400\n";
 
 class FakeInst implements DesktopInstance {
   calls: string[][] = [];
@@ -160,7 +160,7 @@ describe("an attempt on a desktop", () => {
 
   test("blackout: a moved editor window stops the live encoder and drops its unfinished segment", async () => {
     const root = tmp();
-    const inst = new FakeInst("x", "local", join(root, "live", "x"), 0, GEOM.replace("UnitsEditor 0 0", "UnitsEditor 700 0"));
+    const inst = new FakeInst("x", "local", join(root, "live", "x"), 0, GEOM.replace("LineageEditor 0 0", "LineageEditor 700 0"));
     const backend = new FakeBackend("local", root);
     backend.create = async () => inst;
     const p = new DesktopPool({ root, desktops_max: 1, e2b_max: 0, desktop_usd_per_day: 0, allow: [] }, { local: backend, e2b: new FakeBackend("e2b", root, "off") });
@@ -410,8 +410,8 @@ describe("driver", () => {
   test("helpers", () => {
     expect(homeUrl("https://github.com/karpathy/minbpe.git", "abc")).toBe("https://github.com/karpathy/minbpe/tree/abc");
     expect(homeUrl(null, "abc")).toBe("about:blank");
-    expect(parseGeom("UnitsEditor 0 0 10 10\ngarbage\nLineageRun -1 2 3 4")).toEqual([
-      { cls: "UnitsEditor", rect: { x: 0, y: 0, w: 10, h: 10 } },
+    expect(parseGeom("LineageEditor 0 0 10 10\ngarbage\nLineageRun -1 2 3 4")).toEqual([
+      { cls: "LineageEditor", rect: { x: 0, y: 0, w: 10, h: 10 } },
       { cls: "LineageRun", rect: { x: -1, y: 2, w: 3, h: 4 } },
     ]);
   });

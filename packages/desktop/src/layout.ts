@@ -37,11 +37,15 @@ export const TILES: Record<Tile, Rect> = {
 
 /** X window class of each tile (desk-session). */
 export const CLASSES: Record<Tile, string> = {
-  editor: "UnitsEditor",
-  browser: "UnitsBrowser",
-  term: "UnitsTerm",
+  editor: "LineageEditor",
+  browser: "LineageBrowser",
+  term: "LineageTerm",
   run: "LineageRun",
 };
+// These are the X11 window classes the desktop image sets (images/desktop/rootfs: desk-session,
+// desk-geom, rc.xml), never shown to anyone. They keep the image's names: the rebrand renamed three
+// of them here only, so the driver found no editor or browser window and the geometry guard never
+// let a stream start. test/classes.test.ts reads the image's scripts and fails if the two drift.
 
 /**
  * Character cell of the tiles' xterm (DejaVu Sans Mono 10 at Xvfb's default resolution), measured
