@@ -25,3 +25,5 @@ export * from "./programs.ts";
 export * from "./guard.ts";
 export * from "./firewall.ts";
 export * from "./firewall-chain.ts";
+export * from "./claims.ts";
+export * from "./pools.ts";

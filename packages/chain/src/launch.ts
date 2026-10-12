@@ -1,6 +1,6 @@
 import { addressBytes, ixDisc, Reader, Writer, type Address } from "./codec.ts";
 import { ata, BPF_LOADER_UPGRADEABLE, pda, SYSTEM_PROGRAM, TOKEN_2022_PROGRAM, TOKEN_PROGRAM, u64le } from "./pda.ts";
-import { r, REGISTRY_PROGRAM_ID, registryPdas, w, type Ix } from "./registry.ts";
+import { r, REGISTRY_PROGRAM_ID, registryPdas, w, type AccountMeta, type Ix } from "./registry.ts";
 import { token } from "./spl.ts";
 import { LAUNCH_PROGRAM_ID } from "./programs.ts";
 import { PUMP, pumpPdas } from "./pump.ts";
@@ -104,12 +104,13 @@ export const launch = {
    * Permissionless: splits the creator PDA's $UNITS ATA. Put pump.fun's sweeps and collects before it
    * (pump.ts creatorFeeHarvest) and create that ATA idempotently first.
    */
-  crankPumpFees(a: { agent: Address; agentMint: Address; lineMint: Address; lineTokenProgram?: Address }): Ix {
+  /** `routes`: the trailing accounts of an agent with a GitHub fee route or a pool membership (claims.ts and pools.ts `crankRouteKeys`); none otherwise. */
+  crankPumpFees(a: { agent: Address; agentMint: Address; lineMint: Address; lineTokenProgram?: Address; routes?: AccountMeta[] }): Ix {
     const tp = a.lineTokenProgram ?? TOKEN_PROGRAM, pc = launchPdas.pumpCreator(a.agent);
     return {
       programId: LAUNCH_PROGRAM_ID,
       keys: [r(launchPdas.config()), w(launchPdas.agentLaunch(a.agentMint)), r(pc), w(ata(pc, a.lineMint, tp)), w(launchPdas.computeVault(a.agent)),
-        w(registryPdas.treasury()), r(a.lineMint), r(tp)],
+        w(registryPdas.treasury()), r(a.lineMint), r(tp), ...(a.routes ?? [])],
       data: data("crank_pump_fees").done(),
     };
   },
@@ -188,6 +189,8 @@ export interface LaunchConfig {
   wakeThreshold: bigint;
   /** creator_fee_bps every pump.fun launch must carry. */
   pumpCreatorFeeBps: bigint;
+  /** Feature bits (FEATURES in claims.ts): 1 agent pools, 2 GitHub fee routes; 0 on every config written before them. */
+  features: number;
   paused: boolean;
   /** Null on a LaunchConfig the first layout wrote (before `migrate_launch_config`). */
   maxDebitPerEpoch: bigint | null;
@@ -201,7 +204,7 @@ export function decodeLaunchConfig(d: Uint8Array): LaunchConfig {
   const head = {
     admin: rd.address(), runtimeAuthority: rd.address(), registryProgram: rd.address(), lineMint: rd.address(), lineTokenProgram: rd.address(),
     computeSink: rd.address(), venue: rd.address(), agentComputeBps: rd.u16(), protocolBps: rd.u16(), sleepThreshold: rd.u64(),
-    wakeThreshold: rd.u64(), pumpCreatorFeeBps: rd.u64(), paused: (rd.u128(), rd.bool()),
+    wakeThreshold: rd.u64(), pumpCreatorFeeBps: rd.u64(), features: Number(rd.u128() & 0xffn), paused: rd.bool(),
   };
   rd.u8(); // bump
   rd.u8(); // authority_bump
@@ -228,6 +231,8 @@ export interface AgentLaunch {
   pumpPool: Address;
   /** PDA ["pump_creator", agent] (Meteora-era: its position). */
   pumpCreator: Address;
+  /** Route bits of a pump.fun record: 1 pool member, 2 GitHub fee route (always 0 for a Meteora-era record). */
+  routes: number;
   graduated: boolean;
   awake: boolean;
   createdAt: bigint;
@@ -239,10 +244,13 @@ export interface AgentLaunch {
 }
 export function decodeAgentLaunch(d: Uint8Array): AgentLaunch {
   const rd = new Reader(d).expect("AgentLaunch");
+  const head = { agent: rd.address(), mint: rd.address(), launcher: rd.address(), repoId: rd.hex32(), repoUrl: rd.string(), identityMode: rd.u8(), hosted: rd.bool() };
+  const venue = rd.address() === PUMP.program ? "pump" as const : "meteora" as const;
+  const mid = { bondingCurve: rd.address(), pumpPool: rd.address(), pumpCreator: rd.address() };
+  const reserved = rd.bytes(32);
   return {
-    agent: rd.address(), mint: rd.address(), launcher: rd.address(), repoId: rd.hex32(), repoUrl: rd.string(), identityMode: rd.u8(), hosted: rd.bool(),
-    venue: rd.address() === PUMP.program ? "pump" : "meteora", bondingCurve: rd.address(), pumpPool: rd.address(), pumpCreator: rd.address(),
-    graduated: (rd.address(), rd.bool()), awake: rd.bool(), createdAt: rd.i64(), feesClaimed: rd.u64(), toCompute: rd.u64(), toProtocol: rd.u64(), debited: rd.u64(),
+    ...head, venue, ...mid, routes: venue === "pump" ? reserved[0]! : 0,
+    graduated: rd.bool(), awake: rd.bool(), createdAt: rd.i64(), feesClaimed: rd.u64(), toCompute: rd.u64(), toProtocol: rd.u64(), debited: rd.u64(),
     withdrawn: rd.u64(),
   };
 }

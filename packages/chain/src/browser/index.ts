@@ -27,3 +27,5 @@ export { H, hashJson, canonicalUrl, repoId, canonicalJson, leafHash, merkleProof
 export * from "../profile.ts";
 export * from "../programs.ts";
 export * from "../fees.ts";
+export * from "../claims.ts";
+export * from "../pools.ts";
