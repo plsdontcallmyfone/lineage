@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { LEARNINGS_LIMITS } from "../src/learnings.ts";
 import { generateAgentKey } from "../src/protocol.ts";
-import { parseIdentityPayments, parseIndexerFlows, revenueOf } from "../src/revenue.ts";
+import { parseIdentityPayments, parseIndexerFlows, revenueOf, USD_MAX_AGE_S } from "../src/revenue.ts";
 import { parseGateViewers, viewersOf, VIEWERS_FRESH_MS } from "../src/viewers.ts";
 import { authorLeaks, CALIB, diff, expectOk, honest, makeAuthor, result, runReplays, setup, submit, type Env } from "./helpers.ts";
 
@@ -505,5 +505,63 @@ describe("analytics aggregates", () => {
     rev.recordIndexer({ ...flows, cranks: flows.cranks.slice(0, 1) });
     expect(src(await get("7d"), "creator_fees")).toMatchObject({ value_raw: "300000", error: null });
     expect((await e.anon.get("/v1/analytics/revenue?window=1y")).status).toBe(400);
+  });
+
+  test("protocol revenue in US dollars: the indexer's reading, a crank at the price of its own time, null with the reason when there is none", async () => {
+    const e = (env = await setup({ verifiers: 3 }));
+    const a = await makeAuthor(e);
+    const ma = (await expectOk(e.anon.get(`/v1/agents/${a.id}`))).mint as string;
+    const HOUR = 3_600_000;
+    const rev = revenueOf(e.core);
+    const get = async (w: string) => (e.clock.advance(CACHE), await expectOk(e.anon.get(`/v1/analytics/revenue?window=${w}`)));
+    const now = () => e.clock.now();
+    const s = (ms: number) => Math.floor(ms / 1000);
+    const sig = (n: number) => "S".repeat(60) + String(n).padStart(4, "1");
+    const src = (r: any, id: string) => r.sources.find((x: any) => x.id === id);
+    const cranks = (t: number) => [
+      // 3 h ago with a price stored for its own time (0.001 USD per coin), 2 h ago without one
+      { signature: sig(1), idx: 0, mint: ma, agent: a.id, venue: "pump", slot: 1, time: s(t - 3 * HOUR), fees_raw: "10000000", to_compute_raw: "7000000", to_protocol_raw: "3000000", quote_usd: 0.001 },
+      { signature: sig(2), idx: 0, mint: ma, agent: a.id, venue: "pump", slot: 2, time: s(t - 2 * HOUR), fees_raw: "20000000", to_compute_raw: "14000000", to_protocol_raw: "6000000", quote_usd: null },
+    ];
+    const tokens = [{ mint: ma, agent: a.id, symbol: "TA", venue: "pump", hosted: true, hidden: false, fees_claimed_raw: "30000000", to_compute_raw: "21000000", to_protocol_raw: "9000000", debited_raw: "4000000", state_at: s(now()) }];
+    const usd = (t: number) => ({ ok: true, usd: 0.002, sol_usd: 200, read_at: s(t) - 20 });
+
+    // an indexer that serves no price (an older release, or its feed is down): the figures stay, the dollar fields are null with the reason
+    rev.recordIndexer(parseIndexerFlows({ quote: "UNITS", quote_mint: ma, quote_decimals: 6, cranks: cranks(now()), tokens })!);
+    const none = await get("7d");
+    expect(none.usd).toMatchObject({ ok: false, basis: null, reason: expect.stringMatching(/does not serve a USD price/) });
+    expect(src(none, "creator_fees").value).toBe(9);
+    expect([src(none, "creator_fees").value_usd, none.kpi.usd.value, none.compute_sink.debited_usd]).toEqual([null, null, null]);
+    rev.recordIndexer(parseIndexerFlows({ quote: "UNITS", quote_mint: ma, quote_decimals: 6, cranks: cranks(now()), tokens, usd: { ok: false, reason: "Jupiter answered HTTP 503", read_at: null } })!);
+    expect((await get("7d")).usd).toMatchObject({ ok: false, reason: "Jupiter answered HTTP 503" });
+
+    // with a reading: the first crank at its own price, the second at the current one
+    rev.recordIndexer(parseIndexerFlows({ quote: "UNITS", quote_mint: ma, quote_decimals: 6, cranks: cranks(now()), tokens, usd: usd(now()) })!);
+    rev.recordIdentity(parseIdentityPayments({ since: 1, payments: [{ agent: a.id, mint: ma, launcher: a.id, lamports: "50000000", recipient: generateAgentKey().id, signatures: [sig(7)], launched_at: s(now() - HOUR) }] })!);
+    e.core.db.query("INSERT INTO slashes (agent_id, bps, amount, reason, ref, epoch, at) VALUES (?, 100, '1000000', 'minority', 'r1', 0, ?)").run(a.id, now() - HOUR);
+    const w = await get("7d");
+    expect(w.usd).toMatchObject({ ok: true, quote_usd: 0.002, sol_usd: 200, basis: "mixed" });
+    expect(src(w, "creator_fees").value).toBe(9);
+    expect(src(w, "creator_fees").value_usd).toBeCloseTo(3 * 0.001 + 6 * 0.002, 12);
+    expect(src(w, "creator_fees").lifetime_usd).toBeCloseTo(0.015, 12);
+    expect(src(w, "creator_fees").series_usd.reduce((n: number, x: number) => n + x, 0)).toBeCloseTo(0.015, 12);
+    expect(src(w, "slashes").value_usd).toBeCloseTo(0.002, 12);
+    expect(src(w, "identity")).toMatchObject({ value: 0.05 });
+    expect(src(w, "identity").value_usd).toBeCloseTo(10, 9);
+    // the headline: the quote-coin sources and the SOL payments, in dollars
+    expect(w.kpi.quote.value_usd).toBeCloseTo(0.017, 12);
+    expect(w.kpi.usd.value).toBeCloseTo(10.017, 9);
+    expect(w.kpi.usd.series.reduce((n: number, x: number) => n + x, 0)).toBeCloseTo(10.017, 9);
+    expect(w.creator_fees.fees_usd).toBeCloseTo(10 * 0.001 + 20 * 0.002, 12);
+    expect(w.creator_fees.to_compute_usd).toBeCloseTo(7 * 0.001 + 14 * 0.002, 12);
+    expect(w.creator_fees.tokens[0].to_protocol_usd).toBeCloseTo(0.015, 12);
+    expect(w.compute_sink.debited_usd).toBeCloseTo(0.008, 12);
+
+    // Core's copy of the reading goes stale with the indexer's: after USD_MAX_AGE_S there is no dollar figure
+    e.clock.advance(USD_MAX_AGE_S * 1000);
+    const old = await get("7d");
+    expect(old.usd).toMatchObject({ ok: false, reason: "the last USD price reading is too old" });
+    // a crank with its own stored price still has its dollar value; the one without has none, so the sum has none
+    expect([src(old, "creator_fees").value, src(old, "creator_fees").value_usd, old.kpi.usd.value]).toEqual([9, null, null]);
   });
 });

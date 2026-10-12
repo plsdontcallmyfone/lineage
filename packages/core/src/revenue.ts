@@ -15,13 +15,19 @@ import type { Core } from "./core.ts";
 // replaces its copy with the answer, so a record the source no longer has leaves here too. A source
 // that does not answer keeps the last copy and says since when it has not answered; a source that was
 // never configured is reported as not available, never as zero. Amounts are raw base units as strings
-// (quote token for cranks and counters, lamports for payments); nothing here is priced.
+// (quote token for cranks and counters, lamports for payments).
+//
+// US dollars (owner 2026-10-12): Core prices nothing itself. The indexer's answer carries the quote
+// coin's USD price as it read it (packages/indexer/src/usd.ts, the one place: `usd`, with SOL/USD and
+// the time of the reading) and, per crank, the price it had stored nearest before the crank's own time
+// (`quote_usd`). Core keeps both with its copy; `usd()` hands the reading on while it is fresh.
 
 const SCHEMA = `
 CREATE TABLE IF NOT EXISTS revenue_cranks (
   sig TEXT NOT NULL, idx INTEGER NOT NULL, mint TEXT NOT NULL, agent TEXT NOT NULL, venue TEXT NOT NULL,
   time INTEGER,                 -- unix seconds of the transaction (null when the RPC gave no block time)
   fees TEXT NOT NULL, to_compute TEXT NOT NULL, to_protocol TEXT NOT NULL,
+  quote_usd REAL,               -- USD per quote coin the indexer had stored nearest before this crank (null: none stored)
   PRIMARY KEY (sig, idx)
 );
 CREATE TABLE IF NOT EXISTS revenue_tokens (
@@ -43,6 +49,12 @@ const B58 = /^[1-9A-HJ-NP-Za-km-z]{32,44}$/;
 const SIG = /^[1-9A-HJ-NP-Za-km-z]{32,100}$/;
 const U64 = /^\d{1,20}$/;
 const MAX_ROWS = 200_000;
+/** Core's copy of the indexer's USD reading is used for at most this long after the indexer read it (its own limit is 300 s; Core samples once a minute). */
+export const USD_MAX_AGE_S = 420;
+
+export type UsdReading =
+  | { ok: true; quote_usd: number; sol_usd: number | null; read_at: number; source: string }
+  | { ok: false; reason: string; read_at: number | null };
 
 interface Internals {
   db: Core["db"];
@@ -59,6 +71,8 @@ export interface CrankRow {
   fees: string;
   to_compute: string;
   to_protocol: string;
+  /** USD per quote coin at the crank's own time, from the indexer's stored readings; null when it had none */
+  quote_usd: number | null;
 }
 export interface TokenFlowRow {
   mint: string;
@@ -95,11 +109,15 @@ export interface IndexerFlows {
   quote_decimals: number;
   cranks: CrankRow[];
   tokens: TokenFlowRow[];
+  /** the indexer's current reading of the quote coin's USD price; null when it had none (or is an older indexer) */
+  usd: { quote_usd: number; sol_usd: number | null; read_at: number } | null;
+  usd_reason: string | null;
 }
 
 const str = (v: unknown) => (typeof v === "string" ? v : null);
 const u64 = (v: unknown) => (typeof v === "string" && U64.test(v) ? v : null);
 const venueOf = (v: unknown) => (v === "pump" ? "pump" : "meteora");
+const pos = (v: unknown) => (typeof v === "number" && Number.isFinite(v) && v > 0 ? v : null);
 
 /** The indexer's answer, only the fields kept here; a row that is not well formed is dropped. Null when the answer is not the route's shape. */
 export function parseIndexerFlows(v: unknown): IndexerFlows | null {
@@ -116,7 +134,7 @@ export function parseIndexerFlows(v: unknown): IndexerFlows | null {
     if (!sig || !SIG.test(sig) || !mint || !B58.test(mint) || !agent || !B58.test(agent) || fees === null || c === null || p === null) continue;
     const idx = typeof x.idx === "number" && Number.isInteger(x.idx) && x.idx >= 0 ? x.idx : 0;
     const time = typeof x.time === "number" && Number.isInteger(x.time) && x.time > 0 ? x.time : null;
-    cranks.push({ sig, idx, mint, agent, venue: venueOf(x.venue), time, fees, to_compute: c, to_protocol: p });
+    cranks.push({ sig, idx, mint, agent, venue: venueOf(x.venue), time, fees, to_compute: c, to_protocol: p, quote_usd: pos(x.quote_usd) });
   }
   const tokens: TokenFlowRow[] = [];
   for (const x of o.tokens.slice(0, MAX_ROWS) as Record<string, unknown>[]) {
@@ -129,7 +147,14 @@ export function parseIndexerFlows(v: unknown): IndexerFlows | null {
       state_at: typeof x.state_at === "number" && Number.isInteger(x.state_at) ? x.state_at : null,
     });
   }
-  return { quote: str(o.quote)?.slice(0, 20) ?? null, quote_mint: str(o.quote_mint), quote_decimals: dec, cranks, tokens };
+  const u = o.usd && typeof o.usd === "object" ? (o.usd as Record<string, unknown>) : null;
+  const rate = u?.ok === true ? pos(u.usd) : null;
+  const readAt = typeof u?.read_at === "number" && Number.isInteger(u.read_at) && u.read_at > 0 ? u.read_at : null;
+  return {
+    quote: str(o.quote)?.slice(0, 20) ?? null, quote_mint: str(o.quote_mint), quote_decimals: dec, cranks, tokens,
+    usd: rate !== null && readAt !== null ? { quote_usd: rate, sol_usd: pos(u!.sol_usd), read_at: readAt } : null,
+    usd_reason: rate === null ? (str(u?.reason)?.slice(0, 200) ?? (u ? "the indexer gave no USD price" : "the market indexer does not serve a USD price (older release)")) : null,
+  };
 }
 
 /** The identity service's payments list; a row that is not well formed is dropped. */
@@ -161,6 +186,19 @@ export class Revenue {
   constructor(core: Core) {
     this.c = core as unknown as Internals;
     this.c.db.exec(SCHEMA);
+    const cols = new Set((this.c.db.query("PRAGMA table_info(revenue_cranks)").all() as { name: string }[]).map((x) => x.name));
+    if (!cols.has("quote_usd")) this.c.db.exec("ALTER TABLE revenue_cranks ADD COLUMN quote_usd REAL");
+  }
+
+  /** The quote coin's USD price (and SOL/USD) as the indexer last gave it to Core, while it is fresh; otherwise why there is none. */
+  usd(): UsdReading {
+    const s = this.source("indexer");
+    const m = s?.meta as { usd?: { quote_usd?: unknown; sol_usd?: unknown; read_at?: unknown } | null; usd_reason?: unknown } | null | undefined;
+    if (!s?.ok_at) return { ok: false, reason: s?.error ?? "no market indexer configured for this Core (UNITS_INDEXER_URL)", read_at: null };
+    const rate = pos(m?.usd?.quote_usd), readAt = typeof m?.usd?.read_at === "number" ? m.usd.read_at : null;
+    if (rate === null || readAt === null) return { ok: false, reason: typeof m?.usd_reason === "string" ? m.usd_reason : "the market indexer gave no USD price", read_at: null };
+    if (this.c.now() / 1000 - readAt > USD_MAX_AGE_S) return { ok: false, reason: "the last USD price reading is too old", read_at: readAt };
+    return { ok: true, quote_usd: rate, sol_usd: pos(m?.usd?.sol_usd), read_at: readAt, source: "market indexer (GET /market/quote-usd): the quote coin's pump.fun market, then Jupiter Price API V3" };
   }
 
   private mark(source: SourceState["source"], ok: boolean, error: string | null, meta?: Record<string, unknown>) {
@@ -178,11 +216,11 @@ export class Revenue {
     const db = this.c.db;
     db.transaction(() => {
       db.exec("DELETE FROM revenue_cranks; DELETE FROM revenue_tokens;");
-      const c = db.query("INSERT OR REPLACE INTO revenue_cranks (sig, idx, mint, agent, venue, time, fees, to_compute, to_protocol) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)");
-      for (const r of f.cranks) c.run(r.sig, r.idx, r.mint, r.agent, r.venue, r.time, r.fees, r.to_compute, r.to_protocol);
+      const c = db.query("INSERT OR REPLACE INTO revenue_cranks (sig, idx, mint, agent, venue, time, fees, to_compute, to_protocol, quote_usd) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)");
+      for (const r of f.cranks) c.run(r.sig, r.idx, r.mint, r.agent, r.venue, r.time, r.fees, r.to_compute, r.to_protocol, r.quote_usd ?? null);
       const t = db.query("INSERT OR REPLACE INTO revenue_tokens (mint, agent, symbol, venue, hosted, fees_claimed, to_compute, to_protocol, debited, state_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)");
       for (const r of f.tokens) t.run(r.mint, r.agent, r.symbol, r.venue, r.hosted, r.fees_claimed, r.to_compute, r.to_protocol, r.debited, r.state_at);
-      this.mark("indexer", true, null, { quote: f.quote, quote_mint: f.quote_mint, quote_decimals: f.quote_decimals });
+      this.mark("indexer", true, null, { quote: f.quote, quote_mint: f.quote_mint, quote_decimals: f.quote_decimals, usd: f.usd ?? null, usd_reason: f.usd_reason ?? null });
     })();
     return { ok: true, cranks: f.cranks.length, tokens: f.tokens.length };
   }
@@ -245,7 +283,7 @@ export class Revenue {
   }
 
   cranks(): CrankRow[] {
-    return this.c.db.query<CrankRow, []>("SELECT sig, idx, mint, agent, venue, time, fees, to_compute, to_protocol FROM revenue_cranks ORDER BY time, sig, idx").all();
+    return this.c.db.query<CrankRow, []>("SELECT sig, idx, mint, agent, venue, time, fees, to_compute, to_protocol, quote_usd FROM revenue_cranks ORDER BY time, sig, idx").all();
   }
 
   tokens(): TokenFlowRow[] {

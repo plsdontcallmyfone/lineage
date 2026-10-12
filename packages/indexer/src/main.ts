@@ -23,6 +23,7 @@ import { syncCore } from "./core-sync.ts";
 import { openDb } from "./db.ts";
 import { Indexer } from "./indexer.ts";
 import { throttledTransport } from "./rpc.ts";
+import { chainQuoteUsd, REFRESH_S } from "./usd.ts";
 
 const argv = process.argv.slice(2);
 const arg = (k: string, d: string) => {
@@ -155,7 +156,20 @@ if (flag("once")) {
   console.log(JSON.stringify({ ...status(), sources: undefined }, null, 1));
   process.exit(r.errors ? 1 : 0);
 }
-const handle = marketApi(db, status, { quote: profile.quote.symbol });
+// the quote coin's USD price (usd.ts): read on its own timer, never on a request
+const usd = chainQuoteUsd(db, rpc, () => (ix.lineMint ? { mint: ix.lineMint, decimals: ix.lineDecimals } : null));
+let usdFailed: string | null = null;
+async function usdLoop() {
+  for (;;) {
+    const r = await usd.refresh();
+    const why = r.ok ? null : r.reason;
+    if (why !== usdFailed) log(why ? `quote coin USD price: unavailable (${why})` : `quote coin USD price: read (${r.ok ? r.venue : ""}, Jupiter)`);
+    usdFailed = why;
+    await new Promise((res) => setTimeout(res, (ix.lineMint ? REFRESH_S : 5) * 1000));
+  }
+}
+void usdLoop();
+const handle = marketApi(db, status, { quote: profile.quote.symbol, usd: () => usd.current() });
 // Core: target class, verified generations, latest session and model per agent for the token directory
 const core = arg("core", (process.env.UNITS_CORE ?? process.env.LINEAGE_CORE) ?? "http://127.0.0.1:9660").replace(/\/+$/, "");
 const coreEvery = Number(arg("core-every", "60"));

@@ -1,11 +1,18 @@
 import type { Database } from "bun:sqlite";
 import { ensureCoreSchema } from "./core-sync.ts";
+import { USD_SCHEMA, usdLookup, type QuoteUsdReading } from "./usd.ts";
 
 // Read API (docs/plans/LAUNCHPAD-AND-LIVE.md L2), JSON with CORS *. Agent tokens trade on pump.fun
 // (owner decisions 2026-10-10); a token from the earlier Meteora venue is listed with venue "meteora"
 // and read_only true (devnet history, no new trades). Prices are $UNITS per agent
 // token; amounts are UI units (numbers) with the exact base units next to them as strings ("_raw").
 // Times are unix seconds. Nothing is estimated: a figure the chain has not produced yet is null.
+//
+// US dollars (owner 2026-10-12): every money figure also comes as a "_usd" field, the quote-coin figure
+// times the quote coin's USD price from usd.ts (the one place that price is read). Current figures use
+// the current reading; a trade, candle or fee record uses the reading stored nearest before its own
+// time when there is one ("usd_basis": "at_time") and the current reading otherwise ("current"). With
+// no reading every "_usd" field is null and "usd" says why: never a quote-coin number in its place.
 
 const TF: Record<string, number> = { "1m": 60, "5m": 300, "1h": 3600, "1d": 86400 };
 const CORS = { "access-control-allow-origin": "*", "access-control-allow-methods": "GET, HEAD, OPTIONS", "access-control-allow-headers": "content-type" };
@@ -45,7 +52,7 @@ export function corsFor(origin: string | null, env = (process.env.UNITS_CORS_ORI
   return ok ? { ...CORS, "access-control-allow-origin": origin!, vary: "Origin" } : { vary: "Origin" };
 }
 
-export function marketApi(db: Database, status: StatusSource, opts: { now?: () => number; corsOrigins?: string; quote?: string } = {}) {
+export function marketApi(db: Database, status: StatusSource, opts: { now?: () => number; corsOrigins?: string; quote?: string; usd?: () => QuoteUsdReading } = {}) {
   const handle = marketHandler(db, status, opts);
   return async function withCors(req: Request): Promise<Response> {
     const res = await handle(req);
@@ -56,7 +63,11 @@ export function marketApi(db: Database, status: StatusSource, opts: { now?: () =
   };
 }
 
-function marketHandler(db: Database, status: StatusSource, opts: { now?: () => number; quote?: string } = {}) {
+function marketHandler(db: Database, status: StatusSource, opts: { now?: () => number; quote?: string; usd?: () => QuoteUsdReading } = {}) {
+  db.exec(USD_SCHEMA);
+  const usdNow = (): QuoteUsdReading => opts.usd?.() ?? { ok: false, reason: "no USD price reader on this instance", read_at: null, max_age_s: 0 };
+  /** quote-coin figure to USD at `rate`; null when either is missing */
+  const inUsd = (v: number | null | undefined, rate: number | null) => (v == null || rate == null ? null : v * rate);
   // the quote token's symbol under the network profile (SPEC 14.10)
   const QUOTE = opts.quote ?? "UNITS";
   const now = opts.now ?? (() => Math.floor(Date.now() / 1000));
@@ -101,17 +112,28 @@ function marketHandler(db: Database, status: StatusSource, opts: { now?: () => n
     };
   }
 
-  function summary(t: TokRow) {
+  function summary(t: TokRow, cur: number | null = rateOf(usdNow()), at: (t: number | null) => number | null = usdLookup(db, now() - 86400 - 3600, now())) {
     const qd = lineDecimals();
     const t0 = now() - 86400;
     const vol = db.query("SELECT COALESCE(SUM(quote), 0) AS q, COALESCE(SUM(base), 0) AS b, COUNT(*) AS n FROM trades WHERE mint = ? AND time >= ?")
       .get(t.mint, t0) as { q: number; b: number; n: number };
+    // 24h volume in USD: each trade at the price of its own time where a reading was stored, else at the current one
+    let volUsd: number | null = 0;
+    if (vol.n) {
+      for (const r of db.query("SELECT time, quote FROM trades WHERE mint = ? AND time >= ?").all(t.mint, t0) as { time: number; quote: number }[]) {
+        const rate = at(r.time) ?? cur;
+        if (rate == null) { volUsd = null; break; }
+        volUsd! += r.quote * rate;
+      }
+    }
     const all = db.query("SELECT COUNT(*) AS n, MAX(time) AS last FROM trades WHERE mint = ?").get(t.mint) as { n: number; last: number | null };
     // Reference for the 24h change: the pool price after the last trade before the window; with no
     // such trade the pool still sat at the curve's start price.
     const ref = db.query("SELECT COALESCE(spot_after, price) AS p FROM trades WHERE mint = ? AND time < ? ORDER BY slot DESC, idx DESC LIMIT 1")
       .get(t.mint, t0) as { p: number } | null;
     const refPrice = ref?.p ?? t.start_price;
+    // the same change in dollars needs the quote coin's dollar price 24 hours ago: only when a reading was stored within the hour before
+    const rate24 = usdAt24(t0);
     const supply = ui(t.supply, t.decimals);
     const price = t.spot_price;
     const threshold = t.migration_threshold ? BigInt(t.migration_threshold) : null;
@@ -132,6 +154,15 @@ function marketHandler(db: Database, status: StatusSource, opts: { now?: () => n
       volume_24h_base: vol.b,
       trades_24h: vol.n,
       change_24h: price != null && refPrice ? price / refPrice - 1 : null,
+      // US dollars (usd.ts): null when the price cannot be read
+      quote_usd: cur,
+      price_usd: inUsd(price, cur),
+      market_cap_usd: inUsd(price != null && supply != null ? price * supply : null, cur),
+      volume_24h_usd: volUsd,
+      change_24h_usd: price != null && refPrice && cur != null && rate24 != null ? (price * cur) / (refPrice * rate24) - 1 : null,
+      quote_reserve_usd: inUsd(ui(t.quote_reserve, qd), cur),
+      migration_threshold_usd: inUsd(ui(t.migration_threshold, qd), cur),
+      fees_to_compute_usd: inUsd(ui(t.to_compute, qd), cur),
       // pump.fun: the share of the curve's real tokens sold (its graduation raise in $UNITS is set by pump.fun at launch)
       curve_progress: t.graduated ? 1 : pump ? t.progress : reserve != null && threshold ? Number(reserve) / Number(threshold) : null,
       quote_reserve: ui(t.quote_reserve, qd),
@@ -147,8 +178,19 @@ function marketHandler(db: Database, status: StatusSource, opts: { now?: () => n
     };
   }
 
+  const rateOf = (u: QuoteUsdReading) => (u.ok ? u.usd : null);
+  const usdAt24 = (t0: number) => usdLookup(db, t0 - 3600, t0, 3600)(t0);
+  /** every token's summary row under one reading and one sample lookup */
+  function summaries(): ReturnType<typeof summary>[] {
+    const cur = rateOf(usdNow());
+    const at = usdLookup(db, now() - 86400 - 3600, now());
+    return (db.query("SELECT * FROM tokens").all() as TokRow[]).map((t) => summary(t, cur, at));
+  }
+
   function detail(t: TokRow) {
     const qd = lineDecimals();
+    const reading = usdNow();
+    const cur = rateOf(reading);
     const fees = db.query(`SELECT COUNT(*) AS n FROM fee_cranks WHERE mint = ?`).get(t.mint) as { n: number };
     const events = db.query("SELECT kind, sig, slot, time, detail FROM events WHERE mint = ? ORDER BY slot").all(t.mint) as
       { kind: string; sig: string; slot: number; time: number | null; detail: string }[];
@@ -159,6 +201,8 @@ function marketHandler(db: Database, status: StatusSource, opts: { now?: () => n
       supply: ui(t.supply, t.decimals),
       supply_raw: t.supply,
       start_price: t.start_price,
+      start_price_usd: inUsd(t.start_price, cur),
+      usd: reading,
       hosted: t.hosted === 1,
       identity_mode: t.identity_mode,
       awake: t.awake == null ? null : t.awake === 1,
@@ -186,6 +230,10 @@ function marketHandler(db: Database, status: StatusSource, opts: { now?: () => n
         to_compute_raw: t.to_compute,
         to_treasury_raw: t.to_protocol,
         cranks: fees.n,
+        claimed_usd: inUsd(ui(t.fees_claimed, qd), cur),
+        to_compute_usd: inUsd(ui(t.to_compute, qd), cur),
+        to_treasury_usd: inUsd(ui(t.to_protocol, qd), cur),
+        creator_fee_income_usd: inUsd(ui(t.creator_fee_income, qd), cur),
         // pump.fun: creator fees the agent's trades charged (income, from the trade events) and what pump.fun's sweeps paid out
         creator_fee_income: ui(t.creator_fee_income, qd),
         creator_fee_income_raw: t.creator_fee_income,
@@ -197,6 +245,9 @@ function marketHandler(db: Database, status: StatusSource, opts: { now?: () => n
         balance_raw: t.compute_balance,
         debited: ui(t.debited, qd),
         withdrawn: ui(t.withdrawn, qd),
+        balance_usd: inUsd(ui(t.compute_balance, qd), cur),
+        debited_usd: inUsd(ui(t.debited, qd), cur),
+        withdrawn_usd: inUsd(ui(t.withdrawn, qd), cur),
       },
       events: events.map((e) => ({ kind: e.kind, signature: e.sig, slot: e.slot, time: e.time, ...JSON.parse(e.detail) })),
       holders_at: t.holders_at,
@@ -224,13 +275,16 @@ function marketHandler(db: Database, status: StatusSource, opts: { now?: () => n
     };
 
     if (parts.length === 2 && parts[1] === "status") return json(status());
+    // the quote coin's US dollar price, its sources and when it was read (usd.ts); ok false with the reason when there is none
+    if (parts.length === 2 && parts[1] === "quote-usd") return json({ quote: QUOTE, ...usdNow() });
     // pump.fun watch (docs/plans/PUMPFUN-LAUNCHES.md 6.6): creator reassignments, max_curve_depth and fee config changes
     if (parts.length === 2 && parts[1] === "alerts") {
       const a = alerts();
       return json({ checked_at: a?.checked_at ?? null, baseline: a?.baseline ?? null, alerts: a?.alerts ?? [] });
     }
     if (parts.length === 2 && parts[1] === "summary") {
-      const rows = (db.query("SELECT * FROM tokens").all() as TokRow[]).map(summary).filter((r) => !r.hidden);
+      const rows = summaries().filter((r) => !r.hidden);
+      const sumUsd = (f: (r: (typeof rows)[number]) => number | null) => rows.reduce<number | null>((n, r) => { const v = f(r); return n === null || v === null ? null : n + v; }, 0);
       const synced = (db.query("SELECT v FROM meta WHERE k = 'core_synced_at'").get() as { v: string } | null)?.v ?? null;
       const known = !!synced && rows.some((r) => r.generations !== null);
       return json({
@@ -241,6 +295,13 @@ function marketHandler(db: Database, status: StatusSource, opts: { now?: () => n
         // null until Core has a record of at least one token's agent (never a zero Core did not say)
         verified_generations: known ? rows.reduce((n, r) => n + (r.generations ?? 0), 0) : null,
         fees_to_compute: rows.reduce((n, r) => n + (r.fees_to_compute ?? 0), 0),
+        fees_to_compute_usd: sumUsd((r) => (r.fees_to_compute == null ? 0 : r.fees_to_compute_usd)),
+        // listed tokens, last 24 hours and now: in the quote coin and in US dollars (null when the price cannot be read)
+        volume_24h: rows.reduce((n, r) => n + r.volume_24h, 0),
+        volume_24h_usd: sumUsd((r) => r.volume_24h_usd),
+        market_cap: rows.reduce((n, r) => n + (r.market_cap ?? 0), 0),
+        market_cap_usd: sumUsd((r) => (r.market_cap == null ? 0 : r.market_cap_usd)),
+        usd: usdNow(),
         hidden: (db.query("SELECT COUNT(*) AS n FROM hidden_mints").get() as { n: number }).n,
         core_synced_at: synced ? Number(synced) : null,
         quote: QUOTE,
@@ -259,12 +320,15 @@ function marketHandler(db: Database, status: StatusSource, opts: { now?: () => n
       const cranks = (db.query("SELECT sig, idx, mint, slot, time, fees_raw, to_compute_raw, to_protocol_raw FROM fee_cranks ORDER BY slot, idx").all() as
         { sig: string; idx: number; mint: string; slot: number; time: number | null; fees_raw: string; to_compute_raw: string; to_protocol_raw: string }[])
         .filter((r) => byMint.has(r.mint));
+      const atAll = usdLookup(db, 0, now());
       return json({
         quote: QUOTE,
+        // the quote coin's USD price now, and per crank the price stored nearest before its own time (quote_usd; null when none was stored)
+        usd: usdNow(),
         quote_mint: (db.query("SELECT v FROM meta WHERE k = 'line_mint'").get() as { v: string } | null)?.v ?? null,
         quote_decimals: lineDecimals(),
         cranks: cranks.map((r) => ({ signature: r.sig, idx: r.idx, mint: r.mint, agent: byMint.get(r.mint)!.agent, venue: byMint.get(r.mint)!.venue === "pump" ? "pump" : "meteora",
-          slot: r.slot, time: r.time, fees_raw: r.fees_raw, to_compute_raw: r.to_compute_raw, to_protocol_raw: r.to_protocol_raw })),
+          slot: r.slot, time: r.time, fees_raw: r.fees_raw, to_compute_raw: r.to_compute_raw, to_protocol_raw: r.to_protocol_raw, quote_usd: atAll(r.time) })),
         tokens: toks.map((t) => ({ mint: t.mint, agent: t.agent, symbol: t.symbol, venue: t.venue === "pump" ? "pump" : "meteora", hosted: t.hosted == null ? null : t.hosted === 1,
           hidden: hidden.has(t.mint), fees_claimed_raw: t.fees_claimed, to_compute_raw: t.to_compute, to_protocol_raw: t.to_protocol, debited_raw: t.debited, state_at: t.state_at })),
       });
@@ -275,7 +339,7 @@ function marketHandler(db: Database, status: StatusSource, opts: { now?: () => n
       // hidden launches leave the listing and its search unless asked for (hidden=1); launcher= lists one wallet's own
       const launcher = q.get("launcher");
       const withHidden = q.get("hidden") === "1" || !!launcher;
-      const all = (db.query("SELECT * FROM tokens").all() as TokRow[]).map(summary).filter((r) => (withHidden || !r.hidden) && (!launcher || r.launcher === launcher));
+      const all = summaries().filter((r) => (withHidden || !r.hidden) && (!launcher || r.launcher === launcher));
       const sort = q.get("sort") ?? "newest";
       const key: Record<string, (r: ReturnType<typeof summary>) => number> = {
         newest: (r) => r.created_at,
@@ -306,7 +370,7 @@ function marketHandler(db: Database, status: StatusSource, opts: { now?: () => n
       const count = (f: (r: (typeof all)[number]) => string) => all.reduce<Record<string, number>>((m, r) => ((m[f(r)] = (m[f(r)] ?? 0) + 1), m), {});
       const offset = int("offset", 0);
       const limit = int("limit", rows.length || 1, 500);
-      return json({ tokens: rows.slice(offset, offset + limit), count: rows.length, total: all.length, offset, quote: QUOTE, sort: key[sort] ? sort : "newest",
+      return json({ tokens: rows.slice(offset, offset + limit), count: rows.length, total: all.length, offset, quote: QUOTE, usd: usdNow(), sort: key[sort] ? sort : "newest",
         facets: { class: count((r) => facet(r.class)), model: count((r) => facet(r.model)) } });
     }
 
@@ -323,13 +387,29 @@ function marketHandler(db: Database, status: StatusSource, opts: { now?: () => n
         const from = int("from", to - sec * 500);
         const rows = db.query(`SELECT time, slot, idx, price, COALESCE(spot_after, price) AS p, base, quote FROM trades WHERE mint = ? AND time >= ?
           AND time <= ? ORDER BY slot, idx`).all(t.mint, from, to) as { time: number; p: number; base: number; quote: number }[];
-        const out: { t: number; open: number; high: number; low: number; close: number; volume: number; volume_base: number; trades: number }[] = [];
+        type C = { t: number; open: number; high: number; low: number; close: number; volume: number; volume_base: number; trades: number;
+          open_usd: number | null; high_usd: number | null; low_usd: number | null; close_usd: number | null; volume_usd: number | null };
+        const out: C[] = [];
+        // US dollars: each trade at the reading stored nearest before its own time, else at the current reading
+        const reading = usdNow();
+        const cur = rateOf(reading);
+        const at = usdLookup(db, from, to);
+        let atTime = 0, atCurrent = 0;
+        const mx = (a: number | null, b: number | null) => (a == null || b == null ? null : Math.max(a, b));
+        const mn = (a: number | null, b: number | null) => (a == null || b == null ? null : Math.min(a, b));
         for (const r of rows) {
           const b = Math.floor(r.time / sec) * sec;
+          const stored = at(r.time);
+          const rate = stored ?? cur;
+          if (stored != null) atTime++; else atCurrent++;
+          const pu = inUsd(r.p, rate);
           let c = out[out.length - 1];
           if (!c || c.t !== b) {
-            const open = out.length ? out[out.length - 1]!.close : r.p;
-            c = { t: b, open, high: Math.max(open, r.p), low: Math.min(open, r.p), close: r.p, volume: 0, volume_base: 0, trades: 0 };
+            const prev = out[out.length - 1];
+            const open = prev ? prev.close : r.p;
+            const openUsd = prev ? prev.close_usd : pu;
+            c = { t: b, open, high: Math.max(open, r.p), low: Math.min(open, r.p), close: r.p, volume: 0, volume_base: 0, trades: 0,
+              open_usd: openUsd, high_usd: mx(openUsd, pu), low_usd: mn(openUsd, pu), close_usd: pu, volume_usd: 0 };
             out.push(c);
           }
           c.high = Math.max(c.high, r.p);
@@ -338,8 +418,13 @@ function marketHandler(db: Database, status: StatusSource, opts: { now?: () => n
           c.volume += r.quote;
           c.volume_base += r.base;
           c.trades++;
+          c.high_usd = mx(c.high_usd, pu);
+          c.low_usd = mn(c.low_usd, pu);
+          c.close_usd = pu;
+          c.volume_usd = c.volume_usd == null || rate == null ? null : c.volume_usd + r.quote * rate;
         }
-        return json({ mint: t.mint, tf, from, to, price: `pool price after each trade, ${QUOTE} per token`, candles: out });
+        return json({ mint: t.mint, tf, from, to, price: `pool price after each trade, ${QUOTE} per token; the _usd fields are the same in US dollars`, usd: reading,
+          usd_basis: cur == null && atCurrent ? null : atCurrent === 0 ? "at_time" : atTime === 0 ? "current" : "mixed", start_price_usd: inUsd(t.start_price, cur), candles: out });
       }
       case "trades": {
         const limit = Math.max(1, int("limit", 50, 500));
@@ -356,11 +441,21 @@ function marketHandler(db: Database, status: StatusSource, opts: { now?: () => n
         const rows = db.query(`SELECT * FROM trades WHERE mint = ?${cond} ORDER BY slot DESC, sig DESC, idx DESC LIMIT ?`).all(...args) as
           { sig: string; idx: number; slot: number; time: number | null; venue: string; side: string; base: number; quote: number; base_raw: string;
             quote_raw: string; price: number; spot_after: number | null; fee_raw: string | null; trader: string; creator_fee_raw: string | null }[];
+        const reading = usdNow();
+        const cur = rateOf(reading);
+        const times = rows.map((r) => r.time).filter((x): x is number => x != null);
+        const at = usdLookup(db, times.length ? Math.min(...times) : 0, times.length ? Math.max(...times) : 0);
         return json({
           mint: t.mint,
-          trades: rows.map((r) => ({ signature: r.sig, index: r.idx, slot: r.slot, time: r.time, venue: r.venue, side: r.side, base_amount: r.base,
-            quote_amount: r.quote, base_raw: r.base_raw, quote_raw: r.quote_raw, price: r.price, price_after: r.spot_after, trader: r.trader,
-            creator_fee_raw: r.creator_fee_raw })),
+          usd: reading,
+          trades: rows.map((r) => {
+            const stored = at(r.time);
+            const rate = stored ?? cur;
+            return { signature: r.sig, index: r.idx, slot: r.slot, time: r.time, venue: r.venue, side: r.side, base_amount: r.base,
+              quote_amount: r.quote, base_raw: r.base_raw, quote_raw: r.quote_raw, price: r.price, price_after: r.spot_after, trader: r.trader,
+              creator_fee_raw: r.creator_fee_raw, quote_amount_usd: inUsd(r.quote, rate), price_usd: inUsd(r.price, rate), price_after_usd: inUsd(r.spot_after, rate),
+              usd_basis: rate == null ? null : stored != null ? "at_time" : "current" };
+          }),
           next: rows.length === limit ? rows[rows.length - 1]!.sig : null,
         });
       }
@@ -384,19 +479,32 @@ function marketHandler(db: Database, status: StatusSource, opts: { now?: () => n
         const rows = db.query("SELECT * FROM fee_cranks WHERE mint = ? ORDER BY slot DESC, idx DESC").all(t.mint) as
           { sig: string; slot: number; time: number | null; fees_raw: string; to_compute_raw: string; to_protocol_raw: string; pool_fees: number;
             balance_raw: string; awake: number }[];
+        const reading = usdNow();
+        const cur = rateOf(reading);
+        const at = usdLookup(db, 0, now());
         return json({
           mint: t.mint,
-          cranks: rows.map((r) => ({ signature: r.sig, slot: r.slot, time: r.time,
-            source: t.venue === "pump" ? (r.pool_fees ? "pump_curve_and_pool" : "pump_curve") : r.pool_fees ? "damm_v2" : "dbc", amount: ui(r.fees_raw, qd),
-            to_vault: ui(r.to_compute_raw, qd), to_treasury: ui(r.to_protocol_raw, qd), amount_raw: r.fees_raw, to_vault_raw: r.to_compute_raw,
-            to_treasury_raw: r.to_protocol_raw, vault_balance_after: ui(r.balance_raw, qd), awake_after: r.awake === 1 })),
-          totals_onchain: { claimed: ui(t.fees_claimed, qd), to_vault: ui(t.to_compute, qd), to_treasury: ui(t.to_protocol, qd) },
+          usd: reading,
+          cranks: rows.map((r) => {
+            const stored = at(r.time);
+            const rate = stored ?? cur;
+            return { signature: r.sig, slot: r.slot, time: r.time,
+              source: t.venue === "pump" ? (r.pool_fees ? "pump_curve_and_pool" : "pump_curve") : r.pool_fees ? "damm_v2" : "dbc", amount: ui(r.fees_raw, qd),
+              to_vault: ui(r.to_compute_raw, qd), to_treasury: ui(r.to_protocol_raw, qd), amount_raw: r.fees_raw, to_vault_raw: r.to_compute_raw,
+              to_treasury_raw: r.to_protocol_raw, vault_balance_after: ui(r.balance_raw, qd), awake_after: r.awake === 1,
+              amount_usd: inUsd(ui(r.fees_raw, qd), rate), to_vault_usd: inUsd(ui(r.to_compute_raw, qd), rate), to_treasury_usd: inUsd(ui(r.to_protocol_raw, qd), rate),
+              usd_basis: rate == null ? null : stored != null ? "at_time" : "current" };
+          }),
+          totals_onchain: { claimed: ui(t.fees_claimed, qd), to_vault: ui(t.to_compute, qd), to_treasury: ui(t.to_protocol, qd),
+            claimed_usd: inUsd(ui(t.fees_claimed, qd), cur), to_vault_usd: inUsd(ui(t.to_compute, qd), cur), to_treasury_usd: inUsd(ui(t.to_protocol, qd), cur) },
           creator_fee_income: ui(t.creator_fee_income, qd),
+          creator_fee_income_usd: inUsd(ui(t.creator_fee_income, qd), cur),
           creator_fee_income_raw: t.creator_fee_income,
           sweeps: (db.query("SELECT * FROM sweeps WHERE mint = ? ORDER BY slot DESC, idx DESC").all(t.mint) as
             { sig: string; slot: number; time: number | null; venue: string; amount_raw: string; recipient: string }[])
-            .map((r) => ({ signature: r.sig, slot: r.slot, time: r.time, venue: r.venue, amount: ui(r.amount_raw, qd), amount_raw: r.amount_raw, recipient: r.recipient })),
-          compute_vault: { address: t.compute_vault, balance: ui(t.compute_balance, qd) },
+            .map((r) => ({ signature: r.sig, slot: r.slot, time: r.time, venue: r.venue, amount: ui(r.amount_raw, qd), amount_raw: r.amount_raw, recipient: r.recipient,
+              amount_usd: inUsd(ui(r.amount_raw, qd), at(r.time) ?? cur) })),
+          compute_vault: { address: t.compute_vault, balance: ui(t.compute_balance, qd), balance_usd: inUsd(ui(t.compute_balance, qd), cur) },
         });
       }
     }

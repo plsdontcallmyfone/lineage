@@ -1786,7 +1786,11 @@ export class Analytics {
   /**
    * GET /v1/analytics/revenue?window=24h|7d|30d|all&hidden=1 (plan section 7): what flowed to
    * protocol-controlled accounts, from records only, in the denomination each was paid in (the quote
-   * token, or SOL for units accounts). Nothing is priced here. Sources with a time per record are
+   * token, or SOL for units accounts) and in US dollars beside it ("_usd"). Core prices nothing itself:
+   * the dollar price is the market indexer's reading (revenue.ts usd()). A creator-fee crank is converted
+   * at the price the indexer had stored for its own time where it had one; every other record, and a
+   * crank without one, at the current reading. `usd.basis` says which ("at_time", "current", "mixed");
+   * with no reading every "_usd" field is null and `usd.reason` says why. Sources with a time per record are
    * bucketed like the dashboard (a window is its buckets, `prev` is the same number of buckets before):
    *   creator_fees     the treasury's share of each crank_pump_fees (the indexer's FeesCranked events)
    *   slashes          bond slashed into the reserve (Core's slashes; in chain mode once sent; a slash
@@ -1815,9 +1819,15 @@ export class Analytics {
       const has = (t: string) => !!this.db.query("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?").get(t);
 
       // records with a time (ms) and an amount, per source
-      type Ev = { t: number | null; v: bigint; agent: string };
+      type Ev = { t: number | null; v: bigint; agent: string; rate?: number | null };
       const cranks = rev.cranks().filter((c) => listed(c.agent, c.mint));
-      const fees: Ev[] = cranks.map((c) => ({ t: c.time === null ? null : c.time * 1000, v: big(c.to_protocol), agent: c.agent }));
+      const fees: Ev[] = cranks.map((c) => ({ t: c.time === null ? null : c.time * 1000, v: big(c.to_protocol), agent: c.agent, rate: c.quote_usd }));
+      // US dollars: the indexer's reading (revenue.ts); a record with a stored price of its own time uses it, the rest the current one
+      const reading = rev.usd();
+      const curQ = reading.ok ? reading.quote_usd : null;
+      const curSol = reading.ok ? reading.sol_usd : null;
+      let usdAtTime = 0, usdCurrent = 0;
+      const addUsd = (acc: number | null, v: number | null, rate: number | null) => (acc === null || v === null || rate === null ? null : acc + v * rate);
       const slashRows = this.core.chainMode
         ? this.db
             .query<{ id: number; agent_id: string; amount: string; at: number }, []>(
@@ -1845,20 +1855,24 @@ export class Analytics {
       const from = b.start;
       const to = b.start + b.n * b.size;
       const prev = win === "all" ? null : { from: from - b.n * b.size, to: from };
-      const agg = (evs: Ev[]) => {
+      const agg = (evs: Ev[], ui: (v: bigint) => number | null = uiQ, cur: number | null = curQ) => {
         const series = Array.from({ length: b.n }, () => 0n);
+        const usd = { series: Array.from({ length: b.n }, (): number | null => 0), value: 0 as number | null, before: 0 as number | null, lifetime: 0 as number | null };
         let value = 0n, before = 0n, lifetime = 0n, records = 0, undated = 0;
         for (const e of evs) {
           lifetime += e.v;
+          const rate = e.rate ?? cur;
+          if (e.v > 0n) e.rate != null ? usdAtTime++ : usdCurrent++;
+          usd.lifetime = addUsd(usd.lifetime, ui(e.v), rate);
           if (e.t === null) {
             undated++;
             continue;
           }
           const i = this.slot(b, e.t);
-          if (i >= 0) (series[i]! += e.v), (value += e.v), records++;
-          else if (prev && e.t >= prev.from && e.t < prev.to) before += e.v;
+          if (i >= 0) (series[i]! += e.v), (value += e.v), records++, (usd.series[i] = addUsd(usd.series[i]!, ui(e.v), rate)), (usd.value = addUsd(usd.value, ui(e.v), rate));
+          else if (prev && e.t >= prev.from && e.t < prev.to) (before += e.v), (usd.before = addUsd(usd.before, ui(e.v), rate));
         }
-        return { series, value, before, lifetime, records, undated, lifetime_records: evs.length };
+        return { series, value, before, lifetime, records, undated, lifetime_records: evs.length, usd };
       };
       const chain = (this.core.chainMode ? this.core.chainView?.() : null) as { line_mint?: string; launch?: { agent_compute_bps?: number; protocol_bps?: number; compute_sink?: string } | null; vault_addresses?: { treasury?: string; reserve?: string } } | null;
       const fronting = prepayOf(this.core).frontingView() as { identity_account_price_lamports?: string | null; identity_account_recipient?: string | null };
@@ -1875,18 +1889,20 @@ export class Analytics {
           value: uiQ(a.value), value_raw: a.value.toString(), prev: prev ? uiQ(a.before) : null, prev_raw: prev ? a.before.toString() : null, records: a.records,
           lifetime: uiQ(a.lifetime), lifetime_raw: a.lifetime.toString(), lifetime_records: a.lifetime_records, undated: a.undated,
           series: a.series.map(uiQ), series_raw: a.series.map(String),
+          value_usd: a.usd.value, prev_usd: prev ? a.usd.before : null, lifetime_usd: a.usd.lifetime, series_usd: a.usd.series,
         };
       };
       const feeSrc = quoteSrc("creator_fees", accounts.treasury, fees, !!idx?.ok_at, idx?.ok_at ?? null, idx?.ok_at ? idx.error : (idx?.error ?? "no market indexer configured for this Core (UNITS_INDEXER_URL)"));
       const slashSrc = quoteSrc("slashes", accounts.reserve, slashes, true, now, null);
       const bondSrc = quoteSrc("challenge_bonds", accounts.reserve, bonds, true, now, null);
-      const ia = agg(identity);
+      const ia = agg(identity, uiSol, curSol);
       const idSrc = {
         id: "identity", denom: "sol" as const, account: accounts.identity_recipient, available: !!idn?.ok_at, as_of: idn?.ok_at ?? null,
         error: idn?.ok_at ? idn.error : (idn?.error ?? "no identity service configured for this Core (UNITS_IDENTITY_URL)"),
         value: uiSol(ia.value), value_raw: ia.value.toString(), prev: prev ? uiSol(ia.before) : null, prev_raw: prev ? ia.before.toString() : null, records: ia.records,
         lifetime: uiSol(ia.lifetime), lifetime_raw: ia.lifetime.toString(), lifetime_records: ia.lifetime_records, undated: 0,
         series: ia.series.map(uiSol), series_raw: ia.series.map(String),
+        value_usd: ia.usd.value, prev_usd: prev ? ia.usd.before : null, lifetime_usd: ia.usd.lifetime, series_usd: ia.usd.series,
         price_lamports: fronting.identity_account_price_lamports ?? null,
       };
       const qs = [feeSrc, slashSrc, bondSrc];
@@ -1894,41 +1910,49 @@ export class Analytics {
       const qSeries = Array.from({ length: b.n }, (_, i) => qs.reduce((t, x) => t + big(x.series_raw[i]), 0n));
 
       // where creator fees went: compute vaults, the treasury, and what a crank routed elsewhere (pool, GitHub)
-      const split = Array.from({ length: b.n }, () => ({ fees: 0n, to_compute: 0n, to_protocol: 0n }));
-      const tot = { fees: 0n, to_compute: 0n, to_protocol: 0n, cranks: 0 };
-      const life = { fees: 0n, to_compute: 0n, to_protocol: 0n, cranks: cranks.length };
-      const perToken = new Map<string, { mint: string; agent: string; cranks: number; fees: bigint; to_compute: bigint; to_protocol: bigint }>();
-      for (const c of cranks) {
-        const f = big(c.fees), tc = big(c.to_compute), tp = big(c.to_protocol);
-        life.fees += f;
-        life.to_compute += tc;
-        life.to_protocol += tp;
-        const i = c.time === null ? -1 : this.slot(b, c.time * 1000);
-        if (i < 0) continue;
-        const x = split[i]!;
+      type Split = { fees: bigint; to_compute: bigint; to_protocol: bigint; usd: { fees: number | null; to_compute: number | null; to_protocol: number | null; routed: number | null } };
+      const blank = (): Split => ({ fees: 0n, to_compute: 0n, to_protocol: 0n, usd: { fees: 0, to_compute: 0, to_protocol: 0, routed: 0 } });
+      const routed = (x: { fees: bigint; to_compute: bigint; to_protocol: bigint }) => (x.fees > x.to_compute + x.to_protocol ? x.fees - x.to_compute - x.to_protocol : 0n);
+      const put = (x: Split, f: bigint, tc: bigint, tp: bigint, rate: number | null) => {
         x.fees += f;
         x.to_compute += tc;
         x.to_protocol += tp;
-        tot.fees += f;
-        tot.to_compute += tc;
-        tot.to_protocol += tp;
+        x.usd = { fees: addUsd(x.usd.fees, uiQ(f), rate), to_compute: addUsd(x.usd.to_compute, uiQ(tc), rate), to_protocol: addUsd(x.usd.to_protocol, uiQ(tp), rate),
+          routed: addUsd(x.usd.routed, uiQ(routed({ fees: f, to_compute: tc, to_protocol: tp })), rate) };
+      };
+      const split = Array.from({ length: b.n }, blank);
+      const tot = { ...blank(), cranks: 0 };
+      const life = { ...blank(), cranks: cranks.length };
+      const perToken = new Map<string, Split & { mint: string; agent: string; cranks: number }>();
+      for (const c of cranks) {
+        const f = big(c.fees), tc = big(c.to_compute), tp = big(c.to_protocol);
+        const rate = c.quote_usd ?? curQ;
+        put(life, f, tc, tp, rate);
+        const i = c.time === null ? -1 : this.slot(b, c.time * 1000);
+        if (i < 0) continue;
+        put(split[i]!, f, tc, tp, rate);
+        put(tot, f, tc, tp, rate);
         tot.cranks++;
-        const t = perToken.get(c.mint) ?? perToken.set(c.mint, { mint: c.mint, agent: c.agent, cranks: 0, fees: 0n, to_compute: 0n, to_protocol: 0n }).get(c.mint)!;
+        const t = perToken.get(c.mint) ?? perToken.set(c.mint, { ...blank(), mint: c.mint, agent: c.agent, cranks: 0 }).get(c.mint)!;
         t.cranks++;
-        t.fees += f;
-        t.to_compute += tc;
-        t.to_protocol += tp;
+        put(t, f, tc, tp, rate);
       }
-      const routed = (x: { fees: bigint; to_compute: bigint; to_protocol: bigint }) => (x.fees > x.to_compute + x.to_protocol ? x.fees - x.to_compute - x.to_protocol : 0n);
-      const part = (x: { fees: bigint; to_compute: bigint; to_protocol: bigint }) => ({
+      const part = (x: Split) => ({
         fees: uiQ(x.fees), fees_raw: x.fees.toString(), to_compute: uiQ(x.to_compute), to_compute_raw: x.to_compute.toString(),
         to_protocol: uiQ(x.to_protocol), to_protocol_raw: x.to_protocol.toString(), routed: uiQ(routed(x)), routed_raw: routed(x).toString(),
+        fees_usd: x.usd.fees, to_compute_usd: x.usd.to_compute, to_protocol_usd: x.usd.to_protocol, routed_usd: x.usd.routed,
       });
       const tokens = rev.tokens().filter((t) => listed(t.agent, t.mint));
       const symbolOf = new Map(tokens.map((t) => [t.mint, t.symbol]));
       const debited = tokens.filter((t) => big(t.debited) > 0n);
       const debitedTotal = debited.reduce((t, x) => t + big(x.debited), 0n);
       const stateAt = tokens.reduce<number | null>((m, t) => (t.state_at !== null && (m === null || t.state_at > m) ? t.state_at : m), null);
+      // the headline in dollars: the quote-coin sources plus units account payments (SOL) where those are recorded
+      const plus = (a: number | null, c: number | null) => (a === null || c === null ? null : a + c);
+      const usdParts = [feeSrc, slashSrc, bondSrc, ...(idSrc.available ? [idSrc] : [])];
+      const usdSum = (k: "value_usd" | "prev_usd" | "lifetime_usd") => usdParts.reduce<number | null>((t, x) => plus(t, x[k]), 0);
+      const usdSeries = Array.from({ length: b.n }, (_, i) => usdParts.reduce<number | null>((t, x) => plus(t, x.series_usd[i] ?? null), 0));
+      const inUsd = (v: number | null) => (v === null || curQ === null ? null : v * curQ);
 
       return {
         now, window: win, hidden: include,
@@ -1936,9 +1960,15 @@ export class Analytics {
         quote: { symbol: typeof idx?.meta?.quote === "string" ? idx.meta.quote : null, mint: (typeof idx?.meta?.quote_mint === "string" ? idx.meta.quote_mint : null) ?? chain?.line_mint ?? null, decimals: dec },
         split_bps: chain?.launch ? { agent_compute: chain.launch.agent_compute_bps ?? null, protocol: chain.launch.protocol_bps ?? null } : this.core.chainMode ? null : { agent_compute: this.core.cfg.agent_compute_bps, protocol: this.core.cfg.protocol_bps },
         accounts,
+        usd: reading.ok
+          ? { ok: true, quote_usd: reading.quote_usd, sol_usd: reading.sol_usd, read_at: reading.read_at, source: reading.source, basis: usdCurrent === 0 && usdAtTime > 0 ? "at_time" : usdAtTime === 0 ? "current" : "mixed" }
+          : { ok: false, reason: reading.reason, read_at: reading.read_at, basis: null },
         kpi: {
-          quote: { value: uiQ(sumRaw("value_raw")), value_raw: sumRaw("value_raw").toString(), prev: prev ? uiQ(sumRaw("prev_raw")) : null, prev_raw: prev ? sumRaw("prev_raw").toString() : null, series: qSeries.map(uiQ), lifetime: uiQ(sumRaw("lifetime_raw")), lifetime_raw: sumRaw("lifetime_raw").toString() },
-          sol: { available: idSrc.available, value: idSrc.value, value_raw: idSrc.value_raw, prev: idSrc.prev, series: idSrc.series, lifetime: idSrc.lifetime, lifetime_raw: idSrc.lifetime_raw },
+          usd: { value: usdSum("value_usd"), prev: prev ? usdSum("prev_usd") : null, series: usdSeries, lifetime: usdSum("lifetime_usd") },
+          quote: { value: uiQ(sumRaw("value_raw")), value_raw: sumRaw("value_raw").toString(), prev: prev ? uiQ(sumRaw("prev_raw")) : null, prev_raw: prev ? sumRaw("prev_raw").toString() : null, series: qSeries.map(uiQ), lifetime: uiQ(sumRaw("lifetime_raw")), lifetime_raw: sumRaw("lifetime_raw").toString(),
+            value_usd: qs.reduce<number | null>((t, x) => plus(t, x.value_usd), 0), prev_usd: prev ? qs.reduce<number | null>((t, x) => plus(t, x.prev_usd), 0) : null },
+          sol: { available: idSrc.available, value: idSrc.value, value_raw: idSrc.value_raw, prev: idSrc.prev, series: idSrc.series, lifetime: idSrc.lifetime, lifetime_raw: idSrc.lifetime_raw,
+            value_usd: idSrc.value_usd, prev_usd: idSrc.prev_usd },
         },
         sources: [feeSrc, slashSrc, bondSrc, idSrc],
         creator_fees: {
@@ -1953,11 +1983,11 @@ export class Analytics {
         // lifetime only: the chain keeps a running total per token, no record per debit with a time
         compute_sink: {
           available: !!idx?.ok_at, as_of: stateAt === null ? null : stateAt * 1000, account: accounts.compute_sink,
-          debited: uiQ(debitedTotal), debited_raw: debitedTotal.toString(), tokens: debited.length,
+          debited: uiQ(debitedTotal), debited_raw: debitedTotal.toString(), debited_usd: inUsd(uiQ(debitedTotal)), tokens: debited.length,
           by_token: debited
             .sort((x, y) => (big(y.debited) > big(x.debited) ? 1 : big(y.debited) < big(x.debited) ? -1 : x.mint.localeCompare(y.mint)))
             .slice(0, 12)
-            .map((t) => ({ mint: t.mint, agent: t.agent, name: this.nameOf(t.agent), symbol: t.symbol, debited: uiQ(big(t.debited)), debited_raw: t.debited })),
+            .map((t) => ({ mint: t.mint, agent: t.agent, name: this.nameOf(t.agent), symbol: t.symbol, debited: uiQ(big(t.debited)), debited_raw: t.debited, debited_usd: inUsd(uiQ(big(t.debited))) })),
         },
       };
     });
