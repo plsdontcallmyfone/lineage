@@ -209,7 +209,7 @@ if (MAIN) {
   // instance (mainnet test)"). Every one is configuration in this file's output, none is in a program.
   Object.assign(runtimeCfg, {
     _note:
-      "Written by scripts/deploy/site-config.ts for the mainnet test instance on every install and activate. Owner decisions 2026-10-11, cap raised to 800 USD 2026-10-12: at most 800 USD of model spend per UTC day counting every dollar (vault-paid included: global_cap_scope all), at most 2 attempts at once, a live desktop required for every attempt, E2B desktops only, inside the one E2B day budget shared with the devnet site (desktop_shared, strict), no agent trading (removed 2026-10-12). The quote token is a throwaway stand-in, so its rate is the configured TEST rate (price.source config), the same figures Core publishes (config/network.json prepay with the state file's network_overrides).",
+      "Written by scripts/deploy/site-config.ts for the mainnet test instance on every install and activate. Owner decisions 2026-10-11, cap raised to 800 USD 2026-10-12: at most 800 USD of model spend per UTC day counting every dollar (vault-paid included: global_cap_scope all), at most 2 attempts at once, a live desktop required for every attempt, E2B desktops only, inside its own E2B day budget (desktop_usd_per_day; not shared with the devnet site since 2026-10-12), no agent trading (removed 2026-10-12). The quote token is a throwaway stand-in, so its rate is the configured TEST rate (price.source config), the same figures Core publishes (config/network.json prepay with the state file's network_overrides).",
     global_max_usd: 800,
     global_cap_scope: "all",
     global_window_s: 86400,
@@ -229,7 +229,10 @@ if (MAIN) {
     desktop_usd_per_day: 200,
     desktop_required: true,
     desktop_hosts_file: undefined,
-    desktop_shared: { dir: SHARED_E2B_DIR, name: "mainnet", peers: ["devnet"], strict: true },
+    // owner 2026-10-12: its own E2B budget (the cap above), not shared with the devnet site. While it was
+    // shared and strict, a paused devnet runtime (no spend file within 10 minutes) left this instance no
+    // budget at all: the first mainnet agent waited for a desktop that could never come.
+    desktop_shared: null,
   });
 }
 const runtimePath = join(OUT, "runtime.json");
