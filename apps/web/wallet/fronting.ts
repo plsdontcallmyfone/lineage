@@ -157,7 +157,7 @@ export function fundingSummary(v: FundingView): Raw {
     <details class="lz-sum-more"><summary>${one}</summary>
       <div class="lz-sum-lines">${ls.map(([k, a, u]) => html`<div class="lz-rr" data-fronting="${k}"><span class="eyebrow">${k}</span><span class="lz-rv"><b class="num">${a}</b> <span class="dim">${u}</span></span></div>`)}</div>
     </details>
-    ${v.blocked ? html`<div class="wl-fine" data-fronting-short><span class="mark warn">Launch disabled: ${v.blocked}.</span></div>` : ""}
+    ${v.blocked ? html`<div class="wl-fine" data-fronting-short><span class="mark warn">Launch disabled: ${v.blocked.replace(/\.$/, "")}.</span></div>` : ""}
     <div class="wl-fine dim">${v.devnet ? "Devnet test tokens, no value. " : ""}<a class="link" href="${v.docs}">details</a></div>
   </div>`;
 }
@@ -169,6 +169,6 @@ export function costBreakdown(v: FundingView): Raw {
     ${lines(v).map(([k, a, u]) => html`<div class="lz-rr" data-fronting="${k}"><span class="eyebrow">${k}</span><span class="lz-rv"><b class="num">${a}</b> <span class="dim">${u}</span></span></div>`)}
     <div class="lz-rr" data-fronting="Total"><span class="eyebrow">Total</span><span class="lz-rv"><b class="num">${c ? money(usdOf(c.total, v.solUsd)) : v.pending ? "simulating" : "not simulated"}</b> <span class="dim">${c ? sol(c.total) : ""}${c && c.headroom > 0n ? `; the wallet must hold ${SOL(c.needed)} SOL (the purchase at its slippage bound)` : ""}</span></span></div>
     <div class="lz-rr"><span class="eyebrow">Approval</span><span class="lz-rv"><b>one signature</b> <span class="dim">${v.txCount ? `${v.txCount} transaction${v.txCount === 1 ? "" : "s"} signed together${v.devnet ? ", sent in order" : ", sent as one Jito bundle (all or nothing)"}` : ""}</span></span></div>
-    ${v.blocked ? html`<div class="wl-fine" data-fronting-short><span class="mark warn">Launch disabled: ${v.blocked}.</span></div>` : html`<div class="wl-fine"><span class="mark good">your wallet covers all of it</span></div>`}
+    ${v.blocked ? html`<div class="wl-fine" data-fronting-short><span class="mark warn">Launch disabled: ${v.blocked.replace(/\.$/, "")}.</span></div>` : html`<div class="wl-fine"><span class="mark good">your wallet covers all of it</span></div>`}
   </div>`;
 }
