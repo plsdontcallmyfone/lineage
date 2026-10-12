@@ -30,6 +30,8 @@ const STATUS_MARKS: [string, string][] = [[MARK_START, MARK_END], [LEGACY_MARKS.
 export const README_MIN_INTERVAL_MS = 10 * 60 * 1000;
 /** How often the serve loop reads Core for one agent's status. */
 export const README_POLL_MS = 60 * 1000;
+/** How long after an answer other than "verified" Core is asked again to record a published, signed proof. */
+export const RECORD_RETRY_MS = 5 * 60 * 1000;
 
 // ------------------------------------------------------------------------------------------------
 // facts
@@ -483,6 +485,15 @@ export class GenesisRunner {
       if (!s || s.status !== "ready") return "skipped";
       const { facts, profile, sessions } = await this.facts(agent, s.mint, s.repo);
       if (!profile) return "skipped";
+      // Core did not record the signed proof when it was published (it refused it, or did not answer): ask again
+      // every RECORD_RETRY_MS until it does, so one bad answer at the launch does not leave the agent without its login
+      if (rec.proof.signed && rec.login && rec.core?.status !== "verified" && t - (rec.core?.at ?? 0) >= RECORD_RETRY_MS) {
+        const before = rec.core?.status ?? null;
+        const c = await this.o.sources.record(agent, rec.login);
+        rec.core = { ...c, at: t };
+        this.save(rec);
+        if (c.status !== before) this.log(`genesis: Core says ${c.status}${c.detail ? `: ${c.detail}` : ""} (asked again)`);
+      }
       const st = statusFacts(profile, sessions, this.published(agent));
       const readme = renderReadme(facts, st, { noToken: rec.opts.no_token, signed: rec.proof.signed, login: rec.login ?? "", domain: proofDomain(rec.proof.text) });
       const hash = sha256(readme);

@@ -8,7 +8,7 @@ import type { AgentLaunch } from "../../chain/src/index.ts";
 import { sshKeygen } from "../../souls/src/github/provision.ts";
 import { genesisRoute } from "../../runtime/src/genesis.ts";
 import { GENESIS_KIND, genesisFileText, signGenesis, verifyGenesis, type GenesisFile, type UnsignedGenesis } from "../src/genesis-proof.ts";
-import { GenesisRunner, MARK_GENESIS, README_MIN_INTERVAL_MS, renderReadme, statusBlock, statusFacts, type GenesisSources } from "../src/genesis.ts";
+import { GenesisRunner, MARK_GENESIS, README_MIN_INTERVAL_MS, RECORD_RETRY_MS, renderReadme, statusBlock, statusFacts, type GenesisSources } from "../src/genesis.ts";
 import { safeLog } from "../src/redact.ts";
 import { IdentityService } from "../src/service.ts";
 import { EncryptedStore, ensureKeyFile } from "../src/store.ts";
@@ -288,6 +288,30 @@ describe("genesis runner", () => {
     expect(w.show("units-proof.json").stdout).toBe(w.show("units-proof.json", all[all.length - 1]).stdout);
     // the poll interval keeps Core reads down when not forced
     expect(await w.runner.refresh(w.agent)).toBe("skipped");
+  });
+
+  // second mainnet test launch, 2026-10-12: Core refused the proof once (it asked the wrong identity service) and was never asked again
+  test("a proof Core refused or did not answer for is offered again every five minutes until Core records it", async () => {
+    const w = world();
+    const answers = [{ status: "refused", detail: "the identity service has no account for this agent" }, { status: "unreachable", detail: "timeout" }, { status: "verified", detail: null }];
+    let asked = 0;
+    (w.runner as any).o.sources.record = async () => answers[Math.min(asked++, answers.length - 1)]!;
+    const rec = await w.runner.run(w.agent, { explicit: true });
+    expect(rec.core?.status).toBe("refused");
+    // not within five minutes of the last answer
+    expect(await w.runner.refresh(w.agent, { force: true })).toBe("unchanged");
+    expect(asked).toBe(1);
+    w.tick(RECORD_RETRY_MS);
+    expect(await w.runner.refresh(w.agent, { force: true })).toBe("unchanged");
+    expect(w.runner.record(w.agent)!.core?.status).toBe("unreachable");
+    w.tick(RECORD_RETRY_MS);
+    expect(await w.runner.refresh(w.agent, { force: true })).toBe("unchanged");
+    expect(w.runner.record(w.agent)!.core?.status).toBe("verified");
+    w.tick(RECORD_RETRY_MS);
+    // once recorded, Core is not asked again, and nothing was committed for it
+    expect(await w.runner.refresh(w.agent, { force: true })).toBe("unchanged");
+    expect(asked).toBe(3);
+    expect(w.commits()).toBe("1");
   });
 
   test("hidden test launches are skipped unless explicitly provisioned; no_token keeps token lines out", async () => {
