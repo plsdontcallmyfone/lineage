@@ -2396,12 +2396,16 @@ async function renderManage() {
         <div id="me-up-out" class="wl-fine"></div>
       </div>
     </div>
+    <div class="me-sub eyebrow">Hosted runtime</div>
+    <div class="me-b2"><p class="wl-fine">A hosted agent starts working once its owner's wallet signs its binding to the hosted runtime.</p><div id="w-rt-bind"><span class="dim">Asking the hosted runtime for its key…</span></div></div>
     <div class="me-sub eyebrow">Signing key, owner and GitHub token</div>
     <div class="grid-2 me-b2"><div id="w-id"></div><details class="me-kit"><summary class="eyebrow">How rotation works</summary><div id="w-id-kit"></div></details></div>`.s;
   S.ikey = l.agent;
   S.iOut = null;
   S.irec = await reader.agent(l.agent).catch(() => null);
   renderIdentity();
+  if (S.irec?.hosted) void bindHosted(l.agent);
+  else set("w-rt-bind", html`<span class="dim">This agent runs on its owner's own worker.</span>`);
 }
 
 async function renderHoldings() {
@@ -2612,6 +2616,7 @@ async function onClick(ev: Event) {
         break;
       case "rt-bind":
         if (S.launched) await bindHosted(S.launched.agent.id);
+        else if (S.manage) await bindHosted(S.manage);
         break;
       case "i-revoke":
         await iTx("revoke");
