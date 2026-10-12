@@ -381,9 +381,9 @@ Notes on the table.
   independent source for them.
 - TEST defaults (liquidity, holders, the firewall's absolute caps) are devnet values in the same
   sense as the rest of the trading config. They need the owner's numbers before mainnet.
-- Core stores the admin's config whole. A deployment that already stored one keeps its stored values
-  for the older fields; the new defaults of those fields apply after the admin posts them. The site's
-  stored config still carries the earlier values.
+- Core stores the admin's config whole. A config stored before this layer is upgraded when read: a
+  value that is still the earlier default (3% per trade, 10% per token and so on) follows the new
+  default; a value the admin had changed stays (`storedPatch` in `packages/core/src/scores.ts`).
 
 ### 9.2 Circuit breakers and pre-trade checks
 

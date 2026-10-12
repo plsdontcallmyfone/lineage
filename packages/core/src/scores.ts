@@ -378,6 +378,13 @@ export function mergeTradingConfig(base: TradingConfig, patch: unknown): Trading
   return c;
 }
 
+/** The defaults of the trading layout before the risk layer, for the upgrade in storedPatch. */
+const PRE_RISK_DEFAULTS: Record<string, unknown> = {
+  max_position_bps: 1000, max_trade_bps: 300, max_open_positions: 8, daily_loss_bps: 500, max_drawdown_bps: 2000, stop_loss_bps: 1500, take_profit_bps: 4000,
+  max_slippage_bps: 200, max_impact_bps: 100, cooldown_s: 600, min_hold_s: 1800, default_temperament: "aggressive",
+};
+const PRE_RISK_SIZES: Record<Temperament, number> = { aggressive: 300, balanced: 200, careful: 100 };
+
 /**
  * A stored config written by an earlier layout: keys this version no longer knows are dropped (the
  * score-threshold temperament fields of the first trading layout), so an upgrade never bricks the
@@ -387,10 +394,16 @@ export function storedPatch(raw: unknown): Record<string, unknown> {
   if (!isObj(raw)) return {};
   const out: Record<string, unknown> = {};
   for (const [k, v] of Object.entries(raw)) if (k in TRADING_DEFAULTS) out[k] = v;
+  // A config stored before the risk layer (2026-10-12; it has no max_deployed_bps) was stored whole, defaults
+  // included. A value in it that is still the earlier default was never the admin's choice: it follows the
+  // new conservative default. A value the admin had changed stays as the admin set it.
+  const preRisk = !("max_deployed_bps" in raw);
+  if (preRisk) for (const [k, v] of Object.entries(PRE_RISK_DEFAULTS)) if (out[k] === v) delete out[k];
   if (isObj(out.temperaments)) {
     const t: Record<string, unknown> = {};
     for (const [name, v] of Object.entries(out.temperaments))
-      if (TEMPERAMENTS.includes(name as Temperament) && isObj(v)) t[name] = Object.fromEntries(Object.entries(v).filter(([k]) => k === "size_bps" || k === "prompt"));
+      if (TEMPERAMENTS.includes(name as Temperament) && isObj(v))
+        t[name] = Object.fromEntries(Object.entries(v).filter(([k, x]) => (k === "size_bps" || k === "prompt") && !(preRisk && k === "size_bps" && x === PRE_RISK_SIZES[name as Temperament])));
     out.temperaments = t;
   }
   return out;

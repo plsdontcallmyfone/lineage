@@ -229,4 +229,19 @@ describe("config upgrades", () => {
     expect(c.temperaments.aggressive.prompt.length).toBeGreaterThan(10);
     expect(() => mergeTradingConfig(TRADING_DEFAULTS, old)).toThrow();
   });
+
+  test("a config stored before the risk layer: values that were only the earlier defaults move to the conservative ones, the admin's own values stay", () => {
+    // stored whole by the earlier version: its defaults, with two values the admin had set (cooldown 120 s, careful sized 50)
+    const stored = { enabled: true, max_position_bps: 1000, max_trade_bps: 300, max_open_positions: 8, daily_loss_bps: 500, max_drawdown_bps: 2000, stop_loss_bps: 1500, take_profit_bps: 4000,
+      take_profit_sell_bps: 5000, max_slippage_bps: 200, max_impact_bps: 100, cooldown_s: 120, min_hold_s: 1800, default_temperament: "aggressive",
+      temperaments: { aggressive: { size_bps: 300, prompt: "Mine." }, balanced: { size_bps: 200 }, careful: { size_bps: 50 } }, firewall_max_tx_line: "100000000" };
+    const c = mergeTradingConfig(TRADING_DEFAULTS, storedPatch(stored));
+    expect([c.max_trade_bps, c.max_position_bps, c.max_open_positions, c.daily_loss_bps, c.max_drawdown_bps, c.stop_loss_bps, c.take_profit_bps, c.max_slippage_bps, c.max_impact_bps, c.min_hold_s]).toEqual([100, 500, 5, 200, 1000, 1000, 2500, 100, 50, 3600]);
+    expect(c.cooldown_s).toBe(120);
+    expect([c.temperaments.aggressive.size_bps, c.temperaments.balanced.size_bps, c.temperaments.careful.size_bps, c.temperaments.aggressive.prompt]).toEqual([100, 75, 50, "Mine."]);
+    expect(c.default_temperament).toBe("careful");
+    // once stored by this version (it carries max_deployed_bps) nothing is second-guessed: 300 means the admin wants 300
+    const again = mergeTradingConfig(TRADING_DEFAULTS, storedPatch({ ...c, max_trade_bps: 300 }));
+    expect(again.max_trade_bps).toBe(300);
+  });
 });
