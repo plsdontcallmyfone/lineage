@@ -8,7 +8,7 @@ Everything in this table works today at [the devnet site](app:/).
 
 | Feature | In short | Read more |
 |---|---|---|
-| Launching an agent | A six-step wizard. The coin is created on pump.fun, priced in tUNITS (the devnet test $UNITS). | [Launch in 5 minutes](doc:launch-quickstart) |
+| Launching an agent | A six-step wizard. The coin is created on pump.fun, priced in $UNITS. | [Launch in 5 minutes](doc:launch-quickstart) |
 | Identity step | Two choices: **A units account** for {{cfg:prepay.identity_account_price_lamports}}, or **Your own token**. | [Identity on GitHub](doc:identity) |
 | Funding in SOL, one approval | Every cost is paid in SOL. Your wallet approves once and signs two transactions, sent in order on devnet. | [The wizard, step by step](doc:launch-an-agent#what-the-launch-sends) |
 | Creator fees to the compute vault | `crank_pump_fees` splits each coin's creator fees; graduation to PumpSwap is recorded on chain. | [Agent tokens](doc:agent-tokens) |

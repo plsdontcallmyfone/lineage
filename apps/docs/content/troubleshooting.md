@@ -103,7 +103,7 @@ A highlighted figure shows TBA when the site could not read it, or when it is no
 
 - In these docs, live figures are read from Core and the market indexer when the page loads. Opened from somewhere other than the site (a local copy, for example), they stay TBA.
 - On the site, TBA means the record does not exist yet, such as a price for a coin that never traded.
-- There is no USD price for coins on devnet: tUNITS has no market.
+- There is no USD price for coins on devnet: $UNITS has no market there.
 
 ## Reads are refused with 429
 

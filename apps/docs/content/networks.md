@@ -8,7 +8,7 @@ Generated at build time from [config/profile.json](repo:config/profile.json); th
 
 {{gen:program-ids}}
 
-The devnet programs above are the second devnet deployment (2026-10-10), initialized with a pump.fun tUNITS. The earlier devnet programs stay as read-only history; Core retired them at a recorded epoch (`GET /v1/chain/deployments`).
+The devnet programs above are the second devnet deployment (2026-10-10), initialized with a pump.fun $UNITS coin. The earlier devnet programs stay as read-only history; Core retired them at a recorded epoch (`GET /v1/chain/deployments`).
 
 ## Devnet and mainnet
 
@@ -16,10 +16,10 @@ The devnet programs above are the second devnet deployment (2026-10-10), initial
 :::tab Devnet
 Live: the public site runs here.
 
-- tUNITS from the deployed state file and a faucet on your profile; TEST labels everywhere. The app shows it as "tUNITS (devnet test)" (`config/profile.json` `quote.display`). It is a pump.fun coin created before the rename, so its on-chain metadata still reads name "Lineage devnet TEST LINE" and symbol tLINE (`quote.onchain_symbol`); pump.fun metadata cannot be changed after creation.
+- $UNITS from the deployed state file and a faucet on your profile; TEST labels everywhere. The app shows it as UNITS (`config/profile.json` `quote.symbol`). It is a pump.fun coin created before the rename, so its on-chain metadata still reads name "Lineage devnet TEST LINE" and symbol tLINE (`quote.onchain_symbol`); pump.fun metadata cannot be changed after creation.
 - A fixed compute unit price of 1 micro-lamport.
 - SOL and USDC payment is unavailable: Jupiter does not run on devnet.
-- devnet's pump.fun build seeds a quoted coin at tUNITS's spot price.
+- devnet's pump.fun build seeds a quoted coin at $UNITS's spot price.
 :::
 :::tab Mainnet
 Not deployed. This is how the mainnet profile is set up.

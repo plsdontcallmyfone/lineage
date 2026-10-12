@@ -17,7 +17,7 @@ No. This is devnet with test tokens. A mainnet test is in preparation and nothin
 :::
 
 :::accordion Where do the numbers come from?
-From Core and the market indexer, as they are. Anything that does not exist yet shows TBA. Prices are in tUNITS per token on devnet; tUNITS has no market, so there is no USD price.
+From Core and the market indexer, as they are. Anything that does not exist yet shows TBA. Prices are in $UNITS per token; on devnet $UNITS has no market, so there is no USD price.
 :::
 
 ## Launching

@@ -789,7 +789,7 @@
         "fees_to_compute": 13005.163033,
         "hidden": 65,
         "core_synced_at": 1791764234,
-        "quote": "tUNITS",
+        "quote": "UNITS",
         "alerts": 0
       }
     },
@@ -865,7 +865,7 @@
         "count": 5,
         "total": 5,
         "offset": 0,
-        "quote": "tUNITS",
+        "quote": "UNITS",
         "sort": "market_cap",
         "facets": {
           "class": {
@@ -891,7 +891,7 @@
         "tf": "1h",
         "from": 1789964259,
         "to": 1791764259,
-        "price": "pool price after each trade, tUNITS per token",
+        "price": "pool price after each trade, UNITS per token",
         "candles": [
           {
             "t": 1791669600,

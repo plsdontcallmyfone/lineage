@@ -145,7 +145,7 @@ function pick(cfg: Record<string, unknown>, key: string): unknown {
 function cfgText(key: string, v: unknown, cfg: Record<string, unknown>): string | null {
   if (v === undefined || v === null || key === "_note") return null;
   const leaf = key.split(".").pop()!;
-  const quote = (pick(cfg, "prepay.rate_status") === "test" ? "tUNITS" : "$UNITS");
+  const quote = "$UNITS";
   if (leaf.endsWith("_usd")) return `${v} USD`;
   if (leaf.endsWith("_lamports") && /^\d+$/.test(String(v))) return `${Number(v) / 1e9} SOL`;
   if (leaf === "line_per_usd" || leaf === "compute_price_line_per_usd") return `${v} ${quote} per USD`;
@@ -154,7 +154,7 @@ function cfgText(key: string, v: unknown, cfg: Record<string, unknown>): string 
   if (leaf === "finder_share" && typeof v === "number") return `${Math.round(v * 100)}%`;
   // amounts paramValue does not list (challenge bond and reward) format like any bond amount
   const t = paramValue(leaf === "challenge_bond" || leaf === "challenge_reward" ? "min_bond" : leaf, v, typeof cfg.token_decimals === "number" ? cfg.token_decimals : undefined);
-  return t === "TBA" ? null : t.replace("$UNITS", quote);
+  return t === "TBA" ? null : t;
 }
 
 // a plain cross-origin GET (no preflight); a busy answer of the app's gate is asked again once it allows

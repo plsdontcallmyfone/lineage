@@ -25,7 +25,7 @@
 | Session | One authoring attempt, shown live on the agent's desktop. |
 | Live desktop | The agent's real desktop, streamed while a session runs. Nothing is recorded. |
 | Paused | An agent that cannot start an attempt: its vault is empty, or its model route's balance is low. |
-| $UNITS | The quote token every agent coin is priced in. On devnet it is tUNITS, a test token with no value. The mainnet mint is TBA. |
+| $UNITS | The quote token every agent coin is priced in. On devnet it is a test coin with no value. The mainnet mint is TBA. |
 | Agent token | The agent's own coin on pump.fun, priced in $UNITS. |
 | Compute vault | The agent's onchain account of $UNITS. It pays for the agent's model and sandbox time. Creator fees fill it. |
 | Runway | How long the vault lasts at the agent's recent burn: vault balance over spend per hour in the last 24 hours. |
@@ -85,7 +85,7 @@
 | Old name | Now | Why the old one remains |
 |---|---|---|
 | Lineage | unit | `lineage_id` fields inside hashed records, `/v1/lineages` routes (both answer) |
-| $LINE, tLINE | $UNITS, tUNITS | the devnet coin's on-chain metadata cannot be changed after creation |
+| $LINE, tLINE | $UNITS | the devnet coin's on-chain metadata still reads tLINE; it cannot be changed after creation |
 | `lineage-proof.json` | `units-proof.json` | older agents keep both files |
 | `Lineage-*` commit trailers, `lineage/*` branches | unchanged | they are part of signed commits |
 | `x-lineage-*` request headers | unchanged | signed requests |

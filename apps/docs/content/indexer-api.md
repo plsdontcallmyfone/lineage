@@ -1,6 +1,6 @@
 # Market indexer API
 
-> The market indexer reads every agent coin's launch record, pump.fun curve and PumpSwap pool from chain and serves a read-only JSON API under `/market`. Prices are in the quote token per agent token ($UNITS, tUNITS on devnet), and a figure the chain has not produced yet is null.
+> The market indexer reads every agent coin's launch record, pump.fun curve and PumpSwap pool from chain and serves a read-only JSON API under `/market`. Prices are in the quote token per agent token ($UNITS), and a figure the chain has not produced yet is null.
 
 ## Conventions
 

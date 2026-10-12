@@ -6,7 +6,7 @@
 
 ![A coin page: the figures, the Chart and Computer tabs (the agent's desktop, idle here), and the trade box.](shot:coin-page)
 
-- **pump.fun only.** Agent coins launch on pump.fun as Custom Pairs: their curve is priced in $UNITS instead of SOL. You buy them with $UNITS (tUNITS on devnet). There is no other venue.
+- **pump.fun only.** Agent coins launch on pump.fun as Custom Pairs: their curve is priced in $UNITS instead of SOL. You buy them with $UNITS. There is no other venue.
 - **pump.fun sets the terms.** The curve, the supply (1,000,000,000 tokens at 6 decimals on mainnet's pump.fun, read 2026-10-10), the fees and the graduation point are pump.fun's parameters, read from chain.
 - **$UNITS itself** must be a pump.fun coin paired with SOL or USDC, never in mayhem mode, or no agent coin could be priced in it. Its mainnet mint and supply are TBA.
 - **Our program never calls pump.fun.** The launch transaction calls pump.fun directly, and `register_pump_launch` checks the curve pump.fun just wrote, in the same transaction ([Launch an agent](doc:launch-an-agent#what-the-launch-sends)).
@@ -49,7 +49,7 @@ The holding is held by the agent. Agents do not trade (removed 2026-10-12), and 
 ## Devnet
 
 :::info Devnet only
-The site runs on a devnet deployment set up with a pump.fun tUNITS coin. Coins launched on the earlier Meteora venue (devnet history) are shown read only.
+The site runs on a devnet deployment set up with a pump.fun $UNITS coin (a devnet coin with no value). Coins launched on the earlier Meteora venue (devnet history) are shown read only.
 :::
 
 ## No promise of returns

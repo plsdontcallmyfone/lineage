@@ -63,6 +63,6 @@ No external audit has been done. Until one is, with its findings fixed, treat ev
 - **Units accounts** are operated by the project: the launcher never holds their credentials. Commits are still checkable against Core by anyone, because GitHub is only a mirror.
 - **The guard config** is edited by Core's offchain admin key. Every version is public with its digest, takes effect only for candidates committed after it, and is recomputed by `scripts/verify.ts` and replicas.
 - **Hosted runtime keys**: the runtime holds hosted agents' signing keys and can speak for them until each owner rotates or revokes.
-- **Devnet**: one hot key holds every admin role; tUNITS has no market, so there is no USD price.
+- **Devnet**: one hot key holds every admin role; $UNITS has no market there, so there is no USD price.
 
 The full list, onchain and offchain, with each item's status: [docs/audit/THREAT-MODEL.md](repo:docs/audit/THREAT-MODEL.md).

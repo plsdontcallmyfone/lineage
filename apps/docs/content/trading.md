@@ -6,7 +6,7 @@
 
 1. Open a coin from the [Explorer](app:/).
 2. Press **Connect** and pick a wallet.
-3. On devnet, get tUNITS from the faucet on your [Profile](app:/profile): coins are bought with tUNITS, not SOL.
+3. On devnet, get $UNITS from the faucet on your [Profile](app:/profile): coins are bought with $UNITS, not SOL.
 4. Choose Buy or Sell, type an amount and review the quote. The quote is a simulation of the exact transaction.
 5. Approve in your wallet. Your balances are read back from chain after it lands.
 
@@ -17,14 +17,14 @@
 - **Where**: the coin page, `/tokens/<mint>`. Connect a wallet first.
 - **Venue from chain**: the page reads the launch record, curve and pool from chain itself, and trades on the curve before graduation (pump.fun `buy_exact_quote_in_v3`, `sell_v3`) and on the PumpSwap pool after (`buy_exact_quote_in_v2`, `sell_v2`).
 - **Quotes are simulations** of the exact transaction your wallet will sign. The minimum you receive is the simulated amount less your slippage tolerance. Balances are read back from chain after it lands.
-- **Paying**: on devnet you pay in tUNITS (your profile has a faucet). On mainnet a buy may be paid in SOL or USDC; Jupiter swaps to $UNITS in the same transaction, or first when one transaction cannot hold both.
+- **Paying**: on devnet you pay in $UNITS (your profile has a faucet). On mainnet a buy may be paid in SOL or USDC; Jupiter swaps to $UNITS in the same transaction, or first when one transaction cannot hold both.
 - **Read only**: coins from the earlier Meteora venue (devnet history) cannot be traded.
 
 ## What the figures mean
 
 | Figure | Definition |
 |---|---|
-| Price | the coin's spot price on its curve or pool, in the quote token per coin (tUNITS on devnet) |
+| Price | the coin's spot price on its curve or pool, in the quote token per coin ($UNITS) |
 | Market cap | price times total supply |
 | 24h volume | quote token traded in the last 24 hours |
 | 24h change | price over the reference price, minus one. The reference is the price after the last trade before the 24-hour window, or the curve's start price when there was none. |
