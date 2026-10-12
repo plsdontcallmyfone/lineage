@@ -73,7 +73,9 @@ async function pacedRead(route: import("@playwright/test").Route, url: URL) {
   const hit = core ? coreCache.get(key) : undefined;
   if (hit && Date.now() - hit.at < CACHE_MS) return route.fulfill({ status: hit.status, headers: hit.headers, body: hit.body });
   for (let i = 0; ; i++) {
+    const t0 = Date.now();
     if (bucket) await pace(bucket);
+    if (process.env.UI_DEBUG && Date.now() - t0 > 3000) console.log("PACED", url.pathname, Date.now() - t0, "ms", JSON.stringify(bucket));
     let r;
     try {
       r = await route.fetch({ timeout: 60_000 });
@@ -90,7 +92,7 @@ async function pacedRead(route: import("@playwright/test").Route, url: URL) {
     const body = await r.body().catch(() => null);
     if (!body) return route.abort("failed").catch(() => {});
     if (core && r.status() === 200) coreCache.set(key, { at: Date.now(), status: 200, headers: r.headers(), body });
-    return route.fulfill({ response: r, body }).catch(() => {});
+    return route.fulfill({ response: r, body }).catch((e) => { if (process.env.UI_DEBUG) console.log("FULFILL FAILED", url.pathname, String(e).slice(0, 300)); });
   }
 }
 
