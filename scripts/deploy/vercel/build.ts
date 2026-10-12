@@ -64,7 +64,7 @@ const vercel = {
   cleanUrls: true,
   trailingSlash: false,
   // pages removed by the app consolidation go to what replaced them
-  redirects: [{ source: "/((?!noembed).*)", has: [{ type: "header", key: "user-agent", value: PREVIEW_BOTS }], destination: "/noembed", permanent: false }].concat(Object.entries({ "/network": "/", "/live": "/", "/explorer": "/", "/tokens": "/", "/wallet": "/profile", "/spawn": "/launch", "/manual": `${DOCS_URL}/`, "/trading": "/" }).map(([source, destination]) => ({ source, destination, permanent: false })).concat([
+  redirects: ([{ source: "/((?!noembed).*)", has: [{ type: "header", key: "user-agent", value: PREVIEW_BOTS }], destination: "/noembed", permanent: false }] as Record<string, unknown>[]).concat(Object.entries({ "/network": "/", "/live": "/", "/explorer": "/", "/tokens": "/", "/wallet": "/profile", "/spawn": "/launch", "/manual": `${DOCS_URL}/`, "/trading": "/" }).map(([source, destination]) => ({ source, destination, permanent: false })).concat([
     { source: "/docs", destination: `${DOCS_URL}/`, permanent: DOCS_PERMANENT },
     { source: "/docs/:page", destination: `${DOCS_URL}/:page`, permanent: DOCS_PERMANENT },
   ])),
