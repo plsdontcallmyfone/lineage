@@ -151,7 +151,7 @@ async function main() {
       const providerBalance = new OpenRouterBalance({ keys, floor_usd: cfg.openrouter_floor_usd ?? 5, check_s: cfg.openrouter_check_s, log });
       const quote = applyNetworkProfile().quote;
       if (cfg.mode === "mainnet" && (!quote.mint || quote.decimals === undefined)) throw new Error("mainnet runtime: the network profile's quote token needs mint and decimals for its USD price");
-      const price = cfg.mode === "mainnet"
+      const price = cfg.mode === "mainnet" && cfg.price?.source !== "config"
         ? new JupiterPrice({ mint: quote.mint!, decimals: quote.decimals!, api: cfg.price?.api, max_age_s: cfg.price?.max_age_s, min_usd: cfg.price?.min_usd ?? 0.95, max_usd: cfg.price?.max_usd ?? 1.05, refresh_s: cfg.price?.refresh_s })
         : undefined;
       const reporter = new CoreClient(cfg.core, loadKey(cfg.runtime_key));

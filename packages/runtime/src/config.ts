@@ -47,8 +47,12 @@ export interface RuntimeConfig {
    * "all" every metered USD, as before 2026-10-10 (a kill switch the owner can set without code).
    */
   global_cap_scope?: "subsidized" | "all";
-  /** Mainnet: the quote token's live USD price (price.ts); devnet and sim use compute_price_line_per_usd. */
-  price?: { api?: string; max_age_s?: number; min_usd: number; max_usd: number; refresh_s?: number } | null;
+  /**
+   * Mainnet: the quote token's live USD price (price.ts); devnet and sim use compute_price_line_per_usd.
+   * `source: "config"` keeps the configured rate on mainnet too: for a stand-in quote token no feed
+   * prices (the mainnet test's throwaway coin); the rate is then a TEST value, as on devnet.
+   */
+  price?: { source?: "jupiter" | "config"; api?: string; max_age_s?: number; min_usd?: number; max_usd?: number; refresh_s?: number } | null;
   /** OpenRouter balance checks (provider-balance.ts): seconds between reads (default 300) and the alert floor in USD (default 5). */
   openrouter_check_s?: number;
   openrouter_floor_usd?: number;
@@ -99,6 +103,15 @@ export interface RuntimeConfig {
   e2b_max?: number;
   /** E2B spend cap per UTC day in USD (TEST 5), separate from the model cap; at the cap no new E2B desktops start. */
   desktop_usd_per_day?: number;
+  /**
+   * One E2B day budget across several runtimes on one server (desktops.ts): each publishes its E2B
+   * spend of the UTC day as <dir>/<name>.json and counts the `peers`' published spend against its own
+   * `desktop_usd_per_day`, so the instances together stay under one cap. `strict`: a peer whose file is
+   * missing, unreadable or older than `stale_s` (default 600) leaves this runtime no E2B budget at all
+   * (the mainnet test instance); without it such a peer counts as 0 (the first instance behaves as it
+   * did before a second one exists).
+   */
+  desktop_shared?: { dir: string; name: string; peers: string[]; strict?: boolean; stale_s?: number } | null;
   /** Hosts a desktop's browser may reach (each with its subdomains); default the code host. */
   desktop_allow?: string[];
   /** Port for /desktops/* when bind_port is absent (sim mode, local proofs). */
@@ -146,7 +159,15 @@ export function parseConfig(raw: Record<string, unknown>): RuntimeConfig {
     if (typeof c[k] !== "number" || !(c[k] >= 0)) throw new Error(`runtime config: ${k} must be a non-negative number`);
   if (c.agent_epoch_max_usd !== undefined && c.agent_epoch_max_usd !== null && !(typeof c.agent_epoch_max_usd === "number" && c.agent_epoch_max_usd >= 0)) throw new Error("runtime config: agent_epoch_max_usd must be a non-negative number or null");
   if (c.global_cap_scope !== "subsidized" && c.global_cap_scope !== "all") throw new Error('runtime config: global_cap_scope is "subsidized" or "all"');
-  if (c.price !== undefined && c.price !== null && !(typeof c.price.min_usd === "number" && typeof c.price.max_usd === "number" && c.price.min_usd > 0 && c.price.max_usd > c.price.min_usd)) throw new Error("runtime config: price needs min_usd < max_usd, both positive (the sanity band)");
+  if (c.price !== undefined && c.price !== null && c.price.source !== undefined && c.price.source !== "jupiter" && c.price.source !== "config") throw new Error('runtime config: price.source is "jupiter" or "config"');
+  if (c.price !== undefined && c.price !== null && c.price.source !== "config" && !(typeof c.price.min_usd === "number" && typeof c.price.max_usd === "number" && c.price.min_usd > 0 && c.price.max_usd > c.price.min_usd)) throw new Error("runtime config: price needs min_usd < max_usd, both positive (the sanity band)");
+  if (c.desktop_shared !== undefined && c.desktop_shared !== null) {
+    const d = c.desktop_shared;
+    const nameOk = (x: unknown) => typeof x === "string" && /^[a-z0-9][a-z0-9-]{0,31}$/.test(x);
+    if (typeof d.dir !== "string" || !d.dir.startsWith("/") || !nameOk(d.name) || !Array.isArray(d.peers) || !d.peers.every(nameOk) || d.peers.includes(d.name))
+      throw new Error("runtime config: desktop_shared needs an absolute dir, a name and a list of other names (peers)");
+    if (d.stale_s !== undefined && !(typeof d.stale_s === "number" && d.stale_s >= 30)) throw new Error("runtime config: desktop_shared.stale_s is at least 30 seconds");
+  }
   if (c.global_window_s !== undefined && c.global_window_s !== null && !(Number.isInteger(c.global_window_s) && c.global_window_s >= 60))
     throw new Error("runtime config: global_window_s is a whole number of seconds >= 60 (86400 = one UTC day), or null for a lifetime cap");
   if (!(c.max_concurrent >= 1)) throw new Error("runtime config: max_concurrent >= 1");
