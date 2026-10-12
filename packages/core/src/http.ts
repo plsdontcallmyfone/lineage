@@ -34,7 +34,6 @@ import { unitsFees } from "./units-fees.ts";
 import { feeClaimsOf } from "./fee-claims.ts";
 import { poolsOf } from "./pools.ts";
 import { unitJson, unitUrl } from "./unit-alias.ts";
-import { loadNetworkProfile } from "../../chain/src/profile-node.ts";
 
 // HTTP API, SPEC 17. Every mutating request (and GET /v1/assignments) is signed:
 //   x-lineage-agent: <base58 ed25519 pubkey>
@@ -458,9 +457,10 @@ export function buildRoutes(core: Core): Route[] {
     route("POST", "/v1/admin/social/config", "admin", (c) => socialOf(core).setConfig(c.json())),
     route("POST", "/v1/admin/souls/library", "admin", (c) => core.tx(() => soulsOf(core).addLibrary(c.json()))),
     route("POST", "/v1/admin/links/recheck", "admin", (c) => linksOf(core).recheck(c.json())),
-    // the simulated ledger's faucet; never on the mainnet profile (SPEC 14.10)
+    // the simulated ledger's faucet: refused only in chain mode, where balances are the chain's (on any
+    // network profile, a Core on the simulated ledger moves no real token)
     route("POST", "/v1/admin/faucet", "admin", (c) => {
-      if (!loadNetworkProfile().faucet) throw new ApiError(403, "no_faucet", "there is no faucet on mainnet");
+      if (core.chainMode) throw new ApiError(403, "no_faucet", "Core runs in chain mode: balances are read from chain, the simulated ledger's faucet is off");
       return core.faucet(c.json());
     }),
     route("POST", "/v1/admin/creator-rewards", "admin", (c) => core.creatorRewards(c.json())),

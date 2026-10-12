@@ -4,6 +4,9 @@
 // the network reaches the right outcome for each planted patch.
 //
 // Usage: bun scripts/e2e.ts [--port 9662] [--keep]
+// pinned to devnet (the repository default is mainnet): a local simulated network with devnet fixtures;
+// first, so every import and every process started here reads it
+import "./test/pin-devnet.ts";
 import { spawn, type Subprocess } from "bun";
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";

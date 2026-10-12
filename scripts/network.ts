@@ -11,6 +11,9 @@
 // Every worker sends heartbeats and its proposer's activity (SPEC 17.1), so the dashboard's live
 // wall and machine wall show this network's real work.
 // Ctrl-C stops every process this script started (by PID).
+// pinned to devnet (the repository default is mainnet): a local simulated network with devnet fixtures;
+// first, so every import and every process started here reads it
+import "./test/pin-devnet.ts";
 import { spawn, type Subprocess } from "bun";
 import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
