@@ -148,7 +148,13 @@ else
   pack | host "set -e; d=/opt/units-cap/releases/$REV; rm -rf \$d.new; mkdir -p \$d.new; tar -xzf - -C \$d.new; chown -R units-cap:units-cap \$d.new
     cd \$d.new && su -s /bin/sh units-cap -c 'cd '\$d'.new && HOME=/home/units-cap bun install --production --ignore-scripts > /tmp/units-cap-install.log 2>&1' || { echo 'bun install failed:' >&2; tail -5 /tmp/units-cap-install.log >&2; exit 1; }
     echo $REV > \$d.new/.units-release; rm -rf \$d; mv \$d.new \$d; ln -sfn \$d /opt/units-cap/current
-    ls -d /opt/units-cap/releases/* | grep -v \"/$REV\$\" | head -n -1 | xargs -r rm -rf
+    # older releases go only when no process still runs from them: a verifier whose release directory vanished
+    # could not start a sandbox any more and reported that as a failed base build (2026-10-12, cap-nyc1)
+    for old in \$(ls -d /opt/units-cap/releases/* | grep -v \"/$REV\$\"); do
+      case \"\$old\" in *.new) continue ;; esac
+      inuse=0; for c in /proc/[0-9]*/cwd; do [ \"\$(readlink \$c 2>/dev/null)\" = \"\$old\" ] && inuse=1 && break; done
+      [ \$inuse = 1 ] && echo \"kept \$(basename \$old): a process still runs from it\" || rm -rf \"\$old\"
+    done
     echo \"release $REV installed\""
 fi
 
@@ -308,9 +314,10 @@ UNIT
     IDS="$(host "cd /opt/units-cap/current && runuser -u units-cap -- env HOME=/home/units-cap bun scripts/deploy/capacity-host/verifier-id.ts /etc/units-cap/verifier$sfx.json /etc/units-cap/caps.json")"
     VID="$(echo "$IDS" | sed -n 1p)"; CAPS_DIGEST="$(echo "$IDS" | sed -n 2p)"
     if [ "${START:-0}" = 1 ]; then
-      host "systemctl enable -q --now units-cap-verifier$sfx; sleep 2; systemctl is-active units-cap-verifier$sfx"
+      # a running verifier moves to the new release (it finishes and reveals what it is doing first)
+      host "systemctl enable -q units-cap-verifier$sfx; if [ \"\$(readlink /proc/\$(systemctl show units-cap-verifier$sfx -p MainPID --value)/cwd 2>/dev/null)\" = \"\$(readlink -f /opt/units-cap/current)\" ]; then echo 'already on this release'; else systemctl restart units-cap-verifier$sfx; fi; sleep 2; systemctl is-active units-cap-verifier$sfx"
     else
-      host "systemctl is-enabled units-cap-verifier$sfx 2>/dev/null || true" | grep -qx enabled && echo "verifier unit units-cap-verifier$sfx already enabled: restarting it on the new release" && host "systemctl restart --no-block units-cap-verifier$sfx" || true
+      host "systemctl is-active units-cap-verifier$sfx 2>/dev/null || true" | grep -qx active && host "[ \"\$(readlink /proc/\$(systemctl show units-cap-verifier$sfx -p MainPID --value)/cwd 2>/dev/null)\" = \"\$(readlink -f /opt/units-cap/current)\" ] || { echo 'units-cap-verifier$sfx runs an older release: restarting it on the new one'; systemctl restart --no-block units-cap-verifier$sfx; }" || true
     fi
     cat <<STEPS
 
