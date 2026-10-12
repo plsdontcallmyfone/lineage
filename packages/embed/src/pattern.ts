@@ -31,21 +31,29 @@ export function patternColors(id: string) {
   return { a: `hsl(${h1} 62% 52%)`, b: `hsl(${h2} 58% 44%)`, bg: `hsl(${h1} 40% 92%)`, bgDark: `hsl(${h1} 30% 18%)`, h1, h2 };
 }
 
-/** A 5 by 5 mirrored grid on a soft ground, like an identicon, in the id's two hues. */
-export function avatarSvg(id: string, size = 64, label = "Generated pattern"): string {
+/** The avatar's cells: which of the 5 by 5 mirrored grid are filled and with which of the two hues (the PNG the site serves as a coin's image draws the same cells). */
+export function avatarGrid(id: string): { bg: string; cells: { x: number; y: number; fill: string }[] } {
   const r = rng(fnv(`avatar:${id}`));
   const c = patternColors(id);
-  const cell = size / 6;
-  const off = cell / 2;
-  let rects = "";
+  const cells: { x: number; y: number; fill: string }[] = [];
   for (let y = 0; y < 5; y++)
     for (let x = 0; x < 3; x++) {
       const v = r();
       if (v < 0.5) continue;
       const fill = v > 0.8 ? c.b : c.a;
-      for (const xx of x === 2 ? [2] : [x, 4 - x]) rects += `<rect x="${(off + xx * cell).toFixed(2)}" y="${(off + y * cell).toFixed(2)}" width="${cell.toFixed(2)}" height="${cell.toFixed(2)}" rx="${(cell * 0.18).toFixed(2)}" fill="${fill}"/>`;
+      for (const xx of x === 2 ? [2] : [x, 4 - x]) cells.push({ x: xx, y, fill });
     }
-  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${size} ${size}" width="${size}" height="${size}" role="img" aria-label="${label}"><rect width="${size}" height="${size}" fill="${c.bg}"/>${rects}</svg>`;
+  return { bg: c.bg, cells };
+}
+
+/** A 5 by 5 mirrored grid on a soft ground, like an identicon, in the id's two hues. */
+export function avatarSvg(id: string, size = 64, label = "Generated pattern"): string {
+  const g = avatarGrid(id);
+  const cell = size / 6;
+  const off = cell / 2;
+  let rects = "";
+  for (const { x, y, fill } of g.cells) rects += `<rect x="${(off + x * cell).toFixed(2)}" y="${(off + y * cell).toFixed(2)}" width="${cell.toFixed(2)}" height="${cell.toFixed(2)}" rx="${(cell * 0.18).toFixed(2)}" fill="${fill}"/>`;
+  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${size} ${size}" width="${size}" height="${size}" role="img" aria-label="${label}"><rect width="${size}" height="${size}" fill="${g.bg}"/>${rects}</svg>`;
 }
 
 /** A wide banner: layered contour bands in the id's hues. */

@@ -35,6 +35,7 @@ import {
   launch,
   launchPdas,
   MAX_LAUNCH_STRINGS,
+  coinMetadataUriBytes,
   PUMP,
   pumpLaunchMain,
   pumpPdas,
@@ -91,6 +92,7 @@ import { custodyHtml, ghClick, initGithubIdentity, showIdentity, submitLaunchTok
 import { depositBase, depositNote, depositUsd, loadPrepay, P, prepayHelp, showCorePrepay } from "./prepay.ts";
 import { costBreakdown, fundingBlocked, fundingSummary, initialBuyFor, solCostsFromSims, type FundingView, type InitialBuy } from "./fronting.ts";
 import { launchExtras, mountFeeRouteStep } from "./fee-route-step.ts";
+import { checkedCoinUri, loadCoinOrigin, type CoinOrigin } from "./coin-uri.ts";
 export { mountClaim } from "./claim.ts";
 import { registerPumpInitialBuy } from "./pump-venue.ts";
 import { prepareSwapThen, routeLines, simulatePlan, type PreparedSwap } from "./swap.ts";
@@ -149,7 +151,7 @@ const S = {
   // launch
   repo: null as null | { url: string; state: "checking" | "ok" | "bad"; msg: string; gh?: any; lineage?: any; core?: "ok" | "down"; recipes?: any[] },
   draft: null as null | { agent: WebKey; mint: WebKey; args: { name: string; symbol: string; uri: string; repoUrl: string; identityMode: number; hosted: boolean; cls: string; identity: string }; soul: SoulDoc | null; deposit: bigint; buy: InitialBuy | null; plan: BundleTx[]; built: Built;
-    purchase: Simulation | null; swap: PreparedSwap | null; costs: LaunchSolCosts | null; simErr: string | null; identity: bigint; landed: string[] },
+    purchase: Simulation | null; swap: PreparedSwap | null; costs: LaunchSolCosts | null; simErr: string | null; identity: bigint; landed: string[]; metaLive: boolean },
   /** the launch is being simulated (Funding shows "simulating") */
   simming: false as boolean,
   /** why the last simulation could not be built */
@@ -439,7 +441,7 @@ const topUp = () => (NET.p.faucet ? ` Get ${qsym()} from the faucet on your Prof
 /** The on-chain name prefix: "TEST " on devnet, none on mainnet (no TEST labels, SPEC 14.10). */
 const namePrefix = () => (testLabels() ? "TEST " : "");
 
-function launchArgs() {
+function launchArgs(metaOrigin: string) {
   const name = val("l_name");
   const symbol = val("l_symbol").toUpperCase();
   const cls = val("l_class") || "rust";
@@ -448,10 +450,10 @@ function launchArgs() {
   if (!name || new TextEncoder().encode(`${namePrefix()}${name}`).length > 32) throw new Error(testLabels() ? "Agent name: 1 to 27 characters (the on-chain name is TEST + name, 32 bytes max)." : "Agent name: 1 to 32 bytes.");
   if (!/^[A-Z0-9]{1,10}$/.test(symbol)) throw new Error("Symbol: 1 to 10 characters, A to Z and 0 to 9.");
   if (!S.repo || S.repo.state !== "ok") throw new Error("Target repository: enter a public GitHub https URL and wait for the check to pass.");
-  const uri = `https://lineage.invalid/${netName()}/agents/${symbol.toLowerCase()}.json?class=${cls}`;
-  const strings = new TextEncoder().encode(`${namePrefix()}${name}${symbol}${uri}${S.repo.url}`).length;
+  // the metadata URI names the mint, which is made after this check: counted at its longest (coin-uri.ts)
+  const strings = new TextEncoder().encode(`${namePrefix()}${name}${symbol}${S.repo.url}`).length + coinMetadataUriBytes(metaOrigin);
   if (strings > MAX_LAUNCH_STRINGS) throw new Error(`Name, symbol, metadata URI and repository URL take ${strings} bytes; one launch transaction holds ${MAX_LAUNCH_STRINGS}.`);
-  return { name: `${namePrefix()}${name}`, symbol, uri, repoUrl: S.repo.url, identityMode: IDENTITY_MODE[identity as keyof typeof IDENTITY_MODE], hosted, cls, identity };
+  return { name: `${namePrefix()}${name}`, symbol, uri: "", repoUrl: S.repo.url, identityMode: IDENTITY_MODE[identity as keyof typeof IDENTITY_MODE], hosted, cls, identity };
 }
 
 function labelFor(a: string, x: { agent?: string; mint?: string; pool?: string }): string {
@@ -637,8 +639,10 @@ async function launchReview() {
     return;
   }
   let args;
+  let coin: CoinOrigin;
   try {
-    args = launchArgs();
+    coin = await loadCoinOrigin();
+    args = launchArgs(coin.origin);
   } catch (e) {
     S.draftErr = (e as Error).message;
     renderFronting();
@@ -662,6 +666,8 @@ async function launchReview() {
     const agent = soul ? S.soul!.agent : keep ? S.draft!.agent : await generateWebKey();
     const mint = keep ? S.draft!.mint : await generateWebKey();
     const launcher = me()!;
+    // the coin's metadata URI is on chain for good: read it back (document and image) before anything is built for the wallet
+    args.uri = await checkedCoinUri({ origin: coin.origin, here: location.origin, mint: mint.id, agent: agent.id, name: args.name, symbol: args.symbol, repoUrl: args.repoUrl });
     // model credits (owner direction 2026-10-11): typed in USD, at least Core's minimum, paid in SOL with the launch
     const deposit = depositBase(val("l_deposit"), dec());
     // pump.fun (owner decisions 2026-10-10): create_v2 at the top level, then register_pump_launch in the same transaction
@@ -742,7 +748,7 @@ async function launchReview() {
     const costs = solCostsFromSims({ launch: built.sim, purchase, payer: launcher, creditsShare, hasBuy: !!buy, laterFees, laterRent: ataRent, identity, tip, headroom });
     // an empty wallet cannot pay the fee, so the chain refuses the simulation outright: say that, not "failed"
     const simErr = built.sim.err ? (S.sol === 0n ? "this wallet holds no SOL, and the launch is paid in SOL" : "the launch simulation failed") : purchase?.err ? "the SOL purchase simulation failed" : null;
-    S.draft = { agent, mint, args, soul, deposit, buy, plan, built, purchase, swap, costs, simErr, identity, landed: [] };
+    S.draft = { agent, mint, args, soul, deposit, buy, plan, built, purchase, swap, costs, simErr, identity, landed: [], metaLive: coin.answers };
     S.simming = false;
     renderLaunchReview();
     renderFronting();
@@ -823,6 +829,7 @@ function renderLaunchReview() {
     })()],
     ["Agent key", addr(d.agent.id)],
     ["Agent mint", addr(d.mint.id)],
+    ["Metadata URI", html`${d.args.uri} <span class="dim">${d.metaLive ? "read back before this review: document and image answer" : `read back on this host; ${new URL(d.args.uri).host} itself does not answer yet`}</span>`],
     ["Soul", d.soul ? html`${d.soul.persona.name}, <span class="wl-hash">${soulDigest(d.soul)}</span>` : html`<span class="faint">none</span>`],
     ["Credits", html`${depositNote(val("l_deposit"))} <span class="dim">${units(d.deposit, dec())} ${usym()} into the compute vault, then refresh_awake</span>`],
     ["Transactions", html`${[...(d.swap?.plan.txs ?? []).map((_, i) => `Jupiter swap ${i + 1}`), ...d.plan.map((t) => `${t.groups.join(" + ")} (${t.size} bytes${t.table ? ", v0" : ""})`)].join("; ")}`],
@@ -833,6 +840,7 @@ function renderLaunchReview() {
     html`${sim.err ? html`<div class="panel-b">${errBox(`Simulation failed: ${JSON.stringify(sim.err)}`, sim.logs)}</div>` : d.purchase?.err ? html`<div class="panel-b">${errBox(`SOL purchase simulation failed: ${JSON.stringify(d.purchase.err)}`, d.purchase.logs)}</div>` : html`<div class="panel-b wl-row"><span class="mark good">${icon.check} simulation succeeded on ${netName()}</span></div>`}
       ${d.swap ? html`<div class="panel-b"><div class="eyebrow" style="margin-bottom:6px">SOL to ${usym()} (Jupiter)</div>${routeLines(d.swap)}</div>` : ""}
       <div class="panel-b"><div class="eyebrow" style="margin-bottom:6px">What you pay</div>${costBreakdown(fundingView())}</div>
+      ${d.metaLive ? "" : html`<div class="panel-b">${banner("warn", `${new URL(d.args.uri).host} does not answer yet`, "The coin's name details and image are served from that address, which is written on chain with the launch. Until it answers, pump.fun, wallets and explorers show this coin without them; they appear once it does.")}</div>`}
       <details class="panel-b lz-tech"><summary class="eyebrow">Simulation and transaction details</summary>
         ${simTable(sim, { agent: d.agent.id, mint: d.mint.id }, me()!)}
         <div class="eyebrow" style="margin:8px 0 6px">register_pump_launch arguments</div>${kv(recordRows)}

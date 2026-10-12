@@ -20,6 +20,8 @@
 //   /souls/config      GET soul draft service state (caps, today's spend; TEST values)
 //   /souls/draft       POST {seed, agent, repo} a soul draft by Claude (per-soul, daily and per-address caps)
 //   /souls/publish     POST {doc, sig} forwarded to Core's PUT /v1/agents/:id/soul (SPEC 14.8)
+//   /coin/<mint>.json, /coin/face/<agent>.png, /coin/origin   a launched coin's metadata document and image, the
+//                      target of its on-chain URI, built from chain data alone (coin-metadata.ts)
 //   /market/<path>     GET proxy to the market indexer (packages/indexer; --market, default http://127.0.0.1:9668)
 //   /embed/units-embed.js   the embed kit (packages/embed, built at startup; rebuilt per request with --dev), CORS *
 //   /embed/units-explorer.js  <units-explorer>'s module, loaded on demand by the kit
@@ -41,6 +43,8 @@
 import { redactRpc } from "../../packages/chain/src/endpoint.ts";
 import { applyNetworkProfile, MissingRpcError, rpcUrlFor, stateFor } from "../../packages/chain/src/profile-node.ts";
 import { chainRoutes } from "./chain-routes.ts";
+import { coinRoutes } from "./coin-metadata.ts";
+import { Rpc } from "../../packages/chain/src/rpc.ts";
 import { execFileSync } from "node:child_process";
 import { existsSync, readFileSync } from "node:fs";
 import { homedir } from "node:os";
@@ -221,6 +225,19 @@ const faucet = PROFILE.faucet && chainState?.line_mint
 // through the site's proxy the request carries the site's own Origin (its gate refuses cross-origin posts)
 const chain = chainRoutes({ profile: PROFILE, rpcUrl: RPC_URL, state: chainState, faucet, rpcHeaders: RPC_VIA_SITE ? { origin: SITE } : undefined, rpcLabel: RPC_VIA_SITE ? `${SITE} (its /chain/rpc proxy)` : undefined });
 const chainRoute = (req: Request, p: string) => chain.route(req, p);
+// A launched coin's metadata (coin-metadata.ts). The origin written into every coin's on-chain URI is ONE
+// value: UNITS_METADATA_ORIGIN, else config/sites.json metadata_origin on mainnet (the owner's permanent
+// app domain) and the devnet site on devnet. It can never be changed for a coin once launched. Chain
+// reads go through this server's own /chain/rpc route (its retries, its upstream).
+const coin = coinRoutes({
+  origin: process.env.UNITS_METADATA_ORIGIN || (PROFILE.network === "mainnet" ? sites.metadata_origin : sites.devnet_site_url),
+  rpc: new Rpc(async (method, params) => {
+    const r = await chain.route(new Request("http://127.0.0.1/chain/rpc", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ jsonrpc: "2.0", id: 1, method, params }) }), "/chain/rpc");
+    const j = (await r.json()) as { result?: unknown; error?: { message?: string } };
+    if (j.error || !("result" in j)) throw new Error(j.error?.message ?? `${method}: HTTP ${r.status}`);
+    return j.result;
+  }),
+});
 console.log(`network ${PROFILE.network}: rpc ${RPC_VIA_SITE ? `${SITE}/chain/rpc (the site's proxy: no UNITS_MAINNET_RPC is set)` : redactRpc(RPC_URL)}, quote ${PROFILE.quote.symbol}${PROFILE.faucet ? "" : ", no faucet"}`);
 if (SITE_BACKEND) console.log(`backend: ${SITE} (Core ${CORE}, market ${MARKET}, writes ${UPSTREAM || "local"}); pass --core, --market and --upstream to use your own`);
 
@@ -464,6 +481,7 @@ const server = Bun.serve({
       }
     }
     if (req.method !== "GET" && req.method !== "HEAD") return new Response("read-only", { status: 405 });
+    if (p.startsWith("/coin/")) return coin.route(req, p);
     if (p.startsWith("/market/")) return marketProxy(p, url.search);
     if (p.startsWith("/desktops/")) return desktopProxy(p);
     if (p === "/docs" || p.startsWith("/docs/")) return docsRoute(p, url.search);

@@ -11,6 +11,7 @@ export * from "./v0.ts";
 export * from "./prepay.ts";
 export * from "./launch-bundle.ts";
 export * from "./jito.ts";
+export * from "./coin-metadata.ts";
 export * from "./rpc.ts";
 export * from "./sender.ts";
 export * from "./spl.ts";
