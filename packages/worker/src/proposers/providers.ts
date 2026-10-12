@@ -117,7 +117,7 @@ export const PROVIDERS: Record<string, ProviderSpec> = {
     // read 2026-10-12: Claude models go to its Anthropic Messages endpoint instead, POST /api/v1/messages
     // (same bearer key; the Anthropic SDK with baseURL https://openrouter.ai/api), so prompt caching
     // is the native proposer's (runtime providers.ts anthropicClientFor, GatewayOptions in anthropic.ts)
-    headers: { "HTTP-Referer": "https://github.com/plsdontcallmyfone/lineage", "X-OpenRouter-Title": "units" },
+    headers: { "HTTP-Referer": "https://app.units.gg", "X-OpenRouter-Title": "units" },
     echo_fields: ["reasoning_details"],
     reported_cost: true,
     router: true,
