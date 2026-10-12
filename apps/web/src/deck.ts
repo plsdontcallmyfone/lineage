@@ -472,6 +472,30 @@ function rail(root: HTMLElement) {
   paint();
 }
 
+// Each window's body scrolls with its native scrollbar hidden; a short square marker on its right edge,
+// in the window's colour, shows where in the body you are. Hidden when the body fits.
+function marks(root: HTMLElement) {
+  const paint = (b: HTMLElement) => {
+    const col = b.closest<HTMLElement>(".deck-column");
+    if (!col) return;
+    const over = b.scrollHeight - b.clientHeight;
+    col.toggleAttribute("data-scrolls", over > 4);
+    if (over <= 4) return;
+    const top = b.offsetTop + 6;
+    const span = b.clientHeight - 12 - 28;
+    col.style.setProperty("--dk-y", `${Math.round(top + (b.scrollTop / over) * span)}px`);
+  };
+  const all = () => root.querySelectorAll<HTMLElement>(".deck-body").forEach(paint);
+  root.addEventListener("scroll", (ev) => {
+    const t = ev.target as HTMLElement;
+    if (t.classList?.contains("deck-body")) paint(t);
+  }, { capture: true, passive: true });
+  const c = root.querySelector<HTMLElement>("#deck-canvas");
+  if (c) new MutationObserver(() => requestAnimationFrame(all)).observe(c, { childList: true, subtree: true });
+  window.addEventListener("resize", all);
+  all();
+}
+
 export async function deckPage(): Promise<Page> {
   const body = html`<div class="deck-shell"><div class="deck-canvas" id="deck-canvas" aria-label="Deck"></div><div class="deck-rail" aria-hidden="true"><i class="deck-thumb"></i></div></div>`;
   return {
@@ -490,6 +514,7 @@ export async function deckPage(): Promise<Page> {
       }
       renderAll();
       rail(root);
+      marks(root);
       if (isDeckType(open)) {
         const c = cols.find((x) => x.type === open);
         if (c) void focus(c.id);

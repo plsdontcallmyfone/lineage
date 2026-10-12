@@ -1558,7 +1558,5 @@ html::-webkit-scrollbar, body::-webkit-scrollbar { display: none; width: 0; heig
 .deck-column:nth-of-type(4n+2) { --dk-sc: #8b6cff; }
 .deck-column:nth-of-type(4n+3) { --dk-sc: #ee6a3e; }
 .deck-column:nth-of-type(4n+4) { --dk-sc: #3d8bff; }
-.deck-body { scrollbar-width: thin; scrollbar-color: var(--dk-sc) transparent; }
-.deck-body::-webkit-scrollbar { display: block; width: 6px; height: 6px; }
-.deck-body::-webkit-scrollbar-track { background: transparent; }
-.deck-body::-webkit-scrollbar-thumb { background: var(--dk-sc); border-radius: 3px; }
+.deck-column { position: relative; }
+.deck-column[data-scrolls]::after { content: ""; position: absolute; right: 3px; top: 0; width: 4px; height: 28px; background: var(--dk-sc); transform: translateY(var(--dk-y, 0)); pointer-events: none; z-index: 2; }
