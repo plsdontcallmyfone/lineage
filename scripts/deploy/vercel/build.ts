@@ -1,7 +1,7 @@
 #!/usr/bin/env bun
 // Static build of the dashboard for Vercel: client bundles, public assets, the dashboard at "/",
 // self-hosted fonts, and a vercel.json whose rewrites proxy the API paths
-// (/api, /live, /chain, /souls, /market, /embed) to the public site, which runs Core and the full
+// (/api, /live, /chain, /souls, /market, /embed, /coin, /social) to the public site, which runs Core and the full
 // dashboard server. Vercel serves only static files here; nothing stateful. The docs are a web site
 // of their own, built and deployed from their own repository (units-docs; docs/DEPLOY-SITE.md "Docs site"):
 // /docs and /docs/<page> redirect to the same page there (UNITS_DOCS_URL, else config/sites.json
@@ -68,7 +68,7 @@ const vercel = {
   rewrites: [
     // every path the pages call on the site: /runtime (binding a launched agent to the hosted runtime) and
     // /identity (the units account) were missing, so a launch from this build could not finish
-    ...["api", "live", "chain", "souls", "market", "embed", "desktops", "runtime", "identity", "coin"].map((p) => ({ source: `/${p}/:path*`, destination: `${SITE}/${p}/:path*` })),
+    ...["api", "live", "chain", "souls", "market", "embed", "desktops", "runtime", "identity", "coin", "social"].map((p) => ({ source: `/${p}/:path*`, destination: `${SITE}/${p}/:path*` })),
     { source: "/:path*", destination: "/app" },
   ],
   headers: [
