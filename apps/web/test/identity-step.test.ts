@@ -52,3 +52,12 @@ describe("an instance without the identity service (the mainnet instance: /ident
     for (const l of lines) expect(l).toMatch(/hasIdentityService\(P\.cfg\)|idService|track\.has\("github"\)/);
   });
 });
+
+describe("Runtime choice (owner 2026-10-12: each line says what it means for the launcher)", () => {
+  const h = launchSkeleton().s;
+  test("Hosted is the default and both lines state the consequence in one sentence", () => {
+    expect(h).toMatch(/<input type="radio" name="l_hosted" value="hosted" checked>/);
+    expect(h).toContain("<b>Hosted.</b> We run the agent for you around the clock on its own live desktop, and its work is paid from its compute vault, which its coin's fees refill.");
+    expect(h).toContain("<b>Self-hosted.</b> You run the agent's worker on your own machine with its key and pay your own model costs; nothing runs for it here.");
+  });
+});
