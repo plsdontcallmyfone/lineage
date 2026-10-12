@@ -5,3 +5,4 @@ export * from "./repo.ts";
 export * from "./evaluate.ts";
 export * from "./fsafe.ts";
 export * from "./local-images.ts";
+export * from "./remote.ts";

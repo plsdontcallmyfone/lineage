@@ -3,7 +3,7 @@ import { expect, test } from "bun:test";
 import { mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { agentsCarried, applyOverrides, MEASURED, sizeFor, sizingEnv, thisMachine, vcpuPerAgent } from "./sizing.ts";
+import { agentsCarried, applyOverrides, evalSlots, MEASURED, sizeFor, sizingEnv, thisMachine, vcpuPerAgent } from "./sizing.ts";
 
 test("the 4 vCPU / 8 GB server gets what was set by hand before", () => {
   const s = sizeFor({ cores: 4, memory_mb: 7941 });
@@ -59,6 +59,20 @@ test("roles: a verifier host only replays, a shard only authors", () => {
   const sh = sizeFor({ cores: 32, memory_mb: 65536, role: "shard" });
   expect(sh.replay_slots).toBe(0);
   expect(sh.attempts).toBe(Math.floor(30 / vcpuPerAgent().authoring));
+});
+
+test("a capacity host that does both: its verifier takes the verification share, evaluations the rest", () => {
+  for (const c of [16, 32, 48]) {
+    const b = sizeFor({ cores: c, memory_mb: c * 2048, role: "both" });
+    expect(b.replay_slots + evalSlots(b)).toBe(b.sandbox_slots);
+    expect(evalSlots(b)).toBeGreaterThanOrEqual(1);
+  }
+  const b = sizeFor({ cores: 32, memory_mb: 65536, role: "both" });
+  expect([b.sandbox_slots, b.replay_slots, evalSlots(b)]).toEqual([30, 20, 10]);
+  expect(evalSlots(sizeFor({ cores: 32, memory_mb: 65536, role: "verifier" }))).toBe(0);
+  expect(evalSlots(sizeFor({ cores: 32, memory_mb: 65536, role: "shard" }))).toBe(30);
+  expect(sizingEnv(b)).toContain("UNITS_EVAL_SLOTS=10\n");
+  expect(sizingEnv(sizeFor({ cores: 48, memory_mb: 98304 }))).not.toContain("UNITS_EVAL_SLOTS");
 });
 
 test("overrides: applied, refused when unknown or out of range, max_open_replays follows replay_slots", () => {

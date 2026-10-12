@@ -21,6 +21,7 @@ import { gpuDeviceRequest, hostGpus, withHostLock, imageArch, imageDigest, runCo
 import { parseMetric, parseTests, type TestOutcome } from "./parsers.ts";
 import type { LoadedRecipe } from "./recipe.ts";
 import { copyConfined, fileSha256, openRegular, readInside } from "./fsafe.ts";
+import { evalJobOf, sandboxHosts } from "./remote.ts";
 import { applyPatch, cloneTree, commitTime, UNITS_HOME, materialize, newWorkDir, openPermissions, removeTree } from "./repo.ts";
 
 // The evaluation pipeline every replay runs, SPEC sections 8 and 9.
@@ -473,9 +474,15 @@ export async function evaluate(input: {
   onPhase?: PhaseCallback;
   /** metric names calibration enabled; others are not measured (they can never decide a verdict) */
   enabledMetrics?: string[];
+  /** run on this machine even when sandbox hosts are installed (remote.ts; the host's own job runner, the fallback) */
+  local?: boolean;
 }): Promise<EvalOutput> {
   const { loaded, deps, seed } = input;
   const r = loaded.recipe;
+  // sandbox hosts (scale-out lane, remote.ts): installed only in the hosted runtime; absent, nothing changes
+  const pool = input.local || input.keepWork ? null : sandboxHosts();
+  if (pool && pool.hosts().length)
+    return pool.evaluate(evalJobOf(input), { local: () => evaluate({ ...input, local: true }), onPhase: input.onPhase, timeoutMs: (r.limits.wall_s * 4 + 300) * 1000, EvalError });
   const { ctx, work, base } = await setup(loaded, deps, seed, input.parentPatches, input.candidatePatch, input.onPhase);
   try {
     const g = guard(input.candidatePatch, r.patch);

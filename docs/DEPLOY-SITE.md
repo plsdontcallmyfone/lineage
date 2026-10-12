@@ -937,18 +937,16 @@ devnet site alone.
   (`price.source` config): the same TEST figures Core publishes from `config/network.json` `prepay`
   with the state file's `network_overrides`.
 
-**One E2B budget for both instances.** Both runtimes name `desktop_shared`
-(`/var/lib/units-shared/e2b-spend`, root:units-e2b 0770; `units` and `units-main` are in the group).
-Each publishes its E2B spend of the UTC day there every 30 s and before every budget check, and counts
-the other's against the one `desktop_usd_per_day` (16 USD), so the two together stay under one cap,
-not two. The mainnet side is strict: when devnet's file is missing, malformed or older than 10 minutes
-it has no E2B budget at all, and with desktops required it starts no attempt. What the other side's
-desktops running at that moment will cost is published only when they end, so the two can pass the cap
-by at most the other side's running E2B desktops times one session (2 x 0.1656 USD from the mainnet
-side, 6 x 0.1656 from devnet's, at the rates in "Agent desktops"). `units` joins `units-e2b` when the
-instance is first staged; the devnet runtime shares the budget from its next restart on a release
-that has `desktop_shared` in its runtime.json. Until then devnet publishes nothing and the strict
-mainnet side waits.
+**The mainnet instance has its own E2B budget (owner 2026-10-12).** Its runtime.json says
+`desktop_shared: null`: its `desktop_usd_per_day` (200 USD) and `e2b_max` (50) are its own and do not
+depend on the devnet site. Before, both runtimes shared one cap through `desktop_shared`
+(`/var/lib/units-shared/e2b-spend`, root:units-e2b 0770) and the mainnet side was strict: with devnet's
+spend file missing, malformed or older than 10 minutes it had no E2B budget at all. On 2026-10-12 the
+devnet runtime was paused, and the first agent launched on mainnet waited for a desktop that could
+never come ("E2B: day cap reached (0.0000 of 0 USD, UTC day)") until this was changed. The devnet
+runtime still names the directory and counts a mainnet file of the same UTC day if one is there; the
+mainnet runtime no longer writes one. The directory, the group and `SharedDesktopBudget`
+(packages/runtime/src/desktops.ts) stay for two instances that should share one cap.
 
 **Not part of the instance.** The GitHub identity service (the mainnet host has no `/identity/*`
 route, so a launch there cannot be given a pool account), backups, the monitor, rollback (`stage` and
@@ -999,6 +997,113 @@ The devnet site is one box. For mainnet, split by what each part can lose:
   no declared operator with each other or with the author before it can judge every candidate; 4 keeps it
   judging while one is offline (geth-rlp sat disputed on the devnet site for want of a 4th). Calibration
   draws `calib_replayers` (2) class-qualified verifiers. The site's own verifiers count as one operator.
+
+## Adding capacity
+
+How many agents a site carries, what was measured and what to buy: `docs/plans/SCALE-OUT.md`. This is
+the runbook. There are two ways to add capacity and they combine.
+
+### A bigger server
+
+Every setting that follows the machine's size is derived on the server at each install and activate
+(`scripts/deploy/sizing.ts`, called by `site-config.ts`): the sandbox slots, attempts at once, replays
+at once per verifier and Core's `max_open_replays`. It writes `<state>/site/sizing.env`, which the
+runtime, verifier, reference and author units read after `site.env`.
+
+```sh
+# 1. DigitalOcean: power off, resize (CPU and RAM only keeps the disk), power on
+# 2. one deploy of each instance
+scripts/deploy/deploy.sh <host> code
+UNITS_INSTANCE=mainnet scripts/deploy/instance.sh <host> code
+# 3. check (on the server)
+cat /var/lib/units-main/site/sizing.env
+jq .max_concurrent_ceiling /var/lib/units-main/site/runtime.json
+jq .max_open_replays /var/lib/units-main/site/network.json
+# what a size gives, without a server:
+bun scripts/deploy/sizing.ts --cores 48 --memory-mb 98304
+```
+
+Overrides, as root on the server, then deploy the instance again: `/etc/units/sizing.json` (devnet
+site) or `/etc/units-main/sizing.json` (mainnet instance), a JSON object with any of `sandbox_slots`,
+`attempts`, `replay_slots`, `max_open_replays`, `cpu_shares`, for example `{"attempts": 50}`. An
+unknown key or a value out of range stops the deploy with the reason. Remove the file to go back to
+the derived values. `UNITS_SANDBOX_SLOTS` in `site.env` no longer decides: `sizing.env` is read after it.
+
+### Capacity hosts
+
+A capacity host is another server that runs sandboxes for a site. It never holds an agent key, a model
+key or the runtime authority. It does one or both of:
+
+- **sandbox**: the evaluations of the hosted runtime's attempts. The runtime stays one process on the
+  site; each evaluation goes over ssh to the host's gateway (a forced command) and its result comes
+  back. With no host free or up an evaluation runs on the site, as before.
+- **verifier**: a verifier of its own, with a key made on the host. It reaches the site's Core through
+  an ssh tunnel (Core listens on the site's loopback only and the public gate refuses writes).
+
+The host needs Ubuntu 24.04, root ssh for the owner's key, and the site's architecture (amd64).
+
+```sh
+# add a host (30 minutes or less; idempotent, run it again at any time)
+ROLE=both INSTANCE=mainnet scripts/deploy/capacity-host/provision.sh <host-ip>
+#   ROLE=sandbox | verifier | both      INSTANCE=devnet | mainnet      NAME=<a-z0-9-> (default cap-<last part of the ip>)
+#   SITE=root@<site ip>  SITE_KEY=<key>  SSH_KEY=<key for root on the host>   (defaults: the devnet site, ~/.ssh/lineage_site)
+
+# after every deploy of the site: bring the host to the site's release (a host on another release
+# answers "update the host" and the runtime sends its evaluations elsewhere until then)
+ROLE=both INSTANCE=mainnet scripts/deploy/capacity-host/provision.sh <host-ip> update
+
+# remove a host
+ROLE=both INSTANCE=mainnet scripts/deploy/capacity-host/provision.sh <host-ip> remove
+```
+
+What `full` does: Docker, the `units-cap` user (its key runs only `/usr/local/bin/units-sandbox-gw`),
+Bun at the site's version, the instance's release copied from the site (the same re-pinned recipes,
+so the same recipe ids), the sandbox images copied from the site's Docker (an image built on the host
+would have another id), `/etc/units-cap/env` with the slots from the host's own size, a firewall that
+lets only the site reach ssh. Then per role:
+
+- sandbox: a key for the site's runtime user, the host's own host key in its `known_hosts`, and the
+  host in `~<instance user>/.config/lineage/sandbox-hosts/hosts.json`. The running runtime re-reads the
+  file every minute (`UNITS_SANDBOX_HOSTS_FILE` in its unit): no restart. Check on the site:
+  `journalctl -u units-main-runtime | grep 'sandbox host'`.
+- verifier: the key (`/etc/units-cap/verifier.json`, mode 600, never printed or copied), the
+  instance's `caps.json`, the tunnel unit (`units-cap-tunnel`: an account on the site that can only
+  forward to the Core port) and the verifier unit (`units-cap-verifier`), installed and **not started**.
+
+Starting a verifier needs two chain transactions that only the owner can sign; the kit prints them
+with the verifier's agent id and the capabilities digest and sends nothing:
+
+1. Register: the owner's wallet signs `units_registry register` for the printed agent id and digest
+   (it burns the register burn in the quote coin); the verifier's key co-signs on the host with
+   `bun packages/worker/src/main.ts cosign --key /etc/units-cap/verifier.json --tx <base64>` (first with
+   `--dry-run`).
+2. Bond: the owner's wallet sends `units_registry bond` for that agent, at least `min_bond`.
+3. On the site, `/etc/<instance>/sizing.json` gets `"max_open_replays"` of at least the host's replays
+   at once (printed), then deploy the instance: Core hands a verifier no more than that.
+4. `START=1 ROLE=... INSTANCE=... NAME=... scripts/deploy/capacity-host/provision.sh <host-ip> update`
+5. It qualifies on every unit first (one base run each), then takes replays:
+   `bun packages/worker/src/main.ts status --core http://127.0.0.1:<core port> --key /etc/units-cap/verifier.json`
+   on the host.
+
+Removing: `remove` takes the host out of `hosts.json` (evaluations running there finish, no new ones
+start), stops and disables its verifier and tunnel (the verifier is given its stop timeout to finish
+and reveal), and removes the tunnel's key from the site. The verifier's key and bond are untouched:
+unbond from the owner's wallet before destroying the server. A host that simply dies needs nothing:
+the runtime marks it down on the first failed evaluation, runs that evaluation on another host or on
+the site, and tries the host again every minute; a dead verifier stops heartbeating and Core reassigns
+its replays after their window.
+
+What a host costs and carries (heavy units, `bun scripts/deploy/sizing.ts --role both --cores N`):
+
+| host | sandbox slots | as sandbox host: evaluations at once | as verifier host: replays at once | both: replays + evaluations |
+|---|---|---|---|---|
+| c-16 (16 vCPU, 32 GiB) | 15 | 15 | 15 | 10 + 5 |
+| c-32 (32 vCPU, 64 GiB) | 30 | 30 | 30 | 20 + 10 |
+| c-48 (48 vCPU, 96 GiB) | 45 | 45 | 45 | 30 + 15 |
+
+Dry run: `scripts/deploy/capacity-host/dryrun.sh` (two local containers play two servers, the real
+`provision.sh` over real ssh, then `scripts/scale/proof.ts`). Results in
+`scripts/deploy/capacity-host/DRYRUN-LAST.json` and `scripts/scale/PROOF-LAST.json`.
 
 ## Size and cost
 

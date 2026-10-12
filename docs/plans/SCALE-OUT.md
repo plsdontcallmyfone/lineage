@@ -243,6 +243,122 @@ assignment twice, refill, stop).
 The verifiers' declared capabilities (`caps.json`, whose digest is registered on chain) are not
 rewritten by a resize and need not be: recipes ask for 2 cores.
 
-## 5. Horizontal scale
+## 5. Verifier hosts
 
-Design and proof: sections 6 and 7 below, added with the code.
+Verifiers already speak to Core only over HTTP (`units-worker run --core <url>`), and the worker has
+been a container image since 2026-10-08 (`images/worker`). What was missing for a verifier on another
+machine to join a site:
+
+1. **Core was not reachable.** It listens on the site's loopback, and the public gate refuses every
+   write to `/v1` (a commit, a reveal, a heartbeat, a transcript upload). The kit opens an ssh tunnel
+   from the host to the Core port, through an account on the site that can do nothing else
+   (`restrict,port-forwarding,permitopen`). The gate is unchanged and Core stays off the internet.
+2. **The recipes and images are the site's, not the repository's.** The site re-pins every recipe to
+   the sandbox images built on it (`arch-recipes.ts`), which changes the recipe ids, and Docker builds
+   are not reproducible. A host built from the repository or from the published worker image would
+   hold recipes the site's Core has never heard of. The kit copies the instance's release and its
+   images from the site instead, and checks each image id on arrival. For the same reason it runs the
+   worker from that release with Bun, as the site does, and not from `lineage/worker`.
+3. **One replay at a time** (section 4): a host's verifier runs `UNITS_REPLAY_SLOTS` replays at once
+   from its own size, and Core's `max_open_replays` must allow it (printed by the kit).
+4. **Registration and bond** are chain transactions by the owner (the register burn and at least
+   `min_bond` of the quote coin). The key is made on the host and co-signs there
+   (`units-worker cosign`); the kit prints the steps and starts nothing until `START=1`.
+5. **Capabilities.** The host declares the instance's `caps.json` (the digest the site's own
+   verifiers registered), which under-states a larger host and is what the recipes need (2 cores).
+
+`scripts/deploy/capacity-host/provision.sh <host-ip>` does all of it with `ROLE=verifier` or
+`ROLE=both`; the commands are in docs/DEPLOY-SITE.md "Adding capacity".
+
+With a quorum of two, Core draws two of the eligible verifiers for each candidate, and a verifier is
+eligible while it holds fewer than `max_open_replays`. Three verifiers (two on the site, one on a host)
+therefore share the replays, and a saturated one drops out of the draw until it has room.
+
+## 6. Authoring off the main box: sandbox hosts, not runtime shards
+
+Two designs were weighed.
+
+**Runtime shards**: N runtime processes on N machines, each bound to its own agents, a router at the
+gate's bind route, one shared day cap. What it would take, read from the code:
+
+- Every shard needs the **runtime authority key**: it signs provenance and the spend report, pays the
+  fees of the agents' on-chain messages, and posts usage epochs and debits on chain
+  (`backend.ts` `post`). That key would sit on every machine.
+- Usage epochs are numbered on chain and posted by that one authority. Two shards closing an epoch at
+  once would both take the next number; the loser's closed epoch could never land and its later epochs
+  wait behind it (`runtime.ts` `epochs`: "a later epoch never lands before an earlier one"). Fixing that
+  is a change to the path that debits real vaults.
+- **Agent keys on every shard**, each needing its own backup; losing a shard loses its agents until
+  the backup is restored or every owner binds again.
+- The day cap, the OpenRouter balance and the on-chain debit limit per epoch are counters inside one
+  process today; each needs a shared, fail-closed version across machines.
+- A router, sticky per agent, in the gate's bind route, and the desktop streams (`/desktops/*`, served
+  by the runtime) routed per shard too.
+
+**Sandbox hosts** (chosen): the runtime stays one process on the site and only the evaluations of
+attempts run elsewhere. An evaluation is a function of the recipe, the parent patches, the candidate
+patch and the seed (`evaluate()` in packages/sandbox); the runtime sends those as one JSON document over
+ssh to a host's forced command and reads the result and transcript back.
+
+| | runtime shards | sandbox hosts |
+|---|---|---|
+| agent keys | on every shard | on the site only, as today |
+| runtime authority key | on every shard | on the site only |
+| day cap, provider balance, debit limit | need a shared counter | one process, unchanged |
+| usage epochs on chain | several posters with one authority | one poster, unchanged |
+| an agent run twice at once | prevented by the bind (one signing key per agent) | impossible: one runtime, one `running` map |
+| a lost machine | its agents stop until its keys and state are restored | one evaluation is run again elsewhere; nothing else was there |
+| gate, wallet page, desktops | router and per-shard streams | untouched |
+| code touched | runtime, backend (chain), gate, wallet bind | packages/sandbox (one branch in `evaluate`), a job runner, a unit file line |
+| ceiling | none | one runtime process: `max_concurrent_ceiling` at most 64, 6% of a core at 2 attempts (section 3) |
+
+The ceiling is the honest cost of the choice. It is above today's target of 50. Past 64 attempts at
+once, or if the runtime process nears a core, shards become worth their cost; the list above is what
+that work is.
+
+What authoring costs in CPU is its evaluations (section 1: 94% of an attempt's time on the heavy
+units), so moving them moves authoring. Model turns and file edits stay on the site and cost little.
+
+### How it works
+
+- `packages/sandbox/src/remote.ts`: the hosts file, placement, failure handling. `evaluate()` asks it
+  first when a hosts file is installed; `local: true` and `keepWork` always run here.
+- Installed only in the hosted runtime: its unit sets `UNITS_SANDBOX_HOSTS_FILE`
+  (`~/.config/lineage/sandbox-hosts/hosts.json` of the instance's user). Verifiers, the reference
+  runner and scripted authors never see it: a replay is always run by the verifier itself.
+  **Default: the file does not exist and nothing changes.** It appears when the kit registers the
+  first host and the runtime picks it up within a minute, no restart.
+- Placement: among hosts that are up and have a free slot, the one with the lowest share of its slots
+  in use. No host free: the evaluation runs on the site (the site's own slots bound that).
+- A host whose connection or job runner fails is marked down for 60 s (`retry_s`) and **the same
+  evaluation is run on the next host**, then on the site. The attempt does not notice. A host on
+  another release answers "update the host", which counts as a failure of the host, not of the
+  evaluation.
+- The evaluation's own refusals (a broken parent series, a guard) come back as `EvalError`, exactly as
+  when it runs locally, and are not retried.
+- The host runs `packages/worker/src/eval-job.ts` behind `units-sandbox-gw`, the only command the
+  runtime's key may run there (`health`, `eval`; anything else exits 126; no port forwarding). The job
+  checks that it has the same recipe id and the same dependency layer digest, runs `evaluate()` with
+  the host's own sandbox slots, and removes its work directory.
+- Sandbox seconds are metered from the transcript's step durations, as before, so the wait for a host
+  is not billed to the agent and the usage records do not change.
+
+### Keys, sealing, and a lost machine
+
+- **Keys.** No agent key, model key or runtime authority key leaves the site. A sandbox host holds the
+  release, the images and a gateway. A verifier host additionally holds its own verifier key, made on
+  it. Backups are unchanged: the site's hourly encrypted state snapshot already covers every agent key
+  and the runtime's state (docs/DEPLOY-SITE.md "Backups"), and it is the only place they are.
+- **Author-blind.** A candidate patch is on a host only while its evaluation runs, in a work directory
+  the job removes; the host has no Core credentials and publishes nothing. Sessions stay sealed by
+  Core until the candidate is final, as on the site. The hosts are the operator's own machines behind
+  a firewall that admits only the site; they see what the site's own sandboxes see.
+- **A lost sandbox host** loses nothing: the evaluation in flight is run again elsewhere and the host
+  is tried again every minute.
+- **A lost verifier host** loses its replays in flight (Core reassigns them when their window passes)
+  and, if the disk is gone, its key. The bond stays on chain under the owner's wallet, which can unbond
+  it; a new host gets a new key and a new registration. No agent is affected.
+
+## 7. Proof
+
+Dry run of the kit and the two-machine proof: `scripts/deploy/capacity-host/dryrun.sh`, `scripts/scale/proof.ts`. Results are written here when the run is complete.

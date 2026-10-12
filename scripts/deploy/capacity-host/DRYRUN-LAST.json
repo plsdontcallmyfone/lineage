@@ -1,0 +1,112 @@
+{
+  "at": "2026-10-12T18:09:11.737Z",
+  "passed": 20,
+  "total": 21,
+  "checks": [
+    {
+      "check": "machine a: fresh box reachable over root ssh",
+      "ok": true,
+      "detail": "site address seen by the host: 172.17.0.1"
+    },
+    {
+      "check": "machine b: fresh box reachable over root ssh",
+      "ok": true,
+      "detail": "site address seen by the host: 172.17.0.1"
+    },
+    {
+      "check": "provision.sh full, ROLE=both, on a fresh box",
+      "ok": true,
+      "detail": "exit 0, 61 s"
+    },
+    {
+      "check": "provision.sh full re-run on the same box",
+      "ok": true,
+      "detail": "exit 0, 7 s"
+    },
+    {
+      "check": "re-run copies no image again",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "provision.sh full, ROLE=sandbox, on a second fresh box",
+      "ok": true,
+      "detail": "exit 0, 71 s"
+    },
+    {
+      "check": "two hosts registered in the site's sandbox hosts file",
+      "ok": true,
+      "detail": "[{\"name\":\"cap-a\",\"slots\":1,\"basis\":\"10 cores, 7934 MiB, release ca2ac85fdaac-local\"},{\"name\":\"cap-b\",\"slots\":2,\"basis\":\"10 cores, 7934 MiB, release ca2ac85fdaac-local\"}]"
+    },
+    {
+      "check": "known_hosts holds one entry per host (its own key)",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "gateway refuses: id",
+      "ok": true,
+      "detail": "exit 126"
+    },
+    {
+      "check": "gateway refuses: docker ps",
+      "ok": true,
+      "detail": "exit 126"
+    },
+    {
+      "check": "gateway refuses: cat /etc/units-cap/verifier.json",
+      "ok": true,
+      "detail": "exit 126"
+    },
+    {
+      "check": "gateway refuses: eval; id",
+      "ok": true,
+      "detail": "exit 126"
+    },
+    {
+      "check": "gateway refuses: bun -e 1",
+      "ok": true,
+      "detail": "exit 126"
+    },
+    {
+      "check": "the runtime's key cannot forward ports",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "a malformed job is answered, not run",
+      "ok": true,
+      "detail": "{\"ok\":false,\"kind\":\"host\",\"error\":\"bad job: recipe_id, deps_digest and seed are hex\"}"
+    },
+    {
+      "check": "the verifier's key: made on the host, owner units-cap, mode 600",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "the verifier unit is installed and not enabled until the owner registers and bonds it",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "slots from the host's own size",
+      "ok": true,
+      "detail": "UNITS_SANDBOX_SLOTS=2 UNITS_REPLAY_SLOTS=1 UNITS_EVAL_SLOTS=1 10 7934 "
+    },
+    {
+      "check": "register and bond steps printed for the owner",
+      "ok": true,
+      "detail": " verifier agent id H2AQ4supzUVc9TGH4vDak4UVs8Fzy21pstQ2pJNjtkhZ"
+    },
+    {
+      "check": "scale-out proof",
+      "ok": false,
+      "detail": "proof: 3/4 passed (stopped early); incomplete"
+    },
+    {
+      "check": "provision.sh remove takes the host out of the hosts file",
+      "ok": true,
+      "detail": ""
+    }
+  ]
+}

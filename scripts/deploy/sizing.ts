@@ -1,7 +1,7 @@
 #!/usr/bin/env bun
 // units site: what one machine carries, derived from its size (docs/plans/SCALE-OUT.md).
 //
-//   bun scripts/deploy/sizing.ts [--cores <n>] [--memory-mb <n>] [--role site|verifier|shard]
+//   bun scripts/deploy/sizing.ts [--cores <n>] [--memory-mb <n>] [--role site|verifier|shard|both] [--env]
 //
 // Prints the settings as JSON. site-config.ts calls sizeFor() on every install and activate, so a
 // resized server needs one deploy and nothing else; scripts/deploy/verifier-host and shard-host call
@@ -39,7 +39,8 @@ export function vcpuPerAgent(m: typeof MEASURED = MEASURED) {
   return { cycle_s: cycle, authoring, verification, total: authoring + verification };
 }
 
-export type Role = "site" | "verifier" | "shard";
+/** site: everything on one machine; verifier: only replays; shard: only evaluations of attempts; both: a capacity host that does the two. */
+export type Role = "site" | "verifier" | "shard" | "both";
 
 export interface Sizing {
   cores: number;
@@ -88,7 +89,7 @@ export function sizeFor(o: { cores: number; memory_mb: number; role?: Role; veri
   const byMem = Math.max(1, Math.floor((o.memory_mb - 2048) / MEASURED.sandbox_limit_mb));
   const slots = whole(Math.min(byCpu, byMem), 1, 256);
   const v = vcpuPerAgent();
-  const verifiers = o.verifiers ?? (role === "site" ? MEASURED.quorum : role === "verifier" ? 1 : 0);
+  const verifiers = o.verifiers ?? (role === "site" ? MEASURED.quorum : role === "verifier" || role === "both" ? 1 : 0);
   let attempts: number;
   let replay: number;
   if (role === "verifier") {
@@ -98,6 +99,10 @@ export function sizeFor(o: { cores: number; memory_mb: number; role?: Role; veri
     // an attempt holds a slot for attempt_sandbox_s of every cycle
     attempts = whole(slots / v.authoring, 1, 64);
     replay = 0;
+  } else if (role === "both") {
+    // the slots in the measured proportion: verification's share replays, the rest takes evaluations
+    replay = whole((slots * (v.verification / v.total)) / Math.max(1, verifiers), 1, 64);
+    attempts = whole((slots - replay * Math.max(1, verifiers)) / v.authoring, 1, 64);
   } else {
     attempts = whole(slots / v.total, 2, 64);
     replay = whole((slots * (v.verification / v.total)) / Math.max(1, verifiers), 1, 64);
@@ -120,6 +125,11 @@ export function sizeFor(o: { cores: number; memory_mb: number; role?: Role; veri
 export function agentsCarried(s: Sizing): number {
   const v = vcpuPerAgent();
   return Math.floor(s.sandbox_slots / (s.role === "shard" ? v.authoring : s.role === "verifier" ? v.verification : v.total));
+}
+
+/** Evaluations of attempts a capacity host takes at once: the slots its own verifier does not use. */
+export function evalSlots(s: Sizing): number {
+  return s.role === "verifier" ? 0 : s.role === "site" ? 0 : Math.max(1, s.sandbox_slots - s.replay_slots * s.verifiers);
 }
 
 /** This machine. UNITS_SIZE_CORES and UNITS_SIZE_MEMORY_MB stand in for it in tests and dry runs. */
@@ -161,6 +171,7 @@ export function sizingEnv(s: Sizing): string {
     `UNITS_SANDBOX_SLOTS=${s.sandbox_slots}`,
     `UNITS_SANDBOX_CPU_SHARES=${s.cpu_shares}`,
     `UNITS_REPLAY_SLOTS=${Math.max(1, s.replay_slots)}`,
+    ...(s.role === "site" ? [] : [`UNITS_EVAL_SLOTS=${evalSlots(s)}`]),
     "",
   ].join("\n");
 }
@@ -169,7 +180,12 @@ if (import.meta.main) {
   const argv = process.argv.slice(2);
   const opt = (k: string) => (argv.includes(`--${k}`) ? argv[argv.indexOf(`--${k}`) + 1] : undefined);
   const here = thisMachine();
-  const s = sizeFor({ cores: opt("cores") ? Number(opt("cores")) : here.cores, memory_mb: opt("memory-mb") ? Number(opt("memory-mb")) : here.memory_mb, role: (opt("role") as Role | undefined) ?? "site" });
+  const s = sizeFor({ cores: opt("cores") ? Number(opt("cores")) : here.cores, memory_mb: opt("memory-mb") ? Number(opt("memory-mb")) : here.memory_mb, role: (opt("role") as Role | undefined) ?? "site", verifiers: opt("verifiers") ? Number(opt("verifiers")) : undefined });
+  // --env: the KEY=VALUE lines a capacity host keeps in /etc/units-cap/env
+  if (argv.includes("--env")) {
+    process.stdout.write(sizingEnv(s).split("\n").filter((l) => l && !l.startsWith("#")).join("\n") + "\n");
+    process.exit(0);
+  }
   const v = vcpuPerAgent();
   console.log(JSON.stringify({ ...s, agents_carried: agentsCarried(s), vcpu_per_agent: { authoring: +v.authoring.toFixed(3), verification: +v.verification.toFixed(3), total: +v.total.toFixed(3) } }, null, 2));
 }

@@ -1,0 +1,26 @@
+#!/bin/sh
+# units capacity host gateway: the only thing the site's runtime key may run here (authorized_keys
+# forced command, scripts/deploy/capacity-host/provision.sh; docs/plans/SCALE-OUT.md section 6).
+#   health   one JSON line: cores, memory, release, sandbox slots, whether Docker answers
+#   eval     one evaluation: an EvalJob on stdin, one JSON answer line on stdout (packages/worker/src/eval-job.ts)
+# Anything else is refused with exit 126. No shell, no arguments from the caller reach a command line.
+set -eu
+[ -f /etc/units-cap/env ] && . /etc/units-cap/env
+export UNITS_HOME="${UNITS_HOME:-/var/lib/units-cap}" UNITS_SANDBOX_SLOTS UNITS_SANDBOX_CPU_SHARES UNITS_SANDBOX_HOST UNITS_LOCAL_IMAGES PATH=/usr/local/bin:/usr/bin:/bin
+REL=/opt/units-cap/current
+case "${SSH_ORIGINAL_COMMAND:-}" in
+  health)
+    docker=false; docker info >/dev/null 2>&1 && docker=true
+    job=false; [ -f "$REL/packages/worker/src/eval-job.ts" ] && grep -q PHASE_PREFIX "$REL/packages/sandbox/src/remote.ts" 2>/dev/null && job=true
+    printf '{"name":"%s","cpus":%s,"mem_mib":%s,"release":"%s","sandbox_slots":%s,"eval_slots":%s,"docker":%s,"eval_job":%s}\n' \
+      "${UNITS_SANDBOX_HOST:-}" "$(nproc)" "$(awk '/MemTotal/{print int($2/1024)}' /proc/meminfo)" \
+      "$(cat "$REL/.units-release" 2>/dev/null || echo unknown)" "${UNITS_SANDBOX_SLOTS:-0}" "${UNITS_EVAL_SLOTS:-0}" "$docker" "$job"
+    ;;
+  eval)
+    cd "$REL" && exec bun packages/worker/src/eval-job.ts
+    ;;
+  *)
+    echo "units-sandbox-gw: refused" >&2
+    exit 126
+    ;;
+esac

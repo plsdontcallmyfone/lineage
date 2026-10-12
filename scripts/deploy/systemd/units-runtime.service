@@ -26,6 +26,9 @@ Environment=UNITS_NETWORK=devnet
 EnvironmentFile=-/etc/units/site.env
 # sandbox slots, their CPU weight and replays at once, from this machine's size (site-config.ts, sizing.ts); after site.env, so it wins
 EnvironmentFile=-/var/lib/units/site/sizing.env
+# sandbox hosts (docs/plans/SCALE-OUT.md section 6): evaluations of attempts go to the hosts listed here; the file
+# exists only once scripts/deploy/capacity-host/provision.sh registered one, and without it they run on this machine
+Environment=UNITS_SANDBOX_HOSTS_FILE=/home/units/.config/lineage/sandbox-hosts/hosts.json
 NoNewPrivileges=yes
 ProtectSystem=full
 Restart=always

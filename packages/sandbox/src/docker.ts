@@ -172,6 +172,8 @@ export function dockerArgs(spec: RunSpec, name: string): string[] {
     "units=1",
     "--label",
     `lineage.job=${spec.job}`,
+    // which machine of a site started it (capacity hosts set UNITS_SANDBOX_HOST; docs/plans/SCALE-OUT.md)
+    ...(/^[a-z0-9-]{1,32}$/.test(process.env.UNITS_SANDBOX_HOST ?? "") ? ["--label", `units.host=${process.env.UNITS_SANDBOX_HOST}`] : []),
     "--user",
     containerUser(),
     "--cap-drop",
