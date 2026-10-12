@@ -364,7 +364,106 @@ What a desktop costs beyond its working time: its first idle time after the laun
 
 The arithmetic: 0.1656 x 24 = 3.9744 USD per desktop-day; x 100 = 397.44; x 30 = 11,923.20.
 
-### 5. What the owner does
+### 5. Built and measured (2026-10-12)
 
-Listed in the lane's report and in section 6 once the proof ran: the plan upgrade, then the config
-change per site.
+Code: `packages/desktop/src/agent-desktops.ts` (the per-agent desktops), `e2b.ts` (the account calls,
+a sandbox that stays, a session opened and closed on it), `pool.ts` (the mode), runtime `config.ts`,
+`desktops.ts`, `runtime.ts` (the bound agents synced every tick, the desktop state in the spend
+report), Core `runtime-spend.ts` (serves it), `apps/web/src/live-panel/live-only.ts` (the words),
+`scripts/deploy/site-config.ts` (the keys; both sites left on `per_attempt`). SPEC 17.7, 0.44.
+
+Deviations from section 3, each deliberate:
+- The state `starting` shows a moment after the bind, not at it: the first thing a new agent's
+  desktop state reads is `none: not created yet`.
+- A desktop whose agent is unbound is paused at once and killed after `desktop_remove_after_s`; it is
+  removed only when the runtime has just read its agents without an error, never by the timer, so an
+  RPC outage removes nothing.
+- A runtime that stops leaves its desktops as they are; the ones running are paused by E2B within
+  `desktop_keepalive_s` (15 minutes) unless the runtime is back before that, as in a deploy. Worst
+  case for 100 running desktops: 100 x 0.25 h x 0.1656 = 4.14 USD per stop that is not followed by a
+  start.
+- The day budget counts each running desktop for one more idle time before it lets another start, and
+  an attempt in progress is never cut short, so a day can end above the cap by at most the running
+  attempts' remaining time.
+
+Unit tests (a fake E2B account that pauses or kills at a timeout as the real one does):
+`packages/desktop/test/agent-desktops.test.ts` 21 (created once; a launch never waits; found again
+by the record and by the metadata alone, a second sandbox killed, other owners' and the live sites'
+left alone; nothing created before the list was read; pause on idle and on sleep, resume, spend only
+while running; a clean session per attempt; a refused pause; the timeout pushed and a dead runtime's
+desktops paused by E2B and found again; renewal between attempts and never under one; a pause under an
+attempt recovered, a kill given up; the limit with the reason and an idle desktop paused to make
+room; the limit read live; the budget; no key; creates in parallel; removal after the grace time and
+only on the runtime's word; the pool in this mode and unchanged in the other).
+`packages/runtime/test/agent-desktops.test.ts` 7 (the bind does not wait and the report says the
+state; E2B down at launch; asleep, unbound, gone, and a failed read; a restart; the config; the owner
+labels; two instances sharing one budget). `packages/core/test/runtime-spend.test.ts` 1 and
+`apps/web/test/live-only-desktop.test.ts` 2. `bun test packages/desktop packages/runtime`: 183 pass,
+1 skip, 0 fail.
+
+Real E2B proof, `bun scripts/desktops/proof.ts` (22/22, `scripts/desktops/PROOF-LAST.json`; a local
+simulated Core, three hosted TEST agents, `units-runtime run` as its own process; no chain, no model
+call; sandbox ids as prefixes):
+- The three binds took 5 ms at Core and the runtime saw them 1.3 s later, with no desktop yet. The
+  three desktops (i0qndx, itn7u2, i8mgm9) were created in 10.4, 11.8 and 13.4 s, all running 14.4 s
+  after the binds; `GET /v1/agents/:id/spend` served `{"state":"running",...}` for each and no
+  sandbox id.
+- Runtime stopped and started: the same three ids, 0 creates. Stopped again and taken over by a third
+  process on the same state directory: the same three ids.
+- A session on one agent's desktop: ready 13.6 s after the reserve (the first one after a restart),
+  first video segment on this host after 17.6 s; the sandbox still running after the session's end.
+- That desktop paused after the session (browser, editor and terminals had run) in 0.5 s; E2B listed
+  two running and one paused. Resumed for the next session in 0.3 s (`connect`); that session was
+  ready 3.1 s after the reserve, resume included, first video after 7.1 s. A per-attempt E2B desktop
+  took 27.5 s to come up (2026-10-10).
+- Renewal: two desktops that had run 70 s were paused and resumed (away 0.7 and 0.9 s); E2B's
+  `startedAt` moved from 17:35:15 to 17:36:26 on the same sandbox id.
+- E2B pausing a desktop under an open session (its timeout set 15 s ahead and not pushed): the next
+  command found it paused, the desktop was back 0.7 s later and the command answered after 1.4 s; the
+  four windows were still there.
+- Unbound agent: its desktop removed, the other two kept. Then all removed: the E2B list showed 0 of
+  this run's sandboxes.
+- Spend by the runtime's own count (seconds running x 0.000046 USD): 0.0125 USD; at most 0.0152 USD
+  (three desktops for the run's 110 s). The first run of the proof: 0.0083 USD.
+
+The page: a headless Chromium check at 1280 and 390 on a local dashboard and Core
+(`work/agent-desktops-shots/`, not in the repository) showed "Desktop paused: agent idle" and "No
+desktop: E2B desktop limit reached: 100 of 100 running" as text on the agent's screen, no video
+element shown, no horizontal scroll; an agent of a runtime in the other mode read as before.
+
+What was not measured: E2B's own bill for a paused sandbox (section 2), a real pause refused by E2B
+(503), 100 desktops at once (the account allows 20 running today), and a desktop paused for days.
+
+The session length itself, measured on the account's present plan (1 h; `e2b-measure.ts long`): one
+small sandbox with `onTimeout: "pause"` had its timeout set to 10 minutes from now every 5 minutes.
+Up to minute 45 E2B answered 600 s left each time; at minute 50 it answered 592 s and at minute 55
+290 s: the timeout is clamped to the sandbox's start plus the session length. At minute 60 the
+sandbox was paused by E2B, not killed, and `setTimeout` on it failed with `SandboxNotFoundError`. So
+the session length is a hard limit counted from the last create or resume, pushing the timeout does
+not move it, and what happens at it with `onTimeout: "pause"` is a pause. This is why the runtime
+renews by a pause and a resume before the window ends, and why a desktop that reaches the limit under
+an attempt comes back at the next command (both proven above).
+
+### 6. What the owner does
+
+1. Upgrade the E2B team that holds the key in `/home/units/.config/lineage/e2b.env` to Pro (150 USD
+   per month). The `lineage-desktop` template belongs to that team and stays.
+2. On the E2B dashboard's usage tab, look at 2026-10-12 17:09 to 18:30 UTC: this lane ran 31
+   sandboxes, 22 of them paused within seconds of their start. If paused sandboxes are billed after all, it
+   shows there as usage after 18:30 with nothing running. By this lane's own count the whole lane
+   spent about 0.13 USD of E2B time (seconds running x the listed rates: the two proofs 0.0083 and 0.0125,
+   the one hour session test 0.109, the rest under 0.005).
+3. Switch a site on in `scripts/deploy/site-config.ts` and deploy it as usual:
+   - devnet site, in the runtime block: `desktop_mode: "per_agent"`, `e2b_max: <n>`,
+     `e2b: { template: "lineage-desktop", vcpu: 2, ram_gib: 4, session_max_s: 86400 }`,
+     `desktop_usd_per_day: <budget>`;
+   - mainnet instance, in its `Object.assign(runtimeCfg, { ... })`: `e2b_max: <m>` (it takes
+     `desktop_mode` and `e2b.session_max_s` from the block above; to keep it off while devnet is on,
+     add `desktop_mode: "per_attempt"` there).
+   `<n>` plus `<m>` at most 100: the plan's limit is per E2B account and both instances use the one
+   key. The budget is one figure shared by both (`desktop_shared`): with 2 attempts at once on each
+   instance, assumption A of section 4 gives 8 desktops running on average, 31.80 USD per day; the
+   present 16 USD would stop new desktops in the afternoon. Either raise it or lower `desktop_idle_s`
+   (120 s: 4 x 1.2 x 24 x 0.1656 = 19.08 USD per day under the same assumption).
+4. Nothing else on the dashboard: no template, key or webhook changes. The sandboxes of this mode can
+   be found there by the metadata `units_desktop=agent`.
