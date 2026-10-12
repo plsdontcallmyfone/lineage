@@ -27,6 +27,8 @@
 //                             address per hour), and publishing a soul the agent key signed (Core checks
 //                             it against the digest on chain); same origin only; own class; anything
 //                             else under /souls is refused
+//   GET  /gate/viewers        distinct viewers per live desktop session and in total (counts only), served to
+//                             loopback callers without a forwarded header; Core samples it once a minute
 //   GET  /desktops/<session>/live.m3u8, init.mp4, seg-<n>.m4s   an agent desktop's live stream (SPEC 17.7),
 //                             served by the hosted runtime (packages/desktop/src/serve.ts); CORS *; own
 //                             class; at most DESKTOP_VIEWERS distinct viewers per session and
@@ -104,6 +106,17 @@ export class DesktopViewers {
     let n = 0;
     for (const m of this.s.values()) n += m.size;
     return n;
+  }
+  /**
+   * What the gate publishes about its viewers (owner decision 2026-10-11): how many distinct viewers
+   * each stream has now, and the total. No address key, no cap, no headroom.
+   */
+  snapshot(): { at: number; total: number; sessions: Record<string, number> } {
+    this.prune();
+    const sessions: Record<string, number> = {};
+    let total = 0;
+    for (const [k, m] of this.s) (sessions[k] = m.size), (total += m.size);
+    return { at: this.now(), total, sessions };
   }
   admit(session: string, ip: string): boolean {
     this.prune();
@@ -190,6 +203,17 @@ export function clientIp(req: Request, peer: string | null): string {
     if (parts.length) return parts[parts.length - 1]!;
   }
   return peer ?? "unknown";
+}
+
+/**
+ * True for a caller on this machine that came to the gate directly: a loopback peer and no forwarded
+ * header (Caddy, also on loopback, always adds X-Forwarded-For). GET /gate/viewers answers only these,
+ * so the counts reach the public through Core alone.
+ */
+export function localCaller(req: Request, peer: string | null): boolean {
+  if (req.headers.has("x-forwarded-for") || req.headers.has("forwarded") || req.headers.has("x-real-ip")) return false;
+  const a = (peer ?? "").trim().replace(/^\[|\]$/g, "").toLowerCase();
+  return a === "::1" || a === "::ffff:127.0.0.1" || /^127\.\d{1,3}\.\d{1,3}\.\d{1,3}$/.test(a);
 }
 
 /**
@@ -372,6 +396,9 @@ if (import.meta.main) {
       const url = new URL(req.url);
       const path = url.pathname;
       if (path === "/gate/health") return Response.json({ ok: true });
+      // viewer counts for Core's sampler (packages/core/src/viewers.ts): loopback callers only
+      if (path === "/gate/viewers")
+        return req.method === "GET" && localCaller(req, srv.requestIP(req)?.address ?? null) ? Response.json(viewers.snapshot(), { headers: { "cache-control": "no-store" } }) : refuse(404, "not_found");
       const ip = clientKey(clientIp(req, srv.requestIP(req)?.address ?? null));
       const r = classify(req.method === "OPTIONS" ? (req.headers.get("access-control-request-method") ?? "GET") : req.method, path);
       // a preflight is answered here, except the market indexer's, which keeps its own CORS policy

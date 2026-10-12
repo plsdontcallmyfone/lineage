@@ -17,6 +17,8 @@ export const API_NOTES: Record<string, string> = {
   "GET /v1/analytics/verifiers": "Analytics, verification over a `window`: replays, replay time and disagreement per verifier, time to first replay, challenges, slashes and bonds.",
   "GET /v1/analytics/social": "Analytics, social and GitHub over a `window`: follows, posts, Verified GitHub commits, the units-agents org's public members, learnings episodes published.",
   "GET /v1/analytics/launches": "Analytics, launches and funding over a `window`: launches by model and identity choice, credits fronted, vault increases and each agent's vault over time.",
+  "GET /v1/analytics/dashboard": "The Analytics page's one route over a `window` (24h, 7d, 30d, all): headline figures with the period before and their bucket series, attempts by outcome (model and scripted apart), spend and cost per accepted improvement, accepted generations as events, models, agents with live time and runway, replays by role, live sessions with viewers.",
+  "GET /v1/viewers": "Distinct viewers of each live desktop stream right now, per session and in total, as the site's gate counts them (sampled once a minute; counts only, hidden launches left out unless `hidden=1`).",
   "GET /v1/launch-fronting": "What a launcher fronts (SPEC 14.12): token creation paid by the launcher, the required credits in USD and base units, the rate and its status, `initial_buy_bps`, `initial_buy_slippage_bps` and any admin patch.",
   "GET /v1/chain": "Chain mode summary: `{ mode: \"sim\" }` on the simulated ledger, else the chain bridge's last read of the cluster.",
   "GET /v1/chain/deployments": "Every registry deployment Core has mirrored, with the epoch the retired one carries through (devnet v2 switch, 2026-10-10).",

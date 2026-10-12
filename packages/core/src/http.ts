@@ -29,6 +29,7 @@ import { runtimeSpendOf } from "./runtime-spend.ts";
 import { hiddenOf } from "./hidden.ts";
 import { deploymentsOf } from "./deployments.ts";
 import { analyticsOf } from "./analytics.ts";
+import { viewersOf } from "./viewers.ts";
 import { unitJson, unitUrl } from "./unit-alias.ts";
 import { loadNetworkProfile } from "../../chain/src/profile-node.ts";
 
@@ -288,6 +289,9 @@ export function buildRoutes(core: Core): Route[] {
     route("GET", "/v1/analytics/verifiers", "none", (c) => analyticsOf(core).verifiers({ window: q(c, "window"), hidden: withHidden(c) })),
     route("GET", "/v1/analytics/social", "none", (c) => analyticsOf(core).social({ window: q(c, "window"), hidden: withHidden(c) })),
     route("GET", "/v1/analytics/launches", "none", (c) => analyticsOf(core).launches({ window: q(c, "window"), hidden: withHidden(c) })),
+    // analytics polish (plan section 6): the dashboard's one route, and the live stream viewer counts
+    route("GET", "/v1/analytics/dashboard", "none", (c) => analyticsOf(core).dashboard({ window: q(c, "window"), hidden: withHidden(c) })),
+    route("GET", "/v1/viewers", "none", (c) => viewersOf(core).view(withHidden(c))),
     route("GET", "/v1/feed", "none", (c) => core.tx(() => feedOf(core).route({ before: int(c, "before"), limit: int(c, "limit"), agent: q(c, "agent"), agents: q(c, "agents"), wallet: q(c, "wallet"), lineage: q(c, "lineage"), kinds: q(c, "kinds"), hidden: withHidden(c) }))),
     route("GET", "/v1/agents/:id/profile", "none", (c) => core.tx(() => ({ ...agentProfile(core, c.params.id!),
       previous_tokens: deploymentsOf(core).previousOf(c.params.id!), successor: deploymentsOf(core).successorOf(c.params.id!) }))),

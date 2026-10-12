@@ -14,6 +14,7 @@ import { Core } from "./core.ts";
 import { canaryDirIsPublic, loadCanaryDir } from "./hardening.ts";
 import { serve } from "./http.ts";
 import { GitTreeSource } from "./trees.ts";
+import { viewersOf } from "./viewers.ts";
 import { base58Decode, keyFromSolanaJson } from "./protocol.ts";
 
 // bun packages/core/src/main.ts --data ./data --port 9660 --config config/network.json --admin-key <path>
@@ -68,8 +69,10 @@ if (!adminKey) {
   console.error("--admin-key <path> is required");
   process.exit(2);
 }
-if (port < 9660 || port > 9669) {
-  console.error("port must be in this repo's block 9660-9669");
+// a second instance on one server (scripts/deploy/instance.ts) names its own block: UNITS_PORT_BLOCK=9760-9769
+const [blockLo, blockHi] = /^\d+-\d+$/.test(process.env.UNITS_PORT_BLOCK ?? "") ? process.env.UNITS_PORT_BLOCK!.split("-").map(Number) as [number, number] : [9660, 9669];
+if (port < blockLo || port > blockHi) {
+  console.error(`port must be in this repo's block ${blockLo}-${blockHi}`);
   process.exit(2);
 }
 const busy = portBusy(port);
@@ -161,6 +164,19 @@ const beaconTimer = slotSource
   : null;
 if (core.slotBeacon) console.log(`assignment beacon: Solana slot hash, lag ${core.slotBeacon.lagSlots} slots`);
 const server = serve(core, { port, hostname: host });
+// live stream viewers (viewers.ts): the gate's counts, sampled once a minute when the site names its gate
+const gateUrl = process.env.UNITS_GATE_URL?.trim() || null;
+let viewerErr = "";
+const viewerTimer = gateUrl
+  ? setInterval(() => {
+      void viewersOf(core).sample(gateUrl).then((r) => {
+        const err = "error" in r ? String(r.error) : "";
+        if (err && err !== viewerErr) console.error(`[viewers] gate read failed: ${err}`);
+        viewerErr = err;
+      });
+    }, 60_000)
+  : null;
+if (gateUrl) console.log(`viewer counts: sampling ${gateUrl}/gate/viewers every minute`);
 const timer = setInterval(() => {
   try {
     core.tick();
@@ -175,6 +191,7 @@ const stop = () => {
   clearInterval(canaryTimer);
   if (chainTimer) clearInterval(chainTimer);
   if (beaconTimer) clearInterval(beaconTimer);
+  if (viewerTimer) clearInterval(viewerTimer);
   server.stop(true);
   core.close();
   process.exit(0);

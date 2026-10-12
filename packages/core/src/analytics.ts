@@ -5,11 +5,12 @@ import { deploymentsOf } from "./deployments.ts";
 import { bad, notFound } from "./errors.ts";
 import { genGithubOf } from "./gen-github.ts";
 import { hiddenOf } from "./hidden.ts";
-import { gainOf, providerOf, WINDOWS } from "./leaderboard.ts";
+import { gainOf, providerOf, WINDOWS as BASE_WINDOWS } from "./leaderboard.ts";
 import { learningsOf } from "./learnings.ts";
 import { runtimeSpendOf } from "./runtime-spend.ts";
 import { sessionsOf } from "./sessions.ts";
 import { socialOf } from "./social.ts";
+import { viewersOf } from "./viewers.ts";
 
 // Read-only aggregates for the Projects, Generations and Analytics pages
 // (docs/plans/PAGES-PROJECTS-GENERATIONS-ANALYTICS.md). Nothing here is a new claim: every figure is a
@@ -33,6 +34,8 @@ import { socialOf } from "./social.ts";
 /** A model row reports an acceptance rate from this many attempts, and per accepted figures from this many accepted. */
 export const MIN_ATTEMPTS_FOR_RATE = 5;
 export const MIN_ACCEPTED_FOR_MEANS = 3;
+/** The analytics windows: the leaderboard's plus 30 d (plan section 6). */
+const WINDOWS: Record<string, number | null> = { ...BASE_WINDOWS, "30d": 30 * 86_400_000 };
 const CACHE_MS = 10_000;
 const HEX64 = /^[0-9a-f]{64}$/;
 const AGENT = /^[1-9A-HJ-NP-Za-km-z]{32,44}$/;
@@ -638,7 +641,7 @@ export class Analytics {
   overview(q: { window?: string; hidden?: boolean }) {
     const win = q.window ?? "7d";
     const span = WINDOWS[win];
-    if (span === undefined) throw bad("bad_query", "window: 24h, 7d or all");
+    if (span === undefined) throw bad("bad_query", "window: 24h, 7d, 30d or all");
     const include = !!q.hidden;
     return this.memo(`overview:${win}:${include ? 1 : 0}`, () => {
       const now = this.core.now();
@@ -796,7 +799,10 @@ export class Analytics {
   /** Time buckets of a window: hours over 24 h, days over 7 d, days since the first record (at most 90) over all. */
   private bucketsOf(win: string, now: number, first: number | null) {
     if (win === "24h") return { unit: "hour" as const, size: HOUR, start: Math.floor(now / HOUR) * HOUR - 23 * HOUR, n: 24 };
-    if (win === "7d") return { unit: "day" as const, size: DAY, start: Math.floor(now / DAY) * DAY - 6 * DAY, n: 7 };
+    if (win === "7d" || win === "30d") {
+      const n = win === "7d" ? 7 : 30;
+      return { unit: "day" as const, size: DAY, start: Math.floor(now / DAY) * DAY - (n - 1) * DAY, n };
+    }
     const today = Math.floor(now / DAY) * DAY;
     const start = Math.max(today - 89 * DAY, Math.floor((first ?? now) / DAY) * DAY);
     return { unit: "day" as const, size: DAY, start, n: Math.round((today - start) / DAY) + 1 };
@@ -805,7 +811,7 @@ export class Analytics {
   private win(q: { window?: string }) {
     const win = q.window ?? "7d";
     const span = WINDOWS[win];
-    if (span === undefined) throw bad("bad_query", "window: 24h, 7d or all");
+    if (span === undefined) throw bad("bad_query", "window: 24h, 7d, 30d or all");
     const now = this.core.now();
     return { win, now, since: span === null ? 0 : now - span };
   }
@@ -1512,6 +1518,263 @@ export class Analytics {
         series: series.map((x) => ({ launches: x.launches, by_mode: x.by_mode, by_model: x.by_model, fronted: x.fronted.toString(), increases: x.increases.toString(), increase_count: x.increase_count })),
         totals: { agents: agents.length, in_window: agents.filter((a) => a.registered_at >= since).length, fronted: prepay.size ? [...prepay.values()].filter((p) => ids.has(p.agent_id) && /^\d+$/.test(p.deposit)).reduce((s, p) => s + BigInt(p.deposit), 0n).toString() : "0" },
         agents: rows,
+      };
+    });
+  }
+
+  // ------------------------------------------------------------------------------------------- dashboard
+
+  /**
+   * GET /v1/analytics/dashboard?window=24h|7d|30d|all&hidden=1 (plan section 6): everything the
+   * Analytics page draws, as bucket aggregates. A window is its buckets (hours over 24 h, UTC days
+   * otherwise), so each headline figure equals the sum of its series; `prev` is the same number of
+   * buckets before the window (none for "all"). Scripted attempts (a recipe patch applied without a
+   * model) are counted apart from model attempts. Sources and the sealing rule are the file's: published
+   * episodes, accepted generations, replays of final candidates, live sessions, the runtime's report.
+   */
+  dashboard(q: { window?: string; hidden?: boolean }) {
+    const { win, now } = this.win(q);
+    const include = !!q.hidden;
+    return this.memo(`dashboard:${win}:${include ? 1 : 0}`, () => {
+      const off = this.hiddenSet(include);
+      const tests = this.testLaunches();
+      const all = this.loadEpisodes().filter((e) => !off.has(e.agent));
+      const gensAll = this.gens().filter((g) => !off.has(g.author!));
+      let first: number | null = null;
+      for (const e of all) if (first === null || e.started_at < first) first = e.started_at;
+      for (const g of gensAll) if (first === null || g.accepted_at < first) first = g.accepted_at;
+      const b = this.bucketsOf(win, now, first);
+      const from = b.start;
+      const to = b.start + b.n * b.size;
+      const prev = win === "all" ? null : { from: from - b.n * b.size, to: from };
+      const inR = (t: number) => t >= from && t < to;
+      const inP = (t: number) => !!prev && t >= prev.from && t < prev.to;
+      const scripted = (e: Episode) => this.modelKey(e).model === "scripted";
+      const gain = (e: Episode) => (e.outcome === "accepted" && e.ratio !== null && e.ratio < 1 ? (1 - e.ratio) * 100 : 0);
+      const arr = <T,>(f: () => T) => Array.from({ length: b.n }, f);
+      const sum = (xs: number[]) => xs.reduce((s2, x) => s2 + x, 0);
+
+      // attempts by outcome per bucket, model attempts and scripted attempts apart
+      const OUT = ["accepted", "rejected", "cap_reached", "no_candidate", "expired", "abandoned"];
+      const zero = () => Object.fromEntries(OUT.map((o) => [o, 0])) as Record<string, number>;
+      const eps = all.filter((e) => inR(e.started_at));
+      const peps = all.filter((e) => inP(e.started_at));
+      const mEps = eps.filter((e) => !scripted(e));
+      const pmEps = peps.filter((e) => !scripted(e));
+      const mSeries = arr(zero), sSeries = arr(zero);
+      for (const e of eps) (scripted(e) ? sSeries : mSeries)[this.slot(b, e.started_at)]![this.outcomeOf(e)]!++;
+      const totalsOf = (xs: Record<string, number>[]) => OUT.reduce<Record<string, number>>((m, o) => ((m[o] = sum(xs.map((x) => x[o]!))), m), {});
+      const rate = (acc: number, n: number) => (n > 0 ? r4(acc / n) : null);
+      const accN = (xs: Episode[]) => xs.filter((e) => e.outcome === "accepted").length;
+
+      // spend and cost per accepted improvement per bucket (priced attempts only)
+      const sp = arr(() => ({ usd: 0, priced: 0, accepted: 0, gain: 0 }));
+      for (const e of eps) {
+        if (e.usd === null) continue;
+        const x = sp[this.slot(b, e.started_at)]!;
+        x.usd += e.usd;
+        x.priced++;
+        if (e.outcome === "accepted") (x.accepted++, (x.gain += gain(e)));
+      }
+      let cu = 0, ca = 0;
+      const running = sp.map((x) => ((cu += x.usd), (ca += x.accepted), x.priced || cu > 0 ? (ca > 0 ? r6(cu / ca) : null) : null));
+      const cost = this.costOf(eps), pcost = this.costOf(peps);
+
+      // verified improvements: accepted generations of the window as events, and what came before it
+      const ls = this.lineages();
+      const projOf = new Map(ls.map((l) => [l.lineage_id, repoKey(l.repo, l.repo_id)]));
+      const genSeries = arr(() => 0);
+      const projects = new Map<string, { project: string; first_at: number; before: number; before_gain_pct: number; generations: number; gain_pct: number }>();
+      const events: { at: number; project: string; gen_id: string; height: number; metric: string | null; gain_pct: number; fixed: number; agent: string; name: string | null }[] = [];
+      let prevGens = 0, prevGain = 0;
+      for (const g of gensAll) {
+        if (g.reverted_by || g.accepted_at >= to) continue;
+        const project = projOf.get(g.lineage_id) ?? g.lineage_id;
+        const eff = parse<any>(g.effect);
+        const x = gainOf(eff);
+        const p = projects.get(project) ?? projects.set(project, { project, first_at: g.accepted_at, before: 0, before_gain_pct: 0, generations: 0, gain_pct: 0 }).get(project)!;
+        if (g.accepted_at < from) {
+          p.before++;
+          p.before_gain_pct += x.pct;
+          if (inP(g.accepted_at)) (prevGens++, (prevGain += x.pct));
+          continue;
+        }
+        p.generations++;
+        p.gain_pct += x.pct;
+        genSeries[this.slot(b, g.accepted_at)]!++;
+        events.push({ at: g.accepted_at, project, gen_id: g.gen_id, height: g.height, metric: eff?.metric ?? null, gain_pct: r4(x.pct), fixed: x.fixed, agent: g.author!, name: this.nameOf(g.author!) });
+      }
+      events.sort((a, c) => a.at - c.at);
+
+      // live time per agent per bucket (model attempts and live sessions), and who was in an attempt
+      const live = this.liveSessions(include);
+      const liveAgents = new Set(live.map((s) => s.agent as string).filter(Boolean));
+      const spans: { agent: string; a: number; z: number }[] = [
+        ...all.filter((e) => !scripted(e)).map((e) => ({ agent: e.agent, a: e.started_at, z: Math.max(e.started_at, e.ended_at ?? e.started_at) })),
+        ...live.filter((s) => s.agent).map((s) => ({ agent: s.agent as string, a: s.started_at as number, z: now })),
+      ];
+      const minutes = new Map<string, number[]>();
+      const active = arr(() => new Set<string>());
+      const prevActive = new Set<string>();
+      for (const s of spans) {
+        if (prev && s.z >= prev.from && s.a < prev.to) prevActive.add(s.agent);
+        if (s.z < from || s.a >= to) continue;
+        const row = minutes.get(s.agent) ?? minutes.set(s.agent, arr(() => 0)).get(s.agent)!;
+        const i0 = Math.max(0, this.slot(b, Math.max(s.a, from)));
+        for (let i = i0; i < b.n; i++) {
+          const lo = b.start + i * b.size, hi = lo + b.size;
+          if (lo > s.z) break;
+          active[i]!.add(s.agent);
+          const ov = Math.min(s.z, hi) - Math.max(s.a, lo);
+          if (ov > 0) row[i]! += ov / 60_000;
+        }
+      }
+      const activeAll = new Set<string>();
+      for (const set of active) for (const a of set) activeAll.add(a);
+
+      // per agent: attempts, spend, generations, live time, runway (the runtime's report)
+      const spend = runtimeSpendOf(this.core);
+      const reports = new Map(spend.all().filter((r) => !off.has(r.agent)).map((r) => [r.agent, r]));
+      const ids = new Set<string>([...eps.map((e) => e.agent), ...minutes.keys(), ...reports.keys(), ...events.map((e) => e.agent)]);
+      const agents = [...ids]
+        .map((agent) => {
+          const mine = eps.filter((e) => e.agent === agent);
+          const mm = mine.filter((e) => !scripted(e));
+          const c = this.costOf(mine);
+          const rp = reports.get(agent)?.spend as Record<string, any> | undefined;
+          const mins = minutes.get(agent) ?? arr(() => 0);
+          return {
+            agent, name: this.nameOf(agent), test_launch: tests.has(agent), live: liveAgents.has(agent),
+            attempts: mm.length, scripted: mine.length - mm.length, accepted: accN(mm), rate: mm.length >= MIN_ATTEMPTS_FOR_RATE ? r4(accN(mm) / mm.length) : null,
+            usd: c.usd, usd_per_accepted: c.usd_per_accepted, gain_pct: c.gain_pct,
+            generations: events.filter((e) => e.agent === agent).length,
+            minutes: mins.map((m) => Math.round(m * 10) / 10), live_minutes: Math.round(sum(mins)),
+            runway: rp ? { vault_usd: rp.vault_usd ?? null, burn_usd_per_h: rp.burn_usd_per_h ?? null, runway_h: rp.runway_h ?? null, waiting: rp.waiting ?? null, reported_at: reports.get(agent)!.reported_at } : null,
+          };
+        })
+        .sort((a, c) => c.live_minutes - a.live_minutes || c.attempts - a.attempts || a.agent.localeCompare(c.agent));
+
+      // models (model attempts of the window)
+      const byModel = new Map<string, Episode[]>();
+      for (const e of mEps) {
+        const k = JSON.stringify(this.modelKey(e));
+        (byModel.get(k) ?? byModel.set(k, []).get(k)!).push(e);
+      }
+      const models = [...byModel.entries()]
+        .map(([k, es]) => {
+          const mk = JSON.parse(k) as { provider: string | null; model: string };
+          const c = this.costOf(es);
+          const durs = es.filter((e) => e.ended_at !== null && e.ended_at >= e.started_at).map((e) => (e.ended_at! - e.started_at) / 1000);
+          return {
+            provider: mk.provider, model: mk.model, attempts: es.length, accepted: c.accepted, priced: c.priced, usd: c.usd, gain_pct: c.gain_pct,
+            rate: es.length >= MIN_ATTEMPTS_FOR_RATE ? r4(c.accepted / es.length) : null,
+            gain_per_usd: c.usd !== null && c.usd > 0 && c.accepted >= MIN_ACCEPTED_FOR_MEANS ? r6(c.gain_pct / c.usd) : null,
+            usd_per_accepted: c.usd_per_accepted, median_duration_s: durs.length ? Math.round(median(durs)!) : null,
+          };
+        })
+        .sort((a, c) => c.attempts - a.attempts || a.model.localeCompare(c.model));
+
+      // why model attempts ended without a generation
+      const reasons = new Map<string, { outcome: string; reason: string; n: number; usd: number; priced: number }>();
+      for (const e of mEps) {
+        if (e.outcome === "accepted") continue;
+        const o = this.outcomeOf(e);
+        const why = e.outcome === "rejected" || e.outcome === "expired" ? (e.reason ?? e.outcome) : e.stop ? e.stop : e.worker_outcome ? e.worker_outcome.split(/[:;(\[]/)[0]!.trim().slice(0, 80) || "no candidate" : "no worker report";
+        const r = reasons.get(`${o}|${why}`) ?? reasons.set(`${o}|${why}`, { outcome: o, reason: why, n: 0, usd: 0, priced: 0 }).get(`${o}|${why}`)!;
+        r.n++;
+        if (e.usd !== null) ((r.usd += e.usd), r.priced++);
+      }
+
+      // verification: replays of final candidates, by the time the replay was revealed (or committed, or assigned)
+      const reps = this.db
+        .query<{ candidate_id: string; replayer: string; role: string | null; assigned_at: number; committed_at: number | null; revealed_at: number | null; c_committed: number; author: string }, [number]>(
+          `SELECT r.candidate_id, r.replayer, r.role, r.assigned_at, r.committed_at, r.revealed_at, c.committed_at AS c_committed, c.author
+           FROM replays r JOIN candidates c ON c.candidate_id = r.candidate_id
+           WHERE c.status IN ('accepted', 'rejected', 'expired') AND c.is_canary = 0 AND r.kind IN ('replay', 'reference') AND COALESCE(r.revealed_at, r.committed_at, r.assigned_at) >= ?`,
+        )
+        .all(prev?.from ?? from)
+        .filter((r) => !off.has(r.author))
+        .map((r) => ({ ...r, t: r.revealed_at ?? r.committed_at ?? r.assigned_at }));
+      const ROLE = ["counted", "minority", "env_failed"];
+      const vSeries = arr(() => ({ counted: 0, minority: 0, env_failed: 0, other: 0 }) as Record<string, number>);
+      const agree = (xs: { role: string | null }[]) => {
+        const c = xs.filter((r) => r.role === "counted").length, m = xs.filter((r) => r.role === "minority").length;
+        return c + m > 0 ? r4(c / (c + m)) : null;
+      };
+      const wReps = reps.filter((r) => inR(r.t));
+      for (const r of wReps) vSeries[this.slot(b, r.t)]![r.role && ROLE.includes(r.role) ? r.role : "other"]!++;
+      const per = new Map<string, typeof wReps>();
+      for (const r of wReps) (per.get(r.replayer) ?? per.set(r.replayer, []).get(r.replayer)!).push(r);
+      const firstBy = new Map<string, { c: number; first: number }>();
+      for (const r of wReps) {
+        if (r.committed_at === null) continue;
+        const f = firstBy.get(r.candidate_id);
+        if (!f || r.committed_at < f.first) firstBy.set(r.candidate_id, { c: r.c_committed, first: r.committed_at });
+      }
+      const waits = [...firstBy.values()].filter((x) => x.first >= x.c).map((x) => (x.first - x.c) / 1000);
+
+      // live sessions with their viewers, and viewers over time (hourly peaks of the gate's counts)
+      const vw = viewersOf(this.core);
+      const vNow = vw.now(include);
+      const vBy = new Map((vNow?.sessions ?? []).map((x) => [x.session_id, x.viewers]));
+      const hourly = vw.hourly(prev?.from ?? from, include);
+      const vPeak = arr(() => null as number | null);
+      let prevPeak: number | null = null;
+      for (const h of hourly) {
+        const i = this.slot(b, h.hour);
+        if (i >= 0) vPeak[i] = Math.max(vPeak[i] ?? 0, h.peak);
+        else if (inP(h.hour)) prevPeak = Math.max(prevPeak ?? 0, h.peak);
+      }
+      const peaks = vPeak.filter((x): x is number => x !== null);
+
+      const mTot = totalsOf(mSeries), sTot = totalsOf(sSeries);
+      const mAtt = sum(Object.values(mTot));
+      return {
+        now, window: win, hidden_included: include,
+        axis: this.axis(b),
+        range: { from, to },
+        prev,
+        first_record_at: first,
+        thresholds: { min_attempts_for_rate: MIN_ATTEMPTS_FOR_RATE, min_accepted_for_means: MIN_ACCEPTED_FOR_MEANS },
+        source: "published learnings episodes, accepted generations, replays of final candidates, live sessions, the runtime's spend report, the gate's viewer counts",
+        kpis: {
+          improvements: { value: events.length, prev: prev ? prevGens : null, series: genSeries, gain_pct: r4(sum(events.map((e) => e.gain_pct))), prev_gain_pct: prev ? r4(prevGain) : null },
+          acceptance: { value: rate(mTot.accepted!, mAtt), prev: prev ? rate(accN(pmEps), pmEps.length) : null, series: mSeries.map((x) => rate(x.accepted!, sum(Object.values(x)))), attempts: mAtt, accepted: mTot.accepted!, prev_attempts: prev ? pmEps.length : null },
+          spend: { value: cost.usd, prev: prev ? pcost.usd : null, series: sp.map((x) => (x.priced ? r6(x.usd) : null)), priced: cost.priced },
+          cost_per_accepted: { value: cost.usd_per_accepted, prev: prev ? pcost.usd_per_accepted : null, series: sp.map((x) => (x.accepted > 0 ? r6(x.usd / x.accepted) : null)), running, accepted: sum(sp.map((x) => x.accepted)) },
+          agents: { value: activeAll.size, prev: prev ? prevActive.size : null, series: active.map((x) => x.size), live_now: liveAgents.size },
+          viewers: { value: vNow ? vNow.total : null, sampled_at: vNow?.at ?? null, peak: peaks.length ? Math.max(...peaks) : null, prev_peak: prev ? prevPeak : null, series: vPeak, since: vw.since() },
+        },
+        attempts: { outcomes: OUT, model: mSeries, scripted: sSeries, totals: { model: mTot, scripted: sTot } },
+        spend: sp.map((x) => ({ usd: x.priced ? r6(x.usd) : null, priced: x.priced, accepted: x.accepted, gain_pct: r4(x.gain) })),
+        improvements: {
+          projects: [...projects.values()].sort((a, c) => a.first_at - c.first_at || a.project.localeCompare(c.project)).map((p) => ({ ...p, before_gain_pct: r4(p.before_gain_pct), gain_pct: r4(p.gain_pct) })),
+          events: events.slice(-2000),
+          wins: [...events].filter((e) => e.gain_pct > 0 || e.fixed > 0).sort((a, c) => c.gain_pct - a.gain_pct || c.fixed - a.fixed).slice(0, 10),
+        },
+        models,
+        agents,
+        reasons: [...reasons.values()].map((r) => ({ outcome: r.outcome, reason: r.reason, n: r.n, usd: r.priced ? r6(r.usd) : null })).sort((a, c) => c.n - a.n).slice(0, 12),
+        verification: {
+          series: vSeries,
+          agreement_series: vSeries.map((x) => (x.counted! + x.minority! > 0 ? r4(x.counted! / (x.counted! + x.minority!)) : null)),
+          replays: wReps.length,
+          prev_replays: prev ? reps.filter((r) => inP(r.t)).length : null,
+          agreement: agree(wReps),
+          prev_agreement: prev ? agree(reps.filter((r) => inP(r.t))) : null,
+          commit_to_first_replay_s: { n: waits.length, median: waits.length ? Math.round(median(waits)!) : null },
+          verifiers: [...per.entries()]
+            .map(([v, rs]) => {
+              const counted = rs.filter((r) => r.role === "counted").length, minority = rs.filter((r) => r.role === "minority").length;
+              const durs = rs.filter((r) => r.committed_at !== null && r.committed_at >= r.assigned_at).map((r) => (r.committed_at! - r.assigned_at) / 1000);
+              return { verifier: v, replays: rs.length, counted, minority, env_failed: rs.filter((r) => r.role === "env_failed").length, disagreement: counted + minority > 0 ? r4(minority / (counted + minority)) : null, median_replay_s: durs.length ? Math.round(median(durs)!) : null };
+            })
+            .sort((a, c) => c.replays - a.replays || a.verifier.localeCompare(c.verifier)),
+        },
+        live: live
+          .filter((s) => s.agent)
+          .map((s) => ({ session_id: s.session_id as string, agent: s.agent as string, name: this.nameOf(s.agent as string), project: projOf.get(s.lineage_id as string) ?? null, started_at: s.started_at as number, desktop: !!s.desktop, viewers: vNow ? (vBy.get(s.session_id as string) ?? 0) : null }))
+          .sort((a, c) => (c.viewers ?? 0) - (a.viewers ?? 0) || a.started_at - c.started_at),
       };
     });
   }

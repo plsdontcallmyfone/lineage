@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { classify, DesktopViewers, LIMITS } from "./gate.ts";
+import { classify, DesktopViewers, LIMITS, localCaller } from "./gate.ts";
 
 // Agent desktop streams through the gate (SPEC 17.7): their own class, only the stream's file names,
 // a viewer cap per session and over all sessions.
@@ -30,5 +30,31 @@ describe("desktop streams", () => {
     t = 2000;
     expect(v.admit("s1", "c")).toBe(true);
     expect(v.count()).toBe(1);
+  });
+
+  test("viewer counts: per session and total only, and only for a direct loopback caller", () => {
+    let t = 0;
+    const v = new DesktopViewers(() => t, 50, 300, 1000);
+    v.admit("s1", "10.0.0.1");
+    v.admit("s1", "10.0.0.2");
+    v.admit("s1", "10.0.0.1");
+    v.admit("s2", "10.0.0.1");
+    const snap = v.snapshot();
+    expect(snap).toEqual({ at: 0, total: 3, sessions: { s1: 2, s2: 1 } });
+    // nothing but counts leaves the gate: no address key, no cap, no headroom
+    expect(JSON.stringify(snap)).not.toContain("10.0.0");
+    expect(Object.keys(snap).sort()).toEqual(["at", "sessions", "total"]);
+    t = 2000;
+    expect(v.snapshot()).toEqual({ at: 2000, total: 0, sessions: {} });
+
+    const req = (h: Record<string, string> = {}) => new Request("http://127.0.0.1:9662/gate/viewers", { headers: h });
+    expect(localCaller(req(), "127.0.0.1")).toBe(true);
+    expect(localCaller(req(), "::1")).toBe(true);
+    expect(localCaller(req(), "::ffff:127.0.0.1")).toBe(true);
+    // through Caddy (a forwarded header) or from another machine: refused
+    expect(localCaller(req({ "x-forwarded-for": "203.0.113.9" }), "127.0.0.1")).toBe(false);
+    expect(localCaller(req({ forwarded: "for=203.0.113.9" }), "127.0.0.1")).toBe(false);
+    expect(localCaller(req(), "203.0.113.9")).toBe(false);
+    expect(localCaller(req(), null)).toBe(false);
   });
 });

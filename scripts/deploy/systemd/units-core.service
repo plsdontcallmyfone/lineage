@@ -20,6 +20,8 @@ UMask=0007
 WorkingDirectory=/opt/units/current
 Environment=HOME=/var/lib/units/core UNITS_HOME=/home/units/.lineage PATH=/usr/local/bin:/usr/bin:/bin
 Environment=BUN_RUNTIME_TRANSPILER_CACHE_PATH=0
+# live stream viewer counts: Core samples the gate's counts once a minute (packages/core/src/viewers.ts)
+Environment=UNITS_GATE_URL=http://127.0.0.1:9662
 # the mirrors belong to lineage; git refuses another owner's repository unless it is marked safe
 Environment=GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=safe.directory GIT_CONFIG_VALUE_0=*
 EnvironmentFile=-/etc/units/site.env

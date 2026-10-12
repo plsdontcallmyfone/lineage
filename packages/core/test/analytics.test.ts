@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { LEARNINGS_LIMITS } from "../src/learnings.ts";
 import { generateAgentKey } from "../src/protocol.ts";
+import { parseGateViewers, viewersOf, VIEWERS_FRESH_MS } from "../src/viewers.ts";
 import { authorLeaks, CALIB, diff, expectOk, honest, makeAuthor, result, runReplays, setup, submit, type Env } from "./helpers.ts";
 
 // Read-only aggregates for the Projects, Generations and Analytics pages
@@ -15,7 +16,7 @@ let env: Env;
 afterEach(() => env?.close());
 
 const CACHE = 10_001;
-const SECTIONS = ["ops", "work", "results", "spend", "models", "verifiers", "social", "launches"];
+const SECTIONS = ["ops", "work", "results", "spend", "models", "verifiers", "social", "launches", "dashboard"];
 const report = {
   v: 1,
   planned: { kind: "perf", target: "ir", note: null },
@@ -265,5 +266,122 @@ describe("analytics aggregates", () => {
       delete process.env.UNITS_OPS_DIR;
       delete process.env.UNITS_MONITOR_STATE;
     }
+  });
+
+  test("dashboard: a window is its buckets, scripted attempts apart, the period before, and figures equal the records", async () => {
+    const e = (env = await setup({ verifiers: 3 }));
+    const a = await makeAuthor(e);
+    const DAY = 86_400_000;
+    // day 0: one accepted model attempt (ir 1000 -> 900, 0.5 USD)
+    await attempt(e, a, "one", 900);
+    e.clock.advance(2 * DAY);
+    // two days on: a scripted attempt (no model, no report), a model attempt at the cap, an accepted one
+    const lv = await expectOk(e.anon.get(`/v1/lineages/${e.lineage}`));
+    const sc = await expectOk(a.c.post("/v1/sessions", { lineage_id: e.lineage, gen_id: lv.tip, commit: lv.snapshot.commit_sha, proposer: "scripted" }));
+    await expectOk(a.c.post(`/v1/sessions/${sc.session_id}/end`, {}));
+    const cap = await expectOk(a.c.post("/v1/sessions", { lineage_id: e.lineage, gen_id: lv.tip, commit: lv.snapshot.commit_sha, proposer: "anthropic" }));
+    await expectOk(a.c.post(`/v1/sessions/${cap.session_id}/end`, {}));
+    await expectOk(a.c.post(`/v1/sessions/${cap.session_id}/episode`, { ...report, outcome: "no candidate [stop: cap reached; model calls: 13]", usage: { ...report.usage, usd: 0.25 } }));
+    e.clock.advance(1_000);
+    await attempt(e, a, "two", 800);
+    e.clock.advance(LEARNINGS_LIMITS.bare_grace_ms + 1);
+    const v = await views(e);
+    const eps = (await expectOk(e.anon.get("/v1/learnings/episodes?limit=200"))).episodes as any[];
+    expect(eps).toHaveLength(4);
+
+    const all = v["/v1/analytics/dashboard?window=all"];
+    expect(all.prev).toBeNull();
+    expect(all.axis.unit).toBe("day");
+    expect(all.axis.t).toHaveLength(Math.round((all.range.to - all.range.from) / DAY));
+    // model attempts and scripted attempts never mix
+    expect(all.attempts.totals.model).toMatchObject({ accepted: 2, cap_reached: 1, no_candidate: 0 });
+    expect(Object.values(all.attempts.totals.scripted as Record<string, number>).reduce((n, x) => n + x, 0)).toBe(1);
+    expect(all.kpis.acceptance).toMatchObject({ attempts: 3, accepted: 2, value: 0.6667, prev: null });
+    // every headline figure is the sum of its series
+    const sum = (xs: (number | null)[]) => xs.reduce<number>((n, x) => n + (x ?? 0), 0);
+    expect(all.kpis.improvements).toMatchObject({ value: 2, prev: null, gain_pct: 30 });
+    expect(sum(all.kpis.improvements.series)).toBe(2);
+    expect(all.kpis.spend.value).toBe(1.25);
+    expect(sum(all.kpis.spend.series)).toBeCloseTo(1.25, 6);
+    expect(sum(all.spend.map((x: any) => x.accepted))).toBe(2);
+    expect(all.kpis.cost_per_accepted.value).toBe(0.625);
+    expect(all.kpis.cost_per_accepted.running[all.axis.t.length - 1]).toBe(0.625);
+    expect(all.kpis.cost_per_accepted.series.filter((x: any) => x !== null)).toEqual([0.5, 0.75]);
+    expect(all.kpis.agents).toMatchObject({ value: 1, live_now: 0 });
+    // generations as events, cumulative from what came before the window
+    expect(all.improvements.projects).toEqual([expect.objectContaining({ project: "example/fx", before: 0, generations: 2, gain_pct: 30 })]);
+    expect(all.improvements.events.map((x: any) => x.gain_pct)).toEqual([10, 20]);
+    expect(all.improvements.wins[0]).toMatchObject({ gain_pct: 20, agent: a.id });
+    expect(all.models).toEqual([expect.objectContaining({ model: "claude-opus-5-5", attempts: 3, accepted: 2, usd: 1.25, rate: null, gain_per_usd: null })]);
+    expect(all.agents).toEqual([expect.objectContaining({ agent: a.id, attempts: 3, scripted: 1, accepted: 2, usd: 1.25, generations: 2, runway: null })]);
+    expect(all.reasons).toEqual([{ outcome: "cap_reached", reason: "cap reached", n: 1, usd: 0.25 }]);
+    // replays of final candidates, by role
+    const reps = e.core.db.query<{ n: number }, []>("SELECT COUNT(*) AS n FROM replays WHERE kind IN ('replay', 'reference')").get()!.n;
+    expect(all.verification.replays).toBe(reps);
+    expect(all.verification.series.reduce((n: number, x: any) => n + x.counted + x.minority + x.env_failed + x.other, 0)).toBe(reps);
+    expect(all.verification.verifiers.reduce((n: number, x: any) => n + x.replays, 0)).toBe(reps);
+    expect(all.verification.agreement).toBe(1);
+
+    // 24 h: the first attempt is the period before
+    const d = v["/v1/analytics/dashboard?window=24h"];
+    expect(d.axis.unit).toBe("hour");
+    expect(d.axis.t).toHaveLength(24);
+    expect(d.prev).toEqual({ from: d.range.from - 24 * 3_600_000, to: d.range.from });
+    expect(d.kpis.improvements).toMatchObject({ value: 1, prev: 0 });
+    expect(d.kpis.spend).toMatchObject({ value: 0.75, prev: null });
+    expect(d.improvements.projects[0]).toMatchObject({ before: 1, generations: 1 });
+    // 7 d and 30 d hold all of it, with nothing in the period before
+    for (const w of ["7d", "30d"]) {
+      const x = await expectOk(e.anon.get(`/v1/analytics/dashboard?window=${w}`));
+      expect(x.axis.t).toHaveLength(w === "7d" ? 7 : 30);
+      expect(x.kpis.improvements).toMatchObject({ value: 2, prev: 0 });
+      expect(x.kpis.acceptance).toMatchObject({ attempts: 3, prev: null, prev_attempts: 0 });
+      expect(x.kpis.spend).toMatchObject({ value: 1.25, prev: null });
+    }
+    expect((await e.anon.get("/v1/analytics/overview?window=30d")).status).toBe(200);
+  });
+
+  test("viewer counts: the gate's counts only, hourly peaks, hidden launches left out unless hidden=1", async () => {
+    const e = (env = await setup({ verifiers: 3 }));
+    const a = await makeAuthor(e);
+    const h = await makeAuthor(e);
+    const lv = await expectOk(e.anon.get(`/v1/lineages/${e.lineage}`));
+    const open = async (x: typeof a) => (await expectOk(x.c.post("/v1/sessions", { lineage_id: e.lineage, gen_id: lv.tip, commit: lv.snapshot.commit_sha, proposer: "anthropic", desktop: true }))).session_id as string;
+    const sa = await open(a), sh = await open(h);
+    const mint = (await expectOk(e.anon.get(`/v1/agents/${h.id}`))).mint as string;
+    await expectOk(e.admin.c.post("/v1/admin/hidden", { add: [{ mint, reason: "test launch" }] }));
+    // only counts of 64 hex sessions survive the parse: no address, no cap, nothing else
+    const unknown = "f".repeat(64);
+    const g = parseGateViewers({ at: 1, total: 99, cap: 300, sessions: { [sa]: 3, [sh]: 4, [unknown]: 2, "10.0.0.1": 5, bad: "x" }, viewers: ["10.0.0.1"] })!;
+    expect(g).toEqual({ total: 9, sessions: { [sa]: 3, [sh]: 4, [unknown]: 2 } });
+    expect(parseGateViewers("nope")).toBeNull();
+    // before any sample: unknown, not zero
+    expect((await expectOk(e.anon.get("/v1/viewers"))).total).toBeNull();
+    const vw = viewersOf(e.core);
+    expect(vw.record(g)).toMatchObject({ recorded: true });
+    expect(vw.record({ total: 50, sessions: { [sa]: 50 } })).toMatchObject({ recorded: false }); // one sample a minute
+    e.clock.advance(60_000);
+    vw.record({ total: 1, sessions: { [sa]: 1 } });
+    e.clock.advance(10_001);
+
+    const pub = await expectOk(e.anon.get("/v1/viewers"));
+    expect(pub).toMatchObject({ total: 1, sessions: [{ session_id: sa, agent: a.id, viewers: 1 }] });
+    const d = await expectOk(e.anon.get("/v1/analytics/dashboard?window=24h"));
+    expect(d.kpis.viewers).toMatchObject({ value: 1, peak: 3 });
+    expect(d.kpis.viewers.series.filter((x: any) => x !== null)).toEqual([3]);
+    expect(d.live).toEqual([expect.objectContaining({ session_id: sa, agent: a.id, viewers: 1, desktop: true })]);
+    expect(JSON.stringify(d)).not.toContain(h.id);
+    expect(JSON.stringify(pub)).not.toContain(sh);
+    // with hidden=1: the hidden launch's session, and the peak over every stream the gate counted
+    const on = await expectOk(e.anon.get("/v1/analytics/dashboard?window=24h&hidden=1"));
+    expect(on.kpis.viewers).toMatchObject({ value: 1, peak: 9 });
+    expect(on.live.map((x: any) => x.agent).sort()).toEqual([a.id, h.id].sort());
+    // a sample that went stale is not "now"
+    e.clock.advance(VIEWERS_FRESH_MS + 60_000);
+    expect((await expectOk(e.anon.get("/v1/viewers"))).total).toBeNull();
+    // the sampler: a gate that does not answer leaves a gap, never a zero
+    expect(await vw.sample("http://gate", (async () => new Response("no", { status: 502 })) as unknown as typeof fetch)).toMatchObject({ ok: false });
+    expect(await vw.sample("http://gate", (async (u: string) => (expect(u).toBe("http://gate/gate/viewers"), Response.json({ at: 1, total: 2, sessions: { [sa]: 2 } }))) as unknown as typeof fetch)).toMatchObject({ recorded: true });
+    expect((await expectOk(e.anon.get("/v1/viewers"))).total).toBe(2);
   });
 });
