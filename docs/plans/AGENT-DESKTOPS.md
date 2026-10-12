@@ -230,3 +230,141 @@ the site: `docker stats` over a session) before raising `--max`.
 for root (an 8 vCPU / 16 GiB droplet carries 12 desktops by the numbers above; a 4 vCPU / 8 GiB one
 carries 5, enough for today's 6 bound agents with the site's 2), then runs
 `scripts/deploy/desktop-host/provision.sh <ip>`. Until then E2B covers every agent beyond the site's 2.
+
+## Amendment: one E2B desktop per agent, 100 desktops (2026-10-12, agent desktops at scale lane)
+
+Owner decision 2026-10-12: "every launch opens an agents new e2b sandbox and stuff, we want to have at
+least enough runway for 100 launches which means 100 desktops". The owner is buying E2B's Pro plan (150
+USD per month: 100 sandboxes running at once, 24 h session length, 20 GiB of storage; e2b.dev/pricing
+read 2026-10-12).
+
+### 1. What exists (before this amendment)
+
+A desktop belongs to an ATTEMPT, not to an agent. `DesktopPool.begin` places a new desktop for each
+attempt (desktop hosts, then this server, then E2B), `desktop_required` makes the attempt wait for a
+slot, the attempt's end destroys it, a reaper removes what a killed runtime left. On E2B every attempt
+pays the whole start (sandbox create, scripts, tree, session: 27.5 s measured 2026-10-10) and the
+sandbox carries the metadata `lineage=1, attempt=<label>`. Limits: `e2b_max` 6 on the devnet site and
+2 on the mainnet test instance, `desktop_usd_per_day` 16 shared by the two through
+`desktop_shared` (each publishes its spend of the UTC day, the other subtracts it). Attempts at once
+are limited by the server (2), whatever the desktops.
+
+### 2. What E2B documents and what was measured (2026-10-12, installed SDK @e2b/desktop 2.4.0 on e2b 2.55.0)
+
+Documented (docs.e2b.dev/sandbox, /sandbox/persistence, /docs/billing, /sandbox/rate-limits):
+- `sandbox.pause()` saves the filesystem and the memory (running processes included);
+  `Sandbox.connect(id, { timeoutMs })` resumes a paused sandbox. "Pausing a sandbox takes approximately
+  4 seconds per 1 GiB of RAM", "Resuming a sandbox takes approximately 1 second".
+- "A paused sandbox is kept indefinitely"; E2B never kills one by itself.
+- Billing: "You pay per second for compute resources while your sandbox is running." "Once a sandbox is
+  paused, killed or times out, billing stops immediately." Storage is free on every plan. Nothing is
+  said about a charge for a paused sandbox's snapshot.
+- Session length is "Time a sandbox can run without being paused" (1 h Hobby, 24 h Pro), "not a cap on
+  how long a sandbox can exist"; "After a sandbox is paused and resumed, the continuous runtime limit
+  is reset."
+- Concurrency is "Number of sandboxes running at the same time" (20 Hobby, 100 Pro, add-ons to 1,100).
+  The pages do not say in so many words whether a paused sandbox counts.
+- `lifecycle: { onTimeout: "pause" }` at create: the sandbox is paused, not killed, when its timeout
+  runs out, every time. `setTimeout(ms)` sets the timeout to that long from now.
+- Create rate: 1 per second (Hobby), 5 per second (Pro).
+
+Measured with the account's key (`packages/desktop/scripts/e2b-measure.ts`; the account is on Hobby
+today):
+- `lineage-desktop` sandbox (2 vCPU, 4096 MiB): create 6.4 s; pause 0.94 s and 1.02 s; resume
+  (`connect`) 0.26 s and 0.36 s; first command after a resume 0.21 s. These were fresh desktops with
+  little memory in use; a desktop after a session is measured in the proof below.
+- A paused sandbox keeps its processes: a loop writing the clock every second and the X server were
+  still there after the resume, and a file written before the pause too. A command sent to a paused
+  sandbox fails with `SandboxNotRunningError` (it does not resume by itself with `autoResume` false).
+- The sandbox's `startedAt` is the time of the last resume, so the session window does restart.
+- Listing: a paused sandbox is listed with state `paused` and not among the running ones; the list
+  filters by metadata.
+- **Concurrency: a paused sandbox does not count.** On the Hobby plan (20 at once) the account held 22
+  paused sandboxes and 1 running one, and one more was created without a refusal.
+- `setTimeout` beyond the plan's session length is not refused: 2 h and 25 h both came back as 3,599 s
+  from now (clamped to the plan's 1 h).
+- **Billing of a paused sandbox was not measured**: the API has no per-sandbox cost call and the
+  dashboard's usage is not readable from here. What stands is E2B's sentence above. The owner can
+  check it on the dashboard's usage tab after the proof (section 6 lists the times).
+
+### 3. What changes
+
+A new mode, `desktop_mode: "per_agent"` (default `"per_attempt"`: nothing changes until it is set).
+In it every bound hosted agent has its own E2B desktop for its whole life
+(`packages/desktop/src/agent-desktops.ts`); desktop hosts and this server's slots are not used.
+
+1. **One desktop per agent.** The sandbox carries the metadata `units_desktop=agent`,
+   `agent=<agent id>`, `owner=<this runtime's label>` (`desktop_owner`; default a digest of the host
+   name and the state directory, so two runtimes on one E2B account never touch each other's). At
+   start the runtime lists the sandboxes with its own label and takes each agent's back (same sandbox
+   id as before the restart); a second sandbox for one agent is killed; a sandbox whose agent is not
+   bound to this runtime any more (unbound, or gone) is killed after `desktop_remove_after_s` (default
+   300 s, so one bad read of the chain does not remove a hundred desktops). The per-attempt desktops of
+   the live sites carry `lineage=1` and no `units_desktop`: this code never lists or touches them.
+2. **Launch.** Binding an agent asks for its desktop in the background (at most
+   `desktop_start_parallel` creates at once, default 4). The bind and the launch never wait on E2B and
+   cannot fail because of it; a failed create is tried again with a growing wait and the state says
+   why.
+3. **Pause on idle.** A desktop is paused when its agent is asleep (vault empty), or is not in an
+   attempt and has not been for `desktop_idle_s` (default 600), or when the day's budget is used up
+   (idle ones at once). It is resumed inside the next attempt's start, before the session opens. When
+   `e2b_max` desktops run and another agent needs to work, the longest-idle running desktop is paused
+   to make room.
+4. **Sessions.** The working tree is the runtime's (it stays the authority): each attempt clears the
+   desktop's copy, uploads the tree and starts the desktop session; the attempt's end stops the
+   session and the stream and leaves the sandbox. Sealing and redaction are unchanged.
+5. **Session length and renewal.** `e2b.session_max_s` is the plan's session length (3,600 today,
+   86,400 on Pro). The runtime keeps the time of the desktop's last create or resume; when less than
+   `desktop_renew_before_s` (default 1,800) is left of the window and the agent is not in an attempt,
+   it pauses and resumes the desktop, which restarts the window (documented and measured above; about
+   1.3 s). The same check runs at the start of an attempt, before the session opens, so an attempt
+   starts with at least `desktop_renew_before_s` ahead of it. A running attempt is never interrupted
+   by the runtime. If E2B itself pauses the desktop under an attempt (the window ran out), the desktop
+   is resumed at the next failed command; if that does not succeed within
+   `desktop_resume_gap_max_s` (default 60) the live stream ends cleanly (410) and the attempt goes on
+   without its desktop.
+6. **A dead runtime does not leave 100 desktops running.** Every sandbox is created with
+   `onTimeout: "pause"` and a short timeout (`desktop_keepalive_s`, default 900) that the runtime
+   pushes forward while it lives. A runtime that dies leaves its desktops to be paused by E2B within
+   that time; nothing is lost and the next start finds them.
+7. **Limits (all config, admin-editable in site-config and the runtime config).** `e2b_max` is the
+   most desktops RUNNING at once (what E2B counts; paused ones are free of the limit), target 100;
+   `desktop_usd_per_day` as before, counted per second a desktop runs (also across a restart), and
+   still shared through `desktop_shared`. At either limit a new agent launches and works as before:
+   its desktop state reads why there is none (`E2B desktop limit reached: 100 of 100 running`,
+   `day cap reached (...)`), and with `desktop_required` its attempt waits, as today.
+8. **Pages.** The runtime's spend report carries each agent's desktop state
+   (`running | paused | starting | none`, why, since); Core serves it with
+   `GET /v1/agents/:id/spend`; the live panel's idle state says "Desktop paused" with the reason and
+   that it resumes with the next session, or "No desktop: <why>". Text only, never a picture.
+
+### 4. Cost (measured figures, stated assumptions)
+
+One `lineage-desktop` sandbox (2 vCPU, 4 GiB, measured 2026-10-10 and again today) bills 0.000046
+USD/s, 0.1656 USD per running hour, at E2B's listed rates. A paused one bills nothing according to
+E2B (not measured, section 2). The plan fee is 150 USD per month (quoted by the owner; the same on
+e2b.dev/pricing).
+
+| Case | Desktops running on average | USD per day | USD per 30 days | With the plan fee |
+|---|---|---|---|---|
+| 100 desktops always running | 100 | 397.44 | 11,923.20 | 12,073.20 |
+| Pause on idle, attempts at once as today (2), assumption A | 4 | 15.90 | 476.93 | 626.93 |
+| Pause on idle, 10 attempts at once, assumption A | 20 | 79.49 | 2,384.64 | 2,534.64 |
+| Pause on idle, 25 attempts at once, assumption A | 50 | 198.72 | 5,961.60 | 6,111.60 |
+| Pause on idle, every one of 100 agents working all day | 100 | 397.44 | 11,923.20 | 12,073.20 |
+
+Assumption A (an assumption, not a measurement): attempt slots are always full, an attempt lasts as
+long as the idle time (10 minutes), and every agent that ends an attempt waits longer than the idle
+time for its next one (true with 100 agents sharing a few slots). Then each slot keeps one desktop
+working and one more in its idle tail: running desktops = 2 x attempts at once. A shorter
+`desktop_idle_s` lowers the tail in proportion; 0 pauses a desktop the moment its attempt ends (one
+desktop per slot: half the figures above) at the price of one resume per attempt (0.3 s measured).
+What a desktop costs beyond its working time: its first idle time after the launch (10 minutes:
+0.0276 USD per launched agent).
+
+The arithmetic: 0.1656 x 24 = 3.9744 USD per desktop-day; x 100 = 397.44; x 30 = 11,923.20.
+
+### 5. What the owner does
+
+Listed in the lane's report and in section 6 once the proof ran: the plan upgrade, then the config
+change per site.
