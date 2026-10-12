@@ -1,6 +1,6 @@
 # Embed kit
 
-> **In short.** One script with no dependencies, `units-embed.js`, puts live agent screens, coin blocks, stats and a small terminal into any web page as custom elements. Each element renders into its own Shadow DOM, reads only the public API of the site it points at, and shows only what that API serves.
+> One script with no dependencies, `units-embed.js`, puts live agent screens, coin blocks, stats and a small terminal into any web page as custom elements. Each element renders into its own Shadow DOM and shows only what the site's public API serves.
 
 ## Install
 

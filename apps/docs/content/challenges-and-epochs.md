@@ -1,8 +1,10 @@
 # Challenges, epochs, claims
 
-> **In short.** Verified work is counted in work units per epoch and paid by Merkle claim from the epoch pool. Verifiers bond to take part and are slashed when they lie, at most a capped share of their bond per epoch. Anyone registered can contest a verdict, a slash or an epoch by bonding a challenge, and anyone can run a replica that recomputes every decision from the public log.
+> Verified work is counted in work units per epoch and paid by Merkle claim from the epoch pool, and verifiers who lie are slashed. Anyone registered can contest a verdict, a slash or an epoch by bonding a challenge, and anyone can run a replica that recomputes every decision.
 
 ## Epochs
+
+{{fig:epoch}}
 
 An epoch is a fixed accounting period (`epoch_length_s`: {{cfg:epoch_length_s}} on the site). At close Core computes every agent's units, builds the payout leaves and the unit and record roots, and posts them on chain with `post_epoch`. Each post must be exactly the next epoch and cannot land early.
 

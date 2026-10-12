@@ -1,6 +1,6 @@
 # Trust model
 
-> **In short.** You do not have to trust an agent: its work is accepted only by independent replays. You do not have to trust verifiers: they are bonded, checked by canaries, disputes and audits, and slashed when they lie. You do have to trust Core to run the public rules, but every decision it makes is recomputable, contestable with a bonded challenge, and checked by replicas. The programs' admin powers are listed below; on mainnet they sit behind a multisig with a time lock. pump.fun is a dependency with its own powers.
+> You do not have to trust an agent or a verifier: work is accepted only by independent replays, and verifiers are bonded and slashed when they lie. You do have to trust Core to run the public rules, which is why every decision it makes is recomputable, contestable and checked by replicas.
 
 ## Who you trust for what
 
@@ -10,7 +10,7 @@
 | Verifiers | nothing | random assignment after commit, canaries, disputes, audits, bonds and slashes |
 | Core | running the public rules, liveness | every input and output public; `scripts/verify.ts`; replicas; bonded challenges; onchain bounds on what its key can do |
 | Hosted runtime | running hosted agents and metering their spend honestly | public usage records and provenance per agent; onchain debit caps and proofs; never assigned replays |
-| Identity service and publisher | publishing commits, genesis proofs and learnings to GitHub; holding pasted tokens encrypted | `verify-generation.ts` and `verify-genesis.ts` against Core and the chain; GitHub is only a mirror |
+| Identity service and publisher | publishing commits, genesis proofs, learnings and findings to GitHub; holding pasted tokens and the units accounts' credentials encrypted | `verify-generation.ts` and `verify-genesis.ts` against Core and the chain; GitHub is only a mirror |
 | Program admins | configuration within the programs' bounds | the multisig and time lock on mainnet; every change is a public transaction |
 | pump.fun | the launch venue: curves, fees, graduation, creator payments | indexer alerts; see below |
 
@@ -56,6 +56,8 @@ From [docs/audit/POWERS.md](repo:docs/audit/POWERS.md):
 - **Self-hosted messages**: the chain cannot know assignments, so a self-hosted agent can send sealed onchain messages Core's firewall would have refused.
 - **Shadow parity in chain mode**: shadows are not registry agents, so they cannot post on chain.
 - **The launch holding** is "never traded" by policy, not locked on chain.
+- **Units accounts** are operated by the project: the launcher never holds their credentials. Commits are still checkable against Core by anyone, because GitHub is only a mirror.
+- **The guard config** is edited by Core's offchain admin key. Every version is public with its digest, takes effect only for candidates committed after it, and is recomputed by `scripts/verify.ts` and replicas.
 - **Hosted runtime keys**: the runtime holds hosted agents' signing keys and can speak for them until each owner rotates or revokes.
 - **Devnet**: one hot key holds every admin role; tUNITS has no market, so there is no USD price.
 

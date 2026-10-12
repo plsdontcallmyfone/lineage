@@ -6,8 +6,15 @@
 //   {{gen:models}}        the model registry seed, from config/models.json
 //   {{gen:changelog}}     the specification's changelog, newest first, from docs/SPEC.md
 //   {{gen:indexer-api}}   the market indexer's routes, checked against packages/indexer/src/api.ts
+//   {{gen:api-examples}}  request and response of the most useful Core routes, as captured from the devnet
+//                         site by scripts/docs/capture.ts (apps/docs/captured/api-examples.json)
+//   {{gen:market-examples}}  the same for the market indexer
+//   {{gen:verify-metrics}}   the tutorial generation's metrics, from the captured replay samples
+// and, written inline by the build: {{ex:<id>}} one captured example, {{out:<id>}} one captured command
+// with its exact output, {{d:<key>}} one fact of the tutorial's generation (apps/docs/captured/verify.json).
 // Generators read the repository at build time, so a page cannot drift from the code it describes.
-import { readFileSync } from "node:fs";
+// Nothing here fetches: captured files are committed and refreshed with `bun scripts/docs/capture.ts`.
+import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { API_NOTES, INDEXER_ROUTES } from "./api-notes.ts";
 
@@ -235,7 +242,7 @@ export function modelsDoc(root: string): string {
     const r = m.rate;
     const or = m.routes?.openrouter?.rate;
     out.push(
-      `| ${p ? `[${p.name}](${p.pricing_url})` : m.provider} | ${m.name} (\`${m.id}\`) | ${r ? usd(r.input) : "TBA"} | ${r ? usd(r.output) : "TBA"} | ${r ? usd(r.cached_input) : ""} | ${r ? usd(r.cache_write) : ""} | ${p?.read_on ?? ""} | ${or ? `${or.input} / ${or.output}` : ""} | ${notes.join("; ")} |`,
+      `| ${existsSync(join(root, "apps/web/public/providers", `${m.provider}.svg`)) ? `![](provider:${m.provider})` : ""}${p ? `[${p.name}](${p.pricing_url})` : m.provider} | ${m.name} (\`${m.id}\`) | ${r ? usd(r.input) : "TBA"} | ${r ? usd(r.output) : "TBA"} | ${r ? usd(r.cached_input) : ""} | ${r ? usd(r.cache_write) : ""} | ${p?.read_on ?? ""} | ${or ? `${or.input} / ${or.output}` : ""} | ${notes.join("; ")} |`,
     );
   }
   out.push("");
@@ -275,8 +282,83 @@ export function indexerRouteNames(root: string): string[] {
   return [...new Set([...top.map((t) => `/market/${t}`), ...sub.map((s) => `/market/tokens/:mint/${s}`)])];
 }
 
+// ---- captured from the live devnet site (scripts/docs/capture.ts) ----
+
+export interface ApiExample {
+  id: string;
+  group: "core" | "market";
+  title: string;
+  why: string;
+  method: string;
+  path: string;
+  request: string;
+  status: number;
+  response: unknown;
+}
+export interface Captured {
+  api: { captured_at: string; site: string; trim: string; examples: ApiExample[] } | null;
+  verify: {
+    captured_at: string;
+    site: string;
+    facts: Record<string, string>;
+    metrics: { name: string; base: string; cand: string; change: string; target: boolean }[];
+    outputs: Record<string, { cmd: string; exit: number; out: string; s: number }>;
+  } | null;
+}
+
+const readJson = <T,>(root: string, file: string): T | null => {
+  const p = join(root, "apps/docs/captured", file);
+  return existsSync(p) ? (JSON.parse(readFileSync(p, "utf8")) as T) : null;
+};
+export const captured = (root: string): Captured => ({ api: readJson(root, "api-examples.json"), verify: readJson(root, "verify.json") });
+
+const day = (iso: string) => iso.slice(0, 10);
+
+/** One captured example as markdown: the request as a curl line, the trimmed response folded under it. */
+export function exampleMd(c: Captured, id: string, o: { heading?: boolean } = {}): string {
+  const e = c.api?.examples.find((x) => x.id === id);
+  if (!c.api || !e) throw new Error(`no captured example "${id}" (run bun scripts/docs/capture.ts api)`);
+  const body = JSON.stringify(e.response, null, 2);
+  const n = body.split("\n").length;
+  const out: string[] = [];
+  if (o.heading) out.push(`### ${e.title}`, "", `\`${e.method} ${e.path}\`. ${e.why}`, "");
+  out.push("```Request", `curl ${c.api.site}${e.request}`, "```", "");
+  out.push(n > 14 ? `\`\`\`fold Response: HTTP ${e.status}, captured ${day(c.api.captured_at)}, trimmed to ${n} lines` : `\`\`\`Response: HTTP ${e.status}, captured ${day(c.api.captured_at)}`, body, "```", "");
+  return out.join("\n");
+}
+
+export function examplesDoc(root: string, group: "core" | "market"): string {
+  const c = captured(root);
+  if (!c.api) throw new Error("apps/docs/captured/api-examples.json is missing (run bun scripts/docs/capture.ts api)");
+  const list = c.api.examples.filter((e) => e.group === group);
+  const out = [`Captured from ${c.api.site} on ${day(c.api.captured_at)} by [scripts/docs/capture.ts](repo:scripts/docs/capture.ts). ${c.api.trim} Values change as the network runs; the shapes do not.`, ""];
+  for (const e of list) out.push(exampleMd(c, e.id, { heading: true }));
+  return out.join("\n");
+}
+
+/** One captured command with its exact output. */
+export function outputMd(c: Captured, id: string): string {
+  const o = c.verify?.outputs[id];
+  if (!c.verify || !o) throw new Error(`no captured output "${id}" (run bun scripts/docs/capture.ts verify)`);
+  return ["```Command", o.cmd, "```", "", `\`\`\`Output: exit code ${o.exit}, ${o.s} s, captured ${day(c.verify.captured_at)}`, o.out, "```", ""].join("\n");
+}
+
+export function verifyMetricsDoc(root: string): string {
+  const c = captured(root);
+  if (!c.verify) throw new Error("apps/docs/captured/verify.json is missing (run bun scripts/docs/capture.ts verify)");
+  const out = ["| Metric | Role | Before (parent) | After (candidate) | Change |", "|---|---|---|---|---|"];
+  for (const m of c.verify.metrics) out.push(`| \`${m.name}\` | ${m.target ? "target" : "other metric"} | ${m.base} | ${m.cand} | ${m.change} |`);
+  return out.join("\n") + "\n";
+}
+
 export function generate(root: string, name: string): string {
   switch (name) {
+    case "api-examples":
+      return examplesDoc(root, "core");
+    case "market-examples":
+      return examplesDoc(root, "market");
+    case "verify-metrics":
+      return verifyMetricsDoc(root);
     case "core-api":
       return coreApiDoc(root).markdown;
     case "program-ids":

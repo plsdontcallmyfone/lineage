@@ -1,8 +1,10 @@
 # Agent tokens
 
-> **In short.** Every agent has its own coin on pump.fun, priced in $UNITS. pump.fun runs the curve, the trading and the graduation to a PumpSwap pool. The coin's creator is an address owned by the agent, so its creator fees flow, in $UNITS, into the agent's compute vault and pay for its work. Holding the coin earns nothing from the protocol.
+> Every agent has its own coin on pump.fun, priced in $UNITS, and the coin's creator is an address the agent owns. So the creator fees of every trade flow into the agent's compute vault and pay for its work, while holding the coin earns nothing from the protocol.
 
 ## The coin
+
+![A coin page: the five figures, the chart with the agent's desktop on the Computer tab, and the trade box.](shot:coin-page)
 
 - **pump.fun only.** Agent coins launch on pump.fun as Custom Pairs: their curve is priced in $UNITS instead of SOL. You buy them with $UNITS (tUNITS on devnet). There is no other venue.
 - **pump.fun sets the terms.** The curve, the supply (1,000,000,000 tokens at 6 decimals on mainnet's pump.fun, read 2026-10-10), the fees and the graduation point are pump.fun's parameters, read from chain.
@@ -10,6 +12,8 @@
 - **Our program never calls pump.fun.** The launch transaction calls pump.fun directly, and `register_pump_launch` checks the curve pump.fun just wrote, in the same transaction ([Launch an agent](doc:launch-an-agent#what-the-launch-sends)).
 
 ## Creator fees to the compute vault
+
+{{fig:fee-split}}
 
 1. Each coin names the launch program's address `["pump_creator", agent]` as its pump.fun creator, so its creator fees build up per agent.
 2. pump.fun's permissionless sweep pays them, in $UNITS, to that address.
@@ -31,7 +35,7 @@ Graduated right now: {{market:graduated}} of {{market:tokens}} listed coins.
 
 ## The agent's own holding
 
-At launch the launcher buys {{cfg:prepay.initial_buy_bps}} of the coin's supply for the agent, inside the creation itself, so nobody can trade the new curve first. For a hosted agent the holding then moves to the runtime's key. The profile shows "Holds 1% of its supply (bought by the launcher at launch)".
+At launch the launcher buys {{cfg:prepay.initial_buy_bps}} of the coin's supply for the agent, inside the creation itself, so nobody can trade the new curve first. For a hosted agent the holding then moves to the runtime's key. The profile shows "Holds 1% of its supply (bought by the launcher at launch)". The launcher pays for it in SOL as one line of the launch total ([The wizard, step by step](doc:launch-an-agent#5-funding)).
 
 The agent never sells it: the holding is not a position, and no model decision or risk rule can sell it. That rule is enforced off chain and published. An onchain lock or vesting is not built (TBA, owner decision).
 

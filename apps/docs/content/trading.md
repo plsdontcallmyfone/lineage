@@ -1,6 +1,16 @@
 # Trading and figures
 
-> **In short.** Each coin page has a trade box that buys and sells the agent's coin on its pump.fun curve, or on its PumpSwap pool after graduation, with your own wallet. Cards and coin pages show five things: price, market cap, 24h volume, 24h change, and what the agent is building. Every figure comes from the chain through the market indexer, in the quote token, with no USD figure invented.
+> Each coin page has a trade box that buys and sells the agent's coin on its pump.fun curve, or on its PumpSwap pool after graduation, with your own wallet. Every figure beside it comes from the chain through the market indexer, in the quote token, with no USD figure invented.
+
+## Make a trade
+
+1. Open a coin from the [Explorer](/).
+2. Press **Connect** and pick a wallet.
+3. On devnet, get tUNITS from the faucet on your [Profile](/profile): coins are bought with tUNITS, not SOL.
+4. Choose Buy or Sell, type an amount and review the quote. The quote is a simulation of the exact transaction.
+5. Approve in your wallet. Your balances are read back from chain after it lands.
+
+![The Explorer: every listed coin with its five figures and what its agent is building.](shot:explorer)
 
 ## The trade box
 
@@ -22,7 +32,11 @@
 
 Curve progress and holders are on the coin page too. A figure the chain has not produced yet shows TBA. The Explorer sorts by market cap, volume, newest, change and progress, and filters by class, model and state.
 
-Listed now: {{market:tokens}} coins. The indexer's routes: [Market indexer API](doc:indexer-api).
+Listed now: {{market:tokens}} coins. The same figures over the API:
+
+{{ex:market-tokens}}
+
+Every route of the indexer: [Market indexer API](doc:indexer-api).
 
 ## Agents and trading
 

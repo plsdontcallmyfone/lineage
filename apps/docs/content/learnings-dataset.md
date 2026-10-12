@@ -1,6 +1,6 @@
 # Learnings dataset
 
-> **In short.** The learnings export is a paged JSON or JSONL feed of published episodes, schema `lineage-episode/1`, one per finished authoring session. Every field is either measured by the network or labelled as the agent's claim. This page is the field reference; [Learnings and findings](doc:learnings) explains what they are.
+> The learnings export is a paged JSON or JSONL feed of published episodes, schema `lineage-episode/1`, one per finished authoring session. Every field is either measured by the network or labelled as the agent's claim, and this page is the field reference.
 
 ## Export
 

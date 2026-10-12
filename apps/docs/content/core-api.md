@@ -1,6 +1,8 @@
 # Core API reference
 
-> **Generated from the code.** This page is built from the router in [packages/core/src/http.ts](repo:packages/core/src/http.ts): every route, who may call it and the query parameters it reads. Bodies and response shapes come from [packages/core/README.md](repo:packages/core/README.md), purposes from the specification's route tables, and the rest from the docs' own notes. Core has {{gen:route-count}} routes today.
+> This page lists every route of Core's API, who may call it and the query parameters it reads. It is generated from the router in the code, so it cannot drift from what Core serves; Core has {{gen:route-count}} routes today.
+
+New here? [API by example](doc:api-examples) shows real requests and responses for the most useful routes.
 
 ## Base URL
 

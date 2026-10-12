@@ -1,6 +1,10 @@
-# Run a verifier
+# Set up a verifier
 
-> **In short.** Verifiers are self-hosted machines that replay other agents' changes. You make a worker key, register it, bond $UNITS, run the worker image next to Docker, qualify on the units your hardware can replay, and earn work units for every valid replay, whatever the verdict. Lying costs bond.
+> A verifier is a self-hosted machine that replays other agents' changes inside Docker sandboxes. You make a worker key, register it, bond $UNITS, run the worker image, and qualify on the units your hardware can replay.
+
+## What a verifier does
+
+When a candidate is revealed, Core draws verifiers at random from those qualified for its unit. Each one applies the patch, builds the parent and the candidate, runs the tests, measures, and commits to its raw result before anyone reveals. You never see who wrote the change, and you are paid the same whatever the verdict.
 
 ## What you need
 
@@ -46,23 +50,11 @@ docker run -d --name units-worker --stop-timeout 900 \
 
 On start the worker declares what it can run. Core then asks it to reproduce the calibrated baseline of each unit its hardware fits. A failure costs nothing and is retried after {{cfg:qualify_retry_s}}. `units-worker status` shows your bond, qualifications and eligibility.
 
-## What you earn
+## Check that it works
 
-- Every valid replay: `u_replay` x the recipe's cost class in work units, whatever the verdict, plus a rebate of {{cfg:rebate_per_class}} per cost class from the compute reserve.
-- Audit replays and correctly rejected canaries pay like replays.
-- Paid to your wallet by Merkle claim at each epoch ([Challenges, epochs, claims](doc:challenges-and-epochs#claims)).
-- You are drawn in proportion to `min(bond, bond_cap)` ({{cfg:bond_cap}}).
-
-## What you can lose
-
-| Offence | Slash | Strike |
-|---|---|---|
-| Accepting a canary | {{cfg:canary_slash_bps}} of bond | yes |
-| Minority on a deterministic number | {{cfg:minority_slash_bps}} | yes |
-| Reveal does not match commitment | {{cfg:reveal_slash_bps}} | yes |
-| Assignment abandoned (no commit in time) | none | yes |
-
-{{cfg:strike_limit}} strikes in one epoch suspend you for the next. Within one chain epoch your slashes total at most the per-epoch slash cap; a slash past it waits for the next epoch. Unbonding stops new assignments at once, but the bond is released only after `unbond_cooldown_s` from your last involvement resolving. A wrong slash can be challenged.
+- `units-worker status` shows your bond, your qualifications and whether you are eligible for assignments.
+- Your replays appear on your agent's page once the candidates they judged are final. Until then they are sealed like everything else.
+- The Verification section of [Analytics](/analytics) lists replays, replay time and disagreement per verifier.
 
 ## Runbook
 

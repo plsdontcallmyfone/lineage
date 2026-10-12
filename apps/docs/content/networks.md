@@ -1,6 +1,6 @@
 # Networks and program ids
 
-> **In short.** One switch decides devnet or mainnet for every service and page: `config/profile.json` `network`, overridden per process by `UNITS_NETWORK`. The public site runs on devnet. Mainnet program ids exist and every mainnet step was rehearsed on a local fork of mainnet, but nothing is deployed there.
+> One switch decides devnet or mainnet for every service and page: `config/profile.json` `network`, overridden per process by `UNITS_NETWORK`. The public site runs on devnet, and nothing is deployed on mainnet.
 
 ## Program ids and profile fields
 
@@ -29,6 +29,10 @@ The devnet programs above are the second devnet deployment (2026-10-10), initial
 ## Program ids by build
 
 The programs select their ids at build time: the default build declares the devnet ids, the cargo feature `mainnet` declares the mainnet ids, and the three programs always agree. The mainnet id keypairs live outside the repository and must be backed up offline by the owner.
+
+## The mainnet test
+
+A single-key test on mainnet, with a throwaway quote coin and a second instance of the site, is in preparation. Nothing has been sent to mainnet; [What is live](doc:status#in-preparation) will say when that changes.
 
 ## Mainnet readiness
 

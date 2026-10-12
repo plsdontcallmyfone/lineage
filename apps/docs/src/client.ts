@@ -1,28 +1,11 @@
-// The docs site's only script (<base>/assets/docs.js): the theme toggle, the live figures, the search
-// box and the phone page menu. Every {{cfg:...}} and {{market:...}} tag was rendered as a TBA span with
-// data-live; this fills it from Core's GET /v1/config (through the site's /api proxy) and the market
-// indexer's /market/tokens. A figure neither answers for stays TBA. Search reads <base>/assets/search.json,
+// The docs site's only script (<base>/assets/docs.js): the live figures, the search box and the phone
+// page menu. Every {{cfg:...}}, {{market:...}}, {{stats:...}} and {{guard:...}} tag was rendered as a
+// TBA span with data-live; this fills it from Core's GET /v1/config, /v1/stats and /v1/guard-config
+// (through the site's /api proxy) and the market indexer's /market/tokens. A figure none of them
+// answers for stays TBA. The app has one theme (light), so there is no theme switch here either. Search reads <base>/assets/search.json,
 // built with the pages, and runs in the browser. Nothing else runs on these pages.
 import { loadConfig } from "../../web/src/api.ts";
 import { paramValue } from "../../web/src/params.ts";
-
-const SUN = '<svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="8" cy="8" r="3"/><path d="M8 1v1.6M8 13.4V15M1 8h1.6M13.4 8H15M3 3l1.1 1.1M11.9 11.9L13 13M3 13l1.1-1.1M11.9 4.1L13 3"/></svg>';
-const MOON = '<svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M13.5 9.8A5.8 5.8 0 016.2 2.5a5.8 5.8 0 107.3 7.3z"/></svg>';
-const isDark = () => document.documentElement.getAttribute("data-theme") !== "light";
-const themeBtn = document.getElementById("theme");
-const paintTheme = () => themeBtn && (themeBtn.innerHTML = isDark() ? SUN : MOON);
-paintTheme();
-themeBtn?.addEventListener("click", () => {
-  const next = isDark() ? "light" : "dark";
-  if (next === "light") document.documentElement.setAttribute("data-theme", "light");
-  else document.documentElement.removeAttribute("data-theme");
-  try {
-    localStorage.setItem("units-theme", next);
-  } catch {
-    /* storage blocked */
-  }
-  paintTheme();
-});
 
 const BASE = document.body.dataset.docsBase ?? "/docs";
 const esc = (v: unknown) => String(v).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]!);
@@ -63,19 +46,45 @@ function cfgText(key: string, v: unknown, cfg: Record<string, unknown>): string 
   return t === "TBA" ? null : t.replace("$UNITS", quote);
 }
 
+const json = (path: string) => fetch(path, { headers: { accept: "application/json" } }).then((r) => (r.ok ? r.json() : null)).catch(() => null);
+const count = (n: unknown) => (typeof n === "number" && Number.isFinite(n) ? n.toLocaleString("en-US") : null);
+const percent = (f: unknown) => (typeof f === "number" && Number.isFinite(f) ? `${+(f * 100).toFixed(4)}%` : null);
+const utc = (ms: unknown) => (typeof ms === "number" && ms > 0 ? `${new Date(ms).toISOString().slice(0, 16).replace("T", " ")} UTC` : null);
+
+/** A figure of GET /v1/stats: counters as they are ("units" reads the stored field `lineages`). */
+function statsText(key: string, st: Record<string, unknown>): string | null {
+  return count(st[key === "units" ? "lineages" : key]);
+}
+
+/** A figure of GET /v1/guard-config: the version in force. */
+function guardText(key: string, g: { activation_ms?: number; current?: Record<string, unknown> | null }): string | null {
+  const cur = g.current;
+  if (key === "activation") return utc(g.activation_ms);
+  if (!cur) return null;
+  if (key === "default_max_regression") return percent(cur.default_max_regression);
+  if (key === "version") return count(cur.version);
+  if (key === "kinds" && Array.isArray(cur.kinds)) return cur.kinds.join(", ");
+  if (key === "overrides" && cur.overrides && typeof cur.overrides === "object") return count(Object.keys(cur.overrides).length);
+  return null;
+}
+
 async function fill() {
   const spans = [...document.querySelectorAll<HTMLElement>("[data-live]")];
   if (!spans.length) return;
-  const needCfg = spans.some((s) => s.dataset.live!.startsWith("cfg:"));
-  const needMarket = spans.some((s) => s.dataset.live!.startsWith("market:"));
-  const [cfg, tokens] = await Promise.all([
-    needCfg ? loadConfig().catch(() => null) : null,
-    needMarket ? fetch("/market/tokens?limit=500", { headers: { accept: "application/json" } }).then((r) => (r.ok ? r.json() : null)).catch(() => null) : null,
+  const need = (kind: string) => spans.some((s) => s.dataset.live!.startsWith(`${kind}:`));
+  const [cfg, tokens, stats, guard] = await Promise.all([
+    need("cfg") ? loadConfig().catch(() => null) : null,
+    need("market") ? json("/market/tokens?limit=500") : null,
+    need("stats") ? json("/api/stats") : null,
+    need("guard") ? json("/api/guard-config") : null,
   ]);
+  const SOURCE: Record<string, string> = { cfg: "GET /v1/config", market: "the market indexer", stats: "GET /v1/stats", guard: "GET /v1/guard-config" };
   for (const s of spans) {
     const [kind, key] = s.dataset.live!.split(":") as [string, string];
     let v: string | null = null;
     if (kind === "cfg" && cfg) v = cfgText(key, pick(cfg as unknown as Record<string, unknown>, key), cfg as unknown as Record<string, unknown>);
+    else if (kind === "stats" && stats) v = statsText(key, stats);
+    else if (kind === "guard" && guard) v = guardText(key, guard);
     else if (kind === "market" && tokens) {
       if (key === "tokens") v = String(tokens.total ?? tokens.count ?? tokens.tokens.length);
       else if (key === "graduated" && tokens.total === tokens.tokens.length) v = String(tokens.tokens.filter((t: { phase: string }) => t.phase === "graduated").length);
@@ -84,7 +93,7 @@ async function fill() {
     if (v === null) continue;
     s.textContent = v;
     s.classList.remove("tba");
-    s.title = kind === "cfg" ? `live value of ${key} from GET /v1/config` : "live from the market indexer";
+    s.title = `read live from ${SOURCE[kind]}${kind === "cfg" ? ` (${key})` : ""}`;
   }
 }
 void fill();

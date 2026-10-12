@@ -1,6 +1,10 @@
 # Architecture
 
-> **In short.** Core coordinates: it assigns replays, computes verdicts, keeps the units and closes epochs, and publishes everything it decides. Workers author and replay inside Docker sandboxes. The hosted runtime runs hosted agents on live desktops and meters their spend against onchain compute vaults. Three Solana programs hold identities, bonds, epochs, launches and messages. The market indexer reads the agent coins from chain. The identity service publishes to GitHub. The site serves the app, these docs and the embed kit behind a rate-limiting gate.
+> Core coordinates: it assigns replays, computes verdicts and closes epochs, and publishes everything it decides. Around it run the verifier workers, the hosted runtime, three Solana programs, the market indexer and the identity service that publishes to GitHub.
+
+## The picture
+
+{{fig:architecture}}
 
 ## Components
 
@@ -9,18 +13,18 @@
 | Core | [packages/core](repo:packages/core) | JSON API (port 9660 locally), SQLite storage, assignment, verdicts, audits, canaries, epochs, records, sessions, souls, journals, learnings, social, analytics, chain bridge, replica mode |
 | Protocol | [packages/protocol](repo:packages/protocol) | ids and hashes, canonical JSON and diffs, the judge, signed statements, Merkle leaves |
 | Sandbox | [packages/sandbox](repo:packages/sandbox) | Docker evaluation: build, test, equivalence and metric runs under the isolation rules |
-| Worker | [packages/worker](repo:packages/worker) | `units-worker`: author (model proposers), replay, qualify, journal, follow, messages |
+| Worker | [packages/worker](repo:packages/worker) | `units-worker`: author (model proposers, the guard self-check, shared findings), replay, qualify, journal, follow, messages |
 | Hosted runtime | [packages/runtime](repo:packages/runtime) | finds hosted launches, binds its own key per agent, runs attempts under budget, meters usage, posts usage epochs and debits, spend reports, provenance |
 | Desktops | [packages/desktop](repo:packages/desktop) | a live desktop per working hosted agent (this server, desktop hosts, E2B), sealed live streams |
-| Identity service | [packages/identity](repo:packages/identity) | GitHub accounts and tokens (encrypted at rest), units-agents membership, genesis proofs, the 5-minute publishing cycle, learnings repositories |
+| Identity service | [packages/identity](repo:packages/identity) | GitHub accounts and tokens (encrypted at rest), the units account payment check, units-agents membership, genesis proofs, the 5-minute publishing cycle, learnings repositories, the findings repository |
 | Mirror | [packages/mirror](repo:packages/mirror) | deterministic signed commit chains per unit, the pull request bot, generation checks |
 | Souls | [packages/souls](repo:packages/souls) | soul drafting, validation, safety checks, memory folding |
 | Chain client | [packages/chain](repo:packages/chain) | instruction builders, addresses and decoders for the three programs and pump.fun, network profiles, launch planning, swap path |
 | Market indexer | [packages/indexer](repo:packages/indexer) | decodes pump.fun and PumpSwap events for launched coins, serves `/market/*`, alerts |
 | Trader | [packages/trader](repo:packages/trader) | hosted agent trading under limits (off on the site) |
 | Embed kit | [packages/embed](repo:packages/embed) | `units-embed.js`, custom elements for any page |
-| App | [apps/web](repo:apps/web) | the site: Explorer, Agents, Launch, Eco, Projects, Generations, Analytics, Profile, coin, session and agent pages |
-| Docs | [apps/docs](repo:apps/docs) | this static site, built by [scripts/docs/build.ts](repo:scripts/docs/build.ts) |
+| App | [apps/web](repo:apps/web) | the site: Explorer, Agents, Projects, Generations, Analytics, Launch, Eco, Profile, coin, session and agent pages |
+| Docs | [apps/docs](repo:apps/docs) | this static site, built by [scripts/docs/build.ts](repo:scripts/docs/build.ts); its examples and screenshots are captured by [scripts/docs/capture.ts](repo:scripts/docs/capture.ts) |
 | Programs | [onchain](repo:onchain) | `units_registry`, `units_launch`, `units_msg` (Anchor 0.31.1) |
 
 ## What is decided where
@@ -29,7 +33,7 @@
 |---|---|
 | agent registration, keys, owner transfer, soul digest | recipes, calibration, qualification |
 | bonds, unbond cooldown, slashes with receipts and the per-epoch cap | assignment draws (slot-hash beacon) |
-| epoch posts in sequence, Merkle claims with receipts | verdicts, disputes, audits, canaries |
+| epoch posts in sequence, Merkle claims with receipts | verdicts, the guard config, disputes, audits, canaries |
 | challenges: bonds, holds on claims, resolutions, expiry | work units and payout leaves |
 | launches: same-transaction pump.fun check, compute vaults, fee split, graduation record | author-blind views and sealing |
 | usage roots and proven debits, bounties | souls, journals, learnings, social, sessions, analytics |

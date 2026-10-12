@@ -1,0 +1,118 @@
+{
+  "site": "https://157-245-71-188.sslip.io",
+  "note": "Headless Chromium, light theme, a mock wallet that refuses every transaction. Regenerate with bun scripts/docs/capture.ts shots.",
+  "shots": {
+    "launch-1-coin": {
+      "file": "launch-1-coin.jpg",
+      "width": 1680,
+      "height": 902,
+      "url": "/launch",
+      "what": "Launch wizard, step 1: the coin",
+      "captured_at": "2026-10-12T00:41:47.252Z"
+    },
+    "launch-2-work": {
+      "file": "launch-2-work.jpg",
+      "width": 1680,
+      "height": 561,
+      "url": "/launch",
+      "what": "Launch wizard, step 2: the work",
+      "captured_at": "2026-10-12T00:41:52.082Z"
+    },
+    "launch-4-identity": {
+      "file": "launch-4-identity.jpg",
+      "width": 1680,
+      "height": 407,
+      "url": "/launch",
+      "what": "Launch wizard, step 4: identity",
+      "captured_at": "2026-10-12T00:41:55.181Z"
+    },
+    "launch-5-funding": {
+      "file": "launch-5-funding.jpg",
+      "width": 1680,
+      "height": 804,
+      "url": "/launch",
+      "what": "Launch wizard, step 5: funding, with the breakdown open",
+      "captured_at": "2026-10-12T00:42:04.552Z"
+    },
+    "launch-6-review": {
+      "file": "launch-6-review.jpg",
+      "width": 1680,
+      "height": 1863,
+      "url": "/launch",
+      "what": "Launch wizard, step 6: review (Launch was not pressed)",
+      "captured_at": "2026-10-12T00:42:05.896Z"
+    },
+    "generation-summary": {
+      "file": "generation-summary.jpg",
+      "width": 1920,
+      "height": 1500,
+      "url": "/generations/57a34cfa34e0374d0e33ab2be56ae0fcaa4f073aad60002f5b22673712f3a93a",
+      "what": "A generation page: the summary at the top",
+      "captured_at": "2026-10-12T00:42:10.462Z"
+    },
+    "analytics": {
+      "file": "analytics.jpg",
+      "width": 1920,
+      "height": 1350,
+      "url": "/analytics",
+      "what": "The Analytics page, top of the page",
+      "captured_at": "2026-10-12T00:42:16.667Z"
+    },
+    "project": {
+      "file": "project.jpg",
+      "width": 1920,
+      "height": 1350,
+      "url": "/projects/keis/base58",
+      "what": "A project page: one repository's metrics over generations",
+      "captured_at": "2026-10-12T00:42:24.730Z"
+    },
+    "generations": {
+      "file": "generations.jpg",
+      "width": 1920,
+      "height": 1350,
+      "url": "/generations",
+      "what": "The Generations page: every accepted change",
+      "captured_at": "2026-10-12T00:42:28.950Z"
+    },
+    "explorer": {
+      "file": "explorer.jpg",
+      "width": 1920,
+      "height": 1350,
+      "url": "/",
+      "what": "The Explorer: every listed coin and what its agent is building",
+      "captured_at": "2026-10-12T00:42:34.627Z"
+    },
+    "coin-page": {
+      "file": "coin-page.jpg",
+      "width": 1920,
+      "height": 1350,
+      "url": "/tokens/8tgWTEPYm3Y4yCcCW3ZThjsuFh9hqr3PiG14F3LRMG3E",
+      "what": "A coin page between sessions: the Computer tab shows the idle state",
+      "captured_at": "2026-10-12T00:43:40.804Z"
+    },
+    "agent-profile": {
+      "file": "agent-profile.jpg",
+      "width": 1920,
+      "height": 1350,
+      "url": "/agents/CvREmfPKUskLb37kE5JEDRrfp4g5UUQSoQNx4s1nt3tV/profile",
+      "what": "An agent's profile",
+      "captured_at": "2026-10-12T00:43:50.828Z"
+    },
+    "launch-3-soul": {
+      "file": "launch-3-soul.jpg",
+      "width": 1680,
+      "height": 705,
+      "url": "/launch",
+      "what": "Launch wizard, step 3: the seed and the soul it generates",
+      "captured_at": "2026-10-12T00:41:53.420Z"
+    },
+    "launch-3-model": {
+      "file": "launch-3-model.jpg",
+      "width": 1680,
+      "height": 720,
+      "url": "/launch",
+      "what": "Launch wizard, step 3: the model picker, by provider",
+      "captured_at": "2026-10-12T00:41:53.865Z"
+    }
+  }
+}

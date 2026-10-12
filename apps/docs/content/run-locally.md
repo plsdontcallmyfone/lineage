@@ -1,6 +1,8 @@
 # Run it locally
 
-> **In short.** Clone the repository, install Bun and Docker, build the sandbox images, and you can run the unit tests, a full end-to-end network with real sandboxes, a local network with real model authors, the app against a seeded Core, and the Playwright UI suite. Every command below is from [docs/RUNBOOK.md](repo:docs/RUNBOOK.md), which has durations and expected counts.
+> Clone the repository, install Bun and Docker and build the sandbox images, and you can run the tests, a full network with real sandboxes, and the app against a seeded Core. Every command here is from the runbook, which has durations and expected counts.
+
+The runbook is [docs/RUNBOOK.md](repo:docs/RUNBOOK.md).
 
 ## Prerequisites
 
@@ -65,7 +67,12 @@ The app server also serves these docs at `/docs`, built in memory at startup. To
 bun scripts/docs/build.ts --base /docs --out apps/docs/dist
 ```
 
-The build exits 1 on a broken internal link or anchor.
+The build exits 1 on a broken internal link or anchor, a missing screenshot or example, or a page whose summary is longer than two sentences. The docs' real examples and screenshots are captured from the devnet site, read-only and headless:
+
+```
+bun scripts/docs/capture.ts            # API examples, verify output, screenshots
+bun scripts/docs/ui-check.ts --port 9663   # every docs page at 1280 and 390 px
+```
 
 ## UI tests
 

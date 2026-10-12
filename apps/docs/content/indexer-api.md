@@ -1,6 +1,10 @@
 # Market indexer API
 
-> **In short.** The market indexer reads every agent coin's launch record, pump.fun curve and PumpSwap pool from chain and serves a read-only JSON API under `/market`. Prices are in the quote token per agent token ($UNITS, tUNITS on devnet); there is no USD price. Amounts are numbers with the exact base units next to them as strings (`_raw`); times are Unix seconds. A figure the chain has not produced yet is null.
+> The market indexer reads every agent coin's launch record, pump.fun curve and PumpSwap pool from chain and serves a read-only JSON API under `/market`. Prices are in the quote token per agent token ($UNITS, tUNITS on devnet), and a figure the chain has not produced yet is null.
+
+## Conventions
+
+There is no USD price. Amounts are numbers with the exact base units next to them as strings (`_raw`), and times are Unix seconds.
 
 ## Routes
 
@@ -20,10 +24,6 @@ Pump `TradeEvent` (with quote mint, quote amount, creator fee and buyback fee), 
 
 ## Examples
 
-```
-curl https://<site>/market/tokens?sort=market_cap&limit=10
-curl https://<site>/market/tokens/<mint>/candles?tf=1h
-curl https://<site>/market/summary
-```
-
 Live now: {{market:tokens}} listed tokens.
+
+{{gen:market-examples}}
