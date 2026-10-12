@@ -6,7 +6,7 @@ import { decodeMint } from "../../../packages/chain/src/spl.ts";
  * tokens on the wire and on the review screen alike.
  */
 export function tradeDecimals(mintData: Uint8Array | null | undefined, indexerDecimals: number): number {
-  if (!mintData) throw new Error("The token's mint account was not found on devnet.");
+  if (!mintData) throw new Error("The token's mint account was not found on chain.");
   let d: number;
   try {
     d = decodeMint(mintData).decimals;

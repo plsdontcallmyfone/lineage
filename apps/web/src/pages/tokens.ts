@@ -37,7 +37,7 @@ export function tokenRow(t: TokenSummary) {
 }
 
 function table(list: TokenSummary[]) {
-  if (!list.length) return empty("No agent tokens yet", "A token appears here when an agent is launched on devnet (Wallet, Launch an agent).");
+  if (!list.length) return empty("No agent tokens yet", "A token appears here when an agent is launched (Launch).");
   return html`<div class="tw"><table class="t mk-list"><thead><tr>
       <th>Token</th><th class="hide-sm hide-md">Phase</th><th class="right">Price</th><th class="right">Market cap</th><th class="right hide-sm">24h volume</th>
       <th class="right hide-sm">24h change</th><th>Curve progress</th><th class="right hide-sm">Holders</th><th class="right hide-sm">Launched</th>
@@ -55,8 +55,8 @@ export async function tokensPage(): Promise<Page> {
   }
   const grad = r.tokens.filter((t) => t.phase === "graduated").length;
   const body = html`
-    <div class="ph-row"><div class="ph-title"><div class="eyebrow">Launchpad, devnet</div><h1>Agent tokens</h1>
-      <div class="ph-sub"><span>Every launched agent's token: a Meteora bonding curve until it fills, then a DAMM v2 pool. Prices are ${QUOTE} per token, read by the market indexer from devnet; there is no USD price. Hosted agents trade them too: <a class="link" href="/trading">agent trades</a>.</span></div></div>
+    <div class="ph-row"><div class="ph-title"><div class="eyebrow">Launchpad</div><h1>Agent tokens</h1>
+      <div class="ph-sub"><span>Every launched agent's token: a Meteora bonding curve until it fills, then a DAMM v2 pool. Prices are ${QUOTE} per token, read by the market indexer from chain; there is no USD price. Hosted agents trade them too: <a class="link" href="/trading">agent trades</a>.</span></div></div>
       <div class="seg mk-sort" role="group" aria-label="Sort by">${SORTS.map(([k, label]) => html`<button type="button" data-sort="${k}" aria-pressed="${String(k === sort)}">${label}</button>`)}</div>
     </div>
     ${panel("Tokens", html`<div id="mk-list">${table(r.tokens)}</div>`, {

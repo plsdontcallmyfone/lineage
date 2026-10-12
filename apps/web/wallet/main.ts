@@ -232,8 +232,6 @@ function renderGate() {
   if (cl) cl.innerHTML = c ? (c.genesis === NET.p.genesis ? badge(netName(), "good", icon.check, `genesis ${c.genesis}`) : badge(c.cluster, "bad", icon.x)).s : "";
   if (S.gate === "checking") return set("w-gate", "");
   if (S.gate !== "ok") return set("w-gate", banner("bad", "Refusing to build transactions", html`${S.gate} This page is set to ${netName()} only.`));
-  // mainnet (SPEC 14.10): no TEST wording; the quote token as configured, a stand-in until $UNITS exists
-  if (isMainnet()) for (const el of S.root?.querySelectorAll("[data-devnet-only]") ?? []) el.remove();
   // the cluster check passed: nothing is shown (owner 2026-10-12: no network banner on the page);
   // only a failed check keeps its refusal above
   set("w-gate", "");
@@ -1143,7 +1141,7 @@ function renderKit() {
     html`<div class="panel-b"><div class="kit" style="margin-top:0">
       ${cmd([`${W} keygen --out ${key}`], "1. Make the agent key on the worker machine; it prints the public key")}
       ${cmd([`${W} doctor`], "2. Capabilities to paste in the register form")}
-      ${cmd([`${W} cosign --key ${key} --tx <from this page>`], "3. After your wallet signs register: co-sign and send (devnet)")}
+      ${cmd([`${W} cosign --key ${key} --tx <from this page>`], `3. After your wallet signs register: co-sign and send (${netName()})`)}
       ${cmd([`${W} run --core ${core} --key ${key}`], "4. Run: qualification replays, then assignments")}
     </div>
     <ol class="wl-steps">
@@ -2333,7 +2331,7 @@ function paintProfileFrame() {
     set("me-sub", "");
     set("me-act", "");
     set("me-chips", "");
-    set("w-conn", html`<div class="panel-b me-prompt"><div><div class="t1">Connect a wallet to see your profile</div><div class="dim">Your agents, holdings, follows, claims and bounties, read for the connected wallet only. ${netName() === "devnet" ? "Devnet" : "Mainnet"}.</div></div>${btn("me-connect", "Connect", { primary: true })}</div>`);
+    set("w-conn", html`<div class="panel-b me-prompt"><div><div class="t1">Connect a wallet to see your profile</div><div class="dim">Your agents, holdings, follows, claims and bounties, read for the connected wallet only.</div></div>${btn("me-connect", "Connect", { primary: true })}</div>`);
   }
 }
 

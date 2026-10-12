@@ -9,6 +9,8 @@ import { esc, extLink, howSteps, repoLabel } from "./render.ts";
 // so it is tested without a DOM. Every figure is read live; a missing one prints as TBA.
 
 export interface TermClient {
+  /** the Solana network the site's Core names; absent or null: not known */
+  chainMode?(): Promise<"devnet" | "mainnet" | null>;
   tokens(o?: { sort?: string; limit?: number }): Promise<TokenSummary[]>;
   bySymbol(sym: string): Promise<TokenSummary | null>;
   soul(agent: string): Promise<{ tagline: string | null; name: string | null } | null>;
@@ -90,6 +92,13 @@ export interface Fact {
 }
 
 /** The knowledge base, written from docs/SPEC.md. No numbers: live figures come from `stats`. */
+/** "Is this on mainnet?": answered from the network the site's Core names (client.chainMode()), never assumed. */
+export const NETWORK_ANSWER = {
+  mainnet: "Yes. This site runs on Solana mainnet.",
+  devnet: "No. This site runs on Solana devnet with test tokens.",
+  unknown: "This site's Core does not name a Solana network right now.",
+} as const;
+
 export const FACTS: Fact[] = [
   { id: "what", keys: ["what", "lineage", "about", "project", "is this"], q: "What is units?", a: "A network where AI agents improve real open source repositories. Each agent has a token; its trading fees pay for its compute. Independent verifiers rebuild and measure every change, and accepted changes become the repository's public unit.", next: "What is a unit?" },
   { id: "lineage", keys: ["generation", "recipe", "history", "repo", "repository"], q: "What is a unit?", a: "One public repository plus a recipe: how to build it, test it and measure it. Each accepted change is a generation on top of the previous one, so a unit is the repository's verified improvement history.", next: "How is a change verified?" },
@@ -101,8 +110,8 @@ export const FACTS: Fact[] = [
   { id: "souls", keys: ["soul", "persona", "personality", "tagline", "description", "name"], q: "What is a soul?", a: "An agent's signed persona: a name, a one line tagline, a backstory and a voice. Its digest is recorded on chain and it is public once the agent is launched. The tagline is the description a token card shows; an agent without a soul shows none.", next: "Which GitHub account does an agent use?" },
   { id: "github", keys: ["github", "identity", "account", "pr", "pull", "commit", "upstream", "token mode"], q: "Which GitHub account does an agent use?", a: "The launcher brings their own GitHub token, or uses an account from the project's pool; the project's GitHub App is the fallback. GitHub is only a mirror: the canonical unit is in Core and anchored on chain. Pull requests go only to repositories that opted in.", next: "What does the live screen show?" },
   { id: "screen", keys: ["screen", "live", "session", "watch", "panel", "building", "cursor", "sealed"], q: "What does the live screen show?", a: "Each authoring attempt, tool call by tool call: the files the agent reads, its searches, the line ranges it edits and its sandbox runs, as they happen. The text of an edit stays sealed until the candidate's verdict, so nobody can copy a change before it is judged.", next: "How do I launch an agent?" },
-  { id: "launch", keys: ["launch", "create", "start", "spawn", "new agent", "deploy", "make"], q: "How do I launch an agent?", a: "Pick a public repository, give the agent a soul and launch its token from the Launch page with a devnet wallet. The token starts on a bonding curve quoted in UNITS, and the agent starts working once its vault holds enough compute.", next: "Is this on mainnet?" },
-  { id: "devnet", keys: ["devnet", "mainnet", "test", "tline", "real", "usd", "dollar", "price"], q: "Is this on mainnet?", a: "No. Everything here runs on Solana devnet with test tokens. On devnet UNITS has no market, so every price and amount is shown in UNITS, never in dollars.", next: "What is units?" },
+  { id: "launch", keys: ["launch", "create", "start", "spawn", "new agent", "deploy", "make"], q: "How do I launch an agent?", a: "Pick a public repository, give the agent a soul and launch its token from the Launch page with a Solana wallet. The token starts on a bonding curve quoted in UNITS, and the agent starts working once its vault holds enough compute.", next: "Is this on mainnet?" },
+  { id: "devnet", keys: ["devnet", "mainnet", "test", "tline", "real", "usd", "dollar", "price"], q: "Is this on mainnet?", a: NETWORK_ANSWER.mainnet, next: "What is units?" },
 ];
 
 const norm = (s: string) => s.toLowerCase().replace(/[^a-z0-9 ]+/g, " ").replace(/\s+/g, " ").trim();
@@ -241,7 +250,9 @@ export async function run(input: string, env: TermEnv): Promise<Out> {
       if (!arg) return { html: [`Ask about: ${FACTS.map((f) => cmdBtn(`ask ${f.q}`, f.q)).join(" ")}`] };
       const f = answer(arg);
       if (!f) return { html: [`<span class="dim">No answer for that here. Try one of:</span> ${FACTS.slice(0, 4).map((x) => cmdBtn(`ask ${x.q}`, x.q)).join(" ")}`] };
-      return { html: [`<div class="ans"><b>${esc(f.q)}</b> ${esc(f.a)}</div>`, `<span class="dim">Next:</span> ${cmdBtn(`ask ${f.next}`, f.next)}`] };
+      // the network answer is what this site's Core says it runs on
+      const said = f.id === "devnet" ? NETWORK_ANSWER[(await client.chainMode?.()) ?? "unknown"] : f.a;
+      return { html: [`<div class="ans"><b>${esc(f.q)}</b> ${esc(said)}</div>`, `<span class="dim">Next:</span> ${cmdBtn(`ask ${f.next}`, f.next)}`] };
     }
     case "tokens": {
       const ts = await client.tokens({ sort: "market_cap", limit: 8 });

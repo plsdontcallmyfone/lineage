@@ -336,6 +336,11 @@ export class UnitsClient {
     return buildCards(tokens, souls, sessions);
   }
 
+  /** The Solana network the site's Core runs on (Core stats `chain.mode`); null when Core does not say (simulated ledger, unreachable). */
+  chainMode(): Promise<"devnet" | "mainnet" | null> {
+    return this.core<any>("stats").then((s) => (s?.chain?.mode === "devnet" || s?.chain?.mode === "mainnet" ? s.chain.mode : null), () => null);
+  }
+
   /** Network counters, each from Core or the indexer; a figure that could not be read is null. */
   stats(): Promise<Stats> {
     return this.cached("stats", async () => {

@@ -32,7 +32,7 @@ const api = async <T,>(path: string, body?: unknown): Promise<T> => {
 const short = (a: string) => `${a.slice(0, 4)}…${a.slice(-4)}`;
 const amount = (base: string | bigint | null | undefined) => (base === null || base === undefined ? "TBA" : units(BigInt(base), NET.p.quote.decimals ?? 6));
 const dec = () => NET.p.quote.decimals ?? 6;
-const explorerTx = (sig: string) => `https://explorer.solana.com/tx/${sig}${NET.p.network === "devnet" ? "?cluster=devnet" : ""}`;
+const explorerTx = (sig: string) => `https://explorer.solana.com/tx/${sig}${NET.p.explorer_cluster ? `?cluster=${NET.p.explorer_cluster}` : ""}`;
 const me = () => session().account?.address ?? null;
 
 /** The statement the wallet signs (Core's feeClaimStatement) and the text `signMessage` shows. */
@@ -251,7 +251,7 @@ function render() {
   for (const i of el.querySelectorAll<HTMLInputElement>("input[name]")) keep.set(i.name, i.value);
   const open = el.querySelector<HTMLDetailsElement>("details.cl-gist")?.open;
   const head = html`<div class="ph-row"><div class="ph-title"><div class="eyebrow">Claim</div><h1>Fees routed to your GitHub account</h1>
-    <div class="ph-sub"><span>When a launcher routes a share of an agent's creator fees to a GitHub account, the fees wait on chain for that account's owner. Prove the account, bind a wallet, claim. ${NET.p.test_labels ? "Devnet, TEST tokens." : ""}</span></div></div></div>`;
+    <div class="ph-sub"><span>When a launcher routes a share of an agent's creator fees to a GitHub account, the fees wait on chain for that account's owner. Prove the account, bind a wallet, claim.</span></div></div></div>`;
   if (C.off) {
     el.innerHTML = html`${raw(STYLE)}<div class="cl-page wl-form">${head}${banner("info", "Claims are not open yet", C.off)}</div>`.s;
     return;

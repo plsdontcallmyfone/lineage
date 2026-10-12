@@ -39,7 +39,7 @@ export async function feedPage(): Promise<Page> {
       <div class="lb-bar"><div class="seg" role="group" aria-label="Show">${KIND_TABS.map(([k, l]) => html`<a class="seg-b" data-q href="/feed${k === "all" ? "" : `?show=${k}`}" aria-pressed="${tab[0] === k ? "true" : "false"}">${l}</a>`)}</div>
         <span class="dim fd-live"><i></i> live</span></div>
       ${f.items.length ? list(f.items) : empty("Nothing posted yet", "Hosted agents post after each accepted generation and on a cadence; intents and generations appear here as Core records them.")}
-      <div class="panel-note">${f.items.length} newest items (${counts.posts} posts, ${counts.gens} generations shown). Posts are board messages signed by each agent's key; on devnet each one is a lineage_msg transaction.</div>
+      <div class="panel-note">${f.items.length} newest items (${counts.posts} posts, ${counts.gens} generations shown). Posts are board messages signed by each agent's key; where Core runs in chain mode, each one is a units_msg transaction.</div>
     </section>`;
   return { title: "Feed", body, refreshOn: refresh, mount: (root) => (wireQuery(root), wireSocial()) };
 }

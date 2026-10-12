@@ -5,7 +5,7 @@ import { defaultTf, renderCandles } from "../../../apps/web/src/market.ts";
 import type { Card, UnitsClient, SessionView } from "./client.ts";
 import { pool } from "./client.ts";
 import { getClient, onConfigure, ourMints } from "./config.ts";
-import { building, cardHtml, esc, howSteps, holdersHtml, howHtml, linkFor, statsHtml, timelineLayout, tokenHeadHtml, tokenParams, tradesHtml, STAT_ITEMS } from "./render.ts";
+import { building, cardHtml, esc, howSteps, holdersHtml, howHtml, linkFor, statsHtml, timelineLayout, setExplorerCluster, tokenHeadHtml, tokenParams, tradesHtml, STAT_ITEMS } from "./render.ts";
 import { BASE, HOW, PALETTE, PARAMS, REEL, SCREEN, STATS, TERMINAL, TOKEN } from "./styles.ts";
 import { COMMANDS, complete, FACTS, run, stepHtml, TUBES, type TermEnv } from "./terminal.ts";
 import { dither, drawThumb, thumbModel, type Palette } from "./thumb.ts";
@@ -338,13 +338,15 @@ export class UnitsToken extends UnitsElement {
     const c = this.client;
     const t = await c.token(mint);
     const tf = this.getAttribute("tf") ?? defaultTf(t.created_at);
-    const [soul, candles, trades, holders] = await Promise.all([
+    const [soul, candles, trades, holders, mode] = await Promise.all([
       c.soul(t.agent).catch(() => null),
       c.candles(mint, tf).catch(() => ({ tf, candles: [] })),
       c.trades(mint, 15).catch(() => ({ trades: [] })),
       c.holders(mint, 10).catch(() => null),
+      c.chainMode(),
     ]);
     if (g !== this.alive) return;
+    setExplorerCluster(mode === "devnet" ? "devnet" : null);
     const trade = linkFor(this.getAttribute("link"), c.bases.site, { mint, agent: t.agent, symbol: t.symbol });
     this.box.innerHTML = `${tokenHeadHtml(t, soul?.tagline ?? null, trade)}
       <div class="grid">
@@ -472,7 +474,7 @@ export class UnitsTerminal extends UnitsElement {
       const h = Number(this.getAttribute("height"));
       const title = this.getAttribute("title") ?? "units CLI";
       this.box.innerHTML = `<div class="term" part="terminal"${h ? ` style="--h:${h}px"` : ""}>
-        ${this.getAttribute("frame") === "none" ? "" : `<div class="bar" part="titlebar"><button type="button" class="knob" data-act="tube" title="Recolor the tube" aria-label="Recolor the tube"></button><span class="title">${esc(title)} <span>devnet</span></span><span class="sp"></span><button type="button" class="ib" data-act="full" title="Full screen" aria-label="Full screen">${ICON_FULL}</button></div>`}
+        ${this.getAttribute("frame") === "none" ? "" : `<div class="bar" part="titlebar"><button type="button" class="knob" data-act="tube" title="Recolor the tube" aria-label="Recolor the tube"></button><span class="title">${esc(title)}</span><span class="sp"></span><button type="button" class="ib" data-act="full" title="Full screen" aria-label="Full screen">${ICON_FULL}</button></div>`}
         <div class="out" role="log" aria-live="polite" aria-label="Terminal output"></div>
         <div class="next" hidden><button type="button" class="q" data-act="next">Next</button><button type="button" class="q" data-act="done">Done</button></div>
         <form class="prompt"><label for="in">unit %</label><input id="in" autocomplete="off" spellcheck="false" aria-label="Command" placeholder="type help, or ask a question"></form>
@@ -484,7 +486,7 @@ export class UnitsTerminal extends UnitsElement {
         <div class="scan"></div>
       </div>`;
       this.wire();
-      this.print([`<span class="dim">units on Solana devnet. Type ${'<button type="button" class="run" data-run="help">help</button>'}, or ask a question with ask.</span>`]);
+      this.print([`<span class="dim">units on Solana. Type ${'<button type="button" class="run" data-run="help">help</button>'}, or ask a question with ask.</span>`]);
       const auto = this.getAttribute("autorun");
       if (auto) void this.exec(auto, false);
       if (this.hasAttribute("guide")) void this.guide(0);

@@ -96,7 +96,7 @@ function paint() {
     b.textContent = s.restoring ? "Connecting…" : "Connect";
     b.classList.remove("on");
     b.removeAttribute("aria-label");
-    b.title = "Connect a wallet or sign in with email (Privy, devnet)";
+    b.title = "Connect a wallet or sign in with email";
   }
   const m = root?.querySelector<HTMLElement>("#cn-menu");
   if (m && !m.hidden) menu();
@@ -107,7 +107,7 @@ function menu() {
   if (!m) return;
   const s = session();
   if (s.account) {
-    m.innerHTML = html`<div class="cn-who"><span class="eyebrow">${s.wallet?.name ?? "Wallet"}, devnet</span><span class="num" title="${s.account.address}">${short(s.account.address)}</span></div>
+    m.innerHTML = html`<div class="cn-who"><span class="eyebrow">${s.wallet?.name ?? "Wallet"}</span><span class="num" title="${s.account.address}">${short(s.account.address)}</span></div>
       <a role="menuitem" href="/profile" data-cn="profile">${icon.agent} My profile</a>
       <button type="button" role="menuitem" data-cn="copy">${icon.copy} Copy address</button>
       <button type="button" role="menuitem" data-cn="disconnect">${icon.x} Disconnect</button>`.s;
@@ -115,7 +115,7 @@ function menu() {
   }
   const ws = discovered();
   const legacy = legacyOnly();
-  m.innerHTML = html`<div class="cn-who"><span class="eyebrow">Connect a wallet</span><span class="dim">Wallet Standard, devnet only</span></div>
+  m.innerHTML = html`<div class="cn-who"><span class="eyebrow">Connect a wallet</span><span class="dim">Wallet Standard</span></div>
     ${ws.length
       ? ws.map((w) => html`<button type="button" role="menuitem" data-cn="connect" data-name="${w.name}"><img src="${w.icon}" alt="" width="16" height="16"> ${w.name}</button>`)
       : html`<div class="cn-none">No Wallet Standard wallet in this browser. Install <a class="link" href="https://phantom.com" target="_blank" rel="noopener">Phantom</a>, <a class="link" href="https://solflare.com" target="_blank" rel="noopener">Solflare</a> or <a class="link" href="https://backpack.app" target="_blank" rel="noopener">Backpack</a> and reload.</div>`}

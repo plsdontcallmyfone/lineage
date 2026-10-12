@@ -468,7 +468,7 @@ class Box {
         ${this.swapQ ? html`${routeLines(this.swapQ.prepared)}<div class="mk-tb-quote">${this.swapQ.out === null ? html`<div><span>You get</span><b>simulated after the swap lands (two transactions)</b></div>` : html`<div><span>You get (simulated)</span><b class="num" data-quote-out="${this.swapQ.out}">${units(this.swapQ.out, outD)} ${outU}</b></div><div><span>Minimum at your tolerance</span><b class="num">${units(this.swapQ.minOut, outD)} ${outU}</b></div><div><span>Network fee</span><b class="num">${this.swapQ.fee === null ? "TBA" : sol(this.swapQ.fee)} SOL</b></div>`}</div>` : ""}
         <div class="mk-tb2-go">${action}${q || this.swapQ ? this.btn("clear", "Change") : ""}</div>
         <div class="mk-tb2-foot"><span class="mk-tb-venue">${this.venueLine()}</span>${on ? html`<a class="link mk-tb-acct" href="/profile" title="${this.account!.address}">${this.account!.address.slice(0, 4)}…${this.account!.address.slice(-4)}</a>` : ""}</div>
-        ${testLabels() ? html`<div class="wl-fine mk-tb2-note">Devnet only, TEST tokens. Get UNITS from the faucet on your <a class="link" href="/profile">Profile</a>.</div>` : ""}
+        ${NET.p.faucet ? html`<div class="wl-fine mk-tb2-note">Get ${qsym()} from the faucet on your <a class="link" href="/profile">Profile</a>.</div>` : ""}
       </div>`;
     }
     this.el.innerHTML = html`<div class="panel-b mk-tb">${body}${this.err ?? ""}${this.msg ? html`<div class="mk-tb-msg">${this.msg}</div>` : ""}</div>`.s;

@@ -31,7 +31,7 @@ export function launchSkeleton(): Raw {
     <div class="lz-page">
     <div class="ph-row"><div class="ph-title"><div class="eyebrow">Launch</div>
       <h1><span class="dd-wrap">Launch an agent<img class="dd dd-wow" src="/doodles/wow.svg" alt="" aria-hidden="true"></span></h1>
-      <div class="ph-sub"><span>A token for an agent that works on a public repository. Its work is judged by independent replays.<span data-devnet-only> Devnet, TEST tokens.</span></span></div></div></div>
+      <div class="ph-sub"><span>A token for an agent that works on a public repository. Its work is judged by independent replays.</span></div></div></div>
     <div id="w-gate"></div>
     <div id="lz-conn"></div>
     <div id="lz-nav">${stepNav(0, 0)}</div>
@@ -86,7 +86,7 @@ export function launchSkeleton(): Raw {
         <div id="w-launch-steps"></div>`)}
     </form>
     <div class="lz-foot" id="lz-foot"></div>
-    <div style="margin-top:16px">${panel("This session's transactions", html`<div id="w-sigs"></div>`, { note: html`Every signature links to Solana Explorer<span data-devnet-only> (devnet)</span>. Nothing is stored after you leave the page.` })}</div>
+    <div style="margin-top:16px">${panel("This session's transactions", html`<div id="w-sigs"></div>`, { note: html`Every signature links to Solana Explorer. Nothing is stored after you leave the page.` })}</div>
     </div>`;
 }
 
@@ -100,7 +100,7 @@ export function profileSkeleton(): Raw {
       <div id="me-cover"><div class="pf-banner"></div></div>
       <div class="pf-id">
         <span id="me-av"><span class="av pf-av me-av0"></span></span>
-        <div class="pf-name"><h1 id="me-h">Your wallet</h1><div class="pf-tagline">The agents you launched, their credits, and what you hold and follow.<span data-devnet-only> Devnet, TEST tokens.</span></div>
+        <div class="pf-name"><h1 id="me-h">Your wallet</h1><div class="pf-tagline">The agents you launched, their credits, and what you hold and follow.</div>
           <div class="pf-sub" id="me-sub"></div></div>
         <div id="me-act"></div>
       </div>
@@ -111,7 +111,7 @@ export function profileSkeleton(): Raw {
       <section class="panel" id="me-head"><div id="w-conn"><div class="panel-b dim">Reading the wallet…</div></div></section>
       <div id="me-signed" hidden>
         <section class="panel me-stats" id="me-stats"></section>
-        ${panel("My agents", html`<div id="w-mine"><div class="panel-b dim">Reading the launches…</div></div>`, { id: "agents", note: html`Read from the <span class="num">AgentLaunch</span> and registry <span class="num">Agent</span> accounts on devnet, the identity service and Core. Credits are the hosted runtime's last spend report.` })}
+        ${panel("My agents", html`<div id="w-mine"><div class="panel-b dim">Reading the launches…</div></div>`, { id: "agents", note: html`Read from the <span class="num">AgentLaunch</span> and registry <span class="num">Agent</span> accounts on chain, the identity service and Core. Credits are the hosted runtime's last spend report.` })}
         <section class="panel" id="me-manage" hidden></section>
         ${panel("My holdings", html`<div id="w-hold"><div class="panel-b dim">Reading token accounts…</div></div>`, { id: "holdings", note: html`Balances read from chain; value at the market indexer's last price in UNITS.` })}
         <section class="panel" id="me-claims" hidden>
@@ -121,7 +121,7 @@ export function profileSkeleton(): Raw {
           <div class="me-sub eyebrow">Bounties</div>
           <div class="grid-2 me-b2"><div id="w-bopen"></div><div id="w-blist"></div></div>
         </section>
-        <div style="margin-top:16px">${panel("This session's transactions", html`<div id="w-sigs"></div>`, { note: html`Every signature links to Solana Explorer<span data-devnet-only> (devnet)</span>. Nothing is stored after you leave the page.` })}</div>
+        <div style="margin-top:16px">${panel("This session's transactions", html`<div id="w-sigs"></div>`, { note: html`Every signature links to Solana Explorer. Nothing is stored after you leave the page.` })}</div>
       </div>
     </div>`;
 }

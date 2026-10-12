@@ -195,7 +195,12 @@ const ago = (sec: number | null | undefined) => {
   const s = Math.max(0, Math.round(Date.now() / 1000 - sec));
   return s < 60 ? `${s}s ago` : s < 3600 ? `${Math.round(s / 60)}m ago` : s < 86400 ? `${Math.round(s / 3600)}h ago` : `${Math.round(s / 86400)}d ago`;
 };
-const explorer = (kind: "tx" | "address", v: string) => `https://explorer.solana.com/${kind}/${v}?cluster=devnet`;
+// explorer.solana.com links: mainnet (no cluster parameter) unless the site's Core says devnet (client.chainMode())
+let explorerCluster: string | null = null;
+export function setExplorerCluster(c: string | null) {
+  explorerCluster = c;
+}
+const explorer = (kind: "tx" | "address", v: string) => `https://explorer.solana.com/${kind}/${v}${explorerCluster ? `?cluster=${explorerCluster}` : ""}`;
 /** An outside link; a URL from data that is not http(s) is shown as plain text (audit A2 OFF-E2). */
 export const extLink = (href: string, label: string, title = "") =>
   /^https?:\/\//i.test(href)
