@@ -403,7 +403,10 @@ async function marketProxy(path: string, search: string): Promise<Response> {
 // ------------------------------------------------------------------------------------------------
 // souls (SPEC 14.8): drafts for the Wallet page's launch step; the page signs and publishes
 
-const drafts = new SoulDrafts();
+// the day budget for soul drafts across all launchers: 2 USD was a test value (about 28 drafts, which a
+// launch day uses up); on mainnet 100 USD a day (UNITS_SOULS_DAILY_USD overrides); the per-address
+// hourly limit and the cap per soul are unchanged
+const drafts = new SoulDrafts(PROFILE.network === "mainnet" ? { dailyUsd: Number(process.env.UNITS_SOULS_DAILY_USD) > 0 ? Number(process.env.UNITS_SOULS_DAILY_USD) : 100 } : {});
 async function soulsRoute(req: Request, p: string, who: string): Promise<Response> {
   if (p === "/souls/config") return Response.json(await drafts.info());
   if (req.method !== "POST") return new Response("POST only", { status: 405 });
