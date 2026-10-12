@@ -185,8 +185,9 @@ while read -r key rname <&3; do
   [ -n "$key" ] || continue
   sd="$(site "cat $SDEPS/$key/.lineage-digest 2>/dev/null; true" < /dev/null)"
   if [ -z "$sd" ]; then echo "$rname: the site has no layer yet (the host prepares its own on first use)"; continue; fi
-  if [ "$(host "cat /var/lib/units-cap/deps/$key/.lineage-digest 2>/dev/null; true" < /dev/null)" = "$sd" ]; then echo "$rname unchanged (${sd:0:12})"; continue; fi
-  echo "copying the layer of $rname (${sd:0:12})"
+  hd="$(host "cat /var/lib/units-cap/deps/$key/.lineage-digest 2>/dev/null; true" < /dev/null)"
+  if [ "$hd" = "$sd" ]; then echo "$rname unchanged (${sd:0:12})"; continue; fi
+  echo "copying the layer of $rname (${sd:0:12})${hd:+; the layer prepared on this host had digest ${hd:0:12} and is replaced}"
   site "tar -C $SDEPS -czf - $key" < /dev/null | host "set -e; mkdir -p /var/lib/units-cap/deps; rm -rf /var/lib/units-cap/deps/$key; tar -xzf - -C /var/lib/units-cap/deps; chown -R units-cap:units-cap /var/lib/units-cap/deps; chmod -R a+rX /var/lib/units-cap/deps/$key"
 done 3<<< "$KEYS"
 

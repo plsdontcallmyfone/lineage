@@ -362,3 +362,58 @@ units), so moving them moves authoring. Model turns and file edits stay on the s
 ## 7. Proof
 
 Dry run of the kit and the two-machine proof: `scripts/deploy/capacity-host/dryrun.sh`, `scripts/scale/proof.ts`. Results are written here when the run is complete.
+
+## 8. The first capacity host: measured (2026-10-12)
+
+The owner bought a DigitalOcean c-32 in NYC1 (157.230.180.62: 32 dedicated vCPUs, Xeon Gold 6248 at
+2.5 GHz, 62 GB, Ubuntu 26.04); the site stays on the 4 vCPU server in Amsterdam for now. It was
+provisioned with the kit in prepare-only mode (`ATTACH=0`: the release, the images and the dependency
+layers are read from the site, nothing is written there) as `cap-nyc1`, both roles, two verifier keys:
+30 sandbox slots, 2 x 10 replays at once, 10 evaluations at once.
+
+The measurement is one qualification-style base run (`scripts/deploy/capacity-host/time-base.ts`:
+build, tests, every metric twice on the unpatched tree; what a verifier runs to qualify), with the
+site's own calibration seed.
+
+| | Amsterdam, 4 shared vCPUs (verifier journals, today) | NYC host, one run alone |
+|---|---|---|
+| base58-py-heavy | 383 and 384 s (two verifiers at once in the two slots); 515 and 527 s (mainnet verifiers while devnet was busy) | 135.9, 137.3, 142.2 s |
+| minbpe-heavy | 370 and 388 s; 544 and 550 s | 161.5, 160.2 s |
+
+Instruction counts, same seed: equal within tolerance and not bit for bit. base58-py-heavy `encode_ir`
+4,307,922,921 on the host against 4,307,925,031 in Amsterdam, `decode_long_ir` 6,217,281,340 against
+6,217,274,569; minbpe-heavy `train_regex_ir` 6,759,400,779 against 6,759,444,926. The largest relative
+difference is 6.5e-6 against a `det_tolerance` of 1e-3. The two Amsterdam verifiers differ from each
+other by 3 to 6 instructions, so another CPU model moves the counts a little; a recipe with a tighter
+tolerance than 1e-5 could not use hosts of another CPU model.
+
+Per core the host is about as fast as an idle Amsterdam core, not faster: against the one near-idle
+Amsterdam figure on record (AGENT-EFFICIENCY.md 6.1, an evaluation of both sides, the same number of
+metric runs: 112 s and 195 s) the host's 136 s and 161 s are 1.2 times slower on one recipe and 1.2
+times faster on the other. The Amsterdam runs of today were 2.3 to 2.8 times longer because that
+server was contended. The capacity model's seconds were measured under that contention.
+
+Concurrency on the host, base58-py-heavy:
+
+| base runs at once | seconds each (median) | against one alone | throughput against one alone |
+|---|---|---|---|
+| 1 | 137 | 1.00 | 1.0 |
+| 10 | 146 | 1.06 | 9.4 |
+| 30 | 267 | 1.95 | 15.4 |
+
+Thirty slots give 15.4 times the throughput of one run, not 30 (the guest reports 32 cores of one
+thread each, so the cause is below what the guest can see, or memory contention under valgrind).
+Throughput still rises from 10 to 30 at once, so the slots stay at 30.
+
+What the host carries, as a calculation from these figures: at full load a slot does the base run in
+267 s, against 383 s on the Amsterdam server in the conditions the model's seconds were measured in,
+so one slot is 383 / 267 = 1.43 model slots and the host is 43. 43 / 2.59 = **16 heavy agents working
+without a pause**, or 50 live at once at about a third of full pace (43 of the 129 needed). The factor
+rests on one recipe and on Amsterdam's load at the time; the first hour after the host is attached
+gives the real figure from the journals.
+
+Found on the way and fixed in the kit: the dependency layers are copied from the site (a layer
+prepared on another machine can get another digest than the snapshot's, and the verifier then refuses
+the replay; seen in the local dry run for the Rust fixture, not for the two Python layers on the real
+host, which matched); an ssh command inside a `while read` loop ate the image list; the release needs
+the workspace manifests of the apps for a frozen install.
