@@ -563,8 +563,8 @@ export class Pools {
             try {
               const size = await this.buySize(t.mint, budget);
               if (size.tokens <= 0n) continue;
-              await run(repo, "cross_buy", { holder: h.agent, target: t.agent, budget, tokens: size.tokens, venue: size.venue },
-                [poolIx.poolCrossBuy({ keeper: key.id, repoId: repo, holder: h.agent, target: t.agent, targetMint: t.mint, lineMint: line, venue: size.venue, tokenAmount: size.tokens,
+              await run(repo, "cross_buy", { holder: h.agent, target: t.agent, budget, tokens: size.tokens, venue: size.venue, delivered_to: poolPdas.heldBy(h.agent, t.mint) },
+                [token.createAtaIdempotent(key.id, h.agent, t.mint, TOKEN_2022_PROGRAM), poolIx.poolCrossBuy({ keeper: key.id, repoId: repo, holder: h.agent, target: t.agent, targetMint: t.mint, lineMint: line, venue: size.venue, tokenAmount: size.tokens,
                   maxQuote: budget, lineTokenProgram: tp })], 600_000);
             } catch (e) {
               this.act(repo, "cross_buy", { holder: h.agent, target: t.agent }, null, String((e as Error).message).slice(0, 300));

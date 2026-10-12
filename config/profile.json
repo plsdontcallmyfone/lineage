@@ -12,6 +12,7 @@
       "swap": false,
       "explorer_cluster": "devnet",
       "programs": { "registry": "CJk3kwUqSS4qoJD8iu7uhUzSBNySjn9HsqaExpaV9gM2", "launch": "Axo38WX6TBAGGQ2nPpejn5tPsQogygA728baRaeJebGX", "msg": "5uUyWAc9DQEWb3XF1aH8yG62sCjmrEjtAoRB1SD9JFqV" },
+      "features": { "agent_pools": false, "github_fee_claims": false },
       "pump_quote_seed": "spot",
       "usd_feed": null,
       "fees": { "mode": "fixed", "cu_price_micro_lamports": 1 },
@@ -36,6 +37,7 @@
       "swap": true,
       "explorer_cluster": null,
       "programs": { "registry": "3GeaTsBUsaXCJ7Dru9tDHiKnVBsoHE6yiTdqqj42JHay", "launch": "2vwKsTZm5doa3ahBmpm8Sv3sKPD76Fq2ZZENbNW5BYBq", "msg": "jmcb7cBA8aJ5Zra8V6gUsEbgKAoG3h5d2CNpmKsRdky" },
+      "features": { "agent_pools": false, "github_fee_claims": false },
       "usd_feed": null,
       "fees": { "mode": "recent", "percentile": 75, "floor_micro_lamports": 1, "cap_micro_lamports": 200000 },
       "confirm": { "poll_ms": 800, "resend_ms": 2000, "rebuilds": 1 }

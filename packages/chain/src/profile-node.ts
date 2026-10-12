@@ -42,7 +42,7 @@ export function loadNetworkProfile(o: { file?: string; env?: Record<string, stri
   const file = o.file ?? PROFILE_FILE;
   const env = o.env ?? process.env;
   const local = env.UNITS_PROFILE_LOCAL ?? "";
-  const key = `${file}\n${(env.UNITS_NETWORK ?? env.LINEAGE_NETWORK) ?? ""}\n${local}`;
+  const key = `${file}\n${(env.UNITS_NETWORK ?? env.LINEAGE_NETWORK) ?? ""}\n${local}\n${env.UNITS_FEATURE_AGENT_POOLS ?? ""}${env.UNITS_FEATURE_GITHUB_FEE_CLAIMS ?? ""}`;
   if (!o.env && cached?.key === key) return cached.p;
   let raw: unknown = JSON.parse(readFileSync(file, "utf8"));
   if (local) {
@@ -50,6 +50,11 @@ export function loadNetworkProfile(o: { file?: string; env?: Record<string, stri
     raw = applyProfileOverlay(raw, JSON.parse(readFileSync(local, "utf8")));
   }
   const p = selectProfile(raw, (env.UNITS_NETWORK ?? env.LINEAGE_NETWORK) ?? null);
+  // one process may switch a feature on or off (a staging server): UNITS_FEATURE_AGENT_POOLS, UNITS_FEATURE_GITHUB_FEE_CLAIMS = 1 | 0
+  for (const k of ["agent_pools", "github_fee_claims"] as const) {
+    const v = env[`UNITS_FEATURE_${k.toUpperCase()}`];
+    if (v === "1" || v === "0") p.features = { agent_pools: false, github_fee_claims: false, ...p.features, [k]: v === "1" };
+  }
   if (!o.env) cached = { key, p };
   return p;
 }

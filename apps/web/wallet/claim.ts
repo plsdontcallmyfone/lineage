@@ -285,6 +285,7 @@ export async function mountClaim(root: HTMLElement) {
   restoreSession();
   onSession(() => render());
   try {
+    if (NET.p.features?.github_fee_claims !== true) throw Object.assign(new Error("off"), { code: "feature_off" });
     C.providers = await api<Providers>("fee-claims/providers");
   } catch (e) {
     C.off = (e as { code?: string }).code === "feature_off" ? "GitHub fee routing is built and switched off. It opens with the product launch." : `Core did not answer: ${(e as Error).message}`;

@@ -1,41 +1,41 @@
 {
-  "run": "mv4m3nji",
+  "run": "mv4mpy0y",
   "network": "devnet",
   "program": "24d8xrZMyVYyRmoF28GeWU2q3eo2gfDQaHpzHkFTvbK7",
   "keeper": "7YX6i3xYQf9LnirPJxSbbLrQSjoktJqbLX3YqUkrpPuy",
   "attestor": "HkXn2aFYHJcsDJkWfPX2saH2pF7chAxboEXY4qP9pQcG",
   "repo": {
-    "url": "https://github.com/units-pool-proof/run-mv4m3nji",
-    "id": "850b1af8e345ee9d7969305ffb4eecc91a58999c5cf4007f831deee17d28f791"
+    "url": "https://github.com/units-pool-proof/run-mv4mpy0y",
+    "id": "f28c3e3085ed660a252b4522e957f8b6fa3daee7ec0c9665f21233dff75760da"
   },
   "agents": [
     {
       "name": "A",
-      "agent": "CPdU6ayDgKxZzux6GPNhoHve45N7D5xv7ic64Gbs8bJ7",
-      "mint": "5kvLNHumizskwj3B51Z95k8uqBa3T7gr6R7L9JoGoxLz"
+      "agent": "B9FyCnNUshA1MsgUb1nvagkJ8SqT4vy1t7wF9rMBAQuG",
+      "mint": "As3gWqUBztqeRFzTstPpQLXCyAk3ArGTg56haaEKdm1n"
     },
     {
       "name": "B",
-      "agent": "4fJeuNaPiBVr64AK2ewQpehikuYRfe8HoH41xsxuZqbn",
-      "mint": "BfinkTwSCoTnArM3gH36ZJ6AvYw3vKbwjTs1iFcqmydQ"
+      "agent": "DMdzBXeKASafZujcVmsQ6qGbpF6giK7Xwap46qcqv38e",
+      "mint": "9nyEBiAzvECrZDpWuQpNQoThU5iag378vce8K1MPpqvc"
     }
   ],
   "pool": {
-    "address": "GMoFsvQ13yr5yvxNipRD5QNH2mucL5zW4x14Naeeh6et",
-    "authority": "H2TGbGUTAsxcNr9Ji19vy7MhYquWybXzG1Yfv5K2Uit1",
-    "vault": "Cj445k3EoZBrtvSuYEdo9av2VXuHdXLUQbqueDBMvM35"
+    "address": "6ESVeSW4s7Y589G9nycWrHAKVCJtiygUQspPLs5XoXc1",
+    "authority": "5Cmj5a4o2ZYYeH3FXkkYgFokhShbP8dwr6yv18hw5ZHy",
+    "vault": "FvAZvgozsxYHvz4xdkmZFzHR64GeHnyT7UkhhoNBKMUQ"
   },
   "recipients": [
     {
       "agent": "A",
-      "github_id": 880050307,
-      "login": "units-proof-a-mv4m3nji",
+      "github_id": 880091980,
+      "login": "units-proof-a-mv4mpy0y",
       "bps": 2000
     },
     {
       "agent": "B",
-      "github_id": 990050307,
-      "login": "units-proof-b-mv4m3nji",
+      "github_id": 990091980,
+      "login": "units-proof-b-mv4mpy0y",
       "bps": 1000
     }
   ],
@@ -92,22 +92,22 @@
       "v": 1,
       "kind": "units-pool-settlement-test",
       "note": "TEST inputs for the devnet proof: these agents never authored; one generation credited to A, one milestone",
-      "repo_id": "850b1af8e345ee9d7969305ffb4eecc91a58999c5cf4007f831deee17d28f791",
+      "repo_id": "f28c3e3085ed660a252b4522e957f8b6fa3daee7ec0c9665f21233dff75760da",
       "epoch": 19,
       "members": [
         {
-          "agent": "CPdU6ayDgKxZzux6GPNhoHve45N7D5xv7ic64Gbs8bJ7",
+          "agent": "B9FyCnNUshA1MsgUb1nvagkJ8SqT4vy1t7wF9rMBAQuG",
           "weight_bps": 10000
         },
         {
-          "agent": "4fJeuNaPiBVr64AK2ewQpehikuYRfe8HoH41xsxuZqbn",
+          "agent": "DMdzBXeKASafZujcVmsQ6qGbpF6giK7Xwap46qcqv38e",
           "weight_bps": 0
         }
       ],
       "gens": 1,
       "milestones": 1
     },
-    "evidence": "2b4c75083051992e59360bba7547593c26ba4d5ac9fce6e50d06d10e470e7bbd",
+    "evidence": "2c7d810663c7761774fd6d1de55c8391d713d680ca3a6567fc684f4a68ecd6f3",
     "allocation": [
       {
         "payout": "6568888",
@@ -122,14 +122,14 @@
     ]
   },
   "pool_after": {
-    "repo_id": "850b1af8e345ee9d7969305ffb4eecc91a58999c5cf4007f831deee17d28f791",
+    "repo_id": "f28c3e3085ed660a252b4522e957f8b6fa3daee7ec0c9665f21233dff75760da",
     "repo_url": null,
-    "address": "GMoFsvQ13yr5yvxNipRD5QNH2mucL5zW4x14Naeeh6et",
-    "authority": "H2TGbGUTAsxcNr9Ji19vy7MhYquWybXzG1Yfv5K2Uit1",
-    "vault": "Cj445k3EoZBrtvSuYEdo9av2VXuHdXLUQbqueDBMvM35",
+    "address": "6ESVeSW4s7Y589G9nycWrHAKVCJtiygUQspPLs5XoXc1",
+    "authority": "5Cmj5a4o2ZYYeH3FXkkYgFokhShbP8dwr6yv18hw5ZHy",
+    "vault": "FvAZvgozsxYHvz4xdkmZFzHR64GeHnyT7UkhhoNBKMUQ",
     "vault_balance": "6688854",
     "active": true,
-    "created_at": 1791770864,
+    "created_at": 1791771903,
     "buckets": {
       "payout": "0",
       "buyback": "4954666",
@@ -146,10 +146,10 @@
     },
     "members": [
       {
-        "agent": "CPdU6ayDgKxZzux6GPNhoHve45N7D5xv7ic64Gbs8bJ7",
-        "mint": "5kvLNHumizskwj3B51Z95k8uqBa3T7gr6R7L9JoGoxLz",
+        "agent": "B9FyCnNUshA1MsgUb1nvagkJ8SqT4vy1t7wF9rMBAQuG",
+        "mint": "As3gWqUBztqeRFzTstPpQLXCyAk3ArGTg56haaEKdm1n",
         "index": 0,
-        "joined_at": 1791770864,
+        "joined_at": 1791771903,
         "contributed": "9125926",
         "cross_pairs_owed": 0,
         "cross_due": "0",
@@ -159,14 +159,14 @@
         "burn_due": "22991",
         "paid": "6568888",
         "bought_quote": "1603368",
-        "tokens_held": "2620546",
+        "tokens_held": "1038938",
         "tokens_burned": "2597349"
       },
       {
-        "agent": "4fJeuNaPiBVr64AK2ewQpehikuYRfe8HoH41xsxuZqbn",
-        "mint": "BfinkTwSCoTnArM3gH36ZJ6AvYw3vKbwjTs1iFcqmydQ",
+        "agent": "DMdzBXeKASafZujcVmsQ6qGbpF6giK7Xwap46qcqv38e",
+        "mint": "9nyEBiAzvECrZDpWuQpNQoThU5iag378vce8K1MPpqvc",
         "index": 1,
-        "joined_at": 1791770869,
+        "joined_at": 1791771905,
         "contributed": "8296296",
         "cross_pairs_owed": 0,
         "cross_due": "0",
@@ -176,103 +176,93 @@
         "burn_due": "22991",
         "paid": "0",
         "bought_quote": "2561112",
-        "tokens_held": "5737438",
+        "tokens_held": "4155811",
         "tokens_burned": "2597381"
       }
     ]
   },
   "keeper_actions": [
     {
-      "repo": "1c446c44c9521844d9f23b6805f6f36c739b193e8bf058035df6dcaea786e6ee",
-      "kind": "buyback",
-      "signature": "3JuwgJitpwr14t3ScN7ufkK2kDygLoaH72w3vjbLvzhgQHFzatkKbz7SbszDyi4B2y4RS9Q2VAbBX1J27mDQL1cr"
-    },
-    {
-      "repo": "1c446c44c9521844d9f23b6805f6f36c739b193e8bf058035df6dcaea786e6ee",
-      "kind": "burn_buy",
-      "signature": "3gY88WKttWZSfv53dWpdhYmibZ1d4C1mEMtTviTTtMnfih1DB3FX2vXMUEox3xrDxifKKRGeuoArgsd3oDMeLTRn"
-    },
-    {
-      "repo": "1c446c44c9521844d9f23b6805f6f36c739b193e8bf058035df6dcaea786e6ee",
-      "kind": "buyback",
-      "signature": "2GBo9nB2E1Hk1dGLnSaum15cYRv7QE5seRwA4w5Fv4VjSU4Qz4iWJbx7TXjYkPuTw91qa7C5C5gCHwvyN95NaCW"
-    },
-    {
-      "repo": "1c446c44c9521844d9f23b6805f6f36c739b193e8bf058035df6dcaea786e6ee",
-      "kind": "burn_buy",
-      "signature": "3u3MZFNW3yQcAVdpQ8nWtpzRS95imSVtUxEBHfo53K9szyssPVyMx7ArV2qT5wAygd3nGktY7FWEjBC8APjiochK"
-    },
-    {
-      "repo": "316f6ba6446a9c75a6ec537e9f8fea31eac8f5100bc9c22545930642fd8ae289",
-      "kind": "buyback",
-      "signature": "5wLHHSWuyqEoa9ZWMR2T9qeySkjR4RHiyZAKwcBymUueF8SYKbmQvCqRgcMg2nKt4UrobBFWpcW9AyVUcy5epKgA"
-    },
-    {
-      "repo": "316f6ba6446a9c75a6ec537e9f8fea31eac8f5100bc9c22545930642fd8ae289",
-      "kind": "burn_buy",
-      "signature": "4AEk94Q1sZCaLYt196a5PMpC5ws7uKY1SpQqvvmyAE5XgkbKDakm83CkbZAhbGU8TsgGBPHjVWpySqHF2dZp7RwC"
-    },
-    {
-      "repo": "316f6ba6446a9c75a6ec537e9f8fea31eac8f5100bc9c22545930642fd8ae289",
-      "kind": "buyback",
-      "signature": "4CTrq1JUWLeqay1GaHyE2hLHuADKNMTnxNEnw8ALuUf9y9A2xfgB18QvdH8uaqFS58ryQVp5sb6Dgzz6NK8zDJDW"
-    },
-    {
-      "repo": "316f6ba6446a9c75a6ec537e9f8fea31eac8f5100bc9c22545930642fd8ae289",
-      "kind": "burn_buy",
-      "signature": "45Eo9WmzJumJvtsFL4yAvr83BR53XiopfS74A9MegKwPLG74ddL1tgSrwfWmFHvBdQam28WV7mvYprYzhTUPbg3B"
-    },
-    {
-      "repo": "850b1af8e345ee9d7969305ffb4eecc91a58999c5cf4007f831deee17d28f791",
+      "repo": "f28c3e3085ed660a252b4522e957f8b6fa3daee7ec0c9665f21233dff75760da",
       "kind": "prepare",
-      "signature": "5do3HUHskr5EnCG1TbjHLYraUz6HNe8euLkQxfP1TCSGBrQbFrJBosBBiR1hLrEFXX7t6YRuPjVRRcJhQvhMoHGv"
+      "signature": "bA1yJH6FYNaQ1mLquhDkDetNjNzv3dqiXNsxU4gLXFJWjfCVb5oVvHhQX35U1MkGaoxmp3Mi9V9xrN6z7RZpxJM"
     },
     {
-      "repo": "850b1af8e345ee9d7969305ffb4eecc91a58999c5cf4007f831deee17d28f791",
+      "repo": "f28c3e3085ed660a252b4522e957f8b6fa3daee7ec0c9665f21233dff75760da",
       "kind": "pay",
-      "signature": "4sReEso6brWigHMW8qSTsh31rvuSr7FWNmpCpzx1o4itg7GtaDfotoqsSFWUZKiKnvFjPUuY5qwCX3ySqzbZh9rN"
+      "signature": "4ySyymSdwem9sMb3n4kL4XSD5LxyYUCHRY6z4gxDwMtz6QfhhF66nwyajREPjqjFQdzHhxrjcAx5XmPLCQ6NABRU"
     },
     {
-      "repo": "850b1af8e345ee9d7969305ffb4eecc91a58999c5cf4007f831deee17d28f791",
+      "repo": "f28c3e3085ed660a252b4522e957f8b6fa3daee7ec0c9665f21233dff75760da",
       "kind": "cross_buy",
-      "signature": "Yf4Mb27YWrwFLVCqbw9vtCzNnwU7WnnnAK8ycMC2fsXVk7jnAwQFKVpe9Vuob2ckHkPw6XicUUfhxoGyxVXvMX9"
+      "signature": "4ohAKxmt9zpGvx1vCChSSeZerTBJDANBmtptf3nNH2HgxktjyLctcMNBf3rfcSjjZv7jaoFoHpWSkS6XGiALcefq"
     },
     {
-      "repo": "850b1af8e345ee9d7969305ffb4eecc91a58999c5cf4007f831deee17d28f791",
+      "repo": "f28c3e3085ed660a252b4522e957f8b6fa3daee7ec0c9665f21233dff75760da",
       "kind": "cross_buy",
-      "signature": "65fms9M4uHxFdUh3hogHkQdArtLtGiFKhYEVPBZKUwZQepfYWgdgXTdPHgP99eRKGEKYNR3Crj6aTzdz8NsiTkiG"
+      "signature": "5rfuES6uh9eR1p1a3k8x8hWurDqBnEVcWtnicXDLRAY16easVLD2pLNtBhxdMJEbFqz8ff4kbWW7sswE63DFQ8YF"
+    },
+    {
+      "repo": "f28c3e3085ed660a252b4522e957f8b6fa3daee7ec0c9665f21233dff75760da",
+      "kind": "buyback",
+      "signature": "5Fu53Ku8x7h9TtqXiraSZmaBNoRk8icU1Dzq4rEJTEys2sseKx5Rv3ajp2JvnKjUjMUWcwts3ihCAUHW2nJt5MXv"
+    },
+    {
+      "repo": "f28c3e3085ed660a252b4522e957f8b6fa3daee7ec0c9665f21233dff75760da",
+      "kind": "burn_buy",
+      "signature": "2TEKki9X8GMY3Tv1U9Lfj5HmdT4g5dTJ7BPsjcxo8J7PnC16Ni3y3857sYKPkqsHEsyhCgNeJfELbVpcaHFfAZaB"
+    },
+    {
+      "repo": "f28c3e3085ed660a252b4522e957f8b6fa3daee7ec0c9665f21233dff75760da",
+      "kind": "buyback",
+      "signature": "2TaL7oQeVX2QQcawurpDDFDSDrXsrRNjVdrFtT5pVWtvbehWSvHNVrBjZHCemWiK3RGoVwEthHpzFCtfkQoW4D1M"
+    },
+    {
+      "repo": "f28c3e3085ed660a252b4522e957f8b6fa3daee7ec0c9665f21233dff75760da",
+      "kind": "burn_buy",
+      "signature": "4r6BV8XfaftsvtKS4NiQvpMFG14eS7juq2xPwtgpsqNPDmuN67oa8sGiz47ckeCNSJ4Vp78GNWeiDKpe5Uwd77RE"
+    },
+    {
+      "repo": "1c446c44c9521844d9f23b6805f6f36c739b193e8bf058035df6dcaea786e6ee",
+      "kind": "buyback",
+      "signature": "4KbuqUhjTtc28uKwKG9NHJJ3d6yeHLUk6dUqhWySmu3xSJwba3bxLE82x57WBRSN86yayiwX7oi4Hpd7HWUdwrBL"
+    },
+    {
+      "repo": "316f6ba6446a9c75a6ec537e9f8fea31eac8f5100bc9c22545930642fd8ae289",
+      "kind": "buyback",
+      "signature": "63wKRmo9bmxAo4zo1CCmk6zU8b24cfD5JwJuGXDJmRmrUbjdeuUjgFG4idbJ8Xgf4Q9AAWGBweF8cNWDD15vuHuK"
     },
     {
       "repo": "850b1af8e345ee9d7969305ffb4eecc91a58999c5cf4007f831deee17d28f791",
       "kind": "buyback",
-      "signature": "4pYLRo5WbmFjbgbjaiB8KeF5pHvMfdR6Mt7iPDJvH4TkHUhBSnPG5bryxhpcJoFu4B76EYToQMNnbKPsUWKgwmuv"
+      "signature": "5NPtrm9iXJA6JGyv38DjtWaEAzNmW4gBHfv5gfiYPhGtwkw4qn2wVa9BPFKTsDXZRfAzPNsd43CkF2YHNirF8oUT"
     },
     {
       "repo": "850b1af8e345ee9d7969305ffb4eecc91a58999c5cf4007f831deee17d28f791",
       "kind": "burn_buy",
-      "signature": "5qQs97aDfGcLy7QrujNPRCxC3TADaMYZdGbbnZdsgBVpoPnpSpV6KUBj3Rso6vqfiZbijrnkdJRN9ZrPpnxMyHM"
+      "signature": "4ghiZhuxw7NX95AmjdNuwQgCc7aayRjgoGVFBYiw3GGjcQ87iGypcypYyo7G2psnMrWbNcmaNXxKm5tbxGD61Rop"
     },
     {
       "repo": "850b1af8e345ee9d7969305ffb4eecc91a58999c5cf4007f831deee17d28f791",
       "kind": "buyback",
-      "signature": "2iu2S64AyZinGhC9sK8iyVHhKf1inMFoFYYyAFU6GZrRU7ZcajnWWjy1zbm6cMSN7PmAAviAAGbqik7tdkMMA2Ji"
+      "signature": "3zBq51DW6i5ybMjAcKbapfMXzu1Wyt9S3L4xPNUJctEHdCV4Qu8kFbF1gHWsnJpt8DZyojYoEbnQdf33xL717Vcz"
     },
     {
       "repo": "850b1af8e345ee9d7969305ffb4eecc91a58999c5cf4007f831deee17d28f791",
       "kind": "burn_buy",
-      "signature": "2Z8VkTuwNSB344fWYreGEkKkz3nhNJDZWPjHpmpnSGj4Y5RfwVsedHGMHS8Y2MHotJRcPhrTCPCbfRMceB3A6mdK"
+      "signature": "2eFqGgNkzvcpRhh9B83JnDDQq8rKeKBVRc233HWvBqdxvfoKnEcbk328RHYNkhKUATpKfKg1BbcJwvZJ1UKaBLSL"
     }
   ],
   "page_claims": [
     {
       "recipient": "B",
       "mode": "oauth",
-      "login": "units-proof-b-mv4m3nji",
+      "login": "units-proof-b-mv4mpy0y",
       "claimed": "4148679",
-      "signature": "5wDQSuwEg1mZGqzR8xoMo26Y6wXRyJExxpcJoKjC4mhccSQ6eNB4AXxzHFZpzE9ebuydPhvqgRjtYdZVnborPrz2",
+      "signature": "2XCA3tTHsPifYz1xyFkWAJ8W6wZuGGwQXEZn6tPAJVoYou6rcr2WQbNBmvFwdE5dR5RvPfTxQvjqkYRctMK4CwN1",
       "per_agent": [
         {
-          "agent": "4fJeuNaPiBVr64AK2ewQpehikuYRfe8HoH41xsxuZqbn",
+          "agent": "DMdzBXeKASafZujcVmsQ6qGbpF6giK7Xwap46qcqv38e",
           "share": "10%",
           "accrued": "8.296827"
         }
@@ -286,12 +276,12 @@
     {
       "recipient": "A",
       "mode": "gist",
-      "login": "units-proof-a-mv4m3nji",
+      "login": "units-proof-a-mv4mpy0y",
       "claimed": "8296296",
-      "signature": "53FmHDj2nHyGfAMS7Q4UjfReapQDLfeZ9x51QLRmN2HH6RHVdQxNAWcQDAMywsdvQxBWPsE56YWfeHdED7tgb2Ww",
+      "signature": "Jd8DuStoLg52ETwcxNBrt7g2hXEsWMTLPEWagsBKCiQmGN86jMRjy1SYPFvHN8hJCZAv5mtmZ3L3mVAdj4BeJuD",
       "per_agent": [
         {
-          "agent": "CPdU6ayDgKxZzux6GPNhoHve45N7D5xv7ic64Gbs8bJ7",
+          "agent": "B9FyCnNUshA1MsgUb1nvagkJ8SqT4vy1t7wF9rMBAQuG",
           "share": "20%",
           "accrued": "25.719183"
         }
@@ -306,24 +296,24 @@
   ],
   "claims": {
     "recipient_a": {
-      "wallet": "EgZtvvjyR8L9Q1zFLGLF9335ghbDUySmE1RbW4CtJgUo",
+      "wallet": "FNuR6MhrH4DYqHuhu2AP28DEE8gShvyKmcK1CMEfHjL",
       "first": "9125926",
       "second": "8296961"
     },
     "recipient_b": {
-      "wallet": "EQtAaTyu3D5MWXqdoCXedb8Khta8F1S7aNM13CjqKgjn"
+      "wallet": "77QwnH3CAo614mqXs2vnJ4fXLgAgHRZfT9rhDNmByp7k"
     },
     "route_change": {
-      "to": 990050307,
+      "to": 990091980,
       "bps": 1500,
       "delay_s": 20
     }
   },
-  "at": "2026-10-12T02:10:13.921Z",
+  "at": "2026-10-12T02:27:34.890Z",
   "result": "PASS",
   "passed": 67,
   "total": 67,
-  "deployer_sol_spent": "0.100025000",
+  "deployer_sol_spent": "0.100035000",
   "error": null,
   "checks": [
     {
@@ -339,7 +329,7 @@
     {
       "name": "both launches name the same repository id",
       "ok": true,
-      "detail": "850b1af8e345ee9d7969305ffb4eecc91a58999c5cf4007f831deee17d28f791"
+      "detail": "f28c3e3085ed660a252b4522e957f8b6fa3daee7ec0c9665f21233dff75760da"
     },
     {
       "name": "refused: set_fee_route by someone who is not the agent's owner",
@@ -359,7 +349,7 @@
     {
       "name": "pool PDA keyed by the repository id holds both members",
       "ok": true,
-      "detail": "GMoFsvQ13yr5yvxNipRD5QNH2mucL5zW4x14Naeeh6et"
+      "detail": "6ESVeSW4s7Y589G9nycWrHAKVCJtiygUQspPLs5XoXc1"
     },
     {
       "name": "AgentLaunch.routes: pool member and GitHub route",
@@ -449,7 +439,7 @@
     {
       "name": "keeper pass ran",
       "ok": true,
-      "detail": "[\"buyback\",\"burn_buy\",\"buyback\",\"burn_buy\",\"buyback\",\"burn_buy\",\"buyback\",\"burn_buy\",\"prepare\",\"pay\",\"cross_buy\",\"cross_buy\",\"buyback\",\"burn_buy\",\"buyback\",\"burn_buy\"]"
+      "detail": "[\"prepare\",\"pay\",\"cross_buy\",\"cross_buy\",\"buyback\",\"burn_buy\",\"buyback\",\"burn_buy\",\"buyback\",\"buyback\",\"buyback\",\"burn_buy\",\"buyback\",\"burn_buy\"]"
     },
     {
       "name": "no keeper action failed",
@@ -462,14 +452,14 @@
       "detail": "6.568888"
     },
     {
-      "name": "cross-holdings: A holds B and B holds A, once each, bought with the holder's own slice",
+      "name": "cross-holdings: A holds B and B holds A, once each, bought with the holder's own slice and delivered to the holder agent's own token account",
       "ok": true,
       "detail": "A bought 1581627 of B for 0.486000; B bought 1581608 of A for 0.486000"
     },
     {
       "name": "buybacks: both members' tokens bought and held by the pool",
       "ok": true,
-      "detail": "pool holds 2620546 of A and 5737438 of B"
+      "detail": "pool holds 1038938 of A and 4155811 of B"
     },
     {
       "name": "the pool's token accounts hold exactly what the records say",
@@ -489,12 +479,12 @@
     {
       "name": "wizard lookup: login to numeric id",
       "ok": true,
-      "detail": "units-proof-a-mv4m3nji -> 880050307"
+      "detail": "units-proof-a-mv4mpy0y -> 880091980"
     },
     {
       "name": "route view names the recipient and the share",
       "ok": true,
-      "detail": "20% of fees go to @units-proof-a-mv4m3nji"
+      "detail": "20% of fees go to @units-proof-a-mv4mpy0y"
     },
     {
       "name": "mock OAuth: a session for recipient A's numeric id",
@@ -604,7 +594,7 @@
     {
       "name": "Claim page, recipient B (mock sign-in): shows the escrow's balance and per-agent accruals, then claims it",
       "ok": true,
-      "detail": "4.148679 tUNITS, tx 5wDQSuwEg1mZ; rows 4fJeuN 10% 8.296827"
+      "detail": "4.148679 tUNITS, tx 2XCA3tTHsPif; rows DMdzBX 10% 8.296827"
     },
     {
       "name": "Claim page, recipient B: no console error, no monospace, no em dash, no horizontal scroll",
@@ -614,7 +604,7 @@
     {
       "name": "Claim page, recipient A (gist): shows the escrow's balance and per-agent accruals, then claims it",
       "ok": true,
-      "detail": "8.296296 tUNITS, tx 53FmHDj2nHyG; rows CPdU6a 20% 25.719183"
+      "detail": "8.296296 tUNITS, tx Jd8DuStoLg52; rows B9FyCn 20% 25.719183"
     },
     {
       "name": "Claim page, recipient A: no console error, no monospace, no em dash, no horizontal scroll",
@@ -664,316 +654,309 @@
   ],
   "transactions": [
     {
+      "step": "0: tUNITS to the proof trader",
+      "signature": "2SdKGJ4GYpBq6FArWCVvg1wmCd7aN2pLoAtwGRsktBUB4xTSD4Wkj8h9xWjscUYHgPc5Bsx1vnkFaZp8cyvEDpTw",
+      "fee": 10000,
+      "cu": 7583,
+      "bytes": 495
+    },
+    {
       "step": "1: set_claim_config, set_pool_config, set_features(pools + github fees)",
-      "signature": "3THi83UsFdcLZ9PykzMWw4Pe9j66yQ4EfFCs3fQPMzGHrUyyYNBRkX3fPDFWjtPmDar9oHxeewsNXDByapDyCJjm",
+      "signature": "5pgLmtCzgqa4hWHWp19Wv26eE8LWw63wq5ZvGbTD1KSLynyF4K7mg5o9ZFcfekMjoGiU5Y6hHJMraJPQM4B1eCpL",
       "fee": 5000,
       "cu": 41071,
       "bytes": 478
     },
     {
       "step": "2: launch TEST agent A",
-      "signature": "67Br766igfVqyEF8JdCCEK5rUg6q95rvZXSCKQ5fndZpLKtWsDQvio8HBRvdwLXsKxEF1nqwSc7fve5Wq9Ngqtpm",
+      "signature": "PwKH16dknErKeEhSEHdTHQwE8vQUnMok9xVqhdfJyNVxg7zC2TeV8aENTjF8nAV4svCD6cD2XMLnAY9HW66vDFv",
       "fee": 15000,
-      "cu": 238817,
+      "cu": 231317,
       "bytes": 1017
     },
     {
       "step": "2: launch TEST agent B",
-      "signature": "4VRHngMVpUVbcQxK7tuRvDFYZrWF9juBv2nKGD287Sy7j3mj6Ce6zrmYx7yRJ65qKmsjmRmhGbxdv2qFHBKkGs23",
+      "signature": "YYwYcJZESA4HZyrusxrgM67UTS2exaADULmjhkJRDUqeCpYicbnwKFsn3oSzCT2H8j6kHqXewvAg6QV956TCvEj",
       "fee": 15000,
-      "cu": 255317,
+      "cu": 252317,
       "bytes": 1017
     },
     {
       "step": "3: set_fee_route A (20%) and B (10%), join_pool A then B",
-      "signature": "5JeFwvj2xqY928A49HwwNAjqmZxFEMkS1XpynE9SNsiC7bZmKXEfSyk1wKvfWP1ZsKEZe37TjAUPRRx9qPRkweYh",
+      "signature": "5QVG9C5PgVgdVVXuJuUMeMQQXLYqZDQ4MLYYVRgcWCFmNp8fLnX43f9ymkEuF9YdDXLqD5hiey9iNfpvGiandcdb",
       "fee": 5000,
-      "cu": 132638,
+      "cu": 131138,
       "bytes": 665
     },
     {
       "step": "3: join_pool A",
-      "signature": "2u6p8jQGdAf8GS5B7YugEBDR57GLD3A3haZj5N18gy4PDzjRhmLAc9fhBTyrXYHULq91sv91MwRX2uFd4Jn5KS2",
+      "signature": "5qdFixwXqGEENcawyhe94yCQHuaFnzcxyMqNjMkJxVRRq1iwFSKnYyiEM6wgcxVVTh8W3QPum2RFshnCAgNLWB3E",
       "fee": 5000,
-      "cu": 96690,
+      "cu": 90690,
       "bytes": 495
     },
     {
       "step": "3: join_pool B",
-      "signature": "2W7ixGaZ8PJgSKkGfHgQRbxcTfkLb6k1wJA37mMAE3w1vgEiVcFqgqf5x9FoaaSX2Tbx2tzVJXd6tMowk6qHp5iQ",
+      "signature": "M2vir1226ke4eNZNkYGwUvipJyathDLXfMLrg1jxdXxZJPDWcozLecNuohoYqsWotofFwi8tHtHt3A5YbprZuwL",
       "fee": 5000,
-      "cu": 61071,
+      "cu": 59571,
       "bytes": 528
     },
     {
       "step": "4: a first small buy of A",
-      "signature": "3RLLUJCtqbbFhezxqfcFkyoL6YTfH8BBTRbKC593xPMSGqfJHSjLDjoKT246xpmZP8Sy8yfdEJmwsyAjGgvqvXAW",
+      "signature": "46C4mKeyabn7Lv7XHv37mKUHscnuBBMQeu7fzcPCpzz6QfezySDfRRSk7gwvt1FfCSAND6kGPrbPNCwiuteZb716",
       "fee": 5000,
-      "cu": 90066,
+      "cu": 96066,
       "bytes": 795
     },
     {
       "step": "4: first trader buys A with 20000.000000 tUNITS",
-      "signature": "32iN4Ugwnjrfz8vz1EciXha5rQxRnNhgD6aghSEwLPsd1WnkZtk6BrURYonYMGfYnfw4FqHTJaH9pR15oegAq73L",
+      "signature": "4ySUoETH3iJjsmt9hN9NKfVGKgdA8Z1nNZsJBzE17aR9Jj8Cbbrd1CNxHx7PECZx5qg88FLdSKtiDeAAsd7EhuTC",
       "fee": 5000,
-      "cu": 76402,
+      "cu": 82402,
       "bytes": 795
     },
     {
       "step": "4: first crank A (sweep, collect, crank_pump_fees with route accounts)",
-      "signature": "aJEk47S95x6YKFrcZznQZNcrYZTsEUzvLeN79pwFjzH5qd3atXJLK3xRBVDuKuNr3hPEZstdrYc9G58GQCMdZM3",
+      "signature": "pkvLq2h3avq5LWhmW2XbxCBJyFTM7XYFvNnNpNTYhfRKmjs3uXKeiWMGExrcQ4mYyP5JJm8gQbZpWTArq5Mrw7h",
       "fee": 5000,
-      "cu": 183452,
+      "cu": 198452,
       "bytes": 937
     },
     {
       "step": "4: first trader buys B with 20000.000000 tUNITS",
-      "signature": "3T4BcBd8pAje8qmKLVPXkHnQu9dSeJEAj4PwJs63WeqjzRrrux2pmgpGKZPwEoLLxQkNTBGC1wG2L6994LPMJSon",
+      "signature": "ufPTdgTH2Cux4pTQRMvHR5UyRZWaHUXnYc1EiavbzL28YPvUVhm6gGFvi5SMrmAEpbSh9vSwube5oV6kyBCNevQ",
       "fee": 5000,
-      "cu": 100586,
+      "cu": 97586,
       "bytes": 795
     },
     {
       "step": "4: first crank B (sweep, collect, crank_pump_fees with route accounts)",
-      "signature": "2zFkj2vmkVAcEWj7TfJ3cGrM6GeGY2QgLVAqdYM29ndssM2zH2YMLdJ8GuWJigpfD3vyTQ3PhEfk1LKcQoouBKTB",
+      "signature": "3SFi4etLdFZefbXHtaX1P9R3Bs4GZvNRvKAq9pGiYJs7QBTvFHw41uSL5P8HstrZH3Y31oEjREod5ZyhufTA5sqs",
       "fee": 5000,
-      "cu": 214952,
+      "cu": 190952,
       "bytes": 937
     },
     {
       "step": "5: pool_settle for registry epoch 19",
-      "signature": "2c1tLWrQ6eu5HGvnKF1c8r6fcKz7odSEUXLLJd5bp6uWPWCFCQUk1F8Bq1trpKBRsaz4yxB2Qt36kKjbatYwNJiS",
+      "signature": "4P3ANN9HiWKPY8BBMaGVrbYqraL2FsigKw9nTfpUj6Xd8fe3RvKB8zNwiq7T6RSyjskcQCam6bwf8YcxGVN72NqC",
       "fee": 5000,
       "cu": 33225,
       "bytes": 441
     },
     {
-      "step": "6: staging Core keeper: buyback",
-      "signature": "3JuwgJitpwr14t3ScN7ufkK2kDygLoaH72w3vjbLvzhgQHFzatkKbz7SbszDyi4B2y4RS9Q2VAbBX1J27mDQL1cr",
-      "fee": null,
-      "cu": null,
-      "bytes": 0
-    },
-    {
-      "step": "6: staging Core keeper: burn_buy",
-      "signature": "3gY88WKttWZSfv53dWpdhYmibZ1d4C1mEMtTviTTtMnfih1DB3FX2vXMUEox3xrDxifKKRGeuoArgsd3oDMeLTRn",
-      "fee": null,
-      "cu": null,
-      "bytes": 0
-    },
-    {
-      "step": "6: staging Core keeper: buyback",
-      "signature": "2GBo9nB2E1Hk1dGLnSaum15cYRv7QE5seRwA4w5Fv4VjSU4Qz4iWJbx7TXjYkPuTw91qa7C5C5gCHwvyN95NaCW",
-      "fee": null,
-      "cu": null,
-      "bytes": 0
-    },
-    {
-      "step": "6: staging Core keeper: burn_buy",
-      "signature": "3u3MZFNW3yQcAVdpQ8nWtpzRS95imSVtUxEBHfo53K9szyssPVyMx7ArV2qT5wAygd3nGktY7FWEjBC8APjiochK",
-      "fee": null,
-      "cu": null,
-      "bytes": 0
-    },
-    {
-      "step": "6: staging Core keeper: buyback",
-      "signature": "5wLHHSWuyqEoa9ZWMR2T9qeySkjR4RHiyZAKwcBymUueF8SYKbmQvCqRgcMg2nKt4UrobBFWpcW9AyVUcy5epKgA",
-      "fee": null,
-      "cu": null,
-      "bytes": 0
-    },
-    {
-      "step": "6: staging Core keeper: burn_buy",
-      "signature": "4AEk94Q1sZCaLYt196a5PMpC5ws7uKY1SpQqvvmyAE5XgkbKDakm83CkbZAhbGU8TsgGBPHjVWpySqHF2dZp7RwC",
-      "fee": null,
-      "cu": null,
-      "bytes": 0
-    },
-    {
-      "step": "6: staging Core keeper: buyback",
-      "signature": "4CTrq1JUWLeqay1GaHyE2hLHuADKNMTnxNEnw8ALuUf9y9A2xfgB18QvdH8uaqFS58ryQVp5sb6Dgzz6NK8zDJDW",
-      "fee": null,
-      "cu": null,
-      "bytes": 0
-    },
-    {
-      "step": "6: staging Core keeper: burn_buy",
-      "signature": "45Eo9WmzJumJvtsFL4yAvr83BR53XiopfS74A9MegKwPLG74ddL1tgSrwfWmFHvBdQam28WV7mvYprYzhTUPbg3B",
-      "fee": null,
-      "cu": null,
-      "bytes": 0
-    },
-    {
       "step": "6: staging Core keeper: prepare",
-      "signature": "5do3HUHskr5EnCG1TbjHLYraUz6HNe8euLkQxfP1TCSGBrQbFrJBosBBiR1hLrEFXX7t6YRuPjVRRcJhQvhMoHGv",
+      "signature": "bA1yJH6FYNaQ1mLquhDkDetNjNzv3dqiXNsxU4gLXFJWjfCVb5oVvHhQX35U1MkGaoxmp3Mi9V9xrN6z7RZpxJM",
       "fee": null,
       "cu": null,
       "bytes": 0
     },
     {
       "step": "6: staging Core keeper: pay",
-      "signature": "4sReEso6brWigHMW8qSTsh31rvuSr7FWNmpCpzx1o4itg7GtaDfotoqsSFWUZKiKnvFjPUuY5qwCX3ySqzbZh9rN",
+      "signature": "4ySyymSdwem9sMb3n4kL4XSD5LxyYUCHRY6z4gxDwMtz6QfhhF66nwyajREPjqjFQdzHhxrjcAx5XmPLCQ6NABRU",
       "fee": null,
       "cu": null,
       "bytes": 0
     },
     {
       "step": "6: staging Core keeper: cross_buy",
-      "signature": "Yf4Mb27YWrwFLVCqbw9vtCzNnwU7WnnnAK8ycMC2fsXVk7jnAwQFKVpe9Vuob2ckHkPw6XicUUfhxoGyxVXvMX9",
+      "signature": "4ohAKxmt9zpGvx1vCChSSeZerTBJDANBmtptf3nNH2HgxktjyLctcMNBf3rfcSjjZv7jaoFoHpWSkS6XGiALcefq",
       "fee": null,
       "cu": null,
       "bytes": 0
     },
     {
       "step": "6: staging Core keeper: cross_buy",
-      "signature": "65fms9M4uHxFdUh3hogHkQdArtLtGiFKhYEVPBZKUwZQepfYWgdgXTdPHgP99eRKGEKYNR3Crj6aTzdz8NsiTkiG",
+      "signature": "5rfuES6uh9eR1p1a3k8x8hWurDqBnEVcWtnicXDLRAY16easVLD2pLNtBhxdMJEbFqz8ff4kbWW7sswE63DFQ8YF",
       "fee": null,
       "cu": null,
       "bytes": 0
     },
     {
       "step": "6: staging Core keeper: buyback",
-      "signature": "4pYLRo5WbmFjbgbjaiB8KeF5pHvMfdR6Mt7iPDJvH4TkHUhBSnPG5bryxhpcJoFu4B76EYToQMNnbKPsUWKgwmuv",
+      "signature": "5Fu53Ku8x7h9TtqXiraSZmaBNoRk8icU1Dzq4rEJTEys2sseKx5Rv3ajp2JvnKjUjMUWcwts3ihCAUHW2nJt5MXv",
       "fee": null,
       "cu": null,
       "bytes": 0
     },
     {
       "step": "6: staging Core keeper: burn_buy",
-      "signature": "5qQs97aDfGcLy7QrujNPRCxC3TADaMYZdGbbnZdsgBVpoPnpSpV6KUBj3Rso6vqfiZbijrnkdJRN9ZrPpnxMyHM",
+      "signature": "2TEKki9X8GMY3Tv1U9Lfj5HmdT4g5dTJ7BPsjcxo8J7PnC16Ni3y3857sYKPkqsHEsyhCgNeJfELbVpcaHFfAZaB",
       "fee": null,
       "cu": null,
       "bytes": 0
     },
     {
       "step": "6: staging Core keeper: buyback",
-      "signature": "2iu2S64AyZinGhC9sK8iyVHhKf1inMFoFYYyAFU6GZrRU7ZcajnWWjy1zbm6cMSN7PmAAviAAGbqik7tdkMMA2Ji",
+      "signature": "2TaL7oQeVX2QQcawurpDDFDSDrXsrRNjVdrFtT5pVWtvbehWSvHNVrBjZHCemWiK3RGoVwEthHpzFCtfkQoW4D1M",
       "fee": null,
       "cu": null,
       "bytes": 0
     },
     {
       "step": "6: staging Core keeper: burn_buy",
-      "signature": "2Z8VkTuwNSB344fWYreGEkKkz3nhNJDZWPjHpmpnSGj4Y5RfwVsedHGMHS8Y2MHotJRcPhrTCPCbfRMceB3A6mdK",
+      "signature": "4r6BV8XfaftsvtKS4NiQvpMFG14eS7juq2xPwtgpsqNPDmuN67oa8sGiz47ckeCNSJ4Vp78GNWeiDKpe5Uwd77RE",
+      "fee": null,
+      "cu": null,
+      "bytes": 0
+    },
+    {
+      "step": "6: staging Core keeper: buyback",
+      "signature": "4KbuqUhjTtc28uKwKG9NHJJ3d6yeHLUk6dUqhWySmu3xSJwba3bxLE82x57WBRSN86yayiwX7oi4Hpd7HWUdwrBL",
+      "fee": null,
+      "cu": null,
+      "bytes": 0
+    },
+    {
+      "step": "6: staging Core keeper: buyback",
+      "signature": "63wKRmo9bmxAo4zo1CCmk6zU8b24cfD5JwJuGXDJmRmrUbjdeuUjgFG4idbJ8Xgf4Q9AAWGBweF8cNWDD15vuHuK",
+      "fee": null,
+      "cu": null,
+      "bytes": 0
+    },
+    {
+      "step": "6: staging Core keeper: buyback",
+      "signature": "5NPtrm9iXJA6JGyv38DjtWaEAzNmW4gBHfv5gfiYPhGtwkw4qn2wVa9BPFKTsDXZRfAzPNsd43CkF2YHNirF8oUT",
+      "fee": null,
+      "cu": null,
+      "bytes": 0
+    },
+    {
+      "step": "6: staging Core keeper: burn_buy",
+      "signature": "4ghiZhuxw7NX95AmjdNuwQgCc7aayRjgoGVFBYiw3GGjcQ87iGypcypYyo7G2psnMrWbNcmaNXxKm5tbxGD61Rop",
+      "fee": null,
+      "cu": null,
+      "bytes": 0
+    },
+    {
+      "step": "6: staging Core keeper: buyback",
+      "signature": "3zBq51DW6i5ybMjAcKbapfMXzu1Wyt9S3L4xPNUJctEHdCV4Qu8kFbF1gHWsnJpt8DZyojYoEbnQdf33xL717Vcz",
+      "fee": null,
+      "cu": null,
+      "bytes": 0
+    },
+    {
+      "step": "6: staging Core keeper: burn_buy",
+      "signature": "2eFqGgNkzvcpRhh9B83JnDDQq8rKeKBVRc233HWvBqdxvfoKnEcbk328RHYNkhKUATpKfKg1BbcJwvZJ1UKaBLSL",
       "fee": null,
       "cu": null,
       "bytes": 0
     },
     {
       "step": "7: mock OAuth claim (recipient A): claim_github_fees",
-      "signature": "23QQzhV6BcBwUFFgC74XMo3zEHrgb6ueYKvQ36f6SDDwBLXDWvy1gUkSpBTppF4zi2e6ftZXeNHfekhnfPj2AskF",
-      "fee": 10000,
-      "cu": 51921,
-      "bytes": 720
-    },
-    {
-      "step": "7: gist claim (recipient B): claim_github_fees",
-      "signature": "DhTYcGBjaEg3WiXRX2NhpFqVxJ2vUo2Zy2XaDRLbCf8texQEMGj41HKTJeEYNmrgWr8CUR5rNgkwJkxmRUDeKvR",
+      "signature": "4K9jg51z9Z4Po1zNmjZPXcYZqtvJB14MGZvL7RmirySV4T6nusbUdHyFSntWHLnMUGgbwnkjs1jFJHmpLXzFM4Ja",
       "fee": 10000,
       "cu": 54921,
       "bytes": 720
     },
     {
+      "step": "7: gist claim (recipient B): claim_github_fees",
+      "signature": "5a4thN6PZiPooG5deap9KE7av3aW9yhrHzW3WnhyGyAmR2MjcMqFhvASyAUXh81EM6AWGSq97dghTctYyvp9xGF6",
+      "fee": 10000,
+      "cu": 51921,
+      "bytes": 720
+    },
+    {
       "step": "4: second trader buys A with 20000.000000 tUNITS",
-      "signature": "4895sCwvATTdWuBYwBrgVgMPwLgY1r3t8wqiSrocWC3dgpd1t3sq2QgAqd65XKvGChTWiQJFuXg9RREoWfXHDJm8",
+      "signature": "bzAZYtCggSVEB13wvNwb8TbxcDzpTyfQuwFdkuYz9b3NMMEDan1yPdx5tVJq7uHpzC15NGNiWayhgg4ytP7LKtK",
       "fee": 5000,
-      "cu": 76402,
+      "cu": 82402,
       "bytes": 795
     },
     {
       "step": "4: second crank A (sweep, collect, crank_pump_fees with route accounts)",
-      "signature": "4dyFtTPA6D1xPU3u7TVhGzuFvMUsxbHnV7BeKYcN56musNyb7NdCH5MBBFzwRJtSqoJi4LeS2aBcUUrm27hAKPsy",
+      "signature": "3RLqCpopNYTGMedcaxw4FVTvztV9Xg1hdYKeYBpuacRMdLWo8dESi1TnpwVWeumxvSorLQMCxJgDnK7ViTBqqc6v",
       "fee": 5000,
-      "cu": 144330,
+      "cu": 153330,
       "bytes": 937
     },
     {
       "step": "7: second claim after more fees (recipient A): claim_github_fees",
-      "signature": "4MSKyx6QWaAGa29eJ26r8WJbKZo4bUtGWkbdCCE6TzwXV8BgYyXmHsCJUWbLKbJCd6Fh7VjX47DQNf4f3B7WBvXk",
+      "signature": "2v8kyZip1sDGxncGhzQxsQ4dPpHq2AAQgxgAHattZy4SxpTDfJTAbf5pdLoW8oKiR3D3A3GVuteGok7vZLgK7gni",
       "fee": 10000,
-      "cu": 38263,
+      "cu": 41263,
       "bytes": 720
     },
     {
       "step": "4: third trader buys A with 20000.000000 tUNITS",
-      "signature": "3vcXTPd5HtT2C6Mykkb3h57r6P4xZvyUMmPZyyNyhpneVsfW9SKs2TGEJTK9zaQsoeD2Ymi9yZzev5xPWWMgdjkM",
+      "signature": "2GjnKJLMx6GwKuEvdyWQJH3vMNYn4wXN6fweyj3TTPP66VJeZrDyzVpH4kePSy6JwrsjxTbn4MEzCnbSyueZdtmZ",
       "fee": 5000,
-      "cu": 76400,
+      "cu": 82400,
       "bytes": 795
     },
     {
       "step": "4: third crank A (sweep, collect, crank_pump_fees with route accounts)",
-      "signature": "4GeWEJZUquKuuPn3TPcc15ezF7CfoavoBVE8CpXHKm94hmvQt1WJibfwDRfC1X7f2NfJHGL4ME6vJUf3h4F7fSSB",
+      "signature": "Q9zcZWWEukjKcwQy3n4aNMP9xyps5bRYyqothEq8GYLSUEroMLWSZys3VE3TstPtQJ76brEZareSEp6oFDWpzXB",
       "fee": 5000,
-      "cu": 144330,
+      "cu": 153330,
       "bytes": 937
     },
     {
       "step": "4: second trader buys B with 20000.000000 tUNITS",
-      "signature": "3BhjydPmZ6Ntc8mSU5Z6Csa71DesUcJs6oqzwftWVXE4HMRSFNWaVG6XsnAHYDqRbhhKnSK3wN3F6hLqv6nMtaFX",
+      "signature": "5GoY44fT9bx93B3vLkkMUABN9XM4tXFEvoEAv8bxUkf5mSQtmQWBEwmvBvoujaXuDnYpp4WeoVG2YJPcTPEnm7J4",
       "fee": 5000,
-      "cu": 86900,
+      "cu": 83900,
       "bytes": 795
     },
     {
       "step": "4: second crank B (sweep, collect, crank_pump_fees with route accounts)",
-      "signature": "3dFNweQnBFrXrxycxecc25YJmrEbXijbpors7man7pQ6L64LTFFH69ztn2wDFEkT8Xrd9tNEVWCzYtP67p2maL5g",
+      "signature": "25M1XRjzjkEPCcCBXxgz1LBwPVpwKL2ZxAx5XnghXQHiUEDkWifepGdk1EXwnLToVq4gvrQn2EPfBYAjEBtS6mxj",
       "fee": 5000,
-      "cu": 178830,
+      "cu": 154830,
       "bytes": 937
     },
     {
       "step": "7b: claim through the Claim page (recipient B, oauth)",
-      "signature": "5wDQSuwEg1mZGqzR8xoMo26Y6wXRyJExxpcJoKjC4mhccSQ6eNB4AXxzHFZpzE9ebuydPhvqgRjtYdZVnborPrz2",
+      "signature": "2XCA3tTHsPifYz1xyFkWAJ8W6wZuGGwQXEZn6tPAJVoYou6rcr2WQbNBmvFwdE5dR5RvPfTxQvjqkYRctMK4CwN1",
       "fee": null,
       "cu": null,
       "bytes": 0
     },
     {
       "step": "7b: claim through the Claim page (recipient A, gist)",
-      "signature": "53FmHDj2nHyGfAMS7Q4UjfReapQDLfeZ9x51QLRmN2HH6RHVdQxNAWcQDAMywsdvQxBWPsE56YWfeHdED7tgb2Ww",
+      "signature": "Jd8DuStoLg52ETwcxNBrt7g2hXEsWMTLPEWagsBKCiQmGN86jMRjy1SYPFvHN8hJCZAv5mtmZ3L3mVAdj4BeJuD",
       "fee": null,
       "cu": null,
       "bytes": 0
     },
     {
       "step": "7: set_fee_route A to recipient B's account (pending)",
-      "signature": "4m3UXm7Yuzjh6zv7YpXkdrSXVeeb4CCeKwZY4tY6Go9jZRfMQGkng4MFcD8keDHt8TSF6xepzzLd9UkK3rVgECnB",
+      "signature": "3iVuGvXMGtSK5i4vP5ZqLHHswdgE1GtrwzJsXPPJDw7L9tKxsNpaK9pQZs2nUjD2NybYKwzzjw3MPmNJoS1t5zz3",
       "fee": 5000,
-      "cu": 40796,
+      "cu": 43796,
       "bytes": 472
     },
     {
       "step": "7: apply_fee_route (anyone)",
-      "signature": "2VK7wgTFsQ2HiwQxCz71Ro3oPBUMCWgxkmJjr747nXArRYyxWjTiVg5X6DEABVq8KkQ6cwHQRetEior9VW47GYHz",
+      "signature": "2r46WFFzUb5sKUJtgRipimZ33Qcw5N6M1EeaYL4T8nStQuryHstUqqTTXdDXsWDZkugDdGFyniiZVVkbSDLJUDS8",
       "fee": 5000,
       "cu": 9499,
       "bytes": 285
     },
     {
       "step": "8: set_features(0)",
-      "signature": "nioSt5VVaZMpEWCi3MFhYZ81FsNvnN9aczLGq9P7a7g8sCreXn98srxi5TgdXYSPfhLG2UR2Cdppvf2TMsS4zb7",
+      "signature": "DkVCPeLfdE4f3xxQVmhRoBeS6WhtCrGaYXMRJMQ6A5uZc8mBfEoghMyNi63dUJ4brEhemUQdfAjVL8UtW15DbV9",
       "fee": 5000,
       "cu": 8096,
       "bytes": 257
     },
     {
       "step": "8: a buy of B with the bits off",
-      "signature": "54VfTF9oNk1FYZP89sWYwDXu9i9s5vQaScWDhn3L6jeNtMaorY627CjCNRGTnYC6kMJbnKACtVEH4q4ayFamxt2m",
+      "signature": "43iP9tACaZcsARvCWA9r1Vtv6AuHhmpDTidfpJPzKJLhvp1VFokLEpuDL4anEgpeSXGeKSiTMGBAcjGSMS9GTALu",
       "fee": 5000,
-      "cu": 86872,
+      "cu": 83872,
       "bytes": 795
     },
     {
       "step": "8: the eight-account crank of B (no route accounts)",
-      "signature": "5qst39Rx56trzb25fN1LXwggKxpbAV9ZUbugSWj6Lm86JsGAUrPbnoT7FafqbGyTu1aNB5qE9XLpbuXn6GvG2Y6S",
+      "signature": "XbLvPsu9h9ag1RikHnjMBKxGEPtR2Bfc8hgzEk7EeZGjDTmeQCquBekoHXxRctphE3QPRtmChM1ruw4WJY2aNjx",
       "fee": 5000,
-      "cu": 142052,
+      "cu": 118052,
       "bytes": 706
     },
     {
       "step": "cleanup: set_claim_config with the plan's TEST delays (600 s, 120 s)",
-      "signature": "EVUbAhyxx9ft44qx7rkn2RdARULrFYrhZnvC15YsS3SgDGKyE3CqwLZiUczXfi1Y9eKFBaNHaPHQUAuSyZ1uuEX",
+      "signature": "291bKaonuwZBo7UJxBRtMkeMHU99fh3qwT7fveo77GkRXSgm16RDdjmiQauaQZ4mfE6H3R93HdBVykVaixbgtG5M",
       "fee": 5000,
       "cu": 12808,
       "bytes": 352

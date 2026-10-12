@@ -225,7 +225,8 @@ impl Env {
             launch_config: launch_config(), pool_config: pool_config(), keeper: *keeper, pool: pool_pda(repo_id), pool_auth: auth,
             pool_vault: ata(&auth, &self.line_mint, &self.line_program), holder: pool_member(&holder.agent.pubkey()),
             target: pool_member(&target.agent.pubkey()), cross: cross_pda(&holder.agent.pubkey(), &target.agent.pubkey()), target_mint: target.mint,
-            pool_token: ata(&auth, &target.mint, &T22), token_program: T22, venue_program: pf::PUMP, system_program: system_program::ID,
+            pool_token: ata(&auth, &target.mint, &T22), holder_token: ata(&holder.agent.pubkey(), &target.mint, &T22), token_program: T22, venue_program: pf::PUMP,
+            system_program: system_program::ID,
         }.to_account_metas(None);
         accounts.extend(curve_buy_metas(&target.mint, &self.line_mint, &self.line_program, &auth));
         Instruction { program_id: ll::ID, accounts, data: ll::instruction::PoolCrossBuy { args }.data() }

@@ -58,6 +58,8 @@ export interface NetworkProfile {
   confirm: ConfirmPolicy;
   /** registry, launch and msg program ids of this network: the ones its build declares (programs.ts, cargo feature `mainnet`) */
   programs: ProgramIds;
+  /** Feature flags the pages follow (docs/plans/AGENT-POOLS.md 2, GITHUB-FEE-CLAIMS.md 2); absent or false: the pages show nothing of the feature. */
+  features?: ProfileFeatures;
   /** how this cluster's Pump build seeds a coin quoted in $UNITS (pump-launch.ts PumpQuoteSeed); "swap" when absent */
   pump_quote_seed: "swap" | "spot";
 }
@@ -138,6 +140,18 @@ function parsePrograms(network: NetworkName, raw: unknown, where: string): Progr
   return { ...want };
 }
 
+export interface ProfileFeatures {
+  agent_pools: boolean;
+  github_fee_claims: boolean;
+}
+/** `features` of a profile block: both false unless the block says true. */
+export function parseFeatures(raw: unknown, where: string): ProfileFeatures {
+  if (raw === undefined) return { agent_pools: false, github_fee_claims: false };
+  if (!isObj(raw)) throw new Error(`${where}.features must be an object`);
+  for (const k of ["agent_pools", "github_fee_claims"]) if (raw[k] !== undefined && typeof raw[k] !== "boolean") throw new Error(`${where}.features.${k} must be true or false`);
+  return { agent_pools: raw.agent_pools === true, github_fee_claims: raw.github_fee_claims === true };
+}
+
 /** Parses one profile block. */
 export function parseProfile(network: NetworkName, raw: unknown): NetworkProfile {
   const where = `profiles.${network}`;
@@ -146,6 +160,7 @@ export function parseProfile(network: NetworkName, raw: unknown): NetworkProfile
   for (const k of ["faucet", "test_labels", "swap"]) if (typeof raw[k] !== "boolean") throw new Error(`${where}.${k} must be true or false`);
   const p: NetworkProfile = {
     network,
+    features: parseFeatures(raw.features, where),
     cluster: raw.cluster as string,
     genesis: raw.genesis as string,
     quote: parseQuote(raw.quote, where),
@@ -195,6 +210,7 @@ export interface PublicProfile {
   confirm: ConfirmPolicy;
   programs: ProgramIds;
   pump_quote_seed: "swap" | "spot";
+  features?: ProfileFeatures;
 }
 
 export function publicProfile(p: NetworkProfile): PublicProfile {
@@ -212,6 +228,7 @@ export function publicProfile(p: NetworkProfile): PublicProfile {
     confirm: p.confirm,
     programs: p.programs,
     pump_quote_seed: p.pump_quote_seed,
+    features: p.features ?? { agent_pools: false, github_fee_claims: false },
   };
 }
 
@@ -230,6 +247,7 @@ export const DEVNET_PUBLIC_PROFILE: PublicProfile = {
   confirm: { poll_ms: 900, resend_ms: 2500, rebuilds: 0 },
   programs: { ...PROGRAM_IDS.devnet },
   pump_quote_seed: "spot",
+  features: { agent_pools: false, github_fee_claims: false },
 };
 
 /** explorer.solana.com link for a transaction or address under this profile. */

@@ -133,9 +133,12 @@ const size = async (mint: string, budget: bigint) => {
 const buy = (target: typeof A, kind: number, tokenAmount: bigint, maxQuote: bigint, by = keeper.id) =>
   pools.poolBuy({ keeper: by, repoId, target: target.agent.id, targetMint: target.mint.id, lineMint: LINE, kind, venue: 0, tokenAmount, maxQuote });
 for (const [h, t] of [[A, B], [B, A]] as const) {
+  await tx(`the holder agent's token account for its cross-holding (${h.s} of ${t.s})`, keeper, [token.createAtaIdempotent(keeper.id, h.agent.id, t.mint.id, T22)], [], 100_000);
   await tx(`pool_cross_buy (${h.s} buys ${t.s}; creates CrossHolding)`, keeper, [pools.poolCrossBuy({ keeper: keeper.id, repoId, holder: h.agent.id, target: t.agent.id, targetMint: t.mint.id, lineMint: LINE, venue: 0,
     tokenAmount: await size(t.mint.id, poolArgs.crossHoldQuote), maxQuote: poolArgs.crossHoldQuote })]);
 }
+check("cross-holdings are in the holder agents' own token accounts, none with the pool", (await bal(poolPdas.heldBy(A.agent.id, B.mint.id))) > 0n && (await bal(poolPdas.heldBy(B.agent.id, A.mint.id))) > 0n
+  && (await bal(poolPdas.holding(repoId, A.mint.id))) === 0n && (await bal(poolPdas.holding(repoId, B.mint.id))) === 0n);
 check("refused: pool_buy by a key that is not the keeper", (await refused(trader, [buy(B, 1, 1n, 1n, trader.id)], { computeUnits: 600_000 })).includes("Unauthorized"));
 check("refused: a buy past the member's budget", (await refused(keeper, [buy(B, 1, (await size(B.mint.id, sB.buybackDue)) * 3n, sB.buybackDue * 3n)], { computeUnits: 600_000 })).length > 0);
 const v0 = await bal(poolPdas.vault(repoId, LINE, T22));

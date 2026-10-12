@@ -23,7 +23,9 @@ export const poolPdas = {
   member: (agent: Address) => pda(LAUNCH_PROGRAM_ID, "pool_member", addressBytes(agent)),
   cross: (holder: Address, target: Address) => pda(LAUNCH_PROGRAM_ID, "cross", addressBytes(holder), addressBytes(target)),
   vault: (repoId: string | Uint8Array, lineMint: Address, lineTokenProgram: Address = TOKEN_2022_PROGRAM) => ata(poolPdas.auth(repoId), lineMint, lineTokenProgram),
-  /** Where the pool holds a member's token. */
+  /** Where an agent holds its cross-holding of `mint`: the agent key's own token account, beside its launch holding. */
+  heldBy: (agent: Address, mint: Address) => ata(agent, mint, TOKEN_2022_PROGRAM),
+  /** Where the pool holds a member's token (buybacks). */
   holding: (repoId: string | Uint8Array, mint: Address) => ata(poolPdas.auth(repoId), mint, TOKEN_2022_PROGRAM),
 };
 
@@ -107,7 +109,10 @@ export const pools = {
       data: data("pool_buy").u8(a.kind).u8(a.venue).u64(a.tokenAmount).u64(a.maxQuote).done(),
     };
   },
-  /** Keeper: `holder`'s cross-holding purchase of `target`'s token, once per ordered pair. */
+  /**
+   * Keeper: `holder`'s cross-holding purchase of `target`'s token, once per ordered pair. The pool authority buys and the
+   * tokens land in the holder agent's own token account (`poolPdas.heldBy`, which must exist): held by the agent.
+   */
   poolCrossBuy(a: { keeper: Address; repoId: string; holder: Address; target: Address; targetMint: Address; lineMint: Address; venue: number; tokenAmount: bigint;
     maxQuote: bigint; lineTokenProgram?: Address }): Ix {
     const tp = a.lineTokenProgram ?? TOKEN_2022_PROGRAM;
@@ -115,7 +120,7 @@ export const pools = {
       programId: LAUNCH_PROGRAM_ID,
       keys: [r(launchPdas.config()), r(poolPdas.config()), w(a.keeper, true), w(poolPdas.pool(a.repoId)), w(poolPdas.auth(a.repoId)), w(poolPdas.vault(a.repoId, a.lineMint, tp)),
         w(poolPdas.member(a.holder)), w(poolPdas.member(a.target)), w(poolPdas.cross(a.holder, a.target)), r(a.targetMint), w(poolPdas.holding(a.repoId, a.targetMint)),
-        r(TOKEN_2022_PROGRAM), r(a.venue === POOL_VENUE.amm ? PUMP.amm : PUMP.program), r(SYSTEM_PROGRAM),
+        w(poolPdas.heldBy(a.holder, a.targetMint)), r(TOKEN_2022_PROGRAM), r(a.venue === POOL_VENUE.amm ? PUMP.amm : PUMP.program), r(SYSTEM_PROGRAM),
         ...venueKeys({ repoId: a.repoId, mint: a.targetMint, lineMint: a.lineMint, lineTokenProgram: tp, venue: a.venue })],
       data: data("pool_cross_buy").u8(a.venue).u64(a.tokenAmount).u64(a.maxQuote).done(),
     };

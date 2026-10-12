@@ -21,7 +21,7 @@ export async function startWeb(port: number, core: string, market = "https://157
     busy = execFileSync("lsof", ["-ti", `:${port}`], { encoding: "utf8" }).trim();
   } catch { /* free */ }
   if (busy) throw new Error(`port ${port} is in use by pid ${busy}; not binding`);
-  const child: ChildProcess = spawn("bun", ["apps/web/server.ts", "--port", String(port), "--core", core, "--market", market], { cwd: ROOT, stdio: ["ignore", "pipe", "pipe"], env: { ...process.env, UNITS_NETWORK: "devnet" } });
+  const child: ChildProcess = spawn("bun", ["apps/web/server.ts", "--port", String(port), "--core", core, "--market", market], { cwd: ROOT, stdio: ["ignore", "pipe", "pipe"], env: { ...process.env, UNITS_NETWORK: "devnet", UNITS_FEATURE_AGENT_POOLS: "1", UNITS_FEATURE_GITHUB_FEE_CLAIMS: "1" } });
   const out: string[] = [];
   child.stdout!.on("data", (d) => out.push(String(d)));
   child.stderr!.on("data", (d) => out.push(String(d)));

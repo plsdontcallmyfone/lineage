@@ -99,7 +99,9 @@ impl Fx {
     fn cross(&mut self, repo: &[u8; 32], holder: &Launched, target: &Launched, token_amount: u64) -> litesvm::types::TransactionResult {
         let k = self.keeper.insecure_clone();
         let ix = self.e.cross_buy_ix(&k.pubkey(), repo, holder, target, ll::PoolBuyArgs { venue: ll::VENUE_CURVE, token_amount, max_quote: u64::MAX });
-        send_unchecked(&mut self.e.svm, &k, &[], vec![cu(800_000), ix])
+        // the holder agent's own token account of the target's mint (anyone may create it)
+        let holder_ata = create_ata_ix(&k.pubkey(), &holder.agent.pubkey(), &target.mint, &T22);
+        send_unchecked(&mut self.e.svm, &k, &[], vec![cu(800_000), holder_ata, ix])
     }
     /// A pool with both members' slices routed and epoch 1 settled: one generation by A, one milestone.
     fn settled(&mut self) -> (Launched, Launched, [u8; 32]) {
@@ -196,7 +198,8 @@ fn two_agents_on_one_repository_pool_fees_pay_buy_and_burn() {
         let c: ll::CrossHolding = read(&f.e.svm, &cross_pda(&h.agent.pubkey(), &t.agent.pubkey()));
         assert_eq!((c.holder, c.target, c.tokens, c.quote_spent), (h.agent.pubkey(), t.agent.pubkey(), tokens, v0 - f.vault(&repo)));
         assert!(c.quote_spent > 0 && c.quote_spent <= CROSS);
-        assert_eq!(balance(&f.e.svm, &ata(&auth, &t.mint, &T22)), tokens);
+        assert_eq!(balance(&f.e.svm, &ata(&h.agent.pubkey(), &t.mint, &T22)), tokens, "delivered to the holder agent's own account");
+        assert_eq!(balance(&f.e.svm, &ata(&auth, &t.mint, &T22)), 0, "nothing of a cross-holding stays with the pool");
         let mh = f.member(h);
         assert_eq!((mh.cross_pairs, mh.cross_funded), (0, 0), "what the purchase did not use went to the buyback bucket");
         rejects(f.cross(&repo, h, t, 1), "already in use");
@@ -458,13 +461,19 @@ fn pool_funds_cannot_be_drained_through_pay_or_buy() {
     ok(f.buy(&repo, &b, ll::BUY_BUYBACK, small, u64::MAX));
     assert!(v0 - f.vault(&repo) <= due / 4);
     f.set_cfg(|_| {});
+    // A cross-holding delivered to someone else's token account (the keeper's own).
+    let mut ix = f.e.cross_buy_ix(&k.pubkey(), &repo, &a, &b, ll::PoolBuyArgs { venue: ll::VENUE_CURVE, token_amount: 1, max_quote: u64::MAX });
+    let mine = ata(&k.pubkey(), &b.mint, &T22);
+    let at = ix.accounts.iter().position(|m| m.pubkey == ata(&a.agent.pubkey(), &b.mint, &T22)).unwrap();
+    ix.accounts[at] = AccountMeta::new(mine, false);
+    rejects(send_unchecked(&mut f.e.svm, &k, &[], vec![cu(800_000), create_ata_ix(&k.pubkey(), &k.pubkey(), &b.mint, &T22), ix]), "WrongPoolAccount");
     // A cross-holding of oneself, and a pair across pools.
     rejects(f.cross(&repo, &a, &a, 1), "PoolBudget");
     let y = f.e.launch_agent(Keypair::new(), other_repo());
     ok(f.join(&x, &[]));
     ok(f.join(&y, &[&x]));
     let ix = f.e.cross_buy_ix(&k.pubkey(), &repo, &a, &x, ll::PoolBuyArgs { venue: ll::VENUE_CURVE, token_amount: 1, max_quote: u64::MAX });
-    rejects(send_unchecked(&mut f.e.svm, &k, &[], vec![cu(800_000), ix]), "WrongPoolAccount");
+    rejects(send_unchecked(&mut f.e.svm, &k, &[], vec![cu(800_000), create_ata_ix(&k.pubkey(), &a.agent.pubkey(), &x.mint, &T22), ix]), "WrongPoolAccount");
     // A cross-holding before the holder's slice funded it.
     let xrepo = repo_of(&f.e.svm, &x);
     f.e.svm.airdrop(&pool_auth(&xrepo), 1_000_000_000).unwrap();

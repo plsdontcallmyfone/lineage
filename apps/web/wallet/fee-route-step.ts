@@ -7,7 +7,7 @@
 import { canonicalUrl, claimPdas, claims, decodeClaimConfig, decodeLaunchConfig, decodePool, FEATURES, launchPdas, poolPdas, pools, repoId, TOKEN_2022_PROGRAM,
   type ClaimConfig, type Ix } from "../../../packages/chain/src/browser/index.ts";
 import { html } from "../src/html.ts";
-import { rpc } from "./chain.ts";
+import { NET, rpc } from "./chain.ts";
 
 interface GhUser { id: number; login: string; name: string | null; avatar_url: string | null; type: string }
 const F: { el: HTMLElement | null; github: boolean; pools: boolean; cfg: ClaimConfig | null; user: GhUser | null; lookupErr: string | null; touched: boolean; timer: ReturnType<typeof setTimeout> | null;
@@ -83,13 +83,16 @@ export async function mountFeeRouteStep(root: HTMLElement, repoInput: HTMLInputE
   F.touched = false;
   if (!F.el) return;
   F.el.innerHTML = "";
+  // the profile's flags first (config/profile.json `features`): off means no request is even made
+  const want = NET.p.features ?? { agent_pools: false, github_fee_claims: false };
+  if (!want.agent_pools && !want.github_fee_claims) return;
   try {
     const [lcA, ccA, core, corePools] = await Promise.all([rpc.getAccountInfo(launchPdas.config()), rpc.getAccountInfo(claimPdas.config()),
       fetch("/api/fee-claims/providers").then((r) => r.ok).catch(() => false), fetch("/api/pools/config").then((r) => r.ok).catch(() => false)]);
     const features = lcA ? decodeLaunchConfig(lcA.data).features : 0;
     F.cfg = ccA ? decodeClaimConfig(ccA.data) : null;
-    F.github = !!(features & FEATURES.githubFees) && !!F.cfg && !F.cfg.paused && core;
-    F.pools = !!(features & FEATURES.pools) && corePools;
+    F.github = want.github_fee_claims && !!(features & FEATURES.githubFees) && !!F.cfg && !F.cfg.paused && core;
+    F.pools = want.agent_pools && !!(features & FEATURES.pools) && corePools;
   } catch {
     return;
   }

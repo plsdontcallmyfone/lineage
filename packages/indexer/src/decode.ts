@@ -30,6 +30,10 @@ const EV = {
   feesCranked: hex(sha256("event:FeesCranked").subarray(0, 8)),
   pumpGraduated: hex(sha256("event:PumpGraduated").subarray(0, 8)),
   pumpLaunched: hex(sha256("event:PumpLaunched").subarray(0, 8)),
+  // pools and GitHub fee routes (docs/plans/AGENT-POOLS.md, GITHUB-FEE-CLAIMS.md); never emitted while the features are off
+  feesRouted: hex(sha256("event:FeesRouted").subarray(0, 8)),
+  poolJoined: hex(sha256("event:PoolJoined").subarray(0, 8)),
+  poolBought: hex(sha256("event:PoolBought").subarray(0, 8)),
 };
 const MIGRATE_V2 = hex(ixDisc("migrate_v2"));
 const AMM_EVENT_AUTHORITY = pumpPdas.ammEventAuthority();
@@ -127,7 +131,7 @@ export interface LifeEvent {
   sig: string;
   slot: number;
   time: number | null;
-  kind: "launch" | "complete" | "migration" | "graduated";
+  kind: "launch" | "complete" | "migration" | "graduated" | "fees_routed" | "pool_joined" | "pool_cross_buy" | "pool_buyback" | "pool_burn";
   detail: Record<string, string>;
 }
 export interface Decoded {
@@ -320,6 +324,21 @@ export function decodeTx(tx: RawTx, ctx: TokenCtx): Decoded {
       if (key(g, 32) !== ctx.mint) continue;
       base.events.push({ sig, slot: tx.slot, time: base.time, kind: "graduated",
         detail: { pool: key(g, 64), coin_creator: key(g, 96), creator_is_ours: String(g[128] === 1) } });
+    } else if (d === EV.feesRouted && g.length >= 128) {
+      // the slices of one crank: FeesCranked in the same transaction carries the compute and protocol parts
+      if (key(g, 32) !== ctx.mint) continue;
+      const ghId = u64(g, 72), pool = key(g, 88);
+      base.events.push({ sig, slot: tx.slot, time: base.time, kind: "fees_routed", detail: { agent: key(g, 0), fees: String(u64(g, 64)), github_id: ghId === 0n ? "" : String(ghId),
+        to_github: String(u64(g, 80)), pool: pool === "11111111111111111111111111111111" ? "" : pool, to_pool: String(u64(g, 120)) } });
+    } else if (d === EV.poolJoined && g.length >= 130) {
+      if (key(g, 96) !== ctx.mint) continue;
+      base.events.push({ sig, slot: tx.slot, time: base.time, kind: "pool_joined", detail: { pool: key(g, 0), repo_id: hex(g.subarray(32, 64)), agent: key(g, 64), index: String(g[128]), members: String(g[129]) } });
+    } else if (d === EV.poolBought && g.length >= 147) {
+      if (key(g, 97) !== ctx.mint) continue;
+      const holder = key(g, 33);
+      base.events.push({ sig, slot: tx.slot, time: base.time, kind: g[146] === 1 ? "pool_burn" : g[32] === 0 ? "pool_cross_buy" : "pool_buyback",
+        detail: { pool: key(g, 0), holder: holder === "11111111111111111111111111111111" ? "" : holder, target: key(g, 65), venue: g[129] === 1 ? "pool" : "curve", quote_spent: String(u64(g, 130)),
+          tokens: String(u64(g, 138)) } });
     } else if (d === EV.pumpLaunched && g.length >= 160) {
       if (key(g, 32) !== ctx.mint) continue;
       base.events.push({ sig, slot: tx.slot, time: base.time, kind: "launch",

@@ -138,7 +138,7 @@ pub struct PoolMember {
     pub paid: u64,
     /// `$LINE` spent buying this member's token (all kinds).
     pub bought_quote: u64,
-    /// Tokens of this member's mint the pool holds and has burned.
+    /// Tokens of this member's mint the pool holds (buybacks; cross-holdings go to the holders) and has burned.
     pub tokens_held: u64,
     pub tokens_burned: u64,
     pub bump: u8,
@@ -481,7 +481,9 @@ pub(crate) fn pool_buy<'info>(ctx: Context<'_, '_, 'info, 'info, PoolBuy<'info>>
 }
 
 /// Keeper: one member's cross-holding purchase of another member's token, once per ordered pair,
-/// from the `$LINE` the holder's own routed slice funded.
+/// from the `$LINE` the holder's own routed slice funded. The pool authority buys; the tokens are
+/// then delivered to the holder agent's own token account, where the agent holds them (like its
+/// launch holding). No agent key signs anything here.
 pub(crate) fn pool_cross_buy<'info>(ctx: Context<'_, '_, 'info, 'info, PoolCrossBuy<'info>>, args: PoolBuyArgs) -> Result<()> {
     let lc = &ctx.accounts.launch_config;
     let cfg = &ctx.accounts.pool_config;
@@ -503,9 +505,22 @@ pub(crate) fn pool_cross_buy<'info>(ctx: Context<'_, '_, 'info, 'info, PoolCross
         ctx.accounts.pool.bucket_buyback += h.cross_funded;
         h.cross_funded = 0;
     }
+    {
+        let pool = &ctx.accounts.pool;
+        let seeds: &[&[u8]] = &[POOL_AUTH_SEED, pool.repo_id.as_ref(), &[pool.auth_bump]];
+        token_interface::transfer_checked(
+            CpiContext::new_with_signer(ctx.accounts.token_program.to_account_info(), TransferChecked {
+                from: ctx.accounts.pool_token.to_account_info(),
+                mint: ctx.accounts.target_mint.to_account_info(),
+                to: ctx.accounts.holder_token.to_account_info(),
+                authority: ctx.accounts.pool_auth.to_account_info(),
+            }, &[seeds]),
+            got,
+            ctx.accounts.target_mint.decimals,
+        )?;
+    }
     let t = &mut ctx.accounts.target;
     t.bought_quote = t.bought_quote.saturating_add(spent);
-    t.tokens_held = t.tokens_held.saturating_add(got);
     ctx.accounts.pool.bought = ctx.accounts.pool.bought.saturating_add(spent);
     let c = &mut ctx.accounts.cross;
     c.holder = h.agent;
@@ -648,6 +663,9 @@ pub struct PoolCrossBuy<'info> {
     pub target_mint: Box<InterfaceAccount<'info, Mint>>,
     #[account(mut, token::mint = target_mint, token::authority = pool_auth, token::token_program = token_program)]
     pub pool_token: Box<InterfaceAccount<'info, TokenAccount>>,
+    /// The holder agent's own token account of the target's mint: where its cross-holding is delivered.
+    #[account(mut, token::mint = target_mint, token::token_program = token_program, constraint = holder_token.owner == holder.agent @ LaunchError::WrongPoolAccount)]
+    pub holder_token: Box<InterfaceAccount<'info, TokenAccount>>,
     pub token_program: Interface<'info, TokenInterface>,
     /// CHECK: must be Pump or PumpSwap, by `args.venue` (checked in `execute_buy`).
     pub venue_program: UncheckedAccount<'info>,

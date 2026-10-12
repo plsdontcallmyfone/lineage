@@ -1,10 +1,10 @@
 {
-  "at": "2026-10-12T02:15:37.072Z",
+  "at": "2026-10-12T02:28:36.272Z",
   "profile": "mainnet",
   "result": "PASS",
-  "passed": 27,
-  "total": 27,
-  "launch_build_sha256": "13481cb2ecad6f6c348f1f2f92f76934a398a615b448dd056039c0957d24484d",
+  "passed": 28,
+  "total": 28,
+  "launch_build_sha256": "817077c4730d02df62ce5b964a8ffba4aa8210cfe55ee29ca240444faccb11c8",
   "note": "payer_lamports: what the transaction's fee payer paid at mainnet rent (network fee plus the rent of the accounts it creates)",
   "instructions": {
     "set_claim_config (creates ClaimConfig)": {
@@ -24,12 +24,12 @@
     },
     "launch agent a (create_v2 + register_pump_launch)": {
       "bytes": 987,
-      "cu": 226354,
+      "cu": 256354,
       "payer_lamports": "14701280"
     },
     "launch agent b (create_v2 + register_pump_launch)": {
       "bytes": 987,
-      "cu": 227854,
+      "cu": 236854,
       "payer_lamports": "14701280"
     },
     "set_fee_route (creates FeeRoute, ClaimEscrow and its vault)": {
@@ -44,32 +44,32 @@
     },
     "join_pool (first member: creates Pool, its vault and PoolMember)": {
       "bytes": 495,
-      "cu": 80832,
+      "cu": 82332,
       "payer_lamports": "7238920"
     },
     "join_pool (second member: creates PoolMember)": {
       "bytes": 528,
-      "cu": 56637,
+      "cu": 65637,
       "payer_lamports": "1645840"
     },
     "trader buys a": {
       "bytes": 560,
-      "cu": 83538,
+      "cu": 98538,
       "payer_lamports": "2865040"
     },
     "crank_pump_fees with route accounts (a)": {
       "bytes": 937,
-      "cu": 191224,
+      "cu": 213724,
       "payer_lamports": "3032680"
     },
     "trader buys b": {
       "bytes": 560,
-      "cu": 85114,
+      "cu": 91114,
       "payer_lamports": "1518840"
     },
     "crank_pump_fees with route accounts (b)": {
       "bytes": 937,
-      "cu": 197224,
+      "cu": 198724,
       "payer_lamports": "3032680"
     },
     "pool_settle": {
@@ -84,27 +84,37 @@
     },
     "pool token accounts (one per member mint)": {
       "bytes": 424,
-      "cu": 40584,
+      "cu": 36084,
       "payer_lamports": "3032680"
     },
+    "the holder agent's token account for its cross-holding (a of b)": {
+      "bytes": 350,
+      "cu": 27867,
+      "payer_lamports": "1518840"
+    },
     "pool_cross_buy (a buys b; creates CrossHolding)": {
-      "bytes": 726,
-      "cu": 131360,
+      "bytes": 759,
+      "cu": 142046,
       "payer_lamports": "1142920"
     },
+    "the holder agent's token account for its cross-holding (b of a)": {
+      "bytes": 350,
+      "cu": 18867,
+      "payer_lamports": "1518840"
+    },
     "pool_cross_buy (b buys a; creates CrossHolding)": {
-      "bytes": 726,
-      "cu": 120936,
+      "bytes": 759,
+      "cu": 145122,
       "payer_lamports": "1142920"
     },
     "pool_buy (buyback, held)": {
       "bytes": 660,
-      "cu": 110534,
+      "cu": 116534,
       "payer_lamports": "5000"
     },
     "pool_buy (milestone burn)": {
       "bytes": 660,
-      "cu": 111119,
+      "cu": 126119,
       "payer_lamports": "5000"
     },
     "claimer's $UNITS account": {
@@ -124,12 +134,12 @@
     },
     "trader buys b again": {
       "bytes": 518,
-      "cu": 67997,
+      "cu": 73997,
       "payer_lamports": "5000"
     },
     "crank_pump_fees, eight accounts, bits off": {
       "bytes": 706,
-      "cu": 118004,
+      "cu": 119504,
       "payer_lamports": "5000"
     }
   },
@@ -177,7 +187,7 @@
     {
       "name": "launch lookup table frozen with the expected addresses",
       "ok": true,
-      "detail": "J86RdXQhEkzssbbPgv3YNKV6fHLruJUKEg2VV3eaD6qu"
+      "detail": "Ab2nXFTJu9NN4nuZWZRCcKaDVMapreABjPUhJYTkMUdi"
     },
     {
       "name": "pools build at the mainnet id: features 0 after initialize",
@@ -221,6 +231,11 @@
     },
     {
       "name": "payout in the author's compute vault",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "cross-holdings are in the holder agents' own token accounts, none with the pool",
       "ok": true,
       "detail": ""
     },
@@ -270,5 +285,5 @@
       "detail": "fees 21011551056"
     }
   ],
-  "rows": 35
+  "rows": 37
 }

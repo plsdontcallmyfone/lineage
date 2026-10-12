@@ -232,10 +232,12 @@ try {
   check("no keeper action failed", acts.every((a) => !a.error), acts.filter((a) => a.error).map((a) => `${a.kind}: ${a.error}`).join("; "));
   check("payout reached the author's compute vault", (await bal(launchPdas.computeVault(A.agent.id))) - cvA0 === sA.payoutDue, fmt(sA.payoutDue));
   const xAB = await acct(poolPdas.cross(A.agent.id, B.agent.id), decodeCrossHolding), xBA = await acct(poolPdas.cross(B.agent.id, A.agent.id), decodeCrossHolding);
-  check("cross-holdings: A holds B and B holds A, once each, bought with the holder's own slice", xAB.tokens > 0n && xBA.tokens > 0n && xAB.quoteSpent <= poolArgs.crossHoldQuote && xBA.quoteSpent <= poolArgs.crossHoldQuote,
+  check("cross-holdings: A holds B and B holds A, once each, bought with the holder's own slice and delivered to the holder agent's own token account",
+    xAB.tokens > 0n && xBA.tokens > 0n && xAB.quoteSpent <= poolArgs.crossHoldQuote && xBA.quoteSpent <= poolArgs.crossHoldQuote
+    && (await bal(poolPdas.heldBy(A.agent.id, B.mint.id))) === xAB.tokens && (await bal(poolPdas.heldBy(B.agent.id, A.mint.id))) === xBA.tokens,
     `A bought ${xAB.tokens} of B for ${fmt(xAB.quoteSpent)}; B bought ${xBA.tokens} of A for ${fmt(xBA.quoteSpent)}`);
   const eA = await acct(poolPdas.member(A.agent.id), decodePoolMember), eB = await acct(poolPdas.member(B.agent.id), decodePoolMember);
-  check("buybacks: both members' tokens bought and held by the pool", eB.tokensHeld > xAB.tokens && eA.tokensHeld > xBA.tokens && eB.buybackDue < sB.buybackDue,
+  check("buybacks: both members' tokens bought and held by the pool", eB.tokensHeld > 0n && eA.tokensHeld > 0n && eB.buybackDue < sB.buybackDue,
     `pool holds ${eA.tokensHeld} of A and ${eB.tokensHeld} of B`);
   check("the pool's token accounts hold exactly what the records say", (await bal(poolPdas.holding(repoId, A.mint.id))) === eA.tokensHeld && (await bal(poolPdas.holding(repoId, B.mint.id))) === eB.tokensHeld);
   const supplyA1 = (await acct(A.mint.id, decodeMint)).supply, supplyB1 = (await acct(B.mint.id, decodeMint)).supply;
