@@ -1,0 +1,982 @@
+{
+  "run": "mv4m3nji",
+  "network": "devnet",
+  "program": "24d8xrZMyVYyRmoF28GeWU2q3eo2gfDQaHpzHkFTvbK7",
+  "keeper": "7YX6i3xYQf9LnirPJxSbbLrQSjoktJqbLX3YqUkrpPuy",
+  "attestor": "HkXn2aFYHJcsDJkWfPX2saH2pF7chAxboEXY4qP9pQcG",
+  "repo": {
+    "url": "https://github.com/units-pool-proof/run-mv4m3nji",
+    "id": "850b1af8e345ee9d7969305ffb4eecc91a58999c5cf4007f831deee17d28f791"
+  },
+  "agents": [
+    {
+      "name": "A",
+      "agent": "CPdU6ayDgKxZzux6GPNhoHve45N7D5xv7ic64Gbs8bJ7",
+      "mint": "5kvLNHumizskwj3B51Z95k8uqBa3T7gr6R7L9JoGoxLz"
+    },
+    {
+      "name": "B",
+      "agent": "4fJeuNaPiBVr64AK2ewQpehikuYRfe8HoH41xsxuZqbn",
+      "mint": "BfinkTwSCoTnArM3gH36ZJ6AvYw3vKbwjTs1iFcqmydQ"
+    }
+  ],
+  "pool": {
+    "address": "GMoFsvQ13yr5yvxNipRD5QNH2mucL5zW4x14Naeeh6et",
+    "authority": "H2TGbGUTAsxcNr9Ji19vy7MhYquWybXzG1Yfv5K2Uit1",
+    "vault": "Cj445k3EoZBrtvSuYEdo9av2VXuHdXLUQbqueDBMvM35"
+  },
+  "recipients": [
+    {
+      "agent": "A",
+      "github_id": 880050307,
+      "login": "units-proof-a-mv4m3nji",
+      "bps": 2000
+    },
+    {
+      "agent": "B",
+      "github_id": 990050307,
+      "login": "units-proof-b-mv4m3nji",
+      "bps": 1000
+    }
+  ],
+  "splits": [
+    {
+      "agent": "A",
+      "label": "first",
+      "fees": "65185186",
+      "toCompute": "27377778",
+      "toProtocol": "19555556",
+      "toGithub": "9125926",
+      "toPool": "9125926"
+    },
+    {
+      "agent": "B",
+      "label": "first",
+      "fees": "59259260",
+      "toCompute": "29037038",
+      "toProtocol": "17777778",
+      "toGithub": "4148148",
+      "toPool": "8296296"
+    },
+    {
+      "agent": "A",
+      "label": "second",
+      "fees": "59264011",
+      "toCompute": "24890885",
+      "toProtocol": "17779204",
+      "toGithub": "8296961",
+      "toPool": "8296961"
+    },
+    {
+      "agent": "A",
+      "label": "third",
+      "fees": "59259260",
+      "toCompute": "24888890",
+      "toProtocol": "17777778",
+      "toGithub": "8296296",
+      "toPool": "8296296"
+    },
+    {
+      "agent": "B",
+      "label": "second",
+      "fees": "59266849",
+      "toCompute": "29040757",
+      "toProtocol": "17780055",
+      "toGithub": "4148679",
+      "toPool": "8297358"
+    }
+  ],
+  "settlement": {
+    "epoch": 19,
+    "record": {
+      "v": 1,
+      "kind": "units-pool-settlement-test",
+      "note": "TEST inputs for the devnet proof: these agents never authored; one generation credited to A, one milestone",
+      "repo_id": "850b1af8e345ee9d7969305ffb4eecc91a58999c5cf4007f831deee17d28f791",
+      "epoch": 19,
+      "members": [
+        {
+          "agent": "CPdU6ayDgKxZzux6GPNhoHve45N7D5xv7ic64Gbs8bJ7",
+          "weight_bps": 10000
+        },
+        {
+          "agent": "4fJeuNaPiBVr64AK2ewQpehikuYRfe8HoH41xsxuZqbn",
+          "weight_bps": 0
+        }
+      ],
+      "gens": 1,
+      "milestones": 1
+    },
+    "evidence": "2b4c75083051992e59360bba7547593c26ba4d5ac9fce6e50d06d10e470e7bbd",
+    "allocation": [
+      {
+        "payout": "6568888",
+        "buyback": "328444",
+        "burn": "821111"
+      },
+      {
+        "payout": "0",
+        "buyback": "1313778",
+        "burn": "821111"
+      }
+    ]
+  },
+  "pool_after": {
+    "repo_id": "850b1af8e345ee9d7969305ffb4eecc91a58999c5cf4007f831deee17d28f791",
+    "repo_url": null,
+    "address": "GMoFsvQ13yr5yvxNipRD5QNH2mucL5zW4x14Naeeh6et",
+    "authority": "H2TGbGUTAsxcNr9Ji19vy7MhYquWybXzG1Yfv5K2Uit1",
+    "vault": "Cj445k3EoZBrtvSuYEdo9av2VXuHdXLUQbqueDBMvM35",
+    "vault_balance": "6688854",
+    "active": true,
+    "created_at": 1791770864,
+    "buckets": {
+      "payout": "0",
+      "buyback": "4954666",
+      "burn": "1642224"
+    },
+    "last_epoch": 19,
+    "gens": 1,
+    "milestones": 1,
+    "totals": {
+      "contributed": "17422222",
+      "paid": "6568888",
+      "bought": "2568240",
+      "burn_spent": "1596240"
+    },
+    "members": [
+      {
+        "agent": "CPdU6ayDgKxZzux6GPNhoHve45N7D5xv7ic64Gbs8bJ7",
+        "mint": "5kvLNHumizskwj3B51Z95k8uqBa3T7gr6R7L9JoGoxLz",
+        "index": 0,
+        "joined_at": 1791770864,
+        "contributed": "9125926",
+        "cross_pairs_owed": 0,
+        "cross_due": "0",
+        "cross_funded": "0",
+        "payout_due": "0",
+        "buyback_due": "9196",
+        "burn_due": "22991",
+        "paid": "6568888",
+        "bought_quote": "1603368",
+        "tokens_held": "2620546",
+        "tokens_burned": "2597349"
+      },
+      {
+        "agent": "4fJeuNaPiBVr64AK2ewQpehikuYRfe8HoH41xsxuZqbn",
+        "mint": "BfinkTwSCoTnArM3gH36ZJ6AvYw3vKbwjTs1iFcqmydQ",
+        "index": 1,
+        "joined_at": 1791770869,
+        "contributed": "8296296",
+        "cross_pairs_owed": 0,
+        "cross_due": "0",
+        "cross_funded": "0",
+        "payout_due": "0",
+        "buyback_due": "36786",
+        "burn_due": "22991",
+        "paid": "0",
+        "bought_quote": "2561112",
+        "tokens_held": "5737438",
+        "tokens_burned": "2597381"
+      }
+    ]
+  },
+  "keeper_actions": [
+    {
+      "repo": "1c446c44c9521844d9f23b6805f6f36c739b193e8bf058035df6dcaea786e6ee",
+      "kind": "buyback",
+      "signature": "3JuwgJitpwr14t3ScN7ufkK2kDygLoaH72w3vjbLvzhgQHFzatkKbz7SbszDyi4B2y4RS9Q2VAbBX1J27mDQL1cr"
+    },
+    {
+      "repo": "1c446c44c9521844d9f23b6805f6f36c739b193e8bf058035df6dcaea786e6ee",
+      "kind": "burn_buy",
+      "signature": "3gY88WKttWZSfv53dWpdhYmibZ1d4C1mEMtTviTTtMnfih1DB3FX2vXMUEox3xrDxifKKRGeuoArgsd3oDMeLTRn"
+    },
+    {
+      "repo": "1c446c44c9521844d9f23b6805f6f36c739b193e8bf058035df6dcaea786e6ee",
+      "kind": "buyback",
+      "signature": "2GBo9nB2E1Hk1dGLnSaum15cYRv7QE5seRwA4w5Fv4VjSU4Qz4iWJbx7TXjYkPuTw91qa7C5C5gCHwvyN95NaCW"
+    },
+    {
+      "repo": "1c446c44c9521844d9f23b6805f6f36c739b193e8bf058035df6dcaea786e6ee",
+      "kind": "burn_buy",
+      "signature": "3u3MZFNW3yQcAVdpQ8nWtpzRS95imSVtUxEBHfo53K9szyssPVyMx7ArV2qT5wAygd3nGktY7FWEjBC8APjiochK"
+    },
+    {
+      "repo": "316f6ba6446a9c75a6ec537e9f8fea31eac8f5100bc9c22545930642fd8ae289",
+      "kind": "buyback",
+      "signature": "5wLHHSWuyqEoa9ZWMR2T9qeySkjR4RHiyZAKwcBymUueF8SYKbmQvCqRgcMg2nKt4UrobBFWpcW9AyVUcy5epKgA"
+    },
+    {
+      "repo": "316f6ba6446a9c75a6ec537e9f8fea31eac8f5100bc9c22545930642fd8ae289",
+      "kind": "burn_buy",
+      "signature": "4AEk94Q1sZCaLYt196a5PMpC5ws7uKY1SpQqvvmyAE5XgkbKDakm83CkbZAhbGU8TsgGBPHjVWpySqHF2dZp7RwC"
+    },
+    {
+      "repo": "316f6ba6446a9c75a6ec537e9f8fea31eac8f5100bc9c22545930642fd8ae289",
+      "kind": "buyback",
+      "signature": "4CTrq1JUWLeqay1GaHyE2hLHuADKNMTnxNEnw8ALuUf9y9A2xfgB18QvdH8uaqFS58ryQVp5sb6Dgzz6NK8zDJDW"
+    },
+    {
+      "repo": "316f6ba6446a9c75a6ec537e9f8fea31eac8f5100bc9c22545930642fd8ae289",
+      "kind": "burn_buy",
+      "signature": "45Eo9WmzJumJvtsFL4yAvr83BR53XiopfS74A9MegKwPLG74ddL1tgSrwfWmFHvBdQam28WV7mvYprYzhTUPbg3B"
+    },
+    {
+      "repo": "850b1af8e345ee9d7969305ffb4eecc91a58999c5cf4007f831deee17d28f791",
+      "kind": "prepare",
+      "signature": "5do3HUHskr5EnCG1TbjHLYraUz6HNe8euLkQxfP1TCSGBrQbFrJBosBBiR1hLrEFXX7t6YRuPjVRRcJhQvhMoHGv"
+    },
+    {
+      "repo": "850b1af8e345ee9d7969305ffb4eecc91a58999c5cf4007f831deee17d28f791",
+      "kind": "pay",
+      "signature": "4sReEso6brWigHMW8qSTsh31rvuSr7FWNmpCpzx1o4itg7GtaDfotoqsSFWUZKiKnvFjPUuY5qwCX3ySqzbZh9rN"
+    },
+    {
+      "repo": "850b1af8e345ee9d7969305ffb4eecc91a58999c5cf4007f831deee17d28f791",
+      "kind": "cross_buy",
+      "signature": "Yf4Mb27YWrwFLVCqbw9vtCzNnwU7WnnnAK8ycMC2fsXVk7jnAwQFKVpe9Vuob2ckHkPw6XicUUfhxoGyxVXvMX9"
+    },
+    {
+      "repo": "850b1af8e345ee9d7969305ffb4eecc91a58999c5cf4007f831deee17d28f791",
+      "kind": "cross_buy",
+      "signature": "65fms9M4uHxFdUh3hogHkQdArtLtGiFKhYEVPBZKUwZQepfYWgdgXTdPHgP99eRKGEKYNR3Crj6aTzdz8NsiTkiG"
+    },
+    {
+      "repo": "850b1af8e345ee9d7969305ffb4eecc91a58999c5cf4007f831deee17d28f791",
+      "kind": "buyback",
+      "signature": "4pYLRo5WbmFjbgbjaiB8KeF5pHvMfdR6Mt7iPDJvH4TkHUhBSnPG5bryxhpcJoFu4B76EYToQMNnbKPsUWKgwmuv"
+    },
+    {
+      "repo": "850b1af8e345ee9d7969305ffb4eecc91a58999c5cf4007f831deee17d28f791",
+      "kind": "burn_buy",
+      "signature": "5qQs97aDfGcLy7QrujNPRCxC3TADaMYZdGbbnZdsgBVpoPnpSpV6KUBj3Rso6vqfiZbijrnkdJRN9ZrPpnxMyHM"
+    },
+    {
+      "repo": "850b1af8e345ee9d7969305ffb4eecc91a58999c5cf4007f831deee17d28f791",
+      "kind": "buyback",
+      "signature": "2iu2S64AyZinGhC9sK8iyVHhKf1inMFoFYYyAFU6GZrRU7ZcajnWWjy1zbm6cMSN7PmAAviAAGbqik7tdkMMA2Ji"
+    },
+    {
+      "repo": "850b1af8e345ee9d7969305ffb4eecc91a58999c5cf4007f831deee17d28f791",
+      "kind": "burn_buy",
+      "signature": "2Z8VkTuwNSB344fWYreGEkKkz3nhNJDZWPjHpmpnSGj4Y5RfwVsedHGMHS8Y2MHotJRcPhrTCPCbfRMceB3A6mdK"
+    }
+  ],
+  "page_claims": [
+    {
+      "recipient": "B",
+      "mode": "oauth",
+      "login": "units-proof-b-mv4m3nji",
+      "claimed": "4148679",
+      "signature": "5wDQSuwEg1mZGqzR8xoMo26Y6wXRyJExxpcJoKjC4mhccSQ6eNB4AXxzHFZpzE9ebuydPhvqgRjtYdZVnborPrz2",
+      "per_agent": [
+        {
+          "agent": "4fJeuNaPiBVr64AK2ewQpehikuYRfe8HoH41xsxuZqbn",
+          "share": "10%",
+          "accrued": "8.296827"
+        }
+      ],
+      "screenshots": [
+        "claim-oauth-1-start.png",
+        "claim-oauth-3-balance.png",
+        "claim-oauth-4-claimed.png"
+      ]
+    },
+    {
+      "recipient": "A",
+      "mode": "gist",
+      "login": "units-proof-a-mv4m3nji",
+      "claimed": "8296296",
+      "signature": "53FmHDj2nHyGfAMS7Q4UjfReapQDLfeZ9x51QLRmN2HH6RHVdQxNAWcQDAMywsdvQxBWPsE56YWfeHdED7tgb2Ww",
+      "per_agent": [
+        {
+          "agent": "CPdU6ayDgKxZzux6GPNhoHve45N7D5xv7ic64Gbs8bJ7",
+          "share": "20%",
+          "accrued": "25.719183"
+        }
+      ],
+      "screenshots": [
+        "claim-gist-1-start.png",
+        "claim-gist-2-statement.png",
+        "claim-gist-3-balance.png",
+        "claim-gist-4-claimed.png"
+      ]
+    }
+  ],
+  "claims": {
+    "recipient_a": {
+      "wallet": "EgZtvvjyR8L9Q1zFLGLF9335ghbDUySmE1RbW4CtJgUo",
+      "first": "9125926",
+      "second": "8296961"
+    },
+    "recipient_b": {
+      "wallet": "EQtAaTyu3D5MWXqdoCXedb8Khta8F1S7aNM13CjqKgjn"
+    },
+    "route_change": {
+      "to": 990050307,
+      "bps": 1500,
+      "delay_s": 20
+    }
+  },
+  "at": "2026-10-12T02:10:13.921Z",
+  "result": "PASS",
+  "passed": 67,
+  "total": 67,
+  "deployer_sol_spent": "0.100025000",
+  "error": null,
+  "checks": [
+    {
+      "name": "upgraded program, flags off before the run",
+      "ok": true,
+      "detail": "features 0, admin CVEZWyUBoNb6Zkte3qa7JDu5TBV4wTH6wMw4pLodnDih"
+    },
+    {
+      "name": "feature bits on",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "both launches name the same repository id",
+      "ok": true,
+      "detail": "850b1af8e345ee9d7969305ffb4eecc91a58999c5cf4007f831deee17d28f791"
+    },
+    {
+      "name": "refused: set_fee_route by someone who is not the agent's owner",
+      "ok": true,
+      "detail": "Unauthorized"
+    },
+    {
+      "name": "refused: a route above the admin's maximum",
+      "ok": true,
+      "detail": "RouteBounds"
+    },
+    {
+      "name": "refused: join_pool by someone who is not the agent's owner (auto_join off)",
+      "ok": true,
+      "detail": "Unauthorized"
+    },
+    {
+      "name": "pool PDA keyed by the repository id holds both members",
+      "ok": true,
+      "detail": "GMoFsvQ13yr5yvxNipRD5QNH2mucL5zW4x14Naeeh6et"
+    },
+    {
+      "name": "AgentLaunch.routes: pool member and GitHub route",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "refused: the eight-account crank for an agent with routes",
+      "ok": true,
+      "detail": "MissingRouteAccounts"
+    },
+    {
+      "name": "refused: a crank of A with B's fee route (the smaller share)",
+      "ok": true,
+      "detail": "WrongRouteAccount"
+    },
+    {
+      "name": "first crank of A: compute, protocol, GitHub and pool slices exact",
+      "ok": true,
+      "detail": "fees 65.185186: compute 27.377778, protocol 19.555556, GitHub 9.125926, pool 9.125926"
+    },
+    {
+      "name": "first crank of A: the protocol share equals today's split",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "first crank of B: compute, protocol, GitHub and pool slices exact",
+      "ok": true,
+      "detail": "fees 59.259260: compute 29.037038, protocol 17.777778, GitHub 4.148148, pool 8.296296"
+    },
+    {
+      "name": "first crank of B: the protocol share equals today's split",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "each member's slice funded its cross-holding first",
+      "ok": true,
+      "detail": "funded 0.500000 each"
+    },
+    {
+      "name": "buckets hold the rest by payout / buyback / burn bps",
+      "ok": true,
+      "detail": "payout 6.568888, buyback 6.568888, burn 3.284446"
+    },
+    {
+      "name": "refused: pool_settle by a key that is not the keeper",
+      "ok": true,
+      "detail": "Unauthorized"
+    },
+    {
+      "name": "refused: pool_settle for an epoch the registry has not posted",
+      "ok": true,
+      "detail": "PoolEpoch"
+    },
+    {
+      "name": "refused: pool_settle with weights that do not sum to 10,000",
+      "ok": true,
+      "detail": "PoolWeights"
+    },
+    {
+      "name": "refused: the same epoch settled twice",
+      "ok": true,
+      "detail": "PoolEpoch"
+    },
+    {
+      "name": "allocation equals the offchain recomputation",
+      "ok": true,
+      "detail": "A: payout 6.568888, buyback 0.328444, burn 0.821111; B: buyback 1.313778, burn 0.821111"
+    },
+    {
+      "name": "the non-author's token gets the larger buyback",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "refused: pool_buy by a key that is not the keeper",
+      "ok": true,
+      "detail": "Unauthorized"
+    },
+    {
+      "name": "staging Core serves the pool from chain",
+      "ok": true,
+      "detail": "vault 17422222"
+    },
+    {
+      "name": "keeper pass ran",
+      "ok": true,
+      "detail": "[\"buyback\",\"burn_buy\",\"buyback\",\"burn_buy\",\"buyback\",\"burn_buy\",\"buyback\",\"burn_buy\",\"prepare\",\"pay\",\"cross_buy\",\"cross_buy\",\"buyback\",\"burn_buy\",\"buyback\",\"burn_buy\"]"
+    },
+    {
+      "name": "no keeper action failed",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "payout reached the author's compute vault",
+      "ok": true,
+      "detail": "6.568888"
+    },
+    {
+      "name": "cross-holdings: A holds B and B holds A, once each, bought with the holder's own slice",
+      "ok": true,
+      "detail": "A bought 1581627 of B for 0.486000; B bought 1581608 of A for 0.486000"
+    },
+    {
+      "name": "buybacks: both members' tokens bought and held by the pool",
+      "ok": true,
+      "detail": "pool holds 2620546 of A and 5737438 of B"
+    },
+    {
+      "name": "the pool's token accounts hold exactly what the records say",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "milestone burn: both members' supply fell by the tokens burned",
+      "ok": true,
+      "detail": "burned 2597349 of A and 2597381 of B"
+    },
+    {
+      "name": "vault balance = buckets + what members are still owed",
+      "ok": true,
+      "detail": "6.688854"
+    },
+    {
+      "name": "wizard lookup: login to numeric id",
+      "ok": true,
+      "detail": "units-proof-a-mv4m3nji -> 880050307"
+    },
+    {
+      "name": "route view names the recipient and the share",
+      "ok": true,
+      "detail": "20% of fees go to @units-proof-a-mv4m3nji"
+    },
+    {
+      "name": "mock OAuth: a session for recipient A's numeric id",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "wallet bound by its signed statement",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "refused: a claim attested by the claimant's own key",
+      "ok": true,
+      "detail": "BadAttestation"
+    },
+    {
+      "name": "mock OAuth claim (recipient A): Core attests",
+      "ok": true,
+      "detail": "ceiling 9125926, seq 0"
+    },
+    {
+      "name": "mock OAuth claim (recipient A): the wallet received the escrow's balance",
+      "ok": true,
+      "detail": "9.125926 tUNITS"
+    },
+    {
+      "name": "refused: mock OAuth claim (recipient A): the same attestation replayed",
+      "ok": true,
+      "detail": "BadAttestation"
+    },
+    {
+      "name": "refused: A's attestation against B's escrow (wrong GitHub id)",
+      "ok": true,
+      "detail": "BadAttestation"
+    },
+    {
+      "name": "gist proof: a session for recipient B bound to the wallet in the gist",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "gist claim (recipient B): Core attests",
+      "ok": true,
+      "detail": "ceiling 4148148, seq 0"
+    },
+    {
+      "name": "gist claim (recipient B): the wallet received the escrow's balance",
+      "ok": true,
+      "detail": "4.148148 tUNITS"
+    },
+    {
+      "name": "refused: gist claim (recipient B): the same attestation replayed",
+      "ok": true,
+      "detail": "BadAttestation"
+    },
+    {
+      "name": "second crank of A: compute, protocol, GitHub and pool slices exact",
+      "ok": true,
+      "detail": "fees 59.264011: compute 24.890885, protocol 17.779204, GitHub 8.296961, pool 8.296961"
+    },
+    {
+      "name": "second crank of A: the protocol share equals today's split",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "second claim after more fees (recipient A): Core attests",
+      "ok": true,
+      "detail": "ceiling 8296961, seq 1"
+    },
+    {
+      "name": "second claim after more fees (recipient A): the wallet received the escrow's balance",
+      "ok": true,
+      "detail": "8.296961 tUNITS"
+    },
+    {
+      "name": "refused: second claim after more fees (recipient A): the same attestation replayed",
+      "ok": true,
+      "detail": "BadAttestation"
+    },
+    {
+      "name": "escrow A: pinned wallet, two claims, claimed = accrued",
+      "ok": true,
+      "detail": "claimed 17.422887"
+    },
+    {
+      "name": "third crank of A: compute, protocol, GitHub and pool slices exact",
+      "ok": true,
+      "detail": "fees 59.259260: compute 24.888890, protocol 17.777778, GitHub 8.296296, pool 8.296296"
+    },
+    {
+      "name": "third crank of A: the protocol share equals today's split",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "second crank of B: compute, protocol, GitHub and pool slices exact",
+      "ok": true,
+      "detail": "fees 59.266849: compute 29.040757, protocol 17.780055, GitHub 4.148679, pool 8.297358"
+    },
+    {
+      "name": "second crank of B: the protocol share equals today's split",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "Claim page, recipient B (mock sign-in): shows the escrow's balance and per-agent accruals, then claims it",
+      "ok": true,
+      "detail": "4.148679 tUNITS, tx 5wDQSuwEg1mZ; rows 4fJeuN 10% 8.296827"
+    },
+    {
+      "name": "Claim page, recipient B: no console error, no monospace, no em dash, no horizontal scroll",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "Claim page, recipient A (gist): shows the escrow's balance and per-agent accruals, then claims it",
+      "ok": true,
+      "detail": "8.296296 tUNITS, tx 53FmHDj2nHyG; rows CPdU6a 20% 25.719183"
+    },
+    {
+      "name": "Claim page, recipient A: no console error, no monospace, no em dash, no horizontal scroll",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "Core flags an attestation for another wallet as a rebind",
+      "ok": true,
+      "detail": "delay 20 s"
+    },
+    {
+      "name": "the change is pending, the route unchanged",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "refused: apply_fee_route inside the delay",
+      "ok": true,
+      "detail": "RouteTimelock"
+    },
+    {
+      "name": "route now names the new account at the new share",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "flags off: today's split to the unit, nothing to the escrow or the pool",
+      "ok": true,
+      "detail": "fees 5.925926: compute 4.148148, protocol 1.777778"
+    },
+    {
+      "name": "refused: set_fee_route with the bit off",
+      "ok": true,
+      "detail": "FeatureOff"
+    },
+    {
+      "name": "refused: pool_settle with the bit off",
+      "ok": true,
+      "detail": "FeatureOff"
+    },
+    {
+      "name": "feature bits off after the run",
+      "ok": true,
+      "detail": ""
+    }
+  ],
+  "transactions": [
+    {
+      "step": "1: set_claim_config, set_pool_config, set_features(pools + github fees)",
+      "signature": "3THi83UsFdcLZ9PykzMWw4Pe9j66yQ4EfFCs3fQPMzGHrUyyYNBRkX3fPDFWjtPmDar9oHxeewsNXDByapDyCJjm",
+      "fee": 5000,
+      "cu": 41071,
+      "bytes": 478
+    },
+    {
+      "step": "2: launch TEST agent A",
+      "signature": "67Br766igfVqyEF8JdCCEK5rUg6q95rvZXSCKQ5fndZpLKtWsDQvio8HBRvdwLXsKxEF1nqwSc7fve5Wq9Ngqtpm",
+      "fee": 15000,
+      "cu": 238817,
+      "bytes": 1017
+    },
+    {
+      "step": "2: launch TEST agent B",
+      "signature": "4VRHngMVpUVbcQxK7tuRvDFYZrWF9juBv2nKGD287Sy7j3mj6Ce6zrmYx7yRJ65qKmsjmRmhGbxdv2qFHBKkGs23",
+      "fee": 15000,
+      "cu": 255317,
+      "bytes": 1017
+    },
+    {
+      "step": "3: set_fee_route A (20%) and B (10%), join_pool A then B",
+      "signature": "5JeFwvj2xqY928A49HwwNAjqmZxFEMkS1XpynE9SNsiC7bZmKXEfSyk1wKvfWP1ZsKEZe37TjAUPRRx9qPRkweYh",
+      "fee": 5000,
+      "cu": 132638,
+      "bytes": 665
+    },
+    {
+      "step": "3: join_pool A",
+      "signature": "2u6p8jQGdAf8GS5B7YugEBDR57GLD3A3haZj5N18gy4PDzjRhmLAc9fhBTyrXYHULq91sv91MwRX2uFd4Jn5KS2",
+      "fee": 5000,
+      "cu": 96690,
+      "bytes": 495
+    },
+    {
+      "step": "3: join_pool B",
+      "signature": "2W7ixGaZ8PJgSKkGfHgQRbxcTfkLb6k1wJA37mMAE3w1vgEiVcFqgqf5x9FoaaSX2Tbx2tzVJXd6tMowk6qHp5iQ",
+      "fee": 5000,
+      "cu": 61071,
+      "bytes": 528
+    },
+    {
+      "step": "4: a first small buy of A",
+      "signature": "3RLLUJCtqbbFhezxqfcFkyoL6YTfH8BBTRbKC593xPMSGqfJHSjLDjoKT246xpmZP8Sy8yfdEJmwsyAjGgvqvXAW",
+      "fee": 5000,
+      "cu": 90066,
+      "bytes": 795
+    },
+    {
+      "step": "4: first trader buys A with 20000.000000 tUNITS",
+      "signature": "32iN4Ugwnjrfz8vz1EciXha5rQxRnNhgD6aghSEwLPsd1WnkZtk6BrURYonYMGfYnfw4FqHTJaH9pR15oegAq73L",
+      "fee": 5000,
+      "cu": 76402,
+      "bytes": 795
+    },
+    {
+      "step": "4: first crank A (sweep, collect, crank_pump_fees with route accounts)",
+      "signature": "aJEk47S95x6YKFrcZznQZNcrYZTsEUzvLeN79pwFjzH5qd3atXJLK3xRBVDuKuNr3hPEZstdrYc9G58GQCMdZM3",
+      "fee": 5000,
+      "cu": 183452,
+      "bytes": 937
+    },
+    {
+      "step": "4: first trader buys B with 20000.000000 tUNITS",
+      "signature": "3T4BcBd8pAje8qmKLVPXkHnQu9dSeJEAj4PwJs63WeqjzRrrux2pmgpGKZPwEoLLxQkNTBGC1wG2L6994LPMJSon",
+      "fee": 5000,
+      "cu": 100586,
+      "bytes": 795
+    },
+    {
+      "step": "4: first crank B (sweep, collect, crank_pump_fees with route accounts)",
+      "signature": "2zFkj2vmkVAcEWj7TfJ3cGrM6GeGY2QgLVAqdYM29ndssM2zH2YMLdJ8GuWJigpfD3vyTQ3PhEfk1LKcQoouBKTB",
+      "fee": 5000,
+      "cu": 214952,
+      "bytes": 937
+    },
+    {
+      "step": "5: pool_settle for registry epoch 19",
+      "signature": "2c1tLWrQ6eu5HGvnKF1c8r6fcKz7odSEUXLLJd5bp6uWPWCFCQUk1F8Bq1trpKBRsaz4yxB2Qt36kKjbatYwNJiS",
+      "fee": 5000,
+      "cu": 33225,
+      "bytes": 441
+    },
+    {
+      "step": "6: staging Core keeper: buyback",
+      "signature": "3JuwgJitpwr14t3ScN7ufkK2kDygLoaH72w3vjbLvzhgQHFzatkKbz7SbszDyi4B2y4RS9Q2VAbBX1J27mDQL1cr",
+      "fee": null,
+      "cu": null,
+      "bytes": 0
+    },
+    {
+      "step": "6: staging Core keeper: burn_buy",
+      "signature": "3gY88WKttWZSfv53dWpdhYmibZ1d4C1mEMtTviTTtMnfih1DB3FX2vXMUEox3xrDxifKKRGeuoArgsd3oDMeLTRn",
+      "fee": null,
+      "cu": null,
+      "bytes": 0
+    },
+    {
+      "step": "6: staging Core keeper: buyback",
+      "signature": "2GBo9nB2E1Hk1dGLnSaum15cYRv7QE5seRwA4w5Fv4VjSU4Qz4iWJbx7TXjYkPuTw91qa7C5C5gCHwvyN95NaCW",
+      "fee": null,
+      "cu": null,
+      "bytes": 0
+    },
+    {
+      "step": "6: staging Core keeper: burn_buy",
+      "signature": "3u3MZFNW3yQcAVdpQ8nWtpzRS95imSVtUxEBHfo53K9szyssPVyMx7ArV2qT5wAygd3nGktY7FWEjBC8APjiochK",
+      "fee": null,
+      "cu": null,
+      "bytes": 0
+    },
+    {
+      "step": "6: staging Core keeper: buyback",
+      "signature": "5wLHHSWuyqEoa9ZWMR2T9qeySkjR4RHiyZAKwcBymUueF8SYKbmQvCqRgcMg2nKt4UrobBFWpcW9AyVUcy5epKgA",
+      "fee": null,
+      "cu": null,
+      "bytes": 0
+    },
+    {
+      "step": "6: staging Core keeper: burn_buy",
+      "signature": "4AEk94Q1sZCaLYt196a5PMpC5ws7uKY1SpQqvvmyAE5XgkbKDakm83CkbZAhbGU8TsgGBPHjVWpySqHF2dZp7RwC",
+      "fee": null,
+      "cu": null,
+      "bytes": 0
+    },
+    {
+      "step": "6: staging Core keeper: buyback",
+      "signature": "4CTrq1JUWLeqay1GaHyE2hLHuADKNMTnxNEnw8ALuUf9y9A2xfgB18QvdH8uaqFS58ryQVp5sb6Dgzz6NK8zDJDW",
+      "fee": null,
+      "cu": null,
+      "bytes": 0
+    },
+    {
+      "step": "6: staging Core keeper: burn_buy",
+      "signature": "45Eo9WmzJumJvtsFL4yAvr83BR53XiopfS74A9MegKwPLG74ddL1tgSrwfWmFHvBdQam28WV7mvYprYzhTUPbg3B",
+      "fee": null,
+      "cu": null,
+      "bytes": 0
+    },
+    {
+      "step": "6: staging Core keeper: prepare",
+      "signature": "5do3HUHskr5EnCG1TbjHLYraUz6HNe8euLkQxfP1TCSGBrQbFrJBosBBiR1hLrEFXX7t6YRuPjVRRcJhQvhMoHGv",
+      "fee": null,
+      "cu": null,
+      "bytes": 0
+    },
+    {
+      "step": "6: staging Core keeper: pay",
+      "signature": "4sReEso6brWigHMW8qSTsh31rvuSr7FWNmpCpzx1o4itg7GtaDfotoqsSFWUZKiKnvFjPUuY5qwCX3ySqzbZh9rN",
+      "fee": null,
+      "cu": null,
+      "bytes": 0
+    },
+    {
+      "step": "6: staging Core keeper: cross_buy",
+      "signature": "Yf4Mb27YWrwFLVCqbw9vtCzNnwU7WnnnAK8ycMC2fsXVk7jnAwQFKVpe9Vuob2ckHkPw6XicUUfhxoGyxVXvMX9",
+      "fee": null,
+      "cu": null,
+      "bytes": 0
+    },
+    {
+      "step": "6: staging Core keeper: cross_buy",
+      "signature": "65fms9M4uHxFdUh3hogHkQdArtLtGiFKhYEVPBZKUwZQepfYWgdgXTdPHgP99eRKGEKYNR3Crj6aTzdz8NsiTkiG",
+      "fee": null,
+      "cu": null,
+      "bytes": 0
+    },
+    {
+      "step": "6: staging Core keeper: buyback",
+      "signature": "4pYLRo5WbmFjbgbjaiB8KeF5pHvMfdR6Mt7iPDJvH4TkHUhBSnPG5bryxhpcJoFu4B76EYToQMNnbKPsUWKgwmuv",
+      "fee": null,
+      "cu": null,
+      "bytes": 0
+    },
+    {
+      "step": "6: staging Core keeper: burn_buy",
+      "signature": "5qQs97aDfGcLy7QrujNPRCxC3TADaMYZdGbbnZdsgBVpoPnpSpV6KUBj3Rso6vqfiZbijrnkdJRN9ZrPpnxMyHM",
+      "fee": null,
+      "cu": null,
+      "bytes": 0
+    },
+    {
+      "step": "6: staging Core keeper: buyback",
+      "signature": "2iu2S64AyZinGhC9sK8iyVHhKf1inMFoFYYyAFU6GZrRU7ZcajnWWjy1zbm6cMSN7PmAAviAAGbqik7tdkMMA2Ji",
+      "fee": null,
+      "cu": null,
+      "bytes": 0
+    },
+    {
+      "step": "6: staging Core keeper: burn_buy",
+      "signature": "2Z8VkTuwNSB344fWYreGEkKkz3nhNJDZWPjHpmpnSGj4Y5RfwVsedHGMHS8Y2MHotJRcPhrTCPCbfRMceB3A6mdK",
+      "fee": null,
+      "cu": null,
+      "bytes": 0
+    },
+    {
+      "step": "7: mock OAuth claim (recipient A): claim_github_fees",
+      "signature": "23QQzhV6BcBwUFFgC74XMo3zEHrgb6ueYKvQ36f6SDDwBLXDWvy1gUkSpBTppF4zi2e6ftZXeNHfekhnfPj2AskF",
+      "fee": 10000,
+      "cu": 51921,
+      "bytes": 720
+    },
+    {
+      "step": "7: gist claim (recipient B): claim_github_fees",
+      "signature": "DhTYcGBjaEg3WiXRX2NhpFqVxJ2vUo2Zy2XaDRLbCf8texQEMGj41HKTJeEYNmrgWr8CUR5rNgkwJkxmRUDeKvR",
+      "fee": 10000,
+      "cu": 54921,
+      "bytes": 720
+    },
+    {
+      "step": "4: second trader buys A with 20000.000000 tUNITS",
+      "signature": "4895sCwvATTdWuBYwBrgVgMPwLgY1r3t8wqiSrocWC3dgpd1t3sq2QgAqd65XKvGChTWiQJFuXg9RREoWfXHDJm8",
+      "fee": 5000,
+      "cu": 76402,
+      "bytes": 795
+    },
+    {
+      "step": "4: second crank A (sweep, collect, crank_pump_fees with route accounts)",
+      "signature": "4dyFtTPA6D1xPU3u7TVhGzuFvMUsxbHnV7BeKYcN56musNyb7NdCH5MBBFzwRJtSqoJi4LeS2aBcUUrm27hAKPsy",
+      "fee": 5000,
+      "cu": 144330,
+      "bytes": 937
+    },
+    {
+      "step": "7: second claim after more fees (recipient A): claim_github_fees",
+      "signature": "4MSKyx6QWaAGa29eJ26r8WJbKZo4bUtGWkbdCCE6TzwXV8BgYyXmHsCJUWbLKbJCd6Fh7VjX47DQNf4f3B7WBvXk",
+      "fee": 10000,
+      "cu": 38263,
+      "bytes": 720
+    },
+    {
+      "step": "4: third trader buys A with 20000.000000 tUNITS",
+      "signature": "3vcXTPd5HtT2C6Mykkb3h57r6P4xZvyUMmPZyyNyhpneVsfW9SKs2TGEJTK9zaQsoeD2Ymi9yZzev5xPWWMgdjkM",
+      "fee": 5000,
+      "cu": 76400,
+      "bytes": 795
+    },
+    {
+      "step": "4: third crank A (sweep, collect, crank_pump_fees with route accounts)",
+      "signature": "4GeWEJZUquKuuPn3TPcc15ezF7CfoavoBVE8CpXHKm94hmvQt1WJibfwDRfC1X7f2NfJHGL4ME6vJUf3h4F7fSSB",
+      "fee": 5000,
+      "cu": 144330,
+      "bytes": 937
+    },
+    {
+      "step": "4: second trader buys B with 20000.000000 tUNITS",
+      "signature": "3BhjydPmZ6Ntc8mSU5Z6Csa71DesUcJs6oqzwftWVXE4HMRSFNWaVG6XsnAHYDqRbhhKnSK3wN3F6hLqv6nMtaFX",
+      "fee": 5000,
+      "cu": 86900,
+      "bytes": 795
+    },
+    {
+      "step": "4: second crank B (sweep, collect, crank_pump_fees with route accounts)",
+      "signature": "3dFNweQnBFrXrxycxecc25YJmrEbXijbpors7man7pQ6L64LTFFH69ztn2wDFEkT8Xrd9tNEVWCzYtP67p2maL5g",
+      "fee": 5000,
+      "cu": 178830,
+      "bytes": 937
+    },
+    {
+      "step": "7b: claim through the Claim page (recipient B, oauth)",
+      "signature": "5wDQSuwEg1mZGqzR8xoMo26Y6wXRyJExxpcJoKjC4mhccSQ6eNB4AXxzHFZpzE9ebuydPhvqgRjtYdZVnborPrz2",
+      "fee": null,
+      "cu": null,
+      "bytes": 0
+    },
+    {
+      "step": "7b: claim through the Claim page (recipient A, gist)",
+      "signature": "53FmHDj2nHyGfAMS7Q4UjfReapQDLfeZ9x51QLRmN2HH6RHVdQxNAWcQDAMywsdvQxBWPsE56YWfeHdED7tgb2Ww",
+      "fee": null,
+      "cu": null,
+      "bytes": 0
+    },
+    {
+      "step": "7: set_fee_route A to recipient B's account (pending)",
+      "signature": "4m3UXm7Yuzjh6zv7YpXkdrSXVeeb4CCeKwZY4tY6Go9jZRfMQGkng4MFcD8keDHt8TSF6xepzzLd9UkK3rVgECnB",
+      "fee": 5000,
+      "cu": 40796,
+      "bytes": 472
+    },
+    {
+      "step": "7: apply_fee_route (anyone)",
+      "signature": "2VK7wgTFsQ2HiwQxCz71Ro3oPBUMCWgxkmJjr747nXArRYyxWjTiVg5X6DEABVq8KkQ6cwHQRetEior9VW47GYHz",
+      "fee": 5000,
+      "cu": 9499,
+      "bytes": 285
+    },
+    {
+      "step": "8: set_features(0)",
+      "signature": "nioSt5VVaZMpEWCi3MFhYZ81FsNvnN9aczLGq9P7a7g8sCreXn98srxi5TgdXYSPfhLG2UR2Cdppvf2TMsS4zb7",
+      "fee": 5000,
+      "cu": 8096,
+      "bytes": 257
+    },
+    {
+      "step": "8: a buy of B with the bits off",
+      "signature": "54VfTF9oNk1FYZP89sWYwDXu9i9s5vQaScWDhn3L6jeNtMaorY627CjCNRGTnYC6kMJbnKACtVEH4q4ayFamxt2m",
+      "fee": 5000,
+      "cu": 86872,
+      "bytes": 795
+    },
+    {
+      "step": "8: the eight-account crank of B (no route accounts)",
+      "signature": "5qst39Rx56trzb25fN1LXwggKxpbAV9ZUbugSWj6Lm86JsGAUrPbnoT7FafqbGyTu1aNB5qE9XLpbuXn6GvG2Y6S",
+      "fee": 5000,
+      "cu": 142052,
+      "bytes": 706
+    },
+    {
+      "step": "cleanup: set_claim_config with the plan's TEST delays (600 s, 120 s)",
+      "signature": "EVUbAhyxx9ft44qx7rkn2RdARULrFYrhZnvC15YsS3SgDGKyE3CqwLZiUczXfi1Y9eKFBaNHaPHQUAuSyZ1uuEX",
+      "fee": 5000,
+      "cu": 12808,
+      "bytes": 352
+    }
+  ]
+}

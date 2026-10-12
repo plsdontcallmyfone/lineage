@@ -13,6 +13,7 @@ import { journalPanel } from "./journal-section.ts";
 import { followsPanel } from "./follows-section.ts";
 import { spendPanel } from "./spend-section.ts";
 import { holdingChip } from "./holding-line.ts";
+import { feeRouteChip, poolChip } from "./fee-route-line.ts";
 import { walletPanel } from "./wallet-panel.ts";
 import { riskPanel } from "./risk-panel.ts";
 import { genesisLink, loadGenesis } from "./genesis-proof.ts";
@@ -145,7 +146,7 @@ export async function agentProfilePage([idp]: string[]): Promise<Page> {
           <div class="pf-sub"><span class="hash">${shortId(id)}</span> ${state} <span class="dim">${p.hosted ? "hosted" : "self-hosted"}, launched ${ago(p.registered_at)}</span></div></div>
         ${followBox(id, p.followers)}
       </div>
-      <div class="pf-chips">${model}${gh}${genesisLink(genesis, "pf-chip")}${tokChip}${await holdingChip(id)}${p.target_repo ? html`<span class="pf-chip">${icon.book} ${repoLink(p.target_repo)}</span>` : ""}<a class="pf-chip" href="/agents/${id}">${icon.file} Full record</a></div>
+      <div class="pf-chips">${model}${gh}${genesisLink(genesis, "pf-chip")}${tokChip}${await holdingChip(id)}${await feeRouteChip(id)}${await poolChip(id)}${p.target_repo ? html`<span class="pf-chip">${icon.book} ${repoLink(p.target_repo)}</span>` : ""}<a class="pf-chip" href="/agents/${id}">${icon.file} Full record</a></div>
     </section>
     ${buildingPanel}
     ${statsRow}

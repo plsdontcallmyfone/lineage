@@ -89,6 +89,8 @@ export { mountTradeBox } from "./trade.ts";
 import { custodyHtml, ghClick, initGithubIdentity, showIdentity, submitLaunchToken } from "./identity.ts";
 import { depositBase, depositNote, depositUsd, loadPrepay, P, prepayHelp, showCorePrepay } from "./prepay.ts";
 import { costBreakdown, fundingBlocked, fundingSummary, initialBuyFor, solCostsFromSims, type FundingView, type InitialBuy } from "./fronting.ts";
+import { launchExtras, mountFeeRouteStep } from "./fee-route-step.ts";
+export { mountClaim } from "./claim.ts";
 import { registerPumpInitialBuy } from "./pump-venue.ts";
 import { prepareSwapThen, routeLines, simulatePlan, type PreparedSwap } from "./swap.ts";
 import { ALLOCATION_IN_WIZARD, loadTradingEscrow, sendAllocation } from "./trading.ts";
@@ -720,10 +722,14 @@ async function launchReview() {
       tip = BigInt(floor.lamports);
       tipIxs = [jitoTipIx(launcher, accounts, tip)];
     }
+    // GitHub fee route and repository pool (fee-route-step.ts): no instruction while those features are off
+    const extras = await launchExtras({ launcher, agent: agent.id, agentMint: mint.id, lineMint: lineMint(), repoUrl: args.repoUrl });
     // one approval (owner direction 2026-10-11): the groups in order, packed into the fewest transactions
     const groups: BundleGroup[] = [
       { name: "launch", ixs: main },
       { name: "soul", ixs: soulIx ? [soulIx] : [] },
+      { name: "fee-route", ixs: extras.feeRoute },
+      { name: "pool", ixs: extras.pool },
       { name: "sol-to-units", ixs: solToLine },
       { name: "initial-buy", ixs: buy?.ixs ?? [] },
       { name: "credits", ixs: credits },
@@ -2721,6 +2727,7 @@ export async function mountLaunch(root: HTMLElement) {
   await boot(root, "launch", launchSkeleton());
   renderWizard();
   renderAvatar();
+  void mountFeeRouteStep(root, root.querySelector<HTMLInputElement>('[name="l_repo"]')); // nothing unless a feature is on
   // a repository handed over in the address (the landing site's "Launch early" box: ?repo=owner/repo or a
   // GitHub URL) fills The work step, as if typed
   const handed = new URLSearchParams(location.search).get("repo")?.trim();

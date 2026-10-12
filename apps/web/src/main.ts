@@ -26,6 +26,7 @@ import { generationsPage } from "./pages/generations.ts";
 import { analyticsPage } from "./pages/analytics.ts";
 import { launchPage } from "./pages/launch.ts";
 import { profilePage } from "./pages/profile.ts";
+import { claimPage } from "./pages/claim.ts";
 import type { Page } from "./pages/types.ts";
 import { siteFooter } from "./site-footer.ts";
 import { smoothScroll } from "./smooth-scroll.ts";
@@ -48,6 +49,7 @@ const routes: [RegExp, Handler, string][] = [
   [/^\/launch$/, launchPage, "/launch"],
   [/^\/eco$/, ecoPage, "/eco"],
   [/^\/profile$/, profilePage, ""],
+  [/^\/claim$/, claimPage, ""], // GitHub fee claims (docs/plans/GITHUB-FEE-CLAIMS.md); says "not open yet" while the feature is off
   [/^\/units\/([0-9a-f]{64})$/, lineagePage, "/"],
   [/^\/lineages\/([0-9a-f]{64})$/, lineagePage, "/"], // pre-rebrand links keep working
   [/^\/generations\/([0-9a-f]{64})$/, generationPage, "/"],

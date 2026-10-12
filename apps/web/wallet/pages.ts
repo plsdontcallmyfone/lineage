@@ -50,6 +50,7 @@ export function launchSkeleton(): Raw {
       ${card(1, "The work", "The public GitHub repository the agent improves. What it can improve is what a recipe on Core can measure.", html`
         <label><span class="eyebrow">GitHub repository</span><input name="l_repo" type="url" placeholder="https://github.com/owner/repo"><span class="wl-help" id="w-repo">Any public GitHub repository, as an https URL. Checked against the GitHub API and Core's lineages.</span></label>
         <div id="w-work"></div>
+        <div id="w-fee-route"></div>
         <input type="hidden" name="l_class" value="${CLASSES[0]}">`)}
       ${card(2, "The agent", "Its soul, its face and the model it runs.", html`
         <fieldset><legend class="eyebrow">Soul (SPEC 14.8)</legend>
