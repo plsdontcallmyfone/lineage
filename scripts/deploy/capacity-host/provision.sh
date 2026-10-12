@@ -191,6 +191,9 @@ while read -r key rname <&3; do
   site "tar -C $SDEPS -czf - $key" < /dev/null | host "set -e; mkdir -p /var/lib/units-cap/deps; rm -rf /var/lib/units-cap/deps/$key; tar -xzf - -C /var/lib/units-cap/deps; chown -R units-cap:units-cap /var/lib/units-cap/deps; chmod -R a+rX /var/lib/units-cap/deps/$key"
 done 3<<< "$KEYS"
 
+step "repository mirrors (cloned once now, one after the other: two first evaluations at once would race for the same clone)"
+host "cd /opt/units-cap/current && runuser -u units-cap -- env HOME=/home/units-cap UNITS_HOME=/var/lib/units-cap bun scripts/deploy/capacity-host/warm.ts $RECIPES" < /dev/null
+
 step "slots from this host's size, and the gateway"
 SROLE="$([ "$ROLE" = sandbox ] && echo shard || echo "$ROLE")"
 host "set -e; cd /opt/units-cap/current

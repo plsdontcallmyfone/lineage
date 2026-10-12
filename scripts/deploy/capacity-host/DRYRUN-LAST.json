@@ -1,5 +1,5 @@
 {
-  "at": "2026-10-12T18:09:11.737Z",
+  "at": "2026-10-12T19:06:57.211Z",
   "passed": 20,
   "total": 21,
   "checks": [
@@ -16,7 +16,7 @@
     {
       "check": "provision.sh full, ROLE=both, on a fresh box",
       "ok": true,
-      "detail": "exit 0, 61 s"
+      "detail": "exit 0, 73 s"
     },
     {
       "check": "provision.sh full re-run on the same box",
@@ -31,12 +31,12 @@
     {
       "check": "provision.sh full, ROLE=sandbox, on a second fresh box",
       "ok": true,
-      "detail": "exit 0, 71 s"
+      "detail": "exit 0, 66 s"
     },
     {
       "check": "two hosts registered in the site's sandbox hosts file",
       "ok": true,
-      "detail": "[{\"name\":\"cap-a\",\"slots\":1,\"basis\":\"10 cores, 7934 MiB, release ca2ac85fdaac-local\"},{\"name\":\"cap-b\",\"slots\":2,\"basis\":\"10 cores, 7934 MiB, release ca2ac85fdaac-local\"}]"
+      "detail": "[{\"name\":\"cap-a\",\"slots\":1,\"basis\":\"10 cores, 7934 MiB, release 872dd2c33404-local\"},{\"name\":\"cap-b\",\"slots\":2,\"basis\":\"10 cores, 7934 MiB, release 872dd2c33404-local\"}]"
     },
     {
       "check": "known_hosts holds one entry per host (its own key)",
@@ -96,7 +96,7 @@
     {
       "check": "register and bond steps printed for the owner",
       "ok": true,
-      "detail": " verifier agent id H2AQ4supzUVc9TGH4vDak4UVs8Fzy21pstQ2pJNjtkhZ"
+      "detail": " verifier agent id D6PbXJmYDUH7zNT3Bj2jz8JpPW4JDVuw6CsR1dLLZkoJ"
     },
     {
       "check": "scale-out proof",

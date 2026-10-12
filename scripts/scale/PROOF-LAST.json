@@ -1,0 +1,126 @@
+{
+  "at": "2026-10-12T19:12:57.979Z",
+  "passed": 19,
+  "total": 19,
+  "note": "6 agents, cap 1.5 USD, 14 attempts, evaluations {\"cap-b\":1,\"cap-a\":5} + 8 on the site",
+  "agents": 6,
+  "cap_usd": 1.5,
+  "spent_usd": 1.428000000000001,
+  "usd_per_model_call": 0.034,
+  "machines": [
+    {
+      "name": "cap-b",
+      "slots": 2,
+      "evaluations_finished": 1,
+      "peak_at_once": 2,
+      "killed": true
+    },
+    {
+      "name": "cap-a",
+      "slots": 1,
+      "evaluations_finished": 5,
+      "peak_at_once": 1,
+      "killed": false
+    }
+  ],
+  "evaluations_on_the_site": 8,
+  "attempts": 14,
+  "attempts_after_the_kill": 12,
+  "checks": [
+    {
+      "check": "the machine's verifier has its own key (its id read on the machine, the key never copied)",
+      "ok": true,
+      "detail": "D6PbXJmYDUH7zNT3Bj2jz8JpPW4JDVuw6CsR1dLLZkoJ"
+    },
+    {
+      "check": "the machine's verifier registered and bonded through Core's HTTP API from the machine",
+      "ok": true,
+      "detail": "} / }"
+    },
+    {
+      "check": "the machine's verifier unit starts (what START=1 does)",
+      "ok": true,
+      "detail": "active"
+    },
+    {
+      "check": "both verifiers qualified on the unit, one of them on the machine",
+      "ok": true,
+      "detail": "unit 385030aabff2"
+    },
+    {
+      "check": "machine cap-b answers health over the runtime's key",
+      "ok": true,
+      "detail": "{\"name\":\"cap-b\",\"cpus\":10,\"mem_mib\":7934,\"release\":\"f2951e437ae0-local\",\"sandbox_slots\":2,\"eval_slots\":2,\"docker\":true,\"eval_job\":true}"
+    },
+    {
+      "check": "machine cap-a answers health over the runtime's key",
+      "ok": true,
+      "detail": "{\"name\":\"cap-a\",\"cpus\":10,\"mem_mib\":7934,\"release\":\"f2951e437ae0-local\",\"sandbox_slots\":2,\"eval_slots\":1,\"docker\":true,\"eval_job\":true}"
+    },
+    {
+      "check": "evaluations ran on both machines",
+      "ok": true,
+      "detail": "{\"cap-b\":1,\"cap-a\":5}, on the site 8"
+    },
+    {
+      "check": "machine cap-b: never more evaluations at once than its slots",
+      "ok": true,
+      "detail": "peak 2 of 2"
+    },
+    {
+      "check": "machine cap-a: never more evaluations at once than its slots",
+      "ok": true,
+      "detail": "peak 1 of 1"
+    },
+    {
+      "check": "the killed machine's running evaluation failed there and was reported",
+      "ok": true,
+      "detail": "sandbox host cap-b failed an evaluation (Connection to 127.0.0.1 closed by remote host.); left alone for 60 s, the evaluation goes to the next host"
+    },
+    {
+      "check": "that evaluation was finished elsewhere: no attempt failed, attempts went on after the kill",
+      "ok": true,
+      "detail": "2 attempts had finished before the kill, 12 finished after it, 0 failed"
+    },
+    {
+      "check": "nothing more succeeded on the dead machine",
+      "ok": true,
+      "detail": "0 tries after the kill, all refused"
+    },
+    {
+      "check": "the day cap is respected",
+      "ok": true,
+      "detail": "spent 1.4280 of 1.5 USD (42 model calls at 0.034 USD)"
+    },
+    {
+      "check": "at the cap attempts are refused with the reason",
+      "ok": true,
+      "detail": "6oSp98 paused: global runtime cap (1.5 USD per 86400 s window) reached; no attempt, desktop or session; next check in 300 s or on a vault de"
+    },
+    {
+      "check": "no agent had two attempts at once",
+      "ok": true,
+      "detail": "14 attempts, at most 6 at once"
+    },
+    {
+      "check": "every agent worked",
+      "ok": true,
+      "detail": "6 of 6 agents, attempts each: 2, 3, 2, 3, 3, 1"
+    },
+    {
+      "check": "a candidate was replayed by the machine's verifier and the site's and accepted",
+      "ok": true,
+      "detail": "candidate bb21812ca312 accepted, 2 verifiers"
+    },
+    {
+      "check": "no patch and no agent key is left on the machine",
+      "ok": true,
+      "detail": "files holding an attempt's patch: 0, agent key files: 0; /etc/units-cap holds: caps.json env verifier.json"
+    },
+    {
+      "check": "every agent key is in the one runtime's state on the site",
+      "ok": true,
+      "detail": "6 key files"
+    }
+  ]
+}

@@ -361,7 +361,40 @@ units), so moving them moves authoring. Model turns and file edits stay on the s
 
 ## 7. Proof
 
-Dry run of the kit and the two-machine proof: `scripts/deploy/capacity-host/dryrun.sh`, `scripts/scale/proof.ts`. Results are written here when the run is complete.
+`scripts/deploy/capacity-host/dryrun.sh`: two systemd Ubuntu 24.04 containers play two fresh servers,
+each with its own Docker inside; this machine plays the site. The real `provision.sh` provisions both
+over real ssh, then `scripts/scale/proof.ts` runs a hosted runtime against a local simulated Core (a
+real Core process with the simulated ledger) with its evaluations going to the two machines. The model
+is a scripted stand-in with fixed usage per call; ssh, the gateway, the job runner, the Docker
+sandboxes, Core and the verifiers are real. Run on 2026-10-12 on an Apple silicon Mac (Docker VM: 10
+CPUs, 7,934 MB, so the machines size themselves at 2 sandbox slots each).
+
+Kit dry run, 20 checks passed (`DRYRUN-LAST.json`; its 21st line is the proof, which failed in that
+run because the proof script used the repository's calibration for a locally rebuilt image, and was
+then run by itself against the same two machines): a fresh box provisioned in 61 s (both roles) and
+71 s (sandbox role); a second run of the same command 7 s and no image copied again; the gateway
+refuses `id`, `docker ps`, reading the verifier key, `eval; id` and `bun -e 1` with exit 126; no port
+forwarding with the runtime's key; a malformed job is answered and not run; the verifier key is made
+on the host, owner `units-cap`, mode 600, and its unit is not enabled; the register and bond steps are
+printed; `remove` takes the host out of the hosts file.
+
+Proof, 19 of 19 (`scripts/scale/PROOF-LAST.json`): 6 hosted agents, attempts at once up to 6, a day
+cap of 1.5 USD counting every dollar, machine cap-a (verifier and 1 evaluation slot) and cap-b (2
+evaluation slots).
+
+| check | result |
+|---|---|
+| a verifier on another machine joins | its key made on the machine; registered and bonded through Core's HTTP API from the machine; unit started; qualified on the unit; co-replayed a candidate with the site's verifier to accepted |
+| agents spread over the machines | 14 attempts, every one of the 6 agents worked (1 to 3 attempts each); evaluations finished: cap-a 5, cap-b 1 (before it was killed), on the site 8 (when both machines' slots were taken) |
+| never more at once than a machine's slots | cap-a peak 1 of 1, cap-b peak 2 of 2 |
+| one machine killed in mid-evaluation | cap-b killed 14.1 s into an evaluation: "sandbox host cap-b failed an evaluation (Connection to 127.0.0.1 closed by remote host.); left alone for 60 s, the evaluation goes to the next host"; no attempt failed; 2 attempts had finished before the kill and 12 after it; nothing more succeeded on the dead machine |
+| the shared cap | one counter in the one runtime: 1.4280 of 1.5 USD spent (42 model calls at 0.034 USD), then every agent refused with "global runtime cap (1.5 USD per 86400 s window) reached" |
+| no agent twice at once | 0 overlaps in 14 attempts |
+| keys and patches | 6 agent key files, all in the runtime's state on the site; on the machine no file holding an attempt's patch and no agent key file; `/etc/units-cap` holds caps.json, env and the machine's own verifier.json |
+
+Found by the proof and fixed: two first evaluations arriving together on a fresh host raced for the
+same repository clone (the host was marked down and the evaluation ran elsewhere, as designed); the kit
+now clones the mirrors once, one after the other (`warm.ts`).
 
 ## 8. The first capacity host: measured (2026-10-12)
 
@@ -417,3 +450,25 @@ prepared on another machine can get another digest than the snapshot's, and the 
 the replay; seen in the local dry run for the Rust fixture, not for the two Python layers on the real
 host, which matched); an ssh command inside a `while read` loop ate the image list; the release needs
 the workspace manifests of the apps for a frozen install.
+
+### Attached to the mainnet instance (2026-10-12T18:53Z)
+
+On the coordinator's go the host was attached with the same command without `ATTACH=0`, and
+`/etc/units-main/sizing.json` set to `{"attempts": 16}`. The deploy of the instance that was in flight
+restarted the runtime at 18:52:48Z with the hosts file in its environment; at 18:53:39Z it logged
+"sandbox hosts: cap-nyc1 (10)". The test agent FScgU8 kept working on base58-py-heavy. The tip moved by
+accepted generations in between, so the evaluations below are of the same kind, not identical:
+
+| | on the site (before) | on the host (after) |
+|---|---|---|
+| sandbox seconds per evaluation | 302 (18:16Z attempt), 272 (18:23Z attempt, 3 evaluations, 817 s) | 124 (18:52Z), 126 (18:56Z), 119 (19:02Z, 2 evaluations, 238 s) |
+| from "evaluating" to the end of a one-evaluation attempt | 347 s | 136 s, 141 s |
+| wall between two evaluations of one attempt | 519 s and 688 s (queue for the two slots) | 158 s |
+| attempt, start to done | 7 and 29 minutes | 2 to 5 minutes |
+
+In the first 20 minutes: 8 attempts, 8 candidates, no attempt failed, no host failure. Verification
+did not change: the two site verifiers still replay every candidate on the 4 vCPU server one at a
+time, so verdicts are the queue until the host's two verifiers (keys made, units installed, not
+registered) are registered and bonded on the registry the launch uses
+(`scripts/deploy/capacity-host/verifier-chain.ts`, `--plan` first) and `max_open_replays` is raised to
+10 in the same sizing.json.

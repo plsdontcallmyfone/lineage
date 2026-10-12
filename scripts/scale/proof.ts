@@ -20,10 +20,11 @@
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { calibId, generateAgentKey, H, signMessage, type AgentKey } from "@units/protocol";
+import { generateAgentKey, type AgentKey } from "@units/protocol";
 import { applyPatch, installSandboxHosts, loadRecipe, materialize, newWorkDir, parseHostsFile, prepareDeps, removeTree, spawnRun, uninstallSandboxHosts, type RunCommand } from "@units/sandbox";
 import { CoreClient } from "../../packages/core/src/client.ts";
 import { AnthropicProposer } from "../../packages/worker/src/proposers/anthropic.ts";
+import { Worker } from "../../packages/worker/src/index.ts";
 import { parseConfig, Runtime, SimBackend } from "../../packages/runtime/src/index.ts";
 import { check, child, log, ok, portFree, results, ROOT, stopAll, waitFor } from "../runtime/lib.ts";
 
@@ -142,8 +143,9 @@ async function main() {
   await ok(admin.post("/v1/admin/faucet", { agent: keys.ref.id, amount: String(net.register_burn) }), "faucet ref");
   await ok(as(keys.ref).post("/v1/agents", {}), "register ref");
   await ok(admin.post(`/v1/admin/agents/${keys.ref.id}/reference`, { reference: true }), "reference");
-  const calibration = { ...JSON.parse(readFileSync(join(ROOT, "recipes/fixture-b58/calibration.json"), "utf8")), snapshot_id: snap.snapshot_id, seed: H("calibration", snap.snapshot_id) };
-  await ok(as(keys.ref).post("/v1/calibrations", { calibration, sig: signMessage(keys.ref, calibId(loaded.recipe_id, snap.snapshot_id, calibration)) }), "calibration");
+  // a real calibration on this machine's image (the committed one belongs to the committed image id)
+  log("reference runner calibrating the fixture in the sandbox (3 runs)");
+  await new Worker({ core: CORE, key: keys.ref, telemetry: false, log: () => {} }).submitCalibration(loaded.recipe_id, snap.snapshot_id, 3);
   // the fixture's perf_encode patch grows rlib_bytes past the 1% guard default: unguarded for the fixture, as scripts/e2e.ts does
   await ok(admin.post("/v1/admin/guard-config", { overrides: { [loaded.recipe_id]: { rlib_bytes: null } } }), "guard config");
   const L = (await ok<any[]>(anon.get("/v1/lineages"), "lineages"))[0].lineage_id as string;
@@ -246,7 +248,7 @@ async function main() {
   check("the killed machine's running evaluation failed there and was reported", failed.length >= 1 && poolLogs.some((m) => m.includes(`sandbox host ${killName} failed an evaluation`)), poolLogs.find((m) => m.includes(`sandbox host ${killName} failed`))?.slice(0, 160));
   const attemptsDone = rtLogs.filter((l) => / attempt done:/.test(l.m));
   const failedAttempts = rtLogs.filter((l) => / attempt failed/.test(l.m));
-  check("that evaluation was finished elsewhere: no attempt failed, attempts went on after the kill", failedAttempts.length === 0 && attemptsDone.length > attemptsBeforeKill, `${attemptsDone.length - attemptsBeforeKill} attempts finished after the kill, ${failedAttempts.length} failed`);
+  check("that evaluation was finished elsewhere: no attempt failed, attempts went on after the kill", failedAttempts.length === 0 && attemptsDone.length > attemptsBeforeKill, `${attemptsBeforeKill} attempts had finished before the kill, ${attemptsDone.length - attemptsBeforeKill} finished after it, ${failedAttempts.length} failed`);
   check("nothing more succeeded on the dead machine", afterKillOk === 0, `${calls.filter((c) => c.host === killName && c.start > killedAt!).length} tries after the kill, all refused`);
 
   // the cap: one counter in the one runtime
@@ -286,9 +288,12 @@ async function main() {
   check("a candidate was replayed by the machine's verifier and the site's and accepted", verdict?.status === "accepted" && replayers.has(vremote) && replayers.has(keys.vlocal.id), verdict ? `candidate ${cands[0]!.slice(0, 12)} ${verdict.status}, ${replayers.size} verifiers` : `no verdict (candidates: ${cands.length})`);
 
   // what is on the surviving machine afterwards
-  const left = machine(`grep -rIl '${MARK}' /var/lib/units-cap --exclude-dir=deps 2>/dev/null | wc -l; find / -xdev \\( -path /proc -o -path /sys -o -path /var/lib/docker \\) -prune -o -type f -name '*.json' -path '*keys*' -print 2>/dev/null | wc -l; ls /var/lib/units-cap`);
-  const [patchFiles, keyFiles] = left.out.split("\n");
-  check("no patch and no agent key is left on the machine", patchFiles?.trim() === "0" && keyFiles?.trim() === "0", `files holding an attempt's patch: ${patchFiles?.trim()}, key files of agents: ${keyFiles?.trim()}; /var/lib/units-cap holds: ${left.out.split("\n").slice(2).join(" ")}`);
+  // a runtime key file is named <agent id>.json: none of the agents' may exist anywhere on the machine,
+  // and the only keypair there is the machine's own verifier key
+  const names = agents.map((a) => `-name '${a.id}.json'`).join(" -o ");
+  const left = machine(`grep -rIl '${MARK}' /var/lib/units-cap --exclude-dir=deps 2>/dev/null | wc -l; find / -xdev \\( -path /proc -o -path /sys -o -path /var/lib/docker \\) -prune -o -type f \\( ${names} \\) -print 2>/dev/null | wc -l; ls /etc/units-cap | tr '\\n' ' '`);
+  const [patchFiles, keyFiles, etc] = left.out.split("\n");
+  check("no patch and no agent key is left on the machine", patchFiles?.trim() === "0" && keyFiles?.trim() === "0", `files holding an attempt's patch: ${patchFiles?.trim()}, agent key files: ${keyFiles?.trim()}; /etc/units-cap holds: ${etc?.trim()}`);
   const siteKeys = Bun.spawnSync(["ls", join(cfg.state_dir, "keys")]).stdout.toString().trim().split("\n").length;
   check("every agent key is in the one runtime's state on the site", siteKeys === AGENTS, `${siteKeys} key files`);
 
