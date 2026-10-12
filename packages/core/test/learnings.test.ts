@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, test } from "bun:test";
 import { journalStatement, signJournal } from "../src/protocol.ts";
-import { checkReport, computeReward, episodeId, hunk, learningsOf, LEARNINGS_LIMITS } from "../src/learnings.ts";
+import { checkReport, computeReward, episodeId, hunk, isEmptyEpisode, learningsOf, LEARNINGS_LIMITS } from "../src/learnings.ts";
 import { authorLeaks, diff, expectOk, honest, makeAuthor, result, runReplays, setup, submit, type Agent, type Env } from "./helpers.ts";
 
 // Agent learnings (docs/plans/AGENT-LEARNINGS.md, SPEC 17.8): one episode per finished attempt, built
@@ -236,6 +236,46 @@ describe("episodes (SPEC 17.8)", () => {
     e.clock.advance(24 * 3600 * 1000 + 1);
     const later = await exportAll(e);
     expect(later.find((x) => x.session_id === s2)?.outcome).toBe("abandoned");
+  });
+
+  test("an empty attempt (no candidate, no event, no model usage) is never published; one with work or spend is", async () => {
+    const e = (env = await setup({ verifiers: 3 }));
+    const a = await makeAuthor(e);
+    const lv = await expectOk(e.anon.get(`/v1/lineages/${e.lineage}`));
+    const bare = async () => (await expectOk(a.c.post("/v1/sessions", { lineage_id: e.lineage, gen_id: lv.tip, commit: lv.snapshot.commit_sha, proposer: "anthropic" }))).session_id as string;
+    // 1: opened and ended with nothing recorded and no report
+    const empty = await bare();
+    await expectOk(a.c.post(`/v1/sessions/${empty}/end`, {}));
+    // 2: nothing recorded, and a report that says no tokens and no spend
+    const zero = await bare();
+    await expectOk(a.c.post(`/v1/sessions/${zero}/end`, {}));
+    await expectOk(a.c.post(`/v1/sessions/${zero}/episode`, { ...report(), usage: { input_tokens: 0, output_tokens: 0, cache_read_tokens: 0, cache_write_tokens: 0, usd: 0 } }));
+    // 3: nothing recorded on the screen, but the model was paid for: kept
+    const paid = await bare();
+    await expectOk(a.c.post(`/v1/sessions/${paid}/end`, {}));
+    await expectOk(a.c.post(`/v1/sessions/${paid}/episode`, report()));
+    // 4: work recorded, no report: kept
+    const worked = await startSession(e, a);
+    await expectOk(a.c.post(`/v1/sessions/${worked}/end`, {}));
+    e.clock.advance(LEARNINGS_LIMITS.bare_grace_ms);
+    const eps = await exportAll(e);
+    expect(new Set(eps.map((x) => x.session_id))).toEqual(new Set([paid, worked]));
+    // no gap in the cursor: the empty ones took no seq
+    expect(eps.map((x) => x.seq)).toEqual([1, 2]);
+    for (const id of [empty, zero]) expect((await e.anon.get(`/v1/learnings/episodes/${id}`)).status).toBe(404);
+    const st = await expectOk(e.anon.get("/v1/learnings/stats"));
+    expect(st).toMatchObject({ episodes: 2, excluded_empty: 2 });
+    // the units view and the shared items never see them either
+    const units = await expectOk(e.anon.get(`/v1/learnings/units?lineage=${e.lineage}`));
+    expect(JSON.stringify(units)).not.toContain(episodeId(empty));
+    expect(JSON.stringify(units)).not.toContain(episodeId(zero));
+    // and a later sweep does not publish or count them again
+    e.clock.advance(60_000);
+    expect(await exportAll(e)).toHaveLength(2);
+    expect((await expectOk(e.anon.get("/v1/learnings/stats"))).excluded_empty).toBe(2);
+    expect(isEmptyEpisode({ outcome: "no_candidate", candidate: null, actions: [], hypotheses: [], cost: null })).toBe(true);
+    expect(isEmptyEpisode({ outcome: "abandoned", candidate: null, actions: [], hypotheses: [], cost: null })).toBe(false);
+    expect(isEmptyEpisode({ outcome: "no_candidate", candidate: null, actions: [], hypotheses: ["a note"], cost: null })).toBe(false);
   });
 
   test("export paging: since is exclusive, next_since resumes, jsonl carries the cursor in headers, filters and hidden", async () => {

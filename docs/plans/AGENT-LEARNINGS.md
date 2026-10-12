@@ -411,5 +411,15 @@ dump lane's agent had ended before filling this in.
   sessions that did call the model spent a median 0.37 USD and stopped without submitting.
   Rerun the same command once agents submit candidates again; a before/after comparison needs
   candidates in both windows.
+- **Empty attempts are left out (owner direction 2026-10-12).** An attempt that ended without a
+  candidate, recorded no step (no read, edit, note, evaluation or result) and no model usage
+  teaches nothing. Core no longer publishes it as an episode (`isEmptyEpisode`,
+  `learnings_skipped`; `GET /v1/learnings/stats` counts them as `excluded_empty`), so it reaches
+  neither the per-agent repositories nor the dump. Episodes published earlier stay. Checked on
+  the site's Core before the change: the 1,452 zero-call attempts above opened no Core session
+  (219 sessions since the block went live, none without an event, and none of the 366 worker
+  reports on record has zero tokens), so they were not in the episodes; what they did take was
+  a desktop each. The hosted runtime now starts no attempt under a minimum useful attempt
+  (`min_useful_attempt`, packages/runtime), which stops them at the source.
 - **Fixed while checking.** Every dump commit message said "0 episodes in all": the message was
   built before the index. It is now built after planning (test added); the contents were right.

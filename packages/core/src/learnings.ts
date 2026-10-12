@@ -44,6 +44,11 @@ export const LEARNINGS_SCHEMA = `
   );
   CREATE INDEX IF NOT EXISTS learnings_episodes_agent ON learnings_episodes(agent, seq);
   CREATE INDEX IF NOT EXISTS learnings_episodes_lineage ON learnings_episodes(lineage_id, seq);
+  CREATE TABLE IF NOT EXISTS learnings_skipped (
+    session_id TEXT PRIMARY KEY,         -- an empty attempt: publishable, but never an episode (isEmptyEpisode)
+    agent TEXT NOT NULL,
+    skipped_at INTEGER NOT NULL
+  );
   CREATE TABLE IF NOT EXISTS learnings_repos (
     agent TEXT PRIMARY KEY,
     body TEXT NOT NULL,
@@ -86,6 +91,21 @@ const parse = <T = any>(s: string | null | undefined): T | null => {
     return null;
   }
 };
+
+/**
+ * An empty attempt (owner direction 2026-10-12): it ended without a candidate, recorded no event (no
+ * read, edit, note, evaluation or result) and no model usage (no report, or one with no tokens and no
+ * spend). It teaches nothing, so it is not published as an episode and never reaches the per-agent
+ * repositories or the findings dump. Episodes published before this rule stay as they are.
+ */
+export function isEmptyEpisode(ep: any): boolean {
+  if (!ep || ep.candidate || ep.outcome !== "no_candidate") return false;
+  if ((ep.actions?.length ?? 0) > 0 || (ep.hypotheses?.length ?? 0) > 0) return false;
+  const c = ep.cost;
+  if (!c) return true;
+  const tokens = (c.input_tokens ?? 0) + (c.output_tokens ?? 0) + (c.cache_read_tokens ?? 0) + (c.cache_write_tokens ?? 0);
+  return !(tokens > 0) && !(c.usd > 0);
+}
 
 export function episodeId(sessionId: string): string {
   return createHash("sha256").update(`lineage-episode-v1|${sessionId}`).digest("hex");
@@ -357,15 +377,21 @@ export class Learnings {
     this.lastSweep = now;
     return this.c.tx(() => {
       const rows = this.db
-        .query<SessionRow, []>("SELECT * FROM sessions WHERE session_id NOT IN (SELECT session_id FROM learnings_episodes) ORDER BY started_at, session_id")
+        .query<SessionRow, []>("SELECT * FROM sessions WHERE session_id NOT IN (SELECT session_id FROM learnings_episodes) AND session_id NOT IN (SELECT session_id FROM learnings_skipped) ORDER BY started_at, session_id")
         .all();
       let n = 0;
+      const skip = this.db.query("INSERT OR IGNORE INTO learnings_skipped (session_id, agent, skipped_at) VALUES (?, ?, ?)");
       const ins = this.db.query("INSERT INTO learnings_episodes (episode_id, session_id, agent, lineage_id, outcome, provider, published_at, json) VALUES (?, ?, ?, ?, ?, ?, ?, ?)");
       for (const s of rows) {
         if (n >= (o.max ?? LEARNINGS_LIMITS.sweep_max)) break;
         if (!this.publishable(s)) continue;
         const ep = this.build(s, now);
         if (!ep) continue;
+        // an empty attempt is counted (stats.excluded_empty) and never published; it takes no seq
+        if (isEmptyEpisode(ep)) {
+          skip.run(s.session_id, s.agent_id, now);
+          continue;
+        }
         ins.run(ep.episode_id, s.session_id, s.agent_id, s.lineage_id, ep.outcome, ep.model.provider, now, JSON.stringify(ep));
         n++;
       }
@@ -643,7 +669,8 @@ export class Learnings {
     const rows = this.db.query<{ agent: string; outcome: string; provider: string | null }, []>("SELECT agent, outcome, provider FROM learnings_episodes").all().filter((r) => !off.has(r.agent));
     const by = (k: "outcome" | "provider") => rows.reduce<Record<string, number>>((m, r) => ((m[r[k] ?? "none"] = (m[r[k] ?? "none"] ?? 0) + 1), m), {});
     const last = this.db.query<{ s: number | null }, []>("SELECT MAX(seq) AS s FROM learnings_episodes").get()?.s ?? 0;
-    return { schema: LEARNINGS_SCHEMA_ID, episodes: rows.length, agents: new Set(rows.map((r) => r.agent)).size, by_outcome: by("outcome"), by_provider: by("provider"), last_seq: last };
+    const empty = this.db.query<{ agent: string }, []>("SELECT agent FROM learnings_skipped").all().filter((r) => !off.has(r.agent)).length;
+    return { schema: LEARNINGS_SCHEMA_ID, episodes: rows.length, agents: new Set(rows.map((r) => r.agent)).size, by_outcome: by("outcome"), by_provider: by("provider"), last_seq: last, excluded_empty: empty };
   }
 
   /** GET /v1/learnings/agents: agents with published episodes (hidden test launches left out unless asked). */
@@ -754,7 +781,7 @@ export function schemaDoc() {
     spec: "docs/SPEC.md 17.8",
     episode_id: 'sha256("lineage-episode-v1|" + session_id), hex',
     sealing:
-      "An episode is published only when its session's gate is open for everyone (candidate final, ended without one, or abandoned) and every candidate its agent had committed by the session's end, its journal entry or its worker report is final. Nothing about an unpublished episode is served.",
+      "An episode is published only when its session's gate is open for everyone (candidate final, ended without one, or abandoned) and every candidate its agent had committed by the session's end, its journal entry or its worker report is final. Nothing about an unpublished episode is served. An empty attempt (no candidate, no recorded event, no model usage) is never published; GET /v1/learnings/stats counts them as excluded_empty.",
     fields: {
       seq: "publication order; the export cursor",
       network: "devnet | mainnet",
