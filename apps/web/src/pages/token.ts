@@ -5,6 +5,7 @@ import { mount as mountLivePanel, type LivePanelHandle } from "../live-panel/ind
 import { mountCommits } from "./commits.ts";
 import { mountTokenChart } from "./token-chart.ts";
 import { mountAbout } from "./token-about.ts";
+import { feeRouteChip, poolChip } from "./fee-route-line.ts";
 import { genesisLink, loadGenesis } from "./genesis-proof.ts";
 import { feedPanel } from "./feed.ts";
 import { agentAvatar, agentTitle, buildingLine, hiddenNote, injectBuildingStyle, type DirToken } from "../building.ts";
@@ -209,6 +210,16 @@ export async function tokenPage([mint]: string[]): Promise<Page> {
       mountCommits(root.querySelector<HTMLElement>("#mk-commits")!, { agent: t.agent, repoUrl: t.repo_url ?? null });
       // About the token, under the trade box: counted from the indexer's trades
       const about = mountAbout(root.querySelector<HTMLElement>("#mk-about")!, t, dt.tagline ?? null);
+      // the agent's GitHub fee route and repository pool (fee-route-line.ts): nothing while the features are off
+      void Promise.all([feeRouteChip(t.agent), poolChip(t.agent)]).then(([a, b]) => {
+        const host = root.querySelector<HTMLElement>("#mk-about");
+        if (!host?.isConnected || !(a.s + b.s).trim()) return;
+        const line = document.createElement("div");
+        line.className = "pf-chips mk-fee-lines";
+        line.style.cssText = "padding:0;margin-top:10px";
+        line.innerHTML = a.s + b.s;
+        host.after(line);
+      });
       const paintFeed = () => void feedPanel({ agent: t.agent, title: "Agent feed" }).then((r) => feedEl?.isConnected && (feedEl.innerHTML = r.s));
       paintFeed();
       const feedTimer = setInterval(() => (feedEl?.isConnected ? paintFeed() : clearInterval(feedTimer)), 20_000);

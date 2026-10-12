@@ -7,7 +7,8 @@
 import { ata, base58Decode, base58Encode, canonicalJson, claimMessage, claims, ed25519Ix, H, token, TOKEN_2022_PROGRAM, type Ix } from "../../../packages/chain/src/browser/index.ts";
 import { html, raw, type Raw } from "../src/html.ts";
 import { banner, icon, kv, panel, stat } from "../src/ui.ts";
-import { loadChainCfg, NET, netName, qsym, signAndSend, units } from "./chain.ts";
+import { fmtUsd, loadUsd, quoteToUsd, usdWhy } from "../src/usd.ts";
+import { loadChainCfg, NET, qsym, signAndSend, units } from "./chain.ts";
 import { connectWallet, onSession, restoreSession, session, startDiscovery } from "./standard.ts";
 
 interface Providers { oauth: { provider: "github" | "mock" } | null; gist: boolean; attestor: string | null; network: string }
@@ -30,8 +31,12 @@ const api = async <T,>(path: string, body?: unknown): Promise<T> => {
   return j as T;
 };
 const short = (a: string) => `${a.slice(0, 4)}…${a.slice(-4)}`;
-const amount = (base: string | bigint | null | undefined) => (base === null || base === undefined ? "TBA" : units(BigInt(base), NET.p.quote.decimals ?? 6));
 const dec = () => NET.p.quote.decimals ?? 6;
+// money: the escrow's amount in the quote coin at the indexer's dollar price, through the app's one
+// formatter (src/usd.ts); the exact coin amount stays in the title
+const usdText = (base: string | bigint) => fmtUsd(quoteToUsd(Number(BigInt(base)) / 10 ** dec()));
+const amount = (base: string | bigint | null | undefined): Raw => (base === null || base === undefined ? html`<span class="faint">TBA</span>`
+  : html`<span class="num" title="${units(BigInt(base), dec())} ${qsym()}${usdWhy() ? `. ${usdWhy()}` : ""}">${usdText(base)}</span>`);
 const explorerTx = (sig: string) => `https://explorer.solana.com/tx/${sig}${NET.p.explorer_cluster ? `?cluster=${NET.p.explorer_cluster}` : ""}`;
 const me = () => session().account?.address ?? null;
 
@@ -150,7 +155,7 @@ const actions: Record<string, (el: HTMLElement) => void | Promise<void>> = {
 
 function agentsTable(r: Recipient): Raw {
   if (!r.agents.length) return html`<div class="panel-b dim">No agent routes fees to this account right now.</div>`;
-  return html`<div class="tw"><table class="t"><thead><tr><th>Agent</th><th class="right">Share of its fees</th><th class="right">Accrued (${qsym()})</th></tr></thead><tbody>
+  return html`<div class="tw"><table class="t"><thead><tr><th>Agent</th><th class="right">Share of its fees</th><th class="right">Accrued</th></tr></thead><tbody>
     ${r.agents.map((a) => html`<tr data-claim-agent="${a.agent}"><td><a class="link" href="/agents/${a.agent}/profile" title="${a.agent}">${short(a.agent)}</a>${a.pending_change ? html` <span class="dim">changes ${new Date(a.pending_change.effective_at * 1000).toLocaleString()}</span>` : ""}</td>
       <td class="right num">${String(a.bps / 100)}%</td><td class="right num">${amount(a.accrued)}</td></tr>`)}
   </tbody></table></div>`;
@@ -159,9 +164,9 @@ function agentsTable(r: Recipient): Raw {
 function balances(r: Recipient): Raw {
   const e = r.escrow;
   return html`<div class="stats" style="--n:3" data-claim-balances>
-    ${stat("Accrued", e ? amount(e.accrued) : "0", `${qsym()}, since the first route`, "sm")}
-    ${stat("Claimed", e ? amount(e.claimed) : "0", e?.wallet ? html`to <span title="${e.wallet}">${short(e.wallet)}</span>` : "nothing yet", "sm")}
-    ${stat("Claimable now", html`<span data-claimable="${e?.claimable ?? "0"}">${e ? amount(e.claimable) : "0"}</span>`, "read from the escrow on chain", "sm")}
+    ${stat("Accrued", e ? amount(e.accrued) : "$0", "since the first route", "sm")}
+    ${stat("Claimed", e ? amount(e.claimed) : "$0", e?.wallet ? html`to <span title="${e.wallet}">${short(e.wallet)}</span>` : "nothing yet", "sm")}
+    ${stat("Claimable now", html`<span data-claimable="${e?.claimable ?? "0"}">${e ? amount(e.claimable) : "$0"}</span>`, `paid in ${qsym()}, read from the escrow on chain`, "sm")}
   </div>`;
 }
 
@@ -169,7 +174,7 @@ function proofCard(): Raw {
   const p = C.providers!;
   if (C.sess) {
     return panel("1. Your GitHub account", html`<div class="panel-b">
-      ${kv([["Account", html`<b data-claim-login>@${C.sess.login}</b> <span class="dim">id ${C.sess.github_id}</span>`], ["Proven by", C.sess.method === "gist" ? "a public gist" : C.sess.method === "mock" ? "the mock sign-in (test provider)" : "GitHub sign-in"],
+      ${kv([["Account", html`<b data-claim-login>@${C.sess.login}</b> <span class="dim">id ${C.sess.github_id}</span>`], ["Proven by", C.sess.method === "gist" ? "a public gist" : C.sess.method === "mock" ? "the mock sign-in" : "GitHub sign-in"],
         ["Valid until", new Date(C.sess.expires_at * 1000).toLocaleTimeString()]])}
       <div class="wl-row" style="margin-top:10px"><button type="button" class="wl-btn" data-claim="signout">Use another account</button></div></div>`);
   }
@@ -196,7 +201,7 @@ function walletCard(): Raw {
   if (s.wallet) {
     const same = w === s.wallet;
     return panel("2. The wallet that receives the fees", html`<div class="panel-b">
-      ${kv([["Bound wallet", html`<span title="${s.wallet}" data-claim-wallet="${s.wallet}">${short(s.wallet)}</span>`], ["Network", netName()]])}
+      ${kv([["Bound wallet", html`<span title="${s.wallet}" data-claim-wallet="${s.wallet}">${short(s.wallet)}</span>`]])}
       ${same ? "" : banner("warn", "Another wallet is connected", `Connect ${short(s.wallet)} to claim, or bind the connected wallet instead.`)}
       ${!same && w ? html`<div class="wl-row" style="margin-top:10px"><button type="button" class="wl-btn" data-claim="bind">Bind ${short(w)} instead</button></div>` : ""}</div>`);
   }
@@ -219,8 +224,8 @@ function claimCard(): Raw {
     ${other ? banner("warn", `These fees are pinned to ${short(pinned!)}`, "The first claim pinned that wallet. Claiming with another one records a request on chain that takes effect after a delay; the pinned wallet can still claim meanwhile.") : ""}
     ${e?.pending_wallet ? banner("info", `A move to ${short(e.pending_wallet.wallet)} is pending`, `It takes effect ${new Date(e.pending_wallet.effective_at * 1000).toLocaleString()}.`) : ""}
     ${!e ? html`<p class="dim">No fees were ever routed to this account.</p>` : ""}
-    ${C.done ? banner("info", html`Claimed <b class="num" data-claimed="${C.done.amount}">${amount(C.done.amount)}</b> ${qsym()}`, html`<a class="link" href="${explorerTx(C.done.signature)}" target="_blank" rel="noopener" data-claim-tx="${C.done.signature}">Transaction ${short(C.done.signature)} ${icon.ext}</a>`) : ""}
-    <div class="wl-row" style="margin-top:10px"><button type="button" class="wl-btn primary" data-claim="claim"${ready && !C.busy ? "" : raw(" disabled")}>${other ? "Request the move to this wallet" : html`Claim ${claimable > 0n ? amount(claimable) : ""} ${qsym()}`}</button></div>
+    ${C.done ? banner("info", html`Claimed <b class="num" data-claimed="${C.done.amount}">${amount(C.done.amount)}</b>`, html`<a class="link" href="${explorerTx(C.done.signature)}" target="_blank" rel="noopener" data-claim-tx="${C.done.signature}">Transaction ${short(C.done.signature)} ${icon.ext}</a>`) : ""}
+    <div class="wl-row" style="margin-top:10px"><button type="button" class="wl-btn primary" data-claim="claim"${ready && !C.busy ? "" : raw(" disabled")}>${other ? "Request the move to this wallet" : html`Claim ${claimable > 0n ? amount(claimable) : ""}`}</button></div>
     <p class="wl-fine" style="margin-top:8px">Fees that arrive after a claim stay in the escrow until the next one. There is no deadline.</p></div>`);
 }
 
@@ -276,6 +281,7 @@ export async function mountClaim(root: HTMLElement) {
   C.err = C.note = C.busy = null;
   C.done = null;
   await loadChainCfg().catch(() => undefined);
+  await loadUsd(); // the dollar price behind every amount here: held 45 s, never throws
   render();
   root.addEventListener("click", (e) => {
     const b = (e.target as HTMLElement).closest<HTMLElement>("[data-claim]");
