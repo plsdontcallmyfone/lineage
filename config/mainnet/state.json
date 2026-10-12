@@ -1,0 +1,30 @@
+{
+  "mode": "mainnet",
+  "test": false,
+  "deployment": "official (single key: the dev wallet is admin and upgrade authority; $UNITS is the quote)",
+  "registry_program": "3GeaTsBUsaXCJ7Dru9tDHiKnVBsoHE6yiTdqqj42JHay",
+  "launch_program": "2vwKsTZm5doa3ahBmpm8Sv3sKPD76Fq2ZZENbNW5BYBq",
+  "msg_program": "jmcb7cBA8aJ5Zra8V6gUsEbgKAoG3h5d2CNpmKsRdky",
+  "line_mint": "GQdEL4MhL4v8bsmMvyBvjh6BdbWqasgkDnJGfaAHpump",
+  "line_token_program": "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb",
+  "line_decimals": 6,
+  "line_venue": "pump.fun",
+  "admin": "6UhUBoVpywefyPoMtQEuwngkPjzFRork4L3dgCVr4jh3",
+  "core_authority": "AYsa2Pn2pzH5SeknsA8TZc3ndA9V3oNpau5oFex4yVtu",
+  "runtime_authority": "CCt4EoNuYhVbk4cXUXBzMLQBfshfPF1f5rLyw22S2uXs",
+  "launch_lookup_table": "6dj2UbcMsYY4BHQNnQmXkkcNs5b4sa7h3C8q6Gj3Fkrc",
+  "compute_sink": "6R5P4MGDwLWob5PU8DwiUrD1dKfgp6rNETDch925eqze",
+  "agent_compute_bps": 7000,
+  "protocol_bps": 3000,
+  "core_epoch_length_s": 900,
+  "network_overrides": {
+    "prepay": {
+      "identity_account_recipient": "6UhUBoVpywefyPoMtQEuwngkPjzFRork4L3dgCVr4jh3"
+    }
+  },
+  "line_pool": {
+    "pool": "8swjg8ZxS6HNNMTMzymHgUpQeHTLQaSEbSgW7A3L1ieX",
+    "baseVault": "8rTTTBkcaRTTxYMkhAkr93Wvok8P2AKaSY25wGB2CfBz",
+    "quoteVault": "3rYF7vGr9PVYhpjNPx5H1UtN6pWkJQzGw3BwR9rvihbg"
+  }
+}

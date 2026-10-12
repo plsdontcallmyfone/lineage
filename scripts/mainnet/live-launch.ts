@@ -121,10 +121,15 @@ async function main() {
   const profile = applyNetworkProfile();
   if (profile.network !== "mainnet") throw new Error("this script is for the mainnet TEST deployment (the repository's default profile); UNITS_NETWORK is set to something else");
   const state = stateFor(profile) as Record<string, any> | null;
-  if (!state?.test) throw new Error("the active mainnet profile is not the TEST deployment (config/profile.json mainnet_deployment): refusing");
+  // --official: the same launch against the OFFICIAL deployment (owner 2026-10-12: a test launch right after go-live);
+  // run it with UNITS_PROFILE_LOCAL naming the official overlay, so the ids and the quote coin are the official ones
+  const OFFICIAL = process.argv.includes("--official");
+  if (!state?.test && !OFFICIAL) throw new Error("the active mainnet profile is not the TEST deployment (config/profile.json mainnet_deployment): refusing");
+  if (OFFICIAL && state?.test === true) throw new Error("--official needs the official profile (UNITS_PROFILE_LOCAL): the active one is the TEST deployment");
   const rpc = Rpc.http(rpcUrlFor(profile), "confirmed");
   if ((await rpc.call<string>("getGenesisHash")) !== "5eykt4UsFv8P8NJdTREpY1vzqKqZKvdpKuc147dw2N9d") throw new Error("the RPC endpoint is not mainnet");
   const reader = new ChainReader(rpc);
+  if (!state) throw new Error("no chain state for the active mainnet profile");
   const COIN = state.line_mint as string, DEC = Number(state.line_decimals);
   const T22 = TOKEN_2022_PROGRAM;
   const sol = (l: bigint | number) => (Number(l) / 1e9).toFixed(9);
@@ -206,7 +211,7 @@ async function main() {
     const cc = (await j("/chain/config")).body;
     check("site: the mainnet TEST deployment (mainnet genesis, test program ids, the test coin as quote, no faucet)",
       cc?.genesis === "5eykt4UsFv8P8NJdTREpY1vzqKqZKvdpKuc147dw2N9d" && cc?.profile?.network === "mainnet" && cc.profile.programs.registry === state!.registry_program && cc.profile.programs.launch === state!.launch_program &&
-      cc.profile.quote.mint === COIN && cc.state?.test === true && !cc.profile.faucet, `registry ${cc?.profile?.programs?.registry}, quote ${cc?.profile?.quote?.mint}`);
+      cc.profile.quote.mint === COIN && (OFFICIAL ? cc.state?.test !== true : cc.state?.test === true) && !cc.profile.faucet, `registry ${cc?.profile?.programs?.registry}, quote ${cc?.profile?.quote?.mint}`);
     if (!S.results.at(-1)!.ok) throw new Error("the site is not the mainnet TEST deployment; nothing was signed");
 
     const browser = await chromium();

@@ -1,7 +1,7 @@
 {
   "_note": "Network profile switch (SPEC 14.10): the one place that says which network and which deployment. Every service (Core, indexer, runtime, the web server) and the pages (through /chain/config, and packages/chain/src/default-profile.ts before it answers) read it. `network` is the default, mainnet; UNITS_NETWORK overrides it for one process (UNITS_NETWORK=devnet selects devnet; the devnet site's env file pins it). `mainnet_deployment` says which deployment the mainnet profile describes, and is the ONE edit that moves the default to the official deployment: `profiles.mainnet` below is written for the OFFICIAL deployment (the launch's program ids 3GeaTs..., 2vwKsT..., jmcb7c..., which are NOT deployed yet, and the official quote), and `mainnet_deployments` maps each name to the overlay file laid over that block, or null for the block as written. Today it is \"test\": config/mainnet-test/profile.json (the mainnet TEST deployment that exists on chain: its program ids, its quote coin shown as UNITS, its state file, swap off). Once the official programs are deployed and initialized, set `mainnet_deployment` to \"official\" (UNITS_MAINNET_DEPLOYMENT overrides it for one process; UNITS_PROFILE_LOCAL names a server instance's own overlay and then is the only overlay). mainnet: no faucet, no TEST labels, a keyed RPC from UNITS_MAINNET_RPC (environment or ~/.config/units/rpc.env; never printed, never sent to a browser, no public fallback, never a fall back to devnet), priority fees from getRecentPrioritizationFees capped below. The official quote: $UNITS does not exist on mainnet yet, so profiles.mainnet quote.mint is a stand-in (PYUSD, the same mint as config/swap.json target_mint). quote.units_mint is the official $UNITS mint the owner named on 2026-10-12, GQdEL4...Hpump, with units_mint_status reserved: a pre-generated pump.fun address that is NOT created yet (no account on mainnet on 2026-10-12), so nothing uses it; `bun scripts/mainnet/units-mint-check.ts` prints its state. Only once it exists as a pump.fun coin paired with SOL or USDC, never mayhem mode, does the owner set quote.mint to it, quote.status to live and units_mint_status to live. No USD price feed is wired here: usd_feed null.",
   "network": "mainnet",
-  "mainnet_deployment": "test",
+  "mainnet_deployment": "official",
   "mainnet_deployments": {
     "test": "config/mainnet-test/profile.json",
     "official": null
@@ -10,42 +10,79 @@
     "devnet": {
       "cluster": "devnet",
       "genesis": "EtWTRABZaYq6iMfeYKouRu166VU2xqa1wcaWoxPkrZBG",
-      "quote": { "source": "chain_state", "symbol": "UNITS", "display": "UNITS", "onchain_symbol": "tLINE", "status": "test" },
+      "quote": {
+        "source": "chain_state",
+        "symbol": "UNITS",
+        "display": "UNITS",
+        "onchain_symbol": "tLINE",
+        "status": "test"
+      },
       "state_file": "scripts/devnet/devnet.json",
       "faucet": true,
       "test_labels": true,
       "swap": false,
       "explorer_cluster": "devnet",
-      "programs": { "registry": "CJk3kwUqSS4qoJD8iu7uhUzSBNySjn9HsqaExpaV9gM2", "launch": "Axo38WX6TBAGGQ2nPpejn5tPsQogygA728baRaeJebGX", "msg": "5uUyWAc9DQEWb3XF1aH8yG62sCjmrEjtAoRB1SD9JFqV" },
-      "features": { "agent_pools": true, "github_fee_claims": true },
+      "programs": {
+        "registry": "CJk3kwUqSS4qoJD8iu7uhUzSBNySjn9HsqaExpaV9gM2",
+        "launch": "Axo38WX6TBAGGQ2nPpejn5tPsQogygA728baRaeJebGX",
+        "msg": "5uUyWAc9DQEWb3XF1aH8yG62sCjmrEjtAoRB1SD9JFqV"
+      },
+      "features": {
+        "agent_pools": true,
+        "github_fee_claims": true
+      },
       "pump_quote_seed": "spot",
       "usd_feed": null,
-      "fees": { "mode": "fixed", "cu_price_micro_lamports": 1 },
-      "confirm": { "poll_ms": 900, "resend_ms": 2500, "rebuilds": 0 }
+      "fees": {
+        "mode": "fixed",
+        "cu_price_micro_lamports": 1
+      },
+      "confirm": {
+        "poll_ms": 900,
+        "resend_ms": 2500,
+        "rebuilds": 0
+      }
     },
     "mainnet": {
       "cluster": "mainnet-beta",
       "genesis": "5eykt4UsFv8P8NJdTREpY1vzqKqZKvdpKuc147dw2N9d",
       "quote": {
         "source": "config",
-        "symbol": "PYUSD",
-        "mint": "2b1kV6DkPAnxd5ixfnxCpjxmKwqjjaYmCZfHsFu24GXo",
+        "symbol": "UNITS",
+        "display": "UNITS",
+        "mint": "GQdEL4MhL4v8bsmMvyBvjh6BdbWqasgkDnJGfaAHpump",
         "decimals": 6,
         "token_program": "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb",
-        "status": "stand-in",
+        "status": "live",
         "units_mint": "GQdEL4MhL4v8bsmMvyBvjh6BdbWqasgkDnJGfaAHpump",
-        "units_mint_status": "reserved"
+        "units_mint_status": "live"
       },
-      "state_file": "scripts/mainnet/mainnet.json",
+      "state_file": "config/mainnet/state.json",
       "faucet": false,
       "test_labels": false,
-      "swap": true,
+      "swap": false,
       "explorer_cluster": null,
-      "programs": { "registry": "3GeaTsBUsaXCJ7Dru9tDHiKnVBsoHE6yiTdqqj42JHay", "launch": "2vwKsTZm5doa3ahBmpm8Sv3sKPD76Fq2ZZENbNW5BYBq", "msg": "jmcb7cBA8aJ5Zra8V6gUsEbgKAoG3h5d2CNpmKsRdky" },
-      "features": { "agent_pools": false, "github_fee_claims": false },
+      "programs": {
+        "registry": "3GeaTsBUsaXCJ7Dru9tDHiKnVBsoHE6yiTdqqj42JHay",
+        "launch": "2vwKsTZm5doa3ahBmpm8Sv3sKPD76Fq2ZZENbNW5BYBq",
+        "msg": "jmcb7cBA8aJ5Zra8V6gUsEbgKAoG3h5d2CNpmKsRdky"
+      },
+      "features": {
+        "agent_pools": false,
+        "github_fee_claims": false
+      },
       "usd_feed": null,
-      "fees": { "mode": "recent", "percentile": 75, "floor_micro_lamports": 1, "cap_micro_lamports": 200000 },
-      "confirm": { "poll_ms": 800, "resend_ms": 2000, "rebuilds": 1 }
+      "fees": {
+        "mode": "recent",
+        "percentile": 75,
+        "floor_micro_lamports": 1,
+        "cap_micro_lamports": 200000
+      },
+      "confirm": {
+        "poll_ms": 800,
+        "resend_ms": 2000,
+        "rebuilds": 1
+      }
     }
   }
 }
