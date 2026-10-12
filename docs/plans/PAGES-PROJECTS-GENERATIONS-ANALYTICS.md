@@ -303,3 +303,83 @@ Checks: `packages/core/test/analytics.test.ts` (dashboard figures, the period be
 attempts apart, author-blind sweep, viewer counts and the hidden rule), `scripts/deploy/gate-desktop.test.ts`
 (the gate's counts and the loopback rule), `tests/ui/analytics.spec.ts` (1280 and 390: figures, every
 card drawn or explained, tooltips, legend and variant toggles, windows, no console error).
+
+## 7. Protocol revenue, a slim status strip (owner request 2026-10-12)
+
+Owner: remove the platform cap block; make the network status widgets a slim strip; add protocol
+revenue to the dashboard from on-chain and Core records only, in the token each inflow was paid in,
+with USD only where a real price exists (SOL). Per-token fee displays stay off token pages and cards
+(app review lane, 2026-10-10): revenue is shown on the Analytics page only.
+
+### 7.1 What flows to protocol-controlled accounts (read from the programs and Core, 2026-10-12)
+
+| Flow | Instruction or path | From | To (protocol account) | Token | Record with a time | On the page |
+|---|---|---|---|---|---|---|
+| Creator fees, protocol share | `units_launch::crank_pump_fees`: `fees - fees * agent_compute_bps / 10000` (`protocol_bps`; devnet 7000 / 3000) | the agent's pump.fun creator fee account | registry treasury (PDA `treasury`; devnet `6b8nxc...4eVt`) | quote token | the indexer's `fee_cranks` row per `FeesCranked` event (signature, block time, fees, to_compute, to_protocol) | KPI, chart, split bar |
+| Slashed bond | `units_registry::slash` (canary, minority, reveal bps of the bond) | the agent's bond vault | reserve vault (PDA `reserve`; devnet `Fy56L9...3wdM`) | quote token | Core `slashes` (in chain mode counted once `chain_slashes.signature` exists, at `posted_at`); a slash a challenge reversed (`slash_reversals`) is left out | KPI, chart |
+| Failed challenge bond | `units_registry::resolve_challenge` with outcome failed | the challenge vault | reserve vault | quote token | Core `challenges` with status `failed` (chain rows: `chain_status = 'failed'`), at `resolved_at`, or `opened_at` where an older row has no resolution time | KPI, chart |
+| units account | 0.05 SOL (Core's `identity_account_price_lamports`) to `identity_account_recipient` inside the launch transactions | the launcher | the recipient wallet (devnet: the $UNITS treasury wallet `GZszrP...`) | SOL | the identity service's `paid` record per agent (lamports, recipient, signatures), dated by the launch's chain time | KPI caption, chart (SOL view), table |
+| Compute paid by agents | `units_launch::debit_compute` (hosted agents only, one debit per agent per usage epoch) | the agent's compute vault | `compute_sink` of the launch config (devnet `GwdGDh...otgU`) | quote token | none per debit: the indexer keeps only `AgentLaunch.debited`, the running total per token | all-time total in the table, outside the revenue figure |
+
+Flows that are not protocol revenue, or have no record, and are not shown:
+
+- `split` moves the treasury's balance to the reserve (`reserve_bps`, devnet 8000) and the epoch pool
+  (`pool_bps`): an internal move of money already counted above, later paid out by `claim` and rebates.
+- `register` burns `register_burn` from a verifier: burnt, nobody receives it.
+- Bounties (`open_bounty`, `release_bounty`, `refund_bounty`): payer to escrow to payee or back; no cut.
+- A challenge refund whose refund account is unusable goes to the reserve (`ChallengeRefundForfeited`):
+  real, but Core keeps no record of it; not shown.
+- Launch credits and vault top-ups go into the agent's own compute vault; pump.fun's trading fees go to pump.fun.
+- The compute sink has no timeline today. Drawing it over time needs the indexer to record
+  `ComputeDebited` events (it already walks each token's launch account) and a backfill; not built.
+  Core's mirrored vault balances are not used for it: a poll nets a debit against a crank in the same interval.
+
+Measured on the devnet site, 2026-10-12 (read-only queries): 53 cranks in the indexer, 20 on the
+current pump.fun venue summing 5,852.763526 quote tokens to the treasury (equal to the treasury's
+on-chain balance that day) and 33 from the retired Meteora deployment, all on hidden test launches;
+0 slashes; 1 failed challenge (bond 1 token, retired deployment); 0 units account payments; debited
+running totals summing 5,739.721495 over eleven token records. The mainnet test instance had no crank and no debit.
+
+### 7.2 Core, indexer and identity service
+
+- Indexer `GET /market/flows[?hidden=1]`: every crank (raw amounts, signature, block time, mint, agent,
+  venue) and each token's counters from its launch account (`fees_claimed`, `to_compute`,
+  `to_protocol`, `debited`). Read only.
+- Identity service `GET /identity/payments`: the `paid` records (agent, mint, launcher, lamports,
+  recipient, signatures, launch time). Public chain facts; no token or key.
+- Core `revenue.ts` keeps a copy of both (tables `revenue_cranks`, `revenue_tokens`,
+  `revenue_identity`, `revenue_sources`), read once a minute over loopback when `UNITS_INDEXER_URL` and
+  `UNITS_IDENTITY_URL` are set (the Core unit sets both; a second instance gets its own ports from the
+  unit rendering and has no identity service). Each read replaces the copy, so it never drifts from the
+  source. A source that stops answering keeps its last copy and reports the error; a source never read
+  is `available: false`, never a zero.
+- Core `GET /v1/analytics/revenue?window=24h|7d|30d|all&hidden=1` (cached 10 s): the same buckets as
+  the dashboard (hours over 24 h, UTC days otherwise; "all" from the first revenue record, at most 90
+  days). Per source: its account, window amount, the period before, bucket series, all-time amount and
+  record counts, raw base units beside the display numbers. `kpi.quote` sums the three quote-token
+  sources; `kpi.sol` is the units account payments. `creator_fees`: fees, to compute vaults, to the
+  treasury, and `routed` (fees minus both: the slices a crank sent to a pool or a GitHub claim), per
+  bucket and per token. `compute_sink`: the running totals. A launch on the hidden list (by mint or
+  agent) is left out unless `hidden=1`. Nothing is priced.
+
+### 7.3 Page
+
+- Headline figure "Protocol revenue": the quote-token inflows of the window with the change against the
+  period before and a sparkline; the caption gives the units account payments in SOL, with USD at the
+  app's current SOL price (`/chain/sol-price`, Jupiter) when it has one. No USD for the quote token.
+- Chart "What does the protocol earn, and from where?": stacked bars per hour or day by source in the
+  quote token; a SOL view for units accounts where the identity service's records exist (two tokens are
+  never summed and never share an axis).
+- "Where do creator fees go?": one stacked bar (agents' compute vaults, protocol treasury, routed) with
+  amounts and shares, the split set on chain, and a folded table of every inflow with its account, the
+  window amount and the all-time amount, including the compute sink's running total.
+- Network status: one strip of one-line chips (label, coloured state, one short detail, the full text
+  as the title) under the charts: Core, market indexer, hosted runtime, machines awake, live sessions,
+  desktops, agents waiting, epoch, site checks, backups, deploy downtime. The tables behind them
+  (desktops, waiting agents, epochs, releases) are one folded block with the other tables. The platform
+  cap block is removed from the page (the route still serves it).
+
+Checks: `packages/core/test/analytics.test.ts` (figures equal the crank, slash, challenge and payment
+records in every window, the period before, hidden launches, a source that stops answering),
+`packages/indexer/test/ingest.test.ts` (`/market/flows` equals the token's fee route and counters),
+`packages/identity/test/identity.test.ts` (the payments list), `tests/ui/analytics.spec.ts`.

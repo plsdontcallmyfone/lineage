@@ -4,12 +4,19 @@ import { expect, test } from "./support/fixtures.ts";
 // The Analytics dashboard (docs/plans/PAGES-PROJECTS-GENERATIONS-ANALYTICS.md 6): headline figures
 // equal Core's GET /v1/analytics/dashboard, every chart is drawn with data or says in one line why
 // not, tooltips give exact values, legends and variants redraw, the window applies to everything;
-// test launches only with ?hidden=1; no fee wording; no horizontal scroll, no em dash, no monospace
-// chrome, no console error; at 1280 and 390.
+// protocol revenue equals Core's GET /v1/analytics/revenue (plan section 7), in the token it was paid in;
+// the network status is one slim strip and the platform cap block is gone; test launches only with
+// ?hidden=1; no horizontal scroll, no em dash, no monospace chrome, no console error; at 1280 and 390.
 
-const FEES = /fees? (claimed|to compute|split)|crank/i;
+/** The page's amount format (apps/web/src/market.ts fmtAmount). */
+const amount = (n: number) => {
+  const a = Math.abs(n);
+  if (a >= 100_000) return n.toLocaleString("en-US", { maximumFractionDigits: 0 });
+  if (a >= 1 || a === 0) return n.toLocaleString("en-US", { maximumFractionDigits: 2 });
+  return n.toLocaleString("en-US", { maximumSignificantDigits: 4 });
+};
 const int = (n: number) => n.toLocaleString("en-US");
-const CARDS = ["improvements", "attempts", "spend", "cost", "models", "heat", "verification", "viewers", "runway", "price"];
+const CARDS = ["improvements", "revenue", "attempts", "spend", "cost", "models", "heat", "verification", "viewers", "runway", "price"];
 const CANVAS = ["improvements", "spend", "cost", "verification", "viewers"];
 
 async function open(page: import("@playwright/test").Page, q = "") {
@@ -29,10 +36,10 @@ for (const win of ["7d", "24h", "30d", "all"]) {
     const d = await data.core(`analytics/dashboard?window=${win}`);
     const errors = await open(page, win === "7d" ? "" : `?window=${win}`);
 
-    // seven headline figures, each with its change against the period before and a sparkline
-    await expect(page.locator(".an-tile[data-kpi]")).toHaveCount(7);
-    await expect(page.locator(".an-tile .an-delta")).toHaveCount(7);
-    expect(await page.locator(".an-tile svg.an-spark, .an-tile .an-spark-none").count()).toBe(7);
+    // eight headline figures, each with its change against the period before and a sparkline
+    await expect(page.locator(".an-tile[data-kpi]")).toHaveCount(8);
+    await expect(page.locator(".an-tile .an-delta")).toHaveCount(8);
+    expect(await page.locator(".an-tile svg.an-spark, .an-tile .an-spark-none").count()).toBe(8);
     // accepted generations only ever grow inside a window; the page may be a few seconds newer than our read
     const shown = Number((await page.locator('[data-kpi="improvements"] b').innerText()).replace(/,/g, ""));
     expect(shown).toBeGreaterThanOrEqual(d.kpis.improvements.value);
@@ -70,15 +77,28 @@ for (const win of ["7d", "24h", "30d", "all"]) {
     // tables are folded closed
     expect(await page.locator("details.an-fold").count()).toBeGreaterThan(0);
     expect(await page.locator("details.an-fold[open]").count()).toBe(0);
-    // the network status widgets are kept
-    await expect(page.locator("#an-network .an-grid .an-w").first()).toBeVisible();
+    // the network status is one slim strip of one-line chips (label, coloured state, one detail); the
+    // old large widgets and the platform cap block are gone
+    const strip = page.locator("#an-network");
+    await expect(strip).toHaveCount(1);
+    await expect(page.locator(".an-grid, .an-w, .an-kpi")).toHaveCount(0);
+    await expect(page.locator(".an-page")).not.toContainText(/Platform cap|Spent this window/i);
+    const chips = strip.locator(".an-chip");
+    expect(await chips.count()).toBeGreaterThanOrEqual(8);
+    for (const id of ["core", "indexer", "runtime", "machines"]) await expect(strip.locator(`[data-chip="${id}"] b`)).not.toBeEmpty();
+    for (const c of await chips.all()) expect(["good", "warn", "bad", "mute"]).toContain(await c.getAttribute("data-tone"));
+    const wide = page.viewportSize()!.width >= 900;
+    const chipBox = (await chips.first().boundingBox())!;
+    expect(chipBox.height, "a chip is one line").toBeLessThanOrEqual(40);
+    expect((await strip.boundingBox())!.height, "the status area is slim").toBeLessThanOrEqual(wide ? 240 : 520);
+    // it sits under the charts
+    expect((await strip.boundingBox())!.y).toBeGreaterThan((await page.locator("#an-charts").boundingBox())!.y);
 
     // no test launch linked without ?hidden=1
     const hidden = new Set((await data.hidden()).map((h) => h.agent).filter(Boolean));
     const linked = await page.locator(".an-page a[href^='/agents/']").evaluateAll((els) => els.map((e) => (e.getAttribute("href") ?? "").split("/")[2]));
     expect(linked.filter((a) => hidden.has(a!)), "test launches linked without ?hidden=1").toEqual([]);
 
-    await expect(page.locator(".an-page")).not.toContainText(FEES);
     expect(await monoChrome(page)).toEqual([]);
     await cleanPage(page);
     expect(errors, "console errors").toEqual([]);
@@ -183,4 +203,85 @@ test("Analytics: the window chips re-render in place, and test launches appear o
   const hidden = new Set((await data.hidden()).map((h) => h.agent).filter(Boolean));
   for (const a of off.agents) expect(hidden.has(a.agent)).toBe(false);
   for (const s of off.live) expect(hidden.has(s.agent)).toBe(false);
+});
+
+for (const win of ["7d", "all"]) {
+  test(`Analytics protocol revenue (${win}): the figure, the chart and the split equal Core's records`, async ({ page, data }) => {
+    const r = await data.core(`analytics/revenue?window=${win}`);
+    const errors = await open(page, win === "7d" ? "" : `?window=${win}`);
+    const src = (id: string) => r.sources.find((x: any) => x.id === id);
+    const fees = src("creator_fees"), idp = src("identity");
+    const tile = page.locator('[data-kpi="revenue"]');
+    await expect(tile.locator(".an-tile-l")).toHaveText("Protocol revenue");
+
+    // the headline figure: the quote-token inflows of the window (cranks only ever add to a window; the
+    // page may be a minute newer than our read), never a USD figure for the quote token
+    if (fees.available && r.kpi.quote.value !== null) {
+      const shown = await tile.locator("b").innerText();
+      expect(shown).not.toContain("$");
+      const num = Number(shown.replace(/,/g, "").replace(/K$/, "e3").replace(/M$/, "e6").replace(/B$/, "e9"));
+      expect(num).toBeGreaterThanOrEqual(r.kpi.quote.value * 0.994);
+      expect(num).toBeLessThanOrEqual(r.kpi.quote.value * 1.25 + 1);
+      await expect(tile.locator("small")).toContainText("to the treasury and reserve");
+    } else await expect(tile.locator("b")).toHaveText("not recorded");
+    // units account payments are SOL; USD appears only beside SOL, and only when there is an amount
+    await expect(tile.locator("small")).toContainText(idp.available ? /[\d.,]+ SOL/ : "not recorded on this instance");
+    if (!idp.available || !idp.value) await expect(tile.locator("small")).not.toContainText("$");
+
+    // the chart: stacked bars by source, or one line saying why nothing is drawn
+    const card = page.locator('[data-card="revenue"]');
+    await expect(card).toBeVisible();
+    await card.scrollIntoViewIfNeeded();
+    const any = r.kpi.quote.value_raw !== "0";
+    if (any) {
+      await expect(card.locator("svg.an-svg")).toHaveCount(1);
+      await expect(card.locator(".an-card-legend")).toContainText("Creator fees, protocol share");
+      await card.locator("svg .hit").last().dispatchEvent("pointermove", { bubbles: true, clientX: 200, clientY: 300 });
+      await expect(card.locator(".an-tip:not([hidden]) .an-tip-h")).toContainText("UTC");
+      await page.mouse.move(2, 2);
+    } else await expect(card.locator(".an-empty")).toContainText(/since [A-Z][a-z]{2} \d+/);
+    // the SOL view exists only where the identity service's records do
+    await expect(card.locator(".an-card-seg button")).toHaveCount(idp.available ? 2 : 0);
+    if (idp.available) {
+      await card.locator(".an-card-seg button", { hasText: "SOL" }).click();
+      if (idp.value_raw === "0") await expect(card.locator(".an-empty")).toContainText("No units account was bought");
+      else await expect(card.locator("svg.an-svg")).toHaveCount(1);
+      await card.locator(".an-card-seg button").first().click();
+    }
+
+    // where creator fees go: one stacked bar whose parts are the crank events' own amounts
+    const split = page.locator("#an-split");
+    await expect(split).toBeVisible();
+    const cf = r.creator_fees;
+    if (cf.available && cf.fees > 0) {
+      const parts = [["compute", cf.to_compute], ["protocol", cf.to_protocol], ...(cf.routed > 0 ? [["routed", cf.routed]] : [])] as [string, number][];
+      await expect(split.locator(".an-split-l li")).toHaveCount(parts.length);
+      await expect(split.locator(".an-split > i")).toHaveCount(parts.filter(([, v]) => v > 0).length);
+      // amounts only grow inside a window; when our read and the page's agree, the text is exact
+      const again = await data.core(`analytics/revenue?window=${win}`);
+      if (again.creator_fees.fees_raw === cf.fees_raw) for (const [k, v] of parts) await expect(split.locator(`[data-part="${k}"] b`)).toHaveText(new RegExp(`^${amount(v).replace(/[.]/g, "\\.")} `));
+    } else await expect(split.locator(".an-line")).toBeVisible();
+    // every inflow with its account, folded closed; the compute sink is a running total outside the figure
+    const fold = split.locator("#an-t-revenue");
+    await fold.locator("summary").click();
+    await expect(fold.locator("tbody tr")).toHaveCount(r.sources.length + 1);
+    await expect(fold.locator("tbody tr").last()).toContainText("not part of the revenue figure");
+    await expect(fold).not.toContainText("TBA");
+
+    // no token page or card carries a fee figure (unchanged); and nothing here overflows
+    await cleanPage(page);
+    expect(await monoChrome(page)).toEqual([]);
+    expect(errors, "console errors").toEqual([]);
+  });
+}
+
+test("Analytics protocol revenue: test launches count only with ?hidden=1", async ({ data }) => {
+  const off = await data.core("analytics/revenue?window=all");
+  const on = await data.core("analytics/revenue?window=all&hidden=1");
+  const hidden = new Set((await data.hidden()).flatMap((h) => [h.mint, h.agent]).filter(Boolean));
+  for (const t of [...off.creator_fees.tokens, ...off.compute_sink.by_token]) expect(hidden.has(t.mint) || hidden.has(t.agent), `${t.mint} is hidden`).toBe(false);
+  expect(BigInt(on.kpi.quote.lifetime_raw) >= BigInt(off.kpi.quote.lifetime_raw)).toBe(true);
+  expect(on.creator_fees.lifetime.cranks).toBeGreaterThanOrEqual(off.creator_fees.lifetime.cranks);
+  // a window is its buckets: each source's figure is the sum of its series
+  for (const x of off.sources) expect(x.series_raw.reduce((t: bigint, v: string) => t + BigInt(v), 0n).toString()).toBe(x.value_raw);
 });

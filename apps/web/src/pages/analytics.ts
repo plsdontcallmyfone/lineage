@@ -1,9 +1,9 @@
 import { get } from "../api.ts";
-import { shortHex, shortId, stamp, when } from "../fmt.ts";
+import { ago as agoText, shortHex, shortId, stamp, when } from "../fmt.ts";
 import { esc, html, raw, type Raw } from "../html.ts";
-import { fmtAmount, fmtInt, market, QUOTE } from "../market.ts";
-import { badge, empty, panel, reasonText } from "../ui.ts";
-import { agentLabel, chartSlot, chip, hours, injectInsightsStyle, kpis, mountInsightCharts, pct, qs, secs, usd, wireInsights } from "./insights-ui.ts";
+import { addrLink, fmtAmount, fmtInt, market, QUOTE } from "../market.ts";
+import { badge, empty, reasonText } from "../ui.ts";
+import { agentLabel, chip, hours, injectInsightsStyle, pct, qs, secs, usd, wireInsights } from "./insights-ui.ts";
 import { providerName } from "./social-ui.ts";
 import type { Page } from "./types.ts";
 import { CHART_CSS, fmtVal, mountCard, shortDay, slotColor, sparkline, tone, type CardDef, type ChartSpec, type TimeSpec, type Unit } from "./analytics-charts.ts";
@@ -13,9 +13,12 @@ import { CHART_CSS, fmtVal, mountCard, shortDay, slotColor, sparkline, tone, typ
 // charts that each answer one question, the network status widgets, and a few tables folded closed.
 // Every figure is Core's GET /v1/analytics/dashboard (bucket aggregates of published learnings
 // episodes, accepted generations, replays of final candidates, live sessions, the runtime's report and
-// the gate's viewer counts), GET /v1/analytics/overview and /ops for the status row, or the market
-// indexer. The window (24 h, 7 d, 30 d, all) applies to every figure and chart. A block whose series is
-// empty says so in one line; a block that cannot have data yet is not rendered. No fee figure.
+// the gate's viewer counts), GET /v1/analytics/revenue (protocol revenue from on-chain and Core records,
+// plan section 7), GET /v1/analytics/overview and /ops for the status strip, or the market indexer.
+// The window (24 h, 7 d, 30 d, all) applies to every figure and chart. A block whose series is empty
+// says so in one line; a block that cannot have data yet is not rendered. Protocol revenue is shown
+// here only (token pages and cards carry no fee figure), in the denomination it was paid in; a USD
+// figure appears only beside SOL, from the app's SOL price (/chain/sol-price).
 
 type O = any;
 const WINDOWS: [string, string][] = [
@@ -25,20 +28,75 @@ const WINDOWS: [string, string][] = [
   ["all", "All time"],
 ];
 
-// ------------------------------------------------------------------------------------------------ network
+// ------------------------------------------------------------------------------------------------ network status
 
-export function networkSection(o: O, idx: any | null): Raw {
+type Tone = "good" | "warn" | "bad" | "mute";
+interface StatusChip {
+  id: string;
+  label: string;
+  state: string;
+  tone: Tone;
+  detail: string;
+}
+
+/** One line per service or counter: a small coloured state and one short detail (the full text is the title). */
+function statusChips(o: O | null, idx: any | null, ops: O | null): StatusChip[] {
+  const out: StatusChip[] = [];
+  const ago = (ms: number | null | undefined) => (ms ? agoText(ms) : "at a time not recorded");
+  if (o) {
+    const n = o.network;
+    const rt = n.runtime;
+    const rel = n.core.release;
+    out.push({ id: "core", label: "Core", state: "up", tone: "good", detail: `since ${ago(n.core.started_at)}${rel ? `, release ${shortHex(rel.current, 7)}` : ""}` });
+    out.push(idx ? { id: "indexer", label: "Market indexer", state: idx.ok ? "up" : "degraded", tone: idx.ok ? "good" : "warn", detail: `last cycle ${ago((idx.last_cycle_at ?? 0) * 1000)}, ${fmtInt(idx.rpc_stats?.errors ?? null)} RPC errors` } : { id: "indexer", label: "Market indexer", state: "not answering", tone: "bad", detail: "GET /market/status gave no answer" });
+    const fresh = rt && Date.now() - rt.reported_at < 5 * 60_000;
+    out.push(rt ? { id: "runtime", label: "Hosted runtime", state: fresh ? "reporting" : "quiet", tone: fresh ? "good" : "warn", detail: `last spend report ${ago(rt.reported_at)}` } : { id: "runtime", label: "Hosted runtime", state: "no report", tone: "mute", detail: "the runtime posts about once a minute" });
+    out.push({ id: "machines", label: "Machines awake", state: `${fmtInt(n.machines.awake)} of ${fmtInt(n.machines.total)}`, tone: n.machines.awake ? "good" : "mute", detail: `heartbeat every ${n.machines.heartbeat_s} s` });
+    out.push({ id: "sessions", label: "Live sessions", state: fmtInt(n.sessions.live), tone: n.sessions.live ? "good" : "mute", detail: `${n.sessions.with_desktop} with a desktop, ${n.sessions.agents} agents` });
+    const d = rt?.desktops;
+    if (d) {
+      const parts = [d.local && ["this server", d.local], d.hosts && ["desktop hosts", d.hosts], d.e2b && ["E2B", d.e2b]].filter(Boolean) as [string, any][];
+      const running = parts.reduce((t, [, x]) => t + (x.running ?? 0), 0), max = parts.reduce((t, [, x]) => t + (x.max ?? 0), 0);
+      out.push({ id: "desktops", label: "Desktops", state: `${fmtInt(running)} of ${fmtInt(max)}`, tone: running ? "good" : "mute", detail: parts.map(([l, x]) => `${l} ${fmtInt(x.running)} of ${fmtInt(x.max)}`).join(", ") || "no slot reported" });
+    }
+    out.push({ id: "waiting", label: "Agents waiting", state: fmtInt(n.waiting.length), tone: n.waiting.length ? "warn" : "good", detail: n.waiting.length ? [...new Set(n.waiting.map((w: any) => String(w.category).replace(/_/g, " ")))].join(", ") : `none of ${n.bound_agents} hosted agents reported a wait` });
+    const ep = n.epochs;
+    out.push({ id: "epochs", label: "Epoch", state: ep.current === null ? "not started" : String(ep.current), tone: ep.unposted.length ? "warn" : "good", detail: `${ep.closed} closed, ${ep.chain ? `${ep.chain.epochs_posted ?? "not read"} posted on chain` : `${ep.posted} posted`}${ep.unposted.length ? `, ${ep.unposted.length} waiting to post` : ""}` });
+  }
+  if (ops) {
+    const m = ops.monitor;
+    const checks: any[] = m?.checks ?? [];
+    const notOk = checks.filter((c) => c.level !== "ok");
+    const backups = checks.filter((c) => String(c.id).startsWith("backup"));
+    const rt = ops.restore_tests?.[0];
+    const iw = ops.deploys?.in_window;
+    if (m) out.push({ id: "checks", label: "Site checks", state: `${checks.length - notOk.length} of ${checks.length} ok`, tone: notOk.some((c) => c.level === "fail") ? "bad" : notOk.length ? "warn" : "good", detail: notOk.length ? notOk.map((c) => `${c.id}: ${c.msg}`).join("; ") : `all passing, last run ${ago(m.at)}` });
+    if (backups.length) {
+      const bad = backups.some((c) => c.level === "fail"), ok = backups.every((c) => c.level === "ok");
+      out.push({ id: "backups", label: "Backups", state: ok ? "fresh" : bad ? "stale" : "warning", tone: ok ? "good" : bad ? "bad" : "warn", detail: rt ? `restore test ${rt.result ?? "not recorded"} ${ago(rt.ended_at)}` : backups.map((c) => c.msg).join("; ") });
+    }
+    if (iw && iw.probes) out.push({ id: "downtime", label: "Deploy downtime", state: secs(iw.longest_gap_ms / 1000), tone: iw.non_200 ? "warn" : "good", detail: `longest gap between two 200 answers over ${iw.deploys} deploys; ${fmtInt(iw.non_200)} of ${fmtInt(iw.probes)} probes not 200` });
+  }
+  return out;
+}
+
+function statusStrip(o: O | null, idx: any | null, ops: O | null): Raw {
+  const chips = statusChips(o, idx, ops);
+  if (!chips.length) return html`<section class="panel an-status" id="an-network"><p class="an-line" style="padding-top:14px">Core did not answer the network status. It loads again with the page.</p></section>`;
+  const worst: Tone = chips.some((c) => c.tone === "bad") ? "bad" : chips.some((c) => c.tone === "warn") ? "warn" : "good";
+  const n = chips.filter((c) => c.tone === "warn" || c.tone === "bad").length;
+  return html`<section class="panel an-status" id="an-network" aria-labelledby="an-network-h">
+    <div class="an-status-h"><h2 id="an-network-h">Network status</h2><span class="an-chip-s" data-tone="${worst}"><i></i>${n ? `${n} of ${chips.length} need a look` : "all normal"}</span></div>
+    <ul class="an-chips">${chips.map((c) => html`<li class="an-chip" data-chip="${c.id}" data-tone="${c.tone}" title="${c.label}: ${c.state}. ${c.detail}"><i></i><span>${c.label}</span><b>${c.state}</b><small>${c.detail}</small></li>`)}</ul>
+  </section>`;
+}
+
+/** The tables the status strip summarises, folded closed with the others. */
+function networkDetail(o: O | null): Raw | "" {
+  if (!o) return "";
   const n = o.network;
   const rt = n.runtime;
   const rel = n.core.release;
-  const services: [string, Raw | string, Raw | string][] = [
-    ["Core", html`<span class="good-t">up</span>`, html`since ${when(n.core.started_at)}${rel ? html`, release <span class="num">${shortHex(rel.current, 7)}</span>` : ""}`],
-    ["Market indexer", idx ? html`<span class="${idx.ok ? "good-t" : ""}">${idx.ok ? "up" : "degraded"}</span>` : html`<span class="faint">not answering</span>`, idx ? html`last cycle ${when((idx.last_cycle_at ?? 0) * 1000)}, ${fmtInt(idx.rpc_stats?.errors ?? null)} RPC errors` : "GET /market/status"],
-    ["Hosted runtime", rt ? html`<span class="${Date.now() - rt.reported_at < 5 * 60_000 ? "good-t" : ""}">${Date.now() - rt.reported_at < 5 * 60_000 ? "reporting" : "quiet"}</span>` : html`<span class="faint">no report</span>`, rt ? html`last spend report ${when(rt.reported_at)}` : "the runtime posts about once a minute"],
-    ["Machines awake", html`${fmtInt(n.machines.awake)}<span class="faint"> of ${fmtInt(n.machines.total)}</span>`, `heartbeat every ${n.machines.heartbeat_s}s`],
-    ["Live sessions", String(n.sessions.live), `${n.sessions.with_desktop} with a desktop, ${n.sessions.agents} agents`],
-    ["Epochs", n.epochs.current === null ? "TBA" : `${n.epochs.current}`, html`${n.epochs.closed} closed${n.epochs.chain ? html`, ${n.epochs.chain.epochs_posted ?? "TBA"} posted on chain` : html`, ${n.epochs.posted} posted`}`],
-  ];
   const d = rt?.desktops;
   const desk = d
     ? html`<div class="tw"><table class="t"><thead><tr><th>Desktops</th><th class="right">Running</th><th class="right">Slots</th><th class="right hide-sm">Spend today</th></tr></thead><tbody>
@@ -46,65 +104,25 @@ export function networkSection(o: O, idx: any | null): Raw {
         ${d.hosts ? html`<tr><td>Desktop hosts<div class="sub">${fmtInt(d.hosts.up)} of ${fmtInt(d.hosts.count)} up</div></td><td class="right num">${fmtInt(d.hosts.running)}</td><td class="right num">${fmtInt(d.hosts.max)}</td><td class="right hide-sm faint">no metered cost</td></tr>` : ""}
         ${d.e2b ? html`<tr><td>E2B</td><td class="right num">${fmtInt(d.e2b.running)}</td><td class="right num">${fmtInt(d.e2b.max)}</td><td class="right hide-sm num">${usd(d.e2b.spent_today_usd)} <span class="faint">of ${usd(d.e2b.cap_usd)} (UTC day)</span></td></tr>` : ""}
       </tbody></table></div>${d.required ? html`<div class="panel-note">Every attempt waits for its own live desktop.</div>` : ""}`
-    : empty("No desktop report", "The hosted runtime reports its desktop slots with its spend report.");
-  const cap = rt?.cap;
-  const capBody = cap
-    ? html`${kpis([
-        ["Spent this window", usd(cap.spent_usd), cap.window_end ? html`window ends ${when(cap.window_end)}` : "lifetime cap"],
-        ["Cap", usd(cap.max_usd), cap.scope === "subsidized" ? "counts spend the vaults could not pay" : "counts every USD"],
-        ["Left", usd(cap.left_usd), cap.max_usd ? pct(((cap.spent_usd ?? 0) / cap.max_usd) * 100, 1) + " used" : ""],
-        ["Lifetime", usd(cap.lifetime_usd), "since the runtime started counting"],
-      ])}
-      ${cap.past_windows?.length ? chartSlot({ type: "bar", label: "platform cap spend per past window, USD", bars: cap.past_windows.map((w: any) => ({ label: w.start ? new Date(w.start).toISOString().slice(5, 10) : "", v: w.usd ?? 0, tip: `${w.start ? stamp(w.start) : ""}: ${usd(w.usd)} of ${usd(cap.max_usd)}` })) }, 96) : ""}`
-    : empty("No cap report", "The hosted runtime reports its platform cap with its spend report.");
+    : "";
   const waiting = n.waiting.length
     ? html`<div class="tw"><table class="t"><thead><tr><th>Agent</th><th>Why it waits</th><th class="right hide-sm">Reported</th></tr></thead><tbody>${n.waiting.map(
         (w: any) => html`<tr><td><a class="link" href="/agents/${w.agent}/profile">${agentLabel(w.agent, w.name)}</a></td><td>${badge(w.category, w.category === "other" ? "" : "warn")}<div class="sub">${w.waiting}</div></td><td class="right hide-sm">${when(w.reported_at)}</td></tr>`,
       )}</tbody></table></div>`
-    : empty("No agent is waiting", `${n.bound_agents} agents bound to the hosted runtime; none reported a wait.`);
+    : "";
   const ep = n.epochs;
-  const epochs = html`<div class="ins-pad ins-note">
+  const epochs = html`<p class="an-line an-line-t">
     ${ep.last_closed ? html`Epoch ${ep.last_closed.n} closed ${when(ep.last_closed.closed_at)}. ` : "No epoch closed yet. "}
     ${ep.last_posted ? html`Epoch ${ep.last_posted.n} posted on chain ${when(ep.last_posted.at)}. ` : ""}
-    ${ep.chain ? html`The registry reports ${ep.chain.epochs_posted ?? "TBA"} epochs posted, last ${ep.chain.last_epoch ?? "TBA"} (read ${when(ep.chain.read_at)}). ` : ""}
-    ${ep.unposted.length ? html`Not posted yet: ${ep.unposted.map((u: any) => `${u.n} (${u.attempts} attempts${u.error ? `: ${u.error}` : ""})`).join(", ")}.` : "Nothing waits to be posted."}</div>`;
+    ${ep.chain ? html`The registry reports ${ep.chain.epochs_posted ?? "an unread number of"} epochs posted, last ${ep.chain.last_epoch ?? "not read"} (read ${when(ep.chain.read_at)}). ` : ""}
+    ${ep.unposted.length ? html`Not posted yet: ${ep.unposted.map((u: any) => `${u.n} (${u.attempts} attempts${u.error ? `: ${u.error}` : ""})`).join(", ")}.` : "Nothing waits to be posted."}</p>`;
   const releases = rel?.releases?.length
     ? html`<ol class="an-rel">${rel.releases.slice(0, 8).map((r: any) => html`<li><span class="num">${shortHex(r.commit, 7)}</span>${r.commit === rel.current ? html` ${badge("running", "good")}` : ""}<span class="sub">${stamp(r.at)}</span></li>`)}</ol>`
-    : html`<p class="ins-pad ins-note">Release history is read on the deployed site (one directory per deployed commit); this Core runs outside it.</p>`;
+    : "";
   const deps = n.deployments?.length
     ? html`<ul class="an-rel">${n.deployments.map((x: any) => html`<li><b>${x.label}</b><span class="sub">first seen ${stamp(x.first_seen_at)}${x.retired_at ? `, retired ${stamp(x.retired_at)}` : ", current"}</span></li>`)}</ul>`
     : "";
-  // every item is its own widget, all the same size in one grid (the platform cap, with its chart, takes two)
-  const kpiWidget = ([l, v, sub]: [string, Raw | string, Raw | string]) =>
-    html`<section class="panel an-w an-kpi"><span class="eyebrow">${l}</span><b>${v}</b><small>${sub}</small></section>`;
-  return html`<section class="an-sec" id="an-network" aria-labelledby="an-network-h"><h2 class="an-h" id="an-network-h">Network status</h2>
-    <div class="an-grid">
-      ${services.map(kpiWidget)}
-      ${panel("Waiting agents", waiting, { count: n.waiting.length, cls: "an-w" })}
-      ${panel("Desktops", desk, { cls: "an-w" })}
-      ${panel("Platform cap (hosted runtime)", capBody, { cls: "an-w an-w2" })}
-      ${panel("Epochs", epochs, { cls: "an-w" })}
-      ${panel("Deploys", html`${releases}${deps ? html`<div class="ins-pad" style="padding-top:0"><div class="eyebrow">Chain deployments</div>${deps}</div>` : ""}`, { cls: "an-w" })}
-    </div>
-  </section>`;
-}
-
-// ------------------------------------------------------------------------------------------------ site checks
-
-/** Compact infrastructure widgets beside the network status: the monitor's checks, backups, measured deploy downtime. */
-function opsWidgets(x: O): Raw {
-  const m = x.monitor;
-  const checks: any[] = m?.checks ?? [];
-  const notOk = checks.filter((c) => c.level !== "ok");
-  const backups = checks.filter((c) => String(c.id).startsWith("backup"));
-  const rt = x.restore_tests?.[0];
-  const iw = x.deploys?.in_window;
-  const w = (l: string, v: Raw | string, sub: Raw | string) => html`<section class="panel an-w an-kpi an-kpi-s"><span class="eyebrow">${l}</span><b>${v}</b><small>${sub}</small></section>`;
-  return html`<div class="an-grid an-grid-s">
-    ${m ? w("Site checks", html`${checks.length - notOk.length}<span class="faint"> of ${checks.length} ok</span>`, notOk.length ? notOk.map((c) => `${c.id}: ${c.msg}`).join("; ") : html`all passing, last run ${when(m.at)}`) : ""}
-    ${backups.length ? w("Backups", backups.every((c) => c.level === "ok") ? "fresh" : backups.some((c) => c.level === "fail") ? "stale" : "warning", rt ? html`restore test ${rt.result ?? "TBA"} ${when(rt.ended_at)}` : backups.map((c) => c.msg).join("; ")) : ""}
-    ${iw && iw.probes ? w("Deploy downtime", secs(iw.longest_gap_ms / 1000), `longest gap between two 200 answers over ${iw.deploys} deploys in the window; ${fmtInt(iw.non_200)} of ${fmtInt(iw.probes)} probes not 200`) : ""}
-  </div>`;
+  return html`<details class="panel an-fold" id="an-t-network"><summary><span>Network detail: desktops, waiting agents, epochs, releases</span></summary>${desk}${waiting}${epochs}${releases}${deps}</details>`;
 }
 
 // ------------------------------------------------------------------------------------------------ headline figures
@@ -176,7 +194,22 @@ async function loadMarket(d: O): Promise<Market | null> {
   return { series, value: series.reduce((s, x) => s + x, 0), prev: d.prev ? prev : null, tokens: pick.length, capped: list.length > pick.length, candles, list };
 }
 
-function kpiRow(d: O, m: Market | null, win: string): Raw {
+/** SOL amounts keep their own unit; the USD beside them is the app's current SOL price, when it has one. */
+const solText = (v: number | null | undefined) => (v === null || v === undefined ? "no value" : `${v.toLocaleString("en-US", { maximumFractionDigits: 4 })} SOL`);
+const solUsd = (v: number | null | undefined, price: number | null) => (v && price ? ` (${usd(v * price)} at the current SOL price)` : "");
+
+function revenueTile(r: O | null, solPrice: number | null): Kpi {
+  const base = { id: "revenue", label: "Protocol revenue", good: "up" as const, color: slotColor(1) };
+  if (!r) return { ...base, value: "no answer", cur: null, prev: null, series: [], sub: "Core did not answer the revenue route" };
+  const k = r.kpi.quote;
+  const id = r.sources.find((x: any) => x.id === "identity");
+  const fees = r.sources.find((x: any) => x.id === "creator_fees");
+  const sol = id?.available ? `${solText(id.value)}${solUsd(id.value, solPrice)} for units accounts` : "units account payments are not recorded on this instance";
+  if (k.value === null || !fees?.available) return { ...base, value: "not recorded", cur: null, prev: null, series: [], sub: `the market indexer's fee records have not reached Core; ${sol}` };
+  return { ...base, value: `${compactAmount(k.value)}`, cur: k.value, prev: k.prev, series: k.series, sub: `${QUOTE} to the treasury and reserve; ${sol}`, prevText: (x) => `${compactAmount(x)} ${QUOTE}` };
+}
+
+function kpiRow(d: O, m: Market | null, win: string, r: O | null, solPrice: number | null): Raw {
   const k = d.kpis;
   const acc = k.acceptance;
   const v = k.viewers;
@@ -188,6 +221,7 @@ function kpiRow(d: O, m: Market | null, win: string): Raw {
     { id: "agents", label: "Live agents", value: fmtInt(k.agents.value), cur: k.agents.value, prev: k.agents.prev, good: "up", series: k.agents.series, color: tone.accent(), sub: `in an attempt in the window; ${fmtInt(k.agents.live_now)} live right now` },
     { id: "viewers", label: "Viewers now", value: v.value === null ? "not sampled" : fmtInt(v.value), cur: v.peak, prev: v.prev_peak, good: "up", series: v.series, color: slotColor(4), sub: v.since === null ? "the gate's counts are sampled from this release on" : `watching live desktops; peak ${v.peak === null ? "not sampled" : fmtInt(v.peak)} in the window`, prevText: (x) => `peak ${fmtInt(x)}` },
     { id: "volume", label: "Market volume", value: m ? compactAmount(m.value) : "no answer", cur: m ? m.value : null, prev: m ? m.prev : null, good: "up", series: m ? m.series : [], color: slotColor(2), sub: m ? `${QUOTE} traded over ${m.tokens} listed tokens${m.capped ? " (the 20 largest)" : ""}` : "the market indexer did not answer", prevText: (x) => `${compactAmount(x)} ${QUOTE}` },
+    revenueTile(r, solPrice),
   ];
   return html`${tiles.map((t) => kpiTile(t, win))}`;
 }
@@ -203,6 +237,7 @@ interface CardShell {
 }
 const CARDS: CardShell[] = [
   { id: "improvements", title: "How much verified work has landed, and where?", sub: "Accepted generations, cumulative, stacked by project. Each step is one generation whose replays confirmed it.", h: 300, wide: true },
+  { id: "revenue", title: "What does the protocol earn, and from where?", sub: "Inflows to protocol accounts per hour or day, by source, from on-chain events and Core's records. Each in the token it was paid in; nothing is priced.", h: 250 },
   { id: "attempts", title: "How do attempts end?", sub: "Attempts by outcome per hour or day, from published learnings episodes. Scripted test attempts (a recipe patch, no model) are left out unless added.", h: 250 },
   { id: "spend", title: "What does the spend buy?", sub: "Model spend and the accepted improvements of the same attempts, on one time axis.", h: 280 },
   { id: "cost", title: "What does one accepted improvement cost?", sub: "Model spend over accepted improvements: running through the window, and each hour or day on its own.", h: 250 },
@@ -227,7 +262,7 @@ const OUTCOMES: [string, string, () => string][] = [
   ["abandoned", "Abandoned", () => "#5f5c56"],
 ];
 
-function cardDefs(d: O, m: Market | null): Map<string, CardDef | null> {
+function cardDefs(d: O, m: Market | null, r: O | null): Map<string, CardDef | null> {
   const unit: Unit = d.axis.unit === "hour" ? "hour" : "day";
   const per = unit;
   const t: number[] = d.axis.t;
@@ -280,6 +315,34 @@ function cardDefs(d: O, m: Market | null): Map<string, CardDef | null> {
       };
     },
   });
+
+  // protocol revenue by source: one stacked bar per bucket in the quote token; units account payments
+  // are SOL, so they are their own view (never a second axis, never a sum across tokens)
+  if (!r) out.set("revenue", null);
+  else {
+    const rt: number[] = r.axis.t;
+    const runit: Unit = r.axis.unit === "hour" ? "hour" : "day";
+    const src = (id: string) => r.sources.find((x: any) => x.id === id);
+    const fees = src("creator_fees"), idp = src("identity");
+    const rsince = `since ${shortDay(r.range.from)} (UTC)`;
+    const z = (xs: (number | null)[]) => xs.map((x) => x ?? 0);
+    out.set("revenue", {
+      id: "revenue",
+      variants: idp?.available ? [["quote", QUOTE], ["sol", "SOL"]] : undefined,
+      build: (variant): ChartSpec =>
+        variant === "sol"
+          ? { kind: "stack", unit: runit, t: rt, fmt: "amount", height: 250, yLabel: `SOL per ${runit}`, series: [{ key: "identity", name: REV_NAMES.identity, color: slotColor(4), values: z(idp.series) }], empty: `No units account was bought ${rsince}. Each one is ${idp.price_lamports ? `${solText(Number(idp.price_lamports) / 1e9)}` : "a payment in SOL"}, paid in the launch transactions.` }
+          : {
+              kind: "stack", unit: runit, t: rt, fmt: "amount", height: 250, yLabel: `${QUOTE} per ${runit}`,
+              series: [
+                { key: "creator_fees", name: REV_NAMES.creator_fees, color: slotColor(1), values: z(fees.series) },
+                { key: "slashes", name: REV_NAMES.slashes, color: slotColor(3), values: z(src("slashes").series) },
+                { key: "challenge_bonds", name: REV_NAMES.challenge_bonds, color: slotColor(6), values: z(src("challenge_bonds").series) },
+              ],
+              empty: fees.available ? `No protocol inflow in ${QUOTE} ${rsince}.${r.first_record_at && r.first_record_at > r.range.from ? ` Records start ${shortDay(r.first_record_at)}.` : ""}` : `The market indexer's fee records have not reached Core, so nothing is drawn ${rsince}.`,
+            },
+    });
+  }
 
   const scriptedTotal = Object.values(d.attempts.totals.scripted as Record<string, number>).reduce((s, x) => s + x, 0);
   out.set("attempts", {
@@ -404,6 +467,66 @@ function cardDefs(d: O, m: Market | null): Map<string, CardDef | null> {
   return out;
 }
 
+// ------------------------------------------------------------------------------------------------ protocol revenue
+
+const REV_NAMES = {
+  creator_fees: "Creator fees, protocol share",
+  slashes: "Slashed bonds",
+  challenge_bonds: "Failed challenge bonds",
+  identity: "Units accounts",
+};
+const REV_WHAT: Record<string, string> = {
+  creator_fees: "the treasury's part of every creator fee collection",
+  slashes: "bond taken from a verifier or agent, kept by the reserve",
+  challenge_bonds: "the bond of a challenge that failed, kept by the reserve",
+  identity: "paid in SOL in the launch transactions",
+};
+const share = (part: number, whole: number) => (whole > 0 ? `${((part / whole) * 100).toFixed(1)}%` : "0%");
+
+/** Where creator fees went (a single stacked bar) and every protocol inflow with its account. */
+function revenueSplit(r: O | null, solPrice: number | null, win: string): Raw | "" {
+  if (!r) return "";
+  const cf = r.creator_fees;
+  const span = win === "all" ? "all time" : win === "24h" ? "the last 24 h" : win === "7d" ? "the last 7 d" : "the last 30 d";
+  const parts = [
+    { key: "compute", name: "Agents' compute vaults", v: cf.to_compute ?? 0, color: slotColor(0) },
+    { key: "protocol", name: "Protocol treasury", v: cf.to_protocol ?? 0, color: slotColor(1) },
+    { key: "routed", name: "Routed by the agent (pool, GitHub)", v: cf.routed ?? 0, color: slotColor(2) },
+  ].filter((x) => x.key !== "routed" || x.v > 0);
+  const total = cf.fees ?? 0;
+  const bps = r.split_bps;
+  const bar = !cf.available
+    ? html`<p class="an-line">The market indexer's fee records have not reached Core on this instance.</p>`
+    : total > 0
+      ? html`<div class="an-split" role="img" aria-label="Creator fees in ${span}: ${parts.map((x) => `${x.name} ${share(x.v, total)}`).join(", ")}">${parts.filter((x) => x.v > 0).map((x) => html`<i style="flex:${x.v} 1 0;--k:${x.color}" title="${x.name}: ${fmtAmount(x.v)} ${QUOTE} (${share(x.v, total)})"></i>`)}</div>
+          <ul class="an-split-l">${parts.map((x) => html`<li data-part="${x.key}"><i style="--k:${x.color}"></i><span>${x.name}</span><b>${fmtAmount(x.v)} ${QUOTE}</b><small>${share(x.v, total)}</small></li>`)}</ul>`
+      : html`<p class="an-line">No creator fees were collected in ${span}.${cf.lifetime.cranks ? ` ${fmtInt(cf.lifetime.cranks)} collections before it.` : ""}</p>`;
+  const row = (x: any) => {
+    const sol = x.denom === "sol";
+    const amt = (v: number | null) => (v === null ? html`<span class="faint">not recorded</span>` : sol ? `${solText(v)}${solUsd(v, solPrice)}` : `${fmtAmount(v)} ${QUOTE}`);
+    return [
+      html`${REV_NAMES[x.id as keyof typeof REV_NAMES]}<div class="an-sub">${REV_WHAT[x.id]}</div>`,
+      x.account ? addrLink(x.account) : html`<span class="faint">not read</span>`,
+      x.available ? amt(x.value) : html`<span class="faint" title="${x.error ?? ""}">no record source</span>`,
+      x.available ? amt(x.lifetime) : html`<span class="faint">no record source</span>`,
+    ];
+  };
+  const cs = r.compute_sink;
+  const rows = [
+    ...r.sources.map(row),
+    [
+      html`Compute paid by agents<div class="an-sub">hosted agents' vaults pay for their model and sandbox use; a running total on chain, not part of the revenue figure</div>`,
+      cs.account ? addrLink(cs.account) : html`<span class="faint">not read</span>`,
+      html`<span class="faint">no dated record</span>`,
+      cs.available && cs.debited !== null ? `${fmtAmount(cs.debited)} ${QUOTE}` : html`<span class="faint">no record source</span>`,
+    ],
+  ];
+  return html`<section class="panel an-card" id="an-split" data-card-static="split"><div class="an-card-h"><div><h2>Where do creator fees go?</h2><p>Every collection of creator fees in ${span}, as its on-chain event split it${bps?.agent_compute != null ? `. Set on chain: ${bps.agent_compute / 100}% to the agent's compute vault, ${bps.protocol / 100}% to the protocol` : ""}.</p></div>${cf.available ? html`<span class="an-count">${fmtInt(cf.cranks)} collections</span>` : ""}</div>
+    <div class="an-split-b">${bar}</div>
+    <details class="an-fold an-fold-in" id="an-t-revenue"><summary><span>Protocol inflows by source and account</span><span class="an-count">${rows.length}</span></summary>${tbl(["Source", "Account~", `.In ${span}`, ".All time"], rows)}<div class="panel-note">Amounts are in the token they were paid in. A USD figure is shown only beside SOL.</div></details>
+  </section>`;
+}
+
 // ------------------------------------------------------------------------------------------------ live now and tables
 
 function liveNow(d: O): Raw {
@@ -426,7 +549,7 @@ function tbl(head: string[], rows: (Raw | string)[][]): Raw {
 const fold = (id: string, title: string, count: number, body: Raw, note?: string): Raw | "" =>
   count ? html`<details class="panel an-fold" id="${id}"><summary><span>${title}</span><span class="an-count">${count}</span></summary>${body}${note ? html`<div class="panel-note">${note}</div>` : ""}</details>` : "";
 
-function tables(d: O, ops: O | null): Raw {
+function tables(d: O, ops: O | null, o: O | null): Raw {
   const agents: any[] = d.agents.filter((a: any) => a.attempts || a.scripted || a.runway || a.generations);
   const aRows = agents.map((a) => [
     html`<a class="link" href="/agents/${a.agent}/profile">${agentLabel(a.agent, a.name)}</a>${a.test_launch ? html` ${badge("test launch")}` : ""}${a.live ? html` <span class="ins-live">live</span>` : ""}`,
@@ -454,37 +577,36 @@ function tables(d: O, ops: O | null): Raw {
     ${fold("an-t-reasons", "Why model attempts ended without a generation", rRows.length, tbl(["Outcome", "Reason", ".Attempts", ".Spend"], rRows), "Model attempts only. A verdict's reason for rejected candidates, the worker's stop note otherwise.")}
     ${fold("an-t-verifiers", "Verifiers", vRows.length, tbl(["Verifier", ".Replays", ".Counted", ".Minority~", ".Disagreement", ".Median replay~"], vRows), f.n ? `Median time from a candidate's commit to its first replay: ${secs(f.median)} over ${f.n} candidates.` : undefined)}
     ${fold("an-t-deploys", "Deploys and measured downtime", dRows.length, tbl(["Release", "Result", "Started~", ".Probes not 200", ".Longest gap"], dRows), "The public health path is probed once a second while public units restart.")}
-    ${fold("an-t-checks", "Site checks", cRows.length, tbl(["Check", "State", "What it saw"], cRows))}`;
+    ${fold("an-t-checks", "Site checks", cRows.length, tbl(["Check", "State", "What it saw"], cRows))}
+    ${networkDetail(o)}`;
 }
 
 const CSS = `
-.an-sec{display:grid;grid-template-columns:minmax(0,1fr);gap:20px}
-.an-sec>.panel+.panel{margin-top:0}
-.an-h{font-family:var(--display);font-weight:500;font-size:28px;letter-spacing:-.03em;margin-top:8px}
-.an-rel{list-style:none;margin:0;padding:10px 16px;display:grid;gap:6px;font-size:13px}
+.an-rel{list-style:none;margin:0;padding:10px 18px;display:grid;gap:6px;font-size:13px}
 .an-rel li{display:flex;flex-wrap:wrap;gap:4px 10px;align-items:center}
 .an-rel .sub{color:var(--tt);font-size:12px}
-.an-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));grid-auto-rows:240px;gap:16px}
-.an-grid>.panel{margin:0;display:flex;flex-direction:column;min-height:0;overflow:auto}
-.an-grid>.panel>.panel-h{position:sticky;top:0;z-index:1;background:var(--bg2)}
-.an-grid>.panel>*{flex:none}
-.an-grid>.panel>.empty{flex:1}
-.an-grid .t td,.an-grid .t th{white-space:nowrap}
-.an-w2{grid-column:span 2}
-.an-kpi{justify-content:space-between;padding:16px 18px}
-.an-kpi b{font-family:var(--display);font-weight:500;font-size:40px;letter-spacing:-.04em;line-height:1;font-variant-numeric:tabular-nums;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.an-kpi b .faint{font-size:18px;letter-spacing:-.01em}
-.an-kpi small{color:var(--tt);font-size:12.5px;line-height:1.45}
-@media (max-width:1280px){.an-grid{grid-template-columns:repeat(3,minmax(0,1fr))}}
-@media (max-width:1000px){.an-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
-@media (max-width:640px){.an-grid{grid-template-columns:minmax(0,1fr);grid-auto-rows:auto}.an-grid>.panel{max-height:340px}.an-w2{grid-column:auto}.an-kpi{gap:10px}}
+.an-status{margin:0;padding:0;overflow:hidden}
+.an-status-h{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:12px 18px 10px}
+.an-status-h h2{font:500 15px/1.25 var(--sans);letter-spacing:-.015em;color:var(--tp)}
+.an-chip-s{display:inline-flex;align-items:center;gap:7px;color:var(--ts);font:500 12px/1 var(--sans);background:var(--bg3);padding:5px 9px;border-radius:8px;white-space:nowrap}
+.an-chips{list-style:none;margin:0;padding:0;display:grid;grid-template-columns:repeat(4,minmax(0,1fr));border-top:1px solid var(--border);overflow:hidden}
+.an-chip{display:flex;align-items:center;gap:8px;min-width:0;height:38px;padding:0 16px 0 18px;box-shadow:1px 0 0 var(--border),0 1px 0 var(--border);font:400 12.5px/1 var(--sans);white-space:nowrap}
+.an-chip>i,.an-chip-s>i{flex:none;width:7px;height:7px;border-radius:50%;background:var(--tt)}
+.an-chip[data-tone="good"]>i,.an-chip-s[data-tone="good"]>i{background:var(--good)}
+.an-chip[data-tone="warn"]>i,.an-chip-s[data-tone="warn"]>i{background:var(--warn)}
+.an-chip[data-tone="bad"]>i,.an-chip-s[data-tone="bad"]>i{background:var(--bad)}
+.an-chip>span{flex:none;color:var(--tt)}
+.an-chip>b{flex:none;font-weight:500;color:var(--tp);font-variant-numeric:tabular-nums}
+.an-chip>small{flex:1 1 0;min-width:0;overflow:hidden;text-overflow:ellipsis;color:var(--tt);font-size:12px;text-align:right}
+@media (max-width:1100px){.an-chips{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media (max-width:640px){.an-chips{grid-template-columns:minmax(0,1fr)}.an-chip{height:34px;padding:0 14px}.an-status-h{padding:12px 14px 10px}}
 `;
 
 // ------------------------------------------------------------------------------------------------ page
 
 const PAGE_CSS = `
 .an-page{gap:20px}
-.an-kpis{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:1px;background:var(--border);border-radius:22px;corner-shape:squircle;overflow:hidden;box-shadow:var(--card-glow)}
+.an-kpis{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:1px;background:var(--border);border-radius:22px;corner-shape:squircle;overflow:hidden;box-shadow:var(--card-glow)}
 .an-tile{background:var(--bg2);padding:14px 16px 12px;min-width:0;display:flex;flex-direction:column;gap:6px}
 .an-tile-l{font:500 12px/1.2 var(--sans);letter-spacing:-.01em;color:var(--tt);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .an-tile-v{display:flex;flex-wrap:wrap;align-items:center;gap:4px 8px;min-height:30px}
@@ -500,8 +622,25 @@ const PAGE_CSS = `
 .an-charts>.panel+.panel{margin-top:0}
 .an-wide{grid-column:1 / -1}
 .an-card[hidden]{display:none}
-#an-live-slot{min-width:0;display:grid}
-#an-missing:empty,#an-live-slot:empty{display:none}
+#an-live-slot,#an-split-slot{min-width:0;display:grid}
+#an-missing:empty,#an-live-slot:empty,#an-split-slot:empty{display:none}
+.an-split-b{padding:10px 18px 4px}
+.an-split-b>.an-line{padding:0 0 10px}
+.an-split{display:flex;gap:2px;height:22px}
+.an-split>i{display:block;min-width:3px;background:var(--k)}
+.an-split>i:first-child{border-radius:4px 0 0 4px}
+.an-split>i:last-child{border-radius:0 4px 4px 0}
+.an-split>i:only-child{border-radius:4px}
+.an-split-l{list-style:none;margin:12px 0 0;padding:0;display:grid}
+.an-split-l li{display:grid;grid-template-columns:10px minmax(0,1fr) auto 52px;align-items:center;gap:10px;padding:7px 0;font-size:13px}
+.an-split-l li+li{box-shadow:0 -1px 0 var(--border)}
+.an-split-l i{width:10px;height:10px;border-radius:3px;background:var(--k)}
+.an-split-l span{color:var(--ts);min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.an-split-l b{font-weight:500;color:var(--tp);font-variant-numeric:tabular-nums;white-space:nowrap}
+.an-split-l small{color:var(--tt);font-size:12px;text-align:right;font-variant-numeric:tabular-nums}
+.an-fold-in{margin-top:auto;border-top:1px solid var(--border)}
+.an-fold-in .t td{vertical-align:top}
+.an-line-t{padding-top:14px}
 .an-line{padding:6px 18px 16px;color:var(--tt);font-size:13px;line-height:1.45}
 .an-count{flex:none;color:var(--tt);font:500 12px/1 var(--sans);font-variant-numeric:tabular-nums;background:var(--bg3);padding:4px 8px;border-radius:8px}
 .an-live{list-style:none;margin:0;padding:2px 8px 10px;display:grid}
@@ -519,17 +658,15 @@ const PAGE_CSS = `
 .an-fold>summary:focus-visible{outline:2px solid var(--accent);outline-offset:-2px}
 .an-folds{display:grid;gap:10px}
 .an-sub{color:var(--tt);font-size:12px}
-.an-grid-s{grid-auto-rows:auto;margin-top:16px}
-.an-kpi-s{min-height:150px}
-.an-kpi-s b{font-size:30px}
 .an-err{padding:18px}
-@media (max-width:1180px){.an-kpis{grid-template-columns:repeat(4,minmax(0,1fr))}.an-tile:first-child{grid-column:span 2}}
 @media (max-width:900px){.an-charts{grid-template-columns:minmax(0,1fr)}}
 @media (max-width:640px){
   .an-kpis{grid-template-columns:repeat(2,minmax(0,1fr))}
   .an-tile-v>b{font-size:24px}
   .an-live li{grid-template-columns:auto minmax(0,1fr) auto}
   .an-live-p,.an-live-t{display:none}
+  .an-split-l span{white-space:normal}
+  .an-split-b{padding:10px 14px 4px}
 }
 `;
 function injectStyle() {
@@ -554,12 +691,12 @@ function start(root: HTMLElement, win: string, hidden: boolean) {
   let stopped = false;
   const $ = (sel: string) => page.querySelector<HTMLElement>(sel);
 
-  const paint = (d: O, o: O | null, ops: O | null, idx: O | null, m: Market | null) => {
+  const paint = (d: O, o: O | null, ops: O | null, idx: O | null, m: Market | null, r: O | null, solPrice: number | null) => {
     for (const c of cards) c();
     cards = [];
-    $("#an-kpis")!.innerHTML = kpiRow(d, m, win).s;
+    $("#an-kpis")!.innerHTML = kpiRow(d, m, win, r, solPrice).s;
     $("#an-updated")!.innerHTML = html`Updated ${when(d.now)}. Window: ${shortDay(d.range.from)} to ${shortDay(Math.min(d.now, d.range.to - 1))} (UTC)${d.prev ? "" : ", from the first record"}.`.s;
-    const defs = cardDefs(d, m);
+    const defs = cardDefs(d, m, r);
     const missing: string[] = [];
     for (const shell of CARDS) {
       const el = $(`[data-card="${shell.id}"]`);
@@ -572,21 +709,23 @@ function start(root: HTMLElement, win: string, hidden: boolean) {
     }
     $("#an-live-slot")!.innerHTML = liveNow(d).s;
     $("#an-missing")!.innerHTML = missing.map((x) => html`<p class="an-line">${x}</p>`.s).join("");
-    $("#an-network-slot")!.innerHTML = o ? html`${networkSection(o, idx)}${ops ? opsWidgets(ops) : ""}`.s : html`<section class="panel an-err">${empty("Core did not answer the network status", "It loads again with the page.")}</section>`.s;
-    $("#an-tables")!.innerHTML = tables(d, ops).s;
-    mountInsightCharts(page);
+    const split = revenueSplit(r, solPrice, win);
+    $("#an-split-slot")!.innerHTML = split ? split.s : "";
+    $("#an-network-slot")!.innerHTML = statusStrip(o, idx, ops).s;
+    $("#an-tables")!.innerHTML = tables(d, ops, o).s;
   };
 
   const load = async () => {
     const opt = <T,>(p: Promise<T>) => p.catch(() => null);
-    const [d, o, ops, idx] = await Promise.all([get<O>(`analytics/dashboard?${q}`), opt(get<O>(`analytics/overview?${q}`)), opt(get<O>(`analytics/ops?${q}`)), opt(market<any>("status"))]);
+    const [d, o, ops, idx, r, sol] = await Promise.all([get<O>(`analytics/dashboard?${q}`), opt(get<O>(`analytics/overview?${q}`)), opt(get<O>(`analytics/ops?${q}`)), opt(market<any>("status")), opt(get<O>(`analytics/revenue?${q}`)), opt(fetch("/chain/sol-price").then((x) => x.json() as Promise<{ ok?: boolean; usd?: number }>))]);
+    const solPrice = sol?.ok && typeof sol.usd === "number" && sol.usd > 0 ? sol.usd : null;
     const m = await loadMarket(d).catch(() => null);
     if (stopped || !page.isConnected) return;
     // redraw only when a figure changed (the clock and relative times are not figures)
-    const sig = JSON.stringify([{ ...d, now: 0 }, o ? { ...o, now: 0, network: { ...o.network, runtime: { ...o.network.runtime, reported_at: 0 } } } : null, ops ? { ...ops, now: 0 } : null, m ? [m.series, m.prev] : null]);
+    const sig = JSON.stringify([{ ...d, now: 0 }, o ? { ...o, now: 0, network: { ...o.network, runtime: { ...o.network.runtime, reported_at: 0 } } } : null, ops ? { ...ops, now: 0 } : null, m ? [m.series, m.prev] : null, r ? { ...r, now: 0, sources: r.sources.map((x: any) => ({ ...x, as_of: 0 })) } : null, solPrice === null ? null : Math.round(solPrice)]);
     if (sig === last) return;
     last = sig;
-    paint(d, o, ops, idx, m);
+    paint(d, o, ops, idx, m, r, solPrice);
   };
   const fail = (e: unknown) => {
     if (stopped || last) return; // keep the last good render on a failed background refresh
@@ -628,10 +767,10 @@ export async function analyticsPage(): Promise<Page> {
   // the frame renders at once with skeletons; the figures load in mount and refresh in place
   const body = html`<div class="ins-page an-page" data-window="${win}">
     <div class="ph-row"><div class="ph-title"><div class="eyebrow">Analytics</div><h1>How the network is doing</h1>
-      <div class="ph-sub"><span>Aggregates of public records: published attempts, accepted generations, final replays, live sessions, the runtime's reports and the market indexer${hidden ? ", test launches included" : ""}. <span id="an-updated">Loading.</span></span></div></div>
+      <div class="ph-sub"><span>Aggregates of public records: published attempts, accepted generations, final replays, live sessions, the runtime's reports, on-chain fee events and the market indexer${hidden ? ", test launches included" : ""}. <span id="an-updated">Loading.</span></span></div></div>
       <div class="seg" role="group" aria-label="Time window">${WINDOWS.map(([k, l]) => chip("window", k === "7d" ? "" : k, l, win === "7d" ? "" : win))}</div></div>
-    <div class="an-kpis" id="an-kpis" aria-label="Headline figures">${[0, 1, 2, 3, 4, 5, 6].map(() => html`<section class="an-tile an-skel-t"><span>.</span></section>`)}</div>
-    <div class="an-charts" id="an-charts">${CARDS.slice(0, 8).map(cardShell)}<div id="an-live-slot"></div>${CARDS.slice(8).map(cardShell)}</div>
+    <div class="an-kpis" id="an-kpis" aria-label="Headline figures">${[0, 1, 2, 3, 4, 5, 6, 7].map(() => html`<section class="an-tile an-skel-t"><span>.</span></section>`)}</div>
+    <div class="an-charts" id="an-charts">${CARDS.slice(0, 2).map(cardShell)}<div id="an-split-slot"></div>${CARDS.slice(2, 9).map(cardShell)}<div id="an-live-slot"></div>${CARDS.slice(9).map(cardShell)}</div>
     <div id="an-missing"></div>
     <div id="an-network-slot"></div>
     <div class="an-folds" id="an-tables"></div>
