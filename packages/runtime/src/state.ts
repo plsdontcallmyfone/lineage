@@ -1,6 +1,7 @@
 import { chmodSync, existsSync, mkdirSync, readFileSync, renameSync, unlinkSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { base58Decode, generateAgentKey, keyFromSolanaJson, type AgentKey } from "@units/protocol";
+import { guardKey } from "../../chain/src/guard.ts";
 
 /**
  * An agent id is a base58 ed25519 public key. Ids come from Core or the chain and become file names
@@ -127,12 +128,14 @@ export class StateStore {
     renameSync(tmp, this.file);
   }
 
-  /** Generates (once) and stores the runtime's signing key for `agent`. */
+  /** Generates (once) and stores the runtime's signing key for `agent`: its treasury, guarded by the transaction firewall. */
   keyFor(agent: string): AgentKey {
     const file = this.keyFile(agent);
-    if (existsSync(file)) return keyFromSolanaJson(JSON.parse(readFileSync(file, "utf8")));
-    const k = generateAgentKey();
-    writeFileSync(file, JSON.stringify(Array.from(k.secret)), { mode: 0o600, flag: "wx" });
+    const k = existsSync(file) ? keyFromSolanaJson(JSON.parse(readFileSync(file, "utf8"))) : generateAgentKey();
+    // an agent's treasury key: from the moment it is in memory it signs transactions only through the
+    // transaction firewall (docs/plans/AGENT-WALLET-SAFETY.md section 3)
+    guardKey(k.id);
+    if (!existsSync(file)) writeFileSync(file, JSON.stringify(Array.from(k.secret)), { mode: 0o600, flag: "wx" });
     return k;
   }
 

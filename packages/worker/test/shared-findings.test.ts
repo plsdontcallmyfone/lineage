@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { join } from "node:path";
 import { loadRecipe } from "@units/sandbox";
+import { outsideUntrusted, untrustedSpans } from "@units/protocol";
 import { openingMessage, systemPrompt, type ProposeContext } from "../src/index.ts";
 import { estimateTokens, keepItem, plannedKey, readShared, sharedBlock, SHARED_MAX_TOKENS, type SharedData } from "../src/shared-findings.ts";
 
@@ -97,7 +98,10 @@ describe("shared findings block", () => {
     const withNotes = systemPrompt(ctx({ soul: "\nSOUL", notes }));
     const both = systemPrompt(ctx({ soul: "\nSOUL", notes, shared }));
     expect(both.startsWith(withNotes)).toBe(true);
-    expect(both.slice(withNotes.length)).toBe(`\n${shared}`);
+    // the shared findings are delimited as untrusted data (AGENT-WALLET-SAFETY.md 4), their text unchanged inside
+    const tail = both.slice(withNotes.length);
+    expect(untrustedSpans(tail).map((x) => x.text)).toEqual([shared]);
+    expect(outsideUntrusted(tail).trim()).toBe("");
     expect(both.indexOf("NOTES")).toBeLessThan(both.indexOf("Shared findings"));
     expect(openingMessage(ctx({ notes, shared }))).toContain("what your own notes and the shared findings tell you");
     expect(openingMessage(ctx({ shared }))).toContain("what the shared findings tell you");

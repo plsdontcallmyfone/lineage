@@ -8,6 +8,7 @@ import { quoteWords, systemPrompt, userPrompt, type AnalysisInput, type Decision
 import type { TraderKey, Venue } from "./venue.ts";
 import { signedAgentFollow, type FollowContext } from "../../core/src/follow-context.ts";
 import { parseFollows, splitFollows, type FollowDecision } from "./follows.ts";
+import { FirewallRefusal, guardKey } from "../../chain/src/guard.ts";
 
 // The trader (plan T): runs inside the hosted runtime, one book per bound hosted agent. Each tick it
 // reads the admin-editable trading config and the published scores from Core and the market from
@@ -267,6 +268,8 @@ export class Trader {
   async tickAgent(a: TradingAgent, cfg: TradingConfig, market: Market, myParties: string[]): Promise<{ trades: number; refused: Refusal[] }> {
     // an excluded agent is not touched at all: no balances, no gas, no analysis, no record, no post
     if (cfg.excluded_agents[a.agent]) return { trades: 0, refused: [] };
+    // a treasury key signs transactions only through the transaction firewall (AGENT-WALLET-SAFETY.md 3)
+    guardKey(a.key.id);
     const now = this.now();
     this.lastParties.set(a.agent, myParties);
     const bs = this.bookState(a.agent);
@@ -564,6 +567,12 @@ export class Trader {
     try {
       return await this.executeInner(a, act, cfg, market, temperament, equityBefore, extra);
     } catch (e) {
+      // the transaction firewall refused to let the treasury key sign: published like any refusal, with its rule
+      if (e instanceof FirewallRefusal) {
+        this.log(`${a.agent.slice(0, 6)} ${act.side} ${act.mint.slice(0, 6)} refused by the firewall: ${e.rule} (${e.detail})`);
+        this.hit({ mint: act.mint, side: act.side, rule: `firewall_${e.rule}`, detail: e.detail });
+        return { ok: false, rule: `firewall_${e.rule}`, detail: e.detail.slice(0, 200) };
+      }
       this.log(`${a.agent.slice(0, 6)} ${act.side} ${act.mint.slice(0, 6)} failed: ${(e as Error).message}`);
       this.hit({ mint: act.mint, side: act.side, rule: "execution_failed", detail: (e as Error).message });
       return { ok: false, rule: "execution_failed", detail: (e as Error).message.slice(0, 200) };

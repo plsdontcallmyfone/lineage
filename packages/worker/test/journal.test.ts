@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { join } from "node:path";
 import type Anthropic from "@anthropic-ai/sdk";
 import { loadRecipe } from "@units/sandbox";
-import { generateAgentKey, JOURNAL_LIMITS, journalEntryId, statementDomainOf, verifyJournal } from "@units/protocol";
+import { generateAgentKey, JOURNAL_LIMITS, journalEntryId, outsideUntrusted, statementDomainOf, untrustedSpans, verifyJournal } from "@units/protocol";
 import { AnthropicProposer, systemPrompt, type ProposeContext } from "../src/index.ts";
 import { checkEntry, FactsLog, journalPrompt, JOURNAL_RESERVE_USD, notesBlock, storeEntry, type JournalEntryView } from "../src/journal.ts";
 
@@ -85,7 +85,10 @@ describe("journal context assembly", () => {
     const both = systemPrompt(ctx({ soul: "\nSOUL BLOCK", notes }));
     expect(souled.startsWith(plain)).toBe(true);
     expect(both.startsWith(souled)).toBe(true);
-    expect(both.slice(souled.length)).toBe(`\n${notes}`);
+    // the notes are delimited as untrusted data (AGENT-WALLET-SAFETY.md 4), their text unchanged inside
+    const tail = both.slice(souled.length);
+    expect(untrustedSpans(tail).map((x) => x.text)).toEqual([notes]);
+    expect(outsideUntrusted(tail).trim()).toBe("");
   });
 });
 

@@ -32,6 +32,8 @@ import { withGenesis } from "./genesis.ts";
 import { anthropicClient } from "../../souls/src/generator.ts";
 import { chainTrading, type TradingRuntimeConfig } from "../../trader/src/glue.ts";
 import { desktopPool, startRecordingPublisher, withDesktops } from "./desktops.ts";
+import { installAgentFirewall } from "./firewall.ts";
+import { guardKey, Rpc } from "@units/chain";
 
 function args(argv: string[]) {
   const out: Record<string, string> = {};
@@ -141,6 +143,10 @@ async function main() {
       await checkCorePrices(cfg.core, cfg, log);
       const stopMonitor = cfg.rail === "openrouter" && cfg.openrouter?.enabled ? new CreditMonitor(cfg.openrouter, { statePath: monitorStatePath(cfg.state_dir), log }).start() : () => {};
       const backend = backendFor(cfg, log, (w, s, f) => log(`tx ${w}: ${s} (fee ${f ?? "?"})`));
+      // the transaction firewall (docs/plans/AGENT-WALLET-SAFETY.md 3): installed before any agent key is used
+      // on chain, whether or not trading is on; agent keys sign nothing it does not allow
+      let fwAgents: () => Record<string, { key_id: string; mint: string | null }> = () => ({});
+      if (backend instanceof ChainBackend) installAgentFirewall({ rpc: backend.rpc, core: cfg.core, stateDir: cfg.state_dir, view: { agents: () => fwAgents() }, log });
       // agents as traders (plan T): runtime.json "trading": { "enabled": true } on devnet
       const tcfg = (cfg as { trading?: TradingRuntimeConfig }).trading;
       const trading = tcfg?.enabled && backend instanceof ChainBackend
@@ -167,6 +173,8 @@ async function main() {
           if (r.status >= 300) throw new Error(`HTTP ${r.status} ${JSON.stringify(r.body).slice(0, 200)}`);
         },
       });
+      fwAgents = () => rt.state.agents;
+      for (const st of Object.values(rt.state.agents)) guardKey(st.key_id);
       trading?.attach(rt);
       const stopTrading = trading?.start() ?? (() => {});
       await rt.start();
@@ -217,7 +225,11 @@ async function main() {
       const keyFile = join(cfg.state_dir, "keys", `${a.agent}.json`);
       if (!existsSync(keyFile)) throw new Error(`this runtime holds no key for ${a.agent}`);
       const { cosignCommand } = await import("../../chain/src/cosign.ts");
-      await cosignCommand({ key: loadKey(keyFile), tx: a.tx!, rpcUrl: cfg.rpc_url ?? chainRpc(), dryRun: a["dry-run"] === "true", expectAgent: a.agent, genesis: applyNetworkProfile().genesis });
+      // this key is an agent treasury: it co-signs through the firewall (only its own agent's bind)
+      const cosignKey = loadKey(keyFile);
+      guardKey(cosignKey.id);
+      installAgentFirewall({ rpc: Rpc.http(cfg.rpc_url ?? chainRpc(), "confirmed"), core: cfg.core, stateDir: cfg.state_dir, view: { agents: () => ({ [a.agent!]: { key_id: cosignKey.id, mint: null } }) }, log });
+      await cosignCommand({ key: cosignKey, tx: a.tx!, rpcUrl: cfg.rpc_url ?? chainRpc(), dryRun: a["dry-run"] === "true", expectAgent: a.agent, genesis: applyNetworkProfile().genesis });
       return;
     }
     default:

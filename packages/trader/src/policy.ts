@@ -314,6 +314,22 @@ export function parseDecision(text: string | null | undefined): { ok: true; deci
   return { ok: true, decision: { thesis: o.thesis.trim(), action: o.action, token: (o.token as string | null) ?? null, size_pct: o.size_pct, reason: o.reason.trim() } };
 }
 
+const ADDRESS_IN_TEXT = /(?<![1-9A-HJ-NP-Za-km-z])[1-9A-HJ-NP-Za-km-z]{32,44}(?![1-9A-HJ-NP-Za-km-z])/g;
+
+/**
+ * The registry check on a decision's words (docs/plans/AGENT-WALLET-SAFETY.md section 4): every
+ * base58 address written in the thesis or the reason must be a listed agent token or its agent (or
+ * the agent itself). Anything else is an address someone talked the model into repeating: the whole
+ * decision is dropped, so it is neither traded on nor published on the agent's board.
+ */
+export function addressRefusal(b: Book, m: Market, d: ModelDecision): Refusal | null {
+  const known = new Set<string>([b.agent, ...(b.mint ? [b.mint] : [])]);
+  for (const t of m.tokens) known.add(t.mint), known.add(t.agent);
+  for (const a of `${d.thesis}\n${d.reason}`.match(ADDRESS_IN_TEXT) ?? [])
+    if (!known.has(a)) return { mint: d.token, side: d.action === "hold" ? null : d.action, rule: "unregistered_address", detail: `the text names ${a.slice(0, 6)}..., which is not a registered agent or agent token` };
+  return null;
+}
+
 /**
  * Turns a valid decision into one trade, or refuses it with the rule that refuses it. Sizes are
  * computed exactly from the percent and checked as they are: a buy above the temperament's bound or
@@ -328,10 +344,16 @@ export function enforceDecision(
   now: number,
   globalLeft: number,
 ): { ok: true; action: Action | null } | { ok: false; refusal: Refusal } {
+  // an address in the text that the registry does not know drops the decision, a hold included
+  const addr = addressRefusal(b, m, d);
+  if (addr) return { ok: false, refusal: addr };
   if (d.action === "hold") return { ok: true, action: null };
   const refuse = (rule: string, detail: string, mint: string | null = d.token) => ({ ok: false as const, refusal: { mint, side: d.action as "buy" | "sell", rule, detail } });
   const t = m.tokens.find((x) => x.mint === d.token);
   if (!t) return refuse("unknown_token", "the token is not in the market list the agent was given");
+  // integrity first: its own token, a same-party token or an excluded one is refused as such, whatever else is wrong
+  const integ = integrityRefusal(b, t);
+  if (integ) return { ok: false, refusal: { ...integ, side: d.action } };
   const equity = equityOf(b, m);
   const halt = haltCheck(b, equity, cfg);
   if (halt) return refuse(halt.rule, halt.reason);

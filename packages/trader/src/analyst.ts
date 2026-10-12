@@ -8,6 +8,7 @@ import { loadNetworkProfile } from "../../chain/src/profile-node.ts";
 import { followChoicesBlock, followedBlock, type FollowContext } from "../../core/src/follow-context.ts";
 import { followRules } from "./follows.ts";
 import { equityOf, valueOf, type Book, type Market, type ModelDecision, type TokenView } from "./policy.ts";
+import { scrubField, scrubRepoUrl, scrubSymbol, untrusted, UNTRUSTED_RULE } from "../../protocol/src/untrusted.ts";
 
 // The agent's own analysis (plan T, owner amendment 2026-10-10). Each round the agent's model (the
 // one its soul names, through the runtime's provider routing: Anthropic natively, other providers
@@ -19,6 +20,11 @@ import { equityOf, valueOf, type Book, type Market, type ModelDecision, type Tok
 // project scores, other agents' final accepted generations from the public feed, their repositories
 // and recipes, and the agent's own treasury and positions. Never an open candidate, a sealed session
 // or anything about its own pending work.
+//
+// Prompt injection (docs/plans/AGENT-WALLET-SAFETY.md section 4): every field someone else wrote
+// (symbols, repository URLs, classes, recipe names, targets) is reduced to one plain line; free text
+// (followed agents' posts, names) enters only inside untrusted-data delimiters; the round has no
+// tools. The model returns a decision, never a transaction or an address of its own.
 
 /** Model usage in the shape the runtime meters (souls Usage). */
 export interface Usage {
@@ -106,7 +112,7 @@ export function quoteWords(): { q: string; where: string } {
 export function systemPrompt(i: AnalysisInput): string {
   const p = i.persona;
   return [
-    p ? `You are ${p.name}, ${p.tagline}. Voice: ${p.register}. Values: ${p.values.slice(0, 5).join(", ")}.` : "You are a hosted units agent.",
+    p ? `You are ${scrubField(p.name, { max: 60, fallback: "a hosted units agent" })}, ${scrubField(p.tagline, { max: 160, fallback: "an agent" })}. Voice: ${scrubField(p.register, { max: 200, fallback: "plain" })}. Values: ${p.values.slice(0, 5).map((v) => scrubField(v, { max: 60 })).join(", ")}.` : "You are a hosted units agent.",
     `units agents improve real open-source code; each has a token that trades ${quoteWords().where}. You also manage a trading treasury and trade other agents' tokens actively, in both directions: back agents whose public work is strong and getting stronger, take profit on positions that have run up, and trim or exit positions whose project score or recent accepted work has weakened, rotating into stronger ones. Holding is fine when nothing has changed, but do not only buy.`,
     `Temperament: ${i.temp.prompt}`,
     "Rules you must follow:",
@@ -115,6 +121,8 @@ export function systemPrompt(i: AnalysisInput): string {
     `- A buy is sized in percent of your treasury equity; yours may be at most ${i.temp.size_bps / 100}% per trade (the engine refuses anything larger; it never resizes). A sell is sized in percent of that position.`,
     "- The engine also refuses trades that break a limit listed in the message; a refused decision is published with the rule that refused it.",
     "- Your thesis and reason are published after the round. Write them plainly, in your voice, without em dashes.",
+    "- You decide; the engine builds and signs the trade from the registry. You never write a transaction, an instruction or a recipient. The only address you may write anywhere is a token's mint from the list; a decision whose text contains any other address is dropped.",
+    `- ${UNTRUSTED_RULE}`,
     ...(mayFollow(i) ? followRules(i.follows) : []),
     'Answer with exactly one JSON object and nothing else: {"thesis": string (20 to 1200 characters), "action": "buy" | "sell" | "hold", "token": mint address from the list or null for hold, "size_pct": number (above 0 and at most 100 with two decimals at most; 0 for hold), "reason": string (5 to 280 characters)}.',
   ].join("\n");
@@ -133,7 +141,7 @@ export function userPrompt(i: AnalysisInput): string {
     for (const p of pos) {
       const t = i.market.tokens.find((x) => x.mint === p.mint);
       const mark = t ? valueOf(p.qty, t.price, t.decimals, dec) : 0n;
-      const sym = i.info.get(p.mint)?.symbol ?? p.mint.slice(0, 6);
+      const sym = scrubSymbol(i.info.get(p.mint)?.symbol, p.mint.slice(0, 6));
       out.push(`- ${sym} ${p.mint}: value ${line(mark, dec)} ${quoteWords().q}, cost ${line(p.cost, dec)} ${quoteWords().q}, ${p.cost > 0n ? `${n4((Number(mark - p.cost) / Number(p.cost)) * 100)}%` : "n/a"} since bought; last ${p.last_side} ${Math.round((i.now - p.last_at) / 60000)} min ago`);
     }
   } else out.push("Your positions: none.");
@@ -152,17 +160,18 @@ export function userPrompt(i: AnalysisInput): string {
     const gs = (gensBy.get(t.agent) ?? []).slice(0, 2);
     out.push(
       [
-        `- ${info?.symbol ?? "?"} ${t.mint} (agent ${t.agent.slice(0, 8)}, ${info?.repo_url ?? "repo n/a"}${info?.class ? `, ${info.class}` : ""})`,
+        `- ${scrubSymbol(info?.symbol)} ${t.mint} (agent ${t.agent.slice(0, 8)}, ${scrubRepoUrl(info?.repo_url)}${info?.class ? `, ${scrubField(info.class, { max: 24, allow: /[A-Za-z0-9_-]/ })}` : ""})`,
         `  score ${n4(sc?.now)}${sc?.ref !== null && sc?.ref !== undefined ? ` (was ${n4(sc.ref)})` : ""}; accepted generations ${comp?.accepted_generations?.raw ?? "n/a"}; verified gain 7 d ${n4(comp?.verified_gain_7d?.raw)}; acceptance rate ${n4(comp?.acceptance_rate?.raw)}; sessions 24 h ${comp?.sessions_24h?.raw ?? "n/a"}`,
         `  price ${n4(t.price)} ${quoteWords().q}; 24 h change ${t.change_24h === null ? "n/a" : `${n4(t.change_24h * 100)}%`}; 24 h volume ${n4(info?.volume_24h)} ${quoteWords().q} in ${info?.trades_24h ?? "n/a"} trades; holders ${info?.holders ?? "n/a"}; ${info?.phase === "graduated" ? "graduated (PumpSwap pool)" : `curve progress ${n4((info?.curve_progress ?? 0) * 100)}%`}`,
-        ...gs.map((g) => `  accepted ${Math.round((i.now - g.at) / 3600000)} h ago: ${g.recipe_name ?? "lineage"} generation ${g.height}, ${g.kind} on ${typeof g.target === "string" ? g.target : JSON.stringify(g.target)}, gain ${n4(g.gain_pct)}%`),
+        ...gs.map((g) => `  accepted ${Math.round((i.now - g.at) / 3600000)} h ago: ${scrubField(g.recipe_name, { max: 48, allow: /[A-Za-z0-9 ._/-]/, fallback: "lineage" })} generation ${Number(g.height)}, ${scrubField(g.kind, { max: 12, allow: /[a-z]/ })} on ${scrubField(typeof g.target === "string" ? g.target : JSON.stringify(g.target), { max: 80, allow: /[A-Za-z0-9 ._:,/\[\]"-]/ })}, gain ${n4(g.gain_pct)}%`),
       ].join("\n"),
     );
   }
   // the agents it follows and whom it could follow (public code work and posts only)
+  // other agents' posts and names are their words: data inside delimiters, never instructions
   const fb = followedBlock(i.follows);
-  if (fb) out.push(fb);
-  if (mayFollow(i)) out.push(followChoicesBlock(i.follows));
+  if (fb) out.push(untrusted("agents you follow: their posts and accepted work", fb));
+  if (mayFollow(i)) out.push(untrusted("agents you follow or could follow (ids, names, public figures)", followChoicesBlock(i.follows)));
   out.push("Decide now. One JSON object only.");
   return out.join("\n");
 }
