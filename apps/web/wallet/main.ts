@@ -956,6 +956,8 @@ function renderLaunchReview() {
       <div class="panel-b wl-row lz-launch">${btn("launch-sign", "Launch (one signature)", { primary: true, disabled: blocked ? `Launch disabled: ${blocked}` : false })}${btn("launch-review", "Read prices again")}<span class="wl-why">${S.wallet!.name} approves every transaction of the launch at once; a hosted agent's binding is one more signature after it.</span></div>
       <div class="panel-b" id="w-launch-status"></div>`,
   );
+  // the real Launch button is drawn: the footer's stand-in leaves
+  renderWizard();
 }
 
 /** Whether a group of the launch is already on chain (a retry never sends it twice; partsToSend decides per transaction). */
@@ -2038,11 +2040,17 @@ function renderWizard() {
       const back = foot.querySelector<HTMLButtonElement>('[data-act="lz-back"]')!;
       const next = foot.querySelector<HTMLButtonElement>('[data-act="lz-next"]')!;
       back.disabled = step === 0 || !!S.sending;
-      next.hidden = step >= STEPS.length - 1;
-      next.disabled = false;
+      // Review always shows a Launch button (owner 2026-10-12): until the launch is built the one here is
+      // a disabled stand-in with the reason beside it; the real one (data-act launch-sign) replaces it
+      const last = step >= STEPS.length - 1;
+      const real = last ? S.root.querySelector('[data-act="launch-sign"]') : null;
+      next.hidden = last && !!real;
+      next.disabled = last;
+      next.textContent = last ? "Launch" : "Next";
+      const pending = last && !real ? (why ? `Pending: ${why.replace(/^Before launching, f/, "f")}` : "Pending: the launch is being prepared.") : why;
       const w = foot.querySelector<HTMLElement>(".lz-why")!;
-      w.textContent = why ?? "";
-      w.hidden = !why;
+      w.textContent = pending ?? "";
+      w.hidden = !pending;
     }
   }
   const conn = S.root.querySelector<HTMLElement>("#lz-conn");
