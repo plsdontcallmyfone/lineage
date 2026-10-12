@@ -98,7 +98,7 @@ role_envs() {
     if have_rpc; then
       grep -E '^UNITS_MAINNET_RPC=' "$ETC/rpc.env" | head -1 > "$ETC/core.env"
       cp "$ETC/core.env" "$ETC/indexer.env"; cp "$ETC/core.env" "$ETC/runtime.env"
-      { cat "$ETC/core.env"; env_line "$LH/model.env" ANTHROPIC_API_KEY ANTHROPIC_API_KEY; } > "$ETC/web.env"
+      { cat "$ETC/core.env"; env_line "$LH/model.env" ANTHROPIC_API_KEY ANTHROPIC_API_KEY; env_line "$LH/providers.env" OPENROUTER_API_KEY OPENROUTER_API_KEY; } > "$ETC/web.env"
     else
       : > "$ETC/core.env"; : > "$ETC/indexer.env"; : > "$ETC/runtime.env"; : > "$ETC/web.env"
     fi
