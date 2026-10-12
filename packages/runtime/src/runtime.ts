@@ -15,7 +15,8 @@ import { AgentFollower, emptyFollowState, FOLLOWS_DEFAULTS, type FollowState } f
 import type { ModelClient, Usage as SoulUsage } from "../../souls/src/generator.ts";
 import type { DesktopProvider } from "../../desktop/src/pool.ts";
 import { desktopGate } from "./desktop-gate.ts";
-import { existsSync, readFileSync, renameSync } from "node:fs";
+import { existsSync, readFileSync, renameSync, rmSync } from "node:fs";
+import { sha256Hex } from "../../protocol/src/hash.ts";
 import { FixedPrice, type PriceSource, type QuotePrice } from "./price.ts";
 import type { OpenRouterBalance } from "./provider-balance.ts";
 
@@ -170,6 +171,8 @@ export class Runtime {
   private lastReport = 0;
   /** the hosted agents of the last successful discovery (an agent that left it no longer exists for the desktops) */
   private discovered: Set<string> | null = null;
+  /** sha256 digests of the launches Core purged (GET /v1/purged; kept in <state_dir>/purged.json so a start without Core still knows them) */
+  private purged: { agents: Set<string>; mints: Set<string> } | null = null;
 
   constructor(readonly cfg: RuntimeConfig, private deps: RuntimeDeps) {
     const sink = deps.log ?? ((m: string) => console.log(`[${new Date().toISOString().slice(11, 19)} runtime] ${m}`));
@@ -570,10 +573,10 @@ export class Runtime {
    * null when it is not one.
    */
   async bindTarget(agent: string): Promise<{ agent: string; new_key: string; status: string } | null> {
-    if (!isAgentId(agent)) return null;
+    if (!isAgentId(agent) || this.isPurged(agent)) return null;
     if (!this.state.agents[agent]) {
       const h = await this.deps.backend.hostedAgent?.(agent);
-      if (!h || h.agent !== agent) return null;
+      if (!h || h.agent !== agent || this.isPurged(agent, h.mint)) return null;
       this.hosted.set(agent, h);
       if (!this.state.agents[agent]) await this.adopt(h);
     }
@@ -586,12 +589,84 @@ export class Runtime {
     return this.state.agents[agent] ? this.store.keyFor(agent) : null;
   }
 
+  /** True for a launch Core purged: never adopted, bound or worked for again. */
+  private isPurged(agent: string, mint?: string | null): boolean {
+    const p = this.purged;
+    if (!p || (!p.agents.size && !p.mints.size)) return false;
+    return p.agents.has(sha256Hex(agent)) || (!!mint && p.mints.has(sha256Hex(mint)));
+  }
+
+  /**
+   * Core's list of purged launches (digests), and what this runtime still holds of them: the state
+   * entry, open usage, bind request, worker directory and every in-memory trace go; the agent's key
+   * file is moved to <state_dir>/purged-keys/<digest>.json (it is the agent's wallet on chain, so it is
+   * not destroyed here: nothing loads it from there). Its desktop leaves with the state entry: the
+   * next desktop sync no longer lists the agent, and the pool removes its sandbox. The launch still
+   * exists on chain, so discovery and the bind endpoint check the list before they adopt.
+   */
+  private async dropPurged(): Promise<void> {
+    const file = join(this.cfg.state_dir, "purged.json");
+    if (!this.purged) {
+      let saved: { agents?: string[]; mints?: string[] } = {};
+      try {
+        if (existsSync(file)) saved = JSON.parse(readFileSync(file, "utf8"));
+      } catch {}
+      this.purged = { agents: new Set(saved.agents ?? []), mints: new Set(saved.mints ?? []) };
+    }
+    const r = await this.client.get("/v1/purged").catch(() => null);
+    const rows = r && r.status === 200 && Array.isArray(r.body?.purged) ? (r.body.purged as { agent_sha256?: unknown; mint_sha256?: unknown }[]) : null;
+    if (rows) {
+      // the list only grows: a digest once seen stays, whatever a later answer holds
+      const before = this.purged.agents.size + this.purged.mints.size;
+      for (const x of rows) {
+        if (typeof x.agent_sha256 === "string" && /^[0-9a-f]{64}$/.test(x.agent_sha256)) this.purged.agents.add(x.agent_sha256);
+        if (typeof x.mint_sha256 === "string" && /^[0-9a-f]{64}$/.test(x.mint_sha256)) this.purged.mints.add(x.mint_sha256);
+      }
+      if (this.purged.agents.size + this.purged.mints.size !== before) {
+        const tmp = `${file}.tmp-${process.pid}`;
+        writeFileSync(tmp, JSON.stringify({ agents: [...this.purged.agents], mints: [...this.purged.mints] }), { mode: 0o600 });
+        renameSync(tmp, file);
+      }
+    }
+    let dropped = 0;
+    for (const [agent, st] of Object.entries(this.state.agents)) {
+      if (!this.isPurged(agent, st.mint)) continue;
+      delete this.state.agents[agent];
+      delete this.state.open.usage[agent];
+      for (const m of [this.workers, this.attempts, this.vaults, this.hosted, this.lastStarted, this.misses, this.routes, this.holds, this.waiting, this.desktopWaitSince, this.paused] as Map<string, unknown>[]) m.delete(agent);
+      this.exhausted.delete(agent);
+      this.discovered?.delete(agent);
+      try {
+        const key = this.store.keyFile(agent);
+        if (existsSync(key)) {
+          const dir = join(this.cfg.state_dir, "purged-keys");
+          mkdirSync(dir, { recursive: true, mode: 0o700 });
+          renameSync(key, join(dir, `${sha256Hex(agent)}.json`));
+        }
+        rmSync(join(this.cfg.state_dir, "bind-requests", `${agent}.json`), { force: true });
+        // a running attempt still writes there; what is left goes on a later pass
+        if (!this.running.has(agent)) rmSync(join(this.cfg.state_dir, "worker", agent), { recursive: true, force: true });
+      } catch (e) {
+        this.log(`a purged agent's files: ${(e as Error).message}`);
+      }
+      dropped++;
+    }
+    // usage a running attempt of a purged agent metered after its entry went, and its worker directory once the attempt ended
+    for (const agent of Object.keys(this.state.open.usage)) if (!this.state.agents[agent] && this.isPurged(agent)) delete this.state.open.usage[agent];
+    if (dropped) {
+      this.save();
+      this.log(`dropped ${dropped} agent(s) Core purged: state, open usage and files removed, keys moved to purged-keys/, desktops leave with the next sync`);
+    }
+  }
+
   /** Discovery, binding and vault reads. */
   private async refreshAgents(): Promise<void> {
     const b = this.deps.backend;
-    if (this.ticks % (b.mode === "devnet" ? 6 : 1) === 0 || this.hosted.size === 0) {
+    if (this.ticks % (b.mode === "devnet" ? 6 : 1) === 0 || this.hosted.size === 0 || !this.purged) {
+      await this.dropPurged();
       const seen = new Set<string>();
       for (const h of await b.discover()) {
+        if (this.isPurged(h.agent, h.mint)) continue; // still on chain, removed from the network (Core purge)
         seen.add(h.agent);
         // ids become file names below: a malformed one from Core or the chain is skipped (audit A2, OFF-R1)
         if (!isAgentId(h.agent)) {

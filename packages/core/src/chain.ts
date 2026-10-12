@@ -24,6 +24,7 @@ import { soulsOf } from "./souls.ts";
 import { msgchainOf } from "./msgchain.ts";
 import { prepayOf } from "./prepay.ts";
 import { deploymentLabel, deploymentsOf } from "./deployments.ts";
+import { purgeOf } from "./purge.ts";
 import type { NetworkConfig } from "./config.ts";
 import type { ChainAgent, Core } from "./core.ts";
 
@@ -294,6 +295,8 @@ export class ChainBridge {
     const vaults = await this.reader.vaults(launchedIds);
     for (const a of agents) {
       const l = launchByAgent.get(a.agent);
+      // a purged launch still exists on chain: nothing of it is mirrored again (purge.ts)
+      if (purgeOf(this.core).isPurged(a.agent) || (l && purgeOf(this.core).isPurgedMint(l.mint))) continue;
       const rec: ChainAgent = {
         agent: a.agent, owner: a.owner, kind: a.kind, burned: a.burned, bond: a.bond, unbondAmount: a.unbondAmount, unbondReadyAt: a.unbondReadyAt,
         registeredAt: a.registeredAt, operator: a.operator, capabilities: a.capabilities,

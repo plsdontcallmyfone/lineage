@@ -73,6 +73,7 @@ import { Live } from "./live.ts";
 import { openDb } from "./store.ts";
 import { SlotBeacon } from "./beacon.ts";
 import { deploymentsOf } from "./deployments.ts";
+import { purgeOf } from "./purge.ts";
 import type { TreeSource } from "./trees.ts";
 
 // The Core coordinator: SPEC sections 5, 10, 11, 12, 13. Every state change goes through a method
@@ -601,6 +602,7 @@ export class Core {
       this.notOnChain("registration");
       const b = isObj(body) ? body : {};
       if (this.agentRow(agent)) throw conflict("already_registered", "agent already registered");
+      if (purgeOf(this).isPurged(agent)) throw conflict("purged", "this agent was removed from the network");
       const operator = b.operator === undefined || b.operator === null ? null : String(b.operator);
       if (operator !== null && !/^[\w.:-]{1,64}$/.test(operator)) throw bad("bad_operator", "operator must be 1-64 word characters");
       const caps = b.capabilities === undefined || b.capabilities === null ? null : validateCapabilities(b.capabilities);
@@ -638,6 +640,7 @@ export class Core {
       if (!["token", "purchased", "app"].includes(mode)) throw bad("bad_identity_mode", "identity_mode is token, purchased or app");
       if (this.agentRow(agent)) throw conflict("already_registered", "agent already registered");
       if (this.db.query("SELECT 1 FROM agents WHERE mint = ?").get(mint)) throw conflict("mint_taken", "one agent per mint");
+      if (purgeOf(this).isPurged(agent) || purgeOf(this).isPurgedMint(mint)) throw conflict("purged", "this launch was removed from the network");
       const url = canonicalUrl(target);
       const rid = repoId(url);
       const active = !!this.db.query("SELECT 1 FROM lineages WHERE repo_id = ? AND status = 'active'").get(rid);
@@ -2428,6 +2431,8 @@ export class Core {
     return this.tx(() => {
       let a = this.agentRow(r.agent);
       if (!a) {
+        // a purged launch still exists on chain: it is never imported again (purge.ts)
+        if (purgeOf(this).isPurged(r.agent) || (r.launch && purgeOf(this).isPurgedMint(r.launch.mint))) return null;
         if (r.kind === "verifier") {
           const operator = r.operator === ZERO32 ? null : r.operator;
           this.db

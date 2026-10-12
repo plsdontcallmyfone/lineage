@@ -1,3 +1,4 @@
+import { onPurge } from "./purge.ts";
 import { createHash } from "node:crypto";
 import type { Core } from "./core.ts";
 import { bad } from "./errors.ts";
@@ -342,6 +343,8 @@ export function sharedItems(u: UnitFindings, o: { target?: string | null; limit?
 // the module
 
 const instances = new WeakMap<Core, SharedFindings>();
+// rows this module caches may be gone after a purge (purge.ts): start again from the tables
+onPurge((core) => instances.delete(core));
 export function sharedFindingsOf(core: Core): SharedFindings {
   let s = instances.get(core);
   if (!s) instances.set(core, (s = new SharedFindings(core)));

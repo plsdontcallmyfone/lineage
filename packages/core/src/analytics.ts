@@ -1,3 +1,4 @@
+import { onPurge } from "./purge.ts";
 import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import { basename, dirname, join } from "node:path";
 import type { Core } from "./core.ts";
@@ -138,6 +139,8 @@ interface Episode {
 type Cached<T> = { at: number; v: T };
 
 const instances = new WeakMap<Core, Analytics>();
+// rows this module caches may be gone after a purge (purge.ts): start again from the tables
+onPurge((core) => instances.delete(core));
 export function analyticsOf(core: Core): Analytics {
   let a = instances.get(core);
   if (!a) instances.set(core, (a = new Analytics(core)));

@@ -1,3 +1,4 @@
+import { onPurge } from "./purge.ts";
 import { MAINNET_TEST_PROGRAM_IDS } from "@units/chain";
 import type { Core } from "./core.ts";
 import { bad } from "./errors.ts";
@@ -122,6 +123,8 @@ export interface PreviousToken {
 }
 
 const instances = new WeakMap<Core, Deployments>();
+// rows this module caches may be gone after a purge (purge.ts): start again from the tables
+onPurge((core) => instances.delete(core));
 export function deploymentsOf(core: Core): Deployments {
   let d = instances.get(core);
   if (!d) instances.set(core, (d = new Deployments(core)));

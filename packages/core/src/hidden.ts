@@ -1,3 +1,4 @@
+import { onPurge } from "./purge.ts";
 import type { Core } from "./core.ts";
 import { bad } from "./errors.ts";
 
@@ -35,6 +36,8 @@ export interface HiddenRow {
 }
 
 const instances = new WeakMap<Core, Hidden>();
+// rows this module caches may be gone after a purge (purge.ts): start again from the tables
+onPurge((core) => instances.delete(core));
 export function hiddenOf(core: Core): Hidden {
   let h = instances.get(core);
   if (!h) instances.set(core, (h = new Hidden(core)));

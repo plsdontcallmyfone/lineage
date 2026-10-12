@@ -34,6 +34,7 @@ import { viewersOf } from "./viewers.ts";
 import { unitsFees } from "./units-fees.ts";
 import { feeClaimsOf } from "./fee-claims.ts";
 import { poolsOf } from "./pools.ts";
+import { purgeOf } from "./purge.ts";
 import { unitJson, unitUrl } from "./unit-alias.ts";
 
 // HTTP API, SPEC 17. Every mutating request (and GET /v1/assignments) is signed:
@@ -311,6 +312,7 @@ export function buildRoutes(core: Core): Route[] {
     route("GET", "/v1/social/moderation", "none", (c) => socialOf(core).moderation(int(c, "limit"))),
     // hidden launches (APP-CONSOLIDATION amendment 2): public list; the admin edits it
     route("GET", "/v1/hidden", "none", () => hiddenOf(core).list()),
+    route("GET", "/v1/purged", "none", () => purgeOf(core).list()), // digests of purged launches: the runtime and the indexer drop what matches
     route("GET", "/v1/agents", "none", (c) => {
       const off = unlisted(c);
       return core.listAgents().filter((a) => !off.has((a as { agent_id: string }).agent_id));
@@ -479,6 +481,9 @@ export function buildRoutes(core: Core): Route[] {
     route("POST", "/v1/admin/launch-fronting", "admin", (c) => prepayOf(core).setFronting(c.json())),
     route("POST", "/v1/admin/guard-config", "admin", (c) => guardConfigOf(core).set(c.agent!, c.json())), // SPEC 10.1 rule 6
     route("POST", "/v1/admin/hidden", "admin", (c) => core.tx(() => hiddenOf(core).edit(c.agent!, c.json()))),
+    // purge.ts: deletes a launch and all of its work for good (plan: true returns the counts and changes
+    // nothing). Not inside core.tx: a run copies the database first.
+    route("POST", "/v1/admin/purge", "admin", (c) => purgeOf(core).route(c.agent!, c.json())),
     route("POST", "/v1/admin/agent-previous", "admin", (c) => core.tx(() => deploymentsOf(core).link(c.agent!, c.json()))),
     route("POST", "/v1/admin/models", "admin", (c) => core.tx(() => modelsOf(core).put(c.agent!, c.json()))), // plan M
     route("POST", "/v1/admin/models/availability", "runtime", (c) => core.tx(() => modelsOf(core).report(c.agent!, c.json()))),
@@ -609,6 +614,8 @@ function authenticate(core: Core, req: Request, url: URL, body: string): string 
   const sig = req.headers.get("x-lineage-sig");
   const nonce = req.headers.get("x-lineage-nonce");
   if (!agent || !sig || !nonce) throw new ApiError(401, "unsigned", "x-lineage-agent, x-lineage-sig and x-lineage-nonce are required");
+  // a purged launch signs nothing here any more: its worker's late posts create no row (purge.ts)
+  if (purgeOf(core).isPurged(agent)) throw new ApiError(403, "purged", "this agent was removed from the network");
   // The agent id never changes; its current signing key speaks for it (identity plan I1): the id
   // itself until a rotation, and nothing while the owner has revoked it.
   const key = core.identity.signingKey(agent);

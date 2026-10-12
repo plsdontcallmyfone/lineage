@@ -1,5 +1,6 @@
 import type { Core } from "./core.ts";
 import { bad } from "./errors.ts";
+import { purgeOf } from "./purge.ts";
 
 // Runtime spend summaries (plan MODELS-AND-SELF-FUNDING): the hosted runtime posts, about once a
 // minute, each bound agent's vault, its USD value at the price in use, its burn over the last 24 h
@@ -110,8 +111,10 @@ export class RuntimeSpend {
     const global = { price: { source: p.source ?? null, status: p.status ?? null, usd_per_token: p.usd_per_token ?? null, line_per_usd: p.line_per_usd ?? null, why: p.why ?? null }, provider_balance: b.provider_balance ?? null, cap: capOf(b.cap), desktops: desktopsOf(b.desktops) };
     const now = this.c.now();
     const put = this.c.db.query("INSERT OR REPLACE INTO runtime_spend (agent_id, body, reported_at, reported_by) VALUES (?, ?, ?, ?)");
+    const purge = purgeOf(this.c as unknown as Core);
     for (const id of ids) {
       const a = b.agents[id]!;
+      if (purge.isPurged(id)) continue; // a runtime that has not dropped a purged agent yet: nothing of it is stored
       if (!AGENT.test(id) || !a || typeof a !== "object") throw bad("bad_spend", `agents.${id.slice(0, 50)}: an agent id and a summary`);
       if (!intStr(a.vault ?? null) || !num(a.vault_usd ?? null) || !intStr(a.burn_per_h ?? null) || !num(a.burn_usd_per_h ?? null) || !num(a.burn_window_s ?? null) || !num(a.runway_h ?? null) || !short(a.waiting ?? null) || !(a.via === null || a.via === undefined || a.via === "direct" || a.via === "openrouter"))
         throw bad("bad_spend", `agents.${id}: vault, vault_usd, burn_per_h, burn_usd_per_h, burn_window_s, runway_h, via, waiting`);
