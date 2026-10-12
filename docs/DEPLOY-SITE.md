@@ -926,8 +926,8 @@ devnet site alone.
 **Safety values** (`/var/lib/units-main/site/runtime.json`, written by `site-config.ts` under
 `UNITS_INSTANCE=mainnet`; configuration, not code):
 
-- model spend: at most 20 USD per UTC day counting every dollar, vault-paid included
-  (`global_max_usd` 20, `global_cap_scope` all, `global_window_s` 86400);
+- model spend: at most 200 USD per UTC day counting every dollar, vault-paid included
+  (`global_max_usd` 200, `global_cap_scope` all, `global_window_s` 86400);
 - at most 2 attempts at once (`max_concurrent` 1, `max_concurrent_ceiling` 2);
 - a live desktop required for every attempt (`desktop_required`), E2B only (`desktops_max` 0,
   `e2b_max` 2: the server's two local desktop slots stay with devnet);
