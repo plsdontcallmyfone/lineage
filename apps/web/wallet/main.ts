@@ -76,6 +76,7 @@ import {
   planLaunchBundle,
   pumpSolToLine,
   pumpSolToLinePool,
+  decodePumpPool,
   poolRates,
   quotePoolBuyExactOut,
   rentLamports,
