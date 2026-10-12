@@ -43,7 +43,10 @@ afterAll(() => rmSync(out, { recursive: true, force: true }));
 
 function check(name: string, text: string) {
   for (const s of secrets()) expect({ name, leaked: text.includes(s) }).toEqual({ name, leaked: false });
-  expect({ name, keyedUrl: /api-key=|helius-rpc\.com/i.test(text) }).toEqual({ name, keyedUrl: false });
+  // the docs quote Core's public config, which names the RPC provider's host with no key as
+  // "https://<name>.helius-rpc.com (keyed)": that exact label is set aside, any other mention still fails
+  const shown = text.replace(/https:\/\/[a-z0-9-]+\.helius-rpc\.com \(keyed\)/g, "");
+  expect({ name, keyedUrl: /api-key=|helius-rpc\.com/i.test(shown) }).toEqual({ name, keyedUrl: false });
 }
 
 describe("built browser output carries no RPC key", () => {
