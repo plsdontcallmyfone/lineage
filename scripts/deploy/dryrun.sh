@@ -20,7 +20,7 @@ REPO="$(cd "$(dirname "$0")/../.." && pwd)"
 IMAGE="lineage/site-dryrun:24.04"   # scripts/deploy/dryrun/Dockerfile: ubuntu:24.04 pinned by digest + systemd, native arch
 BASE_IMAGE="ubuntu:24.04@sha256:534baea6a22c03a63003dbc8dbe78fe34bc0d7e595d9a9dc9834884ff530eb55"
 NAME="lineage-site-dryrun"
-SSH_P=9668; HTTPS_P=9669
+SSH_P="${DRYRUN_SSH_PORT:-9668}"; HTTPS_P="${DRYRUN_HTTPS_PORT:-9669}"   # other free ports of the block when another session holds these
 KEEP=0; [ "${1:-}" = --keep ] && KEEP=1
 T0=$(date +%s)
 for p in $SSH_P $HTTPS_P; do
