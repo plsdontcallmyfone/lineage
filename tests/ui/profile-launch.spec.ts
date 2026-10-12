@@ -186,7 +186,7 @@ test.describe("Launch (/launch)", () => {
     // 6 review: a devnet simulation (needs the stored, funded test wallet)
     test.skip(!wallet.stored, "no stored test wallet (UI_WALLET_KEY): the review simulation needs a funded launcher");
     await page.locator('[data-act="lz-next"]:not([disabled])').click();
-    await page.locator(".lz-review").waitFor();
+    await page.locator(".lz-review").first().waitFor(); // the summary; the cost breakdown is a second .lz-review block
     await page.locator("#w-launch-out .mark.good, #w-launch-out [data-err]").first().waitFor({ timeout: 120_000 });
     const review = page.locator('[data-step="5"]');
     await expect(review).toContainText(/simulation succeeded on devnet/i);
