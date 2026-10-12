@@ -9,7 +9,7 @@
 //
 //   bun scripts/deploy/vercel/build.ts [--site <backend, default the mainnet site>] [--out apps/web/dist]
 //   cd apps/web/dist && vercel deploy --prod
-import { cpSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { cpSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import sites from "../../../config/sites.json" with { type: "json" };
 import profileConfig from "../../../config/profile.json" with { type: "json" };
@@ -30,7 +30,15 @@ const DOCS_PERMANENT = process.env.UNITS_DOCS_REDIRECT === "301";
 // the bundles link to the docs through apps/web/src/docs-url.ts
 const DOCS_DEFINE = { __UNITS_DOCS_URL__: JSON.stringify(DOCS_URL) };
 
+// the folder's Vercel link (.vercel/project.json) survives the rebuild, so a plain `vercel deploy --prod` in it goes to
+// the same project with the prebuilt files (without it the CLI deployed unlinked and app.units.gg answered 404)
+const LINK = join(OUT, ".vercel/project.json");
+const link = existsSync(LINK) ? readFileSync(LINK, "utf8") : null;
 rmSync(OUT, { recursive: true, force: true });
+if (link) {
+  mkdirSync(join(OUT, ".vercel"), { recursive: true });
+  writeFileSync(LINK, link);
+}
 mkdirSync(join(OUT, "assets"), { recursive: true });
 
 async function bundle(entry: string, extra: Partial<Parameters<typeof Bun.build>[0]> = {}) {
