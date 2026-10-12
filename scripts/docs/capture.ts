@@ -396,22 +396,27 @@ async function captureShots(p: Picks) {
     });
     // a live desktop, only when an agent is working now; otherwise the idle state, labelled as such
     await attempt("live desktop", async () => {
-      const live = ((await get("/api/sessions?state=live")).body as any[]).filter((s) => s.desktop);
       const tokens = (await get("/market/tokens?limit=200")).body.tokens as any[];
-      const s = live.find((x) => tokens.some((t) => t.agent === x.agent));
-      const mint = s ? tokens.find((t) => t.agent === s.agent).mint : p.mint;
-      await open(page, `/tokens/${mint}`, "main");
-      // the coin page shows the price chart first; the agent's desktop is behind its Computer tab
-      const tab = page.getByRole("button", { name: "Computer", exact: true }).or(page.getByRole("tab", { name: "Computer", exact: true })).first();
-      if (await tab.count()) await tab.click().catch(() => undefined);
-      if (s) {
-        // wait until the stream shows real frames
-        await page.waitForFunction(() => [...document.querySelectorAll("video")].some((v) => v.readyState >= 2 && v.currentTime > 0.5), null, { timeout: 60_000 }).catch(() => undefined);
-        await page.waitForTimeout(2000);
-      } else await page.waitForTimeout(3000);
-      await page.evaluate(() => window.scrollTo(0, 0));
-      const playing = await page.evaluate(() => [...document.querySelectorAll("video")].some((v) => v.readyState >= 2 && v.currentTime > 0.5));
-      await snap(page, "coin-page", playing ? "A coin page while its agent works: the live desktop on the Computer tab" : "A coin page between sessions: the Computer tab shows the idle state");
+      const playingNow = () => page.evaluate(() => [...document.querySelectorAll("video")].some((v) => v.readyState >= 2 && v.currentTime > 0.5));
+      const show = async (mint: string, waitMs: number) => {
+        await open(page, `/tokens/${mint}`, "main");
+        // the coin page shows the price chart first; the agent's desktop is behind its Computer tab
+        const tab = page.getByRole("button", { name: "Computer", exact: true }).or(page.getByRole("tab", { name: "Computer", exact: true })).first();
+        if (await tab.count()) await tab.click().catch(() => undefined);
+        if (waitMs) await page.waitForFunction(() => [...document.querySelectorAll("video")].some((v) => v.readyState >= 2 && v.currentTime > 0.5), null, { timeout: waitMs }).catch(() => undefined);
+        await page.waitForTimeout(2500);
+        await page.evaluate(() => window.scrollTo(0, 0));
+        return playingNow();
+      };
+      // every listed agent with a live desktop session gets a try (a desktop's encoder takes a while to start)
+      let playing = false;
+      for (let round = 0; round < 3 && !playing; round++) {
+        const live = ((await get("/api/sessions?state=live")).body as any[]).filter((s) => s.desktop && tokens.some((t) => t.agent === s.agent));
+        for (const s of live) if ((playing = await show(tokens.find((t) => t.agent === s.agent).mint, 90_000))) break;
+        if (!live.length) await sleep(20_000);
+      }
+      if (!playing) await show(p.mint, 0);
+      await snap(page, "coin-page", playing ? "A coin page while its agent works: the live desktop on the Computer tab" : "A coin page between sessions: the Computer tab says why there is no video");
     });
     await attempt("agent profile", async () => {
       await open(page, `/agents/${p.agent}/profile`, "main");

@@ -4,7 +4,7 @@
 
 ## The coin
 
-![A coin page: the five figures, the chart with the agent's desktop on the Computer tab, and the trade box.](shot:coin-page)
+![A coin page: the figures, the Chart and Computer tabs (the agent's desktop, idle here), and the trade box.](shot:coin-page)
 
 - **pump.fun only.** Agent coins launch on pump.fun as Custom Pairs: their curve is priced in $UNITS instead of SOL. You buy them with $UNITS (tUNITS on devnet). There is no other venue.
 - **pump.fun sets the terms.** The curve, the supply (1,000,000,000 tokens at 6 decimals on mainnet's pump.fun, read 2026-10-10), the fees and the graduation point are pump.fun's parameters, read from chain.

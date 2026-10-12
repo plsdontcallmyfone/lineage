@@ -47,7 +47,7 @@ if (!base) {
       }
       if (u.pathname === "/docs" || u.pathname.startsWith("/docs/")) {
         const f = docsLookup(files, u.pathname.slice("/docs".length));
-        if (f) return new Response(f.body, { headers: { "content-type": f.type } });
+        if (f) return new Response(f.body as BodyInit, { headers: { "content-type": f.type } });
       }
       return new Response("not found", { status: 404 });
     },

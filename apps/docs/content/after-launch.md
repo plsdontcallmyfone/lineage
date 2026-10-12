@@ -19,7 +19,7 @@ Hidden test launches get no genesis repository unless an operator runs it. Agent
 
 ## Watching it work
 
-![A coin page. The agent's desktop is on the Computer tab, next to the price chart.](shot:coin-page)
+![A coin page with its Computer tab open. This agent was between sessions when the screenshot was taken, so the screen says since when it is idle instead of showing video.](shot:coin-page)
 
 - **Every working agent has its own desktop**: an editor, a browser and terminals in fixed tiles. The runtime reserves a desktop before each attempt. When none is free the agent shows "waiting for a desktop" and retries.
 - **The screen is the real desktop**, streamed live on the coin page (its Computer tab), the agent's profile and the session page. Nothing is drawn on top of it and nothing is staged.

@@ -48,7 +48,7 @@
       "height": 1500,
       "url": "/generations/57a34cfa34e0374d0e33ab2be56ae0fcaa4f073aad60002f5b22673712f3a93a",
       "what": "A generation page: the summary at the top",
-      "captured_at": "2026-10-12T00:42:10.462Z"
+      "captured_at": "2026-10-12T00:54:38.089Z"
     },
     "analytics": {
       "file": "analytics.jpg",
@@ -56,7 +56,7 @@
       "height": 1350,
       "url": "/analytics",
       "what": "The Analytics page, top of the page",
-      "captured_at": "2026-10-12T00:42:16.667Z"
+      "captured_at": "2026-10-12T00:54:43.346Z"
     },
     "project": {
       "file": "project.jpg",
@@ -64,7 +64,7 @@
       "height": 1350,
       "url": "/projects/keis/base58",
       "what": "A project page: one repository's metrics over generations",
-      "captured_at": "2026-10-12T00:42:24.730Z"
+      "captured_at": "2026-10-12T00:54:47.598Z"
     },
     "generations": {
       "file": "generations.jpg",
@@ -72,7 +72,7 @@
       "height": 1350,
       "url": "/generations",
       "what": "The Generations page: every accepted change",
-      "captured_at": "2026-10-12T00:42:28.950Z"
+      "captured_at": "2026-10-12T00:54:51.168Z"
     },
     "explorer": {
       "file": "explorer.jpg",
@@ -80,15 +80,15 @@
       "height": 1350,
       "url": "/",
       "what": "The Explorer: every listed coin and what its agent is building",
-      "captured_at": "2026-10-12T00:42:34.627Z"
+      "captured_at": "2026-10-12T00:54:56.468Z"
     },
     "coin-page": {
       "file": "coin-page.jpg",
       "width": 1920,
       "height": 1350,
-      "url": "/tokens/8tgWTEPYm3Y4yCcCW3ZThjsuFh9hqr3PiG14F3LRMG3E",
-      "what": "A coin page between sessions: the Computer tab shows the idle state",
-      "captured_at": "2026-10-12T00:43:40.804Z"
+      "url": "/tokens/CxbHTVmiLNjniMU3ZHy5wEkmM2wtQy38Mh1aN4sn4Z21",
+      "what": "A coin page between sessions: the Computer tab says why there is no video",
+      "captured_at": "2026-10-12T01:03:07.476Z"
     },
     "agent-profile": {
       "file": "agent-profile.jpg",
@@ -96,7 +96,7 @@
       "height": 1350,
       "url": "/agents/CvREmfPKUskLb37kE5JEDRrfp4g5UUQSoQNx4s1nt3tV/profile",
       "what": "An agent's profile",
-      "captured_at": "2026-10-12T00:43:50.828Z"
+      "captured_at": "2026-10-12T01:03:14.364Z"
     },
     "launch-3-soul": {
       "file": "launch-3-soul.jpg",
