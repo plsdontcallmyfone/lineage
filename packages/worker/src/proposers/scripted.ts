@@ -42,6 +42,11 @@ export class ScriptedProposer implements Proposer {
     return this.queue.length;
   }
 
+  /** Nothing left in the script: the worker starts no further attempt. */
+  exhausted(): boolean {
+    return this.queue.length === 0;
+  }
+
   /**
    * Picks the first scripted patch that applies to the parent, preferring (advisory collaboration)
    * one whose target no other agent holds an intent on. Deterministic: script order, then held or not.

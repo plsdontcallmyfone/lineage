@@ -1,3 +1,4 @@
+import { efficiencyError } from "../src/proposers/efficiency.ts";
 import { describe, expect, test } from "bun:test";
 import { join } from "node:path";
 import type Anthropic from "@anthropic-ai/sdk";
@@ -170,6 +171,34 @@ describe("journal call inside the attempt cap", () => {
     expect(await q.journal(ctx({ maxUsd: 0.5, spent: { usd: 0.499 } }), { system: "S", user: "U" })).toBeNull();
     expect(none.requests).toHaveLength(0);
     expect(JOURNAL_RESERVE_USD).toBeGreaterThan(0);
+  });
+
+  test("a 0.04 USD reserve holds an entry for a full-size prompt, and its room is what the input estimate leaves", async () => {
+    // the largest prompt the facts log can produce is about 11,000 characters (journal.ts caps); the
+    // site's calls cost 0.0175 USD at most (370 calls, 2026-10-11/12)
+    const system = "S".repeat(1800);
+    const user = "U".repeat(9200);
+    const { client, requests } = fakeCreate("Tried it.", { input_tokens: 3200, output_tokens: 350 });
+    const p = new AnthropicProposer({ max_usd: 1 }, client);
+    // the authoring loop used everything but the reserve
+    const c = ctx({ maxUsd: 1, spent: { usd: 1 - 0.04 } });
+    expect(await p.journal(c, { system, user })).toBe("Tried it.");
+    // input estimate: 11,000 characters at 2 per token, 5 USD per million written = 0.0275; 0.0125 left at 20 per million
+    expect(requests[0].max_tokens).toBe(625);
+    // the call is inside the cap whatever it used: its estimate plus its allowance is the reserve
+    expect(c.spent!.usd).toBeLessThanOrEqual(1);
+    // a typical prompt (6,000 characters) leaves 1,250 tokens, three times an entry
+    const typical = fakeCreate("Tried it.");
+    await new AnthropicProposer({ max_usd: 1 }, typical.client).journal(ctx({ maxUsd: 1, spent: { usd: 0.96 } }), { system: "S".repeat(1800), user: "U".repeat(4200) });
+    expect(typical.requests[0].max_tokens).toBe(1250);
+    // under the old estimate (every character a token) the same reserve bought no call at all: 11,000 x 5 per million = 0.055
+    expect(0.04 - (11000 * 5) / 1e6).toBeLessThan(0);
+  });
+
+  test("the reserve is a setting: validated in the runtime block, floor 0.02", () => {
+    expect(efficiencyError({ journal_reserve_usd: 0.04 })).toBeNull();
+    expect(efficiencyError({ journal_reserve_usd: 0.01 })).toBe("efficiency.journal_reserve_usd is 0.02 to 1 USD");
+    expect(efficiencyError({ journal_reserve_usd: "0.04" })).toBe("efficiency.journal_reserve_usd is 0.02 to 1 USD");
   });
 });
 

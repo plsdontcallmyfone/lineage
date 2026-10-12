@@ -1,6 +1,6 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { paceIntro, paceLine, paceNotice, wrapUpNotice, type PaceStage } from "./budget.ts";
-import { DEFAULT_MIN_TURN_TOKENS, DEFAULT_SUBMIT_RESERVE_USD, MAX_TURN_TOKENS, SUBMIT_MIN_TURN_TOKENS, contentChars, turnAllowance, type EfficiencyOptions } from "./efficiency.ts";
+import { estimateTokens, DEFAULT_MIN_TURN_TOKENS, DEFAULT_SUBMIT_RESERVE_USD, MAX_TURN_TOKENS, SUBMIT_MIN_TURN_TOKENS, contentChars, turnAllowance, type EfficiencyOptions } from "./efficiency.ts";
 import { existsSync, lstatSync, readdirSync, readFileSync, realpathSync, statSync, writeFileSync } from "node:fs";
 import { dirname, join, normalize, relative, resolve, sep } from "node:path";
 import { canonicalizeDiff, guard, judge, matchesAny, sha256Hex, type CandidateKind, type CandidateView, type GuardRule } from "@units/protocol";
@@ -461,8 +461,12 @@ export class AnthropicProposer implements Proposer {
     const o = this.opts;
     const left = Math.min(o.max_usd, ctx.maxUsd ?? Infinity) - (ctx.spent?.usd ?? 0);
     const p = o.prices;
-    // worst case: every input character a token at the cache-write rate, the rest of the room for output
-    const inputUsd = ((req.system.length + req.user.length) * Math.max(p.input, p.cache_write)) / 1e6;
+    // worst case input: the estimate the authoring loop uses for text the model has not seen (2 characters
+    // per token, an over-count: prose runs about 4, figures about 3) at the cache-write rate; the rest of
+    // the room is for output. It used to count every character as a token, which alone took 0.03 to
+    // 0.05 USD of the reserve for a call that costs 0.01.
+    const promptChars = req.system.length + req.user.length;
+    const inputUsd = (estimateTokens(promptChars) * Math.max(p.input, p.cache_write)) / 1e6;
     const maxTokens = Math.min(3000, Math.floor(((left - inputUsd) * 1e6) / p.output));
     if (!(maxTokens >= 400)) {
       ctx.log(`anthropic: journal skipped, ${left.toFixed(4)} USD left of the attempt's cap`);
@@ -490,7 +494,7 @@ export class AnthropicProposer implements Proposer {
     } catch {
       /* metering must not change the entry */
     }
-    ctx.log(`anthropic: journal call ${usd.toFixed(4)} USD`);
+    ctx.log(`anthropic: journal call ${usd.toFixed(4)} USD (${promptChars} prompt characters, ${d.input_tokens + d.cache_read_tokens + d.cache_write_tokens} input tokens, ${d.output_tokens} output tokens of ${maxTokens} allowed)`);
     if (res.stop_reason !== "end_turn") return null;
     const text = res.content.map((b) => (b.type === "text" ? b.text : "")).join("").trim();
     return text || null;

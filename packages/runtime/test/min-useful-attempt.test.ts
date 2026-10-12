@@ -83,6 +83,12 @@ describe("minimum useful attempt", () => {
     await s.rt.stop();
   });
 
+  test("a configured journal reserve replaces the default in the minimum useful attempt", async () => {
+    const s = await setup({ usd: 100, over: { efficiency: { journal_reserve_usd: 0.04 } } });
+    expect(s.rt.minUsefulUsd(s.agent)).toBeCloseTo(NEED - JOURNAL_RESERVE_USD + 0.04, 12);
+    await s.rt.stop();
+  });
+
   test("a vault that passes min_attempt_usd but not a useful attempt: no attempt, no desktop, no session, paused with the reason", async () => {
     // the site's case: 0.1091 USD of budget, over the 0.05 floor, under one real model call after the journal reserve
     const s = await setup({ usd: 0.1091 });

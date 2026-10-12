@@ -1,3 +1,4 @@
+import { estimateTokens } from "./efficiency.ts";
 import { sha256Hex } from "@units/protocol";
 import { wrapUpNotice } from "./budget.ts";
 import type { Proposal, ProposeContext, Proposer } from "./types.ts";
@@ -313,8 +314,8 @@ export class OpenAICompatProposer implements Proposer {
     const left = Math.min(o.max_usd, ctx.maxUsd ?? Infinity) - (ctx.spent?.usd ?? 0);
     const promptChars = req.system.length + req.user.length;
     const rate = rateFor(o.model, (o.now ?? (() => new Date()))(), promptChars)!;
-    // worst case: every input character a token, the rest of the room for output (reasoning included)
-    const inputUsd = ((promptChars * Math.max(rate.input, rate.cache_write ?? rate.input)) / 1e6) * o.fee_factor;
+    // worst case input as in the Anthropic proposer (2 characters per token), the rest of the room for output (reasoning included)
+    const inputUsd = ((estimateTokens(promptChars) * Math.max(rate.input, rate.cache_write ?? rate.input)) / 1e6) * o.fee_factor;
     const maxTokens = Math.min(4000, Math.floor(((left - inputUsd) * 1e6) / (rate.output * o.fee_factor)));
     if (!(maxTokens >= 400)) {
       ctx.log(`${o.provider.id}: journal skipped, ${left.toFixed(4)} USD left of the attempt's cap`);

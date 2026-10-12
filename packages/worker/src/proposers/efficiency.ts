@@ -103,17 +103,28 @@ export interface RuntimeEfficiency extends EfficiencyOptions {
   series?: boolean;
   /** Target spread (worker `spread`): agents on one unit are pointed at different metric targets and file advisory intents. */
   spread?: boolean;
+  /**
+   * USD of each attempt's cap kept back for the journal call (worker journal.ts; default 0.08). On the
+   * site the call cost 0.0099 USD at the median and 0.0175 at most in 370 calls (2026-10-11/12), so
+   * 0.08 kept about 0.06 of every attempt out of the authoring loop. The reserve also is the first term
+   * of the minimum useful attempt (runtime minUsefulUsd).
+   */
+  journal_reserve_usd?: number;
 }
+
+/** The smallest journal reserve a config may set: under it the journal call's own input estimate leaves no room for an entry. */
+export const MIN_JOURNAL_RESERVE_USD = 0.02;
 
 /** Validates a runtime `efficiency` block; returns an error message or null. */
 export function efficiencyError(x: unknown): string | null {
   if (typeof x !== "object" || x === null || Array.isArray(x)) return "efficiency must be an object";
   const e = x as Record<string, unknown>;
-  for (const k of Object.keys(e)) if (!["cap_mode", "min_turn_tokens", "log_usage", "series", "keep_alive_s", "pace", "submit_reserve_usd", "spread"].includes(k)) return `efficiency.${k} is not a setting`;
+  for (const k of Object.keys(e)) if (!["cap_mode", "min_turn_tokens", "log_usage", "series", "keep_alive_s", "pace", "submit_reserve_usd", "spread", "journal_reserve_usd"].includes(k)) return `efficiency.${k} is not a setting`;
   if (e.keep_alive_s !== undefined && !(typeof e.keep_alive_s === "number" && (e.keep_alive_s === 0 || (e.keep_alive_s >= 60 && e.keep_alive_s <= 290)))) return "efficiency.keep_alive_s is 0 (off) or 60 to 290 seconds";
   if (e.cap_mode !== undefined && e.cap_mode !== "projected" && e.cap_mode !== "bounded") return "efficiency.cap_mode is projected or bounded";
   if (e.min_turn_tokens !== undefined && !(Number.isInteger(e.min_turn_tokens) && (e.min_turn_tokens as number) >= 256 && (e.min_turn_tokens as number) <= MAX_TURN_TOKENS)) return `efficiency.min_turn_tokens is a whole number from 256 to ${MAX_TURN_TOKENS}`;
   if (e.submit_reserve_usd !== undefined && !(typeof e.submit_reserve_usd === "number" && e.submit_reserve_usd >= 0 && e.submit_reserve_usd <= 1)) return "efficiency.submit_reserve_usd is 0 to 1 USD";
+  if (e.journal_reserve_usd !== undefined && !(typeof e.journal_reserve_usd === "number" && e.journal_reserve_usd >= MIN_JOURNAL_RESERVE_USD && e.journal_reserve_usd <= 1)) return `efficiency.journal_reserve_usd is ${MIN_JOURNAL_RESERVE_USD} to 1 USD`;
   if (e.pace === true && e.cap_mode !== "bounded") return "efficiency.pace needs cap_mode bounded";
   for (const k of ["log_usage", "series", "pace", "spread"]) if (e[k] !== undefined && typeof e[k] !== "boolean") return `efficiency.${k} is true or false`;
   return null;

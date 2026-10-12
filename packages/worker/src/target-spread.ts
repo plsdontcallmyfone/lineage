@@ -67,3 +67,68 @@ export function pickTarget(o: SpreadInput): SpreadPick | null {
     "It is a suggestion from counts, not a rule: take another target only if the code shows a clearly larger gain there.";
   return { planned: { kind: r.t.kind, target: r.t.name }, line, why: { others: r.others, own_fruitless: r.own, tip_failed: r.tipFailed, no_candidate: r.noCandidate } };
 }
+
+// Unit choice (recipes headroom lane, docs/plans/AGENT-EFFICIENCY.md section 6). A repository can have
+// several active units (the same commit under different recipes: other workloads, other targets). The
+// worker used to take them in Core's order and return to the first whenever it yielded a candidate, so
+// a second unit only saw the attempts the first one wasted. With target spread on, each attempt starts
+// by ranking the agent's units from the same public counts as the target pick.
+
+export interface UnitInput {
+  unit: string;
+  /** the unit's enabled metric targets */
+  targets: { kind: CandidateKind; name: string }[];
+  /** live intents on the unit */
+  intents: IntentView[];
+  /** Core's shared items for the unit, or null */
+  shared: SharedData | null;
+  /** this agent's attempts on the unit's current tip that ended without a candidate, all targets */
+  ownFruitless: number;
+}
+
+export interface UnitRank {
+  unit: string;
+  targets: number;
+  /** targets no other agent holds an open intent on */
+  free_targets: number;
+  /** other agents with an open intent on the unit */
+  others: number;
+  own_fruitless: number;
+  /** candidates that failed on the tip plus attempts by anyone that ended without a candidate */
+  misses: number;
+}
+
+/**
+ * The units in the order to try them. First the units that still have a target no other agent is on;
+ * then the fewest misses per target, counting this agent's own fruitless attempts on the tip (which
+ * it knows at once) and the misses by anyone that Core has published (a saturated unit sinks); then
+ * the fewest other agents per target. Per target, because a unit with five targets has room for more
+ * work than one with two. Ties by a
+ * digest of agent and unit, so agents that see the same counts do not all take the same unit. Units
+ * without an enabled target go last.
+ */
+export function rankUnits(self: string, units: UnitInput[]): UnitRank[] {
+  const rows = units.map((u) => {
+    const keys = new Set(u.targets.map((t) => key(t.kind, t.name)));
+    const open = u.intents.filter((i) => i.agent !== self && i.status === "open");
+    const taken = new Set(open.filter((i) => !Array.isArray(i.target) && keys.has(key(i.kind, i.target))).map((i) => key(i.kind, i.target as string)));
+    const items = (u.shared?.items ?? []).filter((it) => it && keys.has(String(it.target)));
+    const misses =
+      items.filter((it) => it.kind === "failed" && it.on_tip).length +
+      items.filter((it) => it.kind === "no_candidate").reduce((a, it) => a + (Number.isSafeInteger(it.count) ? it.count : 0), 0);
+    const n = u.targets.length;
+    const rank: UnitRank = { unit: u.unit, targets: n, free_targets: n - taken.size, others: new Set(open.map((i) => i.agent)).size, own_fruitless: u.ownFruitless, misses };
+    return { rank, n, tie: sha256Hex(new TextEncoder().encode(`${self}\n${u.unit}`)) };
+  });
+  // a / a.n against b / b.n without division
+  const per = (a: number, an: number, b: number, bn: number) => a * bn - b * an;
+  rows.sort(
+    (a, b) =>
+      Number(a.n === 0) - Number(b.n === 0) ||
+      Number(a.rank.free_targets === 0) - Number(b.rank.free_targets === 0) ||
+      per(a.rank.own_fruitless + a.rank.misses, a.n, b.rank.own_fruitless + b.rank.misses, b.n) ||
+      per(a.rank.others, a.n, b.rank.others, b.n) ||
+      a.tie.localeCompare(b.tie),
+  );
+  return rows.map((r) => r.rank);
+}

@@ -389,7 +389,7 @@ export class Runtime {
     const inTok = m?.call_input_tokens ?? MIN_USEFUL_DEFAULTS.call_input_tokens;
     const outTok = m?.call_output_tokens ?? MIN_USEFUL_DEFAULTS.call_output_tokens;
     const call = ((inTok * Math.max(rate.cache_write, rate.input) + outTok * rate.output) / 1e6) * (rate.fee_factor ?? 1);
-    const usd = JOURNAL_RESERVE_USD + calls * call;
+    const usd = (this.cfg.efficiency?.journal_reserve_usd ?? JOURNAL_RESERVE_USD) + calls * call;
     return Number.isFinite(usd) && usd > 0 ? usd : 0;
   }
 
@@ -479,6 +479,8 @@ export class Runtime {
       spread: this.cfg.efficiency?.spread === true,
       // agent journal (SPEC 17.6): own notes in, one entry out per session, inside the attempt cap
       journal: true,
+      // the journal call's share of the attempt cap (default 0.08 USD; site-config sets what the call was measured to need)
+      journalReserveUsd: this.cfg.efficiency?.journal_reserve_usd,
       messenger: this.deps.messenger?.(agent, key, (f) => this.meterChain(f)),
       desktop: this.deps.desktop,
       attempt: () => {

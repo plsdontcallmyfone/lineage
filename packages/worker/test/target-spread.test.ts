@@ -134,3 +134,143 @@ describe("spread through Core's intents", () => {
     expect(pickTarget({ targets: enabled, intents: await wa.intentsOn(e.lineage), self: a.id, tip: tree.gen_id, shared: null })!.planned).toEqual(first.planned);
   });
 });
+
+// unit choice (recipes headroom lane): several active units of one repository
+import { rankUnits, type UnitInput } from "../src/target-spread.ts";
+import { ScriptedProposer } from "../src/proposers/scripted.ts";
+import { generateAgentKey } from "@units/protocol";
+
+describe("rankUnits", () => {
+  const T2 = [{ kind: "perf" as const, name: "train_ir" }, { kind: "perf" as const, name: "encode_ir" }];
+  const T5 = ["train_basic_ir", "train_regex_ir", "encode_ir", "decode_ir", "save_load_ir"].map((name) => ({ kind: "perf" as const, name }));
+  const miss = (target: string, count: number) => ({ kind: "no_candidate", target: `perf:${target}`, count }) as unknown as SharedData["items"][number];
+  const unit = (unit: string, targets: UnitInput["targets"], o: Partial<UnitInput> = {}): UnitInput => ({ unit, targets, intents: [], shared: null, ownFruitless: 0, ...o });
+
+  test("a unit where anyone's attempts keep ending without a candidate sinks under a fresh one", () => {
+    const r = rankUnits(A, [unit("old", T2, { shared: shared([miss("train_ir", 9), miss("encode_ir", 7), failed("encode_ir", true)]) }), unit("new", T5)]);
+    expect(r.map((x) => x.unit)).toEqual(["new", "old"]);
+    expect(r[1]).toMatchObject({ misses: 17, targets: 2, free_targets: 2 });
+  });
+
+  test("its own fruitless attempts on the tip count with everyone's misses, per target", () => {
+    // 2 misses over 5 targets is less than 1 over 2
+    const r = rankUnits(A, [unit("old", T2, { ownFruitless: 1 }), unit("new", T5, { ownFruitless: 1, shared: shared([miss("decode_ir", 1)]) })]);
+    expect(r[0]!.unit).toBe("new");
+    // 3 over 5 is more than 1 over 2
+    expect(rankUnits(A, [unit("old", T2, { ownFruitless: 1 }), unit("new", T5, { ownFruitless: 3 })])[0]!.unit).toBe("old");
+    expect(rankUnits(A, [unit("old", T2, { shared: shared([miss("train_ir", 1)]) }), unit("new", T5, { ownFruitless: 2, shared: shared([miss("decode_ir", 1)]) })])[0]!.unit).toBe("old");
+  });
+
+  test("a unit whose every target another agent holds comes after one with a free target; its own intents do not count", () => {
+    const full = unit("old", T2, { intents: [intent(B, "train_ir"), intent(C, "encode_ir"), intent(A, "encode_ir")] });
+    const r = rankUnits(A, [full, unit("new", T5, { ownFruitless: 4, intents: [intent(B, "decode_ir"), intent(B, "decode_ir", "expired")] })]);
+    expect(r.map((x) => x.unit)).toEqual(["new", "old"]);
+    expect(r[0]).toMatchObject({ free_targets: 4, others: 1 });
+    expect(r[1]).toMatchObject({ free_targets: 0, others: 2 });
+  });
+
+  test("equal counts: agents do not all take the same unit, one agent's order is stable, a unit without targets goes last", () => {
+    const first = new Set<string>();
+    for (let i = 0; i < 12; i++) {
+      const self = String.fromCharCode(68 + i).repeat(44);
+      const one = rankUnits(self, [unit("u1", T2), unit("u2", T2)]);
+      expect(rankUnits(self, [unit("u2", T2), unit("u1", T2)])).toEqual(one);
+      first.add(one[0]!.unit);
+    }
+    expect(first.size).toBe(2);
+    expect(rankUnits(A, [unit("none", []), unit("u1", T2, { ownFruitless: 50 })]).map((x) => x.unit)).toEqual(["u1", "none"]);
+  });
+});
+
+describe("the worker's unit choice", () => {
+  const REPO = "https://github.com/karpathy/minbpe";
+  const metrics = (names: string[]) => Object.fromEntries(names.map((n) => [n, { enabled: true }]));
+  function worker(o: { spread: boolean; proposer?: string; exhausted?: boolean }) {
+    const dir = mkdtempSync(join(tmpdir(), "units-unit-"));
+    const logs: string[] = [];
+    const w = new Worker({
+      core: "http://127.0.0.1:9", key: generateAgentKey(), telemetry: false, stateDir: dir, log: (m) => logs.push(m), spread: o.spread,
+      proposer: { name: o.proposer ?? "anthropic", propose: async () => null, ...(o.exhausted === undefined ? {} : { exhausted: () => o.exhausted! }) },
+    });
+    const x = w as any;
+    const units: Record<string, { repo: string; names: string[]; intents: IntentView[]; shared: SharedData["items"] }> = {
+      old: { repo: REPO, names: ["train_ir", "encode_ir"], intents: [], shared: [{ kind: "no_candidate", target: "perf:train_ir", count: 6 } as never] },
+      heavy: { repo: REPO, names: ["train_basic_ir", "train_regex_ir", "encode_ir", "decode_ir", "save_load_ir"], intents: [], shared: [] },
+      other: { repo: "https://github.com/keis/base58", names: ["encode_ir"], intents: [], shared: [] },
+    };
+    const gets: string[] = [];
+    x.me = async () => ({ kind: "launched", lifecycle: "active", awake: true, target_repo: REPO });
+    x.client.get = async (path: string) => {
+      gets.push(path);
+      if (path === "/v1/lineages") return { status: 200, body: Object.entries(units).map(([lineage_id, u]) => ({ lineage_id, repo: u.repo, status: "active" })) };
+      const m = /^\/v1\/lineages\/(\w+)$/.exec(path);
+      if (m) return { status: 200, body: { lineage_id: m[1], repo: units[m[1]!]!.repo, recipe_id: m[1], calibration: { metrics: metrics(units[m[1]!]!.names) } } };
+      const i = /^\/v1\/intents\?lineage=(\w+)$/.exec(path);
+      if (i) return { status: 200, body: units[i[1]!]!.intents };
+      const s = /^\/v1\/learnings\/shared\?lineage=(\w+)/.exec(path);
+      if (s) return { status: 200, body: { lineage_id: s[1], tip: { gen_id: `tip-${s[1]}`, height: 1 }, items: units[s[1]!]!.shared } };
+      return { status: 404, body: {} };
+    };
+    x.recipes = { has: () => true, get: (id: string) => ({ recipe: { metrics: units[id]!.names.map((name) => ({ name, kind: "perf" })) } }) };
+    const tried: string[] = [];
+    // stands in for an attempt that runs and ends without a candidate
+    x.authorOn = async (view: { lineage_id: string }) => {
+      tried.push(view.lineage_id);
+      x.attempted = true;
+      return null;
+    };
+    return { w, x, units, tried, logs, gets, done: () => rmSync(dir, { recursive: true, force: true }) };
+  }
+
+  test("spread on: one attempt per step, on the fresh unit first, then by its own fruitless attempts; never a unit of another repository", async () => {
+    const s = worker({ spread: true });
+    await s.w.authorOnce();
+    expect(s.tried).toEqual(["heavy"]);
+    expect(s.gets).not.toContain("/v1/lineages/other");
+    expect(s.logs.some((m) => m.startsWith("unit choice: heavy of 2 units"))).toBe(true);
+    // three attempts on the heavy unit's tip ended without a candidate: 3 over 5 targets against 6 misses by anyone over 2
+    s.x.fruitless.set("heavy", { tip: "tip-heavy", counts: new Map([["perf:decode_ir", 2], ["perf:encode_ir", 1]]) });
+    await s.w.authorOnce();
+    expect(s.tried).toEqual(["heavy", "heavy"]);
+    // with nothing published against the old unit, 3 over 5 is the larger share: the old unit is next
+    s.units.old!.shared = [];
+    await s.w.authorOnce();
+    expect(s.tried).toEqual(["heavy", "heavy", "old"]);
+    // misses remembered for an older tip of the heavy unit no longer count
+    s.x.fruitless.set("heavy", { tip: "an-older-tip", counts: new Map([["perf:decode_ir", 3]]) });
+    s.units.old!.shared = [{ kind: "no_candidate", target: "perf:train_ir", count: 1 } as never];
+    await s.w.authorOnce();
+    expect(s.tried.at(-1)).toBe("heavy");
+    s.done();
+  });
+
+  test("spread on: a unit that started no attempt (open limit, no budget) does not end the step", async () => {
+    const s = worker({ spread: true });
+    s.x.authorOn = async (view: { lineage_id: string }) => {
+      s.tried.push(view.lineage_id);
+      s.x.attempted = view.lineage_id === "old";
+      return null;
+    };
+    await s.w.authorOnce();
+    expect(s.tried).toEqual(["heavy", "old"]);
+    s.done();
+  });
+
+  test("spread off and scripted proposers keep Core's order over every unit; an exhausted proposer starts nothing", async () => {
+    const off = worker({ spread: false });
+    await off.w.authorOnce();
+    expect(off.tried).toEqual(["old", "heavy"]);
+    off.done();
+    const scripted = worker({ spread: true, proposer: "scripted" });
+    await scripted.w.authorOnce();
+    expect(scripted.tried).toEqual(["old", "heavy"]);
+    scripted.done();
+    const done = worker({ spread: true, proposer: "scripted", exhausted: true });
+    await done.w.authorOnce();
+    expect(done.tried).toEqual([]);
+    expect(done.gets).toEqual([]);
+    done.done();
+    expect(new ScriptedProposer([]).exhausted()).toBe(true);
+    expect(new ScriptedProposer([{ name: "p", kind: "perf", target: "t", diff: "" }]).exhausted()).toBe(false);
+  });
+});

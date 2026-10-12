@@ -40,7 +40,7 @@ import { Telemetry } from "./telemetry.ts";
 import { guardOutcome, guardRuleReader } from "./guard-limits.ts";
 import { checkEntry, FactsLog, journalPrompt, JOURNAL_RESERVE_USD, notesBlock, readNotes, storeEntry } from "./journal.ts";
 import { plannedKey, readShared, sharedBlock, type SharedData } from "./shared-findings.ts";
-import { pickTarget } from "./target-spread.ts";
+import { pickTarget, rankUnits, type UnitInput } from "./target-spread.ts";
 import { writeSecret } from "./secret-file.ts";
 import { SessionRecorder } from "./session.ts";
 import { EpisodeCapture } from "./episode.ts";
@@ -121,6 +121,8 @@ export interface WorkerOptions {
    * inside the attempt's cap). The hosted runtime turns it on; self-hosted workers opt in.
    */
   journal?: boolean;
+  /** USD of an attempt's cap kept back for the journal call (default JOURNAL_RESERVE_USD). */
+  journalReserveUsd?: number;
   /**
    * Shared findings (docs/plans/AGENT-LEARNINGS.md 12.4): before each attempt read every listed agent's
    * published outcomes on the unit from Core into a short labelled block after the agent's own notes.
@@ -132,6 +134,8 @@ export interface WorkerOptions {
    * pick one of the unit's enabled metric targets from counts (other agents' open intents, this
    * agent's own fruitless attempts on the tip, candidates that failed on the tip), tell the model,
    * and file an advisory intent for it. Off by default; needs collab other than "off".
+   * With several active units of the agent's repository it also chooses the unit for each attempt from
+   * the same kind of counts (target-spread.ts rankUnits), one attempt per authoring step.
    */
   spread?: boolean;
   /**
@@ -191,6 +195,8 @@ export class Worker {
   private submitted = 0;
   /** target spread: this agent's attempts without a candidate on a unit's current tip, by target */
   private fruitless = new Map<string, { tip: string; counts: Map<string, number> }>();
+  /** whether the last authorOn call got as far as the proposer (an attempt ran) */
+  private attempted = false;
   private busy = false;
   /** Reveals in flight, shared by the main loop and the reveal timer so neither sends one twice. */
   private revealing = new Set<string>();
@@ -403,21 +409,65 @@ export class Worker {
     const proposer = this.opts.proposer;
     if (!proposer) return null;
     if (this.opts.maxCandidates !== undefined && this.submitted >= this.opts.maxCandidates) return null;
+    // a proposer that can never propose again starts nothing: no tree, no session (an exhausted script)
+    if (proposer.exhausted?.()) return null;
     const me = await this.me();
     if (me.kind !== "launched" || me.lifecycle !== "active" || !me.awake) return null;
     const all = await this.ok<{ lineage_id: string; repo: string; status: string }[]>(this.client.get("/v1/lineages"), "lineages");
     const mine = all.filter((l) => l.status === "active" && (this.opts.lineages?.length ? this.opts.lineages.includes(l.lineage_id) : true));
+    const units: any[] = [];
     for (const summary of mine) {
+      // the list carries each unit's repository: a unit of another repository is not read at all
+      if (me.target_repo && summary.repo && summary.repo !== me.target_repo) continue;
       const view = await this.ok(this.client.get(`/v1/lineages/${summary.lineage_id}`), "lineage");
       if (me.target_repo && view.repo !== me.target_repo) continue;
       if (!this.recipes.has(view.recipe_id)) {
         this.log(`lineage ${summary.lineage_id.slice(0, 10)}: recipe not available locally`);
         continue;
       }
+      units.push(view);
+    }
+    // unit choice (recipes headroom lane): with target spread on, a model agent whose repository has
+    // several active units takes them in the order of rankUnits and makes one attempt per step, so the
+    // next step ranks again with the new counts. Otherwise (scripted, spread off) every unit in Core's
+    // order until one yields a candidate, as before.
+    const choose = this.opts.spread === true && proposer.name !== "scripted" && (this.opts.collab ?? "advisory") !== "off";
+    const order = choose && units.length > 1 ? await this.unitOrder(units) : units;
+    for (const view of order) {
+      this.attempted = false;
       const id = await this.authorOn(view);
       if (id) return id;
+      if (choose && this.attempted) return null;
     }
     return null;
+  }
+
+  /** The agent's units in the order to try them (target-spread.ts rankUnits); Core's order when the counts cannot be read. */
+  private async unitOrder(units: any[]): Promise<any[]> {
+    try {
+      const inputs: UnitInput[] = [];
+      for (const view of units) {
+        const loaded = this.recipes.get(view.recipe_id);
+        const [intents, shared] = await Promise.all([this.intentsOn(view.lineage_id), readShared(this.client, view.lineage_id).catch(() => null)]);
+        const mem = this.fruitless.get(view.lineage_id);
+        const tip = shared?.tip?.gen_id ?? null;
+        const own = mem && (tip === null || mem.tip === tip) ? [...mem.counts.values()].reduce((a, n) => a + n, 0) : 0;
+        inputs.push({
+          unit: view.lineage_id,
+          targets: loaded.recipe.metrics.filter((m) => view.calibration?.metrics?.[m.name]?.enabled).map((m) => ({ kind: m.kind as CandidateKind, name: m.name })),
+          intents,
+          shared,
+          ownFruitless: own,
+        });
+      }
+      const ranked = rankUnits(this.id, inputs);
+      const first = ranked[0]!;
+      this.log(`unit choice: ${first.unit.slice(0, 10)} of ${ranked.length} units of this repository (${first.free_targets} of ${first.targets} targets without another agent, ${first.own_fruitless} own fruitless on its tip, ${first.misses} published misses on it)`);
+      return ranked.map((r) => units.find((u) => u.lineage_id === r.unit)!);
+    } catch (e) {
+      this.log(`unit choice: counts not read (${(e as Error).message.slice(0, 120)}); Core's order`);
+      return units;
+    }
   }
 
   private maxOpen: number | null = null;
@@ -541,7 +591,7 @@ export class Worker {
         soul: await this.soulBlock(),
         notes: journal ? notesBlock(await readNotes(this.client, this.id, view.lineage_id), view.lineage_id) : null,
         shared: null,
-        journalReserveUsd: journal && proposer.journal ? JOURNAL_RESERVE_USD : 0,
+        journalReserveUsd: journal && proposer.journal ? (this.opts.journalReserveUsd ?? JOURNAL_RESERVE_USD) : 0,
         spent: { usd: 0 },
         // guard limits (SPEC 10.1 rule 6): self-evaluation judges with the rule in force (GET /v1/guard-config)
         guardRule: guardRuleReader((path) => this.client.get(path), view.recipe_id),
@@ -597,6 +647,7 @@ export class Worker {
           }
         }
       }
+      this.attempted = true;
       const proposal = await proposer.propose(ctx);
       if (!proposal && ctx.suggested && ctx.planned) {
         // target spread: remember the miss on this tip, so the next pick moves on

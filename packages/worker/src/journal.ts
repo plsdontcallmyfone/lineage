@@ -16,7 +16,10 @@ import type { SessionEventInput } from "./session.ts";
 // - the write: one small model call by the proposer in the soul's voice, inside the attempt's cap
 //   (the proposer keeps a reserve for it), checked, signed with purpose `journal` and stored in Core.
 
-/** USD a proposer keeps back from an attempt's cap for the journal call. */
+/**
+ * USD a proposer keeps back from an attempt's cap for the journal call, unless configured
+ * (WorkerOptions.journalReserveUsd; hosted runtime: efficiency.journal_reserve_usd).
+ */
 export const JOURNAL_RESERVE_USD = 0.08;
 /** What the prompt asks for: below the hard limit, since drafts tend to run long. */
 const JOURNAL_TARGET = 1000;

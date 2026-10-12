@@ -139,6 +139,12 @@ export interface Proposer {
    * inside what is left of the attempt's cap (ctx.maxUsd minus ctx.spent). Returns the text, or null.
    */
   journal?(ctx: ProposeContext, req: { system: string; user: string }): Promise<string | null>;
+  /**
+   * Optional: true once this proposer can never propose again (a scripted proposer whose script is
+   * used up). The worker then starts no attempt at all: on the site 18 scripted authors with nothing
+   * left kept materializing their unit's tree every 5 seconds, a third of the server's CPU.
+   */
+  exhausted?(): boolean;
 }
 
 /** Targets other agents hold a live intent on (canonical JSON keys). */
