@@ -169,6 +169,19 @@ function statusView(v: any, actions: boolean): Raw {
   return html`${kv(rows)}${tokenActions}<div id="w-gh-out" style="margin-top:6px"></div>`;
 }
 
+/**
+ * Whether this instance runs the GitHub identity service at /identity/*. An instance without one (the
+ * mainnet instance: its Caddy block has no identity route, so /identity/* answers 502) is the one whose
+ * Core names no recipient for the units account payment; there the pages neither ask the service nor
+ * show a GitHub account row. Unknown (Core's config not read yet) counts as none: nothing is polled.
+ */
+export const hasIdentityService = (cfg: { identity_account_recipient?: string | null } | null | undefined): boolean => !!cfg?.identity_account_recipient;
+
+/** The rows of the "After the launch" list that are shown from the start, in order. */
+export function launchTrackRows(o: { identityService: boolean; hosted: boolean; banner: boolean }): string[] {
+  return ["confirmed", "vault", ...(o.identityService ? ["github"] : []), "runtime", ...(o.banner ? ["images"] : []), "session", "verdict"];
+}
+
 const polls = new Map<string, ReturnType<typeof setTimeout>>();
 const mints = new Map<string, string>();
 

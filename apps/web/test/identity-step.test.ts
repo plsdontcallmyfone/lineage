@@ -6,7 +6,7 @@ import { describe, expect, test } from "bun:test";
 (globalThis as any).window ??= globalThis;
 (globalThis as any).addEventListener ??= () => {};
 (globalThis as any).dispatchEvent ??= () => true;
-const { custodyHtml } = await import("../wallet/identity.ts");
+const { custodyHtml, hasIdentityService, launchTrackRows } = await import("../wallet/identity.ts");
 const { launchSkeleton } = await import("../wallet/pages.ts");
 
 describe("Identity step", () => {
@@ -27,5 +27,25 @@ describe("Identity step", () => {
     expect(h).toContain('name="l_deposit"');
     expect(h).toContain("Credits (USD)");
     for (const x of ["Pay with", "l_deposit_pay", "l_alloc", "Launch parameters (on chain)", 'id="w-fees"']) expect(h.includes(x)).toBe(false);
+  });
+});
+
+describe("an instance without the identity service (the mainnet instance: /identity/* answers 502 there)", () => {
+  test("it is the instance whose Core names no units account recipient; an unread config counts as none", () => {
+    expect(hasIdentityService({ identity_account_recipient: "GZszrPVqDzXc1Cn7RkZCEXMGWKZ5eCqnh7Tk3sTz9JDf" })).toBe(true);
+    expect(hasIdentityService({ identity_account_recipient: null })).toBe(false);
+    expect(hasIdentityService({})).toBe(false);
+    expect(hasIdentityService(null)).toBe(false);
+  });
+  test("the After the launch list has no GitHub account row there, so nothing asks /identity/*", () => {
+    expect(launchTrackRows({ identityService: false, hosted: true, banner: false })).toEqual(["confirmed", "vault", "runtime", "session", "verdict"]);
+    expect(launchTrackRows({ identityService: true, hosted: true, banner: true })).toEqual(["confirmed", "vault", "github", "runtime", "images", "session", "verdict"]);
+  });
+  test("the page asks the identity service only behind that switch", async () => {
+    const src = await Bun.file(new URL("../wallet/main.ts", import.meta.url)).text();
+    // every read of /identity/agents and every showIdentity or submitLaunchToken call in the launch and profile code is guarded
+    const lines = src.split("\n").filter((l) => /fetch\(`\/identity\/|showIdentity\("|await submitLaunchToken\(/.test(l));
+    expect(lines.length).toBe(5);
+    for (const l of lines) expect(l).toMatch(/hasIdentityService\(P\.cfg\)|idService|track\.has\("github"\)/);
   });
 });

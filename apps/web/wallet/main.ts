@@ -89,7 +89,7 @@ import { fmtUsd, loadUsd, quoteToUsd, solToUsd, usdWhy } from "../src/usd.ts";
 import { budgetIxs, buildAndSimulate, onRpcBusy, isMainnet, loadChainCfg, NET, netName, parseUnits, qsym, reader, rpc, signAndSend, signAndSendAll, sol, testLabels, units, usym, devnetGate, type BundlePart, type Built, type ChainCfg } from "./chain.ts";
 import { connectWallet, onSession, walletChain, restoreSession, session, signsV0, startDiscovery, type StdAccount, type StdWallet } from "./standard.ts";
 export { mountTradeBox } from "./trade.ts";
-import { custodyHtml, ghClick, initGithubIdentity, showIdentity, submitLaunchToken } from "./identity.ts";
+import { custodyHtml, ghClick, hasIdentityService, initGithubIdentity, launchTrackRows, showIdentity, submitLaunchToken } from "./identity.ts";
 import { depositBase, depositNote, depositUsd, loadPrepay, P, prepayHelp, showCorePrepay } from "./prepay.ts";
 import { costBreakdown, fundingBlocked, fundingSummary, initialBuyFor, solCostsFromSims, type FundingView, type InitialBuy } from "./fronting.ts";
 import { launchExtras, mountFeeRouteStep } from "./fee-route-step.ts";
@@ -903,15 +903,19 @@ async function launchSign() {
     const started = Date.now();
     track.clear();
     mark("confirmed", "ok", html`${sigs.map((s, i) => html`${i ? ", " : ""}${txLink(s)}`)}, one signature${sigs.length > 1 ? ` for ${sigs.length} transactions` : ""}`);
-    mark("vault", "wait", "reading the compute vault");
-    mark("github", "wait", "asking the identity service");
-    if (d.args.hosted) mark("runtime", "wait", "the hosted runtime's binding follows");
-    else mark("runtime", "skip", "self-hosted: run the worker with the agent key below");
-    if (S.bannerFile) mark("images", "wait", "after Core reads the launch");
-    mark("session", "wait", "after the agent is awake and bound");
-    mark("verdict", "wait", "after the first candidate is replayed");
+    // an instance without the identity service gets no GitHub account row and no request to /identity/* (identity.ts)
+    const idService = hasIdentityService(P.cfg);
+    const first: Record<string, [StepState, string]> = {
+      vault: ["wait", "reading the compute vault"],
+      github: ["wait", "asking the identity service"],
+      runtime: d.args.hosted ? ["wait", "the hosted runtime's binding follows"] : ["skip", "self-hosted: run the worker with the agent key below"],
+      images: ["wait", "after Core reads the launch"],
+      session: ["wait", "after the agent is awake and bound"],
+      verdict: ["wait", "after the first candidate is replayed"],
+    };
+    for (const k of launchTrackRows({ identityService: idService, hosted: d.args.hosted, banner: !!S.bannerFile })) if (first[k]) mark(k, ...first[k]);
     if (d.soul) await publishLaunchedSoul(d.agent, d.soul);
-    S.ghLaunch = d.args.identity === "token" ? await submitLaunchToken({ agent: d.agent, mint: d.mint.id }) : null;
+    S.ghLaunch = idService && d.args.identity === "token" ? await submitLaunchToken({ agent: d.agent, mint: d.mint.id }) : null;
     void trackLaunch(d.agent.id, d.mint.id, d.args.hosted, started);
     void uploadImages(d.agent.id);
     await renderLaunched();
@@ -957,7 +961,7 @@ async function renderLaunched() {
         ["Registry record", rec ? html`kind ${rec.kind}, owner ${addr(rec.owner)}, hosted ${rec.hosted ? "yes" : "no"}` : "TBA"],
         ["Soul on chain", rec?.profileDigest ? html`<span class="wl-hash">${rec.profileDigest}</span> seq ${rec.profileSeq} ${S.soul?.doc && rec.profileDigest === soulDigest(S.soul.doc) ? html`<span class="mark good">${icon.check} equals the soul you signed</span>` : ""}` : html`<span class="faint">none</span>`],
         ["Soul in Core", S.soulPub ?? html`<span class="faint">none</span>`],
-        ["GitHub identity", html`${S.ghLaunch ?? ""}<div id="w-gh-launch"><span class="dim">Reading the identity service…</span></div>`],
+        ...(hasIdentityService(P.cfg) ? [["GitHub identity", html`${S.ghLaunch ?? ""}<div id="w-gh-launch"><span class="dim">Reading the identity service…</span></div>`] as [string, unknown]] : []),
         ...(l.hosted ? [["Hosted runtime", html`<div id="w-rt-bind"><span class="dim">Asking the hosted runtime for its key…</span></div>`] as [string, unknown]] : []),
       ])}
       <div class="panel-b">
@@ -965,7 +969,7 @@ async function renderLaunched() {
         <div class="wl-fine">The agent key exists only in this tab. ${l.hosted ? "Once bound, the hosted runtime's own key speaks for the agent and this key no longer does; keep the file to rotate back to it later." : "A self-hosted worker runs with it:"} <span class="num">${W} run --core &lt;core&gt; --key &lt;file&gt;</span>. Leaving the page drops it.</div>
       </div>`,
   );
-  showIdentity("w-gh-launch", l.agent, l.mint, false);
+  if (hasIdentityService(P.cfg)) showIdentity("w-gh-launch", l.agent, l.mint, false);
   if (L.deposit !== undefined) void showCorePrepay(l.agent, dec(), (r) => set("w-prepay-core", r));
   if (l.hosted) void bindHosted(l.agent);
 }
@@ -1328,7 +1332,7 @@ function renderIdentity() {
       <div class="wl-row" style="margin-top:8px">${btn("i-lookup", "Look up")}</div></div>
     <div class="panel-b" style="padding-top:0">${body}</div>`,
   );
-  if (rec && rec.kind === "launched") showIdentity("w-gh", rec.agent, rec.mint, true);
+  if (rec && rec.kind === "launched") hasIdentityService(P.cfg) ? void showIdentity("w-gh", rec.agent, rec.mint, true) : set("w-gh", html`<span class="dim">This instance runs no GitHub identity service.</span>`);
   else if (rec) set("w-gh", html`<span class="dim">A verifier has no GitHub identity.</span>`);
   set(
     "w-id-kit",
@@ -2042,8 +2046,10 @@ async function trackLaunch(agent: string, mint: string, hosted: boolean, started
         if (rec?.signingKey && rec.signingKey !== agent) mark("runtime", "ok", html`signing key ${addr(rec.signingKey)}, the hosted runtime's`);
         else if (track.get("runtime")?.s !== "bad") mark("runtime", "wait", "waiting for the binding signature");
       }
-      const id = await fetch(`/identity/agents/${agent}`, { cache: "no-store" }).then((r) => (r.ok ? r.json() : null)).catch(() => null);
-      if (id) {
+      const id = track.has("github") ? await fetch(`/identity/agents/${agent}`, { cache: "no-store" }).then((r) => (r.ok ? r.json() : null)).catch(() => null) : null;
+      if (!track.has("github")) {
+        /* no identity service on this instance: nothing to ask, no row */
+      } else if (id) {
         const st = String(id.status);
         if (st === "ready") mark("github", "ok", html`${id.login ? html`<a class="link" href="${id.profile_url}" target="_blank" rel="noopener">${id.login}</a>` : "ready"}, ${id.mode}`);
         else if (st === "app") mark("github", "ok", "app identity: commits are recorded, not pushed");
@@ -2192,7 +2198,7 @@ async function fillMine(mine: AgentLaunch[]) {
   mine.forEach((l, i) => set(`me-v-${l.agent}`, tl(vaults[i])));
   await Promise.all(
     mine.map(async (l) => {
-      const id = await fetch(`/identity/agents/${l.agent}`, { cache: "no-store" }).then((r) => (r.ok ? r.json() : null)).catch(() => null);
+      const id = hasIdentityService(P.cfg) ? await fetch(`/identity/agents/${l.agent}`, { cache: "no-store" }).then((r) => (r.ok ? r.json() : null)).catch(() => null) : null;
       set(`me-gh-${l.agent}`, id ? html`${id.login ? html`<a class="link" href="${id.profile_url}" target="_blank" rel="noopener">${id.login}</a> ` : ""}<span class="dim">${String(id.status).replace(/_/g, " ")}</span>` : html`<span class="faint">TBA</span>`);
     }),
   );
