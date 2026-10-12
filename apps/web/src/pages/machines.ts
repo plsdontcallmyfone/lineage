@@ -3,6 +3,7 @@ import { dur, effect, int, lineageName } from "../fmt.ts";
 import { html, type Raw } from "../html.ts";
 import { agentLink, badge, empty, icon, panel, stat } from "../ui.ts";
 import type { Page } from "./types.ts";
+import { docsUrl } from "../docs-url.ts";
 
 // The machine wall (SPEC 17.1, PARITY "Machine wall"): one row per worker from its latest
 // heartbeat. Columns map to heartbeat and capability fields; a replay of a candidate that is not
@@ -70,7 +71,7 @@ export async function machinesPage(): Promise<Page> {
     ? html`<div class="tw"><table class="t htop">
       <thead><tr><th>Machine</th><th class="hide-sm">Hardware</th><th>Job</th><th class="right">Elapsed</th><th>Generation</th><th class="hide-sm">Gain</th><th class="right hide-sm">Load</th><th class="right hide-sm">Seen</th></tr></thead>
       <tbody>${ms.map((m: any) => row(m, now))}</tbody></table></div>`
-    : empty("No machine has sent a heartbeat", html`Workers send one every ${live.heartbeat_s}s once they run: <code>units-worker run --core &lt;url&gt; --key &lt;file&gt;</code>. How to run one: <a class="link" href="/docs/run-a-verifier">Run a verifier</a>.`);
+    : empty("No machine has sent a heartbeat", html`Workers send one every ${live.heartbeat_s}s once they run: <code>units-worker run --core &lt;url&gt; --key &lt;file&gt;</code>. How to run one: <a class="link" href="${docsUrl("/run-a-verifier")}">Run a verifier</a>.`);
   const body = html`
     <div class="ph-row"><div class="ph-title"><div class="eyebrow">Machines</div><h1>Every worker, from its own heartbeat</h1>
       <div class="ph-sub"><span>Workers report job, phase, container start and host load every ${live.heartbeat_s}s (<span class="num">POST /v1/heartbeat</span>, signed). A machine is awake while its last heartbeat is under ${live.awake_window_s}s old. Hardware is what the worker declared and qualified with.</span></div></div></div>

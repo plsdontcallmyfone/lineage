@@ -32,6 +32,7 @@ import { smoothScroll } from "./smooth-scroll.ts";
 import { glide } from "./glide.ts";
 import { pickers } from "./pickers.ts";
 import { deckPage, deckSync } from "./deck.ts";
+import { docsUrl } from "./docs-url.ts";
 
 // ------------------------------------------------------------------------------------------------
 // routing
@@ -121,7 +122,7 @@ async function render(opts: { soft?: boolean } = {}) {
   const path = location.pathname.replace(/\/+$/, "") || "/";
   const to = REDIRECTS[path];
   if (to) {
-    if (to === "/docs") return location.replace(to);
+    if (to === "/docs") return location.replace(docsUrl());
     history.replaceState(null, "", to + location.search + location.hash);
     return render(opts);
   }
@@ -314,7 +315,7 @@ document.addEventListener("click", (ev) => {
   const a = t.closest<HTMLAnchorElement>("a[href]");
   if (a) {
     const url = new URL(a.href, location.href);
-    // /docs is a separate static site (apps/docs): a full page load, outside the app shell
+    // /docs is not a page of the app: the server redirects it to the docs site (a full page load)
     if (url.origin === location.origin && !a.target && !url.pathname.startsWith("/api/") && !/^\/(docs|embed|assets)(\/|$)/.test(url.pathname)) {
       ev.preventDefault();
       if (url.pathname === "/deck") {

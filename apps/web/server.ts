@@ -7,7 +7,8 @@
 //   /live/events       SSE fan-out of Core's event stream (one upstream connection, shared)
 //   /live/recent       last N events held in memory (?limit=, ?agent=, ?candidate=)
 //   /live/spec         docs/SPEC.md as text
-//   /docs, /docs/*     the docs site (apps/docs, built by scripts/docs/build.ts at startup), static, outside the app shell
+//   /docs, /docs/*     redirect to the docs site, a web site of its own (apps/docs; UNITS_DOCS_URL, else config/sites.json
+//                      docs_url), same page: /docs/verification goes to <docs>/verification
 //   /assets/app.js     client bundle (Bun.build at startup; rebuilt per request with --dev)
 //   /assets/wallet.js  wallet bundle (packages/chain in the browser; loaded by Launch, Profile and the token page's trade box)
 //   /chain/config      public devnet addresses (scripts/devnet/devnet.json) and the RPC's cluster
@@ -44,6 +45,7 @@ import { join } from "node:path";
 import { chainBrowserPlugin } from "../../packages/chain/src/browser/plugin.ts";
 import { Faucet } from "./wallet/faucet.ts";
 import { publishSoul, SoulDrafts } from "./wallet/souls.ts";
+import sites from "../../config/sites.json" with { type: "json" };
 
 const arg = (n: string, d?: string) => {
   const i = process.argv.indexOf(`--${n}`);
@@ -70,12 +72,31 @@ try {
   /* lsof exits non-zero when nothing listens */
 }
 
+// The docs are a web site of their own (apps/docs, scripts/docs/build.ts; canonical origin
+// https://docs.units.gg). The app serves none of it: /docs and /docs/<page> answer a redirect to the
+// same page there. UNITS_DOCS_URL names the docs origin (default config/sites.json docs_url, the
+// temporary docs host until the DNS record of docs.units.gg exists). The redirect is a 302 while the
+// origin may still change; UNITS_DOCS_REDIRECT=301 makes it permanent.
+const DOCS_URL = (process.env.UNITS_DOCS_URL || sites.docs_url).replace(/\/+$/, "");
+if (!/^https?:\/\/[^/]+$/.test(DOCS_URL)) throw new Error(`UNITS_DOCS_URL must be http(s)://host with no path, got "${DOCS_URL}"`);
+const DOCS_REDIRECT = process.env.UNITS_DOCS_REDIRECT === "301" ? 301 : 302;
+/** Where a path under /docs lives on the docs site: "/docs" is its start page, "/docs/x" and "/docs/x.html" are "/x". */
+function docsTarget(p: string, search = ""): string {
+  const rest = p.slice("/docs".length).replace(/\/+$/, "").replace(/\.html$/, "").replace(/^\/index$/, "");
+  return `${DOCS_URL}${rest || "/"}${search}`;
+}
+const docsRoute = (p: string, search: string) =>
+  new Response(null, { status: DOCS_REDIRECT, headers: { location: docsTarget(p, search), "cache-control": DOCS_REDIRECT === 301 ? "public, max-age=3600" : "no-store" } });
+// the app's bundles link to the docs through apps/web/src/docs-url.ts
+const DOCS_DEFINE = { __UNITS_DOCS_URL__: JSON.stringify(DOCS_URL) };
+
+
 // ------------------------------------------------------------------------------------------------
 // client bundle
 
 let bundle: string | null = null;
 async function build(): Promise<string> {
-  const out = await Bun.build({ entrypoints: [join(DIR, "src/main.ts")], target: "browser", minify: !DEV, sourcemap: DEV ? "inline" : "none" });
+  const out = await Bun.build({ entrypoints: [join(DIR, "src/main.ts")], target: "browser", minify: !DEV, sourcemap: DEV ? "inline" : "none", define: DOCS_DEFINE });
   if (!out.success) throw new Error(out.logs.map((l) => String(l)).join("\n"));
   return await out.outputs[0]!.text();
 }
@@ -84,7 +105,7 @@ bundle = await build();
 let walletBundle: string | null = null;
 async function buildWallet(): Promise<string> {
   const out = await Bun.build({ entrypoints: [join(DIR, "wallet/main.ts")], target: "browser", format: "esm", minify: !DEV, sourcemap: DEV ? "inline" : "none",
-    plugins: [chainBrowserPlugin] });
+    plugins: [chainBrowserPlugin], define: DOCS_DEFINE });
   if (!out.success) throw new Error(out.logs.map((l) => String(l)).join("\n"));
   return await out.outputs[0]!.text();
 }
@@ -98,18 +119,6 @@ async function buildPrivy(): Promise<string> {
     define: { "process.env.NODE_ENV": JSON.stringify(DEV ? "development" : "production"), global: "globalThis" } });
   if (!out.success) throw new Error(out.logs.map((l) => String(l)).join("\n"));
   return await out.outputs[0]!.text();
-}
-
-// docs site (apps/docs): static files built in memory, served at /docs outside the app shell
-const { buildDocs, docsLookup } = await import("../../scripts/docs/build.ts");
-let docs = await buildDocs({ base: "/docs" });
-async function docsRoute(p: string): Promise<Response> {
-  if (DEV) docs = await buildDocs({ base: "/docs" });
-  if (p === "/docs/") return Response.redirect("/docs", 301);
-  const f = docsLookup(docs, p.slice("/docs".length));
-  if (!f) return new Response(docs.get("index.html") ? "No such docs page. The docs start at /docs." : "not found", { status: 404, headers: { "content-type": "text/plain; charset=utf-8" } });
-  const page = f.type.startsWith("text/html");
-  return new Response(f.body as BodyInit, { headers: page ? PAGE_HEADERS : { "content-type": f.type, "cache-control": DEV ? "no-store" : "public, max-age=300" } });
 }
 
 /**
@@ -425,9 +434,9 @@ const server = Bun.serve({
     if (req.method !== "GET" && req.method !== "HEAD") return new Response("read-only", { status: 405 });
     if (p.startsWith("/market/")) return marketProxy(p, url.search);
     if (p.startsWith("/desktops/")) return desktopProxy(p);
-    if (p === "/docs" || p.startsWith("/docs/")) return docsRoute(p);
+    if (p === "/docs" || p.startsWith("/docs/")) return docsRoute(p, url.search);
     const moved = REDIRECTS[p.replace(/\/+$/, "")];
-    if (moved) return new Response(null, { status: 302, headers: { location: moved + url.search } });
+    if (moved) return new Response(null, { status: 302, headers: { location: (moved === "/docs" ? docsTarget("/docs") : moved) + url.search } });
     if (p === "/embed" || p.startsWith("/embed/")) return embedRoute(p);
     if (p.startsWith("/api/")) {
       const rest = p.slice(5);

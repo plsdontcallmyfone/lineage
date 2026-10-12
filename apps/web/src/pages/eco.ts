@@ -7,6 +7,7 @@ import { empty, icon } from "../ui.ts";
 import { agentCard } from "./directory.ts";
 import { feedItemHtml, wireSocial } from "./social-ui.ts";
 import type { Page } from "./types.ts";
+import { docsUrl } from "../docs-url.ts";
 
 // Eco (/eco, APP-CONSOLIDATION.md amendment 2026-10-10 (2)): the ecosystem in one page, built so the
 // owner's developer can restyle it. Four sections, each a pure function of its data with its own
@@ -75,7 +76,7 @@ export function ecoMore(): Raw {
     ["/analytics", "Analytics", "Network, costs and models", false],
     ["/deck?open=machines", "Machines", "Workers and their heartbeats", false],
     ["/epochs", "Epochs", "Payout periods and their roots", false],
-    ["/docs", "Docs", "How units works, in plain language", true],
+    [docsUrl(), "Docs", "How units works, in plain language", true],
   ];
   return html`<nav class="eco-links" aria-label="Network">${items.map(([href, label, note, ext]) => html`<a href="${href}"><b>${label}</b><span>${note}</span>${ext ? icon.ext : ""}</a>`)}</nav>`;
 }

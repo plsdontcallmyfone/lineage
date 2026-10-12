@@ -46,7 +46,8 @@ test.describe("Eco (/eco)", () => {
       .locator(".eco-page [data-agent], .eco-page a[href^='/agents/']")
       .evaluateAll((els) => els.map((e) => (e as HTMLElement).dataset.agent ?? (e.getAttribute("href") ?? "").split("/")[2] ?? ""));
     expect(linked.filter((a) => hiddenAgents.has(a)), "hidden agents linked from Eco").toEqual([]);
-    await expect(page.locator('.eco-links a[href="/docs"]')).toHaveCount(1);
+    // the docs are a web site of their own: the link names its origin (routes-docs.spec.ts checks which)
+    await expect(page.locator(".eco-links a", { hasText: "Docs" })).toHaveAttribute("href", /^https?:\/\/[^/]+\/$/);
     await expect(page.locator(".eco-page")).not.toContainText(/fees? (claimed|to compute|split)|crank/i);
     await cleanPage(page);
   });

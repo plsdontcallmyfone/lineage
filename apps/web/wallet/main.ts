@@ -100,6 +100,7 @@ import { agentAvatar, agentTitle, buildingLine, injectBuildingStyle, paramCells,
 import { agentCard } from "../src/pages/directory.ts";
 import { avatar as idAvatar, banner as idCover } from "../src/pages/social-ui.ts";
 import { githubCallsLeft, spendGithubCall } from "../src/github.ts";
+import { docsUrl } from "../src/docs-url.ts";
 
 const T22 = TOKEN_2022_PROGRAM;
 const W = "bun packages/worker/src/main.ts";
@@ -798,7 +799,7 @@ function fundingView(): FundingView {
   }
   const identityChosen = (S.root?.querySelector<HTMLInputElement>('input[name="l_identity"]:checked')?.value ?? "purchased") === "purchased";
   return { costs: d?.costs ?? null, creditsUsd: usd, bps: P.cfg?.initial_buy_bps ?? null, identityChosen, solUsd: S.solUsd, solBalance: S.sol,
-    txCount: d ? d.plan.length + (d.swap?.plan.txs.length ?? 0) : null, blocked: launchBlocked(), devnet: !isMainnet(), docs: "/docs/launch-an-agent#5-funding", pending: !!S.simming };
+    txCount: d ? d.plan.length + (d.swap?.plan.txs.length ?? 0) : null, blocked: launchBlocked(), devnet: !isMainnet(), docs: docsUrl("/launch-an-agent#5-funding"), pending: !!S.simming };
 }
 
 function renderLaunchReview() {

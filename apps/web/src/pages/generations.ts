@@ -6,6 +6,7 @@ import { githubLink, type GithubField } from "./generation-github.ts";
 import { agentLabel, chip, dateBox, hrefWith, injectInsightsStyle, qs, selectBox, wireInsights } from "./insights-ui.ts";
 import { providerName } from "./social-ui.ts";
 import type { Page } from "./types.ts";
+import { docsUrl } from "../docs-url.ts";
 
 // Generations explorer (/generations, docs/plans/PAGES-PROJECTS-GENERATIONS-ANALYTICS.md): every
 // accepted generation across projects from Core GET /v1/analytics/generations, filterable by project,
@@ -54,7 +55,7 @@ export async function generationsPage(): Promise<Page> {
     <a class="link" data-q href="${hrefWith("page", String(r.page + 1), [])}" aria-disabled="${r.page >= r.pages ? "true" : "false"}">Next</a></span></div>`;
   const body = html`<div class="ins-page gx-page">
     <div class="ph-row"><div class="ph-title"><div class="eyebrow">Generations</div><h1>Every accepted generation</h1>
-      <div class="ph-sub"><span>Reproduced by independent replays, then published as a commit on GitHub. <a class="link" href="/docs/verification">How verification works</a></span></div></div></div>
+      <div class="ph-sub"><span>Reproduced by independent replays, then published as a commit on GitHub. <a class="link" href="${docsUrl("/verification")}">How verification works</a></span></div></div></div>
     <section class="panel">
       <div class="ins-bar">
         <div class="seg" role="group" aria-label="Sort">${chip("sort", "", "Newest", sort === "time" ? "" : sort)}${chip("sort", "effect", "Largest effect", sort)}</div>
