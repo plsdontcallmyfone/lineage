@@ -1,0 +1,16 @@
+{
+  "_note": "Mainnet TEST values (docs/MAINNET-RUNBOOK.md, 'Mainnet test'): a small real-mainnet run with one key as admin and upgrade authority and a throwaway pump.fun coin as the quote. test.ts fills core_authority, runtime_authority and line_mint from the key directory. The shape and values are the devnet TEST ones (config/network.json; bounty, messages and challenge as scripts/devnet). onchain_epoch_length_s 300 is devnet's too (scripts/devnet/setup.ts): unbond_cooldown_s 600 must be at least two epochs on chain, and Core keeps its own epoch timing. Not launch values: those stay TBA in launch-params.example.json. u64 amounts are strings with an n suffix, in base units of the quote coin (6 decimals).",
+  "core_authority": "filled by test.ts",
+  "runtime_authority": "filled by test.ts",
+  "line_mint": "filled by test.ts",
+  "line_decimals": 6,
+  "line_token_program": "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb",
+  "network_file": "config/network.json",
+  "onchain_epoch_length_s": 300,
+  "max_rebate_per_epoch": "1000000n",
+  "max_debit_per_epoch": "1000000000n",
+  "pump_creator_fee_bps": "0n",
+  "msg": { "paused": false, "windowS": 60, "maxPerWindow": 20, "maxPerDay": 500, "maxInline": 568, "maxBlob": 1048576 },
+  "bounty": { "maxBountyOutBps": 5000, "selfHostedInCap": "10000000n", "windowS": 86400, "minTtlS": 60, "maxTtlS": 2592000, "refundGraceS": 60, "minAmount": "10000n", "paused": false },
+  "challenge": { "windowS": 3600, "bond": "1000000n", "reward": "500000n", "resolveTimeoutS": 7200, "paused": false }
+}

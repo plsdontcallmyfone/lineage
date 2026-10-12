@@ -12,3 +12,8 @@ apps/web/dist/
 # Playwright UI suite (docs/UI-TESTS.md)
 tests/ui/.report/
 tests/ui/.results/
+
+# mainnet test (docs/MAINNET-RUNBOOK.md): local state and profile overlay, written by scripts/mainnet/test.ts
+scripts/mainnet/mainnet.json
+scripts/mainnet/profile.local.json
+scripts/mainnet/launch-params.json

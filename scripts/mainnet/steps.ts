@@ -119,7 +119,11 @@ export function parseLaunchParams(raw: unknown): Loaded {
   const p = big(raw) as LaunchParams;
   if (p.pump_creator_fee_bps === undefined) throw new Error("pump_creator_fee_bps is required (0n: pump.fun's default)");
   const net = JSON.parse(readFileSync(isAbsolute(p.network_file) ? p.network_file : join(ROOT, p.network_file), "utf8"));
-  const params = paramsFromNetworkJson(net, p.line_decimals);
+  // onchain_epoch_length_s: the registry's epoch length when it differs from the network file's (devnet
+  // does the same, scripts/devnet/setup.ts: 300 s on chain so unbond_cooldown_s meets the 2-epoch floor; Core keeps its own epoch timing)
+  const oe = (p as { onchain_epoch_length_s?: number }).onchain_epoch_length_s;
+  if (oe !== undefined && (!Number.isInteger(oe) || oe <= 0)) throw new Error("onchain_epoch_length_s must be a positive whole number of seconds");
+  const params = { ...paramsFromNetworkJson(net, p.line_decimals), ...(oe !== undefined ? { epochLengthS: oe } : {}) };
   if (params.unbondCooldownS < 2n * BigInt(params.epochLengthS)) throw new Error("unbond_cooldown_s must be at least 2 x epoch_length_s (the registry refuses less)");
   return { ...p, params, net };
 }
