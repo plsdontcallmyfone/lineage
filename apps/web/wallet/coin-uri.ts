@@ -10,7 +10,7 @@
 // statement signed by the agent key this page made for the launch: no wallet prompt, and nobody else
 // can speak for that key. The URI then carries the image's sha256 (?i=), so the choice is on chain with
 // the coin: no later upload, by anyone, changes what a launched coin shows.
-import { base58Encode, bytesToHex, checkMetadataUri, coinImageId, coinMetadataDoc, coinMetadataUri, metadataOrigin, sha256, type WebKey } from "../../../packages/chain/src/browser/index.ts";
+import { base58Encode, bytesToHex, checkMetadataUri, coinImageId, coinLinksId, coinLinksJson, coinMetadataDoc, coinMetadataUri, metadataOrigin, sha256, type CoinLinks, type WebKey } from "../../../packages/chain/src/browser/index.ts";
 
 export interface CoinOrigin {
   /** the origin written on chain */
@@ -67,21 +67,50 @@ export async function storeCoinImage(agent: WebKey, file: { type: string; size: 
   return { imageId: coinImageId(sha), sha256: sha };
 }
 
+// links texts already stored for an agent key (the same text is not sent again on every rebuild)
+const storedLinks = new Set<string>();
+/**
+ * Stores the coin's links (twitter, telegram, website) for `agent` (not launched yet) and returns their
+ * id, the sha256 of their canonical text in base58, or null when there are none. Signed by the agent key
+ * (a "media" statement, slot "links"). The id goes into the coin's on-chain URI (&l=), so the links cannot
+ * be changed after the launch.
+ */
+export async function storeCoinLinks(agent: WebKey, links: CoinLinks, f: typeof fetch = fetch): Promise<string | null> {
+  const text = coinLinksJson(links);
+  const id = coinLinksId(links);
+  if (!text || !id) return null;
+  if (storedLinks.has(`${agent.id}:${id}`)) return id;
+  const bytes = new TextEncoder().encode(text);
+  const st = { v: 1, kind: "units-media", agent: agent.id, slot: "links", signer: agent.id, created_at: Math.floor(Date.now() / 1000), nonce: bytesToHex(crypto.getRandomValues(new Uint8Array(12))), sha256: hexOf(bytes), type: "application/json", size: bytes.length };
+  const sig = base58Encode(await agent.sign(new TextEncoder().encode(hexOf(canonicalJson(["units-media-v1", canonicalJson(st)])))));
+  const r = await f(`/social/media/${agent.id}`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ statement: st, sig, data: btoa(String.fromCharCode(...bytes)) }) });
+  if (!r.ok) {
+    const j = (await r.json().catch(() => null)) as { message?: string; error?: string } | null;
+    throw new Error(`The coin's links were not stored (${j?.message ?? j?.error ?? `HTTP ${r.status}`}), so the launch was not built.`);
+  }
+  storedLinks.add(`${agent.id}:${id}`);
+  return id;
+}
+
 /**
  * The URI for this launch, after reading it back: the document must be exactly what the chain data
  * will produce (name, symbol, description, image, links) and its image must load (the chosen image
  * with the bytes that were picked, else the generated face). `here` is the
  * origin of the page. Throws with the reason otherwise.
  */
-export async function checkedCoinUri(o: { origin: string; here: string; mint: string; agent: string; name: string; symbol: string; repoUrl: string; image?: { imageId: string; sha256: string } | null; fetch?: typeof fetch }): Promise<string> {
-  const uri = coinMetadataUri(o.origin, o.mint, o.image?.imageId);
-  const want = coinMetadataDoc({ ...o, imageId: o.image?.imageId });
+export async function checkedCoinUri(o: { origin: string; here: string; mint: string; agent: string; name: string; symbol: string; repoUrl: string; image?: { imageId: string; sha256: string } | null; links?: CoinLinks | null; fetch?: typeof fetch }): Promise<string> {
+  // the links are named in the URI by the hash of their text; the document read back must carry exactly them
+  const linksId = o.links ? coinLinksId(o.links) : null;
+  const uri = coinMetadataUri(o.origin, o.mint, o.image?.imageId, linksId);
+  const want = coinMetadataDoc({ ...o, imageId: o.image?.imageId, links: o.links });
   const via = (u: string) => (u.startsWith(`${o.origin}/`) ? `${o.here}${u.slice(o.origin.length)}` : u);
   const query = new URLSearchParams({ name: o.name, symbol: o.symbol, agent: o.agent, repo: o.repoUrl }).toString();
   const c = await checkMetadataUri(uri, { expect: { name: o.name, symbol: o.symbol }, via, query, fetch: o.fetch, timeoutMs: 12_000 });
   if (!c.ok) throw new Error(`The coin's metadata URI was not confirmed (${c.problem}), so the launch was not built: a coin's URI is on chain for good. Try again in a moment.`);
   const got = c.metadata as unknown as Record<string, unknown>;
   for (const [k, v] of Object.entries(want)) if (got[k] !== v) throw new Error(`The coin's metadata URI answered a different "${k}" than this launch would write, so the launch was not built.`);
+  // and no link this launch did not give
+  for (const k of ["twitter", "telegram"]) if (!(k in want) && got[k]) throw new Error(`The coin's metadata URI answered a "${k}" link this launch did not give, so the launch was not built.`);
   // the chosen image, byte for byte: what the document names is what the launcher picked
   if (o.image && c.image!.sha256 !== o.image.sha256) throw new Error("The coin's image did not come back as the file you chose, so the launch was not built.");
   return uri;

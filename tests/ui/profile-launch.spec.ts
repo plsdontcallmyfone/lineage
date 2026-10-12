@@ -141,7 +141,7 @@ test.describe("Launch (/launch)", () => {
     await page.route("**/social/media/*", (r) => r.fulfill({ status: 200, contentType: "application/json", body: "{}" }));
     await page.route("**/coin/image/*", (r) => r.fulfill({ status: 200, contentType: "image/png", body: ONE_PX_PNG }));
     await page.locator('[name="l_image"]').setInputFiles({ name: "avatar.png", mimeType: "image/png", buffer: ONE_PX_PNG });
-    await page.fill('[name="l_links"]', "https://example.com");
+    await page.fill('[name="l_website"]', "https://example.com");
     await page.locator('[data-act="lz-next"]:not([disabled])').waitFor({ timeout: 60_000 });
     // the coin's on-chain name carries the TEST prefix on devnet only, and the form says so only there
     if (net === "mainnet") await expect(page.locator('[data-step="0"]')).not.toContainText(/devnet|\bTEST\b|test tokens|faucet|tUNITS/i);

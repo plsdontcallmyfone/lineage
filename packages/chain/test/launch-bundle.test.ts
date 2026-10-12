@@ -48,6 +48,16 @@ describe("one approval: measured sizes", () => {
     for (const t of txs) expect(t.size).toBeLessThanOrEqual(c.PACKET_LIMIT);
     console.log(`measured: ${txs.map((t) => `${t.groups.join("+")} ${t.size} bytes${t.table ? " (v0)" : ""}`).join("; ")}`);
   });
+  test("a coin with a chosen image and links (the longest metadata URI, 169 bytes): still two transactions within a packet", () => {
+    // name 20 + ticker 5 + the longest URI with ?i= and &l= (169) + a typical repository URL (33)
+    const strings = 20 + 5 + c.coinMetadataUriBytes("https://app.units.gg", true, true) + 33;
+    expect(strings).toBe(227);
+    const { launcher, g } = groups({ strings, identity: false, tip: true });
+    const txs = c.planLaunchBundle({ payer: launcher, groups: g, budget, table: table(), v0: true });
+    expect(txs.map((t) => t.groups)).toEqual([["launch", "soul"], ["sol-to-units", "initial-buy", "credits", "tip"]]);
+    for (const t of txs) expect(t.size).toBeLessThanOrEqual(c.PACKET_LIMIT);
+    console.log(`measured, image + links URI: ${txs.map((t) => `${t.groups.join("+")} ${t.size} bytes`).join("; ")}`);
+  });
   test("the longest strings: still one approval, three transactions in order", () => {
     const { launcher, g } = groups({ strings: c.MAX_LAUNCH_STRINGS });
     const txs = c.planLaunchBundle({ payer: launcher, groups: g, budget, table: table(), v0: true });

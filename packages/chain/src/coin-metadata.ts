@@ -18,6 +18,16 @@
 // config value (config/sites.json metadata_origin, UNITS_METADATA_ORIGIN); it is written on chain and
 // cannot be changed for a coin afterwards.
 //
+// Links (owner 2026-10-12: "connected correctly to pump.fun's preferences"): the three fields pump.fun reads
+// from this document, `twitter`, `telegram` and `website`, each a full https URL (read again on 2026-10-12
+// from fresh pump.fun coins through its own listing, e.g. Symbiote DqTMXtLn...: "twitter":"https://x.com/...",
+// "telegram":"", "website":"https://..."). They are bound the way the image is: the launcher's links are
+// one small canonical JSON text, stored before the launch in Core's blob store with a statement signed by the
+// agent key, and the coin's on-chain URI carries that text's sha256 as &l=<base58>. The server answers a
+// coin's document with the links only when the stored text hashes to the id in the mint's own URI, so nobody,
+// the server included, can change or add a link after the launch. No links: no &l=, and `website` is the
+// agent's page on the app, as before.
+//
 // Pure (no fetch of its own unless one is passed), so the launch page, the web server, the owner's
 // check script and tests share one rule for "this URI resolves to usable metadata".
 
@@ -57,10 +67,100 @@ export const coinImageSha = (imageId: string | null | undefined): string | null 
     return null;
   }
 };
-/** The URI create_v2 writes into the coin; `imageId` when the launcher chose an image. */
-export const coinMetadataUri = (origin: string, mint: string, imageId?: string | null) => `${metadataOrigin(origin)}${coinMetadataPath(mint)}${imageId ? `?i=${imageId}` : ""}`;
-/** The longest such URI in bytes (a mint address and an image id are at most 44 characters each). */
-export const coinMetadataUriBytes = (origin: string, withImage = false) => coinMetadataUri(origin, "1".repeat(44), withImage ? "1".repeat(44) : null).length;
+/** The launcher's links, in pump.fun's field names. Each is a full https URL; a missing one is absent. */
+export interface CoinLinks {
+  twitter?: string;
+  telegram?: string;
+  website?: string;
+}
+export const COIN_LINK_KEYS = ["twitter", "telegram", "website"] as const;
+/** The longest a link may be, in characters (the three fit in a small document; pump.fun shows them as buttons). */
+export const COIN_LINK_MAX = 120;
+const LINK_HOSTS: Record<(typeof COIN_LINK_KEYS)[number], RegExp | null> = { twitter: /^(www\.)?(x|twitter)\.com$/, telegram: /^(www\.)?t\.me$/, website: null };
+const LINK_NAMES: Record<(typeof COIN_LINK_KEYS)[number], string> = { twitter: "Twitter (X)", telegram: "Telegram", website: "Website" };
+
+/** Why this is not a usable link for the field, or null. */
+export function coinLinkProblem(key: (typeof COIN_LINK_KEYS)[number], value: string): string | null {
+  const n = LINK_NAMES[key];
+  if (value.length > COIN_LINK_MAX) return `${n}: at most ${COIN_LINK_MAX} characters.`;
+  if (/[\s<>"'`\\]/.test(value)) return `${n}: a link has no spaces or quotes.`;
+  let u: URL;
+  try {
+    u = new URL(value);
+  } catch {
+    return `${n}: not a link (it starts with https://).`;
+  }
+  if (u.protocol !== "https:" || u.username || u.password || !u.hostname.includes(".")) return `${n}: an https:// link.`;
+  const host = LINK_HOSTS[key];
+  if (host && !host.test(u.hostname.toLowerCase())) return key === "twitter" ? `${n}: a link on x.com or twitter.com.` : `${n}: a link on t.me.`;
+  if (host && u.pathname.replace(/\/+$/, "") === "") return `${n}: the link of an account or a post, not the site alone.`;
+  return null;
+}
+
+/**
+ * The links as they are stored and served: only the three known fields, trimmed, empty ones dropped.
+ * `problems` lists what is wrong (unknown fields, non-strings, bad links); `links` is usable only when it is empty.
+ */
+export function normalizeCoinLinks(input: unknown): { links: CoinLinks; problems: string[] } {
+  const links: CoinLinks = {};
+  const problems: string[] = [];
+  if (input === null || input === undefined) return { links, problems };
+  if (typeof input !== "object" || Array.isArray(input)) return { links, problems: ["links: an object with twitter, telegram and website"] };
+  for (const [k, v] of Object.entries(input as Record<string, unknown>)) {
+    if (!(COIN_LINK_KEYS as readonly string[]).includes(k)) problems.push(`links: unknown field ${JSON.stringify(k).slice(0, 40)}`);
+    else if (v !== undefined && typeof v !== "string") problems.push(`${LINK_NAMES[k as (typeof COIN_LINK_KEYS)[number]]}: a text`);
+  }
+  for (const k of COIN_LINK_KEYS) {
+    const raw = (input as Record<string, unknown>)[k];
+    if (typeof raw !== "string") continue;
+    const v = raw.trim();
+    if (!v) continue;
+    const bad = coinLinkProblem(k, v);
+    if (bad) problems.push(bad);
+    else links[k] = v;
+  }
+  return { links, problems };
+}
+/** The one text a set of links is stored and hashed as: the present fields in pump.fun's order. "" when there are none. */
+export function coinLinksJson(links: CoinLinks): string {
+  const out: Record<string, string> = {};
+  for (const k of COIN_LINK_KEYS) if (links[k]) out[k] = links[k]!;
+  return Object.keys(out).length ? JSON.stringify(out) : "";
+}
+/** The links' id in a URI: the sha256 of their text in base58, or null when there are none. */
+export function coinLinksId(links: CoinLinks): string | null {
+  const text = coinLinksJson(links);
+  return text ? toAddress(sha256(new TextEncoder().encode(text))) : null;
+}
+/** The links a stored text holds when it is exactly the text of the id `linksId`; null otherwise (tampered, not canonical, not links). */
+export function coinLinksFromStored(text: string, linksId: string): CoinLinks | null {
+  if (coinImageSha(linksId) === null || toAddress(sha256(new TextEncoder().encode(text))) !== linksId) return null;
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(text);
+  } catch {
+    return null;
+  }
+  const n = normalizeCoinLinks(parsed);
+  return !n.problems.length && coinLinksJson(n.links) === text ? n.links : null;
+}
+
+/** The URI create_v2 writes into the coin; `imageId` when the launcher chose an image, `linksId` when they gave links. */
+export const coinMetadataUri = (origin: string, mint: string, imageId?: string | null, linksId?: string | null) => {
+  const q = [imageId ? `i=${imageId}` : "", linksId ? `l=${linksId}` : ""].filter(Boolean).join("&");
+  return `${metadataOrigin(origin)}${coinMetadataPath(mint)}${q ? `?${q}` : ""}`;
+};
+/** The longest such URI in bytes (a mint address, an image id and a links id are at most 44 characters each). */
+export const coinMetadataUriBytes = (origin: string, withImage = false, withLinks = false) => coinMetadataUri(origin, "1".repeat(44), withImage ? "1".repeat(44) : null, withLinks ? "1".repeat(44) : null).length;
+/** The links id a coin's on-chain URI names, or null (no links, or not a URI of ours). */
+export function coinLinksOfUri(uri: string | null | undefined): string | null {
+  try {
+    const l = new URL(uri ?? "").searchParams.get("l");
+    return coinImageSha(l) ? l : null;
+  } catch {
+    return null;
+  }
+}
 /** The image id a coin's on-chain URI names, or null (no chosen image, or not a URI of ours). */
 export function coinImageOfUri(uri: string | null | undefined): string | null {
   try {
@@ -72,8 +172,9 @@ export function coinImageOfUri(uri: string | null | undefined): string | null {
 }
 
 /** The document served at a coin's URI: built from what the chain records about the launch, nothing else. */
-export function coinMetadataDoc(o: { origin: string; mint: string; agent: string; name: string; symbol: string; repoUrl: string; imageId?: string | null }): CoinMetadata {
+export function coinMetadataDoc(o: { origin: string; mint: string; agent: string; name: string; symbol: string; repoUrl: string; imageId?: string | null; links?: CoinLinks | null }): CoinMetadata {
   const origin = metadataOrigin(o.origin);
+  const l = o.links ?? {};
   return {
     name: o.name,
     symbol: o.symbol,
@@ -81,7 +182,10 @@ export function coinMetadataDoc(o: { origin: string; mint: string; agent: string
     showName: true,
     image: `${origin}${o.imageId ? coinImagePath(o.imageId) : coinFacePath(o.agent)}`,
     createdOn: origin,
-    website: `${origin}/tokens/${o.mint}`,
+    // pump.fun's own fields, present only when the launcher gave them; the website falls back to the agent's page on the app
+    ...(l.twitter ? { twitter: l.twitter } : {}),
+    ...(l.telegram ? { telegram: l.telegram } : {}),
+    website: l.website || `${origin}/tokens/${o.mint}`,
   };
 }
 

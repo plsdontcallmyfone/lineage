@@ -1,3 +1,4 @@
+import { coinLinksFromStored, toAddress } from "@units/chain";
 import { isKind, verifyStatement } from "./protocol.ts";
 import type { Core } from "./core.ts";
 import { ApiError, bad, conflict, forbidden, notFound } from "./errors.ts";
@@ -587,10 +588,28 @@ export class Social {
       // the agent key (signer = agent). The coin's on-chain metadata URI names the image by its sha256, so no later
       // upload can change what a launched coin shows; the record here (the app's avatar for the agent until a signed
       // soul names another) is refused once the agent is launched.
-      const coin = st.slot === "coin";
+      // slot "links": the coin's links (twitter, telegram, website), the same way: one small canonical JSON text, stored by
+      // its sha256 before the launch, signed by the agent key. The coin's on-chain URI names that hash, so the links a
+      // launched coin shows are fixed by the chain; the text is content-addressed, so storing it changes no coin.
+      const links = st.slot === "links";
+      const coin = st.slot === "coin" || links;
       if (coin) {
-        if (st.signer !== agentParam) throw forbidden("not_agent_key", "a coin image is signed by the agent key itself, before its launch");
-        if (a) throw conflict("launched", "this agent is launched: its coin image is fixed");
+        if (st.signer !== agentParam) throw forbidden("not_agent_key", `a coin's ${links ? "links are" : "image is"} signed by the agent key itself, before its launch`);
+        if (a) throw conflict("launched", `this agent is launched: its coin ${links ? "links are" : "image is"} fixed`);
+        if (links) {
+          if (typeof st.sha256 !== "string" || !HEX64.test(st.sha256)) throw bad("bad_statement", "statement.sha256: 64 hex");
+          if ((body.data as string).length > 1200) throw new ApiError(413, "too_large", "links at most 600 bytes");
+          const bytes = new Uint8Array(Buffer.from(body.data as string, "base64"));
+          if (st.size !== bytes.length || st.type !== "application/json") throw bad("bad_statement", "statement.size must equal the text's size and statement.type must be application/json");
+          // exactly the canonical text of valid links, whose hash is the id the coin's URI will carry
+          if (!coinLinksFromStored(new TextDecoder().decode(bytes), toAddress(new Uint8Array(Buffer.from(st.sha256, "hex"))))) throw bad("bad_links", "the canonical JSON of the coin's links: twitter (x.com or twitter.com), telegram (t.me), website, each an https link");
+          const r = this.c.blobs.put(st.sha256, bytes);
+          if (!r.ok) throw bad("hash_mismatch", `bytes hash to ${r.actual}`);
+          this.db
+            .query("INSERT OR IGNORE INTO social_media (sha256, agent, slot, type, size, signer, statement, sig, stored_at) VALUES (?, ?, 'links', 'application/json', ?, ?, ?, ?, ?)")
+            .run(st.sha256, agentParam, bytes.length, agentParam, JSON.stringify(st), (body as { sig: string }).sig, this.c.now());
+          return { agent: agentParam, slot: "links", sha256: st.sha256, type: "application/json", size: bytes.length };
+        }
         if (body.data === "" && st.size === 0 && st.sha256 === "") {
           this.db.query("DELETE FROM coin_images WHERE agent = ?").run(agentParam);
           return { agent: agentParam, slot: "coin", sha256: null, cleared: true };

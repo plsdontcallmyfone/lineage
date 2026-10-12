@@ -585,6 +585,9 @@ pre.json, pre.block { background: var(--bg); border: 1px solid var(--border); bo
 .wl-wallet:hover { background: var(--pill-hover); }
 .wl-wallet img { border-radius: 50%; }
 .wl-2 { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 14px; }
+/* the launch wizard's three link fields (Twitter, Telegram, Website): side by side, one column on a phone */
+.wl-3 { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px; }
+.lz-links { min-width: 0; }
 .wl-form input:not([type="radio"]):not([type="checkbox"]), .wl-field input, .wl-field textarea, .wl-form select {
   font: 400 15px/1.4 var(--sans); letter-spacing: -.01em; color: var(--tp); background: var(--bg); border: 2px solid var(--tp); border-radius: 16px; corner-shape: squircle; padding: 9px 12px; min-width: 0; width: 100%; font-variant-numeric: tabular-nums; caret-color: var(--ac); }
 .wl-form input:disabled { background: var(--bg3); color: var(--tt); border-color: var(--border); }
@@ -621,6 +624,7 @@ pre.wl-wrap { white-space: pre-wrap; overflow-wrap: anywhere; max-height: 140px;
 #w-launch-out .kv, #w-trade .kv { border-bottom: 1px solid var(--border); }
 @media (max-width: 760px) {
   .wl-2 { grid-template-columns: minmax(0, 1fr); }
+  .wl-3 { grid-template-columns: minmax(0, 1fr); }
   .wl-bal { grid-template-columns: repeat(3, minmax(0, 1fr)); }
   .wl-bal .stat { padding: 10px 10px 12px; }
 }

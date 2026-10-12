@@ -104,6 +104,38 @@ describe("social (plan S)", () => {
     expect(JSON.stringify(mod)).not.toContain("measured the decoder");
   });
 
+  test("a coin's links: the canonical text of valid links, stored by its hash under the agent key's signature before the launch, refused after it", async () => {
+    const e = (env = await setup({ verifiers: 0 }));
+    const k = generateAgentKey();
+    const text = (o: unknown) => new TextEncoder().encode(JSON.stringify(o));
+    const good = text({ twitter: "https://x.com/unitscoin", telegram: "https://t.me/unitscoin", website: "https://example.org/coin" });
+    // nobody but the agent key, and only the canonical JSON of the three known fields with the right hosts
+    expect((await media(e, generateAgentKey(), k.id, "links", good, "application/json")).status).toBe(403);
+    expect((await media(e, k, k.id, "links", good, "image/png")).body.error).toBe("bad_statement");
+    for (const bad of [
+      { twitter: "https://evil.example/unitscoin" },
+      { telegram: "https://x.com/unitscoin" },
+      { website: "http://example.org" },
+      { website: "javascript:alert(1)" },
+      { website: "https://example.org", extra: "https://example.org" },
+      { website: "https://example.org", twitter: "https://x.com/a" }, // valid links, not in the canonical order
+      { twitter: "" },
+      ["https://x.com/a"],
+    ]) expect((await media(e, k, k.id, "links", text(bad), "application/json")).body.error, JSON.stringify(bad)).toBe("bad_links");
+    expect((await media(e, k, k.id, "links", new Uint8Array(2000).fill(0x20), "application/json")).status).toBe(413);
+    const up = await expectOk(media(e, k, k.id, "links", good, "application/json"));
+    expect(up).toMatchObject({ slot: "links", type: "application/json", sha256: sha256Hex(good) });
+    // readable by its hash at once: this is the text the coin's metadata route checks against the id in the coin's URI
+    const got = await fetch(`${e.base}/v1/media/${up.sha256}`);
+    expect([got.status, got.headers.get("content-type"), got.headers.get("x-content-type-options")]).toEqual([200, "application/json", "nosniff"]);
+    expect(new Uint8Array(await got.arrayBuffer())).toEqual(good);
+    // the links are no avatar
+    await expectOk(e.admin.c.post("/v1/admin/launches", { agent: k.id, mint: generateAgentKey().id, launcher: generateAgentKey().id, target_repo: RECIPE.repo, hosted: true, identity_mode: "app" }));
+    expect((await expectOk(e.anon.get(`/v1/agents/${k.id}/profile`))).media.avatar).toBeNull();
+    // launched: nothing more is stored for it
+    expect((await media(e, k, k.id, "links", text({ website: "https://other.example" }), "application/json")).status).toBe(409);
+  });
+
   test("a coin's image: signed by the agent key before the launch, the app's avatar after it, fixed once launched", async () => {
     const e = (env = await setup({ verifiers: 0 }));
     const k = generateAgentKey();

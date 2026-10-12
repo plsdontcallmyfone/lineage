@@ -11,6 +11,11 @@
 //                                the wallet sign) the same path answers a preview built from
 //                                ?name=&symbol=&agent=&repo= (and ?i=), marked `x-units-coin: preview`, never cached;
 //                                once the mint is on chain the query is ignored.
+//                                The links (twitter, telegram, website: the fields pump.fun reads) are the ones whose
+//                                canonical text hashes to the id in the mint's own URI (&l=): the text comes from
+//                                Core's blob store and is checked against that hash here, so a changed or swapped
+//                                text is never served. A coin without &l= has no twitter or telegram and its
+//                                website is the agent's page on the app.
 //   GET /coin/image/<id>         the image the launcher chose: <id> is its sha256 in base58, the same id the coin's
 //                                on-chain URI carries as ?i=, so what a coin shows is fixed by the chain. The bytes
 //                                come from Core's blob store (GET /v1/media/<sha256>; uploaded by the launch page
@@ -22,7 +27,7 @@
 //
 // Every answer is readable from any origin (wallets and explorers fetch it from their own pages).
 import { deflateSync } from "node:zlib";
-import { addressBytes, coinFacePath, coinImageOfUri, coinImageSha, coinMetadataDoc, coinMetadataPath, decodeAgentLaunch, launchPdas, LAUNCH_PROGRAM_ID, metadataOrigin, type CoinMetadata, type Rpc } from "../../packages/chain/src/index.ts";
+import { addressBytes, coinFacePath, coinImageOfUri, coinImageSha, coinLinksFromStored, coinLinksOfUri, coinMetadataDoc, coinMetadataPath, decodeAgentLaunch, launchPdas, LAUNCH_PROGRAM_ID, metadataOrigin, type CoinMetadata, type Rpc } from "../../packages/chain/src/index.ts";
 import { readMint } from "../../packages/indexer/src/accounts.ts";
 import { avatarGrid } from "../../packages/embed/src/pattern.ts";
 
@@ -120,6 +125,7 @@ export function coinRoutes(o: CoinRoutesOptions) {
   const max = o.maxCached ?? 2000;
   const docs = new Map<string, CoinMetadata>();
   const faces = new Map<string, Uint8Array>();
+  const incomplete = new Set<string>();
   const keep = <V>(m: Map<string, V>, k: string, v: V) => {
     if (m.size >= max) m.delete(m.keys().next().value!);
     m.set(k, v);
@@ -127,6 +133,21 @@ export function coinRoutes(o: CoinRoutesOptions) {
   let probe: { answers: boolean; at: number } | null = null;
   const json = (body: unknown, status: number, cache: string, extra: Record<string, string> = {}) =>
     new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json; charset=utf-8", "cache-control": cache, ...CORS, ...extra } });
+
+  /**
+   * The links of id `linksId` (the sha256, base58, a coin's URI carries): read from Core's blob store and
+   * accepted only when the stored text hashes to that id and is the canonical text of valid links.
+   * null: nothing usable is stored under that hash. Throws when Core cannot be asked (the caller answers 503:
+   * a document without its links is never served as the coin's).
+   */
+  async function linksOf(linksId: string) {
+    const sha = coinImageSha(linksId)!;
+    const r = await f(`${o.core.replace(/\/+$/, "")}/v1/media/${sha}`, { signal: AbortSignal.timeout(10_000) } as RequestInit);
+    if (r.status >= 500) throw new Error(`the links store answered HTTP ${r.status}`);
+    if (r.status !== 200) return null;
+    const text = await r.text();
+    return text.length > 2000 ? null : coinLinksFromStored(text, linksId);
+  }
 
   /** The coin's document from chain, null when this deployment did not launch it, "absent" when the mint has no account yet. */
   async function fromChain(mint: string): Promise<CoinMetadata | null | "absent"> {
@@ -136,8 +157,13 @@ export function coinRoutes(o: CoinRoutesOptions) {
     const meta = readMint(m.data);
     const launch = decodeAgentLaunch(l.data);
     if (meta.name === null || meta.symbol === null || launch.mint !== mint) return null;
-    // the chosen image is the one the coin's own on-chain URI names, never one a request names
-    return coinMetadataDoc({ origin, mint, agent: launch.agent, name: meta.name, symbol: meta.symbol, repoUrl: launch.repoUrl, imageId: coinImageOfUri(meta.uri) });
+    // the chosen image and the links are the ones the coin's own on-chain URI names, never ones a request names
+    const linksId = coinLinksOfUri(meta.uri);
+    const links = linksId ? await linksOf(linksId) : null;
+    // the URI names links and the store has none under that hash: the coin's document without them, answered but never kept
+    if (linksId && !links) incomplete.add(mint);
+    else incomplete.delete(mint);
+    return coinMetadataDoc({ origin, mint, agent: launch.agent, name: meta.name, symbol: meta.symbol, repoUrl: launch.repoUrl, imageId: coinImageOfUri(meta.uri), links });
   }
 
   async function route(req: Request, path: string): Promise<Response> {
@@ -183,14 +209,26 @@ export function coinRoutes(o: CoinRoutesOptions) {
       return json({ error: "chain_unavailable", message: "the chain could not be read; try again" }, 503, "no-store", { "retry-after": "5" });
     }
     if (c && c !== "absent") {
+      if (incomplete.has(mint)) return json(c, 200, "no-store", { "x-units-coin": "links-missing" });
       keep(docs, mint, c);
       return json(c, 200, "public, max-age=3600");
     }
     if (c === "absent") {
       const q = url.searchParams;
-      const name = q.get("name"), symbol = q.get("symbol"), agent = q.get("agent"), repo = q.get("repo"), i = q.get("i");
+      const name = q.get("name"), symbol = q.get("symbol"), agent = q.get("agent"), repo = q.get("repo"), i = q.get("i"), l = q.get("l");
+      // the preview names its links by their id too, and shows them only when the stored text hashes to it
+      let links = null;
+      if (l !== null) {
+        if (!coinImageSha(l)) return json({ error: "not_found", message: "no coin launched here has this mint" }, 404, "no-store");
+        try {
+          links = await linksOf(l);
+        } catch {
+          return json({ error: "core_unavailable", message: "the links store did not answer; try again" }, 503, "no-store", { "retry-after": "5" });
+        }
+        if (!links) return json({ error: "links_not_stored", message: "no links are stored under this id" }, 404, "no-store");
+      }
       if (name && symbol && agent && repo && isAddress(agent) && (i === null || coinImageSha(i)) && new TextEncoder().encode(name).length <= 32 && /^[A-Z0-9]{1,10}$/.test(symbol) && /^https:\/\/github\.com\/[A-Za-z0-9._-]+\/[A-Za-z0-9._-]+$/.test(repo))
-        return json(coinMetadataDoc({ origin, mint, agent, name, symbol, repoUrl: repo, imageId: i }), 200, "no-store", { "x-units-coin": "preview" });
+        return json(coinMetadataDoc({ origin, mint, agent, name, symbol, repoUrl: repo, imageId: i, links }), 200, "no-store", { "x-units-coin": "preview" });
     }
     return json({ error: "not_found", message: "no coin launched here has this mint" }, 404, "no-store");
   }

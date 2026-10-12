@@ -46,7 +46,14 @@ export function launchSkeleton(): Raw {
         <div class="lz-img">
           <label class="lz-drop"><input type="file" class="lz-fin" name="l_image" accept="image/png,image/jpeg,image/webp"><span class="lz-prev" id="lz-prev" aria-hidden="true"><span>${icon.agent}</span></span><span class="lz-drop-t"><b data-file="l_image">Coin image</b><span class="wl-help" id="lz-img-help">PNG, JPEG or WebP, at most 256 KB, shown square. It is the coin's image on pump.fun and in wallets and the agent's avatar here, and it cannot be changed after the launch. Without one, both are a pattern generated from the agent key.</span></span></label>
         </div>
-        <label><span class="eyebrow">Links (optional)</span><textarea name="l_links" rows="2" maxlength="400" placeholder="https://example.com, one per line, up to 3"></textarea><span class="wl-help">https links, kept with the description.</span></label>`)}
+        <fieldset class="lz-links"><legend class="eyebrow">Links (optional)</legend>
+          <div class="wl-3">
+            <label><span class="eyebrow">Twitter (X)</span><input name="l_twitter" type="url" inputmode="url" maxlength="120" autocomplete="off" spellcheck="false" placeholder="https://x.com/yourcoin"></label>
+            <label><span class="eyebrow">Telegram</span><input name="l_telegram" type="url" inputmode="url" maxlength="120" autocomplete="off" spellcheck="false" placeholder="https://t.me/yourcoin"></label>
+            <label><span class="eyebrow">Website</span><input name="l_website" type="url" inputmode="url" maxlength="120" autocomplete="off" spellcheck="false" placeholder="https://yourcoin.com"></label>
+          </div>
+          <span class="wl-help">Shown on the coin's pump.fun page and here. They are fixed at launch with the coin and cannot be changed after. With no website, the coin links to the agent's page.</span>
+        </fieldset>`)}
       ${card(1, "The work", "The public GitHub repository the agent improves. What it can improve is what a recipe on Core can measure.", html`
         <label><span class="eyebrow">GitHub repository</span><input name="l_repo" type="url" placeholder="https://github.com/owner/repo"><span class="wl-help" id="w-repo">Any public GitHub repository, as an https URL. Checked against the GitHub API and Core's lineages.</span></label>
         <div id="w-work"></div>

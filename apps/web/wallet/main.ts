@@ -82,6 +82,9 @@ import {
   type LaunchSolCosts,
   solShortfall,
   CU_MAX,
+  COIN_LINK_KEYS,
+  normalizeCoinLinks,
+  type CoinLinks,
   launchCostDetail,
   launchCreates,
   launchTxUnits,
@@ -99,7 +102,7 @@ import { custodyHtml, ghClick, hasIdentityService, initGithubIdentity, launchTra
 import { builtRateNote, builtRateStale, depositBase, depositForBuild, depositNote, depositUsd, loadPrepay, P, prepayHelp, RATE_REBUILT, rateBlockedBox, rateBlockedNow, rateNote, showCorePrepay, tickRate } from "./prepay.ts";
 import { costBreakdown, fundingBlocked, fundingSummary, initialBuyFor, type FundingView, type InitialBuy } from "./fronting.ts";
 import { launchExtras, mountFeeRouteStep } from "./fee-route-step.ts";
-import { checkedCoinUri, loadCoinOrigin, storeCoinImage, type CoinOrigin } from "./coin-uri.ts";
+import { checkedCoinUri, loadCoinOrigin, storeCoinImage, storeCoinLinks, type CoinOrigin } from "./coin-uri.ts";
 export { mountClaim } from "./claim.ts";
 import { registerPumpInitialBuy } from "./pump-venue.ts";
 import { prepareSwapThen, routeLines, type PreparedSwap } from "./swap.ts";
@@ -162,7 +165,7 @@ const S = {
     /** per transaction of `plan`: its signatures, compute unit limit and the unit price it is sent with */
     txs: LaunchCostTx[]; detail: LaunchCostDetail; swap: PreparedSwap | null; costs: LaunchSolCosts;
     /** the SOL purchase is a Jupiter quote (labelled as one), not the curve's arithmetic */
-    quoted: boolean; identity: bigint; landed: string[]; metaLive: boolean },
+    quoted: boolean; identity: bigint; landed: string[]; metaLive: boolean; links: CoinLinks },
   /** the launch is being built (chain reads in flight) */
   building: false as boolean,
   /** why the last build stopped */
@@ -464,7 +467,7 @@ function launchArgs(metaOrigin: string) {
   if (!/^[A-Z0-9]{1,10}$/.test(symbol)) throw new Error("Symbol: 1 to 10 characters, A to Z and 0 to 9.");
   if (!S.repo || S.repo.state !== "ok") throw new Error("Target repository: enter a public GitHub https URL and wait for the check to pass.");
   // the metadata URI names the mint, which is made after this check: counted at its longest (coin-uri.ts)
-  const strings = new TextEncoder().encode(`${namePrefix()}${name}${symbol}${S.repo.url}`).length + coinMetadataUriBytes(metaOrigin, !!S.image);
+  const strings = new TextEncoder().encode(`${namePrefix()}${name}${symbol}${S.repo.url}`).length + coinMetadataUriBytes(metaOrigin, !!S.image, linkList(linksTyped()).length > 0);
   if (strings > MAX_LAUNCH_STRINGS) throw new Error(`Name, symbol, metadata URI and repository URL take ${strings} bytes; one launch transaction holds ${MAX_LAUNCH_STRINGS}.`);
   return { name: `${namePrefix()}${name}`, symbol, uri: "", repoUrl: S.repo.url, identityMode: IDENTITY_MODE[identity as keyof typeof IDENTITY_MODE], hosted, cls, identity };
 }
@@ -528,19 +531,19 @@ function txTable(d: NonNullable<typeof S.draft>): Raw {
 
 // soul (SPEC 14.8): seed, Claude draft, review and edit, then sign with the agent key at launch
 
-/** The launcher's links: up to three https URLs, one per line. Throws a message for the form. */
-function linksTyped(): string[] {
-  const raw0 = (S.root?.querySelector<HTMLTextAreaElement>('[name="l_links"]')?.value ?? "").split(/[\n,]+/).map((x) => x.trim()).filter(Boolean);
-  if (raw0.length > 3) throw new Error("Links: at most 3.");
-  for (const l of raw0) if (!/^https:\/\/[^\s]+\.[^\s]+$/.test(l)) throw new Error(`Links: ${l.slice(0, 60)} is not an https URL.`);
-  return raw0;
+/** The launcher's links in pump.fun's three fields (packages/chain/src/coin-metadata.ts). Throws the first problem as a message for the form. */
+function linksTyped(): CoinLinks {
+  const n = normalizeCoinLinks({ twitter: val("l_twitter"), telegram: val("l_telegram"), website: val("l_website") });
+  if (n.problems.length) throw new Error(n.problems[0]!);
+  return n.links;
 }
+const linkList = (l: CoinLinks): string[] => COIN_LINK_KEYS.flatMap((k) => (l[k] ? [l[k]!] : []));
 
 /** What the soul is drafted from: the agent key, the repository and the one optional field (packages/souls/src/auto.ts). */
 function soulInput(agent: string) {
   let links: string[] = [];
   try {
-    links = linksTyped();
+    links = linkList(linksTyped());
   } catch {
     links = [];
   }
@@ -759,11 +762,13 @@ async function buildLaunch(): Promise<NonNullable<typeof S.draft>> {
   const agent = soul ? S.soul!.agent : (launchKeys.agent ??= await generateWebKey());
   const mint = (launchKeys.mint ??= await generateWebKey());
   const launcher = me()!;
+  const links = linksTyped();
   // Three things at once, none a simulation: the coin's metadata (the image picked in the Coin step is stored first, signed by the
   // agent key and named in the URI by its hash; the URI is on chain for good, so the document and image are read back), the amounts
   // (credits at the price read again here, the venue's initial buy on the curve as read), and the cluster's rent rate, tip and balance.
   const [uri, deposit, buy, rate, tips, balance] = await Promise.all([
-    coinImageFor(agent).then((image) => checkedCoinUri({ origin: coin.origin, here: location.origin, mint: mint.id, agent: agent.id, name: args.name, symbol: args.symbol, repoUrl: args.repoUrl, image })),
+    // the image and the links are stored first (each signed by the agent key), then the URI that names both by hash is read back
+    Promise.all([coinImageFor(agent), storeCoinLinks(agent, links)]).then(([image]) => checkedCoinUri({ origin: coin.origin, here: location.origin, mint: mint.id, agent: agent.id, name: args.name, symbol: args.symbol, repoUrl: args.repoUrl, image, links })),
     depositForBuild(val("l_deposit"), dec()),
     initialBuyFor({ launcher, agent: agent.id, agentMint: mint.id }, P.cfg),
     rentRate(),
@@ -843,7 +848,7 @@ async function buildLaunch(): Promise<NonNullable<typeof S.draft>> {
     return { groups: t.groups, signatures: (t.table ? compileMessageV0(launcher, all, FAKE, [t.table]) : compileMessage(launcher, all, FAKE)).numSigners, units: launchTxUnits(t.groups), price: prices[i]! };
   });
   const detail = launchCostDetail({ txs, rent0: rate, creates, existing: new Set(maybe.filter((_, i) => !!there[i])), purchase, hasBuy: !!buy, identity, tip, headroom });
-  return { agent, mint, args, soul, deposit, buy, plan, txs, detail, swap, costs: detail.costs, quoted: !!swap, identity, landed: [], metaLive: coin.answers };
+  return { agent, mint, args, soul, deposit, buy, plan, txs, detail, swap, costs: detail.costs, quoted: !!swap, identity, landed: [], metaLive: coin.answers, links };
 }
 
 /** The SOL/USD price (apps/web/chain-routes.ts /chain/sol-price: Jupiter, refused when stale); null when unavailable. */
@@ -928,6 +933,7 @@ function renderLaunchReview() {
     ["Agent key", addr(d.agent.id)],
     ["Agent mint", addr(d.mint.id)],
     ["Coin image", S.image ? `${S.image.name}: stored and named in the metadata URI by its hash, so it cannot be changed after the launch` : "none chosen: the agent's generated pattern"],
+    ["Links", linkList(d.links).length ? html`${linkList(d.links).join(", ")} <span class="dim">stored and named in the metadata URI by their hash, so they cannot be changed after the launch</span>` : "none given: the coin's website is the agent's page"],
     ["Metadata URI", html`${d.args.uri} <span class="dim">${d.metaLive ? "read back before this review: document and image answer" : `read back on this host; ${new URL(d.args.uri).host} itself does not answer yet`}</span>`],
     ["Soul", d.soul ? html`${d.soul.persona.name}, <span class="wl-hash">${soulDigest(d.soul)}</span>` : html`<span class="faint">none</span>`],
     ["Credits", html`${depositNote(val("l_deposit"))} <span class="dim">${units(d.deposit, dec())} ${usym()} into the compute vault, then refresh_awake</span> ${builtRateNote(dec())}`],
@@ -2081,7 +2087,7 @@ function renderReview() {
   const r = S.repo;
   const soul = S.soul?.doc ?? null;
   const m = entryOf(soul?.model ?? modelChoice());
-  let links: string[] = [];
+  let links: CoinLinks = {};
   try {
     links = linksTyped();
   } catch {
@@ -2102,7 +2108,7 @@ function renderReview() {
       ${row("Coin", html`<b>${namePrefix()}${val("l_name")}</b> <span class="dim">${val("l_symbol").toUpperCase()}</span>`, 0)}
       ${row("Description", (S.root?.querySelector<HTMLTextAreaElement>('[name="l_desc"]')?.value ?? "").trim() || html`<span class="faint">none</span>`, 0)}
       ${row("Image", S.image ? `${S.image.name}, ${Math.ceil(S.image.size / 1024)} KB, the coin's image and the agent's avatar, fixed at launch` : html`<span class="faint">none (generated pattern)</span>`, 0)}
-      ${row("Links", links.length ? links.join(", ") : html`<span class="faint">none</span>`, 0)}
+      ${row("Links", linkList(links).length ? html`${COIN_LINK_KEYS.filter((k) => links[k]).map((k, i) => html`${i ? ", " : ""}<span class="dim">${{ twitter: "Twitter (X)", telegram: "Telegram", website: "Website" }[k]}</span> ${links[k]}`)} <span class="dim">fixed at launch</span>` : html`<span class="faint">none (the coin links to the agent's page)</span>`, 0)}
       ${row("Repository", r?.gh ? html`<a class="link" href="${r.gh.html_url}" target="_blank" rel="noopener">${r.gh.full_name}</a>, ${r.recipes?.length ? `${r.recipes.length} recipe${r.recipes.length === 1 ? "" : "s"} on Core` : "no recipe yet (setting up)"}` : "TBA", 1)}
       ${row("Soul", soul ? html`${soul.persona.name}, <span class="dim">${soul.persona.tagline}</span> <span class="wl-hash">${soulDigest(soul).slice(0, 16)}…</span>` : html`<span class="faint">none</span>`, 2)}
       ${row("Model", m ? html`${m.name} <span class="dim">${m.provider}, ${priceText(m)}</span>` : html`<span class="faint">network default</span>`, 2)}

@@ -6,12 +6,12 @@ import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { inflateSync } from "node:zlib";
-import { bytesToHex, checkMetadataUri, coinImageId, coinImageOfUri, coinMetadataDoc, coinMetadataUri, LAUNCH_PROGRAM_ID, launchPdas, Rpc, sha256, TOKEN_2022_PROGRAM } from "../../../packages/chain/src/index.ts";
+import { bytesToHex, checkMetadataUri, coinImageId, coinImageOfUri, coinLinkProblem, coinLinksFromStored, coinLinksId, coinLinksJson, coinLinksOfUri, coinMetadataDoc, coinMetadataUri, coinMetadataUriBytes, MAX_LAUNCH_STRINGS, normalizeCoinLinks, LAUNCH_PROGRAM_ID, launchPdas, Rpc, sha256, TOKEN_2022_PROGRAM } from "../../../packages/chain/src/index.ts";
 import { generateWebKey } from "../../../packages/chain/src/browser/wire.ts";
 import { verifyStatement } from "../../../packages/core/src/protocol.ts";
 import { avatarGrid } from "../../../packages/embed/src/pattern.ts";
 import { coinRoutes, facePng, hslToRgb } from "../coin-metadata.ts";
-import { checkedCoinUri, loadCoinOrigin, storeCoinImage } from "../wallet/coin-uri.ts";
+import { checkedCoinUri, loadCoinOrigin, storeCoinImage, storeCoinLinks } from "../wallet/coin-uri.ts";
 
 const fx = JSON.parse(readFileSync(join(import.meta.dir, "fixtures/coin-tbasalt.json"), "utf8")) as { mint: string; mint_data: string; launch_data: string };
 const ORIGIN = "https://app.units.gg";
@@ -71,7 +71,7 @@ function site(c = chain(), dns = false) {
     if (up && init?.method === "POST") {
       const b = JSON.parse(init.body!) as { statement: Record<string, any>; sig: string; data: string };
       const st = b.statement;
-      if (st.slot !== "coin" || st.agent !== up[1] || st.signer !== up[1] || !verifyStatement(st.signer, b.sig, "media", st)) return Response.json({ error: "bad_signature", message: "sig does not verify" }, { status: 401 });
+      if ((st.slot !== "coin" && st.slot !== "links") || st.agent !== up[1] || st.signer !== up[1] || !verifyStatement(st.signer, b.sig, "media", st)) return Response.json({ error: "bad_signature", message: "sig does not verify" }, { status: 401 });
       posts.push({ agent: up[1]!, statement: st });
       const bytes = new Uint8Array(Buffer.from(b.data, "base64"));
       if (st.sha256 === "") return Response.json({ cleared: true });
@@ -277,5 +277,153 @@ describe("the image the launcher chose", () => {
     expect((await hidden.route(new Request(`${HERE}/coin/image/${PNG_ID}`), `/coin/image/${PNG_ID}`)).status).toBe(410);
     const html = coinRoutes({ origin: ORIGIN, core: CORE, rpc: chain().rpc, fetch: (async () => new Response("<html>", { headers: { "content-type": "text/html" } })) as unknown as typeof fetch });
     expect((await html.route(new Request(`${HERE}/coin/image/${PNG_ID}`), `/coin/image/${PNG_ID}`)).status).toBe(404);
+  });
+});
+
+// The coin's links (owner 2026-10-12): three fields in pump.fun's names, bound into the on-chain URI by the
+// hash of their text, the way the image is.
+describe("links: twitter, telegram, website", () => {
+  const LINKS = { twitter: "https://x.com/unitscoin", telegram: "https://t.me/unitscoin", website: "https://example.org/coin" };
+  const TEXT = '{"twitter":"https://x.com/unitscoin","telegram":"https://t.me/unitscoin","website":"https://example.org/coin"}';
+  const ID = coinLinksId(LINKS)!;
+  const SHA = bytesToHex(sha256(new TextEncoder().encode(TEXT)));
+  const base = { origin: ORIGIN, mint: NEW_MINT, agent: AGENT, name: "Test Basalt", symbol: "TBASALT", repoUrl: "https://github.com/keis/base58" };
+  const launch = { origin: ORIGIN, here: HERE, mint: NEW_MINT, name: "New One", symbol: "NEW1", repoUrl: "https://github.com/keis/base58" };
+
+  test("each field takes an https link on its own site; anything else is refused with the field's name", () => {
+    expect(normalizeCoinLinks({ twitter: " https://x.com/unitscoin ", telegram: "", website: "https://example.org/coin" })).toEqual({ links: { twitter: "https://x.com/unitscoin", website: "https://example.org/coin" }, problems: [] });
+    expect(normalizeCoinLinks({}).links).toEqual({});
+    for (const ok of ["https://x.com/a", "https://twitter.com/a", "https://www.x.com/a/status/1"]) expect(coinLinkProblem("twitter", ok)).toBeNull();
+    for (const ok of ["https://t.me/a", "https://t.me/+AbCd"]) expect(coinLinkProblem("telegram", ok)).toBeNull();
+    expect(coinLinkProblem("twitter", "https://t.me/a")).toMatch(/^Twitter \(X\): a link on x\.com or twitter\.com/);
+    expect(coinLinkProblem("twitter", "https://x.com.evil.example/a")).toMatch(/x\.com or twitter\.com/);
+    expect(coinLinkProblem("twitter", "https://x.com/")).toMatch(/an account or a post/);
+    expect(coinLinkProblem("telegram", "https://x.com/a")).toMatch(/^Telegram: a link on t\.me/);
+    for (const bad of ["http://example.org", "example.org", "javascript:alert(1)", "https://user:pw@example.org", "https://localhost", "https://exa mple.org", 'https://example.org/"><script>', `https://example.org/${"a".repeat(120)}`]) expect(coinLinkProblem("website", bad), bad).toMatch(/^Website: /);
+    expect(normalizeCoinLinks({ website: "https://example.org", discord: "https://discord.gg/x" }).problems[0]).toMatch(/unknown field/);
+    expect(normalizeCoinLinks({ website: 5 }).problems[0]).toMatch(/Website/);
+  });
+
+  test("the document with links and without: pump.fun's three fields, present only when given; the website falls back to the agent's page", () => {
+    const none = coinMetadataDoc(base);
+    expect(none).not.toHaveProperty("twitter");
+    expect(none).not.toHaveProperty("telegram");
+    expect(none.website).toBe(`${ORIGIN}/tokens/${NEW_MINT}`);
+    const all = coinMetadataDoc({ ...base, links: LINKS });
+    expect([all.twitter, all.telegram, all.website]).toEqual([LINKS.twitter, LINKS.telegram, LINKS.website]);
+    expect(Object.keys(all)).toEqual(["name", "symbol", "description", "showName", "image", "createdOn", "twitter", "telegram", "website"]);
+    const tw = coinMetadataDoc({ ...base, links: { twitter: LINKS.twitter } });
+    expect(tw.twitter).toBe(LINKS.twitter);
+    expect(tw).not.toHaveProperty("telegram");
+    expect(tw.website).toBe(`${ORIGIN}/tokens/${NEW_MINT}`);
+    expect(all.image).toBe(none.image);
+  });
+
+  test("one text, one id: the id is the sha256 of the canonical text and rides in the URI beside the image's", () => {
+    expect(coinLinksJson({ website: LINKS.website, telegram: LINKS.telegram, twitter: LINKS.twitter })).toBe(TEXT);
+    expect(coinLinksJson({})).toBe("");
+    expect(coinLinksId({})).toBeNull();
+    expect(coinImageId(SHA)).toBe(ID);
+    expect(coinMetadataUri(ORIGIN, NEW_MINT, null, ID)).toBe(`${ORIGIN}/coin/${NEW_MINT}.json?l=${ID}`);
+    const both = coinMetadataUri(ORIGIN, NEW_MINT, PNG_ID, ID);
+    expect(both).toBe(`${ORIGIN}/coin/${NEW_MINT}.json?i=${PNG_ID}&l=${ID}`);
+    expect([coinImageOfUri(both), coinLinksOfUri(both)]).toEqual([PNG_ID, ID]);
+    for (const none of [coinMetadataUri(ORIGIN, NEW_MINT, PNG_ID), `${ORIGIN}/coin/${NEW_MINT}.json?l=nope`, "", null]) expect(coinLinksOfUri(none)).toBeNull();
+    expect(coinLinksFromStored(TEXT, ID)).toEqual(LINKS);
+  });
+
+  test("the URI with an image and links leaves the launch its room: measured against the launch's string budget", () => {
+    // the longest URI: the origin, a 44 character mint, an image id and a links id
+    const longest = coinMetadataUriBytes(ORIGIN, true, true);
+    expect(longest).toBe(coinMetadataUriBytes(ORIGIN, true, false) + 47);
+    expect(longest).toBe(169);
+    // with a 32 byte name and a 10 character ticker, what is left for the repository URL (https://github.com/owner/name)
+    expect(MAX_LAUNCH_STRINGS - longest - 32 - 10).toBe(116);
+  });
+
+  test("typed in the wizard: stored under the agent key's signature, named in the URI by their hash, read back in the document before signing", async () => {
+    const s = site();
+    const agent = await generateWebKey();
+    expect(await storeCoinLinks(agent, {}, s.f)).toBeNull();
+    expect(s.posts).toHaveLength(0);
+    expect(await storeCoinLinks(agent, LINKS, s.f)).toBe(ID);
+    expect(s.posts[0]!.statement).toMatchObject({ kind: "units-media", slot: "links", agent: agent.id, signer: agent.id, sha256: SHA, type: "application/json", size: TEXT.length });
+    expect(new TextDecoder().decode(s.media.get(SHA)!.bytes)).toBe(TEXT);
+    // the same links again are not sent again
+    await storeCoinLinks(agent, LINKS, s.f);
+    expect(s.posts).toHaveLength(1);
+    const uri = await checkedCoinUri({ ...launch, agent: agent.id, image: null, links: LINKS, fetch: s.f });
+    expect(uri).toBe(`https://app.units.gg/coin/${NEW_MINT}.json?l=${ID}`);
+    expect(s.seen).toContain(`${CORE}/v1/media/${SHA}`);
+    const preview = await (await s.f(`${HERE}/coin/${NEW_MINT}.json?l=${ID}&name=New+One&symbol=NEW1&agent=${agent.id}&repo=https://github.com/keis/base58`)).json();
+    expect([preview.twitter, preview.telegram, preview.website]).toEqual([LINKS.twitter, LINKS.telegram, LINKS.website]);
+  });
+
+  test("no launch is built when the links are refused, are not stored, or come back different", async () => {
+    const agent = await generateWebKey();
+    const refused = (async () => Response.json({ error: "bad_links", message: "the canonical JSON of the coin's links" }, { status: 400 })) as unknown as typeof fetch;
+    await expect(storeCoinLinks(agent, LINKS, refused)).rejects.toThrow(/links were not stored .*not built/);
+    // named in the URI but never stored
+    const s = site();
+    await expect(checkedCoinUri({ ...launch, agent: agent.id, image: null, links: LINKS, fetch: s.f })).rejects.toThrow(/was not confirmed/);
+    // a host that answers the document with another link, or with a link this launch did not give
+    const lying = (extra: Record<string, string>) => (async (u: string) => {
+      const url = new URL(String(u), HERE);
+      if (url.pathname.startsWith("/coin/face/")) return new Response(PNG as unknown as BodyInit, { headers: { "content-type": "image/png" } });
+      return Response.json({ ...coinMetadataDoc({ ...launch, agent: agent.id, origin: ORIGIN, links: LINKS }), ...extra });
+    }) as unknown as typeof fetch;
+    await expect(checkedCoinUri({ ...launch, agent: agent.id, image: null, links: LINKS, fetch: lying({ twitter: "https://x.com/someone_else" }) })).rejects.toThrow(/a different "twitter"/);
+    await expect(checkedCoinUri({ ...launch, agent: agent.id, image: null, links: { website: LINKS.website }, fetch: lying({}) })).rejects.toThrow(/a "twitter" link this launch did not give/);
+  });
+
+  test("after the launch the links are the ones the coin's own URI names: no request, no later upload and no changed text can alter them", async () => {
+    const onChain = `https://a.gg/?l=${ID}`;
+    const s = site(chain({ mintData: mintWithUri(onChain) }));
+    s.media.set(SHA, { type: "application/json", bytes: new TextEncoder().encode(TEXT) });
+    const want = coinMetadataDoc({ origin: ORIGIN, mint: MINT, agent: AGENT, name: "Test Basalt", symbol: "TBASALT", repoUrl: "https://github.com/keis/base58", links: LINKS });
+    const evil = { twitter: "https://x.com/evil", website: "https://evil.example" };
+    const evilText = coinLinksJson(evil), evilId = coinLinksId(evil)!;
+    s.media.set(bytesToHex(sha256(new TextEncoder().encode(evilText))), { type: "application/json", bytes: new TextEncoder().encode(evilText) });
+    // a request that names other links (stored, valid, by their own id) gets the coin's own
+    for (const q of ["", `?l=${evilId}`, `?l=${evilId}&name=Evil&symbol=EVIL&agent=${AGENT}&repo=https://github.com/a/b`, "?twitter=https://x.com/evil&website=https://evil.example"]) {
+      const r = await s.f(`${HERE}/coin/${MINT}.json${q}`);
+      expect(await r.json()).toEqual(want);
+    }
+    // a coin launched without links shows none whatever a request says, and its website is the agent's page
+    const plain = await (await site().f(`${HERE}/coin/${MINT}.json?l=${evilId}`)).json();
+    expect(plain).not.toHaveProperty("twitter");
+    expect(plain.website).toBe(`${ORIGIN}/tokens/${MINT}`);
+  });
+
+  test("the text stored under the coin's hash was swapped or is not canonical: it is never served as the coin's links, and that answer is not kept", async () => {
+    const onChain = `https://a.gg/?l=${ID}`;
+    for (const swapped of ['{"twitter":"https://x.com/evil"}', TEXT + " ", '{"website":"https://example.org/coin","twitter":"https://x.com/unitscoin","telegram":"https://t.me/unitscoin"}', "not json", ""]) {
+      expect(coinLinksFromStored(swapped, ID)).toBeNull();
+      const s = site(chain({ mintData: mintWithUri(onChain) }));
+      s.media.set(SHA, { type: "application/json", bytes: new TextEncoder().encode(swapped) });
+      const r = await s.f(`${HERE}/coin/${MINT}.json`);
+      const doc = await r.json();
+      expect(doc).not.toHaveProperty("twitter");
+      expect(doc).not.toHaveProperty("telegram");
+      expect(doc.website).toBe(`${ORIGIN}/tokens/${MINT}`);
+      expect([r.headers.get("cache-control"), r.headers.get("x-units-coin")]).toEqual(["no-store", "links-missing"]);
+      // once the right text is there the coin's links are served, and only then kept
+      s.media.set(SHA, { type: "application/json", bytes: new TextEncoder().encode(TEXT) });
+      const again = await s.f(`${HERE}/coin/${MINT}.json`);
+      expect((await again.json()).twitter).toBe(LINKS.twitter);
+      expect(again.headers.get("cache-control")).toBe("public, max-age=3600");
+    }
+    // a text that is valid links but not the ones the id names
+    expect(coinLinksFromStored('{"twitter":"https://x.com/evil"}', coinLinksId({ twitter: "https://x.com/evil" })!)).toEqual({ twitter: "https://x.com/evil" });
+    expect(coinLinksFromStored('{"twitter":"https://x.com/evil"}', ID)).toBeNull();
+  });
+
+  test("the links store down: the coin's document is not answered without them (503), and a preview naming links that are not stored is refused", async () => {
+    const down = coinRoutes({ origin: ORIGIN, core: CORE, rpc: chain({ mintData: mintWithUri(`https://a.gg/?l=${ID}`) }).rpc, fetch: (async () => Response.json({ error: "x" }, { status: 502 })) as unknown as typeof fetch });
+    expect((await down.route(new Request(`${HERE}/coin/${MINT}.json`), `/coin/${MINT}.json`)).status).toBe(503);
+    const s = site();
+    const q = `name=Test+Basalt&symbol=TBASALT&agent=${AGENT}&repo=https://github.com/keis/base58`;
+    expect((await s.f(`${HERE}/coin/${NEW_MINT}.json?l=${ID}&${q}`)).status).toBe(404);
+    expect((await s.f(`${HERE}/coin/${NEW_MINT}.json?l=nope&${q}`)).status).toBe(404);
   });
 });
