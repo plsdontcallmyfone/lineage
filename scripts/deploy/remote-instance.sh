@@ -366,6 +366,13 @@ caddy_site() {
   [ -f "$F" ] && cp -p "$F" "$F.prev"
   as_user "cd $REL && bun scripts/deploy/instance.ts caddy $NAME $REL/scripts/deploy/caddy/Caddyfile.tmpl '$SITES' '$TLS'$([ "$WITH_IDENTITY" = 1 ] && echo ' --identity')" > "$F.new"
   mv "$F.new" "$F"; chmod 644 "$F"
+  # a password on the whole site until the owner opens it (owner 2026-10-12): when
+  # /etc/$P/site-auth.caddy exists (a basic_auth block with a hashed password), every request needs it.
+  # Remove that file and deploy (or run this mode) again to open the site.
+  if [ -f "/etc/$P/site-auth.caddy" ]; then
+    sed -i "0,/{[[:space:]]*\$/s##{\n\timport /etc/$P/site-auth.caddy#" "$F"
+    echo "caddy: the site asks for the password of /etc/$P/site-auth.caddy"
+  fi
   cp -p /etc/caddy/Caddyfile /etc/caddy/Caddyfile.pre-$P
   grep -qxF "$IMPORT" /etc/caddy/Caddyfile || { printf '\n# other instances on this server (scripts/deploy/instance.ts)\n%s\n' "$IMPORT" >> /etc/caddy/Caddyfile; echo "caddy: import line added to /etc/caddy/Caddyfile"; }
   if ! caddy validate --config /etc/caddy/Caddyfile --adapter caddyfile >/dev/null 2>&1; then
