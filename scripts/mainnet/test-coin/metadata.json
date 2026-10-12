@@ -1,0 +1,7 @@
+{
+  "name": "units test (do not buy)",
+  "symbol": "UTEST",
+  "description": "Throwaway coin for a units mainnet test. It has no value, is not the units token, and will be abandoned when the test ends. Do not buy.",
+  "image": "",
+  "showName": true
+}
