@@ -51,9 +51,9 @@ function fakeApi(replies: [number, unknown, Record<string, string>?][]) {
 const gpt55 = REG.models.find((m) => m.provider === "openai" && m.id === "gpt-5.5")!;
 
 describe("OpenRouter route in the registry", () => {
-  test("the seed validates; route prices equal OpenRouter's listed prices as read 2026-10-10 (per token there, per 1M here)", () => {
+  test("the seed validates; route prices equal OpenRouter's listed prices as read 2026-10-12 (per token there, per 1M here)", () => {
     expect(checkRegistry(REG)).toEqual([]);
-    expect(REG.routing?.openrouter).toMatchObject({ read_on: "2026-10-10", funding_fee_bps: 550 });
+    expect(REG.routing?.openrouter).toMatchObject({ read_on: "2026-10-12", funding_fee_bps: 550 });
     for (const m of MODELS.data) {
       const entry = REG.models.find((x) => x.routes?.openrouter?.id === m.id)!;
       expect(entry).toBeTruthy();

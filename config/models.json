@@ -518,7 +518,7 @@
             "input": 0.75,
             "output": 3.75,
             "cached_input": 0.075,
-            "cache_write": 0.0416666667
+            "cache_write": 0.041667
           }
         }
       }
@@ -540,7 +540,7 @@
             "input": 0.3,
             "output": 2.5,
             "cached_input": 0.03,
-            "cache_write": 0.0833333333
+            "cache_write": 0.083333
           }
         }
       }
@@ -652,11 +652,42 @@
         "openrouter": {
           "id": "deepseek/deepseek-v4.1-flash",
           "rate": {
-            "input": 0.3,
-            "output": 1.2,
-            "cached_input": 0.006
+            "input": 0.15,
+            "output": 0.6,
+            "cached_input": 0.003
           },
-          "note": "DeepSeek names this model DeepSeek Flash (V4.1); OpenRouter lists it as deepseek-v4.1-flash."
+          "note": "DeepSeek names this model DeepSeek Flash (V4.1); OpenRouter lists it as deepseek-v4.1-flash. Its OpenRouter price follows DeepSeek's clock: 0.15 / 0.6 off-peak (read 2026-10-12, 17:00 UTC), double in the peak windows (the 0.3 / 1.2 read 2026-10-10).",
+          "peak": {
+            "rate": {
+              "input": 0.3,
+              "output": 1.2,
+              "cached_input": 0.006
+            },
+            "windows": [
+              {
+                "days": [
+                  1,
+                  2,
+                  3,
+                  4,
+                  5
+                ],
+                "start": "01:00",
+                "end": "04:00"
+              },
+              {
+                "days": [
+                  1,
+                  2,
+                  3,
+                  4,
+                  5
+                ],
+                "start": "06:00",
+                "end": "10:00"
+              }
+            ]
+          }
         }
       }
     },
@@ -706,9 +737,9 @@
         "openrouter": {
           "id": "deepseek/deepseek-v4-pro",
           "rate": {
-            "input": 0.2088,
-            "output": 0.4176,
-            "cached_input": 0.0174
+            "input": 0.41238,
+            "output": 0.82476,
+            "cached_input": 0.034365
           },
           "note": "OpenRouter serves this id as the 0423 snapshot (deepseek-v4-pro-20260423); a 0813 snapshot is listed separately."
         }
@@ -772,9 +803,9 @@
         "openrouter": {
           "id": "moonshotai/kimi-k3",
           "rate": {
-            "input": 0.5,
-            "output": 13.5,
-            "cached_input": 0.28
+            "input": 0.73,
+            "output": 10.0,
+            "cached_input": 0.55
           }
         }
       }
@@ -793,9 +824,9 @@
         "openrouter": {
           "id": "moonshotai/kimi-k2.6",
           "rate": {
-            "input": 0.4344,
-            "output": 2.45,
-            "cached_input": 0.1077
+            "input": 0.65,
+            "output": 3.41,
+            "cached_input": 0.15
           }
         }
       }
@@ -814,9 +845,9 @@
         "openrouter": {
           "id": "z-ai/glm-5.3",
           "rate": {
-            "input": 0.039,
+            "input": 0.079,
             "output": 4.8,
-            "cached_input": 0.038
+            "cached_input": 0.059
           }
         }
       }
@@ -835,9 +866,9 @@
         "openrouter": {
           "id": "z-ai/glm-5.3-flash",
           "rate": {
-            "input": 0.15,
-            "output": 0.5,
-            "cached_input": 0.03
+            "input": 0.0232,
+            "output": 1.2,
+            "cached_input": 0.0232
           }
         }
       }
@@ -906,14 +937,6 @@
       }
     },
     {
-      "id": "llama",
-      "provider": "meta",
-      "name": "Llama",
-      "status": "no_price",
-      "rate": null,
-      "note": "No first-party per-token price is published."
-    },
-    {
       "id": "llama-4-maverick",
       "provider": "meta",
       "name": "Llama 4 Maverick",
@@ -936,7 +959,7 @@
     "openrouter": {
       "name": "OpenRouter",
       "pricing_url": "https://openrouter.ai/api/v1/models",
-      "read_on": "2026-10-10",
+      "read_on": "2026-10-12",
       "funding_fee_bps": 550,
       "funding_note": "OpenRouter adds no markup to provider prices and charges a fee when credits are bought (openrouter.ai/docs/faq, read 2026-10-10): card 5.5% (0.80 USD minimum), crypto (USDC) 5%. 550 assumes card top-ups; set 500 when the treasury tops up in USDC."
     }

@@ -55,13 +55,11 @@ describe("model registry in Core", () => {
     env = e;
     const reg = (await expectOk(e.anon.get("/v1/models"))).registry;
     const priced = reg.models.find((m: any) => m.provider === "deepseek" && m.status === "verified");
-    const meta = reg.models.find((m: any) => m.provider === "meta");
     const k = generateAgentKey();
     const base = newSoul({ agent: k.id, seed: SEED, persona: persona(), created_at: 1_790_000_000, origin: { by: "launcher", model: null, prompt_version: null } });
     const put = (doc: SoulDoc) => e.anon.request("PUT", `/v1/agents/${k.id}/soul`, { doc, sig: signSoul(k, doc) }, { sign: false });
     const unknown = { ...base, model: { provider: "deepseek", id: "no-such-model" } };
     expect((await put(unknown)).body.message).toMatch(/not in the model registry/);
-    expect((await put({ ...base, model: { provider: meta.provider, id: meta.id } })).body.message).toMatch(/no published price/);
     expect((await put({ ...base, model: { provider: "deepseek" } } as never)).status).toBe(400);
     const ok = { ...base, model: { provider: priced.provider, id: priced.id } };
     expect((await expectOk(put(ok))).seq).toBe(1);

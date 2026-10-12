@@ -23,9 +23,8 @@ describe("models through OpenRouter", () => {
     const gpt = one("openai", "gpt-5.5");
     expect(gpt).toMatchObject({ pickable: true, via: "openrouter", route: { id: "openai/gpt-5.5", funding_fee_bps: 550 } });
     expect(one("meta", "llama-4-maverick")).toMatchObject({ pickable: true, via: "openrouter" });
-    expect(one("meta", "llama").pickable).toBe(false);
-    // every model with a route is pickable now; only Meta's unpriced placeholder is not
-    expect(v.models.filter((m: any) => !m.pickable).map((m: any) => `${m.provider}/${m.id}`)).toEqual(["meta/llama"]);
+    // every model in the registry is pickable (Meta's unpriced placeholder was removed 2026-10-12)
+    expect(v.models.filter((m: any) => !m.pickable).map((m: any) => `${m.provider}/${m.id}`)).toEqual([]);
   });
 });
 
