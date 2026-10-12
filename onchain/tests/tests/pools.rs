@@ -505,6 +505,10 @@ fn a_graduated_members_token_is_bought_on_pumpswap() {
     let v0 = f.vault(&repo);
     // The curve path no longer works for it.
     assert!(f.buy(&repo, &b, ll::BUY_BUYBACK, tokens, u64::MAX).is_err());
+    // Not through any other PumpSwap pool: only the canonical pool of the mint quoted in $LINE.
+    let mut bad = f.e.pool_buy_ix(&k.pubkey(), &repo, &b, ll::BUY_BUYBACK, ll::PoolBuyArgs { venue: ll::VENUE_AMM, token_amount: tokens, max_quote: u64::MAX });
+    bad.accounts[11] = AccountMeta::new(pf::pool_of(&a.mint, &f.e.line_mint), false);
+    rejects(send_unchecked(&mut f.e.svm, &k, &[], vec![cu(800_000), bad]), "PumpPoolUnexpected");
     let ix = f.e.pool_buy_ix(&k.pubkey(), &repo, &b, ll::BUY_BUYBACK, ll::PoolBuyArgs { venue: ll::VENUE_AMM, token_amount: tokens, max_quote: u64::MAX });
     ok(send_unchecked(&mut f.e.svm, &k, &[], vec![cu(800_000), ix]));
     let spent = v0 - f.vault(&repo);

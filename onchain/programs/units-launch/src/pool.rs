@@ -395,9 +395,10 @@ pub(crate) fn pool_pay(ctx: Context<PoolPay>) -> Result<()> {
     Ok(())
 }
 
-/// One CPI buy for the pool authority, then the balance checks. Returns (`$LINE` spent, tokens gained).
+/// One CPI buy for the pool authority, then the balance checks. On the curve the venue itself
+/// derives the curve from the mint; on PumpSwap the pool must be the canonical one. Returns (`$LINE` spent, tokens gained).
 #[allow(clippy::too_many_arguments)]
-fn execute_buy<'info>(args: &PoolBuyArgs, cap: u64, pool: &Pool, pool_auth: &AccountInfo<'info>, pool_vault: &mut InterfaceAccount<'info, TokenAccount>,
+fn execute_buy<'info>(args: &PoolBuyArgs, cap: u64, mint: &Pubkey, line_mint: &Pubkey, pool: &Pool, pool_auth: &AccountInfo<'info>, pool_vault: &mut InterfaceAccount<'info, TokenAccount>,
     pool_token: &mut InterfaceAccount<'info, TokenAccount>, venue_program: &AccountInfo<'info>, rest: &[AccountInfo<'info>]) -> Result<(u64, u64)> {
     require!(cap > 0 && args.token_amount > 0, LaunchError::PoolBudget);
     let mut data = Vec::with_capacity(25);
@@ -413,6 +414,10 @@ fn execute_buy<'info>(args: &PoolBuyArgs, cap: u64, pool: &Pool, pool_auth: &Acc
             data.extend_from_slice(&BUY_V2);
             data.extend_from_slice(&args.token_amount.to_le_bytes());
             data.extend_from_slice(&cap.to_le_bytes());
+            // Only the canonical pool of the mint quoted in `$LINE`: anyone can create another
+            // PumpSwap pool for the pair and price it as they like.
+            let canonical = crate::pump::canonical_pool(mint, line_mint).0;
+            require!(rest.first().map(|a| a.key()) == Some(canonical), LaunchError::PumpPoolUnexpected);
             PUMP_AMM_PROGRAM_ID
         }
         _ => return err!(LaunchError::InvalidArgs),
@@ -446,7 +451,7 @@ pub(crate) fn pool_buy<'info>(ctx: Context<'_, '_, 'info, 'info, PoolBuy<'info>>
         _ => return err!(LaunchError::InvalidArgs),
     };
     let cap = due.min(args.max_quote).min(cfg.max_buy_quote);
-    let (spent, got) = execute_buy(&args, cap, &ctx.accounts.pool, &ctx.accounts.pool_auth.to_account_info(), &mut ctx.accounts.pool_vault,
+    let (spent, got) = execute_buy(&args, cap, &ctx.accounts.target.mint, &lc.line_mint, &ctx.accounts.pool, &ctx.accounts.pool_auth.to_account_info(), &mut ctx.accounts.pool_vault,
         &mut ctx.accounts.pool_token, &ctx.accounts.venue_program.to_account_info(), ctx.remaining_accounts)?;
     let pool_key = ctx.accounts.pool.key();
     let t = &mut ctx.accounts.target;
@@ -487,7 +492,7 @@ pub(crate) fn pool_cross_buy<'info>(ctx: Context<'_, '_, 'info, 'info, PoolCross
     // A purchase waits until it is fully funded, unless nothing more is owed.
     require!(h.cross_funded >= cfg.cross_hold_quote || h.cross_due == 0, LaunchError::PoolBudget);
     let cap = h.cross_funded.min(cfg.cross_hold_quote).min(args.max_quote).min(cfg.max_buy_quote);
-    let (spent, got) = execute_buy(&args, cap, &ctx.accounts.pool, &ctx.accounts.pool_auth.to_account_info(), &mut ctx.accounts.pool_vault,
+    let (spent, got) = execute_buy(&args, cap, &ctx.accounts.target.mint, &lc.line_mint, &ctx.accounts.pool, &ctx.accounts.pool_auth.to_account_info(), &mut ctx.accounts.pool_vault,
         &mut ctx.accounts.pool_token, &ctx.accounts.venue_program.to_account_info(), ctx.remaining_accounts)?;
     let now = Clock::get()?.unix_timestamp;
     let h = &mut ctx.accounts.holder;
