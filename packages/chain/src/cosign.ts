@@ -60,8 +60,9 @@ export function inspectForCosign(wire: Uint8Array, agent: Address, opts: { expec
       else throw new Error(`refusing to co-sign: compute budget instruction outside the allowed limit (${COSIGN_MAX_CU_LIMIT} units) and price (${COSIGN_MAX_CU_PRICE})`);
       continue;
     }
-    // a wallet's own guard (Phantom adds Lighthouse assertions): read-only checks that can fail the transaction and move nothing
-    if (ix.programId === "L2TExMFKdjpN9kozasaurPirfHy9P8sbXoAN1qA3S95" && ix.accounts.every((a) => !a.isSigner && !a.isWritable)) continue;
+    // a wallet's own guard (Phantom adds Lighthouse assertions). This key is never the fee payer and never
+    // writable in the whole message (checked above), so nothing such an instruction does can touch it.
+    if (ix.programId === "L2TExMFKdjpN9kozasaurPirfHy9P8sbXoAN1qA3S95") continue;
     if (ix.programId !== REGISTRY_PROGRAM_ID) throw new Error(`refusing to co-sign: instruction for program ${ix.programId} (only units_registry and compute budget)`);
     const name = Object.keys(COSIGNABLE).find((n) => ix.data.length >= 8 && ixDisc(n).every((x, i) => x === ix.data[i]));
     if (!name) throw new Error("refusing to co-sign: a units_registry instruction other than register or rotate_agent_key");
