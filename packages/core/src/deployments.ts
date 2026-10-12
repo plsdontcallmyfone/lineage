@@ -1,4 +1,4 @@
-import { onPurge } from "./purge.ts";
+import { onPurge, purgeOf } from "./purge.ts";
 import { MAINNET_TEST_PROGRAM_IDS } from "@units/chain";
 import type { Core } from "./core.ts";
 import { bad } from "./errors.ts";
@@ -156,22 +156,81 @@ export class Deployments {
    * closed and stays with the retired registry, its launched agents are retired and hidden, and every
    * mirrored bond and vault is zeroed until the new registry's are read (see the top of this file).
    */
-  observe(d: { registry_program: string; launch_program: string; line_mint: string | null; label?: string | null }): { switched: DeploymentRow[] } {
+  observe(d: { registry_program: string; launch_program: string; line_mint: string | null; label?: string | null }, opts: { carries?: Set<string> } = {}): { switched: DeploymentRow[] } {
     this.c.db.exec(SCHEMA);
     const cur = this.c.db.query<DeploymentRow, [string]>("SELECT * FROM chain_deployments WHERE registry_program = ?").get(d.registry_program);
     if (cur && cur.retired_at === null) return { switched: [] };
+    // a switch that will purge takes its own copy of the database first (purge.ts); without one it retires instead
+    let purge: { agents: string[]; backup: string | null; why: string | null } | null = null;
+    if (opts.carries) {
+      const agents = this.switchPurgeList(d.registry_program, opts.carries);
+      if (agents.length) {
+        purge = { agents, backup: null, why: null };
+        try {
+          purge.backup = purgeOf(this.core).copyDatabase();
+        } catch (e) {
+          purge.why = `no copy of the database could be taken: ${(e as Error).message}`;
+        }
+      }
+    }
+    let committed = false;
     try {
-      return this.c.tx(() => this.observeInner(d, cur));
+      const out = this.c.tx(() => this.observeInner(d, cur, purge));
+      committed = true;
+      return out;
     } finally {
+      purgeOf(this.core).settle(committed);
       // read again from the tables: a transaction that rolled back must not leave its view behind
       this.through = undefined;
       this.retired = undefined;
     }
   }
 
-  private observeInner(d: { registry_program: string; launch_program: string; line_mint: string | null; label?: string | null }, cur: DeploymentRow | null): { switched: DeploymentRow[] } {
+  /**
+   * The launches a switch to `registry` purges: every launched agent of the deployment being retired
+   * that the new registry does not carry. Empty when no deployment is open besides `registry`.
+   */
+  private switchPurgeList(registry: string, carries: Set<string>): string[] {
+    if (!this.c.db.query("SELECT 1 FROM chain_deployments WHERE retired_at IS NULL AND registry_program != ?").get(registry)) return [];
+    return this.c.db
+      .query<{ agent_id: string }, []>("SELECT agent_id FROM agents WHERE kind = 'launched' AND shadow = 0 AND agent_id NOT IN (SELECT agent_id FROM retired_agents) ORDER BY agent_id")
+      .all()
+      .map((r) => r.agent_id)
+      .filter((a) => !carries.has(a));
+  }
+
+  /**
+   * The switch purges the earlier deployment's launches (owner 2026-10-12: nothing of the test
+   * deployment stays in the data): agents, coins, candidates, generations, sessions and the rest go for
+   * good and their units return to generation 0 (purge.ts). Before the open epoch is closed, so the
+   * epoch that stays with the retired registry holds none of that work. A purge that refuses (a unit
+   * mixing authors, a closed epoch that carries the work, no database copy) changes nothing: those
+   * launches are retired and hidden instead, as before, and the event says why.
+   */
+  private purgeAtSwitch(p: { agents: string[]; backup: string | null; why: string | null }): { purged: number; why: string | null } {
+    let why = p.why;
+    if (!why) {
+      this.c.db.exec("SAVEPOINT switch_purge");
+      try {
+        const r = purgeOf(this.core).run(p.agents, { by: "chain:switch", force: true, backup: p.backup, inTx: true, note: "deployment switch" });
+        this.c.db.exec("RELEASE switch_purge");
+        this.retired = undefined;
+        return { purged: r.agents, why: null };
+      } catch (e) {
+        this.c.db.exec("ROLLBACK TO switch_purge");
+        this.c.db.exec("RELEASE switch_purge");
+        why = (e as Error).message;
+      }
+    }
+    this.c.emitEvent("chain.switch_purge_refused", { launches: p.agents.length, why });
+    return { purged: 0, why };
+  }
+
+  private observeInner(d: { registry_program: string; launch_program: string; line_mint: string | null; label?: string | null }, cur: DeploymentRow | null, purge: { agents: string[]; backup: string | null; why: string | null } | null = null): { switched: DeploymentRow[] } {
     const now = this.c.now();
     const open = this.c.db.query<DeploymentRow, [string]>("SELECT * FROM chain_deployments WHERE retired_at IS NULL AND registry_program != ? ORDER BY first_seen_at").all(d.registry_program);
+    // the earlier deployment's launches leave the data before its open epoch is closed
+    const purged = open.length && purge ? this.purgeAtSwitch(purge) : { purged: 0, why: null };
     // the epoch open across the switch holds what was earned on the earlier deployment: closed now, never posted
     const closedOpen = open.length ? this.c.closeEpoch().n : null;
     const closed = this.c.db.query<{ n: number | null }, []>("SELECT MAX(n) AS n FROM epochs WHERE status != 'open'").get()?.n ?? null;
@@ -196,7 +255,8 @@ export class Deployments {
     if (switched.length) this.c.chainAbsentAgents(new Set());
     for (const s of switched)
       this.c.emitEvent("chain.deployment_retired", { registry_program: s.registry_program, through_epoch: s.through_epoch, last_posted_epoch: s.last_posted_epoch,
-        unposted_epochs: JSON.parse(s.unposted_epochs ?? "[]"), current: d.registry_program, closed_open_epoch: closedOpen, next_epoch: this.c.currentEpoch().n, retired_agents: agents });
+        unposted_epochs: JSON.parse(s.unposted_epochs ?? "[]"), current: d.registry_program, closed_open_epoch: closedOpen, next_epoch: this.c.currentEpoch().n, retired_agents: agents,
+        purged_launches: purged.purged, ...(purged.why ? { purge_refused: purged.why } : {}) });
     return { switched };
   }
 

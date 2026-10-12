@@ -246,7 +246,10 @@ export class ChainBridge {
     // which deployment this is; a different registry than last time retires the earlier one (deployments.ts)
     const rp = this.settings.registry_program;
     const label = rp === DEVNET_V1_PROGRAM_IDS.registry ? "devnet v1" : rp === PROGRAM_IDS.devnet.registry ? "devnet v2" : rp === PROGRAM_IDS.mainnet.registry ? "mainnet" : deploymentLabel(rp);
-    const sw = deploymentsOf(this.core).observe({ registry_program: rp, launch_program: this.settings.launch_program, line_mint: reg.mint, label });
+    // agents (verifiers and launched), with launched agents' AgentLaunch; read before the deployment is
+    // observed: at a switch, a launch this registry carries is kept and every other one is purged
+    const [agents, launches] = await Promise.all([this.reader.agents(), this.reader.launches()]);
+    const sw = deploymentsOf(this.core).observe({ registry_program: rp, launch_program: this.settings.launch_program, line_mint: reg.mint, label }, { carries: new Set(launches.map((l) => l.agent)) });
     // devnet v1 was read before deployments.ts existed: record it as retired once (epochs closed before v2)
     if (label === "devnet v2") {
       const v1 = deploymentsOf(this.core).recordEarlier({ registry_program: DEVNET_V1_PROGRAM_IDS.registry, launch_program: DEVNET_V1_PROGRAM_IDS.launch,
@@ -274,8 +277,7 @@ export class ChainBridge {
       });
     });
 
-    // agents (verifiers and launched), with launched agents' AgentLaunch and compute vault
-    const [agents, launches] = await Promise.all([this.reader.agents(), this.reader.launches()]);
+    // the compute vaults of the launched agents read above
     // Agent records the first layout wrote are grown to Agent v2 (signing key = agent key) by
     // `migrate_agent`, which anyone may send: the bridge does when it can sign, so slashes and
     // claims on those agents keep working after the registry upgrade.

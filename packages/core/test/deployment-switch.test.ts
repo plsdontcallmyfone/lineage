@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, test } from "bun:test";
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdtempSync, readdirSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { Server } from "bun";
@@ -9,6 +9,7 @@ import { FakeClock } from "../src/clock.ts";
 import { CoreClient } from "../src/client.ts";
 import { Core } from "../src/core.ts";
 import { deploymentsOf, RETIRED_BY } from "../src/deployments.ts";
+import { purgeDigest } from "../src/purge.ts";
 import { serve } from "../src/http.ts";
 import { calibId, generateAgentKey, recipeId, repoId, signMessage, snapshotId, type AgentKey, type Recipe } from "../src/protocol.ts";
 import { CALIB, CAPS, DEPS, RECIPE, agentClient, candidate, diff, expectOk, honest, qualify, result, runReplays, submit, testConfig, type Agent, type Env } from "./helpers.ts";
@@ -215,7 +216,7 @@ async function testDeployment() {
 }
 
 describe("deployment switch: one Core database from the mainnet test deployment to the official one", () => {
-  test("units, calibrations and qualifications carry over; the test agent, its coin, its generation, its epoch and its slash stay behind", async () => {
+  test("units, calibrations and qualifications carry over; the test agent, its coin and everything it produced are purged and its unit is back at generation 0", async () => {
     const t = await testDeployment();
     const { a, TEST, clock, author, v1, v2, ref, lineages } = t;
 
@@ -284,12 +285,14 @@ describe("deployment switch: one Core database from the mainnet test deployment 
       [OFFICIAL.ids.registry, false, null, null, null],
     ]);
 
-    // kept: every unit active with its calibration, tip and height; every qualification as it was
-    expect(await expectOk<any[]>(b.anon.get("/v1/lineages"))).toEqual(before.lineages);
+    // kept: every unit active with its calibration; every qualification as it was. The unit the test agent
+    // built is back at generation 0 (the original code): real agents start from there, nothing is measured again
+    expect(before.lineages.find((l) => l.lineage_id === lineages[0])).toMatchObject({ height: 1, tip: gen0 });
+    expect(await expectOk<any[]>(b.anon.get("/v1/lineages"))).toEqual(before.lineages.map((l) => (l.lineage_id === lineages[0] ? { ...l, height: 0, tip: l.gen0 } : l)));
     expect(calibs(b.core)).toEqual(before.calibs);
     expect(quals(b.core)).toEqual(before.quals);
     const viewsAfter = await Promise.all(lineages.map((l) => expectOk(b.anon.get(`/v1/lineages/${l}`))));
-    expect(viewsAfter.map((v) => [v.lineage_id, v.status, v.tip, v.height, v.calibration])).toEqual(before.views.map((v) => [v.lineage_id, v.status, v.tip, v.height, v.calibration]));
+    expect(viewsAfter.map((v) => [v.lineage_id, v.status, v.tip, v.height, v.calibration])).toEqual(before.views.map((v) => [v.lineage_id, v.status, v.lineage_id === lineages[0] ? v.gen0 : v.tip, v.lineage_id === lineages[0] ? 0 : v.height, v.calibration]));
 
     // bonds: zeroed at the switch and read again from the official registry (7 tokens at 6 decimals, not 5 at 9
     // net of a slash the official registry never saw)
@@ -303,36 +306,35 @@ describe("deployment switch: one Core database from the mainnet test deployment 
     expect([bal.pool, bal.reserve]).toEqual([OFFICIAL.vault.pool.toString(), OFFICIAL.vault.reserve.toString()]);
     expect(b.core.ledger.reconcile().ok).toBe(true);
 
-    // retired: the test agent sleeps with no vault, carries a retired marker and a hidden entry, and is in no listing
-    const av = await expectOk(b.anon.get(`/v1/agents/${author.id}`));
-    expect(av).toMatchObject({ agent_id: author.id, awake: false, compute: "0", mint: t.coin, retired: { registry_program: TEST.ids.registry, mint: t.coin }, hidden: { mint: t.coin } });
-    expect(av.hidden.reason).toContain(TEST.ids.registry);
-    expect(av.hidden.reason).not.toContain(String.fromCharCode(0x2014));
-    expect((await expectOk(b.anon.get("/v1/hidden"))).hidden).toMatchObject([{ mint: t.coin, added_by: RETIRED_BY }]);
-    const after = await listings(b.anon);
-    for (const [p, text] of Object.entries(after)) expect([p, text.includes(author.id), text.includes(t.coin)]).toEqual([p, false, false]);
-    // the generation itself is the unit's state (its tip, the metric it improved): only the unit's own views
-    // show it, by id and without its author; no agent or generation listing does
-    expect(Object.entries(after).filter(([, text]) => text.includes(gen0)).map(([p]) => p).sort()).toEqual(["/v1/analytics/projects", "/v1/analytics/results"]);
-    // still there when asked for, and in the database
-    const withHidden = await listings(b.anon, "?hidden=1");
-    for (const p of ["/v1/agents", "/v1/leaderboard", "/v1/feed", "/v1/activity", "/v1/sessions"]) expect([p, withHidden[p]!.includes(author.id)]).toEqual([p, true]);
-    expect(one<{ kind: string }>(b.core, "SELECT kind FROM agents WHERE agent_id = ?", author.id)?.kind).toBe("launched");
-    expect(one<{ author: string }>(b.core, "SELECT author FROM generations WHERE gen_id = ?", gen0)?.author).toBe(author.id);
-    expect((await expectOk(b.anon.get(`/v1/generations/${gen0}`))).retired).toMatchObject({ agent_id: author.id, registry_program: TEST.ids.registry });
-    // counts: the retired agent and what it authored are out of the public numbers and named beside them
+    // purged: no agent, no coin, no hidden or retired entry, no generation, no session, in no listing, with or without hidden=1
+    expect((await b.anon.get(`/v1/agents/${author.id}`)).status).toBe(404);
+    expect((await b.anon.get(`/v1/generations/${gen0}`)).status).toBe(404);
+    expect((await expectOk(b.anon.get("/v1/hidden"))).hidden).toEqual([]);
+    expect(d.isRetired(author.id)).toBe(false);
+    expect(await expectOk(b.anon.get("/v1/purged"))).toMatchObject({ count: 1, purged: [{ agent_sha256: purgeDigest(author.id), mint_sha256: purgeDigest(t.coin) }] });
+    for (const suffix of ["", "?hidden=1"]) for (const [p, text] of Object.entries(await listings(b.anon, suffix))) expect([p, suffix, text.includes(author.id), text.includes(t.coin), text.includes(gen0)]).toEqual([p, suffix, false, false, false]);
+    // no row of any table names the agent, its coin, its candidate, its generation or its session
+    const gone = [author.id, t.coin, gen0, c0.commit_id, c0.candidate_id, sess.session_id];
+    for (const { name } of all<{ name: string }>(b.core, "SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%'"))
+      expect([name, all(b.core, `SELECT * FROM "${name}"`).map((r) => JSON.stringify(r)).filter((r) => gone.some((g) => r.includes(g))).length]).toEqual([name, 0]);
+    // the switch took its own copy of the database before it deleted anything
+    const ev = JSON.parse(one<{ data: string }>(b.core, "SELECT data FROM events WHERE type = 'chain.deployment_retired'")!.data);
+    expect(ev).toMatchObject({ purged_launches: 1, retired_agents: [] });
+    expect(readdirSync(join(t.dir, "purge-backups")).filter((f) => f.startsWith("pre-purge-"))).toHaveLength(1);
     const stats = await expectOk(b.anon.get("/v1/stats"));
-    expect(stats).toMatchObject({ lineages: UNITS, generations: 0, candidates: 0, epoch: 1, hidden_agents: 1, retired: { agents: 1, generations: 1, candidates: 1 } });
+    expect(stats).toMatchObject({ lineages: UNITS, generations: 0, candidates: 0, epoch: 1 });
+    expect([stats.retired, stats.hidden_agents]).toEqual([undefined, undefined]);
     expect(stats.agents).toBe(3);
 
-    // the epoch open across the switch: closed with the retired registry, never posted, out of the list, marked
+    // the epoch open across the switch: closed with the retired registry, never posted, out of the list, marked;
+    // it holds nothing of the purged launch (not its author units, not the verifiers' units for replaying it)
     expect(b.core.currentEpoch().n).toBe(1);
     expect((await expectOk<any[]>(b.anon.get("/v1/epochs"))).map((e) => [e.n, e.status])).toEqual([[1, "open"]]);
     expect((await expectOk<any[]>(b.anon.get("/v1/epochs?retired=1"))).map((e) => [e.n, e.status, e.retired ?? null])).toEqual([[1, "open", null], [0, "closed", "unposted"]]);
     const ep0 = await expectOk(b.anon.get("/v1/epochs/0"));
     expect(ep0).toMatchObject({ n: 0, status: "closed", retired: "unposted" });
-    expect(ep0.units.map((u: any) => u.agent)).toContain(author.id); // what it earned stays on record there
-    for (const who of [author, v1, v2]) expect(await expectOk<unknown[]>(b.anon.get(`/v1/epochs/0/proofs/${who.id}`))).toEqual([]);
+    expect(JSON.stringify(ep0)).not.toContain(author.id);
+    for (const who of [v1, v2]) expect(await expectOk<unknown[]>(b.anon.get(`/v1/epochs/0/proofs/${who.id}`))).toEqual([]);
     expect(b.core.chainPendingEpochs()).toEqual([]);
     expect(b.core.chainPostedLeaves()).toEqual([]);
 
@@ -348,14 +350,21 @@ describe("deployment switch: one Core database from the mainnet test deployment 
     const fresh = agentClient({ base: b.base, clock });
     const freshMint = key();
     OFFICIAL.launch(fresh.id, freshMint, recipes[1]!.repo, 50n * OFFICIAL.unit);
+    const fresh0 = agentClient({ base: b.base, clock });
+    OFFICIAL.launch(fresh0.id, key(), recipes[0]!.repo, 50n * OFFICIAL.unit);
     await b.bridge.tick();
     expect(b.core.agentView(fresh.id)).toMatchObject({ awake: true, mint: freshMint });
     expect(d.isRetired(fresh.id)).toBe(false);
-    // the retired agent cannot author on the official deployment, and nothing later credits it
-    expect((await onB.author.c.post("/v1/candidates", { lineage_id: lineages[1], parent_gen_id: viewsAfter[1]!.tip, kind: "perf", target: "ir", commitment: "c".repeat(64), claimed_effect: 0.1 })).status).toBe(403);
-    b.core.tx(() => (b.core as any).addUnits(author.id, "author", "a-port-credit", 5));
-    b.core.tx(() => (b.core as any).refreshAwake(author.id));
-    expect(b.core.agentView(author.id).awake).toBe(false);
+    // the purged agent signs nothing on the official deployment, and a sync never imports it again
+    const late = await onB.author.c.post("/v1/candidates", { lineage_id: lineages[1], parent_gen_id: viewsAfter[1]!.tip, kind: "perf", target: "ir", commitment: "c".repeat(64), claimed_effect: 0.1 });
+    expect([late.status, late.body.error]).toEqual([403, "purged"]);
+    expect(one(b.core, "SELECT 1 FROM agents WHERE agent_id = ?", author.id)).toBeNull();
+    // the unit the test agent had built takes new work from generation 0, with the verifiers' qualifications as they are
+    const e0b = onB.env(lineages[0]!);
+    const c0b = await submit(e0b, fresh0, diff("official_zero"));
+    await runReplays(e0b, c0b.candidate_id, honest(result({}, 800)));
+    expect((await candidate(e0b, c0b.candidate_id)).status).toBe("accepted");
+    expect((await expectOk(b.anon.get(`/v1/lineages/${lineages[0]}`))).height).toBe(1);
     const c1 = await submit(e1, fresh, diff("official_one"));
     await runReplays(e1, c1.candidate_id, honest(result({}, 800)));
     expect((await candidate(e1, c1.candidate_id)).status).toBe("accepted");
@@ -374,7 +383,7 @@ describe("deployment switch: one Core database from the mainnet test deployment 
     const leaves = closed.payouts as { agent: string; dest: string; amount: string }[];
     expect(leaves.length).toBeGreaterThan(0);
     expect(leaves.some((l) => l.agent === author.id || l.dest.includes(author.id))).toBe(false);
-    expect(leaves.map((l) => l.agent).sort()).toEqual([fresh.id, v1.id, v2.id].sort());
+    expect([...new Set(leaves.map((l) => l.agent))].sort()).toEqual([fresh.id, fresh0.id, v1.id, v2.id].sort());
     // the whole official pool went to official work; nothing of the test deployment's pool or units is in it
     expect(OFFICIAL.posted.get(1)!.pool).toBe(2n * OFFICIAL.unit);
     expect(b.core.chainEpochs().map((e) => [e.n, !!e.signature])).toEqual([[1, true]]);
@@ -398,7 +407,7 @@ describe("deployment switch: one Core database from the mainnet test deployment 
     await b.bridge.tick();
     // no verifier is registered on the official registry: no bond, nobody eligible, the test agent asleep
     for (const v of [ref, v1, v2]) expect(b.core.agentView(v.id).bond).toBe("0");
-    expect(b.core.agentView(author.id)).toMatchObject({ awake: false, compute: "0" });
+    expect((await b.anon.get(`/v1/agents/${author.id}`)).status).toBe(404); // purged at the switch
     const pool = () => (b.core as any).eligiblePool(new Set(), new Set(), (b.core as any).lineageRow(lineages[0])).map((x: any) => x.agent).sort();
     expect(pool()).toEqual([]);
     // registered and bonded: eligible on the next sync, with the qualifications they already hold
@@ -439,5 +448,32 @@ describe("deployment switch: one Core database from the mainnet test deployment 
     await c.bridge.tick();
     expect(deploymentsOf(c.core).isRetired(author.id)).toBe(false);
     expect((await expectOk(c.anon.get("/v1/hidden"))).hidden).toEqual([]);
+  });
+});
+
+describe("deployment switch: a purge that refuses falls back to retiring", () => {
+  test("an epoch that closed with the test agent's work in it cannot be purged: the agent is retired and hidden instead, and the event says why", async () => {
+    const t = await testDeployment();
+    const { a, TEST, clock, author, lineages } = t;
+    const e0 = t.env(lineages[0]!);
+    const c0 = await submit(e0, author, diff("test_one"));
+    await runReplays(e0, c0.candidate_id, honest(result({}, 800)));
+    expect((await candidate(e0, c0.candidate_id)).status).toBe("accepted");
+    a.core.closeEpoch(); // epoch 0 closed on the test deployment with the agent's units in its payouts
+    a.stop();
+    const OFFICIAL = new FakeRegistry({ registry: key(), launch: key(), mint: key(), decimals: 6 }, t.coreAuthority, 1_000_000n);
+    const b = await start(t.dir, OFFICIAL, clock, t.adminKey.id, t.coreAuthority);
+    await b.bridge.tick();
+    // nothing was deleted: the agent is there, retired and hidden, its unit keeps its tip
+    const av = await expectOk(b.anon.get(`/v1/agents/${author.id}`));
+    expect(av).toMatchObject({ agent_id: author.id, awake: false, mint: t.coin, retired: { registry_program: TEST.ids.registry }, hidden: { mint: t.coin } });
+    expect((await expectOk(b.anon.get("/v1/hidden"))).hidden).toMatchObject([{ mint: t.coin, added_by: RETIRED_BY }]);
+    expect((await expectOk(b.anon.get("/v1/purged"))).count).toBe(0);
+    expect((await expectOk(b.anon.get(`/v1/lineages/${lineages[0]}`))).height).toBe(1);
+    const refused = b.core.db.query<{ data: string }, []>("SELECT data FROM events WHERE type = 'chain.switch_purge_refused'").all().map((r) => JSON.parse(r.data));
+    expect(refused).toHaveLength(1);
+    expect(refused[0]).toMatchObject({ launches: 1 });
+    expect(refused[0].why).toContain("epochs");
+    expect(b.core.ledger.reconcile().ok).toBe(true);
   });
 });

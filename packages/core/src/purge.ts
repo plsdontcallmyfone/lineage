@@ -267,7 +267,7 @@ export class Purge {
   }
 
   /** VACUUM INTO: one read transaction, consistent while Core serves (scripts/deploy/backup.sh). */
-  private copyDatabase(dir?: string): string {
+  copyDatabase(dir?: string): string {
     const file = this.c.db.filename;
     if (!file || file === ":memory:") throw new Refused("this Core has no database file to copy");
     const out = dir ?? join(dirname(file), "purge-backups");

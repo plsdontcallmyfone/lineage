@@ -13,7 +13,8 @@
 // It copies core.db (VACUUM INTO, a consistent snapshot; the live database is opened read-only and is
 // not changed), starts a Core on the copy the way main.ts does (parameters from chain, then one bridge
 // sync) and prints what the real restart will do: which registry is retired and through which epoch,
-// which agents are retired and hidden, what is kept (units, calibrations, qualifications), each
+// which launches are purged (deleted for good, their units back at generation 0; packages/core/src/purge.ts)
+// or, when the purge refuses, retired and hidden, what is kept (units, calibrations, qualifications), each
 // verifier's bond as read from the new registry and who is eligible per unit, what is left in the
 // sending queues, and how long the chain reads took.
 //
@@ -33,6 +34,7 @@ import { systemClock } from "../../packages/core/src/clock.ts";
 import { loadNetworkConfig } from "../../packages/core/src/config.ts";
 import { Core } from "../../packages/core/src/core.ts";
 import { deploymentsOf } from "../../packages/core/src/deployments.ts";
+import { purgeOf } from "../../packages/core/src/purge.ts";
 import { hiddenOf } from "../../packages/core/src/hidden.ts";
 import { generateAgentKey } from "../../packages/core/src/protocol.ts";
 
@@ -120,7 +122,7 @@ try {
   const current = deploymentsBefore.filter((d) => d.retired_at === null).map((d) => d.registry_program);
   if (!current.length) problems.push("the database records no current registry (chain_deployments is empty): Core would not see a switch; start the present Core once in chain mode first");
   if (current.includes(settings.registry_program)) notes.push(`the database already reads ${settings.registry_program}: nothing is retired by this start`);
-  if (inFlight.candidates || inFlight.replays) notes.push(`${inFlight.candidates} candidate(s) and ${inFlight.replays} replay(s) are in flight: they continue after the switch (a retired author earns nothing; verifiers are paid for replays they finish afterwards)`);
+  if (inFlight.candidates || inFlight.replays) notes.push(`${inFlight.candidates} candidate(s) and ${inFlight.replays} replay(s) are in flight: those of the earlier deployment's launches are deleted with them at the switch (a verifier mid-replay gets an error on its reveal)`);
   if (inFlight.open_bounties || inFlight.open_chain_challenges) notes.push(`${inFlight.open_bounties} open bounty row(s) and ${inFlight.open_chain_challenges} unresolved chain challenge(s) of the earlier registry stay in the database as they are`);
 
   const reader = new ChainReader(rpc, settings.registry_program, settings.launch_program);
@@ -142,6 +144,10 @@ try {
   const d = deploymentsOf(core);
   const retired = db.query("SELECT agent_id, mint, registry_program, label FROM retired_agents ORDER BY agent_id").all() as { agent_id: string; mint: string | null }[];
   for (const r of retired) if ((core.agentView(r.agent_id) as { awake: boolean | null }).awake) problems.push(`retired agent ${r.agent_id} is awake`);
+  // the switch purges the earlier deployment's launches; a refusal (it then retires them instead) is something to fix before go-live
+  const refused = (db.query("SELECT data FROM events WHERE type = 'chain.switch_purge_refused'").all() as { data: string }[]).map((r) => JSON.parse(r.data) as { launches: number; why: string });
+  for (const r of refused) problems.push(`the switch could not purge ${r.launches} launch(es) of the earlier deployment and would retire them instead: ${r.why}`);
+  const unitHeights = (db.query("SELECT lineage_id, height, tip = gen0 AS at_gen0 FROM lineages ORDER BY created_at, lineage_id").all() as { lineage_id: string; height: number; at_gen0: number }[]).map((u) => ({ lineage_id: u.lineage_id, height: u.height, at_generation_0: !!u.at_gen0 }));
   const hidden = new Set(hiddenOf(core).agents().keys());
   for (const r of retired) if (!hidden.has(r.agent_id)) problems.push(`retired agent ${r.agent_id} is not hidden from the listings`);
   if (core.chainPendingSlashes().length) problems.push(`${core.chainPendingSlashes().length} slash(es) would be sent to this registry`);
@@ -180,6 +186,9 @@ try {
     deployments: d.list().deployments.map((x) => ({ registry_program: x.registry_program, label: x.label, retired: x.retired_at !== null, through_epoch: x.through_epoch, unposted_epochs: x.unposted_epochs })),
     epoch: { open_before: openEpoch, open_after: core.currentEpoch().n, first_post_will_be: core.currentEpoch().n },
     kept: { before: was, after: now },
+    purged_launches: purgeOf(core).list().count,
+    launched_agents_left: (db.query("SELECT COUNT(*) AS c FROM agents WHERE kind = 'launched' AND shadow = 0").get() as { c: number }).c,
+    unit_heights_after: unitHeights,
     retired_agents: retired,
     hidden: hiddenOf(core).list().hidden.map((h) => ({ mint: h.mint, reason: h.reason, added_by: h.added_by })),
     verifiers,

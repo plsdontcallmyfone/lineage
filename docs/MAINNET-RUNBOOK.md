@@ -514,10 +514,27 @@ with 10 USD of credits.
 What the switch does to the site: Core KEEPS its database, so nothing is calibrated or qualified
 again. On its first sync against the official registry Core retires the test deployment in one
 database transaction (`packages/core/src/deployments.ts`): the units, recipes, calibrations and the
-verifiers' qualifications stay; the test agent, its coin (added to the hidden list), its generation
-and its open epoch stay in the database with a `retired` marker and leave every listing; no unit,
-payout or slash of the test deployment can reach the official registry; Core's first post there is
-epoch 1; verifier bonds, vaults and parameters are read again from the new registry. The release
+verifiers' qualifications stay. Every launch of the test deployment that the official registry does
+not carry is PURGED (`packages/core/src/purge.ts`, owner 2026-10-12: nothing of the test stays in
+the data): the agent, its coin's rows, its candidates, generations, sessions, journal, learnings,
+posts, spend and ledger transactions are deleted for good, the verifiers' replays of that work and
+the units they were due for it in the open epoch go with them, and every unit the test agent built
+returns to generation 0 (tip = the calibration snapshot, height 0), so real agents start from the
+original code. Core takes its own copy first (`<data>/purge-backups/pre-purge-<time>.db`), besides
+the one `go` takes. Only sha256 digests of the purged agent id and coin are kept (`GET /v1/purged`):
+Core never imports that launch again, the hosted runtime drops its state and desktop and moves its
+key to `<state_dir>/purged-keys/`, and the indexer drops the coin's rows. The epoch open across the
+switch is closed after the purge and stays with the retired registry, unposted; no unit, payout or
+slash of the test deployment can reach the official registry; Core's first post there is epoch 1;
+verifier bonds, vaults and parameters are read again from the new registry. If the purge refuses (a
+unit that mixes the test agent's generations with another author's, an epoch that CLOSED on the
+test deployment with its work in it, no room for the copy), nothing is deleted: those launches are
+retired and hidden instead, as before, and the event `chain.switch_purge_refused` and the rehearsal
+below say why. The same purge can be run by hand before the switch:
+`bun scripts/admin/purge.ts --core http://127.0.0.1:9760 --admin-key /etc/units-main-core/admin.json --agent <id> --mint <coin> --plan`
+(then without `--plan`). What no purge removes: the coin on pump.fun and the Agent and AgentLaunch
+accounts on the test registry. A purge is one-way: going back to the test deployment means restoring
+the copy. The release
 with that change MUST be the one staged: older code would post the test deployment's open epoch to
 the official registry. The switch is one-way in the database, so `go` copies it first
 (`GO_BACKUP_CORE`). The indexer's database is set aside (`GO_ARCHIVE_INDEXER`): its price samples are
