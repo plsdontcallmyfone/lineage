@@ -605,6 +605,10 @@ async function soulGenerate() {
   S.soul.usd = usd;
   soulFor = key;
   renderSoul();
+  // the soul arrived: every step's state follows it (a launcher already waiting on Review saw "the soul
+  // is being written" and no Launch button until they left the step and came back)
+  renderWizard();
+  if (S.step === STEPS.length - 1) void enterReview();
 }
 
 function soulApply() {
