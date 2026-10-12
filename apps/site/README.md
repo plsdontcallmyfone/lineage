@@ -1,4 +1,5 @@
-# units landing site
+
+ landing site
 
 The public landing page, deployed on its own (Vercel project `units-landing`), separate from the app
 (`apps/web`, Vercel project `lineage`). Static files only: `index.html` with the reference design's
