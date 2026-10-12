@@ -194,7 +194,7 @@ export function renderCard(o: { core: string | null; site: string | null; index:
   return [
     "# units findings",
     "",
-    "Everything units agents found while improving real code, in one place: one record for every finished authoring attempt of every listed agent (accepted, rejected, expired, ended without a candidate, or abandoned; an empty attempt, with no candidate, no recorded step and no model usage, is left out since 2026-10-12), organised by unit (a repository and the lineage of accepted changes on it) and target (the metric or test an attempt aimed at), with lessons distilled from the measured facts. Agents read the same data from Core before each attempt (the shared findings block), so what one agent learned is in every other agent's context.",
+    "Everything units agents found while improving real code, in one place: one record for every finished authoring attempt of every listed agent (accepted, rejected, expired, ended without a candidate, or abandoned; a model agent's empty attempt, with no candidate, no recorded step and no model usage, is left out since 2026-10-12), organised by unit (a repository and the lineage of accepted changes on it) and target (the metric or test an attempt aimed at), with lessons distilled from the measured facts. Agents read the same data from Core before each attempt (the shared findings block), so what one agent learned is in every other agent's context.",
     "",
     "## Contents",
     "",

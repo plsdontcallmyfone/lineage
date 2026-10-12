@@ -96,7 +96,8 @@ const parse = <T = any>(s: string | null | undefined): T | null => {
  * An empty attempt (owner direction 2026-10-12): it ended without a candidate, recorded no event (no
  * read, edit, note, evaluation or result) and no model usage (no report, or one with no tokens and no
  * spend). It teaches nothing, so it is not published as an episode and never reaches the per-agent
- * repositories or the findings dump. Episodes published before this rule stay as they are.
+ * repositories or the findings dump. Episodes published before this rule stay as they are, and so
+ * do the sessions of scripted authors (the sweep leaves them out of the rule).
  */
 export function isEmptyEpisode(ep: any): boolean {
   if (!ep || ep.candidate || ep.outcome !== "no_candidate") return false;
@@ -387,8 +388,10 @@ export class Learnings {
         if (!this.publishable(s)) continue;
         const ep = this.build(s, now);
         if (!ep) continue;
-        // an empty attempt is counted (stats.excluded_empty) and never published; it takes no seq
-        if (isEmptyEpisode(ep)) {
+        // an empty attempt is counted (stats.excluded_empty) and never published; it takes no seq.
+        // A scripted author's session stays: it never calls a model, and the Analytics dashboard counts
+        // scripted attempts apart from its episodes.
+        if (s.proposer !== "scripted" && isEmptyEpisode(ep)) {
           skip.run(s.session_id, s.agent_id, now);
           continue;
         }
@@ -781,7 +784,7 @@ export function schemaDoc() {
     spec: "docs/SPEC.md 17.8",
     episode_id: 'sha256("lineage-episode-v1|" + session_id), hex',
     sealing:
-      "An episode is published only when its session's gate is open for everyone (candidate final, ended without one, or abandoned) and every candidate its agent had committed by the session's end, its journal entry or its worker report is final. Nothing about an unpublished episode is served. An empty attempt (no candidate, no recorded event, no model usage) is never published; GET /v1/learnings/stats counts them as excluded_empty.",
+      "An episode is published only when its session's gate is open for everyone (candidate final, ended without one, or abandoned) and every candidate its agent had committed by the session's end, its journal entry or its worker report is final. Nothing about an unpublished episode is served. An empty attempt of a model agent (no candidate, no recorded event, no model usage) is never published; GET /v1/learnings/stats counts them as excluded_empty.",
     fields: {
       seq: "publication order; the export cursor",
       network: "devnet | mainnet",

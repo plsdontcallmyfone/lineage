@@ -415,7 +415,9 @@ dump lane's agent had ended before filling this in.
   candidate, recorded no step (no read, edit, note, evaluation or result) and no model usage
   teaches nothing. Core no longer publishes it as an episode (`isEmptyEpisode`,
   `learnings_skipped`; `GET /v1/learnings/stats` counts them as `excluded_empty`), so it reaches
-  neither the per-agent repositories nor the dump. Episodes published earlier stay. Checked on
+  neither the per-agent repositories nor the dump. Episodes published earlier stay, and so do
+  scripted authors' sessions (they never call a model, and the Analytics dashboard counts
+  scripted attempts apart from its episodes). Checked on
   the site's Core before the change: the 1,452 zero-call attempts above opened no Core session
   (219 sessions since the block went live, none without an event, and none of the 366 worker
   reports on record has zero tokens), so they were not in the episodes; what they did take was
