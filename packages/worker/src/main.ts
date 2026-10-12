@@ -55,6 +55,7 @@ import { chmodSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "n
 import { dirname } from "node:path";
 import { generateAgentKey, keyFromSolanaJson, signStatement, type AgentKey } from "@units/protocol";
 import { AnthropicProposer } from "./proposers/anthropic.ts";
+import { processKeys } from "./proposers/claude-route.ts";
 import { loadScript, ScriptedProposer } from "./proposers/scripted.ts";
 import type { Proposer } from "./proposers/types.ts";
 import { doctor } from "./doctor.ts";
@@ -201,7 +202,8 @@ async function main() {
         proposer = new ScriptedProposer(loadScript(a.one("script")!, names));
       } else if (kind === "anthropic") {
         loadModelEnv();
-        if (!process.env.ANTHROPIC_API_KEY && !process.env.ANTHROPIC_AUTH_TOKEN) throw new Error("no model key: put ANTHROPIC_API_KEY in ~/.config/lineage/model.env");
+        // the proposer takes the model's route itself (claude-route.ts): OpenRouter with its key, else Anthropic's own
+        if (!process.env.ANTHROPIC_API_KEY && !process.env.ANTHROPIC_AUTH_TOKEN && !processKeys().openrouter) throw new Error("no model key: put OPENROUTER_API_KEY in ~/.config/lineage/providers.env (or ANTHROPIC_API_KEY in model.env)");
         proposer = new AnthropicProposer({
           max_usd: Number(a.one("max-usd") ?? 2),
           model: a.one("model"),

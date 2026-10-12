@@ -9,6 +9,7 @@ import type { Proposal, ProposeContext, Proposer } from "./types.ts";
 import { clip, type SessionEventInput } from "../session.ts";
 import { guardFeedback, guardRegressionOf } from "../guard-limits.ts";
 import { untrusted, UNTRUSTED_RULE } from "../../../protocol/src/untrusted.ts";
+import { claudeRoute } from "./claude-route.ts";
 
 // LLM proposer: Claude edits the parent tree through a small, path-confined tool set and can
 // measure its own change in the real sandbox before submitting. Spend is metered per attempt
@@ -240,7 +241,11 @@ export class AnthropicProposer implements Proposer {
   private opts: Required<Omit<AnthropicProposerOptions, "prices" | "efficiency" | "gateway">> & { prices: NonNullable<AnthropicProposerOptions["prices"]>; efficiency: EfficiencyOptions; gateway: GatewayOptions | null };
 
   constructor(opts: AnthropicProposerOptions, client?: Anthropic) {
-    this.client = client ?? new Anthropic();
+    // no client given (a self-hosted worker, the local tools): the model's route by the registry's rule
+    // (claude-route.ts: OpenRouter with its key, else Anthropic's own); the hosted runtime passes its own
+    const route = client || opts.gateway ? null : claudeRoute(opts.model ?? "claude-opus-5-5");
+    if (route) opts = { ...opts, model: route.model, prices: opts.prices ?? route.prices, ...(route.gateway ? { gateway: route.gateway } : {}) };
+    this.client = client ?? route?.client ?? new Anthropic();
     this.opts = {
       model: opts.model ?? "claude-opus-5-5",
       effort: opts.effort ?? "high",

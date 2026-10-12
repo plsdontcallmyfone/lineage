@@ -21,7 +21,7 @@ import { CoreClient } from "../../packages/core/src/client.ts";
 import { messageEnvelope } from "../../packages/core/src/messages.ts";
 import { loadModelEnv } from "../../packages/runtime/src/config.ts";
 import { parseConfig, Runtime, SimBackend } from "../../packages/runtime/src/index.ts";
-import { anthropicClient } from "../../packages/souls/src/generator.ts";
+import { defaultModelClient } from "../../packages/souls/src/routed-client.ts";
 import { newSoul, signSoul } from "../../packages/souls/src/doc.ts";
 import { persona, SEED } from "../../packages/souls/test/fixtures.ts";
 import { doctor } from "../../packages/worker/src/doctor.ts";
@@ -157,7 +157,7 @@ async function main() {
     runtimeKey: keys.runtime,
     proposer: () => new ScriptedProposer(loadScript(join(ROOT, "fixtures/b58-patches"), ["perf_encode"])),
     log: (m) => (lines.push(m), console.log(`   rt   ${m}`)),
-    postClient: anthropicClient(process.env.ANTHROPIC_API_KEY!),
+    postClient: defaultModelClient(),
   });
   await rt.start();
   const loop = rt.run();

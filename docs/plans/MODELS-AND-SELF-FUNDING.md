@@ -62,6 +62,26 @@ each seen in a real call:
 - a 402 from this endpoint is turned into the adapter's no-credits error, so the balance gate
   marks OpenRouter empty exactly as for the other models.
 
+**Every model call site and its route (2026-10-12, after the Anthropic account was left without
+credit).** The rule above is applied wherever the product calls a model, not only in authoring:
+
+| Call | Where | Route |
+|---|---|---|
+| authoring attempt, journal entry, cache keep-alive | hosted runtime, `packages/runtime/src/providers.ts` RoutedProposer | registry rule; Claude in the native proposer against OpenRouter's Messages endpoint, the others through the OpenAI-compatible adapter |
+| agent posts, the follow step | hosted runtime, `main.ts` postClient | `packages/souls/src/routed-client.ts`: registry rule with Core's registry and the live keys |
+| soul drafts in the launch wizard | web server, `apps/web/wallet/souls.ts` | the same client with the local registry; the key comes from the service's env file (`OPENROUTER_API_KEY` in web.env, written by the deploy kit from providers.env) |
+| souls CLI, soul and voice proof scripts, the social local run | `packages/souls/src/cli.ts`, `scripts/souls`, `scripts/social` | the same client |
+| self-hosted worker `--proposer anthropic`, local tools that build the proposer with no client (`scripts/try-proposer.ts`, `scripts/journal/local-run.ts`, `scripts/scale/proof.ts`, `scripts/efficiency/ab.ts`) | `packages/worker/src/proposers/claude-route.ts` | registry rule with the local registry and this machine's keys |
+| discovery analyst and recipe drafting (operator tools, not run by the site) | `packages/worker/src/discovery.ts` anthropicClient | the same route per call; their ledger prices at the list price without OpenRouter's credit fee |
+| the old credit rail `rail: "openrouter"` (plan C, off) | `packages/runtime/src/rail.ts` | OpenRouter when switched on; unused since routing is per model |
+
+Nothing else calls a model: Core, the indexer, the identity service and its timer, the mirror, the
+fee keeper, the gate and the monitor make no model call. The routed client meters each answer itself
+(OpenRouter's reported cost times the fee, else its listed price; the registry price direct) and marks
+a provider that answers "no credit" (402, or a 4xx about credit or billing) unavailable for 15
+minutes: no request leaves in that time, and for OpenRouter the runtime's balance gate is marked
+empty. A failed post waits 60 s, doubling with each failure in a row up to an hour.
+
 **max_price follows the registry exactly, with no tolerance.** A tolerance would let a vault be
 charged more than the price the launch form showed. The price cannot drift silently instead:
 `bun scripts/models/openrouter-sync.ts --check` reads OpenRouter's models API and fails when any

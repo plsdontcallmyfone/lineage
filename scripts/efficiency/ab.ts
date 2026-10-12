@@ -18,7 +18,8 @@
 //   ... --route runtime   run each attempt through the hosted runtime's routing (RoutedProposer with the
 //                      keys of providers.env and the local registry): the default model on the route the
 //                      registry's routing.prefer picks, OpenRouter since 2026-10-12. Without it: the
-//                      Anthropic proposer with the direct key, as before. No Core, no chain.
+//                      Anthropic proposer built with no client, which takes the same route from the local
+//                      registry (packages/worker/src/proposers/claude-route.ts). No Core, no chain.
 //   ... --keep-alive 30   override the cache keep-alive interval of every arm (seconds)
 //   ... --guard 0.01   judge self-evaluations and the replay with guard limits at this default (the
 //                      site's guard config version 1), as replays on the site do

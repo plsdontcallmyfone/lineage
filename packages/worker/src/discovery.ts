@@ -23,6 +23,7 @@ import { CoreClient } from "../../core/src/client.ts";
 import type { SigningKey } from "../../core/src/client.ts";
 import { hotspotTarget, profileCommitment, profileTool, repoPath, type Profile, type ProfileFn } from "../../core/src/findings.ts";
 import { MODEL_PRICES, ToolBox } from "./proposers/anthropic.ts";
+import { routedSdk } from "./proposers/claude-route.ts";
 import type { ProposeContext } from "./proposers/types.ts";
 import { RecipeBook } from "./recipes.ts";
 
@@ -228,9 +229,12 @@ export async function profileTip(input: { loaded: LoadedRecipe; deps: DepsLayer;
   });
 }
 
-/** A model client (scripts outside packages/worker cannot resolve the SDK themselves). Reads ANTHROPIC_API_KEY. */
+/**
+ * A model client (scripts outside packages/worker cannot resolve the SDK themselves). Each call takes
+ * its model's route by the registry's rule: OpenRouter with OPENROUTER_API_KEY, else Anthropic's own key.
+ */
 export function anthropicClient(): Anthropic {
-  return new Anthropic();
+  return routedSdk();
 }
 
 // ---------------------------------------------------------------------------------------------
