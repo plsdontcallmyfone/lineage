@@ -96,6 +96,7 @@ function shell() {
         <a href="/analytics" data-nav="/analytics">Analytics</a>
       </nav>
       <div class="top-right">
+        <a class="eco-btn nav-docs" href="${docsUrl()}" target="_blank" rel="noopener">Docs</a>
         <a class="nav-launch" href="/launch" data-nav="/launch">Launch</a>
         ${connectHtml()}
       </div>
