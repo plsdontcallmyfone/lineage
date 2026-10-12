@@ -26,7 +26,7 @@ import {
   type Recipe,
   type ReplayResult,
 } from "@units/protocol";
-import { applyPatch, calibrate, diffWorkingTree, evaluate, materialize, newWorkDir, removeTree, WORKER_VERSION, type Transcript } from "@units/sandbox";
+import { applyPatch, calibrate, diffWorkingTree, evaluate, materialize, newWorkDir, removeTree, SandboxUnavailable, WORKER_VERSION, type Transcript } from "@units/sandbox";
 import { CoreClient } from "../../core/src/client.ts";
 import { teamStatement, type TeamMember } from "../../core/src/collab.ts";
 import { encryptionKeyStatement, intentNote, messageEnvelope } from "../../core/src/messages.ts";
@@ -417,6 +417,8 @@ export class Worker {
       result.transcript_digest = hashJson(transcript);
       return { result, transcript };
     } catch (e) {
+      // a machine whose sandbox cannot start has measured nothing: an error to retry, never a result
+      if (e instanceof SandboxUnavailable) throw e;
       // an honest machine that cannot build or measure the baseline fails qualification, nothing more
       const transcript = { version: WORKER_VERSION, qualify: a.replay_id, error: String((e as Error).message ?? e).slice(0, 4000) };
       result.transcript_digest = hashJson(transcript);

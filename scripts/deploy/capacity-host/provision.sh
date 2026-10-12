@@ -325,11 +325,15 @@ UNIT
    verifier agent id      $VID
    capabilities digest    $CAPS_DIGEST   (the $INSTANCE instance's caps.json, the same its site verifiers registered)
    replays at once        $RSLOTS
-1. Register: the owner's wallet signs units_registry register for agent $VID with that capabilities
-   digest (it burns the register burn in the quote coin); the verifier's key co-signs on the host:
-     ssh root@$HOST 'cd /opt/units-cap/current && runuser -u units-cap -- env HOME=/home/units-cap UNITS_NETWORK=$NETWORK bun packages/worker/src/main.ts cosign --key /etc/units-cap/verifier$sfx.json --tx <base64 from the Wallet page> --dry-run'
-   then the same without --dry-run. (Simulated Core only: ... main.ts register --core $CORE_URL --key /etc/units-cap/verifier$sfx.json --capabilities /etc/units-cap/caps.json)
-2. Bond: the owner's wallet sends units_registry bond for agent $VID, at least min_bond of the quote coin.
+1. Plan, on the machine that holds the owner key (it reads the burn, the bond and the mint from the registry):
+     bun scripts/deploy/capacity-host/verifier-chain.ts --registry REGISTRY_PROGRAM_ID --agents $VID --caps-digest $CAPS_DIGEST --plan
+2. Register (three steps inside about a minute, the life of a blockhash), then bond:
+     owner machine:  ... verifier-chain.ts --registry REGISTRY_PROGRAM_ID --register $VID --caps-digest $CAPS_DIGEST     (prints the owner-signed transaction)
+     this host:      ssh root@$HOST 'cd /opt/units-cap/current && runuser -u units-cap -- env HOME=/home/units-cap UNITS_NETWORK=$NETWORK UNITS_PROFILE_LOCAL=/etc/units-cap/profile.local.json bun scripts/deploy/capacity-host/cosign-register.ts --key /etc/units-cap/verifier$sfx.json --tx TRANSACTION'     (prints it co-signed; no RPC on the host)
+     any machine with the RPC:  ... verifier-chain.ts --registry REGISTRY_PROGRAM_ID --send CO_SIGNED_TRANSACTION
+     owner machine:  ... verifier-chain.ts --registry REGISTRY_PROGRAM_ID --bond $VID
+   The host needs the deployment's public profile overlay at /etc/units-cap/profile.local.json (program ids and quote; on the site /etc/$P/profile.local.json).
+   (Simulated Core only: bun packages/worker/src/main.ts register --core $CORE_URL --key /etc/units-cap/verifier$sfx.json --capabilities /etc/units-cap/caps.json, then bond.)
 3. Let Core hand it enough work: on the site, /etc/$P/sizing.json needs "max_open_replays" of at least $RSLOTS
    (it is the most any verifier may hold), then deploy the instance.
 4. Start it:   START=1 VERIFIERS=$VERIFIERS ROLE=$ROLE INSTANCE=$INSTANCE NAME=$NAME $0 $HOST update

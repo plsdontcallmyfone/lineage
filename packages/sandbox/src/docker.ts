@@ -226,9 +226,23 @@ export async function runContainer(spec: RunSpec): Promise<RunResult> {
   }
 }
 
+/**
+ * The sandbox could not be started at all: docker is not there, this process's working directory is
+ * gone, the daemon does not answer or cannot create the container (docker run's own exit 125). It says
+ * nothing about the code under test, so it is never a build or test result: a verifier that reported
+ * it as "base build failed" failed qualifications it could have passed (cap-nyc1, 2026-10-12), and on a
+ * replay it would be a wrong verdict by a bonded verifier. Callers retry it as an error of the machine.
+ */
+export class SandboxUnavailable extends Error {}
+
 async function runHeld(spec: RunSpec, name: string): Promise<RunResult> {
   const started = performance.now();
-  const proc = Bun.spawn(["docker", ...dockerArgs(spec, name)], { stdout: "pipe", stderr: "pipe" });
+  let proc: ReturnType<typeof Bun.spawn<"ignore", "pipe", "pipe">>;
+  try {
+    proc = Bun.spawn(["docker", ...dockerArgs(spec, name)], { stdout: "pipe", stderr: "pipe" });
+  } catch (e) {
+    throw new SandboxUnavailable(`the sandbox could not be started: ${(e as Error).message.slice(0, 200)}`);
+  }
   let timed_out = false;
   const timer = setTimeout(() => {
     timed_out = true;
@@ -238,6 +252,8 @@ async function runHeld(spec: RunSpec, name: string): Promise<RunResult> {
   const [out, err] = await Promise.all([readCapped(proc.stdout, limit), readCapped(proc.stderr, limit)]);
   const exit = await proc.exited;
   clearTimeout(timer);
+  // docker run's own failure (not the command's): the daemon is down, the image is missing, the container cannot be created
+  if (!timed_out && exit === 125) throw new SandboxUnavailable(`the sandbox could not be started (docker exit 125): ${err.text.trim().split("\n").pop()?.slice(0, 200) ?? ""}`);
   return {
     exit: timed_out ? 124 : exit,
     stdout: out.text,
