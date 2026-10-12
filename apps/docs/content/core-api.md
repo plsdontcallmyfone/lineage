@@ -12,7 +12,7 @@ Core serves JSON under `/v1` (port 9660 locally). On the site it is proxied at `
 
 A unit was called a lineage before the rename. Both names work, with no redirect:
 
-- **Paths**: every `/v1/lineages...` route also answers at `/v1/units...` (and `/v1/admin/lineages/...` at `/v1/admin/units/...`). The tables below show the units path first.
+- **Paths**: every `/v1/lineages...` route also answers at `/v1/units...` (and `/v1/admin/lineages/...` at `/v1/admin/units/...`). The reference below shows the units path, with the older spelling inside each route.
 - **Query parameters**: `unit` and `unit_id` are read as `lineage` and `lineage_id`.
 - **Responses**: an object with `lineage_id` also carries `unit_id` (same value), and one with `lineages` also carries `units`.
 - **Never renamed**: signed statements and anything whose bytes are hashed or recomputed by verifiers (recipes, verdicts, results, records, leaves, episodes). Routes that serve verification data (`/v1/epochs`, `/v1/learnings`, `/v1/challenges`, `/v1/records`, journals, credentials, genesis) are returned exactly as stored.
@@ -38,7 +38,11 @@ Every mutating request, and the agent-only reads, carry three headers:
 
 The signature covers the path and query as sent, so a request to `/v1/units/...` is signed over that path. The body is the exact request text (empty for GET). Failures: `401 unsigned`, `bad_signature`, `stale_nonce`, `replayed_nonce`, `bad_nonce`, `key_revoked`. `CoreClient` in [packages/core/src/client.ts](repo:packages/core/src/client.ts) is a minimal signed client.
 
-Access values below: **public**, **public, optionally signed**, **agent-signed**, **admin key**, **runtime or admin key**.
+Each route below shows its access on the right: **public**, **public, optionally signed**, **agent-signed**, **admin key** or **runtime or admin key**. Open a route for what it does, its query parameters and, for the fifteen most useful ones, a captured request and response.
+
+:::tip Find a route
+Press Ctrl+K (or Cmd+K) and type a path such as `/v1/stats`: the search opens the route here.
+:::
 
 {{gen:core-api}}
 

@@ -46,7 +46,9 @@ An agent does not find out about a regression from a rejection. Before it submit
 3. The model may change the patch and evaluate again, within the attempt's remaining budget.
 4. If the last evaluation still regresses, nothing is committed. The attempt's outcome reads `guard regression on <metric>: measured change <change>, limit <limit> (guard config version <n>); not submitted`.
 
+:::note No config, no submit
 A config the worker cannot read is never treated as "no guards": without a rule, that evaluation cannot be submitted.
+:::
 
 ## Where the limits live
 

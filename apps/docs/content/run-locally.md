@@ -12,7 +12,7 @@ The runbook is [docs/RUNBOOK.md](repo:docs/RUNBOOK.md).
 
 ## Install and build images
 
-```
+```bash
 bun install
 bun scripts/local-images.ts --build --skip solana
 ```
@@ -21,7 +21,7 @@ bun scripts/local-images.ts --build --skip solana
 
 ## Tests
 
-```
+```bash
 bun test packages
 ./node_modules/.bin/tsc -p . --noEmit
 ./node_modules/.bin/tsc -p apps/web --noEmit
@@ -32,13 +32,13 @@ The sandbox suite runs real Docker tests and skips them when Docker is not reach
 
 ## End-to-end network
 
-```
+```bash
 bun scripts/e2e.ts --port 9662 --keep
 ```
 
 Starts a Core and worker processes with their own keys (a reference runner, honest verifiers, a fabricating verifier, one declaring the wrong arch, a liar that qualifies honestly), drives an authoring agent through planted patches and asserts every outcome: accepted generations, every rejection reason, rebases, qualification, canaries and disputes catching the liar, audits, teams, intents, epoch close with a Merkle claim, ledger reconciliation. Then recheck it from the public API:
 
-```
+```bash
 bun scripts/verify.ts --core http://127.0.0.1:<port>
 bun scripts/replay.ts --core http://127.0.0.1:<port> --candidate <id>
 bun packages/core/src/main.ts --replica-of http://127.0.0.1:<port> --once
@@ -46,7 +46,7 @@ bun packages/core/src/main.ts --replica-of http://127.0.0.1:<port> --once
 
 ## Local network
 
-```
+```bash
 bun scripts/network.ts                       # scripted authors
 bun scripts/network.ts --author anthropic    # Claude authors; needs ~/.config/lineage/model.env
 bun scripts/network.ts --recipes fixture-b58,base58-py,minbpe
@@ -56,20 +56,20 @@ Core on http://127.0.0.1:9660 and the app on http://127.0.0.1:9661.
 
 ## The app
 
-```
+```bash
 bun apps/web/scripts/seed-dev.ts --port 9664 [--live]
 bun apps/web/server.ts --port 9663 --core http://127.0.0.1:9664
 ```
 
 The app server also serves these docs at `/docs`, built in memory at startup. To build the docs alone (any static host):
 
-```
+```bash
 bun scripts/docs/build.ts --base /docs --out apps/docs/dist
 ```
 
 The build exits 1 on a broken internal link or anchor, a missing screenshot or example, or a page whose summary is longer than two sentences. The docs' real examples and screenshots are captured from the devnet site, read-only and headless:
 
-```
+```bash
 bun scripts/docs/capture.ts            # API examples, verify output, screenshots
 bun scripts/docs/ui-check.ts --port 9663   # every docs page at 1280 and 390 px
 ```
@@ -78,7 +78,7 @@ bun scripts/docs/ui-check.ts --port 9663   # every docs page at 1280 and 390 px
 
 The app's UI suite runs with Playwright, headless Chromium only, at 1280 and 390 px:
 
-```
+```bash
 bunx playwright install chromium
 bun run test:ui
 UI_BASE_URL=https://157-245-71-188.sslip.io bun run test:ui
@@ -88,13 +88,19 @@ By default it starts the app from this tree reading the deployed site's Core and
 
 ## Recheck the live site
 
-Nothing here writes:
+:::tip Read-only
+Nothing here writes: both commands only read the site's public API.
+:::
 
-```
+```bash
 bun scripts/verify.ts --core https://157-245-71-188.sslip.io
 bun packages/core/src/main.ts --replica-of https://157-245-71-188.sslip.io --once
 ```
 
 ## Cleanup
 
-Containers carry the labels `lineage=1` and `units=1`; remove only those. Caches live in `~/.lineage` (or `UNITS_HOME`). Stop servers by PID, never by pattern.
+Containers carry the labels `lineage=1` and `units=1`; remove only those. Caches live in `~/.lineage` (or `UNITS_HOME`).
+
+:::warning On a shared machine
+Stop servers by PID, never by pattern, and never prune Docker globally: other work on the machine matches the same patterns.
+:::

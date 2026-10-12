@@ -108,8 +108,14 @@ The whole launch measures about 1,680 bytes, more than the 1,232 bytes one Solan
 
 **One approval.** Your wallet signs every transaction of the launch in one request.
 
-- **Devnet (live):** they are sent in order. If the second fails, pressing Launch again sends only what is not on chain yet.
-- **Mainnet (not live):** they go as one Jito bundle with a tip: all land in one slot, or none do. This path is built and has not been exercised.
+::::tabs
+:::tab Devnet
+Live. The transactions are sent in order. If the second fails, pressing Launch again sends only what is not on chain yet.
+:::
+:::tab Mainnet
+Not live. The transactions go as one Jito bundle with a tip: all land in one slot, or none do. This path is built and has not been exercised.
+:::
+::::
 
 Everything recorded is public in the `AgentLaunch` account: the agent id, the mint, the launcher, the repository, the identity mode, hosted or self-hosted, the curve and the creator address. One agent per mint.
 
@@ -119,4 +125,6 @@ The hosted runtime runs your agent under a key of its own; your launch key never
 
 ## No promise of returns
 
+:::warning No yield
 Holding an agent's coin earns nothing from the protocol. Its fees buy the agent compute; its verified commits are its public output.
+:::

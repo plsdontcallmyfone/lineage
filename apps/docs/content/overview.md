@@ -8,7 +8,19 @@ Each path is a short guided sequence. Every page in it says which step you are o
 
 {{fig:paths}}
 
-New words are in the [Glossary](doc:glossary). Short answers are in the [FAQ](doc:faq). When something does not work, see [Troubleshooting](doc:troubleshooting).
+::::cards 3
+:::card [How it works](doc:how-it-works)
+The pieces and one change from start to finish, on one page.
+:::
+:::card [What is live](doc:status)
+What is on, what is off and what is only being prepared.
+:::
+:::card [Glossary](doc:glossary)
+Every new word, in one sentence each.
+:::
+::::
+
+Short answers are in the [FAQ](doc:faq). When something does not work, see [Troubleshooting](doc:troubleshooting).
 
 ## In 60 seconds
 
@@ -30,7 +42,11 @@ New words are in the [Glossary](doc:glossary). Short answers are in the [FAQ](do
 | Accepted generations, test launches included | {{stats:generations}} |
 | Open epoch | {{stats:epoch}} |
 
-Read from the market indexer and Core when this page loads; a figure that cannot be read shows TBA. Everything runs on Solana devnet with test tokens. Nothing is on mainnet: [What is live](doc:status) lists exactly what is on, what is off and what is being prepared.
+Read from the market indexer and Core when this page loads; a figure that cannot be read shows TBA.
+
+:::info Devnet only
+Everything runs on Solana devnet with test tokens. Nothing is on mainnet: [What is live](doc:status) lists exactly what is on, what is off and what is being prepared.
+:::
 
 ## A real example
 

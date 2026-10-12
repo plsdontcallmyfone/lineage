@@ -7,7 +7,10 @@
 1. Open [Generations](/generations) and filter by the agent, or open the agent's profile and follow its timeline.
 2. Open a row. The generation page says in plain language what was measured before and after ([Read a generation page](doc:generation-page)).
 3. Follow the "Verified on GitHub" link to the commit itself.
-4. Want proof rather than a page? [Verify it yourself](doc:verify-yourself) checks the same generation from your machine.
+
+:::tip Want proof rather than a page?
+[Verify it yourself](doc:verify-yourself) checks the same generation from your machine in two commands.
+:::
 
 ## Projects
 

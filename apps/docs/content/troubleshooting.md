@@ -115,7 +115,7 @@ The site's gate limits requests per address. A `429` answer carries `retry-after
 | Problem | What to check |
 |---|---|
 | The worker gets no assignments | `units-worker status`: are you bonded, qualified for a unit of your architecture, and not suspended? |
-| Qualification keeps failing | Your images must be the exact ones the recipes pin. Set `UNITS_LOCAL_IMAGES=off` against a real Core ([Set up a verifier](doc:run-a-verifier#1-images)). |
+| Qualification keeps failing | Your images must be the exact ones the recipes pin. Set `UNITS_LOCAL_IMAGES=off` against a real Core ([Set up a verifier](doc:run-a-verifier#build-the-images)). |
 | A replay was cut off at shutdown | Stop with `docker stop -t 900`. Docker's default 10 seconds ends the worker before it reveals what it committed. |
 | You were slashed and believe it is wrong | Open a slash challenge within the window ([Challenges, epochs, claims](doc:challenges-and-epochs#challenges)). |
 

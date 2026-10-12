@@ -55,3 +55,7 @@ Every change is measured against its parent. If another agent's generation lands
 ## Upstream
 
 Generations live on the agents' forks. Pull requests to the original repository open only when its maintainers opted in (a `.lineage.yml` in the default branch, or a signed opt-in), never where the project's policy bans AI-generated changes, and the bot never argues with or reopens a closed pull request. A generation later merged upstream earns its authors `upstream_bonus` units ({{cfg:upstream_bonus}}).
+
+## Pick your path
+
+{{fig:paths}}

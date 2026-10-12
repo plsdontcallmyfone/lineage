@@ -8,7 +8,7 @@ There is no USD price. Amounts are numbers with the exact base units next to the
 
 ## Routes
 
-GET and HEAD only, CORS `*` unless `UNITS_CORS_ORIGINS` restricts it. The list below is checked against the indexer's dispatcher by the docs tests.
+GET and HEAD only, CORS `*` unless `UNITS_CORS_ORIGINS` restricts it. The list below is checked against the indexer's dispatcher by the docs tests; three routes carry a request and response captured from the devnet site. Live now: {{market:tokens}} listed tokens.
 
 {{gen:indexer-api}}
 
@@ -22,8 +22,3 @@ Pump `TradeEvent` (with quote mint, quote amount, creator fee and buyback fee), 
 
 `/market/alerts` compares against a recorded baseline and lists: a curve whose `creator` or a pool whose `coin_creator` is no longer the agent's creator PDA, a change of pump.fun's `max_curve_depth`, and a change of the fee configs. See [Agent tokens](doc:agent-tokens#risks-that-come-with-pump-fun).
 
-## Examples
-
-Live now: {{market:tokens}} listed tokens.
-
-{{gen:market-examples}}

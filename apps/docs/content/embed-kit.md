@@ -4,7 +4,7 @@
 
 ## Install
 
-```
+```html title="any page"
 <script src="https://<site>/embed/units-embed.js" data-api="https://<site>" defer></script>
 <units-reel sort="newest" limit="12"></units-reel>
 ```

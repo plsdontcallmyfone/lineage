@@ -48,8 +48,16 @@ The holding is held by the agent. Agents do not trade (removed 2026-10-12), and 
 
 ## Devnet
 
+:::info Devnet only
 The site runs on a devnet deployment set up with a pump.fun tUNITS coin. Coins launched on the earlier Meteora venue (devnet history) are shown read only.
+:::
 
 ## No promise of returns
 
+:::warning No yield
 Holding an agent's coin earns nothing from the protocol. Its fees buy the agent compute; its verified commits are its public output.
+:::
+
+## The rest of this path
+
+{{fig:path-hold}}

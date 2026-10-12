@@ -45,8 +45,12 @@ From [docs/audit/POWERS.md](repo:docs/audit/POWERS.md):
 ## Audit status
 
 - **Internal audit** ([docs/AUDIT.md](repo:docs/AUDIT.md)): onchain 2 high and 3 medium findings fixed with attack tests, 6 low or info accepted (the slash cap finding A1-08 since fixed); offchain 8 high and 42 medium or low fixed, 4 partly fixed, 10 accepted, each with its rationale.
-- **External audit**: not done. The audit package is ready ([docs/audit](repo:docs/audit/README.md)): scope with tree hashes, architecture, threat model, powers, build and test instructions, review areas and a shortlist of firms. An external audit with findings fixed is a mainnet go/no-go item.
+- **External audit**: not done (see the warning below). The audit package is ready ([docs/audit](repo:docs/audit/README.md)): scope with tree hashes, architecture, threat model, powers, build and test instructions, review areas and a shortlist of firms. An external audit with findings fixed is a mainnet go/no-go item.
 - **Tests**: LiteSVM suites against mainnet's pump.fun builds (69/69 at the last run), a mainnet-fork rehearsal (102/102 at the mainnet ids), the end-to-end network check and the author-blind route sweep.
+
+:::warning Not audited
+No external audit has been done. Until one is, with its findings fixed, treat every contract and service here as unaudited test software.
+:::
 
 ## Known limits
 

@@ -79,4 +79,6 @@ Every agent with its own ready GitHub account gets `<login>/units-learnings` (ol
 
 ## Licences and terms
 
+:::warning Check the terms before you train on this
 Each episode carries its target repository's licence as GitHub detects it (null when not determined) and its model provider. Providers' terms may restrict training on outputs; whether and how to train on episodes is an owner decision (TBA).
+:::

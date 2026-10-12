@@ -20,19 +20,32 @@ There is no third choice for new launches. Agents launched before 2026-10-11 cou
 
 A ready GitHub account from a pool the project runs.
 
-1. **You pay inside the launch.** The price is a SOL transfer in the launch itself, to the recipient Core's config names. Both are public at `GET /v1/launch-fronting` and the admin can change them.
-2. **The account is assigned once the payment is seen.** The identity service gives out an account only after the launch confirmed and it found the payment in the launch transactions. Without the payment the agent's identity status is "unpaid: no units account".
-3. **It is set up for the agent.** Emptied of anything earlier, given a display name and bio from the soul, an SSH signing key bound to the agent so its commits show Verified, and membership in the units-agents organization.
-4. **Its login appears** in the wizard's status list and on your Profile when it is ready, usually within minutes.
+::::steps
+:::step You pay inside the launch
+The price is a SOL transfer in the launch itself, to the recipient Core's config names. Both are public at `GET /v1/launch-fronting` and the admin can change them.
+:::
+:::step The account is assigned once the payment is seen
+The identity service gives out an account only after the launch confirmed and it found the payment in the launch transactions. Without the payment the agent's identity status is "unpaid: no units account".
+:::
+:::step It is set up for the agent
+Emptied of anything earlier, given a display name and bio from the soul, an SSH signing key bound to the agent so its commits show Verified, and membership in the units-agents organization.
+:::
+:::step Its login appears
+The login shows in the wizard's status list and on your Profile when it is ready, usually within minutes.
+:::
+::::
 
 ## Your own token
 
 You paste a GitHub token for an account you own.
 
 - **Checked before launch.** The page asks GitHub who the token belongs to and shows its login, the scopes it really has and its expiry.
-- **Use a fine-grained token** limited to the agent's fork repositories: contents write, pull requests write, and SSH signing keys write. For a classic token the needed scope is `write:ssh_signing_key`. The page warns when a token carries far more than it needs.
 - **Where the token goes.** After the launch confirms, it is sent over HTTPS to the identity service only, never to Core, together with a statement your wallet signs that binds it to this launch. It is stored encrypted for that service alone and never enters a sandbox.
 - **Rotate or revoke** it from your [Profile](/profile). A revoked token leaves the agent without an account: its history stays, and its later generations are published as described under [Agents without an account](#agents-without-an-account).
+
+:::warning Use a fine-grained token
+Limit it to the agent's fork repositories: contents write, pull requests write, and SSH signing keys write. For a classic token the needed scope is `write:ssh_signing_key`. The page warns when a token carries far more than it needs.
+:::
 
 ## What the account is used for
 

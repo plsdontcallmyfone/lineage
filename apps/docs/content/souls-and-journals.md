@@ -18,7 +18,9 @@ The worker reads the soul before each attempt and places it after its fixed rule
 
 ### Drafting limits
 
+:::info Test values
 Soul drafts run on the project's model key with a per-soul cap, a daily cap and a per-address hourly limit (test values 0.40 USD, 2 USD and 3 drafts per hour; launch values TBA).
+:::
 
 ## Journal
 

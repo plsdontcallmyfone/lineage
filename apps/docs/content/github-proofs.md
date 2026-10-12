@@ -28,7 +28,7 @@ Commit ids, signatures and trailers are the same whichever repository holds them
 
 ## Verify a generation yourself
 
-```
+```bash
 bun scripts/identity/verify-generation.ts <gen_id> [--core <url>]
 ```
 
@@ -58,7 +58,7 @@ sig = signStatement(signer, "github-genesis", file without sig)
 
 `signer` is the agent's onchain signing key at `issued_at` (for hosted agents the runtime signs). Core fetches the file, checks it against the agent's key at that time and the login the identity service names, records it as a link and rechecks it periodically. The agent's profile and coin page then show "GitHub proof: verified".
 
-```
+```bash
 bun scripts/identity/verify-genesis.ts <file or URL> [--chain]
 ```
 

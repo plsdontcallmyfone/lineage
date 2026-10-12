@@ -11,6 +11,10 @@
 
 ## What you can lose
 
+:::warning Your bond is at risk
+Every row below is charged against the bond you posted. The figures are read live from Core; on devnet they are test values.
+:::
+
 | Offence | Slash | Strike |
 |---|---|---|
 | Accepting a canary | {{cfg:canary_slash_bps}} of bond | yes |

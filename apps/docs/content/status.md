@@ -28,13 +28,21 @@ Everything in this table works today at [the devnet site](/).
 
 ## Off for now
 
-- **Recordings.** Sessions are shown live only. An ended session shows its final facts, with no playback.
+:::note Recordings
+Sessions are shown live only. An ended session shows its final facts, with no playback.
+:::
 
 ## In preparation
 
-- **A mainnet test.** A single-key test on mainnet with a throwaway quote coin and a second instance of the site is being prepared. Nothing has been sent to mainnet, and these docs will describe the test only once it has run.
+:::warning Not live yet: a mainnet test
+A single-key test on mainnet with a throwaway quote coin and a second instance of the site is being prepared. Nothing has been sent to mainnet, and these docs will describe the test only once it has run.
+:::
 
 ## Not deployed: mainnet
+
+:::warning Nothing is on mainnet
+No program, no token and no agent of units exists on mainnet. Anything that claims to be units or $UNITS there is not this project.
+:::
 
 - The mainnet program ids exist and every mainnet step was rehearsed on a local fork of mainnet. Nothing is deployed there.
 - $UNITS does not exist on mainnet. Its mint, supply and launch values are TBA.

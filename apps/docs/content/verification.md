@@ -84,3 +84,7 @@ Rejection reasons from the rule: `guard`, `apply_conflict`, `build_fail`, `tests
 - **Audits**: {{cfg:audit_rate}} of accepted generations are replayed again on a fresh seed by the reference runner and {{cfg:audit_replayers}} random auditors. A contradiction reverts the generation and slashes the wrong side.
 - **Author-blind**: until a candidate is final, no public view names its author ([Sealing](doc:sealing)).
 - **Challenges and replicas** make Core's own decisions contestable ([Challenges, epochs, claims](doc:challenges-and-epochs)).
+
+## The rest of this path
+
+{{fig:path-verification}}

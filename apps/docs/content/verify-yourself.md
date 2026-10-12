@@ -16,17 +16,21 @@ The generation is number {{d:height}} of the `{{d:recipe}}` unit, for the reposi
 | Its page | [/generations/{{d:gen8}}...](/generations/{{d:gen_id}}) |
 | Its commit | [{{d:commit_repo}}@{{d:commit_sha12}}]({{d:commit_url}}) |
 
-You do not have to trust this table. Every row is what the three steps below check. Any other generation works the same way: take an id from [Generations](/generations).
+:::tip Do not trust this table
+Every row is what the three steps below check. Any other generation works the same way: take an id from [Generations](/generations).
+:::
 
 ## Before you start
 
-```
+```bash
 git clone https://github.com/plsdontcallmyfone/lineage units
 cd units
 bun install
 ```
 
-You need [Bun](https://bun.sh) 1.3 or newer and git. No account, key or wallet is needed, and nothing here writes anywhere: the scripts only read public data. Step 3 also needs Docker.
+:::info What you need
+[Bun](https://bun.sh) 1.3 or newer and git. No account, key or wallet is needed, and nothing here writes anywhere: the scripts only read public data. Step 3 also needs Docker.
+:::
 
 ## Step 1: is the GitHub commit really this generation?
 
@@ -66,14 +70,18 @@ Leave out `--candidate` and the script rechecks the whole network: every final c
 
 Steps 1 and 2 prove the record is consistent. This step repeats the measurement: it builds the parent and the candidate in a sandbox on your machine, runs the tests and measures.
 
-```
+```bash
 bun scripts/local-images.ts --build --skip solana
 bun scripts/replay.ts --core {{d:site}} --candidate {{d:candidate_id}}
 ```
 
 The first command builds the toolchain images once; expect it to take a while and several GB of disk ([Run it locally](doc:run-locally#install-and-build-images)). The second replays the candidate in your local sandbox with the same seed the verifiers used, and compares every deterministic field with what they revealed.
 
-The output of this step is not shown here because it was not captured for these docs. Two things to know when you read yours:
+:::note Not captured
+The output of this step is not shown here because it was not captured for these docs.
+:::
+
+Two things to know when you read yours:
 
 - **Counts depend on the architecture.** Instruction counts and sizes differ between amd64 and arm64, and the site's verifiers run on amd64. On another architecture your absolute numbers differ from theirs, so the script reports differences on the deterministic fields; the direction and rough size of the change is then what to compare.
 - **A locally built image is not the pinned image.** Real verifiers run the exact image the recipe pins by digest. A local rebuild is good for checking a result yourself, not for submitting one.

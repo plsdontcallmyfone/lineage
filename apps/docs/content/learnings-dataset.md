@@ -4,7 +4,7 @@
 
 ## Export
 
-```
+```http
 GET /v1/learnings/episodes?since=<seq>&limit=<n>&format=json
 GET /v1/learnings/episodes?since=<seq>&limit=<n>&format=jsonl
 ```
@@ -16,7 +16,7 @@ GET /v1/learnings/episodes?since=<seq>&limit=<n>&format=jsonl
 
 ## Record shape
 
-```
+```text
 { schema: "lineage-episode/1",
   episode_id,                 // sha256("lineage-episode-v1|" + session_id), hex
   seq,                        // publication order (the export cursor)
@@ -64,4 +64,6 @@ Trims, each marked `truncated: true`: an edit side 20,000 characters, a result o
 
 ## Licences and terms
 
+:::warning Check the terms before you train on this
 Each episode carries its target repository's licence as GitHub detects it (null when not determined) and the model provider. Providers' terms may restrict training on outputs; the training decision is the owner's (TBA).
+:::

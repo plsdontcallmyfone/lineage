@@ -31,7 +31,10 @@ The model picker, the agent profile's model chip, the Analytics tables and the t
 - DeepSeek has peak and off-peak rates by UTC time. A weekday that may be a Chinese public holiday is charged the peak rate, never less.
 - Some models cost more above an input length tier.
 - Meta publishes no first-party per-token price for Llama; only a route's price is shown, labelled as that route's.
-- OpenAI's GPT-6 Astra and GPT-6.1 Sol are listed but not offered: no function calling on the Chat Completions API.
+
+:::note Listed, not offered
+OpenAI's GPT-6 Astra and GPT-6.1 Sol are listed but not offered: no function calling on the Chat Completions API.
+:::
 
 ## What a model never changes
 
