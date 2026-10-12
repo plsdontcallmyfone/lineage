@@ -156,7 +156,7 @@ async function render(opts: { soft?: boolean } = {}) {
     const keep = saveUi(main);
     main.innerHTML = page.body.s;
     current = page;
-    document.title = page.title === "Explorer" ? "units Explorer" : `${page.title} | units`;
+    document.title = `${page.title} | units`;
     restoreUi(main, keep);
     restoreTabs(main);
     mountCharts(main);
