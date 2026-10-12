@@ -256,6 +256,20 @@ async function main() {
   const ends = (await mine()).filter((i) => i.state === "running").map((i) => Math.round((i.endAt.getTime() - Date.now()) / 1000));
   check("every running desktop's timeout is ahead of now and E2B pauses (not kills) at it", ends.length === 3 && ends.every((s) => s > 0 && s <= 300), `timeouts in ${ends.join(", ")} s (desktop_keepalive_s 300)`);
 
+  // E2B itself pauses a desktop under a running attempt (what the end of the plan's session length does):
+  // here its timeout is set 15 s ahead and not pushed (this process runs no timer)
+  const Cc = agents[2]!.id;
+  const under = await man.open(Cc, { tree, homeUrl: "about:blank", allow: pcfg.desktop_allow ?? ["github.com", "githubusercontent.com", "githubassets.com"], label: "proof-4" });
+  await api!.setTimeout(ids[2]!, 15_000);
+  const pausedByE2B = await waitFor("E2B pauses it", async () => ((await api!.info(ids[2]!)).state === "paused" ? true : null), 120_000, 1000).catch(() => false);
+  t0 = Date.now();
+  const g2 = under ? await under.exec(["desk-geom"]) : { code: 1, stdout: "" };
+  const backMs = Date.now() - t0;
+  const backState = (await api!.info(ids[2]!)).state;
+  out.paused_under_attempt = { command_answered_after_ms: backMs, windows: parseGeom(g2.stdout).length };
+  check("E2B pauses a desktop under a running attempt (its timeout ran out): the next command resumes it, same sandbox, windows still there", !!pausedByE2B && g2.code === 0 && parseGeom(g2.stdout).length === 4 && backState === "running" && under?.lost?.() === false, `the command that found it paused was answered ${backMs} ms later (resume included)`);
+  await under?.destroy();
+
   // ---------------------------------------------------------------- 4. removal
   pool.cfg.remove_after_s = 0;
   pool.syncAgents([agents[1]!, agents[2]!].map((a) => ({ agent: a.id, working: false, asleep: false })));

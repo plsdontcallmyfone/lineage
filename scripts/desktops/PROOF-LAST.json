@@ -1,56 +1,60 @@
 {
-  "at": "2026-10-12T17:29:00.552Z",
-  "owner": "proof-d9fbc8ec",
+  "at": "2026-10-12T17:35:08.655Z",
+  "owner": "proof-00c07a87",
   "template": "lineage-desktop (2 vCPU, 4 GiB)",
   "usd_per_desktop_hour": 0.1656,
   "created": [
-    11.2,
-    11.6,
-    12.5
+    10.4,
+    11.8,
+    13.4
   ],
-  "all_three_running_after_bind_s": 13.4,
+  "all_three_running_after_bind_s": 14.4,
   "sandboxes": [
-    "if3nk7",
-    "iyw298",
-    "i96jhl"
+    "i0qndx",
+    "itn7u2",
+    "i8mgm9"
   ],
   "session_1": {
-    "ready_ms": 10645,
-    "first_video_ms": 15655,
+    "ready_ms": 13559,
+    "first_video_ms": 17566,
     "files": 3,
     "backend": "e2b"
   },
-  "pause_ms": 420,
+  "pause_ms": 506,
   "own_meter": {
     "note": "this runtime's own count (seconds running x the listed rate), not E2B's bill",
     "per_desktop_s_usd": 0.000046
   },
   "resume_s": 0.3,
   "session_2": {
-    "ready_ms": 3173,
-    "first_video_ms": 7184,
+    "ready_ms": 3122,
+    "first_video_ms": 7128,
     "files": 3,
     "backend": "e2b"
   },
   "renew": {
-    "ran_s_before": 71,
+    "ran_s_before": 70,
     "away_s": 0.7,
-    "wall_ms": 1265
+    "wall_ms": 882
   },
-  "spent_usd_own_count": 0.0083,
+  "paused_under_attempt": {
+    "command_answered_after_ms": 1444,
+    "windows": 4
+  },
+  "spent_usd_own_count": 0.0125,
   "left_at_e2b": 0,
-  "wall_s": 80,
-  "spent_usd_upper_bound": 0.0111,
+  "wall_s": 110,
+  "spent_usd_upper_bound": 0.0152,
   "checks": [
     {
       "check": "this run's owner label is unused before the run",
       "ok": true,
-      "detail": "proof-d9fbc8ec"
+      "detail": "proof-00c07a87"
     },
     {
       "check": "three hosted TEST agents launched on the local simulated Core, awake (no chain)",
       "ok": true,
-      "detail": "FZfVQ5, 6wVCUo, FMp5kX"
+      "detail": "5qqE6b, CdWQAz, HtCi7L"
     },
     {
       "check": "no desktop before any agent is bound",
@@ -60,17 +64,17 @@
     {
       "check": "the three binds went through without waiting on E2B",
       "ok": true,
-      "detail": "3 key rotations at Core took 4 ms; the runtime saw them bound 1762 ms after the first"
+      "detail": "3 key rotations at Core took 5 ms; the runtime saw them bound 1270 ms after the first"
     },
     {
       "check": "three desktops, one per agent, each named by its agent id in the sandbox metadata",
       "ok": true,
-      "detail": "if3nk7, iyw298, i96jhl; created in 11.2, 11.6, 12.5 s; all running 13.4 s after the binds"
+      "detail": "i0qndx, itn7u2, i8mgm9; created in 10.4, 11.8, 13.4 s; all running 14.4 s after the binds"
     },
     {
       "check": "GET /v1/agents/:id/spend serves each agent's desktop state",
       "ok": true,
-      "detail": "{\"state\":\"running\",\"why\":null,\"since\":1791826157243}"
+      "detail": "{\"state\":\"running\",\"why\":null,\"since\":1791826523719}"
     },
     {
       "check": "no sandbox id reaches the page",
@@ -80,12 +84,12 @@
     {
       "check": "a stopped runtime leaves its desktops (E2B pauses them when their short timeout runs out)",
       "ok": true,
-      "detail": "iyw298 running, timeout in 286 s; i96jhl running, timeout in 286 s; if3nk7 running, timeout in 286 s"
+      "detail": "i0qndx running, timeout in 287 s; itn7u2 running, timeout in 288 s; i8mgm9 running, timeout in 286 s"
     },
     {
       "check": "after the restart: the same three sandbox ids, no new sandbox",
       "ok": true,
-      "detail": "if3nk7, iyw298, i96jhl; 0 creates in the second run"
+      "detail": "i0qndx, itn7u2, i8mgm9; 0 creates in the second run"
     },
     {
       "check": "a third start (this process, same state directory): the same ids again",
@@ -95,7 +99,7 @@
     {
       "check": "a session on the agent's own desktop streams live video to this host",
       "ok": true,
-      "detail": "session ready 10645 ms after the reserve, first segment on this host after 15655 ms"
+      "detail": "session ready 13559 ms after the reserve, first segment on this host after 17566 ms"
     },
     {
       "check": "the session's end leaves the sandbox running",
@@ -105,7 +109,7 @@
     {
       "check": "the desktop is paused when its agent sleeps",
       "ok": true,
-      "detail": "paused in 420 ms after a session (browser, editor and terminals had run); state \"agent asleep (vault empty)\""
+      "detail": "paused in 506 ms after a session (browser, editor and terminals had run); state \"agent asleep (vault empty)\""
     },
     {
       "check": "E2B lists it as paused, not running (two of three running)",
@@ -115,12 +119,12 @@
     {
       "check": "the runtime's own spend count stops for the paused desktop (two running for 20 s)",
       "ok": true,
-      "detail": "0.00191 USD in about 20 s; two desktops for 20 s are 0.00184"
+      "detail": "0.00192 USD in about 20 s; two desktops for 20 s are 0.00184"
     },
     {
       "check": "resumed before its next attempt: the same sandbox, a second session with live video",
       "ok": true,
-      "detail": "resume (E2B connect) 0.3 s; session ready 3173 ms after the reserve, resume included; first segment after 7184 ms"
+      "detail": "resume (E2B connect) 0.3 s; session ready 3122 ms after the reserve, resume included; first segment after 7128 ms"
     },
     {
       "check": "the desktop's four windows are in place in a third session",
@@ -130,24 +134,29 @@
     {
       "check": "a session window is renewed between attempts by a pause and a resume: same sandbox, E2B's start time moves to the resume",
       "ok": true,
-      "detail": "after 71 s running; desktop away 0.7 s; E2B startedAt 17:29:06 -> 17:30:18"
+      "detail": "after 70 s running; desktop away 0.7 s; E2B startedAt 17:35:15 -> 17:36:26"
     },
     {
       "check": "every running desktop's timeout is ahead of now and E2B pauses (not kills) at it",
       "ok": true,
-      "detail": "timeouts in 300, 300, 286 s (desktop_keepalive_s 300)"
+      "detail": "timeouts in 287, 300, 300 s (desktop_keepalive_s 300)"
+    },
+    {
+      "check": "E2B pauses a desktop under a running attempt (its timeout ran out): the next command resumes it, same sandbox, windows still there",
+      "ok": true,
+      "detail": "the command that found it paused was answered 1444 ms later (resume included)"
     },
     {
       "check": "an agent that is not bound any more loses its desktop; the others keep theirs",
       "ok": true,
-      "detail": "iyw298, i96jhl"
+      "detail": "itn7u2, i8mgm9"
     },
     {
       "check": "every desktop removed: the E2B list shows none of this run's sandboxes",
       "ok": true,
-      "detail": "0 of 3 left under owner proof-d9fbc8ec"
+      "detail": "0 of 3 left under owner proof-00c07a87"
     }
   ],
-  "pass": 21,
-  "total": 21
+  "pass": 22,
+  "total": 22
 }
