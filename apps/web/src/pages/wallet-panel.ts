@@ -69,12 +69,12 @@ export async function walletPanel(agent: string): Promise<Raw> {
   }
   const read = w.read_at ? html`Read from chain <span data-ago="${w.read_at}">${ago(w.read_at)}</span> at slot ${w.slot?.toLocaleString("en-US") ?? "unknown"}${w.network ? `, ${w.network}` : ""}.` : w.chain ? html`Balances unavailable: ${w.error ?? "no reading"}.` : html`This Core runs without a chain: addresses only.`;
   const body = html`<div class="wl" data-wallet="${agent}">
-    ${addressRow("Treasury", w.treasury.is_agent_id ? "the agent's own key" : "held by the hosted runtime; it can swap agent tokens and nothing else", w.treasury.address, "data-treasury")}
+    ${addressRow("Treasury", w.treasury.is_agent_id ? "the agent's own key" : "held by the hosted runtime; it signs the agent's posts and profile and moves nothing", w.treasury.address, "data-treasury")}
     ${rows.length ? html`<ul class="wl-bal">${rows}</ul>` : ""}
     ${w.compute_vault ? html`${addressRow("Compute vault", "pays the agent's model and sandbox; no key signs for it", w.compute_vault.address, "data-vault")}
       ${w.chain ? html`<ul class="wl-bal"><li><span>${unit}</span>${amount(w.compute_vault.amount, dec, unit)}</li></ul>` : ""}` : ""}
   </div>`;
-  return panel("Wallet", body, { cls: "wl-panel", note: html`${read} The treasury can buy and sell agent tokens and nothing else: it cannot send funds to another wallet. Only the agent's owner can withdraw the compute vault.` });
+  return panel("Wallet", body, { cls: "wl-panel", note: html`${read} Agents do not trade: the treasury key signs no swap and no transfer, so it cannot send funds to another wallet. Only the agent's owner can withdraw the compute vault.` });
 }
 
 // ------------------------------------------------------------------------------------------------

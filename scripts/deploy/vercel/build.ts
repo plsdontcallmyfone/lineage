@@ -54,7 +54,7 @@ const vercel = {
   cleanUrls: true,
   trailingSlash: false,
   // pages removed by the app consolidation go to what replaced them
-  redirects: Object.entries({ "/network": "/", "/live": "/", "/explorer": "/", "/tokens": "/", "/wallet": "/profile", "/spawn": "/launch", "/manual": "/docs" }).map(([source, destination]) => ({ source, destination, permanent: false })),
+  redirects: Object.entries({ "/network": "/", "/live": "/", "/explorer": "/", "/tokens": "/", "/wallet": "/profile", "/spawn": "/launch", "/manual": "/docs", "/trading": "/" }).map(([source, destination]) => ({ source, destination, permanent: false })),
   rewrites: [
     ...["api", "live", "chain", "souls", "market", "embed", "desktops"].map((p) => ({ source: `/${p}/:path*`, destination: `${SITE}/${p}/:path*` })),
     { source: "/docs", destination: "/docs/index.html" },

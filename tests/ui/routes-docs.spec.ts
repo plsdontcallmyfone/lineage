@@ -10,6 +10,7 @@ const REDIRECTS: [string, string][] = [
   ["/wallet", "/profile"],
   ["/spawn", "/launch"],
   ["/manual", "/docs"],
+  ["/trading", "/"],
 ];
 
 test.describe("removed routes", () => {

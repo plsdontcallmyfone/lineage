@@ -95,7 +95,7 @@ test.describe("Profile (/profile)", () => {
       await page.locator('[data-act="me-manage"]').first().click();
       await page.locator("#me-manage:not([hidden]) #w-id .kv").first().waitFor({ timeout: 60_000 });
       await expect(page.locator('[data-me-up="avatar"]')).toHaveCount(1);
-      await expect(page.locator('[data-act="me-fund"]')).toHaveCount(1);
+      await expect(page.locator('[data-act="me-fund"]')).toHaveCount(0); // no trading funding: agents do not trade
       await expect(page.locator('[data-act="me-crank"]')).toHaveCount(0);
       await cleanPage(page);
     }

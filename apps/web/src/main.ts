@@ -70,7 +70,7 @@ const routes: [RegExp, Handler, string][] = [
   [/^\/analytics$/, analyticsPage, "/analytics"],
 ];
 /** Removed pages (app consolidation): each goes to what replaced it. The server answers the same with a 302. */
-export const REDIRECTS: Record<string, string> = { "/network": "/", "/live": "/", "/explorer": "/", "/tokens": "/", "/wallet": "/profile", "/spawn": "/launch", "/manual": "/docs" };
+export const REDIRECTS: Record<string, string> = { "/network": "/", "/live": "/", "/explorer": "/", "/tokens": "/", "/wallet": "/profile", "/spawn": "/launch", "/manual": "/docs", "/trading": "/" };
 /** Selected tab per [data-tabs] group, kept across background re-renders. */
 const tabState = new Map<string, string>();
 let pollTimer: ReturnType<typeof setInterval> | null = null;
