@@ -1,6 +1,6 @@
 #!/usr/bin/env bun
-// Devnet only: tops up hosted agents' compute vaults with test $UNITS from the devnet faucet key
-// (worthless devnet test tokens; 20 test $UNITS are 1 USD of compute at the TEST rate), then
+// Devnet only: tops up hosted agents' compute vaults with $UNITS from the devnet faucet key
+// (worthless devnet tokens; 20 $UNITS are 1 USD of compute at the TEST rate), then
 // refresh_awake for each. A plain token transfer into the vault PDA, as scripts/deploy/site-authors.ts
 // does for the scripted authors; the hosted runtime reads the vault's balance from chain.
 //
@@ -26,7 +26,7 @@ if (!state.line_mint) throw new Error("no line_mint in scripts/devnet/devnet.jso
 const DEC = Number(state.line_decimals ?? 6);
 const units = (n: bigint) => (Number(n) / 10 ** DEC).toFixed(DEC);
 if (!pairs.length || (SEND && !(Number(amountArg) > 0 && Number(amountArg) <= 2000))) {
-  console.error("usage: bun scripts/devnet/vault-topup.ts --amount <test $UNITS, at most 2000> <agent>:<agent mint> [...] [--send]");
+  console.error("usage: bun scripts/devnet/vault-topup.ts --amount <$UNITS, at most 2000> <agent>:<agent mint> [...] [--send]");
   process.exit(2);
 }
 const amount = BigInt(Math.round(Number(amountArg ?? 0) * 10 ** DEC));
@@ -34,19 +34,19 @@ const faucet = loadKeypair(join(KEY_DIR, "faucet.json"));
 const payer = deployer();
 const mint: string = state.line_mint;
 const from = ata(faucet.id, mint, TOKEN_2022_PROGRAM);
-console.log(`faucet ${faucet.id} holds ${units((await reader.tokenBalance(from)) ?? 0n)} test $UNITS; fee payer ${payer.id} (${(Number(await rpc.getBalance(payer.id)) / 1e9).toFixed(4)} SOL); keys from ${join(homedir(), ".config", "lineage")} (not printed)`);
+console.log(`faucet ${faucet.id} holds ${units((await reader.tokenBalance(from)) ?? 0n)} $UNITS; fee payer ${payer.id} (${(Number(await rpc.getBalance(payer.id)) / 1e9).toFixed(4)} SOL); keys from ${join(homedir(), ".config", "lineage")} (not printed)`);
 const row = (what: string, r: { fee?: number | bigint | null; signature: string }) =>
   console.log(`| ${new Date().toISOString().replace("T", " ").slice(0, 19)} | vault top-up | ${what} | ${r.fee ?? "?"} | \`${r.signature}\` |`);
 for (const p of pairs) {
   const [agent, agentMint] = p.split(":") as [string, string];
   const vault = launchPdas.computeVault(agent);
   const before = (await reader.tokenBalance(vault)) ?? 0n;
-  console.log(`${agent}: compute vault ${vault} holds ${units(before)} test $UNITS`);
+  console.log(`${agent}: compute vault ${vault} holds ${units(before)} $UNITS`);
   if (!SEND) continue;
   const ixs: Ix[] = [token.transferChecked(from, mint, vault, faucet.id, amount, DEC, TOKEN_2022_PROGRAM)];
   const sent = await sendAndConfirm(rpc, payer, ixs, { signers: [faucet] });
-  row(`send ${units(amount)} test $UNITS from the faucet to the compute vault ${vault} of hosted agent ${agent}`, sent);
+  row(`send ${units(amount)} $UNITS from the faucet to the compute vault ${vault} of hosted agent ${agent}`, sent);
   const woke = await sendAndConfirm(rpc, payer, [launch.refreshAwake({ agent, agentMint })]);
   row(`refresh_awake for hosted agent ${agent}`, woke);
-  console.log(`${agent}: compute vault now holds ${units((await reader.tokenBalance(vault)) ?? 0n)} test $UNITS`);
+  console.log(`${agent}: compute vault now holds ${units((await reader.tokenBalance(vault)) ?? 0n)} $UNITS`);
 }

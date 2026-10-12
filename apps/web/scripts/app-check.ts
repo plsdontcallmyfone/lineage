@@ -13,7 +13,7 @@
 //                   disconnected, a token page's Commits panel, the docs; no console errors, no
 //                   horizontal scroll; removed routes redirect
 //   --phase launch  a real devnet launch through /launch: a fresh test wallet funded by the units
-//                   deployer (SOL, key passed explicitly) and the faucet key (tUNITS), the soul drafted
+//                   deployer (SOL, key passed explicitly) and the faucet key (UNITS), the soul drafted
 //                   by the site's drafter, the wizard's Launch button, the hosted bind, then the live
 //                   status list; transactions are logged to apps/web/scripts/APP-LAUNCH-LAST.json
 //
@@ -133,7 +133,7 @@ const noHScroll = (page: any) => page.evaluate(() => document.documentElement.sc
 // ---------------------------------------------------------------- ui
 
 async function phaseUi() {
-  // the wizard test wallet: it launched TLAMP (phase launch) and still holds tUNITS for a review
+  // the wizard test wallet: it launched TLAMP (phase launch) and still holds UNITS for a review
   const wallet = loadKeypair(join(KEYS, "app-launch-test.json"));
   const persona = JSON.parse(readFileSync(join(ROOT, "scripts/launch-e2e/STATE.json"), "utf8")).soul_core.doc.persona;
   const { b, context } = await browser(wallet);
@@ -348,18 +348,18 @@ async function phaseLaunch() {
   const txs: { what: string; signature: string; fee: number | null; at: string }[] = [];
   const logTx = (what: string, signature: string, fee: number | null | undefined) => txs.push({ what, signature, fee: fee ?? null, at: new Date().toISOString() });
   const save = (extra: Record<string, unknown>) => writeFileSync(OUT, JSON.stringify({ wallet: wallet.id, deployer: dep.id, txs, results, ...extra }, null, 2) + "\n");
-  // fund the test wallet: SOL from the units deployer, tUNITS from the faucet key (both passed explicitly)
+  // fund the test wallet: SOL from the units deployer, UNITS from the faucet key (both passed explicitly)
   const solBal = await rpc.getBalance(wallet.id);
   if (solBal < 200_000_000n) {
     const r = await sendAndConfirm(rpc, dep, [system.transfer(dep.id, wallet.id, 250_000_000n - solBal)]);
     logTx(`fund the test wallet with ${Number(250_000_000n - solBal) / 1e9} SOL from the units deployer`, r.signature, r.fee);
   }
-  const want = 700n * 10n ** BigInt(DEC); // the 10 USD deposit (200 tUNITS) now, and later UI checks that review another
+  const want = 700n * 10n ** BigInt(DEC); // the 10 USD deposit (200 UNITS) now, and later UI checks that review another
   const bal = (await reader.tokenBalance(ata(wallet.id, LINE, T22))) ?? 0n;
   if (bal < want) {
     const fk = loadKeypair(join(KEYS, "faucet.json"));
     const r = await sendAndConfirm(rpc, fk, [token.createAtaIdempotent(fk.id, wallet.id, LINE, T22), token.transferChecked(ata(fk.id, LINE, T22), LINE, ata(wallet.id, LINE, T22), fk.id, want - bal, DEC, T22)]);
-    logTx(`top up the test wallet with ${Number(want - bal) / 10 ** DEC} tUNITS from the faucet key`, r.signature, r.fee);
+    logTx(`top up the test wallet with ${Number(want - bal) / 10 ** DEC} UNITS from the faucet key`, r.signature, r.fee);
   }
   save({});
   const { b, context, signed } = await browser(wallet);

@@ -57,8 +57,8 @@ export function marketApi(db: Database, status: StatusSource, opts: { now?: () =
 }
 
 function marketHandler(db: Database, status: StatusSource, opts: { now?: () => number; quote?: string } = {}) {
-  // the quote token's symbol under the network profile (tUNITS on devnet; SPEC 14.10)
-  const QUOTE = opts.quote ?? "tUNITS";
+  // the quote token's symbol under the network profile (SPEC 14.10)
+  const QUOTE = opts.quote ?? "UNITS";
   const now = opts.now ?? (() => Math.floor(Date.now() / 1000));
   const lineDecimals = () => Number((db.query("SELECT v FROM meta WHERE k = 'line_decimals'").get() as { v: string } | null)?.v ?? 6);
   ensureCoreSchema(db);

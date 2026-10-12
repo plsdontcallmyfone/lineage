@@ -1,7 +1,7 @@
 #!/usr/bin/env bun
 // Devnet v2: relaunch the site's listed hosted agents on pump.fun (onchain/DEVNET.md "Devnet v2",
 // owner decision 2026-10-10). The real launch path, as the /launch wizard builds it: create_v2 quoted
-// in the devnet tUNITS + register_pump_launch, the launcher's initial buy of initial_buy_bps of the
+// in the devnet UNITS + register_pump_launch, the launcher's initial buy of initial_buy_bps of the
 // supply delivered to the agent key, the prepaid credits (10 USD at the TEST rate) into the compute
 // vault with refresh_awake, and the soul digest (set_profile) when the agent has one; then, per agent,
 // the soul into Core (new agent keys), the bind to the site's hosted runtime (owner signs
@@ -148,7 +148,7 @@ async function resolve(s: Spec): Promise<{ row: Row; agent: Signer; mint: Signer
   return { row, agent, mint, owner };
 }
 
-/** The initial buy for a coin create_v2 is about to write, quoted in tUNITS (as the wizard's pump-venue.ts). */
+/** The initial buy for a coin create_v2 is about to write, quoted in UNITS (as the wizard's pump-venue.ts). */
 async function buyQuote(agentId: string) {
   const [gA, fcA, curveA] = await rpc.getMultipleAccounts([PUMP.global, PUMP.feeConfig, pumpPdas.bondingCurve(LINE)]);
   const g = decodePumpGlobal(gA!.data);
@@ -176,8 +176,8 @@ async function plan() {
     const q = await buyQuote(agent.id);
     const credits = requiredCredits(prepay, 6);
     const [ls, ll] = [await rpc.getBalance(owner.id), (await reader.tokenBalance(ata(owner.id, LINE, T22))) ?? 0n];
-    log(`${s.sym}: agent ${agent.id}${s.same ? " (same key)" : ` (new key; was ${s.old})`}, mint ${row.mint}, owner ${owner.id}: ${sol(ls)} SOL, ${ll} tUNITS base units; ` +
-      `"${row.name}" ${row.symbol} ${row.uri}; repo ${row.repo} (${row.identity_mode}); credits ${credits}, initial buy ${q.amountOut} for ${q.quote} (max ${q.maxIn}) tUNITS base units`);
+    log(`${s.sym}: agent ${agent.id}${s.same ? " (same key)" : ` (new key; was ${s.old})`}, mint ${row.mint}, owner ${owner.id}: ${sol(ls)} SOL, ${ll} UNITS base units; ` +
+      `"${row.name}" ${row.symbol} ${row.uri}; repo ${row.repo} (${row.identity_mode}); credits ${credits}, initial buy ${q.amountOut} for ${q.quote} (max ${q.maxIn}) UNITS base units`);
   }
 }
 
@@ -186,14 +186,14 @@ async function launchOne(s: Spec) {
   if (await reader.agentLaunch(row.mint)) return log(`${s.sym}: launched already (${row.mint})`);
   const credits = requiredCredits(prepay, 6);
   const q = await buyQuote(agent.id);
-  // fund the launcher: SOL for the launch and tUNITS for credits + buy (from the devnet treasury)
+  // fund the launcher: SOL for the launch and UNITS for credits + buy (from the devnet treasury)
   const wantSol = LAMPORTS / 10n;
   const haveSol = await rpc.getBalance(owner.id);
   if (haveSol < wantSol / 2n) await tx(row, `fund launcher ${owner.id} with ${sol(wantSol - haveSol)} SOL from the deployer`, dep, [system.transfer(dep.id, owner.id, wantSol - haveSol)]);
   const needLine = credits + q.maxIn + ONE;
   const haveLine = (await reader.tokenBalance(ata(owner.id, LINE, T22))) ?? 0n;
   if (haveLine < needLine)
-    await tx(row, `send ${needLine - haveLine} tUNITS base units to launcher ${owner.id} from the devnet treasury`, dep, [
+    await tx(row, `send ${needLine - haveLine} UNITS base units to launcher ${owner.id} from the devnet treasury`, dep, [
       token.createAtaIdempotent(dep.id, owner.id, LINE, T22),
       token.transferChecked(ata(treasury.id, LINE, T22), LINE, ata(owner.id, LINE, T22), treasury.id, needLine - haveLine, 6, T22),
     ], [treasury]);
@@ -228,7 +228,7 @@ async function launchOne(s: Spec) {
   const held = (await reader.tokenBalance(ata(agent.id, row.mint, T22))) ?? 0n;
   const vault = (await reader.tokenBalance(launchPdas.computeVault(agent.id))) ?? 0n;
   const rec = await reader.agent(agent.id);
-  log(`${s.sym}: launched ${row.mint} in ${r.sent.length} tx (${r.plan.mode}): ${r.sent.map((t) => t.signature).join(", ")}; launcher spent ${row.launch.launcher_sol_spent} SOL and ${line0 - line1} tUNITS base units`);
+  log(`${s.sym}: launched ${row.mint} in ${r.sent.length} tx (${r.plan.mode}): ${r.sent.map((t) => t.signature).join(", ")}; launcher spent ${row.launch.launcher_sol_spent} SOL and ${line0 - line1} UNITS base units`);
   log(`${s.sym}: AgentLaunch venue ${l?.venue}, hosted ${l?.hosted}; agent key holds ${held} (want ${q.amountOut}); compute vault ${vault} (credits ${credits}); profile ${rec?.profileDigest ?? "none"} seq ${rec?.profileSeq ?? 0}`);
   if (l?.venue !== "pump" || held !== q.amountOut || vault < credits) throw new Error(`${s.sym}: launch read back does not match`);
 }

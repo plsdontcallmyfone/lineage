@@ -34,7 +34,7 @@ describe("profile switch", () => {
     expect(d.faucet).toBe(true);
     expect(d.test_labels).toBe(true);
     expect(d.swap).toBe(false);
-    expect(d.quote).toMatchObject({ source: "chain_state", symbol: "tUNITS" });
+    expect(d.quote).toMatchObject({ source: "chain_state", symbol: "UNITS" });
     // the price every devnet transaction always used, and the devnet confirmation timing (900 ms poll, 2.5 s rebroadcast)
     expect(d.fees).toEqual({ mode: "fixed", cu_price_micro_lamports: 1 });
     expect(d.confirm).toEqual({ poll_ms: 900, resend_ms: 2500, rebuilds: 0 });

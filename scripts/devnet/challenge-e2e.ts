@@ -3,7 +3,7 @@
 // challenge, each opened on chain by a registered TEST agent with open_challenge and resolved on
 // chain by Core's resolve_challenge after fresh random replays in Docker sandboxes.
 //
-//   1. ChallengeConfig is set on chain with TEST values (window 3600 s, bond 1 tUNITS, reward 0.5 tUNITS,
+//   1. ChallengeConfig is set on chain with TEST values (window 3600 s, bond 1 UNITS, reward 0.5 UNITS,
 //      resolve timeout 7200 s).
 //   2. A Core in chain mode (port 9664, the registry's Core authority) calibrates minbpe. Two TEST
 //      verifiers that qualify honestly and then fabricate every replay (worker --dishonest
@@ -56,7 +56,7 @@ const CORE = `http://127.0.0.1:${PORT}`;
 const T0 = Date.now();
 const T22 = TOKEN_2022_PROGRAM;
 const STEP = "challenge";
-const TEST = { windowS: 3600, bond: 1_000_000n, reward: 500_000n, resolveTimeoutS: 7200 }; // tUNITS has 6 decimals
+const TEST = { windowS: 3600, bond: 1_000_000n, reward: 500_000n, resolveTimeoutS: 7200 }; // UNITS has 6 decimals
 
 const log = (m: string) => console.log(`[challenge-e2e +${((Date.now() - T0) / 1000).toFixed(0).padStart(4)}s] ${m}`);
 const results: { check: string; ok: boolean; detail: string }[] = [];
@@ -85,7 +85,7 @@ async function lineTo(owner: string, min: bigint, label: string) {
   const dest = ata(owner, lineMint, T22);
   const bal = (await reader.tokenBalance(dest)) ?? 0n;
   if (bal >= min) return dest;
-  await send(STEP, `send ${min - bal} tUNITS base units to ${label} ${owner}`, dep, [
+  await send(STEP, `send ${min - bal} UNITS base units to ${label} ${owner}`, dep, [
     token.createAtaIdempotent(dep.id, owner, lineMint, T22),
     token.transferChecked(state.line_holder as string, lineMint, dest, dep.id, min - bal, DECIMALS, T22),
   ]);
@@ -152,7 +152,7 @@ async function main() {
   // ------------------------------------------------------------ 1. ChallengeConfig (TEST values)
   const cc0 = await reader.challengeConfig();
   if (!cc0 || cc0.windowS !== BigInt(TEST.windowS) || cc0.bond !== TEST.bond || cc0.reward !== TEST.reward || cc0.resolveTimeoutS !== BigInt(TEST.resolveTimeoutS) || cc0.paused) {
-    await send(STEP, `set_challenge_config: window ${TEST.windowS} s, bond 1 tUNITS, reward 0.5 tUNITS, resolve timeout ${TEST.resolveTimeoutS} s (TEST values)`, dep, [
+    await send(STEP, `set_challenge_config: window ${TEST.windowS} s, bond 1 UNITS, reward 0.5 UNITS, resolve timeout ${TEST.resolveTimeoutS} s (TEST values)`, dep, [
       challenge.setConfig({ admin: dep.id, mint: lineMint, args: { ...TEST, paused: false }, tokenProgram: T22 }),
     ]);
   }
@@ -279,7 +279,7 @@ async function main() {
   const claim1 = { v: 1, says: "the replayers of this verdict did not measure a gain; a fresh run will not show one", candidate_id: cand.candidate_id };
   const tokBefore1 = (await reader.tokenBalance(ownerLine))!;
   const vaultBefore = (await reader.tokenBalance(registryPdas.challengeVault()))!;
-  await send(STEP, `open_challenge verdict ${cand.candidate_id.slice(0, 16)}... epoch ${genEpoch} by challenger 1 ${c1.id} (bond 1 tUNITS from ${owner.id})`, owner, [
+  await send(STEP, `open_challenge verdict ${cand.candidate_id.slice(0, 16)}... epoch ${genEpoch} by challenger 1 ${c1.id} (bond 1 UNITS from ${owner.id})`, owner, [
     challenge.open({ challenger: c1.id, signingKey: c1.id, payer: owner.id, payerToken: ownerLine, mint: lineMint, kind: CHALLENGE_KIND.verdict, subject: cand.candidate_id,
       epoch: genEpoch, claim: hashJson(claim1), tokenProgram: T22 }),
   ], { signers: [c1] });
@@ -305,7 +305,7 @@ async function main() {
     return a && a.status !== "open" ? a : null;
   }, 300_000);
   const view1 = await ok(anon.get(`/v1/challenges/${id1}`), "challenge 1");
-  check("resolve_challenge landed: upheld, evidence = Core's resolution digest, reward 0.5 tUNITS", onchain1.status === "upheld" && onchain1.evidence === view1.evidence &&
+  check("resolve_challenge landed: upheld, evidence = Core's resolution digest, reward 0.5 UNITS", onchain1.status === "upheld" && onchain1.evidence === view1.evidence &&
     onchain1.reward === TEST.reward, `sig ${view1.chain.resolve_signature}`);
   const tokAfter1 = (await reader.tokenBalance(ownerLine))!;
   check("the challenger's payer got its bond back plus the reward", tokAfter1 - tokBefore1 === TEST.reward, `${tokBefore1} -> ${tokAfter1}`);

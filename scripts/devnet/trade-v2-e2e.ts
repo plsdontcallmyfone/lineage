@@ -3,8 +3,8 @@
 // (never the owner's Chrome). A mock Wallet Standard wallet injected into the page signs with a local
 // devnet test key held by this process (~/.config/lineage/devnet/launchpad-ui-test.json); it connects
 // through the returning-visitor path (localStorage "lineage-wallet", as tests/ui does). The test
-// wallet's SOL comes from the units deployer and its tUNITS from the devnet treasury (keys passed
-// explicitly). For each mint: buy with tUNITS on the pump.fun curve, then sell half of what was bought;
+// wallet's SOL comes from the units deployer and its UNITS from the devnet treasury (keys passed
+// explicitly). For each mint: buy with UNITS on the pump.fun curve, then sell half of what was bought;
 // chain balances must move by the amount in and the page's simulated out, the page must show chain's
 // balances, and the site's indexer must report each trade with the same amounts.
 // Transactions are written to scripts/devnet/TRADE-V2-LAST.json and onchain/DEVNET.md (Devnet v2).
@@ -64,7 +64,7 @@ if (lineNow < LINE_TOP / 2n) {
     token.createAtaIdempotent(dep.id, wallet.id, LINE, T22),
     token.transferChecked(ata(treasury.id, LINE, T22), LINE, ata(wallet.id, LINE, T22), treasury.id, LINE_TOP - lineNow, QD, T22),
   ], { signers: [treasury] });
-  note(`send ${units(LINE_TOP - lineNow, QD)} tUNITS to the trade test wallet from the devnet treasury`, r.signature, r.fee);
+  note(`send ${units(LINE_TOP - lineNow, QD)} UNITS to the trade test wallet from the devnet treasury`, r.signature, r.fee);
 }
 
 const listed = ((await (await fetch(`${SITE}/market/tokens`)).json()).tokens ?? []) as any[];
@@ -133,7 +133,7 @@ async function trade(mint: string, sym: string, decimals: number, side: "buy" | 
   const sig = (await page.locator(".mk-tb-done").getAttribute("data-sig"))!;
   const after = await balances(mint);
   const tx = await rpc.call<any>("getTransaction", [sig, { encoding: "json", commitment: "confirmed", maxSupportedTransactionVersion: 0 }]).catch(() => null);
-  note(`${side} ${side === "buy" ? `${amount} tUNITS of ${sym}` : `${amount} ${sym}`} on the pump.fun curve through ${SITE}/tokens/${mint} (headless, test wallet ${wallet.id.slice(0, 6)}...)`, sig, tx?.meta?.fee);
+  note(`${side} ${side === "buy" ? `${amount} UNITS of ${sym}` : `${amount} ${sym}`} on the pump.fun curve through ${SITE}/tokens/${mint} (headless, test wallet ${wallet.id.slice(0, 6)}...)`, sig, tx?.meta?.fee);
   const inBase = side === "buy" ? BigInt(Math.round(Number(amount) * 10 ** QD)) : BigInt(Math.round(Number(amount) * 10 ** decimals));
   const dIn = side === "buy" ? before.line - after.line : before.tok - after.tok;
   const dOut = side === "buy" ? after.tok - before.tok : after.line - before.line;
@@ -154,7 +154,7 @@ try {
     await page.locator('[data-bal="line"]').waitFor({ timeout: T });
     const b0 = await balances(mint);
     const lineShown = (await page.locator('[data-bal="line"]').innerText()).trim();
-    check(`${sym}: page shows the wallet's tUNITS as chain does`, lineShown === units(b0.line, QD), `${lineShown} vs ${units(b0.line, QD)}`);
+    check(`${sym}: page shows the wallet's UNITS as chain does`, lineShown === units(b0.line, QD), `${lineShown} vs ${units(b0.line, QD)}`);
     const v = await page.locator(".mk-tb-venue").innerText();
     check(`${sym}: the trade box trades on the pump.fun curve`, /curve/i.test(v), v.replace(/\s+/g, " "));
     const buy = await trade(mint, sym, t.decimals ?? 6, "buy", BUY);

@@ -349,7 +349,7 @@ export class UnitsToken extends UnitsElement {
     this.box.innerHTML = `${tokenHeadHtml(t, soul?.tagline ?? null, trade)}
       <div class="grid">
         <section><h3>What the agent is building</h3><div class="building" part="building">${building(t as any, { full: true, sessionHref: (id) => c.href(`/sessions/${id}`) })}</div><div class="screen"></div></section>
-        <section><h3>Price in tUNITS, ${esc(tf)} candles</h3><div class="chart" part="chart"></div>
+        <section><h3>Price in UNITS, ${esc(tf)} candles</h3><div class="chart" part="chart"></div>
           <h3>Recent trades</h3>${tradesHtml(trades.trades)}</section>
       </div>
       <section><h3>Holders</h3>${holders ? holdersHtml(holders) : '<p class="none">Holders did not load.</p>'}</section>`;

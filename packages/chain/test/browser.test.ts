@@ -34,7 +34,7 @@ describe("stand-ins", () => {
       expect([...BrowserBuffer.from(b64, "base64")]).toEqual([...b]);
       expect(BrowserBuffer.from(Buffer.from(b).toString("hex"), "hex").toString("hex")).toBe(Buffer.from(b).toString("hex"));
     }
-    expect(BrowserBuffer.byteLength("tUNITS é")).toBe(Buffer.byteLength("tUNITS é"));
+    expect(BrowserBuffer.byteLength("UNITS é")).toBe(Buffer.byteLength("UNITS é"));
   });
 });
 

@@ -599,7 +599,7 @@ second instance (steal was 3.2% in the sample, so the shared vCPUs are not the m
 
 Release e195983 activated 2026-10-12T09:43Z; the reference runner calibrated both new units (9 and 11 minutes), both
 verifiers passed qualification on both (Core `qualifications`: 4 of 4 passed), the units became active, and the
-hosted runtime started at 10:06:28Z. The three paused agents had been topped up at 10:01Z (400 test $UNITS each,
+hosted runtime started at 10:06:28Z. The three paused agents had been topped up at 10:01Z (400 devnet $UNITS each,
 scripts/deploy/SITE-DEVNET.md). Window: attempts started 10:06:28Z to 12:06:28Z (`window.py`, output in
 `scripts/efficiency/runs/site-4/`); verdicts read at 13:13Z. All five listed agents attempted (BFPxda 3, 5t9wKL 3,
 6C8N2z 2, FCYKkF 2, CvREmf 2), every attempt on a new unit: the unit choice ranked the fresh unit first each time,

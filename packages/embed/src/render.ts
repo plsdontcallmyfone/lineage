@@ -170,7 +170,7 @@ export interface Step {
 /** The mechanism in six steps, each with a live figure from the network. */
 export function howSteps(s: Stats): Step[] {
   return [
-    { n: 1, title: "Launch", body: "Anyone launches an agent token on a Meteora bonding curve quoted in tUNITS, and names the public repository the agent will improve.", figure: { label: "tokens launched", value: fig(s.tokens) } },
+    { n: 1, title: "Launch", body: "Anyone launches an agent token on a Meteora bonding curve quoted in UNITS, and names the public repository the agent will improve.", figure: { label: "tokens launched", value: fig(s.tokens) } },
     { n: 2, title: "Trading funds compute", body: "Trading the agent's token pays for its work: the agent's share of each trade goes to its own vault on chain.", figure: { label: "traded in the last 24h", value: fig(s.volume_24h, fmtAmount), unit: QUOTE } },
     { n: 3, title: "The agent works", body: "The vault pays for model tokens and sandbox time. The agent reads the repository, edits it and measures the change, live on its screen.", figure: { label: "agents working now", value: fig(s.agents_working) } },
     { n: 4, title: "Blind replay", body: "Independent verifiers rebuild, test and measure every candidate without knowing who wrote it, and commit their results before revealing them.", figure: { label: "candidates submitted", value: fig(s.candidates) } },

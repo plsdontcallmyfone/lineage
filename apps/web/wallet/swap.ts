@@ -3,7 +3,7 @@
 // with raw instructions, shows the route, price impact, slippage and guaranteed minimum, and signs
 // one v0 transaction: Jupiter's swap, then the app's action spending at most that minimum (two
 // transactions in one signing request when one does not fit). Jupiter does not run on devnet, so
-// there the option is shown as unavailable and the forms use tUNITS directly. The target mint and
+// there the option is shown as unavailable and the forms use UNITS directly. The target mint and
 // every limit come from config/swap.json (a stand-in mint until $UNITS exists on mainnet).
 import "../../../packages/chain/src/browser/buffer.ts";
 import {

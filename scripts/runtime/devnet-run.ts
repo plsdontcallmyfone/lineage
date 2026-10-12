@@ -68,7 +68,7 @@ const agent = key("runtime-test-agent"); // the launch key: stays with the launc
 const agentMint = key("runtime-test-agent-mint");
 const trader = key("trader");
 const AGENT_META = { name: "TEST hosted runtime agent", symbol: "TRTA", uri: "https://lineage.invalid/devnet/agents/runtime-test.json" };
-const VAULT_START = 10n * ONE; // TEST: 10 tUNITS deposited by transfer to start
+const VAULT_START = 10n * ONE; // TEST: 10 UNITS deposited by transfer to start
 const tmp = mkdtempSync(join(tmpdir(), "lineage-runtime-devnet-"));
 const STATE_DIR = join(homedir(), ".lineage", "runtime", "devnet-proof"); // persistent: holds the runtime's agent keys
 const CONFIG = join(tmp, "runtime-config.json");
@@ -97,7 +97,7 @@ async function main() {
   const vault = launchPdas.computeVault(agent.id);
   const bal0 = (await reader.tokenBalance(vault)) ?? 0n;
   if (bal0 < VAULT_START) {
-    await send(STEP, `deposit ${VAULT_START - bal0} tUNITS base units into the runtime test agent's compute vault ${vault} (TEST funding by transfer)`, dep, [
+    await send(STEP, `deposit ${VAULT_START - bal0} UNITS base units into the runtime test agent's compute vault ${vault} (TEST funding by transfer)`, dep, [
       token.transferChecked(ata(dep.id, lineMint, T22), lineMint, vault, dep.id, VAULT_START - bal0, DECIMALS, T22),
     ]);
     await send(STEP, "refresh_awake for the runtime test agent", dep, [launch.refreshAwake({ agent: agent.id, agentMint: agentMint.id })]);
@@ -244,7 +244,7 @@ async function main() {
   await Bun.sleep(20_000);
   await topUp(STEP, dep, trader.id, LAMPORTS / 50n, "trader", LAMPORTS / 20n);
   const t = await pumpTrade(rpc, { trader, mint: agentMint.id, lineMint, buy: true, amountIn: 2_000n * ONE });
-  log(`trade: trader buys the runtime test agent's token with 2,000 tUNITS on pump.fun (${t.venue}): ${t.signature}`);
+  log(`trade: trader buys the runtime test agent's token with 2,000 UNITS on pump.fun (${t.venue}): ${t.signature}`);
   const fees = await curveCreatorFee(rpc, agentMint.id);
   const c0 = (await reader.tokenBalance(vault))!;
   const cr = await pumpCrank(rpc, { payer: dep, agent: agent.id, mint: agentMint.id, lineMint });

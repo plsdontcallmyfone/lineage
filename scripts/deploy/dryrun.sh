@@ -387,7 +387,7 @@ if [ "${DRYRUN_FORK:-0}" = 1 ]; then
     check "fork: stage with the chain state, overlay and RPC (nothing started)" "$([ $rc = 0 ] && grep -q 'staged and stopped' "$WORK/f1.log" && [ "$(R systemctl is-active units-main-core)" != active ] && echo 1 || echo 0)" "exit $rc"
     "${FI[@]}" "$D" 127.0.0.1 chain-plan > "$WORK/f2.log" 2>&1; rc=$?; grep 'site-chain' "$WORK/f2.log" | head -4
     fown=$(sed -n 's/^\[site-chain\] owner \([1-9A-HJ-NP-Za-km-z]*\):.*/\1/p' "$WORK/f2.log" | head -1)
-    fneed=$(sed -n 's/^\[site-chain\] owner .* needs \([0-9]*\) tUNITS base units.*/\1/p' "$WORK/f2.log" | head -1)
+    fneed=$(sed -n 's/^\[site-chain\] owner .* needs \([0-9]*\) UNITS base units.*/\1/p' "$WORK/f2.log" | head -1)
     check "fork: chain-plan before activate (Core not running): 3 registrations planned, the owner key and what it must hold named" "$([ $rc = 0 ] && [ "$(grep -c 'plan: register verifier' "$WORK/f2.log")" = 3 ] && [ -n "$fown" ] && [ "${fneed:-0}" -gt 0 ] && grep -q 'is not funded' "$WORK/f2.log" && echo 1 || echo 0)" "owner $fown needs $fneed quote token base units and 0.02 SOL"
     MAINNET_SEND=yes "${FI[@]}" "$D" 127.0.0.1 chain > "$WORK/f3.log" 2>&1; rc=$?
     check "fork: chain refused while the owner key is not funded (nothing sent)" "$([ $rc != 0 ] && grep -q 'is not funded' "$WORK/f3.log" && echo 1 || echo 0)" "exit $rc"

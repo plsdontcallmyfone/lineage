@@ -5,7 +5,7 @@
 //
 // A mock Wallet Standard wallet signs with a local devnet test key
 // (~/.config/lineage/devnet/launch-e2e-test.json); the page only ever sees signatures. The test wallet
-// is funded from the units deployer (SOL) and the faucet key (tUNITS), both passed explicitly; the
+// is funded from the units deployer (SOL) and the faucet key (UNITS), both passed explicitly; the
 // global `solana config` is never read or changed.
 //
 // Phases (state in scripts/launch-e2e/STATE.json, public data only; results appended to RESULTS.json):
@@ -194,7 +194,7 @@ async function fundWallet() {
   if (bal < want) {
     const fk = loadKeypair(join(KEYS, "faucet.json"));
     const r = await sendAndConfirm(rpc, fk, [token.createAtaIdempotent(fk.id, wallet.id, LINE, T22), token.transferChecked(ata(fk.id, LINE, T22), LINE, ata(wallet.id, LINE, T22), fk.id, want - bal, DEC, T22)]);
-    logTx(`top up the test wallet with ${Number(want - bal) / 10 ** DEC} tUNITS from the faucet key`, r.signature, r.fee);
+    logTx(`top up the test wallet with ${Number(want - bal) / 10 ** DEC} UNITS from the faucet key`, r.signature, r.fee);
   }
   save();
 }
@@ -214,7 +214,7 @@ async function phaseLaunch() {
     await page.locator("#w-repo >> text=public on GitHub").waitFor({ timeout: 60_000 });
     await page.fill('[name="l_deposit"]', "10");
     const help = (await page.locator("#w-prepay").innerText()).replace(/\s+/g, " ");
-    check("form: 10 USD prepaid shown in tUNITS at the TEST rate with the first-run budget", /TEST rate/.test(help) && /First-run budget/.test(help), help.slice(0, 240));
+    check("form: 10 USD prepaid shown in UNITS at the TEST rate with the first-run budget", /TEST rate/.test(help) && /First-run budget/.test(help), help.slice(0, 240));
     const model = await page.locator('[name="l_model"], select[name^="m_"]').first().inputValue().catch(() => "default");
     S.model_choice = model;
     // the soul: Claude expands the seed through the page (/souls/draft on the site, under its caps)
@@ -314,7 +314,7 @@ async function phaseWatch() {
     const v = (await reader.tokenBalance(launchPdas.computeVault(agent))) ?? 0n;
     S.vault_at_launch ??= v.toString();
     save();
-    return [!!la?.awake && v > 0n, `awake ${la?.awake}, vault ${launchPdas.computeVault(agent)} holds ${v} base units (${Number(v) / 10 ** DEC} tUNITS)`];
+    return [!!la?.awake && v > 0n, `awake ${la?.awake}, vault ${launchPdas.computeVault(agent)} holds ${v} base units (${Number(v) / 10 ** DEC} UNITS)`];
   }, 120);
   await once("chain: soul digest committed (set_profile) equals the soul Core serves", async () => {
     const rec = await reader.agent(agent);
@@ -489,8 +489,8 @@ async function phaseTrade() {
       await page.locator(".mk-tb-done").waitFor({ timeout: T });
       const sig = (await page.locator(".mk-tb-done").getAttribute("data-sig"))!;
       const after = await bal();
-      logTx(`${side} ${amt} ${side === "buy" ? "tUNITS of" : ""} ${SEED.symbol} through /tokens/${mint.slice(0, 6)}… (test wallet)`, sig, (await getTx(sig))?.meta?.fee);
-      check(`trade: ${side} through the token page confirmed`, side === "buy" ? after.tok > before.tok : after.line > before.line, `${sig}; tUNITS ${before.line} -> ${after.line}, ${SEED.symbol} ${before.tok} -> ${after.tok}`);
+      logTx(`${side} ${amt} ${side === "buy" ? "UNITS of" : ""} ${SEED.symbol} through /tokens/${mint.slice(0, 6)}… (test wallet)`, sig, (await getTx(sig))?.meta?.fee);
+      check(`trade: ${side} through the token page confirmed`, side === "buy" ? after.tok > before.tok : after.line > before.line, `${sig}; UNITS ${before.line} -> ${after.line}, ${SEED.symbol} ${before.tok} -> ${after.tok}`);
       await page.locator(".mk-tb-done").evaluate((e: HTMLElement) => e.remove()).catch(() => {});
     }
     await shot("5-traded");

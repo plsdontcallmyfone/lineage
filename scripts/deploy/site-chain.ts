@@ -8,7 +8,7 @@
 //
 // --plan reads the chain and prints what it would send, sending nothing (the dry run uses it).
 // Keys: ~/.config/lineage/site/{owner,verifier-ref,verifier-v1,verifier-v2}.json (made by
-// site-keys.ts). The owner must hold SOL for fees and tUNITS for 3 burns and 2 bonds; fund-site.ts,
+// site-keys.ts). The owner must hold SOL for fees and UNITS for 3 burns and 2 bonds; fund-site.ts,
 // run on the owner's machine, sends both. Only public keys and signatures are printed.
 import { appendFileSync, readFileSync } from "node:fs";
 import { homedir } from "node:os";
@@ -67,9 +67,9 @@ for (const [i, v] of verifiers.entries()) {
 }
 const sol = await rpc.getBalance(owner.id);
 const line = (await reader.tokenBalance(ownerLine)) ?? 0n;
-log(`owner ${owner.id}: ${(Number(sol) / 1e9).toFixed(6)} SOL, ${line} tUNITS base units; needs ${needLine} tUNITS base units; caps digest ${capsDigest.slice(0, 16)}...`);
+log(`owner ${owner.id}: ${(Number(sol) / 1e9).toFixed(6)} SOL, ${line} UNITS base units; needs ${needLine} UNITS base units; caps digest ${capsDigest.slice(0, 16)}...`);
 if (needLine > line || (needLine > 0n && sol < 20_000_000n)) {
-  const msg = `owner ${owner.id} is not funded (needs ${needLine} tUNITS base units and 0.02 SOL): ${L.name ? `send it both on ${L.network} (the owner decides; nothing here funds it)` : "run scripts/deploy/deploy.sh <host> fund on the owner's machine"}`;
+  const msg = `owner ${owner.id} is not funded (needs ${needLine} UNITS base units and 0.02 SOL): ${L.name ? `send it both on ${L.network} (the owner decides; nothing here funds it)` : "run scripts/deploy/deploy.sh <host> fund on the owner's machine"}`;
   if (PLAN) log(`plan: ${msg}`);
   else throw new Error(msg);
 }

@@ -195,7 +195,7 @@ fees stay unclaimed; review 2026-10-07 H1).
 #### A1-11 (Info, accepted): runtime debits are capped only when the cap is set
 
 `max_debit_per_epoch = 0` means no cap, and on devnet the compute sink is the runtime authority's own
-token account (DEVNET.md "Wiring"), so the runtime key can move up to the cap (1,000 tUNITS TEST) per
+token account (DEVNET.md "Wiring"), so the runtime key can move up to the cap (1,000 UNITS TEST) per
 usage epoch length (300 s) from hosted compute vaults to itself. Accepted for devnet; before mainnet
 the sink should be a treasury-controlled account and the cap sized to real hosting costs.
 
@@ -593,7 +593,7 @@ RPC is the operator's keyed endpoint; before mainnet, cross-check the simulated 
 from the pool's onchain price read separately.
 
 **OFF-W4 (Low, accepted): the faucet's hourly cap counts finished drips,** so concurrent requests
-can pass it together. Devnet tUNITS only; the gate now limits the faucet to 3 per hour per client (/64
+can pass it together. Devnet UNITS only; the gate now limits the faucet to 3 per hour per client (/64
 for IPv6) and requires a listed Origin.
 
 Checked without a finding: the `html` template escapes every interpolation and no `raw()` takes agent

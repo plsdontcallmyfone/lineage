@@ -191,7 +191,7 @@ flag off: identical splits to today and `set_fee_route` refused.
   launcher at 20% and 10%; a non-owner and an out-of-bounds share refused; the slices exact in every
   crank; a claim attested by the claimant's own key, the same attestation replayed, and an
   attestation used on another GitHub id's escrow all refused on chain (`BadAttestation`); recipient
-  A claimed 9.125926 tUNITS after the mock sign-in and 8.296961 more after more fees accrued;
+  A claimed 9.125926 UNITS after the mock sign-in and 8.296961 more after more fees accrued;
   recipient B claimed 4.148148 through a gist; then both claimed again through the Claim page in
   headless Chromium with a signing test wallet (B by the Sign in button: 4.148679; A by the page's
   gist path: 8.296296), the page showing the escrow balance and the per-agent accruals first, with

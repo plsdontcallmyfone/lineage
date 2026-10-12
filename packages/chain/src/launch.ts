@@ -152,7 +152,7 @@ export const launch = {
     };
   },
   /**
-   * Prepaid credits at launch (plan C): the launcher's tUNITS into the new agent's compute vault, then
+   * Prepaid credits at launch (plan C): the launcher's UNITS into the new agent's compute vault, then
    * the permissionless refresh_awake, placed after register_pump_launch in the same transaction so the agent
    * wakes at once when `amount` reaches wake_threshold.
    */

@@ -1,8 +1,8 @@
 // Prepaid credits at launch (plan C, owner decision 2026-10-09): the deposit step of the launch form.
-// The launch transaction carries launch_agent, a tUNITS deposit into the new compute vault and
+// The launch transaction carries launch_agent, a UNITS deposit into the new compute vault and
 // refresh_awake, so the agent wakes at once. Every figure here comes from Core's network config
 // (`prepay`: minimum, default, the TEST dollar rate, the runtime's published compute prices) or from
-// chain (wake_threshold, the wallet's tUNITS, the frozen lookup table a v0 launch reads); none is
+// chain (wake_threshold, the wallet's UNITS, the frozen lookup table a v0 launch reads); none is
 // invented. lineage_launch does not enforce the minimum, so this form refuses a smaller deposit and
 // Core keeps an underfunded agent asleep (packages/core/src/prepay.ts).
 // Owner direction 2026-10-11: the credits are typed in USD (at least Core's min_usd, more allowed) on

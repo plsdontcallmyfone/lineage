@@ -63,7 +63,7 @@ export interface ChainCfg {
 /** The page's network profile: devnet until /chain/config says otherwise. */
 export const NET: { p: PublicProfile } = { p: DEVNET_PUBLIC_PROFILE };
 export const isMainnet = () => NET.p.network === "mainnet";
-/** The quote token's symbol for labels: tUNITS on devnet, the configured quote (PYUSD stand-in, later $UNITS) on mainnet. */
+/** The quote token's symbol for labels, from the network profile (config, never the coin's on-chain metadata): UNITS. */
 export const qsym = () => NET.p.quote.symbol;
 /** The quote token as user-facing copy (owner direction 2026-10-11): "$UNITS" on devnet (with a "devnet test tokens, no value" note), the configured quote elsewhere. */
 export const usym = () => (NET.p.network === "devnet" ? "$UNITS" : NET.p.quote.symbol);

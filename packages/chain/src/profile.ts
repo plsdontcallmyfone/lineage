@@ -9,10 +9,10 @@ export type NetworkName = "devnet" | "mainnet";
 export const NETWORKS: readonly NetworkName[] = ["devnet", "mainnet"];
 
 export interface QuoteConfig {
-  /** "chain_state": mint and decimals come from the deployed state file (devnet tUNITS); "config": from this block */
+  /** "chain_state": mint and decimals come from the deployed state file (devnet UNITS); "config": from this block */
   source: "chain_state" | "config";
   symbol: string;
-  /** "test" (devnet tUNITS), "stand-in" (a mainnet mint standing in for $UNITS), "live" ($UNITS itself) */
+  /** "test" (devnet UNITS), "stand-in" (a mainnet mint standing in for $UNITS), "live" ($UNITS itself) */
   status: "test" | "stand-in" | "live";
   mint?: string;
   decimals?: number;
@@ -24,7 +24,7 @@ export interface QuoteConfig {
    * may use it); "live": it exists. Absent when `line_mint` is null. Config key `units_mint_status`.
    */
   line_mint_status?: "reserved" | "live";
-  /** how the quote token is named next to its symbol in the UI, e.g. "tUNITS (devnet test)"; defaults to the symbol */
+  /** how the quote token is named where it is introduced in the UI; defaults to the symbol */
   display?: string;
   /** the token's own on-chain metadata symbol when it differs from `symbol` (the devnet test coin keeps "tLINE") */
   onchain_symbol?: string;
@@ -237,7 +237,7 @@ export const DEVNET_PUBLIC_PROFILE: PublicProfile = {
   network: "devnet",
   cluster: "devnet",
   genesis: "EtWTRABZaYq6iMfeYKouRu166VU2xqa1wcaWoxPkrZBG",
-  quote: { symbol: "tUNITS", display: "tUNITS (devnet test)", status: "test", mint: null, decimals: null, token_program: null, line_mint: null },
+  quote: { symbol: "UNITS", display: "UNITS", status: "test", mint: null, decimals: null, token_program: null, line_mint: null },
   faucet: true,
   test_labels: true,
   swap: false,

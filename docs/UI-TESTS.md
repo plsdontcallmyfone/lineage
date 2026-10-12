@@ -55,7 +55,7 @@ from the report or with `bunx playwright show-trace <trace.zip>`.
   `data` reads the same indexer and Core the page uses, so figures are asserted equal to the API, never
   hardcoded.
 - `wallet.ts`: a mock Wallet Standard wallet (named `MOCK_WALLET_NAME`). It connects and signs messages with the app-check test
-  wallet's key (it launched TLAMP and holds devnet tUNITS) and refuses every transaction. Without that key
+  wallet's key (it launched TLAMP and holds devnet UNITS) and refuses every transaction. Without that key
   (CI) a throwaway key is used and the checks that need a funded launcher (the Launch review simulation)
   are skipped.
 - `checks.ts`: `cleanPage(page)` (no horizontal scroll, no em dash in rendered text or labels) at the end of

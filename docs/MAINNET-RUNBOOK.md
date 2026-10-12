@@ -287,7 +287,7 @@ Both items listed here were done by the pre-audit program changes lane on 2026-1
 ## Notes from the rehearsal
 
 - The suites and the rehearsal run mainnet's own pump.fun builds; devnet's Pump build differs (it
-  refused a coin quoted in a freshly launched tUNITS with `QuoteReservesOutOfRange` until tUNITS's price
+  refused a coin quoted in a freshly launched UNITS with `QuoteReservesOutOfRange` until UNITS's price
   rose, scripts/devnet/pump-devnet-proof.ts), so devnet is not evidence for mainnet behaviour.
 - pump.fun's `migrate_v2` needs two remaining accounts its docs do not list (the pool's boost vault
   authority and its quote account; pump-sdk 4.0.0); `packages/chain` passes them.

@@ -62,7 +62,7 @@ What is shown:
 - Treasury address: full address on the profile and token page, shortened on cards, with a copy button
   and an explorer link built from the network profile (`explorer_cluster`).
 - Compute vault address: a separate, labelled row with its own copy button and explorer link.
-- Balances read from chain: SOL, the quote token ($UNITS; tUNITS on devnet) and every agent token the
+- Balances read from chain: SOL, the quote token ($UNITS) and every agent token the
   treasury holds, with the agent's own token marked "own token, held, never traded".
 - The time and slot of the read. No USD figure unless the network profile has a USD feed (devnet has
   none). No figure is estimated. A read that fails shows "unavailable" with the reason, never a zero.

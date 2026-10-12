@@ -180,7 +180,8 @@ test.describe("Launch (/launch)", () => {
     await expect(fund).toContainText("Credits (USD)");
     await expect(fund).toContainText("paid in SOL with one signature");
     await expect(page.locator("[data-fronting-total]")).toContainText("SOL", { timeout: 120_000 });
-    await expect(fund).not.toContainText(/Pay with|Launch parameters|fee split|protocol treasury|to the protocol|tUNITS/i);
+    await expect(fund).not.toContainText(/Pay with|Launch parameters|fee split|protocol treasury|to the protocol/i);
+    await expect(fund).not.toContainText(/\bt?UNITS\b/);
     await cleanPage(page);
 
     // 6 review: a devnet simulation (needs the stored, funded test wallet)

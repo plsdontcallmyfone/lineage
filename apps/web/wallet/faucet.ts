@@ -1,6 +1,6 @@
-// Server-side devnet faucet. tUNITS is a pump.fun coin on devnet (owner decision 2026-10-10): its mint
+// Server-side devnet faucet. UNITS is a pump.fun coin on devnet (owner decision 2026-10-10): its mint
 // authority is revoked by pump.fun, so nothing is minted. The faucet wallet
-// (~/.config/lineage/devnet/faucet.json) is a devnet treasury holding tUNITS bought on tUNITS's own
+// (~/.config/lineage/devnet/faucet.json) is a devnet treasury holding UNITS bought on UNITS's own
 // pump.fun curve with devnet SOL (scripts/devnet/pump-setup.ts), and transfers a small fixed amount,
 // plus a small devnet SOL drip for fees when `solLamports` is set. One drip per wallet per window, a
 // global hourly cap, every drip appended to a JSONL log. Devnet only (genesis checked).
@@ -127,7 +127,7 @@ export class Faucet {
       const d: Drip = { at: Date.now(), wallet, amount: this.o.amount.toString(), sol: (this.o.solLamports ?? 0n).toString(), signature: r.signature, fee: r.fee };
       this.drips.push(d);
       appendFileSync(this.o.logPath, JSON.stringify(d) + "\n", { mode: 0o600 });
-      console.log(`[faucet] ${this.o.amount} base units of tUNITS to ${wallet}: ${r.signature}`);
+      console.log(`[faucet] ${this.o.amount} base units of UNITS to ${wallet}: ${r.signature}`);
       return { status: 200, body: { ...d } };
     } catch (e) {
       const logs = e instanceof TxError ? e.logs.slice(-8) : [];

@@ -419,7 +419,7 @@ describe("analytics aggregates", () => {
       { mint: ma, agent: a.id, symbol: "TA", venue: "pump", hosted: true, hidden: false, fees_claimed_raw: "6000100", to_compute_raw: "3700070", to_protocol_raw: "1800030", debited_raw: "4200000", state_at: s(now) - 30 },
       { mint: mh, agent: h.id, symbol: "TH", venue: "meteora", hosted: true, hidden: true, fees_claimed_raw: "9000000", to_compute_raw: "6300000", to_protocol_raw: "2700000", debited_raw: "1000000", state_at: s(now) - 20 },
     ];
-    const flows = parseIndexerFlows({ quote: "tUNITS", quote_mint: ma, quote_decimals: 6, cranks, tokens, extra: "dropped" })!;
+    const flows = parseIndexerFlows({ quote: "UNITS", quote_mint: ma, quote_decimals: 6, cranks, tokens, extra: "dropped" })!;
     expect(flows.cranks).toHaveLength(4); // the malformed row is dropped
     expect(parseIndexerFlows({ cranks: [] })).toBeNull();
     const REC = generateAgentKey().id;
@@ -431,7 +431,7 @@ describe("analytics aggregates", () => {
     expect(pays.payments).toHaveLength(2);
     // the sampler reads both services over loopback and replaces Core's copy
     const fetched: string[] = [];
-    const fake = (async (u: string) => (fetched.push(u), Response.json(u.includes("/market/") ? { quote: "tUNITS", quote_mint: ma, quote_decimals: 6, cranks, tokens } : { since: 1, payments: pays.payments }))) as unknown as typeof fetch;
+    const fake = (async (u: string) => (fetched.push(u), Response.json(u.includes("/market/") ? { quote: "UNITS", quote_mint: ma, quote_decimals: 6, cranks, tokens } : { since: 1, payments: pays.payments }))) as unknown as typeof fetch;
     expect(await rev.sample({ indexer: "http://ix/", identity: "http://id" }, fake)).toEqual({ indexer: { ok: true, cranks: 4, tokens: 2 }, identity: { ok: true, payments: 2 } });
     expect(fetched).toEqual(["http://ix/market/flows?hidden=1", "http://id/identity/payments"]);
     // Core's own records: a slash of the listed agent 5 h ago (into the reserve), one a challenge reversed, a
@@ -453,7 +453,7 @@ describe("analytics aggregates", () => {
     // 7 d, listed launches only: every figure is the sum of the listed records, in its own denomination
     const w = await get("7d");
     expect(w.axis.t).toHaveLength(7);
-    expect(w.quote).toEqual({ symbol: "tUNITS", mint: ma, decimals: 6 });
+    expect(w.quote).toEqual({ symbol: "UNITS", mint: ma, decimals: 6 });
     expect(src(w, "creator_fees")).toMatchObject({ available: true, value_raw: "1800000", value: 1.8, records: 2, lifetime_raw: "1800030", lifetime_records: 3, undated: 1, prev_raw: "0" });
     expect(src(w, "slashes")).toMatchObject({ value_raw: "40000", records: 1, lifetime_records: 1 });
     expect(src(w, "challenge_bonds")).toMatchObject({ value_raw: "1000000", records: 1 });

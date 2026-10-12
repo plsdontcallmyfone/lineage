@@ -68,16 +68,16 @@ async function run(net: "devnet" | "mainnet", base: string) {
 
   if (net === "devnet") {
     check("devnet: gate says devnet only with the TEST mint", /Devnet only/.test(gate) && /TEST mint/.test(gate), gate);
-    check("devnet: deposit in USD, allocation in tUNITS", /Deposit \(USD\)/.test(deposit) && /Allocation \(tUNITS\)/.test(alloc), `${deposit} | ${alloc}`);
-    check("devnet: pay with tUNITS; SOL and USDC unavailable", pay.join(",") === "LINE:on:tUNITS,SOL:off:SOL (swap),USDC:off:USDC (swap)", pay.join(","));
+    check("devnet: deposit in USD, allocation in UNITS", /Deposit \(USD\)/.test(deposit) && /Allocation \(UNITS\)/.test(alloc), `${deposit} | ${alloc}`);
+    check("devnet: pay with UNITS; SOL and USDC unavailable", pay.join(",") === "LINE:on:UNITS,SOL:off:SOL (swap),USDC:off:USDC (swap)", pay.join(","));
     check("devnet: swap help says unavailable here", /unavailable here/.test(swapHelp), swapHelp);
     check("devnet: trade box offers the faucet and TEST tokens", /Devnet only, TEST tokens/.test(box) && /faucet/.test(box), box.slice(0, 200));
     check("devnet: /chain/config has the faucet and the devnet profile", !!cfg.faucet && cfg.profile?.network === "devnet" && cfg.profile.test_labels === true, `${cfg.faucet} ${cfg.profile?.network}`);
     check("devnet: explorer links carry ?cluster=devnet", /cluster=devnet/.test(await page.content()));
   } else {
     check("mainnet: gate names mainnet, no devnet wording", /mainnet/i.test(gate) && !/Devnet only/.test(gate), gate);
-    check("mainnet: the wallet regions show no TEST label, no faucet, no tUNITS", !/TEST|faucet|tUNITS/i.test(gate + deposit + alloc + pay.join(" ") + swapHelp + profile + box),
-      [gate, deposit, alloc, swapHelp, profile, box].join(" | ").match(/.{0,40}(TEST|faucet|tUNITS).{0,40}/i)?.[0] ?? "");
+    check("mainnet: the wallet regions show no TEST label, no faucet", !/TEST|faucet/i.test(gate + deposit + alloc + pay.join(" ") + swapHelp + profile + box),
+      [gate, deposit, alloc, swapHelp, profile, box].join(" | ").match(/.{0,40}(TEST|faucet).{0,40}/i)?.[0] ?? "");
     check("mainnet: deposit and allocation in the quote token (no USD without a price feed)", /Deposit \(PYUSD\)/.test(deposit) && /Allocation \(PYUSD\)/.test(alloc), `${deposit} | ${alloc}`);
     check("mainnet: pay with PYUSD, SOL or USDC (swap enabled)", pay.join(",") === "LINE:on:PYUSD,SOL:on:SOL (swap),USDC:on:USDC (swap)", pay.join(","));
     check("mainnet: swap help names the stand-in and the limits", /PYUSD \(stand-in for \$UNITS\)/.test(swapHelp) && /slippage/.test(swapHelp), swapHelp);

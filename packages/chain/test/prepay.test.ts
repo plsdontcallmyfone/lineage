@@ -116,7 +116,7 @@ describe("deposit math", () => {
     expect(c.cmpDec("9.99", "10")).toBe(-1);
   });
   test("first-run budget from the runtime's published prices", () => {
-    // 200 tUNITS - 600 s x 0.002 = 198.8 tUNITS, at 20 per USD = 9.94 USD, 19 attempts at 0.5
+    // 200 UNITS - 600 s x 0.002 = 198.8 UNITS, at 20 per USD = 9.94 USD, 19 attempts at 0.5
     expect(c.firstRunBudget(cfg, 200_000_000n, 6)).toEqual({ usd: 9.94, attempts: 19 });
     expect(c.firstRunBudget(cfg, 1_000_000n, 6)).toEqual({ usd: 0, attempts: 0 });
   });

@@ -98,14 +98,14 @@ async function main() {
   const depLine = ata(dep.id, lineMint, T22);
   const buyerLine = ata(buyer.id, lineMint, T22);
   const fund = 100n * ONE;
-  await send(`fund the agent's compute vault with ${fund / ONE} tUNITS; buyer ${buyer.id}: 0.02 SOL and a tUNITS account`, dep, [
+  await send(`fund the agent's compute vault with ${fund / ONE} UNITS; buyer ${buyer.id}: 0.02 SOL and a UNITS account`, dep, [
     token.transferChecked(depLine, lineMint, vault, dep.id, fund, DEC, T22),
     system.transfer(dep.id, buyer.id, 20_000_000n),
     token.createAtaIdempotent(dep.id, buyer.id, lineMint, T22),
   ]);
   const w = (signer: string, to: string, amount: bigint) =>
     launch.withdrawCompute({ launcher: signer, agent: agent.id, agentMint: mint, launcherToken: to, lineMint, amount, lineTokenProgram: T22 });
-  await send("withdraw_compute 1 tUNITS by the launcher (still the owner)", dep, [w(dep.id, depLine, ONE)]);
+  await send("withdraw_compute 1 UNITS by the launcher (still the owner)", dep, [w(dep.id, depLine, ONE)]);
 
   // ---------- A1-03: the sale ----------
   await send(`propose_owner: deployer proposes ${buyer.id}`, dep, [registry.proposeOwner({ owner: dep.id, agent: agent.id, newOwner: buyer.id })]);
@@ -115,7 +115,7 @@ async function main() {
     decodeAgentLaunch((await rpc.getAccountInfo(launchPdas.agentLaunch(mint)))!.data).launcher === dep.id);
   await refused("A1-03 old launcher withdraw_compute after the sale", dep, [w(dep.id, depLine, ONE)], "Unauthorized");
   const b0 = await bal(buyerLine);
-  await send("withdraw_compute 2 tUNITS by the new owner", buyer, [w(buyer.id, buyerLine, 2n * ONE)]);
+  await send("withdraw_compute 2 UNITS by the new owner", buyer, [w(buyer.id, buyerLine, 2n * ONE)]);
   check("A1-03 the new owner withdraws", (await bal(buyerLine)) - b0 === 2n * ONE);
 
   // ---------- bounties: opener is the registry owner; A1-01 donation ----------

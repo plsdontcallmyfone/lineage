@@ -295,7 +295,7 @@ async function init() {
   if (failed) return;
   const reader = new ChainReader(rpc);
   const lc = (await reader.launchConfig())!;
-  const symbol = flag("--symbol") ?? priorOverlay()?.profiles?.mainnet?.quote?.symbol ?? "TESTQ";
+  const symbol = flag("--symbol") ?? priorOverlay()?.profiles?.mainnet?.quote?.onchain_symbol ?? "TESTQ"; // the coin's own on-chain symbol, kept as a record; the label shown is UNITS (owner 2026-10-12)
   mkdirSync(OUT, { recursive: true });
   writeFileSync(join(OUT, "mainnet.json"), JSON.stringify({
     mode: "mainnet", test: true,
@@ -312,7 +312,7 @@ async function init() {
   writeFileSync(join(OUT, "profile.local.json"), JSON.stringify({
     _note: "Local overlay for the mainnet TEST instance (UNITS_PROFILE_LOCAL, packages/chain/src/profile-node.ts): the programs are the mainnet-test ids, the quote is the throwaway test coin, and SOL is turned into it on its own pump.fun curve, not through Jupiter. Untracked.",
     profiles: { mainnet: {
-      quote: { source: "config", symbol, display: `${symbol} (mainnet test coin)`, mint: P.line_mint, decimals: P.line_decimals, token_program: P.line_token_program, status: "stand-in", units_mint: null },
+      quote: { source: "config", symbol: "UNITS", display: "UNITS", onchain_symbol: symbol, mint: P.line_mint, decimals: P.line_decimals, token_program: P.line_token_program, status: "stand-in", units_mint: null },
       swap: false,
       programs: { registry: IDS.registry, launch: IDS.launch, msg: IDS.msg },
     } },
@@ -323,7 +323,7 @@ function priorState(): { launch_lookup_table?: string } | null {
   const f = join(OUT, "mainnet.json");
   return existsSync(f) ? JSON.parse(readFileSync(f, "utf8")) : null;
 }
-function priorOverlay(): { profiles?: { mainnet?: { quote?: { symbol?: string } } } } | null {
+function priorOverlay(): { profiles?: { mainnet?: { quote?: { onchain_symbol?: string } } } } | null {
   const f = join(OUT, "profile.local.json");
   return existsSync(f) ? JSON.parse(readFileSync(f, "utf8")) : null;
 }

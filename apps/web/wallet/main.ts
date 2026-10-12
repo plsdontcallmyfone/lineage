@@ -253,7 +253,7 @@ async function refreshBalances() {
   renderConn();
 }
 
-/** Profile header: the address, SOL and tUNITS, and the faucet (devnet). */
+/** Profile header: the address, SOL and UNITS, and the faucet (devnet). */
 function renderConn() {
   if (S.page !== "profile") return;
   if (!S.account) return;

@@ -173,7 +173,7 @@ mkdir -p <dir> && cd <dir> && bun add playwright-core@1.63.0 && ./node_modules/.
 bun apps/web/scripts/wallet-e2e.ts --pw <dir> [--shots <dir>]   # 29 checks; ports 9665 and 9666
 ```
 
-It tops the test wallet up with devnet SOL from the deployer and with tUNITS from the faucet key when they run low, so it can run more than once a day. Every transaction these scripts send is appended to `onchain/DEVNET.md`.
+It tops the test wallet up with devnet SOL from the deployer and with UNITS from the faucet key when they run low, so it can run more than once a day. Every transaction these scripts send is appended to `onchain/DEVNET.md`.
 
 **`e2e-devnet.ts` and `challenge-e2e.ts` sign with the same Core authority as the live site.** `e2e-devnet.ts` posts the next epoch number before the site does and blocks the site's own post (docs/DEPLOY-SITE.md); `challenge-e2e.ts` keeps its own epoch open but resolves challenges and slashes on chain with that authority. Run them only on a devnet the site does not use, or with the site's Core stopped. `wallet-e2e.ts` launches a new TEST agent token per run.
 

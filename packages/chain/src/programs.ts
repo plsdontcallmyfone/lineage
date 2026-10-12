@@ -57,7 +57,7 @@ export function matchProgramIds(network: string, ids: Partial<ProgramIds>): Read
 
 /**
  * The first devnet deployment (2026-10-07 to 2026-10-10), bound at initialize to the earlier plain
- * Token-2022 tUNITS (3PLqpw...): kept read-only as history after devnet moved to pump.fun with a fresh
+ * Token-2022 UNITS (3PLqpw...): kept read-only as history after devnet moved to pump.fun with a fresh
  * deployment (owner decision 2026-10-10, onchain/DEVNET.md "Devnet v2"). Nothing builds against these
  * ids except tests over fixtures recorded at them.
  */

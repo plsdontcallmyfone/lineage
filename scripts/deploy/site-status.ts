@@ -28,7 +28,7 @@ const get = async (u: string): Promise<any> => {
     return { _error: (e as Error).message };
   }
 };
-const line = (base: string | undefined, dec = 6) => (base === undefined || base === null ? "?" : `${(Number(base) / 10 ** dec).toLocaleString("en-US", { maximumFractionDigits: 6 })} tUNITS`);
+const line = (base: string | undefined, dec = 6) => (base === undefined || base === null ? "?" : `${(Number(base) / 10 ** dec).toLocaleString("en-US", { maximumFractionDigits: 6 })} UNITS`);
 const pub = (n: string) => {
   const p = join(SITE, `${n}.json`);
   return existsSync(p) ? keyFromSolanaJson(JSON.parse(readFileSync(p, "utf8"))).id : null;

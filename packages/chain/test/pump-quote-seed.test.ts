@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { pumpQuotedCurve, type BondingCurve, type PumpGlobal } from "../src/index.ts";
 
-// Measured on devnet 2026-10-10 (devnet v2 relaunch): Global and the tUNITS curve at the TMBPE launch;
+// Measured on devnet 2026-10-10 (devnet v2 relaunch): Global and the UNITS curve at the TMBPE launch;
 // the launch's buy_v3 asked exactly the quote of a curve seeded at 329,097,379,248,143.
 const g = { initialVirtualTokenReserves: 1_073_000_000_000_000n, initialVirtualSolReserves: 1_000_000_000n, initialRealTokenReserves: 793_100_000_000_000n,
   initialVirtualQuoteReserves: 4_292_000n, tokenTotalSupply: 1_000_000_000_000_000n } as unknown as PumpGlobal;

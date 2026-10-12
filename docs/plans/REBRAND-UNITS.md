@@ -10,7 +10,7 @@ Phase 1 executes it in reviewable commits by area (section 5).
   units): API `/v1/units`, field `unit_id`, copy "the base58 unit". Section 3.14.
 - **Q2, ticker: $LINE becomes $UNITS** in code labels, config symbols, docs and UI. The devnet test
   coin is a pump.fun coin whose on-chain name and symbol cannot change; it is displayed from config
-  as "tUNITS (devnet test)". The mainnet $UNITS mint comes from the owner later. Section 3.15.
+  as UNITS (owner 2026-10-12: "just UNITS. always."; no devnet-only name). The mainnet $UNITS mint comes from the owner later. Section 3.15.
 - **Q3, mirrored GitHub history:** not changed (no answer given; the default in 3.7 stands).
 - **Q4, folder:** `~/lineage` becomes `~/units` with a symlink, done by the coordinator after the merge.
 - **Deploy:** the owner approved the zero-downtime migration deploy to the devnet site and the UI
@@ -342,8 +342,8 @@ What changes:
 
 ### 3.15 Ticker: $LINE becomes $UNITS (owner decision Q2)
 
-- Copy, labels and docs: `$LINE` to `$UNITS`, `tLINE` to `tUNITS`.
-- Config: the devnet profile's quote symbol becomes `tUNITS` with `display: "tUNITS (devnet test)"`
+- Copy, labels and docs: `$LINE` and `tLINE` to `$UNITS` (one name on every network, owner 2026-10-12).
+- Config: the devnet profile's quote symbol becomes `UNITS` with `display: "UNITS"`
   and `onchain_symbol: "tLINE"` (the pump.fun coin's metadata, which cannot change); the mainnet
   profile key `line_mint` becomes `units_mint` (the parser reads either; still null until the owner
   gives the mint). Internal names such as the programs' `line_mint` account fields stay (account

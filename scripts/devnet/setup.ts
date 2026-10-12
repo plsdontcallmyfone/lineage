@@ -67,7 +67,7 @@ const want = (s: string) => !only || only.has(s);
 const T22 = TOKEN_2022_PROGRAM;
 const DECIMALS = 6;
 const ONE = 10n ** BigInt(DECIMALS);
-const LINE_META = { name: "Lineage devnet TEST LINE", symbol: "tLINE", uri: "https://lineage.invalid/devnet/tline.json" }; // the on-chain metadata of the devnet test coin as pump-devnet-proof.ts created it (cannot change; shown as tUNITS from config)
+const LINE_META = { name: "Lineage devnet TEST LINE", symbol: "tLINE", uri: "https://lineage.invalid/devnet/tline.json" }; // the on-chain metadata of the devnet test coin as pump-devnet-proof.ts created it (cannot change; shown as UNITS from config)
 const AGENT_REPO = "https://github.com/karpathy/minbpe";
 const AGENT_META = { name: "TEST minbpe agent", symbol: "TMBPE", uri: "https://lineage.invalid/devnet/agents/minbpe-test.json" };
 

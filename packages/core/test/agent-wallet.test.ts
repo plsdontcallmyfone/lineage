@@ -65,11 +65,11 @@ describe("agent wallet", () => {
       [ata(a.agent, b.mint, TOKEN_2022_PROGRAM), 7n],
     ]);
     const { r, calls } = reader(bal);
-    agentWalletOf(e.core).configure({ reader: r, network: "devnet", quoteSymbol: "tUNITS" });
+    agentWalletOf(e.core).configure({ reader: r, network: "devnet", quoteSymbol: "UNITS" });
     const v = await expectOk(e.anon.get(`/v1/agents/${a.agent}/wallet`));
     expect(v).toMatchObject({
       chain: true, network: "devnet", slot: 4242, error: null,
-      treasury: { address: a.agent, sol_lamports: "123456789", quote: { mint: QUOTE, symbol: "tUNITS", decimals: 6, amount: "250000000" } },
+      treasury: { address: a.agent, sol_lamports: "123456789", quote: { mint: QUOTE, symbol: "UNITS", decimals: 6, amount: "250000000" } },
       compute_vault: { address: launchPdas.computeVault(a.agent), amount: "199000000" },
     });
     expect(v.treasury.holdings).toEqual([{ mint: a.mint, agent: a.agent, amount: "10000000000", decimals: 6, own: true }, { mint: b.mint, agent: b.agent, amount: "7", decimals: 6, own: false }]);
@@ -90,7 +90,7 @@ describe("agent wallet", () => {
   test("a failed chain read is an error with the addresses, never zeros, and is not cached", async () => {
     const { e, a } = await world();
     const { r, calls } = reader(new Map(), { fail: true });
-    agentWalletOf(e.core).configure({ reader: r, network: "devnet", quoteSymbol: "tUNITS" });
+    agentWalletOf(e.core).configure({ reader: r, network: "devnet", quoteSymbol: "UNITS" });
     const v = await expectOk(e.anon.get(`/v1/agents/${a.agent}/wallet`));
     expect(v.error).toMatch(/chain read failed: 429/);
     expect(v.treasury).toMatchObject({ address: a.agent, sol_lamports: null, quote: null, holdings: null });

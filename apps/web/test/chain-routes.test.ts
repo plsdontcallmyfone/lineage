@@ -43,7 +43,7 @@ describe("devnet profile: as before", () => {
     expect(j).toMatchObject({ rpc: "/chain/rpc", rpc_upstream: "https://api.devnet.solana.com", genesis: devnet.genesis, cluster: "devnet", devnet: true, faucet: "Fauc3tAddr" });
     // same state filtering as before: keys and test leaves out, the public devnet URL kept
     expect(j.state).toEqual({ line_mint: state.line_mint, line_decimals: 6, rpc_url: state.rpc_url });
-    expect(j.profile).toMatchObject({ network: "devnet", faucet: true, test_labels: true, quote: { symbol: "tUNITS" } });
+    expect(j.profile).toMatchObject({ network: "devnet", faucet: true, test_labels: true, quote: { symbol: "UNITS" } });
   });
 
   test("sends are allowed to devnet and refused when the upstream is another cluster", async () => {

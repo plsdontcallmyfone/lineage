@@ -42,7 +42,7 @@ describe("SOL cost lines from the simulations (owner direction 2026-10-11)", () 
     expect(h).toContain("one signature");
     expect(h).toContain("Launch disabled: the wallet holds");
     expect(h).toContain("Devnet test tokens, no value");
-    expect(h).not.toContain("tUNITS");
+    expect(h).not.toMatch(/\bt?UNITS\b/);
     expect(h).not.toContain("\u2014");
     const r = costBreakdown({ ...v, blocked: null }).s;
     expect(r).toContain("10 USD of credits");

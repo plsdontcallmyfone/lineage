@@ -75,13 +75,13 @@ const sol0 = await rpc.getBalance(dep.id);
 const lc0 = await acct(launchPdas.config(), decodeLaunchConfig);
 check("upgraded program, flags off before the run", lc0.features === 0 && lc0.admin === dep.id, `features ${lc0.features}, admin ${lc0.admin}`);
 
-// ---- 0. funding (devnet SOL from the deployer, tUNITS from the devnet treasury)
+// ---- 0. funding (devnet SOL from the deployer, UNITS from the devnet treasury)
 await topUp("0", dep, keeper.id, 300_000_000n, "pool keeper", 500_000_000n);
 await topUp("0", dep, launcher.id, 300_000_000n, "proof launcher", 500_000_000n);
 await topUp("0", dep, trader.id, 200_000_000n, "proof trader", 300_000_000n);
 const traderLine = ata(trader.id, LINE, T22);
 if ((await bal(traderLine)) < 200_000n * ONE)
-  await send("0: tUNITS to the proof trader", dep, [token.createAtaIdempotent(dep.id, trader.id, LINE, T22),
+  await send("0: UNITS to the proof trader", dep, [token.createAtaIdempotent(dep.id, trader.id, LINE, T22),
     token.transferChecked(ata(treasury.id, LINE, T22), LINE, traderLine, treasury.id, 400_000n * ONE, 6, T22)], { signers: [treasury] });
 
 // ---- 1. configs (TEST values of the plans; the route delay short for this run) and the feature bits
@@ -157,7 +157,7 @@ try {
     const curve = await acct(pumpPdas.bondingCurve(a.mint.id), decodeBondingCurve);
     const spend = min(curve.virtualQuoteReserves / 8n, 20_000n * ONE);
     const t = await pumpTrade(rpc, { trader, mint: a.mint.id, lineMint: LINE, buy: true, amountIn: spend });
-    txs.push({ step: `4: ${label} trader buys ${a.sym} with ${fmt(spend)} tUNITS`, signature: t.signature, fee: t.fee, cu: t.computeUnits, bytes: t.size });
+    txs.push({ step: `4: ${label} trader buys ${a.sym} with ${fmt(spend)} UNITS`, signature: t.signature, fee: t.fee, cu: t.computeUnits, bytes: t.size });
     const fees = (await acct(pumpPdas.bondingCurve(a.mint.id), decodeBondingCurve)).creatorFee + (await bal(creatorLineAccount(a.agent.id, LINE)));
     const before = { compute: await bal(launchPdas.computeVault(a.agent.id)), treasury: await bal(registryPdas.treasury()), gh: await bal(claimPdas.vault(gh)), pool: await bal(poolPdas.vault(repoId, LINE, T22)) };
     await send(`4: ${label} crank ${a.sym} (sweep, collect, crank_pump_fees with route accounts)`, keeper, crankIxs(a, gh), { computeUnits: 600_000 });
@@ -264,7 +264,7 @@ try {
       claims.claimGithubFees({ wallet: wallet.id, walletToken: ata(wallet.id, LINE, T22), githubId: gh, lineMint: LINE, ceiling: BigInt(a.ceiling), expiresAt: a.expires_at })];
     await send(`7: ${label}: claim_github_fees`, wallet, ixs);
     const got = (await bal(ata(wallet.id, LINE, T22))) - before;
-    check(`${label}: the wallet received the escrow's balance`, got === BigInt(a.ceiling) && got > 0n, `${fmt(got)} tUNITS`);
+    check(`${label}: the wallet received the escrow's balance`, got === BigInt(a.ceiling) && got > 0n, `${fmt(got)} UNITS`);
     // the same attestation again
     await refuses(`${label}: the same attestation replayed`, wallet, ixs.slice(1), "BadAttestation");
     return { att: a, ixs, got };
@@ -320,7 +320,7 @@ try {
     const got = (await bal(ata(wallet.id, LINE, T22))) - w0;
     check(`Claim page, recipient ${who} (${mode === "oauth" ? "mock sign-in" : "gist"}): shows the escrow's balance and per-agent accruals, then claims it`,
       r.claimable_before === vault0.toString() && BigInt(r.claimed) === got && got === vault0 && got > 0n && r.claimable_after === "0" && r.per_agent.length >= 1,
-      `${fmt(got)} tUNITS, tx ${r.signature.slice(0, 12)}; rows ${r.per_agent.map((x) => `${x.agent.slice(0, 6)} ${x.share} ${x.accrued}`).join(", ")}`);
+      `${fmt(got)} UNITS, tx ${r.signature.slice(0, 12)}; rows ${r.per_agent.map((x) => `${x.agent.slice(0, 6)} ${x.share} ${x.accrued}`).join(", ")}`);
     check(`Claim page, recipient ${who}: no console error, no monospace, no em dash, no horizontal scroll`, r.console_errors.length === 0, r.console_errors.join(" | ").slice(0, 200));
     txs.push({ step: `7b: claim through the Claim page (recipient ${who}, ${mode})`, signature: r.signature, fee: null, cu: null, bytes: 0 });
     pages.push({ recipient: who, mode, login: r.login, claimed: r.claimed, signature: r.signature, per_agent: r.per_agent, screenshots: r.screenshots.map((x) => x.split("/").pop()) });

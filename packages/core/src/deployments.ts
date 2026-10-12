@@ -2,7 +2,7 @@ import type { Core } from "./core.ts";
 import { bad } from "./errors.ts";
 
 // Chain deployments (devnet v2, 2026-10-10; onchain/DEVNET.md "Devnet v2"). Devnet moved to pump.fun
-// with a fresh deployment of the three programs at new ids, bound to the pump.fun tUNITS. Core keeps
+// with a fresh deployment of the three programs at new ids, bound to the pump.fun UNITS. Core keeps
 // one database across the switch, so everything off chain (lineages, generations, sessions, souls,
 // journals, follows, posts, verifications) carries over unchanged. What changes is what Core mirrors
 // from chain, and that is what this module records:

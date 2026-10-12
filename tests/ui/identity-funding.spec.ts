@@ -65,7 +65,7 @@ test("identity, funding and review: two choices, SOL only, one signature; nothin
   // Funding: credits in USD, no pay-with selector, no allocation, no parameters table; one compact total in SOL
   const fund = page.locator('[data-step="4"]');
   await expect(page.locator('[name="l_deposit"]')).toHaveValue("10");
-  await expect(fund).not.toContainText(/Pay with|Trading allocation|Launch parameters|First-run budget|tUNITS/);
+  await expect(fund).not.toContainText(/Pay with|Trading allocation|Launch parameters|First-run budget|\bt?UNITS\b/);
   await expect(page.locator("[data-fronting-total]")).toContainText("SOL", { timeout: 120_000 });
   await expect(page.locator(".lz-sum-more summary")).toHaveText("Token creation · Model credits · Initial buy 1% · A units account");
   await expect(fund).toContainText("one signature");

@@ -49,7 +49,7 @@ of `~/.ssh/lineage_site`), then run deploy.sh with its address.
    CAX, AWS Graviton) whose images match the committed ids keeps the recipes as committed.
 4. **keys** (see "Secrets"): makes the site's own keys on the server and copies only the keys the
    server needs from this machine, checked by public key first.
-5. **fund and chain**: `fund-site.ts` runs here (the deployer key stays here): SOL and tUNITS to the
+5. **fund and chain**: `fund-site.ts` runs here (the deployer key stays here): SOL and UNITS to the
    site's verifier owner, SOL to the Core authority. Then `site-chain.ts` on the server registers the
    site's reference runner and two verifiers on devnet (`register` with the server's capabilities digest,
    `bond` min_bond for the two verifiers), owner = the site's owner key. Every transaction is appended
@@ -141,7 +141,7 @@ server is mode 600 in a mode 700 directory, owned by the one service user that u
 | `~lineage/.config/lineage/site/owner.json` | made on the server | `site-keys.ts` | owns the site's verifiers on chain (pays their burn and bond) |
 | `~lineage/.config/lineage/site/verifier-{ref,v1,v2}.json` | made on the server | `site-keys.ts` | reference runner and verifiers |
 | `/etc/lineage-core/core-authority.json` (owner `lineage-core`) | `CjNUnQ3v2FRQJiMr16CfaFWCdzJ3nqq1VvY2zAgsc4j9` | copied from this machine | Core's chain bridge: `post_epoch`, `slash`, `migrate_agent` |
-| `/var/lib/lineage/web/.config/lineage/devnet/faucet.json` (owner `lineage-web`) | `FX4UjRbmbLHJ6K6RTvYcV4bFA9Yai2qntnPNex31GiH6` | copied | the Wallet page's tUNITS faucet |
+| `/var/lib/lineage/web/.config/lineage/devnet/faucet.json` (owner `lineage-web`) | `FX4UjRbmbLHJ6K6RTvYcV4bFA9Yai2qntnPNex31GiH6` | copied | the Wallet page's UNITS faucet |
 | `~lineage/.config/lineage/devnet/agent-<name>.json` (WITH_AUTHOR=1, each name in `AUTHORS`) | minbpe `BFPxdave7NVSXztGEZA5iZ7FiBDKRsuZmS9wZn2J1WBV`; the others as `site-authors.ts` printed them | copied | `lineage-author@<name>` |
 | `~lineage/.config/lineage/devnet/runtime-authority.json` (WITH_RUNTIME=1) | `DCmdy5MoAfnN6fn3nVW27db62ZwtjoksqSqdjAc8VPk4` | copied | `lineage-runtime` (Core only gets the public key file `runtime-authority.pub`) |
 | `~lineage/.config/lineage/model.env` (WITH_RUNTIME=1) | | copied | `lineage-runtime` |
@@ -214,7 +214,7 @@ move to the 8 vCPU plan before wall_s becomes the limit.
 
 **Authors.** Chain mode only lets a launched agent author on units of the repository named at launch
 (`target_repo`), so each repository has its own TEST author agent. `site-authors.ts` launched them on
-devnet, funded each compute vault above Core's wake threshold (2,500 tUNITS, TEST), and called
+devnet, funded each compute vault above Core's wake threshold (2,500 UNITS, TEST), and called
 refresh_awake. Every transaction is in `scripts/deploy/SITE-DEVNET.md`. fixture-zigsize has candidates but
 no author: its repository `fixture:zigsize` is not an https URL, so `launch_agent` refuses it.
 
@@ -425,7 +425,7 @@ scripts/deploy/deploy.sh <host> fund              # top up and re-register (idem
 ssh -i ~/.ssh/lineage_site root@<host> journalctl -u units-core -f
 ```
 
-`status` prints the Core authority's and the site owner's SOL, the faucet's SOL and tUNITS, and the
+`status` prints the Core authority's and the site owner's SOL, the faucet's SOL and UNITS, and the
 registry vaults as Core last read them. Top-ups: `fund` (site owner, Core authority from the deployer),
 `apps/web/scripts/fund-faucet.ts` (faucet). Private canaries go in `/var/lib/lineage/canaries/<recipe name>/`
 (Core rereads it every 60 s); without them the site injects none.
@@ -549,7 +549,7 @@ them is in the docker, sudo, admin, adm or systemd-journal group:
 
 The Core authority key and the faucet key are moved out of `lineage`'s home on the first activate
 (shredded there) and `deploy.sh keys` copies them straight to their new owners afterwards, so the user
-that runs untrusted sandboxes no longer holds a key that posts epochs or pays out tUNITS. Core's and the
+that runs untrusted sandboxes no longer holds a key that posts epochs or pays out UNITS. Core's and the
 indexer's data keep group `lineage` (mode 0770, Core with `UMask=0007`), so if a release from before the
 service users is activated again the site still runs: `remote.sh rollback` to such a release copies the
 two keys back to `lineage` and turns the new timers off; a plain `deploy.sh code` of such a release runs
@@ -716,7 +716,7 @@ exit 0.
 | `spend` (runtime on) | the hosted runtime's model spend at 80% of its window cap (the message says when the cap is reached) | |
 | `souls` | the soul drafter at 80% of its daily cap | |
 | `balance:core-authority`, `balance:owner` | under 0.05 SOL | Core authority under 0.01 SOL |
-| `faucet` | under 0.02 SOL or fewer than 10 drips of tUNITS | |
+| `faucet` | under 0.02 SOL or fewer than 10 drips of UNITS | |
 | `disk:/` | under 20% free | under 10% or 5 GiB free |
 | `backup` | | no snapshot, or the newest older than 2 h |
 | `backup:state`, `backup:identity` | | no encrypted snapshot of that part, or the newest older than 2 h |
@@ -1019,7 +1019,7 @@ defaults to amd64 and recalibrates there.
 
 Devnet costs (test SOL, no money): each `post_epoch` locks 0.00148844 SOL of Epoch account rent
 (measured on epoch 2's account, 165 bytes, 2026-10-08) plus the 5,000 lamport fee, once a day. Verifier
-registration and bonds: three burns of 1 tUNITS and two bonds of 5 tUNITS, plus fees and rent. The model
+registration and bonds: three burns of 1 UNITS and two bonds of 5 UNITS, plus fees and rent. The model
 spend of the optional runtime is real money and is capped by `runtime.json`.
 
 ## Tested

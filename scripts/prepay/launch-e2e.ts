@@ -68,7 +68,7 @@ const owner2 = loadOrCreateKeypair(join(KEYS, "prepay-owner2.json")).key;
 const depBefore = await rpc.getBalance(dep.id);
 log(`rpc ${redactRpc(RPC_URL)}; test wallet ${wallet.id}; lookup table ${state.launch_lookup_table ?? "none"}`);
 
-// ---------------------------------------------------------------- SOL and tUNITS for the test wallet
+// ---------------------------------------------------------------- SOL and UNITS for the test wallet
 async function topUp() {
   const solBal = await rpc.getBalance(wallet.id);
   if (solBal < 400_000_000n) {
@@ -85,7 +85,7 @@ async function topUp() {
     const fk = loadKeypair(join(KEYS, "faucet.json"));
     const r = await sendAndConfirm(rpc, fk, [token.createAtaIdempotent(fk.id, wallet.id, mint, T22),
       token.transferChecked(ata(fk.id, mint, T22), mint, ata(wallet.id, mint, T22), fk.id, want - bal, DEC, T22)]);
-    txs.push({ run: "setup", what: `top up the test wallet with ${Number(want - bal) / 10 ** DEC} tUNITS from the faucet key`, signature: r.signature, fee: r.fee ?? null });
+    txs.push({ run: "setup", what: `top up the test wallet with ${Number(want - bal) / 10 ** DEC} UNITS from the faucet key`, signature: r.signature, fee: r.fee ?? null });
   }
 }
 await topUp();
@@ -175,7 +175,7 @@ async function openWallet(v0: boolean) {
   await page.locator('[data-act="connect"][data-name="units Test Wallet"]').click({ timeout: 30_000 });
   await page.locator(".wl-bal").waitFor({ timeout: T });
   await page.waitForFunction(() => !document.querySelector(".wl-bal")?.textContent?.includes("TBA"), null, { timeout: T });
-  await page.waitForFunction(() => /tUNITS/.test(document.querySelector("#w-prepay")?.textContent ?? ""), null, { timeout: T });
+  await page.waitForFunction(() => /UNITS/.test(document.querySelector("#w-prepay")?.textContent ?? ""), null, { timeout: T });
 }
 
 async function fillForm(o: { label: string; hosted: boolean; soul: boolean; deposit?: string }) {
@@ -204,7 +204,7 @@ async function launchRun(run: string, o: { v0: boolean; soul: boolean; hosted: b
   const usd = o.deposit ?? PREPAY.default_usd;
   const want = usdToBase(usd, PREPAY.line_per_usd, DEC);
   const help = await page.locator("#w-prepay").innerText();
-  check(`${run}: form shows the deposit in tUNITS, the TEST rate and the first-run budget`, help.includes(String(Number(want) / 10 ** DEC)) && /TEST rate/.test(help) && /First-run budget/.test(help) && /wakes at once/.test(help),
+  check(`${run}: form shows the deposit in UNITS, the TEST rate and the first-run budget`, help.includes(String(Number(want) / 10 ** DEC)) && /TEST rate/.test(help) && /First-run budget/.test(help) && /wakes at once/.test(help),
     help.replace(/\s+/g, " ").slice(0, 220));
   await page.click('[data-act="launch-review"]');
   await page.locator("text=simulation succeeded on devnet").waitFor({ timeout: T });
@@ -221,7 +221,7 @@ async function launchRun(run: string, o: { v0: boolean; soul: boolean; hosted: b
   const sigsAll = await rpc.call<{ signature: string; err: unknown }[]>("getSignaturesForAddress", [launchPdas.agentLaunch(l.mint), { limit: 20 }]);
   const launchSig = sigsAll[sigsAll.length - 1]!.signature;
   const tx = await rpc.call<any>("getTransaction", [launchSig, { encoding: "json", commitment: "confirmed", maxSupportedTransactionVersion: 0 }]);
-  txs.push({ run, what: `launch_agent + deposit ${Number(want) / 10 ** DEC} tUNITS + refresh_awake${o.expectMode !== "split" && o.soul ? " + set_profile" : ""} (${tx.version === 0 ? "v0" : "legacy"})`, signature: launchSig, fee: tx.meta.fee });
+  txs.push({ run, what: `launch_agent + deposit ${Number(want) / 10 ** DEC} UNITS + refresh_awake${o.expectMode !== "split" && o.soul ? " + set_profile" : ""} (${tx.version === 0 ? "v0" : "legacy"})`, signature: launchSig, fee: tx.meta.fee });
   const logs: string[] = tx.meta.logMessages ?? [];
   const has = (n: string) => logs.some((x) => x.includes(`Instruction: ${n}`));
   check(`${run}: one transaction ran launch_agent, the deposit and refresh_awake${o.expectMode === "v0" ? " and set_profile" : ""} (${tx.version === 0 ? "v0" : "legacy"})`,
@@ -295,7 +295,7 @@ try {
       txs.push({ run: "C", what: "accept_owner by the second key", signature: r2.signature, fee: r2.fee ?? null });
       const rec = (await reader.agent(c.agent))!;
       await page.goto(`${BASE}/wallet`);
-      await page.waitForFunction(() => /tUNITS/.test(document.querySelector(".wl-bal")?.textContent ?? ""), null, { timeout: T }).catch(() => null);
+      await page.waitForFunction(() => /UNITS/.test(document.querySelector(".wl-bal")?.textContent ?? ""), null, { timeout: T }).catch(() => null);
       await page.click('[data-tab="bounties"]');
       await page.waitForFunction(() => !/Reading/.test(document.querySelector("#w-bopen")?.textContent ?? "Reading"), null, { timeout: T });
       const after = await page.locator(`[name="b_payer"] option[value="${c.agent}"]`).count();

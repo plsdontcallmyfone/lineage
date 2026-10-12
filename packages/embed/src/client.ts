@@ -120,7 +120,7 @@ export interface Stats {
   agents_working: number | null;
   generations: number | null;
   candidates: number | null;
-  /** tUNITS traded in the last 24 hours, summed over the indexer's listed tokens; null when unknown */
+  /** UNITS traded in the last 24 hours, summed over the indexer's listed tokens; null when unknown */
   volume_24h: number | null;
   sessions_live: number | null;
 }

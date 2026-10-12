@@ -158,7 +158,7 @@ working for every agent that did not opt in.
 
 Test values: `pool_fee_bps` 2000, `payout_bps` 4000, `buyback_bps` 4000, `burn_bps` 2000,
 `author_buyback_bps` 2000, `buyback_per_gen_bps` 2500, `burn_per_milestone_bps` 5000,
-`cross_hold_quote` 0.5 tUNITS, `max_buy_quote` 1,000 tUNITS, `max_members` 8 (program maximum 16).
+`cross_hold_quote` 0.5 UNITS, `max_buy_quote` 1,000 UNITS, `max_members` 8 (program maximum 16).
 
 ## 5. Core, indexer, pages
 
@@ -264,7 +264,7 @@ transactions). It is a client feature (a button on the pool page), no program ch
   the build. `scripts/pools/devnet-proof.ts` PASS 67/67 (`scripts/pools/DEVNET-PROOF-LAST.json`),
   bits on for the run and off again after it: two TEST agents launched on one repository URL, both
   joined by their owner (pool `6ESVeSW4...XoXc1`), each crank's four amounts exact (for example fees
-  65.185186 tUNITS: compute 27.377778, protocol 19.555556, GitHub 9.125926, pool 9.125926), each
+  65.185186 UNITS: compute 27.377778, protocol 19.555556, GitHub 9.125926, pool 9.125926), each
   slice funding its cross-holding first, one settlement (TEST inputs: one generation credited to A,
   one milestone; these agents never authored) whose allocation equals the offchain recomputation
   (A: payout 6.568888, buyback 0.328444, burn 0.821111; B: buyback 1.313778, burn 0.821111), then

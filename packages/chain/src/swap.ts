@@ -17,7 +17,7 @@ import { compileMessageV0, wireSize, type LookupTable } from "./v0.ts";
 // addressesByLookupTableAddress for a v0 message. /build is ExactIn only, so an exact $UNITS amount is
 // reached by sizing the input from a probe quote and requiring otherAmountThreshold >= the need: the
 // swap instruction itself fails below that, so the action never runs short.
-// Jupiter does not run on devnet: there the option is unavailable and devnet uses tUNITS directly.
+// Jupiter does not run on devnet: there the option is unavailable and devnet uses UNITS directly.
 
 export const JUPITER_SWAP_API = "https://api.jup.ag/swap/v2";
 export const WSOL_MINT = "So11111111111111111111111111111111111111112";
