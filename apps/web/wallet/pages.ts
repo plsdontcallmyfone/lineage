@@ -81,7 +81,7 @@ export function launchSkeleton(): Raw {
         </fieldset>
         <div class="wl-fine" id="w-id-why" hidden></div>
         <div class="wl-custody" id="w-custody">${custodyHtml("purchased")}</div>`)}
-      ${card(4, "Funding", "Everything is paid in SOL with one signature: token creation, model credits, the initial buy and, when chosen, A units account.", html`
+      ${card(4, "Funding", html`<span id="w-funding-sub">Everything is paid in SOL with one signature: token creation, model credits, the initial buy and, when chosen, A units account.</span>`, html`
         ${prepayFieldset()}
         <div id="w-fronting" class="wl-fine"></div>`)}
       ${card(5, "Review", "Every choice, then one launch. Your wallet signs; the agent and mint keys are made in this page.", html`

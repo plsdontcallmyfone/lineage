@@ -58,6 +58,36 @@ describe("one approval: measured sizes", () => {
     for (const t of txs) expect(t.size).toBeLessThanOrEqual(c.PACKET_LIMIT);
     console.log(`measured, image + links URI: ${txs.map((t) => `${t.groups.join("+")} ${t.size} bytes`).join("; ")}`);
   });
+  test("the quote coin on its PumpSwap pool, no purchase inside the launch: two transactions, the second smaller", () => {
+    // create_v2 names the pool and its two vaults (three more accounts, all in the launch table); the $UNITS come from the wallet
+    const POOL = { pool: k(), baseVault: k(), quoteVault: k() };
+    const strings = 20 + 5 + c.coinMetadataUriBytes("https://app.units.gg", true, true) + 33;
+    const { launcher, agent, mint, g } = groups({ strings, tip: true });
+    const withPool = c.pumpLaunchMain({ launcher, agent, agentMint: mint, line: { mint: LINE, tokenProgram: T22, pool: POOL }, name: "N".repeat(20), symbol: "TMBPE",
+      uri: "u".repeat(c.coinMetadataUriBytes("https://app.units.gg", true, true)), args: { repoUrl: "https://github.com/karpathy/minbpe", identityMode: 1, hosted: true } });
+    const noBuy = g.filter((x) => x.name !== "sol-to-units").map((x) => (x.name === "launch" ? { ...x, ixs: withPool } : x));
+    const t = { address: k(), addresses: c.launchTableAddresses({ lineMint: LINE, lineTokenProgram: T22, linePool: POOL }) };
+    const txs = c.planLaunchBundle({ payer: launcher, groups: noBuy, budget, table: t, v0: true });
+    expect(txs.map((x) => x.groups)).toEqual([["launch", "soul"], ["initial-buy", "credits", "units-account", "tip"]]);
+    for (const x of txs) expect(x.size).toBeLessThanOrEqual(c.PACKET_LIMIT);
+    const before = c.planLaunchBundle({ payer: launcher, groups: g, budget, table: table(), v0: true });
+    expect(txs[1]!.size).toBeLessThan(before[1]!.size);
+    console.log(`measured, quote coin on its pool, no purchase: ${txs.map((x) => `${x.groups.join("+")} ${x.size} bytes${x.table ? " (v0)" : ""}`).join("; ")}`);
+  });
+  test("MAX_LAUNCH_STRINGS_POOL: with the pool and its vaults named, create_v2 + register fill the packet at 321 bytes of strings, not one byte over", () => {
+    const POOL = { pool: k(), baseVault: k(), quoteVault: k() };
+    const t = { address: k(), addresses: c.launchTableAddresses({ lineMint: LINE, lineTokenProgram: T22, linePool: POOL }) };
+    const size = (strings: number) => {
+      const launcher = k(), agent = k(), mint = k();
+      const ixs = c.pumpLaunchMain({ launcher, agent, agentMint: mint, line: { mint: LINE, tokenProgram: T22, pool: POOL }, name: "n".repeat(32), symbol: "s".repeat(13), uri: "u".repeat(200),
+        args: { repoUrl: "r".repeat(strings - 245), identityMode: 1, hosted: true } });
+      return c.wireSize(c.compileMessageV0(launcher, [...budget, ...ixs], "11111111111111111111111111111111", [t]));
+    };
+    expect(c.maxLaunchStrings(true)).toBe(c.MAX_LAUNCH_STRINGS_POOL);
+    expect(c.maxLaunchStrings(false)).toBe(c.MAX_LAUNCH_STRINGS);
+    expect(size(c.MAX_LAUNCH_STRINGS_POOL)).toBe(c.PACKET_LIMIT);
+    expect(size(c.MAX_LAUNCH_STRINGS_POOL + 1)).toBeGreaterThan(c.PACKET_LIMIT);
+  });
   test("the longest strings: still one approval, three transactions in order", () => {
     const { launcher, g } = groups({ strings: c.MAX_LAUNCH_STRINGS });
     const txs = c.planLaunchBundle({ payer: launcher, groups: g, budget, table: table(), v0: true });

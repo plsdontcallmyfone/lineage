@@ -1,11 +1,25 @@
-import { sha256, toAddress, Writer, type Address } from "./codec.ts";
+import { addressBytes, sha256, toAddress, Writer, type Address } from "./codec.ts";
 import { ASSOCIATED_TOKEN_PROGRAM, ata, SYSTEM_PROGRAM, TOKEN_2022_PROGRAM, TOKEN_PROGRAM } from "./pda.ts";
 import { r, w, type Ix } from "./registry.ts";
 
 // System, SPL Token / Token-2022 and associated-token instructions used by the devnet scripts, and
 // token account and mint decoders. Encodings follow the programs' instruction packers.
 
+/** The address System `CreateAccountWithSeed` gives (base, seed, owner): no second signature, the base signs. */
+export const seededAddress = (base: Address, seed: string, owner: Address): Address => toAddress(sha256(addressBytes(base), seed, addressBytes(owner)));
+/** Size of an SPL Token account without extensions. */
+export const TOKEN_ACCOUNT_LEN = 165;
+
 export const system = {
+  /** System CreateAccountWithSeed, the payer being the base: no second signature. */
+  createAccountWithSeed(payer: Address, seed: string, lamports: bigint, space: number, owner: Address): Ix {
+    const bytes = new TextEncoder().encode(seed);
+    return {
+      programId: SYSTEM_PROGRAM,
+      keys: [w(payer, true), w(seededAddress(payer, seed, owner))],
+      data: new Writer().u32(3).address(payer).u64(BigInt(bytes.length)).bytes(bytes).u64(lamports).u64(BigInt(space)).address(owner).done(),
+    };
+  },
   transfer(from: Address, to: Address, lamports: bigint): Ix {
     return { programId: SYSTEM_PROGRAM, keys: [w(from, true), w(to)], data: new Writer().u32(2).u64(lamports).done() };
   },
@@ -19,6 +33,14 @@ export const system = {
 };
 
 export const token = {
+  /** Token InitializeAccount3. On the wrapped SOL mint the lamports above rent become the balance. */
+  initializeAccount3(account: Address, mint: Address, owner: Address, tokenProgram: Address = TOKEN_PROGRAM): Ix {
+    return { programId: tokenProgram, keys: [w(account), r(mint)], data: new Writer().u8(18).address(owner).done() };
+  },
+  /** Token CloseAccount: a wrapped SOL account pays out all its lamports. */
+  closeAccount(account: Address, dest: Address, owner: Address, tokenProgram: Address = TOKEN_PROGRAM): Ix {
+    return { programId: tokenProgram, keys: [w(account), w(dest), r(owner, true)], data: Uint8Array.of(9) };
+  },
   /** Create the ATA if it does not exist (CreateIdempotent). */
   createAtaIdempotent(payer: Address, owner: Address, mint: Address, tokenProgram: Address = TOKEN_PROGRAM): Ix {
     return {

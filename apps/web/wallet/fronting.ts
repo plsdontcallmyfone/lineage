@@ -11,7 +11,7 @@
 // Funding shows one compact total with a one-line breakdown that expands; Review shows every line once.
 // Logic lives here; apps/web/wallet/main.ts only calls these functions (minimal hunks).
 import { fmtUsd } from "../src/usd.ts";
-import { initialBuyAmount, launchSolCosts, maxBuyInput, solShortfall, type Ix, type LaunchSolCosts, type PrepayConfig } from "../../../packages/chain/src/browser/index.ts";
+import { initialBuyAmount, launchSolCosts, maxBuyInput, solShortfall, unitsShortfall, type Ix, type LaunchSolCosts, type PrepayConfig } from "../../../packages/chain/src/browser/index.ts";
 import { html, type Raw } from "../src/html.ts";
 
 /** What a venue's initial buy builder receives: the launch's keys and the exact amount to buy. */
@@ -88,14 +88,22 @@ export interface FundingView {
   quoted?: boolean;
   /** the last build stopped with a reason: offer to read again */
   retry?: boolean;
+  /** a launch that takes $UNITS from the wallet: how an amount of base units reads, its dollars, the coin's symbol */
+  unitsFmt?: (base: bigint) => string;
+  unitsUsd?: (base: bigint) => number | null;
+  unitsName?: string;
+  /** set when the wallet holds too little $UNITS: where to get it */
+  getUnitsUrl?: string;
 }
 
 /** Why the launch is disabled, one short line, or null (also null while the figures are being read: nothing is wrong yet). */
-export function fundingBlocked(v: { costs: LaunchSolCosts | null; solUsd: number | null; solBalance: bigint | null; why?: string | null; pending?: boolean }): string | null {
+export function fundingBlocked(v: { costs: LaunchSolCosts | null; solUsd: number | null; solBalance: bigint | null; why?: string | null; pending?: boolean;
+  unitsBalance?: bigint | null; unitsFmt?: (base: bigint) => string }): string | null {
   if (v.solUsd === null) return "no SOL price";
   if (v.why) return v.why;
   if (!v.costs) return v.pending ? null : "the prices are not read yet";
-  return solShortfall(v.costs, v.solBalance);
+  // both balances: the SOL for what is SOL, and the wallet's own $UNITS when the launch takes them from it
+  return solShortfall(v.costs, v.solBalance) ?? unitsShortfall(v.costs, v.unitsBalance ?? null, v.unitsFmt ?? ((b) => `${b} base units`));
 }
 
 // before the reads answer a cost has no figure yet
@@ -107,6 +115,15 @@ function lines(v: FundingView): [string, string, string][] {
   const q = v.quoted ? ", a Jupiter quote" : "";
   // [label, the cost in US dollars, the SOL the wallet pays for it]
   out.push(["Token creation", c ? money(usdOf(c.creation, v.solUsd)) : WAIT, c ? `${sol(c.creation)}${v.quoted ? "; the swap transaction pays its network fee on top" : ""}` : ""]);
+  if (c?.units) {
+    // no purchase inside the launch: SOL pays only what is SOL, and one line says what leaves the wallet's own $UNITS
+    const u = c.units, f = v.unitsFmt ?? ((b: bigint) => `${b}`), n = v.unitsName ?? "UNITS";
+    if (v.identityChosen) out.push(["A units account", money(usdOf(c.identity, v.solUsd)), sol(c.identity)]);
+    if (c.tip > 0n) out.push(["Jito tip", money(usdOf(c.tip, v.solUsd)), sol(c.tip)]);
+    out.push([`From your ${n}`, money(v.unitsUsd ? v.unitsUsd(u.total) : null),
+      `${f(u.total)}: model credits ${f(u.credits)}${u.buy !== null ? `, initial buy${v.bps !== null ? ` ${v.bps / 100}%` : ""} ${f(u.buy)}` : ""}${u.needed > u.total ? `; the wallet must hold ${f(u.needed)} (the buy at its slippage bound)` : ""}`]);
+    return out;
+  }
   out.push(["Model credits", c ? money(usdOf(c.credits, v.solUsd)) : WAIT, `${c ? `${sol(c.credits)}` : ""}${v.creditsUsd ? `${c ? " for " : ""}${fmtUsd(Number(v.creditsUsd))} of credits` : ""}${c ? q : ""}`]);
   if (!c || c.buy !== null) out.push([`Initial buy${v.bps !== null ? ` ${v.bps / 100}%` : ""}`, c?.buy != null ? money(usdOf(c.buy, v.solUsd)) : WAIT, c?.buy != null ? `${sol(c.buy)}${q}` : ""]);
   if (v.identityChosen) out.push(["A units account", c ? money(usdOf(c.identity, v.solUsd)) : WAIT, c ? sol(c.identity) : ""]);
@@ -121,12 +138,12 @@ export function fundingSummary(v: FundingView): Raw {
   const one = ls.map(([k]) => k).join(" · ");
   return html`<div class="lz-sum" data-fronting-ok="${String(!v.blocked)}">
     <div class="lz-sum-top"><span class="eyebrow">Total</span> <b class="num lz-sum-total" data-fronting-total data-lamports="${c ? c.total.toString() : ""}">${c ? money(usdOf(c.total, v.solUsd)) : v.pending ? "reading prices…" : WAIT}</b>
-      ${c ? html`<span class="dim lz-sum-usd" data-fronting-sol>${sol(c.total)}</span>` : ""}
+      ${c ? html`<span class="dim lz-sum-usd" data-fronting-sol>${sol(c.total)}${c.units ? ` in SOL, plus ${(v.unitsFmt ?? String)(c.units.total)} from your wallet` : ""}</span>` : ""}
       <span class="dim">one signature</span></div>
     <details class="lz-sum-more"><summary>${one}</summary>
       <div class="lz-sum-lines">${ls.map(([k, a, u]) => html`<div class="lz-rr" data-fronting="${k}"><span class="eyebrow">${k}</span><span class="lz-rv"><b class="num">${a}</b> <span class="dim">${u}</span></span></div>`)}</div>
     </details>
-    ${v.blocked ? html`<div class="wl-fine" data-fronting-short><span class="mark warn">Launch disabled: ${v.blocked.replace(/\.$/, "")}.</span>${v.retry ? html` <button type="button" class="wl-btn" data-act="launch-review" data-fronting-retry>Try again</button>` : ""}</div>` : ""}
+    ${v.blocked ? html`<div class="wl-fine" data-fronting-short><span class="mark warn">Launch disabled: ${v.blocked.replace(/\.$/, "")}.</span>${v.getUnitsUrl ? html` <a class="link" href="${v.getUnitsUrl}" target="_blank" rel="noopener" data-get-units>Get ${v.unitsName ?? "UNITS"} on pump.fun</a>` : ""}${v.retry ? html` <button type="button" class="wl-btn" data-act="launch-review" data-fronting-retry>Try again</button>` : ""}</div>` : ""}
     <div class="wl-fine dim">${v.devnet ? "Devnet test tokens, no value. " : ""}<a class="link" href="${v.docs}">details</a></div>
   </div>`;
 }
@@ -136,7 +153,7 @@ export function costBreakdown(v: FundingView): Raw {
   const c = v.costs;
   return html`<div class="lz-review lz-fronting" data-fronting-ok="${String(!v.blocked)}">
     ${lines(v).map(([k, a, u]) => html`<div class="lz-rr" data-fronting="${k}"><span class="eyebrow">${k}</span><span class="lz-rv"><b class="num">${a}</b> <span class="dim">${u}</span></span></div>`)}
-    <div class="lz-rr" data-fronting="Total"><span class="eyebrow">Total</span><span class="lz-rv"><b class="num">${c ? money(usdOf(c.total, v.solUsd)) : WAIT}</b> <span class="dim">${c ? sol(c.total) : ""}${c && c.headroom > 0n ? `; the wallet must hold ${SOL(c.needed)} SOL (the purchase at its slippage bound)` : ""}</span></span></div>
+    <div class="lz-rr" data-fronting="Total"><span class="eyebrow">Total</span><span class="lz-rv"><b class="num">${c ? money(usdOf(c.total, v.solUsd)) : WAIT}</b> <span class="dim">${c ? sol(c.total) : ""}${c?.units ? ` in SOL, plus ${(v.unitsFmt ?? String)(c.units.total)} from your wallet` : ""}${c && c.headroom > 0n ? `; the wallet must hold ${SOL(c.needed)} SOL (the purchase at its slippage bound)` : ""}</span></span></div>
     <div class="lz-rr"><span class="eyebrow">Approval</span><span class="lz-rv"><b>one signature</b> <span class="dim">${v.txCount ? `${v.txCount} transaction${v.txCount === 1 ? "" : "s"} signed together${v.devnet ? ", sent in order" : ", sent as one Jito bundle (all or nothing)"}` : ""}</span></span></div>
     ${v.blocked ? html`<div class="wl-fine" data-fronting-short><span class="mark warn">Launch disabled: ${v.blocked.replace(/\.$/, "")}.</span></div>` : html`<div class="wl-fine"><span class="mark good">your wallet covers all of it</span></div>`}
   </div>`;

@@ -1,5 +1,5 @@
 import type { Address } from "./codec.ts";
-import { ata, TOKEN_2022_PROGRAM } from "./pda.ts";
+import { ata, TOKEN_2022_PROGRAM, TOKEN_PROGRAM } from "./pda.ts";
 import { launch, launchPdas, type PumpLaunchArgs } from "./launch.ts";
 import {
   buybackAccount,
@@ -7,6 +7,7 @@ import {
   creatorFeeHarvest,
   curveMigrated,
   pump,
+  pumpAmm,
   PUMP,
   pumpPdas,
   quoteCurveBuyExactOut,
@@ -16,7 +17,7 @@ import {
   type PumpPool,
 } from "./pump.ts";
 import type { AccountMeta, Ix } from "./registry.ts";
-import { token } from "./spl.ts";
+import { seededAddress, system, token, TOKEN_ACCOUNT_LEN } from "./spl.ts";
 
 // An agent launch on pump.fun (owner decisions 2026-10-10, docs/plans/PUMPFUN-LAUNCHES.md): Pump
 // create_v2 at the top level (creator = the agent's units_launch PDA, quoted in $UNITS, never
@@ -40,6 +41,13 @@ export interface LineQuote {
  * in a second transaction (planLaunch).
  */
 export const MAX_LAUNCH_STRINGS = 327;
+/**
+ * The same cap once $UNITS has migrated: create_v2 then also names its PumpSwap pool and the pool's two
+ * vaults (three more accounts, read through the lookup table), which takes 6 bytes of the packet
+ * (measured by packages/chain/test/prepay.test.ts: exactly 1,232 bytes at 321).
+ */
+export const MAX_LAUNCH_STRINGS_POOL = 321;
+export const maxLaunchStrings = (quoteOnPool: boolean) => (quoteOnPool ? MAX_LAUNCH_STRINGS_POOL : MAX_LAUNCH_STRINGS);
 
 /** create_v2 + register_pump_launch: the venue's create and our record. Signers: launcher, agent, agentMint. */
 export function pumpLaunchMain(a: { launcher: Address; agent: Address; agentMint: Address; line: LineQuote; name: string; symbol: string; uri: string;
@@ -81,6 +89,31 @@ export function pumpSolToLine(a: { launcher: Address; lineMint: Address; amountO
   return [
     token.createAtaIdempotent(a.launcher, a.launcher, a.lineMint, tp),
     pump.buyV3({ mint: a.lineMint, quoteMint: PUMP.wsol, user: a.launcher, userBase: ata(a.launcher, a.lineMint, tp), amount: a.amountOut, maxQuoteIn: a.maxSolIn }),
+  ];
+}
+
+/** Seed of the launcher's temporary wrapped SOL account for the pool purchase (made, spent from and closed in one transaction). */
+export const LAUNCH_WSOL_SEED = "units-launch-wsol";
+export const launchTempWsol = (launcher: Address): Address => seededAddress(launcher, LAUNCH_WSOL_SEED, TOKEN_PROGRAM);
+
+/**
+ * SOL to $UNITS for the launch once $UNITS trades on its canonical PumpSwap pool: an exact-output
+ * `buy_v2` of `amountOut` paid from a temporary wrapped SOL account holding `maxSolIn` lamports
+ * (a seeded account of the launcher: created, filled, spent from and closed in this same transaction,
+ * so what the buy did not take and the account's rent `rentToken` come straight back as SOL and the
+ * launcher's own wrapped SOL account, if any, is never touched), into the launcher's $UNITS account
+ * (created if missing). The shape of the fee keeper's pool buy (packages/fee-keeper/src/plans.ts).
+ */
+export function pumpSolToLinePool(a: { launcher: Address; lineMint: Address; pool: Address; amountOut: bigint; maxSolIn: bigint; rentToken: bigint;
+  lineTokenProgram?: Address }): Ix[] {
+  const tp = a.lineTokenProgram ?? TOKEN_2022_PROGRAM, temp = launchTempWsol(a.launcher);
+  return [
+    token.createAtaIdempotent(a.launcher, a.launcher, a.lineMint, tp),
+    system.createAccountWithSeed(a.launcher, LAUNCH_WSOL_SEED, a.rentToken + a.maxSolIn, TOKEN_ACCOUNT_LEN, TOKEN_PROGRAM),
+    token.initializeAccount3(temp, PUMP.wsol, a.launcher, TOKEN_PROGRAM),
+    pumpAmm.buyV2({ pool: a.pool, mint: a.lineMint, quoteMint: PUMP.wsol, user: a.launcher, userBase: ata(a.launcher, a.lineMint, tp), userQuote: temp,
+      baseOut: a.amountOut, maxQuoteIn: a.maxSolIn }),
+    token.closeAccount(temp, a.launcher, a.launcher, TOKEN_PROGRAM),
   ];
 }
 

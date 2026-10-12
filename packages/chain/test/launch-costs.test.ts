@@ -3,6 +3,7 @@
 // read back with getTransaction: fees, balances before and after, and the size of each new account).
 import { describe, expect, test } from "bun:test";
 import { CU_MAX, LAUNCH_CU, launchCostDetail, launchCreates, launchTxUnits, mintSize, rentLamports, txFeeLamports } from "../src/launch-costs.ts";
+import { launchUnitsCosts, solShortfall, unitsShortfall } from "../src/launch-bundle.ts";
 
 // getMinimumBalanceForRentExemption(0) on mainnet and devnet, 2026-10-12
 const RENT0 = 650_240n;
@@ -54,6 +55,38 @@ describe("the whole launch", () => {
     expect(noBuy.rents.length).toBe(7);
     expect(noBuy.costs.identity).toBe(30_000_000n);
     expect(noBuy.costs.buy).toBeNull();
+  });
+  test("no purchase inside the launch (the quote coin trades on its pool): SOL pays only what is SOL, the $UNITS part is its own figure", () => {
+    const t2 = [txs[0]!, { groups: ["initial-buy", "credits", "units-account", "tip"], signatures: 1, units: launchTxUnits(["initial-buy", "credits", "units-account", "tip"]), price: 8_252 }];
+    const c2 = launchCreates({ name: NAME, symbol: SYMBOL, uri: URI, buy: { createsBuyback: false, launcherVolume: "VOL" } });
+    // the launcher's pump.fun volume account is made by the initial buy when no purchase ran before it
+    expect(c2.filter((c) => c.group === "initial-buy").map((c) => c.what)).toEqual(["the agent's coin account", "your pump.fun volume account"]);
+    const u = launchUnitsCosts({ deposit: 200_000_000n, buy: { quote: 2_178_000_000n, maxIn: 2_199_780_000n } });
+    expect(u).toEqual({ credits: 200_000_000n, buy: 2_178_000_000n, total: 2_378_000_000n, needed: 2_399_780_000n });
+    const d = launchCostDetail({ txs: t2, rent0: RENT0, creates: c2, existing: new Set(), purchase: null, hasBuy: true, identity: 30_000_000n, tip: 9_685n, units: u });
+    expect(d.costs.credits).toBe(0n);
+    expect(d.costs.buy).toBeNull();
+    expect(d.costs.headroom).toBe(0n);
+    expect(d.costs.total).toBe(d.fees[0]! + d.fees[1]! + d.rent + 30_000_000n + 9_685n);
+    expect(d.costs.needed).toBe(d.costs.total);
+    expect(d.costs.units).toEqual(u);
+    expect(d.rents.length).toBe(7 + 2);
+    // a wallet that traded on pump.fun's curves before has its volume account: not paid again
+    const again = launchCostDetail({ txs: t2, rent0: RENT0, creates: c2, existing: new Set(["VOL"]), purchase: null, hasBuy: true, identity: 0n, units: u });
+    expect(d.rent - again.rent).toBe(rentLamports(137, RENT0));
+    // with a purchase the volume account belongs to the purchase, once
+    expect(launchCreates({ name: NAME, symbol: SYMBOL, uri: URI, purchase: { launcherLine: "LINE", launcherVolume: "VOL" }, buy: { createsBuyback: false, launcherVolume: "VOL" } })
+      .filter((c) => c.address === "VOL").length).toBe(1);
+    expect(() => launchCostDetail({ txs: t2, rent0: RENT0, creates: c2, existing: new Set(), purchase: { whole: 1n, credits: 1n }, hasBuy: true, identity: 0n, units: u })).toThrow(/not both/);
+    // both balances are checked
+    const fmt = (b: bigint) => `${b} base`;
+    expect(solShortfall(d.costs, d.costs.total - 1n)).toMatch(/the wallet holds/);
+    expect(unitsShortfall(d.costs, null, fmt)).toMatch(/not read yet/);
+    expect(unitsShortfall(d.costs, u.needed - 1n, fmt)).toBe(`this launch needs ${u.needed} base in your wallet; you hold ${u.needed - 1n} base`);
+    expect(unitsShortfall(d.costs, u.needed, fmt)).toBeNull();
+    expect(unitsShortfall(launchCostDetail({ txs, rent0: RENT0, creates, existing: new Set(), purchase: null, hasBuy: true, identity: 0n }).costs, 0n, fmt)).toBeNull();
+    // the second transaction's limit: no purchase group
+    expect(launchTxUnits(["initial-buy", "credits", "units-account", "tip"])).toBe(1_000 + 190_000 + 35_000 + 1_000 + 1_000);
   });
   test("the optional groups charge their own accounts, the shared ones only when absent", () => {
     const c = launchCreates({ name: NAME, symbol: SYMBOL, uri: URI, feeRoute: { escrow: "E", vault: "V" }, pool: { pool: "P", vault: "PV" } });

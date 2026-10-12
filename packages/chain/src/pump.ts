@@ -351,6 +351,20 @@ export function quotePoolBuyExactIn(rates: PumpFees, p: PumpPool, baseReserve: b
   const eff = quoteReserve + p.virtualQuoteReserves;
   return { baseOut: ((net - 1n) * baseReserve) / (eff + net - 1n), creatorFee: cf };
 }
+/**
+ * PumpSwap `buy_v2` for exactly `baseOut` base: the quote it takes, fees included (the value to send
+ * as `max_quote_in` before slippage). The pool leg rounds up, then each fee rounds up on that leg.
+ * `quoteReserve` is the vault balance.
+ */
+export function quotePoolBuyExactOut(rates: PumpFees, p: PumpPool, baseReserve: bigint, quoteReserve: bigint, baseOut: bigint): { quoteIn: bigint; leg: bigint; lpFee: bigint;
+  protocolFee: bigint; creatorFee: bigint } {
+  const eff = quoteReserve + p.virtualQuoteReserves;
+  if (baseOut <= 0n || eff <= 0n || baseReserve <= 0n) throw new Error("pool takes no trades");
+  if (baseOut >= baseReserve) throw new Error("buy takes the whole pool");
+  const leg = ceilDiv(eff * baseOut, baseReserve - baseOut);
+  const lpFee = feeOf(leg, rates.lpFeeBps), protocolFee = feeOf(leg, rates.protocolFeeBps), creatorFee = feeOf(leg, rates.creatorFeeBps);
+  return { quoteIn: leg + lpFee + protocolFee + creatorFee, leg, lpFee, protocolFee, creatorFee };
+}
 /** PumpSwap `sell_v2`: quote out for `amount` base after the LP, protocol and creator fee. */
 export function quotePoolSell(rates: PumpFees, p: PumpPool, baseReserve: bigint, quoteReserve: bigint, amount: bigint): { quoteOut: bigint; creatorFee: bigint } {
   const eff = quoteReserve + p.virtualQuoteReserves;

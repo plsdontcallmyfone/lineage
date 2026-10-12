@@ -82,11 +82,35 @@ export interface LaunchSolCosts {
   total: bigint;
   /** what the wallet must hold: total plus headroom */
   needed: bigint;
+  /**
+   * Set when the launch buys no $UNITS and takes it from the launcher's own balance instead (base
+   * units of $UNITS): the credits deposit, the initial buy at its quote (null without one), their sum,
+   * and what the wallet must hold (the buy at its slippage bound). The SOL lines `credits` and `buy`
+   * are then 0 and null: SOL pays only what is SOL.
+   */
+  units?: LaunchUnitsCosts;
 }
-export function launchSolCosts(o: { creation: bigint; credits: bigint; buy: bigint | null; identity: bigint; tip?: bigint; headroom?: bigint }): LaunchSolCosts {
+export interface LaunchUnitsCosts {
+  credits: bigint;
+  buy: bigint | null;
+  total: bigint;
+  needed: bigint;
+}
+/** The $UNITS a launch without a purchase takes from the launcher: the deposit, and the initial buy at its quote and at its bound. */
+export function launchUnitsCosts(o: { deposit: bigint; buy: { quote: bigint; maxIn: bigint } | null }): LaunchUnitsCosts {
+  return { credits: o.deposit, buy: o.buy ? o.buy.quote : null, total: o.deposit + (o.buy?.quote ?? 0n), needed: o.deposit + (o.buy?.maxIn ?? 0n) };
+}
+/** Why the wallet's $UNITS cannot cover a launch that takes them from the wallet, or null. `fmt` writes an amount of base units. */
+export function unitsShortfall(c: LaunchSolCosts, held: bigint | null, fmt: (base: bigint) => string): string | null {
+  if (!c.units) return null;
+  if (held === null) return "the wallet's UNITS balance is not read yet";
+  if (held < c.units.needed) return `this launch needs ${fmt(c.units.needed)} in your wallet; you hold ${fmt(held)}`;
+  return null;
+}
+export function launchSolCosts(o: { creation: bigint; credits: bigint; buy: bigint | null; identity: bigint; tip?: bigint; headroom?: bigint; units?: LaunchUnitsCosts }): LaunchSolCosts {
   const tip = o.tip ?? 0n, headroom = o.headroom ?? 0n;
   const total = o.creation + o.credits + (o.buy ?? 0n) + o.identity + tip;
-  return { creation: o.creation, credits: o.credits, buy: o.buy, identity: o.identity, tip, headroom, total, needed: total + headroom };
+  return { creation: o.creation, credits: o.credits, buy: o.buy, identity: o.identity, tip, headroom, total, needed: total + headroom, ...(o.units ? { units: o.units } : {}) };
 }
 /** Why the wallet cannot pay, or null. */
 export function solShortfall(c: LaunchSolCosts, lamports: bigint | null): string | null {

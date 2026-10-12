@@ -34,7 +34,7 @@ import {
   IDENTITY_MODE,
   launch,
   launchPdas,
-  MAX_LAUNCH_STRINGS,
+  maxLaunchStrings,
   coinMetadataUriBytes,
   partsToSend,
   PUMP,
@@ -80,6 +80,9 @@ import {
   type BundleGroup,
   type BundleTx,
   type LaunchSolCosts,
+  type LaunchUnitsCosts,
+  launchUnitsCosts,
+  unitsShortfall,
   solShortfall,
   CU_MAX,
   COIN_LINK_KEYS,
@@ -218,6 +221,10 @@ const linePool = () => (S.cfg?.state as { line_pool?: { pool: string; baseVault:
 // named, because that is what the wallet holds or signs for. No reading: "$ unavailable", never a guess.
 const qUsd = (base: bigint) => quoteToUsd(Number(base) / 10 ** dec());
 /** "$12.34 (100 UNITS)" as text, for messages and labels. */
+/** "1,234 UNITS ($12.34)": an amount of the quote coin the wallet must hold, the coin first. */
+const unitsAmt = (base: bigint) => `${units(base, dec())} ${qsym()} (${fmtUsd(qUsd(base))})`;
+/** Where the quote coin is bought when the launch does not buy it: its pump.fun page. */
+const getUnitsUrl = () => `https://pump.fun/coin/${lineMint()}`;
 const qAmt = (base: bigint, min = 0) => `${fmtUsd(qUsd(base))} (${units(base, dec(), min)} ${qsym()})`;
 const tl = (base: bigint | null | undefined, min = 0) =>
   base === null || base === undefined ? html`<span class="faint">TBA</span>` : html`<span class="num" title="${usdWhy()}">${fmtUsd(qUsd(base))}</span> <span class="unit">${units(base, dec(), min)} ${usym()}</span>`;
@@ -468,7 +475,8 @@ function launchArgs(metaOrigin: string) {
   if (!S.repo || S.repo.state !== "ok") throw new Error("Target repository: enter a public GitHub https URL and wait for the check to pass.");
   // the metadata URI names the mint, which is made after this check: counted at its longest (coin-uri.ts)
   const strings = new TextEncoder().encode(`${namePrefix()}${name}${symbol}${S.repo.url}`).length + coinMetadataUriBytes(metaOrigin, !!S.image, linkList(linksTyped()).length > 0);
-  if (strings > MAX_LAUNCH_STRINGS) throw new Error(`Name, symbol, metadata URI and repository URL take ${strings} bytes; one launch transaction holds ${MAX_LAUNCH_STRINGS}.`);
+  const cap = maxLaunchStrings(!!linePool());
+  if (strings > cap) throw new Error(`Name, symbol, metadata URI and repository URL take ${strings} bytes; one launch transaction holds ${cap}.`);
   return { name: `${namePrefix()}${name}`, symbol, uri: "", repoUrl: S.repo.url, identityMode: IDENTITY_MODE[identity as keyof typeof IDENTITY_MODE], hosted, cls, identity };
 }
 
@@ -801,21 +809,35 @@ async function buildLaunch(): Promise<NonNullable<typeof S.draft>> {
   let swap: PreparedSwap | null = null;
   let purchase: { whole: bigint; credits: bigint } | null = null;
   let headroom = 0n;
+  let fromUnits: LaunchUnitsCosts | null = null;
   if (isMainnet() && NET.p.swap) {
     swap = await prepareSwapThen({ pay: "SOL", need, taker: launcher, action: [], cuLimit: 400_000 });
     // Jupiter's quote for the whole amount, split by the amounts bought (a quote, labelled as one on the page)
     purchase = { whole: swap.route.inAmount, credits: need > 0n ? (swap.route.inAmount * deposit) / need : 0n };
   } else {
-    if (linePool()) throw new Error("$UNITS has moved to its pool; buying it with SOL inside the launch is wired for its curve only.");
-    const [gA, fcA, cA, bA] = await rpc.getMultipleAccounts([PUMP.global, PUMP.feeConfig, pumpPdas.bondingCurve(lineMint()), ata(pumpPdas.bondingCurve(lineMint()), lineMint(), T22)]);
-    if (!gA || !fcA || !cA || !bA) throw new Error("pump.fun's Global, fee config or the $UNITS curve is missing on this cluster");
-    const g = decodePumpGlobal(gA.data), fc = decodePumpFeeConfig(fcA.data), c = decodeBondingCurve(cA.data), base = decodeTokenAccount(bA.data).amount;
-    const whole = quoteCurveBuyExactOut(g, fc, c, need, base);
-    const part = quoteCurveBuyExactOut(g, fc, c, deposit, base);
-    const maxSol = maxSolIn(whole.quoteIn, bps);
-    headroom = maxSol - whole.quoteIn;
-    purchase = { whole: whole.quoteIn, credits: part.quoteIn };
-    solToLine = pumpSolToLine({ launcher, lineMint: lineMint(), amountOut: need, maxSolIn: maxSol, lineTokenProgram: T22 });
+    const lp = linePool();
+    if (lp) {
+      // $UNITS trades on its PumpSwap pool (owner 2026-10-12: "forget the buying for now, just fix it so that things can be
+      // launched"): no purchase inside the launch. The credits and the initial buy come from the launcher's own $UNITS, read
+      // here; SOL pays only what is SOL. A wallet that does not hold enough is told how much and where to get it.
+      const held = (await reader.tokenBalance(ata(launcher, lineMint(), T22))) ?? 0n;
+      S.line = held;
+      fromUnits = launchUnitsCosts({ deposit, buy: buy ? { quote: buy.quote, maxIn: buy.maxIn } : null });
+      if (held < fromUnits.needed) {
+        const why = `This launch needs ${unitsAmt(fromUnits.needed)} in your wallet; you hold ${unitsAmt(held)}. Get ${qsym()} on pump.fun, then press Try again`;
+        throw new BuildStop(why, html`<div class="panel-b"><div class="wl-fine" data-units-short><span class="mark warn">Launch disabled: ${why}.</span> <a class="link" href="${getUnitsUrl()}" target="_blank" rel="noopener">Get ${qsym()} on pump.fun</a></div><div class="wl-row" style="margin-top:8px">${btn("launch-review", "Try again")}</div></div>`);
+      }
+    } else {
+      const [gA, fcA, cA, bA] = await rpc.getMultipleAccounts([PUMP.global, PUMP.feeConfig, pumpPdas.bondingCurve(lineMint()), ata(pumpPdas.bondingCurve(lineMint()), lineMint(), T22)]);
+      if (!gA || !fcA || !cA || !bA) throw new Error("pump.fun's Global, fee config or the $UNITS curve is missing on this cluster");
+      const g = decodePumpGlobal(gA.data), fc = decodePumpFeeConfig(fcA.data), c = decodeBondingCurve(cA.data), base = decodeTokenAccount(bA.data).amount;
+      const whole = quoteCurveBuyExactOut(g, fc, c, need, base);
+      const part = quoteCurveBuyExactOut(g, fc, c, deposit, base);
+      const maxSol = maxSolIn(whole.quoteIn, bps);
+      headroom = maxSol - whole.quoteIn;
+      purchase = { whole: whole.quoteIn, credits: part.quoteIn };
+      solToLine = pumpSolToLine({ launcher, lineMint: lineMint(), amountOut: need, maxSolIn: maxSol, lineTokenProgram: T22 });
+    }
   }
   let tip = 0n;
   let tipIxs: Ix[] = [];
@@ -842,7 +864,7 @@ async function buildLaunch(): Promise<NonNullable<typeof S.draft>> {
   // the accounts whose rent the launcher pays: the new agent's and coin's always, the wallet's own and the shared ones only when absent
   const creates = launchCreates({ name: args.name, symbol: args.symbol, uri: args.uri,
     purchase: solToLine.length ? { launcherLine: ata(launcher, lineMint(), T22), launcherVolume: pumpPdas.userVolume(launcher) } : undefined,
-    buy: buy ? { createsBuyback: buy.ixs.length > 2 } : undefined, feeRoute: extras.creates.feeRoute, pool: extras.creates.pool });
+    buy: buy ? { createsBuyback: buy.ixs.length > 2, launcherVolume: pumpPdas.userVolume(launcher) } : undefined, feeRoute: extras.creates.feeRoute, pool: extras.creates.pool });
   const maybe = creates.flatMap((c) => (c.address ? [c.address] : []));
   // each transaction's unit price is read once here and the transaction is sent with it, so the fee shown is the fee paid
   const [prices, there] = await Promise.all([Promise.all(plan.map((t) => unitPrice(launcher, t.ixs))), maybe.length ? rpc.getMultipleAccounts(maybe) : []]);
@@ -851,7 +873,7 @@ async function buildLaunch(): Promise<NonNullable<typeof S.draft>> {
     const all = [...budgetIxs(CU_MAX), ...t.ixs];
     return { groups: t.groups, signatures: (t.table ? compileMessageV0(launcher, all, FAKE, [t.table]) : compileMessage(launcher, all, FAKE)).numSigners, units: launchTxUnits(t.groups), price: prices[i]! };
   });
-  const detail = launchCostDetail({ txs, rent0: rate, creates, existing: new Set(maybe.filter((_, i) => !!there[i])), purchase, hasBuy: !!buy, identity, tip, headroom });
+  const detail = launchCostDetail({ txs, rent0: rate, creates, existing: new Set(maybe.filter((_, i) => !!there[i])), purchase, hasBuy: !!buy, identity, tip, headroom, units: fromUnits ?? undefined });
   return { agent, mint, args, soul, deposit, buy, plan, txs, detail, swap, costs: detail.costs, quoted: !!swap, identity, landed: [], metaLive: coin.answers, links };
 }
 
@@ -905,7 +927,7 @@ function launchBlocked(): string | null {
     if (S.account.chains?.length && !S.account.chains.includes(walletChain())) return `the connected wallet account is not on ${netName()}; switch it in the wallet`;
   }
   // a build's error belongs to that build only: once a launch is built, an older error no longer disables it
-  return fundingBlocked({ costs: d?.costs ?? null, solUsd: S.solUsd, solBalance: S.sol, why: d ? null : S.draftErr, pending: S.building });
+  return fundingBlocked({ costs: d?.costs ?? null, solUsd: S.solUsd, solBalance: S.sol, why: d ? null : S.draftErr, pending: S.building, unitsBalance: S.line, unitsFmt: unitsAmt });
 }
 
 function fundingView(): FundingView {
@@ -919,7 +941,8 @@ function fundingView(): FundingView {
   }
   const identityChosen = (S.root?.querySelector<HTMLInputElement>('input[name="l_identity"]:checked')?.value ?? "purchased") === "purchased";
   return { costs: d?.costs ?? null, creditsUsd: usd, bps: P.cfg?.initial_buy_bps ?? null, identityChosen, solUsd: S.solUsd, solBalance: S.sol,
-    txCount: d ? d.plan.length + (d.swap?.plan.txs.length ?? 0) : null, blocked: launchBlocked(), devnet: !isMainnet(), docs: docsUrl("/launch-an-agent#5-funding"), pending: !!S.building, quoted: !!d?.quoted, retry: !d && !S.building && !!S.draftErr };
+    txCount: d ? d.plan.length + (d.swap?.plan.txs.length ?? 0) : null, blocked: launchBlocked(), devnet: !isMainnet(), docs: docsUrl("/launch-an-agent#5-funding"), pending: !!S.building, quoted: !!d?.quoted, retry: !d && !S.building && !!S.draftErr,
+    unitsFmt: unitsAmt, unitsUsd: (b) => qUsd(b), unitsName: qsym(), getUnitsUrl: !d && linePool() && S.draftErr?.startsWith("This launch needs") ? getUnitsUrl() : undefined };
 }
 
 function renderLaunchReview() {
@@ -1987,7 +2010,7 @@ function stepProblem(i: number): string | null {
       depositBase(val("l_deposit"), dec());
       if (S.solUsd === null) return "Launch disabled: no SOL price.";
       // launch fronting (owner direction 2026-10-11): everything in SOL, from the built launch's cost lines
-      const short = S.draft?.costs ? solShortfall(S.draft.costs, S.sol) : null;
+      const short = S.draft?.costs ? (solShortfall(S.draft.costs, S.sol) ?? unitsShortfall(S.draft.costs, S.line, unitsAmt)) : null;
       if (short) return `Launch disabled: ${short}.`;
       return null;
     }
@@ -2083,8 +2106,12 @@ function go(i: number) {
 function frontingHtml() {
   return fundingSummary(fundingView());
 }
+/** The launch takes its $UNITS from the wallet (no purchase inside it): $UNITS trades on its pool and this deployment has no swap. */
+const payInUnits = () => !!linePool() && !(isMainnet() && NET.p.swap);
 function renderFronting() {
   set("w-fronting", frontingHtml());
+  const sub = S.root?.querySelector<HTMLElement>("#w-funding-sub");
+  if (sub && payInUnits()) sub.textContent = `One signature. SOL pays token creation, the network fees, the tip and, when chosen, A units account; the model credits and the initial buy come from the ${qsym()} in your wallet.`;
 }
 
 async function enterReview() {
@@ -2127,7 +2154,7 @@ function renderReview() {
       ${row("Banner", S.bannerFile ? `${S.bannerFile.name}, ${Math.ceil(S.bannerFile.size / 1024)} KB` : html`<span class="faint">none</span>`, 2)}
       ${row("Runtime", hosted ? "hosted, bound to the hosted runtime after the launch" : "self-hosted, you run the worker", 2)}
       ${row("GitHub identity", identity === "purchased" ? html`<b>A units account</b>` : val("l_token") ? "your token (bound after the launch)" : "your token, none pasted yet (add one from your Profile)", 3)}
-      ${row("Model credits", dep === null ? "TBA" : html`${depositNote(val("l_deposit"))} <span class="dim">paid in SOL</span> ${rateNote(val("l_deposit"), dec())}`, 4)}
+      ${row("Model credits", dep === null ? "TBA" : html`${depositNote(val("l_deposit"))} <span class="dim">${payInUnits() ? `paid from your ${qsym()}` : "paid in SOL"}</span> ${rateNote(val("l_deposit"), dec())}`, 4)}
     </div>`,
   );
 }

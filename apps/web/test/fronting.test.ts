@@ -2,7 +2,7 @@
 // simulation (packages/chain/src/launch-costs.ts), and the venue buy hook (amount and slippage bound
 // checked against Core's config).
 import { describe, expect, test } from "bun:test";
-import { launchSolCosts, maxBuyInput, parsePrepayConfig } from "../../../packages/chain/src/browser/index.ts";
+import { launchSolCosts, launchUnitsCosts, maxBuyInput, parsePrepayConfig } from "../../../packages/chain/src/browser/index.ts";
 import { costBreakdown, fundingBlocked, fundingSummary, initialBuyFor, setInitialBuyBuilder } from "../wallet/fronting.ts";
 
 const CFG = parsePrepayConfig({ min_usd: "10", default_usd: "10", line_per_usd: "20", rate_status: "test", compute_price_line_per_usd: "20",
@@ -27,6 +27,32 @@ describe("Funding and Review without a simulation (owner 2026-10-12)", () => {
     expect(failed).toContain("Launch disabled: the server or the chain did not answer within 25 seconds.");
     expect(failed).toMatch(/data-act="launch-review"[^>]*>Try again</);
     for (const h of [reading, failed, fundingSummary({ ...base, costs, pending: false }).s, costBreakdown({ ...base, pending: true }).s, costBreakdown({ ...base, costs, pending: false }).s]) expect(h).not.toMatch(/simulat/i);
+  });
+  test("a launch that takes its UNITS from the wallet: no purchase lines, one From your UNITS line, the total is the SOL part, both balances checked", () => {
+    const u = launchUnitsCosts({ deposit: 200_000_000n, buy: { quote: 2_178_000_000n, maxIn: 2_199_780_000n } });
+    const c2 = launchSolCosts({ creation: 25_000_000n, credits: 0n, buy: null, identity: 30_000_000n, tip: 10_000n, units: u });
+    expect(c2.total).toBe(55_010_000n);
+    const fmt = (b: bigint) => `${Number(b) / 1e6} UNITS`;
+    const v = { costs: c2, creditsUsd: "10", bps: 100, identityChosen: true, solUsd: 100, solBalance: 10n ** 12n, txCount: 2, blocked: null, devnet: false, docs: "/docs/x", pending: false,
+      unitsFmt: fmt, unitsUsd: (b: bigint) => Number(b) / 1e6 / 20, unitsName: "UNITS" };
+    const h = fundingSummary(v).s;
+    expect(h).toContain("Token creation · A units account · Jito tip · From your UNITS");
+    expect(h).not.toContain("Model credits ·");
+    expect(h).toContain('data-lamports="55010000"');
+    expect(h).toContain("0.055 SOL in SOL, plus 2378 UNITS from your wallet");
+    expect(h).toContain("2378 UNITS: model credits 200 UNITS, initial buy 1% 2178 UNITS; the wallet must hold 2399.78 UNITS (the buy at its slippage bound)");
+    expect(h).toContain("$118.90");
+    const r = costBreakdown(v).s;
+    expect(r).toContain('data-fronting="From your UNITS"');
+    expect(r).not.toContain('data-fronting="Model credits"');
+    expect(fundingBlocked({ costs: c2, solUsd: 100, solBalance: 10n ** 12n, unitsBalance: 1_000_000n, unitsFmt: fmt })).toBe("this launch needs 2399.78 UNITS in your wallet; you hold 1 UNITS");
+    expect(fundingBlocked({ costs: c2, solUsd: 100, solBalance: 10n ** 12n, unitsBalance: u.needed, unitsFmt: fmt })).toBeNull();
+    expect(fundingBlocked({ costs: c2, solUsd: 100, solBalance: 1n, unitsBalance: u.needed, unitsFmt: fmt })).toMatch(/the wallet holds/);
+    const short = fundingSummary({ ...v, costs: null, blocked: "This launch needs 2399.78 UNITS ($119.99) in your wallet; you hold 0 UNITS ($0.00). Get UNITS on pump.fun, then press Try again", retry: true,
+      getUnitsUrl: "https://pump.fun/coin/GQdEL4MhL4v8bsmMvyBvjh6BdbWqasgkDnJGfaAHpump" }).s;
+    expect(short).toContain('href="https://pump.fun/coin/GQdEL4MhL4v8bsmMvyBvjh6BdbWqasgkDnJGfaAHpump"');
+    expect(short).toMatch(/data-act="launch-review"[^>]*>Try again</);
+    for (const x of [h, r, short]) expect(x).not.toContain("\u2014");
   });
   test("Funding: one total in US dollars with the SOL small, a one-line breakdown with the units account, one short disabled line", () => {
     const v = { costs, creditsUsd: "10", bps: 100, identityChosen: true, solUsd: 100, solBalance: 1n, txCount: 2, blocked: "the wallet holds 0.000000001 SOL", devnet: true, docs: "/docs/x", pending: false };

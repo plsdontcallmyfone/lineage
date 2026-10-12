@@ -1,6 +1,6 @@
 import {
-  addressBytes, ata, curveMigrated, poolRates, PUMP, pump, pumpAmm, pumpPdas, quoteCurveBuyExactIn, quotePoolBuyExactIn, sha256, system, SYSTEM_PROGRAM,
-  toAddress, TOKEN_2022_PROGRAM, TOKEN_PROGRAM, Writer, r, w,
+  ata, curveMigrated, poolRates, PUMP, pump, pumpAmm, pumpPdas, quoteCurveBuyExactIn, quotePoolBuyExactIn, system, SYSTEM_PROGRAM,
+  seededAddress as chainSeededAddress, token, TOKEN_ACCOUNT_LEN as CHAIN_TOKEN_ACCOUNT_LEN, TOKEN_2022_PROGRAM, TOKEN_PROGRAM, Writer, r, w,
   type Address, type BondingCurve, type Ix, type PumpFeeConfig, type PumpGlobal, type PumpPool,
 } from "@units/chain";
 import type { KeeperConfig } from "./config.ts";
@@ -98,29 +98,18 @@ export const TEMP_SEED = "units-fee-keeper";
  * LiteSVM; the fork proof scripts/mainnet/fee-keeper-fork.ts records it when rerun).
  */
 export const BURN_SEED = "units-fee-keeper-burn";
-export const TOKEN_ACCOUNT_LEN = 165;
+export const TOKEN_ACCOUNT_LEN = CHAIN_TOKEN_ACCOUNT_LEN;
 export const burnAccountAddress = (creator: Address, tokenProgram: Address): Address => seededAddress(creator, BURN_SEED, tokenProgram);
-/** The address System `CreateAccountWithSeed` gives (base, seed, owner). */
-export const seededAddress = (base: Address, seed: string, owner: Address): Address => toAddress(sha256(addressBytes(base), seed, addressBytes(owner)));
+/** The address System `CreateAccountWithSeed` gives (base, seed, owner). One implementation, in packages/chain/src/spl.ts. */
+export const seededAddress = chainSeededAddress;
 
 export const extra = {
   /** System CreateAccountWithSeed, the payer being the base: no second signature. */
-  createAccountWithSeed(payer: Address, seed: string, lamports: bigint, space: number, owner: Address): Ix {
-    const bytes = new TextEncoder().encode(seed);
-    return {
-      programId: SYSTEM_PROGRAM,
-      keys: [w(payer, true), w(seededAddress(payer, seed, owner))],
-      data: new Writer().u32(3).address(payer).u64(BigInt(bytes.length)).bytes(bytes).u64(lamports).u64(BigInt(space)).address(owner).done(),
-    };
-  },
+  createAccountWithSeed: system.createAccountWithSeed,
   /** Token InitializeAccount3. On the wrapped SOL mint the lamports above rent become the balance. */
-  initializeAccount3(account: Address, mint: Address, owner: Address, tokenProgram: Address): Ix {
-    return { programId: tokenProgram, keys: [w(account), r(mint)], data: new Writer().u8(18).address(owner).done() };
-  },
+  initializeAccount3: (account: Address, mint: Address, owner: Address, tokenProgram: Address): Ix => token.initializeAccount3(account, mint, owner, tokenProgram),
   /** Token CloseAccount: a wrapped SOL account pays out all its lamports. */
-  closeAccount(account: Address, dest: Address, owner: Address, tokenProgram: Address): Ix {
-    return { programId: tokenProgram, keys: [w(account), w(dest), r(owner, true)], data: Uint8Array.of(9) };
-  },
+  closeAccount: (account: Address, dest: Address, owner: Address, tokenProgram: Address): Ix => token.closeAccount(account, dest, owner, tokenProgram),
   /** Token BurnChecked (SPL Token and Token-2022 share the layout). */
   burnChecked(account: Address, mint: Address, owner: Address, amount: bigint, decimals: number, tokenProgram: Address): Ix {
     return { programId: tokenProgram, keys: [w(account), w(mint), r(owner, true)], data: new Writer().u8(15).u64(amount).u8(decimals).done() };

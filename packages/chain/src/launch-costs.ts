@@ -23,7 +23,7 @@
 // into accounts, so the same instruction moved by 26,000 units between these launches: each
 // transaction's limit is about 1.6 times the largest measurement.
 import type { Address } from "./codec.ts";
-import { launchSolCosts, type LaunchSolCosts } from "./launch-bundle.ts";
+import { launchSolCosts, type LaunchSolCosts, type LaunchUnitsCosts } from "./launch-bundle.ts";
 
 /** Compute unit limit of each instruction group of a launch (apps/web/wallet/main.ts names the groups). */
 export const LAUNCH_CU: Record<string, number> = {
@@ -99,8 +99,12 @@ export function launchCreates(o: {
   uri: string;
   /** the launcher's $UNITS account and pump.fun volume account (the SOL purchase creates them when missing); omitted when no purchase runs on the curve */
   purchase?: { launcherLine: Address; launcherVolume: Address };
-  /** the initial buy: the agent treasury's account is always new; the buyback recipient's account only when the builder adds its create */
-  buy?: { createsBuyback: boolean };
+  /**
+   * the initial buy: the agent treasury's account is always new; the buyback recipient's account only when the builder adds its create;
+   * `launcherVolume`: the launcher's pump.fun volume account, named when no SOL purchase runs before the buy (the buy is then the
+   * wallet's first pump.fun curve trade of the launch and creates it when missing)
+   */
+  buy?: { createsBuyback: boolean; launcherVolume?: Address };
   feeRoute?: { escrow: Address; vault: Address };
   pool?: { pool: Address; vault: Address };
 }): LaunchCreate[] {
@@ -121,6 +125,7 @@ export function launchCreates(o: {
   if (o.buy) {
     out.push({ what: "the agent's coin account", size: S.ata, group: "initial-buy" });
     if (o.buy.createsBuyback) out.push({ what: "pump.fun's buyback $UNITS account", size: S.ata, group: "initial-buy" });
+    if (o.buy.launcherVolume && !o.purchase) out.push({ what: "your pump.fun volume account", size: S.pumpUserVolume, group: "initial-buy", address: o.buy.launcherVolume });
   }
   if (o.feeRoute) {
     out.push({ what: "the fee route", size: S.feeRoute, group: "fee-route" });
@@ -166,6 +171,8 @@ export function launchCostDetail(o: {
   identity: bigint;
   tip?: bigint;
   headroom?: bigint;
+  /** the launch buys no $UNITS: the credits and the initial buy come from the launcher's own $UNITS (no SOL line for either) */
+  units?: LaunchUnitsCosts;
 }): LaunchCostDetail {
   const present = new Set(o.txs.flatMap((t) => t.groups));
   const rents = o.creates
@@ -173,8 +180,10 @@ export function launchCostDetail(o: {
     .map((c) => ({ what: c.what, group: c.group, size: c.size, lamports: rentLamports(c.size, o.rent0) }));
   const rent = rents.reduce((n, r) => n + r.lamports, 0n);
   const fees = o.txs.map((t) => txFeeLamports(t.signatures, t.units, t.price));
+  if (o.units && o.purchase) throw new Error("a launch either buys $UNITS with SOL or takes it from the wallet, not both");
   const whole = o.purchase?.whole ?? 0n;
   const credits = o.hasBuy ? (o.purchase?.credits ?? 0n) : whole;
-  const costs = launchSolCosts({ creation: fees.reduce((n, f) => n + f, 0n) + rent, credits, buy: o.hasBuy ? whole - credits : null, identity: o.identity, tip: o.tip, headroom: o.headroom });
+  const costs = launchSolCosts({ creation: fees.reduce((n, f) => n + f, 0n) + rent, credits, buy: o.units ? null : o.hasBuy ? whole - credits : null, identity: o.identity, tip: o.tip,
+    headroom: o.headroom, units: o.units });
   return { costs, fees, rents, rent };
 }
