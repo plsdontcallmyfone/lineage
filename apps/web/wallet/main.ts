@@ -75,6 +75,11 @@ import {
   maxSolIn,
   planLaunchBundle,
   pumpSolToLine,
+  pumpSolToLinePool,
+  poolRates,
+  quotePoolBuyExactOut,
+  rentLamports,
+  TOKEN_ACCOUNT_LEN,
   quoteCurveBuyExactOut,
   system,
   type BundleGroup,
@@ -589,26 +594,11 @@ async function soulGenerate() {
   S.soul = { agent, doc: null, note: null, edited: false, usd: null };
   S.draft = null;
   set("w-soul", html`<div class="wl-fine" style="margin-top:8px" data-soul-state="drafting">Writing the soul of agent ${addr(agent.id)} from ${input.repo ? "its repository" : "your inputs"}${input.vibe ? " and your vibe" : ""}. This takes up to a minute; you can go on to the next step meanwhile.</div>`);
-  let doc: SoulDoc | null = null;
-  let usd: number | null = null;
-  let why = "";
-  try {
-    const r = await fetch("/souls/draft", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(input), signal: AbortSignal.timeout(150_000) });
-    const j = await r.json().catch(() => ({}));
-    if (r.ok && j.doc) {
-      doc = j.doc as SoulDoc;
-      usd = typeof j.usd === "number" ? j.usd : null;
-    } else why = j.problems ? `${j.error}: ${j.problems.join("; ")}` : (j.message ?? `HTTP ${r.status}`);
-  } catch (e) {
-    why = (e as Error).name === "TimeoutError" ? "the drafting service did not answer in time" : (e as Error).message;
-  }
-  // a newer draft was started while this one ran (the vibe changed): its result is the one shown
+  // one soul for every agent, built in this page; only the name differs (owner 2026-10-12): no draft to wait on or to be refused
+  const doc = localSoul(input, Math.floor(Date.now() / 1000));
+  const usd: number | null = null;
   if (soulBusy !== key || S.soul?.agent !== agent) return;
   soulBusy = null;
-  if (!doc) {
-    doc = localSoul(input, Math.floor(Date.now() / 1000));
-    S.soul.note = html`<div class="wl-fine" style="color:var(--warn)" data-soul-local>This soul was built in this page from the repository${input.vibe ? " and your vibe" : ""}, not written by the model (${why.replace(/\.$/, "")}). It is a plain one and the launch can go ahead with it; Draft again asks the model once more.</div>`;
-  }
   S.soul.doc = withModel(doc, modelChoice()); // plan M: the picked model is part of the signed profile
   S.soul.usd = usd;
   soulFor = key;
@@ -652,7 +642,7 @@ function renderSoul(editing?: string) {
     "w-soul",
     html`<div class="wl-soul">
       <div class="wl-soul-h"><b>${p.name}</b> <span class="dim">${p.tagline}</span></div>
-      <div class="wl-fine" data-soul-by="${s.edited ? "edited" : s.doc.origin.by}">${s.edited ? "Edited by you" : s.doc.origin.by === "model" ? `Written by ${s.doc.origin.model ?? "the model"}` : "Built in this page, not by the model"}${s.usd !== null ? `, ${fmtUsd(s.usd)} of model spend` : ""}. Digest <span class="wl-hash">${soulDigest(s.doc)}</span> ${btn("soul-generate", "Draft again")}</div>
+      <div class="wl-fine" data-soul-by="${s.edited ? "edited" : s.doc.origin.by}">${s.edited ? "Edited by you" : s.doc.origin.by === "model" ? `Written by ${s.doc.origin.model ?? "the model"}` : "The network's soul"}${s.usd !== null ? `, ${fmtUsd(s.usd)} of model spend` : ""}. Digest <span class="wl-hash">${soulDigest(s.doc)}</span> ${btn("soul-generate", "Draft again")}</div>
       <p>${p.backstory}</p>
       <div class="wl-2">
         <div><div class="eyebrow">Voice</div><p>${p.voice.register.replace(/\.$/, "")}. ${p.voice.style}</p></div>
@@ -809,7 +799,8 @@ async function buildLaunch(): Promise<NonNullable<typeof S.draft>> {
   let swap: PreparedSwap | null = null;
   let purchase: { whole: bigint; credits: bigint } | null = null;
   let headroom = 0n;
-  let fromUnits: LaunchUnitsCosts | null = null;
+  let purchaseVenue: "curve" | "pool" = "curve";
+  let heldUnits: bigint | null = null;
   if (isMainnet() && NET.p.swap) {
     swap = await prepareSwapThen({ pay: "SOL", need, taker: launcher, action: [], cuLimit: 400_000 });
     // Jupiter's quote for the whole amount, split by the amounts bought (a quote, labelled as one on the page)
@@ -817,16 +808,25 @@ async function buildLaunch(): Promise<NonNullable<typeof S.draft>> {
   } else {
     const lp = linePool();
     if (lp) {
-      // $UNITS trades on its PumpSwap pool (owner 2026-10-12: "forget the buying for now, just fix it so that things can be
-      // launched"): no purchase inside the launch. The credits and the initial buy come from the launcher's own $UNITS, read
-      // here; SOL pays only what is SOL. A wallet that does not hold enough is told how much and where to get it.
-      const held = (await reader.tokenBalance(ata(launcher, lineMint(), T22))) ?? 0n;
-      S.line = held;
-      fromUnits = launchUnitsCosts({ deposit, buy: buy ? { quote: buy.quote, maxIn: buy.maxIn } : null });
-      if (held < fromUnits.needed) {
-        const why = `This launch needs ${unitsAmt(fromUnits.needed)} in your wallet; you hold ${unitsAmt(held)}. Get ${qsym()} on pump.fun, then press Try again`;
-        throw new BuildStop(why, html`<div class="panel-b"><div class="wl-fine" data-units-short><span class="mark warn">Launch disabled: ${why}.</span> <a class="link" href="${getUnitsUrl()}" target="_blank" rel="noopener">Get ${qsym()} on pump.fun</a></div><div class="wl-row" style="margin-top:8px">${btn("launch-review", "Try again")}</div></div>`);
-      }
+      // $UNITS trades on its canonical PumpSwap pool: an exact-output buy_v2 there for what the launch needs, paid from a
+      // temporary wrapped SOL account (made, spent from and closed in the same transaction). Priced by PumpSwap's own
+      // arithmetic on the pool as read: its reserves and its LP, protocol and coin creator fees.
+      const [gA, fcA, pA, bA, qA, mA, hA] = await rpc.getMultipleAccounts([PUMP.global, PUMP.ammFeeConfig, lp.pool, lp.baseVault, lp.quoteVault, lineMint(), ata(launcher, lineMint(), T22)]);
+      if (!gA || !fcA || !pA || !bA || !qA || !mA) throw new Error("pump.fun's Global, PumpSwap's fee config or the $UNITS pool is missing on this cluster");
+      const pool = decodePumpPool(pA.data), base = decodeTokenAccount(bA.data).amount, quote = decodeTokenAccount(qA.data).amount;
+      if (pool.baseMint !== lineMint() || pool.quoteMint !== PUMP.wsol || pool.poolBaseTokenAccount !== lp.baseVault || pool.poolQuoteTokenAccount !== lp.quoteVault)
+        throw new Error("the $UNITS pool on chain is not the one this deployment names");
+      const rates = poolRates({ creatorFeeConfigurable: decodePumpGlobal(gA.data).creatorFeeConfigurable }, decodePumpFeeConfig(fcA.data), pool, decodeMint(mA.data).supply, quote + pool.virtualQuoteReserves, base);
+      const whole = quotePoolBuyExactOut(rates, pool, base, quote, need).quoteIn, part = quotePoolBuyExactOut(rates, pool, base, quote, deposit).quoteIn;
+      const maxSol = maxSolIn(whole, bps), rentToken = rentLamports(TOKEN_ACCOUNT_LEN, rate);
+      // held, not spent: the slippage bound, and the temporary account's rent (it comes back when the account closes)
+      headroom = maxSol - whole + rentToken;
+      purchase = { whole, credits: part };
+      purchaseVenue = "pool";
+      solToLine = pumpSolToLinePool({ launcher, lineMint: lineMint(), pool: lp.pool, amountOut: need, maxSolIn: maxSol, rentToken, lineTokenProgram: T22 });
+      // the other way to pay, used only when the wallet's SOL does not cover the purchase and its own $UNITS do (below)
+      heldUnits = hA ? decodeTokenAccount(hA.data).amount : 0n;
+      S.line = heldUnits;
     } else {
       const [gA, fcA, cA, bA] = await rpc.getMultipleAccounts([PUMP.global, PUMP.feeConfig, pumpPdas.bondingCurve(lineMint()), ata(pumpPdas.bondingCurve(lineMint()), lineMint(), T22)]);
       if (!gA || !fcA || !cA || !bA) throw new Error("pump.fun's Global, fee config or the $UNITS curve is missing on this cluster");
@@ -847,34 +847,47 @@ async function buildLaunch(): Promise<NonNullable<typeof S.draft>> {
   }
   // GitHub fee route and repository pool (fee-route-step.ts): no instruction while those features are off
   const extras = await launchExtras({ launcher, agent: agent.id, agentMint: mint.id, lineMint: lineMint(), repoUrl: args.repoUrl });
-  // one approval (owner direction 2026-10-11): the groups in order, packed into the fewest transactions
-  const groups: BundleGroup[] = [
-    { name: "launch", ixs: main },
-    { name: "soul", ixs: soulIx ? [soulIx] : [] },
-    { name: "fee-route", ixs: extras.feeRoute },
-    { name: "pool", ixs: extras.pool },
-    { name: "sol-to-units", ixs: solToLine },
-    { name: "initial-buy", ixs: buy?.ixs ?? [] },
-    { name: "credits", ixs: credits },
-    { name: "units-account", ixs: fee },
-    { name: "tip", ixs: tipIxs },
-  ];
-  const plan = planLaunchBundle({ payer: launcher, groups, budget: budgetIxs(CU_MAX), table: P.table, v0: signsV0(S.wallet!), maxTxs: JITO_MAX_TXS - (swap?.plan.txs.length ?? 0) });
-  if (plan[0]!.groups[0] !== "launch") throw new Error("the launch transaction must come first");
-  // the accounts whose rent the launcher pays: the new agent's and coin's always, the wallet's own and the shared ones only when absent
-  const creates = launchCreates({ name: args.name, symbol: args.symbol, uri: args.uri,
-    purchase: solToLine.length ? { launcherLine: ata(launcher, lineMint(), T22), launcherVolume: pumpPdas.userVolume(launcher) } : undefined,
-    buy: buy ? { createsBuyback: buy.ixs.length > 2, launcherVolume: pumpPdas.userVolume(launcher) } : undefined, feeRoute: extras.creates.feeRoute, pool: extras.creates.pool });
-  const maybe = creates.flatMap((c) => (c.address ? [c.address] : []));
-  // each transaction's unit price is read once here and the transaction is sent with it, so the fee shown is the fee paid
-  const [prices, there] = await Promise.all([Promise.all(plan.map((t) => unitPrice(launcher, t.ixs))), maybe.length ? rpc.getMultipleAccounts(maybe) : []]);
-  const FAKE = "11111111111111111111111111111111";
-  const txs: LaunchCostTx[] = plan.map((t, i) => {
-    const all = [...budgetIxs(CU_MAX), ...t.ixs];
-    return { groups: t.groups, signatures: (t.table ? compileMessageV0(launcher, all, FAKE, [t.table]) : compileMessage(launcher, all, FAKE)).numSigners, units: launchTxUnits(t.groups), price: prices[i]! };
-  });
-  const detail = launchCostDetail({ txs, rent0: rate, creates, existing: new Set(maybe.filter((_, i) => !!there[i])), purchase, hasBuy: !!buy, identity, tip, headroom, units: fromUnits ?? undefined });
-  return { agent, mint, args, soul, deposit, buy, plan, txs, detail, swap, costs: detail.costs, quoted: !!swap, identity, landed: [], metaLive: coin.answers, links };
+  // `fromUnits` set: no purchase, the credits and the initial buy come from the wallet's own $UNITS
+  const assemble = async (fromUnits: LaunchUnitsCosts | null): Promise<NonNullable<typeof S.draft>> => {
+    const buyIxs = fromUnits ? [] : solToLine;
+    // one approval (owner direction 2026-10-11): the groups in order, packed into the fewest transactions
+    const groups: BundleGroup[] = [
+      { name: "launch", ixs: main },
+      { name: "soul", ixs: soulIx ? [soulIx] : [] },
+      { name: "fee-route", ixs: extras.feeRoute },
+      { name: "pool", ixs: extras.pool },
+      { name: "sol-to-units", ixs: buyIxs },
+      { name: "initial-buy", ixs: buy?.ixs ?? [] },
+      { name: "credits", ixs: credits },
+      { name: "units-account", ixs: fee },
+      { name: "tip", ixs: tipIxs },
+    ];
+    const plan = planLaunchBundle({ payer: launcher, groups, budget: budgetIxs(CU_MAX), table: P.table, v0: signsV0(S.wallet!), maxTxs: JITO_MAX_TXS - (swap?.plan.txs.length ?? 0) });
+    if (plan[0]!.groups[0] !== "launch") throw new Error("the launch transaction must come first");
+    // the accounts whose rent the launcher pays: the new agent's and coin's always, the wallet's own and the shared ones only when absent
+    const creates = launchCreates({ name: args.name, symbol: args.symbol, uri: args.uri,
+      purchase: buyIxs.length ? { launcherLine: ata(launcher, lineMint(), T22), launcherVolume: purchaseVenue === "pool" ? pumpPdas.ammUserVolume(launcher) : pumpPdas.userVolume(launcher), venue: purchaseVenue } : undefined,
+      buy: buy ? { createsBuyback: buy.ixs.length > 2, launcherVolume: pumpPdas.userVolume(launcher) } : undefined, feeRoute: extras.creates.feeRoute, pool: extras.creates.pool });
+    const maybe = creates.flatMap((c) => (c.address ? [c.address] : []));
+    // each transaction's unit price is read once here and the transaction is sent with it, so the fee shown is the fee paid
+    const [prices, there] = await Promise.all([Promise.all(plan.map((t) => unitPrice(launcher, t.ixs))), maybe.length ? rpc.getMultipleAccounts(maybe) : []]);
+    const FAKE = "11111111111111111111111111111111";
+    const txs: LaunchCostTx[] = plan.map((t, i) => {
+      const all = [...budgetIxs(CU_MAX), ...t.ixs];
+      return { groups: t.groups, signatures: (t.table ? compileMessageV0(launcher, all, FAKE, [t.table]) : compileMessage(launcher, all, FAKE)).numSigners, units: launchTxUnits(t.groups, purchaseVenue), price: prices[i]! };
+    });
+    const detail = launchCostDetail({ txs, rent0: rate, creates, existing: new Set(maybe.filter((_, i) => !!there[i])), purchase: fromUnits ? null : purchase, hasBuy: !!buy, identity, tip,
+      headroom: fromUnits ? 0n : headroom, units: fromUnits ?? undefined });
+    return { agent, mint, args, soul, deposit, buy, plan, txs, detail, swap, costs: detail.costs, quoted: !!swap, identity, landed: [], metaLive: coin.answers, links };
+  };
+  const paidInSol = await assemble(null);
+  // $UNITS on its pool: a wallet whose SOL does not cover the purchase but which holds the $UNITS itself launches with those
+  // (no purchase; SOL pays only what is SOL). Every other wallet pays everything in SOL, as before.
+  if (purchaseVenue === "pool" && heldUnits !== null && solShortfall(paidInSol.costs, balance)) {
+    const u = launchUnitsCosts({ deposit, buy: buy ? { quote: buy.quote, maxIn: buy.maxIn } : null });
+    if (heldUnits >= u.needed) return assemble(u);
+  }
+  return paidInSol;
 }
 
 /** The SOL/USD price (apps/web/chain-routes.ts /chain/sol-price: Jupiter, refused when stale); null when unavailable. */
@@ -942,7 +955,7 @@ function fundingView(): FundingView {
   const identityChosen = (S.root?.querySelector<HTMLInputElement>('input[name="l_identity"]:checked')?.value ?? "purchased") === "purchased";
   return { costs: d?.costs ?? null, creditsUsd: usd, bps: P.cfg?.initial_buy_bps ?? null, identityChosen, solUsd: S.solUsd, solBalance: S.sol,
     txCount: d ? d.plan.length + (d.swap?.plan.txs.length ?? 0) : null, blocked: launchBlocked(), devnet: !isMainnet(), docs: docsUrl("/launch-an-agent#5-funding"), pending: !!S.building, quoted: !!d?.quoted, retry: !d && !S.building && !!S.draftErr,
-    unitsFmt: unitsAmt, unitsUsd: (b) => qUsd(b), unitsName: qsym(), getUnitsUrl: !d && linePool() && S.draftErr?.startsWith("This launch needs") ? getUnitsUrl() : undefined };
+    unitsFmt: unitsAmt, unitsUsd: (b) => qUsd(b), unitsName: qsym(), getUnitsUrl: d?.costs.units && unitsShortfall(d.costs, S.line, unitsAmt) ? getUnitsUrl() : undefined };
 }
 
 function renderLaunchReview() {
@@ -2107,11 +2120,12 @@ function frontingHtml() {
   return fundingSummary(fundingView());
 }
 /** The launch takes its $UNITS from the wallet (no purchase inside it): $UNITS trades on its pool and this deployment has no swap. */
-const payInUnits = () => !!linePool() && !(isMainnet() && NET.p.swap);
+const payInUnits = () => !!S.draft?.costs.units;
+const FUNDING_SOL = "Everything is paid in SOL with one signature: token creation, model credits, the initial buy and, when chosen, A units account.";
 function renderFronting() {
   set("w-fronting", frontingHtml());
   const sub = S.root?.querySelector<HTMLElement>("#w-funding-sub");
-  if (sub && payInUnits()) sub.textContent = `One signature. SOL pays token creation, the network fees, the tip and, when chosen, A units account; the model credits and the initial buy come from the ${qsym()} in your wallet.`;
+  if (sub) sub.textContent = !payInUnits() ? FUNDING_SOL : `One signature. SOL pays token creation, the network fees, the tip and, when chosen, A units account; the model credits and the initial buy come from the ${qsym()} in your wallet.`;
 }
 
 async function enterReview() {
