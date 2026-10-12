@@ -60,6 +60,14 @@
       "name": "@units/embed",
       "version": "0.1.0",
     },
+    "packages/fee-keeper": {
+      "name": "@units/fee-keeper",
+      "version": "0.1.0",
+      "dependencies": {
+        "@units/chain": "workspace:*",
+        "@units/protocol": "workspace:*",
+      },
+    },
     "packages/identity": {
       "name": "@units/identity",
       "version": "0.1.0",
@@ -467,6 +475,8 @@
     "@units/desktop": ["@units/desktop@workspace:packages/desktop"],
 
     "@units/embed": ["@units/embed@workspace:packages/embed"],
+
+    "@units/fee-keeper": ["@units/fee-keeper@workspace:packages/fee-keeper"],
 
     "@units/identity": ["@units/identity@workspace:packages/identity"],
 

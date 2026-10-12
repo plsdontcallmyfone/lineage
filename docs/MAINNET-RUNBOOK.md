@@ -245,6 +245,114 @@ keeper crank (pump.fun sweep + collect, then `crank_pump_fees`), and the indexer
 back. Mainnet tests are public on pump.fun's own site: the hidden list cannot hide them, so test there
 only what the fork cannot show.
 
+## UNITS fee keeper
+
+Owner decision 2026-10-12: "50% of creator fees goes to paying for compute and 50% buyback and
+burns". This is about the `$UNITS` coin's own pump.fun creator fees, paid in SOL to the wallet that
+creates the coin. It is separate from the split of each agent coin's fees, which `crank_pump_fees`
+does on chain. No program is involved: `packages/fee-keeper` is an off-chain keeper that signs with
+the `$UNITS` creator wallet's key.
+
+One run (`units-fee-keeper.timer`, every 10 minutes once enabled):
+
+1. **Collect.** On the curve the fee waits in the bonding curve: Pump `sweep_creator_fee` moves it to
+   the creator vault and `collect_creator_fee` pays the wallet what the vault holds above its
+   rent-exempt minimum. After graduation the pool's fee is wrapped SOL: PumpSwap `sweep_creator_fee`,
+   then `collect_coin_creator_fee` into a temporary wrapped SOL account that the same transaction
+   closes, so it arrives as SOL; what the curve still held is collected in the same transaction.
+2. **Split.** What the collection brought the wallet (after its own fee and rent) first refills the
+   fee reserve to `fee_reserve_lamports`; the rest is split by `compute_bps` and `burn_bps`. Each
+   share is rounded down and an odd lamport stays in the reserve, so at 5000/5000 the shares are equal.
+3. **Compute.** The compute share is sent as SOL to `compute_address`.
+4. **Buy back and burn.** One buy of at most `max_buyback_lamports` (the curve, or the PumpSwap pool
+   after graduation), for exactly the amount quoted from chain right before sending, capped at the
+   budget, and burned in the same transaction. A larger share is spent over the next runs.
+
+It never spends the wallet's own SOL: transaction fees and one-off account rent come out of the fee
+reserve, and a transaction the reserve does not cover is not sent. Before a transaction is sent its
+signed bytes are written to the state file; an interrupted run resends those bytes or books their
+result, and never builds a second transaction for the same step.
+
+Config (`/etc/units-fee-keeper/config.json`, from `config/fee-keeper.example.json`; public values
+only; every field is the owner's and is read again on each run, none has a default):
+
+| Field | Meaning |
+|---|---|
+| `enabled` | mainnet sends need `true` here and the `--send` flag |
+| `rpc_url` | RPC endpoint, or `null` with `UNITS_FEE_KEEPER_RPC` in `/etc/units-fee-keeper/keeper.env` (a keyed URL is a secret; it is never printed) |
+| `mint` | the `$UNITS` mint; on mainnet it must be the one in `config/profile.json` |
+| `creator` | the wallet that created the coin; must be the curve's creator on chain |
+| `key_path` | that wallet's Solana CLI keypair file; `null` allows dry runs only |
+| `compute_address` | where the compute share goes; a wallet (System-owned), not the creator |
+| `compute_bps`, `burn_bps` | the split; must sum to 10000 (5000 and 5000 by the owner's decision) |
+| `fee_reserve_lamports` | the float kept from collected fees for the keeper's fees and rent |
+| `min_collect_lamports` | a collection is sent only when it brings at least this much after its cost |
+| `min_buyback_lamports`, `max_buyback_lamports` | the smallest and largest SOL amount of one buyback transaction |
+| `slippage_bps` | the most a buy may pay above the price read from chain (refused above 1000) |
+| `priority_fee` | percentile of recent fees, with a floor and a cap in micro-lamports per compute unit |
+| `confirm_timeout_s` | how long a run waits for a transaction before the next run takes over |
+| `state_path`, `log_path` | the private state and the public log |
+
+The key: the keeper needs the `$UNITS` creator wallet's key because buying, burning and sending the
+compute share are that wallet's transactions (pump.fun's collect itself needs no signature, and pays
+only the creator). Whoever holds it can spend what is in the wallet, so the wallet should hold
+nothing but the fees: the keeper sends the compute share out on the run that collects it. Refusals,
+before anything is signed: the curve's creator, the key, the pair (SOL), the pool's coin creator, a
+compute address that is a program or not a wallet, a state file of another coin or wallet, mainnet
+without `enabled: true`.
+
+Measured on a fork of mainnet (`scripts/mainnet/fee-keeper-fork.ts`, `FEE-KEEPER-FORK-LAST.json`,
+33/33; mainnet's own Pump and PumpSwap builds), fees at 1 micro-lamport per compute unit. Compute
+units move by a few thousand from one coin and wallet to another (address derivation); the keeper
+sets each transaction's limit from its own simulation plus 20%, at most 400,000:
+
+| Transaction | Bytes | Compute units | One-off cost paid by the wallet |
+|---|---|---|---|
+| collect on the curve | 610 | 49,990 first, 48,040 after | first sweep: 890,880 lamports stay in the creator vault as its rent |
+| compute transfer | 267 | 450 | none |
+| buy on the curve + burn | 801 first, 759 after | 80,494 first, 57,457 after | first buy: the wallet's `$UNITS` token account 2,074,080 and Pump's volume account 1,844,400 lamports |
+| collect after graduation (curve leftover + pool) | 1,066 | 139,035 | first pool sweep: 2,039,280 lamports for the PumpSwap creator vault's token account |
+| buy on the pool + burn | 916 | 75,623 | first pool buy: PumpSwap's volume account 1,844,400 lamports |
+
+So `fee_reserve_lamports` must cover the first buy's 3,918,480 lamports of rent plus fees, and
+`min_collect_lamports` must exceed the first sweep's rent, or those steps wait. A pool buy also needs
+the budget plus 2,039,280 lamports in the wallet for the length of the transaction (the temporary
+wrapped SOL account's rent, returned when it closes).
+
+Dry run (the default; reads the chain, simulates every transaction, prints the plan, signs and sends
+nothing, writes nothing; works without the key). The later steps are simulated against the wallet as
+it is now, before the collection lands: with a wallet that holds less than they move, their
+simulations report insufficient funds while the collect's own simulation still shows what would come in:
+
+```sh
+bun packages/fee-keeper/src/main.ts --config /etc/units-fee-keeper/config.json          # add --json for the full plan
+```
+
+Turn it on, on the server, after `$UNITS` exists (step 4) and a release with the unit is deployed:
+
+```sh
+sudo bash /opt/units/current/scripts/deploy/fee-keeper-setup.sh      # account units-fee-keeper, /etc/units-fee-keeper, /var/lib/units/fee-keeper
+# put config.json (creator, compute_address, limits), creator.json (the key) and keeper.env there, then run the setup again: it fixes owners and modes
+sudo -u units-fee-keeper bash -c 'set -a; . /etc/units-fee-keeper/keeper.env; cd /opt/units/current && bun packages/fee-keeper/src/main.ts --config /etc/units-fee-keeper/config.json'   # dry run as the service account
+# set "enabled": true in config.json, then:
+sudo systemctl start units-fee-keeper.service && journalctl -u units-fee-keeper -n 40   # one run by hand
+sudo systemctl enable --now units-fee-keeper.timer
+```
+
+`remote.sh` installs the unit and the timer with every release and enables neither. Turn it off with
+`systemctl disable --now units-fee-keeper.timer` or `"enabled": false`. The public record is
+`log_path`: one JSON line per run that moved something (time, lamports collected, compute lamports
+and signature, SOL spent on the buyback, `$UNITS` bought and burned with signatures). Core serves its
+sums and last runs read-only at `GET /v1/units-fees` (the log's path is `UNITS_FEES_LOG`, default
+`/var/lib/units/fee-keeper/public/runs.jsonl`). No page shows it yet.
+
+Limits to know: fees someone else collects to the wallet (pump.fun's collect is permissionless) are
+outside the keeper's ledger and stay in the wallet; the keeper's own buys pay the creator fee like any
+trade, which comes back in the next collection; a buy that would complete the bonding curve is not
+sent, and no buy is sent between completion and migration; the builders trade `create_v2` (Token-2022)
+coins. Not proven on mainnet: nothing was sent there. Exit status 2 means refused, 3 a transaction
+still unconfirmed (the next run settles it).
+
 ## Later admin actions
 
 Every onchain admin action is in `scripts/mainnet/admin.ts` `adminActions` and goes through propose,

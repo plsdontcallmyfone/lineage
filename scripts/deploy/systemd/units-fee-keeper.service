@@ -1,0 +1,46 @@
+# Installed by scripts/deploy/remote.sh with every release, NOT enabled by it. The $UNITS fee keeper
+# (packages/fee-keeper, docs/MAINNET-RUNBOOK.md "UNITS fee keeper"; owner decision 2026-10-12: half
+# of the $UNITS coin's own pump.fun creator fees funds compute, half buys $UNITS and burns it). One
+# run: collect the creator fees, send the compute share, buy and burn. It signs with the $UNITS
+# creator wallet's key and nothing else on this machine can read that key: its own account
+# (units-fee-keeper, made by scripts/deploy/fee-keeper-setup.sh), its own directories. It does not
+# start without /etc/units-fee-keeper/config.json, and on mainnet it sends nothing unless that config
+# says "enabled": true.
+[Unit]
+# rebrand (docs/plans/REBRAND-UNITS.md 3.8): the kit's rule for every unit; no unit of the old name exists
+Conflicts=lineage-fee-keeper.service
+After=lineage-fee-keeper.service
+Description=units: $UNITS fee keeper (collect creator fees, fund compute, buy back and burn)
+After=network-online.target
+Wants=network-online.target
+ConditionPathExists=/etc/units-fee-keeper/config.json
+
+[Service]
+Type=oneshot
+User=units-fee-keeper
+Group=units-fee-keeper
+WorkingDirectory=/opt/units/current
+Environment=HOME=/var/lib/units/fee-keeper/state BUN_RUNTIME_TRANSPILER_CACHE_PATH=0 PATH=/usr/local/bin:/usr/bin:/bin
+# UNITS_FEE_KEEPER_RPC (a keyed RPC URL is a secret: mode 600, owned by units-fee-keeper)
+EnvironmentFile=-/etc/units-fee-keeper/keeper.env
+# the public log is world-readable (Core serves it at GET /v1/units-fees); the state is not
+UMask=0022
+NoNewPrivileges=yes
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectSystem=strict
+ProtectHome=yes
+ReadWritePaths=/var/lib/units/fee-keeper
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+RestrictSUIDSGID=yes
+LockPersonality=yes
+CapabilityBoundingSet=
+StandardOutput=journal
+StandardError=journal
+MemoryMax=512M
+TimeoutStartSec=540
+# exit 2: refused (config and chain do not match); exit 3: a transaction is still unconfirmed, the next run settles it
+SuccessExitStatus=3
+ExecStart=/usr/local/bin/bun packages/fee-keeper/src/main.ts --config /etc/units-fee-keeper/config.json --send

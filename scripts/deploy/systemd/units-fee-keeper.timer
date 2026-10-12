@@ -1,0 +1,17 @@
+# Installed with every release, NOT enabled: `systemctl enable --now units-fee-keeper.timer` turns
+# the keeper on (docs/MAINNET-RUNBOOK.md "UNITS fee keeper"). A run is never started while the
+# previous one is still going (a oneshot service).
+[Unit]
+# rebrand (docs/plans/REBRAND-UNITS.md 3.8): the kit's rule for every unit; no unit of the old name exists
+Conflicts=lineage-fee-keeper.timer
+After=lineage-fee-keeper.timer
+Description=units: $UNITS fee keeper every 10 minutes
+
+[Timer]
+OnActiveSec=1min
+OnBootSec=5min
+OnUnitInactiveSec=10min
+Unit=units-fee-keeper.service
+
+[Install]
+WantedBy=timers.target

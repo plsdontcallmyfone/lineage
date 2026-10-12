@@ -1,0 +1,20 @@
+{
+  "_note": "Example config of the $UNITS fee keeper (packages/fee-keeper, docs/MAINNET-RUNBOOK.md \"UNITS fee keeper\"). Public values only: no key, and the RPC URL comes from UNITS_FEE_KEEPER_RPC. Owner decision 2026-10-12: 50% of the $UNITS coin's creator fees funds compute, 50% buys $UNITS and burns it. creator, key_path and compute_address have no default: the owner sets them. The lamport limits below are examples to be set by the owner, not recommendations; every field can be changed at any time by editing the file (the next run reads it).",
+  "enabled": false,
+  "rpc_url": null,
+  "mint": "GQdEL4MhL4v8bsmMvyBvjh6BdbWqasgkDnJGfaAHpump",
+  "creator": null,
+  "key_path": null,
+  "compute_address": null,
+  "compute_bps": 5000,
+  "burn_bps": 5000,
+  "fee_reserve_lamports": "10000000",
+  "min_collect_lamports": "20000000",
+  "min_buyback_lamports": "5000000",
+  "max_buyback_lamports": "1000000000",
+  "slippage_bps": 100,
+  "priority_fee": { "percentile": 75, "floor_micro_lamports": 0, "cap_micro_lamports": 100000 },
+  "confirm_timeout_s": 90,
+  "state_path": "/var/lib/units/fee-keeper/state/state.json",
+  "log_path": "/var/lib/units/fee-keeper/public/runs.jsonl"
+}

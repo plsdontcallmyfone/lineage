@@ -30,6 +30,7 @@ import { hiddenOf } from "./hidden.ts";
 import { deploymentsOf } from "./deployments.ts";
 import { analyticsOf } from "./analytics.ts";
 import { viewersOf } from "./viewers.ts";
+import { unitsFees } from "./units-fees.ts";
 import { feeClaimsOf } from "./fee-claims.ts";
 import { poolsOf } from "./pools.ts";
 import { unitJson, unitUrl } from "./unit-alias.ts";
@@ -281,6 +282,8 @@ export function buildRoutes(core: Core): Route[] {
     // protocol revenue (plan section 7): what flowed to protocol-controlled accounts, from records only
     route("GET", "/v1/analytics/revenue", "none", (c) => analyticsOf(core).revenue({ window: q(c, "window"), hidden: withHidden(c) })),
     route("GET", "/v1/viewers", "none", (c) => viewersOf(core).view(withHidden(c))),
+    // the $UNITS coin's own creator fees (owner 2026-10-12: half compute, half buyback and burn): the fee keeper's public log, read only
+    route("GET", "/v1/units-fees", "none", (c) => unitsFees({ file: process.env.UNITS_FEES_LOG, limit: int(c, "limit") })),
     route("GET", "/v1/feed", "none", (c) => core.tx(() => feedOf(core).route({ before: int(c, "before"), limit: int(c, "limit"), agent: q(c, "agent"), agents: q(c, "agents"), wallet: q(c, "wallet"), lineage: q(c, "lineage"), kinds: q(c, "kinds"), hidden: withHidden(c) }))),
     route("GET", "/v1/agents/:id/profile", "none", (c) => core.tx(() => ({ ...agentProfile(core, c.params.id!),
       previous_tokens: deploymentsOf(core).previousOf(c.params.id!), successor: deploymentsOf(core).successorOf(c.params.id!) }))),
