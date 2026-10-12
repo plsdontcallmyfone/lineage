@@ -81,7 +81,7 @@ export function payWithControl(name: string, nativeLabel: string, selected: PayA
     const sel = (v: PayAsset) => (v === (selected === "USDC" ? "LINE" : selected) ? "selected" : "");
     return html`<label class="wl-field"><span class="eyebrow">Pay with</span><select name="${name}">
       <option value="LINE" ${sel("LINE")}>${nativeLabel}</option><option value="SOL" ${sel("SOL")}>SOL (through ${nativeLabel} on pump.fun)</option>
-    </select><span class="wl-help">SOL buys ${nativeLabel} on its pump.fun curve and the token with it, in one transaction (pump.fun's multi-hop swap); the amount is typed in SOL. Each of the two trades pays pump.fun's fee.</span></label>`;
+    </select><span class="wl-help">SOL buys ${nativeLabel} on pump.fun and the token with it, in one transaction (pump.fun's multi-hop swap); the amount is typed in SOL. Each of the two trades pays pump.fun's fee.</span></label>`;
   }
   const off = !available();
   const sel = (v: PayAsset) => (v === (off ? "LINE" : selected) ? "selected" : "");

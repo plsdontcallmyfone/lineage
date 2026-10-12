@@ -25,10 +25,16 @@ import {
   pumpAmm,
   pumpPdas,
   token,
+  system,
+  rentLamports,
+  launchTempWsol,
+  LAUNCH_WSOL_SEED,
+  TOKEN_ACCOUNT_LEN,
   TOKEN_2022_PROGRAM,
   TOKEN_PROGRAM,
   type AgentLaunch,
   type BondingCurve,
+  type Hop,
   type Ix,
 } from "../../../packages/chain/src/browser/index.ts";
 import { esc, html, raw, type Raw } from "../src/html.ts";
@@ -234,9 +240,14 @@ class Box {
   /**
    * SOL straight in when Jupiter is off for this deployment (a mainnet profile with swap false: the
    * mainnet test's throwaway quote coin): pump.fun's multi_hop_swap, SOL to the quote coin on its own
-   * curve, then to this token on its curve, one transaction. Proven on the mainnet fork
-   * (scripts/mainnet/test-rehearsal.ts). Only while both coins trade on their curves.
+   * curve or, once it has migrated, its canonical PumpSwap pool, then to this token on its curve or pool, one
+   * transaction. Proven on the mainnet fork (curve then curve: scripts/mainnet/test-rehearsal.ts; pool then curve and
+   * pool then pool: scripts/mainnet/pump-fork-proof.ts steps 7b and 9c). The review simulates it before anything is signed.
    */
+  /** The quote coin has migrated: its hop of a SOL buy runs on its canonical PumpSwap pool (set when a SOL buy is reviewed). */
+  private lineOnPool = false;
+  /** Rent of a token account at the cluster's rate (the temporary wrapped SOL account's; it comes back when the account closes). */
+  private rentToken = 0n;
   private solDirect(): boolean {
     return isMainnet() && !NET.p.swap;
   }
@@ -246,11 +257,26 @@ class Box {
   private ixsSol(amountIn: bigint, minOut: bigint): Ix[] {
     const a = this.account!.address, lm = this.lineMint();
     const wsolAccount = ata(a, PUMP.wsol, TOKEN_PROGRAM), agentAccount = ata(a, this.t.mint, T22);
+    const agentHop: Hop = this.venue?.kind === "pool" ? { kind: "pool", mint: this.t.mint, quoteMint: lm, pool: this.venue.pool, quoteTokenProgram: T22 } : { kind: "curve", mint: this.t.mint, quoteMint: lm, quoteTokenProgram: T22 };
+    if (this.lineOnPool) {
+      // The quote coin trades on its canonical PumpSwap pool, which takes wrapped SOL (its curve took plain SOL): the SOL goes
+      // through a temporary wrapped SOL account of the wallet, made, spent and closed in this transaction (the launch's own
+      // purchase does the same, packages/chain pumpSolToLinePool), so the wallet's own wrapped SOL account is never touched.
+      // Proven on the mainnet fork with the real pool: 1,208 bytes, 158,913 compute units.
+      const temp = launchTempWsol(a);
+      return [
+        token.createAtaIdempotent(a, a, this.t.mint, T22),
+        system.createAccountWithSeed(a, LAUNCH_WSOL_SEED, this.rentToken + amountIn, TOKEN_ACCOUNT_LEN, TOKEN_PROGRAM), token.initializeAccount3(temp, PUMP.wsol, a, TOKEN_PROGRAM),
+        pumpAmm.multiHopSwap({ user: a, userIn: temp, userOut: agentAccount, amountIn, minOut, buybackQuoteMint: PUMP.wsol,
+          hops: [{ kind: "pool", mint: lm, quoteMint: PUMP.wsol, pool: pumpPdas.pool(lm, PUMP.wsol) }, agentHop] }),
+        token.closeAccount(temp, a, a, TOKEN_PROGRAM),
+      ];
+    }
     return [
       token.createAtaIdempotent(a, a, PUMP.wsol, TOKEN_PROGRAM), token.createAtaIdempotent(a, a, this.t.mint, T22),
       token.createAtaIdempotent(a, PUMP.buybackRecipients[0], lm, T22),
       pumpAmm.multiHopSwap({ user: a, userIn: wsolAccount, userOut: agentAccount, amountIn, minOut, buybackQuoteMint: PUMP.wsol,
-        hops: [{ kind: "curve", mint: lm, quoteMint: PUMP.wsol }, { kind: "curve", mint: this.t.mint, quoteMint: lm, quoteTokenProgram: T22 }] }),
+        hops: [{ kind: "curve", mint: lm, quoteMint: PUMP.wsol }, agentHop] }),
     ];
   }
   private async reviewSol() {
@@ -270,11 +296,16 @@ class Box {
     await this.readVenue();
     const lc = await rpc.getAccountInfo(pumpPdas.bondingCurve(this.lineMint()));
     const quoteCurve = lc ? decodeBondingCurve(lc.data) : null;
-    if (this.venue?.kind !== "curve" || !quoteCurve || quoteCurve.complete || curveMigrated(quoteCurve)) {
+    // pump.fun's multi-hop swap takes each coin on its curve or on its pool; neither while a curve is complete and not migrated yet
+    const waiting = !!quoteCurve && quoteCurve.complete && !curveMigrated(quoteCurve);
+    if ((this.venue?.kind !== "curve" && this.venue?.kind !== "pool") || !quoteCurve || waiting) {
       this.msg = null;
-      this.err = this.errBox(`Paying in SOL works while ${qsym()} and this token both trade on their pump.fun curves. Pay in ${qsym()} instead.`);
+      this.err = this.errBox(waiting || this.venue?.kind === "waiting" ? `Paying in SOL is not offered right now: a curve is complete and its PumpSwap pool does not exist yet. Pay in ${qsym()} once it does.`
+        : `Paying in SOL is not offered for this token. Pay in ${qsym()} instead.`);
       return this.render();
     }
+    this.lineOnPool = curveMigrated(quoteCurve);
+    if (this.lineOnPool) this.rentToken = rentLamports(TOKEN_ACCOUNT_LEN, BigInt(await rpc.call<number>("getMinimumBalanceForRentExemption", [0])));
     const built = await buildAndSimulate(this.account!.address, this.ixsSol(amountIn, 1n), 400_000);
     const row = built.sim.accounts.find((x) => x.address === ata(this.account!.address, this.t.mint, T22));
     const before = row?.dataBefore ? decodeTokenAccount(row.dataBefore).amount : 0n;
