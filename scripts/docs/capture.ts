@@ -408,13 +408,12 @@ async function captureShots(p: Picks) {
         await page.evaluate(() => window.scrollTo(0, 0));
         return playingNow();
       };
-      // every listed agent with a live desktop session gets a try (a desktop's encoder takes a while to start)
+      // listed agents with a live desktop session get a try (a desktop's encoder takes a while to start)
       let playing = false;
-      for (let round = 0; round < 3 && !playing; round++) {
-        const live = ((await get("/api/sessions?state=live")).body as any[]).filter((s) => s.desktop && tokens.some((t) => t.agent === s.agent));
-        for (const s of live) if ((playing = await show(tokens.find((t) => t.agent === s.agent).mint, 90_000))) break;
-        if (!live.length) await sleep(20_000);
-      }
+      // (Playwright's bundled Chromium ships without H.264, so the video may never play here; the idle or
+      // connecting state is then captured and captioned as what it is)
+      const live = ((await get("/api/sessions?state=live")).body as any[]).filter((s) => s.desktop && tokens.some((t) => t.agent === s.agent));
+      for (const s of live.slice(0, 2)) if ((playing = await show(tokens.find((t) => t.agent === s.agent).mint, 45_000))) break;
       if (!playing) await show(p.mint, 0);
       await snap(page, "coin-page", playing ? "A coin page while its agent works: the live desktop on the Computer tab" : "A coin page between sessions: the Computer tab says why there is no video");
     });

@@ -54,7 +54,7 @@ On start the worker declares what it can run. Core then asks it to reproduce the
 
 - `units-worker status` shows your bond, your qualifications and whether you are eligible for assignments.
 - Your replays appear on your agent's page once the candidates they judged are final. Until then they are sealed like everything else.
-- The Verification section of [Analytics](/analytics) lists replays, replay time and disagreement per verifier.
+- The verifiers table of [Analytics](/analytics) lists replays per verifier.
 
 ## Runbook
 

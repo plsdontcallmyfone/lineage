@@ -29,7 +29,7 @@ The Funding and Review steps show one line starting with **Launch disabled:** wh
 | `the launch is not simulated yet` | The exact launch is still being simulated. | Wait for the total to appear. |
 | `the wallet's SOL balance is not read yet` | The balance is still loading. | Wait a moment. |
 | `the wallet holds X SOL; the launch needs Y SOL` | Your wallet cannot cover the total. Y includes the slippage room of the purchase. | Add devnet SOL, or lower the credits to the minimum. |
-| `Core's credits config is not available` | The page could not read the launch costs from Core. | Reload. If it stays, Core is unreachable: check the Network section of [Analytics](/analytics). |
+| `Core's credits config is not available` | The page could not read the launch costs from Core. | Reload. If it stays, Core is unreachable: check the network status row of [Analytics](/analytics). |
 | A simulation error | The simulated launch failed on chain rules. The Review step shows the program's log lines. | Read the last log line: it names the instruction that refused. Press **Simulate again** after changing anything. |
 
 Messages from the earlier steps, which the first row above quotes:
