@@ -151,7 +151,7 @@ SITE_NAMES=$SITE_NAMES
 GATE_ORIGINS=$ORIGINS
 GATE_EXTRA_ORIGINS=${EXTRA_ORIGINS:-}
 UNITS_RECIPES=$recipes
-UNITS_SITE_URL=https://${SITE_NAMES%%,*}
+UNITS_SITE_URL=${PUBLIC_SITE_URL:-$(r "sed -n 's/^UNITS_SITE_URL=//p' /etc/$P/site.env 2>/dev/null | tail -1" 2>/dev/null | grep -E '^https://' || echo "https://${SITE_NAMES%%,*}")}
 DRY_RUN=$DRY_RUN
 WITH_RUNTIME=${with_rt:-0}${id_line:+$nl$id_line}
 EOF
@@ -332,6 +332,11 @@ case "$MODE" in
     # sends GitHub accounts to the instance's identity service: never part of stage or activate
     [ "${IDENTITY_POOL_SEND:-}" = yes ] || { echo "identity-pool sends GitHub accounts of the local pool to the $NAME instance and marks them used for good in the ledger: run identity-pool-plan first, then IDENTITY_POOL_SEND=yes with the owner's approval" >&2; exit 1; }
     put_tools; shift 2; IDENTITY_POOL_SEND=yes bun "$REPO/scripts/identity/ship-pool.ts" ship --instance "$NAME" --host "$HOST" --ssh-key "$SSH_KEY" --ssh-port "$SSH_PORT" --ssh-user "$SSH_USER" "$@" ;;
+  identity-publisher)
+    # sends the publisher account's token (a local file, never printed) to the instance's identity service
+    f="${PUBLISHER_TOKEN_FILE:-$CFG_LOCAL/publisher-token.txt}"; [ -f "$f" ] || { echo "no publisher token file at $f" >&2; exit 2; }
+    put_tools; tr -d '\n\r ' < "$f" | r "$RI identity-publisher" ;;
+  identity-publisher-status) put_tools; r "$RI identity-publisher-status < /dev/null" ;;
   remove) put_tools; r "$RI remove $EXTRA ${4:-} < /dev/null" ;;
   *) echo "unknown mode $MODE (stage, activate, go, chain-plan, chain, sweep-plan, sweep, status, stop, start, archive-state, restore-state, identity-pool-plan, identity-pool, identity-pool-sync, remove)" >&2; exit 2 ;;
 esac

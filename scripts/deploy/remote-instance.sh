@@ -788,6 +788,19 @@ identity-pool-list)
   REL="$(release_dir)"
   run_identity_tool reserve-list < /dev/null
   ;;
+identity-publisher)
+  # the publisher account's GitHub token on stdin (main.ts publisher-set: validated against GitHub, stored
+  # encrypted, never printed). Without it the service cannot add agents to the organization, publish
+  # generations of agents that have no account, or have Core accept a genesis proof.
+  identity_ready || exit 1
+  REL="$(release_dir)"
+  run_identity_tool publisher-set
+  ;;
+identity-publisher-status)
+  identity_ready || exit 1
+  REL="$(release_dir)"
+  run_identity_tool publisher-status < /dev/null
+  ;;
 archive-state)
   archive_state "${1:-}" "${2:-}" "${3:-}"
   ;;
