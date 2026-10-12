@@ -6,6 +6,7 @@ import { findingsOf } from "./findings.ts";
 import { recipeProposalsOf } from "./recipe-proposals.ts";
 import { linksOf } from "./links.ts";
 import { prepayOf } from "./prepay.ts";
+import { agentWalletOf } from "./agent-wallet.ts";
 import { upstreamOf } from "./upstream.ts";
 import { genGithubOf } from "./gen-github.ts";
 import { erc8004Of } from "./erc8004.ts";
@@ -328,6 +329,9 @@ export function buildRoutes(core: Core): Route[] {
     // verified links, agent card, ERC-8004 registration file (identity plan I3, I6; links.ts, erc8004.ts)
     route("GET", "/v1/links", "none", (c) => linksOf(core).all(q(c, "status"))),
     route("GET", "/v1/agents/:id/prepay", "none", (c) => prepayOf(core).view(c.params.id!)), // plan C
+    // agent wallets (docs/plans/AGENT-WALLET-SAFETY.md 2): the treasury (registry signing key) and the compute vault, balances read from chain
+    route("GET", "/v1/agents/:id/wallet", "none", (c) => agentWalletOf(core).view(c.params.id!)),
+    route("GET", "/v1/wallets", "none", () => agentWalletOf(core).list()),
     route("GET", "/v1/models", "none", () => modelsOf(core).view()), // plan M: registry, availability, pickable
     route("GET", "/v1/agents/:id/links", "none", (c) => linksOf(core).list(c.params.id!)),
     route("GET", "/v1/agents/:id/genesis", "none", (c) => linksOf(core).genesisOf(c.params.id!)), // GitHub genesis proof (docs/plans/GITHUB-GENESIS.md)

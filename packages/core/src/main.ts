@@ -16,6 +16,7 @@ import { serve } from "./http.ts";
 import { GitTreeSource } from "./trees.ts";
 import { viewersOf } from "./viewers.ts";
 import { base58Decode, keyFromSolanaJson } from "./protocol.ts";
+import { agentWalletOf } from "./agent-wallet.ts";
 
 // bun packages/core/src/main.ts --data ./data --port 9660 --config config/network.json --admin-key <path>
 //   [--runtime-key <path>] [--tick-ms 1000] [--host 127.0.0.1] [--chain <file>]
@@ -148,6 +149,8 @@ const canaryTimer = setInterval(() => {
   }
 }, 60_000);
 
+// agent wallets (docs/plans/AGENT-WALLET-SAFETY.md 2): balances are read from chain with Core's own reader
+if (chainSettings) agentWalletOf(core).configure({ reader: reader!, network: profile.network, quoteSymbol: profile.quote.symbol ?? null });
 const bridge = chainSettings ? new ChainBridge(core, chainSettings, { reader: reader!, log: (m) => console.log(`[chain] ${m}`) }) : null;
 if (bridge) await bridge.tick().catch(() => undefined);
 const chainTimer = bridge ? setInterval(() => void bridge.tick().catch(() => undefined), chainSettings!.poll_ms ?? 5000) : null;

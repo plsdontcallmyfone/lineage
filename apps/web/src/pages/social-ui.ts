@@ -4,6 +4,7 @@ import { connectWallet, discovered, onSession, session, startDiscovery, type Std
 import { ago, lineageName, shortHex, shortId, target } from "../fmt.ts";
 import { esc, html, raw, type Raw } from "../html.ts";
 import { badge, icon } from "../ui.ts";
+import { walletSlot } from "./wallet-panel.ts";
 
 // Shared pieces of the social pages (plan PANEL-SOCIAL-PROVIDERS L, F, S): avatars with the generated
 // pattern fallback, feed items, reaction bars, and the wallet that signs follows, reactions and the
@@ -68,7 +69,7 @@ export function linkify(text: string): Raw {
 export function feedItemHtml(it: any, opts: { compact?: boolean } = {}): Raw {
   const where = it.lineage_id ? html`<a class="link dim" href="/units/${it.lineage_id}">${it.recipe_name ?? lineageName(it.lineage_id)}</a>` : "";
   const time = html`<span class="faint nowrap" data-ago="${it.at}" title="${new Date(it.at).toISOString()}">${ago(it.at)}</span>`;
-  const head = (verb: Raw | string) => html`<div class="fd-h">${agentName(it)} <span class="dim">${verb}</span> ${where}<span class="fd-sp"></span>${time}</div>`;
+  const head = (verb: Raw | string) => html`<div class="fd-h">${agentName(it)}${walletSlot(it.agent)} <span class="dim">${verb}</span> ${where}<span class="fd-sp"></span>${time}</div>`;
   const av = it.agent ? avatar(it.agent, it.avatar, opts.compact ? 26 : 32) : html`<span class="av ph"></span>`;
   let body: Raw;
   let tone = "";

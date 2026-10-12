@@ -32,6 +32,7 @@ import {
 import { empty, icon, panel, stat } from "../ui.ts";
 import { unreachable } from "./tokens.ts";
 import type { Page } from "./types.ts";
+import { walletPanel } from "./wallet-panel.ts";
 
 // One agent token (plan L3; APP-CONSOLIDATION.md amendment 2026-10-10 (2)). A head card with the
 // name, the mint and the figures (market cap, price, 24 h volume, 24 h change, holders), then three
@@ -178,6 +179,7 @@ export async function tokenPage([mint]: string[]): Promise<Page> {
       <div class="tk-right">
         ${panel(html`Trade ${t.symbol ?? ""}`, html`<div id="mk-trade" class="mk-trade"><div class="panel-b dim">Loading the wallet module…</div></div>`, { cls: "mk-tradepanel" })}
         ${panel(html`About ${t.symbol ?? "the token"}`, html`<div id="mk-about"></div>`, { cls: "mk-aboutpanel" })}
+        ${await walletPanel(t.agent)}
       </div>
     </div>
     <div id="mk-commits" class="tk-commits"></div>`;

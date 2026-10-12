@@ -40,18 +40,22 @@ export interface FirewallAgents {
 }
 
 /** Builds the runtime's firewall, guards every key the state already names and installs it for the process. */
-export function installAgentFirewall(o: { rpc: Rpc; core: string; stateDir: string; view: FirewallAgents; log: (m: string) => void; limits?: () => Promise<FirewallLimits | null> }): AgentFirewall {
+export function installAgentFirewall(o: { rpc: Rpc; core: string; stateDir: string; view: FirewallAgents; log: (m: string) => void; limits?: () => Promise<FirewallLimits | null>; /** this runtime's own trading switch (runtime.json); false or absent: no swap is signed whatever Core's config says */ tradingOn?: boolean }): AgentFirewall {
+  const read = o.limits ?? coreLimits(o.core);
   const fw = new AgentFirewall({
     rpc: o.rpc,
     dir: o.stateDir,
     log: o.log,
-    limits: o.limits ?? coreLimits(o.core),
+    limits: async () => {
+      const l = await read();
+      return l && { ...l, trading_enabled: l.trading_enabled && o.tradingOn === true };
+    },
     identity: (key) => {
       for (const [agent, s] of Object.entries(o.view.agents())) if (s.key_id === key) return { agent, ownMint: s.mint };
       return null;
     },
   }).install();
   for (const s of Object.values(o.view.agents())) guardKey(s.key_id);
-  o.log(`firewall: installed; ${Object.keys(o.view.agents()).length} agent key(s) guarded; decisions in ${o.stateDir}/firewall.jsonl`);
+  o.log(`firewall: installed; ${Object.keys(o.view.agents()).length} agent key(s) guarded; swaps ${o.tradingOn === true ? "follow Core's trading config" : "refused (trading is off in this runtime's config)"}; decisions in ${o.stateDir}/firewall.jsonl`);
   return fw;
 }

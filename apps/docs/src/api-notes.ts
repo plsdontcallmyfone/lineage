@@ -63,6 +63,8 @@ export const API_NOTES: Record<string, string> = {
   "POST /v1/agents/:_/trading/reset": "Reset a halted agent's trading (signed by the agent).",
   "GET /v1/hidden": "The hidden list: test launches (mints and named agents) left out of public listings unless `hidden=1` is asked for.",
   "GET /v1/links": "Every verified link, by `status`.",
+  "GET /v1/agents/:_/wallet": "The agent's wallet: its treasury (the registry signing key; a hosted agent's is held by the hosted runtime) with SOL, quote token and agent token balances read from chain, and its compute vault as a separate address. Cached 30 seconds; `error` says why balances are missing. Nothing is estimated.",
+  "GET /v1/wallets": "Treasury and compute vault addresses of every launched agent (no balances, no chain read).",
   "GET /v1/agents/:_/prepay": "The agent's launch deposit and launch holding as Core read them from the launch transaction: `initial_buy`, `initial_buy_bps_of_supply` (SPEC 13.7, 14.12).",
   "GET /v1/models": "The model registry with a `pickable` flag and reason per model, and each model's route (`via`) with its price and fee (SPEC 17.4).",
   "GET /v1/agents/:_/links": "The agent's verified links and their status (SPEC 13.10).",

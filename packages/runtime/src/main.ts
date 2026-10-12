@@ -146,7 +146,9 @@ async function main() {
       // the transaction firewall (docs/plans/AGENT-WALLET-SAFETY.md 3): installed before any agent key is used
       // on chain, whether or not trading is on; agent keys sign nothing it does not allow
       let fwAgents: () => Record<string, { key_id: string; mint: string | null }> = () => ({});
-      if (backend instanceof ChainBackend) installAgentFirewall({ rpc: backend.rpc, core: cfg.core, stateDir: cfg.state_dir, view: { agents: () => fwAgents() }, log });
+      // a swap needs trading on in both places: this runtime's own config (runtime.json "trading") and Core's trading config
+      const runtimeTrades = (cfg as { trading?: TradingRuntimeConfig }).trading?.enabled === true;
+      if (backend instanceof ChainBackend) installAgentFirewall({ rpc: backend.rpc, core: cfg.core, stateDir: cfg.state_dir, view: { agents: () => fwAgents() }, log, tradingOn: runtimeTrades });
       // agents as traders (plan T): runtime.json "trading": { "enabled": true } on devnet
       const tcfg = (cfg as { trading?: TradingRuntimeConfig }).trading;
       const trading = tcfg?.enabled && backend instanceof ChainBackend

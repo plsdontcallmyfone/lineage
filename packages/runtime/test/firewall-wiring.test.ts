@@ -92,13 +92,13 @@ const ON: FirewallLimits = { trading_enabled: true, max_tx_quote: 100_000_000n, 
 const AGENT = generateAgentKey().id;
 const tok = (mint: string, venue: TokenView["venue"]): TokenView => ({ mint, agent: addr(60), parties: [], price: 0.01, decimals: 6, change_24h: null, venue });
 
-function runtime(limits: FirewallLimits | null) {
+function runtime(limits: FirewallLimits | null, o: { tradingOn?: boolean } = {}) {
   const dir = mkdtempSync(join(tmpdir(), "fw-wiring-"));
   const store = new StateStore(dir, { mode: "devnet", runtime: addr(90), now: 0 });
   const key = store.keyFor(AGENT);
   const { rpc, wires } = chain();
   const logs: string[] = [];
-  const fw = installAgentFirewall({ rpc, core: "http://127.0.0.1:1", stateDir: dir, view: { agents: () => ({ [AGENT]: { key_id: key.id, mint: addr(70) } }) }, log: (m) => logs.push(m), limits: async () => limits });
+  const fw = installAgentFirewall({ rpc, core: "http://127.0.0.1:1", stateDir: dir, view: { agents: () => ({ [AGENT]: { key_id: key.id, mint: addr(70) } }) }, log: (m) => logs.push(m), limits: async () => limits, tradingOn: o.tradingOn ?? true });
   return { dir, store, key, rpc, wires, fw, logs, venue: new ChainVenue(rpc) };
 }
 
@@ -162,6 +162,13 @@ describe("with the runtime's firewall installed", () => {
     await expect(sendAndConfirm(w.rpc, w.key, [msg.postBoard({ payer: w.key.id, signer: w.key.id, agent: AGENT, args: { lineage: "ab".repeat(32), body: { inline: new Uint8Array(1) } } })])).rejects.toMatchObject({ rule: "key_pays" });
     expect(w.wires.length).toBe(1);
   }, 20_000);
+
+  test("trading on in Core's config but off in this runtime's own config (the site): no swap", async () => {
+    const w = runtime(ON, { tradingOn: false });
+    await expect(w.venue.execute(w.key, tok(a1, "pump_curve"), "buy", 5_000_000n, 1n)).rejects.toMatchObject({ rule: "trading_off" });
+    expect(w.wires.length).toBe(0);
+    expect(w.logs.some((l) => l.includes("swaps refused (trading is off in this runtime's config)"))).toBe(true);
+  });
 
   test("limits Core cannot serve: no swap; a transfer, an approval and a withdrawal are refused whatever the limits", async () => {
     const w = runtime(null);
@@ -244,7 +251,14 @@ describe("tripwire: where signatures can be made", () => {
     const body = /export function signBytes\(key: Signer, message: Uint8Array\): Uint8Array \{\n([\s\S]*?)\n\}/.exec(tx)![1]!;
     expect(body.trim().split("\n")[0]!.trim()).toBe("consumeTicket(key.id, message);");
     const callers = files.filter((f) => /\bsignBytes\(/.test(src(f))).map(rel).sort();
-    expect(callers).toEqual(["packages/chain/src/cosign.ts", "packages/chain/src/tx.ts"]);
+    // reviewed callers; a new one fails here until someone has checked which key it signs with
+    const reviewed = [
+      "packages/chain/src/cosign.ts", // co-signs after authorizeSigners
+      "packages/chain/src/tx.ts", // signMessageWith
+      "packages/core/src/fee-claims.ts", // Core's claim attestor key signs a claim attestation; Core holds no agent key
+    ];
+    expect(callers.filter((c) => !reviewed.includes(c))).toEqual([]);
+    expect(callers).toEqual(expect.arrayContaining(["packages/chain/src/cosign.ts", "packages/chain/src/tx.ts"]));
     // both senders ask the firewall before they sign
     expect(src(join(ROOT, "packages/chain/src/sender.ts"))).toMatch(/await authorizeSigners\([\s\S]{0,200}\n\s*const tx = buildTransaction\(/);
     expect(src(join(ROOT, "packages/chain/src/cosign.ts"))).toMatch(/await authorizeSigners\([\s\S]{0,120}\n\s*const signed = cosign\(/);
