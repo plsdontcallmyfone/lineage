@@ -144,6 +144,18 @@ interface Internals {
   emitEvent(type: string, data: unknown): void;
 }
 
+/**
+ * The identity service this Core asks who holds a GitHub account (the genesis proof check). The Core units
+ * name it UNITS_IDENTITY_URL (the base the revenue records and the identity offer read); UNITS_IDENTITY is
+ * the older name. Without either, the first instance's port: a second instance on the same server (the
+ * mainnet one, 9765) must never fall through to it, or it asks another network's service and refuses
+ * every proof ("no account for this agent").
+ */
+export function identityApiOf(env: Record<string, string | undefined>): string | null {
+  const named = env.UNITS_IDENTITY_URL?.trim() || undefined;
+  return (named ?? env.UNITS_IDENTITY ?? env.LINEAGE_IDENTITY ?? "http://127.0.0.1:9665").replace(/\/+$/, "") || null;
+}
+
 export interface LinksOptions {
   fetch: (url: string, init?: RequestInit) => Promise<Response>;
   /** Hosts (host or host:port) a domain proof may use over plain http and on private addresses. Tests only. */
@@ -187,7 +199,7 @@ export class Links {
       perTick: 2,
       timeoutMs: 10_000,
       githubRaw: "https://raw.githubusercontent.com",
-      identityApi: ((process.env.UNITS_IDENTITY ?? process.env.LINEAGE_IDENTITY) ?? "http://127.0.0.1:9665").replace(/\/+$/, "") || null,
+      identityApi: identityApiOf(process.env),
     };
     this.ensure();
   }

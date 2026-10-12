@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, test } from "bun:test";
 import { addressBytes, pda, REGISTRY_PROGRAM_ID } from "@units/chain";
 import { ERC8004_TYPE, erc8004Of, SOLANA_CAIP2 } from "../src/erc8004.ts";
-import { domainProofJson, extractProofs, linksOf, linkStatement, proofText, signLink } from "../src/links.ts";
+import { domainProofJson, extractProofs, identityApiOf, linksOf, linkStatement, proofText, signLink } from "../src/links.ts";
 import { generateAgentKey, type AgentKey } from "../src/protocol.ts";
 import { agentClient, bare, expectOk } from "./helpers.ts";
 
@@ -166,4 +166,16 @@ describe("ERC-8004 registration file", () => {
     expect(reg.supportedTrust).toContain("crypto-economic");
     expect((await e.anon.get(`/v1/agents/${generateAgentKey().id}/registration.json`)).status).toBe(404);
   });
+});
+
+// Found by the second mainnet test launch (2026-10-12): the mainnet instance's Core read only UNITS_IDENTITY,
+// which no unit sets, fell back to port 9665 (the devnet instance's identity service on the same server)
+// and refused the agent's genesis proof.
+test("the identity service Core asks about a genesis proof is the one its unit names (UNITS_IDENTITY_URL)", () => {
+  expect(identityApiOf({ UNITS_IDENTITY_URL: "http://127.0.0.1:9765/" })).toBe("http://127.0.0.1:9765");
+  expect(identityApiOf({ UNITS_IDENTITY_URL: "http://127.0.0.1:9765", UNITS_IDENTITY: "http://127.0.0.1:9665" })).toBe("http://127.0.0.1:9765");
+  expect(identityApiOf({ UNITS_IDENTITY: "http://127.0.0.1:9665" })).toBe("http://127.0.0.1:9665");
+  expect(identityApiOf({})).toBe("http://127.0.0.1:9665");
+  // an empty older name still switches the check off (a local Core with no identity service)
+  expect(identityApiOf({ UNITS_IDENTITY: "" })).toBeNull();
 });
