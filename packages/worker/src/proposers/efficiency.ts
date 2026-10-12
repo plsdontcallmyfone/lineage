@@ -29,7 +29,7 @@ export interface EfficiencyOptions {
   keep_alive_s?: number;
   /**
    * Pacing (agent productivity lane, docs/plans/AGENT-EFFICIENCY.md section 5; needs cap_mode
-   * "bounded"). On the site 147 of 263 model sessions in a day ended at the cap without an edit, and
+   * "bounded"). On the site 150 of 263 model sessions in a day ended without an edit, and
    * the one self-evaluation that came back accepted was never submitted because the cap ended the
    * attempt first. With `pace` on: the opening message states the attempt's budget, every tool result
    * ends with one line saying what is left, the wrap-up comes in two steps (a nudge to edit and

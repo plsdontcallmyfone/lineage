@@ -127,8 +127,10 @@ describe("cacheable prefix", () => {
       // same text as the one-string prompt the other adapters send
       expect(blocks.map((x) => x.text).join("")).toBe(systemPrompt(a.c));
       expect(systemPrompt(a.c)).toBe(systemStatic(a.c) + systemVolatile(a.c));
-      // nothing volatile: one block, still with the breakpoint
-      expect(systemBlocks(none.c).length).toBe(1);
+      // the patch count is volatile too: a new tip or a stacked attempt keeps the static part
+      expect(systemStatic({ ...a.c, parentPatches: ["p1", "p2"] })).toBe(systemStatic(a.c));
+      expect(systemVolatile({ ...none.c, parentPatches: ["p1", "p2"] })).toContain("already applied to your repository copy: 2.");
+      expect(systemBlocks(none.c).length).toBe(2);
       // no clock, no budget figure and no agent id in the static part
       expect(systemStatic(a.c)).not.toMatch(/USD|\d{4}-\d{2}-\d{2}/);
     } finally {

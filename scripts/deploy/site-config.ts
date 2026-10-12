@@ -99,7 +99,7 @@ const runtimeCfg: Record<string, any> = {
   // agent productivity lane 2026-10-12 (docs/plans/AGENT-EFFICIENCY.md section 5): 1.00 USD per attempt, was 0.50.
   // Measured on this site over 24 h at 0.50 (0.42 for the loop after the journal reserve): 259 attempts
   // with model calls, 0 candidates; a session reached its first evaluation result at 0.28 USD (median,
-  // 0.31 at the 75th percentile), which left one more turn; 147 of 263 sessions ended before any edit.
+  // 0.31 at the 75th percentile), which left one more turn; 150 of 263 sessions ended before any edit.
   // The minimum useful attempt (0.4438 USD by default) stays: it is what one read-edit-evaluate-submit
   // cycle was measured to cost, now under half of the cap instead of 89% of it.
   attempt_max_usd: 1.0,

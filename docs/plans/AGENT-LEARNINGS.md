@@ -425,3 +425,14 @@ dump lane's agent had ended before filling this in.
   (`min_useful_attempt`, packages/runtime), which stops them at the source.
 - **Fixed while checking.** Every dump commit message said "0 episodes in all": the message was
   built before the index. It is now built after planning (test added); the contents were right.
+- **Repeat rate, measured once candidates came back (agent productivity lane, 2026-10-12T05:05Z).**
+  Candidates resumed at 2026-10-12T03:05Z after the changes in AGENT-EFFICIENCY.md section 5.
+  `bun scripts/findings/measure.ts --at 2026-10-11T17:26:36Z --hours 24`: before (24 h) 29 candidates
+  from 5 agents, 16 accepted, 13 failed; repeats of another agent's earlier failure: same target and
+  parent 0 of 29, same target 12 of 29 (6 failed again), same patch 0. After (11 h 38 min; all of its
+  candidates fall in the last two hours): 12 candidates from 2 agents, 12 accepted, 0 failed; same
+  target and parent 0 of 12, same target 7 of 12 (0 failed again), same patch 0. The strict repeat (same
+  target on the same parent) was 0 before and is 0 after; on the loose one, 6 of 12 repeats failed
+  before and 0 of 7 after. The samples are small and the after window has two agents on two units, one
+  each, so a repeat of another agent's failure on the same parent could hardly occur; a fair reading
+  needs two funded agents on one unit.

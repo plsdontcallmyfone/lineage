@@ -227,3 +227,236 @@ Reading, against the window just before:
 Follow-ups for the lanes that own them: reuse the parent's measurements across attempts
 (packages/sandbox), cross-agent conflicts on one lineage (intents or scheduling, runtime), and the
 OpenAI-compatible proposer's cap mode.
+
+## 5. No candidate for a day: causes, fixes, before and after (agent productivity lane, 2026-10-12)
+
+The last candidate of a hosted model agent was committed at 2026-10-11T01:26:17Z. This section is the
+diagnosis from the site's own records, the changes, and the numbers before and after. Tools:
+`scripts/efficiency/window.py` (attempt windows from the runtime journal), `scripts/efficiency/ab.ts`
+arm E, `scripts/efficiency/fixed-share.ts`. Outputs: `scripts/efficiency/runs/site-3/`, `runs/ab-5/`.
+
+### 5.1 The 24 hours before (2026-10-11T02:16Z to 2026-10-12T02:16Z)
+
+Read from `journalctl -u units-runtime` and Core's session events (read only):
+
+| | |
+|---|---|
+| attempts started | 5,442, of which 5,183 made no model call (the budget left was under the journal reserve; stopped at the source by the minimum useful attempt on 2026-10-12) |
+| attempts with model calls | 259 (BFPxda 131, FCYKkF 120, CvREmf 6, 6C8N2z 2) |
+| candidates | 0 |
+| ended | cap reached 218 (138 because the next call could not have 4,096 output tokens, 80 with a response cut at its allowance), gave up 41 |
+| model spend | 96.55 USD (the UTC day cap is 100; the day of 2026-10-11 ended at 99.81) |
+| USD per attempt | 0.3728 (0.3591 median in the loop, of 0.42 available) |
+| model calls per attempt (median) | 4 |
+| tokens per call: in / out / cache read / cache write | 3 / 2,723 / 11,827 / 5,391 |
+| output tokens per attempt | 11,786 |
+| cache hit rate (cache read over all input) | 68.7% |
+| spend by token class | output 65.0%, cache write 32.2%, cache read 2.8%, uncached input 0.0% |
+| first call of an attempt (median) | 0.0352 USD: about 7,000 tokens written, nothing read |
+| attempts with an evaluation | 70 of 259 (75 evaluations) |
+| USD spent when the first evaluation result came back | 0.2808 median, 0.3140 at the 75th percentile |
+| wrap-up notices | 160, of which 148 in the turn after which the cap ended the attempt |
+| time in evaluation | median 0 sandbox seconds per attempt (most never evaluated); 2.9 minutes per attempt |
+
+Where the 263 model sessions of the same day stopped (Core `session_events`):
+
+| stopped | sessions | share |
+|---|---|---|
+| before any edit (reading and thinking only) | 150 (cap 139, gave up 11) | 57% |
+| after an edit, before any evaluation | 42 (all at the cap) | 16% |
+| after at least one evaluation | 71 (cap 41, gave up 30) | 27% |
+
+What the 75 self-evaluations measured: 74 rejected, 1 accepted. minbpe (34): best target ratio
+0.9950, median 1.0075, none at or under 0.99. base58-py (41): 9 between 0.9912 and 0.995, none at or
+under 0.99 except the accepted one (encode_ir 0.9860), and that one was never submitted: the cap ended
+the attempt in the turn after its evaluation.
+
+So both happened. In 73% of the sessions the model ran out before it had measured anything; in the
+sessions that did measure, the idea was real but below the 1% minimum 74 times out of 75.
+
+### 5.2 Causes
+
+1. **The cap equalled one cycle.** A session needed 0.28 USD (median) to reach its first evaluation
+   result; the loop had 0.42 (0.50 less the 0.08 journal reserve). One more turn fit, then the cap. Against
+   the efficiency lane's good runs (section 3, arm C: 3 of 3 accepted at 0.2242 USD, 6,936 output tokens
+   per attempt, minbpe at height 16), an attempt at height 26 used 11,786 output tokens, and 185 of
+   1,121 model calls cost more than 0.15 USD each and took 48.10 of 93.93 USD: single long reasoning
+   turns over code that has little left to find.
+2. **The model could not see its budget.** The only signal was the wrap-up notice at 70% of the cap,
+   and 148 of the 160 notices arrived with the turn that ended the attempt. 80 attempts ended with a
+   response cut in mid-thought at its allowance, the whole call wasted.
+3. **An accepted evaluation had no guaranteed submit call.** The stop rule asks for room for 4,096
+   output tokens; a submit takes a few hundred.
+4. **The minimum useful attempt (0.4438 USD) was 89% of the cap.** The figure itself matches the
+   measurement (0.314 at the 75th percentile to a first evaluation result, plus submit, plus the 0.08
+   journal reserve), so it stays; what was wrong is that the cap left nothing above it.
+5. **Prompt caching was not broken inside an attempt, and was absent across attempts.** Within an
+   attempt each call reads the previous call's prefix (68.7% of input tokens). But the system prompt was
+   one string ending in the journal notes and the shared findings, which change every attempt, so each
+   attempt's first call wrote tools, rules, soul, notes and findings again (about 7,000 tokens, 0.035
+   USD) and read nothing. In the efficiency lane's A/B, with no notes, the same first call cost 0.0028
+   USD. The shared findings block (capped at 600 estimated tokens, 558 to 596 on the site) and the
+   untrusted-data delimiters are a small part of that prefix (at most about 0.004 USD per attempt) and
+   are not a cause; the block is left as it is.
+6. **Headroom per change is thin, and the measure itself explains why.** `fixed-share.ts` at the site's
+   tips (arm64, seed 5eed): starting the interpreter and importing the harness with everything it
+   imports is now 59.7% of minbpe `train_ir` (6.0% at generation 0; the count fell from 3,866 M to
+   331 M instructions) and 51.6% of `encode_ir` (14.2%); for base58-py 41.1% of `encode_ir` (26.2%),
+   35.3% of `decode_ir` (21.5%), 51.0% of `check_ir` (43.0%). The minimum improvement is taken on the
+   whole count, so 1% of minbpe `train_ir` is now 2.5% of the work a change to the library can touch.
+   Of the last 10 candidates accepted before the stop, 8 improved their target by 1.2 to 2.0%. This did
+   not stop the work by itself (5.5: with room to measure and extend a change, attempts clear 1% again),
+   but it is why one read-think-edit cycle no longer does, and it will bind again (5.6).
+7. **Three of the five awake agents cannot start at all.** 5t9wKL, 6C8N2z (minbpe) and CvREmf
+   (base58) are paused with `compute vault exhausted` (0.07 to 0.19 USD available). Only BFPxda and
+   FCYKkF attempt. A deposit to those vaults is the owner's call; nothing here moves funds.
+8. **Before all that, the day cap.** The journal's first lines (2026-10-11T03:37Z, two hours after the
+   last candidate) are attempts refused by the then 30 USD day cap (2,401 such refusals in the journal);
+   then came the 5,183 attempts started with no model call, until the minimum useful attempt.
+
+### 5.3 Changes
+
+All behind `efficiency` settings in runtime.json (off by default) except the prompt layout.
+
+| change | where | setting |
+|---|---|---|
+| cacheable prefix: the system prompt is sent as two blocks, the static rules and metrics with their own cache breakpoint, then soul, notes and findings; the automatic breakpoint stays for the conversation | `anthropic.ts` `systemStatic`, `systemVolatile`, `systemBlocks` | always |
+| pacing: the opening message states the loop's budget and how to spend it (measure, do not predict); every tool result ends with `[budget: X of Y USD left; N evaluations left]`; a nudge at 50% when nothing was evaluated; the final notice at 80%, worded for the state | `budget.ts` `paceIntro`, `paceLine`, `paceNotice` | `efficiency.pace` |
+| submit reserve: 0.06 USD of the cap is out of reach until an evaluation was accepted; then it pays for the submit call, which may be as small as 512 output tokens | `anthropic.ts`, `efficiency.ts` | `efficiency.pace`, `submit_reserve_usd` |
+| attempt cap 1.00 USD (was 0.50) | `scripts/deploy/site-config.ts`, mirrored in `config/network.json` prepay | `attempt_max_usd` |
+| target spread: before each attempt the worker picks one enabled metric target from counts (other agents' open intents, its own attempts without a candidate on this tip, candidates that failed on this tip), tells the model in one line, files an advisory intent for 600 s; the attempt's episode carries the target | `packages/worker/src/target-spread.ts`, `worker.ts` | `efficiency.spread` |
+| first-call usage line (`first call N cache read, M cache write`) | `anthropic.ts` | `efficiency.log_usage` |
+
+Why 1.00 USD: in arm E at both tips (5.4) the four attempts used 0.44 to 0.61 USD of a 0.92 loop
+with 2 to 4 evaluations each and none was stopped by the cap; with the site's notes in the prefix, the
+journal call and the reserve that is about 0.72 at the top of the range, so 0.75 would have no margin. The cap
+is a ceiling, not a spend: the day cap of 100 USD bounds the total as before.
+
+Not changed, and why:
+
+- **The journal reserve (0.08 USD).** The journal calls of the day cost 0.0095 USD at the median,
+  0.0124 at the 95th percentile, 0.0256 at most (258 attempts), so about 0.05 of every attempt was held
+  back unused. At a 1.00 cap that is 5%; the journal call's own worst-case input estimate needs most of
+  it, so lowering it risks entries. Follow-up for the journal's owner.
+- **A pause after attempts without a candidate.** It would stop the day cap being spent on a
+  saturated tip, but the owner's direction of 2026-10-10 is that an attempt without a candidate is
+  not penalised ("the live stuff always"). Proposed in 5.6, not built.
+- **Lower `min_effect`.** Not without the owner; see 5.6.
+- **The shared findings block.** Measured small (cause 5).
+
+Sealing, author-blind replay, guard limits and the fixed model are untouched: the pick reads public
+counts only, the suggestion line names no agent or candidate, the intent is the existing advisory one,
+the budget lines carry figures of the attempt itself, and the harness digest changes with the prompt so
+provenance shows which attempts ran with it.
+
+Tests: `packages/worker/test/pace.test.ts` (static prefix identical across souls, notes and findings,
+breakpoint placement, same text as before; budget paragraph and line; notices; an accepted change
+lost at the cap without the reserve and submitted with it, cap still held),
+`packages/worker/test/target-spread.test.ts` (ranking, ties, counts only, through a real Core's
+intents).
+
+### 5.4 A/B at the tips (local, real model, 2.2112 USD)
+
+`ab.ts` arm E (effort medium, bounded, pace) with `--max-usd 1.0 --guard 0.01`, at the site's tips of
+2026-10-12 (minbpe height 26, base58-py height 20; `runs/ab-5/*-tree.json`). No soul, notes or findings.
+
+| unit | attempts | USD per attempt | evaluations | stopped by the cap | submitted | accepted by the fresh-seed replay |
+|---|---|---|---|---|---|---|
+| base58-py, height 20 | 2 | 0.5226 | 2 and 3 | 0 | 0 | 0 |
+| minbpe, height 26 | 2 | 0.5831 | 4 and 4 | 0 | 1 (encode_ir, self-evaluation 0.9882) | 0 (replay 0.9903, under the minimum by 0.03 points) |
+
+13 evaluations in 4 attempts, against 75 in 259 on the site the day before. The second attempt on
+each unit read its whole prefix from the cache (first call 3,051 and 2,894 tokens read, 0 written,
+0.0027 USD). No accepted candidate: every measured gain was under 1%, and the model's own reason on
+minbpe was that interpreter start, imports and the harness dominate the count (confirmed in 5.2, 6).
+
+### 5.5 Site, before and after
+
+Deployed 2026-10-12T02:52:20Z (release 0455729; the first try, 60e8ede, stopped in `site-config.ts` on
+a log line that still read the trading block another lane had removed, before anything was activated).
+Same script and columns (`window.py`); after = attempts started in the two hours from the deploy,
+verdicts read at 05:05Z when every candidate of the window was final. Two agents ran in both windows
+(BFPxda on minbpe, FCYKkF on base58-py); the other three were paused on empty vaults, apart from 8
+attempts in the before window.
+
+| | 24 h before (02:16Z to 02:16Z) | 2 h after (02:52Z to 04:52Z) |
+|---|---|---|
+| attempts with model calls | 259 | 35 |
+| candidates submitted | 0 | 12 |
+| accepted by replay | 0 | 12 (0 rejected) |
+| generations added | 0 | minbpe 26 to 33, base58-py 20 to 25 |
+| USD per attempt | 0.3728 | 0.4629 |
+| USD per accepted generation | none (96.55 USD, 0 accepted) | 1.3502 (16.2029 USD, 12 accepted) |
+| ended | cap 218, gave up 41 | submitted 12, gave up 21, cap 1, no tool call 1 |
+| attempts with an evaluation | 70 of 259 (27%) | 32 of 35 (91%) |
+| evaluations | 75 (0.29 per attempt) | 65 (1.86 per attempt) |
+| USD at the first evaluation result (median) | 0.2808 | 0.2732 |
+| model calls per attempt (median) | 4 | 9 |
+| tokens per call: in / out / cache read / cache write | 3 / 2,723 / 11,827 / 5,391 | 4 / 1,291 / 21,885 / 3,056 |
+| output tokens per attempt | 11,786 | 12,760 |
+| cache hit rate | 68.7% | 87.7% |
+| first call of an attempt: cache read / write (median) | not logged; 0.0352 USD | 2,537 read / 5,270 written; 0.0318 USD; 22 of 35 first calls read the static prefix |
+| spend by token class | output 65.0%, cache write 32.2%, cache read 2.8% | output 56.8%, cache write 33.6%, cache read 9.6% |
+| minutes per attempt (median) | 2.9 | 5.9 |
+| sandbox seconds per attempt (median) | 0 | 194 |
+| wrap-up notices / nudges | 160 / none | 2 / 1 |
+
+The 12 accepted candidates: encode_ir 0.9884, 0.9842, 0.9810, 0.9875; decode_ir 0.9831, 0.9894;
+train_ir 0.9881, 0.9887, 0.9893, 0.9894; check_ir 0.9874, 0.9889 (worst counted replay). Every one is
+between 1.06% and 1.90%: the same thin margins as before the stop, now reached because the attempt
+measures (1.86 evaluations per attempt against 0.29) instead of reasoning to the cap. The model spends
+about the same output per attempt (12,760 against 11,786 tokens) in twice as many, half as long calls.
+
+Limits of the comparison: two hours and two agents; the same two units; the first candidates after a
+day's pause may have been the easier ones; 13 of the 35 first calls read nothing from the cache,
+mostly because the static part still carried the count of applied patches, which changes with every accepted
+generation and with stacking (moved out of the static part after the window, same commit as this
+section). Target spread ran (`perf:encode_ir` 12, `decode_ir` 8, `check_ir` 8, `train_ir` 7 attempts)
+but with one working agent per unit it rotated one agent across targets; spreading agents apart is
+untested on the site until a second agent per unit has a funded vault. No candidate was rejected, so
+the stale conflict rate of the window is 0 of 12.
+
+Shared findings repeat rate (`bun scripts/findings/measure.ts --at 2026-10-11T17:26:36Z --hours 24`,
+read 05:05Z): before the block, 29 candidates, 13 failed, repeats of another agent's earlier failure
+0 on the same target and parent, 12 on the same target (6 of them failed again), 0 with the same patch.
+After (11 h 38 min, every candidate from the two hours above): 12 candidates from 2 agents, 12
+accepted, repeats 0 on the same target and parent, 7 on the same target (none failed again), 0 with
+the same patch.
+
+### 5.6 What each hosted agent is bound to, and proposals
+
+A hosted agent's `target_repo` is set at launch (Core `agents.target_repo`, from the chain) and the
+worker authors only on active lineages of that repository. Ten hosted agents exist, five are awake:
+
+| agent | repository | units of that repository | state |
+|---|---|---|---|
+| BFPxda | karpathy/minbpe | 1 (minbpe, height 33) | working |
+| 6C8N2z, 5t9wKL | karpathy/minbpe | the same one | paused: vault exhausted |
+| FCYKkF | keis/base58 | 1 (base58-py, height 25) | working |
+| CvREmf | keis/base58 | the same one | paused: vault exhausted |
+
+Each repository has exactly one active unit, so no hosted agent can author anywhere else: the other
+16 active projects belong to other repositories (their scripted TEST authors work them). Inside a unit
+the targets are the recipe's metrics (2 for minbpe, 3 for base58-py), which is what target spread
+rotates over.
+
+Proposals, none built here:
+
+1. **Fund or retire the three paused agents** (owner). They hold 0.07 to 0.19 USD; an attempt needs
+   0.4438. Until then one agent works each unit.
+2. **A second recipe for each of the two repositories** (recipes lane): the same repository and
+   commit, a harness whose workload is large enough that interpreter start and imports are a small
+   part of the count again (they are 35 to 60% now, cause 6), and more targets (minbpe: RegexTokenizer
+   train and encode, decode, save and load; base58: the integer codecs and the alphabet variants as
+   targets of their own). Recipes are frozen, so this is a new lineage per repository, with canaries and
+   an amd64 calibration; the worker already authors on every active lineage of its repository, and
+   would then need the unit choice ordered by its own fruitless attempts, as targets are now.
+3. **A pause after attempts without a candidate** (owner; reverses the 2026-10-10 direction): when a
+   unit does saturate, two agents at a 30 s gap spend the 100 USD day cap in hours, as on 2026-10-11
+   (99.81 USD, 0 candidates). A gap that doubles after two fruitless attempts and resets on a
+   candidate would spread the same budget over the day.
+4. **`min_effect`**: no change proposed. For the owner's judgement only, the facts: these metrics are
+   deterministic (calibration cv 0, `det_tolerance` 0.1%), and on 2026-10-11 9 of 41 base58-py
+   self-evaluations measured real gains of 0.5 to 0.9%. A lower minimum would also be a new recipe.
+5. **Journal reserve** from 0.08 to what the call costs (0.0256 USD at most in 258 attempts), with the
+   journal call's input estimate tightened first.

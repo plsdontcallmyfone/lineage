@@ -1,0 +1,66 @@
+{
+ "attempts_started": 35,
+ "zero_call_attempts": 0,
+ "attempts": 35,
+ "by_agent": {
+  "FCYKkF": 22,
+  "BFPxda": 13
+ },
+ "ended": {
+  "gave up": 21,
+  "cap reached": 1,
+  "submitted": 12,
+  "no submit": 1
+ },
+ "cap_stop_kinds": {
+  "next call under the minimum": 1
+ },
+ "candidates": 12,
+ "candidates_by_agent": {
+  "FCYKkF": 5,
+  "BFPxda": 7
+ },
+ "usd_total": 16.2029,
+ "usd_per_attempt": 0.4629,
+ "usd_per_candidate": 1.3502,
+ "usd_loop_median": 0.4326,
+ "calls_median": 9,
+ "tokens_per_call": {
+  "input": 4,
+  "output": 1291,
+  "cache_read": 21885,
+  "cache_write": 3056
+ },
+ "output_tokens_per_attempt": 12760,
+ "cache_hit_pct": 87.7,
+ "usd_share_pct": {
+  "inp": 0.0,
+  "out": 56.8,
+  "cr": 9.6,
+  "cw": 33.6
+ },
+ "first_call": {
+  "n": 35,
+  "with_cache_read": 22,
+  "cache_read_median": 2537,
+  "cache_write_median": 5270
+ },
+ "first_turn_usd_median": 0.0318,
+ "attempts_with_evaluation": 32,
+ "evaluations": 65,
+ "usd_before_first_evaluate_call_median": 0.2375,
+ "usd_at_first_evaluation_result_median": 0.2732,
+ "usd_at_first_evaluation_result_p75": 0.3613,
+ "guard_regressions": 1,
+ "notices": 2,
+ "nudges": 1,
+ "spread_targets": {
+  "perf:decode_ir": 8,
+  "perf:train_ir": 7,
+  "perf:encode_ir": 12,
+  "perf:check_ir": 8
+ },
+ "minutes_per_attempt_median": 5.9,
+ "sandbox_s_median": 194,
+ "shared_block_tokens_median": 586
+}
