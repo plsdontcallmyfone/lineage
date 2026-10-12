@@ -34,7 +34,7 @@ describe("SOL cost lines from the simulations (owner direction 2026-10-11)", () 
     expect(fundingBlocked({ costs, solUsd: 112, solBalance: 1n })).toMatch(/the wallet holds/);
     expect(fundingBlocked({ costs, solUsd: 112, solBalance: 10n ** 12n })).toBeNull();
   });
-  test("Funding: one total in SOL with USD small, a one-line breakdown with the units account, one short disabled line", () => {
+  test("Funding: one total in US dollars with the SOL small, a one-line breakdown with the units account, one short disabled line", () => {
     const costs = solCostsFromSims({ launch: launchSim, purchase, payer: "launcher", creditsShare: { num: 1n, den: 3n }, hasBuy: true, laterFees: 0n, laterRent: 0n, identity: 50_000_000n })!;
     const v = { costs, creditsUsd: "10", bps: 100, identityChosen: true, solUsd: 100, solBalance: 1n, txCount: 2, blocked: "the wallet holds 0.000000001 SOL", devnet: true, docs: "/docs/x", pending: false };
     const h = fundingSummary(v).s;
@@ -45,7 +45,13 @@ describe("SOL cost lines from the simulations (owner direction 2026-10-11)", () 
     expect(h).not.toMatch(/\bt?UNITS\b/);
     expect(h).not.toContain("\u2014");
     const r = costBreakdown({ ...v, blocked: null }).s;
-    expect(r).toContain("10 USD of credits");
+    // US dollars lead every cost, through the one formatter; the SOL the wallet pays stays beside it
+    expect(r).toContain("for $10.00 of credits");
+    expect(r).toMatch(/data-fronting="A units account"[^]*?<b class="num">\$5\.00<\/b> <span class="dim">0\.05 SOL<\/span>/);
+    expect(h).toMatch(/data-fronting-total>\$\d/);
+    expect(h).toMatch(/data-fronting-sol>[\d.]+ SOL</);
+    // no SOL price: the cost reads "$ unavailable" beside the SOL amount, never a number passing as dollars
+    expect(costBreakdown({ ...v, solUsd: null }).s).toMatch(/data-fronting="Total"[^]*?<b class="num">\$ unavailable<\/b> <span class="dim">[\d.]+ SOL/);
     expect(r).toContain("2 transactions signed together, sent in order");
     expect(fundingSummary({ ...v, identityChosen: false }).s).not.toContain("A units account");
   });

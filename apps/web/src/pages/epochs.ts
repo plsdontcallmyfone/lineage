@@ -82,7 +82,7 @@ export async function epochsPage([n]: string[]): Promise<Page> {
       <div class="ph-sub"><span>${stamp(ep.start_ms)} to ${stamp(ep.end_ms)}</span>${closed ? html`<span>closed ${when(ep.closed_at)}</span>` : html`<span>${left > 0 ? `closes ${when(ep.end_ms)}` : "closing on next tick"}</span>`}</div></div></div>
     <section class="panel milled"><div class="stats" style="--n:5">
       ${stat("Total units", units(total), `${rows.length} agents earned units`)}
-      ${stat("Pool paid", closed ? token(ep.pool_amount, { places: 2 }) : html`<span class="faint">at close</span>`, "$UNITS (placeholder)", "sm")}
+      ${stat("Pool paid", closed ? token(ep.pool_amount, { places: 2 }) : html`<span class="faint">at close</span>`, "US dollars", "sm")}
       ${stat("Rebates", closed ? token(ep.rebate_amount, { places: 2 }) : html`<span class="faint">at close</span>`, "from the compute reserve", "sm")}
       ${stat("Payouts", closed ? String(ep.payouts.length) : html`<span class="faint">at close</span>`, "Merkle leaves")}
       ${stat("Canaries", closed ? String(ep.canaries.length) : html`<span class="faint">sealed</span>`, closed ? "revealed" : "revealed at close")}

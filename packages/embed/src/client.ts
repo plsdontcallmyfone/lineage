@@ -1,7 +1,7 @@
 import { ApiError } from "../../../apps/web/src/api.ts";
 import type { SessionSummary } from "../../../apps/web/src/live-panel/index.ts";
 import type { Building } from "../../../apps/web/src/building.ts";
-import type { Candle, Holders, TokenDetail, TokenSummary, Trade } from "../../../apps/web/src/market.ts";
+import type { Candle, CandlesAnswer, Holders, TokenDetail, TokenSummary, Trade } from "../../../apps/web/src/market.ts";
 
 // The embed kit's data client (docs/plans/FRONTEND-EMBED.md): plain JSON from Core and the market
 // indexer, nothing computed that the API does not serve except sums and counts over its own rows.
@@ -104,6 +104,11 @@ export interface Card {
   price: number | null;
   volume_24h: number | null;
   change_24h: number | null;
+  /** US dollars, from the indexer's "_usd" fields; null when the dollar price could not be read */
+  price_usd: number | null;
+  market_cap_usd: number | null;
+  volume_24h_usd: number | null;
+  change_24h_usd: number | null;
   /** what the agent is building, as the indexer joins it from Core (null when the indexer has no Core row) */
   building: Building | null;
   curve_progress: number | null;
@@ -122,6 +127,8 @@ export interface Stats {
   candidates: number | null;
   /** UNITS traded in the last 24 hours, summed over the indexer's listed tokens; null when unknown */
   volume_24h: number | null;
+  /** the same in US dollars, summed from the indexer's volume_24h_usd; null when unknown or when the dollar price could not be read */
+  volume_24h_usd: number | null;
   sessions_live: number | null;
 }
 
@@ -164,6 +171,10 @@ export function buildCards(tokens: TokenSummary[], souls: Map<string, Soul | nul
       price: t.price,
       volume_24h: t.volume_24h ?? null,
       change_24h: t.change_24h ?? null,
+      price_usd: t.price_usd ?? null,
+      market_cap_usd: t.market_cap_usd ?? null,
+      volume_24h_usd: t.volume_24h_usd ?? null,
+      change_24h_usd: t.change_24h_usd ?? null,
       building: (t as TokenSummary & { building?: Building | null }).building ?? null,
       curve_progress: t.curve_progress,
       created_at: t.created_at,
@@ -269,7 +280,7 @@ export class UnitsClient {
   token(mint: string): Promise<TokenDetail> {
     return this.market<TokenDetail>(`tokens/${mint}`);
   }
-  candles(mint: string, tf = "1h"): Promise<{ tf: string; candles: Candle[] }> {
+  candles(mint: string, tf = "1h"): Promise<{ tf: string } & CandlesAnswer> {
     return this.market(`tokens/${mint}/candles?tf=${tf}`);
   }
   trades(mint: string, limit = 20): Promise<{ trades: Trade[] }> {
@@ -357,6 +368,7 @@ export class UnitsClient {
         generations: typeof core?.generations === "number" ? core.generations : null,
         candidates: typeof core?.candidates === "number" ? core.candidates : null,
         volume_24h: tokens ? tokens.reduce((n, t) => n + (Number.isFinite(t.volume_24h) ? t.volume_24h : 0), 0) : null,
+        volume_24h_usd: tokens ? tokens.reduce<number | null>((n, t) => (n === null || t.volume_24h_usd == null ? null : n + t.volume_24h_usd), 0) : null,
         sessions_live: live ? live.filter((s) => s.state === "live").length : null,
       };
     });

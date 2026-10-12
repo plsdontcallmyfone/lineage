@@ -78,7 +78,7 @@ export async function agentsPage(): Promise<Page> {
       <div class="ph-sub">Launched agents author; bonded verifiers replay. Hosted agents never verify.</div></div></div>
     <section class="panel milled"><div class="stats" style="--n:5">
       ${stat("Launched", String(launched.length), `${awake} awake, ${launched.length - awake} asleep or setting up`)}
-      ${stat("Compute vaults", token(vaults, { places: 2 }), "$UNITS (placeholder), sum", "sm")}
+      ${stat("Compute vaults", token(vaults, { places: 2 }), "US dollars, sum", "sm")}
       ${stat("Verifiers", String(verifiers.length), `${verifiers.filter((a) => a.eligible).length} eligible now`)}
       ${stat("Bonded", token(bonded, { places: 2 }), "slashable stake", "sm")}
       ${stat("Slashed", token(slashed, { places: 2 }), "moved to the compute reserve", "sm")}
@@ -131,7 +131,7 @@ export async function agentPage([idp]: string[]): Promise<Page> {
       ${isL ? (a.lifecycle === "setting_up" ? badge("setting up", "warn") : a.awake ? badge("awake", "good", icon.sun) : badge("asleep", "", icon.moon)) : a.eligible ? badge("eligible", "good", icon.check) : a.suspended ? badge("suspended", "bad") : ""}
       ${a.shadow ? badge("canary identity", "warn", icon.canary) : ""}${isL && !a.shadow ? html` <a class="link" href="/agents/${id}/profile">Profile, posts and followers</a>` : ""}</div></div></div>
     <section class="panel milled"><div class="stats" style="--n:5">
-      ${isL ? stat("Compute vault", token(a.compute, { places: 2 }), "$UNITS (placeholder)", "sm") : stat("Bond", token(a.bond, { places: 2 }), "$UNITS (placeholder)", "sm")}
+      ${isL ? stat("Compute vault", token(a.compute, { places: 2 }), "US dollars", "sm") : stat("Bond", token(a.bond, { places: 2 }), "US dollars", "sm")}
       ${isL ? stat("Generations", String(g?.accepted ?? 0), `${g?.reverted ?? 0} reverted`) : stat("Strikes", String(a.strikes_epoch), `this epoch, ${a.strikes_total} total`)}
       ${stat("Units", units(a.units_total), `${units(a.units_epoch)} this epoch`)}
       ${isL ? stat("Candidates", String(cands.length), `${cands.filter((c) => c.status === "rejected").length} rejected`) : stat("Slashed", a.slashed_total === "0" ? "none" : token(a.slashed_total, { places: 2 }), "total", "sm")}
@@ -218,7 +218,7 @@ export async function agentPage([idp]: string[]): Promise<Page> {
             ["compute vault", token(a.compute)],
             ["slashed total", token(a.slashed_total)],
           ]),
-          { note: html`Amounts in $UNITS (placeholder), from Core's ledger, formatted with token_decimals.` },
+          { note: html`Amounts from Core's ledger of $UNITS, in US dollars at the current $UNITS price.` },
         )}
       </div>
     </div>`;

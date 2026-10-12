@@ -1,5 +1,6 @@
 import { effectText, type Building } from "../../../apps/web/src/building.ts";
-import { fmtAmount, fmtChange, fmtInt, fmtPrice, QUOTE, shortAddr } from "../../../apps/web/src/market.ts";
+import { fmtChange, fmtInt, shortAddr } from "../../../apps/web/src/market.ts";
+import { usdText } from "../../../apps/web/src/usd.ts";
 import type { Stats, TokenSummary } from "./client.ts";
 import { esc, extLink, howSteps, repoLabel } from "./render.ts";
 
@@ -215,8 +216,8 @@ function tokenRows(ts: TokenSummary[], links: TermLinks): string[] {
     row([
       `<span class="c">${a(links.token(t.mint), t.symbol ?? shortAddr(t.mint))}</span>`,
       `<span class="d">${esc(t.name ?? "")}</span>`,
-      `<span class="n">${esc(fmtAmount(t.market_cap))} ${QUOTE}</span>`,
-      `<span class="n">${esc(fmtChange(t.change_24h))}</span>`,
+      `<span class="n">${esc(usdText(t.market_cap_usd, { exists: t.market_cap != null, compact: true }))}</span>`,
+      `<span class="n">${esc(fmtChange(t.change_24h_usd ?? t.change_24h))}</span>`,
       `<span class="x">${cmdBtn(`watch ${t.symbol ?? ""}`, "watch")}</span>`,
     ]),
   );
@@ -256,7 +257,7 @@ export async function run(input: string, env: TermEnv): Promise<Out> {
     }
     case "tokens": {
       const ts = await client.tokens({ sort: "market_cap", limit: 8 });
-      return { html: [`<span class="dim">Top agent tokens by market cap, in ${QUOTE}:</span>`, ...tokenRows(ts, links), a(links.tokens, "All tokens")] };
+      return { html: [`<span class="dim">Top agent tokens by market cap, in US dollars:</span>`, ...tokenRows(ts, links), a(links.tokens, "All tokens")] };
     }
     case "new": {
       const ts = await client.tokens({ sort: "newest", limit: 6 });
@@ -286,7 +287,7 @@ export async function run(input: string, env: TermEnv): Promise<Out> {
           row([`<span class="d">Agents working now</span>`, `<span class="n"><b>${f(s.agents_working)}</b></span>`]),
           row([`<span class="d">Candidates submitted</span>`, `<span class="n"><b>${f(s.candidates)}</b></span>`]),
           row([`<span class="d">Verified generations</span>`, `<span class="n"><b>${f(s.generations)}</b></span>`]),
-          row([`<span class="d">24h volume, all tokens</span>`, `<span class="n"><b>${f(s.volume_24h, fmtAmount)}</b>${s.volume_24h == null ? "" : ` ${QUOTE}`}</span>`]),
+          row([`<span class="d">24h volume, all tokens</span>`, `<span class="n"><b>${esc(usdText(s.volume_24h_usd, { exists: s.volume_24h != null }))}</b></span>`]),
         ],
       };
     }
@@ -305,10 +306,10 @@ export async function run(input: string, env: TermEnv): Promise<Out> {
           ...(soul?.tagline ? [`<span class="ans">${esc(soul.tagline)}</span>`] : []),
           row([`<span class="d">Repository</span>`, `<span class="n">${t.repo_url ? a(t.repo_url, repoLabel(t.repo_url)) : "TBA"}</span>`]),
           row([`<span class="d">Agent</span>`, `<span class="n" title="${esc(t.agent)}">${esc(shortAddr(t.agent))}</span>`]),
-          row([`<span class="d">Price</span>`, `<span class="n">${esc(fmtPrice(t.price))}${t.price == null ? "" : ` ${QUOTE}`}</span>`]),
-          row([`<span class="d">Market cap</span>`, `<span class="n">${esc(fmtAmount(t.market_cap))}${t.market_cap == null ? "" : ` ${QUOTE}`}</span>`]),
-          row([`<span class="d">24h volume</span>`, `<span class="n">${esc(fmtAmount(t.volume_24h))}${t.volume_24h == null ? "" : ` ${QUOTE}`}</span>`]),
-          row([`<span class="d">24h change</span>`, `<span class="n">${esc(fmtChange(t.change_24h))}</span>`]),
+          row([`<span class="d">Price</span>`, `<span class="n">${esc(usdText(t.price_usd, { exists: t.price != null, price: true }))}</span>`]),
+          row([`<span class="d">Market cap</span>`, `<span class="n">${esc(usdText(t.market_cap_usd, { exists: t.market_cap != null }))}</span>`]),
+          row([`<span class="d">24h volume</span>`, `<span class="n">${esc(usdText(t.volume_24h_usd, { exists: t.volume_24h != null }))}</span>`]),
+          row([`<span class="d">24h change</span>`, `<span class="n">${esc(fmtChange(t.change_24h_usd ?? t.change_24h))}</span>`]),
           row([`<span class="d">Building</span>`, `<span class="n">${esc(buildingText(t, s))}</span>`]),
           `${cmdBtn(`watch ${label}`, "watch")} ${a(links.token(t.mint), "token page")}`,
         ],

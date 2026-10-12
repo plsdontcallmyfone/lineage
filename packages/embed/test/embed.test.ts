@@ -5,7 +5,7 @@ import { answer, complete, didYouMean, editDistance, FACTS, run, type TermEnv } 
 import { dither, thumbModel } from "../src/thumb.ts";
 
 const tok = (o: Partial<TokenSummary>): TokenSummary =>
-  ({ mint: "M1", agent: "A1", name: "TEST minbpe author", symbol: "TMBPE", phase: "curve", migrated: false, price: 0.05, market_cap: 5_000_000, volume_24h: 0, volume_24h_base: 0, trades_24h: 0, change_24h: null, curve_progress: 0.25, quote_reserve: 1, migration_threshold: 4, holders: 3, trades: 2, last_trade_at: null, created_at: 1_791_500_000, launcher: "L", repo_url: "https://github.com/karpathy/minbpe", state_at: null, ...o }) as TokenSummary;
+  ({ mint: "M1", agent: "A1", name: "TEST minbpe author", symbol: "TMBPE", phase: "curve", migrated: false, price: 0.05, market_cap: 5_000_000, volume_24h: 0, price_usd: 0.0001, market_cap_usd: 10_000, volume_24h_usd: 0, change_24h_usd: null, volume_24h_base: 0, trades_24h: 0, change_24h: null, curve_progress: 0.25, quote_reserve: 1, migration_threshold: 4, holders: 3, trades: 2, last_trade_at: null, created_at: 1_791_500_000, launcher: "L", repo_url: "https://github.com/karpathy/minbpe", state_at: null, ...o }) as TokenSummary;
 const sess = (o: Partial<SessionSummary>): SessionSummary =>
   ({ session_id: "s1", state: "final", open: true, agent: "A1", lineage_id: "L1", recipe_name: "minbpe", class: "python", repo: "https://github.com/karpathy/minbpe", commit: "c", gen_id: "g", height: 1, proposer: "anthropic", started_at: 1, last_at: 2, ended_at: 3, events: 5, candidate: null, ...o }) as SessionSummary;
 
@@ -76,12 +76,12 @@ describe("client", () => {
       resolveBases({ api: "https://s" }, ""),
       fakeFetch({
         "/api/stats": { generations: 20, candidates: 82 },
-        "/market/tokens?sort=newest": { tokens: [tok({ volume_24h: 12.5 }), tok({ mint: "M2", agent: "A2", phase: "graduated", volume_24h: 2 })] },
+        "/market/tokens?sort=newest": { tokens: [tok({ volume_24h: 12.5, volume_24h_usd: 0.025 }), tok({ mint: "M2", agent: "A2", phase: "graduated", volume_24h: 2, volume_24h_usd: 0.004 })] },
         "sessions?state=live&limit=500": [sess({ state: "live" }), sess({ session_id: "s2", state: "live" }), sess({ session_id: "s3", state: "live", agent: "A2" })],
       }),
     );
     const st = await c.stats();
-    expect(st).toEqual({ tokens: 2, graduated: 1, agents_working: 2, generations: 20, candidates: 82, volume_24h: 14.5, sessions_live: 3 });
+    expect(st).toEqual({ tokens: 2, graduated: 1, agents_working: 2, generations: 20, candidates: 82, volume_24h: 14.5, volume_24h_usd: 0.029, sessions_live: 3 });
     expect(Object.keys(st).some((k) => /fee/.test(k))).toBe(false);
     const down = new UnitsClient(resolveBases({ api: "https://s" }, ""), fakeFetch({}));
     down.retryDelays = [];
@@ -94,14 +94,21 @@ describe("client", () => {
 
 describe("render", () => {
   const card = buildCards([tok({ name: "<b>x</b>" })], new Map(), [])[0]!;
-  test("card: ticker, name escaped, no description without a soul, UNITS only", () => {
+  test("card: ticker, name escaped, no description without a soul, money in US dollars only", () => {
     const h = cardHtml(card, { href: "https://s/tokens/M1", look: "dither" });
     expect(h).toContain("TMBPE");
     expect(h).toContain("&lt;b&gt;x&lt;/b&gt;");
     expect(h).not.toContain('part="description"');
-    expect(h).toContain("5,000,000");
-    expect(h).toContain("UNITS");
-    expect(h).not.toMatch(/\$|USD|\u2014/);
+    // the indexer's dollar fields through the one formatter: the price with its digits, the market cap compact
+    expect(h).toContain(">$0.0001<");
+    expect(h).toContain(">$10K<");
+    // what a reader sees (tags and their titles removed) names no quote-coin amount
+    const seen = (x: string) => x.replace(/<[^>]+>/g, " ");
+    expect(seen(h)).not.toMatch(/5,?000,?000|UNITS|\u2014/);
+    // no dollar price from the indexer: the figure says so, the quote-coin number is never shown in its place
+    const na = cardHtml({ ...card, price_usd: null, market_cap_usd: null, volume_24h_usd: null }, { href: "#", look: "plain" });
+    expect(na.match(/\$ unavailable/g)).toHaveLength(3);
+    expect(seen(na)).not.toMatch(/0\.05|5,?000,?000|UNITS/);
     expect(h).toContain("karpathy/minbpe");
     expect(cardHtml({ ...card, tagline: "Faster BPE." }, { href: "#", look: "plain" })).toContain('<p class="tag" part="description">Faster BPE.</p>');
   });
@@ -124,7 +131,11 @@ describe("render", () => {
   });
   test("figures that do not exist render as TBA", () => {
     expect(cardHtml({ ...card, market_cap: null, curve_progress: null }, { href: "#", look: "plain" })).toContain("TBA");
-    expect(statsHtml({ tokens: null, graduated: null, agents_working: 0, generations: 3, candidates: null, volume_24h: null, sessions_live: 0 })).toMatch(/TBA[\s\S]*>0<[\s\S]*>3</);
+    expect(statsHtml({ tokens: null, graduated: null, agents_working: 0, generations: 3, candidates: null, volume_24h: null, volume_24h_usd: null, sessions_live: 0 })).toMatch(/TBA[\s\S]*>0<[\s\S]*>3</);
+    const st = { tokens: 2, graduated: 0, agents_working: 0, generations: 3, candidates: 1, sessions_live: 0 };
+    expect(statsHtml({ ...st, volume_24h: 120, volume_24h_usd: 4321.5 })).toContain('data-k="volume_24h"><dt>24h volume</dt><dd><b class="num">$4.3K</b></dd>');
+    expect(statsHtml({ ...st, volume_24h: 120, volume_24h_usd: null })).toContain('<b class="num">$ unavailable</b>');
+    expect(statsHtml({ ...st, volume_24h: null, volume_24h_usd: null })).toContain('<dt>24h volume</dt><dd><b class="num">TBA</b>');
   });
   test("link template", () => {
     expect(linkFor("/coin/{mint}?t={symbol}", "https://s", { mint: "M1", agent: "A", symbol: "TX" })).toBe("/coin/M1?t=TX");
@@ -141,7 +152,7 @@ describe("render", () => {
     expect(width).toBeGreaterThan(Math.max(...xs));
   });
   test("how: six steps, each with a live figure", () => {
-    const s = howSteps({ tokens: 34, graduated: 1, agents_working: 2, generations: 20, candidates: 82, volume_24h: null, sessions_live: 2 });
+    const s = howSteps({ tokens: 34, graduated: 1, agents_working: 2, generations: 20, candidates: 82, volume_24h: null, volume_24h_usd: null, sessions_live: 2 });
     expect(s).toHaveLength(6);
     expect(s.map((x) => x.figure!.value)).toEqual(["34", "TBA", "2", "82", "20", "1"]);
     expect(s.map((x) => x.figure!.label).join(" ")).not.toMatch(/fee/i);
@@ -188,7 +199,7 @@ describe("terminal", () => {
       bySymbol: async (s) => (s.toUpperCase() === "TMBPE" ? tok({}) : null),
       soul: async () => null,
       sessions: async () => [{ state: "live", recipe_name: "minbpe", events: 4, agent: "A1" }],
-      stats: async () => ({ tokens: 2, graduated: 1, agents_working: 1, generations: 20, candidates: 82, volume_24h: 3, sessions_live: 1 }),
+      stats: async () => ({ tokens: 2, graduated: 1, agents_working: 1, generations: 20, candidates: 82, volume_24h: 3, volume_24h_usd: 0.006, sessions_live: 1 }),
       generation: async (id) => ({ gen_id: id, height: 4, effect: { metric: "encode_ir", ratio: 0.0927 }, replays: [{}, {}], accepted_at: 1, candidate_id: "cand1", entry_type: "patch" }),
       lineages: async () => [{ lineage_id: "l1", recipe_name: "minbpe", tip: "f".repeat(64), gen0: "0".repeat(64) }],
       ...over,
@@ -226,10 +237,11 @@ describe("terminal", () => {
     expect((await run("watch tmbpe", env())).watch).toEqual({ agent: "A1", label: "TMBPE" });
     expect((await run("watch nope", env())).watch).toBeUndefined();
   });
-  test("tokens list is live rows with UNITS figures, TBA for missing ones", async () => {
+  test("tokens list is live rows with dollar figures, TBA for missing ones", async () => {
     const h = (await run("tokens", env())).html.join("");
-    expect(h).toContain("5,000,000 UNITS");
-    expect(h).toContain("TBA UNITS");
+    expect(h).toContain(">$10K<");
+    expect(h).toContain(">TBA<");
+    expect(h).not.toMatch(/5,000,000|\d UNITS/);
   });
   test("stats and agent: no fee rows; agent shows the five token parameters", async () => {
     const st = (await run("stats", env())).html.join("");

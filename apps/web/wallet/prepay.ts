@@ -7,6 +7,7 @@
 // Core keeps an underfunded agent asleep (packages/core/src/prepay.ts).
 // Owner direction 2026-10-11: the credits are typed in USD (at least Core's min_usd, more allowed) on
 // every network, converted at prepay.line_per_usd, and paid in SOL with the launch (fronting.ts).
+import { fmtUsd } from "../src/usd.ts";
 import {
   cmpDec,
   decodeLookupTable,
@@ -71,7 +72,7 @@ export function prepayFieldset(): Raw {
 
 /** The deposit as text for review rows. */
 export function depositNote(typed: string): string {
-  return `${depositUsd(typed)} USD`;
+  return fmtUsd(Number(depositUsd(typed)));
 }
 
 /** The credits in USD as typed (empty: Core's minimum). The launcher may enter more than the minimum. */
@@ -84,7 +85,7 @@ export function depositBase(typed: string, decimals: number): bigint {
   if (!P.cfg) throw new Error(`Model credits: Core's prepay config is not available (${P.err ?? "not loaded"}); a launch needs it for the minimum and the rate.`);
   const usd = depositUsd(typed);
   if (!/^\d+(\.\d{1,2})?$/.test(usd)) throw new Error("Model credits: a dollar amount such as 10 or 12.50.");
-  if (cmpDec(usd, P.cfg.min_usd) < 0) throw new Error(`Model credits: at least ${P.cfg.min_usd} USD.`);
+  if (cmpDec(usd, P.cfg.min_usd) < 0) throw new Error(`Model credits: at least ${fmtUsd(Number(P.cfg.min_usd))}.`);
   return usdToBase(usd, P.cfg.line_per_usd, decimals);
 }
 
@@ -96,7 +97,7 @@ export function prepayHelp(typed: string, o: { decimals: number }): Raw {
   } catch (e) {
     return html`<span class="mark warn">${(e as Error).message}</span>`;
   }
-  return html`At least ${P.cfg.min_usd} USD; you can add more. Paid in SOL with the launch.`;
+  return html`At least ${fmtUsd(Number(P.cfg.min_usd))}; you can add more. Paid in SOL with the launch.`;
 }
 
 /** After a launch: waits for Core's chain sync to record the deposit, then shows Core's check and its awake flag. */

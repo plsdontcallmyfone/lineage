@@ -2,7 +2,7 @@ import { get, loadConfig } from "../api.ts";
 import { ago, repoLink, shortHex, shortId } from "../fmt.ts";
 import { buildingLine, hiddenNote, injectBuildingStyle, loadHidden, paramCells } from "../building.ts";
 import { html, raw, type Raw } from "../html.ts";
-import { amountFig, changeFig, defaultTf, fig, fmtAmount, fmtInt, market, phaseBadge, priceFig, QUOTE, type Candle, type TokenDetail } from "../market.ts";
+import { defaultTf, fig, fmtAmount, fmtInt, market, phaseBadge, usdAmountFig, usdBasisNote, usdCandles, usdChangeFig, usdPriceFig, type Candle, type CandlesAnswer, type TokenDetail } from "../market.ts";
 import { mount as mountLivePanel, type LivePanelHandle } from "../live-panel/index.ts";
 import { badge, empty, icon, panel, stat } from "../ui.ts";
 import { OLD_WALLET_KEY, WALLET_KEY } from "./feed.ts";
@@ -30,18 +30,18 @@ const TFS = ["1m", "5m", "1h", "1d"] as const;
 const tfByMint = new Map<string, string>();
 
 /** The token's price candles from the market indexer, at a candle width. */
-async function loadCandles(t: TokenDetail, tf?: string): Promise<{ tf: string; candles: Candle[] }> {
+async function loadCandles(t: TokenDetail, tf?: string): Promise<{ tf: string; candles: Candle[]; usd: ReturnType<typeof usdCandles> }> {
   const f = tf ?? tfByMint.get(t.mint) ?? defaultTf(t.created_at);
   const sec = { "1m": 60, "5m": 300, "1h": 3600, "1d": 86400 }[f] ?? 3600;
-  const c = await market<{ candles: Candle[] }>(`tokens/${t.mint}/candles?tf=${f}&from=${t.created_at - sec}`);
-  return { tf: f, candles: c.candles };
+  const c = await market<CandlesAnswer>(`tokens/${t.mint}/candles?tf=${f}&from=${t.created_at - sec}`);
+  return { tf: f, candles: c.candles, usd: usdCandles(c) };
 }
 function tokenStats(t: TokenDetail): Raw {
   return html`<div class="stats" style="--n:4">
-    ${stat("Price", priceFig(t.price, "price"), `${QUOTE} per ${t.symbol ?? "token"}`)}
-    ${stat("Market cap", amountFig(t.market_cap, QUOTE, "market_cap"), html`supply ${fig(fmtAmount(t.supply), t.supply, undefined, "supply")}`)}
-    ${stat("24h volume", amountFig(t.volume_24h, QUOTE, "volume_24h"), html`${fig(fmtInt(t.trades_24h), t.trades_24h, undefined, "trades_24h")} trades`)}
-    ${stat("24h change", changeFig(t.change_24h, "change_24h"), "vs the price 24h ago")}
+    ${stat("Price", usdPriceFig(t.price_usd, t.price, "price_usd"), `US dollars per ${t.symbol ?? "token"}`)}
+    ${stat("Market cap", usdAmountFig(t.market_cap_usd, t.market_cap, "market_cap_usd"), html`supply ${fig(fmtAmount(t.supply), t.supply, undefined, "supply")}`)}
+    ${stat("24h volume", usdAmountFig(t.volume_24h_usd, t.volume_24h, "volume_24h_usd"), html`${fig(fmtInt(t.trades_24h), t.trades_24h, undefined, "trades_24h")} trades`)}
+    ${stat("24h change", usdChangeFig(t), "vs the price 24h ago")}
   </div>`;
 }
 
@@ -63,7 +63,7 @@ export async function agentProfilePage([idp]: string[]): Promise<Page> {
   const model = p.model ? html`<span class="pf-chip" title="${p.soul?.model ? "chosen at launch (signed soul)" : "from the provenance of its newest final candidate"}">${providerLogo(p.provider, providerName(p.provider) ?? "") || icon.cpu} ${providerName(p.provider) ?? "provider TBA"} <b>${p.model}</b></span>` : "";
   const gh = p.soul?.github_login ? html`<a class="pf-chip" href="https://github.com/${p.soul.github_login}" target="_blank" rel="noopener">${raw('<svg width="13" height="13" viewBox="0 0 16 16" aria-hidden="true"><path fill="currentColor" d="M8 .2a8 8 0 00-2.5 15.6c.4 0 .5-.2.5-.4v-1.5c-2.2.5-2.7-1-2.7-1-.4-.9-.9-1.2-.9-1.2-.7-.5.1-.5.1-.5.8.1 1.2.8 1.2.8.7 1.3 1.9.9 2.4.7 0-.5.3-.9.5-1.1-1.8-.2-3.6-.9-3.6-4 0-.9.3-1.6.8-2.1-.1-.2-.4-1 .1-2.1 0 0 .7-.2 2.2.8a7.5 7.5 0 014 0c1.5-1 2.2-.8 2.2-.8.4 1.1.2 1.9.1 2.1.5.6.8 1.3.8 2.1 0 3.1-1.9 3.7-3.6 3.9.3.3.5.8.5 1.5v2.2c0 .2.1.5.6.4A8 8 0 008 .2z"/></svg>')} ${p.soul.github_login}</a>` : html`<span class="pf-chip faint">no GitHub login yet</span>`;
   const tokChip = p.mint
-    ? html`<a class="pf-chip" href="/tokens/${p.mint}">${icon.coin} ${tok?.symbol ? `$${tok.symbol}` : `token ${shortId(p.mint)}`}${tok?.price != null ? html` <b class="num">${tok.price.toPrecision(4)}</b> <span class="dim">${QUOTE}</span>` : ""}</a>`
+    ? html`<a class="pf-chip" href="/tokens/${p.mint}">${icon.coin} ${tok?.symbol ? `$${tok.symbol}` : `token ${shortId(p.mint)}`}${tok?.price != null ? html` <b>${usdPriceFig(tok.price_usd, tok.price)}</b>` : ""}</a>`
     : "";
   const state = p.lifecycle === "setting_up" ? badge("setting up", "warn") : p.awake ? badge("awake", "good", icon.sun) : badge("asleep", "", icon.moon);
 
@@ -99,7 +99,7 @@ export async function agentProfilePage([idp]: string[]): Promise<Page> {
         tok
           ? html`<div id="pf-tok-stats">${tokenStats(tok)}</div><div class="panel-b" style="border-top:1px solid var(--border)">${paramCells(tok)}</div>`
           : html`<div class="sub" style="padding:10px 14px">The market indexer has no row for this mint yet.</div>`,
-        { aside: html`${tok ? html`<span id="pf-tok-phase">${phaseBadge(tok)}</span>` : ""}<a class="link" href="/tokens/${p.mint}">Trade</a>`, note: html`Amounts in ${QUOTE}, from the market indexer.` },
+        { aside: html`${tok ? html`<span id="pf-tok-phase">${phaseBadge(tok)}</span>` : ""}<a class="link" href="/tokens/${p.mint}">Trade</a>`, note: html`Amounts in US dollars, from the market indexer.` },
       )
     : "";
   // the token's price chart (the token page's candles), only when the indexer has the token
@@ -108,7 +108,7 @@ export async function agentProfilePage([idp]: string[]): Promise<Page> {
     ? panel(
         "Price",
         html`<div class="tk-pane" id="pf-chart"></div>`,
-        { cls: "mk-pricepanel", aside: html`<span class="faint hide-xs">${QUOTE} per ${tok.symbol ?? "token"}</span><div class="seg mk-tf" role="group" aria-label="Candle width">${TFS.map((f) => html`<button type="button" data-tf="${f}" aria-pressed="${String(f === candles.tf)}">${f}</button>`)}</div>` },
+        { cls: "mk-pricepanel", note: html`<span id="pf-usdnote">${usdBasisNote(candles.usd?.basis ?? null, candles.candles.length > 0)}</span>`, aside: html`<span class="faint hide-xs">US dollars per ${tok.symbol ?? "token"}</span><div class="seg mk-tf" role="group" aria-label="Candle width">${TFS.map((f) => html`<button type="button" data-tf="${f}" aria-pressed="${String(f === candles.tf)}">${f}</button>`)}</div>` },
       )
     : "";
   // the agent's desktop: the real desktop stream while it works, else its state in words (live-panel), beside the price chart
@@ -174,7 +174,7 @@ export async function agentProfilePage([idp]: string[]): Promise<Page> {
   };
 }
 
-function mountProfile(root: HTMLElement, id: string, p: any, tok: TokenDetail | null, candles: { tf: string; candles: Candle[] } | null) {
+function mountProfile(root: HTMLElement, id: string, p: any, tok: TokenDetail | null, candles: { tf: string; candles: Candle[]; usd: ReturnType<typeof usdCandles> } | null) {
   wireSocial();
   // the desktop: the live panel in agent mode
   const liveEl = root.querySelector<HTMLElement>("#pf-live");
@@ -186,13 +186,15 @@ function mountProfile(root: HTMLElement, id: string, p: any, tok: TokenDetail | 
     const chartEl = root.querySelector<HTMLElement>("#pf-chart");
     const chart = chartEl ? mountTokenChart(chartEl) : null;
     const chartLabel = (tf: string) => `${t.symbol ?? "token"} · ${tf}`;
-    if (candles) chart?.set(candles.candles, t.start_price, chartLabel(candles.tf));
+    if (candles) chart?.set(candles.usd?.candles ?? [], candles.usd?.start ?? null, chartLabel(candles.tf), candles.usd === null && candles.candles.length > 0);
     const paint = async (tf?: string) => {
       try {
         const [nt, c] = await Promise.all([market<TokenDetail>(`tokens/${t.mint}`), loadCandles(t, tf)]);
         if (!root.isConnected) return;
         t = nt;
-        chart?.set(c.candles, t.start_price, chartLabel(c.tf));
+        chart?.set(c.usd?.candles ?? [], c.usd?.start ?? null, chartLabel(c.tf), c.usd === null && c.candles.length > 0);
+        const note = root.querySelector("#pf-usdnote");
+        if (note) note.textContent = usdBasisNote(c.usd?.basis ?? null, c.candles.length > 0);
         const st = root.querySelector("#pf-tok-stats");
         if (st) st.innerHTML = tokenStats(t).s;
         const ph = root.querySelector("#pf-tok-phase");

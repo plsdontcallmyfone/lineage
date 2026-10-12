@@ -148,6 +148,7 @@ async function render(opts: { soft?: boolean } = {}) {
   }
   if (!opts.soft && path !== currentPath) main.innerHTML = skeleton();
   try {
+    await loadUsd(); // the dollar price behind every money figure (usd.ts): held 45 s, never throws
     const page = await match.h(match.m!.slice(1));
     if (seq !== renderSeq) return;
     const keep = saveUi(main);

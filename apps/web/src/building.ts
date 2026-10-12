@@ -1,7 +1,7 @@
 import { avatarSvg, svgDataUri } from "../../../packages/embed/src/pattern.ts";
 import { ago, repoLabel } from "./fmt.ts";
 import { html, type Raw } from "./html.ts";
-import { changeFig, fmtAmount, fmtChange, fmtPrice, QUOTE } from "./market.ts";
+import { fmtChange, usdAmountFig, usdChangeFig, usdPriceFig } from "./market.ts";
 
 // What an agent token shows everywhere (docs/plans/APP-CONSOLIDATION.md, amendment 2026-10-10 (2)):
 // price, market cap, 24 h volume, 24 h change, and what the agent is building: its repository, its
@@ -30,6 +30,11 @@ export interface DirToken {
   market_cap: number | null;
   volume_24h: number | null;
   change_24h: number | null;
+  /** US dollars, from the indexer (null: the dollar price could not be read) */
+  price_usd?: number | null;
+  market_cap_usd?: number | null;
+  volume_24h_usd?: number | null;
+  change_24h_usd?: number | null;
   created_at: number;
   repo_url: string | null;
   state: "working" | "awake" | "asleep" | "graduated" | null;
@@ -45,16 +50,18 @@ export interface DirToken {
 }
 
 const TBA = html`<span class="bd-tba">TBA</span>`;
-const num = (text: string, exact: number | null | undefined) => (text === "TBA" ? TBA : html`<span class="bd-num" title="${String(exact)} ${QUOTE}">${text}</span>`);
 
-/** The four market figures as label/value cells (cards, rows, the token page). */
-export function paramCells(t: Pick<DirToken, "price" | "market_cap" | "volume_24h" | "change_24h">, opts: { unit?: boolean } = {}): Raw {
-  const u = opts.unit ? html`<span class="bd-unit">${QUOTE}</span>` : "";
+/**
+ * The four market figures as label/value cells (cards, rows, the token page), in US dollars from the
+ * indexer's "_usd" fields: the price with its significant digits, market cap and volume compact
+ * ("$1.2M"). `full` writes the amounts out (detail views).
+ */
+export function paramCells(t: Pick<DirToken, "price" | "market_cap" | "volume_24h" | "change_24h" | "price_usd" | "market_cap_usd" | "volume_24h_usd" | "change_24h_usd">, opts: { full?: boolean } = {}): Raw {
   return html`<div class="bd-params">
-    <div><span>Price</span><b>${num(fmtPrice(t.price), t.price)}${t.price != null ? u : ""}</b></div>
-    <div><span>Market cap</span><b>${num(fmtAmount(t.market_cap), t.market_cap)}${t.market_cap != null ? u : ""}</b></div>
-    <div><span>24h volume</span><b>${num(fmtAmount(t.volume_24h), t.volume_24h)}${t.volume_24h != null ? u : ""}</b></div>
-    <div><span>24h change</span><b>${changeFig(t.change_24h)}</b></div>
+    <div><span>Price</span><b>${usdPriceFig(t.price_usd, t.price, "price_usd")}</b></div>
+    <div><span>Market cap</span><b>${usdAmountFig(t.market_cap_usd, t.market_cap, "market_cap_usd", !opts.full)}</b></div>
+    <div><span>24h volume</span><b>${usdAmountFig(t.volume_24h_usd, t.volume_24h, "volume_24h_usd", !opts.full)}</b></div>
+    <div><span>24h change</span><b>${usdChangeFig(t)}</b></div>
   </div>`;
 }
 

@@ -1,7 +1,7 @@
 import { endOf, idleCaption, idleStatus, RECORDINGS_SHOWN } from "../../../apps/web/src/live-panel/live-only.ts";
 import { mount as mountPanel, type LivePanelHandle, type PanelIO } from "../../../apps/web/src/live-panel/index.ts";
 import { scriptBase } from "./config.ts";
-import { defaultTf, renderCandles } from "../../../apps/web/src/market.ts";
+import { defaultTf, renderCandles, usdBasisNote, usdCandles } from "../../../apps/web/src/market.ts";
 import type { Card, UnitsClient, SessionView } from "./client.ts";
 import { pool } from "./client.ts";
 import { getClient, onConfigure, ourMints } from "./config.ts";
@@ -348,16 +348,18 @@ export class UnitsToken extends UnitsElement {
     if (g !== this.alive) return;
     setExplorerCluster(mode === "devnet" ? "devnet" : null);
     const trade = linkFor(this.getAttribute("link"), c.bases.site, { mint, agent: t.agent, symbol: t.symbol });
+    // the candles in US dollars (the indexer's "_usd" fields); null when it had no dollar price
+    const usd = usdCandles(candles);
     this.box.innerHTML = `${tokenHeadHtml(t, soul?.tagline ?? null, trade)}
       <div class="grid">
         <section><h3>What the agent is building</h3><div class="building" part="building">${building(t as any, { full: true, sessionHref: (id) => c.href(`/sessions/${id}`) })}</div><div class="screen"></div></section>
-        <section><h3>Price in UNITS, ${esc(tf)} candles</h3><div class="chart" part="chart"></div>
+        <section><h3>Price in US dollars, ${esc(tf)} candles</h3><div class="chart" part="chart"></div><p class="none usdnote">${esc(usdBasisNote(usd?.basis ?? null, candles.candles.length > 0))}</p>
           <h3>Recent trades</h3>${tradesHtml(trades.trades)}</section>
       </div>
       <section><h3>Holders</h3>${holders ? holdersHtml(holders) : '<p class="none">Holders did not load.</p>'}</section>`;
     this.panel = mountPanel(this.box.querySelector<HTMLElement>(".screen")!, { agent: t.agent, height: matchMedia("(max-width: 760px)").matches ? 320 : 400, io: panelIO(c, this.root) });
     const chart = this.box.querySelector<HTMLElement>(".chart")!;
-    const draw = () => (chart.innerHTML = renderCandles({ tf, candles: candles.candles, start: t.start_price }, chart.clientWidth, chart.clientHeight));
+    const draw = () => (chart.innerHTML = renderCandles({ tf, candles: usd?.candles ?? [], start: usd?.start ?? null }, chart.clientWidth, chart.clientHeight));
     draw();
     this.ro = new ResizeObserver(() => draw());
     this.ro.observe(chart);
@@ -411,7 +413,7 @@ export class UnitsStats extends UnitsElement {
       if (mint) {
         const t = await this.client.market<any>(`tokens/${mint}`, 0);
         if (g === this.alive)
-          this.box.innerHTML = `<div class="tokstats" part="token-stats"><div class="params" part="params">${tokenParams(t, { unit: true })}</div><div class="building" part="building">${building(t, { sessionHref: (id) => this.client.href(`/sessions/${id}`) })}</div></div>`;
+          this.box.innerHTML = `<div class="tokstats" part="token-stats"><div class="params" part="params">${tokenParams(t, { full: true })}</div><div class="building" part="building">${building(t, { sessionHref: (id) => this.client.href(`/sessions/${id}`) })}</div></div>`;
         return;
       }
       const s = await this.client.stats();

@@ -1,4 +1,5 @@
 import { AreaSeries, ColorType, CrosshairMode, createChart, createSeriesMarkers, HistogramSeries, LineSeries, LineStyle, LineType, type IChartApi, type ISeriesApi, type SeriesType, type UTCTimestamp } from "lightweight-charts";
+import { fmtUsd } from "../usd.ts";
 import { compact } from "../chart.ts";
 import { esc } from "../html.ts";
 
@@ -33,7 +34,7 @@ export const tone = {
 
 export function fmtVal(v: number | null | undefined, f: Fmt = "num"): string {
   if (v === null || v === undefined || !Number.isFinite(v)) return "no value";
-  if (f === "usd") return `$${Math.abs(v) >= 100 ? v.toFixed(0) : Math.abs(v) >= 1 ? v.toFixed(2) : v.toFixed(4)}`;
+  if (f === "usd") return fmtUsd(v); // the app's one dollar formatter (usd.ts)
   if (f === "pct") return `${v.toFixed(Math.abs(v) >= 10 ? 1 : 2)}%`;
   if (f === "s") return v < 90 ? `${Math.round(v)} s` : v < 5400 ? `${(v / 60).toFixed(1)} min` : `${(v / 3600).toFixed(1)} h`;
   if (f === "min") return v < 90 ? `${Math.round(v * 10) / 10} min` : `${(v / 60).toFixed(1)} h`;

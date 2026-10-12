@@ -48,6 +48,14 @@ export interface TokenSummary {
   volume_24h_base: number;
   trades_24h: number;
   change_24h: number | null;
+  /** US dollars, from the indexer (null: the dollar price could not be read) */
+  quote_usd?: number | null;
+  price_usd?: number | null;
+  market_cap_usd?: number | null;
+  volume_24h_usd?: number | null;
+  change_24h_usd?: number | null;
+  quote_reserve_usd?: number | null;
+  migration_threshold_usd?: number | null;
   curve_progress: number | null;
   quote_reserve: number | null;
   migration_threshold: number | null;
@@ -69,6 +77,7 @@ export interface TokenDetail extends TokenSummary {
   supply: number | null;
   supply_raw: string | null;
   start_price: number | null;
+  start_price_usd?: number | null;
   hosted: boolean;
   identity_mode: number | null;
   awake: boolean | null;
@@ -99,6 +108,18 @@ export interface Candle {
   volume: number;
   volume_base: number;
   trades: number;
+  open_usd?: number | null;
+  high_usd?: number | null;
+  low_usd?: number | null;
+  close_usd?: number | null;
+  volume_usd?: number | null;
+}
+/** How a series was converted to dollars: every point at the price of its own time, all at today's, or some of each; null without a price. */
+export type UsdBasis = "at_time" | "current" | "mixed" | null;
+export interface CandlesAnswer {
+  candles: Candle[];
+  usd_basis?: UsdBasis;
+  start_price_usd?: number | null;
 }
 export interface Trade {
   signature: string;
@@ -112,6 +133,10 @@ export interface Trade {
   price: number;
   price_after: number | null;
   trader: string;
+  quote_amount_usd?: number | null;
+  price_usd?: number | null;
+  price_after_usd?: number | null;
+  usd_basis?: "at_time" | "current" | null;
 }
 export interface Holders {
   holders: number | null;
@@ -194,6 +219,49 @@ export function fig(text: string, exact: number | string | null | undefined, uni
   return html`<span class="num" data-v="${exact ?? ""}"${field ? raw(` data-f="${esc(field)}"`) : ""} title="${String(exact ?? "")}${unit ? ` ${unit}` : ""}">${text}</span>${unit ? html`<span class="unit">${unit}</span>` : ""}`;
 }
 export const priceFig = (n: number | null | undefined, field?: string) => fig(fmtPrice(n), n, QUOTE, field);
+
+// US dollars: the indexer's "_usd" fields through usd.ts. `quote` is the same figure in the quote token:
+// when it exists and the dollar one does not, the figure reads "$ unavailable", never the quote number.
+const quoteTitle = (usd: number | null | undefined, quote: number | null | undefined) => (usd == null ? undefined : `$${usd}${quote == null ? "" : ` (${quote} ${QUOTE})`}`);
+/** A token price in dollars (field: the API field the page checks compare, e.g. "price_usd"). */
+export const usdPriceFig = (usd: number | null | undefined, quote: number | null | undefined, field?: string) =>
+  usdFig(usd, { exists: quote != null, price: true, field, title: quoteTitle(usd, quote) });
+/** A money amount in dollars: full on detail pages, compact ("$1.2M") on cards. */
+export const usdAmountFig = (usd: number | null | undefined, quote: number | null | undefined, field?: string, compact = false) =>
+  usdFig(usd, { exists: quote != null, compact, field, title: quoteTitle(usd, quote) });
+/** The 24h change of the dollar price where the indexer has one, else of the price against the quote token (the title says which). */
+export function usdChangeFig(t: Pick<TokenSummary, "change_24h" | "change_24h_usd">): Raw {
+  const inUsd = t.change_24h_usd != null;
+  const n = inUsd ? t.change_24h_usd! : t.change_24h;
+  const text = fmtChange(n);
+  if (text === "TBA") return TBA;
+  return html`<span class="num mk-chg ${n! > 0 ? "up" : n! < 0 ? "down" : ""}" data-v="${n}" data-f="${inUsd ? "change_24h_usd" : "change_24h"}" title="${inUsd ? "change of the US dollar price over 24 hours" : `change against ${QUOTE} over 24 hours; the dollar price of ${QUOTE} 24 hours ago is not on record`}">${text}</span>`;
+}
+
+/** What `amount` tokens (UI units) are worth in dollars at the token's dollar price from the indexer; null without one. */
+export const holdingUsd = (amount: number | null | undefined, t: Pick<TokenSummary, "price_usd"> | null | undefined): number | null =>
+  amount == null || !Number.isFinite(amount) || t?.price_usd == null ? null : amount * t.price_usd;
+
+/**
+ * The indexer's candles in US dollars (its "_usd" fields in place of the quote-token ones), for the
+ * charts; null when a candle has no dollar value (no price reading). `basis` is how they were converted.
+ */
+export function usdCandles(a: CandlesAnswer): { candles: Candle[]; basis: UsdBasis; start: number | null } | null {
+  const out: Candle[] = [];
+  for (const c of a.candles) {
+    if (c.open_usd == null || c.high_usd == null || c.low_usd == null || c.close_usd == null || c.volume_usd == null) return null;
+    out.push({ ...c, open: c.open_usd, high: c.high_usd, low: c.low_usd, close: c.close_usd, volume: c.volume_usd });
+  }
+  return { candles: out, basis: a.usd_basis ?? null, start: a.start_price_usd ?? null };
+}
+/** One plain sentence for a chart caption: how its history was converted to dollars. */
+export function usdBasisNote(basis: UsdBasis, any = true): string {
+  if (!any) return "";
+  if (basis === "at_time") return `In US dollars, each trade at the ${QUOTE} price of its own time.`;
+  if (basis === "current") return `In US dollars at today's ${QUOTE} price: its dollar price at the time of these trades is not on record.`;
+  if (basis === "mixed") return `In US dollars: trades since the dollar price of ${QUOTE} has been recorded use the price of their own time, earlier ones today's.`;
+  return `${USD_NA}: the dollar price of ${QUOTE} could not be read, so no chart is drawn.`;
+}
 export const amountFig = (n: number | null | undefined, unit: string, field?: string) => fig(fmtAmount(n), n, unit, field);
 
 export function changeFig(n: number | null | undefined, field?: string): Raw {
@@ -227,6 +295,7 @@ export const txLink = (s: string, label?: string) => html`<a class="link nowrap"
 
 export interface CandleSpec {
   tf: string;
+  /** candles in US dollars (usdCandles) */
   candles: Candle[];
   /** the curve's start price, drawn as a reference line when present */
   start: number | null;
@@ -291,11 +360,11 @@ export function renderCandles(spec: CandleSpec, width: number, height: number): 
   for (const v of yt) {
     const yy = r1(y(v));
     out.push(`<line class="grid" x1="${L}" x2="${W - R}" y1="${yy}" y2="${yy}"/>`);
-    out.push(`<text x="${W - R + 6}" y="${yy + 3.5}">${esc(fmtPrice(v))}</text>`);
+    out.push(`<text x="${W - R + 6}" y="${yy + 3.5}">${esc(fmtUsdPrice(v))}</text>`);
   }
   if (spec.start !== null && Number.isFinite(spec.start)) {
     const ys = r1(y(spec.start));
-    out.push(`<line class="ref" x1="${L}" x2="${W - R}" y1="${ys}" y2="${ys}"/><text class="ref" x="${L + 4}" y="${ys - 4}">curve start ${esc(fmtPrice(spec.start))}</text>`);
+    out.push(`<line class="ref" x1="${L}" x2="${W - R}" y1="${ys}" y2="${ys}"/><text class="ref" x="${L + 4}" y="${ys - 4}">curve start ${esc(fmtUsdPrice(spec.start))}</text>`);
   }
   const maxV = Math.max(...cs.map((c) => c.volume)) || 1;
   const body = Math.max(1, Math.min(14, cw * 0.66));
@@ -305,7 +374,7 @@ export function renderCandles(spec: CandleSpec, width: number, height: number): 
     const yo = y(c.open), yc = y(c.close);
     const top = r1(Math.min(yo, yc));
     const h = Math.max(1, r1(Math.abs(yc - yo)));
-    const tip = `${new Date(c.t * 1000).toLocaleString("en-US")} (${spec.tf})\nopen ${fmtPrice(c.open)}  high ${fmtPrice(c.high)}\nlow ${fmtPrice(c.low)}  close ${fmtPrice(c.close)} ${QUOTE}\nvolume ${fmtAmount(c.volume)} ${QUOTE}, ${c.trades} trade${c.trades === 1 ? "" : "s"}`;
+    const tip = `${new Date(c.t * 1000).toLocaleString("en-US")} (${spec.tf})\nopen ${fmtUsdPrice(c.open)}  high ${fmtUsdPrice(c.high)}\nlow ${fmtUsdPrice(c.low)}  close ${fmtUsdPrice(c.close)}\nvolume ${fmtUsd(c.volume)}, ${c.trades} trade${c.trades === 1 ? "" : "s"}`;
     out.push(`<g class="c ${up ? "up" : "down"}" data-tip="${esc(tip)}"><line x1="${cx}" x2="${cx}" y1="${r1(y(c.high))}" y2="${r1(y(c.low))}"/><rect x="${r1(cx - body / 2)}" y="${top}" width="${r1(body)}" height="${h}" rx="1"/>` +
       `<rect class="v" x="${r1(cx - body / 2)}" y="${r1(H - B - (c.volume / maxV) * VOL)}" width="${r1(body)}" height="${Math.max(1, r1((c.volume / maxV) * VOL))}"/><rect class="hit" x="${r1(cx - Math.max(cw, 8) / 2)}" y="${T}" width="${r1(Math.max(cw, 8))}" height="${H - B - T}"/></g>`);
   }
@@ -318,7 +387,7 @@ export function renderCandles(spec: CandleSpec, width: number, height: number): 
     if (xx < L + 12 || xx > W - R - 12) continue;
     out.push(`<text x="${xx}" y="${H - 6}" text-anchor="middle">${esc(timeLabel(tt, spec.tf))}</text>`);
   }
-  return `<svg class="mk-svg" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}" role="img" aria-label="Price in ${QUOTE} per token, ${spec.tf} candles">${out.join("")}</svg>`;
+  return `<svg class="mk-svg" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}" role="img" aria-label="Price in US dollars per token, ${spec.tf} candles">${out.join("")}</svg>`;
 }
 
 export function mountCandles(root: ParentNode) {

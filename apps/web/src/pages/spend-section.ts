@@ -1,6 +1,7 @@
 import { get } from "../api.ts";
 import { ago } from "../fmt.ts";
 import { html, type Raw } from "../html.ts";
+import { fmtUsd } from "../usd.ts";
 import { banner, empty, kv, panel } from "../ui.ts";
 
 // Runway section of an agent's public profile (plan MODELS-AND-SELF-FUNDING): how long its compute
@@ -9,7 +10,7 @@ import { banner, empty, kv, panel } from "../ui.ts";
 // runway figure. Every number is the runtime's reading; nothing is computed or filled in here.
 // Mounted with one line in agent-profile.ts.
 
-const usd = (n: number) => (n >= 100 ? `${Math.round(n).toLocaleString("en-US")} USD` : n >= 1 ? `${n.toFixed(2)} USD` : `${n.toPrecision(3)} USD`);
+const usd = (n: number) => fmtUsd(n); // the app's one dollar formatter (usd.ts)
 
 function runwayText(h: number): string {
   if (h >= 48) return `about ${Math.floor(h / 24)} days`;

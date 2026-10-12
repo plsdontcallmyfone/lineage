@@ -1546,3 +1546,6 @@ html::-webkit-scrollbar, body::-webkit-scrollbar { display: none; width: 0; heig
 .pf-tl-more[open] .when-closed { display: none; }
 .pf-tl-more[open] > summary { border-bottom: 1px solid var(--border); }
 .lp-deck[hidden] { display: none !important; }
+
+/* US dollars (usd.ts): a figure whose dollar price could not be read */
+.usd-na { color: var(--tt); font-weight: 400; }

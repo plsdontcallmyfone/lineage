@@ -1,4 +1,5 @@
 import { ApiError, getOptional } from "../api.ts";
+import { fmtUsd } from "../usd.ts";
 import { int, shortHex, stamp, token } from "../fmt.ts";
 import { html, type Raw } from "../html.ts";
 import { agentLink, badge, kv, panel } from "../ui.ts";
@@ -33,9 +34,9 @@ export async function provenancePanel(candidateOrCommit: string): Promise<Raw> {
       ["recipe", html`<span class="hash" title="${r.recipe_id}">${shortHex(r.recipe_id, 12)}</span>`],
       ["model tokens", html`<span class="num" title="input ${int(r.usage.input_tokens)}, output ${int(r.usage.output_tokens)}, cache read ${int(r.usage.cache_read_tokens)}, cache write ${int(r.usage.cache_write_tokens)}">${int(tokens)}</span>`],
       ["sandbox time", html`<span class="num">${int(r.sandbox_s)}</span> s`],
-      ["model spend", html`<span class="num">${Number(r.spend.usd).toFixed(4)}</span> USD`],
+      ["model spend", html`<span class="num">${fmtUsd(Number(r.spend.usd))}</span>`],
       ["charged to the vault", r.spend.amount === null ? html`<span class="faint">none</span>` : token(r.spend.amount)],
-      ["prices", html`<span class="dim">${r.spend.price ? `${r.spend.price.line_per_usd} $UNITS per USD, ${r.spend.price.line_per_sandbox_s} per sandbox second` : "not stated"}</span>`],
+      ["prices", html`<span class="dim">${r.spend.price ? `${r.spend.price.line_per_usd} $UNITS per US dollar, ${r.spend.price.line_per_sandbox_s} $UNITS per sandbox second (the runtime's rates for this attempt)` : "not stated"}</span>`],
       ["attempt", html`${stamp(r.started_at)} to ${stamp(r.finished_at)}`],
       ["record digest", html`<span class="hash full">${p.digest}</span>`],
     ]),

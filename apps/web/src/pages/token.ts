@@ -10,7 +10,12 @@ import { feedPanel } from "./feed.ts";
 import { agentAvatar, agentTitle, buildingLine, hiddenNote, injectBuildingStyle, type DirToken } from "../building.ts";
 import {
   addrLink,
-  amountFig,
+  usdAmountFig,
+  usdBasisNote,
+  usdCandles,
+  usdChangeFig,
+  usdPriceFig,
+  type CandlesAnswer,
   changeFig,
   defaultTf,
   fig,
@@ -52,6 +57,8 @@ const tfByMint = new Map<string, string>();
 
 interface Data {
   t: TokenDetail;
+  /** the candles in US dollars; null when the dollar price could not be read */
+  usd: ReturnType<typeof usdCandles>;
   candles: Candle[];
   tf: string;
   trades: Trade[];
@@ -63,11 +70,11 @@ async function load(mint: string, tf?: string): Promise<Data> {
   const f = tf ?? tfByMint.get(mint) ?? defaultTf(t.created_at);
   const sec = { "1m": 60, "5m": 300, "1h": 3600, "1d": 86400 }[f] ?? 3600;
   const [c, tr, h] = await Promise.all([
-    market<{ candles: Candle[] }>(`tokens/${mint}/candles?tf=${f}&from=${t.created_at - sec}`),
+    market<CandlesAnswer>(`tokens/${mint}/candles?tf=${f}&from=${t.created_at - sec}`),
     market<{ trades: Trade[] }>(`tokens/${mint}/trades?limit=25`),
     market<Holders>(`tokens/${mint}/holders?limit=20`),
   ]);
-  return { t, candles: c.candles, tf: f, trades: tr.trades, holders: h };
+  return { t, usd: usdCandles(c), candles: c.candles, tf: f, trades: tr.trades, holders: h };
 }
 
 const sym = (t: TokenDetail) => t.symbol ?? "token";
@@ -77,10 +84,10 @@ const sym = (t: TokenDetail) => t.symbol ?? "token";
 
 function statsRow(t: TokenDetail, h: Holders): Raw {
   return html`<div class="stats mk-stats tk-stats" style="--n:5">
-    ${stat("Market cap", amountFig(t.market_cap, QUOTE, "market_cap"), html`supply ${fig(fmtAmount(t.supply), t.supply, undefined, "supply")}`, "tk-big")}
-    ${stat("Price", priceFig(t.price, "price"), `${QUOTE} per ${sym(t)}`)}
-    ${stat("24h volume", amountFig(t.volume_24h, QUOTE, "volume_24h"), html`${fig(fmtInt(t.trades_24h), t.trades_24h, undefined, "trades_24h")} trades`)}
-    ${stat("24h change", changeFig(t.change_24h, "change_24h"), "vs the price 24h ago")}
+    ${stat("Market cap", usdAmountFig(t.market_cap_usd, t.market_cap, "market_cap_usd"), html`supply ${fig(fmtAmount(t.supply), t.supply, undefined, "supply")}`, "tk-big")}
+    ${stat("Price", usdPriceFig(t.price_usd, t.price, "price_usd"), `US dollars per ${sym(t)}`)}
+    ${stat("24h volume", usdAmountFig(t.volume_24h_usd, t.volume_24h, "volume_24h_usd"), html`${fig(fmtInt(t.trades_24h), t.trades_24h, undefined, "trades_24h")} trades`)}
+    ${stat("24h change", usdChangeFig(t), "vs the price 24h ago")}
     ${stat("Holders", fig(h.holders === null ? "TBA" : fmtInt(h.holders), h.holders, undefined, "holders"), h.as_of ? html`as of ${when(h.as_of * 1000)}` : "not counted yet")}
   </div>`;
 }
@@ -90,8 +97,8 @@ function tradesTable(d: Data): Raw {
   if (!d.trades.length) return empty("No trades yet", `The first buy on the curve shows here once the indexer has read it.`);
   return html`<ul class="tk-rows mk-trades">${d.trades.map(
     (r) => html`<li data-sig="${r.signature}">
-      <div class="tk-row-main"><span class="mk-side ${r.side}">${r.side === "buy" ? "Bought" : "Sold"}</span> ${fig(fmtAmount(r.base_amount), r.base_amount)} ${sym(d.t)} for ${fig(fmtAmount(r.quote_amount), r.quote_amount)} ${QUOTE}</div>
-      <div class="tk-row-sub">at ${fig(fmtPrice(r.price), r.price)} · ${addrLink(r.trader)} · ${r.venue === "pool" ? "PumpSwap" : r.venue === "curve" ? "curve" : r.venue === "damm" ? "DAMM v2" : r.venue === "dbc" ? "DBC" : r.venue}${r.time ? html` · <time data-ago="${r.time * 1000}"></time>` : ""}</div>
+      <div class="tk-row-main"><span class="mk-side ${r.side}">${r.side === "buy" ? "Bought" : "Sold"}</span> ${fig(fmtAmount(r.base_amount), r.base_amount)} ${sym(d.t)} for ${usdAmountFig(r.quote_amount_usd, r.quote_amount, "quote_amount_usd")}</div>
+      <div class="tk-row-sub">at ${usdPriceFig(r.price_usd, r.price, "price_usd")} · ${addrLink(r.trader)} · ${r.venue === "pool" ? "PumpSwap" : r.venue === "curve" ? "curve" : r.venue === "damm" ? "DAMM v2" : r.venue === "dbc" ? "DBC" : r.venue}${r.time ? html` · <time data-ago="${r.time * 1000}"></time>` : ""}</div>
       <a class="tk-row-tx" href="${explorerTx(r.signature)}" target="_blank" rel="noopener" title="${r.signature}">tx ${icon.ext}</a></li>`,
   )}</ul>`;
 }
@@ -162,9 +169,10 @@ export async function tokenPage([mint]: string[]): Promise<Page> {
         <section class="panel mk-pricepanel tk-chartpanel" data-view="chart">
           <div class="panel-h">
             <div class="seg tk-view" role="group" aria-label="Show"><button type="button" data-view-b="chart" aria-pressed="true">Chart</button><button type="button" data-view-b="computer" aria-pressed="false">Computer</button></div>
-            <div class="aside"><span class="faint hide-xs tk-unit">${QUOTE} per ${sym(t)}</span><div class="seg mk-tf" role="group" aria-label="Candle width">${TFS.map((f) => html`<button type="button" data-tf="${f}" aria-pressed="${String(f === d.tf)}">${f}</button>`)}</div><a class="link tk-agentlink" href="/agents/${t.agent}">Agent page</a></div>
+            <div class="aside"><span class="faint hide-xs tk-unit">US dollars per ${sym(t)}</span><div class="seg mk-tf" role="group" aria-label="Candle width">${TFS.map((f) => html`<button type="button" data-tf="${f}" aria-pressed="${String(f === d.tf)}">${f}</button>`)}</div><a class="link tk-agentlink" href="/agents/${t.agent}">Agent page</a></div>
           </div>
           <div class="tk-pane" data-pane-v="chart" id="mk-chart"></div>
+          <div class="panel-note tk-usdnote" data-pane-v="chart" id="mk-usdnote">${usdBasisNote(d.usd?.basis ?? null, d.candles.length > 0)}</div>
           <div class="tk-pane mk-livepanel" data-pane-v="computer" hidden><div id="mk-live" class="mk-live"></div></div>
         </section>
         <section class="panel tk-book" data-book="holders">
@@ -194,7 +202,7 @@ export async function tokenPage([mint]: string[]): Promise<Page> {
       const liveEl = root.querySelector<HTMLElement>("#mk-live")!;
       const chart = mountTokenChart(chartEl);
       const label = (x: Data) => `${sym(x.t)} · ${x.tf}`;
-      chart.set(d.candles, d.t.start_price, label(d));
+      chart.set(d.usd?.candles ?? [], d.usd?.start ?? null, label(d), d.usd === null && d.candles.length > 0);
       // the agent chat feed in the left column (plan F), refreshed while the page is open
       const feedEl = root.querySelector<HTMLElement>("#mk-feed");
       // the agent's commits to its own GitHub fork, live (identity service + GitHub)
@@ -218,7 +226,9 @@ export async function tokenPage([mint]: string[]): Promise<Page> {
         set("mk-building", buildingBody(x.t));
         about.refresh(x.t);
         for (const b of root.querySelectorAll<HTMLElement>("[data-tf]")) b.setAttribute("aria-pressed", String(b.dataset.tf === x.tf));
-        chart.set(x.candles, x.t.start_price, label(x));
+        chart.set(x.usd?.candles ?? [], x.usd?.start ?? null, label(x), x.usd === null && x.candles.length > 0);
+        const note = root.querySelector("#mk-usdnote");
+        if (note) note.textContent = usdBasisNote(x.usd?.basis ?? null, x.candles.length > 0);
         tradeBox?.update?.(x.t);
       };
       let busy = false;

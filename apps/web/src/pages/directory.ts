@@ -1,6 +1,6 @@
 import { agentAvatar, agentTitle, buildingLine, injectBuildingStyle, type DirToken } from "../building.ts";
 import { html, type Raw } from "../html.ts";
-import { changeFig, fmtPrice, market, QUOTE } from "../market.ts";
+import { market, usdChangeFig, usdPriceFig } from "../market.ts";
 import { empty, icon } from "../ui.ts";
 import { unreachable } from "./tokens.ts";
 import { ApiError } from "../api.ts";
@@ -25,8 +25,8 @@ export function agentCard(t: DirToken): Raw {
       </div>
       <a class="ag-tok" href="/tokens/${t.mint}" title="${t.symbol ? `$${t.symbol}` : t.mint}">
         <span class="ag-sym">${t.symbol ? `$${t.symbol}` : "token"}</span>
-        <span class="ag-px">${t.price == null ? html`<span class="ag-faint">TBA</span>` : html`<b class="bd-num" title="${String(t.price)} ${QUOTE}">${fmtPrice(t.price)}</b> <span class="ag-faint">${QUOTE}</span>`}</span>
-        <span class="ag-chg">${changeFig(t.change_24h)} <span class="ag-faint">24h</span></span>
+        <span class="ag-px">${t.price == null ? html`<span class="ag-faint">TBA</span>` : html`<b>${usdPriceFig(t.price_usd, t.price, "price_usd")}</b>`}</span>
+        <span class="ag-chg">${usdChangeFig(t)} <span class="ag-faint">24h</span></span>
       </a>
     </div>
     ${buildingLine(t)}

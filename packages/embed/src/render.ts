@@ -1,5 +1,6 @@
 import { esc } from "../../../apps/web/src/html.ts";
-import { fmtAmount, fmtInt, fmtPrice, fmtProgress, QUOTE, shortAddr } from "../../../apps/web/src/market.ts";
+import { fmtAmount, fmtInt, fmtProgress, shortAddr } from "../../../apps/web/src/market.ts";
+import { usdText } from "../../../apps/web/src/usd.ts";
 import { buildingLine, paramCells, type Building } from "../../../apps/web/src/building.ts";
 import type { Card, SessionEvent, Stats, TokenDetail } from "./client.ts";
 import type { Holders, Trade } from "./client.ts";
@@ -79,7 +80,8 @@ export interface CardOpts {
 }
 
 /** The four market figures (price, market cap, 24h volume, 24h change), the app's markup. */
-export function tokenParams(t: { price: number | null; market_cap: number | null; volume_24h: number | null; change_24h: number | null }, o: { unit?: boolean } = {}): string {
+export function tokenParams(t: { price: number | null; market_cap: number | null; volume_24h: number | null; change_24h: number | null; price_usd?: number | null; market_cap_usd?: number | null;
+  volume_24h_usd?: number | null; change_24h_usd?: number | null }, o: { full?: boolean } = {}): string {
   return String(paramCells(t, o));
 }
 
@@ -143,18 +145,21 @@ export function timelineLayout(times: number[], o: { pad?: number; step?: number
 
 const fig = (v: number | null | undefined, f: (n: number) => string = (n) => fmtInt(n)) => (v === null || v === undefined || !Number.isFinite(v) ? "TBA" : f(v));
 
-export const STAT_ITEMS: { key: keyof Stats; label: string; unit?: string; fmt?: (n: number) => string }[] = [
+/** 24h volume in US dollars: the indexer's dollar sum; "$ unavailable" when the volume is known and its dollar value is not. */
+const volumeUsd = (s: Stats) => usdText(s.volume_24h_usd, { exists: s.volume_24h != null, compact: true });
+
+export const STAT_ITEMS: { key: keyof Stats; label: string; unit?: string; fmt?: (n: number) => string; text?: (s: Stats) => string }[] = [
   { key: "tokens", label: "Agent tokens" },
   { key: "agents_working", label: "Agents working now" },
   { key: "generations", label: "Verified generations" },
-  { key: "volume_24h", label: "24h volume", unit: QUOTE, fmt: fmtAmount },
+  { key: "volume_24h", label: "24h volume", text: volumeUsd },
 ];
 
 export function statsHtml(s: Stats, keys: (keyof Stats)[] = STAT_ITEMS.map((x) => x.key)): string {
   return `<dl class="stats" part="stats">${keys
     .map((k) => {
       const it = STAT_ITEMS.find((x) => x.key === k) ?? { key: k, label: String(k).replace(/_/g, " ") };
-      const v = fig(s[k], it.fmt);
+      const v = it.text ? it.text(s) : fig(s[k], it.fmt);
       return `<div class="stat" part="stat" data-k="${esc(k)}"><dt>${esc(it.label)}</dt><dd><b class="num">${esc(v)}</b>${it.unit && v !== "TBA" ? `<span class="u">${esc(it.unit)}</span>` : ""}</dd></div>`;
     })
     .join("")}</dl>`;
@@ -171,7 +176,7 @@ export interface Step {
 export function howSteps(s: Stats): Step[] {
   return [
     { n: 1, title: "Launch", body: "Anyone launches an agent token on a Meteora bonding curve quoted in UNITS, and names the public repository the agent will improve.", figure: { label: "tokens launched", value: fig(s.tokens) } },
-    { n: 2, title: "Trading funds compute", body: "Trading the agent's token pays for its work: the agent's share of each trade goes to its own vault on chain.", figure: { label: "traded in the last 24h", value: fig(s.volume_24h, fmtAmount), unit: QUOTE } },
+    { n: 2, title: "Trading funds compute", body: "Trading the agent's token pays for its work: the agent's share of each trade goes to its own vault on chain.", figure: { label: "traded in the last 24h", value: volumeUsd(s) } },
     { n: 3, title: "The agent works", body: "The vault pays for model tokens and sandbox time. The agent reads the repository, edits it and measures the change, live on its screen.", figure: { label: "agents working now", value: fig(s.agents_working) } },
     { n: 4, title: "Blind replay", body: "Independent verifiers rebuild, test and measure every candidate without knowing who wrote it, and commit their results before revealing them.", figure: { label: "candidates submitted", value: fig(s.candidates) } },
     { n: 5, title: "Accepted generation", body: "A change the replays agree on, that passes the tests and beats the metric by the recipe's minimum, becomes the unit's next generation.", figure: { label: "verified generations", value: fig(s.generations) } },
@@ -214,17 +219,17 @@ export function tokenHeadHtml(t: TokenDetail, tagline: string | null, tradeHref:
     <div class="tid"><span class="sym" part="ticker">${esc(t.symbol ?? shortAddr(t.mint))}</span><span class="name" part="name">${esc(t.name ?? "")}</span><span class="badge" data-phase="${esc(t.phase)}">${esc(phase)}</span></div>
     ${tagline ? `<p class="tag" part="description">${esc(tagline)}</p>` : ""}
     <div class="sub">${t.repo_url ? ext(t.repo_url, repoLabel(t.repo_url)) : ""}<span>launched ${esc(ago(t.created_at))}</span>${ext(explorer("address", t.mint), shortAddr(t.mint), t.mint)}</div>
-    <div class="params" part="params">${tokenParams(t, { unit: true })}</div>
-    <div class="curve">${progressHtml(t.curve_progress)}<span class="faint">${t.phase === "graduated" ? `DAMM v2 pool ${esc(shortAddr(t.pools.damm_pool))}` : `${esc(fmtAmount(t.quote_reserve))} of ${esc(fmtAmount(t.migration_threshold))} ${QUOTE} to graduation`}</span><a class="btn" part="trade" href="${esc(tradeHref)}" target="_blank" rel="noopener">Trade on units</a></div>
+    <div class="params" part="params">${tokenParams(t, { full: true })}</div>
+    <div class="curve">${progressHtml(t.curve_progress)}<span class="faint">${t.phase === "graduated" ? `DAMM v2 pool ${esc(shortAddr(t.pools.damm_pool))}` : `${esc(usdText(t.quote_reserve_usd, { exists: t.quote_reserve != null }))} of ${esc(usdText(t.migration_threshold_usd, { exists: t.migration_threshold != null }))} to graduation`}</span><a class="btn" part="trade" href="${esc(tradeHref)}" target="_blank" rel="noopener">Trade on units</a></div>
   </header>`;
 }
 
 export function tradesHtml(trades: Trade[]): string {
   if (!trades.length) return `<p class="none">No trades yet.</p>`;
-  return `<table class="tbl" part="trades"><thead><tr><th>Time</th><th>Side</th><th class="r">Tokens</th><th class="r">${QUOTE}</th><th class="r hide-sm">Price</th><th class="hide-sm">Tx</th></tr></thead><tbody>${trades
+  return `<table class="tbl" part="trades"><thead><tr><th>Time</th><th>Side</th><th class="r">Tokens</th><th class="r">Value</th><th class="r hide-sm">Price</th><th class="hide-sm">Tx</th></tr></thead><tbody>${trades
     .map(
       (r) =>
-        `<tr><td>${esc(ago(r.time))}</td><td class="${r.side === "buy" ? "up" : "down"}">${esc(r.side)}</td><td class="r num">${esc(fmtAmount(r.base_amount))}</td><td class="r num">${esc(fmtAmount(r.quote_amount))}</td><td class="r num hide-sm">${esc(fmtPrice(r.price))}</td><td class="hide-sm">${ext(explorer("tx", r.signature), shortAddr(r.signature), r.signature)}</td></tr>`,
+        `<tr><td>${esc(ago(r.time))}</td><td class="${r.side === "buy" ? "up" : "down"}">${esc(r.side)}</td><td class="r num">${esc(fmtAmount(r.base_amount))}</td><td class="r num">${esc(usdText(r.quote_amount_usd))}</td><td class="r num hide-sm">${esc(usdText(r.price_usd, { price: true }))}</td><td class="hide-sm">${ext(explorer("tx", r.signature), shortAddr(r.signature), r.signature)}</td></tr>`,
     )
     .join("")}</tbody></table>`;
 }

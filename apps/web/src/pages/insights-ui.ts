@@ -1,4 +1,5 @@
 import { compact } from "../chart.ts";
+import { fmtUsd } from "../usd.ts";
 import { esc, html, raw, type Raw } from "../html.ts";
 import { shortId } from "../fmt.ts";
 
@@ -115,11 +116,10 @@ export function wireInsights(root: HTMLElement) {
 
 export const agentLabel = (agent: string | null | undefined, name: string | null | undefined) => name ?? shortId(agent ?? "");
 
-/** USD with enough places for small per-attempt figures. */
+/** A measured dollar figure (model spend, cost per attempt); TBA when it was not measured. */
 export function usd(v: number | null | undefined): string {
   if (v === null || v === undefined || !Number.isFinite(v)) return "TBA";
-  const a = Math.abs(v);
-  return `${v < 0 ? "-" : ""}$${a >= 100 ? a.toFixed(0) : a >= 1 ? a.toFixed(2) : a.toFixed(4)}`;
+  return fmtUsd(v); // the app's one dollar formatter (usd.ts)
 }
 export const pct = (v: number | null | undefined, d = 2) => (v === null || v === undefined || !Number.isFinite(v) ? "TBA" : `${v.toFixed(d)}%`);
 export const metricVal = (v: number | null | undefined) => (v === null || v === undefined ? "TBA" : v.toLocaleString("en-US", { maximumFractionDigits: 2 }));

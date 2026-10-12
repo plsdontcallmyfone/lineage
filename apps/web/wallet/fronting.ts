@@ -10,6 +10,7 @@
 //   4. A units account: Core's identity_account_price_lamports, when chosen.
 // Funding shows one compact total with a one-line breakdown that expands; Review shows every line once.
 // Logic lives here; apps/web/wallet/main.ts only calls these functions (minimal hunks).
+import { fmtUsd } from "../src/usd.ts";
 import { initialBuyAmount, launchSolCosts, maxBuyInput, solShortfall, type Ix, type LaunchSolCosts, type PrepayConfig } from "../../../packages/chain/src/browser/index.ts";
 import type { Simulation } from "../../../packages/chain/src/browser/client.ts";
 import { html, type Raw } from "../src/html.ts";
@@ -101,7 +102,10 @@ const SOL = (l: bigint) => {
   return s.replace(/(\.\d*?)0+$/, "$1").replace(/\.$/, "");
 };
 const usdOf = (l: bigint, solUsd: number | null) => (solUsd === null ? null : (Number(l) / 1e9) * solUsd);
-const money = (n: number | null) => (n === null ? "" : `${n < 0.01 && n > 0 ? "<0.01" : n.toFixed(2)} USD`);
+// US dollars lead every cost (owner 2026-10-12), through the app's one formatter (src/usd.ts); the wallet
+// pays in SOL, so the SOL amount stays beside it. No SOL price: "$ unavailable" (and the launch is disabled).
+const money = (n: number | null) => fmtUsd(n);
+const sol = (l: bigint) => `${SOL(l)} SOL`;
 
 export interface FundingView {
   costs: LaunchSolCosts | null;
@@ -130,22 +134,23 @@ export function fundingBlocked(v: { costs: LaunchSolCosts | null; solUsd: number
 function lines(v: FundingView): [string, string, string][] {
   const c = v.costs;
   const out: [string, string, string][] = [];
-  out.push(["Token creation", c ? `${SOL(c.creation)} SOL` : "simulating", c ? money(usdOf(c.creation, v.solUsd)) : ""]);
-  out.push(["Model credits", c ? `${SOL(c.credits)} SOL` : "simulating", v.creditsUsd ? `${v.creditsUsd} USD of credits` : ""]);
-  if (!c || c.buy !== null) out.push([`Initial buy${v.bps !== null ? ` ${v.bps / 100}%` : ""}`, c?.buy != null ? `${SOL(c.buy)} SOL` : "simulating", c?.buy != null ? money(usdOf(c.buy, v.solUsd)) : ""]);
-  if (v.identityChosen) out.push(["A units account", c ? `${SOL(c.identity)} SOL` : "simulating", c ? money(usdOf(c.identity, v.solUsd)) : ""]);
-  if (c && c.tip > 0n) out.push(["Jito tip", `${SOL(c.tip)} SOL`, money(usdOf(c.tip, v.solUsd))]);
+  // [label, the cost in US dollars, the SOL the wallet pays for it]
+  out.push(["Token creation", c ? money(usdOf(c.creation, v.solUsd)) : "simulating", c ? sol(c.creation) : ""]);
+  out.push(["Model credits", c ? money(usdOf(c.credits, v.solUsd)) : "simulating", `${c ? `${sol(c.credits)}` : ""}${v.creditsUsd ? `${c ? " for " : ""}${fmtUsd(Number(v.creditsUsd))} of credits` : ""}`]);
+  if (!c || c.buy !== null) out.push([`Initial buy${v.bps !== null ? ` ${v.bps / 100}%` : ""}`, c?.buy != null ? money(usdOf(c.buy, v.solUsd)) : "simulating", c?.buy != null ? sol(c.buy) : ""]);
+  if (v.identityChosen) out.push(["A units account", c ? money(usdOf(c.identity, v.solUsd)) : "simulating", c ? sol(c.identity) : ""]);
+  if (c && c.tip > 0n) out.push(["Jito tip", money(usdOf(c.tip, v.solUsd)), sol(c.tip)]);
   return out;
 }
 
-/** Funding: one compact total (SOL, USD small), a one-line breakdown that expands, one short line when disabled. */
+/** Funding: one compact total (US dollars, the SOL the wallet pays small), a one-line breakdown that expands, one short line when disabled. */
 export function fundingSummary(v: FundingView): Raw {
   const c = v.costs;
   const ls = lines(v);
   const one = ls.map(([k]) => k).join(" · ");
   return html`<div class="lz-sum" data-fronting-ok="${String(!v.blocked)}">
-    <div class="lz-sum-top"><span class="eyebrow">Total</span> <b class="num lz-sum-total" data-fronting-total>${c ? `${SOL(c.total)} SOL` : v.pending ? "simulating…" : "after the simulation"}</b>
-      ${c && v.solUsd !== null ? html`<span class="dim lz-sum-usd">${money(usdOf(c.total, v.solUsd))}</span>` : ""}
+    <div class="lz-sum-top"><span class="eyebrow">Total</span> <b class="num lz-sum-total" data-fronting-total>${c ? money(usdOf(c.total, v.solUsd)) : v.pending ? "simulating…" : "after the simulation"}</b>
+      ${c ? html`<span class="dim lz-sum-usd" data-fronting-sol>${sol(c.total)}</span>` : ""}
       <span class="dim">one signature</span></div>
     <details class="lz-sum-more"><summary>${one}</summary>
       <div class="lz-sum-lines">${ls.map(([k, a, u]) => html`<div class="lz-rr" data-fronting="${k}"><span class="eyebrow">${k}</span><span class="lz-rv"><b class="num">${a}</b> <span class="dim">${u}</span></span></div>`)}</div>
@@ -160,7 +165,7 @@ export function costBreakdown(v: FundingView): Raw {
   const c = v.costs;
   return html`<div class="lz-review lz-fronting" data-fronting-ok="${String(!v.blocked)}">
     ${lines(v).map(([k, a, u]) => html`<div class="lz-rr" data-fronting="${k}"><span class="eyebrow">${k}</span><span class="lz-rv"><b class="num">${a}</b> <span class="dim">${u}</span></span></div>`)}
-    <div class="lz-rr" data-fronting="Total"><span class="eyebrow">Total</span><span class="lz-rv"><b class="num">${c ? `${SOL(c.total)} SOL` : "simulating"}</b> <span class="dim">${c ? money(usdOf(c.total, v.solUsd)) : ""}${c && c.headroom > 0n ? `; the wallet must hold ${SOL(c.needed)} SOL (the purchase at its slippage bound)` : ""}</span></span></div>
+    <div class="lz-rr" data-fronting="Total"><span class="eyebrow">Total</span><span class="lz-rv"><b class="num">${c ? money(usdOf(c.total, v.solUsd)) : "simulating"}</b> <span class="dim">${c ? sol(c.total) : ""}${c && c.headroom > 0n ? `; the wallet must hold ${SOL(c.needed)} SOL (the purchase at its slippage bound)` : ""}</span></span></div>
     <div class="lz-rr"><span class="eyebrow">Approval</span><span class="lz-rv"><b>one signature</b> <span class="dim">${v.txCount ? `${v.txCount} transaction${v.txCount === 1 ? "" : "s"} signed together${v.devnet ? ", sent in order" : ", sent as one Jito bundle (all or nothing)"}` : ""}</span></span></div>
     ${v.blocked ? html`<div class="wl-fine" data-fronting-short><span class="mark warn">Launch disabled: ${v.blocked}.</span></div>` : html`<div class="wl-fine"><span class="mark good">your wallet covers all of it</span></div>`}
   </div>`;

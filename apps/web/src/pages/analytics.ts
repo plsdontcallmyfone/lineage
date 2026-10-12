@@ -1,7 +1,8 @@
 import { get } from "../api.ts";
 import { ago as agoText, shortHex, shortId, stamp, when } from "../fmt.ts";
 import { esc, html, raw, type Raw } from "../html.ts";
-import { addrLink, fmtAmount, fmtInt, market, QUOTE } from "../market.ts";
+import { addrLink, fmtAmount, fmtInt, market, QUOTE, usdBasisNote, type UsdBasis } from "../market.ts";
+import { fmtUsd, USD_NA } from "../usd.ts";
 import { badge, empty, reasonText } from "../ui.ts";
 import { agentLabel, chip, hours, injectInsightsStyle, pct, qs, secs, usd, wireInsights } from "./insights-ui.ts";
 import { providerName } from "./social-ui.ts";
@@ -17,8 +18,10 @@ import { CHART_CSS, fmtVal, mountCard, shortDay, slotColor, sparkline, tone, typ
 // plan section 7), GET /v1/analytics/overview and /ops for the status strip, or the market indexer.
 // The window (24 h, 7 d, 30 d, all) applies to every figure and chart. A block whose series is empty
 // says so in one line; a block that cannot have data yet is not rendered. Protocol revenue is shown
-// here only (token pages and cards carry no fee figure), in the denomination it was paid in; a USD
-// figure appears only beside SOL, from the app's SOL price (/chain/sol-price).
+// here only (token pages and cards carry no fee figure). Every money figure is in US dollars (owner
+// 2026-10-12) through the app's one formatter (usd.ts): Core's and the indexer's "_usd" fields, which
+// both come from the indexer's one reading of the quote coin's dollar price. A chart of past records
+// says once, in its caption, whether they were converted at the price of their own time or today's.
 
 type O = any;
 const WINDOWS: [string, string][] = [
@@ -160,10 +163,23 @@ function kpiTile(k: Kpi, win: string): Raw {
   return html`<section class="an-tile" data-kpi="${k.id}"><span class="an-tile-l">${k.label}</span><div class="an-tile-v"><b>${k.value}</b>${deltaChip(k, win)}</div>${raw(sparkline(k.series, k.color))}<small>${k.sub}</small></section>`;
 }
 
-const compactAmount = (v: number) => (Math.abs(v) >= 10_000 ? fmtVal(v, "amount") : fmtAmount(v));
+/** Dollars on a tile or an axis: compact from $1,000 ("$4.1K"), the full form below. */
+const usdC = (v: number | null | undefined) => fmtUsd(v, { compact: true });
+/** One plain sentence on how the revenue records were converted to dollars. */
+function revenueUsdNote(r: O | null): string {
+  const u = r?.usd;
+  if (!u) return "";
+  if (!u.ok) return `${USD_NA}: ${u.reason}.`;
+  if (u.basis === "at_time") return `In US dollars, each inflow at the ${QUOTE} price of its own time.`;
+  if (u.basis === "mixed") return `In US dollars: creator fee collections since the dollar price of ${QUOTE} has been recorded use the price of their own time, every other inflow today's price.`;
+  return `In US dollars at today's prices: the dollar price at the time of each inflow is not on record.`;
+}
 
 interface Market {
+  /** US dollars per bucket; `usd` false when a candle had no dollar value (no price reading): nothing is summed then */
   series: number[];
+  usd: boolean;
+  basis: UsdBasis;
   value: number;
   prev: number | null;
   tokens: number;
@@ -172,7 +188,7 @@ interface Market {
   list: any[];
 }
 
-/** Quote volume per bucket summed over the listed tokens' candles (the indexer leaves test launches out). */
+/** Dollar volume per bucket summed over the listed tokens' candles, from the indexer's volume_usd (it leaves test launches out). */
 async function loadMarket(d: O): Promise<Market | null> {
   const list = await market<{ tokens: any[] }>("tokens?limit=500").then((r) => r.tokens).catch(() => null);
   if (!list) return null;
@@ -181,35 +197,44 @@ async function loadMarket(d: O): Promise<Market | null> {
   const size = d.axis.unit === "hour" ? 3_600_000 : 86_400_000;
   const from = Math.floor((d.prev?.from ?? d.range.from) / 1000), to = Math.ceil(d.range.to / 1000);
   const candles = new Map<string, any[]>();
-  await Promise.all(pick.map(async (t) => candles.set(t.mint, ((await market<any>(`tokens/${t.mint}/candles?tf=${tf}&from=${from}&to=${to}`).catch(() => null))?.candles ?? []) as any[])));
+  const bases = new Set<UsdBasis>();
+  await Promise.all(pick.map(async (t) => {
+    const a = await market<any>(`tokens/${t.mint}/candles?tf=${tf}&from=${from}&to=${to}`).catch(() => null);
+    candles.set(t.mint, (a?.candles ?? []) as any[]);
+    if (a?.candles?.length) bases.add(a.usd_basis ?? null);
+  }));
   const series = d.axis.t.map(() => 0) as number[];
-  let prev = 0;
+  let prev = 0, usd = true;
   for (const cs of candles.values())
     for (const c of cs) {
+      if (c.volume_usd == null) usd = false;
       const ms = c.t * 1000;
       const i = Math.floor((ms - d.range.from) / size);
-      if (i >= 0 && i < series.length) series[i]! += c.volume ?? 0;
-      else if (d.prev && ms >= d.prev.from && ms < d.prev.to) prev += c.volume ?? 0;
+      if (i >= 0 && i < series.length) series[i]! += c.volume_usd ?? 0;
+      else if (d.prev && ms >= d.prev.from && ms < d.prev.to) prev += c.volume_usd ?? 0;
     }
-  return { series, value: series.reduce((s, x) => s + x, 0), prev: d.prev ? prev : null, tokens: pick.length, capped: list.length > pick.length, candles, list };
+  const basis: UsdBasis = !usd ? null : bases.size === 1 ? [...bases][0]! : bases.size === 0 ? "current" : "mixed";
+  return { series, usd, basis, value: series.reduce((s, x) => s + x, 0), prev: d.prev ? prev : null, tokens: pick.length, capped: list.length > pick.length, candles, list };
 }
 
-/** SOL amounts keep their own unit; the USD beside them is the app's current SOL price, when it has one. */
+/** A SOL amount with its unit, for the text beside a dollar figure (units account payments are paid in SOL). */
 const solText = (v: number | null | undefined) => (v === null || v === undefined ? "no value" : `${v.toLocaleString("en-US", { maximumFractionDigits: 4 })} SOL`);
-const solUsd = (v: number | null | undefined, price: number | null) => (v && price ? ` (${usd(v * price)} at the current SOL price)` : "");
 
-function revenueTile(r: O | null, solPrice: number | null): Kpi {
+function revenueTile(r: O | null): Kpi {
   const base = { id: "revenue", label: "Protocol revenue", good: "up" as const, color: slotColor(1) };
   if (!r) return { ...base, value: "no answer", cur: null, prev: null, series: [], sub: "Core did not answer the revenue route" };
   const k = r.kpi.quote;
   const id = r.sources.find((x: any) => x.id === "identity");
   const fees = r.sources.find((x: any) => x.id === "creator_fees");
-  const sol = id?.available ? `${solText(id.value)}${solUsd(id.value, solPrice)} for units accounts` : "units account payments are not recorded on this instance";
+  const sol = id?.available ? `${usdC(id.value_usd)} of it for units accounts (${solText(id.value)})` : "units account payments are not recorded on this instance";
   if (k.value === null || !fees?.available) return { ...base, value: "not recorded", cur: null, prev: null, series: [], sub: `the market indexer's fee records have not reached Core; ${sol}` };
-  return { ...base, value: `${compactAmount(k.value)}`, cur: k.value, prev: k.prev, series: k.series, sub: `${QUOTE} to the treasury and reserve; ${sol}`, prevText: (x) => `${compactAmount(x)} ${QUOTE}` };
+  // dollars: Core's sum of every source at the indexer's reading; without a reading the tile says so, never the quote-coin sum
+  const u = r.kpi.usd;
+  if (!u || u.value === null) return { ...base, value: USD_NA, cur: null, prev: null, series: [], sub: `to the treasury and reserve. ${revenueUsdNote(r)}` };
+  return { ...base, value: usdC(u.value), cur: u.value, prev: u.prev, series: u.series, sub: `to the treasury and reserve; ${sol}`, prevText: (x) => usdC(x) };
 }
 
-function kpiRow(d: O, m: Market | null, win: string, r: O | null, solPrice: number | null): Raw {
+function kpiRow(d: O, m: Market | null, win: string, r: O | null): Raw {
   const k = d.kpis;
   const acc = k.acceptance;
   const v = k.viewers;
@@ -220,8 +245,8 @@ function kpiRow(d: O, m: Market | null, win: string, r: O | null, solPrice: numb
     { id: "cost", label: "Cost per accepted", value: k.cost_per_accepted.value === null ? "none accepted" : usd(k.cost_per_accepted.value), cur: k.cost_per_accepted.value, prev: k.cost_per_accepted.prev, good: "down", series: k.cost_per_accepted.series, color: slotColor(6), sub: `model spend over ${fmtInt(k.cost_per_accepted.accepted)} accepted improvements`, prevText: (x) => usd(x) },
     { id: "agents", label: "Live agents", value: fmtInt(k.agents.value), cur: k.agents.value, prev: k.agents.prev, good: "up", series: k.agents.series, color: tone.accent(), sub: `in an attempt in the window; ${fmtInt(k.agents.live_now)} live right now` },
     { id: "viewers", label: "Viewers now", value: v.value === null ? "not sampled" : fmtInt(v.value), cur: v.peak, prev: v.prev_peak, good: "up", series: v.series, color: slotColor(4), sub: v.since === null ? "the gate's counts are sampled from this release on" : `watching live desktops; peak ${v.peak === null ? "not sampled" : fmtInt(v.peak)} in the window`, prevText: (x) => `peak ${fmtInt(x)}` },
-    { id: "volume", label: "Market volume", value: m ? compactAmount(m.value) : "no answer", cur: m ? m.value : null, prev: m ? m.prev : null, good: "up", series: m ? m.series : [], color: slotColor(2), sub: m ? `${QUOTE} traded over ${m.tokens} listed tokens${m.capped ? " (the 20 largest)" : ""}` : "the market indexer did not answer", prevText: (x) => `${compactAmount(x)} ${QUOTE}` },
-    revenueTile(r, solPrice),
+    { id: "volume", label: "Market volume", value: !m ? "no answer" : m.usd ? usdC(m.value) : USD_NA, cur: m?.usd ? m.value : null, prev: m?.usd ? m.prev : null, good: "up", series: m?.usd ? m.series : [], color: slotColor(2), sub: !m ? "the market indexer did not answer" : m.usd ? `traded over ${m.tokens} listed tokens${m.capped ? " (the 20 largest)" : ""}${m.basis === "at_time" ? "" : `, at today's ${QUOTE} price where the price of the time is not on record`}` : `the dollar price of ${QUOTE} could not be read`, prevText: (x) => usdC(x) },
+    revenueTile(r),
   ];
   return html`${tiles.map((t) => kpiTile(t, win))}`;
 }
@@ -237,7 +262,7 @@ interface CardShell {
 }
 const CARDS: CardShell[] = [
   { id: "improvements", title: "How much verified work has landed, and where?", sub: "Accepted generations, cumulative, stacked by project. Each step is one generation whose replays confirmed it.", h: 300, wide: true },
-  { id: "revenue", title: "What does the protocol earn, and from where?", sub: "Inflows to protocol accounts per hour or day, by source, from on-chain events and Core's records. Each in the token it was paid in; nothing is priced.", h: 250 },
+  { id: "revenue", title: "What does the protocol earn, and from where?", sub: "Inflows to protocol accounts per hour or day, by source, from on-chain events and Core's records, in US dollars.", h: 250 },
   { id: "attempts", title: "How do attempts end?", sub: "Attempts by outcome per hour or day, from published learnings episodes. Scripted test attempts (a recipe patch, no model) are left out unless added.", h: 250 },
   { id: "spend", title: "What does the spend buy?", sub: "Model spend and the accepted improvements of the same attempts, on one time axis.", h: 280 },
   { id: "cost", title: "What does one accepted improvement cost?", sub: "Model spend over accepted improvements: running through the window, and each hour or day on its own.", h: 250 },
@@ -246,7 +271,7 @@ const CARDS: CardShell[] = [
   { id: "verification", title: "Are verifiers keeping up and agreeing?", sub: "Replays of final candidates by role, and the share of counted replays that agreed with the verdict.", h: 280 },
   { id: "viewers", title: "Is anyone watching?", sub: "Peak of distinct viewers on live desktop streams, from the gate's counts sampled once a minute.", h: 220 },
   { id: "runway", title: "How long can each agent keep going?", sub: "Compute vault over the burn of the last 24 h, as the hosted runtime reports it.", h: 200 },
-  { id: "price", title: "Does the price follow the work?", sub: "Token price with a mark at each accepted generation of its agent.", h: 200, wide: true },
+  { id: "price", title: "Does the price follow the work?", sub: "Token price in US dollars with a mark at each accepted generation of its agent.", h: 200, wide: true },
 ];
 
 function cardShell(c: CardShell): Raw {
@@ -316,8 +341,8 @@ function cardDefs(d: O, m: Market | null, r: O | null): Map<string, CardDef | nu
     },
   });
 
-  // protocol revenue by source: one stacked bar per bucket in the quote token; units account payments
-  // are SOL, so they are their own view (never a second axis, never a sum across tokens)
+  // protocol revenue by source: one stacked bar per bucket in US dollars (Core's series_usd per source;
+  // units account payments, paid in SOL, are one of the sources). Without a dollar price nothing is drawn.
   if (!r) out.set("revenue", null);
   else {
     const rt: number[] = r.axis.t;
@@ -325,22 +350,24 @@ function cardDefs(d: O, m: Market | null, r: O | null): Map<string, CardDef | nu
     const src = (id: string) => r.sources.find((x: any) => x.id === id);
     const fees = src("creator_fees"), idp = src("identity");
     const rsince = `since ${shortDay(r.range.from)} (UTC)`;
-    const z = (xs: (number | null)[]) => xs.map((x) => x ?? 0);
+    const z = (xs: (number | null)[] | undefined) => (xs ?? []).map((x) => x ?? 0);
+    const priced = !!r.usd?.ok;
     out.set("revenue", {
       id: "revenue",
-      variants: idp?.available ? [["quote", QUOTE], ["sol", "SOL"]] : undefined,
-      build: (variant): ChartSpec =>
-        variant === "sol"
-          ? { kind: "stack", unit: runit, t: rt, fmt: "amount", height: 250, yLabel: `SOL per ${runit}`, series: [{ key: "identity", name: REV_NAMES.identity, color: slotColor(4), values: z(idp.series) }], empty: `No units account was bought ${rsince}. Each one is ${idp.price_lamports ? `${solText(Number(idp.price_lamports) / 1e9)}` : "a payment in SOL"}, paid in the launch transactions.` }
-          : {
-              kind: "stack", unit: runit, t: rt, fmt: "amount", height: 250, yLabel: `${QUOTE} per ${runit}`,
-              series: [
-                { key: "creator_fees", name: REV_NAMES.creator_fees, color: slotColor(1), values: z(fees.series) },
-                { key: "slashes", name: REV_NAMES.slashes, color: slotColor(3), values: z(src("slashes").series) },
-                { key: "challenge_bonds", name: REV_NAMES.challenge_bonds, color: slotColor(6), values: z(src("challenge_bonds").series) },
-              ],
-              empty: fees.available ? `No protocol inflow in ${QUOTE} ${rsince}.${r.first_record_at && r.first_record_at > r.range.from ? ` Records start ${shortDay(r.first_record_at)}.` : ""}` : `The market indexer's fee records have not reached Core, so nothing is drawn ${rsince}.`,
-            },
+      build: (): ChartSpec => ({
+        kind: "stack", unit: runit, t: rt, fmt: "usd", height: 250, yLabel: `US dollars per ${runit}`,
+        series: priced
+          ? [
+              { key: "creator_fees", name: REV_NAMES.creator_fees, color: slotColor(1), values: z(fees.series_usd) },
+              { key: "slashes", name: REV_NAMES.slashes, color: slotColor(3), values: z(src("slashes").series_usd) },
+              { key: "challenge_bonds", name: REV_NAMES.challenge_bonds, color: slotColor(6), values: z(src("challenge_bonds").series_usd) },
+              ...(idp?.available ? [{ key: "identity", name: REV_NAMES.identity, color: slotColor(4), values: z(idp.series_usd) }] : []),
+            ]
+          : [],
+        empty: !priced
+          ? `${revenueUsdNote(r)} Nothing is drawn until the dollar price can be read again.`
+          : fees.available ? `No protocol inflow ${rsince}.${r.first_record_at && r.first_record_at > r.range.from ? ` Records start ${shortDay(r.first_record_at)}.` : ""}` : `The market indexer's fee records have not reached Core, so nothing is drawn ${rsince}.`,
+      }),
     });
   }
 
@@ -452,7 +479,7 @@ function cardDefs(d: O, m: Market | null, r: O | null): Map<string, CardDef | nu
   if (m)
     for (const tk of m.list) {
       const cs = (m.candles.get(tk.mint) ?? []).filter((c) => c.t * 1000 >= d.range.from && c.t * 1000 < d.range.to);
-      if (cs.length < 2) continue;
+      if (cs.length < 2 || cs.some((c) => c.close_usd == null)) continue; // drawn in dollars or not at all
       const size = unit === "hour" ? 3_600_000 : 86_400_000;
       const marks = new Map<number, number>();
       for (const e of events) if (e.agent === tk.agent) marks.set(Math.floor(e.at / size) * size, (marks.get(Math.floor(e.at / size) * size) ?? 0) + 1);
@@ -460,7 +487,7 @@ function cardDefs(d: O, m: Market | null, r: O | null): Map<string, CardDef | nu
       charts.push({
         title: `${tk.agent_name ?? shortId(tk.agent)} ${tk.symbol ?? ""}`.trim(),
         sub: `${[...marks.values()].reduce((s, n) => s + n, 0)} accepted generations in the window`,
-        spec: { kind: "time", unit, height: 170, panes: [`Close, ${QUOTE}`], empty: "", series: [{ key: "close", name: `Close per ${per}`, color: slotColor(0), kind: "area", fmt: "amount", points: t.map((x) => ({ t: x, v: cs.find((c) => c.t * 1000 === x)?.close ?? null })), marks: [...marks.entries()].filter(([x]) => have.has(x)).map(([x, n]) => ({ t: x, text: String(n) })) }] },
+        spec: { kind: "time", unit, height: 170, panes: ["Close, US dollars"], empty: "", series: [{ key: "close", name: `Close per ${per}`, color: slotColor(0), kind: "area", fmt: "usd", points: t.map((x) => ({ t: x, v: cs.find((c) => c.t * 1000 === x)?.close_usd ?? null })), marks: [...marks.entries()].filter(([x]) => have.has(x)).map(([x, n]) => ({ t: x, text: String(n) })) }] },
       });
     }
   out.set("price", charts.length ? { id: "price", build: (): ChartSpec => ({ kind: "multi", charts: charts.slice(0, 8), empty: "" }) } : null);
@@ -484,31 +511,33 @@ const REV_WHAT: Record<string, string> = {
 const share = (part: number, whole: number) => (whole > 0 ? `${((part / whole) * 100).toFixed(1)}%` : "0%");
 
 /** Where creator fees went (a single stacked bar) and every protocol inflow with its account. */
-function revenueSplit(r: O | null, solPrice: number | null, win: string): Raw | "" {
+function revenueSplit(r: O | null, win: string): Raw | "" {
   if (!r) return "";
   const cf = r.creator_fees;
   const span = win === "all" ? "all time" : win === "24h" ? "the last 24 h" : win === "7d" ? "the last 7 d" : "the last 30 d";
+  // v: the on-chain amounts (the shares of the bar); usd: the same in dollars, the figure a reader sees
   const parts = [
-    { key: "compute", name: "Agents' compute vaults", v: cf.to_compute ?? 0, color: slotColor(0) },
-    { key: "protocol", name: "Protocol treasury", v: cf.to_protocol ?? 0, color: slotColor(1) },
-    { key: "routed", name: "Routed by the agent (pool, GitHub)", v: cf.routed ?? 0, color: slotColor(2) },
+    { key: "compute", name: "Agents' compute vaults", v: cf.to_compute ?? 0, usd: cf.to_compute_usd as number | null, color: slotColor(0) },
+    { key: "protocol", name: "Protocol treasury", v: cf.to_protocol ?? 0, usd: cf.to_protocol_usd as number | null, color: slotColor(1) },
+    { key: "routed", name: "Routed by the agent (pool, GitHub)", v: cf.routed ?? 0, usd: cf.routed_usd as number | null, color: slotColor(2) },
   ].filter((x) => x.key !== "routed" || x.v > 0);
   const total = cf.fees ?? 0;
   const bps = r.split_bps;
   const bar = !cf.available
     ? html`<p class="an-line">The market indexer's fee records have not reached Core on this instance.</p>`
     : total > 0
-      ? html`<div class="an-split" role="img" aria-label="Creator fees in ${span}: ${parts.map((x) => `${x.name} ${share(x.v, total)}`).join(", ")}">${parts.filter((x) => x.v > 0).map((x) => html`<i style="flex:${x.v} 1 0;--k:${x.color}" title="${x.name}: ${fmtAmount(x.v)} ${QUOTE} (${share(x.v, total)})"></i>`)}</div>
-          <ul class="an-split-l">${parts.map((x) => html`<li data-part="${x.key}"><i style="--k:${x.color}"></i><span>${x.name}</span><b>${fmtAmount(x.v)} ${QUOTE}</b><small>${share(x.v, total)}</small></li>`)}</ul>`
+      ? html`<div class="an-split" role="img" aria-label="Creator fees in ${span}: ${parts.map((x) => `${x.name} ${share(x.v, total)}`).join(", ")}">${parts.filter((x) => x.v > 0).map((x) => html`<i style="flex:${x.v} 1 0;--k:${x.color}" title="${x.name}: ${fmtUsd(x.usd)} (${share(x.v, total)})"></i>`)}</div>
+          <ul class="an-split-l">${parts.map((x) => html`<li data-part="${x.key}"><i style="--k:${x.color}"></i><span>${x.name}</span><b title="${fmtAmount(x.v)} ${QUOTE}">${fmtUsd(x.usd)}</b><small>${share(x.v, total)}</small></li>`)}</ul>`
       : html`<p class="an-line">No creator fees were collected in ${span}.${cf.lifetime.cranks ? ` ${fmtInt(cf.lifetime.cranks)} collections before it.` : ""}</p>`;
   const row = (x: any) => {
     const sol = x.denom === "sol";
-    const amt = (v: number | null) => (v === null ? html`<span class="faint">not recorded</span>` : sol ? `${solText(v)}${solUsd(v, solPrice)}` : `${fmtAmount(v)} ${QUOTE}`);
+    // dollars lead; what was paid on chain (SOL, or the quote token) stays in the title
+    const amt = (v: number | null, usd: number | null) => (v === null ? html`<span class="faint">not recorded</span>` : html`<span class="num" title="${sol ? solText(v) : `${fmtAmount(v)} ${QUOTE}`}">${fmtUsd(usd)}</span>${sol ? html` <span class="faint">${solText(v)}</span>` : ""}`);
     return [
       html`${REV_NAMES[x.id as keyof typeof REV_NAMES]}<div class="an-sub">${REV_WHAT[x.id]}</div>`,
       x.account ? addrLink(x.account) : html`<span class="faint">not read</span>`,
-      x.available ? amt(x.value) : html`<span class="faint" title="${x.error ?? ""}">no record source</span>`,
-      x.available ? amt(x.lifetime) : html`<span class="faint">no record source</span>`,
+      x.available ? amt(x.value, x.value_usd) : html`<span class="faint" title="${x.error ?? ""}">no record source</span>`,
+      x.available ? amt(x.lifetime, x.lifetime_usd) : html`<span class="faint">no record source</span>`,
     ];
   };
   const cs = r.compute_sink;
@@ -518,12 +547,12 @@ function revenueSplit(r: O | null, solPrice: number | null, win: string): Raw | 
       html`Compute paid by agents<div class="an-sub">hosted agents' vaults pay for their model and sandbox use; a running total on chain, not part of the revenue figure</div>`,
       cs.account ? addrLink(cs.account) : html`<span class="faint">not read</span>`,
       html`<span class="faint">no dated record</span>`,
-      cs.available && cs.debited !== null ? `${fmtAmount(cs.debited)} ${QUOTE}` : html`<span class="faint">no record source</span>`,
+      cs.available && cs.debited !== null ? html`<span class="num" title="${fmtAmount(cs.debited)} ${QUOTE}">${fmtUsd(cs.debited_usd)}</span>` : html`<span class="faint">no record source</span>`,
     ],
   ];
   return html`<section class="panel an-card" id="an-split" data-card-static="split"><div class="an-card-h"><div><h2>Where do creator fees go?</h2><p>Every collection of creator fees in ${span}, as its on-chain event split it${bps?.agent_compute != null ? `. Set on chain: ${bps.agent_compute / 100}% to the agent's compute vault, ${bps.protocol / 100}% to the protocol` : ""}.</p></div>${cf.available ? html`<span class="an-count">${fmtInt(cf.cranks)} collections</span>` : ""}</div>
     <div class="an-split-b">${bar}</div>
-    <details class="an-fold an-fold-in" id="an-t-revenue"><summary><span>Protocol inflows by source and account</span><span class="an-count">${rows.length}</span></summary>${tbl(["Source", "Account~", `.In ${span}`, ".All time"], rows)}<div class="panel-note">Amounts are in the token they were paid in. A USD figure is shown only beside SOL.</div></details>
+    <details class="an-fold an-fold-in" id="an-t-revenue"><summary><span>Protocol inflows by source and account</span><span class="an-count">${rows.length}</span></summary>${tbl(["Source", "Account~", `.In ${span}`, ".All time"], rows)}<div class="panel-note">${revenueUsdNote(r)} The compute total is a running figure on chain, converted at today's price.</div></details>
   </section>`;
 }
 
@@ -691,10 +720,10 @@ function start(root: HTMLElement, win: string, hidden: boolean) {
   let stopped = false;
   const $ = (sel: string) => page.querySelector<HTMLElement>(sel);
 
-  const paint = (d: O, o: O | null, ops: O | null, idx: O | null, m: Market | null, r: O | null, solPrice: number | null) => {
+  const paint = (d: O, o: O | null, ops: O | null, idx: O | null, m: Market | null, r: O | null) => {
     for (const c of cards) c();
     cards = [];
-    $("#an-kpis")!.innerHTML = kpiRow(d, m, win, r, solPrice).s;
+    $("#an-kpis")!.innerHTML = kpiRow(d, m, win, r).s;
     $("#an-updated")!.innerHTML = html`Updated ${when(d.now)}. Window: ${shortDay(d.range.from)} to ${shortDay(Math.min(d.now, d.range.to - 1))} (UTC)${d.prev ? "" : ", from the first record"}.`.s;
     const defs = cardDefs(d, m, r);
     const missing: string[] = [];
@@ -705,11 +734,15 @@ function start(root: HTMLElement, win: string, hidden: boolean) {
       el.hidden = !def;
       if (!def) el.querySelector(".an-card-body")?.classList.remove("an-skel");
       if (def) cards.push(mountCard(el, def));
+      // a chart of past records says once, in its caption, how they were converted to dollars
+      const usdNote = shell.id === "revenue" ? revenueUsdNote(r) : shell.id === "price" && m ? usdBasisNote(m.basis) : "";
+      const cap = el.querySelector(".an-card-h p");
+      if (cap && usdNote) cap.textContent = `${shell.sub} ${usdNote}`;
       else if (shell.id === "price") missing.push(`Price against verified work appears once a listed token has trades in two or more ${d.axis.unit}s of the window.`);
     }
     $("#an-live-slot")!.innerHTML = liveNow(d).s;
     $("#an-missing")!.innerHTML = missing.map((x) => html`<p class="an-line">${x}</p>`.s).join("");
-    const split = revenueSplit(r, solPrice, win);
+    const split = revenueSplit(r, win);
     $("#an-split-slot")!.innerHTML = split ? split.s : "";
     $("#an-network-slot")!.innerHTML = statusStrip(o, idx, ops).s;
     $("#an-tables")!.innerHTML = tables(d, ops, o).s;
@@ -717,15 +750,14 @@ function start(root: HTMLElement, win: string, hidden: boolean) {
 
   const load = async () => {
     const opt = <T,>(p: Promise<T>) => p.catch(() => null);
-    const [d, o, ops, idx, r, sol] = await Promise.all([get<O>(`analytics/dashboard?${q}`), opt(get<O>(`analytics/overview?${q}`)), opt(get<O>(`analytics/ops?${q}`)), opt(market<any>("status")), opt(get<O>(`analytics/revenue?${q}`)), opt(fetch("/chain/sol-price").then((x) => x.json() as Promise<{ ok?: boolean; usd?: number }>))]);
-    const solPrice = sol?.ok && typeof sol.usd === "number" && sol.usd > 0 ? sol.usd : null;
+    const [d, o, ops, idx, r] = await Promise.all([get<O>(`analytics/dashboard?${q}`), opt(get<O>(`analytics/overview?${q}`)), opt(get<O>(`analytics/ops?${q}`)), opt(market<any>("status")), opt(get<O>(`analytics/revenue?${q}`))]);
     const m = await loadMarket(d).catch(() => null);
     if (stopped || !page.isConnected) return;
     // redraw only when a figure changed (the clock and relative times are not figures)
-    const sig = JSON.stringify([{ ...d, now: 0 }, o ? { ...o, now: 0, network: { ...o.network, runtime: { ...o.network.runtime, reported_at: 0 } } } : null, ops ? { ...ops, now: 0 } : null, m ? [m.series, m.prev] : null, r ? { ...r, now: 0, sources: r.sources.map((x: any) => ({ ...x, as_of: 0 })) } : null, solPrice === null ? null : Math.round(solPrice)]);
+    const sig = JSON.stringify([{ ...d, now: 0 }, o ? { ...o, now: 0, network: { ...o.network, runtime: { ...o.network.runtime, reported_at: 0 } } } : null, ops ? { ...ops, now: 0 } : null, m ? [m.series, m.prev] : null, r ? { ...r, now: 0, sources: r.sources.map((x: any) => ({ ...x, as_of: 0 })) } : null]);
     if (sig === last) return;
     last = sig;
-    paint(d, o, ops, idx, m, r, solPrice);
+    paint(d, o, ops, idx, m, r);
   };
   const fail = (e: unknown) => {
     if (stopped || last) return; // keep the last good render on a failed background refresh

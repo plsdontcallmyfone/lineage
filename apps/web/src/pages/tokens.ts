@@ -1,7 +1,7 @@
 import { ApiError } from "../api.ts";
 import { when } from "../fmt.ts";
 import { html } from "../html.ts";
-import { amountFig, changeFig, fmtInt, market, phaseBadge, priceFig, progressBar, QUOTE, shortAddr, tokenLabel, type TokenSummary } from "../market.ts";
+import { usdAmountFig, usdChangeFig, usdPriceFig, fmtInt, market, phaseBadge, progressBar, QUOTE, shortAddr, tokenLabel, type TokenSummary } from "../market.ts";
 import { empty, panel } from "../ui.ts";
 import type { Page } from "./types.ts";
 
@@ -26,10 +26,10 @@ export function tokenRow(t: TokenSummary) {
   return html`<tr class="rowlink" data-href="/tokens/${t.mint}" data-mint="${t.mint}">
     <td><a href="/tokens/${t.mint}" class="mk-rowlink">${tokenLabel(t)}</a><div class="sub" title="${t.mint}">${shortAddr(t.mint)}${t.phase === "graduated" ? html`, <span class="mk-gradtag">graduated</span>` : t.migrated ? ", migrated" : ""}</div></td>
     <td class="hide-sm hide-md">${phaseBadge(t)}</td>
-    <td class="right nowrap">${priceFig(t.price, "price")}</td>
-    <td class="right nowrap">${amountFig(t.market_cap, QUOTE, "market_cap")}</td>
-    <td class="right nowrap hide-sm">${amountFig(t.volume_24h, QUOTE, "volume_24h")}</td>
-    <td class="right nowrap hide-sm">${changeFig(t.change_24h, "change_24h")}</td>
+    <td class="right nowrap">${usdPriceFig(t.price_usd, t.price, "price_usd")}</td>
+    <td class="right nowrap">${usdAmountFig(t.market_cap_usd, t.market_cap, "market_cap_usd", true)}</td>
+    <td class="right nowrap hide-sm">${usdAmountFig(t.volume_24h_usd, t.volume_24h, "volume_24h_usd", true)}</td>
+    <td class="right nowrap hide-sm">${usdChangeFig(t)}</td>
     <td class="mk-progcell">${progressBar(t.curve_progress, "curve_progress")}</td>
     <td class="right num hide-sm" data-f="holders">${t.holders === null ? html`<span class="faint" title="The indexer has not counted holders yet">TBA</span>` : fmtInt(t.holders)}</td>
     <td class="right nowrap hide-sm">${when(t.created_at * 1000)}</td>
@@ -56,7 +56,7 @@ export async function tokensPage(): Promise<Page> {
   const grad = r.tokens.filter((t) => t.phase === "graduated").length;
   const body = html`
     <div class="ph-row"><div class="ph-title"><div class="eyebrow">Launchpad</div><h1>Agent tokens</h1>
-      <div class="ph-sub"><span>Every launched agent's token: a Meteora bonding curve until it fills, then a DAMM v2 pool. Prices are ${QUOTE} per token, read by the market indexer from chain; there is no USD price. Hosted agents trade them too: <a class="link" href="/trading">agent trades</a>.</span></div></div>
+      <div class="ph-sub"><span>Every launched agent's token: a Meteora bonding curve until it fills, then a DAMM v2 pool. Prices are in US dollars, read by the market indexer from chain. Hosted agents trade them too: <a class="link" href="/trading">agent trades</a>.</span></div></div>
       <div class="seg mk-sort" role="group" aria-label="Sort by">${SORTS.map(([k, label]) => html`<button type="button" data-sort="${k}" aria-pressed="${String(k === sort)}">${label}</button>`)}</div>
     </div>
     ${panel("Tokens", html`<div id="mk-list">${table(r.tokens)}</div>`, {

@@ -1,6 +1,7 @@
 import { ago } from "../fmt.ts";
 import { html, type Raw } from "../html.ts";
-import { explorerAddr, fmtAmount, market, NETWORK, QUOTE, shortAddr, type TokenDetail, type Trade } from "../market.ts";
+import { fmtUsd } from "../usd.ts";
+import { explorerAddr, fmtAmount, market, NETWORK, shortAddr, type TokenDetail, type Trade } from "../market.ts";
 import { icon } from "../ui.ts";
 
 // About the token (token page, under the trade box): its description, the price change over 5 m,
@@ -21,8 +22,9 @@ interface Stats {
   change: number | null;
   buys: number;
   sells: number;
-  buyVol: number;
-  sellVol: number;
+  /** US dollars; null when the dollar price could not be read */
+  buyVol: number | null;
+  sellVol: number | null;
   buyers: number;
   sellers: number;
   complete: boolean;
@@ -35,17 +37,22 @@ function stats(t: TokenDetail, trades: Trade[], secs: number, now: number): Stat
   const complete = full || oldest <= start;
   const inside = trades.filter((r) => (r.time ?? 0) >= start);
   const before = trades.find((r) => (r.time ?? 0) < start);
-  const then = before ? (before.price_after ?? before.price) : full ? t.start_price : null;
-  const nowPrice = t.price;
+  // the change of the dollar price where the indexer gives both ends in dollars, else of the price against the quote token (a ratio either way)
+  const thenUsd = before ? (before.price_after_usd ?? before.price_usd ?? null) : full ? (t.start_price_usd ?? null) : null;
+  const usd = thenUsd != null && t.price_usd != null;
+  const then = usd ? thenUsd : before ? (before.price_after ?? before.price) : full ? t.start_price : null;
+  const nowPrice = usd ? t.price_usd! : t.price;
   const change = complete && then && nowPrice ? nowPrice / then - 1 : null;
+  // dollars traded: the indexer's per-trade dollar amounts; null when one is missing (no price reading)
+  const sumUsd = (rows: Trade[]) => rows.reduce<number | null>((s, r) => (s === null || r.quote_amount_usd == null ? null : s + r.quote_amount_usd), 0);
   const buy = inside.filter((r) => r.side === "buy");
   const sell = inside.filter((r) => r.side === "sell");
   return {
     change,
     buys: buy.length,
     sells: sell.length,
-    buyVol: buy.reduce((s, r) => s + r.quote_amount, 0),
-    sellVol: sell.reduce((s, r) => s + r.quote_amount, 0),
+    buyVol: sumUsd(buy),
+    sellVol: sumUsd(sell),
     buyers: new Set(buy.map((r) => r.trader)).size,
     sellers: new Set(sell.map((r) => r.trader)).size,
     complete,
@@ -77,7 +84,7 @@ function body(t: TokenDetail, desc: string | null, trades: Trade[] | null, pick:
     })}</div>
     ${cur
       ? html`${bar(String(cur.buys), cur.buys === 1 ? "buy" : "buys", String(cur.sells), cur.sells === 1 ? "sell" : "sells", cur.buys, cur.sells, ok)}
-        ${bar(fmtAmount(cur.buyVol), `${QUOTE} bought`, fmtAmount(cur.sellVol), `${QUOTE} sold`, cur.buyVol, cur.sellVol, ok)}
+        ${bar(fmtUsd(cur.buyVol, { compact: true }), "bought", fmtUsd(cur.sellVol, { compact: true }), "sold", cur.buyVol ?? 0, cur.sellVol ?? 0, ok)}
         ${bar(String(cur.buyers), cur.buyers === 1 ? "buyer" : "buyers", String(cur.sellers), cur.sellers === 1 ? "seller" : "sellers", cur.buyers, cur.sellers, ok)}`
       : html`<div class="faint ta-wait">Counting trades…</div>`}
     <div class="ta-links">

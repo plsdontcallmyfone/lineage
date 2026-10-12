@@ -36,6 +36,7 @@ import { banner, icon } from "../src/ui.ts";
 import { tradeDecimals } from "./decimals.ts";
 import { payAsset, payWithControl, prepareSwapThen, routeLines, sendSwapPlan, simulatePlan, withAction, type PreparedSwap } from "./swap.ts";
 import { buildAndSimulate, clusterGate, isMainnet, loadChainCfg, NET, netName, parseUnits, qsym, rpc, signAndSend, sol, testLabels, units, type Built, type ChainCfg } from "./chain.ts";
+import { fmtUsd, loadUsd, quoteToUsd, solToUsd } from "../src/usd.ts";
 import { onSession, restoreSession, session, startDiscovery, walletChain, type StdAccount, type StdWallet } from "./standard.ts";
 
 const T22 = TOKEN_2022_PROGRAM;
@@ -46,6 +47,8 @@ export interface TradeToken {
   name: string | null;
   decimals: number;
   phase: string;
+  /** the token's US dollar price from the indexer; null or absent when it has none */
+  price_usd?: number | null;
 }
 export interface TradeBoxOptions {
   token: TradeToken;
@@ -106,6 +109,23 @@ class Box {
   private sym() {
     return this.t.symbol ?? "token";
   }
+  /**
+   * The US dollar value of an amount in the box (owner 2026-10-12), as " ($12.34)" beside it: SOL and the
+   * quote coin at the indexer's reading (src/usd.ts), the token at the indexer's price_usd. The wallet
+   * pays in SOL or the quote coin, so those amounts stay; "$ unavailable" when there is no dollar price.
+   */
+  private usd(base: bigint, unit: "sol" | "quote" | "token"): string {
+    const ui = Number(base) / 10 ** (unit === "sol" ? 9 : unit === "quote" ? this.qd() : this.td());
+    return fmtUsd(unit === "sol" ? solToUsd(ui) : unit === "quote" ? quoteToUsd(ui) : this.t.price_usd == null ? null : ui * this.t.price_usd);
+  }
+  /** The typed amount in dollars, for the line under the input; empty when nothing valid is typed. */
+  private typedUsd(): string {
+    const solIn = this.solBuy(), buy = this.side === "buy";
+    if (/%$/.test(this.amount) || !/^\d*\.?\d+$/.test(this.amount.replace(/,/g, ""))) return "";
+    const v = Number(this.amount.replace(/,/g, ""));
+    if (!(v > 0)) return "";
+    return `about ${fmtUsd(solIn ? solToUsd(v) : buy ? quoteToUsd(v) : this.t.price_usd == null ? null : v * this.t.price_usd)}`;
+  }
   /** token decimals: the chain's once read; the indexer's only for display before that */
   private td() {
     return this.dec ?? this.t.decimals;
@@ -119,6 +139,7 @@ class Box {
 
   async init() {
     this.el.addEventListener("click", (ev) => void this.onClick(ev));
+    void loadUsd().then(() => this.render()); // the dollar price behind the values beside each amount (src/usd.ts)
     this.el.addEventListener("input", (ev) => this.onInput(ev));
     this.el.addEventListener("change", (ev) => this.onInput(ev));
     // the site's one wallet session (the header's Connect button); the box follows its changes
@@ -438,11 +459,13 @@ class Box {
       const outU = buy ? sym : qsym();
       const inD = solIn ? 9 : buy ? qd : this.td();
       const outD = buy ? this.td() : qd;
+      const inK = solIn ? "sol" : buy ? "quote" : "token";
+      const outK = buy ? "token" : "quote";
       const on = !!this.account;
       const chips: [string, string][] = solIn
         ? ["0.01", "0.05", "0.1", "0.5"].map((v) => [v, `${v} SOL`])
         : buy
-        ? ["10", "100", "500", "1000"].map((v) => [v, `${Number(v).toLocaleString("en-US")} ${qsym()}`])
+        ? ["10", "100", "500", "1000"].map((v) => [v, `${Number(v).toLocaleString("en-US")} ${qsym()}`]) // amounts of the coin the wallet pays; the dollar value shows under the input
         : ["25", "50", "75", "100"].map((p) => [`${p}%`, `${p}%`]);
       const action = !on
         ? this.btn("connect", "Connect wallet", { primary: true })
@@ -458,12 +481,13 @@ class Box {
           ? html`<div class="mk-tb2-set">${buy && on ? payWithControl("tb_pay", qsym(), this.pay, this.solDirect()) : ""}<label class="wl-field"><span class="eyebrow">Slippage tolerance (bps)</span><input name="tb_slip" inputmode="numeric" value="${esc(this.slip)}"></label></div>`
           : ""}
         <label class="mk-tb2-amt"><span class="mk-tb2-u">${inU}</span><input name="tb_amount" inputmode="decimal" autocomplete="off" placeholder="0" value="${esc(this.amount)}" aria-label="${solIn ? "Amount of SOL to pay" : buy ? `Amount of ${qsym()} to pay` : `Amount of ${sym} to sell`}"${on ? "" : raw(" disabled")}><span class="mk-tb2-hint">${on ? html`<button type="button" class="mk-tb2-max" data-tb="max">Max</button>` : "Enter amount"}</span></label>
+        <div class="wl-fine mk-tb2-usd" data-tb-usd aria-live="polite">${this.typedUsd()}</div>
         <div class="mk-tb2-chips">${chips.map(([v, l]) => html`<button type="button" data-tb="chip" data-v="${v}"${on ? "" : raw(" disabled")}>${l}</button>`)}</div>
         <div class="mk-tb2-bal">${on
-          ? html`<span>${qsym()} <b class="num" data-bal="line">${this.line === null ? "TBA" : units(this.line, qd)}</b></span><span>${sym} <b class="num" data-bal="token">${this.tok === null ? "TBA" : units(this.tok, this.td())}</b></span><span>SOL <b class="num" data-bal="sol">${this.sol === null ? "TBA" : sol(this.sol)}</b></span>`
+          ? html`<span>${qsym()} <b class="num" data-bal="line">${this.line === null ? "TBA" : units(this.line, qd)}</b>${this.line === null ? "" : ` (${this.usd(this.line, "quote")})`}</span><span>${sym} <b class="num" data-bal="token">${this.tok === null ? "TBA" : units(this.tok, this.td())}</b>${this.tok === null ? "" : ` (${this.usd(this.tok, "token")})`}</span><span>SOL <b class="num" data-bal="sol">${this.sol === null ? "TBA" : sol(this.sol)}</b>${this.sol === null ? "" : ` (${this.usd(this.sol, "sol")})`}</span>`
           : html`<span class="faint">Connect a wallet to see your balances</span>`}</div>
         ${q && !q.built.sim.err
-          ? html`<div class="mk-tb-quote"><div><span>You pay</span><b class="num">${units(q.amountIn, inD)} ${inU}</b></div><div><span>You get (simulated)</span><b class="num" data-quote-out="${q.out}">${units(q.out, outD)} ${outU}</b></div><div><span>Minimum at your tolerance</span><b class="num">${units(q.minOut, outD)} ${outU}</b></div><div><span>Network fee</span><b class="num">${q.built.sim.fee === null ? "TBA" : sol(q.built.sim.fee)} SOL</b></div></div>`
+          ? html`<div class="mk-tb-quote"><div><span>You pay</span><b class="num">${units(q.amountIn, inD)} ${inU} <span class="dim">(${this.usd(q.amountIn, inK)})</span></b></div><div><span>You get (simulated)</span><b class="num" data-quote-out="${q.out}">${units(q.out, outD)} ${outU} <span class="dim">(${this.usd(q.out, outK)})</span></b></div><div><span>Minimum at your tolerance</span><b class="num">${units(q.minOut, outD)} ${outU} <span class="dim">(${this.usd(q.minOut, outK)})</span></b></div><div><span>Network fee</span><b class="num">${q.built.sim.fee === null ? "TBA" : html`${sol(q.built.sim.fee)} SOL <span class="dim">(${this.usd(q.built.sim.fee, "sol")})</span>`}</b></div></div>`
           : ""}
         ${this.swapQ ? html`${routeLines(this.swapQ.prepared)}<div class="mk-tb-quote">${this.swapQ.out === null ? html`<div><span>You get</span><b>simulated after the swap lands (two transactions)</b></div>` : html`<div><span>You get (simulated)</span><b class="num" data-quote-out="${this.swapQ.out}">${units(this.swapQ.out, outD)} ${outU}</b></div><div><span>Minimum at your tolerance</span><b class="num">${units(this.swapQ.minOut, outD)} ${outU}</b></div><div><span>Network fee</span><b class="num">${this.swapQ.fee === null ? "TBA" : sol(this.swapQ.fee)} SOL</b></div>`}</div>` : ""}
         <div class="mk-tb2-go">${action}${q || this.swapQ ? this.btn("clear", "Change") : ""}</div>
@@ -477,7 +501,11 @@ class Box {
   private onInput(ev: Event) {
     const t = ev.target as HTMLInputElement;
     if (ev.type === "change" && t.name !== "tb_pay") return;
-    if (t.name === "tb_amount") this.amount = t.value.trim();
+    if (t.name === "tb_amount") {
+      this.amount = t.value.trim();
+      const u = this.el.querySelector("[data-tb-usd]");
+      if (u) u.textContent = this.typedUsd();
+    }
     else if (t.name === "tb_slip") this.slip = t.value.trim();
     else if (t.name === "tb_pay") {
       this.pay = payAsset(t.value);

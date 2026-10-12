@@ -1,7 +1,8 @@
 import { get } from "../api.ts";
 import { ago } from "../fmt.ts";
 import { html, type Raw } from "../html.ts";
-import { explorerAddr, market, QUOTE, shortAddr, type TokenSummary } from "../market.ts";
+import { explorerAddr, holdingUsd, market, QUOTE, shortAddr, type TokenSummary } from "../market.ts";
+import { quoteToUsd, solToUsd, usdText } from "../usd.ts";
 import { icon, panel } from "../ui.ts";
 
 // Agent wallets on the social pages (docs/plans/AGENT-WALLET-SAFETY.md section 2). An agent's wallet
@@ -25,8 +26,12 @@ interface Wallet {
   error: string | null;
 }
 
-/** Base units to a figure with its exact value kept in `title`. At most 4 decimals shown, never rounded up to a different whole. */
-function amount(base: string | null | undefined, decimals: number, unit: string): Raw {
+/**
+ * Base units to a figure with its exact value kept in `title`. At most 4 decimals shown, never rounded
+ * up to a different whole. With `usd` (a function of the amount in UI units) the dollar value leads and
+ * the amount follows with its unit; "$ unavailable" when there is no dollar price.
+ */
+function amount(base: string | null | undefined, decimals: number, unit: string, usd?: (ui: number) => number | null): Raw {
   if (base === null || base === undefined) return html`<span class="wl-na">unavailable</span>`;
   const neg = base.startsWith("-");
   const digits = (neg ? base.slice(1) : base).padStart(decimals + 1, "0");
@@ -34,6 +39,7 @@ function amount(base: string | null | undefined, decimals: number, unit: string)
   const frac = decimals ? digits.slice(digits.length - decimals) : "";
   const exact = `${neg ? "-" : ""}${BigInt(whole).toLocaleString("en-US")}${frac ? `.${frac}` : ""}`;
   const shown = `${neg ? "-" : ""}${BigInt(whole).toLocaleString("en-US")}${frac && Number(`0.${frac}`) > 0 ? `.${frac.slice(0, 4).replace(/0+$/, "") || "0"}` : ""}`;
+  if (usd) return html`<span class="wl-fig" title="${exact} ${unit}" data-base="${base}"><b>${usdText(usd(Number(base) / 10 ** decimals))}</b> <small>${shown} ${unit}</small></span>`;
   return html`<span class="wl-fig" title="${exact} ${unit}" data-base="${base}"><b>${shown}</b></span>`;
 }
 
@@ -58,12 +64,12 @@ export async function walletPanel(agent: string): Promise<Raw> {
   const dec = q?.decimals ?? 6;
   const rows: Raw[] = [];
   if (w.chain) {
-    rows.push(html`<li><span>SOL <em>for network fees</em></span>${amount(w.treasury.sol_lamports, 9, "SOL")}</li>`);
-    rows.push(html`<li><span>${unit}</span>${amount(q?.amount, dec, unit)}</li>`);
+    rows.push(html`<li><span>SOL <em>for network fees</em></span>${amount(w.treasury.sol_lamports, 9, "SOL", solToUsd)}</li>`);
+    rows.push(html`<li><span>${unit}</span>${amount(q?.amount, dec, unit, quoteToUsd)}</li>`);
     for (const h of w.treasury.holdings ?? []) {
       const t = tokens.get(h.mint);
       const sym = t?.symbol ? `$${t.symbol}` : shortAddr(h.mint);
-      rows.push(html`<li data-holding="${h.mint}"><span><a class="link" href="/tokens/${h.mint}">${sym}</a> ${h.own ? html`<em>own token, held by the agent</em>` : html`<em>agent token</em>`}</span>${h.decimals === null ? amount(h.amount, 0, "base units") : amount(h.amount, h.decimals, sym)}</li>`);
+      rows.push(html`<li data-holding="${h.mint}"><span><a class="link" href="/tokens/${h.mint}">${sym}</a> ${h.own ? html`<em>own token, held by the agent</em>` : html`<em>agent token</em>`}</span>${h.decimals === null ? amount(h.amount, 0, "base units") : amount(h.amount, h.decimals, sym, (ui) => holdingUsd(ui, t))}</li>`);
     }
     if (w.treasury.holdings && !w.treasury.holdings.length) rows.push(html`<li class="wl-none"><span>Agent tokens</span><span class="wl-na">none held</span></li>`);
   }
@@ -72,7 +78,7 @@ export async function walletPanel(agent: string): Promise<Raw> {
     ${addressRow("Treasury", w.treasury.is_agent_id ? "the agent's own key" : "held by the hosted runtime; it signs the agent's posts and profile and moves nothing", w.treasury.address, "data-treasury")}
     ${rows.length ? html`<ul class="wl-bal">${rows}</ul>` : ""}
     ${w.compute_vault ? html`${addressRow("Compute vault", "pays the agent's model and sandbox; no key signs for it", w.compute_vault.address, "data-vault")}
-      ${w.chain ? html`<ul class="wl-bal"><li><span>${unit}</span>${amount(w.compute_vault.amount, dec, unit)}</li></ul>` : ""}` : ""}
+      ${w.chain ? html`<ul class="wl-bal"><li><span>${unit}</span>${amount(w.compute_vault.amount, dec, unit, quoteToUsd)}</li></ul>` : ""}` : ""}
   </div>`;
   return panel("Wallet", body, { cls: "wl-panel", note: html`${read} Agents do not trade: the treasury key signs no swap and no transfer, so it cannot send funds to another wallet. Only the agent's owner can withdraw the compute vault.` });
 }
@@ -142,6 +148,7 @@ const CSS = `
 .wl-bal em{font-style:normal;color:var(--tt);font-size:12px;margin-left:4px}
 .wl-fig{flex:none;white-space:nowrap;font-variant-numeric:tabular-nums}
 .wl-fig b{font-family:var(--display);font-weight:500;font-size:14px;letter-spacing:-.02em;color:var(--tp)}
+.wl-fig small{font-size:12px;color:var(--tt);margin-left:4px}
 .wl-na{color:var(--tt);font-size:12.5px}
 .wl-slot{display:inline-flex;vertical-align:1px;margin-left:6px}
 .wl-slot:empty{display:none}

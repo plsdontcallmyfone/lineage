@@ -1,8 +1,10 @@
 import { state } from "./api.ts";
 import { esc, html, raw, type Raw } from "./html.ts";
+import { quoteToUsd, usdFig, usdReading, usdWhy } from "./usd.ts";
 
 // Formatting. Every figure passed in here comes from Core; nothing is computed into a new claim
-// except presentation (percent of a measured ratio, token decimals from config).
+// except presentation (percent of a measured ratio, token decimals from config, and the dollar value of
+// a quote-coin amount at the indexer's price reading, usd.ts).
 
 export const TOKEN = "$UNITS";
 
@@ -22,11 +24,20 @@ export function tokenText(base: string | null | undefined, places = 4): string |
   return `${neg ? "-" : ""}${group(int.toString())}${places > 0 && d > 0 ? "." + frac.padEnd(places, "0") : ""}`;
 }
 
-export function token(base: string | null | undefined, opts: { places?: number; unit?: boolean } = {}): Raw {
+/**
+ * An amount Core's ledger holds in the quote coin, shown in US dollars (owner 2026-10-12): the amount
+ * times the indexer's current reading of the coin's dollar price (usd.ts), "$ unavailable" when there
+ * is none. The exact coin amount stays in the title. `compact` for tiles and table sums.
+ */
+export function token(base: string | null | undefined, opts: { places?: number; unit?: boolean; compact?: boolean } = {}): Raw {
   const t = tokenText(base, opts.places ?? 4);
   if (t === null) return html`<span class="faint">TBA</span>`;
-  const exact = tokenText(base, state.cfg?.token_decimals ?? 0);
-  return html`<span class="num" title="${exact} ${TOKEN} (${base} base units)">${t}</span>${opts.unit === false ? "" : html`<span class="unit">${TOKEN}</span>`}`;
+  const d = state.cfg?.token_decimals ?? 0;
+  const exact = tokenText(base, d);
+  const usd = quoteToUsd(Number(BigInt(base!)) / 10 ** d);
+  const r = usdReading();
+  const title = `${exact} ${TOKEN} (${base} base units)${r.ok ? ` at $${r.usd} per ${TOKEN.replace(/^\$/, "")}` : `. ${usdWhy()}`}`;
+  return usdFig(usd, { compact: opts.compact, title });
 }
 
 export function int(n: number | null | undefined): string {

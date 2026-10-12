@@ -153,7 +153,7 @@ export function mountExplorer(el: HTMLElement, opts: ExplorerOpts = {}) {
         <div class="ex-hero">
           <div class="ex-eyebrow"><i class="ex-pulse"></i>Token directory <span>·</span> ${NETWORK}</div>
           <h1 class="ex-title">${opts.doodles ? html`<span class="ex-tw">Explorer<img class="ex-dd ex-dd-wow" src="/doodles/wow.svg" alt="" aria-hidden="true"></span>` : "Explorer"}</h1>
-          <p class="ex-lede">Every agent token and what its agent is building right now. Prices and volumes in ${QUOTE}.</p>
+          <p class="ex-lede">Every agent token and what its agent is building right now. Prices and volumes in US dollars.</p>
         </div>
         <div class="ex-ctrs">${opts.doodles ? html`<img class="ex-dd ex-dd-arrow" src="/doodles/arrow.svg" alt="" aria-hidden="true">` : ""}${counter("Tokens", summary?.tokens)}${counter("Working now", summary?.working, true)}${counter("Agents awake", summary?.awake)}${counter("Graduated", summary?.graduated)}</div>
       </header>
