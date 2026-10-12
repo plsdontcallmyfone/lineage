@@ -165,3 +165,20 @@ test)"); Playwright against the site: projects-generations-analytics 18/18; full
 9 failed: specs older than the docs expansion (expects 9 docs pages, the site has 28) and the launch wizard change
 (every step openable), plus the profile mock wallet and agent profile figure order failures the honest screen lane
 reported before this deploy; none names a renamed string.
+
+## Vault top-ups for the three paused hosted agents (2026-10-12, recipes headroom lane)
+
+5t9wKLss (TRTA), 6C8N2z5L (TSOUL) and CvREmfPK (Wick Radix) were paused with `compute vault exhausted` (2.62, 4.74 and
+4.98 test $UNITS in their vaults; a minimum useful attempt needs about 8). `bun scripts/devnet/vault-topup.ts --amount 400
+--send <agent>:<mint> ...` sent 400 test $UNITS each (20 USD of compute at the TEST rate of 20 per USD) from the devnet
+faucet key FX4UjRbm... (100,000 before, 98,800 after), fees paid by the devnet deployer, then refresh_awake. Devnet test
+tokens only.
+
+| When (UTC) | Step | What | Fee | Signature |
+|---|---|---|---|---|
+| 2026-10-12 10:01:36 | vault top-up | send 400.000000 test $UNITS from the faucet to the compute vault vDMFtHBHZSuQ4W9uDezeYssNaMqVAsVrVFtcUHMRpKi of hosted agent 5t9wKLssXQ1ZFdM74UdiXj9QxFphjVxBmo6rmLaSK91R | 10000 | `2Zgev4GEuqf92KN9Qd7E7sLJTDC8ysntq2UsJjuXrRK3UHefZYeGuGgUJ8R7w4xUioFajmnM3SPK7nWFj9hUY8M4` |
+| 2026-10-12 10:01:38 | vault top-up | refresh_awake for hosted agent 5t9wKLssXQ1ZFdM74UdiXj9QxFphjVxBmo6rmLaSK91R | 5000 | `5wDB2TcRyot7SE51hxDRNbfBnRzH8H34DniUGSxxcG8Qup7D7asdEEdrTW5FFgHTHV4JTJopRtqiXunnop7dCozq` |
+| 2026-10-12 10:01:40 | vault top-up | send 400.000000 test $UNITS from the faucet to the compute vault 9UgoXty2bZcUukkUSYGMcbHWPVnFyHj1PYrRXcKyXahH of hosted agent 6C8N2z5LwktukWEP6g8sUnf9ky1L9rxyngBLbdomUzHc | 10000 | `5bfGiYhqwSNPdT3NEqsDysS9jEn59f8PkgNGsDvxs3tqzQMKP8SRAvieMuWqDEWEunCakAPKiVHXtGmb7mEvEGBu` |
+| 2026-10-12 10:01:42 | vault top-up | refresh_awake for hosted agent 6C8N2z5LwktukWEP6g8sUnf9ky1L9rxyngBLbdomUzHc | 5000 | `2PKPTq4wfg9rM3oo1wyoKZkYWtv7TzXtAcSxoHeoFrpc4FigN355WgScWaiANUiuU38jtMnQa5vCBNxwymHzyJFa` |
+| 2026-10-12 10:01:45 | vault top-up | send 400.000000 test $UNITS from the faucet to the compute vault 7ohuj8Zue3njM2W1KDBTt4rzS3BsuQDcTA5AAtpuEQrH of hosted agent CvREmfPKUskLb37kE5JEDRrfp4g5UUQSoQNx4s1nt3tV | 10000 | `244g9UvKNeCbZzaNGJ7sv8FhbuvRBLgSrMbU9LB9xwLX8JiEPTYjhUTs22erLd6jxdkWZX75cZcGk134VcBHRd26` |
+| 2026-10-12 10:01:47 | vault top-up | refresh_awake for hosted agent CvREmfPKUskLb37kE5JEDRrfp4g5UUQSoQNx4s1nt3tV | 5000 | `5jsKkEnzSFkfbKEvyPS2cijvcC2Cg5ZVCPh6Zu1TeWQeFZS3wZJFfLoqPZ41ETpmhdBjm4Mp9cjdHU7Fgq8rwJdb` |
