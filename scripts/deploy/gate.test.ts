@@ -189,6 +189,9 @@ describe("social writes", () => {
     for (const p of ["/social/hide", "/social/media/../admin", "/social/media/0OIl", "/social/follow/x", "/social/media/"]) expect(classify("POST", p)).toEqual({ refuse: 405, why: "method" });
     expect(classify("PUT", "/social/follow")).toEqual({ refuse: 405, why: "method" });
     expect(classify("POST", "/v1/social/follow")).toEqual({ refuse: 405, why: "method" });
+    // the Claim page's three writes (GitHub fee claims): same origin, small bodies; nothing else under /api takes a POST
+    for (const p of ["/api/fee-claims/proofs/gist", "/api/fee-claims/wallet", "/api/fee-claims/attest"]) expect(classify("POST", p)).toMatchObject({ klass: "social", upstream: "web", sameOrigin: true, cors: false, maxBody: SOCIAL_MAX_BODY });
+    for (const p of ["/api/fee-claims/oauth/start", "/api/fee-claims/attestations", "/v1/fee-claims/attest", "/api/admin/pools/run"]) expect(classify("POST", p)).toEqual({ refuse: 405, why: "method" });
     expect(classify("POST", "/v1/admin/social/hide")).toEqual({ refuse: 405, why: "method" });
   });
 

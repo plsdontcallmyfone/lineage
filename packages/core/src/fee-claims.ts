@@ -124,17 +124,19 @@ export class FeeClaims {
     const env = process.env;
     const id = env.UNITS_GITHUB_OAUTH_CLIENT_ID, secret = env.UNITS_GITHUB_OAUTH_CLIENT_SECRET;
     const base = (env.UNITS_GITHUB_OAUTH_BASE ?? "https://github.com").replace(/\/+$/, "");
+    // a site names its public address once (UNITS_SITE_URL, site.env): the OAuth callback and the claim page follow from it
+    const site = (env.UNITS_SITE_URL ?? "").replace(/\/+$/, "") || null;
     this.opts = {
       fetch: (u, i) => fetch(u, i),
       githubApi: (env.UNITS_GITHUB_API ?? "https://api.github.com").replace(/\/+$/, ""),
       githubToken: env.UNITS_GITHUB_TOKEN || null,
       oauth: id && secret ? { clientId: id, clientSecret: secret, authorizeUrl: `${base}/login/oauth/authorize`, tokenUrl: `${base}/login/oauth/access_token`,
-        redirectUri: env.UNITS_GITHUB_OAUTH_REDIRECT ?? "http://127.0.0.1:9660/v1/fee-claims/oauth/callback", name: env.UNITS_GITHUB_OAUTH_MOCK === "1" ? "mock" : "github" } : null,
+        redirectUri: env.UNITS_GITHUB_OAUTH_REDIRECT ?? (site ? `${site}/v1/fee-claims/oauth/callback` : "http://127.0.0.1:9660/v1/fee-claims/oauth/callback"), name: env.UNITS_GITHUB_OAUTH_MOCK === "1" ? "mock" : "github" } : null,
       rpc: null,
       lineMint: null,
       lineTokenProgram: TOKEN_2022_PROGRAM,
       attestor: null,
-      claimPage: env.UNITS_CLAIM_PAGE ?? "http://127.0.0.1:9661/claim",
+      claimPage: env.UNITS_CLAIM_PAGE ?? (site ? `${site}/claim` : "http://127.0.0.1:9661/claim"),
       sessionTtlS: 900,
       proofMaxAgeS: 86_400,
       attestationTtlS: 300,

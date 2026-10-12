@@ -312,7 +312,7 @@ export const DEVNET_PUBLIC_PROFILE: PublicProfile = {
   confirm: { poll_ms: 900, resend_ms: 2500, rebuilds: 0 },
   programs: { ...PROGRAM_IDS.devnet },
   pump_quote_seed: "spot",
-  features: { agent_pools: false, github_fee_claims: false },
+  features: { agent_pools: true, github_fee_claims: true }, // live on devnet since 2026-10-12 (config/profile.json)
 };
 
 /** explorer.solana.com link for a transaction or address under this profile. */

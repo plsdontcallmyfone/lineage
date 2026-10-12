@@ -74,9 +74,18 @@ Object.assign(net, {
     poll_ms: Number((process.env.UNITS_SITE_POLL_MS ?? process.env.LINEAGE_SITE_POLL_MS) ?? 20000),
   },
 });
+// Agent pools and GitHub fee claims (owner 2026-10-12: both live on the devnet site). The devnet site's
+// Core serves their routes; the onchain switch is LaunchConfig.features (scripts/pools/features.ts) and
+// the pages' switch is config/profile.json `features`. A mainnet instance keeps what its state file's
+// network_overrides.features says (config/network.json: both off), so it stays off until the owner
+// decides. The keeper and attestor key files and the GitHub OAuth app are named in Core's environment
+// (/etc/units/core-github.env on the site: UNITS_POOL_KEEPER_KEY, UNITS_FEE_CLAIMS_ATTESTOR_KEY,
+// UNITS_GITHUB_OAUTH_CLIENT_ID, UNITS_GITHUB_OAUTH_CLIENT_SECRET), never here.
+if (!MAIN) net.features = { agent_pools: true, github_fee_claims: true };
 writeFileSync(join(OUT, "network.json"), JSON.stringify(net, null, 2) + "\n", { mode: 0o600 });
 chmodSync(join(OUT, "network.json"), 0o600);
 console.log(`network.json: chain mode ${L.network}, rpc ${MAIN ? "from the unit's environment" : redactRpc(net.chain.rpc_url)}, epoch ${net.epoch_length_s} s, poll ${net.chain.poll_ms} ms, ${net.chain.core_authority_key ? "Core authority key present (posts epochs and slashes)" : "no Core authority key (read only bridge)"}`);
+console.log(`network.json: features agent_pools ${net.features?.agent_pools === true ? "on" : "off"}, github_fee_claims ${net.features?.github_fee_claims === true ? "on" : "off"}`);
 
 const capsPath = join(OUT, "caps.json");
 if (!existsSync(capsPath) || argv.includes("--refresh-caps")) {
