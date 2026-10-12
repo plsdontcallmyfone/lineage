@@ -60,6 +60,17 @@ export interface RuntimeConfig {
   spend_report_s?: number;
   /** An attempt whose allowed spend would be lower than this is not started. */
   min_attempt_usd: number;
+  /**
+   * The minimum useful attempt (owner direction 2026-10-12): an authoring attempt is not started, takes
+   * no desktop and opens no session unless its budget also covers the journal reserve plus
+   * `model_calls` model calls at the agent's own model's rate, each priced as `call_input_tokens`
+   * freshly written input and `call_output_tokens` output (the proposer's smallest turn). The floor is
+   * the larger of that and min_attempt_usd. An agent below it is paused with the reason and checked
+   * again after `recheck_s`, or at once when its vault balance rises. null turns the model-rate part
+   * off. Defaults: 2 calls, 20,000 input tokens (hosted attempts on the site wrote 22,381 to 31,604
+   * tokens to the cache on their first calls, runtime log 2026-10-12), 4,096 output tokens, 300 s.
+   */
+  min_useful_attempt?: { model_calls?: number; call_input_tokens?: number; call_output_tokens?: number; recheck_s?: number } | null;
   /** Published compute prices, whole $UNITS as decimal strings. TEST values until the owner sets launch values. */
   compute_price_line_per_usd: string;
   compute_price_line_per_sandbox_s: string;
@@ -172,6 +183,12 @@ export function parseConfig(raw: Record<string, unknown>): RuntimeConfig {
     throw new Error("runtime config: global_window_s is a whole number of seconds >= 60 (86400 = one UTC day), or null for a lifetime cap");
   if (!(c.max_concurrent >= 1)) throw new Error("runtime config: max_concurrent >= 1");
   if (c.max_concurrent_ceiling !== undefined && !(Number.isInteger(c.max_concurrent_ceiling) && c.max_concurrent_ceiling >= c.max_concurrent && c.max_concurrent_ceiling <= 64)) throw new Error("runtime config: max_concurrent_ceiling is a whole number from max_concurrent to 64");
+  if (c.min_useful_attempt !== undefined && c.min_useful_attempt !== null) {
+    const m = c.min_useful_attempt as Record<string, unknown>;
+    if (typeof m !== "object" || Array.isArray(m)) throw new Error("runtime config: min_useful_attempt is an object or null");
+    for (const k of ["model_calls", "call_input_tokens", "call_output_tokens", "recheck_s"])
+      if (m[k] !== undefined && !(typeof m[k] === "number" && Number.isFinite(m[k]) && (m[k] as number) >= 0)) throw new Error(`runtime config: min_useful_attempt.${k} is a number of 0 or more`);
+  }
   if (c.attempt_gap_s !== undefined && !(typeof c.attempt_gap_s === "number" && c.attempt_gap_s >= 0 && c.attempt_gap_s <= 3600)) throw new Error("runtime config: attempt_gap_s is 0 to 3600 seconds");
   if (c.bind_port !== undefined && !(Number.isInteger(c.bind_port) && c.bind_port > 0 && c.bind_port < 65536)) throw new Error("runtime config: bind_port is a TCP port");
   if (c.desktop_port !== undefined && !(Number.isInteger(c.desktop_port) && c.desktop_port > 0 && c.desktop_port < 65536)) throw new Error("runtime config: desktop_port is a TCP port");

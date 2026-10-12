@@ -3,6 +3,7 @@ import { mkdirSync, writeFileSync } from "node:fs";
 import type { AgentKey } from "@units/protocol";
 import { CoreClient } from "../../core/src/client.ts";
 import { Worker } from "../../worker/src/worker.ts";
+import { JOURNAL_RESERVE_USD } from "../../worker/src/journal.ts";
 import type { Meter, Proposer } from "../../worker/src/proposers/types.ts";
 import type { Backend, HostedAgent, Vault } from "./backend.ts";
 import { chainCostOf, costOf, resolvePrices, usdFor, windowStart, type Prices, type RuntimeConfig } from "./config.ts";
@@ -70,7 +71,12 @@ export interface AgentRoute {
   via: "direct" | "openrouter" | null;
   model: { provider: string; id: string } | null;
   why: string | null;
+  /** the routed model's rate in USD per million tokens, with the route's fee factor (the minimum useful attempt is priced with it) */
+  rate?: { input: number; output: number; cache_write: number; fee_factor?: number } | null;
 }
+
+/** Defaults of cfg.min_useful_attempt (config.ts). */
+export const MIN_USEFUL_DEFAULTS = { model_calls: 2, call_input_tokens: 20_000, call_output_tokens: 4096, recheck_s: 300 };
 
 /** What the runtime publishes per agent (GET /v1/agents/:id/spend): real figures only, null when not known. */
 export interface SpendReport {
@@ -159,6 +165,8 @@ export class Runtime {
   /** USD held for an analysis or post that asked for room and has not metered yet */
   private holds = new Map<string, { usd: number; until: number; via: AgentRoute["via"] }>();
   private waiting = new Map<string, string>();
+  /** agents whose budget is under the minimum useful attempt: no attempt, desktop or session until `until`, or until the vault holds more than `balance` */
+  private paused = new Map<string, { until: number; balance: bigint; why: string }>();
   private lastReport = 0;
 
   constructor(readonly cfg: RuntimeConfig, private deps: RuntimeDeps) {
@@ -331,7 +339,7 @@ export class Runtime {
    * max_debit_per_epoch left this epoch; for an OpenRouter-routed model, what OpenRouter's known
    * balance still covers; and only with global_cap_scope "all", the global window.
    */
-  budget(agent: string, o: { sandbox?: boolean; cap?: number } = {}): { usd: number } | { usd: null; why: string; vault: boolean } {
+  budget(agent: string, o: { sandbox?: boolean; cap?: number } = {}): { usd: number } | { usd: null; why: string; vault: boolean; short?: boolean } {
     const v = this.vaults.get(agent);
     if (!v) return { usd: null, why: "vault unknown", vault: false };
     if (!v.awake) return { usd: null, why: "asleep", vault: true };
@@ -356,15 +364,59 @@ export class Runtime {
     const prov = pr === null ? Infinity : pr;
     const usd = Math.min(o.cap ?? this.cfg.attempt_max_usd, fromVault, epochLeft, g, prov);
     if (Number.isNaN(usd)) return { usd: null, why: "spend record is not a finite number; refusing to start an attempt", vault: false };
-    if (!(usd >= (o.sandbox === false ? Math.min(this.cfg.min_attempt_usd, o.cap ?? Infinity) : this.cfg.min_attempt_usd))) {
-      const why =
+    // an authoring attempt must also cover a minimum useful attempt at the agent's model's rate
+    const useful = o.sandbox === false ? 0 : this.minUsefulUsd(agent);
+    const floor = o.sandbox === false ? Math.min(this.cfg.min_attempt_usd, o.cap ?? Infinity) : Math.max(this.cfg.min_attempt_usd, useful);
+    if (!(usd >= floor)) {
+      const need = useful > this.cfg.min_attempt_usd ? `; a useful attempt needs ${floor.toFixed(4)} USD, ${Math.max(0, usd).toFixed(4)} available` : "";
+      const base =
         prov === usd ? `provider balance low (OpenRouter has ${(this.deps.providerBalance?.room() ?? 0).toFixed(2)} USD, ${Math.max(0, prov).toFixed(4)} free of running reserves)`
         : g === usd ? `global runtime cap (${this.cfg.global_max_usd} USD${this.cfg.global_window_s ? ` per ${this.cfg.global_window_s} s window` : ""}) reached`
         : epochLeft === usd ? "per-agent epoch cap reached"
         : `compute vault exhausted (${avail} base units unowed)`;
-      return { usd: null, why, vault: fromVault === usd };
+      return { usd: null, why: `${base}${need}`, vault: fromVault === usd, short: true };
     }
     return { usd };
+  }
+
+  /**
+   * What a minimum useful authoring attempt costs for `agent` (USD; cfg.min_useful_attempt): the
+   * journal reserve the worker keeps out of the authoring loop plus `model_calls` calls at its
+   * model's rate. 0 when turned off or while the model's rate is not known (then min_attempt_usd
+   * alone decides, as before).
+   */
+  minUsefulUsd(agent: string): number {
+    const m = this.cfg.min_useful_attempt;
+    if (m === null) return 0;
+    const rate = this.routeOf(agent)?.rate;
+    if (!rate || !(rate.output > 0)) return 0;
+    const calls = m?.model_calls ?? MIN_USEFUL_DEFAULTS.model_calls;
+    const inTok = m?.call_input_tokens ?? MIN_USEFUL_DEFAULTS.call_input_tokens;
+    const outTok = m?.call_output_tokens ?? MIN_USEFUL_DEFAULTS.call_output_tokens;
+    const call = ((inTok * Math.max(rate.cache_write, rate.input) + outTok * rate.output) / 1e6) * (rate.fee_factor ?? 1);
+    const usd = JOURNAL_RESERVE_USD + calls * call;
+    return Number.isFinite(usd) && usd > 0 ? usd : 0;
+  }
+
+  /** The pause in force for `agent`, or null: it ends after recheck_s, or as soon as the vault holds more than when it began. */
+  private pausedNow(agent: string): string | null {
+    const p = this.paused.get(agent);
+    if (!p) return null;
+    const v = this.vaults.get(agent);
+    if (this.now() >= p.until || (v && v.balance > p.balance)) {
+      this.paused.delete(agent);
+      return null;
+    }
+    return p.why;
+  }
+
+  /** Pauses `agent` (its budget is under a minimum useful attempt): logged once per pause, the reason is what the spend report shows. */
+  private pause(agent: string, why: string): void {
+    const s = this.cfg.min_useful_attempt?.recheck_s ?? MIN_USEFUL_DEFAULTS.recheck_s;
+    this.waiting.set(agent, why);
+    if (!(s > 0)) return;
+    this.paused.set(agent, { until: this.now() + s * 1000, balance: this.vaults.get(agent)?.balance ?? 0n, why });
+    this.log(`${agent.slice(0, 6)} paused: ${why}; no attempt, desktop or session; next check in ${s} s or on a vault deposit`);
   }
 
   private meterFor(a: Attempt): Meter {
@@ -435,8 +487,11 @@ export class Runtime {
       attempt: () => {
         const b = this.budget(agent);
         if (b.usd === null) {
-          this.log(`${agent.slice(0, 6)} attempt not started: ${b.why}`);
-          this.waiting.set(agent, b.why);
+          if (b.short) this.pause(agent, b.why);
+          else {
+            this.log(`${agent.slice(0, 6)} attempt not started: ${b.why}`);
+            this.waiting.set(agent, b.why);
+          }
           if (b.vault) this.exhausted.add(agent);
           return null;
         }
@@ -559,7 +614,7 @@ export class Runtime {
     let funded = 0;
     for (const [agent, st] of Object.entries(this.state.agents)) {
       if (st.status !== "bound" || this.exhausted.has(agent) || !this.vaults.get(agent)?.awake) continue;
-      if (this.running.has(agent) || this.budget(agent).usd !== null) funded++;
+      if (this.running.has(agent) || (!this.pausedNow(agent) && this.budget(agent).usd !== null)) funded++;
     }
     return Math.max(1, Math.min(ceiling, Math.max(this.cfg.max_concurrent, funded)));
   }
@@ -573,12 +628,16 @@ export class Runtime {
       if (st.status !== "bound" || this.running.has(agent)) continue;
       if (this.cfg.max_candidates_per_agent !== undefined && st.candidates >= this.cfg.max_candidates_per_agent) continue;
       const v = this.vaults.get(agent);
-      if (!v?.awake || this.exhausted.has(agent)) continue;
+      if (!v?.awake) continue;
+      // paused under the minimum useful attempt: not looked at again until its recheck or a deposit
+      if (this.pausedNow(agent)) continue;
+      if (this.exhausted.has(agent)) continue;
       // the vault first: an agent that can no longer pay is marked exhausted even inside its gap
       const b = this.budget(agent);
       if (b.usd === null) {
         if (b.vault) this.exhausted.add(agent);
-        this.waiting.set(agent, b.why);
+        if (b.short) this.pause(agent, b.why);
+        else this.waiting.set(agent, b.why);
         continue;
       }
       if ((this.misses.get(agent)?.until ?? 0) > this.now()) continue;

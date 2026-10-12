@@ -23,7 +23,7 @@ import { checkCorePrices, CreditMonitor, monitorStatePath, railClient, railModel
 import { ChainMessenger } from "../../core/src/msgchain.ts";
 import { CoreClient } from "../../core/src/client.ts";
 import { availabilityOf, loadProviderKeys, loadProviderSpecs } from "../../worker/src/proposers/providers.ts";
-import { reloadKeys, resolveRoute, routedProposers, RegistrySource, soulModel } from "./providers.ts";
+import { anthropicPrices, reloadKeys, resolveRoute, routedProposers, RegistrySource, soulModel } from "./providers.ts";
 import { OpenRouterBalance } from "./provider-balance.ts";
 import { JupiterPrice } from "./price.ts";
 import type { AgentRoute } from "./runtime.ts";
@@ -76,7 +76,10 @@ export function hostedProposers(cfg: RuntimeConfig, keys: Record<string, string>
 export function routeResolver(core: string, keys: Record<string, string>, registry: RegistrySource): (agent: string) => Promise<AgentRoute> {
   return async (agent) => {
     const r = resolveRoute(await registry.get(), await soulModel(core, agent), keys);
-    return r.ok ? { via: r.via, model: { provider: r.chosen.provider, id: r.chosen.id }, why: null } : { via: null, model: r.choice, why: r.why };
+    if (!r.ok) return { via: null, model: r.choice, why: r.why };
+    // the routed model's rate prices the minimum useful attempt (runtime.ts minUsefulUsd)
+    const p = r.model.rate ? anthropicPrices(r.model) : null;
+    return { via: r.via, model: { provider: r.chosen.provider, id: r.chosen.id }, why: null, rate: p ? { input: p.input, output: p.output, cache_write: p.cache_write, fee_factor: r.fee_factor } : null };
   };
 }
 

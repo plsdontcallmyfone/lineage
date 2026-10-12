@@ -48,6 +48,10 @@ describe.skipIf(!dockerUp)("hosted attempt in the sandbox (fake model client)", 
       await expectOk(A.post(`/v1/admin/agents/${ref.id}/reference`, { reference: true }));
       const calibration = { ...JSON.parse(readFileSync(join(ROOT, "recipes/fixture-b58/calibration.json"), "utf8")), snapshot_id: snap.snapshot_id, seed: H("calibration", snap.snapshot_id) };
       await expectOk(new CoreClient(base, ref).post("/v1/calibrations", { calibration, sig: signMessage(ref, calibId(loaded.recipe_id, snap.snapshot_id, calibration)) }));
+      // guard limits (SPEC 10.1 rule 6): the fixture's perf_encode patch adds code and grows rlib_bytes past
+      // the 1% default, so the worker's self-evaluation would never submit it; this test checks metering
+      // and provenance, so rlib_bytes is unguarded for the fixture here, as scripts/e2e.ts does
+      await expectOk(A.post("/v1/admin/guard-config", { overrides: { [loaded.recipe_id]: { rlib_bytes: null } } }));
       const agentKey = generateAgentKey();
       await expectOk(A.post("/v1/admin/launches", { agent: agentKey.id, mint: generateAgentKey().id, launcher: generateAgentKey().id, target_repo: loaded.recipe.repo, hosted: true, identity_mode: "app" }));
       await expectOk(A.post("/v1/admin/agent-fees", { agent: agentKey.id, amount: "100000000000" }));
