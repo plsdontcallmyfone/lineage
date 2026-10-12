@@ -2,7 +2,7 @@
 // Builds the two bundles the dashboard server builds (app and wallet) into <out>/app.js and
 // <out>/wallet.js, the same way apps/web/server.ts does. Run as its own process by
 // bundle-leak.test.ts: inside `bun test` an earlier in-process Bun.build from another test file
-// (scripts/docs) leaves the bundler unable to resolve a package installed only under
+// (at the time: the docs build) leaves the bundler unable to resolve a package installed only under
 // apps/web/node_modules ("Could not resolve: lightweight-charts"), which the server never sees.
 import { join } from "node:path";
 import { chainBrowserPlugin } from "../../../packages/chain/src/browser/plugin.ts";

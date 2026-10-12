@@ -31,9 +31,10 @@
 #   restore-core [file]   disaster recovery: copy a local Core snapshot (default the newest) to <host> and
 #                   restore it (on a server with no release yet it only places the data for `full`)
 #   monitor         on the server: run the monitor now and print every check
-#   docs [status|rollback]   the docs site, a web site of its own (scripts/docs/deploy.sh): build it here,
-#                   copy it to its own directory on the server, give Caddy its own site block. No app
-#                   unit is touched; the other modes never deploy the docs
+#   docs            not deployed from this repository any more: the docs site is a repository of its own
+#                   (https://github.com/plsdontcallmyfone/units-docs); this mode only says so. Deploy
+#                   it from a checkout of that repository: scripts/deploy.sh <host> [status|rollback].
+#                   No mode here deploys or changes the docs
 #
 # Environment:
 #   SSH_KEY (default ~/.ssh/lineage_site), SSH_PORT (22), SSH_USER (root)
@@ -76,10 +77,20 @@ set -euo pipefail
 # (mainnet test)") has its own script and modes; unset, everything below is the devnet site as before
 if [ -n "${UNITS_INSTANCE:-}" ]; then exec "$(dirname "$0")/instance.sh" "$@"; fi
 HOST="${1:-}"; MODE="${2:-full}"; EXTRA="${3:-}"
-[ -n "$HOST" ] || { sed -n '2,73p' "$0"; exit 2; }
+[ -n "$HOST" ] || { sed -n '2,74p' "$0"; exit 2; }
 REPO="$(cd "$(dirname "$0")/../.." && pwd)"
-# the docs are a web site of their own with their own deploy: nothing below runs for it
-if [ "$MODE" = docs ]; then exec "$REPO/scripts/docs/deploy.sh" "$HOST" ${EXTRA:+"$EXTRA"}; fi
+# the docs are a web site and a repository of their own, deployed from there: nothing here deploys them
+if [ "$MODE" = docs ]; then
+  cat >&2 <<DOCS
+The docs site is not deployed from this repository. It is a repository of its own:
+  https://github.com/plsdontcallmyfone/units-docs   (served at https://docs.units.gg)
+Deploy it from a checkout of that repository (same server, same directories, same Caddy site as before):
+  cd ~/units-docs && scripts/deploy.sh $HOST ${EXTRA:-deploy}
+What the docs show of this repository's code (API reference, program ids, models, changelog) is
+exported first with: bun scripts/docs/export.ts ~/units-docs   (docs/DEPLOY-SITE.md "Docs site")
+DOCS
+  exit 2
+fi
 SSH_KEY="${SSH_KEY:-$HOME/.ssh/lineage_site}"
 SSH_PORT="${SSH_PORT:-22}"
 SSH_USER="${SSH_USER:-root}"
@@ -122,7 +133,7 @@ if [ -n "${EXTRA_ORIGINS:-}" ]; then
   echo "$EXTRA_ORIGINS" | tr ',' '\n' | grep -qvE '^https://[A-Za-z0-9.-]+$' && { echo "EXTRA_ORIGINS must be comma-separated https://host origins" >&2; exit 2; }
   ORIGINS="$ORIGINS,$EXTRA_ORIGINS"
 fi
-# The docs site (a web site of its own, scripts/docs/deploy.sh) reads the public API from a browser on
+# The docs site (a web site of its own, deployed from the units-docs repository) reads the public API from a browser on
 # its own origins: its canonical one and, on a server named by its address, the temporary docs host.
 # With no CORS list the API answers every origin (these included). With CORS_ORIGINS set, the list
 # Core and the indexer get (UNITS_CORS_ORIGINS) is that list plus the docs origins.
@@ -157,7 +168,7 @@ UNITS_SANDBOX_CPU_SHARES=${UNITS_SANDBOX_CPU_SHARES:-512}
 # Core's public base URL (identity links name it in their proof text); UNITS_LINK_HTTP_HOSTS stays unset
 UNITS_SITE_URL=https://${SITE_NAMES%%,*}
 ACME_EMAIL=${ACME_EMAIL:-}
-# the docs site (a web site of its own; scripts/docs/deploy.sh). UNITS_DOCS_URL: where the app's /docs
+# the docs site (a web site of its own, deployed from the units-docs repository). UNITS_DOCS_URL: where the app's /docs
 # redirects and in-app docs links go (empty: config/sites.json docs_url of the release);
 # UNITS_DOCS_REDIRECT=301 makes the redirect permanent. DOCS_ORIGINS: the origins its pages read the
 # public API from. CORS_ORIGINS: the operator's allowed origins (empty: every origin may read, the

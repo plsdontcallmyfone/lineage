@@ -3,7 +3,7 @@
 // self-hosted fonts, and a vercel.json whose rewrites proxy the API paths
 // (/api, /live, /chain, /souls, /market, /embed) to the public site, which runs Core and the full
 // dashboard server. Vercel serves only static files here; nothing stateful. The docs are a web site
-// of their own (apps/docs, its own Vercel project or our server; docs/DEPLOY-SITE.md "Docs site"):
+// of their own, built and deployed from their own repository (units-docs; docs/DEPLOY-SITE.md "Docs site"):
 // /docs and /docs/<page> redirect to the same page there (UNITS_DOCS_URL, else config/sites.json
 // docs_url; temporary unless UNITS_DOCS_REDIRECT=301).
 //

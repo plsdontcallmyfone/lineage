@@ -7,7 +7,7 @@
 //   /live/events       SSE fan-out of Core's event stream (one upstream connection, shared)
 //   /live/recent       last N events held in memory (?limit=, ?agent=, ?candidate=)
 //   /live/spec         docs/SPEC.md as text
-//   /docs, /docs/*     redirect to the docs site, a web site of its own (apps/docs; UNITS_DOCS_URL, else config/sites.json
+//   /docs, /docs/*     redirect to the docs site, a web site and a repository of its own (units-docs; UNITS_DOCS_URL, else config/sites.json
 //                      docs_url), same page: /docs/verification goes to <docs>/verification
 //   /assets/app.js     client bundle (Bun.build at startup; rebuilt per request with --dev)
 //   /assets/wallet.js  wallet bundle (packages/chain in the browser; loaded by Launch, Profile and the token page's trade box)
@@ -72,7 +72,7 @@ try {
   /* lsof exits non-zero when nothing listens */
 }
 
-// The docs are a web site of their own (apps/docs, scripts/docs/build.ts; canonical origin
+// The docs are a web site of their own, built from their own repository (units-docs; canonical origin
 // https://docs.units.gg). The app serves none of it: /docs and /docs/<page> answer a redirect to the
 // same page there. UNITS_DOCS_URL names the docs origin (default config/sites.json docs_url, the
 // temporary docs host until the DNS record of docs.units.gg exists). The redirect is a 302 while the

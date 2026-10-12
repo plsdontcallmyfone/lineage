@@ -1,32 +1,38 @@
 #!/usr/bin/env bun
-// Captures what the docs show from the live devnet site, so no example in the docs is written by hand:
+// Captures what the docs show from the live devnet site, so no example in the docs is written by hand.
+// The docs are a repository of their own (https://github.com/plsdontcallmyfone/units-docs; see
+// scripts/docs/export.ts): this script writes into a checkout of it, and lives here because it runs
+// this repository's verification scripts and reads its soul schema.
 //
-//   bun scripts/docs/capture.ts [api] [verify] [shots] [--site <url>] [--gen <gen_id>]
+//   bun scripts/docs/capture.ts [api] [verify] [shots] [--docs <docs checkout>] [--site <url>] [--gen <gen_id>]
 //
+//   --docs   the docs checkout to write into (default ~/units-docs)
 //   api      request and response of the Core and market indexer routes the docs use as examples
-//            -> apps/docs/captured/api-examples.json (responses trimmed by a fixed rule, every cut marked)
+//            -> <docs>/captured/api-examples.json (responses trimmed by a fixed rule, every cut marked)
 //   verify   picks a real accepted generation, runs scripts/identity/verify-generation.ts and
 //            scripts/verify.ts on it against the site and stores the exact output and the facts the
-//            tutorial quotes -> apps/docs/captured/verify.json
+//            tutorial quotes -> <docs>/captured/verify.json
 //   shots    headless Chromium screenshots of the current app (launch wizard steps, a generation page,
-//            the analytics page, a live desktop when one runs) -> apps/docs/public/shots/*.jpg and
-//            apps/docs/captured/shots.json
+//            the analytics page, a live desktop when one runs) -> <docs>/public/shots/*.jpg and
+//            <docs>/captured/shots.json
 //
 // With no part named, all three run. Everything is read-only: only GETs go to Core and the indexer,
 // the browser runs with a mock wallet that refuses every transaction and a guard that aborts every
 // request that could write (the same rule as tests/ui/support/fixtures.ts), and the soul draft of the
 // wizard is answered from a stored soul, so no model is called. Headless Chromium only, never a
-// person's own browser. The build (scripts/docs/build.ts) reads the files written here; it never
+// person's own browser. The docs build (scripts/build.ts there) reads the files written here; it never
 // fetches, so the site server can build the docs at startup without the network.
 import { spawnSync } from "node:child_process";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { homedir } from "node:os";
 import { join } from "node:path";
 
 const ROOT = join(import.meta.dir, "../..");
-const DATA = join(ROOT, "apps/docs/captured");
-const SHOTS = join(ROOT, "apps/docs/public/shots");
 const argv = process.argv.slice(2);
 const opt = (n: string) => (argv.includes(`--${n}`) ? argv[argv.indexOf(`--${n}`) + 1] : undefined);
+const DOCS = opt("docs") ?? join(homedir(), "units-docs");
+const DATA = join(DOCS, "captured");
+const SHOTS = join(DOCS, "public/shots");
 const SITE = (opt("site") ?? "https://157-245-71-188.sslip.io").replace(/\/+$/, "");
 const parts = ["api", "verify", "shots"].filter((p) => argv.includes(p));
 const want = (p: string) => !parts.length || parts.includes(p);
@@ -34,7 +40,7 @@ const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 const save = (file: string, v: unknown) => {
   mkdirSync(DATA, { recursive: true });
   writeFileSync(join(DATA, file), JSON.stringify(v, null, 2) + "\n");
-  console.log(`wrote apps/docs/captured/${file}`);
+  console.log(`wrote ${join(DATA, file)}`);
 };
 const load = <T,>(file: string): T | null => (existsSync(join(DATA, file)) ? (JSON.parse(readFileSync(join(DATA, file), "utf8")) as T) : null);
 
@@ -440,6 +446,10 @@ async function captureShots(p: Picks) {
 }
 
 if (import.meta.main) {
+  if (!existsSync(join(DOCS, "content")) || !existsSync(join(DOCS, "scripts/build.ts"))) {
+    console.error(`${DOCS} is not a checkout of the docs repository (pass --docs <path>)`);
+    process.exit(2);
+  }
   console.log(`capturing from ${SITE}: ${parts.length ? parts.join(", ") : "api, verify, shots"}`);
   const p = await picks();
   if (want("verify")) await captureVerify(p);

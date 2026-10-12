@@ -1,7 +1,9 @@
 // Purposes of the Core routes that neither packages/core/README.md nor a SPEC route table describes,
 // written from the SPEC section or plan named in each line and the handler in packages/core/src/http.ts.
 // Keys are routeKey() form: the method, then the path with every parameter written ":_".
-// scripts/docs/build.test.ts fails when a route in http.ts has no description anywhere, or when a key
+// The docs site is a repository of its own (https://github.com/plsdontcallmyfone/units-docs);
+// scripts/docs/export.ts writes these into its generated/core-api.json and generated/indexer-api.json.
+// scripts/docs/export.test.ts fails when a route in http.ts has no description anywhere, or when a key
 // here names a route that no longer exists.
 export const API_NOTES: Record<string, string> = {
   "GET /v1/lineages/:_/tree": "The tree at a generation (default the tip) as the ordered canonical patch series from gen 0, reverted patches left out. Core does not run git, so it never serves a tarball.",

@@ -746,28 +746,47 @@ lineage-monitor 3.4, lineage-backup 4.3 (all "OK").
 
 ## Docs site
 
-The docs are a web site of their own. Their one canonical origin is `https://docs.units.gg`: every
-page names it in its canonical link, its Open Graph tags and the sitemap. The app serves no docs
-page; it redirects to the docs site.
+The docs are a web site of their own and a repository of their own:
+**https://github.com/plsdontcallmyfone/units-docs** (local checkout `~/units-docs`). Their one
+canonical origin is `https://docs.units.gg`: every page names it in its canonical link, its Open
+Graph tags and the sitemap. This repository holds no docs page, no docs build and no docs deploy;
+the app serves no docs page and redirects to the docs site.
 
-**What it is.** `bun scripts/docs/build.ts` writes a complete static site into `apps/docs/dist`
-(pages at the root, `/launch-quickstart` and so on; `index.html`, `404.html`, `sitemap.xml`,
-`robots.txt`, fonts, screenshots, and under `assets/` the stylesheet, the script and the search
-index, each with a hash of its content in its name). It needs nothing but Bun and this repository,
-and exits 1 on a broken link. `bun scripts/docs/serve.ts --port 9663` previews it locally as the
-hosts serve it.
+**What lives where.**
 
-**The values that tie the two sites together** are in `config/sites.json`:
+| In the docs repository | In this repository |
+|---|---|
+| the pages (`content/*.md`), the renderer, client script and styles (`src/`), fonts, provider marks, screenshots | `scripts/docs/export.ts`: writes the data the docs show of this repository's code into the docs checkout (`generated/*.json`) |
+| the build (`scripts/build.ts`), its tests, the preview server, the headless check (`scripts/ui-check.ts`) | `scripts/docs/api-notes.ts`: the purposes of Core routes that neither `packages/core/README.md` nor a SPEC route table describes, and the indexer's route list |
+| the deploy (`scripts/deploy.sh`, `scripts/caddy/docs.caddy.tmpl`), `vercel.json` | `scripts/docs/export.test.ts`: fails when a Core route has no description, a note names a route that is gone, or the indexer list differs from its dispatcher |
+| `site.json`: the app origin the docs link to and read live figures from, the canonical origin | `scripts/docs/capture.ts`: captures the docs' real API examples, the verify tutorial's output and the screenshots from the devnet site into the docs checkout (it runs this repository's verification scripts) |
+| `generated/` and `captured/`: committed data, written from here | `config/sites.json` `docs_url`, `apps/web/src/docs-url.ts`, the `/docs` redirect |
 
-| Value | Meaning | Override for one build or server |
+**After a change here that the docs show** (a Core route added, changed or removed; `config/profile.json`
+program ids or profile fields; `config/models.json`; the SPEC changelog; a file the docs link to moved):
+
+```
+bun scripts/docs/export.ts ~/units-docs      # rewrites only the generated files whose data changed
+cd ~/units-docs && bun test && bun scripts/build.ts
+git add generated && git commit && git push
+scripts/deploy.sh 157.245.71.188
+```
+
+Each generated file names this script and the commit of this repository it was generated from.
+`bun scripts/docs/export.ts --check ~/units-docs` writes nothing and exits 1 when a file would
+change. The export exits 1 on an undescribed Core route (add its line to `scripts/docs/api-notes.ts`);
+`bun test scripts/docs` fails on the same, without a docs checkout.
+
+To capture the examples and screenshots again: `bun scripts/docs/capture.ts --docs ~/units-docs`
+(read-only, headless), then commit `captured/` and `public/shots/` in the docs repository.
+
+**The values that tie the two sites together.**
+
+| Value | Where | Meaning |
 |---|---|---|
-| `docs_canonical` | `https://docs.units.gg`, fixed | none |
-| `app_url` | the app the docs link to (Explorer, Launch, every `app:` link) and read live figures from; the devnet site until the app has its own domain | `UNITS_APP_URL` (docs build and `scripts/docs/deploy.sh`) |
-| `docs_url` | where the app's `/docs` redirects and in-app docs links go; the temporary docs host until the DNS record below exists | `UNITS_DOCS_URL` (app server, `scripts/deploy/deploy.sh`, the app's Vercel build) |
-
-After a change of `app_url` run `bun scripts/docs/build.ts` once and commit `apps/docs/vercel.json`
-(its page policy names the app origin; `bun test scripts/docs` fails until it is committed), then
-deploy the docs.
+| `docs_canonical` | `config/sites.json` here, `site.json` in the docs repository | `https://docs.units.gg`, fixed |
+| `app_url` | `site.json` in the docs repository (and `config/sites.json` here) | the app the docs link to (Explorer, Launch, every `app:` link) and read live figures from; the devnet site until the app has its own domain. Change both together, then build and deploy the docs |
+| `docs_url` | `config/sites.json` here | where the app's `/docs` redirects and in-app docs links go; the temporary docs host until the DNS record below exists. `UNITS_DOCS_URL` overrides it (app server, `scripts/deploy/deploy.sh`, the app's Vercel build) |
 
 **Live figures.** The docs pages read `GET <app_url>/v1/config`, `/v1/stats`, `/v1/guard-config` and
 `/market/tokens` from the browser, across origins. Core and the indexer answer every origin unless a
@@ -778,17 +797,21 @@ checks both origins against the live API every time and fails when one is refuse
 
 ### Hosting on our server
 
+From a checkout of the docs repository:
+
 ```
-scripts/docs/deploy.sh 157.245.71.188            # or: scripts/deploy/deploy.sh 157.245.71.188 docs
-scripts/docs/deploy.sh 157.245.71.188 status
-scripts/docs/deploy.sh 157.245.71.188 rollback
+scripts/deploy.sh 157.245.71.188
+scripts/deploy.sh 157.245.71.188 status
+scripts/deploy.sh 157.245.71.188 rollback
 ```
 
-It builds here, copies the files to `/var/www/units-docs/releases/<time>-<commit>`, points
-`/var/www/units-docs/current` at them and writes Caddy a site block of its own,
-`/etc/caddy/sites.d/units-docs.caddy` (from `scripts/deploy/caddy/docs.caddy.tmpl`), then reloads
+(`scripts/deploy/deploy.sh <host> docs` in this repository only prints this.) It builds there, copies
+the files to `/var/www/units-docs/releases/<time>-<commit>`, points `/var/www/units-docs/current` at
+them and writes Caddy a site block of its own, `/etc/caddy/sites.d/units-docs.caddy`, then reloads
 Caddy. No app unit is touched or restarted, an app deploy never changes the docs, and the docs
-deploy needs no app deploy. Caddy serves the files directly: clean URLs, the docs' own 404 page,
+deploy needs no app deploy. The one thing it needs from the app deploy is the last line of the main
+Caddyfile (`scripts/deploy/caddy/Caddyfile.tmpl`): `import /etc/caddy/sites.d/*.caddy`. Caddy serves
+the files directly: clean URLs, the docs' own 404 page,
 `cache-control: public, max-age=31536000, immutable` for everything under `/assets`, a month for
 fonts, an hour for images, `no-cache` for pages, and the docs' own page policy (scripts from the
 site only, no inline script, connections to the app origin for the live figures). If Caddy refuses
@@ -805,29 +828,20 @@ A   docs.units.gg   ->   157.245.71.188
 
 Caddy then obtains the certificate for `docs.units.gg` by itself; nothing is redeployed. It retries
 in the background with growing pauses (for up to 30 days), so the first answer can take a while
-after the record appears: `scripts/docs/deploy.sh 157.245.71.188` asks at once and reports it. When
-`https://docs.units.gg` answers, set `docs_url` in `config/sites.json` to `https://docs.units.gg`,
-commit, and deploy the app (`scripts/deploy/deploy.sh 157.245.71.188 code`) so its `/docs` redirect
-and its links use the real name; `UNITS_DOCS_REDIRECT=301` on that deploy makes the redirect
-permanent.
+after the record appears: `scripts/deploy.sh 157.245.71.188` in the docs checkout asks at once and
+reports it. When `https://docs.units.gg` answers, set `docs_url` in `config/sites.json` to
+`https://docs.units.gg`, commit, and deploy the app (`scripts/deploy/deploy.sh 157.245.71.188 code`)
+so its `/docs` redirect and its links use the real name; `UNITS_DOCS_REDIRECT=301` on that deploy
+makes the redirect permanent.
 
 ### Hosting on Vercel instead
 
-Either way works; pick one and point the DNS record of `docs.units.gg` at it.
-
-1. From git: a Vercel project on this repository with **Root Directory** `apps/docs`.
-   `apps/docs/vercel.json` holds the rest: the build command (`cd ../.. && bun scripts/docs/build.ts
-   --out apps/docs/dist`), the output directory (`dist`), clean URLs, the headers and cache rules.
-   Leave "Include files outside the root directory" on (the build reads the repository). A shallow
-   clone has no history, so the "Last updated" dates come from `apps/docs/captured/updated.json`.
-2. Prebuilt, from a machine with the repository: `bun scripts/docs/build.ts && cd apps/docs/dist &&
-   vercel deploy --prod` (the build writes a `vercel.json` with the same rules into the output).
-
-Then add the domain `docs.units.gg` to the Vercel project and create the DNS record Vercel shows
-for it (a CNAME for `docs`, in place of the A record above). The app origin is the
-committed `app_url`; a `UNITS_APP_URL` set only in Vercel's environment would not match the page
-policy in `vercel.json`. This configuration has been checked by the docs tests and the local preview;
-it has not been deployed to a Vercel account from here.
+A Vercel project on the docs repository, Root Directory left at the repository root; its
+`vercel.json` holds the build command, the output directory, clean URLs, the headers and cache
+rules. Then add the domain `docs.units.gg` to the project and create the DNS record Vercel shows for
+it (a CNAME for `docs`, in place of the A record above). The docs repository's README has both ways
+(from git, or prebuilt). This configuration has been checked by the docs tests and the local
+preview; it has not been deployed to a Vercel account from here.
 
 ### The app side
 

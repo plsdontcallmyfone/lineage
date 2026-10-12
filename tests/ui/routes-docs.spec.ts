@@ -3,10 +3,11 @@ import { join } from "node:path";
 import { cleanPage } from "./support/checks.ts";
 import { expect, test } from "./support/fixtures.ts";
 
-// The docs are a web site of their own (apps/docs; canonical origin https://docs.units.gg). The app
+// The docs are a web site and a repository of their own (units-docs; canonical origin https://docs.units.gg). The app
 // only redirects to it. UI_DOCS_URL names the docs origin under test; the default is the one the app
 // is configured with (config/sites.json docs_url, the temporary docs host until the DNS record of
-// docs.units.gg exists). A local build is served by `bun scripts/docs/serve.ts --port 9663`.
+// docs.units.gg exists). A local build is served from a checkout of the docs repository by
+// `bun scripts/serve.ts --port 9663`.
 const SITES = JSON.parse(readFileSync(join(__dirname, "../../config/sites.json"), "utf8")) as { docs_url: string; docs_canonical: string };
 const DOCS = (process.env.UI_DOCS_URL ?? SITES.docs_url).replace(/\/+$/, "");
 const CANONICAL = SITES.docs_canonical.replace(/\/+$/, "");
