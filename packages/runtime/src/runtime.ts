@@ -19,6 +19,7 @@ import { existsSync, readFileSync, renameSync, rmSync } from "node:fs";
 import { sha256Hex } from "../../protocol/src/hash.ts";
 import { FixedPrice, type PriceSource, type QuotePrice } from "./price.ts";
 import type { OpenRouterBalance } from "./provider-balance.ts";
+import { UnitSetup, unitSetupWork, type RepoSetup, type UnitSetupWork } from "./unit-setup.ts";
 
 /** A spend figure for logs; a corrupt record shows as such (the caps then refuse every attempt). */
 const usd4 = (x: unknown) => (typeof x === "number" && Number.isFinite(x) ? x.toFixed(4) : `unknown (${String(x)})`);
@@ -58,6 +59,8 @@ export interface RuntimeDeps {
   providerBalance?: OpenRouterBalance;
   price?: PriceSource;
   report?: (body: SpendReport) => Promise<void>;
+  /** Unit setup (unit-setup.ts): how a repository is read and a recipe drafted; default the real git reading and the model drafter. */
+  unitSetup?: UnitSetupWork;
 }
 
 export interface AgentRoute {
@@ -90,6 +93,8 @@ export interface SpendReport {
     model: { provider: string; id: string } | null;
     via: "direct" | "openrouter" | null;
     waiting: string | null;
+    /** false: known to the runtime but not bound to it (reported only with a unit setup reason; its figures are null) */
+    bound?: false;
     /** since when the agent has been waiting for a desktop (ms); null when it is not */
     waiting_since?: number | null;
     /** per-agent desktops (desktop_mode per_agent): the agent's own desktop, in words a page can show; absent in per-attempt mode */
@@ -173,6 +178,8 @@ export class Runtime {
   private discovered: Set<string> | null = null;
   /** sha256 digests of the launches Core purged (GET /v1/purged; kept in <state_dir>/purged.json so a start without Core still knows them) */
   private purged: { agents: Set<string>; mints: Set<string> } | null = null;
+  /** agents whose repository has no unit yet: the reading, the draft and the public reason (unit-setup.ts) */
+  private setup!: UnitSetup;
 
   constructor(readonly cfg: RuntimeConfig, private deps: RuntimeDeps) {
     const sink = deps.log ?? ((m: string) => console.log(`[${new Date().toISOString().slice(11, 19)} runtime] ${m}`));
@@ -187,6 +194,39 @@ export class Runtime {
       throw e;
     }
     this.client = new CoreClient(cfg.core, deps.runtimeKey);
+    this.setup = new UnitSetup(cfg.unit_setup, {
+      core: this.client,
+      log: (m) => this.log(m),
+      now: () => this.now(),
+      save: () => this.save(),
+      store: () => ((this.state as { unit_setup?: Record<string, RepoSetup> }).unit_setup ??= {}),
+      agents: () => Object.entries(this.state.agents).map(([agent, st]) => ({ agent, status: st.status, target_repo: st.target_repo })),
+      keyOf: (agent) => this.store.keyFor(agent),
+      awake: (agent) => this.vaults.get(agent)?.awake === true,
+      busy: (agent) => this.running.has(agent),
+      freeSlot: () => !this.stopping && this.running.size < this.slots(),
+      budget: (agent, cap) => this.budget(agent, { cap }),
+      run: (agent, maxUsd, job) => this.runSetup(agent, maxUsd, job),
+    }, deps.unitSetup ?? unitSetupWork({ core: cfg.core, state_dir: cfg.state_dir, model: cfg.unit_setup?.model, max_trials: cfg.unit_setup?.max_trials }));
+  }
+
+  /** A recipe draft as an attempt of `agent` (unit-setup.ts): it holds a slot and its model and sandbox use are metered to the agent's vault. */
+  private runSetup(agent: string, maxUsd: number, job: (meter: Pick<Meter, "model" | "sandbox">) => Promise<void>): void {
+    const a: Attempt = { agent, maxUsd, via: "openrouter", totals: { input_tokens: 0, output_tokens: 0, cache_read_tokens: 0, cache_write_tokens: 0, usd: 0, sandbox_s: 0, models: [], started_at: this.now(), finished_at: 0 } };
+    this.attempts.set(agent, a);
+    this.usageOf(agent).attempts++;
+    this.lastStarted.set(agent, this.now());
+    this.save();
+    const promise = job(this.meterFor(a))
+      .catch((e) => this.log(`${agent.slice(0, 6)} unit draft failed: ${(e as Error).message}`))
+      .finally(() => {
+        this.attempts.delete(agent);
+        a.totals.finished_at = this.now();
+        this.save();
+        this.log(`${agent.slice(0, 6)} unit draft done: ${a.totals.usd.toFixed(4)} USD model spend, ${Math.ceil(a.totals.sandbox_s)} sandbox s, cost ${costOf(this.prices, a.totals.usd, a.totals.sandbox_s)} base units`);
+        this.running.delete(agent);
+      });
+    this.running.set(agent, { agent, promise });
   }
 
   get state() {
@@ -740,6 +780,8 @@ export class Runtime {
     for (const [agent, st] of fairOrder(Object.entries(this.state.agents), this.lastStarted)) {
       if (this.running.size >= slots) return;
       if (st.status !== "bound" || this.running.has(agent)) continue;
+      // no unit for its repository yet: unit setup (unit-setup.ts) works for it, an attempt has nothing to author on
+      if (this.setup.settingUp(agent)) continue;
       if (this.cfg.max_candidates_per_agent !== undefined && st.candidates >= this.cfg.max_candidates_per_agent) continue;
       const v = this.vaults.get(agent);
       if (!v?.awake) continue;
@@ -1023,6 +1065,7 @@ export class Runtime {
       await this.deps.providerBalance?.refresh();
       this.state.provider_balance = this.deps.providerBalance ? { openrouter: { ...this.deps.providerBalance.state, configured: this.deps.providerBalance.configured } } : undefined;
       await this.refreshAgents();
+      await this.setup.tick();
       this.syncDesktops();
       await this.reportSpend();
       if (this.pendingProvenance.length) await this.flushProvenance();
@@ -1105,8 +1148,16 @@ export class Runtime {
       agents: {},
     };
     const since = now - 86_400_000;
+    const unbound: SpendReport["agents"] = {};
     for (const [agent, st] of Object.entries(this.state.agents)) {
-      if (st.status !== "bound") continue;
+      // unit setup (unit-setup.ts): why an agent whose repository has no unit is not working yet
+      const su = this.setup.reason(agent);
+      if (st.status !== "bound") {
+        // not bound, so nothing of its vault is read or spent here; its page still says why it does not work
+        const why = su?.why ?? (st.status === "awaiting_owner" ? "waiting for its owner's wallet to sign the binding to the hosted runtime" : "its owner moved the signing key away from the hosted runtime");
+        if (this.hosted.has(agent)) unbound[agent] = { vault: null, vault_usd: null, burn_per_h: null, burn_usd_per_h: null, burn_window_s: null, runway_h: null, model: null, via: null, waiting: why, bound: false };
+        continue;
+      }
       const v = this.vaults.get(agent);
       let burn = 0n;
       let first = Infinity;
@@ -1129,7 +1180,7 @@ export class Runtime {
         runway_h: v && perH && perH > 0n ? Number((v.balance * 1000n) / perH) / 1000 : null,
         model: r?.model ?? null,
         via: r?.via ?? null,
-        waiting: !v ? "vault not read yet" : !v.awake ? "asleep (vault below the wake threshold)" : this.waiting.get(agent) ?? (r && !r.via ? r.why : null),
+        waiting: su?.final ? su.why : !v ? "vault not read yet" : !v.awake ? "asleep (vault below the wake threshold)" : su?.why ?? this.waiting.get(agent) ?? (r && !r.via ? r.why : null),
       };
       // a funded agent whose attempts do not start for want of a desktop: since when (desktop-gate.ts writes the reason)
       const w = out.agents[agent]!.waiting;
@@ -1138,6 +1189,8 @@ export class Runtime {
       const desk = this.deps.desktop?.agentDesktop?.(agent);
       if (desk) out.agents[agent]!.desktop = { state: desk.state, why: desk.why ? desk.why.slice(0, 300) : null, since: desk.since, stream: desk.stream ?? null };
     }
+    // bound agents first: Core takes at most 500 rows in one report
+    for (const [agent, row] of Object.entries(unbound)) if (Object.keys(out.agents).length < 500) out.agents[agent] = row;
     return out;
   }
 

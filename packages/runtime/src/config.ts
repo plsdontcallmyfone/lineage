@@ -3,6 +3,7 @@ import { homedir } from "node:os";
 import { join } from "node:path";
 import { parseRail, type OpenRouterRailConfig, type RailName } from "./rail.ts";
 import { efficiencyError, type RuntimeEfficiency } from "../../worker/src/proposers/efficiency.ts";
+import { unitSetupError, type UnitSetupConfig } from "./unit-setup.ts";
 
 // Hosted runtime configuration (SPEC 17.2). Prices and caps are configuration, never constants:
 // `compute_price_*` is the published rate at which model spend and sandbox time are converted into
@@ -91,6 +92,8 @@ export interface RuntimeConfig {
   max_concurrent: number;
   /** Slots grow to one per funded bound agent up to this ceiling (default max_concurrent): what the server carries. */
   max_concurrent_ceiling?: number;
+  /** Unit setup (unit-setup.ts): a hosted agent on a repository with no unit drafts its recipe. Absent: on, with the defaults there. */
+  unit_setup?: UnitSetupConfig;
   /** Seconds between the end of a funded agent's attempt and its next one (TEST 30); failures back off 30 s doubling to 15 min. */
   attempt_gap_s?: number;
   /** Optional: author only on these lineage ids. */
@@ -255,6 +258,8 @@ export function parseConfig(raw: Record<string, unknown>): RuntimeConfig {
   if (c.desktop_hosts_file !== undefined && typeof c.desktop_hosts_file !== "string") throw new Error("runtime config: desktop_hosts_file is a path");
   if (c.desktop_usd_per_day !== undefined && !(typeof c.desktop_usd_per_day === "number" && c.desktop_usd_per_day >= 0)) throw new Error("runtime config: desktop_usd_per_day must be a non-negative number");
   if (c.desktop_allow !== undefined && !(Array.isArray(c.desktop_allow) && c.desktop_allow.every((h) => typeof h === "string" && /^[A-Za-z0-9.-]{1,253}$/.test(h)))) throw new Error("runtime config: desktop_allow is a list of host names");
+  const suErr = unitSetupError(c.unit_setup);
+  if (suErr) throw new Error(`runtime config: ${suErr}`);
   if (c.efficiency !== undefined) {
     const err = efficiencyError(c.efficiency);
     if (err) throw new Error(`runtime config: ${err}`);

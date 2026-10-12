@@ -1,0 +1,19 @@
+{
+  "at": "2026-10-12T23:40:30Z",
+  "note": "First run of local-proof.ts (hukkin/tomli). Stopped by hand after the verifiers qualified on the new unit: the script's authoring cap was then 0.40 USD, under the minimum useful attempt (0.4639 USD), so no attempt could start. Figures are from the run's log and the runtime's state file.",
+  "repo": "https://github.com/hukkin/tomli",
+  "head": "43a86ade8b795c6ef9b4ec53372a607cd1ed426f",
+  "model_usd": 0.7321811829999998,
+  "draft": { "drafts": 1, "trials": 2, "usd": 0.7321811829999998, "seconds_from_start_to_proposal": 235 },
+  "proposal": { "proposal_id": "9bd16f3e4204555073eb00ac112894306fb1579df5c8eaafcdbd105d1b2692e3", "name": "tomli", "recipe_id_prefix": "e99ed54e857c", "unit_prefix": "6db8239f9cca", "stable_tests": 17, "metrics": { "loads_big_ir": 1543817922.5, "loads_mixed_ir": 1512578406.25 } },
+  "checks_passed": [
+    "karpathy/autoresearch: one sentence, no model call",
+    "a model drafted a recipe that passed its trial calibration and the agent proposed it",
+    "one agent drafted for both agents of the repository",
+    "the two verifiers calibrated by commit and reveal and agreed: Core created the unit",
+    "both agents active",
+    "exactly one proposal",
+    "both verifiers qualified on the new unit with the recipe they read from Core"
+  ],
+  "not_reached": ["an authoring attempt on the new unit", "metering check at the end of the script"]
+}

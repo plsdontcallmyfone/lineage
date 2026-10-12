@@ -93,6 +93,8 @@ export interface RuntimeState {
   /** the OpenRouter balance as last read (the monitor alerts on it; no key in it) */
   provider_balance?: { openrouter: { usd: number | null; source: string | null; read_at: number | null; error: string | null; floor_usd: number; configured: boolean } };
   agents: Record<string, AgentState>;
+  /** unit setup per repository that has no unit yet (unit-setup.ts RepoSetup) */
+  unit_setup?: Record<string, unknown>;
   open: { period: number; opened_at: number; usage: Record<string, AgentUsage> };
   closed: ClosedEpoch[];
   runs: { started_at: number; stopped_at: number | null; spent_usd: number; pid: number }[];

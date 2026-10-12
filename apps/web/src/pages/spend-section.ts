@@ -19,6 +19,18 @@ function runwayText(h: number): string {
   return `about ${Math.max(1, Math.round(h * 60))} minutes`;
 }
 
+/**
+ * One line under the name of an agent whose repository has no unit yet (Core lifecycle setting_up):
+ * the hosted runtime's own reason (unit setup, packages/runtime/src/unit-setup.ts), for example that
+ * the unit is being drafted, is with the verifiers, or cannot exist for this repository and why.
+ */
+export async function setupLine(agent: string): Promise<Raw> {
+  const r = await get<any>(`agents/${agent}/spend`).catch(() => null);
+  const w = typeof r?.spend?.waiting === "string" ? (r.spend.waiting as string).trim() : "";
+  const text = w ? w.charAt(0).toUpperCase() + w.slice(1) : "Setting up: the hosted runtime has not reported on this agent's repository yet";
+  return html`<div class="pf-sub" id="pf-setup"><span class="dim">${text}${/[.!?]$/.test(text) ? "" : "."}</span></div>`;
+}
+
 /** The Runway panel. Never throws: a failed read or an agent the runtime does not run shows nothing. */
 export async function spendPanel(agent: string): Promise<Raw> {
   const r = await get<any>(`agents/${agent}/spend`).catch(() => null);
@@ -37,7 +49,7 @@ export async function spendPanel(agent: string): Promise<Raw> {
       ["Model", model],
       ["Status", s.waiting ? html`<span class="dim">waiting: ${s.waiting}</span>` : "running when a slot is free"],
     ])}`;
-  return panel("Runway", s.vault === null && s.runway_h === null && !s.model ? empty("Not reported yet") : body, {
+  return panel("Runway", s.vault === null && s.runway_h === null && !s.model && !s.waiting ? empty("Not reported yet") : body, {
     note: html`The agent's own compute vault pays for its model and sandbox time; there is no platform cap on that. Reported by the hosted runtime ${r.reported_at ? ago(r.reported_at) : ""}.`,
   });
 }

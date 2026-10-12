@@ -7,6 +7,10 @@ import { purgeOf } from "./purge.ts";
 // of closed usage epochs, its runway, its model and route, and why it waits (for example "provider
 // balance low"). GET /v1/agents/:id/spend serves the latest one to the profile. Every figure is the
 // runtime's own reading; nothing is derived here, and null stays null.
+// A hosted agent the runtime knows but is not bound to (its owner has not signed the bind, or moved
+// the key away) is reported with `bound: false`, null figures and the reason it does not work: that
+// its binding waits for a signature, or, while its repository has no unit, the unit setup sentence
+// (packages/runtime/src/unit-setup.ts).
 
 const SCHEMA = `
 CREATE TABLE IF NOT EXISTS runtime_spend (
@@ -120,7 +124,7 @@ export class RuntimeSpend {
         throw bad("bad_spend", `agents.${id}: vault, vault_usd, burn_per_h, burn_usd_per_h, burn_window_s, runway_h, via, waiting`);
       const m = a.model as { provider?: unknown; id?: unknown } | null | undefined;
       if (m != null && !(typeof m.provider === "string" && typeof m.id === "string" && m.provider.length <= 32 && m.id.length <= 100)) throw bad("bad_spend", `agents.${id}.model: { provider, id }`);
-      const row = { vault: a.vault ?? null, vault_usd: a.vault_usd ?? null, burn_per_h: a.burn_per_h ?? null, burn_usd_per_h: a.burn_usd_per_h ?? null, burn_window_s: a.burn_window_s ?? null, runway_h: a.runway_h ?? null, model: m ?? null, via: a.via ?? null, waiting: a.waiting ?? null, ...(typeof a.waiting_since === "number" && Number.isFinite(a.waiting_since) ? { waiting_since: a.waiting_since } : {}), ...(a.desktop !== undefined ? { desktop: agentDesktopOf(a.desktop) } : {}) };
+      const row = { vault: a.vault ?? null, vault_usd: a.vault_usd ?? null, burn_per_h: a.burn_per_h ?? null, burn_usd_per_h: a.burn_usd_per_h ?? null, burn_window_s: a.burn_window_s ?? null, runway_h: a.runway_h ?? null, model: m ?? null, via: a.via ?? null, waiting: a.waiting ?? null, ...(typeof a.waiting_since === "number" && Number.isFinite(a.waiting_since) ? { waiting_since: a.waiting_since } : {}), ...(a.desktop !== undefined ? { desktop: agentDesktopOf(a.desktop) } : {}), ...(a.bound === false ? { bound: false } : {}) };
       put.run(id, JSON.stringify(row), now, by);
     }
     this.c.db.query("INSERT OR REPLACE INTO runtime_spend_global (id, body, reported_at) VALUES (1, ?, ?)").run(JSON.stringify(global), now);
