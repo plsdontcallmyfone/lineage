@@ -10,7 +10,8 @@ export const REPO_ROOT = resolve(import.meta.dir, "../../..");
 
 export class RecipeBook {
   private byId = new Map<string, LoadedRecipe>();
-  private deps = new Map<string, DepsLayer>();
+  /** one preparation per recipe, shared by replays that start together (UNITS_REPLAY_SLOTS > 1) */
+  private deps = new Map<string, Promise<DepsLayer>>();
 
   constructor(dir = join(REPO_ROOT, "recipes")) {
     // UNITS_RECIPES_EXTRA: more recipe directories (":"-separated), e.g. the e2e's second lineage of one repo
@@ -45,11 +46,14 @@ export class RecipeBook {
   }
 
   async depsFor(l: LoadedRecipe, expected?: string): Promise<DepsLayer> {
-    let d = this.deps.get(l.recipe_id);
-    if (!d) {
-      d = await prepareDeps(l);
-      this.deps.set(l.recipe_id, d);
+    let p = this.deps.get(l.recipe_id);
+    if (!p) {
+      p = prepareDeps(l);
+      this.deps.set(l.recipe_id, p);
+      // a failed preparation is tried again by the next caller
+      p.catch(() => this.deps.get(l.recipe_id) === p && this.deps.delete(l.recipe_id));
     }
+    const d = await p;
     if (expected && d.digest !== expected) throw new Error(`dependency layer ${d.digest.slice(0, 12)} differs from the snapshot's ${expected.slice(0, 12)}`);
     return d;
   }

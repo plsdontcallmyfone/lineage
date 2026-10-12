@@ -24,14 +24,17 @@ Environment=UNITS_CORE_RETRY_MS=30000
 # repository default, which is mainnet (config/profile.json)
 Environment=UNITS_NETWORK=devnet
 EnvironmentFile=-/etc/units/site.env
+# sandbox slots, their CPU weight and replays at once, from this machine's size (site-config.ts, sizing.ts); after site.env, so it wins
+EnvironmentFile=-/var/lib/units/site/sizing.env
 NoNewPrivileges=yes
 ProtectSystem=full
 Restart=always
 RestartSec=5
 StandardOutput=journal
 StandardError=journal
-MemoryMax=1G
-TasksMax=512
+# attempts at once follow the machine's size (sizing.ts): each holds docker clients and a model conversation
+MemoryMax=4G
+TasksMax=4096
 KillSignal=SIGTERM
 TimeoutStopSec=1500
 ExecStart=/usr/local/bin/bun packages/runtime/src/main.ts run --config /var/lib/units/site/runtime.json

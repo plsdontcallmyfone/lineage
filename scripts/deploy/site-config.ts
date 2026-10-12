@@ -22,6 +22,7 @@ import { canonicalJson, H } from "@units/protocol";
 import { doctor } from "../../packages/worker/src/doctor.ts";
 import { devnetRpcUrl, redactRpc } from "../../packages/chain/src/endpoint.ts";
 import { instanceLayout, SHARED_E2B_DIR } from "./instance.ts";
+import { applyOverrides, sizeFor, sizingEnv, thisMachine } from "./sizing.ts";
 
 const ROOT = join(import.meta.dir, "..", "..");
 const argv = process.argv.slice(2);
@@ -82,6 +83,17 @@ Object.assign(net, {
 // (/etc/units/core-github.env on the site: UNITS_POOL_KEEPER_KEY, UNITS_FEE_CLAIMS_ATTESTOR_KEY,
 // UNITS_GITHUB_OAUTH_CLIENT_ID, UNITS_GITHUB_OAUTH_CLIENT_SECRET), never here.
 if (!MAIN) net.features = { agent_pools: true, github_fee_claims: true };
+// Scale-out lane 2026-10-12 (docs/plans/SCALE-OUT.md): what this machine carries follows from its size
+// (scripts/deploy/sizing.ts), so a resized server needs one deploy and no edited constant. On the
+// 4 vCPU / 8 GB server it gives what was set by hand before: 2 sandbox slots, 2 attempts at once, one
+// replay at a time per verifier, max_open_replays 2. The operator's overrides: <etc>/sizing.json
+// (a JSON object, e.g. {"attempts": 50}; refused when a key is unknown or out of range).
+const sizingOverride = process.env.UNITS_SIZING_FILE || join(L.etc, "sizing.json");
+const SIZE = applyOverrides(sizeFor(thisMachine()), existsSync(sizingOverride) ? JSON.parse(readFileSync(sizingOverride, "utf8")) : undefined);
+// a verifier runs UNITS_REPLAY_SLOTS replays at once, so Core must let it hold that many open
+net.max_open_replays = Math.max(Number(net.max_open_replays ?? 2), SIZE.max_open_replays);
+writeFileSync(join(OUT, "sizing.env"), sizingEnv(SIZE));
+console.log(`sizing.env: ${SIZE.cores} cores, ${SIZE.memory_mb} MB: ${SIZE.sandbox_slots} sandbox slots (${SIZE.reserved_cores} cores kept for the services), ${SIZE.attempts} attempts at once, ${SIZE.replay_slots} replays at once per verifier, Core max_open_replays ${net.max_open_replays}${existsSync(sizingOverride) ? ` (with overrides from ${sizingOverride})` : ""}`);
 writeFileSync(join(OUT, "network.json"), JSON.stringify(net, null, 2) + "\n", { mode: 0o600 });
 chmodSync(join(OUT, "network.json"), 0o600);
 console.log(`network.json: chain mode ${L.network}, rpc ${MAIN ? "from the unit's environment" : redactRpc(net.chain.rpc_url)}, epoch ${net.epoch_length_s} s, poll ${net.chain.poll_ms} ms, ${net.chain.core_authority_key ? "Core authority key present (posts epochs and slashes)" : "no Core authority key (read only bridge)"}`);
@@ -147,7 +159,9 @@ const runtimeCfg: Record<string, any> = {
   // 2 while a second instance (the mainnet test) is installed on this server (2026-10-12: load average 16 to 28
   // on 4 vCPUs with both; each attempt holds a live desktop, about a quarter of a CPU, for its whole length).
   // UNITS_SITE_MAX_CONCURRENT overrides.
-  max_concurrent_ceiling: Number(process.env.UNITS_SITE_MAX_CONCURRENT ?? (!MAIN && existsSync(instanceLayout("mainnet").state) ? 2 : 3)),
+  // Scale-out lane: never under those values, and more as the machine grows (sizing.ts: the sandbox slots
+  // shared with verification in the measured proportion, so verdicts keep pace).
+  max_concurrent_ceiling: Number(process.env.UNITS_SITE_MAX_CONCURRENT ?? Math.max(SIZE.attempts, !MAIN && existsSync(instanceLayout("mainnet").state) ? 2 : 3)),
   attempt_gap_s: 30,
   // agents do not trade (owner decision 2026-10-12): there is no trading block; the runtime's firewall refuses every swap
   // hosted launches bind from the Wallet page (packages/runtime/src/bind.ts); the gate forwards /runtime/bind/* here
@@ -185,7 +199,8 @@ if (MAIN) {
     global_cap_scope: "all",
     global_window_s: 86400,
     max_concurrent: 1,
-    max_concurrent_ceiling: 2,
+    // 2 on the 4 vCPU server, as decided 2026-10-11; from the machine's size since (sizing.ts)
+    max_concurrent_ceiling: Number(process.env.UNITS_SITE_MAX_CONCURRENT ?? SIZE.attempts),
     attempt_max_usd: net.prepay.attempt_max_usd,
     compute_price_line_per_usd: net.prepay.compute_price_line_per_usd,
     compute_price_line_per_sandbox_s: net.prepay.compute_price_line_per_sandbox_s,

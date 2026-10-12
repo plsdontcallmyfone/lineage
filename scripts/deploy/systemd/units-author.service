@@ -23,6 +23,8 @@ Environment=UNITS_CORE_RETRY_MS=30000
 # repository default, which is mainnet (config/profile.json)
 Environment=UNITS_NETWORK=devnet
 EnvironmentFile=-/etc/units/site.env
+# sandbox slots, their CPU weight and replays at once, from this machine's size (site-config.ts, sizing.ts); after site.env, so it wins
+EnvironmentFile=-/var/lib/units/site/sizing.env
 NoNewPrivileges=yes
 ProtectSystem=full
 Restart=always

@@ -42,6 +42,8 @@
 #   ACME_EMAIL      optional email for Let's Encrypt
 #   UNITS_RECIPES recipes to serve (default fixture-b58,base58-py,minbpe), re-pinned to the server's arch
 #   UNITS_SANDBOX_SLOTS  sandbox containers at once on the server (default 2 on a 4 vCPU server; 0: no limit)
+#                   (since the scale-out lane the server derives it from its own size, sizing.env, which the units read after site.env:
+#                   to override use /etc/units/sizing.json on the server, docs/plans/SCALE-OUT.md section 4)
 #   UNITS_SANDBOX_CPU_SHARES  their CPU weight when the CPUs are contended (default 512; Docker's is 1024)
 #   WITH_RUNTIME=1  also copy the runtime authority key, model.env and providers.env (modes full, keys and code) and run
 #                   lineage-runtime (real model spend, capped per UTC day in runtime.json by site-config.ts);

@@ -68,6 +68,12 @@ export const SPREAD_INTENT_TTL_S = 600;
 export interface WorkerOptions {
   core: string;
   key: AgentKey;
+  /**
+   * Replays this verifier runs at once (scale-out lane, docs/plans/SCALE-OUT.md): default the environment's
+   * UNITS_REPLAY_SLOTS, else 1. Core hands a verifier at most max_open_replays, and the host's
+   * UNITS_SANDBOX_SLOTS still bounds the containers.
+   */
+  replaySlots?: number;
   proposer?: Proposer;
   /** lineages this worker authors on; empty means every lineage of its target repo */
   lineages?: string[];
@@ -207,6 +213,13 @@ export class Worker {
   private busy = false;
   /** Reveals in flight, shared by the main loop and the reveal timer so neither sends one twice. */
   private revealing = new Set<string>();
+  /** Replays running in the background, by replay id (only with replaySlots > 1). */
+  private inflight = new Map<string, Promise<void>>();
+  /** Replays at once: WorkerOptions.replaySlots, else UNITS_REPLAY_SLOTS, else 1 (one at a time, as before). */
+  private get replaySlots(): number {
+    const n = this.opts.replaySlots ?? Number(process.env.UNITS_REPLAY_SLOTS);
+    return Number.isInteger(n) && n >= 1 && n <= 64 ? n : 1;
+  }
   /** Patches this worker revealed, by commit id: what a stacked candidate builds on (SPEC 12.4). */
   private soulDoc: SoulDoc | null = null;
   private mine = new Map<string, { lineage_id: string; patch: string; at: number }>();
@@ -273,6 +286,17 @@ export class Worker {
       try {
         if (a.status === "assigned") {
           if (this.draining) continue; // stopping: take no new work, only finish what is committed
+          if (this.replaySlots > 1) {
+            // scale-out lane: up to replaySlots replays at once, each in the background; the loop goes on
+            // to the next assignment and the next tick fills a slot as soon as one is free
+            if (this.inflight.has(a.replay_id) || this.inflight.size >= this.replaySlots) continue;
+            const run = this.runAndCommit(a)
+              .catch((e) => this.log(`replay ${a.replay_id.slice(0, 10)}: ${(e as Error).message}`))
+              .finally(() => this.inflight.delete(a.replay_id));
+            this.inflight.set(a.replay_id, run);
+            acted++;
+            continue;
+          }
           await this.runAndCommit(a);
           acted++;
         } else if (a.status === "committed" && a.reveal_open) {
@@ -281,7 +305,7 @@ export class Worker {
       } catch (e) {
         this.log(`replay ${a.replay_id.slice(0, 10)}: ${(e as Error).message}`);
       } finally {
-        this.telemetry.idle();
+        if (this.inflight.size === 0) this.telemetry.idle();
       }
     }
     return acted;
@@ -924,7 +948,7 @@ export class Worker {
     try {
       let acted = await this.replayOnce();
       if (!this.draining) acted += await this.sideWork();
-      if (acted === 0 && !this.draining) await this.authorOnce();
+      if (acted === 0 && !this.draining && this.inflight.size === 0) await this.authorOnce();
     } catch (e) {
       this.log(`tick: ${(e as Error).message}`);
     } finally {
@@ -955,7 +979,7 @@ export class Worker {
 
   /** True while a tick (a replay, qualification or authoring step) is running. */
   get running(): boolean {
-    return this.busy;
+    return this.busy || this.inflight.size > 0;
   }
 
   /** Committed replays this worker still has to reveal. */
@@ -969,6 +993,8 @@ export class Worker {
    */
   async drain(intervalMs = 2000, maxMs = 15 * 60_000): Promise<void> {
     this.draining = true;
+    // replays running in the background (replaySlots > 1) finish and commit first
+    if (this.inflight.size) await Promise.all([...this.inflight.values()]);
     const end = Date.now() + maxMs;
     while (this.pending.size > 0 && Date.now() < end) {
       try {
