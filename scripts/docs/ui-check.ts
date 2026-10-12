@@ -90,12 +90,14 @@ for (const width of [1280, 390]) {
     if (res.status() !== 200) bad(`HTTP ${res.status()}`);
     await page.evaluate(async () => {
       // lazy images load when scrolled to: walk the page once, then wait for every image
+      // (instant jumps: the page scrolls smoothly by default; an image in a folded block loads when it is opened)
       for (let y = 0; y < document.body.scrollHeight; y += 600) {
-        window.scrollTo(0, y);
+        window.scrollTo({ top: y, behavior: "instant" });
         await new Promise((r) => setTimeout(r, 25));
       }
-      window.scrollTo(0, 0);
-      await Promise.all([...document.images].map((i) => (i.complete ? null : new Promise((r) => ((i.onload = r), (i.onerror = r))))));
+      window.scrollTo({ top: 0, behavior: "instant" });
+      const shown = [...document.images].filter((i) => i.getClientRects().length);
+      await Promise.race([Promise.all(shown.map((i) => (i.complete ? null : new Promise((r) => ((i.onload = r), (i.onerror = r)))))), new Promise((r) => setTimeout(r, 20_000))]);
       await document.fonts.ready;
     });
     await page.waitForFunction(() => !document.querySelector("[data-live]") || !!document.querySelector("[data-live]:not(.tba)"), null, { timeout: 15_000 }).catch(() => undefined);
@@ -106,7 +108,7 @@ for (const width of [1280, 390]) {
         h1: document.querySelector(".dc-h1")?.textContent?.trim() ?? "",
         lead: document.querySelector(".dc-lead")?.textContent?.trim() ?? "",
         scroll: document.documentElement.scrollWidth - document.documentElement.clientWidth,
-        brokenImages: [...document.images].filter((i) => !i.complete || i.naturalWidth === 0).map((i) => i.getAttribute("src")),
+        brokenImages: [...document.images].filter((i) => i.getClientRects().length && (!i.complete || i.naturalWidth === 0)).map((i) => i.getAttribute("src")),
         mono: [...new Set(texts.filter((e) => mono.test(getComputedStyle(e).fontFamily.split(",")[0]!)).map((e) => `${e.tagName.toLowerCase()}.${e.className}`))].slice(0, 3),
         em: document.body.innerText.includes(em),
         live: document.querySelectorAll("[data-live]").length,
@@ -188,7 +190,8 @@ for (const width of [1280, 390]) {
       await page.goto(base, { waitUntil: "load" });
       await page.click("#dc-menu");
       const link = page.locator('.dc-nav a[href$="/glossary"]');
-      await page.locator(".dc-nav-s", { has: link }).locator("summary").first().click();
+      if (await link.isVisible()) return "another section's pages are unfolded before their group is opened";
+      await page.locator(".dc-nav-s", { has: page.locator('a[href$="/glossary"]') }).locator("summary").first().click();
       await link.click();
       await page.waitForURL(/\/glossary/, { timeout: 10_000 });
       await page.click("#dc-menu");

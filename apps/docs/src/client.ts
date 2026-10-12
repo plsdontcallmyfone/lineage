@@ -315,6 +315,10 @@ q?.addEventListener("keydown", (ev) => {
   else if (ev.key === "Enter") {
     const hit = res?.querySelectorAll<HTMLAnchorElement>(".dc-hit")[active];
     if (hit) (ev.preventDefault(), closeSearch(), (location.href = hit.href));
+  } else if (ev.key === "Escape") {
+    // a search field would only clear itself on the first Escape
+    ev.preventDefault();
+    closeSearch();
   }
 });
 res?.addEventListener("click", (ev) => (ev.target as HTMLElement).closest(".dc-hit") && closeSearch());
