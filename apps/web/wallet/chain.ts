@@ -26,6 +26,8 @@ import {
   Rpc,
   sameBytes,
   sendJitoBundle,
+  sendInOrder,
+  type SigStatus,
   sendWire,
   base64Encode,
   wireSignature,
@@ -278,41 +280,35 @@ export async function signAndSendAll(o: {
   let ordered: string | undefined;
   if (isMainnet()) {
     try {
-      const { bundleId } = await sendJitoBundle(rpc, wires.map((w) => base64Encode(w)), { onStatus: o.onStatus });
       const sigs = wires.map((w) => wireSignature(w));
+      const { bundleId } = await sendJitoBundle(rpc, wires.map((w) => base64Encode(w)), { onStatus: o.onStatus, signatures: sigs });
       const st = await rpc.call<{ value: ({ slot: number; err: unknown } | null)[] }>("getSignatureStatuses", [sigs]);
       return { bundleId, failed: null, landed: sigs.map((signature, i) => ({ label: o.parts[i]!.label, confirmed: { signature, slot: st.value[i]?.slot ?? 0, err: st.value[i]?.err ?? null, logs: [] } })) };
     } catch (e) {
-      // The bundle was refused or did not land. The same signed transactions are sent one by one, in order: a
-      // transaction that did land is found by its signature and never sent twice. They are then no longer all or
-      // nothing, so a failure is reported with what landed before it.
+      // The bundle failed, or Jito did not know it within the grace time, and none of it is on chain. The same
+      // signed transactions are sent one by one, in order (sendInOrder): one that did land, before or while
+      // this runs, is found by its signature and never sent twice or reported as failed. They are then no
+      // longer all or nothing, so a failure is reported with what landed before it.
       ordered = (e as Error).message;
       o.onStatus?.(`Jito did not take the bundle (${ordered}). Sending the same signed transactions one by one, in order; if one fails, the ones before it stay on chain and Launch again sends only what is missing.`);
     }
   }
-  const landed: { label: string; confirmed: Confirmed }[] = [];
-  for (const [i, wire] of wires.entries()) {
-    const label = o.parts[i]!.label;
-    if (await o.skip?.(i)) continue;
-    if (ordered) {
-      const [was] = (await rpc.call<{ value: ({ slot: number; err: unknown; confirmationStatus?: string } | null)[] }>("getSignatureStatuses", [[wireSignature(wire)]])).value;
-      if (was && !was.err && (was.confirmationStatus === "confirmed" || was.confirmationStatus === "finalized")) {
-        landed.push({ label, confirmed: { signature: wireSignature(wire), slot: was.slot, err: null, logs: [] } });
-        continue;
-      }
-    }
-    if (i > 0) {
-      // the earlier transactions have landed: this one can be simulated on the state they left
+  const r = await sendInOrder<Confirmed>({
+    count: wires.length,
+    signature: (i) => wireSignature(wires[i]!),
+    label: (i) => o.parts[i]!.label,
+    afterBundle: !!ordered,
+    statuses: async (signatures) => (await rpc.call<{ value: (SigStatus | null)[] }>("getSignatureStatuses", [signatures])).value,
+    simulate: (i) => {
       const tables = o.parts[i]!.tables ?? (o.parts[i]!.table ? [o.parts[i]!.table!] : []);
-      const sim = await simulateDetailed(rpc, wire, new Map(tables.map((t) => [t.address, t.addresses])));
-      if (sim.err) return { landed, ordered, failed: { index: i, label, error: `simulation failed: ${JSON.stringify(sim.err)}; not sent`, logs: sim.logs } };
-    }
-    o.onStatus?.(`sending ${label} (${i + 1} of ${wires.length})${ordered ? ", in order after Jito did not take the bundle" : ""}`);
-    const c = await sendWire(rpc, wire, lastValidBlockHeight, o.onStatus).catch((e) => ({ signature: wireSignature(wire), slot: 0, err: (e as Error).message, logs: [] as string[] }) as Confirmed);
-    if (c.err) return { landed, ordered, failed: { index: i, label, error: `failed on chain: ${typeof c.err === "string" ? c.err : JSON.stringify(c.err)}`, logs: c.logs } };
-    landed.push({ label, confirmed: c });
-  }
-  return { landed, ordered, failed: null };
+      return simulateDetailed(rpc, wires[i]!, new Map(tables.map((t) => [t.address, t.addresses])));
+    },
+    send: (i) => sendWire(rpc, wires[i]!, lastValidBlockHeight, o.onStatus),
+    found: (i, s) => ({ signature: wireSignature(wires[i]!), slot: s.slot, err: null, logs: [] }),
+    skip: o.skip,
+    onStatus: o.onStatus,
+  });
+  return { landed: r.landed.map((x) => ({ label: x.label, confirmed: x.confirmed })), ordered, failed: r.failed };
 }
 
 // ---------- amounts ----------

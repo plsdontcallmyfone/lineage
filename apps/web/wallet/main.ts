@@ -36,6 +36,7 @@ import {
   launchPdas,
   MAX_LAUNCH_STRINGS,
   coinMetadataUriBytes,
+  partsToSend,
   PUMP,
   pumpLaunchMain,
   pumpPdas,
@@ -853,19 +854,13 @@ function renderLaunchReview() {
   );
 }
 
-/** What a part carries that is already on chain (a retry after a devnet failure never sends it twice). */
-async function partDone(d: NonNullable<typeof S.draft>, groups: string[]): Promise<boolean> {
-  const checks: Promise<boolean>[] = groups.map(async (g) => {
-    if (g === "launch") return !!(await reader.agentLaunch(d.mint.id).catch(() => null));
-    if (g === "soul") return !!d.soul && (await reader.agent(d.agent.id).catch(() => null))?.profileDigest === soulDigest(d.soul);
-    if (g === "credits") return ((await reader.tokenBalance(launchPdas.computeVault(d.agent.id)).catch(() => null)) ?? 0n) >= d.deposit;
-    if (g === "initial-buy") return !!d.buy && ((await reader.tokenBalance(d.buy.treasuryAccount).catch(() => null)) ?? 0n) >= d.buy.amountOut;
-    return d.landed.includes(g);
-  });
-  const r = await Promise.all(checks);
-  // the SOL purchase and the payment have no marker of their own: they count as done with the part's other groups
-  const marked = groups.map((g, i) => (["sol-to-units", "units-account", "tip"].includes(g) ? null : r[i]!)).filter((x) => x !== null);
-  return marked.length ? marked.every(Boolean) : r.every(Boolean);
+/** Whether a group of the launch is already on chain (a retry never sends it twice; partsToSend decides per transaction). */
+async function groupDone(d: NonNullable<typeof S.draft>, g: string): Promise<boolean> {
+  if (g === "launch") return !!(await reader.agentLaunch(d.mint.id).catch(() => null));
+  if (g === "soul") return !!d.soul && (await reader.agent(d.agent.id).catch(() => null))?.profileDigest === soulDigest(d.soul);
+  if (g === "credits") return ((await reader.tokenBalance(launchPdas.computeVault(d.agent.id)).catch(() => null)) ?? 0n) >= d.deposit;
+  if (g === "initial-buy") return !!d.buy && ((await reader.tokenBalance(d.buy.treasuryAccount).catch(() => null)) ?? 0n) >= d.buy.amountOut;
+  return d.landed.includes(g);
 }
 
 async function launchSign() {
@@ -879,11 +874,7 @@ async function launchSign() {
   try {
     const parts: BundlePart[] = [];
     for (const t of d.swap?.plan.txs ?? []) parts.push({ ixs: t.ixs, units: 0, tables: t.tables, raw: true, label: "SOL to $UNITS (Jupiter)" });
-    const todo = [];
-    for (const t of d.plan) {
-      if (await partDone(d, t.groups)) continue;
-      todo.push(t);
-    }
+    const todo = await partsToSend(d.plan, (g) => groupDone(d, g), d.landed);
     if (todo.length < d.plan.length && d.swap) throw new Error("part of this launch is already on chain; a mainnet bundle is all or nothing, so simulate again to build the rest");
     for (const t of todo)
       parts.push({ ixs: t.ixs, units: t.groups.includes("launch") ? 450_000 : 400_000, table: t.table, label: t.groups.join(" + "),

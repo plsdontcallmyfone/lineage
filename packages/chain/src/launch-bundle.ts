@@ -155,3 +155,23 @@ export async function launchBundleTxs(rpc: Rpc, o: { mint: Address; launcher: Ad
   }
   return out;
 }
+
+/** Groups of a launch with no marker of their own on chain: they count as done with the other groups of their transaction. */
+export const UNMARKED_GROUPS = ["sol-to-units", "units-account", "tip"];
+
+/**
+ * The transactions of a launch plan that still have to be sent (pressing Launch again after a launch
+ * that stopped half way, for example the first transaction landed and the second did not): a
+ * transaction is left out when what it carries is on chain. `onChain(group)` reads the chain for a
+ * group that leaves a marker (the AgentLaunch, the soul digest, the vault's credits, the initial buy);
+ * a transaction made only of unmarked groups is done when this page saw it land (`landed`).
+ */
+export async function partsToSend<T extends { groups: string[] }>(plan: T[], onChain: (group: string) => Promise<boolean>, landed: string[]): Promise<T[]> {
+  const todo: T[] = [];
+  for (const t of plan) {
+    const marked = t.groups.filter((g) => !UNMARKED_GROUPS.includes(g));
+    const done = marked.length ? (await Promise.all(marked.map(onChain))).every(Boolean) : t.groups.every((g) => landed.includes(g));
+    if (!done) todo.push(t);
+  }
+  return todo;
+}
