@@ -10,6 +10,37 @@ export interface Quote {
   /** execution price against the marginal price (a small probe), bps */
   impact_bps: number;
   venue: "pump_curve" | "pump_pool" | "sim";
+  /** the probe behind impact_bps (a small trade's input and simulated output): the marginal price at quote time */
+  probe?: { in: bigint; out: bigint };
+}
+
+/** What a venue re-checks right before it sends (docs/plans/AGENT-WALLET-SAFETY.md "Risk management", pre-trade checks). */
+export interface PreTrade {
+  /** the quote this trade was decided on */
+  quote: Quote;
+  /** the fresh simulation must be within this of the quote, bps */
+  sim_tolerance_bps: number;
+  /** the marginal price must be within this of the quote's, bps */
+  state_drift_bps: number;
+}
+
+/** A pre-trade check failed: nothing was signed or sent. */
+export class PreTradeRefusal extends Error {
+  constructor(readonly rule: "sim_mismatch" | "state_drift", readonly detail: string) {
+    super(`${rule}: ${detail}`);
+  }
+}
+
+/** The two comparisons, shared by every venue: fresh full-size output against the quote, fresh probe output against the quote's probe. */
+export function preTradeCheck(pre: PreTrade, fresh: { out: bigint; probeOut: bigint | null }): void {
+  const gap = (a: bigint, b: bigint) => (a > b ? a - b : b - a);
+  // exact: |fresh - quoted| x 10,000 against quoted x bps (no rounding in the refusal's favour)
+  const over = (a: bigint, b: bigint, bps: number) => (b === 0n ? a !== 0n : gap(a, b) * 10_000n > b * BigInt(bps));
+  const bpsOf = (a: bigint, b: bigint) => (b === 0n ? "an unbounded number of" : ((gap(a, b) * 10_000n) / b).toString());
+  if (pre.quote.probe && fresh.probeOut !== null && over(fresh.probeOut, pre.quote.probe.out, pre.state_drift_bps))
+    throw new PreTradeRefusal("state_drift", `the marginal price moved ${bpsOf(fresh.probeOut, pre.quote.probe.out)} bps between the quote and the send (max ${pre.state_drift_bps})`);
+  if (over(fresh.out, pre.quote.out, pre.sim_tolerance_bps))
+    throw new PreTradeRefusal("sim_mismatch", `the simulation right before sending gives ${fresh.out}, the quote gave ${pre.quote.out} (tolerance ${pre.sim_tolerance_bps} bps)`);
 }
 
 export interface Fill {
@@ -32,8 +63,8 @@ export interface Venue {
   /** what the treasury key holds: $UNITS, SOL and each agent token among `mints` */
   balances(owner: string, mints: string[]): Promise<Balances>;
   quote(owner: TraderKey, t: TokenView, side: "buy" | "sell", amountIn: bigint): Promise<Quote>;
-  /** sends the trade with `minOut`; resolves once confirmed */
-  execute(owner: TraderKey, t: TokenView, side: "buy" | "sell", amountIn: bigint, minOut: bigint): Promise<Fill>;
+  /** sends the trade with `minOut`; with `pre`, simulates again first and refuses (PreTradeRefusal) on a mismatch; resolves once confirmed */
+  execute(owner: TraderKey, t: TokenView, side: "buy" | "sell", amountIn: bigint, minOut: bigint, pre?: PreTrade): Promise<Fill>;
 }
 
 /** The treasury key: an agent key the hosted runtime holds (packages/protocol AgentKey shape). */
@@ -98,12 +129,13 @@ export class SimVenue implements Venue {
     const probeIn = amountIn / 1000n > 0n ? amountIn / 1000n : 1n;
     const probe = this.out(p, side === "buy", probeIn);
     const impact = probe > 0n ? 1 - Number(out) / Number(amountIn) / (Number(probe) / Number(probeIn)) : 1;
-    return { out, impact_bps: Math.max(0, Math.round(impact * 10_000)), venue: "sim" };
+    return { out, impact_bps: Math.max(0, Math.round(impact * 10_000)), venue: "sim", probe: { in: probeIn, out: probe } };
   }
 
-  async execute(owner: TraderKey, t: TokenView, side: "buy" | "sell", amountIn: bigint, minOut: bigint): Promise<Fill> {
+  async execute(owner: TraderKey, t: TokenView, side: "buy" | "sell", amountIn: bigint, minOut: bigint, pre?: PreTrade): Promise<Fill> {
     const p = this.pools.get(t.mint);
     if (!p) throw new Error(`no pool for ${t.mint}`);
+    if (pre) preTradeCheck(pre, { out: this.out(p, side === "buy", amountIn), probeOut: pre.quote.probe ? this.out(p, side === "buy", pre.quote.probe.in) : null });
     const w = this.wallet(owner.id);
     if (w.sol < BigInt(this.feeLamports)) throw new Error("insufficient SOL for the fee");
     const have = side === "buy" ? w.line : (w.tokens.get(t.mint) ?? 0n);

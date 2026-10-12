@@ -273,6 +273,12 @@ export function buildRoutes(core: Core): Route[] {
     route("POST", "/v1/trades", "runtime", (c) => scoresOf(core).record(c.json())),
     route("POST", "/v1/agents/:id/trading/reset", "agent", (c) => scoresOf(core).reset(c.agent!, c.params.id!, c.json())),
     route("POST", "/v1/admin/trading/config", "admin", (c) => scoresOf(core).setConfig(c.json())),
+    // risk layer (docs/plans/AGENT-WALLET-SAFETY.md "Risk management"): eligibility, one trade's check, the network summary, an agent's panel, the kill switch
+    route("GET", "/v1/trading/eligibility", "none", () => core.tx(() => scoresOf(core).eligibility())),
+    route("GET", "/v1/trading/check", "none", (c) => core.tx(() => scoresOf(core).check(q(c, "agent") ?? "", q(c, "mint") ?? "", q(c, "side") ?? ""))),
+    route("GET", "/v1/trading/risk", "none", () => core.tx(() => scoresOf(core).networkRisk())),
+    route("GET", "/v1/agents/:id/risk", "none", (c) => core.tx(() => scoresOf(core).agentRisk(c.params.id!))),
+    route("POST", "/v1/admin/trading/reduce-only", "admin", (c) => scoresOf(core).setReduceOnly(c.json())),
     // social (plan PANEL-SOCIAL-PROVIDERS L, F, S; leaderboard.ts, feed.ts, social.ts): public reads;
     // follows, reactions and media are self-authenticating statements signed by a wallet
     route("GET", "/v1/leaderboard", "none", (c) => core.tx(() => leaderboardOf(core).board({ sort: q(c, "sort"), window: q(c, "window"), class: q(c, "class"), model: q(c, "model"), provider: q(c, "provider"), lineage: q(c, "lineage"), repo: q(c, "repo"), limit: int(c, "limit"), hidden: withHidden(c) }))),

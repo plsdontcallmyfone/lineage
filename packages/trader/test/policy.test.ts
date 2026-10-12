@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { mergeTradingConfig, TRADING_DEFAULTS, type TradingConfig } from "../../core/src/scores.ts";
+import { LEGACY_LIMITS } from "../../core/test/legacy-limits.ts";
 import { checkTrade, composite, enforceDecision, equityOf, haltCheck, parseDecision, riskExits, valueOf, type Book, type Market, type ModelDecision, type Position, type TokenView } from "../src/policy.ts";
 
 // Unit tests of the engine (plan T, owner amendment 2026-10-10): the decision schema the agent's model
@@ -8,9 +9,9 @@ import { checkTrade, composite, enforceDecision, equityOf, haltCheck, parseDecis
 
 const NOW = Date.UTC(2026, 9, 10, 12);
 const L = 1_000_000n; // one tUNITS in base units
-const cfg = (over: Record<string, unknown> = {}): TradingConfig => mergeTradingConfig(TRADING_DEFAULTS, over);
-const agg = TRADING_DEFAULTS.temperaments.aggressive;
-const careful = TRADING_DEFAULTS.temperaments.careful;
+const cfg = (over: Record<string, unknown> = {}): TradingConfig => mergeTradingConfig(TRADING_DEFAULTS, { ...LEGACY_LIMITS, ...over });
+const agg = cfg().temperaments.aggressive;
+const careful = cfg().temperaments.careful;
 const M = (i: number | string) => `Tok${i}x`.padEnd(40, "z");
 
 function tok(i: number, over: Partial<TokenView> = {}): TokenView {

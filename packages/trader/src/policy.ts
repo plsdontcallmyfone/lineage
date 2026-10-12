@@ -1,4 +1,4 @@
-import type { TemperamentParams, TradingConfig } from "../../core/src/scores.ts";
+import { eligibilityRefusal, type EligibilityFacts, type TemperamentParams, type TradingConfig } from "../../core/src/scores.ts";
 
 // The deterministic policy engine (plan T). Given one agent's book, the market and the published
 // scores, it returns the trades to place, each with its rule and reason, and the trades it refused
@@ -21,6 +21,37 @@ export interface TokenView {
   venue: "pump_curve" | "pump_pool" | "sim" | null;
   /** the token's agent is excluded from trading (Core's trading config) */
   excluded?: boolean;
+  /**
+   * What the buy rule reads about the token's agent (Core GET /v1/trading/eligibility): accepted
+   * unreverted generations, launch time, hidden. null: Core has no record (a buy is refused).
+   * Left undefined only by callers that do not apply the rule (pure policy tests).
+   */
+  eligibility?: EligibilityFacts | null;
+  /**
+   * Market facts the buy rule reads (the indexer, and the trader's own price samples). Undefined: the
+   * caller does not apply the rule (pure policy tests). null inside: unreadable, which refuses a buy.
+   */
+  facts?: {
+    /** real quote reserves of the curve or pool, quote base units */
+    liquidity: bigint | null;
+    holders: number | null;
+    /** largest move of the price against any sample of the last hour, as a fraction; null: under an hour of samples */
+    move_1h: number | null;
+    /** when the price was read, ms */
+    price_at: number | null;
+    /** market cap in quote base units */
+    market_cap: bigint | null;
+  };
+  /** What other hosted agents did in this token (Core GET /v1/trading/risk), already without this agent. */
+  network?: {
+    /** token base units all hosted agents hold */
+    held: bigint;
+    /** other agents that bought within the herd window */
+    buyers: number;
+    /** another agent bought / sold within the wash window */
+    bought: boolean;
+    sold: boolean;
+  };
 }
 
 export interface Position {
@@ -48,7 +79,9 @@ export interface Book {
   day: { start: number; equity: bigint; funded: bigint };
   /** highest equity seen, raised by fundings so that a deposit is not counted as gain */
   peak: bigint;
-  halted: { rule: "daily_loss" | "max_drawdown"; since: number; until: number | null } | null;
+  halted: { rule: "daily_loss" | "max_drawdown" | "breaker"; since: number; until: number | null } | null;
+  /** trades recorded for this agent in the current UTC day (Core); undefined: the caller does not apply the daily cap */
+  trades_today?: number;
   /** private: the agent's own candidate is open, or its verdict is within verdict_window_s (never published while open) */
   blackout: boolean;
   /**
@@ -100,7 +133,7 @@ export interface Decision {
   actions: Action[];
   refused: Refusal[];
   /** a halt the policy raised this tick (to be published) */
-  halt: { rule: "daily_loss" | "max_drawdown"; reason: string } | null;
+  halt: { rule: "daily_loss" | "max_drawdown" | "breaker"; reason: string } | null;
   equity: bigint;
 }
 
@@ -110,6 +143,8 @@ export interface Market {
   scores: Map<string, ScoreInput>;
   /** $UNITS decimals */
   lineDecimals: number;
+  /** the global kill switch (trading config reduce_only): no buys, sells still go */
+  reduce_only?: boolean;
 }
 
 /** Value in $UNITS base units of `qty` token base units at `price` tUNITS per whole token. */
@@ -162,6 +197,7 @@ export function checkTrade(
   now: number,
   globalLeft: number,
   lineDecimals = 6,
+  o: { reduceOnly?: boolean; exit?: boolean } = {},
 ): Refusal | null {
   const r = (rule: string, detail: string): Refusal => ({ mint: t.mint, side, rule, detail });
   const integ = integrityRefusal(b, t);
@@ -177,7 +213,34 @@ export function checkTrade(
   if (p && now - p.last_at < cfg.cooldown_s * 1000) return r("cooldown", `last trade in this token ${Math.floor((now - p.last_at) / 1000)} s ago (cooldown ${cfg.cooldown_s} s)`);
   if (p && p.last_side !== side && now - p.last_at < cfg.min_hold_s * 1000)
     return r("integrity_min_hold", `no ${side} within ${cfg.min_hold_s} s of a ${p.last_side} in the same token`);
+  // a stale or unreadable price: no trade in either direction except a risk exit already marked from a fresh price
+  if (t.facts !== undefined && !o.exit && (t.facts.price_at === null || now - t.facts.price_at > cfg.max_price_age_s * 1000))
+    return r("stale_price", t.facts.price_at === null ? "the price could not be read" : `the price is ${Math.floor((now - t.facts.price_at) / 1000)} s old (max ${cfg.max_price_age_s} s)`);
+  // wash guard: never opposite another hosted agent in the same token within the window (a risk exit is not held back)
+  if (t.network && !(side === "sell" && o.exit) && (side === "buy" ? t.network.sold : t.network.bought))
+    return r("wash_guard", `another hosted agent ${side === "buy" ? "sold" : "bought"} this token within ${cfg.wash_window_s} s`);
   if (side === "buy") {
+    if (o.reduceOnly) return r("reduce_only", "reduce only: no buys");
+    if (b.trades_today !== undefined && b.trades_today >= cfg.max_trades_per_day) return r("max_trades_per_day", `${b.trades_today} trades today (max ${cfg.max_trades_per_day})`);
+    if (t.facts !== undefined) {
+      const f = t.facts;
+      if (f.liquidity === null || f.liquidity < BigInt(cfg.eligibility_min_liquidity_line)) return r("ineligible_liquidity", `quote reserves ${f.liquidity ?? "unreadable"} below the minimum ${cfg.eligibility_min_liquidity_line}`);
+      if (f.holders === null || f.holders < cfg.eligibility_min_holders) return r("ineligible_holders", `${f.holders ?? "unreadable"} holders (minimum ${cfg.eligibility_min_holders})`);
+      if (f.move_1h === null) return r("price_history", "under an hour of price samples for this token; no buy before the anti-pump guard can judge it");
+      if (f.move_1h * 10_000 > cfg.eligibility_max_move_1h_bps) return r("anti_pump", `the price moved ${(f.move_1h * 100).toFixed(1)}% within the last hour (max ${cfg.eligibility_max_move_1h_bps / 100}%)`);
+    }
+    if (t.network && cfg.herd_window_s > 0 && t.network.buyers >= cfg.herd_max_agents) return r("herd_limit", `${t.network.buyers} other agent(s) bought this token within ${cfg.herd_window_s} s (max ${cfg.herd_max_agents})`);
+    if (t.network && t.facts !== undefined) {
+      const cap = t.facts.market_cap;
+      if (cap === null) return r("network_exposure", "the token's market cap could not be read");
+      const heldValue = valueOf(t.network.held, t.price, t.decimals, lineDecimals);
+      if (heldValue + value > bps(cap, cfg.network_max_exposure_bps)) return r("network_exposure", `hosted agents would hold more than ${cfg.network_max_exposure_bps} bps of the token's market cap`);
+    }
+    // only tokens of agents with accepted work, a launch older than the minimum age, and not hidden
+    if (t.eligibility !== undefined) {
+      const no = eligibilityRefusal(t.eligibility, cfg, now);
+      if (no) return r(no.rule, no.detail);
+    }
     if (amount < BigInt(cfg.min_trade_line)) return r("min_trade", `below the minimum trade ${cfg.min_trade_line}`);
     if (amount > b.line) return r("funds", `treasury holds ${b.line} base units of $UNITS`);
     if (amount > bps(equity, cfg.max_trade_bps)) return r("max_trade", `above ${cfg.max_trade_bps} bps of equity per trade`);
@@ -185,6 +248,9 @@ export function checkTrade(
     if ((!p || p.qty === 0n) && open >= cfg.max_open_positions) return r("max_open_positions", `${open} positions open (max ${cfg.max_open_positions})`);
     const held = p ? valueOf(p.qty, t.price, t.decimals, lineDecimals) : 0n;
     if (held + value > bps(equity, cfg.max_position_bps)) return r("max_position", `position would exceed ${cfg.max_position_bps} bps of equity`);
+    // the rest of the equity stays in the quote token
+    const deployed = equity > b.line ? equity - b.line : 0n;
+    if (deployed + value > bps(equity, cfg.max_deployed_bps)) return r("max_deployed", `positions would exceed ${cfg.max_deployed_bps} bps of equity`);
   } else {
     if (!p || p.qty <= 0n) return r("no_position", "nothing held");
     if (amount > p.qty) return r("no_position", "selling more than held");
@@ -244,7 +310,7 @@ export function riskExits(b0: Book, m: Market, cfg: TradingConfig, now: number, 
       act = { side: "sell", mint: p.mint, amount: q, rule: "take_profit", reason: `marked ${fmtPct(pnl)} against cost; take-profit at +${cfg.take_profit_bps / 100}% sells ${cfg.take_profit_sell_bps / 100}%`, score: used, value: valueOf(q, t.price, t.decimals, m.lineDecimals) };
     }
     if (!act) continue;
-    const no = checkTrade(b, t, "sell", act.amount, act.value, equity, cfg, now, left, m.lineDecimals);
+    const no = checkTrade(b, t, "sell", act.amount, act.value, equity, cfg, now, left, m.lineDecimals, { exit: true });
     if (no) {
       refused.push(no);
       continue;
@@ -376,7 +442,7 @@ export function enforceDecision(
     amount = bp === 10_000 ? p.qty : bps(p.qty, bp);
     value = valueOf(amount, t.price, t.decimals, m.lineDecimals);
   }
-  const no = checkTrade(b, t, d.action, amount, value, equity, cfg, now, globalLeft, m.lineDecimals);
+  const no = checkTrade(b, t, d.action, amount, value, equity, cfg, now, globalLeft, m.lineDecimals, { reduceOnly: m.reduce_only === true });
   if (no) return { ok: false, refusal: no };
   return { ok: true, action: { side: d.action, mint: t.mint, amount, rule: "agent_decision", reason: d.reason, score, value } };
 }

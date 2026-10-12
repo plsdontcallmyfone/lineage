@@ -2,10 +2,10 @@ import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "
 import { join } from "node:path";
 import type { AgentKey } from "@units/protocol";
 import { CoreClient } from "../../core/src/client.ts";
-import { TRADING_DEFAULTS, type Temperament, type TemperamentParams, type TradingConfig } from "../../core/src/scores.ts";
+import { TRADING_DEFAULTS, type EligibilityFacts, type Temperament, type TemperamentParams, type TradingConfig } from "../../core/src/scores.ts";
 import { enforceDecision, equityOf, parseDecision, riskExits, valueOf, type Action, type Book, type Market, type ModelDecision, type Position, type Refusal, type ScoreInput, type TokenView } from "./policy.ts";
 import { quoteWords, systemPrompt, userPrompt, type AnalysisInput, type DecisionModel, type MarketInfo, type PublicGen, type Usage } from "./analyst.ts";
-import type { TraderKey, Venue } from "./venue.ts";
+import { PreTradeRefusal, type TraderKey, type Venue } from "./venue.ts";
 import { signedAgentFollow, type FollowContext } from "../../core/src/follow-context.ts";
 import { parseFollows, splitFollows, type FollowDecision } from "./follows.ts";
 import { FirewallRefusal, guardKey } from "../../chain/src/guard.ts";
@@ -84,6 +84,9 @@ export interface TraderState {
   analyses?: { agent: string; at: number; model: string; usd: number; outcome: string; rule: string | null; ref: string; post: string | null }[];
   /** board posts of analyses, newest last (bounded) */
   posts?: { agent: string; at: number; ref: string; msg_id: string | null; board: string }[];
+  /** risk layer: price samples of the last hour per mint (the anti-pump guard), and each agent's recent failures (the circuit breaker) */
+  prices?: { at: number; p: Record<string, number> }[];
+  failures?: Record<string, number[]>;
   /** follow decisions from analysis rounds, newest last (bounded): sent, or the rule that dropped or refused them */
   follows?: { agent: string; at: number; target: string | null; follow: boolean | null; reason: string | null; outcome: "sent" | "refused" | "dropped"; rule: string | null }[];
 }
@@ -158,6 +161,71 @@ export class Trader {
     return out;
   }
 
+  /** The buy rule's facts per mint (Core GET /v1/trading/eligibility); a token Core does not list gets none and cannot be bought. */
+  private async eligibility(): Promise<Map<string, EligibilityFacts>> {
+    const r = await this.anon.get("/v1/trading/eligibility");
+    if (r.status !== 200) throw new Error(`eligibility: HTTP ${r.status}`);
+    return new Map((r.body.tokens as ({ mint: string } & EligibilityFacts)[]).map((t) => [t.mint, { accepted: t.accepted, launched_at: t.launched_at, hidden: t.hidden }]));
+  }
+
+  private risk: { reduce_only: boolean; agents: Record<string, { trades_today: number }>; tokens: { mint: string; network_held: string; recent: { agent: string; side: "buy" | "sell"; at: number }[] }[] } = { reduce_only: false, agents: {}, tokens: [] };
+
+  /** The network's risk state (Core GET /v1/trading/risk): the kill switch, trades today, who traded which token lately. */
+  private async networkRisk(): Promise<Trader["risk"]> {
+    const r = await this.anon.get("/v1/trading/risk");
+    if (r.status !== 200) throw new Error(`risk: HTTP ${r.status}`);
+    return r.body as Trader["risk"];
+  }
+
+  /** The market as one agent sees it: every token with what the OTHER hosted agents did in it (herd, wash and exposure guards). */
+  private marketFor(agent: string, market: Market, cfg: TradingConfig): Market {
+    const now = this.now();
+    const by = new Map(this.risk.tokens.map((t) => [t.mint, t]));
+    return {
+      ...market,
+      tokens: market.tokens.map((t) => {
+        const x = by.get(t.mint);
+        const others = (x?.recent ?? []).filter((e) => e.agent !== agent);
+        const within = (side: "buy" | "sell", s: number) => others.filter((e) => e.side === side && now - e.at < s * 1000);
+        return { ...t, network: { held: BigInt(x?.network_held ?? "0"), buyers: new Set(within("buy", cfg.herd_window_s).map((e) => e.agent)).size, bought: within("buy", cfg.wash_window_s).length > 0, sold: within("sell", cfg.wash_window_s).length > 0 } };
+      }),
+    };
+  }
+
+  /** Samples every price (at most once a minute, an hour kept) and returns each mint's largest move against the last hour's samples; no entry until a sample is 55 minutes old. */
+  private samplePrices(raw: MarketToken[]): Map<string, number> {
+    const now = this.now();
+    const h = (this.state.prices ??= []);
+    const cur: Record<string, number> = {};
+    for (const t of raw) if (t.price !== null && t.price > 0) cur[t.mint] = t.price;
+    if (!h.length || now - h[h.length - 1]!.at >= 60_000) h.push({ at: now, p: cur });
+    while (h.length > 1 && h[0]!.at < now - 3_600_000 - 120_000) h.shift();
+    const out = new Map<string, number>();
+    for (const [mint, p] of Object.entries(cur)) {
+      const seen = h.filter((x) => x.p[mint] !== undefined && x.at >= now - 3_600_000 - 120_000);
+      if (!seen.length || now - seen[0]!.at < 55 * 60_000) continue;
+      let move = 0;
+      for (const x of seen) move = Math.max(move, Math.abs(p / x.p[mint]! - 1));
+      out.set(mint, move);
+    }
+    return out;
+  }
+
+  /** Circuit breaker: a failed or firewall-refused transaction or a pre-trade mismatch counts; enough of them in the window halt the agent until a reset. */
+  private async noteFailure(a: TradingAgent, cfg: TradingConfig, rule: string, detail: string) {
+    const now = this.now();
+    const l = ((this.state.failures ??= {})[a.agent] ??= []);
+    l.push(now);
+    while (l.length && l[0]! < now - cfg.breaker_window_s * 1000) l.shift();
+    this.save();
+    if (l.length < cfg.breaker_failures) return;
+    const reason = `${l.length} failed or refused transactions within ${cfg.breaker_window_s} s (last: ${rule}: ${detail.slice(0, 120)})`;
+    this.state.failures![a.agent] = [];
+    this.save();
+    await this.publish({ kind: "halt", ref: `halt:${a.agent}:breaker:${now}`, agent: a.agent, at: now, rule: "breaker", reason });
+    this.log(`${a.agent.slice(0, 6)} halted by the circuit breaker: ${reason}`);
+  }
+
   /** Whether the agent's own candidate is open or was decided within the verdict window (private: the agent's own signed read). */
   private async blackout(a: TradingAgent, cfg: TradingConfig): Promise<boolean> {
     const as = new CoreClient(this.d.core, { ...(a.key as AgentKey), agent: a.agent }, this.now);
@@ -174,7 +242,7 @@ export class Trader {
   private async haltOf(agent: string): Promise<Book["halted"]> {
     const r = await this.anon.get(`/v1/agents/${agent}/trades?limit=1`);
     if (r.status !== 200) return null;
-    const h = r.body.halt as { rule: "daily_loss" | "max_drawdown"; since: number; until: number | null } | null;
+    const h = r.body.halt as { rule: "daily_loss" | "max_drawdown" | "breaker"; since: number; until: number | null } | null;
     return h ? { rule: h.rule, since: h.since, until: h.until } : null;
   }
 
@@ -238,15 +306,18 @@ export class Trader {
       await this.flush();
       const cfg = await this.config();
       if (!cfg.enabled) return { trades: 0, refused: [] };
-      const [scores, parties, raw, agents] = await Promise.all([this.scoreInputs(cfg), this.parties(), this.d.tokens(), this.d.agents()]);
+      const [scores, parties, raw, agents, elig] = await Promise.all([this.scoreInputs(cfg), this.parties(), this.d.tokens(), this.d.agents(), this.eligibility()]);
       this.lastTokens = raw;
-      const tokens: TokenView[] = raw.map(({ info: _info, ...t }) => ({ ...t, parties: parties.get(t.agent) ?? [], excluded: !!cfg.excluded_agents[t.agent] }));
-      const market: Market = { tokens, scores, lineDecimals: this.d.lineDecimals };
+      const moves = this.samplePrices(raw);
+      const tokens: TokenView[] = raw.map(({ info: _info, ...t }) => ({ ...t, parties: parties.get(t.agent) ?? [], excluded: !!cfg.excluded_agents[t.agent], eligibility: elig.get(t.mint) ?? null,
+        ...(t.facts ? { facts: { ...t.facts, move_1h: moves.get(t.mint) ?? null } } : {}) }));
+      this.risk = await this.networkRisk();
+      const market: Market = { tokens, scores, lineDecimals: this.d.lineDecimals, reduce_only: cfg.reduce_only || this.risk.reduce_only };
       let trades = 0;
       const refusedAll: Refusal[] = [];
       for (const a of agents) {
         try {
-          const r = await this.tickAgent(a, cfg, market, parties.get(a.agent) ?? []);
+          const r = await this.tickAgent(a, cfg, this.marketFor(a.agent, market, cfg), parties.get(a.agent) ?? []);
           trades += r.trades;
           refusedAll.push(...r.refused);
         } catch (e) {
@@ -317,6 +388,7 @@ export class Trader {
       blackout: await this.blackout(a, cfg),
       // its own token (the launcher's initial buy): read for the prompt and the record, never a position
       own_held: a.mint ? (bal.tokens.get(a.mint) ?? 0n) : 0n,
+      trades_today: this.risk.agents[a.agent]?.trades_today ?? 0,
     };
     const equity = equityOf(book, market);
     if (bs.halt_seen === "max_drawdown" && !book.halted) {
@@ -402,6 +474,7 @@ export class Trader {
     const base = await this.bookNow(a, market, {
       agent: a.agent, mint: a.mint, parties: market.tokens.find((t) => t.mint === a.mint)?.parties ?? [], line: 0n, sol: 0n, positions: {},
       day: { start: bs.day?.start ?? 0, equity: big(bs.day?.equity), funded: big(bs.day?.funded) }, peak: big(bs.peak), halted: null, blackout: false,
+      trades_today: this.risk.agents[a.agent]?.trades_today ?? 0,
     });
     base.parties = this.lastParties.get(a.agent) ?? base.parties;
     // an empty treasury has nothing to decide: no model call (it cost about 0.03 USD a round on the site)
@@ -571,8 +644,17 @@ export class Trader {
       if (e instanceof FirewallRefusal) {
         this.log(`${a.agent.slice(0, 6)} ${act.side} ${act.mint.slice(0, 6)} refused by the firewall: ${e.rule} (${e.detail})`);
         this.hit({ mint: act.mint, side: act.side, rule: `firewall_${e.rule}`, detail: e.detail });
+        await this.noteFailure(a, cfg, `firewall_${e.rule}`, e.detail);
         return { ok: false, rule: `firewall_${e.rule}`, detail: e.detail.slice(0, 200) };
       }
+      // a pre-trade check failed (the simulation or the marginal price moved since the quote): nothing was signed
+      if (e instanceof PreTradeRefusal) {
+        this.log(`${a.agent.slice(0, 6)} ${act.side} ${act.mint.slice(0, 6)} refused before sending: ${e.rule} (${e.detail})`);
+        this.hit({ mint: act.mint, side: act.side, rule: e.rule, detail: e.detail });
+        await this.noteFailure(a, cfg, e.rule, e.detail);
+        return { ok: false, rule: e.rule, detail: e.detail.slice(0, 200) };
+      }
+      await this.noteFailure(a, cfg, "execution_failed", (e as Error).message);
       this.log(`${a.agent.slice(0, 6)} ${act.side} ${act.mint.slice(0, 6)} failed: ${(e as Error).message}`);
       this.hit({ mint: act.mint, side: act.side, rule: "execution_failed", detail: (e as Error).message });
       return { ok: false, rule: "execution_failed", detail: (e as Error).message.slice(0, 200) };
@@ -610,7 +692,7 @@ export class Trader {
       return { ok: false, rule: "zero_out", detail: "the simulated output is zero" };
     }
     const minOut = (q.out * BigInt(10_000 - cfg.max_slippage_bps)) / 10_000n;
-    const fill = await this.d.venue.execute(a.key, t, act.side, amount, minOut);
+    const fill = await this.d.venue.execute(a.key, t, act.side, amount, minOut, { quote: q, sim_tolerance_bps: cfg.sim_tolerance_bps, state_drift_bps: cfg.state_drift_bps });
     this.state.epoch.count++;
     this.state.trades++;
     // book: cost basis follows the fill

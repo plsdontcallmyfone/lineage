@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, test } from "bun:test";
 import { generateAgentKey } from "../src/protocol.ts";
+import { LEGACY_LIMITS } from "./legacy-limits.ts";
 import { combineScores, mergeTradingConfig, storedPatch, temperamentFromSoul, TRADING_DEFAULTS, type RawComponents } from "../src/scores.ts";
 import { agentClient, authorLeaks, bare, diff, expectOk, honest, makeAuthor, result, runReplays, setup, submit, type Agent, type Env } from "./helpers.ts";
 
@@ -30,15 +31,18 @@ describe("trading config", () => {
     envs.push(e);
     const c = await expectOk(e.anon.get("/v1/trading/config"));
     expect([c.max_position_bps, c.max_trade_bps, c.max_open_positions, c.daily_loss_bps, c.max_drawdown_bps, c.stop_loss_bps, c.take_profit_bps, c.max_slippage_bps, c.max_impact_bps, c.cooldown_s, c.min_hold_s]).toEqual([
-      1000, 300, 8, 500, 2000, 1500, 4000, 200, 100, 600, 1800,
+      500, 100, 5, 200, 1000, 1000, 2500, 100, 50, 1800, 3600,
     ]);
+    // the risk layer's own defaults (owner 2026-10-12)
+    expect([c.max_deployed_bps, c.max_trades_per_day, c.take_profit_sell_bps, c.eligibility_min_generations, c.eligibility_min_age_s, c.eligibility_max_move_1h_bps, c.network_max_exposure_bps, c.reduce_only]).toEqual([2500, 10, 5000, 1, 86_400, 3000, 500, false]);
+    expect(Object.values(c.temperaments).map((t: any) => t.size_bps).every((x: number) => x <= c.max_trade_bps)).toBe(true);
     expect(c.trade_share_bps).toBe(1000);
-    expect(c.default_temperament).toBe("aggressive");
+    expect(c.default_temperament).toBe("careful");
     // only the admin edits it
     const someone = agentClient(e);
     expect((await someone.c.post("/v1/admin/trading/config", { max_trade_bps: 9000 })).status).toBe(403);
     const up = await expectOk(e.admin.c.post("/v1/admin/trading/config", { max_trade_bps: 200, cooldown_s: 120, temperaments: { careful: { size_bps: 50 } } }));
-    expect([up.max_trade_bps, up.cooldown_s, up.temperaments.careful.size_bps, up.max_position_bps]).toEqual([200, 120, 50, 1000]);
+    expect([up.max_trade_bps, up.cooldown_s, up.temperaments.careful.size_bps, up.max_position_bps]).toEqual([200, 120, 50, 500]);
     expect((await e.anon.get("/v1/trading/config")).body.max_trade_bps).toBe(200);
     // bounds: a typo cannot switch the limits off
     for (const bad of [{ max_trade_bps: 10_001 }, { cooldown_s: -1 }, { momentum_weight: 0.5 }, { nope: 1 }, { temperaments: { reckless: {} } }, { score_weights: { verified_gain_7d: 0, accepted_generations: 0, acceptance_rate: 0, sessions_24h: 0, leaderboard_rank: 0, follower_growth: 0 } }]) {
@@ -51,7 +55,7 @@ describe("trading config", () => {
   test("merge keeps untouched fields; temperament comes from the soul's own words", () => {
     const c = mergeTradingConfig(TRADING_DEFAULTS, { stop_loss_bps: 1000 });
     expect(c.stop_loss_bps).toBe(1000);
-    expect(c.take_profit_bps).toBe(4000);
+    expect(c.take_profit_bps).toBe(2500);
     expect(temperamentFromSoul({ seed: { values: ["careful with money"], vibe: "x" }, persona: { values: [] } }, "aggressive")).toBe("careful");
     expect(temperamentFromSoul({ seed: { values: [], vibe: "a steady hand" }, persona: { values: [] } }, "aggressive")).toBe("balanced");
     expect(temperamentFromSoul({ seed: { values: ["speed"], vibe: "bold" }, persona: { values: ["craft"] } }, "aggressive")).toBe("aggressive");
@@ -109,6 +113,7 @@ describe("trade records and integrity rules (attempts to break each)", () => {
   async function three() {
     const e = bare();
     envs.push(e);
+    await expectOk(e.admin.c.post("/v1/admin/trading/config", LEGACY_LIMITS)); // the older rules at the values these tests were written for
     const L1 = generateAgentKey().id;
     const L2 = generateAgentKey().id;
     const A = await launched(e, L1);

@@ -2,6 +2,7 @@ import type { AgentKey } from "@units/protocol";
 import { checkSoul, nextVersion, signSoul, soulDigest } from "../../souls/src/doc.ts";
 import { composeInVoice, type ModelClient, type Usage } from "../../souls/src/generator.ts";
 import type { SoulDoc } from "../../souls/src/schema.ts";
+import { scrubField } from "../../protocol/src/untrusted.ts";
 
 // Agent posts (plan PANEL-SOCIAL-PROVIDERS S): after each accepted generation, and on a cadence, the
 // hosted runtime writes a short post in the agent's soul voice from facts only (what changed, the
@@ -80,13 +81,20 @@ interface FeedGen {
 
 const fmt = (x: number, d = 2) => x.toFixed(d);
 
+// The names in a facts block come from outside (recipe names can be proposed by agents, test and
+// metric names come from repositories): each is reduced to one plain line with any address removed
+// (packages/protocol untrusted.ts), so a name cannot carry an instruction, a link or a wallet into
+// a post the agent signs. Figures are numbers the engine formats; the link is built here.
+// A name is one token: everything after the first character outside a name's alphabet is dropped, so a sentence cannot ride in.
+const nameOf = (v: unknown, fallback: string, max = 48) => scrubField(v, { max: 400, allow: /[A-Za-z0-9._:/\[\]-]/, fallback: "" }).split(" ")[0]!.slice(0, max).replace(/^\[address$/, "") || fallback;
+
 /** The facts block for an accepted generation: only public, final figures. */
 export function generationFacts(g: FeedGen, siteGen: string): string {
   const e = g.generation.effect ?? {};
-  const lines = [`Accepted generation ${g.generation.height} on the ${g.recipe_name ?? "repository"} lineage (kind ${g.generation.kind}).`];
-  if (Array.isArray(e.fixed)) lines.push(`It fixed ${e.fixed.length} failing test(s): ${e.fixed.slice(0, 4).join(", ")}.`);
+  const lines = [`Accepted generation ${Number(g.generation.height)} on the ${nameOf(g.recipe_name, "repository")} lineage (kind ${nameOf(g.generation.kind, "change", 12)}).`];
+  if (Array.isArray(e.fixed)) lines.push(`It fixed ${e.fixed.length} failing test(s): ${e.fixed.slice(0, 4).map((t: unknown) => nameOf(t, "a test", 80)).join(", ")}.`);
   else if (typeof e.ratio === "number") {
-    lines.push(`Measured metric: ${e.metric ?? String(g.generation.target)}. Ratio to the parent: ${fmt(e.ratio, 4)}, so ${fmt((1 - e.ratio) * 100)} percent lower.`);
+    lines.push(`Measured metric: ${nameOf(e.metric ?? (typeof g.generation.target === "string" ? g.generation.target : JSON.stringify(g.generation.target)), "the target metric")}. Ratio to the parent: ${fmt(e.ratio, 4)}, so ${fmt((1 - e.ratio) * 100)} percent lower.`);
     if (Array.isArray(e.per_replay)) lines.push(`Reproduced by ${e.per_replay.length} independent replays.`);
   }
   lines.push(`Link: ${siteGen}`);

@@ -1,14 +1,14 @@
 import { appendFileSync, existsSync, mkdirSync, readFileSync, renameSync, statSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { bytesToHex, sha256, type Address } from "./codec.ts";
-import { evaluate, lookupTablesOf, mintsNamed, parseMessageStrict, type FirewallContext, type FirewallLimits, type MintFacts, type Verdict } from "./firewall.ts";
+import { evaluate, lookupTablesOf, mintsNamed, parseMessageStrict, swapNamed, type CoreCheck, type FirewallContext, type FirewallLimits, type MintFacts, type Verdict } from "./firewall.ts";
 import { FirewallRefusal, installAuthorizer } from "./guard.ts";
 import { decodeAgentLaunch, decodeLaunchConfig, launchPdas, type LaunchConfig } from "./launch.ts";
 import { ata, TOKEN_2022_PROGRAM } from "./pda.ts";
 import { LAUNCH_PROGRAM_ID } from "./programs.ts";
 import { decodeBondingCurve, decodePumpPool, PUMP, pumpPdas } from "./pump.ts";
 import type { Rpc } from "./rpc.ts";
-import { decodeTokenAccount } from "./spl.ts";
+import { decodeMint, decodeTokenAccount } from "./spl.ts";
 import { ALT_PROGRAM, decodeLookupTable } from "./v0.ts";
 
 // The firewall as a running thing (docs/plans/AGENT-WALLET-SAFETY.md section 3.1): for each
@@ -31,6 +31,11 @@ export interface AgentFirewallOptions {
   identity(key: Address): FirewallIdentity | null;
   /** the trading config's firewall limits; null or a throw: no swap is signed */
   limits(): Promise<FirewallLimits | null>;
+  /**
+   * Core's answer for one swap (GET /v1/trading/check). An absent callback, null or a throw: Core
+   * could not be asked, and no buy is signed.
+   */
+  coreCheck?(agent: Address, mint: Address, side: "buy" | "sell"): Promise<CoreCheck | null>;
   /** where the day ledger and the decision log live (mode 700) */
   dir: string;
   now?: () => number;
@@ -129,24 +134,33 @@ export class AgentFirewall {
   /** The facts of one mint, read from chain: its launch record, its curve, its canonical pool and the pool's vaults. */
   private async mintFacts(mint: Address, lc: LaunchConfig): Promise<MintFacts> {
     const pool = pumpPdas.pool(mint, lc.lineMint);
-    const [la, curve, pl, baseVault, quoteVault] = await this.o.rpc.getMultipleAccounts([
-      launchPdas.agentLaunch(mint), pumpPdas.bondingCurve(mint), pool, ata(pool, mint, TOKEN_2022_PROGRAM), ata(pool, lc.lineMint, lc.lineTokenProgram),
+    const [la, curve, pl, baseVault, quoteVault, mintAcc] = await this.o.rpc.getMultipleAccounts([
+      launchPdas.agentLaunch(mint), pumpPdas.bondingCurve(mint), pool, ata(pool, mint, TOKEN_2022_PROGRAM), ata(pool, lc.lineMint, lc.lineTokenProgram), mint,
     ]);
-    const facts: MintFacts = { registered: false, agent: null, curve: null, pool: null };
+    const facts: MintFacts = { registered: false, agent: null, createdAt: null, supply: null, liquidity: null, curve: null, pool: null };
     if (!la || la.owner !== LAUNCH_PROGRAM_ID) return facts;
     const launch = decodeAgentLaunch(la.data);
     if (launch.mint !== mint || launch.venue !== "pump") return facts;
     facts.registered = true;
     facts.agent = launch.agent;
+    facts.createdAt = launch.createdAt;
+    if (mintAcc && mintAcc.owner === TOKEN_2022_PROGRAM) facts.supply = decodeMint(mintAcc.data).supply;
     if (curve && curve.owner === PUMP.program) {
       const c = decodeBondingCurve(curve.data);
-      if (!c.complete && c.virtualTokenReserves > 0n && c.virtualQuoteReserves > 0n) facts.curve = { quote: c.virtualQuoteReserves, base: c.virtualTokenReserves };
+      if (!c.complete && c.virtualTokenReserves > 0n && c.virtualQuoteReserves > 0n) {
+        facts.curve = { quote: c.virtualQuoteReserves, base: c.virtualTokenReserves };
+        facts.liquidity = c.realQuoteReserves;
+      }
     }
     if (pl && pl.owner === PUMP.amm && baseVault && quoteVault) {
       const p = decodePumpPool(pl.data);
       const base = decodeTokenAccount(baseVault.data).amount;
-      const quote = decodeTokenAccount(quoteVault.data).amount + p.virtualQuoteReserves;
-      if (p.baseMint === mint && p.quoteMint === lc.lineMint && base > 0n && quote > 0n) facts.pool = { quote, base };
+      const real = decodeTokenAccount(quoteVault.data).amount;
+      const quote = real + p.virtualQuoteReserves;
+      if (p.baseMint === mint && p.quoteMint === lc.lineMint && base > 0n && quote > 0n) {
+        facts.pool = { quote, base };
+        facts.liquidity = real;
+      }
     }
     return facts;
   }
@@ -186,7 +200,22 @@ export class AgentFirewall {
     } catch (e) {
       this.log(`firewall: limits not read: ${(e as Error).message}`);
     }
-    return { key, agent: id?.agent ?? null, ownMint: id?.ownMint ?? null, quoteMint: lc.lineMint, quoteTokenProgram: lc.lineTokenProgram, mints, tables, limits, daySpent: this.spentToday(key) };
+    // the swap this message carries: Core's answer for it, and what the key holds of the two tokens
+    let core: CoreCheck | null = null;
+    let cash: bigint | null = null;
+    let held: bigint | null = null;
+    try {
+      const sw = swapNamed(parseMessageStrict(message, tables));
+      if (sw) {
+        const [q, h] = await this.o.rpc.getMultipleAccounts([ata(key, lc.lineMint, lc.lineTokenProgram), ata(key, sw.mint, TOKEN_2022_PROGRAM)]);
+        cash = q ? decodeTokenAccount(q.data).amount : 0n;
+        held = h ? decodeTokenAccount(h.data).amount : 0n;
+        if (id && this.o.coreCheck) core = await this.o.coreCheck(id.agent, sw.mint, sw.side).catch((e) => (this.log(`firewall: Core not asked: ${(e as Error).message}`), null));
+      }
+    } catch {
+      // unparseable: the policy refuses it
+    }
+    return { key, agent: id?.agent ?? null, ownMint: id?.ownMint ?? null, quoteMint: lc.lineMint, quoteTokenProgram: lc.lineTokenProgram, mints, tables, limits, daySpent: this.spentToday(key), core, cash, held, now: Math.floor(this.now() / 1000) };
   }
 
   /**

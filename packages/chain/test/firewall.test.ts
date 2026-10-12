@@ -27,14 +27,15 @@ const ATTACKER = addr(66);
 const RUNTIME = addr(7);
 const MEMO = "MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfcHr";
 
-const LIMITS: FirewallLimits = { trading_enabled: true, max_tx_quote: 100_000_000n, max_day_quote: 1_000_000_000n, min_out_bps: 9000, max_fee_lamports: 1_000_000n };
+const LIMITS: FirewallLimits = { trading_enabled: true, max_tx_quote: 100_000_000n, max_day_quote: 1_000_000_000n, min_out_bps: 9000, max_fee_lamports: 1_000_000n, min_launch_age_s: 86_400, min_liquidity_quote: 500_000_000n, max_impact_bps: 50, max_trade_bps: 100, max_position_bps: 500, max_deployed_bps: 2500, network_max_exposure_bps: 500, reduce_only: false };
 // spot: 1 token base unit costs 2 quote base units on the curve, 4 in the pool
-const facts = (o: Partial<MintFacts> = {}): MintFacts => ({ registered: true, agent: addr(50), curve: { quote: 2_000_000n, base: 1_000_000n }, pool: null, ...o });
+const NOW = 1_800_000_000;
+const facts = (o: Partial<MintFacts> = {}): MintFacts => ({ registered: true, agent: addr(50), createdAt: BigInt(NOW - 2 * 86_400), supply: 1_000_000_000_000_000n, liquidity: 1_000_000_000_000n, curve: { quote: 2_000_000_000_000n, base: 1_000_000_000_000n }, pool: null, ...o });
 function ctx(o: Partial<FirewallContext> = {}): FirewallContext {
   return {
     key: KEY, agent: AGENT, ownMint: OWN, quoteMint: QUOTE, quoteTokenProgram: T22,
-    mints: new Map([[A, facts()], [B, facts({ agent: addr(51), curve: null, pool: { quote: 4_000_000n, base: 1_000_000n } })], [OWN, facts({ agent: AGENT })]]),
-    tables: new Map(), limits: LIMITS, daySpent: 0n, ...o,
+    mints: new Map([[A, facts()], [B, facts({ agent: addr(51), curve: null, pool: { quote: 4_000_000_000_000n, base: 1_000_000_000_000n } })], [OWN, facts({ agent: AGENT })]]),
+    tables: new Map(), limits: LIMITS, daySpent: 0n, core: { ok: true, network_held: 0n }, cash: 10_000_000_000_000n, held: 0n, now: NOW, ...o,
   };
 }
 const base = (mint: Address, user = KEY) => ({ mint, quoteMint: QUOTE, quoteTokenProgram: T22, user });
@@ -219,6 +220,64 @@ describe("policy: what it refuses", () => {
   });
 });
 
+describe("risk layer re-checked at the signature (docs/plans/AGENT-WALLET-SAFETY.md, Risk management)", () => {
+  test("the kill switch: the config flag alone, or Core's answer alone, stops every buy; a sell is still signed", () => {
+    expect(rule([curveBuy()], { limits: { ...LIMITS, reduce_only: true } })).toBe("reduce_only");
+    expect(rule([curveBuy()], { core: { ok: false, rule: "reduce_only", detail: "reduce only: no buys" } })).toBe("reduce_only");
+    expect(rule([curveSell()], { limits: { ...LIMITS, reduce_only: true }, core: { ok: false, rule: "reduce_only", detail: "x" } })).toBe("ALLOWED");
+  });
+
+  test("Core's rules: whatever refuses the buy there refuses the signature; Core unreachable: no buy, a sell still goes", () => {
+    for (const r of ["ineligible_generations", "ineligible_hidden", "ineligible_age", "herd_limit", "wash_guard", "max_trades_per_day", "integrity_halted", "integrity_same_party"])
+      expect(rule([curveBuy()], { core: { ok: false, rule: r, detail: "from Core" } })).toBe(r);
+    expect(rule([curveBuy()], { core: null })).toBe("core_unavailable");
+    expect(rule([poolBuy()], { core: null })).toBe("core_unavailable");
+    expect(rule([curveSell()], { core: null })).toBe("ALLOWED");
+    expect(rule([poolSell()], { core: null })).toBe("ALLOWED");
+  });
+
+  test("launch age and liquidity are read from chain, not taken from Core", () => {
+    const young = new Map([[A, facts({ createdAt: BigInt(NOW - 86_399) })]]);
+    expect(rule([curveBuy()], { mints: young })).toBe("ineligible_age");
+    expect(rule([curveBuy()], { mints: new Map([[A, facts({ createdAt: BigInt(NOW - 86_400) })]]) })).toBe("ALLOWED");
+    expect(rule([curveBuy()], { mints: new Map([[A, facts({ createdAt: null })]]) })).toBe("ineligible_age");
+    expect(rule([curveSell()], { mints: young })).toBe("ALLOWED");
+    expect(rule([curveBuy()], { mints: new Map([[A, facts({ liquidity: 499_999_999n })]]) })).toBe("ineligible_liquidity");
+    expect(rule([curveBuy()], { mints: new Map([[A, facts({ liquidity: 500_000_000n })]]) })).toBe("ALLOWED");
+    expect(rule([curveBuy()], { mints: new Map([[A, facts({ liquidity: null })]]) })).toBe("ineligible_liquidity");
+  });
+
+  test("price impact: 0.5% of the reserve the trade goes into, both directions", () => {
+    // a reserve of 2,000 quote: 10 in is 49.75 bps of (2,000 + 10); 10.1 in is past 50
+    const thin = (q: bigint, b: bigint) => new Map([[A, facts({ curve: { quote: q, base: b } })]]);
+    expect(rule([curveBuy(A, 10_000_000n, 4_800_000n)], { mints: thin(2_000_000_000n, 1_000_000_000n) })).toBe("ALLOWED");
+    expect(rule([curveBuy(A, 10_100_000n, 4_800_000n)], { mints: thin(2_000_000_000n, 1_000_000_000n) })).toBe("max_impact");
+    // a sell of 1,000,000 tokens into a base reserve of 199,000,000 is exactly 50 bps of (reserve + size)
+    expect(rule([curveSell(A, 1_000_000n, 1_900_000n)], { mints: thin(398_000_000n, 199_000_000n) })).toBe("ALLOWED");
+    expect(rule([curveSell(A, 1_000_000n, 1_900_000n)], { mints: thin(397_999_998n, 198_999_999n) })).toBe("max_impact");
+  });
+
+  test("per trade 1% and per position 5%, against what the key holds on chain", () => {
+    // cash 750: equity can be at most 1,000 while 25% may be deployed, so one trade may be 10
+    expect(rule([curveBuy(A, 10_000_000n, 4_800_000n)], { cash: 750_000_000n })).toBe("ALLOWED");
+    expect(rule([curveBuy(A, 10_000_001n, 4_800_000n)], { cash: 750_000_000n })).toBe("max_trade");
+    expect(rule([curveBuy(A, 10_000_000n, 4_800_000n)], { cash: 749_999_999n })).toBe("max_trade");
+    // it already holds 20,000,000 tokens (worth 40): 10 more makes exactly 50, the 5% cap
+    expect(rule([curveBuy(A, 10_000_000n, 4_800_000n)], { cash: 750_000_000n, held: 20_000_000n })).toBe("ALLOWED");
+    expect(rule([curveBuy(A, 10_000_000n, 4_800_000n)], { cash: 750_000_000n, held: 20_000_001n })).toBe("max_position");
+    expect(rule([curveBuy()], { cash: null })).toBe("balances_unreadable");
+    expect(rule([curveSell()], { cash: null, held: null })).toBe("ALLOWED");
+  });
+
+  test("network exposure: all hosted agents together at most 5% of the supply, with this buy", () => {
+    // supply 1e15: 5% is 5e13 tokens; this buy adds 5,000,000
+    const held = (n: bigint) => ({ core: { ok: true as const, network_held: n } });
+    expect(rule([curveBuy()], held(50_000_000_000_000n - 5_000_000n))).toBe("ALLOWED");
+    expect(rule([curveBuy()], held(50_000_000_000_000n - 4_999_999n))).toBe("network_exposure");
+    expect(rule([curveBuy()], { mints: new Map([[A, facts({ supply: null })]]) })).toBe("network_exposure");
+  });
+});
+
 describe("strict parser and lookup tables", () => {
   const good = () => msgOf([curveBuy()]);
   test("trailing bytes, truncation, an unknown version", () => {
@@ -321,7 +380,16 @@ function tokenAccountBytes(mint: Address, owner: Address, amount: bigint): Uint8
   d.set(new Writer().address(mint).address(owner).u64(amount).done(), 0);
   return d;
 }
-function chainWorld(o: { tableFrozen?: boolean } = {}) {
+function mintBytes(supply: bigint): Uint8Array {
+  const d = new Uint8Array(82);
+  new DataView(d.buffer).setBigUint64(36, supply, true);
+  d[44] = 6;
+  return d;
+}
+/** The chain-backed tests keep the chain-read limits wide open unless a test is about them. */
+const WIDE = { min_out_bps: 0, min_liquidity_quote: 0n, max_impact_bps: 10_000, max_trade_bps: 10_000, max_position_bps: 10_000 };
+const coreOk = async () => ({ ok: true as const, network_held: 0n });
+function chainWorld(o: { tableFrozen?: boolean; funded?: Address[] } = {}) {
   const m = new Map<string, { data: Uint8Array; owner: string }>();
   m.set(launchPdas.config(), { data: launchConfigBytes(), owner: LAUNCH_PROGRAM_ID });
   m.set(launchPdas.agentLaunch(a1), { data: agentLaunchBytes(a1, addr(60)), owner: LAUNCH_PROGRAM_ID });
@@ -335,6 +403,8 @@ function chainWorld(o: { tableFrozen?: boolean } = {}) {
   m.set(pool, { data: b64(fx.accounts.a2_pool), owner: PUMP.amm });
   m.set(ata(pool, a2, T22), { data: tokenAccountBytes(a2, pool, 1_000_000_000_000n), owner: T22 });
   m.set(ata(pool, line, T22), { data: tokenAccountBytes(line, pool, 500_000_000_000n), owner: T22 });
+  for (const mint of [a1, a2]) m.set(mint, { data: mintBytes(1_000_000_000_000_000n), owner: T22 });
+  for (const k of o.funded ?? []) m.set(ata(k, line, T22), { data: tokenAccountBytes(line, k, 10_000_000_000_000n), owner: T22 });
   const tbl = new Uint8Array(56 + 32);
   new DataView(tbl.buffer).setUint32(0, 1, true);
   new DataView(tbl.buffer).setBigUint64(4, (1n << 64n) - 1n, true);
@@ -358,10 +428,10 @@ function chainWorld(o: { tableFrozen?: boolean } = {}) {
 describe("AgentFirewall: context from chain, ledger, log", () => {
   const key = generateAgentKey();
   const lb = (mint: string) => ({ mint, quoteMint: line, quoteTokenProgram: T22, user: key.id });
-  function make(o: { limits?: FirewallLimits | null; now?: () => number; tableFrozen?: boolean } = {}) {
+  function make(o: { limits?: FirewallLimits | null; now?: () => number; tableFrozen?: boolean; coreCheck?: () => Promise<any> } = {}) {
     const dir = mkdtempSync(join(tmpdir(), "fw-"));
-    const { rpc } = chainWorld(o);
-    const fw = new AgentFirewall({ rpc, dir, now: o.now, identity: (k) => (k === key.id ? { agent: AGENT, ownMint: addr(72) } : null), limits: async () => (o.limits === undefined ? { ...LIMITS, min_out_bps: 0 } : o.limits) });
+    const { rpc } = chainWorld({ ...o, funded: [key.id] });
+    const fw = new AgentFirewall({ rpc, dir, now: o.now, identity: (k) => (k === key.id ? { agent: AGENT, ownMint: addr(72) } : null), limits: async () => (o.limits === undefined ? { ...LIMITS, ...WIDE } : o.limits), coreCheck: o.coreCheck ?? coreOk });
     return { fw, dir, rpc };
   }
   const m = (ixs: Ix[]) => compileMessage(key.id, ixs, BH).bytes;
@@ -396,7 +466,7 @@ describe("AgentFirewall: context from chain, ledger, log", () => {
 
   test("the day ledger: the limit holds across calls and resets on the next UTC day", async () => {
     let now = Date.parse("2026-10-11T12:00:00Z");
-    const { fw } = make({ limits: { ...LIMITS, min_out_bps: 0, max_tx_quote: 6_000_000n, max_day_quote: 10_000_000n }, now: () => now });
+    const { fw } = make({ limits: { ...LIMITS, ...WIDE, max_tx_quote: 6_000_000n, max_day_quote: 10_000_000n }, now: () => now });
     const buy = () => fw.authorize(key.id, m([pump.buyExactQuoteInV3({ ...lb(a1), spendableQuoteIn: 6_000_000n, minTokensOut: 1n })]));
     await buy();
     await expect(buy()).rejects.toMatchObject({ rule: "max_day_value" });
@@ -412,7 +482,7 @@ describe("AgentFirewall: context from chain, ledger, log", () => {
     const dir = mkdtempSync(join(tmpdir(), "fw-"));
     const down = new AgentFirewall({ rpc: new Rpc(async () => { throw new Error("rpc down"); }), dir, identity: () => ({ agent: AGENT, ownMint: null }), limits: async () => LIMITS });
     await expect(down.authorize(key.id, m(buy))).rejects.toMatchObject({ rule: "context_unavailable" });
-    const throwing = new AgentFirewall({ rpc: chainWorld().rpc, dir, identity: () => ({ agent: AGENT, ownMint: null }), limits: async () => { throw new Error("core down"); } });
+    const throwing = new AgentFirewall({ rpc: chainWorld().rpc, dir, identity: () => ({ agent: AGENT, ownMint: null }), limits: async () => { throw new Error("core down"); }, coreCheck: coreOk });
     await expect(throwing.authorize(key.id, m(buy))).rejects.toMatchObject({ rule: "no_limits" });
   });
 
@@ -422,6 +492,28 @@ describe("AgentFirewall: context from chain, ledger, log", () => {
     await expect(make({ tableFrozen: false }).fw.authorize(key.id, v0)).rejects.toMatchObject({ rule: "lookup_table" });
     const unknown = compileMessageV0(key.id, [pump.buyExactQuoteInV3({ ...lb(a1), spendableQuoteIn: 2_000_000n, minTokensOut: 1n })], BH, [{ address: addr(131), addresses: [PUMP.global] }]).bytes;
     await expect(make().fw.authorize(key.id, unknown)).rejects.toMatchObject({ rule: "lookup_table" });
+  });
+
+  test("the chain-read limits on real accounts: launch age, liquidity, balances and supply come from the cluster; Core is asked for the rest", async () => {
+    const buy = [pump.buyExactQuoteInV3({ ...lb(a1), spendableQuoteIn: 2_000_000n, minTokensOut: 1n })];
+    const asked: string[] = [];
+    const { fw } = make({ coreCheck: async (...a: string[]) => (asked.push(a.join(":")), { ok: true, network_held: 0n }) });
+    const c = await fw.context(key.id, m(buy));
+    expect(asked).toEqual([`${AGENT}:${a1}:buy`]);
+    expect(c.cash).toBe(10_000_000_000_000n);
+    expect(c.held).toBe(0n);
+    expect(c.mints.get(a1)).toMatchObject({ registered: true, supply: 1_000_000_000_000_000n, createdAt: 0n });
+    expect(c.mints.get(a1)!.liquidity).toBeGreaterThan(0n);
+    // Core says no: refused with Core's rule
+    await expect(make({ coreCheck: async () => ({ ok: false, rule: "ineligible_generations", detail: "0 accepted" }) }).fw.authorize(key.id, m(buy))).rejects.toMatchObject({ rule: "ineligible_generations" });
+    // Core down: no buy; the sell of the migrated coin is still signed
+    const down = make({ coreCheck: async () => { throw new Error("core down"); } }).fw;
+    await expect(down.authorize(key.id, m(buy))).rejects.toMatchObject({ rule: "core_unavailable" });
+    expect((await down.authorize(key.id, m([pumpAmm.sellV2({ ...lb(a2), pool: pumpPdas.pool(a2, line), baseIn: 1_000n, minQuoteOut: 1n })]))).kind).toBe("swap");
+    // the real per-trade cap against the key's real balance: 1% of at most 10,000,000 / 0.75
+    const tight = make({ limits: { ...LIMITS, ...WIDE, max_trade_bps: 100, max_tx_quote: 1n << 60n, max_day_quote: 1n << 60n } }).fw;
+    await expect(tight.authorize(key.id, m([pump.buyExactQuoteInV3({ ...lb(a1), spendableQuoteIn: 133_333_333_334n, minTokensOut: 1n })]))).rejects.toMatchObject({ rule: "max_trade" });
+    expect((await tight.authorize(key.id, m([pump.buyExactQuoteInV3({ ...lb(a1), spendableQuoteIn: 133_333_333_333n, minTokensOut: 1n })]))).kind).toBe("swap");
   });
 
   test("installed: the guarded key signs the allowed swap and cannot sign the transfer", async () => {

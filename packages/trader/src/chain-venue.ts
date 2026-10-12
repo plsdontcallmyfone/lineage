@@ -20,7 +20,7 @@ import { simulateDetailed } from "../../chain/src/browser/client.ts";
 import { unsignedWire } from "../../chain/src/browser/wire.ts";
 import { decodeTokenAccount } from "../../chain/src/spl.ts";
 import type { TokenView } from "./policy.ts";
-import type { Balances, Fill, Quote, TraderKey, Venue } from "./venue.ts";
+import { preTradeCheck, type Balances, type Fill, type PreTrade, type Quote, type TraderKey, type Venue } from "./venue.ts";
 
 // Trades through packages/chain on pump.fun only (owner decision 2026-10-10): Pump
 // buy_exact_quote_in_v3 / sell_v3 on the agent coin's bonding curve while it runs, PumpSwap
@@ -145,15 +145,18 @@ export class ChainVenue implements Venue {
     const probe = await this.simulateOut(owner.id, t.mint, buy, probeIn);
     const impact = probe > 0n && amountIn > 0n ? 1 - Number(out) / Number(amountIn) / (Number(probe) / Number(probeIn)) : 1;
     const v = await this.route(t.mint);
-    return { out, impact_bps: Math.max(0, Math.round(impact * 10_000)), venue: v.kind };
+    return { out, impact_bps: Math.max(0, Math.round(impact * 10_000)), venue: v.kind, probe: { in: probeIn, out: probe } };
   }
 
-  async execute(owner: TraderKey, t: TokenView, side: "buy" | "sell", amountIn: bigint, minOut: bigint): Promise<Fill> {
+  async execute(owner: TraderKey, t: TokenView, side: "buy" | "sell", amountIn: bigint, minOut: bigint, pre?: PreTrade): Promise<Fill> {
     const buy = side === "buy";
+    // pre-trade: simulate the exact trade and the probe again; a pool or curve that moved since the quote refuses the trade
+    if (pre) preTradeCheck(pre, { out: await this.simulateOut(owner.id, t.mint, buy, amountIn), probeOut: pre.quote.probe ? await this.simulateOut(owner.id, t.mint, buy, pre.quote.probe.in) : null });
     const lm = await this.lineMint();
     const before = await this.balances(owner.id, [t.mint]);
     const ixs = await this.ixs(owner.id, t.mint, buy, amountIn, minOut);
-    const r = await sendAndConfirm(this.rpc, owner as Signer, ixs, { computeUnits: UNITS, log: this.o.log });
+    // one blockhash, fetched now: an expired transaction is not rebuilt blindly (the next tick quotes and checks again)
+    const r = await sendAndConfirm(this.rpc, owner as Signer, ixs, { computeUnits: UNITS, log: this.o.log, attempts: 1 });
     const v = await this.route(t.mint);
     this.o.onTx?.(`${side} ${t.mint} on ${v.kind} by treasury ${owner.id} in ${amountIn} min out ${minOut}`, r.signature, r.fee);
     const after = await this.balances(owner.id, [t.mint]);

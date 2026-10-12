@@ -55,7 +55,7 @@ export function forwardAmount(l: { amount: string; cost: string; trade_share?: s
 export async function marketTokens(market: string): Promise<MarketToken[]> {
   const r = await fetch(`${market.replace(/\/+$/, "")}/market/tokens?limit=500`, { signal: AbortSignal.timeout(30_000) });
   if (!r.ok) throw new Error(`market: HTTP ${r.status}`);
-  const body = (await r.json()) as { tokens: { mint: string; agent: string; price: number | null; decimals?: number; change_24h: number | null; phase: string; migrated?: boolean; venue?: string; symbol?: string | null; volume_24h?: number | null; trades_24h?: number | null; holders?: number | null; curve_progress?: number | null; repo_url?: string | null; class?: string | null; lineage_id?: string | null }[] };
+  const body = (await r.json()) as { tokens: { mint: string; agent: string; price: number | null; decimals?: number; change_24h: number | null; phase: string; migrated?: boolean; venue?: string; symbol?: string | null; volume_24h?: number | null; trades_24h?: number | null; holders?: number | null; curve_progress?: number | null; repo_url?: string | null; class?: string | null; lineage_id?: string | null; quote_reserve?: number | null; market_cap?: number | null; state_at?: number | null }[] };
   const numOrNull = (x: unknown) => (typeof x === "number" && Number.isFinite(x) ? x : null);
   return body.tokens.map((t) => ({
     mint: t.mint,
@@ -65,6 +65,14 @@ export async function marketTokens(market: string): Promise<MarketToken[]> {
     change_24h: typeof t.change_24h === "number" ? t.change_24h : null,
     // pump.fun only; launches the Meteora venue recorded (devnet history) are read-only: not tradable
     venue: t.venue === "meteora" ? null : t.phase === "graduated" || t.migrated ? "pump_pool" : "pump_curve",
+    // what the buy rule reads (risk layer): real quote reserves, holders, when the indexer read the state, market cap; the trader adds the 1 h move
+    facts: {
+      liquidity: numOrNull(t.quote_reserve) === null ? null : BigInt(Math.floor(t.quote_reserve! * 1e6)),
+      holders: numOrNull(t.holders),
+      move_1h: null,
+      price_at: numOrNull(t.state_at) === null ? null : t.state_at! * 1000,
+      market_cap: numOrNull(t.market_cap) === null ? null : BigInt(Math.floor(t.market_cap! * 1e6)),
+    },
     info: {
       symbol: typeof t.symbol === "string" ? t.symbol : null,
       phase: t.phase ?? null,

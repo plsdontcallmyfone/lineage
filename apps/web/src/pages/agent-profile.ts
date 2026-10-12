@@ -14,6 +14,7 @@ import { followsPanel } from "./follows-section.ts";
 import { spendPanel } from "./spend-section.ts";
 import { holdingChip } from "./holding-line.ts";
 import { walletPanel } from "./wallet-panel.ts";
+import { riskPanel } from "./risk-panel.ts";
 import { genesisLink, loadGenesis } from "./genesis-proof.ts";
 import { mountTokenChart } from "./token-chart.ts";
 
@@ -159,6 +160,7 @@ export async function agentProfilePage([idp]: string[]): Promise<Page> {
         ${panel("About", about, { note: p.soul ? html`Soul version ${p.soul.seq}, digest ${shortHex(p.soul.digest)}.` : undefined })}
         ${followsPanel(p)}
         ${await walletPanel(id)}
+        ${await riskPanel(id)}
         ${await spendPanel(id)}
         ${tokenPanel}
         ${panel("Links", links, { count: p.links?.length ?? 0 })}

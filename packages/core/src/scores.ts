@@ -2,6 +2,7 @@ import type { Core } from "./core.ts";
 import { bad, conflict, forbidden, notFound } from "./errors.ts";
 import { sessionsOf } from "./sessions.ts";
 import { soulsOf } from "./souls.ts";
+import { hiddenOf } from "./hidden.ts";
 
 // Agents as traders (plan T, docs/plans/PANEL-SOCIAL-PROVIDERS.md section T).
 //
@@ -101,6 +102,42 @@ export interface TradingConfig {
    * share of the chain's spot output a swap must demand (bps), the most priority fee per transaction
    * (lamports).
    */
+  /**
+   * Which tokens an agent may BUY (docs/plans/AGENT-WALLET-SAFETY.md 3.6): the token's agent has at
+   * least this many accepted, unreverted generations, launched at least this long ago, and is not on
+   * the hidden list. Sells are never blocked by it. Checked by the engine, by Core at the record and
+   * by the transaction firewall.
+   */
+  eligibility_min_generations: number;
+  eligibility_min_age_s: number;
+  /** a buy also needs: real quote reserves of at least this (base units), at least this many holders, and a price that moved at most this much in the last hour (anti-pump) */
+  eligibility_min_liquidity_line: string;
+  eligibility_min_holders: number;
+  eligibility_max_move_1h_bps: number;
+  /** a price older than this is stale: no trade on it */
+  max_price_age_s: number;
+  /** most of the equity that may sit in positions; the rest stays in the quote token */
+  max_deployed_bps: number;
+  /** trades (both sides) per agent per UTC day; at the cap no further buy (a sell is never blocked by it) */
+  max_trades_per_day: number;
+  /** network: all hosted agents together hold at most this share of one token's supply (its market cap) */
+  network_max_exposure_bps: number;
+  /** network: at most this many different agents buy the same token within the window */
+  herd_max_agents: number;
+  herd_window_s: number;
+  /** network: no agent trades one side of a token while another hosted agent traded the other side within this window (risk exits excepted) */
+  wash_window_s: number;
+  /** circuit breaker: this many failed or firewall-refused transactions or simulation mismatches within the window halt the agent until a reset */
+  breaker_failures: number;
+  breaker_window_s: number;
+  /** the global kill switch: while true no agent buys; sells still go ("reduce only") */
+  reduce_only: boolean;
+  reduce_only_reason: string | null;
+  /** network equity this far below its peak turns reduce_only on by itself */
+  network_drawdown_bps: number;
+  /** pre-trade: the simulation right before sending must be within this of the quote, and the marginal price within state_drift_bps of the quote's */
+  sim_tolerance_bps: number;
+  state_drift_bps: number;
   firewall_max_tx_line: string;
   firewall_max_day_line: string;
   firewall_min_out_bps: number;
@@ -111,18 +148,18 @@ export interface TradingConfig {
 export const TRADING_DEFAULTS: TradingConfig = {
   enabled: true,
   trade_share_bps: 1000,
-  max_position_bps: 1000,
-  max_trade_bps: 300,
-  max_open_positions: 8,
-  daily_loss_bps: 500,
-  max_drawdown_bps: 2000,
-  stop_loss_bps: 1500,
-  take_profit_bps: 4000,
+  max_position_bps: 500,
+  max_trade_bps: 100,
+  max_open_positions: 5,
+  daily_loss_bps: 200,
+  max_drawdown_bps: 1000,
+  stop_loss_bps: 1000,
+  take_profit_bps: 2500,
   take_profit_sell_bps: 5000,
-  max_slippage_bps: 200,
-  max_impact_bps: 100,
-  cooldown_s: 600,
-  min_hold_s: 1800,
+  max_slippage_bps: 100,
+  max_impact_bps: 50,
+  cooldown_s: 1800,
+  min_hold_s: 3600,
   global_trades_per_epoch: 120,
   trade_epoch_s: 3600,
   verdict_window_s: 300,
@@ -132,11 +169,11 @@ export const TRADING_DEFAULTS: TradingConfig = {
   score_lookback_s: 3600,
   score_weights: { verified_gain_7d: 0.35, accepted_generations: 0.2, acceptance_rate: 0.15, sessions_24h: 0.15, leaderboard_rank: 0.1, follower_growth: 0.05 },
   temperaments: {
-    aggressive: { size_bps: 300, prompt: "Aggressive: a willing buyer and a risk taker. Trade often; back the projects whose public work is strongest and getting stronger; take profits and cut losers without hesitation." },
-    balanced: { size_bps: 200, prompt: "Balanced: trade when the public record gives a clear reason; size moderately; hold otherwise." },
-    careful: { size_bps: 100, prompt: "Careful: trade rarely and small; buy only clear quality; hold when in doubt." },
+    aggressive: { size_bps: 100, prompt: "Aggressive: a willing buyer and a risk taker. Trade often; back the projects whose public work is strongest and getting stronger; take profits and cut losers without hesitation." },
+    balanced: { size_bps: 75, prompt: "Balanced: trade when the public record gives a clear reason; size moderately; hold otherwise." },
+    careful: { size_bps: 50, prompt: "Careful: trade rarely and small; buy only clear quality; hold when in doubt." },
   },
-  default_temperament: "aggressive",
+  default_temperament: "careful",
   agent_temperament: {},
   allocation_escrow: null,
   excluded_agents: {},
@@ -145,11 +182,48 @@ export const TRADING_DEFAULTS: TradingConfig = {
   analysis_max_usd: 0.05,
   analysis_tokens: 20,
   analysis_model: { provider: "anthropic", id: "claude-sonnet-5-5" },
+  eligibility_min_generations: 1,
+  eligibility_min_age_s: 86_400,
+  eligibility_min_liquidity_line: "500000000",
+  eligibility_min_holders: 5,
+  eligibility_max_move_1h_bps: 3000,
+  max_price_age_s: 120,
+  max_deployed_bps: 2500,
+  max_trades_per_day: 10,
+  network_max_exposure_bps: 500,
+  herd_max_agents: 2,
+  herd_window_s: 3600,
+  wash_window_s: 86_400,
+  breaker_failures: 3,
+  breaker_window_s: 3600,
+  reduce_only: false,
+  reduce_only_reason: null,
+  network_drawdown_bps: 500,
+  sim_tolerance_bps: 100,
+  state_drift_bps: 100,
   firewall_max_tx_line: "100000000",
   firewall_max_day_line: "1000000000",
   firewall_min_out_bps: 9000,
   firewall_max_fee_lamports: 1_000_000,
 };
+
+export type IneligibleRule = "ineligible_hidden" | "ineligible_generations" | "ineligible_age" | "ineligible_unknown";
+export interface EligibilityFacts {
+  /** accepted, unreverted generations of the token's agent */
+  accepted: number;
+  /** when the agent launched, ms; null: unknown */
+  launched_at: number | null;
+  hidden: boolean;
+}
+/** Why a token may not be bought, or null when it may (one statement of the rule for Core, the engine and the pages). */
+export function eligibilityRefusal(f: EligibilityFacts | null | undefined, cfg: Pick<TradingConfig, "eligibility_min_generations" | "eligibility_min_age_s">, nowMs: number): { rule: IneligibleRule; detail: string } | null {
+  if (!f) return { rule: "ineligible_unknown", detail: "Core has no eligibility record for the token's agent" };
+  if (f.hidden) return { rule: "ineligible_hidden", detail: "the token's agent is on the hidden list" };
+  if (f.accepted < cfg.eligibility_min_generations) return { rule: "ineligible_generations", detail: `the token's agent has ${f.accepted} accepted, unreverted generation(s); a buy needs at least ${cfg.eligibility_min_generations}` };
+  if (cfg.eligibility_min_age_s > 0 && (f.launched_at === null || nowMs - f.launched_at < cfg.eligibility_min_age_s * 1000))
+    return { rule: "ineligible_age", detail: `the token launched ${f.launched_at === null ? "at an unknown time" : `${Math.max(0, Math.floor((nowMs - f.launched_at) / 1000))} s ago`}; a buy needs at least ${cfg.eligibility_min_age_s} s` };
+  return null;
+}
 
 const isObj = (x: unknown): x is Record<string, unknown> => typeof x === "object" && x !== null && !Array.isArray(x);
 const B58 = /^[1-9A-HJ-NP-Za-km-z]{32,44}$/;
@@ -269,6 +343,31 @@ export function mergeTradingConfig(base: TradingConfig, patch: unknown): Trading
     if (!(k in p)) continue;
     if (typeof p[k] !== "string" || !UINT.test(p[k] as string)) throw new Error(`trading config: ${k} is base units as a decimal string`);
     c[k] = p[k] as string;
+  }
+  int("eligibility_min_generations", 0, 1_000_000);
+  int("eligibility_min_age_s", 0, 365 * 86400);
+  if ("eligibility_min_liquidity_line" in p) {
+    if (typeof p.eligibility_min_liquidity_line !== "string" || !UINT.test(p.eligibility_min_liquidity_line)) throw new Error("trading config: eligibility_min_liquidity_line is base units as a decimal string");
+    c.eligibility_min_liquidity_line = p.eligibility_min_liquidity_line;
+  }
+  int("eligibility_min_holders", 0, 1_000_000);
+  for (const k of ["eligibility_max_move_1h_bps", "max_deployed_bps", "network_max_exposure_bps", "network_drawdown_bps", "sim_tolerance_bps", "state_drift_bps"] as const) int(k, 0, 10_000);
+  int("max_price_age_s", 1, 86400);
+  int("max_trades_per_day", 0, 100_000);
+  int("herd_max_agents", 0, 100_000);
+  int("herd_window_s", 0, 30 * 86400);
+  int("wash_window_s", 0, 30 * 86400);
+  int("breaker_failures", 1, 1000);
+  int("breaker_window_s", 60, 30 * 86400);
+  if ("reduce_only" in p) {
+    if (typeof p.reduce_only !== "boolean") throw new Error("trading config: reduce_only is a boolean");
+    c.reduce_only = p.reduce_only;
+    if (!c.reduce_only) c.reduce_only_reason = null;
+  }
+  if ("reduce_only_reason" in p) {
+    const v = p.reduce_only_reason;
+    if (v !== null && !(typeof v === "string" && v.length > 0 && v.length <= 200 && !/[\u2014]/.test(v))) throw new Error("trading config: reduce_only_reason is a reason of 1 to 200 characters, or null");
+    c.reduce_only_reason = c.reduce_only ? (v as string | null) : null;
   }
   int("firewall_min_out_bps", 0, 10_000);
   int("firewall_max_fee_lamports", 0, 1_000_000_000);
@@ -397,6 +496,7 @@ export const SCORES_SCHEMA = `
   );
   CREATE INDEX IF NOT EXISTS trade_records_agent ON trade_records(agent, id);
   CREATE INDEX IF NOT EXISTS trade_records_mint ON trade_records(agent, mint, id);
+  CREATE TABLE IF NOT EXISTS trading_network (id INTEGER PRIMARY KEY CHECK (id = 1), peak TEXT NOT NULL);
 `;
 
 interface RecRow {
@@ -618,7 +718,8 @@ export class Scores {
     for (const r of rows) {
       if (r.kind === "reset") return null;
       const rec = JSON.parse(r.record) as { rule: string };
-      if (rec.rule === "max_drawdown") return { rule: rec.rule, since: r.at, until: null, ref: r.ref };
+      // a drawdown halt and a circuit-breaker halt last until the launcher, the owner or the admin resets them
+      if (rec.rule === "max_drawdown" || rec.rule === "breaker") return { rule: rec.rule, since: r.at, until: null, ref: r.ref };
       if (rec.rule === "daily_loss") {
         const until = Math.floor(r.at / DAY) * DAY + DAY;
         if (at < until) return { rule: rec.rule, since: r.at, until, ref: r.ref };
@@ -627,17 +728,202 @@ export class Scores {
     return null;
   }
 
+  /** GET /v1/trading/eligibility: per agent token, the facts the buy rule reads and what it says now. */
+  eligibility(cfg = this.config()) {
+    const now = this.c.now();
+    const accepted = new Map(this.raw().map((r) => [r.agent, r.accepted_generations]));
+    const rows = this.c.db.query<{ agent_id: string; mint: string; registered_at: number }, []>("SELECT agent_id, mint, registered_at FROM agents WHERE kind = 'launched' AND shadow = 0 AND mint IS NOT NULL ORDER BY agent_id").all();
+    return {
+      min_generations: cfg.eligibility_min_generations, min_age_s: cfg.eligibility_min_age_s, now,
+      tokens: rows.map((r) => {
+        const facts: EligibilityFacts = { accepted: accepted.get(r.agent_id) ?? 0, launched_at: r.registered_at ?? null, hidden: !!hiddenOf(this.core).ofAgent(r.agent_id) };
+        const no = eligibilityRefusal(facts, cfg, now);
+        return { agent: r.agent_id, mint: r.mint, ...facts, eligible: !no, rule: no?.rule ?? null, detail: no?.detail ?? null };
+      }),
+    };
+  }
+
+  /** Trades of every agent in `mint` within the longer of the herd and wash windows, newest first. */
+  private tokenActivity(mint: string, at: number, cfg: TradingConfig): { agent: string; side: "buy" | "sell"; at: number }[] {
+    const since = at - Math.max(cfg.herd_window_s, cfg.wash_window_s) * 1000;
+    return this.c.db.query<{ agent: string; side: "buy" | "sell"; at: number }, [string, number]>("SELECT agent, side, at FROM trade_records WHERE mint = ? AND kind = 'trade' AND at >= ? ORDER BY at DESC, id DESC LIMIT 500").all(mint, since);
+  }
+
+  /** Trade records of `agent` in the UTC day of `at`. */
+  tradesToday(agent: string, at = this.c.now()): number {
+    const day = Math.floor(at / DAY) * DAY;
+    return this.c.db.query<{ n: number }, [string, number, number]>("SELECT COUNT(*) AS n FROM trade_records WHERE agent = ? AND kind = 'trade' AND at >= ? AND at < ?").get(agent, day, day + DAY)!.n;
+  }
+
+  /** Token base units all hosted agents hold of each mint, from the trade records (buys in, sells out; an agent's own launch holding is not a trade). */
+  networkHeld(): Map<string, { held: bigint; agents: number }> {
+    const per = new Map<string, Map<string, bigint>>();
+    for (const r of this.c.db.query<{ agent: string; mint: string; side: string; record: string }, []>("SELECT agent, mint, side, record FROM trade_records WHERE kind = 'trade' AND mint IS NOT NULL ORDER BY id").all()) {
+      const rec = JSON.parse(r.record) as { amount_in: string; amount_out: string };
+      const m = per.get(r.mint) ?? per.set(r.mint, new Map()).get(r.mint)!;
+      m.set(r.agent, (m.get(r.agent) ?? 0n) + (r.side === "buy" ? BigInt(rec.amount_out) : -BigInt(rec.amount_in)));
+    }
+    const out = new Map<string, { held: bigint; agents: number }>();
+    for (const [mint, m] of per) {
+      let held = 0n, agents = 0;
+      for (const q of m.values()) if (q > 0n) (held += q), agents++;
+      out.set(mint, { held, agents });
+    }
+    return out;
+  }
+
+  /**
+   * GET /v1/trading/check: what Core's rules say about one trade right now (the same check a trade
+   * record passes). The transaction firewall asks this before a treasury key signs a buy.
+   */
+  check(agent: string, mint: string, side: string) {
+    if (side !== "buy" && side !== "sell") throw bad("bad_side", "side: buy or sell");
+    const cfg = this.config();
+    const held = this.networkHeld().get(mint)?.held ?? 0n;
+    const base = { agent, mint, side, at: this.c.now(), network_held: held.toString(), network_max_exposure_bps: cfg.network_max_exposure_bps };
+    try {
+      this.checkTrade(agent, mint, side, this.c.now(), cfg);
+      return { ...base, ok: true, rule: null, detail: null };
+    } catch (e) {
+      const x = e as { code?: string; message: string };
+      return { ...base, ok: false, rule: x.code ?? "refused", detail: x.message };
+    }
+  }
+
+  /** Network equity (the newest treasury snapshot of every agent) against its peak; turns reduce_only on past the threshold. */
+  private networkEquity(): { equity: bigint; agents: number } {
+    let equity = 0n, agents = 0;
+    for (const r of this.c.db.query<{ record: string }, []>("SELECT record FROM trade_records WHERE id IN (SELECT MAX(id) FROM trade_records WHERE kind = 'trade' GROUP BY agent)").all()) {
+      const t = (JSON.parse(r.record) as { treasury?: { equity?: string } }).treasury;
+      if (t && typeof t.equity === "string" && /^\d+$/.test(t.equity)) (equity += BigInt(t.equity)), agents++;
+    }
+    return { equity, agents };
+  }
+  private networkPeak(): bigint {
+    return BigInt(this.c.db.query<{ peak: string }, []>("SELECT peak FROM trading_network WHERE id = 1").get()?.peak ?? "0");
+  }
+  /** After a stored trade or funding: the peak follows equity up and fundings (not gain), and a drawdown past the threshold stops all buys. */
+  private afterRecord(kind: string, b: Record<string, any>) {
+    let peak = this.networkPeak();
+    if (kind === "funding" && b.source !== "gas") peak += BigInt(b.amount);
+    const { equity } = this.networkEquity();
+    if (equity > peak) peak = equity;
+    this.c.db.query("INSERT INTO trading_network (id, peak) VALUES (1, ?) ON CONFLICT(id) DO UPDATE SET peak = excluded.peak").run(peak.toString());
+    const cfg = this.config();
+    if (kind === "trade" && !cfg.reduce_only && cfg.network_drawdown_bps > 0 && peak > 0n && equity < peak - (peak * BigInt(cfg.network_drawdown_bps)) / 10_000n) {
+      const reason = `automatic: network equity ${equity} fell more than ${cfg.network_drawdown_bps} bps below its peak ${peak}`;
+      this.storeConfig({ ...cfg, reduce_only: true, reduce_only_reason: reason });
+      this.c.emitEvent("trade.reduce_only", { on: true, reason, automatic: true });
+    }
+  }
+  private storeConfig(c: TradingConfig) {
+    this.c.db.query("INSERT INTO trading_config (id, config, updated_at) VALUES (1, ?, ?) ON CONFLICT(id) DO UPDATE SET config = excluded.config, updated_at = excluded.updated_at").run(JSON.stringify(c), this.c.now());
+  }
+
+  /** POST /v1/admin/trading/reduce-only { on, reason }: the kill switch. On: no agent buys, sells still go. */
+  setReduceOnly(body: unknown) {
+    if (!isObj(body) || typeof body.on !== "boolean") throw bad("bad_body", "{ on: boolean, reason?: string }");
+    const reason = body.on ? (typeof body.reason === "string" && body.reason ? body.reason.slice(0, 200) : "set by the admin") : null;
+    const v = this.setConfig({ reduce_only: body.on, reduce_only_reason: reason });
+    this.c.emitEvent("trade.reduce_only", { on: body.on, reason, automatic: false });
+    return v;
+  }
+
+  /** GET /v1/agents/:id/risk: the limits in force, the agent's exposure as last recorded, its halt and recent refusals. */
+  agentRisk(agent: string) {
+    const a = this.c.db.query<{ kind: string; hosted: number; mint: string | null }, [string]>("SELECT kind, hosted, mint FROM agents WHERE agent_id = ?").get(agent);
+    if (!a || a.kind !== "launched") throw notFound("launched agent");
+    const cfg = this.config();
+    const latest = this.c.db.query<RecRow, [string]>("SELECT * FROM trade_records WHERE agent = ? AND kind IN ('trade', 'halt') ORDER BY id DESC LIMIT 1").get(agent);
+    const t = latest ? ((JSON.parse(latest.record) as { treasury?: { line?: string; equity?: string; positions?: number } }).treasury ?? null) : null;
+    const pos = new Map<string, bigint>();
+    for (const r of this.c.db.query<{ mint: string; side: string; record: string }, [string]>("SELECT mint, side, record FROM trade_records WHERE agent = ? AND kind = 'trade' ORDER BY id").all(agent)) {
+      const rec = JSON.parse(r.record) as { amount_in: string; amount_out: string };
+      pos.set(r.mint, (pos.get(r.mint) ?? 0n) + (r.side === "buy" ? BigInt(rec.amount_out) : -BigInt(rec.amount_in)));
+    }
+    const refusals = this.c.db.query<RecRow, [string]>("SELECT * FROM trade_records WHERE agent = ? AND kind = 'decision' ORDER BY id DESC LIMIT 40").all(agent)
+      .map((r) => JSON.parse(r.record) as { outcome: string; rule?: string | null; detail?: string | null; at: number }).filter((r) => r.outcome === "refused").slice(0, 5)
+      .map((r) => ({ at: r.at, rule: r.rule ?? null, detail: r.detail ?? null }));
+    const equity = t?.equity && /^\d+$/.test(t.equity) ? BigInt(t.equity) : null;
+    const line = t?.line && /^\d+$/.test(t.line) ? BigInt(t.line) : null;
+    return {
+      agent, hosted: !!a.hosted, trading: cfg.enabled, reduce_only: cfg.reduce_only, reduce_only_reason: cfg.reduce_only_reason, excluded: cfg.excluded_agents[agent] ?? null,
+      halt: this.haltOf(agent),
+      limits: riskLimits(cfg),
+      exposure: {
+        // only a record that carries a treasury snapshot dates the exposure (a halt alone does not)
+        recorded_at: t && latest ? latest.at : null,
+        equity: equity?.toString() ?? null,
+        cash: line?.toString() ?? null,
+        deployed: equity !== null && line !== null ? (equity > line ? equity - line : 0n).toString() : null,
+        deployed_bps: equity !== null && line !== null && equity > 0n ? Number(((equity > line ? equity - line : 0n) * 10_000n) / equity) : null,
+        positions: [...pos].filter(([, q]) => q > 0n).map(([mint, q]) => ({ mint, amount: q.toString() })),
+        trades_today: this.tradesToday(agent),
+      },
+      refusals,
+    };
+  }
+
+  /** GET /v1/trading/risk: the network's risk state (for the analytics page and the trader). */
+  networkRisk() {
+    const cfg = this.config();
+    const now = this.c.now();
+    const { equity, agents } = this.networkEquity();
+    const peak = this.networkPeak();
+    const held = this.networkHeld();
+    const window = Math.max(cfg.herd_window_s, cfg.wash_window_s) * 1000;
+    const recent = this.c.db.query<{ agent: string; mint: string; side: "buy" | "sell"; at: number }, [number]>("SELECT agent, mint, side, at FROM trade_records WHERE kind = 'trade' AND mint IS NOT NULL AND at >= ? ORDER BY at DESC, id DESC LIMIT 2000").all(now - window);
+    const hosted = this.c.db.query<{ agent_id: string }, []>("SELECT agent_id FROM agents WHERE kind = 'launched' AND hosted = 1 AND shadow = 0").all().map((r) => r.agent_id);
+    const halts = hosted.map((a) => ({ agent: a, halt: this.haltOf(a, now) })).filter((x) => x.halt);
+    const day = Math.floor(now / DAY) * DAY;
+    const today = new Map(this.c.db.query<{ agent: string; n: number }, [number]>("SELECT agent, COUNT(*) AS n FROM trade_records WHERE kind = 'trade' AND at >= ? GROUP BY agent").all(day).map((r) => [r.agent, r.n]));
+    const mints = new Set([...held.keys(), ...recent.map((r) => r.mint)]);
+    return {
+      now, trading: cfg.enabled, reduce_only: cfg.reduce_only, reduce_only_reason: cfg.reduce_only_reason,
+      limits: riskLimits(cfg),
+      network: {
+        agents_with_records: agents, equity: equity.toString(), peak: peak.toString(),
+        drawdown_bps: peak > 0n && equity < peak ? Number(((peak - equity) * 10_000n) / peak) : 0,
+        halted: halts.map((h) => ({ agent: h.agent, rule: h.halt!.rule, since: h.halt!.since, until: h.halt!.until })),
+        trades_today: [...today.values()].reduce((x, n) => x + n, 0),
+      },
+      agents: Object.fromEntries(hosted.map((a) => [a, { trades_today: today.get(a) ?? 0 }])),
+      tokens: [...mints].map((mint) => ({
+        mint, agent: this.agentOfMint(mint), network_held: (held.get(mint)?.held ?? 0n).toString(), holders_among_agents: held.get(mint)?.agents ?? 0,
+        recent: recent.filter((r) => r.mint === mint).map((r) => ({ agent: r.agent, side: r.side, at: r.at })),
+      })),
+    };
+  }
+
   /** Checks the integrity rules Core can check for a trade by `agent` in `mint`; throws 409 with the rule. */
-  checkTrade(agent: string, mint: string, side: "buy" | "sell", at: number, cfg = this.config()) {
+  checkTrade(agent: string, mint: string, side: "buy" | "sell", at: number, cfg = this.config(), o: { exit?: boolean } = {}) {
     const owner = this.agentOfMint(mint);
     if (!owner) throw bad("unknown_token", "the mint is not a launched agent's token");
     if (owner === agent) throw conflict("integrity_own_token", "an agent never trades its own token");
     if (cfg.excluded_agents[agent]) throw conflict("integrity_excluded", `this agent is excluded from trading: ${cfg.excluded_agents[agent]}`);
     if (cfg.excluded_agents[owner]) throw conflict("integrity_excluded", `the token's agent is excluded from trading: ${cfg.excluded_agents[owner]}`);
+    // a buy needs an eligible token (accepted work, launch age, not hidden); a sell never does
+    if (side === "buy") {
+      const e = this.eligibility(cfg).tokens.find((t) => t.mint === mint);
+      const no = e ? (e.rule ? { rule: e.rule, detail: e.detail! } : null) : eligibilityRefusal(null, cfg, at);
+      if (no) throw conflict(no.rule, no.detail);
+    }
     const mine = this.parties(agent);
     for (const p of this.parties(owner)) if (mine.has(p)) throw conflict("integrity_same_party", "the token's agent shares a launcher, owner or operator with this agent");
     const halt = this.haltOf(agent, at);
     if (halt) throw conflict("integrity_halted", `halted by ${halt.rule}`);
+    // ---- risk layer (docs/plans/AGENT-WALLET-SAFETY.md "Risk management"): what Core can see across all agents
+    const near = this.tokenActivity(mint, at, cfg).filter((x) => x.agent !== agent);
+    if (side === "buy") {
+      if (cfg.reduce_only) throw conflict("reduce_only", `reduce only: no buys${cfg.reduce_only_reason ? ` (${cfg.reduce_only_reason})` : ""}`);
+      const today = this.tradesToday(agent, at);
+      if (today >= cfg.max_trades_per_day) throw conflict("max_trades_per_day", `${today} trades today (max ${cfg.max_trades_per_day}); no further buy until the next UTC day`);
+      const buyers = new Set(near.filter((x) => x.side === "buy" && at - x.at < cfg.herd_window_s * 1000).map((x) => x.agent));
+      if (cfg.herd_window_s > 0 && buyers.size >= cfg.herd_max_agents) throw conflict("herd_limit", `${buyers.size} other agent(s) bought this token within ${cfg.herd_window_s} s (max ${cfg.herd_max_agents})`);
+    }
+    // wash guard: never opposite another hosted agent in the same token within the window; a risk exit (stop-loss, take-profit) is not held back
+    if (!(side === "sell" && o.exit) && near.some((x) => x.side !== side && at - x.at < cfg.wash_window_s * 1000))
+      throw conflict("wash_guard", `another hosted agent ${side === "buy" ? "sold" : "bought"} this token within ${cfg.wash_window_s} s`);
     const last = this.c.db
       .query<RecRow, [string, string]>("SELECT * FROM trade_records WHERE agent = ? AND mint = ? AND kind = 'trade' ORDER BY at DESC, id DESC LIMIT 1")
       .get(agent, mint);
@@ -674,7 +960,7 @@ export class Scores {
           if (typeof b.rule !== "string" || !b.rule || typeof b.reason !== "string" || !b.reason) throw bad("bad_reason", "every trade carries its rule and reason");
           if (!isObj(b.score)) throw bad("bad_score", "every trade carries the score it acted on");
           if (typeof b.signature !== "string" || !(SIG.test(b.signature) || /^sim:/.test(b.signature))) throw bad("bad_signature", "signature");
-          this.checkTrade(b.agent, b.mint, b.side, b.at);
+          this.checkTrade(b.agent, b.mint, b.side, b.at, this.config(), { exit: b.rule === "stop_loss" || b.rule === "take_profit" });
           [mint, side, sig] = [b.mint, b.side, b.signature];
           break;
         }
@@ -697,7 +983,7 @@ export class Scores {
           break;
         }
         case "halt":
-          if (b.rule !== "daily_loss" && b.rule !== "max_drawdown") throw bad("bad_rule", "halt rule: daily_loss or max_drawdown");
+          if (b.rule !== "daily_loss" && b.rule !== "max_drawdown" && b.rule !== "breaker") throw bad("bad_rule", "halt rule: daily_loss, max_drawdown or breaker");
           if (typeof b.reason !== "string" || !b.reason) throw bad("bad_reason", "reason");
           break;
         default:
@@ -710,6 +996,7 @@ export class Scores {
         .run(b.ref, b.kind, b.agent, mint, side, b.at, this.c.now(), sig, JSON.stringify(b));
       const row = this.c.db.query<RecRow, [number]>("SELECT * FROM trade_records WHERE id = ?").get(Number(r.lastInsertRowid))!;
       const v = view(row);
+      if (b.kind === "trade" || b.kind === "funding") this.afterRecord(b.kind, b);
       this.c.emitEvent(b.kind === "trade" ? "trade.executed" : b.kind === "funding" ? "trade.funded" : b.kind === "decision" ? "trade.decision" : "trade.halted", v);
       return v;
     });
@@ -790,6 +1077,20 @@ export class Scores {
     const rows = this.c.db.query<RecRow, (string | number)[]>(`SELECT * FROM trade_records WHERE ${where.join(" AND ")} ORDER BY id DESC LIMIT ?`).all(...args, limit);
     return { records: rows.map(view) };
   }
+}
+
+/** The limits a risk panel shows, as configured (one list for the agent panel, the network summary and the docs table). */
+export function riskLimits(c: TradingConfig) {
+  return {
+    max_trade_bps: c.max_trade_bps, max_position_bps: c.max_position_bps, max_open_positions: c.max_open_positions, max_deployed_bps: c.max_deployed_bps,
+    daily_loss_bps: c.daily_loss_bps, max_drawdown_bps: c.max_drawdown_bps, stop_loss_bps: c.stop_loss_bps, take_profit_bps: c.take_profit_bps, take_profit_sell_bps: c.take_profit_sell_bps,
+    max_slippage_bps: c.max_slippage_bps, max_impact_bps: c.max_impact_bps, max_trades_per_day: c.max_trades_per_day, cooldown_s: c.cooldown_s, min_hold_s: c.min_hold_s,
+    eligibility_min_generations: c.eligibility_min_generations, eligibility_min_age_s: c.eligibility_min_age_s, eligibility_min_liquidity_line: c.eligibility_min_liquidity_line,
+    eligibility_min_holders: c.eligibility_min_holders, eligibility_max_move_1h_bps: c.eligibility_max_move_1h_bps, max_price_age_s: c.max_price_age_s,
+    network_max_exposure_bps: c.network_max_exposure_bps, herd_max_agents: c.herd_max_agents, herd_window_s: c.herd_window_s, wash_window_s: c.wash_window_s,
+    breaker_failures: c.breaker_failures, breaker_window_s: c.breaker_window_s, network_drawdown_bps: c.network_drawdown_bps, sim_tolerance_bps: c.sim_tolerance_bps, state_drift_bps: c.state_drift_bps,
+    firewall_max_tx_line: c.firewall_max_tx_line, firewall_max_day_line: c.firewall_max_day_line, firewall_min_out_bps: c.firewall_min_out_bps, firewall_max_fee_lamports: c.firewall_max_fee_lamports,
+  };
 }
 
 function view(r: RecRow) {

@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { generateAgentKey } from "@units/protocol";
 import { registerScoreInputs, type TradingConfig } from "../../core/src/scores.ts";
+import { LEGACY_LIMITS } from "../../core/test/legacy-limits.ts";
 import { agentClient, diff, expectOk, honest, makeAuthor, result, runReplays, setup, submit, type Agent, type Env } from "../../core/test/helpers.ts";
 import { emptyUsage, type DecisionModel, type Usage } from "../src/analyst.ts";
 import { Trader, type MarketToken, type TradingAgent } from "../src/trader.ts";
@@ -76,7 +77,7 @@ async function world(n: number, script: Script, o: { siblings?: boolean; exclude
   }
   const scores = new Map<string, number>();
   registerScoreInputs(env.core, { leaderboardRank: (a) => scores.get(a) ?? null });
-  await expectOk(env.admin.c.post("/v1/admin/trading/config", { round_s: 60, ...(o.config ?? {}) }));
+  await expectOk(env.admin.c.post("/v1/admin/trading/config", { ...LEGACY_LIMITS, round_s: 60, ...(o.config ?? {}) }));
   const tokens = (): MarketToken[] => all.map((a) => ({ mint: a.mint, agent: a.id, price: venue.price(a.mint), decimals: 6, change_24h: null, venue: "sim", info: { symbol: `T${a.mint.slice(0, 4)}`, phase: "curve", volume_24h: null, trades_24h: null, holders: null, curve_progress: null, repo_url: null, class: null, lineage_id: env.lineage } }));
   const dir = mkdtempSync(join(tmpdir(), "lineage-trader-sim-"));
   dirs.push(dir);

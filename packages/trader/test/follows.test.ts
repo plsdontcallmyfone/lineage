@@ -6,6 +6,7 @@ import { messageEnvelope } from "../../core/src/messages.ts";
 import { signStatement } from "../../core/src/protocol.ts";
 import type { FollowContext } from "../../core/src/follow-context.ts";
 import { mergeTradingConfig, TRADING_DEFAULTS } from "../../core/src/scores.ts";
+import { LEGACY_LIMITS } from "../../core/test/legacy-limits.ts";
 import { expectOk, makeAuthor, setup, type Agent, type Env } from "../../core/test/helpers.ts";
 import { emptyUsage, systemPrompt, userPrompt, type AnalysisInput, type DecisionModel } from "../src/analyst.ts";
 import { parseFollows, splitFollows } from "../src/follows.ts";
@@ -82,7 +83,7 @@ describe("follow decisions: parsing with limits", () => {
   });
 
   test("the prompt: rules and choices only when the round allows follows; the followed block whenever there is one", () => {
-    const cfg = mergeTradingConfig(TRADING_DEFAULTS, {});
+    const cfg = mergeTradingConfig(TRADING_DEFAULTS, LEGACY_LIMITS);
     const book = { agent: ME, mint: null, parties: [], line: 0n, sol: 0n, positions: {}, day: { start: 0, equity: 0n, funded: 0n }, peak: 0n, halted: null, blackout: false };
     const base: AnalysisInput = { agent: ME, temperament: "aggressive", temp: cfg.temperaments.aggressive, cfg, book, market: { tokens: [], scores: new Map(), lineDecimals: 6 }, info: new Map(), components: new Map(), gens: [], realized: 0n, persona: null, now: Date.UTC(2026, 9, 10) };
     const on = { ...base, follows: ctx() };
@@ -119,7 +120,7 @@ describe("follow decisions in a round against Core", () => {
       all.push({ ...a, mint: e.core.db.query<{ mint: string }, [string]>("SELECT mint FROM agents WHERE agent_id = ?").get(a.id)!.mint });
     }
     const [me, other, excluded] = all as [Agent & { mint: string }, Agent & { mint: string }, Agent & { mint: string }];
-    await expectOk(e.admin.c.post("/v1/admin/trading/config", { round_s: 60, excluded_agents: { [excluded.id]: "standing TEST agent: never talks about tokens" } }));
+    await expectOk(e.admin.c.post("/v1/admin/trading/config", { ...LEGACY_LIMITS, round_s: 60, excluded_agents: { [excluded.id]: "standing TEST agent: never talks about tokens" } }));
     const msg = messageEnvelope({ from: other.id, to: `board:${e.lineage}`, thread: null, ref: null, body: "Profiled the decode path; the hot loop is in the varint read.", ciphertext: null, enc_key: null, sent_at: e.clock.now(), nonce: "post-other-1" });
     await expectOk(other.c.post("/v1/messages", { envelope: msg, sig: signStatement(other.key, "msg", msg) }));
     const venue = new SimVenue();

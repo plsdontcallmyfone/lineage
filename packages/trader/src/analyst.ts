@@ -1,6 +1,6 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { rateFor, usdFor, type ModelEntry, type TokenUsage } from "../../core/src/model-registry.ts";
-import type { TemperamentParams, TradingConfig } from "../../core/src/scores.ts";
+import { eligibilityRefusal, type TemperamentParams, type TradingConfig } from "../../core/src/scores.ts";
 import type { ProviderSpec } from "../../worker/src/proposers/providers.ts";
 import { normaliseUsage } from "../../worker/src/proposers/openai-compat.ts";
 import { resolveRoute, RegistrySource, soulModel } from "../../runtime/src/providers.ts";
@@ -99,6 +99,8 @@ export function universe(i: AnalysisInput): TokenView[] {
   const mine = new Set(i.book.parties);
   return i.market.tokens
     .filter((t) => t.venue && t.price !== null && t.agent !== i.agent && t.mint !== i.book.mint && !t.excluded && !t.parties.some((p) => mine.has(p)))
+    // a token that fails the buy rule (no accepted work yet, launched too recently, hidden) is listed only while held, to sell
+    .filter((t) => t.eligibility === undefined || !eligibilityRefusal(t.eligibility, i.cfg, i.now) || (i.book.positions[t.mint]?.qty ?? 0n) > 0n)
     .sort((a, b) => (i.market.scores.get(b.agent)?.now ?? 0) - (i.market.scores.get(a.agent)?.now ?? 0) || (a.mint < b.mint ? -1 : 1))
     .slice(0, i.cfg.analysis_tokens);
 }

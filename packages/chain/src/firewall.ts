@@ -26,7 +26,28 @@ export interface FirewallLimits {
   min_out_bps: number;
   /** most priority fee one transaction may bid, lamports */
   max_fee_lamports: bigint;
+  /** a buy needs a token launched at least this long ago (the AgentLaunch record's own time), seconds */
+  min_launch_age_s: number;
+  /** a buy needs at least this much real quote in the curve or pool, quote base units */
+  min_liquidity_quote: bigint;
+  /** most a trade may move the price it trades at: size against the reserve it trades into, bps */
+  max_impact_bps: number;
+  /** the engine's percentage limits, re-checked against what the key holds on chain */
+  max_trade_bps: number;
+  max_position_bps: number;
+  max_deployed_bps: number;
+  /** all hosted agents together may hold this share of a token's supply, bps */
+  network_max_exposure_bps: number;
+  /** the kill switch as the trading config carries it: no buy is signed while true (Core's check says the same; either is enough) */
+  reduce_only: boolean;
 }
+
+/**
+ * Core's answer for this swap (GET /v1/trading/check): the rules only Core can see (accepted work,
+ * hidden list, the kill switch, halts, trades per day, herding, the wash guard) and how much of the
+ * token hosted agents already hold. null: Core could not be asked.
+ */
+export type CoreCheck = { ok: true; network_held: bigint } | { ok: false; rule: string; detail: string };
 
 /** What the chain says about a mint a transaction names. Spot is quote base units per `base` token base units. */
 export interface MintFacts {
@@ -34,6 +55,12 @@ export interface MintFacts {
   registered: boolean;
   /** the agent whose token it is */
   agent: Address | null;
+  /** when the AgentLaunch record was created, unix seconds, as the chain recorded it */
+  createdAt: bigint | null;
+  /** the mint's supply, base units */
+  supply: bigint | null;
+  /** real quote in the curve (its real reserves) or in the pool's quote vault, quote base units */
+  liquidity: bigint | null;
   /** the bonding curve's virtual reserves while the curve takes trades */
   curve: { quote: bigint; base: bigint } | null;
   /** the canonical PumpSwap pool's effective reserves once it exists */
@@ -58,6 +85,13 @@ export interface FirewallContext {
   limits: FirewallLimits | null;
   /** quote value already authorized for this key in the current UTC day */
   daySpent: bigint;
+  /** Core's answer for this swap; null: unreachable (a buy is then refused, a sell is not) */
+  core: CoreCheck | null;
+  /** what the key holds on chain: its quote balance, and its balance of the swapped mint; null: unreadable */
+  cash: bigint | null;
+  held: bigint | null;
+  /** now, unix seconds */
+  now: number;
 }
 
 export interface SwapSummary {
@@ -393,6 +427,17 @@ export function evaluate(message: Uint8Array, c: FirewallContext): Verdict {
   const facts = c.mints.get(s.mint);
   if (!facts?.registered) return refuse("mint_not_registered", `${s.mint} has no pump.fun AgentLaunch in units_launch`);
   if (s.mint === c.ownMint || (facts.agent !== null && facts.agent === c.agent)) return refuse("own_token", "an agent never trades its own token");
+  // Core's rules first, for a buy: the kill switch, halts, accepted work, hidden list, trades per day, herding, the wash guard.
+  // A sell is never held back by Core being unreachable or by buy-side rules: reducing risk must stay possible.
+  if (s.side === "buy") {
+    if (c.limits.reduce_only) return refuse("reduce_only", "reduce only: no buys are signed");
+    if (!c.core) return refuse("core_unavailable", "Core could not be asked about this buy; no buy is signed without its answer");
+    if (!c.core.ok) return refuse(c.core.rule, c.core.detail);
+    const age = facts.createdAt === null ? null : BigInt(c.now) - facts.createdAt;
+    if (c.limits.min_launch_age_s > 0 && (age === null || age < BigInt(c.limits.min_launch_age_s)))
+      return refuse("ineligible_age", `the token launched ${age === null ? "at an unknown time" : `${age < 0n ? 0n : age} s ago`}; a buy needs at least ${c.limits.min_launch_age_s} s`);
+    if (facts.liquidity === null || facts.liquidity < c.limits.min_liquidity_quote) return refuse("ineligible_liquidity", `quote reserves ${facts.liquidity ?? "unreadable"} below the minimum ${c.limits.min_liquidity_quote}`);
+  }
   if (s.amountIn <= 0n || s.minOut <= 0n) return refuse("zero_amount", "amount in and minimum out must both be above zero");
   const spot = s.venue === "pump_curve" ? facts.curve : facts.pool;
   if (!spot || spot.quote <= 0n || spot.base <= 0n) return refuse("no_reference_price", `no ${s.venue === "pump_curve" ? "live curve" : "canonical pool"} on chain to price this swap against`);
@@ -400,6 +445,23 @@ export function evaluate(message: Uint8Array, c: FirewallContext): Verdict {
   const value = s.side === "buy" ? s.amountIn : expected;
   if (value > U64_MAX) return refuse("malformed", "value overflows");
   if (s.minOut * 10_000n < expected * BigInt(c.limits.min_out_bps)) return refuse("min_out_too_low", `minimum out ${s.minOut} is below ${c.limits.min_out_bps} bps of the spot output ${expected}`);
+  // price impact: the size against the reserve it trades into (exact for a constant product)
+  const [x, r0] = s.side === "buy" ? [s.amountIn, spot.quote] : [s.amountIn, spot.base];
+  if (x * 10_000n > BigInt(c.limits.max_impact_bps) * (r0 + x)) return refuse("max_impact", `the trade is ${(x * 10_000n) / (r0 + x)} bps of the reserve it trades into (max ${c.limits.max_impact_bps})`);
+  if (s.side === "buy") {
+    // the engine's percentage limits against the key's own balances on chain. Equity is not readable here, but it is
+    // at most cash / (1 - max deployed share) while the deployed cap holds, so these bounds never refuse what the engine allows.
+    if (c.cash === null || c.held === null) return refuse("balances_unreadable", "the key's balances could not be read from chain");
+    if (c.limits.max_deployed_bps >= 10_000) return refuse("no_limits", "max_deployed_bps leaves no bound on equity");
+    const equityMax = (c.cash * 10_000n) / BigInt(10_000 - c.limits.max_deployed_bps);
+    if (value * 10_000n > equityMax * BigInt(c.limits.max_trade_bps)) return refuse("max_trade", `value ${value} above ${c.limits.max_trade_bps} bps of the most the equity can be (${equityMax})`);
+    const position = ((c.held + expected) * spot.quote) / spot.base;
+    if (position * 10_000n > equityMax * BigInt(c.limits.max_position_bps)) return refuse("max_position", `the position would be worth ${position}, above ${c.limits.max_position_bps} bps of the most the equity can be (${equityMax})`);
+    // every hosted agent together: a share of the token's supply
+    if (facts.supply === null || facts.supply <= 0n) return refuse("network_exposure", "the token's supply could not be read");
+    if ((c.core!.ok ? c.core!.network_held + expected : 0n) * 10_000n > facts.supply * BigInt(c.limits.network_max_exposure_bps))
+      return refuse("network_exposure", `hosted agents would hold more than ${c.limits.network_max_exposure_bps} bps of the token's supply`);
+  }
   if (value > c.limits.max_tx_quote) return refuse("max_tx_value", `value ${value} above the per-transaction limit ${c.limits.max_tx_quote}`);
   if (c.daySpent + value > c.limits.max_day_quote) return refuse("max_day_value", `value ${value} with ${c.daySpent} already authorized today is above the daily limit ${c.limits.max_day_quote}`);
 
@@ -445,6 +507,20 @@ export function evaluate(message: Uint8Array, c: FirewallContext): Verdict {
     swap: { side: s.side, venue: s.venue, mint: s.mint, amountIn: s.amountIn, minOut: s.minOut, value },
     summary: `swap: ${s.side} ${s.mint} on ${s.venue}, in ${s.amountIn}, min out ${s.minOut}, value ${value}, ${creates.length} token account creation(s)`,
   };
+}
+
+/** The swap a message carries (base mint and side), read loosely for the context builder; the policy proves it. */
+export function swapNamed(m: ParsedMessage): { mint: Address; side: "buy" | "sell" } | null {
+  for (const ix of m.instructions) {
+    const pumpIx = ix.programId === PUMP.program;
+    if (!pumpIx && ix.programId !== PUMP.amm) continue;
+    const mint = ix.accounts[pumpIx ? 1 : 3]?.pubkey;
+    if (!mint) return null;
+    if (starts(ix.data, pumpIx ? DISC.pumpBuy : DISC.ammBuy)) return { mint, side: "buy" };
+    if (starts(ix.data, pumpIx ? DISC.pumpSell : DISC.ammSell)) return { mint, side: "sell" };
+    return null;
+  }
+  return null;
 }
 
 /** The mints a message names in the places the policy reads them (swap base and quote, created accounts' mints), for the context builder. */

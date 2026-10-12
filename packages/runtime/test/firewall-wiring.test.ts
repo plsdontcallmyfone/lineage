@@ -50,7 +50,7 @@ function tokenAccountBytes(mint: Address, owner: Address, amount: bigint): Uint8
 }
 
 /** A chain that answers reads from the fork fixture and accepts whatever is sent, recording it. */
-function chain() {
+function chain(funded?: Address) {
   const m = new Map<string, { data: Uint8Array; owner: string }>();
   m.set(launchPdas.config(), { data: launchConfigBytes(), owner: LAUNCH_PROGRAM_ID });
   m.set(launchPdas.agentLaunch(a1), { data: agentLaunchBytes(a1, addr(60), false), owner: LAUNCH_PROGRAM_ID });
@@ -62,6 +62,8 @@ function chain() {
   m.set(ata(pool, a2, T22), { data: tokenAccountBytes(a2, pool, 1_000_000_000_000n), owner: T22 });
   m.set(ata(pool, line, T22), { data: tokenAccountBytes(line, pool, 500_000_000_000n), owner: T22 });
   m.set(ata(PUMP.buybackRecipients[0], line, T22), { data: tokenAccountBytes(line, PUMP.buybackRecipients[0], 0n), owner: T22 });
+  if (funded) m.set(ata(funded, line, T22), { data: tokenAccountBytes(line, funded, 1_000_000_000_000n), owner: T22 });
+  for (const mint of [a1, a2]) m.set(mint, { data: Object.assign(new Uint8Array(82), { 42: 0x8d, 43: 0x03, 44: 6 }), owner: T22 }); // supply 1e15 (bytes 36..43 little endian), 6 decimals
   const wires: Uint8Array[] = [];
   const rawAcc = (a: string) => {
     const x = m.get(a);
@@ -88,7 +90,7 @@ function chain() {
   return { rpc, wires };
 }
 
-const ON: FirewallLimits = { trading_enabled: true, max_tx_quote: 100_000_000n, max_day_quote: 1_000_000_000n, min_out_bps: 9000, max_fee_lamports: 1_000_000n };
+const ON: FirewallLimits = { trading_enabled: true, max_tx_quote: 100_000_000n, max_day_quote: 1_000_000_000n, min_out_bps: 9000, max_fee_lamports: 1_000_000n, min_launch_age_s: 86_400, min_liquidity_quote: 0n, max_impact_bps: 10_000, max_trade_bps: 10_000, max_position_bps: 10_000, max_deployed_bps: 2500, network_max_exposure_bps: 500, reduce_only: false };
 const AGENT = generateAgentKey().id;
 const tok = (mint: string, venue: TokenView["venue"]): TokenView => ({ mint, agent: addr(60), parties: [], price: 0.01, decimals: 6, change_24h: null, venue });
 
@@ -96,9 +98,9 @@ function runtime(limits: FirewallLimits | null, o: { tradingOn?: boolean } = {})
   const dir = mkdtempSync(join(tmpdir(), "fw-wiring-"));
   const store = new StateStore(dir, { mode: "devnet", runtime: addr(90), now: 0 });
   const key = store.keyFor(AGENT);
-  const { rpc, wires } = chain();
+  const { rpc, wires } = chain(key.id);
   const logs: string[] = [];
-  const fw = installAgentFirewall({ rpc, core: "http://127.0.0.1:1", stateDir: dir, view: { agents: () => ({ [AGENT]: { key_id: key.id, mint: addr(70) } }) }, log: (m) => logs.push(m), limits: async () => limits, tradingOn: o.tradingOn ?? true });
+  const fw = installAgentFirewall({ rpc, core: "http://127.0.0.1:1", stateDir: dir, view: { agents: () => ({ [AGENT]: { key_id: key.id, mint: addr(70) } }) }, log: (m) => logs.push(m), limits: async () => limits, tradingOn: o.tradingOn ?? true, coreCheck: async () => ({ ok: true, network_held: 0n }) });
   return { dir, store, key, rpc, wires, fw, logs, venue: new ChainVenue(rpc) };
 }
 
@@ -198,7 +200,8 @@ describe("with the runtime's firewall installed", () => {
 describe("limits from Core's trading config", () => {
   test("the defaults map to limits; a config without the fields, or with bad ones, gives none", () => {
     const cfg = mergeTradingConfig(TRADING_DEFAULTS, { enabled: false });
-    expect(limitsOf(cfg)).toEqual({ trading_enabled: false, max_tx_quote: 100_000_000n, max_day_quote: 1_000_000_000n, min_out_bps: 9000, max_fee_lamports: 1_000_000n });
+    expect(limitsOf(cfg)).toEqual({ trading_enabled: false, max_tx_quote: 100_000_000n, max_day_quote: 1_000_000_000n, min_out_bps: 9000, max_fee_lamports: 1_000_000n,
+      min_launch_age_s: 86_400, min_liquidity_quote: 500_000_000n, max_impact_bps: 50, max_trade_bps: 100, max_position_bps: 500, max_deployed_bps: 2500, network_max_exposure_bps: 500, reduce_only: false });
     const { firewall_max_tx_line: _drop, ...old } = cfg;
     expect(limitsOf(old)).toBeNull();
     expect(limitsOf({ ...cfg, firewall_min_out_bps: 10_001 })).toBeNull();

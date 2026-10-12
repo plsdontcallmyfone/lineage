@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { mergeTradingConfig, TRADING_DEFAULTS } from "../../core/src/scores.ts";
+import { LEGACY_LIMITS } from "../../core/test/legacy-limits.ts";
 import type { ModelEntry } from "../../core/src/model-registry.ts";
 import { PROVIDERS } from "../../worker/src/proposers/providers.ts";
 import { anthropicDecisionModel, openaiDecisionModel, systemPrompt, universe, userPrompt, type AnalysisInput } from "../src/analyst.ts";
@@ -12,7 +13,7 @@ const L = 1_000_000n;
 const M = (i: number | string) => `Tok${i}x`.padEnd(40, "z");
 const tok = (i: number, over: Partial<TokenView> = {}): TokenView => ({ mint: M(i), agent: `A${i}`, parties: [`L${i}`], price: 0.05, decimals: 6, change_24h: 0.1, venue: "sim", ...over });
 const book: Book = { agent: "ME", mint: M("ME"), parties: ["LME"], line: 1000n * L, sol: 10n ** 9n, positions: {}, day: { start: 0, equity: 1000n * L, funded: 0n }, peak: 1000n * L, halted: null, blackout: false };
-const cfg = mergeTradingConfig(TRADING_DEFAULTS, {});
+const cfg = mergeTradingConfig(TRADING_DEFAULTS, LEGACY_LIMITS);
 
 function input(tokens: TokenView[]): AnalysisInput {
   const market: Market = { tokens, scores: new Map(tokens.map((t, i) => [t.agent, { now: 0.9 - i * 0.1, ref: null }])), lineDecimals: 6 };
