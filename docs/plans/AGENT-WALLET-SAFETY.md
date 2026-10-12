@@ -458,3 +458,12 @@ marks from the indexer and stop new buys after the loss, not before it.
   the model, the engine refuses it (`ineligible_generations`), and the firewall refuses to sign.
 - `packages/runtime/test/posts-scrub.test.ts`: 4: names in post facts are one plain token, without
   addresses, links or new lines.
+
+## Note from the pools and claims lane (2026-10-12)
+
+Agent pools and GitHub fee claims (docs/plans/AGENT-POOLS.md, GITHUB-FEE-CLAIMS.md) add no
+transaction kind an agent key signs, so nothing was registered with the firewall. Pool buys are made
+by a program-owned pool authority in transactions the pool keeper (a Core service key) sends; joins
+and fee routes are signed by the launcher's wallet; claims by the GitHub user's wallet. A
+cross-holding is delivered into the agent's own token account without its signature. Neither
+feature imports packages/trader or depends on a swap the firewall allows.

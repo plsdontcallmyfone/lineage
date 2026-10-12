@@ -902,3 +902,27 @@ launch `593dff1c876f83b4e59003cdeff4159c4a6a46cdefa9dc71a853dc175f045008`, msg
 55.099035047 SOL (0.00875 SOL in fees; buffers closed into the programs). LiteSVM 69/69 on the
 renamed builds. Keypairs: `target/deploy/units_*-keypair.json` are copies of the `lineage_*` files
 (same pubkeys), both kept, plus a backup in `~/.config/lineage/program-keys-backup-20261010-rebrand`.
+| 2026-10-12 01:29:41 | 0 | fund pool keeper 7YX6i3xYQf9LnirPJxSbbLrQSjoktJqbLX3YqUkrpPuy with 0.500000000 SOL | 5000 | `484wuZafubxhT6H2bSbkfxwHopDPGonRkYP2RSXb8YcyVuv3LpzS2YcX6gYzERBdQNRiGRNKCMD6TZ6dJStzSRer` |
+| 2026-10-12 01:29:43 | 0 | fund proof launcher BVHUV8fuvanz5toGs7Ao3ggLWbEfWxNphYVFfgsRrjwY with 0.500000000 SOL | 5000 | `38MWjqKd2RsJg5Mh9gEBrKntKv5DpeQwbNAbe91hckZqwhTcB6n4Tc2pKmY5D2YhXBf3p2pmZPTm9Q9WLLXrKnDP` |
+| 2026-10-12 01:29:45 | 0 | fund proof trader HBXwjQVrx1vnCmZ2TeTZ1R8Z1abAS8CsAdALEgw1SYVh with 0.300000000 SOL | 5000 | `5URrE7tMEKpd7X6VkTUEPEumxxKawGGqNLRWK5VbzR4acJ4ejrw7KwgApxNhGh9zn9V7X3SrdSSK8s3hZryHZua3` |
+| 2026-10-12 01:43:32 | 7 | fund claimer A 7UcYLwXWULueNbFAN6yy7mhJbhABvcJQMBb1Jxt4haqD with 0.050000000 SOL | 5000 | `DvqoWTtPkSwqBgT2Qi7cUxZKSP5BmxKKtKJmHrSgEY4hCra5scNhSLS6EG2vQofTyJBsLN8aydykUeyjrPpT3bC` |
+| 2026-10-12 01:43:34 | 7 | fund claimer B 5D2pSZBLk6zs8SXpbdLHDnPtgchCfKxtkAC7AGFt7FGz with 0.050000000 SOL | 5000 | `gJ6HwHNAm1dsx7rtvWDhk1TtEZbhR1H4qfpZnNe9YZQ78pJgLupMiUSnHzgp9hY6Ngjg6G2Bs8FaZt78U5mYSrN` |
+| 2026-10-12 02:08:51 | 7 | fund claimer A EgZtvvjyR8L9Q1zFLGLF9335ghbDUySmE1RbW4CtJgUo with 0.050000000 SOL | 5000 | `2FBtH4cZphXc8PyqfSZg1nUR4Xu85UoPRnDufHVw8VohdkYCg3EpPVyaiAGZWY5JBPX4nhNC2nyJ7J8kQPTPTi81` |
+| 2026-10-12 02:08:53 | 7 | fund claimer B EQtAaTyu3D5MWXqdoCXedb8Khta8F1S7aNM13CjqKgjn with 0.050000000 SOL | 5000 | `17FkwFa5tC8yc6xJTD7uAoxQW5Hfp7C7KokU2CT2HpKiRtkryisQ7kRba54cvwcHhA4LdnmjZ4rykZc2XA6YHuq` |
+| 2026-10-12 02:26:07 | 7 | fund claimer A FNuR6MhrH4DYqHuhu2AP28DEE8gShvyKmcK1CMEfHjL with 0.050000000 SOL | 5000 | `FonsZr5Fw4HCgzHz4VBngdXXGRdAUzkgS5uPb6bYiPKDJKdVsSZKx3oXuSXVV9cJCEyeA6S9obPKHc7MWanH52B` |
+| 2026-10-12 02:26:09 | 7 | fund claimer B 77QwnH3CAo614mqXs2vnJ4fXLgAgHRZfT9rhDNmByp7k with 0.050000000 SOL | 5000 | `3qxctGF84SP4gas6TuCgWBNRQm9wXXDwMmMvL3WvM7oebnywHznUxCLKxXsxT1dqkfu14ty73c4scu1dP3tGDk8u` |
+
+## Pools and claims (2026-10-12, pools and claims lane)
+
+`units_launch` upgraded in place with agent pools and GitHub fee routes, both switched off
+(`LaunchConfig.features` 0). Every command passed `-u devnet -k ~/.config/units/devnet-deployer.json`;
+nothing touched `solana config` or `~/.config/solana/id.json`.
+
+- Before: dump of `Axo38W...` equal to the earlier build (685,224 bytes, sha256 `88f447ac...`), ProgramData 685,240 bytes.
+- Measured: `solana rent -u devnet 956800` 4.86119424 SOL (the buffer, returned at the upgrade), `solana rent -u devnet 271560` 1.38017504 SOL (the extension, kept).
+- First upgrade: `solana program extend Axo38W... 271560`, then `solana program deploy --program-id Axo38W... units_launch.so` (956,800 bytes, sha256 `a4626eef...3c43f`), signature `2ULtjCNraw7w28RCZCXxKGtRDoTjDdcoT1jqM5L6X7PK657MQBGBQJWMxsHPaA8FRRGZLKk4RxCtNjTDBUYvQjzf`; deployer 55.099035047 to 53.714760247 SOL.
+- Second upgrade (cross-holdings delivered to the holder agent's token account): 958,368 bytes, sha256 `79609057cbe0209516ca4531c447900232ecb3077b91872d56b39bcd0fcc9ac2`. The loader refuses an extension under 10,240 bytes unless it reaches the maximum, so `extend 10240` (ProgramData now 967,040 bytes), then deploy, signature `zQWHRVLJgHjV9Ntjh7SL9qr24EfmSN115eJNvJb6JswG1ZZBcezXymXB79W1d1U69UWzpkArBV7jpwA6W6vAVa4`; dump equal to the build; 0.0567742 SOL.
+- Configs created by the proof (TEST values): `PoolConfig` (keeper `7YX6i3xY...pPuy`), `ClaimConfig` (attestor `HkXn2aFY...pQcG`, delays 600 s and 120 s after the run). Keys in `~/.config/units/devnet/pools-keeper.json` and `claims-attestor.json`.
+- Proof: `bun scripts/pools/devnet-proof.ts` PASS 67/67 (`scripts/pools/DEVNET-PROOF-LAST.json`: every check and every signature). The bits were on only during the runs and are 0 now; the public site was not redeployed and its Core and pages keep the features off. The site's existing agents have no route and no membership, so their cranks were unaffected even while the bits were on.
+- TEST agents the runs launched (self-hosted, asleep, to hide on the site): mints `WFbWZYEsLzh5Py5Nie8ZeT79XM5cSq2yeZ53S8Szxji`, `C51Wfj6oV4o6jGAMrSMxnYFtyUDdqASyYZGiZ7vvDr7x`, `CveAY18JZJLvdowpHJJ4WhtCSGnAjZiXCe3yRPn3ucqc`, `9wZScAUHojVCQzYc7JH4xLP9EFaK4NzWupVv1yY1Qnr1`, `1TRaMbUrhiZZymj8XDnESAeMTnLdqi5GBgrxDacTXpm`, `CoeAYA7CjuqtVP3jt8pZCsjVvctx6H3MGuPDtTgsQ25R`, `5kvLNHumizskwj3B51Z95k8uqBa3T7gr6R7L9JoGoxLz`, `BfinkTwSCoTnArM3gH36ZJ6AvYw3vKbwjTs1iFcqmydQ`, `As3gWqUBztqeRFzTstPpQLXCyAk3ArGTg56haaEKdm1n`, `9nyEBiAzvECrZDpWuQpNQoThU5iag378vce8K1MPpqvc`.
+- Deployer after everything: 52.054280207 SOL (3.044754840 spent by this lane: the extensions, fees, and SOL moved to the proof's keeper, launcher, trader and claimer keys).

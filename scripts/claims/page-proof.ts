@@ -155,7 +155,7 @@ export async function claimThroughPage(o: { base: string; wallet: Signer; mode: 
     const text = await page.locator("#claim-root").innerText();
     const wide = await page.evaluate(() => document.documentElement.scrollWidth > window.innerWidth + 1);
     if (mono) errors.push(`${mono} elements in a monospace font`);
-    if (text.includes("—")) errors.push("an em dash on the page");
+    if (text.includes(String.fromCharCode(0x2014))) errors.push("an em dash on the page");
     if (wide) errors.push("horizontal scroll");
     return { login, claimed, signature, per_agent: perAgent, claimable_before: before, claimable_after: after, screenshots: shots, console_errors: errors };
   } finally {

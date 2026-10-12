@@ -183,3 +183,42 @@ Builds and the devnet upgrade in place: onchain/DEVNET.md "Rebrand upgrade". Lit
 renamed builds. Mainnet fork rehearsal on the renamed mainnet builds (`target/mainnet/units_*.so`, registry
 `ead9e41f...`, launch `593dff1c...`, msg `90715f14...`): PASS 102/102, 85 transactions measured
 (scripts/mainnet/REHEARSAL-LAST.json, 2026-10-11, commit 8f9704a; nothing sent to mainnet).
+
+## Pools and fee claims (2026-10-12, after the tables above)
+
+`units_launch` gained two modules behind admin feature bits that are off on devnet and will be off
+at a mainnet deployment (docs/plans/AGENT-POOLS.md, docs/plans/GITHUB-FEE-CLAIMS.md, SPEC 14.14 and
+14.15). They are in scope for the audit of the build that ships them; the mainnet test uses the
+build from before them.
+
+| What | Value |
+|---|---|
+| Source | `programs/units-launch/src/pool.rs` (723 lines), `src/claim.rs` (389 lines), the slices in `crank_pump_fees` and `set_features` in `src/lib.rs` (1,001 lines) |
+| Build with the modules (devnet ids) | `onchain/target/pools/units_launch.so`, 958,368 bytes, sha256 `79609057cbe0209516ca4531c447900232ecb3077b91872d56b39bcd0fcc9ac2`; deployed on devnet 2026-10-12, dump equal |
+| Build with the modules (mainnet ids, `--features mainnet`) | `onchain/target/pools-mainnet/units_launch.so`, sha256 `817077c4730d02df62ce5b964a8ffba4aa8210cfe55ee29ca240444faccb11c8`; never deployed anywhere but a local fork |
+| Default build outputs | `target/deploy` and `target/mainnet` still hold the build from before the modules (`units_launch.so` 685,224 bytes) until the mainnet test lane is done with it |
+| Tests | `tests/tests/pools.rs` 7, `tests/tests/claims.rs` 8 (15 red on the earlier build, green on this one); suite 84/84 with `UNITS_LAUNCH_SO=target/pools/units_launch.so` |
+
+What changes for a reviewer:
+
+- **Layouts.** `LaunchConfig.reserved: u128` is now `features: u8` plus 15 reserved bytes and
+  `AgentLaunch.reserved: Pubkey` is `routes: u8` plus 31: the same sizes and offsets, zero on every
+  account written before, so no migration. New accounts only: `PoolConfig`, `Pool`, `PoolMember`,
+  `CrossHolding`, `ClaimConfig`, `FeeRoute`, `ClaimEscrow` and its token account.
+- **The crank.** With the bits off, or for an agent with no route and no membership, the
+  instruction takes its eight accounts and makes the two transfers it always made. Otherwise the
+  slices are taken from the agent share only, from trailing accounts each checked by address
+  (PDA from the agent, the GitHub id or the repository id) and owner.
+- **The first CPI into pump.fun.** `pool_buy` and `pool_cross_buy` invoke Pump `buy_v3` or PumpSwap
+  `buy_v2` with the pool authority PDA as the only signer inside the call, instruction data built by
+  the program, the program id a constant, and on PumpSwap the canonical pool required. The effect is
+  checked by balances after the call. Review: what a caller-supplied account list can make those two
+  instructions do with that signer; the lamports the pool authority holds for pump.fun's per-user
+  accounts.
+- **New powers.** The pool keeper (`PoolConfig.keeper`) settles and buys; it cannot move funds
+  outside members' compute vaults, members' tokens and burns, and a settlement's weights are its
+  word. The claim attestor (`ClaimConfig.attestor`) signs who may claim an escrow; bounded by the
+  escrow's balance, the sequence number, the expiry, the pause and the wallet pin with its delay.
+  Both are set by the launch admin (`set_pool_config`, `set_claim_config`), as are the bits.
+- **Ed25519 attestation.** `claim.rs` `attested`: the instructions sysvar read, one signature, the
+  three instruction indices required to be the precompile instruction itself.

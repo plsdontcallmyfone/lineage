@@ -186,3 +186,20 @@ Owner decisions 2026-10-10 (docs/plans/PUMPFUN-LAUNCHES.md, decisions and build 
 | layouts | `LaunchConfig` and `AgentLaunch` keep their sizes: `dbc_config` is `venue` (Pump's id), `migration_quote_threshold` is `pump_creator_fee_bps`, `sqrt_start_price` is `reserved`; `AgentLaunch` `dbc_config, dbc_pool, damm_pool, position, position_nft_account` are `venue, bonding_curve, pump_pool, pump_creator, reserved`. A record the Meteora venue wrote (devnet) keeps debit, withdraw, refresh and bounties; the pump.fun crank and graduation refuse it (`WrongPhase`) | `meteora_era_records_stay_readable` |
 
 The suites now run on mainnet's pump.fun builds: `$UNITS` in the launch, bounty, identity and registry suites that launch agents is a real pump.fun coin (`LineKind::PumpCoin`: `create_v2` paired with SOL, then `LINE_HELD` bought on its curve). The launch transaction is a v0 transaction with a lookup table on clusters; LiteSVM sends it without the legacy packet assert (`send_unchecked`), and its wire size is measured on the mainnet fork (scripts/mainnet). Red then green: the new suite ran against the previous `units_launch.so` (13 of 13 failed) before the program change, then 13 of 13 passed; LiteSVM 69/69 overall.
+
+## Pools and claims build (2026-10-12)
+
+`units_launch` with agent pools and GitHub fee routes (docs/plans/AGENT-POOLS.md,
+docs/plans/GITHUB-FEE-CLAIMS.md) is built into its own output so that `target/deploy` and
+`target/mainnet` keep the earlier build the mainnet test uses:
+
+```
+cargo build-sbf --manifest-path programs/units-launch/Cargo.toml --sbf-out-dir target/pools
+cargo build-sbf --manifest-path programs/units-launch/Cargo.toml --features mainnet --sbf-out-dir target/pools-mainnet
+UNITS_LAUNCH_SO=target/pools/units_launch.so cargo test -p units-onchain-tests      # 84/84
+```
+
+Without `UNITS_LAUNCH_SO` the suite loads `target/deploy/units_launch.so`; against the earlier build
+the 15 tests of `tests/tests/pools.rs` and `tests/tests/claims.rs` fail (they are the red half of
+red-then-green) and the other 69 pass. Once the mainnet test is over, a plain `cargo build-sbf`
+makes the pools build the default and the variable unnecessary.

@@ -1,7 +1,8 @@
 # GitHub fee routing and the Claim page
 
-Status: spec (2026-10-11, pools and claims lane). Owner request 2026-10-11. Built behind feature
-flags, default off everywhere; launched later with the product and the token. Devnet only.
+Status: built and proven on devnet, switched off (2026-10-12, pools and claims lane; results in
+section 10). Owner request 2026-10-11. Behind feature flags, default off everywhere; launched later
+with the product and the token. Devnet only.
 Companion: `docs/plans/AGENT-POOLS.md` (the other slice of the same fee crank).
 
 Every number below is a TEST value for devnet unless it says otherwise; launch values are TBA.
@@ -177,6 +178,40 @@ flag off: identical splits to today and `set_fee_route` refused.
   is not built.
 - Q5. Unclaimed escrows: forever (as built), or returned to the agent's compute after a long expiry?
 
-## 10. Results
+## 10. Results (2026-10-12)
 
-To be written by the lane as it lands (tests, devnet proof).
+- **Program.** `units_launch` `src/claim.rs` (389 lines) and the GitHub slice in `crank_pump_fees`.
+  LiteSVM: 8 tests (`onchain/tests/tests/claims.rs`), all red on the pre-change build and green on
+  the new one, covering every attack of section 7; whole suite 84/84.
+- **Core.** `packages/core/src/fee-claims.ts`, 6 tests against the mock GitHub
+  (`scripts/claims/mock-github.ts`) and a fake chain: flag off (404 everywhere), lookup and views,
+  the mock OAuth round trip, single-use state, the gist proof and its refusals, the attestation
+  verified with plain ed25519 over the bytes the program rebuilds, session tamper and expiry.
+- **Devnet** (`scripts/pools/devnet-proof.ts` PASS 67/67, with the pools proof): routes set by the
+  launcher at 20% and 10%; a non-owner and an out-of-bounds share refused; the slices exact in every
+  crank; a claim attested by the claimant's own key, the same attestation replayed, and an
+  attestation used on another GitHub id's escrow all refused on chain (`BadAttestation`); recipient
+  A claimed 9.125926 tUNITS after the mock sign-in and 8.296961 more after more fees accrued;
+  recipient B claimed 4.148148 through a gist; then both claimed again through the Claim page in
+  headless Chromium with a signing test wallet (B by the Sign in button: 4.148679; A by the page's
+  gist path: 8.296296), the page showing the escrow balance and the per-agent accruals first, with
+  no console error, no monospace, no em dash and no horizontal scroll; a route change stayed pending,
+  was refused inside its delay and applied after it; an attestation for a second wallet was flagged
+  as a rebind. The gist in this proof is served by the mock GitHub: a gist on github.com needs a
+  real account and was not used (the lane has none it may use).
+- **Mainnet fork** (`scripts/pools/fork-rehearsal.ts` 28/28): `set_fee_route` 0.003865800 SOL the
+  first time for an account (route, escrow and its token account), `claim_github_fees` 31,843 CU and
+  677 bytes with its Ed25519 instruction.
+- **Pages.** `/claim` (`apps/web/wallet/claim.ts`), the wizard's share slider and username lookup
+  with avatar (`apps/web/wallet/fee-route-step.ts`; rendered headless at 1280 and 390, light and
+  dark, with the bits on for the check: bounds 10% to 30% read from chain, the repository owner
+  prefilled and resolved to its id), the profile chip. A whole launch through the wizard with the
+  fields on was not run; the proof set the routes with the same builders in its own transactions.
+- **To enable on the site later:** the three flags (chain bit, Core, profile), `ClaimConfig` with
+  the launch delays and a dedicated attestor key, the OAuth app (section 8), and three routes in the
+  site gate (`scripts/deploy/gate.ts`): `GET /api/v1/fee-claims/*`, `GET /api/v1/github/users/*`
+  and the three POSTs under `/api/fee-claims/` (not added: the deploy kit belongs to another lane
+  and nothing is enabled).
+- **Not built.** Indexer rows for route changes and claims (they carry no mint; Core reads routes
+  and escrows from chain; the indexer records the routed slice of every crank as `fees_routed`);
+  an org-admin proof (Q4).

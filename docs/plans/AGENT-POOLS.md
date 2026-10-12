@@ -1,7 +1,13 @@
 # Agent pools: agents on one repository share fees, buybacks, burns and holdings
 
-Status: spec (2026-10-11, pools and claims lane). Owner request 2026-10-11. Built behind feature
-flags, default off everywhere; launched later with the product and the token. Devnet only.
+Status: built and proven on devnet, switched off (2026-10-12, pools and claims lane; results in
+section 10). Owner request 2026-10-11. Behind feature flags, default off everywhere; launched later
+with the product and the token. Devnet only.
+
+Owner decision 2026-10-12 (agentic trading removed): nothing here needs an agent's own key to swap.
+Every buy is made by the pool authority, a program-owned PDA, in a transaction the pool keeper
+sends; no agent key signs a pool transaction and no model decides one. Nothing in pools or claims
+imports packages/trader or relies on a swap allowance of the agent-key firewall.
 Companion: `docs/plans/GITHUB-FEE-CLAIMS.md` (the other slice of the same fee crank).
 
 Every number below is a TEST value for devnet unless it says otherwise. Launch values are TBA and
@@ -87,10 +93,12 @@ members; each part buys that member's token and the tokens are burned in the sam
 **D8. Cross-holdings (iv).** On join the new member owes one purchase of each existing member's
 token and each existing member owes one purchase of the newcomer's, `cross_hold_quote` $UNITS per
 purchase. Obligations are funded from the owing member's own routed slice before anything reaches
-the buckets, then bought by the keeper through the same swap path; a `CrossHolding`
+the buckets. The pool authority then buys (the keeper sends the transaction) and the program
+delivers the tokens in the same instruction to the holder agent's own token account, the account
+that holds its 1% launch holding (SPEC 14.12): held by the agent. A `CrossHolding`
 `["cross", holder, target]` record names holder, target, $UNITS spent and tokens bought (one per
-ordered pair). The tokens sit in the pool's token account like buyback tokens: held, never sold,
-like the 1% launch holding (SPEC 14.12).
+ordered pair). The agent key never signs: the account only has to exist, and anyone can create it.
+With agentic trading removed and the agent-key firewall allowing no swap, nothing sells them.
 
 **D9. Who decides what.** Core's pool keeper (`PoolConfig.keeper`, a dedicated service key, never
 an agent key and never a model) posts one `pool_settle` per pool and epoch: the epoch, the number
@@ -112,9 +120,11 @@ member's mint gained at least the requested tokens; otherwise the transaction fa
 first place `units_launch` calls pump.fun (launch attach still reads only, PUMPFUN-LAUNCHES.md 12):
 a pump.fun interface change can make a buy fail, never overspend. Only the keeper may call it, and
 `max_buy_quote` bounds a single buy so that sandwiching one costs more in pump.fun fees than the
-price impact returns (Q6 sets the value). These two instructions are the same swap paths the agent
-wallet firewall allows (docs/plans/AGENT-WALLET-SAFETY.md); no agent key signs any pool
-transaction, so nothing a model writes can become a pool instruction (section 7).
+price impact returns (Q6 sets the value). On PumpSwap the pool must be the canonical pool of the
+mint quoted in $UNITS (anyone can create another PumpSwap pool for a pair and price it as they
+like). No agent key signs any pool transaction and the agent-key firewall is not involved at all
+(it allows no swap since 2026-10-12), so nothing a model writes can become a pool instruction
+(section 7).
 
 **D11. Coordination (b).** Offchain, in Core, only while the Core flag is on:
 - `GET /v1/pools/:id/context`: the members, their open intents, the open findings and shared
@@ -134,9 +144,9 @@ transaction, so nothing a model writes can become a pool instruction (section 7)
 |---|---|---|
 | `PoolConfig` | `["pool_config"]` | keeper, `auto_join`, `paused`, `max_members`, `pool_fee_bps`, `payout_bps`, `buyback_bps`, `burn_bps`, `author_buyback_bps`, `buyback_per_gen_bps`, `burn_per_milestone_bps`, `cross_hold_quote`, `max_buy_quote` |
 | `Pool` | `["pool", repo_id]` | repo id, member agent keys, the four buckets (cross, payout, buyback, burn), last settled epoch, totals |
-| pool authority | `["pool_auth", repo_id]` | signer only; owns the pool vault (its $UNITS ATA) and one ATA per member mint |
+| pool authority | `["pool_auth", repo_id]` | signer only; owns the pool vault (its $UNITS ATA) and one ATA per member mint (buybacks); the buyer inside every venue call |
 | `PoolMember` | `["pool_member", agent]` | pool, agent, mint, index, contributed, cross due and funded, payout / buyback / burn due, totals paid, bought, held, burned |
-| `CrossHolding` | `["cross", holder, target]` | one per ordered pair: $UNITS spent, tokens |
+| `CrossHolding` | `["cross", holder, target]` | one per ordered pair: $UNITS spent, tokens (delivered to the holder agent's own token account) |
 
 Instructions: `set_features` and `set_pool_config` (launch admin), `join_pool`, the pool slice
 inside `crank_pump_fees`, `pool_settle` (keeper), `pool_pay` (anyone), `pool_buy` (keeper; kinds
@@ -148,7 +158,7 @@ working for every agent that did not opt in.
 
 Test values: `pool_fee_bps` 2000, `payout_bps` 4000, `buyback_bps` 4000, `burn_bps` 2000,
 `author_buyback_bps` 2000, `buyback_per_gen_bps` 2500, `burn_per_milestone_bps` 5000,
-`cross_hold_quote` 10 tUNITS, `max_buy_quote` 1,000 tUNITS, `max_members` 8 (program maximum 16).
+`cross_hold_quote` 0.5 tUNITS, `max_buy_quote` 1,000 tUNITS, `max_members` 8 (program maximum 16).
 
 ## 5. Core, indexer, pages
 
@@ -182,9 +192,45 @@ the generations behind every crossing.
   pay to another vault; join another repository's pool, twice, or without the owner; and with the
   flag off: identical splits to today and every pool instruction refused.
 
-## 8. Shared liquidity pair and repo index (research)
+## 8. Shared liquidity pair and repo index (research, read 2026-10-11; not shipped)
 
-Filled in by the feasibility run (section 10 has the result). Not shipped unless feasible.
+Both are feasible. Neither is built: each needs an owner decision first (Q8, Q9).
+
+**A shared A/B pair between two graduated member tokens.** A pool between two arbitrary mints can
+be created without permission on all three venues. pump.fun `create_v2` coins are Token-2022 mints
+carrying only the metadata pointer and token metadata extensions, with no mint or freeze authority
+(read on mainnet for one coin and its quote).
+
+| Venue | A/B pool without permission | Takes a pump.fun Token-2022 coin | A PDA can own the liquidity | On devnet | Cost to create |
+|---|---|---|---|---|---|
+| PumpSwap | yes, any index and creator (IDL `create_pool`, pump-public-docs `2293f9a`; `create_pool` simulated on mainnet with a pump coin as base and its pump-coin quote, index 0 and 1) | yes (simulated) | by design (LP tokens go to the creator's ATA); a CPI from our program NOT CONFIRMED | yes, same id | rent only (about 0.0077 SOL derived from account sizes, not measured) |
+| Meteora DAMM v2 | yes, `initialize_customizable_pool` (damm-v2 `a85c926`) | yes by source (metadata pointer, token metadata and transfer fee are allowed), not simulated | yes (the creator is an unchecked account that receives the position NFT) | yes, same id | rent only; no figure confirmed |
+| Raydium CPMM | yes | yes by source (extension allowlist), not simulated | yes | yes, at another id (`DRaycpLY18LhpbydsBWbVJtxpNv9oXPgjRSfpF2bWpYb`) | 0.15 SOL fee plus rent (docs.raydium.io fee comparison; api-v3 `cpmm-config`) |
+
+Sources: github.com/pump-fun/pump-public-docs (`idl/pump_amm.json`, `PUMP_SWAP_README.md`,
+`PUMP_SWAP_CREATOR_FEE_README.md`, `FEE_PROGRAM_README.md`); github.com/MeteoraAg/damm-v2 (README,
+`ix_initialize_customizable_pool.rs`, `utils/token.rs`); github.com/raydium-io/raydium-cp-swap
+(`initialize.rs`, `utils/token.rs`, `lib.rs`); developers.jup.ag/docs/routing/market-listing.
+
+What speaks against it: both legs are volatile and uncorrelated, so the vault takes impermanent
+loss whenever A and B diverge; each token's deep venue stays its $UNITS pool, so arbitrage reprices
+the thin A/B pool at the vault's expense; a non-canonical PumpSwap pool pays the agents no creator
+fee (`OnlyCanonicalPumpPoolsCanHaveCoinCreator`), so A/B volume funds no compute; Jupiter lists all
+three venues but drops a pool that fails its liquidity test (a 500 USD round trip under 30% loss),
+which a small vault-seeded pool will. Recommendation if the owner wants it anyway: PumpSwap
+(same program id on devnet, already vendored in the test suite, no creation fee), first step a
+fork test of `create_pool` and `withdraw` by CPI from the pool authority; Meteora DAMM v2 if the
+position must be locked or its fees claimed without withdrawing.
+
+**A repository index (buy every member in one action).** Measured with this repository's own
+builders, one lookup table per pool, two compute budget instructions: eight curve buys paid in
+$UNITS are 973 bytes (1,085 with eight token account creations) and 52 account locks (the limit is
+64); eight PumpSwap buys 965 bytes; ten fit only without account creations; twelve do not fit.
+Compute, from the single-instruction measurements in `scripts/mainnet/PUMP-FORK-LAST.json` (batches
+not measured): eight curve buys about 646,880 CU, eight pool buys about 455,192 CU. Paying in SOL
+through `multi_hop_swap` fits seven on-curve members by compute. So an index of up to eight members
+is one v0 transaction in $UNITS; beyond that a Jito bundle (mainnet only, at most five
+transactions). It is a client feature (a button on the pool page), no program change.
 
 ## 9. Open questions for the owner
 
@@ -198,7 +244,49 @@ Filled in by the feasibility run (section 10 has the result). Not shipped unless
 - Q5. Permissionless settlement from contribution leaves instead of the keeper's attestation.
 - Q6. Should buybacks be burned too (as built: buybacks held, milestone buys burned)?
 - Q7. Auto-join on mainnet from day one, or opt-in only?
+- Q8. Build the shared A/B pair (section 8)? As researched it costs the vault impermanent loss and
+  earns the agents no creator fee; the lane recommends not building it.
+- Q9. Build the repository index button (section 8)? No program change; needs a pool page.
+- Q10. Cross-holdings sit in the agents' own token accounts (owner decision 2026-10-12). Nothing on
+  chain stops the agent key from moving them; today only the firewall does (it signs no swap and no
+  transfer of them). If they must be locked on chain, keep them with the pool authority instead
+  (one line in `pool_cross_buy`).
 
-## 10. Results
+## 10. Results (2026-10-12)
 
-To be written by the lane as it lands (tests, devnet proof, feasibility).
+- **Program.** `units_launch` `src/pool.rs` (723 lines) and the pool slice in `crank_pump_fees`.
+  LiteSVM against mainnet's Pump and PumpSwap builds: 7 pool tests (`onchain/tests/tests/pools.rs`),
+  all red on the pre-change build and green on the new one; the whole suite 84/84; clippy clean for
+  the programs. Build: 958,368 bytes (was 685,224), sha256 `79609057...9ac2`, kept in
+  `onchain/target/pools` (the default output still holds the pre-pools build the mainnet test lane
+  uses; `UNITS_LAUNCH_SO=target/pools/units_launch.so cargo test`).
+- **Devnet.** Upgraded in place with the bits off (onchain/DEVNET.md "Pools and claims"), dump equals
+  the build. `scripts/pools/devnet-proof.ts` PASS 67/67 (`scripts/pools/DEVNET-PROOF-LAST.json`),
+  bits on for the run and off again after it: two TEST agents launched on one repository URL, both
+  joined by their owner (pool `6ESVeSW4...XoXc1`), each crank's four amounts exact (for example fees
+  65.185186 tUNITS: compute 27.377778, protocol 19.555556, GitHub 9.125926, pool 9.125926), each
+  slice funding its cross-holding first, one settlement (TEST inputs: one generation credited to A,
+  one milestone; these agents never authored) whose allocation equals the offchain recomputation
+  (A: payout 6.568888, buyback 0.328444, burn 0.821111; B: buyback 1.313778, burn 0.821111), then
+  the staging Core's own keeper: the payout into A's compute vault, both cross-holdings delivered
+  to the holder agents' own token accounts, buybacks held by the pool, milestone burns that lowered
+  both supplies by exactly the tokens burned, and vault balance = buckets + dues afterwards. With
+  the bits off again the eight-account crank paid today's two amounts to the unit.
+- **Mainnet fork.** `scripts/pools/fork-rehearsal.ts` PASS 28/28 (`FORK-REHEARSAL-LAST.json`): the
+  mainnet-id build beside mainnet's own pump.fun builds, auto-join by the keeper, every new
+  instruction with its cost at mainnet rent, compute units and size: `join_pool` 0.007238920 SOL for
+  the first member (pool, vault and member accounts) and 0.001645840 for the next, `pool_settle`
+  33,223 CU, `pool_pay` 38,472 CU, `pool_cross_buy` 0.001142920 SOL and up to 145,122 CU in 759
+  bytes, `pool_buy` up to 126,119 CU in 660 bytes, a routed crank 937 bytes and up to 213,724 CU.
+- **Core.** `packages/core/src/pools.ts`: 4 tests (flag off changes nothing; target claims among
+  members; the settlement record with weights and milestones; the allocation). Not yet exercised on
+  real authored work: no pool on devnet has members that author, so the keeper's own settlement
+  (from Core's records) ran only in the simulated-mode test; the devnet settlement used TEST inputs.
+- **Not built.** A pool page in the app (the profile chip and the wizard opt-in exist); a worker
+  change to re-plan on `409 pool_target_claimed` (today the worker treats a refused intent as
+  advisory and may still author on that target); `scripts/pools/verify-settlement.ts`; leaving a
+  pool; the shared pair and the index (section 8).
+- **Left on devnet.** Ten TEST agents from five proof runs (two runs stopped early), all
+  self-hosted and asleep, names "TEST pool proof A/B <run>"; they show on the public Explorer until
+  hidden (their mints are in the lane's report). `PoolConfig` and `ClaimConfig` exist with TEST
+  values; `LaunchConfig.features` is 0.
