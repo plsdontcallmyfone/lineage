@@ -89,6 +89,8 @@ export interface SpendReport {
     model: { provider: string; id: string } | null;
     via: "direct" | "openrouter" | null;
     waiting: string | null;
+    /** per-agent desktops (desktop_mode per_agent): the agent's own desktop, in words a page can show; absent in per-attempt mode */
+    desktop?: { state: "starting" | "running" | "paused" | "none"; why: string | null; since: number } | null;
   }>;
 }
 
@@ -162,6 +164,8 @@ export class Runtime {
   /** agents whose budget is under the minimum useful attempt: no attempt, desktop or session until `until`, or until the vault holds more than `balance` */
   private paused = new Map<string, { until: number; balance: bigint; why: string }>();
   private lastReport = 0;
+  /** the hosted agents of the last successful discovery (an agent that left it no longer exists for the desktops) */
+  private discovered: Set<string> | null = null;
 
   constructor(readonly cfg: RuntimeConfig, private deps: RuntimeDeps) {
     const sink = deps.log ?? ((m: string) => console.log(`[${new Date().toISOString().slice(11, 19)} runtime] ${m}`));
@@ -516,6 +520,28 @@ export class Runtime {
     return w;
   }
 
+  /**
+   * Per-agent desktops (desktop_mode per_agent): tells the desktop provider which agents are bound now,
+   * which are in an attempt and which sleep. Called only after the agents were read without an error,
+   * so a failed read removes no desktop. Returns at once: an agent's desktop is created in the
+   * background from its binding on, and the bind and the launch never wait on it.
+   */
+  private syncDesktops(): void {
+    const d = this.deps.desktop;
+    if (!d?.syncAgents) return;
+    const list = [];
+    for (const [agent, st] of Object.entries(this.state.agents)) {
+      // bound to this runtime and still a hosted agent the backend knows
+      if (st.status !== "bound" || !(this.discovered ?? this.hosted).has(agent)) continue;
+      list.push({ agent, working: this.running.has(agent), asleep: this.vaults.get(agent)?.awake === false });
+    }
+    try {
+      d.syncAgents(list);
+    } catch (e) {
+      this.log(`desktops: sync: ${(e as Error).message}`);
+    }
+  }
+
   /** A newly seen hosted agent: its runtime key (made once) and the bind request for its owner. */
   private async adopt(h: HostedAgent): Promise<void> {
     const key = this.store.keyFor(h.agent);
@@ -554,7 +580,9 @@ export class Runtime {
   private async refreshAgents(): Promise<void> {
     const b = this.deps.backend;
     if (this.ticks % (b.mode === "devnet" ? 6 : 1) === 0 || this.hosted.size === 0) {
+      const seen = new Set<string>();
       for (const h of await b.discover()) {
+        seen.add(h.agent);
         // ids become file names below: a malformed one from Core or the chain is skipped (audit A2, OFF-R1)
         if (!isAgentId(h.agent)) {
           this.log(`skipping a discovered agent with a malformed id ${JSON.stringify(String(h.agent).slice(0, 60))}`);
@@ -573,6 +601,7 @@ export class Runtime {
         }
         await this.adopt(h);
       }
+      this.discovered = seen;
     }
     for (const [agent, st] of Object.entries(this.state.agents)) {
       const h = this.hosted.get(agent);
@@ -909,6 +938,7 @@ export class Runtime {
       await this.deps.providerBalance?.refresh();
       this.state.provider_balance = this.deps.providerBalance ? { openrouter: { ...this.deps.providerBalance.state, configured: this.deps.providerBalance.configured } } : undefined;
       await this.refreshAgents();
+      this.syncDesktops();
       await this.reportSpend();
       if (this.pendingProvenance.length) await this.flushProvenance();
       if (!this.posting) {
@@ -1016,6 +1046,8 @@ export class Runtime {
         via: r?.via ?? null,
         waiting: !v ? "vault not read yet" : !v.awake ? "asleep (vault below the wake threshold)" : this.waiting.get(agent) ?? (r && !r.via ? r.why : null),
       };
+      const desk = this.deps.desktop?.agentDesktop?.(agent);
+      if (desk) out.agents[agent]!.desktop = { state: desk.state, why: desk.why ? desk.why.slice(0, 300) : null, since: desk.since };
     }
     return out;
   }

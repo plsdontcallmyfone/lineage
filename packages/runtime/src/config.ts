@@ -143,6 +143,29 @@ export interface RuntimeConfig {
    */
   desktop_max_age_s?: number;
   desktop_reap_every_s?: number;
+  /**
+   * "per_attempt" (default): a desktop per running attempt (hosts, this server, then E2B). "per_agent"
+   * (owner decision 2026-10-12, packages/desktop agent-desktops.ts): every bound agent has its own E2B
+   * desktop from its binding on, paused while it is idle and resumed for its next attempt; then
+   * `e2b_max` is the most desktops RUNNING at once (E2B does not count paused ones; measured
+   * 2026-10-12), `desktop_usd_per_day` counts every second a desktop runs, `e2b.session_max_s` is the
+   * plan's session length, and desktops_max and the desktop hosts are not used.
+   */
+  desktop_mode?: "per_agent" | "per_attempt";
+  /** per_agent: pause a desktop whose agent has not been in an attempt for this long, s (default 600; an asleep agent's is paused at once). */
+  desktop_idle_s?: number;
+  /** per_agent: between attempts, restart E2B's session window (pause, resume) when less than this is left of e2b.session_max_s, s (default 1800, at most half of it). */
+  desktop_renew_before_s?: number;
+  /** per_agent: the sandbox timeout the runtime pushes forward, s (default 900): E2B pauses a desktop this long after the runtime's last sign of life. */
+  desktop_keepalive_s?: number;
+  /** per_agent: the longest a desktop that E2B paused under a running attempt may take to come back, s (default 60); after it the stream ends and the attempt goes on without. */
+  desktop_resume_gap_max_s?: number;
+  /** per_agent: a desktop whose agent is not bound to this runtime any more is killed after this long, s (default 300). */
+  desktop_remove_after_s?: number;
+  /** per_agent: desktops created at once (default 4; E2B allows 1 create per second on Hobby, 5 on Pro). */
+  desktop_start_parallel?: number;
+  /** per_agent: this runtime's label on its sandboxes (default: desktop_shared.name or the mode, plus a digest of the host name and state_dir). Two runtimes on one E2B account need different labels. */
+  desktop_owner?: string;
 }
 
 export const DEFAULTS: Omit<RuntimeConfig, "mode" | "core" | "runtime_key" | "compute_price_line_per_usd" | "compute_price_line_per_sandbox_s"> = {
@@ -201,7 +224,14 @@ export function parseConfig(raw: Record<string, unknown>): RuntimeConfig {
   if (c.attempt_gap_s !== undefined && !(typeof c.attempt_gap_s === "number" && c.attempt_gap_s >= 0 && c.attempt_gap_s <= 3600)) throw new Error("runtime config: attempt_gap_s is 0 to 3600 seconds");
   if (c.bind_port !== undefined && !(Number.isInteger(c.bind_port) && c.bind_port > 0 && c.bind_port < 65536)) throw new Error("runtime config: bind_port is a TCP port");
   if (c.desktop_port !== undefined && !(Number.isInteger(c.desktop_port) && c.desktop_port > 0 && c.desktop_port < 65536)) throw new Error("runtime config: desktop_port is a TCP port");
-  for (const k of ["desktops_max", "e2b_max"] as const) if (c[k] !== undefined && !(Number.isInteger(c[k]) && c[k]! >= 0 && c[k]! <= 16)) throw new Error(`runtime config: ${k} is a whole number from 0 to 16`);
+  if (c.desktops_max !== undefined && !(Number.isInteger(c.desktops_max) && c.desktops_max >= 0 && c.desktops_max <= 16)) throw new Error("runtime config: desktops_max is a whole number from 0 to 16");
+  // E2B sells up to 1,100 sandboxes at once (e2b.dev/pricing, read 2026-10-12)
+  if (c.e2b_max !== undefined && !(Number.isInteger(c.e2b_max) && c.e2b_max >= 0 && c.e2b_max <= 1100)) throw new Error("runtime config: e2b_max is a whole number from 0 to 1100");
+  if (c.desktop_mode !== undefined && c.desktop_mode !== "per_agent" && c.desktop_mode !== "per_attempt") throw new Error('runtime config: desktop_mode is "per_agent" or "per_attempt"');
+  for (const [k, min] of [["desktop_idle_s", 0], ["desktop_renew_before_s", 0], ["desktop_keepalive_s", 60], ["desktop_resume_gap_max_s", 1], ["desktop_remove_after_s", 0], ["desktop_start_parallel", 1]] as const)
+    if (c[k] !== undefined && !(typeof c[k] === "number" && Number.isFinite(c[k]) && c[k]! >= min)) throw new Error(`runtime config: ${k} is a number of at least ${min}`);
+  if (c.desktop_owner !== undefined && !(typeof c.desktop_owner === "string" && /^[A-Za-z0-9._-]{1,64}$/.test(c.desktop_owner))) throw new Error("runtime config: desktop_owner is 1 to 64 letters, digits, dots, dashes or underscores");
+  if (c.desktop_mode === "per_agent" && !((c.e2b_max ?? 0) > 0)) throw new Error("runtime config: desktop_mode per_agent needs e2b_max above 0");
   if (c.recordings !== undefined && typeof c.recordings !== "boolean") throw new Error("runtime config: recordings is true or false");
   if (c.desktop_required !== undefined && typeof c.desktop_required !== "boolean") throw new Error("runtime config: desktop_required is true or false");
   if (c.desktop_max_age_s !== undefined && !(typeof c.desktop_max_age_s === "number" && c.desktop_max_age_s >= 300)) throw new Error("runtime config: desktop_max_age_s is at least 300 seconds");

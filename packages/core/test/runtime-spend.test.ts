@@ -13,13 +13,13 @@ afterEach(() => {
 });
 
 describe("models through OpenRouter", () => {
-  test("with only Anthropic and OpenRouter keys: Anthropic direct, the others via OpenRouter with OpenRouter's price, Meta's Llama 4 Maverick too", async () => {
+  test("with Anthropic and OpenRouter keys: every model via OpenRouter with OpenRouter's price, Claude included (owner 2026-10-12), Meta's Llama 4 Maverick too", async () => {
     const e = bare();
     env = e;
     await expectOk(e.admin.c.post("/v1/admin/models/availability", { providers: { anthropic: true, openrouter: true } }));
     const v = await expectOk(e.anon.get("/v1/models"));
     const one = (p: string, id: string) => v.models.find((m: any) => m.provider === p && m.id === id);
-    expect(one("anthropic", "claude-opus-5-5")).toMatchObject({ pickable: true, via: "direct", route: null });
+    expect(one("anthropic", "claude-opus-5-5")).toMatchObject({ pickable: true, via: "openrouter", route: { id: "anthropic/claude-opus-5.5", rate: { input: 4, output: 20, cached_input: 0.2, cache_write: 5 }, funding_fee_bps: 550 } });
     const gpt = one("openai", "gpt-5.5");
     expect(gpt).toMatchObject({ pickable: true, via: "openrouter", route: { id: "openai/gpt-5.5", funding_fee_bps: 550 } });
     expect(one("meta", "llama-4-maverick")).toMatchObject({ pickable: true, via: "openrouter" });
@@ -45,5 +45,20 @@ describe("runtime spend summary", () => {
     expect((await expectOk(e.anon.get(`/v1/agents/${b}/spend`))).provider_balance_low).toBe(false);
     const none = await expectOk(e.anon.get(`/v1/agents/${generateAgentKey().id}/spend`));
     expect(none.spend).toBeNull();
+  });
+  test("an agent's own desktop (runtime desktop_mode per_agent) is served as reported: state, why, since; a malformed one reads null; absent stays absent", async () => {
+    const e = bare();
+    env = e;
+    const a = generateAgentKey().id, b = generateAgentKey().id, c = generateAgentKey().id;
+    const row = { vault: "1", vault_usd: 1, burn_per_h: null, burn_usd_per_h: null, burn_window_s: null, runway_h: null, model: null, via: null, waiting: null };
+    await expectOk(
+      e.admin.c.post("/v1/admin/runtime/spend", {
+        price: { source: "config", status: "test", usd_per_token: null, line_per_usd: "1000000", why: null },
+        agents: { [a]: { ...row, desktop: { state: "paused", why: "agent idle", since: 1791824956000, sandbox_id: "never served" } }, [b]: { ...row, desktop: { state: "exploded" } }, [c]: row },
+      }),
+    );
+    expect((await expectOk(e.anon.get(`/v1/agents/${a}/spend`))).spend.desktop).toEqual({ state: "paused", why: "agent idle", since: 1791824956000 });
+    expect((await expectOk(e.anon.get(`/v1/agents/${b}/spend`))).spend.desktop).toBeNull();
+    expect("desktop" in (await expectOk(e.anon.get(`/v1/agents/${c}/spend`))).spend).toBe(false);
   });
 });

@@ -181,6 +181,21 @@ const runtimeCfg: Record<string, any> = {
   e2b: { template: "lineage-desktop", vcpu: 2, ram_gib: 4, session_max_s: 3600 },
   desktop_required: true,
   desktop_hosts_file: "/home/units/.config/lineage/desktop-hosts/hosts.json",
+  // One E2B desktop per agent (owner decision 2026-10-12, docs/plans/AGENT-DESKTOPS.md "one E2B desktop
+  // per agent"): OFF here until the owner has upgraded the E2B plan. "per_attempt" keeps everything
+  // above as it is. To switch this site on: desktop_mode "per_agent", e2b_max the most desktops running
+  // at once (the E2B account's limit is shared by every instance on it: on the 100 sandbox plan this
+  // site's and the mainnet instance's e2b_max together stay at or under 100), e2b.session_max_s the
+  // plan's session length (86400 on the 24 h plan, 3600 on Hobby), desktop_usd_per_day the budget
+  // (0.1656 USD per desktop-hour running; a paused desktop is not billed). The settings under it apply
+  // only in that mode, each with the runtime's default written out.
+  desktop_mode: "per_attempt",
+  desktop_idle_s: 600,
+  desktop_renew_before_s: 1800,
+  desktop_keepalive_s: 900,
+  desktop_resume_gap_max_s: 60,
+  desktop_remove_after_s: 300,
+  desktop_start_parallel: 4,
   // one E2B day budget for every instance on this server (packages/runtime desktops.ts): this one
   // publishes its spend there and counts a second instance's; with no second instance (no directory,
   // no peer file) nothing changes

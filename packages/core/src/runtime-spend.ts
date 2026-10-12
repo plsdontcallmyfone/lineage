@@ -73,6 +73,14 @@ function desktopsOf(v: unknown) {
   };
 }
 
+/** An agent's own desktop (runtime desktop_mode per_agent): its state, why and since when; null when absent or malformed. */
+function agentDesktopOf(v: unknown) {
+  if (!v || typeof v !== "object" || Array.isArray(v)) return null;
+  const d = v as Record<string, unknown>;
+  if (d.state !== "starting" && d.state !== "running" && d.state !== "paused" && d.state !== "none") return null;
+  return { state: d.state, why: typeof d.why === "string" && short(d.why) ? d.why : null, since: fin(d.since) };
+}
+
 const instances = new WeakMap<Core, RuntimeSpend>();
 export function runtimeSpendOf(core: Core): RuntimeSpend {
   let m = instances.get(core);
@@ -105,7 +113,7 @@ export class RuntimeSpend {
         throw bad("bad_spend", `agents.${id}: vault, vault_usd, burn_per_h, burn_usd_per_h, burn_window_s, runway_h, via, waiting`);
       const m = a.model as { provider?: unknown; id?: unknown } | null | undefined;
       if (m != null && !(typeof m.provider === "string" && typeof m.id === "string" && m.provider.length <= 32 && m.id.length <= 100)) throw bad("bad_spend", `agents.${id}.model: { provider, id }`);
-      const row = { vault: a.vault ?? null, vault_usd: a.vault_usd ?? null, burn_per_h: a.burn_per_h ?? null, burn_usd_per_h: a.burn_usd_per_h ?? null, burn_window_s: a.burn_window_s ?? null, runway_h: a.runway_h ?? null, model: m ?? null, via: a.via ?? null, waiting: a.waiting ?? null };
+      const row = { vault: a.vault ?? null, vault_usd: a.vault_usd ?? null, burn_per_h: a.burn_per_h ?? null, burn_usd_per_h: a.burn_usd_per_h ?? null, burn_window_s: a.burn_window_s ?? null, runway_h: a.runway_h ?? null, model: m ?? null, via: a.via ?? null, waiting: a.waiting ?? null, ...(a.desktop !== undefined ? { desktop: agentDesktopOf(a.desktop) } : {}) };
       put.run(id, JSON.stringify(row), now, by);
     }
     this.c.db.query("INSERT OR REPLACE INTO runtime_spend_global (id, body, reported_at) VALUES (1, ?, ?)").run(JSON.stringify(global), now);

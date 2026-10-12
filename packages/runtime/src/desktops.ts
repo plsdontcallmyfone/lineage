@@ -1,5 +1,7 @@
+import { createHash } from "node:crypto";
 import { mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
-import { join } from "node:path";
+import { hostname } from "node:os";
+import { join, resolve } from "node:path";
 import { DesktopPool } from "../../desktop/src/pool.ts";
 import type { RuntimeConfig } from "./config.ts";
 
@@ -74,12 +76,23 @@ export class SharedDesktopBudget {
   }
 }
 
-export function desktopPool(cfg: RuntimeConfig, log: (m: string) => void): DesktopPool | null {
+/**
+ * This runtime's label on its per-agent sandboxes: `desktop_owner`, else its shared-budget name (or
+ * mode) with a digest of the host name and the state directory, so the same runtime finds its
+ * desktops after a restart and no other runtime on the E2B account takes them for its own.
+ */
+export function desktopOwner(cfg: RuntimeConfig): string {
+  if (cfg.desktop_owner) return cfg.desktop_owner;
+  const d = createHash("sha256").update(`${hostname()}\n${resolve(cfg.state_dir)}`).digest("hex").slice(0, 12);
+  return `${cfg.desktop_shared?.name ?? cfg.mode}-${d}`;
+}
+
+export function desktopPool(cfg: RuntimeConfig, log: (m: string) => void, test: Pick<NonNullable<ConstructorParameters<typeof DesktopPool>[1]>, "e2b" | "local" | "now" | "timers"> = {}): DesktopPool | null {
   const local = cfg.desktops_max ?? 0;
   const e2b = cfg.e2b_max ?? 0;
   if (local <= 0 && e2b <= 0 && !cfg.desktop_hosts_file) return null;
   const cap = cfg.desktop_usd_per_day ?? 5;
-  const shared = cfg.desktop_shared ? new SharedDesktopBudget(cfg.desktop_shared, cap, { log }) : null;
+  const shared = cfg.desktop_shared ? new SharedDesktopBudget(cfg.desktop_shared, cap, { log, now: test.now }) : null;
   let pool: DesktopPool | null = null;
   const dcfg = {
     root: join(cfg.state_dir, "desktops"),
@@ -95,6 +108,15 @@ export function desktopPool(cfg: RuntimeConfig, log: (m: string) => void): Deskt
     // desktops never outlive their attempt (pool.ts reap)
     max_age_s: cfg.desktop_max_age_s,
     reap_every_s: cfg.desktop_reap_every_s,
+    // one E2B desktop per agent (owner decision 2026-10-12); per_attempt unless switched on
+    mode: cfg.desktop_mode ?? ("per_attempt" as const),
+    owner: desktopOwner(cfg),
+    idle_s: cfg.desktop_idle_s,
+    renew_before_s: cfg.desktop_renew_before_s,
+    keepalive_s: cfg.desktop_keepalive_s,
+    resume_gap_max_s: cfg.desktop_resume_gap_max_s,
+    remove_after_s: cfg.desktop_remove_after_s,
+    start_parallel: cfg.desktop_start_parallel,
   };
   if (shared) {
     // the pool reads its cap at every check: with a shared budget it is what the peers have left of it
@@ -107,13 +129,15 @@ export function desktopPool(cfg: RuntimeConfig, log: (m: string) => void): Deskt
       },
     });
   }
-  pool = new DesktopPool(dcfg, { log });
+  pool = new DesktopPool(dcfg, { log, ...test });
   if (shared) {
     const p = pool;
     shared.publish(p.spentToday());
-    setInterval(() => shared.publish(p.spentToday()), 30_000).unref();
+    if (test.timers !== false) setInterval(() => shared.publish(p.spentToday()), 30_000).unref();
   }
   const s = pool.status();
+  if (pool.agents)
+    log(`desktops: one E2B desktop per agent (label ${dcfg.owner}): at most ${e2b} running at once, paused after ${cfg.desktop_idle_s ?? 600} s idle or when the agent sleeps, session length ${cfg.e2b?.session_max_s ?? 3600} s renewed between attempts; desktop hosts and this server's slots are not used in this mode`);
   log(`desktops: ${pool.hosts.size} desktop host(s) with ${[...pool.hosts.values()].reduce((n, b) => n + b.host.desktops_max, 0)} slots, ${local} on this server${pool.local.unavailable() ? ` (${pool.local.unavailable()})` : ""}, ${e2b} on E2B${pool.e2b.unavailable() ? ` (${pool.e2b.unavailable()})` : ""}; E2B spend today ${s.e2b.spent_today_usd.toFixed(4)} of ${s.e2b.cap_usd} USD${shared ? ` left of the ${cap} USD shared with ${cfg.desktop_shared!.peers.join(", ")}` : ""}; recordings ${pool.recording ? "on" : "off (live only)"}; desktop ${pool.required ? "required for every attempt" : "optional"}`);
   return pool;
 }
