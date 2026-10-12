@@ -23,7 +23,7 @@ import { challengesOf } from "./challenges.ts";
 import { soulsOf } from "./souls.ts";
 import { msgchainOf } from "./msgchain.ts";
 import { prepayOf } from "./prepay.ts";
-import { deploymentsOf } from "./deployments.ts";
+import { deploymentLabel, deploymentsOf } from "./deployments.ts";
 import type { NetworkConfig } from "./config.ts";
 import type { ChainAgent, Core } from "./core.ts";
 
@@ -137,6 +137,15 @@ export function isSlashCapError(e: unknown): boolean {
   return /"Custom":6029\b|custom program error: 0x178d\b/.test(x?.message ?? "") || (x?.logs ?? []).some((l) => l.includes("Error Code: SlashCap."));
 }
 
+/**
+ * Claim mirror polling (tickInner): posted epochs with an unclaimed leaf read per sync. The newest
+ * are where claims land first; the older ones take turns, so the reads per sync do not grow with
+ * the number of posted epochs.
+ */
+export const CLAIM_POLL = { newest: 8, older: 24 } as const;
+/** How many of the newest post_epoch results GET /v1/chain (and `chain` in /v1/stats) carries. */
+export const POSTED_EPOCHS_SHOWN = 20;
+
 export class ChainBridge {
   readonly reader: ChainReader;
   private running: Promise<unknown> | null = null;
@@ -165,6 +174,22 @@ export class ChainBridge {
   private retry = new Map<string, { failures: number; at: number }>();
   /** Slashes the registry's per epoch cap refused (A1-08), by key: the `epochs_posted` they wait to see pass. */
   private capped = new Map<string, bigint>();
+  /** Older unclaimed epochs up to this number were read last (the rotation's place; a restart begins at the oldest again). */
+  private claimCursor = -1;
+  /**
+   * The epochs whose claim receipts this sync reads: of the posted epochs that still hold an
+   * unclaimed leaf, the newest CLAIM_POLL.newest every time and the next CLAIM_POLL.older of the
+   * rest, oldest first, round robin. Claims never expire on chain, so every older epoch comes round:
+   * with M older unclaimed epochs, at most ceil(M / CLAIM_POLL.older) + 1 syncs after the claim.
+   */
+  private claimEpochsDue(): number[] {
+    const open = this.core.chainUnclaimedEpochs();
+    const older = open.slice(0, Math.max(0, open.length - CLAIM_POLL.newest));
+    if (!older.some((n) => n > this.claimCursor)) this.claimCursor = -1;
+    const turn = older.filter((n) => n > this.claimCursor).slice(0, CLAIM_POLL.older);
+    if (turn.length) this.claimCursor = turn[turn.length - 1]!;
+    return [...turn, ...open.slice(older.length)];
+  }
   private due(key: string) {
     const r = this.retry.get(key);
     return !r || this.core.now() >= r.at;
@@ -219,7 +244,7 @@ export class ChainBridge {
     if (!reg) throw new Error("registry not initialized");
     // which deployment this is; a different registry than last time retires the earlier one (deployments.ts)
     const rp = this.settings.registry_program;
-    const label = rp === DEVNET_V1_PROGRAM_IDS.registry ? "devnet v1" : rp === PROGRAM_IDS.devnet.registry ? "devnet v2" : rp === PROGRAM_IDS.mainnet.registry ? "mainnet" : null;
+    const label = rp === DEVNET_V1_PROGRAM_IDS.registry ? "devnet v1" : rp === PROGRAM_IDS.devnet.registry ? "devnet v2" : rp === PROGRAM_IDS.mainnet.registry ? "mainnet" : deploymentLabel(rp);
     const sw = deploymentsOf(this.core).observe({ registry_program: rp, launch_program: this.settings.launch_program, line_mint: reg.mint, label });
     // devnet v1 was read before deployments.ts existed: record it as retired once (epochs closed before v2)
     if (label === "devnet v2") {
@@ -228,17 +253,25 @@ export class ChainBridge {
       if (v1) sw.switched.push(v1);
     }
     for (const d of sw.switched) this.log(`registry ${d.registry_program} retired: epochs through ${d.through_epoch} stay with it (last posted ${d.last_posted_epoch}, unposted ${d.unposted_epochs})`);
+    // in-memory send state of the earlier registry (backoffs, slash cap windows) means nothing on this one
+    if (sw.switched.length) {
+      this.retry.clear();
+      this.capped.clear();
+    }
     const launchCfg = await this.reader.launchConfig();
     const tokenProgram = reg.tokenProgram;
     if (this.send && this.coreKeyId === reg.coreAuthority) await this.sendSlashes(reg.mint, tokenProgram, reg.epochsPosted);
 
     // claims made on chain for epochs Core posted (before the vault read, so a compute leaf is counted once)
-    for (const { n, leaves } of this.core.chainPostedLeaves()) {
-      const receipts = await this.reader.claimReceipts(n, leaves.map((l) => hexToBytes(l.leaf)));
-      receipts.forEach((r, i) => {
+    // only epochs with a leaf still unclaimed, and of those the newest every sync and the older ones in turn (CLAIM_POLL)
+    const due = this.core.chainPostedLeaves(this.claimEpochsDue());
+    const items = due.map(({ n, leaves }) => ({ epoch: n, leaves: leaves.map((l) => hexToBytes(l.leaf)) }));
+    const receipts = this.reader.claimReceiptsMany ? await this.reader.claimReceiptsMany(items) : await Promise.all(items.map((it) => this.reader.claimReceipts(it.epoch, it.leaves)));
+    due.forEach(({ n, leaves }, k) => {
+      receipts[k]!.forEach((r, i) => {
         if (r) this.core.chainRecordClaim(n, leaves[i]!);
       });
-    }
+    });
 
     // agents (verifiers and launched), with launched agents' AgentLaunch and compute vault
     const [agents, launches] = await Promise.all([this.reader.agents(), this.reader.launches()]);
@@ -409,7 +442,9 @@ export class ChainBridge {
       agents: kinds,
       messages,
       agents_v1: agents.filter((a) => a.version === 1).length,
-      posted_epochs: this.core.chainEpochs(),
+      // the newest post results only (the list grows by one per epoch); the counts are epochs_posted above and this
+      posted_epochs: this.core.chainEpochs(POSTED_EPOCHS_SHOWN),
+      posted_epochs_count: this.core.chainEpochCount(),
       this_sync: { posted },
     };
     return this.snapshot;

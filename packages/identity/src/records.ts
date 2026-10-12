@@ -61,6 +61,17 @@ export interface CredRecord {
   assigned_at: string;
 }
 
+/**
+ * The binding of a reserve account to an agent (kind "claim", id = login), created exclusively before
+ * provisioning touches GitHub and never deleted by the service (creds.ts ReservePool).
+ */
+export interface ClaimRecord {
+  v: 1;
+  login: string;
+  agent: string;
+  at: string;
+}
+
 /** Reserve account (kind "reserve"), the same fields as a pool file entry (souls Pool). */
 export interface ReserveRecord {
   login: string;

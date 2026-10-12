@@ -104,6 +104,12 @@ export function usdAt(db: Database, t: number | null | undefined, reach = SAMPLE
   return r && t - r.t <= reach ? r.usd : null;
 }
 
+/** The stored sample behind `usdAt`: its bucket time and price, or null. */
+export function usdSampleAt(db: Database, t: number, reach = SAMPLE_REACH_S): { t: number; usd: number } | null {
+  const r = db.query("SELECT t, usd FROM quote_usd_samples WHERE t <= ? ORDER BY t DESC LIMIT 1").get(t) as { t: number; usd: number } | null;
+  return r && t - r.t <= reach ? r : null;
+}
+
 /** A lookup over the stored samples between `from` and `to` (one query, then binary search): the price at an event's own time, or null. */
 export function usdLookup(db: Database, from: number, to: number, reach = SAMPLE_REACH_S): (t: number | null | undefined) => number | null {
   const rows = db.query("SELECT t, usd FROM quote_usd_samples WHERE t >= ? AND t <= ? ORDER BY t").all(from - reach - SAMPLE_S, to) as { t: number; usd: number }[];

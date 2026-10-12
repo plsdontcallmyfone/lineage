@@ -12,7 +12,7 @@
 // renamed into place. Tokens are never logged and no API returns them; see service.ts.
 
 import { createCipheriv, createDecipheriv, randomBytes } from "node:crypto";
-import { chmodSync, existsSync, mkdirSync, readdirSync, readFileSync, renameSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { chmodSync, closeSync, existsSync, fsyncSync, linkSync, mkdirSync, openSync, readdirSync, readFileSync, renameSync, rmSync, statSync, writeFileSync, writeSync } from "node:fs";
 import { dirname, join } from "node:path";
 
 const KIND = /^[a-z][a-z0-9-]{0,31}$/;
@@ -62,7 +62,22 @@ export class EncryptedStore {
     return join(this.dir, "records", kind, `${id}.enc`);
   }
 
-  put(kind: string, id: string, value: unknown) {
+  /** fsync of a directory, so a rename or a new name in it survives a crash (not every filesystem allows it). */
+  private syncDir(d: string) {
+    try {
+      const fd = openSync(d, "r");
+      try {
+        fsyncSync(fd);
+      } finally {
+        closeSync(fd);
+      }
+    } catch {
+      /* best effort */
+    }
+  }
+
+  /** The ciphertext in a temporary file of the record's directory, written through to the disk. */
+  private stage(kind: string, id: string, value: unknown): { p: string; tmp: string } {
     const p = this.path(kind, id);
     this.ensure(dirname(p));
     const iv = randomBytes(12);
@@ -71,9 +86,42 @@ export class EncryptedStore {
     const ct = Buffer.concat([c.update(Buffer.from(JSON.stringify(value), "utf8")), c.final()]);
     const rec = { v: 1, alg: "aes-256-gcm", iv: iv.toString("base64"), tag: c.getAuthTag().toString("base64"), ct: ct.toString("base64") };
     const tmp = `${p}.tmp-${process.pid}-${randomBytes(4).toString("hex")}`;
-    writeFileSync(tmp, JSON.stringify(rec) + "\n", { mode: 0o600 });
+    const fd = openSync(tmp, "wx", 0o600);
+    try {
+      writeSync(fd, JSON.stringify(rec) + "\n");
+      fsyncSync(fd);
+    } finally {
+      closeSync(fd);
+    }
     chmodSync(tmp, 0o600);
+    return { p, tmp };
+  }
+
+  put(kind: string, id: string, value: unknown) {
+    const { p, tmp } = this.stage(kind, id, value);
     renameSync(tmp, p);
+    this.syncDir(dirname(p));
+  }
+
+  /**
+   * Writes a record only when none with this name exists: true when this call made it, false when it
+   * was already there (it is left untouched). The whole record appears under its name in one step (a
+   * hard link of the finished, synced temporary file: link(2) fails when the name exists), so of any
+   * number of processes creating the same name at once exactly one gets true, and a crash never leaves
+   * a half-written record. The account claim of the reserve is built on this (creds.ts).
+   */
+  create(kind: string, id: string, value: unknown): boolean {
+    const { p, tmp } = this.stage(kind, id, value);
+    try {
+      linkSync(tmp, p);
+    } catch (e) {
+      if ((e as NodeJS.ErrnoException).code === "EEXIST") return false;
+      throw e;
+    } finally {
+      rmSync(tmp, { force: true });
+    }
+    this.syncDir(dirname(p));
+    return true;
   }
 
   get<T = unknown>(kind: string, id: string): T | null {

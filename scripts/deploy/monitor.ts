@@ -13,7 +13,9 @@
 // failing: to ALERT_WEBHOOK_URL (POST {"text": ...}, e.g. Slack or Discord style) and/or Telegram
 // (ALERT_TELEGRAM_BOT_TOKEN, ALERT_TELEGRAM_CHAT_ID), both from /etc/units/alert.env, which only the
 // owner writes. Without either, alerts go to the journal only (`journalctl -u units-monitor -p warning`).
-// Nothing secret is read or printed: health endpoints, unit states, public keys and file ages.
+// Nothing secret is printed: health endpoints, unit states, public keys and file ages. The one secret it
+// holds is the keyed RPC URL of a MONITOR_MORE Core (the mainnet instance), given in the unit's
+// environment from a root-only file and used only as the URL of its getBalance requests.
 import { existsSync, mkdirSync, readdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 
@@ -32,8 +34,8 @@ export interface Inputs {
   gateHealth: { ok: boolean; err?: string };
   publicHealth: { ok: boolean; err?: string } | null;
   /** /v1/epochs (newest first) and /v1/chain */
-  epochs: { n: number; status: string; end_ms: number; closed_at?: number | null }[] | null;
-  chain: { mode?: string; core_signing?: boolean; last_epoch?: string | null } | null;
+  epochs: EpochRows | null;
+  chain: ChainRow | null;
   expectSigning: boolean;
   /** /v1/heartbeats */
   heartbeats: { agent_id: string; last_seen: number }[] | null;
@@ -61,6 +63,20 @@ export interface Inputs {
   /** secrets+state snapshots (backup.sh secrets): newest mtime per part, or null when no age recipient
    * is configured on the server (then nothing of the runtime keys, site keys or identity data is kept) */
   secretsBackups?: { part: string; newestMs: number | null }[] | null;
+  /** the other Cores on this server (MONITOR_MORE), each with its own health, epochs and hot key balances */
+  more?: MoreCore[];
+}
+export type EpochRows = { n: number; status: string; start_ms?: number; end_ms: number; closed_at?: number | null }[];
+export type ChainRow = { mode?: string; core_signing?: boolean; last_epoch?: string | null };
+/** One more monitored Core: what MONITOR_MORE names, as read this run. */
+export interface MoreCore {
+  name: string;
+  coreHealth: { ok: boolean; err?: string };
+  epochs: EpochRows | null;
+  chain: ChainRow | null;
+  expectSigning: boolean;
+  /** "core-authority" and "runtime-authority" (lamports null when the read failed or no RPC was given) */
+  balances: { name: string; lamports: number | null }[];
 }
 
 export const LIMITS = {
@@ -82,7 +98,27 @@ export const LIMITS = {
   /** a runtime report older than this says nothing about now */
   desktopReportStaleMs: 15 * 60_000,
   repeatMs: 6 * 3600_000,
+  /** one post_epoch by the Core authority: Epoch account rent plus the fee, measured on the mainnet fork (docs/MAINNET-COSTS.md) */
+  epochPostLamports: 1_493_440,
+  /** a Core authority of a MONITOR_MORE Core: warn under this many days of epoch posts, fail under the second */
+  postDaysWarn: 3,
+  postDaysFail: 1,
 } as const;
+
+/** The monitored Core's own epoch length, from its open epoch (null when the rows do not carry it). */
+export function epochLengthMs(epochs: EpochRows | null): number | null {
+  const open = epochs?.find((e) => e.status === "open");
+  return open && typeof open.start_ms === "number" && open.end_ms > open.start_ms ? open.end_ms - open.start_ms : null;
+}
+/**
+ * Epoch thresholds from the epoch length: overdue past max(2 epochs, 10 min), unposted past
+ * max(4 epochs, 20 min), and never looser than the limits a daily epoch always had (60 min, 2 h), so
+ * an epoch of 30 minutes or more, or an unknown length, keeps exactly those.
+ */
+export function epochLimits(lengthMs: number | null): { overdueMs: number; postGraceMs: number } {
+  if (lengthMs === null) return { overdueMs: LIMITS.epochOverdueMs, postGraceMs: LIMITS.epochPostGraceMs };
+  return { overdueMs: Math.min(LIMITS.epochOverdueMs, Math.max(2 * lengthMs, 10 * 60_000)), postGraceMs: Math.min(LIMITS.epochPostGraceMs, Math.max(4 * lengthMs, 20 * 60_000)) };
+}
 
 const mins = (ms: number) => `${Math.round(ms / 60_000)} min`;
 const sol = (l: number) => `${(l / 1e9).toFixed(4)} SOL`;
@@ -92,6 +128,64 @@ const gib = (b: number) => `${(b / 2 ** 30).toFixed(1)} GiB`;
 export function mergeWaiting(lists: (Inputs["waiting"] | undefined)[]): Inputs["waiting"] {
   const read = lists.filter((l): l is NonNullable<Inputs["waiting"]> => !!l && Array.isArray(l.agents));
   return read.length ? { agents: read.flatMap((l) => l.agents) } : null;
+}
+
+/** Epochs close on time and the newest closed one is on chain, with thresholds from that Core's epoch length (epochLimits). */
+function epochCheck(now: number, epochs: EpochRows | null, chain: ChainRow | null, expectSigning: boolean): [Level, string] {
+  if (!epochs || !chain) return ["fail", "could not read /v1/epochs or /v1/chain"];
+  const lim = epochLimits(epochLengthMs(epochs));
+  const open = epochs.find((e) => e.status === "open");
+  const closed = epochs.filter((e) => e.status === "closed").sort((a, b) => b.n - a.n)[0];
+  const problems: string[] = [];
+  let level: Level = "ok";
+  if (open && now - open.end_ms > lim.overdueMs) {
+    problems.push(`epoch ${open.n} should have closed ${mins(now - open.end_ms)} ago`);
+    level = "fail";
+  }
+  if (chain.mode && chain.mode !== "sim") {
+    if (expectSigning && !chain.core_signing) {
+      problems.push("Core holds no authority key (epochs are not posted)");
+      level = "fail";
+    }
+    const posted = chain.last_epoch == null ? -1 : Number(chain.last_epoch);
+    if (closed && posted < closed.n) {
+      const since = now - (closed.closed_at ?? closed.end_ms);
+      if (since > lim.postGraceMs) {
+        problems.push(`epoch ${closed.n} closed ${mins(since)} ago, chain has ${posted < 0 ? "none" : `up to ${posted}`}`);
+        level = "fail";
+      }
+    }
+  }
+  return [level, problems.length ? problems.join("; ") : `open epoch ${open?.n ?? "?"} ends in ${open ? mins(open.end_ms - now) : "?"}; last closed ${closed?.n ?? "none"}${chain.mode !== "sim" ? `, on chain ${chain.last_epoch ?? "none"}` : ""}`];
+}
+
+/**
+ * A hot key of a MONITOR_MORE Core. The Core authority is measured in days of epoch posts at that
+ * Core's epoch length: warn under 3 days, fail under 1. The runtime authority posts usage epochs,
+ * and no measured cost of one exists (docs/MAINNET-COSTS.md: "not measured here"), so it keeps the
+ * absolute thresholds; so does a Core authority whose epoch length could not be read.
+ */
+function hotKeyCheck(core: string, b: { name: string; lamports: number | null }, lengthMs: number | null): [Level, string] {
+  if (b.lamports == null) return ["warn", `${core} ${b.name} balance not readable`];
+  if (b.name === "core-authority" && lengthMs !== null) {
+    const posts = 86_400_000 / lengthMs;
+    const perDay = LIMITS.epochPostLamports * posts;
+    const days = b.lamports / perDay;
+    const level: Level = days < LIMITS.postDaysFail ? "fail" : days < LIMITS.postDaysWarn ? "warn" : "ok";
+    return [level, `${core} ${b.name} ${sol(b.lamports)}, ${sol(perDay)} a day (${Math.round(posts * 100) / 100} epoch posts), ${days.toFixed(1)} days left`];
+  }
+  const level: Level = b.lamports < LIMITS.coreAuthorityFail ? "fail" : b.lamports < LIMITS.coreAuthorityWarn ? "warn" : "ok";
+  const why = b.name === "core-authority" ? "epoch length not read" : "no measured cost of a usage post";
+  return [level, `${core} ${b.name} ${sol(b.lamports)} (warn under ${sol(LIMITS.coreAuthorityWarn)}, fail under ${sol(LIMITS.coreAuthorityFail)}: ${why})`];
+}
+
+/** MONITOR_MORE: entries separated by ";", each "name=..,core=<url>,rpc_env=<variable holding the RPC URL>,core_authority=<pubkey>,runtime_authority=<pubkey>,signing=1". */
+export function parseMore(v: string | undefined): { name: string; core: string; rpcEnv: string | null; signing: boolean; keys: { name: string; id: string }[] }[] {
+  const KEY = /^[1-9A-HJ-NP-Za-km-z]{32,44}$/;
+  return (v ?? "").split(";").map((e) => Object.fromEntries(e.split(",").map((kv) => kv.trim().split("=") as [string, string | undefined]).filter(([k, x]) => k && x)) as Record<string, string>)
+    .filter((f) => /^[a-z0-9-]{1,24}$/.test(f.name ?? "") && /^https?:\/\//.test(f.core ?? ""))
+    .map((f) => ({ name: f.name!, core: f.core!.replace(/\/+$/, ""), rpcEnv: /^[A-Z][A-Z0-9_]*$/.test(f.rpc_env ?? "") ? f.rpc_env! : null, signing: f.signing === "1",
+      keys: [["core-authority", f.core_authority], ["runtime-authority", f.runtime_authority]].filter(([, id]) => KEY.test(id ?? "")).map(([name, id]) => ({ name: name!, id: id! })) }));
 }
 
 /** Every check from one set of readings. Pure: the tests drive it with fixed inputs. */
@@ -109,32 +203,7 @@ export function evaluate(i: Inputs): Check[] {
   if (i.publicHealth) add("public", i.publicHealth.ok ? "ok" : "fail", i.publicHealth.ok ? "public HTTPS /v1/health ok" : `public HTTPS: ${i.publicHealth.err ?? "failed"}`);
 
   // epochs
-  if (!i.epochs || !i.chain) add("epochs", "fail", "could not read /v1/epochs or /v1/chain");
-  else {
-    const open = i.epochs.find((e) => e.status === "open");
-    const closed = i.epochs.filter((e) => e.status === "closed").sort((a, b) => b.n - a.n)[0];
-    const problems: string[] = [];
-    let level: Level = "ok";
-    if (open && i.now - open.end_ms > LIMITS.epochOverdueMs) {
-      problems.push(`epoch ${open.n} should have closed ${mins(i.now - open.end_ms)} ago`);
-      level = "fail";
-    }
-    if (i.chain.mode && i.chain.mode !== "sim") {
-      if (i.expectSigning && !i.chain.core_signing) {
-        problems.push("Core holds no authority key (epochs are not posted)");
-        level = "fail";
-      }
-      const posted = i.chain.last_epoch == null ? -1 : Number(i.chain.last_epoch);
-      if (closed && posted < closed.n) {
-        const since = i.now - (closed.closed_at ?? closed.end_ms);
-        if (since > LIMITS.epochPostGraceMs) {
-          problems.push(`epoch ${closed.n} closed ${mins(since)} ago, chain has ${posted < 0 ? "none" : `up to ${posted}`}`);
-          level = "fail";
-        }
-      }
-    }
-    add("epochs", level, problems.length ? problems.join("; ") : `open epoch ${open?.n ?? "?"} ends in ${open ? mins(open.end_ms - i.now) : "?"}; last closed ${closed?.n ?? "none"}${i.chain.mode !== "sim" ? `, on chain ${i.chain.last_epoch ?? "none"}` : ""}`);
-  }
+  add("epochs", ...epochCheck(i.now, i.epochs, i.chain, i.expectSigning));
 
   // verifiers
   if (i.verifiers.length) {
@@ -217,6 +286,14 @@ export function evaluate(i: Inputs): Check[] {
         add(`backup:${b.part}`, age > LIMITS.backupStaleMs ? "fail" : "ok", `newest ${b.part} snapshot (encrypted) ${mins(age)} old`);
       }
     }
+  }
+
+  // the other Cores on this server (MONITOR_MORE): health, epochs at their own epoch length, hot keys
+  for (const m of i.more ?? []) {
+    add(`core:${m.name}`, m.coreHealth.ok ? "ok" : "fail", m.coreHealth.ok ? `${m.name} Core /v1/health ok` : `${m.name} Core /v1/health: ${m.coreHealth.err ?? "failed"}`);
+    const [level, msg] = epochCheck(i.now, m.epochs, m.chain, m.expectSigning);
+    add(`epochs:${m.name}`, level, `${m.name}: ${msg}`);
+    for (const b of m.balances) add(`balance:${m.name}:${b.name}`, ...hotKeyCheck(m.name, b, epochLengthMs(m.epochs)));
   }
   return out;
 }
@@ -336,7 +413,7 @@ if (import.meta.main) {
     getJson<{ ok: boolean }>(`${CORE}/v1/health`),
     getJson<{ ok: boolean }>(`${GATE}/gate/health`),
     env.MONITOR_SITE && !dry ? getJson<{ ok: boolean }>(`${env.MONITOR_SITE}/v1/health`, 15_000) : Promise.resolve(null),
-    getJson<Inputs["epochs"]>(`${CORE}/v1/epochs`),
+    getJson<Inputs["epochs"]>(`${CORE}/v1/epochs?limit=5`), // newest first: the open epoch and the newest closed one
     getJson<Inputs["chain"]>(`${CORE}/v1/chain`),
     getJson<Inputs["heartbeats"]>(`${CORE}/v1/heartbeats`),
     getJson<Inputs["souls"]>(`${WEB}/souls/config`),
@@ -354,6 +431,14 @@ if (import.meta.main) {
         const [name, id] = s.split(":") as [string, string];
         return { name, lamports: await balance(rpc, id) };
       }));
+  // MONITOR_MORE: the mainnet instance's Core. Its RPC URL is keyed, so it comes from the variable the entry names
+  // (the unit's root-only EnvironmentFile) and is only ever used as the request URL: never logged, never in a message.
+  const more: MoreCore[] = await Promise.all(parseMore(env.MONITOR_MORE).map(async (m) => {
+    const [h, ep, ch] = await Promise.all([getJson<{ ok: boolean }>(`${m.core}/v1/health`), getJson<EpochRows>(`${m.core}/v1/epochs?limit=5`), getJson<ChainRow>(`${m.core}/v1/chain`)]);
+    const url = m.rpcEnv ? env[m.rpcEnv] : undefined;
+    const bals = dry ? [] : await Promise.all(m.keys.map(async (k) => ({ name: k.name, lamports: url ? await balance(url, k.id) : null })));
+    return { name: m.name, coreHealth: { ok: h.ok && h.body?.ok === true, err: h.err }, epochs: ep.ok ? ep.body! : null, chain: ch.ok ? ch.body! : null, expectSigning: m.signing, balances: bals };
+  }));
   const spendFile = env.MONITOR_SPEND ?? "/run/units-monitor/spend.json";
   let spend: Inputs["spend"] = null;
   try {
@@ -384,6 +469,7 @@ if (import.meta.main) {
     secretsBackups: existsSync(env.MONITOR_SECRETS_RECIPIENT ?? SECRETS_RECIPIENT)
       ? Object.entries(SECRETS_DIRS).map(([part, dir]) => ({ part, newestMs: newestBackup(dir, new RegExp(`^${part}-.*\\.tar\\.zst\\.age$`)) }))
       : null,
+    more,
   };
   const checks = evaluate(inputs);
 

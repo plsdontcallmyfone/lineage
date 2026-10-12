@@ -58,7 +58,14 @@ export interface ServiceOptions {
   org?: string;
   /** the units account payment check (owner direction 2026-10-11); absent: no payment required */
   payment?: PaymentCheck;
+  /** GET /identity/pool says `low` when this many accounts or fewer are free (default POOL_LOW_WATER) */
+  poolLowWater?: number;
 }
+
+/** Free accounts at or below which the pool reports `low`: the reserve target push-reserve.ts has always topped up to. */
+export const POOL_LOW_WATER = 5;
+/** Why a paid launch has no account yet when none is free (the wizard and the agent page show it). */
+export const POOL_EMPTY_REASON = "paid, but no units account is free right now: this agent gets the next one added to the reserve, or the operator refunds the payment";
 
 export interface PaymentCheck {
   /** purchased launches created at or after this (unix seconds) must carry the payment */
@@ -136,7 +143,7 @@ export class IdentityService {
    * facts: who paid how many lamports to which recipient, in which signatures, for which launch).
    * `launched_at` is the launch's chain time in unix seconds; the payment rides in the launch transactions.
    */
-  payments(): { since: number | null; payments: { agent: string; mint: string; launcher: string; lamports: string; recipient: string; signatures: string[]; launched_at: number }[] } {
+  payments(): { since: number | null; payments: { agent: string; mint: string; launcher: string; lamports: string; recipient: string; signatures: string[]; launched_at: number; account: "assigned" | "waiting" }[] } {
     const out = [];
     for (const a of this.store.list("state")) {
       const s = this.state(a);
@@ -144,7 +151,25 @@ export class IdentityService {
       out.push({ agent: s.agent, mint: s.mint, launcher: s.launcher, lamports: s.paid.lamports, recipient: s.paid.recipient, signatures: s.paid.signatures, launched_at: s.launched_at });
     }
     out.sort((x, y) => x.launched_at - y.launched_at || (x.agent < y.agent ? -1 : 1));
-    return { since: this.o.payment?.since ?? null, payments: out };
+    return { since: this.o.payment?.since ?? null, payments: out.map((p) => ({ ...p, account: this.state(p.agent)?.status === "ready" ? ("assigned" as const) : ("waiting" as const) })) };
+  }
+
+  /**
+   * GET /identity/pool: counts of the reserve, no login and no token. `available` accounts can still be
+   * given out; `waiting_paid` launches paid for an account and have none yet (each takes the next free
+   * one, oldest first, so they come off `available` first); `offer` is whether a new launch can be sold
+   * an account now (Core hides the option when it is false); `low` is the top-up warning.
+   */
+  pool(): { available: number; assigning: number; assigned: number; unusable: number; total: number; waiting_paid: number; low_water: number; low: boolean; offer: boolean } {
+    const c = this.reserve.counts();
+    let waiting = 0;
+    for (const a of this.store.list("state")) {
+      const s = this.state(a);
+      if (s?.mode === "purchased" && s.paid && s.status !== "ready" && !this.reserve.assignedTo(a)) waiting += 1;
+    }
+    const lowWater = this.o.poolLowWater ?? POOL_LOW_WATER;
+    const free = Math.max(0, c.available - waiting);
+    return { available: c.available, assigning: c.assigning, assigned: c.assigned, unusable: c.unusable, total: c.total, waiting_paid: waiting, low_water: lowWater, low: free <= lowWater, offer: free > 0 };
   }
 
   summary() {
@@ -155,7 +180,7 @@ export class IdentityService {
     }
     const reserve: Record<string, number> = {};
     for (const a of this.reserve.publicList()) reserve[a.status] = (reserve[a.status] ?? 0) + 1;
-    return { agents: counts, reserve, since: new Date(this.o.since * 1000).toISOString(), last_watch: this.lastWatch, last_cycle: this.store.get<any>("cycle", "last")?.summary ?? null };
+    return { agents: counts, reserve, pool: this.pool(), since: new Date(this.o.since * 1000).toISOString(), last_watch: this.lastWatch, last_cycle: this.store.get<any>("cycle", "last")?.summary ?? null };
   }
 
   private newState(l: AgentLaunch, mode: LaunchMode): AgentState {
@@ -256,8 +281,12 @@ export class IdentityService {
       this.log(`watch: ${s.agent} provisioned as ${r.login} (cleaned ${r.cleaned.unstarred} stars, ${r.cleaned.gists_deleted} gists, ${r.cleaned.signing_keys_removed} old signing keys; ${r.skipped.length} reserve accounts skipped)`);
     } catch (e) {
       const why = errText(e);
-      this.save(setStatus(s, "failed", why === "no usable account left in the pool" ? "the server reserve is empty; the operator tops it up with push-reserve.ts" : why, this.now()));
-      this.log(`watch: provisioning ${s.agent} failed: ${why}`);
+      const empty = why === "no usable account left in the pool";
+      // an empty reserve is not this agent's failure: it does not use up an attempt, so the agent is tried
+      // again (every retryS) for as long as it takes and gets the first account the operator adds
+      if (empty) s.attempts = Math.max(0, s.attempts - 1);
+      this.save(setStatus(s, "failed", empty ? (s.paid ? POOL_EMPTY_REASON : "no units account is free right now; this agent gets the next one added to the reserve") : why, this.now()));
+      this.log(`watch: provisioning ${s.agent} failed: ${why}${empty && s.paid ? ` (it paid ${s.paid.lamports} lamports: an account or a refund is owed)` : ""}`);
     } finally {
       this.creds.cleanup();
       this.busy.delete(s.agent);

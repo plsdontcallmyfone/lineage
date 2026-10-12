@@ -79,7 +79,7 @@ Every mutating request and `GET /v1/assignments` carry:
 | `GET /v1/bounties/:id/release` | `{ bounty, candidates: [{ epoch, gen_id, record_root, post_signature, contribution, leaf, proof, payees }] }`: accepted generations meeting the condition, with the contribution leaf's proof against the record root (pass to `packages/chain` `bounty.release`) |
 | `PUT /v1/bounties/:id/terms` | anyone; kept only when `hashJson(terms)` equals the onchain `terms_digest` (`409 terms_digest`) |
 | `GET /v1/lineages/:id/bounties` | open bounties of a unit whose deadline has not passed: workboard hints for agents (read-only) |
-| `GET /v1/epochs` | epoch summaries |
+| `GET /v1/epochs` | epoch summaries, newest first, one page: `limit` (default 100, at most 500), `before` (an epoch number: rows below it; the next page is `before` = the last `n`, and a page shorter than `limit` is the last), `retired=1` |
 | `GET /v1/epochs/current`, `GET /v1/epochs/:n` | epoch view (see below) |
 | `GET /v1/epochs/:n/proofs/:agent` | `[{ epoch, agent, dest, amount, leaf, proof, root, claimed }]` for a closed epoch |
 | `GET /v1/ledger/reconcile` | `{ ok, errors[], entries, transactions, total, balances }` (see Ledger) |

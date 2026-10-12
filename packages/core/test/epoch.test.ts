@@ -119,6 +119,32 @@ describe("epoch close and claims (SPEC 13)", () => {
     await reconcileOk(e);
   });
 
+  test("GET /v1/epochs is paged: newest first, limit (default 100, at most 500) and before; a short page is the last", async () => {
+    const e = (env = await setup({ verifiers: 2 }));
+    e.clock.advance(e.cfg.epoch_length_s * 1000 * 620);
+    e.core.tick(); // epochs 0..619 closed, 620 open
+    const ns = async (q = "") => (await expectOk<any[]>(e.anon.get(`/v1/epochs${q}`))).map((x) => x.n);
+    const first = await expectOk<any[]>(e.anon.get("/v1/epochs"));
+    expect(first.length).toBe(100);
+    expect([first[0].n, first[0].status, first[1].status, first[99].n]).toEqual([620, "open", "closed", 521]);
+    expect(Object.keys(first[1])).toEqual(["n", "status", "start_ms", "end_ms", "beacon_commit", "root", "pool_amount", "rebate_amount", "total_units"]);
+    expect(await ns("?limit=3")).toEqual([620, 619, 618]);
+    expect(await ns("?limit=3&before=618")).toEqual([617, 616, 615]);
+    expect((await ns("?limit=5000")).length).toBe(500);
+    expect(await ns("?before=2")).toEqual([1, 0]);
+    expect(await ns("?before=0")).toEqual([]);
+    expect((await e.anon.get("/v1/epochs?limit=x")).status).toBe(400);
+    // walking the pages reaches every epoch once
+    const all: number[] = [];
+    for (let before: number | null = null; ; ) {
+      const page = await ns(`?limit=500${before === null ? "" : `&before=${before}`}`);
+      all.push(...page);
+      if (page.length < 500) break;
+      before = page[page.length - 1]!;
+    }
+    expect(all).toEqual(Array.from({ length: 621 }, (_, k) => 620 - k));
+  });
+
   test("epochs close automatically on tick at epoch_length_s and units land in the next epoch", async () => {
     const e = (env = await setup({ verifiers: 2 }));
     e.clock.advance(e.cfg.epoch_length_s * 1000 - 1);

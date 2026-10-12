@@ -232,7 +232,7 @@ describe("launch watcher", () => {
     expect(t.svc.view(a1).status).toBe("ready");
     expect(accts[tok("3")]!.profile.name).toBe(`units agent ${a1.slice(0, 8)}`);
     expect(t.svc.view(a2).status).toBe("failed");
-    expect(t.svc.view(a2).reason).toContain("reserve is empty");
+    expect(t.svc.view(a2).reason).toContain("no units account is free");
     expect(t.svc.view(a2).identity).toBe("app");
   });
 });
@@ -380,7 +380,7 @@ describe("units account payment (owner direction 2026-10-11)", () => {
     expect(x.t.svc.state(x.agent)!.paid).toEqual({ lamports: "50000000", recipient: RECIPIENT, signatures: ["sig2"] });
     // the public payments list carries exactly that record (and nothing for the unpaid or earlier launches)
     const st = x.t.svc.state(x.agent)!;
-    expect(x.t.svc.payments().payments).toEqual([{ agent: x.agent, mint: st.mint, launcher: st.launcher, lamports: "50000000", recipient: RECIPIENT, signatures: ["sig2"], launched_at: st.launched_at }]);
+    expect(x.t.svc.payments().payments).toEqual([{ agent: x.agent, mint: st.mint, launcher: st.launcher, lamports: "50000000", recipient: RECIPIENT, signatures: ["sig2"], launched_at: st.launched_at, account: "assigned" }]);
   });
   test("no price configured: nothing assigned", async () => {
     const x = paidSetup({});

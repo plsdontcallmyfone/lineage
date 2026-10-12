@@ -4,8 +4,22 @@ import { html } from "../html.ts";
 import { agentLink, badge, candLink, empty, icon, kv, panel, reasonText, stat } from "../ui.ts";
 import type { Page } from "./types.ts";
 
+// GET /v1/epochs is paged (newest first): the list shows one page and "Load more" adds the next below it
+const PAGE = 100;
+let pages = 1; // pages shown, kept across the page's live refreshes
+async function epochPages(count: number): Promise<{ list: any[]; more: boolean }> {
+  const list: any[] = [];
+  let more = true;
+  for (let k = 0; k < count && more; k++) {
+    const page = await get<any[]>(`epochs?limit=${PAGE}${list.length ? `&before=${list[list.length - 1].n}` : ""}`);
+    list.push(...page);
+    more = page.length === PAGE;
+  }
+  return { list, more };
+}
+
 export async function epochsPage([n]: string[]): Promise<Page> {
-  const [list] = await Promise.all([get<any[]>("epochs"), loadConfig(), loadLineageNames()]);
+  const [{ list, more }] = await Promise.all([epochPages(pages), loadConfig(), loadLineageNames()]);
   const sel = n !== undefined ? Number(n) : (list.find((e) => e.status === "closed")?.n ?? list[0]?.n ?? 0);
   const ep = await get(`epochs/${sel}`);
   const closed = ep.status === "closed";
@@ -34,8 +48,8 @@ export async function epochsPage([n]: string[]): Promise<Page> {
         <td class="right num">${e.total_units === null ? html`<span class="faint">open</span>` : units(e.total_units)}</td>
         <td class="right">${e.pool_amount === null ? html`<span class="faint">at close</span>` : token(e.pool_amount, { places: 2 })}</td>
       </tr>`,
-    )}</tbody></table></div>`,
-    { count: list.length },
+    )}</tbody></table></div>${more ? html`<div style="padding:10px 14px"><button class="wl-btn" data-epochs-more>Load more</button></div>` : ""}`,
+    { count: `${list.length}${more ? "+" : ""}` },
   );
 
   const unitsTable = rows.length
@@ -109,5 +123,11 @@ export async function epochsPage([n]: string[]): Promise<Page> {
         ${listPanel}
       </div>
     </div>`;
-  return { title: `Epoch ${ep.n}`, body, refreshOn: (e) => /^(epoch|units|agent\.usage)/.test(e.type) };
+  const mount = (root: HTMLElement) =>
+    root.querySelector<HTMLButtonElement>("[data-epochs-more]")?.addEventListener("click", (ev) => {
+      (ev.currentTarget as HTMLButtonElement).disabled = true;
+      pages++;
+      window.dispatchEvent(new PopStateEvent("popstate")); // the app renders the page again, now with one more page of the list
+    });
+  return { title: `Epoch ${ep.n}`, body, mount, refreshOn: (e) => /^(epoch|units|agent\.usage)/.test(e.type) };
 }

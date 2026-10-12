@@ -3,7 +3,7 @@ import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { accountDisc, ChainReader, DEVNET_V1_PROGRAM_IDS, useProgramIdsForTest, fixtureTransport, hexToBytes, Reader, registryPdas, Rpc, Writer, type Ix, type Transport } from "@units/chain";
-import { backoffMs, ChainBridge, chainBootstrap, parseChainSettings, slashId } from "../src/chain.ts";
+import { backoffMs, ChainBridge, chainBootstrap, CLAIM_POLL, parseChainSettings, slashId } from "../src/chain.ts";
 import { deploymentsOf } from "../src/deployments.ts";
 import { FakeClock } from "../src/clock.ts";
 import { CoreClient } from "../src/client.ts";
@@ -63,7 +63,7 @@ async function setup(opts: { coreKey?: string; send?: (label: string, ixs: Ix[])
     core.close();
     rmSync(dir, { recursive: true, force: true });
   });
-  return { core, bridge, boot, admin, clock };
+  return { core, bridge, boot, admin, clock, dir };
 }
 
 describe("chain mode bootstrap", () => {
@@ -431,19 +431,22 @@ describe("deployment switch (devnet v2, deployments.ts)", () => {
     const b = core.closeEpoch(); // closed, not posted when the switch happens
     // the switch: Core now reads the devnet v2 registry
     const sw = d.observe({ registry_program: "CJk3kwUqSS4qoJD8iu7uhUzSBNySjn9HsqaExpaV9gM2", launch_program: "Axo38WX6TBAGGQ2nPpejn5tPsQogygA728baRaeJebGX", line_mint: "CiBfnTkDc1vgYbuMobMNEQaKSQXPYeTUbZGRZcug1L62", label: "devnet v2" });
-    expect(sw.switched.map((x) => [x.through_epoch, x.last_posted_epoch, JSON.parse(x.unposted_epochs!)])).toEqual([[b.n, a.n, [b.n]]]);
-    expect(d.retiredThrough()).toBe(b.n);
+    // the epoch open across the switch is closed with it and stays with the retired registry too
+    expect(sw.switched.map((x) => [x.through_epoch, x.last_posted_epoch, JSON.parse(x.unposted_epochs!)])).toEqual([[b.n + 1, a.n, [b.n, b.n + 1]]]);
+    expect(d.retiredThrough()).toBe(b.n + 1);
+    expect(core.currentEpoch().n).toBe(b.n + 2);
     expect(d.observe({ registry_program: "CJk3kwUqSS4qoJD8iu7uhUzSBNySjn9HsqaExpaV9gM2", launch_program: "x", line_mint: null }).switched).toEqual([]);
     // epochs of the retired registry are neither posted again nor mirrored for claims
     expect(core.chainPendingEpochs()).toEqual([]);
     expect(core.chainPostedLeaves()).toEqual([]);
     const c = core.closeEpoch();
     expect(core.chainPendingEpochs().map((e) => e.n)).toEqual([c.n]);
-    // an agent the new registry does not carry sleeps with no vault and no bond there
-    expect(core.agentView(MINBPE).awake).toBe(true);
-    expect(core.chainAbsentAgents(new Set([VERIFIER]))).toEqual([MINBPE]);
+    // the switch retired the launched agent and zeroed every mirrored vault and bond: it sleeps, and
+    // a verifier's bond is whatever the new registry holds once the bridge reads it
+    expect(d.isRetired(MINBPE)).toBe(true);
     expect(core.agentView(MINBPE)).toMatchObject({ compute: "0", awake: false });
-    expect(core.agentView(VERIFIER).bond).toBe("5000000");
+    expect(core.agentView(VERIFIER).bond).toBe("0");
+    expect(core.chainAbsentAgents(new Set([VERIFIER]))).toEqual([]);
     // relaunched under the same agent key: new mint, the old one is its previous token
     const old = core.agentView(MINBPE).mint as string;
     const NEW = "5uUyWAc9DQEWb3XF1aH8yG62sCjmrEjtAoRB1SD9JFqV";
@@ -451,6 +454,7 @@ describe("deployment switch (devnet v2, deployments.ts)", () => {
     core.chainSyncAgent({ agent: MINBPE, owner: rec.owner, kind: "launched", burned: 0n, bond: 0n, unbondAmount: 0n, unbondReadyAt: 0n, registeredAt: rec.registeredAt,
       operator: rec.operator, capabilities: rec.capabilities, launch: { mint: NEW, launcher: rec.owner, repoUrl: "https://github.com/karpathy/minbpe", identityMode: 2, hosted: true }, compute: 300_000_000n });
     expect(core.agentView(MINBPE)).toMatchObject({ mint: NEW, awake: true });
+    expect(d.isRetired(MINBPE)).toBe(false); // carried by the new registry
     expect(d.previousOf(MINBPE)).toMatchObject([{ mint: old, previous_agent_id: MINBPE, venue: "meteora", deployment: "devnet v1" }]);
     // relaunched under a new agent key: the admin links it
     const nk = generateAgentKey().id;
@@ -479,4 +483,137 @@ describe("deployment switch backfill (devnet v1 read before deployments.ts)", ()
     expect(core.chainPostedLeaves()).toEqual([]);
     expect(d.recordEarlier({ registry_program: SETTINGS.registry_program, launch_program: "x", line_mint: null, label: "devnet v1" }, "CJk3kwUqSS4qoJD8iu7uhUzSBNySjn9HsqaExpaV9gM2")).toBeNull();
   });
+});
+
+// The claim mirror at a 900 s epoch (96 posted epochs a day): the reads of one sync must not grow with
+// the history. Fully claimed epochs are never read again, the newest CLAIM_POLL.newest are read every
+// sync and the older unclaimed ones CLAIM_POLL.older per sync in turn, all in one batched read.
+describe("claim mirror polling is bounded (CLAIM_POLL)", () => {
+  const receiptData = (n: number, leaf: string) => new Writer().bytes(accountDisc("ClaimReceipt")).u64(n).fixed32(leaf).address(VERIFIER).address(VERIFIER).u64(1).i64(0).u8(255).done();
+
+  /** A Core with `count` posted paying epochs (one rebate leaf each) and a transport that counts receipt reads. */
+  async function posted(count: number) {
+    const reg = await new ChainReader(new Rpc(transport())).registryConfig();
+    const receipts = new Map<string, { n: number; leaf: string }>(); // receipt address -> its leaf
+    const claimed = new Set<string>(); // receipt addresses that exist on chain
+    const reads: string[][] = []; // one entry per getMultipleAccounts that asked for a claim receipt
+    const extra = (method: string, params: unknown[]) => {
+      if (method !== "getMultipleAccounts") return undefined;
+      const keys = params[0] as string[];
+      if (!keys.some((k) => receipts.has(k))) return undefined;
+      reads.push(keys);
+      return { value: keys.map((k) => (claimed.has(k) ? regAccount(receiptData(receipts.get(k)!.n, receipts.get(k)!.leaf)) : null)) };
+    };
+    const s = await setup({ coreKey: reg!.coreAuthority, send: async () => ({ signature: "s" }), extra });
+    await s.bridge.tick();
+    const epochs: number[] = [];
+    const address = new Map<number, string>();
+    for (let k = 0; k < count; k++) {
+      s.core.tx(() => (s.core as any).addUnits(VERIFIER, "replay", `r${k}`, 1, 1n));
+      const ep = s.core.closeEpoch();
+      const leaf = (ep.payouts as { leaf: string }[])[0]!.leaf;
+      const addr = registryPdas.claimReceipt(ep.n, hexToBytes(leaf));
+      receipts.set(addr, { n: ep.n, leaf });
+      address.set(ep.n, addr);
+      epochs.push(ep.n);
+    }
+    await s.bridge.tick(); // posts them all
+    expect(s.core.chainEpochs().filter((e) => e.signature).length).toBe(count);
+    reads.length = 0;
+    const sync = async (bridge = s.bridge) => {
+      const before = reads.length;
+      await bridge.tick();
+      return reads.slice(before);
+    };
+    return { ...s, reg: reg!, epochs, address, claimed, reads, sync, extra };
+  }
+  /** What the loop before this change did with the same reader: one read per posted epoch with leaves, every sync. */
+  async function earlierLoop(e: Awaited<ReturnType<typeof posted>>) {
+    const before = e.reads.length;
+    const rows = e.core.db.query<{ n: number; payouts: string }, []>("SELECT e.n, e.payouts FROM epochs e JOIN chain_epochs c ON c.n = e.n WHERE c.signature IS NOT NULL ORDER BY e.n").all();
+    for (const r of rows) await e.bridge.reader.claimReceipts(r.n, (JSON.parse(r.payouts) as { leaf: string }[]).map((l) => hexToBytes(l.leaf)));
+    return e.reads.length - before;
+  }
+  const worstSyncs = (olderUnclaimed: number) => Math.ceil(olderUnclaimed / CLAIM_POLL.older) + 1;
+
+  test("500 posted epochs: one batched read per sync, at most newest + older epochs in it", async () => {
+    const e = await posted(500);
+    expect(await earlierLoop(e)).toBe(500);
+    for (let k = 0; k < 30; k++) {
+      const r = await e.sync();
+      expect(r.length).toBe(1);
+      expect(r[0]!.length).toBeLessThanOrEqual(CLAIM_POLL.newest + CLAIM_POLL.older);
+      // the newest epochs are in every sync
+      for (const n of e.epochs.slice(-CLAIM_POLL.newest)) expect(r[0]).toContain(e.address.get(n)!);
+    }
+  }, 120_000);
+
+  test("a claim on an old epoch is mirrored within ceil(older / CLAIM_POLL.older) + 1 syncs; a fully claimed epoch is not read again; a restart keeps both", async () => {
+    const e = await posted(500);
+    const older = 500 - CLAIM_POLL.newest;
+    const bound = worstSyncs(older);
+    // worst case: the claim lands right after the rotation read that epoch
+    const first = await e.sync();
+    const old = e.epochs[0]!;
+    expect(first[0]).toContain(e.address.get(old)!);
+    e.claimed.add(e.address.get(old)!);
+    let syncs = 0;
+    while (!e.core.proofs(old, VERIFIER)[0]!.claimed) {
+      const r = await e.sync();
+      syncs++;
+      expect(r.length).toBe(1);
+      expect(syncs).toBeLessThanOrEqual(bound);
+    }
+    expect(syncs).toBe(Math.ceil(older / CLAIM_POLL.older));
+    expect(e.core.ledger.balance(`epoch:${old}:payable`)).toBe(0n);
+    expect(e.core.chainUnclaimedEpochs()).not.toContain(old);
+    // a claim on one of the newest epochs is mirrored by the very next sync
+    const fresh = e.epochs[e.epochs.length - 1]!;
+    e.claimed.add(e.address.get(fresh)!);
+    await e.sync();
+    expect(e.core.proofs(fresh, VERIFIER)[0]!.claimed).toBe(true);
+    // neither is asked for again, over more than a whole rotation
+    const again: string[] = [];
+    for (let k = 0; k < bound + 2; k++) again.push(...(await e.sync()).flat());
+    expect(again).not.toContain(e.address.get(old)!);
+    expect(again).not.toContain(e.address.get(fresh)!);
+    // every other epoch was still read in that rotation
+    expect(new Set(again).size).toBe(498);
+    expect(e.core.ledger.reconcile().ok).toBe(true);
+
+    // restart: a new Core on the same database and a new bridge
+    e.core.close();
+    const core2 = new Core({ dataDir: e.dir, network: e.boot.network, adminId: e.admin.id, clock: e.clock, chainMode: true, firstEpoch: e.boot.firstEpoch, randomHex: (n) => "ab".repeat(n) });
+    cleanup.push(() => core2.close());
+    const bridge2 = new ChainBridge(core2, SETTINGS, { reader: new ChainReader(new Rpc(transport(e.extra)), SETTINGS.registry_program, SETTINGS.launch_program), coreKey: { id: e.reg.coreAuthority, secret: new Uint8Array(64) }, send: async () => ({ signature: "s" }) });
+    const old2 = e.epochs[1]!;
+    const firstAfter = await e.sync(bridge2);
+    expect(firstAfter.length).toBe(1);
+    expect(firstAfter[0]).toContain(e.address.get(old2)!); // the rotation begins at the oldest unclaimed epoch
+    e.claimed.add(e.address.get(old2)!);
+    const after: string[] = [];
+    let n2 = 0;
+    while (!core2.proofs(old2, VERIFIER)[0]!.claimed) {
+      const r = await e.sync(bridge2);
+      n2++;
+      expect(r.length).toBe(1);
+      expect(n2).toBeLessThanOrEqual(worstSyncs(older - 1));
+      after.push(...r.flat());
+    }
+    expect(after).not.toContain(e.address.get(old)!);
+    expect(after).not.toContain(e.address.get(fresh)!);
+  }, 120_000);
+
+  test("reads per sync at 96, 960 and 2,880 posted paying epochs (1, 10 and 30 days of 900 s epochs)", async () => {
+    const measured: Record<number, { before: number; after: number }> = {};
+    for (const count of [96, 960, 2880]) {
+      const e = await posted(count);
+      const before = await earlierLoop(e);
+      let after = 0;
+      for (let k = 0; k < 5; k++) after = Math.max(after, (await e.sync()).length);
+      measured[count] = { before, after };
+    }
+    console.log(`claim mirror getMultipleAccounts per sync (one leaf per epoch): ${JSON.stringify(measured)}`);
+    expect(measured).toEqual({ 96: { before: 96, after: 1 }, 960: { before: 960, after: 1 }, 2880: { before: 2880, after: 1 } });
+  }, 300_000);
 });

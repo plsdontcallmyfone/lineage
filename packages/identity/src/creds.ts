@@ -11,8 +11,8 @@
 import { chmodSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import type { AgentCredential, CredentialStore } from "../../souls/src/github/credentials.ts";
-import { Pool, type PoolFile } from "../../souls/src/github/pool.ts";
-import type { CredRecord, ReserveRecord } from "./records.ts";
+import { EXCLUDED_LOGINS, Pool, type PoolAccount, type PoolFile } from "../../souls/src/github/pool.ts";
+import type { ClaimRecord, CredRecord, ReserveRecord } from "./records.ts";
 import type { EncryptedStore } from "./store.ts";
 
 export class ReservePool extends Pool {
@@ -35,9 +35,88 @@ export class ReservePool extends Pool {
     return "added";
   }
 
+  // ---- one account, one agent, ever (owner direction 2026-10-12)
+  //
+  // The binding of an account to an agent is its claim record (kind "claim", id = login), made with
+  // EncryptedStore.create: the name appears in one step and only for the first caller, in any number of
+  // processes, and it is on the disk before provisioning reads or writes anything on GitHub. Nothing in
+  // the service deletes a claim: a provisioning that fails halfway, a rejected token, a launch that
+  // never completes all leave the account bound to that agent, and a restart resumes with the same
+  // account for the same agent. Only `release` (an operator command with a confirmation) frees one.
+  // Reserve records from before the claim existed carry the binding in assigned_agent: it counts the same.
+
+  private claimOf(login: string): ClaimRecord | null {
+    return this.store.get<ClaimRecord>("claim", login);
+  }
+
+  /** The agent an account is bound to (its claim, else the record's assigned_agent), or null when it is free. */
+  boundTo(a: PoolAccount): string | null {
+    return this.claimOf(a.login)?.agent ?? a.assigned_agent ?? null;
+  }
+
+  override candidates(exclude: string[] = EXCLUDED_LOGINS): PoolAccount[] {
+    return super.candidates(exclude).filter((a) => !this.store.has("claim", a.login));
+  }
+
+  /** The live account bound to this agent, if any: also one claimed just before a crash, whose record still says available. */
+  override assignedTo(agent: string): PoolAccount | null {
+    const mine = this.read().accounts.filter((a) => ["assigned", "assigning", "available"].includes(a.status) && this.boundTo(a) === agent);
+    const rank = (a: PoolAccount) => (a.status === "assigned" ? 0 : a.status === "assigning" ? 1 : 2);
+    return mine.sort((x, y) => rank(x) - rank(y) || (x.login < y.login ? -1 : 1))[0] ?? null;
+  }
+
+  override claim(login: string, agent: string, now = new Date()): boolean {
+    const rec = this.store.get<ReserveRecord>("reserve", login);
+    if (!rec) return false;
+    if (rec.assigned_agent && rec.assigned_agent !== agent) return false;
+    const made = this.store.create("claim", login, { v: 1, login, agent, at: now.toISOString() } satisfies ClaimRecord);
+    if (!made && this.claimOf(login)?.agent !== agent) return false;
+    if (rec.status === "available" || rec.assigned_agent !== agent) {
+      if (rec.status !== "available" && rec.status !== "assigning" && rec.status !== "assigned") return made; // unusable: bound, never used
+      this.store.put("reserve", login, { ...rec, status: rec.status === "assigned" ? "assigned" : "assigning", assigned_agent: agent, assigned_at: rec.assigned_at ?? now.toISOString() });
+    }
+    return true;
+  }
+
+  /**
+   * Frees an account that was bound to an agent but never finished provisioning (operator command
+   * `main.ts reserve-release --login <login> --confirm release-<login>`). Refused for an account whose
+   * provisioning completed: an agent's credentials use it.
+   */
+  release(login: string, confirm: string, credLogins: string[], now = new Date()): { login: string; released_from: string | null } {
+    if (confirm !== `release-${login}`) throw new Error(`release needs --confirm release-${login}`);
+    const rec = this.store.get<ReserveRecord>("reserve", login);
+    if (!rec) throw new Error(`no account ${login} in the reserve`);
+    const agent = this.boundTo(rec);
+    if (!agent) throw new Error(`${login} is not bound to any agent`);
+    if (rec.status === "assigned" || credLogins.some((l) => l.toLowerCase() === login.toLowerCase())) throw new Error(`${login} is assigned to ${agent} and in use by its credentials; it is not released`);
+    if (rec.status !== "assigning" && rec.status !== "available") throw new Error(`${login} is ${rec.status}; only an account whose provisioning did not finish is released`);
+    this.store.put("reserve", login, { ...rec, status: "available", assigned_agent: null, assigned_at: undefined, note: `released from ${agent} by the operator ${now.toISOString()}` });
+    this.store.delete("claim", login);
+    return { login, released_from: agent };
+  }
+
+  /** Counts only: no login, no token. `available` is what the next launches can still be given. */
+  counts(exclude: string[] = EXCLUDED_LOGINS): { total: number; available: number; assigning: number; assigned: number; unusable: number } {
+    const c = { total: 0, available: 0, assigning: 0, assigned: 0, unusable: 0 };
+    for (const a of this.read().accounts) {
+      c.total += 1;
+      const bound = this.boundTo(a);
+      if (a.status === "assigned") c.assigned += 1;
+      else if ((a.status === "assigning" || a.status === "available") && bound) c.assigning += 1;
+      else if (a.status === "available" && !exclude.includes(a.login)) c.available += 1;
+      else c.unusable += 1;
+    }
+    return c;
+  }
+
   /** Logins, statuses and assignments only (what reserve-list prints and push-reserve syncs back). */
   publicList(): { login: string; status: string; assigned_agent: string | null; note: string | null }[] {
-    return this.read().accounts.map((a) => ({ login: a.login, status: a.status, assigned_agent: a.assigned_agent, note: (a.note as string) ?? null }));
+    return this.read().accounts.map((a) => {
+      const bound = this.boundTo(a);
+      // an account claimed just before a crash still says available in its record: it is not
+      return { login: a.login, status: a.status === "available" && bound ? "assigning" : a.status, assigned_agent: bound, note: (a.note as string) ?? null };
+    });
   }
 }
 

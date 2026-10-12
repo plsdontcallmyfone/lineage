@@ -59,6 +59,26 @@ export class Pool {
     return this.read().accounts.find((a) => a.assigned_agent === agent && (a.status === "assigned" || a.status === "assigning")) ?? null;
   }
 
+  /**
+   * Binds an account to an agent before anything is done with it (provision.ts claims first, then
+   * reads GitHub). True when the account is now this agent's, or already was; false when it is not
+   * free. An account once bound is never offered again by `candidates`: no code path sets it back to
+   * available. This file pool has one writer (the operator's machine); the identity service's reserve
+   * overrides it with a claim that holds across processes and crashes (packages/identity creds.ts).
+   */
+  claim(login: string, agent: string, now = new Date()): boolean {
+    const f = this.read();
+    const a = f.accounts.find((x) => x.login === login);
+    if (!a) return false;
+    if (a.assigned_agent) return a.assigned_agent === agent;
+    if (a.status !== "available") return false;
+    a.status = "assigning";
+    a.assigned_agent = agent;
+    a.assigned_at = now.toISOString();
+    this.write(f);
+    return true;
+  }
+
   /** Changes one account's fields (by login) and writes the file. */
   update(login: string, change: Partial<PoolAccount>) {
     const f = this.read();

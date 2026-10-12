@@ -2,6 +2,8 @@
 // through the gate or Core), so a pasted token travels over the site's HTTPS to this process only.
 //
 //   GET  /identity/health              counts only (agents by status, reserve by status, last watch and cycle)
+//   GET  /identity/pool                counts of the account reserve (available, assigning, assigned, unusable,
+//                                      waiting_paid, low_water, low, offer); no login, no token
 //   GET  /identity/agents              public views of every tracked agent
 //   GET  /identity/agents/:id          public view: mode, status, reason, login, signing key, scopes, published commits
 //   POST /identity/token/check {token} login, scopes and expiry of a token; nothing stored (launch form check)
@@ -93,6 +95,7 @@ export function handler(svc: IdentityService, log: Log, limiter = new Limiter())
         if (p === "/identity/health") return json({ ok: true, ...svc.summary() });
         if (p === "/identity/agents") return json(svc.views());
         if (p === "/identity/payments") return json(svc.payments());
+        if (p === "/identity/pool") return json(svc.pool());
         const m = /^\/identity\/agents\/([1-9A-HJ-NP-Za-km-z]{32,44})$/.exec(p);
         if (m) return json(svc.view(m[1]!));
         return json({ error: "not_found" }, 404);

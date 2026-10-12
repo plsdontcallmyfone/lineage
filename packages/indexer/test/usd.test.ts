@@ -227,6 +227,12 @@ describe("market API in US dollars", () => {
     }
     expect(await get(marketApi(db, () => ({}), { usd: () => down }), "quote-usd")).toEqual({ quote: "UNITS", ...down });
     expect(await get(marketApi(db, () => ({})), "quote-usd")).toMatchObject({ ok: false, reason: "no USD price reader on this instance" });
+    // the Jupiter-shaped view the hosted runtime bills from: the same reading for the quote mint, nothing otherwise
+    const live = marketApi(db, () => ({}), { now: () => NOW, usd: () => reading(0.002) });
+    const r0 = reading(0.002) as Extract<ReturnType<typeof reading>, { ok: true }>;
+    expect(await get(live, `price/v3?ids=${r0.quote_mint}`)).toMatchObject({ [r0.quote_mint]: { usdPrice: 0.002 } });
+    expect(await get(live, "price/v3?ids=So11111111111111111111111111111111111111112")).toEqual({});
+    expect(await get(marketApi(db, () => ({}), { usd: () => down }), `price/v3?ids=${r0.quote_mint}`)).toEqual({});
     // a stored price still converts the history it covers while the current one is missing
     sample(db, NOW - 20 * 3600 - 60, 0.001);
     const api = marketApi(db, () => ({}), { now: () => NOW, usd: () => down });
@@ -241,5 +247,19 @@ describe("market API in US dollars", () => {
     db.exec("DELETE FROM trades");
     const t = (await get(marketApi(db, () => ({}), { now: () => NOW, usd: () => reading(0.002) }), "tokens")).tokens[0];
     expect([t.volume_24h, t.volume_24h_usd]).toEqual([0, 0]);
+  });
+
+  test("quote-usd?at=<unix seconds>: the stored sample covering that time, none beyond its reach, and the current reading without it", async () => {
+    const db = setup();
+    const api = marketApi(db, () => ({}), { now: () => NOW, usd: () => reading(0.002) });
+    sample(db, 90_000, 0.001);
+    sample(db, 90_300, 0.003);
+    expect(await get(api, "quote-usd?at=90010")).toMatchObject({ quote: "UNITS", ok: true, at: 90_010, usd: 0.001, read_at: 90_000, reach_s: SAMPLE_REACH_S });
+    expect(await get(api, "quote-usd?at=90300")).toMatchObject({ ok: true, usd: 0.003, read_at: 90_300 });
+    expect(await get(api, `quote-usd?at=${90_300 + SAMPLE_REACH_S}`)).toMatchObject({ ok: true, usd: 0.003 });
+    expect(await get(api, `quote-usd?at=${90_300 + SAMPLE_REACH_S + 1}`)).toMatchObject({ ok: false, reason: "no USD price is stored for that time" });
+    expect(await get(api, "quote-usd?at=89999")).toMatchObject({ ok: false });
+    expect(await get(api, "quote-usd?at=soon")).toMatchObject({ ok: false, reason: "at must be a unix time in seconds" });
+    expect(await get(api, "quote-usd")).toMatchObject({ ok: true, usd: 0.002, read_at: NOW - 10 });
   });
 });

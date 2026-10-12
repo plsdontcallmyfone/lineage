@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { decide, evaluate, LIMITS, mergeWaiting, type Inputs } from "./monitor.ts";
+import { decide, epochLengthMs, epochLimits, evaluate, LIMITS, mergeWaiting, parseMore, type Inputs, type MoreCore } from "./monitor.ts";
 
 const NOW = 1_800_000_000_000;
 const healthy = (): Inputs => ({
@@ -176,5 +176,126 @@ describe("agents waiting for a desktop", () => {
     expect(merged!.agents).toHaveLength(1);
     expect(check({ ...healthy(), waiting: merged })!.level).toBe("fail");
     expect(mergeWaiting([null, undefined])).toBeNull();
+  });
+});
+
+// Epoch thresholds follow the monitored Core's own epoch length; a daily epoch keeps the limits it always had.
+describe("epoch thresholds from the epoch length", () => {
+  const DAY = 86_400_000, MIN = 60_000;
+  const withLength = (lengthMs: number, pastEndMs: number, unpostedMs: number): Inputs => {
+    const i = healthy();
+    i.epochs = [
+      { n: 5, status: "open", start_ms: NOW - pastEndMs - lengthMs, end_ms: NOW - pastEndMs },
+      { n: 4, status: "closed", start_ms: NOW - pastEndMs - 2 * lengthMs, end_ms: NOW - pastEndMs - lengthMs, closed_at: NOW - unpostedMs },
+    ];
+    i.chain!.last_epoch = "3";
+    return i;
+  };
+  test("the length is the open epoch's end minus its start; rows without start_ms give none", () => {
+    expect(epochLengthMs(withLength(900_000, 0, 0).epochs)).toBe(900_000);
+    expect(epochLengthMs(healthy().epochs)).toBeNull();
+    expect(epochLengthMs(null)).toBeNull();
+  });
+  test("a daily epoch (the devnet instance) keeps exactly the limits it had: 60 minutes overdue, 2 hours unposted", () => {
+    expect(epochLimits(DAY)).toEqual({ overdueMs: LIMITS.epochOverdueMs, postGraceMs: LIMITS.epochPostGraceMs });
+    expect(epochLimits(null)).toEqual({ overdueMs: 60 * MIN, postGraceMs: 120 * MIN });
+    expect(level(withLength(DAY, 60 * MIN, 0), "epochs")).toBe("ok");
+    expect(level(withLength(DAY, 60 * MIN + 1, 0), "epochs")).toBe("fail");
+    expect(level(withLength(DAY, 0, 120 * MIN), "epochs")).toBe("ok");
+    expect(level(withLength(DAY, 0, 120 * MIN + 1), "epochs")).toBe("fail");
+    // and the messages are the ones it always wrote
+    expect(evaluate(withLength(DAY, 61 * MIN, 0)).find((c) => c.id === "epochs")!.msg).toBe("epoch 5 should have closed 61 min ago");
+    expect(evaluate(withLength(DAY, -30 * MIN, 121 * MIN)).find((c) => c.id === "epochs")!.msg).toBe("epoch 4 closed 121 min ago, chain has up to 3");
+  });
+  test("a 900 s epoch: overdue past 2 epochs (30 min), unposted past 4 epochs (60 min)", () => {
+    expect(epochLimits(900_000)).toEqual({ overdueMs: 30 * MIN, postGraceMs: 60 * MIN });
+    expect(level(withLength(900_000, 30 * MIN, 0), "epochs")).toBe("ok");
+    expect(level(withLength(900_000, 30 * MIN + 1, 0), "epochs")).toBe("fail");
+    expect(level(withLength(900_000, 0, 60 * MIN), "epochs")).toBe("ok");
+    expect(level(withLength(900_000, 0, 60 * MIN + 1), "epochs")).toBe("fail");
+  });
+  test("a very short epoch never goes under 10 minutes overdue and 20 minutes unposted", () => {
+    expect(epochLimits(60_000)).toEqual({ overdueMs: 10 * MIN, postGraceMs: 20 * MIN });
+  });
+});
+
+// The mainnet instance has no monitor of its own: MONITOR_MORE adds its Core to this one.
+describe("an additional monitored Core (MONITOR_MORE)", () => {
+  const CA = "AYsa2Pn2pzH5SeknsA8TZc3ndA9V3oNpau5oFex4yVtu", RT = "CCt4EoNuYhVbk4cXUXBzMLQBfshfPF1f5rLyw22S2uXs";
+  const PER_DAY = 1_493_440 * 96; // one epoch post, 96 posts a day at 900 s
+  const mainnet = (): MoreCore => ({
+    name: "mainnet",
+    coreHealth: { ok: true },
+    epochs: [
+      { n: 41, status: "open", start_ms: NOW - 300_000, end_ms: NOW + 600_000 },
+      { n: 40, status: "closed", start_ms: NOW - 1_200_000, end_ms: NOW - 300_000, closed_at: NOW - 300_000 },
+    ],
+    chain: { mode: "mainnet", core_signing: true, last_epoch: "40" },
+    expectSigning: true,
+    balances: [{ name: "core-authority", lamports: 1e9 }, { name: "runtime-authority", lamports: 1e9 }],
+  });
+  const run = (m: MoreCore) => evaluate({ ...healthy(), more: [m] });
+  const get = (m: MoreCore, id: string) => run(m).find((c) => c.id === id)!;
+
+  test("the entry is parsed; the RPC is named by its variable, never given as a URL", () => {
+    const [m] = parseMore(`name=mainnet,core=http://127.0.0.1:9760/,rpc_env=UNITS_MAINNET_RPC,core_authority=${CA},runtime_authority=${RT},signing=1`);
+    expect(m).toEqual({ name: "mainnet", core: "http://127.0.0.1:9760", rpcEnv: "UNITS_MAINNET_RPC", signing: true, keys: [{ name: "core-authority", id: CA }, { name: "runtime-authority", id: RT }] });
+    expect(parseMore(undefined)).toEqual([]);
+    expect(parseMore("name=x,core=notaurl")).toEqual([]);
+    expect(parseMore(`name=a,core=http://h:1;name=b,core=http://h:2,rpc_env=https://secret.example/key,core_authority=bad`)).toEqual([
+      { name: "a", core: "http://h:1", rpcEnv: null, signing: false, keys: [] },
+      { name: "b", core: "http://h:2", rpcEnv: null, signing: false, keys: [] },
+    ]);
+  });
+  test("healthy: its checks follow the first instance's, all ok, with their texts", () => {
+    const c = run(mainnet());
+    expect(c.filter((x) => x.level !== "ok")).toEqual([]);
+    expect(c.slice(-4)).toEqual([
+      { id: "core:mainnet", level: "ok", msg: "mainnet Core /v1/health ok" },
+      { id: "epochs:mainnet", level: "ok", msg: "mainnet: open epoch 41 ends in 10 min; last closed 40, on chain 40" },
+      { id: "balance:mainnet:core-authority", level: "ok", msg: "mainnet core-authority 1.0000 SOL, 0.1434 SOL a day (96 epoch posts), 7.0 days left" },
+      { id: "balance:mainnet:runtime-authority", level: "ok", msg: "mainnet runtime-authority 1.0000 SOL (warn under 0.0500 SOL, fail under 0.0100 SOL: no measured cost of a usage post)" },
+    ]);
+    // the first instance's checks are untouched
+    expect(c.slice(0, -4)).toEqual(evaluate(healthy()));
+  });
+  test("its Core down fails, and so do its epochs (not readable)", () => {
+    const m = { ...mainnet(), coreHealth: { ok: false, err: "ECONNREFUSED" }, epochs: null, chain: null };
+    expect(get(m, "core:mainnet")).toEqual({ id: "core:mainnet", level: "fail", msg: "mainnet Core /v1/health: ECONNREFUSED" });
+    expect(get(m, "epochs:mainnet")).toEqual({ id: "epochs:mainnet", level: "fail", msg: "mainnet: could not read /v1/epochs or /v1/chain" });
+  });
+  test("its epoch thresholds are its own: 31 minutes past the end fails at 900 s; 61 minutes unposted fails", () => {
+    const m = mainnet();
+    m.epochs = [{ n: 41, status: "open", start_ms: NOW - 31 * 60_000 - 900_000, end_ms: NOW - 31 * 60_000 }, { ...m.epochs![1]!, closed_at: NOW - 61 * 60_000 }];
+    m.chain!.last_epoch = "39";
+    expect(get(m, "epochs:mainnet")).toEqual({ id: "epochs:mainnet", level: "fail", msg: "mainnet: epoch 41 should have closed 31 min ago; epoch 40 closed 61 min ago, chain has up to 39" });
+    // the first instance, read at the same moment with its daily epoch, is not affected
+    expect(level({ ...healthy(), more: [m] }, "epochs")).toBe("ok");
+  });
+  test("the Core authority is measured in days of posts: warn under 3 days, fail under 1", () => {
+    const at = (lamports: number) => get({ ...mainnet(), balances: [{ name: "core-authority", lamports }] }, "balance:mainnet:core-authority");
+    expect(PER_DAY).toBe(143_370_240);
+    expect(at(3 * PER_DAY).level).toBe("ok");
+    expect(at(3 * PER_DAY - 1).level).toBe("warn");
+    expect(at(PER_DAY).level).toBe("warn");
+    expect(at(PER_DAY - 1).level).toBe("fail");
+    expect(at(200_000_000).msg).toBe("mainnet core-authority 0.2000 SOL, 0.1434 SOL a day (96 epoch posts), 1.4 days left");
+    expect(at(100_000_000)).toEqual({ id: "balance:mainnet:core-authority", level: "fail", msg: "mainnet core-authority 0.1000 SOL, 0.1434 SOL a day (96 epoch posts), 0.7 days left" });
+  });
+  test("the runtime authority keeps absolute thresholds (no measured usage post cost); an unread balance warns", () => {
+    const at = (lamports: number | null) => get({ ...mainnet(), balances: [{ name: "runtime-authority", lamports }] }, "balance:mainnet:runtime-authority");
+    expect(at(0.05e9).level).toBe("ok");
+    expect(at(0.04e9).level).toBe("warn");
+    expect(at(0.009e9).level).toBe("fail");
+    expect(at(null)).toEqual({ id: "balance:mainnet:runtime-authority", level: "warn", msg: "mainnet runtime-authority balance not readable" });
+  });
+  test("a Core authority whose epoch length was not read falls back to the absolute thresholds and says so", () => {
+    const m = { ...mainnet(), epochs: null, chain: null, balances: [{ name: "core-authority", lamports: 0.04e9 }] };
+    expect(get(m, "balance:mainnet:core-authority")).toEqual({ id: "balance:mainnet:core-authority", level: "warn", msg: "mainnet core-authority 0.0400 SOL (warn under 0.0500 SOL, fail under 0.0100 SOL: epoch length not read)" });
+  });
+  test("the first instance's Core authority check is unchanged (absolute)", () => {
+    const i = { ...healthy(), more: [mainnet()] };
+    i.balances[0]!.lamports = 0.04e9;
+    expect(evaluate(i).find((c) => c.id === "balance:core-authority")).toEqual({ id: "balance:core-authority", level: "warn", msg: "core-authority 0.0400 SOL" });
   });
 });

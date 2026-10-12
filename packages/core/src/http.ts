@@ -6,6 +6,7 @@ import { findingsOf } from "./findings.ts";
 import { recipeProposalsOf } from "./recipe-proposals.ts";
 import { linksOf } from "./links.ts";
 import { prepayOf } from "./prepay.ts";
+import { identityOfferOf } from "./identity-offer.ts";
 import { agentWalletOf } from "./agent-wallet.ts";
 import { upstreamOf } from "./upstream.ts";
 import { genGithubOf } from "./gen-github.ts";
@@ -159,7 +160,8 @@ export function buildRoutes(core: Core): Route[] {
     // public reads
     route("GET", "/v1/health", "none", () => ({ ok: true, now: core.now(), epoch: core.currentEpoch().n })),
     // prepayOf first: it applies the admin's launch fronting patch to the prepay block served here
-    route("GET", "/v1/config", "none", () => (prepayOf(core), { network: networkConfigJson(core.cfg), admin: core.adminId, runtime: core.runtimeId ?? null })),
+    // identityOfferOf: the units account recipient is hidden here while the identity service has no free account (identity-offer.ts)
+    route("GET", "/v1/config", "none", () => (prepayOf(core), { network: identityOfferOf(core).view(prepayOf(core).served(networkConfigJson(core.cfg))), admin: core.adminId, runtime: core.runtimeId ?? null })),
     route("GET", "/v1/guard-config", "none", () => guardConfigOf(core).view()), // SPEC 10.1 rule 6: every version, for verifiers
     route("GET", "/v1/launch-fronting", "none", () => prepayOf(core).frontingView()), // docs/plans/LAUNCH-FRONTING.md
     route("GET", "/v1/stats", "none", (c) => {
@@ -167,7 +169,10 @@ export function buildRoutes(core: Core): Route[] {
       const off = unlisted(c);
       if (!off.size) return s;
       const n = core.db.query<{ agent_id: string }, []>("SELECT agent_id FROM agents").all().filter((a) => off.has(a.agent_id)).length;
-      return { ...s, agents: s.agents - n, hidden_agents: n };
+      // what agents of a retired deployment authored stays in the database and out of the public counts (deployments.ts)
+      const r = deploymentsOf(core).retiredCounts();
+      return { ...s, agents: s.agents - n, hidden_agents: n,
+        ...(r.agents ? { generations: s.generations - r.generations, candidates: s.candidates - r.candidates, retired: r } : {}) };
     }),
     route("GET", "/v1/chain", "none", () => (core.chainMode ? (core.chainView?.() ?? { mode: "devnet", read_at: null }) : { mode: "sim" })),
     route("GET", "/v1/lineages", "none", () => core.listLineages()),
@@ -183,7 +188,11 @@ export function buildRoutes(core: Core): Route[] {
         .listActivity({ lineage: q(c, "lineage"), agent: q(c, "agent"), since: int(c, "since"), limit: int(c, "limit") }, c.agent)
         .filter((e) => !e.agent || !off.has(e.agent));
     }),
-    route("GET", "/v1/generations/:id", "none", (c) => ({ ...core.generationView(c.params.id!), github: genGithubOf(core).view(c.params.id!) })),
+    route("GET", "/v1/generations/:id", "none", (c) => {
+      const g = core.generationView(c.params.id!);
+      const author = (g as { author?: string | null }).author;
+      return { ...g, github: genGithubOf(core).view(c.params.id!), retired: author ? deploymentsOf(core).retiredOf(author) : null };
+    }),
     // generations on GitHub (docs/plans/GENERATIONS-ON-GITHUB.md 3): the identity cycle records, Core checks on GitHub
     route("GET", "/v1/github/generations", "none", (c) => genGithubOf(core).list({ agent: q(c, "agent"), lineage: q(c, "lineage"), limit: int(c, "limit") })),
     route("POST", "/v1/github/generations", "runtime", (c) => genGithubOf(core).record(c.json())),
@@ -306,7 +315,7 @@ export function buildRoutes(core: Core): Route[] {
       const off = unlisted(c);
       return core.listAgents().filter((a) => !off.has((a as { agent_id: string }).agent_id));
     }),
-    route("GET", "/v1/agents/:id", "none", (c) => ({ ...core.agentView(c.params.id!), hidden: hiddenOf(core).ofAgent(c.params.id!),
+    route("GET", "/v1/agents/:id", "none", (c) => ({ ...core.agentView(c.params.id!), hidden: hiddenOf(core).ofAgent(c.params.id!), retired: deploymentsOf(core).retiredOf(c.params.id!),
       previous_tokens: deploymentsOf(core).previousOf(c.params.id!), successor: deploymentsOf(core).successorOf(c.params.id!) })),
     route("GET", "/v1/chain/deployments", "none", () => deploymentsOf(core).list()), // devnet v2 switch (deployments.ts)
     // identity (identity plan I1, I2): key history, reputation records with proofs, portable credential
@@ -382,7 +391,7 @@ export function buildRoutes(core: Core): Route[] {
     route("GET", "/v1/bounties/:id/release", "none", (c) => bountiesOf(core).release(c.params.id!)),
     route("PUT", "/v1/bounties/:id/terms", "none", (c) => bountiesOf(core).setTerms(c.params.id!, c.json())),
     route("GET", "/v1/lineages/:id/bounties", "none", (c) => bountiesOf(core).hints(c.params.id!)),
-    route("GET", "/v1/epochs", "none", () => core.listEpochs()),
+    route("GET", "/v1/epochs", "none", (c) => core.listEpochs({ retired: q(c, "retired") === "1", limit: int(c, "limit"), before: int(c, "before") })),
     route("GET", "/v1/epochs/current", "none", () => core.epochView(core.currentEpoch().n)),
     route("GET", "/v1/epochs/:n", "none", (c) => core.epochView(epochN(c))),
     route("GET", "/v1/epochs/:n/proofs/:agent", "none", (c) => core.proofs(epochN(c), c.params.agent!)),

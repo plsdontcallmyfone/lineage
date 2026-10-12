@@ -76,6 +76,15 @@ export class ChainReader {
     const accts = await this.rpc.getMultipleAccounts(leaves.map((l) => registryPdas.claimReceipt(epoch, l)));
     return accts.map((a) => (owned(a, this.registryProgram) ? decodeClaimReceipt(a!.data) : null));
   }
+  /** The receipts of several epochs' leaves in one read (100 addresses per getMultipleAccounts), one list per item in order. */
+  async claimReceiptsMany(items: { epoch: bigint | number; leaves: Uint8Array[] }[]): Promise<(ClaimReceipt | null)[][]> {
+    const accts = await this.rpc.getMultipleAccounts(items.flatMap((it) => it.leaves.map((l) => registryPdas.claimReceipt(it.epoch, l))));
+    let at = 0;
+    return items.map((it) => it.leaves.map(() => {
+      const a = accts[at++] ?? null;
+      return owned(a, this.registryProgram) ? decodeClaimReceipt(a!.data) : null;
+    }));
+  }
   async bountyConfig(): Promise<BountyConfig | null> {
     const a = owned(await this.rpc.getAccountInfo(bountyPdas.config()), this.launchProgram);
     return a ? decodeBountyConfig(a.data) : null;

@@ -138,6 +138,11 @@ export interface ChainAgent {
 }
 const ZERO32 = "00".repeat(32);
 const CHAIN_OFFENCE: Record<string, number> = { canary: 0, minority: 1, audit_minority: 1, reveal_mismatch: 2 };
+/** GET /v1/epochs page size: default and most. */
+export const EPOCHS_PAGE = 100;
+export const EPOCHS_PAGE_MAX = 500;
+/** A posted epoch (alias e) with more payout leaves than mirrored claims (claims' key is epoch, agent, dest: one row per leaf). */
+const UNCLAIMED_SQL = "json_array_length(e.payouts) > (SELECT COUNT(*) FROM claims k WHERE k.epoch = e.n)";
 
 /** Candidate rejection reasons: the judge's reasons plus those Core decides itself. */
 export type CandidateReason =
@@ -855,7 +860,9 @@ export class Core {
     if (!a || a.kind !== "launched") return;
     const bal = this.ledger.balance(ACC.compute(agent));
     let awake = a.awake;
-    if (awake && bal < this.cfg.sleep_threshold) awake = 0;
+    // an agent of a retired deployment the current registry does not carry sleeps whatever the thresholds are (deployments.ts)
+    if (deploymentsOf(this).isRetired(agent)) awake = 0;
+    else if (awake && bal < this.cfg.sleep_threshold) awake = 0;
     // an underfunded prepaid launch wakes only once its vault holds the minimum deposit (plan C)
     else if (!awake && bal >= prepayOf(this).wakeThreshold(agent, this.cfg.wake_threshold)) awake = 1;
     if (awake !== a.awake) {
@@ -1930,6 +1937,12 @@ export class Core {
   private addUnits(agent: string, kind: string, ref: string, units: number, rebate = 0n) {
     if (units <= 0 && rebate === 0n) return;
     const epoch = this.currentEpoch().n;
+    // an agent of a retired deployment has no record on the current registry: nothing of its earlier
+    // work (a port credit, a finder share, an upstream merge) is paid from the current pool (deployments.ts)
+    if (deploymentsOf(this).isRetired(agent)) {
+      this.emit("units.not_awarded", { agent, kind, ref, units, rebate: rebate.toString(), epoch, reason: "retired_deployment" });
+      return;
+    }
     this.db
       .query("INSERT INTO units (epoch, agent_id, kind, ref, units, rebate, at) VALUES (?, ?, ?, ?, ?, ?, ?)")
       .run(epoch, agent, kind, ref, units, rebate.toString(), this.now());
@@ -2363,6 +2376,8 @@ export class Core {
     const ep = this.epochRow(n);
     if (!ep) throw notFound("epoch");
     if (ep.status !== "closed") throw conflict("epoch_open", "epoch not closed yet");
+    // an epoch of a retired deployment that no registry received: nothing to claim anywhere
+    if (this.epochRetired(n) === "unposted") return [];
     const leaves = JSON.parse(ep.payouts!) as PayoutLeaf[];
     const all = leaves.map((l) => l.leaf);
     return leaves
@@ -2401,10 +2416,10 @@ export class Core {
 
   private unsentSlashes(agent?: string): bigint {
     const rows = this.db
-      .query<{ amount: string; agent_id: string }, []>(
-        "SELECT s.amount, s.agent_id FROM slashes s LEFT JOIN chain_slashes c ON c.slash_id = s.id WHERE c.signature IS NULL",
+      .query<{ amount: string; agent_id: string }, [number]>(
+        "SELECT s.amount, s.agent_id FROM slashes s LEFT JOIN chain_slashes c ON c.slash_id = s.id WHERE c.signature IS NULL AND s.epoch > ?",
       )
-      .all();
+      .all(this.retiredThrough());
     return rows.filter((r) => !agent || r.agent_id === agent).reduce((t, r) => t + BigInt(r.amount), 0n);
   }
 
@@ -2439,6 +2454,8 @@ export class Core {
           .run(r.launch.mint, r.launch.launcher, r.launch.hosted ? 1 : 0, MODES[r.launch.identityMode] ?? "app", r.owner, r.capabilities, r.agent);
         a = this.agentRow(r.agent)!;
       }
+      // the current registry carries this launch: an agent retired with an earlier deployment is back (deployments.ts)
+      if (r.launch) deploymentsOf(this).carried(r.agent, r.launch.mint);
       if (r.keySeq !== undefined) this.identity.syncChain(r.agent, r.signingKey ?? null, r.keySeq, r.keyChangedAt ?? 0n);
       if (r.ownerSince !== undefined) this.identity.syncOwner(r.agent, r.owner, r.ownerSince, r.pendingOwner ?? null);
       const delta = this.mirror(ACC.bond(r.agent), r.bond - this.unsentSlashes(r.agent), "chain_bond");
@@ -2516,20 +2533,27 @@ export class Core {
       this.emit(r.signature ? "chain.epoch_posted" : "chain.epoch_failed", { n, ...r });
     });
   }
-  chainEpochs() {
-    return this.db.query<{ n: number; signature: string | null; error: string | null; attempts: number; posted_at: number | null }, []>("SELECT * FROM chain_epochs ORDER BY n").all();
+  chainEpochCount(): number {
+    return this.db.query<{ c: number }, []>("SELECT COUNT(*) AS c FROM chain_epochs").get()!.c;
+  }
+  /** Every post_epoch result by epoch, or with `newest` only that many of the highest epochs (still oldest first). */
+  chainEpochs(newest?: number) {
+    return this.db
+      .query<{ n: number; signature: string | null; error: string | null; attempts: number; posted_at: number | null }, [number]>("SELECT * FROM (SELECT * FROM chain_epochs ORDER BY n DESC LIMIT ?) ORDER BY n")
+      .all(newest ?? -1);
   }
 
   /**
    * Slashes Core decided that have not landed on the registry yet (reference runners are never
-   * slashed). A failed send stays pending (the bridge backs off); it is never dropped.
+   * slashed). A failed send stays pending (the bridge backs off); it is never dropped. A slash decided
+   * in an epoch of a retired deployment stays with it: the current registry never receives it.
    */
   chainPendingSlashes(maxAttempts = Number.MAX_SAFE_INTEGER) {
     return this.db
-      .query<{ id: number; agent_id: string; reason: string; ref: string; epoch: number; amount: string }, [number]>(
-        "SELECT s.id, s.agent_id, s.reason, s.ref, s.epoch, s.amount FROM slashes s LEFT JOIN chain_slashes c ON c.slash_id = s.id WHERE c.signature IS NULL AND COALESCE(c.attempts, 0) < ? ORDER BY s.id",
+      .query<{ id: number; agent_id: string; reason: string; ref: string; epoch: number; amount: string }, [number, number]>(
+        "SELECT s.id, s.agent_id, s.reason, s.ref, s.epoch, s.amount FROM slashes s LEFT JOIN chain_slashes c ON c.slash_id = s.id WHERE c.signature IS NULL AND COALESCE(c.attempts, 0) < ? AND s.epoch > ? ORDER BY s.id",
       )
-      .all(maxAttempts)
+      .all(maxAttempts, this.retiredThrough())
       .map((s) => ({ ...s, offence: CHAIN_OFFENCE[s.reason] ?? 1 }));
   }
   chainSlashResult(id: number, r: { signature?: string; error?: string }) {
@@ -2547,12 +2571,30 @@ export class Core {
   private retiredThrough(): number {
     return deploymentsOf(this).retiredThrough() ?? -1;
   }
+  /** null: an epoch of the current deployment. "posted": a retired registry holds it. "unposted": no registry ever received it. */
+  private epochRetired(n: number): "posted" | "unposted" | null {
+    if (n > this.retiredThrough()) return null;
+    return this.db.query("SELECT 1 FROM chain_epochs WHERE n = ? AND signature IS NOT NULL").get(n) ? "posted" : "unposted";
+  }
 
-  /** Payout leaves of epochs posted on chain, for the claim mirror. */
-  chainPostedLeaves(): { n: number; leaves: PayoutLeaf[] }[] {
+  /**
+   * Epochs posted on chain that still hold a payout leaf without a mirrored claim, oldest first: the
+   * only epochs the claim mirror reads. An epoch whose every leaf is in `claims` never comes back.
+   */
+  chainUnclaimedEpochs(): number[] {
     return this.db
-      .query<{ n: number; payouts: string }, [number]>("SELECT e.n, e.payouts FROM epochs e JOIN chain_epochs c ON c.n = e.n WHERE c.signature IS NOT NULL AND e.n > ? ORDER BY e.n")
+      .query<{ n: number }, [number]>(`SELECT e.n FROM epochs e JOIN chain_epochs c ON c.n = e.n WHERE c.signature IS NOT NULL AND e.n > ? AND ${UNCLAIMED_SQL} ORDER BY e.n`)
       .all(this.retiredThrough())
+      .map((r) => r.n);
+  }
+  /** Payout leaves of those epochs, for the claim mirror; `only` narrows it to these epoch numbers. */
+  chainPostedLeaves(only?: number[]): { n: number; leaves: PayoutLeaf[] }[] {
+    return this.db
+      .query<{ n: number; payouts: string }, [number, string | null, string | null]>(
+        `SELECT e.n, e.payouts FROM epochs e JOIN chain_epochs c ON c.n = e.n WHERE c.signature IS NOT NULL AND e.n > ? AND ${UNCLAIMED_SQL}
+         AND (? IS NULL OR e.n IN (SELECT value FROM json_each(?))) ORDER BY e.n`,
+      )
+      .all(this.retiredThrough(), only ? "1" : null, only ? JSON.stringify(only) : null)
       .map((r) => ({ n: r.n, leaves: JSON.parse(r.payouts) as PayoutLeaf[] }));
   }
   /** Records a claim made on chain (a ClaimReceipt exists for the leaf). */
@@ -2961,9 +3003,12 @@ export class Core {
           .filter((r) => this.collab.subjectFinal(String(r.subject)))
           .map((r) => ({ ...r, pool: JSON.parse(String(r.pool)), exclude: JSON.parse(String(r.exclude)), chosen: JSON.parse(String(r.chosen)) }))
       : undefined;
+    const retired = this.epochRetired(n);
     return {
       n: ep.n,
       status: ep.status,
+      // an epoch of a retired deployment (deployments.ts): posted on that registry, or never posted anywhere
+      ...(retired ? { retired } : {}),
       start_ms: ep.start_ms,
       end_ms: ep.end_ms,
       beacon_commit: ep.beacon_commit,
@@ -2996,11 +3041,23 @@ export class Core {
     return subjects.every((r) => this.collab.subjectFinal(String(r.subject)));
   }
 
-  listEpochs() {
+  /**
+   * Newest first. An epoch of a retired deployment that was never posted on any registry (the epoch
+   * open across a switch, deployments.ts) is left out unless `retired` is asked for; it stays in the
+   * database and GET /v1/epochs/:n answers it with its `retired` marker.
+   * One page: `limit` rows (default 100, at most 500) with n below `before`; the next page is `before` = the last n.
+   */
+  listEpochs(opts: { retired?: boolean; limit?: number; before?: number } = {}) {
+    const through = this.retiredThrough();
+    const limit = Math.min(Math.max(1, Math.floor(opts.limit ?? EPOCHS_PAGE)), EPOCHS_PAGE_MAX);
+    // the filter is in the query, so a page shorter than `limit` is always the last one
     return this.db
-      .query<EpochRow, []>("SELECT * FROM epochs ORDER BY n DESC")
-      .all()
-      .map((e) => ({ n: e.n, status: e.status, start_ms: e.start_ms, end_ms: e.end_ms, beacon_commit: e.beacon_commit, root: e.root, pool_amount: e.pool_amount, rebate_amount: e.rebate_amount, total_units: e.total_units }));
+      .query<EpochRow & { on_chain: number }, [number, number, number | null, number | null, number]>(
+        `SELECT e.*, EXISTS (SELECT 1 FROM chain_epochs c WHERE c.n = e.n AND c.signature IS NOT NULL) AS on_chain FROM epochs e
+         WHERE (? OR e.n > ? OR EXISTS (SELECT 1 FROM chain_epochs c WHERE c.n = e.n AND c.signature IS NOT NULL)) AND (? IS NULL OR e.n < ?) ORDER BY e.n DESC LIMIT ?`,
+      )
+      .all(opts.retired ? 1 : 0, through, opts.before ?? null, opts.before ?? null, limit)
+      .map((e) => ({ n: e.n, status: e.status, ...(e.n <= through ? { retired: e.on_chain ? "posted" : "unposted" } : {}), start_ms: e.start_ms, end_ms: e.end_ms, beacon_commit: e.beacon_commit, root: e.root, pool_amount: e.pool_amount, rebate_amount: e.rebate_amount, total_units: e.total_units }));
   }
 
   stats() {

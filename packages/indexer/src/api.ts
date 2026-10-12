@@ -1,6 +1,6 @@
 import type { Database } from "bun:sqlite";
 import { ensureCoreSchema } from "./core-sync.ts";
-import { USD_SCHEMA, usdLookup, type QuoteUsdReading } from "./usd.ts";
+import { SAMPLE_REACH_S, SAMPLE_S, USD_SCHEMA, usdLookup, usdSampleAt, type QuoteUsdReading } from "./usd.ts";
 
 // Read API (docs/plans/LAUNCHPAD-AND-LIVE.md L2), JSON with CORS *. Agent tokens trade on pump.fun
 // (owner decisions 2026-10-10); a token from the earlier Meteora venue is listed with venue "meteora"
@@ -276,7 +276,24 @@ function marketHandler(db: Database, status: StatusSource, opts: { now?: () => n
 
     if (parts.length === 2 && parts[1] === "status") return json(status());
     // the quote coin's US dollar price, its sources and when it was read (usd.ts); ok false with the reason when there is none
+    // ?at=<unix seconds>: the stored sample covering that time instead (the newest one read at or before it, within
+    // SAMPLE_REACH_S), for Core's check of a launch deposit made while it had no reading of its own; ok false when none is stored
+    if (parts.length === 2 && parts[1] === "quote-usd" && q.has("at")) {
+      const at = Number(q.get("at"));
+      const s = Number.isInteger(at) && at > 0 ? usdSampleAt(db, at) : null;
+      return json(s ? { quote: QUOTE, ok: true, at, usd: s.usd, read_at: s.t, sample_s: SAMPLE_S, reach_s: SAMPLE_REACH_S }
+        : { quote: QUOTE, ok: false, at: Number.isFinite(at) ? at : null, reason: Number.isInteger(at) && at > 0 ? "no USD price is stored for that time" : "at must be a unix time in seconds", reach_s: SAMPLE_REACH_S });
+    }
     if (parts.length === 2 && parts[1] === "quote-usd") return json({ quote: QUOTE, ...usdNow() });
+    // The same reading in the shape of Jupiter Price API V3 (GET ?ids=<mint> -> { <mint>: { usdPrice } }), for the hosted
+    // runtime's price source (packages/runtime price.ts `price.api`): a pump.fun quote coin on its bonding curve is priced
+    // here from chain, so billing and every page use one number. A mint that is not the quote coin, or no reading within
+    // its maximum age, answers {} (the runtime then has no price and starts nothing), never an old or guessed figure.
+    if (parts.length === 3 && parts[1] === "price" && parts[2] === "v3") {
+      const r = usdNow();
+      const ids = (q.get("ids") ?? "").split(",").filter(Boolean);
+      return json(r.ok && ids.includes(r.quote_mint) ? { [r.quote_mint]: { usdPrice: r.usd, blockId: null, read_at: r.read_at, source: "units market indexer (GET /market/quote-usd)" } } : {});
+    }
     // pump.fun watch (docs/plans/PUMPFUN-LAUNCHES.md 6.6): creator reassignments, max_curve_depth and fee config changes
     if (parts.length === 2 && parts[1] === "alerts") {
       const a = alerts();

@@ -318,7 +318,16 @@ users_setup() {
       printf 'MONITOR_BALANCES=core-authority:%s,owner:%s\n' "$(jq -r '.core_authority // empty' "$REL/scripts/devnet/devnet.json")" "$(jq -r '.site.owner // empty' "$pk")"
       printf 'MONITOR_RUNTIME=%s\n' "${WITH_RUNTIME:-0}"
       printf 'MONITOR_CORE_SIGNING=%s\n' "$([ -f /etc/units-core/core-authority.json ] && echo 1 || echo 0)"
-      printf 'MONITOR_DRY_RUN=%s\n' "$DRY_RUN" ) > /etc/units/monitor.env
+      printf 'MONITOR_DRY_RUN=%s\n' "$DRY_RUN"
+      # the mainnet instance (remote-instance.sh, Core on 9760) has no monitor of its own: its Core's waiting list,
+      # health, epochs and two hot keys join this one. Public keys only here; the keyed RPC reaches the unit through
+      # EnvironmentFile=-/etc/units-main/rpc.env (root only, read by systemd), named below by its variable.
+      if [ -s /etc/units-main/state.json ]; then
+        printf 'MONITOR_WAITING_CORES=http://127.0.0.1:9760\n'
+        printf 'MONITOR_MORE=name=mainnet,core=http://127.0.0.1:9760,rpc_env=UNITS_MAINNET_RPC,core_authority=%s,runtime_authority=%s,signing=%s\n' \
+          "$(jq -r '.core_authority // empty' /etc/units-main/state.json)" "$(jq -r '.runtime_authority // empty' /etc/units-main/state.json)" \
+          "$([ -f /etc/units-main-core/core-authority.json ] && echo 1 || echo 0)"
+      fi ) > /etc/units/monitor.env
   fi
   install -d -m 0750 -o units-core -g units-monitor /var/lib/units/core-backups
   chmod g-s /var/lib/units/core-backups

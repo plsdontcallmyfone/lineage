@@ -90,7 +90,7 @@ import { budgetIxs, buildAndSimulate, onRpcBusy, isMainnet, loadChainCfg, NET, n
 import { connectWallet, onSession, walletChain, restoreSession, session, signsV0, startDiscovery, type StdAccount, type StdWallet } from "./standard.ts";
 export { mountTradeBox } from "./trade.ts";
 import { custodyHtml, ghClick, hasIdentityService, initGithubIdentity, launchTrackRows, showIdentity, submitLaunchToken } from "./identity.ts";
-import { depositBase, depositNote, depositUsd, loadPrepay, P, prepayHelp, showCorePrepay } from "./prepay.ts";
+import { builtRateNote, builtRateStale, depositBase, depositForBuild, depositNote, depositUsd, loadPrepay, P, prepayHelp, RATE_REBUILT, rateBlockedBox, rateBlockedNow, rateNote, showCorePrepay, tickRate } from "./prepay.ts";
 import { costBreakdown, fundingBlocked, fundingSummary, initialBuyFor, solCostsFromSims, type FundingView, type InitialBuy } from "./fronting.ts";
 import { launchExtras, mountFeeRouteStep } from "./fee-route-step.ts";
 import { checkedCoinUri, loadCoinOrigin, storeCoinImage, type CoinOrigin } from "./coin-uri.ts";
@@ -635,6 +635,10 @@ async function launchReview() {
   S.launchOut = null;
   // launches are pump.fun only (owner decisions 2026-10-10); a cluster whose lineage_launch is still the Meteora build cannot take one
   S.draftErr = null;
+  // credits at the live price (prepay.ts, market rate): no launch is built without a usable price reading; a no-op at the configured rate
+  const rateWhy = await rateBlockedNow();
+  renderPrepay(); // the rate line under the credits shows the reading just taken
+  if (rateWhy) return void ((S.draftErr = rateWhy), renderFronting(), set("w-launch-out", rateBlockedBox(rateWhy)));
   if (S.lc && S.lc.venue !== PUMP.program) {
     S.draftErr = "launches are paused on this cluster";
     set("w-launch-out", html`<div class="panel-b">${banner("bad", "Launches are paused on this cluster", "Agent tokens now launch on pump.fun; this cluster's lineage_launch still runs the earlier Meteora build. Existing tokens stay readable.")}</div>`);
@@ -673,7 +677,7 @@ async function launchReview() {
     const image = await storeCoinImage(agent, S.image);
     args.uri = await checkedCoinUri({ origin: coin.origin, here: location.origin, mint: mint.id, agent: agent.id, name: args.name, symbol: args.symbol, repoUrl: args.repoUrl, image });
     // model credits (owner direction 2026-10-11): typed in USD, at least Core's minimum, paid in SOL with the launch
-    const deposit = depositBase(val("l_deposit"), dec());
+    const deposit = await depositForBuild(val("l_deposit"), dec()); // market rate: the price is read again here
     // pump.fun (owner decisions 2026-10-10): create_v2 at the top level, then register_pump_launch in the same transaction
     const main = pumpLaunchMain({ launcher, agent: agent.id, agentMint: mint.id, line: { mint: lineMint(), tokenProgram: T22, pool: linePool() }, name: args.name,
       symbol: args.symbol, uri: args.uri, args: { repoUrl: args.repoUrl, identityMode: args.identityMode, hosted: args.hosted }, creatorFeeBps: S.lc?.pumpCreatorFeeBps ?? 0n });
@@ -781,7 +785,7 @@ function renderIdPrice() {
   if (!el) return;
   if (!P.cfg) return void (el.textContent = "price from Core");
   const l = BigInt(P.cfg.identity_account_price_lamports);
-  el.textContent = P.cfg.identity_account_recipient ? `${S.solUsd === null ? "" : `${fmtUsd((Number(l) / 1e9) * S.solUsd)}, `}${sol(l)} SOL` : "not offered here";
+  el.textContent = P.cfg.identity_account_recipient ? `${S.solUsd === null ? "" : `${fmtUsd((Number(l) / 1e9) * S.solUsd)}, `}${sol(l)} SOL` : (P.cfg.identity_account_unavailable ?? "not offered here");
   // no recipient in Core's config (a deployment without the identity service, such as the mainnet test): the option cannot be picked
   const paid = S.root?.querySelector<HTMLInputElement>('input[name="l_identity"][value="purchased"]');
   if (paid && !P.cfg.identity_account_recipient) {
@@ -836,7 +840,7 @@ function renderLaunchReview() {
     ["Coin image", S.image ? `${S.image.name}: stored and named in the metadata URI by its hash, so it cannot be changed after the launch` : "none chosen: the agent's generated pattern"],
     ["Metadata URI", html`${d.args.uri} <span class="dim">${d.metaLive ? "read back before this review: document and image answer" : `read back on this host; ${new URL(d.args.uri).host} itself does not answer yet`}</span>`],
     ["Soul", d.soul ? html`${d.soul.persona.name}, <span class="wl-hash">${soulDigest(d.soul)}</span>` : html`<span class="faint">none</span>`],
-    ["Credits", html`${depositNote(val("l_deposit"))} <span class="dim">${units(d.deposit, dec())} ${usym()} into the compute vault, then refresh_awake</span>`],
+    ["Credits", html`${depositNote(val("l_deposit"))} <span class="dim">${units(d.deposit, dec())} ${usym()} into the compute vault, then refresh_awake</span> ${builtRateNote(dec())}`],
     ["Transactions", html`${[...(d.swap?.plan.txs ?? []).map((_, i) => `Jupiter swap ${i + 1}`), ...d.plan.map((t) => `${t.groups.join(" + ")} (${t.size} bytes${t.table ? ", v0" : ""})`)].join("; ")}`],
   ];
   const blocked = launchBlocked();
@@ -868,6 +872,8 @@ async function launchSign() {
   const d = S.draft;
   // never double-send: one launch in flight at a time, and what is already on chain is left out
   if (!d || S.sending || S.launched?.mint === d.mint.id || !requireReady()) return;
+  // market rate: the built amount's price reading has aged past Core's limit, so the launch is built again before anything is signed
+  if (!d.landed.length && builtRateStale()) return void launchReview().then(() => set("w-launch-status", html`<span class="dim">${RATE_REBUILT}</span>`));
   S.sending = true;
   renderWizard();
   for (const el of S.root?.querySelectorAll<HTMLButtonElement>('[data-act="launch-sign"], [data-act="launch-review"]') ?? []) el.disabled = true;
@@ -1497,9 +1503,17 @@ async function loadClaims() {
     }
     let epochs: any[];
     try {
-      const r = await fetch("/api/epochs");
-      if (!r.ok) throw new Error(`HTTP ${r.status}`);
-      epochs = await r.json();
+      // GET /v1/epochs is paged (newest first, 500 a page at most): every closed epoch may hold a claimable leaf, so walk them all
+      epochs = [];
+      for (let before: number | null = null, page = 0; page < 200; page++) {
+        const r = await fetch(`/api/epochs?limit=500${before === null ? "" : `&before=${before}`}`);
+        if (!r.ok) throw new Error(`HTTP ${r.status}`);
+        const rows = (await r.json()) as any[];
+        epochs.push(...rows);
+        const last = rows.length ? Number(rows[rows.length - 1].n) : NaN;
+        if (rows.length < 500 || !Number.isFinite(last) || (before !== null && last >= before)) break;
+        before = last;
+      }
     } catch (e) {
       S.claims = { rows: [], note: html`Core did not answer (${(e as Error).message}); proofs come from Core, so leaves are TBA until it does. ${agents.size} agent${agents.size === 1 ? "" : "s"} on chain are linked to this wallet.` };
       return renderClaims(agents);
@@ -1999,7 +2013,7 @@ function renderReview() {
       ${row("Banner", S.bannerFile ? `${S.bannerFile.name}, ${Math.ceil(S.bannerFile.size / 1024)} KB` : html`<span class="faint">none</span>`, 2)}
       ${row("Runtime", hosted ? "hosted, bound to the hosted runtime after the launch" : "self-hosted, you run the worker", 2)}
       ${row("GitHub identity", identity === "purchased" ? html`<b>A units account</b>` : val("l_token") ? "your token (bound after the launch)" : "your token, none pasted yet (add one from your Profile)", 3)}
-      ${row("Model credits", dep === null ? "TBA" : html`${depositNote(val("l_deposit"))} <span class="dim">paid in SOL</span>`, 4)}
+      ${row("Model credits", dep === null ? "TBA" : html`${depositNote(val("l_deposit"))} <span class="dim">paid in SOL</span> ${rateNote(val("l_deposit"), dec())}`, 4)}
     </div>`,
   );
 }
@@ -2562,6 +2576,7 @@ async function profileUpload(t: HTMLInputElement) {
 }
 
 let solTimer: ReturnType<typeof setInterval> | null = null;
+let rateTimer: ReturnType<typeof setInterval> | null = null;
 
 function renderPrepay() {
   set("w-prepay", prepayHelp(val("l_deposit"), { decimals: dec() }));
@@ -2651,6 +2666,9 @@ export async function mountLaunch(root: HTMLElement) {
   void loadSolPrice();
   if (solTimer) clearInterval(solTimer);
   solTimer = setInterval(() => (S.page === "launch" ? void loadSolPrice() : undefined), 30_000);
+  // market rate: the price behind the credits is read again on the same beat; once a refused price is usable again the launch is simulated again
+  if (rateTimer) clearInterval(rateTimer);
+  rateTimer = setInterval(() => (S.page === "launch" ? void tickRate().then((back) => (renderPrepay(), back && !S.draft && !S.sending && !S.launched && S.account && !stepProblemBefore(4) ? void launchReview() : undefined)) : undefined), 30_000);
   if (S.account) await refreshBalances();
   renderWizard();
 }

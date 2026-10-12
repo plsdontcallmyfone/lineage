@@ -41,6 +41,40 @@ export interface PrepayConfig {
   identity_account_price_lamports: string;
   /** Where that payment goes; null: not configured, and the wizard does not offer the option. */
   identity_account_recipient: string | null;
+  /**
+   * Set only in what Core serves to launchers (GET /v1/config) while the option cannot be sold: the
+   * recipient is null there and this says why in plain words (no account is free, the service is not
+   * answering). Never in a config file. packages/core/src/identity-offer.ts.
+   */
+  identity_account_unavailable?: string | null;
+  /**
+   * Where the dollar to coin rate of the launch credits comes from (owner 2026-10-12). Absent or
+   * "config": `line_per_usd` above, as before. "market": the coin's live market price at the moment of
+   * the launch, the reading of GET /market/quote-usd (packages/indexer usd.ts); `line_per_usd` in the
+   * file is then not used for the deposit. The five rate_* fields below exist only in market mode.
+   */
+  rate_source?: "config" | "market";
+  /** Market mode: the wizard refuses a reading older than this many seconds (default 120). */
+  rate_max_age_s?: number;
+  /** Market mode: the sanity band, USD per whole coin; a reading outside it is refused (both required). */
+  rate_min_usd?: number;
+  rate_max_usd?: number;
+  /** Market mode: Core accepts a deposit worth min_usd less this many basis points (default 1000 = 10%). */
+  rate_tolerance_bps?: number;
+  /** Market mode: at any price Core saw within this many seconds of the launch transaction (default 300). */
+  rate_window_s?: number;
+  /** Only in what Core serves in market mode: the file's static `line_per_usd` (the served `line_per_usd` is the current one, null without a reading). */
+  line_per_usd_config?: string;
+}
+
+/** Defaults of the market rate fields. */
+export const RATE_DEFAULTS = { max_age_s: 120, tolerance_bps: 1000, window_s: 300 };
+
+/** The market rate rules of a prepay config, or null when the rate is the configured `line_per_usd`. */
+export function marketRate(c: PrepayConfig | null | undefined): { maxAgeS: number; minUsd: number; maxUsd: number; toleranceBps: number; windowS: number } | null {
+  if (!c || c.rate_source !== "market") return null;
+  return { maxAgeS: c.rate_max_age_s ?? RATE_DEFAULTS.max_age_s, minUsd: c.rate_min_usd!, maxUsd: c.rate_max_usd!, toleranceBps: c.rate_tolerance_bps ?? RATE_DEFAULTS.tolerance_bps,
+    windowS: c.rate_window_s ?? RATE_DEFAULTS.window_s };
 }
 
 /** The default price of "A units account": 0.05 SOL (owner direction 2026-10-11). */
@@ -57,8 +91,26 @@ function dec(s: string): [bigint, bigint] {
 export function parsePrepayConfig(raw: unknown): PrepayConfig {
   if (!raw || typeof raw !== "object") throw new Error("prepay config: object expected");
   const r = raw as Record<string, unknown>;
-  for (const k of ["min_usd", "default_usd", "line_per_usd", "compute_price_line_per_usd", "compute_price_line_per_sandbox_s"])
+  if (r.rate_source !== undefined && r.rate_source !== "config" && r.rate_source !== "market") throw new Error('prepay config: rate_source is "config" or "market"');
+  const market = r.rate_source === "market";
+  // what Core serves in market mode carries the current rate in line_per_usd (null without a reading) and the file's value beside it
+  const staticRate = market && (r.line_per_usd === null || r.line_per_usd === undefined || typeof r.line_per_usd_config === "string") ? r.line_per_usd_config : r.line_per_usd;
+  if (typeof staticRate !== "string" || !DEC.test(staticRate)) throw new Error("prepay config: line_per_usd must be a decimal string");
+  for (const k of ["min_usd", "default_usd", "compute_price_line_per_usd", "compute_price_line_per_sandbox_s"])
     if (typeof r[k] !== "string" || !DEC.test(r[k] as string)) throw new Error(`prepay config: ${k} must be a decimal string`);
+  const rate: Partial<PrepayConfig> = {};
+  if (market) {
+    const num = (k: string) => typeof r[k] === "number" && Number.isFinite(r[k] as number);
+    if (!num("rate_min_usd") || !num("rate_max_usd") || !((r.rate_min_usd as number) > 0) || !((r.rate_max_usd as number) > (r.rate_min_usd as number)))
+      throw new Error("prepay config: rate_source market needs rate_min_usd and rate_max_usd (numbers, USD per whole coin) with 0 < rate_min_usd < rate_max_usd");
+    const int = (k: string, d: number, min: number, max: number) => {
+      const v = r[k] === undefined ? d : r[k];
+      if (!Number.isInteger(v) || (v as number) < min || (v as number) > max) throw new Error(`prepay config: ${k} must be an integer ${min} to ${max}`);
+      return v as number;
+    };
+    Object.assign(rate, { rate_source: "market", rate_max_age_s: int("rate_max_age_s", RATE_DEFAULTS.max_age_s, 1, 86_400), rate_min_usd: r.rate_min_usd, rate_max_usd: r.rate_max_usd,
+      rate_tolerance_bps: int("rate_tolerance_bps", RATE_DEFAULTS.tolerance_bps, 0, 9_999), rate_window_s: int("rate_window_s", RATE_DEFAULTS.window_s, 0, 86_400) });
+  }
   if (r.rate_status !== "test" && r.rate_status !== "live") throw new Error('prepay config: rate_status is "test" or "live"');
   for (const k of ["sandbox_reserve_s", "attempt_max_usd", "since"])
     if (typeof r[k] !== "number" || !Number.isFinite(r[k]) || (r[k] as number) < 0) throw new Error(`prepay config: ${k} must be a non-negative number`);
@@ -68,7 +120,7 @@ export function parsePrepayConfig(raw: unknown): PrepayConfig {
     throw new Error("prepay config: identity_account_price_lamports must be a whole number of lamports as a string");
   if (r.identity_account_recipient !== undefined && r.identity_account_recipient !== null && (typeof r.identity_account_recipient !== "string" || !/^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(r.identity_account_recipient)))
     throw new Error("prepay config: identity_account_recipient must be a base58 address or null");
-  const c = r as unknown as PrepayConfig;
+  const c = { ...r, line_per_usd: staticRate } as unknown as PrepayConfig;
   if (cmpDec(c.default_usd, c.min_usd) < 0) throw new Error("prepay config: default_usd below min_usd");
   if (cmpDec(c.line_per_usd, "0") <= 0) throw new Error("prepay config: line_per_usd must be positive");
   return { min_usd: c.min_usd, default_usd: c.default_usd, line_per_usd: c.line_per_usd, rate_status: c.rate_status,
@@ -76,13 +128,83 @@ export function parsePrepayConfig(raw: unknown): PrepayConfig {
     sandbox_reserve_s: c.sandbox_reserve_s, attempt_max_usd: c.attempt_max_usd, since: c.since,
     initial_buy_bps: (r.initial_buy_bps as number | undefined) ?? 100, initial_buy_slippage_bps: (r.initial_buy_slippage_bps as number | undefined) ?? 100,
     identity_account_price_lamports: (r.identity_account_price_lamports as string | undefined) ?? IDENTITY_ACCOUNT_PRICE_DEFAULT,
-    identity_account_recipient: (r.identity_account_recipient as string | null | undefined) ?? null };
+    identity_account_recipient: (r.identity_account_recipient as string | null | undefined) ?? null,
+    ...(typeof r.identity_account_unavailable === "string" && r.identity_account_unavailable ? { identity_account_unavailable: r.identity_account_unavailable.slice(0, 200) } : {}),
+    ...rate };
+}
+
+// ---------- the market rate (rate_source "market") ----------
+
+const E18 = 10n ** 18n;
+/** USD per whole coin as an integer of 1e-18 USD steps (a float has about 16 digits; this keeps all of them for a coin priced in millionths). */
+function priceE18(usdPerToken: number): bigint {
+  if (typeof usdPerToken !== "number" || !Number.isFinite(usdPerToken) || usdPerToken <= 0) throw new Error("the coin's USD price must be a positive number");
+  const p = BigInt(Math.round(usdPerToken * 1e18));
+  if (p <= 0n) throw new Error("the coin's USD price is too small to convert");
+  return p;
+}
+
+/**
+ * The coin base units that `usd` dollars buy at `usdPerToken` USD per whole coin, rounded up:
+ * ceil(usd / usdPerToken x 10^decimals). With `toleranceBps`, the smallest deposit still worth
+ * usd x (1 - tolerance) at that price: deposit x price >= usd x (1 - tolerance) exactly when
+ * deposit >= this number.
+ */
+export function creditsAtPrice(usd: string, usdPerToken: number, decimals: number, toleranceBps = 0): bigint {
+  if (!Number.isInteger(toleranceBps) || toleranceBps < 0 || toleranceBps >= 10_000) throw new Error(`tolerance ${toleranceBps} is not 0 to 9999 basis points`);
+  const [u, su] = dec(usd);
+  const num = u * BigInt(10_000 - toleranceBps) * 10n ** BigInt(decimals) * E18, den = su * 10_000n * priceE18(usdPerToken);
+  return (num + den - 1n) / den;
+}
+
+/** Whether `deposit` base units are worth at least `usd` less the tolerance at `usdPerToken`. */
+export function depositCoversUsd(deposit: bigint, usdPerToken: number, usd: string, decimals: number, toleranceBps: number): boolean {
+  return deposit >= creditsAtPrice(usd, usdPerToken, decimals, toleranceBps);
+}
+
+/** Whole coins per USD at `usdPerToken`, as a decimal string with at most six places (the market form of `line_per_usd`). */
+export function linePerUsdAt(usdPerToken: number): string {
+  const v = (E18 * 1_000_000n) / priceE18(usdPerToken);
+  const s = v.toString().padStart(7, "0");
+  return `${s.slice(0, -6)}.${s.slice(-6)}`.replace(/\.?0+$/, "");
+}
+
+/** A positive number in plain decimal digits (never an exponent), `sig` significant digits. */
+export function plainDec(n: number, sig = 4): string {
+  if (!Number.isFinite(n) || n <= 0) return "0";
+  const places = Math.min(20, Math.max(0, sig - 1 - Math.floor(Math.log10(n))));
+  const s = n.toFixed(places);
+  return s.includes(".") ? s.replace(/0+$/, "").replace(/\.$/, "") : s;
+}
+
+export type RateCheck =
+  | { ok: true; usd: number; read_at: number; age_s: number; max_age_s: number }
+  | { ok: false; reason: string; usd: number | null; read_at: number | null; age_s: number | null; max_age_s: number };
+
+/**
+ * Whether a reading of the coin's USD price may price a launch's credits: present, at most
+ * `rate_max_age_s` old (`maxAgeS` overrides it: Core's copy follows its own sampling) and inside the
+ * band. `r` is the reading with its age now, or null with `why` when there is none. The reason is one
+ * plain clause, for "Launch disabled: <reason>."
+ */
+export function checkMarketRate(c: PrepayConfig, r: { usd: number; read_at: number; age_s: number } | null, o: { symbol?: string; why?: string | null; maxAgeS?: number } = {}): RateCheck {
+  const m = marketRate(c);
+  if (!m) throw new Error("prepay config: rate_source is not market");
+  const max = o.maxAgeS ?? m.maxAgeS, sym = o.symbol ?? "coin";
+  if (!r || typeof r.usd !== "number" || !Number.isFinite(r.usd) || r.usd <= 0)
+    return { ok: false, reason: `the ${sym} price could not be read${o.why ? ` (${o.why.replace(/\.$/, "")})` : ""}`, usd: null, read_at: null, age_s: null, max_age_s: max };
+  const age = Math.max(0, Math.round(r.age_s));
+  if (age > max) return { ok: false, reason: `the ${sym} price was read ${age} s ago and a launch needs one read in the last ${max} s`, usd: r.usd, read_at: r.read_at, age_s: age, max_age_s: max };
+  if (r.usd < m.minUsd || r.usd > m.maxUsd)
+    return { ok: false, reason: `the ${sym} price, ${plainDec(r.usd, 6)} USD, is outside the range a launch accepts (${plainDec(m.minUsd)} to ${plainDec(m.maxUsd)} USD)`, usd: r.usd, read_at: r.read_at, age_s: age, max_age_s: max };
+  return { ok: true, usd: r.usd, read_at: r.read_at, age_s: age, max_age_s: max };
 }
 
 // ---------- launch fronting (docs/plans/LAUNCH-FRONTING.md) ----------
 
 /** The prepaid credits a launch must carry: exactly the configured amount (min_usd), at the configured rate, in base units. */
 export function requiredCredits(c: PrepayConfig, decimals: number): bigint {
+  if (c.rate_source === "market") throw new Error("prepay config: rate_source is market, so the credits follow the live price (creditsAtPrice), not line_per_usd");
   return usdToBase(c.min_usd, c.line_per_usd, decimals);
 }
 

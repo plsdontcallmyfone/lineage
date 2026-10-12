@@ -126,7 +126,9 @@ test.describe("Launch (/launch)", () => {
     await page.goto("/launch");
     await page.locator(".lz-nav").waitFor({ timeout: 30_000 });
     await expect(page.locator(".lz-step")).toHaveCount(6);
-    await expect(page.locator(".lz-step:not([disabled])")).toHaveCount(1);
+    // every step is open for browsing once the wizard has rendered (wallet/main.ts renderWizard); the
+    // skeleton's single open step lasts only until the cluster check answers, so it is not asserted
+    await expect(page.locator(".lz-step:not([disabled])")).toHaveCount(6);
     await connect(page, wallet.address);
 
     // 1 coin

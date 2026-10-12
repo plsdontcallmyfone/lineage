@@ -67,9 +67,15 @@ export function setUsdReading(r: UsdReading) {
   readAt = Date.now();
 }
 
-/** Loads the reading unless a fresh one is held. `base` is the market API's origin ("" on the app). Never throws. */
-export function loadUsd(base = "", f: typeof fetch = fetch): Promise<UsdReading> {
-  if (Date.now() - readAt < REFRESH_MS) return Promise.resolve(reading);
+/** Seconds since the indexer took the current reading (its own age when served plus the time held here); null without one. */
+export const usdReadingAge = (): number | null => (reading.ok ? Math.max(0, reading.age_s) + Math.max(0, Date.now() - readAt) / 1000 : null);
+
+/**
+ * Loads the reading unless a fresh one is held. `base` is the market API's origin ("" on the app). Never throws.
+ * `heldMs`: how long a held reading still counts (the launch credits ask again within seconds, wallet/prepay.ts).
+ */
+export function loadUsd(base = "", f: typeof fetch = fetch, heldMs = REFRESH_MS): Promise<UsdReading> {
+  if (Date.now() - readAt < heldMs) return Promise.resolve(reading);
   pending ??= (async () => {
     try {
       const r = await f(`${base}/market/quote-usd`, { headers: { accept: "application/json" }, signal: AbortSignal.timeout(6_000) });

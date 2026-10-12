@@ -15,6 +15,7 @@ import { canaryDirIsPublic, loadCanaryDir } from "./hardening.ts";
 import { serve } from "./http.ts";
 import { GitTreeSource } from "./trees.ts";
 import { revenueOf } from "./revenue.ts";
+import { identityOfferOf, SAMPLE_MS as OFFER_SAMPLE_MS } from "./identity-offer.ts";
 import { viewersOf } from "./viewers.ts";
 import { base58Decode, keyFromSolanaJson } from "./protocol.ts";
 import { agentWalletOf } from "./agent-wallet.ts";
@@ -204,6 +205,21 @@ if (revenueTimer) {
   console.log(`protocol revenue records: reading ${[revenueUrls.indexer && `${revenueUrls.indexer}/market/flows`, revenueUrls.identity && `${revenueUrls.identity}/identity/payments`].filter(Boolean).join(" and ")} every minute`);
   setTimeout(sampleRevenue, 5_000);
 }
+// "A units account" is offered only while the identity service has a free account (identity-offer.ts)
+const identityOffer = identityOfferOf(core);
+identityOffer.url = revenueUrls.identity;
+let offerErr = "";
+const sampleOffer = () =>
+  void identityOffer.sample().then((r) => {
+    const err = r.ok ? "" : String(r.error ?? "failed");
+    if (err !== offerErr) console.error(err ? `[identity offer] pool read failed: ${err}; A units account is not offered` : `[identity offer] pool read again: ${JSON.stringify(identityOffer.status().pool)}`);
+    offerErr = err;
+  });
+const offerTimer = identityOffer.url ? setInterval(sampleOffer, OFFER_SAMPLE_MS) : null;
+if (offerTimer) {
+  console.log(`units account offer: reading ${identityOffer.url}/identity/pool every ${OFFER_SAMPLE_MS / 1000} s`);
+  sampleOffer();
+}
 const timer = setInterval(() => {
   try {
     core.tick();
@@ -220,6 +236,7 @@ const stop = () => {
   if (beaconTimer) clearInterval(beaconTimer);
   if (viewerTimer) clearInterval(viewerTimer);
   if (revenueTimer) clearInterval(revenueTimer);
+  if (offerTimer) clearInterval(offerTimer);
   server.stop(true);
   core.close();
   process.exit(0);

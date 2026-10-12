@@ -131,10 +131,24 @@ bad += truncated;
 /** Allowed difference between Core's clock and the cluster's block times when checking a slot is not older than its request. */
 const SKEW_S = 5;
 
+/** Every closed epoch: GET /v1/epochs is paged (newest first, `before`), so walk every page. */
+async function closedEpochs(): Promise<any[]> {
+  const out: any[] = [];
+  for (let before: number | null = null; ; ) {
+    const page = (await get(`/v1/epochs?limit=500${before === null ? "" : `&before=${before}`}`)) as any[];
+    const fresh = page.filter((e) => before === null || e.n < before);
+    out.push(...fresh);
+    // a Core that answers the whole list at once gives no row below `before` on the second read
+    if (page.length < 500 || !fresh.length) break;
+    before = fresh[fresh.length - 1].n;
+  }
+  return out.filter((e) => e.status === "closed");
+}
+
 async function verifyDraws(): Promise<number> {
   const rpcUrl = opt("rpc") ?? (argv.includes("--chain") ? rpcUrlFor(applyNetworkProfile()) : null);
   const rpc = rpcUrl ? Rpc.http(rpcUrl) : null;
-  const epochs = opt("epoch") ? [{ n: Number(opt("epoch")) }] : ((await get("/v1/epochs")) as any[]).filter((e) => e.status === "closed");
+  const epochs = opt("epoch") ? [{ n: Number(opt("epoch")) }] : (await closedEpochs());
   let rounds = 0, slotRounds = 0, decisions = 0, chainChecked = 0, sealed = 0, fails = 0;
   const fail = (m: string) => {
     fails++;
@@ -143,7 +157,7 @@ async function verifyDraws(): Promise<number> {
   // A canary or audit decision uses its draw subject's first resolved slot draw (Core firstDraw), which
   // is published in the epoch it was requested in, often an earlier one than the decision's. Index the
   // draws of every revealed epoch so such a decision finds its draw wherever it was published.
-  const allClosed = opt("epoch") ? ((await get("/v1/epochs")) as any[]).filter((e) => e.status === "closed") : epochs;
+  const allClosed = opt("epoch") ? (await closedEpochs()) : epochs;
   const records = new Map<number, any>();
   for (const { n } of allClosed) records.set(n, await get(`/v1/epochs/${n}`));
   for (const { n } of epochs) if (!records.has(n)) records.set(n, await get(`/v1/epochs/${n}`));

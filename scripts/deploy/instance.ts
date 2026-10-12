@@ -8,8 +8,10 @@
 // rules below, so a hardening line added there reaches both.
 //
 //   bun scripts/deploy/instance.ts layout [name]                    the layout as JSON
-//   bun scripts/deploy/instance.ts units <name> <systemd dir> <out dir>   render the instance's unit files
-//   bun scripts/deploy/instance.ts caddy <name> <Caddyfile.tmpl> <sites> [tls line]   render its site block
+//   bun scripts/deploy/instance.ts units <name> <systemd dir> <out dir> [--identity]   render the instance's unit files
+//   bun scripts/deploy/instance.ts caddy <name> <Caddyfile.tmpl> <sites> [tls line] [--identity]   render its site block
+// --identity (WITH_IDENTITY=1 in the instance's site.env, default off) adds the GitHub identity service:
+// its three unit files and the /identity/* route. Without it both renders are what they always were.
 import { mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 
@@ -80,9 +82,29 @@ export function instanceLayout(name: string | undefined | null): InstanceLayout 
   };
 }
 
-/** The unit files an instance gets (the identity service, backups and the monitor stay with the first instance). */
+/** The unit files an instance gets (backups and the monitor stay with the first instance; the identity service is opt-in, below). */
 export const INSTANCE_UNIT_FILES = ["units-core.service", "units-web.service", "units-gate.service", "units-indexer.service", "units-runtime.service",
   "units-bootstrap.service", "units-reference.service", "units-verifier@.service"];
+/** The GitHub identity service's unit files: rendered for an instance only with the identity flag (WITH_IDENTITY=1). */
+export const IDENTITY_UNIT_FILES = ["units-identity.service", "units-identity-cycle.service", "units-identity-cycle.timer"];
+export interface InstanceOptions {
+  /** the GitHub identity service runs on this instance (default off: no unit, no /identity/* route) */
+  identity?: boolean;
+}
+export const instanceUnitFiles = (o: InstanceOptions = {}): string[] => (o.identity ? [...INSTANCE_UNIT_FILES, ...IDENTITY_UNIT_FILES] : [...INSTANCE_UNIT_FILES]);
+
+/**
+ * Where an instance's identity service lives (remote-instance.sh identity_setup makes these): its own
+ * account, its encrypted store under the instance's state directory, its key directory, and the
+ * root-only env file that carries the keyed RPC (written by role_envs like the other roles' files).
+ */
+export function instanceIdentity(L: InstanceLayout) {
+  const user = `${L.prefix}-identity`;
+  return {
+    user, store: `${L.state}/identity`, keyDir: `/etc/${user}`, envFile: `${L.etc}/identity.env`, port: L.ports.identity,
+    units: { service: user, cycle: `${user}-cycle`, timer: `${user}-cycle.timer` },
+  };
+}
 
 const shiftPorts = (s: string, off: number) => s.replace(/\b966(\d)\b/g, (_, d) => String(9660 + Number(d) + off));
 
@@ -96,9 +118,12 @@ export function renderUnit(file: string, text: string, L: InstanceLayout): { fil
   if (!L.name) return { file, text };
   const p = L.prefix;
   const role = file.replace(/^units-/, "").replace(/@?\.service$/, "");
+  const identity = role === "identity" || role === "identity-cycle";
   const out: string[] = [];
   for (let line of text.split("\n")) {
     if (/^(Conflicts|After)=lineage-/.test(line)) continue;
+    // the identity units' own env file is replaced by the instance's root-only <etc>/identity.env (added below)
+    if (identity && line === "EnvironmentFile=-/etc/units-identity/identity.env") continue;
     line = line.replace(/\bunits-/g, `${p}-`);
     line = line.replace(/\/(opt|var\/lib|etc|home)\/units(?=[\/\s]|$)/g, `/$1/${p}`);
     line = line.replace(/^(User|Group)=units$/, `$1=${p}`);
@@ -109,8 +134,11 @@ export function renderUnit(file: string, text: string, L: InstanceLayout): { fil
     if (line.startsWith("Description=")) line = line.replace(/devnet/g, L.network) + ` [instance ${L.name}]`;
     if (role === "gate" && line.startsWith("ExecStart=")) line += ` --runtime http://127.0.0.1:${L.ports.bind}`;
     if (role === "core" && line.startsWith("ExecStart=")) line = line.replace("ExecStart=", `Environment=UNITS_PORT_BLOCK=${9660 + L.portOffset}-${9669 + L.portOffset}\nExecStart=`);
+    // packages/identity/src/main.ts defaults to the first instance's Core, indexer and runtime bind ports:
+    // an instance's identity service is told its own, or it would read the devnet Core's payment terms and souls
+    if (identity && line.startsWith("ExecStart=")) line = `Environment=UNITS_CORE=http://127.0.0.1:${L.ports.core} UNITS_INDEXER=http://127.0.0.1:${L.ports.indexer} UNITS_GENESIS_SIGNER=http://127.0.0.1:${L.ports.bind}\n${line}`;
     out.push(line);
-    if (line === `EnvironmentFile=-${L.etc}/site.env` && !["web", "indexer", "gate"].includes(role)) out.push(`EnvironmentFile=-${L.etc}/${role === "verifier" || role === "reference" || role === "bootstrap" ? "worker" : role}.env`);
+    if (line === `EnvironmentFile=-${L.etc}/site.env` && !["web", "indexer", "gate"].includes(role)) out.push(`EnvironmentFile=-${L.etc}/${role === "verifier" || role === "reference" || role === "bootstrap" ? "worker" : identity ? "identity" : role}.env`);
   }
   const t = out.join("\n");
   const live = t.split("\n").filter((l) => !l.startsWith("#")).join("\n");
@@ -119,16 +147,22 @@ export function renderUnit(file: string, text: string, L: InstanceLayout): { fil
   if (/\b966\d\b/.test(t)) throw new Error(`${file}: a first-instance port survived the instance rendering`);
   if (L.network !== "devnet" && /^Environment=.*UNITS_NETWORK=devnet/m.test(t)) throw new Error(`${file}: the first instance's network pin survived the instance rendering`);
   if (/ExecStart=\/usr\/local\/bin\/bun /.test(t) && !t.split("\n").includes(`Environment=UNITS_NETWORK=${L.network}`)) throw new Error(`${file}: no UNITS_NETWORK pin for the instance`);
+  if (identity) {
+    const I = instanceIdentity(L);
+    for (const need of [`User=${I.user}`, `ReadWritePaths=${I.store}`, `EnvironmentFile=-${I.envFile}`, `UNITS_IDENTITY_KEY=${I.keyDir}/master.key`, `UNITS_CORE=http://127.0.0.1:${L.ports.core}`])
+      if (!t.includes(need)) throw new Error(`${file}: the instance rendering has no ${need}`);
+  }
   return { file: file.replace(/^units-/, `${p}-`), text: t };
 }
 
 /**
  * The instance's Caddy site block, from the first instance's template: the same headers, body caps and
- * retries, its own upstream ports and access log, no identity route (the identity service stays with
- * the first instance). It lives in /etc/caddy/sites.d and the main Caddyfile imports that directory, so
- * a deploy of the first instance (which rewrites /etc/caddy/Caddyfile) does not remove it.
+ * retries, its own upstream ports and access log, and no identity route unless the instance runs the
+ * identity service (o.identity: the route is kept, on the instance's identity port). It lives in
+ * /etc/caddy/sites.d and the main Caddyfile imports that directory, so a deploy of the first instance
+ * (which rewrites /etc/caddy/Caddyfile) does not remove it.
  */
-export function renderCaddySite(tmpl: string, L: InstanceLayout, sites: string, tls = ""): string {
+export function renderCaddySite(tmpl: string, L: InstanceLayout, sites: string, tls = "", o: InstanceOptions = {}): string {
   if (!L.name) throw new Error("the first instance's Caddyfile is rendered by remote.sh");
   const at = tmpl.indexOf("@SITES@ {");
   if (at < 0) throw new Error("Caddyfile.tmpl has no @SITES@ block");
@@ -136,9 +170,13 @@ export function renderCaddySite(tmpl: string, L: InstanceLayout, sites: string, 
   const end = tmpl.indexOf("\n}\n", at);
   if (end < 0) throw new Error("Caddyfile.tmpl: the @SITES@ block does not close");
   let block = tmpl.slice(at, end + 2);
-  // the identity reverse_proxy block: this instance has no identity service
-  block = block.replace(/\n\treverse_proxy \/identity\/\* [^\n]*\{\n(?:\t\t[^\n]*\n)*\t\}/, "");
-  if (block.includes("/identity/* 127.0.0.1")) throw new Error("the identity route survived the instance rendering");
+  if (o.identity) {
+    if (!block.includes("\n\treverse_proxy /identity/* 127.0.0.1:9665 {")) throw new Error("Caddyfile.tmpl has no identity route to keep");
+  } else {
+    // the identity reverse_proxy block: this instance has no identity service
+    block = block.replace(/\n\treverse_proxy \/identity\/\* [^\n]*\{\n(?:\t\t[^\n]*\n)*\t\}/, "");
+    if (block.includes("/identity/* 127.0.0.1")) throw new Error("the identity route survived the instance rendering");
+  }
   block = shiftPorts(block, L.portOffset).replace("@SITES@", sites.split(",").map((s) => s.trim()).filter(Boolean).join(", ")).replace("@TLS@", tls);
   block = block.replace("/var/log/caddy/lineage-access.log", `/var/log/caddy/${L.prefix}-access.log`);
   if (L.network === "mainnet") block = block.replace(/ https:\/\/api\.devnet\.solana\.com wss:\/\/api\.devnet\.solana\.com/, "");
@@ -148,22 +186,25 @@ export function renderCaddySite(tmpl: string, L: InstanceLayout, sites: string, 
 export const CADDY_IMPORT = "import /etc/caddy/sites.d/*.caddy";
 
 if (import.meta.main) {
-  const [cmd, ...a] = process.argv.slice(2);
+  const [cmd, ...rest] = process.argv.slice(2);
+  const opts: InstanceOptions = { identity: rest.includes("--identity") };
+  const a = rest.filter((x) => x !== "--identity");
   if (cmd === "layout") console.log(JSON.stringify(instanceLayout(a[0] ?? process.env.UNITS_INSTANCE), null, 2));
   else if (cmd === "units") {
     const L = instanceLayout(a[0]);
     mkdirSync(a[2]!, { recursive: true });
     const have = new Set(readdirSync(a[1]!));
-    for (const f of INSTANCE_UNIT_FILES) {
+    const files = instanceUnitFiles(opts);
+    for (const f of files) {
       if (!have.has(f)) throw new Error(`no ${f} in ${a[1]}`);
       const r = renderUnit(f, readFileSync(join(a[1]!, f), "utf8"), L);
       writeFileSync(join(a[2]!, r.file), r.text);
     }
-    console.log(`rendered ${INSTANCE_UNIT_FILES.length} unit files for ${L.prefix}`);
+    console.log(`rendered ${files.length} unit files for ${L.prefix}`);
   } else if (cmd === "caddy") {
-    process.stdout.write(renderCaddySite(readFileSync(a[1]!, "utf8"), instanceLayout(a[0]), a[2]!, a[3] ?? ""));
+    process.stdout.write(renderCaddySite(readFileSync(a[1]!, "utf8"), instanceLayout(a[0]), a[2]!, a[3] ?? "", opts));
   } else {
-    console.error("usage: instance.ts layout [name] | units <name> <systemd dir> <out dir> | caddy <name> <Caddyfile.tmpl> <sites> [tls line]");
+    console.error("usage: instance.ts layout [name] | units <name> <systemd dir> <out dir> [--identity] | caddy <name> <Caddyfile.tmpl> <sites> [tls line] [--identity]");
     process.exit(2);
   }
 }

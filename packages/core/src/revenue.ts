@@ -1,4 +1,5 @@
 import type { Core } from "./core.ts";
+import { prepayOf } from "./prepay.ts";
 
 // Protocol revenue records (docs/plans/PAGES-PROJECTS-GENERATIONS-ANALYTICS.md section 7). What flows
 // to protocol-controlled accounts is recorded in three places, and Core keeps a read-only copy of the
@@ -183,8 +184,10 @@ export function revenueOf(core: Core): Revenue {
 
 export class Revenue {
   private readonly c: Internals;
+  private readonly core: Core;
   constructor(core: Core) {
     this.c = core as unknown as Internals;
+    this.core = core;
     this.c.db.exec(SCHEMA);
     const cols = new Set((this.c.db.query("PRAGMA table_info(revenue_cranks)").all() as { name: string }[]).map((x) => x.name));
     if (!cols.has("quote_usd")) this.c.db.exec("ALTER TABLE revenue_cranks ADD COLUMN quote_usd REAL");
@@ -222,6 +225,8 @@ export class Revenue {
       for (const r of f.tokens) t.run(r.mint, r.agent, r.symbol, r.venue, r.hosted, r.fees_claimed, r.to_compute, r.to_protocol, r.debited, r.state_at);
       this.mark("indexer", true, null, { quote: f.quote, quote_mint: f.quote_mint, quote_decimals: f.quote_decimals, usd: f.usd ?? null, usd_reason: f.usd_reason ?? null });
     })();
+    // the launch credits' market rate (prepay.ts): Core keeps each reading for the window around a launch's time; a no-op at the configured rate
+    this.core.tx(() => prepayOf(this.core).noteReading(f.usd, f.usd_reason));
     return { ok: true, cranks: f.cranks.length, tokens: f.tokens.length };
   }
 
@@ -250,6 +255,12 @@ export class Revenue {
         const f = parseIndexerFlows(await read(urls.indexer, "/market/flows?hidden=1"));
         if (!f) throw new Error("answer not understood");
         out.indexer = this.recordIndexer(f);
+        // a launch still pending after that (Core had no reading around its time): the indexer's stored sample for that time
+        for (const w of prepayOf(this.core).pending()) {
+          const s = (await read(urls.indexer, `/market/quote-usd?at=${w.at}`).catch(() => null)) as { ok?: unknown; usd?: unknown; read_at?: unknown } | null;
+          if (s?.ok === true && pos(s.usd) !== null && typeof s.read_at === "number" && Number.isInteger(s.read_at) && s.read_at <= w.at)
+            this.core.tx(() => prepayOf(this.core).recheckPending({ agent: w.agent, usd: s.usd as number, read_at: s.read_at as number }));
+        }
       } catch (e) {
         const error = e instanceof Error ? e.message : String(e);
         this.mark("indexer", false, error);

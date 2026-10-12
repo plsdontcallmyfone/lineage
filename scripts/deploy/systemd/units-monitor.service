@@ -21,6 +21,9 @@ Environment=UNITS_NETWORK=devnet
 # what to watch (public keys, site URL; written by remote.sh) and where to alert (owner-written, optional)
 EnvironmentFile=-/etc/units/monitor.env
 EnvironmentFile=-/etc/units/alert.env
+# the mainnet instance's keyed RPC (UNITS_MAINNET_RPC) for its two hot key balances (MONITOR_MORE in monitor.env):
+# root only, read by systemd before the unit drops to units-monitor; absent on a server without that instance
+EnvironmentFile=-/etc/units-main/rpc.env
 StateDirectory=units-monitor
 RuntimeDirectory=units-monitor
 UMask=0022

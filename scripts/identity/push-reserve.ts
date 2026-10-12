@@ -12,12 +12,16 @@
 //    GET /user for its login (read only), and sends them over ssh stdin to `main.ts reserve-add`, run
 //    as the units-identity user, which encrypts them. Pushed accounts are marked server_reserve
 //    locally, so nothing here assigns them again.
+// Every account goes through the owner's ledger (pool-ledger.ts, ~/.config/units/github-pool-ledger.json):
+// one the ledger has on another instance or with an agent is never pushed, the entry is written before
+// the transfer, and what the server assigned is copied into it. [--ledger <file>]
 // Tokens never appear in argv, output or logs: only logins are printed.
 
 import { spawnSync } from "node:child_process";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { DEFAULT_POOL, EXCLUDED_LOGINS, Pool } from "../../packages/souls/src/github/pool.ts";
+import { DEFAULT_LEDGER, Ledger, syncFromServer } from "./pool-ledger.ts";
 
 const argv = process.argv.slice(2);
 const opt = (k: string, d?: string) => (argv.includes(`--${k}`) ? argv[argv.indexOf(`--${k}`) + 1] : d);
@@ -30,8 +34,10 @@ const target = Number(opt("target", "5"));
 const plan = argv.includes("--plan");
 const sshKey = opt("ssh-key", join(homedir(), ".ssh/lineage_site"))!;
 const pool = new Pool(opt("pool", DEFAULT_POOL)!);
+const ledger = new Ledger(opt("ledger", DEFAULT_LEDGER)!);
+const INSTANCE = "devnet"; // this script serves the first instance; a second one is served by ship-pool.ts
 const MAIN = "/opt/units/current/packages/identity/src/main.ts";
-const RUN_AS = `runuser -u units-identity -- env HOME=/var/lib/units/identity/home BUN_RUNTIME_TRANSPILER_CACHE_PATH=0 UNITS_IDENTITY_DIR=/var/lib/units/identity UNITS_IDENTITY_KEY=/etc/units-identity/master.key /usr/local/bin/bun ${MAIN}`;
+const RUN_AS = `runuser -u units-identity -- env HOME=/var/lib/units/identity/home BUN_RUNTIME_TRANSPILER_CACHE_PATH=0 UNITS_NETWORK=devnet UNITS_IDENTITY_DIR=/var/lib/units/identity UNITS_IDENTITY_KEY=/etc/units-identity/master.key /usr/local/bin/bun ${MAIN}`;
 
 function ssh(cmd: string, input?: string): string {
   const r = spawnSync("ssh", ["-i", sshKey, "-o", "IdentitiesOnly=yes", "-o", "BatchMode=yes", "-o", "ConnectTimeout=15", `root@${host}`, `cd /opt/units/current && ${cmd}`], { input, encoding: "utf8", maxBuffer: 1 << 24 });
@@ -50,6 +56,7 @@ for (const s of server.accounts) {
     if (!plan) pool.update(s.login, { status: want, assigned_agent: s.assigned_agent, note: `server reserve (units-identity): ${s.status}${s.note ? `, ${s.note}` : ""}` });
   }
 }
+if (!plan) syncFromServer(ledger, INSTANCE, server.accounts);
 const available = server.accounts.filter((a) => a.status === "available").length;
 const need = Math.max(0, target - available);
 console.log(`server reserve: ${available} available of ${server.accounts.length}; target ${target}; pushing ${need}`);
@@ -58,6 +65,11 @@ const picked: { login: string; token: string }[] = [];
 for (const a of pool.candidates(EXCLUDED_LOGINS)) {
   if (picked.length >= need) break;
   if (server.accounts.some((s) => s.login === a.login)) continue;
+  const free = ledger.eligible(a.login, INSTANCE);
+  if (!free.ok) {
+    console.log(`skip ${a.login}: the ledger has it ${free.why}`);
+    continue;
+  }
   const r = await fetch("https://api.github.com/user", { headers: { authorization: `Bearer ${a.token}`, accept: "application/vnd.github+json", "user-agent": "lineage-push-reserve" } });
   const u: any = r.ok ? await r.json() : null;
   if (!u || String(u.login).toLowerCase() !== a.login.toLowerCase()) {
@@ -72,7 +84,10 @@ if (plan) {
   console.log(`plan: would push ${picked.map((p) => p.login).join(", ")}`);
   process.exit(0);
 }
+// the ledger first, on the disk: from here on these accounts are the devnet instance's, whatever the transfer does
+ledger.markShipping(picked.map((p) => p.login), INSTANCE, host);
 const res = JSON.parse(ssh(`${RUN_AS} reserve-add`, picked.map((p) => JSON.stringify(p)).join("\n") + "\n")) as { added: string[]; present: string[]; refused: string[] };
 const at = new Date().toISOString();
+ledger.markShipped([...res.added, ...res.present], INSTANCE);
 for (const l of [...res.added, ...res.present]) pool.update(l, { status: "server_reserve", note: `pushed to the site reserve ${at}` });
 console.log(`pushed: ${res.added.join(", ") || "none"}${res.present.length ? `; already there: ${res.present.join(", ")}` : ""}${res.refused.length ? `; refused: ${res.refused.join(", ")}` : ""}`);

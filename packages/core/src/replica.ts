@@ -356,7 +356,16 @@ export async function replicate(url: string, opts: { fetch?: typeof fetch; log?:
     if ((kind === "author" || kind === "finder" || kind === "upstream") && a?.kind === "launched") return net.author_reward_to === "compute" ? `agent:${agent}:compute` : `wallet:${a.launcher}`;
     return `agent:${agent}:wallet`;
   };
-  const epochs = (await src.get("/v1/epochs")) as Json[];
+  // GET /v1/epochs is paged (newest first, `before`): walk every page, so every closed epoch is recomputed.
+  // A Core that answers the whole list at once gives no row below `before` on the second read, which ends the walk.
+  const epochs: Json[] = [];
+  for (let before: number | null = null; ; ) {
+    const page = (await src.get(`/v1/epochs?limit=500${before === null ? "" : `&before=${before}`}`)) as Json[];
+    const fresh = page.filter((e) => before === null || e.n < before);
+    epochs.push(...fresh);
+    if (page.length < 500 || !fresh.length) break;
+    before = fresh[fresh.length - 1]!.n;
+  }
   let epochsChecked = 0;
   const recordLeavesByEpoch = new Map<number, Set<string>>();
   const closedEpochs = epochs.filter((e) => e.status === "closed");

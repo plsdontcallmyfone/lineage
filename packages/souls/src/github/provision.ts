@@ -91,10 +91,26 @@ export async function provisionAccount(o: ProvisionOptions): Promise<ProvisionRe
   let user: { login: string; id: number } | null = null;
   if (acct) {
     client = gh(acct.token);
-    user = await client.get("/user");
-    log(`github: ${acct.login} is already assigned to ${o.agent}; finishing its provisioning`);
-  } else {
+    try {
+      user = await client.get("/user");
+      log(`github: ${acct.login} is already assigned to ${o.agent}; finishing its provisioning`);
+    } catch (e) {
+      if (!(e instanceof GitHubError && (e.status === 401 || e.status === 403))) throw e;
+      // the bound account's token died: it is marked unusable (it stays bound, never offered again) and the agent gets another
+      skipped.push({ login: acct.login, reason: `token rejected (${e.status})` });
+      log(`github: ${acct.login}, bound to ${o.agent}, is rejected by GitHub (${e.status}); taking another account`);
+      if (!dry) o.pool.update(acct.login, { status: "token_invalid", note: `token rejected (${e.status})` });
+      acct = null;
+      client = null;
+    }
+  }
+  if (!acct) {
     for (const a of o.pool.candidates(o.exclude ?? EXCLUDED_LOGINS)) {
+      // the claim comes first and is durable: from here on this account belongs to this agent or to nobody
+      if (!dry && !o.pool.claim(a.login, o.agent, now())) {
+        skipped.push({ login: a.login, reason: "taken by another agent" });
+        continue;
+      }
       const c = gh(a.token);
       const v = await vet(c, a);
       if ("reason" in v) {
@@ -112,7 +128,7 @@ export async function provisionAccount(o: ProvisionOptions): Promise<ProvisionRe
     if (!dry) o.pool.update(acct.login, { status: "assigning", assigned_agent: o.agent, assigned_at: now().toISOString() });
     log(`github: assigning ${acct.login} to ${o.agent}${dry ? " (dry run)" : ""}`);
   }
-  if (!user) throw new Error("unreachable: no GitHub user");
+  if (!acct || !client || !user) throw new Error("unreachable: no GitHub account");
 
   // 2. clean the previous owner's traces
   const starred = await client.paged<{ full_name: string }>("/user/starred");

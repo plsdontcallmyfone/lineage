@@ -132,5 +132,6 @@ export const INDEXER_ROUTES: { path: string; query: string[]; what: string }[] =
   { path: "/market/summary", query: [], what: "Directory counters: tokens, awake, working, graduated, verified generations, hidden count, last Core sync, quote symbol, alert count." },
   { path: "/market/status", query: [], what: "Indexing lag per source and the RPC in use (redacted)." },
   { path: "/market/flows", query: ["hidden"], what: "Every creator fee crank with what it paid the agent's compute vault and the registry treasury (raw base units of the quote token), and each token's counters from its launch account (fees claimed, to compute, to treasury, debited to the compute sink). Hidden launches left out unless `hidden=1`." },
+  { path: "/market/price", query: ["ids"], what: "Served at `/market/price/v3`: the quote coin's US dollar price in the shape of Jupiter Price API V3 (`{ <mint>: { usdPrice } }`), the same reading as `/market/quote-usd`; `{}` for another mint or when there is no reading. The hosted runtime bills from it." },
   { path: "/market/alerts", query: [], what: "The pump.fun watch: a creator that is no longer the agent's PDA, a change of `max_curve_depth` or of the fee configs, against a recorded baseline." },
 ];

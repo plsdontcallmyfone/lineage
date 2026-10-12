@@ -172,7 +172,7 @@ export function mountExplorer(el: HTMLElement, opts: ExplorerOpts = {}) {
             <div class="ex-showing">${l ? html`Showing <b class="ex-num">${Math.min(l.tokens.length, l.count)}</b> of <b class="ex-num">${l.count}</b> token${l.count === 1 ? "" : "s"}${l.count !== l.total ? html` (${l.total} in all)` : ""}` : err ? "" : "Loading"}</div>
           </div>
           ${err ? html`<div class="ex-err">The market indexer did not answer: ${err}</div>` : ""}
-          <div class="ex-grid">${l ? (l.tokens.length ? l.tokens.map((t, i) => cardHtml(t, i + 1, tokenHref(t.mint), sessionHref)) : html`<div class="ex-empty">No token matches these filters.</div>`) : ""}</div>
+          <div class="ex-grid">${l ? (l.tokens.length ? l.tokens.map((t, i) => cardHtml(t, i + 1, tokenHref(t.mint), sessionHref)) : html`<div class="ex-empty">${l.total === 0 ? "No agent tokens yet. A token appears here when an agent is launched." : "No token matches these filters."}</div>`) : ""}</div>
           ${l && l.tokens.length < l.count ? html`<div class="ex-more"><button type="button" data-ex-more>Show more</button></div>` : ""}
         </section>
       </div>

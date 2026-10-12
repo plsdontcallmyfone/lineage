@@ -7,6 +7,10 @@
 //   main.ts cycle [--force] [--dry-run] mirror + PR bot for agents with credentials (lineage-identity-cycle.timer)
 //   main.ts reserve-add                read {"login","token"} JSON lines on stdin into the encrypted reserve
 //   main.ts reserve-list               logins and statuses of the reserve (no tokens)
+//   main.ts pool                       counts of the reserve and the low-water flag (what GET /identity/pool serves)
+//   main.ts reserve-release --login <login> --confirm release-<login>
+//                                      frees an account bound to an agent whose provisioning never finished; the
+//                                      only way an account returns to the reserve (refused once it is assigned)
 //   main.ts status                     the service summary (no tokens)
 //   main.ts publisher-set              read the publisher account's token on stdin: validated, refused for
 //                                      reserved/pool/reserve/agent logins, signing key registered, stored
@@ -41,6 +45,7 @@
 //   --indexer  UNITS_INDEXER        market indexer base     (default http://127.0.0.1:9668; launch tx, symbol)
 //   --signer   UNITS_GENESIS_SIGNER hosted runtime base     (default http://127.0.0.1:9667; signs genesis proofs)
 //   --org      UNITS_GITHUB_ORG     organization agents join (default units-agents)
+//   --pool-low-water  UNITS_IDENTITY_POOL_LOW_WATER  free accounts at or below which /identity/pool says low (default 5)
 // Tokens are never printed.
 
 import "../../protocol/src/env-alias.ts"; // first: UNITS_* and LINEAGE_* env names both readable (docs/plans/REBRAND-UNITS.md 3.3)
@@ -84,8 +89,8 @@ if (cmd === "init") {
   console.log(JSON.stringify({ key: k.created ? "created" : "present", dir: DIR }));
   process.exit(0);
 }
-if (!["serve", "cycle", "reserve-add", "reserve-list", "status", "genesis", "publisher-set", "publisher-status", "publisher-clear", "learnings", "adopt", "publisher-move", "org-join", "org-status", "findings-dump"].includes(cmd ?? "")) {
-  console.error("usage: main.ts init | serve | cycle | reserve-add | reserve-list | status | genesis | publisher-set | publisher-status | publisher-clear | publisher-move | org-join | org-status | learnings | findings-dump | adopt  (see the header)");
+if (!["serve", "cycle", "reserve-add", "reserve-list", "pool", "reserve-release", "status", "genesis", "publisher-set", "publisher-status", "publisher-clear", "learnings", "adopt", "publisher-move", "org-join", "org-status", "findings-dump"].includes(cmd ?? "")) {
+  console.error("usage: main.ts init | serve | cycle | reserve-add | reserve-list | pool | reserve-release | status | genesis | publisher-set | publisher-status | publisher-clear | publisher-move | org-join | org-status | learnings | findings-dump | adopt  (see the header)");
   process.exit(2);
 }
 
@@ -121,9 +126,11 @@ const payMeta = store.get<{ since: number }>("meta", "payment");
 const paymentSince = Number(arg("payment-since", "UNITS_IDENTITY_PAYMENT_SINCE") ?? payMeta?.since ?? Math.floor(Date.now() / 1000));
 if (!payMeta || payMeta.since !== paymentSince) store.put("meta", "payment", { since: paymentSince });
 async function paymentTerms(): Promise<{ lamports: bigint; recipient: string } | null> {
-  const r = await fetch(`${CORE}/v1/config`, { signal: AbortSignal.timeout(15_000) });
-  if (!r.ok) throw new Error(`Core answered ${r.status} for its config`);
-  const p = ((await r.json()) as any)?.network?.prepay;
+  // the configured terms (GET /v1/launch-fronting), not GET /v1/config: there Core hides the recipient from
+  // launchers while no account is free, and a launch that paid just before must still be recognised as paid
+  const r = await fetch(`${CORE}/v1/launch-fronting`, { signal: AbortSignal.timeout(15_000) });
+  if (!r.ok) throw new Error(`Core answered ${r.status} for its launch fronting`);
+  const p = (await r.json()) as any;
   if (!p?.identity_account_recipient || !/^\d+$/.test(String(p.identity_account_price_lamports ?? ""))) return null;
   return { lamports: BigInt(p.identity_account_price_lamports), recipient: p.identity_account_recipient };
 }
@@ -136,6 +143,10 @@ const svc = new IdentityService({
     paid: async (l, recipient) => identityPaymentIn(await launchBundleTxs(reader.rpc, { mint: l.mint, launcher: l.launcher }), { payer: l.launcher, recipient }),
   },
   org: arg("org", "UNITS_GITHUB_ORG", DEFAULT_ORG),
+  poolLowWater: (() => {
+    const v = arg("pool-low-water", "UNITS_IDENTITY_POOL_LOW_WATER");
+    return v !== undefined && /^\d+$/.test(v) ? Number(v) : undefined;
+  })(),
   soulWaitS: Number((process.env.UNITS_IDENTITY_SOUL_WAIT_S ?? process.env.LINEAGE_IDENTITY_SOUL_WAIT_S) ?? 600),
 });
 
@@ -259,6 +270,16 @@ if (cmd === "reserve-add") {
   console.log(JSON.stringify(out));
 } else if (cmd === "reserve-list") {
   console.log(JSON.stringify({ accounts: svc.reserve.publicList() }));
+} else if (cmd === "pool") {
+  console.log(JSON.stringify(svc.pool()));
+} else if (cmd === "reserve-release") {
+  try {
+    const credLogins = svc.creds.agents().map((a) => svc.creds.record(a)?.login ?? "").filter(Boolean);
+    console.log(JSON.stringify(svc.reserve.release(arg("login") ?? "", arg("confirm") ?? "", credLogins)));
+  } catch (e) {
+    console.error(`reserve-release: ${errText(e)}`);
+    process.exit(1);
+  }
 } else if (cmd === "status") {
   console.log(JSON.stringify({ ...svc.summary(), publisher: publisherPublic(svc) }, null, 2));
 } else if (cmd === "publisher-status") {

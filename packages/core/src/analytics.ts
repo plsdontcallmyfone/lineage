@@ -654,8 +654,19 @@ export class Analytics {
       // network
       const live = this.core.live.live() as any;
       const sessions = this.liveSessions(include);
-      const epochs = this.db.query<{ n: number; status: string; end_ms: number; closed_at: number | null }, []>("SELECT n, status, end_ms, closed_at FROM epochs ORDER BY n DESC").all();
-      const posted = this.db.query<{ n: number; signature: string | null; error: string | null; posted_at: number | null; attempts: number }, []>("SELECT n, signature, error, posted_at, attempts FROM chain_epochs ORDER BY n DESC").all();
+      // counts and the newest rows only: at a 900 s epoch these tables grow by 96 rows a day
+      const one = <T>(sql: string) => this.db.query<T, []>(sql).get() ?? null;
+      const epochs = {
+        current: one<{ n: number }>("SELECT n FROM epochs WHERE status = 'open' ORDER BY n DESC LIMIT 1")?.n ?? null,
+        closed: one<{ c: number }>("SELECT COUNT(*) AS c FROM epochs WHERE status = 'closed'")!.c,
+        last_closed: one<{ n: number; status: string; end_ms: number; closed_at: number | null }>("SELECT n, status, end_ms, closed_at FROM epochs WHERE status = 'closed' ORDER BY n DESC LIMIT 1"),
+      };
+      const lastPosted = one<{ n: number; posted_at: number | null }>("SELECT n, posted_at FROM chain_epochs WHERE signature IS NOT NULL ORDER BY n DESC LIMIT 1");
+      const posted = {
+        posted: one<{ c: number }>("SELECT COUNT(*) AS c FROM chain_epochs WHERE signature IS NOT NULL")!.c,
+        last_posted: lastPosted ? { n: lastPosted.n, at: lastPosted.posted_at } : null,
+        unposted: this.db.query<{ n: number; error: string | null; attempts: number }, []>("SELECT n, error, attempts FROM chain_epochs WHERE signature IS NULL ORDER BY n DESC").all(),
+      };
       const chain = this.core.chainMode ? ((this.core.chainView?.() ?? null) as any) : null;
       const spend = runtimeSpendOf(this.core);
       const g = spend.global();
@@ -748,12 +759,12 @@ export class Analytics {
           machines: { total: live.totals?.machines ?? null, awake: live.totals?.awake ?? null, by_job: live.totals?.by_job ?? null, heartbeat_s: live.heartbeat_s },
           sessions: { live: sessions.length, with_desktop: sessions.filter((s) => s.desktop).length, agents: [...new Set(sessions.map((s) => s.agent).filter(Boolean))].length },
           epochs: {
-            current: epochs.find((e) => e.status === "open")?.n ?? null,
-            closed: epochs.filter((e) => e.status === "closed").length,
-            last_closed: epochs.find((e) => e.status === "closed") ?? null,
-            posted: posted.filter((p) => p.signature).length,
-            last_posted: posted.find((p) => p.signature) ? { n: posted.find((p) => p.signature)!.n, at: posted.find((p) => p.signature)!.posted_at } : null,
-            unposted: posted.filter((p) => !p.signature).map((p) => ({ n: p.n, attempts: p.attempts, error: p.error ? p.error.slice(0, 160) : null })),
+            current: epochs.current,
+            closed: epochs.closed,
+            last_closed: epochs.last_closed,
+            posted: posted.posted,
+            last_posted: posted.last_posted,
+            unposted: posted.unposted.map((p) => ({ n: p.n, attempts: p.attempts, error: p.error ? p.error.slice(0, 160) : null })),
             chain: chain ? { epochs_posted: chain.epochs_posted ?? null, last_epoch: chain.last_epoch ?? null, read_at: chain.read_at ?? null, paused: chain.paused ?? null } : null,
           },
           runtime: g ? { reported_at: g.reported_at, price: g.body.price ?? null, provider_balance: g.body.provider_balance ?? null, cap: g.body.cap ?? null, desktops: g.body.desktops ?? null } : null,
