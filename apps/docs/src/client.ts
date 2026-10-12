@@ -1,24 +1,134 @@
-// The docs site's only script (<base>/assets/docs.js): the live figures, the search box and the phone
-// page menu. Every {{cfg:...}}, {{market:...}}, {{stats:...}} and {{guard:...}} tag was rendered as a
-// TBA span with data-live; this fills it from Core's GET /v1/config, /v1/stats and /v1/guard-config
-// (through the site's /api proxy) and the market indexer's /market/tokens. A figure none of them
-// answers for stays TBA. The app has one theme (light), so there is no theme switch here either. Search reads <base>/assets/search.json,
-// built with the pages, and runs in the browser. Nothing else runs on these pages.
+// The docs site's only script (<base>/assets/docs.js): the live figures, the search palette (button,
+// Cmd or Ctrl+K, or "/"), the page menu drawer at phone width, the "On this page" scroll spy, tabs,
+// copy buttons and opening a folded block a link points into. Every {{cfg:...}}, {{market:...}},
+// {{stats:...}} and {{guard:...}} tag was rendered as a TBA span with data-live; this fills it from
+// Core's GET /v1/config, /v1/stats and /v1/guard-config (through the site's /api proxy) and the market
+// indexer's /market/tokens. A figure none of them answers for stays TBA. The site has one theme
+// (light, like the main website), so there is no theme switch. Search reads <base>/assets/search.json,
+// built with the pages, and runs in the browser. The pages read fully without this script: the side
+// menu, every tab panel's first tab and every link work as plain HTML.
 import { loadConfig } from "../../web/src/api.ts";
 import { paramValue } from "../../web/src/params.ts";
 
 const BASE = document.body.dataset.docsBase ?? "/docs";
 const esc = (v: unknown) => String(v).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]!);
 
-// ---- header: the app's blur under the bar once the page scrolls (app.css .top.is-scrolled) ----
-const bar = document.querySelector<HTMLElement>(".top");
+const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T | null;
+
+// ---- top bar: a hairline under it once the page scrolls ----
+const bar = document.querySelector<HTMLElement>(".dc-top");
 const onScroll = () => bar?.classList.toggle("is-scrolled", window.scrollY > 4);
 window.addEventListener("scroll", onScroll, { passive: true });
 onScroll();
 
-// ---- phone page menu: the page list folds into one row under 860 px ----
-const pages = document.getElementById("dc-pages") as HTMLDetailsElement | null;
-if (pages && window.matchMedia("(max-width: 860px)").matches) pages.open = false;
+// ---- page menu: a drawer under 1024 px ----
+const side = $("dc-side");
+const menu = $<HTMLButtonElement>("dc-menu");
+const scrim = $("dc-scrim");
+function drawer(open: boolean) {
+  if (!side || !menu || !scrim) return;
+  side.classList.toggle("is-open", open);
+  scrim.hidden = !open;
+  menu.setAttribute("aria-expanded", String(open));
+  document.documentElement.classList.toggle("dc-lock", open);
+  if (open) (side.querySelector<HTMLElement>('a[aria-current="page"]') ?? $("dc-menu-x"))?.focus({ preventScroll: true });
+  else menu.focus({ preventScroll: true });
+}
+menu?.addEventListener("click", () => drawer(!side?.classList.contains("is-open")));
+$("dc-menu-x")?.addEventListener("click", () => drawer(false));
+scrim?.addEventListener("click", () => drawer(false));
+// the current page stays in view in a long menu
+side?.querySelector<HTMLElement>('a[aria-current="page"]')?.scrollIntoView({ block: "nearest" });
+// the section tabs scroll sideways at phone width: bring the current one into view
+const tabNow = document.querySelector<HTMLElement>('.dc-tabl[aria-current="true"]');
+if (tabNow?.parentElement) tabNow.parentElement.scrollLeft = Math.max(0, tabNow.offsetLeft - 16);
+
+// ---- "On this page": the section being read is marked ----
+const tocLinks = [...document.querySelectorAll<HTMLAnchorElement>("#dc-toc a")];
+if (tocLinks.length) {
+  const heads = tocLinks.map((a) => document.getElementById(decodeURIComponent(a.hash.slice(1)))).filter((h): h is HTMLElement => !!h);
+  let cur = -1;
+  const spy = () => {
+    const line = (bar?.offsetHeight ?? 0) + 24;
+    let k = 0;
+    for (let i = 0; i < heads.length; i++) if (heads[i]!.getBoundingClientRect().top <= line) k = i;
+    if (window.innerHeight + window.scrollY >= document.documentElement.scrollHeight - 2) k = heads.length - 1;
+    if (k === cur) return;
+    cur = k;
+    tocLinks.forEach((a, i) => (i === k ? a.setAttribute("aria-current", "location") : a.removeAttribute("aria-current")));
+    tocLinks[k]?.scrollIntoView({ block: "nearest" });
+  };
+  let queued = false;
+  window.addEventListener("scroll", () => {
+    if (queued) return;
+    queued = true;
+    requestAnimationFrame(() => ((queued = false), spy()));
+  }, { passive: true });
+  spy();
+}
+
+// ---- a link into a folded block (an FAQ answer, an API route, a tab) opens it ----
+function reveal() {
+  const id = decodeURIComponent(location.hash.slice(1));
+  const el = id ? document.getElementById(id) : null;
+  if (!el) return;
+  let moved = false;
+  for (let p: HTMLElement | null = el; p; p = p.parentElement) {
+    if (p instanceof HTMLDetailsElement && !p.open) (p.open = true), (moved = true);
+    if (p.classList.contains("dc-tab") && p.hidden) (select(document.getElementById(p.getAttribute("aria-labelledby")!) as HTMLButtonElement, false), (moved = true));
+  }
+  if (moved) el.scrollIntoView();
+}
+window.addEventListener("hashchange", reveal);
+
+// ---- tabs: arrow keys move, tabs with the same labels on a page switch together ----
+function select(tab: HTMLButtonElement, sync: boolean) {
+  const list = tab.parentElement!;
+  for (const t of list.querySelectorAll<HTMLButtonElement>('[role="tab"]')) {
+    const on = t === tab;
+    t.setAttribute("aria-selected", String(on));
+    t.tabIndex = on ? 0 : -1;
+    const panel = document.getElementById(t.getAttribute("aria-controls")!);
+    if (panel) panel.hidden = !on;
+  }
+  if (!sync) return;
+  const label = tab.textContent;
+  for (const other of document.querySelectorAll<HTMLButtonElement>('[data-tabs] [role="tab"]'))
+    if (other !== tab && other.textContent === label && other.getAttribute("aria-selected") !== "true") select(other, false);
+}
+for (const list of document.querySelectorAll<HTMLElement>("[data-tabs] .dc-tabs-l")) {
+  const tabs = [...list.querySelectorAll<HTMLButtonElement>('[role="tab"]')];
+  list.addEventListener("click", (ev) => {
+    const t = (ev.target as HTMLElement).closest<HTMLButtonElement>('[role="tab"]');
+    if (t) select(t, true);
+  });
+  list.addEventListener("keydown", (ev) => {
+    const i = tabs.indexOf(document.activeElement as HTMLButtonElement);
+    const to = ev.key === "ArrowRight" ? i + 1 : ev.key === "ArrowLeft" ? i - 1 : ev.key === "Home" ? 0 : ev.key === "End" ? tabs.length - 1 : null;
+    if (i < 0 || to === null) return;
+    ev.preventDefault();
+    const t = tabs[(to + tabs.length) % tabs.length]!;
+    select(t, true);
+    t.focus();
+  });
+}
+reveal();
+
+// ---- copy buttons ----
+document.addEventListener("click", (ev) => {
+  const b = (ev.target as HTMLElement).closest<HTMLButtonElement>("[data-copy]");
+  if (!b) return;
+  const pre = b.closest(".dc-codeb, .dc-fold-b")?.querySelector("pre");
+  const label = b.querySelector("span");
+  if (!pre || !label) return;
+  const done = (ok: boolean) => {
+    label.textContent = ok ? "Copied" : "Not copied";
+    b.classList.toggle("is-done", ok);
+    setTimeout(() => ((label.textContent = "Copy"), b.classList.remove("is-done")), 1600);
+  };
+  if (!navigator.clipboard) return done(false);
+  navigator.clipboard.writeText(pre.textContent ?? "").then(() => done(true), () => done(false));
+});
 
 // ---- live figures ----
 /** A nested config value: "prepay.min_usd" reads cfg.prepay.min_usd. */
@@ -151,8 +261,8 @@ function search(text: string): { e: Entry; score: number }[] {
 function render() {
   if (!q || !res) return;
   const text = q.value.trim();
+  q.setAttribute("aria-expanded", String(!!text));
   if (!text) {
-    res.hidden = true;
     res.innerHTML = "";
     return;
   }
@@ -166,8 +276,7 @@ function render() {
             `<a class="dc-hit${i === 0 ? " on" : ""}" role="option" href="${esc(h.e.u)}"><span class="dc-hit-t">${esc(h.e.p)}${h.e.h ? ` <span class="dc-hit-h">${esc(h.e.h)}</span>` : ""}</span><span class="dc-hit-x">${snippet(h.e.x, terms)}</span></a>`,
         )
         .join("")
-    : `<div class="dc-none">Nothing found for "${esc(text)}".</div>`;
-  res.hidden = false;
+    : `<div class="dc-none">Nothing found for "${esc(text)}". Try one word, or a route such as /v1/stats.</div>`;
 }
 
 function move(d: number) {
@@ -179,28 +288,45 @@ function move(d: number) {
   hits[active]!.scrollIntoView({ block: "nearest" });
 }
 
-q?.addEventListener("focus", () => void load());
+// the palette: a modal dialog, so focus stays inside it and Escape closes it
+const palette = $<HTMLDialogElement>("dc-palette");
+function openSearch() {
+  if (!palette || !q || palette.open) return;
+  if (side?.classList.contains("is-open")) drawer(false);
+  palette.showModal();
+  void load();
+  q.focus();
+  q.select();
+}
+function closeSearch() {
+  if (palette?.open) palette.close();
+}
+$("dc-search-open")?.addEventListener("click", openSearch);
+$("dc-palette-x")?.addEventListener("click", closeSearch);
+palette?.addEventListener("click", (ev) => ev.target === palette && closeSearch()); // a click on the backdrop
+const mac = /Mac|iPhone|iPad/.test(navigator.platform);
+const k = $("dc-k");
+if (k && mac) k.textContent = "\u2318 K";
+
 q?.addEventListener("input", () => void load().then(render));
 q?.addEventListener("keydown", (ev) => {
   if (ev.key === "ArrowDown") (ev.preventDefault(), move(1));
   else if (ev.key === "ArrowUp") (ev.preventDefault(), move(-1));
   else if (ev.key === "Enter") {
     const hit = res?.querySelectorAll<HTMLAnchorElement>(".dc-hit")[active];
-    if (hit) (ev.preventDefault(), (location.href = hit.href));
-  } else if (ev.key === "Escape") {
-    q.value = "";
-    render();
-    q.blur();
+    if (hit) (ev.preventDefault(), closeSearch(), (location.href = hit.href));
   }
 });
+res?.addEventListener("click", (ev) => (ev.target as HTMLElement).closest(".dc-hit") && closeSearch());
 document.addEventListener("keydown", (ev) => {
-  if (ev.key !== "/" || !q || document.activeElement === q) return;
+  if (ev.key === "Escape" && side?.classList.contains("is-open")) return drawer(false);
+  if ((ev.metaKey || ev.ctrlKey) && !ev.altKey && ev.key.toLowerCase() === "k") {
+    ev.preventDefault();
+    return palette?.open ? closeSearch() : openSearch();
+  }
+  if (ev.key !== "/" || palette?.open) return;
   const t = ev.target as HTMLElement | null;
   if (t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.isContentEditable)) return;
   ev.preventDefault();
-  q.focus();
-});
-document.addEventListener("click", (ev) => {
-  if (!res || res.hidden) return;
-  if (!(ev.target as HTMLElement).closest(".dc-search")) res.hidden = true;
+  openSearch();
 });

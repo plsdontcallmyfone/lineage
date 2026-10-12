@@ -138,10 +138,19 @@ export interface CoreApiDoc {
   undescribed: string[];
 }
 
+/** The captured example of a route, if the capture has one (ids in the captured path stand for the route's parameters). */
+function exampleOf(c: Captured, method: string, path: string): ApiExample | null {
+  const key = routeKey(method, path);
+  const alias = unitAlias(path);
+  const keys = new Set([key, alias ? routeKey(method, alias) : key]);
+  return c.api?.examples.find((e) => e.group === "core" && keys.has(routeKey(e.method, e.path.replace(/\/[0-9a-f]{64}|\/[1-9A-HJ-NP-Za-km-z]{32,44}/g, "/:_")))) ?? null;
+}
+
 export function coreApiDoc(root: string): CoreApiDoc {
   const routes = coreRoutes(root);
   const readme = readmeRows(root);
   const spec = specRows(root);
+  const cap = captured(root);
   const undescribed: string[] = [];
   const groups = new Map<string, string[]>();
   const admin: string[] = [];
@@ -151,32 +160,36 @@ export function coreApiDoc(root: string): CoreApiDoc {
     const rd = readme.get(key);
     const purpose = note ?? spec.get(key) ?? null;
     if (!purpose && !rd) undescribed.push(key);
-    const parts: string[] = [];
-    if (purpose) parts.push(purpose);
-    if (rd?.body) parts.push(`Body: ${rd.body}`);
-    if (rd?.response) parts.push(`${rd.body !== null ? "Response" : purpose ? "Returns" : "Returns"}: ${rd.response}`);
-    if (!parts.length) parts.push("Not described yet (the route exists in packages/core/src/http.ts).");
     // the unit alias (packages/core/src/unit-alias.ts): /v1/units... is served by the /v1/lineages... handler
     const alias = unitAlias(r.path);
-    const cell = alias ? `\`${r.method} ${alias}\` (also \`${r.method} ${r.path}\`)` : `\`${r.method} ${r.path}\``;
-    const row = `| ${cell} | ${ACCESS[r.auth]} | ${r.query.length ? r.query.map((q) => `\`${q}\``).join(", ") : ""} | ${parts.join(" ")} |`;
+    const block: string[] = [`:::api \`${r.method} ${alias ?? r.path}\` {access="${ACCESS[r.auth]}"}`];
+    block.push(purpose ?? (rd ? "" : "Not described yet (the route exists in packages/core/src/http.ts)."), "");
+    const facts: string[] = [];
+    if (alias) facts.push(`| Also served as | \`${r.method} ${r.path}\` (the same handler, the older spelling) |`);
+    if (r.query.length) facts.push(`| Query | ${r.query.map((q) => `\`${q}\``).join(", ")} |`);
+    if (rd?.body) facts.push(`| Body | ${rd.body} |`);
+    if (rd?.response) facts.push(`| ${rd.body !== null ? "Response" : "Returns"} | ${rd.response} |`);
+    if (facts.length) block.push("| | |", "|---|---|", ...facts, "");
+    const ex = exampleOf(cap, r.method, r.path);
+    if (ex) block.push(exampleMd(cap, ex.id), "");
+    block.push(":::", "");
+    const text = block.join("\n");
     if (r.path.startsWith("/v1/admin/")) {
-      admin.push(row);
+      admin.push(text);
       continue;
     }
     const g = GROUPS.find(([, re]) => re.test(r.path))?.[0] ?? "Other";
     if (!groups.has(g)) groups.set(g, []);
-    groups.get(g)!.push(row);
+    groups.get(g)!.push(text);
   }
-  const head = "| Route | Access | Query | What it does |\n|---|---|---|---|";
   const order = [...GROUPS.map(([g]) => g), "Other"];
   const out: string[] = [];
   for (const g of order) {
     const rows = groups.get(g);
     if (!rows?.length) continue;
-    out.push(`## ${g}`, "", head, ...rows, "");
+    out.push(`## ${g}`, "", ...rows, "");
   }
-  if (admin.length) out.push("## Admin and runtime routes", "", "Signed with Core's admin key, or the hosted runtime's key where marked. They move no onchain funds by themselves; on mainnet the onchain admin powers sit behind the multisig (see [Trust model](doc:trust-model#admin-powers)).", "", head, ...admin, "");
+  if (admin.length) out.push("## Admin and runtime routes", "", "Signed with Core's admin key, or the hosted runtime's key where marked. They move no onchain funds by themselves; on mainnet the onchain admin powers sit behind the multisig (see [Trust model](doc:trust-model#admin-powers)).", "", ...admin, "");
   return { markdown: out.join("\n"), routes: routes.length, undescribed };
 }
 
@@ -268,9 +281,16 @@ export function changelogDoc(root: string): string {
   return out.join("\n");
 }
 
-export function indexerApiDoc(): string {
-  const out = ["| Route | Query | What it returns |", "|---|---|---|"];
-  for (const r of INDEXER_ROUTES) out.push(`| \`GET ${r.path}\` | ${r.query.map((q) => `\`${q}\``).join(", ")} | ${r.what} |`);
+export function indexerApiDoc(root?: string): string {
+  const cap = root ? captured(root) : { api: null, verify: null };
+  const out: string[] = [];
+  for (const r of INDEXER_ROUTES) {
+    out.push(`:::api \`GET ${r.path}\` {access="public"}`, r.what, "");
+    if (r.query.length) out.push("| | |", "|---|---|", `| Query | ${r.query.map((q) => `\`${q}\``).join(", ")} |`, "");
+    const ex = cap.api?.examples.find((e) => e.group === "market" && e.path.replace(/\/[1-9A-HJ-NP-Za-km-z]{32,44}/g, "/:mint") === r.path);
+    if (ex) out.push(exampleMd(cap, ex.id), "");
+    out.push(":::", "");
+  }
   return out.join("\n") + "\n";
 }
 
@@ -314,6 +334,9 @@ export const captured = (root: string): Captured => ({ api: readJson(root, "api-
 
 const day = (iso: string) => iso.slice(0, 10);
 
+/** A captured path with its long ids shortened for a heading row (the request line under it is exact). */
+const shortPath = (path: string) => path.replace(/\/([0-9a-f]{8})[0-9a-f]{56}/g, "/$1...").replace(/\/([1-9A-HJ-NP-Za-km-z]{6})[1-9A-HJ-NP-Za-km-z]{26,38}/g, "/$1...");
+
 /** One captured example as markdown: the request as a curl line, the trimmed response folded under it. */
 export function exampleMd(c: Captured, id: string, o: { heading?: boolean } = {}): string {
   const e = c.api?.examples.find((x) => x.id === id);
@@ -321,9 +344,10 @@ export function exampleMd(c: Captured, id: string, o: { heading?: boolean } = {}
   const body = JSON.stringify(e.response, null, 2);
   const n = body.split("\n").length;
   const out: string[] = [];
-  if (o.heading) out.push(`### ${e.title}`, "", `\`${e.method} ${e.path}\`. ${e.why}`, "");
+  if (o.heading) out.push(`### ${e.title}`, "", `:::api \`${e.method} ${shortPath(e.path)}\` {open}`, e.why, "");
   out.push("```Request", `curl ${c.api.site}${e.request}`, "```", "");
   out.push(n > 14 ? `\`\`\`fold Response: HTTP ${e.status}, captured ${day(c.api.captured_at)}, trimmed to ${n} lines` : `\`\`\`Response: HTTP ${e.status}, captured ${day(c.api.captured_at)}`, body, "```", "");
+  if (o.heading) out.push(":::", "");
   return out.join("\n");
 }
 
@@ -368,7 +392,7 @@ export function generate(root: string, name: string): string {
     case "changelog":
       return changelogDoc(root);
     case "indexer-api":
-      return indexerApiDoc();
+      return indexerApiDoc(root);
     case "route-count":
       return String(coreRoutes(root).length);
   }

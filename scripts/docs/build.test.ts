@@ -26,8 +26,17 @@ test("every docs page is built, with the one inline script the page CSP allows",
     expect(html).toContain(`src="/docs/assets/docs.js"`);
     expect(html).toContain('id="dc-q"'); // the search box
   }
-  expect(files.has("assets/docs.js") && files.has("assets/app.css") && files.has("assets/search.json")).toBe(true);
-  expect(String(files.get("assets/app.css")!.body)).toContain('url("/docs/fonts/');
+  expect(files.has("assets/docs.js") && files.has("assets/docs.css") && files.has("assets/search.json")).toBe(true);
+  // the main website's fonts, self-hosted under the base and preloaded; nothing is fetched from another origin
+  const css = String(files.get("assets/docs.css")!.body);
+  for (const f of [...css.matchAll(/url\("([^"]+)"\)/g)].map((m) => m[1]!)) {
+    expect(f.startsWith("/docs/fonts/")).toBe(true);
+    expect(files.has(f.slice("/docs/".length))).toBe(true);
+    expect(String(files.get("index.html")!.body)).toContain(`<link rel="preload" href="${f}" as="font"`);
+  }
+  expect(css).toContain('"Suisse Intl"');
+  expect(css).toContain('"KMR Apparat"');
+  expect(css).not.toMatch(/https?:\/\/(?!lineagee\.vercel\.app)/);
   expect(docsLookup(files, "/nope")).toBeNull();
 });
 
@@ -66,7 +75,7 @@ test("reader paths: five guided sequences, each page numbered, with previous and
   const start = await page("overview");
   for (const s of PATHS) {
     expect(s.pages.length).toBeGreaterThanOrEqual(2);
-    expect(start).toContain(`<a class="dc-pathcard" href="/docs/${s.pages[0]!.slug}">`);
+    expect(start).toContain(`<a class="dc-card is-link dc-pathcard" href="/docs/${s.pages[0]!.slug}">`);
     for (const [i, p] of s.pages.entries()) {
       const html = await page(p.slug);
       expect(html).toContain(`<span>step ${i + 1} of ${s.pages.length}</span>`);
@@ -115,7 +124,11 @@ test("captured API examples: fifteen Core routes that exist in http.ts, each a r
   }
   const html = await page("api-examples");
   for (const e of core) expect(html).toContain(`curl ${c.api!.site}${e.request.replace(/&/g, "&amp;")}`);
-  expect((await page("indexer-api")).match(/class="dc-block-h">Request/g)!.length).toBe(c.api!.examples.length - core.length);
+  expect((await page("indexer-api")).match(/class="dc-codeb-l">Request/g)!.length).toBe(c.api!.examples.length - core.length);
+  // the reference shows the captured example inside its route
+  const ref = await page("core-api");
+  expect(ref.match(/class="dc-codeb-l">Request/g)!.length).toBe(core.length);
+  expect(ref).toMatch(/<details class="dc-api" id="get-v1-stats"><summary><span class="dc-m is-get">GET<\/span><span class="dc-api-p">\/v1\/stats<\/span>/);
 });
 
 test("the trim rule marks every cut", () => {
@@ -199,4 +212,77 @@ test("what is not live is not described as live", async () => {
     const html = (await page(p.slug)).replace(/<[^>]+>/g, " ");
     expect(html, p.slug).not.toMatch(/\(coming\)|Coming:|being built now/);
   }
+});
+
+test("components: callouts, cards, steps, tabs, accordions, API blocks and code blocks render from the documented syntax", () => {
+  const md = [
+    "# T", "", "> One sentence.", "",
+    ":::warning Careful", "Body with `code`.", ":::", "",
+    "::::cards 3", ":::card [A](/docs/a) {tag=\"2 steps\"}", "Text of a.", ":::", ":::card B", "No link.", ":::", "::::", "",
+    ":::::steps", "::::step First thing", "Do it.", "", ":::tip", "Nested.", ":::", "::::", "::::step Second", "Then this.", "::::", ":::::", "",
+    "::::tabs", ":::tab Devnet", "d", ":::", ":::tab Mainnet", "m", ":::", "::::", "",
+    ":::accordion Why is it folded? {open}", "Because.", ":::", "",
+    ":::api `POST /v1/agents/:id/soul` {access=\"agent-signed\"}", "Sets it.", ":::", "",
+    "```ts title=\"a.ts\"", "const a = 1;", "```", "",
+    "```Request", "curl x", "```", "",
+    "## Section", "### Sub",
+  ].join("\n");
+  const missing: string[] = [];
+  const r = renderMarkdown(md, () => null, { missing });
+  expect(missing).toEqual([]);
+  expect(r.html).toContain('<aside class="dc-callout is-warning" role="note" aria-label="Warning">');
+  expect(r.html).toContain('<p class="dc-callout-t">Careful</p>');
+  expect(r.html).toContain('<div class="dc-cards" data-cols="3"><a class="dc-card is-link" href="/docs/a"><span class="dc-card-tag">2 steps</span>');
+  expect(r.html).toContain('<div class="dc-card"><b class="dc-card-t">B</b>');
+  expect(r.html).toContain('<ol class="dc-stepper"><li class="dc-stp"><h3 id="first-thing">First thing');
+  expect(r.html).toMatch(/<li class="dc-stp"><h3 id="first-thing">[\s\S]*is-tip[\s\S]*<\/li><li class="dc-stp"><h3 id="second">/);
+  expect(r.html).toMatch(/role="tab" id="tab" aria-controls="tab-p" aria-selected="true">Devnet<[\s\S]*id="tab-2-p" aria-labelledby="tab-2" hidden>/);
+  expect(r.html).toContain('<details class="dc-acc" id="why-is-it-folded" open>');
+  expect(r.html).toContain('<details class="dc-api" id="post-v1-agents-id-soul"><summary><span class="dc-m is-post">POST</span><span class="dc-api-p">/v1/agents/<i class="dc-api-v">:id</i>/soul</span><span class="dc-api-a">agent-signed</span>');
+  expect(r.html).toContain('<span class="dc-codeb-l">TypeScript</span><span class="dc-codeb-f">a.ts</span>');
+  expect(r.html).toContain('<span class="dc-codeb-l">Request</span>');
+  expect(r.html.match(/data-copy/g)!.length).toBe(2);
+  expect(r.html).toContain('<h2 id="section">Section<a class="dc-anchor" href="#section"');
+  expect(r.toc).toEqual([
+    { id: "first-thing", text: "First thing", level: 3 },
+    { id: "second", text: "Second", level: 3 },
+    { id: "section", text: "Section", level: 2 },
+    { id: "sub", text: "Sub", level: 3 },
+  ]);
+  // an unknown component and a card group holding something else are reported, never dropped silently
+  const bad: string[] = [];
+  renderMarkdown("# T\n\n> S.\n\n:::nope\nx\n:::\n\n::::cards\nstray\n::::\n", () => null, { missing: bad });
+  expect(bad).toHaveLength(2);
+});
+
+test("the shell: section tabs, a side menu with every page once, on this page, edit link, last updated, the search palette", async () => {
+  const { files } = await built;
+  expect(SECTIONS.map((s) => s.tab)).toEqual(["Start", "Launch", "Verification", "Hold or trade", "Verifiers", "API", "Reference"]);
+  for (const s of SECTIONS)
+    for (const p of s.pages) {
+      const html = await page(p.slug);
+      expect(html.match(/class="dc-tabl"[^>]*aria-current="true">([^<]+)</)![1]).toBe(s.tab);
+      const links = [...html.match(/<nav class="dc-nav"[\s\S]*?<\/nav>/)![0].matchAll(/<a href="([^"]+)"( aria-current="page")?>/g)];
+      expect(links).toHaveLength(PAGES.length);
+      expect(links.filter((l) => l[2]).map((l) => l[1])).toEqual([p.slug === "overview" ? "/docs" : `/docs/${p.slug}`]);
+      expect(html).toContain(`href="https://github.com/plsdontcallmyfone/lineage/edit/main/apps/docs/content/${p.file}"`);
+      expect(html, `${p.slug}: last updated`).toMatch(/Last updated <time datetime="\d{4}-\d{2}-\d{2}">/);
+      expect(html).toContain('<dialog class="dc-palette" id="dc-palette"');
+      expect(html).toContain('id="main"');
+    }
+  expect(await page("verification")).toMatch(/<nav class="dc-toc-n" id="dc-toc"[\s\S]*<a href="#recipes" data-lv="2">Recipes<\/a>/);
+  // the search index reaches folded questions and API routes
+  const idx = JSON.parse(String(files.get("assets/search.json")!.body)) as { h: string; u: string }[];
+  expect(idx.some((e) => e.u === "/docs/core-api#get-v1-stats" && e.h.includes("/v1/stats"))).toBe(true);
+  expect(idx.some((e) => e.u.startsWith("/docs/faq#") && e.h === "Is this on mainnet?")).toBe(true);
+});
+
+test("components are used where they help: steps, callouts, tabs, cards on the landing pages, folded questions", async () => {
+  expect((await page("launch-quickstart")).match(/<li class="dc-stp">/g)!.length).toBe(6);
+  expect((await page("run-a-verifier")).match(/<li class="dc-stp">/g)!.length).toBe(5);
+  expect(await page("status")).toMatch(/is-warning[\s\S]{0,400}Not live yet/);
+  expect(await page("networks")).toMatch(/role="tab"[^>]*>Devnet<[\s\S]*role="tab"[^>]*>Mainnet</);
+  expect(await page("api-examples")).toMatch(/role="tab"[^>]*>TypeScript<[\s\S]*role="tab"[^>]*>curl</);
+  expect((await page("faq")).match(/<details class="dc-acc"/g)!.length).toBeGreaterThanOrEqual(20);
+  for (const s of PATHS) if (s.id !== "verifier") expect((await page(s.pages[0]!.slug)).match(/<a class="dc-card is-link" /g)!.length).toBeGreaterThanOrEqual(s.pages.length);
 });
