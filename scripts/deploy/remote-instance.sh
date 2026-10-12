@@ -299,7 +299,7 @@ status)
   echo "site      ${SITE_NAMES:-not set}"
   echo "state     $([ -s "$ETC/state.json" ] && echo present || echo missing), overlay $([ -s "$ETC/profile.local.json" ] && echo present || echo missing), rpc $(have_rpc && echo present || echo missing), Core authority key $([ -f "$ETCCORE/core-authority.json" ] && echo present || echo missing), runtime authority key $([ -f "$LH/$NETWORK/runtime-authority.json" ] && echo present || echo missing)"
   h="$(curl -s -m 5 "http://127.0.0.1:$PORT_CORE/v1/health" 2>/dev/null || true)"; echo "core      ${h:-not answering}"
-  for f in "$SHARED"/*.json; do [ -f "$f" ] && echo "e2b       $(basename "$f" .json): $(jq -c '{day, usd}' "$f" 2>/dev/null || echo unreadable)"; done
+  for f in "$SHARED"/*.json; do if [ -f "$f" ]; then echo "e2b       $(basename "$f" .json): $(jq -c '{day, usd}' "$f" 2>/dev/null || echo unreadable)"; fi; done
   ;;
 remove)
   stop_all

@@ -305,7 +305,7 @@ dch=$("${C[@]}" "$U/v1/chain")
 check "mainnet host answers its own Core (chain mode mainnet, mainnet program ids)" "$(echo "$mch" | grep -q '"mode":"mainnet"' && echo "$mch" | grep -q 3GeaTsBUsaXCJ7Dru9tDHiKnVBsoHE6yiTdqqj42JHay && echo 1 || echo 0)" "$(echo "$mch" | head -c 90)"
 check "devnet host still answers its own Core (chain mode devnet)" "$(echo "$dch" | grep -q '"mode":"devnet"' && echo "$dch" | grep -q CJk3kwUqSS4qoJD8iu7uhUzSBNySjn9HsqaExpaV9gM2 && echo 1 || echo 0)" "$(echo "$dch" | head -c 90)"
 check "mainnet Core does not sign in the dry run" "$(echo "$mch" | grep -q '"core_signing":false' && echo 1 || echo 0)"
-check "mainnet host: dashboard, wallet page, bundles" "$([ "$(mcode "$MU/")$(mcode "$MU/wallet")$(mcode "$MU/assets/app.js")$(mcode "$MU/assets/wallet.js")" = 200200200200 ] && echo 1 || echo 0)"
+check "mainnet host: dashboard and both bundles" "$([ "$(mcode "$MU/")$(mcode "$MU/assets/app.js")$(mcode "$MU/assets/wallet.js")" = 200200200 ] && echo 1 || echo 0)"
 mcc=$("${MC[@]}" "$MU/chain/config")
 mprof=$(echo "$mcc" | bun -e 'const j=JSON.parse(await Bun.stdin.text()); const p=j.profile; console.log(JSON.stringify({devnet:j.devnet, network:p.network, faucet:p.faucet, test_labels:p.test_labels, swap:p.swap, quote:p.quote.symbol, faucet_addr:j.faucet, state_mint:j.state?.line_mint ?? null}))' 2>/dev/null)
 check "mainnet /chain/config: mainnet profile, no faucet, no TEST labels, the overlay's quote" "$([ "$(echo "$mprof" | bun -e 'const j=JSON.parse(await Bun.stdin.text()); console.log(j.devnet===false && j.network==="mainnet" && j.faucet===false && j.test_labels===false && j.quote==="DRYQ" && j.faucet_addr===null && !!j.state_mint ? 1 : 0)' 2>/dev/null)" = 1 ] && echo 1 || echo 0)" "$mprof"
