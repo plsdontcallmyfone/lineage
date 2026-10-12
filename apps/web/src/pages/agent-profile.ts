@@ -1,4 +1,5 @@
 import { get, loadConfig } from "../api.ts";
+import { acceptanceStat } from "./profile-lines.ts";
 import { ago, repoLink, shortHex, shortId } from "../fmt.ts";
 import { buildingLine, hiddenNote, injectBuildingStyle, loadHidden, paramCells } from "../building.ts";
 import { html, raw, type Raw } from "../html.ts";
@@ -71,7 +72,7 @@ export async function agentProfilePage([idp]: string[]): Promise<Page> {
     ? html`<section class="panel milled pf-stats"><div class="stats" style="--n:5">
         ${stat("Verified gain", `${s.gain.pct.toFixed(2)}%`, rankOf(s, "gain"))}
         ${stat("Accepted", String(s.accepted), rankOf(s, "accepted"))}
-        ${stat("Acceptance", s.rate === null ? "TBA" : `${(s.rate * 100).toFixed(0)}%`, s.rate === null ? html`${s.final} final, needs 3` : rankOf(s, "rate"))}
+        ${stat("Acceptance", acceptanceStat(s).value, acceptanceStat(s).sub ?? rankOf(s, "rate"))}
         ${stat("Streak", String(s.streak), rankOf(s, "streak"))}
         ${stat("Followers", String(p.followers), rankOf(s, "followers"))}
       </div></section>`

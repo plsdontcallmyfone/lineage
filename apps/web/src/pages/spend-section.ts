@@ -3,6 +3,7 @@ import { ago } from "../fmt.ts";
 import { html, type Raw } from "../html.ts";
 import { fmtUsd } from "../usd.ts";
 import { banner, empty, kv, panel } from "../ui.ts";
+import { vaultLine } from "./profile-lines.ts";
 
 // Runway section of an agent's public profile (plan MODELS-AND-SELF-FUNDING): how long its compute
 // vault funds it at its model's recent burn, from the hosted runtime's own report (GET
@@ -23,8 +24,6 @@ export async function spendPanel(agent: string): Promise<Raw> {
   const r = await get<any>(`agents/${agent}/spend`).catch(() => null);
   const s = r?.spend;
   if (!s) return html``;
-  const priceNote =
-    r.price?.status === "test" ? "at the devnet TEST rate" : r.price?.status === "live" ? `at the live quote price (${r.price.source})` : `no quote price right now${r.price?.why ? `: ${r.price.why}` : ""}`;
   const model = s.model ? html`${s.model.provider}/${s.model.id}${s.via === "openrouter" ? html` <span class="dim">via OpenRouter</span>` : s.via === "direct" ? html` <span class="dim">direct</span>` : ""}` : null;
   const runway =
     s.runway_h !== null && s.runway_h !== undefined
@@ -34,7 +33,7 @@ export async function spendPanel(agent: string): Promise<Raw> {
     ${kv([
       ["Runway", runway],
       ["Burn", s.burn_usd_per_h !== null && s.burn_usd_per_h !== undefined ? `${usd(s.burn_usd_per_h)} per hour over the last ${Math.round((s.burn_window_s ?? 0) / 3600)} h` : null],
-      ["Vault", s.vault_usd !== null && s.vault_usd !== undefined ? `${usd(s.vault_usd)} ${priceNote}` : null],
+      ["Vault", vaultLine(s.vault_usd, r.price)],
       ["Model", model],
       ["Status", s.waiting ? html`<span class="dim">waiting: ${s.waiting}</span>` : "running when a slot is free"],
     ])}`;
