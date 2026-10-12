@@ -136,6 +136,13 @@ export interface RuntimeConfig {
   desktop_hosts_file?: string;
   /** Every attempt needs a live desktop when desktops are on (owner decision 2026-10-10; default true): with none free the attempt waits. */
   desktop_required?: boolean;
+  /**
+   * Desktop reaper (packages/desktop pool.ts reap): a desktop container on this server is removed when its
+   * attempt is not running any more or when it is older than desktop_max_age_s (default 7200), at start
+   * and every desktop_reap_every_s seconds (default 300; 0: only at start).
+   */
+  desktop_max_age_s?: number;
+  desktop_reap_every_s?: number;
 }
 
 export const DEFAULTS: Omit<RuntimeConfig, "mode" | "core" | "runtime_key" | "compute_price_line_per_usd" | "compute_price_line_per_sandbox_s"> = {
@@ -197,6 +204,8 @@ export function parseConfig(raw: Record<string, unknown>): RuntimeConfig {
   for (const k of ["desktops_max", "e2b_max"] as const) if (c[k] !== undefined && !(Number.isInteger(c[k]) && c[k]! >= 0 && c[k]! <= 16)) throw new Error(`runtime config: ${k} is a whole number from 0 to 16`);
   if (c.recordings !== undefined && typeof c.recordings !== "boolean") throw new Error("runtime config: recordings is true or false");
   if (c.desktop_required !== undefined && typeof c.desktop_required !== "boolean") throw new Error("runtime config: desktop_required is true or false");
+  if (c.desktop_max_age_s !== undefined && !(typeof c.desktop_max_age_s === "number" && c.desktop_max_age_s >= 300)) throw new Error("runtime config: desktop_max_age_s is at least 300 seconds");
+  if (c.desktop_reap_every_s !== undefined && !(typeof c.desktop_reap_every_s === "number" && (c.desktop_reap_every_s === 0 || c.desktop_reap_every_s >= 30))) throw new Error("runtime config: desktop_reap_every_s is 0 (only at start) or at least 30 seconds");
   if (c.desktop_hosts_file !== undefined && typeof c.desktop_hosts_file !== "string") throw new Error("runtime config: desktop_hosts_file is a path");
   if (c.desktop_usd_per_day !== undefined && !(typeof c.desktop_usd_per_day === "number" && c.desktop_usd_per_day >= 0)) throw new Error("runtime config: desktop_usd_per_day must be a non-negative number");
   if (c.desktop_allow !== undefined && !(Array.isArray(c.desktop_allow) && c.desktop_allow.every((h) => typeof h === "string" && /^[A-Za-z0-9.-]{1,253}$/.test(h)))) throw new Error("runtime config: desktop_allow is a list of host names");

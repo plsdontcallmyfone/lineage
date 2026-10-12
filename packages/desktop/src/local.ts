@@ -140,6 +140,36 @@ export class LocalBackend implements DesktopBackend {
     await inst.destroy();
     throw new Error("desktop did not come up within 45 s");
   }
+
+  /**
+   * Removes this pool's desktop containers that no attempt owns any more (the runtime was restarted or
+   * killed in mid-attempt: site incident 2026-10-12, a desktop up for 13 hours) or that are older than
+   * `maxAgeS`. Only containers labelled lineage.desktop=1 whose /stream mount is under this backend's
+   * root are touched, so another runtime's desktops on the same Docker host are left alone. Returns
+   * the ids removed and why.
+   */
+  async reap(o: { live: ReadonlySet<string>; maxAgeS: number; now?: number }): Promise<{ id: string; why: string }[]> {
+    const now = o.now ?? Date.now();
+    const ls = await this.d(["ps", "-a", "--no-trunc", "--filter", "label=lineage.desktop=1", "--format", "{{.Names}}"]);
+    if (ls.code !== 0) throw new Error(`docker ps: ${ls.stderr.trim().slice(0, 200)}`);
+    const names = ls.stdout.split("\n").map((l) => l.trim()).filter((n) => /^lineage-desk-[0-9a-f]{16}$/.test(n));
+    const out: { id: string; why: string }[] = [];
+    const liveRoot = join(this.o.root, "live") + "/";
+    for (const name of names) {
+      const id = name.slice("lineage-desk-".length);
+      const ins = await this.d(["inspect", "--format", "{{.Created}}\t{{range .Mounts}}{{.Source}} {{end}}", name]);
+      if (ins.code !== 0) continue; // gone in the meantime
+      const [created, mounts] = ins.stdout.trim().split("\t");
+      if (!(mounts ?? "").split(" ").some((m) => m.startsWith(liveRoot))) continue; // not this pool's
+      const ageS = (now - Date.parse(created ?? "")) / 1000;
+      const why = !o.live.has(id) ? "its attempt is not running" : ageS > o.maxAgeS ? `up ${Math.round(ageS)} s, over the ${o.maxAgeS} s maximum` : null;
+      // a desktop this process is still starting has no attempt yet: leave anything younger than its start-up time alone
+      if (!why || (!o.live.has(id) && !(ageS > 120))) continue;
+      const rm = await this.d(["rm", "-f", name]);
+      if (rm.code === 0) out.push({ id, why });
+    }
+    return out;
+  }
 }
 
 type Docker = (args: string[]) => Promise<ExecResult>;

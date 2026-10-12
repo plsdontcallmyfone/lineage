@@ -92,6 +92,9 @@ export function desktopPool(cfg: RuntimeConfig, log: (m: string) => void): Deskt
     // desktop hosts lane: hosts first (least loaded), every attempt waits for a desktop unless turned off
     hosts_file: cfg.desktop_hosts_file,
     required: cfg.desktop_required !== false,
+    // desktops never outlive their attempt (pool.ts reap)
+    max_age_s: cfg.desktop_max_age_s,
+    reap_every_s: cfg.desktop_reap_every_s,
   };
   if (shared) {
     // the pool reads its cap at every check: with a shared budget it is what the peers have left of it

@@ -41,7 +41,18 @@ export interface DesktopConfig {
    * redaction are the same either way. true turns the recorder and publishPending back on.
    */
   recordings?: boolean;
+  /**
+   * The longest a desktop on this server may live, in seconds (default 7200). The reaper (reap) removes
+   * a desktop container older than this, and any whose attempt is no longer running, at start and every
+   * reap_every_s seconds (default 300; 0 turns the periodic pass off).
+   */
+  max_age_s?: number;
+  reap_every_s?: number;
 }
+
+/** Defaults of DesktopConfig.max_age_s and reap_every_s. */
+export const DESKTOP_MAX_AGE_S = 7200;
+export const DESKTOP_REAP_EVERY_S = 300;
 
 export interface BeginOpts {
   agent: string;
@@ -115,6 +126,9 @@ export class DesktopPool implements DesktopProvider {
   private reserved = new Map<string, number>();
   private warned = new Set<string>();
   private log: (m: string) => void;
+  /** desktops of attempts running in this process, by instance id */
+  private live = new Map<string, { session: () => string | null }>();
+  private reapTimer: ReturnType<typeof setInterval> | null = null;
 
   constructor(
     readonly cfg: DesktopConfig,
@@ -135,6 +149,15 @@ export class DesktopPool implements DesktopProvider {
     this.local = o.local ?? new LocalBackend({ root: cfg.root, image: cfg.image, log: this.log });
     this.e2b = o.e2b ?? new E2BBackend({ root: cfg.root, ...(cfg.e2b ?? {}), log: this.log });
     this.hostRun = o.hostRun;
+    // desktops must not outlive their attempt: one pass at start (whatever a killed runtime left), then periodically
+    if (o.timers !== false) {
+      void this.reap();
+      const every = cfg.reap_every_s ?? DESKTOP_REAP_EVERY_S;
+      if (every > 0) {
+        this.reapTimer = setInterval(() => void this.reap(), every * 1000);
+        (this.reapTimer as { unref?: () => void }).unref?.();
+      }
+    }
     this.loadHosts();
     if (this.hosts.size || cfg.hosts_file) {
       void this.checkHosts();
@@ -156,6 +179,47 @@ export class DesktopPool implements DesktopProvider {
   stop() {
     if (this.timer) clearInterval(this.timer);
     this.timer = null;
+    if (this.reapTimer) clearInterval(this.reapTimer);
+    this.reapTimer = null;
+  }
+
+  /**
+   * The reaper. Removes this server's desktop containers whose attempt is not running in this process
+   * or that are older than max_age_s (LocalBackend.reap), marks the session files they left open as
+   * ended (the stream handler then answers 410 instead of serving a dead playlist), and removes their
+   * stream directories. Never throws.
+   */
+  async reap(): Promise<{ removed: { id: string; why: string }[]; sessions_closed: number }> {
+    const res = { removed: [] as { id: string; why: string }[], sessions_closed: 0 };
+    try {
+      const local = this.local as DesktopBackend & { reap?: LocalBackend["reap"] };
+      if (local.reap) res.removed = await local.reap({ live: new Set(this.live.keys()), maxAgeS: this.cfg.max_age_s ?? DESKTOP_MAX_AGE_S, now: this.now() });
+      for (const r of res.removed) this.log(`desktops: reaped desktop ${r.id} (${r.why})`);
+    } catch (e) {
+      this.once(`reap:${(e as Error).message}`, `desktops: reaper: ${(e as Error).message}`);
+    }
+    try {
+      const open = new Set([...this.live.values()].map((l) => l.session()).filter(Boolean) as string[]);
+      const dir = join(this.cfg.root, "sessions");
+      for (const f of readdirSync(dir)) {
+        if (!f.endsWith(".json") || open.has(f.slice(0, -5))) continue;
+        try {
+          const j = JSON.parse(readFileSync(join(dir, f), "utf8"));
+          // a session of this server's own desktops only: E2B and host desktops end with their own lifetime
+          if (j.ended_at || j.backend !== "local" || this.live.has(String(j.dir ?? "").split("/").pop() ?? "")) continue;
+          if (this.now() - Number(j.started_at ?? 0) < 120_000) continue;
+          writeFileSync(join(dir, f), JSON.stringify({ ...j, ended_at: this.now(), ended_why: "reaped: its attempt was not running" }));
+          res.sessions_closed++;
+        } catch {
+          /* unreadable: leave it */
+        }
+      }
+      if (res.sessions_closed) this.log(`desktops: closed ${res.sessions_closed} session file(s) left open by attempts that are gone`);
+      this.sweep(new Set(this.live.keys()));
+    } catch {
+      /* state directory unreadable: nothing to clean */
+    }
+    return res;
   }
 
   // -------------------------------------------------------------------------------------------- hosts
@@ -339,7 +403,12 @@ export class DesktopPool implements DesktopProvider {
   }
 
   private attempt(inst: DesktopInstance, o: BeginOpts, release: () => void, started = this.now()): DesktopAttempt {
-    return new Attempt(this, inst, o, release, this.log, this.now, started);
+    const a: Attempt = new Attempt(this, inst, o, () => {
+      this.live.delete(inst.id);
+      release();
+    }, this.log, this.now, started);
+    this.live.set(inst.id, { session: () => a.sessionId });
+    return a;
   }
 
   /** E2B time is metered per second of a desktop's life (create to destroy). */
@@ -483,6 +552,11 @@ class Attempt implements DesktopAttempt {
     this.guard = setInterval(() => void this.tick(), GUARD_MS);
     void this.tick();
     log(`desktop ${inst.backend} ${inst.id} up for ${o.agent.slice(0, 6)}`);
+  }
+
+  /** the Core session this desktop streams under, once opened */
+  get sessionId(): string | null {
+    return this.session;
   }
 
   get stats() {
