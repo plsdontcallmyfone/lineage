@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { decide, evaluate, LIMITS, type Inputs } from "./monitor.ts";
+import { decide, evaluate, LIMITS, mergeWaiting, type Inputs } from "./monitor.ts";
 
 const NOW = 1_800_000_000_000;
 const healthy = (): Inputs => ({
@@ -170,5 +170,11 @@ describe("agents waiting for a desktop", () => {
     expect(check({ ...healthy(), runtimeEnabled: false, waiting: { agents: [row(16)] } })).toBeUndefined();
     expect(check({ ...healthy(), waiting: null })).toBeUndefined();
     expect(check(healthy())).toBeUndefined();
+  });
+  test("the waiting lists of the other instances on the server (MONITOR_WAITING_CORES) join the check", () => {
+    const merged = mergeWaiting([{ agents: [] }, null, { agents: [row(16)] }]);
+    expect(merged!.agents).toHaveLength(1);
+    expect(check({ ...healthy(), waiting: merged })!.level).toBe("fail");
+    expect(mergeWaiting([null, undefined])).toBeNull();
   });
 });

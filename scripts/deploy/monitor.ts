@@ -88,6 +88,12 @@ const mins = (ms: number) => `${Math.round(ms / 60_000)} min`;
 const sol = (l: number) => `${(l / 1e9).toFixed(4)} SOL`;
 const gib = (b: number) => `${(b / 2 ** 30).toFixed(1)} GiB`;
 
+/** The waiting lists of several Cores as one (null when none was read). */
+export function mergeWaiting(lists: (Inputs["waiting"] | undefined)[]): Inputs["waiting"] {
+  const read = lists.filter((l): l is NonNullable<Inputs["waiting"]> => !!l && Array.isArray(l.agents));
+  return read.length ? { agents: read.flatMap((l) => l.agents) } : null;
+}
+
 /** Every check from one set of readings. Pure: the tests drive it with fixed inputs. */
 export function evaluate(i: Inputs): Check[] {
   const out: Check[] = [];
@@ -337,6 +343,9 @@ if (import.meta.main) {
     getJson<Inputs["faucet"]>(`${WEB}/chain/faucet`),
     getJson<NonNullable<Inputs["waiting"]>>(`${CORE}/v1/runtime/waiting`),
   ]);
+  // other instances on this server (the mainnet instance has no monitor of its own): their Cores' waiting lists join the
+  // desktops check. MONITOR_WAITING_CORES is a comma list of Core URLs, e.g. http://127.0.0.1:9760
+  const moreWaiting = await Promise.all((env.MONITOR_WAITING_CORES ?? "").split(",").map((s) => s.trim()).filter((s) => /^https?:\/\//.test(s)).map((u) => getJson<NonNullable<Inputs["waiting"]>>(`${u.replace(/\/+$/, "")}/v1/runtime/waiting`)));
   const verifiers = (env.MONITOR_VERIFIERS ?? "").split(",").filter(Boolean).map((id, k) => ({ name: ["verifier-ref", "verifier-v1", "verifier-v2"][k] ?? `verifier-${k}`, id }));
   const rpc = env.MONITOR_RPC ?? "https://api.devnet.solana.com";
   const balances = dry
@@ -365,7 +374,7 @@ if (import.meta.main) {
     verifiers: dry ? [] : verifiers,
     spend,
     runtimeEnabled: env.MONITOR_RUNTIME === "1",
-    waiting: waiting.ok && Array.isArray(waiting.body?.agents) ? waiting.body! : null,
+    waiting: mergeWaiting([waiting.ok ? waiting.body : null, ...moreWaiting.map((w) => (w.ok ? w.body : null))]),
     souls: souls.ok ? souls.body! : null,
     balances,
     faucet: faucet.ok ? faucet.body! : null,
