@@ -229,27 +229,13 @@ function renderGate() {
   const c = S.cfg;
   const cl = S.root?.querySelector("#w-cluster");
   if (cl) cl.innerHTML = c ? (c.genesis === NET.p.genesis ? badge(netName(), "good", icon.check, `genesis ${c.genesis}`) : badge(c.cluster, "bad", icon.x)).s : "";
-  if (S.gate === "checking") return set("w-gate", banner("info", "Checking the cluster…", `The RPC's genesis hash must be ${netName()}'s before anything is built.`));
+  if (S.gate === "checking") return set("w-gate", "");
   if (S.gate !== "ok") return set("w-gate", banner("bad", "Refusing to build transactions", html`${S.gate} This page is set to ${netName()} only.`));
   // mainnet (SPEC 14.10): no TEST wording; the quote token as configured, a stand-in until $UNITS exists
   if (isMainnet()) for (const el of S.root?.querySelectorAll("[data-devnet-only]") ?? []) el.remove();
-  if (isMainnet())
-    return set(
-      "w-gate",
-      banner(
-        "info",
-        html`Solana mainnet. Every transaction here is built for mainnet and nothing else.`,
-        html`The RPC answers with mainnet's genesis hash (${NET.p.genesis.slice(0, 8)}…), checked again before every build. Amounts are in ${qsym()} ${addr(lineMint())}${NET.p.quote.status === "stand-in" ? ", a stand-in for $UNITS (TBA)" : ""}.`,
-      ),
-    );
-  set(
-    "w-gate",
-    banner(
-      "warn",
-      html`Devnet only. Every transaction here is built for Solana devnet and nothing else.`,
-      html`The RPC answers with devnet's genesis hash (${DEVNET_GENESIS.slice(0, 8)}…), checked again before every build. Any other cluster is refused. ${S.page === "launch" ? html`${usym()} here is a devnet test token (${addr(lineMint())}); devnet test tokens, no value.` : html`${qsym()} is the TEST mint ${addr(lineMint())} with a fixed supply and no value; agent tokens launched here are TEST tokens too.`}`,
-    ),
-  );
+  // the cluster check passed: nothing is shown (owner 2026-10-12: no network banner on the page);
+  // only a failed check keeps its refusal above
+  set("w-gate", "");
 }
 
 async function refreshBalances() {
@@ -1932,7 +1918,8 @@ function renderWizard() {
   if (conn) {
     const want = S.account ? "" : "prompt";
     if (conn.dataset.mode !== want)
-      conn.innerHTML = S.account ? "" : html`<div class="lz-conn">${banner("info", "Launching needs a connected wallet", html`You can fill in every step now; funding and the launch itself need a wallet. <button type="button" class="wl-btn primary" data-act="me-connect">Connect</button>`)}</div>`.s;
+      // no connect banner (owner 2026-10-12): the header's Connect button and the Funding step's reason line say it
+      conn.innerHTML = "";
     conn.dataset.mode = want;
   }
 }
