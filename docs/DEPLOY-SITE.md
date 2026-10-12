@@ -890,7 +890,7 @@ missing.
 | Accounts | `units`, `units-core`, `units-web`, `units-gate`, `units-indexer` | `units-main`, `units-main-core`, `units-main-web`, `units-main-gate`, `units-main-indexer` |
 | Ports (127.0.0.1) | Core 9660, web 9661, gate 9662, runtime bind 9667, indexer 9668 | Core 9760, web 9761, gate 9762, runtime bind 9767, indexer 9768 |
 | Host | `<ip with dashes>.sslip.io` | `main-<ip with dashes>.sslip.io` (`SITE_NAMES` or `MAIN_DOMAIN` override) |
-| Network | devnet | `UNITS_NETWORK=mainnet`, `UNITS_PROFILE_LOCAL=/etc/units-main/profile.local.json` |
+| Network | `UNITS_NETWORK=devnet`, pinned in every unit file and in `/etc/units/site.env` (the repository default is mainnet, so the devnet site never relies on it; `remote.sh` passes the pin to every script it runs) | `UNITS_NETWORK=mainnet`, `UNITS_PROFILE_LOCAL=/etc/units-main/profile.local.json` (the instance's unit files carry `UNITS_NETWORK=mainnet`: `instance.ts` rewrites the pin) |
 
 **How it is built.** The unit files and the Caddy site block are rendered from the devnet site's own
 files (`scripts/deploy/systemd`, `caddy/Caddyfile.tmpl`) by `scripts/deploy/instance.ts`: names,

@@ -303,6 +303,16 @@ Both items listed here were done by the pre-audit program changes lane on 2026-1
 Owner decisions 2026-10-11 and 2026-10-12: a small test on real mainnet, to test spawning agents, before
 the launch above. It differs from the launch on purpose, and it does not touch the launch's ids or mint:
 
+**It is what the repository runs by default (owner 2026-10-12).** `config/profile.json` says
+`"network": "mainnet"` and `"mainnet_deployment": "test"`, which lays `config/mainnet-test/profile.json`
+(this deployment's ids, quote coin, state file) over `profiles.mainnet`; a clone needs no environment
+variable for it. The launch's own scripts (`scripts/mainnet/steps.ts` and what uses it) always mean the
+official deployment, whatever that key says. **Moving the default to the official deployment** once the
+launch above is done (programs deployed and initialized, `scripts/mainnet/mainnet.json` written): set
+`"mainnet_deployment": "official"` in `config/profile.json`; then, per the note in that file, the quote
+block when the official `$UNITS` mint exists, and `config/sites.json` `mainnet_site_url` if the official
+backend is another host.
+
 - **Program ids: the test's own.** The cargo feature `mainnet-test` declares three throwaway ids;
   `test.ts close` spends them when the test ends. The launch's mainnet ids (`3GeaTs...`, `2vwKsT...`,
   `jmcb7c...`) are never deployed at: the preflight checks they are still unused.
