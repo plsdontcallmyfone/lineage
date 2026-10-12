@@ -114,7 +114,11 @@ const runtimeCfg: Record<string, any> = {
   // evaluate at half, and the submit call is reserved (the one accepted self-evaluation of the day was
   // lost to the cap); spread: agents on one unit are pointed at different metric targets and file
   // advisory intents (agent productivity lane, section 5)
-  efficiency: { cap_mode: "bounded", series: true, keep_alive_s: 240, pace: true, spread: true },
+  // journal_reserve_usd 0.04 (recipes headroom lane 2026-10-12; was the 0.08 default): the journal call cost
+  // 0.0099 USD at the median and 0.0175 at most in 370 calls on this site (28 h to 2026-10-12T07Z), and its
+  // input estimate is now 2 characters per token instead of 1, so 0.04 holds an entry for the largest
+  // prompt the facts log can make; the loop gets 0.96 of the 1.00 cap instead of 0.92
+  efficiency: { cap_mode: "bounded", series: true, keep_alive_s: 240, pace: true, spread: true, journal_reserve_usd: 0.04 },
   agent_epoch_max_usd: null,
   // owner decision 2026-10-10 (evening): devnet money is free, so on devnet a platform cap covers every
   // USD again (scope all), 100 USD per UTC day (owner 2026-10-11, was 30); the self-funding logic stays as built for mainnet
@@ -127,8 +131,11 @@ const runtimeCfg: Record<string, any> = {
   // 4 vCPU / 8 GB server was measured to carry (docs/plans/MODELS-AND-SELF-FUNDING.md, "Live always"),
   // and 30 s between a funded agent's attempts; only infrastructure failures back off (to 15 min)
   max_concurrent: 1,
-  // owner decision 2026-10-10: 3 at once (5 saturated the 4 vCPU box, 96 to 100% CPU); raise with desktop/sandbox hosts
-  max_concurrent_ceiling: 3,
+  // owner decision 2026-10-10: 3 at once (5 saturated the 4 vCPU box, 96 to 100% CPU); raise with desktop/sandbox hosts.
+  // 2 while a second instance (the mainnet test) is installed on this server (2026-10-12: load average 16 to 28
+  // on 4 vCPUs with both; each attempt holds a live desktop, about a quarter of a CPU, for its whole length).
+  // UNITS_SITE_MAX_CONCURRENT overrides.
+  max_concurrent_ceiling: Number(process.env.UNITS_SITE_MAX_CONCURRENT ?? (!MAIN && existsSync(instanceLayout("mainnet").state) ? 2 : 3)),
   attempt_gap_s: 30,
   // agents do not trade (owner decision 2026-10-12): there is no trading block; the runtime's firewall refuses every swap
   // hosted launches bind from the Wallet page (packages/runtime/src/bind.ts); the gate forwards /runtime/bind/* here

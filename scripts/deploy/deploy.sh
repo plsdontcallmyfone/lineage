@@ -37,6 +37,8 @@
 #   DOMAIN          optional real domain (its A record must point at the server) served next to <ip>.sslip.io
 #   ACME_EMAIL      optional email for Let's Encrypt
 #   UNITS_RECIPES recipes to serve (default fixture-b58,base58-py,minbpe), re-pinned to the server's arch
+#   UNITS_SANDBOX_SLOTS  sandbox containers at once on the server (default 2 on a 4 vCPU server; 0: no limit)
+#   UNITS_SANDBOX_CPU_SHARES  their CPU weight when the CPUs are contended (default 512; Docker's is 1024)
 #   WITH_RUNTIME=1  also copy the runtime authority key, model.env and providers.env (modes full, keys and code) and run
 #                   lineage-runtime (real model spend, capped per UTC day in runtime.json by site-config.ts);
 #                   e2b.env too when it holds a key (agent desktops' E2B overflow, capped per UTC day)
@@ -86,6 +88,7 @@ if [ "${KEEP_SITE_ENV:-1}" = 1 ] && [ "$DRY_RUN" != 1 ]; then
   if [ -n "$CUR" ]; then
     : "${UNITS_RECIPES:=${LINEAGE_RECIPES:-$(cur UNITS_RECIPES)}}" "${UNITS_RECIPES:=$(cur LINEAGE_RECIPES)}" "${AUTHORS:=$(cur AUTHORS)}"
     : "${WITH_RUNTIME:=$(cur WITH_RUNTIME)}" "${WITH_AUTHOR:=$(cur WITH_AUTHOR)}"
+    : "${UNITS_SANDBOX_SLOTS:=$(cur UNITS_SANDBOX_SLOTS)}" "${UNITS_SANDBOX_CPU_SHARES:=$(cur UNITS_SANDBOX_CPU_SHARES)}"
     if [ -z "${EXTRA_ORIGINS:-}" ]; then
       EXTRA_ORIGINS="$(cur GATE_ORIGINS | tr ',' '\n' | grep -vxF "$(printf 'https://%s\n' $(cur SITE_NAMES | tr ',' ' '))" | paste -sd, - || true)"
     fi
@@ -122,6 +125,11 @@ DRY_RUN=$DRY_RUN
 WITH_RUNTIME=${WITH_RUNTIME:-0}
 WITH_AUTHOR=${WITH_AUTHOR:-0}
 AUTHORS=$AUTHORS
+# server load (packages/sandbox docker.ts): at most this many sandbox containers at once across the
+# verifiers, the reference runner, the authors and the runtime's attempts (0: no limit), and their
+# CPU weight against the services when the CPUs are contended (Docker's default is 1024)
+UNITS_SANDBOX_SLOTS=${UNITS_SANDBOX_SLOTS:-2}
+UNITS_SANDBOX_CPU_SHARES=${UNITS_SANDBOX_CPU_SHARES:-512}
 # Core's public base URL (identity links name it in their proof text); UNITS_LINK_HTTP_HOSTS stays unset
 UNITS_SITE_URL=https://${SITE_NAMES%%,*}
 ACME_EMAIL=${ACME_EMAIL:-}

@@ -1,5 +1,6 @@
 import { randomBytes } from "node:crypto";
-import { mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { chmodSync, mkdirSync, readFileSync, rmSync, unlinkSync, writeFileSync } from "node:fs";
+import { join } from "node:path";
 import type { Limits } from "@units/protocol";
 import { resolvePinnedImage } from "./local-images.ts";
 
@@ -74,6 +75,86 @@ export function dockerRuntime(env: Record<string, string | undefined> = process.
   return v;
 }
 
+/**
+ * Optional relative CPU weight of sandbox containers (UNITS_SANDBOX_CPU_SHARES, Docker --cpu-shares;
+ * Docker's default is 1024). A lower weight only matters when the host's CPUs are contended: Core,
+ * the gate and sshd then get their share first. It never changes an instruction count.
+ */
+export function sandboxCpuShares(env: Record<string, string | undefined> = process.env): number | null {
+  const v = env.UNITS_SANDBOX_CPU_SHARES?.trim();
+  if (!v) return null;
+  const n = Number(v);
+  if (!(Number.isInteger(n) && n >= 2 && n <= 262144)) throw new Error(`UNITS_SANDBOX_CPU_SHARES must be a whole number from 2 to 262144, got ${JSON.stringify(v)}`);
+  return n;
+}
+
+/**
+ * Sandbox slots (UNITS_SANDBOX_SLOTS=<n>, UNITS_SANDBOX_SLOTS_DIR): at most n sandbox containers run
+ * at once on this host, across every process that sets the same directory (verifiers, the reference
+ * runner, authors, the hosted runtime's attempts). Unset: no limit, as before. On the site 3 attempts,
+ * 2 verifiers, the reference runner and 18 scripted authors could each start a container on 4 vCPUs
+ * (load average 16 to 28, 2026-10-12). A slot is a lock file holding its owner's pid; a file whose
+ * owner is gone is taken over. Waiting changes when a run starts, never what it measures.
+ */
+export function sandboxSlots(env: Record<string, string | undefined> = process.env): { n: number; dir: string } | null {
+  const v = env.UNITS_SANDBOX_SLOTS?.trim();
+  if (!v || v === "0") return null;
+  const n = Number(v);
+  if (!(Number.isInteger(n) && n >= 1 && n <= 256)) throw new Error(`UNITS_SANDBOX_SLOTS must be a whole number from 1 to 256, got ${JSON.stringify(v)}`);
+  return { n, dir: env.UNITS_SANDBOX_SLOTS_DIR?.trim() || "/tmp/units-sandbox-slots" };
+}
+
+function pidAlive(pid: number): boolean {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch (e) {
+    return (e as NodeJS.ErrnoException).code === "EPERM";
+  }
+}
+
+/** Takes a free slot (waiting for one), returns its release. `slots` null: no limit. */
+export async function acquireSandboxSlot(slots = sandboxSlots(), o: { pollMs?: number; alive?: (pid: number) => boolean } = {}): Promise<() => void> {
+  if (!slots) return () => {};
+  const alive = o.alive ?? pidAlive;
+  try {
+    mkdirSync(slots.dir, { recursive: true });
+    // any service account on the host may hold a slot and clear one whose owner is gone
+    chmodSync(slots.dir, 0o777);
+  } catch {
+    /* another account made it */
+  }
+  for (;;) {
+    for (let i = 0; i < slots.n; i++) {
+      const file = join(slots.dir, `slot-${i}`);
+      try {
+        writeFileSync(file, `${process.pid}\n`, { flag: "wx", mode: 0o644 });
+        let released = false;
+        return () => {
+          if (released) return;
+          released = true;
+          try {
+            unlinkSync(file);
+          } catch {
+            /* cleared by another process after this one was taken for dead */
+          }
+        };
+      } catch (e) {
+        if ((e as NodeJS.ErrnoException).code !== "EEXIST") throw new Error(`sandbox slots: ${(e as Error).message}`);
+        // held: by a process that is gone (killed in mid-run)? then the slot is free again
+        try {
+          const pid = Number(readFileSync(file, "utf8").trim());
+          // a file just created and not written yet reads as 0: its owner is alive
+          if (pid > 0 && !alive(pid)) unlinkSync(file);
+        } catch {
+          /* released in the meantime */
+        }
+      }
+    }
+    await Bun.sleep((o.pollMs ?? 1000) * (0.5 + Math.random()));
+  }
+}
+
 export function dockerArgs(spec: RunSpec, name: string): string[] {
   const l = spec.limits;
   const args = [
@@ -112,6 +193,8 @@ export function dockerArgs(spec: RunSpec, name: string): string[] {
     spec.cwd,
   ];
   if (!spec.network) args.push("--network", "none");
+  const shares = sandboxCpuShares();
+  if (shares) args.push("--cpu-shares", String(shares));
   const runtime = dockerRuntime();
   if (runtime) args.push("--runtime", runtime);
   if (spec.gpus) args.push("--gpus", spec.gpus);
@@ -132,6 +215,16 @@ export function dockerArgs(spec: RunSpec, name: string): string[] {
 
 export async function runContainer(spec: RunSpec): Promise<RunResult> {
   const name = `lineage-${spec.job.replace(/[^a-zA-Z0-9_.-]/g, "-").slice(0, 40)}-${randomBytes(4).toString("hex")}`;
+  // at most UNITS_SANDBOX_SLOTS containers at once on this host; the run's own clock starts after the wait
+  const release = await acquireSandboxSlot();
+  try {
+    return await runHeld(spec, name);
+  } finally {
+    release();
+  }
+}
+
+async function runHeld(spec: RunSpec, name: string): Promise<RunResult> {
   const started = performance.now();
   const proc = Bun.spawn(["docker", ...dockerArgs(spec, name)], { stdout: "pipe", stderr: "pipe" });
   let timed_out = false;
