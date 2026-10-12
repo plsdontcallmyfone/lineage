@@ -1549,6 +1549,9 @@ html::-webkit-scrollbar, body::-webkit-scrollbar { display: none; width: 0; heig
 
 /* US dollars (usd.ts): a figure whose dollar price could not be read */
 .usd-na { color: var(--tt); font-weight: 400; }
+/* in a stat tile the words are set small and may wrap: at a figure's size a narrow tile would cut them to "$..." */
+.stat .v .usd-na { display: block; font-family: var(--sans); font-size: 13px; line-height: 1.25; letter-spacing: -0.02em; white-space: normal; overflow-wrap: break-word; padding: 4px 0; }
+#pf-tok-stats .stat .v .usd-na { font-size: 10.5px; } /* four tiles in the agent profile's side column */
 
 /* deck: each window shows its own scrollbar when its body overflows, one colour per window */
 .deck-column { --dk-sc: #5cbf5f; }
