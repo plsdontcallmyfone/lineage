@@ -1469,10 +1469,10 @@ html::-webkit-scrollbar, body::-webkit-scrollbar { display: none; width: 0; heig
 .ta-bar-h { display: flex; justify-content: space-between; gap: 8px; font-size: 13px; color: var(--tt); }
 .ta-bar-h b { font-weight: 500; color: var(--tp); }
 .ta-bar-t { display: flex; gap: 4px; height: 6px; }
-.ta-bar-t i { display: block; height: 100%; border-radius: 3px; transition: width .5s cubic-bezier(.22, 1, .36, 1); min-width: 4px; }
-.ta-bar-t .b { background: var(--good); }
-.ta-bar-t .s { background: var(--bad); }
-.ta-bar-t.empty i { background: var(--border); }
+.ta-bar-t i { display: block; flex: none; height: 6px; border-radius: 3px; transition: width .5s cubic-bezier(.22, 1, .36, 1); min-width: 4px; }
+.ta-bar-t .ta-g { background: #5cbf5f; }
+.ta-bar-t .ta-r { background: #ee6a3e; flex: 1 1 0; }
+.ta-bar-t.ta-off i { background: var(--border); }
 .ta-wait { font-size: 13px; }
 .ta-links { display: flex; flex-wrap: wrap; gap: 6px; }
 .ta-facts { margin: 0; display: flex; flex-direction: column; gap: 10px; padding-top: 12px; border-top: 1px solid var(--border); }

@@ -59,7 +59,7 @@ function bar(lv: Raw | string, ll: string, rv: Raw | string, rl: string, l: numb
   const share = l + r > 0 ? (l / (l + r)) * 100 : 50;
   return html`<div class="ta-bar">
     <div class="ta-bar-h"><span><b class="num">${ok ? lv : "TBA"}</b> ${ll}</span><span><b class="num">${ok ? rv : "TBA"}</b> ${rl}</span></div>
-    <div class="ta-bar-t${l + r > 0 && ok ? "" : " empty"}"><i class="b" style="width:${share.toFixed(2)}%"></i><i class="s" style="width:${(100 - share).toFixed(2)}%"></i></div>
+    <div class="ta-bar-t${ok ? "" : " ta-off"}"><i class="ta-g" style="width:${share.toFixed(2)}%"></i><i class="ta-r" style="width:${(100 - share).toFixed(2)}%"></i></div>
   </div>`;
 }
 
