@@ -269,7 +269,19 @@ export async function signAndSendAll(o: {
     msgs.push(tables.length ? compileMessageV0(payer, all, blockhash, tables) : compileMessage(payer, all, blockhash));
   }
   o.onStatus?.(`waiting for the wallet to approve ${msgs.length === 1 ? "the transaction" : `all ${msgs.length} transactions at once`}`);
-  const signed = await signTransactions(o.wallet, o.account, msgs.map((m) => unsignedWire(m)));
+  let signed: Uint8Array[];
+  try {
+    signed = await signTransactions(o.wallet, o.account, msgs.map((m) => unsignedWire(m)));
+  } catch (e) {
+    // a wallet that fails the batch for a reason of its own (not a refusal by the person) is asked for each transaction in turn
+    const m = String((e as any)?.message ?? e);
+    if (msgs.length === 1 || (e as any)?.code === 4001 || /reject|denied|declin|cancel|another account/i.test(m)) throw e;
+    signed = [];
+    for (const [i, msg] of msgs.entries()) {
+      o.onStatus?.(`the wallet could not approve all at once (${m.replace(/\.$/, "")}); approve transaction ${i + 1} of ${msgs.length}`);
+      signed.push(await signTransaction(o.wallet, o.account, unsignedWire(msg)));
+    }
+  }
   const wires: Uint8Array[] = [];
   for (const [i, w] of signed.entries()) {
     if (!sameBytes(parseWire(w).message, msgs[i]!.bytes)) throw new Error(`the wallet changed transaction ${i + 1}; nothing was sent`);
