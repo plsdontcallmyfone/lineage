@@ -36,12 +36,16 @@ export type CosignSend = (key: AgentKey, txBase64: string, agent: string) => Pro
 export const BIND_MAX_BODY = 8 * 1024;
 const ROTATE = ixDisc("rotate_agent_key");
 
+const LIGHTHOUSE_PROGRAM = "L2TExMFKdjpN9kozasaurPirfHy9P8sbXoAN1qA3S95";
+
 /** Refuses a wire that is not exactly a rotation of `agent` to `key` (plus compute budget). */
 export function checkBindTx(wire: Uint8Array, key: string, agent: string): string[] {
   const plan = inspectForCosign(wire, key, { expectAgent: agent });
   let rotations = 0;
   for (const ix of plan.message.instructions) {
     if (ix.programId === COMPUTE_BUDGET_PROGRAM) continue;
+    // a wallet's own guard (Phantom adds Lighthouse assertions): it only checks state and can fail the transaction, it moves nothing
+    if (ix.programId === LIGHTHOUSE_PROGRAM) continue;
     if (ix.programId !== REGISTRY_PROGRAM_ID || ix.data.length < 8 || !ROTATE.every((b, i) => b === ix.data[i])) throw new Error("refusing to co-sign: only rotate_agent_key binds a hosted agent");
     rotations++;
   }

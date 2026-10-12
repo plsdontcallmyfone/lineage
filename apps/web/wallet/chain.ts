@@ -197,14 +197,9 @@ export async function signAndSend(o: {
     o.onStatus?.("waiting for the wallet to sign");
     const signed = await signTransaction(o.wallet, o.account, unsigned);
     const back = parseWire(signed);
-    if (!sameBytes(back.message, msg.bytes)) {
-      // A wallet that rewrites the message (extra instructions) would invalidate the co-signatures and
-      // change what was reviewed: refuse rather than sign something else.
-      const d = decodeMessage(back.message, o.table ? new Map([[o.table.address, o.table.addresses]]) : undefined);
-      throw new Error(`the wallet changed the transaction (${d.instructions.length} instructions, built ${all.length}); nothing was sent`);
-    }
+    const signedMsg = walletMessage(msg.bytes, back.message, o.table ? [o.table] : []);
     let wire = signed;
-    for (const k of o.local ?? []) wire = placeSignature(wire, k.id, await k.sign(msg.bytes));
+    for (const k of o.local ?? []) wire = placeSignature(wire, k.id, await k.sign(signedMsg));
     return { wire, lastValidBlockHeight };
   };
   if (o.leaveFor || !isMainnet()) {
@@ -252,6 +247,28 @@ export interface BundlePart {
  * the first the network refuses or that fails, reporting which landed (the page simulates nothing: the RPC node's own preflight refuses a transaction that would fail). `skip(i)` is asked right before sending
  * transaction i (devnet): true leaves it out (what it carries is already on chain).
  */
+/** Lighthouse, the assertion program wallets add as a guard (it only checks state and fails the transaction; it moves nothing). */
+export const LIGHTHOUSE_PROGRAM = "L2TExMFKdjpN9kozasaurPirfHy9P8sbXoAN1qA3S95";
+
+/**
+ * The message the wallet signed, when it is the one built or the one built plus the wallet's own guard
+ * instructions (Phantom adds Lighthouse assertions, which can only make the transaction fail, never
+ * move anything). Everything built must still be there, unchanged and in order, and nothing else may
+ * be added: otherwise this throws rather than letting something else be co-signed and sent.
+ */
+function walletMessage(built: Uint8Array, back: Uint8Array, tables: { address: string; addresses: string[] }[], n?: number): Uint8Array {
+  if (sameBytes(back, built)) return built;
+  const map = tables.length ? new Map(tables.map((t) => [t.address, t.addresses] as [string, string[]])) : undefined;
+  const flat = (m: Uint8Array) => decodeMessage(m, map as any).instructions.map((ix: any) => ({ p: ix.programId as string, k: JSON.stringify(ix, (_k, v) => (v instanceof Uint8Array ? Array.from(v) : typeof v === "bigint" ? v.toString() : v)) }));
+  const b = flat(built), g = flat(back);
+  const rest = g.filter((x) => x.p !== LIGHTHOUSE_PROGRAM);
+  if (g.length === rest.length || rest.length !== b.length || !rest.every((x, i) => x.k === b[i]!.k)) {
+    const others = [...new Set(g.map((x) => x.p).filter((p) => !b.some((y) => y.p === p)))];
+    throw new Error(`the wallet changed ${n ? `transaction ${n}` : "the transaction"} (${g.length} instructions, built ${b.length}${others.length ? `; added programs ${others.join(", ")}` : ""}); nothing was sent`);
+  }
+  return back;
+}
+
 export async function signAndSendAll(o: {
   wallet: StdWallet;
   account: StdAccount;
@@ -284,9 +301,10 @@ export async function signAndSendAll(o: {
   }
   const wires: Uint8Array[] = [];
   for (const [i, w] of signed.entries()) {
-    if (!sameBytes(parseWire(w).message, msgs[i]!.bytes)) throw new Error(`the wallet changed transaction ${i + 1}; nothing was sent`);
+    const p = o.parts[i]!;
+    const signedMsg = walletMessage(msgs[i]!.bytes, parseWire(w).message, p.tables ?? (p.table ? [p.table] : []), i + 1);
     let wire = w;
-    for (const k of o.parts[i]!.local ?? []) wire = placeSignature(wire, k.id, await k.sign(msgs[i]!.bytes));
+    for (const k of p.local ?? []) wire = placeSignature(wire, k.id, await k.sign(signedMsg));
     const missing = missingSigners(wire);
     if (missing.length) throw new Error(`transaction ${i + 1}: signatures missing for ${missing.join(", ")}; nothing was sent`);
     wires.push(wire);
