@@ -239,7 +239,10 @@ pub fn install_program_data(svm: &mut LiteSVM, program: &Pubkey, authority: &Pub
 pub fn fresh_svm() -> LiteSVM {
     let mut svm = LiteSVM::new();
     svm.add_program_from_file(lr::ID, manifest("../target/deploy/units_registry.so")).expect("build units_registry first (cargo build-sbf)");
-    svm.add_program_from_file(ll::ID, manifest("../target/deploy/units_launch.so")).expect("build units_launch first (cargo build-sbf)");
+    // UNITS_LAUNCH_SO: another build of units_launch than target/deploy's (a path relative to onchain/, or absolute), for a
+    // build kept out of the default output (onchain/README.md, "Pools and claims build").
+    let launch_so = std::env::var("UNITS_LAUNCH_SO").map(|p| manifest("..").join(p)).unwrap_or_else(|_| manifest("../target/deploy/units_launch.so"));
+    svm.add_program_from_file(ll::ID, launch_so).expect("build units_launch first (cargo build-sbf)");
     pf::install(&mut svm);
     set_clock(&mut svm, NOW);
     svm

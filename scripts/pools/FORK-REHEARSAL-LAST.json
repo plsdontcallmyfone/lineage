@@ -1,0 +1,274 @@
+{
+  "at": "2026-10-12T02:15:37.072Z",
+  "profile": "mainnet",
+  "result": "PASS",
+  "passed": 27,
+  "total": 27,
+  "launch_build_sha256": "13481cb2ecad6f6c348f1f2f92f76934a398a615b448dd056039c0957d24484d",
+  "note": "payer_lamports: what the transaction's fee payer paid at mainnet rent (network fee plus the rent of the accounts it creates)",
+  "instructions": {
+    "set_claim_config (creates ClaimConfig)": {
+      "bytes": 352,
+      "cu": 18444,
+      "payer_lamports": "1010840"
+    },
+    "set_pool_config (creates PoolConfig)": {
+      "bytes": 356,
+      "cu": 21603,
+      "payer_lamports": "1031160"
+    },
+    "set_features": {
+      "bytes": 257,
+      "cu": 8096,
+      "payer_lamports": "5000"
+    },
+    "launch agent a (create_v2 + register_pump_launch)": {
+      "bytes": 987,
+      "cu": 226354,
+      "payer_lamports": "14701280"
+    },
+    "launch agent b (create_v2 + register_pump_launch)": {
+      "bytes": 987,
+      "cu": 227854,
+      "payer_lamports": "14701280"
+    },
+    "set_fee_route (creates FeeRoute, ClaimEscrow and its vault)": {
+      "bytes": 472,
+      "cu": 64048,
+      "payer_lamports": "3865800"
+    },
+    "set_fee_route (second agent, another account)": {
+      "bytes": 472,
+      "cu": 62548,
+      "payer_lamports": "3865800"
+    },
+    "join_pool (first member: creates Pool, its vault and PoolMember)": {
+      "bytes": 495,
+      "cu": 80832,
+      "payer_lamports": "7238920"
+    },
+    "join_pool (second member: creates PoolMember)": {
+      "bytes": 528,
+      "cu": 56637,
+      "payer_lamports": "1645840"
+    },
+    "trader buys a": {
+      "bytes": 560,
+      "cu": 83538,
+      "payer_lamports": "2865040"
+    },
+    "crank_pump_fees with route accounts (a)": {
+      "bytes": 937,
+      "cu": 191224,
+      "payer_lamports": "3032680"
+    },
+    "trader buys b": {
+      "bytes": 560,
+      "cu": 85114,
+      "payer_lamports": "1518840"
+    },
+    "crank_pump_fees with route accounts (b)": {
+      "bytes": 937,
+      "cu": 197224,
+      "payer_lamports": "3032680"
+    },
+    "pool_settle": {
+      "bytes": 441,
+      "cu": 33223,
+      "payer_lamports": "5000"
+    },
+    "pool_pay": {
+      "bytes": 457,
+      "cu": 38472,
+      "payer_lamports": "5000"
+    },
+    "pool token accounts (one per member mint)": {
+      "bytes": 424,
+      "cu": 40584,
+      "payer_lamports": "3032680"
+    },
+    "pool_cross_buy (a buys b; creates CrossHolding)": {
+      "bytes": 726,
+      "cu": 131360,
+      "payer_lamports": "1142920"
+    },
+    "pool_cross_buy (b buys a; creates CrossHolding)": {
+      "bytes": 726,
+      "cu": 120936,
+      "payer_lamports": "1142920"
+    },
+    "pool_buy (buyback, held)": {
+      "bytes": 660,
+      "cu": 110534,
+      "payer_lamports": "5000"
+    },
+    "pool_buy (milestone burn)": {
+      "bytes": 660,
+      "cu": 111119,
+      "payer_lamports": "5000"
+    },
+    "claimer's $UNITS account": {
+      "bytes": 287,
+      "cu": 17266,
+      "payer_lamports": "1518840"
+    },
+    "claim_github_fees (Ed25519 attestation + claim)": {
+      "bytes": 677,
+      "cu": 31843,
+      "payer_lamports": "10000"
+    },
+    "set_features(0)": {
+      "bytes": 257,
+      "cu": 8096,
+      "payer_lamports": "5000"
+    },
+    "trader buys b again": {
+      "bytes": 518,
+      "cu": 67997,
+      "payer_lamports": "5000"
+    },
+    "crank_pump_fees, eight accounts, bits off": {
+      "bytes": 706,
+      "cu": 118004,
+      "payer_lamports": "5000"
+    }
+  },
+  "checks": [
+    {
+      "name": "registry: upgrade authority is the deployer (initialize needs it) or the registry is already initialized",
+      "ok": true,
+      "detail": "Gzhuxe8m5REYwp3LjuakSZmgr7A8tX4x1ZcgzKA3zpKH"
+    },
+    {
+      "name": "launch: upgrade authority is the deployer (initialize needs it) or the registry is already initialized",
+      "ok": true,
+      "detail": "Gzhuxe8m5REYwp3LjuakSZmgr7A8tX4x1ZcgzKA3zpKH"
+    },
+    {
+      "name": "msg: upgrade authority is the deployer (initialize needs it) or the registry is already initialized",
+      "ok": true,
+      "detail": "Gzhuxe8m5REYwp3LjuakSZmgr7A8tX4x1ZcgzKA3zpKH"
+    },
+    {
+      "name": "registry: admin = vault, Core authority, mint",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "$UNITS is a pump.fun coin paired with SOL or USDC (depth 0), not mayhem mode",
+      "ok": true,
+      "detail": "quote 11111111111111111111111111111111"
+    },
+    {
+      "name": "pump.fun Global.max_curve_depth is 1 or more (a coin can be quoted in $UNITS)",
+      "ok": true,
+      "detail": "1"
+    },
+    {
+      "name": "launch: admin = vault, sink = vault's account, runtime authority, debit cap",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "messages: admin = vault",
+      "ok": true,
+      "detail": "Gzhuxe8m5REYwp3LjuakSZmgr7A8tX4x1ZcgzKA3zpKH"
+    },
+    {
+      "name": "launch lookup table frozen with the expected addresses",
+      "ok": true,
+      "detail": "J86RdXQhEkzssbbPgv3YNKV6fHLruJUKEg2VV3eaD6qu"
+    },
+    {
+      "name": "pools build at the mainnet id: features 0 after initialize",
+      "ok": true,
+      "detail": "9nuLixkDqbp5bcU1Xn64HdGTQdNSYiu1KYD9NhjMiCUz"
+    },
+    {
+      "name": "auto-join: the keeper joined both agents of the repository",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "refused: the eight-account crank of routed agent a",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "crank of a: compute, protocol, GitHub and pool slices exact; protocol share as today",
+      "ok": true,
+      "detail": "fees 60126691389: 21044341987 / 18038007417 / 12626605191 / 8417736794"
+    },
+    {
+      "name": "refused: the eight-account crank of routed agent b",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "crank of b: compute, protocol, GitHub and pool slices exact; protocol share as today",
+      "ok": true,
+      "detail": "fees 60126691389: 29462078781 / 18038007417 / 4208868397 / 8417736794"
+    },
+    {
+      "name": "refused: pool_settle by the admin (not the keeper)",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "allocation equals the offchain recomputation",
+      "ok": true,
+      "detail": "A 6654189434/332709471/831773680, B 0/1330837887/831773680"
+    },
+    {
+      "name": "payout in the author's compute vault",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "refused: pool_buy by a key that is not the keeper",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "refused: a buy past the member's budget",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "buyback: spent within the due amount, tokens in the pool's account",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "milestone burn: supply fell by the tokens bought",
+      "ok": true,
+      "detail": "5188244529"
+    },
+    {
+      "name": "refused: a claim attested by the claimant's own key",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "refused: the attestation used for another GitHub id's escrow",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "claim paid the escrow's balance to the attested wallet",
+      "ok": true,
+      "detail": "12626605191"
+    },
+    {
+      "name": "refused: the same attestation again",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "bits off: today's two amounts to the unit, nothing routed",
+      "ok": true,
+      "detail": "fees 21011551056"
+    }
+  ],
+  "rows": 35
+}
