@@ -1,16 +1,17 @@
-// The docs site's only script (<base>/assets/docs.js): the live figures, the search palette (button,
+// The docs site's only script (/assets/docs.<hash>.js): the live figures, the search palette (button,
 // Cmd or Ctrl+K, or "/"), the page menu drawer at phone width, the "On this page" scroll spy, tabs,
 // copy buttons and opening a folded block a link points into. Every {{cfg:...}}, {{market:...}},
 // {{stats:...}} and {{guard:...}} tag was rendered as a TBA span with data-live; this fills it from
-// Core's GET /v1/config, /v1/stats and /v1/guard-config (through the site's /api proxy) and the market
-// indexer's /market/tokens. A figure none of them answers for stays TBA. The site has one theme
-// (light, like the main website), so there is no theme switch. Search reads <base>/assets/search.json,
-// built with the pages, and runs in the browser. The pages read fully without this script: the side
-// menu, every tab panel's first tab and every link work as plain HTML.
-import { loadConfig } from "../../web/src/api.ts";
-import { paramValue } from "../../web/src/params.ts";
+// the app origin the build names on <body data-app> (config/sites.json app_url): Core's GET
+// /v1/config, /v1/stats and /v1/guard-config and the market indexer's /market/tokens, which answer
+// cross-origin. A figure none of them answers for stays TBA. The site has one theme (light, like the
+// main website), so there is no theme switch. Search reads the index the build names on
+// <body data-search>, built with the pages, and runs in the browser. The pages read fully without
+// this script: the side menu, every tab panel's first tab and every link work as plain HTML.
+import { paramValue } from "./live-format.ts";
 
-const BASE = document.body.dataset.docsBase ?? "/docs";
+const APP = (document.body.dataset.app ?? "").replace(/\/+$/, "");
+const SEARCH = document.body.dataset.search ?? "/assets/search.json";
 const esc = (v: unknown) => String(v).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]!);
 
 const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T | null;
@@ -152,11 +153,21 @@ function cfgText(key: string, v: unknown, cfg: Record<string, unknown>): string 
   if (Array.isArray(v)) return v.join(" to ");
   if (leaf === "finder_share" && typeof v === "number") return `${Math.round(v * 100)}%`;
   // amounts paramValue does not list (challenge bond and reward) format like any bond amount
-  const t = paramValue(leaf === "challenge_bond" || leaf === "challenge_reward" ? "min_bond" : leaf, v);
+  const t = paramValue(leaf === "challenge_bond" || leaf === "challenge_reward" ? "min_bond" : leaf, v, typeof cfg.token_decimals === "number" ? cfg.token_decimals : undefined);
   return t === "TBA" ? null : t.replace("$UNITS", quote);
 }
 
-const json = (path: string) => fetch(path, { headers: { accept: "application/json" } }).then((r) => (r.ok ? r.json() : null)).catch(() => null);
+// a plain cross-origin GET (no preflight); a busy answer of the app's gate is asked again once it allows
+async function json(path: string): Promise<any> {
+  for (let i = 0; i < 3; i++) {
+    const r = await fetch(APP + path, { headers: { accept: "application/json" } }).catch(() => null);
+    if (!r) return null;
+    if (r.ok) return r.json().catch(() => null);
+    if (![429, 502, 503].includes(r.status)) return null;
+    await new Promise((res) => setTimeout(res, 1000 * Math.min(10, Number(r.headers.get("retry-after")) || 2)));
+  }
+  return null;
+}
 const count = (n: unknown) => (typeof n === "number" && Number.isFinite(n) ? n.toLocaleString("en-US") : null);
 const percent = (f: unknown) => (typeof f === "number" && Number.isFinite(f) ? `${+(f * 100).toFixed(4)}%` : null);
 const utc = (ms: unknown) => (typeof ms === "number" && ms > 0 ? `${new Date(ms).toISOString().slice(0, 16).replace("T", " ")} UTC` : null);
@@ -183,10 +194,10 @@ async function fill() {
   if (!spans.length) return;
   const need = (kind: string) => spans.some((s) => s.dataset.live!.startsWith(`${kind}:`));
   const [cfg, tokens, stats, guard] = await Promise.all([
-    need("cfg") ? loadConfig().catch(() => null) : null,
+    need("cfg") ? json("/v1/config").then((j) => j?.network ?? null) : null,
     need("market") ? json("/market/tokens?limit=500") : null,
-    need("stats") ? json("/api/stats") : null,
-    need("guard") ? json("/api/guard-config") : null,
+    need("stats") ? json("/v1/stats") : null,
+    need("guard") ? json("/v1/guard-config") : null,
   ]);
   const SOURCE: Record<string, string> = { cfg: "GET /v1/config", market: "the market indexer", stats: "GET /v1/stats", guard: "GET /v1/guard-config" };
   for (const s of spans) {
@@ -221,7 +232,7 @@ let index: Entry[] | null = null;
 let loading: Promise<void> | null = null;
 let active = -1;
 const load = () =>
-  (loading ??= fetch(`${BASE}/assets/search.json`)
+  (loading ??= fetch(SEARCH)
     .then((r) => (r.ok ? r.json() : []))
     .then((j: Entry[]) => void (index = j))
     .catch(() => void (index = [])));

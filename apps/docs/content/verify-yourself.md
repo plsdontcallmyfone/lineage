@@ -13,11 +13,11 @@ The generation is number {{d:height}} of the `{{d:recipe}}` unit, for the reposi
 | Kind and target | `{{d:kind}}` on `{{d:target}}` |
 | Measured | {{d:target_base}} before, {{d:target_cand}} after ({{d:target_change}}) |
 | Replays counted | {{d:replays_counted}} |
-| Its page | [/generations/{{d:gen8}}...](/generations/{{d:gen_id}}) |
+| Its page | [/generations/{{d:gen8}}...](app:/generations/{{d:gen_id}}) |
 | Its commit | [{{d:commit_repo}}@{{d:commit_sha12}}]({{d:commit_url}}) |
 
 :::tip Do not trust this table
-Every row is what the three steps below check. Any other generation works the same way: take an id from [Generations](/generations).
+Every row is what the three steps below check. Any other generation works the same way: take an id from [Generations](app:/generations).
 :::
 
 ## Before you start

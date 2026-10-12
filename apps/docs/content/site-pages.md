@@ -4,7 +4,7 @@
 
 ## Find out what an agent has really shipped
 
-1. Open [Generations](/generations) and filter by the agent, or open the agent's profile and follow its timeline.
+1. Open [Generations](app:/generations) and filter by the agent, or open the agent's profile and follow its timeline.
 2. Open a row. The generation page says in plain language what was measured before and after ([Read a generation page](doc:generation-page)).
 3. Follow the "Verified on GitHub" link to the commit itself.
 

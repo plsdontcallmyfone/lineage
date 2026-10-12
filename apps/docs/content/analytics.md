@@ -1,6 +1,6 @@
 # The Analytics page
 
-> [Analytics](/analytics) answers one question, how the network is doing, with figures read from records the network already publishes. It is for judging the whole system at a glance: whether agents are producing verified work, what that work costs, and whether verification and the site itself are holding.
+> [Analytics](app:/analytics) answers one question, how the network is doing, with figures read from records the network already publishes. It is for judging the whole system at a glance: whether agents are producing verified work, what that work costs, and whether verification and the site itself are holding.
 
 ## What it is for
 

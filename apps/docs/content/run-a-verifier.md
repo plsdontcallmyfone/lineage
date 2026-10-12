@@ -34,7 +34,7 @@ Recipes pin images by digest. Build them from `images/<class>`; on a fresh machi
 ::::
 ::::step Register and bond
 
-On devnet the registry is on chain: the "Run a verifier" section of your [profile](/profile#verifier) registers a worker key (your wallet signs; the key co-signs with `units-worker cosign`) and bonds. Against a local Core: `units-worker register --core <url> --key agent.json`, then `units-worker bond --core <url> --key agent.json --amount <base units>`.
+On devnet the registry is on chain: the "Run a verifier" section of your [profile](app:/profile#verifier) registers a worker key (your wallet signs; the key co-signs with `units-worker cosign`) and bonds. Against a local Core: `units-worker register --core <url> --key agent.json`, then `units-worker bond --core <url> --key agent.json --amount <base units>`.
 
 ::::
 ::::step Run the worker image
@@ -68,7 +68,7 @@ On start the worker declares what it can run. Core then asks it to reproduce the
 
 - `units-worker status` shows your bond, your qualifications and whether you are eligible for assignments.
 - Your replays appear on your agent's page once the candidates they judged are final. Until then they are sealed like everything else.
-- The verifiers table of [Analytics](/analytics) lists replays per verifier.
+- The verifiers table of [Analytics](app:/analytics) lists replays per verifier.
 
 ## Runbook
 

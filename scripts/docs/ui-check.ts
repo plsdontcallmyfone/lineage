@@ -1,11 +1,13 @@
 #!/usr/bin/env bun
-// Headless check of every docs page at 1280 and 390 px (headless Chromium only, never a person's browser):
+// Headless check of every page of the standalone docs site at 1280 and 390 px (headless Chromium only,
+// never a person's browser):
 //
-//   bun scripts/docs/ui-check.ts [--port 9663] [--site https://157-245-71-188.sslip.io] [--url <docs base URL>] [--shots <dir>]
+//   bun scripts/docs/ui-check.ts [--port 9663] [--app https://157-245-71-188.sslip.io] [--url <docs origin>] [--shots <dir>]
 //
-// Without --url it builds the docs in memory and serves them on 127.0.0.1:<port> at /docs, passing
-// /api and /market reads to --site so the live figures fill as they do on the site. With --url (for
-// example https://157-245-71-188.sslip.io/docs) it checks the deployed pages instead.
+// Without --url it builds the docs in memory and serves them on 127.0.0.1:<port> the way the real
+// hosts do (scripts/docs/serve.ts); the pages read their live figures from --app cross-origin, as they
+// do in production. With --url (for example https://docs-157-245-71-188.sslip.io) it checks the
+// deployed site instead.
 // Per page and width: HTTP 200, the title and the summary are there, no console or page error, no
 // failed request, no horizontal scroll, every image loaded, no monospace text, no em dash, the step
 // line and the Previous and Next links of a path page, at least one live figure filled on a page
@@ -15,50 +17,33 @@
 // view and "On this page" marks a section; at 390 the side menu is a drawer that opens and closes.
 // Then, per width: the search palette opens from its button and from Ctrl+K and finds a page, a copy
 // button copies, tabs switch, and a link into a folded block opens it.
+// Also per page: the canonical link and og:url name https://docs.units.gg. Per width: an unknown path
+// answers 404 with the docs' own page, /<slug>.html redirects to /<slug>, robots.txt and sitemap.xml
+// answer, the stylesheet and script are cached for a year, and the page policy is sent.
 // Exit 1 on any failure. The port must be free (lsof -ti :<port>); 9662 is not ours.
 import { mkdirSync } from "node:fs";
 import { join } from "node:path";
 import { chromium } from "@playwright/test";
-import { buildDocsChecked, docsLookup, PAGES, SECTIONS } from "./build.ts";
+import { buildDocsChecked, DOCS_ORIGIN, PAGES, SECTIONS } from "./build.ts";
+import { docsResponse } from "./serve.ts";
 
 const argv = process.argv.slice(2);
 const opt = (n: string) => (argv.includes(`--${n}`) ? argv[argv.indexOf(`--${n}`) + 1] : undefined);
 const PORT = Number(opt("port") ?? 9663);
-const SITE = (opt("site") ?? "https://157-245-71-188.sslip.io").replace(/\/+$/, "");
+const APP = opt("app")?.replace(/\/+$/, "");
 const SHOTS = opt("shots") ?? null;
 let base = opt("url")?.replace(/\/+$/, "") ?? null;
 let server: ReturnType<typeof Bun.serve> | null = null;
 
 if (!base) {
   if (PORT === 9662) throw new Error("port 9662 is the owner's review server");
-  const { files, problems } = await buildDocsChecked({ base: "/docs" });
+  const { files, problems, app } = await buildDocsChecked({ app: APP });
   if (problems.length) {
     console.error(`build problems:\n  ${problems.join("\n  ")}`);
     process.exit(1);
   }
-  server = Bun.serve({
-    port: PORT,
-    hostname: "127.0.0.1",
-    async fetch(req) {
-      const u = new URL(req.url);
-      if (u.pathname.startsWith("/api/") || u.pathname.startsWith("/market/")) {
-        for (let i = 0; ; i++) {
-          const r = await fetch(SITE + u.pathname + u.search, { headers: { accept: "application/json" } });
-          if ([429, 502, 503].includes(r.status) && i < 4) {
-            await new Promise((res) => setTimeout(res, 1000 * Math.min(15, Number(r.headers.get("retry-after") ?? 3))));
-            continue;
-          }
-          return new Response(await r.arrayBuffer(), { status: r.status, headers: { "content-type": r.headers.get("content-type") ?? "application/json" } });
-        }
-      }
-      if (u.pathname === "/docs" || u.pathname.startsWith("/docs/")) {
-        const f = docsLookup(files, u.pathname.slice("/docs".length));
-        if (f) return new Response(f.body as BodyInit, { headers: { "content-type": f.type } });
-      }
-      return new Response("not found", { status: 404 });
-    },
-  });
-  base = `http://127.0.0.1:${PORT}/docs`;
+  server = Bun.serve({ port: PORT, hostname: "127.0.0.1", fetch: (req) => docsResponse(files, req, app) });
+  base = `http://127.0.0.1:${PORT}`;
 }
 
 const EM = String.fromCharCode(0x2014);
@@ -79,10 +64,10 @@ for (const width of [1280, 390]) {
   page.on("pageerror", (e) => errors.push(`pageerror: ${e.message}`));
   page.on("console", (m) => m.type() === "error" && errors.push(`console: ${m.text()}`));
   page.on("requestfailed", (r) => errors.push(`request failed: ${r.url()} ${r.failure()?.errorText ?? ""}`));
-  page.on("response", (r) => r.status() >= 400 && !/\/(api|market)\//.test(r.url()) && errors.push(`HTTP ${r.status()} ${r.url()}`));
+  page.on("response", (r) => r.status() >= 400 && !/\/(v1|market)\//.test(r.url()) && errors.push(`HTTP ${r.status()} ${r.url()}`));
   for (const p of PAGES) {
     errors = [];
-    const url = p.slug === "overview" ? base : `${base}/${p.slug}`;
+    const url = p.slug === "overview" ? `${base}/` : `${base}/${p.slug}`;
     const bad = (why: string) => fails.push(`${p.slug} @${width}: ${why}`);
     checks++;
     const res = await page.goto(url, { waitUntil: "load", timeout: 60_000 }).catch((e) => (bad(String(e).slice(0, 120)), null));
@@ -106,6 +91,9 @@ for (const width of [1280, 390]) {
       const texts = [...document.querySelectorAll<HTMLElement>("body *")].filter((e) => e.children.length === 0 && (e.textContent ?? "").trim());
       return {
         h1: document.querySelector(".dc-h1")?.textContent?.trim() ?? "",
+        canonical: document.querySelector<HTMLLinkElement>('link[rel="canonical"]')?.getAttribute("href") ?? "",
+        ogUrl: document.querySelector('meta[property="og:url"]')?.getAttribute("content") ?? "",
+        appLinks: [...document.querySelectorAll<HTMLAnchorElement>(".dc-links a")].map((a) => a.href),
         lead: document.querySelector(".dc-lead")?.textContent?.trim() ?? "",
         scroll: document.documentElement.scrollWidth - document.documentElement.clientWidth,
         brokenImages: [...document.images].filter((i) => i.getClientRects().length && (!i.complete || i.naturalWidth === 0)).map((i) => i.getAttribute("src")),
@@ -138,6 +126,9 @@ for (const width of [1280, 390]) {
     }, EM);
     const sec = SECTIONS.find((s) => s.pages.some((x) => x.slug === p.slug))!;
     if (!r.h1) bad("no title");
+    const canon = `${DOCS_ORIGIN}${p.slug === "overview" ? "/" : `/${p.slug}`}`;
+    if (r.canonical !== canon || r.ogUrl !== canon) bad(`canonical is "${r.canonical}", og:url "${r.ogUrl}", not ${canon}`);
+    if (r.appLinks.some((h) => new URL(h).origin === new URL(base!).origin)) bad(`a header link stays on the docs origin: ${r.appLinks.join(", ")}`);
     if (!r.lead) bad("no summary");
     if (r.scroll > 1) bad(`horizontal scroll of ${r.scroll} px`);
     if (r.brokenImages.length) bad(`images not loaded: ${r.brokenImages.join(", ")}`);
@@ -167,7 +158,26 @@ for (const width of [1280, 390]) {
     const why = await Promise.race([f(), new Promise<string>((r) => setTimeout(() => r("no answer in 60 s"), 60_000))]).catch((e) => String(e).slice(0, 160));
     if (why) fails.push(`${name} @${width}: ${why}`);
   };
-  await page.goto(base, { waitUntil: "load" });
+  await act("standalone site", async () => {
+    const get = (path: string) => ctx.request.get(base + path, { maxRedirects: 0 });
+    const missing = await get("/no-such-page");
+    if (missing.status() !== 404 || !(await missing.text()).includes("Page not found")) return `an unknown path answers ${missing.status()} without the docs' 404 page`;
+    const redir = await get("/verification.html");
+    if (![301, 308].includes(redir.status()) || redir.headers().location !== "/verification") return `/verification.html answers ${redir.status()} to ${redir.headers().location}`;
+    for (const f of ["/robots.txt", "/sitemap.xml", "/favicon.png"]) if ((await get(f)).status() !== 200) return `${f} does not answer 200`;
+    if (!(await (await get("/sitemap.xml")).text()).includes(`<loc>${DOCS_ORIGIN}/verification</loc>`)) return "sitemap.xml does not list the pages under the canonical origin";
+    const html = await (await get("/")).text();
+    const assets = [/href="(\/assets\/docs\.[0-9a-f]+\.css)"/.exec(html)?.[1], /src="(\/assets\/docs\.[0-9a-f]+\.js)"/.exec(html)?.[1], /data-search="(\/assets\/search\.[0-9a-f]+\.json)"/.exec(html)?.[1]];
+    for (const a of assets) {
+      if (!a) return "the start page does not name its hashed stylesheet, script and search index";
+      const r = await get(a);
+      if (r.status() !== 200 || !/max-age=31536000/.test(r.headers()["cache-control"] ?? "")) return `${a}: ${r.status()}, cache-control "${r.headers()["cache-control"]}"`;
+    }
+    const csp = (await get("/")).headers()["content-security-policy"] ?? "";
+    if (!csp.includes("script-src 'self'") || !csp.includes("connect-src 'self' https://")) return `page policy is "${csp}"`;
+    return null;
+  });
+  await page.goto(`${base}/`, { waitUntil: "load" });
   await act("search", async () => {
     await page.click("#dc-search-open");
     await page.fill("#dc-q", "guard limit");
@@ -187,7 +197,7 @@ for (const width of [1280, 390]) {
   });
   if (width < 1024)
     await act("drawer", async () => {
-      await page.goto(base, { waitUntil: "load" });
+      await page.goto(`${base}/`, { waitUntil: "load" });
       await page.click("#dc-menu");
       const link = page.locator('.dc-nav a[href$="/glossary"]');
       if (await link.isVisible()) return "another section's pages are unfolded before their group is opened";
@@ -228,7 +238,7 @@ for (const width of [1280, 390]) {
 }
 await browser.close();
 server?.stop(true);
-console.log(`${checks - new Set(fails.map((f) => f.split(":")[0])).size}/${checks} checks pass (${PAGES.length} pages x 1280 and 390, plus search, drawer, copy, tabs and folded links) on ${base}`);
+console.log(`${checks - new Set(fails.map((f) => f.split(":")[0])).size}/${checks} checks pass (${PAGES.length} pages x 1280 and 390, plus the standalone checks, search, drawer, copy, tabs and folded links) on ${base}`);
 if (fails.length) {
   console.error(fails.join("\n"));
   process.exit(1);

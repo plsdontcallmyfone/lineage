@@ -2,42 +2,117 @@ import { expect, test } from "bun:test";
 import { createHash } from "node:crypto";
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
-import { buildDocsChecked, docsLookup, PAGES, PATHS, SECTIONS } from "./build.ts";
+import { buildDocsChecked, docsCsp, DOCS_ORIGIN, docsLookup, PAGES, PATHS, SECTIONS, vercelConfig, vercelProjectJson } from "./build.ts";
+import { docsResponse } from "./serve.ts";
+import sites from "../../config/sites.json" with { type: "json" };
 import { captured, coreApiDoc, coreRoutes, indexerRouteNames, routeKey } from "../../apps/docs/src/generate.ts";
 import { API_NOTES, INDEXER_ROUTES } from "../../apps/docs/src/api-notes.ts";
 import { renderMarkdown, sentenceCount } from "../../apps/docs/src/markdown.ts";
 import { trim } from "./capture.ts";
 
 const root = join(import.meta.dir, "../..");
-const hashes = (s: string) => [...s.matchAll(/<script>([\s\S]*?)<\/script>/g)].map((m) => createHash("sha256").update(m[1]!).digest("base64"));
-const built = buildDocsChecked({ base: "/docs" });
+const APP = "https://app.example";
+const built = buildDocsChecked({ app: APP });
 const page = async (slug: string) => String(docsLookup((await built).files, slug === "overview" ? "" : `/${slug}`)!.body);
 
-test("every docs page is built, with the one inline script the page CSP allows", async () => {
-  const { files } = await built;
-  const app = hashes(readFileSync(join(root, "apps/web/public/index.html"), "utf8"));
-  expect(app).toHaveLength(1);
+test("every docs page is built at the root of its own site, with no inline script and hashed assets", async () => {
+  const { files, assets } = await built;
+  const sha = (f: string) => createHash("sha256").update(files.get(f)!.body).digest("hex").slice(0, 12);
+  for (const [k, a] of Object.entries(assets)) {
+    expect(a).toMatch(k === "search" ? /^\/assets\/search\.[0-9a-f]{12}\.json$/ : new RegExp(`^/assets/docs\\.[0-9a-f]{12}\\.${k}$`));
+    expect(a).toContain(sha(a.slice(1))); // the name carries the hash of the content
+  }
   for (const p of PAGES) {
     const f = docsLookup(files, p.slug === "overview" ? "" : `/${p.slug}`);
     expect(f).not.toBeNull();
     const html = String(f!.body);
-    expect(hashes(html)).toEqual(app);
+    expect(html).not.toMatch(/<script(?![^>]* src=)/); // no inline script: the page policy allows scripts of the site only
     expect(html).not.toContain(String.fromCharCode(0x2014)); // no em dashes
-    expect(html).toContain(`src="/docs/assets/docs.js"`);
+    expect(html).toContain(`<script type="module" src="${assets.js}"></script>`);
+    expect(html).toContain(`<link rel="stylesheet" href="${assets.css}">`);
+    expect(html).toContain(`data-search="${assets.search}"`);
     expect(html).toContain('id="dc-q"'); // the search box
+    expect(html).not.toMatch(/(?:href|src)="\/docs(?:\/|")/); // nothing lives under /docs any more
   }
-  expect(files.has("assets/docs.js") && files.has("assets/docs.css") && files.has("assets/search.json")).toBe(true);
-  // the main website's fonts, self-hosted under the base and preloaded; nothing is fetched from another origin
-  const css = String(files.get("assets/docs.css")!.body);
+  // the main website's fonts, self-hosted and preloaded; nothing is fetched from another origin
+  const css = String(files.get(assets.css.slice(1))!.body);
   for (const f of [...css.matchAll(/url\("([^"]+)"\)/g)].map((m) => m[1]!)) {
-    expect(f.startsWith("/docs/fonts/")).toBe(true);
-    expect(files.has(f.slice("/docs/".length))).toBe(true);
+    expect(f.startsWith("/fonts/")).toBe(true);
+    expect(files.has(f.slice(1))).toBe(true);
     expect(String(files.get("index.html")!.body)).toContain(`<link rel="preload" href="${f}" as="font"`);
   }
   expect(css).toContain('"Suisse Intl"');
   expect(css).toContain('"KMR Apparat"');
   expect(css).not.toMatch(/https?:\/\/(?!lineagee\.vercel\.app)/);
   expect(docsLookup(files, "/nope")).toBeNull();
+});
+
+test("canonical origin: every page names docs.units.gg in its canonical link and Open Graph tags; sitemap and robots too", async () => {
+  const { files } = await built;
+  expect(DOCS_ORIGIN).toBe("https://docs.units.gg");
+  for (const p of PAGES) {
+    const html = await page(p.slug);
+    const url = `https://docs.units.gg${p.slug === "overview" ? "/" : `/${p.slug}`}`;
+    expect(html).toContain(`<link rel="canonical" href="${url}">`);
+    expect(html).toContain(`<meta property="og:url" content="${url}">`);
+    expect(html).toMatch(/<meta property="og:title" content="[^"]+">/);
+    expect(html).toMatch(/<meta property="og:description" content="[^"]+">/);
+    expect(html).toContain('<meta property="og:image" content="https://docs.units.gg/logo.png">');
+  }
+  const map = String(files.get("sitemap.xml")!.body);
+  expect([...map.matchAll(/<loc>([^<]+)<\/loc>/g)].map((m) => m[1])).toEqual(PAGES.map((p) => `https://docs.units.gg${p.slug === "overview" ? "/" : `/${p.slug}`}`));
+  expect(String(files.get("robots.txt")!.body)).toContain("Sitemap: https://docs.units.gg/sitemap.xml");
+  const missing = String(files.get("404.html")!.body);
+  expect(missing).toContain('<meta name="robots" content="noindex">');
+  expect(missing).not.toContain('rel="canonical"');
+  expect(missing).toContain("Page not found");
+});
+
+test("the app is another origin: header links, app: links and the live figures' source use the configured app origin", async () => {
+  const start = await page("overview");
+  expect(start).toContain(`<body data-app="${APP}"`);
+  expect(start).toContain(`<a href="${APP}/">Explorer</a>`);
+  expect(start).toContain(`<a class="dc-cta" href="${APP}/launch">Launch</a>`);
+  expect(await page("launch-quickstart")).toContain(`href="${APP}/launch"`);
+  expect(await page("site-pages")).toContain(`href="${APP}/generations"`);
+  // no page of the app is linked as if it lived on the docs origin
+  for (const p of PAGES) expect(await page(p.slug)).not.toMatch(/href="\/(launch|generations|profile|projects)(["#/?])/);
+  // the default is the one configured value
+  expect(docsCsp()).toContain(`connect-src 'self' ${process.env.UNITS_APP_URL ?? sites.app_url};`);
+  expect(docsCsp(APP)).toContain("script-src 'self';");
+  expect(docsCsp(APP)).not.toContain("unsafe-eval");
+  await expect(buildDocsChecked({ app: "https://app.example/path" })).rejects.toThrow();
+});
+
+test("a static host's answers: clean URLs, the 404 page, cache rules, the page policy", async () => {
+  const { files, assets, app } = await built;
+  const get = (path: string, method = "GET") => docsResponse(files, new Request(`http://docs.test${path}`, { method }), app);
+  expect(get("/").status).toBe(200);
+  expect(await get("/verification").text()).toContain('class="dc-h1"');
+  expect([get("/verification.html").status, get("/verification.html").headers.get("location")]).toEqual([308, "/verification"]);
+  expect([get("/verification/").status, get("/verification/").headers.get("location")]).toEqual([308, "/verification"]);
+  expect(get("/index.html").headers.get("location")).toBe("/");
+  const missing = get("/docs/verification");
+  expect(missing.status).toBe(404);
+  expect(await missing.text()).toContain("Page not found");
+  expect(get("/", "POST").status).toBe(405);
+  expect(get(assets.js).headers.get("cache-control")).toBe("public, max-age=31536000, immutable");
+  expect(get(assets.css).headers.get("cache-control")).toContain("immutable");
+  expect(get("/fonts/SuisseIntl-Regular-WebS.woff2").headers.get("cache-control")).toBe("public, max-age=2592000");
+  expect(get("/").headers.get("cache-control")).toBe("no-cache");
+  expect(get("/").headers.get("content-security-policy")).toBe(docsCsp(APP));
+  expect(get("/robots.txt").headers.get("content-type")).toContain("text/plain");
+  expect(get("/sitemap.xml").headers.get("content-type")).toContain("xml");
+});
+
+test("Vercel: apps/docs/vercel.json is the build's own file for the configured app origin", () => {
+  expect(readFileSync(join(root, "apps/docs/vercel.json"), "utf8")).toBe(vercelProjectJson(sites.app_url));
+  const v = vercelConfig(APP, { project: true }) as any;
+  expect(v.outputDirectory).toBe("dist");
+  expect(v.buildCommand).toContain("bun scripts/docs/build.ts");
+  expect(v.cleanUrls).toBe(true);
+  expect(v.headers[0].headers.find((h: any) => h.key === "content-security-policy").value).toBe(docsCsp(APP));
+  expect(v.headers.find((h: any) => h.source === "/assets/(.*)").headers[0].value).toContain("immutable");
 });
 
 test("no broken internal link, anchor, image, repository link, generator, example or summary", async () => {
@@ -48,14 +123,14 @@ test("no broken internal link, anchor, image, repository link, generator, exampl
 test("the link check catches a broken link, a broken anchor and a missing image", async () => {
   const { checkDocs } = await import("./build.ts");
   const files = new Map([
-    ["index.html", { body: '<a href="/docs/missing">x</a><a href="/docs/b#nope">y</a><h2 id="ok">ok</h2><a href="#ok">z</a><img src="/docs/shots/none.jpg">', type: "text/html" }],
+    ["index.html", { body: '<a href="/missing">x</a><a href="/b#nope">y</a><h2 id="ok">ok</h2><a href="#ok">z</a><img src="/shots/none.jpg">', type: "text/html" }],
     ["b.html", { body: '<h2 id="there">t</h2>', type: "text/html" }],
   ]);
-  const p = checkDocs(files, "/docs");
+  const p = checkDocs(files, "");
   expect(p).toHaveLength(3);
-  expect(p[0]).toContain("/docs/missing");
+  expect(p[0]).toContain("/missing");
   expect(p[1]).toContain("#nope");
-  expect(p[2]).toContain("/docs/shots/none.jpg");
+  expect(p[2]).toContain("/shots/none.jpg");
 });
 
 test("every page opens with a summary of at most two sentences, shown as the lead", async () => {
@@ -75,12 +150,12 @@ test("reader paths: five guided sequences, each page numbered, with previous and
   const start = await page("overview");
   for (const s of PATHS) {
     expect(s.pages.length).toBeGreaterThanOrEqual(2);
-    expect(start).toContain(`<a class="dc-card is-link dc-pathcard" href="/docs/${s.pages[0]!.slug}">`);
+    expect(start).toContain(`<a class="dc-card is-link dc-pathcard" href="/${s.pages[0]!.slug}">`);
     for (const [i, p] of s.pages.entries()) {
       const html = await page(p.slug);
       expect(html).toContain(`<span>step ${i + 1} of ${s.pages.length}</span>`);
-      if (i > 0) expect(html).toContain(`href="/docs/${s.pages[i - 1]!.slug}" rel="prev"`);
-      if (i + 1 < s.pages.length) expect(html).toContain(`class="next" href="/docs/${s.pages[i + 1]!.slug}" rel="next"`);
+      if (i > 0) expect(html).toContain(`href="/${s.pages[i - 1]!.slug}" rel="prev"`);
+      if (i + 1 < s.pages.length) expect(html).toContain(`class="next" href="/${s.pages[i + 1]!.slug}" rel="next"`);
     }
   }
   // every page is in exactly one section
@@ -162,7 +237,7 @@ test("screenshots: every one a page uses exists in the manifest and on disk, wit
   let used = 0;
   for (const p of PAGES) {
     const html = await page(p.slug);
-    for (const m of html.matchAll(/<img src="\/docs\/shots\/([^"]+)" alt="[^"]*" width="(\d+)" height="(\d+)"/g)) {
+    for (const m of html.matchAll(/<img src="\/shots\/([^"]+)" alt="[^"]*" width="(\d+)" height="(\d+)"/g)) {
       used++;
       const s = Object.values(shots).find((x) => x.file === m[1]);
       expect(s, `${p.slug}: ${m[1]} is not in the manifest`).toBeTruthy();
@@ -178,7 +253,7 @@ test("screenshots: every one a page uses exists in the manifest and on disk, wit
 
 test("the search index has every page", async () => {
   const { files } = await built;
-  const idx = JSON.parse(String(files.get("assets/search.json")!.body)) as { p: string; u: string }[];
+  const idx = JSON.parse(String(files.get((await built).assets.search.slice(1))!.body)) as { p: string; u: string }[];
   for (const p of PAGES) expect(idx.some((e) => e.p === p.title)).toBe(true);
 });
 
@@ -193,7 +268,7 @@ test("figures are HTML, CSS or SVG: the start page has no image, and the only lo
   }
   const { files } = await built;
   const models = await page("models");
-  const marks = [...models.matchAll(/<img class="dc-plogo" src="\/docs\/providers\/([a-z]+\.svg)"/g)].map((m) => m[1]!);
+  const marks = [...models.matchAll(/<img class="dc-plogo" src="\/providers\/([a-z]+\.svg)"/g)].map((m) => m[1]!);
   expect(new Set(marks).size).toBeGreaterThanOrEqual(9);
   for (const m of marks) expect(files.has(`providers/${m}`)).toBe(true);
 });
@@ -264,7 +339,7 @@ test("the shell: section tabs, a side menu with every page once, on this page, e
       expect(html.match(/class="dc-tabl"[^>]*aria-current="true">([^<]+)</)![1]).toBe(s.tab);
       const links = [...html.match(/<nav class="dc-nav"[\s\S]*?<\/nav>/)![0].matchAll(/<a href="([^"]+)"( aria-current="page")?>/g)];
       expect(links).toHaveLength(PAGES.length);
-      expect(links.filter((l) => l[2]).map((l) => l[1])).toEqual([p.slug === "overview" ? "/docs" : `/docs/${p.slug}`]);
+      expect(links.filter((l) => l[2]).map((l) => l[1])).toEqual([p.slug === "overview" ? "/" : `/${p.slug}`]);
       expect(html).toContain(`href="https://github.com/plsdontcallmyfone/lineage/edit/main/apps/docs/content/${p.file}"`);
       expect(html, `${p.slug}: last updated`).toMatch(/Last updated <time datetime="\d{4}-\d{2}-\d{2}">/);
       expect(html).toContain('<dialog class="dc-palette" id="dc-palette"');
@@ -272,9 +347,9 @@ test("the shell: section tabs, a side menu with every page once, on this page, e
     }
   expect(await page("verification")).toMatch(/<nav class="dc-toc-n" id="dc-toc"[\s\S]*<a href="#recipes" data-lv="2">Recipes<\/a>/);
   // the search index reaches folded questions and API routes
-  const idx = JSON.parse(String(files.get("assets/search.json")!.body)) as { h: string; u: string }[];
-  expect(idx.some((e) => e.u === "/docs/core-api#get-v1-stats" && e.h.includes("/v1/stats"))).toBe(true);
-  expect(idx.some((e) => e.u.startsWith("/docs/faq#") && e.h === "Is this on mainnet?")).toBe(true);
+  const idx = JSON.parse(String(files.get((await built).assets.search.slice(1))!.body)) as { h: string; u: string }[];
+  expect(idx.some((e) => e.u === "/core-api#get-v1-stats" && e.h.includes("/v1/stats"))).toBe(true);
+  expect(idx.some((e) => e.u.startsWith("/faq#") && e.h === "Is this on mainnet?")).toBe(true);
 });
 
 test("components are used where they help: steps, callouts, tabs, cards on the landing pages, folded questions", async () => {

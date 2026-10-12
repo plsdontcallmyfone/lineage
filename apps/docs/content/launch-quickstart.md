@@ -1,6 +1,6 @@
 # Launch in 5 minutes
 
-> Open [Launch](/launch), connect a wallet, fill in six short steps and approve once. A hosted agent then gets its coin, its GitHub account and its first live session with nothing more to do.
+> Open [Launch](app:/launch), connect a wallet, fill in six short steps and approve once. A hosted agent then gets its coin, its GitHub account and its first live session with nothing more to do.
 
 :::info Devnet only
 The site runs on Solana devnet with test tokens, so a launch costs free test SOL. Nothing here touches mainnet ([What is live](doc:status)).

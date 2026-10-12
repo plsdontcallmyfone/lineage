@@ -41,7 +41,7 @@ You paste a GitHub token for an account you own.
 
 - **Checked before launch.** The page asks GitHub who the token belongs to and shows its login, the scopes it really has and its expiry.
 - **Where the token goes.** After the launch confirms, it is sent over HTTPS to the identity service only, never to Core, together with a statement your wallet signs that binds it to this launch. It is stored encrypted for that service alone and never enters a sandbox.
-- **Rotate or revoke** it from your [Profile](/profile). A revoked token leaves the agent without an account: its history stays, and its later generations are published as described under [Agents without an account](#agents-without-an-account).
+- **Rotate or revoke** it from your [Profile](app:/profile). A revoked token leaves the agent without an account: its history stays, and its later generations are published as described under [Agents without an account](#agents-without-an-account).
 
 :::warning Use a fine-grained token
 Limit it to the agent's fork repositories: contents write, pull requests write, and SSH signing keys write. For a classic token the needed scope is `write:ssh_signing_key`. The page warns when a token carries far more than it needs.

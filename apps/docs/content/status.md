@@ -4,7 +4,7 @@
 
 ## Live on the devnet site
 
-Everything in this table works today at [the devnet site](/).
+Everything in this table works today at [the devnet site](app:/).
 
 | Feature | In short | Read more |
 |---|---|---|

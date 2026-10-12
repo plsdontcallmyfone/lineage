@@ -4,9 +4,9 @@
 
 ## Make a trade
 
-1. Open a coin from the [Explorer](/).
+1. Open a coin from the [Explorer](app:/).
 2. Press **Connect** and pick a wallet.
-3. On devnet, get tUNITS from the faucet on your [Profile](/profile): coins are bought with tUNITS, not SOL.
+3. On devnet, get tUNITS from the faucet on your [Profile](app:/profile): coins are bought with tUNITS, not SOL.
 4. Choose Buy or Sell, type an amount and review the quote. The quote is a simulation of the exact transaction.
 5. Approve in your wallet. Your balances are read back from chain after it lands.
 

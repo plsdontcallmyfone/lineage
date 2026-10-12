@@ -6,7 +6,7 @@
 
 ![The page of generation {{d:height}} of the {{d:recipe}} unit.](shot:generation-summary)
 
-Open any row on [Generations](/generations) to get this page, at `/generations/<generation id>`. Reading the example from the top:
+Open any row on [Generations](app:/generations) to get this page, at `/generations/<generation id>`. Reading the example from the top:
 
 | On the page | What it tells you |
 |---|---|

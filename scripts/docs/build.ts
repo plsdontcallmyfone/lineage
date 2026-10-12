@@ -1,21 +1,29 @@
 #!/usr/bin/env bun
-// Static build of the docs site (apps/docs): plain-language pages from apps/docs/content/*.md into
-// static HTML in the layout of a Mintlify documentation site (top bar with search and section tabs,
-// side menu with groups, content column, "On this page" rail) with the main website's fonts and
-// colours (apps/docs/src/docs.css, tokens at its top). Deployable on its own (any static host,
-// a Vercel project or a docs subdomain) and served by the dashboard server at /docs, outside the app
-// shell. Live figures ({{cfg:...}}, {{market:...}}) render as TBA and are filled in the browser from
-// /api/config and /market/tokens on the same origin (apps/docs/src/client.ts).
+// Static build of the docs site (apps/docs), a web site of its own whose canonical origin is always
+// https://docs.units.gg (config/sites.json docs_canonical). Plain-language pages from
+// apps/docs/content/*.md become static HTML in the layout of a Mintlify documentation site (top bar
+// with search and section tabs, side menu with groups, content column, "On this page" rail) with the
+// main website's fonts and colours (apps/docs/src/docs.css, tokens at its top). The output is a
+// complete static site at "/": any static host serves it (our server through Caddy with
+// scripts/docs/deploy.sh, or Vercel with apps/docs/vercel.json; docs/DEPLOY-SITE.md "Docs site").
+// Nothing in it needs the app's server or styles: the app is only linked to and read from.
 //
-//   bun scripts/docs/build.ts [--base /docs] [--out apps/docs/dist] [--app ""]
+//   bun scripts/docs/build.ts [--out apps/docs/dist] [--app <app origin>]
+//   bun scripts/docs/build.ts --print-csp     the page policy of the build, for a host's headers
+//
+// The app origin (config/sites.json app_url, or UNITS_APP_URL, or --app): the Explorer and Launch
+// links of the header, every [text](app:/path) link, and where the page script reads the live figures
+// ({{cfg:...}}, {{stats:...}}, {{guard:...}}, {{market:...}} render as TBA and are filled in the
+// browser from GET <app>/v1/config, /v1/stats, /v1/guard-config and /market/tokens, which answer
+// cross-origin; apps/docs/src/client.ts).
 //
 // Exits 1 when an internal link or anchor is broken, a repository link names a missing file, or a
-// generated section fails (checkDocs). The dashboard server builds in memory at startup and only logs
-// those problems, so a docs mistake can never stop the site.
+// generated section fails (checkDocs).
 //
 // Content conventions (apps/docs/content/*.md, rendered by apps/docs/src/markdown.ts):
 //   > summary                 the first block quote: the page's summary, two sentences at most (checked)
 //   [text](doc:slug#anchor)   another docs page ("doc:overview" is the index)
+//   [text](app:/path)         a page of the app (the app origin is put in front)
 //   [text](repo:path)         a file in the public repository (checked to exist at build time)
 //   {{gen:name}}              a generated section on a line of its own (apps/docs/src/generate.ts)
 //   {{fig:name}}              a figure (HTML and CSS or SVG) on a line of its own (apps/docs/src/figures.ts);
@@ -33,29 +41,92 @@
 // Every page ends with the date of its last change (from git, or apps/docs/captured/updated.json where
 // the build has no history) and an "Edit this page" link to its markdown file in the repository.
 //
-// Layout of the output (paths under --base):
-//   index.html             the Start here page
-//   <slug>.html            every other page (served at <base>/<slug>)
-//   assets/docs.css        the docs styles (font URLs rewritten under the base)
-//   assets/docs.js         live figures, the search palette, the page menu drawer, scroll spy, tabs, copy
-//   assets/search.json     the search index (one entry per page section)
-//   shots/*                screenshots (apps/docs/public/shots; regenerate with scripts/docs/capture.ts shots)
-//   providers/*.svg        model provider marks (apps/web/public/providers, MIT, see NOTICE.md there)
-//   fonts/*                the main website's fonts, self-hosted (the files of apps/web/public/fonts)
-// The only inline script is the theme script of apps/web/public/index.html, byte for byte, so the
-// site's page CSP (which allows it by hash) holds on these pages too.
+// Layout of the output:
+//   index.html               the Start here page ("/")
+//   <slug>.html              every other page, served at /<slug> (clean URLs: the host maps /<slug> to the file)
+//   404.html                 the page a host answers an unknown path with (status 404)
+//   assets/docs.<hash>.css   the docs styles
+//   assets/docs.<hash>.js    live figures, the search palette, the page menu drawer, scroll spy, tabs, copy
+//   assets/search.<hash>.json  the search index (one entry per page section)
+//                            (every file under assets/ carries a hash of its content in its name, so a
+//                            host may cache it for a year; the pages name the current files)
+//   sitemap.xml, robots.txt  for crawlers, naming the canonical origin
+//   shots/*                  screenshots (apps/docs/public/shots; regenerate with scripts/docs/capture.ts shots)
+//   providers/*.svg          model provider marks (apps/web/public/providers, MIT, see NOTICE.md there)
+//   fonts/*                  the main website's fonts, self-hosted (the files of apps/web/public/fonts)
+//   favicon.png, logo.png    the brand marks
+//   vercel.json              clean URLs and the headers below for a prebuilt Vercel deploy of the output
+// Every page names its canonical URL and its Open Graph tags on the canonical origin. There is no
+// inline script, so the page policy (docsCsp) allows scripts from the site itself only.
 import { execFileSync } from "node:child_process";
+import { createHash } from "node:crypto";
 import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { inlineMd, renderMarkdown, sentenceCount, type Shot } from "../../apps/docs/src/markdown.ts";
 import { captured, exampleMd, generate, outputMd } from "../../apps/docs/src/generate.ts";
 import { FIGURES } from "../../apps/docs/src/figures.ts";
+import sites from "../../config/sites.json" with { type: "json" };
 
 const ROOT = join(import.meta.dir, "../..");
 const DOCS = join(ROOT, "apps/docs");
 const WEB = join(ROOT, "apps/web");
 export const REPO_URL = "https://github.com/plsdontcallmyfone/lineage";
 export const PRODUCT = "units";
+/** The docs site's one canonical origin (canonical links, Open Graph, sitemap). */
+export const DOCS_ORIGIN = sites.docs_canonical.replace(/\/+$/, "");
+/** The app the docs link to and read live figures from: UNITS_APP_URL, else config/sites.json app_url. */
+export const defaultAppUrl = () => (process.env.UNITS_APP_URL || sites.app_url).replace(/\/+$/, "");
+
+/** The page policy of the docs site: everything from the site itself, live figures read from the app origin. */
+export function docsCsp(app = defaultAppUrl()): string {
+  return `default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self'; connect-src 'self' ${new URL(app).origin}; manifest-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'`;
+}
+export const DOCS_PERMISSIONS = "camera=(), microphone=(), geolocation=(), payment=(), usb=(), serial=(), bluetooth=()";
+/** Cache rules of the output by path: hashed assets for a year, fonts a month, images an hour, pages revalidated. */
+export const DOCS_CACHE = { assets: "public, max-age=31536000, immutable", fonts: "public, max-age=2592000", media: "public, max-age=3600", pages: "no-cache" } as const;
+export function docsCacheFor(path: string): string {
+  const p = path.replace(/^\/+/, "");
+  if (p.startsWith("assets/")) return DOCS_CACHE.assets;
+  if (p.startsWith("fonts/")) return DOCS_CACHE.fonts;
+  if (p.startsWith("shots/") || p.startsWith("providers/") || p === "favicon.png" || p === "logo.png") return DOCS_CACHE.media;
+  return DOCS_CACHE.pages;
+}
+
+/** vercel.json of the docs site: clean URLs, the page policy, the cache rules. Written into the output and to apps/docs/vercel.json (with the build command). */
+export function vercelConfig(app = defaultAppUrl(), o: { project?: boolean } = {}): Record<string, unknown> {
+  const security = [
+    { key: "content-security-policy", value: docsCsp(app) },
+    { key: "x-content-type-options", value: "nosniff" },
+    { key: "x-frame-options", value: "DENY" },
+    { key: "referrer-policy", value: "strict-origin-when-cross-origin" },
+    { key: "permissions-policy", value: DOCS_PERMISSIONS },
+    { key: "strict-transport-security", value: "max-age=31536000" },
+  ];
+  return {
+    ...(o.project
+      ? {
+          $schema: "https://openapi.vercel.sh/vercel.json",
+          // the Vercel project's Root Directory is apps/docs; the build reads the whole repository
+          framework: null,
+          // the build needs no package: only Bun itself (this line fails early where it is missing)
+          installCommand: "bun --version",
+          buildCommand: "cd ../.. && bun scripts/docs/build.ts --out apps/docs/dist",
+          outputDirectory: "dist",
+        }
+      : {}),
+    cleanUrls: true,
+    trailingSlash: false,
+    headers: [
+      { source: "/(.*)", headers: [...security, { key: "cache-control", value: DOCS_CACHE.pages }] },
+      { source: "/assets/(.*)", headers: [{ key: "cache-control", value: DOCS_CACHE.assets }] },
+      { source: "/fonts/(.*)", headers: [{ key: "cache-control", value: DOCS_CACHE.fonts }] },
+      { source: "/(shots|providers)/(.*)", headers: [{ key: "cache-control", value: DOCS_CACHE.media }] },
+      { source: "/(favicon|logo).png", headers: [{ key: "cache-control", value: DOCS_CACHE.media }] },
+    ],
+  };
+}
+export const VERCEL_FILE = join(DOCS, "vercel.json");
+export const vercelProjectJson = (app = defaultAppUrl()) => JSON.stringify(vercelConfig(app, { project: true }), null, 2) + "\n";
 
 export interface DocPage {
   slug: string;
@@ -219,14 +290,7 @@ const I = {
 };
 /** The fonts the docs use, of the main website's set (apps/web/public/fonts). */
 const FONTS = ["SuisseIntl-Regular-WebS.woff2", "SuisseIntl-Medium-WebS.woff2", "KMR-Apparat-Medium.woff2"];
-const TYPES: Record<string, string> = { jpg: "image/jpeg", jpeg: "image/jpeg", png: "image/png", webp: "image/webp", svg: "image/svg+xml", json: "application/json; charset=utf-8", txt: "text/plain; charset=utf-8", md: "text/plain; charset=utf-8" };
-
-/** The theme script of the app's index.html (one inline script; its hash is in the page CSP). */
-export function themeScript(): string {
-  const m = [...readFileSync(join(WEB, "public/index.html"), "utf8").matchAll(/<script>([\s\S]*?)<\/script>/g)];
-  if (m.length !== 1) throw new Error("apps/web/public/index.html must hold exactly one inline script");
-  return m[0]![1]!;
-}
+const TYPES: Record<string, string> = { xml: "application/xml; charset=utf-8", jpg: "image/jpeg", jpeg: "image/jpeg", png: "image/png", webp: "image/webp", svg: "image/svg+xml", json: "application/json; charset=utf-8", txt: "text/plain; charset=utf-8", md: "text/plain; charset=utf-8" };
 
 const UPDATED_FILE = join(DOCS, "captured/updated.json");
 
@@ -256,7 +320,7 @@ export function pageDates(): { dates: Record<string, string>; fromGit: boolean }
 }
 
 /** Expand generated sections, captured examples and facts, and the doc: and repo: link schemes. Problems are collected, never thrown. */
-function prepare(md: string, href: (slug: string) => string, problems: string[], page: string): string {
+function prepare(md: string, href: (slug: string) => string, app: string, problems: string[], page: string): string {
   const cap = captured(ROOT);
   const safe = (what: string, f: () => string) => {
     try {
@@ -279,6 +343,7 @@ function prepare(md: string, href: (slug: string) => string, problems: string[],
       if (!PAGES.some((p) => p.slug === slug)) problems.push(`${page}: link to unknown page doc:${slug}`);
       return `](${href(slug)}${hash ?? ""})`;
     })
+    .replace(/\]\(app:(\/[^)\s]*)\)/g, (_, path: string) => `](${app}${path === "/" ? "/" : path})`)
     .replace(/\]\(repo:([^)\s#]+)(#[^)\s]*)?\)/g, (_, path: string, hash: string | undefined) => {
       if (!existsSync(join(ROOT, path))) problems.push(`${page}: repository link to missing file ${path}`);
       const kind = existsSync(join(ROOT, path)) && statSync(join(ROOT, path)).isDirectory() ? "tree" : "blob";
@@ -327,22 +392,33 @@ function pathCards(href: (slug: string) => string): string {
 export interface DocsBuild {
   files: Map<string, DocsFile>;
   problems: string[];
+  /** the hashed files under assets/, as paths from the site root */
+  assets: { css: string; js: string; search: string };
+  app: string;
 }
 
+const hashOf = (body: string | Uint8Array) => createHash("sha256").update(body).digest("hex").slice(0, 12);
+
 /** Every file of the docs site plus the problems the checks found (broken links, anchors, generators, summaries). */
-export async function buildDocsChecked(o: { base?: string; app?: string } = {}): Promise<DocsBuild> {
-  const base = (o.base ?? "/docs").replace(/\/+$/, "");
-  const app = (o.app ?? "").replace(/\/+$/, ""); // where the app lives ("" = same origin)
+export async function buildDocsChecked(o: { app?: string } = {}): Promise<DocsBuild> {
+  const base = ""; // the site is served at the root of its own origin
+  const app = (o.app || defaultAppUrl()).replace(/\/+$/, ""); // where the app lives (links and live figures)
+  if (!/^https?:\/\/[^/]+$/.test(app)) throw new Error(`the app origin must be http(s)://host with no path, got "${app}"`);
   const out = new Map<string, DocsFile>();
   const problems: string[] = [];
-  const href = (slug: string) => (slug === "overview" ? base || "/" : `${base}/${slug}`);
-  const theme = themeScript();
+  const href = (slug: string) => (slug === "overview" ? "/" : `/${slug}`);
+  // the scripts, styles and search index first: the pages name them by the hash of their content
+  const js = await Bun.build({ entrypoints: [join(DOCS, "src/client.ts")], target: "browser", minify: true, sourcemap: "none" });
+  if (!js.success) throw new Error(js.logs.map(String).join("\n"));
+  const jsText = await js.outputs[0]!.text();
+  const cssText = readFileSync(join(DOCS, "src/docs.css"), "utf8");
+  const assets = { css: `/assets/docs.${hashOf(cssText)}.css`, js: `/assets/docs.${hashOf(jsText)}.js`, search: "" };
   const shotsFile = join(DOCS, "captured/shots.json");
   const shots: Record<string, Shot> = existsSync(shotsFile) ? (JSON.parse(readFileSync(shotsFile, "utf8")).shots ?? {}) : {};
   const docs = PAGES.map((p) => {
     const file = join(DOCS, "content", p.file);
     if (!existsSync(file)) problems.push(`${p.slug}: content file ${p.file} is missing`);
-    return { ...p, md: prepare(existsSync(file) ? readFileSync(file, "utf8") : `# ${p.title}\n\n> This page is not written yet (TBA).\n`, href, problems, p.slug) };
+    return { ...p, md: prepare(existsSync(file) ? readFileSync(file, "utf8") : `# ${p.title}\n\n> This page is not written yet (TBA).\n`, href, app, problems, p.slug) };
   });
   const search: SearchEntry[] = [];
   const sectionOf = (slug: string) => SECTIONS.find((s) => s.pages.some((p) => p.slug === slug))!;
@@ -367,6 +443,57 @@ export async function buildDocsChecked(o: { base?: string; app?: string } = {}):
     const here = sectionOf(cur);
     return SECTIONS.map((s) => `<a class="dc-tabl" href="${href(s.pages[0]!.slug)}"${s === here ? ` aria-current="true"` : ""}>${esc(s.tab)}</a>`).join("");
   };
+  // the parts every page shares: the head, the top bar, the search palette
+  const head = (h: { title: string; description: string; path: string | null; kind: "website" | "article" }) => `<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>${esc(h.title)}</title>
+<meta name="description" content="${esc(h.description)}">
+${h.path === null ? `<meta name="robots" content="noindex">` : `<link rel="canonical" href="${DOCS_ORIGIN}${h.path}">`}
+<meta property="og:site_name" content="${PRODUCT} docs">
+<meta property="og:type" content="${h.kind}">
+<meta property="og:title" content="${esc(h.title)}">
+<meta property="og:description" content="${esc(h.description)}">
+<meta property="og:url" content="${DOCS_ORIGIN}${h.path ?? "/"}">
+<meta property="og:image" content="${DOCS_ORIGIN}/logo.png">
+<meta name="twitter:card" content="summary">
+<link rel="icon" href="/favicon.png" type="image/png">
+<meta name="theme-color" content="#f8f8f8">
+${FONTS.map((f) => `<link rel="preload" href="/fonts/${f}" as="font" type="font/woff2" crossorigin>`).join("\n")}
+<link rel="stylesheet" href="${assets.css}">
+</head>
+<body data-app="${esc(app)}" data-search="@@SEARCH@@">
+<a class="dc-skip" href="#main">Skip to the content</a>`;
+  const top = (cur: string | null) => `<header class="dc-top">
+  <div class="dc-bar">
+    <button class="dc-iconb dc-menu-b" id="dc-menu" type="button" aria-label="Open the page menu" aria-expanded="false" aria-controls="dc-side">${I.menu}</button>
+    <a class="dc-brand" href="${href("overview")}" aria-label="${PRODUCT} docs, start page">${LOGO(base)}<span class="dc-brand-n">${PRODUCT}</span><span class="dc-brand-d">Docs</span></a>
+    <button class="dc-search-b" id="dc-search-open" type="button" aria-haspopup="dialog" aria-controls="dc-palette">${I.search}<span class="dc-search-t">Search the docs</span><kbd class="dc-k" id="dc-k">Ctrl K</kbd></button>
+    <nav class="dc-links" aria-label="Site">
+      <a href="${app}/">Explorer</a>
+      <a href="${REPO_URL}" target="_blank" rel="noopener">GitHub${I.out}</a>
+      <a class="dc-cta" href="${app}/launch">Launch</a>
+    </nav>
+  </div>
+  <nav class="dc-tabsbar" aria-label="Sections"><div class="dc-tabsbar-in">${cur === null ? tabs("overview").replace(' aria-current="true"', "") : tabs(cur)}</div></nav>
+</header>`;
+  const side = (cur: string | null) => `<aside class="dc-side" id="dc-side" aria-label="Docs pages">
+    <div class="dc-side-h"><span>Pages</span><button class="dc-iconb" id="dc-menu-x" type="button" aria-label="Close the page menu">${I.close}</button></div>
+    <nav class="dc-nav" aria-label="Docs pages">${cur === null ? nav("overview").replace(' aria-current="page"', "") : nav(cur)}</nav>
+    <div class="dc-side-f"><a href="${app}/">Explorer</a><a href="${REPO_URL}" target="_blank" rel="noopener">GitHub</a><a href="${app}/launch">Launch an agent</a></div>
+  </aside>
+  <div class="dc-scrim" id="dc-scrim" hidden></div>`;
+  const tail = `<dialog class="dc-palette" id="dc-palette" aria-label="Search the docs">
+  <div class="dc-search" role="search"><label class="dc-sr" for="dc-q">Search the docs</label><span class="dc-si">${I.search}</span><input id="dc-q" type="search" placeholder="Search the docs" autocomplete="off" spellcheck="false" role="combobox" aria-expanded="false" aria-controls="dc-res" aria-autocomplete="list"><button class="dc-k dc-esc" type="button" id="dc-palette-x" aria-label="Close the search">Esc</button></div>
+  <div class="dc-res" id="dc-res" role="listbox" aria-label="Results"></div>
+  <div class="dc-palette-f"><span><kbd class="dc-k">Up</kbd><kbd class="dc-k">Down</kbd> to move</span><span><kbd class="dc-k">Enter</kbd> to open</span></div>
+</dialog>
+<script type="module" src="${assets.js}"></script>
+</body>
+</html>
+`;
   // {{fig:paths}} on Start here, and {{fig:path-<section id>}}: the pages of one path as cards, each with
   // the first sentence of its own summary
   const firstSentence = (md: string) => {
@@ -410,41 +537,10 @@ export async function buildDocsChecked(o: { base?: string; app?: string } = {}):
     const tocLinks = r.toc.map((t) => `<a href="#${t.id}" data-lv="${t.level}">${esc(t.text)}</a>`).join("");
     const hasToc = r.toc.filter((t) => t.level === 2).length >= 2 || r.toc.length >= 4;
     const day = updated[d.file];
-    const html = `<!doctype html>
-<html lang="en">
-<head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>${esc(title)}</title>
-<meta name="description" content="${esc(text(r.summary).slice(0, 300) || `${r.title || d.title}: ${PRODUCT} documentation.`)}">
-<link rel="icon" href="${base}/favicon.png" type="image/png">
-<meta name="theme-color" content="#f8f8f8">
-${FONTS.map((f) => `<link rel="preload" href="${base}/fonts/${f}" as="font" type="font/woff2" crossorigin>`).join("\n")}
-<script>${theme}</script>
-<link rel="stylesheet" href="${base}/assets/docs.css">
-</head>
-<body data-docs-base="${esc(base)}">
-<a class="dc-skip" href="#main">Skip to the content</a>
-<header class="dc-top">
-  <div class="dc-bar">
-    <button class="dc-iconb dc-menu-b" id="dc-menu" type="button" aria-label="Open the page menu" aria-expanded="false" aria-controls="dc-side">${I.menu}</button>
-    <a class="dc-brand" href="${href("overview")}" aria-label="${PRODUCT} docs, start page">${LOGO(base)}<span class="dc-brand-n">${PRODUCT}</span><span class="dc-brand-d">Docs</span></a>
-    <button class="dc-search-b" id="dc-search-open" type="button" aria-haspopup="dialog" aria-controls="dc-palette">${I.search}<span class="dc-search-t">Search the docs</span><kbd class="dc-k" id="dc-k">Ctrl K</kbd></button>
-    <nav class="dc-links" aria-label="Site">
-      <a href="${app}/">Explorer</a>
-      <a href="${REPO_URL}" target="_blank" rel="noopener">GitHub${I.out}</a>
-      <a class="dc-cta" href="${app}/launch">Launch</a>
-    </nav>
-  </div>
-  <nav class="dc-tabsbar" aria-label="Sections"><div class="dc-tabsbar-in">${tabs(d.slug)}</div></nav>
-</header>
+    const html = `${head({ title, description: text(r.summary).replace(/ ([,.;:])/g, "$1").slice(0, 300) || `${r.title || d.title}: ${PRODUCT} documentation.`, path: href(d.slug), kind: d.slug === "overview" ? "website" : "article" })}
+${top(d.slug)}
 <div class="dc-shell${hasToc ? "" : " no-toc"}">
-  <aside class="dc-side" id="dc-side" aria-label="Docs pages">
-    <div class="dc-side-h"><span>Pages</span><button class="dc-iconb" id="dc-menu-x" type="button" aria-label="Close the page menu">${I.close}</button></div>
-    <nav class="dc-nav" aria-label="Docs pages">${nav(d.slug)}</nav>
-    <div class="dc-side-f"><a href="${app}/">Explorer</a><a href="${REPO_URL}" target="_blank" rel="noopener">GitHub</a><a href="${app}/launch">Launch an agent</a></div>
-  </aside>
-  <div class="dc-scrim" id="dc-scrim" hidden></div>
+  ${side(d.slug)}
   <main class="dc-main" id="main"><article class="dc-article">
     <header class="dc-head">
       ${eyebrow}
@@ -459,34 +555,53 @@ ${FONTS.map((f) => `<link rel="preload" href="${base}/fonts/${f}" as="font" type
   </article></main>
   ${hasToc ? `<aside class="dc-toc" aria-label="On this page"><nav class="dc-toc-n" id="dc-toc" aria-label="On this page"><div class="dc-toc-h">${I.list}On this page</div>${tocLinks}</nav></aside>` : ""}
 </div>
-<dialog class="dc-palette" id="dc-palette" aria-label="Search the docs">
-  <div class="dc-search" role="search"><label class="dc-sr" for="dc-q">Search the docs</label><span class="dc-si">${I.search}</span><input id="dc-q" type="search" placeholder="Search the docs" autocomplete="off" spellcheck="false" role="combobox" aria-expanded="false" aria-controls="dc-res" aria-autocomplete="list"><button class="dc-k dc-esc" type="button" id="dc-palette-x" aria-label="Close the search">Esc</button></div>
-  <div class="dc-res" id="dc-res" role="listbox" aria-label="Results"></div>
-  <div class="dc-palette-f"><span><kbd class="dc-k">Up</kbd><kbd class="dc-k">Down</kbd> to move</span><span><kbd class="dc-k">Enter</kbd> to open</span></div>
-</dialog>
-<script type="module" src="${base}/assets/docs.js"></script>
-</body>
-</html>
-`;
+${tail}`;
     out.set(d.slug === "overview" ? "index.html" : `${d.slug}.html`, { body: html, type: "text/html; charset=utf-8" });
   }
-  const js = await Bun.build({ entrypoints: [join(DOCS, "src/client.ts")], target: "browser", minify: true, sourcemap: "none" });
-  if (!js.success) throw new Error(js.logs.map(String).join("\n"));
-  out.set("assets/docs.js", { body: await js.outputs[0]!.text(), type: "text/javascript; charset=utf-8" });
-  out.set("assets/search.json", { body: JSON.stringify(search), type: "application/json; charset=utf-8" });
-  out.set("assets/docs.css", { body: readFileSync(join(DOCS, "src/docs.css"), "utf8").replaceAll('url("/fonts/', `url("${base}/fonts/`), type: "text/css; charset=utf-8" });
+  // the page an unknown path gets (the host answers it with status 404)
+  out.set("404.html", {
+    body: `${head({ title: `Page not found | ${PRODUCT} docs`, description: `This page does not exist in the ${PRODUCT} docs.`, path: null, kind: "website" })}
+${top(null)}
+<div class="dc-shell no-toc">
+  ${side(null)}
+  <main class="dc-main" id="main"><article class="dc-article">
+    <header class="dc-head">
+      <div class="dc-eyebrow">404</div>
+      <h1 class="dc-h1">Page not found</h1>
+      <p class="dc-lead">There is no docs page at this address. It may have moved: search the docs, or start from one of the sections below.</p>
+    </header>
+    <div class="dc-prose"><nav class="dc-cards" data-cols="2" aria-label="Sections">${SECTIONS.map((s) => `<a class="dc-card is-link" href="${href(s.pages[0]!.slug)}"><b class="dc-card-t">${esc(s.goal ?? s.title)}</b><span class="dc-card-b">${esc(s.pages[0]!.title)}</span><span class="dc-card-go" aria-hidden="true"></span></a>`).join("")}</nav></div>
+  </article></main>
+</div>
+${tail}`,
+    type: "text/html; charset=utf-8",
+  });
+  const searchText = JSON.stringify(search);
+  assets.search = `/assets/search.${hashOf(searchText)}.json`;
+  for (const [p, f] of out) if (p.endsWith(".html")) f.body = String(f.body).replace("@@SEARCH@@", assets.search);
+  out.set(assets.js.slice(1), { body: jsText, type: "text/javascript; charset=utf-8" });
+  out.set(assets.search.slice(1), { body: searchText, type: "application/json; charset=utf-8" });
+  out.set(assets.css.slice(1), { body: cssText, type: "text/css; charset=utf-8" });
+  // for crawlers: every page under the canonical origin, with the day it last changed
+  out.set("sitemap.xml", {
+    body: `<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n${docs.map((d) => `  <url><loc>${DOCS_ORIGIN}${href(d.slug)}</loc>${updated[d.file] ? `<lastmod>${updated[d.file]}</lastmod>` : ""}</url>`).join("\n")}\n</urlset>\n`,
+    type: "application/xml; charset=utf-8",
+  });
+  out.set("robots.txt", { body: `User-agent: *\nAllow: /\nSitemap: ${DOCS_ORIGIN}/sitemap.xml\n`, type: "text/plain; charset=utf-8" });
+  out.set("vercel.json", { body: JSON.stringify(vercelConfig(app), null, 2) + "\n", type: "application/json; charset=utf-8" });
   out.set("favicon.png", { body: readFileSync(join(WEB, "public/favicon.png")), type: "image/png" });
   out.set("logo.png", { body: readFileSync(join(WEB, "public/logo.png")), type: "image/png" });
   for (const f of FONTS) out.set(`fonts/${f}`, { body: new Uint8Array(readFileSync(join(WEB, "public/fonts", f))), type: "font/woff2" });
   // the docs' own static files (screenshots) and the licensed provider marks the models page shows
   for (const f of walk(join(DOCS, "public"))) out.set(f, { body: new Uint8Array(readFileSync(join(DOCS, "public", f))), type: TYPES[f.split(".").pop()!.toLowerCase()] ?? "application/octet-stream" });
   for (const f of walk(join(WEB, "public/providers"))) out.set(`providers/${f}`, { body: new Uint8Array(readFileSync(join(WEB, "public/providers", f))), type: TYPES[f.split(".").pop()!.toLowerCase()] ?? "text/plain; charset=utf-8" });
+  for (const d of ["assets", "fonts", "shots", "providers"]) if (PAGES.some((p) => p.slug === d)) problems.push(`${d}: a page cannot be named like a directory of the output`);
   problems.push(...checkDocs(out, base));
-  return { files: out, problems };
+  return { files: out, problems, assets, app };
 }
 
 /** Every file of the docs site, keyed by its path under the base ("index.html", "verification.html", "assets/docs.js", ...). */
-export async function buildDocs(o: { base?: string; app?: string } = {}): Promise<Map<string, DocsFile>> {
+export async function buildDocs(o: { app?: string } = {}): Promise<Map<string, DocsFile>> {
   const b = await buildDocsChecked(o);
   if (b.problems.length) console.warn(`docs: ${b.problems.length} problem(s):\n  ${b.problems.join("\n  ")}`);
   return b.files;
@@ -533,8 +648,13 @@ export function docsLookup(files: Map<string, DocsFile>, rest: string): DocsFile
 
 if (import.meta.main) {
   const arg = (n: string, d: string) => (process.argv.includes(`--${n}`) ? process.argv[process.argv.indexOf(`--${n}`) + 1]! : d);
+  const app = arg("app", defaultAppUrl());
+  if (process.argv.includes("--print-csp")) {
+    console.log(docsCsp(app));
+    process.exit(0);
+  }
   const out = arg("out", join(DOCS, "dist"));
-  const { files, problems } = await buildDocsChecked({ base: arg("base", "/docs"), app: arg("app", "") });
+  const { files, problems } = await buildDocsChecked({ app });
   rmSync(out, { recursive: true, force: true });
   for (const [p, f] of files) {
     mkdirSync(dirname(join(out, p)), { recursive: true });
@@ -547,7 +667,14 @@ if (import.meta.main) {
     const next = JSON.stringify({ note: "The day each docs page last changed (git); written by bun scripts/docs/build.ts, read where the build has no git history.", pages }, null, 2) + "\n";
     if (!existsSync(UPDATED_FILE) || readFileSync(UPDATED_FILE, "utf8") !== next) writeFileSync(UPDATED_FILE, next);
   }
-  console.log(`built ${files.size} files (${PAGES.length} pages) into ${out}`);
+  // the Vercel project file names the app origin in its page policy: kept equal to config/sites.json
+  // (not rewritten for a one-off --app or UNITS_APP_URL build)
+  const project = vercelProjectJson(sites.app_url.replace(/\/+$/, ""));
+  if (!existsSync(VERCEL_FILE) || readFileSync(VERCEL_FILE, "utf8") !== project) {
+    writeFileSync(VERCEL_FILE, project);
+    console.log("rewrote apps/docs/vercel.json (commit it)");
+  }
+  console.log(`built ${files.size} files (${PAGES.length} pages) into ${out} for ${DOCS_ORIGIN}, app ${app}`);
   if (problems.length) {
     console.error(`${problems.length} problem(s):\n  ${problems.join("\n  ")}`);
     process.exit(1);
