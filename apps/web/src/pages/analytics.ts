@@ -1,36 +1,29 @@
 import { get } from "../api.ts";
-import { shortHex, stamp, when } from "../fmt.ts";
-import { html, type Raw } from "../html.ts";
-import { fmtAmount, fmtInt, market, QUOTE_LABEL } from "../market.ts";
-import { badge, empty, panel } from "../ui.ts";
-import { agentLabel, chartSlot, chip, hours, injectInsightsStyle, kpis, pct, qs, secs, usd, wireInsights } from "./insights-ui.ts";
+import { shortHex, shortId, stamp, when } from "../fmt.ts";
+import { esc, html, raw, type Raw } from "../html.ts";
+import { fmtAmount, fmtInt, market, QUOTE } from "../market.ts";
+import { badge, empty, panel, reasonText } from "../ui.ts";
+import { agentLabel, chartSlot, chip, hours, injectInsightsStyle, kpis, mountInsightCharts, pct, qs, secs, usd, wireInsights } from "./insights-ui.ts";
 import { providerName } from "./social-ui.ts";
-import { providerLogo } from "../provider-logo.ts";
 import type { Page } from "./types.ts";
-import { mountViz } from "./analytics-charts.ts";
-import { modelsExtraSection, spendSection } from "./analytics-cost.ts";
-import { launchesSection, loadCandles, marketExtra, socialSection } from "./analytics-market.ts";
-import { opsSection } from "./analytics-ops.ts";
-import { resultsSection } from "./analytics-results.ts";
-import { AN_CSS, section, sectionNav } from "./analytics-ui.ts";
-import { verifySection } from "./analytics-verify.ts";
-import { workSection } from "./analytics-work.ts";
+import { CHART_CSS, fmtVal, mountCard, shortDay, slotColor, sparkline, tone, type CardDef, type ChartSpec, type TimeSpec, type Unit } from "./analytics-charts.ts";
 
-// Analytics (/analytics, docs/plans/PAGES-PROJECTS-GENERATIONS-ANALYTICS.md): network status, cost
-// transparency, the model leaderboard, activity, verification and the token market, over 24 h, 7 d or
-// all time. Every figure is Core's GET /v1/analytics/overview (published learnings episodes, final
-// replays, accepted generations, the runtime's spend report) or the market indexer (/market/tokens,
-// /market/status); a source with nothing shows an empty state. No fee figure. Each section is a pure
-// function of its slice of the data, so the sections can be moved or restyled one by one.
+// Analytics (/analytics, docs/plans/PAGES-PROJECTS-GENERATIONS-ANALYTICS.md section 6): one dashboard.
+// Headline figures with the change against the period before and a sparkline, then a small number of
+// charts that each answer one question, the network status widgets, and a few tables folded closed.
+// Every figure is Core's GET /v1/analytics/dashboard (bucket aggregates of published learnings
+// episodes, accepted generations, replays of final candidates, live sessions, the runtime's report and
+// the gate's viewer counts), GET /v1/analytics/overview and /ops for the status row, or the market
+// indexer. The window (24 h, 7 d, 30 d, all) applies to every figure and chart. A block whose series is
+// empty says so in one line; a block that cannot have data yet is not rendered. No fee figure.
 
 type O = any;
 const WINDOWS: [string, string][] = [
   ["24h", "24 h"],
   ["7d", "7 d"],
+  ["30d", "30 d"],
   ["all", "All time"],
 ];
-const winLabel = (w: string) => WINDOWS.find((x) => x[0] === w)?.[1] ?? w;
-const dayLabel = (d: string) => d.slice(5);
 
 // ------------------------------------------------------------------------------------------------ network
 
@@ -96,104 +89,372 @@ export function networkSection(o: O, idx: any | null): Raw {
   </section>`;
 }
 
-// ------------------------------------------------------------------------------------------------ costs
+// ------------------------------------------------------------------------------------------------ site checks
 
-export function costSection(o: O): Raw {
-  const c = o.costs;
-  const t = c.totals;
-  const runway = new Map<string, any>(c.runway.map((r: any) => [r.agent, r]));
-  const e2b = o.network.runtime?.desktops?.e2b;
-  const head = kpis([
-    ["Model spend", usd(t.usd), `${t.priced} of ${t.attempts} attempts priced`],
-    ["Per accepted generation", usd(t.usd_per_accepted), `${t.accepted} accepted`],
-    ["Per 1% of verified gain", usd(t.usd_per_gain_pct), `${pct(t.gain_pct)} gain summed`],
-    ["Ended with nothing", String(c.nothing.total), c.nothing.usd === null ? "none of them priced" : `${usd(c.nothing.usd)} spent on them`],
-    ["E2B desktops today", e2b ? usd(e2b.spent_today_usd) : "TBA", e2b ? `cap ${usd(e2b.cap_usd)} per UTC day` : "no desktop report"],
-  ]);
-  const byAgent = c.by_agent.length
-    ? html`<div class="tw"><table class="t"><thead><tr><th>Agent</th><th class="right">Attempts</th><th class="right">Accepted</th><th class="right">Spend</th><th class="right hide-sm">Per accepted</th><th class="right hide-sm">Runway</th></tr></thead><tbody>${c.by_agent.map((a: any) => {
-        const r = runway.get(a.agent);
-        return html`<tr data-agent="${a.agent}"><td><a class="link" href="/agents/${a.agent}/profile">${agentLabel(a.agent, a.name)}</a>${a.test_launch ? html` ${badge("test launch")}` : ""}</td>
-          <td class="right num">${a.attempts}</td><td class="right num">${a.accepted}</td><td class="right num">${usd(a.usd)}<div class="sub">${a.priced} priced</div></td>
-          <td class="right num hide-sm">${usd(a.usd_per_accepted)}</td>
-          <td class="right hide-sm">${r ? html`<span class="num">${hours(r.runway_h)}</span><div class="sub">${usd(r.vault_usd)} vault, ${usd(r.burn_usd_per_h)}/h</div>` : html`<span class="faint">not hosted</span>`}</td></tr>`;
-      })}</tbody></table></div>`
-    : empty("No published attempt in this window", "An attempt is counted once its learnings episode is published (after its candidate is final).");
-  const byProv = c.by_provider.length
-    ? html`<div class="tw"><table class="t"><thead><tr><th>Provider</th><th class="right">Attempts</th><th class="right">Spend</th><th class="right hide-sm">Per accepted</th></tr></thead><tbody>${c.by_provider.map(
-        (p: any) => html`<tr><td>${providerLogo(p.key, providerName(p.key) ?? p.key)} ${providerName(p.key) ?? p.key}</td><td class="right num">${p.attempts}</td><td class="right num">${usd(p.usd)}</td><td class="right num hide-sm">${usd(p.usd_per_accepted)}</td></tr>`,
-      )}</tbody></table></div>`
-    : empty("No spend in this window");
-  const nothing = c.nothing.reasons.length
-    ? html`<div class="tw"><table class="t"><thead><tr><th>Outcome</th><th>Reason</th><th class="right">Attempts</th></tr></thead><tbody>${c.nothing.reasons.map(
-        (r: any) => html`<tr><td>${r.outcome.replace("_", " ")}</td><td class="wrap">${r.reason.replace(/_/g, " ")}</td><td class="right num">${r.n}</td></tr>`,
-      )}</tbody></table></div>`
-    : empty("Every attempt in this window produced an accepted generation, or none was published");
-  const daily = chartSlot({ type: "bar", label: "model spend per day, USD", bars: c.daily.map((d: any) => ({ label: dayLabel(d.day), v: d.usd, tip: `${d.day}: ${d.priced ? usd(d.usd) : "no priced attempt"}, ${d.attempts} attempts (${d.priced} priced), ${d.accepted} accepted` })) }, 140);
-  const runwayOnly = c.runway.filter((r: any) => !c.by_agent.some((a: any) => a.agent === r.agent));
-  return html`<section class="an-sec" id="an-costs" aria-labelledby="an-costs-h"><h2 class="an-h" id="an-costs-h">Cost transparency</h2>
-    <section class="panel">${head}${daily}<div class="ins-legend"><span><i></i>USD per day (all time, published attempts by start day)</span></div></section>
-    ${panel("Spend by agent", byAgent, { count: c.by_agent.length, note: html`${c.source}. USD per accepted counts priced attempts only. Runway is the runtime's: vault over the last 24 h burn.${runwayOnly.length ? html` Bound agents without a published attempt here: ${runwayOnly.map((r: any) => `${agentLabel(r.agent, r.name)} (${hours(r.runway_h)})`).join(", ")}.` : ""}` })}
-    <div class="grid-2">${panel("Spend by provider", byProv)}${panel("Attempts that ended with nothing", nothing, { count: c.nothing.total })}</div>
-  </section>`;
+/** Compact infrastructure widgets beside the network status: the monitor's checks, backups, measured deploy downtime. */
+function opsWidgets(x: O): Raw {
+  const m = x.monitor;
+  const checks: any[] = m?.checks ?? [];
+  const notOk = checks.filter((c) => c.level !== "ok");
+  const backups = checks.filter((c) => String(c.id).startsWith("backup"));
+  const rt = x.restore_tests?.[0];
+  const iw = x.deploys?.in_window;
+  const w = (l: string, v: Raw | string, sub: Raw | string) => html`<section class="panel an-w an-kpi an-kpi-s"><span class="eyebrow">${l}</span><b>${v}</b><small>${sub}</small></section>`;
+  return html`<div class="an-grid an-grid-s">
+    ${m ? w("Site checks", html`${checks.length - notOk.length}<span class="faint"> of ${checks.length} ok</span>`, notOk.length ? notOk.map((c) => `${c.id}: ${c.msg}`).join("; ") : html`all passing, last run ${when(m.at)}`) : ""}
+    ${backups.length ? w("Backups", backups.every((c) => c.level === "ok") ? "fresh" : backups.some((c) => c.level === "fail") ? "stale" : "warning", rt ? html`restore test ${rt.result ?? "TBA"} ${when(rt.ended_at)}` : backups.map((c) => c.msg).join("; ")) : ""}
+    ${iw && iw.probes ? w("Deploy downtime", secs(iw.longest_gap_ms / 1000), `longest gap between two 200 answers over ${iw.deploys} deploys in the window; ${fmtInt(iw.non_200)} of ${fmtInt(iw.probes)} probes not 200`) : ""}
+  </div>`;
 }
 
-// ------------------------------------------------------------------------------------------------ models
+// ------------------------------------------------------------------------------------------------ headline figures
 
-export function modelSection(o: O): Raw {
-  const rows = o.models.rows as any[];
-  const th = o.thresholds;
+interface Kpi {
+  id: string;
+  label: string;
+  value: string;
+  cur: number | null;
+  prev: number | null | undefined;
+  /** which direction is good news; "none" for figures that are neither (spend) */
+  good: "up" | "down" | "none";
+  /** the change in points instead of percent (a rate) */
+  points?: boolean;
+  series: (number | null)[];
+  color: string;
+  sub: string;
+  prevText?: (v: number) => string;
+}
+
+function deltaChip(k: Kpi, win: string): Raw {
+  const span = win === "24h" ? "24 h" : win === "7d" ? "7 d" : "30 d";
+  if (win === "all") return html`<span class="an-delta" title="All time has no period before it">all time</span>`;
+  if (k.cur === null || k.prev === null || k.prev === undefined) return html`<span class="an-delta" title="Nothing recorded in the ${span} before this window">no earlier figure</span>`;
+  const d = k.points ? (k.cur - k.prev) * 100 : k.prev === 0 ? null : ((k.cur - k.prev) / Math.abs(k.prev)) * 100;
+  const was = `${k.prevText ? k.prevText(k.prev) : fmtVal(k.prev)} in the ${span} before`;
+  if (d === null) return html`<span class="an-delta" title="${was}">from 0 before</span>`;
+  if (Math.abs(d) < 0.05) return html`<span class="an-delta" title="${was}">no change</span>`;
+  const up = d > 0;
+  const cls = k.good === "none" ? "" : (k.good === "up") === up ? "good" : "bad";
+  return html`<span class="an-delta ${cls}" title="${was}"><i>${up ? "▲" : "▼"}</i>${Math.abs(d).toFixed(Math.abs(d) >= 100 ? 0 : 1)}${k.points ? " pts" : "%"}</span>`;
+}
+
+function kpiTile(k: Kpi, win: string): Raw {
+  return html`<section class="an-tile" data-kpi="${k.id}"><span class="an-tile-l">${k.label}</span><div class="an-tile-v"><b>${k.value}</b>${deltaChip(k, win)}</div>${raw(sparkline(k.series, k.color))}<small>${k.sub}</small></section>`;
+}
+
+const compactAmount = (v: number) => (Math.abs(v) >= 10_000 ? fmtVal(v, "amount") : fmtAmount(v));
+
+interface Market {
+  series: number[];
+  value: number;
+  prev: number | null;
+  tokens: number;
+  capped: boolean;
+  candles: Map<string, any[]>;
+  list: any[];
+}
+
+/** Quote volume per bucket summed over the listed tokens' candles (the indexer leaves test launches out). */
+async function loadMarket(d: O): Promise<Market | null> {
+  const list = await market<{ tokens: any[] }>("tokens?limit=500").then((r) => r.tokens).catch(() => null);
+  if (!list) return null;
+  const pick = [...list].sort((a, b) => (b.market_cap ?? 0) - (a.market_cap ?? 0)).slice(0, 20);
+  const tf = d.axis.unit === "hour" ? "1h" : "1d";
+  const size = d.axis.unit === "hour" ? 3_600_000 : 86_400_000;
+  const from = Math.floor((d.prev?.from ?? d.range.from) / 1000), to = Math.ceil(d.range.to / 1000);
+  const candles = new Map<string, any[]>();
+  await Promise.all(pick.map(async (t) => candles.set(t.mint, ((await market<any>(`tokens/${t.mint}/candles?tf=${tf}&from=${from}&to=${to}`).catch(() => null))?.candles ?? []) as any[])));
+  const series = d.axis.t.map(() => 0) as number[];
+  let prev = 0;
+  for (const cs of candles.values())
+    for (const c of cs) {
+      const ms = c.t * 1000;
+      const i = Math.floor((ms - d.range.from) / size);
+      if (i >= 0 && i < series.length) series[i]! += c.volume ?? 0;
+      else if (d.prev && ms >= d.prev.from && ms < d.prev.to) prev += c.volume ?? 0;
+    }
+  return { series, value: series.reduce((s, x) => s + x, 0), prev: d.prev ? prev : null, tokens: pick.length, capped: list.length > pick.length, candles, list };
+}
+
+function kpiRow(d: O, m: Market | null, win: string): Raw {
+  const k = d.kpis;
+  const acc = k.acceptance;
+  const v = k.viewers;
+  const tiles: Kpi[] = [
+    { id: "improvements", label: "Verified improvements", value: fmtInt(k.improvements.value), cur: k.improvements.value, prev: k.improvements.prev, good: "up", series: k.improvements.series, color: tone.good(), sub: `accepted generations, ${pct(k.improvements.gain_pct, 1)} verified gain summed` },
+    { id: "acceptance", label: "Acceptance rate", value: acc.value === null ? "no attempts" : pct(acc.value * 100, 1), cur: acc.value, prev: acc.prev, good: "up", points: true, series: acc.series.map((x: number | null) => (x === null ? null : x * 100)), color: slotColor(0), sub: `${fmtInt(acc.accepted)} of ${fmtInt(acc.attempts)} model attempts`, prevText: (x) => pct(x * 100, 1) },
+    { id: "spend", label: "Model spend", value: k.spend.value === null ? "none priced" : usd(k.spend.value), cur: k.spend.value, prev: k.spend.prev, good: "none", series: k.spend.series, color: slotColor(1), sub: `${fmtInt(k.spend.priced)} priced attempts`, prevText: (x) => usd(x) },
+    { id: "cost", label: "Cost per accepted", value: k.cost_per_accepted.value === null ? "none accepted" : usd(k.cost_per_accepted.value), cur: k.cost_per_accepted.value, prev: k.cost_per_accepted.prev, good: "down", series: k.cost_per_accepted.series, color: slotColor(6), sub: `model spend over ${fmtInt(k.cost_per_accepted.accepted)} accepted improvements`, prevText: (x) => usd(x) },
+    { id: "agents", label: "Live agents", value: fmtInt(k.agents.value), cur: k.agents.value, prev: k.agents.prev, good: "up", series: k.agents.series, color: tone.accent(), sub: `in an attempt in the window; ${fmtInt(k.agents.live_now)} live right now` },
+    { id: "viewers", label: "Viewers now", value: v.value === null ? "not sampled" : fmtInt(v.value), cur: v.peak, prev: v.prev_peak, good: "up", series: v.series, color: slotColor(4), sub: v.since === null ? "the gate's counts are sampled from this release on" : `watching live desktops; peak ${v.peak === null ? "not sampled" : fmtInt(v.peak)} in the window`, prevText: (x) => `peak ${fmtInt(x)}` },
+    { id: "volume", label: "Market volume", value: m ? compactAmount(m.value) : "no answer", cur: m ? m.value : null, prev: m ? m.prev : null, good: "up", series: m ? m.series : [], color: slotColor(2), sub: m ? `${QUOTE} traded over ${m.tokens} listed tokens${m.capped ? " (the 20 largest)" : ""}` : "the market indexer did not answer", prevText: (x) => `${compactAmount(x)} ${QUOTE}` },
+  ];
+  return html`${tiles.map((t) => kpiTile(t, win))}`;
+}
+
+// ------------------------------------------------------------------------------------------------ charts
+
+interface CardShell {
+  id: string;
+  title: string;
+  sub: string;
+  h: number;
+  wide?: boolean;
+}
+const CARDS: CardShell[] = [
+  { id: "improvements", title: "How much verified work has landed, and where?", sub: "Accepted generations, cumulative, stacked by project. Each step is one generation whose replays confirmed it.", h: 300, wide: true },
+  { id: "attempts", title: "How do attempts end?", sub: "Attempts by outcome per hour or day, from published learnings episodes. Scripted test attempts (a recipe patch, no model) are left out unless added.", h: 250 },
+  { id: "spend", title: "What does the spend buy?", sub: "Model spend and the accepted improvements of the same attempts, on one time axis.", h: 280 },
+  { id: "cost", title: "What does one accepted improvement cost?", sub: "Model spend over accepted improvements: running through the window, and each hour or day on its own.", h: 250 },
+  { id: "models", title: "Which model earns its cost?", sub: "Acceptance rate and verified gain per USD, with the sample behind each bar.", h: 200 },
+  { id: "heat", title: "When is each agent working?", sub: "Minutes in an attempt per agent, from published model attempts and live sessions.", h: 170, wide: true },
+  { id: "verification", title: "Are verifiers keeping up and agreeing?", sub: "Replays of final candidates by role, and the share of counted replays that agreed with the verdict.", h: 280 },
+  { id: "viewers", title: "Is anyone watching?", sub: "Peak of distinct viewers on live desktop streams, from the gate's counts sampled once a minute.", h: 220 },
+  { id: "runway", title: "How long can each agent keep going?", sub: "Compute vault over the burn of the last 24 h, as the hosted runtime reports it.", h: 200 },
+  { id: "price", title: "Does the price follow the work?", sub: "Token price with a mark at each accepted generation of its agent.", h: 200, wide: true },
+];
+
+function cardShell(c: CardShell): Raw {
+  return html`<section class="panel an-card${c.wide ? " an-wide" : ""}" data-card="${c.id}"><div class="an-card-h"><div><h2>${c.title}</h2><p>${c.sub}</p></div><div class="seg an-card-seg" role="group" aria-label="View"></div></div><div class="an-card-legend" hidden></div><div class="an-card-body an-skel" style="--h:${c.h}px"></div></section>`;
+}
+
+const OUTCOMES: [string, string, () => string][] = [
+  ["accepted", "Accepted", tone.good],
+  ["rejected", "Rejected", tone.bad],
+  ["cap_reached", "Spend cap reached", tone.warn],
+  ["no_candidate", "No candidate", tone.mute],
+  ["expired", "Expired", () => "#8a877f"],
+  ["abandoned", "Abandoned", () => "#5f5c56"],
+];
+
+function cardDefs(d: O, m: Market | null): Map<string, CardDef | null> {
+  const unit: Unit = d.axis.unit === "hour" ? "hour" : "day";
+  const per = unit;
+  const t: number[] = d.axis.t;
+  const since = `since ${shortDay(d.range.from)} (UTC)`;
+  const starts = d.first_record_at && d.first_record_at > d.range.from ? ` Records start ${shortDay(d.first_record_at)}.` : "";
+  const pts = (f: (i: number) => number | null) => t.map((x, i) => ({ t: x, v: f(i) }));
+  const out = new Map<string, CardDef | null>();
+
+  // cumulative verified improvements per project, at the time of each generation
+  const projects: any[] = d.improvements.projects;
+  const shown = projects.slice(0, 7);
+  const rest = projects.slice(7);
+  const events: any[] = d.improvements.events;
+  // a uniform grid of instants (the chart's time axis is one slot per point): the cumulative figure at
+  // each instant is exact, the count of generations accepted up to it
+  const end = Math.min(d.now, d.range.to - 1);
+  const step = d.axis.unit === "hour" ? 600_000 : 3_600_000;
+  const times: number[] = [];
+  for (let x = d.range.from; x < end; x += step) times.push(x);
+  times.push(Math.floor(end / 1000) * 1000);
+  out.set("improvements", {
+    id: "improvements",
+    variants: [["count", "Generations"], ["gain", "Summed gain"]],
+    build: (variant): ChartSpec => {
+      const gain = variant === "gain";
+      const cum = (names: Set<string>, base: number) => {
+        let v = base;
+        let k = 0;
+        return times.map((x) => {
+          while (k < events.length && events[k].at <= x) {
+            if (names.has(events[k].project)) v += gain ? events[k].gain_pct : 1;
+            k++;
+          }
+          return { t: x, v: gain ? Math.round(v * 10_000) / 10_000 : v };
+        });
+      };
+      const series = shown.map((p, i) => ({ key: p.project, name: p.project, color: slotColor(i), kind: "step" as const, fmt: gain ? ("pct" as const) : ("num" as const), stack: true, points: cum(new Set([p.project]), gain ? p.before_gain_pct : p.before) }));
+      if (rest.length) series.push({ key: "other", name: `${rest.length} other projects`, color: tone.mute(), kind: "step", fmt: gain ? "pct" : "num", stack: true, points: cum(new Set(rest.map((p) => p.project)), rest.reduce((s, p) => s + (gain ? p.before_gain_pct : p.before), 0)) });
+      const any = projects.some((p) => p.before + p.generations > 0);
+      return {
+        kind: "time", unit: "event", height: 300, series: any ? series : [],
+        panes: [gain ? "Verified gain summed over accepted generations, %" : "Accepted generations, cumulative"],
+        totalLabel: "All projects",
+        empty: `No accepted generation ${since}.${starts}`,
+        note: (x) => {
+          const i = times.indexOf(x);
+          const at = i > 0 ? events.filter((e) => e.at > times[i - 1]! && e.at <= x) : [];
+          return at.length ? `Since the point before: ${at.map((e) => `#${e.height} ${e.project}${e.gain_pct > 0 ? ` +${e.gain_pct.toFixed(2)}%` : e.fixed ? ` ${e.fixed} tests fixed` : ""}`).join(", ")}` : i === 0 ? "the start of the window" : null;
+        },
+      };
+    },
+  });
+
+  const scriptedTotal = Object.values(d.attempts.totals.scripted as Record<string, number>).reduce((s, x) => s + x, 0);
+  out.set("attempts", {
+    id: "attempts",
+    variants: scriptedTotal ? [["model", "Model attempts"], ["all", `With scripted (${fmtInt(scriptedTotal)})`]] : undefined,
+    build: (variant): ChartSpec => ({
+      kind: "stack", unit, t, fmt: "num", height: 250, yLabel: `Attempts per ${per}`,
+      series: [
+        ...OUTCOMES.map(([k, name, c]) => ({ key: k, name, color: c(), values: d.attempts.model.map((x: any) => x[k] ?? 0) as number[] })),
+        ...(variant === "all" ? [{ key: "scripted", name: "Scripted (no model)", color: tone.mute2(), values: d.attempts.scripted.map((x: any) => Object.values(x as Record<string, number>).reduce((s, n) => s + n, 0)) as number[] }] : []),
+      ],
+      empty: `No published attempt ${since}.${starts}`,
+    }),
+  });
+
+  out.set("spend", {
+    id: "spend",
+    build: (): ChartSpec => ({
+      kind: "time", unit, height: 280, panes: [`Model spend per ${per}, USD`, `Accepted improvements per ${per}`],
+      series: [
+        { key: "usd", name: "Model spend", color: slotColor(1), kind: "columns", fmt: "usd", pane: 0, points: pts((i) => d.spend[i].usd) },
+        { key: "accepted", name: "Accepted improvements", color: tone.good(), kind: "line", fmt: "num", pane: 1, fromZero: true, points: pts((i) => (d.spend[i].priced ? d.spend[i].accepted : null)) },
+      ],
+      empty: `No priced attempt ${since}.${starts}`,
+      note: (x) => {
+        const i = t.indexOf(x);
+        return i >= 0 && d.spend[i].priced ? `${d.spend[i].priced} priced attempts, ${d.spend[i].gain_pct.toFixed(2)}% verified gain` : null;
+      },
+    }),
+  });
+
+  out.set("cost", {
+    id: "cost",
+    build: (): ChartSpec => ({
+      kind: "time", unit, height: 250, panes: ["USD per accepted improvement"],
+      series: [
+        { key: "running", name: "Running through the window", color: slotColor(6), kind: "area", fmt: "usd", fromZero: true, points: pts((i) => d.kpis.cost_per_accepted.running[i]) },
+        { key: "bucket", name: `Each ${per} on its own`, color: slotColor(1), kind: "line", fmt: "usd", dashed: true, fromZero: true, points: pts((i) => d.kpis.cost_per_accepted.series[i]) },
+      ],
+      empty: `No accepted improvement with a cost record ${since}.${starts}`,
+      note: (x) => {
+        const i = t.indexOf(x);
+        return i >= 0 && d.spend[i].priced && !d.spend[i].accepted ? `${usd(d.spend[i].usd)} spent this ${per}, nothing accepted` : null;
+      },
+    }),
+  });
+
+  const th = d.thresholds;
+  const models: any[] = d.models;
+  out.set("models", {
+    id: "models",
+    build: (): ChartSpec => ({
+      kind: "bars",
+      empty: `No model attempt ${since}.${starts}`,
+      groups: models.length
+        ? [
+            { title: `Acceptance rate (shown from ${th.min_attempts_for_rate} attempts)`, fmt: "pct", color: slotColor(0), none: "too few", rows: models.map((x) => ({ label: x.model, sub: providerName(x.provider) ?? "provider not reported", v: x.rate === null ? null : x.rate * 100, note: `${fmtInt(x.accepted)} of ${fmtInt(x.attempts)} attempts`, tip: [`Attempts: ${fmtInt(x.attempts)}`, `Accepted: ${fmtInt(x.accepted)}`, `Model spend: ${usd(x.usd)}`, `Per accepted: ${usd(x.usd_per_accepted)}`, `Median attempt: ${secs(x.median_duration_s)}`] })) },
+            { title: `Verified gain per USD (shown from ${th.min_accepted_for_means} accepted)`, fmt: "pct", color: slotColor(2), none: "too few", rows: models.map((x) => ({ label: x.model, sub: providerName(x.provider) ?? "provider not reported", v: x.gain_per_usd, note: x.usd === null ? "no cost record" : `${pct(x.gain_pct, 1)} over ${usd(x.usd)}`, tip: [`Verified gain summed: ${pct(x.gain_pct)}`, `Model spend: ${usd(x.usd)}`, `Priced attempts: ${fmtInt(x.priced)}`, `Accepted: ${fmtInt(x.accepted)}`] })) },
+          ]
+        : [],
+    }),
+  });
+
+  const agents: any[] = d.agents;
+  const working = agents.filter((a) => a.live_minutes > 0 || a.minutes.some((x: number) => x > 0)).slice(0, 12);
+  out.set("heat", {
+    id: "heat",
+    build: (): ChartSpec => ({ kind: "heat", unit, t, full: unit === "hour" ? 60 : 1440, rows: working.map((a) => ({ label: agentLabel(a.agent, a.name), values: a.minutes })), empty: `No agent was in an attempt ${since}.${starts}` }),
+  });
+
+  const vs: any[] = d.verification.series;
+  out.set("verification", {
+    id: "verification",
+    build: (): ChartSpec => ({
+      kind: "time", unit, height: 280, panes: [`Replays per ${per}`, "Agreement with the verdict, %"],
+      series: [
+        { key: "counted", name: "Counted replays", color: slotColor(0), kind: "columns", fmt: "num", pane: 0, points: pts((i) => (vs[i].counted + vs[i].minority + vs[i].env_failed + vs[i].other > 0 ? vs[i].counted : null)) },
+        { key: "minority", name: "In the minority", color: tone.bad(), kind: "line", fmt: "num", pane: 0, points: pts((i) => (vs[i].counted + vs[i].minority > 0 ? vs[i].minority : null)) },
+        { key: "env", name: "Environment failures", color: tone.warn(), kind: "line", fmt: "num", pane: 0, dashed: true, points: pts((i) => (vs[i].counted + vs[i].minority + vs[i].env_failed > 0 ? vs[i].env_failed : null)) },
+        { key: "agree", name: "Agreement", color: tone.good(), kind: "line", fmt: "pct", pane: 1, range: [0, 100], points: pts((i) => (d.verification.agreement_series[i] === null ? null : d.verification.agreement_series[i] * 100)) },
+      ],
+      empty: `No replay of a final candidate ${since}.${starts}`,
+    }),
+  });
+
+  const v = d.kpis.viewers;
+  out.set("viewers", v.since === null ? null : {
+    id: "viewers",
+    build: (): ChartSpec => ({
+      kind: "time", unit, height: 220, panes: [`Peak distinct viewers per ${per}`],
+      series: [{ key: "peak", name: "Peak viewers", color: slotColor(4), kind: "area", fmt: "num", fromZero: true, points: pts((i) => v.series[i]) }],
+      empty: `No viewer sample ${since}. Sampling started ${shortDay(v.since)}.`,
+    }),
+  });
+
+  const hosted = agents.filter((a) => a.runway);
+  out.set("runway", hosted.length ? {
+    id: "runway",
+    build: (): ChartSpec => ({
+      kind: "bars", empty: "",
+      groups: [{ title: "Runway at the last 24 h burn", fmt: "min", color: tone.accent(), none: "not burning", rows: hosted.map((a) => ({ label: agentLabel(a.agent, a.name), sub: a.runway.waiting ? `waiting: ${a.runway.waiting}` : a.live ? "live now" : undefined, v: a.runway.runway_h === null ? null : a.runway.runway_h * 60, note: `${usd(a.runway.vault_usd)} vault, ${usd(a.runway.burn_usd_per_h)}/h`, tip: [`Runway: ${hours(a.runway.runway_h)}`, `Vault: ${usd(a.runway.vault_usd)}`, `Burn: ${usd(a.runway.burn_usd_per_h)} per hour`, `Reported: ${stamp(a.runway.reported_at)}`] })) }],
+    }),
+  } : null);
+
+  // price against verified work: only tokens whose candles span two or more buckets of the window
+  const charts: { title: string; sub: string; spec: TimeSpec }[] = [];
+  if (m)
+    for (const tk of m.list) {
+      const cs = (m.candles.get(tk.mint) ?? []).filter((c) => c.t * 1000 >= d.range.from && c.t * 1000 < d.range.to);
+      if (cs.length < 2) continue;
+      const size = unit === "hour" ? 3_600_000 : 86_400_000;
+      const marks = new Map<number, number>();
+      for (const e of events) if (e.agent === tk.agent) marks.set(Math.floor(e.at / size) * size, (marks.get(Math.floor(e.at / size) * size) ?? 0) + 1);
+      const have = new Set(cs.map((c) => c.t * 1000));
+      charts.push({
+        title: `${tk.agent_name ?? shortId(tk.agent)} ${tk.symbol ?? ""}`.trim(),
+        sub: `${[...marks.values()].reduce((s, n) => s + n, 0)} accepted generations in the window`,
+        spec: { kind: "time", unit, height: 170, panes: [`Close, ${QUOTE}`], empty: "", series: [{ key: "close", name: `Close per ${per}`, color: slotColor(0), kind: "area", fmt: "amount", points: t.map((x) => ({ t: x, v: cs.find((c) => c.t * 1000 === x)?.close ?? null })), marks: [...marks.entries()].filter(([x]) => have.has(x)).map(([x, n]) => ({ t: x, text: String(n) })) }] },
+      });
+    }
+  out.set("price", charts.length ? { id: "price", build: (): ChartSpec => ({ kind: "multi", charts: charts.slice(0, 8), empty: "" }) } : null);
+  return out;
+}
+
+// ------------------------------------------------------------------------------------------------ live now and tables
+
+function liveNow(d: O): Raw {
+  const rows: any[] = d.live;
   const body = rows.length
-    ? html`<div class="tw"><table class="t an-models"><thead><tr><th>Model</th><th class="right">Attempts</th><th class="right">Acceptance</th><th class="right">Mean gain</th><th class="right hide-sm">Per accepted</th><th class="right hide-sm">Gain per USD</th><th class="right hide-sm">Median attempt</th></tr></thead><tbody>${rows.map(
-        (m) => html`<tr data-model="${m.model}"><td><b>${m.model}</b><div class="sub">${providerLogo(m.provider, providerName(m.provider) ?? "")} ${providerName(m.provider) ?? "provider not reported"}</div></td>
-          <td class="right num">${m.attempts}<div class="sub">${m.accepted} accepted</div></td>
-          <td class="right num">${m.rate === null ? html`<span class="faint" title="Shown from ${th.min_attempts_for_rate} attempts">too few</span>` : pct(m.rate * 100, 1)}</td>
-          <td class="right num">${m.mean_gain_pct === null ? html`<span class="faint" title="Shown from ${th.min_accepted_for_means} accepted generations with a measured ratio">${m.gain_samples} of ${th.min_accepted_for_means}</span>` : pct(m.mean_gain_pct)}</td>
-          <td class="right num hide-sm">${usd(m.usd_per_accepted)}</td>
-          <td class="right num hide-sm">${m.gain_per_usd === null ? html`<span class="faint">TBA</span>` : `${m.gain_per_usd.toFixed(2)}%`}</td>
-          <td class="right num hide-sm">${secs(m.median_duration_s)}</td></tr>`,
-      )}</tbody></table></div>`
-    : empty("No published attempt in this window");
-  return html`<section class="an-sec" id="an-models" aria-labelledby="an-models-h"><h2 class="an-h" id="an-models-h">Model leaderboard</h2>
-    ${panel("By model and provider", body, { count: rows.length, note: html`From published learnings episodes in the window. Acceptance rate is shown from ${th.min_attempts_for_rate} attempts; mean gain and gain per USD from ${th.min_accepted_for_means} accepted generations; below that the table says how many there are. Attempt duration runs from the session's start to its end. Attempts whose model was neither attested nor reported have their own row.` })}
-  </section>`;
+    ? html`<ul class="an-live">${rows.map(
+        (s) => html`<li data-session="${s.session_id}"><span class="ins-live"></span><a class="link" href="/agents/${s.agent}/profile">${agentLabel(s.agent, s.name)}</a><span class="an-live-p">${s.project ?? "project not listed"}</span>
+          <span class="an-live-t">started ${when(s.started_at)}</span>
+          <a class="an-live-w link" href="/sessions/${s.session_id}" title="${s.viewers === null ? "The gate's viewer counts have not been sampled in the last minutes" : "Distinct viewers of this session's live desktop stream, sampled within the last minute"}">${s.viewers === null ? "watch" : `${fmtInt(s.viewers)} watching`}</a></li>`,
+      )}</ul>`
+    : html`<p class="an-line">No agent is in a session right now.</p>`;
+  return html`<section class="panel an-card" id="an-live"><div class="an-card-h"><div><h2>Who is live right now?</h2><p>Live sessions with the distinct viewers of each desktop stream.</p></div><span class="an-count">${rows.length}</span></div>${body}</section>`;
 }
 
-// ------------------------------------------------------------------------------------------------ activity, verification, market
-
-export function activitySection(o: O): Raw {
-  const a = o.activity;
-  const hourly = o.window === "24h";
-  const bars = hourly
-    ? a.hourly.slice(-24).map((h: any) => ({ label: `${String(new Date(h.at).getHours()).padStart(2, "0")}h`, v: h.n, tip: `${stamp(h.at)}: ${h.n} accepted` }))
-    : a.daily.map((d: any) => ({ label: dayLabel(d.day), v: d.n - d.test, v2: d.n, tip: `${d.day}: ${d.n} accepted${d.test ? `, ${d.test} by test launches` : ""}` }));
-  return panel(hourly ? "Accepted generations per hour" : "Accepted generations per day", html`${kpis([
-      ["In the window", String(a.generations_in_window), winLabel(o.window)],
-      ["All time", String(a.generations_total), o.hidden_included ? "test launches included" : "listed agents"],
-    ])}${chartSlot({ type: "bar", label: "accepted generations", bars }, 140)}${hourly ? "" : html`<div class="ins-legend"><span><i></i>by listed agents</span>${o.hidden_included ? html`<span><i class="l2"></i>by test launches</span>` : ""}</div>`}`, { id: "an-activity" });
+function tbl(head: string[], rows: (Raw | string)[][]): Raw {
+  const h = head.map((x) => ({ right: x.startsWith("."), hide: x.endsWith("~"), label: x.replace(/^\./, "").replace(/~$/, "") }));
+  const c = (k: number) => `${h[k]?.right ? "right num" : ""}${h[k]?.hide ? " hide-sm" : ""}`.trim();
+  return html`<div class="tw"><table class="t"><thead><tr>${h.map((x, k) => html`<th class="${c(k)}">${x.label}</th>`)}</tr></thead><tbody>${rows.map((r) => html`<tr>${r.map((v, k) => html`<td class="${c(k)}">${v}</td>`)}</tr>`)}</tbody></table></div>`;
 }
+const fold = (id: string, title: string, count: number, body: Raw, note?: string): Raw | "" =>
+  count ? html`<details class="panel an-fold" id="${id}"><summary><span>${title}</span><span class="an-count">${count}</span></summary>${body}${note ? html`<div class="panel-note">${note}</div>` : ""}</details>` : "";
 
-export function verificationSection(o: O): Raw {
-  const v = o.verification;
-  const f = v.final_candidates;
-  return panel("Verification", html`${kpis([
-      ["Replay agreement", v.agreement === null ? "TBA" : pct(v.agreement * 100, 1), `${v.replays.counted} counted, ${v.replays.minority} in the minority`],
-      ["Final candidates", String((f.accepted ?? 0) + (f.rejected ?? 0) + (f.expired ?? 0)), `${f.accepted ?? 0} accepted, ${f.rejected ?? 0} rejected, ${f.expired ?? 0} expired`],
-      ["Replays revealed", String(v.replays.revealed), `${v.replays.env_failed} environment failures`],
-      ["Audits", String(Object.values(v.audits).reduce((s: number, x: any) => s + x, 0)), Object.entries(v.audits).map(([k, x]) => `${x} ${k}`).join(", ") || "none in the window"],
-    ])}${chartSlot({ type: "bar", label: "replays revealed per day", bars: v.daily.map((d: any) => ({ label: dayLabel(d.day), v: d.n, tip: `${d.day}: ${d.n} replays of final candidates` })) }, 120)}
-    <div class="panel-note">Replays of final candidates only, in the window. Agreement: counted replays over counted plus minority (a minority replay disagreed with the verdict).</div>`, { id: "an-verify" });
-}
-
-export function marketSection(tokens: any[] | null): Raw {
-  if (!tokens) return panel("Token market", empty("The market indexer did not answer"), { id: "an-market" });
-  const sum = (k: string) => tokens.reduce((s, t) => s + (typeof t[k] === "number" ? t[k] : 0), 0);
-  return panel("Token market", html`${kpis([
-      ["Listed tokens", String(tokens.length), `${tokens.filter((t) => t.phase === "graduated").length} graduated`],
-      ["24 h volume", fmtAmount(sum("volume_24h")), QUOTE_LABEL],
-      ["24 h trades", fmtInt(sum("trades_24h")), `${fmtInt(sum("trades"))} all time`],
-      ["Holders", fmtInt(sum("holders")), "summed over tokens"],
-    ])}<div class="panel-note">From the market indexer (GET /market/tokens), test launches left out.</div>`, { id: "an-market" });
+function tables(d: O, ops: O | null): Raw {
+  const agents: any[] = d.agents.filter((a: any) => a.attempts || a.scripted || a.runway || a.generations);
+  const aRows = agents.map((a) => [
+    html`<a class="link" href="/agents/${a.agent}/profile">${agentLabel(a.agent, a.name)}</a>${a.test_launch ? html` ${badge("test launch")}` : ""}${a.live ? html` <span class="ins-live">live</span>` : ""}`,
+    html`${fmtInt(a.attempts)}${a.scripted ? html`<div class="an-sub">${fmtInt(a.scripted)} scripted apart</div>` : ""}`,
+    fmtInt(a.accepted),
+    a.rate === null ? html`<span class="faint">too few</span>` : pct(a.rate * 100, 1),
+    a.usd === null ? html`<span class="faint">none priced</span>` : usd(a.usd),
+    a.usd_per_accepted === null ? html`<span class="faint">none</span>` : usd(a.usd_per_accepted),
+    a.runway ? html`${hours(a.runway.runway_h)}<div class="an-sub">${usd(a.runway.vault_usd)} vault</div>` : html`<span class="faint">not hosted</span>`,
+  ]);
+  const wins: any[] = d.improvements.wins;
+  const wRows = wins.map((g) => [html`<a class="link" href="/generations/${g.gen_id}">#${g.height}</a> <a class="link" href="/projects/${g.project}">${g.project}</a>`, g.metric ?? (g.fixed ? `${g.fixed} tests fixed` : "not named"), g.gain_pct > 0 ? pct(g.gain_pct) : "fix", html`<a class="link" href="/agents/${g.agent}/profile">${agentLabel(g.agent, g.name)}</a>`, stamp(g.at)]);
+  const reasons: any[] = d.reasons;
+  const rRows = reasons.map((r) => [String(r.outcome).replace(/_/g, " "), reasonText(r.reason) || String(r.reason).replace(/_/g, " "), fmtInt(r.n), r.usd === null ? html`<span class="faint">none priced</span>` : usd(r.usd)]);
+  const ver: any[] = d.verification.verifiers;
+  const vRows = ver.map((r) => [html`<span title="${r.verifier}">${shortId(r.verifier)}</span>`, fmtInt(r.replays), fmtInt(r.counted), fmtInt(r.minority), r.disagreement === null ? "no counted replay" : pct(r.disagreement * 100, 1), secs(r.median_replay_s)]);
+  const log: any[] = ops?.deploys?.log ?? [];
+  const dRows = log.map((e) => [html`${String(e.sha ?? "").slice(0, 7) || "unknown"}${e.kind === "rollback" ? html` ${badge("rollback")}` : ""}`, badge(e.result ?? "unknown", e.result === "ok" ? "good" : e.result === "rolled_back" ? "warn" : "bad"), stamp(e.started_at), e.probe ? html`${fmtInt(e.probe.non_200)} of ${fmtInt(e.probe.probes)}` : "not probed", e.probe ? secs(e.probe.longest_gap_ms / 1000) : "not probed"]);
+  const checks: any[] = ops?.monitor?.checks ?? [];
+  const cRows = checks.map((c) => [c.id, badge(c.level ?? "unknown", c.level === "ok" ? "good" : c.level === "warn" ? "warn" : "bad"), html`<span class="wrap">${c.msg}</span>`]);
+  const f = d.verification.commit_to_first_replay_s;
+  return html`
+    ${fold("an-t-agents", "Agents: attempts, spend and runway", aRows.length, tbl(["Agent", ".Model attempts", ".Accepted", ".Rate", ".Spend", ".Per accepted~", ".Runway~"], aRows), `Attempts are published learnings episodes in the window. A rate is shown from ${d.thresholds.min_attempts_for_rate} attempts. Runway is the hosted runtime's last report.`)}
+    ${fold("an-t-wins", "Biggest verified gains in the window", wRows.length, tbl(["Generation", "Metric", ".Gain", "Agent~", "Accepted~"], wRows))}
+    ${fold("an-t-reasons", "Why model attempts ended without a generation", rRows.length, tbl(["Outcome", "Reason", ".Attempts", ".Spend"], rRows), "Model attempts only. A verdict's reason for rejected candidates, the worker's stop note otherwise.")}
+    ${fold("an-t-verifiers", "Verifiers", vRows.length, tbl(["Verifier", ".Replays", ".Counted", ".Minority~", ".Disagreement", ".Median replay~"], vRows), f.n ? `Median time from a candidate's commit to its first replay: ${secs(f.median)} over ${f.n} candidates.` : undefined)}
+    ${fold("an-t-deploys", "Deploys and measured downtime", dRows.length, tbl(["Release", "Result", "Started~", ".Probes not 200", ".Longest gap"], dRows), "The public health path is probed once a second while public units restart.")}
+    ${fold("an-t-checks", "Site checks", cRows.length, tbl(["Check", "State", "What it saw"], cRows))}`;
 }
 
 const CSS = `
@@ -218,13 +479,145 @@ const CSS = `
 @media (max-width:1000px){.an-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
 @media (max-width:640px){.an-grid{grid-template-columns:minmax(0,1fr);grid-auto-rows:auto}.an-grid>.panel{max-height:340px}.an-w2{grid-column:auto}.an-kpi{gap:10px}}
 `;
+
+// ------------------------------------------------------------------------------------------------ page
+
+const PAGE_CSS = `
+.an-page{gap:20px}
+.an-kpis{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:1px;background:var(--border);border-radius:22px;corner-shape:squircle;overflow:hidden;box-shadow:var(--card-glow)}
+.an-tile{background:var(--bg2);padding:14px 16px 12px;min-width:0;display:flex;flex-direction:column;gap:6px}
+.an-tile-l{font:500 12px/1.2 var(--sans);letter-spacing:-.01em;color:var(--tt);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.an-tile-v{display:flex;flex-wrap:wrap;align-items:center;gap:4px 8px;min-height:30px}
+.an-tile-v>b{font-family:var(--display);font-weight:500;font-size:28px;line-height:1.05;letter-spacing:-.035em;font-variant-numeric:tabular-nums;white-space:nowrap;color:var(--tp)}
+.an-tile>small{color:var(--tt);font-size:11.5px;line-height:1.35;min-height:31px}
+.an-delta{flex:none;display:inline-flex;align-items:center;gap:3px;font:500 11px/1 var(--sans);font-variant-numeric:tabular-nums;color:var(--ts);background:var(--bg3);padding:3px 6px;border-radius:7px;white-space:nowrap}
+.an-delta i{font-style:normal;font-size:8px;color:var(--tt)}
+.an-delta.good i{color:var(--good)}
+.an-delta.bad i{color:var(--bad)}
+.an-tile.an-skel-t>*{visibility:hidden}
+.an-tile.an-skel-t{background:linear-gradient(90deg,var(--bg2),var(--bg3),var(--bg2));background-size:200% 100%;animation:sk 1.2s linear infinite;min-height:132px}
+.an-charts{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:20px}
+.an-charts>.panel+.panel{margin-top:0}
+.an-wide{grid-column:1 / -1}
+.an-card[hidden]{display:none}
+#an-live-slot{min-width:0;display:grid}
+#an-missing:empty,#an-live-slot:empty{display:none}
+.an-line{padding:6px 18px 16px;color:var(--tt);font-size:13px;line-height:1.45}
+.an-count{flex:none;color:var(--tt);font:500 12px/1 var(--sans);font-variant-numeric:tabular-nums;background:var(--bg3);padding:4px 8px;border-radius:8px}
+.an-live{list-style:none;margin:0;padding:2px 8px 10px;display:grid}
+.an-live li{display:grid;grid-template-columns:auto minmax(0,auto) minmax(0,1fr) auto auto;align-items:center;gap:6px 12px;padding:9px 10px;border-radius:10px;font-size:13px}
+.an-live li+li{box-shadow:0 -1px 0 var(--border)}
+.an-live-p,.an-live-t{color:var(--tt);font-size:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.an-live-w{font-weight:500;font-variant-numeric:tabular-nums;white-space:nowrap}
+.an-sec-h{display:flex;align-items:baseline;gap:10px;margin-top:8px}
+.an-fold{margin:0}
+.an-fold>summary{display:flex;align-items:center;gap:10px;padding:14px 18px;cursor:pointer;font:500 13px/1.3 var(--sans);color:var(--tp);list-style:none}
+.an-fold>summary::-webkit-details-marker{display:none}
+.an-fold>summary::before{content:"";width:7px;height:7px;border-right:1.5px solid var(--tt);border-bottom:1.5px solid var(--tt);transform:rotate(-45deg);transition:transform .15s var(--ease-soft);flex:none}
+.an-fold[open]>summary::before{transform:rotate(45deg)}
+.an-fold[open]>summary{border-bottom:1px solid var(--border)}
+.an-fold>summary:focus-visible{outline:2px solid var(--accent);outline-offset:-2px}
+.an-folds{display:grid;gap:10px}
+.an-sub{color:var(--tt);font-size:12px}
+.an-grid-s{grid-auto-rows:auto;margin-top:16px}
+.an-kpi-s{min-height:150px}
+.an-kpi-s b{font-size:30px}
+.an-err{padding:18px}
+@media (max-width:1180px){.an-kpis{grid-template-columns:repeat(4,minmax(0,1fr))}.an-tile:first-child{grid-column:span 2}}
+@media (max-width:900px){.an-charts{grid-template-columns:minmax(0,1fr)}}
+@media (max-width:640px){
+  .an-kpis{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .an-tile-v>b{font-size:24px}
+  .an-live li{grid-template-columns:auto minmax(0,1fr) auto}
+  .an-live-p,.an-live-t{display:none}
+}
+`;
 function injectStyle() {
   injectInsightsStyle();
   if (typeof document === "undefined" || document.getElementById("an-style")) return;
   const s = document.createElement("style");
   s.id = "an-style";
-  s.textContent = CSS + AN_CSS;
+  s.textContent = CSS + PAGE_CSS + CHART_CSS;
   document.head.appendChild(s);
+}
+
+/** The dashboard in view: its charts are removed when the page renders again or the reader leaves. */
+let active: { stop(): void } | null = null;
+
+function start(root: HTMLElement, win: string, hidden: boolean) {
+  active?.stop();
+  const page = root.querySelector<HTMLElement>(".an-page");
+  if (!page) return;
+  const q = `window=${win}${hidden ? "&hidden=1" : ""}`;
+  let cards: (() => void)[] = [];
+  let last = "";
+  let stopped = false;
+  const $ = (sel: string) => page.querySelector<HTMLElement>(sel);
+
+  const paint = (d: O, o: O | null, ops: O | null, idx: O | null, m: Market | null) => {
+    for (const c of cards) c();
+    cards = [];
+    $("#an-kpis")!.innerHTML = kpiRow(d, m, win).s;
+    $("#an-updated")!.innerHTML = html`Updated ${when(d.now)}. Window: ${shortDay(d.range.from)} to ${shortDay(Math.min(d.now, d.range.to - 1))} (UTC)${d.prev ? "" : ", from the first record"}.`.s;
+    const defs = cardDefs(d, m);
+    const missing: string[] = [];
+    for (const shell of CARDS) {
+      const el = $(`[data-card="${shell.id}"]`);
+      if (!el) continue;
+      const def = defs.get(shell.id);
+      el.hidden = !def;
+      if (!def) el.querySelector(".an-card-body")?.classList.remove("an-skel");
+      if (def) cards.push(mountCard(el, def));
+      else if (shell.id === "price") missing.push(`Price against verified work appears once a listed token has trades in two or more ${d.axis.unit}s of the window.`);
+    }
+    $("#an-live-slot")!.innerHTML = liveNow(d).s;
+    $("#an-missing")!.innerHTML = missing.map((x) => html`<p class="an-line">${x}</p>`.s).join("");
+    $("#an-network-slot")!.innerHTML = o ? html`${networkSection(o, idx)}${ops ? opsWidgets(ops) : ""}`.s : html`<section class="panel an-err">${empty("Core did not answer the network status", "It loads again with the page.")}</section>`.s;
+    $("#an-tables")!.innerHTML = tables(d, ops).s;
+    mountInsightCharts(page);
+  };
+
+  const load = async () => {
+    const opt = <T,>(p: Promise<T>) => p.catch(() => null);
+    const [d, o, ops, idx] = await Promise.all([get<O>(`analytics/dashboard?${q}`), opt(get<O>(`analytics/overview?${q}`)), opt(get<O>(`analytics/ops?${q}`)), opt(market<any>("status"))]);
+    const m = await loadMarket(d).catch(() => null);
+    if (stopped || !page.isConnected) return;
+    // redraw only when a figure changed (the clock and relative times are not figures)
+    const sig = JSON.stringify([{ ...d, now: 0 }, o ? { ...o, now: 0, network: { ...o.network, runtime: { ...o.network.runtime, reported_at: 0 } } } : null, ops ? { ...ops, now: 0 } : null, m ? [m.series, m.prev] : null]);
+    if (sig === last) return;
+    last = sig;
+    paint(d, o, ops, idx, m);
+  };
+  const fail = (e: unknown) => {
+    if (stopped || last) return; // keep the last good render on a failed background refresh
+    for (const el of page.querySelectorAll(".an-skel, .an-skel-t")) el.classList.remove("an-skel", "an-skel-t");
+    $("#an-kpis")!.innerHTML = html`<section class="an-tile" style="grid-column:1 / -1">${empty("Core did not answer the analytics route", e instanceof Error ? e.message : "It is tried again every minute.")}</section>`.s;
+    for (const el of page.querySelectorAll<HTMLElement>("[data-card]")) el.hidden = true;
+  };
+  void load().catch(fail);
+  const timer = setInterval(() => {
+    if (stopped || !page.isConnected) return stop();
+    // a reader with the pointer on a chart keeps the tooltip; the next minute refreshes
+    if (document.hidden || page.querySelector(".an-card:hover")) return;
+    void load().catch(fail);
+  }, 60_000);
+  let ev: ReturnType<typeof setTimeout> | null = null;
+  const onEvent = (e: Event) => {
+    const type = (e as CustomEvent<{ type?: string }>).detail?.type ?? "";
+    if (!/^(generation\.|epoch\.|candidate\.(judged|expired))/.test(type) || ev) return;
+    ev = setTimeout(() => ((ev = null), void load().catch(fail)), 4000);
+  };
+  window.addEventListener("units:event", onEvent);
+  const stop = () => {
+    stopped = true;
+    clearInterval(timer);
+    if (ev) clearTimeout(ev);
+    window.removeEventListener("units:event", onEvent);
+    for (const c of cards) c();
+    cards = [];
+    if (active?.stop === stop) active = null;
+  };
+  active = { stop };
 }
 
 export async function analyticsPage(): Promise<Page> {
@@ -232,72 +625,23 @@ export async function analyticsPage(): Promise<Page> {
   const p = qs();
   const win = WINDOWS.some((w) => w[0] === p.get("window")) ? p.get("window")! : "7d";
   const hidden = p.get("hidden") === "1";
-  const q = `window=${win}${hidden ? "&hidden=1" : ""}`;
-  // every section's route at once (docs/plans/PAGES-PROJECTS-GENERATIONS-ANALYTICS.md 5); a section whose
-  // route fails shows its own empty state, the others still render
-  const opt = <T,>(path: string) => get<T>(path).catch(() => null);
-  const [o, tokens, idx, ops, work, results, spend, models, ver, social, launches] = await Promise.all([
-    get<O>(`analytics/overview?${q}`),
-    market<{ tokens: any[] }>("tokens?limit=500").then((r) => r.tokens).catch(() => null),
-    market<any>("status").catch(() => null),
-    opt<any>(`analytics/ops?${q}`),
-    opt<any>(`analytics/work?${q}`),
-    opt<any>(`analytics/results?${q}`),
-    opt<any>(`analytics/spend?${q}`),
-    opt<any>(`analytics/models?${q}`),
-    opt<any>(`analytics/verifiers?${q}`),
-    opt<any>(`analytics/social?${q}`),
-    opt<any>(`analytics/launches?${q}`),
-  ]);
-  const candles = launches ? await loadCandles(tokens, launches) : new Map<string, any[]>();
-  const none = (what: string) => panel(what, empty("Core did not answer this section", "It loads again with the page."));
-  const lead = (s: string) => `${s} Window: ${winLabel(win)}.`;
-  const body = html`<div class="ins-page an-page">
+  // the frame renders at once with skeletons; the figures load in mount and refresh in place
+  const body = html`<div class="ins-page an-page" data-window="${win}">
     <div class="ph-row"><div class="ph-title"><div class="eyebrow">Analytics</div><h1>How the network is doing</h1>
-      <div class="ph-sub"><span>Read from Core, the market indexer, the hosted runtime's reports and the site's monitor. Updated ${when(o.now)}.</span></div></div>
+      <div class="ph-sub"><span>Aggregates of public records: published attempts, accepted generations, final replays, live sessions, the runtime's reports and the market indexer${hidden ? ", test launches included" : ""}. <span id="an-updated">Loading.</span></span></div></div>
       <div class="seg" role="group" aria-label="Time window">${WINDOWS.map(([k, l]) => chip("window", k === "7d" ? "" : k, l, win === "7d" ? "" : win))}</div></div>
-    ${sectionNav()}
-    ${networkSection(o, idx)}
-    <div class="an-sec" id="an-network-x">${ops ? opsSection(ops) : none("Infrastructure")}</div>
-    ${section("an-work", "Agent work", lead("Attempts are published learnings episodes: an attempt counts once nothing in it can name the author of an open candidate."), work ? workSection(work, activitySection(o)) : html`${activitySection(o)}${none("Agent work")}`)}
-    ${section("an-results", "Results", lead("Only verified figures: counted replay medians of accepted generations against the calibration baseline."), results ? resultsSection(results) : none("Results"))}
-    ${costSection(o)}
-    <div class="an-sec" id="an-costs-x">${spend ? spendSection(spend) : none("Efficiency")}</div>
-    ${modelSection(o)}
-    <div class="an-sec" id="an-models-x">${models ? modelsExtraSection(models) : none("Head-to-head")}</div>
-    ${section("an-verification", "Verification", lead("Replays of final candidates only; challenges, slashes and bonds as Core records them."), html`${verificationSection(o)}${ver ? verifySection(ver) : none("Verifiers")}`)}
-    ${section("an-market-sec", "Market", "From the market indexer, test launches left out. No fee figure.", html`${marketSection(tokens)}${launches ? marketExtra(tokens, launches, candles, win) : none("Market and work")}`)}
-    ${section("an-social", "Social and GitHub", lead("Follows and posts as Core stores them, generation commits on GitHub, the organization's public members, the learnings dataset."), social ? socialSection(social) : none("Social"))}
-    ${section("an-launches", "Launches and funding", lead("Launched agents, the credits fronted at launch and each compute vault as Core mirrors it from chain."), launches ? launchesSection(launches, tokens) : none("Launches"))}
+    <div class="an-kpis" id="an-kpis" aria-label="Headline figures">${[0, 1, 2, 3, 4, 5, 6].map(() => html`<section class="an-tile an-skel-t"><span>.</span></section>`)}</div>
+    <div class="an-charts" id="an-charts">${CARDS.slice(0, 8).map(cardShell)}<div id="an-live-slot"></div>${CARDS.slice(8).map(cardShell)}</div>
+    <div id="an-missing"></div>
+    <div id="an-network-slot"></div>
+    <div class="an-folds" id="an-tables"></div>
   </div>`;
   return {
     title: "Analytics",
     body,
-    pollMs: 60_000,
-    refreshOn: (e) => /^(generation\.|epoch\.|candidate\.(judged|expired))/.test(e.type),
     mount: (root) => {
       wireInsights(root);
-      mountViz(root);
-      wireSectionNav(root);
+      start(root, win, hidden);
     },
   };
-}
-
-/** The section nav marks the section in view and scrolls itself to keep that link visible. */
-function wireSectionNav(root: HTMLElement) {
-  const links = [...root.querySelectorAll<HTMLAnchorElement>("[data-an-nav]")];
-  const secs = links.map((a) => root.querySelector<HTMLElement>(`#${a.dataset.anNav}`)).filter((x): x is HTMLElement => !!x);
-  if (!secs.length || typeof IntersectionObserver === "undefined") return;
-  const mark = (id: string) => {
-    for (const a of links) {
-      const on = a.dataset.anNav === id;
-      a.setAttribute("aria-current", on ? "true" : "false");
-      if (on) a.parentElement?.scrollTo({ left: a.offsetLeft - 8, behavior: "smooth" });
-    }
-  };
-  const io = new IntersectionObserver((es) => {
-    const vis = es.filter((e) => e.isIntersecting).sort((a, b) => a.boundingClientRect.top - b.boundingClientRect.top)[0];
-    if (vis) mark(vis.target.id);
-  }, { rootMargin: "-140px 0px -55% 0px" });
-  for (const s of secs) io.observe(s);
 }

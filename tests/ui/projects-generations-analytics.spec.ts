@@ -87,28 +87,6 @@ for (const scheme of SCHEMES) {
       await expect(page.locator(".ins-pager")).toContainText(`${all.total} accepted generation`);
       await cleanPage(page);
     });
-
-    test("Analytics: network, costs, models, activity, verification and market equal their sources; no fee figure", async ({ page, data }) => {
-      const o = await data.core("analytics/overview?window=7d");
-      await page.goto("/analytics");
-      await page.locator(".an-page").waitFor({ timeout: 60_000 });
-      for (const id of ["an-network", "an-costs", "an-models", "an-activity", "an-verify", "an-market"]) await expect(page.locator(`#${id}`)).toHaveCount(1);
-      await expect(page.locator("#an-models tr[data-model]")).toHaveCount(o.models.rows.length);
-      await expect(page.locator("#an-costs tr[data-agent]")).toHaveCount(o.costs.by_agent.length);
-      const hidden = new Set((await data.hidden()).map((h) => h.agent).filter(Boolean));
-      for (const a of o.costs.by_agent) expect(hidden.has(a.agent)).toBe(false);
-      await expect(page.locator("#an-activity")).toContainText(String(o.activity.generations_in_window));
-      await expect(page.locator("#an-models")).toContainText(`from ${o.thresholds.min_attempts_for_rate} attempts`);
-      const tokens = await data.tokens();
-      await expect(page.locator("#an-market .ins-kpis b").first()).toHaveText(String(tokens.length));
-      await expect(page.locator(".an-page")).not.toContainText(FEES);
-      // the window chips re-render in place
-      await page.locator('a.seg-b:has-text("24 h")').click();
-      await expect(page).toHaveURL(/window=24h/);
-      await expect(page.locator("#an-activity .panel-h")).toContainText("per hour");
-      expect(await monoChrome(page)).toEqual([]);
-      await cleanPage(page);
-    });
   });
 }
 

@@ -277,3 +277,29 @@ Core (`viewers.ts`) samples it every minute when `UNITS_GATE_URL` is set, keeps 
 48 h and hourly peaks (all sessions, listed sessions, per agent) for the charts, and serves
 `GET /v1/viewers` (now) and the dashboard's `viewers` block. Sessions of hidden launches are left
 out unless `hidden=1`.
+
+### 6.5 Built (2026-10-11)
+
+`apps/web/src/pages/analytics.ts` (page, headline figures, card definitions, folded tables; the
+network status widgets unchanged) and `analytics-charts.ts` (the chart system); the seven section
+modules of section 5 are removed. The frame renders at once with skeletons, the figures load in
+`mount` and refresh in place every minute (and on generation, epoch and verdict events) without
+redrawing when nothing changed. Notes on what the data forced:
+
+- The library's time axis is one slot per point, so cumulative generations are drawn on a uniform grid
+  of instants (10 minutes over 24 h, hours otherwise); the value at each instant is the exact count.
+- A bucket without a value is a gap: a line is never drawn across it.
+- "Live agents" is the number of agents in an attempt in the window (so it has a period before);
+  the agents live right now are in its caption and in "Who is live right now?".
+- "Viewers now" compares the window's peak with the peak of the period before.
+- Market volume sums the indexer's candles of the listed tokens (the 20 largest by market cap).
+- Price against verified work is not rendered until a listed token has trades in two or more
+  buckets of the window (2026-10-11: every listed token has only its launch trades).
+- The token page has no live badge of its own (the live panel is mounted without a caption): "N
+  watching" belongs in `apps/web/src/live-panel/index.ts`, read from `GET /v1/viewers`
+  (`sessions[].viewers` by session id).
+
+Checks: `packages/core/test/analytics.test.ts` (dashboard figures, the period before, scripted
+attempts apart, author-blind sweep, viewer counts and the hidden rule), `scripts/deploy/gate-desktop.test.ts`
+(the gate's counts and the loopback rule), `tests/ui/analytics.spec.ts` (1280 and 390: figures, every
+card drawn or explained, tooltips, legend and variant toggles, windows, no console error).
