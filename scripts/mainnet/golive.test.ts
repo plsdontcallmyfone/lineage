@@ -15,10 +15,11 @@ const price: UnitsPrice = { usd_per_units: 0.000003, sol_usd: 100, sol_per_units
 const A = "8MPJ3hiYZrWhZPHJPxcy6nxnFqDsTMrBMY1HbK4VsNGj";
 const clone = <T>(x: T): T => JSON.parse(JSON.stringify(x));
 
-test("official-params.json is valid, names the dev wallet everywhere a wallet is configurable, and waits for the owner", () => {
+test("official-params.json is valid, names the dev wallet everywhere a wallet is configurable, and carries the owner's confirmation", () => {
   expect(P.admin).toBe("6UhUBoVpywefyPoMtQEuwngkPjzFRork4L3dgCVr4jh3");
   expect(P.fee_split).toEqual({ agent_compute_bps: 7000, protocol_bps: 3000 });
-  expect(P.owner_confirmed).toBe(false);
+  // confirmed by the owner on 2026-10-12 ("yes! settings are all correct."); init --send refuses while this is false
+  expect(P.owner_confirmed).toBe(true);
   expect(P.site.extra_verifiers.map((e) => e.agent)).toEqual(["kdhdDrZ8x1dCKCVBZUNYAUufSfQegKMEXW3MVbK1LRL", "HNaVHuqadsRMPmaEsn3WYUgZ1gCkVTkcMpqcyusjc3tZ"]);
   expect(readFileSync(join(import.meta.dir, "official-params.json"), "utf8")).not.toContain(String.fromCharCode(0x2014));
 });
