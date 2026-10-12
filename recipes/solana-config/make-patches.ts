@@ -5,8 +5,8 @@
 // Usage: bun recipes/solana-config/make-patches.ts
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { canonicalizeDiff, guard } from "@lineage/protocol";
-import { diffWorkingTree, loadRecipe, materialize, newWorkDir, removeTree } from "@lineage/sandbox";
+import { canonicalizeDiff, guard } from "@units/protocol";
+import { diffWorkingTree, loadRecipe, materialize, newWorkDir, removeTree } from "@units/sandbox";
 
 type Edit = [file: string, from: string, to: string];
 interface PatchDef {

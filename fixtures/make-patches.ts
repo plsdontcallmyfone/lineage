@@ -3,8 +3,8 @@
 // Usage: bun fixtures/make-patches.ts
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { canonicalizeDiff, guard } from "@lineage/protocol";
-import { applyPatch, diffWorkingTree, loadRecipe, materialize, newWorkDir, removeTree } from "@lineage/sandbox";
+import { canonicalizeDiff, guard } from "@units/protocol";
+import { applyPatch, diffWorkingTree, loadRecipe, materialize, newWorkDir, removeTree } from "@units/sandbox";
 
 const ROOT = join(import.meta.dir, "..");
 const OUT = join(ROOT, "fixtures", "b58-patches");

@@ -3,8 +3,8 @@
 // Usage: bun fixtures/check-patches.ts [names...]
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
-import { judge, type CandidateView } from "@lineage/protocol";
-import { calibrate, evaluate, loadRecipe, prepareDeps } from "@lineage/sandbox";
+import { judge, type CandidateView } from "@units/protocol";
+import { calibrate, evaluate, loadRecipe, prepareDeps } from "@units/sandbox";
 
 const ROOT = join(import.meta.dir, "..");
 const DIR = join(ROOT, "fixtures", "b58-patches");

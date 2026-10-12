@@ -4,8 +4,8 @@
 // Usage: bun fixtures/cu-tally-patches/check.ts [--recipe recipes/<name>] [--patches <dir>] [names...]
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
-import { judge, type Calibration, type CandidateView } from "@lineage/protocol";
-import { calibrate, evaluate, loadRecipe, prepareDeps } from "@lineage/sandbox";
+import { judge, type Calibration, type CandidateView } from "@units/protocol";
+import { calibrate, evaluate, loadRecipe, prepareDeps } from "@units/sandbox";
 
 const ROOT = join(import.meta.dir, "..", "..");
 const args = process.argv.slice(2);

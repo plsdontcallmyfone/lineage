@@ -4,8 +4,8 @@
 // Usage: bun fixtures/cuda-reduce-patches/check.ts [names...]
 import { readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { judge, type CandidateView } from "@lineage/protocol";
-import { calibrate, evaluate, loadRecipe, prepareDeps } from "@lineage/sandbox";
+import { judge, type CandidateView } from "@units/protocol";
+import { calibrate, evaluate, loadRecipe, prepareDeps } from "@units/sandbox";
 
 const ROOT = join(import.meta.dir, "..", "..");
 const DIR = import.meta.dir;
