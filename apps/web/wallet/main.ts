@@ -687,13 +687,15 @@ async function launchReview() {
     if (idChosen && !P.cfg?.identity_account_recipient) throw new Error("A units account: Core's config names no recipient for its payment; pick Your own token or try later.");
     const identity = idChosen ? BigInt(P.cfg!.identity_account_price_lamports) : 0n;
     const fee = idChosen ? [system.transfer(launcher, P.cfg!.identity_account_recipient!, identity)] : [];
-    // SOL to $UNITS: devnet buys on $UNITS's own SOL curve; mainnet swaps through Jupiter (its own transaction, first in the bundle)
+    // SOL to $UNITS: devnet buys on $UNITS's own SOL curve; mainnet swaps through Jupiter (its own transaction, first in the bundle).
+    // A mainnet profile with swap off (the mainnet test's throwaway quote coin, docs/MAINNET-RUNBOOK.md) buys on the coin's own
+    // curve like devnet, inside the same Jito bundle.
     let solToLine: Ix[] = [];
     let swap: PreparedSwap | null = null;
     let purchase: Simulation | null = null;
     let creditsShare = { num: deposit, den: need };
     let headroom = 0n;
-    if (isMainnet()) {
+    if (isMainnet() && NET.p.swap) {
       swap = await prepareSwapThen({ pay: "SOL", need, taker: launcher, action: [], cuLimit: 400_000 });
       purchase = await simulatePlan(swap, launcher);
     } else {

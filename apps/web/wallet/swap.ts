@@ -57,7 +57,7 @@ export function loadSwap(): Promise<void> {
 /** Swap availability under the page's network profile (SPEC 14.10): the profile must enable it, the RPC must be mainnet, and config/swap.json must target the profile's quote mint. */
 export function availability(): { ok: true } | { ok: false; reason: string } {
   if (!SWAP.cluster) return { ok: false, reason: "network not read yet" };
-  if (!NET.p.swap) return { ok: false, reason: `Jupiter runs on mainnet only; this is ${NET.p.network}, which uses ${NET.p.quote.symbol} directly` };
+  if (!NET.p.swap) return { ok: false, reason: NET.p.network === "mainnet" ? `this deployment trades in ${NET.p.quote.symbol} directly (Jupiter is switched off for it)` : `Jupiter runs on mainnet only; this is ${NET.p.network}, which uses ${NET.p.quote.symbol} directly` };
   const a = swapAvailability(SWAP.cfg, SWAP.cluster);
   if (!a.ok) return a;
   const bad = checkSwapTarget(NET.p, SWAP.cfg);
