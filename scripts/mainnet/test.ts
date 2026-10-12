@@ -17,7 +17,8 @@
 //   fund      SOL from the deployer to the hot keys: --core <SOL> --runtime <SOL>; and to another wallet (the site instance's
 //             owner key, for its verifiers' registration burns and bonds): --to <address> --sol <SOL> --coin <whole test coins>
 //   check     read the whole deployment back (read only)
-//   close     end of the test: sweep the hot keys, optionally sell the deployer's test coin (--sell-coin), close the three programs
+//   claim-fees  the test coin's SOL creator fees to the deployer (pump.fun sweep + collect); sent only when it returns more than it costs
+//   close     end of the test: sweep the hot keys, optionally sell the deployer's test coin (--sell-coin), claim its creator fees when worth it, close the three programs
 //             and any buffer to the deployer. Needs --confirm <registry program id>. A closed program id can never be deployed again.
 //
 // Options: --rpc <url> (default the local fork 127.0.0.1:9690; with --mainnet and no --rpc the keyed
@@ -37,16 +38,20 @@ import { join } from "node:path";
 import {
   ata,
   ChainReader,
+  decodeBondingCurve,
   decodeLoaderAuthority,
   loadKeypair,
   loadOrCreateKeypair,
   programDataAddress,
+  pump,
+  PUMP,
   pumpPdas,
   Rpc,
   sendAndConfirm,
   system,
   token,
   TOKEN_2022_PROGRAM,
+  TOKEN_PROGRAM,
   TxError,
   type Ix,
   type Signer,
@@ -121,6 +126,12 @@ const send = async (what: string, payer: Signer, ixs: Ix[], o: { signers?: Signe
     throw new Error(scrub((e as Error).message));
   }
 };
+
+/** The balance once the endpoint has moved past `slot` (a read right after a confirmation can still answer from before it). */
+async function balanceAfter(address: string, slot: number): Promise<bigint> {
+  for (let i = 0; i < 40 && (await rpc.getSlot()) <= slot; i++) await new Promise((r) => setTimeout(r, 250));
+  return rpc.getBalance(address);
+}
 
 const PROGRAMS = (["registry", "launch", "msg"] as const).map((name) => ({
   name, id: IDS[name], so: join(TEST_BUILD_DIR, `units_${name}.so`), key: join(PROGRAM_KEYS, `${name}-program-keypair.json`),
@@ -294,9 +305,9 @@ async function init() {
     line_mint: P.line_mint, line_token_program: P.line_token_program, line_decimals: P.line_decimals, line_venue: "pump.fun",
     admin: dep.id, core_authority: P.core_authority, runtime_authority: P.runtime_authority,
     launch_lookup_table: r.lookupTable, compute_sink: lc.computeSink, agent_compute_bps: Number(P.net.agent_compute_bps), protocol_bps: Number(P.net.protocol_bps),
-    // Core config keys the mainnet instance replaces (scripts/deploy, docs/DEPLOY-SITE.md "Second instance"): the units account
-    // payment goes to the deployer, not to config/network.json's devnet treasury key
-    network_overrides: { prepay: { identity_account_recipient: dep.id } },
+    // Core config keys the mainnet instance replaces (scripts/deploy, docs/DEPLOY-SITE.md "Second instance"): no units account
+    // recipient, because the test instance runs no identity service; the wizard then does not offer "A units account"
+    network_overrides: { prepay: { identity_account_recipient: null } },
   }, null, 2) + "\n");
   writeFileSync(join(OUT, "profile.local.json"), JSON.stringify({
     _note: "Local overlay for the mainnet TEST instance (UNITS_PROFILE_LOCAL, packages/chain/src/profile-node.ts): the programs are the mainnet-test ids, the quote is the throwaway test coin, and SOL is turned into it on its own pump.fun curve, not through Jupiter. Untracked.",
@@ -341,6 +352,40 @@ async function fund() {
   }
 }
 
+/**
+ * The test coin's creator fees (the deployer created it, so pump.fun's SOL creator fee is its): what
+ * waits in the curve and in the creator vault, and what a claim would bring. Sends the sweep and the
+ * collect only when the claim returns more than it costs; `--force` sends anyway.
+ */
+async function claimFees(o: { quiet?: boolean } = {}): Promise<bigint> {
+  const dep = deployer();
+  if (!existsSync(keyPath("test-coin-mint"))) return 0n;
+  const mint = loadKeypair(keyPath("test-coin-mint")).id;
+  const curveA = await rpc.getAccountInfo(pumpPdas.bondingCurve(mint));
+  if (!curveA) return 0n;
+  const curve = decodeBondingCurve(curveA.data);
+  if (curve.creator !== dep.id) throw new Error("the deployer is not the test coin's creator");
+  const vault = pumpPdas.creatorVault(dep.id);
+  const [inVault, rentMin] = [await rpc.getBalance(vault), BigInt(await rpc.getMinimumBalanceForRentExemption(0))];
+  const waiting = curve.complete ? 0n : curve.creatorFee;
+  // after the sweep the vault holds at least its rent-exempt minimum (the payer tops it up); the collect returns what is above it
+  const after = inVault + waiting;
+  const topUp = after < rentMin ? rentMin - after : 0n;
+  const collectable = after > rentMin ? after - rentMin : 0n;
+  const net = collectable - topUp - 5_000n;
+  say(`test coin creator fees: ${sol(waiting)} waiting in the curve, ${sol(inVault)} in the creator vault (its rent-exempt minimum is ${sol(rentMin)}); a claim would return ${sol(collectable)}, cost ${sol(topUp + 5_000n)}`);
+  if (net <= 0n && !has("--force")) {
+    if (!o.quiet) say("not claimed: it would cost more than it returns (pass --force to send anyway)");
+    return 0n;
+  }
+  const b = await rpc.getBalance(dep.id);
+  const r = await send("test coin creator fees: sweep_creator_fee + collect_creator_fee", dep,
+    [...(waiting > 0n ? [pump.sweepCreatorFee({ payer: dep.id, mint, quoteMint: PUMP.wsol, creator: dep.id, quoteTokenProgram: TOKEN_PROGRAM })] : []), pump.collectCreatorFeeSol({ creator: dep.id })], { computeUnits: 200_000 });
+  const got = (await balanceAfter(dep.id, r.slot)) - b;
+  say(`test coin creator fees claimed: the deployer's balance changed by ${got} lamports`);
+  return got;
+}
+
 async function close() {
   const dep = deployer();
   if (flag("--confirm") !== IDS.registry) throw new Error(`close ends the test for good: pass --confirm ${IDS.registry} (a closed program id can never be deployed again)`);
@@ -350,9 +395,11 @@ async function close() {
     if (existsSync(keyPath(n))) back[n] = (await sweepKey(rpc, send, loadKeypair(keyPath(n)), dep.id, n)).toString();
   if (has("--sell-coin") && existsSync(keyPath("test-coin-mint"))) {
     const b = await rpc.getBalance(dep.id);
-    await sellTestCoin(rpc, send, dep, loadKeypair(keyPath("test-coin-mint")).id, Number(flag("--slippage-bps") ?? 300), "deployer");
-    back["test coin sold"] = ((await rpc.getBalance(dep.id)) - b).toString();
+    let slot = 0;
+    await sellTestCoin(rpc, async (w, p, i, o) => { const r = await send(w, p, i, o); slot = r.slot; return r; }, dep, loadKeypair(keyPath("test-coin-mint")).id, Number(flag("--slippage-bps") ?? 300), "deployer");
+    back["test coin sold"] = ((await balanceAfter(dep.id, slot)) - b).toString();
   }
+  back["test coin creator fees"] = (await claimFees({ quiet: false })).toString();
   for (const p of PROGRAMS) {
     const now = await programCode(p.id);
     if (!now) {
@@ -382,6 +429,9 @@ async function close() {
 
 const commands: Record<string, () => Promise<void>> = {
   keys, status, coin, deploy, init, fund, close,
+  "claim-fees": async () => {
+    await claimFees();
+  },
   check: async () => checkTest(rpc, check, deployer().id, loadParams(), flag("--lookup-table") ?? priorState()?.launch_lookup_table),
 };
 if (!commands[cmd]) {

@@ -466,6 +466,20 @@ export const pump = {
       data: ixDisc("collect_creator_fee_v2"),
     };
   },
+  /**
+   * A SOL-paired coin's creator fee: Pump's `collect_creator_fee` moves the lamports the creator vault
+   * holds above its rent-exempt minimum to the creator (no signature of the creator). The fee waits in
+   * the curve first: `sweepCreatorFee` with the wrapped SOL mint as quote moves it into the vault and
+   * tops the vault up to its rent-exempt minimum from the payer (seen on the mainnet fork 2026-10-12:
+   * a first sweep of 148,149 lamports cost the payer 742,731 more and nothing was collectable).
+   */
+  collectCreatorFeeSol(a: { creator: Address }): Ix {
+    return {
+      programId: PUMP.program,
+      keys: [w(a.creator), w(pumpPdas.creatorVault(a.creator)), r(SYSTEM_PROGRAM), r(PUMP.eventAuthority), r(PUMP.program)],
+      data: ixDisc("collect_creator_fee"),
+    };
+  },
   /** Permissionless once the curve is complete: creates the canonical PumpSwap pool (LP burnt). */
   migrateV2(a: { user: Address; mint: Address; quoteMint: Address; withdrawAuthority: Address; quoteTokenProgram?: Address }): Ix {
     const qtp = tokenProgramOf(a.quoteMint, a.quoteTokenProgram);

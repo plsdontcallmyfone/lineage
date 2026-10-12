@@ -1,0 +1,110 @@
+{
+  "at": "2026-10-12T02:02:39.895Z",
+  "outcome": "PASS",
+  "passed": 17,
+  "total": 17,
+  "fork_genesis": "54KzxYgnuBc7tehhDt5JEh6WRc6ZYYFbixNqwWcZFiE6",
+  "test_coin": "2x7o5bk64EcpvFoKXwU3JF2x7s383TEGLkN86meuNv4D",
+  "launch": {
+    "agent": "B3fiTur5kiGbpHpa2QXRstB11C1o9PCeHxd9sgejbFtx",
+    "mint": "9ogWfxV1fy4imB2uTzueLY6Une7NuL5t8LTQxsgGZK1E",
+    "wallet_sol_spent_fork_lamports": "103020538",
+    "approvals": [
+      2
+    ],
+    "bundle_sizes": [
+      2
+    ]
+  },
+  "trade": {
+    "signature": "3mU3PXe9EdKp7svaHPDFe3jNdZ8tYbc5u1NgrYLsqCDw65RQPmF1wYwLM6sJFyzsaCRhfTpNg9DY8tew6F9ry6CD",
+    "agent_coin_base_units": "2627130306285"
+  },
+  "results": [
+    {
+      "check": "the instance runs the mainnet profile on the fork: test program ids, the test coin as quote, Jupiter off, no faucet, no TEST labels",
+      "ok": true,
+      "detail": "quote UTEST, programs 27Y2Uy..., genesis 54KzxYgn..."
+    },
+    {
+      "check": "Core names no units account recipient (the option is not offered on the test instance)",
+      "ok": true,
+      "detail": "identity_account_recipient null"
+    },
+    {
+      "check": "wizard, Identity: \"A units account\" is not offered and cannot be picked; \"Your own token\" is selected",
+      "ok": true,
+      "detail": "not offered here"
+    },
+    {
+      "check": "wizard, Funding: everything in SOL, no faucet and no Jupiter wording, no TEST label",
+      "ok": true,
+      "detail": "5 Funding Everything is paid in SOL with one signature: token creation, model credits, the initial buy and, when chosen, A units account. Model credits Credits (USD) At least 10 USD; you can add more."
+    },
+    {
+      "check": "wizard: no devnet or TEST wording anywhere on the page under the mainnet profile",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "wizard, Review: the launch simulated on the mainnet profile; transactions planned as launch + soul, then SOL to the quote coin + initial buy + credits + tip",
+      "ok": true,
+      "detail": "Transactionslaunch + soul (1092 bytes, v0); sol-to-units + initial-buy + credits + tip (1091 bytes, v0) Launch (one signature)Simulate againunits Test Wallet approves every transaction of the launch at once; a ho"
+    },
+    {
+      "check": "wizard, Review: says one signature and one Jito bundle",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "launch: one approval carried every transaction of the launch (one signTransaction request)",
+      "ok": true,
+      "detail": "requests [2]"
+    },
+    {
+      "check": "launch: the bundle went to the Jito endpoint first, once, with the same transactions",
+      "ok": true,
+      "detail": "bundles [2]"
+    },
+    {
+      "check": "launch: one AgentLaunch for the wallet on the fork (the ordered sends landed after Jito refused the bundle)",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "launch: the coin is quoted in the test coin, its creator is the agent's PDA, the 1% initial buy is in the agent key's account, the credits are in the vault and the agent is awake",
+      "ok": true,
+      "detail": "bought 10000000000000, vault 200000000"
+    },
+    {
+      "check": "launch: the soul digest is on chain",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "launch: the wallet paid in SOL only and holds no more than the slippage remainder of the test coin",
+      "ok": true,
+      "detail": "0.103020538 SOL at the fork's rent"
+    },
+    {
+      "check": "trade box: Pay with offers the quote coin and SOL through it on pump.fun (no Jupiter options)",
+      "ok": true,
+      "detail": "LINE, SOL"
+    },
+    {
+      "check": "trade box: a 0.02 SOL buy is simulated and quoted in the agent's coin",
+      "ok": true,
+      "detail": "Buy Sell Pay with UTEST SOL (through UTEST on pump.fun) SOL (through UTEST on pump.fun) SOL buys UTEST on its pump.fun curve and the token with it, in one transaction (pump.fun's multi-hop swap); the amount is typed in SOL. Each of the two "
+    },
+    {
+      "check": "trade box: the SOL buy landed through pump.fun's multi_hop_swap and delivered exactly the simulated amount",
+      "ok": true,
+      "detail": "2627130306285 base units for 0.025962761 SOL, 0 curve buys, 1 approval of 1"
+    },
+    {
+      "check": "no page errors",
+      "ok": true,
+      "detail": ""
+    }
+  ]
+}

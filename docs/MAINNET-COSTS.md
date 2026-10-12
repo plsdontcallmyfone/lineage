@@ -179,11 +179,11 @@ sends and the slashes it posts (0.001148000 each); the hosted runtime's is its u
 
 Measured 2026-10-12 UTC by `scripts/mainnet/test-rehearsal.ts` on the mainnet fork with the operator
 commands of `scripts/mainnet/test.ts` (docs/MAINNET-RUNBOOK.md "Mainnet test"), record
-`scripts/mainnet/TEST-REHEARSAL-LAST.json` (PASS 45 of 45). Same method as above: fees as the fork
+`scripts/mainnet/TEST-REHEARSAL-LAST.json` (PASS 48 of 48). Same method as above: fees as the fork
 recorded them at the base fee, rent from mainnet's own `getMinimumBalanceForRentExemption`, SOL sent to
-a wallet at face value. No priority fee. The builds are the current `onchain/target/mainnet` ones
-(registry 732,456 bytes, launch 685,224, msg 342,600; 16 bytes smaller each for registry and launch than
-the builds above, after the crate rename). Nothing was sent to mainnet.
+a wallet at face value. No priority fee. The builds are the `mainnet-test` ones at the test's own
+program ids (registry 732,456 bytes, launch 685,224, msg 342,600: the same sizes as the current mainnet
+builds, so the rent is the same). Nothing was sent to mainnet.
 
 In the rehearsal the deployer funds everything (the hot keys, the site owner key, the launcher wallet)
 and everything is swept back to it at the end, so one ledger shows the whole test:
@@ -196,32 +196,35 @@ and everything is swept back to it at the end, so one ledger shows the whole tes
 | of which the test coin: `create_v2` 0.005643720, the buy of at most 0.05 SOL 0.052865039 (with the deployer's token and volume accounts) | 0.058508759 |
 | of which initialization: registry 0.009555400, launch 0.002275760, messages 0.000949880, lookup table 0.004358480, bounty config 0.001041320, challenge config 0.002539920 | 0.020720760 |
 | Sent to the hot keys (0.05 each), the site owner key (0.05 and 20 test coins) and the launcher wallet (0.5), with fees and one token account | 0.651533840 |
-| **Returned at close** | **9.485051033** |
+| **Returned at close** | **9.535054898** |
 | of which ProgramData rent of the three programs (each less its 0.000005000 fee) | 8.944843920 |
 | of which the deployer's test coins sold back on the curve | 0.049003817 |
-| of which the hot keys, the site owner key and the launcher wallet swept back | 0.491203296 |
-| The units account payment, received by the deployer during the launch (its recipient in the test) | 0.050000000 |
-| **Net cost of the whole test** | **0.151835606** |
+| of which the hot keys, the site owner key and the launcher wallet swept back | 0.541207161 |
+| **Net cost of the whole test** | **0.151831741** |
 
 The net cost by who paid it: the deployer's own chain work (coin, deploys, initialization, less the
 ProgramData and the coin sale) 0.041505062; the Core authority (one epoch post 0.001493440 and two fees)
 0.001503440; the runtime authority (two fees) 0.000010000; the site owner key (one verifier registered
 0.002697320 and bonded 0.000005000, its token account 0.001513840 and two fees) 0.004226160; the launcher
-wallet 0.104590944 (the launch and the trades below, less the units account payment and what its coins sold for). The figure moves a little from run to
-run with Jito's tip floor (6,258 lamports in this run).
+wallet 0.104587079 (the launch and the trades below, less what its coins sold for). The figure moves a
+little from run to run with Jito's tip floor (2,393 lamports in this run). On mainnet the site instance
+registers three verifiers and bonds two (the kit's `chain` step: about 0.011 SOL on the fork at the
+fork's higher rent, docs/DEPLOY-SITE.md), not the one of the rehearsal.
 
 One launch as the wizard plans it for this test, paid by the launcher wallet:
 
 | Transaction | Bytes | Compute units | SOL |
 |---|---|---|---|
-| `create_v2` (quoted in the test coin) + `register_pump_launch` + the soul; 3 signatures | 1,082 (v0) | 259,107 | 0.014762241 (7 accounts created) |
-| SOL to the test coin on its curve + the 1% initial buy + credits and wake + the units account payment + the Jito tip | 1,150 (v0) | 188,878 | 0.132415221 |
-| **The launch** | | | **0.147177462** |
+| `create_v2` (quoted in the test coin) + `register_pump_launch` + the soul; 3 signatures | 1,082 (v0) | 248,607 | 0.014762241 (7 accounts created) |
+| SOL to the test coin on its curve + the 1% initial buy + credits and wake + the Jito tip | 1,101 (v0) | 187,228 | 0.082411356 (4 accounts created) |
+| **The launch** | | | **0.097173597** |
 
 Of that: 0.020634960 is rent for the 11 accounts the launch creates and 0.000020002 fees; 0.076516242 buys
 2,687,309.0743 test coins on the coin's curve (200 for the credits, the rest is the maximum input of
-the 1% initial buy, whose quote was 2,660,504.03396); 0.05 is the units account payment; 0.000006258
-the tip. What the launcher holds beyond the quote (the slippage bound) is 0.000765163 SOL.
+the 1% initial buy, whose quote was 2,660,504.03396); 0.000002393 the tip. There is no units account
+payment: the test instance does not offer it. What the launcher holds beyond the quote (the slippage
+bound) is 0.000765163 SOL. The headless wizard run (`scripts/mainnet/wizard-fork.ts`) showed the same
+launch as "Total 0.1049 SOL" at the fork's higher rent.
 
 Then: a `multi_hop_swap` buy of 0.02 SOL through both curves 0.024353480 (the buyer's wrapped SOL and
 token accounts included), a sell 0.000005000, the first fee crank 0.003032680, a split 0.000005000, the

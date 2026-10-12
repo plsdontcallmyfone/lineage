@@ -300,81 +300,100 @@ Both items listed here were done by the pre-audit program changes lane on 2026-1
 
 ## Mainnet test (single key, throwaway quote coin)
 
-Owner decisions 2026-10-11: a small test on real mainnet, to test spawning agents, before the launch
-above. It differs from the launch on purpose:
+Owner decisions 2026-10-11 and 2026-10-12: a small test on real mainnet, to test spawning agents, before
+the launch above. It differs from the launch on purpose, and it does not touch the launch's ids or mint:
 
+- **Program ids: the test's own.** The cargo feature `mainnet-test` declares three throwaway ids;
+  `test.ts close` spends them when the test ends. The launch's mainnet ids (`3GeaTs...`, `2vwKsT...`,
+  `jmcb7c...`) are never deployed at: the preflight checks they are still unused.
+
+  | Program | Mainnet TEST id | Keypair (mode 600, never committed) |
+  |---|---|---|
+  | `units_registry` | `27Y2UyLkuBAdwriNtqro5CJ4MTKjWCoUQywDJKunYBni` | `~/.config/units/mainnet-test/registry-program-keypair.json` |
+  | `units_launch` | `CxwvazD6EYoALLfFzBvJk5DWYacgAmrUGGxntmvPLkCT` | `~/.config/units/mainnet-test/launch-program-keypair.json` |
+  | `units_msg` | `45TEx2pxSMCKPzLwZsatB62hX6SQndYL29ugcXJWa4ns` | `~/.config/units/mainnet-test/msg-program-keypair.json` |
+
+  Only the `declare_id!` selection differs. Each test id sits at the end of its `lib.rs`, so no line above
+  it moves (error sites carry line numbers): the default and `mainnet` builds rebuilt from that tree are
+  byte-identical to the ones before the change (default: registry `f42e0586...`, launch `88f447ac...`,
+  msg `69d02880...`; mainnet: `ead9e41f...`, `593dff1c...`, `90715f14...`). The test builds
+  (`onchain/target/mainnet-test`, `cargo build-sbf --features mainnet-test`): registry `00dc47aa...`
+  732,456 bytes, launch `5a7db257...` 685,224, msg `441f105a...` 342,600. A mainnet profile may carry the
+  test row of the id table (`MAINNET_TEST_PROGRAM_IDS`, all three together); only the test's local overlay
+  does. A closed program id can never be deployed again (on the fork the loader answered `Program ...
+  has been closed, use a new Program Id`), which is why the test has its own.
 - **Quote token**: a throwaway pump.fun coin created for the test (`create_v2`, SOL-paired, never mayhem
-  mode), standing in for `$UNITS`.
+  mode), standing in for `$UNITS`. The official `$UNITS` mint (go/no-go above) is not involved.
 - **Admin and upgrade authority**: one key, the deployer `Gb7WNkLH5SeNPbotc9Tn7VUzUfAsfQLZ2Y2fHjL997J4`
   (`~/.config/units/mainnet/deployer.json`), not the Squads vault, so the programs can be closed when
   the test ends and their rent returned.
-- **Hot keys**: a fresh Core authority `AYsa2Pn2pzH5SeknsA8TZc3ndA9V3oNpau5oFex4yVtu` and runtime
-  authority `CCt4EoNuYhVbk4cXUXBzMLQBfshfPF1f5rLyw22S2uXs` for the mainnet instance, and the test
-  coin's mint key `C5dYJH9gpLkPrmbWatMhFj2mWGx9pvyRoUenJmFhL6br` (made 2026-10-11 by `test.ts keys`,
-  mode 600, in `~/.config/units/mainnet`; only public keys were printed). All seven key files have
-  identical copies in `~/.config/units/mainnet-backup` (same disk: the owner keeps an offline copy too).
+- **Hot keys**: Core authority `AYsa2Pn2pzH5SeknsA8TZc3ndA9V3oNpau5oFex4yVtu`, runtime authority
+  `CCt4EoNuYhVbk4cXUXBzMLQBfshfPF1f5rLyw22S2uXs` and the test coin's mint key
+  `C5dYJH9gpLkPrmbWatMhFj2mWGx9pvyRoUenJmFhL6br` (made by `test.ts keys`, mode 600, in
+  `~/.config/units/mainnet`; only public keys were printed). The seven key files of the test have
+  identical copies in `~/.config/units/mainnet-backup` and `~/.config/units/mainnet-test-backup` (same
+  disk: the owner keeps an offline copy too).
 - **Site**: a second instance on the devnet server, own host (docs/DEPLOY-SITE.md "Second instance
-  (mainnet test)"); the devnet site is not touched.
+  (mainnet test)"); the devnet site is not touched. It runs no identity service, so its Core names no
+  units account recipient and the wizard does not offer "A units account" there.
 
-Nothing has been sent to mainnet. Everything below was run on the mainnet fork with the same commands
-(`scripts/mainnet/test-rehearsal.ts`, record `scripts/mainnet/TEST-REHEARSAL-LAST.json`, PASS 45 of 45
-checks, 27 transactions measured plus the deploys, 2026-10-12 UTC): `test.ts keys`, `coin`, `deploy`,
-`init`, `fund`, `check`; one launch as the wizard plans it for this test (`create_v2` quoted in the
-test coin + `register_pump_launch` + the soul in one v0 transaction of 1,082 bytes; SOL to the test coin
-on its curve + the 1% initial buy + credits and wake + the units account payment + the Jito tip in a
-second of 1,150 bytes; both signed on one blockhash before either is sent); a verifier registered and
-bonded by the site owner key; a SOL trade through both curves (`multi_hop_swap`) and a sell; a fee
-crank with the exact split; a split and an epoch post by the Core authority hot key; then `test.ts
-close`. Costs: [MAINNET-COSTS.md](MAINNET-COSTS.md) "Mainnet test".
+Nothing has been sent to mainnet. What was proven, all on the mainnet fork:
 
-**Read before approving the test: closing burns the three mainnet program ids.** The test deploys at
-the mainnet ids of "Program ids" above. A closed program can never be deployed again at its address:
-on the fork the loader answered `Program jmcb7c... has been closed, use a new Program Id`. The registry
-and the launch config also bind the quote mint at `initialize`, so a test deployment could not become
-the real one anyway. After the test the real launch therefore needs three new id keypairs, the three
-`declare_id!` values, `PROGRAM_IDS.mainnet`, `config/profile.json`, `onchain/Anchor.toml`, new builds
-(new hashes for the audit package) and a rerun of the rehearsal. If the owner wants to keep these ids
-for the launch, the test needs its own ids instead (a second cargo feature); that is a program source
-change and was not made.
+- **The operator commands and every instruction** (`scripts/mainnet/test-rehearsal.ts`, record
+  `TEST-REHEARSAL-LAST.json`, PASS 48 of 48, 2026-10-12 UTC): `test.ts keys`, `coin`, `deploy` at the test
+  ids, `init`, `fund`, `check`; one launch as the wizard plans it (`create_v2` quoted in the test coin +
+  `register_pump_launch` + the soul, 1,082 bytes v0; SOL to the test coin on its curve + the 1% initial
+  buy + credits and wake + the Jito tip, 1,101 bytes v0; both signed on one blockhash before either is
+  sent); a verifier registered and bonded by the site owner key; a SOL trade through both curves and a
+  sell; a fee crank with the exact split; a split and an epoch post by the Core authority hot key; then
+  `test.ts close`. Costs: [MAINNET-COSTS.md](MAINNET-COSTS.md) "Mainnet test".
+- **The browser path in mainnet mode** (`scripts/mainnet/wizard-fork.ts`, record `WIZARD-FORK-LAST.json`,
+  PASS 17 of 17): a local Core, indexer, dashboard and gate under the mainnet profile with the test
+  overlay and the fork as RPC; headless Chromium with a mock Wallet Standard wallet holding only SOL
+  went through the real Launch wizard: the units account option disabled, everything priced in SOL,
+  no devnet or TEST wording, the simulation on the mainnet profile, **one approval carrying both
+  transactions**, the bundle offered to the Jito endpoint first, and, when it was refused, **the same
+  signed transactions sent in order** and the launch on chain (1% initial buy in the agent key's account,
+  credits in the vault, awake, soul digest). Then the trade box bought with 0.02 SOL through pump.fun's
+  `multi_hop_swap` and received exactly the simulated amount. For fork testing only, the overlay names
+  the fork's genesis so every genesis check matches the fork; a wrong genesis on a real endpoint makes
+  every check refuse. Jito was a local stand-in that refuses bundles, so no fork transaction went to
+  Jito.
+- **The instance's chain steps and key sweep** in the dry-run container against the fork
+  (docs/DEPLOY-SITE.md; dry run 121 of 124, its fork section 16 of 16): `stage`, `chain-plan`, funding
+  the owner key, `chain` (three registrations and two bonds, sent with Core stopped), `activate`, then
+  `sweep` back to the deployer.
 
-### What the fork cannot show
+### The one path that cannot be proven off mainnet
 
-- The Jito bundle itself (all or nothing in one slot): the fork sent the same signed transactions in
-  order. The tip accounts and the tip floor were read from Jito (6,258 lamports at the time of the run;
-  it moves).
-- The launch wizard in a browser against mainnet: its mainnet branch (one approval, `sendBundle`
-  through `/chain/rpc`) has only ever been simulated. The wizard simulates before it enables Launch, so
-  a wrong plan shows before any SOL moves; a bundle that does not land commits nothing.
-- Landing 1,747 deploy transactions on mainnet under load. `test.ts deploy` resumes: its buffer keypair
-  stays in the key directory until the deploy is read back, so running it again continues the same
-  buffer; `--use-rpc` sends through the RPC instead of TPU.
-- Priority fees: the fork ran at the base fee. The deploys used 4,141,740 compute units over 1,747
-  transactions; `preflight.ts --priority-micro-lamports <p>` adds the bound it uses (200,000 units per
-  transaction at `p`). The launch's two transactions carry limits of 450,000 and 400,000 units: at the
-  profile's cap of 200,000 micro-lamports that is at most 0.00017 SOL.
+A real Jito bundle (all or nothing in one slot). If Jito refuses the bundle or it does not land, the
+wizard now says so and sends the same signed transactions one by one in order (a transaction that
+already landed is found by its signature and never sent twice); they are then not all or nothing, and
+Launch again sends only what is missing. That fallback is what the fork exercised. Also only on
+mainnet: landing 1,747 deploy transactions under load (`test.ts deploy` resumes on the same buffer when
+run again; `--use-rpc` sends through the RPC instead of TPU), and priority fees (the fork ran at the
+base fee; the deploys used 4,141,740 compute units; `preflight.ts --priority-micro-lamports <p>` adds
+the bound it uses, 200,000 units per transaction at `p`; the launch's two transactions carry limits of
+450,000 and 400,000 units, at most 0.00017 SOL at the profile's cap).
 
-### Phase A, done (no mainnet transaction)
+### Preflight
 
-`scripts/mainnet/test.ts` (the commands), `test-steps.ts` (shared with the rehearsal),
-`test-params.json` (the devnet TEST values), `test-rehearsal.ts`, `preflight.ts`. The three builds in
-`onchain/target/mainnet` were rebuilt from HEAD into a scratch directory and are identical: registry
-`ead9e41f...9c71` 732,456 bytes, launch `593dff1c...5008` 685,224 bytes, msg `90715f14...ccb2` 342,600
-bytes (the rebrand renamed the crates after docs/audit/BUILD-AND-TEST.md was written, so these differ
-from the hashes there).
-
-The preflight on 2026-10-12 UTC: NOT READY, 18 of 20 checks pass; failing: `UNITS_MAINNET_RPC` is not
-set, and the deployer holds 0 SOL of the 10.755878239 it needs.
+`bun scripts/mainnet/preflight.ts` (read only). On 2026-10-12 UTC: NOT READY, 19 of 21 checks pass;
+failing: `UNITS_MAINNET_RPC` is not set, and the deployer holds 0 SOL of the 10.755878239 it needs.
+`test.ts` refuses to send on mainnet without `--mainnet` and without a READY preflight of the last 24
+hours for the same builds and deployer.
 
 ### Phase B, only after the coordinator confirms with the owner
 
-The owner funds the deployer (about 12 SOL: the peak is 10.755878239 at the base fee, see the costs)
-and puts `UNITS_MAINNET_RPC=<keyed mainnet URL>` into `~/.config/units/rpc.env` (mode 600). Then, in
-order; every command reads the chain first and skips what is done, so a stopped run resumes:
+The owner funds the deployer (about 12 SOL: the peak is 10.755878239 at the base fee) and puts
+`UNITS_MAINNET_RPC=<keyed mainnet URL>` into `~/.config/units/rpc.env` (mode 600). Then, in order; every
+command reads the chain first and skips what is done, so a stopped run resumes:
 
 ```sh
 cd ~/units
 export UNITS_NETWORK=mainnet
 P=<priority fee in micro-lamports per compute unit, the owner's choice>
+H=157.245.71.188
 
 # 0. no mainnet transaction: the rehearsal again on a fresh fork (pump.fun redeploys often), then the preflight
 mkdir -p -m 700 /tmp/units-fork-keys
@@ -386,7 +405,7 @@ bun scripts/mainnet/preflight.ts --priority-micro-lamports $P                   
 # 1. the test coin (name, symbol and metadata URI are the owner's; the buy is at most 0.05 SOL, fees included)
 bun scripts/mainnet/test.ts coin --mainnet --name "<name>" --symbol <SYMBOL> --uri <metadata json url> --buy-sol 0.05 --priority-micro-lamports $P
 
-# 2. the three programs at the mainnet ids, upgrade authority = the deployer (resumes when run again; add --use-rpc if TPU sends do not land)
+# 2. the three mainnet-test builds at the TEST ids, upgrade authority = the deployer (resumes when run again; --use-rpc if TPU sends do not land)
 bun scripts/mainnet/test.ts deploy --mainnet --priority-micro-lamports $P
 
 # 3. initialize with admin = the deployer; writes scripts/mainnet/mainnet.json and profile.local.json (untracked)
@@ -396,46 +415,47 @@ bun scripts/mainnet/test.ts check --mainnet                                     
 # 4. the hot keys' running SOL (0.05 each was rehearsed; one epoch post costs 0.001493440)
 bun scripts/mainnet/test.ts fund --mainnet --core 0.05 --runtime 0.05 --priority-micro-lamports $P
 
-# 5. the site instance (docs/DEPLOY-SITE.md "Second instance (mainnet test)")
-UNITS_INSTANCE=mainnet scripts/deploy/deploy.sh 157.245.71.188 stage
-UNITS_INSTANCE=mainnet scripts/deploy/deploy.sh 157.245.71.188 chain-plan        # read only: prints the site owner key and what it must hold
-bun scripts/mainnet/test.ts fund --mainnet --to <site owner key> --sol 0.05 --coin 20 --priority-micro-lamports $P   # 3 burns of 1 and 2 bonds of 5 test coins; rehearsed with these amounts
-MAINNET_SEND=yes UNITS_INSTANCE=mainnet scripts/deploy/deploy.sh 157.245.71.188 chain   # registers and bonds its three verifiers
-UNITS_INSTANCE=mainnet WITH_RUNTIME=1 scripts/deploy/deploy.sh 157.245.71.188 activate
+# 5. the site instance: stage AFTER step 3 (it ships the state file and the overlay), verifiers on chain BEFORE activate
+UNITS_INSTANCE=mainnet scripts/deploy/deploy.sh $H stage
+UNITS_INSTANCE=mainnet scripts/deploy/deploy.sh $H chain-plan                     # read only: prints the site owner key and what it must hold
+bun scripts/mainnet/test.ts fund --mainnet --to <site owner key> --sol 0.05 --coin 20 --priority-micro-lamports $P   # chain-plan asks for at least 0.02 SOL and 13 test coins
+MAINNET_SEND=yes UNITS_INSTANCE=mainnet scripts/deploy/deploy.sh $H chain          # 3 registrations, 2 bonds; needs no running Core; safe to repeat
+UNITS_INSTANCE=mainnet WITH_RUNTIME=1 scripts/deploy/deploy.sh $H activate
 
-# 6. one agent through https://main-157-245-71-188.sslip.io/launch with a browser wallet holding about 0.2 SOL
-#    (0.147177462 SOL was spent by the launcher on the fork, of which 0.05 is the units account payment, which
-#    goes to the deployer, and 0.076516242 buys the test coin for the credits and the 1% initial buy)
+# 6. one agent through https://main-157-245-71-188.sslip.io/launch with a browser wallet holding about 0.15 SOL
+#    (0.097173597 SOL on the fork, of which 0.076516242 buys the test coin for the credits and the 1% initial buy);
+#    Identity: "Your own token" (the units account is not offered there). A buy in the trade box: Pay with SOL.
 
 # 7. when the test ends
-UNITS_INSTANCE=mainnet scripts/deploy/deploy.sh 157.245.71.188 stop
-bun scripts/mainnet/test.ts close --mainnet --sell-coin --confirm 3GeaTsBUsaXCJ7Dru9tDHiKnVBsoHE6yiTdqqj42JHay --priority-micro-lamports $P
-bun scripts/mainnet/test.ts status --mainnet                                       # the three programs read CLOSED
-UNITS_INSTANCE=mainnet scripts/deploy/deploy.sh 157.245.71.188 remove            # --purge also deletes its keys and data
+UNITS_INSTANCE=mainnet scripts/deploy/deploy.sh $H stop
+UNITS_INSTANCE=mainnet scripts/deploy/deploy.sh $H sweep-plan                      # read only: what the server-held keys hold
+MAINNET_SEND=yes UNITS_INSTANCE=mainnet scripts/deploy/deploy.sh $H sweep Gb7WNkLH5SeNPbotc9Tn7VUzUfAsfQLZ2Y2fHjL997J4   # site owner and verifier keys back to the deployer
+bun scripts/mainnet/test.ts close --mainnet --sell-coin --confirm 27Y2UyLkuBAdwriNtqro5CJ4MTKjWCoUQywDJKunYBni --priority-micro-lamports $P
+bun scripts/mainnet/test.ts status --mainnet                                       # the three TEST programs read CLOSED
+UNITS_INSTANCE=mainnet scripts/deploy/deploy.sh $H remove --purge                  # refused while a server key still holds funds
 ```
 
-`test.ts` refuses to send on mainnet without `--mainnet` and without a READY preflight of the last 24
-hours for the same builds and deployer; `deploy` checks the deployer's balance against the peak of each
-program at the endpoint's own rent before it writes anything; `close` needs `--confirm` with the
-registry id. `close` sweeps the two hot keys back, sells the deployer's test coin on its curve, closes
-the three programs and any buffer to the deployer, and prints what came back.
+`deploy` checks the deployer's balance against the peak of each program at the endpoint's own rent
+before it writes anything. `close` needs `--confirm` with the test registry id; it sweeps the two hot
+keys back, sells the deployer's test coin on its curve, claims the coin's SOL creator fees when the
+claim returns more than it costs (`test.ts claim-fees` does only that), closes the three programs and
+any buffer to the deployer, and prints what came back.
 
-What `close` does not bring back: the three program accounts (0.000833120 SOL each), every account the
-programs own (configs, vaults, the agent's records: the rent stays there, and so do the test coins in
-them), the frozen lookup table, fees, pump.fun's trade fees, and whatever SOL and test coins are on
-keys that live on the server (the site owner key and its verifiers: send them back from the server
-before `remove --purge`). The test coin stays on pump.fun as a public coin, and so does the agent's
-coin; its creator fees in SOL can be claimed by the deployer on pump.fun (not wired into `close`).
+What does not come back: the three program accounts (0.000833120 SOL each), every account the programs
+own (configs, vaults, the agent's records: the rent stays there, and so do the test coins and the
+verifiers' bonds in them), the frozen lookup table, fees, pump.fun's trade fees. pump.fun's creator
+vault keeps its rent-exempt minimum: on the fork a first sweep of 0.000148149 SOL of creator fees cost
+the payer 0.000742731 more and returned nothing, and after 4 SOL of volume a claim returned 0.011851852
+SOL, so `close` claims only when it pays. The test coin and the agent's coin stay on pump.fun as public
+coins.
 
-### Known gaps to decide before the test
+### Still to keep in mind
 
-- **No identity service on the mainnet instance**: a launch there pays the units account price (to the
-  deployer, `network_overrides` in `mainnet.json`) and is not given a GitHub pool account. Launch with
-  "Your own token" for a published identity, or accept an unpublished agent for the test.
-- **The trade box pays in the test coin**: Jupiter is off for this profile (`swap` false), so a buyer
-  holds the test coin first (bought on pump.fun). The SOL route through both curves (`multi_hop_swap`)
-  is rehearsed on the fork but not wired into the trade box.
 - **The model spend is real**: credits are priced in a coin with no value, so the 20 USD per UTC day cap
   on all spend, the limit of 2 attempts at once and trading off (docs/DEPLOY-SITE.md) are what bound the
   cost, not the vault.
 - **Everything is public**: the coin, the launch and the trades show on pump.fun and on explorers.
+- **The hosted runtime must report a model that can run** before the wizard lets a launch through (step
+  3 of the wizard says "Pick a model that can run" otherwise): activate with `WITH_RUNTIME=1` first.
+- **The trade box's SOL route** works while the test coin and the agent's coin both trade on their
+  curves; after a migration the box asks to pay in the test coin.

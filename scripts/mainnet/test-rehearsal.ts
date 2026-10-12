@@ -9,7 +9,7 @@
 //   1  test.ts keys, coin (create_v2 SOL-paired + a small buy), deploy, init (admin = the deployer), fund
 //   2  one agent launched as the wizard plans it on mainnet for this test: create_v2 quoted in the test coin +
 //      register_pump_launch, the soul, SOL to the test coin on its curve, the 1% initial buy, the credits +
-//      wake, the units account payment and the Jito tip, packed by planLaunchBundle and signed on one blockhash
+//      wake and the Jito tip (no units account payment: the test instance does not offer it), packed by planLaunchBundle and signed on one blockhash
 //   3  a verifier registered and bonded by the site owner key, a trade from SOL (multi_hop_swap through both
 //      curves) and a sell, a fee crank, a split and an epoch post
 //   4  test.ts close (sweep the hot keys, sell the test coin, close the three programs), then a redeploy
@@ -275,7 +275,7 @@ async function step1() {
   testCli(["fund", "--core", HOT_SOL, "--runtime", HOT_SOL]);
   await bookCli("1 fund");
   out.hot_keys = { core_authority: state.core_authority, runtime_authority: state.runtime_authority, funded_sol_each: HOT_SOL };
-  check("1: the state file sends the units account payment to the deployer (not to the devnet treasury key of config/network.json)", state.network_overrides?.prepay?.identity_account_recipient === dep.id);
+  check("1: the state file names no units account recipient (the test instance has no identity service, so the wizard does not offer the option)", state.network_overrides?.prepay?.identity_account_recipient === null);
   // the site instance's owner key registers and bonds its verifiers: SOL and a few test coins from the deployer
   testCli(["fund", "--to", siteOwner.id, "--sol", OWNER_SOL, "--coin", OWNER_COINS]);
   const ownerRow = (await bookCli("1 fund owner"))[0]!;
@@ -310,7 +310,7 @@ async function step2(coinMint: string, tableAddr: string, P: ReturnType<typeof p
   const need = deposit + maxIn;
   const whole = quoteCurveBuyExactOut(g, fc, coinCurve, need, base);
   const maxSol = maxSolIn(whole.quoteIn, prepay.initial_buy_slippage_bps);
-  const identity = BigInt(prepay.identity_account_price_lamports);
+  const identity = 0n; // "A units account" is not offered on the test instance (no identity service): the launch uses "Your own token"
   const { accounts, tip } = await jito();
   const tipIx = jitoTipIx(launcher.id, accounts, tip);
   // fork only: Jito's tip accounts exist on mainnet; here the picked one is given lamports so a small transfer to it is rent-exempt
@@ -318,13 +318,13 @@ async function step2(coinMint: string, tableAddr: string, P: ReturnType<typeof p
   const soulDigest = H("soul", "fork rehearsal");
   const groups: BundleGroup[] = [
     { name: "launch", ixs: pumpLaunchMain({ launcher: launcher.id, agent: agent.id, agentMint: agentMint.id, line: { mint: coinMint, tokenProgram: T22 }, name: "Mainnet test agent (fork)", symbol: "MTA",
-      uri: "https://units.invalid/fork/mta.json", args: { repoUrl: canonicalUrl("https://github.com/karpathy/minbpe"), identityMode: IDENTITY_MODE.purchased, hosted: true } }) },
+      uri: "https://units.invalid/fork/mta.json", args: { repoUrl: canonicalUrl("https://github.com/karpathy/minbpe"), identityMode: IDENTITY_MODE.token, hosted: true } }) },
     { name: "soul", ixs: [registry.setProfile({ signingKey: agent.id, agent: agent.id, digest: soulDigest, seq: 1 })] },
     { name: "sol-to-units", ixs: pumpSolToLine({ launcher: launcher.id, lineMint: coinMint, amountOut: need, maxSolIn: maxSol, lineTokenProgram: T22 }) },
     { name: "initial-buy", ixs: pumpInitialBuy({ launcher: launcher.id, agent: agent.id, agentMint: agentMint.id, lineMint: coinMint, amountOut, maxIn, lineTokenProgram: T22,
       createBuyback: !(await fork.getAccountInfo(ata(PUMP.buybackRecipients[0], coinMint, T22))) }) },
     { name: "credits", ixs: launch.prepay({ launcher: launcher.id, agent: agent.id, agentMint: agentMint.id, lineMint: coinMint, amount: deposit, decimals: P.line_decimals, lineTokenProgram: T22 }) },
-    { name: "units-account", ixs: [system.transfer(launcher.id, dep.id, identity)] },
+    { name: "units-account", ixs: [] },
     { name: "tip", ixs: [tipIx] },
   ];
   const t = decodeLookupTable((await fork.getAccountInfo(tableAddr))!.data);
@@ -372,8 +372,7 @@ async function step2(coinMint: string, tableAddr: string, P: ReturnType<typeof p
   check("2: the 1% initial buy is in the agent key's account, exactly", (await reader.tokenBalance(ata(agent.id, agentMint.id, T22))) === amountOut, `${amountOut} base units, quote ${quote} test coin base units, max ${maxIn}`);
   check("2: the credits are in the compute vault and the agent is awake", (await reader.tokenBalance(launchPdas.computeVault(agent.id))) === deposit && la.awake === true, `${deposit} base units`);
   check("2: the soul digest is on chain", (await reader.agent(agent.id))!.profileDigest === soulDigest);
-  check("2: the units account payment reached its recipient", (await fork.getBalance(dep.id)) - d0 === identity, `${identity} lamports`);
-  book("units account payment received (its recipient is the deployer in the test)", -identity);
+  check("2: no units account payment is part of the launch", (await fork.getBalance(dep.id)) === d0);
   const spentFork = l0 - (await fork.getBalance(launcher.id));
   const spentMainnet = costs.reduce((a, c) => a + BigInt(c.payerMainnet), 0n);
   const fees = costs.reduce((a, c) => a + BigInt(c.fee), 0n);

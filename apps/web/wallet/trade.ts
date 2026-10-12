@@ -26,6 +26,7 @@ import {
   pumpPdas,
   token,
   TOKEN_2022_PROGRAM,
+  TOKEN_PROGRAM,
   type AgentLaunch,
   type BondingCurve,
   type Ix,
@@ -34,7 +35,7 @@ import { esc, html, raw, type Raw } from "../src/html.ts";
 import { banner, icon } from "../src/ui.ts";
 import { tradeDecimals } from "./decimals.ts";
 import { payAsset, payWithControl, prepareSwapThen, routeLines, sendSwapPlan, simulatePlan, withAction, type PreparedSwap } from "./swap.ts";
-import { buildAndSimulate, clusterGate, isMainnet, loadChainCfg, netName, parseUnits, qsym, rpc, signAndSend, sol, testLabels, units, type Built, type ChainCfg } from "./chain.ts";
+import { buildAndSimulate, clusterGate, isMainnet, loadChainCfg, NET, netName, parseUnits, qsym, rpc, signAndSend, sol, testLabels, units, type Built, type ChainCfg } from "./chain.ts";
 import { onSession, restoreSession, session, startDiscovery, walletChain, type StdAccount, type StdWallet } from "./standard.ts";
 
 const T22 = TOKEN_2022_PROGRAM;
@@ -81,7 +82,7 @@ class Box {
   private side: "buy" | "sell" = "buy";
   private amount = "";
   private slip = "100";
-  private quote: { side: "buy" | "sell"; amountIn: bigint; out: bigint; minOut: bigint; built: Built } | null = null;
+  private quote: { side: "buy" | "sell"; amountIn: bigint; out: bigint; minOut: bigint; built: Built; /** paid in SOL through the quote coin's curve */ sol?: boolean } | null = null;
   /** pay with SOL or USDC (mainnet buys): the composed Jupiter swap and buy */
   private pay: "LINE" | "SOL" | "USDC" = "LINE";
   private swapQ: { prepared: PreparedSwap; amountIn: bigint; out: bigint | null; minOut: bigint | null; fee: bigint | null } | null = null;
@@ -209,10 +210,66 @@ class Box {
     return [...pre, swap];
   }
 
+  /**
+   * SOL straight in when Jupiter is off for this deployment (a mainnet profile with swap false: the
+   * mainnet test's throwaway quote coin): pump.fun's multi_hop_swap, SOL to the quote coin on its own
+   * curve, then to this token on its curve, one transaction. Proven on the mainnet fork
+   * (scripts/mainnet/test-rehearsal.ts). Only while both coins trade on their curves.
+   */
+  private solDirect(): boolean {
+    return isMainnet() && !NET.p.swap;
+  }
+  private solBuy(): boolean {
+    return this.side === "buy" && this.pay === "SOL" && this.solDirect();
+  }
+  private ixsSol(amountIn: bigint, minOut: bigint): Ix[] {
+    const a = this.account!.address, lm = this.lineMint();
+    const wsolAccount = ata(a, PUMP.wsol, TOKEN_PROGRAM), agentAccount = ata(a, this.t.mint, T22);
+    return [
+      token.createAtaIdempotent(a, a, PUMP.wsol, TOKEN_PROGRAM), token.createAtaIdempotent(a, a, this.t.mint, T22),
+      token.createAtaIdempotent(a, PUMP.buybackRecipients[0], lm, T22),
+      pumpAmm.multiHopSwap({ user: a, userIn: wsolAccount, userOut: agentAccount, amountIn, minOut, buybackQuoteMint: PUMP.wsol,
+        hops: [{ kind: "curve", mint: lm, quoteMint: PUMP.wsol }, { kind: "curve", mint: this.t.mint, quoteMint: lm, quoteTokenProgram: T22 }] }),
+    ];
+  }
+  private async reviewSol() {
+    const amountIn = parseUnits(this.amount, 9);
+    const slip = Number(this.slip);
+    if (!amountIn || !Number.isInteger(slip) || slip < 0 || slip > 5000) {
+      this.err = this.errBox("Enter a positive amount of SOL and a slippage tolerance between 0 and 5000 bps.");
+      return this.render();
+    }
+    if (this.sol !== null && amountIn >= this.sol) {
+      this.err = this.errBox(`You hold ${sol(this.sol)} SOL.`);
+      return this.render();
+    }
+    this.err = null;
+    this.msg = html`<span class="dim">Simulating on ${netName()}…</span>`;
+    this.render();
+    await this.readVenue();
+    const lc = await rpc.getAccountInfo(pumpPdas.bondingCurve(this.lineMint()));
+    const quoteCurve = lc ? decodeBondingCurve(lc.data) : null;
+    if (this.venue?.kind !== "curve" || !quoteCurve || quoteCurve.complete || curveMigrated(quoteCurve)) {
+      this.msg = null;
+      this.err = this.errBox(`Paying in SOL works while ${qsym()} and this token both trade on their pump.fun curves. Pay in ${qsym()} instead.`);
+      return this.render();
+    }
+    const built = await buildAndSimulate(this.account!.address, this.ixsSol(amountIn, 1n), 400_000);
+    const row = built.sim.accounts.find((x) => x.address === ata(this.account!.address, this.t.mint, T22));
+    const before = row?.dataBefore ? decodeTokenAccount(row.dataBefore).amount : 0n;
+    const after = row?.dataAfter && row.dataAfter.length >= 165 ? decodeTokenAccount(row.dataAfter).amount : before;
+    const out = after - before;
+    this.quote = { side: "buy", amountIn, out, built, minOut: (out * BigInt(10_000 - slip)) / 10_000n || 1n, sol: true };
+    this.msg = null;
+    if (built.sim.err) this.err = this.errBox(`Simulation failed: ${JSON.stringify(built.sim.err)}`, built.sim.logs);
+    this.render();
+  }
+
   private async review() {
     if (!this.ready()) return;
     const buy = this.side === "buy";
     if (this.dec === null) await this.readVenue();
+    if (this.solBuy()) return this.reviewSol();
     if (buy && this.pay !== "LINE") return this.reviewSwap();
     const amountIn = parseUnits(this.amount, buy ? this.qd() : this.dec!);
     const slip = Number(this.slip);
@@ -317,7 +374,7 @@ class Box {
       this.msg = html`<span class="dim">${m}</span>`;
       this.render();
     };
-    const r = await signAndSend({ wallet: this.wallet!, account: this.account!, ixs: this.ixs(q.side === "buy", q.amountIn, q.minOut), units: 300_000, onStatus: st });
+    const r = await signAndSend({ wallet: this.wallet!, account: this.account!, ixs: q.sol ? this.ixsSol(q.amountIn, q.minOut) : this.ixs(q.side === "buy", q.amountIn, q.minOut), units: q.sol ? 400_000 : 300_000, onStatus: st });
     const c = r.confirmed!;
     if (c.err) throw Object.assign(new Error(`swap failed on chain: ${JSON.stringify(c.err)}`), { logs: c.logs });
     this.quote = null;
@@ -376,12 +433,15 @@ class Box {
       // then the venue and balances in a small footer. Disconnected, the same box asks to connect.
       const q = this.quote;
       const buy = this.side === "buy";
-      const inU = buy ? qsym() : sym;
+      const solIn = this.solBuy();
+      const inU = solIn ? "SOL" : buy ? qsym() : sym;
       const outU = buy ? sym : qsym();
-      const inD = buy ? qd : this.td();
+      const inD = solIn ? 9 : buy ? qd : this.td();
       const outD = buy ? this.td() : qd;
       const on = !!this.account;
-      const chips: [string, string][] = buy
+      const chips: [string, string][] = solIn
+        ? ["0.01", "0.05", "0.1", "0.5"].map((v) => [v, `${v} SOL`])
+        : buy
         ? ["10", "100", "500", "1000"].map((v) => [v, `${Number(v).toLocaleString("en-US")} ${qsym()}`])
         : ["25", "50", "75", "100"].map((p) => [`${p}%`, `${p}%`]);
       const action = !on
@@ -395,9 +455,9 @@ class Box {
           <button type="button" class="mk-tb2-gear" data-tb="gear" aria-label="Trade settings" aria-expanded="${String(this.settings)}" title="Slippage${buy ? " and Pay with" : ""}"><svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6Z"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09a1.65 1.65 0 0 0-1.08-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09a1.65 1.65 0 0 0 1.51-1.08 1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33h.08a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82v.08a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1Z"/></svg></button>
         </div>
         ${this.settings
-          ? html`<div class="mk-tb2-set">${buy && on ? payWithControl("tb_pay", qsym(), this.pay) : ""}<label class="wl-field"><span class="eyebrow">Slippage tolerance (bps)</span><input name="tb_slip" inputmode="numeric" value="${esc(this.slip)}"></label></div>`
+          ? html`<div class="mk-tb2-set">${buy && on ? payWithControl("tb_pay", qsym(), this.pay, this.solDirect()) : ""}<label class="wl-field"><span class="eyebrow">Slippage tolerance (bps)</span><input name="tb_slip" inputmode="numeric" value="${esc(this.slip)}"></label></div>`
           : ""}
-        <label class="mk-tb2-amt"><span class="mk-tb2-u">${inU}</span><input name="tb_amount" inputmode="decimal" autocomplete="off" placeholder="0" value="${esc(this.amount)}" aria-label="${buy ? `Amount of ${qsym()} to pay` : `Amount of ${sym} to sell`}"${on ? "" : raw(" disabled")}><span class="mk-tb2-hint">${on ? html`<button type="button" class="mk-tb2-max" data-tb="max">Max</button>` : "Enter amount"}</span></label>
+        <label class="mk-tb2-amt"><span class="mk-tb2-u">${inU}</span><input name="tb_amount" inputmode="decimal" autocomplete="off" placeholder="0" value="${esc(this.amount)}" aria-label="${solIn ? "Amount of SOL to pay" : buy ? `Amount of ${qsym()} to pay` : `Amount of ${sym} to sell`}"${on ? "" : raw(" disabled")}><span class="mk-tb2-hint">${on ? html`<button type="button" class="mk-tb2-max" data-tb="max">Max</button>` : "Enter amount"}</span></label>
         <div class="mk-tb2-chips">${chips.map(([v, l]) => html`<button type="button" data-tb="chip" data-v="${v}"${on ? "" : raw(" disabled")}>${l}</button>`)}</div>
         <div class="mk-tb2-bal">${on
           ? html`<span>${qsym()} <b class="num" data-bal="line">${this.line === null ? "TBA" : units(this.line, qd)}</b></span><span>${sym} <b class="num" data-bal="token">${this.tok === null ? "TBA" : units(this.tok, this.td())}</b></span><span>SOL <b class="num" data-bal="sol">${this.sol === null ? "TBA" : sol(this.sol)}</b></span>`
@@ -454,7 +514,10 @@ class Box {
           break;
         case "max": {
           const have = this.side === "buy" ? this.line : this.tok;
-          if (have !== null) this.amount = units(have, this.side === "buy" ? this.qd() : this.td()).replace(/,/g, "");
+          if (this.solBuy()) {
+            // SOL: leave what fees and new token accounts need (0.01 SOL)
+            if (this.sol !== null && this.sol > 10_000_000n) this.amount = sol(this.sol - 10_000_000n).replace(/,/g, "");
+          } else if (have !== null) this.amount = units(have, this.side === "buy" ? this.qd() : this.td()).replace(/,/g, "");
           this.quote = null;
           break;
         }

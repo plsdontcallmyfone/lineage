@@ -231,6 +231,7 @@ function renderGate() {
   if (S.gate === "checking") return set("w-gate", banner("info", "Checking the cluster…", `The RPC's genesis hash must be ${netName()}'s before anything is built.`));
   if (S.gate !== "ok") return set("w-gate", banner("bad", "Refusing to build transactions", html`${S.gate} This page is set to ${netName()} only.`));
   // mainnet (SPEC 14.10): no TEST wording; the quote token as configured, a stand-in until $UNITS exists
+  if (isMainnet()) for (const el of S.root?.querySelectorAll("[data-devnet-only]") ?? []) el.remove();
   if (isMainnet())
     return set(
       "w-gate",
@@ -774,7 +775,17 @@ function renderIdPrice() {
   if (!el) return;
   if (!P.cfg) return void (el.textContent = "price from Core");
   const l = BigInt(P.cfg.identity_account_price_lamports);
-  el.textContent = P.cfg.identity_account_recipient ? `${sol(l)} SOL` : "not offered: no payment recipient in Core's config";
+  el.textContent = P.cfg.identity_account_recipient ? `${sol(l)} SOL` : "not offered here";
+  // no recipient in Core's config (a deployment without the identity service, such as the mainnet test): the option cannot be picked
+  const paid = S.root?.querySelector<HTMLInputElement>('input[name="l_identity"][value="purchased"]');
+  if (paid && !P.cfg.identity_account_recipient) {
+    paid.disabled = true;
+    const own = S.root?.querySelector<HTMLInputElement>('input[name="l_identity"][value="token"]');
+    if (paid.checked && own) {
+      own.checked = true;
+      set("w-custody", custodyText("token"));
+    }
+  }
 }
 
 function launchBlocked(): string | null {
