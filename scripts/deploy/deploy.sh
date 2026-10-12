@@ -31,6 +31,9 @@
 #   restore-core [file]   disaster recovery: copy a local Core snapshot (default the newest) to <host> and
 #                   restore it (on a server with no release yet it only places the data for `full`)
 #   monitor         on the server: run the monitor now and print every check
+#   docs [status|rollback]   the docs site, a web site of its own (scripts/docs/deploy.sh): build it here,
+#                   copy it to its own directory on the server, give Caddy its own site block. No app
+#                   unit is touched; the other modes never deploy the docs
 #
 # Environment:
 #   SSH_KEY (default ~/.ssh/lineage_site), SSH_PORT (22), SSH_USER (root)
@@ -47,6 +50,13 @@
 #                   scripts/deploy/site-authors.ts --recipes <same list> (keys agent-<name>.json here)
 #   KEEP_SITE_ENV   1 (default): UNITS_RECIPES, AUTHORS, WITH_RUNTIME, WITH_AUTHOR and EXTRA_ORIGINS left
 #                   unset keep the server's current site.env values; 0 falls back to the defaults
+#   UNITS_DOCS_URL  where the app's /docs redirects and in-app docs links go (default: config/sites.json
+#                   docs_url of the release; the temporary docs host until docs.units.gg has its DNS record)
+#   UNITS_DOCS_REDIRECT  301 makes that redirect permanent (default a 302)
+#   CORS_ORIGINS    unset (default): Core and the market indexer answer every origin, the docs site's
+#                   included. Set (comma separated https://host origins, * as a subdomain wildcard):
+#                   only those origins may read the API from a browser, and the docs origins
+#                   (https://docs.units.gg and the temporary docs host) are always added to the list
 #   DEPLOY_REF      commit to deploy (default HEAD; must be HEAD or an ancestor)
 #   DEPLOY_DRAIN_WAIT  seconds activate waits for background units (verifiers, authors, runtime) to finish
 #                   draining before it returns and names the ones still draining (default 120)
@@ -66,8 +76,10 @@ set -euo pipefail
 # (mainnet test)") has its own script and modes; unset, everything below is the devnet site as before
 if [ -n "${UNITS_INSTANCE:-}" ]; then exec "$(dirname "$0")/instance.sh" "$@"; fi
 HOST="${1:-}"; MODE="${2:-full}"; EXTRA="${3:-}"
-[ -n "$HOST" ] || { sed -n '2,56p' "$0"; exit 2; }
+[ -n "$HOST" ] || { sed -n '2,73p' "$0"; exit 2; }
 REPO="$(cd "$(dirname "$0")/../.." && pwd)"
+# the docs are a web site of their own with their own deploy: nothing below runs for it
+if [ "$MODE" = docs ]; then exec "$REPO/scripts/docs/deploy.sh" "$HOST" ${EXTRA:+"$EXTRA"}; fi
 SSH_KEY="${SSH_KEY:-$HOME/.ssh/lineage_site}"
 SSH_PORT="${SSH_PORT:-22}"
 SSH_USER="${SSH_USER:-root}"
@@ -89,6 +101,7 @@ if [ "${KEEP_SITE_ENV:-1}" = 1 ] && [ "$DRY_RUN" != 1 ]; then
     : "${UNITS_RECIPES:=${LINEAGE_RECIPES:-$(cur UNITS_RECIPES)}}" "${UNITS_RECIPES:=$(cur LINEAGE_RECIPES)}" "${AUTHORS:=$(cur AUTHORS)}"
     : "${WITH_RUNTIME:=$(cur WITH_RUNTIME)}" "${WITH_AUTHOR:=$(cur WITH_AUTHOR)}"
     : "${UNITS_SANDBOX_SLOTS:=$(cur UNITS_SANDBOX_SLOTS)}" "${UNITS_SANDBOX_CPU_SHARES:=$(cur UNITS_SANDBOX_CPU_SHARES)}"
+    : "${UNITS_DOCS_URL:=$(cur UNITS_DOCS_URL)}" "${UNITS_DOCS_REDIRECT:=$(cur UNITS_DOCS_REDIRECT)}" "${CORS_ORIGINS:=$(cur CORS_ORIGINS)}"
     if [ -z "${EXTRA_ORIGINS:-}" ]; then
       EXTRA_ORIGINS="$(cur GATE_ORIGINS | tr ',' '\n' | grep -vxF "$(printf 'https://%s\n' $(cur SITE_NAMES | tr ',' ' '))" | paste -sd, - || true)"
     fi
@@ -109,6 +122,17 @@ if [ -n "${EXTRA_ORIGINS:-}" ]; then
   echo "$EXTRA_ORIGINS" | tr ',' '\n' | grep -qvE '^https://[A-Za-z0-9.-]+$' && { echo "EXTRA_ORIGINS must be comma-separated https://host origins" >&2; exit 2; }
   ORIGINS="$ORIGINS,$EXTRA_ORIGINS"
 fi
+# The docs site (a web site of its own, scripts/docs/deploy.sh) reads the public API from a browser on
+# its own origins: its canonical one and, on a server named by its address, the temporary docs host.
+# With no CORS list the API answers every origin (these included). With CORS_ORIGINS set, the list
+# Core and the indexer get (UNITS_CORS_ORIGINS) is that list plus the docs origins.
+DOCS_ORIGINS="$(bun -e 'console.log(new URL(require(process.argv[1]).docs_canonical).origin)' "$REPO/config/sites.json")${SSLIP:+,https://docs-$SSLIP}"
+CORS_LINE=""
+if [ -n "${CORS_ORIGINS:-}" ]; then
+  echo "$CORS_ORIGINS" | tr ',' '\n' | grep -qvE '^https?://[A-Za-z0-9.*:-]+$' && { echo "CORS_ORIGINS must be comma-separated origins" >&2; exit 2; }
+  CORS_LINE="UNITS_CORS_ORIGINS=$(printf '%s,%s' "$CORS_ORIGINS" "$DOCS_ORIGINS" | tr ',' '\n' | awk 'NF && !seen[$0]++' | paste -sd, -)"
+fi
+[ -z "${UNITS_DOCS_URL:-}" ] || [[ "$UNITS_DOCS_URL" =~ ^https?://[A-Za-z0-9.:-]+$ ]] || { echo "UNITS_DOCS_URL must be http(s)://host with no path" >&2; exit 2; }
 SHA="$(git rev-parse "${DEPLOY_REF:-HEAD}^{commit}")"
 git merge-base --is-ancestor "$SHA" HEAD || { echo "DEPLOY_REF must be HEAD or one of its ancestors" >&2; exit 2; }
 
@@ -133,6 +157,16 @@ UNITS_SANDBOX_CPU_SHARES=${UNITS_SANDBOX_CPU_SHARES:-512}
 # Core's public base URL (identity links name it in their proof text); UNITS_LINK_HTTP_HOSTS stays unset
 UNITS_SITE_URL=https://${SITE_NAMES%%,*}
 ACME_EMAIL=${ACME_EMAIL:-}
+# the docs site (a web site of its own; scripts/docs/deploy.sh). UNITS_DOCS_URL: where the app's /docs
+# redirects and in-app docs links go (empty: config/sites.json docs_url of the release);
+# UNITS_DOCS_REDIRECT=301 makes the redirect permanent. DOCS_ORIGINS: the origins its pages read the
+# public API from. CORS_ORIGINS: the operator's allowed origins (empty: every origin may read, the
+# docs origins included); when set, Core and the indexer get it with the docs origins added
+UNITS_DOCS_URL=${UNITS_DOCS_URL:-}
+UNITS_DOCS_REDIRECT=${UNITS_DOCS_REDIRECT:-}
+DOCS_ORIGINS=$DOCS_ORIGINS
+CORS_ORIGINS=${CORS_ORIGINS:-}
+$CORS_LINE
 EOF
 }
 

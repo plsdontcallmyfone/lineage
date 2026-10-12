@@ -744,6 +744,99 @@ ok: 12 enabled units active, epoch 17 open and 16 on chain, 3 verifiers heartbea
 old. `systemd-analyze security`: lineage-core 1.8, lineage-web, lineage-gate and lineage-indexer 1.7,
 lineage-monitor 3.4, lineage-backup 4.3 (all "OK").
 
+## Docs site
+
+The docs are a web site of their own. Their one canonical origin is `https://docs.units.gg`: every
+page names it in its canonical link, its Open Graph tags and the sitemap. The app serves no docs
+page; it redirects to the docs site.
+
+**What it is.** `bun scripts/docs/build.ts` writes a complete static site into `apps/docs/dist`
+(pages at the root, `/launch-quickstart` and so on; `index.html`, `404.html`, `sitemap.xml`,
+`robots.txt`, fonts, screenshots, and under `assets/` the stylesheet, the script and the search
+index, each with a hash of its content in its name). It needs nothing but Bun and this repository,
+and exits 1 on a broken link. `bun scripts/docs/serve.ts --port 9663` previews it locally as the
+hosts serve it.
+
+**The values that tie the two sites together** are in `config/sites.json`:
+
+| Value | Meaning | Override for one build or server |
+|---|---|---|
+| `docs_canonical` | `https://docs.units.gg`, fixed | none |
+| `app_url` | the app the docs link to (Explorer, Launch, every `app:` link) and read live figures from; the devnet site until the app has its own domain | `UNITS_APP_URL` (docs build and `scripts/docs/deploy.sh`) |
+| `docs_url` | where the app's `/docs` redirects and in-app docs links go; the temporary docs host until the DNS record below exists | `UNITS_DOCS_URL` (app server, `scripts/deploy/deploy.sh`, the app's Vercel build) |
+
+After a change of `app_url` run `bun scripts/docs/build.ts` once and commit `apps/docs/vercel.json`
+(its page policy names the app origin; `bun test scripts/docs` fails until it is committed), then
+deploy the docs.
+
+**Live figures.** The docs pages read `GET <app_url>/v1/config`, `/v1/stats`, `/v1/guard-config` and
+`/market/tokens` from the browser, across origins. Core and the indexer answer every origin unless a
+list is set, so this works as deployed. If the API is ever limited to a list (`CORS_ORIGINS=...` for
+`scripts/deploy/deploy.sh`), the kit adds `https://docs.units.gg` and the temporary docs host to the
+list it gives Core and the indexer (`UNITS_CORS_ORIGINS` in `/etc/units/site.env`). The docs deploy
+checks both origins against the live API every time and fails when one is refused.
+
+### Hosting on our server
+
+```
+scripts/docs/deploy.sh 157.245.71.188            # or: scripts/deploy/deploy.sh 157.245.71.188 docs
+scripts/docs/deploy.sh 157.245.71.188 status
+scripts/docs/deploy.sh 157.245.71.188 rollback
+```
+
+It builds here, copies the files to `/var/www/units-docs/releases/<time>-<commit>`, points
+`/var/www/units-docs/current` at them and writes Caddy a site block of its own,
+`/etc/caddy/sites.d/units-docs.caddy` (from `scripts/deploy/caddy/docs.caddy.tmpl`), then reloads
+Caddy. No app unit is touched or restarted, an app deploy never changes the docs, and the docs
+deploy needs no app deploy. Caddy serves the files directly: clean URLs, the docs' own 404 page,
+`cache-control: public, max-age=31536000, immutable` for everything under `/assets`, a month for
+fonts, an hour for images, `no-cache` for pages, and the docs' own page policy (scripts from the
+site only, no inline script, connections to the app origin for the live figures). If Caddy refuses
+the new block, the previous block and release are put back.
+
+The site block names two hosts: `docs.units.gg` and the temporary host
+`docs-157-245-71-188.sslip.io`, which needs no DNS setup.
+
+**DNS, once.** The owner adds one record at the DNS provider of `units.gg`:
+
+```
+A   docs.units.gg   ->   157.245.71.188
+```
+
+Caddy then obtains the certificate for `docs.units.gg` by itself; nothing is redeployed. It retries
+in the background with growing pauses (for up to 30 days), so the first answer can take a while
+after the record appears: `scripts/docs/deploy.sh 157.245.71.188` asks at once and reports it. When
+`https://docs.units.gg` answers, set `docs_url` in `config/sites.json` to `https://docs.units.gg`,
+commit, and deploy the app (`scripts/deploy/deploy.sh 157.245.71.188 code`) so its `/docs` redirect
+and its links use the real name; `UNITS_DOCS_REDIRECT=301` on that deploy makes the redirect
+permanent.
+
+### Hosting on Vercel instead
+
+Either way works; pick one and point the DNS record of `docs.units.gg` at it.
+
+1. From git: a Vercel project on this repository with **Root Directory** `apps/docs`.
+   `apps/docs/vercel.json` holds the rest: the build command (`cd ../.. && bun scripts/docs/build.ts
+   --out apps/docs/dist`), the output directory (`dist`), clean URLs, the headers and cache rules.
+   Leave "Include files outside the root directory" on (the build reads the repository). A shallow
+   clone has no history, so the "Last updated" dates come from `apps/docs/captured/updated.json`.
+2. Prebuilt, from a machine with the repository: `bun scripts/docs/build.ts && cd apps/docs/dist &&
+   vercel deploy --prod` (the build writes a `vercel.json` with the same rules into the output).
+
+Then add the domain `docs.units.gg` to the Vercel project and create the DNS record Vercel shows
+for it (a CNAME for `docs`, in place of the A record above). The app origin is the
+committed `app_url`; a `UNITS_APP_URL` set only in Vercel's environment would not match the page
+policy in `vercel.json`. This configuration has been checked by the docs tests and the local preview;
+it has not been deployed to a Vercel account from here.
+
+### The app side
+
+`/docs` and `/docs/<page>` on the app answer a redirect to the same page on the docs site
+(`/docs/launch-quickstart` to `<docs_url>/launch-quickstart`): a 302 for now,
+`UNITS_DOCS_REDIRECT=301` makes it permanent. Every link from the app to the docs is built by
+`apps/web/src/docs-url.ts` from the same value. The app's Vercel build
+(`scripts/deploy/vercel/build.ts`) carries the same redirects and no docs page.
+
 ## Second instance (mainnet test)
 
 Owner decision 2026-10-11: the mainnet test runs as a second instance on the same server, beside the
