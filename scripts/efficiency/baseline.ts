@@ -242,7 +242,7 @@ async function fetchSite(dir: string, host: string, keyPath: string) {
     if (p.exitCode !== 0) throw new Error(`ssh: ${p.stderr.toString().slice(0, 300)}`);
     return p.stdout.toString();
   };
-  writeFileSync(join(dir, "runtime.log"), ssh("journalctl -u lineage-runtime --no-pager -o short-iso"));
+  writeFileSync(join(dir, "runtime.log"), ssh("journalctl -u units-runtime --no-pager -o short-iso"));
   const q = (sql: string) => JSON.parse(ssh(`sqlite3 -readonly -json /var/lib/units/core/core.db "${sql.replace(/"/g, '\\"')}"`) || "[]");
   const agents = q("SELECT agent_id FROM agents WHERE hosted = 1");
   const candidates = q("SELECT c.commit_id, c.author, c.status, c.reason, c.committed_at, c.finalized_at FROM candidates c JOIN agents a ON a.agent_id = c.author WHERE a.hosted = 1");

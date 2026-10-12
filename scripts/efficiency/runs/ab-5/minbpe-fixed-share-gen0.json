@@ -1,0 +1,26 @@
+{
+ "recipe": "minbpe",
+ "parent": "gen 0",
+ "seed": "5eed",
+ "arch": "arm64",
+ "interpreter_start_ir": 36538165,
+ "interpreter_and_imports_ir": 232028145,
+ "metrics": [
+  {
+   "metric": "train_ir",
+   "ir": 3866254957,
+   "interpreter_and_imports_ir": 232028145,
+   "fixed_share_pct": 6,
+   "min_effect_pct": 1,
+   "min_effect_of_the_rest_pct": 1.06
+  },
+  {
+   "metric": "encode_ir",
+   "ir": 1632314219,
+   "interpreter_and_imports_ir": 232028145,
+   "fixed_share_pct": 14.2,
+   "min_effect_pct": 1,
+   "min_effect_of_the_rest_pct": 1.17
+  }
+ ]
+}

@@ -96,7 +96,13 @@ const runtimeCfg: Record<string, any> = {
   // no rpc_url: the runtime resolves it like Core (UNITS_DEVNET_RPC, the keyed rpc.env, else public devnet)
   _note:
     "Written by scripts/deploy/site-config.ts on every install and activate. Owner decisions 2026-10-09 and 2026-10-10: each hosted agent's model spend is paid by its own compute vault with no platform cap (attempt_max_usd per attempt, reserved from the vault first); the 10 USD per UTC day global cap (global_max_usd per global_window_s) counts only subsidized spend, the usage the vaults could not pay (global_cap_scope subsidized; set all to cap every USD again). Prices are TEST values.",
-  attempt_max_usd: 0.5,
+  // agent productivity lane 2026-10-12 (docs/plans/AGENT-EFFICIENCY.md section 5): 1.00 USD per attempt, was 0.50.
+  // Measured on this site over 24 h at 0.50 (0.42 for the loop after the journal reserve): 259 attempts
+  // with model calls, 0 candidates; a session reached its first evaluation result at 0.28 USD (median,
+  // 0.31 at the 75th percentile), which left one more turn; 147 of 263 sessions ended before any edit.
+  // The minimum useful attempt (0.4438 USD by default) stays: it is what one read-edit-evaluate-submit
+  // cycle was measured to cost, now under half of the cap instead of 89% of it.
+  attempt_max_usd: 1.0,
   // agent efficiency (docs/plans/AGENT-EFFICIENCY.md, measured 2026-10-10): effort medium (the model
   // stays the soul's; Opus 5.5's own default level) with bounded calls (each call's max_tokens fits
   // what is left of the attempt cap, so a long thinking turn no longer ends the attempt), and
@@ -104,7 +110,11 @@ const runtimeCfg: Record<string, any> = {
   // and a cache keep-alive while a self-evaluation runs past 4 minutes (they took up to 6 with five
   // agents at once, and the next turn wrote the whole prefix again)
   effort: "medium",
-  efficiency: { cap_mode: "bounded", series: true, keep_alive_s: 240 },
+  // pace: the model is told its budget and what is left after every tool result, is nudged to edit and
+  // evaluate at half, and the submit call is reserved (the one accepted self-evaluation of the day was
+  // lost to the cap); spread: agents on one unit are pointed at different metric targets and file
+  // advisory intents (agent productivity lane, section 5)
+  efficiency: { cap_mode: "bounded", series: true, keep_alive_s: 240, pace: true, spread: true },
   agent_epoch_max_usd: null,
   // owner decision 2026-10-10 (evening): devnet money is free, so on devnet a platform cap covers every
   // USD again (scope all), 100 USD per UTC day (owner 2026-10-11, was 30); the self-funding logic stays as built for mainnet

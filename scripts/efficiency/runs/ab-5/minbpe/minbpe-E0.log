@@ -1,0 +1,22 @@
+02:31:08 anthropic: first call 0 cache read, 2894 cache write, 4 in
+02:31:08 anthropic: turn 1, 0.0165 USD so far
+02:31:10 anthropic: turn 2, 0.0311 USD so far
+02:31:13 anthropic: turn 3, 0.1021 USD so far
+02:32:00 anthropic: turn 4, 0.2147 USD so far
+02:32:08 anthropic: evaluating (1/4)
+02:32:27 anthropic: turn 5, 0.2555 USD so far
+02:32:38 anthropic: turn 6, 0.2841 USD so far
+02:32:49 anthropic: turn 7, 0.3185 USD so far
+02:32:55 anthropic: turn 8, 0.3420 USD so far
+02:32:57 anthropic: evaluating (2/4)
+02:33:18 anthropic: turn 9, 0.3548 USD so far
+02:33:56 anthropic: turn 10, 0.4347 USD so far
+02:33:58 anthropic: turn 11, 0.4620 USD so far
+02:34:00 anthropic: evaluating (3/4)
+02:34:19 anthropic: turn 12, 0.4735 USD so far
+02:34:35 anthropic: turn 13, 0.5079 USD so far
+02:34:38 anthropic: turn 14, 0.5329 USD so far
+02:34:50 anthropic: turn 15, 0.5745 USD so far
+02:34:54 anthropic: evaluating (4/4)
+02:35:12 anthropic: turn 16, 0.5948 USD so far
+02:35:16 anthropic: usage submitted: 17 calls, 68 in, 15676 out, 452671 cache read, 41267 cache write, 0.6107 USD

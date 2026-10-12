@@ -1,0 +1,45 @@
+diff --git a/base58/__init__.py b/base58/__init__.py
+--- a/base58/__init__.py
++++ b/base58/__init__.py
+@@ -87,6 +87,41 @@ def _get_base58_encode_tables(
+             alphabet[0:1])
+ 
+ 
++@_cached
++def _get_base58_encode_lanes(alphabet: bytes, nbytes: int):
++    # Inverse of the decode lane merging: an int of nbytes bytes is split
++    # into n = 2**k digits, one per 16 bit lane. Each step splits every
++    # lane v (< base**(2h)) into hi = v // base**h and lo = v % base**h,
++    # stored as hi * 2**(16h) + lo. hi is found for all lanes at once by
++    # multiplying with a fixed point reciprocal m of base**h; lanes are
++    # wide enough that no product spills into its neighbour.
++    # Returns None when the alphabet does not fit this scheme.
++    base = len(alphabet)
++    if base < 2 or base > 64 or nbytes <= 0:
++        return None
++    limit = 1 << 8 * nbytes
++    n = 1
++    while base ** n < limit:
++        n *= 2
++    steps = []
++    h = n
++    while h > 1:
++        h //= 2
++        d = base ** h
++        s = (d * d * d).bit_length()
++        m = (1 << s) // d + 1
++        width = 32 * h
++        qbits = d.bit_length()
++        if ((d * d - 1) * m) >> width or qbits > width - s:
++            return None
++        unit = (1 << qbits) - 1
++        mask = 0
++        for j in range(n // (2 * h)):
++            mask |= unit << (width * j)
++        steps.append((m, s, mask, (1 << 16 * h) - d))
++    return 2 * n, steps, alphabet + bytes(256 - base), alphabet[0:1]
++
++
+ def b58encode_int(
+     i: int, default_one: bool = True, alphabet: bytes = BITCOIN_ALPHABET
+ ) -> bytes:

@@ -1,0 +1,26 @@
+{
+ "recipe": "minbpe",
+ "parent": "tip height 26",
+ "seed": "5eed",
+ "arch": "arm64",
+ "interpreter_start_ir": 36538410,
+ "interpreter_and_imports_ir": 197768442,
+ "metrics": [
+  {
+   "metric": "train_ir",
+   "ir": 331213599,
+   "interpreter_and_imports_ir": 197768442,
+   "fixed_share_pct": 59.7,
+   "min_effect_pct": 1,
+   "min_effect_of_the_rest_pct": 2.48
+  },
+  {
+   "metric": "encode_ir",
+   "ir": 383040667,
+   "interpreter_and_imports_ir": 197768442,
+   "fixed_share_pct": 51.6,
+   "min_effect_pct": 1,
+   "min_effect_of_the_rest_pct": 2.07
+  }
+ ]
+}

@@ -1,0 +1,22 @@
+02:35:38 anthropic: first call 2894 cache read, 0 cache write, 4 in
+02:35:38 anthropic: turn 1, 0.0026 USD so far
+02:35:40 anthropic: turn 2, 0.0176 USD so far
+02:35:42 anthropic: turn 3, 0.0648 USD so far
+02:36:08 anthropic: turn 4, 0.1320 USD so far
+02:36:18 anthropic: turn 5, 0.1749 USD so far
+02:36:21 anthropic: evaluating (1/4)
+02:36:40 anthropic: turn 6, 0.1884 USD so far
+02:37:19 anthropic: turn 7, 0.2687 USD so far
+02:37:21 anthropic: evaluating (2/4)
+02:37:39 anthropic: turn 8, 0.2953 USD so far
+02:37:59 anthropic: turn 9, 0.3387 USD so far
+02:38:07 anthropic: turn 10, 0.3704 USD so far
+02:38:13 anthropic: evaluating (3/4)
+02:38:31 anthropic: turn 11, 0.3889 USD so far
+02:38:40 anthropic: turn 12, 0.4119 USD so far
+02:39:10 anthropic: turn 13, 0.4916 USD so far
+02:39:17 anthropic: turn 14, 0.5255 USD so far
+02:39:23 anthropic: evaluating (4/4)
+02:39:42 anthropic: turn 15, 0.5417 USD so far
+02:39:45 anthropic: gave up: No evaluation got under the 1% minimum. The best encode_ir ratio was 0.9915 (reuse the merge replace table between encode calls); adding a C-level load() parse gave 0.9923, and train_ir rose slightly every time. Instruction counts here seem to be dominated by interpreter startup, imports and the harness, so the library's encode path leaves less than 1% to save.
+02:39:45 anthropic: usage gave up: 16 calls, 64 in, 15369 out, 363633 cache read, 35000 cache write, 0.5554 USD

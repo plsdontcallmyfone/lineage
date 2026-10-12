@@ -1,0 +1,90 @@
+diff --git a/minbpe/base.py b/minbpe/base.py
+--- a/minbpe/base.py
++++ b/minbpe/base.py
+@@ -5,7 +5,7 @@ It would be possible to be a lot more strict about the interface and
+ e.g. isolating all regex/pattern parts to the RegexTokenizer, but
+ some concessions are made for simplicity.
+ """
+-from itertools import repeat
++from itertools import chain, repeat
+ 
+ try:
+     from _collections import _count_elements
+@@ -367,11 +367,19 @@ class Tokenizer:
+             for _ in range(num_special):
+                 special, special_idx = f.readline().strip().split()
+                 special_tokens[special] = int(special_idx)
+-            # read the merges
+-            for line in f:
+-                idx1, idx2 = map(int, line.split())
+-                merges[(idx1, idx2)] = idx
+-                idx += 1
++            # read the merges (all at once in C when every line has two fields)
++            lines = f.read().split("\n")
++            if lines[-1] == "":
++                lines.pop()
++            fields = list(map(str.split, lines))
++            if set(map(len, fields)) <= {2}:
++                it = map(int, chain.from_iterable(fields))
++                merges.update(zip(zip(it, it), range(idx, idx + len(lines))))
++            else:
++                for line in lines:
++                    idx1, idx2 = map(int, line.split())
++                    merges[(idx1, idx2)] = idx
++                    idx += 1
+         self.merges = merges
+         self.special_tokens = special_tokens
+         self.vocab = self._build_vocab()
+diff --git a/minbpe/basic.py b/minbpe/basic.py
+--- a/minbpe/basic.py
++++ b/minbpe/basic.py
+@@ -205,7 +205,7 @@ class BasicTokenizer(Tokenizer):
+         # (int "no merge" sentinel above every merge index: cheap int compares)
+         merges = self.merges
+         if len(ids) >= 256 and merges:
+-            table = _replace_table(merges)
++            table = _cached_replace_table(merges)
+             if table is not None:
+                 # same result as apply_merges, with every merge done in C
+                 s = text_bytes.decode("latin-1")
+@@ -236,3 +236,15 @@ def _replace_table(merges):
+         prev = idx
+         app((chr(p0) + chr(p1), chr(idx)))
+     return table
++
++
++# last (merges snapshot, table) pair: encode calls with unchanged merges reuse
++# the table instead of re-sorting and rebuilding it (the snapshot is a private
++# copy, so the table is only reused for merges that are exactly equal)
++_table_cache = [None, None]
++
++
++def _cached_replace_table(merges):
++    if _table_cache[0] != merges:
++        _table_cache[:] = dict(merges), _replace_table(merges)
++    return _table_cache[1]
+diff --git a/minbpe/regex.py b/minbpe/regex.py
+--- a/minbpe/regex.py
++++ b/minbpe/regex.py
+@@ -15,7 +15,7 @@ from heapq import heapify, heappop, heappush
+ import regex as re
+ from itertools import chain
+ from .base import Tokenizer, merge, apply_merges, _count_elements
+-from .basic import _replace_table
++from .basic import _cached_replace_table as _replace_table
+ 
+ 
+ def _chunk_table(merges):
+@@ -26,9 +26,9 @@ def _chunk_table(merges):
+     table = _replace_table(merges)
+     if table is None:
+         return None
+-    for ps, c in table:
+-        if "\xff" in ps or c == "\xff":
+-            return None
++    # every ps and c is a str: check them all at once
++    if "\xff" in "".join(chain.from_iterable(table)):
++        return None
+     return table
+ 
+ 

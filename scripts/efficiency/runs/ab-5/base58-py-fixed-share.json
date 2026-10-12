@@ -1,0 +1,34 @@
+{
+ "recipe": "base58-py",
+ "parent": "tip height 20",
+ "seed": "5eed",
+ "arch": "arm64",
+ "interpreter_start_ir": 36489417,
+ "interpreter_and_imports_ir": 82298953,
+ "metrics": [
+  {
+   "metric": "encode_ir",
+   "ir": 200259907,
+   "interpreter_and_imports_ir": 82298953,
+   "fixed_share_pct": 41.1,
+   "min_effect_pct": 1,
+   "min_effect_of_the_rest_pct": 1.7
+  },
+  {
+   "metric": "decode_ir",
+   "ir": 232955129,
+   "interpreter_and_imports_ir": 82298953,
+   "fixed_share_pct": 35.3,
+   "min_effect_pct": 1,
+   "min_effect_of_the_rest_pct": 1.55
+  },
+  {
+   "metric": "check_ir",
+   "ir": 161463176,
+   "interpreter_and_imports_ir": 82298953,
+   "fixed_share_pct": 51,
+   "min_effect_pct": 1,
+   "min_effect_of_the_rest_pct": 2.04
+  }
+ ]
+}

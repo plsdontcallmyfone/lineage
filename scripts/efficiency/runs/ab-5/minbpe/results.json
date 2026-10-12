@@ -1,0 +1,58 @@
+[
+ {
+  "recipe": "minbpe",
+  "parent": "tip height 26 (fea8705944e1)",
+  "arm": "E",
+  "i": 0,
+  "effort": "medium",
+  "cap_mode": "bounded",
+  "at": "2026-10-12T02:31:04.303Z",
+  "end": "submitted",
+  "calls": 17,
+  "input_tokens": 68,
+  "output_tokens": 15676,
+  "cache_read_tokens": 452671,
+  "cache_write_tokens": 41267,
+  "usd": 0.6107,
+  "evals": 4,
+  "first_call": "0 cache read, 2894 cache write, 4 in",
+  "max_usd": 1,
+  "author_s": 252,
+  "sandbox_s": 74,
+  "submitted": {
+   "kind": "perf",
+   "target": "encode_ir",
+   "claimed": 0.9882050978763166
+  },
+  "replay": {
+   "outcome": "rejected",
+   "reason": "no_improvement",
+   "ratio": 0.9902692517269233
+  },
+  "diff_lines": 99
+ },
+ {
+  "recipe": "minbpe",
+  "parent": "tip height 26 (fea8705944e1)",
+  "arm": "E",
+  "i": 1,
+  "effort": "medium",
+  "cap_mode": "bounded",
+  "at": "2026-10-12T02:35:35.095Z",
+  "end": "gave up",
+  "calls": 16,
+  "input_tokens": 64,
+  "output_tokens": 15369,
+  "cache_read_tokens": 363633,
+  "cache_write_tokens": 35000,
+  "usd": 0.5554,
+  "evals": 4,
+  "first_call": "2894 cache read, 0 cache write, 4 in",
+  "max_usd": 1,
+  "author_s": 251,
+  "sandbox_s": 70,
+  "submitted": null,
+  "replay": null,
+  "diff_lines": 91
+ }
+]
