@@ -26,3 +26,4 @@ for (;;) {
   await Bun.sleep(31_000);
 }
 console.log(JSON.stringify({ all: await get(`/v1/learnings/stats?hidden=1`), listed: await get(`/v1/learnings/stats${hidden}`), repos: (await get("/v1/learnings/repos")).repos }, null, 2));
+export {};

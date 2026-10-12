@@ -27,7 +27,6 @@ import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import {
   ata,
-  base58Encode,
   compileMessage,
   decodeBondingCurve,
   decodePumpFeeConfig,
@@ -355,4 +354,3 @@ try {
   save();
 }
 log(`deployer ${sol(await rpc.getBalance(dep.id))} SOL`);
-void base58Encode;
