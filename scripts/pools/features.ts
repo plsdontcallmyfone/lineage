@@ -27,7 +27,8 @@ const MAIN = has("--mainnet-test");
 if (MAIN && process.env.UNITS_NETWORK !== "mainnet") throw new Error("--mainnet-test needs UNITS_NETWORK=mainnet");
 if (!MAIN) await import("../../packages/chain/src/devnet-process.ts"); // pins this process to devnet, refuses another network
 
-const { claimPdas, claims, decodeClaimConfig, decodeLaunchConfig, decodePoolConfig, FEATURES, launchPdas, loadKeypair, poolPdas, pools, Rpc, sendAndConfirm, LAUNCH_PROGRAM_ID } = await import("@units/chain");
+const chain = await import("@units/chain");
+const { claimPdas, claims, decodeClaimConfig, decodeLaunchConfig, decodePoolConfig, FEATURES, launchPdas, loadKeypair, poolPdas, pools, Rpc, sendAndConfirm } = chain;
 type Ix = import("@units/chain").Ix;
 
 let rpc: InstanceType<typeof Rpc>;
@@ -50,10 +51,10 @@ const names = (f: number) => [f & FEATURES.pools ? "pools" : "", f & FEATURES.gi
 
 async function state() {
   const [lcA, pcA, ccA] = await rpc.getMultipleAccounts([launchPdas.config(), poolPdas.config(), claimPdas.config()]);
-  if (!lcA) throw new Error(`no LaunchConfig for ${LAUNCH_PROGRAM_ID} on this network`);
+  if (!lcA) throw new Error(`no LaunchConfig for ${chain.LAUNCH_PROGRAM_ID} on this network`);
   const lc = decodeLaunchConfig(lcA.data);
   // a build from before pools and claims has no `features` byte to read as such: the reserved bytes are zero, so it reads 0
-  say(`${MAIN ? "mainnet TEST" : "devnet"} units_launch ${LAUNCH_PROGRAM_ID}: admin ${lc.admin}, features ${lc.features} (${names(lc.features)})`);
+  say(`${MAIN ? "mainnet TEST" : "devnet"} units_launch ${chain.LAUNCH_PROGRAM_ID}: admin ${lc.admin}, features ${lc.features} (${names(lc.features)})`);
   say(`PoolConfig: ${pcA ? j(decodePoolConfig(pcA.data)) : "none"}`);
   say(`ClaimConfig: ${ccA ? j(decodeClaimConfig(ccA.data)) : "none"}`);
   return { lc, hasPool: !!pcA, hasClaim: !!ccA };
