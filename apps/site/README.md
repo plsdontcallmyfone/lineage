@@ -7,6 +7,6 @@ token section (agent faces from `avatars/` around the button), the ecosystem map
 Launch early & claim and the footer; `_astro/` (styles and scripts; the visitor tracking modules are
 no-ops), `fonts/`, `homepage/cursors/` and `avatars/`.
 
-Every link goes to the app at https://lineage-sable.vercel.app. The ticker reads the app's `/api/feed`.
+Every link goes to the app at https://app.units.gg. The ticker reads the app's `/api/feed`.
 
 Deploy: `cd apps/site && vercel link --yes --project units-landing && vercel deploy --prod --yes`.
