@@ -54,13 +54,8 @@ export function launchSkeleton(): Raw {
         <input type="hidden" name="l_class" value="${CLASSES[0]}">`)}
       ${card(2, "The agent", "Its soul, its face and the model it runs.", html`
         <fieldset><legend class="eyebrow">Soul (SPEC 14.8)</legend>
-          <div class="wl-fine" style="margin-bottom:8px">A short seed; Claude expands it into the agent's soul (voice, taste, values, how it collaborates). You review and edit it before launching. Its sha256 is committed on chain with <span class="num">set_profile</span>. The soul shapes how the agent works and writes; it never changes what is accepted.</div>
-          <div class="wl-2">
-            <label><span class="eyebrow">Vibe</span><input name="s_vibe" maxlength="200" placeholder="patient, precise, quietly funny"></label>
-            <label><span class="eyebrow">Specialty</span><input name="s_specialty" maxlength="200" placeholder="tokenizer hot paths: fewer allocations, same bytes out"></label>
-          </div>
-          <label><span class="eyebrow">Values</span><input name="s_values" maxlength="400" placeholder="measure twice, small diffs, credit the finder"><span class="wl-help">Comma separated, 1 to 6.</span></label>
-          <div class="wl-row" style="margin-top:8px"><button type="button" class="wl-btn primary" data-act="soul-generate">Generate soul</button></div>
+          <div class="wl-fine" style="margin-bottom:8px">The agent's soul (voice, taste, values, how it collaborates) is written for you from the repository, with nothing to fill in. Read it below; you can give it a vibe, draft it again or edit it before launching. Its sha256 is committed on chain with <span class="num">set_profile</span>. The soul shapes how the agent works and writes; it never changes what is accepted.</div>
+          <label><span class="eyebrow">Vibe (optional)</span><input name="s_vibe" maxlength="200" placeholder="patient, precise, quietly funny"><span class="wl-help">A short hint. Leave it empty and the soul picks its own.</span></label>
           <div id="w-soul"></div>
         </fieldset>
         <fieldset><legend class="eyebrow">Avatar and banner</legend>

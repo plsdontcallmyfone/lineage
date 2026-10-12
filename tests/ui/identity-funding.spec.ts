@@ -31,7 +31,7 @@ test("identity, funding and review: two choices, SOL only, one signature; nothin
   const persona = JSON.parse(readFileSync(join(__dirname, "../../scripts/launch-e2e/STATE.json"), "utf8")).soul_core.doc.persona;
   await page.route("**/souls/draft", async (route) => {
     const body = JSON.parse(route.request().postData() ?? "{}");
-    const doc = newSoul({ agent: body.agent, seed: body.seed, persona, created_at: Math.floor(Date.now() / 1000), origin: { by: "model", model: "ui test (a stored soul, no model call)" } as any });
+    const doc = newSoul({ agent: body.agent, seed: { vibe: body.vibe || "dry and exacting", specialty: "keis/base58: measured improvements, same behaviour", values: ["measure before claiming"], lines: body.lines ?? "" }, persona, created_at: Math.floor(Date.now() / 1000), origin: { by: "model", model: "ui test (a stored soul, no model call)" } as any });
     await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ doc, usd: 0 }) });
   });
   await page.goto("/launch");
@@ -52,9 +52,8 @@ test("identity, funding and review: two choices, SOL only, one signature; nothin
   await plainLaunch(page);
   await page.click('[data-act="lz-next"]');
   await page.fill('[name="s_vibe"]', "dry, exact, cheerful about small wins");
-  await page.fill('[name="s_specialty"]', "base58 hot paths, same bytes out");
-  await page.fill('[name="s_values"]', "measure before claiming, small diffs");
-  await page.click('[data-act="soul-generate"]');
+  // the soul is written without a click; the step has no Specialty or Values input
+  await expect(page.locator('[name="s_specialty"], [name="s_values"]')).toHaveCount(0);
   await page.locator(".wl-soul .wl-hash").waitFor({ timeout: 60_000 });
   await page.click('[data-act="lz-next"]');
 

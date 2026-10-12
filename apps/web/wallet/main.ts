@@ -88,7 +88,7 @@ import {
   type LaunchCostDetail,
   type LaunchCostTx,
 } from "../../../packages/chain/src/browser/index.ts";
-import { checkSoul, soulDigest, soulSigningMessage, type SoulDoc, type SoulPersona } from "../../../packages/souls/src/doc.ts";
+import { checkSoul, localSoul, soulDigest, soulSigningMessage, type SoulDoc, type SoulPersona } from "../../../packages/souls/src/doc.ts";
 import { esc, html, raw, type Raw } from "../src/html.ts";
 import { badge, banner, icon, kv, panel, stat } from "../src/ui.ts";
 import { fmtUsd, loadUsd, quoteToUsd, solToUsd, usdWhy } from "../src/usd.ts";
@@ -405,6 +405,8 @@ async function checkRepo() {
     S.repo = { url, state: "bad", msg: `GitHub API did not answer (${(e as Error).message}).` };
   }
   renderRepo();
+  // a repository checked while a later step is open: its soul is written now
+  if (S.step >= 2) soulAuto();
 }
 
 function renderRepo() {
@@ -534,9 +536,8 @@ function linksTyped(): string[] {
   return raw0;
 }
 
-/** The seed the agent's soul is drafted from: the agent step's vibe, specialty and values, and the coin step's description and links as the launcher's lines. */
-function soulSeed() {
-  const values = val("s_values").split(",").map((x) => x.trim()).filter(Boolean).slice(0, 6);
+/** What the soul is drafted from: the agent key, the repository and the one optional field (packages/souls/src/auto.ts). */
+function soulInput(agent: string) {
   let links: string[] = [];
   try {
     links = linksTyped();
@@ -545,24 +546,61 @@ function soulSeed() {
   }
   const desc = (S.root?.querySelector<HTMLTextAreaElement>('[name="l_desc"]')?.value ?? "").trim();
   const lines = [desc, links.length ? `Links: ${links.join(" ")}` : ""].filter(Boolean).join("\n");
-  return { vibe: val("s_vibe"), specialty: val("s_specialty"), values, lines };
+  return { agent, vibe: val("s_vibe"), repo: S.repo?.state === "ok" ? S.repo.url : null, lines };
+}
+// the inputs the shown soul was drafted from, and the draft in flight: one draft per distinct input
+let soulFor: string | null = null;
+let soulBusy: string | null = null;
+const soulKey = (i: { agent: string; vibe: string; repo: string | null }) => JSON.stringify([i.agent, i.repo, i.vibe.trim()]);
+
+/**
+ * Drafts the soul with nothing typed and nothing pressed (owner 2026-10-12): when the Agent step opens
+ * with a checked repository, and again when the vibe or the repository changes. A soul the launcher
+ * edited by hand is left alone.
+ */
+function soulAuto() {
+  if (S.page !== "launch" || S.launched || S.sending || S.repo?.state !== "ok" || S.soul?.edited) return;
+  const key = soulKey(soulInput(S.soul?.agent.id ?? "-"));
+  if (S.soul && (soulFor === key || soulBusy === key)) return;
+  void soulGenerate().then(() => renderWizard());
 }
 
+/**
+ * The model's draft through the server (per-address and daily limits there), else a plain soul built
+ * in this page from the same inputs: a failed draft never blocks the launch, and the page says which
+ * of the two it shows.
+ */
 async function soulGenerate() {
-  const seed = soulSeed();
-  if (!seed.vibe || !seed.specialty || !seed.values.length) return set("w-soul", errBox("Vibe, specialty and at least one value are needed."));
   const agent = S.soul?.agent ?? (await generateWebKey());
+  const input = soulInput(agent.id);
+  const key = soulKey(input);
+  soulBusy = key;
   S.soul = { agent, doc: null, note: null, edited: false, usd: null };
   S.draft = null;
-  set("w-soul", html`<div class="wl-fine" style="margin-top:8px">Drafting a soul for agent ${addr(agent.id)}. This takes a minute or two.</div>`);
-  const r = await fetch("/souls/draft", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ seed, agent: agent.id, repo: S.repo?.url ?? null }) });
-  const j = await r.json().catch(() => ({}));
-  if (!r.ok) {
-    S.soul.note = errBox(j.problems ? `${j.error}: ${j.problems.join("; ")}` : (j.message ?? `HTTP ${r.status}`));
-    return renderSoul();
+  set("w-soul", html`<div class="wl-fine" style="margin-top:8px" data-soul-state="drafting">Writing the soul of agent ${addr(agent.id)} from ${input.repo ? "its repository" : "your inputs"}${input.vibe ? " and your vibe" : ""}. This takes up to a minute; you can go on to the next step meanwhile.</div>`);
+  let doc: SoulDoc | null = null;
+  let usd: number | null = null;
+  let why = "";
+  try {
+    const r = await fetch("/souls/draft", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(input), signal: AbortSignal.timeout(150_000) });
+    const j = await r.json().catch(() => ({}));
+    if (r.ok && j.doc) {
+      doc = j.doc as SoulDoc;
+      usd = typeof j.usd === "number" ? j.usd : null;
+    } else why = j.problems ? `${j.error}: ${j.problems.join("; ")}` : (j.message ?? `HTTP ${r.status}`);
+  } catch (e) {
+    why = (e as Error).name === "TimeoutError" ? "the drafting service did not answer in time" : (e as Error).message;
   }
-  S.soul.doc = withModel(j.doc as SoulDoc, modelChoice()); // plan M: the picked model is part of the signed profile
-  S.soul.usd = typeof j.usd === "number" ? j.usd : null;
+  // a newer draft was started while this one ran (the vibe changed): its result is the one shown
+  if (soulBusy !== key || S.soul?.agent !== agent) return;
+  soulBusy = null;
+  if (!doc) {
+    doc = localSoul(input, Math.floor(Date.now() / 1000));
+    S.soul.note = html`<div class="wl-fine" style="color:var(--warn)" data-soul-local>This soul was built in this page from the repository${input.vibe ? " and your vibe" : ""}, not written by the model (${why.replace(/\.$/, "")}). It is a plain one and the launch can go ahead with it; Draft again asks the model once more.</div>`;
+  }
+  S.soul.doc = withModel(doc, modelChoice()); // plan M: the picked model is part of the signed profile
+  S.soul.usd = usd;
+  soulFor = key;
   renderSoul();
 }
 
@@ -599,7 +637,7 @@ function renderSoul(editing?: string) {
     "w-soul",
     html`<div class="wl-soul">
       <div class="wl-soul-h"><b>${p.name}</b> <span class="dim">${p.tagline}</span></div>
-      <div class="wl-fine">${s.edited ? "Edited by you" : `Drafted by ${s.doc.origin.model ?? "the model"}`}${s.usd !== null ? `, ${fmtUsd(s.usd)} of model spend` : ""}. Digest <span class="wl-hash">${soulDigest(s.doc)}</span></div>
+      <div class="wl-fine" data-soul-by="${s.edited ? "edited" : s.doc.origin.by}">${s.edited ? "Edited by you" : s.doc.origin.by === "model" ? `Written by ${s.doc.origin.model ?? "the model"}` : "Built in this page, not by the model"}${s.usd !== null ? `, ${fmtUsd(s.usd)} of model spend` : ""}. Digest <span class="wl-hash">${soulDigest(s.doc)}</span> ${btn("soul-generate", "Draft again")}</div>
       <p>${p.backstory}</p>
       <div class="wl-2">
         <div><div class="eyebrow">Voice</div><p>${p.voice.register.replace(/\.$/, "")}. ${p.voice.style}</p></div>
@@ -959,6 +997,7 @@ async function launchSign() {
     S.draft = null;
     launchKeys.mint = launchKeys.agent = null;
     storedImage = null;
+    soulFor = soulBusy = null;
     S.sending = false;
     renderWizard();
     const started = Date.now();
@@ -1926,7 +1965,7 @@ function stepProblem(i: number): string | null {
     }
     if (i === 2) {
       if (S.bannerFile && (!IMG_TYPES.includes(S.bannerFile.type) || S.bannerFile.size > 1024 * 1024)) return "Banner: PNG, JPEG or WebP, at most 1 MB.";
-      if (!S.soul?.doc) return S.soul ? "The soul draft has problems; fix the seed and generate again." : "Generate the soul from the seed.";
+      if (!S.soul?.doc) return S.soul ? "The agent's soul is being written; it takes up to a minute." : "The agent's soul is written once the repository is checked (step 2).";
       if (M_ready() && !modelChoice()) return "Pick a model that can run.";
       return null;
     }
@@ -2012,6 +2051,8 @@ function go(i: number) {
   renderWizard();
   if (S.step !== prev) window.scrollTo({ top: 0 });
   if (S.step === STEPS.length - 1) void enterReview();
+  // the soul is written without a click: when the Agent step (or a later one) opens with a checked repository
+  if (S.step >= 2) soulAuto();
   // Funding shows the costs of the same built launch the Review step uses (launch fronting). The build starts one step
   // early, on Identity, so the total is usually there when Funding opens.
   if (S.step === STEPS.indexOf("Funding") || S.step === STEPS.indexOf("Funding") - 1) {
@@ -2468,6 +2509,7 @@ async function onClick(ev: Event) {
         else await launchReview();
         break;
       case "soul-generate":
+        soulFor = null;
         await soulGenerate();
         renderWizard();
         break;
@@ -2577,6 +2619,8 @@ function onInput(ev: Event) {
     repoTimer = setTimeout(checkRepo, 500);
   }
   if (t.name === "l_identity") set("w-custody", custodyText(t.value));
+  // a new vibe drafts the soul again, once the field is left (not on every key)
+  if (t.name === "s_vibe" && ev.type === "change") soulAuto();
   // the ticker is the launcher's own choice: it is never filled from the name (owner 2026-10-12)
   if (t.name?.startsWith("l_") && t.name !== "l_token") S.draft = null;
   if (t.name === "l_deposit") renderPrepay();

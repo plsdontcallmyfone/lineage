@@ -10,6 +10,7 @@ import { checkSoul } from "./doc.ts";
 import { personaSafety, textSafety } from "./safety.ts";
 import { voiceBlock, type Surface } from "./prompt.ts";
 import { LIMITS, newSoul, validatePersona, validateSeed, type SoulDoc, type SoulPersona, type SoulSeed } from "./schema.ts";
+import { seedValuesFrom, TEMPERAMENTS } from "./auto.ts";
 
 export const GENERATOR_MODEL = "claude-opus-5-5";
 export const PROMPT_VERSION = "souls/1";
@@ -82,7 +83,7 @@ export const PERSONA_SCHEMA = obj({
  * different characters. The axes describe temperament and craft, never a real person or group.
  */
 const AXES = {
-  temperament: ["patient and deliberate", "restless and curious", "dry and exacting", "warm and teacherly", "quietly stubborn", "playful but rigorous", "skeptical and terse", "earnest and methodical"],
+  temperament: TEMPERAMENTS,
   rhythm: ["short declarative sentences", "long careful sentences with one clear point each", "lists of exact observations", "questions first, then a claim", "understatement", "plain words with one vivid image per message"],
   imagery: ["tidal and weather metaphors", "workshop and woodworking images", "cartography and surveying", "kitchens and mise en place", "orchestras and rehearsal", "gardening and pruning", "trains and timetables", "no metaphors at all"],
   origin: ["came out of a tiny embedded codebase where every byte was argued over", "grew up reading other people's diffs more than writing its own", "started as a test-suite janitor and never stopped caring about flaky tests", "learned on benchmarks that lied and now distrusts single numbers", "was shaped by a codebase so old its comments were in three styles", "began by porting code between languages and kept the habit of translation"],
@@ -124,13 +125,19 @@ Depth checklist (every soul covers all of it):
 The launcher's seed is the brief: honour its vibe, specialty and values, and expand them; do not contradict them. If the seed asks for something the hard rules forbid, keep the rest and leave that part out.`;
 }
 
-function userPrompt(seed: SoulSeed, repo: string | null, avoidNames: string[], salt: string): string {
+function userPrompt(seed: SoulSeed, repo: string | null, avoidNames: string[], salt: string, auto?: { vibe: boolean }): string {
   const d = draw(seed, salt);
-  return `Seed from the launcher:
+  // auto (auto.ts): the launcher typed at most a vibe; the rest of the seed was filled in from the repository and is not a brief
+  const head = auto
+    ? `The launcher typed ${auto.vibe ? `only a vibe: ${seed.vibe}` : "nothing: choose the vibe yourself"}
+No specialty and no values were typed. Choose the soul's own specialty and values from the target repository${auto.vibe ? " and the vibe" : ""}: what this codebase rewards, what a careful contributor to it would care about.
+notes: ${seed.lines || "(none)"}`
+    : `Seed from the launcher:
 vibe: ${seed.vibe}
 specialty: ${seed.specialty}
 values: ${seed.values.join("; ")}
-notes: ${seed.lines || "(none)"}
+notes: ${seed.lines || "(none)"}`;
+  return `${head}
 ${repo ? `Target repository: ${repo}\n` : ""}
 Variety draw for this soul (use these as starting points so souls differ; the seed wins where they conflict):
 - temperament: ${d.temperament}
@@ -152,6 +159,8 @@ export interface GenerateOptions {
   model?: string;
   effort?: "low" | "medium" | "high" | "xhigh" | "max";
   avoidNames?: string[];
+  /** set when the seed came from autoSeed (auto.ts): `vibe` says whether the launcher typed one. The model then chooses the specialty and values, and the document's seed takes the soul's own values. */
+  auto?: { vibe: boolean };
   /** variety salt; defaults to the agent id */
   salt?: string;
   now?: () => number;
@@ -176,7 +185,7 @@ export async function generateSoul(o: GenerateOptions): Promise<GenerateResult> 
   const log = o.log ?? (() => {});
   const usage = emptyUsage();
   const system = systemPrompt();
-  const messages: { role: "user" | "assistant"; content: string }[] = [{ role: "user", content: userPrompt(o.seed, o.repo ?? null, o.avoidNames ?? [], o.salt ?? o.agent) }];
+  const messages: { role: "user" | "assistant"; content: string }[] = [{ role: "user", content: userPrompt(o.seed, o.repo ?? null, o.avoidNames ?? [], o.salt ?? o.agent, o.auto) }];
   let problems: string[] = [];
   let persona: SoulPersona | null = null;
   for (let attempt = 0; attempt < 2; attempt++) {
@@ -231,7 +240,7 @@ export async function generateSoul(o: GenerateOptions): Promise<GenerateResult> 
   if (!persona) return { doc: null, persona: null, problems, usage };
   const doc = newSoul({
     agent: o.agent,
-    seed: o.seed,
+    seed: o.auto ? { ...o.seed, values: seedValuesFrom(persona) } : o.seed,
     persona,
     created_at: Math.floor((o.now?.() ?? Date.now()) / 1000),
     origin: { by: "model", model: usage.models[usage.models.length - 1] ?? model, prompt_version: PROMPT_VERSION },

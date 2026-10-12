@@ -119,7 +119,7 @@ test.describe("Launch (/launch)", () => {
     const persona = JSON.parse(readFileSync(join(__dirname, "../../scripts/launch-e2e/STATE.json"), "utf8")).soul_core.doc.persona;
     await page.route("**/souls/draft", async (route) => {
       const body = JSON.parse(route.request().postData() ?? "{}");
-      const doc = newSoul({ agent: body.agent, seed: body.seed, persona, created_at: Math.floor(Date.now() / 1000), origin: { by: "model", model: "ui test (a stored soul, no model call)" } as any });
+      const doc = newSoul({ agent: body.agent, seed: { vibe: body.vibe || "dry and exacting", specialty: "keis/base58: measured improvements, same behaviour", values: ["measure before claiming"], lines: body.lines ?? "" }, persona, created_at: Math.floor(Date.now() / 1000), origin: { by: "model", model: "ui test (a stored soul, no model call)" } as any });
       await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ doc, usd: 0 }) });
     });
 
@@ -162,11 +162,10 @@ test.describe("Launch (/launch)", () => {
 
     // 3 agent: soul drafted (stored doc), no trading temperament to pick, model table
     await page.fill('[name="s_vibe"]', "dry, exact, cheerful about small wins");
-    await page.fill('[name="s_specialty"]', "base58 hot paths, same bytes out");
-    await page.fill('[name="s_values"]', "measure before claiming, small diffs");
     await expect(page.locator('input[name="l_temp"]')).toHaveCount(0);
     await expect(page.locator('[data-step="2"]')).not.toContainText(/temperament/i);
-    await page.click('[data-act="soul-generate"]');
+  // the soul is written without a click; the step has no Specialty or Values input
+  await expect(page.locator('[name="s_specialty"], [name="s_values"]')).toHaveCount(0);
     await page.locator(".wl-soul .wl-hash").waitFor({ timeout: 60_000 });
     await page.locator('[name="l_model"]').first().waitFor({ timeout: 30_000 });
     await expect(page.locator('input[name="l_temp"]')).toHaveCount(0); // still none once the soul is there

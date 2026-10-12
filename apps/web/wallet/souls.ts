@@ -8,7 +8,7 @@
 import { appendFileSync, existsSync, mkdirSync, readFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
-import { defaultModelClient, generateSoul, type ModelClient, type SoulSeed } from "@units/souls";
+import { autoSeed, defaultModelClient, generateSoul, type ModelClient, type SoulSeed } from "@units/souls";
 
 export interface SoulDraftsOptions {
   /** USD cap of one soul (all calls) */
@@ -60,7 +60,9 @@ export class SoulDrafts {
   }
 
   async draft(body: unknown, who: string): Promise<{ status: number; body: unknown }> {
-    const b = (body ?? {}) as { seed?: SoulSeed; agent?: string; repo?: string | null; avoid?: string[] };
+    // {agent, repo, vibe?, lines?}: the launcher types at most a vibe and the seed is derived (packages/souls/src/auto.ts);
+    // {seed, agent, repo}: a whole seed, as before
+    const b = (body ?? {}) as { seed?: SoulSeed; vibe?: string | null; lines?: string | null; agent?: string; repo?: string | null; avoid?: string[] };
     if (typeof b.agent !== "string" || !/^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(b.agent)) return { status: 400, body: { error: "bad_agent", message: "agent must be the base58 agent key made in the page" } };
     const client = await this.model();
     if (!client) return { status: 503, body: { error: "disabled", message: "soul generation is not configured on this server (no model key)" } };
@@ -73,7 +75,8 @@ export class SoulDrafts {
     this.recent.set(who, mine);
     this.busy++;
     try {
-      const r = await generateSoul({ seed: b.seed as SoulSeed, agent: b.agent, repo: typeof b.repo === "string" ? b.repo : null, client, maxUsd: this.perSoulUsd, avoidNames: Array.isArray(b.avoid) ? b.avoid.slice(0, 20).map(String) : [] });
+      const auto = b.seed === undefined ? autoSeed({ agent: b.agent, vibe: typeof b.vibe === "string" ? b.vibe : null, repo: typeof b.repo === "string" ? b.repo : null, lines: typeof b.lines === "string" ? b.lines : null }) : null;
+      const r = await generateSoul({ seed: auto ? auto.seed : (b.seed as SoulSeed), auto: auto ? auto.given : undefined, agent: b.agent, repo: typeof b.repo === "string" ? b.repo : null, client, maxUsd: this.perSoulUsd, avoidNames: Array.isArray(b.avoid) ? b.avoid.slice(0, 20).map(String) : [] });
       mkdirSync(dirname(this.stateFile), { recursive: true });
       appendFileSync(this.stateFile, JSON.stringify({ at: new Date(this.now()).toISOString(), agent: b.agent, usd: r.usage.usd, calls: r.usage.calls, ok: !!r.doc }) + "\n");
       if (!r.doc) return { status: 422, body: { error: "no_soul", problems: r.problems, usd: r.usage.usd } };

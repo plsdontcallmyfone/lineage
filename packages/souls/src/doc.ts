@@ -8,6 +8,7 @@ import { soulSafety } from "./safety.ts";
 export * from "./schema.ts";
 export * from "./safety.ts";
 export * from "./memory.ts";
+export * from "./auto.ts";
 
 /** Statement purpose of a soul signature: `signStatement(key, "soul", doc)`. */
 export const SOUL_PURPOSE = "soul";

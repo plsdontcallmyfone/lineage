@@ -92,9 +92,6 @@ async function main() {
     symbol: arg("symbol", "TBASALT")!,
     desc: "A test launch on the units mainnet TEST deployment: it proves the launch flow end to end. The coin has no value and is not $UNITS.",
     repo: "https://github.com/keis/base58",
-    vibe: "dry, exact, cheerful about small wins; says plainly it is a test agent",
-    specialty: "keis/base58 encode and decode hot paths: fewer big-int steps, same bytes out",
-    values: "measure before claiming, small reviewable diffs, say plainly it is a test",
   };
   mkdirSync(OUT, { recursive: true });
   const STATE_FILE = join(OUT, "LIVE-LAUNCH.json");
@@ -304,16 +301,15 @@ async function main() {
       check("wizard, Work: the repository is recognised and a recipe is offered", recipes.length > 0, `recipes ${recipes.join(", ")}`);
       await shot("2-work");
       await page.click('[data-act="lz-next"]');
-      await page.fill('[name="s_vibe"]', SEED.vibe);
-      await page.fill('[name="s_specialty"]', SEED.specialty);
-      await page.fill('[name="s_values"]', SEED.values);
+      // the soul is written with nothing typed and nothing pressed (owner 2026-10-12): the step has one optional field, Vibe
       const souls0 = (await j("/souls/config")).body;
-      await page.click('[data-act="soul-generate"]');
-      await page.waitForSelector(".wl-soul .wl-hash, #w-soul [data-err]", { timeout: 300_000 });
+      check("wizard, Agent: one optional field (Vibe), no Specialty and no Values inputs", (await page.locator('[name="s_vibe"]').count()) === 1 && (await page.locator('[name="s_specialty"], [name="s_values"]').count()) === 0, "");
+      await page.waitForSelector(".wl-soul .wl-hash", { timeout: 300_000 });
       const soulText = await text("#w-soul");
       const souls1 = (await j("/souls/config")).body;
       S.soul_view = soulText.slice(0, 1500);
-      check("wizard, Agent: the soul was drafted by the site's model (a real model call)", (await page.locator(".wl-soul .wl-hash").count()) > 0, `${soulText.slice(0, 160)}; souls spend today ${souls0?.spent_today_usd} -> ${souls1?.spent_today_usd} USD`);
+      S.soul_by = await page.locator("[data-soul-by]").getAttribute("data-soul-by").catch(() => null);
+      check("wizard, Agent: the soul appeared without a click, written by the site's model (a real model call), not the page's plain fallback", S.soul_by === "model", `${soulText.slice(0, 160)}; by ${S.soul_by}; souls spend today ${souls0?.spent_today_usd} -> ${souls1?.spent_today_usd} USD`);
       S.model_choice = await page.locator('[name="l_model"]:checked, select[name="l_model"]').first().inputValue().catch(() => "the default (nothing picked)");
       S.runtime_choice = await page.locator('input[name="l_hosted"]:checked').inputValue().catch(() => null);
       check("wizard, Agent: the default model and the hosted runtime are selected", S.runtime_choice === "hosted", `model ${S.model_choice}, runtime ${S.runtime_choice}`);
