@@ -468,7 +468,7 @@ const CSS = `
 .ex-lede{margin:18px 0 0;color:var(--tt);font-size:18px;max-width:560px;line-height:26px}
 .ex-ctrs{position:relative;z-index:1;display:grid;grid-template-columns:repeat(4,minmax(0,auto));gap:0}
 .ex-tw{position:relative;display:inline-block}
-.ex-dd{position:absolute;z-index:4;display:block;height:auto;max-width:none;pointer-events:none;user-select:none} /* plnty's doodles: the wow by the title, the arrow at the live counter */
+.ex-dd{position:absolute;z-index:4;display:block;height:auto;max-width:none;pointer-events:none;user-select:none} /* doodles: the wow by the title, the arrow at the live counter */
 .ex-dd-wow{width:140px;left:calc(100% + 14px);top:-38px}
 .ex-dd-arrow{width:40px;left:calc(25% + 8px);top:-66px}
 .ex-ctr{display:flex;flex-direction:column;gap:10px;padding:2px 26px;min-width:0;border-left:1px solid var(--border)}

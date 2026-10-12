@@ -27,7 +27,7 @@
 //   /embed/units-explorer.js  <units-explorer>'s module, loaded on demand by the kit
 //   /embed/demo.html          the kit's demo page (every element, two themes)
 //   /fonts/<file>      self-hosted fonts (public/fonts, licenses in public/fonts/OFL.txt)
-//   /doodles/<file>    hand-drawn SVG marks from the plnty scrape (public/doodles)
+//   /doodles/<file>    hand-drawn SVG marks (public/doodles)
 //   /providers/<id>.svg model provider marks (public/providers, attribution in NOTICE.md there)
 //   /network, /live, /explorer, /wallet, /spawn, /manual   302 to what replaced them (app consolidation)
 //   everything else    index.html (client-side routing; the Explorer is /)

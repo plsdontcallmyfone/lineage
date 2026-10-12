@@ -1,4 +1,4 @@
-/* units app, styled after the plnty scrape (public/plnty): warm off-white surface, ink type, beige
+/* units app: warm off-white surface, ink type, beige
    pills, purple call to action, squircle corners. One theme, light. Tokens first; the dashboard's older
    token names are aliases of the short ones so every page keeps working. Suisse Intl for text, KMR Apparat for display (headings, figures, wordmark),
    self-hosted from /fonts/ (see public/fonts/OFL.txt: these two are not OFL). No monospace face: --mono
@@ -12,7 +12,7 @@
 @font-face { font-family: "KMR Apparat"; src: url("/fonts/KMR-Apparat-Regular.woff2") format("woff2"); font-weight: 400; font-display: swap; }
 @font-face { font-family: "KMR Apparat"; src: url("/fonts/KMR-Apparat-Medium.woff2") format("woff2"); font-weight: 500 700; font-display: swap; }
 
-/* plnty's homepage tokens; the app has one theme (light) */
+/* design tokens; the app has one theme (light) */
 :root {
   color-scheme: light;
   --bg: #f8f8f8;
@@ -131,7 +131,7 @@ code { font-family: var(--mono); color: var(--ts); background: var(--pill); bord
 
 /* ---------------------------------------------------------------- shell */
 
-/* The header (plnty): wordmark then beige nav pills on the left, the actions on the right. At the top of the
+/* The header: wordmark then beige nav pills on the left, the actions on the right. At the top of the
    page it is a flat bar on the page surface. Once the page scrolls (main.ts toggles .is-scrolled) it closes
    in to a shorter floating pill (narrower, smaller pills and wordmark) over a masked blur of the content
    under it. Its total height never changes (8px above and below the shorter pill), so the page stays put. */
@@ -182,7 +182,7 @@ main[data-section="/agents"] > :not(.deck-shell), main[data-section="/projects"]
 
 /* ---------------------------------------------------------------- page header */
 
-/* plnty's doodles (public/doodles), pinned beside a title; hidden on narrow screens like plnty does */
+/* hand-drawn doodles (public/doodles), pinned beside a title; hidden on narrow screens */
 .dd-wrap { position: relative; display: inline-block; }
 .dd { position: absolute; z-index: 4; display: block; height: auto; max-width: none; pointer-events: none; user-select: none; }
 .dd-wow { width: 140px; left: calc(100% + 14px); top: -38px; }
@@ -868,7 +868,7 @@ button.pf-chip:hover { background: var(--panel-3); }
 
 /* ---------------------------------------------------------------- app consolidation: header, Eco, Connect */
 
-/* Eco is a beige pill (with the nav, above); Connect is plnty's dark "Log in" pill */
+/* Eco is a beige pill (with the nav, above); Connect is the dark pill */
 .cn-btn {
   display: inline-flex; align-items: center; justify-content: center; gap: 7px; height: 34px; padding: 0 16px 0 14px; border: 0; border-radius: 18px; corner-shape: squircle;
   background: var(--btn-p-bg); color: var(--btn-p-fg); font: 500 14px/1 var(--display); letter-spacing: -.01em; white-space: nowrap; cursor: pointer;
@@ -1347,9 +1347,9 @@ a.eco-btn { text-decoration: none; }
   .gx-sl { grid-column: 1 / -1; grid-row: 2; }
 }
 
-/* ---------------------------------------------------------------- footer (the landing site's, apps/site): the reference's
+/* ---------------------------------------------------------------- footer (the landing site's, apps/site): its
    footer rules with its scope attributes removed and its classes prefixed sf- (the app has its own .copy, .pill, .frame);
-   its sizes follow the reference's unit --hp-u (1px at 1440 wide). Markup in src/site-footer.ts. */
+   its sizes follow the unit --hp-u (1px at 1440 wide). Markup in src/site-footer.ts. */
 .site-footer {
   --hp-u: clamp(1px, .06944vw, 1.3333px); --hp-gutter: calc(24 * var(--hp-u)); --font-sans: var(--sans); --hp-corner-shape: squircle; --hp-smoothing-boost: 2;
   --hp-hop-lift: 4; --hp-hop-duration: .28s; --hp-hop-ease: cubic-bezier(.33, 0, .2, 1); --hp-hop-ease-back: cubic-bezier(.34, 2.4, .64, 1); --hp-ink-muted: #6c6962;

@@ -1,11 +1,11 @@
 // The landing site's scroll feel on every page: the mouse wheel glides to where it points instead of
-// jumping (the reference uses GSAP ScrollSmoother at smooth .8; this eases the window's own scroll
+// jumping (this eases the window's own scroll
 // position, so sticky headers, anchors and inner scroll areas keep working). Only the wheel: touch,
 // keys, the scrollbar and programmatic scrolls stay native. Off with reduced motion, with Ctrl
 // (zoom), and over anything that can still scroll itself in the wheel's direction (deck columns,
 // feeds, menus, the chart).
 
-const TAU = 0.16; // seconds to close about 63% of the gap; settles in about .8 s like the reference
+const TAU = 0.16; // seconds to close about 63% of the gap; settles in about .8 s
 let target = 0;
 let pos = 0;
 let raf = 0;
