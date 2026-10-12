@@ -879,7 +879,7 @@ button.pf-chip:hover { background: var(--panel-3); }
 .eco-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--tt); flex: none; }
 .eco-dot[data-s="open"] { background: var(--good); animation: pulse 2.5s ease-in-out infinite; }
 .eco-dot[data-s="down"] { background: var(--bad); }
-.cn { position: relative; }
+.cn { position: relative; display: flex; align-items: center; }
 .cn-btn img { border-radius: 50%; }
 .cn-menu { position: absolute; right: 0; top: calc(100% + 8px); min-width: 230px; z-index: 120; background: var(--bg2); border: 1px solid var(--border); border-radius: var(--radius); box-shadow: var(--float-shadow); padding: 6px; display: flex; flex-direction: column; }
 .cn-menu > a, .cn-menu > button { display: flex; align-items: center; gap: 10px; padding: 9px 10px; border: 0; background: none; text-align: left; border-radius: 6px; color: var(--tp); font: 400 13.5px/1.2 var(--sans); cursor: pointer; }
