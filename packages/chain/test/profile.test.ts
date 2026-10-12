@@ -116,3 +116,34 @@ describe("rpc resolution", () => {
     expect(() => rpcUrlFor(m, {}, home)).toThrow(MissingRpcError);
   });
 });
+
+// The mainnet test's local overlay (UNITS_PROFILE_LOCAL, docs/MAINNET-RUNBOOK.md "Mainnet test"): a file
+// outside git replaces keys of one network's block; the profile guards still apply.
+describe("local profile overlay", () => {
+  const dir = mkdtempSync(join(tmpdir(), "units-overlay-"));
+  const write = (name: string, v: unknown) => {
+    const f = join(dir, name);
+    writeFileSync(f, JSON.stringify(v));
+    return f;
+  };
+  const quote = { source: "config", symbol: "TESTQ", mint: "CiBfnTkDc1vgYbuMobMNEQaKSQXPYeTUbZGRZcug1L62", decimals: 6, token_program: "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb", status: "stand-in", units_mint: null };
+
+  test("replaces the mainnet quote and the swap switch; devnet and the program ids are untouched", () => {
+    const f = write("ok.json", { profiles: { mainnet: { quote, swap: false } } });
+    const m = loadNetworkProfile({ env: { UNITS_NETWORK: "mainnet", UNITS_PROFILE_LOCAL: f } });
+    expect(m.quote.mint).toBe(quote.mint);
+    expect(m.quote.symbol).toBe("TESTQ");
+    expect(m.swap).toBe(false);
+    expect(m.programs).toEqual(selectProfile(raw, "mainnet").programs);
+    expect(m.faucet).toBe(false);
+    expect(loadNetworkProfile({ env: { UNITS_PROFILE_LOCAL: f } })).toEqual(selectProfile(raw, null));
+    expect(loadNetworkProfile({ env: { UNITS_NETWORK: "mainnet" } }).quote.symbol).toBe("PYUSD");
+  });
+
+  test("cannot switch on a mainnet faucet, change a program id, or name a missing file", () => {
+    expect(() => loadNetworkProfile({ env: { UNITS_NETWORK: "mainnet", UNITS_PROFILE_LOCAL: write("faucet.json", { profiles: { mainnet: { faucet: true } } }) } })).toThrow(/faucet/);
+    expect(() => loadNetworkProfile({ env: { UNITS_NETWORK: "mainnet", UNITS_PROFILE_LOCAL: write("ids.json", { profiles: { mainnet: { programs: { registry: quote.mint, launch: quote.mint, msg: quote.mint } } } }) } })).toThrow(/programs/);
+    expect(() => loadNetworkProfile({ env: { UNITS_NETWORK: "mainnet", UNITS_PROFILE_LOCAL: join(dir, "absent.json") } })).toThrow(/does not exist/);
+    expect(() => loadNetworkProfile({ env: { UNITS_NETWORK: "mainnet", UNITS_PROFILE_LOCAL: write("shape.json", { mainnet: {} }) } })).toThrow(/profiles is required/);
+  });
+});
