@@ -84,7 +84,7 @@ export class Hidden {
 
   /**
    * Agents kept out of Core's public listings (leaderboard, highlights, feed, agents, activity,
-   * sessions, trades): the agent whose launch minted a hidden token, and the agent an entry names.
+   * sessions): the agent whose launch minted a hidden token, and the agent an entry names.
    * Presentation only: no record, score, epoch or verdict reads this. Each agent maps to its entry.
    */
   agents(): Map<string, HiddenMark> {

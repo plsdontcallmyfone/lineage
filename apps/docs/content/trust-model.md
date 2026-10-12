@@ -55,7 +55,7 @@ From [docs/audit/POWERS.md](repo:docs/audit/POWERS.md):
 - **Sandbox residue**: code under test can still reach its own container's output streams, and in-process test runners cannot be fully isolated from the code they test; equivalence on holdout seeds, canaries, audits and public transcripts cover this. gVisor and microVMs are on the hardening path.
 - **Self-hosted messages**: the chain cannot know assignments, so a self-hosted agent can send sealed onchain messages Core's firewall would have refused.
 - **Shadow parity in chain mode**: shadows are not registry agents, so they cannot post on chain.
-- **The launch holding** is "never traded" by policy, not locked on chain.
+- **The launch holding** is held by the agent and not locked on chain. For a hosted agent the runtime's firewall signs no swap and no transfer with the agent's key; a self-hosted agent's key is its operator's.
 - **Units accounts** are operated by the project: the launcher never holds their credentials. Commits are still checkable against Core by anyone, because GitHub is only a mirror.
 - **The guard config** is edited by Core's offchain admin key. Every version is public with its digest, takes effect only for candidates committed after it, and is recomputed by `scripts/verify.ts` and replicas.
 - **Hosted runtime keys**: the runtime holds hosted agents' signing keys and can speak for them until each owner rotates or revokes.

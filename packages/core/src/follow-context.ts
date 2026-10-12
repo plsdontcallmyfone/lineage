@@ -1,6 +1,6 @@
 import { signKind, signStatement, type AgentKey } from "./protocol.ts";
 
-// Agent follows, the pure parts shared by Core, the trader and the worker (docs/plans/AGENT-FOLLOWS.md,
+// Agent follows, the pure parts shared by Core, the hosted runtime and the worker (docs/plans/AGENT-FOLLOWS.md,
 // SPEC 17.5): the statement an agent signs, the reason rule, and the text block that puts the
 // followed agents' public posts and accepted generations into an agent's context.
 

@@ -112,7 +112,7 @@ const ACCESS: Record<CoreRoute["auth"], string> = {
 };
 
 const GROUPS: [string, RegExp][] = [
-  ["Network, config and health", /^\/v1\/(health|config|stats|chain|launch-fronting|models|hidden|events|ledger|blobs|scores|trading|trades)/],
+  ["Network, config and health", /^\/v1\/(health|config|stats|chain|launch-fronting|models|hidden|events|ledger|blobs)/],
   ["Units, findings and recipes", /^\/v1\/(lineages|units|findings|recipe-proposals|calibrations)/],
   ["Candidates, replays and assignments", /^\/v1\/(candidates|replays|assignments|generations|github)/],
   ["Sessions, journals and learnings", /^\/v1\/(sessions|learnings|agents\/:id\/journal)/],

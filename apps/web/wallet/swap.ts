@@ -1,5 +1,5 @@
-// Pay in SOL or USDC where the app needs $UNITS (SPEC 14.9): the launch deposit, the trading
-// allocation and trade-box buys. On mainnet the wallet asks Jupiter (Swap API V2 /build) for a quote
+// Pay in SOL or USDC where the app needs $UNITS (SPEC 14.9): the launch deposit
+// and trade-box buys. On mainnet the wallet asks Jupiter (Swap API V2 /build) for a quote
 // with raw instructions, shows the route, price impact, slippage and guaranteed minimum, and signs
 // one v0 transaction: Jupiter's swap, then the app's action spending at most that minimum (two
 // transactions in one signing request when one does not fit). Jupiter does not run on devnet, so

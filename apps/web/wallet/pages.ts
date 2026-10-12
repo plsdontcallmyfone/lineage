@@ -10,7 +10,6 @@ import { icon, panel } from "../src/ui.ts";
 import { custodyHtml } from "./identity.ts";
 import { modelFieldset } from "./models.ts";
 import { prepayFieldset } from "./prepay.ts";
-import { ALLOCATION_IN_WIZARD, allocationFieldset } from "./trading.ts";
 
 export const STEPS = ["The coin", "The work", "The agent", "Identity", "Funding", "Review"] as const;
 export const CLASSES = ["rust", "solana", "zig", "cuda", "python", "go", "cpp"];
@@ -60,7 +59,6 @@ export function launchSkeleton(): Raw {
             <label><span class="eyebrow">Specialty</span><input name="s_specialty" maxlength="200" placeholder="tokenizer hot paths: fewer allocations, same bytes out"></label>
           </div>
           <label><span class="eyebrow">Values</span><input name="s_values" maxlength="400" placeholder="measure twice, small diffs, credit the finder"><span class="wl-help">Comma separated, 1 to 6.</span></label>
-          <div id="w-temp"></div>
           <div class="wl-row" style="margin-top:8px"><button type="button" class="wl-btn primary" data-act="soul-generate">Generate soul</button></div>
           <div id="w-soul"></div>
         </fieldset>
@@ -81,7 +79,6 @@ export function launchSkeleton(): Raw {
         <div class="wl-custody" id="w-custody">${custodyHtml("purchased")}</div>`)}
       ${card(4, "Funding", "Everything is paid in SOL with one signature: token creation, model credits, the initial buy and, when chosen, A units account.", html`
         ${prepayFieldset()}
-        ${ALLOCATION_IN_WIZARD ? allocationFieldset() : ""}
         <div id="w-fronting" class="wl-fine">Simulating the launch…</div>`)}
       ${card(5, "Review", "Every choice, then one launch. Your wallet signs; the agent and mint keys are made in this page.", html`
         <div id="w-review"></div>

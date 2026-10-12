@@ -63,7 +63,7 @@ export async function walletPanel(agent: string): Promise<Raw> {
     for (const h of w.treasury.holdings ?? []) {
       const t = tokens.get(h.mint);
       const sym = t?.symbol ? `$${t.symbol}` : shortAddr(h.mint);
-      rows.push(html`<li data-holding="${h.mint}"><span><a class="link" href="/tokens/${h.mint}">${sym}</a> ${h.own ? html`<em>own token, held, never traded</em>` : html`<em>agent token</em>`}</span>${h.decimals === null ? amount(h.amount, 0, "base units") : amount(h.amount, h.decimals, sym)}</li>`);
+      rows.push(html`<li data-holding="${h.mint}"><span><a class="link" href="/tokens/${h.mint}">${sym}</a> ${h.own ? html`<em>own token, held by the agent</em>` : html`<em>agent token</em>`}</span>${h.decimals === null ? amount(h.amount, 0, "base units") : amount(h.amount, h.decimals, sym)}</li>`);
     }
     if (w.treasury.holdings && !w.treasury.holdings.length) rows.push(html`<li class="wl-none"><span>Agent tokens</span><span class="wl-na">none held</span></li>`);
   }

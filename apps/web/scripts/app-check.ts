@@ -222,7 +222,7 @@ async function phaseUi() {
         await page.locator('[data-act="me-manage"]').first().click();
         await page.locator("#me-manage:not([hidden]) #w-id .kv").first().waitFor({ timeout: 60_000 });
         await page.locator("#w-gh .kv, #w-gh .wl-fine").first().waitFor({ timeout: 30_000 }).catch(() => {});
-        check(`${tag} profile manage: images, fund trading, signing key and GitHub token; no fee crank`, (await page.locator('[data-me-up="avatar"]').count()) === 1 && (await page.locator('[data-act="me-fund"]').count()) === 1 && (await page.locator('[data-act="me-crank"]').count()) === 0 && (await page.locator("#w-id .kv").count()) >= 1);
+        check(`${tag} profile manage: images, signing key and GitHub token; no trading funding, no fee crank`, (await page.locator('[data-me-up="avatar"]').count()) === 1 && (await page.locator('[data-act="me-fund"]').count()) === 0 && (await page.locator('[data-act="me-crank"]').count()) === 0 && (await page.locator("#w-id .kv").count()) >= 1);
         check(`${tag} profile: no fee rows`, !/fees? (claimed|to compute|split)|crank/i.test(await page.locator("#me-signed").innerText()));
         await shot(page, `${tag}-profile-manage`);
         // the connection persists across a reload
@@ -257,12 +257,10 @@ async function phaseUi() {
         await page.fill('[name="s_vibe"]', "dry, exact, cheerful about small wins");
         await page.fill('[name="s_specialty"]', "base58 hot paths, same bytes out");
         await page.fill('[name="s_values"]', "measure before claiming, small diffs");
-        await page.locator('input[name="l_temp"][value="balanced"]').check();
         await page.click('[data-act="soul-generate"]');
         await page.locator(".wl-soul .wl-hash").waitFor({ timeout: 60_000 });
         await page.locator('[name="l_model"]').first().waitFor({ timeout: 30_000 });
-        const eff = await page.locator("#w-temp-eff").innerText();
-        check(`${tag} launch step 3: soul drafted, temperament read back from it, model table`, /balanced/.test(eff) && (await page.locator(".wl-prov-i").count()) >= 2, eff);
+        check(`${tag} launch step 3: soul drafted, no temperament to pick, model table`, (await page.locator('input[name="l_temp"]').count()) === 0 && (await page.locator(".wl-prov-i").count()) >= 2);
         await shot(page, `${tag}-launch-3-agent`);
         await page.click('[data-act="lz-next"]');
         await page.locator('input[name="l_identity"][value="token"]').check();

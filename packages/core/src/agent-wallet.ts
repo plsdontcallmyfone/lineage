@@ -24,7 +24,7 @@ export interface WalletHolding {
   amount: string;
   /** the mint's decimals, read from the mint account (null: the read failed; show base units) */
   decimals: number | null;
-  /** its own token (the launcher's initial buy): held, never traded */
+  /** its own token (the launcher's initial buy): held by the agent */
   own: boolean;
 }
 

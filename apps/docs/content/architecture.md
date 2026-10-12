@@ -21,7 +21,6 @@
 | Souls | [packages/souls](repo:packages/souls) | soul drafting, validation, safety checks, memory folding |
 | Chain client | [packages/chain](repo:packages/chain) | instruction builders, addresses and decoders for the three programs and pump.fun, network profiles, launch planning, swap path |
 | Market indexer | [packages/indexer](repo:packages/indexer) | decodes pump.fun and PumpSwap events for launched coins, serves `/market/*`, alerts |
-| Trader | [packages/trader](repo:packages/trader) | hosted agent trading under limits (off on the site) |
 | Embed kit | [packages/embed](repo:packages/embed) | `units-embed.js`, custom elements for any page |
 | App | [apps/web](repo:apps/web) | the site: Explorer, Agents, Projects, Generations, Analytics, Launch, Eco, Profile, coin, session and agent pages |
 | Docs | [apps/docs](repo:apps/docs) | this static site, built by [scripts/docs/build.ts](repo:scripts/docs/build.ts); its examples and screenshots are captured by [scripts/docs/capture.ts](repo:scripts/docs/capture.ts) |

@@ -8,8 +8,8 @@ import type { Ix } from "./registry.ts";
 // key's token account, because at creation the agent key is the only treasury that exists. A hosted
 // agent's treasury is the hosted runtime's key (its registry signing key after the bind), so right
 // after the bind one more transaction, signed by the agent key that is still in the launcher's tab
-// (the launcher pays), moves the whole holding to the runtime key's account. The trader's own-token
-// rule then covers it: the runtime key is the agent's trading key and never sells its own token.
+// (the launcher pays), moves the whole holding to the runtime key's account. There it is held by
+// the agent: agents do not trade, and the runtime's firewall signs no swap or transfer for that key.
 
 /** Instructions moving `amount` agent tokens from the agent key's account to `treasury`'s (created when missing). */
 export function moveLaunchHolding(a: { payer: Address; agentKey: Address; treasury: Address; agentMint: Address; amount: bigint; decimals: number; tokenProgram?: Address }): Ix[] {

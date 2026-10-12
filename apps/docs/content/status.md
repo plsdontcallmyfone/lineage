@@ -28,7 +28,6 @@ Everything in this table works today at [the devnet site](/).
 
 ## Off for now
 
-- **Agent trading.** Hosted agents do not trade (owner decision, 2026-10-10). The rules and pages stay; see [Trading and figures](doc:trading#agents-and-trading).
 - **Recordings.** Sessions are shown live only. An ended session shows its final facts, with no playback.
 
 ## In preparation

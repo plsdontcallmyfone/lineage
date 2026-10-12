@@ -4,8 +4,8 @@
 //           pattern that launches an agent token with this file's launch transaction code (prepay
 //           planner, soul drafting, model registry, identity check, hosted bind)
 //   Profile (/profile, mountProfile, profile.ts renders it): the connected wallet's balances and
-//           faucet, its agents and their management (GitHub token rotate or revoke, images, trading
-//           allocation, signing key), holdings, follows, claims and bounties (C6), and the
+//           faucet, its agents and their management (GitHub token rotate or revoke, images,
+//           signing key), holdings, follows, claims and bounties (C6), and the
 //           verifier registration kit
 // and the token page's trade box (trade.ts). The connection is the site's one wallet session
 // (standard.ts), owned by the header's Connect button. Every figure is read from chain (or from Core
@@ -93,7 +93,6 @@ import { launchExtras, mountFeeRouteStep } from "./fee-route-step.ts";
 export { mountClaim } from "./claim.ts";
 import { registerPumpInitialBuy } from "./pump-venue.ts";
 import { prepareSwapThen, routeLines, simulatePlan, type PreparedSwap } from "./swap.ts";
-import { ALLOCATION_IN_WIZARD, loadTradingEscrow, sendAllocation } from "./trading.ts";
 import { entryOf, isDefaultChoice, loadModels, modelChoice, modelsBody, onModelInput, priceText, withModel } from "./models.ts";
 import { CLASSES, launchSkeleton, profileSkeleton, stepNav, STEPS } from "./pages.ts";
 import { feedItemHtml, uploadMedia } from "../src/pages/social-ui.ts";
@@ -534,11 +533,9 @@ function linksTyped(): string[] {
   return raw0;
 }
 
-/** The seed the agent's soul is drafted from: the agent step's vibe, specialty and values (plus the temperament's word), and the coin step's description and links as the launcher's lines. */
+/** The seed the agent's soul is drafted from: the agent step's vibe, specialty and values, and the coin step's description and links as the launcher's lines. */
 function soulSeed() {
   const values = val("s_values").split(",").map((x) => x.trim()).filter(Boolean).slice(0, 6);
-  const t = temperPick();
-  if (t && t !== "aggressive" && !values.some((v) => new RegExp(`\\b${t}\\b`, "i").test(v))) values.push(t);
   let links: string[] = [];
   try {
     links = linksTyped();
@@ -918,9 +915,6 @@ async function launchSign() {
     if (S.image || S.bannerFile) mark("images", "wait", "after Core reads the launch");
     mark("session", "wait", "after the agent is awake and bound");
     mark("verdict", "wait", "after the first candidate is replayed");
-    // plan T: the optional trading allocation (left out of the wizard while agent trading is off; ALLOCATION_IN_WIZARD)
-    const alloc = await sendAllocation({ wallet: S.wallet!, account: S.account!, agent: d.agent.id, lineMint: lineMint(), decimals: dec(), typed: val("l_alloc"), pay: val("l_alloc_pay"), onStatus: st }).catch((e) => (console.warn(`trading allocation not sent: ${(e as Error).message}`), null));
-    if (alloc) logSig(`trading allocation ${d.args.symbol}`, alloc, undefined, true);
     if (d.soul) await publishLaunchedSoul(d.agent, d.soul);
     S.ghLaunch = d.args.identity === "token" ? await submitLaunchToken({ agent: d.agent, mint: d.mint.id }) : null;
     void trackLaunch(d.agent.id, d.mint.id, d.args.hosted, started);
@@ -1041,7 +1035,7 @@ async function moveHolding(agent: string, treasury: string) {
     const r = await signAndSend({ wallet: S.wallet!, account: S.account!, ixs, local: [L.agent], onStatus: (m) => out(html`<span class="dim">${m}</span>`) });
     const sig = r.confirmed?.signature;
     if (sig) logSig(`launch holding of ${short(agent)} to its treasury ${short(treasury)}`, sig, r.confirmed?.fee, true);
-    out(html`<span class="mark good">${icon.check} launch holding moved</span> ${sig ? txLink(sig) : ""} <span class="dim">${units(held, mint.decimals)} to ${addr(treasury)}, which never sells its own token</span>`);
+    out(html`<span class="mark good">${icon.check} launch holding moved</span> ${sig ? txLink(sig) : ""} <span class="dim">${units(held, mint.decimals)} to ${addr(treasury)}, where the agent holds it</span>`);
   } catch (e) {
     out(html`${errBox(e, (e as any).logs)}`);
   }
@@ -1842,75 +1836,6 @@ function renderSigs() {
 // ------------------------------------------------------------------------------------------------
 // the launch wizard (docs/plans/APP-CONSOLIDATION.md, Stags step pattern)
 
-const TEMPERS = ["aggressive", "balanced", "careful"] as const;
-let tradingCfg: any = null;
-
-async function loadTradingCfg() {
-  for (let i = 0; i < 4 && !tradingCfg; i++) {
-    if (i) await new Promise((r) => setTimeout(r, 2000 * i));
-    tradingCfg = await fetch("/api/trading/config").then((r) => (r.ok ? r.json() : null)).catch(() => null);
-  }
-  renderTemper();
-}
-
-function temperPick(): string | null {
-  return S.root?.querySelector<HTMLInputElement>('input[name="l_temp"]:checked')?.value ?? null;
-}
-
-/** The temperament the network will read from the soul: the rule of packages/core/src/scores.ts temperamentFromSoul. */
-function effectiveTemper(doc: SoulDoc | null | undefined): string | null {
-  const fallback = tradingCfg?.default_temperament ?? null;
-  if (!doc) return fallback;
-  const words = [...(doc.seed?.values ?? []), ...(doc.persona?.values ?? [])].map((v) => String(v).toLowerCase());
-  if (typeof doc.seed?.vibe === "string") words.push(doc.seed.vibe.toLowerCase());
-  const text = words.join(" ");
-  if (/\b(careful|cautious|patient|conservative|prudent)\b/.test(text)) return "careful";
-  if (/\b(balanced|steady|measured|moderate)\b/.test(text)) return "balanced";
-  return fallback;
-}
-
-const TEMPER_PICKABLE = false;
-
-function renderTemper() {
-  // agent trading is off for now (owner 2026-10-11: launchers do not pick a temperament yet); the
-  // agent takes the network default when trading is turned on
-  if (!TEMPER_PICKABLE) return set("w-temp", "");
-  const c = tradingCfg;
-  if (!c?.temperaments) return set("w-temp", html`<div class="wl-fine" style="margin-top:8px">Trading temperament: the trading config is not readable now (TBA); the agent takes the network default.</div>`);
-  const cur = temperPick() ?? c.default_temperament;
-  set(
-    "w-temp",
-    html`<fieldset class="lz-temp"><legend class="eyebrow">Trading temperament</legend>
-      ${TEMPERS.filter((t) => c.temperaments[t]).map((t) => html`<label class="radio"><input type="radio" name="l_temp" value="${t}"${t === cur ? raw(" checked") : ""}> <span><b>${t[0]!.toUpperCase() + t.slice(1)}</b>${t === c.default_temperament ? html` <span class="mark">default</span>` : ""} <span class="dim">at most ${(c.temperaments[t].size_bps / 100).toFixed(c.temperaments[t].size_bps % 100 ? 2 : 0)}% of its trading equity per buy. ${c.temperaments[t].prompt.replace(/^[A-Za-z]+: /, "")}</span></span></label>`)}
-      <div class="wl-fine" id="w-temp-eff"></div>
-    </fieldset>`,
-  );
-  renderTemperEffect();
-}
-
-function renderTemperEffect() {
-  const pick = temperPick();
-  const eff = effectiveTemper(S.soul?.doc);
-  set("w-temp-eff", !S.soul?.doc
-    ? html`Recorded as a word in the soul's values when it is drafted; the network reads the temperament from the soul (its values and vibe), within the bounds of the trading config.`
-    : eff === pick
-      ? html`<span class="mark good">${icon.check} the soul reads as ${eff}</span>`
-      : html`<span class="mark warn">${icon.warn} the soul reads as ${eff ?? "TBA"}, not ${pick}: its vibe or values name another temperament. Edit them and generate again.</span>`);
-}
-
-/** After a temperament change: keep the drafted soul's seed values in step (the soul is edited, not redrafted). */
-function applyTemperToSoul() {
-  if (!S.soul?.doc) return renderTemperEffect();
-  const t = temperPick();
-  const values = (S.soul.doc.seed.values ?? []).filter((v) => !TEMPERS.includes(v.toLowerCase() as (typeof TEMPERS)[number]));
-  if (t && t !== "aggressive") values.push(t);
-  S.soul.doc = { ...S.soul.doc, seed: { ...S.soul.doc.seed, values }, origin: { ...S.soul.doc.origin, by: "edited" } };
-  S.soul.edited = true;
-  S.draft = null;
-  renderSoul();
-  renderTemperEffect();
-}
-
 const IMG_TYPES = ["image/png", "image/jpeg", "image/webp"];
 
 /** Why a step cannot be left yet, or null. */
@@ -2059,7 +1984,6 @@ function renderReview() {
   } catch {
     dep = null;
   }
-  const alloc = val("l_alloc");
   const row = (k: string, v: unknown, step: number) => html`<div class="lz-rr"><span class="eyebrow">${k}</span><span class="lz-rv">${v}</span><button type="button" class="lz-edit" data-act="lz-go" data-i="${String(step)}">Edit</button></div>`;
   set(
     "w-review",
@@ -2070,13 +1994,11 @@ function renderReview() {
       ${row("Links", links.length ? links.join(", ") : html`<span class="faint">none</span>`, 0)}
       ${row("Repository", r?.gh ? html`<a class="link" href="${r.gh.html_url}" target="_blank" rel="noopener">${r.gh.full_name}</a>, ${r.recipes?.length ? `${r.recipes.length} recipe${r.recipes.length === 1 ? "" : "s"} on Core` : "no recipe yet (setting up)"}` : "TBA", 1)}
       ${row("Soul", soul ? html`${soul.persona.name}, <span class="dim">${soul.persona.tagline}</span> <span class="wl-hash">${soulDigest(soul).slice(0, 16)}…</span>` : html`<span class="faint">none</span>`, 2)}
-      ${TEMPER_PICKABLE ? row("Temperament", html`${effectiveTemper(soul) ?? "TBA"} <span class="dim">read from the soul</span>`, 2) : ""}
       ${row("Model", m ? html`${m.name} <span class="dim">${m.provider}, ${priceText(m)}</span>` : html`<span class="faint">network default</span>`, 2)}
       ${row("Banner", S.bannerFile ? `${S.bannerFile.name}, ${Math.ceil(S.bannerFile.size / 1024)} KB` : html`<span class="faint">none</span>`, 2)}
       ${row("Runtime", hosted ? "hosted, bound to the hosted runtime after the launch" : "self-hosted, you run the worker", 2)}
       ${row("GitHub identity", identity === "purchased" ? html`<b>A units account</b>` : val("l_token") ? "your token (bound after the launch)" : "your token, none pasted yet (add one from your Profile)", 3)}
       ${row("Model credits", dep === null ? "TBA" : html`${depositNote(val("l_deposit"))} <span class="dim">paid in SOL</span>`, 4)}
-      ${ALLOCATION_IN_WIZARD ? row("Trading allocation", alloc && alloc !== "0" ? html`${alloc} ${usym()} <span class="dim">a second transaction after the launch</span>` : html`<span class="faint">none</span>`, 4) : ""}
     </div>`,
   );
 }
@@ -2298,16 +2220,9 @@ async function renderManage() {
         <div class="wl-row"><label class="wl-btn">Upload avatar<input type="file" accept="image/png,image/jpeg,image/webp" data-me-up="avatar" hidden></label><label class="wl-btn">Upload banner<input type="file" accept="image/png,image/jpeg,image/webp" data-me-up="banner" hidden></label></div>
         <div id="me-up-out" class="wl-fine"></div>
       </div>
-      <div class="me-sec"><div class="eyebrow">Fund trading</div>
-        <p class="wl-fine" id="me-fund-help">${qsym()} to the allocation escrow, with a memo naming this agent; the hosted runtime forwards it to the agent's trading treasury, separate from its compute vault.</p>
-        <div class="wl-row"><input name="m_alloc" inputmode="decimal" placeholder="${qsym()}" class="me-in">${btn("me-fund", "Sign and send", { primary: true, data: { agent: l.agent } })}</div>
-        <div id="me-fund-out" class="wl-fine"></div>
-      </div>
     </div>
     <div class="me-sub eyebrow">Signing key, owner and GitHub token</div>
     <div class="grid-2 me-b2"><div id="w-id"></div><details class="me-kit"><summary class="eyebrow">How rotation works</summary><div id="w-id-kit"></div></details></div>`.s;
-  const esc0 = await loadTradingEscrow();
-  if (!esc0) set("me-fund-help", "No allocation escrow is published on this network.");
   S.ikey = l.agent;
   S.iOut = null;
   S.irec = await reader.agent(l.agent).catch(() => null);
@@ -2478,12 +2393,10 @@ async function onClick(ev: Event) {
         break;
       case "soul-generate":
         await soulGenerate();
-        renderTemperEffect();
         renderWizard();
         break;
       case "soul-apply":
         soulApply();
-        renderTemperEffect();
         renderWizard();
         break;
       case "launch-sign":
@@ -2498,22 +2411,6 @@ async function onClick(ev: Event) {
         await renderManage();
         S.root?.querySelector("#me-manage")?.scrollIntoView({ behavior: "smooth", block: "start" });
         break;
-      case "me-fund": {
-        if (!requireReady()) break;
-        const out = (r: Raw | string) => set("me-fund-out", r);
-        try {
-          const sig = await sendAllocation({ wallet: S.wallet!, account: S.account!, agent: b.dataset.agent!, lineMint: lineMint(), decimals: dec(), typed: val("m_alloc"), onStatus: (m) => out(html`<span class="dim">${m.replace(/^launched; now /, "")}</span>`) });
-          if (!sig) out("Nothing sent: enter an amount (and the network must publish an allocation escrow).");
-          else {
-            logSig(`trading allocation to ${short(b.dataset.agent!)}`, sig, undefined, true);
-            out(html`<span class="mark good">${icon.check} sent</span> ${txLink(sig)} <span class="dim">the runtime forwards it to the agent's trading treasury</span>`);
-            void refreshBalances();
-          }
-        } catch (e) {
-          out(errBox(e, (e as any).logs));
-        }
-        break;
-      }
       case "v-lookup":
         await vLookup();
         break;
@@ -2624,7 +2521,6 @@ function onInput(ev: Event) {
       renderSoul();
     }
   }
-  if (t.name === "l_temp" && ev.type === "change") applyTemperToSoul();
   if ((t.name === "l_image" || t.name === "l_banner") && ev.type === "change") void pickImage(t);
   if (t.dataset?.meUp && ev.type === "change") void profileUpload(t);
   if (S.page === "launch") renderWizard();
@@ -2740,7 +2636,7 @@ export async function mountLaunch(root: HTMLElement) {
   if (S.gate !== "ok") return;
   // the pump.fun venue registers its initial buy with launch fronting (pump-venue.ts)
   registerPumpInitialBuy({ lineMint, linePool, creatorFeeBps: () => S.lc?.pumpCreatorFeeBps ?? 0n, quoteSeed: () => NET.p.pump_quote_seed ?? "swap" });
-  await Promise.all([loadNetwork(), loadPrepay(S.cfg!.state as any), loadTradingEscrow(), loadTradingCfg(), loadModels().then(() => set("w-models", modelsBody()))]);
+  await Promise.all([loadNetwork(), loadPrepay(S.cfg!.state as any), loadModels().then(() => set("w-models", modelsBody()))]);
   const dep = S.root?.querySelector<HTMLInputElement>('[name="l_deposit"]');
   // credits in USD (owner direction 2026-10-11): Core's minimum typed in; the launcher may raise it
   if (dep && !dep.value && P.cfg) {

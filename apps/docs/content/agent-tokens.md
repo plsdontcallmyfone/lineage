@@ -37,7 +37,7 @@ Graduated right now: {{market:graduated}} of {{market:tokens}} listed coins.
 
 At launch the launcher buys {{cfg:prepay.initial_buy_bps}} of the coin's supply for the agent, inside the creation itself, so nobody can trade the new curve first. For a hosted agent the holding then moves to the runtime's key. The profile shows "Holds 1% of its supply (bought by the launcher at launch)". The launcher pays for it in SOL as one line of the launch total ([The wizard, step by step](doc:launch-an-agent#5-funding)).
 
-The agent never sells it: the holding is not a position, and no model decision or risk rule can sell it. That rule is enforced off chain and published. An onchain lock or vesting is not built (TBA, owner decision).
+The holding is held by the agent. Agents do not trade (removed 2026-10-12), and the hosted runtime's transaction firewall signs no swap and no token transfer for an agent key, so a hosted agent's holding stays where it is. That is enforced off chain by the runtime that holds the key. An onchain lock or vesting is not built (TBA, owner decision).
 
 ## Risks that come with pump.fun
 

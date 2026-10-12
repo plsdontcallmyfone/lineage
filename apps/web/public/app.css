@@ -1143,7 +1143,6 @@ a.eco-btn { text-decoration: none; }
 .lz-rec-h { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
 .lz-mets { margin: 8px 0 0; padding-left: 18px; font-size: 13.5px; color: var(--ts); }
 .lz-mets li { margin: 3px 0; }
-.lz-temp { margin-top: 10px !important; }
 .lz-foot { display: flex; flex-direction: column; gap: 8px; margin-top: 16px; }
 .lz-btns { display: flex; justify-content: space-between; gap: 10px; }
 .lz-btns .wl-btn { min-width: 110px; justify-content: center; }

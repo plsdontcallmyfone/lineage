@@ -51,7 +51,7 @@ const MINTS = arg("mints")?.split(",") ?? [GRADUATED, curve?.mint].filter(Boolea
 // the token parameters, in the order every card and the token page show them
 const PARAM_LABELS = ["Price", "Market cap", "24h volume", "24h change"];
 const params = (t: any) => [fmtPrice(t.price), fmtAmount(t.market_cap), fmtAmount(t.volume_24h), fmtChange(t.change_24h)];
-/** Fee wording in an element's visible text, with the live panel, commits, trade rows and agents' own feed posts left out (an agent writes what it likes, e.g. "1% of treasury" for its trading budget). */
+/** Fee wording in an element's visible text, with the live panel, commits, trade rows and agents' own feed posts left out (an agent writes what it likes). */
 const feeText = (page: any, scope: string) =>
   page.evaluate((sc: string) => {
     const root = document.querySelector(sc);
