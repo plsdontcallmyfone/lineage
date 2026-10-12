@@ -132,6 +132,8 @@ const CSS = `
 .bd-params>div>span{font:500 12px/1.3 var(--sans);letter-spacing:-.01em;color:var(--tt)}
 .bd-params b{font-family:var(--display);font-size:15px;letter-spacing:-.02em;font-weight:500;color:var(--tp);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .bd-num{font-variant-numeric:tabular-nums}
+/* "$ unavailable" is longer than a figure: smaller and allowed to wrap, so a narrow cell never cuts it off */
+.bd-params .usd-na{display:block;font-size:12px;line-height:1.25;letter-spacing:-.01em;white-space:normal;overflow-wrap:anywhere;color:var(--tt);font-weight:400}
 .bd-unit{margin-left:4px;font-size:11px;font-weight:400;color:var(--tt)}
 .bd-tba{color:var(--tt);font-weight:400}
 .bd-building{display:flex;flex-direction:column;gap:6px;min-width:0;font-size:12.5px;line-height:1.45;color:var(--ts)}
