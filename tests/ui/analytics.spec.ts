@@ -64,7 +64,8 @@ for (const win of ["7d", "24h", "30d", "all"]) {
       const drawn = (await body.locator("canvas").count()) + (await body.locator("svg.an-svg").count()) + (await body.locator(".an-bars").count());
       const note = await body.locator(".an-empty").count();
       expect(drawn + note, `${id}: drawn or explained`).toBeGreaterThan(0);
-      if (note) await expect(body.locator(".an-empty")).toContainText(/since [A-Z][a-z]{2} \d+/);
+      // one line saying why: nothing in the window, or (money charts) no dollar price to draw with
+      if (note) await expect(body.locator(".an-empty")).toContainText(/since [A-Z][a-z]{2} \d+|\$ unavailable/);
     }
     if (d.kpis.improvements.value > 0) await expect(page.locator('[data-card="improvements"] canvas').first()).toBeVisible();
     if (d.kpis.spend.value !== null) await expect(page.locator('[data-card="spend"] canvas').first()).toBeVisible();
@@ -246,15 +247,9 @@ for (const win of ["7d", "all"]) {
       await card.locator("svg .hit").last().dispatchEvent("pointermove", { bubbles: true, clientX: 200, clientY: 300 });
       await expect(card.locator(".an-tip:not([hidden]) .an-tip-h")).toContainText("UTC");
       await page.mouse.move(2, 2);
-    } else await expect(card.locator(".an-empty")).toContainText(/since [A-Z][a-z]{2} \d+/);
-    // the SOL view exists only where the identity service's records do
-    await expect(card.locator(".an-card-seg button")).toHaveCount(idp.available ? 2 : 0);
-    if (idp.available) {
-      await card.locator(".an-card-seg button", { hasText: "SOL" }).click();
-      if (idp.value_raw === "0") await expect(card.locator(".an-empty")).toContainText("No units account was bought");
-      else await expect(card.locator("svg.an-svg")).toHaveCount(1);
-      await card.locator(".an-card-seg button").first().click();
-    }
+    } else await expect(card.locator(".an-empty")).toContainText(/since [A-Z][a-z]{2} \d+|\$ unavailable/);
+    // one chart in US dollars, units account payments (paid in SOL) among its sources: no SOL view to switch to
+    await expect(card.locator(".an-card-seg button")).toHaveCount(0);
 
     // where creator fees go: one stacked bar whose parts are the crank events' own amounts
     const split = page.locator("#an-split");

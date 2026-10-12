@@ -23,6 +23,14 @@ export function fmtChange(n: number | null | undefined) {
 export const usdShown = (usd: number | null | undefined, quote: number | null | undefined, o: { price?: boolean; compact?: boolean } = {}) =>
   ok(usd) ? (o.price ? fmtUsdPrice(usd) : fmtUsd(usd, { compact: o.compact })) : ok(quote) ? USD_NA : "TBA";
 
+/**
+ * The indexer reads the quote coin's dollar price again every 45 s (packages/indexer/src/usd.ts), so the
+ * page's read and the suite's read of the same row can carry two readings: the dollar values then differ
+ * by that drift while the quote-coin figure is identical. Equal means equal, or within USD_DRIFT.
+ */
+export const USD_DRIFT = 0.03;
+export const sameUsd = (page: number | null, api: number) => page !== null && (page === api || Math.abs(page - api) <= Math.abs(api) * USD_DRIFT);
+
 export interface Fig {
   text: string;
   exact: number | null;
@@ -69,19 +77,26 @@ export function expectFigures(where: string, figs: Fig[], row: UsdRow, o: { comp
   ];
   money.forEach(([name, field, usd, quote, f], i) => {
     const g = figs[i]!;
-    const want = usdShown(usd, quote, f);
-    expect.soft(g.text, `${where} ${name}: shown in US dollars as the app formats the API's ${field}`).toBe(want);
-    if (want === "TBA") return;
+    if (!ok(usd)) {
+      // no dollar value in the API row: "$ unavailable" when the quote-coin figure exists, else TBA
+      expect.soft(g.text, `${where} ${name}: no dollar value in the API's ${field}`).toBe(usdShown(usd, quote, f));
+      if (ok(quote)) expect.soft(g.exact, `${where} ${name}: carries no value`).toBeNull();
+      return;
+    }
     expect.soft(g.field, `${where} ${name}: the figure is the API's ${field}`).toBe(field);
-    expect.soft(g.exact, `${where} ${name}: exact value equals the API's ${field}`).toBe(ok(usd) ? usd : null);
-    if (ok(usd)) expect.soft(g.text.startsWith("$") || g.text.startsWith("-$"), `${where} ${name}: carries $`).toBe(true);
+    expect.soft(sameUsd(g.exact, usd), `${where} ${name}: ${g.exact} equals the API's ${field} ${usd} (within the dollar price's drift between two reads)`).toBe(true);
+    // the text is the page's own exact value through the app's formatter, and it carries $
+    expect.soft(g.text, `${where} ${name}: shown as the app formats its value`).toBe(usdShown(g.exact, quote, f));
+    expect.soft(/^-?\$/.test(g.text), `${where} ${name}: carries $ (${g.text})`).toBe(true);
   });
   const g = figs[3]!;
   const inUsd = ok(row.change_24h_usd);
   const chg = inUsd ? row.change_24h_usd : row.change_24h;
-  expect.soft(g.text, `${where} 24h change: shown as the app formats the API value`).toBe(fmtChange(chg));
+  expect.soft(g.text, `${where} 24h change: shown as the app formats its value`).toBe(fmtChange(ok(chg) && inUsd ? g.exact : chg));
   if (ok(chg)) {
     expect.soft(g.field, `${where} 24h change: of the dollar price where the API has one`).toBe(inUsd ? "change_24h_usd" : "change_24h");
-    expect.soft(g.exact, `${where} 24h change: exact value equals the API's`).toBe(chg);
+    // against the quote coin the change is exact; of the dollar price it moves with the reading
+    if (inUsd) expect.soft(g.exact !== null && Math.abs(g.exact - chg) <= USD_DRIFT, `${where} 24h change: ${g.exact} equals the API's ${chg}`).toBe(true);
+    else expect.soft(g.exact, `${where} 24h change: exact value equals the API's`).toBe(chg);
   }
 }

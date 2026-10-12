@@ -207,5 +207,19 @@ export const test = base.extend<Fixtures>({
   },
 });
 
+/**
+ * The Work step's optional extras (GitHub fee share, repository pool; apps/web/wallet/fee-route-step.ts)
+ * appear only where an instance has those features on, and a ticked fee share needs a GitHub username
+ * before the launch can be simulated. The wizard specs check the plain launch: both are unticked when
+ * they are there (they mount a moment after the repository is recognised).
+ */
+export async function plainLaunch(page: Page) {
+  await page.locator('[name="l_fee_on"], [name="l_pool_join"]').first().waitFor({ timeout: 6_000 }).catch(() => {});
+  for (const n of ["l_fee_on", "l_pool_join"]) {
+    const box = page.locator(`[name="${n}"]`);
+    if ((await box.count()) && (await box.isChecked())) await box.uncheck();
+  }
+}
+
 export { expect };
 export type { Page };

@@ -2,7 +2,7 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { newSoul } from "../../packages/souls/src/schema.ts";
 import { cleanPage } from "./support/checks.ts";
-import { expect, test, type Page } from "./support/fixtures.ts";
+import { expect, plainLaunch, test, type Page } from "./support/fixtures.ts";
 import { MOCK_WALLET_NAME } from "./support/wallet.ts";
 
 // The launch wizard's Identity, Funding and Review steps (owner direction 2026-10-11): two identity
@@ -43,6 +43,7 @@ test("identity, funding and review: two choices, SOL only, one signature; nothin
   await page.click('[data-act="lz-next"]');
   await page.fill('[name="l_repo"]', "https://github.com/keis/base58");
   await page.locator("#w-work .lz-rec, #w-work .banner, #w-work .dim").first().waitFor({ timeout: 60_000 });
+  await plainLaunch(page);
   await page.click('[data-act="lz-next"]');
   await page.fill('[name="s_vibe"]', "dry, exact, cheerful about small wins");
   await page.fill('[name="s_specialty"]', "base58 hot paths, same bytes out");
@@ -55,14 +56,21 @@ test("identity, funding and review: two choices, SOL only, one signature; nothin
   const radios = page.locator('input[name="l_identity"]');
   await expect(radios).toHaveCount(2);
   expect(await radios.evaluateAll((els) => els.map((e) => (e as HTMLInputElement).value))).toEqual(["purchased", "token"]);
-  await expect(page.locator('input[name="l_identity"][value="purchased"]')).toBeChecked();
+  // A units account is the default where the instance sells one; where it does not (no recipient in its
+  // config: the mainnet test instance), that option is disabled and Your own token is selected
+  await expect(page.locator("#w-id-price")).not.toHaveText(/^$|price from Core/, { timeout: 60_000 });
+  const offered = !(await page.locator('input[name="l_identity"][value="purchased"]').isDisabled());
+  await expect(page.locator(`input[name="l_identity"][value="${offered ? "purchased" : "token"}"]`)).toBeChecked();
+  if (net === "devnet") expect(offered, "the devnet site sells units accounts").toBe(true);
   const id = page.locator('[data-step="3"]');
   await expect(id.locator("b").filter({ hasText: /^A units account$/ })).toHaveCount(1);
   await expect(id).toContainText("a member of the units-agents organization");
   // the price in US dollars with the SOL beside it; an instance that sells no units account says so
   await expect(page.locator("#w-id-price")).toHaveText(net === "devnet" ? /^\$[\d,]*\.?\d+, 0\.05 SOL$/ : /^\$[\d,]*\.?\d+, [\d.]+ SOL$|^not offered here$/);
-  const sold = (await page.locator("#w-id-price").innerText()) !== "not offered here";
-  await expect(id).not.toContainText(/App identity|lineage-app|Price TBA|devnet charges nothing/);
+  const sold = offered;
+  if (!offered) await expect(page.locator("#w-id-price")).toHaveText("not offered here");
+  // (with Your own token selected and none pasted, the step itself says the app identity is used until one is added)
+  await expect(id).not.toContainText(offered ? /App identity|lineage-app|Price TBA|devnet charges nothing/ : /lineage-app|Price TBA|devnet charges nothing/);
   if (net === "mainnet") await expect(id).not.toContainText(/devnet|\bTEST\b|test tokens|faucet|tUNITS/i);
   await cleanPage(page);
   await shot(page, "identity", w);
@@ -88,7 +96,7 @@ test("identity, funding and review: two choices, SOL only, one signature; nothin
     await expect(page.locator("[data-fronting-sol]")).toHaveText(/^[\d.]+ SOL$/);
   } else {
     expect(total).toBe("after the simulation");
-    await expect(page.locator("[data-fronting-short]")).toContainText(/Launch disabled: .+/);
+    await expect(page.locator("#w-fronting [data-fronting-short]")).toContainText(/Launch disabled: .+/);
   }
   await page.click(".lz-sum-more summary");
   if (sold && simulated) await expect(page.locator('.lz-sum-lines [data-fronting="A units account"]')).toContainText(/\$[\d,]*\.?\d+ [\d.]+ SOL/);

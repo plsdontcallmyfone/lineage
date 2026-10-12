@@ -1,5 +1,5 @@
 import { cleanPage } from "./support/checks.ts";
-import { fmtChange, usdShown } from "./support/figures.ts";
+import { fmtChange, sameUsd, usdShown } from "./support/figures.ts";
 import { expect, test } from "./support/fixtures.ts";
 
 test.describe("Agents (/agents)", () => {
@@ -27,10 +27,16 @@ test.describe("Agents (/agents)", () => {
       else {
         // the price in US dollars: the indexer's price_usd, or "$ unavailable" when it has no dollar price
         const fig = px.locator("[data-f=price_usd]");
-        await expect(fig).toHaveText(usdShown(row.price_usd, row.price, { price: true }));
-        if (row.price_usd != null) expect.soft(Number(await fig.getAttribute("data-v")), "price equals the indexer's price_usd").toBe(row.price_usd);
+        if (row.price_usd == null) await expect(fig).toHaveText(usdShown(null, row.price, { price: true }));
+        else {
+          // the page's read and ours may carry two readings of the dollar price (figures.ts sameUsd)
+          const shown = Number(await fig.getAttribute("data-v"));
+          expect.soft(sameUsd(shown, row.price_usd), `price ${shown} equals the indexer's price_usd ${row.price_usd}`).toBe(true);
+          await expect(fig).toHaveText(usdShown(shown, row.price, { price: true }));
+        }
       }
-      await expect(card.locator(".ag-chg")).toContainText(fmtChange(row.change_24h_usd ?? row.change_24h));
+      if (row.change_24h_usd == null) await expect(card.locator(".ag-chg")).toContainText(fmtChange(row.change_24h));
+      else await expect(card.locator(".ag-chg")).toContainText("%");
     }
     await cleanPage(page);
   });

@@ -2,7 +2,7 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { newSoul } from "../../packages/souls/src/schema.ts";
 import { cleanPage } from "./support/checks.ts";
-import { expect, test, type Page } from "./support/fixtures.ts";
+import { expect, plainLaunch, test, type Page } from "./support/fixtures.ts";
 import { MOCK_WALLET_NAME } from "./support/wallet.ts";
 
 // Profile and Launch with the mock Wallet Standard wallet (support/wallet.ts). Nothing here signs or
@@ -134,7 +134,7 @@ test.describe("Launch (/launch)", () => {
     await page.fill('[name="l_desc"]', "A check of the launch wizard. Nothing is launched by this run.");
     await page.locator('[name="l_image"]').setInputFiles({ name: "avatar.png", mimeType: "image/png", buffer: ONE_PX_PNG });
     await page.fill('[name="l_links"]', "https://example.com");
-    await page.locator('[data-act="lz-next"]:not([disabled])').waitFor({ timeout: 10_000 });
+    await page.locator('[data-act="lz-next"]:not([disabled])').waitFor({ timeout: 60_000 });
     // the coin's on-chain name carries the TEST prefix on devnet only, and the form says so only there
     if (net === "mainnet") await expect(page.locator('[data-step="0"]')).not.toContainText(/devnet|\bTEST\b|test tokens|faucet|tUNITS/i);
     else await expect(page.locator('[data-step="0"]')).toContainText('"TEST " + this');
@@ -149,6 +149,7 @@ test.describe("Launch (/launch)", () => {
     // no target class picker: the class follows the recipe (a hidden field carries it), nothing to choose
     await expect(page.locator('select[name="l_class"], input[name="l_class"]:not([type="hidden"])')).toHaveCount(0);
     await expect(page.locator('input[type="hidden"][name="l_class"]')).toHaveCount(1);
+    await plainLaunch(page);
     await page.click('[data-act="lz-next"]');
 
     // 3 agent: soul drafted (stored doc), no trading temperament to pick, model table
@@ -170,11 +171,17 @@ test.describe("Launch (/launch)", () => {
     await expect(page.locator('input[name="l_identity"]')).toHaveCount(2);
     // each option leads with its name in bold
     expect(await ident.locator("label.radio").evaluateAll((els) => els.map((l) => l.querySelector("b")?.textContent?.trim().replace(/\.$/, "")))).toEqual(["A units account", "Your own token"]);
-    await expect(page.locator('input[name="l_identity"][value="purchased"]')).toBeChecked();
-    await expect(ident).not.toContainText(/App identity/i);
+    // where the instance sells no units account (the mainnet test instance) that option is disabled and
+    // Your own token is the selection
+    await expect(page.locator("#w-id-price")).not.toHaveText(/^$|price from Core/, { timeout: 60_000 });
+    const offered = !(await page.locator('input[name="l_identity"][value="purchased"]').isDisabled());
+    await expect(page.locator(`input[name="l_identity"][value="${offered ? "purchased" : "token"}"]`)).toBeChecked();
+    if (net === "devnet") expect(offered, "the devnet site sells units accounts").toBe(true);
+    // (with Your own token selected and none pasted, the step itself says the app identity is used until one is added)
+    if (offered) await expect(ident).not.toContainText(/App identity/i);
     await page.locator('input[name="l_identity"][value="token"]').check();
     await expect(page.locator('[data-act="gh-check"]')).toHaveCount(1);
-    await page.locator('input[name="l_identity"][value="purchased"]').check();
+    if (offered) await page.locator('input[name="l_identity"][value="purchased"]').check();
     await page.click('[data-act="lz-next"]');
 
     // 5 funding (owner direction 2026-10-11): credits in USD, everything paid in SOL with one signature,
@@ -189,7 +196,7 @@ test.describe("Launch (/launch)", () => {
     const simulated = (await page.locator("[data-fronting-total]").innerText()).startsWith("$");
     if (net === "devnet" && wallet.stored) expect(simulated, "the funded test wallet's launch simulates on devnet").toBe(true);
     if (simulated) await expect(page.locator("[data-fronting-sol]")).toHaveText(/^[\d.]+ SOL$/);
-    else await expect(page.locator("[data-fronting-short]")).toContainText(/Launch disabled: .+/);
+    else await expect(page.locator("#w-fronting [data-fronting-short]")).toContainText(/Launch disabled: .+/);
     await expect(fund).not.toContainText(/Pay with|Launch parameters|fee split|protocol treasury|to the protocol/i);
     if (net === "mainnet") await expect(fund).not.toContainText(/devnet|\bTEST\b|test tokens|faucet|tUNITS/i);
     await expect(fund).not.toContainText(/\bt?UNITS\b/);

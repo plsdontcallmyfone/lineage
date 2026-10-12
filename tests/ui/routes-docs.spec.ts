@@ -117,17 +117,25 @@ test.describe("Docs site", () => {
     await page.locator(".dc-h1").waitFor();
     const app = await page.locator("body").getAttribute("data-app");
     expect(app, "the build names the app origin").toMatch(/^https:\/\/[^/]+$/);
-    await expect(page.locator(".dc-links a", { hasText: "Explorer" })).toHaveAttribute("href", `${app}/`);
-    await expect(page.locator(".dc-links a.dc-cta")).toHaveAttribute("href", `${app}/launch`);
+    // the docs header (its own repository, units-docs) carries the Launch button; an Explorer link only
+    // in some of its layouts. Whatever links to the app names the app origin of the build
+    await expect(page.locator("a.dc-cta").first()).toHaveAttribute("href", `${app}/launch`);
+    const explorer = page.locator(".dc-links a", { hasText: "Explorer" });
+    if (await explorer.count()) await expect(explorer.first()).toHaveAttribute("href", `${app}/`);
     await expect.poll(async () => (await page.locator("[data-live]").allInnerTexts()).some((x) => x.trim() && x !== "TBA"), { timeout: 30_000 }).toBe(true);
     await cleanPage(page);
   });
 
-  test("the indexed token count equals the indexer's", async ({ page, data }) => {
+  test("the indexed token count equals the indexer's", async ({ page, request }) => {
     await page.goto(`${DOCS}/`);
     const span = page.locator('[data-live="market:tokens"]').first();
     await expect(span).not.toHaveClass(/tba/, { timeout: 30_000 });
-    const l = await data.get("/market/tokens?limit=200");
+    // the docs read the app their build names (body data-app, the docs repository's site.json app_url),
+    // which need not be the app under test: the count is compared with that app's indexer
+    const app = await page.locator("body").getAttribute("data-app");
+    const r = await request.get(`${app}/market/tokens?limit=200`, { headers: { accept: "application/json" } });
+    expect(r.ok(), `GET ${app}/market/tokens: HTTP ${r.status()}`).toBeTruthy();
+    const l = await r.json();
     await expect(span).toHaveText(String(l.total ?? l.count ?? l.tokens.length));
   });
 });
