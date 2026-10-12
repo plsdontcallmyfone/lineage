@@ -7,7 +7,6 @@ import { afterAll, describe, expect, test } from "bun:test";
 import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync } from "node:fs";
 import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
-import { chainBrowserPlugin } from "../../../packages/chain/src/browser/plugin.ts";
 
 const ROOT = join(import.meta.dir, "../../..");
 const SENTINEL = "m3leaksentinel7b2f9c4e1d";
@@ -60,26 +59,22 @@ describe("built browser output carries no RPC key", () => {
     }
   }, 120_000);
 
-  test("the dashboard server's bundles (app and wallet) with the env set as on the server", async () => {
-    const saved = { n: process.env.UNITS_NETWORK, r: process.env.UNITS_MAINNET_RPC };
-    process.env.UNITS_NETWORK = env.UNITS_NETWORK;
-    process.env.UNITS_MAINNET_RPC = env.UNITS_MAINNET_RPC;
+  test("the dashboard server's bundles (app and wallet) with the env set as on the server", () => {
+    // built in a process of their own, as the server builds them (see build-bundles.ts for why not in this one)
+    const dir = mkdtempSync(join(tmpdir(), "units-leak-srv-"));
     try {
-      const app = await Bun.build({ entrypoints: [join(ROOT, "apps/web/src/main.ts")], target: "browser", minify: true });
-      const wallet = await Bun.build({ entrypoints: [join(ROOT, "apps/web/wallet/main.ts")], target: "browser", format: "esm", minify: true, plugins: [chainBrowserPlugin] });
-      expect(app.success && wallet.success).toBe(true);
-      const a = await app.outputs[0]!.text();
-      const w = await wallet.outputs[0]!.text();
+      const r = Bun.spawnSync(["bun", join(import.meta.dir, "build-bundles.ts"), dir], { env: { ...process.env, UNITS_NETWORK: env.UNITS_NETWORK, UNITS_MAINNET_RPC: env.UNITS_MAINNET_RPC }, cwd: ROOT, stdout: "pipe", stderr: "pipe" });
+      expect({ exit: r.exitCode, err: r.stderr.toString().slice(0, 400) }).toEqual({ exit: 0, err: "" });
+      const a = readFileSync(join(dir, "app.js"), "utf8");
+      const w = readFileSync(join(dir, "wallet.js"), "utf8");
+      expect(a.length).toBeGreaterThan(1000);
       check("app.js", a);
       check("wallet.js", w);
       // the browser reaches the chain only through the same-origin proxy
       expect(w).toContain("/chain/rpc");
       expect(w).not.toMatch(/https:\/\/api\.mainnet-beta\.solana\.com/);
     } finally {
-      if (saved.n === undefined) delete process.env.UNITS_NETWORK;
-      else process.env.UNITS_NETWORK = saved.n;
-      if (saved.r === undefined) delete process.env.UNITS_MAINNET_RPC;
-      else process.env.UNITS_MAINNET_RPC = saved.r;
+      rmSync(dir, { recursive: true, force: true });
     }
   }, 120_000);
 });
