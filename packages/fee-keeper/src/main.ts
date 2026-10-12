@@ -8,8 +8,9 @@
 //
 // Without --send it is a dry run: it reads the chain, simulates each transaction and prints the plan;
 // nothing is signed, sent or written. On mainnet --send also needs "enabled": true in the config.
-// Exit status: 0 done (or nothing to do), 2 refused, 3 a transaction is still unconfirmed (the next
-// run settles it), 1 any other error.
+// Exit status: 0 done (or nothing to do), 2 refused (before anything, or a transaction refused right
+// before signing: nothing of it was signed), 3 a transaction is still unconfirmed (the next run
+// settles it), 1 any other error (a config without protected_units is one).
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { loadKeypair, Rpc, type Signer } from "@units/chain";

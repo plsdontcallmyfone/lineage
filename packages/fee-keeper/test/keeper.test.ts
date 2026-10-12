@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
-import { PUMP } from "@units/chain";
-import { loadState, MAINNET_GENESIS, readLog, runKeeper, type Action, type KeeperConfig, type RunReport } from "../src/index.ts";
+import { PUMP, r, TOKEN_2022_PROGRAM, w, Writer, type Ix } from "@units/chain";
+import { extra, loadState, MAINNET_GENESIS, readLog, runKeeper, type Action, type KeeperConfig, type RunReport } from "../src/index.ts";
 import { BASE_FEE, Died, FakeChain, POINTS, testConfig, TOKEN_ACCOUNT_RENT, VAULT_RENT, VOLUME_RENT } from "./fake.ts";
 
 // The keeper's state machine against a model of the chain (fake.ts): the money rules, the limits,
@@ -116,7 +116,7 @@ describe("limits", () => {
       ch.waiting = 200_000_000n;
       const seen: Action[] = [];
       const sign = ch.sign.bind(ch);
-      ch.sign = async (a, s, c, p) => (seen.push(a), sign(a, s, c, p));
+      ch.sign = async (a, s, c, p, k) => (seen.push(a), sign(a, s, c, p, k));
       await run(cfg, ch);
       const buy = seen.find((a) => a.kind === "buyback") as Extract<Action, { kind: "buyback" }>;
       expect(buy.maxLamports).toBe(30_000_000n);
@@ -125,7 +125,7 @@ describe("limits", () => {
         const cfg0 = testConfig({ slippage_bps: 0, max_buyback_lamports: "30000000" }), ch0 = new FakeChain(cfg0, OWN);
         ch0.waiting = 200_000_000n;
         const sign0 = ch0.sign.bind(ch0);
-        ch0.sign = async (a, s, c, p) => (seen.push(a), sign0(a, s, c, p));
+        ch0.sign = async (a, s, c, p, k) => (seen.push(a), sign0(a, s, c, p, k));
         await run(cfg0, ch0);
         const buy0 = seen.find((a) => a.kind === "buyback") as Extract<Action, { kind: "buyback" }>;
         expect(buy.tokens < buy0.tokens).toBe(true);
@@ -392,8 +392,261 @@ describe("interruptions", () => {
     const r = await run(cfg, ch);
     expect(step(r, "burn")!.detail).toContain("not burning");
     expect([ch.count("burn"), state(cfg).burn_owed]).toEqual([0, owed]);
-    ch.tokens = owed + 500n; // the wallet's own $UNITS sit in the same account: only what the keeper bought is burned
+    ch.tokens = owed + 500n; // coins someone sent into the keeper's burn account: only what the keeper bought is burned
     await run(cfg, ch);
     expect([ch.count("burn"), ch.tokens, state(cfg).burn_owed]).toEqual([1, 500n, 0n]);
+  });
+});
+
+// The creator wallet is the owner's wallet: its own (associated) $UNITS token account holds the
+// owner's 25,000,000 coins. The keeper buys into and burns from its own burn account, and whatever
+// goes wrong with its accounting or its builder, those coins are not the source of a burn.
+describe("the owner's coins in the creator wallet", () => {
+  const OWNED = 25_000_000_000_000n; // 25,000,000 coins at 6 decimals
+  const setup = (over: Record<string, unknown> = {}) => {
+    const cfg = testConfig({ protected_units: OWNED.toString(), ...over }), ch = new FakeChain(cfg, OWN);
+    ch.own = OWNED;
+    ch.waiting = 100_000_000n;
+    return { cfg, ch, supply0: ch.supply };
+  };
+  const died = (p: Promise<unknown>) => expect(p).rejects.toThrow(Died);
+  const rawState = (cfg: KeeperConfig) => JSON.parse(readFileSync(cfg.state_path, "utf8")) as Record<string, unknown>;
+  /** No signed transaction names the wallet's own token account. */
+  const neverNamed = (ch: FakeChain) => expect(ch.signed.some((t) => t.ixs.some((i) => i.keys.some((k) => k.pubkey === ch.ownAccount)))).toBe(false);
+
+  test("a normal run burns exactly what it bought, in the buy's transaction, and the 25,000,000 are intact", async () => {
+    const { cfg, ch, supply0 } = setup();
+    const rec = (await run(cfg, ch)).record!;
+    const buy = ch.signed.find((t) => t.action.kind === "buyback")!.action as Extract<Action, { kind: "buyback" }>;
+    expect(buy.burn).toBe(true);
+    expect([rec.units_bought, rec.units_burned, (supply0 - ch.supply).toString()]).toEqual([buy.tokens.toString(), buy.tokens.toString(), buy.tokens.toString()]);
+    expect([ch.own, ch.tokens, ch.count("buyback"), ch.count("burn")]).toEqual([OWNED, 0n, 1, 0]);
+    expect([state(cfg).burn_owed, state(cfg).burn_floor, state(cfg).burn_account]).toEqual([0n, null, ch.burnAccount]);
+    expect(ch.burnAccount).not.toBe(ch.ownAccount);
+    neverNamed(ch);
+    settled(cfg, ch);
+  });
+
+  test("a burn sent after its buy burns exactly the bought amount; the floor is what the burn account held before the buy", async () => {
+    const { cfg, ch, supply0 } = setup();
+    ch.fitsOne = false;
+    ch.die = { kind: "burn", point: "sign" };
+    await died(run(cfg, ch));
+    const bought = ch.tokens;
+    expect(bought > 0n).toBe(true);
+    expect([state(cfg).burn_owed, state(cfg).burn_floor, ch.own, ch.supply]).toEqual([bought, 0n, OWNED, supply0]);
+    const rec = (await run(cfg, ch)).record!;
+    expect([rec.units_bought, rec.units_burned, (supply0 - ch.supply).toString()]).toEqual([bought.toString(), bought.toString(), bought.toString()]);
+    expect([ch.own, ch.tokens, ch.count("buyback"), ch.count("burn")]).toEqual([OWNED, 0n, 1, 1]);
+    expect([state(cfg).burn_owed, state(cfg).burn_floor]).toEqual([0n, null]);
+    neverNamed(ch);
+    settled(cfg, ch);
+  });
+
+  test("burn_owed inflated by a bogus amount: nothing is burned, the debt is kept, the 25,000,000 are intact", async () => {
+    for (const bogus of [1n, 1_000_000n, OWNED]) {
+      const { cfg, ch, supply0 } = setup();
+      ch.fitsOne = false;
+      ch.die = { kind: "burn", point: "sign" };
+      await died(run(cfg, ch));
+      const bought = ch.tokens, raw = rawState(cfg);
+      raw.burn_owed = `${bought + bogus}n`;
+      writeFileSync(cfg.state_path, JSON.stringify(raw));
+      for (let i = 0; i < 2; i++) {
+        const r = await run(cfg, ch);
+        expect(step(r, "burn")).toMatchObject({ result: "skipped", amounts: { burn_owed_units: (bought + bogus).toString(), burn_account_units: bought.toString(), burn_floor_units: "0" } });
+        expect(step(r, "burn")!.detail).toBe(`not burning: the keeper's burn account ${ch.burnAccount} holds ${bought} base units, ${bought + bogus} are owed to the burn and the account held 0 before the keeper's buys (burn_floor): a burn would take ${bogus} base units those buys did not add. The debt is kept; check the account and the state`);
+      }
+      expect([ch.count("burn"), ch.own, ch.tokens, ch.supply, state(cfg).burn_owed]).toEqual([0, OWNED, bought, supply0, bought + bogus]);
+      neverNamed(ch);
+    }
+    // the same with coins already in the burn account before the buy (the floor): they are not burned for the bogus part either
+    const { cfg, ch } = setup();
+    ch.fitsOne = false;
+    ch.ataExists = true;
+    ch.tokens = 9_000_000n;
+    ch.die = { kind: "burn", point: "sign" };
+    await died(run(cfg, ch));
+    const bought = ch.tokens - 9_000_000n, raw = rawState(cfg);
+    expect(state(cfg).burn_floor).toBe(9_000_000n);
+    raw.burn_owed = `${bought + 5n}n`;
+    writeFileSync(cfg.state_path, JSON.stringify(raw));
+    expect(step(await run(cfg, ch), "burn")!.detail).toContain("a burn would take 5 base units those buys did not add");
+    raw.burn_owed = `${bought}n`;
+    writeFileSync(cfg.state_path, JSON.stringify({ ...rawState(cfg), burn_owed: raw.burn_owed }));
+    await run(cfg, ch);
+    expect([ch.count("burn"), ch.tokens, ch.own]).toEqual([1, 9_000_000n, OWNED]);
+  });
+
+  test("the wallet's own account under protected_units: refused before anything; dropping under it mid-run refuses the next transaction before signing", async () => {
+    const a = setup();
+    a.ch.own = OWNED - 1n;
+    const r = await run(a.cfg, a.ch);
+    expect(r.refused).toEqual([`the wallet's own $UNITS token account ${a.ch.ownAccount} holds ${OWNED - 1n} base units, under config.protected_units ${OWNED}: nothing is signed until the owner checks the wallet or changes protected_units`]);
+    expect([r.steps.length, a.ch.signed.length, a.ch.submits.length, existsSync(a.cfg.state_path)]).toEqual([0, 0, 0, false]);
+    expect((await runKeeper(a.cfg, a.ch, { send: false })).refused.length).toBe(1);
+    // the snapshot the compute transfer is built from still shows 25,000,000; the check runs on what is read right before signing
+    const b = setup();
+    const read = b.ch.read.bind(b.ch);
+    let reads = 0;
+    b.ch.read = async () => { const s = await read(); return ++reads >= 4 ? { ...s, tokenAta: { ...s.tokenAta, amount: OWNED - 1n } } : s; };
+    const r2 = await run(b.cfg, b.ch);
+    expect(r2.refused.length).toBe(1);
+    expect(r2.refused[0]).toStartWith("refused before signing: the ");
+    expect(r2.refused[0]).toContain(`holds ${OWNED - 1n} base units, under config.protected_units ${OWNED}`);
+    const kinds = b.ch.signed.map((t) => t.action.kind);
+    expect(kinds.includes("buyback")).toBe(false);
+    expect([b.ch.submits.length, b.ch.count("buyback"), state(b.cfg).pending, b.ch.own]).toEqual([kinds.length, 0, null, OWNED]);
+  });
+
+  test("a crafted transaction (a transfer, a larger burn, a burn or a sale of the wallet's own coins) is refused before signing", async () => {
+    const transferOut = (from: (ch: FakeChain) => string) => (ch: FakeChain, cfg: KeeperConfig): Ix =>
+      ({ programId: TOKEN_2022_PROGRAM, keys: [w(from(ch)), r(cfg.mint), w(cfg.compute_address), r(cfg.creator, true)], data: new Writer().u8(12).u64(1_000_000n).u8(6).done() });
+    const cases: { name: string; fits: boolean; kind: Action["kind"]; change: (ixs: Ix[], ch: FakeChain, cfg: KeeperConfig, a: Action) => Ix[]; says: string }[] = [
+      { name: "transfer out of the wallet's own account", fits: true, kind: "buyback", change: (ixs, ch, cfg) => [...ixs, transferOut((c) => c.ownAccount)(ch, cfg)], says: "names the wallet's own $UNITS token account" },
+      { name: "transfer out of the burn account", fits: true, kind: "buyback", change: (ixs, ch, cfg) => [...ixs, transferOut((c) => c.burnAccount)(ch, cfg)], says: "is not the keeper's own buy, burn or account creation" },
+      { name: "burn of the wallet's own account", fits: true, kind: "buyback", change: (ixs, ch, cfg, a) => [...ixs.slice(0, -1), extra.burnChecked(ch.ownAccount, cfg.mint, cfg.creator, (a as { tokens: bigint }).tokens, 6, TOKEN_2022_PROGRAM)], says: "names the wallet's own $UNITS token account" },
+      { name: "a larger burn in the buy's transaction", fits: true, kind: "buyback", change: (ixs, ch, cfg, a) => [...ixs.slice(0, -1), extra.burnChecked(ch.burnAccount, cfg.mint, cfg.creator, (a as { tokens: bigint }).tokens + OWNED, 6, TOKEN_2022_PROGRAM)], says: "a burn in a buy's transaction is of exactly what that buy delivers" },
+      { name: "a larger burn on its own", fits: false, kind: "burn", change: (_ixs, ch, cfg, a) => [extra.burnChecked(ch.burnAccount, cfg.mint, cfg.creator, (a as { tokens: bigint }).tokens + 1n, 6, TOKEN_2022_PROGRAM)], says: "of its plan" },
+      { name: "a burn on its own aimed at the wallet's own account", fits: false, kind: "burn", change: (_ixs, ch, cfg, a) => [extra.burnChecked(ch.ownAccount, cfg.mint, cfg.creator, (a as { tokens: bigint }).tokens, 6, TOKEN_2022_PROGRAM)], says: "names the wallet's own $UNITS token account" },
+      { name: "a compute transfer that also moves the owner's coins", fits: true, kind: "compute", change: (ixs, ch, cfg) => [...ixs, transferOut((c) => c.ownAccount)(ch, cfg)], says: "names the wallet's own $UNITS token account" },
+    ];
+    for (const c of cases) {
+      const { cfg, ch, supply0 } = setup();
+      ch.fitsOne = c.fits;
+      ch.tamper = (ixs, a) => (a.kind === c.kind ? c.change(ixs, ch, cfg, a) : ixs);
+      const r = await run(cfg, ch);
+      expect(r.refused.length).toBe(1);
+      expect(r.refused[0]).toStartWith(`refused before signing: the ${c.kind} transaction`);
+      expect(r.refused[0]).toContain(c.says);
+      // nothing of that kind was signed or sent, nothing is in flight, and the coins are where they were
+      expect(ch.signed.some((t) => t.action.kind === c.kind)).toBe(false);
+      expect([ch.count(c.kind), state(cfg).pending, ch.own, ch.submits.length]).toEqual([0, null, OWNED, ch.signed.length]);
+      expect(supply0 - ch.supply).toBe(0n);
+      // the builder fixed: the next run finishes the work and the coins are still intact
+      ch.tamper = null;
+      await run(cfg, ch);
+      expect([ch.own, ch.tokens, state(cfg).burn_owed, ch.count("buyback")]).toEqual([OWNED, 0n, 0n, 1]);
+      expect(supply0 - ch.supply > 0n).toBe(true);
+      settled(cfg, ch);
+    }
+  });
+
+  test("the fake chain would show it: the same crafted burn, unchecked, takes the owner's coins", async () => {
+    // what the check stands in front of: with the check switched off (a chain that does not call it), the burn lands on the wallet's own account
+    const { cfg, ch } = setup();
+    ch.tamper = (ixs, a) => (a.kind === "buyback" ? [...ixs.slice(0, -1), extra.burnChecked(ch.ownAccount, cfg.mint, cfg.creator, a.tokens, 6, TOKEN_2022_PROGRAM)] : ixs);
+    const sign = ch.sign.bind(ch);
+    ch.sign = (a, s, c, p) => sign(a, s, c, p, () => undefined);
+    await run(cfg, ch);
+    expect(ch.own < OWNED).toBe(true);
+  });
+
+  test("a state from before burn_floor existed, with a burn owed: nothing is burned until an operator sets burn_floor", async () => {
+    const { cfg, ch, supply0 } = setup();
+    ch.fitsOne = false;
+    ch.die = { kind: "burn", point: "sign" };
+    await died(run(cfg, ch));
+    const bought = ch.tokens, raw = rawState(cfg);
+    delete raw.burn_floor;
+    delete raw.burn_account;
+    writeFileSync(cfg.state_path, JSON.stringify(raw));
+    expect([state(cfg).burn_owed, state(cfg).burn_floor]).toEqual([bought, null]);
+    for (let i = 0; i < 2; i++) {
+      ch.waiting = 100_000_000n; // a later buy sent without its burn does not set the floor on its own
+      const r = await run(cfg, ch);
+      expect(step(r, "burn")!.result).toBe("skipped");
+      expect(step(r, "burn")!.detail).toContain("the state has no burn_floor (a state written before it existed, or edited): not burning. An operator sets burn_floor in");
+      expect(step(r, "burn")!.amounts).toMatchObject({ burn_floor_units: "not set" });
+    }
+    expect([ch.count("burn"), ch.own, ch.supply, state(cfg).burn_floor]).toEqual([0, OWNED, supply0, null]);
+    const owed = state(cfg).burn_owed;
+    expect([owed, ch.count("buyback")]).toEqual([ch.tokens, 2]); // the interrupted run's own buy, then one more
+    // the operator, with the timer stopped: burn_floor = what the burn account holds that the keeper did not buy (here nothing)
+    writeFileSync(cfg.state_path, JSON.stringify({ ...rawState(cfg), burn_floor: "0n" }));
+    ch.waiting = 0n;
+    await run(cfg, ch);
+    expect([ch.count("burn"), ch.own, ch.tokens, supply0 - ch.supply, state(cfg).burn_owed, state(cfg).burn_floor]).toEqual([1, OWNED, 0n, owed, 0n, null]);
+    // a floor that is not an amount is refused, not guessed
+    writeFileSync(cfg.state_path, JSON.stringify({ ...rawState(cfg), burn_floor: "25000000000000" }));
+    await expect(run(cfg, ch)).rejects.toThrow("burn_floor is not null or a non-negative amount");
+  });
+});
+
+// How a buy sent without its burn is booked: burn_owed is credited once, with the bought amount, only
+// for a buy that landed without an error, whatever interrupts the run.
+describe("booking a buy sent without its burn", () => {
+  const OWNED = 25_000_000_000_000n;
+  const setup = () => {
+    const cfg = testConfig({ protected_units: OWNED.toString() }), ch = new FakeChain(cfg, OWN);
+    ch.own = OWNED;
+    ch.fitsOne = false;
+    ch.waiting = 100_000_000n;
+    ch.simFail = "burn"; // the burn is held back so the debt can be read
+    return { cfg, ch, supply0: ch.supply };
+  };
+  const finish = async (cfg: KeeperConfig, ch: FakeChain, supply0: bigint, bought: bigint) => {
+    ch.simFail = null;
+    await run(cfg, ch);
+    expect([ch.count("buyback"), ch.count("burn"), ch.tokens, ch.own, supply0 - ch.supply, state(cfg).burn_owed, state(cfg).burn_floor]).toEqual([1, 1, 0n, OWNED, bought, 0n, null]);
+    settled(cfg, ch);
+  };
+
+  for (const point of POINTS) test(`killed at ${point} of the buy: burn_owed is credited once, with what the buy delivered`, async () => {
+    const { cfg, ch, supply0 } = setup();
+    ch.die = { kind: "buyback", point };
+    await expect(run(cfg, ch)).rejects.toThrow(Died);
+    // "sign": nothing was recorded. Later points: the signed bytes are in the state, booked or not
+    expect(state(cfg).burn_owed).toBe(0n);
+    expect(state(cfg).pending?.action.kind ?? null).toBe(point === "sign" ? null : "buyback");
+    for (let i = 0; i < 3; i++) await run(cfg, ch); // three more runs: the same buy is never booked again
+    const bought = ch.tokens;
+    expect(bought > 0n).toBe(true);
+    expect([ch.count("buyback"), state(cfg).burn_owed, state(cfg).burn_floor, ch.signed.filter((t) => t.action.kind === "buyback").length]).toEqual([1, bought, 0n, 1]);
+    await finish(cfg, ch, supply0, bought);
+  });
+
+  test("a buy confirmed only after the run gave up waiting (resent meanwhile) is booked once by the next run", async () => {
+    const { cfg, ch, supply0 } = setup();
+    let t = 0, hide = false;
+    const status = ch.status.bind(ch), height = ch.blockHeight.bind(ch), sign = ch.sign.bind(ch);
+    ch.sign = async (a, s, c, p, k) => { if (a.kind === "buyback") hide = true; return sign(a, s, c, p, k); };
+    ch.status = async (s) => (hide ? "unknown" : status(s));
+    ch.blockHeight = async () => (hide ? 1000 : height());
+    const r = await run(cfg, ch, { now: () => new Date((t += 2500)), resendMs: 1 });
+    expect(step(r, "buyback")).toMatchObject({ result: "waiting" });
+    const sig = state(cfg).pending!.signature;
+    expect(ch.submits.filter((x) => x === sig).length > 1).toBe(true); // resent, the same bytes
+    expect([ch.count("buyback"), state(cfg).burn_owed, state(cfg).pending!.action.kind]).toEqual([1, 0n, "buyback"]); // it landed once; not booked yet
+    hide = false;
+    for (let i = 0; i < 3; i++) await run(cfg, ch);
+    const bought = ch.tokens;
+    expect([ch.count("buyback"), state(cfg).burn_owed, bought > 0n]).toEqual([1, bought, true]);
+    await finish(cfg, ch, supply0, bought);
+  });
+
+  test("a buy that never lands, or lands with an error, credits nothing and leaves no floor", async () => {
+    // never lands: the network drops it and its blockhash expires
+    const a = setup();
+    const submit = a.ch.submit.bind(a.ch);
+    let dropped: string | null = null;
+    a.ch.submit = async (wire) => {
+      const sig = new TextDecoder().decode(wire);
+      if (a.ch.signed.find((t) => t.signature === sig)!.action.kind !== "buyback" || (dropped !== null && sig !== dropped)) return submit(wire);
+      dropped = sig;
+      a.ch.submits.push(sig);
+      a.ch.height += 200;
+    };
+    const r = await run(a.cfg, a.ch);
+    expect(step(r, "buyback")).toMatchObject({ result: "skipped", signature: dropped! });
+    expect([a.ch.count("buyback"), a.ch.tokens, state(a.cfg).burn_owed, state(a.cfg).burn_floor, state(a.cfg).pending, a.ch.count("burn"), a.ch.own]).toEqual([0, 0n, 0n, null, null, 0, OWNED]);
+    expect(step(r, "burn")).toBeUndefined(); // nothing owed: no burn was even considered
+    // lands with an error: only its fee is paid
+    const b = setup();
+    const sign = b.ch.sign.bind(b.ch);
+    b.ch.sign = async (x, s, c, p, k) => { if (x.kind === "buyback") b.ch.failNext = true; return sign(x, s, c, p, k); };
+    const r2 = await run(b.cfg, b.ch);
+    expect(step(r2, "buyback")).toMatchObject({ result: "failed" });
+    expect([b.ch.tokens, state(b.cfg).burn_owed, state(b.cfg).burn_floor, b.ch.count("burn"), b.ch.own, b.ch.supply]).toEqual([0n, 0n, null, 0, OWNED, b.supply0]);
   });
 });

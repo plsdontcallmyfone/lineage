@@ -1,27 +1,60 @@
 import { describe, expect, test } from "bun:test";
 import { base58Encode } from "@units/protocol";
-import { ata, compileMessage, computeBudget, PUMP, pumpPdas, SYSTEM_PROGRAM, TOKEN_2022_PROGRAM, TOKEN_PROGRAM, wireSize, type Ix } from "@units/chain";
-import { actionIxs, collectIxs, extra, parseConfig, phaseOf, quoteBuyback, refusals, seededAddress, TEMP_SEED, waitingFees, type Snapshot } from "../src/index.ts";
+import { ASSOCIATED_TOKEN_PROGRAM, ata, compileMessage, computeBudget, PUMP, pumpPdas, SYSTEM_PROGRAM, TOKEN_2022_PROGRAM, TOKEN_PROGRAM, wireSize, type Ix } from "@units/chain";
+import { actionIxs, BURN_SEED, burnAccountAddress, collectIxs, extra, parseConfig, phaseOf, quoteBuyback, refusals, seededAddress, TEMP_SEED, waitingFees, type Snapshot } from "../src/index.ts";
 import { fixture } from "./fake.ts";
 
 // The keeper's transactions against what mainnet's Pump and PumpSwap builds accepted on the fork
 // (fixtures/fork.json, recorded by scripts/mainnet/fee-keeper-fork.ts): from the snapshot the keeper
 // read, the same instructions, accounts and data, byte for byte.
+//
+// The buys were recorded delivering into the wallet's associated token account. The keeper now
+// delivers into its own burn account (a seeded token account of the wallet), so a rebuilt buy is the
+// recorded one with that account in the associated account's place, and with the account's creation
+// (System CreateAccountWithSeed + Token InitializeAccount3) where the recording created the
+// associated account. The fork has not accepted that shape yet: rerun the fork proof to record it.
 
-const cfg = parseConfig(fixture.config);
+const cfg = parseConfig({ ...fixture.config, protected_units: "0" });
+const burnAddr = burnAccountAddress(cfg.creator, TOKEN_2022_PROGRAM);
+/** The recorded instructions as the keeper builds them now. */
+const recorded = (t: (typeof txs)[number]) => {
+  if (t.action.kind !== "buyback") return t.instructions;
+  const own = t.snapshot.tokenAta.address;
+  return t.instructions.flatMap((i) => i.program === ASSOCIATED_TOKEN_PROGRAM
+    ? view([extra.createAccountWithSeed(cfg.creator, BURN_SEED, t.snapshot.rentToken, 165, TOKEN_2022_PROGRAM), extra.initializeAccount3(burnAddr, cfg.mint, cfg.creator, TOKEN_2022_PROGRAM)])
+    : [{ ...i, accounts: i.accounts.map((k) => (k === own ? burnAddr : k)) }]);
+};
 const txs = fixture.transactions;
-const of = (kind: string, phase: string, n = 0) => txs.filter((t) => (t.action.kind === "buyback" ? `buyback-${t.action.venue}` : t.action.kind) === kind && t.snapshot.phase === phase)[n]!;
 const view = (ixs: Ix[]) => ixs.map((i) => ({ program: i.programId, accounts: i.keys.map((k) => k.pubkey), data: base58Encode(i.data) }));
+const of = (kind: string, phase: string, n = 0) => txs.filter((t) => (t.action.kind === "buyback" ? `buyback-${t.action.venue}` : t.action.kind) === kind && t.snapshot.phase === phase)[n]!;
 const built = (t: (typeof txs)[number]) => [computeBudget.limit(t.cu_limit), computeBudget.price(t.cu_price), ...actionIxs(cfg, t.snapshot, t.action)];
 
 describe("the keeper's transactions are the ones the fork accepted", () => {
   test("every recorded transaction is rebuilt identically from its snapshot, at the recorded size", () => {
     expect(txs.length).toBe(7);
     for (const t of txs) {
-      expect(view(built(t))).toEqual(t.instructions);
-      expect(wireSize(compileMessage(cfg.creator, built(t), SYSTEM_PROGRAM))).toBe(t.size);
-      expect(t.size <= 1232).toBe(true);
+      expect(view(built(t))).toEqual(recorded(t));
+      const size = wireSize(compileMessage(cfg.creator, built(t), SYSTEM_PROGRAM));
+      // same bytes as recorded, except a buy that also creates the burn account (not the associated one)
+      const creates = t.action.kind === "buyback" && !t.snapshot.burnAccount.exists;
+      if (!creates) expect(size).toBe(t.size);
+      expect(size <= 1232 && t.size <= 1232).toBe(true);
     }
+  });
+  test("no keeper transaction names the wallet's own token account; a buy delivers into the burn account and the burn takes from it", () => {
+    for (const t of txs) {
+      const ixs = built(t);
+      expect(ixs.some((i) => i.keys.some((k) => k.pubkey === t.snapshot.tokenAta.address))).toBe(false);
+      expect(ixs.some((i) => i.programId === ASSOCIATED_TOKEN_PROGRAM)).toBe(false);
+    }
+    expect(burnAddr).not.toBe(ata(cfg.creator, cfg.mint, TOKEN_2022_PROGRAM));
+    expect(burnAddr).toBe(seededAddress(cfg.creator, "units-fee-keeper-burn", TOKEN_2022_PROGRAM));
+    const curve = of("buyback-curve", "curve"), pool = of("buyback-pool", "pool");
+    expect(actionIxs(cfg, curve.snapshot, curve.action).find((i) => i.programId === PUMP.program)!.keys[9]!.pubkey).toBe(burnAddr);
+    expect(actionIxs(cfg, pool.snapshot, pool.action).find((i) => i.programId === PUMP.amm)!.keys[5]!.pubkey).toBe(burnAddr);
+    // the first buy creates it: a 165-byte account of the mint's token program at the seeded address, owned by the wallet
+    const first = actionIxs(cfg, curve.snapshot, curve.action);
+    expect(first.slice(0, 2)).toEqual([extra.createAccountWithSeed(cfg.creator, BURN_SEED, curve.snapshot.rentToken, 165, TOKEN_2022_PROGRAM), extra.initializeAccount3(burnAddr, cfg.mint, cfg.creator, TOKEN_2022_PROGRAM)]);
   });
   test("collect on the curve: sweep_creator_fee then collect_creator_fee, the creator vault and the creator the only accounts paid", () => {
     const t = of("collect", "curve");
@@ -65,13 +98,13 @@ describe("the keeper's transactions are the ones the fork accepted", () => {
     const ixs = actionIxs(cfg, t.snapshot, a);
     const burn = ixs[ixs.length - 1]!;
     expect(t.snapshot.mint.program).toBe(TOKEN_2022_PROGRAM);
-    expect(burn).toEqual(extra.burnChecked(t.snapshot.tokenAta.address, cfg.mint, cfg.creator, a.tokens, t.snapshot.mint.decimals, TOKEN_2022_PROGRAM));
+    expect(burn).toEqual(extra.burnChecked(burnAddr, cfg.mint, cfg.creator, a.tokens, t.snapshot.mint.decimals, TOKEN_2022_PROGRAM));
     expect(t.snapshot.tokenAta.exists).toBe(false);
-    expect(ixs.length).toBe(3); // the token account is created only when missing
+    expect(ixs.length).toBe(4); // the burn account is created (two instructions) only when missing
     expect(actionIxs(cfg, of("buyback-curve", "curve", 1).snapshot, of("buyback-curve", "curve", 1).action).length).toBe(2);
     // the amount is what the keeper's quote gives for the budget at the recorded reserves
     expect(quoteBuyback(t.snapshot, a.maxLamports, cfg.slippage_bps)).toEqual({ ok: true, venue: "curve", tokens: a.tokens });
-    expect(actionIxs(cfg, t.snapshot, { ...a, burn: false }).length).toBe(2);
+    expect(actionIxs(cfg, t.snapshot, { ...a, burn: false }).length).toBe(3);
   });
   test("buyback on the pool: wrapped SOL for the budget in a temporary account, buy_v2, BurnChecked, the account closed", () => {
     const t = of("buyback-pool", "pool");

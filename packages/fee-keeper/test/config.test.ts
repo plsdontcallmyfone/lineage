@@ -6,7 +6,7 @@ const A = "7xZcN6nKzFxvfLFQ9MoiYDrZkhkf45QUtj8U4dKh6Hrm", B = "71SxYMfCLfX7p9nx1
 const good = () => ({
   enabled: false, rpc_url: "http://127.0.0.1:9690", mint: A, creator: B, key_path: "/etc/units-fee-keeper/creator.json", compute_address: C, compute_bps: 5000, burn_bps: 5000,
   fee_reserve_lamports: "10000000", min_collect_lamports: 5000000, min_buyback_lamports: "1000000", max_buyback_lamports: "50000000", slippage_bps: 100,
-  priority_fee: { percentile: 75, floor_micro_lamports: 0, cap_micro_lamports: 50000 }, confirm_timeout_s: 60, state_path: "/var/lib/x/state.json", log_path: "/var/lib/x/runs.jsonl",
+  priority_fee: { percentile: 75, floor_micro_lamports: 0, cap_micro_lamports: 50000 }, protected_units: "0", confirm_timeout_s: 60, state_path: "/var/lib/x/state.json", log_path: "/var/lib/x/runs.jsonl",
 }) as Record<string, unknown>;
 const bad = (over: Record<string, unknown>, env: Record<string, string> = {}) => () => parseConfig({ ...good(), ...over }, env);
 
@@ -22,6 +22,21 @@ describe("fee keeper config", () => {
     expect(() => parseConfig(ex, { UNITS_FEE_KEEPER_RPC: "http://127.0.0.1:1" })).toThrow("config.creator must be a base58 address (there is no default)");
     const c = parseConfig({ ...ex, creator: B, compute_address: C }, { UNITS_FEE_KEEPER_RPC: "http://127.0.0.1:1" });
     expect([c.compute_bps, c.burn_bps, c.mint]).toEqual([5000, 5000, "GQdEL4MhL4v8bsmMvyBvjh6BdbWqasgkDnJGfaAHpump"]);
+  });
+  test("protected_units has no default: a config without it does not load, and says what it is", () => {
+    const g = good();
+    delete g.protected_units;
+    expect(() => parseConfig(g)).toThrow(`config.protected_units must be set (there is no default): the base units of $UNITS in the creator wallet's own token account that the keeper must never touch, as a decimal string ("0" when the wallet holds none)`);
+    for (const v of [null, "", "25,000,000", "1.5", -1, "-1", true]) expect(bad({ protected_units: v })).toThrow("config.protected_units must be set");
+    expect(parseConfig({ ...good(), protected_units: "25000000000000" }).protected_units).toBe(25_000_000_000_000n);
+    expect(parseConfig({ ...good(), protected_units: 0 }).protected_units).toBe(0n);
+    const ex = JSON.parse(readFileSync(new URL("../../../config/fee-keeper.example.json", import.meta.url), "utf8"));
+    expect(ex.protected_units).toBe("0");
+  });
+  test("the official config protects the owner's 25,000,000 coins (6 decimals), and is off with no key", () => {
+    const off = JSON.parse(readFileSync(new URL("../../../config/fee-keeper.official.json", import.meta.url), "utf8"));
+    const c = parseConfig(off, { UNITS_FEE_KEEPER_RPC: "http://127.0.0.1:1" });
+    expect([c.protected_units, c.enabled, c.key_path]).toEqual([25_000_000n * 10n ** 6n, false, null]);
   });
   test("the split must sum to 10000", () => {
     expect(bad({ compute_bps: 5000, burn_bps: 4000 })).toThrow("must be 10000 (they are 5000 + 4000)");

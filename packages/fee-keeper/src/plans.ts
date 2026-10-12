@@ -1,6 +1,6 @@
 import {
   addressBytes, ata, curveMigrated, poolRates, PUMP, pump, pumpAmm, pumpPdas, quoteCurveBuyExactIn, quotePoolBuyExactIn, sha256, system, SYSTEM_PROGRAM,
-  toAddress, token, TOKEN_2022_PROGRAM, TOKEN_PROGRAM, Writer, r, w,
+  toAddress, TOKEN_2022_PROGRAM, TOKEN_PROGRAM, Writer, r, w,
   type Address, type BondingCurve, type Ix, type PumpFeeConfig, type PumpGlobal, type PumpPool,
 } from "@units/chain";
 import type { KeeperConfig } from "./config.ts";
@@ -54,8 +54,10 @@ export interface Snapshot {
   global: PumpGlobal;
   feeConfig: PumpFeeConfig;
   pool: PoolSnapshot | null;
-  /** The creator's $UNITS token account. */
+  /** The creator wallet's own (associated) $UNITS token account: the owner's coins. Read, never named in a keeper transaction. */
   tokenAta: { address: Address; exists: boolean; amount: bigint };
+  /** The keeper's burn account: the only account it buys into and burns from. */
+  burnAccount: { address: Address; exists: boolean; amount: bigint };
   /** The compute funding address as it is on chain. */
   compute: { lamports: bigint; owner: Address | null; executable: boolean };
 }
@@ -78,6 +80,8 @@ export function refusals(cfg: KeeperConfig, s: Snapshot, o: { signer?: Address |
   if (s.compute.executable) out.push("config.compute_address is a program");
   if (s.compute.owner !== null && s.compute.owner !== SYSTEM_PROGRAM) out.push(`config.compute_address is an account owned by ${s.compute.owner}, not a wallet: SOL sent there could not be spent`);
   if (o.signer !== undefined && o.signer !== null && o.signer !== cfg.creator) out.push(`the key at config.key_path is ${o.signer}, not config.creator`);
+  if (s.tokenAta.amount < cfg.protected_units)
+    out.push(`the wallet's own $UNITS token account ${s.tokenAta.address} holds ${s.tokenAta.amount} base units, under config.protected_units ${cfg.protected_units}: nothing is signed until the owner checks the wallet or changes protected_units`);
   if (o.mainnet && o.mainnetUnitsMint && cfg.mint !== o.mainnetUnitsMint) out.push(`on mainnet config.mint must be the $UNITS mint ${o.mainnetUnitsMint} (config/profile.json)`);
   return out;
 }
@@ -85,7 +89,17 @@ export function refusals(cfg: KeeperConfig, s: Snapshot, o: { signer?: Address |
 // ---------- instructions pump.ts and spl.ts do not have ----------
 
 export const TEMP_SEED = "units-fee-keeper";
-const TOKEN_ACCOUNT_LEN = 165;
+/**
+ * Seed of the keeper's burn account: a $UNITS token account owned by the creator wallet at
+ * seededAddress(creator, BURN_SEED, the mint's token program), which is not the wallet's associated
+ * token account. Every buy delivers there and every burn takes from there, so the coins in the
+ * wallet's own account are never the source of a burn. Pump `buy_v3` and PumpSwap `buy_v2` take any
+ * token account of the user at the base position (measured on mainnet's builds of 2026-10-10 in
+ * LiteSVM; the fork proof scripts/mainnet/fee-keeper-fork.ts records it when rerun).
+ */
+export const BURN_SEED = "units-fee-keeper-burn";
+export const TOKEN_ACCOUNT_LEN = 165;
+export const burnAccountAddress = (creator: Address, tokenProgram: Address): Address => seededAddress(creator, BURN_SEED, tokenProgram);
 /** The address System `CreateAccountWithSeed` gives (base, seed, owner). */
 export const seededAddress = (base: Address, seed: string, owner: Address): Address => toAddress(sha256(addressBytes(base), seed, addressBytes(owner)));
 
@@ -185,25 +199,29 @@ export function quoteBuyback(s: Snapshot, budget: bigint, slippageBps: number): 
   return out > 0n ? { ok: true, venue: "pool", tokens: out } : { ok: false, reason: "the budget buys no whole base unit" };
 }
 
-/** Buys exactly `tokens` for at most `maxLamports`, and burns them in the same transaction when `burn`. */
+/**
+ * Buys exactly `tokens` for at most `maxLamports` into the keeper's burn account (created here, once,
+ * when missing), and burns them from it in the same transaction when `burn`.
+ */
 export function buybackIxs(cfg: KeeperConfig, s: Snapshot, a: Extract<Action, { kind: "buyback" }>): Ix[] {
   const ixs: Ix[] = [];
-  if (!s.tokenAta.exists) ixs.push(token.createAtaIdempotent(cfg.creator, cfg.creator, cfg.mint, s.mint.program));
+  if (!s.burnAccount.exists) ixs.push(extra.createAccountWithSeed(cfg.creator, BURN_SEED, s.rentToken, TOKEN_ACCOUNT_LEN, s.mint.program),
+    extra.initializeAccount3(s.burnAccount.address, cfg.mint, cfg.creator, s.mint.program));
   if (a.venue === "curve") {
-    ixs.push(pump.buyV3({ mint: cfg.mint, quoteMint: PUMP.wsol, user: cfg.creator, userBase: s.tokenAta.address, amount: a.tokens, maxQuoteIn: a.maxLamports }));
+    ixs.push(pump.buyV3({ mint: cfg.mint, quoteMint: PUMP.wsol, user: cfg.creator, userBase: s.burnAccount.address, amount: a.tokens, maxQuoteIn: a.maxLamports }));
     if (a.burn) ixs.push(burnIx(cfg, s, a.tokens));
     return ixs;
   }
   if (!s.pool) throw new Error("no pool to buy on");
   ixs.push(...openTemp(cfg.creator, s, a.maxLamports),
-    pumpAmm.buyV2({ pool: s.pool.address, mint: cfg.mint, quoteMint: PUMP.wsol, user: cfg.creator, userBase: s.tokenAta.address, userQuote: tempWsol(cfg.creator),
+    pumpAmm.buyV2({ pool: s.pool.address, mint: cfg.mint, quoteMint: PUMP.wsol, user: cfg.creator, userBase: s.burnAccount.address, userQuote: tempWsol(cfg.creator),
       baseOut: a.tokens, maxQuoteIn: a.maxLamports }));
   if (a.burn) ixs.push(burnIx(cfg, s, a.tokens));
   ixs.push(closeTemp(cfg.creator));
   return ixs;
 }
 
-const burnIx = (cfg: KeeperConfig, s: Snapshot, tokens: bigint): Ix => extra.burnChecked(s.tokenAta.address, cfg.mint, cfg.creator, tokens, s.mint.decimals, s.mint.program);
+const burnIx = (cfg: KeeperConfig, s: Snapshot, tokens: bigint): Ix => extra.burnChecked(s.burnAccount.address, cfg.mint, cfg.creator, tokens, s.mint.decimals, s.mint.program);
 
 export function actionIxs(cfg: KeeperConfig, s: Snapshot, a: Action): Ix[] {
   if (a.kind === "collect") {
@@ -219,7 +237,7 @@ export function actionIxs(cfg: KeeperConfig, s: Snapshot, a: Action): Ix[] {
 /** Accounts a transaction of this kind may create and pay rent for (read before and after to tell rent from spend). */
 export function mayCreate(cfg: KeeperConfig, s: Snapshot, a: Action): Address[] {
   if (a.kind !== "buyback") return [];
-  return [s.tokenAta.address, a.venue === "curve" ? pumpPdas.userVolume(cfg.creator) : pumpPdas.ammUserVolume(cfg.creator)];
+  return [s.burnAccount.address, a.venue === "curve" ? pumpPdas.userVolume(cfg.creator) : pumpPdas.ammUserVolume(cfg.creator)];
 }
 
 export const creatorTokenAta = (cfg: KeeperConfig, tokenProgram: Address) => ata(cfg.creator, cfg.mint, tokenProgram);

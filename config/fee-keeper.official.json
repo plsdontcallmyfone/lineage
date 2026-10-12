@@ -1,0 +1,26 @@
+{
+  "_note": "OFFICIAL $UNITS fee keeper config (packages/fee-keeper, docs/MAINNET-RUNBOOK.md \"UNITS fee keeper\" and \"Go-live (single key, today)\"). Public values only. creator = the dev wallet, which creates $UNITS (its pump.fun creator fees are paid to it); compute_address = the compute funding wallet the owner named on 2026-10-12. NOT ENABLED: key_path is null (dry runs only) until the owner places the creator key on the server and sets enabled true. The lamport limits are the example file values, to be set by the owner. Copy to /etc/units-fee-keeper/config.json.",
+  "enabled": false,
+  "rpc_url": null,
+  "mint": "GQdEL4MhL4v8bsmMvyBvjh6BdbWqasgkDnJGfaAHpump",
+  "creator": "6UhUBoVpywefyPoMtQEuwngkPjzFRork4L3dgCVr4jh3",
+  "key_path": null,
+  "compute_address": "BBR99DmQbViLg54YHf8ZsS56eZSy5qCeMfCo7WzGtNW9",
+  "compute_bps": 5000,
+  "burn_bps": 5000,
+  "fee_reserve_lamports": "10000000",
+  "min_collect_lamports": "20000000",
+  "min_buyback_lamports": "5000000",
+  "max_buyback_lamports": "1000000000",
+  "slippage_bps": 100,
+  "priority_fee": {
+    "percentile": 75,
+    "floor_micro_lamports": 0,
+    "cap_micro_lamports": 100000
+  },
+  "_protected_units_note": "25,000,000 $UNITS at 6 decimals: the owner's own coins in the dev wallet's token account, which the keeper must never touch. The owner changes this when the wallet's own holdings change (the keeper signs nothing while the wallet's own account holds less).",
+  "protected_units": "25000000000000",
+  "confirm_timeout_s": 90,
+  "state_path": "/var/lib/units/fee-keeper/state/state.json",
+  "log_path": "/var/lib/units/fee-keeper/public/runs.jsonl"
+}

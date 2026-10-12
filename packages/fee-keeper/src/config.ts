@@ -45,6 +45,13 @@ export interface KeeperConfig {
   slippage_bps: number;
   /** Priority fee: the percentile of recent fees on the accounts the transaction writes, never above the cap. */
   priority_fee: Extract<FeePolicy, { mode: "recent" }>;
+  /**
+   * Base units of $UNITS in the creator wallet's own (associated) token account that are the owner's
+   * and that the keeper must never touch. The keeper buys into and burns from an account of its own
+   * and names the wallet's account in no transaction; it signs nothing while that account holds less
+   * than this. The owner changes it when the wallet's own holdings change. "0": the wallet holds none.
+   */
+  protected_units: bigint;
   /** Seconds to wait for a sent transaction before the run ends and the next one picks it up. */
   confirm_timeout_s: number;
   /** The keeper's private state (what is owed, the transaction in flight). */
@@ -115,12 +122,16 @@ export function parseConfig(raw: unknown, env: Record<string, string | undefined
   if (priority_fee.floor_micro_lamports > priority_fee.cap_micro_lamports) throw new Error("config.priority_fee.floor_micro_lamports is above the cap");
   const min_buyback_lamports = lamports("min_buyback_lamports", 1n), max_buyback_lamports = lamports("max_buyback_lamports", 1n);
   if (min_buyback_lamports > max_buyback_lamports) throw new Error("config.min_buyback_lamports is above config.max_buyback_lamports: no buyback could ever be sent");
+  const pu = raw.protected_units;
+  if (!((typeof pu === "string" && /^\d+$/.test(pu)) || (typeof pu === "number" && Number.isSafeInteger(pu) && pu >= 0)))
+    throw new Error(`${where("protected_units")} must be set (there is no default): the base units of $UNITS in the creator wallet's own token account that the keeper must never touch, as a decimal string ("0" when the wallet holds none)`);
+  const protected_units = BigInt(pu);
   const state_path = path("state_path"), log_path = path("log_path");
   if (state_path === log_path) throw new Error("config.state_path and config.log_path must be two files");
   return {
     enabled: raw.enabled, rpc_url, mint, creator, key_path: (raw.key_path as string | null | undefined) ?? null, compute_address, compute_bps, burn_bps,
     fee_reserve_lamports: lamports("fee_reserve_lamports"), min_collect_lamports: lamports("min_collect_lamports", 1n), min_buyback_lamports, max_buyback_lamports,
-    slippage_bps, priority_fee, confirm_timeout_s: int(raw, "confirm_timeout_s", where("confirm_timeout_s"), 10, 600), state_path, log_path,
+    slippage_bps, priority_fee, protected_units, confirm_timeout_s: int(raw, "confirm_timeout_s", where("confirm_timeout_s"), 10, 600), state_path, log_path,
   };
 }
 

@@ -51,8 +51,8 @@ class Recording implements Chain {
   price = (a: Action, s: Snapshot) => this.inner.price(a, s);
   simulate = (a: Action, s: Snapshot) => this.inner.simulate(a, s);
   fits = (a: Action, s: Snapshot) => this.inner.fits(a, s);
-  async sign(a: Action, s: Snapshot, cuLimit: number, price: number) {
-    const p = await this.inner.sign(a, s, cuLimit, price);
+  async sign(a: Action, s: Snapshot, cuLimit: number, price: number, check: (ixs: Ix[]) => void) {
+    const p = await this.inner.sign(a, s, cuLimit, price, check);
     this.seen.push({ action: a, snapshot: s, signature: p.signature, cuLimit, price });
     return p;
   }
@@ -105,7 +105,7 @@ async function main() {
   const raw = {
     enabled: false, rpc_url: FORK_URL, mint: M, creator: creator.id, key_path: join(KEYS, `fk-creator-${tag}.json`), compute_address: computeAddr, compute_bps: 5000, burn_bps: 5000,
     fee_reserve_lamports: "10000000", min_collect_lamports: "5000000", min_buyback_lamports: "1000000", max_buyback_lamports: "3000000", slippage_bps: 100,
-    priority_fee: { percentile: 75, floor_micro_lamports: 1, cap_micro_lamports: 50000 }, confirm_timeout_s: 60, state_path: join(dir, "state.json"), log_path: join(dir, "runs.jsonl"),
+    priority_fee: { percentile: 75, floor_micro_lamports: 1, cap_micro_lamports: 50000 }, protected_units: "0", confirm_timeout_s: 60, state_path: join(dir, "state.json"), log_path: join(dir, "runs.jsonl"),
   };
   const cfg: KeeperConfig = parseConfig(raw);
   writeFileSync(join(dir, "config.json"), JSON.stringify(raw, null, 2));

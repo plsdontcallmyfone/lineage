@@ -6,7 +6,7 @@ import {
 } from "@units/chain";
 import { priorityFee, writableAccounts } from "../../chain/src/fees.ts";
 import type { KeeperConfig } from "./config.ts";
-import { actionIxs, mayCreate, phaseOf, type PoolSnapshot, type Snapshot } from "./plans.ts";
+import { actionIxs, burnAccountAddress, mayCreate, phaseOf, type PoolSnapshot, type Snapshot } from "./plans.ts";
 import type { Action } from "./state.ts";
 
 // The keeper's view of the chain. `Chain` is everything keeper.ts needs, in the keeper's own terms
@@ -57,7 +57,12 @@ export interface Chain {
   simulate(a: Action, s: Snapshot): Promise<Sim>;
   /** Whether the action fits one transaction (a buy with its burn). */
   fits(a: Action, s: Snapshot): boolean;
-  sign(a: Action, s: Snapshot, cuLimit: number, microLamports: number): Promise<Prepared>;
+  /**
+   * Builds and signs. `check` is given the instructions of the transaction exactly as they are about
+   * to be compiled and signed, and throws to refuse it: an implementation calls it before signing and
+   * signs nothing when it throws (keeper.ts passes guard.ts's checks).
+   */
+  sign(a: Action, s: Snapshot, cuLimit: number, microLamports: number, check: (ixs: Ix[]) => void): Promise<Prepared>;
   submit(wire: Uint8Array): Promise<void>;
   /** "landed": confirmed, with or without a program error. "unknown": not seen (yet). */
   status(signature: string): Promise<"landed" | "unknown">;
@@ -94,8 +99,12 @@ export class RpcChain implements Chain {
     const mint = decodeMint(mintA.data), curve = decodeBondingCurve(curveA.data), phase = phaseOf(curve);
     const tokenAta = ata(cfg.creator, cfg.mint, mintA.owner);
     const poolAddr = pumpPdas.pool(cfg.mint, PUMP.wsol);
-    const [curveBaseA, ataA, poolA, ammFcA, vaultAtaA] = await rpc.getMultipleAccounts([ata(curveAddr, cfg.mint, mintA.owner), tokenAta, poolAddr, PUMP.ammFeeConfig,
-      ata(pumpPdas.ammCreatorVault(cfg.creator), PUMP.wsol, TOKEN_PROGRAM)]);
+    const burnAddr = burnAccountAddress(cfg.creator, mintA.owner);
+    const [curveBaseA, ataA, poolA, ammFcA, vaultAtaA, burnA] = await rpc.getMultipleAccounts([ata(curveAddr, cfg.mint, mintA.owner), tokenAta, poolAddr, PUMP.ammFeeConfig,
+      ata(pumpPdas.ammCreatorVault(cfg.creator), PUMP.wsol, TOKEN_PROGRAM), burnAddr]);
+    const burnT = burnA ? decodeTokenAccount(burnA.data) : null;
+    if (burnA && (burnA.owner !== mintA.owner || burnT!.mint !== cfg.mint || burnT!.owner !== cfg.creator))
+      throw new Error(`the keeper's burn account ${burnAddr} exists and is not a token account of config.mint owned by config.creator`);
     let pool: PoolSnapshot | null = null;
     if (phase === "pool" && poolA && poolA.owner === PUMP.amm && ammFcA) {
       const data = decodePumpPool(poolA.data);
@@ -108,6 +117,7 @@ export class RpcChain implements Chain {
       curveBase: curveBaseA ? decodeTokenAccount(curveBaseA.data).amount : 0n, vault: vaultA?.lamports ?? 0n, rent0: this.rents[0], rentToken: this.rents[1],
       global: decodePumpGlobal(globalA.data), feeConfig: decodePumpFeeConfig(fcA.data), pool,
       tokenAta: { address: tokenAta, exists: !!ataA, amount: ataA ? decodeTokenAccount(ataA.data).amount : 0n },
+      burnAccount: { address: burnAddr, exists: !!burnA, amount: burnT?.amount ?? 0n },
       compute: { lamports: computeA?.lamports ?? 0n, owner: computeA?.owner ?? null, executable: computeA?.executable ?? false },
     };
   }
@@ -149,11 +159,13 @@ export class RpcChain implements Chain {
     };
   }
 
-  async sign(a: Action, s: Snapshot, cuLimit: number, microLamports: number): Promise<Prepared> {
+  async sign(a: Action, s: Snapshot, cuLimit: number, microLamports: number, check: (ixs: Ix[]) => void): Promise<Prepared> {
     if (!this.signer) throw new Error("no key loaded: config.key_path is needed to send");
     if (this.signer.id !== this.cfg.creator) throw new Error("the loaded key is not config.creator");
     const { blockhash, lastValidBlockHeight } = await this.rpc.getLatestBlockhash();
-    const msg = compileMessage(this.cfg.creator, this.ixs(a, s, cuLimit, microLamports), blockhash);
+    const ixs = this.ixs(a, s, cuLimit, microLamports);
+    check(ixs); // throws to refuse: these are the instructions compiled and signed below, nothing else
+    const msg = compileMessage(this.cfg.creator, ixs, blockhash);
     if (wireSize(msg) > PACKET_LIMIT) throw new Error(`the ${a.kind} transaction is ${wireSize(msg)} bytes, over the ${PACKET_LIMIT}-byte packet limit`);
     const tx = signMessageWith(msg, [this.signer]);
     return { wire: tx.wire, signature: tx.signature, lastValidBlockHeight };

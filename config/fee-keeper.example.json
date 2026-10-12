@@ -14,6 +14,8 @@
   "max_buyback_lamports": "1000000000",
   "slippage_bps": 100,
   "priority_fee": { "percentile": 75, "floor_micro_lamports": 0, "cap_micro_lamports": 100000 },
+  "_protected_units_note": "Base units of $UNITS (6 decimals) in the creator wallet's own token account that are the owner's and that the keeper must never touch. Required, no default. \"0\" here means the wallet holds none of its own: set it to the wallet's real holdings before enabling, and change it whenever those holdings change. The keeper signs nothing while the wallet's own account holds less.",
+  "protected_units": "0",
   "confirm_timeout_s": 90,
   "state_path": "/var/lib/units/fee-keeper/state/state.json",
   "log_path": "/var/lib/units/fee-keeper/public/runs.jsonl"

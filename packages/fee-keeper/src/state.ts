@@ -74,6 +74,16 @@ export interface KeeperState {
   buyback_owed: bigint;
   /** $UNITS base units the keeper bought and has not burned yet. */
   burn_owed: bigint;
+  /**
+   * What the keeper's burn account held right before the first buy that was sent without its burn
+   * (the lowest such balance while burn_owed is open). A separate burn is sent only while the account
+   * holds at least burn_floor + burn_owed, so it destroys only what those buys added. Null: no debt
+   * open, or a state written before this field existed (then nothing is burned until an operator sets
+   * it by hand, docs/MAINNET-RUNBOOK.md "UNITS fee keeper").
+   */
+  burn_floor: bigint | null;
+  /** The keeper's burn account (a token account of the wallet at a seeded address), once the keeper has bought into it. */
+  burn_account: Address | null;
   /** Lamports in the wallet kept for the keeper's fees and rent. Never negative. */
   reserve: bigint;
   run: { record: RunRecord; done: Step[]; logged: boolean } | null;
@@ -83,7 +93,7 @@ export interface KeeperState {
 const big = (_k: string, v: unknown) => (typeof v === "bigint" ? `${v}n` : v);
 const unbig = (_k: string, v: unknown) => (typeof v === "string" && /^-?\d+n$/.test(v) ? BigInt(v.slice(0, -1)) : v);
 
-export const freshState = (mint: Address, creator: Address): KeeperState => ({ v: 1, mint, creator, compute_owed: 0n, buyback_owed: 0n, burn_owed: 0n, reserve: 0n, run: null, pending: null });
+export const freshState = (mint: Address, creator: Address): KeeperState => ({ v: 1, mint, creator, compute_owed: 0n, buyback_owed: 0n, burn_owed: 0n, burn_floor: null, burn_account: null, reserve: 0n, run: null, pending: null });
 
 /** Loads the state, or a fresh one when the file does not exist. Refuses a state written for another coin or wallet. */
 export function loadState(file: string, mint: Address, creator: Address): KeeperState {
@@ -92,6 +102,11 @@ export function loadState(file: string, mint: Address, creator: Address): Keeper
   if (s.v !== 1) throw new Error(`${file}: unknown state version`);
   if (s.mint !== mint || s.creator !== creator) throw new Error(`${file} belongs to mint ${s.mint} and creator ${s.creator}, not the configured ones: refusing (use another state_path)`);
   for (const k of ["compute_owed", "buyback_owed", "burn_owed", "reserve"] as const) if (typeof s[k] !== "bigint" || s[k] < 0n) throw new Error(`${file}: ${k} is not a non-negative amount`);
+  // a state written before burn_floor and burn_account existed has neither: null, never a guess
+  s.burn_floor ??= null;
+  s.burn_account ??= null;
+  if (s.burn_floor !== null && (typeof s.burn_floor !== "bigint" || s.burn_floor < 0n)) throw new Error(`${file}: burn_floor is not null or a non-negative amount (write it as a string of digits ending in n, like "0n")`);
+  if (s.burn_account !== null && typeof s.burn_account !== "string") throw new Error(`${file}: burn_account is not null or an address`);
   return s;
 }
 

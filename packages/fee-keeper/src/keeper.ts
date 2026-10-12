@@ -1,8 +1,9 @@
 import { randomBytes } from "node:crypto";
-import type { Address } from "@units/chain";
+import type { Address, Ix } from "@units/chain";
 import { feeBound, MAX_COMPUTE_UNITS, type Chain, type Outcome, type Sim } from "./chain.ts";
 import { MAINNET_GENESIS, type KeeperConfig } from "./config.ts";
-import { quoteBuyback, refusals, waitingFees, type Snapshot } from "./plans.ts";
+import { guardTransaction, Refused } from "./guard.ts";
+import { actionIxs, quoteBuyback, refusals, waitingFees, type Snapshot } from "./plans.ts";
 import { splitCollected } from "./split.ts";
 import { acquireLock, appendLog, loadState, readLog, saveState, type Action, type KeeperState, type RunRecord, type Step } from "./state.ts";
 
@@ -20,6 +21,13 @@ import { acquireLock, appendLog, loadState, readLog, saveState, type Action, typ
 // wallet after its own cost, split into the fee reserve, the compute share and the buyback share, and
 // every later transaction takes its principal from what is owed and its fee and rent from the reserve.
 // A transaction whose fee and rent the reserve does not cover is not sent.
+//
+// The wallet's own $UNITS. The keeper buys into and burns from an account of its own (plans.ts
+// BURN_SEED) and names the wallet's associated token account in no transaction. guard.ts reads the
+// instructions of every transaction right before it is signed and refuses it otherwise; it also
+// refuses when the wallet's own account holds less than config.protected_units. A burn sent apart
+// from its buy is sent only while the burn account holds at least what it held before those buys
+// (state burn_floor) plus what is owed, so it destroys only what the buys added.
 //
 // No double send. Before a transaction is sent, its signed bytes, signature and last valid block
 // height are written to the state file. A new transaction is never built while one is recorded: the
@@ -53,7 +61,7 @@ export interface StepReport {
 export interface RunReport {
   mode: "dry-run" | "send";
   cluster: string;
-  /** Set when the run stopped before doing anything. */
+  /** Why the run stopped: before doing anything, or at a transaction refused right before signing (nothing of it was signed). */
   refused: string[];
   phase: Snapshot["phase"] | null;
   waiting_lamports: Record<string, string> | null;
@@ -165,6 +173,10 @@ export async function runKeeper(cfg: KeeperConfig, chain: Chain, opts: RunOption
   const release = opts.send ? acquireLock(cfg.state_path) : () => undefined;
   try {
     const st = loadState(cfg.state_path, cfg.mint, cfg.creator);
+    if (st.burn_account !== null && st.burn_account !== snap.burnAccount.address) {
+      report.refused.push(`the state names the keeper's burn account ${st.burn_account} and the one derived for this wallet and mint is ${snap.burnAccount.address}: refusing`);
+      return report;
+    }
     const save = () => {
       if (opts.send) saveState(cfg.state_path, st);
     };
@@ -195,6 +207,7 @@ export async function runKeeper(cfg: KeeperConfig, chain: Chain, opts: RunOption
           const detail = book(cfg, st, rec, p.action, p.signature, o);
           done.add(p.action.kind); // landed, with or without an error: not sent again in this run
           st.pending = null;
+          if (st.burn_owed === 0n) st.burn_floor = null; // no debt open: the next buy sent without its burn records its own floor
           keepRun();
           save();
           say(`${p.action.kind}: ${p.signature}: ${detail}`);
@@ -206,6 +219,7 @@ export async function runKeeper(cfg: KeeperConfig, chain: Chain, opts: RunOption
           // one last look: it may have landed in the final blocks
           if ((await chain.status(p.signature)) === "landed") continue;
           st.pending = null;
+          if (st.burn_owed === 0n) st.burn_floor = null;
           keepRun();
           save();
           say(`${p.action.kind}: ${p.signature} expired without landing; nothing was paid`);
@@ -238,6 +252,14 @@ export async function runKeeper(cfg: KeeperConfig, chain: Chain, opts: RunOption
 
     /** Simulates, checks, and (with --send) signs, records, sends and settles one action. False: stop the run here. */
     const act = async (a: Action, check: (sim: Sim, fee: bigint) => string | null, amounts: Record<string, string>): Promise<boolean> => {
+      const s = snap;
+      const guard = (ixs: Ix[]) => guardTransaction({ ixs, action: a, creator: cfg.creator, mint: cfg.mint, tokenProgram: s.mint.program, decimals: s.mint.decimals,
+        own: { address: s.tokenAta.address, amount: s.tokenAta.amount }, burn: { address: s.burnAccount.address, amount: s.burnAccount.amount }, protectedUnits: cfg.protected_units });
+      const refuse = (why: string) => {
+        report.refused.push(why);
+        if (opts.send) rec.notes.push(`${a.kind}: ${why}`);
+        return false;
+      };
       const sim = await chain.simulate(a, snap);
       if (!sim.ok) {
         report.steps.push({ step: a.kind, result: "skipped", detail: `the simulation failed (${sim.error}); nothing sent`, simulation: simView(sim, true), amounts });
@@ -255,10 +277,28 @@ export async function runKeeper(cfg: KeeperConfig, chain: Chain, opts: RunOption
         return true;
       }
       if (!opts.send) {
+        const no = guard(actionIxs(cfg, s, a));
+        if (no) return refuse(no);
         report.steps.push({ step: a.kind, result: "would", detail: "simulated; a run with --send sends it", simulation: simView(sim), amounts: withFee });
         return true;
       }
-      const p = await chain.sign(a, snap, limit, price);
+      let p: Awaited<ReturnType<Chain["sign"]>>;
+      try {
+        p = await chain.sign(a, s, limit, price, (ixs) => {
+          const no = guard(ixs);
+          if (no) throw new Refused(no);
+        });
+      } catch (e) {
+        if (e instanceof Refused) return refuse(e.message);
+        throw e;
+      }
+      if (a.kind === "buyback") {
+        st.burn_account = s.burnAccount.address;
+        // a buy sent without its burn: what the burn account holds right before it is the floor its later burn must leave
+        // (a debt left without a floor by an older state stays without one: only an operator sets that)
+        const unset = st.burn_owed > 0n && st.burn_floor === null;
+        if (!a.burn && !unset && (st.burn_floor === null || s.burnAccount.amount < st.burn_floor)) st.burn_floor = s.burnAccount.amount;
+      }
       st.pending = { action: a, signature: p.signature, last_valid_block_height: p.lastValidBlockHeight, wire: Buffer.from(p.wire).toString("base64"), sent_at: now().toISOString() };
       keepRun();
       save();
@@ -272,9 +312,14 @@ export async function runKeeper(cfg: KeeperConfig, chain: Chain, opts: RunOption
     const burnOwed = async (): Promise<boolean> => {
       if (st.burn_owed === 0n) return true;
       snap = await chain.read();
-      if (snap.tokenAta.amount < st.burn_owed) {
-        const why = `${st.burn_owed} base units are owed to the burn and the wallet's token account holds ${snap.tokenAta.amount}: not burning, check the wallet`;
-        report.steps.push({ step: "burn", result: "skipped", detail: why });
+      const have = snap.burnAccount.amount, floor = st.burn_floor;
+      const why = floor === null
+        ? `${st.burn_owed} base units are owed to the burn and the state has no burn_floor (a state written before it existed, or edited): not burning. An operator sets burn_floor in ${cfg.state_path} by hand, with the timer stopped (docs/MAINNET-RUNBOOK.md "UNITS fee keeper")`
+        : have - st.burn_owed < floor
+          ? `not burning: the keeper's burn account ${snap.burnAccount.address} holds ${have} base units, ${st.burn_owed} are owed to the burn and the account held ${floor} before the keeper's buys (burn_floor): a burn would take ${floor + st.burn_owed - have} base units those buys did not add. The debt is kept; check the account and the state`
+          : null;
+      if (why) {
+        report.steps.push({ step: "burn", result: "skipped", detail: why, amounts: { burn_owed_units: st.burn_owed.toString(), burn_account_units: have.toString(), burn_floor_units: floor === null ? "not set" : floor.toString() } });
         if (opts.send) rec.notes.push(`burn: ${why}`);
         return true;
       }
@@ -340,7 +385,7 @@ export async function runKeeper(cfg: KeeperConfig, chain: Chain, opts: RunOption
         } else {
           const one: Action = { kind: "buyback", tokens: q.tokens, maxLamports: budget, burn: true, venue: q.venue };
           const a: Action = chain.fits(one, snap) ? one : { ...one, burn: false };
-          if (!(await act(a, covers, { ...amounts, units: q.tokens.toString(), venue: q.venue, burn_in_same_transaction: String(a.burn) }))) return finish(false);
+          if (!(await act(a, covers, { ...amounts, units: q.tokens.toString(), venue: q.venue, burn_in_same_transaction: String(a.burn), burn_account: snap.burnAccount.address }))) return finish(false);
         }
       }
     }
