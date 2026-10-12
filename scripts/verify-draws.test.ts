@@ -26,6 +26,7 @@ async function run(epochs: any[]): Promise<{ code: number; out: string }> {
     fetch(req) {
       const p = new URL(req.url).pathname;
       if (p === "/v1/config") return Response.json({ network: { quorum: 3, det_tolerance: 0, bootstrap_resamples: 10, bond_cap: "0" } });
+      if (p === "/v1/lineages") return Response.json([]); // verify.ts reads the final candidates per unit
       if (p === "/v1/candidates") return Response.json([]);
       if (p === "/v1/epochs") return Response.json(epochs.map((e) => ({ n: e.n, status: e.status })));
       const m = p.match(/^\/v1\/epochs\/(\d+)$/);
