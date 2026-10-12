@@ -234,6 +234,8 @@ export async function signAndSend(o: {
 export interface BundlePart {
   ixs: Ix[];
   units: number;
+  /** the unit price (micro-lamports) the transaction is sent with; read from recent fees when absent */
+  price?: number;
   table?: LookupTable | null;
   /** extra lookup tables (a Jupiter swap); the budget is already in `ixs` when `raw` */
   tables?: LookupTable[];
@@ -246,8 +248,8 @@ export interface BundlePart {
  * The whole launch in one approval (owner direction 2026-10-11): every transaction is built on one
  * fresh blockhash and the wallet signs them all in one request. Mainnet sends them as one Jito bundle
  * (all or nothing, in order), and when Jito refuses the bundle or it does not land, the same signed
- * transactions go one by one in order with a clear status line (never sent twice); devnet sends them in order, simulating each before it goes, and stops at
- * the first that would fail or fails, reporting which landed. `skip(i)` is asked right before sending
+ * transactions go one by one in order with a clear status line (never sent twice); devnet sends them in order and stops at
+ * the first the network refuses or that fails, reporting which landed (the page simulates nothing: the RPC node's own preflight refuses a transaction that would fail). `skip(i)` is asked right before sending
  * transaction i (devnet): true leaves it out (what it carries is already on chain).
  */
 export async function signAndSendAll(o: {
@@ -262,7 +264,7 @@ export async function signAndSendAll(o: {
   const { blockhash, lastValidBlockHeight } = await rpc.getLatestBlockhash();
   const msgs = [];
   for (const p of o.parts) {
-    const all = p.raw ? p.ixs : await withBudget(payer, p.ixs, p.units);
+    const all = p.raw ? p.ixs : p.price !== undefined ? [...budgetIxs(p.units, p.price), ...p.ixs] : await withBudget(payer, p.ixs, p.units);
     const tables = p.tables ?? (p.table ? [p.table] : []);
     msgs.push(tables.length ? compileMessageV0(payer, all, blockhash, tables) : compileMessage(payer, all, blockhash));
   }
@@ -299,11 +301,8 @@ export async function signAndSendAll(o: {
     label: (i) => o.parts[i]!.label,
     afterBundle: !!ordered,
     statuses: async (signatures) => (await rpc.call<{ value: (SigStatus | null)[] }>("getSignatureStatuses", [signatures])).value,
-    simulate: (i) => {
-      const tables = o.parts[i]!.tables ?? (o.parts[i]!.table ? [o.parts[i]!.table!] : []);
-      return simulateDetailed(rpc, wires[i]!, new Map(tables.map((t) => [t.address, t.addresses])));
-    },
-    send: (i) => sendWire(rpc, wires[i]!, lastValidBlockHeight, o.onStatus),
+    // nothing is simulated by the page (owner 2026-10-12): the RPC node checks each transaction as it takes it (preflight) and refuses one that would fail, before any fee
+    send: (i) => sendWire(rpc, wires[i]!, lastValidBlockHeight, o.onStatus, { preflight: true }),
     found: (i, s) => ({ signature: wireSignature(wires[i]!), slot: s.slot, err: null, logs: [] }),
     skip: o.skip,
     onStatus: o.onStatus,

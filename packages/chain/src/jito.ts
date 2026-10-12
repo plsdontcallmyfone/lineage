@@ -116,8 +116,8 @@ export async function sendInOrder<C extends { err: unknown; logs?: string[] }>(o
   label: (i: number) => string;
   afterBundle: boolean;
   statuses: (signatures: string[]) => Promise<(SigStatus | null)[]>;
-  /** the transaction simulated on the state the earlier ones left (asked for every transaction but the first) */
-  simulate: (i: number) => Promise<{ err: unknown; logs?: string[] }>;
+  /** optional: the transaction simulated on the state the earlier ones left (asked for every transaction but the first). The launch page passes none: its sends go through the node's preflight instead. */
+  simulate?: (i: number) => Promise<{ err: unknown; logs?: string[] }>;
   /** sends and confirms; a thrown error is a failure of this transaction */
   send: (i: number) => Promise<C>;
   /** the confirmation of a transaction found on chain by its signature */
@@ -145,7 +145,7 @@ export async function sendInOrder<C extends { err: unknown; logs?: string[] }>(o
       if (bad) return { landed, failed: bad };
       continue;
     }
-    if (i > 0) {
+    if (i > 0 && o.simulate) {
       const sim = await o.simulate(i);
       if (sim.err) {
         const late = await already(i);
@@ -158,10 +158,15 @@ export async function sendInOrder<C extends { err: unknown; logs?: string[] }>(o
     o.onStatus?.(`sending ${label} (${i + 1} of ${o.count})${o.afterBundle ? ", in order after Jito did not take the bundle" : ""}`);
     let c: C | null = null;
     let thrown: string | null = null;
+    let thrownLogs: string[] | undefined;
+    let unsent = false;
     try {
       c = await o.send(i);
     } catch (e) {
       thrown = (e as Error).message;
+      // a node's preflight refusal: the transaction never went out (client.ts PreflightRefused)
+      unsent = (e as { unsent?: unknown }).unsent === true;
+      thrownLogs = Array.isArray((e as { logs?: unknown }).logs) ? ((e as { logs: string[] }).logs) : undefined;
     }
     if (!c || c.err) {
       const late = await already(i);
@@ -170,6 +175,7 @@ export async function sendInOrder<C extends { err: unknown; logs?: string[] }>(o
         continue;
       }
       const err = c ? c.err : thrown;
+      if (!c && unsent) return { landed, failed: { index: i, label, error: String(thrown), logs: thrownLogs } };
       return { landed, failed: { index: i, label, error: `failed on chain: ${typeof err === "string" ? err : JSON.stringify(err)}`, logs: c?.logs } };
     }
     landed.push({ index: i, label, confirmed: c });

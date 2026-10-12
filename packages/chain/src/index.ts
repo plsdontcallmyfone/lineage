@@ -10,6 +10,7 @@ export * from "./tx.ts";
 export * from "./v0.ts";
 export * from "./prepay.ts";
 export * from "./launch-bundle.ts";
+export * from "./launch-costs.ts";
 export * from "./jito.ts";
 export * from "./coin-metadata.ts";
 export * from "./rpc.ts";

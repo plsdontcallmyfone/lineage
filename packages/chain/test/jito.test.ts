@@ -192,3 +192,46 @@ describe("Launch pressed again after a launch that stopped half way", () => {
     expect(await partsToSend(three, chain(all).onChain, ["units-account", "tip"])).toEqual([]);
   });
 });
+
+describe("ordered sends without a page simulation (owner 2026-10-12: the launch simulates nothing)", () => {
+  const base = (send: (i: number) => Promise<{ signature: string; slot: number; err: unknown; logs: string[] }>, afterBundle = false, statuses: (i: number) => SigStatus | null = () => null) =>
+    sendInOrder<{ signature: string; slot: number; err: unknown; logs: string[] }>({
+      count: 2,
+      signature: (i) => SIGS[i]!,
+      label: (i) => ["launch + soul", "sol-to-units + initial-buy + credits + tip"][i]!,
+      afterBundle,
+      statuses: async (sigs) => sigs.map((s) => statuses(SIGS.indexOf(s))),
+      send,
+      found: (i, s) => ({ signature: SIGS[i]!, slot: s.slot, err: null, logs: [] }),
+    });
+  const refused = () => Object.assign(new Error("the network refused this transaction before it was sent ({\"InstructionError\":[3,{\"Custom\":6002}]}); it was not sent and nothing was charged for it"), { unsent: true, logs: ["Program log: TooMuchSolRequired"] });
+
+  test("no simulate callback: both transactions are sent in order", async () => {
+    const sent: number[] = [];
+    const r = await base(async (i) => (sent.push(i), { signature: SIGS[i]!, slot: 900 + i, err: null, logs: [] }));
+    expect(sent).toEqual([0, 1]);
+    expect(r.failed).toBeNull();
+    expect(r.landed.map((x) => x.label)).toEqual(["launch + soul", "sol-to-units + initial-buy + credits + tip"]);
+  });
+
+  test("the node refuses the second transaction at preflight: the first stays landed, the second is reported unsent with the node's logs", async () => {
+    const r = await base(async (i) => {
+      if (i === 1) throw refused();
+      return { signature: SIGS[i]!, slot: 900, err: null, logs: [] };
+    });
+    expect(r.landed.map((x) => x.index)).toEqual([0]);
+    expect(r.failed?.index).toBe(1);
+    expect(r.failed?.error).toContain("was not sent and nothing was charged");
+    expect(r.failed?.error).not.toContain("failed on chain");
+    expect(r.failed?.logs).toEqual(["Program log: TooMuchSolRequired"]);
+  });
+
+  test("after a bundle, a refusal of a transaction the late bundle already landed counts as landed, never as failed", async () => {
+    const r = await base(async () => { throw refused(); }, true, (i) => (i === 0 ? null : null));
+    expect(r.failed?.index).toBe(0);
+    let asked = 0;
+    const late = await base(async () => { throw refused(); }, true, () => (asked++ >= 1 ? ok(55) : null));
+    expect(late.failed).toBeNull();
+    expect(late.landed.length).toBe(2);
+  });
+});

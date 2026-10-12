@@ -14,7 +14,7 @@ const rows = [
   { label: "Token creation", usd: "$1.59", sol: "0.0148 SOL" },
   { label: "Total", usd: "$11.27", sol: "0.1049 SOL; the wallet must hold 0.1057 SOL (the purchase at its slippage bound)" },
 ];
-const ok = "simulation succeeded on mainnet";
+const ok = "What you pay Token creation";
 
 test("the plan is read from the page's Review text", () => {
   const p = parsePlan(forkRow, rows, ok);
@@ -25,14 +25,15 @@ test("the plan is read from the page's Review text", () => {
   expect(p.total_sol).toBe(0.1049);
   expect(p.total_usd).toBe(11.27);
   expect(p.must_hold_sol).toBe(0.1057);
-  expect(p.simulated).toBe(true);
+  expect(p.built).toBe(true);
+  expect(parsePlan(forkRow, rows, "simulation succeeded on mainnet What you pay").built).toBe(false);
   expect(planProblem(p, { maxSol: 0.15, balanceSol: 0.5 })).toBeNull();
 });
 
 test("a plan outside the limits is never signed", () => {
   const base = parsePlan(forkRow, rows, ok);
   const bad = (over: Partial<Plan>, o = { maxSol: 0.15, balanceSol: 0.5 }) => planProblem({ ...base, ...over }, o);
-  expect(bad({ simulated: false })).toMatch(/simulation/);
+  expect(bad({ built: false })).toMatch(/no built launch/);
   expect(bad({ txs: base.txs.slice(0, 1) })).toMatch(/1 transactions/);
   expect(bad({ txs: [base.txs[1]!, base.txs[0]!] })).toMatch(/first transaction/);
   expect(bad({ txs: [base.txs[0]!, { ...base.txs[1]!, bytes: 1233 }] })).toMatch(/1233 bytes/);

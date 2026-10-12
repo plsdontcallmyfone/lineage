@@ -138,8 +138,9 @@ export async function mountFeeRouteStep(root: HTMLElement, repoInput: HTMLInputE
  * both signed by the launcher (the agent's registry owner). Empty while the features are off or
  * unticked. Throws with a sentence the wizard shows when a ticked field is incomplete.
  */
-export async function launchExtras(a: { launcher: string; agent: string; agentMint: string; lineMint: string; repoUrl: string }): Promise<{ feeRoute: Ix[]; pool: Ix[]; lines: string[] }> {
-  const out = { feeRoute: [] as Ix[], pool: [] as Ix[], lines: [] as string[] };
+export async function launchExtras(a: { launcher: string; agent: string; agentMint: string; lineMint: string; repoUrl: string }): Promise<{ feeRoute: Ix[]; pool: Ix[]; lines: string[]; creates: { feeRoute?: { escrow: string; vault: string }; pool?: { pool: string; vault: string } } }> {
+  // `creates`: the shared accounts each group makes when they do not exist yet, for the launch's rent line (launch-costs.ts)
+  const out = { feeRoute: [] as Ix[], pool: [] as Ix[], lines: [] as string[], creates: {} as { feeRoute?: { escrow: string; vault: string }; pool?: { pool: string; vault: string } } };
   if (!F.el) return out;
   if (F.github && q<HTMLInputElement>('[name="l_fee_on"]')?.checked) {
     const bps = Number(q<HTMLInputElement>('[name="l_fee_bps"]')?.value ?? 0);
@@ -147,6 +148,7 @@ export async function launchExtras(a: { launcher: string; agent: string; agentMi
     if (!F.user || F.user.login.toLowerCase() !== typed.toLowerCase()) throw new Error(F.lookupErr ?? "The work: name the GitHub account that receives the fee share, or untick the share.");
     if (!F.cfg || bps < F.cfg.minBps || bps > F.cfg.maxBps) throw new Error("The work: the fee share is outside the allowed range.");
     out.feeRoute = [claims.setFeeRoute({ owner: a.launcher, agent: a.agent, agentMint: a.agentMint, lineMint: a.lineMint, githubId: BigInt(F.user.id), bps, lineTokenProgram: TOKEN_2022_PROGRAM })];
+    out.creates.feeRoute = { escrow: claimPdas.escrow(BigInt(F.user.id)), vault: claimPdas.vault(BigInt(F.user.id)) };
     out.lines.push(`${pct(bps)}% of fees go to @${F.user.login}`);
   }
   if (F.pools && q<HTMLInputElement>('[name="l_pool_join"]')?.checked) {
@@ -154,6 +156,7 @@ export async function launchExtras(a: { launcher: string; agent: string; agentMi
     const acc = await rpc.getAccountInfo(poolPdas.pool(id));
     const members = acc ? decodePool(acc.data).members : [];
     out.pool = [pools.joinPool({ signer: a.launcher, agent: a.agent, agentMint: a.agentMint, repoId: id, lineMint: a.lineMint, members, lineTokenProgram: TOKEN_2022_PROGRAM })];
+    out.creates.pool = { pool: poolPdas.pool(id), vault: poolPdas.vault(id, a.lineMint, TOKEN_2022_PROGRAM) };
     out.lines.push(members.length ? `joins the repository pool (${members.length} member${members.length === 1 ? "" : "s"} already)` : "opens the repository pool");
   }
   const note = q("#w-fee-summary");

@@ -2,7 +2,7 @@
 // option B; owner decisions 2026-10-10): after create_v2 + register_pump_launch, the launcher buys
 // exactly initial_buy_bps of the supply with buy_v3 and the tokens land in the agent key's token
 // account. The quote is pump.fun's arithmetic on the curve create_v2 is about to write (seeded from
-// $UNITS's live reserves); the launch simulation stays the authority for the cost shown.
+// $UNITS's live reserves); the cost shown is this arithmetic (nothing is simulated).
 import {
   ata,
   decodeBondingCurve,

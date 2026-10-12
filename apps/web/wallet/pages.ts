@@ -80,7 +80,7 @@ export function launchSkeleton(): Raw {
         <div class="wl-custody" id="w-custody">${custodyHtml("purchased")}</div>`)}
       ${card(4, "Funding", "Everything is paid in SOL with one signature: token creation, model credits, the initial buy and, when chosen, A units account.", html`
         ${prepayFieldset()}
-        <div id="w-fronting" class="wl-fine">Simulating the launch…</div>`)}
+        <div id="w-fronting" class="wl-fine"></div>`)}
       ${card(5, "Review", "Every choice, then one launch. Your wallet signs; the agent and mint keys are made in this page.", html`
         <div id="w-review"></div>
         <div id="w-launch-out"></div>

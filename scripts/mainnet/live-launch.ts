@@ -5,8 +5,11 @@
 // that signs with a real key, one signTransaction request for every transaction of the launch) and
 // scripts/launch-e2e/live.ts (the devnet launch through the deployed site and its checks after).
 //
-// THIS SPENDS REAL SOL when run with --send. Without --send the wallet refuses every transaction: the
-// run stops at Review with the page's own simulation and plan recorded (a dry run).
+// THIS SPENDS REAL SOL when run with --send. Without --send the wallet refuses every transaction (a dry
+// run): Launch is pressed, the wallet is asked once and refuses, and the run checks that the page made
+// no simulateTransaction request up to that prompt (owner 2026-10-12: the launch simulates nothing),
+// how long the total took to appear, and the page's cost lines against simulations THIS script makes of
+// the transactions the page handed the wallet (the first transaction whole; the SOL purchase on its own).
 //
 //   bun scripts/mainnet/live-launch.ts --key <launcher keypair.json> [--send] [--max-sol 0.15]
 //        [--name "Test Basalt"] [--symbol TBASALT] [--site https://main-157-245-71-188.sslip.io]
@@ -35,7 +38,8 @@ export interface Plan {
   total_sol: number | null;
   total_usd: number | null;
   must_hold_sol: number | null;
-  simulated: boolean;
+  /** the Review step shows a built launch (its cost lines) */
+  built: boolean;
 }
 const num = (s: string | undefined | null) => (s ? Number(s.replace(/,/g, "")) : null);
 
@@ -50,13 +54,13 @@ export function parsePlan(transactions: string, rows: { label: string; usd: stri
     total_sol: num(/([\d.,]+)\s*SOL/.exec(total?.sol ?? "")?.[1]),
     total_usd: num(/\$\s*([\d.,]+)/.exec(total?.usd ?? "")?.[1]),
     must_hold_sol: num(/must hold ([\d.,]+) SOL/.exec(total?.sol ?? "")?.[1]),
-    simulated: /simulation succeeded on mainnet/i.test(reviewText),
+    built: /What you pay/i.test(reviewText) && !/simulat/i.test(reviewText.replace(/Transaction details.*$/s, "")),
   };
 }
 
 /** Why this plan must not be signed, or null. */
 export function planProblem(p: Plan, o: { maxSol: number; balanceSol: number }): string | null {
-  if (!p.simulated) return "the page does not say the simulation succeeded on mainnet";
+  if (!p.built) return "the page shows no built launch (or still speaks of a simulation)";
   if (p.txs.length !== 2) return `the plan has ${p.txs.length} transactions, expected 2 (launch + soul, then the purchase, initial buy, credits and tip)`;
   if (!p.txs[0]!.groups.includes("launch")) return "the first transaction does not carry the launch";
   if (!p.txs[1]!.groups.includes("credits") || !p.txs[1]!.groups.includes("initial-buy")) return "the second transaction does not carry the credits and the initial buy";
@@ -131,6 +135,53 @@ async function main() {
     return pw.chromium.launch({ headless: true, ...(existsSync(exe) ? { executablePath: exe } : {}) });
   };
 
+  // ---------------------------------------------------------------- the page's figures against simulations made HERE
+  // The page computes its cost lines and compute limits without simulating. This script simulates what the page
+  // handed the wallet (read only, signatures not verified) and compares: the first transaction whole, and the SOL
+  // purchase alone (the rest of the second transaction needs the coin the first one creates).
+  async function verifyCosts(page: any, b64s: string[], launcher: string) {
+    const { compileMessage } = await import("@units/chain");
+    const { unsignedWire } = await import("../../packages/chain/src/browser/wire.ts");
+    const rows = (await page.locator("#w-launch-out .lz-tech tr[data-tx]").evaluateAll((els: HTMLElement[]) => els.map((e) => ({ units: Number(e.dataset.units), fee: e.dataset.fee!, groups: (e.querySelector("td")?.textContent ?? "").replace(/\s*v0\s*$/, "").trim().split(" + ") })))) as { units: number; fee: string; groups: string[] }[];
+    const rents = (await page.locator("#w-launch-out .lz-tech tr[data-rent-group]").evaluateAll((els: HTMLElement[]) => els.map((e) => ({ group: e.dataset.rentGroup!, lamports: e.dataset.lamports!, what: e.querySelector("td")?.textContent ?? "" })))) as { group: string; lamports: string; what: string }[];
+    const head = (await page.locator("#w-launch-out .lz-tech").evaluate((e: HTMLElement) => ({ total: e.dataset.launchTotal, purchase: e.dataset.launchPurchase }))) as { total: string; purchase: string };
+    const sim = async (b64: string) => (await rpc.call<any>("simulateTransaction", [b64, { encoding: "base64", sigVerify: false, replaceRecentBlockhash: true, commitment: "confirmed", accounts: { encoding: "base64", addresses: [launcher] } }])).value;
+    const before = await rpc.getBalance(launcher);
+    // 1. the first transaction, exactly as the page built it
+    const one = await sim(b64s[0]!);
+    const spent1 = one.accounts?.[0] ? before - BigInt(one.accounts[0].lamports) : null;
+    const want1 = BigInt(rows[0]!.fee) + rents.filter((r) => rows[0]!.groups.includes(r.group)).reduce((n, r) => n + BigInt(r.lamports), 0n);
+    S.verify = { tx1: { err: one.err, units_consumed: one.unitsConsumed, units_limit: rows[0]!.units, wallet_spent_simulated: spent1?.toString() ?? null, page_fee_plus_rent: want1.toString() } };
+    check("costs: the first transaction, simulated by this script, succeeds and spends exactly the fee and rent the page shows for it", !one.err && spent1 === want1, `simulated ${spent1} lamports, the page's fee + rent ${want1}${one.err ? `; error ${JSON.stringify(one.err)} ${(one.logs ?? []).slice(-3).join(" | ")}` : ""}`);
+    check("limits: the first transaction uses at most two thirds of its fixed compute limit", !!one.unitsConsumed && one.unitsConsumed * 3 <= rows[0]!.units * 2, `${one.unitsConsumed} of ${rows[0]!.units}`);
+    // 2. the SOL purchase of the second transaction, alone (its first group)
+    const two = parseWire(new Uint8Array(Buffer.from(b64s[1]!, "base64")));
+    const raw = decodeMessage(two.message);
+    const tables = new Map<string, string[]>();
+    for (const l of raw.lookups) tables.set(l.table, (await rpc.call<any>("getAccountInfo", [l.table, { encoding: "jsonParsed" }])).value.data.parsed.info.addresses);
+    const d = decodeMessage(two.message, tables);
+    const body = d.instructions.filter((ix: any) => !String(ix.programId).startsWith("ComputeBudget"));
+    const budget = d.instructions.filter((ix: any) => String(ix.programId).startsWith("ComputeBudget"));
+    if (rows[1]?.groups[0] !== "sol-to-units") return check("costs: the SOL purchase could be isolated", false, `the second transaction starts with ${rows[1]?.groups[0]}`);
+    // sol-to-units is the first two instructions after the budget: create the launcher's $UNITS account if missing, then buy_v3
+    const ixs = [...budget, ...body.slice(0, 2)].map((ix: any) => ({ programId: ix.programId, keys: ix.accounts, data: ix.data }));
+    const { blockhash } = await rpc.getLatestBlockhash();
+    const alone = await sim(Buffer.from(unsignedWire(compileMessage(launcher, ixs, blockhash))).toString("base64"));
+    const spent2 = alone.accounts?.[0] ? before - BigInt(alone.accounts[0].lamports) : null;
+    // what this lone transaction pays beside the purchase: its own fee (same limit and price as the page's second transaction, one signature) and the rent of the wallet's accounts it creates
+    const fee2 = BigInt(rows[1]!.fee);
+    const rent2 = rents.filter((r) => r.group === "sol-to-units").reduce((n, r) => n + BigInt(r.lamports), 0n);
+    const trade = spent2 === null ? null : spent2 - fee2 - rent2;
+    S.verify.purchase = { err: alone.err, units_consumed: alone.unitsConsumed, wallet_spent_simulated: spent2?.toString() ?? null, fee: fee2.toString(), rent: rent2.toString(), trade_simulated: trade?.toString() ?? null, page_credits_plus_buy: head.purchase };
+    save();
+    // the curve moves with every trade on it: equal when nobody traded between the page's read and this simulation, else within the slippage bound
+    const page2 = BigInt(head.purchase);
+    const off = trade === null ? null : trade > page2 ? trade - page2 : page2 - trade;
+    check("costs: the SOL purchase, simulated alone by this script, costs what the page shows for credits + initial buy (to the lamport, or within 1% if the curve traded in between)",
+      !alone.err && off !== null && off * 100n <= page2, `simulated ${trade} lamports, the page ${page2}, difference ${off}${alone.err ? `; error ${JSON.stringify(alone.err)} ${(alone.logs ?? []).slice(-3).join(" | ")}` : ""}`);
+    log(`page total ${head.total} lamports; rents ${rents.map((r) => `${r.what} ${r.lamports}`).join(", ")}`);
+  }
+
   // ---------------------------------------------------------------- launch
   async function phaseLaunch() {
     const KEY = arg("key") ?? (() => { throw new Error("--key <launcher keypair.json> is required (a throwaway key outside the repository)"); })();
@@ -162,6 +213,7 @@ async function main() {
         return { version: String(d.version), bytes: wire.length, programs: [...new Set(d.instructions.map((i: any) => i.programId as string))], signers: parseWire(wire).signatures.length };
       });
       signed.push({ txs, at: new Date().toISOString() });
+      wires.push(b64s);
       S.signing_requests = signed;
       save();
       if (!SEND) throw new Error("dry run: the wallet refuses every transaction (run with --send to sign)");
@@ -212,10 +264,14 @@ async function main() {
     page.on("console", (m: any) => { if (m.type() === "error") errors.push(`console: ${String(m.text()).slice(0, 300)}`); });
     // what the page asked the chain proxy to send (public JSON-RPC through the site; no key is in it)
     const sends: { at: string; method: string; status: number; result: string }[] = [];
+    // every JSON-RPC method the page called through the site, counted (the launch must make no simulateTransaction)
+    const rpcCounts: Record<string, number> = {};
+    const wires: string[][] = [];
     page.on("response", async (r: any) => {
       try {
         if (!r.url().endsWith("/chain/rpc") || r.request().method() !== "POST") return;
         const body = JSON.parse(r.request().postData() ?? "{}");
+        rpcCounts[body.method] = (rpcCounts[body.method] ?? 0) + 1;
         if (!["sendBundle", "getInflightBundleStatuses", "getBundleStatuses", "sendTransaction", "getTipAccounts"].includes(body.method)) return;
         const text = await r.text().catch(() => "");
         sends.push({ at: new Date().toISOString(), method: body.method, status: r.status(), result: body.method === "getTipAccounts" ? `${text.length} bytes` : text.slice(0, 500) });
@@ -269,16 +325,19 @@ async function main() {
       if (offered) await page.check('input[name="l_identity"][value="token"]');
       check("wizard, Identity: \"Your own token\" is selected (the units account is not offered on this instance)", !offered && (await page.locator('input[name="l_identity"][value="token"]').isChecked()), await text("#w-id-price"));
       await shot("4-identity");
+      const tFunding = Date.now();
       await page.click('[data-act="lz-next"]');
       const dep = page.locator('[name="l_deposit"]');
       S.credits_usd = await dep.inputValue().catch(() => null);
       if (S.credits_usd !== "10") await dep.fill("10");
       await page.waitForFunction(() => /SOL/.test((document.querySelector("[data-fronting-sol]") as HTMLElement | null)?.innerText ?? ""), null, { timeout: 180_000 });
+      S.funding_total_ms = Date.now() - tFunding;
       S.funding_view = (await text('[data-step="4"]')).slice(0, 1500);
+      check("wizard, Funding: the total is there within 3 s of opening the step, with no simulation wording", S.funding_total_ms < 3_000 && !/simulat/i.test(S.funding_view), `${S.funding_total_ms} ms`);
       check("wizard, Funding: 10 USD of credits (the minimum), a total in US dollars with the SOL beside it", (await dep.inputValue()) === "10" && /\$/.test(await text("[data-fronting-total]")), `${await text("[data-fronting-total]")} / ${await text("[data-fronting-sol]")}`);
       await shot("5-funding");
       await page.click('[data-act="lz-next"]');
-      await page.locator("#w-launch-out .mark.good, #w-launch-out [data-err]").first().waitFor({ timeout: 240_000 });
+      await page.locator('#w-launch-out [data-act="launch-sign"], #w-launch-out [data-err]').first().waitFor({ timeout: 90_000 });
       // textContent: the transaction list sits in a folded details element
       const review = ((await page.locator("#w-launch-out").evaluate((e: HTMLElement) => e.textContent ?? "").catch(() => "")) as string).replace(/\s+/g, " ");
       const rows = (await page.locator("#w-launch-out .lz-fronting [data-fronting]").evaluateAll((els: HTMLElement[]) =>
@@ -300,10 +359,21 @@ async function main() {
       const forkSpent = Number(fork.launch?.wallet_sol_spent_fork_lamports ?? 0) / 1e9;
       log(`fork figures: the wizard on the fork spent ${forkSpent.toFixed(9)} SOL at the fork's rent; the instruction rehearsal measured 0.097173597 SOL at mainnet rent (docs/MAINNET-COSTS.md), 1,082 and 1,101 bytes`);
       const problem = planProblem(plan, { maxSol: MAX_SOL, balanceSol: Number(bal0) / 1e9 });
-      check("wizard, Review: the page's own simulation succeeded on mainnet and the plan is within the limits (2 transactions, each within a packet, total under --max-sol)", !problem, problem ?? `${plan.txs.length} transactions of ${plan.txs.map((t) => t.bytes).join(" and ")} bytes; total ${plan.total_sol} SOL = ${plan.total_usd} USD; limit ${MAX_SOL} SOL`);
+      check("wizard, Review: the launch is built with its cost lines (nothing simulated) and the plan is within the limits (2 transactions, each within a packet, total under --max-sol)", !problem, problem ?? `${plan.txs.length} transactions of ${plan.txs.map((t) => t.bytes).join(" and ")} bytes; total ${plan.total_sol} SOL = ${plan.total_usd} USD; limit ${MAX_SOL} SOL`);
       const disabled = await page.locator('[data-act="launch-sign"]').isDisabled();
       check("wizard, Review: Launch is enabled (the wallet covers the total)", !disabled, await text("#w-launch-out [data-fronting-short], #w-launch-out .lz-fronting .wl-fine"));
-      if (!SEND) return log("dry run: stopping at Review; nothing was signed or sent");
+      if (!SEND) {
+        if (problem || disabled) return log("dry run: the plan is not signable, so Launch was not pressed; nothing was signed or sent");
+        // the wallet refuses, so nothing is signed: this only proves the page reaches the signing prompt without simulating
+        await page.locator('[data-act="launch-sign"]').click();
+        await page.waitForFunction(() => /dry run/.test(document.querySelector("#w-launch-status")?.textContent ?? ""), null, { timeout: 90_000 }).catch(() => {});
+        S.rpc_methods_to_prompt = { ...rpcCounts };
+        check("dry: Launch asked the wallet once for every transaction, and the page made no simulateTransaction request up to that prompt",
+          signed.length === 1 && signed[0]!.txs.length === plan.txs.length && (rpcCounts.simulateTransaction ?? 0) === 0, `signing requests ${JSON.stringify(signed.map((r) => r.txs.length))}; rpc methods ${JSON.stringify(rpcCounts)}`);
+        await shot("7-dry-prompt");
+        if (wires[0]) await verifyCosts(page, wires[0], wallet.id);
+        return log("dry run: the wallet refused; nothing was signed or sent");
+      }
       if (problem || disabled) throw new Error(`not signing: ${problem ?? "Launch is disabled"}`);
 
       // ---------------------------------------------------------------- the launch itself

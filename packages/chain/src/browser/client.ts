@@ -94,14 +94,39 @@ export interface Confirmed {
   logs: string[];
 }
 
+/** The node refused a transaction at preflight: it was not sent and nothing was charged for it. */
+export class PreflightRefused extends Error {
+  /** read by sendInOrder: the transaction never went out */
+  readonly unsent = true;
+  constructor(readonly err: unknown, readonly logs: string[]) {
+    super(`the network refused this transaction before it was sent (${typeof err === "string" ? err : JSON.stringify(err)}); it was not sent and nothing was charged for it`);
+  }
+}
+/** A sendTransaction error that is a preflight refusal (JSON-RPC -32002 with the program error and logs), or null. */
+export function preflightRefusal(e: unknown): PreflightRefused | null {
+  const x = e as { code?: unknown; data?: { err?: unknown; logs?: unknown } | null };
+  if (!x || x.code !== -32002) return null;
+  return new PreflightRefused(x.data?.err ?? "the node gave no reason", Array.isArray(x.data?.logs) ? (x.data!.logs as string[]) : []);
+}
+
 /**
  * Sends a fully signed wire transaction and polls until it is confirmed, fails, or its blockhash
  * expires (rebroadcasting meanwhile). A transaction that lands with an error is reported, never resent.
  */
-export async function sendWire(rpc: Rpc, wire: Uint8Array, lastValidBlockHeight: number, onStatus?: (s: string) => void): Promise<Confirmed> {
+export async function sendWire(rpc: Rpc, wire: Uint8Array, lastValidBlockHeight: number, onStatus?: (s: string) => void, opts: { preflight?: boolean } = {}): Promise<Confirmed> {
   const signature = wireSignature(wire);
   const b64 = base64Encode(wire);
   const send = () => rpc.call<string>("sendTransaction", [b64, { encoding: "base64", skipPreflight: true, maxRetries: 0 }]);
+  if (opts.preflight) {
+    // the first submission goes through the node's preflight: a transaction that would fail is refused here, unsent and uncharged
+    try {
+      await rpc.call<string>("sendTransaction", [b64, { encoding: "base64", skipPreflight: false, preflightCommitment: rpc.commitment, maxRetries: 0 }]);
+    } catch (e) {
+      const refused = preflightRefusal(e);
+      if (refused) throw refused;
+      throw e;
+    }
+  } else
   await send();
   onStatus?.(`sent ${signature}`);
   let last = Date.now();

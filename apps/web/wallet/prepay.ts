@@ -111,7 +111,7 @@ export async function rateBlockedNow(): Promise<string | null> {
 /** The same reason as the wizard's "cannot launch yet" line. */
 export const rateBlockedBox = (why: string): Raw => html`<div class="panel-b"><div class="wl-fine" data-credits-blocked><span class="mark warn">Launch disabled: ${why}.</span></div></div>`;
 
-/** The timer's read: true when a usable price is back after a refusal (the launch can be simulated again). */
+/** The timer's read: true when a usable price is back after a refusal (the launch can be built again). */
 export async function tickRate(): Promise<boolean> {
   const was = rateWasBlocked;
   return (await rateBlockedNow()) === null && was;
