@@ -77,6 +77,15 @@ if [[ "$HOST" =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]]; then SSLIP="main-${HOST//.
 if [ "$DRY_RUN" = 1 ]; then SITE_NAMES="${SITE_NAMES:-main.localhost}"; else SITE_NAMES="${SITE_NAMES:-$SSLIP${MAIN_DOMAIN:+,$MAIN_DOMAIN}}"; fi
 SITE_NAMES="${SITE_NAMES#,}"
 ORIGINS="$(echo "$SITE_NAMES" | tr ',' '\n' | sed 's|^|https://|' | paste -sd, -)"
+# other front ends allowed to use this instance's same-origin routes (the /chain proxy, writes): a static
+# build on another host, a developer's local server. EXTRA_ORIGINS overrides; unset keeps the server's.
+if [ -z "${EXTRA_ORIGINS+x}" ] && [ "$DRY_RUN" != 1 ]; then
+  EXTRA_ORIGINS="$(r "sed -n 's/^GATE_EXTRA_ORIGINS=//p' /etc/$P/site.env 2>/dev/null | tail -1" || true)"
+fi
+if [ -n "${EXTRA_ORIGINS:-}" ]; then
+  echo "$EXTRA_ORIGINS" | tr ',' '\n' | grep -qvE '^(https://[A-Za-z0-9.-]+|http://(localhost|127\.0\.0\.1):\*)$' && { echo "EXTRA_ORIGINS: comma-separated https://host origins, http://localhost:* or http://127.0.0.1:*" >&2; exit 2; }
+  ORIGINS="$ORIGINS,$EXTRA_ORIGINS"
+fi
 [ "$DRY_RUN" = 1 ] && [ -n "${DRY_RUN_ORIGIN:-}" ] && ORIGINS="$ORIGINS,$DRY_RUN_ORIGIN"
 
 write_env() {
@@ -95,6 +104,7 @@ UNITS_NETWORK=$NETWORK
 UNITS_PROFILE_LOCAL=/etc/$P/profile.local.json
 SITE_NAMES=$SITE_NAMES
 GATE_ORIGINS=$ORIGINS
+GATE_EXTRA_ORIGINS=${EXTRA_ORIGINS:-}
 UNITS_RECIPES=$recipes
 UNITS_SITE_URL=https://${SITE_NAMES%%,*}
 DRY_RUN=$DRY_RUN

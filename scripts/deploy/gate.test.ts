@@ -124,6 +124,13 @@ describe("audit A2: gate", () => {
   test("OFF-D6 chain writes need a listed Origin; a missing Origin is refused", () => {
     expect(originAllowed(null, "site.example", [])).toBe(false);
     expect(originAllowed("https://site.example", "site.example", [])).toBe(true);
+    // a ":*" entry allows any port of that origin, and nothing else
+    const dev = ["https://site.example", "http://localhost:*"];
+    expect(originAllowed("http://localhost:3000", "site.example", dev)).toBe(true);
+    expect(originAllowed("http://localhost", "site.example", dev)).toBe(true);
+    expect(originAllowed("http://localhost:3000.evil.example", "site.example", dev)).toBe(false);
+    expect(originAllowed("http://localhost.evil.example:3000", "site.example", dev)).toBe(false);
+    expect(originAllowed("https://localhost:3000", "site.example", dev)).toBe(false);
     expect(originAllowed("https://evil.example", "site.example", [])).toBe(false);
     expect(originAllowed("https://a.example", "site.example", ["https://a.example"])).toBe(true);
   });
