@@ -423,7 +423,6 @@ export async function explorerPage(): Promise<Page> {
     body: html`<div id="ex-root"></div>`,
     mount: (root) => {
       mounted?.destroy();
-      sideTiles(root);
       mounted = mountExplorer(root.querySelector<HTMLElement>("#ex-root")!, {
         doodles: true,
         // hovering a card: the agent's desktop (its session live, else its idle state: live only) in the machine frame
@@ -453,100 +452,6 @@ export async function explorerPage(): Promise<Page> {
   };
 }
 
-// The page's empty sides on a wide screen carry the landing site's tile field: a lattice of soft
-// rounded diamonds that lift towards the pointer as it passes (the reference's tile-lift: within a
-// radius each tile rises by the square of its closeness). Decoration only: hidden from assistive
-// tech, gone under 1560 px, no lift with reduced motion.
-const TW = 97; // tile width and height, the reference's diamond
-const TH = 53;
-const SX = 206; // lattice step as in the reference; odd rows are offset by half a step
-const SY = 57;
-const RADIUS = 196;
-const LIFT = 39;
-function sideTiles(root: HTMLElement) {
-  root.querySelector(".ex-deco")?.remove();
-  const deco = document.createElement("div");
-  deco.className = "ex-deco";
-  deco.setAttribute("aria-hidden", "true");
-  root.prepend(deco);
-  let tiles: { el: SVGPathElement; x: number; y: number }[] = [];
-  const build = () => {
-    const gutter = Math.max(0, (root.clientWidth - 1392) / 2);
-    const h = 1300;
-    tiles = [];
-    deco.innerHTML = "";
-    if (gutter < 120) return;
-    for (const side of ["l", "r"] as const) {
-      const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
-      svg.setAttribute("class", `ex-tiles ex-tiles-${side}`);
-      svg.setAttribute("width", String(gutter));
-      svg.setAttribute("height", String(h));
-      svg.setAttribute("viewBox", `0 0 ${gutter} ${h}`);
-      const g = document.createElementNS("http://www.w3.org/2000/svg", "g");
-      for (let row = 0; row * SY < h + TH; row++) {
-        const off = row % 2 ? SX / 2 : 0;
-        for (let x = -SX + off; x < gutter + SX; x += SX) {
-          const cx = x;
-          const cy = row * SY + 20;
-          const d = `M${cx} ${cy - TH / 2 + 4} L${cx + TW / 2 - 6} ${cy} L${cx} ${cy + TH / 2 - 4} L${cx - TW / 2 + 6} ${cy} Z`;
-          const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
-          path.setAttribute("d", d);
-          path.setAttribute("class", "ex-tile");
-          g.appendChild(path);
-          tiles.push({ el: path, x: cx, y: cy });
-        }
-      }
-      svg.appendChild(g);
-      deco.appendChild(svg);
-    }
-    // blur that grows towards the screen's edges: tiles next to the page stay sharp
-    deco.insertAdjacentHTML("beforeend", `<div class="ex-blur ex-blur-l b1"></div><div class="ex-blur ex-blur-l b2"></div><div class="ex-blur ex-blur-r b1"></div><div class="ex-blur ex-blur-r b2"></div>`);
-  };
-  build();
-  const ro = new ResizeObserver(() => build());
-  ro.observe(root);
-  if (matchMedia("(prefers-reduced-motion: reduce)").matches) return;
-  let px: number | null = null;
-  let py = 0;
-  let queued = false;
-  const lift = () => {
-    queued = false;
-    for (const svg of deco.querySelectorAll<SVGSVGElement>("svg")) {
-      const m = svg.getScreenCTM();
-      if (!m) continue;
-      const p = px === null ? null : new DOMPoint(px, py).matrixTransform(m.inverse());
-      for (const t of tiles) {
-        if (t.el.ownerSVGElement !== svg) continue;
-        const dist = p ? Math.hypot(t.x - p.x, t.y - p.y) : Infinity;
-        t.el.style.transform = dist < RADIUS ? `translateY(-${((1 - dist / RADIUS) ** 2 * LIFT).toFixed(2)}px)` : "translateY(0px)";
-      }
-    }
-  };
-  const move = (ev: PointerEvent) => {
-    if (!deco.isConnected) return stop();
-    px = ev.clientX;
-    py = ev.clientY;
-    if (!queued) {
-      queued = true;
-      requestAnimationFrame(lift);
-    }
-  };
-  const leave = () => {
-    px = null;
-    if (!queued) {
-      queued = true;
-      requestAnimationFrame(lift);
-    }
-  };
-  const stop = () => {
-    window.removeEventListener("pointermove", move);
-    document.removeEventListener("pointerleave", leave);
-    ro.disconnect();
-  };
-  window.addEventListener("pointermove", move, { passive: true });
-  document.addEventListener("pointerleave", leave);
-}
-
 // ------------------------------------------------------------------------------------------------
 
 const CSS = `
@@ -554,22 +459,6 @@ const CSS = `
   --ex-scr-bg:#0a0908;--ex-scr-panel:#1a1c20;--ex-scr-fg:#e6e8ec;--ex-scr-muted:#7a808c;--ex-scr-accent:var(--ac);
   font-family:var(--sans);color:var(--ex-text);min-width:0;display:flex;flex-direction:column;gap:22px}
 .ex-loading{padding:40px 0;color:var(--ex-faint)}
-.ex-deco{position:absolute;inset:0;overflow:hidden;pointer-events:none;z-index:0}
-.ex-tiles{position:absolute;top:40px;overflow:visible}
-.ex-tiles-l{left:0}
-.ex-tiles-r{right:0}
-.ex-tiles{-webkit-mask-image:linear-gradient(to bottom,#000 70%,transparent);mask-image:linear-gradient(to bottom,#000 70%,transparent)}
-.ex-blur{position:fixed;top:0;bottom:0;width:calc((100vw - 1392px) / 2);pointer-events:none;z-index:0}
-.ex-blur-l{left:0}.ex-blur-r{right:0}
-.ex-blur.b1{-webkit-backdrop-filter:blur(3px);backdrop-filter:blur(3px)}
-.ex-blur.b2{-webkit-backdrop-filter:blur(10px);backdrop-filter:blur(10px)}
-.ex-blur-l.b1{-webkit-mask-image:linear-gradient(to right,#000 0,#000 30%,transparent 75%);mask-image:linear-gradient(to right,#000 0,#000 30%,transparent 75%)}
-.ex-blur-l.b2{-webkit-mask-image:linear-gradient(to right,#000 0,transparent 55%);mask-image:linear-gradient(to right,#000 0,transparent 55%)}
-.ex-blur-r.b1{-webkit-mask-image:linear-gradient(to left,#000 0,#000 30%,transparent 75%);mask-image:linear-gradient(to left,#000 0,#000 30%,transparent 75%)}
-.ex-blur-r.b2{-webkit-mask-image:linear-gradient(to left,#000 0,transparent 55%);mask-image:linear-gradient(to left,#000 0,transparent 55%)}
-.ex-tile{fill:#dad9d4;stroke:#dad9d4;stroke-width:7;stroke-linejoin:round;transition:transform .45s cubic-bezier(.22,1,.36,1);transform-box:fill-box}
-@media (max-width:1560px){.ex-deco{display:none}}
-@media (prefers-reduced-motion:reduce){.ex-tile{transition:none}}
 .ex-head{position:relative;display:flex;justify-content:space-between;align-items:flex-end;gap:24px 40px;flex-wrap:wrap;padding:36px 32px 32px;border-radius:22px;corner-shape:squircle;background:var(--bg2);box-shadow:var(--card-glow)}
 .ex-hero{position:relative;z-index:1;min-width:0;max-width:620px}
 .ex-eyebrow{display:inline-flex;align-items:center;gap:8px;font:500 12px/1 var(--sans);letter-spacing:-.01em;color:var(--tt);margin-bottom:14px}

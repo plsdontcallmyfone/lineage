@@ -94,8 +94,6 @@ function columnHtml(c: Col): Raw {
         ${menu === c.id + ":type" ? typeMenu("set-type", c.id) : ""}
       </div>
       <button type="button" class="deck-stripes" data-act="stripes" data-id="${c.id}" aria-label="Reorder ${label} column"></button>
-      <button type="button" class="deck-icon" data-act="filters" data-id="${c.id}" title="${c.filtersHidden ? "Show header" : "Hide header"}" aria-pressed="${c.filtersHidden}">${ICON.filters}</button>
-      <button type="button" class="deck-icon" data-act="density" data-id="${c.id}" title="${c.compact ? "Comfortable rows" : "Compact rows"}" aria-pressed="${c.compact}">${ICON.density}</button>
       <div class="deck-menu-wrap">
         <button type="button" class="deck-icon" data-act="options-menu" data-id="${c.id}" aria-label="Column options" aria-haspopup="menu">${ICON.options}</button>
         ${menu === c.id
