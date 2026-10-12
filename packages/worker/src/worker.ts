@@ -47,7 +47,7 @@ import { EpisodeCapture } from "./episode.ts";
 import type { DesktopAttempt, DesktopProvider } from "../../desktop/src/pool.ts";
 import { measureCoalitions, type SplitAssignment } from "./split.ts";
 import { DiscoveryAgent } from "./discovery.ts";
-import { CalibrationVerifier } from "./recipe-proposer.ts";
+import { CalibrationVerifier, ensureRecipe } from "./recipe-proposer.ts";
 
 // The worker process: replays assignments first (they have deadlines), then authors when it has a
 // proposer and its agent is an awake launched agent (SPEC 3, 5).
@@ -353,6 +353,8 @@ export class Worker {
   private async runAndCommit(a: Assignment): Promise<void> {
     const t0 = Date.now();
     this.telemetry.job(a.kind === "qualify" || !a.candidate ? "qualify" : "replay", { replay_id: a.replay_id });
+    // a unit admitted from a recipe proposal (SPEC 6.2): its recipe comes from Core, checked against the id
+    await ensureRecipe(this.recipes, this.client, a.recipe_id).catch(() => false);
     const loaded = this.recipes.get(a.recipe_id);
     let result: ReplayResult;
     let transcript: Transcript | Record<string, unknown>;
@@ -454,7 +456,8 @@ export class Worker {
       if (me.target_repo && summary.repo && summary.repo !== me.target_repo) continue;
       const view = await this.ok(this.client.get(`/v1/lineages/${summary.lineage_id}`), "lineage");
       if (me.target_repo && view.repo !== me.target_repo) continue;
-      if (!this.recipes.has(view.recipe_id)) {
+      // a unit admitted from a recipe proposal (SPEC 6.2) is in no release: its recipe is read from Core
+      if (!(await ensureRecipe(this.recipes, this.client, view.recipe_id).catch(() => false))) {
         this.log(`lineage ${summary.lineage_id.slice(0, 10)}: recipe not available locally`);
         continue;
       }
