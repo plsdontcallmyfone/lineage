@@ -4,6 +4,7 @@
 // else exactly two transactions as planLaunch places them; a trade on the agent's curve or PumpSwap
 // pool; the fee crank (pump.fun's sweeps and collects, then crank_pump_fees). Every send is simulated
 // first. Nothing here reads or changes `solana config`; keys are passed explicitly.
+import "../../packages/chain/src/devnet-process.ts"; // devnet only: pins UNITS_NETWORK=devnet for this process and what it spawns
 import {
   ata,
   computeBudget,

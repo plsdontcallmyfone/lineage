@@ -45,11 +45,11 @@
 
 import "../../protocol/src/env-alias.ts"; // first: UNITS_* and LINEAGE_* env names both readable (docs/plans/REBRAND-UNITS.md 3.3)
 import { ChainReader, identityPaymentIn, launchBundleTxs, Rpc } from "../../chain/src/index.ts";
-import { devnetRpcUrl, redactRpc } from "../../chain/src/endpoint.ts";
+import { redactRpc } from "../../chain/src/endpoint.ts";
 import type { SoulDoc } from "../../souls/src/schema.ts";
 import { readFileSync } from "node:fs";
 import { keyFromSolanaJson } from "../../protocol/src/index.ts";
-import { loadNetworkProfile } from "../../chain/src/profile-node.ts";
+import { applyNetworkProfile, loadNetworkProfile, rpcUrlFor } from "../../chain/src/profile-node.ts";
 import { cycleOnce } from "./cycle.ts";
 import { clearPublisher, moveToOrg, publisherPublic, setPublisher } from "./publisher.ts";
 import { DEFAULT_ORG, OrgMembership } from "./org.ts";
@@ -105,7 +105,8 @@ const meta = store.get<{ since: number }>("meta", "watcher");
 const since = Number(arg("since", "UNITS_IDENTITY_SINCE") ?? meta?.since ?? Math.floor(Date.now() / 1000));
 if (!meta || meta.since !== since) store.put("meta", "watcher", { since });
 
-const rpcUrl = devnetRpcUrl();
+// the network profile's program ids and RPC (config/profile.json; the devnet site's unit pins UNITS_NETWORK=devnet)
+const rpcUrl = rpcUrlFor(applyNetworkProfile());
 const reader = new ChainReader(Rpc.http(rpcUrl, "confirmed"));
 async function soul(agent: string): Promise<SoulDoc | null> {
   const r = await fetch(`${CORE}/v1/agents/${agent}/soul`, { signal: AbortSignal.timeout(15_000) });

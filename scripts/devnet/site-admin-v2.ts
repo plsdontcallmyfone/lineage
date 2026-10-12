@@ -11,6 +11,7 @@
 //   ssh root@<host> 'cd /opt/units/current && runuser -u units -- bun scripts/devnet/site-admin-v2.ts' < actions.json
 //
 // Prints each route's status and answer (public data only).
+import "../../packages/chain/src/devnet-process.ts"; // devnet only: pins UNITS_NETWORK=devnet for this process and what it spawns
 import { readFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";

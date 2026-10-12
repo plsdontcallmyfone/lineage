@@ -7,19 +7,22 @@
 // /docs and /docs/<page> redirect to the same page there (UNITS_DOCS_URL, else config/sites.json
 // docs_url; temporary unless UNITS_DOCS_REDIRECT=301).
 //
-//   bun scripts/deploy/vercel/build.ts [--site https://157-245-71-188.sslip.io] [--out apps/web/dist]
+//   bun scripts/deploy/vercel/build.ts [--site <backend, default the mainnet site>] [--out apps/web/dist]
 //   cd apps/web/dist && vercel deploy --prod
 import { cpSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import sites from "../../../config/sites.json" with { type: "json" };
+import profileConfig from "../../../config/profile.json" with { type: "json" };
 import { chainBrowserPlugin } from "../../../packages/chain/src/browser/plugin.ts";
 
 const arg = (n: string, d: string) => { const i = process.argv.indexOf(`--${n}`); return i >= 0 ? process.argv[i + 1]! : d; };
 const ROOT = join(import.meta.dir, "../../..");
 const WEB = join(ROOT, "apps/web");
-// the backend the static site proxies to: --site, else UNITS_SITE (set it in the Vercel project), else the devnet site.
-// The mainnet test backend is https://main-157-245-71-188.sslip.io (config/mainnet-test/README.md).
-const SITE = arg("site", process.env.UNITS_SITE || "https://157-245-71-188.sslip.io").replace(/\/+$/, "");
+// the backend the static site proxies to: --site, else UNITS_SITE (set it in the Vercel project), else the site of
+// the repository's default network (config/profile.json `network`, mainnet: config/sites.json mainnet_site_url,
+// the deployed mainnet deployment). The devnet backend is config/sites.json devnet_site_url: pass it as --site or UNITS_SITE.
+const DEFAULT_SITE = (profileConfig as { network: string }).network === "devnet" ? sites.devnet_site_url : sites.mainnet_site_url;
+const SITE = arg("site", process.env.UNITS_SITE || DEFAULT_SITE).replace(/\/+$/, "");
 const OUT = arg("out", join(WEB, "dist"));
 
 const DOCS_URL = (process.env.UNITS_DOCS_URL || sites.docs_url).replace(/\/+$/, "");

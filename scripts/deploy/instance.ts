@@ -104,6 +104,8 @@ export function renderUnit(file: string, text: string, L: InstanceLayout): { fil
     line = line.replace(/^(User|Group)=units$/, `$1=${p}`);
     line = line.replace(/\/\.config\/lineage\/devnet\//g, `/.config/lineage/${L.keysDir}/`);
     line = shiftPorts(line, L.portOffset);
+    // the first instance's unit files pin UNITS_NETWORK=devnet; an instance pins its own network
+    if (line === "Environment=UNITS_NETWORK=devnet") line = `Environment=UNITS_NETWORK=${L.network}`;
     if (line.startsWith("Description=")) line = line.replace(/devnet/g, L.network) + ` [instance ${L.name}]`;
     if (role === "gate" && line.startsWith("ExecStart=")) line += ` --runtime http://127.0.0.1:${L.ports.bind}`;
     if (role === "core" && line.startsWith("ExecStart=")) line = line.replace("ExecStart=", `Environment=UNITS_PORT_BLOCK=${9660 + L.portOffset}-${9669 + L.portOffset}\nExecStart=`);
@@ -115,6 +117,8 @@ export function renderUnit(file: string, text: string, L: InstanceLayout): { fil
   if (/\blineage-[a-z]/.test(live.replace(/\/\.config\/lineage|\.lineage/g, ""))) throw new Error(`${file}: a lineage-* name survived the instance rendering`);
   if (/\/(opt|var\/lib|etc|home)\/units[\/\s]/.test(t)) throw new Error(`${file}: a first-instance path survived the instance rendering`);
   if (/\b966\d\b/.test(t)) throw new Error(`${file}: a first-instance port survived the instance rendering`);
+  if (L.network !== "devnet" && /^Environment=.*UNITS_NETWORK=devnet/m.test(t)) throw new Error(`${file}: the first instance's network pin survived the instance rendering`);
+  if (/ExecStart=\/usr\/local\/bin\/bun /.test(t) && !t.split("\n").includes(`Environment=UNITS_NETWORK=${L.network}`)) throw new Error(`${file}: no UNITS_NETWORK pin for the instance`);
   return { file: file.replace(/^units-/, `${p}-`), text: t };
 }
 

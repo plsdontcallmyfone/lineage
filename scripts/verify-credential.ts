@@ -8,10 +8,12 @@
 //   bun scripts/verify-credential.ts --file <credential.json> [--rpc <url>] [--tamper]
 //   bun scripts/verify-credential.ts --core <url> --agent <id> [--rpc <url>] [--tamper] [--out <file>]
 // --tamper alters one record (a counter +1) and expects the check to fail: exit 0 only if it does.
-// The RPC defaults to the devnet resolver (UNITS_DEVNET_RPC, ~/.config/lineage/rpc.env, public).
+// The RPC defaults to the network profile's (config/profile.json: mainnet by default, from UNITS_MAINNET_RPC;
+// UNITS_NETWORK=devnet: the devnet resolver, UNITS_DEVNET_RPC, ~/.config/lineage/rpc.env, public).
 import { readFileSync, writeFileSync } from "node:fs";
 import { ChainReader, Rpc } from "@units/chain";
-import { devnetRpcUrl, redactRpc } from "../packages/chain/src/endpoint.ts";
+import { redactRpc } from "../packages/chain/src/endpoint.ts";
+import { applyNetworkProfile, rpcUrlFor } from "../packages/chain/src/profile-node.ts";
 import { verifyCredential } from "../packages/core/src/records.ts";
 import { verifyStatement } from "../packages/protocol/src/index.ts";
 
@@ -46,7 +48,9 @@ async function main() {
   const cred = await load();
   const out = opt("out");
   if (out) writeFileSync(out, JSON.stringify(cred, null, 2) + "\n");
-  const rpcUrl = opt("rpc") ?? devnetRpcUrl();
+  // the network profile's program ids and, without --rpc, its RPC (config/profile.json: mainnet by default)
+  const profile = applyNetworkProfile();
+  const rpcUrl = opt("rpc") ?? rpcUrlFor(profile);
   const reader = new ChainReader(Rpc.http(rpcUrl, "confirmed"));
   const roots = new Map<number, string | null>();
   for (const e of cred.epochs as { epoch: number }[]) {

@@ -21,6 +21,7 @@
 //
 // Usage: bun scripts/launch-e2e/live.ts --pw <dir with node_modules/playwright-core> --phase launch|watch|social|trade
 //          [--site https://157-245-71-188.sslip.io] [--wait <s>] [--shots <dir>]
+import "../../packages/chain/src/devnet-process.ts"; // devnet only: pins UNITS_NETWORK=devnet for this process and what it spawns
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";

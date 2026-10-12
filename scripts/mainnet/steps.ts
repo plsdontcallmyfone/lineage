@@ -51,7 +51,9 @@ const MAINNET_GENESIS = "5eykt4UsFv8P8NJdTREpY1vzqKqZKvdpKuc147dw2N9d";
  * scripts run under UNITS_NETWORK=mainnet (docs/MAINNET-RUNBOOK.md); nothing here names an id.
  */
 export function useActiveProfile(env: Record<string, string | undefined> = process.env): NetworkProfile {
-  const p = loadNetworkProfile({ env });
+  // these are the launch's own scripts: under the mainnet profile they mean the OFFICIAL deployment (the
+  // launch's program ids and quote), whatever config/profile.json `mainnet_deployment` selects for the app
+  const p = loadNetworkProfile({ env: { ...env, UNITS_MAINNET_DEPLOYMENT: env.UNITS_MAINNET_DEPLOYMENT ?? "official" } });
   useProfilePrograms(p);
   return p;
 }

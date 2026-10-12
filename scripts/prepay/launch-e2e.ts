@@ -18,6 +18,7 @@
 //
 // playwright-core is not a repo dependency: pass its location.
 // Usage: bun scripts/prepay/launch-e2e.ts --pw <dir with node_modules/playwright-core> [--port 9663] [--core-port 9664] [--shots <dir>] [--only A,B,C]
+import "../../packages/chain/src/devnet-process.ts"; // devnet only: pins UNITS_NETWORK=devnet for this process and what it spawns
 import { spawn, spawnSync, type Subprocess } from "bun";
 import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { homedir, tmpdir } from "node:os";

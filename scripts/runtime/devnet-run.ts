@@ -15,6 +15,7 @@
 //      fees, and the agent wakes.
 // Every devnet signature is appended to onchain/DEVNET.md. TEST prices and caps throughout.
 // Usage: bun scripts/runtime/devnet-run.ts [--port 9664] [--keep]
+import "../../packages/chain/src/devnet-process.ts"; // devnet only: pins UNITS_NETWORK=devnet for this process and what it spawns
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";

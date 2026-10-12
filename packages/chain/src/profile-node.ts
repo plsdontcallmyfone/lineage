@@ -1,8 +1,8 @@
 import { existsSync, readFileSync } from "node:fs";
 import { homedir } from "node:os";
-import { isAbsolute, join } from "node:path";
+import { dirname, isAbsolute, join } from "node:path";
 import { devnetRpcUrl, fromEnvFile } from "./endpoint.ts";
-import { quoteOfState, selectProfile, type NetworkProfile } from "./profile.ts";
+import { applyProfileOverlay, quoteOfState, resolveProfileConfig, selectProfile, type NetworkProfile } from "./profile.ts";
 import { useProfilePrograms } from "./programs.ts";
 import { setDefaultFeePolicy } from "./sender.ts";
 
@@ -15,41 +15,36 @@ export const PROFILE_FILE = join(REPO_ROOT, "config/profile.json");
 
 let cached: { key: string; p: NetworkProfile } | null = null;
 
-/**
- * A local overlay for one deployment (the mainnet test, docs/MAINNET-RUNBOOK.md "Mainnet test"): a
- * JSON file outside git, named by UNITS_PROFILE_LOCAL, shaped { "profiles": { "<network>": { ... } } }.
- * Each key it gives replaces the same key of that network's block in config/profile.json (the quote
- * block is replaced whole) before the block is parsed, so every guard of parseProfile still applies:
- * program ids stay the build's, mainnet keeps no faucet and no TEST labels. It cannot change `network`.
- * Absent variable: no overlay. A named file that is missing or malformed is refused (a service must
- * not start on the stand-in quote by accident).
- */
-export function applyProfileOverlay(raw: unknown, overlay: unknown): unknown {
-  const isObj = (v: unknown): v is Record<string, unknown> => !!v && typeof v === "object" && !Array.isArray(v);
-  if (!isObj(overlay) || !isObj(overlay.profiles)) throw new Error("profile overlay: profiles is required");
-  if (!isObj(raw) || !isObj(raw.profiles)) throw new Error("profile config: profiles is required");
-  const profiles: Record<string, unknown> = { ...raw.profiles };
-  for (const [name, block] of Object.entries(overlay.profiles)) {
-    if (!isObj(block)) throw new Error(`profile overlay: profiles.${name} must be an object`);
-    if (!isObj(profiles[name])) throw new Error(`profile overlay: there is no ${name} profile to overlay`);
-    profiles[name] = { ...(profiles[name] as Record<string, unknown>), ...block };
-  }
-  return { ...raw, profiles };
-}
+// A local overlay for one deployment (an instance on a server, a fork test): a JSON file named by
+// UNITS_PROFILE_LOCAL, applied over config/profile.json with applyProfileOverlay (profile.ts). When it
+// is set it is the only overlay: the config's own mainnet_deployment overlay is not applied under it.
+// A named file that is missing or malformed is refused (a service must not start on another
+// deployment by accident).
+export { applyProfileOverlay };
 
 /** The active profile. `file` and `env` are for tests; services call it with no arguments. */
 export function loadNetworkProfile(o: { file?: string; env?: Record<string, string | undefined> } = {}): NetworkProfile {
   const file = o.file ?? PROFILE_FILE;
   const env = o.env ?? process.env;
   const local = env.UNITS_PROFILE_LOCAL ?? "";
-  const key = `${file}\n${(env.UNITS_NETWORK ?? env.LINEAGE_NETWORK) ?? ""}\n${local}\n${env.UNITS_FEATURE_AGENT_POOLS ?? ""}${env.UNITS_FEATURE_GITHUB_FEE_CLAIMS ?? ""}`;
+  const network = (env.UNITS_NETWORK ?? env.LINEAGE_NETWORK) ?? null;
+  const deployment = env.UNITS_MAINNET_DEPLOYMENT ?? "";
+  const key = `${file}\n${network ?? ""}\n${local}\n${deployment}\n${env.UNITS_FEATURE_AGENT_POOLS ?? ""}${env.UNITS_FEATURE_GITHUB_FEE_CLAIMS ?? ""}`;
   if (!o.env && cached?.key === key) return cached.p;
   let raw: unknown = JSON.parse(readFileSync(file, "utf8"));
   if (local) {
     if (!existsSync(local)) throw new Error(`UNITS_PROFILE_LOCAL names ${local}, which does not exist`);
     raw = applyProfileOverlay(raw, JSON.parse(readFileSync(local, "utf8")));
+  } else {
+    // the deployed mainnet deployment (config `mainnet_deployment`, UNITS_MAINNET_DEPLOYMENT): overlay paths are relative to the repository
+    const root = join(dirname(file), "..");
+    raw = resolveProfileConfig(raw, { network, deployment: deployment || null, readOverlay: (f) => {
+      const abs = isAbsolute(f) ? f : join(root, f);
+      if (!existsSync(abs)) throw new Error(`mainnet_deployments names ${f}, which does not exist`);
+      return JSON.parse(readFileSync(abs, "utf8"));
+    } });
   }
-  const p = selectProfile(raw, (env.UNITS_NETWORK ?? env.LINEAGE_NETWORK) ?? null);
+  const p = selectProfile(raw, network);
   // one process may switch a feature on or off (a staging server): UNITS_FEATURE_AGENT_POOLS, UNITS_FEATURE_GITHUB_FEE_CLAIMS = 1 | 0
   for (const k of ["agent_pools", "github_fee_claims"] as const) {
     const v = env[`UNITS_FEATURE_${k.toUpperCase()}`];
@@ -63,15 +58,17 @@ export class MissingRpcError extends Error {}
 
 /**
  * The RPC for a profile. devnet: packages/chain devnetRpcUrl() exactly as before. mainnet: a keyed
- * endpoint from UNITS_MAINNET_RPC or HELIUS_MAINNET_RPC in ~/.config/lineage/rpc.env; there is no
- * public fallback (a service on mainnet refuses to start without its own endpoint).
+ * endpoint from UNITS_MAINNET_RPC in the environment or in ~/.config/units/rpc.env (HELIUS_MAINNET_RPC
+ * there is read too); there is no public fallback and never a fall back to devnet: a service on mainnet
+ * refuses to start without its own endpoint (MissingRpcError). The dashboard server alone may read
+ * through the mainnet site's /chain/rpc proxy instead (apps/web/server.ts).
  */
 export function rpcUrlFor(p: NetworkProfile, env: Record<string, string | undefined> = process.env, home = homedir()): string {
   if (p.network === "devnet") return devnetRpcUrl();
   const f = [join(home, ".config/units/rpc.env"), join(home, ".config/lineage/rpc.env")];
   const fromFiles = (k: string) => f.map((x) => fromEnvFile(x, k)).find((x) => !!x) ?? null;
   const u = (env.UNITS_MAINNET_RPC ?? env.LINEAGE_MAINNET_RPC) || fromFiles("UNITS_MAINNET_RPC") || fromFiles("HELIUS_MAINNET_RPC");
-  if (!u) throw new MissingRpcError("mainnet profile: set UNITS_MAINNET_RPC (in the environment or in ~/.config/units/rpc.env; HELIUS_MAINNET_RPC there is read too); there is no public fallback");
+  if (!u) throw new MissingRpcError("mainnet profile (the repository's default network): no RPC endpoint. Set UNITS_MAINNET_RPC to your mainnet RPC URL, in the environment or in ~/.config/units/rpc.env (HELIUS_MAINNET_RPC there is read too). There is no public fallback and no fall back to devnet; for devnet run with UNITS_NETWORK=devnet.");
   return u;
 }
 

@@ -18,6 +18,9 @@ UMask=0007
 WorkingDirectory=/opt/units/current
 Environment=HOME=/var/lib/units/indexer UNITS_HOME=/var/lib/units/indexer PATH=/usr/local/bin:/usr/bin:/bin
 Environment=BUN_RUNTIME_TRANSPILER_CACHE_PATH=0
+# the first instance is the devnet site: pinned here and in site.env (deploy.sh), never left to the
+# repository default, which is mainnet (config/profile.json)
+Environment=UNITS_NETWORK=devnet
 EnvironmentFile=-/etc/units/site.env
 # UNITS_DEVNET_RPC, root-owned, read by systemd (remote.sh users_setup)
 EnvironmentFile=-/etc/units/indexer.env

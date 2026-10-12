@@ -3,7 +3,9 @@ import { mountCharts } from "./chart.ts";
 import { ago, dur } from "./fmt.ts";
 import { esc, html } from "./html.ts";
 import { live, MAX_FEED } from "./live.ts";
-import { loadNetworkLabels } from "./market.ts";
+import { loadNetworkLabels, NETWORK } from "./market.ts";
+import { DEVNET_CHAIN, MAINNET_CHAIN, setWalletChain } from "../wallet/standard.ts";
+import { loadUsd } from "./usd.ts";
 import { connectHtml, wireConnect } from "./connect.ts";
 import { agentPage } from "./pages/agents.ts";
 import { directoryPage } from "./pages/directory.ts";
@@ -395,7 +397,8 @@ fetch("/live/status")
 loadConfig().catch(() => {});
 connect();
 render();
-// network profile labels (SPEC 14.10): devnet changes nothing; mainnet re-renders with its quote symbol
+// network profile labels (SPEC 14.10): the pages start on the default, mainnet; a devnet server re-renders with its labels
 void loadNetworkLabels().then((changed) => {
+  setWalletChain(NETWORK === "mainnet" ? MAINNET_CHAIN : DEVNET_CHAIN);
   if (changed) void render();
 });

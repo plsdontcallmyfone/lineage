@@ -17,6 +17,7 @@
 //     then refresh_awake, so Core sees the agent awake.
 // Every transaction is appended to scripts/deploy/SITE-DEVNET.md. Public keys only are printed.
 // Prints { name: agent pubkey } as JSON on the last line.
+import "../../packages/chain/src/devnet-process.ts"; // devnet only: pins UNITS_NETWORK=devnet for this process and what it spawns
 import { appendFileSync, readFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";

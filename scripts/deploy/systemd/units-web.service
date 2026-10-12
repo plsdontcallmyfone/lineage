@@ -14,6 +14,9 @@ WorkingDirectory=/opt/units/current
 # its own home: the faucet key and log, the soul drafts' state (remote.sh users_setup)
 Environment=HOME=/var/lib/units/web UNITS_HOME=/var/lib/units/web/.lineage PATH=/usr/local/bin:/usr/bin:/bin
 Environment=BUN_RUNTIME_TRANSPILER_CACHE_PATH=0
+# the first instance is the devnet site: pinned here and in site.env (deploy.sh), never left to the
+# repository default, which is mainnet (config/profile.json)
+Environment=UNITS_NETWORK=devnet
 EnvironmentFile=-/etc/units/site.env
 # UNITS_DEVNET_RPC and ANTHROPIC_API_KEY (soul drafts), root-owned, read by systemd
 EnvironmentFile=-/etc/units/web.env

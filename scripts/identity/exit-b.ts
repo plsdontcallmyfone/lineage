@@ -17,6 +17,7 @@
 // Every devnet transaction is appended to scripts/deploy/SITE-DEVNET.md; results (no secrets) to
 // scripts/identity/EXIT-B-LAST.json.
 
+import "../../packages/chain/src/devnet-process.ts"; // devnet only: pins UNITS_NETWORK=devnet for this process and what it spawns
 import { appendFileSync, existsSync, readFileSync, writeFileSync } from "node:fs";
 import { spawnSync } from "node:child_process";
 import { homedir } from "node:os";

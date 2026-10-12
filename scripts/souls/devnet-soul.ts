@@ -11,6 +11,7 @@
 //               GET the public soul and check `onchain.matches`.
 // Every devnet signature is appended to onchain/DEVNET.md; results go to scripts/souls/DEVNET-LAST.json.
 // Usage: bun scripts/souls/devnet-soul.ts launch|v2|core [--port 9665]
+import "../../packages/chain/src/devnet-process.ts"; // devnet only: pins UNITS_NETWORK=devnet for this process and what it spawns
 import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";

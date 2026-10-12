@@ -24,6 +24,7 @@
 //
 // playwright-core is not a repo dependency: pass its location.
 // Usage: bun apps/web/scripts/wallet-e2e.ts --pw <dir containing node_modules/playwright-core> [--port 9665] [--core-port 9666] [--shots <dir>]
+import "../../../packages/chain/src/devnet-process.ts"; // devnet only: pins UNITS_NETWORK=devnet for this process and what it spawns
 import { devnetRpcUrl } from "../../../packages/chain/src/endpoint.ts";
 import { spawn, spawnSync } from "bun";
 import { existsSync, readFileSync } from "node:fs";

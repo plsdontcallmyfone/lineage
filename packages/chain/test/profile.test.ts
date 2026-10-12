@@ -1,5 +1,6 @@
-// Network profile switch (M3, SPEC 14.10): config/profile.json parses, devnet stays the default and
-// equals the behaviour before profiles, mainnet drops the faucet and TEST labels, takes the quote
+// Network profile switch (M3, SPEC 14.10): config/profile.json parses, mainnet is the default and
+// resolves to the deployed mainnet deployment, devnet stays selectable and equals the behaviour before
+// profiles, mainnet drops the faucet and TEST labels, takes the quote
 // from config (the swap path's stand-in mint), and needs a keyed RPC from env with no public fallback.
 import { describe, expect, test } from "bun:test";
 import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
@@ -9,11 +10,15 @@ import {
   checkSwapTarget,
   DEVNET_PUBLIC_PROFILE,
   explorerUrl,
+  mainnetDeployment,
   parseProfile,
   publicProfile,
   quoteOfState,
+  resolveProfileConfig,
   selectProfile,
 } from "../src/profile.ts";
+import { DEFAULT_PUBLIC_PROFILE, defaultProfile } from "../src/default-profile.ts";
+import { MAINNET_TEST_PROGRAM_IDS, PROGRAM_IDS } from "../src/programs.ts";
 import { loadNetworkProfile, MissingRpcError, PROFILE_FILE, rpcUrlFor, stateFor } from "../src/profile-node.ts";
 import { parseSwapConfig } from "../src/swap.ts";
 
@@ -21,15 +26,69 @@ const raw = JSON.parse(readFileSync(PROFILE_FILE, "utf8"));
 const swap = parseSwapConfig(JSON.parse(readFileSync(join(import.meta.dir, "../../../config/swap.json"), "utf8")));
 
 describe("profile switch", () => {
-  test("the file says devnet and devnet is what every process gets without UNITS_NETWORK", () => {
-    expect(raw.network).toBe("devnet");
-    expect(loadNetworkProfile({ env: {} }).network).toBe("devnet");
-    expect(loadNetworkProfile({ env: { UNITS_NETWORK: "mainnet" } }).network).toBe("mainnet");
+  test("the file says mainnet: every process gets the deployed mainnet deployment without any environment variable", () => {
+    expect(raw.network).toBe("mainnet");
+    expect(raw.mainnet_deployment).toBe("test");
+    const d = loadNetworkProfile({ env: {} });
+    expect(d.network).toBe("mainnet");
+    // the mainnet TEST deployment (config/mainnet-test/profile.json): its ids, its quote coin shown as UNITS, its state
+    const overlay = JSON.parse(readFileSync(join(import.meta.dir, "../../../config/mainnet-test/profile.json"), "utf8")).profiles.mainnet;
+    expect(d.programs).toEqual(MAINNET_TEST_PROGRAM_IDS);
+    expect(d.programs).toEqual(overlay.programs);
+    expect(d.quote).toMatchObject({ symbol: "UNITS", mint: overlay.quote.mint, status: "stand-in" });
+    expect(d.state_file).toBe("config/mainnet-test/state.json");
+    expect(d.swap).toBe(false);
+    expect(d.faucet).toBe(false);
+    expect(d.test_labels).toBe(false);
+    const st = stateFor(d)!;
+    expect(st.registry_program).toBe(d.programs.registry);
+    expect(st.launch_program).toBe(d.programs.launch);
+    expect(st.line_mint).toBe(d.quote.mint);
+    // naming the network changes nothing: mainnet is the same deployment
+    expect(loadNetworkProfile({ env: { UNITS_NETWORK: "mainnet" } })).toEqual(d);
     expect(() => loadNetworkProfile({ env: { UNITS_NETWORK: "testnet" } })).toThrow(/devnet or mainnet/);
   });
 
-  test("devnet is unchanged: the browser fallback equals the configured devnet profile", () => {
-    const d = selectProfile(raw, null);
+  test("devnet stays selectable with UNITS_NETWORK=devnet, untouched by the mainnet deployment", () => {
+    const d = loadNetworkProfile({ env: { UNITS_NETWORK: "devnet" } });
+    expect(d).toEqual(selectProfile(raw, "devnet"));
+    expect(d.network).toBe("devnet");
+    expect(d.programs).toEqual(PROGRAM_IDS.devnet);
+    expect(d.state_file).toBe("scripts/devnet/devnet.json");
+    expect(loadNetworkProfile({ env: { UNITS_NETWORK: "devnet", UNITS_MAINNET_DEPLOYMENT: "official" } })).toEqual(d);
+  });
+
+  test("the official deployment is one edit away: mainnet_deployment official is profiles.mainnet as written", () => {
+    expect(raw.mainnet_deployments).toEqual({ test: "config/mainnet-test/profile.json", official: null });
+    const o = loadNetworkProfile({ env: { UNITS_MAINNET_DEPLOYMENT: "official" } });
+    expect(o).toEqual(selectProfile(raw, "mainnet"));
+    expect(o.programs).toEqual(PROGRAM_IDS.mainnet);
+    expect(o.quote.line_mint).toBe("GQdEL4MhL4v8bsmMvyBvjh6BdbWqasgkDnJGfaAHpump");
+    expect(o.state_file).toBe("scripts/mainnet/mainnet.json");
+    // the same thing as the config edit itself
+    const edited = { ...raw, mainnet_deployment: "official" };
+    expect(selectProfile(resolveProfileConfig(edited, { readOverlay: () => { throw new Error("no overlay is read for the official deployment"); } }), null)).toEqual(o);
+    expect(mainnetDeployment(raw)).toEqual({ name: "test", overlay: "config/mainnet-test/profile.json" });
+    expect(mainnetDeployment(edited)).toEqual({ name: "official", overlay: null });
+    expect(() => loadNetworkProfile({ env: { UNITS_MAINNET_DEPLOYMENT: "staging" } })).toThrow(/not one of test, official/);
+    // a config without the keys (older files) is the block as written
+    const { mainnet_deployment: _a, mainnet_deployments: _b, ...old } = raw;
+    expect(mainnetDeployment(old)).toEqual({ name: "official", overlay: null });
+  });
+
+  test("the browser starts on the same default: the bundled profile equals the service's public view", () => {
+    expect(DEFAULT_PUBLIC_PROFILE).toEqual(publicProfile(loadNetworkProfile({ env: {} })));
+    expect(DEFAULT_PUBLIC_PROFILE.network).toBe("mainnet");
+    expect(DEFAULT_PUBLIC_PROFILE.faucet).toBe(false);
+    expect(DEFAULT_PUBLIC_PROFILE.test_labels).toBe(false);
+    expect(DEFAULT_PUBLIC_PROFILE.explorer_cluster).toBeNull();
+    expect(publicProfile(defaultProfile("devnet"))).toEqual(DEVNET_PUBLIC_PROFILE);
+    // no RPC URL in what a bundle carries
+    expect(JSON.stringify(DEFAULT_PUBLIC_PROFILE)).not.toMatch(/https?:\/\//);
+  });
+
+  test("devnet is unchanged: the pre-profile fallback equals the configured devnet profile", () => {
+    const d = selectProfile(raw, "devnet");
     expect(publicProfile(d)).toEqual(DEVNET_PUBLIC_PROFILE);
     expect(d.faucet).toBe(true);
     expect(d.test_labels).toBe(true);
@@ -120,6 +179,9 @@ describe("rpc resolution", () => {
 
   test("mainnet has no public fallback", () => {
     expect(() => rpcUrlFor(m, {}, home)).toThrow(MissingRpcError);
+    // nor a fall back to devnet: the default profile without an endpoint refuses, and says how to select devnet
+    const d = loadNetworkProfile({ env: {} });
+    expect(() => rpcUrlFor(d, {}, home)).toThrow(/UNITS_MAINNET_RPC[\s\S]*no fall back to devnet[\s\S]*UNITS_NETWORK=devnet/);
   });
 });
 
@@ -142,8 +204,10 @@ describe("local profile overlay", () => {
     expect(m.swap).toBe(false);
     expect(m.programs).toEqual(selectProfile(raw, "mainnet").programs);
     expect(m.faucet).toBe(false);
-    expect(loadNetworkProfile({ env: { UNITS_PROFILE_LOCAL: f } })).toEqual(selectProfile(raw, null));
-    expect(loadNetworkProfile({ env: { UNITS_NETWORK: "mainnet" } }).quote.symbol).toBe("PYUSD");
+    expect(loadNetworkProfile({ env: { UNITS_NETWORK: "devnet", UNITS_PROFILE_LOCAL: f } })).toEqual(selectProfile(raw, "devnet"));
+    // a named overlay is the only overlay: it lies over profiles.mainnet as written (the official block), not over the config's own deployment
+    expect(loadNetworkProfile({ env: { UNITS_PROFILE_LOCAL: f } })).toEqual(m);
+    expect(loadNetworkProfile({ env: { UNITS_NETWORK: "mainnet", UNITS_MAINNET_DEPLOYMENT: "official" } }).quote.symbol).toBe("PYUSD");
   });
 
   test("cannot switch on a mainnet faucet, change a program id, or name a missing file", () => {

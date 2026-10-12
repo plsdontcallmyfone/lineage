@@ -6,7 +6,7 @@
 //
 // Draws (SPEC 10.3): for every closed epoch whose secret is published, recomputes each assignment
 // round from the secret and its beacon input (M1: the clock bucket; M2: the Solana slot and hash),
-// and every recorded canary and audit decision. With --rpc (or --chain, the devnet resolver) it also
+// and every recorded canary and audit decision. With --rpc (or --chain, the network profile's RPC: mainnet by default, UNITS_NETWORK=devnet for devnet) it also
 // reads each slot from the cluster: the block hash, that no block was produced between the target and
 // the slot used, and that the block is not older than the request.
 //
@@ -16,7 +16,7 @@
 //         the list is read per unit and status, so it is not limited to the newest 200)
 import { assignmentSeed, assignReplayers, guardConfigAt, guardConfigDigest, guardRuleFor, H, judge, measuredSplit, Rng, type Calibration, type GuardConfigVersion, type RevealedReplay } from "@units/protocol";
 import { blockAt, blocksBetween, Rpc } from "@units/chain";
-import { devnetRpcUrl } from "../packages/chain/src/endpoint.ts";
+import { applyNetworkProfile, rpcUrlFor } from "../packages/chain/src/profile-node.ts";
 import { politeFetch } from "../packages/core/src/polite.ts";
 
 const argv = process.argv.slice(2);
@@ -132,7 +132,7 @@ bad += truncated;
 const SKEW_S = 5;
 
 async function verifyDraws(): Promise<number> {
-  const rpcUrl = opt("rpc") ?? (argv.includes("--chain") ? devnetRpcUrl() : null);
+  const rpcUrl = opt("rpc") ?? (argv.includes("--chain") ? rpcUrlFor(applyNetworkProfile()) : null);
   const rpc = rpcUrl ? Rpc.http(rpcUrl) : null;
   const epochs = opt("epoch") ? [{ n: Number(opt("epoch")) }] : ((await get("/v1/epochs")) as any[]).filter((e) => e.status === "closed");
   let rounds = 0, slotRounds = 0, decisions = 0, chainChecked = 0, sealed = 0, fails = 0;

@@ -1,5 +1,5 @@
 {
-  "_note": "Profile overlay of the mainnet TEST deployment (throwaway program ids and a throwaway pump.fun quote coin shown as UNITS; closed when the test ends). Public values only. Use it with UNITS_NETWORK=mainnet UNITS_PROFILE_LOCAL=config/mainnet-test/profile.json. The official mainnet ids are in config/profile.json and are not deployed yet.",
+  "_note": "Profile overlay of the mainnet TEST deployment (throwaway program ids and a throwaway pump.fun quote coin shown as UNITS; closed when the test ends). Public values only. It is the deployment config/profile.json selects today (`mainnet_deployment`: \"test\"), so the repository's default network, mainnet, resolves to it with no environment variable. The official mainnet ids are in config/profile.json `profiles.mainnet` and are not deployed yet; setting `mainnet_deployment` to \"official\" there stops this overlay from being applied.",
   "profiles": {
     "mainnet": {
       "quote": {

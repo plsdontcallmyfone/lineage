@@ -10,6 +10,7 @@
 // or printed. Agent ids and mints come from scripts/devnet/RELAUNCH-V2.json (relaunch-v2.ts plan).
 //
 //   bun scripts/devnet/adopt-v2.ts [--host 157.245.71.188] [--only TSOUL,TESTB58,TLAMP]
+import "../../packages/chain/src/devnet-process.ts"; // devnet only: pins UNITS_NETWORK=devnet for this process and what it spawns
 import { spawnSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 import { homedir } from "node:os";

@@ -5,6 +5,7 @@
 // is left alone. Pays with the units devnet deployer, passed explicitly; prints no key.
 //
 //   bun scripts/prepay/make-table.ts [--dry-run]
+import "../../packages/chain/src/devnet-process.ts"; // devnet only: pins UNITS_NETWORK=devnet for this process and what it spawns
 import { readFileSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";

@@ -1,6 +1,9 @@
-// units dashboard server. Serves the client bundle, proxies GET requests to Core, and (Wallet page) devnet RPC and faucet.
+// units dashboard server. Serves the client bundle, proxies GET requests to Core, and the chain RPC
+// of the network profile (mainnet by default; on devnet also the faucet).
 //
 //   bun apps/web/server.ts --port 9661 --core http://127.0.0.1:9660 [--host 127.0.0.1] [--dev]
+//   bun apps/web/server.ts                 no backend of your own: the deployed mainnet site's (see PROFILE below)
+//   UNITS_NETWORK=devnet bun apps/web/server.ts ...   the devnet profile
 //
 // Routes:
 //   /api/<path>        GET proxy to <core>/v1/<path> (JSON, blobs)
@@ -11,9 +14,9 @@
 //                      docs_url), same page: /docs/verification goes to <docs>/verification
 //   /assets/app.js     client bundle (Bun.build at startup; rebuilt per request with --dev)
 //   /assets/wallet.js  wallet bundle (packages/chain in the browser; loaded by Launch, Profile and the token page's trade box)
-//   /chain/config      public devnet addresses (scripts/devnet/devnet.json) and the RPC's cluster
-//   /chain/rpc         POST JSON-RPC proxy to the devnet RPC (read, simulate, send; method allowlist)
-//   /chain/faucet      GET faucet state, POST {wallet} one small UNITS transfer (rate-limited, logged)
+//   /chain/config      the network profile's public view, the deployed state's public addresses and the RPC's cluster
+//   /chain/rpc         POST JSON-RPC proxy to the profile's RPC (read, simulate, send; method allowlist)
+//   /chain/faucet      devnet only: GET faucet state, POST {wallet} one small UNITS transfer (rate-limited, logged)
 //   /souls/config      GET soul draft service state (caps, today's spend; TEST values)
 //   /souls/draft       POST {seed, agent, repo} a soul draft by Claude (per-soul, daily and per-address caps)
 //   /souls/publish     POST {doc, sig} forwarded to Core's PUT /v1/agents/:id/soul (SPEC 14.8)
@@ -36,7 +39,7 @@
 // devnet faucet's own (~/.config/lineage/devnet/faucet.json).
 
 import { redactRpc } from "../../packages/chain/src/endpoint.ts";
-import { applyNetworkProfile, rpcUrlFor, stateFor } from "../../packages/chain/src/profile-node.ts";
+import { applyNetworkProfile, MissingRpcError, rpcUrlFor, stateFor } from "../../packages/chain/src/profile-node.ts";
 import { chainRoutes } from "./chain-routes.ts";
 import { execFileSync } from "node:child_process";
 import { existsSync, readFileSync } from "node:fs";
@@ -52,13 +55,41 @@ const arg = (n: string, d?: string) => {
   return i >= 0 ? process.argv[i + 1] : d;
 };
 const PORT = Number(arg("port", "9661"));
-const CORE = (arg("core", (process.env.UNITS_CORE ?? process.env.LINEAGE_CORE) ?? "http://127.0.0.1:9660") ?? "").replace(/\/+$/, "");
 const HOST = arg("host", "127.0.0.1")!;
 const DEV = process.argv.includes("--dev");
-const MARKET = (arg("market", (process.env.UNITS_MARKET ?? process.env.LINEAGE_MARKET) ?? "http://127.0.0.1:9668") ?? "").replace(/\/+$/, "");
+
+// The network profile (config/profile.json: mainnet by default, the deployed mainnet deployment;
+// UNITS_NETWORK=devnet selects devnet; SPEC 14.10) and where this server reads from.
+//
+// The RPC: --rpc, else the profile's (mainnet: UNITS_MAINNET_RPC from the environment or
+// ~/.config/units/rpc.env, a keyed URL that stays in this process). With no mainnet RPC configured the
+// server does not fall back to devnet: it reads the chain through the mainnet site's /chain/rpc proxy
+// (config/sites.json mainnet_site_url; UNITS_SITE or --site overrides), and, unless --core says
+// otherwise, takes Core, the market indexer and the write routes from that site too (the same as
+// --core <site> --market <site> --upstream <site>), so a fresh clone shows the deployed deployment.
+const PROFILE = applyNetworkProfile();
+const SITE = (arg("site", process.env.UNITS_SITE || (PROFILE.network === "mainnet" ? sites.mainnet_site_url : sites.devnet_site_url)) ?? "").replace(/\/+$/, "");
+let RPC_URL: string;
+let RPC_VIA_SITE = false;
+try {
+  RPC_URL = arg("rpc") ?? rpcUrlFor(PROFILE);
+} catch (e) {
+  if (!(e instanceof MissingRpcError)) throw e;
+  if (!/^https?:\/\/[^/]+$/.test(SITE)) {
+    console.error(`${e.message}\nNo site to read through either: UNITS_SITE or --site must be http(s)://host.`);
+    process.exit(2);
+  }
+  RPC_URL = `${SITE}/chain/rpc`;
+  RPC_VIA_SITE = true;
+}
+const CORE_GIVEN = arg("core") ?? process.env.UNITS_CORE ?? process.env.LINEAGE_CORE;
+// no backend of this server's own: the site's (only when nothing names a Core)
+const SITE_BACKEND = process.argv.includes("--site") || (RPC_VIA_SITE && !CORE_GIVEN);
+const CORE = (SITE_BACKEND && !CORE_GIVEN ? SITE : (CORE_GIVEN ?? "http://127.0.0.1:9660")).replace(/\/+$/, "");
+const MARKET = (arg("market", (process.env.UNITS_MARKET ?? process.env.LINEAGE_MARKET) ?? (SITE_BACKEND ? SITE : "http://127.0.0.1:9668")) ?? "").replace(/\/+$/, "");
 // the GitHub identity service (packages/identity); on the site Caddy routes /identity/* to it directly
 const IDENTITY = (arg("identity", (process.env.UNITS_IDENTITY ?? process.env.LINEAGE_IDENTITY) ?? "http://127.0.0.1:9665") ?? "").replace(/\/+$/, "");
-const UPSTREAM = (arg("upstream", "") ?? "").replace(/\/+$/, "");
+const UPSTREAM = (arg("upstream", SITE_BACKEND ? SITE : "") ?? "").replace(/\/+$/, "");
 const RUNTIME = (arg("runtime", (process.env.UNITS_RUNTIME ?? process.env.LINEAGE_RUNTIME) ?? "http://127.0.0.1:9667") ?? "").replace(/\/+$/, "");
 const DIR = import.meta.dir;
 
@@ -169,10 +200,9 @@ async function embedRoute(p: string): Promise<Response> {
 
 // ------------------------------------------------------------------------------------------------
 // chain: public state, RPC proxy, faucet, under the network profile (config/profile.json,
-// UNITS_NETWORK; SPEC 14.10). devnet as before; mainnet: no faucet, keyed RPC from env, never sent here.
+// UNITS_NETWORK; SPEC 14.10), loaded at the top of this file. mainnet: no faucet, keyed RPC from env,
+// never sent to a page; devnet (UNITS_NETWORK=devnet): the devnet RPC and the faucet.
 
-const PROFILE = applyNetworkProfile();
-const RPC_URL = arg("rpc") ?? rpcUrlFor(PROFILE);
 const KEYS = join(homedir(), ".config", "lineage", "devnet");
 const chainState = stateFor(PROFILE);
 const faucet = PROFILE.faucet && chainState?.line_mint
@@ -188,9 +218,11 @@ const faucet = PROFILE.faucet && chainState?.line_mint
       solLamports: BigInt(Math.round(Number(arg("faucet-sol", "0.02")) * 1e9)),
     })
   : null;
-const chain = chainRoutes({ profile: PROFILE, rpcUrl: RPC_URL, state: chainState, faucet });
+// through the site's proxy the request carries the site's own Origin (its gate refuses cross-origin posts)
+const chain = chainRoutes({ profile: PROFILE, rpcUrl: RPC_URL, state: chainState, faucet, rpcHeaders: RPC_VIA_SITE ? { origin: SITE } : undefined, rpcLabel: RPC_VIA_SITE ? `${SITE} (its /chain/rpc proxy)` : undefined });
 const chainRoute = (req: Request, p: string) => chain.route(req, p);
-console.log(`network ${PROFILE.network}: rpc ${redactRpc(RPC_URL)}, quote ${PROFILE.quote.symbol}${PROFILE.faucet ? "" : ", no faucet"}`);
+console.log(`network ${PROFILE.network}: rpc ${RPC_VIA_SITE ? `${SITE}/chain/rpc (the site's proxy: no UNITS_MAINNET_RPC is set)` : redactRpc(RPC_URL)}, quote ${PROFILE.quote.symbol}${PROFILE.faucet ? "" : ", no faucet"}`);
+if (SITE_BACKEND) console.log(`backend: ${SITE} (Core ${CORE}, market ${MARKET}, writes ${UPSTREAM || "local"}); pass --core, --market and --upstream to use your own`);
 
 // ------------------------------------------------------------------------------------------------
 // shared upstream event stream

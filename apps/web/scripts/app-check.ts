@@ -23,6 +23,7 @@
 //
 // Usage: bun apps/web/scripts/app-check.ts --pw <dir with node_modules/playwright-core> [--base http://127.0.0.1:9662]
 //          [--phase ui|launch] [--shots <dir>] [--repo https://github.com/...]
+import "../../../packages/chain/src/devnet-process.ts"; // devnet only: pins UNITS_NETWORK=devnet for this process and what it spawns
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";

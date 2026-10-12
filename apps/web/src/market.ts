@@ -1,31 +1,35 @@
 import { ApiError } from "./api.ts";
 import { esc, html, raw, type Raw } from "./html.ts";
+import { fmtUsd, fmtUsdPrice, usdFig, USD_NA } from "./usd.ts";
 
 // Launchpad market data (plan L3): a client for the market indexer's read API (packages/indexer,
 // served by the dashboard at /market/*, plan L2) and the presentation pieces the token pages share.
-// Every figure comes from the indexer as it is; this file only formats it. Prices are in the quote
-// token per agent token (the network profile's quote, SPEC 14.10): no USD
-// price feed is wired, so nothing here is ever shown in USD.
+// Every figure comes from the indexer as it is; this file only formats it. Money is shown in US
+// dollars (owner 2026-10-12): the indexer's "_usd" fields, formatted by usd.ts, the one formatter. The
+// quote-token figures beside them (the network profile's quote, SPEC 14.10) stay in the rows for
+// titles and checks; token amounts and percentages are not money and keep the formatters below.
 
 /** The quote token's symbol; a live binding, set from /chain/config's network profile (UNITS until then). */
 export let QUOTE = "UNITS";
 /** How the quote token is named where it is introduced (the profile's quote.display). The devnet coin's
  * on-chain metadata says tLINE; that symbol is never read for display (owner 2026-10-12: UNITS always). */
 export let QUOTE_LABEL = "UNITS";
-/** The profile's network: "devnet" until /chain/config says otherwise. */
-export let NETWORK: "devnet" | "mainnet" = "devnet";
-let explorerQ = "?cluster=devnet";
+/** The profile's network: the repository's default, mainnet, until /chain/config says what this server runs. */
+export let NETWORK: "devnet" | "mainnet" = "mainnet";
+let explorerQ = "";
 
-/** Reads the network profile once (public view, no RPC); true when it changed the labels (mainnet). */
+/** Reads the network profile once (public view, no RPC); true when it changed the labels (a devnet server). */
 export async function loadNetworkLabels(): Promise<boolean> {
   try {
     const c = (await (await fetch("/chain/config")).json()) as { profile?: { network: "devnet" | "mainnet"; quote: { symbol: string; display?: string }; explorer_cluster: string | null } };
-    if (c.profile?.quote.display) QUOTE_LABEL = c.profile.quote.display;
-    if (!c.profile || c.profile.network === "devnet") return false;
-    NETWORK = c.profile.network;
-    QUOTE = c.profile.quote.symbol;
-    explorerQ = c.profile.explorer_cluster ? `?cluster=${c.profile.explorer_cluster}` : "";
-    return true;
+    const before = `${NETWORK}|${QUOTE}|${QUOTE_LABEL}|${explorerQ}`;
+    // a server that predates profiles is a devnet server
+    const p = c.profile ?? { network: "devnet" as const, quote: { symbol: QUOTE }, explorer_cluster: "devnet" };
+    if (p.quote.display) QUOTE_LABEL = p.quote.display;
+    NETWORK = p.network;
+    QUOTE = p.quote.symbol;
+    explorerQ = p.explorer_cluster ? `?cluster=${p.explorer_cluster}` : "";
+    return before !== `${NETWORK}|${QUOTE}|${QUOTE_LABEL}|${explorerQ}`;
   } catch {
     return false;
   }

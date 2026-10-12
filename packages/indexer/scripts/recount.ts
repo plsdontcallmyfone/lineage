@@ -9,18 +9,19 @@
 // token_amount; PumpSwap BuyEvent and SellEvent: the pool at byte 112 after the event discriminator),
 // reads the price straight from the curve (virtual reserves) or the pool (vault balances plus its
 // signed virtual quote reserves), counts units_launch FeesCranked logs, and reads the compute vault
-// with getTokenAccountBalance. The RPC URL is never printed. Without --rpc it uses the devnet resolver.
+// with getTokenAccountBalance. The RPC URL is never printed. Without --rpc it uses the network profile's RPC (mainnet by default; UNITS_NETWORK=devnet for devnet).
 import { writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { createHash } from "node:crypto";
 import { base58Decode, base58Encode } from "@units/protocol";
-import { devnetRpcUrl, redactRpc } from "@units/chain/src/endpoint.ts";
+import { redactRpc } from "@units/chain/src/endpoint.ts";
+import { loadNetworkProfile, rpcUrlFor } from "@units/chain/src/profile-node.ts";
 
 const argv = process.argv.slice(2);
 const api = argv.includes("--api") ? argv[argv.indexOf("--api") + 1]! : "http://127.0.0.1:9668";
 const mints = argv.flatMap((a, i) => (argv[i - 1] === "--mint" ? [a] : []));
 if (!mints.length) throw new Error("name at least one --mint");
-const url = argv.includes("--rpc") ? argv[argv.indexOf("--rpc") + 1]! : devnetRpcUrl();
+const url = argv.includes("--rpc") ? argv[argv.indexOf("--rpc") + 1]! : rpcUrlFor(loadNetworkProfile());
 
 const PUMP = "6EF8rrecthR5Dkzon8Nwu78hRvfCKubJ14M5uBEwF6P";
 const AMM = "pAMMBay6oceH9fJKBRHGP5D4bD4sWpmSwMn52FMfXEA";

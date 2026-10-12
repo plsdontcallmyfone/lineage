@@ -76,6 +76,9 @@ set -euo pipefail
 # a second instance on the same server (UNITS_INSTANCE=mainnet; docs/DEPLOY-SITE.md "Second instance
 # (mainnet test)") has its own script and modes; unset, everything below is the devnet site as before
 if [ -n "${UNITS_INSTANCE:-}" ]; then exec "$(dirname "$0")/instance.sh" "$@"; fi
+# this script deploys the devnet site: every repository script it runs here is pinned to devnet, never
+# left to the repository default, which is mainnet (config/profile.json)
+export UNITS_NETWORK=devnet
 HOST="${1:-}"; MODE="${2:-full}"; EXTRA="${3:-}"
 [ -n "$HOST" ] || { sed -n '2,74p' "$0"; exit 2; }
 REPO="$(cd "$(dirname "$0")/../.." && pwd)"
@@ -150,6 +153,9 @@ git merge-base --is-ancestor "$SHA" HEAD || { echo "DEPLOY_REF must be HEAD or o
 write_env() {
   r "install -d -m 755 /etc/units && (umask 077; cat > /etc/units/site.env) && chmod 600 /etc/units/site.env && chown root:root /etc/units/site.env" <<EOF
 # written by scripts/deploy/deploy.sh; read by remote.sh and the units-* (and older lineage-*) units
+# this is the devnet site: its network is pinned here (and in the unit files), never left to the
+# repository default, which is mainnet (config/profile.json). The mainnet instance has its own site.env.
+UNITS_NETWORK=devnet
 SITE_NAMES=$SITE_NAMES
 GATE_ORIGINS=$ORIGINS
 UNITS_RECIPES=$UNITS_RECIPES

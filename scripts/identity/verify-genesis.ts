@@ -71,8 +71,9 @@ if (core && f.signer) {
 
 if (argv.includes("--chain") && f.signer) {
   const { ChainReader, Rpc } = await import("../../packages/chain/src/index.ts");
-  const { devnetRpcUrl } = await import("../../packages/chain/src/endpoint.ts");
-  const rec = await new ChainReader(Rpc.http(devnetRpcUrl(), "confirmed")).agent(f.agent).catch(() => null);
+  // the network profile's ids and RPC (config/profile.json: mainnet by default, UNITS_NETWORK=devnet for devnet)
+  const { applyNetworkProfile, rpcUrlFor } = await import("../../packages/chain/src/profile-node.ts");
+  const rec = await new ChainReader(Rpc.http(rpcUrlFor(applyNetworkProfile()), "confirmed")).agent(f.agent).catch(() => null);
   check("signer is the agent's current registry signing key (chain)", rec?.signingKey === f.signer, rec ? `registry key ${rec.signingKey}` : "no registry record");
 }
 

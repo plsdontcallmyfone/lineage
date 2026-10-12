@@ -39,6 +39,9 @@ BASE=/opt/units
 ENVF=/etc/units/site.env
 [ -f "$ENVF" ] || ENVF=/etc/lineage/site.env   # a box not migrated yet (migrate-layout)
 [ -f "$ENVF" ] && . "$ENVF"
+# the first instance is the devnet site: every repository script this file runs is pinned to it (a
+# site.env from before the pin has no UNITS_NETWORK; the repository default is mainnet)
+SITE_NETWORK="${UNITS_NETWORK:-devnet}"
 DRY_RUN="${DRY_RUN:-0}"
 UNITS_RECIPES="${UNITS_RECIPES:-${LINEAGE_RECIPES:-fixture-b58,base58-py,minbpe}}"
 AUTHORS="${AUTHORS:-minbpe}"; AUTHORS="${AUTHORS//,/ }"
@@ -63,7 +66,7 @@ unit_set units
 all_authors() { systemctl list-units --all --plain --no-legend 'units-author@*' 'lineage-author@*' 2>/dev/null | awk '{print $1}'; echo "$UP-author"; }
 
 as_lineage() {
-  runuser -u units -- env -i HOME=/home/units USER=units UNITS_HOME=/home/units/.lineage PATH=/usr/local/bin:/usr/bin:/bin bash -c "$1"
+  runuser -u units -- env -i UNITS_NETWORK="$SITE_NETWORK" HOME=/home/units USER=units UNITS_HOME=/home/units/.lineage PATH=/usr/local/bin:/usr/bin:/bin bash -c "$1"
 }
 # ---- units layout (docs/plans/REBRAND-UNITS.md 3.8, 6.4) --------------------------------------------
 # Directories: the units name becomes the real directory and the lineage name a relative symlink to it,
@@ -210,7 +213,7 @@ identity_setup() {
   if [ -f "$ck" ] && ! cmp -s "$ck" /etc/units-identity/core-key.json; then
     install -m 600 -o units-identity -g units-identity "$ck" /etc/units-identity/core-key.json
   fi
-  runuser -u units-identity -- env -i HOME="$ID/home" BUN_RUNTIME_TRANSPILER_CACHE_PATH=0 PATH=/usr/local/bin:/usr/bin:/bin \
+  runuser -u units-identity -- env -i UNITS_NETWORK="$SITE_NETWORK" HOME="$ID/home" BUN_RUNTIME_TRANSPILER_CACHE_PATH=0 PATH=/usr/local/bin:/usr/bin:/bin \
     /usr/local/bin/bun "$REL/packages/identity/src/main.ts" init --dir "$ID" --key /etc/units-identity/master.key
 }
 
@@ -777,7 +780,7 @@ secrets-facts)
   # public facts only (public keys, the identity key file's sha256, record names), read by the data's owner
   P="${1:-}"; REL="$(readlink -f "$BASE/current")"
   case "$P" in state) U=units H=/home/units ;; identity) U=units-identity H=/var/lib/units/identity/home ;; *) echo "usage: remote.sh secrets-facts state|identity" >&2; exit 2 ;; esac
-  runuser -u "$U" -- env -i HOME="$H" BUN_RUNTIME_TRANSPILER_CACHE_PATH=0 PATH=/usr/local/bin:/usr/bin:/bin \
+  runuser -u "$U" -- env -i UNITS_NETWORK="$SITE_NETWORK" HOME="$H" BUN_RUNTIME_TRANSPILER_CACHE_PATH=0 PATH=/usr/local/bin:/usr/bin:/bin \
     bash -c "cd $REL && bun scripts/deploy/backup-facts.ts facts --part $P --root /"
   ;;
 restore-secrets)
@@ -849,7 +852,7 @@ restore-test)
   [ -z "$(lsof -ti ":$PORT" 2>/dev/null)" ] || { echo "port $PORT is in use" >&2; exit 1; }
   systemctl stop units-restore-test 2>/dev/null || true
   rm -rf "$D"; install -d -m 0770 -o units-core -g units "$D"
-  RC() { runuser -u units-core -- env -i PATH=/usr/local/bin:/usr/bin:/bin HOME="$D" bash -c "cd $D && $1"; }
+  RC() { runuser -u units-core -- env -i UNITS_NETWORK="$SITE_NETWORK" PATH=/usr/local/bin:/usr/bin:/bin HOME="$D" bash -c "cd $D && $1"; }
   trap 'systemctl stop units-restore-test 2>/dev/null || true; systemctl reset-failed units-restore-test 2>/dev/null || true; rm -rf "$D"' EXIT
   RC "bash $REL/scripts/deploy/backup.sh verify '$F'"
   RC "bash $REL/scripts/deploy/backup.sh extract '$F' $D/data && tar -xOf <(zstd -q -d -c '$F') manifest.json > $D/manifest.json"
@@ -857,7 +860,7 @@ restore-test)
   chown units-core:units-core "$D/network.json"; chmod 600 "$D/network.json"
   T0=$(date +%s)
   systemd-run -q --unit units-restore-test --uid=units-core --gid=units-core -p UMask=0007 -p WorkingDirectory="$REL" \
-    -p Environment="HOME=$D UNITS_HOME=/home/units/.lineage BUN_RUNTIME_TRANSPILER_CACHE_PATH=0 GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=safe.directory GIT_CONFIG_VALUE_0=*" \
+    -p Environment="UNITS_NETWORK=$SITE_NETWORK HOME=$D UNITS_HOME=/home/units/.lineage BUN_RUNTIME_TRANSPILER_CACHE_PATH=0 GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=safe.directory GIT_CONFIG_VALUE_0=*" \
     /usr/local/bin/bun packages/core/src/main.ts --data "$D/data" --port $PORT --host 127.0.0.1 --config "$D/network.json" \
       --admin-key /etc/units-core/admin.json --runtime-key /var/lib/units/site/runtime-authority.pub --canaries-dir "$D/no-canaries"
   ok=0; for i in $(seq 1 60); do curl -fsS -m 3 "http://127.0.0.1:$PORT/v1/health" >/dev/null 2>&1 && { ok=1; break; }; sleep 1; done
@@ -899,14 +902,14 @@ restore)
     echo "placed $(basename "$F") in /var/lib/units/core (no release yet; deploy.sh <host> full activates it)"
     exit 0
   fi
-  runuser -u units-core -- env -i PATH=/usr/local/bin:/usr/bin:/bin bash "$REL/scripts/deploy/backup.sh" verify "$F"
+  runuser -u units-core -- env -i UNITS_NETWORK="$SITE_NETWORK" PATH=/usr/local/bin:/usr/bin:/bin bash "$REL/scripts/deploy/backup.sh" verify "$F"
   unit_set "$(release_prefix "$REL")"
   systemctl stop "$UP-backup.timer" "$UP-runtime" $(all_authors) "${WORKER_UNITS[@]}" "${CORE_UNITS[@]}" 2>/dev/null || true
   M="/var/lib/units/backups/$(date -u +%Y%m%dT%H%M%SZ)-before-restore"
   install -d -o units -g units "$M"
   mv /var/lib/units/core/core.db* /var/lib/units/core/blobs "$M"/ 2>/dev/null || true
   install -d -m 0770 -o units-core -g units /var/lib/units/core/.restore
-  runuser -u units-core -- env -i PATH=/usr/local/bin:/usr/bin:/bin bash "$REL/scripts/deploy/backup.sh" extract "$F" /var/lib/units/core/.restore
+  runuser -u units-core -- env -i UNITS_NETWORK="$SITE_NETWORK" PATH=/usr/local/bin:/usr/bin:/bin bash "$REL/scripts/deploy/backup.sh" extract "$F" /var/lib/units/core/.restore
   mv /var/lib/units/core/.restore/core.db /var/lib/units/core/.restore/blobs /var/lib/units/core/ && rmdir /var/lib/units/core/.restore
   chown -R "$(core_user)":units /var/lib/units/core; chmod -R g+rwX /var/lib/units/core
   systemctl start "${CORE_UNITS[@]}" "$UP-backup.timer"

@@ -15,6 +15,7 @@
 // playwright-core is not a repo dependency: pass its location.
 // Usage: bun scripts/launchpad/trade-e2e.ts --pw <dir> [--port 9665] [--core http://127.0.0.1:9662]
 //        [--market http://127.0.0.1:9668] [--mints <mint>,<mint>] [--buy 50] [--shots <dir>]
+import "../../packages/chain/src/devnet-process.ts"; // devnet only: pins UNITS_NETWORK=devnet for this process and what it spawns
 import { spawn, spawnSync } from "bun";
 import { appendFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";

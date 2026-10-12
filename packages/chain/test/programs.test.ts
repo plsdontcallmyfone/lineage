@@ -91,8 +91,11 @@ describe("builders and PDAs follow the active profile's ids", () => {
   test("applyNetworkProfile applies the profile's ids (UNITS_NETWORK=mainnet), devnet leaves them unchanged", () => {
     const before = sample();
     try {
-      applyNetworkProfile({ env: { UNITS_NETWORK: "mainnet" } });
+      applyNetworkProfile({ env: { UNITS_NETWORK: "mainnet", UNITS_MAINNET_DEPLOYMENT: "official" } });
       expect(activePrograms()).toEqual({ network: "mainnet", ...PROGRAM_IDS.mainnet });
+      // the repository default (no environment): mainnet, the deployed mainnet TEST deployment's ids
+      applyNetworkProfile({ env: {} });
+      expect(activePrograms()).toEqual({ network: "mainnet", ...MAINNET_TEST_PROGRAM_IDS });
       const reader = new ChainReader(Rpc.http("http://127.0.0.1:1"));
       devnet();
       expect(reader.launchProgram).toBe(PROGRAM_IDS.devnet.launch); // a reader built earlier follows too

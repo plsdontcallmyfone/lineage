@@ -4,6 +4,7 @@
 // holds the TEST supply (scripts/devnet/devnet.json line_holder): SOL for fees and recipients' token
 // accounts, and UNITS to transfer. Nothing is minted: the UNITS mint authority is revoked.
 // Usage: bun apps/web/scripts/fund-faucet.ts [--sol 0.2] [--line 100000]
+import "../../../packages/chain/src/devnet-process.ts"; // devnet only: pins UNITS_NETWORK=devnet for this process and what it spawns
 import { devnetRpcUrl } from "../../../packages/chain/src/endpoint.ts";
 import { readFileSync } from "node:fs";
 import { homedir } from "node:os";

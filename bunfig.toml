@@ -1,0 +1,3 @@
+[test]
+# the test process is pinned to devnet (the repository default is mainnet): scripts/test/pin-devnet.ts
+preload = ["./scripts/test/pin-devnet.ts"]

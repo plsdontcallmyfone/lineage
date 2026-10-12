@@ -15,6 +15,9 @@ User=units-monitor
 Group=units-monitor
 WorkingDirectory=/opt/units/current
 Environment=HOME=/var/lib/units-monitor PATH=/usr/local/bin:/usr/bin:/bin BUN_RUNTIME_TRANSPILER_CACHE_PATH=0
+# the first instance is the devnet site: pinned here and in site.env (deploy.sh), never left to the
+# repository default, which is mainnet (config/profile.json)
+Environment=UNITS_NETWORK=devnet
 # what to watch (public keys, site URL; written by remote.sh) and where to alert (owner-written, optional)
 EnvironmentFile=-/etc/units/monitor.env
 EnvironmentFile=-/etc/units/alert.env

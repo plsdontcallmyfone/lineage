@@ -12,6 +12,7 @@
 //     account rent 0.00148844 measured 2026-10-08, plus the fee).
 // Reports the faucet's balances (fund it with apps/web/scripts/fund-faucet.ts if low).
 // Every transaction is appended to scripts/deploy/SITE-DEVNET.md. Keys are reported by public key only.
+import "../../packages/chain/src/devnet-process.ts"; // devnet only: pins UNITS_NETWORK=devnet for this process and what it spawns
 import { appendFileSync, existsSync, readFileSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";

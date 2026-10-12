@@ -187,11 +187,72 @@ export function parseProfile(network: NetworkName, raw: unknown): NetworkProfile
   return p;
 }
 
+/**
+ * A profile overlay for one deployment, shaped { "profiles": { "<network>": { ... } } }: each key it gives
+ * replaces the same key of that network's block in config/profile.json (the quote block is replaced
+ * whole) before the block is parsed, so every guard of parseProfile still applies: program ids stay a
+ * row of the id table, mainnet keeps no faucet and no TEST labels. It cannot change `network`.
+ */
+export function applyProfileOverlay(raw: unknown, overlay: unknown): unknown {
+  if (!isObj(overlay) || !isObj(overlay.profiles)) throw new Error("profile overlay: profiles is required");
+  if (!isObj(raw) || !isObj(raw.profiles)) throw new Error("profile config: profiles is required");
+  const profiles: Record<string, unknown> = { ...raw.profiles };
+  for (const [name, block] of Object.entries(overlay.profiles)) {
+    if (!isObj(block)) throw new Error(`profile overlay: profiles.${name} must be an object`);
+    if (!isObj(profiles[name])) throw new Error(`profile overlay: there is no ${name} profile to overlay`);
+    profiles[name] = { ...(profiles[name] as Record<string, unknown>), ...block };
+  }
+  return { ...raw, profiles };
+}
+
+/** The network a config selects: `override` (UNITS_NETWORK) when set, else the file's `network`. */
+export function selectedNetwork(raw: unknown, override?: string | null): NetworkName {
+  if (!isObj(raw)) throw new Error("profile config: profiles is required");
+  const name = (override && override.trim()) || raw.network;
+  if (name !== "devnet" && name !== "mainnet") throw new Error(`network must be devnet or mainnet, not ${JSON.stringify(name)}`);
+  return name;
+}
+
+/**
+ * Which mainnet deployment the mainnet profile describes (config/profile.json `mainnet_deployment`,
+ * UNITS_MAINNET_DEPLOYMENT overrides it for one process). `profiles.mainnet` is written for the
+ * OFFICIAL deployment (the launch's program ids and quote). `mainnet_deployments` maps each name to
+ * the overlay file laid over that block, or null for the block as written:
+ *   "test"      config/mainnet-test/profile.json: the mainnet TEST deployment's ids, quote coin and state
+ *   "official"  null
+ * A config with neither key (older files, test fixtures) is the block as written.
+ */
+export function mainnetDeployment(raw: unknown, override?: string | null): { name: string; overlay: string | null } {
+  if (!isObj(raw)) throw new Error("profile config: profiles is required");
+  const map = raw.mainnet_deployments;
+  const name = (override && override.trim()) || raw.mainnet_deployment;
+  if (name === undefined || name === null) return { name: "official", overlay: null };
+  if (typeof name !== "string") throw new Error("mainnet_deployment must be a name of mainnet_deployments");
+  if (!isObj(map)) {
+    if (name === "official") return { name, overlay: null };
+    throw new Error(`mainnet_deployment ${JSON.stringify(name)}: the config has no mainnet_deployments`);
+  }
+  if (!(name in map)) throw new Error(`mainnet_deployment ${JSON.stringify(name)} is not one of ${Object.keys(map).join(", ")}`);
+  const overlay = map[name];
+  if (overlay !== null && (typeof overlay !== "string" || !overlay)) throw new Error(`mainnet_deployments.${name} must be an overlay file path or null`);
+  return { name, overlay: overlay as string | null };
+}
+
+/**
+ * The config with the selected mainnet deployment's overlay applied, when the selected network is
+ * mainnet and that deployment names one. `readOverlay` returns the parsed overlay file (a file read on
+ * a service, a bundled import in a browser).
+ */
+export function resolveProfileConfig(raw: unknown, o: { network?: string | null; deployment?: string | null; readOverlay: (path: string) => unknown }): unknown {
+  if (selectedNetwork(raw, o.network) !== "mainnet") return raw;
+  const d = mainnetDeployment(raw, o.deployment);
+  return d.overlay ? applyProfileOverlay(raw, o.readOverlay(d.overlay)) : raw;
+}
+
 /** Picks the active profile: `override` (UNITS_NETWORK) when set, else the file's `network`. */
 export function selectProfile(raw: unknown, override?: string | null): NetworkProfile {
   if (!isObj(raw) || !isObj(raw.profiles)) throw new Error("profile config: profiles is required");
-  const name = (override && override.trim()) || raw.network;
-  if (name !== "devnet" && name !== "mainnet") throw new Error(`network must be devnet or mainnet, not ${JSON.stringify(name)}`);
+  const name = selectedNetwork(raw, override);
   return parseProfile(name, raw.profiles[name]);
 }
 
@@ -232,7 +293,11 @@ export function publicProfile(p: NetworkProfile): PublicProfile {
   };
 }
 
-/** The devnet profile as the code behaved before profiles existed: the browser's fallback when a server predates /chain/config `profile`. */
+/**
+ * The devnet profile as the code behaved before profiles existed: what a page reads from a server that
+ * predates /chain/config `profile`. It is NOT what a page starts on: that is the repository's default
+ * profile (default-profile.ts DEFAULT_PUBLIC_PROFILE, mainnet).
+ */
 export const DEVNET_PUBLIC_PROFILE: PublicProfile = {
   network: "devnet",
   cluster: "devnet",

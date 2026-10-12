@@ -36,6 +36,10 @@ export interface FaucetLike {
 export interface ChainRoutesOptions {
   profile: NetworkProfile;
   rpcUrl: string;
+  /** extra request headers for the upstream RPC (the Origin a site's /chain/rpc proxy expects) */
+  rpcHeaders?: Record<string, string>;
+  /** how the upstream is named in /chain/config `rpc_upstream`; default redactRpc(rpcUrl) (host only) */
+  rpcLabel?: string;
   /** deployed public state with the profile's quote applied (profile-node stateFor) */
   state: Record<string, unknown> | null;
   /** built only when the profile has a faucet */
@@ -117,7 +121,7 @@ export function chainRoutes(o: ChainRoutesOptions) {
     for (let i = 0; i < 7; i++) {
       if (i) await sleep(Math.min(8000, 400 * 2 ** i));
       try {
-        const r = await f(o.rpcUrl, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ jsonrpc: "2.0", id: 1, method, params }) });
+        const r = await f(o.rpcUrl, { method: "POST", headers: { "content-type": "application/json", ...(o.rpcHeaders ?? {}) }, body: JSON.stringify({ jsonrpc: "2.0", id: 1, method, params }) });
         if (r.status === 429 || r.status >= 500) {
           last = `HTTP ${r.status}`;
           continue;
@@ -146,7 +150,7 @@ export function chainRoutes(o: ChainRoutesOptions) {
     if (path === "/chain/config") {
       const c = await cluster();
       const pub = o.state ? Object.fromEntries(Object.entries(o.state).filter(([k]) => !/key/i.test(k) && k !== "test_epoch_leaves" && (p.network === "devnet" || k !== "rpc_url"))) : null;
-      return Response.json({ rpc: "/chain/rpc", rpc_upstream: redactRpc(o.rpcUrl), genesis: c.genesis, cluster: c.cluster, devnet: c.devnet, state: pub, faucet: faucet?.address ?? null, profile: publicProfile(p) });
+      return Response.json({ rpc: "/chain/rpc", rpc_upstream: o.rpcLabel ?? redactRpc(o.rpcUrl), genesis: c.genesis, cluster: c.cluster, devnet: c.devnet, state: pub, faucet: faucet?.address ?? null, profile: publicProfile(p) });
     }
     if (path === "/chain/rpc") {
       if (req.method !== "POST") return new Response("POST only", { status: 405 });

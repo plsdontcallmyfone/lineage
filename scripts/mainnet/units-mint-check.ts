@@ -13,7 +13,7 @@ import { ChainReader, curveMigrated, decodeBondingCurve, decodePumpGlobal, decod
 import { loadNetworkProfile, rpcUrlFor } from "../../packages/chain/src/profile-node.ts";
 
 const argv = process.argv.slice(2);
-const profile = loadNetworkProfile({ env: { ...process.env, UNITS_NETWORK: "mainnet", UNITS_PROFILE_LOCAL: undefined } });
+const profile = loadNetworkProfile({ env: { ...process.env, UNITS_NETWORK: "mainnet", UNITS_MAINNET_DEPLOYMENT: "official", UNITS_PROFILE_LOCAL: undefined } });
 const mint = argv.includes("--mint") ? argv[argv.indexOf("--mint") + 1]! : profile.quote.line_mint;
 if (!mint) throw new Error("the mainnet profile names no $UNITS mint (quote.units_mint)");
 let url = "https://api.mainnet-beta.solana.com";

@@ -1,11 +1,12 @@
 // The page's chain context: the RPC through the dashboard's /chain/rpc proxy, the public
 // addresses, and the one transaction pipeline every flow uses (build, simulate, wallet signs, local
 // fresh keys co-sign, send, confirm). Nothing is built until the RPC's genesis hash is the network
-// profile's (/chain/config `profile`, SPEC 14.10; devnet when the server predates profiles). Devnet
-// works exactly as before; mainnet prices compute units from recent prioritization fees (capped by
+// profile's (/chain/config `profile`, SPEC 14.10; devnet when the server predates profiles; the
+// repository's default, mainnet, until it answers). Devnet works exactly as before; mainnet prices compute units from recent prioritization fees (capped by
 // config) and confirms with blockhash-expiry aware resends.
 import {
   assertCluster,
+  DEFAULT_PUBLIC_PROFILE,
   DEVNET_PUBLIC_PROFILE,
   priorityFee,
   sendWithRebuilds,
@@ -60,12 +61,16 @@ export interface ChainCfg {
   profile?: PublicProfile;
 }
 
-/** The page's network profile: devnet until /chain/config says otherwise. */
-export const NET: { p: PublicProfile } = { p: DEVNET_PUBLIC_PROFILE };
+/**
+ * The page's network profile: the repository's default (mainnet, the deployed mainnet deployment; bundled
+ * from config/profile.json) until /chain/config says what this server runs. So nothing of devnet (TEST
+ * labels, the faucet) shows before the profile loads; a devnet server's profile switches them on.
+ */
+export const NET: { p: PublicProfile } = { p: DEFAULT_PUBLIC_PROFILE };
 export const isMainnet = () => NET.p.network === "mainnet";
 /** The quote token's symbol for labels, from the network profile (config, never the coin's on-chain metadata): UNITS. */
 export const qsym = () => NET.p.quote.symbol;
-/** The quote token as user-facing copy (owner direction 2026-10-11): "$UNITS" on devnet (with a "devnet test tokens, no value" note), the configured quote elsewhere. */
+/** The quote token as user-facing copy (owner direction 2026-10-11): "$UNITS" on devnet, the configured quote elsewhere. */
 export const usym = () => (NET.p.network === "devnet" ? "$UNITS" : NET.p.quote.symbol);
 /** TEST labels are shown only where the profile says so (devnet). */
 export const testLabels = () => NET.p.test_labels;
@@ -122,6 +127,10 @@ function applyProfile(p: PublicProfile) {
   setExplorerCluster(p.explorer_cluster);
   setWalletChain(p.network === "mainnet" ? MAINNET_CHAIN : DEVNET_CHAIN);
 }
+// In a page, the default profile's program ids, explorer links and wallet chain hold from the first
+// render. Outside a page (a unit test importing this module) nothing global is touched: the active
+// program ids are state the whole process shares.
+if (typeof document !== "undefined") applyProfile(DEFAULT_PUBLIC_PROFILE);
 
 /** Checked once per page load and again before every build: the RPC's genesis must be the profile's. */
 export async function clusterGate(): Promise<void> {

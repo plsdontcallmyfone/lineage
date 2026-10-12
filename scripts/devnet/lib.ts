@@ -1,6 +1,7 @@
 // Shared pieces of the devnet scripts: the RPC, the key directory, the public state file, and the
 // transaction log in onchain/DEVNET.md. Nothing here reads or changes `solana config`; every key is
 // passed explicitly. Secret keys are never printed; keys are reported by public key only.
+import "../../packages/chain/src/devnet-process.ts"; // devnet only: pins UNITS_NETWORK=devnet for this process and what it spawns
 import { devnetRpcUrl } from "../../packages/chain/src/endpoint.ts";
 import { appendFileSync, existsSync, readFileSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";

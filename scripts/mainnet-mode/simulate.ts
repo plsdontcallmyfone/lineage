@@ -72,7 +72,7 @@ const arg = (k: string, d: string) => {
 const taker = arg("taker", DEFAULT_TAKER);
 const rpcUrl = (process.env.UNITS_MAINNET_RPC ?? process.env.LINEAGE_MAINNET_RPC) || PUBLIC_MAINNET_RPC;
 const rpc = Rpc.http(rpcUrl, "confirmed");
-const profile = loadNetworkProfile({ env: { UNITS_NETWORK: "mainnet" } });
+const profile = loadNetworkProfile({ env: { UNITS_NETWORK: "mainnet", UNITS_MAINNET_DEPLOYMENT: "official" } });
 const swapCfg = parseSwapConfig(JSON.parse(readFileSync(join(ROOT, "config/swap.json"), "utf8")));
 const prepay = parsePrepayConfig(JSON.parse(readFileSync(join(ROOT, "config/network.json"), "utf8")).prepay);
 const fees = profile.fees.mode === "recent" ? profile.fees : null;

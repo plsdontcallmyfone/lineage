@@ -14,6 +14,7 @@
 // Usage: bun scripts/identity/proof.ts [--live-gist <url of the live proof gist, reused instead of posting a new one>]
 // The pool token is read from ~/.config/lineage/github-pool.json and never printed or stored.
 // Output: scripts/identity/PROOF-LAST.json.
+import "../../packages/chain/src/devnet-process.ts"; // devnet only: pins UNITS_NETWORK=devnet for this process and what it spawns
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";

@@ -14,6 +14,9 @@ User=units
 Group=units
 WorkingDirectory=/opt/units/current
 Environment=HOME=/home/units UNITS_HOME=/home/units/.lineage PATH=/usr/local/bin:/usr/bin:/bin
+# the first instance is the devnet site: pinned here and in site.env (deploy.sh), never left to the
+# repository default, which is mainnet (config/profile.json)
+Environment=UNITS_NETWORK=devnet
 EnvironmentFile=-/etc/units/site.env
 NoNewPrivileges=yes
 Type=oneshot
