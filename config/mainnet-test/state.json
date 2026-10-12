@@ -19,7 +19,8 @@
   "protocol_bps": 3000,
   "network_overrides": {
     "prepay": {
-      "identity_account_recipient": null
+      "identity_account_recipient": "6UhUBoVpywefyPoMtQEuwngkPjzFRork4L3dgCVr4jh3",
+      "identity_account_price_lamports": "30000000"
     }
   }
 }
